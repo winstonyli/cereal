@@ -20,7 +20,7 @@ references, hover, rename, completion, semantic tokens).
 | Parallelism | pthreads, both within a TU (parallel lexing/skeletons of included files, per-function parse→check→codegen) and across TUs (one driver process, work-stealing pool); deterministic output | One giant generated file must scale too. |
 | Caching | Content-addressed on-disk cache of per-header results (tokens, macro-table deltas, later decls/proofs), keyed by content hash + the macro state they depend on; shared by CLI, LSP and build daemon | |
 | Backend | Own SSA IR → direct x86-64 machine code → ELF `.o` (no assembler); a fast baseline path plus an optimizing path over the same IR; AArch64 later | Compile time. |
-| Verification | VeriFast-style symbolic execution with a **built-in** solver in C99 (no external dependencies) | Deterministic, self-contained. |
+| Verification | Built-in, tiered: syntactic → abstract interpretation → permission checking → built-in DPLL(T) solver; deterministic fuel budgets; per-function, cached, parallel (see `docs/SPECS.md`) | Deterministic, self-contained. |
 | UB policy | Per function via `#verify strict\|checked\|off`. Strict: UB the prover can't rule out is an error. Checked (default): trap inserted at that point only, and no check where proven. | |
 | Spec syntax | Custom directives + `#pragma cereal` spelling; details under discussion in `docs/SPECS.md` | |
 
