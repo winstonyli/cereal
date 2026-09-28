@@ -1,0 +1,25 @@
+#include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <float.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <locale.h>
+#include <math.h>
+#include <setjmp.h>
+#include <signal.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <wchar.h>
+#include <wctype.h>
+#include <complex.h>
+#include <fenv.h>
+#include <iso646.h>
+#include <tgmath.h>
+int main(void) { printf("%d %s\n", INT_MAX, strerror(errno)); assert(1); return isdigit('1') + (int)sqrt(4.0) + EXIT_SUCCESS; }

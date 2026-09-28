@@ -1,0 +1,86 @@
+/* diag.h - diagnostics engine. */
+#ifndef CEREAL_DIAG_H
+#define CEREAL_DIAG_H
+
+#include "common.h"
+#include "srcmgr.h"
+
+typedef enum {
+    DL_IGNORED,
+    DL_NOTE,
+    DL_REMARK,
+    DL_WARNING,
+    DL_ERROR,
+    DL_FATAL
+} DiagLevel;
+
+typedef struct DiagNote {
+    SrcLoc loc;
+    const char *msg;
+} DiagNote;
+
+typedef struct Diagnostic {
+    DiagLevel level;
+    const char *id;          /* warning option name, "" for hard errors */
+    SrcLoc loc;
+    SrcRange range;          /* optional highlight (end == 0 if none) */
+    const char *msg;
+    VEC(DiagNote) notes;
+    SrcLoc *inc_chain;       /* #include locations, innermost first */
+    int ninc;
+    const char *fixit;       /* optional suggested replacement text */
+} Diagnostic;
+
+typedef enum { DIAG_FMT_TEXT, DIAG_FMT_JSON } DiagFormat;
+
+typedef struct DiagEngine {
+    Arena *arena;
+    SrcMgr *sm;
+    VEC(Diagnostic *) all;
+    int nerrors, nwarnings;
+    bool werror;
+    bool pedantic;
+    bool pedantic_errors;
+    bool show_system;        /* report warnings located in system headers */
+    bool immediate;          /* print as reported (text format) */
+    bool color;
+    DiagFormat format;
+    FILE *out;
+    /* Supplies the current include chain (innermost first). */
+    void (*include_chain)(void *ctx, SrcLoc **locs, int *n);
+    void *include_chain_ctx;
+    int max_errors;
+} DiagEngine;
+
+/* Warning option registry. */
+typedef struct DiagOption {
+    const char *name;
+    const char *group;       /* hygiene | cond | include | pp | pedantic */
+    DiagLevel deflt;         /* level when not configured */
+    const char *help;
+} DiagOption;
+
+void diag_init(DiagEngine *d, Arena *a, SrcMgr *sm);
+void diag_free(DiagEngine *d);
+
+/* Configure from -W flags: "foo", "no-foo", "error", "group", "everything".
+ * Returns false if the name is unknown. */
+bool diag_configure(DiagEngine *d, const char *flag);
+DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested);
+bool diag_enabled(DiagEngine *d, const char *id);
+
+Diagnostic *diag_report(DiagEngine *d, DiagLevel lvl, const char *id,
+                        SrcLoc loc, const char *fmt, ...);
+Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
+                         SrcLoc loc, const char *fmt, va_list ap);
+void diag_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...);
+void diag_set_range(Diagnostic *dg, SrcLoc b, SrcLoc e);
+/* Print a diagnostic now (used when immediate is false, e.g. after sort). */
+void diag_print(DiagEngine *d, Diagnostic *dg);
+void diag_flush(DiagEngine *d);   /* print everything not yet printed */
+void diag_print_json(DiagEngine *d, FILE *out);
+void diag_list_options(FILE *out);
+
+const DiagOption *diag_find_option(const char *name);
+
+#endif

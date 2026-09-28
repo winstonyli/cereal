@@ -1,0 +1,4 @@
+/build/
+/cereal
+*.o
+*.d
