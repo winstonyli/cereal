@@ -34,6 +34,15 @@ typedef struct Diagnostic {
 
 typedef enum { DIAG_FMT_TEXT, DIAG_FMT_JSON } DiagFormat;
 
+/* -W configuration: built once from the command line, then read-only. */
+typedef struct DiagConfig DiagConfig;
+DiagConfig *diag_config_new(void);
+void diag_config_free(DiagConfig *c);
+/* "foo", "no-foo", "error", "group", "all", "everything"; false if unknown */
+bool diag_config_apply(DiagConfig *c, const char *flag);
+bool diag_config_werror(const DiagConfig *c);
+bool diag_config_pedantic(const DiagConfig *c);
+
 typedef struct DiagEngine {
     Arena *arena;
     SrcMgr *sm;
@@ -51,6 +60,7 @@ typedef struct DiagEngine {
     void (*include_chain)(void *ctx, SrcLoc **locs, int *n);
     void *include_chain_ctx;
     int max_errors;
+    const DiagConfig *cfg;   /* NULL: defaults */
     uint32_t key;            /* current plan item (set by the preprocessor) */
 } DiagEngine;
 
@@ -66,9 +76,6 @@ typedef struct DiagOption {
 void diag_init(DiagEngine *d, Arena *a, SrcMgr *sm);
 void diag_free(DiagEngine *d);
 
-/* Configure from -W flags: "foo", "no-foo", "error", "group", "everything".
- * Returns false if the name is unknown. */
-bool diag_configure(DiagEngine *d, const char *flag);
 DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested);
 bool diag_enabled(DiagEngine *d, const char *id);
 

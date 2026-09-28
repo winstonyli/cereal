@@ -3,6 +3,7 @@
 #define CEREAL_PAR_H
 
 #include "driver.h"
+#include "thread.h"
 
 typedef struct ParOptions {
     int threads;             /* <= 0: cpu_count() */
@@ -11,6 +12,7 @@ typedef struct ParOptions {
     size_t min_bytes;        /* auto mode: minimum text for parallelism */
     unsigned window;         /* segments after a worker's start at which a
                                 predecessor may stitch (0: default) */
+    ThreadPool *pool;        /* shared pool (NULL: a private one) */
 } ParOptions;
 
 typedef enum {

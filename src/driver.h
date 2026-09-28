@@ -16,6 +16,7 @@ typedef struct Options {
     PPOptions pp;
     VEC(CmdlineMacro) macros;
     VEC(const char *) wflags;
+    DiagConfig *diag;   /* built from wflags by options_finish */
     VEC(const char *) inputs;
     const char *output;
     bool linemarkers;
@@ -29,6 +30,7 @@ typedef struct Options {
     int par_threads;    /* <= 0: cpu_count() */
     size_t par_chunk;   /* 0: default */
     unsigned par_window;
+    int jobs;           /* -j: concurrent TUs (<= 0: cpu_count()) */
 } Options;
 
 typedef struct TU {

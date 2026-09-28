@@ -25,34 +25,40 @@ static void usage(FILE *o)
         "  -std=c99  -pedantic  -pedantic-errors  -trigraphs\n"
         "  -W<name>  -Wno-<name>  -W<group>  -Wall  -Werror  -Weverything\n"
         "  -fdiagnostics-format=json  -fcolor-diagnostics  -P  -o FILE\n"
-        "  -fparallel=auto|on|off  -fparallel-threads=N  -fparallel-chunk=BYTES\n",
+        "  -fparallel=auto|on|off  -fparallel-threads=N  -fparallel-chunk=BYTES\n"
+        "  -j N          translation units at a time (default: all cores)\n",
         o);
 }
 
-static int finish(TU *tu)
+static int finish(TU *tu, FILE *out)
 {
-    int rc;
     if (tu->opt->json)
-        diag_print_json(&tu->diag, stdout);
+        diag_print_json(&tu->diag, out);
     else
         diag_flush(&tu->diag);
-    rc = tu->diag.nerrors ? 1 : 0;
-    return rc;
+    return tu->diag.nerrors ? 1 : 0;
 }
 
-static int mode_preprocess(Options *o)
+static ThreadPool *shared_pool(Options *o)
+{
+    static ThreadPool pool;
+    static bool made;
+    if (!made) {
+        pool_init(&pool, o->jobs); /* the main thread helps too */
+        made = true;
+    }
+    return &pool;
+}
+
+/* One translation unit of a mode: text to out, diagnostics to err. */
+typedef int (*TuFn)(Options *o, const char *path, FILE *out, FILE *err);
+
+static int preprocess_one(Options *o, const char *path, FILE *out, FILE *err)
 {
     TU tu;
-    FILE *out = stdout;
     int rc;
-    if (o->inputs.len != 1) {
-        fputs("cereal: -E needs exactly one input file\n", stderr);
-        return 2;
-    }
-    if (o->output && !(out = fopen(o->output, "w")))
-        fatal("cannot open '%s' for writing", o->output);
-    o->pp.fatal_missing_include = true;
     tu_init(&tu, o);
+    tu.diag.out = err;
     if (o->parallel != 'n') {
         ParOptions po;
         ParResult r;
@@ -61,44 +67,161 @@ static int mode_preprocess(Options *o)
         po.chunk = o->par_chunk;
         po.window = o->par_window;
         po.force = o->parallel == 'y';
-        r = par_write_output(&tu, o->inputs.data[0], out, o->linemarkers, &po);
+        po.pool = shared_pool(o);
+        r = par_write_output(&tu, path, out, o->linemarkers, &po);
         if (r != PAR_FALLBACK)
             goto done;
         tu_free(&tu); /* diverged or not worth it: start over */
         tu_init(&tu, o);
+        tu.diag.out = err;
     }
-    if (tu_begin(&tu, o->inputs.data[0]))
+    if (tu_begin(&tu, path))
         pp_write_output(&tu.pp, out, o->linemarkers);
 done:
+    rc = finish(&tu, out);
+    tu_free(&tu);
+    return rc;
+}
+
+static int lint_one(Options *o, const char *path, FILE *out, FILE *err)
+{
+    TU tu;
+    Analysis an;
+    int rc;
+    tu_init(&tu, o);
+    tu.diag.out = err;
+    memset(&an, 0, sizeof an);
+    analysis_attach(&an, &tu.pp);
+    if (tu_begin(&tu, path)) {
+        tu_drain(&tu);
+        analysis_finish(&an);
+    }
+    rc = finish(&tu, out);
+    tu_free(&tu);
+    return rc;
+}
+
+/* ---- the TU pool: -j ------------------------------------------------ */
+
+typedef struct Batch {
+    Mutex m;
+    Cond done;
+} Batch;
+
+typedef struct TuJob {
+    Batch *batch;
+    Options *o;
+    TuFn fn;
+    const char *path;
+    char *out, *err;               /* buffered, written in input order */
+    size_t out_len, err_len;
+    int rc;
+    bool finished;                 /* guarded by batch->m */
+} TuJob;
+
+static void run_tu_job(void *arg)
+{
+    TuJob *j = arg;
+    FILE *out = open_memstream(&j->out, &j->out_len);
+    FILE *err = open_memstream(&j->err, &j->err_len);
+    if (!out || !err)
+        fatal("out of memory");
+    j->rc = j->fn(j->o, j->path, out, err);
+    fclose(out);
+    fclose(err);
+    mutex_lock(&j->batch->m);
+    j->finished = true;
+    cond_broadcast(&j->batch->done);
+    mutex_unlock(&j->batch->m);
+}
+
+/* Every input through fn, up to -j at a time.  Output and diagnostics
+ * appear in input order, exactly as a one-at-a-time run would print them. */
+static int run_inputs(Options *o, TuFn fn, FILE *out)
+{
+    ThreadPool *pool;
+    JobGroup g;
+    Batch b;
+    TuJob *jobs;
+    size_t i, n = o->inputs.len;
+    int rc = 0;
+    if (n == 1 || o->jobs == 1) {
+        for (i = 0; i < n; i++)
+            rc |= fn(o, o->inputs.data[i], out, stderr);
+        return rc;
+    }
+    pool = shared_pool(o);
+    mutex_init(&b.m);
+    cond_init(&b.done);
+    group_init(&g);
+    jobs = xcalloc(n, sizeof *jobs);
+    for (i = 0; i < n; i++) {
+        jobs[i].batch = &b;
+        jobs[i].o = o;
+        jobs[i].fn = fn;
+        jobs[i].path = o->inputs.data[i];
+        pool_submit(pool, &g, run_tu_job, &jobs[i]);
+    }
+    for (i = 0; i < n; i++) {
+        /* help until input i is done, then commit it */
+        for (;;) {
+            bool fin;
+            mutex_lock(&b.m);
+            fin = jobs[i].finished;
+            mutex_unlock(&b.m);
+            if (fin)
+                break;
+            if (pool_run_one(pool))
+                continue;
+            mutex_lock(&b.m); /* it is running elsewhere */
+            while (!jobs[i].finished)
+                cond_wait(&b.done, &b.m);
+            mutex_unlock(&b.m);
+            break;
+        }
+        fwrite(jobs[i].out, 1, jobs[i].out_len, out);
+        fflush(out);
+        fwrite(jobs[i].err, 1, jobs[i].err_len, stderr);
+        free(jobs[i].out);
+        free(jobs[i].err);
+        rc |= jobs[i].rc;
+    }
+    group_wait(pool, &g);
+    group_free(&g);
+    cond_destroy(&b.done);
+    mutex_destroy(&b.m);
+    free(jobs);
+    return rc;
+}
+
+static int mode_preprocess(Options *o)
+{
+    FILE *out = stdout;
+    int rc;
+    if (o->inputs.len == 0) {
+        fputs("cereal: -E needs an input file\n", stderr);
+        return 2;
+    }
+    if (o->output && o->inputs.len > 1) {
+        fputs("cereal: cannot specify -o with -E and multiple files\n", stderr);
+        return 2;
+    }
+    if (o->output && !(out = fopen(o->output, "w")))
+        fatal("cannot open '%s' for writing", o->output);
+    o->pp.fatal_missing_include = true;
+    rc = run_inputs(o, preprocess_one, out);
     if (out != stdout)
         fclose(out);
-    rc = finish(&tu);
-    tu_free(&tu);
     return rc;
 }
 
 static int mode_lint(Options *o)
 {
-    size_t i;
-    int rc = 0;
     if (o->inputs.len == 0) {
         fputs("cereal: lint needs input files\n", stderr);
         return 2;
     }
-    for (i = 0; i < o->inputs.len; i++) {
-        TU tu;
-        Analysis an;
-        tu_init(&tu, o);
-        memset(&an, 0, sizeof an);
-        analysis_attach(&an, &tu.pp);
-        if (tu_begin(&tu, o->inputs.data[i])) {
-            tu_drain(&tu);
-            analysis_finish(&an);
-        }
-        rc |= finish(&tu);
-        tu_free(&tu);
-    }
-    return rc;
+    return run_inputs(o, lint_one, stdout);
 }
 
 static const char *loc_str(TU *tu, SrcLoc loc)

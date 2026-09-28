@@ -197,7 +197,16 @@ issued once per file instead of once per line (GCC's behavior).
 4. Phase B workers, stitching, ordered merge, parallel `-E`, differential
    tests and a fuzzer. **Done** (see "As built").
 5. Thread-aware listeners (lint, index).
-6. TU pool (`-j`).
+6. **Done.** TU pool (`-j`). All inputs of `-E` and `lint` run as jobs on
+   one shared pool, which also runs the phase-B workers. The waiting thread
+   helps, so the nesting cannot deadlock. Each job buffers its output and
+   diagnostics, and the main thread writes them in input order as they
+   finish. Process-wide state was removed first: `-W` configuration is an
+   immutable `DiagConfig`, the predefines buffer lives in `PP`,
+   `__DATE__`/`__TIME__` are fixed once per process (this also fixed a
+   use-after-free across TUs), and one-time tables use `pthread_once`.
+   Tested: `-j1` and `-j8` are byte-identical (tests/run.sh), and clean
+   under TSan. 20 dogfood TUs: 0.097s at -j1, 0.034s at -j4.
 7. Macro graph and dependency sets.
 8. (d) Header memoization on disk, keyed by the dependency sets.
 

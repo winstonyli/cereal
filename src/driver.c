@@ -97,6 +97,11 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
             fatal("-fparallel= expects on, off or auto (got '%s')", v);
     } else if (!strncmp(a, "-fparallel-threads=", 19)) {
         o->par_threads = atoi(a + 19);
+    } else if (!strncmp(a, "-j", 2)) {
+        const char *v = arg_value(argc, argv, &i, "-j");
+        o->jobs = atoi(v);
+        if (o->jobs < 1)
+            fatal("-j expects a positive number (got '%s')", v);
     } else if (!strncmp(a, "-fparallel-window=", 18)) {
         o->par_window = (unsigned)strtoul(a + 18, NULL, 10);
     } else if (!strncmp(a, "-fparallel-chunk=", 17)) {
@@ -116,6 +121,13 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
 void options_finish(Options *o)
 {
     int i;
+    size_t k;
+    o->diag = diag_config_new();
+    pp_options_finish(&o->pp);
+    for (k = 0; k < o->wflags.len; k++)
+        if (!diag_config_apply(o->diag, o->wflags.data[k]))
+            fprintf(stderr, "cereal: warning: unknown warning option "
+                            "'-W%s'\n", o->wflags.data[k]);
     if (!o->pp.nostdinc)
         for (i = 0; host_include_dirs[i]; i++)
             vec_push(&o->pp.system_dirs, host_include_dirs[i]);
@@ -128,26 +140,25 @@ void options_free(Options *o)
     vec_free(&o->pp.system_dirs);
     vec_free(&o->macros);
     vec_free(&o->wflags);
+    diag_config_free(o->diag);
+    o->diag = NULL;
     vec_free(&o->inputs);
 }
 
 void tu_init(TU *tu, Options *opt)
 {
-    size_t i;
     memset(tu, 0, sizeof *tu);
     tu->opt = opt;
     arena_init(&tu->arena);
     interner_init(&tu->in);
     srcmgr_init(&tu->sm, &tu->arena);
     diag_init(&tu->diag, &tu->arena, &tu->sm);
-    tu->diag.pedantic = opt->pp.pedantic;
+    tu->diag.cfg = opt->diag;
+    tu->diag.werror = diag_config_werror(opt->diag);
+    tu->diag.pedantic = opt->pp.pedantic || diag_config_pedantic(opt->diag);
     tu->diag.pedantic_errors = opt->pedantic_errors;
     tu->diag.color = opt->color;
     tu->diag.show_system = opt->show_system;
-    for (i = 0; i < opt->wflags.len; i++)
-        if (!diag_configure(&tu->diag, opt->wflags.data[i]))
-            fprintf(stderr, "cereal: warning: unknown warning option "
-                            "'-W%s'\n", opt->wflags.data[i]);
     pp_init(&tu->pp, &tu->arena, &tu->in, &tu->sm, &tu->diag, &opt->pp);
     tu->pp.host_attrs = host_attrs;
     tu->pp.check_versions = opt->check_versions;

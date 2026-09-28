@@ -175,6 +175,7 @@ static void worker_init(Par *P, Worker *w, int idx, size_t start, size_t end,
     w->recs = w->window ? xmalloc(sizeof(BoundRec) * w->window) : NULL;
     arena_init(&w->arena);
     diag_init(&w->diag, &w->arena, &tu->sm);
+    w->diag.cfg = tu->diag.cfg;
     w->diag.werror = tu->diag.werror;
     w->diag.pedantic = tu->diag.pedantic;
     w->diag.pedantic_errors = tu->diag.pedantic_errors;
@@ -436,13 +437,18 @@ ParResult par_write_output(TU *tu, const char *path, FILE *out,
     if (P.nw == 1) {
         run_worker(&P.w[0]);
     } else {
-        pool_init(&pool, P.nw); /* counts this thread */
+        ThreadPool *tp = po->pool;
+        if (!tp) {
+            pool_init(&pool, P.nw); /* counts this thread */
+            tp = &pool;
+        }
         group_init(&g);
         for (i = 0; i < P.nw; i++)
-            pool_submit(&pool, &g, run_worker, &P.w[i]);
-        group_wait(&pool, &g);
+            pool_submit(tp, &g, run_worker, &P.w[i]);
+        group_wait(tp, &g);
         group_free(&g);
-        pool_free(&pool);
+        if (tp == &pool)
+            pool_free(&pool);
     }
 
     P.t_b = now();

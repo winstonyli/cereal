@@ -155,6 +155,20 @@ void pool_submit(ThreadPool *p, JobGroup *g, JobFn fn, void *arg)
     mutex_unlock(&p->m);
 }
 
+bool pool_run_one(ThreadPool *p)
+{
+    Job j;
+    bool got;
+    mutex_lock(&p->m);
+    got = take_job(p, &j);
+    mutex_unlock(&p->m);
+    if (got) {
+        j.fn(j.arg);
+        finish_job(&j);
+    }
+    return got;
+}
+
 void group_wait(ThreadPool *p, JobGroup *g)
 {
     for (;;) {

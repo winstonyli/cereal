@@ -11,6 +11,7 @@
 #include "lex.h"
 #include "simd.h"
 
+#include <pthread.h>
 #include <string.h>
 
 const char *const punct_spelling[P_COUNT] = {
@@ -31,13 +32,11 @@ enum {
 
 static uint8_t cls[256];
 static uint8_t cls_dollar[256];
-static bool inited;
+static pthread_once_t tables_once = PTHREAD_ONCE_INIT;
 
-void lex_global_init(void)
+static void init_tables(void)
 {
     int c;
-    if (inited)
-        return;
     for (c = 0; c < 256; c++) {
         uint8_t k = 0;
         if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' ||
@@ -56,7 +55,11 @@ void lex_global_init(void)
         cls_dollar[c] = k;
     }
     cls_dollar['$'] |= C_ID | C_IDSTART | C_PPNUM;
-    inited = true;
+}
+
+void lex_global_init(void)
+{
+    pthread_once(&tables_once, init_tables);
 }
 
 /* ---- setup ---------------------------------------------------------- */

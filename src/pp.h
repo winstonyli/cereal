@@ -213,7 +213,8 @@ typedef struct PPOptions {
     bool gnu_mode;
     bool fatal_missing_include; /* -E: stop the TU there, as GCC does */
     LexOptions lex;
-    const char *date_str, *time_str;
+    const char *date_str, *time_str;  /* set by pp_options_finish */
+    char date_buf[32], time_buf[16];
 } PPOptions;
 
 /* GCC assertions: #assert pred(answer).  Directive state only (phase A). */
@@ -310,12 +311,16 @@ typedef struct PP {
     SrcFile *builtin_file;
     VEC(SrcLoc) chain_buf;
     StrBuf sb;               /* scratch string building */
+    StrBuf predef;           /* <command line>: predefines, -D, -U, -include */
 
     struct Ident *id_defined, *id_va_args, *id_pragma;
     const char *const *host_attrs;
     const char *const *host_builtins;
 } PP;
 
+/* Once per process, before any TU: fixes __DATE__ / __TIME__ (honouring
+ * SOURCE_DATE_EPOCH) so concurrent TUs agree and nothing is shared. */
+void pp_options_finish(PPOptions *opt);
 void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
              PPOptions *opt);
 void pp_free(PP *pp);

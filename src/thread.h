@@ -109,5 +109,7 @@ void group_free(JobGroup *g);
 void pool_submit(ThreadPool *p, JobGroup *g, JobFn fn, void *arg);
 /* Wait for the group; the calling thread helps run queued jobs. */
 void group_wait(ThreadPool *p, JobGroup *g);
+/* Run one queued job on the calling thread; false if none was queued. */
+bool pool_run_one(ThreadPool *p);
 
 #endif

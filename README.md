@@ -13,7 +13,7 @@ make test       # differential + analysis + query tests
 ## Usage
 
 ```
-cereal -E  [opts] file.c              # preprocess (GCC-compatible output)
+cereal -E  [opts] file.c...           # preprocess (GCC-compatible output)
 cereal lint [opts] file.c...          # macro / conditional / include analyses
 cereal index [--all] file.c           # LSP model as JSON
 cereal query def|refs|hover|visible|expand FILE:LINE:COL file.c
@@ -24,7 +24,9 @@ Options: `-I -iquote -isystem -D -U -include -nostdinc -undef -std=c99|gnu99
 -O<n> -pedantic -trigraphs -W<name> -Wno-<name> -W<group> -Wall -Werror
 -Weverything -fdiagnostics-format=json -P -o`.
 
-`-E` preprocesses large files in parallel. It uses two phases: directives
+Several inputs are processed `-j N` at a time (default: all cores).
+Output and diagnostics come out in input order, identical to `-j1`.
+`-E` also preprocesses large files in parallel. It uses two phases: directives
 first, then the text on all cores. The output is byte-identical to a
 sequential run. See `-fparallel=auto|on|off`, `-fparallel-threads=N` and
 docs/PARALLEL.md.

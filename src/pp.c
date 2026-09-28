@@ -449,6 +449,24 @@ static Macro *new_builtin(PP *pp, const char *name, BuiltinKind k,
     return m;
 }
 
+void pp_options_finish(PPOptions *opt)
+{
+    time_t now = time(NULL);
+    const char *sde = getenv("SOURCE_DATE_EPOCH");
+    struct tm *tm;
+    if (opt->date_str)
+        return;
+    if (sde && *sde)
+        now = (time_t)strtoll(sde, NULL, 10);
+    tm = sde && *sde ? gmtime(&now) : localtime(&now);
+    sprintf(opt->date_buf, "\"%s %2d %d\"", month_names[tm->tm_mon],
+            tm->tm_mday, tm->tm_year + 1900);
+    sprintf(opt->time_buf, "\"%02d:%02d:%02d\"", tm->tm_hour, tm->tm_min,
+            tm->tm_sec);
+    opt->date_str = opt->date_buf;
+    opt->time_str = opt->time_buf;
+}
+
 void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
              PPOptions *opt)
 {
@@ -488,18 +506,8 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
 
     pp->builtin_file = srcmgr_add_virtual(sm, "<built-in>", "", 0);
 
-    if (!opt->date_str) {
-        time_t now = time(NULL);
-        const char *sde = getenv("SOURCE_DATE_EPOCH");
-        struct tm *tm;
-        if (sde && *sde)
-            now = (time_t)strtoll(sde, NULL, 10);
-        tm = sde && *sde ? gmtime(&now) : localtime(&now);
-        opt->date_str = arena_printf(a, "\"%s %2d %d\"", month_names[tm->tm_mon],
-                                     tm->tm_mday, tm->tm_year + 1900);
-        opt->time_str = arena_printf(a, "\"%02d:%02d:%02d\"", tm->tm_hour,
-                                     tm->tm_min, tm->tm_sec);
-    }
+    if (!opt->date_str)
+        pp_options_finish(opt);
 
     new_builtin(pp, "__FILE__", BUILTIN_FILE, false);
     new_builtin(pp, "__LINE__", BUILTIN_LINE, false);
@@ -564,37 +572,33 @@ void pp_free(PP *pp)
     vec_free(&pp->search);
     vec_free(&pp->chain_buf);
     sb_free(&pp->sb);
+    sb_free(&pp->predef);
 }
 
 /* Predefines and command-line macros form a virtual file entered first. */
-static StrBuf predef_buf;
 
 void pp_define_builtin_text(PP *pp, const char *name, const char *text)
 {
-    (void)pp;
-    sb_printf(&predef_buf, "#define %s %s\n", name, text);
+    sb_printf(&pp->predef, "#define %s %s\n", name, text);
 }
 
 void pp_cmdline_define(PP *pp, const char *def)
 {
     const char *eq = strchr(def, '=');
-    (void)pp;
     if (eq)
-        sb_printf(&predef_buf, "#define %.*s %s\n", (int)(eq - def), def, eq + 1);
+        sb_printf(&pp->predef, "#define %.*s %s\n", (int)(eq - def), def, eq + 1);
     else
-        sb_printf(&predef_buf, "#define %s 1\n", def);
+        sb_printf(&pp->predef, "#define %s 1\n", def);
 }
 
 void pp_cmdline_undef(PP *pp, const char *name)
 {
-    (void)pp;
-    sb_printf(&predef_buf, "#undef %s\n", name);
+    sb_printf(&pp->predef, "#undef %s\n", name);
 }
 
 void pp_cmdline_include(PP *pp, const char *path)
 {
-    (void)pp;
-    sb_printf(&predef_buf, "#include \"%s\"\n", path);
+    sb_printf(&pp->predef, "#include \"%s\"\n", path);
 }
 
 bool pp_enter_main(PP *pp, const char *path)
@@ -603,7 +607,7 @@ bool pp_enter_main(PP *pp, const char *path)
     SrcFile *pre;
     if (!f) {
         diag_report(pp->diag, DL_FATAL, "", 0, "cannot open '%s'", path);
-        sb_free(&predef_buf);
+        sb_free(&pp->predef);
         return false;
     }
     pp->main_file = f;
@@ -612,9 +616,9 @@ bool pp_enter_main(PP *pp, const char *path)
                pp->builtin_file);
     push_file(pp, f, 0, -1, NULL);
     pre = srcmgr_add_virtual(pp->sm, "<command line>",
-                             predef_buf.data ? predef_buf.data : "",
-                             predef_buf.len);
-    sb_free(&predef_buf);
+                             pp->predef.data ? pp->predef.data : "",
+                             pp->predef.len);
+    sb_free(&pp->predef);
     pre->system_header = true;
     push_file(pp, pre, 0, -1, NULL);
     return true;

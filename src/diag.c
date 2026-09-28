@@ -57,11 +57,35 @@ static const DiagOption options[] = {
 
 #define NOPTIONS (sizeof options / sizeof options[0])
 
-/* Per-engine overrides are kept in a tiny global table: one TU at a time is
- * configured from the command line, and the LSP configures once. */
-static DiagLevel overrides[NOPTIONS];
-static bool overridden[NOPTIONS];
-static bool everything;
+/* Warning configuration from -W flags: built once, then shared read-only
+ * by every engine (translation units run concurrently). */
+struct DiagConfig {
+    DiagLevel overrides[NOPTIONS];
+    bool overridden[NOPTIONS];
+    bool everything;
+    bool werror;
+    bool pedantic;
+};
+
+DiagConfig *diag_config_new(void)
+{
+    return xcalloc(1, sizeof(DiagConfig));
+}
+
+void diag_config_free(DiagConfig *c)
+{
+    free(c);
+}
+
+bool diag_config_werror(const DiagConfig *c)
+{
+    return c && c->werror;
+}
+
+bool diag_config_pedantic(const DiagConfig *c)
+{
+    return c && c->pedantic;
+}
 
 const DiagOption *diag_find_option(const char *name)
 {
@@ -99,17 +123,17 @@ void diag_free(DiagEngine *d)
     vec_free(&d->all);
 }
 
-bool diag_configure(DiagEngine *d, const char *flag)
+bool diag_config_apply(DiagConfig *c, const char *flag)
 {
     bool on = true;
     size_t i;
     bool found = false;
     if (strcmp(flag, "error") == 0) {
-        d->werror = true;
+        c->werror = true;
         return true;
     }
     if (strcmp(flag, "everything") == 0) {
-        everything = true;
+        c->everything = true;
         return true;
     }
     if (strcmp(flag, "all") == 0 || strcmp(flag, "extra") == 0) {
@@ -117,8 +141,8 @@ bool diag_configure(DiagEngine *d, const char *flag)
         for (i = 0; i < NOPTIONS; i++)
             if (!options[i].on && options[i].level == DL_WARNING &&
                 strcmp(options[i].group, "pedantic") != 0) {
-                overrides[i] = DL_WARNING;
-                overridden[i] = true;
+                c->overrides[i] = DL_WARNING;
+                c->overridden[i] = true;
             }
         return true;
     }
@@ -129,27 +153,28 @@ bool diag_configure(DiagEngine *d, const char *flag)
     for (i = 0; i < NOPTIONS; i++) {
         if (strcmp(options[i].name, flag) == 0 ||
             strcmp(options[i].group, flag) == 0) {
-            overrides[i] = on ? options[i].level : DL_IGNORED;
-            overridden[i] = true;
+            c->overrides[i] = on ? options[i].level : DL_IGNORED;
+            c->overridden[i] = true;
             found = true;
         }
     }
     if (found && strcmp(flag, "pedantic") == 0)
-        d->pedantic = on;
+        c->pedantic = on;
     return found;
 }
 
 DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested)
 {
     size_t i;
-    (void)d;
+    const DiagConfig *c = d->cfg;
     if (!id || !*id || requested >= DL_ERROR || requested == DL_NOTE)
         return requested;
     for (i = 0; i < NOPTIONS; i++) {
         if (strcmp(options[i].name, id) == 0) {
-            DiagLevel l = overridden[i] ? overrides[i]
+            bool ov = c && c->overridden[i];
+            DiagLevel l = ov ? c->overrides[i]
                           : options[i].on ? options[i].level : DL_IGNORED;
-            if (everything && !overridden[i])
+            if (c && c->everything && !ov)
                 l = options[i].level;
             if (l == DL_IGNORED)
                 return DL_IGNORED;

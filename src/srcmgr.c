@@ -12,13 +12,18 @@
 #define MMAP_THRESHOLD (64u * 1024u)
 #define SCRATCH_CHUNK (1u << 20)
 
+static size_t ps;
+static pthread_once_t ps_once = PTHREAD_ONCE_INIT;
+
+static void init_page_size(void)
+{
+    long v = sysconf(_SC_PAGESIZE);
+    ps = v > 0 ? (size_t)v : 4096;
+}
+
 static size_t page_size(void)
 {
-    static size_t ps;
-    if (!ps) {
-        long v = sysconf(_SC_PAGESIZE);
-        ps = v > 0 ? (size_t)v : 4096;
-    }
+    pthread_once(&ps_once, init_page_size);
     return ps;
 }
 

@@ -7,6 +7,7 @@
 #   5. parallel: `-fparallel=on` byte-identical to sequential (output,
 #      diagnostics, exit status) at adversarial chunk sizes, plus a fuzzer
 #   6. gcc fuzz: random programs vs $REFCC (tests/fuzz_gcc.py, fixed seed)
+#   7. -j: many translation units at once print exactly what -j1 prints
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -148,6 +149,23 @@ else
     bad "parallel fuzz"
     sed 's/^/    /' "$TMP/fz" | tail -10
 fi
+
+jobs_same() { # jobs_same NAME DIR ARGS...
+    name=$1 dir=$2
+    shift 2
+    (cd "$dir" && "$CEREAL" "$@" -j1 >"$TMP/j1.o" 2>"$TMP/j1.e"; echo $? >"$TMP/j1.r")
+    (cd "$dir" && "$CEREAL" "$@" -j8 >"$TMP/j8.o" 2>"$TMP/j8.e"; echo $? >"$TMP/j8.r")
+    if cmp -s "$TMP/j1.o" "$TMP/j8.o" && cmp -s "$TMP/j1.e" "$TMP/j8.e" &&
+        cmp -s "$TMP/j1.r" "$TMP/j8.r"; then
+        ok
+    else
+        bad "-j $name"
+        diff "$TMP/j1.e" "$TMP/j8.e" | head -5 | sed 's/^/    /'
+    fi
+}
+jobs_same "lint tests/lint" "$ROOT/tests/lint" lint ./*.c
+jobs_same "-E tests/pp" "$ROOT/tests/pp" -E -fparallel=on -fparallel-chunk=64 ./*.c
+jobs_same "-E dogfood" "$ROOT" -E -Isrc -D_POSIX_C_SOURCE=200809L src/*.c src/analysis/*.c
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
