@@ -7,6 +7,7 @@
 #ifndef CEREAL_INDEX_H
 #define CEREAL_INDEX_H
 
+#include "mgraph.h"
 #include "pp.h"
 
 enum {
@@ -41,6 +42,7 @@ typedef struct IdxExp {
     char **args;              /* raw argument text */
     int nargs;
     StrBuf text;              /* root only: final expanded text */
+    VEC(struct Ident *) arg_names; /* identifiers spelled in the arguments */
 } IdxExp;
 
 typedef struct IdxCheckpoint {
@@ -99,10 +101,36 @@ void index_free(Index *ix);
 void index_run(Index *ix);
 
 IdxTarget index_resolve(Index *ix, SrcLoc loc);
+/* The macro version in effect at loc (end of TU if never reached). */
+uint32_t index_seq_at(Index *ix, SrcLoc loc);
 /* Macros live at loc (for completion), in definition order. */
 size_t index_visible(Index *ix, SrcLoc loc, Macro ***out);
 /* All references to the target (definitions first). */
 size_t index_references(Index *ix, const IdxTarget *t, IdxRef **out);
+
+/* Call hierarchy (LSP incoming/outgoing calls) for a definition.  Static
+ * edges come from the macro graph: a callee is any definition of a name
+ * in the body that is live while the caller is; a caller is any
+ * definition naming the callee while it is live.  Observed edges come
+ * from the expansions actually performed; calls through a name that
+ * arrived as an argument belong to whoever spelled the argument. */
+typedef struct IdxCall {
+    struct Ident *name;       /* as spelled (callees) */
+    Macro *macro;             /* NULL: the name is never a macro then */
+    unsigned observed;        /* expansions seen along this edge */
+    bool pasted;              /* only via a name formed by ## */
+} IdxCall;
+
+size_t index_callees(Index *ix, const MacroGraph *g, Macro *m, IdxCall **out);
+size_t index_callers(Index *ix, const MacroGraph *g, Macro *m, IdxCall **out);
+
+/* Soundness check of the macro graph against what was expanded: every
+ * expansion under a file-level invocation must be in the static closure
+ * of the invocation's name and of the identifiers in the arguments of its
+ * tree, at the versions involved; a name formed by ## only when that
+ * closure is open.  Prints violations; returns their number. */
+size_t index_check_graph(Index *ix, const MacroGraph *g, FILE *out,
+                         size_t *checked);
 
 SrcFile *index_find_file(Index *ix, const char *path);
 void index_dump_json(Index *ix, FILE *out, bool all);

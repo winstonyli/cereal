@@ -8,6 +8,8 @@
 #      diagnostics, exit status) at adversarial chunk sizes, plus a fuzzer
 #   6. gcc fuzz: random programs vs $REFCC (tests/fuzz_gcc.py, fixed seed)
 #   7. -j: many translation units at once print exactly what -j1 prints
+#   8. macro graph: every expansion lies in its invocation's static closure
+#      (`cereal index --check-graph`), on all inputs and a fuzzer
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -166,6 +168,31 @@ jobs_same() { # jobs_same NAME DIR ARGS...
 jobs_same "lint tests/lint" "$ROOT/tests/lint" lint ./*.c
 jobs_same "-E tests/pp" "$ROOT/tests/pp" -E -fparallel=on -fparallel-chunk=64 ./*.c
 jobs_same "-E dogfood" "$ROOT" -E -Isrc -D_POSIX_C_SOURCE=200809L src/*.c src/analysis/*.c
+
+graph_ok() { # graph_ok NAME DIR ARGS...
+    name=$1 dir=$2
+    shift 2
+    # erroneous inputs exit 1 but must still report a clean graph
+    (cd "$dir" && "$CEREAL" index --check-graph "$@") >"$TMP/g" 2>/dev/null
+    if grep -q ' 0 outside their closure$' "$TMP/g"; then
+        ok
+    else
+        bad "graph $name"
+        grep '^graph:' "$TMP/g" | head -5 | sed 's/^/    /'
+    fi
+}
+for f in "$ROOT"/tests/pp/*.c "$ROOT"/tests/lint/*.c; do
+    graph_ok "${f#$ROOT/tests/}" "$(dirname "$f")" "$(basename "$f")"
+done
+for f in "$ROOT"/src/*.c "$ROOT"/src/analysis/*.c; do
+    graph_ok "dogfood ${f#$ROOT/}" "$ROOT" -Isrc -D_POSIX_C_SOURCE=200809L "$f"
+done
+if python3 "$ROOT/tests/fuzz_graph.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}" >"$TMP/fz" 2>&1; then
+    ok
+else
+    bad "graph fuzz (reduced cases kept)"
+    sed 's/^/    /' "$TMP/fz" | tail -5
+fi
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

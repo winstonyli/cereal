@@ -84,6 +84,7 @@ typedef struct Expansion {
     Macro *macro;
     SrcLoc name_loc;         /* spelling loc of the name token */
     SrcLoc end_loc;          /* end of ')' for function-like */
+    uint32_t seq;            /* macro version when the name was looked up */
 } Expansion;
 
 typedef enum {

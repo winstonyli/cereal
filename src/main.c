@@ -234,7 +234,7 @@ static const char *loc_str(TU *tu, SrcLoc loc)
     return arena_printf(&tu->arena, "%s:%u:%u", f->name, line, col);
 }
 
-static int mode_index(Options *o, bool all)
+static int mode_index(Options *o, bool all, bool check_graph)
 {
     TU tu;
     Index ix;
@@ -245,11 +245,23 @@ static int mode_index(Options *o, bool all)
     }
     tu_init(&tu, o);
     index_init(&ix, &tu.pp);
+    rc = 0;
     if (tu_begin(&tu, o->inputs.data[0])) {
         index_run(&ix);
-        index_dump_json(&ix, stdout, all);
+        if (check_graph) {
+            MacroGraph g;
+            size_t checked, bad;
+            mgraph_build(&g, &tu.pp);
+            bad = index_check_graph(&ix, &g, stdout, &checked);
+            printf("graph: %zu expansions checked, %zu outside their "
+                   "closure\n", checked, bad);
+            rc = bad ? 1 : 0;
+            mgraph_free(&g);
+        } else {
+            index_dump_json(&ix, stdout, all);
+        }
     }
-    rc = tu.diag.nerrors ? 1 : 0;
+    rc |= tu.diag.nerrors ? 1 : 0;
     if (tu.diag.nerrors)
         diag_flush(&tu.diag);
     index_free(&ix);
@@ -397,6 +409,58 @@ static int mode_query(Options *o, const char *kind, const char *at)
         for (i = 0; i < n; i++)
             if (!v[i]->predefined)
                 printf("%s\n", macro_signature(&tu.arena, v[i]));
+    } else if (!strcmp(kind, "callees") || !strcmp(kind, "callers")) {
+        MacroGraph g;
+        bool out_calls = !strcmp(kind, "callees");
+        mgraph_build(&g, &tu.pp);
+        for (k = 0; k < t.nmacros; k++) {
+            IdxCall *c;
+            size_t n = out_calls ? index_callees(&ix, &g, t.macros[k], &c)
+                                 : index_callers(&ix, &g, t.macros[k], &c), i;
+            if (t.nmacros > 1)
+                printf("%s %s:\n", loc_str(&tu, t.macros[k]->name_loc),
+                       macro_signature(&tu.arena, t.macros[k]));
+            for (i = 0; i < n; i++) {
+                if (!c[i].macro)
+                    printf("%s (never a macro while %s is defined)\n",
+                           c[i].name->str, t.name->str);
+                else
+                    printf("%s %s", loc_str(&tu, c[i].macro->name_loc),
+                           macro_signature(&tu.arena, c[i].macro));
+                if (c[i].macro && c[i].observed)
+                    printf("  [expanded %u time%s%s]", c[i].observed,
+                           c[i].observed == 1 ? "" : "s",
+                           c[i].pasted ? ", name formed by ##" : "");
+                if (c[i].macro)
+                    putchar('\n');
+            }
+            if (!n)
+                printf("no %s\n", out_calls ? "callees" : "callers");
+        }
+        if (t.kind != TGT_MACRO || !t.nmacros)
+            puts("no macro definition here");
+        mgraph_free(&g);
+    } else if (!strcmp(kind, "deps")) {
+        MacroGraph g;
+        MClosure cl;
+        size_t i;
+        if (t.kind != TGT_MACRO) {
+            puts("no macro name here");
+        } else {
+            mgraph_build(&g, &tu.pp);
+            mgraph_closure(&g, &t.name, 1, index_seq_at(&ix, loc), &cl);
+            for (i = 0; i < cl.macros.len; i++)
+                printf("%s %s\n", loc_str(&tu, cl.macros.data[i]->name_loc),
+                       macro_signature(&tu.arena, cl.macros.data[i]));
+            for (i = 0; i < cl.names.len; i++)
+                if (!macro_at_version(cl.names.data[i], index_seq_at(&ix, loc)))
+                    printf("%s (not a macro here: defining it would change "
+                           "the result)\n", cl.names.data[i]->str);
+            if (cl.open)
+                puts("open: ## may form further names");
+            mclosure_free(&cl);
+            mgraph_free(&g);
+        }
     } else if (!strcmp(kind, "expand")) {
         if (t.top)
             print_exp_tree(&tu, &ix, t.top);
@@ -417,7 +481,7 @@ int main(int argc, char **argv)
 {
     Options o;
     const char *mode = NULL, *qkind = NULL, *qat = NULL;
-    bool all = false;
+    bool all = false, check_graph = false;
     int i, rc = 0;
     options_init(&o);
     if (argc < 2) {
@@ -439,6 +503,10 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--all")) {
             all = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--check-graph")) {
+            check_graph = true;
             continue;
         }
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
@@ -466,7 +534,7 @@ int main(int argc, char **argv)
     else if (!strcmp(mode, "lint"))
         rc = mode_lint(&o);
     else if (!strcmp(mode, "index"))
-        rc = mode_index(&o, all);
+        rc = mode_index(&o, all, check_graph);
     else if (!strcmp(mode, "query"))
         rc = mode_query(&o, qkind, qat);
     options_free(&o);

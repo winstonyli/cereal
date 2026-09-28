@@ -59,8 +59,13 @@ static void on_expand(void *ctx, const Expansion *ce, const TokSpan *args,
     x->nargs = nargs;
     if (nargs) {
         x->args = NEW_ARRAY(ix->arena, char *, nargs);
-        for (i = 0; i < nargs; i++)
+        for (i = 0; i < nargs; i++) {
+            uint32_t k;
             x->args[i] = tokens_str(ix->pp, args[i]);
+            for (k = 0; k < args[i].n; k++)
+                if (args[i].t[k].kind == TK_IDENT)
+                    vec_push(&x->arg_names, pp_ident(ix->pp, &args[i].t[k]));
+        }
     }
     if (e->name_flags & TF_ORIGIN_BODY)
         flags |= IREF_IN_BODY;
@@ -212,8 +217,10 @@ void index_free(Index *ix)
     for (i = 0; i < ix->inclusions.len; i++)
         vec_free(&ix->inclusions.data[i]->cps);
     for (i = 0; i < ix->exps.len; i++)
-        if (ix->exps.data[i])
+        if (ix->exps.data[i]) {
             sb_free(&ix->exps.data[i]->text);
+            vec_free(&ix->exps.data[i]->arg_names);
+        }
     vec_free(&ix->refs);
     vec_free(&ix->params);
     vec_free(&ix->exps);
@@ -294,7 +301,7 @@ static Ident *ident_at(Index *ix, SrcLoc loc, SrcRange *r)
     return intern(ix->pp->in, f->buf + b, e - b);
 }
 
-static uint32_t seq_at(Index *ix, SrcLoc loc)
+uint32_t index_seq_at(Index *ix, SrcLoc loc)
 {
     SrcFile *f = srcmgr_file_of(ix->sm, loc);
     size_t i;
@@ -322,7 +329,7 @@ static bool live_at(const Macro *m, uint32_t seq)
 
 size_t index_visible(Index *ix, SrcLoc loc, Macro ***out)
 {
-    uint32_t seq = seq_at(ix, loc);
+    uint32_t seq = index_seq_at(ix, loc);
     size_t i, n = 0;
     Macro **v = NEW_ARRAY(ix->arena, Macro *, ix->pp->macros.len + 1);
     for (i = 0; i < ix->pp->macros.len; i++)
@@ -551,6 +558,234 @@ size_t index_references(Index *ix, const IdxTarget *t, IdxRef **out)
     i = v.len;
     vec_free(&v);
     return i;
+}
+
+/* ---- call hierarchy ------------------------------------------------ */
+
+static bool lives_overlap(const Macro *a, const Macro *b)
+{
+    return a->def_seq < b->undef_seq && b->def_seq < a->undef_seq;
+}
+
+static const Macro *canon(const Macro *m)
+{
+    return m->alias_of ? m->alias_of : m;
+}
+
+/* Expansions of `to` whose name came from the body of an expansion of
+ * `from` (spelled there or pasted there), not from an argument. */
+static unsigned observed_calls(Index *ix, const Macro *from, const Macro *to,
+                               bool *pasted_only)
+{
+    unsigned n = 0, spelled = 0;
+    size_t i;
+    for (i = 0; i < ix->exps.len; i++) {
+        IdxExp *x = ix->exps.data[i];
+        Expansion *e, *p;
+        if (!x)
+            continue;
+        e = x->e;
+        if (e->parent == NO_EXP || canon(e->macro) != canon(to) ||
+            (e->name_flags & TF_ORIGIN_ARG) ||
+            !(e->name_flags & (TF_ORIGIN_BODY | TF_PASTED)))
+            continue;
+        p = ix->pp->expansions.data[e->parent];
+        if (canon(p->macro) != canon(from))
+            continue;
+        n++;
+        if (!(e->name_flags & TF_PASTED))
+            spelled++;
+    }
+    if (pasted_only)
+        *pasted_only = n && !spelled;
+    return n;
+}
+
+static bool call_listed(const IdxCall *c, size_t n, const Macro *m)
+{
+    size_t i;
+    for (i = 0; i < n; i++)
+        if (c[i].macro && canon(c[i].macro) == canon(m))
+            return true;
+    return false;
+}
+
+size_t index_callees(Index *ix, const MacroGraph *g, Macro *m, IdxCall **out)
+{
+    VEC(IdxCall) v = {0};
+    const MNode *nd = mgraph_node(g, m);
+    size_t i;
+    uint32_t k;
+    for (k = 0; nd && k < nd->nnames; k++) {
+        Ident *name = nd->names[k];
+        Macro *d;
+        bool any = false;
+        for (d = name->history; d; d = d->prev) {
+            IdxCall c;
+            if (!lives_overlap(d, m) || call_listed(v.data, v.len, d))
+                continue;
+            c.name = name;
+            c.macro = d;
+            c.observed = observed_calls(ix, m, d, NULL);
+            c.pasted = false;
+            vec_push(&v, c);
+            any = true;
+        }
+        if (!any) {
+            IdxCall c;
+            memset(&c, 0, sizeof c);
+            c.name = name;
+            vec_push(&v, c);
+        }
+    }
+    /* names only ## formed */
+    for (i = 0; i < ix->exps.len; i++) {
+        IdxExp *x = ix->exps.data[i];
+        IdxCall c;
+        if (!x || x->e->parent == NO_EXP || !(x->e->name_flags & TF_PASTED) ||
+            canon(ix->pp->expansions.data[x->e->parent]->macro) != canon(m) ||
+            call_listed(v.data, v.len, x->e->macro))
+            continue;
+        c.name = x->e->macro->name;
+        c.macro = x->e->macro;
+        c.observed = observed_calls(ix, m, c.macro, &c.pasted);
+        vec_push(&v, c);
+    }
+    *out = NEW_ARRAY(ix->arena, IdxCall, v.len + 1);
+    if (v.len)
+        memcpy(*out, v.data, sizeof(IdxCall) * v.len);
+    i = v.len;
+    vec_free(&v);
+    return i;
+}
+
+size_t index_callers(Index *ix, const MacroGraph *g, Macro *m, IdxCall **out)
+{
+    VEC(IdxCall) v = {0};
+    Macro *const *users;
+    size_t n, i;
+    users = mgraph_users(g, m->name, &n);
+    for (i = 0; i < n; i++) {
+        IdxCall c;
+        if (!lives_overlap(users[i], m) || call_listed(v.data, v.len, users[i]))
+            continue;
+        c.name = users[i]->name;
+        c.macro = users[i];
+        c.observed = observed_calls(ix, users[i], m, NULL);
+        c.pasted = false;
+        vec_push(&v, c);
+    }
+    for (i = 0; i < ix->exps.len; i++) {
+        IdxExp *x = ix->exps.data[i];
+        Macro *p;
+        IdxCall c;
+        if (!x || x->e->parent == NO_EXP || !(x->e->name_flags & TF_PASTED) ||
+            canon(x->e->macro) != canon(m))
+            continue;
+        p = ix->pp->expansions.data[x->e->parent]->macro;
+        if (call_listed(v.data, v.len, p))
+            continue;
+        c.name = p->name;
+        c.macro = p;
+        c.observed = observed_calls(ix, p, m, &c.pasted);
+        vec_push(&v, c);
+    }
+    *out = NEW_ARRAY(ix->arena, IdxCall, v.len + 1);
+    if (v.len)
+        memcpy(*out, v.data, sizeof(IdxCall) * v.len);
+    i = v.len;
+    vec_free(&v);
+    return i;
+}
+
+/* ---- graph soundness ---------------------------------------------- */
+
+static bool closure_has(const MClosure *c, const Ident *id)
+{
+    size_t i;
+    for (i = 0; i < c->names.len; i++)
+        if (c->names.data[i] == id)
+            return true;
+    return false;
+}
+
+size_t index_check_graph(Index *ix, const MacroGraph *g, FILE *out,
+                         size_t *checked)
+{
+    size_t n = ix->exps.len, r, i, bad = 0;
+    MScratch sc = {0};
+    uint32_t *start = xcalloc(n + 2, sizeof *start), *fill, *by_root;
+    *checked = 0;
+    /* bucket expansions by root (directives inside arguments interleave
+     * trees, so ids alone do not group them) */
+    for (i = 0; i < n; i++)
+        if (ix->exps.data[i])
+            start[ix->exps.data[i]->e->root + 1]++;
+    for (i = 0; i < n; i++)
+        start[i + 1] += start[i];
+    by_root = xmalloc(sizeof *by_root * (n + 1));
+    fill = xcalloc(n + 1, sizeof *fill);
+    for (i = 0; i < n; i++)
+        if (ix->exps.data[i]) {
+            uint32_t rt = ix->exps.data[i]->e->root;
+            by_root[start[rt] + fill[rt]++] = (uint32_t)i;
+        }
+    for (r = 0; r < n; r++) {
+        IdxExp *root = ix->exps.data[r];
+        VEC(Ident *) seeds = {0};
+        MClosure at_root;
+        uint32_t k;
+        if (!root || root->e->root != root->e->id)
+            continue;
+        /* seeds: the name, and everything spelled in the tree's arguments */
+        vec_push(&seeds, root->e->macro->name);
+        for (k = start[r]; k < start[r + 1]; k++) {
+            IdxExp *x = ix->exps.data[by_root[k]];
+            size_t j;
+            for (j = 0; j < x->arg_names.len; j++)
+                vec_push(&seeds, x->arg_names.data[j]);
+        }
+        mgraph_closure_with(g, &sc, seeds.data, seeds.len, root->e->seq,
+                            &at_root);
+        for (k = start[r]; k < start[r + 1]; k++) {
+            IdxExp *x = ix->exps.data[by_root[k]];
+            const char *why = NULL;
+            ++*checked;
+            if (at_root.open) {
+                /* ## may form any name: nothing more to check */
+            } else if (x->e->name_flags & TF_PASTED) {
+                why = "name formed by ## but the closure is not open";
+            } else if (!closure_has(&at_root, x->e->macro->name)) {
+                MClosure at_e; /* a directive in the arguments moved on */
+                mgraph_closure_with(g, &sc, seeds.data, seeds.len, x->e->seq,
+                                    &at_e);
+                if (!closure_has(&at_e, x->e->macro->name))
+                    why = "not in the closure";
+                mclosure_free(&at_e);
+            }
+            if (why) {
+                uint32_t l1 = 0, c1 = 0, l2 = 0, c2 = 0;
+                SrcFile *f1 = srcmgr_file_of(ix->sm, x->e->name_loc);
+                SrcFile *f2 = srcmgr_file_of(ix->sm, root->e->name_loc);
+                if (f1)
+                    srcmgr_linecol(f1, x->e->name_loc, &l1, &c1);
+                if (f2)
+                    srcmgr_linecol(f2, root->e->name_loc, &l2, &c2);
+                fprintf(out, "graph: %s:%u:%u: '%s' under '%s' at %s:%u:%u: %s\n",
+                        f1 ? f1->name : "?", l1, c1, x->e->macro->name->str,
+                        root->e->macro->name->str, f2 ? f2->name : "?", l2, c2,
+                        why);
+                bad++;
+            }
+        }
+        mclosure_free(&at_root);
+        vec_free(&seeds);
+    }
+    free(start);
+    free(fill);
+    free(by_root);
+    mscratch_free(&sc);
+    return bad;
 }
 
 SrcFile *index_find_file(Index *ix, const char *path)

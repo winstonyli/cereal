@@ -1,0 +1,32 @@
+== callees calls.c:3:9
+calls.c:2:9 MID(x)  [expanded 1 time]
+OTHER (never a macro while TOP is defined)
+== callers calls.c:2:9
+calls.c:3:9 TOP(y)  [expanded 1 time]
+calls.c:5:9 MI
+calls.c:4:9 CAT(a, b)  [expanded 1 time, name formed by ##]
+== callers calls.c:1:9
+calls.c:2:9 MID(x)  [expanded 3 times]
+== callees calls.c:6:9
+calls.c:4:9 CAT(a, b)  [expanded 1 time]
+calls.c:5:9 MI
+D (never a macro while VIA is defined)
+== callers calls.c:4:9
+calls.c:6:9 VIA  [expanded 1 time]
+== callees calls.c:4:9
+calls.c:2:9 MID(x)  [expanded 1 time, name formed by ##]
+== deps calls.c:7:9
+calls.c:3:9 TOP(y)
+calls.c:2:9 MID(x)
+calls.c:1:9 LEAF
+OTHER (not a macro here: defining it would change the result)
+== deps calls.c:8:9
+calls.c:6:9 VIA
+calls.c:4:9 CAT(a, b)
+calls.c:5:9 MI
+calls.c:2:9 MID(x)
+calls.c:1:9 LEAF
+D (not a macro here: defining it would change the result)
+open: ## may form further names
+== callers calls.c:7:5
+no macro definition here

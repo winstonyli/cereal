@@ -723,6 +723,7 @@ static Expansion *new_expansion(PP *pp, Macro *m, const Tok *name,
     e->macro = m;
     e->name_loc = name->loc;
     e->end_loc = name->loc + name->len;
+    e->seq = pp->versioned ? pp->version : pp->seq;
     vec_push(&pp->expansions, e);
     return e;
 }
@@ -1153,6 +1154,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
     uint32_t eid, root;
     Context c;
     TokBuf pragmas = {0};
+    uint32_t vseq;
     bool root_obj = src == SRC_LEXER ? !m->funclike : pp->tok_root_obj;
     bool saved_root_obj = pp->subst_root_obj;
 
@@ -1211,6 +1213,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
             pp_unread(pp, &lp, ls);
             return false;
         }
+        vseq = pp->versioned ? pp->version : pp->seq; /* at the name */
         if (!collect_args(pp, m, name, &lp, &a)) {
             if (a.pragmas.len == 0) {
                 tokbuf_release(pp, &a.pragmas);
@@ -1227,8 +1230,10 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         e = new_expansion(pp, m, name, parent, parent_root);
         eid = e ? e->id : NO_EXP;
         root = e ? e->root : NO_EXP;
-        if (e)
+        if (e) {
             e->end_loc = a.rparen_loc + a.rparen_len;
+            e->seq = vseq;
+        }
         count_expansion(pp, m);
         if (pp->track != TRACK_NONE) {
             spans = xmalloc(sizeof(TokSpan) * ((size_t)m->nparams + 1));

@@ -207,7 +207,13 @@ issued once per file instead of once per line (GCC's behavior).
    use-after-free across TUs), and one-time tables use `pthread_once`.
    Tested: `-j1` and `-j8` are byte-identical (tests/run.sh), and clean
    under TSan. 20 dogfood TUs: 0.097s at -j1, 0.034s at -j4.
-7. Macro graph and dependency sets.
+7. **Done.** Macro graph and dependency sets (`src/mgraph.[ch]`, see
+   ARCHITECTURE.md "Macro graph"). Closures per version, with names that
+   are not macros included and definitions that can form names by `##`
+   marked open. Consumers so far: call hierarchy, `deps`,
+   `-Wmacro-recursion`. Soundness is checked against real expansions on
+   every test input and fuzzed programs. Using the closures to pipeline
+   phases A and B is left for when phase A is the bottleneck (`skipped`).
 8. (d) Header memoization on disk, keyed by the dependency sets.
 
 (b) and (c) are dropped, because (e) subsumes them.

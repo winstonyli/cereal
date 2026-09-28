@@ -36,6 +36,7 @@ static const DiagOption options[] = {
     {"macro-unused-param", "hygiene", DL_REMARK, false, "parameter never used in the body"},
     {"macro-unbalanced", "hygiene", DL_REMARK, false, "unbalanced delimiters in the body"},
     {"macro-self-reference", "hygiene", DL_REMARK, false, "macro refers to itself (not re-expanded)"},
+    {"macro-recursion", "hygiene", DL_REMARK, false, "macros refer to each other in a cycle (not re-expanded)"},
 
     /* conditional compilation */
     {"cond-dead-branch", "cond", DL_WARNING, true, "branch can never be taken in any configuration"},

@@ -5,7 +5,7 @@ directives and include ends; #line; _Pragma and #pragma in arguments;
 redefinition inside arguments; # and ## with odd operands; variadics and
 empty arguments; conditionals on macro values; splices and comments."""
 
-NAMES = ["A", "B", "F", "G", "H", "E", "X", "V"]
+NAMES = ["A", "B", "F", "G", "H", "E", "X", "V", "AB", "X1"]
 PARAMS = ["", "x", "x, y", "x, ...", "...", "a, b, c"]
 
 
@@ -14,6 +14,7 @@ def body(r):
     for _ in range(r.randrange(0, 6)):
         parts.append(r.choice([
             "x", "y", "a", "b", "c", "__VA_ARGS__", "#x", "x ## y", "a ## 1",
+            "A ## B", "X ## 1", "x ## B", "X ## y",
             "## x", "x ##", "(", ")", ",", "+", "1", "L", "\"s\"", "'c'",
             r.choice(NAMES), r.choice(NAMES) + "(", "__LINE__", "__FILE__",
             "_Pragma(\"p\")", "#", "defined", ".", "..."]))

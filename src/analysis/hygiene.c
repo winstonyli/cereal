@@ -7,6 +7,8 @@
  * parameter is evaluated more than once (or never). */
 #include "analysis.h"
 
+#include "../mgraph.h"
+
 #include <string.h>
 
 typedef struct MacroInfo {
@@ -622,7 +624,39 @@ void hygiene_attach(Analysis *a)
     pp_add_listener(a->pp, l);
 }
 
+/* Mutual recursion among the definitions live at the end of the TU. */
+static void report_cycles(Analysis *a)
+{
+    MacroGraph g;
+    size_t n, i;
+    Macro ***cs;
+    if (!diag_enabled(a->diag, "macro-recursion"))
+        return;
+    mgraph_build(&g, a->pp);
+    cs = mgraph_cycles(&g, a->pp->seq, a->arena, &n);
+    for (i = 0; i < n; i++) {
+        Macro **c = cs[i], **p;
+        StrBuf sb = {0};
+        Diagnostic *d;
+        if (!an_user_loc(a, c[0]->name_loc))
+            continue;
+        for (p = c; *p; p++)
+            sb_printf(&sb, "%s'%s'", p == c ? "" : p[1] ? ", " : " and ",
+                      (*p)->name->str);
+        d = diag_report(a->diag, DL_REMARK, "macro-recursion", c[0]->name_loc,
+                        "macros %s expand to each other in a cycle; a name "
+                        "met inside its own expansion is not expanded again "
+                        "(C99 6.10.3.4p2)", sb_cstr(&sb));
+        for (p = c + 1; *p; p++)
+            diag_note(a->diag, d, (*p)->name_loc, "'%s' defined here",
+                      (*p)->name->str);
+        sb_free(&sb);
+    }
+    mgraph_free(&g);
+}
+
 void hygiene_finish(Analysis *a)
 {
+    report_cycles(a);
     vec_free(&a->hyg->reported);
 }

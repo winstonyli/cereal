@@ -111,7 +111,28 @@ The index is a listener that records:
   go-to-definition when the same name is defined several times).
 
 The index is exposed as a C API plus `cereal index --json` and
-`cereal query {def,refs,hover,visible}` for tests. The LSP will call the C API.
+`cereal query {def,refs,hover,visible,expand,callers,callees,deps}` for
+tests. The LSP will call the C API.
+
+### Macro graph
+`src/mgraph.[ch]`: nodes are definitions (versions); edges go to the
+*names* a replacement list mentions, resolved at the version where the
+expansion happens. A definition is *open* when `##` may form a name that
+no token spells. The graph is immutable once built:
+- `mgraph_closure(names, version)`: the dependency set of some text,
+  including names that are not macros (defining one later changes the
+  result), plus whether an open definition was reached. This is the basis
+  for header memoization and incremental re-preprocessing;
+- `mgraph_cycles(version)`: mutual recursion (SCCs, iterative Tarjan),
+  reported by `-Wmacro-recursion`;
+- call hierarchy: static edges (live ranges overlap) plus the edges
+  observed in the recorded expansions, with calls through arguments
+  attributed to whoever spelled the argument.
+
+Soundness is checked, not assumed: `cereal index --check-graph` verifies
+that every expansion under a file-level invocation lies in the closure of
+the invocation's name and argument identifiers (unless open). The suite
+runs it on every input and on generated programs (`tests/fuzz_graph.py`).
 
 ## Analyses (milestone 1)
 
@@ -148,5 +169,8 @@ The differential tests compare the token streams of `cereal -E` and
 | `src/skel.[ch]` | static per-file directive skeleton |
 | `src/analysis/` | hygiene, cond (configuration space), include analyses |
 | `src/index.[ch]` | LSP model and queries |
+| `src/mgraph.[ch]` | macro dependency graph: closures, cycles, call hierarchy |
+| `src/par.[ch]`, `src/plan.h` | two-phase parallel `-E` |
+| `src/thread.[ch]`, `src/intern.[ch]` | pool, atomics; concurrent interner |
 | `src/driver.[ch]`, `src/main.c` | options, translation-unit setup, CLI |
 | `tools/probe-host.sh` | host compiler probe (generates `build/gen/host_config.c`) |
