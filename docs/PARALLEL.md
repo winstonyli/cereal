@@ -114,12 +114,32 @@ state-based splitting sound, incremental and cacheable:
 5. **Templates (f).** A macro's compiled template is valid while its closure
    is unchanged.
 
+## Decisions (upfront cost is not a constraint: do it right)
+
+| Choice | Decision |
+|---|---|
+| Options | (a) TU pool + (e) two-phase + the macro graph and dependency sets now; then (d); (f) only with profiling evidence (its risk is correctness, not effort) |
+| Splits | directive boundaries and certified line starts; speculate-and-verify stitching |
+| Phase B input | the *phase-A stream*: active text ranges in order, with **directive markers** wherever a directive was removed. A marker behaves like the BOL `#` it replaces: it ends a `(` lookahead and advances the macro version inside argument collection. This is exactly what the sequential engine does. |
+| Macro state | Versioned lookups in the immutable history. "Currently expanding" moves off `Macro` into each worker's context stack. `pop_macro` creates a new version instead of reviving an old one. |
+| Shared structures | Interner split into independently locked shards with a two-level id table; per-worker scratch space; the file registry published safely to readers; per-worker arenas, token pools and diagnostics |
+| Listeners | Thread-aware: per-worker analyzer state with a deterministic, ordered merge. Order-sensitive consumers get events in sequential order. |
+| Output | Byte-identical to sequential mode, always. Workers emit text plus boundary printer state, and the merge recomputes boundary transitions (newlines, linemarkers, spacing). |
+| Unsafe constructs | `__COUNTER__` (values can feed `##`) or a state-changing `_Pragma` (`once`, `push_macro`/`pop_macro`, `poison`, `system_header`): sound detection, with sequential fallback from that point |
+| Parallel or not | Adaptive, from phase-A statistics (text size, segment count, cores) |
+| Verification | Sequential vs. parallel differential tests on every test input plus a fuzzer that generates adversarial split points (invocations spanning splits and directives) |
+
 ## Recommended order
-1. **(a)** TU pool in the driver (`-j`), for builds and multi-file lint.
-2. **(e) + graph dependency sets**: phase A/B with split synchronization,
-   verified against sequential mode by a differential test.
-3. **(d)** header memoization on disk, keyed by graph closures.
-4. **(f)** templates, only where profiling on real generated code shows
-   repeated expansion dominating.
+1. Concurrency foundation: threads, pool, atomics, concurrent interner,
+   thread-safe source manager.
+2. Preprocessor split into shared and per-worker state; versioned macro
+   lookup; per-worker disabled macros.
+3. Phase A (directives only), producing the phase-A stream.
+4. Phase B workers, stitching, ordered merge, parallel `-E`, differential
+   tests and a fuzzer.
+5. Thread-aware listeners (lint, index).
+6. TU pool (`-j`).
+7. Macro graph and dependency sets.
+8. (d) Header memoization on disk, keyed by the dependency sets.
 
 (b) and (c) are dropped, because (e) subsumes them.
