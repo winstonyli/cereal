@@ -67,7 +67,7 @@ void lexer_init(Lexer *L, SrcMgr *sm, Interner *in, DiagEngine *d,
     lex_global_init();
     memset(L, 0, sizeof *L);
     L->region = sm->region;
-    L->p = f->buf;
+    L->p = L->line_begin = f->buf;
     L->lim = f->buf + f->size;
     L->sm = sm;
     L->in = in;
@@ -83,7 +83,7 @@ void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, ScratchCursor *sc,
     lex_global_init();
     memset(L, 0, sizeof *L);
     L->region = sm->region;
-    L->p = sm->region + begin;
+    L->p = L->line_begin = sm->region + begin;
     L->lim = L->p + len;
     L->sm = sm;
     L->in = in;
@@ -102,6 +102,8 @@ void lexer_seek(Lexer *L, SrcLoc loc, bool bol)
 {
     L->p = L->region + loc;
     L->bol = bol;
+    if (bol)
+        L->line_begin = L->p;
     L->space = false;
 }
 
@@ -438,10 +440,12 @@ static const char *skip_blank(Lexer *L, const char *p)
             p++;
             L->bol = true;
             L->space = false;
+            L->line_begin = p;
         } else if (c == '\r') {
             p += p[1] == '\n' ? 2 : 1;
             L->bol = true;
             L->space = false;
+            L->line_begin = p;
         } else if (c == '/' && p[1] == '*') {
             const char *start = p;
             p += 2;
@@ -526,10 +530,10 @@ static const char *skip_blank(Lexer *L, const char *p)
             }
             return p;
         } else if (c == 0 && p < L->lim) {
-            if (L->diag && !L->warned_nul) {
+            if (L->diag && L->nul_line != L->line_begin) { /* once per line */
                 diag_report(L->diag, DL_WARNING, "", (SrcLoc)(p - L->region),
                             "null character(s) ignored");
-                L->warned_nul = true;
+                L->nul_line = L->line_begin;
             }
             p++;
             L->space = true;
@@ -562,7 +566,7 @@ void lex_next(Lexer *L, Tok *t)
     t->aux = 0;
     t->punct = 0;
 
-    if (c == 0 && p >= L->lim) {
+    if (p >= L->lim) { /* a range's limit need not be followed by 0 */
         t->kind = TK_EOF;
         t->loc = (SrcLoc)(L->lim - L->region);
         t->len = 0;
@@ -767,10 +771,10 @@ bool lex_next_line(Lexer *L)
         c = (unsigned char)*p;
         switch (c) {
         case '\n':
-            L->p = p + 1;
+            L->p = L->line_begin = p + 1;
             return true;
         case '\r':
-            L->p = p + (p[1] == '\n' ? 2 : 1);
+            L->p = L->line_begin = p + (p[1] == '\n' ? 2 : 1);
             return true;
         case 0:
             if (p >= L->lim) {
@@ -818,7 +822,7 @@ bool lex_next_line(Lexer *L)
                 } else {
                     /* skip_blank may have consumed the newline too */
                     if (L->bol && q > p) {
-                        L->p = q;
+                        L->p = L->line_begin; /* the line start, not q */
                         L->bol = false;
                         return true;
                     }

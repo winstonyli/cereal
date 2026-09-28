@@ -185,6 +185,7 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     dg->level = lvl;
     dg->id = id ? id : "";
     dg->loc = loc;
+    dg->key = d->key;
     sb_vprintf(&sb, fmt, ap);
     dg->msg = arena_strndup(d->arena, sb_cstr(&sb), sb.len);
     sb_free(&sb);

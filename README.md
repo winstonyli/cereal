@@ -24,6 +24,11 @@ Options: `-I -iquote -isystem -D -U -include -nostdinc -undef -std=c99|gnu99
 -O<n> -pedantic -trigraphs -W<name> -Wno-<name> -W<group> -Wall -Werror
 -Weverything -fdiagnostics-format=json -P -o`.
 
+`-E` preprocesses large files in parallel. It uses two phases: directives
+first, then the text on all cores. The output is byte-identical to a
+sequential run. See `-fparallel=auto|on|off`, `-fparallel-threads=N` and
+docs/PARALLEL.md.
+
 ## What lint finds
 
 ```c

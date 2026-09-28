@@ -21,7 +21,8 @@ typedef struct Lexer {
     ScratchCursor *scratch; /* NULL: spliced spellings are not recorded */
     LexOptions opt;
     bool bol, space;
-    bool warned_nul;
+    const char *line_begin; /* start of the last line the cursor entered */
+    const char *nul_line;   /* line of the last null-character warning */
     StrBuf clean;        /* slow-path spelling buffer */
 } Lexer;
 

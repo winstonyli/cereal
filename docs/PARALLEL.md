@@ -129,14 +129,73 @@ state-based splitting sound, incremental and cacheable:
 | Parallel or not | Adaptive, from phase-A statistics (text size, segment count, cores) |
 | Verification | Sequential vs. parallel differential tests on every test input plus a fuzzer that generates adversarial split points (invocations spanning splits and directives) |
 
+## As built (step 4)
+
+`cereal -E` runs `par_write_output` (src/par.c) unless `-fparallel=off`.
+`-fparallel=auto` (the default) goes parallel only when the main file is at
+least 4 MB and more than one core is available, so small TUs never pay for
+phase A. `-fparallel=on` forces the machinery (tests use it with tiny chunks).
+`-fparallel-threads=N`, `-fparallel-chunk=BYTES` (segment split size, default
+64 KB) and `-fparallel-window=N` (see below) tune it. `CEREAL_PAR_STATS=1`
+prints phase timings, slices and per-worker spans; `=2` also dumps the plan.
+
+- **Phase A** is the full engine in `PPM_PHASE_A`. Text is not lexed. It is
+  recorded as `PI_SEG` items, split at line starts that the skip scanner
+  certifies (never inside a comment). Directives become `PI_DIR` items;
+  include entry and exit become `PI_ENTER` and `PI_EXIT`; pragmas destined
+  for the output become `PI_PRAGMA`. Every item carries the macro version,
+  the `__COUNTER__` value and an immutable `PlanFrame` (a new one after
+  `#line`).
+- **Partition**: ranges of segment items with equal text bytes, one per
+  worker. Every range starts at a segment.
+- **Workers** (`PPM_PLAN`) look up macros by version and print into memory.
+  For the first `window` segments after its start (default 256), a worker
+  publishes a `BoundRec`, lock-free: whether it was *clean* there (the
+  top-level read, no context, no carried space), and the first token it
+  printed after that point.
+- **Stitching**: past its end, a worker stops at the first boundary where it
+  and the owner of that item were both clean, and where the owner's first
+  token after the boundary has a source position. After a positioned token,
+  the printer state is a function of that token alone. Two edge cases were
+  made to hold this: re-entering the same file, and a backward line with no
+  linemarker. The merge re-renders just that one transition from the
+  predecessor's state, carrying file enter and exit flags across, then
+  copies the owner's bytes. If no boundary qualifies (an invocation that
+  spans the whole window, or the owner is not there yet), the predecessor
+  runs on. Stitching is never required for correctness.
+- **Diagnostics** carry the plan item they were reported at. Workers keep
+  those of their slice. The merge sorts by (item, worker before phase A),
+  stably. A worker diagnostic at a DIR or EXIT item comes from an invocation
+  reading into that directive or the file end, which sequential mode reports
+  first. Phase A does not report lexer diagnostics in segment text; the
+  workers do.
+- **Divergence**: `__COUNTER__` and the state-changing `_Pragma`s abort
+  parallel mode for the whole TU, and it is rerun sequentially. The prefix
+  sum and resuming from the divergence point are future work.
+
+Verification: `tests/run.sh` checks that output, diagnostics and exit status
+are byte-identical to sequential mode. It covers every test input, the
+dogfood sources and some system headers, at thread/chunk/window settings
+down to 1-byte chunks and 1- or 2-segment windows. `tests/fuzz_par.py`
+generates programs with invocations that span splits, directives and
+include ends, `#line`, `_Pragma`, splices and multi-line comments. Both
+also pass under ThreadSanitizer.
+
+Found on the way (sequential bugs too): phase A and `skip_group` re-seeked
+to the pending token's line start by scanning backwards, which can land
+inside a multi-line comment (`#if 0` followed by `/* ... #endif */`). The
+lexer now records the last real line start it crossed. `#line` with a
+backward line number printed no linemarker. The null-character warning was
+issued once per file instead of once per line (GCC's behavior).
+
 ## Recommended order
-1. Concurrency foundation: threads, pool, atomics, concurrent interner,
+1. **Done.** Concurrency foundation: threads, pool, atomics, concurrent interner,
    thread-safe source manager.
-2. Preprocessor split into shared and per-worker state; versioned macro
+2. **Done.** Preprocessor split into shared and per-worker state; versioned macro
    lookup; per-worker disabled macros.
-3. Phase A (directives only), producing the phase-A stream.
+3. **Done.** Phase A (directives only), producing the phase-A stream.
 4. Phase B workers, stitching, ordered merge, parallel `-E`, differential
-   tests and a fuzzer.
+   tests and a fuzzer. **Done** (see "As built").
 5. Thread-aware listeners (lint, index).
 6. TU pool (`-j`).
 7. Macro graph and dependency sets.

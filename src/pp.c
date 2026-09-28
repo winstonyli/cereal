@@ -78,6 +78,9 @@ static void pop_context(PP *pp)
     pp->ctx.len--;
 }
 
+static void phase_a_read(PP *pp, Tok *t);
+static bool plan_read(PP *pp, Tok *t);
+
 TokSrc pp_read_raw(PP *pp, Tok *t)
 {
     for (;;) {
@@ -99,7 +102,12 @@ TokSrc pp_read_raw(PP *pp, Tok *t)
             pop_context(pp);
             continue;
         }
-        if (pp->has_pending) {
+        if (pp->mode == PPM_PLAN) {
+            if (!plan_read(pp, t))
+                continue; /* it pushed a context */
+        } else if (pp->mode == PPM_PHASE_A) {
+            phase_a_read(pp, t);
+        } else if (pp->has_pending) {
             *t = pp->pending;
             pp->has_pending = false;
         } else {
@@ -300,10 +308,26 @@ static void include_chain_cb(void *ctx, SrcLoc **locs, int *n)
     *n = (int)pp->chain_buf.len;
 }
 
+static PlanItem *plan_add(PP *pp, PlanKind k);
+static void phase_a_fix_dir_frame(PP *pp);
+
 static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
                       const IncludeEvent *via)
 {
     IncludeFrame *fr = NEW(pp->arena, IncludeFrame);
+    if (pp->mode == PPM_PHASE_A) {
+        PlanFrame *pf = NEW(pp->arena, PlanFrame);
+        phase_a_fix_dir_frame(pp);
+        pf->parent = pp->pframe;
+        pf->file = f;
+        pf->presumed_name = f->name;
+        pf->include_loc = include_loc;
+        pf->dir_index = dir_index;
+        pf->depth = pp->include_depth + 1;
+        pf->system = f->system_header;
+        pp->pframe = pf;
+        plan_add(pp, PI_ENTER);
+    }
     fr->prev = pp->inc;
     fr->file = f;
     fr->saved_lex = pp->lex;
@@ -313,6 +337,7 @@ static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
     fr->dir_index = dir_index;
     fr->cond_base = pp->cond;
     fr->presumed_name = f->name;
+    fr->system = f->system_header;
     pp->inc = fr;
     pp->include_depth++;
     pp->has_pending = false;
@@ -324,6 +349,11 @@ static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
 static bool pop_file(PP *pp)
 {
     IncludeFrame *fr = pp->inc;
+    if (pp->mode == PPM_PHASE_A) {
+        pp->pframe = pp->pframe->parent;
+        plan_add(pp, PI_EXIT);
+        pp->diag->key = (uint32_t)pp->plan->items.len - 1;
+    }
     while (pp->cond != fr->cond_base) {
         diag_report(pp->diag, DL_ERROR, "", pp->cond->if_loc,
                     "unterminated conditional directive");
@@ -419,6 +449,7 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
     pp->id_defined = intern_cstr(in, "defined");
     pp->id_va_args = intern_cstr(in, "__VA_ARGS__");
     pp->id_pragma = intern_cstr(in, "_Pragma");
+    pp->dir_item = SIZE_MAX;
     {
         static const char *const dirs[] = {
             "", "if", "ifdef", "ifndef", "elif", "else", "endif", "define",
@@ -469,6 +500,32 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
         new_builtin(pp, "__has_c_attribute", BUILTIN_HAS_C_ATTRIBUTE, true);
         new_builtin(pp, "__has_cpp_attribute", BUILTIN_HAS_CPP_ATTRIBUTE, true);
     }
+}
+
+void pp_init_worker(PP *w, const PP *main, Arena *a, DiagEngine *d)
+{
+    size_t i;
+    memset(w, 0, sizeof *w);
+    w->arena = a;
+    w->in = main->in;
+    w->sm = main->sm;
+    w->diag = d;
+    w->opt = main->opt;
+    d->include_chain = include_chain_cb;
+    d->include_chain_ctx = w;
+    w->id_defined = main->id_defined;
+    w->id_va_args = main->id_va_args;
+    w->id_pragma = main->id_pragma;
+    for (i = 0; i < main->search.len; i++)
+        vec_push(&w->search, main->search.data[i]);
+    w->first_angle = main->first_angle;
+    w->first_system = main->first_system;
+    w->builtin_file = main->builtin_file;
+    w->main_file = main->main_file;
+    w->host_attrs = main->host_attrs;
+    w->host_builtins = main->host_builtins;
+    w->dir_item = SIZE_MAX;
+    w->track = main->track;
 }
 
 void pp_free(PP *pp)
@@ -548,17 +605,26 @@ bool pp_enter_main(PP *pp, const char *path)
 
 /* ---- main loop ------------------------------------------------------ */
 
+static bool plan_exit(PP *pp);
+
 bool pp_next(PP *pp, Tok *out)
 {
     for (;;) {
         Tok t;
-        TokSrc src = pp_read_raw(pp, &t);
+        TokSrc src;
+        pp->reading_top = true;
+        src = pp_read_raw(pp, &t);
+        pp->reading_top = false;
         if (src == SRC_LEXER) {
             if (t.kind == TK_EOF) {
-                if (!pop_file(pp)) {
+                if (pp->mode == PPM_PLAN ? !plan_exit(pp) : !pop_file(pp)) {
                     *out = t;
                     return false;
                 }
+                continue;
+            }
+            if (t.kind == TK_DIRMARK) {
+                pp_plan_apply_dir(pp, t.aux);
                 continue;
             }
             if ((t.flags & TF_BOL) && t.kind == TK_PUNCT && t.punct == P_HASH) {
@@ -627,10 +693,16 @@ static TokSpan read_line(PP *pp)
     return s;
 }
 
+/* The start of the line holding loc, a token the lexer just produced.
+ * The lexer knows the last line start it crossed; scanning back from loc
+ * could land inside a multi-line comment. */
 static SrcLoc line_start_of(PP *pp, SrcLoc loc)
 {
     SrcFile *f = pp->inc->file;
     const char *p = pp->sm->region + loc;
+    const char *lb = pp->lex.line_begin;
+    if (lb && lb >= f->buf && lb <= p)
+        return (SrcLoc)(lb - pp->sm->region);
     while (p > f->buf && p[-1] != '\n' && p[-1] != '\r')
         p--;
     return (SrcLoc)(p - pp->sm->region);
@@ -1434,16 +1506,28 @@ static void do_message(PP *pp, const Tok *kw, bool is_error)
 
 /* ---- dispatch ------------------------------------------------------- */
 
+static void phase_a_finish_dir(PP *pp, size_t dir_item);
+
 void pp_directive(PP *pp, const Tok *hash)
 {
     Tok kw;
     bool active = cur_active(pp);
     bool saved = pp->in_directive;
     int k;
+    size_t dir_item = SIZE_MAX;
+    if (pp->mode == PPM_PHASE_A) {
+        PlanItem *it = plan_add(pp, PI_DIR);
+        it->begin = hash->loc;
+        dir_item = pp->plan->items.len - 1;
+        pp->dir_item = dir_item;
+        pp->diag->key = (uint32_t)dir_item;
+    }
     lex_next(&pp->lex, &kw);
     if ((kw.flags & TF_BOL) || kw.kind == TK_EOF) {
         pp->pending = kw; /* null directive */
         pp->has_pending = true;
+        if (dir_item != SIZE_MAX)
+            phase_a_finish_dir(pp, dir_item);
         return;
     }
     pp->in_directive = true;
@@ -1507,4 +1591,283 @@ void pp_directive(PP *pp, const Tok *hash)
     }
 out:
     pp->in_directive = saved;
+    if (dir_item != SIZE_MAX)
+        phase_a_finish_dir(pp, dir_item);
+}
+
+/* ---- phase A: directives only --------------------------------------- */
+
+static PlanItem *plan_add(PP *pp, PlanKind k)
+{
+    PlanItem it;
+    memset(&it, 0, sizeof it);
+    it.kind = (uint8_t)k;
+    it.version = pp->seq;
+    it.counter = pp->counter;
+    it.frame = pp->pframe;
+    vec_push(&pp->plan->items, it);
+    return &vec_last(&pp->plan->items);
+}
+
+/* An #include pushes the child before the directive finishes: the DIR
+ * item must carry the includer's frame. */
+static void phase_a_fix_dir_frame(PP *pp)
+{
+    if (pp->dir_item != SIZE_MAX) {
+        PlanItem *it = &pp->plan->items.data[pp->dir_item];
+        it->frame = pp->pframe;
+        it->version = pp->seq;
+        it->counter = pp->counter;
+        pp->dir_item = SIZE_MAX;
+    }
+}
+
+static void phase_a_finish_dir(PP *pp, size_t dir_item)
+{
+    PlanFrame *pf = pp->pframe;
+    IncludeFrame *fr = pp->inc;
+    /* #line changed the presumed position: new frame snapshot */
+    if (fr && pf && fr->file == pf->file &&
+        (fr->presumed_name != pf->presumed_name ||
+         fr->line_delta != pf->line_delta ||
+         fr->line_adj_from != pf->line_adj_from || fr->system != pf->system)) {
+        PlanFrame *n = NEW(pp->arena, PlanFrame);
+        *n = *pf;
+        n->presumed_name = fr->presumed_name;
+        n->line_delta = fr->line_delta;
+        n->line_adj_from = fr->line_adj_from;
+        n->system = fr->system;
+        pp->pframe = n;
+    }
+    if (pp->dir_item == dir_item) {
+        PlanItem *it = &pp->plan->items.data[dir_item];
+        it->version = pp->seq;
+        it->counter = pp->counter;
+        it->frame = pp->pframe;
+        pp->dir_item = SIZE_MAX;
+    }
+}
+
+/* Record the text from the lexer's position (a line start) up to the next
+ * directive line as segments, split at certified line starts. */
+static void phase_a_segment(PP *pp)
+{
+    Lexer *L = &pp->lex;
+    SrcLoc chunk_start = lexer_loc(L), end;
+    bool content = false, split = false;
+    size_t chunk = pp->plan->chunk;
+    DiagEngine *d = L->diag;
+    L->diag = NULL; /* the workers lex this text and report */
+    for (;;) {
+        SrcLoc line = lexer_loc(L);
+        if (chunk && line - chunk_start >= chunk && content) {
+            PlanItem *it = plan_add(pp, PI_SEG);
+            it->begin = chunk_start;
+            it->end = line;
+            it->split = split;
+            pp->plan->text_bytes += line - chunk_start;
+            chunk_start = line;
+            content = false;
+            split = true;
+        }
+        if (lex_line_is_directive(L)) {
+            end = lexer_loc(L);
+            break;
+        }
+        if (L->p < L->lim)
+            content = true;
+        if (!lex_next_line(L)) {
+            end = lexer_loc(L);
+            break;
+        }
+    }
+    if (content) {
+        PlanItem *it = plan_add(pp, PI_SEG);
+        it->begin = chunk_start;
+        it->end = end;
+        it->split = split;
+        pp->plan->text_bytes += end - chunk_start;
+        guard_note_activity(pp);
+    } else if (split) {
+        guard_note_activity(pp);
+    }
+    L->bol = true;
+    L->space = false;
+    L->diag = d;
+}
+
+static void phase_a_read(PP *pp, Tok *t)
+{
+    if (pp->has_pending) {
+        Tok p = pp->pending;
+        pp->has_pending = false;
+        if (p.kind == TK_EOF || ((p.flags & TF_BOL) && tok_is_punct(&p, P_HASH))) {
+            *t = p;
+            return;
+        }
+        lexer_seek(&pp->lex, line_start_of(pp, p.loc), true);
+    }
+    phase_a_segment(pp);
+    lex_next(&pp->lex, t);
+}
+
+bool pp_run_phase_a(PP *pp, Plan *plan)
+{
+    Tok t;
+    pp->mode = PPM_PHASE_A;
+    pp->plan = plan;
+    pp->dir_item = SIZE_MAX;
+    while (pp_next(pp, &t))
+        ; /* phase A never yields tokens */
+    return true;
+}
+
+/* ---- phase B: reading a plan ---------------------------------------- */
+
+static IncludeFrame *frame_from_plan(PP *pp, const PlanFrame *pf)
+{
+    IncludeFrame *fr;
+    if (!pf)
+        return NULL;
+    fr = NEW(pp->arena, IncludeFrame);
+    fr->prev = frame_from_plan(pp, pf->parent);
+    fr->file = pf->file;
+    fr->presumed_name = pf->presumed_name;
+    fr->line_delta = pf->line_delta;
+    fr->line_adj_from = pf->line_adj_from;
+    fr->include_loc = pf->include_loc;
+    fr->dir_index = pf->dir_index;
+    fr->system = pf->system;
+    return fr;
+}
+
+static void apply_frame(PP *pp, const PlanFrame *pf)
+{
+    IncludeFrame *fr = pp->inc;
+    if (!fr || !pf)
+        return;
+    fr->presumed_name = pf->presumed_name;
+    fr->line_delta = pf->line_delta;
+    fr->line_adj_from = pf->line_adj_from;
+    fr->system = pf->system;
+}
+
+void pp_plan_start(PP *pp, Plan *plan, size_t item)
+{
+    const PlanItem *it = &plan->items.data[item];
+    pp->mode = PPM_PLAN;
+    pp->plan = plan;
+    pp->plan_pos = item;
+    pp->seg_active = false;
+    pp->versioned = true;
+    pp->version = it->version;
+    pp->counter = it->counter;
+    /* the frame in effect before this item */
+    pp->inc = frame_from_plan(pp, it->kind == PI_ENTER ? it->frame->parent
+                                                        : it->frame);
+    pp->include_depth = it->kind == PI_ENTER ? it->frame->depth - 1
+                                             : (it->frame ? it->frame->depth : 0);
+    pp->main_file = plan->items.data[0].frame->file;
+}
+
+void pp_plan_apply_dir(PP *pp, uint32_t item)
+{
+    const PlanItem *it = &pp->plan->items.data[item];
+    pp->version = it->version;
+    pp->counter = it->counter;
+    apply_frame(pp, it->frame);
+}
+
+static bool plan_read(PP *pp, Tok *t)
+{
+    Plan *plan = pp->plan;
+    for (;;) {
+        PlanItem *it;
+        if (pp->has_pending) {
+            *t = pp->pending;
+            pp->has_pending = false;
+            return true;
+        }
+        if (pp->seg_active) {
+            lex_next(&pp->lex, t);
+            if (t->kind != TK_EOF)
+                return true;
+            pp->seg_active = false;
+        }
+        memset(t, 0, sizeof *t);
+        t->kind = TK_EOF;
+        t->flags = TF_BOL;
+        if (pp->plan_pos >= plan->items.len)
+            return true;
+        it = &plan->items.data[pp->plan_pos];
+        pp->diag->key = (uint32_t)pp->plan_pos;
+        switch (it->kind) {
+        case PI_SEG:
+            if (pp->on_boundary &&
+                !pp->on_boundary(pp->boundary_ctx, pp->plan_pos,
+                                 pp->reading_top && pp->ctx.len == 0 &&
+                                     !pp->carry_space)) {
+                pp->plan_pos = plan->items.len; /* stop */
+                return true;
+            }
+            pp->version = it->version;
+            pp->counter = it->counter;
+            apply_frame(pp, it->frame);
+            lexer_free(&pp->lex);
+            lexer_init_range(&pp->lex, pp->sm, pp->in, &pp->scratch,
+                             pp->opt->lex, it->begin, it->end - it->begin);
+            pp->lex.diag = pp->diag;
+            pp->lex.opt = pp->opt->lex;
+            pp->seg_active = true;
+            pp->plan_pos++;
+            continue;
+        case PI_DIR:
+            t->kind = TK_DIRMARK;
+            t->loc = it->begin;
+            t->aux = (uint32_t)pp->plan_pos;
+            pp->plan_pos++;
+            return true;
+        case PI_ENTER: {
+            IncludeFrame *fr = frame_from_plan(pp, it->frame);
+            fr->prev = pp->inc;
+            pp->inc = fr;
+            pp->include_depth = it->frame->depth;
+            pp->plan_pos++;
+            PP_EMIT(pp, file_enter, it->frame->file, NULL);
+            continue;
+        }
+        case PI_EXIT:
+            t->loc = it->begin;
+            return true; /* pp_next's EOF handling calls plan_exit */
+        case PI_PRAGMA: {
+            Context c;
+            memset(&c, 0, sizeof c);
+            tokbuf_init(pp, &c.owned, 1);
+            c.owned.t[0] = plan->pragmas.data[it->end];
+            c.owned.len = 1;
+            c.toks = c.owned.t;
+            c.end = 1;
+            c.exp_loc = it->begin;
+            c.exp_id = c.root_id = NO_EXP;
+            pp->plan_pos++;
+            pp_push_context(pp, c);
+            return false;
+        }
+        }
+    }
+}
+
+static bool plan_exit(PP *pp)
+{
+    Plan *plan = pp->plan;
+    if (pp->plan_pos >= plan->items.len ||
+        plan->items.data[pp->plan_pos].kind != PI_EXIT)
+        return false;
+    if (pp->inc) {
+        PP_EMIT(pp, file_exit, pp->inc->file);
+        pp->inc = pp->inc->prev;
+    }
+    pp->include_depth--;
+    pp->plan_pos++;
+    return pp->plan_pos < plan->items.len;
 }

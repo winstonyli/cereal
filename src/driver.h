@@ -25,6 +25,10 @@ typedef struct Options {
     bool show_system;
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */
     bool check_versions;
+    char parallel;      /* 'a'uto, 'y' on (forced), 'n' off */
+    int par_threads;    /* <= 0: cpu_count() */
+    size_t par_chunk;   /* 0: default */
+    unsigned par_window;
 } Options;
 
 typedef struct TU {

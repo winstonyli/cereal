@@ -1,67 +1,62 @@
 /* ppout.c - `-E` output: GCC-compatible preprocessed text with linemarkers. */
 #include "ppout.h"
+#include "thread.h"
 
 #include <string.h>
 
 #define OUTBUF (1u << 20)
 
-typedef struct Printer {
-    PP *pp;
-    FILE *out;
-    char *buf;
-    size_t len;
-    SrcFile *file;           /* file of the output cursor */
-    uint32_t line;           /* presumed line of the output cursor */
-    LineCursor lc;
-    SrcFile *last_f;         /* cache for file lookup */
-    bool at_bol;
-    int pending_flag;        /* 1 = entered, 2 = returned */
-    bool linemarkers;
-    Tok prev;
-    bool have_prev;
-} Printer;
+/* ---- sinks ---------------------------------------------------------- */
 
-static void flush(Printer *p)
+void sink_flush(OutSink *o)
 {
-    if (p->len)
-        fwrite(p->buf, 1, p->len, p->out);
-    p->len = 0;
+    if (o->fp && o->len) {
+        fwrite(o->buf, 1, o->len, o->fp);
+        o->len = 0;
+    }
 }
 
-static void put(Printer *p, const char *s, size_t n)
+void sink_put(OutSink *o, const char *s, size_t n)
 {
-    if (p->len + n > OUTBUF) {
-        flush(p);
-        if (n > OUTBUF) {
-            fwrite(s, 1, n, p->out);
-            return;
+    if (o->len + n > o->cap) {
+        if (o->fp) {
+            sink_flush(o);
+            if (!o->buf) {
+                o->cap = OUTBUF;
+                o->buf = xmalloc(o->cap);
+            }
+            if (n > o->cap) {
+                fwrite(s, 1, n, o->fp);
+                return;
+            }
+        } else {
+            size_t nc = o->cap ? o->cap : OUTBUF;
+            while (nc < o->len + n)
+                nc *= 2;
+            o->buf = xrealloc(o->buf, nc);
+            o->cap = nc;
         }
     }
-    memcpy(p->buf + p->len, s, n);
-    p->len += n;
+    memcpy(o->buf + o->len, s, n);
+    o->len += n;
 }
 
-static void putch(Printer *p, char c)
+static void sink_ch(OutSink *o, char c)
 {
-    if (p->len == OUTBUF)
-        flush(p);
-    p->buf[p->len++] = c;
+    if (o->len < o->cap)
+        o->buf[o->len++] = c;
+    else
+        sink_put(o, &c, 1);
 }
 
-static void on_enter(void *ctx, SrcFile *f, const IncludeEvent *via)
+void sink_free(OutSink *o)
 {
-    Printer *p = ctx;
-    (void)f;
-    (void)via;
-    p->pending_flag = 1;
+    free(o->buf);
+    o->buf = NULL;
+    o->len = o->cap = 0;
 }
 
-static void on_exit(void *ctx, SrcFile *f)
-{
-    Printer *p = ctx;
-    (void)f;
-    p->pending_flag = 2;
-}
+/* ---- the transition ------------------------------------------------- */
 
 static bool is_idchar(int c)
 {
@@ -69,7 +64,8 @@ static bool is_idchar(int c)
            (c >= '0' && c <= '9') || c == '_' || c == '$' || c >= 0x80;
 }
 
-static bool needs_space(Printer *p, const Tok *a, const Tok *b)
+static bool needs_space(const SrcMgr *sm, const Interner *in, const Tok *a,
+                        const Tok *b)
 {
     int x, y;
     static const char *const pairs[] = {
@@ -82,8 +78,8 @@ static bool needs_space(Printer *p, const Tok *a, const Tok *b)
     if ((a->kind == TK_IDENT || a->kind == TK_PPNUM) &&
         (b->kind == TK_IDENT || b->kind == TK_PPNUM))
         return true;
-    x = (unsigned char)pp_text(p->pp, a)[a->len - 1];
-    y = (unsigned char)pp_text(p->pp, b)[0];
+    x = (unsigned char)tok_text_raw(sm, in, a)[a->len - 1];
+    y = (unsigned char)tok_text_raw(sm, in, b)[0];
     if (a->kind == TK_PPNUM && (y == '.' || y == '+' || y == '-' || is_idchar(y)))
         return true;
     if (a->kind == TK_IDENT && a->len == 1 && x == 'L' &&
@@ -99,40 +95,131 @@ static bool needs_space(Printer *p, const Tok *a, const Tok *b)
     return false;
 }
 
-static void newline(Printer *p)
+static void newline(PrintState *st, OutSink *o)
 {
-    putch(p, '\n');
-    p->at_bol = true;
-    p->have_prev = false;
+    sink_ch(o, '\n');
+    st->at_bol = true;
+    st->have_prev = false;
 }
 
-static void marker(Printer *p, SrcFile *f, uint32_t line, int flag)
+static void marker(bool linemarkers, PrintState *st, const PrintTok *pt,
+                   int flag, OutSink *o)
 {
-    const char *name;
     char num[32];
+    const char *name = pt->name;
     size_t i;
-    if (!p->at_bol)
-        newline(p);
-    p->file = f;
-    p->line = line;
-    if (!p->linemarkers)
+    if (!st->at_bol)
+        newline(st, o);
+    st->file = pt->f;
+    st->line = pt->line;
+    st->name = pt->name;
+    st->delta = pt->delta;
+    if (!linemarkers)
         return;
-    name = pp_presumed_name(p->pp, f);
-    sprintf(num, "# %u \"", line);
-    put(p, num, strlen(num));
+    sprintf(num, "# %u \"", pt->line);
+    sink_put(o, num, strlen(num));
     for (i = 0; name[i]; i++) {
         if (name[i] == '"' || name[i] == '\\')
-            putch(p, '\\');
-        putch(p, name[i]);
+            sink_ch(o, '\\');
+        sink_ch(o, name[i]);
     }
-    putch(p, '"');
+    sink_ch(o, '"');
     if (flag) {
         sprintf(num, " %d", flag);
-        put(p, num, strlen(num));
+        sink_put(o, num, strlen(num));
     }
-    if (f->system_header)
-        put(p, " 3", 2);
-    newline(p);
+    if (pt->system)
+        sink_put(o, " 3", 2);
+    newline(st, o);
+}
+
+void print_transition(const SrcMgr *sm, const Interner *in, bool linemarkers,
+                      PrintState *st, const PrintTok *pt, OutSink *o)
+{
+    SrcFile *f = pt->f;
+    uint32_t line = pt->line;
+    const Tok *t = &pt->t;
+    if (f && (f != st->file || st->pending_flag)) {
+        /* GCC marks every enter and return, even into the same file */
+        marker(linemarkers, st, pt, st->file ? st->pending_flag : 0, o);
+    } else if (f && (pt->delta != st->delta ||
+                     (pt->name != st->name && strcmp(pt->name, st->name)))) {
+        marker(linemarkers, st, pt, 0, o); /* after #line */
+    } else if (f && line != st->line) {
+        if (line > st->line && line - st->line <= 8) {
+            if (!st->at_bol)
+                newline(st, o);
+            while (st->line + 1 < line) {
+                newline(st, o);
+                st->line++;
+            }
+            st->line = line;
+        } else if (line > st->line || t->kind == TK_PRAGMA) {
+            marker(linemarkers, st, pt, 0, o);
+        } else {
+            /* backwards (a token of an invocation that began earlier):
+             * stay on this output line, but take the token's position so
+             * the state after any positioned token depends on it alone */
+            st->line = line;
+        }
+    }
+    st->pending_flag = 0; /* a flag belongs to the next token only */
+    if (t->kind == TK_PRAGMA) {
+        if (!st->at_bol)
+            newline(st, o);
+        sink_ch(o, '#');
+        sink_put(o, tok_text_raw(sm, in, t), t->len);
+        newline(st, o);
+        st->line++;
+        return;
+    }
+    if (st->at_bol) {
+        if (t->flags & TF_SPACE)
+            sink_ch(o, ' ');
+    } else if ((t->flags & (TF_SPACE | TF_BOL)) ||
+               (st->have_prev && needs_space(sm, in, &st->prev, t))) {
+        sink_ch(o, ' ');
+    }
+}
+
+/* ---- the printer ---------------------------------------------------- */
+
+static void on_enter(void *ctx, SrcFile *f, const IncludeEvent *via)
+{
+    Printer *p = ctx;
+    (void)f;
+    (void)via;
+    p->st.pending_flag = 1;
+    if (p->open && !p->open->has_first) {
+        p->open->events_pre = true;
+        p->open->pre_last = 1;
+    }
+}
+
+static void on_exit(void *ctx, SrcFile *f)
+{
+    Printer *p = ctx;
+    (void)f;
+    p->st.pending_flag = 2;
+    if (p->open && !p->open->has_first) {
+        p->open->events_pre = true;
+        p->open->pre_last = 2;
+    }
+}
+
+void printer_init(Printer *p, PP *pp, OutSink *out, bool linemarkers)
+{
+    PPListener l;
+    memset(p, 0, sizeof *p);
+    p->pp = pp;
+    p->out = out;
+    p->linemarkers = linemarkers;
+    p->st.at_bol = true;
+    memset(&l, 0, sizeof l);
+    l.ctx = p;
+    l.file_enter = on_enter;
+    l.file_exit = on_exit;
+    pp_add_listener(pp, l);
 }
 
 static SrcFile *file_of(Printer *p, SrcLoc loc)
@@ -145,81 +232,71 @@ static SrcFile *file_of(Printer *p, SrcLoc loc)
     return f;
 }
 
-static uint32_t presumed_line(Printer *p, SrcFile *f, SrcLoc loc)
+static const IncludeFrame *frame_of(PP *pp, SrcFile *f)
 {
-    IncludeFrame *fr = p->pp->inc;
-    uint32_t line = linecursor_line(&p->lc, f, loc);
-    if (fr && fr->file == f && fr->line_adj_from && line >= fr->line_adj_from)
-        return (uint32_t)((int32_t)line + fr->line_delta);
-    if (fr && fr->file != f)
-        return pp_presumed_line(p->pp, loc);
-    return line;
+    const IncludeFrame *fr;
+    for (fr = pp->inc; fr; fr = fr->prev)
+        if (fr->file == f)
+            return fr;
+    return NULL;
+}
+
+void printer_token(Printer *p, const Tok *t)
+{
+    PP *pp = p->pp;
+    PrintTok pt;
+    SrcLoc loc = t->kind == TK_PRAGMA ? t->loc : pp->out_exp_loc;
+    SrcFile *f = file_of(p, loc);
+    pt.t = *t;
+    pt.f = f && f->kind != SF_SCRATCH ? f : NULL;
+    pt.line = p->st.line;
+    pt.name = "";
+    pt.delta = 0;
+    pt.system = false;
+    if (pt.f) {
+        const IncludeFrame *fr = frame_of(pp, pt.f);
+        uint32_t line = linecursor_line(&p->lc, pt.f, loc);
+        if (fr && fr->line_adj_from && line >= fr->line_adj_from) {
+            line = (uint32_t)((int32_t)line + fr->line_delta);
+            pt.delta = fr->line_delta;
+        }
+        pt.line = line;
+        pt.name = fr ? fr->presumed_name : pt.f->name;
+        pt.system = fr ? fr->system : pt.f->system_header;
+    }
+    if (p->open && !p->open->has_first) {
+        p->open->first = pt;
+        print_transition(pp->sm, pp->in, p->linemarkers, &p->st, &pt, p->out);
+        p->open->first_body = p->out->len;
+        atomic_store_u32(&p->open->has_first, 1); /* publish */
+    } else {
+        print_transition(pp->sm, pp->in, p->linemarkers, &p->st, &pt, p->out);
+    }
+    if (t->kind == TK_PRAGMA)
+        return;
+    sink_put(p->out, pp_text(pp, t), t->len);
+    p->st.at_bol = false;
+    p->st.prev = *t;
+    p->st.have_prev = true;
+}
+
+void printer_finish(Printer *p)
+{
+    if (!p->st.at_bol)
+        newline(&p->st, p->out);
 }
 
 void pp_write_output(PP *pp, FILE *out, bool linemarkers)
 {
     Printer pr;
-    PPListener l;
+    OutSink sink;
     Tok t;
-    memset(&pr, 0, sizeof pr);
-    memset(&l, 0, sizeof l);
-    pr.pp = pp;
-    pr.out = out;
-    pr.buf = xmalloc(OUTBUF);
-    pr.at_bol = true;
-    pr.linemarkers = linemarkers;
-    l.ctx = &pr;
-    l.file_enter = on_enter;
-    l.file_exit = on_exit;
-    pp_add_listener(pp, l);
-
-    while (pp_next(pp, &t)) {
-        SrcLoc loc = t.kind == TK_PRAGMA ? t.loc : pp->out_exp_loc;
-        SrcFile *f = file_of(&pr, loc);
-        uint32_t line;
-        if (f && f->kind == SF_SCRATCH)
-            f = NULL;
-        line = f ? presumed_line(&pr, f, loc) : pr.line;
-        if (f && f != pr.file) {
-            marker(&pr, f, line, pr.file ? pr.pending_flag : 0);
-            pr.pending_flag = 0;
-        } else if (f && line != pr.line) {
-            if (line > pr.line && line - pr.line <= 8) {
-                if (!pr.at_bol)
-                    newline(&pr);
-                while (pr.line + 1 < line) {
-                    newline(&pr);
-                    pr.line++;
-                }
-                pr.line = line;
-            } else if (line > pr.line || t.kind == TK_PRAGMA || !pr.at_bol) {
-                if (!(line < pr.line && !pr.at_bol && t.kind != TK_PRAGMA))
-                    marker(&pr, f, line, 0);
-            }
-        }
-        if (t.kind == TK_PRAGMA) {
-            if (!pr.at_bol)
-                newline(&pr);
-            putch(&pr, '#');
-            put(&pr, pp_text(pp, &t), t.len);
-            newline(&pr);
-            pr.line++;
-            continue;
-        }
-        if (pr.at_bol) {
-            if (t.flags & TF_SPACE)
-                putch(&pr, ' ');
-        } else if ((t.flags & (TF_SPACE | TF_BOL)) ||
-                   (pr.have_prev && needs_space(&pr, &pr.prev, &t))) {
-            putch(&pr, ' ');
-        }
-        put(&pr, pp_text(pp, &t), t.len);
-        pr.at_bol = false;
-        pr.prev = t;
-        pr.have_prev = true;
-    }
-    if (!pr.at_bol)
-        newline(&pr);
-    flush(&pr);
-    free(pr.buf);
+    memset(&sink, 0, sizeof sink);
+    sink.fp = out;
+    printer_init(&pr, pp, &sink, linemarkers);
+    while (pp_next(pp, &t))
+        printer_token(&pr, &t);
+    printer_finish(&pr);
+    sink_flush(&sink);
+    sink_free(&sink);
 }

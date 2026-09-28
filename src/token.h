@@ -24,7 +24,8 @@ typedef enum {
     TK_STRING,   /* string-literal, incl. L"x" */
     TK_PUNCT,
     TK_OTHER,    /* any other non-white-space character */
-    TK_PRAGMA    /* #pragma / _Pragma result; spelling "pragma ..." */
+    TK_PRAGMA,   /* #pragma / _Pragma result; spelling "pragma ..." */
+    TK_DIRMARK   /* phase B: a directive was here (aux = version after) */
 } TokKind;
 
 #define PUNCT_LIST(X)                                                      \

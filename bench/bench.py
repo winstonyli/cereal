@@ -134,7 +134,9 @@ def main():
         os.path.join(ROOT, 'cereal')
     os.makedirs(OUT, exist_ok=True)
     runs = 1 if quick else 3
-    tools = [('cereal', [cereal, '-E']), ('gcc', ['gcc', '-std=c99', '-E'])]
+    tools = [('cereal', [cereal, '-E']),
+             ('seq', [cereal, '-E', '-fparallel=off']),
+             ('gcc', ['gcc', '-std=c99', '-E'])]
     if shutil.which('clang'):
         tools.append(('clang', ['clang', '-std=c99', '-E']))
     print(f'{"workload":<12} {"MB":>6} ' +

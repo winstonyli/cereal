@@ -4,6 +4,8 @@
 #   2. dogfood: cereal's own sources through both preprocessors
 #   3. lint: `// expect: <id>` annotations checked by tests/verify.py
 #   4. query: LSP index queries against expected output
+#   5. parallel: `-fparallel=on` byte-identical to sequential (output,
+#      diagnostics, exit status) at adversarial chunk sizes, plus a fuzzer
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -92,6 +94,47 @@ for t in "$ROOT"/tests/query/*.cmd; do
         sed 's/^/    /' "$TMP/qd" | head -40
     fi
 done
+
+par_same() { # par_same NAME FILE FLAGS...
+    name=$1 file=$2
+    shift 2
+    "$CEREAL" -E -fparallel=off "$@" "$file" >"$TMP/seq.i" 2>"$TMP/seq.e"
+    rs=$?
+    for cfg in 1:1:0 3:1:0 3:1:2 4:64:0; do # threads:chunk:window
+        t=${cfg%%:*} c=${cfg#*:} w=${cfg##*:}
+        "$CEREAL" -E -fparallel=on -fparallel-threads=$t \
+            -fparallel-chunk=${c%:*} -fparallel-window=$w "$@" "$file" \
+            >"$TMP/par.i" 2>"$TMP/par.e"
+        rp=$?
+        if [ $rs != $rp ] || ! cmp -s "$TMP/seq.i" "$TMP/par.i" ||
+            ! cmp -s "$TMP/seq.e" "$TMP/par.e"; then
+            bad "parallel $name (threads:chunk:window $cfg)"
+            diff "$TMP/seq.i" "$TMP/par.i" | head -10 | sed 's/^/    /'
+            diff "$TMP/seq.e" "$TMP/par.e" | head -10 | sed 's/^/    /'
+            return
+        fi
+    done
+    ok
+}
+
+for f in "$ROOT"/tests/pp/*.c "$ROOT"/tests/lint/*.c; do
+    cd "$(dirname "$f")"
+    par_same "${f#$ROOT/tests/}" "$(basename "$f")"
+    cd "$ROOT"
+done
+for f in "$ROOT"/src/*.c; do
+    par_same "dogfood ${f#$ROOT/}" "$f" -D_POSIX_C_SOURCE=200809L -I"$ROOT/src"
+done
+for h in stdio.h stdlib.h pthread.h; do
+    echo "#include <$h>" >"$TMP/h.c"
+    par_same "<$h>" "$TMP/h.c" -D_GNU_SOURCE -O2
+done
+if python3 "$ROOT/tests/fuzz_par.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}" >"$TMP/fz" 2>&1; then
+    ok
+else
+    bad "parallel fuzz"
+    sed 's/^/    /' "$TMP/fz" | tail -10
+fi
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

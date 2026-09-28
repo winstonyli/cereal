@@ -1,5 +1,6 @@
 /* main.c - the `cereal` command. */
 #include "driver.h"
+#include "par.h"
 #include "ppout.h"
 #include "analysis/analysis.h"
 #include "index.h"
@@ -23,7 +24,8 @@ static void usage(FILE *o)
         "  -D NAME[=VAL]  -U NAME  -include FILE  -undef\n"
         "  -std=c99  -pedantic  -pedantic-errors  -trigraphs\n"
         "  -W<name>  -Wno-<name>  -W<group>  -Wall  -Werror  -Weverything\n"
-        "  -fdiagnostics-format=json  -fcolor-diagnostics  -P  -o FILE\n",
+        "  -fdiagnostics-format=json  -fcolor-diagnostics  -P  -o FILE\n"
+        "  -fparallel=auto|on|off  -fparallel-threads=N  -fparallel-chunk=BYTES\n",
         o);
 }
 
@@ -50,8 +52,23 @@ static int mode_preprocess(Options *o)
     if (o->output && !(out = fopen(o->output, "w")))
         fatal("cannot open '%s' for writing", o->output);
     tu_init(&tu, o);
+    if (o->parallel != 'n') {
+        ParOptions po;
+        ParResult r;
+        memset(&po, 0, sizeof po);
+        po.threads = o->par_threads;
+        po.chunk = o->par_chunk;
+        po.window = o->par_window;
+        po.force = o->parallel == 'y';
+        r = par_write_output(&tu, o->inputs.data[0], out, o->linemarkers, &po);
+        if (r != PAR_FALLBACK)
+            goto done;
+        tu_free(&tu); /* diverged or not worth it: start over */
+        tu_init(&tu, o);
+    }
     if (tu_begin(&tu, o->inputs.data[0]))
         pp_write_output(&tu.pp, out, o->linemarkers);
+done:
     if (out != stdout)
         fclose(out);
     rc = finish(&tu);

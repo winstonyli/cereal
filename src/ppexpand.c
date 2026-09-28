@@ -110,13 +110,18 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
             args_free(pp, a, 0);
             return false;
         }
-        if (src == SRC_LEXER && (t.flags & TF_BOL) && tok_is_punct(&t, P_HASH) &&
-            !pp->in_directive) {
-            /* C99 6.10.3p11: undefined; GCC and Clang process it */
+        if (src == SRC_LEXER && !pp->in_directive &&
+            (t.kind == TK_DIRMARK ||
+             ((t.flags & TF_BOL) && tok_is_punct(&t, P_HASH)))) {
+            /* C99 6.10.3p11: undefined; GCC and Clang process it.  In phase
+             * B the directive already ran in phase A: advance the version. */
             diag_report(pp->diag, DL_WARNING, "directive-in-macro-args", t.loc,
                         "preprocessing directive inside the arguments of "
                         "macro \"%s\" is undefined behavior", m->name->str);
-            pp_directive(pp, &t);
+            if (t.kind == TK_DIRMARK)
+                pp_plan_apply_dir(pp, t.aux);
+            else
+                pp_directive(pp, &t);
             replayable = false;
             continue;
         }
@@ -658,6 +663,14 @@ static bool builtin_query(PP *pp, Macro *m, const Tok *name, bool *result)
     return true;
 }
 
+/* Only the index reads the counts; untracked workers must not share-write
+ * a hot cache line per expansion. */
+static void count_expansion(PP *pp, Macro *m)
+{
+    if (pp->track != TRACK_NONE)
+        atomic_add_u32(&m->expansions, 1);
+}
+
 static Expansion *new_expansion(PP *pp, Macro *m, const Tok *name,
                                 uint32_t parent, uint32_t parent_root)
 {
@@ -725,6 +738,8 @@ static Tok builtin_token(PP *pp, Macro *m, const Tok *name, SrcLoc exp_loc)
         k = TK_STRING;
         break;
     case BUILTIN_COUNTER:
+        if (pp->mode == PPM_PLAN)
+            pp->diverged = true; /* value depends on other segments */
         sprintf(buf, "%u", pp->counter++);
         break;
     default: /* BUILTIN_INCLUDE_LEVEL */
@@ -753,10 +768,24 @@ static bool word(PP *pp, TokSpan s, uint32_t i, const char *w)
     return i < s.n && tok_is_word(pp->in, &s.t[i], w);
 }
 
+/* Pragmas whose effect is on preprocessor state (not just output). */
+static bool state_pragma(PP *pp, TokSpan toks)
+{
+    return word(pp, toks, 0, "once") || word(pp, toks, 0, "push_macro") ||
+           word(pp, toks, 0, "pop_macro") ||
+           (word(pp, toks, 0, "GCC") &&
+            (word(pp, toks, 1, "system_header") || word(pp, toks, 1, "poison")));
+}
+
 void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
 {
     bool emit = true;
     uint32_t i;
+    if (pp->mode == PPM_PLAN && state_pragma(pp, toks)) {
+        /* only the sequential engine may change state from text */
+        pp->diverged = true;
+        return;
+    }
     PP_EMIT(pp, pragma, loc, toks);
     if (word(pp, toks, 0, "once")) {
         if (pp->inc->prev == NULL)
@@ -774,8 +803,10 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                         "malformed or unknown STDC pragma (C99 6.10.6p2)");
     } else if (word(pp, toks, 0, "GCC")) {
         if (word(pp, toks, 1, "system_header")) {
-            if (pp->inc->prev)
+            if (pp->inc->prev) {
                 pp->inc->file->system_header = true;
+                pp->inc->system = true;
+            }
             emit = false;
         } else if (word(pp, toks, 1, "poison")) {
             for (i = 2; i < toks.n; i++)
@@ -877,7 +908,20 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
         t.len = (uint32_t)sb->len;
         t.aux = srcmgr_scratch(pp->sm, &pp->scratch, sb->data, sb->len);
         t.flags = TF_SPELL | TF_BOL;
-        push_single(pp, t, NULL, loc, NO_EXP, NO_EXP, 0);
+        if (pp->mode == PPM_PHASE_A) {
+            PlanItem it;
+            memset(&it, 0, sizeof it);
+            it.kind = PI_PRAGMA;
+            it.version = pp->seq;
+            it.counter = pp->counter;
+            it.frame = pp->pframe;
+            it.begin = t.loc;
+            it.end = (SrcLoc)pp->plan->pragmas.len;
+            vec_push(&pp->plan->pragmas, t);
+            vec_push(&pp->plan->items, it);
+        } else {
+            push_single(pp, t, NULL, loc, NO_EXP, NO_EXP, 0);
+        }
     }
 }
 
@@ -977,7 +1021,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
             e = new_expansion(pp, m, name, parent, parent_root);
             if (!builtin_query(pp, m, name, &r))
                 r = false;
-            atomic_add_u32(&m->expansions, 1);
+            count_expansion(pp, m);
             PP_EMIT(pp, expand, e, NULL, 0);
             push_single(pp, pp_make_token(pp, TK_PPNUM, r ? "1" : "0", 1,
                                           name->loc, (uint16_t)(lead | TF_SYNTH)),
@@ -986,7 +1030,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
             return true;
         }
         e = new_expansion(pp, m, name, parent, parent_root);
-        atomic_add_u32(&m->expansions, 1);
+        count_expansion(pp, m);
         PP_EMIT(pp, expand, e, NULL, 0);
         push_single(pp, builtin_token(pp, m, name, exp_loc), NULL, exp_loc,
                     e ? e->id : NO_EXP, e ? e->root : NO_EXP, name->loc);
@@ -998,7 +1042,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         e = new_expansion(pp, m, name, parent, parent_root);
         eid = e ? e->id : NO_EXP;
         root = e ? e->root : NO_EXP;
-        atomic_add_u32(&m->expansions, 1);
+        count_expansion(pp, m);
         PP_EMIT(pp, expand, e, NULL, 0);
         if (m->body_len == 0) {
             if (lead & TF_SPACE)
@@ -1023,7 +1067,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         root = e ? e->root : NO_EXP;
         if (e)
             e->end_loc = a.rparen_loc + a.rparen_len;
-        atomic_add_u32(&m->expansions, 1);
+        count_expansion(pp, m);
         if (pp->track != TRACK_NONE) {
             spans = xmalloc(sizeof(TokSpan) * ((size_t)m->nparams + 1));
             for (i = 0; i < m->nparams; i++)

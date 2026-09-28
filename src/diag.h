@@ -29,6 +29,7 @@ typedef struct Diagnostic {
     SrcLoc *inc_chain;       /* #include locations, innermost first */
     int ninc;
     const char *fixit;       /* optional suggested replacement text */
+    uint32_t key;            /* plan item at the time (parallel ordering) */
 } Diagnostic;
 
 typedef enum { DIAG_FMT_TEXT, DIAG_FMT_JSON } DiagFormat;
@@ -50,6 +51,7 @@ typedef struct DiagEngine {
     void (*include_chain)(void *ctx, SrcLoc **locs, int *n);
     void *include_chain_ctx;
     int max_errors;
+    uint32_t key;            /* current plan item (set by the preprocessor) */
 } DiagEngine;
 
 /* Warning option registry. */

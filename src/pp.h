@@ -16,6 +16,7 @@
 #include "lex.h"
 #include "srcmgr.h"
 #include "token.h"
+#include "plan.h"
 
 #define NO_EXP UINT32_MAX
 
@@ -194,6 +195,7 @@ typedef struct IncludeFrame {
     const char *presumed_name;
     int32_t line_delta;
     uint32_t line_adj_from;
+    bool system;             /* system header (as of this point) */
 } IncludeFrame;
 
 typedef struct PPOptions {
@@ -216,6 +218,16 @@ typedef struct MacroStackEnt {
 } MacroStackEnt;
 
 typedef enum { TRACK_NONE, TRACK_EXPANSIONS } TrackLevel;
+
+typedef enum {
+    PPM_FULL,       /* the reference engine: directives and text together */
+    PPM_PHASE_A,    /* directives only; text recorded as plan segments */
+    PPM_PLAN        /* phase B: text from a plan, directives as markers */
+} PPMode;
+
+/* Called in PPM_PLAN whenever the top-level reader reaches the start of a
+ * segment item; returns false to stop the preprocessor there. */
+typedef bool (*BoundaryFn)(void *ctx, size_t item, bool clean);
 
 /* Ident.kw values for directive names */
 enum {
@@ -248,6 +260,16 @@ typedef struct PP {
     bool in_if_expr;
     bool collecting_args;    /* arg pre-expansion: defer _Pragma */
     bool carry_space;
+    PPMode mode;
+    Plan *plan;              /* PHASE_A: being built; PLAN: being read */
+    PlanFrame *pframe;       /* PHASE_A: current frame snapshot */
+    size_t dir_item;         /* PHASE_A: DIR item of the running directive */
+    size_t plan_pos;         /* PLAN: next item */
+    bool seg_active;         /* PLAN: lexer is inside plan_pos - 1 */
+    bool reading_top;        /* PLAN: pp_next's own read (for clean points) */
+    bool diverged;           /* PLAN: hit something only FULL mode can do */
+    BoundaryFn on_boundary;
+    void *boundary_ctx;
     bool versioned;          /* phase B: look macros up by version */
     uint32_t version;
     bool check_versions;     /* debug: cross-check versioned lookups */
@@ -289,6 +311,13 @@ void pp_cmdline_undef(PP *pp, const char *name);
 void pp_cmdline_include(PP *pp, const char *path);
 
 bool pp_enter_main(PP *pp, const char *path);
+/* Phase A: run the whole TU in directives-only mode, filling `plan`. */
+bool pp_run_phase_a(PP *pp, Plan *plan);
+/* A phase-B worker sharing main's interner, sources and options (macros
+ * are read through versioned lookups; no builtins are created). */
+void pp_init_worker(PP *w, const PP *main, Arena *a, DiagEngine *d);
+/* Phase B: position a worker at a plan item. */
+void pp_plan_start(PP *pp, Plan *plan, size_t item);
 /* Next fully macro-expanded token; false at the end of the TU. */
 bool pp_next(PP *pp, Tok *out);
 
@@ -358,6 +387,7 @@ void pp_push_context(PP *pp, Context c);
 TokSrc pp_read_raw(PP *pp, Tok *t);
 void pp_unread(PP *pp, const Tok *t, TokSrc src);
 void pp_directive(PP *pp, const Tok *hash);
+void pp_plan_apply_dir(PP *pp, uint32_t item);
 void pp_macro_ref(PP *pp, const Tok *name, RefKind kind);
 bool pp_try_expand(PP *pp, Tok *name, TokSrc src);
 void pp_expand_into(PP *pp, TokSpan in, TokBuf *out);

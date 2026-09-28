@@ -14,6 +14,7 @@ void options_init(Options *o)
     o->pp.gnu_extensions = true;
     o->pp.lex.dollar_idents = true;
     o->linemarkers = true;
+    o->parallel = 'a';
 }
 
 static const char *arg_value(int argc, char **argv, int *i, const char *flag)
@@ -83,6 +84,22 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->opt_level = a[2] ? a[2] : '1';
     } else if (!strcmp(a, "-fcheck-macro-versions")) {
         o->check_versions = true;
+    } else if (!strncmp(a, "-fparallel=", 11)) {
+        const char *v = a + 11;
+        if (!strcmp(v, "on"))
+            o->parallel = 'y';
+        else if (!strcmp(v, "off"))
+            o->parallel = 'n';
+        else if (!strcmp(v, "auto"))
+            o->parallel = 'a';
+        else
+            fatal("-fparallel= expects on, off or auto (got '%s')", v);
+    } else if (!strncmp(a, "-fparallel-threads=", 19)) {
+        o->par_threads = atoi(a + 19);
+    } else if (!strncmp(a, "-fparallel-window=", 18)) {
+        o->par_window = (unsigned)strtoul(a + 18, NULL, 10);
+    } else if (!strncmp(a, "-fparallel-chunk=", 17)) {
+        o->par_chunk = (size_t)strtoul(a + 17, NULL, 10);
     } else if (!strcmp(a, "-P")) {
         o->linemarkers = false;
     } else if (!strcmp(a, "-o")) {

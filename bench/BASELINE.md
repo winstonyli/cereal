@@ -30,3 +30,24 @@ about a third of the time).
 Memory is now dominated by the mapped input file.
 On macro_heavy: `lint` takes 1.17 s / 158 MB, `index` 4.24 s / 435 MB (eager
 per-expansion argument and result text; to be made lazy).
+
+# Parallel `-E` (two-phase, 4 cores)
+
+Best of 3. `cereal` uses the default `-fparallel=auto`; `seq` is `-fparallel=off`.
+Auto goes parallel only for main files of at least 4 MB, so the last two rows
+are sequential.
+
+| workload | MB | cereal s | cereal MB | seq s | seq MB | gcc s | clang s | vs gcc |
+|---|---|---|---|---|---|---|---|---|
+| macro_heavy | 35.1 | 0.457 | 116 | 1.195 | 80 | 2.822 | 3.240 | 0.16x |
+| table | 68.7 | 0.259 | 133 | 0.741 | 68 | 3.245 | 0.969 | 0.08x |
+| comments | 57.0 | 0.214 | 105 | 0.239 | 94 | 0.683 | 0.296 | 0.31x |
+| skipped | 43.4 | 0.496 | 142 | 0.446 | 90 | 2.342 | 0.463 | 0.21x |
+| includes | 0.2 | 0.052 | 19 | 0.049 | 19 | 0.029 | 0.057 | 1.77x |
+| sysheaders | 0.0 | 0.030 | 10 | 0.030 | 10 | 0.054 | 0.071 | 0.56x |
+
+Speedup over sequential: 2.6x on macro_heavy and 2.9x on table. `comments`
+is limited by memory bandwidth. `skipped` is directive-dense (1.5M plan
+items for 5 MB of text), so sequential phase A takes 0.35 s of it; that
+case needs the plan-density heuristic or pipelined phases. Output is held
+in memory until the merge (the extra MB).
