@@ -44,11 +44,11 @@ void use(void)
 }
 DECL(z)
 /* parameters that are types or names, not expressions */
-#define NEW(A, T) ((T *)alloc((A), sizeof(T)))
-#define VEC(T) struct { T *data; int len; }
-#define FOREACH(arr, n, it) for (int it = 0; it < (n); it++)
-#define DECLARE_PTR(T, name) T *name = 0;
-#define CAST_TO(T, x) ((T)(x))
+#define NEW(A, T) ((T *)alloc((A), sizeof(T))) /* expect: unused-macros */
+#define VEC(T) struct { T *data; int len; } /* expect: unused-macros */
+#define FOREACH(arr, n, it) for (int it = 0; it < (n); it++) /* expect: unused-macros, macro-unused-param */
+#define DECLARE_PTR(T, name) T *name = 0; /* expect: unused-macros */
+#define CAST_TO(T, x) ((T)(x)) /* expect: unused-macros */
 #define MUL(a, b) (a * b) /* expect: macro-unparenthesized-param, macro-unparenthesized-param, unused-macros */
 #define SCALE(v) (factor * v) /* expect: macro-unparenthesized-param, unused-macros */
 #define XLIST(X) X(a) X(b) X(c) /* expect: unused-macros */

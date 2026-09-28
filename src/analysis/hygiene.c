@@ -318,6 +318,7 @@ static bool wrapped_in_parens(Token **v, int n)
 
 static void check_body(Analysis *a, Macro *m, Token **v, int n)
 {
+    bool *type_params = NEW_ARRAY(a->arena, bool, m->nparams + 1);
     int depth = 0, i, top_semis = 0, last_semi = -1;
     bool decl = false, stmt_kw = false, top_brace = false, top_else = false;
     bool binop = false, unbalanced = false, self_ref = false;
@@ -326,6 +327,9 @@ static void check_body(Analysis *a, Macro *m, Token **v, int n)
 
     if (n == 0)
         return;
+    classify_params(m, v, n, type_params);
+    if (param_index(m, v[0]) >= 0 && type_params[param_index(m, v[0])])
+        decl = true; /* T name ...: a declaration */
     for (i = 0; i < n; i++) {
         const Token *t = v[i], *prev = i ? v[i - 1] : NULL;
         if (t->kind == TK_IDENT && t->ident == m->name &&
