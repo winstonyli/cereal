@@ -196,7 +196,30 @@ issued once per file instead of once per line (GCC's behavior).
 3. **Done.** Phase A (directives only), producing the phase-A stream.
 4. Phase B workers, stitching, ordered merge, parallel `-E`, differential
    tests and a fuzzer. **Done** (see "As built").
-5. Thread-aware listeners (lint, index).
+5. **Done.** Thread-aware listeners: `lint` and `index` (and `query`) run
+   two-phase like `-E`. `par_run` takes *clients* (src/parclient.h):
+   - phase A's events reach the main listeners live;
+   - `fork` gives each worker private listener state;
+   - `prepare` runs per slice concurrently, filtering to the slice;
+   - `join` merges in slice order;
+   - `finish` completes.
+   Details:
+   - Expansion counts come from a per-worker log, joined for kept slices
+     only; workers never touch the shared counter.
+   - Hygiene's invocation checks report through the worker's engine.
+     Their "once per location" rule becomes a `once` tag, resolved by the
+     ordered diagnostic merge.
+   - The include analysis joins "macro used" marks.
+   - The index keeps worker records in place (the TU adopts worker arenas),
+     renumbers every expansion into sequential order concurrently, and
+     merges per-worker sorted refs.
+   Refs now have a total order and an exact global "one per (location,
+   macro)" dedupe. `_Pragma` diagnostics are located at the `_Pragma`, not
+   in scratch space. Output is byte-identical to sequential for all three
+   modes (tests/run.sh, fuzz_par.py). macro_heavy: lint 1.32s -> 0.74s;
+   index build 2.30s -> 1.23s. The JSON writer is now buffered: stdio
+   locks per call once threads exist, which made `index` output 2x
+   slower. Still sequential: the ref merge and JSON output.
 6. **Done.** TU pool (`-j`). All inputs of `-E` and `lint` run as jobs on
    one shared pool, which also runs the phase-B workers. The waiting thread
    helps, so the nesting cannot deadlock. Each job buffers its output and

@@ -57,15 +57,26 @@ typedef struct Worker {
     size_t end_off;                /* output length at the end */
     PrintState end_st;             /* printer state there */
     double t_begin, t_end;         /* stats */
+    void **wctx;                   /* per client */
+    VEC(struct ExpLog) exps;       /* expansions, for Macro counts */
 } Worker;
+
+typedef struct ExpLog {
+    uint32_t key;
+    Macro *m;
+} ExpLog;
 
 struct Par {
     TU *tu;
     Plan plan;
+    bool print;                    /* -E output */
     bool linemarkers;
+    const ParClient *clients;
+    int nclients;
     Worker *w;
     int nw;
     uint32_t abort;                /* atomic: a worker diverged */
+    ThreadPool *tp;                /* for the prepare step */
     double t0, t_a, t_b;           /* stats: start, phase A, phase B done */
 };
 
@@ -121,7 +132,8 @@ static bool on_boundary(void *ctx, size_t item, bool clean)
         memset(r, 0, sizeof *r);
         r->item = item;
         r->clean = clean;
-        w->pr.open = r;
+        if (P->print)
+            w->pr.open = r;
         atomic_store_u32(&w->nrecs, w->nrecs + 1);
     } else {
         w->pr.open = NULL;
@@ -129,7 +141,11 @@ static bool on_boundary(void *ctx, size_t item, bool clean)
     if (clean && item >= w->end_item) {
         Worker *m = owner_of(P, w, item);
         BoundRec *mr = m ? find_rec(m, atomic_load_u32(&m->nrecs), item) : NULL;
-        if (mr && mr->clean && atomic_load_u32(&mr->has_first) && mr->first.f) {
+        /* printing also needs the owner's next token, to re-render the
+         * transition from the predecessor's printer state */
+        if (mr && mr->clean &&
+            (!P->print ||
+             (atomic_load_u32(&mr->has_first) && mr->first.f))) {
             w->stopped = true;
             w->stop_item = item;
             w->next = m->idx;
@@ -144,12 +160,18 @@ static bool on_boundary(void *ctx, size_t item, bool clean)
 static void run_worker(void *arg)
 {
     Worker *w = arg;
+    Par *P = w->par;
     Tok t;
+    int c;
     w->t_begin = now();
     while (pp_next(&w->pp, &t)) {
         if (w->pp.diverged)
             break;
-        printer_token(&w->pr, &t);
+        if (P->print)
+            printer_token(&w->pr, &t);
+        for (c = 0; c < P->nclients; c++)
+            if (P->clients[c].token && w->wctx[c])
+                P->clients[c].token(w->wctx[c], &t);
     }
     if (w->pp.diverged)
         atomic_store_u32(&w->par->abort, 1);
@@ -162,10 +184,23 @@ static void run_worker(void *arg)
 
 /* ---- setup ----------------------------------------------------------- */
 
+static void log_expansion(void *ctx, const Expansion *e, const TokSpan *args,
+                          int nargs)
+{
+    Worker *w = ctx;
+    ExpLog l;
+    (void)args;
+    (void)nargs;
+    l.key = pp_event_key(&w->pp);
+    l.m = e->macro;
+    vec_push(&w->exps, l);
+}
+
 static void worker_init(Par *P, Worker *w, int idx, size_t start, size_t end,
                         uint32_t window)
 {
     TU *tu = P->tu;
+    int c;
     memset(w, 0, sizeof *w);
     w->par = P;
     w->idx = idx;
@@ -184,14 +219,38 @@ static void worker_init(Par *P, Worker *w, int idx, size_t start, size_t end,
     pp_init_worker(&w->pp, &tu->pp, &w->arena, &w->diag);
     w->pp.on_boundary = on_boundary;
     w->pp.boundary_ctx = w;
-    printer_init(&w->pr, &w->pp, &w->sink, P->linemarkers);
+    if (P->print)
+        printer_init(&w->pr, &w->pp, &w->sink, P->linemarkers);
+    if (tu->pp.track != TRACK_NONE) {
+        /* Macro.expansions: counted at the join, for kept slices only */
+        PPListener l;
+        memset(&l, 0, sizeof l);
+        l.ctx = w;
+        l.expand = log_expansion;
+        pp_add_listener(&w->pp, l);
+    }
+    w->wctx = xcalloc((size_t)P->nclients + 1, sizeof *w->wctx);
+    for (c = 0; c < P->nclients; c++)
+        if (P->clients[c].fork)
+            w->wctx[c] = P->clients[c].fork(P->clients[c].ctx, &w->pp);
     pp_plan_start(&w->pp, &P->plan, start);
 }
 
-static void worker_free(Worker *w)
+static void worker_free(Par *P, Worker *w)
 {
+    int c;
+    for (c = 0; c < P->nclients; c++)
+        if (w->wctx[c] && P->clients[c].release)
+            P->clients[c].release(P->clients[c].ctx, w->wctx[c]);
+    free(w->wctx);
+    vec_free(&w->exps);
     pp_free(&w->pp);
     sink_free(&w->sink);
+    if (P->nclients) {
+        /* joined results (expansions, strings) live on in place */
+        vec_push(&P->tu->adopted, w->arena);
+        memset(&w->arena, 0, sizeof w->arena);
+    }
     free(w->recs);
     diag_free(&w->diag);
     arena_free(&w->arena);
@@ -296,9 +355,81 @@ static void merge_diags(Par *P, const size_t *slice_from,
     }
     qsort(refs.data, refs.len, sizeof *refs.data, diagref_cmp);
     tu->diag.all.len = 0;
-    for (i = 0; i < refs.len; i++)
-        vec_push(&tu->diag.all, refs.data[i].d);
+    for (i = 0; i < refs.len; i++) {
+        Diagnostic *d = refs.data[i].d;
+        if (d->once) { /* first in sequential order wins */
+            size_t k;
+            bool dup = false;
+            for (k = 0; k < tu->diag.all.len && !dup; k++)
+                dup = tu->diag.all.data[k]->once == d->once &&
+                      tu->diag.all.data[k]->loc == d->loc;
+            if (dup) {
+                if (d->level >= DL_ERROR)
+                    tu->diag.nerrors--;
+                else if (d->level == DL_WARNING)
+                    tu->diag.nwarnings--;
+                continue;
+            }
+        }
+        vec_push(&tu->diag.all, d);
+    }
     vec_free(&refs);
+}
+
+typedef struct PrepJob {
+    const ParClient *c;
+    void *wctx;
+    uint32_t from, to;
+} PrepJob;
+
+static void run_prepare(void *arg)
+{
+    PrepJob *j = arg;
+    j->c->prepare(j->wctx, j->from, j->to);
+}
+
+/* Text-driven results, slice by slice: expansion counts, then clients. */
+static void join_clients(Par *P, const size_t *from, const size_t *to,
+                         const int *order, int ns)
+{
+    int s, c;
+    PrepJob *jobs = xcalloc((size_t)(ns * P->nclients) + 1, sizeof *jobs);
+    size_t nj = 0, k;
+    for (s = 0; s < ns; s++)
+        for (c = 0; c < P->nclients; c++)
+            if (P->clients[c].prepare && P->w[order[s]].wctx[c]) {
+                jobs[nj].c = &P->clients[c];
+                jobs[nj].wctx = P->w[order[s]].wctx[c];
+                jobs[nj].from = (uint32_t)from[s];
+                jobs[nj].to = (uint32_t)to[s];
+                nj++;
+            }
+    if (nj > 1 && P->tp) {
+        JobGroup g;
+        group_init(&g);
+        for (k = 0; k < nj; k++)
+            pool_submit(P->tp, &g, run_prepare, &jobs[k]);
+        group_wait(P->tp, &g);
+        group_free(&g);
+    } else {
+        for (k = 0; k < nj; k++)
+            run_prepare(&jobs[k]);
+    }
+    free(jobs);
+    for (s = 0; s < ns; s++) {
+        Worker *w = &P->w[order[s]];
+        size_t i;
+        for (i = 0; i < w->exps.len; i++)
+            if (w->exps.data[i].key >= from[s] && w->exps.data[i].key < to[s])
+                w->exps.data[i].m->expansions++;
+        for (c = 0; c < P->nclients; c++)
+            if (P->clients[c].join && w->wctx[c])
+                P->clients[c].join(P->clients[c].ctx, w->wctx[c],
+                                   (uint32_t)from[s], (uint32_t)to[s]);
+    }
+    for (c = 0; c < P->nclients; c++)
+        if (P->clients[c].finish)
+            P->clients[c].finish(P->clients[c].ctx, P->tp);
 }
 
 static void write_merged(Par *P, FILE *out)
@@ -313,7 +444,8 @@ static void write_merged(Par *P, FILE *out)
     int ns = 0;
     memset(&o, 0, sizeof o);
     o.fp = out;
-    sink_put(&o, cur->sink.buf, cur->end_off);
+    if (P->print)
+        sink_put(&o, cur->sink.buf, cur->end_off);
     S = cur->end_st;
     from[0] = 0;
     order[0] = 0;
@@ -325,18 +457,22 @@ static void write_merged(Par *P, FILE *out)
         if (!cur->stopped)
             break;
         m = &P->w[cur->next];
-        r = find_rec(m, m->nrecs, cur->stop_item);
-        st = S;
-        if (r->events_pre)
-            st.pending_flag = r->pre_last;
-        print_transition(&tu->sm, &tu->in, P->linemarkers, &st, &r->first, &o);
-        sink_put(&o, m->sink.buf + r->first_body, m->end_off - r->first_body);
-        S = m->end_st;
+        if (P->print) {
+            r = find_rec(m, m->nrecs, cur->stop_item);
+            st = S;
+            if (r->events_pre)
+                st.pending_flag = r->pre_last;
+            print_transition(&tu->sm, &tu->in, P->linemarkers, &st, &r->first,
+                             &o);
+            sink_put(&o, m->sink.buf + r->first_body,
+                     m->end_off - r->first_body);
+            S = m->end_st;
+        }
         from[ns] = cur->stop_item;
         order[ns] = m->idx;
         cur = m;
     }
-    if (!S.at_bol)
+    if (P->print && !S.at_bol)
         sink_put(&o, "\n", 1);
     if (getenv("CEREAL_PAR_STATS")) {
         int k;
@@ -371,6 +507,7 @@ static void write_merged(Par *P, FILE *out)
     sink_flush(&o);
     sink_free(&o);
     merge_diags(P, from, to, order, ns);
+    join_clients(P, from, to, order, ns);
     free(from);
     free(to);
     free(order);
@@ -378,8 +515,27 @@ static void write_merged(Par *P, FILE *out)
 
 /* ---- entry ----------------------------------------------------------- */
 
+bool par_worth_it(const char *path, const ParOptions *po)
+{
+    /* the target is large generated files: don't pay phase A on the way
+     * to a sequential run for everything else */
+    struct stat sb;
+    size_t min = po->min_bytes ? po->min_bytes : DEFAULT_MIN_BYTES;
+    if (po->force)
+        return true;
+    return (po->threads > 0 ? po->threads : cpu_count()) > 1 &&
+           stat(path, &sb) == 0 && (size_t)sb.st_size >= min;
+}
+
 ParResult par_write_output(TU *tu, const char *path, FILE *out,
                            bool linemarkers, const ParOptions *po)
+{
+    return par_run(tu, path, out, linemarkers, po, NULL, 0);
+}
+
+ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
+                  const ParOptions *po, const ParClient *clients,
+                  int nclients)
 {
     Par P;
     ThreadPool pool;
@@ -388,19 +544,15 @@ ParResult par_write_output(TU *tu, const char *path, FILE *out,
     int want, i;
     ParResult res = PAR_DONE;
 
-    if (!po->force) {
-        /* the target is large generated files: don't pay phase A on the
-         * way to a sequential run for everything else */
-        struct stat sb;
-        size_t min = po->min_bytes ? po->min_bytes : DEFAULT_MIN_BYTES;
-        if ((po->threads > 0 ? po->threads : cpu_count()) <= 1 ||
-            stat(path, &sb) != 0 || (size_t)sb.st_size < min)
-            return PAR_FALLBACK;
-    }
+    if (!par_worth_it(path, po))
+        return PAR_FALLBACK;
     memset(&P, 0, sizeof P);
     P.t0 = now();
     P.tu = tu;
+    P.print = out != NULL;
     P.linemarkers = linemarkers;
+    P.clients = clients;
+    P.nclients = nclients;
     P.plan.chunk = po->chunk ? po->chunk : DEFAULT_CHUNK;
     tu->pp.mode = PPM_PHASE_A;
     tu->pp.plan = &P.plan;
@@ -447,8 +599,7 @@ ParResult par_write_output(TU *tu, const char *path, FILE *out,
             pool_submit(tp, &g, run_worker, &P.w[i]);
         group_wait(tp, &g);
         group_free(&g);
-        if (tp == &pool)
-            pool_free(&pool);
+        P.tp = tp;
     }
 
     P.t_b = now();
@@ -456,9 +607,15 @@ ParResult par_write_output(TU *tu, const char *path, FILE *out,
         res = PAR_FALLBACK;
     else
         write_merged(&P, out);
+    if (P.tp == &pool)
+        pool_free(&pool);
 
+    if (getenv("CEREAL_PAR_STATS"))
+        fprintf(stderr, "par: merge and joins done at %.3fs\n", now() - P.t0);
     for (i = 0; i < P.nw; i++)
-        worker_free(&P.w[i]);
+        worker_free(&P, &P.w[i]);
+    if (getenv("CEREAL_PAR_STATS"))
+        fprintf(stderr, "par: workers freed at %.3fs\n", now() - P.t0);
     free(P.w);
     plan_free(&P.plan);
     tu->pp.plan = NULL;

@@ -50,6 +50,18 @@ static ThreadPool *shared_pool(Options *o)
     return &pool;
 }
 
+static ParOptions par_options(Options *o)
+{
+    ParOptions po;
+    memset(&po, 0, sizeof po);
+    po.threads = o->par_threads;
+    po.chunk = o->par_chunk;
+    po.window = o->par_window;
+    po.force = o->parallel == 'y';
+    po.pool = shared_pool(o);
+    return po;
+}
+
 /* One translation unit of a mode: text to out, diagnostics to err. */
 typedef int (*TuFn)(Options *o, const char *path, FILE *out, FILE *err);
 
@@ -60,15 +72,8 @@ static int preprocess_one(Options *o, const char *path, FILE *out, FILE *err)
     tu_init(&tu, o);
     tu.diag.out = err;
     if (o->parallel != 'n') {
-        ParOptions po;
-        ParResult r;
-        memset(&po, 0, sizeof po);
-        po.threads = o->par_threads;
-        po.chunk = o->par_chunk;
-        po.window = o->par_window;
-        po.force = o->parallel == 'y';
-        po.pool = shared_pool(o);
-        r = par_write_output(&tu, path, out, o->linemarkers, &po);
+        ParOptions po = par_options(o);
+        ParResult r = par_write_output(&tu, path, out, o->linemarkers, &po);
         if (r != PAR_FALLBACK)
             goto done;
         tu_free(&tu); /* diverged or not worth it: start over */
@@ -92,10 +97,25 @@ static int lint_one(Options *o, const char *path, FILE *out, FILE *err)
     tu.diag.out = err;
     memset(&an, 0, sizeof an);
     analysis_attach(&an, &tu.pp);
+    if (o->parallel != 'n') {
+        ParOptions po = par_options(o);
+        ParClient c = analysis_par_client(&an);
+        ParResult r = par_run(&tu, path, NULL, false, &po, &c, 1);
+        if (r == PAR_DONE)
+            analysis_finish(&an);
+        if (r != PAR_FALLBACK)
+            goto done;
+        tu_free(&tu); /* diverged or not worth it: start over */
+        tu_init(&tu, o);
+        tu.diag.out = err;
+        memset(&an, 0, sizeof an);
+        analysis_attach(&an, &tu.pp);
+    }
     if (tu_begin(&tu, path)) {
         tu_drain(&tu);
         analysis_finish(&an);
     }
+done:
     rc = finish(&tu, out);
     tu_free(&tu);
     return rc;
@@ -224,6 +244,29 @@ static int mode_lint(Options *o)
     return run_inputs(o, lint_one, stdout);
 }
 
+/* Initialize tu and ix and index the TU (in parallel when worth it).
+ * False if the input could not be opened. */
+static bool index_tu(Options *o, TU *tu, Index *ix, const char *path)
+{
+    tu_init(tu, o);
+    index_init(ix, &tu->pp);
+    if (o->parallel != 'n') {
+        ParOptions po = par_options(o);
+        ParClient c = index_par_client(ix);
+        ParResult r = par_run(tu, path, NULL, false, &po, &c, 1);
+        if (r != PAR_FALLBACK)
+            return r == PAR_DONE;
+        index_free(ix); /* diverged or not worth it: start over */
+        tu_free(tu);
+        tu_init(tu, o);
+        index_init(ix, &tu->pp);
+    }
+    if (!tu_begin(tu, path))
+        return false;
+    index_run(ix);
+    return true;
+}
+
 static const char *loc_str(TU *tu, SrcLoc loc)
 {
     SrcFile *f = srcmgr_file_of(&tu->sm, loc);
@@ -243,11 +286,8 @@ static int mode_index(Options *o, bool all, bool check_graph)
         fputs("cereal: index needs exactly one input file\n", stderr);
         return 2;
     }
-    tu_init(&tu, o);
-    index_init(&ix, &tu.pp);
     rc = 0;
-    if (tu_begin(&tu, o->inputs.data[0])) {
-        index_run(&ix);
+    if (index_tu(o, &tu, &ix, o->inputs.data[0])) {
         if (check_graph) {
             MacroGraph g;
             size_t checked, bad;
@@ -340,14 +380,13 @@ static int mode_query(Options *o, const char *kind, const char *at)
     line = (unsigned)atoi(p1 + 1);
     col = (unsigned)atoi(p2 + 1);
 
-    tu_init(&tu, o);
-    index_init(&ix, &tu.pp);
-    if (!tu_begin(&tu, o->inputs.data[0])) {
+    if (!index_tu(o, &tu, &ix, o->inputs.data[0])) {
         diag_flush(&tu.diag);
+        index_free(&ix);
+        tu_free(&tu);
         free(file);
         return 1;
     }
-    index_run(&ix);
     f = index_find_file(&ix, file);
     if (!f) {
         fprintf(stderr, "cereal: '%s' is not part of this translation unit\n",

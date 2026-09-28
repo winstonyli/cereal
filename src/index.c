@@ -73,13 +73,8 @@ static void on_expand(void *ctx, const Expansion *ce, const TokSpan *args,
         flags |= IREF_FROM_ARG;
     if (e->name_flags & TF_PASTED)
         flags |= IREF_PASTED;
-    if (flags & (IREF_IN_BODY | IREF_PASTED)) {
-        /* dedupe: one ref per (location, macro) */
-        size_t k;
-        for (k = ix->refs.len; k-- > 0 && k + 64 > ix->refs.len;)
-            if (ix->refs.data[k].loc == loc && ix->refs.data[k].macro == e->macro)
-                return;
-    }
+    x->key = pp_event_key(ix->pp);
+    /* one ref per (location, macro) for body and ## refs: see ensure_sorted */
     add_ref(ix, e->macro->name, e->macro, loc,
             (flags & IREF_PASTED) ? 0 : e->macro->name->len, REF_EXPANSION,
             flags, e);
@@ -230,37 +225,375 @@ void index_free(Index *ix)
     vec_free(&ix->inactive);
     vec_free(&ix->blocks);
     vec_free(&ix->open_blocks);
+    vec_free(&ix->prep_kept);
+    vec_free(&ix->prep_refs);
+    vec_free(&ix->runs);
+}
+
+/* An output token: part of its file-level expansion's text (hover). */
+static void index_token(Index *ix, const Tok *t)
+{
+    IdxExp *x;
+    if (ix->pp->out_root == NO_EXP)
+        return;
+    x = exp_of(ix, ix->pp->expansions.data[ix->pp->out_root]);
+    if (x->text.len && (t->flags & (TF_SPACE | TF_BOL)))
+        sb_putc(&x->text, ' ');
+    sb_putn(&x->text, pp_text(ix->pp, t), t->len);
 }
 
 void index_run(Index *ix)
 {
     Tok t;
-    while (pp_next(ix->pp, &t)) {
-        IdxExp *x;
-        if (ix->pp->out_root == NO_EXP)
+    while (pp_next(ix->pp, &t))
+        index_token(ix, &t);
+}
+
+/* ---- parallel runs -------------------------------------------------- *
+ * Phase A reaches the main index live: definitions, directives, includes,
+ * checkpoints, #if expansions.  Each worker gets its own index listening
+ * only to expansions and output tokens.  A join copies a worker's
+ * expansions and refs for its slice into the main index; finish then
+ * renumbers every expansion in sequential order (by plan item, worker
+ * events first at a tie, as for diagnostics), so ids, the expansion list
+ * and everything derived from them match a sequential run. */
+
+static int ref_cmp(const void *a, const void *b);
+static void dedupe_refs(Index *ix);
+
+static void *ix_fork(void *ctx, PP *wpp)
+{
+    Index *w = NEW(wpp->arena, Index);
+    PPListener l;
+    (void)ctx;
+    memset(w, 0, sizeof *w);
+    w->pp = wpp;
+    w->arena = wpp->arena;
+    w->sm = wpp->sm;
+    memset(&l, 0, sizeof l);
+    l.ctx = w;
+    l.expand = on_expand;
+    pp_add_listener(wpp, l);
+    return w;
+}
+
+static void ix_token(void *wctx, const Tok *t)
+{
+    index_token(wctx, t);
+}
+
+/* The worker's arena outlives it (the runner hands it to the TU), so its
+ * records are joined in place.  prepare (concurrent, per slice) keeps what
+ * belongs to the slice and sorts its refs; join just collects. */
+static void ix_prepare(void *wctx, uint32_t from, uint32_t to)
+{
+    Index *w = wctx;
+    size_t n = w->exps.len, i;
+    bool *kept = xcalloc(n + 1, sizeof *kept);
+    for (i = 0; i < n; i++) {
+        IdxExp *x = w->exps.data[i];
+        IdxJoined j;
+        if (!x || x->key < from || x->key >= to)
             continue;
-        x = exp_of(ix, ix->pp->expansions.data[ix->pp->out_root]);
-        if (x->text.len && (t.flags & (TF_SPACE | TF_BOL)))
-            sb_putc(&x->text, ' ');
-        sb_putn(&x->text, pp_text(ix->pp, &t), t.len);
+        kept[i] = true;
+        /* a tree lies within one slice (stitches are clean), so the
+         * parents and roots of kept expansions are kept too */
+        j.x = x;
+        j.parent = x->e->parent == NO_EXP ? NULL
+                                          : w->pp->expansions.data[x->e->parent];
+        j.root = w->pp->expansions.data[x->e->root];
+        vec_push(&w->prep_kept, j);
+    }
+    for (i = 0; i < w->refs.len; i++) {
+        IdxRef *r = &w->refs.data[i];
+        if (r->exp && r->exp->id < n && kept[r->exp->id])
+            vec_push(&w->prep_refs, *r);
+    }
+    /* worker-local expansion ids order like the final ones */
+    if (w->prep_refs.len)
+        qsort(w->prep_refs.data, w->prep_refs.len, sizeof(IdxRef), ref_cmp);
+    for (i = 0; i < n; i++)
+        if (kept[i])
+            w->exps.data[i] = NULL; /* owned by the main index now */
+    free(kept);
+}
+
+static void ix_join(void *ctx, void *wctx, uint32_t from, uint32_t to)
+{
+    Index *ix = ctx;
+    (void)from;
+    (void)to;
+    vec_push(&ix->runs, (Index *)wctx); /* in slice order; finish does it */
+    ix->sorted = false;
+}
+
+/* Merge the sorted ref runs: phase A's own and each worker's. */
+static void merge_refs(Index *ix)
+{
+    size_t nr = ix->runs.len + 1, total = ix->refs.len, r;
+    const IdxRef **cur = xcalloc(nr, sizeof *cur), **end = xcalloc(nr, sizeof *end);
+    IdxRef *own = NULL, *out;
+    size_t o = 0;
+    if (ix->refs.len) {
+        own = xmalloc(sizeof(IdxRef) * ix->refs.len);
+        memcpy(own, ix->refs.data, sizeof(IdxRef) * ix->refs.len);
+        qsort(own, ix->refs.len, sizeof(IdxRef), ref_cmp);
+    }
+    cur[0] = own;
+    end[0] = own ? own + ix->refs.len : NULL;
+    for (r = 1; r < nr; r++) {
+        Index *w = ix->runs.data[r - 1];
+        cur[r] = w->prep_refs.data;
+        end[r] = w->prep_refs.data + w->prep_refs.len;
+        total += w->prep_refs.len;
+    }
+    out = xmalloc(sizeof(IdxRef) * (total + 1));
+    for (;;) {
+        size_t best = nr;
+        for (r = 0; r < nr; r++)
+            if (cur[r] != end[r] &&
+                (best == nr || ref_cmp(cur[r], cur[best]) < 0))
+                best = r;
+        if (best == nr)
+            break;
+        out[o++] = *cur[best]++;
+    }
+    vec_free(&ix->refs);
+    ix->refs.data = out;
+    ix->refs.len = o;
+    ix->refs.cap = total + 1;
+    free(own);
+    free(cur);
+    free(end);
+    dedupe_refs(ix);
+    vec_free(&ix->runs);
+    ix->sorted = true;
+}
+
+/* Sequential order is by plan item, a worker's expansions before phase
+ * A's at a tie.  The workers' runs are key-sorted and consecutive (a
+ * worker's plan position only grows; slices are joined in order), phase
+ * A's list likewise and short; so a worker expansion's final id is its
+ * position among the workers' plus the number of phase A expansions with
+ * a smaller key, and a phase A expansion's the mirror image.  Ids are
+ * assigned per run concurrently, then links are rewritten concurrently
+ * (every write goes to a distinct slot). */
+typedef struct RenumJob {
+    Index *ix;
+    Index *run;
+    size_t base;               /* workers' expansions before this run */
+    const uint32_t *akeys;     /* phase A keys, sorted */
+    size_t na;
+    int pass;
+} RenumJob;
+
+static size_t count_below(const uint32_t *k, size_t n, uint32_t key)
+{
+    size_t lo = 0, hi = n;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        if (k[mid] < key)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+static void renum_run(void *arg)
+{
+    RenumJob *j = arg;
+    PP *pp = j->ix->pp;
+    size_t i, below = 0;
+    uint32_t last = 0;
+    for (i = 0; i < j->run->prep_kept.len; i++) {
+        IdxJoined *e = &j->run->prep_kept.data[i];
+        IdxExp *x = e->x;
+        if (j->pass == 0) {
+            if (i == 0 || x->key != last) {
+                below = count_below(j->akeys, j->na, x->key);
+                last = x->key;
+            }
+            x->e->id = (uint32_t)(j->base + i + below);
+        } else {
+            x->e->parent = e->parent ? e->parent->id : NO_EXP;
+            x->e->root = e->root->id;
+            x->root = e->root;
+            pp->expansions.data[x->e->id] = x->e;
+            j->ix->exps.data[x->e->id] = x;
+        }
     }
 }
 
+static void ix_finish(void *ctx, ThreadPool *pool)
+{
+    Index *ix = ctx;
+    PP *pp = ix->pp;
+    VEC(IdxExp *) a = {0};
+    VEC(Expansion *) aparent = {0}, aroot = {0};
+    uint32_t *akeys;
+    RenumJob *jobs;
+    size_t i, nw = 0, total, r;
+    int pass;
+    for (i = 0; i < ix->exps.len; i++) /* phase A: #if and friends */
+        if (ix->exps.data[i]) {
+            IdxExp *x = ix->exps.data[i];
+            vec_push(&a, x);
+            vec_push(&aparent, x->e->parent == NO_EXP
+                                   ? NULL : pp->expansions.data[x->e->parent]);
+            vec_push(&aroot, pp->expansions.data[x->e->root]);
+        }
+    akeys = xmalloc(sizeof *akeys * (a.len + 1));
+    for (i = 0; i < a.len; i++)
+        akeys[i] = a.data[i]->key;
+    jobs = xcalloc(ix->runs.len + 1, sizeof *jobs);
+    for (r = 0; r < ix->runs.len; r++) {
+        jobs[r].ix = ix;
+        jobs[r].run = ix->runs.data[r];
+        jobs[r].base = nw;
+        jobs[r].akeys = akeys;
+        jobs[r].na = a.len;
+        nw += ix->runs.data[r]->prep_kept.len;
+    }
+    total = nw + a.len;
+    /* phase A ids: position plus the workers' expansions with key <= own */
+    for (i = 0; i < a.len; i++) {
+        size_t upto = 0; /* workers' expansions with key <= akeys[i] */
+        for (r = 0; r < ix->runs.len; r++) {
+            Index *w = ix->runs.data[r];
+            size_t n = w->prep_kept.len, lo = 0, hi = n;
+            while (lo < hi) {
+                size_t mid = lo + (hi - lo) / 2;
+                if (w->prep_kept.data[mid].x->key <= akeys[i])
+                    lo = mid + 1;
+                else
+                    hi = mid;
+            }
+            upto += lo;
+            if (lo < n)
+                break; /* later runs have larger keys */
+        }
+        a.data[i]->e->id = (uint32_t)(i + upto);
+    }
+    vec_free(&pp->expansions);
+    vec_free(&ix->exps);
+    pp->expansions.data = xcalloc(total + 1, sizeof(Expansion *));
+    pp->expansions.len = pp->expansions.cap = total;
+    ix->exps.data = xcalloc(total + 1, sizeof(IdxExp *));
+    ix->exps.len = ix->exps.cap = total;
+    for (pass = 0; pass < 2; pass++) {
+        for (r = 0; r < ix->runs.len; r++)
+            jobs[r].pass = pass;
+        if (pool && ix->runs.len > 1) {
+            JobGroup g;
+            group_init(&g);
+            for (r = 0; r < ix->runs.len; r++)
+                pool_submit(pool, &g, renum_run, &jobs[r]);
+            group_wait(pool, &g);
+            group_free(&g);
+        } else {
+            for (r = 0; r < ix->runs.len; r++)
+                renum_run(&jobs[r]);
+        }
+        if (pass == 1)
+            for (i = 0; i < a.len; i++) {
+                IdxExp *x = a.data[i];
+                x->e->parent = aparent.data[i] ? aparent.data[i]->id : NO_EXP;
+                x->e->root = aroot.data[i]->id;
+                x->root = aroot.data[i];
+                pp->expansions.data[x->e->id] = x->e;
+                ix->exps.data[x->e->id] = x;
+            }
+    }
+    free(jobs);
+    free(akeys);
+    vec_free(&a);
+    vec_free(&aparent);
+    vec_free(&aroot);
+    merge_refs(ix); /* ids are final now */
+}
+
+static void ix_release(void *ctx, void *wctx)
+{
+    (void)ctx;
+    index_free(wctx);
+}
+
+ParClient index_par_client(Index *ix)
+{
+    ParClient c;
+    memset(&c, 0, sizeof c);
+    c.ctx = ix;
+    c.fork = ix_fork;
+    c.token = ix_token;
+    c.prepare = ix_prepare;
+    c.join = ix_join;
+    c.finish = ix_finish;
+    c.release = ix_release;
+    return c;
+}
+
+
 /* ---- queries -------------------------------------------------------- */
 
+/* A total order (the result must not depend on the order refs were
+ * recorded in, which differs in parallel runs): location, then kind and
+ * definition, then the expansion's sequential number. */
 static int ref_cmp(const void *a, const void *b)
 {
     const IdxRef *x = a, *y = b;
-    return x->loc < y->loc ? -1 : x->loc > y->loc;
+    uint32_t xm = x->macro ? x->macro->id : UINT32_MAX,
+             ym = y->macro ? y->macro->id : UINT32_MAX;
+    uint32_t xe = x->exp ? x->exp->id : UINT32_MAX,
+             ye = y->exp ? y->exp->id : UINT32_MAX;
+    if (x->loc != y->loc)
+        return x->loc < y->loc ? -1 : 1;
+    if (x->kind != y->kind)
+        return x->kind < y->kind ? -1 : 1;
+    if (xm != ym)
+        return xm < ym ? -1 : 1;
+    if (xe != ye)
+        return xe < ye ? -1 : 1;
+    if (x->flags != y->flags)
+        return x->flags < y->flags ? -1 : 1;
+    if (x->len != y->len)
+        return x->len < y->len ? -1 : 1;
+    return x->name->id < y->name->id ? -1 : x->name->id > y->name->id;
+}
+
+/* A body token or ## result names one macro once per location, however
+ * often it was expanded: keep the first expansion's ref (refs sorted). */
+static void dedupe_refs(Index *ix)
+{
+    size_t i, w = 0;
+    for (i = 0; i < ix->refs.len; i++) {
+        IdxRef *r = &ix->refs.data[i];
+        if (w && (r->flags & (IREF_IN_BODY | IREF_PASTED))) {
+            size_t k;
+            bool dup = false;
+            for (k = w; k-- > 0 && ix->refs.data[k].loc == r->loc;)
+                if (ix->refs.data[k].macro == r->macro &&
+                    ix->refs.data[k].kind == r->kind &&
+                    (ix->refs.data[k].flags & (IREF_IN_BODY | IREF_PASTED))) {
+                    dup = true;
+                    break;
+                }
+            if (dup)
+                continue;
+        }
+        ix->refs.data[w++] = *r;
+    }
+    ix->refs.len = w;
 }
 
 static void ensure_sorted(Index *ix)
 {
-    if (!ix->sorted) {
-        if (ix->refs.len)
-            qsort(ix->refs.data, ix->refs.len, sizeof(IdxRef), ref_cmp);
-        ix->sorted = true;
-    }
+    if (ix->sorted)
+        return;
+    if (ix->refs.len)
+        qsort(ix->refs.data, ix->refs.len, sizeof(IdxRef), ref_cmp);
+    dedupe_refs(ix);
+    ix->sorted = true;
 }
 
 static void add_candidate(IdxTarget *t, Macro *m)

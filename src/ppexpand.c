@@ -697,11 +697,12 @@ static bool builtin_query(PP *pp, Macro *m, const Tok *name, bool *result)
     return true;
 }
 
-/* Only the index reads the counts; untracked workers must not share-write
- * a hot cache line per expansion. */
+/* Only listeners read the counts (the index, -Wunused-macros); without
+ * them, nothing share-writes a hot cache line per expansion. */
 static void count_expansion(PP *pp, Macro *m)
 {
-    if (pp->track != TRACK_NONE)
+    /* parallel workers: counted at the join, for kept slices only */
+    if (pp->track != TRACK_NONE && pp->mode != PPM_PLAN)
         atomic_add_u32(&m->expansions, 1);
 }
 
@@ -824,28 +825,30 @@ static bool word(PP *pp, TokSpan s, uint32_t i, const char *w)
 /* Pragmas whose effect is on preprocessor state (not just output). */
 /* #pragma GCC dependency "file" [text]: warn if file is newer than the
  * current file. */
-static void pragma_dependency(PP *pp, TokSpan toks)
+static void pragma_dependency(PP *pp, TokSpan toks, SrcLoc at)
 {
+    SrcFile *tf = srcmgr_file_of(pp->sm, toks.t[0].loc);
+    bool sc = !tf || tf->kind == SF_SCRATCH; /* from _Pragma */
     const Tok *nt = toks.n > 2 ? &toks.t[2] : NULL;
     char *name;
     SrcFile *f;
     int di;
     struct stat a, b;
     if (!nt || nt->kind != TK_STRING || pp_text(pp, nt)[0] != '"') {
-        diag_report(pp->diag, DL_ERROR, "", nt ? nt->loc : toks.t[1].loc,
+        diag_report(pp->diag, DL_ERROR, "", sc ? at : nt ? nt->loc : toks.t[1].loc,
                     "#pragma dependency expects \"FILENAME\"");
         return;
     }
     name = arena_strndup(pp->arena, pp_text(pp, nt) + 1, nt->len - 2);
     f = pp_find_include(pp, name, false, false, &di);
     if (!f) {
-        diag_report(pp->diag, DL_ERROR, "", nt->loc, "'%s' file not found",
+        diag_report(pp->diag, DL_ERROR, "", sc ? at : nt->loc, "'%s' file not found",
                     name);
         return;
     }
     if (stat(f->path, &a) == 0 && stat(pp->inc->file->path, &b) == 0 &&
         a.st_mtime > b.st_mtime)
-        diag_report(pp->diag, DL_WARNING, "", nt->loc,
+        diag_report(pp->diag, DL_WARNING, "", sc ? at : nt->loc,
                     "current file is older than %s", name);
 }
 
@@ -857,8 +860,15 @@ static bool state_pragma(PP *pp, TokSpan toks)
             (word(pp, toks, 1, "system_header") || word(pp, toks, 1, "poison")));
 }
 
+/* A _Pragma operand is lexed from scratch space: report (and record) such
+ * a pragma at the _Pragma itself, like GCC; per-thread scratch offsets
+ * would also make locations differ between runs. */
+#define PLOC(t) (from_scratch ? loc : (t)->loc)
+
 void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
 {
+    SrcFile *tf = toks.n ? srcmgr_file_of(pp->sm, toks.t[0].loc) : NULL;
+    bool from_scratch = !tf || tf->kind == SF_SCRATCH;
     bool emit = true;
     uint32_t i;
     if (pp->mode == PPM_PLAN && state_pragma(pp, toks)) {
@@ -869,7 +879,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
     PP_EMIT(pp, pragma, loc, toks);
     if (word(pp, toks, 0, "once")) {
         if (pp->inc->prev == NULL)
-            diag_report(pp->diag, DL_WARNING, "", toks.t[0].loc,
+            diag_report(pp->diag, DL_WARNING, "", PLOC(&toks.t[0]),
                         "#pragma once in main file");
         pp->inc->file->pragma_once = true;
         emit = false;
@@ -879,7 +889,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             !(word(pp, toks, 2, "ON") || word(pp, toks, 2, "OFF") ||
               word(pp, toks, 2, "DEFAULT")) ||
             toks.n != 3)
-            diag_report(pp->diag, DL_WARNING, "stdc-pragma", toks.t[0].loc,
+            diag_report(pp->diag, DL_WARNING, "stdc-pragma", PLOC(&toks.t[0]),
                         "malformed or unknown STDC pragma (C99 6.10.6p2)");
     } else if (word(pp, toks, 0, "GCC")) {
         if (word(pp, toks, 1, "system_header")) {
@@ -887,14 +897,14 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                 pp->inc->file->system_header = true;
                 pp->inc->system = true;
             } else {
-                diag_report(pp->diag, DL_WARNING, "", toks.t[1].loc,
+                diag_report(pp->diag, DL_WARNING, "", PLOC(&toks.t[1]),
                             "#pragma system_header ignored outside include "
                             "file");
             }
             emit = false;
         } else if (word(pp, toks, 1, "dependency")) {
             emit = false;
-            pragma_dependency(pp, toks);
+            pragma_dependency(pp, toks, loc);
         } else if (word(pp, toks, 1, "poison")) {
             emit = false;
             for (i = 2; i < toks.n; i++)
@@ -914,7 +924,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             if (k < toks.n) {
                 msg = &toks.t[k];
                 diag_report(pp->diag, err ? DL_ERROR : DL_WARNING,
-                            err ? "" : "pp-warning-directive", msg->loc,
+                            err ? "" : "pp-warning-directive", PLOC(msg),
                             "%.*s",
                             msg->kind == TK_STRING ? (int)msg->len - 2 : (int)msg->len,
                             pp_text(pp, msg) + (msg->kind == TK_STRING));
@@ -947,13 +957,13 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                 pe = &(*pe)->next;
             if (!*pe) {
                 diag_report(pp->diag, DL_WARNING, "unbalanced-push-pop-macro",
-                            toks.t[0].loc, "pop_macro(\"%s\") without push_macro",
+                            PLOC(&toks.t[0]), "pop_macro(\"%s\") without push_macro",
                             id->str);
             } else {
                 Macro *restored = (*pe)->macro, *cur = id->macro;
                 uint32_t ev = pp->seq++;
                 if (cur) {
-                    cur->undef_loc = toks.t[0].loc;
+                    cur->undef_loc = PLOC(&toks.t[0]);
                     cur->undef_seq = ev;
                 }
                 if (restored) {
@@ -975,11 +985,11 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                 }
                 id->macro = restored;
                 *pe = (*pe)->next;
-                PP_EMIT(pp, checkpoint, toks.t[0].loc, pp->seq);
+                PP_EMIT(pp, checkpoint, PLOC(&toks.t[0]), pp->seq);
             }
         }
     } else if (toks.n) {
-        diag_report(pp->diag, DL_WARNING, "unknown-pragma", toks.t[0].loc,
+        diag_report(pp->diag, DL_WARNING, "unknown-pragma", PLOC(&toks.t[0]),
                     "unknown pragma ignored");
     }
     if (emit) {
@@ -993,6 +1003,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
         }
         pp_emit_line(pp, sb->data, sb->len, loc);
     }
+#undef PLOC
 }
 
 /* A directive line for the output (#pragma, #ident): text after the '#'. */

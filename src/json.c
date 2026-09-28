@@ -9,14 +9,37 @@ void json_init(JsonWriter *w, FILE *out)
     w->out = out;
 }
 
+/* Buffered: stdio locks every call once threads exist, and JSON is
+ * written a character at a time. */
+static void flush_(JsonWriter *w)
+{
+    if (w->len) {
+        fwrite(w->buf, 1, w->len, w->out);
+        w->len = 0;
+    }
+}
+
+static void put_(JsonWriter *w, char c)
+{
+    if (w->len == sizeof w->buf)
+        flush_(w);
+    w->buf[w->len++] = c;
+}
+
+static void puts_(JsonWriter *w, const char *s)
+{
+    while (*s)
+        put_(w, *s++);
+}
+
 static void indent(JsonWriter *w)
 {
     int i;
     if (!w->pretty)
         return;
-    fputc('\n', w->out);
+    put_(w, '\n');
     for (i = 0; i < w->depth; i++)
-        fputs("  ", w->out);
+        puts_(w, "  ");
 }
 
 static void value_prefix(JsonWriter *w)
@@ -27,7 +50,7 @@ static void value_prefix(JsonWriter *w)
     }
     if (w->depth > 0) {
         if (w->need_comma[w->depth])
-            fputc(',', w->out);
+            put_(w, ',');
         w->need_comma[w->depth] = true;
         indent(w);
     }
@@ -36,7 +59,7 @@ static void value_prefix(JsonWriter *w)
 static void open_(JsonWriter *w, char c)
 {
     value_prefix(w);
-    fputc(c, w->out);
+    put_(w, c);
     if (w->depth < 63)
         w->depth++;
     w->need_comma[w->depth] = false;
@@ -48,7 +71,9 @@ static void close_(JsonWriter *w, char c)
     w->depth--;
     if (had)
         indent(w);
-    fputc(c, w->out);
+    put_(w, c);
+    if (w->depth == 0)
+        flush_(w); /* the document is complete */
 }
 
 void json_begin_object(JsonWriter *w) { open_(w, '{'); }
@@ -59,30 +84,34 @@ void json_end_array(JsonWriter *w) { close_(w, ']'); }
 static void raw_str(JsonWriter *w, const char *s, size_t n)
 {
     size_t i;
-    fputc('"', w->out);
+    put_(w, '"');
     for (i = 0; i < n; i++) {
         unsigned char c = (unsigned char)s[i];
         switch (c) {
-        case '"': fputs("\\\"", w->out); break;
-        case '\\': fputs("\\\\", w->out); break;
-        case '\n': fputs("\\n", w->out); break;
-        case '\r': fputs("\\r", w->out); break;
-        case '\t': fputs("\\t", w->out); break;
+        case '"': puts_(w, "\\\""); break;
+        case '\\': puts_(w, "\\\\"); break;
+        case '\n': puts_(w, "\\n"); break;
+        case '\r': puts_(w, "\\r"); break;
+        case '\t': puts_(w, "\\t"); break;
         default:
             if (c < 0x20)
-                fprintf(w->out, "\\u%04x", c);
+            {
+                char u[8];
+                sprintf(u, "\\u%04x", c);
+                puts_(w, u);
+            }
             else
-                fputc(c, w->out);
+                put_(w, c);
         }
     }
-    fputc('"', w->out);
+    put_(w, '"');
 }
 
 void json_key(JsonWriter *w, const char *k)
 {
     value_prefix(w);
     raw_str(w, k, strlen(k));
-    fputc(':', w->out);
+    put_(w, ':');
     w->after_key = true;
 }
 
@@ -100,17 +129,21 @@ void json_strn(JsonWriter *w, const char *s, size_t n)
 void json_int(JsonWriter *w, long long v)
 {
     value_prefix(w);
-    fprintf(w->out, "%lld", v);
+    {
+        char num[32];
+        sprintf(num, "%lld", v);
+        puts_(w, num);
+    }
 }
 
 void json_bool(JsonWriter *w, bool v)
 {
     value_prefix(w);
-    fputs(v ? "true" : "false", w->out);
+    puts_(w, v ? "true" : "false");
 }
 
 void json_null(JsonWriter *w)
 {
     value_prefix(w);
-    fputs("null", w->out);
+    puts_(w, "null");
 }

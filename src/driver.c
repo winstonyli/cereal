@@ -238,4 +238,7 @@ void tu_free(TU *tu)
     srcmgr_free(&tu->sm);
     interner_free(&tu->in);
     arena_free(&tu->arena);
+    while (tu->adopted.len)
+        arena_free(&tu->adopted.data[--tu->adopted.len]);
+    vec_free(&tu->adopted);
 }

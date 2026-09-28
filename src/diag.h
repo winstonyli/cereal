@@ -30,6 +30,8 @@ typedef struct Diagnostic {
     int ninc;
     const char *fixit;       /* optional suggested replacement text */
     uint32_t key;            /* plan item at the time (parallel ordering) */
+    uint8_t once;            /* nonzero: report at most once per (once, loc);
+                                a parallel merge drops later duplicates */
 } Diagnostic;
 
 typedef enum { DIAG_FMT_TEXT, DIAG_FMT_JSON } DiagFormat;

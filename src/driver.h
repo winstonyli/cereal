@@ -35,6 +35,7 @@ typedef struct Options {
 
 typedef struct TU {
     Arena arena;
+    VEC(Arena) adopted;  /* parallel workers' arenas that results live in */
     Interner in;
     SrcMgr sm;
     DiagEngine diag;

@@ -4,8 +4,9 @@
 #   2. dogfood: cereal's own sources through both preprocessors
 #   3. lint: `// expect: <id>` annotations checked by tests/verify.py
 #   4. query: LSP index queries against expected output
-#   5. parallel: `-fparallel=on` byte-identical to sequential (output,
-#      diagnostics, exit status) at adversarial chunk sizes, plus a fuzzer
+#   5. parallel: `-fparallel=on` byte-identical to sequential for -E, lint
+#      and index (output, diagnostics, exit status) at adversarial chunk
+#      sizes, plus a fuzzer
 #   6. gcc fuzz: random programs vs $REFCC (tests/fuzz_gcc.py, fixed seed)
 #   7. -j: many translation units at once print exactly what -j1 prints
 #   8. macro graph: every expansion lies in its invocation's static closure
@@ -103,20 +104,21 @@ for t in "$ROOT"/tests/query/*.cmd; do
     fi
 done
 
-par_same() { # par_same NAME FILE FLAGS...
+par_same() { # par_same NAME FILE FLAGS...  (MODE: -E, lint or index)
     name=$1 file=$2
     shift 2
-    "$CEREAL" -E -fparallel=off "$@" "$file" >"$TMP/seq.i" 2>"$TMP/seq.e"
+    mode=${MODE:--E}
+    "$CEREAL" $mode -fparallel=off "$@" "$file" >"$TMP/seq.i" 2>"$TMP/seq.e"
     rs=$?
     for cfg in 1:1:0 3:1:0 3:1:2 4:64:0; do # threads:chunk:window
         t=${cfg%%:*} c=${cfg#*:} w=${cfg##*:}
-        "$CEREAL" -E -fparallel=on -fparallel-threads=$t \
+        "$CEREAL" $mode -fparallel=on -fparallel-threads=$t \
             -fparallel-chunk=${c%:*} -fparallel-window=$w "$@" "$file" \
             >"$TMP/par.i" 2>"$TMP/par.e"
         rp=$?
         if [ $rs != $rp ] || ! cmp -s "$TMP/seq.i" "$TMP/par.i" ||
             ! cmp -s "$TMP/seq.e" "$TMP/par.e"; then
-            bad "parallel $name (threads:chunk:window $cfg)"
+            bad "parallel $mode $name (threads:chunk:window $cfg)"
             diff "$TMP/seq.i" "$TMP/par.i" | head -10 | sed 's/^/    /'
             diff "$TMP/seq.e" "$TMP/par.e" | head -10 | sed 's/^/    /'
             return
@@ -128,6 +130,8 @@ par_same() { # par_same NAME FILE FLAGS...
 for f in "$ROOT"/tests/pp/*.c "$ROOT"/tests/lint/*.c; do
     cd "$(dirname "$f")"
     par_same "${f#$ROOT/tests/}" "$(basename "$f")"
+    MODE=lint par_same "${f#$ROOT/tests/}" "$(basename "$f")" -Weverything
+    MODE=index par_same "${f#$ROOT/tests/}" "$(basename "$f")" --all
     cd "$ROOT"
 done
 for f in "$ROOT"/src/*.c; do

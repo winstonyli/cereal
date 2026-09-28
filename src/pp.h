@@ -355,6 +355,12 @@ static inline Macro *macro_at_version(const Ident *id, uint32_t v)
 
 void pp_version_mismatch(const PP *pp, const Ident *id);
 
+/* Parallel runs: the plan item an event belongs to (see ParClient). */
+static inline uint32_t pp_event_key(const PP *pp)
+{
+    return pp->diag->key;
+}
+
 static inline Macro *pp_macro(const PP *pp, const Ident *id)
 {
     if (pp->versioned)

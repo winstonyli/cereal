@@ -3,6 +3,7 @@
 #define CEREAL_PAR_H
 
 #include "driver.h"
+#include "parclient.h"
 #include "thread.h"
 
 typedef struct ParOptions {
@@ -21,9 +22,19 @@ typedef enum {
     PAR_FAILED               /* input could not be opened */
 } ParResult;
 
-/* `-E` for one TU.  tu must be tu_init'ed but not begun.  On PAR_FALLBACK
- * nothing has been written and the TU must be discarded. */
+
+/* One TU, two-phase.  tu must be tu_init'ed (clients attached) but not
+ * begun.  out == NULL: no -E output.  On PAR_FALLBACK nothing has been
+ * written and the TU, clients included, must be discarded. */
+ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
+                  const ParOptions *po, const ParClient *clients,
+                  int nclients);
+
+/* `-E` for one TU (par_run with no clients). */
 ParResult par_write_output(TU *tu, const char *path, FILE *out,
                            bool linemarkers, const ParOptions *po);
+
+/* auto mode: is the input worth a parallel run? (cheap: a stat) */
+bool par_worth_it(const char *path, const ParOptions *po);
 
 #endif

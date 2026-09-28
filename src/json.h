@@ -10,6 +10,8 @@ typedef struct JsonWriter {
     bool need_comma[64];
     bool after_key;
     bool pretty;
+    size_t len;
+    char buf[1 << 14];
 } JsonWriter;
 
 void json_init(JsonWriter *w, FILE *out);
@@ -23,5 +25,6 @@ void json_strn(JsonWriter *w, const char *s, size_t n);
 void json_int(JsonWriter *w, long long v);
 void json_bool(JsonWriter *w, bool v);
 void json_null(JsonWriter *w);
+/* Output is buffered and written when the top-level value closes. */
 
 #endif

@@ -549,9 +549,16 @@ static SideEffect side_effects(Analysis *a, TokSpan arg)
     return r;
 }
 
-static bool already_reported(HygieneState *h, SrcLoc loc)
+/* One report per location.  A parallel worker cannot know what was
+ * reported before its slice (and its own first segments may be discarded),
+ * so it reports everything tagged `once`; the ordered merge keeps the first
+ * report per location, as this does sequentially. */
+static bool already_reported(Analysis *a, SrcLoc loc)
 {
+    HygieneState *h = a->hyg;
     size_t i;
+    if (a->pp->mode == PPM_PLAN)
+        return false;
     for (i = 0; i < h->reported.len; i++)
         if (h->reported.data[i] == loc)
             return true;
@@ -583,7 +590,7 @@ static void on_expand(void *ctx, const Expansion *e, const TokSpan *args,
             continue;
         loc = at_site ? args[i].t[0].loc : site;
         if (mi->evals[i] >= 2) {
-            if (already_reported(a->hyg, loc))
+            if (already_reported(a, loc))
                 continue;
             d = diag_report(a->diag, DL_WARNING,
                             se == SE_MODIFY ? "macro-multi-eval"
@@ -596,7 +603,7 @@ static void on_expand(void *ctx, const Expansion *e, const TokSpan *args,
                             mi->evals[i]);
         } else if (mi->evals[i] == 0 && se == SE_MODIFY &&
                    mi->mentions[i] == 0) {
-            if (already_reported(a->hyg, loc))
+            if (already_reported(a, loc))
                 continue;
             d = diag_report(a->diag, DL_WARNING, "macro-discarded-side-effect",
                             loc,
@@ -605,12 +612,38 @@ static void on_expand(void *ctx, const Expansion *e, const TokSpan *args,
         }
         if (d) {
             const Tok *last = &args[i].t[args[i].n - 1];
+            d->once = 1;
             if (at_site)
                 diag_set_range(d, args[i].t[0].loc, last->loc + last->len);
             diag_note(a->diag, d, m->name_loc, "'%s' is defined here",
                       macro_signature(a->arena, m));
         }
     }
+}
+
+/* Parallel runs: per-worker state for the invocation checks (definition
+ * checks run in phase A).  Diagnostics go to the worker's engine and are
+ * merged in order by the parallel runner. */
+void *hygiene_fork(Analysis *a, Analysis *w)
+{
+    PPListener l;
+    size_t i;
+    /* per-macro info is computed lazily; do it now, on this thread, while
+     * the definitions are final and before any worker reads them */
+    for (i = 0; i < a->pp->macros.len; i++)
+        if (a->pp->macros.data[i]->funclike && !a->pp->macros.data[i]->builtin)
+            info_of(a, a->pp->macros.data[i]);
+    w->hyg = NEW(w->arena, HygieneState);
+    memset(&l, 0, sizeof l);
+    l.ctx = w;
+    l.expand = on_expand;
+    pp_add_listener(w->pp, l);
+    return w->hyg;
+}
+
+void hygiene_release(Analysis *w)
+{
+    vec_free(&w->hyg->reported);
 }
 
 void hygiene_attach(Analysis *a)

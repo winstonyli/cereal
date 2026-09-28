@@ -52,3 +52,41 @@ void analysis_finish(Analysis *a)
     cond_finish(a);
     include_finish(a);
 }
+
+/* ---- parallel runs -------------------------------------------------- */
+
+static void *an_fork(void *ctx, PP *wpp)
+{
+    Analysis *a = ctx, *w = NEW(wpp->arena, Analysis);
+    *w = *a;
+    w->pp = wpp;
+    w->arena = wpp->arena;
+    w->diag = wpp->diag;
+    hygiene_fork(a, w);
+    include_fork(a, w);
+    /* cond: #if/#ifdef events only, all in phase A */
+    return w;
+}
+
+static void an_join(void *ctx, void *wctx, uint32_t from, uint32_t to)
+{
+    include_join(ctx, wctx, from, to);
+}
+
+static void an_release(void *ctx, void *wctx)
+{
+    (void)ctx;
+    hygiene_release(wctx);
+    include_release(wctx);
+}
+
+ParClient analysis_par_client(Analysis *a)
+{
+    ParClient c;
+    memset(&c, 0, sizeof c);
+    c.ctx = a;
+    c.fork = an_fork;
+    c.join = an_join;
+    c.release = an_release;
+    return c;
+}

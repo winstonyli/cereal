@@ -18,7 +18,13 @@ typedef struct Edge {
     int from_instance;      /* which inclusion of `from` */
 } Edge;
 
+typedef struct UseLog {
+    uint32_t key;
+    Macro *m;
+} UseLog;
+
 struct IncludeState {
+    VEC(UseLog) uses;       /* parallel worker: expansions, for the join */
     VEC(Edge) edges;
     VEC(SrcFile *) stack;   /* current include stack */
     VEC(int) instance;      /* inclusion instance ids, parallel to stack */
@@ -137,6 +143,45 @@ static void on_macro_ref(void *ctx, Ident *id, Macro *m, const Tok *tok,
     (void)tok;
     if (kind == REF_IFDEF || kind == REF_DEFINED)
         mark_used(ctx, m);
+}
+
+static void log_use(void *ctx, const Expansion *e, const TokSpan *args,
+                    int nargs)
+{
+    Analysis *w = ctx;
+    UseLog u;
+    (void)args;
+    (void)nargs;
+    u.key = pp_event_key(w->pp);
+    u.m = e->macro;
+    vec_push(&w->inc->uses, u);
+}
+
+/* Parallel runs: #include and #if events arrive in phase A; a worker only
+ * logs which macros its text expanded. */
+void *include_fork(Analysis *a, Analysis *w)
+{
+    PPListener l;
+    (void)a;
+    w->inc = NEW(w->arena, IncludeState);
+    memset(&l, 0, sizeof l);
+    l.ctx = w;
+    l.expand = log_use;
+    pp_add_listener(w->pp, l);
+    return w->inc;
+}
+
+void include_join(Analysis *a, Analysis *w, uint32_t from, uint32_t to)
+{
+    size_t i;
+    for (i = 0; i < w->inc->uses.len; i++)
+        if (w->inc->uses.data[i].key >= from && w->inc->uses.data[i].key < to)
+            mark_used(a, w->inc->uses.data[i].m);
+}
+
+void include_release(Analysis *w)
+{
+    vec_free(&w->inc->uses);
 }
 
 void include_attach(Analysis *a)

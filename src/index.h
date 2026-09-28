@@ -8,6 +8,7 @@
 #define CEREAL_INDEX_H
 
 #include "mgraph.h"
+#include "parclient.h"
 #include "pp.h"
 
 enum {
@@ -43,7 +44,14 @@ typedef struct IdxExp {
     int nargs;
     StrBuf text;              /* root only: final expanded text */
     VEC(struct Ident *) arg_names; /* identifiers spelled in the arguments */
+    uint32_t key;             /* parallel runs: plan item of the event */
 } IdxExp;
+
+/* Parallel runs: an expansion joined from a worker, awaiting renumbering. */
+typedef struct IdxJoined {
+    IdxExp *x;
+    Expansion *parent, *root;
+} IdxJoined;
 
 typedef struct IdxCheckpoint {
     SrcLoc loc;
@@ -79,6 +87,10 @@ typedef struct Index {
     VEC(SrcRange) inactive;
     VEC(IdxBlock) blocks;
     VEC(SrcLoc) open_blocks;
+    /* parallel runs: a worker's slice, filtered and sorted by prepare */
+    VEC(IdxJoined) prep_kept;
+    VEC(IdxRef) prep_refs;
+    VEC(struct Index *) runs;  /* main: joined workers, for the ref merge */
     bool sorted;
 } Index;
 
@@ -99,6 +111,9 @@ void index_init(Index *ix, PP *pp);
 void index_free(Index *ix);
 /* Drain the preprocessor, recording expansion results. */
 void index_run(Index *ix);
+/* Take part in a parallel run instead of index_run (after index_init);
+ * the result is the one a sequential run gives. */
+ParClient index_par_client(Index *ix);
 
 IdxTarget index_resolve(Index *ix, SrcLoc loc);
 /* The macro version in effect at loc (end of TU if never reached). */
