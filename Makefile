@@ -31,8 +31,14 @@ test: cereal
 
 check: test
 
+bench: cereal
+	python3 bench/bench.py
+
+bench-quick: cereal
+	python3 bench/bench.py --quick
+
 clean:
 	rm -rf $(BUILD) cereal
 
-.PHONY: all test check clean
+.PHONY: all test check clean bench bench-quick
 -include $(DEPS)
