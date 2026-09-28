@@ -8,6 +8,7 @@
 static const DiagOption options[] = {
     /* preprocessor core */
     {"pp-warning-directive", "pp", DL_WARNING, true, "#warning directive"},
+    {"deprecated", "pp", DL_WARNING, true, "GCC assertions (#assert, #unassert, #pred(answer) in #if)"},
     {"undef", "cond", DL_WARNING, false, "undefined identifier evaluates to 0 in #if"},
     {"macro-redefined", "pp", DL_WARNING, true, "non-identical macro redefinition (C99 6.10.3p2)"},
     {"builtin-macro-redefined", "pp", DL_WARNING, true, "redefining or undefining a predefined macro"},

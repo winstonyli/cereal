@@ -582,6 +582,23 @@ static bool resolve_defined(PP *pp, TokSpan in, TokBuf *out)
             tokbuf_push(pp, out, r);
             continue;
         }
+        if (tok_is_punct(t, P_HASH)) { /* GCC assertion */
+            Ident *pred;
+            const char *answer;
+            Tok r;
+            diag_report(pp->diag, DL_WARNING, "deprecated", t->loc,
+                        "assertions are a deprecated extension");
+            i++;
+            /* GCC: a malformed assertion is reported and tests false */
+            bool ok = pp_parse_assertion(pp, in, &i, false, t->loc + t->len,
+                                         &pred, &answer);
+            r = pp_make_token(pp, TK_PPNUM,
+                              ok && pp_assertion_holds(pp, pred, answer)
+                                  ? "1" : "0",
+                              1, t->loc, t->flags);
+            tokbuf_push(pp, out, r);
+            continue;
+        }
         tokbuf_push(pp, out, *t);
         i++;
     }

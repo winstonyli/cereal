@@ -256,9 +256,9 @@ void printer_token(Printer *p, const Tok *t)
     if (pt.f) {
         const IncludeFrame *fr = frame_of(pp, pt.f);
         uint32_t line = linecursor_line(&p->lc, pt.f, loc);
-        if (fr && fr->line_adj_from && line >= fr->line_adj_from) {
-            line = (uint32_t)((int32_t)line + fr->line_delta);
-            pt.delta = fr->line_delta;
+        if (fr) {
+            pt.delta = line_adj_delta(fr->adj, line);
+            line = (uint32_t)((int32_t)line + pt.delta);
         }
         pt.line = line;
         pt.name = fr ? fr->presumed_name : pt.f->name;

@@ -17,7 +17,6 @@ f(1,2,3) /* expect: error */
 #define bad(a, a) a /* expect: error */
 #define bad2(a) #b /* expect: error */
 #define bad3 ## x /* expect: error */
-#include "does_not_exist.h" /* expect: error */
 #elif 1 /* expect: error */
 #endif /* expect: error */
 #define V(...) __VA_ARGS__

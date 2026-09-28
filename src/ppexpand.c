@@ -7,6 +7,7 @@
 #include "pp.h"
 
 #include <string.h>
+#include <sys/stat.h>
 
 #define ARGS_INLINE 8
 
@@ -50,6 +51,7 @@ typedef struct Args {
     TokBuf exp_inl[ARGS_INLINE];
     SrcLoc rparen_loc;
     uint32_t rparen_len;
+    TokBuf pragmas;          /* #pragma lines met inside the arguments */
 } Args;
 
 static TokSpan arg_span(const Args *a, int i)
@@ -87,13 +89,15 @@ static void paint(PP *pp, Tok *t)
 
 /* ---- argument collection ------------------------------------------- */
 
-/* The '(' has been read.  On failure the consumed tokens are replayed. */
+/* The '(' has been read.  On failure the consumed tokens are dropped and
+ * the caller prints the name alone, as GCC does.  Either way, pragma
+ * directives inside the arguments are left in a->pragmas for the caller:
+ * GCC emits them before the invocation's result. */
 static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
                          Args *a)
 {
     int depth = 0;
     uint32_t arg_begin;
-    bool replayable = true;
     memset(a, 0, sizeof *a);
     tokbuf_init(pp, &a->all, 32);
     tokbuf_push(pp, &a->all, *lparen);
@@ -122,7 +126,10 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
                 pp_plan_apply_dir(pp, t.aux);
             else
                 pp_directive(pp, &t);
-            replayable = false;
+            continue;
+        }
+        if (t.kind == TK_PRAGMA) {
+            tokbuf_push(pp, &a->pragmas, t);
             continue;
         }
         paint(pp, &t);
@@ -166,27 +173,18 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
         av_push(&a->present, 0);
     }
     if ((int)a->start.len != m->nparams) {
+        Tok rp;
+        memset(&rp, 0, sizeof rp);
+        rp.loc = a->rparen_loc;
+        rp.len = a->rparen_len;
         if ((int)a->start.len > m->nparams)
-            pp_error_at(pp, name,
+            pp_error_at(pp, &rp,
                         "macro \"%s\" passed %d arguments, but takes just %d",
                         m->name->str, (int)a->start.len, m->nparams);
         else
-            pp_error_at(pp, name,
+            pp_error_at(pp, &rp,
                         "macro \"%s\" requires %d arguments, but only %d given",
                         m->name->str, m->nparams, (int)a->start.len);
-        if (replayable) {
-            /* hand the consumed tokens back, unexpanded name first */
-            Context c;
-            memset(&c, 0, sizeof c);
-            c.owned = a->all;
-            a->all.t = NULL;
-            c.toks = c.owned.t;
-            c.end = c.owned.len;
-            c.exp_id = pp->tok_exp_id;
-            c.root_id = pp->tok_root;
-            c.exp_loc = pp->tok_exp_loc;
-            pp_push_context(pp, c);
-        }
         args_free(pp, a, 0);
         return false;
     }
@@ -199,7 +197,7 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
 /* ---- sub-stream expansion ------------------------------------------ */
 
 static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
-                        uint32_t exp_id, uint32_t root)
+                        uint32_t exp_id, uint32_t root, bool self_loc)
 {
     Context c;
     size_t base = pp->ctx.len;
@@ -208,6 +206,8 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
     c.toks = in.t;
     c.end = in.n;
     c.barrier = true;
+    c.self_loc = self_loc;
+    c.root_obj = self_loc && pp->subst_root_obj;
     c.exp_loc = exp_loc;
     c.exp_id = exp_id;
     c.root_id = root;
@@ -218,6 +218,32 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
         TokSrc src = pp_read_raw(pp, &t);
         if (src == SRC_BARRIER)
             break;
+        if (pp->in_if_expr && tok_is_punct(&t, P_HASH)) {
+            /* #pred(answer), a GCC assertion: kept unexpanded */
+            Tok u;
+            TokSrc us;
+            tokbuf_push(pp, out, t);
+            us = pp_read_raw(pp, &u);
+            if (us == SRC_BARRIER || u.kind != TK_IDENT) {
+                pp_unread(pp, &u, us);
+                continue;
+            }
+            tokbuf_push(pp, out, u);
+            us = pp_read_raw(pp, &u);
+            if (us == SRC_BARRIER || !tok_is_punct(&u, P_LPAREN)) {
+                pp_unread(pp, &u, us);
+                continue;
+            }
+            do {
+                tokbuf_push(pp, out, u);
+                us = pp_read_raw(pp, &u);
+            } while (us != SRC_BARRIER && !tok_is_punct(&u, P_RPAREN));
+            if (us == SRC_BARRIER)
+                pp_unread(pp, &u, us);
+            else
+                tokbuf_push(pp, out, u);
+            continue;
+        }
         if (t.kind == TK_IDENT) {
             Ident *id = ident_by_id(pp->in, t.aux);
             if (pp->in_if_expr && id == pp->id_defined) {
@@ -273,7 +299,7 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
 
 void pp_expand_into(PP *pp, TokSpan in, TokBuf *out)
 {
-    expand_into(pp, in, out, in.n ? in.t[0].loc : 0, NO_EXP, NO_EXP);
+    expand_into(pp, in, out, in.n ? in.t[0].loc : 0, NO_EXP, NO_EXP, false);
 }
 
 static bool needs_expansion(PP *pp, TokSpan s)
@@ -296,7 +322,7 @@ static TokSpan expanded_arg(PP *pp, Args *a, int i, SrcLoc exp_loc,
         bool saved = pp->collecting_args;
         pp->collecting_args = true;
         tokbuf_init(pp, &a->expanded[i], raw.n + 8);
-        expand_into(pp, raw, &a->expanded[i], exp_loc, exp_id, root);
+        expand_into(pp, raw, &a->expanded[i], exp_loc, exp_id, root, true);
         pp->collecting_args = saved;
     }
     r.t = a->expanded[i].t;
@@ -467,7 +493,15 @@ static void subst(PP *pp, Macro *m, Args *a, uint16_t lead, SrcLoc site,
                 }
                 continue;
             }
-            if (rp >= 0) {
+            if (m->funclike && tok_is_punct(rt, P_HASH) &&
+                i + 1 < m->body_len && (m->body[i + 1].flags & TF_PARAM)) {
+                /* x ## #y: '#' binds first; paste its string */
+                single = stringize(pp, arg_span(a, m->body[i + 1].punct), rt,
+                                   site, m);
+                rhs.t = &single;
+                rhs.n = 1;
+                i++;
+            } else if (rp >= 0) {
                 rhs = arg_span(a, rp);
             } else {
                 single = *rt;
@@ -711,6 +745,24 @@ static void push_single(PP *pp, Tok t, Macro *m, SrcLoc exp_loc,
     pp_push_context(pp, c);
 }
 
+/* Push the pragmas hoisted out of an argument list (they are read next). */
+static void push_pragmas(PP *pp, TokBuf *b)
+{
+    Context c;
+    if (b->len == 0) {
+        tokbuf_release(pp, b);
+        return;
+    }
+    memset(&c, 0, sizeof c);
+    c.owned = *b;
+    c.toks = c.owned.t;
+    c.end = c.owned.len;
+    c.exp_loc = c.toks[0].loc;
+    c.exp_id = c.root_id = NO_EXP;
+    pp_push_context(pp, c);
+    memset(b, 0, sizeof *b);
+}
+
 static Tok builtin_token(PP *pp, Macro *m, const Tok *name, SrcLoc exp_loc)
 {
     char buf[64];
@@ -769,6 +821,33 @@ static bool word(PP *pp, TokSpan s, uint32_t i, const char *w)
 }
 
 /* Pragmas whose effect is on preprocessor state (not just output). */
+/* #pragma GCC dependency "file" [text]: warn if file is newer than the
+ * current file. */
+static void pragma_dependency(PP *pp, TokSpan toks)
+{
+    const Tok *nt = toks.n > 2 ? &toks.t[2] : NULL;
+    char *name;
+    SrcFile *f;
+    int di;
+    struct stat a, b;
+    if (!nt || nt->kind != TK_STRING || pp_text(pp, nt)[0] != '"') {
+        diag_report(pp->diag, DL_ERROR, "", nt ? nt->loc : toks.t[1].loc,
+                    "#pragma dependency expects \"FILENAME\"");
+        return;
+    }
+    name = arena_strndup(pp->arena, pp_text(pp, nt) + 1, nt->len - 2);
+    f = pp_find_include(pp, name, false, false, &di);
+    if (!f) {
+        diag_report(pp->diag, DL_ERROR, "", nt->loc, "'%s' file not found",
+                    name);
+        return;
+    }
+    if (stat(f->path, &a) == 0 && stat(pp->inc->file->path, &b) == 0 &&
+        a.st_mtime > b.st_mtime)
+        diag_report(pp->diag, DL_WARNING, "", nt->loc,
+                    "current file is older than %s", name);
+}
+
 static bool state_pragma(PP *pp, TokSpan toks)
 {
     return word(pp, toks, 0, "once") || word(pp, toks, 0, "push_macro") ||
@@ -806,9 +885,17 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             if (pp->inc->prev) {
                 pp->inc->file->system_header = true;
                 pp->inc->system = true;
+            } else {
+                diag_report(pp->diag, DL_WARNING, "", toks.t[1].loc,
+                            "#pragma system_header ignored outside include "
+                            "file");
             }
             emit = false;
+        } else if (word(pp, toks, 1, "dependency")) {
+            emit = false;
+            pragma_dependency(pp, toks);
         } else if (word(pp, toks, 1, "poison")) {
+            emit = false;
             for (i = 2; i < toks.n; i++)
                 if (toks.t[i].kind == TK_IDENT) {
                     Ident *id = ident_by_id(pp->in, toks.t[i].aux);
@@ -820,12 +907,13 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             bool err = word(pp, toks, 1, "error");
             uint32_t k = 2;
             const Tok *msg;
+            emit = false;
             if (k < toks.n && tok_is_punct(&toks.t[k], P_LPAREN))
                 k++;
             if (k < toks.n) {
                 msg = &toks.t[k];
                 diag_report(pp->diag, err ? DL_ERROR : DL_WARNING,
-                            err ? "" : "pp-warning-directive", toks.t[1].loc,
+                            err ? "" : "pp-warning-directive", msg->loc,
                             "%.*s",
                             msg->kind == TK_STRING ? (int)msg->len - 2 : (int)msg->len,
                             pp_text(pp, msg) + (msg->kind == TK_STRING));
@@ -895,33 +983,40 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
     }
     if (emit) {
         StrBuf *sb = &pp->sb;
-        Tok t;
         sb->len = 0;
         sb_puts(sb, "pragma");
         for (i = 0; i < toks.n; i++) {
-            sb_putc(sb, ' ');
+            if (i == 0 || (toks.t[i].flags & (TF_SPACE | TF_BOL)))
+                sb_putc(sb, ' ');
             sb_putn(sb, pp_text(pp, &toks.t[i]), toks.t[i].len);
         }
-        memset(&t, 0, sizeof t);
-        t.kind = TK_PRAGMA;
-        t.loc = loc;
-        t.len = (uint32_t)sb->len;
-        t.aux = srcmgr_scratch(pp->sm, &pp->scratch, sb->data, sb->len);
-        t.flags = TF_SPELL | TF_BOL;
-        if (pp->mode == PPM_PHASE_A) {
-            PlanItem it;
-            memset(&it, 0, sizeof it);
-            it.kind = PI_PRAGMA;
-            it.version = pp->seq;
-            it.counter = pp->counter;
-            it.frame = pp->pframe;
-            it.begin = t.loc;
-            it.end = (SrcLoc)pp->plan->pragmas.len;
-            vec_push(&pp->plan->pragmas, t);
-            vec_push(&pp->plan->items, it);
-        } else {
-            push_single(pp, t, NULL, loc, NO_EXP, NO_EXP, 0);
-        }
+        pp_emit_line(pp, sb->data, sb->len, loc);
+    }
+}
+
+/* A directive line for the output (#pragma, #ident): text after the '#'. */
+void pp_emit_line(PP *pp, const char *text, size_t len, SrcLoc loc)
+{
+    Tok t;
+    memset(&t, 0, sizeof t);
+    t.kind = TK_PRAGMA;
+    t.loc = loc;
+    t.len = (uint32_t)len;
+    t.aux = srcmgr_scratch(pp->sm, &pp->scratch, text, len);
+    t.flags = TF_SPELL | TF_BOL;
+    if (pp->mode == PPM_PHASE_A) {
+        PlanItem it;
+        memset(&it, 0, sizeof it);
+        it.kind = PI_PRAGMA;
+        it.version = pp->seq;
+        it.counter = pp->counter;
+        it.frame = pp->pframe;
+        it.begin = t.loc;
+        it.end = (SrcLoc)pp->plan->pragmas.len;
+        vec_push(&pp->plan->pragmas, t);
+        vec_push(&pp->plan->items, it);
+    } else {
+        push_single(pp, t, NULL, loc, NO_EXP, NO_EXP, 0);
     }
 }
 
@@ -959,36 +1054,87 @@ static TokBuf destringize(PP *pp, const Tok *str)
 }
 
 /* _Pragma ( string-literal ) */
-static bool do_pragma_op(PP *pp, const Tok *name)
+/* Read the next token of a _Pragma operand as GCC does: macro-expanded,
+ * directives processed, continuing past the end of an included file. */
+static TokSrc read_operand(PP *pp, Tok *t, TokBuf *hoist)
 {
+    for (;;) {
+        TokSrc src = pp_read_raw(pp, t);
+        if (src == SRC_LEXER && t->kind == TK_EOF && !pp->in_directive) {
+            if (pp_cross_file_end(pp))
+                continue;
+            return src;
+        }
+        if (t->kind == TK_IDENT && !(t->flags & TF_NOEXPAND)) {
+            Macro *m = pp_macro(pp, ident_by_id(pp->in, t->aux));
+            if (m && pp_macro_disabled(pp, m))
+                t->flags |= TF_NOEXPAND;
+            else if (m && pp_try_expand(pp, t, src))
+                continue;
+        }
+        if (src == SRC_LEXER && !pp->in_directive) {
+            if (t->kind == TK_DIRMARK) {
+                pp_plan_apply_dir(pp, t->aux);
+                continue;
+            }
+            if ((t->flags & TF_BOL) && tok_is_punct(t, P_HASH)) {
+                pp_directive(pp, t);
+                continue;
+            }
+        }
+        if (t->kind == TK_PRAGMA) { /* a #pragma line: printed first */
+            tokbuf_push(pp, hoist, *t);
+            continue;
+        }
+        return src;
+    }
+}
+
+static bool pragma_op_error(PP *pp, Tok *name, const Tok *prev, Tok *bad,
+                            TokSrc src, TokBuf *hoist)
+{
+    if (bad->kind == TK_EOF)
+        pp_unread(pp, bad, src);
+    pp_error_at(pp, bad->kind == TK_EOF ? prev : bad,
+                "_Pragma takes a parenthesized string literal");
+    if (hoist->len == 0) {
+        tokbuf_release(pp, hoist);
+        return false;
+    }
+    name->flags |= TF_NOEXPAND; /* printed after the hoisted lines */
+    push_single(pp, *name, NULL, pp->tok_exp_loc, NO_EXP, NO_EXP, name->loc);
+    push_pragmas(pp, hoist);
+    return true;
+}
+
+static bool do_pragma_op(PP *pp, Tok *name)
+{
+    TokBuf hoist = {0};
     Tok lp, s, rp;
     TokSrc a, b, c;
     TokBuf toks;
     TokSpan span;
-    if (pp->in_if_expr) {
-        pp_error_at(pp, name, "_Pragma is not allowed in #if");
-        return false;
-    }
+    if (pp->in_directive)
+        return false; /* GCC: a plain identifier in any directive */
     if (pp->collecting_args)
         return false; /* deferred until the result is rescanned */
-    a = pp_read_raw(pp, &lp);
-    if (!tok_is_punct(&lp, P_LPAREN)) {
-        pp_unread(pp, &lp, a);
-        return false; /* plain identifier */
-    }
-    b = pp_read_raw(pp, &s);
-    c = pp_read_raw(pp, &rp);
-    if (s.kind != TK_STRING || !tok_is_punct(&rp, P_RPAREN)) {
-        (void)b;
-        (void)c;
-        pp_error_at(pp, name, "_Pragma takes a parenthesized string literal");
-        return true;
-    }
+    /* GCC: whatever was read is consumed (EOF excepted), the name is
+     * printed as a plain identifier */
+    a = read_operand(pp, &lp, &hoist);
+    if (!tok_is_punct(&lp, P_LPAREN))
+        return pragma_op_error(pp, name, name, &lp, a, &hoist);
+    b = read_operand(pp, &s, &hoist);
+    if (s.kind != TK_STRING)
+        return pragma_op_error(pp, name, &lp, &s, b, &hoist);
+    c = read_operand(pp, &rp, &hoist);
+    if (!tok_is_punct(&rp, P_RPAREN))
+        return pragma_op_error(pp, name, &s, &rp, c, &hoist);
     toks = destringize(pp, &s);
     span.t = toks.t;
     span.n = toks.len;
     pp_do_pragma(pp, span, name->loc);
     tokbuf_release(pp, &toks);
+    push_pragmas(pp, &hoist);
     return true;
 }
 
@@ -1006,6 +1152,9 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
     Expansion *e;
     uint32_t eid, root;
     Context c;
+    TokBuf pragmas = {0};
+    bool root_obj = src == SRC_LEXER ? !m->funclike : pp->tok_root_obj;
+    bool saved_root_obj = pp->subst_root_obj;
 
     if (m->builtin) {
         if (m->builtin == BUILTIN_PRAGMA_OP)
@@ -1049,7 +1198,9 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
                 pp->carry_space = true;
             return true;
         }
+        pp->subst_root_obj = root_obj;
         subst(pp, m, NULL, lead, site, exp_loc, eid, root, &c.owned);
+        pp->subst_root_obj = saved_root_obj;
     } else {
         Tok lp;
         TokSrc ls = pp_read_raw(pp, &lp);
@@ -1060,8 +1211,19 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
             pp_unread(pp, &lp, ls);
             return false;
         }
-        if (!collect_args(pp, m, name, &lp, &a))
-            return false;
+        if (!collect_args(pp, m, name, &lp, &a)) {
+            if (a.pragmas.len == 0) {
+                tokbuf_release(pp, &a.pragmas);
+                return false;
+            }
+            /* the name follows the hoisted pragmas */
+            name->flags |= TF_NOEXPAND;
+            push_single(pp, *name, NULL, exp_loc, parent, parent_root,
+                        name->loc);
+            push_pragmas(pp, &a.pragmas);
+            return true;
+        }
+        pragmas = a.pragmas;
         e = new_expansion(pp, m, name, parent, parent_root);
         eid = e ? e->id : NO_EXP;
         root = e ? e->root : NO_EXP;
@@ -1075,13 +1237,16 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
             PP_EMIT(pp, expand, e, spans, m->nparams);
             free(spans);
         }
+        pp->subst_root_obj = root_obj;
         subst(pp, m, &a, lead, site, exp_loc, eid, root, &c.owned);
+        pp->subst_root_obj = saved_root_obj;
         args_free(pp, &a, m->nparams);
     }
     if (c.owned.len == 0) {
         tokbuf_release(pp, &c.owned);
         if (lead & TF_SPACE)
             pp->carry_space = true;
+        push_pragmas(pp, &pragmas);
         return true;
     }
     c.toks = c.owned.t;
@@ -1091,6 +1256,8 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
     c.root_id = root;
     c.exp_loc = exp_loc;
     c.name_loc = name->loc;
+    c.root_obj = root_obj;
     pp_push_context(pp, c);
+    push_pragmas(pp, &pragmas);
     return true;
 }

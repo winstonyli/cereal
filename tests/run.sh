@@ -6,6 +6,7 @@
 #   4. query: LSP index queries against expected output
 #   5. parallel: `-fparallel=on` byte-identical to sequential (output,
 #      diagnostics, exit status) at adversarial chunk sizes, plus a fuzzer
+#   6. gcc fuzz: random programs vs $REFCC (tests/fuzz_gcc.py, fixed seed)
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -19,12 +20,14 @@ fail=0
 ok() { pass=$((pass + 1)); }
 bad() { fail=$((fail + 1)); echo "FAIL: $*"; }
 
-diff_pp() { # diff_pp NAME FILE FLAGS...
+diff_pp() { # diff_pp NAME FILE FLAGS...  (ALLOW_ERRORS=1: erroneous input)
     name=$1 file=$2
     shift 2
     $REFCC -std=c99 "$@" -E "$file" >"$TMP/ref.i" 2>/dev/null
-    "$CEREAL" -E -fcheck-macro-versions "$@" "$file" >"$TMP/out.i" 2>"$TMP/err" ||
-        { bad "$name (cereal exited non-zero)"; sed 's/^/    /' "$TMP/err" | head -5; return; }
+    if ! "$CEREAL" -E -fcheck-macro-versions "$@" "$file" >"$TMP/out.i" 2>"$TMP/err" &&
+        [ "${ALLOW_ERRORS:-0}" = 0 ]; then
+        bad "$name (cereal exited non-zero)"; sed 's/^/    /' "$TMP/err" | head -5; return
+    fi
     if python3 "$ROOT/tests/tokdiff.py" "$TMP/ref.i" "$TMP/out.i" >"$TMP/diff"; then
         ok
     else
@@ -36,12 +39,14 @@ diff_pp() { # diff_pp NAME FILE FLAGS...
 if command -v "$REFCC" >/dev/null 2>&1; then
     for f in "$ROOT"/tests/pp/*.c; do
         n=$(basename "$f")
-        case $n in
-        err_*) continue ;;
-        esac
         cd "$ROOT/tests/pp"
-        diff_pp "pp/$n" "$n"
-        diff_pp "pp/$n (gnu99)" "$n" -std=gnu99
+        case $n in
+        err_*) ALLOW_ERRORS=1 diff_pp "pp/$n (recovery)" "$n" ;;
+        *)
+            diff_pp "pp/$n" "$n"
+            diff_pp "pp/$n (gnu99)" "$n" -std=gnu99
+            ;;
+        esac
         cd "$ROOT"
     done
     for h in assert.h ctype.h errno.h float.h inttypes.h limits.h locale.h \
@@ -129,6 +134,14 @@ for h in stdio.h stdlib.h pthread.h; do
     echo "#include <$h>" >"$TMP/h.c"
     par_same "<$h>" "$TMP/h.c" -D_GNU_SOURCE -O2
 done
+if command -v "$REFCC" >/dev/null 2>&1; then
+    if python3 "$ROOT/tests/fuzz_gcc.py" "$CEREAL" "${FUZZ_GCC_N:-40}" "${FUZZ_SEED:-1}" >"$TMP/fg" 2>&1; then
+        ok
+    else
+        bad "gcc fuzz (reduced cases kept)"
+        sed 's/^/    /' "$TMP/fg" | tail -10
+    fi
+fi
 if python3 "$ROOT/tests/fuzz_par.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}" >"$TMP/fz" 2>&1; then
     ok
 else

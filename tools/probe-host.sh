@@ -48,6 +48,17 @@ probe() { # probe KIND FILE -> names the host says yes to
     $HOSTCC -std=c99 -E -P "$TMP/probe.c" 2>/dev/null |
         sed -n 's/^YES_//p' || true
 }
+# 4. predefined assertions (#system(linux) etc.; GCC extension)
+: >"$TMP/probe.c"
+for p in system cpu machine; do
+    for a in linux unix posix gnu hurd bsd freebsd netbsd openbsd darwin \
+        x86_64 i386 aarch64 arm riscv powerpc powerpc64 s390 mips sparc; do
+        printf '#if #%s(%s)\nYES_%s_%s\n#endif\n' $p $a $p $a >>"$TMP/probe.c"
+    done
+done
+$HOSTCC -std=c99 -E -P "$TMP/probe.c" 2>/dev/null |
+    sed -n 's/^YES_\([a-z]*\)_\(.*\)$/    "\1", "\2",/p' >"$TMP/asserts" || true
+
 probe __has_attribute "$TMP/attr_names" >"$TMP/attrs"
 probe __has_builtin "$TMP/builtin_names" >"$TMP/builtins"
 
@@ -63,6 +74,9 @@ probe __has_builtin "$TMP/builtin_names" >"$TMP/builtins"
     echo "    NULL};"
     echo "const char *const host_builtins[] = {"
     sed 's/.*/    "&",/' "$TMP/builtins"
+    echo "    NULL};"
+    echo "const char *const host_assertions[] = { /* predicate, answer */"
+    cat "$TMP/asserts"
     echo "    NULL};"
     echo "const char host_predefs[] ="
     cesc <"$TMP/predefs" | sed 's/.*/    "&\\n"/'

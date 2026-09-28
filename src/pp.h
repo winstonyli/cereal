@@ -170,6 +170,11 @@ typedef struct Context {
     SrcLoc exp_loc;          /* outermost call site (for -E, __LINE__) */
     SrcLoc name_loc;         /* for "in expansion of" notes */
     bool barrier;            /* sub-stream end: yields EOF, never popped */
+    bool self_loc;           /* argument pre-expansion: a token spelled in
+                                the source is its own expansion point (GCC:
+                                __LINE__ in a multi-line argument list) */
+    bool root_obj;           /* the outermost macro is object-like: then
+                                __LINE__ is its call site's line (GCC) */
 } Context;
 
 typedef struct CondFrame {
@@ -193,8 +198,7 @@ typedef struct IncludeFrame {
     struct Ident *guard_candidate;
     CondFrame *guard_frame;
     const char *presumed_name;
-    int32_t line_delta;
-    uint32_t line_adj_from;
+    const LineAdj *adj;      /* #line history (NULL: none) */
     bool system;             /* system header (as of this point) */
 } IncludeFrame;
 
@@ -207,9 +211,17 @@ typedef struct PPOptions {
     bool pedantic;
     bool gnu_extensions;
     bool gnu_mode;
+    bool fatal_missing_include; /* -E: stop the TU there, as GCC does */
     LexOptions lex;
     const char *date_str, *time_str;
 } PPOptions;
+
+/* GCC assertions: #assert pred(answer).  Directive state only (phase A). */
+typedef struct Assertion {
+    struct Assertion *next;
+    struct Ident *pred;
+    const char *answer;      /* tokens joined by single spaces */
+} Assertion;
 
 typedef struct MacroStackEnt {
     struct MacroStackEnt *next;
@@ -233,7 +245,7 @@ typedef bool (*BoundaryFn)(void *ctx, size_t item, bool clean);
 enum {
     KW_NONE, KW_IF, KW_IFDEF, KW_IFNDEF, KW_ELIF, KW_ELSE, KW_ENDIF,
     KW_DEFINE, KW_UNDEF, KW_INCLUDE, KW_INCLUDE_NEXT, KW_LINE, KW_ERROR,
-    KW_WARNING, KW_PRAGMA, KW_IDENT, KW_SCCS
+    KW_WARNING, KW_PRAGMA, KW_IDENT, KW_SCCS, KW_ASSERT, KW_UNASSERT
 };
 typedef enum { SRC_LEXER, SRC_CONTEXT, SRC_BARRIER } TokSrc;
 
@@ -268,6 +280,7 @@ typedef struct PP {
     bool seg_active;         /* PLAN: lexer is inside plan_pos - 1 */
     bool reading_top;        /* PLAN: pp_next's own read (for clean points) */
     bool diverged;           /* PLAN: hit something only FULL mode can do */
+    bool halted;             /* a fatal error ended the TU */
     BoundaryFn on_boundary;
     void *boundary_ctx;
     bool versioned;          /* phase B: look macros up by version */
@@ -277,6 +290,8 @@ typedef struct PP {
     /* provenance of the last token read (see pp_read_raw) */
     SrcLoc tok_exp_loc;
     uint32_t tok_exp_id, tok_root;
+    bool tok_root_obj;
+    bool subst_root_obj;     /* root_obj of the expansion being substituted */
     /* ... and of the last token returned by pp_next */
     SrcLoc out_exp_loc;
     uint32_t out_root;
@@ -288,6 +303,7 @@ typedef struct PP {
     size_t first_angle, first_system;
 
     MacroStackEnt *pushed;
+    Assertion *asserts;
     uint32_t seq;
     uint32_t counter;
     SrcFile *main_file;
@@ -343,11 +359,13 @@ static inline Macro *pp_macro(const PP *pp, const Ident *id)
 }
 
 /* Is m being expanded (its context live) in this preprocessor? */
+/* Disabling is by name, as in GCC: a macro redefined inside its own
+ * argument list stays disabled while its (old) body is rescanned. */
 static inline bool pp_macro_disabled(const PP *pp, const Macro *m)
 {
     size_t i;
     for (i = pp->ctx.len; i-- > 0;)
-        if (pp->ctx.data[i].macro == m)
+        if (pp->ctx.data[i].macro && pp->ctx.data[i].macro->name == m->name)
             return true;
     return false;
 }
@@ -388,11 +406,20 @@ TokSrc pp_read_raw(PP *pp, Tok *t);
 void pp_unread(PP *pp, const Tok *t, TokSrc src);
 void pp_directive(PP *pp, const Tok *hash);
 void pp_plan_apply_dir(PP *pp, uint32_t item);
+bool pp_cross_file_end(PP *pp);
 void pp_macro_ref(PP *pp, const Tok *name, RefKind kind);
 bool pp_try_expand(PP *pp, Tok *name, TokSrc src);
 void pp_expand_into(PP *pp, TokSpan in, TokBuf *out);
 bool pp_eval_if(PP *pp, TokSpan expr, bool *ok);
 void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc);
+void pp_assert_str(PP *pp, const char *pred, const char *answer);
+/* Parse `pred [(answer)]` at s.t[*i]; need_answer for #assert.  On success
+ * *answer is NULL when there was none.  Reports errors; *i is advanced past
+ * what was consumed either way. */
+bool pp_parse_assertion(PP *pp, TokSpan s, uint32_t *i, bool need_answer,
+                        SrcLoc at, struct Ident **pred, const char **answer);
+bool pp_assertion_holds(PP *pp, struct Ident *pred, const char *answer);
+void pp_emit_line(PP *pp, const char *text, size_t len, SrcLoc loc);
 SrcFile *pp_find_include(PP *pp, const char *name, bool angled, bool next,
                          int *dir_index);
 Tok pp_make_token(PP *pp, TokKind k, const char *text, size_t n, SrcLoc loc,

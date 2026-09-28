@@ -79,16 +79,27 @@ static void pop_context(PP *pp)
 }
 
 static void phase_a_read(PP *pp, Tok *t);
+static void guard_note_activity(PP *pp);
 static bool plan_read(PP *pp, Tok *t);
 
 TokSrc pp_read_raw(PP *pp, Tok *t)
 {
     for (;;) {
+        if (pp->halted) {
+            memset(t, 0, sizeof *t);
+            t->kind = TK_EOF;
+            t->flags = TF_BOL;
+            return SRC_LEXER;
+        }
         if (pp->ctx.len) {
             Context *c = &vec_last(&pp->ctx);
             if (c->pos < c->end) {
                 *t = c->toks[c->pos++];
-                pp->tok_exp_loc = c->exp_loc;
+                pp->tok_exp_loc = c->self_loc && !c->root_obj &&
+                                          !(t->flags & (TF_ORIGIN_BODY |
+                                                        TF_PASTED | TF_SYNTH))
+                                      ? t->loc : c->exp_loc;
+                pp->tok_root_obj = c->root_obj;
                 pp->tok_exp_id = c->exp_id;
                 pp->tok_root = c->root_id;
                 return SRC_CONTEXT;
@@ -107,13 +118,21 @@ TokSrc pp_read_raw(PP *pp, Tok *t)
                 continue; /* it pushed a context */
         } else if (pp->mode == PPM_PHASE_A) {
             phase_a_read(pp, t);
-        } else if (pp->has_pending) {
-            *t = pp->pending;
-            pp->has_pending = false;
         } else {
-            lex_next(&pp->lex, t);
+            if (pp->has_pending) {
+                *t = pp->pending;
+                pp->has_pending = false;
+            } else {
+                lex_next(&pp->lex, t);
+            }
+            /* any text outside a directive, even inside an argument list,
+             * voids an include guard */
+            if (t->kind != TK_EOF && !pp->in_directive &&
+                !((t->flags & TF_BOL) && tok_is_punct(t, P_HASH)))
+                guard_note_activity(pp);
         }
         pp->tok_exp_loc = t->loc;
+        pp->tok_root_obj = false;
         pp->tok_exp_id = NO_EXP;
         pp->tok_root = NO_EXP;
         return SRC_LEXER;
@@ -400,9 +419,7 @@ uint32_t pp_presumed_line(PP *pp, SrcLoc loc)
     srcmgr_linecol(f, loc, &line, &col);
     for (fr = pp->inc; fr; fr = fr->prev)
         if (fr->file == f) {
-            if (fr->line_adj_from && line >= fr->line_adj_from)
-                return (uint32_t)((int32_t)line + fr->line_delta);
-            break;
+            return (uint32_t)((int32_t)line + line_adj_delta(fr->adj, line));
         }
     return line;
 }
@@ -454,7 +471,7 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
         static const char *const dirs[] = {
             "", "if", "ifdef", "ifndef", "elif", "else", "endif", "define",
             "undef", "include", "include_next", "line", "error", "warning",
-            "pragma", "ident", "sccs"};
+            "pragma", "ident", "sccs", "assert", "unassert"};
         int k;
         for (k = 1; k < (int)ARRAY_LEN(dirs); k++)
             intern_cstr(in, dirs[k])->kw = (uint16_t)k;
@@ -617,7 +634,8 @@ bool pp_next(PP *pp, Tok *out)
         pp->reading_top = false;
         if (src == SRC_LEXER) {
             if (t.kind == TK_EOF) {
-                if (pp->mode == PPM_PLAN ? !plan_exit(pp) : !pop_file(pp)) {
+                if (pp->halted ||
+                    (pp->mode == PPM_PLAN ? !plan_exit(pp) : !pop_file(pp))) {
                     *out = t;
                     return false;
                 }
@@ -664,6 +682,16 @@ bool pp_next(PP *pp, Tok *out)
         *out = t;
         return true;
     }
+}
+
+/* Continue past the end of an included file (GCC does for _Pragma
+ * operands; argument lists stop there).  False at the end of the TU, where
+ * the EOF must stay readable. */
+bool pp_cross_file_end(PP *pp)
+{
+    if (pp->halted || !pp->inc || !pp->inc->prev)
+        return false;
+    return pp->mode == PPM_PLAN ? plan_exit(pp) : pop_file(pp);
 }
 
 /* ---- directive lines ------------------------------------------------ */
@@ -1121,6 +1149,17 @@ static void do_define(PP *pp, const Tok *hash)
     m->body = NEW_ARRAY(pp->arena, Tok, m->body_len + 1);
     if (m->body_len)
         memcpy(m->body, line.t + i, sizeof(Tok) * m->body_len);
+    {
+        /* GCC: `##` marks the token before it; a run of them is one */
+        uint32_t w = 0;
+        for (b = 0; b < m->body_len; b++) {
+            if (w && tok_is_punct(&m->body[b], P_HASHHASH) &&
+                tok_is_punct(&m->body[w - 1], P_HASHHASH))
+                continue;
+            m->body[w++] = m->body[b];
+        }
+        m->body_len = w;
+    }
     for (b = 0; b < m->body_len; b++) {
         Tok *t = &m->body[b];
         t->flags &= (uint16_t)~TF_BOL;
@@ -1393,8 +1432,11 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
     ev.file = f;
     if (!f) {
         ev.result = INC_NOT_FOUND;
-        diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
-                    "'%s' file not found", name);
+        diag_report(pp->diag, pp->opt->fatal_missing_include ? DL_FATAL
+                                                              : DL_ERROR,
+                    "", line.t[0].loc, "'%s' file not found", name);
+        if (pp->opt->fatal_missing_include)
+            pp->halted = true;
         PP_EMIT(pp, include, &ev);
         return;
     }
@@ -1466,20 +1508,28 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
                     "pedantic", s.t[0].loc,
                     "line number out of range (C99 6.10.4p3)");
     k = 1;
-    if (k < s.n && s.t[k].kind == TK_STRING) {
+    if (k < s.n && (s.t[k].kind != TK_STRING || pp_text(pp, &s.t[k])[0] != '"')) {
+        /* GCC rejects the whole directive */
+        diag_report(pp->diag, DL_ERROR, "", s.t[k].loc,
+                    "\"%.*s\" is not a valid filename", (int)s.t[k].len,
+                    pp_text(pp, &s.t[k]));
+        goto out;
+    }
+    if (k < s.n) {
         const char *st = pp_text(pp, &s.t[k]);
-        if (st[0] != '"')
-            diag_report(pp->diag, DL_ERROR, "", s.t[k].loc,
-                        "invalid filename for #line directive");
-        else
-            pp->inc->presumed_name = arena_strndup(pp->arena, st + 1, s.t[k].len - 2);
+        pp->inc->presumed_name = arena_strndup(pp->arena, st + 1, s.t[k].len - 2);
         k++;
     }
     if (!gnu_marker)
         check_eol(pp, span_from(s, k), "line");
     srcmgr_linecol(pp->inc->file, hash->loc, &phys, &col);
-    pp->inc->line_adj_from = phys + 1;
-    pp->inc->line_delta = (int32_t)((long long)n - (long long)(phys + 1));
+    {
+        LineAdj *a = NEW(pp->arena, LineAdj);
+        a->prev = pp->inc->adj;
+        a->from = phys + 1;
+        a->delta = (int32_t)((long long)n - (long long)(phys + 1));
+        pp->inc->adj = a;
+    }
 out:
     tokbuf_release(pp, &tmp);
     tokbuf_release(pp, &src);
@@ -1505,6 +1555,129 @@ static void do_message(PP *pp, const Tok *kw, bool is_error)
 }
 
 /* ---- dispatch ------------------------------------------------------- */
+
+/* ---- GCC assertions ---------------------------------------------- */
+
+void pp_assert_str(PP *pp, const char *pred, const char *answer)
+{
+    Assertion *a = NEW(pp->arena, Assertion);
+    a->pred = intern_cstr(pp->in, pred);
+    a->answer = arena_strdup(pp->arena, answer);
+    a->next = pp->asserts;
+    pp->asserts = a;
+}
+
+bool pp_parse_assertion(PP *pp, TokSpan s, uint32_t *i, bool need_answer,
+                        SrcLoc at, Ident **pred, const char **answer)
+{
+    StrBuf *sb = &pp->sb;
+    uint32_t k = *i;
+    *answer = NULL;
+    if (k >= s.n) {
+        diag_report(pp->diag, DL_ERROR, "", at, "assertion without predicate");
+        return false;
+    }
+    if (s.t[k].kind != TK_IDENT) {
+        diag_report(pp->diag, DL_ERROR, "", s.t[k].loc,
+                    "predicate must be an identifier");
+        *i = k + 1;
+        return false;
+    }
+    *pred = pp_ident(pp, &s.t[k++]);
+    if (k >= s.n || !tok_is_punct(&s.t[k], P_LPAREN)) {
+        if (need_answer) {
+            diag_report(pp->diag, DL_ERROR, "", s.t[k - 1].loc,
+                        "missing '(' after predicate");
+            *i = k;
+            return false;
+        }
+        *i = k;
+        return true;
+    }
+    k++;
+    sb->len = 0;
+    for (; k < s.n && !tok_is_punct(&s.t[k], P_RPAREN); k++) {
+        if (sb->len)
+            sb_putc(sb, ' ');
+        sb_putn(sb, pp_text(pp, &s.t[k]), s.t[k].len);
+    }
+    if (k >= s.n) {
+        diag_report(pp->diag, DL_ERROR, "", span_end(pp, s, at),
+                    "missing ')' to complete answer");
+        *i = k;
+        return false;
+    }
+    if (sb->len == 0) {
+        diag_report(pp->diag, DL_ERROR, "", s.t[k].loc,
+                    "predicate's answer is empty");
+        *i = k + 1;
+        return false;
+    }
+    *answer = arena_strndup(pp->arena, sb->data, sb->len);
+    *i = k + 1;
+    return true;
+}
+
+bool pp_assertion_holds(PP *pp, Ident *pred, const char *answer)
+{
+    const Assertion *a;
+    for (a = pp->asserts; a; a = a->next)
+        if (a->pred == pred && (!answer || strcmp(a->answer, answer) == 0))
+            return true;
+    return false;
+}
+
+/* #assert pred(answer) / #unassert pred[(answer)] (deprecated GCC). */
+static void do_assert(PP *pp, const Tok *kw, bool add)
+{
+    TokSpan line = read_line(pp);
+    uint32_t i = 0;
+    Ident *pred;
+    const char *answer;
+    diag_report(pp->diag, DL_WARNING, "deprecated", kw->loc,
+                "#%s is a deprecated GCC extension",
+                add ? "assert" : "unassert");
+    if (!pp_parse_assertion(pp, line, &i, add, kw->loc + kw->len, &pred,
+                            &answer))
+        return;
+    check_eol(pp, span_from(line, i), add ? "assert" : "unassert");
+    if (add) {
+        if (!pp_assertion_holds(pp, pred, answer))
+            pp_assert_str(pp, pred->str, answer);
+    } else {
+        Assertion **pa = &pp->asserts;
+        while (*pa) {
+            if ((*pa)->pred == pred &&
+                (!answer || strcmp((*pa)->answer, answer) == 0))
+                *pa = (*pa)->next;
+            else
+                pa = &(*pa)->next;
+        }
+    }
+}
+
+/* #ident "string" / #sccs "string": macro-expanded, printed as #ident. */
+static void do_ident(PP *pp, const Tok *hash, const Tok *kw)
+{
+    TokSpan line = read_line(pp);
+    TokBuf tmp = {0};
+    pp_expand_into(pp, line, &tmp);
+    if (tmp.len == 0 || tmp.t[0].kind != TK_STRING) {
+        diag_report(pp->diag, DL_ERROR, "", tmp.len ? tmp.t[0].loc : kw->loc,
+                    "invalid #%s directive", ident_by_id(pp->in, kw->aux)->str);
+    } else {
+        StrBuf *sb = &pp->sb;
+        TokSpan rest;
+        rest.t = tmp.t + 1;
+        rest.n = tmp.len - 1;
+        check_eol(pp, rest, "ident");
+        sb->len = 0;
+        sb_puts(sb, "ident ");
+        sb_putn(sb, pp_text(pp, &tmp.t[0]), tmp.t[0].len);
+        pp_emit_line(pp, sb->data, sb->len, hash->loc);
+    }
+    tokbuf_release(pp, &tmp);
+}
 
 static void phase_a_finish_dir(PP *pp, size_t dir_item);
 
@@ -1565,12 +1738,19 @@ void pp_directive(PP *pp, const Tok *hash)
             goto out;
         }
         break;
+    case KW_ASSERT:
+    case KW_UNASSERT:
+        if (pp->opt->gnu_extensions) {
+            do_assert(pp, &kw, k == KW_ASSERT);
+            goto out;
+        }
+        break;
     case KW_IDENT:
     case KW_SCCS:
         if (pp->opt->gnu_extensions) {
             pedantic(pp, kw.loc, "#%s is a GCC extension",
                      ident_by_id(pp->in, kw.aux)->str);
-            read_line(pp);
+            do_ident(pp, hash, &kw);
             goto out;
         }
         break;
@@ -1628,14 +1808,12 @@ static void phase_a_finish_dir(PP *pp, size_t dir_item)
     IncludeFrame *fr = pp->inc;
     /* #line changed the presumed position: new frame snapshot */
     if (fr && pf && fr->file == pf->file &&
-        (fr->presumed_name != pf->presumed_name ||
-         fr->line_delta != pf->line_delta ||
-         fr->line_adj_from != pf->line_adj_from || fr->system != pf->system)) {
+        (fr->presumed_name != pf->presumed_name || fr->adj != pf->adj ||
+         fr->system != pf->system)) {
         PlanFrame *n = NEW(pp->arena, PlanFrame);
         *n = *pf;
         n->presumed_name = fr->presumed_name;
-        n->line_delta = fr->line_delta;
-        n->line_adj_from = fr->line_adj_from;
+        n->adj = fr->adj;
         n->system = fr->system;
         pp->pframe = n;
     }
@@ -1733,8 +1911,7 @@ static IncludeFrame *frame_from_plan(PP *pp, const PlanFrame *pf)
     fr->prev = frame_from_plan(pp, pf->parent);
     fr->file = pf->file;
     fr->presumed_name = pf->presumed_name;
-    fr->line_delta = pf->line_delta;
-    fr->line_adj_from = pf->line_adj_from;
+    fr->adj = pf->adj;
     fr->include_loc = pf->include_loc;
     fr->dir_index = pf->dir_index;
     fr->system = pf->system;
@@ -1747,8 +1924,7 @@ static void apply_frame(PP *pp, const PlanFrame *pf)
     if (!fr || !pf)
         return;
     fr->presumed_name = pf->presumed_name;
-    fr->line_delta = pf->line_delta;
-    fr->line_adj_from = pf->line_adj_from;
+    fr->adj = pf->adj;
     fr->system = pf->system;
 }
 

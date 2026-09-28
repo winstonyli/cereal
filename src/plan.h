@@ -14,8 +14,7 @@ typedef struct PlanFrame {
     struct PlanFrame *parent;
     SrcFile *file;
     const char *presumed_name;
-    int32_t line_delta;
-    uint32_t line_adj_from;
+    const LineAdj *adj;
     SrcLoc include_loc;
     int dir_index;
     int depth;                 /* include depth (main file = 1) */

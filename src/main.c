@@ -51,6 +51,7 @@ static int mode_preprocess(Options *o)
     }
     if (o->output && !(out = fopen(o->output, "w")))
         fatal("cannot open '%s' for writing", o->output);
+    o->pp.fatal_missing_include = true;
     tu_init(&tu, o);
     if (o->parallel != 'n') {
         ParOptions po;

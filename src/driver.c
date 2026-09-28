@@ -7,6 +7,7 @@ extern const char *const host_include_dirs[];
 extern const char *const host_attrs[];
 extern const char *const host_builtins[];
 extern const char host_predefs[];
+extern const char *const host_assertions[];
 
 void options_init(Options *o)
 {
@@ -181,6 +182,9 @@ bool tu_begin(TU *tu, const char *path)
             s += n + (nl ? 1 : 0);
         }
     }
+    if (!tu->opt->pp.no_predefs)
+        for (i = 0; host_assertions[i]; i += 2)
+            pp_assert_str(pp, host_assertions[i], host_assertions[i + 1]);
     if (!tu->opt->pp.no_predefs && tu->opt->pp.gnu_mode) {
         /* host -std=gnu99 differs from -std=c99 only in these */
         pp_cmdline_undef(pp, "__STRICT_ANSI__");

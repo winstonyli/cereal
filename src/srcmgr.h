@@ -132,4 +132,22 @@ char *path_dirname(Arena *a, const char *path);
 char *path_join(Arena *a, const char *dir, const char *file);
 char *path_normalize(Arena *a, const char *path);
 
+/* #line adjustments of one file entry, newest first; immutable and
+ * shared.  A location resolves through the adjustment in effect where it
+ * was spelled (GCC), not the latest one: a #line inside an argument list
+ * does not move the tokens read before it. */
+typedef struct LineAdj {
+    const struct LineAdj *prev;
+    uint32_t from;             /* first physical line affected */
+    int32_t delta;             /* presumed = physical + delta */
+} LineAdj;
+
+static inline int32_t line_adj_delta(const LineAdj *a, uint32_t phys)
+{
+    for (; a; a = a->prev)
+        if (phys >= a->from)
+            return a->delta;
+    return 0;
+}
+
 #endif
