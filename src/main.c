@@ -1,6 +1,7 @@
 /* main.c - the `cereal` command. */
 #include "driver.h"
 #include "ppout.h"
+#include "analysis/analysis.h"
 
 #include <string.h>
 
@@ -55,6 +56,30 @@ static int mode_preprocess(Options *o)
     return rc;
 }
 
+static int mode_lint(Options *o)
+{
+    size_t i;
+    int rc = 0;
+    if (o->inputs.len == 0) {
+        fputs("cereal: lint needs input files\n", stderr);
+        return 2;
+    }
+    for (i = 0; i < o->inputs.len; i++) {
+        TU tu;
+        Analysis an;
+        tu_init(&tu, o);
+        memset(&an, 0, sizeof an);
+        analysis_attach(&an, &tu.pp);
+        if (tu_begin(&tu, o->inputs.data[i])) {
+            tu_drain(&tu);
+            analysis_finish(&an);
+        }
+        rc |= finish(&tu);
+        tu_free(&tu);
+    }
+    return rc;
+}
+
 int main(int argc, char **argv)
 {
     Options o;
@@ -93,6 +118,8 @@ int main(int argc, char **argv)
     }
     if (!strcmp(mode, "-E"))
         rc = mode_preprocess(&o);
+    else if (!strcmp(mode, "lint"))
+        rc = mode_lint(&o);
     options_free(&o);
     return rc;
 }

@@ -1,0 +1,1 @@
+#define NOGUARD 1

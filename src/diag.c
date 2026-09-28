@@ -7,53 +7,51 @@
 /* Every configurable diagnostic.  Hard errors use id "" and are not listed. */
 static const DiagOption options[] = {
     /* preprocessor core */
-    {"pp-warning-directive", "pp", DL_WARNING, "#warning directive"},
-    {"undef", "cond", DL_IGNORED, "undefined identifier evaluates to 0 in #if"},
-    {"macro-redefined", "pp", DL_WARNING, "non-identical macro redefinition (C99 6.10.3p2)"},
-    {"builtin-macro-redefined", "pp", DL_WARNING, "redefining or undefining a predefined macro"},
-    {"unknown-pragma", "pp", DL_IGNORED, "unrecognized #pragma"},
-    {"invalid-pp-token", "pp", DL_WARNING, "unterminated character or string literal"},
-    {"directive-in-macro-args", "pp", DL_WARNING, "directive inside macro arguments (C99 6.10.3p11 UB)"},
-    {"extra-tokens", "pp", DL_WARNING, "extra tokens at end of directive"},
-    {"trigraphs", "pp", DL_WARNING, "trigraph encountered"},
-    {"newline-eof", "pedantic", DL_IGNORED, "no newline at end of file"},
-    {"include-next-in-primary", "pp", DL_WARNING, "#include_next in primary source file"},
-    {"expansion-to-defined", "cond", DL_WARNING, "macro expansion produced 'defined' in #if (UB)"},
-    {"integer-overflow-in-if", "cond", DL_WARNING, "signed overflow in #if expression"},
-    {"pedantic", "pedantic", DL_IGNORED, "GNU extensions and non-portable constructs"},
-    {"stdc-pragma", "pp", DL_WARNING, "malformed STDC pragma"},
-    {"unbalanced-push-pop-macro", "pp", DL_WARNING, "#pragma pop_macro without push"},
+    {"pp-warning-directive", "pp", DL_WARNING, true, "#warning directive"},
+    {"undef", "cond", DL_WARNING, false, "undefined identifier evaluates to 0 in #if"},
+    {"macro-redefined", "pp", DL_WARNING, true, "non-identical macro redefinition (C99 6.10.3p2)"},
+    {"builtin-macro-redefined", "pp", DL_WARNING, true, "redefining or undefining a predefined macro"},
+    {"unknown-pragma", "pp", DL_WARNING, false, "unrecognized #pragma"},
+    {"invalid-pp-token", "pp", DL_WARNING, true, "unterminated character or string literal"},
+    {"directive-in-macro-args", "pp", DL_WARNING, true, "directive inside macro arguments (C99 6.10.3p11 UB)"},
+    {"extra-tokens", "pp", DL_WARNING, true, "extra tokens at end of directive"},
+    {"include-next-in-primary", "pp", DL_WARNING, true, "#include_next in primary source file"},
+    {"expansion-to-defined", "cond", DL_WARNING, true, "macro expansion produced 'defined' in #if (UB)"},
+    {"integer-overflow-in-if", "cond", DL_WARNING, true, "signed overflow in #if expression"},
+    {"pedantic", "pedantic", DL_WARNING, false, "GNU extensions and non-portable constructs"},
+    {"stdc-pragma", "pp", DL_WARNING, true, "malformed STDC pragma"},
+    {"unbalanced-push-pop-macro", "pp", DL_WARNING, true, "#pragma pop_macro without push"},
 
     /* hygiene */
-    {"macro-unparenthesized-param", "hygiene", DL_WARNING, "parameter used as an operand without parentheses"},
-    {"macro-unparenthesized-body", "hygiene", DL_WARNING, "expression-like body without enclosing parentheses"},
-    {"macro-multi-statement", "hygiene", DL_WARNING, "statement-like body not wrapped in do { } while (0)"},
-    {"macro-dangling-else", "hygiene", DL_WARNING, "body is an if-statement without else (dangling else hazard)"},
-    {"macro-trailing-semicolon", "hygiene", DL_WARNING, "body ends with ';'"},
-    {"macro-multi-eval", "hygiene", DL_WARNING, "argument with side effects evaluated more than once"},
-    {"macro-discarded-side-effect", "hygiene", DL_WARNING, "argument with side effects never evaluated"},
-    {"macro-reserved-name", "hygiene", DL_WARNING, "macro name is a reserved identifier or keyword"},
-    {"macro-unused-param", "hygiene", DL_REMARK, "parameter never used in the body"},
-    {"macro-unbalanced", "hygiene", DL_REMARK, "unbalanced delimiters in the body"},
-    {"macro-self-reference", "hygiene", DL_REMARK, "macro refers to itself (not re-expanded)"},
-    {"macro-shadows-param", "hygiene", DL_IGNORED, "parameter name is also a defined macro"},
+    {"macro-unparenthesized-param", "hygiene", DL_WARNING, true, "parameter used as an operand without parentheses"},
+    {"macro-unparenthesized-body", "hygiene", DL_WARNING, true, "expression-like body without enclosing parentheses"},
+    {"macro-multi-statement", "hygiene", DL_WARNING, true, "statement-like body not wrapped in do { } while (0)"},
+    {"macro-dangling-else", "hygiene", DL_WARNING, true, "body is an if-statement without else (dangling else hazard)"},
+    {"macro-trailing-semicolon", "hygiene", DL_WARNING, true, "body ends with ';'"},
+    {"macro-multi-eval", "hygiene", DL_WARNING, true, "argument with side effects evaluated more than once"},
+    {"macro-multi-eval-call", "hygiene", DL_WARNING, false, "argument containing a call evaluated more than once"},
+    {"macro-discarded-side-effect", "hygiene", DL_WARNING, true, "argument with side effects never evaluated"},
+    {"macro-reserved-name", "hygiene", DL_WARNING, true, "macro name is a reserved identifier or keyword"},
+    {"macro-unused-param", "hygiene", DL_REMARK, false, "parameter never used in the body"},
+    {"macro-unbalanced", "hygiene", DL_REMARK, false, "unbalanced delimiters in the body"},
+    {"macro-self-reference", "hygiene", DL_REMARK, false, "macro refers to itself (not re-expanded)"},
 
     /* conditional compilation */
-    {"cond-dead-branch", "cond", DL_WARNING, "branch can never be taken in any configuration"},
-    {"cond-redundant", "cond", DL_WARNING, "condition is always true given enclosing conditions"},
-    {"cond-constant", "cond", DL_REMARK, "#if condition is a constant (e.g. #if 0)"},
-    {"cond-typo", "cond", DL_WARNING, "tested macro is never defined but a similar name is"},
-    {"endif-label", "cond", DL_WARNING, "#endif/#else comment does not match the opening condition"},
-    {"cond-never-defined", "cond", DL_IGNORED, "tested macro is never defined anywhere"},
+    {"cond-dead-branch", "cond", DL_WARNING, true, "branch can never be taken in any configuration"},
+    {"cond-redundant", "cond", DL_WARNING, true, "condition is always true given enclosing conditions"},
+    {"cond-constant", "cond", DL_REMARK, false, "#if condition is a constant (e.g. #if 0)"},
+    {"cond-typo", "cond", DL_WARNING, true, "tested macro is never defined but a similar name is"},
+    {"cond-never-defined", "cond", DL_REMARK, false, "tested macro is never defined anywhere"},
+    {"endif-label", "cond", DL_WARNING, true, "#endif/#else comment does not match the opening condition"},
 
     /* include / dependency */
-    {"header-guard", "include", DL_WARNING, "include guard #ifndef and #define disagree"},
-    {"missing-header-guard", "include", DL_WARNING, "header has no include guard or #pragma once"},
-    {"guard-collision", "include", DL_WARNING, "two headers use the same include guard macro"},
-    {"duplicate-include", "include", DL_WARNING, "same header included twice from one file"},
-    {"include-cycle", "include", DL_REMARK, "include cycle"},
-    {"unused-include", "include", DL_WARNING, "macro-only header provides nothing used"},
-    {"unused-macros", "include", DL_WARNING, "macro defined in the main file is never used"},
+    {"header-guard", "include", DL_WARNING, true, "include guard #ifndef and #define disagree"},
+    {"missing-header-guard", "include", DL_WARNING, true, "header has no include guard or #pragma once"},
+    {"guard-collision", "include", DL_WARNING, true, "two headers use the same include guard macro"},
+    {"duplicate-include", "include", DL_WARNING, true, "same header included twice from one file"},
+    {"include-cycle", "include", DL_REMARK, false, "include cycle"},
+    {"unused-include", "include", DL_WARNING, true, "macro-only header provides nothing used"},
+    {"unused-macros", "include", DL_WARNING, true, "macro defined in the main file is never used"},
 };
 
 #define NOPTIONS (sizeof options / sizeof options[0])
@@ -77,9 +75,8 @@ void diag_list_options(FILE *out)
 {
     size_t i;
     for (i = 0; i < NOPTIONS; i++)
-        fprintf(out, "  -W%-30s [%s]%s %s\n", options[i].name,
-                options[i].group,
-                options[i].deflt >= DL_REMARK ? " (on)" : "",
+        fprintf(out, "  -W%-30s %-8s %-4s %s\n", options[i].name,
+                options[i].group, options[i].on ? "on" : "off",
                 options[i].help);
 }
 
@@ -115,12 +112,10 @@ bool diag_configure(DiagEngine *d, const char *flag)
         return true;
     }
     if (strcmp(flag, "all") == 0 || strcmp(flag, "extra") == 0) {
-        /* enable every group except remarks */
+        /* every off-by-default warning (not remarks, not pedantic) */
         for (i = 0; i < NOPTIONS; i++)
-            if (options[i].deflt == DL_IGNORED &&
-                strcmp(options[i].group, "pedantic") != 0 &&
-                strcmp(options[i].name, "unknown-pragma") != 0 &&
-                strcmp(options[i].name, "cond-never-defined") != 0) {
+            if (!options[i].on && options[i].level == DL_WARNING &&
+                strcmp(options[i].group, "pedantic") != 0) {
                 overrides[i] = DL_WARNING;
                 overridden[i] = true;
             }
@@ -133,9 +128,7 @@ bool diag_configure(DiagEngine *d, const char *flag)
     for (i = 0; i < NOPTIONS; i++) {
         if (strcmp(options[i].name, flag) == 0 ||
             strcmp(options[i].group, flag) == 0) {
-            overrides[i] = on ? (options[i].deflt >= DL_REMARK ? options[i].deflt
-                                                               : DL_WARNING)
-                              : DL_IGNORED;
+            overrides[i] = on ? options[i].level : DL_IGNORED;
             overridden[i] = true;
             found = true;
         }
@@ -153,9 +146,10 @@ DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested)
         return requested;
     for (i = 0; i < NOPTIONS; i++) {
         if (strcmp(options[i].name, id) == 0) {
-            DiagLevel l = overridden[i] ? overrides[i] : options[i].deflt;
-            if (everything && l == DL_IGNORED)
-                l = DL_REMARK;
+            DiagLevel l = overridden[i] ? overrides[i]
+                          : options[i].on ? options[i].level : DL_IGNORED;
+            if (everything && !overridden[i])
+                l = options[i].level;
             if (l == DL_IGNORED)
                 return DL_IGNORED;
             return l;

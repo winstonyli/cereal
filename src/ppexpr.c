@@ -263,6 +263,7 @@ static Val primary(EP *p, bool eval)
     case TK_IDENT:
         advance(p);
         /* C99 6.10.1p4: remaining identifiers are replaced with 0 */
+        PP_EMIT(p->pp, macro_ref, t->ident, NULL, t, REF_IF_VALUE);
         {
             Diagnostic *d = diag_report(p->pp->diag, DL_WARNING, "undef",
                                         t->loc,

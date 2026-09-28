@@ -89,7 +89,8 @@ typedef enum {
     REF_IFDEF,               /* #ifdef / #ifndef */
     REF_DEFINED,             /* defined X / defined(X) in #if/#elif */
     REF_UNDEF,
-    REF_PRAGMA               /* push_macro/pop_macro/poison */
+    REF_PRAGMA,              /* push_macro/pop_macro/poison */
+    REF_IF_VALUE             /* undefined identifier evaluated as 0 in #if */
 } RefKind;
 
 typedef enum {

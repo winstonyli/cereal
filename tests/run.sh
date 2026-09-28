@@ -73,7 +73,7 @@ done
 
 for f in "$ROOT"/tests/lint/*.c; do
     [ -f "$f" ] || continue
-    if (cd "$ROOT/tests/lint" && python3 "$ROOT/tests/verify.py" "$CEREAL" lint -Weverything "$(basename "$f")") >"$TMP/v" 2>&1; then
+    if (cd "$ROOT/tests/lint" && python3 "$ROOT/tests/verify.py" "$CEREAL" lint "$(basename "$f")") >"$TMP/v" 2>&1; then
         ok
     else
         bad "lint/$(basename "$f")"

@@ -102,9 +102,9 @@ Ident *intern_cstr(Interner *in, const char *s);
 uint32_t hash_bytes(const char *s, size_t n);
 
 /* Iterate all identifiers. */
-#define INTERNER_FOREACH(in, id)                                          \
-    for (size_t in##_b_ = 0; in##_b_ < (in)->nbuckets; in##_b_++)          \
-        for (Ident *id = (in)->buckets[in##_b_]; id; id = id->next)
+#define INTERNER_FOREACH(in, b, id)                                       \
+    for (size_t b = 0; b < (in)->nbuckets; b++)                           \
+        for (Ident *id = (in)->buckets[b]; id; id = id->next)
 
 /* ---- misc ------------------------------------------------------------ */
 

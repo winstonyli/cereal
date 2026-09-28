@@ -16,8 +16,12 @@ EXPECT = re.compile(r'expect(?:([+-]\d+))?:\s*([\w\-, ]+)')
 def main():
     cereal, args, path = sys.argv[1], sys.argv[2:-1], sys.argv[-1]
     want = {}
+    flags = []
     with open(path, encoding='utf-8') as f:
         for n, line in enumerate(f, 1):
+            fm = re.search(r'cereal-flags:\s*(.*?)\s*(\*/|$)', line)
+            if fm:
+                flags += fm.group(1).split()
             for m in EXPECT.finditer(line):
                 off = int(m.group(1) or 0)
                 for i in m.group(2).split(','):
@@ -25,7 +29,7 @@ def main():
                     if i:
                         want.setdefault((n + off, i), 0)
                         want[(n + off, i)] += 1
-    p = subprocess.run([cereal, *args, '-fdiagnostics-format=json', path],
+    p = subprocess.run([cereal, *args, *flags, '-fdiagnostics-format=json', path],
                        capture_output=True, text=True)
     out = p.stdout
     if args and args[0] == '-E':

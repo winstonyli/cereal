@@ -56,7 +56,8 @@ typedef struct DiagEngine {
 typedef struct DiagOption {
     const char *name;
     const char *group;       /* hygiene | cond | include | pp | pedantic */
-    DiagLevel deflt;         /* level when not configured */
+    DiagLevel level;         /* severity when enabled */
+    bool on;                 /* enabled by default */
     const char *help;
 } DiagOption;
 
