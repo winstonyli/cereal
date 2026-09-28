@@ -53,7 +53,7 @@ void tokbuf_grow(PP *pp, TokBuf *b)
     *b = nb;
 }
 
-static void pool_free(TokPool *p)
+static void tokpool_free(TokPool *p)
 {
     int k;
     for (k = 0; k < POOL_CLASSES; k++) {
@@ -147,7 +147,7 @@ Tok pp_make_token(PP *pp, TokKind k, const char *text, size_t n, SrcLoc loc,
     if (k == TK_IDENT) {
         t.aux = intern(pp->in, text, n)->id;
     } else {
-        t.aux = srcmgr_scratch(pp->sm, text, n);
+        t.aux = srcmgr_scratch(pp->sm, &pp->scratch, text, n);
         t.flags |= TF_SPELL;
     }
     return t;
@@ -315,7 +315,7 @@ static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
     pp->inc = fr;
     pp->include_depth++;
     pp->has_pending = false;
-    lexer_init(&pp->lex, pp->sm, pp->in, pp->diag, pp->opt->lex, f);
+    lexer_init(&pp->lex, pp->sm, pp->in, pp->diag, &pp->scratch, pp->opt->lex, f);
     PP_EMIT(pp, file_enter, f, via);
 }
 
@@ -480,7 +480,7 @@ void pp_free(PP *pp)
     }
     lexer_free(&pp->lex);
     tokbuf_release(pp, &pp->line);
-    pool_free(&pp->pool);
+    tokpool_free(&pp->pool);
     vec_free(&pp->ctx);
     vec_free(&pp->macros);
     vec_free(&pp->expansions);
@@ -532,7 +532,7 @@ bool pp_enter_main(PP *pp, const char *path)
     }
     pp->main_file = f;
     /* an empty lexer below the main file */
-    lexer_init(&pp->lex, pp->sm, pp->in, pp->diag, pp->opt->lex,
+    lexer_init(&pp->lex, pp->sm, pp->in, pp->diag, &pp->scratch, pp->opt->lex,
                pp->builtin_file);
     push_file(pp, f, 0, -1, NULL);
     pre = srcmgr_add_virtual(pp->sm, "<command line>",
@@ -566,7 +566,7 @@ bool pp_next(PP *pp, Tok *out)
             guard_note_activity(pp);
         }
         if (t.kind == TK_IDENT) {
-            Ident *id = pp->in->byid.data[t.aux];
+            Ident *id = ident_by_id(pp->in, t.aux);
             Macro *m = id->macro;
             if (id->flags & IDF_POISONED)
                 pp_error_at(pp, &t, "attempt to use poisoned \"%s\"", id->str);
@@ -663,7 +663,7 @@ static void skip_group(PP *pp)
                 continue;
             }
             if (kw.kind == TK_IDENT) {
-                int k = pp->in->byid.data[kw.aux]->kw;
+                int k = ident_by_id(pp->in, kw.aux)->kw;
                 if (k == KW_IF || k == KW_IFDEF || k == KW_IFNDEF) {
                     depth++;
                 } else if (k == KW_ENDIF) {
@@ -730,7 +730,7 @@ static void emit_cond(PP *pp, CondKind k, const Tok *hash, const Tok *kw,
 
 void pp_macro_ref(PP *pp, const Tok *name, RefKind kind)
 {
-    Ident *id = pp->in->byid.data[name->aux];
+    Ident *id = ident_by_id(pp->in, name->aux);
     Macro *m = id->macro;
     id->flags |= IDF_EVER_REFD;
     if (m && kind != REF_EXPANSION && kind != REF_UNDEF)
@@ -763,7 +763,7 @@ static void do_if(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
                 g = &line.t[2];
         }
         if (g)
-            fr->guard_candidate = pp->in->byid.data[g->aux];
+            fr->guard_candidate = ident_by_id(pp->in, g->aux);
         else
             fr->guard_state = G_INVALID;
     } else {
@@ -794,7 +794,7 @@ static void do_if(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
             ok = false;
         } else {
             pp_macro_ref(pp, &line.t[0], REF_IFDEF);
-            val = (pp->in->byid.data[line.t[0].aux]->macro != NULL) ==
+            val = (ident_by_id(pp->in, line.t[0].aux)->macro != NULL) ==
                   (k == COND_IFDEF);
             check_eol(pp, span_from(line, 1), k == COND_IFDEF ? "ifdef" : "ifndef");
         }
@@ -926,7 +926,7 @@ static void do_define(PP *pp, const Tok *hash)
         return;
     }
     name = &line.t[0];
-    nid = pp->in->byid.data[name->aux];
+    nid = ident_by_id(pp->in, name->aux);
     if (nid == pp->id_defined) {
         diag_report(pp->diag, DL_ERROR, "", name->loc,
                     "'defined' cannot be used as a macro name");
@@ -971,7 +971,7 @@ static void do_define(PP *pp, const Tok *hash)
                     break;
                 }
                 {
-                    Ident *pid = pp->in->byid.data[t->aux];
+                    Ident *pid = ident_by_id(pp->in, t->aux);
                     size_t k;
                     if (pid == pp->id_va_args) {
                         diag_report(pp->diag, DL_ERROR, "", t->loc,
@@ -1050,7 +1050,7 @@ static void do_define(PP *pp, const Tok *hash)
         Tok *t = &m->body[b];
         t->flags &= (uint16_t)~TF_BOL;
         if (t->kind == TK_IDENT) {
-            Ident *id = pp->in->byid.data[t->aux];
+            Ident *id = ident_by_id(pp->in, t->aux);
             int k;
             for (k = 0; k < m->nparams; k++)
                 if (m->params[k] == id) {
@@ -1141,7 +1141,7 @@ static void do_undef(PP *pp, const Tok *hash)
                     "macro name missing in #undef");
         return;
     }
-    id = pp->in->byid.data[line.t[0].aux];
+    id = ident_by_id(pp->in, line.t[0].aux);
     if (id == pp->id_defined) {
         diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
                     "'defined' cannot be used as a macro name");
@@ -1444,7 +1444,7 @@ void pp_directive(PP *pp, const Tok *hash)
         return;
     }
     pp->in_directive = true;
-    k = kw.kind == TK_IDENT ? pp->in->byid.data[kw.aux]->kw : KW_NONE;
+    k = kw.kind == TK_IDENT ? ident_by_id(pp->in, kw.aux)->kw : KW_NONE;
     switch (k) {
     case KW_IF: do_if(pp, hash, &kw, COND_IF); goto out;
     case KW_IFDEF: do_if(pp, hash, &kw, COND_IFDEF); goto out;
@@ -1482,7 +1482,7 @@ void pp_directive(PP *pp, const Tok *hash)
     case KW_SCCS:
         if (pp->opt->gnu_extensions) {
             pedantic(pp, kw.loc, "#%s is a GCC extension",
-                     pp->in->byid.data[kw.aux]->str);
+                     ident_by_id(pp->in, kw.aux)->str);
             read_line(pp);
             goto out;
         }
@@ -1493,7 +1493,7 @@ void pp_directive(PP *pp, const Tok *hash)
     if (kw.kind == TK_IDENT) {
         diag_report(pp->diag, DL_ERROR, "", kw.loc,
                     "invalid preprocessing directive #%s",
-                    pp->in->byid.data[kw.aux]->str);
+                    ident_by_id(pp->in, kw.aux)->str);
         read_line(pp);
     } else if (kw.kind == TK_PPNUM && pp->opt->gnu_extensions) {
         do_line(pp, hash, &kw, true);

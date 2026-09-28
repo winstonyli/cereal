@@ -230,6 +230,7 @@ typedef struct PP {
     bool has_pending;
     VEC(Context) ctx;
     TokPool pool;
+    ScratchCursor scratch;   /* this thread's scratch chunk */
     TokBuf line;             /* current directive line */
 
     IncludeFrame *inc;

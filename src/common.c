@@ -237,65 +237,6 @@ uint32_t hash_bytes(const char *s, size_t n)
     return (uint32_t)h;
 }
 
-void interner_init(Interner *in, Arena *a)
-{
-    memset(in, 0, sizeof *in);
-    in->arena = a;
-    in->cap = 8192;
-    in->slots = xcalloc(in->cap, sizeof(Ident *));
-    vec_push(&in->byid, NULL); /* id 0 is reserved: "no identifier" */
-}
-
-void interner_free(Interner *in)
-{
-    free(in->slots);
-    vec_free(&in->byid);
-    in->slots = NULL;
-}
-
-static void interner_grow(Interner *in)
-{
-    size_t nc = in->cap * 2, i;
-    Ident **ns = xcalloc(nc, sizeof(Ident *));
-    for (i = 0; i < in->cap; i++) {
-        Ident *id = in->slots[i];
-        size_t k;
-        if (!id)
-            continue;
-        for (k = id->hash & (nc - 1); ns[k]; k = (k + 1) & (nc - 1))
-            ;
-        ns[k] = id;
-    }
-    free(in->slots);
-    in->slots = ns;
-    in->cap = nc;
-}
-
-Ident *intern(Interner *in, const char *s, size_t n)
-{
-    uint32_t h = hash_bytes(s, n);
-    size_t k = h & (in->cap - 1);
-    Ident *id;
-    for (; (id = in->slots[k]) != NULL; k = (k + 1) & (in->cap - 1))
-        if (id->hash == h && id->len == n && memcmp(id->str, s, n) == 0)
-            return id;
-    id = NEW(in->arena, Ident);
-    id->str = arena_strndup(in->arena, s, n);
-    id->len = (uint32_t)n;
-    id->hash = h;
-    id->id = (uint32_t)in->byid.len;
-    vec_push(&in->byid, id);
-    in->slots[k] = id;
-    if (++in->count * 2 > in->cap)
-        interner_grow(in);
-    return id;
-}
-
-Ident *intern_cstr(Interner *in, const char *s)
-{
-    return intern(in, s, strlen(s));
-}
-
 /* ---- misc ----------------------------------------------------------- */
 
 bool str_eq_n(const char *a, size_t an, const char *b)

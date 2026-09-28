@@ -62,7 +62,7 @@ void lex_global_init(void)
 /* ---- setup ---------------------------------------------------------- */
 
 void lexer_init(Lexer *L, SrcMgr *sm, Interner *in, DiagEngine *d,
-                LexOptions opt, SrcFile *f)
+                ScratchCursor *sc, LexOptions opt, SrcFile *f)
 {
     lex_global_init();
     memset(L, 0, sizeof *L);
@@ -72,12 +72,13 @@ void lexer_init(Lexer *L, SrcMgr *sm, Interner *in, DiagEngine *d,
     L->sm = sm;
     L->in = in;
     L->diag = d;
+    L->scratch = sc;
     L->opt = opt;
     L->bol = true;
 }
 
-void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, LexOptions opt,
-                      SrcLoc begin, uint32_t len)
+void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, ScratchCursor *sc,
+                      LexOptions opt, SrcLoc begin, uint32_t len)
 {
     lex_global_init();
     memset(L, 0, sizeof *L);
@@ -86,6 +87,7 @@ void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, LexOptions opt,
     L->lim = L->p + len;
     L->sm = sm;
     L->in = in;
+    L->scratch = sc;
     L->opt = opt;
     L->opt.trigraphs = false;
     L->bol = true;
@@ -387,8 +389,8 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
         flags |= TF_SPLICED;
     if (t->kind == TK_IDENT) {
         t->aux = intern(L->in, L->clean.data, L->clean.len)->id;
-    } else if (flags & TF_SPLICED) {
-        t->aux = srcmgr_scratch(L->sm, L->clean.data, L->clean.len);
+    } else if ((flags & TF_SPLICED) && L->scratch) {
+        t->aux = srcmgr_scratch(L->sm, L->scratch, L->clean.data, L->clean.len);
         flags |= TF_SPELL;
     }
     t->flags = flags;

@@ -68,49 +68,8 @@ void sb_vprintf(StrBuf *sb, const char *fmt, va_list ap);
 const char *sb_cstr(StrBuf *sb);   /* NUL-terminated view */
 void sb_free(StrBuf *sb);
 
-/* ---- Identifier interner --------------------------------------------- */
-
-struct Macro;
-
-typedef struct Ident {
-    const char *str;
-    uint32_t len;
-    uint32_t hash;
-    uint32_t id;           /* dense, >= 1 */
-    uint16_t kw;           /* keyword/special id, 0 if none */
-    uint16_t flags;
-    struct Macro *macro;   /* currently active definition, or NULL */
-    struct Macro *history; /* most recent definition ever made (linked via prev) */
-    void *user;            /* scratch slot for analyzers */
-} Ident;
-
-enum {
-    IDF_POISONED   = 1 << 0,
-    IDF_EVER_REFD  = 1 << 1  /* referenced in #ifdef/defined/expansion */
-};
-
-typedef struct Interner {
-    Arena *arena;
-    Ident **slots;         /* open addressing */
-    size_t cap, count;
-    VEC(Ident *) byid;
-} Interner;
-
-void interner_init(Interner *in, Arena *a);
-void interner_free(Interner *in);
-Ident *intern(Interner *in, const char *s, size_t n);
-Ident *intern_cstr(Interner *in, const char *s);
+/* Identifier interning lives in intern.h. */
 uint32_t hash_bytes(const char *s, size_t n);
-
-static inline Ident *ident_by_id(const Interner *in, uint32_t id)
-{
-    return in->byid.data[id];
-}
-
-/* Iterate all identifiers. */
-#define INTERNER_FOREACH(in, b, id)                                       \
-    for (size_t b = 1; b < (in)->byid.len; b++)                           \
-        for (Ident *id = (in)->byid.data[b]; id; id = NULL)
 
 /* ---- misc ------------------------------------------------------------ */
 

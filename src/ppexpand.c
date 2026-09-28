@@ -79,7 +79,7 @@ static void args_free(PP *pp, Args *a, int nparams)
 static void paint(PP *pp, Tok *t)
 {
     if (t->kind == TK_IDENT) {
-        Macro *m = pp->in->byid.data[t->aux]->macro;
+        Macro *m = ident_by_id(pp->in, t->aux)->macro;
         if (m && m->disabled)
             t->flags |= TF_NOEXPAND;
     }
@@ -214,7 +214,7 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
         if (src == SRC_BARRIER)
             break;
         if (t.kind == TK_IDENT) {
-            Ident *id = pp->in->byid.data[t.aux];
+            Ident *id = ident_by_id(pp->in, t.aux);
             if (pp->in_if_expr && id == pp->id_defined) {
                 /* keep `defined X` / `defined ( X )` unexpanded */
                 Tok u;
@@ -277,7 +277,7 @@ static bool needs_expansion(PP *pp, TokSpan s)
     uint32_t i;
     for (i = 0; i < s.n; i++)
         if (s.t[i].kind == TK_IDENT && !(s.t[i].flags & TF_NOEXPAND) &&
-            pp->in->byid.data[s.t[i].aux]->macro)
+            ident_by_id(pp->in, s.t[i].aux)->macro)
             return true;
     return false;
 }
@@ -330,8 +330,8 @@ static Tok stringize(PP *pp, TokSpan arg, const Tok *hash, SrcLoc site,
         }
     }
     sb_putc(sb, '"');
-    sl = srcmgr_scratch(pp->sm, sb->data, sb->len);
-    lexer_init_range(&L, pp->sm, pp->in, pp->opt->lex, sl, (uint32_t)sb->len);
+    sl = srcmgr_scratch(pp->sm, &pp->scratch, sb->data, sb->len);
+    lexer_init_range(&L, pp->sm, pp->in, &pp->scratch, pp->opt->lex, sl, (uint32_t)sb->len);
     lex_next(&L, &chk);
     if (chk.kind != TK_STRING || L.p != L.lim) {
         Diagnostic *d = diag_report(pp->diag, DL_WARNING, "", site,
@@ -361,8 +361,8 @@ static bool paste(PP *pp, const Tok *lhs, const Tok *rhs, const Tok *op,
     sb->len = 0;
     sb_putn(sb, pp_text(pp, lhs), lhs->len);
     sb_putn(sb, pp_text(pp, rhs), rhs->len);
-    sl = srcmgr_scratch(pp->sm, sb->data ? sb->data : "", sb->len);
-    lexer_init_range(&L, pp->sm, pp->in, pp->opt->lex, sl, (uint32_t)sb->len);
+    sl = srcmgr_scratch(pp->sm, &pp->scratch, sb->data ? sb->data : "", sb->len);
+    lexer_init_range(&L, pp->sm, pp->in, &pp->scratch, pp->opt->lex, sl, (uint32_t)sb->len);
     lex_next(&L, &r);
     valid = r.kind != TK_EOF && !(r.flags & TF_UNTERMINATED) && L.p == L.lim;
     lexer_free(&L);
@@ -647,7 +647,7 @@ static bool builtin_query(PP *pp, Macro *m, const Tok *name, bool *result)
     }
     default:
         if (op.len == 1 && op.t[0].kind == TK_IDENT) {
-            Ident *id = pp->in->byid.data[op.t[0].aux];
+            Ident *id = ident_by_id(pp->in, op.t[0].aux);
             if (m->builtin == BUILTIN_HAS_ATTRIBUTE ||
                 m->builtin == BUILTIN_HAS_C_ATTRIBUTE)
                 *result = name_in_table(pp->host_attrs, id->str, id->len);
@@ -781,7 +781,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
         } else if (word(pp, toks, 1, "poison")) {
             for (i = 2; i < toks.n; i++)
                 if (toks.t[i].kind == TK_IDENT) {
-                    Ident *id = pp->in->byid.data[toks.t[i].aux];
+                    Ident *id = ident_by_id(pp->in, toks.t[i].aux);
                     id->flags |= IDF_POISONED;
                     PP_EMIT(pp, macro_ref, id, id->macro, &toks.t[i], REF_PRAGMA);
                 }
@@ -858,7 +858,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
         t.kind = TK_PRAGMA;
         t.loc = loc;
         t.len = (uint32_t)sb->len;
-        t.aux = srcmgr_scratch(pp->sm, sb->data, sb->len);
+        t.aux = srcmgr_scratch(pp->sm, &pp->scratch, sb->data, sb->len);
         t.flags = TF_SPELL | TF_BOL;
         push_single(pp, t, NULL, loc, NO_EXP, NO_EXP, 0);
     }
@@ -883,8 +883,8 @@ static TokBuf destringize(PP *pp, const Tok *str)
             i++;
         sb_putc(sb, s[i]);
     }
-    sl = srcmgr_scratch(pp->sm, sb->data ? sb->data : "", sb->len);
-    lexer_init_range(&L, pp->sm, pp->in, pp->opt->lex, sl, (uint32_t)sb->len);
+    sl = srcmgr_scratch(pp->sm, &pp->scratch, sb->data ? sb->data : "", sb->len);
+    lexer_init_range(&L, pp->sm, pp->in, &pp->scratch, pp->opt->lex, sl, (uint32_t)sb->len);
     for (;;) {
         Tok t;
         lex_next(&L, &t);
@@ -935,7 +935,7 @@ static bool do_pragma_op(PP *pp, const Tok *name)
 
 bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
 {
-    Ident *id = pp->in->byid.data[name->aux];
+    Ident *id = ident_by_id(pp->in, name->aux);
     Macro *m = id->macro;
     uint32_t parent = src == SRC_CONTEXT ? pp->tok_exp_id : NO_EXP;
     uint32_t parent_root = pp->tok_root;

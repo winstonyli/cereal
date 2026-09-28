@@ -557,8 +557,8 @@ SrcFile *index_find_file(Index *ix, const char *path)
 {
     char *norm = path_normalize(ix->arena, path);
     size_t i, n = strlen(norm);
-    for (i = 0; i < ix->sm->files.len; i++) {
-        SrcFile *f = ix->sm->files.data[i];
+    for (i = 0; i < srcmgr_nfiles(ix->sm); i++) {
+        SrcFile *f = srcmgr_file(ix->sm, (uint32_t)i);
         size_t m = strlen(f->path);
         if (f->kind == SF_VIRTUAL)
             continue;

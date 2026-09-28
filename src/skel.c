@@ -56,7 +56,7 @@ Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
     sk = NEW(a, Skeleton);
     sk->file = f;
     sk->guard_ifndef_index = -1;
-    lexer_init(&L, sm, in, NULL, lo, f);
+    lexer_init(&L, sm, in, NULL, &sm->scratch, lo, f); /* phase A only */
     for (;;) {
         if (!have)
             lex_next(&L, &t);

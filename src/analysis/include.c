@@ -199,8 +199,8 @@ void include_finish(Analysis *a)
     PP *pp = a->pp;
     size_t i, j;
 
-    for (i = 0; i < a->sm->files.len; i++) {
-        SrcFile *f = a->sm->files.data[i];
+    for (i = 0; i < srcmgr_nfiles(a->sm); i++) {
+        SrcFile *f = srcmgr_file(a->sm, (uint32_t)i);
         if (f != pp->main_file && an_user_file(f) && f->user &&
             ((FileInfo *)f->user)->entered)
             check_header(a, f);

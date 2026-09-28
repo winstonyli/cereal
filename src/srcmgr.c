@@ -40,17 +40,20 @@ void srcmgr_init(SrcMgr *sm, Arena *a)
         fatal("cannot reserve source location space");
     sm->region_size = REGION_SIZE;
     sm->next_base = (SrcLoc)page_size(); /* location 0 stays invalid */
+    mutex_init(&sm->m);
     sm->path_cap = 256;
     sm->path_slots = xcalloc(sm->path_cap, sizeof(SrcFile *));
 }
 
 void srcmgr_free(SrcMgr *sm)
 {
-    size_t i;
-    for (i = 0; i < sm->files.len; i++)
-        free(sm->files.data[i]->lines);
-    vec_free(&sm->files);
+    uint32_t i;
+    for (i = 0; i < sm->nfiles; i++)
+        free(srcmgr_file(sm, i)->lines);
+    for (i = 0; i < FILE_CHUNKS; i++)
+        free(sm->fchunks[i]);
     free(sm->path_slots);
+    mutex_destroy(&sm->m);
     if (sm->region && sm->region != MAP_FAILED)
         munmap(sm->region, sm->region_size);
     sm->region = NULL;
@@ -79,11 +82,17 @@ static SrcLoc reserve(SrcMgr *sm, size_t span)
     return (SrcLoc)base;
 }
 
+/* Caller holds sm->m. */
 static SrcFile *new_file(SrcMgr *sm, const char *path, SrcLoc base,
                          uint32_t size, uint32_t span, SrcFileKind kind)
 {
     SrcFile *f = NEW(sm->arena, SrcFile);
-    f->id = (int)sm->files.len;
+    uint32_t n = sm->nfiles;
+    if (n / FILE_CHUNK >= FILE_CHUNKS)
+        fatal("too many source files");
+    if (!sm->fchunks[n / FILE_CHUNK])
+        sm->fchunks[n / FILE_CHUNK] = xcalloc(FILE_CHUNK, sizeof(SrcFile *));
+    f->id = (int)n;
     f->path = path;
     f->name = path;
     f->base = base;
@@ -91,9 +100,9 @@ static SrcFile *new_file(SrcMgr *sm, const char *path, SrcLoc base,
     f->size = size;
     f->span = span;
     f->kind = kind;
-    f->has_cr = -1;
     f->system_header = kind == SF_SYSTEM;
-    vec_push(&sm->files, f);
+    sm->fchunks[n / FILE_CHUNK][n % FILE_CHUNK] = f;
+    atomic_store_u32(&sm->nfiles, n + 1); /* publish */
     return f;
 }
 
@@ -148,7 +157,18 @@ static SrcFile *missing_file(SrcMgr *sm, const char *norm)
     return NULL;
 }
 
+static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind);
+
 SrcFile *srcmgr_load(SrcMgr *sm, const char *path, SrcFileKind kind)
+{
+    SrcFile *f;
+    mutex_lock(&sm->m);
+    f = load_locked(sm, path, kind);
+    mutex_unlock(&sm->m);
+    return f;
+}
+
+static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
 {
     char *norm = path_normalize(sm->arena, path);
     SrcFile *f = path_find(sm, norm);
@@ -195,22 +215,30 @@ SrcFile *srcmgr_load(SrcMgr *sm, const char *path, SrcFileKind kind)
 SrcFile *srcmgr_add_virtual(SrcMgr *sm, const char *name, const char *buf,
                             size_t len)
 {
-    SrcLoc base = reserve(sm, len + SRC_PAD);
+    SrcLoc base;
+    SrcFile *f;
+    mutex_lock(&sm->m);
+    base = reserve(sm, len + SRC_PAD);
     memcpy(sm->region + base, buf, len);
-    return new_file(sm, arena_strdup(sm->arena, name), base, (uint32_t)len,
-                    (uint32_t)round_up(len + SRC_PAD, page_size()), SF_VIRTUAL);
+    f = new_file(sm, arena_strdup(sm->arena, name), base, (uint32_t)len,
+                 (uint32_t)round_up(len + SRC_PAD, page_size()), SF_VIRTUAL);
+    mutex_unlock(&sm->m);
+    return f;
 }
 
-SrcLoc srcmgr_scratch(SrcMgr *sm, const char *s, size_t n)
+SrcLoc srcmgr_scratch(SrcMgr *sm, ScratchCursor *c, const char *s, size_t n)
 {
-    SrcFile *f = sm->scratch;
+    SrcFile *f = c->chunk;
     SrcLoc loc;
     if (!f || (size_t)f->size + n + 1 + SRC_PAD > f->span) {
         size_t span = MAX((size_t)SCRATCH_CHUNK, round_up(n + 1 + SRC_PAD,
                                                           page_size()));
-        SrcLoc base = reserve(sm, span);
+        SrcLoc base;
+        mutex_lock(&sm->m);
+        base = reserve(sm, span);
         f = new_file(sm, "<scratch>", base, 0, (uint32_t)span, SF_SCRATCH);
-        sm->scratch = f;
+        mutex_unlock(&sm->m);
+        c->chunk = f;
     }
     loc = f->base + f->size;
     memcpy(sm->region + loc, s, n);
@@ -221,12 +249,12 @@ SrcLoc srcmgr_scratch(SrcMgr *sm, const char *s, size_t n)
 
 SrcFile *srcmgr_file_of(const SrcMgr *sm, SrcLoc loc)
 {
-    size_t lo = 0, hi = sm->files.len;
+    uint32_t lo = 0, hi = srcmgr_nfiles(sm);
     if (!loc)
         return NULL;
     while (lo < hi) {
-        size_t mid = (lo + hi) / 2;
-        SrcFile *f = sm->files.data[mid];
+        uint32_t mid = (lo + hi) / 2;
+        SrcFile *f = srcmgr_file(sm, mid);
         if (loc < f->base)
             hi = mid;
         else if (loc >= f->base + f->span)
@@ -242,12 +270,19 @@ uint32_t srcmgr_offset(const SrcFile *f, SrcLoc loc)
     return loc - f->base;
 }
 
+static Mutex lines_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static void compute_lines(SrcFile *f)
 {
     VEC(uint32_t) v = {0};
     uint32_t i;
-    if (f->lines)
+    if (atomic_load_ptr((void *const *)&f->lines))
         return;
+    mutex_lock(&lines_lock);
+    if (f->lines) {
+        mutex_unlock(&lines_lock);
+        return;
+    }
     vec_push(&v, 0);
     for (i = 0; i < f->size; i++) {
         char c = f->buf[i];
@@ -259,8 +294,9 @@ static void compute_lines(SrcFile *f)
             vec_push(&v, i + 1);
         }
     }
-    f->lines = v.data;
     f->nlines = (uint32_t)v.len;
+    atomic_store_ptr((void **)&f->lines, v.data);
+    mutex_unlock(&lines_lock);
 }
 
 void srcmgr_linecol(SrcFile *f, SrcLoc loc, uint32_t *line, uint32_t *col)
@@ -307,13 +343,22 @@ const char *srcmgr_line_text(SrcFile *f, uint32_t line, uint32_t *len)
     return f->buf + b;
 }
 
+static bool file_has_cr(SrcFile *f)
+{
+    uint32_t st = atomic_load_u32(&f->cr_state);
+    if (!st) {
+        st = memchr(f->buf, '\r', f->size) ? 2 : 1;
+        atomic_store_u32(&f->cr_state, st);
+    }
+    return st == 2;
+}
+
 uint32_t linecursor_slow(LineCursor *c, SrcFile *f, SrcLoc loc)
 {
     uint32_t off = loc - f->base;
     const char *nl;
-    if (f->has_cr < 0)
-        f->has_cr = memchr(f->buf, '\r', f->size) != NULL;
-    if (f->has_cr) {
+    unsigned k;
+    if (file_has_cr(f)) {
         uint32_t col;
         srcmgr_linecol(f, loc, &c->line, &col);
         c->file = f;
@@ -322,14 +367,24 @@ uint32_t linecursor_slow(LineCursor *c, SrcFile *f, SrcLoc loc)
         return c->line;
     }
     if (c->file != f) {
-        /* resume this file's own cursor (files interleave via #include) */
+        /* save the current file's position, resume f's if we have it */
         if (c->file) {
-            c->file->lc_off = c->off;
-            c->file->lc_line = c->line;
+            for (k = 0; k < LINECURSOR_WAYS && c->saved[k].file != c->file; k++)
+                ;
+            if (k == LINECURSOR_WAYS)
+                k = c->next_way++ % LINECURSOR_WAYS;
+            c->saved[k].file = c->file;
+            c->saved[k].off = c->off;
+            c->saved[k].line = c->line;
         }
         c->file = f;
-        c->off = f->lc_off;
-        c->line = f->lc_line ? f->lc_line : 1;
+        c->off = 0;
+        c->line = 1;
+        for (k = 0; k < LINECURSOR_WAYS; k++)
+            if (c->saved[k].file == f) {
+                c->off = c->saved[k].off;
+                c->line = c->saved[k].line;
+            }
     }
     if (off >= c->off) {
         const char *p = f->buf + c->off, *e = f->buf + off;
@@ -343,7 +398,6 @@ uint32_t linecursor_slow(LineCursor *c, SrcFile *f, SrcLoc loc)
         uint32_t col;
         srcmgr_linecol(f, loc, &c->line, &col);
     }
-    c->file = f;
     c->off = off;
     nl = memchr(f->buf + off, '\n', f->size - off);
     c->next_nl = nl ? (uint32_t)(nl - f->buf) : f->size;

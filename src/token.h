@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "intern.h"
 #include "srcmgr.h"
 
 typedef enum {
@@ -91,7 +92,7 @@ static inline const char *tok_text_raw(const SrcMgr *sm, const Interner *in,
                                        const Tok *t)
 {
     if (t->kind == TK_IDENT)
-        return in->byid.data[t->aux]->str;
+        return ident_by_id(in, t->aux)->str;
     if (t->flags & TF_SPELL)
         return sm->region + t->aux;
     return sm->region + t->loc;
@@ -99,7 +100,7 @@ static inline const char *tok_text_raw(const SrcMgr *sm, const Interner *in,
 
 static inline Ident *tok_ident(const Interner *in, const Tok *t)
 {
-    return t->kind == TK_IDENT ? in->byid.data[t->aux] : NULL;
+    return t->kind == TK_IDENT ? ident_by_id(in, t->aux) : NULL;
 }
 
 static inline bool tok_is_word(const Interner *in, const Tok *t, const char *s)
@@ -107,7 +108,7 @@ static inline bool tok_is_word(const Interner *in, const Tok *t, const char *s)
     const Ident *id;
     if (t->kind != TK_IDENT)
         return false;
-    id = in->byid.data[t->aux];
+    id = ident_by_id(in, t->aux);
     return strlen(s) == id->len && memcmp(id->str, s, id->len) == 0;
 }
 

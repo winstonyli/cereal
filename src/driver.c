@@ -117,7 +117,7 @@ void tu_init(TU *tu, Options *opt)
     memset(tu, 0, sizeof *tu);
     tu->opt = opt;
     arena_init(&tu->arena);
-    interner_init(&tu->in, &tu->arena);
+    interner_init(&tu->in);
     srcmgr_init(&tu->sm, &tu->arena);
     diag_init(&tu->diag, &tu->arena, &tu->sm);
     tu->diag.pedantic = opt->pp.pedantic;

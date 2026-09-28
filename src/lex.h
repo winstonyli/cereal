@@ -18,6 +18,7 @@ typedef struct Lexer {
     SrcMgr *sm;
     Interner *in;
     DiagEngine *diag;    /* may be NULL (silent) */
+    ScratchCursor *scratch; /* NULL: spliced spellings are not recorded */
     LexOptions opt;
     bool bol, space;
     bool warned_nul;
@@ -27,10 +28,10 @@ typedef struct Lexer {
 void lex_global_init(void);
 
 void lexer_init(Lexer *L, SrcMgr *sm, Interner *in, DiagEngine *d,
-                LexOptions opt, SrcFile *f);
+                ScratchCursor *sc, LexOptions opt, SrcFile *f);
 /* Lex an arbitrary byte range of the location space (scratch). */
-void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, LexOptions opt,
-                      SrcLoc begin, uint32_t len);
+void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, ScratchCursor *sc,
+                      LexOptions opt, SrcLoc begin, uint32_t len);
 void lexer_free(Lexer *L);
 
 void lex_next(Lexer *L, Tok *t);

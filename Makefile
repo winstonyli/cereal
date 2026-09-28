@@ -4,7 +4,7 @@ HOSTCC  ?= $(CC)
 CFLAGS  ?= -O2 -g
 WARN     = -std=c99 -pedantic -Wall -Wextra -Wshadow -Wstrict-prototypes \
            -Wmissing-prototypes -Wno-unused-parameter
-CPPFLAGS = -D_POSIX_C_SOURCE=200809L -Isrc
+CPPFLAGS = -D_POSIX_C_SOURCE=200809L -Isrc -pthread
 BUILD    = build
 
 SRCS := $(wildcard src/*.c) $(wildcard src/analysis/*.c)
@@ -14,7 +14,7 @@ DEPS := $(OBJS:.o=.d)
 all: cereal
 
 cereal: $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) -pthread
 
 $(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)
