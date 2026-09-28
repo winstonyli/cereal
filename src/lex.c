@@ -9,6 +9,7 @@
  * All reads may run past `lim` into the zero padding that follows every
  * buffer in the location space; a 0 byte at or after `lim` is end of input. */
 #include "lex.h"
+#include "simd.h"
 
 #include <string.h>
 
@@ -425,7 +426,10 @@ static const char *skip_blank(Lexer *L, const char *p)
 {
     for (;;) {
         unsigned char c = (unsigned char)*p;
-        if (cls[c] & C_SPACE) {
+        if (c == ' ' || c == '\t') {
+            p = scan_blanks(p + 1);
+            L->space = true;
+        } else if (c == '\f' || c == '\v') {
             p++;
             L->space = true;
         } else if (c == '\n') {
@@ -459,8 +463,10 @@ static const char *skip_blank(Lexer *L, const char *p)
         } else if (c == '/' && p[1] == '/') {
             p += 2;
             for (;;) {
-                unsigned char d = (unsigned char)*p;
+                unsigned char d;
                 int sp;
+                p = scan_find5(p, '\n', '\r', '\\', '?', '\n');
+                d = (unsigned char)*p;
                 if (d == '\n' || d == '\r' || (d == 0 && p >= L->lim))
                     break;
                 if ((d == '\\' || d == '?') && (sp = splice_at(L, p)) != 0) {
@@ -566,9 +572,7 @@ void lex_next(Lexer *L, Tok *t)
     if (cl[c] & C_IDSTART) {
         if (c == 'L' && (p[1] == '\'' || p[1] == '"'))
             goto quoted;
-        q = p + 1;
-        while (cl[(unsigned char)*q] & C_ID)
-            q++;
+        q = scan_ident(p + 1, L->opt.dollar_idents);
         if (*q == '\\' || (*q == '?' && trig))
             goto slow;
         t->kind = TK_IDENT;
@@ -611,7 +615,9 @@ void lex_next(Lexer *L, Tok *t)
                 q++;
             quote = *q++;
             for (;;) {
-                unsigned char d = (unsigned char)*q;
+                unsigned char d;
+                q = scan_find5(q, quote, '\\', '\n', '\r', '?');
+                d = (unsigned char)*q;
                 if (d == (unsigned char)quote) {
                     q++;
                     break;
@@ -625,7 +631,7 @@ void lex_next(Lexer *L, Tok *t)
                 if (d == '\n' || d == '\r' || (d == 0 && q >= L->lim) ||
                     (d == '?' && trig))
                     goto slow;
-                q++;
+                q++; /* '?' without trigraphs, or an embedded NUL */
             }
             finish_simple(L, t, quote == '"' ? TK_STRING : TK_CHAR, p, q, flags);
             return;
@@ -753,12 +759,10 @@ bool lex_next_line(Lexer *L)
     const char *p = L->p;
     bool trig = L->opt.trigraphs;
     for (;;) {
-        unsigned char c = (unsigned char)*p;
+        unsigned char c;
         int sp;
-        if (!(cls[c] & C_SKIPSPECIAL)) {
-            p++;
-            continue;
-        }
+        p = scan_skip_special(p);
+        c = (unsigned char)*p;
         switch (c) {
         case '\n':
             L->p = p + 1;
@@ -778,7 +782,9 @@ bool lex_next_line(Lexer *L)
             char quote = (char)c;
             p++;
             for (;;) {
-                unsigned char d = (unsigned char)*p;
+                unsigned char d;
+                p = scan_find5(p, quote, '\\', '\n', '\r', '?');
+                d = (unsigned char)*p;
                 if (d == (unsigned char)quote) {
                     p++;
                     break;
