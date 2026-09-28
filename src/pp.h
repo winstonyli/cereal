@@ -208,6 +208,13 @@ typedef struct MacroStackEnt {
 } MacroStackEnt;
 
 typedef enum { TRACK_NONE, TRACK_EXPANSIONS } TrackLevel;
+
+/* Ident.kw values for directive names */
+enum {
+    KW_NONE, KW_IF, KW_IFDEF, KW_IFNDEF, KW_ELIF, KW_ELSE, KW_ENDIF,
+    KW_DEFINE, KW_UNDEF, KW_INCLUDE, KW_INCLUDE_NEXT, KW_LINE, KW_ERROR,
+    KW_WARNING, KW_PRAGMA, KW_IDENT, KW_SCCS
+};
 typedef enum { SRC_LEXER, SRC_CONTEXT, SRC_BARRIER } TokSrc;
 
 typedef struct PP {
@@ -296,7 +303,13 @@ const char *pp_presumed_name(PP *pp, SrcFile *f);
 
 /* ---- internal (pp.c / ppexpand.c / ppexpr.c) ------------------------ */
 void tokbuf_init(PP *pp, TokBuf *b, uint32_t mincap);
-void tokbuf_push(PP *pp, TokBuf *b, Tok t);
+void tokbuf_grow(PP *pp, TokBuf *b);
+static inline void tokbuf_push(PP *pp, TokBuf *b, Tok t)
+{
+    if (b->len == b->cap)
+        tokbuf_grow(pp, b);
+    b->t[b->len++] = t;
+}
 void tokbuf_release(PP *pp, TokBuf *b);
 void pp_push_context(PP *pp, Context c);
 TokSrc pp_read_raw(PP *pp, Tok *t);
@@ -307,8 +320,8 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src);
 void pp_expand_into(PP *pp, TokSpan in, TokBuf *out);
 bool pp_eval_if(PP *pp, TokSpan expr, bool *ok);
 void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc);
-char *pp_search_include(PP *pp, const char *name, bool angled, bool next,
-                        int *dir_index);
+SrcFile *pp_find_include(PP *pp, const char *name, bool angled, bool next,
+                         int *dir_index);
 Tok pp_make_token(PP *pp, TokKind k, const char *text, size_t n, SrcLoc loc,
                   uint16_t flags);
 

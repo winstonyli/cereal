@@ -56,15 +56,25 @@ void srcmgr_free(SrcMgr *sm)
     sm->region = NULL;
 }
 
-/* Reserve [base, base+span) in the location space as readable memory. */
+#define COMMIT_CHUNK ((size_t)4 << 20)
+
+/* Reserve [base, base+span) in the location space as readable memory.
+ * Memory is committed in large chunks to keep mprotect calls rare. */
 static SrcLoc reserve(SrcMgr *sm, size_t span)
 {
     size_t base = sm->next_base;
     span = round_up(span, page_size());
     if (base + span + page_size() > ((size_t)1 << 32))
         fatal("source location space exhausted (4 GiB)");
-    if (mprotect(sm->region + base, span, PROT_READ | PROT_WRITE) != 0)
-        fatal("cannot commit source memory");
+    if (base + span > sm->committed) {
+        size_t upto = round_up(base + span, COMMIT_CHUNK);
+        if (upto > ((size_t)1 << 32))
+            upto = (size_t)1 << 32;
+        if (mprotect(sm->region + sm->committed, upto - sm->committed,
+                     PROT_READ | PROT_WRITE) != 0)
+            fatal("cannot commit source memory");
+        sm->committed = upto;
+    }
     sm->next_base = (SrcLoc)(base + span);
     return (SrcLoc)base;
 }
@@ -128,6 +138,16 @@ static SrcFile *path_find(SrcMgr *sm, const char *path)
     return NULL;
 }
 
+/* Paths known not to exist share this sentinel in the path map. */
+static SrcFile *missing_file(SrcMgr *sm, const char *norm)
+{
+    SrcFile *f = NEW(sm->arena, SrcFile);
+    f->path = norm;
+    f->id = -1;
+    path_insert(sm, f);
+    return NULL;
+}
+
 SrcFile *srcmgr_load(SrcMgr *sm, const char *path, SrcFileKind kind)
 {
     char *norm = path_normalize(sm->arena, path);
@@ -137,14 +157,14 @@ SrcFile *srcmgr_load(SrcMgr *sm, const char *path, SrcFileKind kind)
     size_t size;
     SrcLoc base;
     if (f)
-        return f;
+        return f->id < 0 ? NULL : f;
     fd = open(norm, O_RDONLY);
     if (fd < 0)
-        return NULL;
+        return missing_file(sm, norm);
     if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
         (uint64_t)st.st_size > 0xF0000000u) {
         close(fd);
-        return NULL;
+        return missing_file(sm, norm);
     }
     size = (size_t)st.st_size;
     base = reserve(sm, size + SRC_PAD);
@@ -287,12 +307,31 @@ const char *srcmgr_line_text(SrcFile *f, uint32_t line, uint32_t *len)
     return f->buf + b;
 }
 
-uint32_t linecursor_line(LineCursor *c, SrcFile *f, SrcLoc loc)
+uint32_t linecursor_slow(LineCursor *c, SrcFile *f, SrcLoc loc)
 {
     uint32_t off = loc - f->base;
+    const char *nl;
     if (f->has_cr < 0)
         f->has_cr = memchr(f->buf, '\r', f->size) != NULL;
-    if (c->file == f && off >= c->off && !f->has_cr) {
+    if (f->has_cr) {
+        uint32_t col;
+        srcmgr_linecol(f, loc, &c->line, &col);
+        c->file = f;
+        c->off = off;
+        c->next_nl = off; /* no caching for CR files */
+        return c->line;
+    }
+    if (c->file != f) {
+        /* resume this file's own cursor (files interleave via #include) */
+        if (c->file) {
+            c->file->lc_off = c->off;
+            c->file->lc_line = c->line;
+        }
+        c->file = f;
+        c->off = f->lc_off;
+        c->line = f->lc_line ? f->lc_line : 1;
+    }
+    if (off >= c->off) {
         const char *p = f->buf + c->off, *e = f->buf + off;
         uint32_t n = 0;
         while (p < e && (p = memchr(p, '\n', (size_t)(e - p))) != NULL) {
@@ -306,6 +345,8 @@ uint32_t linecursor_line(LineCursor *c, SrcFile *f, SrcLoc loc)
     }
     c->file = f;
     c->off = off;
+    nl = memchr(f->buf + off, '\n', f->size - off);
+    c->next_nl = nl ? (uint32_t)(nl - f->buf) : f->size;
     return c->line;
 }
 

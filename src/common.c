@@ -211,7 +211,8 @@ void sb_free(StrBuf *sb)
 
 /* ---- Interner ------------------------------------------------------- */
 
-/* Word-at-a-time multiplicative hash (identifiers are short). */
+/* Word-at-a-time hash with a murmur3 finalizer (open addressing needs
+ * well-mixed low bits: generated names like get_1, get_2... cluster). */
 uint32_t hash_bytes(const char *s, size_t n)
 {
     uint64_t h = 0x9E3779B97F4A7C15ull ^ (uint64_t)n;
@@ -219,17 +220,21 @@ uint32_t hash_bytes(const char *s, size_t n)
         uint64_t w;
         memcpy(&w, s, 8);
         h = (h ^ w) * 0xFF51AFD7ED558CCDull;
-        h ^= h >> 32;
+        h = (h << 31) | (h >> 33);
         s += 8;
         n -= 8;
     }
     if (n) {
         uint64_t w = 0;
         memcpy(&w, s, n);
-        h = (h ^ w) * 0xC4CEB9FE1A85EC53ull;
-        h ^= h >> 29;
+        h ^= w;
     }
-    return (uint32_t)(h ^ (h >> 32));
+    h ^= h >> 33;
+    h *= 0xFF51AFD7ED558CCDull;
+    h ^= h >> 33;
+    h *= 0xC4CEB9FE1A85EC53ull;
+    h ^= h >> 33;
+    return (uint32_t)h;
 }
 
 void interner_init(Interner *in, Arena *a)

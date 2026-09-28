@@ -41,9 +41,9 @@ Groups: `hygiene`, `cond`, `include`, `pp`. See `--list-warnings`.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short:
 
-- Preprocessing uses a global 32-bit location space and Prosser's hide-set
-  expansion. Every token carries its provenance: macro body, argument,
-  `##`, `#` or builtin.
+- A streaming lexer over one reserved address region (`text = region +
+  loc`), 16-byte pointer-free tokens, and GCC/Clang-style context-stack
+  expansion with recycled buffers, so memory stays flat on huge generated files.
 - Analyzers and the index are listeners on preprocessor events. A static
   per-file skeleton also covers inactive code.
 - Host headers are used as they are: `tools/probe-host.sh` captures GCC's

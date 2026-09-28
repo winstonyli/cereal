@@ -39,21 +39,18 @@ void tokbuf_release(PP *pp, TokBuf *b)
     b->len = b->cap = 0;
 }
 
-void tokbuf_push(PP *pp, TokBuf *b, Tok t)
+void tokbuf_grow(PP *pp, TokBuf *b)
 {
-    if (b->len == b->cap) {
-        TokBuf nb;
-        if (!b->t) {
-            tokbuf_init(pp, b, 16);
-        } else {
-            tokbuf_init(pp, &nb, b->cap * 2);
-            memcpy(nb.t, b->t, sizeof(Tok) * b->len);
-            nb.len = b->len;
-            tokbuf_release(pp, b);
-            *b = nb;
-        }
+    TokBuf nb;
+    if (!b->t) {
+        tokbuf_init(pp, b, 16);
+        return;
     }
-    b->t[b->len++] = t;
+    tokbuf_init(pp, &nb, b->cap * 2);
+    memcpy(nb.t, b->t, sizeof(Tok) * b->len);
+    nb.len = b->len;
+    tokbuf_release(pp, b);
+    *b = nb;
 }
 
 static void pool_free(TokPool *p)
@@ -420,6 +417,15 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
     pp->id_defined = intern_cstr(in, "defined");
     pp->id_va_args = intern_cstr(in, "__VA_ARGS__");
     pp->id_pragma = intern_cstr(in, "_Pragma");
+    {
+        static const char *const dirs[] = {
+            "", "if", "ifdef", "ifndef", "elif", "else", "endif", "define",
+            "undef", "include", "include_next", "line", "error", "warning",
+            "pragma", "ident", "sccs"};
+        int k;
+        for (k = 1; k < (int)ARRAY_LEN(dirs); k++)
+            intern_cstr(in, dirs[k])->kw = (uint16_t)k;
+    }
 
     for (i = 0; i < opt->quote_dirs.len; i++)
         vec_push(&pp->search, opt->quote_dirs.data[i]);
@@ -657,18 +663,17 @@ static void skip_group(PP *pp)
                 continue;
             }
             if (kw.kind == TK_IDENT) {
-                Ident *id = pp->in->byid.data[kw.aux];
-                const char *s = id->str;
-                if (!strcmp(s, "if") || !strcmp(s, "ifdef") || !strcmp(s, "ifndef")) {
+                int k = pp->in->byid.data[kw.aux]->kw;
+                if (k == KW_IF || k == KW_IFDEF || k == KW_IFNDEF) {
                     depth++;
-                } else if (!strcmp(s, "endif")) {
+                } else if (k == KW_ENDIF) {
                     if (depth == 0) {
                         end = line_start_of(pp, hash);
                         lexer_seek(L, hash, true);
                         break;
                     }
                     depth--;
-                } else if ((!strcmp(s, "elif") || !strcmp(s, "else")) && depth == 0) {
+                } else if ((k == KW_ELIF || k == KW_ELSE) && depth == 0) {
                     end = line_start_of(pp, hash);
                     lexer_seek(L, hash, true);
                     break;
@@ -1160,42 +1165,44 @@ static void do_undef(PP *pp, const Tok *hash)
 
 /* ---- #include ------------------------------------------------------- */
 
-static bool file_exists(const char *path)
-{
-    struct stat st;
-    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
-}
-
-char *pp_search_include(PP *pp, const char *name, bool angled, bool next,
-                        int *dir_index)
+/* Resolve and load an included file; the source manager caches both hits
+ * and misses, so repeated searches cost no system calls. */
+SrcFile *pp_find_include(PP *pp, const char *name, bool angled, bool next,
+                         int *dir_index)
 {
     size_t i, start;
+    SrcFile *f;
     if (name[0] == '/') {
         *dir_index = -1;
-        return file_exists(name) ? arena_strdup(pp->arena, name) : NULL;
+        return srcmgr_load(pp->sm, name, SF_USER);
     }
     if (next && pp->inc && pp->inc->dir_index >= 0) {
         start = (size_t)pp->inc->dir_index + 1;
     } else {
         if (!angled && !next && pp->inc) {
-            char *p;
+            const char *p;
             if (pp->inc->file->kind == SF_VIRTUAL)
-                p = arena_strdup(pp->arena, name);
+                p = name;
             else
                 p = path_join(pp->arena, path_dirname(pp->arena, pp->inc->file->path),
                               name);
-            if (file_exists(p)) {
+            if ((f = srcmgr_load(pp->sm, p, pp->inc->file->system_header
+                                                 ? SF_SYSTEM : SF_USER)) != NULL) {
                 *dir_index = -1;
-                return p;
+                return f;
             }
         }
         start = angled ? pp->first_angle : 0;
     }
     for (i = start; i < pp->search.len; i++) {
-        char *p = path_join(pp->arena, pp->search.data[i], name);
-        if (file_exists(p)) {
+        bool sys = i >= pp->first_system;
+        f = srcmgr_load(pp->sm, path_join(pp->arena, pp->search.data[i], name),
+                        sys ? SF_SYSTEM : SF_USER);
+        if (f) {
+            if (sys)
+                f->system_header = true;
             *dir_index = (int)i;
-            return p;
+            return f;
         }
     }
     return NULL;
@@ -1266,7 +1273,7 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
     bool angled = false, expanded = false;
     uint32_t rest = 0;
     SrcLoc name_end = 0;
-    char *name, *path;
+    char *name;
     int dir_index = -1;
     IncludeEvent ev;
     SrcFile *f = NULL;
@@ -1307,13 +1314,7 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
     ev.macro_expanded = expanded;
     ev.from = pp->inc->file;
 
-    path = pp_search_include(pp, name, angled, next, &dir_index);
-    if (path) {
-        bool sys = dir_index >= 0 && (size_t)dir_index >= pp->first_system;
-        f = srcmgr_load(pp->sm, path, sys ? SF_SYSTEM : SF_USER);
-        if (f && sys)
-            f->system_header = true;
-    }
+    f = pp_find_include(pp, name, angled, next, &dir_index);
     ev.file = f;
     if (!f) {
         ev.result = INC_NOT_FOUND;
@@ -1435,6 +1436,7 @@ void pp_directive(PP *pp, const Tok *hash)
     Tok kw;
     bool active = cur_active(pp);
     bool saved = pp->in_directive;
+    int k;
     lex_next(&pp->lex, &kw);
     if ((kw.flags & TF_BOL) || kw.kind == TK_EOF) {
         pp->pending = kw; /* null directive */
@@ -1442,47 +1444,57 @@ void pp_directive(PP *pp, const Tok *hash)
         return;
     }
     pp->in_directive = true;
-    if (kw.kind == TK_IDENT) {
-        const char *s = pp->in->byid.data[kw.aux]->str;
-        if (!strcmp(s, "if")) { do_if(pp, hash, &kw, COND_IF); goto out; }
-        if (!strcmp(s, "ifdef")) { do_if(pp, hash, &kw, COND_IFDEF); goto out; }
-        if (!strcmp(s, "ifndef")) { do_if(pp, hash, &kw, COND_IFNDEF); goto out; }
-        if (!strcmp(s, "elif")) { do_elif_else(pp, hash, &kw, COND_ELIF); goto out; }
-        if (!strcmp(s, "else")) { do_elif_else(pp, hash, &kw, COND_ELSE); goto out; }
-        if (!strcmp(s, "endif")) { do_endif(pp, hash, &kw); goto out; }
+    k = kw.kind == TK_IDENT ? pp->in->byid.data[kw.aux]->kw : KW_NONE;
+    switch (k) {
+    case KW_IF: do_if(pp, hash, &kw, COND_IF); goto out;
+    case KW_IFDEF: do_if(pp, hash, &kw, COND_IFDEF); goto out;
+    case KW_IFNDEF: do_if(pp, hash, &kw, COND_IFNDEF); goto out;
+    case KW_ELIF: do_elif_else(pp, hash, &kw, COND_ELIF); goto out;
+    case KW_ELSE: do_elif_else(pp, hash, &kw, COND_ELSE); goto out;
+    case KW_ENDIF: do_endif(pp, hash, &kw); goto out;
+    default: break;
     }
     if (!active) {
         read_line(pp);
         goto out;
     }
     guard_note_activity(pp);
-    if (kw.kind == TK_IDENT) {
-        const char *s = pp->in->byid.data[kw.aux]->str;
-        if (!strcmp(s, "define"))
-            do_define(pp, hash);
-        else if (!strcmp(s, "undef"))
-            do_undef(pp, hash);
-        else if (!strcmp(s, "include"))
-            do_include(pp, hash, &kw, false);
-        else if (!strcmp(s, "include_next") && pp->opt->gnu_extensions)
+    switch (k) {
+    case KW_DEFINE: do_define(pp, hash); goto out;
+    case KW_UNDEF: do_undef(pp, hash); goto out;
+    case KW_INCLUDE: do_include(pp, hash, &kw, false); goto out;
+    case KW_LINE: do_line(pp, hash, &kw, false); goto out;
+    case KW_ERROR: do_message(pp, &kw, true); goto out;
+    case KW_PRAGMA: pp_do_pragma(pp, read_line(pp), hash->loc); goto out;
+    case KW_INCLUDE_NEXT:
+        if (pp->opt->gnu_extensions) {
             do_include(pp, hash, &kw, true);
-        else if (!strcmp(s, "line"))
-            do_line(pp, hash, &kw, false);
-        else if (!strcmp(s, "error"))
-            do_message(pp, &kw, true);
-        else if (!strcmp(s, "warning") && pp->opt->gnu_extensions)
-            do_message(pp, &kw, false);
-        else if (!strcmp(s, "pragma"))
-            pp_do_pragma(pp, read_line(pp), hash->loc);
-        else if ((!strcmp(s, "ident") || !strcmp(s, "sccs")) &&
-                 pp->opt->gnu_extensions) {
-            pedantic(pp, kw.loc, "#%s is a GCC extension", s);
-            read_line(pp);
-        } else {
-            diag_report(pp->diag, DL_ERROR, "", kw.loc,
-                        "invalid preprocessing directive #%s", s);
-            read_line(pp);
+            goto out;
         }
+        break;
+    case KW_WARNING:
+        if (pp->opt->gnu_extensions) {
+            do_message(pp, &kw, false);
+            goto out;
+        }
+        break;
+    case KW_IDENT:
+    case KW_SCCS:
+        if (pp->opt->gnu_extensions) {
+            pedantic(pp, kw.loc, "#%s is a GCC extension",
+                     pp->in->byid.data[kw.aux]->str);
+            read_line(pp);
+            goto out;
+        }
+        break;
+    default:
+        break;
+    }
+    if (kw.kind == TK_IDENT) {
+        diag_report(pp->diag, DL_ERROR, "", kw.loc,
+                    "invalid preprocessing directive #%s",
+                    pp->in->byid.data[kw.aux]->str);
+        read_line(pp);
     } else if (kw.kind == TK_PPNUM && pp->opt->gnu_extensions) {
         do_line(pp, hash, &kw, true);
     } else {

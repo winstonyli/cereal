@@ -8,13 +8,46 @@
 
 #include <string.h>
 
+#define ARGS_INLINE 8
+
+typedef struct ArgVec {
+    uint32_t *data;
+    size_t len, cap;
+    uint32_t inl[ARGS_INLINE];
+} ArgVec;
+
+static void av_push(ArgVec *v, uint32_t x)
+{
+    if (!v->data) {
+        v->data = v->inl;
+        v->cap = ARGS_INLINE;
+    }
+    if (v->len == v->cap) {
+        uint32_t *n = xmalloc(sizeof(uint32_t) * v->cap * 2);
+        memcpy(n, v->data, sizeof(uint32_t) * v->len);
+        if (v->data != v->inl)
+            free(v->data);
+        v->data = n;
+        v->cap *= 2;
+    }
+    v->data[v->len++] = x;
+}
+
+static void av_free(ArgVec *v)
+{
+    if (v->data && v->data != v->inl)
+        free(v->data);
+    v->data = NULL;
+    v->len = v->cap = 0;
+}
+
 typedef struct Args {
     TokBuf all;              /* every token consumed after the name */
-    VEC(uint32_t) start;     /* per argument: index into all */
-    VEC(uint32_t) count;
-    VEC(uint8_t) present;    /* 0 for an omitted variadic argument */
+    ArgVec start;            /* per argument: index into all */
+    ArgVec count;
+    ArgVec present;          /* 0 for an omitted variadic argument */
     TokBuf *expanded;        /* lazily computed per parameter */
-    uint8_t *have_expanded;
+    TokBuf exp_inl[ARGS_INLINE];
     SrcLoc rparen_loc;
     uint32_t rparen_len;
 } Args;
@@ -30,15 +63,17 @@ static TokSpan arg_span(const Args *a, int i)
 static void args_free(PP *pp, Args *a, int nparams)
 {
     int i;
-    if (a->expanded)
+    if (a->expanded) {
         for (i = 0; i < nparams; i++)
             tokbuf_release(pp, &a->expanded[i]);
-    free(a->expanded);
-    free(a->have_expanded);
+        if (a->expanded != a->exp_inl)
+            free(a->expanded);
+    }
+    a->expanded = NULL;
     tokbuf_release(pp, &a->all);
-    vec_free(&a->start);
-    vec_free(&a->count);
-    vec_free(&a->present);
+    av_free(&a->start);
+    av_free(&a->count);
+    av_free(&a->present);
 }
 
 static void paint(PP *pp, Tok *t)
@@ -90,9 +125,9 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
             depth++;
         } else if (tok_is_punct(&t, P_RPAREN)) {
             if (depth == 0) {
-                vec_push(&a->start, arg_begin);
-                vec_push(&a->count, a->all.len - arg_begin);
-                vec_push(&a->present, 1);
+                av_push(&a->start, arg_begin);
+                av_push(&a->count, a->all.len - arg_begin);
+                av_push(&a->present, 1);
                 a->rparen_loc = t.loc;
                 a->rparen_len = t.len;
                 tokbuf_push(pp, &a->all, t);
@@ -101,9 +136,9 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
             depth--;
         } else if (tok_is_punct(&t, P_COMMA) && depth == 0 &&
                    !(m->variadic && (int)a->start.len == m->nparams - 1)) {
-            vec_push(&a->start, arg_begin);
-            vec_push(&a->count, a->all.len - arg_begin);
-            vec_push(&a->present, 1);
+            av_push(&a->start, arg_begin);
+            av_push(&a->count, a->all.len - arg_begin);
+            av_push(&a->present, 1);
             tokbuf_push(pp, &a->all, t);
             arg_begin = a->all.len;
             continue;
@@ -121,9 +156,9 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
             diag_report(pp->diag, DL_WARNING, "pedantic", name->loc,
                         "ISO C99 requires at least one argument for the "
                         "\"...\" in a variadic macro");
-        vec_push(&a->start, a->all.len);
-        vec_push(&a->count, 0);
-        vec_push(&a->present, 0);
+        av_push(&a->start, a->all.len);
+        av_push(&a->count, 0);
+        av_push(&a->present, 0);
     }
     if ((int)a->start.len != m->nparams) {
         if ((int)a->start.len > m->nparams)
@@ -150,8 +185,9 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
         args_free(pp, a, 0);
         return false;
     }
-    a->expanded = xcalloc((size_t)m->nparams + 1, sizeof(TokBuf));
-    a->have_expanded = xcalloc((size_t)m->nparams + 1, 1);
+    a->expanded = m->nparams <= ARGS_INLINE
+                      ? a->exp_inl
+                      : xcalloc((size_t)m->nparams + 1, sizeof(TokBuf));
     return true;
 }
 
@@ -252,13 +288,12 @@ static TokSpan expanded_arg(PP *pp, Args *a, int i, SrcLoc exp_loc,
     TokSpan raw = arg_span(a, i), r;
     if (!needs_expansion(pp, raw))
         return raw;
-    if (!a->have_expanded[i]) {
+    if (!a->expanded[i].t) {
         bool saved = pp->collecting_args;
         pp->collecting_args = true;
         tokbuf_init(pp, &a->expanded[i], raw.n + 8);
         expand_into(pp, raw, &a->expanded[i], exp_loc, exp_id, root);
         pp->collecting_args = saved;
-        a->have_expanded[i] = 1;
     }
     r.t = a->expanded[i].t;
     r.n = a->expanded[i].len;
@@ -604,10 +639,10 @@ static bool builtin_query(PP *pp, Macro *m, const Tok *name, bool *result)
             tokbuf_release(pp, &op);
             return false;
         }
-        *result = pp_search_include(pp, hname, angled,
-                                    m->builtin == BUILTIN_HAS_INCLUDE_NEXT &&
-                                        pp->inc->prev != NULL,
-                                    &di) != NULL;
+        *result = pp_find_include(pp, hname, angled,
+                                  m->builtin == BUILTIN_HAS_INCLUDE_NEXT &&
+                                      pp->inc->prev != NULL,
+                                  &di) != NULL;
         break;
     }
     default:
@@ -972,11 +1007,13 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         if (e)
             e->end_loc = a.rparen_loc + a.rparen_len;
         m->expansions++;
-        spans = xmalloc(sizeof(TokSpan) * ((size_t)m->nparams + 1));
-        for (i = 0; i < m->nparams; i++)
-            spans[i] = arg_span(&a, i);
-        PP_EMIT(pp, expand, e, spans, m->nparams);
-        free(spans);
+        if (pp->track != TRACK_NONE) {
+            spans = xmalloc(sizeof(TokSpan) * ((size_t)m->nparams + 1));
+            for (i = 0; i < m->nparams; i++)
+                spans[i] = arg_span(&a, i);
+            PP_EMIT(pp, expand, e, spans, m->nparams);
+            free(spans);
+        }
         subst(pp, m, &a, lead, site, exp_loc, eid, root, &c.owned);
         args_free(pp, &a, m->nparams);
     }

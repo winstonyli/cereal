@@ -36,6 +36,7 @@ typedef struct SrcFile {
     uint32_t *lines;       /* lazily computed line starts */
     uint32_t nlines;
     int8_t has_cr;         /* -1 unknown, 0/1 */
+    uint32_t lc_off, lc_line; /* last line-cursor position in this file */
     SrcFileKind kind;
     bool pragma_once;
     bool system_header;
@@ -86,8 +87,16 @@ typedef struct LineCursor {
     SrcFile *file;
     uint32_t off;
     uint32_t line;
+    uint32_t next_nl;      /* offset of the first newline at or after off */
 } LineCursor;
-uint32_t linecursor_line(LineCursor *c, SrcFile *f, SrcLoc loc);
+uint32_t linecursor_slow(LineCursor *c, SrcFile *f, SrcLoc loc);
+static inline uint32_t linecursor_line(LineCursor *c, SrcFile *f, SrcLoc loc)
+{
+    uint32_t off = loc - f->base;
+    if (c->file == f && off >= c->off && off <= c->next_nl)
+        return c->line;
+    return linecursor_slow(c, f, loc);
+}
 
 char *path_dirname(Arena *a, const char *path);
 char *path_join(Arena *a, const char *dir, const char *file);
