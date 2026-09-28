@@ -17,6 +17,7 @@ cereal -E  [opts] file.c...           # preprocess (GCC-compatible output)
 cereal lint [opts] file.c...          # macro / conditional / include analyses
 cereal index [--all] file.c           # LSP model as JSON
 cereal query def|refs|hover|visible|expand|callers|callees|deps FILE:LINE:COL file.c
+cereal lsp                            # language server (stdio), docs/LSP.md
 cereal --list-warnings
 ```
 

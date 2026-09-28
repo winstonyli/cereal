@@ -11,6 +11,7 @@
 #   7. -j: many translation units at once print exactly what -j1 prints
 #   8. macro graph: every expansion lies in its invocation's static closure
 #      (`cereal index --check-graph`), on all inputs and a fuzzer
+#   9. lsp: scripted language-server sessions against golden transcripts
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -63,7 +64,7 @@ if command -v "$REFCC" >/dev/null 2>&1; then
         diff_pp "<$h> -D_GNU_SOURCE -D_FORTIFY_SOURCE=2 -O2" "$TMP/h.c" \
             -D_GNU_SOURCE -D_FORTIFY_SOURCE=2 -O2
     done
-    for f in "$ROOT"/src/*.c "$ROOT"/src/analysis/*.c; do
+    for f in "$ROOT"/src/*.c "$ROOT"/src/analysis/*.c "$ROOT"/src/lsp/*.c; do
         [ -f "$f" ] || continue
         diff_pp "dogfood ${f#$ROOT/}" "$f" -D_POSIX_C_SOURCE=200809L -I"$ROOT/src"
     done
@@ -171,7 +172,7 @@ jobs_same() { # jobs_same NAME DIR ARGS...
 }
 jobs_same "lint tests/lint" "$ROOT/tests/lint" lint ./*.c
 jobs_same "-E tests/pp" "$ROOT/tests/pp" -E -fparallel=on -fparallel-chunk=64 ./*.c
-jobs_same "-E dogfood" "$ROOT" -E -Isrc -D_POSIX_C_SOURCE=200809L src/*.c src/analysis/*.c
+jobs_same "-E dogfood" "$ROOT" -E -Isrc -D_POSIX_C_SOURCE=200809L src/*.c src/analysis/*.c src/lsp/*.c
 
 graph_ok() { # graph_ok NAME DIR ARGS...
     name=$1 dir=$2
@@ -188,7 +189,7 @@ graph_ok() { # graph_ok NAME DIR ARGS...
 for f in "$ROOT"/tests/pp/*.c "$ROOT"/tests/lint/*.c; do
     graph_ok "${f#$ROOT/tests/}" "$(dirname "$f")" "$(basename "$f")"
 done
-for f in "$ROOT"/src/*.c "$ROOT"/src/analysis/*.c; do
+for f in "$ROOT"/src/*.c "$ROOT"/src/analysis/*.c "$ROOT"/src/lsp/*.c; do
     graph_ok "dogfood ${f#$ROOT/}" "$ROOT" -Isrc -D_POSIX_C_SOURCE=200809L "$f"
 done
 if python3 "$ROOT/tests/fuzz_graph.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}" >"$TMP/fz" 2>&1; then
@@ -197,6 +198,16 @@ else
     bad "graph fuzz (reduced cases kept)"
     sed 's/^/    /' "$TMP/fz" | tail -5
 fi
+
+for t in "$ROOT"/tests/lsp/*.json; do
+    [ -f "$t" ] || continue
+    if python3 "$ROOT/tests/lsp_session.py" "$CEREAL" "$t" >"$TMP/l" 2>&1; then
+        ok
+    else
+        bad "lsp/$(basename "$t")"
+        head -40 "$TMP/l" | sed 's/^/    /'
+    fi
+done
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

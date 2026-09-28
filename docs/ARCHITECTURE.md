@@ -172,5 +172,7 @@ The differential tests compare the token streams of `cereal -E` and
 | `src/mgraph.[ch]` | macro dependency graph: closures, cycles, call hierarchy |
 | `src/par.[ch]`, `src/plan.h` | two-phase parallel `-E` |
 | `src/thread.[ch]`, `src/intern.[ch]` | pool, atomics; concurrent interner |
+| `src/lsp/` | language server: framing, positions, configuration, builder, requests (docs/LSP.md) |
+| `src/json.[ch]` | JSON writer (buffered) and DOM reader |
 | `src/driver.[ch]`, `src/main.c` | options, translation-unit setup, CLI |
 | `tools/probe-host.sh` | host compiler probe (generates `build/gen/host_config.c`) |

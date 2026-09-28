@@ -1,0 +1,627 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "definitionProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync"
+ ]
+}
+>> initialized
+>> didOpen basic/main.c
+<< textDocument/publishDiagnostics file://$ROOT/basic/main.c
+{
+ "diagnostics": [
+  {
+   "code": "macro-unparenthesized-param",
+   "message": "macro parameter 'x' is an operand of '*' but is not parenthesized; an argument like 'a + b' changes the meaning",
+   "range": {
+    "end": {
+     "character": 16,
+     "line": 10
+    },
+    "start": {
+     "character": 15,
+     "line": 10
+    }
+   },
+   "severity": 2,
+   "source": "cereal"
+  },
+  {
+   "code": "macro-unparenthesized-param",
+   "message": "macro parameter 'x' is an operand of '*' but is not parenthesized; an argument like 'a + b' changes the meaning",
+   "range": {
+    "end": {
+     "character": 20,
+     "line": 10
+    },
+    "start": {
+     "character": 19,
+     "line": 10
+    }
+   },
+   "severity": 2,
+   "source": "cereal"
+  },
+  {
+   "code": "macro-unparenthesized-body",
+   "message": "replacement list of 'BAD' has a top-level '*' but is not parenthesized; 'BAD' in an expression may bind differently",
+   "range": {
+    "end": {
+     "character": 20,
+     "line": 10
+    },
+    "start": {
+     "character": 17,
+     "line": 10
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 15,
+        "line": 10
+       },
+       "start": {
+        "character": 15,
+        "line": 10
+       }
+      },
+      "uri": "file://$ROOT/basic/main.c"
+     },
+     "message": "wrap the replacement list in parentheses"
+    }
+   ],
+   "severity": 2,
+   "source": "cereal"
+  }
+ ]
+}
+<< textDocument/inactiveRegions file://$ROOT/basic/main.c
+{
+ "regions": [
+  {
+   "end": {
+    "character": 0,
+    "line": 9
+   },
+   "start": {
+    "character": 0,
+    "line": 8
+   }
+  }
+ ]
+}
+## definition of SQUARE from a use
+>> textDocument/definition
+[
+ {
+  "range": {
+   "end": {
+    "character": 14,
+    "line": 1
+   },
+   "start": {
+    "character": 8,
+    "line": 1
+   }
+  },
+  "uri": "file://$ROOT/basic/main.c"
+ }
+]
+## definition of LIMIT (in the header)
+>> textDocument/definition
+[
+ {
+  "range": {
+   "end": {
+    "character": 13,
+    "line": 2
+   },
+   "start": {
+    "character": 8,
+    "line": 2
+   }
+  },
+  "uri": "file://$ROOT/basic/defs.h"
+ }
+]
+## references to SQUARE
+>> textDocument/references
+[
+ {
+  "range": {
+   "end": {
+    "character": 14,
+    "line": 1
+   },
+   "start": {
+    "character": 8,
+    "line": 1
+   }
+  },
+  "uri": "file://$ROOT/basic/main.c"
+ },
+ {
+  "range": {
+   "end": {
+    "character": 28,
+    "line": 2
+   },
+   "start": {
+    "character": 22,
+    "line": 2
+   }
+  },
+  "uri": "file://$ROOT/basic/main.c"
+ },
+ {
+  "range": {
+   "end": {
+    "character": 14,
+    "line": 3
+   },
+   "start": {
+    "character": 8,
+    "line": 3
+   }
+  },
+  "uri": "file://$ROOT/basic/main.c"
+ }
+]
+## hover on TWICE
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\n#define TWICE(x) (2 * SQUARE(x))\n```\ndefined at $ROOT/basic/main.c:3\n\nexpands to:\n```c\n(2 * ((2) * (2)))\n```"
+ },
+ "range": {
+  "end": {
+   "character": 13,
+   "line": 4
+  },
+  "start": {
+   "character": 8,
+   "line": 4
+  }
+ }
+}
+## completion
+>> textDocument/completion
+{
+ "isIncomplete": false,
+ "items": [
+  {
+   "detail": "#define MODE 2",
+   "kind": 21,
+   "label": "MODE"
+  },
+  {
+   "detail": "#define DEFS_H ",
+   "kind": 21,
+   "label": "DEFS_H"
+  },
+  {
+   "detail": "#define LIMIT 100",
+   "kind": 21,
+   "label": "LIMIT"
+  },
+  {
+   "detail": "#define SQUARE(x) ((x) * (x))",
+   "kind": 3,
+   "label": "SQUARE"
+  },
+  {
+   "detail": "#define TWICE(x) (2 * SQUARE(x))",
+   "kind": 3,
+   "label": "TWICE"
+  }
+ ]
+}
+>> textDocument/documentSymbol
+[
+ {
+  "detail": "SQUARE(x)",
+  "kind": 12,
+  "name": "SQUARE",
+  "range": {
+   "end": {
+    "character": 29,
+    "line": 1
+   },
+   "start": {
+    "character": 0,
+    "line": 1
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 14,
+    "line": 1
+   },
+   "start": {
+    "character": 8,
+    "line": 1
+   }
+  }
+ },
+ {
+  "detail": "TWICE(x)",
+  "kind": 12,
+  "name": "TWICE",
+  "range": {
+   "end": {
+    "character": 32,
+    "line": 2
+   },
+   "start": {
+    "character": 0,
+    "line": 2
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 13,
+    "line": 2
+   },
+   "start": {
+    "character": 8,
+    "line": 2
+   }
+  }
+ },
+ {
+  "detail": "BAD(x)",
+  "kind": 12,
+  "name": "BAD",
+  "range": {
+   "end": {
+    "character": 20,
+    "line": 10
+   },
+   "start": {
+    "character": 0,
+    "line": 10
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 11,
+    "line": 10
+   },
+   "start": {
+    "character": 8,
+    "line": 10
+   }
+  }
+ }
+]
+>> textDocument/semanticTokens/full
+{}
+>> textDocument/foldingRange
+[
+ {
+  "endLine": 8,
+  "kind": "region",
+  "startLine": 5
+ }
+]
+## rename SQUARE
+>> textDocument/prepareRename
+{
+ "placeholder": "SQUARE",
+ "range": {
+  "end": {
+   "character": 14,
+   "line": 1
+  },
+  "start": {
+   "character": 8,
+   "line": 1
+  }
+ }
+}
+>> textDocument/rename
+{
+ "changes": {
+  "file://$ROOT/basic/main.c": [
+   {
+    "newText": "SQ",
+    "range": {
+     "end": {
+      "character": 14,
+      "line": 1
+     },
+     "start": {
+      "character": 8,
+      "line": 1
+     }
+    }
+   },
+   {
+    "newText": "SQ",
+    "range": {
+     "end": {
+      "character": 28,
+      "line": 2
+     },
+     "start": {
+      "character": 22,
+      "line": 2
+     }
+    }
+   },
+   {
+    "newText": "SQ",
+    "range": {
+     "end": {
+      "character": 14,
+      "line": 3
+     },
+     "start": {
+      "character": 8,
+      "line": 3
+     }
+    }
+   }
+  ]
+ }
+}
+## call hierarchy
+>> textDocument/prepareCallHierarchy
+[
+ {
+  "detail": "TWICE(x)",
+  "kind": 12,
+  "name": "TWICE",
+  "range": {
+   "end": {
+    "character": 32,
+    "line": 2
+   },
+   "start": {
+    "character": 0,
+    "line": 2
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 13,
+    "line": 2
+   },
+   "start": {
+    "character": 8,
+    "line": 2
+   }
+  },
+  "uri": "file://$ROOT/basic/main.c"
+ }
+]
+>> callHierarchy/outgoingCalls
+[
+ {
+  "fromRanges": [
+   {
+    "end": {
+     "character": 28,
+     "line": 2
+    },
+    "start": {
+     "character": 22,
+     "line": 2
+    }
+   }
+  ],
+  "to": {
+   "detail": "SQUARE(x)",
+   "kind": 12,
+   "name": "SQUARE",
+   "range": {
+    "end": {
+     "character": 29,
+     "line": 1
+    },
+    "start": {
+     "character": 0,
+     "line": 1
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 14,
+     "line": 1
+    },
+    "start": {
+     "character": 8,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/basic/main.c"
+  }
+ }
+]
+>> callHierarchy/incomingCalls
+[
+ {
+  "from": {
+   "detail": "TWICE(x)",
+   "kind": 12,
+   "name": "TWICE",
+   "range": {
+    "end": {
+     "character": 32,
+     "line": 2
+    },
+    "start": {
+     "character": 0,
+     "line": 2
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 13,
+     "line": 2
+    },
+    "start": {
+     "character": 8,
+     "line": 2
+    }
+   },
+   "uri": "file://$ROOT/basic/main.c"
+  },
+  "fromRanges": [
+   {
+    "end": {
+     "character": 28,
+     "line": 2
+    },
+    "start": {
+     "character": 22,
+     "line": 2
+    }
+   }
+  ]
+ }
+]
+## expansion view
+>> cereal/expandMacro
+{
+ "expansion": "(2 * ((2) * (2)))",
+ "name": "TWICE",
+ "range": {
+  "end": {
+   "character": 19,
+   "line": 4
+  },
+  "start": {
+   "character": 8,
+   "line": 4
+  }
+ }
+}
+## typing an invocation: signature help, then new diagnostics
+>> textDocument/didChange
+>> textDocument/signatureHelp
+{
+ "activeParameter": 1,
+ "activeSignature": 0,
+ "signatures": [
+  {
+   "documentation": "#define TWICE(x) (2 * SQUARE(x))",
+   "label": "TWICE(x)",
+   "parameters": [
+    {
+     "label": [
+      6,
+      7
+     ]
+    }
+   ]
+  }
+ ]
+}
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/basic/main.c
+{
+ "diagnostics": [
+  {
+   "code": "macro-unparenthesized-param",
+   "message": "macro parameter 'x' is an operand of '*' but is not parenthesized; an argument like 'a + b' changes the meaning",
+   "range": {
+    "end": {
+     "character": 16,
+     "line": 10
+    },
+    "start": {
+     "character": 15,
+     "line": 10
+    }
+   },
+   "severity": 2,
+   "source": "cereal"
+  },
+  {
+   "code": "macro-unparenthesized-param",
+   "message": "macro parameter 'x' is an operand of '*' but is not parenthesized; an argument like 'a + b' changes the meaning",
+   "range": {
+    "end": {
+     "character": 20,
+     "line": 10
+    },
+    "start": {
+     "character": 19,
+     "line": 10
+    }
+   },
+   "severity": 2,
+   "source": "cereal"
+  },
+  {
+   "code": "macro-unparenthesized-body",
+   "message": "replacement list of 'BAD' has a top-level '*' but is not parenthesized; 'BAD' in an expression may bind differently",
+   "range": {
+    "end": {
+     "character": 20,
+     "line": 10
+    },
+    "start": {
+     "character": 17,
+     "line": 10
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 15,
+        "line": 10
+       },
+       "start": {
+        "character": 15,
+        "line": 10
+       }
+      },
+      "uri": "file://$ROOT/basic/main.c"
+     },
+     "message": "wrap the replacement list in parentheses"
+    }
+   ],
+   "severity": 2,
+   "source": "cereal"
+  },
+  {
+   "message": "unterminated argument list invoking macro \"TWICE\"",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 12
+    },
+    "start": {
+     "character": 8,
+     "line": 12
+    }
+   },
+   "severity": 1,
+   "source": "cereal"
+  }
+ ]
+}
+>> shutdown
+null
+>> exit
+exit 0

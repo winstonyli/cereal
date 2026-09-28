@@ -85,6 +85,8 @@ static bool plan_read(PP *pp, Tok *t);
 TokSrc pp_read_raw(PP *pp, Tok *t)
 {
     for (;;) {
+        if (pp->cancel && atomic_load_u32(pp->cancel))
+            pp->halted = true;
         if (pp->halted) {
             memset(t, 0, sizeof *t);
             t->kind = TK_EOF;
@@ -551,6 +553,7 @@ void pp_init_worker(PP *w, const PP *main, Arena *a, DiagEngine *d)
     w->host_builtins = main->host_builtins;
     w->dir_item = SIZE_MAX;
     w->track = main->track;
+    w->cancel = main->cancel;
 }
 
 void pp_free(PP *pp)

@@ -69,6 +69,11 @@ typedef struct SrcMgr {
     SrcFile **path_slots;  /* open-addressing map path -> file */
     size_t path_cap, path_count;
     ScratchCursor scratch; /* the main thread's cursor */
+    /* Editor buffers: consulted before the file system (normalized path);
+     * returns false to fall through to the disk. */
+    bool (*overlay)(void *ctx, const char *path, const char **buf,
+                    size_t *len);
+    void *overlay_ctx;
 } SrcMgr;
 
 static inline uint32_t srcmgr_nfiles(const SrcMgr *sm)

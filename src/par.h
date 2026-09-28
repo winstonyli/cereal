@@ -14,6 +14,8 @@ typedef struct ParOptions {
     unsigned window;         /* segments after a worker's start at which a
                                 predecessor may stitch (0: default) */
     ThreadPool *pool;        /* shared pool (NULL: a private one) */
+    size_t size_hint;        /* main file size if not the one on disk
+                                (an editor buffer); 0: stat the file */
 } ParOptions;
 
 typedef enum {

@@ -4,6 +4,7 @@
 #include "ppout.h"
 #include "analysis/analysis.h"
 #include "index.h"
+#include "lsp/lsp.h"
 
 #include <string.h>
 
@@ -16,6 +17,7 @@ static void usage(FILE *o)
         "  -E            preprocess to stdout (or -o FILE)\n"
         "  lint          run the preprocessor analyses\n"
         "  index         dump the macro index (LSP model) as JSON\n"
+        "  lsp           language server on stdin/stdout\n"
         "  query KIND FILE:LINE:COL   KIND = def | refs | hover | visible | expand\n"
         "  --list-warnings  list every -W option\n"
         "\n"
@@ -529,6 +531,8 @@ int main(int argc, char **argv)
     }
     for (i = 1; i < argc; i++) {
         int n;
+        if (!mode && !strcmp(argv[i], "lsp"))
+            return lsp_main(stdin, stdout);
         if (!mode && (!strcmp(argv[i], "-E") || !strcmp(argv[i], "lint") ||
                       !strcmp(argv[i], "index"))) {
             mode = argv[i];

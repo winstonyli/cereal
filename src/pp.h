@@ -282,7 +282,8 @@ typedef struct PP {
     bool seg_active;         /* PLAN: lexer is inside plan_pos - 1 */
     bool reading_top;        /* PLAN: pp_next's own read (for clean points) */
     bool diverged;           /* PLAN: hit something only FULL mode can do */
-    bool halted;             /* a fatal error ended the TU */
+    bool halted;             /* a fatal error (or cancellation) ended the TU */
+    const uint32_t *cancel;  /* atomic flag: nonzero stops at the next token */
     BoundaryFn on_boundary;
     void *boundary_ctx;
     bool versioned;          /* phase B: look macros up by version */

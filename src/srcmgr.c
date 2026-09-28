@@ -183,6 +183,18 @@ static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
     SrcLoc base;
     if (f)
         return f->id < 0 ? NULL : f;
+    if (sm->overlay) {
+        const char *ob;
+        size_t ol;
+        if (sm->overlay(sm->overlay_ctx, norm, &ob, &ol) && ol <= 0xF0000000u) {
+            base = reserve(sm, ol + SRC_PAD);
+            memcpy(sm->region + base, ob, ol);
+            f = new_file(sm, norm, base, (uint32_t)ol,
+                         (uint32_t)round_up(ol + SRC_PAD, page_size()), kind);
+            path_insert(sm, f);
+            return f;
+        }
+    }
     fd = open(norm, O_RDONLY);
     if (fd < 0)
         return missing_file(sm, norm);

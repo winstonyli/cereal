@@ -523,8 +523,11 @@ bool par_worth_it(const char *path, const ParOptions *po)
     size_t min = po->min_bytes ? po->min_bytes : DEFAULT_MIN_BYTES;
     if (po->force)
         return true;
-    return (po->threads > 0 ? po->threads : cpu_count()) > 1 &&
-           stat(path, &sb) == 0 && (size_t)sb.st_size >= min;
+    if ((po->threads > 0 ? po->threads : cpu_count()) <= 1)
+        return false;
+    if (po->size_hint)
+        return po->size_hint >= min;
+    return stat(path, &sb) == 0 && (size_t)sb.st_size >= min;
 }
 
 ParResult par_write_output(TU *tu, const char *path, FILE *out,
