@@ -2,3 +2,4 @@
 /cereal
 *.o
 *.d
+__pycache__/
