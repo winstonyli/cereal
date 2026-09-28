@@ -44,7 +44,6 @@ typedef struct Macro {
     bool variadic;           /* last param is __VA_ARGS__ (or GNU named) */
     bool gnu_named_variadic;
     bool predefined;         /* from <built-in> or <command line> */
-    bool disabled;           /* its expansion context is live */
     bool has_ops;            /* body contains # or ## */
     BuiltinKind builtin;
     int nparams;
@@ -56,13 +55,22 @@ typedef struct Macro {
     uint32_t body_len;
     SrcLoc hash_loc, name_loc, end_loc;
     SrcLoc undef_loc;        /* 0 while live */
+    /* Versions: the macro is live at version v iff def_seq < v <= undef_seq
+     * (undef_seq is UINT32_MAX while live).  A version is the number of
+     * define/undef events before a point in the TU. */
     uint32_t def_seq, undef_seq;
     struct Macro *prev;      /* previous definition of the same name */
+    struct Macro *alias_of;  /* pop_macro re-instatement of this definition */
     struct SrcFile *file;
-    uint32_t expansions;
-    uint32_t cond_refs;
+    uint32_t expansions;     /* atomic */
+    uint32_t cond_refs;      /* atomic */
     void *user;
 } Macro;
+
+static inline bool macro_live_at(const Macro *m, uint32_t v)
+{
+    return m->def_seq < v && v <= m->undef_seq;
+}
 
 /* One macro invocation (recorded only when tracking is on). */
 typedef struct Expansion {
@@ -240,6 +248,9 @@ typedef struct PP {
     bool in_if_expr;
     bool collecting_args;    /* arg pre-expansion: defer _Pragma */
     bool carry_space;
+    bool versioned;          /* phase B: look macros up by version */
+    uint32_t version;
+    bool check_versions;     /* debug: cross-check versioned lookups */
 
     /* provenance of the last token read (see pp_read_raw) */
     SrcLoc tok_exp_loc;
@@ -280,6 +291,37 @@ void pp_cmdline_include(PP *pp, const char *path);
 bool pp_enter_main(PP *pp, const char *path);
 /* Next fully macro-expanded token; false at the end of the TU. */
 bool pp_next(PP *pp, Tok *out);
+
+/* The definition of id in effect at the current point. */
+static inline Macro *macro_at_version(const Ident *id, uint32_t v)
+{
+    Macro *m;
+    for (m = id->history; m; m = m->prev)
+        if (m->def_seq < v)
+            return v <= m->undef_seq ? m : NULL;
+    return NULL;
+}
+
+void pp_version_mismatch(const PP *pp, const Ident *id);
+
+static inline Macro *pp_macro(const PP *pp, const Ident *id)
+{
+    if (pp->versioned)
+        return macro_at_version(id, pp->version);
+    if (pp->check_versions && macro_at_version(id, pp->seq) != id->macro)
+        pp_version_mismatch(pp, id);
+    return id->macro;
+}
+
+/* Is m being expanded (its context live) in this preprocessor? */
+static inline bool pp_macro_disabled(const PP *pp, const Macro *m)
+{
+    size_t i;
+    for (i = pp->ctx.len; i-- > 0;)
+        if (pp->ctx.data[i].macro == m)
+            return true;
+    return false;
+}
 
 static inline const char *pp_text(const PP *pp, const Tok *t)
 {

@@ -19,7 +19,7 @@ static void add_ref(Index *ix, Ident *name, Macro *m, SrcLoc loc, uint32_t len,
     if (!loc)
         return;
     r.name = name;
-    r.macro = m;
+    r.macro = m && m->alias_of ? m->alias_of : m; /* pop_macro version */
     r.loc = loc;
     r.len = len;
     r.kind = kind;
@@ -317,7 +317,7 @@ static uint32_t seq_at(Index *ix, SrcLoc loc)
 
 static bool live_at(const Macro *m, uint32_t seq)
 {
-    return m->def_seq < seq && !(m->undef_seq && m->undef_seq < seq);
+    return macro_live_at(m, seq);
 }
 
 size_t index_visible(Index *ix, SrcLoc loc, Macro ***out)

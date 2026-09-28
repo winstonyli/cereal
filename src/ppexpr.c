@@ -576,7 +576,8 @@ static bool resolve_defined(PP *pp, TokSpan in, TokBuf *out)
                 i++;
             }
             pp_macro_ref(pp, name, REF_DEFINED);
-            r = pp_make_token(pp, TK_PPNUM, pp_ident(pp, name)->macro ? "1" : "0",
+            r = pp_make_token(pp, TK_PPNUM,
+                              pp_macro(pp, pp_ident(pp, name)) ? "1" : "0",
                               1, op->loc, (uint16_t)(op->flags | TF_FROM_DEFINED));
             tokbuf_push(pp, out, r);
             continue;

@@ -81,6 +81,8 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     } else if (a[1] == 'O') {
         /* affects predefined macros only */
         o->opt_level = a[2] ? a[2] : '1';
+    } else if (!strcmp(a, "-fcheck-macro-versions")) {
+        o->check_versions = true;
     } else if (!strcmp(a, "-P")) {
         o->linemarkers = false;
     } else if (!strcmp(a, "-o")) {
@@ -130,6 +132,7 @@ void tu_init(TU *tu, Options *opt)
                             "'-W%s'\n", opt->wflags.data[i]);
     pp_init(&tu->pp, &tu->arena, &tu->in, &tu->sm, &tu->diag, &opt->pp);
     tu->pp.host_attrs = host_attrs;
+    tu->pp.check_versions = opt->check_versions;
     tu->pp.host_builtins = host_builtins;
 }
 

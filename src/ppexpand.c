@@ -79,8 +79,8 @@ static void args_free(PP *pp, Args *a, int nparams)
 static void paint(PP *pp, Tok *t)
 {
     if (t->kind == TK_IDENT) {
-        Macro *m = ident_by_id(pp->in, t->aux)->macro;
-        if (m && m->disabled)
+        Macro *m = pp_macro(pp, ident_by_id(pp->in, t->aux));
+        if (m && pp_macro_disabled(pp, m))
             t->flags |= TF_NOEXPAND;
     }
 }
@@ -235,8 +235,9 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
                     pp_unread(pp, &u, us);
                 continue;
             }
-            if (id->macro && !(t.flags & TF_NOEXPAND)) {
-                if (id->macro->disabled) {
+            Macro *im = pp_macro(pp, id);
+            if (im && !(t.flags & TF_NOEXPAND)) {
+                if (pp_macro_disabled(pp, im)) {
                     t.flags |= TF_NOEXPAND;
                 } else {
                     SrcLoc el = pp->tok_exp_loc;
@@ -258,8 +259,6 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
     /* everything above the barrier is exhausted and gone */
     while (pp->ctx.len > base + 1) {
         Context *x = &vec_last(&pp->ctx);
-        if (x->macro)
-            x->macro->disabled = false;
         tokbuf_release(pp, &x->owned);
         pp->ctx.len--;
     }
@@ -277,7 +276,7 @@ static bool needs_expansion(PP *pp, TokSpan s)
     uint32_t i;
     for (i = 0; i < s.n; i++)
         if (s.t[i].kind == TK_IDENT && !(s.t[i].flags & TF_NOEXPAND) &&
-            ident_by_id(pp->in, s.t[i].aux)->macro)
+            pp_macro(pp, ident_by_id(pp->in, s.t[i].aux)))
             return true;
     return false;
 }
@@ -783,7 +782,8 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                 if (toks.t[i].kind == TK_IDENT) {
                     Ident *id = ident_by_id(pp->in, toks.t[i].aux);
                     id->flags |= IDF_POISONED;
-                    PP_EMIT(pp, macro_ref, id, id->macro, &toks.t[i], REF_PRAGMA);
+                    PP_EMIT(pp, macro_ref, id, pp_macro(pp, id), &toks.t[i],
+                            REF_PRAGMA);
                 }
         } else if (word(pp, toks, 1, "warning") || word(pp, toks, 1, "error")) {
             bool err = word(pp, toks, 1, "error");
@@ -803,6 +803,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
     } else if (word(pp, toks, 0, "push_macro")) {
         TokSpan rest;
         Ident *id;
+        emit = false; /* consumed, like GCC */
         rest.t = toks.t + 1;
         rest.n = toks.n - 1;
         id = pragma_macro_name(pp, rest);
@@ -816,6 +817,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
     } else if (word(pp, toks, 0, "pop_macro")) {
         TokSpan rest;
         Ident *id;
+        emit = false;
         rest.t = toks.t + 1;
         rest.n = toks.n - 1;
         id = pragma_macro_name(pp, rest);
@@ -828,15 +830,30 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                             toks.t[0].loc, "pop_macro(\"%s\") without push_macro",
                             id->str);
             } else {
-                Macro *restored = (*pe)->macro;
-                if (id->macro && id->macro != restored) {
-                    id->macro->undef_loc = toks.t[0].loc;
-                    id->macro->undef_seq = pp->seq;
+                Macro *restored = (*pe)->macro, *cur = id->macro;
+                uint32_t ev = pp->seq++;
+                if (cur) {
+                    cur->undef_loc = toks.t[0].loc;
+                    cur->undef_seq = ev;
+                }
+                if (restored) {
+                    /* re-instate as a new version: versions never revive */
+                    Macro *v = NEW(pp->arena, Macro);
+                    *v = *restored;
+                    v->alias_of = restored->alias_of ? restored->alias_of
+                                                     : restored;
+                    v->id = (uint32_t)pp->macros.len;
+                    v->def_seq = ev;
+                    v->undef_seq = UINT32_MAX;
+                    v->undef_loc = 0;
+                    v->expansions = v->cond_refs = 0;
+                    v->user = NULL;
+                    v->prev = id->history;
+                    id->history = v;
+                    vec_push(&pp->macros, v);
+                    restored = v;
                 }
                 id->macro = restored;
-                if (restored)
-                    restored->undef_loc = 0, restored->undef_seq = 0;
-                pp->seq++;
                 *pe = (*pe)->next;
                 PP_EMIT(pp, checkpoint, toks.t[0].loc, pp->seq);
             }
@@ -936,7 +953,7 @@ static bool do_pragma_op(PP *pp, const Tok *name)
 bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
 {
     Ident *id = ident_by_id(pp->in, name->aux);
-    Macro *m = id->macro;
+    Macro *m = pp_macro(pp, id);
     uint32_t parent = src == SRC_CONTEXT ? pp->tok_exp_id : NO_EXP;
     uint32_t parent_root = pp->tok_root;
     SrcLoc exp_loc = pp->tok_exp_loc;
@@ -960,7 +977,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
             e = new_expansion(pp, m, name, parent, parent_root);
             if (!builtin_query(pp, m, name, &r))
                 r = false;
-            m->expansions++;
+            atomic_add_u32(&m->expansions, 1);
             PP_EMIT(pp, expand, e, NULL, 0);
             push_single(pp, pp_make_token(pp, TK_PPNUM, r ? "1" : "0", 1,
                                           name->loc, (uint16_t)(lead | TF_SYNTH)),
@@ -969,7 +986,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
             return true;
         }
         e = new_expansion(pp, m, name, parent, parent_root);
-        m->expansions++;
+        atomic_add_u32(&m->expansions, 1);
         PP_EMIT(pp, expand, e, NULL, 0);
         push_single(pp, builtin_token(pp, m, name, exp_loc), NULL, exp_loc,
                     e ? e->id : NO_EXP, e ? e->root : NO_EXP, name->loc);
@@ -981,7 +998,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         e = new_expansion(pp, m, name, parent, parent_root);
         eid = e ? e->id : NO_EXP;
         root = e ? e->root : NO_EXP;
-        m->expansions++;
+        atomic_add_u32(&m->expansions, 1);
         PP_EMIT(pp, expand, e, NULL, 0);
         if (m->body_len == 0) {
             if (lead & TF_SPACE)
@@ -1006,7 +1023,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         root = e ? e->root : NO_EXP;
         if (e)
             e->end_loc = a.rparen_loc + a.rparen_len;
-        m->expansions++;
+        atomic_add_u32(&m->expansions, 1);
         if (pp->track != TRACK_NONE) {
             spans = xmalloc(sizeof(TokSpan) * ((size_t)m->nparams + 1));
             for (i = 0; i < m->nparams; i++)

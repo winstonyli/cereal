@@ -25,3 +25,12 @@ cat(1,e)+2 cat(-,>) cat(<,<=) cat(%:,%:) cat(L,'a') cat(L, "s")
 s2( a   "b\n"   'c'  \\ ) s2() s2(   leading) s2(@)
 #define VA(fmt, ...) printf(fmt, ## __VA_ARGS__)
 VA("a") VA("a", 1, 2) VA("a",)
+#define PM 1
+#pragma push_macro("PM")
+#undef PM
+#define PM 2
+PM
+#pragma pop_macro("PM")
+PM
+#undef PM
+#pragma pop_macro("PM")

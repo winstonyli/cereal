@@ -21,7 +21,7 @@ diff_pp() { # diff_pp NAME FILE FLAGS...
     name=$1 file=$2
     shift 2
     $REFCC -std=c99 "$@" -E "$file" >"$TMP/ref.i" 2>/dev/null
-    "$CEREAL" -E "$@" "$file" >"$TMP/out.i" 2>"$TMP/err" ||
+    "$CEREAL" -E -fcheck-macro-versions "$@" "$file" >"$TMP/out.i" 2>"$TMP/err" ||
         { bad "$name (cereal exited non-zero)"; sed 's/^/    /' "$TMP/err" | head -5; return; }
     if python3 "$ROOT/tests/tokdiff.py" "$TMP/ref.i" "$TMP/out.i" >"$TMP/diff"; then
         ok

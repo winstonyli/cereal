@@ -68,16 +68,12 @@ static void tokpool_free(TokPool *p)
 
 void pp_push_context(PP *pp, Context c)
 {
-    if (c.macro)
-        c.macro->disabled = true;
     vec_push(&pp->ctx, c);
 }
 
 static void pop_context(PP *pp)
 {
     Context *c = &vec_last(&pp->ctx);
-    if (c->macro)
-        c->macro->disabled = false;
     tokbuf_release(pp, &c->owned);
     pp->ctx.len--;
 }
@@ -127,6 +123,11 @@ void pp_unread(PP *pp, const Tok *t, TokSrc src)
 }
 
 /* ---- small helpers -------------------------------------------------- */
+
+void pp_version_mismatch(const PP *pp, const Ident *id)
+{
+    fatal("macro version mismatch for '%s' at seq %u", id->str, pp->seq);
+}
 
 void pp_add_listener(PP *pp, PPListener l)
 {
@@ -391,6 +392,7 @@ static Macro *new_builtin(PP *pp, const char *name, BuiltinKind k,
     m->builtin = k;
     m->funclike = funclike;
     m->predefined = true;
+    m->undef_seq = UINT32_MAX;
     m->file = pp->builtin_file;
     m->def_seq = pp->seq++;
     m->prev = m->name->history;
@@ -567,11 +569,11 @@ bool pp_next(PP *pp, Tok *out)
         }
         if (t.kind == TK_IDENT) {
             Ident *id = ident_by_id(pp->in, t.aux);
-            Macro *m = id->macro;
+            Macro *m = pp_macro(pp, id);
             if (id->flags & IDF_POISONED)
                 pp_error_at(pp, &t, "attempt to use poisoned \"%s\"", id->str);
             if (m && !(t.flags & TF_NOEXPAND)) {
-                if (m->disabled) {
+                if (pp_macro_disabled(pp, m)) {
                     t.flags |= TF_NOEXPAND;
                 } else {
                     SrcLoc el = pp->tok_exp_loc;
@@ -731,10 +733,10 @@ static void emit_cond(PP *pp, CondKind k, const Tok *hash, const Tok *kw,
 void pp_macro_ref(PP *pp, const Tok *name, RefKind kind)
 {
     Ident *id = ident_by_id(pp->in, name->aux);
-    Macro *m = id->macro;
+    Macro *m = pp_macro(pp, id);
     id->flags |= IDF_EVER_REFD;
     if (m && kind != REF_EXPANSION && kind != REF_UNDEF)
-        m->cond_refs++;
+        atomic_add_u32(&m->cond_refs, 1);
     PP_EMIT(pp, macro_ref, id, m, name, kind);
 }
 
@@ -794,7 +796,7 @@ static void do_if(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
             ok = false;
         } else {
             pp_macro_ref(pp, &line.t[0], REF_IFDEF);
-            val = (ident_by_id(pp->in, line.t[0].aux)->macro != NULL) ==
+            val = (pp_macro(pp, ident_by_id(pp->in, line.t[0].aux)) != NULL) ==
                   (k == COND_IFDEF);
             check_eol(pp, span_from(line, 1), k == COND_IFDEF ? "ifdef" : "ifndef");
         }
@@ -934,6 +936,7 @@ static void do_define(PP *pp, const Tok *hash)
     }
     m = NEW(pp->arena, Macro);
     m->name = nid;
+    m->undef_seq = UINT32_MAX;
     m->hash_loc = hash->loc;
     m->name_loc = name->loc;
     m->file = pp->inc->file;

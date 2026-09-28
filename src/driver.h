@@ -24,6 +24,7 @@ typedef struct Options {
     bool pedantic_errors;
     bool show_system;
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */
+    bool check_versions;
 } Options;
 
 typedef struct TU {
