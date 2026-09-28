@@ -122,14 +122,15 @@ static void mark_used(Analysis *a, Macro *m)
         fi(a, m->file)->used = true;
 }
 
-static void on_expand(void *ctx, Expansion *e, Token **args, int nargs)
+static void on_expand(void *ctx, const Expansion *e, const TokSpan *args,
+                      int nargs)
 {
     (void)args;
     (void)nargs;
     mark_used(ctx, e->macro);
 }
 
-static void on_macro_ref(void *ctx, Ident *id, Macro *m, const Token *tok,
+static void on_macro_ref(void *ctx, Ident *id, Macro *m, const Tok *tok,
                          RefKind kind)
 {
     (void)id;

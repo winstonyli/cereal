@@ -1,13 +1,47 @@
 /* srcmgr.c - source files and the global location space. */
+#define _DEFAULT_SOURCE 1
 #include "srcmgr.h"
 
+#include <fcntl.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define REGION_SIZE (((size_t)1 << 32) + ((size_t)1 << 20))
+#define MMAP_THRESHOLD (64u * 1024u)
+#define SCRATCH_CHUNK (1u << 20)
+
+static size_t page_size(void)
+{
+    static size_t ps;
+    if (!ps) {
+        long v = sysconf(_SC_PAGESIZE);
+        ps = v > 0 ? (size_t)v : 4096;
+    }
+    return ps;
+}
+
+static size_t round_up(size_t x, size_t a)
+{
+    return (x + a - 1) & ~(a - 1);
+}
 
 void srcmgr_init(SrcMgr *sm, Arena *a)
 {
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+#ifdef MAP_NORESERVE
+    flags |= MAP_NORESERVE;
+#endif
     memset(sm, 0, sizeof *sm);
     sm->arena = a;
-    sm->next_base = 1;
+    sm->region = mmap(NULL, REGION_SIZE, PROT_NONE, flags, -1, 0);
+    if (sm->region == MAP_FAILED)
+        fatal("cannot reserve source location space");
+    sm->region_size = REGION_SIZE;
+    sm->next_base = (SrcLoc)page_size(); /* location 0 stays invalid */
+    sm->path_cap = 256;
+    sm->path_slots = xcalloc(sm->path_cap, sizeof(SrcFile *));
 }
 
 void srcmgr_free(SrcMgr *sm)
@@ -16,71 +50,153 @@ void srcmgr_free(SrcMgr *sm)
     for (i = 0; i < sm->files.len; i++)
         free(sm->files.data[i]->lines);
     vec_free(&sm->files);
+    free(sm->path_slots);
+    if (sm->region && sm->region != MAP_FAILED)
+        munmap(sm->region, sm->region_size);
+    sm->region = NULL;
 }
 
-static void compute_lines(SrcFile *f)
+/* Reserve [base, base+span) in the location space as readable memory. */
+static SrcLoc reserve(SrcMgr *sm, size_t span)
 {
-    VEC(uint32_t) v = {0};
-    uint32_t i;
-    vec_push(&v, 0);
-    for (i = 0; i < f->size; i++) {
-        if (f->buf[i] == '\n')
-            vec_push(&v, i + 1);
-        else if (f->buf[i] == '\r') {
-            if (i + 1 < f->size && f->buf[i + 1] == '\n')
-                i++;
-            vec_push(&v, i + 1);
-        }
-    }
-    f->lines = v.data;
-    f->nlines = (uint32_t)v.len;
+    size_t base = sm->next_base;
+    span = round_up(span, page_size());
+    if (base + span + page_size() > ((size_t)1 << 32))
+        fatal("source location space exhausted (4 GiB)");
+    if (mprotect(sm->region + base, span, PROT_READ | PROT_WRITE) != 0)
+        fatal("cannot commit source memory");
+    sm->next_base = (SrcLoc)(base + span);
+    return (SrcLoc)base;
 }
 
-static SrcFile *add_buffer(SrcMgr *sm, const char *path, char *buf,
-                           size_t len, SrcFileKind kind)
+static SrcFile *new_file(SrcMgr *sm, const char *path, SrcLoc base,
+                         uint32_t size, uint32_t span, SrcFileKind kind)
 {
     SrcFile *f = NEW(sm->arena, SrcFile);
-    if ((uint64_t)sm->next_base + len + 2 > UINT32_MAX)
-        fatal("source location space exhausted");
     f->id = (int)sm->files.len;
     f->path = path;
     f->name = path;
-    f->buf = buf;
-    f->size = (uint32_t)len;
-    f->base = sm->next_base;
+    f->base = base;
+    f->buf = sm->region + base;
+    f->size = size;
+    f->span = span;
     f->kind = kind;
+    f->has_cr = -1;
     f->system_header = kind == SF_SYSTEM;
-    /* +1 so the EOF position is addressable, +1 gap between files */
-    sm->next_base += (SrcLoc)len + 2;
-    compute_lines(f);
     vec_push(&sm->files, f);
     return f;
 }
 
+static size_t path_hash(const char *p)
+{
+    return hash_bytes(p, strlen(p));
+}
+
+static void path_insert(SrcMgr *sm, SrcFile *f)
+{
+    size_t k;
+    if ((sm->path_count + 1) * 2 > sm->path_cap) {
+        size_t nc = sm->path_cap * 2, i;
+        SrcFile **ns = xcalloc(nc, sizeof(SrcFile *));
+        for (i = 0; i < sm->path_cap; i++) {
+            SrcFile *g = sm->path_slots[i];
+            if (!g)
+                continue;
+            for (k = path_hash(g->path) & (nc - 1); ns[k]; k = (k + 1) & (nc - 1))
+                ;
+            ns[k] = g;
+        }
+        free(sm->path_slots);
+        sm->path_slots = ns;
+        sm->path_cap = nc;
+    }
+    for (k = path_hash(f->path) & (sm->path_cap - 1); sm->path_slots[k];
+         k = (k + 1) & (sm->path_cap - 1))
+        ;
+    sm->path_slots[k] = f;
+    sm->path_count++;
+}
+
+static SrcFile *path_find(SrcMgr *sm, const char *path)
+{
+    size_t k;
+    SrcFile *f;
+    for (k = path_hash(path) & (sm->path_cap - 1); (f = sm->path_slots[k]) != NULL;
+         k = (k + 1) & (sm->path_cap - 1))
+        if (!strcmp(f->path, path))
+            return f;
+    return NULL;
+}
+
 SrcFile *srcmgr_load(SrcMgr *sm, const char *path, SrcFileKind kind)
 {
-    size_t i, len;
-    char *buf, *norm = path_normalize(sm->arena, path);
-    for (i = 0; i < sm->files.len; i++)
-        if (sm->files.data[i]->kind != SF_VIRTUAL &&
-            strcmp(sm->files.data[i]->path, norm) == 0)
-            return sm->files.data[i];
-    buf = read_file(norm, &len);
-    if (!buf)
+    char *norm = path_normalize(sm->arena, path);
+    SrcFile *f = path_find(sm, norm);
+    struct stat st;
+    int fd;
+    size_t size;
+    SrcLoc base;
+    if (f)
+        return f;
+    fd = open(norm, O_RDONLY);
+    if (fd < 0)
         return NULL;
-    {
-        /* keep contents in the arena so the whole TU frees in bulk */
-        char *copy = arena_strndup(sm->arena, buf, len);
-        free(buf);
-        return add_buffer(sm, norm, copy, len, kind);
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+        (uint64_t)st.st_size > 0xF0000000u) {
+        close(fd);
+        return NULL;
     }
+    size = (size_t)st.st_size;
+    base = reserve(sm, size + SRC_PAD);
+    if (size >= MMAP_THRESHOLD) {
+        void *p = mmap(sm->region + base, size, PROT_READ | PROT_WRITE,
+                       MAP_PRIVATE | MAP_FIXED, fd, 0);
+        if (p == MAP_FAILED) {
+            close(fd);
+            return NULL;
+        }
+    } else {
+        size_t got = 0;
+        while (got < size) {
+            ssize_t r = read(fd, sm->region + base + got, size - got);
+            if (r <= 0)
+                break;
+            got += (size_t)r;
+        }
+        size = got;
+    }
+    close(fd);
+    f = new_file(sm, norm, base, (uint32_t)size,
+                 (uint32_t)round_up(size + SRC_PAD, page_size()), kind);
+    path_insert(sm, f);
+    return f;
 }
 
 SrcFile *srcmgr_add_virtual(SrcMgr *sm, const char *name, const char *buf,
                             size_t len)
 {
-    return add_buffer(sm, arena_strdup(sm->arena, name),
-                      arena_strndup(sm->arena, buf, len), len, SF_VIRTUAL);
+    SrcLoc base = reserve(sm, len + SRC_PAD);
+    memcpy(sm->region + base, buf, len);
+    return new_file(sm, arena_strdup(sm->arena, name), base, (uint32_t)len,
+                    (uint32_t)round_up(len + SRC_PAD, page_size()), SF_VIRTUAL);
+}
+
+SrcLoc srcmgr_scratch(SrcMgr *sm, const char *s, size_t n)
+{
+    SrcFile *f = sm->scratch;
+    SrcLoc loc;
+    if (!f || (size_t)f->size + n + 1 + SRC_PAD > f->span) {
+        size_t span = MAX((size_t)SCRATCH_CHUNK, round_up(n + 1 + SRC_PAD,
+                                                          page_size()));
+        SrcLoc base = reserve(sm, span);
+        f = new_file(sm, "<scratch>", base, 0, (uint32_t)span, SF_SCRATCH);
+        sm->scratch = f;
+    }
+    loc = f->base + f->size;
+    memcpy(sm->region + loc, s, n);
+    sm->region[loc + n] = 0;
+    f->size += (uint32_t)n + 1;
+    return loc;
 }
 
 SrcFile *srcmgr_file_of(const SrcMgr *sm, SrcLoc loc)
@@ -93,7 +209,7 @@ SrcFile *srcmgr_file_of(const SrcMgr *sm, SrcLoc loc)
         SrcFile *f = sm->files.data[mid];
         if (loc < f->base)
             hi = mid;
-        else if (loc > f->base + f->size)
+        else if (loc >= f->base + f->span)
             lo = mid + 1;
         else
             return f;
@@ -106,9 +222,32 @@ uint32_t srcmgr_offset(const SrcFile *f, SrcLoc loc)
     return loc - f->base;
 }
 
-void srcmgr_linecol(const SrcFile *f, SrcLoc loc, uint32_t *line, uint32_t *col)
+static void compute_lines(SrcFile *f)
 {
-    uint32_t off = loc - f->base, lo = 0, hi = f->nlines;
+    VEC(uint32_t) v = {0};
+    uint32_t i;
+    if (f->lines)
+        return;
+    vec_push(&v, 0);
+    for (i = 0; i < f->size; i++) {
+        char c = f->buf[i];
+        if (c == '\n') {
+            vec_push(&v, i + 1);
+        } else if (c == '\r') {
+            if (i + 1 < f->size && f->buf[i + 1] == '\n')
+                i++;
+            vec_push(&v, i + 1);
+        }
+    }
+    f->lines = v.data;
+    f->nlines = (uint32_t)v.len;
+}
+
+void srcmgr_linecol(SrcFile *f, SrcLoc loc, uint32_t *line, uint32_t *col)
+{
+    uint32_t off = loc - f->base, lo = 0, hi;
+    compute_lines(f);
+    hi = f->nlines;
     while (hi - lo > 1) {
         uint32_t mid = (lo + hi) / 2;
         if (f->lines[mid] <= off)
@@ -120,9 +259,10 @@ void srcmgr_linecol(const SrcFile *f, SrcLoc loc, uint32_t *line, uint32_t *col)
     *col = off - f->lines[lo] + 1;
 }
 
-SrcLoc srcmgr_loc_of(const SrcFile *f, uint32_t line, uint32_t col)
+SrcLoc srcmgr_loc_of(SrcFile *f, uint32_t line, uint32_t col)
 {
     uint32_t off;
+    compute_lines(f);
     if (line == 0 || line > f->nlines)
         return 0;
     off = f->lines[line - 1] + (col ? col - 1 : 0);
@@ -131,9 +271,10 @@ SrcLoc srcmgr_loc_of(const SrcFile *f, uint32_t line, uint32_t col)
     return f->base + off;
 }
 
-const char *srcmgr_line_text(const SrcFile *f, uint32_t line, uint32_t *len)
+const char *srcmgr_line_text(SrcFile *f, uint32_t line, uint32_t *len)
 {
     uint32_t b, e;
+    compute_lines(f);
     if (line == 0 || line > f->nlines) {
         *len = 0;
         return "";
@@ -144,6 +285,28 @@ const char *srcmgr_line_text(const SrcFile *f, uint32_t line, uint32_t *len)
         e++;
     *len = e - b;
     return f->buf + b;
+}
+
+uint32_t linecursor_line(LineCursor *c, SrcFile *f, SrcLoc loc)
+{
+    uint32_t off = loc - f->base;
+    if (f->has_cr < 0)
+        f->has_cr = memchr(f->buf, '\r', f->size) != NULL;
+    if (c->file == f && off >= c->off && !f->has_cr) {
+        const char *p = f->buf + c->off, *e = f->buf + off;
+        uint32_t n = 0;
+        while (p < e && (p = memchr(p, '\n', (size_t)(e - p))) != NULL) {
+            n++;
+            p++;
+        }
+        c->line += n;
+    } else {
+        uint32_t col;
+        srcmgr_linecol(f, loc, &c->line, &col);
+    }
+    c->file = f;
+    c->off = off;
+    return c->line;
 }
 
 char *path_dirname(Arena *a, const char *path)

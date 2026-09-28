@@ -128,8 +128,10 @@ def main():
     only = None
     if '--only' in args:
         only = args[args.index('--only') + 1]
-    cereal = next((a for a in args if a.endswith('cereal')),
-                  os.path.join(ROOT, 'cereal'))
+    positional = [a for i, a in enumerate(args)
+                  if not a.startswith('--') and (i == 0 or args[i - 1] != '--only')]
+    cereal = os.path.abspath(positional[0]) if positional else \
+        os.path.join(ROOT, 'cereal')
     os.makedirs(OUT, exist_ok=True)
     runs = 1 if quick else 3
     tools = [('cereal', [cereal, '-E']), ('gcc', ['gcc', '-std=c99', '-E'])]

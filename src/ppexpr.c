@@ -14,9 +14,11 @@ typedef struct Val {
 
 typedef struct EP {
     PP *pp;
-    Token *t;
+    const Tok *t;           /* the token array ends with a TK_EOF sentinel */
     bool ok;
 } EP;
+
+#define TXT(p, t) pp_text((p)->pp, (t))
 
 static Val expr_comma(EP *p, bool eval);
 
@@ -30,7 +32,7 @@ static Val mkval(uintmax_t v, bool uns)
 
 static intmax_t sv(Val a) { return (intmax_t)a.v; }
 
-static void fail(EP *p, const Token *t, const char *fmt, const char *arg, int n)
+static void fail(EP *p, const Tok *t, const char *fmt, const char *arg, int n)
 {
     if (!p->ok)
         return;
@@ -49,10 +51,10 @@ static bool is_punct(EP *p, Punct k)
 static void advance(EP *p)
 {
     if (p->t->kind != TK_EOF)
-        p->t = p->t->next;
+        p->t++;
 }
 
-static void overflow(EP *p, const Token *op, bool eval)
+static void overflow(EP *p, const Tok *op, bool eval)
 {
     if (eval)
         pp_warn_at(p->pp, op, "integer-overflow-in-if",
@@ -61,9 +63,9 @@ static void overflow(EP *p, const Token *op, bool eval)
 
 /* ---- literals ------------------------------------------------------- */
 
-static Val parse_number(EP *p, Token *t)
+static Val parse_number(EP *p, const Tok *t)
 {
-    const char *s = t->text, *end = t->text + t->len;
+    const char *s = TXT(p, t), *end = s + t->len;
     uintmax_t v = 0;
     int base = 10;
     bool overflowed = false, uns = false;
@@ -158,9 +160,9 @@ static int hexval(char c)
     return -1;
 }
 
-static Val parse_char(EP *p, Token *t)
+static Val parse_char(EP *p, const Tok *t)
 {
-    const char *s = t->text, *end = t->text + t->len - 1;
+    const char *s = TXT(p, t), *end = s + t->len - 1;
     bool wide = false;
     intmax_t v = 0;
     int nchars = 0;
@@ -236,7 +238,7 @@ static Val parse_char(EP *p, Token *t)
 
 static Val primary(EP *p, bool eval)
 {
-    Token *t = p->t;
+    const Tok *t = p->t;
     if (!p->ok)
         return mkval(0, false);
     if (tok_is_punct(t, P_LPAREN)) {
@@ -255,7 +257,7 @@ static Val primary(EP *p, bool eval)
     case TK_PPNUM:
         advance(p);
         if (t->flags & TF_FROM_DEFINED)
-            return mkval(t->text[0] == '1', false);
+            return mkval(TXT(p, t)[0] == '1', false);
         return parse_number(p, t);
     case TK_CHAR:
         advance(p);
@@ -263,17 +265,16 @@ static Val primary(EP *p, bool eval)
     case TK_IDENT:
         advance(p);
         /* C99 6.10.1p4: remaining identifiers are replaced with 0 */
-        PP_EMIT(p->pp, macro_ref, t->ident, NULL, t, REF_IF_VALUE);
+        PP_EMIT(p->pp, macro_ref, pp_ident(p->pp, t), NULL, t, REF_IF_VALUE);
         {
             Diagnostic *d = diag_report(p->pp->diag, DL_WARNING, "undef",
                                         t->loc,
                                         "\"%s\" is not defined, evaluates to 0",
-                                        t->ident->str);
-            diag_set_range(d, t->loc, t->loc + t->rawlen);
-            pp_add_expansion_notes(p->pp, d, t);
+                                        pp_ident(p->pp, t)->str);
+            diag_set_range(d, t->loc, t->loc + t->len);
         }
         if (tok_is_punct(p->t, P_LPAREN)) {
-            fail(p, t, "function-like macro \"%.*s\" is not defined", t->text,
+            fail(p, t, "function-like macro \"%.*s\" is not defined", TXT(p, t),
                  (int)t->len);
         }
         return mkval(0, false);
@@ -286,7 +287,7 @@ static Val primary(EP *p, bool eval)
     default:
         if (t->kind == TK_PUNCT || t->kind == TK_OTHER)
             fail(p, t, "token \"%.*s\" is not valid in preprocessor expressions",
-                 t->text, (int)t->len);
+                 TXT(p, t), (int)t->len);
         else
             fail(p, t, "token is not valid in preprocessor expressions", NULL, 0);
         return mkval(0, false);
@@ -295,7 +296,7 @@ static Val primary(EP *p, bool eval)
 
 static Val unary(EP *p, bool eval)
 {
-    Token *op = p->t;
+    const Tok *op = p->t;
     Val v;
     if (is_punct(p, P_PLUS)) {
         advance(p);
@@ -333,7 +334,7 @@ static Val mul(EP *p, bool eval)
 {
     Val a = unary(p, eval);
     for (;;) {
-        Token *op = p->t;
+        const Tok *op = p->t;
         Val b;
         if (!is_punct(p, P_STAR) && !is_punct(p, P_SLASH) &&
             !is_punct(p, P_PERCENT))
@@ -380,7 +381,7 @@ static Val add(EP *p, bool eval)
 {
     Val a = mul(p, eval);
     for (;;) {
-        Token *op = p->t;
+        const Tok *op = p->t;
         Val b;
         if (!is_punct(p, P_PLUS) && !is_punct(p, P_MINUS))
             return a;
@@ -405,7 +406,7 @@ static Val shift(EP *p, bool eval)
 {
     Val a = add(p, eval);
     for (;;) {
-        Token *op = p->t;
+        const Tok *op = p->t;
         Val b;
         intmax_t n;
         if (!is_punct(p, P_SHL) && !is_punct(p, P_SHR))
@@ -436,7 +437,7 @@ static Val relational(EP *p, bool eval)
 {
     Val a = shift(p, eval);
     for (;;) {
-        Token *op = p->t;
+        const Tok *op = p->t;
         Val b;
         bool r;
         if (!is_punct(p, P_LT) && !is_punct(p, P_GT) && !is_punct(p, P_LE) &&
@@ -459,7 +460,7 @@ static Val equality(EP *p, bool eval)
 {
     Val a = relational(p, eval);
     for (;;) {
-        Token *op = p->t;
+        const Tok *op = p->t;
         Val b;
         if (!is_punct(p, P_EQEQ) && !is_punct(p, P_NE))
             return a;
@@ -517,7 +518,7 @@ static Val lor(EP *p, bool eval)
 static Val cond(EP *p, bool eval)
 {
     Val c = lor(p, eval), x, y;
-    Token *q = p->t;
+    const Tok *q = p->t;
     if (!is_punct(p, P_QUESTION))
         return c;
     advance(p);
@@ -546,78 +547,83 @@ static Val expr_comma(EP *p, bool eval)
     return v;
 }
 
-/* Replace `defined X` / `defined(X)` with 1/0 tokens. */
-static Token *resolve_defined(PP *pp, Token *list, bool *ok)
+/* Replace `defined X` / `defined(X)` with 1/0 tokens; appends an EOF. */
+static bool resolve_defined(PP *pp, TokSpan in, TokBuf *out)
 {
-    Token head, *tail = &head, *t = list;
-    head.next = NULL;
-    while (t->kind != TK_EOF) {
-        if (t->kind == TK_IDENT && t->ident == pp->id_defined) {
-            Token *op = t, *name, *r;
+    uint32_t i = 0;
+    Tok eof;
+    while (i < in.n) {
+        const Tok *t = &in.t[i];
+        if (t->kind == TK_IDENT && pp_ident(pp, t) == pp->id_defined) {
+            const Tok *op = t, *name;
+            Tok r;
             bool paren = false;
-            t = t->next;
-            if (tok_is_punct(t, P_LPAREN)) {
+            i++;
+            if (i < in.n && tok_is_punct(&in.t[i], P_LPAREN)) {
                 paren = true;
-                t = t->next;
+                i++;
             }
-            if (t->kind != TK_IDENT) {
+            if (i >= in.n || in.t[i].kind != TK_IDENT) {
                 pp_error_at(pp, op, "operator \"defined\" requires an identifier");
-                *ok = false;
-                break;
+                return false;
             }
-            name = t;
-            t = t->next;
+            name = &in.t[i++];
             if (paren) {
-                if (!tok_is_punct(t, P_RPAREN)) {
+                if (i >= in.n || !tok_is_punct(&in.t[i], P_RPAREN)) {
                     pp_error_at(pp, op, "missing ')' after \"defined\"");
-                    *ok = false;
-                    break;
+                    return false;
                 }
-                t = t->next;
+                i++;
             }
             pp_macro_ref(pp, name, REF_DEFINED);
-            r = pp_copy_token(pp, op);
-            r->kind = TK_PPNUM;
-            r->text = name->ident->macro ? "1" : "0";
-            r->len = 1;
-            r->ident = NULL;
-            r->flags |= TF_FROM_DEFINED;
-            tail = tail->next = r;
+            r = pp_make_token(pp, TK_PPNUM, pp_ident(pp, name)->macro ? "1" : "0",
+                              1, op->loc, (uint16_t)(op->flags | TF_FROM_DEFINED));
+            tokbuf_push(pp, out, r);
             continue;
         }
-        tail = tail->next = t;
-        t = t->next;
+        tokbuf_push(pp, out, *t);
+        i++;
     }
-    tail->next = t;
-    return head.next;
+    memset(&eof, 0, sizeof eof);
+    eof.kind = TK_EOF;
+    eof.loc = in.n ? in.t[in.n - 1].loc + in.t[in.n - 1].len : 0;
+    tokbuf_push(pp, out, eof);
+    return true;
 }
 
-bool pp_eval_if(PP *pp, Token *expr, SrcLoc loc, bool *ok)
+bool pp_eval_if(PP *pp, TokSpan expr, bool *ok)
 {
     EP p;
     Val v;
-    Token *list;
-    (void)loc;
+    TokBuf exp = {0}, res = {0};
+    TokSpan es;
     pp->in_if_expr = true;
-    list = pp_expand_list(pp, expr);
+    tokbuf_init(pp, &exp, expr.n + 8);
+    pp_expand_into(pp, expr, &exp);
     pp->in_if_expr = false;
     p.pp = pp;
     p.ok = true;
-    list = resolve_defined(pp, list, &p.ok);
-    if (!p.ok) {
+    es.t = exp.t;
+    es.n = exp.len;
+    tokbuf_init(pp, &res, exp.len + 1);
+    if (!resolve_defined(pp, es, &res)) {
+        tokbuf_release(pp, &exp);
+        tokbuf_release(pp, &res);
         *ok = false;
         return false;
     }
-    p.t = list;
+    p.t = res.t;
     v = expr_comma(&p, true);
     if (p.ok && p.t->kind != TK_EOF) {
-        if (tok_is_punct(p.t, P_ASSIGN) || p.t->punct >= P_ASSIGN)
+        if (p.t->kind == TK_PUNCT && p.t->punct >= P_ASSIGN)
             fail(&p, p.t, "token \"%.*s\" is not valid in preprocessor "
-                          "expressions", p.t->text, (int)p.t->len);
+                          "expressions", TXT(&p, p.t), (int)p.t->len);
         else
             fail(&p, p.t, "missing binary operator before token \"%.*s\"",
-                 p.t->text, (int)p.t->len);
+                 TXT(&p, p.t), (int)p.t->len);
     }
+    tokbuf_release(pp, &exp);
+    tokbuf_release(pp, &res);
     *ok = p.ok;
     return p.ok && v.v != 0;
 }

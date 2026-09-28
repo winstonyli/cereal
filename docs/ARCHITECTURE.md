@@ -35,38 +35,53 @@ SrcMgr ──► Lexer ──► Preprocessor ──► token stream ──► (
 Skeleton (per file, static) ─► config-space analysis (cond) and guard checks
 ```
 
-### Source locations
-`SrcLoc` is a 32-bit offset into one global address space. Each physical file
-gets a contiguous range `[base, base+size]`, and 0 means invalid. Files are
-loaded once and shared by every inclusion, so every location maps to exactly
-one `(file, offset)`. That mapping is what an LSP needs. The inclusion
-context lives in the include stack and is captured with each diagnostic.
+### Source locations and text
+The source manager reserves one 4 GiB virtual-address region, and a `SrcLoc`
+is a 32-bit offset into it, so **the text at any location is `region + loc`**.
 
-The lexer works on the raw buffer and handles line splices and trigraphs
-inline, so token locations are always raw buffer offsets (an exact LSP range
-is `loc .. loc + rawlen`).
+- Files are mmapped (≥ 64 KiB) or read into page-aligned slots, each followed
+  by zero padding, so scanners never bounds-check.
+- Synthesized spellings (`##`, `#`, builtins, `_Pragma`, cleaned splices) are
+  appended to *scratch* chunks in the same space.
+- Line tables are built lazily. `-E` uses a forward-moving line cursor
+  instead of per-token lookups.
 
-### Provenance (macro-expansion tracing)
-Every token carries:
-- `loc`: the **spelling** location, where its characters are written.
-- `prov`: a chain of `Prov` steps describing how it got there:
-  - `PROV_BODY`: copied from a macro's replacement list (`loc` is inside the `#define`).
-  - `PROV_ARG`: substituted for a parameter. It records the parameter's
-    occurrence in the body, and `inner` is the provenance the argument token
-    had at the call site.
-  - `PROV_PASTE` / `PROV_STRINGIZE` / `PROV_BUILTIN`: synthesized tokens.
+### Tokens
+A `Tok` is a 16-byte value with no pointers:
+`kind, punct, flags, loc, len, aux`, where `aux` is an identifier id or the
+scratch location of the spelling. Tokens are copied freely: listeners
+receive views and may keep the values.
 
-Each step points to an `Expansion` (the macro, the invocation range, and the
-provenance of the macro-name token at the call site, which gives the parent
-expansion). This equals clang's SourceManager macro expansion entries, with
-enough information to answer "where did this token come from" and to
-render expansion notes under diagnostics.
+### Lexer
+The lexer streams on demand.
+- **Fast path:** byte-class tables and tight loops, used whenever a token
+  contains no line splice or trigraph.
+- **Slow path:** handles phases 1–2 character by character, only for tokens
+  that need it.
+- **Skip scanner:** skipped `#if` groups are crossed by a scanner that
+  produces no tokens and only looks for `#` at the start of a line.
 
-### Expansion algorithm
-This is Prosser's hide-set algorithm (the reference algorithm behind C99 §6.10.3.4),
-operating eagerly on linked token lists allocated in the arena. For
-function-like macros, the hide set of the result is
-`(HS(name) ∩ HS(rparen)) ∪ {macro}`.
+### Expansion engine (GCC/Clang model)
+Each invocation's replacement is built in a pooled token buffer and pushed
+as a **context**. The main loop reads from the top context, and an exhausted
+context is popped and its buffer recycled, so memory is bounded by the
+deepest expansion rather than by file size.
+
+Recursion is prevented by *disabling* a macro while its context is live and
+*painting* (`TF_NOEXPAND`) any identifier read while its macro is disabled.
+Arguments are pre-expanded lazily in a sub-stream behind a *barrier*
+context. `#if`, `#include` and `#line` operands use the same mechanism.
+
+### Provenance (leveled)
+- `TRACK_NONE` (`-E` without listeners): each context carries only the
+  outermost call site, which `-E` line placement and `__LINE__` use.
+- `TRACK_EXPANSIONS` (lint, index, LSP): every invocation gets an `Expansion`
+  record: macro, name/end locations, the parent expansion the name token
+  came from, the root and the depth.
+
+Tokens carry cheap origin flags (`TF_ORIGIN_BODY`, `TF_ORIGIN_ARG`,
+`TF_PASTED`, `TF_SYNTH`). Diagnostic expansion notes come from the live
+context stack.
 
 ### Listener API (PP callbacks)
 The preprocessor emits `on_file_enter/exit`, `on_include`, `on_define`,

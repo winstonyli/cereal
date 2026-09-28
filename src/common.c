@@ -211,66 +211,78 @@ void sb_free(StrBuf *sb)
 
 /* ---- Interner ------------------------------------------------------- */
 
+/* Word-at-a-time multiplicative hash (identifiers are short). */
 uint32_t hash_bytes(const char *s, size_t n)
 {
-    uint32_t h = 2166136261u; /* FNV-1a */
-    size_t i;
-    for (i = 0; i < n; i++) {
-        h ^= (unsigned char)s[i];
-        h *= 16777619u;
+    uint64_t h = 0x9E3779B97F4A7C15ull ^ (uint64_t)n;
+    while (n >= 8) {
+        uint64_t w;
+        memcpy(&w, s, 8);
+        h = (h ^ w) * 0xFF51AFD7ED558CCDull;
+        h ^= h >> 32;
+        s += 8;
+        n -= 8;
     }
-    return h;
+    if (n) {
+        uint64_t w = 0;
+        memcpy(&w, s, n);
+        h = (h ^ w) * 0xC4CEB9FE1A85EC53ull;
+        h ^= h >> 29;
+    }
+    return (uint32_t)(h ^ (h >> 32));
 }
 
 void interner_init(Interner *in, Arena *a)
 {
+    memset(in, 0, sizeof *in);
     in->arena = a;
-    in->nbuckets = 4096;
-    in->buckets = xcalloc(in->nbuckets, sizeof(Ident *));
-    in->count = 0;
+    in->cap = 8192;
+    in->slots = xcalloc(in->cap, sizeof(Ident *));
+    vec_push(&in->byid, NULL); /* id 0 is reserved: "no identifier" */
 }
 
 void interner_free(Interner *in)
 {
-    free(in->buckets);
-    in->buckets = NULL;
+    free(in->slots);
+    vec_free(&in->byid);
+    in->slots = NULL;
 }
 
-static void interner_rehash(Interner *in)
+static void interner_grow(Interner *in)
 {
-    size_t nb = in->nbuckets * 2, i;
-    Ident **b = xcalloc(nb, sizeof(Ident *));
-    for (i = 0; i < in->nbuckets; i++) {
-        Ident *id = in->buckets[i];
-        while (id) {
-            Ident *n = id->next;
-            size_t k = id->hash & (nb - 1);
-            id->next = b[k];
-            b[k] = id;
-            id = n;
-        }
+    size_t nc = in->cap * 2, i;
+    Ident **ns = xcalloc(nc, sizeof(Ident *));
+    for (i = 0; i < in->cap; i++) {
+        Ident *id = in->slots[i];
+        size_t k;
+        if (!id)
+            continue;
+        for (k = id->hash & (nc - 1); ns[k]; k = (k + 1) & (nc - 1))
+            ;
+        ns[k] = id;
     }
-    free(in->buckets);
-    in->buckets = b;
-    in->nbuckets = nb;
+    free(in->slots);
+    in->slots = ns;
+    in->cap = nc;
 }
 
 Ident *intern(Interner *in, const char *s, size_t n)
 {
     uint32_t h = hash_bytes(s, n);
-    size_t k = h & (in->nbuckets - 1);
+    size_t k = h & (in->cap - 1);
     Ident *id;
-    for (id = in->buckets[k]; id; id = id->next)
+    for (; (id = in->slots[k]) != NULL; k = (k + 1) & (in->cap - 1))
         if (id->hash == h && id->len == n && memcmp(id->str, s, n) == 0)
             return id;
     id = NEW(in->arena, Ident);
     id->str = arena_strndup(in->arena, s, n);
     id->len = (uint32_t)n;
     id->hash = h;
-    id->next = in->buckets[k];
-    in->buckets[k] = id;
-    if (++in->count > in->nbuckets)
-        interner_rehash(in);
+    id->id = (uint32_t)in->byid.len;
+    vec_push(&in->byid, id);
+    in->slots[k] = id;
+    if (++in->count * 2 > in->cap)
+        interner_grow(in);
     return id;
 }
 

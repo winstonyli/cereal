@@ -1,4 +1,12 @@
-/* token.h - preprocessing tokens (C99 6.4) and provenance. */
+/* token.h - preprocessing tokens (C99 6.4).
+ *
+ * A Tok is a 16-byte value with no pointers: it can be copied freely,
+ * stored in pooled buffers, and retained by listeners.  Its spelling is
+ * found without storing a pointer:
+ *   - identifiers:          the interned Ident (aux = ident id)
+ *   - TF_SPELL tokens:      region + aux (a scratch copy: splices removed,
+ *                           ## / # / builtin results, pragmas)
+ *   - everything else:      region + loc, len bytes */
 #ifndef CEREAL_TOKEN_H
 #define CEREAL_TOKEN_H
 
@@ -15,8 +23,7 @@ typedef enum {
     TK_STRING,   /* string-literal, incl. L"x" */
     TK_PUNCT,
     TK_OTHER,    /* any other non-white-space character */
-    TK_PLACEMARKER,
-    TK_PRAGMA    /* a #pragma / _Pragma, text = "pragma ..." */
+    TK_PRAGMA    /* #pragma / _Pragma result; spelling "pragma ..." */
 } TokKind;
 
 #define PUNCT_LIST(X)                                                      \
@@ -44,73 +51,64 @@ typedef enum {
 extern const char *const punct_spelling[P_COUNT];
 
 enum {
-    TF_BOL         = 1 << 0,  /* first token on a line */
-    TF_SPACE       = 1 << 1,  /* preceded by white space */
-    TF_NOEXPAND    = 1 << 2,  /* "painted blue": never expand again */
-    TF_UNTERMINATED= 1 << 3,  /* unterminated ' or " (diagnosed if active) */
-    TF_DIGRAPH     = 1 << 4,
-    TF_SPLICED     = 1 << 5,  /* spelling contained line splices/trigraphs */
-    TF_STRAY_DOLLAR= 1 << 6,
-    TF_FROM_DEFINED= 1 << 7,  /* result of `defined` in #if */
-    TF_UCN         = 1 << 8
+    TF_BOL          = 1 << 0,  /* first token on a line */
+    TF_SPACE        = 1 << 1,  /* preceded by white space */
+    TF_NOEXPAND     = 1 << 2,  /* painted: never macro-expand */
+    TF_UNTERMINATED = 1 << 3,  /* unterminated ' or " (diagnosed if active) */
+    TF_DIGRAPH      = 1 << 4,
+    TF_SPELL        = 1 << 5,  /* spelling at region + aux */
+    TF_SPLICED      = 1 << 6,  /* raw text contains splices/trigraphs */
+    TF_UCN          = 1 << 7,
+    TF_DOLLAR       = 1 << 8,
+    TF_FROM_DEFINED = 1 << 9,  /* 1/0 produced by `defined` in #if */
+    TF_PARAM        = 1 << 10, /* macro body: parameter, index in punct */
+    TF_ORIGIN_BODY  = 1 << 11, /* copied from a replacement list */
+    TF_ORIGIN_ARG   = 1 << 12, /* substituted from an argument */
+    TF_PASTED       = 1 << 13, /* result of ## */
+    TF_SYNTH        = 1 << 14  /* result of #, builtin, _Pragma */
 };
 
-struct Macro;
-struct Expansion;
-
-/* Hide set: a small sorted linked list of macros (Prosser). */
-typedef struct Hideset {
-    struct Hideset *next;
-    struct Macro *macro;
-} Hideset;
-
-typedef enum {
-    PROV_BODY,      /* copied from a replacement list */
-    PROV_ARG,       /* substituted for a parameter */
-    PROV_PASTE,     /* result of ## */
-    PROV_STRINGIZE, /* result of # */
-    PROV_BUILTIN    /* __LINE__, __FILE__, defined-result, ... */
-} ProvKind;
-
-typedef struct Prov {
-    ProvKind kind;
-    int param;               /* PROV_ARG: parameter index */
-    SrcLoc loc;              /* body token / parameter occurrence loc */
-    struct Expansion *exp;
-    struct Prov *inner;      /* PROV_ARG: provenance at the call site */
-} Prov;
-
-typedef struct Token {
+typedef struct Tok {
     uint8_t kind;
-    uint8_t punct;
+    uint8_t punct;       /* Punct; parameter index for TF_PARAM */
     uint16_t flags;
-    uint32_t len;            /* spelling length */
-    uint32_t rawlen;         /* length in the source buffer */
-    const char *text;        /* spelling (NOT NUL terminated) */
-    SrcLoc loc;              /* spelling location */
-    struct Ident *ident;     /* TK_IDENT */
-    Hideset *hs;
-    Prov *prov;              /* NULL = straight from a source file */
-    struct Token *next;
-} Token;
+    SrcLoc loc;          /* spelling location */
+    uint32_t len;        /* spelling length */
+    uint32_t aux;        /* ident id | scratch loc (TF_SPELL) | 0 */
+} Tok;
 
-static inline bool tok_is_punct(const Token *t, Punct p)
+typedef struct TokSpan {
+    const Tok *t;
+    uint32_t n;
+} TokSpan;
+
+static inline bool tok_is_punct(const Tok *t, Punct p)
 {
     return t->kind == TK_PUNCT && t->punct == p;
 }
 
-static inline bool tok_is_ident(const Token *t, const char *s)
+static inline const char *tok_text_raw(const SrcMgr *sm, const Interner *in,
+                                       const Tok *t)
 {
-    return t->kind == TK_IDENT && strlen(s) == t->len &&
-           memcmp(t->text, s, t->len) == 0;
+    if (t->kind == TK_IDENT)
+        return in->byid.data[t->aux]->str;
+    if (t->flags & TF_SPELL)
+        return sm->region + t->aux;
+    return sm->region + t->loc;
 }
 
-static inline SrcRange tok_range(const Token *t)
+static inline Ident *tok_ident(const Interner *in, const Tok *t)
 {
-    SrcRange r;
-    r.begin = t->loc;
-    r.end = t->loc + t->rawlen;
-    return r;
+    return t->kind == TK_IDENT ? in->byid.data[t->aux] : NULL;
+}
+
+static inline bool tok_is_word(const Interner *in, const Tok *t, const char *s)
+{
+    const Ident *id;
+    if (t->kind != TK_IDENT)
+        return false;
+    id = in->byid.data[t->aux];
+    return strlen(s) == id->len && memcmp(id->str, s, id->len) == 0;
 }
 
 #endif

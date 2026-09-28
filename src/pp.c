@@ -1,112 +1,188 @@
-/* pp.c - preprocessor core: token stream, directives, includes,
+/* pp.c - preprocessor core: token stream, contexts, directives, includes,
  * conditional compilation (C99 6.10.1-6.10.8). */
 #include "pp.h"
 
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #define MAX_INCLUDE_DEPTH 200
 
-static void skip_group(PP *pp, SrcLoc after);
+/* ---- token buffers -------------------------------------------------- */
+
+static int size_class(uint32_t cap)
+{
+    int k = 0;
+    while ((16u << k) < cap)
+        k++;
+    return k;
+}
+
+void tokbuf_init(PP *pp, TokBuf *b, uint32_t mincap)
+{
+    int k = size_class(mincap ? mincap : 16);
+    if (k >= POOL_CLASSES)
+        fatal("token buffer too large");
+    b->len = 0;
+    b->cap = 16u << k;
+    b->t = pp->pool.free[k].len ? vec_pop(&pp->pool.free[k])
+                                : xmalloc(sizeof(Tok) * b->cap);
+}
+
+void tokbuf_release(PP *pp, TokBuf *b)
+{
+    if (b->t) {
+        int k = size_class(b->cap);
+        vec_push(&pp->pool.free[k], b->t);
+    }
+    b->t = NULL;
+    b->len = b->cap = 0;
+}
+
+void tokbuf_push(PP *pp, TokBuf *b, Tok t)
+{
+    if (b->len == b->cap) {
+        TokBuf nb;
+        if (!b->t) {
+            tokbuf_init(pp, b, 16);
+        } else {
+            tokbuf_init(pp, &nb, b->cap * 2);
+            memcpy(nb.t, b->t, sizeof(Tok) * b->len);
+            nb.len = b->len;
+            tokbuf_release(pp, b);
+            *b = nb;
+        }
+    }
+    b->t[b->len++] = t;
+}
+
+static void pool_free(TokPool *p)
+{
+    int k;
+    for (k = 0; k < POOL_CLASSES; k++) {
+        size_t i;
+        for (i = 0; i < p->free[k].len; i++)
+            free(p->free[k].data[i]);
+        vec_free(&p->free[k]);
+    }
+}
+
+/* ---- contexts and the raw token stream ------------------------------ */
+
+void pp_push_context(PP *pp, Context c)
+{
+    if (c.macro)
+        c.macro->disabled = true;
+    vec_push(&pp->ctx, c);
+}
+
+static void pop_context(PP *pp)
+{
+    Context *c = &vec_last(&pp->ctx);
+    if (c->macro)
+        c->macro->disabled = false;
+    tokbuf_release(pp, &c->owned);
+    pp->ctx.len--;
+}
+
+TokSrc pp_read_raw(PP *pp, Tok *t)
+{
+    for (;;) {
+        if (pp->ctx.len) {
+            Context *c = &vec_last(&pp->ctx);
+            if (c->pos < c->end) {
+                *t = c->toks[c->pos++];
+                pp->tok_exp_loc = c->exp_loc;
+                pp->tok_exp_id = c->exp_id;
+                pp->tok_root = c->root_id;
+                return SRC_CONTEXT;
+            }
+            if (c->barrier) {
+                memset(t, 0, sizeof *t);
+                t->kind = TK_EOF;
+                t->loc = c->exp_loc;
+                return SRC_BARRIER;
+            }
+            pop_context(pp);
+            continue;
+        }
+        if (pp->has_pending) {
+            *t = pp->pending;
+            pp->has_pending = false;
+        } else {
+            lex_next(&pp->lex, t);
+        }
+        pp->tok_exp_loc = t->loc;
+        pp->tok_exp_id = NO_EXP;
+        pp->tok_root = NO_EXP;
+        return SRC_LEXER;
+    }
+}
+
+void pp_unread(PP *pp, const Tok *t, TokSrc src)
+{
+    if (src == SRC_CONTEXT) {
+        vec_last(&pp->ctx).pos--;
+    } else if (src == SRC_LEXER) {
+        pp->pending = *t;
+        pp->has_pending = true;
+    }
+}
 
 /* ---- small helpers -------------------------------------------------- */
 
 void pp_add_listener(PP *pp, PPListener l)
 {
+    if (l.expand)
+        pp->track = TRACK_EXPANSIONS;
     vec_push(&pp->listeners, l);
 }
 
-Token *pp_new_eof(PP *pp, SrcLoc loc)
+Tok pp_make_token(PP *pp, TokKind k, const char *text, size_t n, SrcLoc loc,
+                  uint16_t flags)
 {
-    Token *t = NEW(pp->arena, Token);
-    t->kind = TK_EOF;
-    t->text = "";
-    t->loc = loc;
+    Tok t;
+    memset(&t, 0, sizeof t);
+    t.kind = (uint8_t)k;
+    t.loc = loc;
+    t.len = (uint32_t)n;
+    t.flags = flags;
+    if (k == TK_IDENT) {
+        t.aux = intern(pp->in, text, n)->id;
+    } else {
+        t.aux = srcmgr_scratch(pp->sm, text, n);
+        t.flags |= TF_SPELL;
+    }
     return t;
 }
 
-Token *pp_copy_token(PP *pp, const Token *t)
+void pp_add_expansion_notes(PP *pp, Diagnostic *d)
 {
-    Token *c = NEW(pp->arena, Token);
-    *c = *t;
-    c->next = NULL;
-    return c;
-}
-
-static bool at_line_start(const Token *t)
-{
-    return (t->flags & TF_BOL) || t->kind == TK_EOF;
-}
-
-/* Cut the rest of the current directive line off the stream. */
-Token *pp_read_line(PP *pp)
-{
-    Token *first = pp->cur, *t = pp->cur, *last = NULL;
-    while (!at_line_start(t)) {
-        last = t;
-        t = t->next;
-    }
-    pp->cur = t;
-    if (!last)
-        return pp_new_eof(pp, t->loc);
-    last->next = pp_new_eof(pp, last->loc + last->rawlen);
-    return first;
-}
-
-static SrcLoc line_end_loc(Token *line)
-{
-    Token *t = line;
-    while (t->kind != TK_EOF)
-        t = t->next;
-    return t->loc;
-}
-
-SrcLoc prov_expansion_loc(const Prov *p, SrcLoc fallback)
-{
-    SrcLoc loc = fallback;
-    while (p) {
-        Expansion *e = p->exp;
-        loc = e->name_loc;
-        p = e->name_prov;
-    }
-    return loc;
-}
-
-SrcLoc pp_expansion_loc(const Token *t)
-{
-    return prov_expansion_loc(t->prov, t->loc);
-}
-
-void pp_add_expansion_notes(PP *pp, Diagnostic *d, const Token *t)
-{
-    const Prov *p = t->prov;
+    size_t i = pp->ctx.len;
     int n = 0;
-    while (p && d && n < 16) {
-        Expansion *e = p->exp;
-        if (p->kind == PROV_ARG)
-            diag_note(pp->diag, d, p->loc,
-                      "in argument '%s' of macro '%s'",
-                      e->macro->params[p->param]->str, e->macro->name->str);
-        diag_note(pp->diag, d, e->name_loc, "in expansion of macro '%s'",
-                  e->macro->name->str);
-        p = e->name_prov;
-        n++;
+    while (d && i-- > 0 && n < 16) {
+        Context *c = &pp->ctx.data[i];
+        if (c->macro && c->name_loc) {
+            diag_note(pp->diag, d, c->name_loc, "in expansion of macro '%s'",
+                      c->macro->name->str);
+            n++;
+        }
     }
 }
 
-Diagnostic *pp_error_at(PP *pp, const Token *t, const char *fmt, ...)
+Diagnostic *pp_error_at(PP *pp, const Tok *t, const char *fmt, ...)
 {
     Diagnostic *d;
     va_list ap;
     va_start(ap, fmt);
     d = diag_vreport(pp->diag, DL_ERROR, "", t->loc, fmt, ap);
     va_end(ap);
-    diag_set_range(d, t->loc, t->loc + t->rawlen);
-    pp_add_expansion_notes(pp, d, t);
+    diag_set_range(d, t->loc, t->loc + t->len);
+    pp_add_expansion_notes(pp, d);
     return d;
 }
 
-Diagnostic *pp_warn_at(PP *pp, const Token *t, const char *id,
+Diagnostic *pp_warn_at(PP *pp, const Tok *t, const char *id,
                        const char *fmt, ...)
 {
     Diagnostic *d;
@@ -114,8 +190,8 @@ Diagnostic *pp_warn_at(PP *pp, const Token *t, const char *id,
     va_start(ap, fmt);
     d = diag_vreport(pp->diag, DL_WARNING, id, t->loc, fmt, ap);
     va_end(ap);
-    diag_set_range(d, t->loc, t->loc + t->rawlen);
-    pp_add_expansion_notes(pp, d, t);
+    diag_set_range(d, t->loc, t->loc + t->len);
+    pp_add_expansion_notes(pp, d);
     return d;
 }
 
@@ -130,30 +206,44 @@ static void pedantic(PP *pp, SrcLoc loc, const char *fmt, ...)
     va_end(ap);
 }
 
-static void check_eol(PP *pp, Token *rest, const char *dir)
+static SrcLoc span_end(PP *pp, TokSpan s, SrcLoc fallback)
 {
-    if (rest->kind != TK_EOF) {
+    (void)pp;
+    if (!s.n)
+        return fallback;
+    return s.t[s.n - 1].loc + s.t[s.n - 1].len;
+}
+
+static void check_eol(PP *pp, TokSpan rest, const char *dir)
+{
+    if (rest.n) {
         Diagnostic *d = diag_report(pp->diag, DL_WARNING, "extra-tokens",
-                                    rest->loc,
+                                    rest.t[0].loc,
                                     "extra tokens at end of #%s directive", dir);
-        diag_set_range(d, rest->loc, line_end_loc(rest));
+        diag_set_range(d, rest.t[0].loc, span_end(pp, rest, rest.t[0].loc));
     }
 }
 
-char *tokens_str(Arena *a, const Token *t, const Token *end)
+static TokSpan span_from(TokSpan s, uint32_t i)
+{
+    TokSpan r;
+    r.t = s.t + (i < s.n ? i : s.n);
+    r.n = i < s.n ? s.n - i : 0;
+    return r;
+}
+
+char *tokens_str(PP *pp, TokSpan s)
 {
     StrBuf sb = {0};
     char *r;
-    bool first = true;
-    for (; t && t != end && t->kind != TK_EOF; t = t->next) {
-        if (t->kind == TK_PLACEMARKER)
-            continue;
-        if (!first && (t->flags & (TF_SPACE | TF_BOL)))
+    uint32_t i;
+    for (i = 0; i < s.n; i++) {
+        const Tok *t = &s.t[i];
+        if (i && (t->flags & (TF_SPACE | TF_BOL)))
             sb_putc(&sb, ' ');
-        sb_putn(&sb, t->text, t->len);
-        first = false;
+        sb_putn(&sb, pp_text(pp, t), t->len);
     }
-    r = arena_strndup(a, sb_cstr(&sb), sb.len);
+    r = arena_strndup(pp->arena, sb_cstr(&sb), sb.len);
     sb_free(&sb);
     return r;
 }
@@ -190,56 +280,12 @@ char *macro_signature(Arena *a, const Macro *m)
     return r;
 }
 
-char *macro_body_str(Arena *a, const Macro *m)
+char *macro_body_str(PP *pp, const Macro *m)
 {
-    return tokens_str(a, m->body, NULL);
-}
-
-bool macro_is_guard_like(const Macro *m)
-{
-    return m->body_len == 0 && !m->funclike;
-}
-
-/* ---- hide sets ------------------------------------------------------ */
-
-bool hs_contains(Hideset *hs, Macro *m)
-{
-    for (; hs; hs = hs->next)
-        if (hs->macro == m)
-            return true;
-    return false;
-}
-
-Hideset *hs_add(PP *pp, Hideset *hs, Macro *m)
-{
-    Hideset *n;
-    if (hs_contains(hs, m))
-        return hs;
-    n = NEW(pp->arena, Hideset);
-    n->macro = m;
-    n->next = hs;
-    return n;
-}
-
-Hideset *hs_union(PP *pp, Hideset *a, Hideset *b)
-{
-    Hideset *r = b;
-    if (!a)
-        return b;
-    if (!b)
-        return a;
-    for (; a; a = a->next)
-        r = hs_add(pp, r, a->macro);
-    return r;
-}
-
-Hideset *hs_intersect(PP *pp, Hideset *a, Hideset *b)
-{
-    Hideset *r = NULL;
-    for (; a; a = a->next)
-        if (hs_contains(b, a->macro))
-            r = hs_add(pp, r, a->macro);
-    return r;
+    TokSpan s;
+    s.t = m->body;
+    s.n = m->body_len;
+    return tokens_str(pp, s);
 }
 
 /* ---- include stack -------------------------------------------------- */
@@ -262,14 +308,17 @@ static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
     IncludeFrame *fr = NEW(pp->arena, IncludeFrame);
     fr->prev = pp->inc;
     fr->file = f;
-    fr->rest = pp->cur;
+    fr->saved_lex = pp->lex;
+    fr->saved_pending = pp->pending;
+    fr->saved_has_pending = pp->has_pending;
     fr->include_loc = include_loc;
     fr->dir_index = dir_index;
     fr->cond_base = pp->cond;
     fr->presumed_name = f->name;
     pp->inc = fr;
     pp->include_depth++;
-    pp->cur = lex_file(pp->arena, pp->in, pp->diag, pp->opt->lex, f);
+    pp->has_pending = false;
+    lexer_init(&pp->lex, pp->sm, pp->in, pp->diag, pp->opt->lex, f);
     PP_EMIT(pp, file_enter, f, via);
 }
 
@@ -288,18 +337,46 @@ static bool pop_file(PP *pp)
     PP_EMIT(pp, file_exit, fr->file);
     if (!fr->prev)
         return false;
-    pp->cur = fr->rest;
+    lexer_free(&pp->lex);
+    pp->lex = fr->saved_lex;
+    pp->pending = fr->saved_pending;
+    pp->has_pending = fr->saved_has_pending;
     pp->inc = fr->prev;
     pp->include_depth--;
     return true;
 }
 
-/* Something other than the guard's own directives happened at file level. */
 static void guard_note_activity(PP *pp)
 {
     IncludeFrame *fr = pp->inc;
     if (fr && (fr->guard_state == G_START || fr->guard_state == G_AFTER))
         fr->guard_state = G_INVALID;
+}
+
+const char *pp_presumed_name(PP *pp, SrcFile *f)
+{
+    IncludeFrame *fr;
+    for (fr = pp->inc; fr; fr = fr->prev)
+        if (fr->file == f)
+            return fr->presumed_name;
+    return f->name;
+}
+
+uint32_t pp_presumed_line(PP *pp, SrcLoc loc)
+{
+    SrcFile *f = srcmgr_file_of(pp->sm, loc);
+    uint32_t line = 0, col;
+    IncludeFrame *fr;
+    if (!f)
+        return 0;
+    srcmgr_linecol(f, loc, &line, &col);
+    for (fr = pp->inc; fr; fr = fr->prev)
+        if (fr->file == f) {
+            if (fr->line_adj_from && line >= fr->line_adj_from)
+                return (uint32_t)((int32_t)line + fr->line_delta);
+            break;
+        }
+    return line;
 }
 
 /* ---- init ----------------------------------------------------------- */
@@ -317,7 +394,6 @@ static Macro *new_builtin(PP *pp, const char *name, BuiltinKind k,
     m->builtin = k;
     m->funclike = funclike;
     m->predefined = true;
-    m->body = pp_new_eof(pp, 0);
     m->file = pp->builtin_file;
     m->def_seq = pp->seq++;
     m->prev = m->name->history;
@@ -339,15 +415,12 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
     pp->opt = opt;
     d->include_chain = include_chain_cb;
     d->include_chain_ctx = pp;
+    lex_global_init();
 
     pp->id_defined = intern_cstr(in, "defined");
     pp->id_va_args = intern_cstr(in, "__VA_ARGS__");
-    pp->id_has_include = intern_cstr(in, "__has_include");
-    pp->id_has_include_next = intern_cstr(in, "__has_include_next");
     pp->id_pragma = intern_cstr(in, "_Pragma");
-    pp->id_once = intern_cstr(in, "once");
 
-    /* search path: quote dirs, then -I, then system */
     for (i = 0; i < opt->quote_dirs.len; i++)
         vec_push(&pp->search, opt->quote_dirs.data[i]);
     pp->first_angle = pp->search.len;
@@ -392,15 +465,26 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
 
 void pp_free(PP *pp)
 {
+    while (pp->ctx.len)
+        pop_context(pp);
+    while (pp->inc && pp->inc->prev) {
+        lexer_free(&pp->lex);
+        pp->lex = pp->inc->saved_lex;
+        pp->inc = pp->inc->prev;
+    }
+    lexer_free(&pp->lex);
+    tokbuf_release(pp, &pp->line);
+    pool_free(&pp->pool);
+    vec_free(&pp->ctx);
     vec_free(&pp->macros);
     vec_free(&pp->expansions);
     vec_free(&pp->listeners);
     vec_free(&pp->search);
     vec_free(&pp->chain_buf);
+    sb_free(&pp->sb);
 }
 
-/* Predefines and command-line macros are processed as a virtual file that is
- * pushed before the main file (so they get real locations). */
+/* Predefines and command-line macros form a virtual file entered first. */
 static StrBuf predef_buf;
 
 void pp_define_builtin_text(PP *pp, const char *name, const char *text)
@@ -441,9 +525,10 @@ bool pp_enter_main(PP *pp, const char *path)
         return false;
     }
     pp->main_file = f;
-    pp->cur = pp_new_eof(pp, 0);
+    /* an empty lexer below the main file */
+    lexer_init(&pp->lex, pp->sm, pp->in, pp->diag, pp->opt->lex,
+               pp->builtin_file);
     push_file(pp, f, 0, -1, NULL);
-    /* predefines run first, as if included at the top of the main file */
     pre = srcmgr_add_virtual(pp->sm, "<command line>",
                              predef_buf.data ? predef_buf.data : "",
                              predef_buf.len);
@@ -455,47 +540,151 @@ bool pp_enter_main(PP *pp, const char *path)
 
 /* ---- main loop ------------------------------------------------------ */
 
-static void warn_unterminated(PP *pp, Token *t)
-{
-    pp_warn_at(pp, t, "invalid-pp-token", "missing terminating %c character",
-               t->text[0] == 'L' ? t->text[1] : t->text[0]);
-}
-
-Token *pp_next_raw(PP *pp)
-{
-    Token *t = pp->cur;
-    if (t->kind != TK_EOF)
-        pp->cur = t->next;
-    return t;
-}
-
-Token *pp_next(PP *pp)
+bool pp_next(PP *pp, Tok *out)
 {
     for (;;) {
-        Token *t = pp->cur;
-        if (t->kind == TK_EOF) {
-            if (!pop_file(pp))
-                return t;
-            continue;
-        }
-        pp->cur = t->next;
-        if (!t->prov && (t->flags & TF_BOL) && tok_is_punct(t, P_HASH)) {
-            pp_directive(pp, t);
-            continue;
-        }
-        if (!t->prov)
-            guard_note_activity(pp);
-        if (t->kind == TK_IDENT) {
-            if (t->ident->flags & IDF_POISONED)
-                pp_error_at(pp, t, "attempt to use poisoned \"%s\"",
-                            t->ident->str);
-            if (pp_try_expand(pp, t))
+        Tok t;
+        TokSrc src = pp_read_raw(pp, &t);
+        if (src == SRC_LEXER) {
+            if (t.kind == TK_EOF) {
+                if (!pop_file(pp)) {
+                    *out = t;
+                    return false;
+                }
                 continue;
-        } else if (t->flags & TF_UNTERMINATED) {
-            warn_unterminated(pp, t);
+            }
+            if ((t.flags & TF_BOL) && t.kind == TK_PUNCT && t.punct == P_HASH) {
+                pp_directive(pp, &t);
+                continue;
+            }
+            guard_note_activity(pp);
         }
-        return t;
+        if (t.kind == TK_IDENT) {
+            Ident *id = pp->in->byid.data[t.aux];
+            Macro *m = id->macro;
+            if (id->flags & IDF_POISONED)
+                pp_error_at(pp, &t, "attempt to use poisoned \"%s\"", id->str);
+            if (m && !(t.flags & TF_NOEXPAND)) {
+                if (m->disabled) {
+                    t.flags |= TF_NOEXPAND;
+                } else {
+                    SrcLoc el = pp->tok_exp_loc;
+                    uint32_t root = pp->tok_root;
+                    if (pp_try_expand(pp, &t, src))
+                        continue;
+                    pp->tok_exp_loc = el;
+                    pp->tok_root = root;
+                }
+            }
+        } else if (t.flags & TF_UNTERMINATED) {
+            pp_warn_at(pp, &t, "invalid-pp-token",
+                       "missing terminating %c character",
+                       pp_text(pp, &t)[pp_text(pp, &t)[0] == 'L' ? 1 : 0]);
+        }
+        if (pp->carry_space) {
+            t.flags |= TF_SPACE;
+            pp->carry_space = false;
+        }
+        pp->out_exp_loc = pp->tok_exp_loc;
+        pp->out_root = pp->tok_root;
+        *out = t;
+        return true;
     }
+}
+
+/* ---- directive lines ------------------------------------------------ */
+
+/* Read the rest of the directive line from the lexer into pp->line. */
+static TokSpan read_line(PP *pp)
+{
+    TokSpan s;
+    pp->line.len = 0;
+    for (;;) {
+        Tok t;
+        if (pp->has_pending) {
+            t = pp->pending;
+            pp->has_pending = false;
+        } else {
+            lex_next(&pp->lex, &t);
+        }
+        if ((t.flags & TF_BOL) || t.kind == TK_EOF) {
+            pp->pending = t;
+            pp->has_pending = true;
+            break;
+        }
+        tokbuf_push(pp, &pp->line, t);
+    }
+    s.t = pp->line.t;
+    s.n = pp->line.len;
+    return s;
+}
+
+static SrcLoc line_start_of(PP *pp, SrcLoc loc)
+{
+    SrcFile *f = pp->inc->file;
+    const char *p = pp->sm->region + loc;
+    while (p > f->buf && p[-1] != '\n' && p[-1] != '\r')
+        p--;
+    return (SrcLoc)(p - pp->sm->region);
+}
+
+/* Skip an inactive group; leaves the lexer at the '#' of the #elif/#else/
+ * #endif that ends it (or at end of file). */
+static void skip_group(PP *pp)
+{
+    Lexer *L = &pp->lex;
+    int depth = 0;
+    SrcLoc begin, end;
+    if (pp->has_pending) {
+        if (pp->pending.kind == TK_EOF)
+            return;
+        lexer_seek(L, line_start_of(pp, pp->pending.loc), true);
+        pp->has_pending = false;
+    }
+    begin = lexer_loc(L);
+    for (;;) {
+        if (lex_line_is_directive(L)) {
+            SrcLoc hash = lexer_loc(L);
+            Tok h, kw;
+            lex_next(L, &h);
+            lex_next(L, &kw);
+            if (kw.kind == TK_EOF) {
+                end = lexer_loc(L);
+                break;
+            }
+            if (kw.flags & TF_BOL) {
+                lexer_seek(L, line_start_of(pp, kw.loc), true);
+                continue;
+            }
+            if (kw.kind == TK_IDENT) {
+                Ident *id = pp->in->byid.data[kw.aux];
+                const char *s = id->str;
+                if (!strcmp(s, "if") || !strcmp(s, "ifdef") || !strcmp(s, "ifndef")) {
+                    depth++;
+                } else if (!strcmp(s, "endif")) {
+                    if (depth == 0) {
+                        end = line_start_of(pp, hash);
+                        lexer_seek(L, hash, true);
+                        break;
+                    }
+                    depth--;
+                } else if ((!strcmp(s, "elif") || !strcmp(s, "else")) && depth == 0) {
+                    end = line_start_of(pp, hash);
+                    lexer_seek(L, hash, true);
+                    break;
+                }
+            }
+            if (!lex_next_line(L)) {
+                end = lexer_loc(L);
+                break;
+            }
+        } else if (!lex_next_line(L)) {
+            end = lexer_loc(L);
+            break;
+        }
+    }
+    if (begin < end)
+        PP_EMIT(pp, skipped, begin, end);
 }
 
 /* ---- conditionals --------------------------------------------------- */
@@ -519,14 +708,14 @@ static bool cur_active(PP *pp)
     return !pp->cond || pp->cond->active;
 }
 
-static void emit_cond(PP *pp, CondKind k, Token *hash, Token *kw, Token *expr,
-                      bool evaluated, bool value, bool taken)
+static void emit_cond(PP *pp, CondKind k, const Tok *hash, const Tok *kw,
+                      TokSpan expr, bool evaluated, bool value, bool taken)
 {
     CondEvent ev;
     ev.kind = k;
     ev.hash_loc = hash->loc;
     ev.kw_loc = kw->loc;
-    ev.end_loc = expr ? line_end_loc(expr) : kw->loc + kw->rawlen;
+    ev.end_loc = span_end(pp, expr, kw->loc + kw->len);
     ev.expr = expr;
     ev.evaluated = evaluated;
     ev.value = value;
@@ -534,91 +723,42 @@ static void emit_cond(PP *pp, CondKind k, Token *hash, Token *kw, Token *expr,
     PP_EMIT(pp, cond, &ev);
 }
 
-/* Skip tokens of an inactive group up to (not including) the '#' of the
- * #elif/#else/#endif that ends it. */
-static void skip_group(PP *pp, SrcLoc after)
+void pp_macro_ref(PP *pp, const Tok *name, RefKind kind)
 {
-    int depth = 0;
-    Token *t = pp->cur;
-    SrcLoc begin = after;
-    while (t->kind != TK_EOF) {
-        if ((t->flags & TF_BOL) && tok_is_punct(t, P_HASH) &&
-            t->next->kind == TK_IDENT && !(t->next->flags & TF_BOL)) {
-            Token *d = t->next;
-            if (tok_is_ident(d, "if") || tok_is_ident(d, "ifdef") ||
-                tok_is_ident(d, "ifndef")) {
-                depth++;
-            } else if (tok_is_ident(d, "endif")) {
-                if (depth == 0)
-                    break;
-                depth--;
-            } else if ((tok_is_ident(d, "elif") || tok_is_ident(d, "else")) &&
-                       depth == 0) {
-                break;
-            }
-        }
-        t = t->next;
-    }
-    pp->cur = t;
-    {
-        SrcFile *f = pp->inc->file;
-        uint32_t line, col;
-        SrcLoc end = t->loc;
-        if (t->kind != TK_EOF) {
-            srcmgr_linecol(f, t->loc, &line, &col);
-            end = srcmgr_loc_of(f, line, 1);
-        }
-        if (begin < end)
-            PP_EMIT(pp, skipped, begin, end);
-    }
-}
-
-/* Location of the start of the line after `line_end`. */
-static SrcLoc next_line_loc(PP *pp, SrcLoc line_end)
-{
-    SrcFile *f = srcmgr_file_of(pp->sm, line_end);
-    uint32_t line, col;
-    SrcLoc l;
-    if (!f)
-        return line_end;
-    srcmgr_linecol(f, line_end, &line, &col);
-    l = srcmgr_loc_of(f, line + 1, 1);
-    return l ? l : f->base + f->size;
-}
-
-void pp_macro_ref(PP *pp, Token *name, RefKind kind)
-{
-    Macro *m = name->ident->macro;
-    name->ident->flags |= IDF_EVER_REFD;
+    Ident *id = pp->in->byid.data[name->aux];
+    Macro *m = id->macro;
+    id->flags |= IDF_EVER_REFD;
     if (m && kind != REF_EXPANSION && kind != REF_UNDEF)
         m->cond_refs++;
-    PP_EMIT(pp, macro_ref, name->ident, m, name, kind);
+    PP_EMIT(pp, macro_ref, id, m, name, kind);
 }
 
-static void do_if(PP *pp, Token *hash, Token *kw, CondKind k)
+static bool is_word(PP *pp, const Tok *t, const char *s)
 {
-    Token *line = pp_read_line(pp);
+    return tok_is_word(pp->in, t, s);
+}
+
+static void do_if(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
+{
+    TokSpan line = read_line(pp);
     bool active = cur_active(pp), val = false, ok = true;
     CondFrame *c;
     IncludeFrame *fr = pp->inc;
 
-    /* guard detection: first thing in the file is #ifndef X / #if !defined X */
     if (active && pp->cond == fr->cond_base && fr->guard_state == G_START) {
-        Token *g = NULL;
-        if (k == COND_IFNDEF && line->kind == TK_IDENT)
-            g = line;
-        else if (k == COND_IF && tok_is_punct(line, P_BANG) &&
-                 tok_is_ident(line->next, "defined")) {
-            Token *x = line->next->next;
-            if (tok_is_punct(x, P_LPAREN) && x->next->kind == TK_IDENT &&
-                tok_is_punct(x->next->next, P_RPAREN) &&
-                x->next->next->next->kind == TK_EOF)
-                g = x->next;
-            else if (x->kind == TK_IDENT && x->next->kind == TK_EOF)
-                g = x;
+        const Tok *g = NULL;
+        if (k == COND_IFNDEF && line.n >= 1 && line.t[0].kind == TK_IDENT)
+            g = &line.t[0];
+        else if (k == COND_IF && line.n >= 3 && tok_is_punct(&line.t[0], P_BANG) &&
+                 is_word(pp, &line.t[1], "defined")) {
+            if (line.n == 5 && tok_is_punct(&line.t[2], P_LPAREN) &&
+                line.t[3].kind == TK_IDENT && tok_is_punct(&line.t[4], P_RPAREN))
+                g = &line.t[3];
+            else if (line.n == 3 && line.t[2].kind == TK_IDENT)
+                g = &line.t[2];
         }
         if (g)
-            fr->guard_candidate = g->ident;
+            fr->guard_candidate = pp->in->byid.data[g->aux];
         else
             fr->guard_state = G_INVALID;
     } else {
@@ -628,37 +768,30 @@ static void do_if(PP *pp, Token *hash, Token *kw, CondKind k)
     if (!active) {
         c = push_cond(pp, k, hash->loc, false);
         c->parent_active = false;
-        c->taken_any = true; /* nothing in this chain can be taken */
+        c->taken_any = true;
         emit_cond(pp, k, hash, kw, line, false, false, false);
-        skip_group(pp, next_line_loc(pp, line_end_loc(line)));
+        skip_group(pp);
         return;
     }
 
     if (k == COND_IF) {
-        if (line->kind == TK_EOF) {
+        if (line.n == 0) {
             diag_report(pp->diag, DL_ERROR, "", kw->loc, "#if with no expression");
             ok = false;
         } else {
-            Token *copy = NULL, **tail = &copy, *t;
-            /* evaluate a copy: listeners get the raw expression */
-            for (t = line;; t = t->next) {
-                *tail = pp_copy_token(pp, t);
-                if (t->kind == TK_EOF)
-                    break;
-                tail = &(*tail)->next;
-            }
-            val = pp_eval_if(pp, copy, kw->loc, &ok);
+            val = pp_eval_if(pp, line, &ok);
         }
     } else {
-        if (line->kind != TK_IDENT) {
-            diag_report(pp->diag, DL_ERROR, "", line->kind == TK_EOF ? kw->loc : line->loc,
+        if (line.n == 0 || line.t[0].kind != TK_IDENT) {
+            diag_report(pp->diag, DL_ERROR, "", line.n ? line.t[0].loc : kw->loc,
                         "macro name missing in #%s directive",
                         k == COND_IFDEF ? "ifdef" : "ifndef");
             ok = false;
         } else {
-            pp_macro_ref(pp, line, REF_IFDEF);
-            val = (line->ident->macro != NULL) == (k == COND_IFDEF);
-            check_eol(pp, line->next, k == COND_IFDEF ? "ifdef" : "ifndef");
+            pp_macro_ref(pp, &line.t[0], REF_IFDEF);
+            val = (pp->in->byid.data[line.t[0].aux]->macro != NULL) ==
+                  (k == COND_IFDEF);
+            check_eol(pp, span_from(line, 1), k == COND_IFDEF ? "ifdef" : "ifndef");
         }
     }
     if (!ok)
@@ -670,12 +803,12 @@ static void do_if(PP *pp, Token *hash, Token *kw, CondKind k)
     }
     emit_cond(pp, k, hash, kw, line, true, val, val);
     if (!val)
-        skip_group(pp, next_line_loc(pp, line_end_loc(line)));
+        skip_group(pp);
 }
 
-static void do_elif_else(PP *pp, Token *hash, Token *kw, CondKind k)
+static void do_elif_else(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
 {
-    Token *line = pp_read_line(pp);
+    TokSpan line = read_line(pp);
     CondFrame *c = pp->cond;
     const char *name = k == COND_ELIF ? "elif" : "else";
     IncludeFrame *fr = pp->inc;
@@ -689,7 +822,7 @@ static void do_elif_else(PP *pp, Token *hash, Token *kw, CondKind k)
         diag_note(pp->diag, d, c->if_loc, "the conditional began here");
     }
     if (fr->guard_state == G_IN_GUARD && fr->guard_frame == c)
-        fr->guard_state = G_INVALID; /* #else/#elif on the guard */
+        fr->guard_state = G_INVALID;
     c->kind = k;
     if (k == COND_ELSE) {
         c->seen_else = true;
@@ -700,19 +833,12 @@ static void do_elif_else(PP *pp, Token *hash, Token *kw, CondKind k)
     } else {
         bool val = false, ok = true, evaluated = false;
         if (c->parent_active && !c->taken_any) {
-            Token *copy = NULL, **tail = &copy, *t;
-            for (t = line;; t = t->next) {
-                *tail = pp_copy_token(pp, t);
-                if (t->kind == TK_EOF)
-                    break;
-                tail = &(*tail)->next;
-            }
-            if (line->kind == TK_EOF) {
+            if (line.n == 0) {
                 diag_report(pp->diag, DL_ERROR, "", kw->loc,
                             "#elif with no expression");
                 ok = false;
             } else {
-                val = pp_eval_if(pp, copy, kw->loc, &ok) && ok;
+                val = pp_eval_if(pp, line, &ok) && ok;
             }
             evaluated = true;
         }
@@ -721,12 +847,12 @@ static void do_elif_else(PP *pp, Token *hash, Token *kw, CondKind k)
         emit_cond(pp, k, hash, kw, line, evaluated, val, val);
     }
     if (!c->active)
-        skip_group(pp, next_line_loc(pp, line_end_loc(line)));
+        skip_group(pp);
 }
 
-static void do_endif(PP *pp, Token *hash, Token *kw)
+static void do_endif(PP *pp, const Tok *hash, const Tok *kw)
 {
-    Token *line = pp_read_line(pp);
+    TokSpan line = read_line(pp);
     CondFrame *c = pp->cond;
     IncludeFrame *fr = pp->inc;
     if (!c || c->include_depth != pp->include_depth) {
@@ -736,164 +862,161 @@ static void do_endif(PP *pp, Token *hash, Token *kw)
     check_eol(pp, line, "endif");
     emit_cond(pp, COND_ENDIF, hash, kw, line, c->parent_active, false, false);
     if (fr->guard_state == G_IN_GUARD && fr->guard_frame == c)
-        fr->guard_state = G_AFTER; /* anything after this invalidates */
+        fr->guard_state = G_AFTER;
     pp->cond = c->prev;
 }
 
 /* ---- #define / #undef ---------------------------------------------- */
 
-static bool is_builtin_name(PP *pp, Ident *id)
+static bool is_builtin_name(const Ident *id)
 {
     static const char *const names[] = {
         "__STDC__", "__STDC_VERSION__", "__STDC_HOSTED__", "__FILE__",
         "__LINE__", "__DATE__", "__TIME__", "__STDC_IEC_559__",
         "__STDC_IEC_559_COMPLEX__", "__STDC_ISO_10646__", NULL};
     int i;
-    (void)pp;
     for (i = 0; names[i]; i++)
         if (strcmp(id->str, names[i]) == 0)
             return true;
     return false;
 }
 
-static bool macros_identical(const Macro *a, const Macro *b)
+static bool macros_identical(PP *pp, const Macro *a, const Macro *b)
 {
-    const Token *x, *y;
-    int i;
+    uint32_t i;
+    int k;
     if (a->funclike != b->funclike || a->nparams != b->nparams ||
-        a->variadic != b->variadic || a->builtin || b->builtin)
+        a->variadic != b->variadic || a->builtin || b->builtin ||
+        a->body_len != b->body_len)
         return false;
-    for (i = 0; i < a->nparams; i++)
-        if (a->params[i] != b->params[i])
+    for (k = 0; k < a->nparams; k++)
+        if (a->params[k] != b->params[k])
             return false;
-    for (x = a->body, y = b->body; x->kind != TK_EOF && y->kind != TK_EOF;
-         x = x->next, y = y->next) {
+    for (i = 0; i < a->body_len; i++) {
+        const Tok *x = &a->body[i], *y = &b->body[i];
         if (x->kind != y->kind || x->len != y->len ||
-            memcmp(x->text, y->text, x->len) != 0)
+            memcmp(pp_text(pp, x), pp_text(pp, y), x->len) != 0)
             return false;
-        if (x != a->body &&
-            ((x->flags & TF_SPACE) != 0) != ((y->flags & TF_SPACE) != 0))
+        if (i && ((x->flags & TF_SPACE) != 0) != ((y->flags & TF_SPACE) != 0))
             return false;
     }
-    return x->kind == TK_EOF && y->kind == TK_EOF;
+    return true;
 }
 
-static int param_index(const Macro *m, const Ident *id)
+static void do_define(PP *pp, const Tok *hash)
 {
-    int i;
-    for (i = 0; i < m->nparams; i++)
-        if (m->params[i] == id)
-            return i;
-    return -1;
-}
-
-static void do_define(PP *pp, Token *hash)
-{
-    Token *line = pp_read_line(pp), *name = line, *t, *body;
+    TokSpan line = read_line(pp);
+    const Tok *name;
     Macro *m, *old;
     VEC(Ident *) params = {0};
     VEC(SrcLoc) plocs = {0};
     bool ok = true;
-    int n;
+    uint32_t i, b;
+    Ident *nid;
 
-    if (name->kind != TK_IDENT) {
-        diag_report(pp->diag, DL_ERROR, "",
-                    name->kind == TK_EOF ? hash->loc : name->loc,
-                    name->kind == TK_EOF ? "macro name missing"
-                                         : "macro names must be identifiers");
+    if (line.n == 0 || line.t[0].kind != TK_IDENT) {
+        diag_report(pp->diag, DL_ERROR, "", line.n ? line.t[0].loc : hash->loc,
+                    line.n ? "macro names must be identifiers"
+                           : "macro name missing");
         return;
     }
-    if (name->ident == pp->id_defined) {
+    name = &line.t[0];
+    nid = pp->in->byid.data[name->aux];
+    if (nid == pp->id_defined) {
         diag_report(pp->diag, DL_ERROR, "", name->loc,
                     "'defined' cannot be used as a macro name");
         return;
     }
     m = NEW(pp->arena, Macro);
-    m->name = name->ident;
+    m->name = nid;
     m->hash_loc = hash->loc;
     m->name_loc = name->loc;
     m->file = pp->inc->file;
     m->predefined = pp->inc->file->kind == SF_VIRTUAL;
-    t = name->next;
+    i = 1;
 
-    if (tok_is_punct(t, P_LPAREN) && !(t->flags & TF_SPACE)) {
+    if (i < line.n && tok_is_punct(&line.t[i], P_LPAREN) &&
+        !(line.t[i].flags & TF_SPACE)) {
         m->funclike = true;
-        t = t->next;
-        if (tok_is_punct(t, P_RPAREN)) {
-            t = t->next;
+        i++;
+        if (i < line.n && tok_is_punct(&line.t[i], P_RPAREN)) {
+            i++;
         } else {
             for (;;) {
-                if (tok_is_punct(t, P_ELLIPSIS)) {
+                const Tok *t = i < line.n ? &line.t[i] : NULL;
+                SrcLoc here = t ? t->loc : span_end(pp, line, hash->loc);
+                if (t && tok_is_punct(t, P_ELLIPSIS)) {
                     m->variadic = true;
                     vec_push(&params, pp->id_va_args);
                     vec_push(&plocs, t->loc);
-                    t = t->next;
-                    if (!tok_is_punct(t, P_RPAREN)) {
-                        diag_report(pp->diag, DL_ERROR, "", t->loc,
+                    i++;
+                    if (i >= line.n || !tok_is_punct(&line.t[i], P_RPAREN)) {
+                        diag_report(pp->diag, DL_ERROR, "", here,
                                     "expected ')' after '...'");
                         ok = false;
-                        break;
                     }
-                    t = t->next;
+                    i++;
                     break;
                 }
-                if (t->kind != TK_IDENT) {
-                    diag_report(pp->diag, DL_ERROR, "", t->loc,
+                if (!t || t->kind != TK_IDENT) {
+                    diag_report(pp->diag, DL_ERROR, "", here,
                                 "expected parameter name, found \"%.*s\"",
-                                (int)t->len, t->text);
-                    ok = false;
-                    break;
-                }
-                if (t->ident == pp->id_va_args) {
-                    diag_report(pp->diag, DL_ERROR, "", t->loc,
-                                "__VA_ARGS__ can only appear in the expansion "
-                                "of a C99 variadic macro");
+                                t ? (int)t->len : 0, t ? pp_text(pp, t) : "");
                     ok = false;
                     break;
                 }
                 {
-                    size_t i;
-                    for (i = 0; i < params.len; i++)
-                        if (params.data[i] == t->ident) {
-                            diag_report(pp->diag, DL_ERROR, "", t->loc,
-                                        "duplicate macro parameter \"%s\"",
-                                        t->ident->str);
-                            ok = false;
-                        }
-                }
-                vec_push(&params, t->ident);
-                vec_push(&plocs, t->loc);
-                t = t->next;
-                if (tok_is_punct(t, P_ELLIPSIS)) {
-                    /* GNU named variadic parameter: args... */
-                    pedantic(pp, t->loc, "named variadic macros are a GNU extension");
-                    m->variadic = true;
-                    m->gnu_named_variadic = true;
-                    t = t->next;
-                    if (!tok_is_punct(t, P_RPAREN)) {
+                    Ident *pid = pp->in->byid.data[t->aux];
+                    size_t k;
+                    if (pid == pp->id_va_args) {
                         diag_report(pp->diag, DL_ERROR, "", t->loc,
-                                    "expected ')' after '...'");
+                                    "__VA_ARGS__ can only appear in the expansion "
+                                    "of a C99 variadic macro");
                         ok = false;
                         break;
                     }
-                    t = t->next;
+                    for (k = 0; k < params.len; k++)
+                        if (params.data[k] == pid) {
+                            diag_report(pp->diag, DL_ERROR, "", t->loc,
+                                        "duplicate macro parameter \"%s\"",
+                                        pid->str);
+                            ok = false;
+                        }
+                    vec_push(&params, pid);
+                    vec_push(&plocs, t->loc);
+                }
+                i++;
+                if (i < line.n && tok_is_punct(&line.t[i], P_ELLIPSIS)) {
+                    pedantic(pp, line.t[i].loc,
+                             "named variadic macros are a GNU extension");
+                    m->variadic = true;
+                    m->gnu_named_variadic = true;
+                    i++;
+                    if (i >= line.n || !tok_is_punct(&line.t[i], P_RPAREN)) {
+                        diag_report(pp->diag, DL_ERROR, "",
+                                    i < line.n ? line.t[i].loc : here,
+                                    "expected ')' after '...'");
+                        ok = false;
+                    }
+                    i++;
                     break;
                 }
-                if (tok_is_punct(t, P_RPAREN)) {
-                    t = t->next;
+                if (i < line.n && tok_is_punct(&line.t[i], P_RPAREN)) {
+                    i++;
                     break;
                 }
-                if (!tok_is_punct(t, P_COMMA)) {
-                    diag_report(pp->diag, DL_ERROR, "", t->loc,
+                if (i >= line.n || !tok_is_punct(&line.t[i], P_COMMA)) {
+                    diag_report(pp->diag, DL_ERROR, "",
+                                i < line.n ? line.t[i].loc : here,
                                 "expected ',' or ')' in macro parameter list");
                     ok = false;
                     break;
                 }
-                t = t->next;
+                i++;
             }
         }
-    } else if (t->kind != TK_EOF && !(t->flags & TF_SPACE)) {
-        diag_report(pp->diag, DL_WARNING, "", t->loc,
+    } else if (i < line.n && !(line.t[i].flags & TF_SPACE)) {
+        diag_report(pp->diag, DL_WARNING, "", line.t[i].loc,
                     "ISO C99 requires whitespace after the macro name");
     }
     if (!ok) {
@@ -902,8 +1025,10 @@ static void do_define(PP *pp, Token *hash)
         return;
     }
     m->nparams = (int)params.len;
-    m->params = NEW_ARRAY(pp->arena, Ident *, params.len);
-    m->param_locs = NEW_ARRAY(pp->arena, SrcLoc, params.len);
+    m->params = NEW_ARRAY(pp->arena, Ident *, params.len + 1);
+    m->param_locs = NEW_ARRAY(pp->arena, SrcLoc, params.len + 1);
+    m->param_raw = NEW_ARRAY(pp->arena, uint8_t, params.len + 1);
+    m->param_expanded = NEW_ARRAY(pp->arena, uint8_t, params.len + 1);
     if (params.len) {
         memcpy(m->params, params.data, sizeof(Ident *) * params.len);
         memcpy(m->param_locs, plocs.data, sizeof(SrcLoc) * params.len);
@@ -912,115 +1037,133 @@ static void do_define(PP *pp, Token *hash)
     vec_free(&plocs);
 
     /* replacement list */
-    body = t;
-    n = 0;
-    for (t = body; t->kind != TK_EOF; t = t->next) {
-        n++;
+    m->body_len = i < line.n ? line.n - i : 0;
+    m->body = NEW_ARRAY(pp->arena, Tok, m->body_len + 1);
+    if (m->body_len)
+        memcpy(m->body, line.t + i, sizeof(Tok) * m->body_len);
+    for (b = 0; b < m->body_len; b++) {
+        Tok *t = &m->body[b];
         t->flags &= (uint16_t)~TF_BOL;
-        if (t->kind == TK_IDENT && t->ident == pp->id_va_args &&
-            !(m->variadic && !m->gnu_named_variadic)) {
-            if (m->gnu_named_variadic)
-                pedantic(pp, t->loc, "__VA_ARGS__ in a named variadic macro");
-            else
-                diag_report(pp->diag, pp->opt->pedantic ? DL_ERROR : DL_WARNING,
-                            "", t->loc,
-                            "__VA_ARGS__ can only appear in the expansion of a "
-                            "C99 variadic macro");
-        }
-        if (m->funclike && tok_is_punct(t, P_HASH) &&
-            (t->next->kind != TK_IDENT || param_index(m, t->next->ident) < 0)) {
-            diag_report(pp->diag, DL_ERROR, "", t->loc,
-                        "'#' is not followed by a macro parameter");
-            return;
-        }
-        if (tok_is_punct(t, P_HASHHASH) &&
-            (t == body || t->next->kind == TK_EOF)) {
-            diag_report(pp->diag, DL_ERROR, "", t->loc,
-                        "'##' cannot appear at either end of a macro expansion");
-            return;
+        if (t->kind == TK_IDENT) {
+            Ident *id = pp->in->byid.data[t->aux];
+            int k;
+            for (k = 0; k < m->nparams; k++)
+                if (m->params[k] == id) {
+                    t->flags |= TF_PARAM;
+                    t->punct = (uint8_t)k;
+                }
+            if (id == pp->id_va_args && !(m->variadic && !m->gnu_named_variadic)) {
+                if (m->gnu_named_variadic)
+                    pedantic(pp, t->loc, "__VA_ARGS__ in a named variadic macro");
+                else
+                    diag_report(pp->diag, pp->opt->pedantic ? DL_ERROR : DL_WARNING,
+                                "", t->loc,
+                                "__VA_ARGS__ can only appear in the expansion of "
+                                "a C99 variadic macro");
+            }
         }
     }
-    m->body = body;
-    m->body_len = n;
-    m->end_loc = t->loc;
+    for (b = 0; b < m->body_len; b++) {
+        Tok *t = &m->body[b];
+        if (m->funclike && tok_is_punct(t, P_HASH)) {
+            if (b + 1 >= m->body_len || !(m->body[b + 1].flags & TF_PARAM)) {
+                diag_report(pp->diag, DL_ERROR, "", t->loc,
+                            "'#' is not followed by a macro parameter");
+                return;
+            }
+            m->has_ops = true;
+        }
+        if (tok_is_punct(t, P_HASHHASH)) {
+            if (b == 0 || b + 1 == m->body_len) {
+                diag_report(pp->diag, DL_ERROR, "", t->loc,
+                            "'##' cannot appear at either end of a macro "
+                            "expansion");
+                return;
+            }
+            m->has_ops = true;
+        }
+    }
+    for (b = 0; b < m->body_len; b++) {
+        Tok *t = &m->body[b];
+        if (!(t->flags & TF_PARAM))
+            continue;
+        if ((b > 0 && (tok_is_punct(&m->body[b - 1], P_HASHHASH) ||
+                       (m->funclike && tok_is_punct(&m->body[b - 1], P_HASH)))) ||
+            (b + 1 < m->body_len && tok_is_punct(&m->body[b + 1], P_HASHHASH)))
+            m->param_raw[t->punct] = 1;
+        else
+            m->param_expanded[t->punct] = 1;
+    }
+    m->end_loc = span_end(pp, line, name->loc + name->len);
 
-    old = m->name->macro;
+    old = nid->macro;
     if (old) {
-        if (old->builtin || is_builtin_name(pp, m->name)) {
+        if (old->builtin || is_builtin_name(nid)) {
             if (!m->predefined)
                 diag_report(pp->diag, DL_WARNING, "builtin-macro-redefined",
                             name->loc, "redefining builtin macro \"%s\"",
-                            m->name->str);
-        } else if (!macros_identical(old, m)) {
+                            nid->str);
+        } else if (!macros_identical(pp, old, m)) {
             Diagnostic *d = diag_report(pp->diag, DL_WARNING, "macro-redefined",
-                                        name->loc, "\"%s\" redefined",
-                                        m->name->str);
+                                        name->loc, "\"%s\" redefined", nid->str);
             diag_note(pp->diag, d, old->name_loc,
                       "this is the location of the previous definition");
         }
         old->undef_loc = hash->loc;
         old->undef_seq = pp->seq;
-    } else if (is_builtin_name(pp, m->name) && !m->predefined) {
+    } else if (is_builtin_name(nid) && !m->predefined) {
         diag_report(pp->diag, DL_WARNING, "builtin-macro-redefined", name->loc,
                     "defining builtin macro \"%s\" is undefined behavior",
-                    m->name->str);
+                    nid->str);
     }
     m->id = (uint32_t)pp->macros.len;
     m->def_seq = pp->seq++;
-    m->prev = m->name->history;
-    m->name->history = m;
-    m->name->macro = m;
+    m->prev = nid->history;
+    nid->history = m;
+    nid->macro = m;
     vec_push(&pp->macros, m);
     PP_EMIT(pp, define, m, old);
     PP_EMIT(pp, checkpoint, m->end_loc, pp->seq);
 }
 
-static void do_undef(PP *pp, Token *hash)
+static void do_undef(PP *pp, const Tok *hash)
 {
-    Token *line = pp_read_line(pp);
+    TokSpan line = read_line(pp);
     Macro *m;
-    if (line->kind != TK_IDENT) {
-        diag_report(pp->diag, DL_ERROR, "",
-                    line->kind == TK_EOF ? hash->loc : line->loc,
+    Ident *id;
+    if (line.n == 0 || line.t[0].kind != TK_IDENT) {
+        diag_report(pp->diag, DL_ERROR, "", line.n ? line.t[0].loc : hash->loc,
                     "macro name missing in #undef");
         return;
     }
-    if (line->ident == pp->id_defined) {
-        diag_report(pp->diag, DL_ERROR, "", line->loc,
+    id = pp->in->byid.data[line.t[0].aux];
+    if (id == pp->id_defined) {
+        diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
                     "'defined' cannot be used as a macro name");
         return;
     }
-    check_eol(pp, line->next, "undef");
-    m = line->ident->macro;
-    if ((m && m->builtin) || is_builtin_name(pp, line->ident)) {
-        if (pp->inc->file->kind != SF_VIRTUAL)
-            diag_report(pp->diag, DL_WARNING, "builtin-macro-redefined",
-                        line->loc, "undefining builtin macro \"%s\"",
-                        line->ident->str);
-    }
-    pp_macro_ref(pp, line, REF_UNDEF);
+    check_eol(pp, span_from(line, 1), "undef");
+    m = id->macro;
+    if (((m && m->builtin) || is_builtin_name(id)) &&
+        pp->inc->file->kind != SF_VIRTUAL)
+        diag_report(pp->diag, DL_WARNING, "builtin-macro-redefined",
+                    line.t[0].loc, "undefining builtin macro \"%s\"", id->str);
+    pp_macro_ref(pp, &line.t[0], REF_UNDEF);
     if (m) {
         m->undef_loc = hash->loc;
         m->undef_seq = pp->seq++;
-        line->ident->macro = NULL;
+        id->macro = NULL;
     }
-    PP_EMIT(pp, undef, line->ident, m, hash->loc, line->loc);
-    PP_EMIT(pp, checkpoint, line_end_loc(line), pp->seq);
+    PP_EMIT(pp, undef, id, m, hash->loc, line.t[0].loc);
+    PP_EMIT(pp, checkpoint, span_end(pp, line, hash->loc), pp->seq);
 }
 
 /* ---- #include ------------------------------------------------------- */
 
 static bool file_exists(const char *path)
 {
-    FILE *f = fopen(path, "rb");
-    if (f) {
-        /* reject directories: reading one fails */
-        int c = fgetc(f);
-        bool ok = !(c == EOF && ferror(f));
-        fclose(f);
-        return ok;
-    }
-    return false;
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
 }
 
 char *pp_search_include(PP *pp, const char *name, bool angled, bool next,
@@ -1035,10 +1178,12 @@ char *pp_search_include(PP *pp, const char *name, bool angled, bool next,
         start = (size_t)pp->inc->dir_index + 1;
     } else {
         if (!angled && !next && pp->inc) {
-            char *dir = path_dirname(pp->arena, pp->inc->file->path);
-            char *p = path_join(pp->arena, dir, name);
+            char *p;
             if (pp->inc->file->kind == SF_VIRTUAL)
                 p = arena_strdup(pp->arena, name);
+            else
+                p = path_join(pp->arena, path_dirname(pp->arena, pp->inc->file->path),
+                              name);
             if (file_exists(p)) {
                 *dir_index = -1;
                 return p;
@@ -1056,81 +1201,77 @@ char *pp_search_include(PP *pp, const char *name, bool angled, bool next,
     return NULL;
 }
 
-/* Spelling of `<...>` from the raw source between two tokens. */
-static char *raw_between(PP *pp, Token *lt, Token *gt)
+static char *parse_header_name(PP *pp, TokSpan line, bool *angled,
+                               bool *expanded, uint32_t *rest, SrcLoc *name_end,
+                               TokBuf *tmp)
 {
-    SrcFile *f = srcmgr_file_of(pp->sm, lt->loc);
-    if (!f || gt->loc <= lt->loc)
-        return NULL;
-    return arena_strndup(pp->arena, f->buf + (lt->loc + lt->rawlen - f->base),
-                         gt->loc - (lt->loc + lt->rawlen));
-}
-
-/* Parse a header-name from a directive line.  Returns the name (without
- * delimiters) and sets *angled; *rest receives the token after it. */
-static char *parse_header_name(PP *pp, Token *line, bool *angled,
-                               bool *expanded, Token **rest, SrcLoc *name_end)
-{
-    Token *t = line;
+    TokSpan s = line;
     *expanded = false;
-    if (t->kind != TK_STRING && !tok_is_punct(t, P_LT)) {
-        t = pp_expand_list(pp, line);
+    if (!(s.t[0].kind == TK_STRING) && !tok_is_punct(&s.t[0], P_LT)) {
+        pp_expand_into(pp, line, tmp);
+        s.t = tmp->t;
+        s.n = tmp->len;
         *expanded = true;
+        if (s.n == 0) {
+            diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
+                        "#include expects \"FILENAME\" or <FILENAME>");
+            return NULL;
+        }
     }
-    if (t->kind == TK_STRING && t->text[0] == '"') {
+    if (s.t[0].kind == TK_STRING && pp_text(pp, &s.t[0])[0] == '"') {
         *angled = false;
-        *rest = t->next;
-        *name_end = t->loc + t->rawlen;
-        return arena_strndup(pp->arena, t->text + 1, t->len - 2);
+        *rest = 1;
+        *name_end = s.t[0].loc + s.t[0].len;
+        return arena_strndup(pp->arena, pp_text(pp, &s.t[0]) + 1, s.t[0].len - 2);
     }
-    if (tok_is_punct(t, P_LT)) {
-        Token *u = t->next;
+    if (tok_is_punct(&s.t[0], P_LT)) {
+        uint32_t u = 1;
         *angled = true;
-        while (u->kind != TK_EOF && !tok_is_punct(u, P_GT))
-            u = u->next;
-        if (u->kind == TK_EOF) {
-            diag_report(pp->diag, DL_ERROR, "", t->loc,
+        while (u < s.n && !tok_is_punct(&s.t[u], P_GT))
+            u++;
+        if (u >= s.n) {
+            diag_report(pp->diag, DL_ERROR, "", s.t[0].loc,
                         "missing terminating > character");
             return NULL;
         }
-        *rest = u->next;
-        *name_end = u->loc + u->rawlen;
-        if (!*expanded && !t->prov) {
-            char *s = raw_between(pp, t, u);
-            if (s)
-                return s;
+        *rest = u + 1;
+        *name_end = s.t[u].loc + s.t[u].len;
+        if (!*expanded) {
+            SrcLoc b = s.t[0].loc + 1, e = s.t[u].loc;
+            if (e >= b)
+                return arena_strndup(pp->arena, pp->sm->region + b, e - b);
         }
-        /* computed include: concatenate spellings (implementation-defined) */
         {
             StrBuf sb = {0};
-            Token *v;
+            uint32_t v;
             char *r;
-            for (v = t->next; v != u; v = v->next) {
-                if (v != t->next && (v->flags & TF_SPACE))
+            for (v = 1; v < u; v++) {
+                if (v > 1 && (s.t[v].flags & TF_SPACE))
                     sb_putc(&sb, ' ');
-                sb_putn(&sb, v->text, v->len);
+                sb_putn(&sb, pp_text(pp, &s.t[v]), s.t[v].len);
             }
             r = arena_strndup(pp->arena, sb_cstr(&sb), sb.len);
             sb_free(&sb);
             return r;
         }
     }
-    diag_report(pp->diag, DL_ERROR, "", t->kind == TK_EOF ? line->loc : t->loc,
+    diag_report(pp->diag, DL_ERROR, "", s.t[0].loc,
                 "#include expects \"FILENAME\" or <FILENAME>");
     return NULL;
 }
 
-static void do_include(PP *pp, Token *hash, Token *kw, bool next)
+static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
 {
-    Token *line = pp_read_line(pp), *rest = NULL;
+    TokSpan line = read_line(pp);
     bool angled = false, expanded = false;
+    uint32_t rest = 0;
     SrcLoc name_end = 0;
     char *name, *path;
     int dir_index = -1;
     IncludeEvent ev;
     SrcFile *f = NULL;
+    TokBuf tmp = {0};
 
-    guard_note_activity(pp);
     if (next && pp->inc->prev == NULL) {
         diag_report(pp->diag, DL_WARNING, "include-next-in-primary", kw->loc,
                     "#include_next in primary source file");
@@ -1138,25 +1279,28 @@ static void do_include(PP *pp, Token *hash, Token *kw, bool next)
     }
     if (next)
         pedantic(pp, kw->loc, "#include_next is a GNU extension");
-    if (line->kind == TK_EOF) {
+    if (line.n == 0) {
         diag_report(pp->diag, DL_ERROR, "", kw->loc,
                     "#include expects \"FILENAME\" or <FILENAME>");
         return;
     }
-    name = parse_header_name(pp, line, &angled, &expanded, &rest, &name_end);
-    if (!name)
-        return;
-    if (rest)
-        check_eol(pp, rest, next ? "include_next" : "include");
-    if (!*name) {
-        diag_report(pp->diag, DL_ERROR, "", line->loc, "empty filename in #include");
+    name = parse_header_name(pp, line, &angled, &expanded, &rest, &name_end, &tmp);
+    if (!name) {
+        tokbuf_release(pp, &tmp);
         return;
     }
-
+    if (!expanded)
+        check_eol(pp, span_from(line, rest), next ? "include_next" : "include");
+    tokbuf_release(pp, &tmp);
+    if (!*name) {
+        diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
+                    "empty filename in #include");
+        return;
+    }
     memset(&ev, 0, sizeof ev);
     ev.hash_loc = hash->loc;
-    ev.name_loc = line->loc;
-    ev.name_end = name_end;
+    ev.name_loc = line.t[0].loc;
+    ev.name_end = expanded ? span_end(pp, line, line.t[0].loc) : name_end;
     ev.spelled = name;
     ev.angled = angled;
     ev.next = next;
@@ -1173,8 +1317,8 @@ static void do_include(PP *pp, Token *hash, Token *kw, bool next)
     ev.file = f;
     if (!f) {
         ev.result = INC_NOT_FOUND;
-        diag_report(pp->diag, DL_ERROR, "", line->loc, "'%s' file not found",
-                    name);
+        diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
+                    "'%s' file not found", name);
         PP_EMIT(pp, include, &ev);
         return;
     }
@@ -1196,95 +1340,84 @@ static void do_include(PP *pp, Token *hash, Token *kw, bool next)
     }
     ev.result = INC_OK;
     PP_EMIT(pp, include, &ev);
-    PP_EMIT(pp, checkpoint, name_end, pp->seq);
+    PP_EMIT(pp, checkpoint, ev.name_end, pp->seq);
     push_file(pp, f, hash->loc, dir_index, &ev);
 }
 
 /* ---- #line ---------------------------------------------------------- */
 
-static void do_line(PP *pp, Token *hash, Token *kw, bool gnu_marker)
+static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
 {
-    Token *line = gnu_marker ? kw : pp_read_line(pp);
-    Token *t;
+    TokSpan line;
+    TokBuf tmp = {0}, src = {0};
+    TokSpan s;
     unsigned long long n = 0;
-    uint32_t i, phys, col;
+    uint32_t i, phys, col, k = 0;
+    const char *text;
     if (gnu_marker) {
-        /* kw is the number; read the rest of the line */
-        Token *rest = pp_read_line(pp);
-        kw->next = rest;
-        line = kw;
+        TokSpan rest = read_line(pp);
+        tokbuf_push(pp, &src, *kw);
+        for (i = 0; i < rest.n; i++)
+            tokbuf_push(pp, &src, rest.t[i]);
+        line.t = src.t;
+        line.n = src.len;
         pedantic(pp, kw->loc, "style of line directive is a GCC extension");
+    } else {
+        line = read_line(pp);
     }
-    t = pp_expand_list(pp, line);
-    if (t->kind != TK_PPNUM) {
-        diag_report(pp->diag, DL_ERROR, "", t->kind == TK_EOF ? hash->loc : t->loc,
+    pp_expand_into(pp, line, &tmp);
+    s.t = tmp.t;
+    s.n = tmp.len;
+    if (s.n == 0 || s.t[0].kind != TK_PPNUM) {
+        diag_report(pp->diag, DL_ERROR, "", s.n ? s.t[0].loc : hash->loc,
                     "#line directive requires a positive integer argument");
-        return;
+        goto out;
     }
-    for (i = 0; i < t->len; i++) {
-        if (t->text[i] < '0' || t->text[i] > '9') {
-            diag_report(pp->diag, DL_ERROR, "", t->loc,
+    text = pp_text(pp, &s.t[0]);
+    for (i = 0; i < s.t[0].len; i++) {
+        if (text[i] < '0' || text[i] > '9') {
+            diag_report(pp->diag, DL_ERROR, "", s.t[0].loc,
                         "\"%.*s\" after #line is not a positive integer",
-                        (int)t->len, t->text);
-            return;
+                        (int)s.t[0].len, text);
+            goto out;
         }
-        n = n * 10 + (unsigned)(t->text[i] - '0');
+        n = n * 10 + (unsigned)(text[i] - '0');
         if (n > 2147483647ull)
             break;
     }
     if (!gnu_marker && (n == 0 || n > 2147483647ull))
         diag_report(pp->diag, pp->opt->pedantic ? DL_WARNING : DL_REMARK,
-                    "pedantic", t->loc,
+                    "pedantic", s.t[0].loc,
                     "line number out of range (C99 6.10.4p3)");
-    t = t->next;
-    if (t->kind == TK_STRING) {
-        if (t->text[0] != '"') {
-            diag_report(pp->diag, DL_ERROR, "", t->loc,
+    k = 1;
+    if (k < s.n && s.t[k].kind == TK_STRING) {
+        const char *st = pp_text(pp, &s.t[k]);
+        if (st[0] != '"')
+            diag_report(pp->diag, DL_ERROR, "", s.t[k].loc,
                         "invalid filename for #line directive");
-        } else {
-            pp->inc->presumed_name =
-                arena_strndup(pp->arena, t->text + 1, t->len - 2);
-        }
-        t = t->next;
+        else
+            pp->inc->presumed_name = arena_strndup(pp->arena, st + 1, s.t[k].len - 2);
+        k++;
     }
     if (!gnu_marker)
-        check_eol(pp, t, "line");
+        check_eol(pp, span_from(s, k), "line");
     srcmgr_linecol(pp->inc->file, hash->loc, &phys, &col);
-    /* the line after the directive gets number n */
     pp->inc->line_adj_from = phys + 1;
     pp->inc->line_delta = (int32_t)((long long)n - (long long)(phys + 1));
-}
-
-uint32_t pp_presumed_line(PP *pp, SrcLoc loc)
-{
-    SrcFile *f = srcmgr_file_of(pp->sm, loc);
-    uint32_t line = 0, col;
-    IncludeFrame *fr;
-    if (!f)
-        return 0;
-    srcmgr_linecol(f, loc, &line, &col);
-    for (fr = pp->inc; fr; fr = fr->prev)
-        if (fr->file == f) {
-            if (fr->line_adj_from && line >= fr->line_adj_from)
-                return (uint32_t)((int32_t)line + fr->line_delta);
-            break;
-        }
-    return line;
+out:
+    tokbuf_release(pp, &tmp);
+    tokbuf_release(pp, &src);
 }
 
 /* ---- #error / #warning / #pragma ----------------------------------- */
 
-static void do_message(PP *pp, Token *hash, Token *kw, bool is_error)
+static void do_message(PP *pp, const Tok *kw, bool is_error)
 {
-    Token *line = pp_read_line(pp);
-    SrcFile *f = pp->inc->file;
-    uint32_t l, c, len;
+    TokSpan line = read_line(pp);
     const char *text = "";
-    (void)hash;
-    if (line->kind != TK_EOF) {
-        srcmgr_linecol(f, line->loc, &l, &c);
-        text = srcmgr_line_text(f, l, &len);
-        text = arena_strndup(pp->arena, text + c - 1, len - (c - 1));
+    if (line.n) {
+        SrcLoc b = line.t[0].loc, e = span_end(pp, line, b);
+        text = arena_strndup(pp->arena, pp->sm->region + b, e - b);
     }
     if (is_error) {
         diag_report(pp->diag, DL_ERROR, "", kw->loc, "#error %s", text);
@@ -1295,88 +1428,68 @@ static void do_message(PP *pp, Token *hash, Token *kw, bool is_error)
     }
 }
 
-static void do_pragma_directive(PP *pp, Token *hash, Token *kw)
-{
-    Token *line = pp_read_line(pp);
-    (void)kw;
-    guard_note_activity(pp);
-    pp_do_pragma(pp, line, hash->loc);
-}
+/* ---- dispatch ------------------------------------------------------- */
 
-/* ---- directive dispatch --------------------------------------------- */
-
-void pp_directive(PP *pp, Token *hash)
+void pp_directive(PP *pp, const Tok *hash)
 {
-    Token *kw = pp->cur;
+    Tok kw;
     bool active = cur_active(pp);
-    if (at_line_start(kw)) {
-        /* null directive */
+    bool saved = pp->in_directive;
+    lex_next(&pp->lex, &kw);
+    if ((kw.flags & TF_BOL) || kw.kind == TK_EOF) {
+        pp->pending = kw; /* null directive */
+        pp->has_pending = true;
         return;
     }
-    pp->cur = kw->next;
     pp->in_directive = true;
-    if (kw->kind == TK_IDENT) {
-        const char *s = kw->ident->str;
-        if (!strcmp(s, "if")) {
-            do_if(pp, hash, kw, COND_IF);
-            goto out;
-        } else if (!strcmp(s, "ifdef")) {
-            do_if(pp, hash, kw, COND_IFDEF);
-            goto out;
-        } else if (!strcmp(s, "ifndef")) {
-            do_if(pp, hash, kw, COND_IFNDEF);
-            goto out;
-        } else if (!strcmp(s, "elif")) {
-            do_elif_else(pp, hash, kw, COND_ELIF);
-            goto out;
-        } else if (!strcmp(s, "else")) {
-            do_elif_else(pp, hash, kw, COND_ELSE);
-            goto out;
-        } else if (!strcmp(s, "endif")) {
-            do_endif(pp, hash, kw);
-            goto out;
-        }
+    if (kw.kind == TK_IDENT) {
+        const char *s = pp->in->byid.data[kw.aux]->str;
+        if (!strcmp(s, "if")) { do_if(pp, hash, &kw, COND_IF); goto out; }
+        if (!strcmp(s, "ifdef")) { do_if(pp, hash, &kw, COND_IFDEF); goto out; }
+        if (!strcmp(s, "ifndef")) { do_if(pp, hash, &kw, COND_IFNDEF); goto out; }
+        if (!strcmp(s, "elif")) { do_elif_else(pp, hash, &kw, COND_ELIF); goto out; }
+        if (!strcmp(s, "else")) { do_elif_else(pp, hash, &kw, COND_ELSE); goto out; }
+        if (!strcmp(s, "endif")) { do_endif(pp, hash, &kw); goto out; }
     }
     if (!active) {
-        /* cannot happen: skip_group stops only at conditionals */
-        pp_read_line(pp);
+        read_line(pp);
         goto out;
     }
     guard_note_activity(pp);
-    if (kw->kind == TK_IDENT) {
-        const char *s = kw->ident->str;
+    if (kw.kind == TK_IDENT) {
+        const char *s = pp->in->byid.data[kw.aux]->str;
         if (!strcmp(s, "define"))
             do_define(pp, hash);
         else if (!strcmp(s, "undef"))
             do_undef(pp, hash);
         else if (!strcmp(s, "include"))
-            do_include(pp, hash, kw, false);
+            do_include(pp, hash, &kw, false);
         else if (!strcmp(s, "include_next") && pp->opt->gnu_extensions)
-            do_include(pp, hash, kw, true);
+            do_include(pp, hash, &kw, true);
         else if (!strcmp(s, "line"))
-            do_line(pp, hash, kw, false);
+            do_line(pp, hash, &kw, false);
         else if (!strcmp(s, "error"))
-            do_message(pp, hash, kw, true);
+            do_message(pp, &kw, true);
         else if (!strcmp(s, "warning") && pp->opt->gnu_extensions)
-            do_message(pp, hash, kw, false);
+            do_message(pp, &kw, false);
         else if (!strcmp(s, "pragma"))
-            do_pragma_directive(pp, hash, kw);
+            pp_do_pragma(pp, read_line(pp), hash->loc);
         else if ((!strcmp(s, "ident") || !strcmp(s, "sccs")) &&
                  pp->opt->gnu_extensions) {
-            pedantic(pp, kw->loc, "#%s is a GCC extension", s);
-            pp_read_line(pp);
+            pedantic(pp, kw.loc, "#%s is a GCC extension", s);
+            read_line(pp);
         } else {
-            diag_report(pp->diag, DL_ERROR, "", kw->loc,
+            diag_report(pp->diag, DL_ERROR, "", kw.loc,
                         "invalid preprocessing directive #%s", s);
-            pp_read_line(pp);
+            read_line(pp);
         }
-    } else if (kw->kind == TK_PPNUM && pp->opt->gnu_extensions) {
-        do_line(pp, hash, kw, true);
+    } else if (kw.kind == TK_PPNUM && pp->opt->gnu_extensions) {
+        do_line(pp, hash, &kw, true);
     } else {
-        diag_report(pp->diag, DL_ERROR, "", kw->loc,
+        diag_report(pp->diag, DL_ERROR, "", kw.loc,
                     "invalid preprocessing directive");
-        pp_read_line(pp);
+        read_line(pp);
     }
 out:
-    pp->in_directive = false;
+    pp->in_directive = saved;
 }

@@ -1,4 +1,4 @@
-/* lex.h - translation phases 1-3: pp-token lexer. */
+/* lex.h - translation phases 1-3: streaming pp-token lexer. */
 #ifndef CEREAL_LEX_H
 #define CEREAL_LEX_H
 
@@ -12,25 +12,42 @@ typedef struct LexOptions {
 } LexOptions;
 
 typedef struct Lexer {
-    Arena *arena;
+    const char *p;       /* cursor */
+    const char *lim;     /* end of content (NUL + zero padding follow) */
+    const char *region;  /* location 0 */
+    SrcMgr *sm;
     Interner *in;
     DiagEngine *diag;    /* may be NULL (silent) */
     LexOptions opt;
-    const char *buf;
-    uint32_t size, pos;
-    SrcLoc base;         /* 0 = locations are not meaningful */
-    StrBuf scratch;
+    bool bol, space;
+    bool warned_nul;
+    StrBuf clean;        /* slow-path spelling buffer */
 } Lexer;
 
-/* Tokenize a whole source file into a TK_EOF-terminated list. */
-Token *lex_file(Arena *a, Interner *in, DiagEngine *d, LexOptions opt,
-                SrcFile *f);
-/* Tokenize an arbitrary buffer (e.g. a ## result or _Pragma string).
- * Token locations are all set to `loc`. */
-Token *lex_buffer(Arena *a, Interner *in, LexOptions opt, const char *buf,
-                  size_t len, SrcLoc loc);
+void lex_global_init(void);
 
-/* Spelling of a token as a NUL-terminated string in the arena. */
-char *tok_str(Arena *a, const Token *t);
+void lexer_init(Lexer *L, SrcMgr *sm, Interner *in, DiagEngine *d,
+                LexOptions opt, SrcFile *f);
+/* Lex an arbitrary byte range of the location space (scratch). */
+void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, LexOptions opt,
+                      SrcLoc begin, uint32_t len);
+void lexer_free(Lexer *L);
+
+void lex_next(Lexer *L, Tok *t);
+
+static inline SrcLoc lexer_loc(const Lexer *L)
+{
+    return (SrcLoc)(L->p - L->region);
+}
+void lexer_seek(Lexer *L, SrcLoc loc, bool bol);
+
+/* Skip scanner (inactive groups).  At a line start: skip blanks and
+ * comments; true if the line is a directive (cursor left at the '#'). */
+bool lex_line_is_directive(Lexer *L);
+/* Advance to the start of the next line; false at end of input. */
+bool lex_next_line(Lexer *L);
+
+/* Raw extent of a token in the source (differs from len if spliced). */
+uint32_t tok_raw_len(const SrcMgr *sm, const Interner *in, const Tok *t);
 
 #endif

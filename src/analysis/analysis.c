@@ -15,7 +15,7 @@ bool an_user_loc(Analysis *a, SrcLoc loc)
 
 Skeleton *an_skeleton(Analysis *a, SrcFile *f)
 {
-    return skel_get(a->arena, a->in, a->pp->opt->lex, f);
+    return skel_get(a->arena, a->sm, a->in, a->pp->opt->lex, f);
 }
 
 bool is_c_keyword(const char *s, size_t n)

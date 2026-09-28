@@ -21,7 +21,7 @@ struct HygieneState {
 
 /* ---- token classification ------------------------------------------ */
 
-static bool is_decl_keyword(const Token *t)
+static bool is_decl_keyword(const Interner *in, const Tok *t)
 {
     static const char *const kw[] = {
         "typedef", "struct", "union", "enum", "static", "extern", "auto",
@@ -35,12 +35,12 @@ static bool is_decl_keyword(const Token *t)
     if (t->kind != TK_IDENT)
         return false;
     for (i = 0; kw[i]; i++)
-        if (tok_is_ident(t, kw[i]))
+        if (tok_is_word(in, t, kw[i]))
             return true;
     return false;
 }
 
-static bool is_stmt_keyword(const Token *t)
+static bool is_stmt_keyword(const Interner *in, const Tok *t)
 {
     static const char *const kw[] = {"if", "else", "for", "while", "do",
                                      "switch", "return", "break", "continue",
@@ -49,12 +49,12 @@ static bool is_stmt_keyword(const Token *t)
     if (t->kind != TK_IDENT)
         return false;
     for (i = 0; kw[i]; i++)
-        if (tok_is_ident(t, kw[i]))
+        if (tok_is_word(in, t, kw[i]))
             return true;
     return false;
 }
 
-static bool is_assign(const Token *t)
+static bool is_assign(const Tok *t)
 {
     if (t->kind != TK_PUNCT)
         return false;
@@ -70,13 +70,13 @@ static bool is_assign(const Token *t)
 }
 
 /* Does the token end an operand (so a following + - * & is binary)? */
-static bool ends_operand(const Token *t)
+static bool ends_operand(const Interner *in, const Tok *t)
 {
     if (!t)
         return false;
     switch (t->kind) {
     case TK_IDENT:
-        return !is_c_keyword(t->text, t->len);
+        return !is_c_keyword(tok_ident(in, t)->str, t->len);
     case TK_PPNUM: case TK_CHAR: case TK_STRING:
         return true;
     case TK_PUNCT:
@@ -101,29 +101,25 @@ static bool is_binary_op(Punct p)
     }
 }
 
-static bool unevaluated_context(Token **v, int i)
+static bool unevaluated_context(const Interner *in, const Tok **v, int i)
 {
     /* sizeof x, sizeof(x), typeof(x), _Alignof(x) */
-    const Token *p = i > 0 ? v[i - 1] : NULL, *pp = i > 1 ? v[i - 2] : NULL;
-    if (p && (tok_is_ident(p, "sizeof")))
+    const Tok *p = i > 0 ? v[i - 1] : NULL, *pp = i > 1 ? v[i - 2] : NULL;
+    if (p && (tok_is_word(in, p, "sizeof")))
         return true;
     if (p && tok_is_punct(p, P_LPAREN) && pp &&
-        (tok_is_ident(pp, "sizeof") || tok_is_ident(pp, "typeof") ||
-         tok_is_ident(pp, "__typeof__") || tok_is_ident(pp, "__typeof") ||
-         tok_is_ident(pp, "_Alignof") || tok_is_ident(pp, "__alignof__")))
+        (tok_is_word(in, pp, "sizeof") || tok_is_word(in, pp, "typeof") ||
+         tok_is_word(in, pp, "__typeof__") || tok_is_word(in, pp, "__typeof") ||
+         tok_is_word(in, pp, "_Alignof") || tok_is_word(in, pp, "__alignof__")))
         return true;
     return false;
 }
 
-static int param_index(const Macro *m, const Token *t)
+/* Body tokens carry their parameter index (TF_PARAM). */
+static int param_index(const Macro *m, const Tok *t)
 {
-    int i;
-    if (t->kind != TK_IDENT)
-        return -1;
-    for (i = 0; i < m->nparams; i++)
-        if (m->params[i] == t->ident)
-            return i;
-    return -1;
+    (void)m;
+    return (t->flags & TF_PARAM) ? t->punct : -1;
 }
 
 /* ---- definition checks --------------------------------------------- */
@@ -165,26 +161,26 @@ static void check_name(Analysis *a, Macro *m)
         diag_set_range(d, m->name_loc, m->name_loc + m->name->len);
 }
 
-static const char *spell(Analysis *a, const Token *t)
+static const char *spell(Analysis *a, const Tok *t)
 {
-    return tok_str(a->arena, t);
+    return arena_strndup(a->arena, pp_text(a->pp, t), t->len);
 }
 
-static bool is_qualifier(const Token *t)
+static bool is_qualifier(const Interner *in, const Tok *t)
 {
-    return tok_is_ident(t, "const") || tok_is_ident(t, "volatile") ||
-           tok_is_ident(t, "restrict") || tok_is_ident(t, "__restrict");
+    return tok_is_word(in, t, "const") || tok_is_word(in, t, "volatile") ||
+           tok_is_word(in, t, "restrict") || tok_is_word(in, t, "__restrict");
 }
 
 /* An identifier that can start or continue a declaration's specifiers. */
-static bool type_word(Macro *m, const Token *t)
+static bool type_word(const Interner *in, Macro *m, const Tok *t)
 {
     if (!t || t->kind != TK_IDENT || param_index(m, t) >= 0)
         return false;
-    return is_decl_keyword(t) || !is_c_keyword(t->text, t->len);
+    return is_decl_keyword(in, t) || !is_c_keyword(tok_ident(in, t)->str, t->len);
 }
 
-static bool operand_start(const Token *t)
+static bool operand_start(const Tok *t)
 {
     return t && (t->kind == TK_IDENT || t->kind == TK_PPNUM ||
                  t->kind == TK_CHAR || t->kind == TK_STRING ||
@@ -193,11 +189,12 @@ static bool operand_start(const Token *t)
 
 /* Parameters that stand for type names or declared identifiers are not
  * expressions; parenthesizing them would be wrong. */
-static void classify_params(Macro *m, Token **v, int n, bool *not_expr)
+static void classify_params(const Interner *in, Macro *m, const Tok **v,
+                            int n, bool *not_expr)
 {
     int i;
     for (i = 0; i < n; i++) {
-        const Token *t = v[i], *prev = i ? v[i - 1] : NULL,
+        const Tok *t = v[i], *prev = i ? v[i - 1] : NULL,
                     *pprev = i > 1 ? v[i - 2] : NULL,
                     *next = i + 1 < n ? v[i + 1] : NULL,
                     *nnext = i + 2 < n ? v[i + 2] : NULL;
@@ -205,13 +202,14 @@ static void classify_params(Macro *m, Token **v, int n, bool *not_expr)
         if (pi < 0)
             continue;
         /* type: `P x`, `P *)`, `P **`, `P * const`, `(P) operand` */
-        if (next && next->kind == TK_IDENT && !is_c_keyword(next->text, next->len))
+        if (next && next->kind == TK_IDENT &&
+            !is_c_keyword(tok_ident(in, next)->str, next->len))
             not_expr[pi] = true;
-        else if (next && is_qualifier(next))
+        else if (next && is_qualifier(in, next))
             not_expr[pi] = true;
         else if (next && tok_is_punct(next, P_STAR) && nnext &&
                  (tok_is_punct(nnext, P_RPAREN) || tok_is_punct(nnext, P_STAR) ||
-                  is_qualifier(nnext)))
+                  is_qualifier(in, nnext)))
             not_expr[pi] = true;
         else if (next && tok_is_punct(next, P_STAR) && nnext &&
                  nnext->kind == TK_IDENT && i + 3 < n &&
@@ -220,21 +218,21 @@ static void classify_params(Macro *m, Token **v, int n, bool *not_expr)
                   tok_is_punct(v[i + 3], P_COMMA)) &&
                  (!prev || tok_is_punct(prev, P_LBRACE) ||
                   tok_is_punct(prev, P_SEMI) || tok_is_punct(prev, P_LPAREN) ||
-                  tok_is_punct(prev, P_COMMA) || type_word(m, prev)))
+                  tok_is_punct(prev, P_COMMA) || type_word(in, m, prev)))
             not_expr[pi] = true; /* T *name; */
         else if (prev && tok_is_punct(prev, P_LPAREN) && next &&
                  tok_is_punct(next, P_RPAREN) && i + 2 < n &&
                  operand_start(v[i + 2]) &&
-                 !(pprev && (tok_is_ident(pprev, "sizeof") || pprev->kind == TK_IDENT)))
+                 !(pprev && (tok_is_word(in, pprev, "sizeof") || pprev->kind == TK_IDENT)))
             not_expr[pi] = true;
         /* declared name: `type P =`, `type *P;`, `struct P {` */
-        if (prev && (type_word(m, prev) || tok_is_ident(prev, "struct") ||
-                     tok_is_ident(prev, "union") || tok_is_ident(prev, "enum")) &&
-            !tok_is_ident(prev, "return") && !tok_is_ident(prev, "sizeof") &&
-            !tok_is_ident(prev, "case"))
+        if (prev && (type_word(in, m, prev) || tok_is_word(in, prev, "struct") ||
+                     tok_is_word(in, prev, "union") || tok_is_word(in, prev, "enum")) &&
+            !tok_is_word(in, prev, "return") && !tok_is_word(in, prev, "sizeof") &&
+            !tok_is_word(in, prev, "case"))
             not_expr[pi] = true;
         if (prev && tok_is_punct(prev, P_STAR) && pprev &&
-            (type_word(m, pprev) || tok_is_punct(pprev, P_STAR)) && next &&
+            (type_word(in, m, pprev) || tok_is_punct(pprev, P_STAR)) && next &&
             (tok_is_punct(next, P_ASSIGN) || tok_is_punct(next, P_SEMI) ||
              tok_is_punct(next, P_LBRACKET)))
             not_expr[pi] = true;
@@ -245,25 +243,26 @@ static void classify_params(Macro *m, Token **v, int n, bool *not_expr)
     }
 }
 
-static void check_params(Analysis *a, Macro *m, Token **v, int n, MacroInfo *mi)
+static void check_params(Analysis *a, Macro *m, const Tok **v, int n, MacroInfo *mi)
 {
+    const Interner *in = a->in;
     int i;
     bool *not_expr = NEW_ARRAY(a->arena, bool, m->nparams + 1);
-    classify_params(m, v, n, not_expr);
+    classify_params(in, m, v, n, not_expr);
     for (i = 0; i < n; i++) {
-        const Token *t = v[i], *prev = i ? v[i - 1] : NULL,
+        const Tok *t = v[i], *prev = i ? v[i - 1] : NULL,
                     *next = i + 1 < n ? v[i + 1] : NULL;
         int pi = param_index(m, t);
-        const Token *bad = NULL;
+        const Tok *bad = NULL;
         Diagnostic *d;
         if (pi < 0)
             continue;
         if ((prev && (tok_is_punct(prev, P_HASH) || tok_is_punct(prev, P_HASHHASH))) ||
             (next && tok_is_punct(next, P_HASHHASH)))
             continue; /* # x, x ## y: not evaluated as an expression */
-        if (!unevaluated_context(v, i))
+        if (!unevaluated_context(in, v, i))
             mi->evals[pi]++;
-        if (t->ident == a->pp->id_va_args || not_expr[pi])
+        if (tok_ident(in, t) == a->pp->id_va_args || not_expr[pi])
             continue;
         if (prev && (tok_is_punct(prev, P_DOT) || tok_is_punct(prev, P_ARROW)))
             continue; /* member designator */
@@ -276,7 +275,7 @@ static void check_params(Analysis *a, Macro *m, Token **v, int n, MacroInfo *mi)
                     prev->punct == P_DEC || prev->punct == P_RPAREN)
                     if (prev->punct != P_QUESTION)
                         bad = prev;
-            } else if (tok_is_ident(prev, "sizeof")) {
+            } else if (tok_is_word(in, prev, "sizeof")) {
                 bad = prev;
             }
         }
@@ -295,14 +294,14 @@ static void check_params(Analysis *a, Macro *m, Token **v, int n, MacroInfo *mi)
                         t->loc,
                         "macro parameter '%s' is an operand of '%s' but is not "
                         "parenthesized; an argument like 'a + b' changes the "
-                        "meaning", t->ident->str, spell(a, bad));
-        diag_set_range(d, t->loc, t->loc + t->rawlen);
+                        "meaning", tok_ident(in, t)->str, spell(a, bad));
+        diag_set_range(d, t->loc, t->loc + t->len);
         if (d)
-            d->fixit = arena_printf(a->arena, "(%s)", t->ident->str);
+            d->fixit = arena_printf(a->arena, "(%s)", tok_ident(in, t)->str);
     }
 }
 
-static bool wrapped_in_parens(Token **v, int n)
+static bool wrapped_in_parens(const Tok **v, int n)
 {
     int depth = 0, k;
     if (!tok_is_punct(v[0], P_LPAREN))
@@ -316,23 +315,24 @@ static bool wrapped_in_parens(Token **v, int n)
     return false;
 }
 
-static void check_body(Analysis *a, Macro *m, Token **v, int n)
+static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
 {
+    const Interner *in = a->in;
     bool *type_params = NEW_ARRAY(a->arena, bool, m->nparams + 1);
     int depth = 0, i, top_semis = 0, last_semi = -1;
     bool decl = false, stmt_kw = false, top_brace = false, top_else = false;
     bool binop = false, unbalanced = false, self_ref = false;
-    const Token *binop_tok = NULL;
+    const Tok *binop_tok = NULL;
     Diagnostic *d;
 
     if (n == 0)
         return;
-    classify_params(m, v, n, type_params);
+    classify_params(in, m, v, n, type_params);
     if (param_index(m, v[0]) >= 0 && type_params[param_index(m, v[0])])
         decl = true; /* T name ...: a declaration */
     for (i = 0; i < n; i++) {
-        const Token *t = v[i], *prev = i ? v[i - 1] : NULL;
-        if (t->kind == TK_IDENT && t->ident == m->name &&
+        const Tok *t = v[i], *prev = i ? v[i - 1] : NULL;
+        if (t->kind == TK_IDENT && tok_ident(in, t) == m->name &&
             !(prev && (tok_is_punct(prev, P_DOT) || tok_is_punct(prev, P_ARROW))))
             self_ref = true;
         if (t->kind == TK_PUNCT) {
@@ -360,11 +360,11 @@ static void check_body(Analysis *a, Macro *m, Token **v, int n)
         if (tok_is_punct(t, P_SEMI)) {
             top_semis++;
             last_semi = i;
-        } else if (is_decl_keyword(t)) {
+        } else if (is_decl_keyword(in, t)) {
             decl = true;
-        } else if (is_stmt_keyword(t)) {
+        } else if (is_stmt_keyword(in, t)) {
             stmt_kw = true;
-            if (tok_is_ident(t, "else"))
+            if (tok_is_word(in, t, "else"))
                 top_else = true;
         } else if (t->kind == TK_PUNCT && !binop_tok) {
             Punct p = (Punct)t->punct;
@@ -372,7 +372,7 @@ static void check_body(Analysis *a, Macro *m, Token **v, int n)
                           (p == P_QUESTION ||
                            !(p == P_STAR || p == P_AMP || p == P_PLUS ||
                              p == P_MINUS) ||
-                           ends_operand(prev));
+                           ends_operand(in, prev));
             if (binary && i > 0) {
                 binop = true;
                 binop_tok = t;
@@ -399,7 +399,7 @@ static void check_body(Analysis *a, Macro *m, Token **v, int n)
         return; /* declarations and types: out of scope for these checks */
 
     /* statement-like bodies */
-    if (tok_is_ident(v[0], "if") && !top_else) {
+    if (tok_is_word(in, v[0], "if") && !top_else) {
         d = diag_report(a->diag, DL_WARNING, "macro-dangling-else", v[0]->loc,
                         "body of '%s' is an 'if' without 'else'; 'if (c) %s; "
                         "else ...' binds the else to the macro's if",
@@ -407,9 +407,9 @@ static void check_body(Analysis *a, Macro *m, Token **v, int n)
         diag_note(a->diag, d, v[0]->loc, "wrap the body in 'do { ... } while (0)'");
         return;
     }
-    if (tok_is_ident(v[0], "if"))
+    if (tok_is_word(in, v[0], "if"))
         return; /* if ... else ...: a single statement */
-    if (tok_is_ident(v[0], "do")) {
+    if (tok_is_word(in, v[0], "do")) {
         if (tok_is_punct(v[n - 1], P_SEMI))
             diag_report(a->diag, DL_WARNING, "macro-trailing-semicolon",
                         v[n - 1]->loc,
@@ -418,7 +418,7 @@ static void check_body(Analysis *a, Macro *m, Token **v, int n)
                         m->name->str);
         return;
     }
-    if (tok_is_ident(v[0], "case") || tok_is_ident(v[0], "default"))
+    if (tok_is_word(in, v[0], "case") || tok_is_word(in, v[0], "default"))
         return;
     if ((top_semis > 0 && last_semi != n - 1) || top_semis > 1 ||
         (top_brace && tok_is_punct(v[0], P_LBRACE))) {
@@ -448,7 +448,7 @@ static void check_body(Analysis *a, Macro *m, Token **v, int n)
                         "not parenthesized; '%s' in an expression may bind "
                         "differently", m->name->str, spell(a, binop_tok),
                         m->name->str);
-        diag_set_range(d, v[0]->loc, v[n - 1]->loc + v[n - 1]->rawlen);
+        diag_set_range(d, v[0]->loc, v[n - 1]->loc + v[n - 1]->len);
         if (d)
             diag_note(a->diag, d, v[0]->loc, "wrap the replacement list in "
                                              "parentheses");
@@ -457,13 +457,12 @@ static void check_body(Analysis *a, Macro *m, Token **v, int n)
 
 /* ---- listeners ------------------------------------------------------ */
 
-static Token **body_array(Analysis *a, const Macro *m)
+static const Tok **body_array(Analysis *a, const Macro *m)
 {
-    Token **v = NEW_ARRAY(a->arena, Token *, m->body_len + 1);
-    Token *t;
-    int i = 0;
-    for (t = m->body; t->kind != TK_EOF; t = t->next)
-        v[i++] = t;
+    const Tok **v = NEW_ARRAY(a->arena, const Tok *, m->body_len + 1);
+    uint32_t i;
+    for (i = 0; i < m->body_len; i++)
+        v[i] = &m->body[i];
     return v;
 }
 
@@ -471,16 +470,17 @@ static MacroInfo *info_of(Analysis *a, Macro *m)
 {
     MacroInfo *mi = m->user;
     if (!mi) {
-        Token **v = body_array(a, m);
+        const Tok **v = body_array(a, m);
+        const Interner *in = a->in;
         int i;
         mi = NEW(a->arena, MacroInfo);
         mi->evals = NEW_ARRAY(a->arena, int, m->nparams + 1);
         mi->mentions = NEW_ARRAY(a->arena, int, m->nparams + 1);
         m->user = mi;
-        for (i = 0; i < m->body_len; i++) {
+        for (i = 0; i < (int)m->body_len; i++) {
             int pi = param_index(m, v[i]);
-            const Token *prev = i ? v[i - 1] : NULL,
-                        *next = i + 1 < m->body_len ? v[i + 1] : NULL;
+            const Tok *prev = i ? v[i - 1] : NULL,
+                        *next = i + 1 < (int)m->body_len ? v[i + 1] : NULL;
             if (pi < 0)
                 continue;
             if ((prev && (tok_is_punct(prev, P_HASH) ||
@@ -489,7 +489,7 @@ static MacroInfo *info_of(Analysis *a, Macro *m)
                 mi->mentions[pi]++; /* used as text, deliberately */
                 continue;
             }
-            if (!unevaluated_context(v, i))
+            if (!unevaluated_context(in, v, i))
                 mi->evals[pi]++;
         }
     }
@@ -499,7 +499,7 @@ static MacroInfo *info_of(Analysis *a, Macro *m)
 static void on_define(void *ctx, Macro *m, Macro *replaced)
 {
     Analysis *a = ctx;
-    Token **v;
+    const Tok **v;
     int i;
     (void)replaced;
     if (m->predefined || !an_user_file(m->file))
@@ -509,12 +509,12 @@ static void on_define(void *ctx, Macro *m, Macro *replaced)
     if (m->funclike) {
         MacroInfo scratch;
         scratch.evals = NEW_ARRAY(a->arena, int, m->nparams + 1);
-        check_params(a, m, v, m->body_len, &scratch);
+        check_params(a, m, v, (int)m->body_len, &scratch);
         for (i = 0; i < m->nparams; i++) {
-            Token *t;
+            uint32_t k;
             bool used = false;
-            for (t = m->body; t->kind != TK_EOF; t = t->next)
-                if (t->kind == TK_IDENT && t->ident == m->params[i])
+            for (k = 0; k < m->body_len; k++)
+                if ((m->body[k].flags & TF_PARAM) && m->body[k].punct == i)
                     used = true;
             if (!used)
                 diag_report(a->diag, DL_REMARK, "macro-unused-param",
@@ -523,25 +523,25 @@ static void on_define(void *ctx, Macro *m, Macro *replaced)
                             m->params[i]->str, m->name->str);
         }
     }
-    check_body(a, m, v, m->body_len);
+    check_body(a, m, v, (int)m->body_len);
 }
 
 typedef enum { SE_NONE, SE_CALL, SE_MODIFY } SideEffect;
 
-static SideEffect side_effects(const Token *arg, const Token **where)
+static SideEffect side_effects(Analysis *a, TokSpan arg)
 {
     SideEffect r = SE_NONE;
-    const Token *t;
-    for (t = arg; t->kind != TK_EOF; t = t->next) {
-        if (tok_is_punct(t, P_INC) || tok_is_punct(t, P_DEC) || is_assign(t)) {
-            *where = t;
+    uint32_t i;
+    for (i = 0; i < arg.n; i++) {
+        const Tok *t = &arg.t[i];
+        if (tok_is_punct(t, P_INC) || tok_is_punct(t, P_DEC) || is_assign(t))
             return SE_MODIFY;
-        }
-        if (t->kind == TK_IDENT && tok_is_punct(t->next, P_LPAREN) &&
-            !is_c_keyword(t->text, t->len) && r == SE_NONE &&
-            !(t->ident->macro && t->ident->macro->funclike)) {
-            *where = t;
-            r = SE_CALL;
+        if (t->kind == TK_IDENT && i + 1 < arg.n &&
+            tok_is_punct(&arg.t[i + 1], P_LPAREN) && r == SE_NONE) {
+            Ident *id = tok_ident(a->in, t);
+            if (!is_c_keyword(id->str, id->len) &&
+                !(id->macro && id->macro->funclike))
+                r = SE_CALL;
         }
     }
     return r;
@@ -557,7 +557,8 @@ static bool already_reported(HygieneState *h, SrcLoc loc)
     return false;
 }
 
-static void on_expand(void *ctx, Expansion *e, Token **args, int nargs)
+static void on_expand(void *ctx, const Expansion *e, const TokSpan *args,
+                      int nargs)
 {
     Analysis *a = ctx;
     Macro *m = e->macro;
@@ -566,18 +567,19 @@ static void on_expand(void *ctx, Expansion *e, Token **args, int nargs)
     int i;
     if (!m->funclike || m->builtin || nargs == 0 || e->in_directive)
         return;
-    site = prov_expansion_loc(e->name_prov, e->name_loc);
+    site = a->pp->expansions.data[e->root]->name_loc;
     if (!an_user_loc(a, site))
         return;
     mi = info_of(a, m);
     for (i = 0; i < nargs && i < m->nparams; i++) {
-        const Token *where = NULL;
-        SideEffect se = side_effects(args[i], &where);
+        SideEffect se = side_effects(a, args[i]);
         Diagnostic *d = NULL;
+        bool at_site = e->parent == NO_EXP && args[i].n &&
+                       !(args[i].t[0].flags & (TF_ORIGIN_BODY | TF_ORIGIN_ARG));
         SrcLoc loc;
         if (se == SE_NONE)
             continue;
-        loc = pp_expansion_loc(args[i]) == site ? args[i]->loc : site;
+        loc = at_site ? args[i].t[0].loc : site;
         if (mi->evals[i] >= 2) {
             if (already_reported(a->hyg, loc))
                 continue;
@@ -600,11 +602,9 @@ static void on_expand(void *ctx, Expansion *e, Token **args, int nargs)
                             "evaluated", i + 1, m->name->str);
         }
         if (d) {
-            Token *t = args[i];
-            while (t->next && t->next->kind != TK_EOF)
-                t = t->next;
-            if (pp_expansion_loc(args[i]) == site)
-                diag_set_range(d, args[i]->loc, t->loc + t->rawlen);
+            const Tok *last = &args[i].t[args[i].n - 1];
+            if (at_site)
+                diag_set_range(d, args[i].t[0].loc, last->loc + last->len);
             diag_note(a->diag, d, m->name_loc, "'%s' is defined here",
                       macro_signature(a->arena, m));
         }

@@ -191,7 +191,8 @@ bool tu_begin(TU *tu, const char *path)
 
 void tu_drain(TU *tu)
 {
-    while (pp_next(&tu->pp)->kind != TK_EOF)
+    Tok t;
+    while (pp_next(&tu->pp, &t))
         ;
 }
 

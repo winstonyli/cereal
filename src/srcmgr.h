@@ -1,34 +1,44 @@
-/* srcmgr.h - source files and the global location space. */
+/* srcmgr.h - source files and the global location space.
+ *
+ * Every byte cereal ever lexes lives in one reserved virtual-address region:
+ * a SrcLoc is an offset into it, so the text at a location is simply
+ * `region + loc`.  Each file (or scratch chunk) starts on a page boundary
+ * and is followed by at least SRC_PAD zero bytes, so scanners may read
+ * past the end of any buffer without bounds checks. */
 #ifndef CEREAL_SRCMGR_H
 #define CEREAL_SRCMGR_H
 
 #include "common.h"
 
-/* A location in the global offset space; 0 is invalid. */
-typedef uint32_t SrcLoc;
+typedef uint32_t SrcLoc;   /* 0 is invalid */
 
 typedef struct SrcRange {
-    SrcLoc begin, end; /* half-open */
+    SrcLoc begin, end;     /* half-open */
 } SrcRange;
+
+#define SRC_PAD 64
 
 typedef enum {
     SF_USER,
     SF_SYSTEM,
-    SF_VIRTUAL /* <built-in>, <command line>, _Pragma scratch */
+    SF_VIRTUAL,            /* <built-in>, <command line> */
+    SF_SCRATCH             /* synthesized spellings (##, #, builtins) */
 } SrcFileKind;
 
 typedef struct SrcFile {
     int id;
     const char *path;      /* as opened (normalized) */
     const char *name;      /* presumed name for diagnostics/__FILE__ */
-    const char *buf;       /* contents, NUL terminated */
-    uint32_t size;
-    SrcLoc base;           /* location of buf[0] */
-    uint32_t *lines;       /* offsets of line starts */
+    const char *buf;       /* == region + base; NUL + zero padding after */
+    uint32_t size;         /* bytes of content */
+    uint32_t span;         /* location range reserved for this file */
+    SrcLoc base;
+    uint32_t *lines;       /* lazily computed line starts */
     uint32_t nlines;
+    int8_t has_cr;         /* -1 unknown, 0/1 */
     SrcFileKind kind;
     bool pragma_once;
-    bool system_header;    /* set by #pragma GCC system_header or dir */
+    bool system_header;
     struct Ident *guard;   /* detected include guard macro */
     bool guard_checked;
     void *skel;            /* cached Skeleton (skel.c) */
@@ -37,26 +47,47 @@ typedef struct SrcFile {
 
 typedef struct SrcMgr {
     Arena *arena;
-    VEC(SrcFile *) files;
+    char *region;
+    size_t region_size;
+    size_t committed;      /* bytes of region made readable */
     SrcLoc next_base;
+    VEC(SrcFile *) files;
+    SrcFile **path_slots;  /* open-addressing map path -> file */
+    size_t path_cap, path_count;
+    SrcFile *scratch;
 } SrcMgr;
 
 void srcmgr_init(SrcMgr *sm, Arena *a);
 void srcmgr_free(SrcMgr *sm);
 
-/* Load a file from disk (cached by path). Returns NULL if unreadable. */
+/* Load a file (cached by normalized path).  NULL if unreadable. */
 SrcFile *srcmgr_load(SrcMgr *sm, const char *path, SrcFileKind kind);
-/* Create an in-memory buffer (contents copied). */
+/* In-memory buffer (contents copied into the region). */
 SrcFile *srcmgr_add_virtual(SrcMgr *sm, const char *name, const char *buf,
                             size_t len);
+/* Copy bytes into the scratch area; returns their location.  The bytes
+ * are followed by a NUL. */
+SrcLoc srcmgr_scratch(SrcMgr *sm, const char *s, size_t n);
+
+static inline const char *srcmgr_ptr(const SrcMgr *sm, SrcLoc loc)
+{
+    return sm->region + loc;
+}
 
 SrcFile *srcmgr_file_of(const SrcMgr *sm, SrcLoc loc);
 uint32_t srcmgr_offset(const SrcFile *f, SrcLoc loc);
 /* 1-based line and column (column counts bytes). */
-void srcmgr_linecol(const SrcFile *f, SrcLoc loc, uint32_t *line, uint32_t *col);
-SrcLoc srcmgr_loc_of(const SrcFile *f, uint32_t line, uint32_t col);
-/* Pointer to the line containing loc and its length (without newline). */
-const char *srcmgr_line_text(const SrcFile *f, uint32_t line, uint32_t *len);
+void srcmgr_linecol(SrcFile *f, SrcLoc loc, uint32_t *line, uint32_t *col);
+SrcLoc srcmgr_loc_of(SrcFile *f, uint32_t line, uint32_t col);
+const char *srcmgr_line_text(SrcFile *f, uint32_t line, uint32_t *len);
+
+/* Incremental line lookup for monotone (mostly forward) queries. */
+typedef struct LineCursor {
+    SrcFile *file;
+    uint32_t off;
+    uint32_t line;
+} LineCursor;
+uint32_t linecursor_line(LineCursor *c, SrcFile *f, SrcLoc loc);
 
 char *path_dirname(Arena *a, const char *path);
 char *path_join(Arena *a, const char *dir, const char *file);

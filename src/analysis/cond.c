@@ -32,9 +32,12 @@ typedef struct Node {
 
 typedef struct PX {
     Arena *arena;
-    Token *t;
+    Analysis *an;
+    const Tok *t;           /* array ends with a TK_EOF sentinel */
     bool ok;
 } PX;
+
+#define PTEXT(p, t) pp_text((p)->an->pp, (t))
 
 static Node *px_cond(PX *p);
 
@@ -46,9 +49,9 @@ static Node *mk(PX *p, NKind k)
     return n;
 }
 
-static bool num_value(const Token *t, intmax_t *out)
+static bool num_value(PX *p, const Tok *t, intmax_t *out)
 {
-    const char *s = t->text;
+    const char *s = PTEXT(p, t);
     uint32_t i = 0, n = t->len;
     uintmax_t v = 0;
     int base = 10;
@@ -81,46 +84,46 @@ static bool num_value(const Token *t, intmax_t *out)
 
 static Node *px_primary(PX *p)
 {
-    Token *t = p->t;
+    const Tok *t = p->t;
     Node *n;
     if (tok_is_punct(t, P_LPAREN)) {
-        p->t = t->next;
+        p->t = (t + 1);
         n = px_cond(p);
         if (!tok_is_punct(p->t, P_RPAREN)) {
             p->ok = false;
             return n;
         }
-        p->t = p->t->next;
+        p->t = (p->t + 1);
         return n;
     }
-    if (tok_is_ident(t, "defined")) {
+    if (tok_is_word(p->an->in, t, "defined")) {
         bool paren;
-        p->t = t->next;
+        p->t = (t + 1);
         paren = tok_is_punct(p->t, P_LPAREN);
         if (paren)
-            p->t = p->t->next;
+            p->t = (p->t + 1);
         if (p->t->kind != TK_IDENT) {
             p->ok = false;
             return mk(p, N_NUM);
         }
         n = mk(p, N_DEFINED);
-        n->id = p->t->ident;
-        p->t = p->t->next;
+        n->id = tok_ident(p->an->in, p->t);
+        p->t = (p->t + 1);
         if (paren) {
             if (!tok_is_punct(p->t, P_RPAREN))
                 p->ok = false;
             else
-                p->t = p->t->next;
+                p->t = (p->t + 1);
         }
         return n;
     }
-    if (t->kind == TK_IDENT && tok_is_punct(t->next, P_LPAREN)) {
+    if (t->kind == TK_IDENT && tok_is_punct((t + 1), P_LPAREN)) {
         /* function-like macro call: opaque */
         StrBuf sb = {0};
         int depth = 0;
-        Token *u = t;
+        const Tok *u = t;
         n = mk(p, N_CALL);
-        n->id = t->ident;
+        n->id = tok_ident(p->an->in, t);
         do {
             if (tok_is_punct(u, P_LPAREN))
                 depth++;
@@ -128,8 +131,8 @@ static Node *px_primary(PX *p)
                 depth--;
             if (sb.len)
                 sb_putc(&sb, ' ');
-            sb_putn(&sb, u->text, u->len);
-            u = u->next;
+            sb_putn(&sb, PTEXT(p, u), u->len);
+            u = (u + 1);
         } while (u->kind != TK_EOF && depth > 0);
         n->text = arena_strndup(p->arena, sb_cstr(&sb), sb.len);
         sb_free(&sb);
@@ -138,43 +141,43 @@ static Node *px_primary(PX *p)
     }
     if (t->kind == TK_IDENT) {
         n = mk(p, N_VAR);
-        n->id = t->ident;
-        p->t = t->next;
+        n->id = tok_ident(p->an->in, t);
+        p->t = (t + 1);
         return n;
     }
     if (t->kind == TK_PPNUM) {
         n = mk(p, N_NUM);
-        if (!num_value(t, &n->num))
+        if (!num_value(p, t, &n->num))
             p->ok = false;
-        p->t = t->next;
+        p->t = (t + 1);
         return n;
     }
     if (t->kind == TK_CHAR) {
         n = mk(p, N_NUM);
-        n->num = (unsigned char)t->text[t->text[0] == 'L' ? 2 : 1];
-        p->t = t->next;
+        n->num = (unsigned char)PTEXT(p, t)[PTEXT(p, t)[0] == 'L' ? 2 : 1];
+        p->t = (t + 1);
         return n;
     }
     p->ok = false;
-    p->t = t->kind == TK_EOF ? t : t->next;
+    p->t = t->kind == TK_EOF ? t : (t + 1);
     return mk(p, N_NUM);
 }
 
 static Node *px_unary(PX *p)
 {
-    Token *t = p->t;
+    const Tok *t = p->t;
     if (tok_is_punct(t, P_BANG) || tok_is_punct(t, P_MINUS) ||
         tok_is_punct(t, P_PLUS) || tok_is_punct(t, P_TILDE)) {
         Node *n = mk(p, N_UN);
         n->op = t->punct;
-        p->t = t->next;
+        p->t = (t + 1);
         n->a = px_unary(p);
         return n;
     }
     return px_primary(p);
 }
 
-static int prec(const Token *t)
+static int prec(const Tok *t)
 {
     if (t->kind != TK_PUNCT)
         return -1;
@@ -203,7 +206,7 @@ static Node *px_binary(PX *p, int min)
             return lhs;
         n = mk(p, N_BIN);
         n->op = p->t->punct;
-        p->t = p->t->next;
+        p->t = (p->t + 1);
         n->a = lhs;
         n->b = px_binary(p, pr + 1);
         lhs = n;
@@ -215,26 +218,31 @@ static Node *px_cond(PX *p)
     Node *c = px_binary(p, 1);
     if (tok_is_punct(p->t, P_QUESTION)) {
         Node *n = mk(p, N_TERN);
-        p->t = p->t->next;
+        p->t = (p->t + 1);
         n->a = c;
         n->b = px_cond(p);
         if (!tok_is_punct(p->t, P_COLON)) {
             p->ok = false;
             return n;
         }
-        p->t = p->t->next;
+        p->t = (p->t + 1);
         n->c = px_cond(p);
         return n;
     }
     return c;
 }
 
-static Node *parse_cond(Arena *a, Token *toks)
+static Node *parse_cond(Analysis *an, TokSpan toks)
 {
     PX p;
     Node *n;
-    p.arena = a;
-    p.t = toks;
+    Tok *arr = NEW_ARRAY(an->arena, Tok, toks.n + 1);
+    if (toks.n)
+        memcpy(arr, toks.t, sizeof(Tok) * toks.n);
+    arr[toks.n].kind = TK_EOF;
+    p.arena = an->arena;
+    p.an = an;
+    p.t = arr;
     p.ok = true;
     n = px_cond(&p);
     if (!p.ok || p.t->kind != TK_EOF)
@@ -498,19 +506,19 @@ typedef struct Frame {
 struct CondState {
     VEC(SrcFile *) done;
     /* dynamic */
-    VEC(Token *) undefined_refs;
+    VEC(Tok) undefined_refs;
 };
 
-static Node *branch_cond(Arena *a, SkDirective *d)
+static Node *branch_cond(Analysis *an, SkDirective *d)
 {
     switch (d->kind) {
     case SK_IFDEF:
-        return d->name ? make_defined(a, d->name, false) : NULL;
+        return d->name ? make_defined(an->arena, d->name, false) : NULL;
     case SK_IFNDEF:
-        return d->name ? make_defined(a, d->name, true) : NULL;
+        return d->name ? make_defined(an->arena, d->name, true) : NULL;
     case SK_IF:
     case SK_ELIF:
-        return parse_cond(a, d->toks);
+        return parse_cond(an, d->toks);
     default:
         return NULL;
     }
@@ -660,20 +668,24 @@ static bool macro_like_word(const char *s, size_t n)
     return upper;
 }
 
-static bool chain_mentions(Skeleton *sk, int opener, int upto, const char *w,
+static bool chain_mentions(const Interner *in, Skeleton *sk, int opener,
+                           int upto, const char *w,
                            size_t n)
 {
     int i;
     for (i = opener; i <= upto && i < (int)sk->dirs.len; i++) {
         SkDirective *d = &sk->dirs.data[i];
-        Token *t;
+        uint32_t k;
         if (i != opener && d->opener != opener)
             continue;
         if (d->kind == SK_ENDIF)
             continue;
-        for (t = d->toks; t->kind != TK_EOF; t = t->next)
-            if (t->kind == TK_IDENT && t->len == n && !memcmp(t->text, w, n))
+        for (k = 0; k < d->toks.n; k++) {
+            const Tok *t = &d->toks.t[k];
+            if (t->kind == TK_IDENT && t->len == n &&
+                !memcmp(tok_ident(in, t)->str, w, n))
                 return true;
+        }
     }
     return false;
 }
@@ -698,7 +710,7 @@ static void check_label(Analysis *a, Skeleton *sk, int idx)
             s++;
         if (!macro_like_word(b, (size_t)(s - b)))
             continue;
-        if (chain_mentions(sk, d->opener, idx, b, (size_t)(s - b)))
+        if (chain_mentions(a->in, sk, d->opener, idx, b, (size_t)(s - b)))
             return; /* matches */
         if (!any) {
             first_word = b;
@@ -729,7 +741,7 @@ static void analyze_file(Analysis *a, SrcFile *f)
                 return;
             memset(&stack[depth], 0, sizeof stack[depth]);
             stack[depth].opener = (int)i;
-            stack[depth].cur = branch_cond(a->arena, d);
+            stack[depth].cur = branch_cond(a, d);
             stack[depth].unknown = stack[depth].cur == NULL;
             depth++;
             check_branch(a, sk, stack, depth, d);
@@ -749,7 +761,7 @@ static void analyze_file(Analysis *a, SrcFile *f)
                 fr->cur_is_else = true;
                 check_label(a, sk, (int)i);
             } else {
-                fr->cur = branch_cond(a->arena, d);
+                fr->cur = branch_cond(a, d);
                 if (!fr->cur)
                     fr->unknown = true;
             }
@@ -815,7 +827,7 @@ static void on_file_enter(void *ctx, SrcFile *f, const IncludeEvent *via)
     analyze_file(a, f);
 }
 
-static void on_macro_ref(void *ctx, Ident *id, Macro *m, const Token *tok,
+static void on_macro_ref(void *ctx, Ident *id, Macro *m, const Tok *tok,
                          RefKind kind)
 {
     Analysis *a = ctx;
@@ -824,7 +836,7 @@ static void on_macro_ref(void *ctx, Ident *id, Macro *m, const Token *tok,
         return;
     if (!an_user_loc(a, tok->loc))
         return;
-    vec_push(&a->cond->undefined_refs, (Token *)tok);
+    vec_push(&a->cond->undefined_refs, *tok);
 }
 
 void cond_attach(Analysis *a)
@@ -843,8 +855,8 @@ void cond_finish(Analysis *a)
     size_t i, j;
     VEC(Ident *) seen = {0};
     for (i = 0; i < a->cond->undefined_refs.len; i++) {
-        Token *t = a->cond->undefined_refs.data[i];
-        Ident *id = t->ident, *best = NULL;
+        Tok *t = &a->cond->undefined_refs.data[i];
+        Ident *id = tok_ident(a->in, t), *best = NULL;
         unsigned best_d = 3, limit;
         bool dup = false;
         if (id->history)
@@ -881,7 +893,7 @@ void cond_finish(Analysis *a)
             Diagnostic *d = diag_report(a->diag, DL_WARNING, "cond-typo", t->loc,
                 "'%s' is never defined in this translation unit; did you mean "
                 "'%s'?", id->str, best->str);
-            diag_set_range(d, t->loc, t->loc + t->rawlen);
+            diag_set_range(d, t->loc, t->loc + t->len);
             if (d && best->history->file && best->history->file->kind != SF_VIRTUAL)
                 diag_note(a->diag, d, best->history->name_loc,
                           "'%s' is defined here", best->str);

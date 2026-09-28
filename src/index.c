@@ -41,45 +41,33 @@ static IdxExp *exp_of(Index *ix, Expansion *e)
     return ix->exps.data[e->id];
 }
 
-static void on_expand(void *ctx, Expansion *e, Token **args, int nargs)
+static void on_expand(void *ctx, const Expansion *ce, const TokSpan *args,
+                      int nargs)
 {
     Index *ix = ctx;
-    IdxExp *x = exp_of(ix, e);
+    Expansion *e = (Expansion *)ce;
+    IdxExp *x;
     unsigned flags = 0;
-    SrcLoc loc = e->name_loc;
+    SrcLoc loc;
     int i;
-    Prov *p;
-
-    /* root and depth */
-    x->root = e;
-    x->depth = 0;
-    for (p = e->name_prov; p; p = p->exp->name_prov) {
-        x->root = p->exp;
-        x->depth++;
-    }
+    if (!e)
+        return;
+    x = exp_of(ix, e);
+    loc = e->name_loc;
+    x->root = ix->pp->expansions.data[e->root];
+    x->depth = e->depth;
     x->nargs = nargs;
     if (nargs) {
         x->args = NEW_ARRAY(ix->arena, char *, nargs);
         for (i = 0; i < nargs; i++)
-            x->args[i] = tokens_str(ix->arena, args[i], NULL);
+            x->args[i] = tokens_str(ix->pp, args[i]);
     }
-
-    if (e->name_prov) {
-        switch (e->name_prov->kind) {
-        case PROV_BODY: flags |= IREF_IN_BODY; break;
-        case PROV_ARG: flags |= IREF_FROM_ARG; break;
-        case PROV_PASTE: flags |= IREF_PASTED; break;
-        default: break;
-        }
-        /* an argument token may itself come from a body */
-        if (e->name_prov->kind == PROV_ARG) {
-            Prov *q = e->name_prov->inner;
-            if (q && q->kind == PROV_BODY)
-                flags |= IREF_IN_BODY;
-            else if (q && q->kind == PROV_PASTE)
-                flags |= IREF_PASTED;
-        }
-    }
+    if (e->name_flags & TF_ORIGIN_BODY)
+        flags |= IREF_IN_BODY;
+    if (e->name_flags & TF_ORIGIN_ARG)
+        flags |= IREF_FROM_ARG;
+    if (e->name_flags & TF_PASTED)
+        flags |= IREF_PASTED;
     if (flags & (IREF_IN_BODY | IREF_PASTED)) {
         /* dedupe: one ref per (location, macro) */
         size_t k;
@@ -92,41 +80,38 @@ static void on_expand(void *ctx, Expansion *e, Token **args, int nargs)
             flags, e);
 }
 
-static void on_macro_ref(void *ctx, Ident *id, Macro *m, const Token *tok,
+static void on_macro_ref(void *ctx, Ident *id, Macro *m, const Tok *tok,
                          RefKind kind)
 {
     Index *ix = ctx;
     if (kind == REF_EXPANSION)
         return;
-    add_ref(ix, id, m, tok->loc, tok->rawlen, kind,
-            tok->prov ? IREF_IN_BODY : 0, NULL);
+    add_ref(ix, id, m, tok->loc, tok->len, kind,
+            (tok->flags & TF_ORIGIN_BODY) ? IREF_IN_BODY : 0, NULL);
 }
 
 static void on_define(void *ctx, Macro *m, Macro *replaced)
 {
     Index *ix = ctx;
-    Token *t, *prev = NULL;
+    uint32_t i;
     (void)replaced;
     if (m->predefined)
         return;
-    for (t = m->body; t->kind != TK_EOF; prev = t, t = t->next) {
-        int i, pi = -1;
+    for (i = 0; i < m->body_len; i++) {
+        const Tok *t = &m->body[i], *prev = i ? &m->body[i - 1] : NULL;
         if (t->kind != TK_IDENT)
             continue;
-        for (i = 0; i < m->nparams; i++)
-            if (m->params[i] == t->ident)
-                pi = i;
-        if (pi >= 0) {
+        if (t->flags & TF_PARAM) {
             IdxParamRef r;
             r.macro = m;
-            r.param = pi;
+            r.param = t->punct;
             r.loc = t->loc;
-            r.len = t->rawlen;
+            r.len = t->len;
             vec_push(&ix->params, r);
         } else if (!(prev && (tok_is_punct(prev, P_DOT) ||
                               tok_is_punct(prev, P_ARROW)))) {
-            add_ref(ix, t->ident, NULL, t->loc, t->rawlen, REF_EXPANSION,
-                    IREF_IN_BODY | IREF_STATIC, NULL);
+            add_ref(ix, tok_ident(ix->pp->in, t), NULL, t->loc, t->len,
+                    REF_EXPANSION, IREF_IN_BODY | IREF_STATIC, NULL);
         }
     }
 }
@@ -242,21 +227,15 @@ void index_free(Index *ix)
 
 void index_run(Index *ix)
 {
-    for (;;) {
-        Token *t = pp_next(ix->pp);
-        Prov *p;
-        Expansion *root = NULL;
+    Tok t;
+    while (pp_next(ix->pp, &t)) {
         IdxExp *x;
-        if (t->kind == TK_EOF)
-            break;
-        for (p = t->prov; p; p = p->exp->name_prov)
-            root = p->exp;
-        if (!root)
+        if (ix->pp->out_root == NO_EXP)
             continue;
-        x = exp_of(ix, root);
-        if (x->text.len && (t->flags & (TF_SPACE | TF_BOL)))
+        x = exp_of(ix, ix->pp->expansions.data[ix->pp->out_root]);
+        if (x->text.len && (t.flags & (TF_SPACE | TF_BOL)))
             sb_putc(&x->text, ' ');
-        sb_putn(&x->text, t->text, t->len);
+        sb_putn(&x->text, pp_text(ix->pp, &t), t.len);
     }
 }
 
@@ -436,7 +415,7 @@ IdxTarget index_resolve(Index *ix, SrcLoc loc)
         t.range.end = r->loc + r->len;
         if (r->macro)
             add_candidate(&t, r->macro);
-        if (r->exp && !r->exp->name_prov && !(r->flags & IREF_IN_BODY) &&
+        if (r->exp && r->exp->parent == NO_EXP && !(r->flags & IREF_IN_BODY) &&
             r->exp->id < ix->exps.len)
             t.top = ix->exps.data[r->exp->id];
     }
@@ -658,7 +637,7 @@ void index_dump_json(Index *ix, FILE *out, bool all)
         json_key(&w, "signature");
         json_str(&w, macro_signature(ix->arena, m));
         json_key(&w, "body");
-        json_str(&w, macro_body_str(ix->arena, m));
+        json_str(&w, macro_body_str(ix->pp, m));
         jloc(&w, ix->sm, "", m->name_loc);
         json_key(&w, "params");
         json_begin_array(&w);

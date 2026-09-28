@@ -29,7 +29,7 @@ typedef struct SkDirective {
     SrcLoc hash_loc;
     SrcLoc kw_loc;
     SrcLoc end_loc;
-    Token *toks;            /* tokens after the keyword, EOF-terminated */
+    TokSpan toks;           /* tokens after the keyword (arena copy) */
     struct Ident *name;     /* ifdef/ifndef/define/undef operand */
     const char *comment;    /* trailing comment text (for #else/#endif) */
     int depth;              /* conditional nesting depth (0 = top level) */
@@ -48,6 +48,7 @@ typedef struct Skeleton {
     bool guard_covers_file;
 } Skeleton;
 
-Skeleton *skel_get(Arena *a, Interner *in, LexOptions lo, SrcFile *f);
+Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
+                   SrcFile *f);
 
 #endif

@@ -3,7 +3,7 @@
 
 #include <string.h>
 
-static SkKind classify(const Token *kw)
+static SkKind classify(Interner *in, const Tok *kw)
 {
     static const struct {
         const char *s;
@@ -14,10 +14,8 @@ static SkKind classify(const Token *kw)
                {"define", SK_DEFINE}, {"undef", SK_UNDEF},
                {"include", SK_INCLUDE}, {"include_next", SK_INCLUDE}};
     size_t i;
-    if (kw->kind != TK_IDENT)
-        return SK_OTHER;
     for (i = 0; i < ARRAY_LEN(tab); i++)
-        if (tok_is_ident(kw, tab[i].s))
+        if (tok_is_word(in, kw, tab[i].s))
             return tab[i].k;
     return SK_OTHER;
 }
@@ -44,53 +42,59 @@ static const char *trailing_comment(Arena *a, SrcFile *f, SrcLoc after)
     return NULL;
 }
 
-Skeleton *skel_get(Arena *a, Interner *in, LexOptions lo, SrcFile *f)
+Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
+                   SrcFile *f)
 {
     Skeleton *sk;
-    Token *t;
+    Lexer L;
+    Tok t;
     VEC(int) stack = {0};
+    VEC(Tok) line = {0};
+    bool have = false;
     if (f->skel)
         return f->skel;
     sk = NEW(a, Skeleton);
     sk->file = f;
     sk->guard_ifndef_index = -1;
-    t = lex_file(a, in, NULL, lo, f);
-    while (t->kind != TK_EOF) {
-        if ((t->flags & TF_BOL) && tok_is_punct(t, P_HASH)) {
-            Token *hash = t, *kw = t->next, *first, *last;
+    lexer_init(&L, sm, in, NULL, lo, f);
+    for (;;) {
+        if (!have)
+            lex_next(&L, &t);
+        have = false;
+        if (t.kind == TK_EOF)
+            break;
+        if ((t.flags & TF_BOL) && tok_is_punct(&t, P_HASH)) {
             SkDirective d;
+            Tok kw;
             memset(&d, 0, sizeof d);
-            d.hash_loc = hash->loc;
+            d.hash_loc = t.loc;
             d.opener = -1;
-            if (kw->flags & TF_BOL || kw->kind == TK_EOF) {
+            lex_next(&L, &kw);
+            if ((kw.flags & TF_BOL) || kw.kind == TK_EOF) {
                 t = kw;
+                have = true;
                 continue; /* null directive */
             }
-            d.kind = classify(kw);
-            d.kw_loc = kw->loc;
-            /* cut the line */
-            first = kw->next;
-            last = kw;
-            for (t = first; !(t->flags & TF_BOL) && t->kind != TK_EOF; t = t->next)
-                last = t;
-            d.end_loc = last->loc + last->rawlen;
-            if (first == t) {
-                d.toks = NEW(a, Token);
-                d.toks->kind = TK_EOF;
-                d.toks->loc = d.end_loc;
-                d.toks->text = "";
-            } else {
-                Token *eof = NEW(a, Token);
-                eof->kind = TK_EOF;
-                eof->loc = d.end_loc;
-                eof->text = "";
-                last->next = eof;
-                d.toks = first;
+            d.kind = classify(in, &kw);
+            d.kw_loc = kw.loc;
+            d.end_loc = kw.loc + kw.len;
+            line.len = 0;
+            for (;;) {
+                lex_next(&L, &t);
+                if ((t.flags & TF_BOL) || t.kind == TK_EOF)
+                    break;
+                vec_push(&line, t);
+                d.end_loc = t.loc + t.len;
             }
+            have = true;
+            d.toks.n = (uint32_t)line.len;
+            d.toks.t = NEW_ARRAY(a, Tok, line.len + 1);
+            if (line.len)
+                memcpy((Tok *)d.toks.t, line.data, sizeof(Tok) * line.len);
             if ((d.kind == SK_IFDEF || d.kind == SK_IFNDEF ||
                  d.kind == SK_DEFINE || d.kind == SK_UNDEF) &&
-                d.toks->kind == TK_IDENT)
-                d.name = d.toks->ident;
+                d.toks.n && d.toks.t[0].kind == TK_IDENT)
+                d.name = tok_ident(in, &d.toks.t[0]);
             if (d.kind == SK_ELSE || d.kind == SK_ENDIF)
                 d.comment = trailing_comment(a, f, d.end_loc);
             switch (d.kind) {
@@ -115,23 +119,34 @@ Skeleton *skel_get(Arena *a, Interner *in, LexOptions lo, SrcFile *f)
         sk->ntokens++;
         if (stack.len == 0)
             sk->ntokens_toplevel++;
-        t = t->next;
     }
     vec_free(&stack);
+    vec_free(&line);
+    lexer_free(&L);
+    {
+        /* move the directives into the arena (skeletons live with the TU) */
+        SkDirective *d = NEW_ARRAY(a, SkDirective, sk->dirs.len + 1);
+        if (sk->dirs.len)
+            memcpy(d, sk->dirs.data, sizeof *d * sk->dirs.len);
+        free(sk->dirs.data);
+        sk->dirs.data = d;
+        sk->dirs.cap = sk->dirs.len;
+    }
 
     /* guard shape */
     if (sk->dirs.len >= 2) {
         SkDirective *d0 = &sk->dirs.data[0], *d1 = &sk->dirs.data[1];
         Ident *g = NULL;
-        if (d0->kind == SK_IFNDEF)
+        if (d0->kind == SK_IFNDEF) {
             g = d0->name;
-        else if (d0->kind == SK_IF && tok_is_punct(d0->toks, P_BANG) &&
-                 tok_is_ident(d0->toks->next, "defined")) {
-            Token *x = d0->toks->next->next;
-            if (tok_is_punct(x, P_LPAREN))
-                x = x->next;
+        } else if (d0->kind == SK_IF && d0->toks.n >= 3 &&
+                   tok_is_punct(&d0->toks.t[0], P_BANG) &&
+                   tok_is_word(in, &d0->toks.t[1], "defined")) {
+            const Tok *x = &d0->toks.t[2];
+            if (tok_is_punct(x, P_LPAREN) && d0->toks.n >= 4)
+                x++;
             if (x->kind == TK_IDENT)
-                g = x->ident;
+                g = tok_ident(in, x);
         }
         if (g) {
             size_t i;
@@ -139,8 +154,6 @@ Skeleton *skel_get(Arena *a, Interner *in, LexOptions lo, SrcFile *f)
             sk->guard_ifndef_index = 0;
             if (d1->kind == SK_DEFINE && d1->depth == 1)
                 sk->guard_define = d1->name;
-            /* covers the file: the matching #endif is the last directive
-             * and no tokens are at top level */
             for (i = 1; i < sk->dirs.len; i++)
                 if (sk->dirs.data[i].kind == SK_ENDIF &&
                     sk->dirs.data[i].opener == 0)

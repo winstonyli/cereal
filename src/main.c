@@ -239,7 +239,7 @@ static int mode_query(Options *o, const char *kind, const char *at)
             for (k = 0; k < t.nmacros; k++) {
                 Macro *m = t.macros[k];
                 printf("#define %s %s\n", macro_signature(&tu.arena, m),
-                       macro_body_str(&tu.arena, m));
+                       macro_body_str(&tu.pp, m));
                 printf("  defined at %s", loc_str(&tu, m->name_loc));
                 if (m->undef_loc)
                     printf(", undefined at %s", loc_str(&tu, m->undef_loc));
