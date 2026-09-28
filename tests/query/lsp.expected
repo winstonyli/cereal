@@ -1,0 +1,65 @@
+== def lsp.c:8:13
+lsp.c:2:9 SQUARE(x)
+== def lsp.c:4:18
+lsp.c:2:9 SQUARE(x)
+== def lsp.c:9:19
+lsp.h:3:9 LIMIT
+== def lsp.c:16:24
+lsp.c:15:9 SQUARE(x)
+== def lsp.c:2:21
+lsp.c:2:16 param x of SQUARE
+== def lsp.c:1:12
+lsp.h:1:1
+== def lsp.c:19:12
+lsp.c:15:9 SQUARE(x)
+== refs lsp.c:2:9
+lsp.c:2:9 definition
+lsp.c:4:18 expansion in-body
+lsp.c:4:30 expansion in-body
+lsp.c:8:13 expansion
+lsp.c:14:8 undef
+== refs lsp.c:15:9
+lsp.c:15:9 definition
+lsp.c:4:18 expansion body-text
+lsp.c:4:30 expansion body-text
+lsp.c:16:24 expansion
+== refs lsp.h:3:9
+lsp.h:3:9 definition
+lsp.c:9:19 expansion
+lsp.c:11:8 ifdef
+lsp.c:12:10 expansion
+== refs lsp.c:5:9
+lsp.c:5:9 definition
+lsp.c:10:17 expansion pasted(not-renamable)
+== refs lsp.c:2:16
+lsp.c:2:16 definition
+lsp.c:2:21 expansion in-body
+lsp.c:2:27 expansion in-body
+== hover lsp.c:9:13
+#define TWICE(x) SQUARE(x) + SQUARE(x)
+  defined at lsp.c:4:9
+expands to: ((100) * (100)) + ((100) * (100))
+== hover lsp.c:10:13
+#define CAT(a, b) a ## b
+  defined at lsp.c:3:9
+expands to: 7
+== hover lsp.c:2:21
+parameter x of SQUARE(x)
+== visible lsp.c:14:1
+LSP_H
+LIMIT
+SQUARE(x)
+CAT(a, b)
+TWICE(x)
+FOO_BAR
+== visible lsp.c:15:1
+LSP_H
+LIMIT
+CAT(a, b)
+TWICE(x)
+FOO_BAR
+== expand lsp.c:9:13
+TWICE(LIMIT)  [lsp.c:9:13]
+  SQUARE(100)  [lsp.c:4:18]
+  SQUARE(100)  [lsp.c:4:30]
+=> ((100) * (100)) + ((100) * (100))

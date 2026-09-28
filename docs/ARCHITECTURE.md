@@ -111,3 +111,20 @@ C99 is the default. GNU preprocessor extensions that the host headers need
 `__has_attribute`, `__COUNTER__`) are supported and reported with `-pedantic`.
 The differential tests compare the token streams of `cereal -E` and
 `gcc -std=c99 -E`.
+
+## Source map
+
+| File | Role |
+|---|---|
+| `src/common.[ch]` | arena, vectors, string buffers, identifier interner |
+| `src/srcmgr.[ch]` | files, global location space, line tables |
+| `src/lex.[ch]`, `src/token.h` | phases 1–3 pp-token lexer; tokens and provenance |
+| `src/pp.[ch]` | include stack, directives, conditionals, guard detection |
+| `src/ppexpand.c` | macro replacement, `#`/`##`, builtins, `_Pragma`, `#pragma` |
+| `src/ppexpr.c` | `#if` evaluation (intmax_t/uintmax_t, §6.10.1) |
+| `src/ppout.c` | `-E` printer with linemarkers |
+| `src/skel.[ch]` | static per-file directive skeleton |
+| `src/analysis/` | hygiene, cond (configuration space), include analyses |
+| `src/index.[ch]` | LSP model and queries |
+| `src/driver.[ch]`, `src/main.c` | options, translation-unit setup, CLI |
+| `tools/probe-host.sh` | host compiler probe (generates `build/gen/host_config.c`) |

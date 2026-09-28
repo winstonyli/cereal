@@ -1,0 +1,110 @@
+/* index.h - the LSP-facing model of a translation unit's macros.
+ *
+ * Built as a PP listener while the TU is preprocessed; answers the queries
+ * an editor needs so that macros get the same features as variables and
+ * functions: definition, references, rename, hover, completion, document
+ * symbols, semantic tokens, folding and inactive regions. */
+#ifndef CEREAL_INDEX_H
+#define CEREAL_INDEX_H
+
+#include "pp.h"
+
+enum {
+    IREF_IN_BODY  = 1 << 0,   /* spelled inside a #define replacement list */
+    IREF_PASTED   = 1 << 1,   /* name synthesized by ##: not renamable */
+    IREF_FROM_ARG = 1 << 2,   /* spelled in a macro argument */
+    IREF_STATIC   = 1 << 3,   /* textual occurrence in a body, unresolved */
+    IREF_SYSTEM   = 1 << 4    /* in a system header */
+};
+
+typedef struct IdxRef {
+    struct Ident *name;
+    Macro *macro;             /* NULL for undefined names / static refs */
+    SrcLoc loc;
+    uint32_t len;
+    RefKind kind;
+    unsigned flags;
+    Expansion *exp;
+} IdxRef;
+
+typedef struct IdxParamRef {
+    Macro *macro;
+    int param;
+    SrcLoc loc;
+    uint32_t len;
+} IdxParamRef;
+
+typedef struct IdxExp {
+    Expansion *e;
+    Expansion *root;          /* outermost (file-level) expansion */
+    int depth;
+    char **args;              /* raw argument text */
+    int nargs;
+    StrBuf text;              /* root only: final expanded text */
+} IdxExp;
+
+typedef struct IdxCheckpoint {
+    SrcLoc loc;
+    uint32_t seq;
+} IdxCheckpoint;
+
+typedef struct IdxInclusion {
+    SrcFile *file;
+    VEC(IdxCheckpoint) cps;
+} IdxInclusion;
+
+typedef struct IdxInclude {
+    SrcFile *from, *to;
+    SrcLoc hash_loc, name_loc, name_end;
+    const char *spelled;
+    IncludeResult result;
+} IdxInclude;
+
+typedef struct IdxBlock {
+    SrcLoc begin, end;        /* #if .. #endif */
+} IdxBlock;
+
+typedef struct Index {
+    PP *pp;
+    Arena *arena;
+    SrcMgr *sm;
+    VEC(IdxRef) refs;
+    VEC(IdxParamRef) params;
+    VEC(IdxExp *) exps;       /* indexed by Expansion id */
+    VEC(IdxInclusion *) inclusions;
+    VEC(IdxInclusion *) stack;
+    VEC(IdxInclude) includes;
+    VEC(SrcRange) inactive;
+    VEC(IdxBlock) blocks;
+    VEC(SrcLoc) open_blocks;
+    bool sorted;
+} Index;
+
+typedef enum { TGT_NONE, TGT_MACRO, TGT_PARAM, TGT_INCLUDE } TargetKind;
+
+typedef struct IdxTarget {
+    TargetKind kind;
+    struct Ident *name;
+    Macro *macros[16];        /* candidate definitions (usually one) */
+    int nmacros;
+    int param;                /* TGT_PARAM */
+    SrcFile *file;            /* TGT_INCLUDE */
+    SrcRange range;           /* extent of the symbol under the cursor */
+    IdxExp *top;              /* file-level expansion at the cursor, if any */
+} IdxTarget;
+
+void index_init(Index *ix, PP *pp);
+void index_free(Index *ix);
+/* Drain the preprocessor, recording expansion results. */
+void index_run(Index *ix);
+
+IdxTarget index_resolve(Index *ix, SrcLoc loc);
+/* Macros live at loc (for completion), in definition order. */
+size_t index_visible(Index *ix, SrcLoc loc, Macro ***out);
+/* All references to the target (definitions first). */
+size_t index_references(Index *ix, const IdxTarget *t, IdxRef **out);
+
+SrcFile *index_find_file(Index *ix, const char *path);
+void index_dump_json(Index *ix, FILE *out, bool all);
+
+#endif
