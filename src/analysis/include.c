@@ -95,7 +95,7 @@ static void on_file_enter(void *ctx, SrcFile *f, const IncludeEvent *via)
      * the first time this header is entered */
     if (via && !info->entered && an_user_file(f)) {
         Skeleton *sk = an_skeleton(a, f);
-        Macro *m = sk->guard_ifndef ? sk->guard_ifndef->macro : NULL;
+        Macro *m = sk->guard_ifndef ? mt_cur(a->pp->mt, sk->guard_ifndef) : NULL;
         if (m && sk->guard_covers_file && m->file != f && !m->predefined) {
             Diagnostic *d = diag_report(a->diag, DL_WARNING, "guard-collision",
                 sk->dirs.data[0].kw_loc,

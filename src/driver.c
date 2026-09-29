@@ -147,10 +147,17 @@ void options_free(Options *o)
 
 void tu_init(TU *tu, Options *opt)
 {
+    Interner *in = interner_new();
+    tu_init_shared(tu, opt, in);
+    interner_release(in);
+}
+
+void tu_init_shared(TU *tu, Options *opt, Interner *in)
+{
     memset(tu, 0, sizeof *tu);
     tu->opt = opt;
     arena_init(&tu->arena);
-    interner_init(&tu->in);
+    tu->in = interner_retain(in);
     srcmgr_init(&tu->sm, &tu->arena);
     diag_init(&tu->diag, &tu->arena, &tu->sm);
     tu->diag.cfg = opt->diag;
@@ -159,7 +166,7 @@ void tu_init(TU *tu, Options *opt)
     tu->diag.pedantic_errors = opt->pedantic_errors;
     tu->diag.color = opt->color;
     tu->diag.show_system = opt->show_system;
-    pp_init(&tu->pp, &tu->arena, &tu->in, &tu->sm, &tu->diag, &opt->pp);
+    pp_init(&tu->pp, &tu->arena, tu->in, &tu->sm, &tu->diag, &opt->pp);
     tu->pp.host_attrs = host_attrs;
     tu->pp.check_versions = opt->check_versions;
     tu->pp.host_builtins = host_builtins;
@@ -236,7 +243,7 @@ void tu_free(TU *tu)
     pp_free(&tu->pp);
     diag_free(&tu->diag);
     srcmgr_free(&tu->sm);
-    interner_free(&tu->in);
+    interner_release(tu->in);
     arena_free(&tu->arena);
     while (tu->adopted.len)
         arena_free(&tu->adopted.data[--tu->adopted.len]);

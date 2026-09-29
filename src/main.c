@@ -494,7 +494,7 @@ static int mode_query(Options *o, const char *kind, const char *at)
                 printf("%s %s\n", loc_str(&tu, cl.macros.data[i]->name_loc),
                        macro_signature(&tu.arena, cl.macros.data[i]));
             for (i = 0; i < cl.names.len; i++)
-                if (!macro_at_version(cl.names.data[i], index_seq_at(&ix, loc)))
+                if (!macro_at_version(tu.pp.mt, cl.names.data[i], index_seq_at(&ix, loc)))
                     printf("%s (not a macro here: defining it would change "
                            "the result)\n", cl.names.data[i]->str);
             if (cl.open)

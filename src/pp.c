@@ -82,8 +82,29 @@ static void phase_a_read(PP *pp, Tok *t);
 static void guard_note_activity(PP *pp);
 static bool plan_read(PP *pp, Tok *t);
 
+/* Poisoned identifiers are reported where they are lexed (as GCC does):
+ * source text and the lines of active directives, not the replay of a
+ * macro body defined before the pragma. */
+static void check_poison_tok(PP *pp, const Tok *t)
+{
+    Ident *id = ident_by_id(pp->in, t->aux);
+    if (pp_poisoned(pp, id))
+        pp_error_at(pp, t, "attempt to use poisoned \"%s\"", id->str);
+}
+
+static void check_poison(PP *pp, TokSpan s)
+{
+    uint32_t i;
+    if (!pp->mt->npoison)
+        return;
+    for (i = 0; i < s.n; i++)
+        if (s.t[i].kind == TK_IDENT)
+            check_poison_tok(pp, &s.t[i]);
+}
+
 TokSrc pp_read_raw(PP *pp, Tok *t)
 {
+    bool reread;
     for (;;) {
         if (pp->cancel && atomic_load_u32(pp->cancel))
             pp->halted = true;
@@ -115,6 +136,8 @@ TokSrc pp_read_raw(PP *pp, Tok *t)
             pop_context(pp);
             continue;
         }
+        reread = pp->has_pending && pp->pending_unread;
+        pp->pending_unread = false;
         if (pp->mode == PPM_PLAN) {
             if (!plan_read(pp, t))
                 continue; /* it pushed a context */
@@ -133,6 +156,8 @@ TokSrc pp_read_raw(PP *pp, Tok *t)
                 !((t->flags & TF_BOL) && tok_is_punct(t, P_HASH)))
                 guard_note_activity(pp);
         }
+        if (t->kind == TK_IDENT && !reread && pp->mt->npoison)
+            check_poison_tok(pp, t);
         pp->tok_exp_loc = t->loc;
         pp->tok_root_obj = false;
         pp->tok_exp_id = NO_EXP;
@@ -148,6 +173,7 @@ void pp_unread(PP *pp, const Tok *t, TokSrc src)
     } else if (src == SRC_LEXER) {
         pp->pending = *t;
         pp->has_pending = true;
+        pp->pending_unread = true;
     }
 }
 
@@ -432,6 +458,14 @@ static const char *const month_names[] = {"Jan", "Feb", "Mar", "Apr",
                                           "May", "Jun", "Jul", "Aug",
                                           "Sep", "Oct", "Nov", "Dec"};
 
+void pp_install_macro(PP *pp, Macro *m)
+{
+    MacroSlot *s = mt_slot_w(pp->mt, m->name->id);
+    m->prev = s->hist;
+    s->hist = m;
+    s->cur = m;
+}
+
 static Macro *new_builtin(PP *pp, const char *name, BuiltinKind k,
                           bool funclike)
 {
@@ -444,9 +478,7 @@ static Macro *new_builtin(PP *pp, const char *name, BuiltinKind k,
     m->undef_seq = UINT32_MAX;
     m->file = pp->builtin_file;
     m->def_seq = pp->seq++;
-    m->prev = m->name->history;
-    m->name->history = m;
-    m->name->macro = m;
+    pp_install_macro(pp, m);
     vec_push(&pp->macros, m);
     return m;
 }
@@ -476,6 +508,8 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
     memset(pp, 0, sizeof *pp);
     pp->arena = a;
     pp->in = in;
+    pp->mt = mt_new();
+    pp->mt_owned = true;
     pp->sm = sm;
     pp->diag = d;
     pp->opt = opt;
@@ -535,6 +569,7 @@ void pp_init_worker(PP *w, const PP *main, Arena *a, DiagEngine *d)
     memset(w, 0, sizeof *w);
     w->arena = a;
     w->in = main->in;
+    w->mt = main->mt;
     w->sm = main->sm;
     w->diag = d;
     w->opt = main->opt;
@@ -576,6 +611,8 @@ void pp_free(PP *pp)
     vec_free(&pp->chain_buf);
     sb_free(&pp->sb);
     sb_free(&pp->predef);
+    if (pp->mt_owned)
+        mt_free(pp->mt);
 }
 
 /* Predefines and command-line macros form a virtual file entered first. */
@@ -661,8 +698,6 @@ bool pp_next(PP *pp, Tok *out)
         if (t.kind == TK_IDENT) {
             Ident *id = ident_by_id(pp->in, t.aux);
             Macro *m = pp_macro(pp, id);
-            if (id->flags & IDF_POISONED)
-                pp_error_at(pp, &t, "attempt to use poisoned \"%s\"", id->str);
             if (m && !(t.flags & TF_NOEXPAND)) {
                 if (pp_macro_disabled(pp, m)) {
                     t.flags |= TF_NOEXPAND;
@@ -719,12 +754,15 @@ static TokSpan read_line(PP *pp)
         if ((t.flags & TF_BOL) || t.kind == TK_EOF) {
             pp->pending = t;
             pp->has_pending = true;
+            pp->pending_unread = false;
             break;
         }
         tokbuf_push(pp, &pp->line, t);
     }
     s.t = pp->line.t;
     s.n = pp->line.len;
+    if (pp->dir_poison)
+        check_poison(pp, s);
     return s;
 }
 
@@ -841,7 +879,6 @@ void pp_macro_ref(PP *pp, const Tok *name, RefKind kind)
 {
     Ident *id = ident_by_id(pp->in, name->aux);
     Macro *m = pp_macro(pp, id);
-    id->flags |= IDF_EVER_REFD;
     if (m && kind != REF_EXPANSION && kind != REF_UNDEF)
         atomic_add_u32(&m->cond_refs, 1);
     PP_EMIT(pp, macro_ref, id, m, name, kind);
@@ -1222,7 +1259,7 @@ static void do_define(PP *pp, const Tok *hash)
     }
     m->end_loc = span_end(pp, line, name->loc + name->len);
 
-    old = nid->macro;
+    old = mt_cur(pp->mt, nid);
     if (old) {
         if (old->builtin || is_builtin_name(nid)) {
             if (!m->predefined)
@@ -1244,9 +1281,7 @@ static void do_define(PP *pp, const Tok *hash)
     }
     m->id = (uint32_t)pp->macros.len;
     m->def_seq = pp->seq++;
-    m->prev = nid->history;
-    nid->history = m;
-    nid->macro = m;
+    pp_install_macro(pp, m);
     vec_push(&pp->macros, m);
     PP_EMIT(pp, define, m, old);
     PP_EMIT(pp, checkpoint, m->end_loc, pp->seq);
@@ -1269,7 +1304,7 @@ static void do_undef(PP *pp, const Tok *hash)
         return;
     }
     check_eol(pp, span_from(line, 1), "undef");
-    m = id->macro;
+    m = mt_cur(pp->mt, id);
     if (((m && m->builtin) || is_builtin_name(id)) &&
         pp->inc->file->kind != SF_VIRTUAL)
         diag_report(pp->diag, DL_WARNING, "builtin-macro-redefined",
@@ -1278,7 +1313,7 @@ static void do_undef(PP *pp, const Tok *hash)
     if (m) {
         m->undef_loc = hash->loc;
         m->undef_seq = pp->seq++;
-        id->macro = NULL;
+        mt_slot_w(pp->mt, id->id)->cur = NULL;
     }
     PP_EMIT(pp, undef, id, m, hash->loc, line.t[0].loc);
     PP_EMIT(pp, checkpoint, span_end(pp, line, hash->loc), pp->seq);
@@ -1452,7 +1487,7 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
         PP_EMIT(pp, include, &ev);
         return;
     }
-    if (f->guard && f->guard->macro) {
+    if (f->guard && mt_cur(pp->mt, f->guard)) {
         ev.result = INC_SKIPPED_GUARD;
         PP_EMIT(pp, include, &ev);
         return;
@@ -1706,12 +1741,18 @@ void pp_directive(PP *pp, const Tok *hash)
     if ((kw.flags & TF_BOL) || kw.kind == TK_EOF) {
         pp->pending = kw; /* null directive */
         pp->has_pending = true;
+        pp->pending_unread = false;
         if (dir_item != SIZE_MAX)
             phase_a_finish_dir(pp, dir_item);
         return;
     }
     pp->in_directive = true;
     k = kw.kind == TK_IDENT ? ident_by_id(pp->in, kw.aux)->kw : KW_NONE;
+    /* the lines GCC checks for poisoned names (not #elif) */
+    pp->dir_poison = active && pp->mode != PPM_PLAN &&
+                     (k == KW_IF || k == KW_IFDEF || k == KW_IFNDEF ||
+                      k == KW_DEFINE || k == KW_UNDEF || k == KW_INCLUDE ||
+                      k == KW_INCLUDE_NEXT || k == KW_LINE);
     switch (k) {
     case KW_IF: do_if(pp, hash, &kw, COND_IF); goto out;
     case KW_IFDEF: do_if(pp, hash, &kw, COND_IFDEF); goto out;
@@ -1777,6 +1818,7 @@ void pp_directive(PP *pp, const Tok *hash)
         read_line(pp);
     }
 out:
+    pp->dir_poison = false;
     pp->in_directive = saved;
     if (dir_item != SIZE_MAX)
         phase_a_finish_dir(pp, dir_item);

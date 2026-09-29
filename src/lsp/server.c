@@ -27,6 +27,8 @@ typedef struct Unit {
     char *main;
     bool standalone_header;   /* no compile command: may be adopted */
     Snapshot *snap;           /* latest complete, owned reference */
+    Interner *in;             /* shared by its builds: ids stay stable */
+    uint32_t in_fresh;        /* identifiers after the interner's first build */
     long long want, built;
     uint32_t cancel;          /* atomic */
     bool queued, building;
@@ -130,9 +132,9 @@ static Snapshot *snapshot_ref(Snapshot *s)
     return s;
 }
 
-static void start_tu(Snapshot *s, Analysis *an, uint32_t *cancel)
+static void start_tu(Snapshot *s, Analysis *an, Interner *in, uint32_t *cancel)
 {
-    tu_init(&s->tu, s->opt);
+    tu_init_shared(&s->tu, s->opt, in);
     s->tu.sm.overlay = overlay_lookup;
     s->tu.sm.overlay_ctx = s->overlay;
     s->tu.pp.cancel = cancel;
@@ -144,7 +146,7 @@ static void start_tu(Snapshot *s, Analysis *an, uint32_t *cancel)
 /* Build a unit: preprocess, analyze and index, in parallel when the file
  * is large.  NULL if cancelled. */
 static Snapshot *build(const char *main, Overlay *ov, Options *opt,
-                       uint32_t *cancel)
+                       Interner *in, uint32_t *cancel)
 {
     Snapshot *s = xcalloc(1, sizeof *s);
     Analysis an;
@@ -155,7 +157,7 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
     s->main = xstrdup(main);
     s->opt = opt;
     s->overlay = ov;
-    start_tu(s, &an, cancel);
+    start_tu(s, &an, in, cancel);
     memset(&po, 0, sizeof po);
     po.pool = &S.pool;
     {
@@ -172,7 +174,7 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
     } else if (r == PAR_FALLBACK) {
         index_free(&s->ix);
         tu_free(&s->tu);
-        start_tu(s, &an, cancel);
+        start_tu(s, &an, in, cancel);
         if (tu_begin(&s->tu, main)) {
             index_run(&s->ix);
             analysis_finish(&an);
@@ -312,8 +314,20 @@ static void *builder_main(void *arg)
         ov = overlay_capture();
         mutex_unlock(&S.m);
 
+        /* names typed and deleted pile up in a shared interner: start a
+         * new one when it has grown well past what a build needs */
+        if (u->in && interner_count(u->in) > 2 * u->in_fresh + 65536) {
+            interner_release(u->in);
+            u->in = NULL;
+        }
+        if (!u->in) {
+            u->in = interner_new();
+            u->in_fresh = 0;
+        }
         opt = config_options_for(&S.cfg, u->main);
-        snap = build(u->main, ov, opt, &u->cancel);
+        snap = build(u->main, ov, opt, u->in, &u->cancel);
+        if (snap && !u->in_fresh)
+            u->in_fresh = interner_count(u->in);
         if (!snap) {
             overlay_release(ov);
             config_options_free(opt);
@@ -864,6 +878,7 @@ int lsp_main(FILE *in, FILE *out)
         size_t i;
         for (i = 0; i < S.units.len; i++) {
             snapshot_release(S.units.data[i]->snap);
+            interner_release(S.units.data[i]->in);
             free(S.units.data[i]->main);
             free(S.units.data[i]);
         }

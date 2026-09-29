@@ -44,6 +44,28 @@ void interner_free(Interner *in)
     mutex_destroy(&in->page_lock);
 }
 
+Interner *interner_new(void)
+{
+    Interner *in = xmalloc(sizeof *in);
+    interner_init(in);
+    in->refs = 1;
+    return in;
+}
+
+Interner *interner_retain(Interner *in)
+{
+    atomic_add_u32(&in->refs, 1);
+    return in;
+}
+
+void interner_release(Interner *in)
+{
+    if (!in || atomic_add_u32(&in->refs, (uint32_t)-1) != 1)
+        return;
+    interner_free(in);
+    free(in);
+}
+
 uint32_t interner_count(const Interner *in)
 {
     return atomic_load_u32(&in->next_id);
@@ -126,6 +148,14 @@ Ident *intern(Interner *in, const char *str, size_t n)
     }
     mutex_unlock(&s->m);
     return id;
+}
+
+Ident *intern_find(const Interner *in, const char *str, size_t n)
+{
+    uint32_t h = hash_bytes(str, n);
+    const InternShard *s = &in->shards[h >> 26];
+    size_t empty;
+    return probe(atomic_load_ptr((void *const *)&s->table), h, str, n, &empty);
 }
 
 Ident *intern_cstr(Interner *in, const char *s)

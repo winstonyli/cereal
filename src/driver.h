@@ -36,7 +36,7 @@ typedef struct Options {
 typedef struct TU {
     Arena arena;
     VEC(Arena) adopted;  /* parallel workers' arenas that results live in */
-    Interner in;
+    Interner *in;        /* reference counted: may be shared by builds */
     SrcMgr sm;
     DiagEngine diag;
     PP pp;
@@ -51,6 +51,9 @@ void options_finish(Options *o);   /* add host dirs etc. */
 void options_free(Options *o);
 
 void tu_init(TU *tu, Options *opt);
+/* The same, interning into `in` (retained), e.g. one interner for all
+ * builds of an edited unit so identifier ids stay stable. */
+void tu_init_shared(TU *tu, Options *opt, Interner *in);
 bool tu_begin(TU *tu, const char *path);
 void tu_free(TU *tu);
 /* Run the preprocessor to the end, discarding output. */

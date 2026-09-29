@@ -56,9 +56,10 @@ executing `#define`, `#undef`, `#if`, `#include`, `#line` and `#pragma`.
 Only `#if`, `#include` and `#line` operands are macro-expanded. The result:
 - **segments**: maximal runs of active text between directives, each tagged
   with the macro-table *version* at its start;
-- a **persistent macro table**: `Ident → history` already records
-  `def_seq`/`undef_seq`, so the live definition at version *S* is a lookup,
-  not a copy;
+- a **persistent macro table** (`MacroTab`, per build, indexed by
+  identifier id): each name's history records `def_seq`/`undef_seq`, so the
+  live definition at version *S* is a lookup, not a copy. Poisoning is
+  versioned the same way;
 - block-comment state at every line start, so any line start becomes a
   certified split point.
 

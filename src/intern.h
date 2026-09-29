@@ -7,8 +7,9 @@
  * freed, so concurrent readers never see freed memory).  Ids are dense and
  * resolved through a two-level page table with stable addresses.
  *
- * Ident fields other than str/len/hash/id are *not* synchronized: they are
- * written by the sequential phase of the preprocessor only. */
+ * Idents are immutable once published and carry no build state (macro
+ * state lives in a MacroTab), so an interner can be shared by successive
+ * builds. */
 #ifndef CEREAL_INTERN_H
 #define CEREAL_INTERN_H
 
@@ -21,16 +22,7 @@ typedef struct Ident {
     uint32_t hash;
     uint32_t id;           /* dense, >= 1 */
     uint16_t kw;           /* keyword/special id, 0 if none */
-    uint16_t flags;
-    struct Macro *macro;   /* currently active definition (sequential phase) */
-    struct Macro *history; /* newest definition ever made (linked via prev) */
-    void *user;            /* scratch slot for analyzers (sequential phase) */
 } Ident;
-
-enum {
-    IDF_POISONED   = 1 << 0,
-    IDF_EVER_REFD  = 1 << 1  /* referenced in #ifdef/defined/expansion */
-};
 
 #define INTERN_SHARDS 64
 #define ID_PAGE_BITS 12
@@ -55,12 +47,19 @@ typedef struct Interner {
     Ident **pages[ID_PAGES];   /* atomic page pointers */
     uint32_t next_id;          /* atomic */
     Mutex page_lock;
+    uint32_t refs;             /* atomic; interner_new/retain/release */
 } Interner;
 
 void interner_init(Interner *in);
 void interner_free(Interner *in);
+/* A heap interner that successive builds can share (ids stay stable). */
+Interner *interner_new(void);
+Interner *interner_retain(Interner *in);
+void interner_release(Interner *in);
 Ident *intern(Interner *in, const char *s, size_t n);
 Ident *intern_cstr(Interner *in, const char *s);
+/* Lookup only: NULL if s was never interned. */
+Ident *intern_find(const Interner *in, const char *s, size_t n);
 uint32_t interner_count(const Interner *in);   /* highest id + 1 */
 
 static inline Ident *ident_by_id(const Interner *in, uint32_t id)

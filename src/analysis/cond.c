@@ -859,7 +859,7 @@ void cond_finish(Analysis *a)
         Ident *id = tok_ident(a->in, t), *best = NULL;
         unsigned best_d = 3, limit;
         bool dup = false;
-        if (id->history)
+        if (mt_hist(a->pp->mt, id))
             continue; /* defined at some point in the TU */
         {
             /* a misspelled include guard is reported by -Wheader-guard */
@@ -877,13 +877,20 @@ void cond_finish(Analysis *a)
         vec_push(&seen, id);
         limit = id->len >= 8 ? 2 : 1;
         if (id->len >= 4) {
-            INTERNER_FOREACH(a->in, bucket, cand) {
+            /* candidates: every name defined in the TU; ties go to the
+             * smallest spelling, so the pick does not depend on interning
+             * order (the interner can outlive a build) */
+            size_t k;
+            for (k = 0; k < a->pp->macros.len; k++) {
+                Ident *cand = a->pp->macros.data[k]->name;
                 unsigned dist;
-                if (!cand->history || cand == id || looks_like_sibling(id, cand))
+                if (cand == id || cand == best || looks_like_sibling(id, cand))
                     continue;
                 dist = edit_distance(id->str, id->len, cand->str, cand->len,
                                      limit);
-                if (dist <= limit && dist < best_d) {
+                if (dist <= limit && (dist < best_d ||
+                                      (dist == best_d &&
+                                       strcmp(cand->str, best->str) < 0))) {
                     best_d = dist;
                     best = cand;
                 }
@@ -894,8 +901,8 @@ void cond_finish(Analysis *a)
                 "'%s' is never defined in this translation unit; did you mean "
                 "'%s'?", id->str, best->str);
             diag_set_range(d, t->loc, t->loc + t->len);
-            if (d && best->history->file && best->history->file->kind != SF_VIRTUAL)
-                diag_note(a->diag, d, best->history->name_loc,
+            if (d && mt_hist(a->pp->mt, best)->file && mt_hist(a->pp->mt, best)->file->kind != SF_VIRTUAL)
+                diag_note(a->diag, d, mt_hist(a->pp->mt, best)->name_loc,
                           "'%s' is defined here", best->str);
             if (d)
                 d->fixit = best->str;

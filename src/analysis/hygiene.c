@@ -542,7 +542,7 @@ static SideEffect side_effects(Analysis *a, TokSpan arg)
             tok_is_punct(&arg.t[i + 1], P_LPAREN) && r == SE_NONE) {
             Ident *id = tok_ident(a->in, t);
             if (!is_c_keyword(id->str, id->len) &&
-                !(id->macro && id->macro->funclike))
+                !(mt_cur(a->pp->mt, id) && mt_cur(a->pp->mt, id)->funclike))
                 r = SE_CALL;
         }
     }

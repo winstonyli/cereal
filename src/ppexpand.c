@@ -910,10 +910,26 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             for (i = 2; i < toks.n; i++)
                 if (toks.t[i].kind == TK_IDENT) {
                     Ident *id = ident_by_id(pp->in, toks.t[i].aux);
-                    id->flags |= IDF_POISONED;
-                    PP_EMIT(pp, macro_ref, id, pp_macro(pp, id), &toks.t[i],
-                            REF_PRAGMA);
+                    MacroSlot *sl = mt_slot_w(pp->mt, id->id);
+                    Macro *m = sl->cur;
+                    PP_EMIT(pp, macro_ref, id, m, &toks.t[i], REF_PRAGMA);
+                    if (sl->poison_seq)
+                        continue;
+                    /* like GCC: the definition is dropped; versioned, so
+                     * text before the pragma is unaffected */
+                    if (m) {
+                        diag_report(pp->diag, DL_WARNING, "", PLOC(&toks.t[i]),
+                                    "poisoning existing macro \"%s\"",
+                                    id->str);
+                        m->undef_loc = PLOC(&toks.t[0]);
+                        m->undef_seq = pp->seq;
+                        sl->cur = NULL;
+                        PP_EMIT(pp, undef, id, m, loc, PLOC(&toks.t[i]));
+                    }
+                    sl->poison_seq = ++pp->seq;
+                    pp->mt->npoison++;
                 }
+            PP_EMIT(pp, checkpoint, PLOC(&toks.t[0]), pp->seq);
         } else if (word(pp, toks, 1, "warning") || word(pp, toks, 1, "error")) {
             bool err = word(pp, toks, 1, "error");
             uint32_t k = 2;
@@ -940,7 +956,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
         if (id) {
             MacroStackEnt *e = NEW(pp->arena, MacroStackEnt);
             e->name = id;
-            e->macro = id->macro;
+            e->macro = mt_cur(pp->mt, id);
             e->next = pp->pushed;
             pp->pushed = e;
         }
@@ -960,7 +976,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                             PLOC(&toks.t[0]), "pop_macro(\"%s\") without push_macro",
                             id->str);
             } else {
-                Macro *restored = (*pe)->macro, *cur = id->macro;
+                Macro *restored = (*pe)->macro, *cur = mt_cur(pp->mt, id);
                 uint32_t ev = pp->seq++;
                 if (cur) {
                     cur->undef_loc = PLOC(&toks.t[0]);
@@ -978,12 +994,11 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                     v->undef_loc = 0;
                     v->expansions = v->cond_refs = 0;
                     v->user = NULL;
-                    v->prev = id->history;
-                    id->history = v;
+                    pp_install_macro(pp, v);
                     vec_push(&pp->macros, v);
                     restored = v;
                 }
-                id->macro = restored;
+                mt_slot_w(pp->mt, id->id)->cur = restored;
                 *pe = (*pe)->next;
                 PP_EMIT(pp, checkpoint, PLOC(&toks.t[0]), pp->seq);
             }

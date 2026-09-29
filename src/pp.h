@@ -17,6 +17,7 @@
 #include "srcmgr.h"
 #include "token.h"
 #include "plan.h"
+#include "macrotab.h"
 
 #define NO_EXP UINT32_MAX
 
@@ -254,6 +255,8 @@ typedef enum { SRC_LEXER, SRC_CONTEXT, SRC_BARRIER } TokSrc;
 typedef struct PP {
     Arena *arena;
     Interner *in;
+    MacroTab *mt;            /* this build's macro state (shared by workers) */
+    bool mt_owned;
     SrcMgr *sm;
     DiagEngine *diag;
     PPOptions *opt;
@@ -262,6 +265,8 @@ typedef struct PP {
     Lexer lex;               /* current file */
     Tok pending;             /* one-token pushback for the lexer stream */
     bool has_pending;
+    bool pending_unread;     /* pending was returned once (pp_unread) */
+    bool dir_poison;         /* read_line: report poisoned identifiers */
     VEC(Context) ctx;
     TokPool pool;
     ScratchCursor scratch;   /* this thread's scratch chunk */
@@ -345,16 +350,19 @@ void pp_plan_start(PP *pp, Plan *plan, size_t item);
 bool pp_next(PP *pp, Tok *out);
 
 /* The definition of id in effect at the current point. */
-static inline Macro *macro_at_version(const Ident *id, uint32_t v)
+static inline Macro *macro_at_version(const MacroTab *mt, const Ident *id,
+                                      uint32_t v)
 {
     Macro *m;
-    for (m = id->history; m; m = m->prev)
+    for (m = mt_hist(mt, id); m; m = m->prev)
         if (m->def_seq < v)
             return v <= m->undef_seq ? m : NULL;
     return NULL;
 }
 
 void pp_version_mismatch(const PP *pp, const Ident *id);
+/* Make m (m->name) the newest definition and the one in effect. */
+void pp_install_macro(PP *pp, Macro *m);
 
 /* Parallel runs: the plan item an event belongs to (see ParClient). */
 static inline uint32_t pp_event_key(const PP *pp)
@@ -365,10 +373,18 @@ static inline uint32_t pp_event_key(const PP *pp)
 static inline Macro *pp_macro(const PP *pp, const Ident *id)
 {
     if (pp->versioned)
-        return macro_at_version(id, pp->version);
-    if (pp->check_versions && macro_at_version(id, pp->seq) != id->macro)
+        return macro_at_version(pp->mt, id, pp->version);
+    if (pp->check_versions &&
+        macro_at_version(pp->mt, id, pp->seq) != mt_cur(pp->mt, id))
         pp_version_mismatch(pp, id);
-    return id->macro;
+    return mt_cur(pp->mt, id);
+}
+
+/* Is id poisoned at the current point? */
+static inline bool pp_poisoned(const PP *pp, const Ident *id)
+{
+    uint32_t ps = mt_slot(pp->mt, id->id)->poison_seq;
+    return ps && (pp->versioned ? pp->version : pp->seq) >= ps;
 }
 
 /* Is m being expanded (its context live) in this preprocessor? */

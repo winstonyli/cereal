@@ -675,13 +675,17 @@ void lsp_signature_help(Req *r, JsonWriter *w)
         json_null(w);
         return;
     }
-    id = intern(r->snap->tu.pp.in, t + p, ne - p);
-    m = macro_at_version(id, index_seq_at(&r->snap->ix,
+    id = intern_find(r->snap->tu.pp.in, t + p, ne - p);
+    if (!id) {
+        json_null(w);
+        return;
+    }
+    m = macro_at_version(r->snap->tu.pp.mt, id, index_seq_at(&r->snap->ix,
                                           r->file->base +
                                               (SrcLoc)(p < r->file->size
                                                            ? p : r->file->size)));
     if (!m) /* not defined there (or the snapshot is behind): any version */
-        m = id->macro;
+        m = mt_cur(r->snap->tu.pp.mt, id);
     if (!m || !m->funclike) {
         json_null(w);
         return;

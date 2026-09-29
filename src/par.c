@@ -462,7 +462,7 @@ static void write_merged(Par *P, FILE *out)
             st = S;
             if (r->events_pre)
                 st.pending_flag = r->pre_last;
-            print_transition(&tu->sm, &tu->in, P->linemarkers, &st, &r->first,
+            print_transition(&tu->sm, tu->in, P->linemarkers, &st, &r->first,
                              &o);
             sink_put(&o, m->sink.buf + r->first_body,
                      m->end_off - r->first_body);

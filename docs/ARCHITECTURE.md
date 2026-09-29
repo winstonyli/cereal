@@ -171,7 +171,8 @@ The differential tests compare the token streams of `cereal -E` and
 | `src/index.[ch]` | LSP model and queries |
 | `src/mgraph.[ch]` | macro dependency graph: closures, cycles, call hierarchy |
 | `src/par.[ch]`, `src/plan.h` | two-phase parallel `-E` |
-| `src/thread.[ch]`, `src/intern.[ch]` | pool, atomics; concurrent interner |
+| `src/thread.[ch]`, `src/intern.[ch]` | pool, atomics; concurrent interner (spellings only; reference counted, so builds can share one) |
+| `src/macrotab.[ch]` | per-build macro state by identifier id: definitions, history, poisoning |
 | `src/lsp/` | language server: framing, positions, configuration, builder, requests (docs/LSP.md) |
 | `src/json.[ch]` | JSON writer (buffered) and DOM reader |
 | `src/driver.[ch]`, `src/main.c` | options, translation-unit setup, CLI |

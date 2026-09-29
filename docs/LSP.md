@@ -36,6 +36,10 @@ files.
   it before the disk) and builds preprocessing, analyses, index and macro
   graph with the two-phase parallel runner. A build that was not cancelled
   becomes the unit's snapshot.
+- **Interner:** a unit's builds share one identifier interner, so ids
+  stay stable across edits (the key the result cache needs). Macro state
+  is per build (`MacroTab`). The interner is replaced when it grows past
+  twice what a fresh build needed.
 - **Snapshots** are immutable and reference counted. Requests run on the
   protocol thread against the latest complete snapshot and never wait for
   a build; only the first build of a unit is waited for.

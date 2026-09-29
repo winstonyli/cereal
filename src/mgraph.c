@@ -117,7 +117,7 @@ void mgraph_closure_with(const MacroGraph *g, MScratch *sc,
     /* breadth-first over names; out->names doubles as the queue */
     while (head < out->names.len) {
         Ident *id = out->names.data[head++];
-        Macro *m = macro_at_version(id, version);
+        Macro *m = macro_at_version(g->pp->mt, id, version);
         const MNode *nd;
         uint32_t k;
         if (!m)
@@ -167,7 +167,7 @@ typedef struct TFrame {
 static Macro *target(const MacroGraph *g, const MNode *nd, uint32_t k,
                      uint32_t version)
 {
-    return macro_at_version(nd->names[k], version);
+    return macro_at_version(g->pp->mt, nd->names[k], version);
 }
 
 static int macro_id_cmp(const void *a, const void *b)

@@ -631,7 +631,7 @@ static Ident *ident_at(Index *ix, SrcLoc loc, SrcRange *r)
         return NULL;
     r->begin = f->base + b;
     r->end = f->base + e;
-    return intern(ix->pp->in, f->buf + b, e - b);
+    return intern_find(ix->pp->in, f->buf + b, e - b); /* never defined if new */
 }
 
 uint32_t index_seq_at(Index *ix, SrcLoc loc)
@@ -762,10 +762,10 @@ IdxTarget index_resolve(Index *ix, SrcLoc loc)
     if (t.kind == TGT_MACRO && t.nmacros == 0) {
         /* static body ref or undefined name: every definition by name */
         Macro *m;
-        for (m = t.name->history; m; m = m->prev)
+        for (m = mt_hist(ix->pp->mt, t.name); m; m = m->prev)
             if (!m->builtin)
                 add_candidate(&t, m);
-        if (!t.nmacros && !t.name->history && !t.top) {
+        if (!t.nmacros && !mt_hist(ix->pp->mt, t.name) && !t.top) {
             /* not a macro at all (e.g. a function named in a body), unless
              * it is tested with #ifdef: keep those as unresolved refs */
             bool tested = false;
@@ -786,7 +786,7 @@ IdxTarget index_resolve(Index *ix, SrcLoc loc)
         Ident *id = ident_at(ix, loc, &r);
         Macro **vis;
         size_t n, k;
-        if (!id || !id->history)
+        if (!id || !mt_hist(ix->pp->mt, id))
             return t;
         t.kind = TGT_MACRO;
         t.name = id;
@@ -797,7 +797,7 @@ IdxTarget index_resolve(Index *ix, SrcLoc loc)
                 add_candidate(&t, vis[k]);
         if (!t.nmacros) {
             Macro *m;
-            for (m = id->history; m; m = m->prev)
+            for (m = mt_hist(ix->pp->mt, id); m; m = m->prev)
                 if (!m->builtin)
                     add_candidate(&t, m);
         }
@@ -953,7 +953,7 @@ size_t index_callees(Index *ix, const MacroGraph *g, Macro *m, IdxCall **out)
         Ident *name = nd->names[k];
         Macro *d;
         bool any = false;
-        for (d = name->history; d; d = d->prev) {
+        for (d = mt_hist(ix->pp->mt, name); d; d = d->prev) {
             IdxCall c;
             if (!lives_overlap(d, m) || call_listed(v.data, v.len, d))
                 continue;
