@@ -5,9 +5,11 @@
 #include "analysis/analysis.h"
 #include "index.h"
 #include "cell.h"
+#include "toks.h"
 #include "lsp/lsp.h"
 
 #include <string.h>
+#include <time.h>
 
 static void usage(FILE *o)
 {
@@ -22,6 +24,9 @@ static void usage(FILE *o)
         "                --replay [--no-cells] [--no-output]: rebuild on each\n"
         "                line of stdin, reusing cells (testing, timing);\n"
         "                --transcript: answer queries at every identifier\n"
+        "                --tokens[=check|digest]: the token stream\n"
+        "                (regenerated from the cells), or its count and hash\n"
+        "                (regenerated and checked, or from the cells' records)\n"
         "  lsp           language server on stdin/stdout\n"
         "  query KIND FILE:LINE:COL   KIND = def | refs | hover | visible | expand\n"
         "  --list-warnings  list every -W option\n"
@@ -410,6 +415,78 @@ static void transcript(TU *tu, Index *ix, const MacroGraph *g)
     vec_free(&files);
 }
 
+/* ---- token streams (index --replay --tokens) ---------------------------- */
+
+static double now_sec(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+
+typedef struct TokDump {
+    bool full;                  /* print every token */
+    uint64_t n, hash;
+} TokDump;
+
+static void dump_tok(TokDump *d, TU *tu, const PP *pp, const Tok *t,
+                     SrcLoc exp_loc)
+{
+    const char *s = pp_text(pp, t);
+    uint32_t i;
+    d->n++;
+    d->hash = m61_push(d->hash, tok_hash(pp, t));
+    if (!d->full)
+        return;
+    printf("%d %d %04x %s %s ", t->kind, t->punct, t->flags,
+           loc_str(tu, t->loc), loc_str(tu, exp_loc));
+    for (i = 0; i < t->len; i++)
+        putchar((unsigned char)s[i] < ' ' ? '?' : s[i]);
+    putchar('\n');
+}
+
+/* The reference: a sequential run of its own. */
+static void seq_tokens(Options *o, Interner *in, const char *path,
+                       TokDump *d)
+{
+    TU tu;
+    Tok t;
+    tu_init_shared(&tu, o, in);
+    if (tu_begin(&tu, path))
+        while (pp_next(&tu.pp, &t))
+            if (tok_in_stream(&t))
+                dump_tok(d, &tu, &tu.pp, &t,
+                         t.kind == TK_PRAGMA ? t.loc : tu.pp.out_exp_loc);
+    tu_free(&tu);
+}
+
+/* Regenerated from a cell build, cell by cell, checking each cell's
+ * record. */
+static void cell_tokens(TokRegen *src, TokDump *d)
+{
+    size_t i;
+    for (i = 0; i < src->ncells; i++) {
+        const TokCell *c = &src->cells[i];
+        TokCursor cur;
+        Tok t;
+        SrcLoc el;
+        uint64_t n0 = d->n, h = 0;
+        tokcur_open(&cur, src, c->s, c->e);
+        while (tokcur_next(&cur, &t, &el)) {
+            h = m61_push(h, tok_hash(&cur.pp, &t));
+            dump_tok(d, src->tu, &cur.pp, &t, el);
+        }
+        if (cur.unclean || d->n - n0 != c->ntoks || h != c->hash)
+            printf("!! cell %zu [%u, %u)%s: %u tokens recorded, %llu "
+                   "regenerated%s%s\n", i, c->s, c->e,
+                   c->reused ? " (reused)" : "", c->ntoks,
+                   (unsigned long long)(d->n - n0),
+                   h != c->hash ? ", hash differs" : "",
+                   cur.unclean ? ", end not clean" : "");
+        tokcur_close(&cur);
+    }
+}
+
 /* index --replay: rebuild the input each time a line arrives on stdin (the
  * files are re-read), as the language server does after an edit: analyses
  * and index, one interner and, unless --no-cells, one cell cache for all
@@ -417,7 +494,7 @@ static void transcript(TU *tu, Index *ix, const MacroGraph *g)
  * --no-output), then a line "=== end".  For differential tests of the
  * cache, and timing. */
 static int mode_replay(Options *o, bool all, bool cells, bool quiet,
-                       bool queries)
+                       bool queries, int tokens)
 {
     Interner *in = interner_new();
     CellCache cache;
@@ -436,8 +513,11 @@ static int mode_replay(Options *o, bool all, bool cells, bool quiet,
         ParOptions po = par_options(o);
         ParClient cs[2];
         ParResult r;
+        TokRegen toks;
         if (line[0] == 'q')
             break;
+        tokregen_init(&toks);
+        po.toks = tokens ? &toks : NULL;
         tu_init_shared(&tu, o, in);
         memset(&an, 0, sizeof an);
         analysis_attach(&an, &tu.pp);
@@ -471,7 +551,28 @@ static int mode_replay(Options *o, bool all, bool cells, bool quiet,
             index_cell_stats(&ix, stderr);
         if (!quiet) {
             diag_print_json(&tu.diag, stdout);
-            if (queries) {
+            if (tokens) {
+                TokDump d;
+                double t0 = now_sec();
+                memset(&d, 0, sizeof d);
+                d.full = tokens == 1;
+                if (toks.ncells && tokens != 2) {
+                    cell_tokens(&toks, &d);
+                } else if (toks.ncells) {
+                    d.hash = tokregen_hash(&toks, &d.n);
+                } else {
+                    seq_tokens(o, in, path, &d);
+                }
+                printf("tokens %llu %016llx\n", (unsigned long long)d.n,
+                       (unsigned long long)d.hash);
+                if (getenv("CEREAL_TOK_STATS"))
+                    fprintf(stderr, "tokens: %zu cells, %s %.3fs\n",
+                            toks.ncells,
+                            toks.ncells ? (tokens != 2 ? "regenerated"
+                                                       : "from records")
+                                        : "sequential",
+                            now_sec() - t0);
+            } else if (queries) {
                 MacroGraph g;
                 mgraph_build(&g, &tu.pp);
                 transcript(&tu, &ix, &g);
@@ -483,6 +584,7 @@ static int mode_replay(Options *o, bool all, bool cells, bool quiet,
         fputs("=== end\n", stdout);
         fflush(stdout);
         rc |= tu.diag.nerrors ? 1 : 0;
+        tokregen_free(&toks);
         index_free(&ix);
         tu_free(&tu);
     }
@@ -704,7 +806,7 @@ int main(int argc, char **argv)
     const char *mode = NULL, *qkind = NULL, *qat = NULL;
     bool all = false, check_graph = false, replay = false, no_cells = false,
          quiet = false, queries = false;
-    int i, rc = 0;
+    int i, rc = 0, tokens = 0;
     options_init(&o);
     if (argc < 2) {
         usage(stderr);
@@ -745,6 +847,18 @@ int main(int argc, char **argv)
             quiet = true;
             continue;
         }
+        if (!strcmp(argv[i], "--tokens")) {
+            tokens = 1;
+            continue;
+        }
+        if (!strcmp(argv[i], "--tokens=digest")) {
+            tokens = 2;
+            continue;
+        }
+        if (!strcmp(argv[i], "--tokens=check")) {
+            tokens = 3;
+            continue;
+        }
         if (!strcmp(argv[i], "--transcript")) {
             queries = true;
             continue;
@@ -774,7 +888,7 @@ int main(int argc, char **argv)
     else if (!strcmp(mode, "lint"))
         rc = mode_lint(&o);
     else if (!strcmp(mode, "index") && replay)
-        rc = mode_replay(&o, all, !no_cells, quiet, queries);
+        rc = mode_replay(&o, all, !no_cells, quiet, queries, tokens);
     else if (!strcmp(mode, "index"))
         rc = mode_index(&o, all, check_graph);
     else if (!strcmp(mode, "query"))

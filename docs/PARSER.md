@@ -22,19 +22,51 @@ tables, macro-heavy code) re-parse in time proportional to the edit.
 | 5 | tree-sitter-style GLR with edit ranges | proven for editors | no typedef feedback; not a semantic front end |
 
 ## Input: tokens (P0)
-- The parser reads the stitched token stream as flat arrays: kind, ident
-  id, flags (BOL, leading space, system header, from expansion), location
-  index (→ SrcLoc and expansion).
-- **Reused preprocessor cells must supply tokens.** Today no client stores
-  them (index and analysis only).  A token client stores per cell: kinds,
-  spelling ids, flags, relative locations.  Memory (~16 B/token, ~80 MB on
-  the 35 MB file) is measured in P0; the fallback is storing only per-cell
-  token hashes and regenerating tokens for the few ranges that re-parse.
-- **Token hashes:** each token → `hash64` of (kind, spelling, provenance
-  flags); ranges combine with a polynomial mod 2^61−1 (not 2^64: Thue–Morse
-  strings collide for any base, and generated code is repetitive).  Range
-  hashes are kept per preprocessor cell, so a build does not rehash the
-  whole stream.
+Measured token counts after preprocessing: `macro_heavy.c` (35 MB) 17.2M,
+`table.c` (69 MB) 20.4M, uvloop `loop.c` (8.7 MB) 1.6M.  At 16-20 bytes a
+token, storing them in the cells would cost 275-410 MB on the big inputs,
+on top of the language server's 830 MB peak.  Options considered:
+
+| # | Option | Memory (35 MB file) | Notes |
+|---|---|---|---|
+| 1 | Compact tokens per cell (columns, varint locations) | ~100-140 MB | simplest parser input |
+| **2** | **Regenerate: re-run the preprocessor over the cells the parser needs; keep a count and hash per cell** | **~0** | chosen |
+| 3 | Hybrid: kind + spelling id per token (4-5 B), locations regenerated | ~80 MB | option 2 plus a token cache; can be added later |
+
+As built (`src/toks.[ch]`):
+- Every cell records how many tokens it gives and their sequence hash
+  (`Cell.ntoks`, `Cell.tok_hash`).  Workers hash each token as they go
+  and keep (count, hash) marks at clean boundaries; a cell's record is the
+  difference of two marks (polynomial hash mod 2^61 - 1, `hash.h`), so
+  any run of cells has a hash computed from the cells' own.
+- Token hashes cover kind, punctuator, spelling and provenance class
+  (`TF_ORIGIN_*`, `TF_PASTED`, `TF_SYNTH`), not locations or white space.
+- `ParOptions.toks` receives the build's plan and its cells in order
+  (`TokRegen`); a `TokCursor` re-runs any run of whole cells against the
+  build and yields its tokens with their presentation locations.  Cursors
+  are independent (any number, any threads) and give their scratch space
+  back when closed.  A cell may end right before a directive, so the
+  preprocessor gained a stop at any plan item (`PP.plan_stop`), which also
+  reports whether the stop was clean.
+- Checked by `index --replay --tokens[=check|digest]`: the stream
+  regenerated from the cells, each cell's record verified, equals a
+  sequential run (tests/fuzz_cells.py, bench/corpus.py).
+- Measured (`macro_heavy.c`, 17.2M tokens, 437 cells, 4 cores): no
+  memory beyond the records and the kept plan (2307 items); phase B about
+  3% slower for hashing (identifiers hash through a 64-bit digest cached
+  in `Ident`); regenerating the whole stream sequentially 1.2 s, about
+  3 ms per cell.
+- Found on the way: a line starting with `##` (`%:%:`, a spliced `##`) was
+  taken for a directive by the skip scanner, in phase A and in skipped
+  groups (tests/pp/hashhash_line.c).
+
+Next for the parser input: read tokens a cell at a time (not one stitched
+array); on a cold open, consider capturing the fresh cells' tokens during
+phase B instead of regenerating them.  Reuse checks: a parser unit whose
+cells were all reused, in the same order, has identical tokens.
+**`__LINE__`** (Cython): cells below an edit recompute and differ only in
+line-number literals; parser keys should treat number spellings as holes
+and give their values to constant evaluation only (P3).
 
 ## Tree
 - Per unit: `Node{tag:u8, flags:u8, tok:u32 (relative), extra:u32}` in
@@ -118,7 +150,7 @@ Statement expressions, `typeof`, `__attribute__`, `__asm__`,
 - ASan/UBSan throughout; TSan from P5.
 
 ## Milestones
-0. **P0** token client for cells, per-cell token hashes; memory measured.
+0. **P0** (done) per-cell token counts and hashes, token regeneration.
 1. **P1** tree format, full parser without incrementality, brace recovery,
    `cereal parse --dump`, `-fsyntax-only`; Jourdan–Pottier; gcc parity.
 2. **P2** scopes, types, summaries, type-checking diagnostics.
@@ -140,5 +172,3 @@ within 2x of `cereal -E` (0.18 s sequential).
 - Tree retention: all trees (~60 MB+ on the 35 MB file) or summaries and
   index tables for cold units with re-parse on demand.  Measure in P3.
 - Run parameters: mask 1/32 statements, min 8, max 256 to start.
-- Handoff: parser reads the stitched token array after preprocessing
-  (planned) or streams per cell.

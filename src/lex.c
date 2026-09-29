@@ -706,7 +706,12 @@ void lex_next(Lexer *L, Tok *t)
         case '^': if (p[1] == '=') k = P_XOR_ASSIGN, n = 2; else k = P_CARET; break;
         case '!': if (p[1] == '=') k = P_NE, n = 2; else k = P_BANG; break;
         case '=': if (p[1] == '=') k = P_EQEQ, n = 2; else k = P_ASSIGN; break;
-        case '#': if (p[1] == '#') k = P_HASHHASH, n = 2; else k = P_HASH; break;
+        case '#':
+            if (p[1] == '#') k = P_HASHHASH, n = 2;
+            else if (p[1] == '\\' || (trig && p[1] == '?'))
+                goto slow; /* maybe a spliced or trigraph ## */
+            else k = P_HASH;
+            break;
         case '<':
             if (p[1] == '<') {
                 if (p[2] == '\\' || (trig && p[2] == '?'))
@@ -761,12 +766,39 @@ slow:
 bool lex_line_is_directive(Lexer *L)
 {
     const char *p;
+    bool hash;
     L->bol = true;
     L->space = false;
     p = skip_blank(L, L->p);
     L->p = p;
-    return *p == '#' || (p[0] == '%' && p[1] == ':') ||
-           (L->opt.trigraphs && p[0] == '?' && p[1] == '?' && p[2] == '=');
+    if (!(*p == '#' || (p[0] == '%' && p[1] == ':') ||
+          (L->opt.trigraphs && p[0] == '?' && p[1] == '?' && p[2] == '=')))
+        return false;
+    if (p[0] == '#' && p[1] != '#' && p[1] != '\\' &&
+        p[1] != '?')
+        return true;
+    /* a line starting with ## (%:%:, spliced, trigraphs) is text: lex the
+     * first token to tell, then put the cursor back */
+    {
+        DiagEngine *d = L->diag;
+        ScratchCursor *sc = L->scratch;
+        const char *lb = L->line_begin, *nl = L->nul_line;
+        bool un = L->unterminated;
+        Tok t;
+        L->diag = NULL;
+        L->scratch = NULL;
+        lex_next(L, &t);
+        hash = t.kind == TK_PUNCT && t.punct == P_HASH;
+        L->p = p;
+        L->bol = true;
+        L->space = false;
+        L->diag = d;
+        L->scratch = sc;
+        L->line_begin = lb;
+        L->nul_line = nl;
+        L->unterminated = un;
+    }
+    return hash;
 }
 
 bool lex_next_line(Lexer *L)

@@ -292,6 +292,8 @@ typedef struct PP {
     const uint32_t *cancel;  /* atomic flag: nonzero stops at the next token */
     BoundaryFn on_boundary;
     void *boundary_ctx;
+    size_t plan_stop;        /* PLAN: end before this item (0: none) ... */
+    bool plan_stop_clean;    /* ... where nothing was in flight */
     bool versioned;          /* phase B: look macros up by version */
     uint32_t version;
     uint32_t version_item;   /* phase B: the plan item that set version */

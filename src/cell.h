@@ -119,6 +119,8 @@ typedef struct Cell {
     uint32_t ndiags;
     CellExp *exps;
     uint32_t nexps;
+    uint32_t ntoks;             /* tokens it gives, and their sequence */
+    uint64_t tok_hash;          /* hash (toks.h) */
     void *blob[CELL_MAX_CLIENTS];
     uint64_t gen;               /* last build that used it */
     uint32_t refs;              /* atomic: the cache's and indexes' */

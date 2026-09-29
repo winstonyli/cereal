@@ -97,6 +97,15 @@ SrcFile *srcmgr_add_virtual(SrcMgr *sm, const char *name, const char *buf,
  * their location.  The bytes are followed by a NUL. */
 SrcLoc srcmgr_scratch(SrcMgr *sm, ScratchCursor *c, const char *s, size_t n);
 
+/* Scratch written through a cursor after a mark can be taken back (when
+ * nothing refers to it any more: token regeneration, toks.h). */
+typedef struct ScratchMark {
+    struct SrcFile *chunk;
+    uint32_t size;
+} ScratchMark;
+ScratchMark srcmgr_scratch_mark(const ScratchCursor *c);
+void srcmgr_scratch_rewind(ScratchCursor *c, ScratchMark m);
+
 static inline const char *srcmgr_ptr(const SrcMgr *sm, SrcLoc loc)
 {
     return sm->region + loc;

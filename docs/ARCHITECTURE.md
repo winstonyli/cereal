@@ -174,6 +174,7 @@ The differential tests compare the token streams of `cereal -E` and
 | `src/thread.[ch]`, `src/intern.[ch]` | pool, atomics; concurrent interner (spellings only; reference counted, so builds can share one) |
 | `src/macrotab.[ch]` | per-build macro state by identifier id: definitions, history, poisoning |
 | `src/cell.[ch]`, `src/hash.h` | cell cache: phase-B results reused across builds, stored relative to their cells (PARALLEL.md "Cells") |
+| `src/toks.[ch]` | a cell build's token stream without storing it: per-cell token counts and hashes, regeneration by re-running cells (PARSER.md) |
 | `src/lsp/` | language server: framing, positions, configuration, builder, requests (docs/LSP.md) |
 | `src/json.[ch]` | JSON writer (buffered) and DOM reader |
 | `src/driver.[ch]`, `src/main.c` | options, translation-unit setup, CLI |

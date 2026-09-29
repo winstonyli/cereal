@@ -20,6 +20,9 @@ typedef struct ParOptions {
                                 no -E output with a cache */
     uint64_t cell_config;    /* fingerprint of what else the results depend
                                 on (options); a change empties the cache */
+    struct TokRegen *toks;     /* with cells: receives the build's plan and
+                                cells, to regenerate its tokens (toks.h);
+                                left empty (ncells 0) if it cannot */
 } ParOptions;
 
 typedef enum {

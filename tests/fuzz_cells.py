@@ -9,7 +9,9 @@ must be byte-identical within a pair, and so must
   - the query transcript (--transcript: every identifier resolved, its
     references and call hierarchy, every file's refs), which the cached
     side answers by walking cells, and
-  - the materialized index (JSON).
+  - the materialized index (JSON), and
+  - the token stream, regenerated cell by cell from the cells' records
+    (each cell's token count and hash checked against what it gives).
 Directed cases also check how many cells were reused.
 usage: fuzz_cells.py BIN [N] [SEED] [STEPS]"""
 import os, random, subprocess, sys, tempfile
@@ -145,7 +147,8 @@ EXPECT = {
     "header edit": "recompute",
 }
 
-KINDS = (["--transcript"], [])   # query transcript; materialized index
+# query transcript; materialized index; token stream regenerated from cells
+KINDS = (["--transcript"], [], ["--tokens"])
 
 
 class Pairs:

@@ -11,7 +11,9 @@ file (zstandard).  For every translation unit:
   gcc      `cereal -E` is token-equal to `gcc -E` (tests/tokdiff.py)
   par      forced parallel -E, lint and index equal the sequential ones
   cells    `index --replay` with cells, rebuilt after a line is inserted
-           mid-file, equals a sequential rebuild (diagnostics and index)
+           mid-file, equals a sequential rebuild (diagnostics and index;
+           the token stream regenerated from the cells, every cell's
+           record checked)
 
 and it reports times (gcc -E, cereal -E sequential and parallel).  Exit
 status 1 if any check fails."""
@@ -111,37 +113,39 @@ def main():
             text = open(f, "rb").read()
             mid = text.find(b"\n", len(text) // 2) + 1
             open(copy, "wb").write(text)
-            outs = []
-            for extra in (["-fparallel=on", "-fparallel-chunk=4096"],
-                          ["-fparallel=off", "--no-cells"]):
-                p = subprocess.Popen([cereal, "index", "--replay", "--all"] +
-                                     extra + flags + [copy], cwd=cwd,
-                                     stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE,
-                                     stderr=subprocess.DEVNULL)
-                builds = []
-                for k in range(2):
-                    if k:
-                        open(copy, "wb").write(text[:mid] + b"int corpus_edit;\n"
-                                               + text[mid:])
-                    p.stdin.write(b"x\n")
-                    p.stdin.flush()
-                    buf = []
-                    while True:
-                        ln = p.stdout.readline()
-                        if not ln or ln == b"=== end\n":
-                            break
-                        buf.append(ln)
-                    builds.append(b"".join(buf))
-                p.stdin.write(b"q\n")
-                p.stdin.close()
-                p.wait()
-                open(copy, "wb").write(text)
-                outs.append(builds)
+            for kind in ([], ["--tokens=check"]):
+                outs = []
+                for extra in (["-fparallel=on", "-fparallel-chunk=4096"],
+                              ["-fparallel=off", "--no-cells"]):
+                    p = subprocess.Popen([cereal, "index", "--replay", "--all"] +
+                                         kind + extra + flags + [copy], cwd=cwd,
+                                         stdin=subprocess.PIPE,
+                                         stdout=subprocess.PIPE,
+                                         stderr=subprocess.DEVNULL)
+                    builds = []
+                    for k in range(2):
+                        open(copy, "wb").write(
+                            text[:mid] + b"int corpus_edit;\n" + text[mid:]
+                            if k else text)
+                        p.stdin.write(b"x\n")
+                        p.stdin.flush()
+                        buf = []
+                        while True:
+                            ln = p.stdout.readline()
+                            if not ln or ln == b"=== end\n":
+                                break
+                            buf.append(ln)
+                        builds.append(b"".join(buf))
+                    p.stdin.write(b"q\n")
+                    p.stdin.close()
+                    p.wait()
+                    open(copy, "wb").write(text)
+                    outs.append(builds)
+                if outs[0] != outs[1]:
+                    bad.append("cells%s differ (build %d)" %
+                               (" tokens" if kind else "",
+                                0 if outs[0][0] != outs[1][0] else 1))
             os.remove(copy)
-            if outs[0] != outs[1]:
-                bad.append("cells differ (build %d)" %
-                           (0 if outs[0][0] != outs[1][0] else 1))
         tot["gcc"] += tg
         tot["seq"] += ts
         tot["par"] += tp

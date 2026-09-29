@@ -97,4 +97,71 @@ static inline uint64_t hash64_str(const char *s, uint64_t seed)
     return s ? hash64(s, strlen(s), seed) : seed ^ H64_P5;
 }
 
+/* ---- polynomial hashes mod 2^61 - 1 --------------------------------------
+ * For sequences that must be hashed in pieces and combined: the hash of a
+ * concatenation AB is H(A) * BASE^|B| + H(B).  A prime modulus (not 2^64,
+ * where Thue-Morse sequences collide for any base). */
+#define M61 ((1ull << 61) - 1)
+#define M61_BASE 0x1CE4E5B9A7F3D1Bull   /* < M61 */
+
+static inline uint64_t m61_reduce(uint64_t x)
+{
+    x = (x & M61) + (x >> 61);
+    return x >= M61 ? x - M61 : x;
+}
+
+/* a, b < M61 */
+static inline uint64_t m61_mul(uint64_t a, uint64_t b)
+{
+    uint64_t l1 = a & 0xFFFFFFFFu, h1 = a >> 32, l2 = b & 0xFFFFFFFFu,
+             h2 = b >> 32;
+    uint64_t l = l1 * l2, m = l1 * h2 + l2 * h1, h = h1 * h2;
+    uint64_t r = (l & M61) + (l >> 61) + (h << 3) + (m >> 29) +
+                 (m << 35 >> 3) + 1;
+    r = (r & M61) + (r >> 61);
+    r = (r & M61) + (r >> 61);
+    return r - 1;
+}
+
+static inline uint64_t m61_add(uint64_t a, uint64_t b)
+{
+    uint64_t r = a + b;
+    return r >= M61 ? r - M61 : r;
+}
+
+static inline uint64_t m61_sub(uint64_t a, uint64_t b)
+{
+    return a >= b ? a - b : a + M61 - b;
+}
+
+static inline uint64_t m61_pow(uint64_t b, uint64_t e)
+{
+    uint64_t r = 1;
+    while (e) {
+        if (e & 1)
+            r = m61_mul(r, b);
+        b = m61_mul(b, b);
+        e >>= 1;
+    }
+    return r;
+}
+
+/* Append one element (any 64-bit value) to a sequence hash. */
+static inline uint64_t m61_push(uint64_t h, uint64_t v)
+{
+    return m61_add(m61_mul(h, M61_BASE), m61_reduce(v));
+}
+
+/* H(AB) from H(A), H(B) and |B|. */
+static inline uint64_t m61_concat(uint64_t ha, uint64_t hb, uint64_t nb)
+{
+    return m61_add(m61_mul(ha, m61_pow(M61_BASE, nb)), hb);
+}
+
+/* H(B) from prefix hashes H(AB), H(A) and |B|. */
+static inline uint64_t m61_range(uint64_t hab, uint64_t ha, uint64_t nb)
+{
+    return m61_sub(hab, m61_mul(ha, m61_pow(M61_BASE, nb)));
+}
+
 #endif

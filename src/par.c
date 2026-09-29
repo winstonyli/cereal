@@ -39,6 +39,7 @@
 #include "plan.h"
 #include "ppout.h"
 #include "thread.h"
+#include "toks.h"
 
 #define DEFAULT_CHUNK (64u * 1024)
 #define DEFAULT_MIN_BYTES (4u * 1024 * 1024)
@@ -71,6 +72,9 @@ typedef struct Worker {
     VEC(struct ExpLog) exps;       /* expansions, for Macro counts */
     /* cells */
     CellReads reads;               /* the read set */
+    uint32_t ntoks;                /* tokens given so far ... */
+    uint64_t thash;                /* ... and their sequence hash */
+    VEC(struct TokMark) marks;     /* the same at each clean boundary */
     VEC(uint32_t) cuts;            /* clean cell boundaries crossed */
     Hit *next_hit;                 /* stopped at a reused cell */
     bool cached;                   /* a reused cell: decoded, never run */
@@ -88,6 +92,12 @@ typedef struct Slice {
     Worker *w;
     size_t from, to;
 } Slice;
+
+typedef struct TokMark {
+    uint32_t item;
+    uint32_t ntoks;
+    uint64_t hash;
+} TokMark;
 
 typedef struct ExpLog {
     uint32_t key;
@@ -115,6 +125,9 @@ struct Par {
     Hit **hit_at;                  /* by item: a reused cell starting there */
     double t_cells;                /* stats: lookups done */
     bool placed[CELL_MAX_CLIENTS]; /* clients that took the cells as such */
+    TokRegen *toks;                  /* requested: the build's token cells */
+    VEC(TokCell) tcells;
+    bool tcells_ok;
 };
 
 void plan_free(Plan *p)
@@ -164,6 +177,13 @@ static bool on_boundary(void *ctx, size_t item, bool clean)
         atomic_store_u32(&P->abort, 1);
     if (atomic_load_u32(&P->abort))
         return false;
+    if (P->cache && clean && vec_last(&w->marks).item != item) {
+        TokMark m;
+        m.item = (uint32_t)item;
+        m.ntoks = w->ntoks;
+        m.hash = w->thash;
+        vec_push(&w->marks, m);
+    }
     if (w->nrecs < w->window) {
         BoundRec *r = &w->recs[w->nrecs];
         memset(r, 0, sizeof *r);
@@ -221,12 +241,23 @@ static void run_worker(void *arg)
         for (c = 0; c < P->nclients; c++)
             if (P->clients[c].token && w->wctx[c])
                 P->clients[c].token(w->wctx[c], &t);
+        if (P->cache && tok_in_stream(&t)) {
+            w->ntoks++;
+            w->thash = m61_push(w->thash, tok_hash(&w->pp, &t));
+        }
     }
     if (w->pp.diverged)
         atomic_store_u32(&w->par->abort, 1);
     if (!w->stopped) {
         w->end_off = w->sink.len;
         w->end_st = w->pr.st;
+        if (P->cache) {
+            TokMark m;
+            m.item = (uint32_t)P->plan.items.len;
+            m.ntoks = w->ntoks;
+            m.hash = w->thash;
+            vec_push(&w->marks, m);
+        }
     }
     if (P->cache)
         cell_reads_sort(&w->reads); /* by item, for encoding cells */
@@ -270,8 +301,12 @@ static void worker_init(Par *P, Worker *w, int idx, size_t start, size_t end,
     w->diag.max_errors = tu->diag.max_errors;
     pp_init_worker(&w->pp, &tu->pp, &w->arena, &w->diag);
     if (P->cache) {
+        TokMark m;
         cell_reads_init(&w->reads);
         w->pp.reads = &w->reads;
+        memset(&m, 0, sizeof m); /* no tokens yet at the start */
+        m.item = (uint32_t)start;
+        vec_push(&w->marks, m);
     }
     w->pp.on_boundary = on_boundary;
     w->pp.boundary_ctx = w;
@@ -311,6 +346,7 @@ static void worker_free(Par *P, Worker *w)
     vec_free(&w->exps);
     cell_reads_free(&w->reads);
     vec_free(&w->cuts);
+    vec_free(&w->marks);
     pp_free(&w->pp);
     sink_free(&w->sink);
     if (adopts(P)) {
@@ -682,6 +718,32 @@ typedef struct CellJob {
     Macro **rmacro;                /* its reads in this build */
 } CellJob;
 
+static const TokMark *find_mark(const Worker *w, size_t item)
+{
+    size_t lo = 0, hi = w->marks.len;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        if (w->marks.data[mid].item < item)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo < w->marks.len && w->marks.data[lo].item == item
+               ? &w->marks.data[lo] : NULL;
+}
+
+/* The tokens a worker gave for items [x, y), both clean boundaries. */
+static bool tok_range(const Worker *w, size_t x, size_t y, uint32_t *n,
+                      uint64_t *h)
+{
+    const TokMark *a = find_mark(w, x), *b = find_mark(w, y);
+    if (!a || !b)
+        return false;
+    *n = b->ntoks - a->ntoks;
+    *h = m61_range(b->hash, a->hash, *n);
+    return true;
+}
+
 static void encode_cell(CellJob *j, size_t x, size_t y)
 {
     Par *P = j->P;
@@ -691,6 +753,8 @@ static void encode_cell(CellJob *j, size_t x, size_t y)
     size_t i;
     int k;
     cell_enc_begin(&e, &P->cb, &w->reads, x, y);
+    if (!tok_range(w, x, y, &e.cell->ntoks, &e.cell->tok_hash))
+        e.ok = false;
     for (i = 0; i < w->diag.all.len; i++) {
         const Diagnostic *d = w->diag.all.data[i];
         if (d->key >= x && d->key < y)
@@ -801,6 +865,7 @@ static void merge_cells(Par *P)
     CellJob *jobs;
     size_t nj = 0;
     bool complete = true;          /* every slice has its cell */
+    bool covered = true;           /* every slice ran to its end */
     int c;
     VEC(CellPlace) places = {0};
     Worker *next = NULL;           /* where the last worker stitched */
@@ -842,6 +907,7 @@ static void merge_cells(Par *P)
             j->hit = P->hit_at[s->from];
         } else if (s->w->pp.halted) { /* cancelled, or fatal */
             complete = false;
+            covered = false;
         } else {
             /* a cell per stretch between the clean boundaries crossed */
             size_t x = s->from, i;
@@ -861,6 +927,29 @@ static void merge_cells(Par *P)
     /* encode first: whether clients can take the cells themselves (place)
      * depends on every slice having one */
     run_jobs(P, jobs, nj, false, run_encode_job);
+    if (P->toks) {
+        /* the build's token cells: reused ones as stored, the rest from
+         * the workers' marks (whether or not they could be cached) */
+        P->tcells_ok = covered;
+        for (k = 0; k < nj && P->tcells_ok; k++) {
+            TokCell tc;
+            memset(&tc, 0, sizeof tc);
+            if (jobs[k].hit) {
+                tc.s = (uint32_t)jobs[k].hit->s;
+                tc.e = (uint32_t)jobs[k].hit->e;
+                tc.ntoks = jobs[k].hit->cell->ntoks;
+                tc.hash = jobs[k].hit->cell->tok_hash;
+                tc.reused = true;
+            } else {
+                tc.s = (uint32_t)jobs[k].from;
+                tc.e = (uint32_t)jobs[k].to;
+                if (!tok_range(jobs[k].w, jobs[k].from, jobs[k].to, &tc.ntoks,
+                               &tc.hash))
+                    P->tcells_ok = false;
+            }
+            vec_push(&P->tcells, tc);
+        }
+    }
     for (k = 0; k < nj; k++)
         if (!jobs[k].hit && !jobs[k].cell) {
             complete = false;
@@ -1004,6 +1093,7 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
     if (cells_usable(po, out, clients, nclients)) {
         P.cache = po->cells;
         P.plan.cdc = true;
+        P.toks = po->toks;
     }
     P.plan.chunk = po->chunk ? po->chunk : DEFAULT_CHUNK;
     tu->pp.mode = PPM_PHASE_A;
@@ -1090,6 +1180,17 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
     if (getenv("CEREAL_PAR_STATS"))
         fprintf(stderr, "par: workers freed at %.3fs\n", now() - P.t0);
     free(P.w);
+    if (P.toks) {
+        if (res == PAR_DONE && P.tcells_ok && !cancelled(&P)) {
+            P.toks->tu = tu;
+            P.toks->plan = P.plan;
+            memset(&P.plan, 0, sizeof P.plan);
+            P.toks->cells = P.tcells.data;
+            P.toks->ncells = P.tcells.len;
+        } else {
+            vec_free(&P.tcells);
+        }
+    }
     plan_free(&P.plan);
     tu->pp.plan = NULL;
     return res;

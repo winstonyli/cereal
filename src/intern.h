@@ -21,6 +21,7 @@ typedef struct Ident {
     uint32_t len;
     uint32_t hash;
     uint32_t id;           /* dense, >= 1 */
+    uint64_t digest;       /* 64-bit content hash (hash.h: token hashes) */
     uint16_t kw;           /* keyword/special id, 0 if none */
 } Ident;
 

@@ -2070,6 +2070,13 @@ static bool plan_read(PP *pp, Tok *t)
         t->flags = TF_BOL;
         if (pp->plan_pos >= plan->items.len)
             return true;
+        if (pp->plan_stop && pp->plan_pos >= pp->plan_stop) {
+            pp->plan_stop_clean = pp->plan_pos == pp->plan_stop &&
+                                  pp->reading_top && pp->ctx.len == 0 &&
+                                  !pp->carry_space;
+            pp->plan_pos = plan->items.len;
+            return true;
+        }
         it = &plan->items.data[pp->plan_pos];
         pp->diag->key = (uint32_t)pp->plan_pos;
         switch (it->kind) {

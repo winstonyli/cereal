@@ -1,6 +1,8 @@
 /* intern.c - concurrent identifier interner. */
 #include "intern.h"
 
+#include "hash.h"
+
 #include <string.h>
 
 static InternTable *table_new(size_t cap)
@@ -140,6 +142,7 @@ Ident *intern(Interner *in, const char *str, size_t n)
         id->str = arena_strndup(&s->arena, str, n);
         id->len = (uint32_t)n;
         id->hash = h;
+        id->digest = hash64(str, n, 0);
         id->id = atomic_add_u32(&in->next_id, 1);
         register_id(in, id);
         atomic_store_ptr((void **)&t->slot[empty], id);

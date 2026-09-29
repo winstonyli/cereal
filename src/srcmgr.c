@@ -264,6 +264,23 @@ SrcLoc srcmgr_scratch(SrcMgr *sm, ScratchCursor *c, const char *s, size_t n)
     return loc;
 }
 
+ScratchMark srcmgr_scratch_mark(const ScratchCursor *c)
+{
+    ScratchMark m;
+    m.chunk = c->chunk;
+    m.size = c->chunk ? c->chunk->size : 0;
+    return m;
+}
+
+void srcmgr_scratch_rewind(ScratchCursor *c, ScratchMark m)
+{
+    if (!c->chunk)
+        return;
+    /* a chunk started since the mark is reused from its beginning; the
+     * marked one keeps what it had */
+    c->chunk->size = c->chunk == m.chunk ? m.size : 0;
+}
+
 SrcFile *srcmgr_file_of(const SrcMgr *sm, SrcLoc loc)
 {
     uint32_t lo = 0, hi = srcmgr_nfiles(sm);
