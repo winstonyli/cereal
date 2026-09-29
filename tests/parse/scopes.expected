@@ -4,90 +4,123 @@ DECL 'typedef' 3:1
     TYPESPEC 'int' 3:9
   INIT_DECL 'T' 3:13
     NAME 'T' 3:13
+    DECLARED 'T' 3:13
 FUNC_DEF 'void' 6:1
   SPECS 'void' 6:1
     TYPESPEC 'void' 6:1
   FUNC '(' 6:11
     NAME 'block' 6:6
+    SCOPE '(' 6:11
     PARAM 'void' 6:12
       SPECS 'void' 6:12
         TYPESPEC 'void' 6:12
+    SCOPE_END 'void' 6:12
+  DECLARED 'block' 6:6 [2]
+  SCOPE '{' 6:18 [80]
   COMPOUND '{' 6:18
+    BODY '{' 6:18
     COMPOUND '{' 7:5
+      SCOPE '{' 7:5
       DECL 'int' 7:7
         SPECS 'int' 7:7
           TYPESPEC 'int' 7:7
         INIT_DECL 'T' 7:11
           NAME 'T' 7:11
+          DECLARED 'T' 7:11
       EXPR_STMT 'T' 7:14
         ASSIGN '=' 7:16
           IDENT 'T' 7:14
           NUMBER '1' 7:18
+      SCOPE_END '}' 7:21
     DECL 'T' 8:5
       SPECS 'T' 8:5
         TYPEDEF_NAME 'T' 8:5
       INIT_DECL 'y' 8:7
         NAME 'y' 8:7
+        DECLARED 'y' 8:7
+  SCOPE_END '}' 9:1
 FUNC_DEF 'void' 12:1
   SPECS 'void' 12:1
     TYPESPEC 'void' 12:1
   FUNC '(' 12:10
     NAME 'init' 12:6
+    SCOPE '(' 12:10
     PARAM 'void' 12:11
       SPECS 'void' 12:11
         TYPESPEC 'void' 12:11
+    SCOPE_END 'void' 12:11
+  DECLARED 'init' 12:6 [2]
+  SCOPE '{' 12:17 [80]
   COMPOUND '{' 12:17
+    BODY '{' 12:17
     DECL 'int' 13:5
       SPECS 'int' 13:5
         TYPESPEC 'int' 13:5
       INIT_DECL 'T' 13:9
         NAME 'T' 13:9
+        DECLARED 'T' 13:9
         SIZEOF_EXPR 'sizeof' 13:13
           PAREN '(' 13:19
             IDENT 'T' 13:20
+  SCOPE_END '}' 14:1
 FUNC_DEF 'void' 17:1
   SPECS 'void' 17:1
     TYPESPEC 'void' 17:1
   FUNC '(' 17:10
     NAME 'same' 17:6
+    SCOPE '(' 17:10
     PARAM 'void' 17:11
       SPECS 'void' 17:11
         TYPESPEC 'void' 17:11
+    SCOPE_END 'void' 17:11
+  DECLARED 'same' 17:6 [2]
+  SCOPE '{' 17:17 [80]
   COMPOUND '{' 17:17
+    BODY '{' 17:17
     DECL 'T' 18:5
       SPECS 'T' 18:5
         TYPEDEF_NAME 'T' 18:5
       INIT_DECL 'T' 18:7
         NAME 'T' 18:7
+        DECLARED 'T' 18:7
     EXPR_STMT 'T' 19:5
       ASSIGN '=' 19:7
         IDENT 'T' 19:5
         NUMBER '2' 19:9
+  SCOPE_END '}' 20:1
 FUNC_DEF 'void' 23:1
   SPECS 'void' 23:1
     TYPESPEC 'void' 23:1
   FUNC '(' 23:11
     NAME 'param' 23:6
+    SCOPE '(' 23:11
     PARAM 'int' 23:12
       SPECS 'int' 23:12
         TYPESPEC 'int' 23:12
       NAME 'T' 23:16
+    SCOPE_END 'T' 23:16
+  DECLARED 'param' 23:6 [2]
+  SCOPE '{' 23:19 [80]
   COMPOUND '{' 23:19
+    BODY '{' 23:19
     EXPR_STMT 'T' 24:5
       ASSIGN '=' 24:7
         IDENT 'T' 24:5
         NUMBER '3' 24:9
+  SCOPE_END '}' 25:1
 DECL 'T' 26:1
   SPECS 'T' 26:1
     TYPEDEF_NAME 'T' 26:1
   INIT_DECL 'after_param' 26:3
     NAME 'after_param' 26:3
+    DECLARED 'after_param' 26:3
 DECL 'void' 29:1
   SPECS 'void' 29:1
     TYPESPEC 'void' 29:1
   INIT_DECL 'later' 29:6
     FUNC '(' 29:11
       NAME 'later' 29:6
+      SCOPE '(' 29:11
       PARAM 'int' 29:12
         SPECS 'int' 29:12
           TYPESPEC 'int' 29:12
@@ -100,119 +133,168 @@ DECL 'void' 29:1
           SIZEOF_EXPR 'sizeof' 29:25
             PAREN '(' 29:31
               IDENT 'T' 29:32
+      SCOPE_END ']' 29:34
+    DECLARED 'later' 29:6
 DECL 'void' 32:1
   SPECS 'void' 32:1
     TYPESPEC 'void' 32:1
   INIT_DECL 'abstract' 32:6
     FUNC '(' 32:14
       NAME 'abstract' 32:6
+      SCOPE '(' 32:14
       PARAM 'int' 32:15
         SPECS 'int' 32:15
           TYPESPEC 'int' 32:15
         FUNC '(' 32:19
+          SCOPE '(' 32:19
           PARAM 'T' 32:20
             SPECS 'T' 32:20
               TYPEDEF_NAME 'T' 32:20
+          SCOPE_END 'T' 32:20
+      SCOPE_END ')' 32:21
+    DECLARED 'abstract' 32:6
 FUNC_DEF 'void' 35:1
   SPECS 'void' 35:1
     TYPESPEC 'void' 35:1
   FUNC '(' 35:18
     NAME 'call_or_decl' 35:6
+    SCOPE '(' 35:18
     PARAM 'void' 35:19
       SPECS 'void' 35:19
         TYPESPEC 'void' 35:19
+    SCOPE_END 'void' 35:19
+  DECLARED 'call_or_decl' 35:6 [2]
+  SCOPE '{' 35:25 [80]
   COMPOUND '{' 35:25
+    BODY '{' 35:25
     DECL 'T' 36:5
       SPECS 'T' 36:5
         TYPEDEF_NAME 'T' 36:5
       INIT_DECL 'x' 36:7
         NAME 'x' 36:7
+        DECLARED 'x' 36:7
     COMPOUND '{' 37:5
+      SCOPE '{' 37:5
       DECL 'int' 37:7
         SPECS 'int' 37:7
           TYPESPEC 'int' 37:7
         INIT_DECL 'T' 37:11
           NAME 'T' 37:11
+          DECLARED 'T' 37:11
       EXPR_STMT 'T' 37:14
         CALL '(' 37:15
           IDENT 'T' 37:14
           IDENT 'x' 37:16
+      SCOPE_END '}' 37:20
+  SCOPE_END '}' 38:1
 FUNC_DEF 'void' 41:1
   SPECS 'void' 41:1
     TYPESPEC 'void' 41:1
   FUNC '(' 41:16
     NAME 'enum_const' 41:6
+    SCOPE '(' 41:16
     PARAM 'void' 41:17
       SPECS 'void' 41:17
         TYPESPEC 'void' 41:17
+    SCOPE_END 'void' 41:17
+  DECLARED 'enum_const' 41:6 [2]
+  SCOPE '{' 41:23 [80]
   COMPOUND '{' 41:23
+    BODY '{' 41:23
     DECL 'enum' 42:5
       SPECS 'enum' 42:5
         ENUM 'enum' 42:5 [2]
+          OPEN '{' 42:10 #2
           ENUMERATOR 'T' 42:12
     EXPR_STMT 'T' 43:5
       BINARY '+' 43:7
         IDENT 'T' 43:5
         NUMBER '1' 43:9
+  SCOPE_END '}' 44:1
 FUNC_DEF 'void' 47:1
   SPECS 'void' 47:1
     TYPESPEC 'void' 47:1
   FUNC '(' 47:10
     NAME 'loop' 47:6
+    SCOPE '(' 47:10
     PARAM 'void' 47:11
       SPECS 'void' 47:11
         TYPESPEC 'void' 47:11
+    SCOPE_END 'void' 47:11
+  DECLARED 'loop' 47:6 [2]
+  SCOPE '{' 47:17 [80]
   COMPOUND '{' 47:17
+    BODY '{' 47:17
     FOR 'for' 48:5
+      SCOPE 'for' 48:5
       DECL 'int' 48:10
         SPECS 'int' 48:10
           TYPESPEC 'int' 48:10
         INIT_DECL 'T' 48:14
           NAME 'T' 48:14
+          DECLARED 'T' 48:14
           NUMBER '0' 48:18
       BINARY '<' 48:23
         IDENT 'T' 48:21
         NUMBER '1' 48:25
       POSTFIX '++' 48:29
         IDENT 'T' 48:28
+      SCOPE 'T' 49:9
       EXPR_STMT 'T' 49:9
         ASSIGN '=' 49:11
           IDENT 'T' 49:9
           NUMBER '1' 49:13
+      SCOPE_END ';' 49:14
+      SCOPE_END ';' 49:14
     DECL 'T' 50:5
       SPECS 'T' 50:5
         TYPEDEF_NAME 'T' 50:5
       INIT_DECL 'z' 50:7
         NAME 'z' 50:7
+        DECLARED 'z' 50:7
+  SCOPE_END '}' 51:1
 FUNC_DEF 'void' 54:1
   SPECS 'void' 54:1
     TYPESPEC 'void' 54:1
   FUNC '(' 54:15
     NAME 'selection' 54:6
+    SCOPE '(' 54:15
     PARAM 'void' 54:16
       SPECS 'void' 54:16
         TYPESPEC 'void' 54:16
+    SCOPE_END 'void' 54:16
+  DECLARED 'selection' 54:6 [2]
+  SCOPE '{' 54:22 [80]
   COMPOUND '{' 54:22
+    BODY '{' 54:22
     IF 'if' 55:5
+      SCOPE 'if' 55:5
       SIZEOF_TYPE 'sizeof' 55:9
         TYPE_NAME 'enum' 55:16
           SPECS 'enum' 55:16
             ENUM 'enum' 55:16 [2]
+              OPEN '{' 55:21 #2
               ENUMERATOR 'T' 55:23
                 NUMBER '1' 55:27
+      SCOPE 'T' 56:9
       EXPR_STMT 'T' 56:9
         ASSIGN '=' 56:11
           IDENT 'T' 56:9
           NUMBER '2' 56:13
+      SCOPE_END ';' 56:14
+      SCOPE_END ';' 56:14
     DECL 'T' 57:5
       SPECS 'T' 57:5
         TYPEDEF_NAME 'T' 57:5
       INIT_DECL 'w' 57:7
         NAME 'w' 57:7
+        DECLARED 'w' 57:7
+  SCOPE_END '}' 58:1
 DECL 'struct' 61:1
   SPECS 'struct' 61:1
     STRUCT 'struct' 61:1 [2]
       TAG 'S' 61:8
+      OPEN '{' 61:10
       MEMBER_DECL 'int' 61:12
         SPECS 'int' 61:12
           TYPESPEC 'int' 61:12
@@ -220,25 +302,33 @@ DECL 'struct' 61:1
           NAME 'T' 61:16
   INIT_DECL 's' 61:21
     NAME 's' 61:21
+    DECLARED 's' 61:21
 DECL 'T' 62:1
   SPECS 'T' 62:1
     TYPEDEF_NAME 'T' 62:1
   INIT_DECL 'member_after' 62:3
     NAME 'member_after' 62:3
+    DECLARED 'member_after' 62:3
 FUNC_DEF 'void' 65:1
   SPECS 'void' 65:1
     TYPESPEC 'void' 65:1
   FUNC '(' 65:11
     NAME 'casts' 65:6
+    SCOPE '(' 65:11
     PARAM 'void' 65:12
       SPECS 'void' 65:12
         TYPESPEC 'void' 65:12
+    SCOPE_END 'void' 65:12
+  DECLARED 'casts' 65:6 [2]
+  SCOPE '{' 65:18 [80]
   COMPOUND '{' 65:18
+    BODY '{' 65:18
     DECL 'int' 66:5
       SPECS 'int' 66:5
         TYPESPEC 'int' 66:5
       INIT_DECL 'a' 66:9
         NAME 'a' 66:9
+        DECLARED 'a' 66:9
         BINARY '+' 66:30
           BINARY '+' 66:18
             CAST '(' 66:13
@@ -262,21 +352,29 @@ FUNC_DEF 'void' 65:1
           SPECS 'void' 67:6
             TYPESPEC 'void' 67:6
         IDENT 'a' 67:11
+  SCOPE_END '}' 68:1
 FUNC_DEF 'void' 71:1
   SPECS 'void' 71:1
     TYPESPEC 'void' 71:1
   FUNC '(' 71:11
     NAME 'label' 71:6
+    SCOPE '(' 71:11
     PARAM 'void' 71:12
       SPECS 'void' 71:12
         TYPESPEC 'void' 71:12
+    SCOPE_END 'void' 71:12
+  DECLARED 'label' 71:6 [2]
+  SCOPE '{' 71:18 [80]
   COMPOUND '{' 71:18
+    BODY '{' 71:18
     LABEL 'T' 72:1
       GOTO 'T' 72:10
+  SCOPE_END '}' 73:1
 DECL 'struct' 77:1
   SPECS 'struct' 77:1
     STRUCT 'struct' 77:1 [2]
       TAG 'B' 77:8
+      OPEN '{' 77:10
       MEMBER_DECL 'unsigned' 77:12
         SPECS 'unsigned' 77:12
           TYPESPEC 'unsigned' 77:12
@@ -291,48 +389,63 @@ DECL 'struct' 77:1
           NUMBER '3' 77:34
   INIT_DECL 'bits' 77:39
     NAME 'bits' 77:39
+    DECLARED 'bits' 77:39
 FUNC_DEF 'void' 80:1
   SPECS 'void' 80:1
     TYPESPEC 'void' 80:1
   FUNC '(' 80:10
     NAME 'star' 80:6
+    SCOPE '(' 80:10
     PARAM 'void' 80:11
       SPECS 'void' 80:11
         TYPESPEC 'void' 80:11
+    SCOPE_END 'void' 80:11
+  DECLARED 'star' 80:6 [2]
+  SCOPE '{' 80:17 [80]
   COMPOUND '{' 80:17
+    BODY '{' 80:17
     DECL 'T' 81:5
       SPECS 'T' 81:5
         TYPEDEF_NAME 'T' 81:5
       INIT_DECL 'p' 81:9
         PTR '*' 81:7
           NAME 'p' 81:9
+        DECLARED 'p' 81:9
     COMPOUND '{' 82:5
+      SCOPE '{' 82:5
       DECL 'int' 82:7
         SPECS 'int' 82:7
           TYPESPEC 'int' 82:7
         INIT_DECL 'T' 82:11
           NAME 'T' 82:11
+          DECLARED 'T' 82:11
         INIT_DECL 'b' 82:14
           NAME 'b' 82:14
+          DECLARED 'b' 82:14
       EXPR_STMT 'T' 82:17
         BINARY '*' 82:19
           IDENT 'T' 82:17
           IDENT 'b' 82:21
+      SCOPE_END '}' 82:24
+  SCOPE_END '}' 83:1
 DECL 'typedef' 87:1
   SPECS 'typedef' 87:1
     STORAGE 'typedef' 87:1
     TYPESPEC 'long' 87:9
   INIT_DECL 'U' 87:14
     NAME 'U' 87:14
+    DECLARED 'U' 87:14
 DECL 'enum' 88:1
   SPECS 'enum' 88:1
     ENUM 'enum' 88:1 [2]
+      OPEN '{' 88:6 #2
       ENUMERATOR 'V' 88:8
   INIT_DECL 'fn' 88:14
     FUNC '(' 88:50
       PTR '*' 88:13
         FUNC '(' 88:16
           NAME 'fn' 88:14
+          SCOPE '(' 88:16
           PARAM 'T' 88:17
             SPECS 'T' 88:17
               TYPEDEF_NAME 'T' 88:17
@@ -340,6 +453,7 @@ DECL 'enum' 88:1
           PARAM 'enum' 88:22
             SPECS 'enum' 88:22
               ENUM 'enum' 88:22 [2]
+                OPEN '{' 88:27 #2
                 ENUMERATOR 'U' 88:29
             NAME 'y' 88:33
           PARAM 'int' 88:36
@@ -350,12 +464,55 @@ DECL 'enum' 88:1
               BINARY '+' 88:44
                 IDENT 'T' 88:42
                 IDENT 'U' 88:46
+          SCOPE_END ']' 88:47
+      SCOPE '(' 88:50
       PARAM 'T' 88:51
         SPECS 'T' 88:51
           TYPEDEF_NAME 'T' 88:51
         NAME 't' 88:53
+      SCOPE_END 't' 88:53
+    DECLARED 'fn' 88:14
 DECL 'U' 89:1
   SPECS 'U' 89:1
     TYPEDEF_NAME 'U' 89:1
   INIT_DECL 'after_fn' 89:3
     NAME 'after_fn' 89:3
+    DECLARED 'after_fn' 89:3
+DECL 'typedef' 92:1
+  SPECS 'typedef' 92:1
+    STORAGE 'typedef' 92:1
+    TYPESPEC 'int' 92:9
+  INIT_DECL 'T2' 92:13
+    NAME 'T2' 92:13
+    DECLARED 'T2' 92:13
+FUNC_DEF 'int' 93:1
+  SPECS 'int' 93:1
+    TYPESPEC 'int' 93:1
+  FUNC '(' 93:9
+    NAME 'nest' 93:5
+    SCOPE '(' 93:9
+    PARAM 'int' 93:10
+      SPECS 'int' 93:10
+        TYPESPEC 'int' 93:10
+      FUNC '(' 93:15
+        NAME 'g' 93:14
+        SCOPE '(' 93:15
+        PARAM 'int' 93:16
+          SPECS 'int' 93:16
+            TYPESPEC 'int' 93:16
+          NAME 'T2' 93:20
+        SCOPE_END 'T2' 93:20
+    SCOPE_END ')' 93:22
+  DECLARED 'nest' 93:5 [2]
+  SCOPE '{' 93:25 [80]
+  COMPOUND '{' 93:25
+    BODY '{' 93:25
+    DECL 'T2' 93:27
+      SPECS 'T2' 93:27
+        TYPEDEF_NAME 'T2' 93:27
+      INIT_DECL 'y' 93:30
+        NAME 'y' 93:30
+        DECLARED 'y' 93:30
+    RETURN 'return' 93:33
+      IDENT 'y' 93:40
+  SCOPE_END '}' 93:43

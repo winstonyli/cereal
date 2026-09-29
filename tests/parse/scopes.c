@@ -87,3 +87,7 @@ void star(void) {
 typedef long U;
 enum { V } (*fn(T T, enum { U } y, int x[T + U]))(T t);
 U after_fn;                   /* U: the typedef again */
+
+/* a nested function declarator's parameters are not the outer one's */
+typedef int T2;
+int nest(int g(int T2)) { T2 y; return y; }

@@ -21,62 +21,90 @@ DECL 'int' 2:1
     TYPESPEC 'int' 2:1
   INIT_DECL 'a' 2:5
     NAME 'a' 2:5
+    DECLARED 'a' 2:5
     ERROR ';' 2:9 [1]
 DECL 'int' 3:1
   SPECS 'int' 3:1
     TYPESPEC 'int' 3:1
   INIT_DECL 'b' 3:5
     NAME 'b' 3:5
+    DECLARED 'b' 3:5
 FUNC_DEF 'void' 5:1
   SPECS 'void' 5:1
     TYPESPEC 'void' 5:1
   FUNC '(' 5:18
     NAME 'missing_semi' 5:6
+    SCOPE '(' 5:18
     PARAM 'void' 5:19
       SPECS 'void' 5:19
         TYPESPEC 'void' 5:19
+    SCOPE_END 'void' 5:19
+  DECLARED 'missing_semi' 5:6 [2]
+  SCOPE '{' 5:25 [80]
   COMPOUND '{' 5:25
+    BODY '{' 5:25
     DECL 'int' 6:5 [1]
       SPECS 'int' 6:5
         TYPESPEC 'int' 6:5
       INIT_DECL 'x' 6:9
         NAME 'x' 6:9
+        DECLARED 'x' 6:9
         NUMBER '1' 6:13
     EXPR_STMT 'x' 8:5
       ASSIGN '=' 8:7
         IDENT 'x' 8:5
         IDENT 'y' 8:9
+  SCOPE_END '}' 9:1
 FUNC_DEF 'void' 11:1
   SPECS 'void' 11:1
     TYPESPEC 'void' 11:1
   FUNC '(' 11:14
     NAME 'unclosed' 11:6
+    SCOPE '(' 11:14
     PARAM 'void' 11:15
       SPECS 'void' 11:15
         TYPESPEC 'void' 11:15
+    SCOPE_END 'void' 11:15
+  DECLARED 'unclosed' 11:6 [2]
+  SCOPE '{' 11:21 [80]
   COMPOUND '{' 11:21 [1]
+    BODY '{' 11:21
     IF 'if' 12:5
+      SCOPE 'if' 12:5
       IDENT 'a' 12:9
+      SCOPE '{' 12:12
       COMPOUND '{' 12:12
+        SCOPE '{' 12:12
         EXPR_STMT 'b' 13:9
           ASSIGN '=' 13:11
             IDENT 'b' 13:9
             NUMBER '1' 13:13
+        SCOPE_END '}' 16:1
+      SCOPE_END '}' 16:1
+      SCOPE_END '}' 16:1
+  SCOPE_END '}' 16:1
 FUNC_DEF 'int' 18:1
   SPECS 'int' 18:1
     TYPESPEC 'int' 18:1
   FUNC '(' 18:10
     NAME 'after' 18:5
+    SCOPE '(' 18:10
     PARAM 'void' 18:11
       SPECS 'void' 18:11
         TYPESPEC 'void' 18:11
+    SCOPE_END 'void' 18:11
+  DECLARED 'after' 18:5 [2]
+  SCOPE '{' 18:17 [80]
   COMPOUND '{' 18:17
+    BODY '{' 18:17
     RETURN 'return' 18:19
       IDENT 'b' 18:26
+  SCOPE_END '}' 18:29
 DECL 'struct' 20:1
   SPECS 'struct' 20:1
     STRUCT 'struct' 20:1 [2]
       TAG 's' 20:8
+      OPEN '{' 20:10
       MEMBER_DECL 'int' 20:12 [1]
         SPECS 'int' 20:12
           TYPESPEC 'int' 20:12
@@ -87,6 +115,7 @@ DECL 'int' 21:1
     TYPESPEC 'int' 21:1
   INIT_DECL 'c' 21:5
     NAME 'c' 21:5
+    DECLARED 'c' 21:5
     PAREN '(' 21:9
       BINARY '+' 21:12
         NUMBER '1' 21:10
@@ -96,3 +125,4 @@ DECL 'int' 22:1
     TYPESPEC 'int' 22:1
   INIT_DECL 'd' 22:5
     NAME 'd' 22:5
+    DECLARED 'd' 22:5

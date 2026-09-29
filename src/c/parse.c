@@ -223,6 +223,19 @@ static void set_aux(Parser *p, uint32_t n)
     vec_last(&p->nodes).aux = (uint16_t)(n > 0xFFFF ? 0xFFFF : n);
 }
 
+/* Scopes, with their markers in the tree (ast.h). */
+static void open_scope(Parser *p, uint32_t tok, unsigned flags)
+{
+    scope_push(&p->scope);
+    emit(p, N_SCOPE, tok, nmark(p), flags);
+}
+
+static void close_scope(Parser *p, SymSaveVec *save)
+{
+    leaf(p, N_SCOPE_END, p->pos ? p->pos - 1 : 0);
+    scope_pop(&p->scope, save);
+}
+
 /* ---- recovery ------------------------------------------------------------- */
 
 /* Skip to the end of the statement: past a ';' or up to a '}' at this
@@ -665,7 +678,8 @@ static void struct_spec(Parser *p)
         leaf(p, N_TAG, adv(p));
     attributes(p);
     if (at(p, P_LBRACE)) {
-        adv(p);
+        leaf(p, N_OPEN, adv(p));
+        set_aux(p, ckw_of(p, &p->toks.data[kw]) == CK_UNION);
         flags |= NF_BODY;
         for (;;) {
             item_pragmas(p);
@@ -699,7 +713,8 @@ static void enum_spec(Parser *p)
         leaf(p, N_TAG, adv(p));
     attributes(p);
     if (at(p, P_LBRACE)) {
-        adv(p);
+        leaf(p, N_OPEN, adv(p));
+        set_aux(p, 2);
         flags |= NF_BODY;
         while (!at(p, P_RBRACE) && !at_eof(p)) {
             PTok e = ct(p);
@@ -856,9 +871,12 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             uint32_t lp = adv(p), save = (uint32_t)p->saved.len;
             unsigned flags = 0;
             bool adjacent = di->inner == DK_NONE;
-            scope_push(&p->scope); /* function prototype scope */
+            open_scope(p, lp, 0); /* function prototype scope */
             params(p, &flags);
-            scope_pop(&p->scope, adjacent ? &p->saved : NULL);
+            /* only this declarator's own parameters are saved (not
+             * those of a function declarator among them) */
+            p->saved.len = save;
+            close_scope(p, adjacent ? &p->saved : NULL);
             expect(p, P_RPAREN);
             emit(p, N_FUNC, lp, start, flags);
             if (adjacent) {
@@ -1351,9 +1369,9 @@ static void parse_expr(Parser *p)
 /* A substatement: a block of its own (C99 6.8.4p3, 6.8.5p5). */
 static void substatement(Parser *p)
 {
-    scope_push(&p->scope);
+    open_scope(p, ci(p), 0);
     statement(p);
-    scope_pop(&p->scope, NULL);
+    close_scope(p, NULL);
 }
 
 static void end_stmt(Parser *p, NodeTag tag, uint32_t tok, uint32_t start)
@@ -1389,27 +1407,27 @@ static void statement(Parser *p)
         break;
     case CK_IF:
         adv(p);
-        scope_push(&p->scope);
+        open_scope(p, i, 0);
         paren_expr(p);
         substatement(p);
         if (ckw(p) == CK_ELSE) {
             adv(p);
             substatement(p);
         }
-        scope_pop(&p->scope, NULL);
+        close_scope(p, NULL);
         emit(p, N_IF, i, start, 0);
         return;
     case CK_SWITCH: case CK_WHILE:
         adv(p);
-        scope_push(&p->scope);
+        open_scope(p, i, 0);
         paren_expr(p);
         substatement(p);
-        scope_pop(&p->scope, NULL);
+        close_scope(p, NULL);
         emit(p, ckw_of(p, &t) == CK_SWITCH ? N_SWITCH : N_WHILE, i, start, 0);
         return;
     case CK_DO:
         adv(p);
-        scope_push(&p->scope);
+        open_scope(p, i, 0);
         substatement(p);
         if (ckw(p) == CK_WHILE) {
             adv(p);
@@ -1417,13 +1435,13 @@ static void statement(Parser *p)
         } else {
             expected(p, "'while'");
         }
-        scope_pop(&p->scope, NULL);
+        close_scope(p, NULL);
         end_stmt(p, N_DO, i, start);
         return;
     case CK_FOR: {
         PTok c;
         adv(p);
-        scope_push(&p->scope);
+        open_scope(p, i, 0);
         expect(p, P_LPAREN);
         c = ct(p);
         if (accept(p, P_SEMI)) {
@@ -1445,7 +1463,7 @@ static void statement(Parser *p)
             parse_expr(p);
         expect(p, P_RPAREN);
         substatement(p);
-        scope_pop(&p->scope, NULL);
+        close_scope(p, NULL);
         emit(p, N_FOR, i, start, 0);
         return;
     }
@@ -1592,7 +1610,9 @@ static void compound(Parser *p, bool push)
     unsigned flags = 0;
     vec_push(&p->open_braces, lb);
     if (push)
-        scope_push(&p->scope);
+        open_scope(p, lb, 0);
+    else
+        leaf(p, N_BODY, lb);
     for (;;) {
         uint32_t before;
         item_pragmas(p);
@@ -1613,7 +1633,7 @@ static void compound(Parser *p, bool push)
         }
     }
     if (push)
-        scope_pop(&p->scope, NULL);
+        close_scope(p, NULL);
     p->open_braces.len--;
     emit(p, N_COMPOUND, lb, start, flags);
 }
@@ -1626,7 +1646,8 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
     uint32_t i;
     /* the function is in scope in its body (recursion) */
     scope_declare(&p->scope, p->toks.data[d->name].t.aux, SYM_ORDINARY);
-    scope_push(&p->scope);
+    emit(p, N_DECLARED, d->name, nmark(p), NF_BODY);
+    open_scope(p, ci(p), NF_PARAMS);
     for (i = 0; i < d->save_len; i++) {
         const SymSave *s = &p->saved.data[d->save_start + i];
         scope_declare(&p->scope, s->ident, (SymKind)s->kind);
@@ -1646,7 +1667,7 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
         flags |= NF_ERROR;
     }
     p->fn_depth--;
-    scope_pop(&p->scope, NULL);
+    close_scope(p, NULL);
     p->saved.len = d->save_start;
     emit(p, N_FUNC_DEF, first, start, flags);
 }
@@ -1748,6 +1769,7 @@ static void declaration(Parser *p, bool top)
         attributes(p);
         scope_declare(&p->scope, p->toks.data[d.name].t.aux,
                       s.is_typedef ? SYM_TYPEDEF : SYM_ORDINARY);
+        leaf(p, N_DECLARED, d.name);
         if (accept(p, P_ASSIGN))
             initializer(p);
         emit(p, N_INIT_DECL, d.name, is, 0);

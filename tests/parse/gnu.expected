@@ -5,6 +5,7 @@ DECL '__extension__' 2:1 [40]
     TYPESPEC 'long' 2:28
   INIT_DECL 'll' 2:33
     NAME 'll' 2:33
+    DECLARED 'll' 2:33
 DECL 'typedef' 3:1
   SPECS 'typedef' 3:1
     STORAGE 'typedef' 3:1
@@ -13,12 +14,14 @@ DECL 'typedef' 3:1
         NUMBER '0' 3:27
   INIT_DECL 'size_t' 3:30
     NAME 'size_t' 3:30
+    DECLARED 'size_t' 3:30
 DECL 'typedef' 4:1
   SPECS 'typedef' 4:1
     STORAGE 'typedef' 4:1
     TYPEDEF_NAME '__builtin_va_list' 4:9
   INIT_DECL 'va_list' 4:27
     NAME 'va_list' 4:27
+    DECLARED 'va_list' 4:27
 DECL 'extern' 5:1
   SPECS 'extern' 5:1
     STORAGE 'extern' 5:1
@@ -26,11 +29,13 @@ DECL 'extern' 5:1
   INIT_DECL 'printf' 5:12
     FUNC '(' 5:18 [20]
       NAME 'printf' 5:12
+      SCOPE '(' 5:18
       PARAM 'const' 5:19
         SPECS 'const' 5:19
           QUAL 'const' 5:19
           TYPESPEC 'char' 5:25
         PTR '*' 5:30
+      SCOPE_END '...' 5:33
     ATTRIBUTE '__attribute__' 5:38
       ATTR_ITEM '__format__' 5:53
         IDENT '__printf__' 5:64
@@ -38,6 +43,7 @@ DECL 'extern' 5:1
         NUMBER '2' 5:79
       ATTR_ITEM 'nonnull' 5:83
         NUMBER '1' 5:92
+    DECLARED 'printf' 5:12
 DECL 'extern' 6:1
   SPECS 'extern' 6:1
     STORAGE 'extern' 6:1
@@ -45,11 +51,14 @@ DECL 'extern' 6:1
   INIT_DECL 'renamed' 6:12
     FUNC '(' 6:19
       NAME 'renamed' 6:12
+      SCOPE '(' 6:19
       PARAM 'void' 6:20
         SPECS 'void' 6:20
           TYPESPEC 'void' 6:20
+      SCOPE_END 'void' 6:20
     ASM_LABEL '__asm__' 6:26
       STRING '"real_name"' 6:34 #1
+    DECLARED 'renamed' 6:12
 DECL 'static' 7:1
   SPECS 'static' 7:1
     STORAGE 'static' 7:1
@@ -58,6 +67,7 @@ DECL 'static' 7:1
     NAME 'counter' 7:12
     ATTRIBUTE '__attribute__' 7:20
       ATTR_ITEM 'unused' 7:35
+    DECLARED 'counter' 7:12
     NUMBER '0' 7:46
 DECL 'struct' 8:1
   SPECS 'struct' 8:1
@@ -65,6 +75,7 @@ DECL 'struct' 8:1
       ATTRIBUTE '__attribute__' 8:8
         ATTR_ITEM 'packed' 8:23
       TAG 'P' 8:32
+      OPEN '{' 8:34
       MEMBER_DECL 'char' 8:36
         SPECS 'char' 8:36
           TYPESPEC 'char' 8:36
@@ -82,6 +93,7 @@ DECL 'struct' 9:1
   SPECS 'struct' 9:1
     STRUCT 'struct' 9:1 [2]
       TAG 'F' 9:8
+      OPEN '{' 9:10
       MEMBER_DECL 'int' 9:12
         SPECS 'int' 9:12
           TYPESPEC 'int' 9:12
@@ -90,6 +102,7 @@ DECL 'struct' 9:1
       MEMBER_DECL 'struct' 9:19
         SPECS 'struct' 9:19
           STRUCT 'struct' 9:19 [2]
+            OPEN '{' 9:26
             MEMBER_DECL 'int' 9:28
               SPECS 'int' 9:28
                 TYPESPEC 'int' 9:28
@@ -100,6 +113,7 @@ DECL 'struct' 9:1
       MEMBER_DECL 'union' 9:41
         SPECS 'union' 9:41
           STRUCT 'union' 9:41 [2]
+            OPEN '{' 9:47 #1
             MEMBER_DECL 'int' 9:49
               SPECS 'int' 9:49
                 TYPESPEC 'int' 9:49
@@ -134,12 +148,14 @@ DECL '_Alignas' 11:1
     ARRAY '[' 11:29
       NAME 'buf' 11:26
       NUMBER '32' 11:30
+    DECLARED 'buf' 11:26
 DECL '_Atomic' 12:1
   SPECS '_Atomic' 12:1
     QUAL '_Atomic' 12:1
     TYPESPEC 'int' 12:9
   INIT_DECL 'at' 12:13
     NAME 'at' 12:13
+    DECLARED 'at' 12:13
 DECL '_Atomic' 13:1
   SPECS '_Atomic' 13:1
     ATOMIC_TYPE '_Atomic' 13:1
@@ -148,6 +164,7 @@ DECL '_Atomic' 13:1
           TYPESPEC 'long' 13:9
   INIT_DECL 'at2' 13:15
     NAME 'at2' 13:15
+    DECLARED 'at2' 13:15
 DECL '_Noreturn' 14:1
   SPECS '_Noreturn' 14:1
     FUNCSPEC '_Noreturn' 14:1
@@ -155,59 +172,76 @@ DECL '_Noreturn' 14:1
   INIT_DECL 'die' 14:16
     FUNC '(' 14:19
       NAME 'die' 14:16
+      SCOPE '(' 14:19
       PARAM 'void' 14:20
         SPECS 'void' 14:20
           TYPESPEC 'void' 14:20
+      SCOPE_END 'void' 14:20
+    DECLARED 'die' 14:16
 DECL '__thread' 15:1
   SPECS '__thread' 15:1
     STORAGE '__thread' 15:1
     TYPESPEC 'int' 15:10
   INIT_DECL 'tls' 15:14
     NAME 'tls' 15:14
+    DECLARED 'tls' 15:14
 DECL '_Complex' 16:1
   SPECS '_Complex' 16:1
     TYPESPEC '_Complex' 16:1
     TYPESPEC 'double' 16:10
   INIT_DECL 'z' 16:17
     NAME 'z' 16:17
+    DECLARED 'z' 16:17
 DECL '__int128' 17:1
   SPECS '__int128' 17:1
     TYPESPEC '__int128' 17:1
   INIT_DECL 'big' 17:10
     NAME 'big' 17:10
+    DECLARED 'big' 17:10
 FUNC_DEF 'int' 18:1
   SPECS 'int' 18:1
     TYPESPEC 'int' 18:1
   FUNC '(' 18:7 [40]
     NAME 'kr' 18:5
+    SCOPE '(' 18:7
     KR_IDENT 'a' 18:8
     KR_IDENT 'b' 18:11
+    SCOPE_END 'b' 18:11
+  DECLARED 'kr' 18:5 [2]
+  SCOPE 'int' 18:14 [80]
   DECL 'int' 18:14
     SPECS 'int' 18:14
       TYPESPEC 'int' 18:14
     INIT_DECL 'a' 18:18
       NAME 'a' 18:18
+      DECLARED 'a' 18:18
   DECL 'char' 18:21
     SPECS 'char' 18:21
       TYPESPEC 'char' 18:21
     INIT_DECL 'b' 18:27
       PTR '*' 18:26
         NAME 'b' 18:27
+      DECLARED 'b' 18:27
   COMPOUND '{' 18:30
+    BODY '{' 18:30
     RETURN 'return' 18:32
       BINARY '+' 18:41
         IDENT 'a' 18:39
         UNARY '*' 18:43
           IDENT 'b' 18:44
+  SCOPE_END '}' 18:47
 DECL 'double' 19:1
   SPECS 'double' 19:1
     TYPESPEC 'double' 19:1
   INIT_DECL 'kr_decl' 19:8
     FUNC '(' 19:15 [40]
       NAME 'kr_decl' 19:8
+      SCOPE '(' 19:15
       KR_IDENT 'x' 19:16
+      SCOPE_END 'x' 19:16
     ATTRIBUTE '__attribute__' 19:19
       ATTR_ITEM 'const' 19:34
+    DECLARED 'kr_decl' 19:8
 FUNC_DEF 'static' 20:1
   SPECS 'static' 20:1
     STORAGE 'static' 20:1
@@ -217,19 +251,26 @@ FUNC_DEF 'static' 20:1
     TYPESPEC 'int' 20:46
   FUNC '(' 20:52
     NAME 'sq' 20:50
+    SCOPE '(' 20:52
     PARAM 'int' 20:53
       SPECS 'int' 20:53
         TYPESPEC 'int' 20:53
       NAME 'x' 20:57
+    SCOPE_END 'x' 20:57
+  DECLARED 'sq' 20:50 [2]
+  SCOPE '{' 20:60 [80]
   COMPOUND '{' 20:60
+    BODY '{' 20:60
     RETURN 'return' 20:62
       BINARY '*' 20:71
         IDENT 'x' 20:69
         IDENT 'x' 20:73
+  SCOPE_END '}' 20:76
 DECL 'struct' 21:1
   SPECS 'struct' 21:1
     STRUCT 'struct' 21:1 [2]
       TAG 'pt' 21:8
+      OPEN '{' 21:11
       MEMBER_DECL 'int' 21:13
         SPECS 'int' 21:13
           TYPESPEC 'int' 21:13
@@ -243,6 +284,7 @@ DECL 'struct' 22:1
       TAG 'pt' 22:8
   INIT_DECL 'old_style' 22:11
     NAME 'old_style' 22:11
+    DECLARED 'old_style' 22:11
     INIT_LIST '{' 22:23
       DESIGNATED 'x' 22:25
         DESIG_FIELD 'x' 22:25
@@ -257,6 +299,7 @@ DECL 'int' 23:1
     ARRAY '[' 23:11
       NAME 'ranges' 23:5
       NUMBER '8' 23:12
+    DECLARED 'ranges' 23:5
     INIT_LIST '{' 23:17
       DESIGNATED '[' 23:19
         DESIG_RANGE '[' 23:19
@@ -272,6 +315,7 @@ DECL 'int' 24:1
     TYPESPEC 'int' 24:1
   INIT_DECL 'generic' 24:5
     NAME 'generic' 24:5
+    DECLARED 'generic' 24:5
     GENERIC '_Generic' 24:15
       NUMBER '1.0' 24:24
       GENERIC_ASSOC 'int' 24:29
@@ -293,6 +337,7 @@ DECL 'unsigned' 25:1
     TYPESPEC 'long' 25:10
   INIT_DECL 'off' 25:15
     NAME 'off' 25:15
+    DECLARED 'off' 25:15
     OFFSETOF '__builtin_offsetof' 25:21
       TYPE_NAME 'struct' 25:40
         SPECS 'struct' 25:40
@@ -306,6 +351,7 @@ DECL 'int' 26:1
     TYPESPEC 'int' 26:1
   INIT_DECL 'compat' 26:5
     NAME 'compat' 26:5
+    DECLARED 'compat' 26:5
     TYPES_COMPAT '__builtin_types_compatible_p' 26:14
       TYPE_NAME 'int' 26:43
         SPECS 'int' 26:43
@@ -318,11 +364,16 @@ FUNC_DEF 'void' 28:1
     TYPESPEC 'void' 28:1
   FUNC '(' 28:9 [20]
     NAME 'gnu' 28:6
+    SCOPE '(' 28:9
     PARAM 'int' 28:10
       SPECS 'int' 28:10
         TYPESPEC 'int' 28:10
       NAME 'n' 28:14
+    SCOPE_END '...' 28:17
+  DECLARED 'gnu' 28:6 [2]
+  SCOPE '{' 29:1 [80]
   COMPOUND '{' 29:1
+    BODY '{' 29:1
     LOCAL_LABEL '__label__' 30:5
       NAME 'done' 30:15
     DECL 'va_list' 31:5
@@ -330,29 +381,35 @@ FUNC_DEF 'void' 28:1
         TYPEDEF_NAME 'va_list' 31:5
       INIT_DECL 'ap' 31:13
         NAME 'ap' 31:13
+        DECLARED 'ap' 31:13
     DECL 'int' 32:5
       SPECS 'int' 32:5
         TYPESPEC 'int' 32:5
       INIT_DECL 'x' 32:9
         NAME 'x' 32:9
+        DECLARED 'x' 32:9
         STMT_EXPR '(' 32:13
           COMPOUND '{' 32:14
+            SCOPE '{' 32:14
             DECL 'int' 32:16
               SPECS 'int' 32:16
                 TYPESPEC 'int' 32:16
               INIT_DECL 't' 32:20
                 NAME 't' 32:20
+                DECLARED 't' 32:20
                 IDENT 'n' 32:24
             EXPR_STMT 't' 32:27
               BINARY '*' 32:29
                 IDENT 't' 32:27
                 NUMBER '2' 32:31
+            SCOPE_END '}' 32:34
     DECL '__typeof__' 33:5
       SPECS '__typeof__' 33:5
         TYPEOF '__typeof__' 33:5
           IDENT 'x' 33:16
       INIT_DECL 'y' 33:19
         NAME 'y' 33:19
+        DECLARED 'y' 33:19
         COND '?' 33:25 [8]
           IDENT 'x' 33:23
           NUMBER '1' 33:28
@@ -364,6 +421,7 @@ FUNC_DEF 'void' 28:1
         PTR '*' 34:17
           ARRAY '[' 34:25
             NAME 'targets' 34:18
+        DECLARED 'targets' 34:18
         INIT_LIST '{' 34:30
           ADDR_LABEL 'done' 34:34
     FUNC_DEF 'int' 35:5
@@ -371,15 +429,21 @@ FUNC_DEF 'void' 28:1
         TYPESPEC 'int' 35:5
       FUNC '(' 35:15
         NAME 'nested' 35:9
+        SCOPE '(' 35:15
         PARAM 'int' 35:16
           SPECS 'int' 35:16
             TYPESPEC 'int' 35:16
           NAME 'k' 35:20
+        SCOPE_END 'k' 35:20
+      DECLARED 'nested' 35:9 [2]
+      SCOPE '{' 35:23 [80]
       COMPOUND '{' 35:23
+        BODY '{' 35:23
         RETURN 'return' 35:25
           BINARY '+' 35:34
             IDENT 'k' 35:32
             IDENT 'n' 35:36
+      SCOPE_END '}' 35:39
     EXPR_STMT '__builtin_va_start' 36:5
       CALL '(' 36:23
         IDENT '__builtin_va_start' 36:5
@@ -398,8 +462,11 @@ FUNC_DEF 'void' 28:1
         IDENT '__builtin_va_end' 38:5
         IDENT 'ap' 38:22
     SWITCH 'switch' 39:5
+      SCOPE 'switch' 39:5
       IDENT 'n' 39:13
+      SCOPE '{' 39:16
       COMPOUND '{' 39:16
+        SCOPE '{' 39:16
         CASE 'case' 40:5 [8]
           NUMBER '1' 40:10
           NUMBER '5' 40:16
@@ -417,6 +484,9 @@ FUNC_DEF 'void' 28:1
         BREAK 'break' 44:9
         DEFAULT 'default' 45:5
           EXPR_STMT ';' 45:13
+        SCOPE_END '}' 46:5
+      SCOPE_END '}' 46:5
+      SCOPE_END '}' 46:5
     ASM '__asm__' 47:5
       QUAL '__volatile__' 47:13
       STRING '""' 47:26 #1
@@ -478,3 +548,4 @@ FUNC_DEF 'void' 28:1
             SPECS 'void' 54:6
               TYPESPEC 'void' 54:6
           IDENT 'x' 54:11
+  SCOPE_END '}' 55:1

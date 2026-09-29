@@ -20,7 +20,8 @@
 
 #define NODE_LIST(X)                                                        \
     /* units */                                                             \
-    X(FUNC_DEF)      /* specs declarator kr-decl* compound */               \
+    X(FUNC_DEF)      /* specs declarator declared scope kr-decl* compound       \
+                        scope-end */                                        \
     X(DECL)          /* specs init-decl* (tok: first token) */              \
     X(STATIC_ASSERT) /* expr string? */                                     \
     X(TOP_ASM)       /* string */                                           \
@@ -35,8 +36,9 @@
     X(FUNCSPEC)      /* tok */                                              \
     X(TYPESPEC)      /* tok */                                              \
     X(TYPEDEF_NAME)  /* tok */                                              \
-    X(STRUCT)        /* tag? attr* member* (tok: struct/union; NF_BODY) */   \
-    X(ENUM)          /* tag? attr* enumerator* (NF_BODY) */                 \
+    X(STRUCT)        /* tag? attr* (open member*)? (tok: struct/union;         \
+                        NF_BODY) */                                         \
+    X(ENUM)          /* tag? attr* (open enumerator*)? (NF_BODY) */          \
     X(TAG)           /* tok */                                              \
     X(MEMBER_DECL)   /* specs member* */                                    \
     X(MEMBER)        /* declarator? width? attr* (NF_BITFIELD) */           \
@@ -50,10 +52,12 @@
     X(NAME)          /* tok */                                              \
     X(PTR)           /* qual/attr* declarator? */                           \
     X(ARRAY)         /* declarator? qual* size? (NF_STATIC, NF_STAR) */     \
-    X(FUNC)          /* declarator? (param | kr-ident)* (NF_VARIADIC, NF_KR) */ \
+    X(FUNC)          /* declarator? scope (param | kr-ident)* scope-end        \
+                        (NF_VARIADIC, NF_KR) */                             \
     X(PARAM)         /* specs declarator? */                                \
     X(KR_IDENT)      /* tok */                                              \
-    X(INIT_DECL)     /* declarator attr* asm-label? initializer? */         \
+    X(INIT_DECL)     /* declarator attr* asm-label? attr* declared            \
+                        initializer? */                                     \
     X(ASM_LABEL)     /* string */                                           \
     X(TYPE_NAME)     /* specs declarator? */                                \
     /* initializers */                                                      \
@@ -63,16 +67,19 @@
     X(DESIG_INDEX)   /* expr */                                             \
     X(DESIG_RANGE)   /* expr expr */                                        \
     /* statements */                                                        \
-    X(COMPOUND)      /* item* (tok: '{'; NF_ERROR: unclosed) */             \
+    X(COMPOUND)      /* (scope | body) item* scope-end? (tok: '{';             \
+                        NF_ERROR: unclosed) */                              \
     X(LABEL)         /* attr* stmt? (tok: name) */                          \
     X(CASE)          /* expr expr? stmt (NF_RANGE) */                       \
     X(DEFAULT)       /* stmt */                                             \
     X(EXPR_STMT)     /* expr? */                                            \
-    X(IF)            /* expr stmt stmt? */                                  \
-    X(SWITCH)        /* expr stmt */                                        \
-    X(WHILE)         /* expr stmt */                                        \
-    X(DO)            /* stmt expr */                                        \
-    X(FOR)           /* (decl | expr | none) (expr | none) (expr | none) stmt */ \
+    X(IF)            /* scope expr sub sub? scope-end; sub: scope stmt       \
+                        scope-end */                                        \
+    X(SWITCH)        /* scope expr sub scope-end */                          \
+    X(WHILE)         /* scope expr sub scope-end */                          \
+    X(DO)            /* scope sub expr scope-end */                          \
+    X(FOR)           /* scope (decl | expr | none) (expr | none)             \
+                        (expr | none) sub scope-end */                      \
     X(GOTO)          /* tok: label */                                       \
     X(GOTO_EXPR)     /* expr */                                             \
     X(CONTINUE)                                                             \
@@ -110,7 +117,17 @@
     X(CONVERTVECTOR) /* expr type-name */                                   \
     X(GENERIC)       /* expr generic-assoc+ */                              \
     X(GENERIC_ASSOC) /* (type-name | none) expr */                          \
-    X(ADDR_LABEL)    /* tok: the label */
+    X(ADDR_LABEL)    /* tok: the label */                                   \
+    /* markers: leaves placing scope events in post-order for the checker */ \
+    X(SCOPE)         /* a scope opens (NF_PARAMS: a function body's, with \
+                        its parameters) */                                  \
+    X(SCOPE_END)     /* the innermost scope closes */                       \
+    X(DECLARED)      /* the declarator just before (past attr* and an     \
+                        asm label) is in scope from here (NF_BODY: a       \
+                        function definition's) */                           \
+    X(OPEN)          /* '{' of a struct/union/enum body (aux: 0 struct,   \
+                        1 union, 2 enum) */                                 \
+    X(BODY)          /* '{' of a function body */
 
 typedef enum {
 #define X(n) N_##n,
@@ -130,7 +147,8 @@ enum {
     NF_ARROW = NF_STAR,    /* MEMBER_EXPR: -> */
     NF_OMITTED = NF_STATIC, /* COND: a ?: b */
     NF_RANGE = NF_STATIC,  /* CASE: case a ... b */
-    NF_EXTENSION = NF_KR   /* DECL/FUNC_DEF: after __extension__ */
+    NF_EXTENSION = NF_KR,  /* DECL/FUNC_DEF: after __extension__ */
+    NF_PARAMS = 1 << 7     /* SCOPE: a function body's, with parameters */
 };
 
 typedef struct Node {

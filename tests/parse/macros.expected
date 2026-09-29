@@ -4,6 +4,7 @@ DECL 'int' 7:1
   INIT_DECL 'fail' 7:5
     FUNC '(' 7:9
       NAME 'fail' 7:5
+      SCOPE '(' 7:9
       PARAM 'const' 7:10
         SPECS 'const' 7:10
           QUAL 'const' 7:10
@@ -20,11 +21,14 @@ DECL 'int' 7:1
         SPECS 'int' 7:46
           TYPESPEC 'int' 7:46
         NAME 'line' 7:50
+      SCOPE_END 'line' 7:50
+    DECLARED 'fail' 7:5
 FUNC_DEF 'int' 8:1
   SPECS 'int' 8:1
     TYPESPEC 'int' 8:1
   FUNC '(' 8:21
     NAME 'check_all' 8:5
+    SCOPE '(' 8:21
     PARAM 'int' 8:22
       SPECS 'int' 8:22
         TYPESPEC 'int' 8:22
@@ -33,12 +37,17 @@ FUNC_DEF 'int' 8:1
       SPECS 'int' 8:29
         TYPESPEC 'int' 8:29
       NAME 'b' 8:33
+    SCOPE_END 'b' 8:33
+  DECLARED 'check_all' 8:5 [2]
+  SCOPE '{' 9:1 [80]
   COMPOUND '{' 9:1
+    BODY '{' 9:1
     DECL 'int' 10:5
       SPECS 'int' 10:5
         TYPESPEC 'int' 10:5
       INIT_DECL 'n1' 10:9
         NAME 'n1' 10:9
+        DECLARED 'n1' 10:9
         PAREN '(' 10:21
           COND '?' 10:21
             PAREN '(' 10:21
@@ -107,3 +116,4 @@ FUNC_DEF 'int' 8:1
               STRING '"macros.c"' 14:12 #1
               NUMBER '14' 14:12
         NUMBER '0x1f' 14:33
+  SCOPE_END '}' 15:1
