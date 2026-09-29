@@ -98,9 +98,10 @@ typedef struct CellDiag {
     uint32_t ninc;
 } CellDiag;
 
+/* Expansions per definition (for Macro.expansions). */
 typedef struct CellExp {
-    uint32_t key;               /* relative item */
     uint32_t macro;             /* encoded definition */
+    uint32_t count;
 } CellExp;
 
 #define CELL_MAX_CLIENTS 4
@@ -187,7 +188,10 @@ typedef struct CellEnc {
     size_t nspans;
     struct CellMacIdx *macs;
     size_t nmacs;
-    uint32_t diag_cap, exp_cap;
+    VEC(CellDiag) diags;        /* copied to the cell at the end */
+    VEC(CellExp) exps;
+    uint32_t *exp_slot;         /* open addressing by macro: exps index + 1 */
+    uint32_t exp_cap;
 } CellEnc;
 
 /* Start a cell [s, e) from a worker's reads; NULL if it has none of its

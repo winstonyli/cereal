@@ -91,6 +91,7 @@ typedef struct Slice {
 
 typedef struct ExpLog {
     uint32_t key;
+    uint32_t count;
     Macro *m;
 } ExpLog;
 
@@ -242,6 +243,7 @@ static void log_expansion(void *ctx, const Expansion *e, const TokSpan *args,
     (void)args;
     (void)nargs;
     l.key = pp_event_key(&w->pp);
+    l.count = 1;
     l.m = e->macro;
     vec_push(&w->exps, l);
 }
@@ -488,7 +490,7 @@ static void join_clients(Par *P, const Slice *sl, int ns)
         for (i = 0; i < w->exps.len; i++)
             if (w->exps.data[i].key >= sl[s].from &&
                 w->exps.data[i].key < sl[s].to)
-                w->exps.data[i].m->expansions++;
+                w->exps.data[i].m->expansions += w->exps.data[i].count;
         for (c = 0; c < P->nclients; c++)
             if (P->clients[c].join && w->wctx[c] && !P->placed[c])
                 P->clients[c].join(P->clients[c].ctx, w->wctx[c],
@@ -742,7 +744,8 @@ static void decode_hit(Par *P, Hit *h)
         vec_push(&w->diag.all, cdec_diag(&d, &h->cell->diags[i]));
     for (i = 0; i < h->cell->nexps; i++) {
         ExpLog l;
-        l.key = cdec_item(&d, h->cell->exps[i].key);
+        l.key = (uint32_t)h->s;
+        l.count = h->cell->exps[i].count;
         l.m = cdec_macro(&d, h->cell->exps[i].macro);
         vec_push(&w->exps, l);
     }

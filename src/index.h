@@ -180,6 +180,9 @@ size_t index_check_graph(Index *ix, const MacroGraph *g, FILE *out,
                          size_t *checked);
 
 SrcFile *index_find_file(Index *ix, const char *path);
+/* Cells mode: where the cells' memory goes and how much of it repeats
+ * (for sizing hash-consing). */
+void index_cell_stats(Index *ix, FILE *out);
 void index_dump_json(Index *ix, FILE *out, bool all);
 
 #endif

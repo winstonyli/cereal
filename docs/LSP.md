@@ -84,8 +84,8 @@ AddressSanitizer/UBSan (set `LSP_STDERR` to collect reports).
 
 | Step | Stage 1 | Now |
 |---|---|---|
-| open to diagnostics | 3.1 s | 2.1-2.3 s |
-| edit to diagnostics (a line typed mid-file) | 3.1 s | 0.21 s |
+| open to diagnostics | 3.1 s | 1.85 s |
+| edit to diagnostics (a line typed mid-file) | 3.1 s | 0.2 s |
 | hover | 0.1 s | 0.02 s |
 | call hierarchy (prepare, incoming, outgoing) | | 0.01 s each |
 | references to a macro used 400k times (75 MB of results) | | 1.3 s in the server, 5 s at the client |

@@ -347,5 +347,28 @@ generator now produces such files.
 | a line inserted mid-file (1 cell rerun) | 0.3-0.5 s | 0.11 s |
 
 Of an edit in cells: phase A 0.06 s, lookups 0.02 s, the rerun cell
-0.015 s, the rest joins of diagnostics and analyses. Memory (3 builds):
-900 MB without a cache, 1.0 GB with cells, 1.3 GB materialized.
+0.015 s, the rest joins of diagnostics and analyses. Peak memory over 3
+builds: 900 MB without a cache, 830 MB with cells (records are compact,
+below), 1.3 GB materialized.
+
+**Memory.** `CEREAL_CELL_STATS=1` (with `index --replay --transcript`)
+reports where the cells' memory goes and how much repeats. Measured on
+the synthetic benchmark and real generated headers (PHP's
+`zend_vm_execute.h`, clang's `arm_sve.h` and `arm_neon.h`):
+- Invocations repeat heavily in real generated code: 70% of the PHP VM's
+  and 99% of the intrinsics headers' repeat an earlier one (same
+  definition, same arguments), and 81-100% of expanded text repeats. The
+  synthetic file repeats none (every line differs in its numbers).
+- Almost all repetition is within a cell, so a string pool per cell
+  catches it; a store shared across cells would add little.
+- On the synthetic file the cost was layout: 1.6M expansions at about
+  140 bytes each, plus allocator padding for many small allocations.
+
+So a cell's index records are flat: identifiers as ids, strings in a pool
+per cell with repeats stored once, argument lists and names in pools, all
+arrays at their final size, and expansion counts per definition rather
+than per expansion. Cells' memory: synthetic 404 -> 216 MB, PHP VM 4.2 ->
+2.4 MB, `arm_sve.h` 5.4 -> 2.8 MB, `arm_neon.h` 1.7 -> 1.2 MB. Sharing
+whole expansion trees (hash-consing) was measured and not built: a
+repeated invocation still needs its own locations, so beyond the strings
+there is nothing left to share.

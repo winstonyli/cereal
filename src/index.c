@@ -2,6 +2,7 @@
 #include "index.h"
 #include "json.h"
 #include "cell.h"
+#include "hash.h"
 
 #include <string.h>
 
@@ -552,26 +553,30 @@ static void ix_finish(void *ctx, ThreadPool *pool)
 
 /* ---- cells ---------------------------------------------------------- *
  * A slice's expansions and their refs, relative to the cell.  Expansions
- * are numbered within the cell (a tree never leaves its slice). */
+ * are numbered within the cell (a tree never leaves its slice).  Records
+ * are flat: identifiers as ids (the unit's interner is shared), strings in
+ * one pool per cell with repeats stored once (generated code repeats its
+ * expansions: 80-100% of expanded text in the PHP VM and ARM intrinsics
+ * headers, almost all of it within a cell), argument lists and names in
+ * pools, arrays allocated at their final size. */
 typedef struct CExp {
     uint32_t key, parent, root, seq_item, macro;
     uint16_t depth, name_flags;
     CLoc name_loc, end_loc;
-    int nargs;
-    const char **args;
-    const char *text;
-    uint32_t text_len;
-    struct Ident **arg_names;
-    uint32_t narg_names;
+    uint32_t args, nargs;       /* argv[args ..]: strs offsets */
+    uint32_t text, text_len;    /* strs offset: root only, the expansion */
+    uint32_t names, nnames;     /* idents[names ..]: in the arguments */
 } CExp;
 
 typedef struct CRef {
-    struct Ident *name;
+    uint32_t name;              /* Ident.id */
     uint32_t macro, len, exp;
-    CLoc loc;
+    uint32_t loc_hi, loc_lo;    /* a CLoc, split to keep 4-byte alignment */
     uint8_t kind;
     uint8_t flags;
 } CRef;
+
+#define CREF_LOC(c) (((CLoc)(c)->loc_hi << 32) | (c)->loc_lo)
 
 /* Observed calls: expansions whose name came from another expansion,
  * per (parent's definition, child's definition, the name's origin flags),
@@ -592,13 +597,22 @@ typedef struct IxBlob {
     CEdge *edges;
     uint32_t nedges;
     uint32_t max_len;           /* longest ref */
+    const char *strs;           /* NUL-terminated strings; offset 0: "" */
+    uint32_t *argv;
+    uint32_t *idents;
 } IxBlob;
+
+static const char *blob_str(const IxBlob *b, uint32_t off)
+{
+    return b->strs + off;
+}
 
 static int cref_cmp(const void *a, const void *b)
 {
     const CRef *x = a, *y = b;
-    if (x->loc != y->loc)
-        return x->loc < y->loc ? -1 : 1;
+    CLoc lx = CREF_LOC(x), ly = CREF_LOC(y);
+    if (lx != ly)
+        return lx < ly ? -1 : 1;
     if (x->kind != y->kind)
         return x->kind < y->kind ? -1 : 1;
     if (x->exp != y->exp)
@@ -609,7 +623,8 @@ static int cref_cmp(const void *a, const void *b)
         return x->flags < y->flags ? -1 : 1;
     if (x->len != y->len)
         return x->len < y->len ? -1 : 1;
-    return x->name->id < y->name->id ? -1 : x->name->id > y->name->id;
+    /* only the cell's internal order: queries sort by spelling */
+    return x->name < y->name ? -1 : x->name > y->name;
 }
 
 static int u64cmp(const void *a, const void *b)
@@ -629,7 +644,7 @@ static void blob_tables(IxBlob *b, Arena *a)
     b->by_name = NEW_ARRAY(a, uint32_t, b->nrefs + 1);
     keys = xmalloc(sizeof(uint64_t) * (b->nrefs + 1));
     for (i = 0; i < b->nrefs; i++) {
-        keys[i] = (uint64_t)b->refs[i].name->id << 32 | i;
+        keys[i] = (uint64_t)b->refs[i].name << 32 | i;
         if (b->refs[i].len > b->max_len)
             b->max_len = b->refs[i].len;
     }
@@ -660,8 +675,8 @@ static void blob_tables(IxBlob *b, Arena *a)
         if (slot[k] != UINT32_MAX) {
             ed.data[slot[k]].count++;
         } else {
-            slot[k] = (uint32_t)ed.len;
             CEdge e;
+            slot[k] = (uint32_t)ed.len;
             e.parent = pm;
             e.child = c->macro;
             e.flags = f;
@@ -676,6 +691,55 @@ static void blob_tables(IxBlob *b, Arena *a)
     if (ed.len)
         memcpy(b->edges, ed.data, sizeof(CEdge) * ed.len);
     vec_free(&ed);
+}
+
+/* A cell's string pool while encoding: repeats stored once. */
+typedef struct StrPool {
+    StrBuf sb;
+    uint32_t *slot;             /* offsets + 1; 0 empty */
+    uint32_t cap, n;
+} StrPool;
+
+static void pool_init_strs(StrPool *p)
+{
+    memset(p, 0, sizeof *p);
+    sb_putc(&p->sb, 0); /* offset 0: "" */
+    p->cap = 256;
+    p->slot = xcalloc(p->cap, sizeof *p->slot);
+}
+
+static uint32_t pool_str(StrPool *p, const char *s, size_t n)
+{
+    uint64_t h;
+    uint32_t i, off;
+    if (!n)
+        return 0;
+    if ((p->n + 1) * 2 > p->cap) {
+        uint32_t cap = p->cap * 2, k, *ns = xcalloc(cap, sizeof *ns);
+        for (k = 0; k < p->cap; k++)
+            if (p->slot[k]) {
+                const char *t = p->sb.data + p->slot[k] - 1;
+                for (i = (uint32_t)hash64(t, strlen(t), 0) & (cap - 1); ns[i];
+                     i = (i + 1) & (cap - 1))
+                    ;
+                ns[i] = p->slot[k];
+            }
+        free(p->slot);
+        p->slot = ns;
+        p->cap = cap;
+    }
+    h = hash64(s, n, 0);
+    for (i = (uint32_t)h & (p->cap - 1); p->slot[i]; i = (i + 1) & (p->cap - 1)) {
+        const char *t = p->sb.data + p->slot[i] - 1;
+        if (!memcmp(t, s, n) && !t[n])
+            return p->slot[i] - 1;
+    }
+    off = (uint32_t)p->sb.len;
+    sb_putn(&p->sb, s, n);
+    sb_putc(&p->sb, 0);
+    p->slot[i] = off + 1;
+    p->n++;
+    return off;
 }
 
 /* Expansion ids [lo, hi) holding every expansion with key in [from, to):
@@ -743,9 +807,11 @@ static void *ix_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
     Index *w = wctx;
     Arena *a = cenc_arena(e);
     IxBlob *b = NEW(a, IxBlob);
-    size_t n = w->exps.len, i, k = 0, nr = 0;
+    size_t i, k = 0, nr = 0;
     size_t lo, hi, rlo, rhi;
     uint32_t *local;
+    StrPool sp;
+    VEC(uint32_t) argv = {0}, idents = {0};
     (void)ctx;
     /* a worker records in plan order: keys never decrease with ids, and
      * refs follow their expansions' ids */
@@ -757,13 +823,14 @@ static void *ix_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
                                                              : UINT32_MAX;
     }
 #define LOCAL(id) ((id) >= lo && (id) < hi ? local[(id) - lo] : UINT32_MAX)
+    pool_init_strs(&sp);
     b->nexps = (uint32_t)k;
     b->exps = NEW_ARRAY(a, CExp, k + 1);
     for (i = lo; i < hi; i++) {
         IdxExp *x = w->exps.data[i];
         CExp *c;
         Expansion *ex;
-        int j;
+        size_t j;
         if (local[i - lo] == UINT32_MAX)
             continue;
         c = &b->exps[local[i - lo]];
@@ -782,18 +849,16 @@ static void *ix_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
         c->end_loc = cenc_loc(e, ex->end_loc);
         if (ex->in_directive)
             e->ok = false; /* phase A's: never in a worker */
-        c->nargs = x->nargs;
-        c->args = NEW_ARRAY(a, const char *, x->nargs + 1);
-        for (j = 0; j < x->nargs; j++)
-            c->args[j] = cenc_str(e, x->args[j]);
+        c->args = (uint32_t)argv.len;
+        c->nargs = (uint32_t)x->nargs;
+        for (j = 0; j < (size_t)x->nargs; j++)
+            vec_push(&argv, pool_str(&sp, x->args[j], strlen(x->args[j])));
         c->text_len = (uint32_t)x->text.len;
-        c->text = x->text.len ? arena_strndup(a, x->text.data, x->text.len)
-                              : NULL;
-        c->narg_names = (uint32_t)x->arg_names.len;
-        c->arg_names = NEW_ARRAY(a, struct Ident *, x->arg_names.len + 1);
-        if (x->arg_names.len)
-            memcpy(c->arg_names, x->arg_names.data,
-                   sizeof(struct Ident *) * x->arg_names.len);
+        c->text = pool_str(&sp, x->text.data, x->text.len);
+        c->names = (uint32_t)idents.len;
+        c->nnames = (uint32_t)x->arg_names.len;
+        for (j = 0; j < x->arg_names.len; j++)
+            vec_push(&idents, x->arg_names.data[j]->id);
     }
     ref_range(w, lo, hi, &rlo, &rhi);
     for (i = rlo; i < rhi; i++)
@@ -803,21 +868,35 @@ static void *ix_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
     for (i = rlo; i < rhi; i++) {
         IdxRef *r = &w->refs.data[i];
         CRef *c;
+        CLoc l;
         if (!(r->exp && LOCAL(r->exp->id) != UINT32_MAX))
             continue;
         c = &b->refs[b->nrefs++];
-        c->name = r->name;
+        c->name = r->name->id;
         c->macro = cenc_macro(e, r->macro);
         c->len = r->len;
         c->exp = LOCAL(r->exp->id);
-        c->loc = cenc_loc(e, r->loc);
+        l = cenc_loc(e, r->loc);
+        c->loc_hi = (uint32_t)(l >> 32);
+        c->loc_lo = (uint32_t)l;
         c->kind = (uint8_t)r->kind;
         c->flags = (uint8_t)r->flags;
     }
 #undef LOCAL
+    /* the pools, at their final sizes */
+    b->strs = arena_strndup(a, sp.sb.data, sp.sb.len);
+    b->argv = NEW_ARRAY(a, uint32_t, argv.len + 1);
+    if (argv.len)
+        memcpy(b->argv, argv.data, sizeof(uint32_t) * argv.len);
+    b->idents = NEW_ARRAY(a, uint32_t, idents.len + 1);
+    if (idents.len)
+        memcpy(b->idents, idents.data, sizeof(uint32_t) * idents.len);
+    sb_free(&sp.sb);
+    free(sp.slot);
+    vec_free(&argv);
+    vec_free(&idents);
     blob_tables(b, a);
     free(local);
-    (void)n;
     return b;
 }
 
@@ -850,28 +929,29 @@ static void *ix_decode(void *ctx, PP *wpp, const void *blob, const CellDec *d)
     for (i = 0; i < b->nexps; i++) {
         const CExp *c = &b->exps[i];
         IdxExp *x = exp_of(w, wpp->expansions.data[i]);
-        int j;
+        uint32_t j;
         x->root = wpp->expansions.data[c->root];
         x->depth = c->depth;
         x->key = cdec_item(d, c->key);
-        x->nargs = c->nargs;
+        x->nargs = (int)c->nargs;
         if (c->nargs) {
             x->args = NEW_ARRAY(a, char *, c->nargs);
             for (j = 0; j < c->nargs; j++)
-                x->args[j] = arena_strdup(a, c->args[j]);
+                x->args[j] = arena_strdup(a, blob_str(b, b->argv[c->args + j]));
         }
         if (c->text_len)
-            sb_putn(&x->text, c->text, c->text_len);
-        for (j = 0; j < (int)c->narg_names; j++)
-            vec_push(&x->arg_names, c->arg_names[j]);
+            sb_putn(&x->text, blob_str(b, c->text), c->text_len);
+        for (j = 0; j < c->nnames; j++)
+            vec_push(&x->arg_names,
+                     ident_by_id(wpp->in, b->idents[c->names + j]));
     }
     for (i = 0; i < b->nrefs; i++) {
         const CRef *c = &b->refs[i];
         IdxRef r;
         memset(&r, 0, sizeof r);
-        r.name = c->name;
+        r.name = ident_by_id(wpp->in, c->name);
         r.macro = cdec_macro(d, c->macro);
-        r.loc = cdec_loc(d, c->loc);
+        r.loc = cdec_loc(d, CREF_LOC(c));
         r.len = c->len;
         r.kind = (RefKind)c->kind;
         r.flags = c->flags;
@@ -1086,9 +1166,9 @@ static void cref_get(const Index *ix, uint32_t ci, uint32_t k, IdxRef *r)
     const IxBlob *b = c->blob;
     const CRef *x = &b->refs[k];
     memset(r, 0, sizeof *r);
-    r->name = x->name;
+    r->name = ident_by_id(ix->pp->in, x->name);
     r->macro = cell_macro(c->rmacro, x->macro);
-    r->loc = cloc_abs(ix, c, x->loc);
+    r->loc = cloc_abs(ix, c, CREF_LOC(x));
     r->len = x->len;
     r->kind = (RefKind)x->kind;
     r->flags = x->flags;
@@ -1186,12 +1266,12 @@ static void cell_range(Index *ix, uint32_t ci, CLoc lo, CLoc hi, SrcLoc loc,
     uint32_t a = 0, z = b->nrefs;
     while (a < z) {
         uint32_t mid = a + (z - a) / 2;
-        if (b->refs[mid].loc < lo)
+        if (CREF_LOC(&b->refs[mid]) < lo)
             a = mid + 1;
         else
             z = mid;
     }
-    for (; a < b->nrefs && b->refs[a].loc <= hi; a++) {
+    for (; a < b->nrefs && CREF_LOC(&b->refs[a]) <= hi; a++) {
         IdxRef r;
         cref_get(ix, ci, a, &r);
         if (in_range(loc, r.loc, r.len))
@@ -1274,12 +1354,12 @@ static void named_refs(Index *ix, const Ident *name, RefVec *v)
         uint32_t a = 0, z = b->nrefs;
         while (a < z) {
             uint32_t mid = a + (z - a) / 2;
-            if (b->refs[b->by_name[mid]].name->id < name->id)
+            if (b->refs[b->by_name[mid]].name < name->id)
                 a = mid + 1;
             else
                 z = mid;
         }
-        for (; a < b->nrefs && b->refs[b->by_name[a]].name == name; a++) {
+        for (; a < b->nrefs && b->refs[b->by_name[a]].name == name->id; a++) {
             IdxRef r;
             cref_get(ix, (uint32_t)i, b->by_name[a], &r);
             vec_push(v, r);
@@ -1358,9 +1438,9 @@ static IdxExp *ref_top(Index *ix, const IdxRef *r)
     t->e->name_flags = x->name_flags;
     t->e->depth = x->depth;
     t->root = t->e;
-    t->nargs = x->nargs;
-    t->args = (char **)x->args;
-    t->text.data = arena_strndup(ix->arena, x->text ? x->text : "", x->text_len);
+    t->nargs = (int)x->nargs;
+    t->args = NULL; /* not read by hover */
+    t->text.data = arena_strndup(ix->arena, blob_str(b, x->text), x->text_len);
     t->text.len = x->text_len;
     t->text.cap = x->text_len + 1;
     return t;
@@ -1999,6 +2079,153 @@ size_t index_check_graph(Index *ix, const MacroGraph *g, FILE *out,
     free(by_root);
     mscratch_free(&sc);
     return bad;
+}
+
+/* ---- cell statistics -------------------------------------------------- */
+
+typedef struct SigSet {
+    uint64_t *slot;
+    size_t cap, n;
+} SigSet;
+
+/* true if new */
+static bool sig_add(SigSet *s, uint64_t h)
+{
+    size_t i;
+    if (!h)
+        h = 1;
+    if ((s->n + 1) * 2 > s->cap) {
+        SigSet t;
+        size_t k;
+        t.cap = s->cap ? s->cap * 2 : 1024;
+        t.slot = xcalloc(t.cap, sizeof *t.slot);
+        t.n = 0;
+        for (k = 0; k < s->cap; k++)
+            if (s->slot[k]) {
+                for (i = s->slot[k] & (t.cap - 1); t.slot[i];
+                     i = (i + 1) & (t.cap - 1))
+                    ;
+                t.slot[i] = s->slot[k];
+                t.n++;
+            }
+        free(s->slot);
+        *s = t;
+    }
+    for (i = h & (s->cap - 1); s->slot[i]; i = (i + 1) & (s->cap - 1))
+        if (s->slot[i] == h)
+            return false;
+    s->slot[i] = h;
+    s->n++;
+    return true;
+}
+
+static size_t cexp_bytes(const IxBlob *b, const CExp *c)
+{
+    size_t n = sizeof *c + sizeof(uint32_t) * (c->nargs + c->nnames) +
+               c->text_len;
+    uint32_t j;
+    for (j = 0; j < c->nargs; j++)
+        n += strlen(blob_str(b, b->argv[c->args + j])) + 1;
+    return n;
+}
+
+void index_cell_stats(Index *ix, FILE *out)
+{
+    size_t i, arena = 0, nexp = 0, nref = 0, nroot = 0, dup_roots = 0;
+    size_t exp_bytes = 0, str_args = 0, str_text = 0, ref_bytes = 0;
+    size_t dup_tree_bytes = 0, dup_args = 0, dup_text = 0, reads = 0;
+    size_t read_bytes = 0, dup_cells = 0, local_dup = 0;
+    SigSet roots = {0}, texts = {0}, argstr = {0}, cells = {0};
+    size_t *tree = NULL;
+    for (i = 0; i < ix->cells.len; i++) {
+        const IdxCell *c = &ix->cells.data[i];
+        const IxBlob *b = c->blob;
+        uint64_t *sig;
+        uint32_t k;
+        uint64_t ch = 0;
+        SigSet local = {0}; /* strings repeated within this cell */
+        arena += c->cell->arena.total;
+        nexp += b->nexps;
+        nref += b->nrefs;
+        reads += c->nreads;
+        read_bytes += sizeof(CellRead) * c->nreads;
+        ref_bytes += sizeof(CRef) * b->nrefs + sizeof(uint32_t) * b->nrefs;
+        tree = xrealloc(tree, sizeof *tree * (b->nexps + 1));
+        sig = xcalloc(b->nexps + 1, sizeof *sig);
+        for (k = 0; k < b->nexps; k++)
+            tree[k] = 0;
+        for (k = 0; k < b->nexps; k++) {
+            const CExp *x = &b->exps[k];
+            size_t by = cexp_bytes(b, x);
+            const char *text = blob_str(b, x->text);
+            uint32_t j;
+            exp_bytes += by;
+            tree[x->root] += by;
+            if (x->text_len &&
+                !sig_add(&local, hash64(text, x->text_len, 13)))
+                local_dup += x->text_len;
+            if (x->text_len) {
+                str_text += x->text_len;
+                if (!sig_add(&texts, hash64(text, x->text_len, 11)))
+                    dup_text += x->text_len;
+            }
+            for (j = 0; j < x->nargs; j++) {
+                const char *arg = blob_str(b, b->argv[x->args + j]);
+                size_t n = strlen(arg);
+                if (!sig_add(&local, hash64(arg, n, 14)))
+                    local_dup += n + 1;
+                str_args += n + 1;
+                if (!sig_add(&argstr, hash64(arg, n, 12)))
+                    dup_args += n + 1;
+            }
+            if (x->parent == UINT32_MAX) {
+                /* an invocation's identity: the definition found (in this
+                 * build) and its arguments */
+                uint64_t h = hash64_mix(0x51u, (uint64_t)(uintptr_t)
+                                                   cell_macro(c->rmacro,
+                                                              x->macro));
+                for (j = 0; j < x->nargs; j++)
+                    h = hash64_mix(h, hash64_str(blob_str(b, b->argv[x->args + j]),
+                                                 (uint64_t)j));
+                sig[k] = h;
+            }
+        }
+        for (k = 0; k < b->nexps; k++)
+            if (b->exps[k].parent == UINT32_MAX) {
+                nroot++;
+                if (!sig_add(&roots, sig[k])) {
+                    dup_roots++;
+                    dup_tree_bytes += tree[k];
+                }
+            }
+        /* whole cells alike (same item hashes: the same text and frames) */
+        for (k = 0; k < c->cell->nitems; k++)
+            ch = hash64_mix(ch, c->cell->item_hash[k]);
+        if (!sig_add(&cells, ch))
+            dup_cells++;
+        free(sig);
+        free(local.slot);
+    }
+    free(tree);
+    fprintf(out,
+            "cells: %zu (%zu with repeated text), %.1f MB in arenas\n"
+            "  expansions %zu (%.1f MB incl. strings), refs %zu (%.1f MB), "
+            "reads %zu (%.1f MB)\n"
+            "  strings: expanded text %.1f MB (%.0f%% repeats), arguments "
+            "%.1f MB (%.0f%% repeats)\n"
+            "  invocations %zu, %zu repeat an earlier one (definition and "
+            "arguments): %.1f MB of their trees\n"
+            "  strings repeated within their cell: %.1f MB\n",
+            ix->cells.len, dup_cells, arena / 1e6, nexp, exp_bytes / 1e6,
+            nref, ref_bytes / 1e6, reads, read_bytes / 1e6, str_text / 1e6,
+            str_text ? 100.0 * (double)dup_text / (double)str_text : 0.0,
+            str_args / 1e6,
+            str_args ? 100.0 * (double)dup_args / (double)str_args : 0.0,
+            nroot, dup_roots, dup_tree_bytes / 1e6, local_dup / 1e6);
+    free(roots.slot);
+    free(texts.slot);
+    free(argstr.slot);
+    free(cells.slot);
 }
 
 SrcFile *index_find_file(Index *ix, const char *path)

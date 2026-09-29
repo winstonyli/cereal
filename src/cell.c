@@ -647,18 +647,11 @@ void cenc_diag(CellEnc *e, const Diagnostic *d)
 {
     Cell *c = e->cell;
     Arena *a = &c->arena;
-    CellDiag *cd;
+    CellDiag *cd, blank;
     size_t i;
-    if (c->ndiags == e->diag_cap) { /* doubling: arena copies are cheap */
-        CellDiag *nd;
-        e->diag_cap = e->diag_cap ? 2 * e->diag_cap : 8;
-        nd = NEW_ARRAY(a, CellDiag, e->diag_cap);
-        if (c->ndiags)
-            memcpy(nd, c->diags, sizeof *nd * c->ndiags);
-        c->diags = nd;
-    }
-    cd = &c->diags[c->ndiags++];
-    memset(cd, 0, sizeof *cd);
+    memset(&blank, 0, sizeof blank);
+    vec_push(&e->diags, blank);
+    cd = &vec_last(&e->diags);
     cd->level = (uint8_t)d->level;
     cd->once = d->once;
     cd->id = d->id;
@@ -684,19 +677,34 @@ void cenc_diag(CellEnc *e, const Diagnostic *d)
 
 void cenc_exp(CellEnc *e, uint32_t key, const Macro *m)
 {
-    Cell *c = e->cell;
-    CellExp *x;
-    if (c->nexps == e->exp_cap) {
-        CellExp *nx;
-        e->exp_cap = e->exp_cap ? 2 * e->exp_cap : 64;
-        nx = NEW_ARRAY(&c->arena, CellExp, e->exp_cap);
-        if (c->nexps)
-            memcpy(nx, c->exps, sizeof *nx * c->nexps);
-        c->exps = nx;
+    uint32_t mac = cenc_macro(e, m), i;
+    (void)cenc_item(e, key); /* checks it is in the cell */
+    if ((e->exps.len + 1) * 2 > e->exp_cap) {
+        uint32_t cap = e->exp_cap ? e->exp_cap * 2 : 64, k;
+        uint32_t *ns = xcalloc(cap, sizeof *ns);
+        for (k = 0; k < e->exps.len; k++) {
+            for (i = (e->exps.data[k].macro * 0x9E3779B1u) & (cap - 1); ns[i];
+                 i = (i + 1) & (cap - 1))
+                ;
+            ns[i] = k + 1;
+        }
+        free(e->exp_slot);
+        e->exp_slot = ns;
+        e->exp_cap = cap;
     }
-    x = &c->exps[c->nexps++];
-    x->key = cenc_item(e, key);
-    x->macro = cenc_macro(e, m);
+    for (i = (mac * 0x9E3779B1u) & (e->exp_cap - 1); e->exp_slot[i];
+         i = (i + 1) & (e->exp_cap - 1))
+        if (e->exps.data[e->exp_slot[i] - 1].macro == mac) {
+            e->exps.data[e->exp_slot[i] - 1].count++;
+            return;
+        }
+    {
+        CellExp x;
+        x.macro = mac;
+        x.count = 1;
+        vec_push(&e->exps, x);
+        e->exp_slot[i] = (uint32_t)e->exps.len;
+    }
 }
 
 Cell *cell_enc_end(CellEnc *e, Macro ***rmacro_out)
@@ -708,6 +716,19 @@ Cell *cell_enc_end(CellEnc *e, Macro ***rmacro_out)
         free(e->rmacro);
     free(e->spans);
     free(e->macs);
+    /* exact sizes in the cell */
+    c->ndiags = (uint32_t)e->diags.len;
+    c->diags = NEW_ARRAY(&c->arena, CellDiag, e->diags.len + 1);
+    if (e->diags.len)
+        memcpy(c->diags, e->diags.data, sizeof(CellDiag) * e->diags.len);
+    c->nexps = (uint32_t)e->exps.len;
+    c->exps = NEW_ARRAY(&c->arena, CellExp, e->exps.len + 1);
+    if (e->exps.len)
+        memcpy(c->exps, e->exps.data, sizeof(CellExp) * e->exps.len);
+    vec_free(&e->diags);
+    vec_free(&e->exps);
+    free(e->exp_slot);
+    e->exp_slot = NULL;
     e->rmacro = NULL;
     e->spans = NULL;
     e->macs = NULL;

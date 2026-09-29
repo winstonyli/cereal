@@ -467,6 +467,8 @@ static int mode_replay(Options *o, bool all, bool cells, bool quiet,
         } else {
             analysis_discard(&an);
         }
+        if (getenv("CEREAL_CELL_STATS") && ix.cells_mode)
+            index_cell_stats(&ix, stderr);
         if (!quiet) {
             diag_print_json(&tu.diag, stdout);
             if (queries) {
