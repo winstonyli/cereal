@@ -242,6 +242,7 @@ issued once per file instead of once per line (GCC's behavior).
 9. **Done.** Cell cache: phase B reused across builds of an edited unit
    (the language server). See "Cells" below and docs/LSP.md.
 10. **Done.** Index kept per cell, queries walking cells (see "Cells").
+11. Phase A incrementally: deferred (see "Phase A: options" below).
 
 (b) and (c) are dropped, because (e) subsumes them.
 
@@ -372,3 +373,37 @@ than per expansion. Cells' memory: synthetic 404 -> 216 MB, PHP VM 4.2 ->
 whole expansion trees (hash-consing) was measured and not built: a
 repeated invocation still needs its own locations, so beyond the strings
 there is nothing left to share.
+
+## Phase A: options (deferred)
+
+Phase A (directives only, whole TU) reruns on every build. On the 35 MB
+benchmark it is 0.06 s of a 0.2 s edit; on the 8.7 MB Cython-generated
+`uvloop/loop.c`, 0.07 s. Edits are interactive already, so this waits.
+When it matters, in increasing cost:
+
+1. **Profile and speed up**, no new architecture: measure the directive
+   handling, content-defined chunking, item hashing, plan and definition
+   fingerprints. Likely 2-3x; every build benefits (CLI too); still reads
+   the whole file per edit.
+2. **Reuse the unchanged prefix**: snapshot phase A's state at a few
+   points (copy-on-write macro table, `#if` and include stacks, the plan
+   so far, and every phase-A listener: index, hygiene, cond, include) and
+   resume from the last one before the edit, rerunning the rest. About
+   half the work for a mid-file edit, nothing for one near the top.
+3. **Checkpoint, resume and early cutoff**: as 2, then stop once the state
+   after the edit equals the old run's, and reuse the rest shifted.
+   Proportional to the edit and the base for cross-file sharing and a
+   disk cache, but everything after an edit shifts (macro ids, versions,
+   plan positions), so phase A's results would have to become relative
+   like the cells', and comparing preprocessor states exactly is costly
+   and hard to debug.
+
+Suggested order when revisited: 1, then 3 only if profiles still show
+phase A dominating.
+
+Also deferred: **header cells shared across files** (clangd's preamble,
+validated by read sets). Measured on libuv, whose sources include about
+270 headers each: a whole `lint` or `index` run is 25-35 ms including
+process start, so sharing headers would save a part of that; it pays
+only for much heavier headers.
+
