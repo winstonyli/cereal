@@ -50,29 +50,28 @@ Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
     Tok t;
     VEC(int) stack = {0};
     VEC(Tok) line = {0};
-    bool have = false;
     if (f->skel)
         return f->skel;
     sk = NEW(a, Skeleton);
     sk->file = f;
     sk->guard_ifndef_index = -1;
     lexer_init(&L, sm, in, NULL, &sm->scratch, lo, f); /* phase A only */
+    /* Only directive lines are lexed; other lines are crossed by the skip
+     * scanner and just noted as having text (callers test the counts
+     * against zero). */
     for (;;) {
-        if (!have)
-            lex_next(&L, &t);
-        have = false;
-        if (t.kind == TK_EOF)
-            break;
-        if ((t.flags & TF_BOL) && tok_is_punct(&t, P_HASH)) {
+        if (lex_line_is_directive(&L)) {
             SkDirective d;
             Tok kw;
+            lex_next(&L, &t); /* '#' */
             memset(&d, 0, sizeof d);
             d.hash_loc = t.loc;
             d.opener = -1;
             lex_next(&L, &kw);
             if ((kw.flags & TF_BOL) || kw.kind == TK_EOF) {
-                t = kw;
-                have = true;
+                if (kw.kind == TK_EOF)
+                    break;
+                lexer_seek(&L, (SrcLoc)(L.line_begin - L.region), true);
                 continue; /* null directive */
             }
             d.kind = classify(in, &kw);
@@ -86,7 +85,6 @@ Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
                 vec_push(&line, t);
                 d.end_loc = t.loc + t.len;
             }
-            have = true;
             d.toks.n = (uint32_t)line.len;
             d.toks.t = NEW_ARRAY(a, Tok, line.len + 1);
             if (line.len)
@@ -114,11 +112,19 @@ Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
                 d.depth = (int)stack.len;
             }
             vec_push(&sk->dirs, d);
+            if (t.kind == TK_EOF)
+                break;
+            /* back to the start of the line the last token opened */
+            lexer_seek(&L, (SrcLoc)(L.line_begin - L.region), true);
             continue;
         }
-        sk->ntokens++;
-        if (stack.len == 0)
-            sk->ntokens_toplevel++;
+        if (L.p < L.lim && *L.p != '\n' && *L.p != '\r') {
+            sk->ntokens++; /* a line with text */
+            if (stack.len == 0)
+                sk->ntokens_toplevel++;
+        }
+        if (!lex_next_line(&L))
+            break;
     }
     vec_free(&stack);
     vec_free(&line);

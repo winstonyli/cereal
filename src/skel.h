@@ -39,7 +39,7 @@ typedef struct SkDirective {
 typedef struct Skeleton {
     SrcFile *file;
     VEC(SkDirective) dirs;
-    size_t ntokens;          /* non-directive tokens */
+    size_t ntokens;          /* non-directive lines with text */
     size_t ntokens_toplevel; /* ... outside every conditional */
     /* include-guard shape: #ifndef G / #define D ... #endif covering all */
     struct Ident *guard_ifndef;
