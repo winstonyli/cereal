@@ -165,10 +165,97 @@ Cython repeats statements like `__Pyx_XDECREF(x);` thousands of times.
 Reused units are immutable and reference counted (like `Cell`) and
 spliced by reference.  Units with errors are cacheable.
 
-## Type checking
-Per unit, under the same key.  The C99 constraints of 6.5–6.9: operand
-types, conversions, lvalues, `sizeof` and constant expressions (array
-sizes, `case`), `const` violations, call arity.
+## Type checking (P2)
+### Decisions
+1. **Placement: a separate check pass per unit** (Carbon-style), run right
+   after the unit parses.  An RPN stack machine over the post-order tree,
+   one handler per node tag; the parser keeps only typedef feedback.  Side
+   arrays per node: type id, resolved declaration, constant value.
+   Bracketing marker nodes where post-order is too late: declarator end
+   (scope starts there: `int x = sizeof x;`), compound-statement start,
+   function-body start.  Function signature summaries are split from
+   bodies (rust-analyzer).  Diagnostics come out in source order.
+2. **Depth: all C99 constraints**, three severities: Error, Pedwarn,
+   Warning/Silent.  Reject iff an Error.  Each check is tagged with gcc
+   13's call kind so a later `-pedantic-errors` mode is a table flip.
+3. **Target struct** (arocc-style): size/align per C type, separate
+   struct-member alignment (i386), `max_align`, `char_signed`,
+   `long_double_format` (x87/ieee64/ieee128), `size_t`/`ptrdiff_t`/
+   `wchar_t`/`intmax_t` mappings, `va_list` shape, `layout_kind`
+   (sysv/ms), the four clang bit-field flags
+   (`ignoreNonZeroSizedBitfieldTypeAlignment`,
+   `ignoreZeroSizedBitfieldTypeAlignment`,
+   `minZeroWidthBitfieldAlignment`, `unnamedFieldAffectsAlignment`),
+   `default_aligned_attr` (16 on x86-64).  Record layout ported from
+   arocc `record_layout.zig` (itself from repr-c).
+4. **Per-node types retained** (4 bytes/node); measured in P2f.
+5. **Oracle: gcc 13.3 verdicts**, not dg annotations (which assume
+   `-pedantic-errors`).  `gcc.dg/*.c` (6217 files) recorded under
+   `gcc -std=c99 -fsyntax-only`; plus c-testsuite, cproc, tcc (accept
+   side) and clang `test/Sema` C files (reject side).
+
+### Types
+Derived types hash-consed; qualifiers in the low bits of the u32 id.  A
+tag type's identity is (declaring unit key, tag name or anonymous
+ordinal); layout is a separate query, so completing or re-laying out a
+struct never re-creates the type (unlike Zig).  Each type carries a
+64-bit structural digest for summaries.
+
+### gcc 13 severities (`-std=c99` and `gnu99` agree)
+- **Warning, accepted:** implicit function declaration, implicit int,
+  int<->pointer and incompatible pointer conversions, `return` value
+  mismatches with void, untyped K&R parameter, excess initializers,
+  string too long for its array, discarded `const`, pointer/integer and
+  distinct-pointer comparison, `INT_MAX+1`, `static` in non-static
+  inline, non-constant file-scope array size that gcc folds.
+- **Silent:** empty TU, `int a[0]`, `struct s {}`, `;;`, function pointer
+  to `void*`, `void*` arithmetic, `sizeof(void)`, label at block end,
+  `int f(void){}`.
+- **Error:** negative/non-integer array size, non-constant initializer
+  (`1<<-1`, `1/0`), non-integer enumerator, file-scope VLA, undefined
+  label, duplicate or non-constant case, assignment to read-only, bit-field
+  too wide, redefinition/conflicting types, `long long long`,
+  incompatible struct return.
+- gcc 13 has no `permerror` in `gcc/c/`; `-fsyntax-only` only skips
+  middle-end diagnostics (`__attribute__((error))`, asm constraints,
+  always_inline, flow warnings).
+
+### Layout facts (x86-64 gcc 13 unless noted)
+SysV bit-fields do not straddle their type's alignment unit.  Unnamed and
+zero-width bit-fields do not affect struct alignment on x86-64 but do on
+AArch64 (`{char c; int :4; char d;}` 3 vs 4).  `{char a; long long :0;
+char c;}` is 9/1.  `packed {char; int}` is 5; an `aligned(8)` member of a
+packed struct still counts (16).  ms_struct `{char a; int b:4; char c;}`
+is 12.  `__int128` and `long double` 16/16.  `{int n; char d[];}` is 4.
+i386: `long long`/`double` align 4 in structs, `long double` 12/4.
+Win64: `long` 4, `long double` = double.
+
+### Constants
+gcc accepts `(int)&((T*)0)->m`, `(long)&x`, `"abc"+1` as initializer
+constants (address constants).  Host `long double` on x86-64 matches
+gcc's x87 folding bit for bit; other targets need softfloat later.
+
+### Speed
+Check <= parse time (Carbon measures check at 2.5-3x parse); parse+check
+well under `gcc -fsyntax-only` (corpus 2.4 s vs 6.3 s).  Stretch: 1.3x
+parse.
+
+### Testing
+Layout: random structs (after gcc `struct-layout-1_generate.c`), gcc's
+answers emitted as `_Static_assert` sizeof/offsetof checks; clang
+`-fdump-record-layouts` for bit-fields.  Verdict parity on gcc.dg and
+the corpus mutants (the "semantic" bucket of `parse_mutate.py` should
+reach zero).
+
+### Steps
+- **P2a** types, declarations, layout: Target, type table, check pass
+  skeleton, declarator marker, `sizeof`/`_Alignof`/`_Static_assert`,
+  `--dump-types`, layout parity.
+- **P2b** expressions and conversions.
+- **P2c** constant expressions and initializers.
+- **P2d** statements and function-level checks (labels, switch, return).
+- **P2e** summaries and read sets for P3.
+- **P2f** parity sweep, speed and memory.
 
 ## GNU extensions
 Statement expressions, `typeof`, `__attribute__`, `__asm__`,
@@ -196,7 +283,8 @@ Statement expressions, `typeof`, `__attribute__`, `__asm__`,
 1. **P1** (done) tree format, full parser without incrementality, brace
    recovery, `cereal parse [--dump] [--cells]`, `-fsyntax-only`;
    Jourdan–Pottier; gcc parity, on real and mutated code.
-2. **P2** scopes, types, summaries, type-checking diagnostics.
+2. **P2** scopes, types, summaries, type-checking diagnostics (P2a-f
+   above).
 3. **P3** top-level units, change-driven invalidation, early cutoff,
    `fuzz_parse`, restart check.  Decide tree retention (below).
 4. **P4** statement and initializer runs; directed tests on generated
