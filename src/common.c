@@ -163,7 +163,8 @@ void sb_putc(StrBuf *sb, char c)
 void sb_putn(StrBuf *sb, const char *s, size_t n)
 {
     sb_reserve(sb, n);
-    memcpy(sb->data + sb->len, s, n);
+    if (n)
+        memcpy(sb->data + sb->len, s, n);
     sb->len += n;
     sb->data[sb->len] = 0;
 }
