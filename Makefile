@@ -7,7 +7,8 @@ WARN     = -std=c99 -pedantic -Wall -Wextra -Wshadow -Wstrict-prototypes \
 CPPFLAGS = -D_POSIX_C_SOURCE=200809L -Isrc -pthread
 BUILD    = build
 
-SRCS := $(wildcard src/*.c) $(wildcard src/analysis/*.c) $(wildcard src/lsp/*.c)
+SRCS := $(wildcard src/*.c) $(wildcard src/analysis/*.c) $(wildcard src/lsp/*.c) \
+        $(wildcard src/c/*.c)
 OBJS := $(SRCS:%.c=$(BUILD)/%.o) $(BUILD)/gen/host_config.o
 DEPS := $(OBJS:.o=.d)
 

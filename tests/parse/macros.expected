@@ -1,0 +1,109 @@
+DECL 'int' 7:1
+  SPECS 'int' 7:1
+    TYPESPEC 'int' 7:1
+  INIT_DECL 'fail' 7:5
+    FUNC '(' 7:9
+      NAME 'fail' 7:5
+      PARAM 'const' 7:10
+        SPECS 'const' 7:10
+          QUAL 'const' 7:10
+          TYPESPEC 'char' 7:16
+        PTR '*' 7:21
+          NAME 'what' 7:22
+      PARAM 'const' 7:28
+        SPECS 'const' 7:28
+          QUAL 'const' 7:28
+          TYPESPEC 'char' 7:34
+        PTR '*' 7:39
+          NAME 'file' 7:40
+      PARAM 'int' 7:46
+        SPECS 'int' 7:46
+          TYPESPEC 'int' 7:46
+        NAME 'line' 7:50
+FUNC_DEF 'int' 8:1
+  SPECS 'int' 8:1
+    TYPESPEC 'int' 8:1
+  FUNC '(' 8:21
+    NAME 'check_all' 8:5
+    PARAM 'int' 8:22
+      SPECS 'int' 8:22
+        TYPESPEC 'int' 8:22
+      NAME 'a' 8:26
+    PARAM 'int' 8:29
+      SPECS 'int' 8:29
+        TYPESPEC 'int' 8:29
+      NAME 'b' 8:33
+  COMPOUND '{' 9:1
+    DECL 'int' 10:5
+      SPECS 'int' 10:5
+        TYPESPEC 'int' 10:5
+      INIT_DECL 'n1' 10:9
+        NAME 'n1' 10:9
+        PAREN '(' 10:21
+          COND '?' 10:21
+            PAREN '(' 10:21
+              BINARY '>' 10:21
+                IDENT 'a' 10:21
+                NUMBER '0' 10:21
+            NUMBER '0' 10:21
+            CALL '(' 10:21
+              IDENT 'fail' 10:21
+              STRING '"a > 0"' 10:21 #1
+              STRING '"macros.c"' 10:21 #1
+              NUMBER '10' 10:21
+    EXPR_STMT '(' 11:5
+      PAREN '(' 11:5
+        COND '?' 11:5
+          PAREN '(' 11:5
+            BINARY '>' 11:5
+              IDENT 'b' 11:5
+              NUMBER '0' 11:5
+          NUMBER '0' 11:5
+          CALL '(' 11:5
+            IDENT 'fail' 11:5
+            STRING '"b > 0"' 11:5 #1
+            STRING '"macros.c"' 11:5 #1
+            NUMBER '11' 11:5
+    EXPR_STMT '(' 12:5
+      PAREN '(' 12:5
+        COND '?' 12:5
+          PAREN '(' 12:5
+            BINARY '!=' 12:5
+              IDENT 'a' 12:5
+              IDENT 'b' 12:5
+          NUMBER '0' 12:5
+          CALL '(' 12:5
+            IDENT 'fail' 12:5
+            STRING '"a != b"' 12:5 #1
+            STRING '"macros.c"' 12:5 #1
+            NUMBER '12' 12:5
+    EXPR_STMT '(' 13:5
+      PAREN '(' 13:5
+        COND '?' 13:5
+          PAREN '(' 13:5
+            BINARY '==' 13:5
+              IDENT 'n1' 13:5
+              NUMBER '0' 13:5
+          NUMBER '0' 13:5
+          CALL '(' 13:5
+            IDENT 'fail' 13:5
+            STRING '"n1 == 0"' 13:5 #1
+            STRING '"macros.c"' 13:5 #1
+            NUMBER '13' 13:5
+    RETURN 'return' 14:5
+      BINARY '+' 14:31
+        PAREN '(' 14:12
+          COND '?' 14:12
+            PAREN '(' 14:12
+              BINARY '<' 14:12
+                BINARY '+' 14:12
+                  IDENT 'a' 14:12
+                  IDENT 'b' 14:12
+                NUMBER '100' 14:12
+            NUMBER '0' 14:12
+            CALL '(' 14:12
+              IDENT 'fail' 14:12
+              STRING '"a + b < 100"' 14:12 #1
+              STRING '"macros.c"' 14:12 #1
+              NUMBER '14' 14:12
+        NUMBER '0x1f' 14:33

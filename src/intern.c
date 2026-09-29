@@ -1,6 +1,7 @@
 /* intern.c - concurrent identifier interner. */
 #include "intern.h"
 
+#include "c/ckw.h"
 #include "hash.h"
 
 #include <string.h>
@@ -25,6 +26,12 @@ void interner_init(Interner *in)
     mutex_init(&in->page_lock);
     in->next_id = 1; /* id 0 means "no identifier" */
     in->pages[0] = xcalloc(ID_PAGE, sizeof(Ident *));
+    {
+        /* before the interner is shared: plain writes */
+        const CKwSpelling *k;
+        for (k = ckw_spellings; k->s; k++)
+            intern_cstr(in, k->s)->ckw = k->kw;
+    }
 }
 
 void interner_free(Interner *in)

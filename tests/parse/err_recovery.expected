@@ -1,0 +1,98 @@
+err_recovery.c:2:9: error: expected expression before ';'
+    2 | int a = ;                       /* missing expression */
+      |         ^
+err_recovery.c:7:5: error: expected ';' before 'int'
+    7 |     int y = 2;                  /* one error, then back in sync */
+      |     ^
+err_recovery.c:18:1: error: function definition inside a function body: missing '}'?
+   18 | int after(void) { return b; }   /* a function definition of its own */
+      | ^
+err_recovery.c:11:21: note: this '{' is not closed
+   11 | void unclosed(void) {
+      |                     ^
+err_recovery.c:20:18: error: expected ';' before 'int'
+   20 | struct s { int m int n; };      /* member recovery */
+      |                  ^
+err_recovery.c:21:14: error: expected expression before ';'
+   21 | int c = (1 + ;                  /* expression recovery */
+      |              ^
+DECL 'int' 2:1
+  SPECS 'int' 2:1
+    TYPESPEC 'int' 2:1
+  INIT_DECL 'a' 2:5
+    NAME 'a' 2:5
+    ERROR ';' 2:9 [1]
+DECL 'int' 3:1
+  SPECS 'int' 3:1
+    TYPESPEC 'int' 3:1
+  INIT_DECL 'b' 3:5
+    NAME 'b' 3:5
+FUNC_DEF 'void' 5:1
+  SPECS 'void' 5:1
+    TYPESPEC 'void' 5:1
+  FUNC '(' 5:18
+    NAME 'missing_semi' 5:6
+    PARAM 'void' 5:19
+      SPECS 'void' 5:19
+        TYPESPEC 'void' 5:19
+  COMPOUND '{' 5:25
+    DECL 'int' 6:5 [1]
+      SPECS 'int' 6:5
+        TYPESPEC 'int' 6:5
+      INIT_DECL 'x' 6:9
+        NAME 'x' 6:9
+        NUMBER '1' 6:13
+    EXPR_STMT 'x' 8:5
+      ASSIGN '=' 8:7
+        IDENT 'x' 8:5
+        IDENT 'y' 8:9
+FUNC_DEF 'void' 11:1
+  SPECS 'void' 11:1
+    TYPESPEC 'void' 11:1
+  FUNC '(' 11:14
+    NAME 'unclosed' 11:6
+    PARAM 'void' 11:15
+      SPECS 'void' 11:15
+        TYPESPEC 'void' 11:15
+  COMPOUND '{' 11:21 [1]
+    IF 'if' 12:5
+      IDENT 'a' 12:9
+      COMPOUND '{' 12:12
+        EXPR_STMT 'b' 13:9
+          ASSIGN '=' 13:11
+            IDENT 'b' 13:9
+            NUMBER '1' 13:13
+FUNC_DEF 'int' 18:1
+  SPECS 'int' 18:1
+    TYPESPEC 'int' 18:1
+  FUNC '(' 18:10
+    NAME 'after' 18:5
+    PARAM 'void' 18:11
+      SPECS 'void' 18:11
+        TYPESPEC 'void' 18:11
+  COMPOUND '{' 18:17
+    RETURN 'return' 18:19
+      IDENT 'b' 18:26
+DECL 'struct' 20:1
+  SPECS 'struct' 20:1
+    STRUCT 'struct' 20:1 [2]
+      TAG 's' 20:8
+      MEMBER_DECL 'int' 20:12 [1]
+        SPECS 'int' 20:12
+          TYPESPEC 'int' 20:12
+        MEMBER 'm' 20:16
+          NAME 'm' 20:16
+DECL 'int' 21:1
+  SPECS 'int' 21:1
+    TYPESPEC 'int' 21:1
+  INIT_DECL 'c' 21:5
+    NAME 'c' 21:5
+    PAREN '(' 21:9
+      BINARY '+' 21:12
+        NUMBER '1' 21:10
+        ERROR ';' 21:14 [1]
+DECL 'int' 22:1
+  SPECS 'int' 22:1
+    TYPESPEC 'int' 22:1
+  INIT_DECL 'd' 22:5
+    NAME 'd' 22:5

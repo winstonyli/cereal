@@ -18,6 +18,7 @@ bench/fetch_corpus.sh /tmp/corpus && bench/corpus.py ./cereal /tmp/corpus
 cereal -E  [opts] file.c...           # preprocess (GCC-compatible output)
 cereal lint [opts] file.c...          # macro / conditional / include analyses
 cereal index [--all] file.c           # LSP model as JSON
+cereal parse [--dump] file.c...       # C99 + GNU parser (also -fsyntax-only)
 cereal query def|refs|hover|visible|expand|callers|callees|deps FILE:LINE:COL file.c
 cereal lsp                            # language server (stdio), docs/LSP.md
 cereal --list-warnings

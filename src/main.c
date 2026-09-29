@@ -6,6 +6,7 @@
 #include "index.h"
 #include "cell.h"
 #include "toks.h"
+#include "c/parse.h"
 #include "lsp/lsp.h"
 
 #include <string.h>
@@ -27,6 +28,10 @@ static void usage(FILE *o)
         "                --tokens[=check|digest]: the token stream\n"
         "                (regenerated from the cells), or its count and hash\n"
         "                (regenerated and checked, or from the cells' records)\n"
+        "  parse         parse (C99 + GNU), report syntax errors\n"
+        "                --dump: print the syntax trees; --cells: parse\n"
+        "                tokens regenerated from a cell build\n"
+        "  -fsyntax-only  the same as parse\n"
         "  lsp           language server on stdin/stdout\n"
         "  query KIND FILE:LINE:COL   KIND = def | refs | hover | visible | expand\n"
         "  --list-warnings  list every -W option\n"
@@ -135,6 +140,109 @@ static int lint_one(Options *o, const char *path, FILE *out, FILE *err)
 done:
     rc = finish(&tu, out);
     tu_free(&tu);
+    return rc;
+}
+
+/* ---- parse, -fsyntax-only ------------------------------------------------ */
+
+static bool parse_dump, parse_cells;
+
+static bool pp_source(void *ctx, Tok *t, SrcLoc *exp_loc)
+{
+    PP *pp = ctx;
+    while (pp_next(pp, t))
+        if (tok_in_stream(t)) {
+            *exp_loc = t->kind == TK_PRAGMA ? t->loc : pp->out_exp_loc;
+            return true;
+        }
+    return false;
+}
+
+/* Tokens regenerated from a cell build, cell by cell. */
+typedef struct CellSource {
+    TokRegen *rg;
+    size_t cell;
+    TokCursor cur;
+    bool open;
+} CellSource;
+
+static bool cell_source(void *ctx, Tok *t, SrcLoc *exp_loc)
+{
+    CellSource *cs = ctx;
+    for (;;) {
+        if (cs->open) {
+            if (tokcur_next(&cs->cur, t, exp_loc))
+                return true;
+            tokcur_close(&cs->cur, true); /* the parser holds tokens */
+            cs->open = false;
+            cs->cell++;
+        }
+        if (cs->cell >= cs->rg->ncells)
+            return false;
+        tokcur_open(&cs->cur, cs->rg, cs->rg->cells[cs->cell].s,
+                    cs->rg->cells[cs->cell].e);
+        cs->open = true;
+    }
+}
+
+static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
+{
+    TU tu;
+    Parser p;
+    ParseUnit u;
+    CellCache cache;
+    TokRegen rg;
+    CellSource cs;
+    ParseSource src = pp_source;
+    void *ctx = &tu.pp;
+    int rc;
+    tu_init(&tu, o);
+    tu.diag.out = err;
+    cell_cache_init(&cache);
+    tokregen_init(&rg);
+    memset(&cs, 0, sizeof cs);
+    if (parse_cells) { /* the parser's input as the language server has it */
+        ParOptions po = par_options(o);
+        ParResult r;
+        po.force = true;
+        po.cells = &cache;
+        po.toks = &rg;
+        r = par_run(&tu, path, NULL, false, &po, NULL, 0);
+        if (r == PAR_DONE && rg.ncells) {
+            cs.rg = &rg;
+            src = cell_source;
+            ctx = &cs;
+        } else if (r == PAR_FAILED) {
+            goto done;
+        } else {
+            tokregen_free(&rg);
+            tokregen_init(&rg);
+            tu_free(&tu);
+            tu_init(&tu, o);
+            tu.diag.out = err;
+            if (!tu_begin(&tu, path))
+                goto done;
+        }
+    } else if (!tu_begin(&tu, path)) {
+        goto done;
+    }
+    parser_init(&p, &tu.sm, tu.in, &tu.diag, o->pp.gnu_mode, src, ctx);
+    while (parser_next(&p, &u))
+        if (parse_dump)
+            ast_dump(out, &u, &tu.sm, tu.in);
+    if (getenv("CEREAL_PARSE_STATS"))
+        fprintf(stderr, "parse: %llu units, %llu tokens, %llu errors\n",
+                (unsigned long long)p.units,
+                (unsigned long long)(p.base + p.unit_end),
+                (unsigned long long)p.errors);
+    parser_free(&p);
+    if (cs.open)
+        tokcur_close(&cs.cur, true);
+done:
+    rc = finish(&tu, out);
+    tokregen_free(&rg);
+    tu_free(&tu);
+    cell_cache_free(&cache);
     return rc;
 }
 
@@ -483,7 +591,7 @@ static void cell_tokens(TokRegen *src, TokDump *d)
                    (unsigned long long)(d->n - n0),
                    h != c->hash ? ", hash differs" : "",
                    cur.unclean ? ", end not clean" : "");
-        tokcur_close(&cur);
+        tokcur_close(&cur, false);
     }
 }
 
@@ -817,7 +925,9 @@ int main(int argc, char **argv)
         if (!mode && !strcmp(argv[i], "lsp"))
             return lsp_main(stdin, stdout);
         if (!mode && (!strcmp(argv[i], "-E") || !strcmp(argv[i], "lint") ||
-                      !strcmp(argv[i], "index"))) {
+                      !strcmp(argv[i], "index") ||
+                      !strcmp(argv[i], "parse") ||
+                      !strcmp(argv[i], "-fsyntax-only"))) {
             mode = argv[i];
             continue;
         }
@@ -825,6 +935,14 @@ int main(int argc, char **argv)
             mode = argv[i];
             qkind = argv[++i];
             qat = argv[++i];
+            continue;
+        }
+        if (!strcmp(argv[i], "--dump")) {
+            parse_dump = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--cells")) {
+            parse_cells = true;
             continue;
         }
         if (!strcmp(argv[i], "--all")) {
@@ -891,6 +1009,10 @@ int main(int argc, char **argv)
         rc = mode_replay(&o, all, !no_cells, quiet, queries, tokens);
     else if (!strcmp(mode, "index"))
         rc = mode_index(&o, all, check_graph);
+    else if (!strcmp(mode, "parse") || !strcmp(mode, "-fsyntax-only"))
+        rc = o.inputs.len ? run_inputs(&o, parse_one, stdout)
+                          : (fputs("cereal: parse needs input files\n", stderr),
+                             2);
     else if (!strcmp(mode, "query"))
         rc = mode_query(&o, qkind, qat);
     options_free(&o);

@@ -13,6 +13,8 @@
 #   8. macro graph: every expansion lies in its invocation's static closure
 #      (`cereal index --check-graph`), on all inputs and a fuzzer
 #   9. lsp: scripted language-server sessions against golden transcripts
+#  10. parser: syntax trees and diagnostics against goldens, directly and
+#      from tokens regenerated from cells; cereal's own sources parse
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -218,6 +220,38 @@ for t in "$ROOT"/tests/lsp/*.json; do
             head -40 "$TMP/l" | sed 's/^/    /'
         fi
     done
+done
+
+parse_golden() { # parse_golden NAME FLAGS...  (in tests/parse)
+    name=$1
+    shift
+    "$CEREAL" parse --dump "$@" "$name.c" >"$TMP/po" 2>"$TMP/pe"
+    cat "$TMP/pe" "$TMP/po" >"$TMP/p"
+    if cmp -s "$TMP/p" "$name.expected"; then
+        ok
+    else
+        bad "parse/$name.c $*"
+        diff "$name.expected" "$TMP/p" | head -20 | sed 's/^/    /'
+    fi
+}
+cd "$ROOT/tests/parse"
+for f in *.c; do
+    parse_golden "${f%.c}"
+    parse_golden "${f%.c}" --cells -fparallel-chunk=1 -fparallel-threads=2
+done
+cd "$ROOT"
+for f in "$ROOT"/src/*.c "$ROOT"/src/analysis/*.c "$ROOT"/src/lsp/*.c \
+    "$ROOT"/src/c/*.c; do
+    if "$CEREAL" parse --dump -Isrc -D_POSIX_C_SOURCE=200809L "$f" \
+        >"$TMP/d1" 2>"$TMP/e1" &&
+        "$CEREAL" parse --dump --cells -fparallel-chunk=256 -Isrc \
+            -D_POSIX_C_SOURCE=200809L "$f" >"$TMP/d2" 2>&1 &&
+        cmp -s "$TMP/d1" "$TMP/d2"; then
+        ok
+    else
+        bad "parse dogfood ${f#$ROOT/}"
+        head -5 "$TMP/e1" | sed 's/^/    /'
+    fi
 done
 
 echo "$pass passed, $fail failed"

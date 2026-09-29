@@ -68,7 +68,9 @@ uint64_t tokregen_hash(const TokRegen *s, uint64_t *ntoks);
 /* Regenerates the tokens of plan items [s, e) of a source's build, which
  * must be a run of whole cells.  Cursors are independent: any number may
  * be open at once, on any threads.  Token spellings in scratch space are
- * valid until the cursor is closed. */
+ * valid until the cursor is closed, or for as long as the TU if it is
+ * closed keeping them (a consumer holding tokens across cells: the
+ * parser). */
 typedef struct TokCursor {
     TokRegen *src;
     Arena arena;
@@ -83,6 +85,6 @@ void tokcur_open(TokCursor *c, TokRegen *src, size_t s, size_t e);
 /* The next token and its presentation location (the expansion point of a
  * token from a macro); false at the end. */
 bool tokcur_next(TokCursor *c, Tok *t, SrcLoc *exp_loc);
-void tokcur_close(TokCursor *c);
+void tokcur_close(TokCursor *c, bool keep_spellings);
 
 #endif

@@ -67,10 +67,11 @@ bool tokcur_next(TokCursor *c, Tok *t, SrcLoc *exp_loc)
     return false;
 }
 
-void tokcur_close(TokCursor *c)
+void tokcur_close(TokCursor *c, bool keep_spellings)
 {
     ScratchCursor sc = c->pp.scratch;
-    srcmgr_scratch_rewind(&sc, c->mark);
+    if (!keep_spellings)
+        srcmgr_scratch_rewind(&sc, c->mark);
     c->pp.scratch.chunk = NULL;
     pp_free(&c->pp);
     diag_free(&c->diag);

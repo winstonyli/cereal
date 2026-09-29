@@ -15,7 +15,12 @@ file (zstandard).  For every translation unit:
            the token stream regenerated from the cells, every cell's
            record checked)
 
-and it reports times (gcc -E, cereal -E sequential and parallel).  Exit
+  parse    `cereal parse` accepts exactly when `gcc -fsyntax-only` does,
+           and parsing the tokens regenerated from cells (--cells) gives
+           the same trees
+
+and it reports times (gcc -E, cereal -E sequential and parallel, cereal
+parse).  Exit
 status 1 if any check fails."""
 import glob, os, subprocess, sys, tempfile, time
 
@@ -77,9 +82,9 @@ def main():
     only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
     tmp = tempfile.mkdtemp()
     fails = 0
-    tot = {"gcc": 0.0, "seq": 0.0, "par": 0.0}
-    print("%-34s %8s %6s %6s %6s  %s" % ("unit", "bytes", "gcc", "seq", "par",
-                                          "checks"))
+    tot = {"gcc": 0.0, "seq": 0.0, "par": 0.0, "parse": 0.0}
+    print("%-34s %8s %6s %6s %6s %6s  %s" % ("unit", "bytes", "gcc", "seq",
+                                              "par", "parse", "checks"))
     for name, f, flags, cwd in units(root):
         if only and only not in name:
             continue
@@ -100,6 +105,20 @@ def main():
             bad.append("gcc failed: " + eg.decode().strip().split("\n")[0])
         if (rs, os_, es) != (rp, op, ep):
             bad.append("par -E differs")
+        rgs = run(["gcc", "-std=c99", "-fsyntax-only", "-w"] + flags + [f], cwd)
+        pa = run([cereal, "parse", "--dump", "-fparallel=off"] + flags + [f],
+                 cwd)
+        tparse = pa[3]
+        if (rgs[0] == 0) != (pa[0] == 0):
+            bad.append("parse: gcc %s, cereal %s: %s" % (
+                "accepts" if rgs[0] == 0 else "rejects",
+                "accepts" if pa[0] == 0 else "rejects",
+                (pa[2] or rgs[2]).decode(errors="replace").split("\n")[0]))
+        if not quick:
+            pb = run([cereal, "parse", "--dump", "--cells",
+                      "-fparallel-chunk=4096"] + flags + [f], cwd)
+            if pa[:3] != pb[:3]:
+                bad.append("parse --cells differs")
         if not quick:
             for mode in (["lint", "-Weverything"], ["index", "--all"]):
                 a = run([cereal] + mode + ["-fparallel=off"] + flags + [f], cwd)
@@ -149,13 +168,15 @@ def main():
         tot["gcc"] += tg
         tot["seq"] += ts
         tot["par"] += tp
-        print("%-34s %8d %6.3f %6.3f %6.3f  %s" % (name[:34], os.path.getsize(f),
-                                                  tg, ts, tp,
-                                                  "; ".join(bad) or "ok"))
+        tot["parse"] += tparse
+        print("%-34s %8d %6.3f %6.3f %6.3f %6.3f  %s" % (
+            name[:34], os.path.getsize(f), tg, ts, tp, tparse,
+            "; ".join(bad) or "ok"))
         sys.stdout.flush()
         fails += bool(bad)
-    print("total: gcc %.2fs, cereal -E %.2fs sequential, %.2fs parallel; "
-          "%d failing" % (tot["gcc"], tot["seq"], tot["par"], fails))
+    print("total: gcc %.2fs, cereal -E %.2fs sequential, %.2fs parallel, "
+          "parse %.2fs; %d failing" % (tot["gcc"], tot["seq"], tot["par"],
+                                       tot["parse"], fails))
     return 1 if fails else 0
 
 

@@ -69,26 +69,68 @@ line-number literals; parser keys should treat number spellings as holes
 and give their values to constant evaluation only (P3).
 
 ## Tree
-- Per unit: `Node{tag:u8, flags:u8, tok:u32 (relative), extra:u32}` in
-  post-order, plus `extra[]` for variable-length data.
+- Per unit (one external declaration): `Node{tag:u8, flags:u8, aux:u16,
+  tok:u32, size:u32}`, 12 bytes, in post-order (`src/c/ast.h`).  `size`
+  is the node's subtree size, so children are found by walking back from
+  the parent (Carbon's layout); no child pointers, no `extra[]`.  `tok` is
+  relative to the unit's first token.  Optional parts are told apart by
+  tag class; `for` clauses use an `N_NONE` placeholder.
 - Macro provenance is free: node → token → location → expansion.
-  Diagnostics store unit-relative token positions and render the macro
-  trail when emitted, so they never go stale.
+  Diagnostics should store unit-relative token positions and render the
+  macro trail when emitted, so they never go stale (P3).
 - Types are hash-consed per build; a unit stores builtin ids or indexes
   into its read set (like `rmacro` in cells).
 
 ## Parser
-- Scopes are **versioned per identifier**, like MacroTab: a history of
-  (seq, entry) per slot; a snapshot is a sequence number.
-- Jourdan–Pottier scope rules as tests: declarator scope before the
-  initializer, parameter scope reopened for the body, `for` scopes, enum
-  constants shadowing typedefs, `T(T)` ambiguities.
-- **Error recovery**, synchronising at `;` and `}` of the current level,
-  plus **indentation-aware brace recovery**: while brace depth > 0, a line
-  at column 0 that can start an external declaration closes the open
-  blocks (diagnostic at the unclosed `{`).  Without it, typing an
-  unclosed `{` re-parses the rest of the file as statements on every
-  keystroke.
+- Recursive descent, precedence climbing for binary operators
+  (`src/c/parse.c`); a unit at a time, streaming from any token source
+  (the preprocessor directly, or cursors over a cell build).
+- Typedef feedback from a scope table (`src/c/scope.[ch]`): per
+  identifier, a chain of entries in an undo log; a scope is a mark in the
+  log; a function declarator's parameter scope is saved when it closes
+  and declared again for the body.  (P3 turns this into versioned
+  lookups, like MacroTab, for snapshots.)
+- Jourdan–Pottier scope rules (tests/parse/scopes.c): declarator scope
+  before the initializer; parameter scope reopened for the body and ended
+  with the parameter list otherwise; later parameters see earlier ones;
+  `(T)` in a parameter declaration is a function declarator; `T T;`;
+  enumeration constants shadow typedefs; `for`, selection and iteration
+  statements and their bodies are blocks; member names shadow nothing;
+  `unsigned T:3` vs `const T:3`; `T * b`; a label named like a type.
+- **Error recovery**: one error per place (no cascades), synchronising at
+  `;` and `}` of the current level.  **Brace recovery** as built: a
+  function definition that starts in column 0 inside a function body ends
+  the open body there (error at it, note at the unclosed `{`), and parses
+  as a definition of its own.  C has no function definitions in blocks,
+  and GNU nested functions are indented in practice, so valid code never
+  triggers it; typing an unclosed `{` no longer turns the rest of the
+  file into statements.
+- Leniency follows GCC's: what it only warns about is accepted (implicit
+  int, K&R definitions, a missing `;` before a struct's `}`, empty
+  initializers and structs, labels at the end of a block, stray `;`).
+
+### P1 as built: results
+- **gcc parity** (`bench/corpus.py`): all 170 corpus units (Lua 5.1-5.5,
+  libuv, two Cython outputs, zstd) are accepted, as gcc accepts them.
+- **Mutations** (`bench/parse_mutate.py`): a token deleted or duplicated
+  in preprocessed corpus code, 16 per unit per seed.  Across three seeds
+  (about 7,400 mutants, one run under ASan/UBSan) cereal never rejects
+  what gcc accepts and never crashes; about 10% of mutants are semantic
+  errors only gcc reports (types, undeclared names: P2).  Found and fixed
+  on the way: a missing `;` before a struct's `}` (a GCC warning), and
+  `f(x) __attribute__((...));` taken for a K&R definition.
+- **Cells**: parsing tokens regenerated from a cell build gives the same
+  trees and diagnostics (corpus, dogfood, goldens at one-line cells).  A
+  unit spans cells, so a cursor feeding the parser keeps its scratch
+  spellings when it closes (`tokcur_close(c, true)`); regression test
+  tests/parse/macros.c.
+- **Speed** (`macro_heavy.c`, 17.2M tokens, 400k units): preprocess and
+  parse 2.46 s against 1.41 s for `-E` alone, so parsing is about 60 ns a
+  token; the corpus parses in 2.4 s where `gcc -fsyntax-only` takes 6.3 s
+  (gcc also type-checks).
+- **Memory**: a unit's tokens (20 bytes each) and nodes live until the
+  next unit; `table.c`, one 20M-token initializer, peaks at 544 MB.
+  Initializer runs (P4) bound this.
 
 ## Units
 | Level | Cut | Entry state (key) | Exports |
@@ -151,8 +193,9 @@ Statement expressions, `typeof`, `__attribute__`, `__asm__`,
 
 ## Milestones
 0. **P0** (done) per-cell token counts and hashes, token regeneration.
-1. **P1** tree format, full parser without incrementality, brace recovery,
-   `cereal parse --dump`, `-fsyntax-only`; Jourdan–Pottier; gcc parity.
+1. **P1** (done) tree format, full parser without incrementality, brace
+   recovery, `cereal parse [--dump] [--cells]`, `-fsyntax-only`;
+   Jourdan–Pottier; gcc parity, on real and mutated code.
 2. **P2** scopes, types, summaries, type-checking diagnostics.
 3. **P3** top-level units, change-driven invalidation, early cutoff,
    `fuzz_parse`, restart check.  Decide tree retention (below).
