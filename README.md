@@ -8,6 +8,8 @@ functions.
 ```
 make            # probes the host compiler, builds ./cereal
 make test       # differential + analysis + query tests
+bench/fetch_corpus.sh /tmp/corpus && bench/corpus.py ./cereal /tmp/corpus
+                # real code (Lua, libuv, zstd, Cython output) vs gcc
 ```
 
 ## Usage

@@ -37,6 +37,17 @@ for n in noreturn nonnull pure const malloc format deprecated unused used \
     fallthrough nodiscard maybe_unused packed aligned cold hot; do
     echo "$n" >>"$TMP/attr_names"
 done
+# ... and every name the compiler itself knows: user code asks about more
+# than the host headers do (zstd: no_sanitize).  The candidates are the
+# identifier-like strings in the compiler proper; one -E pass answers them.
+cc1=$($HOSTCC -print-prog-name=cc1 2>/dev/null || true)
+[ -f "$cc1" ] || cc1=$(command -v "$HOSTCC" 2>/dev/null || true)
+if [ -n "$cc1" ] && [ -f "$cc1" ]; then
+    { strings -n 3 "$cc1" 2>/dev/null || LC_ALL=C grep -aoE '[A-Za-z_][A-Za-z0-9_]{2,63}' "$cc1"; } |
+        LC_ALL=C grep -E '^[A-Za-z_][A-Za-z0-9_]{2,63}$' >"$TMP/cc_names" || true
+    cat "$TMP/cc_names" >>"$TMP/attr_names"
+    cat "$TMP/cc_names" >>"$TMP/builtin_names"
+fi
 LC_ALL=C sort -u "$TMP/attr_names" -o "$TMP/attr_names"
 LC_ALL=C sort -u "$TMP/builtin_names" -o "$TMP/builtin_names"
 

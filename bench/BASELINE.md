@@ -51,3 +51,33 @@ is limited by memory bandwidth. `skipped` is directive-dense (1.5M plan
 items for 5 MB of text), so sequential phase A takes 0.35 s of it; that
 case needs the plan-density heuristic or pipelined phases. Output is held
 in memory until the merge (the extra MB).
+
+# Real code (bench/corpus.py)
+
+`bench/fetch_corpus.sh DIR` downloads source distributions from PyPI that
+carry real C; `bench/corpus.py ./cereal DIR` checks every translation unit
+(Lua 5.1-5.5 with `-DLUA_USE_LINUX`, libuv's portable and Linux sources,
+zstd as one file, and the Cython-generated `lupa/lua54.c` and
+`uvloop/loop.c`): token-equal to `gcc -E`; forced parallel `-E`, `lint`
+and `index` equal to sequential; `index --replay` with cells, rebuilt
+after a line is inserted mid-file, equal to a sequential rebuild.
+
+All 250 units pass. `-E` over the whole corpus: gcc 4.3 s, cereal 2.1 s.
+
+| unit | MB | gcc -E s | cereal seq s | cereal par s |
+|---|---|---|---|---|
+| uvloop/loop.c (Cython) | 8.7 | 0.556 | 0.177 | 0.092 |
+| lupa/lua54.c (Cython) | 2.2 | 0.132 | 0.061 | 0.045 |
+| zstd/zstd.c | 2.2 | 0.080 | 0.071 | 0.030 |
+
+Language server on `uvloop/loop.c`: open to diagnostics 0.35 s, a line
+typed mid-file 0.13-0.17 s. Cython's error-position macro expands
+`__LINE__` on almost every error path, so cells below an edit depend on
+absolute lines and rerun (19 of 80 here, 0.02 s in parallel); making
+`__LINE__` results relative to their cell would keep them.
+
+Found by the corpus: `__has_attribute` answered only for names the host
+headers ask about, so zstd's `no_sanitize` read as unsupported.
+tools/probe-host.sh now probes every identifier-like name in the
+compiler proper (about 170k candidates, one `-E` pass, ~14 s once per
+build directory).
