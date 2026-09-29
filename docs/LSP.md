@@ -11,7 +11,7 @@ files.
 | Question | Decision |
 |---|---|
 | Transport | stdio (what every editor spawns). The protocol layer is independent of it, so a socket or daemon can be added if measurements ever justify it. Shared warm state comes from the on-disk cache (PARALLEL.md step 8) instead. |
-| Edits | Memoized recomputation, staged. Stage 1: a full rebuild per edit with snapshots and cancellation. Stage 2 (here): phase-B results cached per *cell* (a run of text between clean, content-defined boundaries), stored relative to the cell and keyed by text, read set (misses included) and entering state; checked against full rebuilds by a differential fuzzer (PARALLEL.md, "Cells"). Next: the index kept per cell, then phase-A checkpoints. Patching data structures in place was rejected: it is fragile, and no production C/C++ engine does it (research notes below). |
+| Edits | Memoized recomputation, staged. Stage 1: a full rebuild per edit with snapshots and cancellation. Stage 2 (here): phase-B results cached per *cell* (a run of text between clean, content-defined boundaries), stored relative to the cell and keyed by text, read set (misses included) and entering state; the index is kept in the cells and queries walk them (Roslyn's green/red split, clangd-style layers); checked against full rebuilds by a differential fuzzer (PARALLEL.md, "Cells"). Next: phase-A checkpoints. Patching data structures in place was rejected: it is fragile, and no production C/C++ engine does it (research notes below). |
 | Features | Full index parity, plus macro-specific extras. |
 | Configuration | `compile_commands.json` (root or `build/`), then `.cereal` files from the workspace root down to the file's directory. Headers and files without an entry take the flags of the entry with the nearest path. |
 
@@ -84,17 +84,22 @@ AddressSanitizer/UBSan (set `LSP_STDERR` to collect reports).
 
 | Step | Stage 1 | Now |
 |---|---|---|
-| open to diagnostics | 3.1 s | 2.7 s |
-| edit to diagnostics (a line typed mid-file) | 3.1 s | 0.8 s |
-| hover | 0.1 s | 0.06 s |
-| semantic tokens, whole file (4M integers) | 0.6 s | |
+| open to diagnostics | 3.1 s | 2.1-2.3 s |
+| edit to diagnostics (a line typed mid-file) | 3.1 s | 0.21 s |
+| hover | 0.1 s | 0.02 s |
+| call hierarchy (prepare, incoming, outgoing) | | 0.01 s each |
+| references to a macro used 400k times (75 MB of results) | | 1.3 s in the server, 5 s at the client |
+| semantic tokens, whole file (4M integers) | 0.6 s | 0.9 s |
 
-Normal files take milliseconds. Of an edit, the build is 0.55-0.65 s:
-phase A 0.07 s, cell lookups 0.02 s, the rerun cell 0.015 s, decoding
-0.05 s, and the index's global renumbering and ref merge (0.13-0.3 s),
-which the per-cell index removes. `CEREAL_LSP_STATS=1` prints the
-server's timings (and `CEREAL_PAR_STATS=1` the runner's).
-`semanticTokens/range` and deltas will cut the token payload.
+Normal files take milliseconds. Of an edit, the build is about 0.11 s:
+phase A 0.06 s, cell lookups 0.02 s, the rerun cell 0.015 s. References
+used to take 145 s there: two deduplication passes compared every
+location with every earlier one (now hashed). Semantic tokens gather
+and sort every ref of the file from all cells; `semanticTokens/range`
+and deltas will cut that and the payload. `CEREAL_LSP_STATS=1` prints
+the server's timings (and `CEREAL_PAR_STATS=1` the runner's).
+`-fparallel=on` in `.cereal` forces the parallel path and cells for
+files of any size (the tests use it).
 
 ## Research notes (why memoization, not patching)
 

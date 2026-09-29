@@ -208,12 +208,16 @@ fi
 
 for t in "$ROOT"/tests/lsp/*.json; do
     [ -f "$t" ] || continue
-    if python3 "$ROOT/tests/lsp_session.py" "$CEREAL" "$t" >"$TMP/l" 2>&1; then
-        ok
-    else
-        bad "lsp/$(basename "$t")"
-        head -40 "$TMP/l" | sed 's/^/    /'
-    fi
+    # as is, then with the parallel path and cells forced: same transcript
+    for flags in "" "-fparallel=on -fparallel-chunk=1 -fparallel-threads=3"; do
+        if python3 "$ROOT/tests/lsp_session.py" "$CEREAL" "$t" \
+            ${flags:+--flags "$flags"} >"$TMP/l" 2>&1; then
+            ok
+        else
+            bad "lsp/$(basename "$t") ${flags:-(default)}"
+            head -40 "$TMP/l" | sed 's/^/    /'
+        fi
+    done
 done
 
 echo "$pass passed, $fail failed"

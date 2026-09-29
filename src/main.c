@@ -20,7 +20,8 @@ static void usage(FILE *o)
         "  index         dump the macro index (LSP model) as JSON\n"
         "                --all  --check-graph\n"
         "                --replay [--no-cells] [--no-output]: rebuild on each\n"
-        "                line of stdin, reusing cells (testing, timing)\n"
+        "                line of stdin, reusing cells (testing, timing);\n"
+        "                --transcript: answer queries at every identifier\n"
         "  lsp           language server on stdin/stdout\n"
         "  query KIND FILE:LINE:COL   KIND = def | refs | hover | visible | expand\n"
         "  --list-warnings  list every -W option\n"
@@ -320,13 +321,103 @@ static int mode_index(Options *o, bool all, bool check_graph)
     return rc;
 }
 
+/* ---- query transcripts (index --replay --transcript) ------------------- *
+ * What the language server would answer at every identifier of every user
+ * file: for comparing an index that walks cells with a materialized one. */
+
+static const char *mac_str(TU *tu, const Macro *m)
+{
+    if (!m)
+        return "-";
+    return m->name_loc ? arena_printf(&tu->arena, "%s@%s", m->name->str,
+                                      loc_str(tu, m->name_loc))
+                       : arena_printf(&tu->arena, "%s@builtin", m->name->str);
+}
+
+static void print_refs(TU *tu, const IdxRef *r, size_t n)
+{
+    size_t i;
+    for (i = 0; i < n; i++)
+        printf("  ref %s+%u k%d f%u %s\n", loc_str(tu, r[i].loc), r[i].len,
+               (int)r[i].kind, r[i].flags, mac_str(tu, r[i].macro));
+}
+
+static int file_name_cmp(const void *a, const void *b)
+{
+    return strcmp((*(SrcFile *const *)a)->name, (*(SrcFile *const *)b)->name);
+}
+
+static void transcript(TU *tu, Index *ix, const MacroGraph *g)
+{
+    VEC(SrcFile *) files = {0};
+    uint32_t i;
+    size_t k;
+    for (i = 0; i < srcmgr_nfiles(&tu->sm); i++) {
+        SrcFile *f = srcmgr_file(&tu->sm, i);
+        if (f && f->kind == SF_USER && !f->system_header)
+            vec_push(&files, f);
+    }
+    if (files.len > 1)
+        qsort(files.data, files.len, sizeof *files.data, file_name_cmp);
+    for (k = 0; k < files.len; k++) {
+        SrcFile *f = files.data[k];
+        IdxRef *refs;
+        size_t n = index_file_refs(ix, f, &refs);
+        uint32_t p;
+        printf("# %s\n", f->name);
+        print_refs(tu, refs, n);
+#define IDC(c) (((c) >= 'a' && (c) <= 'z') || ((c) >= 'A' && (c) <= 'Z') || \
+                ((c) >= '0' && (c) <= '9') || (c) == '_')
+        for (p = 0; p < f->size; p++) {
+            IdxTarget t;
+            int j;
+            if (!IDC(f->buf[p]) || (p && IDC(f->buf[p - 1])) ||
+                (f->buf[p] >= '0' && f->buf[p] <= '9'))
+                continue;
+            t = index_resolve(ix, f->base + p);
+            if (t.kind == TGT_NONE)
+                continue;
+            printf("%s: kind %d %s %s..%s", loc_str(tu, f->base + p),
+                   (int)t.kind, t.name ? t.name->str : "-",
+                   loc_str(tu, t.range.begin), loc_str(tu, t.range.end));
+            for (j = 0; j < t.nmacros; j++)
+                printf(" %s", mac_str(tu, t.macros[j]));
+            printf("\n");
+            if (t.top)
+                printf("  top %s %s..%s: %s\n", mac_str(tu, t.top->e->macro),
+                       loc_str(tu, t.top->e->name_loc),
+                       loc_str(tu, t.top->e->end_loc), sb_cstr(&t.top->text));
+            if (t.kind == TGT_MACRO || t.kind == TGT_PARAM) {
+                n = index_references(ix, &t, &refs);
+                print_refs(tu, refs, n);
+            }
+            if (t.kind == TGT_MACRO && t.nmacros) {
+                IdxCall *c;
+                size_t nc, q;
+                int dir;
+                for (dir = 0; dir < 2; dir++) {
+                    nc = dir ? index_callers(ix, g, t.macros[0], &c)
+                             : index_callees(ix, g, t.macros[0], &c);
+                    for (q = 0; q < nc; q++)
+                        printf("  %s %s %s %u%s\n", dir ? "caller" : "callee",
+                               c[q].name->str, mac_str(tu, c[q].macro),
+                               c[q].observed, c[q].pasted ? " pasted" : "");
+                }
+            }
+        }
+#undef IDC
+    }
+    vec_free(&files);
+}
+
 /* index --replay: rebuild the input each time a line arrives on stdin (the
  * files are re-read), as the language server does after an edit: analyses
  * and index, one interner and, unless --no-cells, one cell cache for all
  * builds.  Prints each build's diagnostics (JSON) and index (unless
  * --no-output), then a line "=== end".  For differential tests of the
  * cache, and timing. */
-static int mode_replay(Options *o, bool all, bool cells, bool quiet)
+static int mode_replay(Options *o, bool all, bool cells, bool quiet,
+                       bool queries)
 {
     Interner *in = interner_new();
     CellCache cache;
@@ -351,6 +442,7 @@ static int mode_replay(Options *o, bool all, bool cells, bool quiet)
         memset(&an, 0, sizeof an);
         analysis_attach(&an, &tu.pp);
         index_init(&ix, &tu.pp);
+        ix.want_cells = queries; /* only a materialized index dumps */
         po.cells = cells ? &cache : NULL;
         cs[0] = analysis_par_client(&an);
         cs[1] = index_par_client(&ix);
@@ -377,7 +469,14 @@ static int mode_replay(Options *o, bool all, bool cells, bool quiet)
         }
         if (!quiet) {
             diag_print_json(&tu.diag, stdout);
-            index_dump_json(&ix, stdout, all);
+            if (queries) {
+                MacroGraph g;
+                mgraph_build(&g, &tu.pp);
+                transcript(&tu, &ix, &g);
+                mgraph_free(&g);
+            } else {
+                index_dump_json(&ix, stdout, all);
+            }
         }
         fputs("=== end\n", stdout);
         fflush(stdout);
@@ -602,7 +701,7 @@ int main(int argc, char **argv)
     Options o;
     const char *mode = NULL, *qkind = NULL, *qat = NULL;
     bool all = false, check_graph = false, replay = false, no_cells = false,
-         quiet = false;
+         quiet = false, queries = false;
     int i, rc = 0;
     options_init(&o);
     if (argc < 2) {
@@ -644,6 +743,10 @@ int main(int argc, char **argv)
             quiet = true;
             continue;
         }
+        if (!strcmp(argv[i], "--transcript")) {
+            queries = true;
+            continue;
+        }
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
             usage(stdout);
             return 0;
@@ -669,7 +772,7 @@ int main(int argc, char **argv)
     else if (!strcmp(mode, "lint"))
         rc = mode_lint(&o);
     else if (!strcmp(mode, "index") && replay)
-        rc = mode_replay(&o, all, !no_cells, quiet);
+        rc = mode_replay(&o, all, !no_cells, quiet, queries);
     else if (!strcmp(mode, "index"))
         rc = mode_index(&o, all, check_graph);
     else if (!strcmp(mode, "query"))

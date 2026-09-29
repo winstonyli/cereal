@@ -6,17 +6,7 @@
 
 #include "hash.h"
 
-/* ---- encoded locations ------------------------------------------------ *
- * kind (2 bits) | a (30 bits) | offset (32 bits) */
-enum { CL_NONE, CL_ITEM, CL_MACRO, CL_FRAME };
-
-#define CLOC(k, a, off) (((uint64_t)(k) << 62) | ((uint64_t)(a) << 32) | (off))
-#define CLOC_KIND(l) ((unsigned)((l) >> 62))
-#define CLOC_A(l) ((uint32_t)(((l) >> 32) & 0x3FFFFFFFu))
-#define CLOC_OFF(l) ((uint32_t)(l))
-#define CLOC_AMAX 0x3FFFFFFFu
-
-#define ALIAS_BIT 0x80000000u
+#define ALIAS_BIT CELL_ALIAS_BIT
 #define POISON_MIX 0x5BD1E9955BD1E995ull
 #define FP_NONE 1u
 
@@ -107,9 +97,15 @@ void cell_cache_init(CellCache *c)
     memset(c, 0, sizeof *c);
 }
 
-void cell_free(Cell *c)
+Cell *cell_retain(Cell *c)
 {
-    if (!c)
+    atomic_add_u32(&c->refs, 1);
+    return c;
+}
+
+void cell_release(Cell *c)
+{
+    if (!c || atomic_add_u32(&c->refs, (uint32_t)-1) != 1)
         return;
     arena_free(&c->arena);
     free(c);
@@ -122,7 +118,7 @@ void cell_cache_free(CellCache *c)
         Cell *x = c->bucket[i], *nx;
         for (; x; x = nx) {
             nx = x->next;
-            cell_free(x);
+            cell_release(x);
         }
     }
     free(c->bucket);
@@ -180,7 +176,7 @@ void cell_cache_end(CellCache *c)
             Cell *x = *p;
             if (x->gen != c->gen) {
                 *p = x->next;
-                cell_free(x);
+                cell_release(x);
                 c->n--;
             } else {
                 p = &x->next;
@@ -476,6 +472,7 @@ void cell_enc_begin(CellEnc *e, CellBuild *b, const CellReads *r, size_t s,
     e->s = s;
     e->e = end;
     e->ok = end > s && end - s <= CLOC_AMAX;
+    c->refs = 1;
     arena_init(&c->arena);
     c->nitems = (uint32_t)(end - s);
     c->item_hash = NEW_ARRAY(&c->arena, uint64_t, c->nitems + 1);
@@ -702,10 +699,13 @@ void cenc_exp(CellEnc *e, uint32_t key, const Macro *m)
     x->macro = cenc_macro(e, m);
 }
 
-Cell *cell_enc_end(CellEnc *e)
+Cell *cell_enc_end(CellEnc *e, Macro ***rmacro_out)
 {
     Cell *c = e->cell;
-    free(e->rmacro);
+    if (rmacro_out && e->ok)
+        *rmacro_out = e->rmacro;
+    else
+        free(e->rmacro);
     free(e->spans);
     free(e->macs);
     e->rmacro = NULL;
@@ -713,7 +713,7 @@ Cell *cell_enc_end(CellEnc *e)
     e->macs = NULL;
     e->cell = NULL;
     if (!e->ok) {
-        cell_free(c);
+        cell_release(c);
         return NULL;
     }
     return c;
@@ -745,11 +745,7 @@ SrcLoc cdec_loc(const CellDec *d, CLoc l)
 
 Macro *cdec_macro(const CellDec *d, uint32_t m)
 {
-    Macro *x;
-    if (m == UINT32_MAX)
-        return NULL;
-    x = d->rmacro[m & ~ALIAS_BIT];
-    return (m & ALIAS_BIT) ? x->alias_of : x;
+    return cell_macro(d->rmacro, m);
 }
 
 uint32_t cdec_item(const CellDec *d, uint32_t rel)

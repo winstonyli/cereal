@@ -113,6 +113,7 @@ struct Par {
     size_t nhits;
     Hit **hit_at;                  /* by item: a reused cell starting there */
     double t_cells;                /* stats: lookups done */
+    bool placed[CELL_MAX_CLIENTS]; /* clients that took the cells as such */
 };
 
 void plan_free(Plan *p)
@@ -289,6 +290,15 @@ static void worker_init(Par *P, Worker *w, int idx, size_t start, size_t end,
     pp_plan_start(&w->pp, &P->plan, start);
 }
 
+static bool adopts(const Par *P)
+{
+    int c;
+    for (c = 0; c < P->nclients; c++)
+        if (P->clients[c].adopts && !P->placed[c])
+            return true;
+    return false;
+}
+
 static void worker_free(Par *P, Worker *w)
 {
     int c;
@@ -301,7 +311,7 @@ static void worker_free(Par *P, Worker *w)
     vec_free(&w->cuts);
     pp_free(&w->pp);
     sink_free(&w->sink);
-    if (P->nclients) {
+    if (adopts(P)) {
         /* joined results (expansions, strings) live on in place */
         vec_push(&P->tu->adopted, w->arena);
         memset(&w->arena, 0, sizeof w->arena);
@@ -452,7 +462,7 @@ static void join_clients(Par *P, const Slice *sl, int ns)
     size_t nj = 0, k;
     for (s = 0; s < ns; s++)
         for (c = 0; c < P->nclients; c++)
-            if (P->clients[c].prepare && sl[s].w->wctx[c]) {
+            if (P->clients[c].prepare && sl[s].w->wctx[c] && !P->placed[c]) {
                 jobs[nj].c = &P->clients[c];
                 jobs[nj].wctx = sl[s].w->wctx[c];
                 jobs[nj].from = (uint32_t)sl[s].from;
@@ -480,7 +490,7 @@ static void join_clients(Par *P, const Slice *sl, int ns)
                 w->exps.data[i].key < sl[s].to)
                 w->exps.data[i].m->expansions++;
         for (c = 0; c < P->nclients; c++)
-            if (P->clients[c].join && w->wctx[c])
+            if (P->clients[c].join && w->wctx[c] && !P->placed[c])
                 P->clients[c].join(P->clients[c].ctx, w->wctx[c],
                                    (uint32_t)sl[s].from, (uint32_t)sl[s].to);
     }
@@ -666,8 +676,8 @@ typedef struct CellJob {
     Worker *w;                     /* encode: a worker's slice */
     size_t from, to;
     Hit *hit;                      /* decode: a reused cell */
-    VEC(Cell *) out;
-    size_t uncacheable;
+    Cell *cell;                    /* encoded (NULL: could not be) */
+    Macro **rmacro;                /* its reads in this build */
 } CellJob;
 
 static void encode_cell(CellJob *j, size_t x, size_t y)
@@ -702,11 +712,8 @@ static void encode_cell(CellJob *j, size_t x, size_t y)
             e.cell->blob[k] = P->clients[k].encode(P->clients[k].ctx,
                                                    w->wctx[k], (uint32_t)x,
                                                    (uint32_t)y, &e);
-    c = cell_enc_end(&e);
-    if (c)
-        vec_push(&j->out, c);
-    else
-        j->uncacheable++;
+    c = cell_enc_end(&e, &j->rmacro);
+    j->cell = c;
 }
 
 static void decode_hit(Par *P, Hit *h)
@@ -741,18 +748,39 @@ static void decode_hit(Par *P, Hit *h)
     }
     w->wctx = xcalloc((size_t)P->nclients + 1, sizeof *w->wctx);
     for (k = 0; k < P->nclients; k++)
-        if (P->clients[k].decode && h->cell->blob[k])
+        if (P->clients[k].decode && h->cell->blob[k] && !P->placed[k])
             w->wctx[k] = P->clients[k].decode(P->clients[k].ctx, &w->pp,
                                               h->cell->blob[k], &d);
 }
 
-static void run_cell_job(void *arg)
+static void run_encode_job(void *arg)
 {
     CellJob *j = arg;
-    if (j->hit)
-        decode_hit(j->P, j->hit);
-    else
-        encode_cell(j, j->from, j->to);
+    encode_cell(j, j->from, j->to);
+}
+
+static void run_decode_job(void *arg)
+{
+    CellJob *j = arg;
+    decode_hit(j->P, j->hit);
+}
+
+static void run_jobs(Par *P, CellJob *jobs, size_t n, bool hits,
+                     void (*fn)(void *))
+{
+    JobGroup g;
+    size_t k;
+    group_init(&g);
+    for (k = 0; k < n; k++)
+        if ((jobs[k].hit != NULL) == hits) {
+            if (P->tp)
+                pool_submit(P->tp, &g, fn, &jobs[k]);
+            else
+                fn(&jobs[k]);
+        }
+    if (P->tp)
+        group_wait(P->tp, &g);
+    group_free(&g);
 }
 
 static bool cancelled(Par *P)
@@ -769,6 +797,9 @@ static void merge_cells(Par *P)
     VEC(Slice) sl = {0};
     CellJob *jobs;
     size_t nj = 0;
+    bool complete = true;          /* every slice has its cell */
+    int c;
+    VEC(CellPlace) places = {0};
     Worker *next = NULL;           /* where the last worker stitched */
     while (p < n) {
         Slice s;
@@ -806,48 +837,70 @@ static void merge_cells(Par *P)
             j = &jobs[nj++];
             j->P = P;
             j->hit = P->hit_at[s->from];
-        } else if (!s->w->pp.halted) { /* (cancelled, or fatal) */
+        } else if (s->w->pp.halted) { /* cancelled, or fatal */
+            complete = false;
+        } else {
             /* a cell per stretch between the clean boundaries crossed */
             size_t x = s->from, i;
             for (i = 0; i <= s->w->cuts.len; i++) {
-                size_t c = i < s->w->cuts.len ? s->w->cuts.data[i] : s->to;
-                if (c <= x || c > s->to)
+                size_t y = i < s->w->cuts.len ? s->w->cuts.data[i] : s->to;
+                if (y <= x || y > s->to)
                     continue;
                 j = &jobs[nj++];
                 j->P = P;
                 j->w = s->w;
                 j->from = x;
-                j->to = c;
-                x = c;
+                j->to = y;
+                x = y;
             }
         }
     }
-    if (P->tp && nj > 1) {
-        JobGroup g;
-        group_init(&g);
-        for (k = 0; k < nj; k++)
-            pool_submit(P->tp, &g, run_cell_job, &jobs[k]);
-        group_wait(P->tp, &g);
-        group_free(&g);
-    } else {
-        for (k = 0; k < nj; k++)
-            run_cell_job(&jobs[k]);
-    }
+    /* encode first: whether clients can take the cells themselves (place)
+     * depends on every slice having one */
+    run_jobs(P, jobs, nj, false, run_encode_job);
+    for (k = 0; k < nj; k++)
+        if (!jobs[k].hit && !jobs[k].cell) {
+            complete = false;
+            P->cache->last.uncacheable++;
+        }
+    if (cancelled(P))
+        complete = false;
+    for (c = 0; c < P->nclients; c++)
+        P->placed[c] = complete && P->clients[c].place;
+    run_jobs(P, jobs, nj, true, run_decode_job);
     for (k = 0; k < nj; k++) {
-        size_t i;
-        for (i = 0; i < jobs[k].out.len; i++) {
-            Cell *c = jobs[k].out.data[i];
+        CellPlace pl;
+        if (jobs[k].hit) {
+            pl.cell = jobs[k].hit->cell;
+            pl.s = jobs[k].hit->s;
+            pl.rmacro = jobs[k].hit->rmacro;
+        } else if (jobs[k].cell) {
+            pl.cell = jobs[k].cell;
+            pl.s = jobs[k].from;
+            pl.rmacro = jobs[k].rmacro;
             if (cancelled(P)) { /* results of a cut-short run */
-                cell_free(c);
+                cell_release(jobs[k].cell);
+                jobs[k].cell = NULL;
                 continue;
             }
-            cell_cache_put(P->cache, c);
+            cell_cache_put(P->cache, cell_retain(jobs[k].cell));
             P->cache->last.stored++;
-            P->cache->last.miss_items += c->nitems;
+            P->cache->last.miss_items += jobs[k].cell->nitems;
+        } else {
+            continue;
         }
-        P->cache->last.uncacheable += jobs[k].uncacheable;
-        vec_free(&jobs[k].out);
+        vec_push(&places, pl);
     }
+    for (c = 0; c < P->nclients; c++)
+        if (P->placed[c])
+            P->clients[c].place(P->clients[c].ctx, c, places.data,
+                                places.len, &P->plan);
+    for (k = 0; k < nj; k++) {
+        if (jobs[k].cell)
+            cell_release(jobs[k].cell); /* the job's reference */
+        free(jobs[k].rmacro);
+    }
+    vec_free(&places);
     free(jobs);
     if (getenv("CEREAL_PAR_STATS")) {
         const CellStats *st = &P->cache->last;
@@ -856,11 +909,11 @@ static void merge_cells(Par *P)
             cand += cell_candidate(&P->plan, i);
         fprintf(stderr, "par: A %.3fs lookups %.3fs B %.3fs; %zu items (%zu "
                 "boundaries), %d workers, %zu slices; cells: %zu reused (%zu "
-                "items), %zu stored (%zu items), %zu uncacheable\n",
+                "items), %zu stored (%zu items), %zu uncacheable%s\n",
                 P->t_a - P->t0, P->t_cells - P->t_a, P->t_b - P->t_cells, n,
                 cand, P->nw, sl.len,
                 st->hits, st->hit_items, st->stored, st->miss_items,
-                st->uncacheable);
+                st->uncacheable, complete ? "; placed" : "");
     }
     {
         double t1 = now(), t2;

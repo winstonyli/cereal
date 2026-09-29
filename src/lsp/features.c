@@ -54,9 +54,14 @@ static const char *uri_of(Arena *a, SrcMgr *sm, SrcLoc loc)
 
 void json_location(JsonWriter *w, Req *r, SrcLoc b, SrcLoc e)
 {
+    const SrcFile *f = srcmgr_file_of(&r->snap->tu.sm, b);
+    if (!f || f != r->uri_file) { /* results come in runs of one file */
+        r->uri_file = f;
+        r->uri = uri_of(r->arena, &r->snap->tu.sm, b);
+    }
     json_begin_object(w);
     json_key(w, "uri");
-    json_str(w, uri_of(r->arena, &r->snap->tu.sm, b));
+    json_str(w, r->uri);
     json_key(w, "range");
     json_range(w, &r->snap->tu.sm, r->enc, b, e);
     json_end_object(w);
@@ -262,10 +267,12 @@ void lsp_semantic_tokens(Req *r, JsonWriter *w)
     size_t i;
     SrcLoc prev_end = 0;
     uint32_t pl = 0, pc = 0;
-    for (i = 0; i < ix->refs.len; i++) {
-        IdxRef *ref = &ix->refs.data[i];
+    IdxRef *refs;
+    size_t nrefs = index_file_refs(ix, r->file, &refs);
+    for (i = 0; i < nrefs; i++) {
+        IdxRef *ref = &refs[i];
         STok s;
-        if (!ref->len || !in_file(r->file, ref->loc))
+        if (!ref->len)
             continue;
         s.loc = ref->loc;
         s.len = ref->len;

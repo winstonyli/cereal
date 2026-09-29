@@ -33,6 +33,27 @@
 
 typedef uint64_t CLoc;          /* encoded location; 0: none */
 
+/* kind (2 bits) | a (30 bits) | offset (32 bits): CLocs of one kind and
+ * anchor sort by offset. */
+enum { CL_NONE, CL_ITEM, CL_MACRO, CL_FRAME };
+#define CLOC(k, a, off) (((uint64_t)(k) << 62) | ((uint64_t)(a) << 32) | (off))
+#define CLOC_KIND(l) ((unsigned)((l) >> 62))
+#define CLOC_A(l) ((uint32_t)(((l) >> 32) & 0x3FFFFFFFu))
+#define CLOC_OFF(l) ((uint32_t)(l))
+#define CLOC_AMAX 0x3FFFFFFFu
+#define CELL_ALIAS_BIT 0x80000000u
+
+/* An encoded definition, given what the cell's reads found. */
+static inline struct Macro *cell_macro(struct Macro *const *rmacro,
+                                       uint32_t m)
+{
+    struct Macro *x;
+    if (m == UINT32_MAX)
+        return NULL;
+    x = rmacro[m & ~CELL_ALIAS_BIT];
+    return (m & CELL_ALIAS_BIT) ? x->alias_of : x;
+}
+
 /* ---- recording reads (phase-B workers) ------------------------------- */
 
 #define CELL_RECENT 1024
@@ -99,6 +120,7 @@ typedef struct Cell {
     uint32_t nexps;
     void *blob[CELL_MAX_CLIENTS];
     uint64_t gen;               /* last build that used it */
+    uint32_t refs;              /* atomic: the cache's and indexes' */
     struct Cell *next;          /* CellCache bucket chain */
 } Cell;
 
@@ -118,7 +140,10 @@ typedef struct CellCache {
 
 void cell_cache_init(CellCache *c);
 void cell_cache_free(CellCache *c);
-void cell_free(Cell *c);
+/* Cells are reference counted: an index built from a cell keeps it after
+ * the cache has dropped it.  A new cell has one reference. */
+Cell *cell_retain(Cell *c);
+void cell_release(Cell *c);
 /* A build: cells it neither reuses nor stores are dropped at the end
  * (all of them if the configuration changed). */
 void cell_cache_begin(CellCache *c, uint64_t config, int nclients);
@@ -169,8 +194,10 @@ typedef struct CellEnc {
  * own to give (e.g. empty). */
 void cell_enc_begin(CellEnc *e, CellBuild *b, const CellReads *r, size_t s,
                     size_t end);
-/* The finished cell, or NULL (and the cell freed) if encoding failed. */
-Cell *cell_enc_end(CellEnc *e);
+/* The finished cell, or NULL (and the cell freed) if encoding failed.
+ * rmacro_out (may be NULL): what the cell's reads found in this build, for
+ * using the cell right away (malloc'd; the caller frees it). */
+Cell *cell_enc_end(CellEnc *e, Macro ***rmacro_out);
 Arena *cenc_arena(CellEnc *e);
 CLoc cenc_loc(CellEnc *e, SrcLoc loc);
 uint32_t cenc_macro(CellEnc *e, const Macro *m);   /* UINT32_MAX: NULL */
@@ -195,7 +222,7 @@ uint32_t cdec_item(const CellDec *d, uint32_t rel);
 uint32_t cdec_version(const CellDec *d, uint32_t rel);
 Diagnostic *cdec_diag(const CellDec *d, const CellDiag *cd);
 
-/* Store a cell (the cache takes it). */
+/* Store a cell (the cache takes the caller's reference). */
 void cell_cache_put(CellCache *c, Cell *cell);
 
 #endif

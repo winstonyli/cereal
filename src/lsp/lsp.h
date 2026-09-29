@@ -89,6 +89,8 @@ typedef struct Req {
     const JsonValue *params;
     const char *text;        /* current editor text (may be newer) */
     size_t text_len;
+    const SrcFile *uri_file;  /* the last file json_location named */
+    const char *uri;
 } Req;
 
 /* Each writes the result value (not the envelope). */

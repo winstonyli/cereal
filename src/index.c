@@ -19,6 +19,7 @@ static void add_ref(Index *ix, Ident *name, Macro *m, SrcLoc loc, uint32_t len,
     IdxRef r;
     if (!loc)
         return;
+    memset(&r, 0, sizeof r);
     r.name = name;
     r.macro = m && m->alias_of ? m->alias_of : m; /* pop_macro version */
     r.loc = loc;
@@ -232,6 +233,9 @@ void index_free(Index *ix)
     vec_free(&ix->prep_kept);
     vec_free(&ix->prep_refs);
     vec_free(&ix->runs);
+    for (i = 0; i < ix->cells.len; i++)
+        cell_release(ix->cells.data[i].cell);
+    vec_free(&ix->cells);
 }
 
 /* An output token: part of its file-level expansion's text (hover). */
@@ -569,12 +573,110 @@ typedef struct CRef {
     uint8_t flags;
 } CRef;
 
+/* Observed calls: expansions whose name came from another expansion,
+ * per (parent's definition, child's definition, the name's origin flags),
+ * in the order of their first expansion. */
+typedef struct CEdge {
+    uint32_t parent, child;     /* encoded definitions */
+    uint16_t flags;             /* TF_ORIGIN_ARG | TF_ORIGIN_BODY | TF_PASTED */
+    uint32_t count;
+    uint32_t first;             /* local id of the first such expansion */
+} CEdge;
+
 typedef struct IxBlob {
     CExp *exps;
     uint32_t nexps;
-    CRef *refs;
+    CRef *refs;                 /* by location (CLoc), then as ref_cmp */
     uint32_t nrefs;
+    uint32_t *by_name;          /* ref indexes by name id, then position */
+    CEdge *edges;
+    uint32_t nedges;
+    uint32_t max_len;           /* longest ref */
 } IxBlob;
+
+static int cref_cmp(const void *a, const void *b)
+{
+    const CRef *x = a, *y = b;
+    if (x->loc != y->loc)
+        return x->loc < y->loc ? -1 : 1;
+    if (x->kind != y->kind)
+        return x->kind < y->kind ? -1 : 1;
+    if (x->exp != y->exp)
+        return x->exp < y->exp ? -1 : 1;
+    if (x->macro != y->macro)
+        return x->macro < y->macro ? -1 : 1;
+    if (x->flags != y->flags)
+        return x->flags < y->flags ? -1 : 1;
+    if (x->len != y->len)
+        return x->len < y->len ? -1 : 1;
+    return x->name->id < y->name->id ? -1 : x->name->id > y->name->id;
+}
+
+static int u64cmp(const void *a, const void *b)
+{
+    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
+    return x < y ? -1 : x > y;
+}
+
+/* The tables queries use, made once per cell. */
+static void blob_tables(IxBlob *b, Arena *a)
+{
+    uint32_t i, *slot, cap = 64;
+    uint64_t *keys;
+    VEC(CEdge) ed = {0};
+    if (b->nrefs > 1)
+        qsort(b->refs, b->nrefs, sizeof *b->refs, cref_cmp);
+    b->by_name = NEW_ARRAY(a, uint32_t, b->nrefs + 1);
+    keys = xmalloc(sizeof(uint64_t) * (b->nrefs + 1));
+    for (i = 0; i < b->nrefs; i++) {
+        keys[i] = (uint64_t)b->refs[i].name->id << 32 | i;
+        if (b->refs[i].len > b->max_len)
+            b->max_len = b->refs[i].len;
+    }
+    if (b->nrefs > 1)
+        qsort(keys, b->nrefs, sizeof *keys, u64cmp);
+    for (i = 0; i < b->nrefs; i++)
+        b->by_name[i] = (uint32_t)keys[i];
+    free(keys);
+    /* edges: open addressing on (parent, child, flags), UINT32_MAX empty */
+    while (cap < 2 * b->nexps)
+        cap *= 2;
+    slot = xmalloc(sizeof(uint32_t) * cap);
+    memset(slot, 0xFF, sizeof(uint32_t) * cap);
+    for (i = 0; i < b->nexps; i++) {
+        const CExp *c = &b->exps[i];
+        uint16_t f = c->name_flags & (TF_ORIGIN_ARG | TF_ORIGIN_BODY |
+                                      TF_PASTED);
+        uint32_t pm, k, h;
+        if (c->parent == UINT32_MAX)
+            continue;
+        pm = b->exps[c->parent].macro;
+        h = (pm * 0x9E3779B1u) ^ (c->macro * 0x85EBCA77u) ^ f;
+        for (k = h & (cap - 1); slot[k] != UINT32_MAX; k = (k + 1) & (cap - 1)) {
+            CEdge *x = &ed.data[slot[k]];
+            if (x->parent == pm && x->child == c->macro && x->flags == f)
+                break;
+        }
+        if (slot[k] != UINT32_MAX) {
+            ed.data[slot[k]].count++;
+        } else {
+            slot[k] = (uint32_t)ed.len;
+            CEdge e;
+            e.parent = pm;
+            e.child = c->macro;
+            e.flags = f;
+            e.count = 1;
+            e.first = i;
+            vec_push(&ed, e);
+        }
+    }
+    free(slot);
+    b->nedges = (uint32_t)ed.len;
+    b->edges = NEW_ARRAY(a, CEdge, ed.len + 1);
+    if (ed.len)
+        memcpy(b->edges, ed.data, sizeof(CEdge) * ed.len);
+    vec_free(&ed);
+}
 
 /* Expansion ids [lo, hi) holding every expansion with key in [from, to):
  * keys do not decrease with ids in a worker (NULL slots: none). */
@@ -713,6 +815,7 @@ static void *ix_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
         c->flags = (uint8_t)r->flags;
     }
 #undef LOCAL
+    blob_tables(b, a);
     free(local);
     (void)n;
     return b;
@@ -765,6 +868,7 @@ static void *ix_decode(void *ctx, PP *wpp, const void *blob, const CellDec *d)
     for (i = 0; i < b->nrefs; i++) {
         const CRef *c = &b->refs[i];
         IdxRef r;
+        memset(&r, 0, sizeof r);
         r.name = c->name;
         r.macro = cdec_macro(d, c->macro);
         r.loc = cdec_loc(d, c->loc);
@@ -775,6 +879,35 @@ static void *ix_decode(void *ctx, PP *wpp, const void *blob, const CellDec *d)
         vec_push(&w->refs, r);
     }
     return w;
+}
+
+/* Cells mode: keep the build's cells as they are (see Index). */
+static void ix_place(void *ctx, int client, const CellPlace *cells, size_t n,
+                     const Plan *plan)
+{
+    Index *ix = ctx;
+    size_t i;
+    uint32_t k;
+    ix->cells_mode = true;
+    ix->nitems = plan->items.len;
+    ix->items = NEW_ARRAY(ix->arena, PlanItem, ix->nitems + 1);
+    if (ix->nitems)
+        memcpy(ix->items, plan->items.data, sizeof(PlanItem) * ix->nitems);
+    ix->item_cell = NEW_ARRAY(ix->arena, uint32_t, ix->nitems + 1);
+    for (i = 0; i < n; i++) {
+        IdxCell c;
+        c.cell = cell_retain(cells[i].cell);
+        c.blob = cells[i].cell->blob[client];
+        c.s = (uint32_t)cells[i].s;
+        c.nreads = cells[i].cell->nreads;
+        c.rmacro = NEW_ARRAY(ix->arena, Macro *, c.nreads + 1);
+        if (c.nreads)
+            memcpy(c.rmacro, cells[i].rmacro, sizeof(Macro *) * c.nreads);
+        for (k = 0; k < cells[i].cell->nitems; k++)
+            ix->item_cell[c.s + k] = (uint32_t)ix->cells.len;
+        vec_push(&ix->cells, c);
+    }
+    ix->max_len = 0;
 }
 
 static void ix_release(void *ctx, void *wctx)
@@ -796,22 +929,37 @@ ParClient index_par_client(Index *ix)
     c.release = ix_release;
     c.encode = ix_encode;
     c.decode = ix_decode;
+    c.adopts = true;
+    if (ix->want_cells)
+        c.place = ix_place;
     return c;
 }
 
 
-/* ---- queries -------------------------------------------------------- */
+/* ---- queries -------------------------------------------------------- *
+ * Both modes answer through one path: the refs a query needs are gathered
+ * (covering a location, with a name, in a file), put in index order and
+ * deduplicated, then examined as before.  Materialized, they come from
+ * ix->refs, already in order; in cells mode from phase A's refs and the
+ * cells (absolute positions from the plan's items, definitions from what
+ * each cell's reads found), then sorted. */
+
+typedef VEC(IdxRef) RefVec;
+
+static int name_cmp(const Ident *x, const Ident *y)
+{
+    /* by spelling: ids depend on what an interner saw before */
+    return x == y ? 0 : strcmp(x->str, y->str);
+}
 
 /* A total order (the result must not depend on the order refs were
  * recorded in, which differs in parallel runs): location, then kind and
  * definition, then the expansion's sequential number. */
-static int ref_cmp(const void *a, const void *b)
+static int ref_order(const IdxRef *x, const IdxRef *y, uint64_t xe,
+                     uint64_t ye)
 {
-    const IdxRef *x = a, *y = b;
     uint32_t xm = x->macro ? x->macro->id : UINT32_MAX,
              ym = y->macro ? y->macro->id : UINT32_MAX;
-    uint32_t xe = x->exp ? x->exp->id : UINT32_MAX,
-             ye = y->exp ? y->exp->id : UINT32_MAX;
     if (x->loc != y->loc)
         return x->loc < y->loc ? -1 : 1;
     if (x->kind != y->kind)
@@ -824,32 +972,51 @@ static int ref_cmp(const void *a, const void *b)
         return x->flags < y->flags ? -1 : 1;
     if (x->len != y->len)
         return x->len < y->len ? -1 : 1;
-    return x->name->id < y->name->id ? -1 : x->name->id > y->name->id;
+    return name_cmp(x->name, y->name);
+}
+
+static int ref_cmp(const void *a, const void *b)
+{
+    const IdxRef *x = a, *y = b;
+    return ref_order(x, y, x->exp ? x->exp->id : UINT64_MAX,
+                     y->exp ? y->exp->id : UINT64_MAX);
+}
+
+/* Cells mode: expansions have no global ids; `order` places them as the
+ * ids would (by plan item, a worker's before phase A's at a tie). */
+static int ref_qcmp(const void *a, const void *b)
+{
+    const IdxRef *x = a, *y = b;
+    return ref_order(x, y, x->order, y->order);
 }
 
 /* A body token or ## result names one macro once per location, however
  * often it was expanded: keep the first expansion's ref (refs sorted). */
-static void dedupe_refs(Index *ix)
+static size_t dedupe(IdxRef *v, size_t n)
 {
     size_t i, w = 0;
-    for (i = 0; i < ix->refs.len; i++) {
-        IdxRef *r = &ix->refs.data[i];
+    for (i = 0; i < n; i++) {
+        IdxRef *r = &v[i];
         if (w && (r->flags & (IREF_IN_BODY | IREF_PASTED))) {
             size_t k;
             bool dup = false;
-            for (k = w; k-- > 0 && ix->refs.data[k].loc == r->loc;)
-                if (ix->refs.data[k].macro == r->macro &&
-                    ix->refs.data[k].kind == r->kind &&
-                    (ix->refs.data[k].flags & (IREF_IN_BODY | IREF_PASTED))) {
+            for (k = w; k-- > 0 && v[k].loc == r->loc;)
+                if (v[k].macro == r->macro && v[k].kind == r->kind &&
+                    (v[k].flags & (IREF_IN_BODY | IREF_PASTED))) {
                     dup = true;
                     break;
                 }
             if (dup)
                 continue;
         }
-        ix->refs.data[w++] = *r;
+        v[w++] = *r;
     }
-    ix->refs.len = w;
+    return w;
+}
+
+static void dedupe_refs(Index *ix)
+{
+    ix->refs.len = dedupe(ix->refs.data, ix->refs.len);
 }
 
 static void ensure_sorted(Index *ix)
@@ -862,6 +1029,343 @@ static void ensure_sorted(Index *ix)
     ix->sorted = true;
 }
 
+/* The longest ref anywhere (at least 1): how far back a ref covering a
+ * location can start. */
+static uint32_t max_len(Index *ix)
+{
+    size_t i;
+    if (ix->max_len)
+        return ix->max_len;
+    ix->max_len = 1;
+    for (i = 0; i < ix->refs.len; i++)
+        if (ix->refs.data[i].len > ix->max_len)
+            ix->max_len = ix->refs.data[i].len;
+    for (i = 0; i < ix->cells.len; i++) {
+        const IxBlob *b = ix->cells.data[i].blob;
+        if (b->max_len > ix->max_len)
+            ix->max_len = b->max_len;
+    }
+    return ix->max_len;
+}
+
+/* ---- cells mode: from cells to absolute refs ---- */
+
+typedef struct IdxSpan {
+    SrcLoc begin, end;        /* inclusive */
+    uint32_t item;
+} IdxSpan;
+
+typedef struct IdxMacRead {
+    uint32_t cell, read;
+} IdxMacRead;
+
+static SrcLoc cloc_abs(const Index *ix, const IdxCell *c, CLoc l)
+{
+    switch (CLOC_KIND(l)) {
+    case CL_ITEM:
+        return ix->items[c->s + CLOC_A(l)].begin + CLOC_OFF(l);
+    case CL_MACRO:
+        return c->rmacro[CLOC_A(l)]->hash_loc + CLOC_OFF(l);
+    case CL_FRAME: {
+        const PlanItem *it = &ix->items[c->s + CLOC_A(l)];
+        uint32_t j = CLOC_OFF(l) & 0x7FFFFFFFu;
+        const PlanFrame *f = (CLOC_OFF(l) & 0x80000000u) ? it->frame->parent
+                                                         : it->frame;
+        while (j-- && f)
+            f = f->parent;
+        return f ? f->include_loc : 0;
+    }
+    default:
+        return 0;
+    }
+}
+
+static void cref_get(const Index *ix, uint32_t ci, uint32_t k, IdxRef *r)
+{
+    const IdxCell *c = &ix->cells.data[ci];
+    const IxBlob *b = c->blob;
+    const CRef *x = &b->refs[k];
+    memset(r, 0, sizeof *r);
+    r->name = x->name;
+    r->macro = cell_macro(c->rmacro, x->macro);
+    r->loc = cloc_abs(ix, c, x->loc);
+    r->len = x->len;
+    r->kind = (RefKind)x->kind;
+    r->flags = x->flags;
+    r->order = ((uint64_t)(c->s + b->exps[x->exp].key) << 33) | x->exp;
+    r->cell = ci + 1;
+    r->cexp = x->exp;
+}
+
+/* Phase A's refs, in a list with cells' refs. */
+static IdxRef own_ref(Index *ix, const IdxRef *r)
+{
+    IdxRef x = *r;
+    x.order = UINT64_MAX;
+    if (r->exp && r->exp->id < ix->exps.len && ix->exps.data[r->exp->id])
+        x.order = ((uint64_t)ix->exps.data[r->exp->id]->key << 33) |
+                  (1ull << 32) | r->exp->id;
+    return x;
+}
+
+static int span_cmp(const void *a, const void *b)
+{
+    const IdxSpan *x = a, *y = b;
+    if (x->begin != y->begin)
+        return x->begin < y->begin ? -1 : 1;
+    return x->item < y->item ? -1 : x->item > y->item;
+}
+
+/* The items' text ranges, as the encoder saw them (cell_enc_begin). */
+static void build_spans(Index *ix)
+{
+    size_t i, n = 0;
+    if (ix->spans)
+        return;
+    ix->spans = NEW_ARRAY(ix->arena, IdxSpan, ix->nitems + 1);
+    for (i = 0; i < ix->nitems; i++) {
+        const PlanItem *it = &ix->items[i];
+        if (!it->begin)
+            continue;
+        ix->spans[n].begin = it->begin;
+        ix->spans[n].end = it->kind == PI_SEG ? it->end : it->begin;
+        ix->spans[n].item = (uint32_t)i;
+        n++;
+    }
+    if (n > 1)
+        qsort(ix->spans, n, sizeof *ix->spans, span_cmp);
+    ix->nspans = n;
+}
+
+/* For every definition, the cells whose reads found it (the read that
+ * locations inside it are anchored to). */
+static void build_mr(Index *ix)
+{
+    size_t nm = ix->pp->macros.len, total = 0, i;
+    uint32_t *fill;
+    if (ix->mr_start)
+        return;
+    ix->mr_start = NEW_ARRAY(ix->arena, uint32_t, nm + 2);
+    for (i = 0; i < ix->cells.len; i++) {
+        const IdxCell *c = &ix->cells.data[i];
+        uint32_t k;
+        for (k = 0; k < c->nreads; k++)
+            if (c->rmacro[k] && c->cell->reads[k].cls == k) {
+                ix->mr_start[c->rmacro[k]->id + 1]++;
+                total++;
+            }
+    }
+    for (i = 0; i < nm; i++)
+        ix->mr_start[i + 1] += ix->mr_start[i];
+    ix->mr = NEW_ARRAY(ix->arena, IdxMacRead, total + 1);
+    fill = xcalloc(nm + 1, sizeof *fill);
+    for (i = 0; i < ix->cells.len; i++) {
+        const IdxCell *c = &ix->cells.data[i];
+        uint32_t k;
+        for (k = 0; k < c->nreads; k++)
+            if (c->rmacro[k] && c->cell->reads[k].cls == k) {
+                uint32_t id = c->rmacro[k]->id;
+                IdxMacRead *m = &ix->mr[ix->mr_start[id] + fill[id]++];
+                m->cell = (uint32_t)i;
+                m->read = k;
+            }
+    }
+    free(fill);
+}
+
+static bool in_range(SrcLoc loc, SrcLoc b, uint32_t len)
+{
+    return loc >= b && loc < b + (len ? len : 1);
+}
+
+/* A cell's refs anchored in [lo, hi] that cover loc. */
+static void cell_range(Index *ix, uint32_t ci, CLoc lo, CLoc hi, SrcLoc loc,
+                       RefVec *v)
+{
+    const IxBlob *b = ix->cells.data[ci].blob;
+    uint32_t a = 0, z = b->nrefs;
+    while (a < z) {
+        uint32_t mid = a + (z - a) / 2;
+        if (b->refs[mid].loc < lo)
+            a = mid + 1;
+        else
+            z = mid;
+    }
+    for (; a < b->nrefs && b->refs[a].loc <= hi; a++) {
+        IdxRef r;
+        cref_get(ix, ci, a, &r);
+        if (in_range(loc, r.loc, r.len))
+            vec_push(v, r);
+    }
+}
+
+/* Refs covering loc: they start in [loc - max_len + 1, loc]. */
+static void covering_refs(Index *ix, SrcLoc loc, RefVec *v)
+{
+    uint32_t w = max_len(ix);
+    SrcLoc wlo = loc >= w - 1 ? loc - (w - 1) : 0;
+    size_t lo = 0, hi = ix->refs.len, i;
+    ensure_sorted(ix);
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (ix->refs.data[mid].loc < wlo)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    for (i = lo; i < ix->refs.len && ix->refs.data[i].loc <= loc; i++)
+        if (in_range(loc, ix->refs.data[i].loc, ix->refs.data[i].len))
+            vec_push(v, ix->cells_mode ? own_ref(ix, &ix->refs.data[i])
+                                       : ix->refs.data[i]);
+    if (!ix->cells_mode)
+        return;
+    /* text: the items whose range meets the window (ranges of one file
+     * are disjoint; a header read twice repeats them) */
+    build_spans(ix);
+    lo = 0;
+    hi = ix->nspans;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (ix->spans[mid].begin <= loc)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    while (lo-- > 0) {
+        const IdxSpan *sp = &ix->spans[lo];
+        uint32_t ci, rel;
+        if (sp->end < wlo) {
+            if (lo == 0 || ix->spans[lo - 1].begin != sp->begin)
+                break;
+            continue;
+        }
+        ci = ix->item_cell[sp->item];
+        rel = sp->item - ix->cells.data[ci].s;
+        cell_range(ix, ci, CLOC(CL_ITEM, rel, wlo > sp->begin ? wlo - sp->begin : 0),
+                   CLOC(CL_ITEM, rel, loc - sp->begin), loc, v);
+    }
+    /* definitions' text */
+    build_mr(ix);
+    for (i = 0; i < ix->pp->macros.len; i++) {
+        const Macro *m = ix->pp->macros.data[i];
+        uint32_t k;
+        if (!m->hash_loc || m->hash_loc > loc || m->end_loc < wlo)
+            continue;
+        for (k = ix->mr_start[m->id]; k < ix->mr_start[m->id + 1]; k++)
+            cell_range(ix, ix->mr[k].cell,
+                       CLOC(CL_MACRO, ix->mr[k].read,
+                            wlo > m->hash_loc ? wlo - m->hash_loc : 0),
+                       CLOC(CL_MACRO, ix->mr[k].read, loc - m->hash_loc), loc,
+                       v);
+    }
+}
+
+/* Refs named `name`. */
+static void named_refs(Index *ix, const Ident *name, RefVec *v)
+{
+    size_t i;
+    ensure_sorted(ix);
+    for (i = 0; i < ix->refs.len; i++)
+        if (ix->refs.data[i].name == name)
+            vec_push(v, ix->cells_mode ? own_ref(ix, &ix->refs.data[i])
+                                       : ix->refs.data[i]);
+    for (i = 0; i < ix->cells.len; i++) {
+        const IxBlob *b = ix->cells.data[i].blob;
+        uint32_t a = 0, z = b->nrefs;
+        while (a < z) {
+            uint32_t mid = a + (z - a) / 2;
+            if (b->refs[b->by_name[mid]].name->id < name->id)
+                a = mid + 1;
+            else
+                z = mid;
+        }
+        for (; a < b->nrefs && b->refs[b->by_name[a]].name == name; a++) {
+            IdxRef r;
+            cref_get(ix, (uint32_t)i, b->by_name[a], &r);
+            vec_push(v, r);
+        }
+    }
+}
+
+/* Put gathered refs in index order, one per (location, definition) for
+ * body and ## refs. */
+static void finish_refs(Index *ix, RefVec *v)
+{
+    if (v->len > 1)
+        qsort(v->data, v->len, sizeof(IdxRef),
+              ix->cells_mode ? ref_qcmp : ref_cmp);
+    v->len = dedupe(v->data, v->len);
+}
+
+size_t index_file_refs(Index *ix, const SrcFile *f, IdxRef **out)
+{
+    RefVec v = {0};
+    size_t i, n;
+    ensure_sorted(ix);
+#define IN_F(l) ((l) >= f->base && (l) <= f->base + f->size)
+    for (i = 0; i < ix->refs.len; i++)
+        if (IN_F(ix->refs.data[i].loc))
+            vec_push(&v, ix->cells_mode ? own_ref(ix, &ix->refs.data[i])
+                                        : ix->refs.data[i]);
+    for (i = 0; i < ix->cells.len; i++) {
+        const IxBlob *b = ix->cells.data[i].blob;
+        uint32_t k;
+        for (k = 0; k < b->nrefs; k++) {
+            IdxRef r;
+            cref_get(ix, (uint32_t)i, k, &r);
+            if (IN_F(r.loc))
+                vec_push(&v, r);
+        }
+    }
+#undef IN_F
+    if (ix->cells_mode)
+        finish_refs(ix, &v);
+    *out = NEW_ARRAY(ix->arena, IdxRef, v.len + 1);
+    if (v.len)
+        memcpy(*out, v.data, sizeof(IdxRef) * v.len);
+    n = v.len;
+    vec_free(&v);
+    return n;
+}
+
+/* The file-level expansion a ref belongs to, for hover. */
+static IdxExp *ref_top(Index *ix, const IdxRef *r)
+{
+    const IdxCell *c;
+    const IxBlob *b;
+    const CExp *x;
+    IdxExp *t;
+    if (r->flags & IREF_IN_BODY)
+        return NULL;
+    if (!r->cell) {
+        if (r->exp && r->exp->parent == NO_EXP && r->exp->id < ix->exps.len)
+            return ix->exps.data[r->exp->id];
+        return NULL;
+    }
+    c = &ix->cells.data[r->cell - 1];
+    b = c->blob;
+    x = &b->exps[r->cexp];
+    if (x->parent != UINT32_MAX)
+        return NULL;
+    /* made for the query: only what hover and expandMacro read */
+    t = NEW(ix->arena, IdxExp);
+    t->e = NEW(ix->arena, Expansion);
+    t->e->id = NO_EXP;
+    t->e->parent = NO_EXP;
+    t->e->macro = cell_macro(c->rmacro, x->macro);
+    t->e->name_loc = cloc_abs(ix, c, x->name_loc);
+    t->e->end_loc = cloc_abs(ix, c, x->end_loc);
+    t->e->name_flags = x->name_flags;
+    t->e->depth = x->depth;
+    t->root = t->e;
+    t->nargs = x->nargs;
+    t->args = (char **)x->args;
+    t->text.data = arena_strndup(ix->arena, x->text ? x->text : "", x->text_len);
+    t->text.len = x->text_len;
+    t->text.cap = x->text_len + 1;
+    return t;
+}
+
 static void add_candidate(IdxTarget *t, Macro *m)
 {
     int i;
@@ -870,11 +1374,6 @@ static void add_candidate(IdxTarget *t, Macro *m)
             return;
     if (t->nmacros < (int)ARRAY_LEN(t->macros))
         t->macros[t->nmacros++] = m;
-}
-
-static bool in_range(SrcLoc loc, SrcLoc b, uint32_t len)
-{
-    return loc >= b && loc < b + (len ? len : 1);
 }
 
 /* identifier spelled at loc in the raw buffer */
@@ -941,7 +1440,8 @@ size_t index_visible(Index *ix, SrcLoc loc, Macro ***out)
 IdxTarget index_resolve(Index *ix, SrcLoc loc)
 {
     IdxTarget t;
-    size_t i, lo, hi;
+    size_t i;
+    RefVec cov = {0};
     memset(&t, 0, sizeof t);
     t.param = -1;
     ensure_sorted(ix);
@@ -998,33 +1498,23 @@ IdxTarget index_resolve(Index *ix, SrcLoc loc)
         }
     }
 
-    /* recorded references (binary search on the sorted refs) */
-    lo = 0;
-    hi = ix->refs.len;
-    while (lo < hi) {
-        size_t mid = (lo + hi) / 2;
-        if (ix->refs.data[mid].loc + MAX(ix->refs.data[mid].len, 1u) <= loc)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    /* back up over refs that start earlier but still cover loc */
-    while (lo > 0 && ix->refs.data[lo - 1].loc + 256 > loc)
-        lo--;
-    for (i = lo; i < ix->refs.len && ix->refs.data[i].loc <= loc; i++) {
-        IdxRef *r = &ix->refs.data[i];
-        if (!in_range(loc, r->loc, r->len))
-            continue;
+    /* recorded references covering loc, in index order */
+    covering_refs(ix, loc, &cov);
+    if (ix->cells_mode)
+        finish_refs(ix, &cov);
+    for (i = 0; i < cov.len; i++) {
+        IdxRef *r = &cov.data[i];
+        IdxExp *top;
         t.kind = TGT_MACRO;
         t.name = r->name;
         t.range.begin = r->loc;
         t.range.end = r->loc + r->len;
         if (r->macro)
             add_candidate(&t, r->macro);
-        if (r->exp && r->exp->parent == NO_EXP && !(r->flags & IREF_IN_BODY) &&
-            r->exp->id < ix->exps.len)
-            t.top = ix->exps.data[r->exp->id];
+        if ((top = ref_top(ix, r)) != NULL)
+            t.top = top;
     }
+    vec_free(&cov);
     if (t.kind == TGT_MACRO && t.nmacros == 0) {
         /* static body ref or undefined name: every definition by name */
         Macro *m;
@@ -1034,11 +1524,13 @@ IdxTarget index_resolve(Index *ix, SrcLoc loc)
         if (!t.nmacros && !mt_hist(ix->pp->mt, t.name) && !t.top) {
             /* not a macro at all (e.g. a function named in a body), unless
              * it is tested with #ifdef: keep those as unresolved refs */
+            RefVec nv = {0};
             bool tested = false;
-            for (i = 0; i < ix->refs.len; i++)
-                if (ix->refs.data[i].name == t.name &&
-                    !(ix->refs.data[i].flags & IREF_STATIC))
+            named_refs(ix, t.name, &nv);
+            for (i = 0; i < nv.len; i++)
+                if (!(nv.data[i].flags & IREF_STATIC))
                     tested = true;
+            vec_free(&nv);
             if (!tested)
                 memset(&t, 0, sizeof t);
         }
@@ -1071,9 +1563,44 @@ IdxTarget index_resolve(Index *ix, SrcLoc loc)
     return t;
 }
 
+/* Locations -> an index (open addressing; UINT32_MAX empty). */
+typedef struct LocMap {
+    SrcLoc *key;
+    uint32_t *val;
+    size_t cap, n;
+} LocMap;
+
+static void locmap_init(LocMap *m, size_t n)
+{
+    m->cap = 16;
+    while (m->cap < 2 * n + 2)
+        m->cap *= 2;
+    m->key = xmalloc(sizeof(SrcLoc) * m->cap);
+    m->val = xmalloc(sizeof(uint32_t) * m->cap);
+    memset(m->val, 0xFF, sizeof(uint32_t) * m->cap);
+    m->n = 0;
+}
+
+static uint32_t *locmap_slot(LocMap *m, SrcLoc k)
+{
+    size_t i = ((uint32_t)k * 0x9E3779B1u) & (m->cap - 1);
+    while (m->val[i] != UINT32_MAX && m->key[i] != k)
+        i = (i + 1) & (m->cap - 1);
+    m->key[i] = k;
+    return &m->val[i];
+}
+
+static void locmap_free(LocMap *m)
+{
+    free(m->key);
+    free(m->val);
+}
+
 size_t index_references(Index *ix, const IdxTarget *t, IdxRef **out)
 {
     VEC(IdxRef) v = {0};
+    RefVec cand = {0};
+    LocMap seen;
     size_t i;
     int k;
     IdxRef r;
@@ -1107,8 +1634,22 @@ size_t index_references(Index *ix, const IdxTarget *t, IdxRef **out)
             r.flags = 0;
             vec_push(&v, r);
         }
-        for (i = 0; i < ix->refs.len; i++) {
-            IdxRef *x = &ix->refs.data[i];
+        /* candidates: refs spelled like the target or its definitions */
+        named_refs(ix, t->name, &cand);
+        for (k = 0; k < t->nmacros; k++) {
+            int j;
+            bool named = t->macros[k]->name == t->name;
+            for (j = 0; j < k && !named; j++)
+                named = t->macros[j]->name == t->macros[k]->name;
+            if (!named)
+                named_refs(ix, t->macros[k]->name, &cand);
+        }
+        finish_refs(ix, &cand);
+        locmap_init(&seen, v.len + cand.len);
+        for (i = 0; i < v.len; i++)
+            *locmap_slot(&seen, v.data[i].loc) = 0;
+        for (i = 0; i < cand.len; i++) {
+            IdxRef *x = &cand.data[i];
             bool match = false;
             if (x->macro) {
                 for (k = 0; k < t->nmacros; k++)
@@ -1120,35 +1661,36 @@ size_t index_references(Index *ix, const IdxTarget *t, IdxRef **out)
             if (!match)
                 continue;
             /* a static body ref that was also recorded dynamically */
-            if (x->flags & IREF_STATIC) {
-                size_t j;
-                bool dup = false;
-                for (j = 0; j < v.len; j++)
-                    if (v.data[j].loc == x->loc)
-                        dup = true;
-                if (dup)
-                    continue;
-            }
+            if ((x->flags & IREF_STATIC) &&
+                *locmap_slot(&seen, x->loc) != UINT32_MAX)
+                continue;
+            *locmap_slot(&seen, x->loc) = 0;
             vec_push(&v, *x);
         }
+        locmap_free(&seen);
+        vec_free(&cand);
     }
     /* one entry per location; a resolved (dynamic) ref beats the static
      * textual one recorded at #define time */
     {
-        size_t w = 0, j;
+        size_t w = 0;
+        LocMap kept; /* location -> the entry kept for it (len > 0) */
+        locmap_init(&kept, v.len);
         for (i = 0; i < v.len; i++) {
-            bool dup = false;
-            for (j = 0; j < w; j++)
-                if (v.data[j].loc == v.data[i].loc && v.data[i].len &&
-                    v.data[j].len) {
-                    dup = true;
-                    if ((v.data[j].flags & IREF_STATIC) &&
-                        !(v.data[i].flags & IREF_STATIC))
-                        v.data[j] = v.data[i];
-                }
-            if (!dup)
-                v.data[w++] = v.data[i];
+            uint32_t *slot = v.data[i].len
+                                 ? locmap_slot(&kept, v.data[i].loc) : NULL;
+            if (slot && *slot != UINT32_MAX) {
+                IdxRef *j = &v.data[*slot];
+                if ((j->flags & IREF_STATIC) &&
+                    !(v.data[i].flags & IREF_STATIC))
+                    *j = v.data[i];
+                continue;
+            }
+            if (slot)
+                *slot = (uint32_t)w;
+            v.data[w++] = v.data[i];
         }
+        locmap_free(&kept);
         v.len = w;
     }
     *out = NEW_ARRAY(ix->arena, IdxRef, v.len + 1);
@@ -1171,6 +1713,12 @@ static const Macro *canon(const Macro *m)
     return m->alias_of ? m->alias_of : m;
 }
 
+static bool observed_edge(uint16_t name_flags)
+{
+    return !(name_flags & TF_ORIGIN_ARG) &&
+           (name_flags & (TF_ORIGIN_BODY | TF_PASTED));
+}
+
 /* Expansions of `to` whose name came from the body of an expansion of
  * `from` (spelled there or pasted there), not from an argument. */
 static unsigned observed_calls(Index *ix, const Macro *from, const Macro *to,
@@ -1185,8 +1733,7 @@ static unsigned observed_calls(Index *ix, const Macro *from, const Macro *to,
             continue;
         e = x->e;
         if (e->parent == NO_EXP || canon(e->macro) != canon(to) ||
-            (e->name_flags & TF_ORIGIN_ARG) ||
-            !(e->name_flags & (TF_ORIGIN_BODY | TF_PASTED)))
+            !observed_edge(e->name_flags))
             continue;
         p = ix->pp->expansions.data[e->parent];
         if (canon(p->macro) != canon(from))
@@ -1194,6 +1741,21 @@ static unsigned observed_calls(Index *ix, const Macro *from, const Macro *to,
         n++;
         if (!(e->name_flags & TF_PASTED))
             spelled++;
+    }
+    for (i = 0; i < ix->cells.len; i++) { /* cells mode */
+        const IdxCell *c = &ix->cells.data[i];
+        const IxBlob *b = c->blob;
+        uint32_t k;
+        for (k = 0; k < b->nedges; k++) {
+            const CEdge *e = &b->edges[k];
+            if (!observed_edge(e->flags) ||
+                canon(cell_macro(c->rmacro, e->child)) != canon(to) ||
+                canon(cell_macro(c->rmacro, e->parent)) != canon(from))
+                continue;
+            n += e->count;
+            if (!(e->flags & TF_PASTED))
+                spelled += e->count;
+        }
     }
     if (pasted_only)
         *pasted_only = n && !spelled;
@@ -1209,11 +1771,62 @@ static bool call_listed(const IdxCall *c, size_t n, const Macro *m)
     return false;
 }
 
+/* Names formed by ##: (parent, child) definitions of expansions whose
+ * name was pasted, in the order of their first expansion. */
+typedef struct Pasted {
+    uint64_t order;
+    Macro *parent, *child;
+} Pasted;
+
+static int pasted_cmp(const void *a, const void *b)
+{
+    uint64_t x = ((const Pasted *)a)->order, y = ((const Pasted *)b)->order;
+    return x < y ? -1 : x > y;
+}
+
+static size_t pasted_calls(Index *ix, Pasted **out)
+{
+    VEC(Pasted) v = {0};
+    size_t i;
+    for (i = 0; i < ix->exps.len; i++) {
+        IdxExp *x = ix->exps.data[i];
+        Pasted p;
+        if (!x || x->e->parent == NO_EXP || !(x->e->name_flags & TF_PASTED))
+            continue;
+        p.order = ix->cells_mode ? ((uint64_t)x->key << 33) | (1ull << 32) | i
+                                 : i;
+        p.parent = ix->pp->expansions.data[x->e->parent]->macro;
+        p.child = x->e->macro;
+        vec_push(&v, p);
+    }
+    for (i = 0; i < ix->cells.len; i++) {
+        const IdxCell *c = &ix->cells.data[i];
+        const IxBlob *b = c->blob;
+        uint32_t k;
+        for (k = 0; k < b->nedges; k++) {
+            const CEdge *e = &b->edges[k];
+            Pasted p;
+            if (!(e->flags & TF_PASTED))
+                continue;
+            p.order = ((uint64_t)(c->s + b->exps[e->first].key) << 33) |
+                      e->first;
+            p.parent = cell_macro(c->rmacro, e->parent);
+            p.child = cell_macro(c->rmacro, e->child);
+            vec_push(&v, p);
+        }
+    }
+    if (v.len > 1)
+        qsort(v.data, v.len, sizeof *v.data, pasted_cmp);
+    *out = v.data;
+    return v.len;
+}
+
 size_t index_callees(Index *ix, const MacroGraph *g, Macro *m, IdxCall **out)
 {
     VEC(IdxCall) v = {0};
     const MNode *nd = mgraph_node(g, m);
-    size_t i;
+    Pasted *ps;
+    size_t i, np;
     uint32_t k;
     for (k = 0; nd && k < nd->nnames; k++) {
         Ident *name = nd->names[k];
@@ -1238,18 +1851,18 @@ size_t index_callees(Index *ix, const MacroGraph *g, Macro *m, IdxCall **out)
         }
     }
     /* names only ## formed */
-    for (i = 0; i < ix->exps.len; i++) {
-        IdxExp *x = ix->exps.data[i];
+    np = pasted_calls(ix, &ps);
+    for (i = 0; i < np; i++) {
         IdxCall c;
-        if (!x || x->e->parent == NO_EXP || !(x->e->name_flags & TF_PASTED) ||
-            canon(ix->pp->expansions.data[x->e->parent]->macro) != canon(m) ||
-            call_listed(v.data, v.len, x->e->macro))
+        if (canon(ps[i].parent) != canon(m) ||
+            call_listed(v.data, v.len, ps[i].child))
             continue;
-        c.name = x->e->macro->name;
-        c.macro = x->e->macro;
+        c.name = ps[i].child->name;
+        c.macro = ps[i].child;
         c.observed = observed_calls(ix, m, c.macro, &c.pasted);
         vec_push(&v, c);
     }
+    free(ps);
     *out = NEW_ARRAY(ix->arena, IdxCall, v.len + 1);
     if (v.len)
         memcpy(*out, v.data, sizeof(IdxCall) * v.len);
@@ -1262,7 +1875,8 @@ size_t index_callers(Index *ix, const MacroGraph *g, Macro *m, IdxCall **out)
 {
     VEC(IdxCall) v = {0};
     Macro *const *users;
-    size_t n, i;
+    Pasted *ps;
+    size_t n, i, np;
     users = mgraph_users(g, m->name, &n);
     for (i = 0; i < n; i++) {
         IdxCall c;
@@ -1274,21 +1888,18 @@ size_t index_callers(Index *ix, const MacroGraph *g, Macro *m, IdxCall **out)
         c.pasted = false;
         vec_push(&v, c);
     }
-    for (i = 0; i < ix->exps.len; i++) {
-        IdxExp *x = ix->exps.data[i];
-        Macro *p;
+    np = pasted_calls(ix, &ps);
+    for (i = 0; i < np; i++) {
+        Macro *p = ps[i].parent;
         IdxCall c;
-        if (!x || x->e->parent == NO_EXP || !(x->e->name_flags & TF_PASTED) ||
-            canon(x->e->macro) != canon(m))
-            continue;
-        p = ix->pp->expansions.data[x->e->parent]->macro;
-        if (call_listed(v.data, v.len, p))
+        if (canon(ps[i].child) != canon(m) || call_listed(v.data, v.len, p))
             continue;
         c.name = p->name;
         c.macro = p;
         c.observed = observed_calls(ix, p, m, &c.pasted);
         vec_push(&v, c);
     }
+    free(ps);
     *out = NEW_ARRAY(ix->arena, IdxCall, v.len + 1);
     if (v.len)
         memcpy(*out, v.data, sizeof(IdxCall) * v.len);
@@ -1313,7 +1924,10 @@ size_t index_check_graph(Index *ix, const MacroGraph *g, FILE *out,
 {
     size_t n = ix->exps.len, r, i, bad = 0;
     MScratch sc = {0};
-    uint32_t *start = xcalloc(n + 2, sizeof *start), *fill, *by_root;
+    uint32_t *start, *fill, *by_root;
+    if (ix->cells_mode)
+        fatal("index_check_graph: needs a materialized index");
+    start = xcalloc(n + 2, sizeof *start);
     *checked = 0;
     /* bucket expansions by root (directives inside arguments interleave
      * trees, so ids alone do not group them) */
@@ -1448,6 +2062,8 @@ void index_dump_json(Index *ix, FILE *out, bool all)
     JsonWriter w;
     size_t i;
     PP *pp = ix->pp;
+    if (ix->cells_mode)
+        fatal("index_dump_json: needs a materialized index");
     ensure_sorted(ix);
     json_init(&w, out);
     w.pretty = true;

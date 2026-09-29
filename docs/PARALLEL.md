@@ -241,8 +241,9 @@ issued once per file instead of once per line (GCC's behavior).
 8. (d) Header memoization on disk, keyed by the dependency sets.
 9. **Done.** Cell cache: phase B reused across builds of an edited unit
    (the language server). See "Cells" below and docs/LSP.md.
-10. Index kept per cell, queries walking cells: removes the global
-   renumbering and ref merge that now dominate an edit.
+10. **Done.** Index kept per cell, queries walking cells (see "Cells").
+
+(b) and (c) are dropped, because (e) subsumes them.
 
 ## Cells
 
@@ -260,8 +261,13 @@ start and left clean, so its results depend only on what it read
   the rest; a worker that reaches a reused cell's start cleanly stops
   there, one that reaches it inside an invocation runs on.
 - After phase B, every slice a worker ran is split at the clean candidate
-  boundaries it crossed and stored as cells; reused cells are decoded into
-  workers that never run. All slices join exactly as in a normal run.
+  boundaries it crossed and stored as cells.
+- Diagnostics and analyses: reused cells are decoded into workers that
+  never run, and all slices join exactly as in a normal run (cheap).
+- The index takes the cells as they are (`ParClient.place`; the language
+  server, and `index --replay --transcript`): see "Index in cells" below.
+  Only when every slice has a cell; otherwise it decodes and joins too.
+  `index` JSON and `--check-graph` always use a materialized index.
 
 **Relative storage.** A cell keeps nothing of the build that made it,
 except identifiers (a unit's builds share an interner):
@@ -284,29 +290,62 @@ A location that fits none of these makes the cell uncacheable.
 - presumed line numbers, if `__LINE__` was expanded;
 - whether the cell ended the TU;
 - options (once per cache).
-A cancelled or halted build stores nothing and evicts nothing.
+A cancelled or halted build stores nothing and evicts nothing. Cells are
+reference counted: a snapshot's index keeps its cells after the cache
+drops them.
+
+**Index in cells.** As in Roslyn's red-green trees, the cells are the
+green part (relative, shared by builds) and the build supplies the red
+part: the plan's item start positions, and what each cell's reads found.
+clangd-style layers: phase A's records (definitions, `#if` expansions,
+includes, conditionals) are rebuilt each build; the text's stay in the
+cells, which carry, made once at encode time:
+- refs sorted by relative location, and a name -> refs index;
+- a summary of observed calls: (parent definition, child definition,
+  name origin) with counts and first occurrence.
+Queries gather what they need and put it in the materialized order:
+- covering a location: the items whose text meets the window
+  [loc - longest ref, loc] (binary search over item ranges), and the
+  definitions containing it (through a table of which cells read them);
+- by name (references, rename): each cell's name index, as rust-analyzer
+  narrows find-usages before resolving;
+- in a file (semantic tokens): every cell's refs;
+- call hierarchy: the call summaries.
+Expansions have no global ids: an `order` (plan item, a worker's before
+phase A's, local id) sorts and deduplicates exactly as the ids would.
+Hover builds the one expansion it shows.
 
 **Tests.** `tests/fuzz_cells.py` follows random programs through random
 edit sequences (lines inserted, deleted, replaced, moved, characters
-changed, in the main file and headers) with two `cereal index --replay`
-processes, one reusing cells and one sequential without a cache; every
-build's diagnostics and index must be byte-identical. Directed cases
-cover the checks random edits rarely reach (removing any of them fails
-the suite): an identical redefinition between two reads, a moved
-definition, `__LINE__` below an edit, poisoning added above, a header
-changed under an unchanged main file. Also run under TSan and ASan/UBSan.
+changed, in the main file and headers) with pairs of `cereal index
+--replay` processes, one reusing cells and one sequential without a
+cache. Every build must be byte-identical within a pair: diagnostics,
+the materialized index (JSON), and a query transcript (`--transcript`:
+every identifier of every user file resolved, its references and call
+hierarchy, every file's refs), which the cached side answers by walking
+cells. Directed cases cover the checks random edits rarely reach
+(removing any of them fails the suite): an identical redefinition
+between two reads, a moved definition, `__LINE__` below an edit,
+poisoning added above, a header changed under an unchanged main file.
+They also assert reuse, Sorbet-style: a moved definition must reuse a
+cell, an unchanged rebuild every cell, the others must recompute one.
+The LSP scenarios also run with the parallel path and cells forced
+(`.cereal`: `-fparallel=on -fparallel-chunk=1`) against the same
+transcripts. All of it also under TSan and ASan/UBSan.
+
+Found on the way (bugs in parallel runs since step 4): a segment's lexer
+read past the segment when the text after it began with an unterminated
+comment (a crash), and a comment running to the end of a file was never
+lexed by a worker, so "unterminated comment" went unreported. The
+generator now produces such files.
 
 **Measured** (35 MB macro_heavy.c, 4 cores, `index --replay`):
 
-| Build | Time |
-|---|---|
-| first (all cells computed and stored) | 2.1 s (1.6 s without a cache) |
-| no change | 0.45 s |
-| a line inserted mid-file (1 cell rerun) | 0.3-0.5 s |
+| Build | Materialized index | Index in cells |
+|---|---|---|
+| first (all cells computed and stored) | 2.1 s (1.6 s without a cache) | 2.1 s |
+| a line inserted mid-file (1 cell rerun) | 0.3-0.5 s | 0.11 s |
 
-Of an edit, phase B is 15 ms; the rest is phase A (0.06 s), lookups
-(0.02 s), decoding (0.05 s) and the index's global renumbering and ref
-merge (0.13-0.3 s), which step 10 removes. The cache costs about 10x the
-text in memory (350 MB here).
-
-(b) and (c) are dropped, because (e) subsumes them.
+Of an edit in cells: phase A 0.06 s, lookups 0.02 s, the rerun cell
+0.015 s, the rest joins of diagnostics and analyses. Memory (3 builds):
+900 MB without a cache, 1.0 GB with cells, 1.3 GB materialized.

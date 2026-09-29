@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Drive `cereal lsp` through a scripted session and print a transcript.
 
-usage: lsp_session.py BIN SCENARIO.json [--update]
+usage: lsp_session.py BIN SCENARIO.json [--update] [--flags FLAGS]
+
+--flags adds FLAGS to the .cereal file in the workspace root (from the
+initialize request) for the session: e.g. run a scenario with the
+parallel path and cells forced, against the same transcript.
 
 The scenario is a JSON list of steps, run in the scenario's directory
 (which holds the workspace files); "$ROOT" in any string is replaced by
@@ -25,6 +29,7 @@ import json, os, re, subprocess, sys, threading, queue
 
 BIN, SCEN = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
 UPDATE = "--update" in sys.argv
+FLAGS = sys.argv[sys.argv.index("--flags") + 1] if "--flags" in sys.argv else None
 ROOT = os.path.dirname(SCEN)
 
 
@@ -86,6 +91,7 @@ def main():
 
     out = []
     written = []
+    restore = []  # (path, text) of files --flags appended to
 
     def strip_data(v):
         if isinstance(v, list):
@@ -106,6 +112,15 @@ def main():
         elif "send" in st:
             msg = st["send"]
             msg.setdefault("jsonrpc", "2.0")
+            if FLAGS is not None and msg.get("method") == "initialize":
+                path = msg["params"]["rootUri"][len("file://"):] + "/.cereal"
+                old = open(path).read() if os.path.exists(path) else None
+                with open(path, "w") as f:
+                    f.write((old or "") + FLAGS + "\n")
+                if old is None:
+                    written.append(path)
+                else:
+                    restore.append((path, old))
             send(msg)
             out.append(">> " + msg.get("method", ""))
             if "id" in msg and msg.get("method") != "exit":
@@ -147,6 +162,9 @@ def main():
     rc = p.wait(timeout=60)
     for path in written:
         os.remove(path)
+    for path, old in restore:
+        with open(path, "w") as f:
+            f.write(old)
     out.append("exit %d" % rc)
     text = subst("\n".join(out) + "\n", "file://" + ROOT, "file://$ROOT")
     text = text.replace(ROOT, "$ROOT")

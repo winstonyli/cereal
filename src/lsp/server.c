@@ -161,6 +161,7 @@ static void start_tu(Snapshot *s, Analysis *an, Interner *in, uint32_t *cancel)
     memset(an, 0, sizeof *an);
     analysis_attach(an, &s->tu.pp);
     index_init(&s->ix, &s->tu.pp);
+    s->ix.want_cells = true; /* large files: queries walk the cells */
 }
 
 /* Build a unit: preprocess, analyze and index, in parallel when the file
@@ -182,6 +183,12 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
     po.pool = &S.pool;
     po.cells = cells;
     po.cell_config = opt->fingerprint;
+    /* -fparallel=on (e.g. in .cereal) forces the parallel path, cells
+     * included, for files of any size */
+    po.force = opt->parallel == 'y';
+    po.threads = opt->par_threads;
+    po.chunk = opt->par_chunk;
+    po.window = opt->par_window;
     {
         const char *buf;
         size_t len;
@@ -665,6 +672,7 @@ static void handle_request(const JsonValue *id, ReqKind k,
     StrBuf sb = {0};
     JsonWriter w;
     const char *err = NULL;
+    double t0 = stats_now(), t1;
     arena_init(&a);
     path = uri ? uri_to_path(&a, uri) : NULL;
     memset(&r, 0, sizeof r);
@@ -726,7 +734,11 @@ static void handle_request(const JsonValue *id, ReqKind k,
         }
     }
     json_end_object(&w);
+    t1 = stats_now();
     send_json(&sb);
+    if (stats_on())
+        fprintf(stderr, "lsp: request %d: %.3fs, sent %zu bytes in %.3fs\n",
+                (int)k, t1 - t0, sb.len, stats_now() - t1);
     sb_free(&sb);
     snapshot_release(r.snap);
     arena_free(&a);

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Differential fuzzer for the cell cache: random edit sequences.
 
-Two `cereal index --replay` processes follow the same random programs
-through the same random edits (lines inserted, deleted, replaced, moved,
-in the main file and in headers): one reusing cells, one sequential with
-no cache.  After every edit both rebuild, and each build's diagnostics and
-index must be byte-identical.
+`cereal index --replay` processes follow the same random programs through
+the same random edits (lines inserted, deleted, replaced, moved, in the
+main file and in headers), in pairs: one reusing cells, one sequential
+with no cache.  After every edit all rebuild; each build's diagnostics
+must be byte-identical within a pair, and so must
+  - the query transcript (--transcript: every identifier resolved, its
+    references and call hierarchy, every file's refs), which the cached
+    side answers by walking cells, and
+  - the materialized index (JSON).
+Directed cases also check how many cells were reused.
 usage: fuzz_cells.py BIN [N] [SEED] [STEPS]"""
 import os, random, subprocess, sys, tempfile
 
@@ -20,13 +25,29 @@ FILES = ["main.c", "inc0.h", "inc1.h", "inc2.h"]
 
 
 class Replay:
+    count = 0
+
     def __init__(self, d, flags):
+        Replay.count += 1
+        self.err = os.path.join(d, "stderr%d" % Replay.count)
         self.p = subprocess.Popen(
             [BIN, "index", "--replay", "--all", "-Weverything"] + flags +
             [os.path.join(d, "main.c")], stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE, stderr=open(os.path.join(d, "stderr"), "a"),
+            stdout=subprocess.PIPE, stderr=open(self.err, "w"),
             env=dict(os.environ, CEREAL_PAR_STATS="1"))
         self.d = d
+
+    def stats(self):
+        """(reused, stored) cells: [last build, all builds]"""
+        last, total = (0, 0), [0, 0]
+        with open(self.err) as f:
+            for ln in f:
+                if "cells:" in ln:
+                    w = ln.split("cells:")[1].split()
+                    last = (int(w[0]), int(w[4]))
+                    total[0] += last[0]
+                    total[1] += last[1]
+        return last, tuple(total)
 
     def build(self):
         self.p.stdin.write(b"x\n")
@@ -82,7 +103,9 @@ def edit(r, d):
     return fn
 
 
-# Directed cases: (description, [version of each file per build]).
+# Directed cases: (description, [version of each file per build]).  The
+# last build must reuse a cell ("reuse"), reuse every cell ("all") or
+# recompute one ("recompute": the key must catch the change).
 DIRECTED = [
     # an identical redefinition appears inside a cell, between two reads
     # of X that found one definition before and find two now
@@ -102,11 +125,53 @@ DIRECTED = [
     ("poison added",
      [{"main.c": "int q;\n#pragma GCC dependency_x\nint r = q;\n"},
       {"main.c": "int q;\n#pragma GCC poison q\nint r = q;\n"}]),
+    # nothing changes: every cell is reused, none is stored
+    ("no change",
+     [{"main.c": "#define F(x) x + 1\nint a = F(1);\nint b = F(2);\n"},
+      {"main.c": "#define F(x) x + 1\nint a = F(1);\nint b = F(2);\n"}]),
     # a header changes under an unchanged main file
     ("header edit",
      [{"main.c": '#include "inc0.h"\nint a = H;\n', "inc0.h": "#define H 1\n"},
       {"main.c": '#include "inc0.h"\nint a = H;\n', "inc0.h": "#define H 2\n"}]),
 ]
+
+
+EXPECT = {
+    "same text, different definitions": "recompute",
+    "moved definition": "reuse",
+    "__LINE__ below an edit": "recompute",
+    "poison added": "recompute",
+    "no change": "all",
+    "header edit": "recompute",
+}
+
+KINDS = (["--transcript"], [])   # query transcript; materialized index
+
+
+class Pairs:
+    """For each kind of output: a process using cells, and a reference."""
+
+    def __init__(self, d, flags):
+        self.p = [(Replay(d, flags + k), Replay(d, ["-fparallel=off",
+                                                    "--no-cells"] + k))
+                  for k in KINDS]
+
+    def build(self):
+        """None, or (kind, cells output, reference output) that differ"""
+        bad = None
+        for k, (a, b) in zip(KINDS, self.p):
+            x, y = a.build(), b.build()
+            if x != y and not bad:
+                bad = (" ".join(k) or "json", x, y)
+        return bad
+
+    def stats(self):
+        return [a.stats() for a, _ in self.p]
+
+    def close(self):
+        for a, b in self.p:
+            a.close()
+            b.close()
 
 
 def directed(d):
@@ -115,20 +180,30 @@ def directed(d):
         for fn in FILES:
             with open(os.path.join(d, fn), "w") as f:
                 f.write("")
-        cells = Replay(d, ["-fparallel=on", "-fparallel-threads=1",
-                           "-fparallel-chunk=1"])
-        ref = Replay(d, ["-fparallel=off", "--no-cells"])
+        pairs = Pairs(d, ["-fparallel=on", "-fparallel-threads=1",
+                          "-fparallel-chunk=1"])
         for k, files in enumerate(versions):
             for fn, text in files.items():
                 with open(os.path.join(d, fn), "w") as f:
                     f.write(text)
-            a, b = cells.build(), ref.build()
-            if a != b:
-                print("FAIL directed '%s' build %d" % (name, k))
+            bad = pairs.build()
+            if bad:
+                print("FAIL directed '%s' build %d (%s)" % (name, k, bad[0]))
                 fails += 1
                 break
-        cells.close()
-        ref.close()
+        else:
+            # the point of the cache: the last build reused something, and
+            # an unchanged one everything
+            want = EXPECT[name]
+            for (reused, stored), _ in pairs.stats():
+                if ((want == "reuse" and reused < 1) or
+                        (want == "all" and (stored or not reused)) or
+                        (want == "recompute" and stored < 1)):
+                    print("FAIL directed '%s': %d cells reused, %d stored"
+                          % (name, reused, stored))
+                    fails += 1
+                    break
+        pairs.close()
     return fails
 
 
@@ -136,19 +211,20 @@ def main():
     r = random.Random(SEED)
     d = tempfile.mkdtemp()
     fails = directed(d)
+    reused = stored = 0
     for it in range(N):
         gen_program(r, d)
         t = r.choice([1, 2, 4])
         c = r.choice([1, 16, 64, 200])
-        cells = Replay(d, ["-fparallel=on", "-fparallel-threads=%d" % t,
-                           "-fparallel-chunk=%d" % c])
-        ref = Replay(d, ["-fparallel=off", "--no-cells"])
+        pairs = Pairs(d, ["-fparallel=on", "-fparallel-threads=%d" % t,
+                          "-fparallel-chunk=%d" % c])
         history = []
         for step in range(STEPS):
             if step:
                 history.append(edit(r, d))
-            a, b = cells.build(), ref.build()
-            if a != b:
+            bad = pairs.build()
+            if bad:
+                what, a, b = bad
                 keep = os.path.join(d, "fail%d" % it)
                 os.makedirs(keep, exist_ok=True)
                 for fn in FILES:
@@ -159,19 +235,14 @@ def main():
                     x.write(a)
                 with open(os.path.join(keep, "ref.out"), "wb") as x:
                     x.write(b)
-                print("FAIL program %d step %d (threads=%d chunk=%d, edits "
-                      "%s): %s" % (it, step, t, c, history, keep))
+                print("FAIL program %d step %d (%s; threads=%d chunk=%d, "
+                      "edits %s): %s" % (it, step, what, t, c, history, keep))
                 fails += 1
                 break
-        cells.close()
-        ref.close()
-    reused = stored = 0
-    with open(os.path.join(d, "stderr")) as f:
-        for ln in f:
-            if "cells:" in ln:
-                w = ln.split("cells:")[1].split()
-                reused += int(w[0])
-                stored += int(w[4])
+        for _, (ru, st) in pairs.stats():
+            reused += ru
+            stored += st
+        pairs.close()
     print("%d programs x %d builds, %d failures; cells %d reused, %d stored"
           % (N, STEPS, fails, reused, stored))
     return 1 if fails else 0

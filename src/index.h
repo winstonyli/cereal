@@ -27,6 +27,10 @@ typedef struct IdxRef {
     RefKind kind;
     unsigned flags;
     Expansion *exp;
+    /* cells mode (query results): the expansion's place in sequential
+     * order, and where the ref lives (cell index + 1, 0: phase A) */
+    uint64_t order;
+    uint32_t cell, cexp;
 } IdxRef;
 
 typedef struct IdxParamRef {
@@ -74,6 +78,15 @@ typedef struct IdxBlock {
     SrcLoc begin, end;        /* #if .. #endif */
 } IdxBlock;
 
+/* Cells mode: a cell of the build, taken as it is (see index_par_client). */
+typedef struct IdxCell {
+    struct Cell *cell;        /* a reference */
+    const void *blob;         /* the index's part */
+    uint32_t s;               /* its first plan item */
+    uint32_t nreads;
+    Macro **rmacro;           /* what its reads found in this build */
+} IdxCell;
+
 typedef struct Index {
     PP *pp;
     Arena *arena;
@@ -94,6 +107,21 @@ typedef struct Index {
     int8_t refs_by_id;        /* refs in expansion id order (0: yes, as far
                                  as recorded; -1: no) */
     bool sorted;
+    uint32_t max_len;         /* longest ref (after sorting) */
+    /* Cells mode: phase A's records are here as usual, the text's stay in
+     * the build's cells and queries walk them (absolute positions from the
+     * plan's items).  Global expansion ids and ref order are never made:
+     * index_dump_json and index_check_graph need a materialized index. */
+    bool want_cells;          /* set before a parallel run with a cache */
+    bool cells_mode;
+    VEC(IdxCell) cells;
+    PlanItem *items;
+    size_t nitems;
+    uint32_t *item_cell;      /* item -> index in cells */
+    struct IdxSpan *spans;    /* lazily: item text ranges by start */
+    size_t nspans;
+    uint32_t *mr_start;       /* lazily: by Macro.id, into mr */
+    struct IdxMacRead *mr;    /* (cell, read) pairs that found a definition */
 } Index;
 
 typedef enum { TGT_NONE, TGT_MACRO, TGT_PARAM, TGT_INCLUDE } TargetKind;
@@ -124,6 +152,8 @@ uint32_t index_seq_at(Index *ix, SrcLoc loc);
 size_t index_visible(Index *ix, SrcLoc loc, Macro ***out);
 /* All references to the target (definitions first). */
 size_t index_references(Index *ix, const IdxTarget *t, IdxRef **out);
+/* Every ref located in f, in index order. */
+size_t index_file_refs(Index *ix, const SrcFile *f, IdxRef **out);
 
 /* Call hierarchy (LSP incoming/outgoing calls) for a definition.  Static
  * edges come from the macro graph: a callee is any definition of a name

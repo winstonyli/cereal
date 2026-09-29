@@ -23,9 +23,23 @@
  * and definitions through cenc_*), and decode turns a reused cell's blob
  * back into worker state for wpp (a worker that does not run), which is
  * then joined like any other.  A client with fork but no encode makes the
- * cache unusable. */
+ * cache unusable.
+ *
+ * place, if given, takes the build's cells as they are instead (its own
+ * blobs are cell->blob[client]; every
+ * slice, reused or new, in order, at plan item s; rmacro: what the cell's
+ * reads found in this build, valid during the call): decode, prepare and
+ * join are then skipped for this client, finish still runs.  Used only
+ * when every slice has a cell. */
 struct CellEnc;
 struct CellDec;
+struct Cell;
+
+typedef struct CellPlace {
+    struct Cell *cell;
+    size_t s;
+    Macro **rmacro;
+} CellPlace;
 
 typedef struct ParClient {
     void *ctx;
@@ -39,6 +53,11 @@ typedef struct ParClient {
                     struct CellEnc *e);
     void *(*decode)(void *ctx, PP *wpp, const void *blob,
                     const struct CellDec *d);
+    void (*place)(void *ctx, int client, const CellPlace *cells, size_t n,
+                  const Plan *plan);
+    /* its join keeps records in the worker's memory (the TU adopts the
+     * worker's arena), unless it placed cells instead */
+    bool adopts;
 } ParClient;
 
 #endif
