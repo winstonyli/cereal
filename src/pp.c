@@ -1931,11 +1931,13 @@ static void phase_a_segment(PP *pp)
             plan->cdc_fire = false;
             plan->cdc_bytes = 0;
         }
+        L->unterminated = false;
         if (lex_line_is_directive(L)) {
             end = lexer_loc(L);
             break;
         }
-        if (L->p < L->lim)
+        /* text, or a comment that runs to the end (a worker reports it) */
+        if (L->p < L->lim || L->unterminated)
             content = true;
         if (!lex_next_line(L)) {
             end = lexer_loc(L);

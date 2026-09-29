@@ -423,16 +423,22 @@ static int splice_at(const Lexer *L, const char *p)
 
 static void unterminated_comment(Lexer *L, const char *start)
 {
+    L->unterminated = true;
     if (L->diag)
         diag_report(L->diag, DL_ERROR, "", (SrcLoc)(start - L->region),
                     "unterminated comment");
 }
 
-/* Skip white space, comments and splices; updates bol/space. */
+/* Skip white space, comments and splices; updates bol/space.  Stops at
+ * the lexer's limit: a range (a phase-B segment) is not NUL-terminated,
+ * and what follows it can be anything, an unterminated comment even. */
 static const char *skip_blank(Lexer *L, const char *p)
 {
     for (;;) {
-        unsigned char c = (unsigned char)*p;
+        unsigned char c;
+        if (p >= L->lim)
+            return p;
+        c = (unsigned char)*p;
         if (c == ' ' || c == '\t') {
             p = scan_blanks(p + 1);
             L->space = true;

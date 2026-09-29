@@ -22,6 +22,7 @@ typedef struct Lexer {
     LexOptions opt;
     bool bol, space;
     const char *line_begin; /* start of the last line the cursor entered */
+    bool unterminated;      /* met a block comment that runs to the end */
     const char *nul_line;   /* line of the last null-character warning */
     StrBuf clean;        /* slow-path spelling buffer */
 } Lexer;

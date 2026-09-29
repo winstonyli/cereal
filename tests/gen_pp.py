@@ -85,7 +85,10 @@ def line(r, depth):
 
 
 def gen_file(r, lines, depth):
-    return "\n".join(line(r, depth) for _ in range(lines)) + "\n"
+    text = "\n".join(line(r, depth) for _ in range(lines)) + "\n"
+    if not r.randrange(40):  # a comment that runs to the end of the file
+        text += "/* unterminated\n" + line(r, depth) + "\n"
+    return text
 
 
 def gen_program(r, d):
