@@ -154,6 +154,9 @@ size_t index_visible(Index *ix, SrcLoc loc, Macro ***out);
 size_t index_references(Index *ix, const IdxTarget *t, IdxRef **out);
 /* Every ref located in f, in index order. */
 size_t index_file_refs(Index *ix, const SrcFile *f, IdxRef **out);
+/* ... located in [b, e] (inside one file): only the cells and definitions
+ * meeting the range are read. */
+size_t index_range_refs(Index *ix, SrcLoc b, SrcLoc e, IdxRef **out);
 
 /* Call hierarchy (LSP incoming/outgoing calls) for a definition.  Static
  * edges come from the macro graph: a callee is any definition of a name

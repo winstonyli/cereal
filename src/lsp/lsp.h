@@ -99,7 +99,11 @@ void lsp_references(Req *r, JsonWriter *w);
 void lsp_hover(Req *r, JsonWriter *w);
 void lsp_completion(Req *r, JsonWriter *w);
 void lsp_document_symbols(Req *r, JsonWriter *w);
-void lsp_semantic_tokens(Req *r, JsonWriter *w);
+/* full (previous_id NULL) or full/delta */
+void lsp_semantic_tokens(Req *r, JsonWriter *w, const char *previous_id);
+void lsp_semantic_tokens_range(Req *r, JsonWriter *w);
+/* Drop the semantic tokens kept for deltas (path NULL: all). */
+void lsp_forget_tokens(const char *path);
 void lsp_folding(Req *r, JsonWriter *w);
 void lsp_prepare_rename(Req *r, JsonWriter *w);
 /* false: the rename is refused; *err set */

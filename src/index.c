@@ -1258,7 +1258,7 @@ static bool in_range(SrcLoc loc, SrcLoc b, uint32_t len)
     return loc >= b && loc < b + (len ? len : 1);
 }
 
-/* A cell's refs anchored in [lo, hi] that cover loc. */
+/* A cell's refs anchored in [lo, hi] (that cover loc, if nonzero). */
 static void cell_range(Index *ix, uint32_t ci, CLoc lo, CLoc hi, SrcLoc loc,
                        RefVec *v)
 {
@@ -1274,7 +1274,7 @@ static void cell_range(Index *ix, uint32_t ci, CLoc lo, CLoc hi, SrcLoc loc,
     for (; a < b->nrefs && CREF_LOC(&b->refs[a]) <= hi; a++) {
         IdxRef r;
         cref_get(ix, ci, a, &r);
-        if (in_range(loc, r.loc, r.len))
+        if (!loc || in_range(loc, r.loc, r.len))
             vec_push(v, r);
     }
 }
@@ -1379,27 +1379,70 @@ static void finish_refs(Index *ix, RefVec *v)
 
 size_t index_file_refs(Index *ix, const SrcFile *f, IdxRef **out)
 {
+    return index_range_refs(ix, f->base, f->base + f->size, out);
+}
+
+size_t index_range_refs(Index *ix, SrcLoc b, SrcLoc e, IdxRef **out)
+{
     RefVec v = {0};
-    size_t i, n;
+    size_t i, n, lo, hi;
     ensure_sorted(ix);
-#define IN_F(l) ((l) >= f->base && (l) <= f->base + f->size)
-    for (i = 0; i < ix->refs.len; i++)
-        if (IN_F(ix->refs.data[i].loc))
-            vec_push(&v, ix->cells_mode ? own_ref(ix, &ix->refs.data[i])
-                                        : ix->refs.data[i]);
-    for (i = 0; i < ix->cells.len; i++) {
-        const IxBlob *b = ix->cells.data[i].blob;
-        uint32_t k;
-        for (k = 0; k < b->nrefs; k++) {
-            IdxRef r;
-            cref_get(ix, (uint32_t)i, k, &r);
-            if (IN_F(r.loc))
-                vec_push(&v, r);
-        }
+    lo = 0;
+    hi = ix->refs.len;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (ix->refs.data[mid].loc < b)
+            lo = mid + 1;
+        else
+            hi = mid;
     }
-#undef IN_F
-    if (ix->cells_mode)
+    for (i = lo; i < ix->refs.len && ix->refs.data[i].loc <= e; i++)
+        vec_push(&v, ix->cells_mode ? own_ref(ix, &ix->refs.data[i])
+                                    : ix->refs.data[i]);
+    if (ix->cells_mode) {
+        /* the items whose text meets [b, e] (disjoint within a file, a
+         * header read twice repeating them) */
+        build_spans(ix);
+        lo = 0;
+        hi = ix->nspans;
+        while (lo < hi) {
+            size_t mid = (lo + hi) / 2;
+            if (ix->spans[mid].begin <= e)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        while (lo-- > 0) {
+            const IdxSpan *sp = &ix->spans[lo];
+            uint32_t ci, rel;
+            if (sp->end < b) {
+                if (lo == 0 || ix->spans[lo - 1].begin != sp->begin)
+                    break;
+                continue;
+            }
+            ci = ix->item_cell[sp->item];
+            rel = sp->item - ix->cells.data[ci].s;
+            cell_range(ix, ci, CLOC(CL_ITEM, rel, b > sp->begin ? b - sp->begin : 0),
+                       CLOC(CL_ITEM, rel, (e < sp->end ? e : sp->end) - sp->begin),
+                       0, &v);
+        }
+        /* definitions' text */
+        build_mr(ix);
+        for (i = 0; i < ix->pp->macros.len; i++) {
+            const Macro *m = ix->pp->macros.data[i];
+            uint32_t k;
+            if (!m->hash_loc || m->hash_loc > e || m->end_loc < b)
+                continue;
+            for (k = ix->mr_start[m->id]; k < ix->mr_start[m->id + 1]; k++)
+                cell_range(ix, ix->mr[k].cell,
+                           CLOC(CL_MACRO, ix->mr[k].read,
+                                b > m->hash_loc ? b - m->hash_loc : 0),
+                           CLOC(CL_MACRO, ix->mr[k].read,
+                                (e < m->end_loc ? e : m->end_loc) - m->hash_loc),
+                           0, &v);
+        }
         finish_refs(ix, &v);
+    }
     *out = NEW_ARRAY(ix->arena, IdxRef, v.len + 1);
     if (v.len)
         memcpy(*out, v.data, sizeof(IdxRef) * v.len);

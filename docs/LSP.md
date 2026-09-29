@@ -55,7 +55,8 @@ files.
 definition and declaration, references, hover (definition, body, and
 what the invocation under the cursor expands to), completion (the macros
 visible at the cursor), document symbols, semantic tokens (`macro`,
-`parameter`; `declaration`), folding (`#if` blocks, multi-line
+`parameter`; `declaration`; whole file, a range, or a delta against the
+last whole-file result), folding (`#if` blocks, multi-line
 `#define`s), rename with prepareRename, call hierarchy (incoming and
 outgoing; static edges plus observed expansions), and signature help for
 function-like macros (read from the editor text, so it works while the
@@ -89,14 +90,19 @@ AddressSanitizer/UBSan (set `LSP_STDERR` to collect reports).
 | hover | 0.1 s | 0.02 s |
 | call hierarchy (prepare, incoming, outgoing) | | 0.01 s each |
 | references to a macro used 400k times (75 MB of results) | | 1.3 s in the server, 5 s at the client |
-| semantic tokens, whole file (4M integers) | 0.6 s | 0.9 s |
+| semantic tokens, whole file (4M integers) | 0.6 s | 0.9 s (0.6 s again for the same build) |
+| semantic tokens, 40 visible lines | | 0.02 s |
+| semantic tokens delta after an edit | | 1.2 s to compute, 10 integers sent |
 
 Normal files take milliseconds. Of an edit, the build is about 0.11 s:
 phase A 0.06 s, cell lookups 0.02 s, the rerun cell 0.015 s. References
 used to take 145 s there: two deduplication passes compared every
-location with every earlier one (now hashed). Semantic tokens gather
-and sort every ref of the file from all cells; `semanticTokens/range`
-and deltas will cut that and the payload. `CEREAL_LSP_STATS=1` prints
+location with every earlier one (now hashed). Semantic tokens for a
+range read only the cells and definitions meeting it
+(`index_range_refs`); whole-file results are kept per document and
+build, so a repeated request is only serialization and a delta is one
+edit (common prefix and suffix). A delta still recomputes the whole
+file; editors ask for the visible range first. `CEREAL_LSP_STATS=1` prints
 the server's timings (and `CEREAL_PAR_STATS=1` the runner's).
 `-fparallel=on` in `.cereal` forces the parallel path and cells for
 files of any size (the tests use it).

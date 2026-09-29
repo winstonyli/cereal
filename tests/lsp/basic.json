@@ -18,6 +18,9 @@
  {"send": {"id": 6, "method": "textDocument/completion", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}, "position": {"line": 6, "character": 8}}}, "labels": "^(SQUARE|TWICE|LIMIT|BAD|MODE|DEFS_H)$"},
  {"send": {"id": 7, "method": "textDocument/documentSymbol", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}}}},
  {"send": {"id": 8, "method": "textDocument/semanticTokens/full", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}}}},
+ {"note": "semantic tokens of lines 2-4 only, then the whole file again: nothing changed"},
+ {"send": {"id": 30, "method": "textDocument/semanticTokens/range", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}, "range": {"start": {"line": 2, "character": 0}, "end": {"line": 4, "character": 0}}}}},
+ {"send": {"id": 31, "method": "textDocument/semanticTokens/full/delta", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}, "previousResultId": "1"}}},
  {"send": {"id": 9, "method": "textDocument/foldingRange", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}}}},
  {"note": "rename SQUARE"},
  {"send": {"id": 10, "method": "textDocument/prepareRename", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}, "position": {"line": 1, "character": 9}}}},
@@ -33,6 +36,8 @@
  {"send": {"id": 16, "method": "textDocument/signatureHelp", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}, "position": {"line": 12, "character": 17}}}},
  {"idle": true},
  {"wait": "textDocument/publishDiagnostics", "uri": "file://$ROOT/basic/main.c"},
+ {"note": "after the edit: tokens as one edit against the last result"},
+ {"send": {"id": 32, "method": "textDocument/semanticTokens/full/delta", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}, "previousResultId": "1"}}},
  {"send": {"id": 17, "method": "shutdown"}},
  {"send": {"method": "exit"}}
 ]

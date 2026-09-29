@@ -21,7 +21,8 @@ that directory's absolute path, and in the transcript it is put back.
   {"write": PATH, "text": TEXT}        create a workspace file (removed at
                                        the end), e.g. compile_commands.json
   {"note": TEXT}                       a heading in the transcript
-Opaque "data" members (call hierarchy items) are left out.
+Opaque "data" members (call hierarchy items) are left out; lists (semantic
+tokens) are kept.
 Responses are printed with sorted keys; completion lists are cut to the
 labels matching the step's "labels" regex (default: no leading '_').
 Without --update the transcript is compared with SCENARIO.expected."""
@@ -97,7 +98,8 @@ def main():
         if isinstance(v, list):
             return [strip_data(x) for x in v]
         if isinstance(v, dict):
-            return {k: strip_data(x) for k, x in v.items() if k != "data"}
+            return {k: strip_data(x) for k, x in v.items()
+                    if k != "data" or isinstance(x, list)}
         return v
 
     for st in steps:

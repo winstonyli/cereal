@@ -311,7 +311,137 @@
  }
 ]
 >> textDocument/semanticTokens/full
-{}
+{
+ "data": [
+  1,
+  8,
+  6,
+  0,
+  1,
+  0,
+  7,
+  1,
+  1,
+  1,
+  0,
+  5,
+  1,
+  1,
+  0,
+  0,
+  6,
+  1,
+  1,
+  0,
+  1,
+  8,
+  5,
+  0,
+  1,
+  0,
+  6,
+  1,
+  1,
+  1,
+  0,
+  8,
+  6,
+  0,
+  0,
+  0,
+  7,
+  1,
+  1,
+  0,
+  1,
+  8,
+  6,
+  0,
+  0,
+  1,
+  8,
+  5,
+  0,
+  0,
+  0,
+  6,
+  4,
+  0,
+  0,
+  1,
+  4,
+  4,
+  0,
+  0,
+  1,
+  8,
+  5,
+  0,
+  0,
+  4,
+  8,
+  3,
+  0,
+  1,
+  0,
+  4,
+  1,
+  1,
+  1,
+  0,
+  3,
+  1,
+  1,
+  0,
+  0,
+  4,
+  1,
+  1,
+  0,
+  1,
+  8,
+  3,
+  0,
+  0
+ ],
+ "resultId": "1"
+}
+## semantic tokens of lines 2-4 only, then the whole file again: nothing changed
+>> textDocument/semanticTokens/range
+{
+ "data": [
+  2,
+  8,
+  5,
+  0,
+  1,
+  0,
+  6,
+  1,
+  1,
+  1,
+  0,
+  8,
+  6,
+  0,
+  0,
+  0,
+  7,
+  1,
+  1,
+  0,
+  1,
+  8,
+  6,
+  0,
+  0
+ ]
+}
+>> textDocument/semanticTokens/full/delta
+{
+ "edits": [],
+ "resultId": "1"
+}
 >> textDocument/foldingRange
 [
  {
@@ -620,6 +750,12 @@
    "source": "cereal"
   }
  ]
+}
+## after the edit: tokens as one edit against the last result
+>> textDocument/semanticTokens/full/delta
+{
+ "edits": [],
+ "resultId": "2"
 }
 >> shutdown
 null

@@ -388,6 +388,7 @@ static void *builder_main(void *arg)
         mutex_lock(&S.m);
         u->building = false;
         if (snap && want > u->built) {
+            snap->gen = want;
             old = u->snap;
             u->snap = snap;
             u->built = want;
@@ -588,8 +589,13 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     json_str(&w, "readonly");
     json_end_array(&w);
     json_end_object(&w);
-    json_key(&w, "full");
+    json_key(&w, "range");
     json_bool(&w, true);
+    json_key(&w, "full");
+    json_begin_object(&w);
+    json_key(&w, "delta");
+    json_bool(&w, true);
+    json_end_object(&w);
     json_end_object(&w);
     json_key(&w, "foldingRangeProvider");
     json_bool(&w, true);
@@ -626,7 +632,8 @@ static void initialize(const JsonValue *id, const JsonValue *params)
 /* ---- requests ------------------------------------------------------------ */
 
 typedef enum {
-    R_DEF, R_REFS, R_HOVER, R_COMPLETION, R_SYMBOLS, R_SEMTOK, R_FOLDING,
+    R_DEF, R_REFS, R_HOVER, R_COMPLETION, R_SYMBOLS, R_SEMTOK,
+    R_SEMTOK_DELTA, R_SEMTOK_RANGE, R_FOLDING,
     R_PREP_RENAME, R_RENAME, R_PREP_CALLS, R_IN_CALLS, R_OUT_CALLS,
     R_SIGHELP, R_EXPAND
 } ReqKind;
@@ -642,6 +649,8 @@ static const struct {
     {"textDocument/completion", R_COMPLETION},
     {"textDocument/documentSymbol", R_SYMBOLS},
     {"textDocument/semanticTokens/full", R_SEMTOK},
+    {"textDocument/semanticTokens/full/delta", R_SEMTOK_DELTA},
+    {"textDocument/semanticTokens/range", R_SEMTOK_RANGE},
     {"textDocument/foldingRange", R_FOLDING},
     {"textDocument/prepareRename", R_PREP_RENAME},
     {"textDocument/rename", R_RENAME},
@@ -713,7 +722,13 @@ static void handle_request(const JsonValue *id, ReqKind k,
         case R_HOVER: lsp_hover(&r, &w); break;
         case R_COMPLETION: lsp_completion(&r, &w); break;
         case R_SYMBOLS: lsp_document_symbols(&r, &w); break;
-        case R_SEMTOK: lsp_semantic_tokens(&r, &w); break;
+        case R_SEMTOK: lsp_semantic_tokens(&r, &w, NULL); break;
+        case R_SEMTOK_DELTA:
+            lsp_semantic_tokens(&r, &w, json_str_of(json_get(params,
+                                                             "previousResultId"),
+                                                    ""));
+            break;
+        case R_SEMTOK_RANGE: lsp_semantic_tokens_range(&r, &w); break;
         case R_FOLDING: lsp_folding(&r, &w); break;
         case R_PREP_RENAME: lsp_prepare_rename(&r, &w); break;
         case R_RENAME:
@@ -820,6 +835,8 @@ static void did_close(const JsonValue *params)
             break;
         }
     mutex_unlock(&S.m);
+    if (path)
+        lsp_forget_tokens(path);
     if (uri) { /* clear its diagnostics */
         StrBuf sb = {0};
         JsonWriter w;
@@ -957,6 +974,7 @@ int lsp_main(FILE *in, FILE *out)
         vec_free(&S.docs);
         vec_free(&S.queue);
     }
+    lsp_forget_tokens(NULL);
     if (S.initialized)
         config_free(&S.cfg);
     pool_free(&S.pool);

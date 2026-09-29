@@ -12,10 +12,14 @@
 
 SrcLoc req_loc(Req *r, const JsonValue *pos)
 {
-    size_t off = pos_to_offset(r->file->buf, r->file->size,
-                               (uint32_t)json_int_of(json_get(pos, "line"), 0),
-                               (uint32_t)json_int_of(json_get(pos, "character"), 0),
-                               r->enc);
+    uint32_t line = (uint32_t)json_int_of(json_get(pos, "line"), 0);
+    SrcLoc ls = line ? srcmgr_loc_of(r->file, line + 1, 1) : 0;
+    size_t base = !line ? 0 : ls ? ls - r->file->base : r->file->size;
+    size_t off = base + pos_to_offset(r->file->buf + base, r->file->size - base, 0,
+                                      (uint32_t)json_int_of(json_get(pos,
+                                                                     "character"),
+                                                            0),
+                                      r->enc);
     return r->file->base + (SrcLoc)off;
 }
 
@@ -259,16 +263,21 @@ static int stok_cmp(const void *a, const void *b)
     return y->mods - x->mods; /* the declaration first at a tie */
 }
 
-void lsp_semantic_tokens(Req *r, JsonWriter *w)
+typedef VEC(uint32_t) U32Vec;
+
+/* The encoded tokens (LSP's 5 integers each, relative to the previous
+ * token) of the refs, parameters and definitions in [b, e]. */
+static void semantic_data(Req *r, SrcLoc b, SrcLoc e, U32Vec *out)
 {
     Index *ix = &r->snap->ix;
     PP *pp = &r->snap->tu.pp;
     VEC(STok) v = {0};
-    size_t i;
+    size_t i, nrefs;
     SrcLoc prev_end = 0;
     uint32_t pl = 0, pc = 0;
     IdxRef *refs;
-    size_t nrefs = index_file_refs(ix, r->file, &refs);
+#define IN_R(l) ((l) >= b && (l) <= e)
+    nrefs = index_range_refs(ix, b, e, &refs);
     for (i = 0; i < nrefs; i++) {
         IdxRef *ref = &refs[i];
         STok s;
@@ -283,7 +292,7 @@ void lsp_semantic_tokens(Req *r, JsonWriter *w)
     for (i = 0; i < ix->params.len; i++) {
         IdxParamRef *p = &ix->params.data[i];
         STok s;
-        if (!in_file(r->file, p->loc))
+        if (!IN_R(p->loc))
             continue;
         s.loc = p->loc;
         s.len = p->len;
@@ -295,7 +304,7 @@ void lsp_semantic_tokens(Req *r, JsonWriter *w)
         Macro *m = pp->macros.data[i];
         STok s;
         int k;
-        if (m->alias_of || !in_file(r->file, m->name_loc) || !m->name_loc)
+        if (m->alias_of || !m->name_loc || !IN_R(m->name_loc))
             continue;
         s.loc = m->name_loc;
         s.len = m->name->len;
@@ -303,7 +312,7 @@ void lsp_semantic_tokens(Req *r, JsonWriter *w)
         s.mods = SM_DECLARATION;
         vec_push(&v, s);
         for (k = 0; k < m->nparams; k++) {
-            if (!m->param_locs[k])
+            if (!m->param_locs[k] || !IN_R(m->param_locs[k]))
                 continue;
             s.loc = m->param_locs[k];
             s.len = m->params[k]->len;
@@ -311,11 +320,9 @@ void lsp_semantic_tokens(Req *r, JsonWriter *w)
             vec_push(&v, s);
         }
     }
+#undef IN_R
     if (v.len)
         qsort(v.data, v.len, sizeof *v.data, stok_cmp);
-    json_begin_object(w);
-    json_key(w, "data");
-    json_begin_array(w);
     for (i = 0; i < v.len; i++) {
         STok *s = &v.data[i];
         uint32_t l, c, el, ec;
@@ -325,18 +332,151 @@ void lsp_semantic_tokens(Req *r, JsonWriter *w)
         loc_to_pos(&r->snap->tu.sm, s->loc + s->len, r->enc, &el, &ec);
         if (el != l)
             continue; /* tokens are single-line */
-        json_int(w, l - pl);
-        json_int(w, l == pl ? c - pc : c);
-        json_int(w, ec - c);
-        json_int(w, s->type);
-        json_int(w, s->mods);
+        vec_push(out, l - pl);
+        vec_push(out, l == pl ? c - pc : c);
+        vec_push(out, ec - c);
+        vec_push(out, (uint32_t)s->type);
+        vec_push(out, (uint32_t)s->mods);
         pl = l;
         pc = c;
         prev_end = s->loc + s->len;
     }
-    json_end_array(w);
-    json_end_object(w);
     vec_free(&v);
+}
+
+static void json_u32s(JsonWriter *w, const uint32_t *d, size_t n)
+{
+    size_t i;
+    json_begin_array(w);
+    for (i = 0; i < n; i++)
+        json_int(w, d[i]);
+    json_end_array(w);
+}
+
+/* Whole-document results, per document: what the client last got (for
+ * deltas) and the snapshot they were computed on (repeated requests are
+ * free).  Requests are handled on one thread. */
+typedef struct TokCache {
+    char *path;
+    const void *snap;          /* identity only; may have been freed */
+    long long gen;
+    PosEncoding enc;
+    unsigned long id;          /* resultId */
+    U32Vec data;
+} TokCache;
+
+static VEC(TokCache) tok_cache;
+static unsigned long tok_next_id;
+
+static TokCache *tok_entry(const char *path)
+{
+    size_t i;
+    TokCache t;
+    for (i = 0; i < tok_cache.len; i++)
+        if (!strcmp(tok_cache.data[i].path, path))
+            return &tok_cache.data[i];
+    memset(&t, 0, sizeof t);
+    t.path = xstrdup(path);
+    vec_push(&tok_cache, t);
+    return &vec_last(&tok_cache);
+}
+
+void lsp_forget_tokens(const char *path)
+{
+    size_t i;
+    for (i = 0; i < tok_cache.len; i++)
+        if (!path || !strcmp(tok_cache.data[i].path, path)) {
+            free(tok_cache.data[i].path);
+            vec_free(&tok_cache.data[i].data);
+            tok_cache.data[i--] = tok_cache.data[--tok_cache.len];
+        }
+    if (!path)
+        vec_free(&tok_cache);
+}
+
+/* full, or full/delta against previous_id (NULL: full) */
+void lsp_semantic_tokens(Req *r, JsonWriter *w, const char *previous_id)
+{
+    TokCache *c = tok_entry(r->path);
+    U32Vec nd = {0};
+    char id[32];
+    bool fresh = c->snap == r->snap && c->gen == r->snap->gen &&
+                 c->enc == r->enc && c->id;
+    unsigned long prev = previous_id ? strtoul(previous_id, NULL, 10) : 0;
+    if (fresh) {
+        if (prev == c->id) { /* nothing changed since */
+            json_begin_object(w);
+            json_key(w, "resultId");
+            snprintf(id, sizeof id, "%lu", c->id);
+            json_str(w, id);
+            json_key(w, "edits");
+            json_begin_array(w);
+            json_end_array(w);
+            json_end_object(w);
+            return;
+        }
+        if (!previous_id) {
+            json_begin_object(w);
+            json_key(w, "resultId");
+            snprintf(id, sizeof id, "%lu", c->id);
+            json_str(w, id);
+            json_key(w, "data");
+            json_u32s(w, c->data.data, c->data.len);
+            json_end_object(w);
+            return;
+        }
+    }
+    semantic_data(r, r->file->base, r->file->base + r->file->size, &nd);
+    json_begin_object(w);
+    json_key(w, "resultId");
+    snprintf(id, sizeof id, "%lu", ++tok_next_id);
+    json_str(w, id);
+    if (previous_id && prev && prev == c->id) {
+        /* one edit: the part between the common prefix and suffix */
+        size_t p = 0, q = 0, on = c->data.len, nn = nd.len;
+        while (p < on && p < nn && c->data.data[p] == nd.data[p])
+            p++;
+        while (q < on - p && q < nn - p &&
+               c->data.data[on - 1 - q] == nd.data[nn - 1 - q])
+            q++;
+        json_key(w, "edits");
+        json_begin_array(w);
+        if (p != on || p != nn) {
+            json_begin_object(w);
+            json_key(w, "start");
+            json_int(w, (long long)p);
+            json_key(w, "deleteCount");
+            json_int(w, (long long)(on - p - q));
+            json_key(w, "data");
+            json_u32s(w, nd.data + p, nn - p - q);
+            json_end_object(w);
+        }
+        json_end_array(w);
+    } else {
+        json_key(w, "data");
+        json_u32s(w, nd.data, nd.len);
+    }
+    json_end_object(w);
+    vec_free(&c->data);
+    c->data = nd;
+    c->id = tok_next_id;
+    c->snap = r->snap;
+    c->gen = r->snap->gen;
+    c->enc = r->enc;
+}
+
+void lsp_semantic_tokens_range(Req *r, JsonWriter *w)
+{
+    const JsonValue *rg = json_get(r->params, "range");
+    SrcLoc b = req_loc(r, json_get(rg, "start")),
+           e = req_loc(r, json_get(rg, "end"));
+    U32Vec d = {0};
+    semantic_data(r, b, e < b ? b : e, &d);
+    json_begin_object(w);
+    json_key(w, "data");
+    json_u32s(w, d.data, d.len);
+    json_end_object(w);
+    vec_free(&d);
 }
 
 /* ---- folding ----------------------------------------------------------------- */
