@@ -9,6 +9,8 @@
 
 #include <string.h>
 
+#include "../hash.h"
+
 int shell_split(Arena *a, const char *s, const char ***argv)
 {
     VEC(const char *) v = {0};
@@ -294,6 +296,9 @@ Options *config_options_for(LspConfig *c, const char *path)
         /* unknown or malformed flags are ignored: a compile command is
          * written for some compiler, not for cereal */
     }
+    for (i = 0; i < n; i++)
+        o->fingerprint = hash64_mix(o->fingerprint,
+                                    hash64_str(flags.data[i], (uint64_t)i));
     /* the arguments must outlive o: keep them in the config arena */
     if (flags.len) {
         const char **keep = NEW_ARRAY(&c->arena, const char *, flags.len);

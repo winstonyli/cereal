@@ -86,6 +86,7 @@ typedef struct Expansion {
     SrcLoc name_loc;         /* spelling loc of the name token */
     SrcLoc end_loc;          /* end of ')' for function-like */
     uint32_t seq;            /* macro version when the name was looked up */
+    uint32_t seq_item;       /* phase B: the plan item that set that version */
 } Expansion;
 
 typedef enum {
@@ -293,6 +294,8 @@ typedef struct PP {
     void *boundary_ctx;
     bool versioned;          /* phase B: look macros up by version */
     uint32_t version;
+    uint32_t version_item;   /* phase B: the plan item that set version */
+    struct CellReads *reads; /* phase B: recording the read set (cell.h) */
     bool check_versions;     /* debug: cross-check versioned lookups */
 
     /* provenance of the last token read (see pp_read_raw) */
@@ -370,10 +373,17 @@ static inline uint32_t pp_event_key(const PP *pp)
     return pp->diag->key;
 }
 
+struct CellReads;
+void cell_reads_note(struct CellReads *r, uint32_t ident, uint32_t item);
+void cell_reads_line(struct CellReads *r, uint32_t item);
+
 static inline Macro *pp_macro(const PP *pp, const Ident *id)
 {
-    if (pp->versioned)
+    if (pp->versioned) {
+        if (pp->reads)
+            cell_reads_note(pp->reads, id->id, pp->version_item);
         return macro_at_version(pp->mt, id, pp->version);
+    }
     if (pp->check_versions &&
         macro_at_version(pp->mt, id, pp->seq) != mt_cur(pp->mt, id))
         pp_version_mismatch(pp, id);

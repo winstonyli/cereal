@@ -19,7 +19,15 @@
  * Diagnostics carry the plan item they were reported at; each worker's are
  * kept for the items of its slice and merged with phase A's in item order.
  * Anything plan mode cannot reproduce (__COUNTER__, state-changing
- * _Pragma) marks the worker diverged and the caller reruns sequentially. */
+ * _Pragma) marks the worker diverged and the caller reruns sequentially.
+ *
+ * With a cell cache (no -E output), phase A splits the text at content-
+ * defined points, reusable cells found at those points are not rerun
+ * (a worker that reaches a reused cell's start cleanly stops there), and
+ * workers only cover the rest.  Every slice of the result -- a worker's
+ * or a reused cell's, decoded into a worker that never runs -- is joined
+ * the same way; the slices the workers ran are split at clean boundaries
+ * into new cells for the next build. */
 #include "par.h"
 
 #include <stdlib.h>
@@ -27,6 +35,7 @@
 #include <time.h>
 #include <sys/stat.h>
 
+#include "cell.h"
 #include "plan.h"
 #include "ppout.h"
 #include "thread.h"
@@ -36,6 +45,7 @@
 #define DEFAULT_WINDOW 256
 
 typedef struct Par Par;
+typedef struct Hit Hit;
 
 typedef struct Worker {
     Par *par;
@@ -59,7 +69,25 @@ typedef struct Worker {
     double t_begin, t_end;         /* stats */
     void **wctx;                   /* per client */
     VEC(struct ExpLog) exps;       /* expansions, for Macro counts */
+    /* cells */
+    CellReads reads;               /* the read set */
+    VEC(uint32_t) cuts;            /* clean cell boundaries crossed */
+    Hit *next_hit;                 /* stopped at a reused cell */
+    bool cached;                   /* a reused cell: decoded, never run */
 } Worker;
+
+/* A reused cell at [s, e). */
+struct Hit {
+    Cell *cell;
+    size_t s, e;
+    Macro **rmacro;                /* its reads, resolved in this build */
+    Worker w;                      /* decoded */
+};
+
+typedef struct Slice {
+    Worker *w;
+    size_t from, to;
+} Slice;
 
 typedef struct ExpLog {
     uint32_t key;
@@ -78,6 +106,13 @@ struct Par {
     uint32_t abort;                /* atomic: a worker diverged */
     ThreadPool *tp;                /* for the prepare step */
     double t0, t_a, t_b;           /* stats: start, phase A, phase B done */
+    /* cells */
+    CellCache *cache;
+    CellBuild cb;
+    Hit *hits;
+    size_t nhits;
+    Hit **hit_at;                  /* by item: a reused cell starting there */
+    double t_cells;                /* stats: lookups done */
 };
 
 void plan_free(Plan *p)
@@ -138,6 +173,18 @@ static bool on_boundary(void *ctx, size_t item, bool clean)
     } else {
         w->pr.open = NULL;
     }
+    if (P->cache && clean && item > w->start_item) {
+        if (cell_candidate(&P->plan, item))
+            vec_push(&w->cuts, (uint32_t)item);
+        if (item >= w->end_item && P->hit_at[item]) {
+            /* a reused cell is the fresh run from its start */
+            w->stopped = true;
+            w->stop_item = item;
+            w->next = -1;
+            w->next_hit = P->hit_at[item];
+            return false;
+        }
+    }
     if (clean && item >= w->end_item) {
         Worker *m = owner_of(P, w, item);
         BoundRec *mr = m ? find_rec(m, atomic_load_u32(&m->nrecs), item) : NULL;
@@ -179,6 +226,8 @@ static void run_worker(void *arg)
         w->end_off = w->sink.len;
         w->end_st = w->pr.st;
     }
+    if (P->cache)
+        cell_reads_sort(&w->reads); /* by item, for encoding cells */
     w->t_end = now();
 }
 
@@ -206,7 +255,7 @@ static void worker_init(Par *P, Worker *w, int idx, size_t start, size_t end,
     w->idx = idx;
     w->start_item = start;
     w->end_item = end;
-    w->window = idx ? window : 0; /* nothing stitches into worker 0 */
+    w->window = start ? window : 0; /* nothing stitches into item 0 */
     w->recs = w->window ? xmalloc(sizeof(BoundRec) * w->window) : NULL;
     arena_init(&w->arena);
     diag_init(&w->diag, &w->arena, &tu->sm);
@@ -217,6 +266,10 @@ static void worker_init(Par *P, Worker *w, int idx, size_t start, size_t end,
     w->diag.show_system = tu->diag.show_system;
     w->diag.max_errors = tu->diag.max_errors;
     pp_init_worker(&w->pp, &tu->pp, &w->arena, &w->diag);
+    if (P->cache) {
+        cell_reads_init(&w->reads);
+        w->pp.reads = &w->reads;
+    }
     w->pp.on_boundary = on_boundary;
     w->pp.boundary_ctx = w;
     if (P->print)
@@ -244,6 +297,8 @@ static void worker_free(Par *P, Worker *w)
             P->clients[c].release(P->clients[c].ctx, w->wctx[c]);
     free(w->wctx);
     vec_free(&w->exps);
+    cell_reads_free(&w->reads);
+    vec_free(&w->cuts);
     pp_free(&w->pp);
     sink_free(&w->sink);
     if (P->nclients) {
@@ -318,8 +373,7 @@ static Diagnostic *diag_copy(Arena *a, const Diagnostic *s)
 /* A worker's diagnostics at a DIR or EXIT item are those of an invocation
  * reading into the directive or the end of the file, which the sequential
  * engine reports before handling either: workers first on ties. */
-static void merge_diags(Par *P, const size_t *slice_from,
-                        const size_t *slice_to, const int *order, int nslices)
+static void merge_diags(Par *P, const Slice *sl, int nslices)
 {
     TU *tu = P->tu;
     VEC(DiagRef) refs;
@@ -336,11 +390,11 @@ static void merge_diags(Par *P, const size_t *slice_from,
         vec_push(&refs, r);
     }
     for (s = 0; s < nslices; s++) {
-        Worker *w = &P->w[order[s]];
+        Worker *w = sl[s].w;
         for (i = 0; i < w->diag.all.len; i++) {
             Diagnostic *d = w->diag.all.data[i];
             DiagRef r;
-            if (d->key < slice_from[s] || d->key >= slice_to[s])
+            if (d->key < sl[s].from || d->key >= sl[s].to)
                 continue;
             r.d = diag_copy(&tu->arena, d);
             r.key = d->key;
@@ -353,7 +407,8 @@ static void merge_diags(Par *P, const size_t *slice_from,
             vec_push(&refs, r);
         }
     }
-    qsort(refs.data, refs.len, sizeof *refs.data, diagref_cmp);
+    if (refs.len > 1)
+        qsort(refs.data, refs.len, sizeof *refs.data, diagref_cmp);
     tu->diag.all.len = 0;
     for (i = 0; i < refs.len; i++) {
         Diagnostic *d = refs.data[i].d;
@@ -389,19 +444,19 @@ static void run_prepare(void *arg)
 }
 
 /* Text-driven results, slice by slice: expansion counts, then clients. */
-static void join_clients(Par *P, const size_t *from, const size_t *to,
-                         const int *order, int ns)
+static void join_clients(Par *P, const Slice *sl, int ns)
 {
     int s, c;
+    double t0 = now(), t1, t2;
     PrepJob *jobs = xcalloc((size_t)(ns * P->nclients) + 1, sizeof *jobs);
     size_t nj = 0, k;
     for (s = 0; s < ns; s++)
         for (c = 0; c < P->nclients; c++)
-            if (P->clients[c].prepare && P->w[order[s]].wctx[c]) {
+            if (P->clients[c].prepare && sl[s].w->wctx[c]) {
                 jobs[nj].c = &P->clients[c];
-                jobs[nj].wctx = P->w[order[s]].wctx[c];
-                jobs[nj].from = (uint32_t)from[s];
-                jobs[nj].to = (uint32_t)to[s];
+                jobs[nj].wctx = sl[s].w->wctx[c];
+                jobs[nj].from = (uint32_t)sl[s].from;
+                jobs[nj].to = (uint32_t)sl[s].to;
                 nj++;
             }
     if (nj > 1 && P->tp) {
@@ -416,20 +471,26 @@ static void join_clients(Par *P, const size_t *from, const size_t *to,
             run_prepare(&jobs[k]);
     }
     free(jobs);
+    t1 = now();
     for (s = 0; s < ns; s++) {
-        Worker *w = &P->w[order[s]];
+        Worker *w = sl[s].w;
         size_t i;
         for (i = 0; i < w->exps.len; i++)
-            if (w->exps.data[i].key >= from[s] && w->exps.data[i].key < to[s])
+            if (w->exps.data[i].key >= sl[s].from &&
+                w->exps.data[i].key < sl[s].to)
                 w->exps.data[i].m->expansions++;
         for (c = 0; c < P->nclients; c++)
             if (P->clients[c].join && w->wctx[c])
                 P->clients[c].join(P->clients[c].ctx, w->wctx[c],
-                                   (uint32_t)from[s], (uint32_t)to[s]);
+                                   (uint32_t)sl[s].from, (uint32_t)sl[s].to);
     }
+    t2 = now();
     for (c = 0; c < P->nclients; c++)
         if (P->clients[c].finish)
             P->clients[c].finish(P->clients[c].ctx, P->tp);
+    if (getenv("CEREAL_PAR_STATS"))
+        fprintf(stderr, "par: prepare %.3fs, join %.3fs, finish %.3fs\n",
+                t1 - t0, t2 - t1, now() - t2);
 }
 
 static void write_merged(Par *P, FILE *out)
@@ -438,22 +499,20 @@ static void write_merged(Par *P, FILE *out)
     OutSink o;
     PrintState S;
     Worker *cur = &P->w[0];
-    size_t *from = xmalloc(sizeof(size_t) * (size_t)P->nw);
-    size_t *to = xmalloc(sizeof(size_t) * (size_t)P->nw);
-    int *order = xmalloc(sizeof(int) * (size_t)P->nw);
+    Slice *sl = xmalloc(sizeof(Slice) * (size_t)P->nw);
     int ns = 0;
     memset(&o, 0, sizeof o);
     o.fp = out;
     if (P->print)
         sink_put(&o, cur->sink.buf, cur->end_off);
     S = cur->end_st;
-    from[0] = 0;
-    order[0] = 0;
+    sl[0].w = cur;
+    sl[0].from = 0;
     for (;;) {
         Worker *m;
         BoundRec *r;
         PrintState st;
-        to[ns++] = cur->stopped ? cur->stop_item : P->plan.items.len;
+        sl[ns++].to = cur->stopped ? cur->stop_item : P->plan.items.len;
         if (!cur->stopped)
             break;
         m = &P->w[cur->next];
@@ -468,8 +527,8 @@ static void write_merged(Par *P, FILE *out)
                      m->end_off - r->first_body);
             S = m->end_st;
         }
-        from[ns] = cur->stop_item;
-        order[ns] = m->idx;
+        sl[ns].from = cur->stop_item;
+        sl[ns].w = m;
         cur = m;
     }
     if (P->print && !S.at_bol)
@@ -481,7 +540,8 @@ static void write_merged(Par *P, FILE *out)
                 P->t_b - P->t_a, now() - P->t_b, P->plan.items.len,
                 (unsigned long long)P->plan.text_bytes, P->nw, ns);
         for (k = 0; k < ns; k++)
-            fprintf(stderr, " w%d[%zu,%zu)", order[k], from[k], to[k]);
+            fprintf(stderr, " w%d[%zu,%zu)", sl[k].w->idx, sl[k].from,
+                    sl[k].to);
         fputc('\n', stderr);
         for (k = 0; k < P->nw; k++) {
             Worker *w = &P->w[k];
@@ -506,11 +566,312 @@ static void write_merged(Par *P, FILE *out)
     }
     sink_flush(&o);
     sink_free(&o);
-    merge_diags(P, from, to, order, ns);
-    join_clients(P, from, to, order, ns);
-    free(from);
-    free(to);
-    free(order);
+    merge_diags(P, sl, ns);
+    join_clients(P, sl, ns);
+    free(sl);
+}
+
+/* ---- cells ----------------------------------------------------------- */
+
+/* Reusable cells, scanning from the start: a lookup at every candidate
+ * boundary and at the end of every reused cell. */
+static void find_hits(Par *P)
+{
+    size_t n = P->plan.items.len, p = 0, last_end = SIZE_MAX;
+    VEC(Hit) v = {0};
+    P->hit_at = xcalloc(n + 1, sizeof *P->hit_at);
+    while (p < n) {
+        Cell *c = NULL;
+        Macro **rm = NULL;
+        if (cell_candidate(&P->plan, p) || p == last_end)
+            c = cell_lookup(P->cache, &P->cb, p, &rm);
+        if (c) {
+            Hit h;
+            memset(&h, 0, sizeof h);
+            h.cell = c;
+            h.s = p;
+            h.e = p + c->nitems;
+            h.rmacro = rm;
+            vec_push(&v, h);
+            P->cache->last.hits++;
+            P->cache->last.hit_items += c->nitems;
+            p = last_end = h.e;
+        } else {
+            p++;
+        }
+    }
+    P->hits = v.data;
+    P->nhits = v.len;
+    for (p = 0; p < P->nhits; p++)
+        P->hit_at[P->hits[p].s] = &P->hits[p];
+}
+
+/* Workers for the text no reused cell covers: each gap between reused
+ * cells gets workers in proportion to its text, starting at candidate
+ * boundaries (or the gap's start). */
+static size_t plan_workers(Par *P, int want, size_t **starts_out,
+                           size_t **ends_out)
+{
+    const Plan *plan = &P->plan;
+    size_t n = plan->items.len, h = 0, p = 0, i;
+    uint64_t dirty = 0;
+    VEC(size_t) starts = {0}, ends = {0};
+    for (i = 0, p = 0; i < n; i++) {
+        if (P->hit_at[i]) {
+            i = P->hit_at[i]->e - 1;
+            continue;
+        }
+        if (plan->items.data[i].kind == PI_SEG)
+            dirty += plan->items.data[i].end - plan->items.data[i].begin;
+    }
+    p = 0;
+    while (p < n) {
+        size_t lo = p, hi = p;
+        uint64_t bytes = 0, cum = 0;
+        int k, made = 1;
+        if (h < P->nhits && P->hits[h].s == p) {
+            p = P->hits[h++].e;
+            continue;
+        }
+        while (hi < n && !P->hit_at[hi]) {
+            if (plan->items.data[hi].kind == PI_SEG)
+                bytes += plan->items.data[hi].end - plan->items.data[hi].begin;
+            hi++;
+        }
+        k = dirty ? (int)((bytes * (uint64_t)want + dirty - 1) / dirty) : 1;
+        if (k < 1)
+            k = 1;
+        vec_push(&starts, lo);
+        for (i = lo; i < hi && made < k; i++) {
+            const PlanItem *it = &plan->items.data[i];
+            if (i > lo && cell_candidate(plan, i) &&
+                cum * (uint64_t)k >= bytes * (uint64_t)made) {
+                vec_push(&ends, i);
+                vec_push(&starts, i);
+                made++;
+            }
+            if (it->kind == PI_SEG)
+                cum += it->end - it->begin;
+        }
+        vec_push(&ends, hi);
+        p = hi;
+    }
+    *starts_out = starts.data;
+    *ends_out = ends.data;
+    return starts.len;
+}
+
+typedef struct CellJob {
+    Par *P;
+    Worker *w;                     /* encode: a worker's slice */
+    size_t from, to;
+    Hit *hit;                      /* decode: a reused cell */
+    VEC(Cell *) out;
+    size_t uncacheable;
+} CellJob;
+
+static void encode_cell(CellJob *j, size_t x, size_t y)
+{
+    Par *P = j->P;
+    Worker *w = j->w;
+    CellEnc e;
+    Cell *c;
+    size_t i;
+    int k;
+    cell_enc_begin(&e, &P->cb, &w->reads, x, y);
+    for (i = 0; i < w->diag.all.len; i++) {
+        const Diagnostic *d = w->diag.all.data[i];
+        if (d->key >= x && d->key < y)
+            cenc_diag(&e, d);
+    }
+    /* the log is in plan order: from the first key >= x */
+    {
+        size_t lo = 0, hi = w->exps.len;
+        while (lo < hi) {
+            size_t mid = lo + (hi - lo) / 2;
+            if (w->exps.data[mid].key < x)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        for (i = lo; i < w->exps.len && w->exps.data[i].key < y; i++)
+            cenc_exp(&e, w->exps.data[i].key, w->exps.data[i].m);
+    }
+    for (k = 0; k < P->nclients; k++)
+        if (P->clients[k].encode && w->wctx[k])
+            e.cell->blob[k] = P->clients[k].encode(P->clients[k].ctx,
+                                                   w->wctx[k], (uint32_t)x,
+                                                   (uint32_t)y, &e);
+    c = cell_enc_end(&e);
+    if (c)
+        vec_push(&j->out, c);
+    else
+        j->uncacheable++;
+}
+
+static void decode_hit(Par *P, Hit *h)
+{
+    Worker *w = &h->w;
+    TU *tu = P->tu;
+    CellDec d;
+    uint32_t i;
+    int k;
+    memset(w, 0, sizeof *w);
+    w->par = P;
+    w->idx = -1;
+    w->cached = true;
+    w->start_item = h->s;
+    w->end_item = h->e;
+    arena_init(&w->arena);
+    diag_init(&w->diag, &w->arena, &tu->sm);
+    pp_init_worker(&w->pp, &tu->pp, &w->arena, &w->diag);
+    memset(&d, 0, sizeof d);
+    d.b = &P->cb;
+    d.cell = h->cell;
+    d.s = h->s;
+    d.rmacro = h->rmacro;
+    d.arena = &w->arena;
+    for (i = 0; i < h->cell->ndiags; i++)
+        vec_push(&w->diag.all, cdec_diag(&d, &h->cell->diags[i]));
+    for (i = 0; i < h->cell->nexps; i++) {
+        ExpLog l;
+        l.key = cdec_item(&d, h->cell->exps[i].key);
+        l.m = cdec_macro(&d, h->cell->exps[i].macro);
+        vec_push(&w->exps, l);
+    }
+    w->wctx = xcalloc((size_t)P->nclients + 1, sizeof *w->wctx);
+    for (k = 0; k < P->nclients; k++)
+        if (P->clients[k].decode && h->cell->blob[k])
+            w->wctx[k] = P->clients[k].decode(P->clients[k].ctx, &w->pp,
+                                              h->cell->blob[k], &d);
+}
+
+static void run_cell_job(void *arg)
+{
+    CellJob *j = arg;
+    if (j->hit)
+        decode_hit(j->P, j->hit);
+    else
+        encode_cell(j, j->from, j->to);
+}
+
+static bool cancelled(Par *P)
+{
+    const uint32_t *c = P->tu->pp.cancel;
+    return P->tu->pp.halted || (c && atomic_load_u32(c));
+}
+
+/* The cell run's merge: the slices in order, reused cells decoded and
+ * the workers' slices stored as cells, then joined like any run. */
+static void merge_cells(Par *P)
+{
+    size_t n = P->plan.items.len, p = 0, k;
+    VEC(Slice) sl = {0};
+    CellJob *jobs;
+    size_t nj = 0;
+    Worker *next = NULL;           /* where the last worker stitched */
+    while (p < n) {
+        Slice s;
+        Hit *h = P->hit_at[p];
+        s.from = p;
+        if (!next && h) {
+            s.w = &h->w;
+            s.to = h->e;
+        } else {
+            Worker *w = next;
+            int i;
+            for (i = 0; i < P->nw && !w; i++) /* after a reused cell */
+                if (P->w[i].start_item == p)
+                    w = &P->w[i];
+            if (!w)
+                fatal("parallel cells: no worker at item %zu", p);
+            s.w = w;
+            s.to = w->stopped ? w->stop_item : n;
+            next = w->stopped && !w->next_hit ? &P->w[w->next] : NULL;
+        }
+        vec_push(&sl, s);
+        p = s.to;
+    }
+    {
+        size_t cap = sl.len + 1;
+        int i;
+        for (i = 0; i < P->nw; i++)
+            cap += P->w[i].cuts.len;
+        jobs = xcalloc(cap, sizeof *jobs);
+    }
+    for (k = 0; k < sl.len; k++) {
+        Slice *s = &sl.data[k];
+        CellJob *j;
+        if (P->hit_at[s->from] && s->w == &P->hit_at[s->from]->w) {
+            j = &jobs[nj++];
+            j->P = P;
+            j->hit = P->hit_at[s->from];
+        } else if (!s->w->pp.halted) { /* (cancelled, or fatal) */
+            /* a cell per stretch between the clean boundaries crossed */
+            size_t x = s->from, i;
+            for (i = 0; i <= s->w->cuts.len; i++) {
+                size_t c = i < s->w->cuts.len ? s->w->cuts.data[i] : s->to;
+                if (c <= x || c > s->to)
+                    continue;
+                j = &jobs[nj++];
+                j->P = P;
+                j->w = s->w;
+                j->from = x;
+                j->to = c;
+                x = c;
+            }
+        }
+    }
+    if (P->tp && nj > 1) {
+        JobGroup g;
+        group_init(&g);
+        for (k = 0; k < nj; k++)
+            pool_submit(P->tp, &g, run_cell_job, &jobs[k]);
+        group_wait(P->tp, &g);
+        group_free(&g);
+    } else {
+        for (k = 0; k < nj; k++)
+            run_cell_job(&jobs[k]);
+    }
+    for (k = 0; k < nj; k++) {
+        size_t i;
+        for (i = 0; i < jobs[k].out.len; i++) {
+            Cell *c = jobs[k].out.data[i];
+            if (cancelled(P)) { /* results of a cut-short run */
+                cell_free(c);
+                continue;
+            }
+            cell_cache_put(P->cache, c);
+            P->cache->last.stored++;
+            P->cache->last.miss_items += c->nitems;
+        }
+        P->cache->last.uncacheable += jobs[k].uncacheable;
+        vec_free(&jobs[k].out);
+    }
+    free(jobs);
+    if (getenv("CEREAL_PAR_STATS")) {
+        const CellStats *st = &P->cache->last;
+        size_t cand = 0, i;
+        for (i = 0; i < n; i++)
+            cand += cell_candidate(&P->plan, i);
+        fprintf(stderr, "par: A %.3fs lookups %.3fs B %.3fs; %zu items (%zu "
+                "boundaries), %d workers, %zu slices; cells: %zu reused (%zu "
+                "items), %zu stored (%zu items), %zu uncacheable\n",
+                P->t_a - P->t0, P->t_cells - P->t_a, P->t_b - P->t_cells, n,
+                cand, P->nw, sl.len,
+                st->hits, st->hit_items, st->stored, st->miss_items,
+                st->uncacheable);
+    }
+    {
+        double t1 = now(), t2;
+        merge_diags(P, sl.data, (int)sl.len);
+        t2 = now();
+        if (getenv("CEREAL_PAR_STATS"))
+            fprintf(stderr, "par: cells coded %.3fs, diagnostics %.3fs\n",
+                    t1 - P->t_b, t2 - t1);
+    }
+    join_clients(P, sl.data, (int)sl.len);
+    vec_free(&sl);
 }
 
 /* ---- entry ----------------------------------------------------------- */
@@ -536,6 +897,34 @@ ParResult par_write_output(TU *tu, const char *path, FILE *out,
     return par_run(tu, path, out, linemarkers, po, NULL, 0);
 }
 
+/* Can the clients' results be cached? */
+static bool cells_usable(const ParOptions *po, FILE *out,
+                         const ParClient *clients, int nclients)
+{
+    int c;
+    if (!po->cells || out || nclients > CELL_MAX_CLIENTS)
+        return false;
+    for (c = 0; c < nclients; c++)
+        if (clients[c].fork && (!clients[c].encode || !clients[c].decode))
+            return false;
+    return true;
+}
+
+static void free_hits(Par *P)
+{
+    size_t i;
+    for (i = 0; i < P->nhits; i++) {
+        if (P->hits[i].w.wctx)
+            worker_free(P, &P->hits[i].w);
+        free(P->hits[i].rmacro);
+    }
+    free(P->hits);
+    free(P->hit_at);
+    P->hits = NULL;
+    P->hit_at = NULL;
+    P->nhits = 0;
+}
+
 ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
                   const ParOptions *po, const ParClient *clients,
                   int nclients)
@@ -543,7 +932,7 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
     Par P;
     ThreadPool pool;
     JobGroup g;
-    size_t *starts;
+    size_t *starts, *ends = NULL;
     int want, i;
     ParResult res = PAR_DONE;
 
@@ -556,6 +945,10 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
     P.linemarkers = linemarkers;
     P.clients = clients;
     P.nclients = nclients;
+    if (cells_usable(po, out, clients, nclients)) {
+        P.cache = po->cells;
+        P.plan.cdc = true;
+    }
     P.plan.chunk = po->chunk ? po->chunk : DEFAULT_CHUNK;
     tu->pp.mode = PPM_PHASE_A;
     tu->pp.plan = &P.plan;
@@ -580,21 +973,34 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
     if (want < 1)
         want = 1;
 
-    starts = xmalloc(sizeof(size_t) * (size_t)want);
-    P.nw = partition(&P.plan, want, starts);
-    P.w = xmalloc(sizeof(Worker) * (size_t)P.nw);
+    if (P.cache) {
+        cell_cache_begin(P.cache, po->cell_config, nclients);
+        cell_build_init(&P.cb, &tu->pp, &P.plan);
+        find_hits(&P);
+        P.t_cells = now();
+        P.nw = (int)plan_workers(&P, want, &starts, &ends);
+    } else {
+        P.t_cells = P.t_a;
+        starts = xmalloc(sizeof(size_t) * (size_t)want);
+        P.nw = partition(&P.plan, want, starts);
+    }
+    P.w = xmalloc(sizeof(Worker) * ((size_t)P.nw + 1));
     for (i = 0; i < P.nw; i++)
         worker_init(&P, &P.w[i], i, starts[i],
-                    i + 1 < P.nw ? starts[i + 1] : P.plan.items.len,
+                    ends ? ends[i]
+                         : i + 1 < P.nw ? starts[i + 1] : P.plan.items.len,
                     po->window ? po->window : DEFAULT_WINDOW);
     free(starts);
+    free(ends);
 
-    if (P.nw == 1) {
-        run_worker(&P.w[0]);
+    if (P.nw <= 1 && !P.cache) {
+        if (P.nw)
+            run_worker(&P.w[0]);
     } else {
         ThreadPool *tp = po->pool;
         if (!tp) {
-            pool_init(&pool, P.nw); /* counts this thread */
+            pool_init(&pool, P.nw > 1 ? P.nw : cpu_count()); /* counts this
+                                                                 thread */
             tp = &pool;
         }
         group_init(&g);
@@ -608,10 +1014,18 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
     P.t_b = now();
     if (P.abort)
         res = PAR_FALLBACK;
+    else if (P.cache)
+        merge_cells(&P);
     else
         write_merged(&P, out);
     if (P.tp == &pool)
         pool_free(&pool);
+    if (P.cache) {
+        free_hits(&P);
+        cell_build_free(&P.cb);
+        if (res == PAR_DONE && !cancelled(&P))
+            cell_cache_end(P.cache); /* else keep what was there */
+    }
 
     if (getenv("CEREAL_PAR_STATS"))
         fprintf(stderr, "par: merge and joins done at %.3fs\n", now() - P.t0);

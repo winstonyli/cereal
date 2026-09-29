@@ -1,5 +1,6 @@
 /* include.c - include graph and macro-usage analyses. */
 #include "analysis.h"
+#include "../cell.h"
 
 #include <string.h>
 
@@ -179,6 +180,57 @@ void include_join(Analysis *a, Analysis *w, uint32_t from, uint32_t to)
             mark_used(a, w->inc->uses.data[i].m);
 }
 
+/* Cells: the definitions a slice expanded (each once). */
+typedef struct IncBlob {
+    uint32_t n;
+    uint32_t *m;
+} IncBlob;
+
+void *include_encode(Analysis *w, uint32_t from, uint32_t to, CellEnc *e)
+{
+    IncBlob *b = NEW(cenc_arena(e), IncBlob);
+    VEC(uint32_t) v = {0};
+    size_t i, k, lo = 0, hi = w->inc->uses.len;
+    while (lo < hi) { /* the log is in plan order */
+        size_t mid = lo + (hi - lo) / 2;
+        if (w->inc->uses.data[mid].key < from)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    for (i = lo; i < w->inc->uses.len; i++) {
+        const UseLog *u = &w->inc->uses.data[i];
+        uint32_t m;
+        bool dup = false;
+        if (u->key >= to)
+            break;
+        m = cenc_macro(e, u->m);
+        for (k = v.len; k-- > 0 && !dup;) /* repeats are usually recent */
+            dup = v.data[k] == m;
+        if (!dup)
+            vec_push(&v, m);
+    }
+    b->n = (uint32_t)v.len;
+    b->m = NEW_ARRAY(cenc_arena(e), uint32_t, v.len + 1);
+    if (v.len)
+        memcpy(b->m, v.data, sizeof(uint32_t) * v.len);
+    vec_free(&v);
+    return b;
+}
+
+void include_decode(Analysis *w, const void *blob, const CellDec *d)
+{
+    const IncBlob *b = blob;
+    uint32_t i;
+    w->inc = NEW(w->arena, IncludeState);
+    for (i = 0; i < b->n; i++) {
+        UseLog u;
+        u.key = cdec_item(d, 0);
+        u.m = cdec_macro(d, b->m[i]);
+        vec_push(&w->inc->uses, u);
+    }
+}
+
 void include_release(Analysis *w)
 {
     vec_free(&w->inc->uses);
@@ -303,4 +355,12 @@ void include_finish(Analysis *a)
     vec_free(&s->edges);
     vec_free(&s->stack);
     vec_free(&s->instance);
+}
+
+void include_discard(Analysis *a)
+{
+    vec_free(&a->inc->uses);
+    vec_free(&a->inc->edges);
+    vec_free(&a->inc->stack);
+    vec_free(&a->inc->instance);
 }

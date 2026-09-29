@@ -1,5 +1,6 @@
 /* analysis.c - wiring for the preprocessor analyses. */
 #include "analysis.h"
+#include "../cell.h"
 
 #include <string.h>
 
@@ -53,6 +54,16 @@ void analysis_finish(Analysis *a)
     include_finish(a);
 }
 
+void analysis_discard(Analysis *a)
+{
+    if (a->hyg)
+        hygiene_release(a);
+    if (a->cond)
+        cond_discard(a);
+    if (a->inc)
+        include_discard(a);
+}
+
 /* ---- parallel runs -------------------------------------------------- */
 
 static void *an_fork(void *ctx, PP *wpp)
@@ -73,6 +84,27 @@ static void an_join(void *ctx, void *wctx, uint32_t from, uint32_t to)
     include_join(ctx, wctx, from, to);
 }
 
+/* Cells: hygiene's worker results are diagnostics only (cached by the
+ * runner); include keeps which definitions were expanded. */
+static void *an_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
+                       CellEnc *e)
+{
+    (void)ctx;
+    return include_encode(wctx, from, to, e);
+}
+
+static void *an_decode(void *ctx, PP *wpp, const void *blob, const CellDec *d)
+{
+    Analysis *a = ctx, *w = NEW(wpp->arena, Analysis);
+    *w = *a;
+    w->pp = wpp;
+    w->arena = wpp->arena;
+    w->diag = wpp->diag;
+    hygiene_decode(w);
+    include_decode(w, blob, d);
+    return w;
+}
+
 static void an_release(void *ctx, void *wctx)
 {
     (void)ctx;
@@ -88,5 +120,7 @@ ParClient analysis_par_client(Analysis *a)
     c.fork = an_fork;
     c.join = an_join;
     c.release = an_release;
+    c.encode = an_encode;
+    c.decode = an_decode;
     return c;
 }

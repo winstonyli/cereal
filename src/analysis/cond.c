@@ -509,6 +509,12 @@ struct CondState {
     VEC(Tok) undefined_refs;
 };
 
+void cond_discard(Analysis *a)
+{
+    vec_free(&a->cond->done);
+    vec_free(&a->cond->undefined_refs);
+}
+
 static Node *branch_cond(Analysis *an, SkDirective *d)
 {
     switch (d->kind) {

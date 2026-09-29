@@ -23,6 +23,11 @@ typedef struct Analysis {
 
 void analysis_attach(Analysis *a, PP *pp);
 void analysis_finish(Analysis *a);   /* end-of-TU checks */
+/* Free the state of an analysis that will not be finished (a parallel run
+ * that fell back). */
+void analysis_discard(Analysis *a);
+void cond_discard(Analysis *a);
+void include_discard(Analysis *a);
 /* Take part in a parallel run (call after analysis_attach). */
 ParClient analysis_par_client(Analysis *a);
 
@@ -36,6 +41,7 @@ void hygiene_attach(Analysis *a);
 void hygiene_finish(Analysis *a);
 void *hygiene_fork(Analysis *a, Analysis *w);
 void hygiene_release(Analysis *w);
+void hygiene_decode(Analysis *w);   /* state of a reused cell: none */
 void cond_attach(Analysis *a);
 void cond_finish(Analysis *a);
 void include_attach(Analysis *a);
@@ -43,5 +49,10 @@ void include_finish(Analysis *a);
 void *include_fork(Analysis *a, Analysis *w);
 void include_join(Analysis *a, Analysis *w, uint32_t from, uint32_t to);
 void include_release(Analysis *w);
+struct CellEnc;
+struct CellDec;
+void *include_encode(Analysis *w, uint32_t from, uint32_t to,
+                     struct CellEnc *e);
+void include_decode(Analysis *w, const void *blob, const struct CellDec *d);
 
 #endif

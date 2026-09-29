@@ -16,7 +16,17 @@
  * order, so the merged result is the sequential one.  prepare, if given,
  * first runs for every slice concurrently (per-worker work that needs the
  * slice: filtering, sorting), so that join stays cheap.  Any hook may be
- * NULL; a client without fork only listens to phase A. */
+ * NULL; a client without fork only listens to phase A.
+ *
+ * With a cell cache (cell.h), encode turns a worker's events with keys in
+ * [from, to) into a blob stored with the cell (in cenc_arena, locations
+ * and definitions through cenc_*), and decode turns a reused cell's blob
+ * back into worker state for wpp (a worker that does not run), which is
+ * then joined like any other.  A client with fork but no encode makes the
+ * cache unusable. */
+struct CellEnc;
+struct CellDec;
+
 typedef struct ParClient {
     void *ctx;
     void *(*fork)(void *ctx, PP *wpp);
@@ -25,6 +35,10 @@ typedef struct ParClient {
     void (*join)(void *ctx, void *wctx, uint32_t from, uint32_t to);
     void (*finish)(void *ctx, ThreadPool *pool); /* pool may be NULL */
     void (*release)(void *ctx, void *wctx);
+    void *(*encode)(void *ctx, void *wctx, uint32_t from, uint32_t to,
+                    struct CellEnc *e);
+    void *(*decode)(void *ctx, PP *wpp, const void *blob,
+                    const struct CellDec *d);
 } ParClient;
 
 #endif

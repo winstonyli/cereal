@@ -11,9 +11,12 @@
 
 #include "../analysis/analysis.h"
 #include "../mgraph.h"
+#include "../cell.h"
 #include "../par.h"
 
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 typedef struct Overlay {
     uint32_t refs;            /* atomic */
@@ -28,6 +31,7 @@ typedef struct Unit {
     bool standalone_header;   /* no compile command: may be adopted */
     Snapshot *snap;           /* latest complete, owned reference */
     Interner *in;             /* shared by its builds: ids stay stable */
+    CellCache cells;          /* phase-B results of its last build */
     uint32_t in_fresh;        /* identifiers after the interner's first build */
     long long want, built;
     uint32_t cancel;          /* atomic */
@@ -58,6 +62,22 @@ typedef struct Server {
 } Server;
 
 static Server S;
+
+/* CEREAL_LSP_STATS: timings of builds on stderr */
+static double stats_now(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+
+static bool stats_on(void)
+{
+    static int on = -1;
+    if (on < 0)
+        on = getenv("CEREAL_LSP_STATS") != NULL;
+    return on;
+}
 
 /* ---- overlays --------------------------------------------------------- */
 
@@ -146,7 +166,7 @@ static void start_tu(Snapshot *s, Analysis *an, Interner *in, uint32_t *cancel)
 /* Build a unit: preprocess, analyze and index, in parallel when the file
  * is large.  NULL if cancelled. */
 static Snapshot *build(const char *main, Overlay *ov, Options *opt,
-                       Interner *in, uint32_t *cancel)
+                       Interner *in, CellCache *cells, uint32_t *cancel)
 {
     Snapshot *s = xcalloc(1, sizeof *s);
     Analysis an;
@@ -160,6 +180,8 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
     start_tu(s, &an, in, cancel);
     memset(&po, 0, sizeof po);
     po.pool = &S.pool;
+    po.cells = cells;
+    po.cell_config = opt->fingerprint;
     {
         const char *buf;
         size_t len;
@@ -168,17 +190,31 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
     }
     cs[0] = analysis_par_client(&an);
     cs[1] = index_par_client(&s->ix);
-    r = par_run(&s->tu, main, NULL, false, &po, cs, 2);
+    {
+        double t0 = stats_now(), t1;
+        r = par_run(&s->tu, main, NULL, false, &po, cs, 2);
+        t1 = stats_now();
+        if (r == PAR_DONE)
+            analysis_finish(&an);
+        if (stats_on())
+            fprintf(stderr, "lsp: par_run %.3fs, analyses %.3fs\n", t1 - t0,
+                    stats_now() - t1);
+    }
     if (r == PAR_DONE) {
-        analysis_finish(&an);
+        /* finished above */
     } else if (r == PAR_FALLBACK) {
+        analysis_discard(&an);
         index_free(&s->ix);
         tu_free(&s->tu);
         start_tu(s, &an, in, cancel);
         if (tu_begin(&s->tu, main)) {
             index_run(&s->ix);
             analysis_finish(&an);
+        } else {
+            analysis_discard(&an);
         }
+    } else {
+        analysis_discard(&an); /* could not be opened */
     }
     /* complete: the listeners' state (analysis) was on this stack */
     s->tu.pp.listeners.len = 0;
@@ -191,7 +227,12 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
         free(s);
         return NULL;
     }
-    mgraph_build(&s->graph, &s->tu.pp);
+    {
+        double t = stats_now();
+        mgraph_build(&s->graph, &s->tu.pp);
+        if (stats_on())
+            fprintf(stderr, "lsp: macro graph %.3fs\n", stats_now() - t);
+    }
     return s;
 }
 
@@ -300,6 +341,7 @@ static void *builder_main(void *arg)
         Options *opt;
         Snapshot *snap, *old = NULL;
         long long want;
+        double t0, t1, t2;
         if (!S.queue.len) {
             cond_wait(&S.work, &S.m);
             continue;
@@ -311,8 +353,10 @@ static void *builder_main(void *arg)
         u->building = true;
         want = u->want;
         atomic_store_u32(&u->cancel, 0);
+        t0 = stats_now();
         ov = overlay_capture();
         mutex_unlock(&S.m);
+        t1 = stats_now();
 
         /* names typed and deleted pile up in a shared interner: start a
          * new one when it has grown well past what a build needs */
@@ -323,9 +367,10 @@ static void *builder_main(void *arg)
         if (!u->in) {
             u->in = interner_new();
             u->in_fresh = 0;
+            cell_cache_free(&u->cells); /* cells hold identifiers */
         }
         opt = config_options_for(&S.cfg, u->main);
-        snap = build(u->main, ov, opt, u->in, &u->cancel);
+        snap = build(u->main, ov, opt, u->in, &u->cells, &u->cancel);
         if (snap && !u->in_fresh)
             u->in_fresh = interner_count(u->in);
         if (!snap) {
@@ -340,7 +385,11 @@ static void *builder_main(void *arg)
             u->snap = snap;
             u->built = want;
             adopt_headers(u);
+            t2 = stats_now();
             lsp_publish_diagnostics(snap, S.enc, doc_open_in, u);
+            if (stats_on())
+                fprintf(stderr, "lsp: overlay %.3fs, build %.3fs, publish "
+                        "%.3fs\n", t1 - t0, t2 - t1, stats_now() - t2);
             if (S.inactive_regions) {
                 size_t i;
                 for (i = 0; i < S.docs.len; i++)
@@ -798,12 +847,19 @@ int lsp_main(FILE *in, FILE *out)
     rpc_set_output(out);
     if (pthread_create(&S.builder, NULL, builder_main, NULL) != 0)
         fatal("cannot start the builder thread");
-    while ((body = rpc_read(in, &len)) != NULL) {
+    for (;;) {
         Arena a;
         JsonValue *msg, *id, *params;
         const char *method;
+        double t0 = stats_now(), t1;
+        if (!(body = rpc_read(in, &len)))
+            break;
+        t1 = stats_now();
         arena_init(&a);
         msg = json_parse(&a, body, len); /* values point into body */
+        if (stats_on() && len > (1u << 20))
+            fprintf(stderr, "lsp: %zu-byte message: read %.3fs, parse %.3fs\n",
+                    len, t1 - t0, stats_now() - t1);
         if (!msg || msg->kind != JV_OBJ) {
             respond_error(NULL, -32700, "parse error");
             free(body);
@@ -878,6 +934,7 @@ int lsp_main(FILE *in, FILE *out)
         size_t i;
         for (i = 0; i < S.units.len; i++) {
             snapshot_release(S.units.data[i]->snap);
+            cell_cache_free(&S.units.data[i]->cells);
             interner_release(S.units.data[i]->in);
             free(S.units.data[i]->main);
             free(S.units.data[i]);

@@ -156,8 +156,12 @@ TokSrc pp_read_raw(PP *pp, Tok *t)
                 !((t->flags & TF_BOL) && tok_is_punct(t, P_HASH)))
                 guard_note_activity(pp);
         }
-        if (t->kind == TK_IDENT && !reread && pp->mt->npoison)
-            check_poison_tok(pp, t);
+        if (t->kind == TK_IDENT) {
+            if (pp->reads) /* poisoning is read even without a lookup */
+                cell_reads_note(pp->reads, t->aux, pp->version_item);
+            if (!reread && pp->mt->npoison)
+                check_poison_tok(pp, t);
+        }
         pp->tok_exp_loc = t->loc;
         pp->tok_root_obj = false;
         pp->tok_exp_id = NO_EXP;
@@ -1877,25 +1881,55 @@ static void phase_a_finish_dir(PP *pp, size_t dir_item)
 
 /* Record the text from the lexer's position (a line start) up to the next
  * directive line as segments, split at certified line starts. */
+/* Content-defined cuts: a line fires with probability proportional to its
+ * length (about once per `chunk` bytes), decided by a hash of its text,
+ * once `chunk / 4` bytes have passed since the last cut.  A cut lands on
+ * the next line start, or on the first segment after a directive. */
+static void cdc_line(Plan *plan, const char *p, size_t n)
+{
+    uint64_t h;
+    plan->cdc_bytes += n;
+    if (plan->cdc_fire || plan->cdc_bytes < plan->chunk / 4)
+        return;
+    h = hash_bytes(p, n) & 0xFFFFu;
+    if (h * plan->chunk < (uint64_t)n * 0x10000u)
+        plan->cdc_fire = true;
+}
+
 static void phase_a_segment(PP *pp)
 {
     Lexer *L = &pp->lex;
+    Plan *plan = pp->plan;
     SrcLoc chunk_start = lexer_loc(L), end;
     bool content = false, split = false;
-    size_t chunk = pp->plan->chunk;
+    size_t chunk = plan->chunk;
+    size_t max = plan->cdc ? 4 * chunk : chunk;
+    bool cut = false;
     DiagEngine *d = L->diag;
     L->diag = NULL; /* the workers lex this text and report */
+    if (plan->cdc && plan->cdc_fire) { /* due since before the directive */
+        cut = true;
+        plan->cdc_fire = false;
+        plan->cdc_bytes = 0;
+    }
     for (;;) {
         SrcLoc line = lexer_loc(L);
-        if (chunk && line - chunk_start >= chunk && content) {
+        const char *lp = L->p;
+        bool due = chunk && content &&
+                   (line - chunk_start >= max || (plan->cdc && plan->cdc_fire));
+        if (due) {
             PlanItem *it = plan_add(pp, PI_SEG);
             it->begin = chunk_start;
             it->end = line;
             it->split = split;
-            pp->plan->text_bytes += line - chunk_start;
+            it->cut = cut;
+            plan->text_bytes += line - chunk_start;
             chunk_start = line;
             content = false;
             split = true;
+            cut = plan->cdc;
+            plan->cdc_fire = false;
+            plan->cdc_bytes = 0;
         }
         if (lex_line_is_directive(L)) {
             end = lexer_loc(L);
@@ -1905,18 +1939,26 @@ static void phase_a_segment(PP *pp)
             content = true;
         if (!lex_next_line(L)) {
             end = lexer_loc(L);
+            if (plan->cdc)
+                cdc_line(plan, lp, (size_t)(L->p - lp));
             break;
         }
+        if (plan->cdc)
+            cdc_line(plan, lp, (size_t)(L->p - lp));
     }
     if (content) {
         PlanItem *it = plan_add(pp, PI_SEG);
         it->begin = chunk_start;
         it->end = end;
         it->split = split;
-        pp->plan->text_bytes += end - chunk_start;
+        it->cut = cut;
+        plan->text_bytes += end - chunk_start;
         guard_note_activity(pp);
-    } else if (split) {
-        guard_note_activity(pp);
+    } else {
+        if (split)
+            guard_note_activity(pp);
+        if (cut) /* no text here: the next segment takes the cut */
+            plan->cdc_fire = true;
     }
     L->bol = true;
     L->space = false;
@@ -1986,6 +2028,7 @@ void pp_plan_start(PP *pp, Plan *plan, size_t item)
     pp->seg_active = false;
     pp->versioned = true;
     pp->version = it->version;
+    pp->version_item = (uint32_t)item;
     pp->counter = it->counter;
     /* the frame in effect before this item */
     pp->inc = frame_from_plan(pp, it->kind == PI_ENTER ? it->frame->parent
@@ -1999,6 +2042,7 @@ void pp_plan_apply_dir(PP *pp, uint32_t item)
 {
     const PlanItem *it = &pp->plan->items.data[item];
     pp->version = it->version;
+    pp->version_item = item;
     pp->counter = it->counter;
     apply_frame(pp, it->frame);
 }
@@ -2036,6 +2080,7 @@ static bool plan_read(PP *pp, Tok *t)
                 return true;
             }
             pp->version = it->version;
+            pp->version_item = (uint32_t)pp->plan_pos;
             pp->counter = it->counter;
             apply_frame(pp, it->frame);
             lexer_free(&pp->lex);

@@ -1,6 +1,7 @@
 /* index.c - the LSP-facing model of a translation unit's macros. */
 #include "index.h"
 #include "json.h"
+#include "cell.h"
 
 #include <string.h>
 
@@ -25,6 +26,9 @@ static void add_ref(Index *ix, Ident *name, Macro *m, SrcLoc loc, uint32_t len,
     r.kind = kind;
     r.flags = flags | (loc_is_system(ix, loc) ? IREF_SYSTEM : 0);
     r.exp = e;
+    if (ix->refs.len && (!e || !vec_last(&ix->refs).exp ||
+                         e->id < vec_last(&ix->refs).exp->id))
+        ix->refs_by_id = -1;
     vec_push(&ix->refs, r);
     ix->sorted = false;
 }
@@ -348,15 +352,44 @@ static void merge_refs(Index *ix)
         total += w->prep_refs.len;
     }
     out = xmalloc(sizeof(IdxRef) * (total + 1));
-    for (;;) {
-        size_t best = nr;
+    {
+        /* a binary heap of run indexes, by each run's current ref */
+        size_t *heap = xmalloc(sizeof(size_t) * (nr + 1)), nh = 0, i;
+#define HLESS(a, b) (ref_cmp(cur[heap[a]], cur[heap[b]]) < 0 || \
+                     (ref_cmp(cur[heap[a]], cur[heap[b]]) == 0 && \
+                      heap[a] < heap[b]))
         for (r = 0; r < nr; r++)
-            if (cur[r] != end[r] &&
-                (best == nr || ref_cmp(cur[r], cur[best]) < 0))
-                best = r;
-        if (best == nr)
-            break;
-        out[o++] = *cur[best]++;
+            if (cur[r] != end[r]) {
+                size_t k = nh++;
+                heap[k] = r;
+                while (k && HLESS(k, (k - 1) / 2)) {
+                    size_t t = heap[k];
+                    heap[k] = heap[(k - 1) / 2];
+                    heap[(k - 1) / 2] = t;
+                    k = (k - 1) / 2;
+                }
+            }
+        while (nh) {
+            size_t top = heap[0];
+            out[o++] = *cur[top]++;
+            if (cur[top] == end[top])
+                heap[0] = heap[--nh];
+            for (i = 0;;) { /* sift down */
+                size_t l = 2 * i + 1, m = i, t;
+                if (l < nh && HLESS(l, m))
+                    m = l;
+                if (l + 1 < nh && HLESS(l + 1, m))
+                    m = l + 1;
+                if (m == i)
+                    break;
+                t = heap[i];
+                heap[i] = heap[m];
+                heap[m] = t;
+                i = m;
+            }
+        }
+#undef HLESS
+        free(heap);
     }
     vec_free(&ix->refs);
     ix->refs.data = out;
@@ -513,6 +546,237 @@ static void ix_finish(void *ctx, ThreadPool *pool)
     merge_refs(ix); /* ids are final now */
 }
 
+/* ---- cells ---------------------------------------------------------- *
+ * A slice's expansions and their refs, relative to the cell.  Expansions
+ * are numbered within the cell (a tree never leaves its slice). */
+typedef struct CExp {
+    uint32_t key, parent, root, seq_item, macro;
+    uint16_t depth, name_flags;
+    CLoc name_loc, end_loc;
+    int nargs;
+    const char **args;
+    const char *text;
+    uint32_t text_len;
+    struct Ident **arg_names;
+    uint32_t narg_names;
+} CExp;
+
+typedef struct CRef {
+    struct Ident *name;
+    uint32_t macro, len, exp;
+    CLoc loc;
+    uint8_t kind;
+    uint8_t flags;
+} CRef;
+
+typedef struct IxBlob {
+    CExp *exps;
+    uint32_t nexps;
+    CRef *refs;
+    uint32_t nrefs;
+} IxBlob;
+
+/* Expansion ids [lo, hi) holding every expansion with key in [from, to):
+ * keys do not decrease with ids in a worker (NULL slots: none). */
+static void exp_range(Index *w, uint32_t from, uint32_t to, size_t *lo,
+                      size_t *hi)
+{
+    size_t n = w->exps.len, a = 0, b = n;
+    while (a < b) { /* first id with key >= from (NULLs skipped forward) */
+        size_t mid = a + (b - a) / 2, m = mid;
+        while (m < b && !w->exps.data[m])
+            m++;
+        if (m == b || w->exps.data[m]->key >= from)
+            b = mid;
+        else
+            a = m + 1;
+    }
+    *lo = a;
+    b = n;
+    while (a < b) {
+        size_t mid = a + (b - a) / 2, m = mid;
+        while (m < b && !w->exps.data[m])
+            m++;
+        if (m == b || w->exps.data[m]->key >= to)
+            b = mid;
+        else
+            a = m + 1;
+    }
+    *hi = a;
+}
+
+/* Refs [rlo, rhi) whose expansions have ids in [lo, hi): refs are recorded
+ * with their expansions, in id order. */
+static void ref_range(Index *w, size_t lo, size_t hi, size_t *rlo,
+                      size_t *rhi)
+{
+    size_t n = w->refs.len, a = 0, b = n;
+    if (w->refs_by_id < 0) { /* the caller filters */
+        *rlo = 0;
+        *rhi = n;
+        return;
+    }
+    while (a < b) {
+        size_t mid = a + (b - a) / 2;
+        if (w->refs.data[mid].exp->id < lo)
+            a = mid + 1;
+        else
+            b = mid;
+    }
+    *rlo = a;
+    b = n;
+    while (a < b) {
+        size_t mid = a + (b - a) / 2;
+        if (w->refs.data[mid].exp->id < hi)
+            a = mid + 1;
+        else
+            b = mid;
+    }
+    *rhi = a;
+}
+
+static void *ix_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
+                       CellEnc *e)
+{
+    Index *w = wctx;
+    Arena *a = cenc_arena(e);
+    IxBlob *b = NEW(a, IxBlob);
+    size_t n = w->exps.len, i, k = 0, nr = 0;
+    size_t lo, hi, rlo, rhi;
+    uint32_t *local;
+    (void)ctx;
+    /* a worker records in plan order: keys never decrease with ids, and
+     * refs follow their expansions' ids */
+    exp_range(w, from, to, &lo, &hi);
+    local = xmalloc(sizeof(uint32_t) * (hi - lo + 1));
+    for (i = lo; i < hi; i++) {
+        IdxExp *x = w->exps.data[i];
+        local[i - lo] = x && x->key >= from && x->key < to ? (uint32_t)k++
+                                                             : UINT32_MAX;
+    }
+#define LOCAL(id) ((id) >= lo && (id) < hi ? local[(id) - lo] : UINT32_MAX)
+    b->nexps = (uint32_t)k;
+    b->exps = NEW_ARRAY(a, CExp, k + 1);
+    for (i = lo; i < hi; i++) {
+        IdxExp *x = w->exps.data[i];
+        CExp *c;
+        Expansion *ex;
+        int j;
+        if (local[i - lo] == UINT32_MAX)
+            continue;
+        c = &b->exps[local[i - lo]];
+        ex = x->e;
+        c->key = cenc_item(e, x->key);
+        c->parent = ex->parent == NO_EXP ? UINT32_MAX : LOCAL(ex->parent);
+        c->root = LOCAL(ex->root);
+        if (c->root == UINT32_MAX ||
+            (ex->parent != NO_EXP && c->parent == UINT32_MAX))
+            e->ok = false; /* cannot happen: trees stay in their slice */
+        c->seq_item = cenc_item(e, ex->seq_item);
+        c->macro = cenc_macro(e, ex->macro);
+        c->depth = ex->depth;
+        c->name_flags = ex->name_flags;
+        c->name_loc = cenc_loc(e, ex->name_loc);
+        c->end_loc = cenc_loc(e, ex->end_loc);
+        if (ex->in_directive)
+            e->ok = false; /* phase A's: never in a worker */
+        c->nargs = x->nargs;
+        c->args = NEW_ARRAY(a, const char *, x->nargs + 1);
+        for (j = 0; j < x->nargs; j++)
+            c->args[j] = cenc_str(e, x->args[j]);
+        c->text_len = (uint32_t)x->text.len;
+        c->text = x->text.len ? arena_strndup(a, x->text.data, x->text.len)
+                              : NULL;
+        c->narg_names = (uint32_t)x->arg_names.len;
+        c->arg_names = NEW_ARRAY(a, struct Ident *, x->arg_names.len + 1);
+        if (x->arg_names.len)
+            memcpy(c->arg_names, x->arg_names.data,
+                   sizeof(struct Ident *) * x->arg_names.len);
+    }
+    ref_range(w, lo, hi, &rlo, &rhi);
+    for (i = rlo; i < rhi; i++)
+        if (w->refs.data[i].exp && LOCAL(w->refs.data[i].exp->id) != UINT32_MAX)
+            nr++;
+    b->refs = NEW_ARRAY(a, CRef, nr + 1);
+    for (i = rlo; i < rhi; i++) {
+        IdxRef *r = &w->refs.data[i];
+        CRef *c;
+        if (!(r->exp && LOCAL(r->exp->id) != UINT32_MAX))
+            continue;
+        c = &b->refs[b->nrefs++];
+        c->name = r->name;
+        c->macro = cenc_macro(e, r->macro);
+        c->len = r->len;
+        c->exp = LOCAL(r->exp->id);
+        c->loc = cenc_loc(e, r->loc);
+        c->kind = (uint8_t)r->kind;
+        c->flags = (uint8_t)r->flags;
+    }
+#undef LOCAL
+    free(local);
+    (void)n;
+    return b;
+}
+
+static void *ix_decode(void *ctx, PP *wpp, const void *blob, const CellDec *d)
+{
+    const IxBlob *b = blob;
+    Index *w = NEW(wpp->arena, Index);
+    Arena *a = wpp->arena;
+    uint32_t i;
+    (void)ctx;
+    memset(w, 0, sizeof *w);
+    w->pp = wpp;
+    w->arena = a;
+    w->sm = wpp->sm;
+    for (i = 0; i < b->nexps; i++) {
+        const CExp *c = &b->exps[i];
+        Expansion *ex = NEW(a, Expansion);
+        ex->id = i;
+        ex->parent = c->parent == UINT32_MAX ? NO_EXP : c->parent;
+        ex->root = c->root;
+        ex->depth = c->depth;
+        ex->name_flags = c->name_flags;
+        ex->macro = cdec_macro(d, c->macro);
+        ex->name_loc = cdec_loc(d, c->name_loc);
+        ex->end_loc = cdec_loc(d, c->end_loc);
+        ex->seq_item = cdec_item(d, c->seq_item);
+        ex->seq = cdec_version(d, c->seq_item);
+        vec_push(&wpp->expansions, ex);
+    }
+    for (i = 0; i < b->nexps; i++) {
+        const CExp *c = &b->exps[i];
+        IdxExp *x = exp_of(w, wpp->expansions.data[i]);
+        int j;
+        x->root = wpp->expansions.data[c->root];
+        x->depth = c->depth;
+        x->key = cdec_item(d, c->key);
+        x->nargs = c->nargs;
+        if (c->nargs) {
+            x->args = NEW_ARRAY(a, char *, c->nargs);
+            for (j = 0; j < c->nargs; j++)
+                x->args[j] = arena_strdup(a, c->args[j]);
+        }
+        if (c->text_len)
+            sb_putn(&x->text, c->text, c->text_len);
+        for (j = 0; j < (int)c->narg_names; j++)
+            vec_push(&x->arg_names, c->arg_names[j]);
+    }
+    for (i = 0; i < b->nrefs; i++) {
+        const CRef *c = &b->refs[i];
+        IdxRef r;
+        r.name = c->name;
+        r.macro = cdec_macro(d, c->macro);
+        r.loc = cdec_loc(d, c->loc);
+        r.len = c->len;
+        r.kind = (RefKind)c->kind;
+        r.flags = c->flags;
+        r.exp = wpp->expansions.data[c->exp];
+        vec_push(&w->refs, r);
+    }
+    return w;
+}
+
 static void ix_release(void *ctx, void *wctx)
 {
     (void)ctx;
@@ -530,6 +794,8 @@ ParClient index_par_client(Index *ix)
     c.join = ix_join;
     c.finish = ix_finish;
     c.release = ix_release;
+    c.encode = ix_encode;
+    c.decode = ix_decode;
     return c;
 }
 

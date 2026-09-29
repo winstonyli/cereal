@@ -16,6 +16,10 @@ typedef struct ParOptions {
     ThreadPool *pool;        /* shared pool (NULL: a private one) */
     size_t size_hint;        /* main file size if not the one on disk
                                 (an editor buffer); 0: stat the file */
+    struct CellCache *cells; /* reuse and store phase-B results (cell.h);
+                                no -E output with a cache */
+    uint64_t cell_config;    /* fingerprint of what else the results depend
+                                on (options); a change empties the cache */
 } ParOptions;
 
 typedef enum {

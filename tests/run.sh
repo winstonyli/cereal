@@ -6,7 +6,8 @@
 #   4. query: LSP index queries against expected output
 #   5. parallel: `-fparallel=on` byte-identical to sequential for -E, lint
 #      and index (output, diagnostics, exit status) at adversarial chunk
-#      sizes, plus a fuzzer
+#      sizes, plus a fuzzer; the cell cache: random edit sequences, each
+#      build byte-identical to a full sequential one (tests/fuzz_cells.py)
 #   6. gcc fuzz: random programs vs $REFCC (tests/fuzz_gcc.py, fixed seed)
 #   7. -j: many translation units at once print exactly what -j1 prints
 #   8. macro graph: every expansion lies in its invocation's static closure
@@ -155,6 +156,12 @@ if python3 "$ROOT/tests/fuzz_par.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}"
 else
     bad "parallel fuzz"
     sed 's/^/    /' "$TMP/fz" | tail -10
+fi
+if python3 "$ROOT/tests/fuzz_cells.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}" >"$TMP/fc" 2>&1; then
+    ok
+else
+    bad "cell cache fuzz (random edits vs full rebuilds)"
+    sed 's/^/    /' "$TMP/fc" | tail -10
 fi
 
 jobs_same() { # jobs_same NAME DIR ARGS...

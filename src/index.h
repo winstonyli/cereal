@@ -91,6 +91,8 @@ typedef struct Index {
     VEC(IdxJoined) prep_kept;
     VEC(IdxRef) prep_refs;
     VEC(struct Index *) runs;  /* main: joined workers, for the ref merge */
+    int8_t refs_by_id;        /* refs in expansion id order (0: yes, as far
+                                 as recorded; -1: no) */
     bool sorted;
 } Index;
 

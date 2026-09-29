@@ -239,5 +239,74 @@ issued once per file instead of once per line (GCC's behavior).
    every test input and fuzzed programs. Using the closures to pipeline
    phases A and B is left for when phase A is the bottleneck (`skipped`).
 8. (d) Header memoization on disk, keyed by the dependency sets.
+9. **Done.** Cell cache: phase B reused across builds of an edited unit
+   (the language server). See "Cells" below and docs/LSP.md.
+10. Index kept per cell, queries walking cells: removes the global
+   renumbering and ref merge that now dominate an edit.
+
+## Cells
+
+A *cell* is a run of plan items that a worker preprocessed from a fresh
+start and left clean, so its results depend only on what it read
+(`src/cell.[ch]`). With a cache (`ParOptions.cells`, no `-E` output):
+
+- Phase A splits text at **content-defined** points (a line whose hash
+  says so, about every `chunk` bytes, at least `chunk / 4` apart; the
+  first segment after a directive when due). An edit moves only the
+  boundaries next to it. Items that begin at such a point are the
+  candidates where cells start.
+- Before phase B, a lookup at every candidate (and at the end of every
+  reused cell) finds cached cells whose key still holds. Workers cover
+  the rest; a worker that reaches a reused cell's start cleanly stops
+  there, one that reaches it inside an invocation runs on.
+- After phase B, every slice a worker ran is split at the clean candidate
+  boundaries it crossed and stored as cells; reused cells are decoded into
+  workers that never run. All slices join exactly as in a normal run.
+
+**Relative storage.** A cell keeps nothing of the build that made it,
+except identifiers (a unit's builds share an interner):
+- locations as (item of the cell, offset), (definition it read, offset
+  from its `#`), or (ancestor frame of an item: an `#include` line
+  outside the cell);
+- definitions as indexes into its read set (`pop_macro` copies through
+  their original);
+- versions as the item that set them (`Expansion.seq_item`).
+A location that fits none of these makes the cell uncacheable.
+
+**Key.** Checked on reuse:
+- items: kind, split and cut flags, segment text, pragma text, frame
+  (file, presumed name, depth, system flag), all hashed;
+- the read set, recorded by workers: every (identifier, item) looked up
+  or lexed, with the fingerprint of what was found (a definition's text,
+  file and flags; none; poisoned or not). Reads that found one definition
+  must find one definition again, and different ones different ones
+  (an identical redefinition can appear between two reads);
+- presumed line numbers, if `__LINE__` was expanded;
+- whether the cell ended the TU;
+- options (once per cache).
+A cancelled or halted build stores nothing and evicts nothing.
+
+**Tests.** `tests/fuzz_cells.py` follows random programs through random
+edit sequences (lines inserted, deleted, replaced, moved, characters
+changed, in the main file and headers) with two `cereal index --replay`
+processes, one reusing cells and one sequential without a cache; every
+build's diagnostics and index must be byte-identical. Directed cases
+cover the checks random edits rarely reach (removing any of them fails
+the suite): an identical redefinition between two reads, a moved
+definition, `__LINE__` below an edit, poisoning added above, a header
+changed under an unchanged main file. Also run under TSan and ASan/UBSan.
+
+**Measured** (35 MB macro_heavy.c, 4 cores, `index --replay`):
+
+| Build | Time |
+|---|---|
+| first (all cells computed and stored) | 2.1 s (1.6 s without a cache) |
+| no change | 0.45 s |
+| a line inserted mid-file (1 cell rerun) | 0.3-0.5 s |
+
+Of an edit, phase B is 15 ms; the rest is phase A (0.06 s), lookups
+(0.02 s), decoding (0.05 s) and the index's global renumbering and ref
+merge (0.13-0.3 s), which step 10 removes. The cache costs about 10x the
+text in memory (350 MB here).
 
 (b) and (c) are dropped, because (e) subsumes them.

@@ -32,6 +32,7 @@ typedef enum {
 typedef struct PlanItem {
     uint8_t kind;
     bool split;                /* SEG: begins at a line start, not a directive */
+    bool cut;                  /* SEG: a content-defined cell boundary (cdc) */
     uint32_t version;          /* macro version in effect after this item */
     uint32_t counter;          /* __COUNTER__ value after this item */
     SrcLoc begin, end;         /* PI_PRAGMA: end indexes Plan.pragmas */
@@ -43,6 +44,12 @@ typedef struct Plan {
     VEC(Tok) pragmas;          /* TK_PRAGMA tokens of PI_PRAGMA items */
     uint64_t text_bytes;       /* total segment bytes */
     size_t chunk;              /* max segment size before a split */
+    /* Content-defined splitting (for the cell cache): split where the text
+     * says so rather than every `chunk` bytes, so that an edit moves only
+     * the boundaries next to it.  Averages about `chunk` bytes. */
+    bool cdc;
+    uint64_t cdc_bytes;        /* text since the last cut */
+    bool cdc_fire;             /* a cut is due at the next line start */
 } Plan;
 
 void plan_free(Plan *p);

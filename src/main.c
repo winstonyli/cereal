@@ -4,6 +4,7 @@
 #include "ppout.h"
 #include "analysis/analysis.h"
 #include "index.h"
+#include "cell.h"
 #include "lsp/lsp.h"
 
 #include <string.h>
@@ -17,6 +18,9 @@ static void usage(FILE *o)
         "  -E            preprocess to stdout (or -o FILE)\n"
         "  lint          run the preprocessor analyses\n"
         "  index         dump the macro index (LSP model) as JSON\n"
+        "                --all  --check-graph\n"
+        "                --replay [--no-cells] [--no-output]: rebuild on each\n"
+        "                line of stdin, reusing cells (testing, timing)\n"
         "  lsp           language server on stdin/stdout\n"
         "  query KIND FILE:LINE:COL   KIND = def | refs | hover | visible | expand\n"
         "  --list-warnings  list every -W option\n"
@@ -105,9 +109,12 @@ static int lint_one(Options *o, const char *path, FILE *out, FILE *err)
         ParResult r = par_run(&tu, path, NULL, false, &po, &c, 1);
         if (r == PAR_DONE)
             analysis_finish(&an);
+        else if (r == PAR_FAILED)
+            analysis_discard(&an);
         if (r != PAR_FALLBACK)
             goto done;
-        tu_free(&tu); /* diverged or not worth it: start over */
+        analysis_discard(&an); /* diverged or not worth it: start over */
+        tu_free(&tu);
         tu_init(&tu, o);
         tu.diag.out = err;
         memset(&an, 0, sizeof an);
@@ -116,6 +123,8 @@ static int lint_one(Options *o, const char *path, FILE *out, FILE *err)
     if (tu_begin(&tu, path)) {
         tu_drain(&tu);
         analysis_finish(&an);
+    } else {
+        analysis_discard(&an);
     }
 done:
     rc = finish(&tu, out);
@@ -308,6 +317,76 @@ static int mode_index(Options *o, bool all, bool check_graph)
         diag_flush(&tu.diag);
     index_free(&ix);
     tu_free(&tu);
+    return rc;
+}
+
+/* index --replay: rebuild the input each time a line arrives on stdin (the
+ * files are re-read), as the language server does after an edit: analyses
+ * and index, one interner and, unless --no-cells, one cell cache for all
+ * builds.  Prints each build's diagnostics (JSON) and index (unless
+ * --no-output), then a line "=== end".  For differential tests of the
+ * cache, and timing. */
+static int mode_replay(Options *o, bool all, bool cells, bool quiet)
+{
+    Interner *in = interner_new();
+    CellCache cache;
+    char line[256];
+    int rc = 0;
+    if (o->inputs.len != 1) {
+        fputs("cereal: index --replay needs exactly one input file\n", stderr);
+        return 2;
+    }
+    cell_cache_init(&cache);
+    while (fgets(line, sizeof line, stdin)) {
+        const char *path = o->inputs.data[0];
+        TU tu;
+        Index ix;
+        Analysis an;
+        ParOptions po = par_options(o);
+        ParClient cs[2];
+        ParResult r;
+        if (line[0] == 'q')
+            break;
+        tu_init_shared(&tu, o, in);
+        memset(&an, 0, sizeof an);
+        analysis_attach(&an, &tu.pp);
+        index_init(&ix, &tu.pp);
+        po.cells = cells ? &cache : NULL;
+        cs[0] = analysis_par_client(&an);
+        cs[1] = index_par_client(&ix);
+        r = o->parallel == 'n' ? PAR_FALLBACK
+                               : par_run(&tu, path, NULL, false, &po, cs, 2);
+        if (r == PAR_DONE) {
+            analysis_finish(&an);
+        } else if (r == PAR_FALLBACK) {
+            analysis_discard(&an);
+            index_free(&ix);
+            tu_free(&tu);
+            tu_init_shared(&tu, o, in);
+            memset(&an, 0, sizeof an);
+            analysis_attach(&an, &tu.pp);
+            index_init(&ix, &tu.pp);
+            if (tu_begin(&tu, path)) {
+                index_run(&ix);
+                analysis_finish(&an);
+            } else {
+                analysis_discard(&an);
+            }
+        } else {
+            analysis_discard(&an);
+        }
+        if (!quiet) {
+            diag_print_json(&tu.diag, stdout);
+            index_dump_json(&ix, stdout, all);
+        }
+        fputs("=== end\n", stdout);
+        fflush(stdout);
+        rc |= tu.diag.nerrors ? 1 : 0;
+        index_free(&ix);
+        tu_free(&tu);
+    }
+    cell_cache_free(&cache);
+    interner_release(in);
     return rc;
 }
 
@@ -522,7 +601,8 @@ int main(int argc, char **argv)
 {
     Options o;
     const char *mode = NULL, *qkind = NULL, *qat = NULL;
-    bool all = false, check_graph = false;
+    bool all = false, check_graph = false, replay = false, no_cells = false,
+         quiet = false;
     int i, rc = 0;
     options_init(&o);
     if (argc < 2) {
@@ -552,6 +632,18 @@ int main(int argc, char **argv)
             check_graph = true;
             continue;
         }
+        if (!strcmp(argv[i], "--replay")) {
+            replay = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--no-cells")) {
+            no_cells = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--no-output")) {
+            quiet = true;
+            continue;
+        }
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
             usage(stdout);
             return 0;
@@ -576,6 +668,8 @@ int main(int argc, char **argv)
         rc = mode_preprocess(&o);
     else if (!strcmp(mode, "lint"))
         rc = mode_lint(&o);
+    else if (!strcmp(mode, "index") && replay)
+        rc = mode_replay(&o, all, !no_cells, quiet);
     else if (!strcmp(mode, "index"))
         rc = mode_index(&o, all, check_graph);
     else if (!strcmp(mode, "query"))

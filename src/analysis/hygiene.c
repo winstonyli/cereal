@@ -641,6 +641,12 @@ void *hygiene_fork(Analysis *a, Analysis *w)
     return w->hyg;
 }
 
+void hygiene_decode(Analysis *w)
+{
+    w->hyg = NEW(w->arena, HygieneState);
+    memset(w->hyg, 0, sizeof *w->hyg);
+}
+
 void hygiene_release(Analysis *w)
 {
     vec_free(&w->hyg->reported);

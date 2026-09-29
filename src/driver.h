@@ -31,6 +31,7 @@ typedef struct Options {
     size_t par_chunk;   /* 0: default */
     unsigned par_window;
     int jobs;           /* -j: concurrent TUs (<= 0: cpu_count()) */
+    uint64_t fingerprint; /* of the flags (language server: cell caches) */
 } Options;
 
 typedef struct TU {

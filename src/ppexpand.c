@@ -725,6 +725,7 @@ static Expansion *new_expansion(PP *pp, Macro *m, const Tok *name,
     e->name_loc = name->loc;
     e->end_loc = name->loc + name->len;
     e->seq = pp->versioned ? pp->version : pp->seq;
+    e->seq_item = pp->version_item;
     vec_push(&pp->expansions, e);
     return e;
 }
@@ -773,6 +774,8 @@ static Tok builtin_token(PP *pp, Macro *m, const Tok *name, SrcLoc exp_loc)
     uint16_t fl = (uint16_t)((name->flags & (TF_SPACE | TF_BOL)) | TF_SYNTH);
     switch (m->builtin) {
     case BUILTIN_LINE:
+        if (pp->reads) /* the result depends on absolute line numbers */
+            cell_reads_line(pp->reads, pp->diag->key);
         sprintf(buf, "%u", pp_presumed_line(pp, exp_loc));
         break;
     case BUILTIN_FILE:
@@ -1180,7 +1183,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
     uint32_t eid, root;
     Context c;
     TokBuf pragmas = {0};
-    uint32_t vseq;
+    uint32_t vseq, vitem;
     bool root_obj = src == SRC_LEXER ? !m->funclike : pp->tok_root_obj;
     bool saved_root_obj = pp->subst_root_obj;
 
@@ -1240,6 +1243,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
             return false;
         }
         vseq = pp->versioned ? pp->version : pp->seq; /* at the name */
+        vitem = pp->version_item;
         if (!collect_args(pp, m, name, &lp, &a)) {
             if (a.pragmas.len == 0) {
                 tokbuf_release(pp, &a.pragmas);
@@ -1259,6 +1263,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         if (e) {
             e->end_loc = a.rparen_loc + a.rparen_len;
             e->seq = vseq;
+            e->seq_item = vitem;
         }
         count_expansion(pp, m);
         if (pp->track != TRACK_NONE) {

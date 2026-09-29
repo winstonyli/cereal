@@ -255,7 +255,8 @@ Macro ***mgraph_cycles(const MacroGraph *g, uint32_t version, Arena *a,
             }
         }
     }
-    qsort(comps.data, comps.len, sizeof *comps.data, comp_cmp);
+    if (comps.len > 1)
+        qsort(comps.data, comps.len, sizeof *comps.data, comp_cmp);
     out = NEW_ARRAY(a, Macro **, comps.len + 1);
     if (comps.len)
         memcpy(out, comps.data, sizeof(Macro **) * comps.len);
