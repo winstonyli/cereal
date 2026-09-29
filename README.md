@@ -32,7 +32,9 @@ Output and diagnostics come out in input order, identical to `-j1`.
 `-E` also preprocesses large files in parallel. It uses two phases: directives
 first, then the text on all cores. The output is byte-identical to a
 sequential run. See `-fparallel=auto|on|off`, `-fparallel-threads=N` and
-docs/PARALLEL.md; parser plan: docs/PARSER.md.
+docs/PARALLEL.md.
+
+The C parser is planned in docs/PARSER.md.
 
 ## What lint finds
 
