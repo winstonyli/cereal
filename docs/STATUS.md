@@ -48,6 +48,16 @@ layouts, gcc rules ported, walk design).
    type name, 7525 (74.8%) after the declarator-list expectations ("expected
    ',' or ';'", "'=', ',', ';', 'asm' or '__attribute__'", missing ';' at
    the end of the previous token).  Identical-header files: 379/939.
+   After c_parser_require's location rule (a missing ')' ']' ';' ',' ':'
+   goes at the end of the previous token unless an error is pending,
+   Parser.err_live) and gcc's struct-member terminator lists: 7929/10063
+   (78.8%), identical-header files 382/939.  Biggest known levers left:
+   (a) tokens from macro expansions: gcc reports at the spelling location
+   inside the macro definition (20020103-1.c:22:7), cereal at the expansion
+   point (37:3) -- about 500 gcc-only/cereal-only pairs; (b) "expected X"
+   before statements/expressions not yet compared; (c) 'undeclared ...; did
+   you mean' (fuzzy lookup), "assignment of read-only location" quoting,
+   "cannot initialize array of ... from a string literal" wording.
 2. gcc.dg gaps: parser "expected X before Y" wording; "excess elements in
    struct initializer"; "jump into scope of identifier with variably
    modified type"; attribute-ignored/argument-count warnings; __builtin_*

@@ -47,6 +47,7 @@ typedef struct Parser {
     bool unwind;                /* ending an unclosed function body */
     uint32_t unwind_to;
     bool have_err;
+    bool err_live;      /* gcc's parser->error: no sync since the last error */
     uint32_t last_err;          /* token of the last error (no cascades) */
     uint64_t units, errors;
 } Parser;

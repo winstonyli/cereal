@@ -10,7 +10,7 @@ err_recovery.c:18:1: error: function definition inside a function body: missing 
 err_recovery.c:11:21: note: this '{' is not closed
    11 | void unclosed(void) {
       |                     ^
-err_recovery.c:20:18: error: expected ';' before 'int'
+err_recovery.c:20:18: error: expected ':', ',', ';', '}' or '__attribute__' before 'int'
    20 | struct s { int m int n; };      /* member recovery */
       |                  ^
 err_recovery.c:21:14: error: expected expression before ';' token

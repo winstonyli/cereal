@@ -199,6 +199,7 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
     if (p->unwind || (p->have_err && i <= p->last_err))
         return NULL; /* one error per place: no cascades */
     p->have_err = true;
+    p->err_live = true;
     p->last_err = i;
     p->errors++;
     p->diag->include_chain = NULL; /* the preprocessor has moved on */
@@ -256,11 +257,18 @@ static void expected(Parser *p, const char *what)
 
 static bool expect(Parser *p, Punct x)
 {
-    char what[16];
+    char what[16], buf[160];
     if (accept(p, x))
         return true;
     snprintf(what, sizeof what, "'%s'", punct_spelling[x]);
-    expected(p, what);
+    /* gcc's c_parser_require puts a missing closing token, ';', ',' or
+     * ':' after the previous token, unless an error is already pending */
+    if (!p->err_live && (x == P_RPAREN || x == P_RBRACKET || x == P_SEMI ||
+                         x == P_COMMA || x == P_COLON))
+        perr_after_prev(p, ci(p), "expected %s%s", what,
+                        tok_desc(p, ci(p), buf, sizeof buf));
+    else
+        expected(p, what);
     return false;
 }
 
@@ -313,6 +321,7 @@ static void close_scope(Parser *p, SymSaveVec *save)
 static void sync_stmt(Parser *p)
 {
     int depth = 0;
+    p->err_live = false;
     while (!at_eof(p)) {
         PTok t = ct(p);
         if (t.t.kind == TK_PUNCT) {
@@ -338,6 +347,7 @@ static void sync_stmt(Parser *p)
 static void sync_top(Parser *p)
 {
     int depth = 0;
+    p->err_live = false;
     while (!at_eof(p)) {
         PTok t = ct(p);
         adv(p);
@@ -799,16 +809,28 @@ static void member_decl(Parser *p)
         for (;;) {
             uint32_t m = nmark(p), mfirst = ci(p);
             unsigned flags = 0;
+            PTok t;
             if (!at(p, P_COLON))
                 member_declarator(p); /* names are members, not in scope */
+            t = ct(p);
+            if (!(at(p, P_COLON) || at(p, P_COMMA) || at(p, P_SEMI) ||
+                  at(p, P_RBRACE) ||
+                  (ckw_of(p, &t) == CK_ATTRIBUTE && !t.stdattr))) {
+                expected(p, "':', ',', ';', '}' or '__attribute__'");
+                emit(p, N_MEMBER, mfirst, m, flags);
+                break;
+            }
             if (accept(p, P_COLON)) {
                 flags |= NF_BITFIELD;
                 parse_cond(p);
             }
             attributes(p);
             emit(p, N_MEMBER, mfirst, m, flags);
-            if (!accept(p, P_COMMA))
-                break;
+            if (accept(p, P_COMMA))
+                continue;
+            if (!at(p, P_SEMI) && !at(p, P_RBRACE))
+                expected(p, "',', ';' or '}'");
+            break;
         }
     if (at(p, P_RBRACE)) { /* GCC: a warning */
         pwarn(p, ci(p), "no semicolon at end of struct or union");
@@ -2046,6 +2068,7 @@ bool parser_next(Parser *p, ParseUnit *u)
     p->nodes.len = 0;
     p->saved.len = 0;
     p->have_err = false;
+    p->err_live = false;
     if (fill(p, p->pos) && p->toks.data[p->pos].t.kind == TK_PRAGMA) {
         leaf(p, N_PRAGMA, p->pos);
         p->pos++;
