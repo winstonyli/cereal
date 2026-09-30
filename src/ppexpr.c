@@ -90,6 +90,10 @@ static Val parse_number(EP *p, const Tok *t)
             fail(p, t, "invalid hexadecimal constant", NULL, 0);
             return mkval(0, false);
         }
+    } else if (end - s > 2 && s[0] == '0' && (s[1] == 'b' || s[1] == 'B') &&
+               (s[2] == '0' || s[2] == '1')) {
+        base = 2;
+        s += 2;
     } else if (s[0] == '0') {
         base = 8;
     }
@@ -104,6 +108,14 @@ static Val parse_number(EP *p, const Tok *t)
             d = c - 'A' + 10;
         else
             break;
+        if (d >= base && base == 2) {
+            StrBuf sb = {0};
+            sb_putc(&sb, c);
+            fail(p, t, "invalid digit \"%.*s\" in binary constant",
+                 sb_cstr(&sb), 1);
+            sb_free(&sb);
+            return mkval(0, false);
+        }
         if (d >= base) {
             fail(p, t, "invalid digit in octal constant", NULL, 0);
             return mkval(0, false);
@@ -138,6 +150,9 @@ static Val parse_number(EP *p, const Tok *t)
         return mkval(0, false);
     }
     uns = nu > 0;
+    if (base == 2 && p->pp->opt->pedantic)
+        pp_warn_at(p->pp, t, "", "binary constants are a C2X feature or GCC "
+                   "extension");
     if (overflowed) {
         pp_error_at(p->pp, t, "integer constant is too large for its type");
         uns = true;

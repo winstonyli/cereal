@@ -312,5 +312,30 @@ if command -v "$REFCC" >/dev/null 2>&1; then
     fi
 fi
 
+# 12. summaries: golden dumps of per-unit summaries and read sets, and the
+#     relational checks (context independence, body edits, validity)
+if [ -d "$ROOT/tests/summary" ]; then
+    for f in "$ROOT"/tests/summary/*.c; do
+        n=${f%.c}
+        for extra in "" "--cells -fparallel-chunk=1 -fparallel-threads=2"; do
+            # shellcheck disable=SC2086
+            "$CEREAL" check --target=x86_64-linux-gnu --dump-summaries $extra \
+                "$f" >"$TMP/sum.out" 2>/dev/null
+            if cmp -s "$TMP/sum.out" "$n.expected"; then
+                ok
+            else
+                bad "summary/$(basename "$n").c $extra"
+                diff "$n.expected" "$TMP/sum.out" | head -10 | sed 's/^/    /'
+            fi
+        done
+    done
+    if python3 "$ROOT/tests/summary.py" "$CEREAL" "$TMP" >"$TMP/sum.rel" 2>&1; then
+        ok
+    else
+        bad "summary relational checks"
+        sed 's/^/    /' "$TMP/sum.rel" | head -20
+    fi
+fi
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

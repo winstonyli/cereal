@@ -960,6 +960,16 @@ static void specs_visit(Checker *c, uint32_t i)
     s.kind = TSK_NONE;
     s.tok0 = c->nodes[i].tok;
     s.loc = tloc(c, s.tok0);
+    {
+        /* a declaration as the body of a label (C2X) */
+        uint32_t d = c->par[i], l = d == NO_NODE ? NO_NODE : c->par[d];
+        if (l != NO_NODE && ntag(c, d) == N_DECL && d == l - 1 &&
+            cfirst(c, d) == cfirst(c, i) &&
+            (ntag(c, l) == N_LABEL || ntag(c, l) == N_CASE ||
+             ntag(c, l) == N_DEFAULT))
+            cpedantic(c, s.loc, "a label can only be part of a statement "
+                      "and a declaration is not a statement");
+    }
     s.tok1 = s.tok0;
     kids_get(c, i, &k);
     for (j = 0; j < k.n; j++) {
@@ -1208,8 +1218,9 @@ static bool has_child_attr(Checker *c, uint32_t node)
     bool r = false;
     kids_get(c, node, &k);
     for (j = 0; j < k.n; j++)
-        if (ntag(c, k.p[j]) == N_ATTRIBUTE)
-            r = true;
+        if (ntag(c, k.p[j]) == N_ATTRIBUTE &&
+            c->nodes[k.p[j]].tok > c->nodes[node].tok)
+            r = true;   /* inside '[' ']', not before it */
     kids_free(&k);
     return r;
 }
@@ -1657,7 +1668,10 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 else
                     cerror(c, loc, "storage class specified for unnamed "
                            "parameter");
-            } else
+            } else if (c->cd_clit)
+                cpedantic(c, tloc(c, c->cd_clit), "ISO C forbids storage "
+                          "class specifiers in compound literals before C2X");
+            else
                 cerror(c, loc, "storage class specified for typename");
             sc = SC_NONE;
             threadp = false;
@@ -2189,6 +2203,7 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         if (extern_ref && !filescope) {
             uint32_t ge = name && name < c->nidents ? c->ext[name] : 0;
             uint32_t vis = lookup_ord(c, name);
+            csum_read_ext(c, name);
             if (ge && ge - 1 != vis && csym(c, ge - 1)->kind == CS_OBJ &&
                 csym(c, ge - 1)->linkage != LK_EXTERNAL)
                 cerror(c, loc, "variable previously declared 'static' "
@@ -2736,6 +2751,7 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
     }
     if (!filescope && varfn && pub)
         x.flags |= CSF_BLOCK_EXTERN;
+    csum_decl(c, name, filescope, varfn && pub);
     b = cbound_here(c, NS_ORD, name);
     if (b) {
         uint32_t vis = c->log.data[b - 1].ref, use = vis;
@@ -2780,8 +2796,12 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
             warn_if_shadowing(c, &x);
     }
     if (ref == SYM_NONE) {
-        if (x.kind == CS_TYPEDEF)
+        if (x.kind == CS_TYPEDEF) {
+            SrcFile *sf = srcmgr_file_of(c->sm, x.loc);
             x.ty = type_typedef(TT, name, x.ty);
+            if (sf && sf->system_header)
+                TT->ents.data[TYPE_IDX(x.ty)].flags |= TF_SYSHDR;
+        }
         ref = csym_new(c, global, &x);
     }
     cbind(c, NS_ORD, name, ref);
@@ -3175,10 +3195,27 @@ static void declared_visit(Checker *c, uint32_t i)
         g.ty = s.ty;
     }
     attrs_merge(&a, &sp.attrs);
+    if (a.transparent_union && g.what == GD_TYPEDEF &&
+        type_ckind(TT, s.ty) == TY_UNION) {
+        /* handle_transparent_union_attribute on a typedef: the union type
+         * itself becomes transparent when its first member fits */
+        Record *r = type_record(TT, s.ty);
+        if (r && (r->flags & RF_COMPLETE) && r->nfields) {
+            const Field *fl = &TT->fields.data[r->fields];
+            bool sok;
+            uint64_t sz = type_size(TT, fl->ty, &sok);
+            if (sok && sz == r->size && !(fl->flags & FF_BITFIELD))
+                r->flags |= RF_TRANSPARENT;
+            else
+                cwarn(c, s.loc, "attributes", "'transparent_union' attribute "
+                      "ignored");
+        } else if (r && !(r->flags & RF_COMPLETE))
+            r->flags |= RF_TRANSPARENT;
+    }
     if (a.aligned > s.align)
         s.align = (uint16_t)a.aligned;
     if (a.unused)
-        s.flags |= CSF_USED;
+        s.flags |= CSF_USED | CSF_ATTR_UNUSED;
     if (a.weak)
         s.flags |= CSF_WEAK;
     if (a.noreturn && s.kind == CS_FUNC)
@@ -3438,6 +3475,8 @@ static void open_visit(Checker *c, uint32_t i)
         loc = tloc(c, open_tok);
     else
         loc = tloc(c, cnode(c, st)->tok);
+    if (name && cat_file_scope(c))
+        csum_touch(c, SUM_TAG, name);     /* defines or completes the tag */
     if (name)
         ref = tag_here(c, name);
     if (ref && (int)tkind(c, ref) != want) {
@@ -3539,7 +3578,16 @@ static void xref_visit(Checker *c, uint32_t i, int want)
         if (cscope_kind(c) == SCK_PROTO)
             c->ef[i] |= 2;
     }
-    if (want == TY_ENUM && c->opt.pedantic && !type_enum(TT, t)->complete)
+    if (want == TY_ENUM && find_child(c, i, N_TYPE_NAME) != NO_NODE) {
+        /* enum e : T;  (C2X) fixes the underlying type: complete */
+        Enum *e = type_enum(TT, t);
+        TypeId u = c->ty[find_child(c, i, N_TYPE_NAME)];
+        if (!is_err(c, u) && type_is_integer(TT, u)) {
+            e->underlying = u;
+            e->complete = true;
+        }
+    } else if (want == TY_ENUM && c->opt.pedantic &&
+               !type_enum(TT, t)->complete)
         cpedantic(c, loc, "ISO C forbids forward references to 'enum' types");
     c->ty[i] = t;
     c->cv[i] = kind | ((uint64_t)xloc << 8);
@@ -3696,6 +3744,7 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     for (k = 0; k < n; k++)
         if (!is_err(c, f[k].ty))
             f[m++] = f[k];
+    csum_read_pack(c);
     type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed);
     r = type_record(TT, t);
     if (a.transparent_union && want == TY_UNION) {
@@ -3915,6 +3964,14 @@ static void enum_finish(Checker *c, uint32_t i, uint32_t open)
         }
     } else
         tem = uns ? TYPE_B(UINT) : TYPE_B(INT);
+    {
+        uint32_t utn = find_child(c, i, N_TYPE_NAME);
+        if (utn != NO_NODE && !is_err(c, c->ty[utn]) &&
+            type_is_integer(TT, c->ty[utn])) {
+            tem = c->ty[utn];       /* C2X fixed underlying type */
+            wider = false;
+        }
+    }
     e->underlying = tem;
     e->complete = true;
     for (k = 0; k < ne; k++) {
@@ -3955,6 +4012,14 @@ static void struct_visit(Checker *c, uint32_t i)
         want = TY_ENUM;
     else
         want = tckw(c, cnode(c, i)->tok) == CK_UNION ? TY_UNION : TY_STRUCT;
+    if (want == TY_ENUM && find_child(c, i, N_TYPE_NAME) != NO_NODE) {
+        uint32_t tn = find_child(c, i, N_TYPE_NAME);
+        uint32_t tg_ = find_child(c, i, N_TAG);
+        cpedantic(c, tloc(c, tg_ != NO_NODE ? cnode(c, tg_)->tok
+                                              : first_tok(c, tn) - 1),
+                  "ISO C does not support specifying 'enum' underlying types "
+                  "before C2X");
+    }
     if (open == NO_NODE)
         xref_visit(c, i, want);
     else if (want == TY_ENUM)
@@ -4224,6 +4289,16 @@ static void param_visit(Checker *c, uint32_t p)
     GDecl g;
     CSym s;
     Attrs a;
+    while (l != NO_NODE && ntag(c, l) == N_ATTRIBUTE) {
+        /* trailing attributes: the declarator is the node before them */
+        Kids k;
+        uint32_t j, prev = NO_NODE;
+        kids_get(c, p, &k);
+        for (j = 0; j < k.n && k.p[j] != l; j++)
+            prev = k.p[j];
+        kids_free(&k);
+        l = prev;
+    }
     if (l != NO_NODE && is_declarator_tag(ntag(c, l)))
         top = l;
     si = sn != NO_NODE && ntag(c, sn) == N_SPECS ? find_spec(c, sn) : -1;
@@ -4257,7 +4332,7 @@ static void param_visit(Checker *c, uint32_t p)
     attrs_of_children(c, p, &a);
     attrs_merge(&a, &sp.attrs);
     if (a.unused)
-        s.flags |= CSF_USED;
+        s.flags |= CSF_USED | CSF_ATTR_UNUSED;
     ref = pushdecl(c, &s, false);
     c->ty[p] = g.ty;
     c->cb[p] = ref + 1;
@@ -4394,7 +4469,10 @@ static void typename_visit(Checker *c, uint32_t i)
     pending_xref(c, &c->specs.data[si]);
     sp = c->specs.data[si];
     c->cd_ltok = after;
+    c->cd_clit = c->par[i] != NO_NODE && ntag(c, c->par[i]) == N_COMPOUND_LIT
+                     ? after + 1 : 0;
     grok(c, &sp, top, DC_TYPENAME, false, false, NO_NODE, after, after, &g);
+    c->cd_clit = 0;
     c->ty[i] = g.what == GD_NONE || sp.error ? ERRT : g.ty;
     pop_specs(c, i);
 }
@@ -4550,7 +4628,8 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         const TypeEnt *e = type_ent(TT, type_canon(TT, s.ty));
         uint32_t n = e->n, flags = e->flags & (TF_VARIADIC | TF_NOPROTO);
         TypeId *ps = xmalloc((n + 1) * sizeof *ps);
-        memcpy(ps, type_params(TT, type_canon(TT, s.ty)), n * sizeof *ps);
+        if (n)
+            memcpy(ps, type_params(TT, type_canon(TT, s.ty)), n * sizeof *ps);
         cerror(c, loc, "return type is an incomplete type");
         s.ty = type_func(TT, TYPE_B(VOID), ps, n, flags);
         free(ps);
@@ -4579,6 +4658,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         }
         if (sym_public(&s)) {
             uint32_t e = s.name < c->nidents ? c->ext[s.name] : 0;
+            csum_read_ext(c, s.name);
             if (e) {
                 const CSym *es = csym(c, e - 1);
                 if (is_func(c, es->ty) &&
@@ -4826,7 +4906,8 @@ static void body_visit(Checker *c, uint32_t i)
             uint32_t n = type_ent(TT, pt)->n, li, pi;
             bool variadic = (type_ent(TT, pt)->flags & TF_VARIADIC) != 0;
             TypeId *pp = xmalloc((n + 1) * sizeof *pp);
-            memcpy(pp, type_params(TT, pt), n * sizeof *pp);
+            if (n)
+                memcpy(pp, type_params(TT, pt), n * sizeof *pp);
             for (li = 0, pi = 0;; li++, pi++) {
                 bool parm = li < np, tyvalid = pi < n;
                 CSym *s;
@@ -5033,7 +5114,8 @@ static void unused_scan(Checker *c, uint32_t first, uint32_t last)
                       sname(c, s));
                 if (sym_public(s))
                     s->flags |= CSF_USED;
-            } else if (!read[j] && !sym_public(s))
+            } else if (!read[j] && !sym_public(s) &&
+                       !(s->flags & CSF_ATTR_UNUSED))
                 cwarn(c, s->loc, "unused-but-set-variable", "variable '%s' set "
                       "but not used", sname(c, s));
         } else if (s->kind == CS_FUNC && !sym_public(s) && !sym_defined(s) &&
@@ -5104,7 +5186,8 @@ void cdecl_func_end(Checker *c, uint32_t se)
         memset(read, 1, np);
     for (j = 0; j < np; j++) {
         const CSym *s = csym(c, pl[j]);
-        if ((s->flags & CSF_USED) && !read[j])
+        if ((s->flags & CSF_USED) && !read[j] &&
+            !(s->flags & CSF_ATTR_UNUSED))
             cwarn(c, s->loc, "unused-but-set-parameter", "parameter '%s' set "
                   "but not used", sname(c, s));
     }
@@ -5246,6 +5329,11 @@ void cdecl_node(Checker *c, uint32_t i)
         break;
     case N_INIT_DECL:
         init_decl_visit(c, i);
+        break;
+    case N_ATTRIBUTE:
+        if (tokp(c, cnode(c, i)->tok)->kind == TK_PUNCT)
+            cpedantic(c, tloc(c, cnode(c, i)->tok), "ISO C does not support "
+                      "'[[]]' attributes before C2X");
         break;
     case N_STRUCT:
     case N_ENUM:

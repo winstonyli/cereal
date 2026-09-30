@@ -1728,6 +1728,7 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
     SrcLoc loc = cnode_loc(c, i);
     uint32_t ref = id < c->nidents && c->ext[id] ? c->ext[id] - 1 : SYM_NONE;
     const BTab *bt = bt_find(name);
+    csum_touch(c, SUM_EXT, id);
     CSym s;
     Diagnostic *d;
     if (ref != SYM_NONE && csym(c, ref)->kind == CS_FUNC) {
@@ -2082,7 +2083,11 @@ typedef struct PLoc {
     bool def;
     SrcLoc *loc;
 } PLoc;
-typedef VEC(PLoc) PLocVec;
+typedef struct PLocVec {
+    VEC(PLoc) v;
+    uint32_t *idx;           /* symbol ref -> index + 1 into v */
+    size_t idxcap;
+} PLocVec;
 
 void cexpr_free_params(Checker *c)
 {
@@ -2090,9 +2095,10 @@ void cexpr_free_params(Checker *c)
     size_t k;
     if (!v)
         return;
-    for (k = 0; k < v->len; k++)
-        free(v->data[k].loc);
-    vec_free(v);
+    for (k = 0; k < v->v.len; k++)
+        free(v->v.data[k].loc);
+    vec_free(&v->v);
+    free(v->idx);
     free(v);
     c->plocs = NULL;
 }
@@ -2101,7 +2107,6 @@ void cexpr_record_params(Checker *c, uint32_t declared, uint32_t ref, bool def)
 {
     PLocVec *v = c->plocs;
     uint32_t fn = NO_NODE, kids[64], n, j, np = 0, m;
-    size_t k;
     PLoc *pl = NULL, nw;
     SrcLoc *locs;
     if (ref & SYM_LOCAL)
@@ -2110,9 +2115,8 @@ void cexpr_record_params(Checker *c, uint32_t declared, uint32_t ref, bool def)
         v = xcalloc(1, sizeof *v);
         c->plocs = v;
     }
-    for (k = 0; k < v->len; k++)
-        if (v->data[k].ref == ref)
-            pl = &v->data[k];
+    if (ref < v->idxcap && v->idx[ref])
+        pl = &v->v.data[v->idx[ref] - 1];
     if (pl && (pl->def || !def))
         return;
     /* the function declarator: the declared node's declarator sibling */
@@ -2146,19 +2150,27 @@ void cexpr_record_params(Checker *c, uint32_t declared, uint32_t ref, bool def)
     nw.n = np;
     nw.def = def;
     nw.loc = locs;
-    vec_push(v, nw);
+    if (ref >= v->idxcap) {
+        size_t nc = v->idxcap ? v->idxcap : 1024;
+        while (nc <= ref)
+            nc *= 2;
+        v->idx = xrealloc(v->idx, nc * sizeof *v->idx);
+        memset(v->idx + v->idxcap, 0, (nc - v->idxcap) * sizeof *v->idx);
+        v->idxcap = nc;
+    }
+    vec_push(&v->v, nw);
+    v->idx[ref] = (uint32_t)v->v.len;
 }
 
 static SrcLoc param_loc(Checker *c, uint32_t ref, uint32_t idx, uint32_t at,
                         SrcLoc dflt)
 {
     const PLocVec *v = c->plocs;
-    size_t k;
     (void)at;
-    if (v)
-        for (k = 0; k < v->len; k++)
-            if (v->data[k].ref == ref)
-                return idx < v->data[k].n ? v->data[k].loc[idx] : dflt;
+    if (v && ref < v->idxcap && v->idx[ref]) {
+        const PLoc *p = &v->v.data[v->idx[ref] - 1];
+        return idx < p->n ? p->loc[idx] : dflt;
+    }
     return dflt;
 }
 
@@ -2435,6 +2447,37 @@ bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
     }
     if (kl == TY_VECTOR && kr == TY_VECTOR)
         return true;
+    if (kl == TY_UNION && kr != TY_UNION &&
+        (type_record(TT, cl)->flags & RF_TRANSPARENT)) {
+        /* gcc: a transparent union accepts any of its members' types
+         * (pointer members also take void * and null pointer constants) */
+        const Record *tr = type_record(TT, cl);
+        for (uint32_t k = 0; k < tr->nfields; k++) {
+            TypeId mt = c->tt.fields.data[tr->fields + k].ty;
+            TypeId mc = type_canon(TT, mt);
+            bool ok = type_compatible(TT, mvt(c, mt), mvt(c, rt));
+            if (!ok && tkind(c, mc) == TY_PTR) {
+                if (kr == TY_PTR) {
+                    TypeId ml = type_canon(TT, type_base(TT, mc));
+                    TypeId mr = type_canon(TT, type_base(TT, cr));
+                    ok = tkind(c, ml) == TY_VOID || tkind(c, mr) == TY_VOID ||
+                         type_compatible(TT, mvt(c, ml), mvt(c, mr));
+                } else if (x.npc) {
+                    ok = true;
+                }
+            }
+            if (!ok)
+                continue;
+            if (c->opt.pedantic) {
+                SrcFile *sf = ci->fsym ? srcmgr_file_of(c->sm,
+                                   csym(c, ci->fsym - 1)->loc) : NULL;
+                if (!(sf && sf->system_header))
+                    cpedantic(c, x.loc, "ISO C prohibits argument conversion "
+                              "to union type");
+            }
+            return true;
+        }
+    }
     if ((kl == TY_STRUCT || kl == TY_UNION) && kl == kr &&
         type_compatible(TT, mainv(c, lt), mainv(c, rt)))
         return true;
@@ -3734,7 +3777,7 @@ static void e_cast(Checker *c, uint32_t i)
     }
     c->ty[i] = unqual(c, t);
     c->ef[i] = c->ef[a] & EF_SIDE;
-    if (tk == TY_VECTOR || tkind(c, ot) == TY_VECTOR)
+    if (tk == TY_VECTOR || (tkind(c, ot) == TY_VECTOR && tk != TY_UNION))
         return;
     if (is_record(c, t) || tk == TY_UNION) {
         if (mainv(c, t) == mainv(c, ot)) {
@@ -5348,7 +5391,18 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     bool pa = is_ptr(c, ta), pb = is_ptr(c, tb);
     uint32_t sa = strip_paren(c, a), sb = strip_paren(c, b);
     if (tkind(c, ta) == TY_VECTOR || tkind(c, tb) == TY_VECTOR) {
-        c->ty[i] = TYPE_B(INT);
+        /* a vector comparison yields a signed integer vector of the same
+         * lane size and count */
+        TypeId vt = tkind(c, ta) == TY_VECTOR ? ta : tb, el, rt;
+        bool ok;
+        uint64_t esz;
+        vt = type_canon(TT, vt);
+        el = type_base(TT, vt);
+        esz = type_size(TT, el, &ok);
+        rt = esz == 1 ? TYPE_B(SCHAR) : esz == 2 ? TYPE_B(SHORT)
+           : esz == 4 ? TYPE_B(INT) : esz == 8 ? TYPE_B(LONG) : 0;
+        c->ty[i] = ok && rt ? type_vector(TT, rt, type_ent(TT, vt)->n)
+                            : TYPE_B(INT);
         return;
     }
     if (!((is_arith(c, ta) && is_arith(c, tb)) || pa || pb) ||

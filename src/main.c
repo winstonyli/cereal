@@ -35,6 +35,11 @@ static void usage(FILE *o)
         "  check         parse and type-check (declarations, types,\n"
         "                constant expressions), gcc's diagnostics\n"
         "                --dump-types: print declarations and layouts\n"
+        "                --summaries: compute them only (timing)\n"
+        "                --dump-summaries: print each unit's summary and read set\n"
+        "                --validate-summaries=FILE: check each unit's read set in\n"
+        "                FILE (a --dump-summaries output) against the state at\n"
+        "                its entry\n"
         "  -fsyntax-only  the same as check\n"
         "  lsp           language server on stdin/stdout\n"
         "  query KIND FILE:LINE:COL   KIND = def | refs | hover | visible | expand\n"
@@ -151,7 +156,9 @@ done:
 
 /* ---- parse, -fsyntax-only ------------------------------------------------ */
 
-static bool parse_dump, parse_cells, parse_check, dump_types;
+static bool parse_dump, parse_cells, parse_check, dump_types, dump_summaries;
+static const char *validate_summaries;
+static bool keep_summaries;
 static const Target *check_target;
 
 static bool pp_source(void *ctx, Tok *t, SrcLoc *exp_loc)
@@ -244,6 +251,9 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         co.pedantic = tu.diag.pedantic;
         co.pedantic_errors = tu.diag.pedantic_errors;
         co.dump = dump_types ? out : NULL;
+        co.dump_summaries = dump_summaries ? out : NULL;
+        co.validate_summaries = validate_summaries;
+        co.summaries = keep_summaries;
         chk = checker_new(&tu.sm, tu.in, &tu.diag, &co);
     }
     for (errs = p.errors; parser_next(&p, &u); errs = p.errors) {
@@ -970,6 +980,19 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--dump-types")) {
             dump_types = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--summaries")) {
+            keep_summaries = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--dump-summaries")) {
+            dump_summaries = true;
+            continue;
+        }
+        if (!strncmp(argv[i], "--validate-summaries=", 21)) {
+            validate_summaries = argv[i] + 21;
+            dump_summaries = true;
             continue;
         }
         if (!strncmp(argv[i], "--target=", 9)) {

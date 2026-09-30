@@ -87,6 +87,90 @@ One line per declaration, in order: `typedef NAME = TYPE`,
 `enumconst NAME = VALUE (TYPE)`, and record layouts when a struct or union
 is completed.  Block-scope names are printed as `func:name`.
 
+## Summaries and read sets (P2e, for P3)
+
+Source: `csum.c`, `csum.h`.  Off unless `CheckOptions.summaries`
+(`--summaries`), `dump_summaries` (`--dump-summaries`) or
+`validate_summaries` is set; then `checker_unit` leaves a `UnitSummary` that
+`checker_summary(c)` returns (valid until the next unit).
+
+**Summary** of a unit: the file-scope entities it declares, redeclares or
+defines, sorted by (namespace, name): ordinary identifiers (`ord`),
+tags (`tag`), the external-linkage view of a name (`ext`: block-scope
+`extern`s and implicit function declarations made by bodies; folded into
+`ord` when it is the same symbol) and the `#pragma pack` state (`state`).
+Per entry: kind, linkage, storage class as written, type digest, flags
+(defined, tentative, `decl_external`, inline, thread, noreturn, weak,
+implicit, error, proto/K&R definition, const-init, register-named,
+complete), the value of an enumerator, the layout digest of a tag, and two
+entity digests: `iface` (what readers see: everything but the
+definition-present bits) and `full`.  `UnitSummary.digest` folds all
+entries; `sig` folds all but implicit declarations, so a body-only edit of a
+function leaves the declaration entry, `digest` and `sig` alone unless the
+body adds or removes an implicit declaration.  Names are hashed by spelling,
+never by interner id.
+
+**Type digests** are 64-bit, structural and memoized per type-table entry
+(qualifiers mixed in afterwards): builtin kind; pointer/array (count,
+incompleteness)/VLA/function (return, parameters, variadic, unprototyped)/
+vector/complex over their parts; typedef by name, alignment and target.
+A struct, union or enum is its identity only: the digest of (unit key, tag
+spelling or none, ordinal among the unit's records with that spelling, kind).
+The unit key defaults to a digest of the names the unit declares (so editing
+a body or a member list keeps the tag's identity; `checker_set_unit_key`
+lets P3 supply its own); a unit that declares no name uses a hash of its
+tokens.  Completing a tag in a later unit does not change its identity.
+**Layout** is a separate query: complete flag, size, alignment, flags and
+every member's name, type digest, offset, width and alignment (enums:
+underlying type and completeness).
+
+**Read set**: per distinct name, one read with the digest of what the name
+denoted when the unit looked it up at file scope.
+- `clookup` reports a lookup that resolved to a file-scope binding or to
+  none (a miss counts, digest 0).  A de-duplicating stamp per identifier
+  makes this one inline load on repeat lookups; block-scope bindings are
+  not reads.  `name` reads see the `iface` digest (a tag: which type it is).
+- `full` reads are taken before the unit declares, redeclares or defines a
+  name (`cbind` at file scope, `pushdecl`, a tag definition,
+  implicit declarations): the name's state on entry, including whether it
+  was defined.  Afterwards reads of that name are the unit's own and are
+  not recorded.
+- `layout` reads come from `type.c`: the accessors of a record's or enum's
+  contents (`type_record`, `type_enum`, size, alignment, completeness,
+  underlying type) report to the hook for records older than the unit;
+  keyed by the record's identity digest since the record may have no name
+  (`typedef struct {..} T`).  This is the implicit incomplete-to-complete
+  and `sizeof`/member-access dependency; naming a tag in a pointer type is
+  only a `name` read.
+- `ext` reads are the external-linkage table lookups (block-scope
+  `extern`, K&R prototype checks).  `state pack`: a struct completion used
+  `#pragma pack`.  Reads are sorted by (namespace, mode, name, key).
+
+`summary_valid(summary, lookup, ctx, &bad)` is true when every read yields
+the same digest from `lookup(ctx, ns, name, key, mode)` (0: absent);
+`checker_file_digest` is such a lookup over a checker's current file-scope
+state, so a unit's read set can be validated against any other state at
+its entry.  Units are validated on entry state: the unit's own first
+declaration of a name is a `full` read of "absent".
+
+`--dump-summaries` prints each unit (`unit N key= digest= sig=`, entries,
+`read ns mode key digest name` lines; deterministic, digests are
+target dependent).  `--validate-summaries=FILE` takes such a dump and, at
+the entry of unit N, prints `validate unit N: valid|invalid (ns mode name)`
+for FILE's unit N against the state built from the new input.
+`summary_write` / `summary_load` are the serialization (read sets and unit
+digests are reloaded, entries are not).  Tests: `tests/summary/` goldens and
+`tests/summary.py` (context independence, body edits, reordering, validity).
+
+What P3 must know: units are validated by entry state, so a unit's reads are
+only as good as the *order* of earlier units; diagnostics of a unit also
+depend on checker-global state that is not in the read set (the
+once-per-TU `undeclared` note, headers already suggested, `#pragma pack`
+stack beyond its digest, the parser lookahead at unit boundaries) and on
+`c->quiet`; block-scope symbols and unit-local types are not summarized.
+Cost on `uvloop/loop.c` (11.3k units, 58k reads): about +1.5% instructions
+on parse+check, +4% on the check pass alone.
+
 ## Testing
 
 `tests/check/X.c` with `X.expected` (stderr then stdout, from cereal, after
@@ -104,7 +188,14 @@ comparisons use gcc 13.3 with `LC_ALL=C`.
 - "'return' with a value, in function returning void" is reported by gcc in
   a few cases with an incomplete struct return; not modelled.
 - `empty enum is invalid` is not reported.
-- typedef notes print `'S'` with an extra `{aka 'struct S'}` where gcc omits it.
+- typedef notes follow gcc's aka rule (omitted for same-name tags, anonymous
+  structs and system-header typedefs); rarer spellings may still differ.
+- C2X extensions accepted under `-std=c99` with pedwarns: `[[attr]]`, decl after
+  label, storage class in compound literals, enum underlying types, `0b`
+  constants, decimal-float constants.  `-Wundef` is not part of `-Wall`/`-Wextra`.
+- gcc.dg parity (`-fsyntax-only -std=c99 -pedantic`): residuals are attribute
+  argument-count checks, `__builtin_*` argument checks, some pedantic
+  'before C99' wording and constant-folding of initializer elements.
 - Parse-level message wording: gcc's "expected '=', ',', ';', 'asm' or
   '__attribute__' before ..." variants differ in a few declarator error
   cases (the parser's, not the checker's).

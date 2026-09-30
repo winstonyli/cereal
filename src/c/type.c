@@ -167,12 +167,14 @@ TypeId type_canon(TypeTable *tt, TypeId t)
         return c;
     const TypeEnt *e = &tt->ents.data[TYPE_IDX(c)];
     if (e->kind == TY_ARRAY || e->kind == TY_VLA) {
+        uint8_t ek = e->kind, ef = e->flags;   /* ents may grow below */
+        uint64_t en = e->n;
         TypeId el = type_canon(tt, e->base | TYPE_QUALS(c));
-        if (e->kind == TY_VLA)
+        if (ek == TY_VLA)
             return type_vla(tt, el);
-        if (e->flags & TF_INCOMPLETE)
+        if (ef & TF_INCOMPLETE)
             return type_array_incomplete(tt, el);
-        return type_array(tt, el, e->n);
+        return type_array(tt, el, en);
     }
     return c;
 }
@@ -280,18 +282,35 @@ TypeId type_new_enum(TypeTable *tt, uint32_t tag, SrcLoc loc)
     return en.ty;
 }
 
+/* Reads of a record or enum's contents (layout, completeness, underlying
+ * type): records older than the unit being checked are reported to the
+ * summary hook (csum.c), which keeps the unit's read set. */
+static inline Record *rec_rd(TypeTable *tt, uint32_t i)
+{
+    if (i < tt->unit_rec0)
+        tt->rd_hook(tt->rd_ctx, i, false);
+    return &tt->recs.data[i];
+}
+
+static inline Enum *enum_rd(TypeTable *tt, uint32_t i)
+{
+    if (i < tt->unit_enum0)
+        tt->rd_hook(tt->rd_ctx, i, true);
+    return &tt->enums.data[i];
+}
+
 Record *type_record(TypeTable *tt, TypeId t)
 {
     const TypeEnt *e = type_ent(tt, tt->ents.data[TYPE_IDX(t)].canon);
     if (e->kind != TY_STRUCT && e->kind != TY_UNION)
         return NULL;
-    return &tt->recs.data[e->extra];
+    return rec_rd(tt, e->extra);
 }
 
 Enum *type_enum(TypeTable *tt, TypeId t)
 {
     const TypeEnt *e = type_ent(tt, tt->ents.data[TYPE_IDX(t)].canon);
-    return e->kind == TY_ENUM ? &tt->enums.data[e->extra] : NULL;
+    return e->kind == TY_ENUM ? enum_rd(tt, e->extra) : NULL;
 }
 
 /* ---- queries --------------------------------------------------------- */
@@ -326,7 +345,7 @@ bool type_is_signed(TypeTable *tt, TypeId t)
     case TY_INT128:
         return true;
     case TY_ENUM:
-        return type_is_signed(tt, tt->enums.data[e->extra].underlying);
+        return type_is_signed(tt, enum_rd(tt, e->extra)->underlying);
     default:
         return e->kind >= TY_FLOAT16 && e->kind < TY_NBUILTIN;
     }
@@ -421,7 +440,7 @@ uint64_t type_size(TypeTable *tt, TypeId t, bool *ok)
     case TY_VLA: *ok = false; return 0;
     case TY_FUNC: *ok = false; return 1;        /* GNU: sizeof(f) == 1 */
     case TY_STRUCT: case TY_UNION: {
-        const Record *r = &tt->recs.data[e->extra];
+        const Record *r = rec_rd(tt, e->extra);
         if (!(r->flags & RF_COMPLETE)) {
             *ok = false;
             return 0;
@@ -429,15 +448,18 @@ uint64_t type_size(TypeTable *tt, TypeId t, bool *ok)
         return r->size;
     }
     case TY_ENUM: {
-        const Enum *en = &tt->enums.data[e->extra];
+        const Enum *en = enum_rd(tt, e->extra);
         *ok = en->complete;
         return tg->size[type_ckind(tt, en->underlying)];
     }
     case TY_VECTOR: return e->n;
     case TY_COMPLEX: return 2 * type_size(tt, e->base, ok);
     default:
-        if (!tg->size[e->kind])
+        if (e->kind >= sizeof tg->size / sizeof tg->size[0] ||
+            !tg->size[e->kind]) {
             *ok = false;
+            return 0;
+        }
         return tg->size[e->kind];
     }
 }
@@ -456,8 +478,8 @@ static unsigned align_of(TypeTable *tt, TypeId t, bool member)
     case TY_PTR: return tg->ptr_align;
     case TY_ARRAY: case TY_VLA: case TY_COMPLEX:
         return align_of(tt, e->base, member);
-    case TY_STRUCT: case TY_UNION: return tt->recs.data[e->extra].align;
-    case TY_ENUM: return align_of(tt, tt->enums.data[e->extra].underlying, member);
+    case TY_STRUCT: case TY_UNION: return rec_rd(tt, e->extra)->align;
+    case TY_ENUM: return align_of(tt, enum_rd(tt, e->extra)->underlying, member);
     case TY_VECTOR: return (unsigned)e->n;
     default: {
         unsigned a = member ? tg->member_align[e->kind] : tg->align[e->kind];
@@ -475,7 +497,7 @@ unsigned type_int_bits(TypeTable *tt, TypeId t)
     if (e->kind == TY_BOOL)
         return 1;
     if (e->kind == TY_ENUM)
-        return type_int_bits(tt, tt->enums.data[e->extra].underlying);
+        return type_int_bits(tt, enum_rd(tt, e->extra)->underlying);
     return tt->tgt->size[e->kind] * 8u;
 }
 
@@ -490,7 +512,7 @@ int type_int_rank(TypeTable *tt, TypeId t)
     case TY_LONG: case TY_ULONG: return 5;
     case TY_LLONG: case TY_ULLONG: return 6;
     case TY_INT128: case TY_UINT128: return 7;
-    case TY_ENUM: return type_int_rank(tt, tt->enums.data[e->extra].underlying);
+    case TY_ENUM: return type_int_rank(tt, enum_rd(tt, e->extra)->underlying);
     default: return 0;
     }
 }
@@ -505,7 +527,7 @@ TypeId type_to_unsigned(TypeTable *tt, TypeId t)
     case TY_LONG: return TYPE_B(ULONG);
     case TY_LLONG: return TYPE_B(ULLONG);
     case TY_INT128: return TYPE_B(UINT128);
-    case TY_ENUM: return type_to_unsigned(tt, tt->enums.data[e->extra].underlying);
+    case TY_ENUM: return type_to_unsigned(tt, enum_rd(tt, e->extra)->underlying);
     default: return TYPE_UNQUAL(tt->ents.data[TYPE_IDX(t)].canon);
     }
 }
@@ -567,6 +589,24 @@ static bool proto_vs_noproto(TypeTable *tt, const TypeEnt *p, const TypeEnt *np)
     return true;
 }
 
+/* type_lists_compatible_p: a parameter of transparent union type matches
+ * the type of any of its members. */
+static bool tu_param_match(TypeTable *tt, TypeId u, TypeId o)
+{
+    u = TYPE_UNQUAL(type_canon(tt, u));
+    const TypeEnt *e = type_ent(tt, u);
+    if (e->kind != TY_UNION)
+        return false;
+    const Record *r = &tt->recs.data[e->extra];
+    if (!(r->flags & RF_TRANSPARENT))
+        return false;
+    for (uint32_t i = 0; i < r->nfields; i++)
+        if (type_compatible(tt, TYPE_UNQUAL(tt->fields.data[r->fields + i].ty),
+                            TYPE_UNQUAL(o)))
+            return true;
+    return false;
+}
+
 bool type_compatible(TypeTable *tt, TypeId a, TypeId b)
 {
     a = type_canon(tt, a);
@@ -577,7 +617,7 @@ bool type_compatible(TypeTable *tt, TypeId a, TypeId b)
         return false;
     const TypeEnt *ea = type_ent(tt, a), *eb = type_ent(tt, b);
     if (ea->kind == TY_ENUM && eb->kind != TY_ENUM)
-        return TYPE_UNQUAL(type_canon(tt, tt->enums.data[ea->extra].underlying))
+        return TYPE_UNQUAL(type_canon(tt, enum_rd(tt, ea->extra)->underlying))
                == TYPE_UNQUAL(b);
     if (eb->kind == TY_ENUM && ea->kind != TY_ENUM)
         return type_compatible(tt, b, a);
@@ -608,9 +648,13 @@ bool type_compatible(TypeTable *tt, TypeId a, TypeId b)
             (ea->flags & TF_VARIADIC) != (eb->flags & TF_VARIADIC))
             return false;
         for (uint64_t i = 0; i < ea->n; i++)
-            if (!type_compatible(tt, tt->params.data[ea->extra + i],
-                                 tt->params.data[eb->extra + i]))
+        {
+            TypeId pa = tt->params.data[ea->extra + i];
+            TypeId pb = tt->params.data[eb->extra + i];
+            if (!type_compatible(tt, pa, pb) && !tu_param_match(tt, pa, pb) &&
+                !tu_param_match(tt, pb, pa))
                 return false;
+        }
         return true;
     }
     default:
@@ -914,6 +958,21 @@ static void print_spec(TypeTable *tt, StrBuf *sb, TypeId t)
 
 enum { D_EMPTY, D_PTR, D_PAREN, D_SUFFIX };
 
+/* gcc's {aka ...} strips typedefs but stops at `typedef struct S S;` and
+ * `typedef struct {...} S;`, which keep their name. */
+static bool aka_atomic(const TypeTable *tt, const TypeEnt *e)
+{
+    const TypeEnt *b = type_ent(tt, e->base);
+    /* a system header's typedef of a tagged type keeps its name too */
+    if (b->kind == TY_STRUCT || b->kind == TY_UNION)
+        return (e->flags & TF_SYSHDR) || !tt->recs.data[b->extra].tag ||
+               tt->recs.data[b->extra].tag == e->extra;
+    if (b->kind == TY_ENUM)
+        return (e->flags & TF_SYSHDR) || !tt->enums.data[b->extra].tag ||
+               tt->enums.data[b->extra].tag == e->extra;
+    return false;
+}
+
 void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
 {
     StrBuf d = {0}, tmp = {0};
@@ -921,6 +980,10 @@ void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
     for (;;) {
         const TypeEnt *e = type_ent(tt, t);
         unsigned q = TYPE_QUALS(t);
+        if (tt->aka && e->kind == TY_TYPEDEF && !aka_atomic(tt, e)) {
+            t = e->base | q;
+            continue;
+        }
         if (e->kind == TY_PTR) {
             tmp.len = 0;
             sb_putc(&tmp, '*');
@@ -1001,11 +1064,15 @@ void type_quote(TypeTable *tt, StrBuf *sb, TypeId t)
         return;
     sb_puts(sb, " {aka '");
     size_t aka = sb->len;
-    type_print(tt, sb, c);
+    tt->aka = true;
+    type_print(tt, sb, t);
+    tt->aka = false;
     if (sb->len - aka == end - start - 2 &&
         !memcmp(sb->data + aka, sb->data + start + 1, end - start - 2))
+    {
         sb->len = end;
-    else
+        sb->data[end] = 0;
+    } else
         sb_puts(sb, "'}");
 }
 

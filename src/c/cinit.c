@@ -238,6 +238,14 @@ static bool is_varsize(Checker *c, TypeId t)
         return true;
     if (k == TY_ARRAY)
         return is_varsize(c, type_base(TT, type_canon(TT, t)));
+    if (k == TY_STRUCT || k == TY_UNION) {      /* a VLA member (GNU) */
+        const Record *r = type_record(TT, type_canon(TT, t));
+        uint32_t f;
+        if (r && (r->flags & RF_COMPLETE))
+            for (f = 0; f < r->nfields; f++)
+                if (is_varsize(c, TT->fields.data[r->fields + f].ty))
+                    return true;
+    }
     return false;
 }
 
@@ -675,6 +683,8 @@ static bool const_varlike(Checker *c, uint32_t n, int depth)
     case N_PAREN:
     case N_CAST:
         return n > 0 && const_varlike(c, n - 1, depth + 1);
+    case N_NUMBER:              /* e.g. an imaginary constant */
+        return true;
     case N_IDENT: {
         uint32_t id = cnode_ident(c, n), ref = lookup_ord(c, id);
         CSym *s;
@@ -701,6 +711,15 @@ static bool const_varlike(Checker *c, uint32_t n, int depth)
             return false;
         e2 = n - 1;
         e1 = e2 - c->nodes[e2].size;
+        if (op == P_MINUS) {    /* &&a - &&b: a link-time constant */
+            uint32_t a = e1, b = e2;
+            while (ntag(c, a) == N_PAREN || ntag(c, a) == N_CAST)
+                a--;
+            while (ntag(c, b) == N_PAREN || ntag(c, b) == N_CAST)
+                b--;
+            if (ntag(c, a) == N_ADDR_LABEL && ntag(c, b) == N_ADDR_LABEL)
+                return true;
+        }
         if ((op == P_SLASH || op == P_PERCENT) &&
             (c->ck[e2] == K_ICE || c->ck[e2] == K_FOLD) && c->cv[e2] == 0 &&
             (c->ck[e1] == K_ICE || c->ck[e1] == K_FOLD))

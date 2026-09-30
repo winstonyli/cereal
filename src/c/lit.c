@@ -266,6 +266,12 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
             out->ty = TY_DOUBLE;
             return;
         }
+        if (t == TY_DEC32 || t == TY_DEC64 || t == TY_DEC128)
+            note(out, 0, "pedantic", "decimal float constants are a C2X feature");
+        else if (t == TY_DOUBLE && !imag && !nonstd &&
+                 (memchr(str, 'd', (size_t)(limit - str)) ||
+                  memchr(str, 'D', (size_t)(limit - str))))
+            note(out, 0, "pedantic", "suffix for double constant is a GCC extension");
         if (nonstd)
             note(out, 0, "pedantic", "non-standard suffix on floating constant");
         else if (imag)

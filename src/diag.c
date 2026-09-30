@@ -9,7 +9,7 @@ static const DiagOption options[] = {
     /* preprocessor core */
     {"pp-warning-directive", "pp", DL_WARNING, true, 0, "#warning directive"},
     {"deprecated", "pp", DL_WARNING, true, 0, "GCC assertions (#assert, #unassert, #pred(answer) in #if)"},
-    {"undef", "cond", DL_WARNING, false, DO_ALL | DO_EXTRA, "undefined identifier evaluates to 0 in #if"},
+    {"undef", "cond", DL_WARNING, false, 0, "undefined identifier evaluates to 0 in #if"},
     {"macro-redefined", "pp", DL_WARNING, true, 0, "non-identical macro redefinition (C99 6.10.3p2)"},
     {"builtin-macro-redefined", "pp", DL_WARNING, true, 0, "redefining or undefining a predefined macro"},
     {"unknown-pragma", "pp", DL_WARNING, false, DO_ALL | DO_EXTRA, "unrecognized #pragma"},
@@ -379,13 +379,27 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
     return u == 0 ? 0 : -1;
 }
 
+static long find_index_cached(DiagEngine *d, const char *id)
+{
+    size_t h = ((uintptr_t)id >> 3) * 0x9E3779B1u >> 7 & 127;
+    long i;
+    if (d->idc_key[h] == id && !strcmp(options[d->idc_val[h]].name, id))
+        return d->idc_val[h];
+    i = find_index(id);
+    if (i >= 0 && i < 32767 && !strcmp(options[i].name, id)) {
+        d->idc_key[h] = id;
+        d->idc_val[h] = (int16_t)i;
+    }
+    return i;
+}
+
 DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested)
 {
     long i;
     DiagLevel l;
     if (!id || !*id || requested >= DL_ERROR || requested == DL_NOTE)
         return requested;
-    i = find_index(id);
+    i = find_index_cached(d, id);
     if (i < 0)
         return requested;
     option_state(d->cfg, (size_t)i, &l);
@@ -399,7 +413,7 @@ bool diag_enabled(DiagEngine *d, const char *id)
 
 int diag_option_state(DiagEngine *d, const char *id)
 {
-    long i = find_index(id);
+    long i = find_index_cached(d, id);
     DiagLevel l;
     if (i < 0)
         return 1;

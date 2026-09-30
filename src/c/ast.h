@@ -166,6 +166,7 @@ extern const char *const node_names[N_COUNT];
 typedef struct PTok {
     Tok t;
     SrcLoc exp;
+    uint8_t stdattr;    /* a '[' that starts '[[' (C2X attribute) */
 } PTok;
 
 /* One external declaration. */

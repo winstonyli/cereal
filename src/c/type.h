@@ -39,7 +39,8 @@ enum {
     TF_INCOMPLETE = 1,       /* array: [] */
     TF_VARIADIC = 2,         /* function: ... */
     TF_NOPROTO = 4,          /* function: () declared without a prototype */
-    TF_ALIGNED = 8           /* typedef: .align overrides */
+    TF_ALIGNED = 8,          /* typedef: .align overrides */
+    TF_SYSHDR = 16           /* typedef: declared in a system header */
 };
 
 typedef struct TypeEnt {
@@ -111,8 +112,14 @@ typedef struct TypeTable {
     VEC(Field) fields;
     VEC(Enum) enums;
     TypeId va_list;          /* __builtin_va_list */
+    /* csum.c: records / enums below these indices are older than the unit
+     * being checked; reading their contents calls rd_hook (idx, is_enum) */
+    uint32_t unit_rec0, unit_enum0;
+    void (*rd_hook)(void *ctx, uint32_t idx, bool is_enum);
+    void *rd_ctx;
     StrBuf qbuf[4];          /* type_q */
     unsigned qnext;
+    bool aka;                /* type_print: strip typedefs (aka spelling) */
 } TypeTable;
 
 void types_init(TypeTable *tt, const Target *tgt, Interner *in);

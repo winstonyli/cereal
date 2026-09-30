@@ -5,6 +5,7 @@
 
 #include "c/check.h"
 #include "c/ckw.h"
+#include "c/csum.h"
 #include "c/lit.h"
 #include "c/type.h"
 
@@ -41,7 +42,8 @@ enum {
     CSF_ARRAY_PARM = 131072, /* a parameter declared with an array type */
     CSF_WEAK = 262144,       /* __attribute__((weak)) */
     CSF_ADDR_WARNED = 524288, /* -Waddress 'will always be true' given */
-    CSF_CONST_INIT = 1048576 /* const scalar with a constant initializer */
+    CSF_CONST_INIT = 1048576, /* const scalar with a constant initializer */
+    CSF_ATTR_UNUSED = 2097152 /* __attribute__((unused)) */
 };
 
 typedef struct CSym {
@@ -244,6 +246,7 @@ struct Checker {
     uint64_t iloc_tok;
     /* cdecl.c: the parser's lookahead token at the diagnostic being made */
     uint32_t cd_ltok;
+    uint32_t cd_clit;       /* '{' token of the compound literal being typed */
     /* cdecl.c: the prototype a K&R definition is checked against (gcc's
      * current_function_prototype_*) */
     TypeId cd_proto;
@@ -260,6 +263,8 @@ struct Checker {
     void *plocs;             /* cexpr.c: parameter locations of functions */
     uint64_t hdr_noted;      /* cexpr.c: headers a note already suggested */
     void *stmt;              /* cstmt.c: statement-level state */
+    struct CSum *cs;         /* csum.c: summaries and read sets, or NULL */
+    const CSumFast *csf;     /* csum.c: cs's read stamps */
     struct CInit *ci;        /* cinit.c: initializer state */
     StrBuf esb[2];           /* cexpr.c: %E buffers (check.c frees) */
     unsigned enext, vnext;

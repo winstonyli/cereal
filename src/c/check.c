@@ -184,6 +184,8 @@ void cbind(Checker *c, int ns, uint32_t ident, uint32_t ref)
     if (!ident)
         return;
     grow_idents(c, ident + 1);
+    if (c->cs && c->scopes.len == 1)
+        csum_touch(c, ns, ident);   /* a file-scope declaration */
     b.ident = ident;
     b.prev = c->top[ns][ident];
     b.ref = ref;
@@ -194,9 +196,15 @@ void cbind(Checker *c, int ns, uint32_t ident, uint32_t ref)
 
 uint32_t clookup(Checker *c, int ns, uint32_t ident)
 {
-    if (!ident || ident >= c->nidents || !c->top[ns][ident])
+    uint32_t b = ident && ident < c->nidents ? c->top[ns][ident] : 0;
+    if (c->csf && ident &&
+        (!b || b - 1 < (c->scopes.len > 1 ? c->scopes.data[1].log
+                                          : UINT32_MAX)) &&
+        !(ident < c->csf->rn[ns] && c->csf->rs[ns][ident] == c->csf->seq))
+        csum_read(c, ns, ident, b);   /* resolved at file scope (or not) */
+    if (!b)
         return ns == NS_ORD ? SYM_NONE : 0;
-    return c->log.data[c->top[ns][ident] - 1].ref;
+    return c->log.data[b - 1].ref;
 }
 
 uint32_t lookup_ord(Checker *c, uint32_t ident)
@@ -361,6 +369,8 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     c->nn = u->nnodes;
     c->quiet = had_errors;
     c->fold_pending = 0;
+    if (c->cs)
+        csum_unit_begin(c);
     cstmt_unit_begin(c);
     cinit_reset(c);
     grow_nodes(c, c->nn + 1);
@@ -381,6 +391,8 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     c->cur_node = NO_NODE;
     while (c->scopes.len > 1)
         cscope_pop(c, NULL);
+    if (c->cs)
+        csum_unit_end(c);
     /* the last line start, for input_location in the next unit */
     for (i = u->ntoks; i-- > 0;)
         if (u->toks[i].t.flags & TF_BOL) {
@@ -425,6 +437,8 @@ Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
                             TYPE_B(UINT128)));
     c->func_sym = SYM_NONE;
     c->cur_node = NO_NODE;
+    if (opt->summaries || opt->dump_summaries || opt->validate_summaries)
+        c->cs = csum_new(c);
     return c;
 }
 
@@ -445,6 +459,7 @@ void checker_free(Checker *c)
     cinit_free(c);
     cstmt_free(c);
     cexpr_free_params(c);
+    csum_free(c);
     sb_free(&c->esb[0]);
     sb_free(&c->esb[1]);
     types_free(&c->tt);

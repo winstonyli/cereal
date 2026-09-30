@@ -22,6 +22,10 @@ typedef struct CheckOptions {
     bool pedantic;
     bool pedantic_errors;
     FILE *dump;                 /* --dump-types: declarations and layouts */
+    bool summaries;             /* keep per-unit summaries (csum.h) */
+    FILE *dump_summaries;       /* --dump-summaries: print them (implies) */
+    const char *validate_summaries; /* --validate-summaries=FILE: check each
+                                   unit's recorded read set on entry */
 } CheckOptions;
 
 Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,

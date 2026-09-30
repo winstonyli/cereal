@@ -1,0 +1,18 @@
+c2x_ext.c:3:6: warning: ISO C does not support specifying 'enum' underlying types before C2X [-Wpedantic]
+    3 | enum E : unsigned char { EA, EB };
+      |      ^
+c2x_ext.c:4:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    4 | [[deprecated]] int dep(void);
+      | ^
+c2x_ext.c:7:28: warning: ISO C forbids storage class specifiers in compound literals before C2X [-Wpedantic]
+    7 |     int *p = (static int[]){1, 2};
+      |                            ^
+c2x_ext.c:8:13: warning: binary constants are a C2X feature or GCC extension
+    8 |     int x = 0b101;
+      |             ^
+c2x_ext.c:10:5: warning: a label can only be part of a statement and a declaration is not a statement [-Wpedantic]
+   10 |     int y = x;
+      |     ^
+c2x_ext.c:15:20: warning: ISO C prohibits argument conversion to union type [-Wpedantic]
+   15 | void g(int i) { tu(i); }
+      |                    ^

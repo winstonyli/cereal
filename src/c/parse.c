@@ -8,7 +8,9 @@
 
 #define NO_TOK UINT32_MAX
 
-static const PTok eof_tok = {{TK_EOF, 0, TF_BOL, 0, 0, 0}, 0};
+static const PTok eof_tok = {{TK_EOF, 0, TF_BOL, 0, 0, 0}, 0, 0};
+
+static bool is_p(const PTok *t, Punct x);
 
 /* ---- tokens ------------------------------------------------------------- */
 
@@ -25,6 +27,11 @@ static bool fill(Parser *p, size_t i)
             return false;
         }
         vec_push(&p->toks, pt);
+        if (is_p(&pt, P_LBRACKET)) {    /* '[[': look one token ahead */
+            size_t k = p->toks.len;
+            if (fill(p, k) && is_p(&p->toks.data[k], P_LBRACKET))
+                p->toks.data[k - 1].stdattr = 1;
+        }
     }
     return true;
 }
@@ -100,6 +107,8 @@ static bool accept(Parser *p, Punct x)
 static int ckw_of(Parser *p, const PTok *t)
 {
     unsigned k;
+    if (t->stdattr)
+        return CK_ATTRIBUTE;
     if (t->t.kind != TK_IDENT)
         return CK_NONE;
     k = ident_by_id(p->in, t->t.aux)->ckw;
@@ -327,6 +336,13 @@ static bool is_type_start(Parser *p, const PTok *t)
     }
 }
 
+/* Storage-class specifiers a compound literal may carry (C2X). */
+static bool is_clit_storage(Parser *p, const PTok *t)
+{
+    int k = ckw_of(p, t);
+    return k == CK_STATIC || k == CK_REGISTER || k == CK_THREAD_LOCAL;
+}
+
 /* Can t start declaration specifiers? */
 static bool is_decl_start(Parser *p, const PTok *t)
 {
@@ -348,6 +364,21 @@ static uint32_t skip_attrs_ahead(Parser *p, uint32_t i)
         int depth = 0;
         if (ckw_of(p, &t) != CK_ATTRIBUTE)
             return i;
+        if (t.stdattr) {                /* [[ ... ]] */
+            for (;;) {
+                t = tok_at(p, i);
+                if (t.t.kind == TK_EOF)
+                    return i;
+                if (is_p(&t, P_LBRACKET))
+                    depth++;
+                else if (is_p(&t, P_RBRACKET) && --depth <= 0) {
+                    i = skip_prag(p, i + 1);
+                    break;
+                }
+                i = skip_prag(p, i + 1);
+            }
+            continue;
+        }
         i = skip_prag(p, i + 1);
         for (;;) {
             t = tok_at(p, i);
@@ -384,9 +415,48 @@ static bool at_col0(Parser *p, uint32_t i)
 
 /* ---- attributes, asm ---------------------------------------------------- */
 
-static void attribute(Parser *p)
+/* [[ name [(args)] , ... ]] (no 'ns::' before C2X) */
+static void std_attribute(Parser *p)
 {
     uint32_t start = nmark(p), kw = adv(p);
+    if (!expect(p, P_LBRACKET)) {
+        emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
+        return;
+    }
+    while (!at(p, P_RBRACKET) && !at_eof(p)) {
+        PTok t = ct(p);
+        if (t.t.kind == TK_IDENT) {
+            uint32_t s = nmark(p), name = adv(p);
+            if (accept(p, P_LPAREN)) {
+                if (!at(p, P_RPAREN)) {
+                    parse_assign(p);
+                    while (accept(p, P_COMMA))
+                        parse_assign(p);
+                }
+                expect(p, P_RPAREN);
+            }
+            emit(p, N_ATTR_ITEM, name, s, 0);
+        } else if (!is_p(&t, P_COMMA)) {
+            expected(p, "attribute name");
+            break;
+        }
+        if (!accept(p, P_COMMA))
+            break;
+    }
+    expect(p, P_RBRACKET);
+    expect(p, P_RBRACKET);
+    emit(p, N_ATTRIBUTE, kw, start, 0);
+}
+
+static void attribute(Parser *p)
+{
+    uint32_t start, kw;
+    if (ct(p).stdattr) {
+        std_attribute(p);
+        return;
+    }
+    start = nmark(p);
+    kw = adv(p);
     if (!expect(p, P_LPAREN) || !expect(p, P_LPAREN)) {
         emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
         return;
@@ -712,6 +782,13 @@ static void enum_spec(Parser *p)
     if (is_name(p, &t))
         leaf(p, N_TAG, adv(p));
     attributes(p);
+    {   /* enum e : type (C2X underlying type) */
+        PTok n1 = pk(p, 1);
+        if (at(p, P_COLON) && is_type_start(p, &n1)) {
+            adv(p);
+            type_name(p);
+        }
+    }
     if (at(p, P_LBRACE)) {
         leaf(p, N_OPEN, adv(p));
         set_aux(p, 2);
@@ -839,6 +916,10 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
         expect(p, P_RPAREN);
     }
     for (;;) {
+        if (ct(p).stdattr) {            /* int f [[attr]] (void) */
+            attribute(p);
+            continue;
+        }
         if (at(p, P_LBRACKET)) {
             uint32_t lb = adv(p);
             unsigned flags = 0;
@@ -1257,7 +1338,8 @@ static void unary(Parser *p)
     if (k == CK_SIZEOF || k == CK_ALIGNOF) {
         uint32_t kw = adv(p);
         PTok n0 = ct(p), n1 = pk(p, 1);
-        if (is_p(&n0, P_LPAREN) && is_type_start(p, &n1)) {
+        if (is_p(&n0, P_LPAREN) &&
+            (is_type_start(p, &n1) || is_clit_storage(p, &n1))) {
             uint32_t s2 = nmark(p), lp = adv(p);
             type_name(p);
             expect(p, P_RPAREN);
@@ -1290,7 +1372,7 @@ static void unary(Parser *p)
 static void parse_cast(Parser *p)
 {
     PTok n = pk(p, 1);
-    if (at(p, P_LPAREN) && is_type_start(p, &n)) {
+    if (at(p, P_LPAREN) && (is_type_start(p, &n) || is_clit_storage(p, &n))) {
         uint32_t start = nmark(p), lp = adv(p);
         type_name(p);
         expect(p, P_RPAREN);
@@ -1394,7 +1476,14 @@ static void paren_expr(Parser *p)
 /* A label may end a compound statement (GNU, C23). */
 static void label_body(Parser *p)
 {
-    if (!at(p, P_RBRACE))
+    PTok t;
+    if (at(p, P_RBRACE))
+        return;
+    t = ct(p);
+    if (is_decl_start(p, &t) && ckw_of(p, &t) != CK_STATIC_ASSERT &&
+        (ckw_of(p, &t) != CK_ATTRIBUTE || t.stdattr))
+        declaration(p, false);  /* C2X; the checker pedwarns */
+    else
         statement(p);
 }
 

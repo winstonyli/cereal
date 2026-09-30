@@ -1381,7 +1381,10 @@ static void stmt_return(Checker *c, uint32_t i)
         ci.loc = loc;
         if (node_err(c, e) || (valtype == ERRT))
             return;
-        if (!cexpr_assign_check(c, e, valtype, &ci))
+        /* messages name the return type as declared (typedefs kept) */
+        if (!cexpr_assign_check(c, e,
+                type_ent(TT, f->ty)->kind == TY_FUNC ? type_base(TT, f->ty)
+                                                     : valtype, &ci))
             return;
         if (type_ckind(TT, valtype) == TY_PTR)
             return_local_addr(c, e, loc);

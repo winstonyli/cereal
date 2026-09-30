@@ -18,6 +18,8 @@ void sink_flush(OutSink *o)
 
 void sink_put(OutSink *o, const char *s, size_t n)
 {
+    if (!n)
+        return;
     if (o->len + n > o->cap) {
         if (o->fp) {
             sink_flush(o);
