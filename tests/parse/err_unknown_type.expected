@@ -1,0 +1,100 @@
+err_unknown_type.c:1:1: error: unknown type name 'foo'
+    1 | foo x;
+      | ^
+err_unknown_type.c:2:1: error: unknown type name 'foo'
+    2 | foo *y;
+      | ^
+err_unknown_type.c:3:8: error: unknown type name 'size_t'
+    3 | void f(size_t n, int k);
+      |        ^
+err_unknown_type.c:4:12: error: unknown type name 'bar'
+    4 | struct s { bar m; };
+      |            ^
+err_unknown_type.c:6:5: error: unknown type name 'baz'
+    6 |     baz z;
+      |     ^
+err_unknown_type.c:7:5: error: unknown type name 'baz'
+    7 |     baz *w;
+      |     ^
+err_unknown_type.c:10:1: error: expected identifier or '(' before '+' token
+   10 | + 1;
+      | ^
+DECL 'foo' 1:1
+  SPECS 'foo' 1:1
+    TYPEDEF_NAME 'foo' 1:1
+  INIT_DECL 'x' 1:5
+    NAME 'x' 1:5
+    DECLARED 'x' 1:5
+DECL 'foo' 2:1
+  SPECS 'foo' 2:1
+    TYPEDEF_NAME 'foo' 2:1
+  INIT_DECL 'y' 2:6
+    PTR '*' 2:5
+      NAME 'y' 2:6
+    DECLARED 'y' 2:6
+DECL 'void' 3:1
+  SPECS 'void' 3:1
+    TYPESPEC 'void' 3:1
+  INIT_DECL 'f' 3:6
+    FUNC '(' 3:7
+      NAME 'f' 3:6
+      SCOPE '(' 3:7
+      PARAM 'size_t' 3:8
+        SPECS 'size_t' 3:8
+          TYPEDEF_NAME 'size_t' 3:8
+        NAME 'n' 3:15
+      PARAM 'int' 3:18
+        SPECS 'int' 3:18
+          TYPESPEC 'int' 3:18
+        NAME 'k' 3:22
+      SCOPE_END 'k' 3:22
+    DECLARED 'f' 3:6
+DECL 'struct' 4:1
+  SPECS 'struct' 4:1
+    STRUCT 'struct' 4:1 [2]
+      TAG 's' 4:8
+      OPEN '{' 4:10
+      MEMBER_DECL 'bar' 4:12
+        SPECS 'bar' 4:12
+          TYPEDEF_NAME 'bar' 4:12
+        MEMBER 'm' 4:16
+          NAME 'm' 4:16
+FUNC_DEF 'void' 5:1
+  SPECS 'void' 5:1
+    TYPESPEC 'void' 5:1
+  FUNC '(' 5:7
+    NAME 'g' 5:6
+    SCOPE '(' 5:7
+    PARAM 'void' 5:8
+      SPECS 'void' 5:8
+        TYPESPEC 'void' 5:8
+    SCOPE_END 'void' 5:8
+  DECLARED 'g' 5:6 [2]
+  SCOPE '{' 5:14 [80]
+  COMPOUND '{' 5:14
+    BODY '{' 5:14
+    DECL 'baz' 6:5
+      SPECS 'baz' 6:5
+        TYPEDEF_NAME 'baz' 6:5
+      INIT_DECL 'z' 6:9
+        NAME 'z' 6:9
+        DECLARED 'z' 6:9
+    DECL 'baz' 7:5
+      SPECS 'baz' 7:5
+        TYPEDEF_NAME 'baz' 7:5
+      INIT_DECL 'w' 7:10
+        PTR '*' 7:9
+          NAME 'w' 7:10
+        DECLARED 'w' 7:10
+  SCOPE_END '}' 8:1
+DECL 'int' 9:1
+  SPECS 'int' 9:1
+    TYPESPEC 'int' 9:1
+  INIT_DECL 'h' 9:5
+    NAME 'h' 9:5
+    DECLARED 'h' 9:5
+    SIZEOF_EXPR 'sizeof' 9:9
+      PAREN '(' 9:15
+        IDENT 'qux' 9:16
+ERROR '+' 10:1 #3 [1]
+  SPECS '+' 10:1

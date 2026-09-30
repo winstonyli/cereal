@@ -34,6 +34,15 @@ layouts, gcc rules ported, walk design).
    expectation lists; "before 'tok' token" suffix; "expected declaration
    specifiers" vs "expected declaration"; "unknown type name" where cereal
    says "expected ...".
+   After the parser wording work (token descriptions, unknown type name,
+   file-scope stray tokens): identical headers 347 -> 373 of 939, verdicts
+   unchanged, corpus still 0/0.  Not ported: the tag hint ("use struct
+   keyword to refer to the type") and "did you mean" (need tag scope and
+   fuzzy lookup); gcc's K&R-parameter mode after an earlier error makes
+   later file-scope declarations report "expected declaration specifiers"
+   (about 80 cascade pairs in gcc.dg, e.g. c2x-constexpr-1.c): not emulated.
+   gcc puts "expected ';'" at the end of the previous token in some cases
+   (`foo void *v;` 1:4 vs cereal 1:5).
 2. gcc.dg gaps: parser "expected X before Y" wording; "excess elements in
    struct initializer"; "jump into scope of identifier with variably
    modified type"; attribute-ignored/argument-count warnings; __builtin_*

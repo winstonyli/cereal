@@ -392,6 +392,37 @@ static bool is_decl_start(Parser *p, const PTok *t)
     }
 }
 
+/* Where gcc looks for a type: how hard it tries to spot an unknown type
+ * name (c_parser_next_tokens_start_typename's lookahead kinds). */
+typedef enum {
+    LA_ID,          /* never: the identifier is the declared name */
+    LA_DECL,        /* `A B`, `A *B`, A not declared */
+    LA_DECL_TOP,    /* the same at file scope, whether or not A is declared */
+    LA_TYPE         /* a type is required: any undeclared identifier */
+} Lookahead;
+
+/* An identifier at token i that gcc reports as an unknown type name. */
+static bool unknown_type(Parser *p, uint32_t i, Lookahead la)
+{
+    PTok t = tok_at(p, i), n;
+    SymKind k;
+    if (la == LA_ID || !is_name(p, &t))
+        return false;
+    k = scope_lookup(&p->scope, t.t.aux);
+    if (k == SYM_TYPEDEF || (k != SYM_NONE && la != LA_DECL_TOP))
+        return false;
+    if (la == LA_TYPE)
+        return true;
+    n = tok_at(p, i + 1);
+    return is_name(p, &n) || is_p(&n, P_STAR);
+}
+
+/* Can the token at ci start a declaration (block scope)? */
+static bool is_decl_start_la(Parser *p, const PTok *t)
+{
+    return is_decl_start(p, t) || unknown_type(p, ci(p), LA_DECL);
+}
+
 /* Token index just past the attributes starting at i (i if none). */
 static uint32_t skip_attrs_ahead(Parser *p, uint32_t i)
 {
@@ -639,7 +670,7 @@ static void paren_type_or_expr(Parser *p, NodeTag tag)
     emit(p, tag, kw, start, 0);
 }
 
-static void specs(Parser *p, Specs *s)
+static void specs(Parser *p, Specs *s, Lookahead la)
 {
     uint32_t start = nmark(p), first = ci(p);
     memset(s, 0, sizeof *s);
@@ -710,6 +741,14 @@ static void specs(Parser *p, Specs *s)
                 s->type = true;
                 break;
             }
+            if (!s->type && unknown_type(p, ci(p), la)) {
+                /* as gcc: diagnosed, then parsed as if it were a type */
+                perr(p, ci(p), "unknown type name '%.*s'", (int)t.t.len,
+                     tok_text_raw(p->sm, p->in, &t.t));
+                leaf(p, N_TYPEDEF_NAME, adv(p));
+                s->type = true;
+                break;
+            }
             goto done;
         default:
             goto done;
@@ -724,7 +763,7 @@ static void member_decl(Parser *p)
 {
     uint32_t start = nmark(p), first = ci(p);
     Specs s;
-    specs(p, &s);
+    specs(p, &s, LA_DECL);
     if (!s.any) {
         expected(p, "specifier-qualifier-list");
         sync_stmt(p);
@@ -918,7 +957,7 @@ static void params(Parser *p, unsigned *flags)
             *flags |= NF_VARIADIC;
             break;
         }
-        specs(p, &sp);
+        specs(p, &sp, LA_TYPE);
         if (!sp.any) {
             expected(p, "declaration specifiers or '...'");
             p->nodes.len = s;
@@ -1053,7 +1092,7 @@ static void type_name(Parser *p)
     uint32_t start = nmark(p), first = ci(p);
     Specs s;
     DeclInfo d;
-    specs(p, &s);
+    specs(p, &s, LA_TYPE);
     if (!s.any)
         expected(p, "type name");
     declarator_init(&d);
@@ -1516,7 +1555,7 @@ static void label_body(Parser *p)
     if (at(p, P_RBRACE))
         return;
     t = ct(p);
-    if (is_decl_start(p, &t) && ckw_of(p, &t) != CK_STATIC_ASSERT &&
+    if (is_decl_start_la(p, &t) && ckw_of(p, &t) != CK_STATIC_ASSERT &&
         (ckw_of(p, &t) != CK_ATTRIBUTE || t.stdattr))
         declaration(p, false);  /* C2X; the checker pedwarns */
     else
@@ -1571,7 +1610,7 @@ static void statement(Parser *p)
         c = ct(p);
         if (accept(p, P_SEMI)) {
             leaf(p, N_NONE, i);
-        } else if (is_decl_start(p, &c) || ckw_of(p, &c) == CK_EXTENSION) {
+        } else if (is_decl_start_la(p, &c) || ckw_of(p, &c) == CK_EXTENSION) {
             declaration(p, false);
         } else {
             parse_expr(p);
@@ -1723,7 +1762,7 @@ static void block_item(Parser *p)
         statement(p);
         return;
     }
-    if (is_decl_start(p, &t))
+    if (is_decl_start_la(p, &t))
         declaration(p, false);
     else
         statement(p);
@@ -1826,16 +1865,17 @@ static void declaration(Parser *p, bool top)
         emit(p, N_EMPTY, adv(p), start, 0);
         return;
     }
-    specs(p, &s);
+    specs(p, &s, top ? LA_DECL_TOP : LA_DECL);
     if (!s.any) {
-        PTok n1 = pk(p, 1);
-        /* implicit int (accepted with a warning by GCC): f(void) {...},
-         * x; at file scope */
-        if (!(top && is_name(p, &t) &&
-              (is_p(&n1, P_LPAREN) || is_p(&n1, P_SEMI) ||
-               is_p(&n1, P_COMMA) || is_p(&n1, P_ASSIGN) ||
-               is_p(&n1, P_LBRACKET)))) {
-            expected(p, "declaration");
+        /* no specifiers: at file scope gcc goes on to the declarator
+         * (implicit int, accepted with a warning): f(void) {...}, x;
+         * a stray token is diagnosed there */
+        if (!(top && (is_name(p, &t) || is_p(&t, P_STAR) ||
+                      is_p(&t, P_LPAREN)))) {
+            if (top)
+                expected(p, "identifier or '('");
+            else
+                expected(p, "declaration");
             if (top)
                 sync_top(p);
             else
