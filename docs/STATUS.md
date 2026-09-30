@@ -17,8 +17,13 @@ layouts, gcc rules ported, walk design).
   not rerun over tests/ after the last edits.
 
 ## Next work
-1. Mutated-corpus verdict parity (bench/tools/mut.py; path to corpus.py fixed,
-   never successfully run).
+1. Mutated-corpus verdict parity: ran 2026-09-30 (bench/tools/mut.py, 170
+   units x 30 mutants, seed 7, gcc 15.2): 5004 agree, 33 gcc-only semantic
+   rejects, 3 "failures", all `char x[4]` -> `char x[]` inside glibc's
+   pthread unions: cereal says "flexible array member in union", gcc >= 14
+   accepts it (extension).  Believed a gcc-version difference, not checked
+   against gcc 13.  lua52/lua53 lua.c are skipped (need libreadline-dev).
+   Next: rerun with gcc 13 if obtainable, larger N/other seeds.
 2. gcc.dg gaps: parser "expected X before Y" wording; "excess elements in
    struct initializer"; "jump into scope of identifier with variably
    modified type"; attribute-ignored/argument-count warnings; __builtin_*
@@ -44,6 +49,16 @@ layouts, gcc rules ported, walk design).
   in docs/CHECKER_PLAN.md (c-decl.cc: shadow_tag_warned 4832, grokparm 5972,
   grokdeclarator 6545, grokparms 8195, get_parm_info 8324, declspecs_add_type
   11453, add_scspec 12338, finish_declspecs 12540) refer to that version.
+- Windows host: no make/gcc; build and test in WSL Ubuntu (default shell is
+  fish: wrap commands in `bash -lc`, or run a script).  Work from WSL's own
+  filesystem (cp -r to ~): under /mnt/c four tests/lsp sessions time out
+  (504/508); on ext4 508/508.  The repo has .gitattributes (eol=lf); a
+  Windows checkout with core.autocrlf=true breaks tools/probe-host.sh.
+- Corpus: `sh bench/fetch_corpus.sh ~/corpus`; needs python3-dev headers:
+  `CEREAL_PYINC=/usr/include/python3.13 python3 bench/tools/mut.py ./cereal
+  ~/corpus N SEED`.  mut.py passes -fpermissive to gcc (gcc >= 14 made
+  implicit-int/function-declaration/pointer mismatches errors; gcc 13, the
+  reference, warns) and caps its pool at 3/4 of the cores.
 - cdecl.c is a single assembled source; edit it directly.
 - Preferences: succinct replies; compile speed matters; do things right
   regardless of upfront cost; no PR unless asked; commit trailers as in git

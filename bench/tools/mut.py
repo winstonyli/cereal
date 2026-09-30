@@ -39,10 +39,10 @@ def spans(text):
 
 
 def judge(cereal, path):
-    g = subprocess.run(["gcc", "-std=c99", "-pedantic", "-fsyntax-only", "-w",
+    g = subprocess.run(["gcc", "-std=c99", "-pedantic", "-fsyntax-only", "-fpermissive", "-w",
                         "-x", "cpp-output", path], capture_output=True,
                        timeout=300)
-    c = subprocess.run([cereal, "-fsyntax-only", "-std=c99", "-pedantic", "-w", path], capture_output=True,
+    c = subprocess.run([cereal, "-fsyntax-only", "-std=c99", "-pedantic", path], capture_output=True,
                        timeout=300)
     ge = [l for l in g.stderr.decode(errors="replace").splitlines() if "error:" in l]
     res_g = g.returncode == 0
@@ -111,7 +111,7 @@ def main():
             if not only or only in name]
     fails = agree = semantic = 0
     AI = {}
-    with multiprocessing.Pool() as pool:
+    with multiprocessing.Pool(os.cpu_count() * 3 // 4) as pool:
         for res in pool.imap(work, jobs):
             agree += res["agree"]
             for m in res.get("ai", []): AI[m] = AI.get(m, 0) + 1

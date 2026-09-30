@@ -26,7 +26,7 @@ import glob, os, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOKDIFF = os.path.join(HERE, "..", "tests", "tokdiff.py")
-PY = "/usr/include/python3.11"
+PY = os.environ.get("CEREAL_PYINC", "/usr/include/python3.11")
 
 
 def units(root):
