@@ -269,8 +269,10 @@ static bool is_pow2(uint64_t v)
 
 /* check_user_alignment for the constant expression node e: the alignment
  * in bytes (0: none, silently ignored or already diagnosed).  loc: where
- * gcc's error() points. */
-static uint32_t check_user_alignment(Checker *c, uint32_t e, SrcLoc loc)
+ * gcc's error() points; objfile: the attribute form (gcc's caller passes
+ * true), which words the upper bound as the object file maximum. */
+static uint32_t check_user_alignment(Checker *c, uint32_t e, SrcLoc loc,
+                                     bool objfile)
 {
     TypeId t;
     int64_t v;
@@ -286,11 +288,18 @@ static uint32_t check_user_alignment(Checker *c, uint32_t e, SrcLoc loc)
     if (v == 0)
         return 0;
     if (v < 0 || !is_pow2((uint64_t)v)) {
-        cerror(c, loc, "requested alignment is not a positive power of 2");
+        cerror(c, loc, "requested alignment '%lld' is not a positive power "
+               "of 2", (long long)v);
+        return 0;
+    }
+    if (objfile && v > ((int64_t)1 << 28)) {
+        cerror(c, loc, "requested alignment '%lld' exceeds object file "
+               "maximum %u", (long long)v, 1U << 28);
         return 0;
     }
     if (v >= ((int64_t)1 << 29)) {
-        cerror(c, loc, "requested alignment is too large");
+        cerror(c, loc, "requested alignment '%lld' exceeds maximum %u",
+               (long long)v, 1U << 28);
         return 0;
     }
     return (uint32_t)v;
@@ -316,7 +325,8 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             if (arg == NO_NODE)
                 v = c->tgt->default_aligned;
             else
-                v = check_user_alignment(c, arg, iloc(c, after_tok(c, attr)));
+                v = check_user_alignment(c, arg, iloc(c, after_tok(c, attr)),
+                                         true);
             if (v > a->aligned)
                 a->aligned = v;
         } else if (!strcmp(name, "packed")) {
@@ -1058,7 +1068,8 @@ static void specs_visit(Checker *c, uint32_t i)
                     if (type_ckind(TT, c->ty[a]) != TY_ERROR)
                         v = type_align(TT, c->ty[a]);
                 } else
-                    v = check_user_alignment(c, a, iloc(c, after_tok(c, n)));
+                    v = check_user_alignment(c, a, iloc(c, after_tok(c, n)),
+                                         false);
             }
             if (v > s.align)
                 s.align = v;

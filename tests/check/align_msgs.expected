@@ -1,0 +1,21 @@
+align_msgs.c:1:1: error: requested alignment '3' is not a positive power of 2
+    1 | int a __attribute__((aligned(3)));
+      | ^
+align_msgs.c:2:1: error: requested alignment '-4' is not a positive power of 2
+    2 | int b __attribute__((aligned(-4)));
+      | ^
+align_msgs.c:3:1: error: requested alignment '536870912' exceeds object file maximum 268435456
+    3 | int c __attribute__((aligned(1 << 29)));
+      | ^
+align_msgs.c:5:1: warning: ISO C99 does not support '_Alignas' [-Wpedantic]
+    5 | _Alignas(1 << 29) int e;
+      | ^
+align_msgs.c:5:1: error: requested alignment '536870912' exceeds maximum 268435456
+    5 | _Alignas(1 << 29) int e;
+      | ^
+align_msgs.c:6:1: warning: ISO C99 does not support '_Alignas' [-Wpedantic]
+    6 | _Alignas(5) int f;
+      | ^
+align_msgs.c:6:1: error: requested alignment '5' is not a positive power of 2
+    6 | _Alignas(5) int f;
+      | ^
