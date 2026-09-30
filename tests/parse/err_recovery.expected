@@ -1,4 +1,4 @@
-err_recovery.c:2:9: error: expected expression before ';'
+err_recovery.c:2:9: error: expected expression before ';' token
     2 | int a = ;                       /* missing expression */
       |         ^
 err_recovery.c:7:5: error: expected ';' before 'int'
@@ -13,7 +13,7 @@ err_recovery.c:11:21: note: this '{' is not closed
 err_recovery.c:20:18: error: expected ';' before 'int'
    20 | struct s { int m int n; };      /* member recovery */
       |                  ^
-err_recovery.c:21:14: error: expected expression before ';'
+err_recovery.c:21:14: error: expected expression before ';' token
    21 | int c = (1 + ;                  /* expression recovery */
       |              ^
 DECL 'int' 2:1

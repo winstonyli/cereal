@@ -5,6 +5,8 @@
 #include <string.h>
 
 #include "c/ckw.h"
+#include "c/lit.h"
+#include "c/target.h"
 
 #define NO_TOK UINT32_MAX
 
@@ -144,15 +146,49 @@ static SrcLoc tok_loc(Parser *p, uint32_t i)
     return p->toks.len ? p->toks.data[p->toks.len - 1].exp : 0;
 }
 
+/* How gcc's c_parse_error names the offending token: " before ..." or
+ * " at end of input".  Keywords read like identifiers, punctuators are
+ * spelled canonically (digraphs included) and followed by "token". */
 static const char *tok_desc(Parser *p, uint32_t i, char *buf, size_t n)
 {
     const Tok *t;
+    const char *s;
     if (!fill(p, i))
-        return "end of input";
+        return " at end of input";
     t = &p->toks.data[i].t;
-    snprintf(buf, n, "'%.*s'", t->len > 40 ? 40 : (int)t->len,
-             tok_text_raw(p->sm, p->in, t));
-    return buf;
+    s = tok_text_raw(p->sm, p->in, t);
+    switch (t->kind) {
+    case TK_EOF:
+        return " at end of input";
+    case TK_PPNUM:
+        return " before numeric constant";
+    case TK_STRING:
+        return " before string constant";
+    case TK_PRAGMA:
+        return " before '#pragma'";
+    case TK_IDENT:
+        snprintf(buf, n, " before '%.*s'", (int)t->len, s);
+        return buf;
+    case TK_CHAR: {
+        Lit l;
+        unsigned v;
+        const char *pre = s[0] == 'L' ? "L" : s[0] == 'U' ? "U"
+                        : s[0] == 'u' ? (s[1] == '8' ? "u8" : "u") : "";
+        lit_char(&target_x86_64, s, t->len, &l);
+        v = (unsigned)l.v;
+        if (v <= 255 && v > 32 && v < 127)
+            snprintf(buf, n, " before %s'%c'", pre, (int)v);
+        else
+            snprintf(buf, n, " before %s'\\x%x'", pre, v);
+        return buf;
+    }
+    case TK_PUNCT:
+        snprintf(buf, n, " before '%s' token", punct_spelling[t->punct]);
+        return buf;
+    default:
+        snprintf(buf, n, " before '%.*s' token", (int)t->len, s);
+        return buf;
+    }
 }
 
 static Diagnostic *perr(Parser *p, uint32_t i, const char *fmt, ...)
@@ -188,9 +224,9 @@ static void pwarn(Parser *p, uint32_t i, const char *fmt, ...)
 
 static void expected(Parser *p, const char *what)
 {
-    char buf[64];
+    char buf[160];
     uint32_t i = ci(p);
-    perr(p, i, "expected %s before %s", what, tok_desc(p, i, buf, sizeof buf));
+    perr(p, i, "expected %s%s", what, tok_desc(p, i, buf, sizeof buf));
 }
 
 static bool expect(Parser *p, Punct x)

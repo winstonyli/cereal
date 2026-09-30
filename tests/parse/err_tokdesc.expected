@@ -1,0 +1,50 @@
+err_tokdesc.c:1:9: error: expected expression before ';' token
+    1 | int a = ;
+      |         ^
+err_tokdesc.c:2:11: error: expected ';' before numeric constant
+    2 | int d = 1 2;
+      |           ^
+err_tokdesc.c:3:13: error: expected ';' before 'y'
+    3 | int e = 'x' 'y';
+      |             ^
+err_tokdesc.c:4:14: error: expected ';' before L'a'
+    4 | int f = '\n' L'a';
+      |              ^
+err_tokdesc.c:5:11: error: expected ';' before string constant
+    5 | int g = 1 "x";
+      |           ^
+DECL 'int' 1:1
+  SPECS 'int' 1:1
+    TYPESPEC 'int' 1:1
+  INIT_DECL 'a' 1:5
+    NAME 'a' 1:5
+    DECLARED 'a' 1:5
+    ERROR ';' 1:9 [1]
+DECL 'int' 2:1 [1]
+  SPECS 'int' 2:1
+    TYPESPEC 'int' 2:1
+  INIT_DECL 'd' 2:5
+    NAME 'd' 2:5
+    DECLARED 'd' 2:5
+    NUMBER '1' 2:9
+DECL 'int' 3:1 [1]
+  SPECS 'int' 3:1
+    TYPESPEC 'int' 3:1
+  INIT_DECL 'e' 3:5
+    NAME 'e' 3:5
+    DECLARED 'e' 3:5
+    CHAR ''x'' 3:9
+DECL 'int' 4:1 [1]
+  SPECS 'int' 4:1
+    TYPESPEC 'int' 4:1
+  INIT_DECL 'f' 4:5
+    NAME 'f' 4:5
+    DECLARED 'f' 4:5
+    CHAR ''\n'' 4:9
+DECL 'int' 5:1 [1]
+  SPECS 'int' 5:1
+    TYPESPEC 'int' 5:1
+  INIT_DECL 'g' 5:5
+    NAME 'g' 5:5
+    DECLARED 'g' 5:5
+    NUMBER '1' 5:9
