@@ -25,6 +25,15 @@ layouts, gcc rules ported, walk design).
    c-decl.cc:9242 errors unconditionally, so cereal matches the reference.  lua52/lua53 lua.c are skipped (need libreadline-dev).
    Next: larger N/other seeds; a gcc 13 binary would remove the -fpermissive
    and flexible-array-union noise.
+   gcc.dg baseline 2026-09-30 (gcc-13 13.4, `par.py $PWD/cereal dg out.json`
+   with CEREAL_GCC=gcc-13, ~/gccts sparse 13.3.0 checkout, absolute cereal
+   path): n=6176, rejects-valid 82, accepts-invalid 103, crash 0, timeouts 1,
+   both-reject 939 of which 347 have identical headers.  Most common wording
+   gaps among both-reject files: "expected X or Y before string constant"
+   (gcc) vs "expected X before 'tok'" (cereal) and gcc's multi-token
+   expectation lists; "before 'tok' token" suffix; "expected declaration
+   specifiers" vs "expected declaration"; "unknown type name" where cereal
+   says "expected ...".
 2. gcc.dg gaps: parser "expected X before Y" wording; "excess elements in
    struct initializer"; "jump into scope of identifier with variably
    modified type"; attribute-ignored/argument-count warnings; __builtin_*

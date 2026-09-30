@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """par.py CEREAL SET OUT.json [extra flags...]   SET = corpus|dg
+CEREAL_GCCTS (default ~/gccts: sparse gcc-13.3.0 checkout of gcc/testsuite/gcc.dg),
+CEREAL_CORPUS (default ~/corpus), CEREAL_PYINC as for corpus.py; CEREAL_GCC (default gcc)
+should be 13 (messages and permerrors differ in 14+).
 Compares gcc vs cereal -fsyntax-only verdicts and diagnostic headers."""
 import sys, os, re, json, subprocess, glob, multiprocessing
 S = os.path.dirname(os.path.abspath(__file__))
 sys.argv, ARGS = sys.argv[:3], sys.argv
-exec(open("/home/user/cereal/bench/corpus.py").read().split("\ndef run(")[0])
+exec(open(os.path.join(S,"..","corpus.py")).read().split("\ndef run(")[0])
 sys.argv = ARGS
 HDR = re.compile(r'^(?:\S[^:]*):(\d+):(\d+): (fatal error|error|warning): (.*)$')
 def hdrs(txt, kinds=("error","warning","fatal error")):
@@ -18,7 +21,7 @@ def work(job):
     base=["-fsyntax-only","-std=c99","-pedantic"]+extra+flags
     env=dict(os.environ,LC_ALL="C")
     try:
-        g=subprocess.run(["gcc"]+base+[f],cwd=cwd,capture_output=True,timeout=30,env=env)
+        g=subprocess.run([os.environ.get("CEREAL_GCC","gcc")]+base+[f],cwd=cwd,capture_output=True,timeout=30,env=env)
         c=subprocess.run([cer]+base+[f],cwd=cwd,capture_output=True,timeout=30,env=env)
     except subprocess.TimeoutExpired:
         return dict(f=f,to=1)
@@ -26,7 +29,7 @@ def work(job):
         g=hdrs(g.stderr.decode(errors="replace")),c=hdrs(c.stderr.decode(errors="replace")),
         cerr=c.stderr.decode(errors="replace")[-300:] if c.returncode not in (0,1) else "")
 def dgjobs(extra):
-    root=S+"/gccts/gcc/testsuite/gcc.dg"
+    root=os.environ.get("CEREAL_GCCTS",os.path.expanduser("~/gccts"))+"/gcc/testsuite/gcc.dg"
     jobs=[]
     for f in sorted(glob.glob(root+"/*.c")):
         src=open(f,errors="replace").read(2000)
@@ -36,7 +39,7 @@ def dgjobs(extra):
 if __name__=="__main__":
     cer,st,out=sys.argv[1:4]; extra=ARGS[4:]
     if st=="corpus":
-        jobs=[(f,fl,cw) for n,f,fl,cw in units(S+"/corpus")]
+        jobs=[(f,fl,cw) for n,f,fl,cw in units(os.environ.get("CEREAL_CORPUS",os.path.expanduser("~/corpus")))]
     else: jobs=dgjobs(extra)
     jobs=[(cer,f,fl,cw,extra) for f,fl,cw in jobs]
     with multiprocessing.Pool(8) as p: res=p.map(work,jobs,chunksize=4)
