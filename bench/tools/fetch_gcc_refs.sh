@@ -4,7 +4,7 @@
 set -e
 D=${1:-gcc-refs}; mkdir -p "$D"
 B=https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-13.3.0
-for f in gcc/c/c-decl.cc gcc/c/c-parser.cc gcc/c/c-typeck.cc gcc/c/c-lex.cc \
+for f in gcc/c/c-decl.cc gcc/c/c-parser.cc gcc/c/c-typeck.cc gcc/c-family/c-lex.cc \
          libcpp/charset.cc libcpp/expr.cc; do
     curl -fsSL "$B/$f" -o "$D/$(basename "$f")"
 done
