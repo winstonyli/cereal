@@ -37,8 +37,13 @@ layouts, gcc rules ported, walk design).
 ## Workflow notes
 - Harness: bench/tools/{par,hd,san,mut}.py (parity, headers, sanitizers,
   mutants); gcc sources used as the port reference (c-decl.cc, c-typeck.cc,
-  c-parser.cc) were in the session scratchpad and are not in the repo: fetch
-  gcc 13.3 from upstream to regenerate.
+  c-parser.cc) were in the session scratchpad and are not in the repo: run
+  `bench/tools/fetch_gcc_refs.sh [DIR]` (downloads gcc-13.3.0 c-decl.cc,
+  c-parser.cc, c-typeck.cc, c-lex.cc, libcpp/charset.cc, libcpp/expr.cc from
+  github.com/gcc-mirror/gcc tag releases/gcc-13.3.0).  Line landmarks cited
+  in docs/CHECKER_PLAN.md (c-decl.cc: shadow_tag_warned 4832, grokparm 5972,
+  grokdeclarator 6545, grokparms 8195, get_parm_info 8324, declspecs_add_type
+  11453, add_scspec 12338, finish_declspecs 12540) refer to that version.
 - cdecl.c is a single assembled source; edit it directly.
 - Preferences: succinct replies; compile speed matters; do things right
   regardless of upfront cost; no PR unless asked; commit trailers as in git
