@@ -66,12 +66,23 @@ typedef struct DiagEngine {
     uint32_t key;            /* current plan item (set by the preprocessor) */
 } DiagEngine;
 
-/* Warning option registry. */
+/* Warning option registry.  An option is enabled by an explicit -W flag,
+ * else by an umbrella flag in `by` (gcc's EnabledBy), else by default.
+ * A name ending in '=' is a gcc level option (-Wshift-overflow=): it is
+ * spelled -Wname or -Wname=N (0: off) and printed as [-Wname=]. */
+#define DO_ALL          0x01    /* -Wall */
+#define DO_EXTRA        0x02    /* -Wextra */
+#define DO_PEDANTIC     0x04    /* -pedantic, -Wpedantic */
+#define DO_UNUSED       0x08    /* -Wunused (itself enabled by -Wall) */
+#define DO_IMPLICIT     0x10    /* -Wimplicit (itself enabled by -Wall) */
+#define DO_UNUSED_EXTRA 0x20    /* -Wunused and -Wextra together */
+
 typedef struct DiagOption {
     const char *name;
-    const char *group;       /* hygiene | cond | include | pp | pedantic */
+    const char *group;       /* hygiene | cond | include | pp | pedantic | c */
     DiagLevel level;         /* severity when enabled */
     bool on;                 /* enabled by default */
+    uint8_t by;              /* DO_* umbrella flags that enable it */
     const char *help;
 } DiagOption;
 
@@ -80,6 +91,11 @@ void diag_free(DiagEngine *d);
 
 DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested);
 bool diag_enabled(DiagEngine *d, const char *id);
+/* 1: enabled; 0: disabled by a flag (-Wno-X, or -Wno-all for an option
+ * -Wall enables); -1: disabled by default.  gcc emits some pedwarns
+ * untagged when the option is merely at its default (warn_return_type
+ * == -1) and not at all when it is turned off. */
+int diag_option_state(DiagEngine *d, const char *id);
 
 Diagnostic *diag_report(DiagEngine *d, DiagLevel lvl, const char *id,
                         SrcLoc loc, const char *fmt, ...);

@@ -6,6 +6,7 @@
 #include "index.h"
 #include "cell.h"
 #include "toks.h"
+#include "c/check.h"
 #include "c/parse.h"
 #include "lsp/lsp.h"
 
@@ -31,7 +32,10 @@ static void usage(FILE *o)
         "  parse         parse (C99 + GNU), report syntax errors\n"
         "                --dump: print the syntax trees; --cells: parse\n"
         "                tokens regenerated from a cell build\n"
-        "  -fsyntax-only  the same as parse\n"
+        "  check         parse and type-check (declarations, types,\n"
+        "                constant expressions), gcc's diagnostics\n"
+        "                --dump-types: print declarations and layouts\n"
+        "  -fsyntax-only  the same as check\n"
         "  lsp           language server on stdin/stdout\n"
         "  query KIND FILE:LINE:COL   KIND = def | refs | hover | visible | expand\n"
         "  --list-warnings  list every -W option\n"
@@ -40,7 +44,9 @@ static void usage(FILE *o)
         "  -I DIR  -iquote DIR  -isystem DIR  -nostdinc\n"
         "  -D NAME[=VAL]  -U NAME  -include FILE  -undef\n"
         "  -std=c99  -pedantic  -pedantic-errors  -trigraphs\n"
-        "  -W<name>  -Wno-<name>  -W<group>  -Wall  -Werror  -Weverything\n"
+        "  -W<name>  -Wno-<name>  -W<group>  -Wall  -Wextra  -Werror\n"
+        "  -Werror=<name>  -Weverything\n"
+        "  --target=NAME  the ABI for check (default: the host's)\n"
         "  -fdiagnostics-format=json  -fcolor-diagnostics  -P  -o FILE\n"
         "  -fparallel=auto|on|off  -fparallel-threads=N  -fparallel-chunk=BYTES\n"
         "  -j N          translation units at a time (default: all cores)\n",
@@ -145,7 +151,8 @@ done:
 
 /* ---- parse, -fsyntax-only ------------------------------------------------ */
 
-static bool parse_dump, parse_cells;
+static bool parse_dump, parse_cells, parse_check, dump_types;
+static const Target *check_target;
 
 static bool pp_source(void *ctx, Tok *t, SrcLoc *exp_loc)
 {
@@ -195,6 +202,8 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
     CellSource cs;
     ParseSource src = pp_source;
     void *ctx = &tu.pp;
+    Checker *chk = NULL;
+    uint64_t errs;
     int rc;
     tu_init(&tu, o);
     tu.diag.out = err;
@@ -227,9 +236,26 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         goto done;
     }
     parser_init(&p, &tu.sm, tu.in, &tu.diag, o->pp.gnu_mode, src, ctx);
-    while (parser_next(&p, &u))
+    if (parse_check) {
+        CheckOptions co;
+        memset(&co, 0, sizeof co);
+        co.target = check_target;
+        co.gnu = o->pp.gnu_mode;
+        co.pedantic = tu.diag.pedantic;
+        co.pedantic_errors = tu.diag.pedantic_errors;
+        co.dump = dump_types ? out : NULL;
+        chk = checker_new(&tu.sm, tu.in, &tu.diag, &co);
+    }
+    for (errs = p.errors; parser_next(&p, &u); errs = p.errors) {
         if (parse_dump)
             ast_dump(out, &u, &tu.sm, tu.in);
+        if (chk)
+            checker_unit(chk, &u, p.errors > errs);
+    }
+    if (chk) {
+        checker_finish(chk);
+        checker_free(chk);
+    }
     if (getenv("CEREAL_PARSE_STATS"))
         fprintf(stderr, "parse: %llu units, %llu tokens, %llu errors\n",
                 (unsigned long long)p.units,
@@ -927,6 +953,7 @@ int main(int argc, char **argv)
         if (!mode && (!strcmp(argv[i], "-E") || !strcmp(argv[i], "lint") ||
                       !strcmp(argv[i], "index") ||
                       !strcmp(argv[i], "parse") ||
+                      !strcmp(argv[i], "check") ||
                       !strcmp(argv[i], "-fsyntax-only"))) {
             mode = argv[i];
             continue;
@@ -939,6 +966,19 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--dump")) {
             parse_dump = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--dump-types")) {
+            dump_types = true;
+            continue;
+        }
+        if (!strncmp(argv[i], "--target=", 9)) {
+            check_target = target_find(argv[i] + 9);
+            if (!check_target) {
+                fprintf(stderr, "cereal: unknown target '%s' (known: %s)\n",
+                        argv[i] + 9, target_names);
+                return 2;
+            }
             continue;
         }
         if (!strcmp(argv[i], "--cells")) {
@@ -1009,10 +1049,14 @@ int main(int argc, char **argv)
         rc = mode_replay(&o, all, !no_cells, quiet, queries, tokens);
     else if (!strcmp(mode, "index"))
         rc = mode_index(&o, all, check_graph);
-    else if (!strcmp(mode, "parse") || !strcmp(mode, "-fsyntax-only"))
+    else if (!strcmp(mode, "parse") || !strcmp(mode, "check") ||
+             !strcmp(mode, "-fsyntax-only")) {
+        parse_check = strcmp(mode, "parse") != 0;
         rc = o.inputs.len ? run_inputs(&o, parse_one, stdout)
-                          : (fputs("cereal: parse needs input files\n", stderr),
+                          : (fprintf(stderr, "cereal: %s needs input files\n",
+                                     mode),
                              2);
+    }
     else if (!strcmp(mode, "query"))
         rc = mode_query(&o, qkind, qat);
     options_free(&o);

@@ -15,6 +15,11 @@
 #   9. lsp: scripted language-server sessions against golden transcripts
 #  10. parser: syntax trees and diagnostics against goldens, directly and
 #      from tokens regenerated from cells; cereal's own sources parse
+#  11. checker: `cereal -fsyntax-only -std=c99 -pedantic` diagnostics (gcc's
+#      text) against goldens, directly and from cells; a `// flags: ...`
+#      line in a case adds flags (e.g. -Wall, --target=i386, --dump-types);
+#      layout parity: random records with $REFCC's sizeof/_Alignof/offsetof
+#      as _Static_asserts (tests/gen_layout.py) must check clean
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -253,6 +258,59 @@ for f in "$ROOT"/src/*.c "$ROOT"/src/analysis/*.c "$ROOT"/src/lsp/*.c \
         head -5 "$TMP/e1" | sed 's/^/    /'
     fi
 done
+
+check_golden() { # check_golden NAME FLAGS...  (in tests/check)
+    name=$1
+    shift
+    extra=$(sed -n 's|^// flags: *||p' "$name.c" | head -1)
+    # shellcheck disable=SC2086
+    "$CEREAL" -fsyntax-only -std=c99 -pedantic $extra "$@" "$name.c" \
+        >"$TMP/co" 2>"$TMP/ce"
+    cat "$TMP/ce" "$TMP/co" >"$TMP/c"
+    if cmp -s "$TMP/c" "$name.expected"; then
+        ok
+    else
+        bad "check/$name.c $extra $*"
+        diff "$name.expected" "$TMP/c" | head -20 | sed 's/^/    /'
+    fi
+}
+if [ -d "$ROOT/tests/check" ]; then
+    cd "$ROOT/tests/check"
+    for f in *.c; do
+        [ -f "$f" ] || continue
+        check_golden "${f%.c}"
+        check_golden "${f%.c}" --cells -fparallel-chunk=1 -fparallel-threads=2
+    done
+    cd "$ROOT"
+fi
+
+layout_ok() { # layout_ok SEED TARGET CC
+    if ! python3 "$ROOT/tests/gen_layout.py" --seed "$1" --count 40 \
+        --target "$2" --cc "$3" --out "$TMP/lay.c" >"$TMP/le" 2>&1; then
+        bad "layout generator seed $1 $2"
+        tail -5 "$TMP/le" | sed 's/^/    /'
+        return
+    fi
+    if "$CEREAL" -fsyntax-only -std=c99 --target="$2" "$TMP/lay.c" \
+        >"$TMP/lo" 2>&1 && [ ! -s "$TMP/lo" ]; then
+        ok
+    else
+        cp "$TMP/lay.c" "${TMPDIR:-/tmp}/cereal-layout-$2-$1.c"
+        bad "layout parity seed $1 $2 (kept ${TMPDIR:-/tmp}/cereal-layout-$2-$1.c)"
+        head -10 "$TMP/lo" | sed 's/^/    /'
+    fi
+}
+if command -v "$REFCC" >/dev/null 2>&1; then
+    seed=1
+    while [ $seed -le "${LAYOUT_N:-4}" ]; do
+        layout_ok $seed x86_64 "$REFCC"
+        seed=$((seed + 1))
+    done
+    if echo 'int x;' | $REFCC -m32 -S -o /dev/null -x c - 2>/dev/null; then
+        layout_ok 1 i386 "$REFCC -m32"
+        layout_ok 2 i386 "$REFCC -m32"
+    fi
+fi
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
