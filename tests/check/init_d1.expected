@@ -1,0 +1,12 @@
+init_d1.c:2:40: warning: excess elements in struct initializer
+    2 | struct S { int x; int z; } s = { 1, 2, 3 };
+      |                                        ^
+init_d1.c:2:40: note: (near initialization for 's')
+    2 | struct S { int x; int z; } s = { 1, 2, 3 };
+      |                                        ^
+init_d1.c:3:20: warning: excess elements in array initializer
+    3 | int d[2] = { 1, 2, 3 };
+      |                    ^
+init_d1.c:3:20: note: (near initialization for 'd')
+    3 | int d[2] = { 1, 2, 3 };
+      |                    ^

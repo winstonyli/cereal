@@ -1,0 +1,69 @@
+expr_cb.c:6:5: error: cannot convert to a pointer type
+    6 |     cp = (int *)fl;
+      |     ^
+expr_cb.c:6:8: warning: assignment to 'char *' from incompatible pointer type 'int *' [-Wincompatible-pointer-types]
+    6 |     cp = (int *)fl;
+      |        ^
+expr_cb.c:7:5: error: cannot convert to a pointer type
+    7 |     vp = (fp)fl;
+      |     ^
+expr_cb.c:7:8: warning: ISO C forbids assignment between function pointer and 'void *' [-Wpedantic]
+    7 |     vp = (fp)fl;
+      |        ^
+expr_cb.c:8:5: error: cannot convert to a pointer type
+    8 |     cp = (fp)fl;
+      |     ^
+expr_cb.c:8:8: warning: assignment to 'char *' from incompatible pointer type 'void (*)(void)' [-Wincompatible-pointer-types]
+    8 |     cp = (fp)fl;
+      |        ^
+expr_cb.c:9:5: error: cannot convert to a pointer type
+    9 |     i = (fp)fl;
+      |     ^
+expr_cb.c:9:7: warning: assignment to 'int' from 'void (*)(void)' makes integer from pointer without a cast [-Wint-conversion]
+    9 |     i = (fp)fl;
+      |       ^
+expr_cb.c:10:5: error: cannot convert to a pointer type
+   10 |     cp = (int *)s;
+      |     ^
+expr_cb.c:10:8: warning: assignment to 'char *' from incompatible pointer type 'int *' [-Wincompatible-pointer-types]
+   10 |     cp = (int *)s;
+      |        ^
+expr_cb.c:11:5: error: cannot convert to a pointer type
+   11 |     vp = (fp)s;
+      |     ^
+expr_cb.c:11:8: warning: ISO C forbids assignment between function pointer and 'void *' [-Wpedantic]
+   11 |     vp = (fp)s;
+      |        ^
+expr_cb.c:12:5: error: cannot convert to a pointer type
+   12 |     i = (int *)s;
+      |     ^
+expr_cb.c:12:7: warning: assignment to 'int' from 'int *' makes integer from pointer without a cast [-Wint-conversion]
+   12 |     i = (int *)s;
+      |       ^
+expr_cb.c:13:5: error: cannot convert to a pointer type
+   13 |     (fp)fl;
+      |     ^
+expr_cb.c:13:5: warning: statement with no effect [-Wunused-value]
+   13 |     (fp)fl;
+      |     ^
+expr_cb.c:14:5: error: cannot convert to a pointer type
+   14 |     (void)(fp)fl;
+      |     ^
+expr_cb.c:15:10: warning: cast from pointer to integer of different size [-Wpointer-to-int-cast]
+   15 |     fl = (int)cp + (fp)fl;
+      |          ^
+expr_cb.c:15:5: error: cannot convert to a pointer type
+   15 |     fl = (int)cp + (fp)fl;
+      |     ^
+expr_cb.c:15:18: warning: pointer to a function used in arithmetic [-Wpointer-arith]
+   15 |     fl = (int)cp + (fp)fl;
+      |                  ^
+expr_cb.c:15:10: error: incompatible types when assigning to type 'float' from type 'void (*)(void)'
+   15 |     fl = (int)cp + (fp)fl;
+      |          ^
+expr_cb.c:4:46: warning: parameter 'vp' set but not used [-Wunused-but-set-parameter]
+    4 | void f(float fl, struct S s, char *cp, void *vp, int i)
+      |                                              ^
+expr_cb.c:4:54: warning: parameter 'i' set but not used [-Wunused-but-set-parameter]
+    4 | void f(float fl, struct S s, char *cp, void *vp, int i)
+      |                                                      ^

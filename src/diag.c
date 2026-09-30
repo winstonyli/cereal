@@ -538,7 +538,10 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
         fputs("\033[1m", o);
     if (f) {
         srcmgr_linecol(f, loc, &line, &col);
-        fprintf(o, "%s:%u:%u: ", f->name, line, display_col(f, line, col));
+        if (f->kind == SF_VIRTUAL && !strcmp(f->name, "<built-in>"))
+            fprintf(o, "%s: ", f->name);
+        else
+            fprintf(o, "%s:%u:%u: ", f->name, line, display_col(f, line, col));
     } else {
         fputs("cereal: ", o);
     }

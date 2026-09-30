@@ -1,0 +1,132 @@
+expr_co.c:11:7: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   11 |     q = i ? cp : vp;
+      |       ^
+expr_co.c:12:7: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   12 |     q = i ? cp : p;
+      |       ^
+expr_co.c:13:7: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   13 |     q = i ? cp : cvp;
+      |       ^
+expr_co.c:14:7: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   14 |     q = i ? p : cvp;
+      |       ^
+expr_co.c:15:7: warning: assignment discards 'const volatile' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   15 |     q = i ? vip : cp;
+      |       ^
+expr_co.c:19:15: warning: pointer/integer type mismatch in conditional expression
+   19 |     q = i ? p : 1;
+      |               ^
+expr_co.c:20:15: warning: pointer/integer type mismatch in conditional expression
+   20 |     q = i ? p : l;
+      |               ^
+expr_co.c:21:15: warning: pointer type mismatch in conditional expression
+   21 |     q = i ? p : cs;
+      |               ^
+expr_co.c:22:17: warning: ISO C forbids conditional expr between 'void *' and function pointer [-Wpedantic]
+   22 |     q = i ? fpp : vp;
+      |                 ^
+expr_co.c:23:7: warning: ISO C forbids assignment between function pointer and 'void *' [-Wpedantic]
+   23 |     q = i ? fpp : 0;
+      |       ^
+expr_co.c:24:16: warning: pointer type mismatch in conditional expression
+   24 |     q = i ? ip : lp;
+      |                ^
+expr_co.c:25:16: warning: pointer type mismatch in conditional expression
+   25 |     q = i ? ip : fpp;
+      |                ^
+expr_co.c:26:16: warning: ISO C forbids conditional expr between 'void *' and function pointer [-Wpedantic]
+   26 |     q = i ? vf : vp;
+      |                ^
+expr_co.c:27:9: error: incompatible types when assigning to type 'void *' from type 'struct S'
+   27 |     q = i ? s : s;
+      |         ^
+expr_co.c:28:15: error: type mismatch in conditional expression
+   28 |     q = i ? s : t;
+      |               ^
+expr_co.c:29:9: error: incompatible types when assigning to type 'void *' from type 'struct S'
+   29 |     q = i ? s : cs1;
+      |         ^
+expr_co.c:31:16: error: type mismatch in conditional expression
+   31 |     rs = i ? s : 1;
+      |                ^
+expr_co.c:32:9: error: incompatible types when assigning to type 'int' from type 'union U'
+   32 |     r = i ? u : u;
+      |         ^
+expr_co.c:33:15: error: type mismatch in conditional expression
+   33 |     r = i ? s : i;
+      |               ^
+expr_co.c:39:21: warning: ISO C forbids conditional expr with only one void side [-Wpedantic]
+   39 |     r = i ? (void)0 : 1;
+      |                     ^
+expr_co.c:39:7: error: void value not ignored as it ought to be
+   39 |     r = i ? (void)0 : 1;
+      |       ^
+expr_co.c:42:18: warning: ISO C forbids conditional expr with only one void side [-Wpedantic]
+   42 |     r = i ? vf() : i;
+      |                  ^
+expr_co.c:42:7: error: void value not ignored as it ought to be
+   42 |     r = i ? vf() : i;
+      |       ^
+expr_co.c:43:7: warning: assignment to 'int' from 'int *' makes integer from pointer without a cast [-Wint-conversion]
+   43 |     r = i ? arr : p;
+      |       ^
+expr_co.c:44:16: warning: pointer type mismatch in conditional expression
+   44 |     q = i ? pa : pa4;
+      |                ^
+expr_co.c:45:16: warning: pointer type mismatch in conditional expression
+   45 |     q = i ? pa : p;
+      |                ^
+expr_co.c:46:11: error: used struct type value where scalar is required
+   46 |     r = s ? 1 : 2;
+      |           ^
+expr_co.c:47:12: warning: the address of 'vf' will always evaluate as 'true' [-Waddress]
+   47 |     r = vf ? 1 : 2;
+      |            ^
+expr_co.c:50:12: warning: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+   50 |     r = i ?: 2;
+      |            ^
+expr_co.c:51:12: warning: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+   51 |     r = p ?: 2;
+      |            ^
+expr_co.c:51:12: warning: pointer/integer type mismatch in conditional expression
+   51 |     r = p ?: 2;
+      |            ^
+expr_co.c:51:7: warning: assignment to 'int' from 'int *' makes integer from pointer without a cast [-Wint-conversion]
+   51 |     r = p ?: 2;
+      |       ^
+expr_co.c:52:12: warning: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+   52 |     r = s ?: 2;
+      |            ^
+expr_co.c:52:11: error: used struct type value where scalar is required
+   52 |     r = s ?: 2;
+      |           ^
+expr_co.c:53:7: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   53 |     q = i ? p : (const void *)0;
+      |       ^
+expr_co.c:55:22: warning: pointer type mismatch in conditional expression
+   55 |     q = i ? (int *)0 : (char *)0;
+      |                      ^
+expr_co.c:58:29: warning: ISO C forbids conditional expr between 'void *' and function pointer [-Wpedantic]
+   58 |     q = i ? (const void *)0 : fpp;
+      |                             ^
+expr_co.c:58:7: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   58 |     q = i ? (const void *)0 : fpp;
+      |       ^
+expr_co.c:59:7: warning: ISO C forbids assignment between function pointer and 'void *' [-Wpedantic]
+   59 |     q = i ? (int)0 : fpp;
+      |       ^
+expr_co.c:63:17: error: type mismatch in conditional expression
+   63 |     q = i ? 0.0 : p;
+      |                 ^
+expr_co.c:8:45: warning: variable 'rs' set but not used [-Wunused-but-set-variable]
+    8 |     int r; void *q; const int *cq; struct S rs;
+      |                                             ^
+expr_co.c:8:32: warning: variable 'cq' set but not used [-Wunused-but-set-variable]
+    8 |     int r; void *q; const int *cq; struct S rs;
+      |                                ^
+expr_co.c:8:18: warning: variable 'q' set but not used [-Wunused-but-set-variable]
+    8 |     int r; void *q; const int *cq; struct S rs;
+      |                  ^
+expr_co.c:8:9: warning: variable 'r' set but not used [-Wunused-but-set-variable]
+    8 |     int r; void *q; const int *cq; struct S rs;
+      |         ^

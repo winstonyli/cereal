@@ -1,0 +1,135 @@
+expr_tv.c:6:11: warning: comparison of integer expressions of different signedness: 'char' and 'unsigned int' [-Wsign-compare]
+    6 |     r = c < 200u;
+      |           ^
+expr_tv.c:7:11: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+    7 |     r = c == 300u;
+      |           ^
+expr_tv.c:8:11: warning: comparison of integer expressions of different signedness: 'char' and 'unsigned int' [-Wsign-compare]
+    8 |     r = c > -1u;
+      |           ^
+expr_tv.c:9:12: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+    9 |     r = uc < 300u;
+      |            ^
+expr_tv.c:10:12: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   10 |     r = uc == 300u;
+      |            ^
+expr_tv.c:11:12: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   11 |     r = us > 70000u;
+      |            ^
+expr_tv.c:12:12: warning: comparison of integer expressions of different signedness: 'short int' and 'unsigned int' [-Wsign-compare]
+   12 |     r = sh < 40000u;
+      |            ^
+expr_tv.c:13:12: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   13 |     r = sh == 40000;
+      |            ^
+expr_tv.c:14:12: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   14 |     r = sh < 40000;
+      |            ^
+expr_tv.c:15:11: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   15 |     r = c < 200L;
+      |           ^
+expr_tv.c:16:12: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   16 |     r = uc < 300L;
+      |            ^
+expr_tv.c:17:12: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   17 |     r = uc == -1L;
+      |            ^
+expr_tv.c:18:12: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   18 |     r = uc > -1;
+      |            ^
+expr_tv.c:19:12: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   19 |     r = uc >= -1;
+      |            ^
+expr_tv.c:20:12: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   20 |     r = uc < -1;
+      |            ^
+expr_tv.c:24:13: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   24 |     r = b.y < -8;
+      |             ^
+expr_tv.c:25:13: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   25 |     r = b.y < -9;
+      |             ^
+expr_tv.c:26:13: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   26 |     r = b.y > 7;
+      |             ^
+expr_tv.c:27:13: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   27 |     r = b.y > 8;
+      |             ^
+expr_tv.c:28:13: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   28 |     r = b.z > 0xffffffffffUL;
+      |             ^
+expr_tv.c:29:13: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   29 |     r = b.z > 0xfffffffffffUL;
+      |             ^
+expr_tv.c:31:13: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   31 |     r = (c) < 200;
+      |             ^
+expr_tv.c:32:18: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   32 |     r = (short)c < 200;
+      |                  ^
+expr_tv.c:33:18: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   33 |     r = (short)l < 40000;
+      |                  ^
+expr_tv.c:34:16: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   34 |     r = (int)c < 200;
+      |                ^
+expr_tv.c:35:17: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   35 |     r = (long)c < 200;
+      |                 ^
+expr_tv.c:37:13: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   37 |     r = 200 > c;
+      |             ^
+expr_tv.c:38:13: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   38 |     r = 200 < c;
+      |             ^
+expr_tv.c:42:11: warning: comparison of integer expressions of different signedness: 'long int' and 'long unsigned int' [-Wsign-compare]
+   42 |     r = l < 0xffffffffffUL;
+      |           ^
+expr_tv.c:43:11: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   43 |     r = u < 0xffffffffffUL;
+      |           ^
+expr_tv.c:44:11: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   44 |     r = u == 0x100000000;
+      |           ^
+expr_tv.c:45:11: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   45 |     r = u == -1L;
+      |           ^
+expr_tv.c:46:11: warning: comparison of unsigned expression in '< 0' is always false [-Wtype-limits]
+   46 |     r = u < 0;
+      |           ^
+expr_tv.c:52:26: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   52 |     r = (unsigned char)c < 0;
+      |                          ^
+expr_tv.c:53:12: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   53 |     r = uc < 0;
+      |            ^
+expr_tv.c:54:12: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   54 |     r = uc >= 0;
+      |            ^
+expr_tv.c:55:12: warning: left-hand operand of comma expression has no effect [-Wunused-value]
+   55 |     r = (uc, c) < 200;
+      |            ^
+expr_tv.c:55:17: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   55 |     r = (uc, c) < 200;
+      |                 ^
+expr_tv.c:56:12: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   56 |     r = us <= 65535;
+      |            ^
+expr_tv.c:57:12: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   57 |     r = us > 65535;
+      |            ^
+expr_tv.c:59:12: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   59 |     r = us < 65536;
+      |            ^
+expr_tv.c:60:12: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   60 |     r = sh >= -32768;
+      |            ^
+expr_tv.c:62:12: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   62 |     r = sh <= 32767;
+      |            ^
+expr_tv.c:64:12: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   64 |     r = sh >= 32768;
+      |            ^
+expr_tv.c:5:9: warning: variable 'r' set but not used [-Wunused-but-set-variable]
+    5 |     int r;
+      |         ^

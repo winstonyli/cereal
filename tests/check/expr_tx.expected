@@ -1,0 +1,24 @@
+expr_tx.c:7:10: warning: comparison of integer expressions of different signedness: 'signed char:4' and 'unsigned int' [-Wsign-compare]
+    7 | r += b.y < ui;
+      |          ^
+expr_tx.c:8:10: warning: comparison of integer expressions of different signedness: 'unsigned int' and 'int' [-Wsign-compare]
+    8 | r += b.u < i;
+      |          ^
+expr_tx.c:9:10: warning: comparison of integer expressions of different signedness: 'int:31' and 'unsigned int' [-Wsign-compare]
+    9 | r += b.s < ui;
+      |          ^
+expr_tx.c:11:10: warning: comparison of integer expressions of different signedness: 'long int:40' and 'long unsigned int' [-Wsign-compare]
+   11 | r += b.w < ul;
+      |          ^
+expr_tx.c:13:10: warning: comparison of integer expressions of different signedness: 'short int:9' and 'unsigned int' [-Wsign-compare]
+   13 | r += b.h < ui;
+      |          ^
+expr_tx.c:16:9: warning: comparison of integer expressions of different signedness: 'unsigned int' and 'signed char:4' [-Wsign-compare]
+   16 | r += ui < b.y;
+      |         ^
+expr_tx.c:17:10: warning: comparison of integer expressions of different signedness: 'signed char:4' and 'unsigned int' [-Wsign-compare]
+   17 | r += b.y < 1u;
+      |          ^
+expr_tx.c:19:10: warning: comparison of integer expressions of different signedness: 'signed char:4' and 'long unsigned int' [-Wsign-compare]
+   19 | r += b.y < ul;
+      |          ^

@@ -1,0 +1,51 @@
+expr_tw.c:10:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   10 | r += b.y > 8;
+      |          ^
+expr_tw.c:11:10: warning: comparison of integer expressions of different signedness: 'signed char:4' and 'unsigned int' [-Wsign-compare]
+   11 | r += b.y > 8u;
+      |          ^
+expr_tw.c:12:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   12 | r += b.y < -9;
+      |          ^
+expr_tw.c:13:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   13 | r += b.y < -9L;
+      |          ^
+expr_tw.c:14:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   14 | r += b.y == 100;
+      |          ^
+expr_tw.c:15:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   15 | r += b.z > 0xfffffffffffUL;
+      |          ^
+expr_tw.c:16:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   16 | r += b.z > 0xfffffffffffL;
+      |          ^
+expr_tw.c:17:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   17 | r += b.z > 0xffffffffffUL;
+      |          ^
+expr_tw.c:18:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   18 | r += b.w > 0xfffffffffffL;
+      |          ^
+expr_tw.c:19:10: warning: comparison of integer expressions of different signedness: 'long int:40' and 'long unsigned int' [-Wsign-compare]
+   19 | r += b.w > 0xfffffffffffUL;
+      |          ^
+expr_tw.c:21:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   21 | r += b.u > 0xffffffffL;
+      |          ^
+expr_tw.c:22:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   22 | r += b.s > 0x7fffffff;
+      |          ^
+expr_tw.c:23:10: warning: comparison of integer expressions of different signedness: 'int:31' and 'unsigned int' [-Wsign-compare]
+   23 | r += b.s > 0x7fffffffu;
+      |          ^
+expr_tw.c:24:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   24 | r += b.s > 0x7fffffffL;
+      |          ^
+expr_tw.c:25:10: warning: comparison of integer expressions of different signedness: 'int:31' and 'unsigned int' [-Wsign-compare]
+   25 | r += b.s > 0x80000000u;
+      |          ^
+expr_tw.c:28:10: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   28 | r += b.y >= 8;
+      |          ^
+expr_tw.c:29:10: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+   29 | r += b.y <= 7;
+      |          ^

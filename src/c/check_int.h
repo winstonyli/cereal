@@ -35,7 +35,13 @@ enum {
     CSF_KR_DEF = 2048,       /* a function defined K&R style */
     CSF_REGISTER_NAMED = 4096, /* file-scope register with an asm label */
     CSF_ERROR = 8192,        /* its declaration had errors */
-    CSF_AUTO_TYPE = 65536    /* __auto_type: type comes from the initializer */
+    CSF_DECL_EXTERNAL = 16384, /* gcc's DECL_EXTERNAL */
+    CSF_TREE_STATIC = 32768, /* gcc's TREE_STATIC */
+    CSF_AUTO_TYPE = 65536,   /* __auto_type: type comes from the initializer */
+    CSF_ARRAY_PARM = 131072, /* a parameter declared with an array type */
+    CSF_WEAK = 262144,       /* __attribute__((weak)) */
+    CSF_ADDR_WARNED = 524288, /* -Waddress 'will always be true' given */
+    CSF_CONST_INIT = 1048576 /* const scalar with a constant initializer */
 };
 
 typedef struct CSym {
@@ -177,8 +183,10 @@ enum {
     EF_CST = 2048,           /* K_FOLD: a folded INTEGER_CST, not an ICE */
     EF_BFPROMOTE = 4096,     /* a bit-field narrower than int */
     EF_NOPCST = 8192,        /* K_FOLD: an INTEGER_CST under a conversion */
-    EF_FOLDWARN = 16384      /* a warning is due when the full expression is
+    EF_FOLDWARN = 16384,     /* a warning is due when the full expression is
                                 folded (gcc's c_fully_fold) */
+    EF_GCCFOLD = 32768       /* a comparison gcc folds to a constant (only
+                                the location of -Wunused-value changes) */
 };
 
 /* Checker.cb for addresses not of a symbol: the node (string literal,
@@ -248,6 +256,11 @@ struct Checker {
     uint64_t undecl_key;
     bool undecl_noted;
     uint32_t fold_pending;
+    uint64_t fuzzy_work;     /* cexpr.c: spelling-suggestion effort spent */
+    void *plocs;             /* cexpr.c: parameter locations of functions */
+    uint64_t hdr_noted;      /* cexpr.c: headers a note already suggested */
+    void *stmt;              /* cstmt.c: statement-level state */
+    struct CInit *ci;        /* cinit.c: initializer state */
     StrBuf esb[2];           /* cexpr.c: %E buffers (check.c frees) */
     unsigned enext, vnext;
     char vbuf[2][32];
@@ -361,5 +374,87 @@ bool cexpr_find_member(Checker *c, TypeId rec, uint32_t name, TypeId *ty,
                        uint64_t *off_bits, bool *bitfield);
 /* Is node i inside __extension__ (pedantic warnings off)? */
 bool cexpr_in_extension(Checker *c, uint32_t i);
+
+/* Implicit conversion to an object's type (gcc's convert_for_assignment,
+ * with its constraint errors and warnings): the value of expression node
+ * `expr` (already checked: c->ty/ck/cv/ef are set) converted to type
+ * `lhs`.  Used for assignment (cexpr.c), argument passing (cexpr.c),
+ * initialization (cinit.c) and `return` (statements). */
+enum {
+    CONV_INIT,               /* "initialization of 'T' from 'U' ..." */
+    CONV_ASSIGN,             /* "assignment to 'T' from 'U' ..." */
+    CONV_ARG,                /* "passing argument N of 'f' ..." */
+    CONV_RETURN              /* "returning 'U' from a function with ..." */
+};
+
+typedef struct ConvInfo {
+    int context;             /* CONV_* */
+    /* gcc's `location`: CONV_ASSIGN the '=' token; CONV_INIT the
+     * initializer (its first token / its expr_loc for a brace-less value);
+     * CONV_RETURN the `return` statement's location argument (gcc passes
+     * the location of the 'return' keyword's operand: use what
+     * c_finish_return receives).  0: the expression's own location
+     * (expr_loc).  CONV_ARG ignores it (gcc uses the argument's
+     * location). */
+    SrcLoc loc;
+    SrcLoc eloc;             /* CONV_ASSIGN: gcc's expr_loc (0: the first token of
+                              * the expression) */
+    /* CONV_ARG: the callee as printed by %qE ("f"), the 1-based argument
+     * number, and where the "expected 'T' but argument is of type 'U'"
+     * note points (the parameter's declaration; 0: the argument). */
+    const char *fname;
+    int parmnum;
+    SrcLoc note_loc;
+    /* CONV_ARG: instead of note_loc, the callee's symbol ref + 1 (the note
+     * then goes to that function's parameter declaration, found when a
+     * diagnostic needs it); 0: none. */
+    uint32_t fsym;
+    /* CONV_INIT inside aggregates: the text of gcc's spelling stack
+     * ("a.b[2]"); after a diagnostic a note "(near initialization for
+     * 'TEXT')" is added at `loc`.  NULL: none. */
+    const char *near;
+    /* CONV_ARG to an unprototyped builtin etc.: report as this warning
+     * option instead of an error (NULL: normal). */
+    const char *warnopt;
+} ConvInfo;
+
+/* Checks the conversion of node expr (by gcc's rules for the context) to
+ * lhs; reports as gcc does and returns false after an error (not after a
+ * warning).  A void / erroneous expression or target type is an error /
+ * silently fails.  The expression node may be any expression tag. */
+/* cdecl.c: a function declarator was declared (declared: the DECLARED node;
+ * ref: its symbol; def: a definition); records the locations of the
+ * parameters for the notes of argument diagnostics. */
+void cexpr_record_params(Checker *c, uint32_t declared, uint32_t ref, bool def);
+void cexpr_free_params(Checker *c);
+/* -Waddress for a pointer used as a truth value (loc: diagnostic location) */
+void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc);
+void cstmt_unit_begin(Checker *c);
+void cstmt_free(Checker *c);
+void cstmt_scope_open(Checker *c, uint32_t i);
+void cstmt_scope_end(Checker *c, uint32_t i);
+void cstmt_scope_end_post(Checker *c, uint32_t i);
+void cstmt_enter(Checker *c, uint32_t i);
+void cstmt_expr(Checker *c, uint32_t i);
+void cstmt_node(Checker *c, uint32_t i);
+void cstmt_emit_labels(Checker *c, uint32_t scope_node, int64_t min_key);
+bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
+                        const ConvInfo *ci);
+/* The spelling suggestion for a misspelled member of rec (NULL: none). */
+const char *cexpr_fuzzy_field(Checker *c, TypeId rec, uint32_t name);
+
+/* Initializers (cinit.c): gcc's digest_init / process_init_element. */
+/* A DECLARED node was visited: opens the context of a braced initializer. */
+void cinit_declared(Checker *c, uint32_t declared);
+/* An INIT_DECL is about to finish: checks a brace-less initializer. */
+void cinit_decl_done(Checker *c, uint32_t idecl);
+/* Before / after every node is visited (cinit.c follows the initializer
+ * lists as the nodes arrive). */
+void cinit_pre(Checker *c, uint32_t i);
+void cinit_post(Checker *c, uint32_t i);
+void cinit_reset(Checker *c);
+void cinit_free(Checker *c);
+/* cdecl.c: gcc's input_location while the parser looks at token tok. */
+SrcLoc cdecl_iloc(Checker *c, uint32_t tok);
 
 #endif

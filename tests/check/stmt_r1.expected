@@ -1,0 +1,45 @@
+stmt_r1.c:4:3: warning: range expressions in switch statements are non-standard [-Wpedantic]
+    4 |   case 100 ... 300: ;
+      |   ^
+stmt_r1.c:5:3: warning: range expressions in switch statements are non-standard [-Wpedantic]
+    5 |   case -300 ... 10: ;
+      |   ^
+stmt_r1.c:6:3: warning: range expressions in switch statements are non-standard [-Wpedantic]
+    6 |   case -400 ... -300: ;
+      |   ^
+stmt_r1.c:6:3: error: duplicate (or overlapping) case value
+    6 |   case -400 ... -300: ;
+      |   ^
+stmt_r1.c:5:3: note: this is the first entry overlapping that value
+    5 |   case -300 ... 10: ;
+      |   ^
+stmt_r1.c:7:3: warning: range expressions in switch statements are non-standard [-Wpedantic]
+    7 |   case 400 ... 500: ;
+      |   ^
+stmt_r1.c:8:3: warning: range expressions in switch statements are non-standard [-Wpedantic]
+    8 |   case -300 ... 300: ;
+      |   ^
+stmt_r1.c:8:3: error: duplicate (or overlapping) case value
+    8 |   case -300 ... 300: ;
+      |   ^
+stmt_r1.c:5:3: note: this is the first entry overlapping that value
+    5 |   case -300 ... 10: ;
+      |   ^
+stmt_r1.c:9:3: warning: range expressions in switch statements are non-standard [-Wpedantic]
+    9 |   case 0 ... 1: ;
+      |   ^
+stmt_r1.c:9:3: error: duplicate (or overlapping) case value
+    9 |   case 0 ... 1: ;
+      |   ^
+stmt_r1.c:5:3: note: this is the first entry overlapping that value
+    5 |   case -300 ... 10: ;
+      |   ^
+stmt_r1.c:5:3: warning: lower value in case label range less than minimum value for type [-Wswitch-outside-range]
+    5 |   case -300 ... 10: ;
+      |   ^
+stmt_r1.c:4:3: warning: upper value in case label range exceeds maximum value for type [-Wswitch-outside-range]
+    4 |   case 100 ... 300: ;
+      |   ^
+stmt_r1.c:7:3: warning: case label value exceeds maximum value for type [-Wswitch-outside-range]
+    7 |   case 400 ... 500: ;
+      |   ^

@@ -1,0 +1,30 @@
+init_c1.c:7:19: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    7 |   int *e = (int[]){};
+      |                   ^
+init_c1.c:8:28: warning: excess elements in struct initializer
+    8 |   struct S *z = (struct S){1};
+      |                            ^
+init_c1.c:8:28: note: (near initialization for '(anonymous)')
+    8 |   struct S *z = (struct S){1};
+      |                            ^
+init_c1.c:8:27: error: invalid use of undefined type 'struct S'
+    8 |   struct S *z = (struct S){1};
+      |                           ^
+init_c1.c:9:13: error: array initialized from non-constant array expression
+    9 |   int m[] = (int[]){1,2};
+      |             ^
+init_c1.c:9:7: warning: unused variable 'm' [-Wunused-variable]
+    9 |   int m[] = (int[]){1,2};
+      |       ^
+init_c1.c:8:13: warning: unused variable 'z' [-Wunused-variable]
+    8 |   struct S *z = (struct S){1};
+      |             ^
+init_c1.c:7:8: warning: unused variable 'e' [-Wunused-variable]
+    7 |   int *e = (int[]){};
+      |        ^
+init_c1.c:6:9: warning: unused variable 's' [-Wunused-variable]
+    6 |   char *s = (char[]){"abc"};
+      |         ^
+init_c1.c:4:8: warning: unused variable 'q' [-Wunused-variable]
+    4 |   int *q = (int[]){1,2,3,4};
+      |        ^

@@ -1,0 +1,45 @@
+init_q1.c:3:19: error: initializer element is not constant
+    3 | static int b[] = {a};
+      |                   ^
+init_q1.c:3:19: note: (near initialization for 'b[0]')
+    3 | static int b[] = {a};
+      |                   ^
+init_q1.c:5:21: error: initializer element is not constant
+    5 | struct S s = { 1, { a } };
+      |                     ^
+init_q1.c:5:21: note: (near initialization for 's.in.y')
+    5 | struct S s = { 1, { a } };
+      |                     ^
+init_q1.c:5:8: warning: missing initializer for field 'in' of 'struct S' [-Wmissing-field-initializers]
+    5 | struct S s = { 1, { a } };
+      |        ^
+init_q1.c:4:37: note: 'in' declared here
+    4 | struct S { int x; struct { int y; } in; };
+      |                                     ^
+init_q1.c:9:39: error: initializer element is not constant
+    9 | void f(void){ int l; static int *pp = &l; static struct S z[] = { { 1, {2} }, {3}, }; 
+      |                                       ^
+init_q1.c:9:57: warning: missing initializer for field 'in' of 'struct S' [-Wmissing-field-initializers]
+    9 | void f(void){ int l; static int *pp = &l; static struct S z[] = { { 1, {2} }, {3}, }; 
+      |                                                         ^
+init_q1.c:4:37: note: 'in' declared here
+    4 | struct S { int x; struct { int y; } in; };
+      |                                     ^
+init_q1.c:10:57: error: initializer element is not constant
+   10 |  struct T t2 = { (int[]){1,2} }; static struct T t3 = { (int[]){1,2} }; }
+      |                                                         ^
+init_q1.c:10:57: note: (near initialization for 't3.q')
+   10 |  struct T t2 = { (int[]){1,2} }; static struct T t3 = { (int[]){1,2} }; }
+      |                                                         ^
+init_q1.c:10:50: warning: unused variable 't3' [-Wunused-variable]
+   10 |  struct T t2 = { (int[]){1,2} }; static struct T t3 = { (int[]){1,2} }; }
+      |                                                  ^
+init_q1.c:10:11: warning: unused variable 't2' [-Wunused-variable]
+   10 |  struct T t2 = { (int[]){1,2} }; static struct T t3 = { (int[]){1,2} }; }
+      |           ^
+init_q1.c:9:59: warning: unused variable 'z' [-Wunused-variable]
+    9 | void f(void){ int l; static int *pp = &l; static struct S z[] = { { 1, {2} }, {3}, }; 
+      |                                                           ^
+init_q1.c:9:34: warning: unused variable 'pp' [-Wunused-variable]
+    9 | void f(void){ int l; static int *pp = &l; static struct S z[] = { { 1, {2} }, {3}, }; 
+      |                                  ^

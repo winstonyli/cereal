@@ -1,0 +1,9 @@
+stmt_r9.c:7:3: warning: no return statement in function returning non-void [-Wreturn-type]
+    7 |   }
+      |   ^
+stmt_r9.c:8:1: warning: no return statement in function returning non-void [-Wreturn-type]
+    8 | static int gg(void) { h(); }  static int g2(void) {
+      | ^
+stmt_r9.c:9:1: warning: no return statement in function returning non-void [-Wreturn-type]
+    9 | }
+      | ^

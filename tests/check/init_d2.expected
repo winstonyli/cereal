@@ -1,0 +1,27 @@
+init_d2.c:2:30: warning: excess elements in struct initializer
+    2 | struct S { int x; } s = { 1, 2 };
+      |                              ^
+init_d2.c:2:30: note: (near initialization for 's')
+    2 | struct S { int x; } s = { 1, 2 };
+      |                              ^
+init_d2.c:3:20: warning: excess elements in struct initializer
+    3 | struct S s2 = { 1, 2 };
+      |                    ^
+init_d2.c:3:20: note: (near initialization for 's2')
+    3 | struct S s2 = { 1, 2 };
+      |                    ^
+init_d2.c:4:17: warning: excess elements in array initializer
+    4 | int d[1] = { 1, 2 };
+      |                 ^
+init_d2.c:4:17: note: (near initialization for 'd')
+    4 | int d[1] = { 1, 2 };
+      |                 ^
+init_d2.c:5:29: warning: excess elements in array initializer
+    5 | void f(void){ int e[1] = {1,2}; }
+      |                             ^
+init_d2.c:5:29: note: (near initialization for 'e')
+    5 | void f(void){ int e[1] = {1,2}; }
+      |                             ^
+init_d2.c:5:19: warning: unused variable 'e' [-Wunused-variable]
+    5 | void f(void){ int e[1] = {1,2}; }
+      |                   ^

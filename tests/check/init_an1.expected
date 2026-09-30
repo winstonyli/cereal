@@ -1,0 +1,36 @@
+init_an1.c:2:43: warning: ISO C99 doesn't support unnamed structs/unions [-Wpedantic]
+    2 | struct A { int a; struct { int x; int y; }; union { int u; char c; }; int z; };
+      |                                           ^
+init_an1.c:2:69: warning: ISO C99 doesn't support unnamed structs/unions [-Wpedantic]
+    2 | struct A { int a; struct { int x; int y; }; union { int u; char c; }; int z; };
+      |                                                                     ^
+init_an1.c:3:8: warning: missing initializer for field 'y' of 'struct <anonymous>' [-Wmissing-field-initializers]
+    3 | struct A s1 = { 1, { 2 } };
+      |        ^
+init_an1.c:2:39: note: 'y' declared here
+    2 | struct A { int a; struct { int x; int y; }; union { int u; char c; }; int z; };
+      |                                       ^
+init_an1.c:3:8: warning: missing initializer for field '({anonymous})' of 'struct A' [-Wmissing-field-initializers]
+    3 | struct A s1 = { 1, { 2 } };
+      |        ^
+init_an1.c:2:51: note: '({anonymous})' declared here
+    2 | struct A { int a; struct { int x; int y; }; union { int u; char c; }; int z; };
+      |                                                   ^
+init_an1.c:5:15: warning: missing braces around initializer [-Wmissing-braces]
+    5 | struct A s3 = { 1, 2, 3, 4, 5 };
+      |               ^
+init_an1.c:7:8: warning: missing initializer for field 'y' of 'struct <anonymous>' [-Wmissing-field-initializers]
+    7 | struct B b = { 1, { 2 } };
+      |        ^
+init_an1.c:6:35: note: 'y' declared here
+    6 | struct B { int a; struct { int x, y; } in; };
+      |                                   ^
+init_an1.c:8:12: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    8 | int e[3] = {};
+      |            ^
+init_an1.c:9:38: warning: initialized field overwritten [-Woverride-init]
+    9 | struct A s4 = { .x = 1, .u = 2, .c = 3 };
+      |                                      ^
+init_an1.c:9:38: note: (near initialization for 's4.<anonymous>.c')
+    9 | struct A s4 = { .x = 1, .u = 2, .c = 3 };
+      |                                      ^

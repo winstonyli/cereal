@@ -1,0 +1,24 @@
+init_h7.c:3:8: warning: missing initializer for field 'y' of 'struct P' [-Wmissing-field-initializers]
+    3 | struct P v2[] = { 1, 2, 3 };
+      |        ^
+init_h7.c:2:19: note: 'y' declared here
+    2 | struct P { int x, y; };
+      |                   ^
+init_h7.c:3:17: warning: missing braces around initializer [-Wmissing-braces]
+    3 | struct P v2[] = { 1, 2, 3 };
+      |                 ^
+init_h7.c:4:17: warning: missing braces around initializer [-Wmissing-braces]
+    4 | struct P v3[] = { 1, 2 };
+      |                 ^
+init_h7.c:5:17: warning: missing braces around initializer [-Wmissing-braces]
+    5 | struct P v4[] = { 1, 2, 3, 4 };
+      |                 ^
+init_h7.c:6:8: warning: missing initializer for field 'y' of 'struct P' [-Wmissing-field-initializers]
+    6 | struct P v5[] = { 1, 2, 3, 4, 5 };
+      |        ^
+init_h7.c:2:19: note: 'y' declared here
+    2 | struct P { int x, y; };
+      |                   ^
+init_h7.c:6:17: warning: missing braces around initializer [-Wmissing-braces]
+    6 | struct P v5[] = { 1, 2, 3, 4, 5 };
+      |                 ^

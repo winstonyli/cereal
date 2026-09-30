@@ -2,6 +2,7 @@
  * gcc-compatible printing.  See type.h and docs/TYPES.md. */
 #include "c/type.h"
 
+#include <ctype.h>
 #include <string.h>
 
 /* ---- the table ------------------------------------------------------- */
@@ -962,8 +963,12 @@ void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
                     if (!e->n && !(e->flags & TF_VARIADIC))
                         sb_puts(&d, "void");
                     for (uint64_t i = 0; i < e->n; i++) {
+                        /* gcc separates with two spaces after a parameter
+                         * that ends in a specifier word */
                         if (i)
-                            sb_puts(&d, ",  ");
+                            sb_puts(&d, (isalnum((unsigned char)d.data[d.len - 1]) ||
+                                         d.data[d.len - 1] == '_')
+                                            ? ",  " : ", ");
                         type_print(tt, &d, p[i]);
                     }
                     if (e->flags & TF_VARIADIC)

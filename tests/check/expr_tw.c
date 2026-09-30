@@ -1,0 +1,30 @@
+// flags: -Wall -Wextra
+struct B { unsigned x:3; int y:4; unsigned long z:40; long w:40; unsigned u:32; int s:31; };
+int f(struct B b){ int r=0;
+r += b.x > 8;
+r += b.x > 8u;
+r += b.x > 8L;
+r += b.x < 0;
+r += b.x >= 0;
+r += b.x == 9;
+r += b.y > 8;
+r += b.y > 8u;
+r += b.y < -9;
+r += b.y < -9L;
+r += b.y == 100;
+r += b.z > 0xfffffffffffUL;
+r += b.z > 0xfffffffffffL;
+r += b.z > 0xffffffffffUL;
+r += b.w > 0xfffffffffffL;
+r += b.w > 0xfffffffffffUL;
+r += b.u > 0xffffffffu;
+r += b.u > 0xffffffffL;
+r += b.s > 0x7fffffff;
+r += b.s > 0x7fffffffu;
+r += b.s > 0x7fffffffL;
+r += b.s > 0x80000000u;
+r += b.x > 7;
+r += b.x >= 8;
+r += b.y >= 8;
+r += b.y <= 7;
+return r;}

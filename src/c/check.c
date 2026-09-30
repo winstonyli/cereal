@@ -327,20 +327,30 @@ static void visit(Checker *c, uint32_t i)
     c->cb[i] = 0;
     c->ck[i] = K_NONE;
     c->ef[i] = 0;
+    cstmt_enter(c, i);
+    if (c->ci)
+        cinit_pre(c, i);
     switch (tag) {
     case N_SCOPE:
         scope_open(c, i);
+        cstmt_scope_open(c, i);
         break;
     case N_SCOPE_END:
+        cstmt_scope_end(c, i);
         scope_close(c, i);
+        cstmt_scope_end_post(c, i);
         break;
     default:
-        if (cexpr_is_expr(tag))
+        if (cexpr_is_expr(tag)) {
             cexpr_node(c, i);
-        else
+            cstmt_expr(c, i);
+        } else {
             cdecl_node(c, i);
+            cstmt_node(c, i);
+        }
         break;
     }
+    cinit_post(c, i);
 }
 
 void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
@@ -351,6 +361,8 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     c->nn = u->nnodes;
     c->quiet = had_errors;
     c->fold_pending = 0;
+    cstmt_unit_begin(c);
+    cinit_reset(c);
     grow_nodes(c, c->nn + 1);
     grow_idents(c, interner_count(c->in) + 1);
     compute_parents(c);
@@ -430,6 +442,9 @@ void checker_free(Checker *c)
     if (!c)
         return;
     vec_free(&c->undecl);
+    cinit_free(c);
+    cstmt_free(c);
+    cexpr_free_params(c);
     sb_free(&c->esb[0]);
     sb_free(&c->esb[1]);
     types_free(&c->tt);

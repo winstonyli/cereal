@@ -1,0 +1,48 @@
+stmt_q7.c:6:5: error: pointers are not permitted as case values
+    6 |     case (char *)0: break;
+      |     ^
+stmt_q7.c:7:5: error: case label does not reduce to an integer constant
+    7 |     case 1.5: break;
+      |     ^
+stmt_q7.c:8:5: error: case label does not reduce to an integer constant
+    8 |     case g: break;
+      |     ^
+stmt_q7.c:9:5: error: case label does not reduce to an integer constant
+    9 |     case (long)&g: break;
+      |     ^
+stmt_q7.c:10:5: warning: range expressions in switch statements are non-standard [-Wpedantic]
+   10 |     case 5 ... 4: break;
+      |     ^
+stmt_q7.c:10:5: warning: empty range specified
+   10 |     case 5 ... 4: break;
+      |     ^
+stmt_q7.c:11:5: warning: range expressions in switch statements are non-standard [-Wpedantic]
+   11 |     case 7 ... 7: break;
+      |     ^
+stmt_q7.c:12:5: error: duplicate case value
+   12 |     case 7: break;
+      |     ^
+stmt_q7.c:11:5: note: previously used here
+   11 |     case 7 ... 7: break;
+      |     ^
+stmt_q7.c:13:5: error: pointers are not permitted as case values
+   13 |     case "a": break;
+      |     ^
+stmt_q7.c:14:5: error: case label does not reduce to an integer constant
+   14 |     case (void)0: break;
+      |     ^
+stmt_q7.c:15:5: error: case label does not reduce to an integer constant
+   15 |     case x: break;
+      |     ^
+stmt_q7.c:17:5: warning: case label is not an integer constant expression [-Wpedantic]
+   17 |     case 1 ? 2 : g: break;
+      |     ^
+stmt_q7.c:19:13: error: switch quantity not an integer
+   19 |     switch (fl) { case 1: break; }
+      |             ^
+stmt_q7.c:20:13: error: switch quantity not an integer
+   20 |     switch (p) { case 1: break; }
+      |             ^
+stmt_q7.c:21:13: error: switch quantity not an integer
+   21 |     switch ((struct {int a;}){0}) { default: break; }
+      |             ^

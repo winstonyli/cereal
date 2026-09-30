@@ -1,0 +1,12 @@
+expr_l3.c:5:9: error: invalid operands to binary + (have 'struct S' and 'int')
+    5 |     *ps += 1;
+      |         ^
+expr_l3.c:5:9: error: assignment of read-only location '*ps'
+    5 |     *ps += 1;
+      |         ^
+expr_l3.c:6:8: error: invalid operands to binary + (have 'const struct S' and 'int')
+    6 |     cs += 1;
+      |        ^
+expr_l3.c:6:8: error: assignment of read-only parameter 'cs'
+    6 |     cs += 1;
+      |        ^

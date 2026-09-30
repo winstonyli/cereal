@@ -1,0 +1,6 @@
+expr_tb.c:5:8: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+    5 | r += c <= 127;
+      |        ^
+expr_tb.c:6:9: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+    6 | r += sc <= 127;
+      |         ^

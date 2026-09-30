@@ -1,0 +1,39 @@
+init_h6.c:5:8: warning: missing initializer for field 'y' of 'struct P' [-Wmissing-field-initializers]
+    5 | struct Q v1[] = { 1, 2, 3, 4 };
+      |        ^
+init_h6.c:2:19: note: 'y' declared here
+    2 | struct P { int x, y; };
+      |                   ^
+init_h6.c:5:8: warning: missing initializer for field 'z' of 'struct Q' [-Wmissing-field-initializers]
+    5 | struct Q v1[] = { 1, 2, 3, 4 };
+      |        ^
+init_h6.c:3:28: note: 'z' declared here
+    3 | struct Q { struct P p; int z; };
+      |                            ^
+init_h6.c:5:17: warning: missing braces around initializer [-Wmissing-braces]
+    5 | struct Q v1[] = { 1, 2, 3, 4 };
+      |                 ^
+init_h6.c:6:8: warning: missing initializer for field 'y' of 'struct P' [-Wmissing-field-initializers]
+    6 | struct P v2[] = { 1, 2, 3 };
+      |        ^
+init_h6.c:2:19: note: 'y' declared here
+    2 | struct P { int x, y; };
+      |                   ^
+init_h6.c:6:17: warning: missing braces around initializer [-Wmissing-braces]
+    6 | struct P v2[] = { 1, 2, 3 };
+      |                 ^
+init_h6.c:7:15: warning: missing braces around initializer [-Wmissing-braces]
+    7 | int v3[][2] = { 1, 2, 3 };
+      |               ^
+init_h6.c:8:15: warning: missing braces around initializer [-Wmissing-braces]
+    8 | int v4[][2] = { 1 };
+      |               ^
+init_h6.c:9:19: error: field name not in record or union initializer
+    9 | struct Q v5[] = { .p.y = 1 };
+      |                   ^
+init_h6.c:9:19: note: (near initialization for 'v5')
+    9 | struct Q v5[] = { .p.y = 1 };
+      |                   ^
+init_h6.c:9:17: warning: missing braces around initializer [-Wmissing-braces]
+    9 | struct Q v5[] = { .p.y = 1 };
+      |                 ^

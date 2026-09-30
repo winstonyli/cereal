@@ -1,0 +1,66 @@
+expr_qo.c:6:12: error: invalid operands to binary + (have 'struct S' and 'int')
+    6 |     r = cs + 1;
+      |            ^
+expr_qo.c:7:12: error: invalid operands to binary + (have 'int' and 'struct S')
+    7 |     r = ci + s;
+      |            ^
+expr_qo.c:8:12: error: invalid operands to binary % (have 'float' and 'int')
+    8 |     r = cf % 2;
+      |            ^
+expr_qo.c:9:12: error: invalid operands to binary + (have 'const int *' and 'const int *')
+    9 |     r = cp + cp;
+      |            ^
+expr_qo.c:10:12: error: invalid operands to binary * (have 'int *' and 'int')
+   10 |     r = pc * 2;
+      |            ^
+expr_qo.c:11:12: error: invalid operands to binary * (have 'const struct S *' and 'int')
+   11 |     r = ps * 2;
+      |            ^
+expr_qo.c:12:12: error: invalid operands to binary + (have 'int' and 'struct S')
+   12 |     r = cc + s;
+      |            ^
+expr_qo.c:13:12: error: invalid operands to binary + (have 'int' and 'struct S')
+   13 |     r = vi + s;
+      |            ^
+expr_qo.c:14:12: error: invalid operands to binary + (have 'int' and 'struct S')
+   14 |     r = cb + s;
+      |            ^
+expr_qo.c:15:12: error: invalid operands to binary * (have 'const int *' and 'int *')
+   15 |     r = cp * pc;
+      |            ^
+expr_qo.c:16:9: error: wrong type argument to bit-complement
+   16 |     r = ~cf;
+      |         ^
+expr_qo.c:17:12: error: invalid operands to binary << (have 'float' and 'int')
+   17 |     r = cf << 1;
+      |            ^
+expr_qo.c:18:12: error: invalid operands to binary < (have 'struct S' and 'int')
+   18 |     r = cs < 1;
+      |            ^
+expr_qo.c:19:12: error: invalid operands to binary == (have 'struct S' and 'struct S')
+   19 |     r = cs == cs;
+      |            ^
+expr_qo.c:20:9: error: wrong type argument to unary minus
+   20 |     r = -cs;
+      |         ^
+expr_qo.c:21:12: error: invalid operands to binary + (have 'int' and 'struct S')
+   21 |     r = ci + cs;
+      |            ^
+expr_qo.c:22:11: error: invalid operands to binary * (have 'struct S' and 'struct S')
+   22 |     r = s * cs;
+      |           ^
+expr_qo.c:5:9: warning: variable 'r' set but not used [-Wunused-but-set-variable]
+    5 |     int r; struct S s;
+      |         ^
+expr_qo.c:3:149: warning: unused parameter 'ca' [-Wunused-parameter]
+    3 | void f(const int ci, volatile int vi, const float cf, const char cc, const struct S cs, const int *cp, int *const pc, const struct S *ps, const int ca[3], _Bool cb)
+      |                                                                                                                                                     ^
+expr_qo.c:26:5: error: 'r' undeclared (first use in this function)
+   26 |     r = p < cs;
+      |     ^
+expr_qo.c:26:5: note: each undeclared identifier is reported only once for each function it appears in
+   26 |     r = p < cs;
+      |     ^
+expr_qo.c:26:11: error: invalid operands to binary < (have 'const int *' and 'struct S')
+   26 |     r = p < cs;
+      |           ^

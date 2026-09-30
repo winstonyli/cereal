@@ -1,0 +1,126 @@
+init_e2.c:4:15: warning: missing braces around initializer [-Wmissing-braces]
+    4 | struct L l1 = { 1, 2, 3, 4, 5 };
+      |               ^
+init_e2.c:5:8: warning: missing initializer for field 'y' of 'struct P' [-Wmissing-field-initializers]
+    5 | struct L l2 = { { 1, 2 }, 3 };
+      |        ^
+init_e2.c:2:19: note: 'y' declared here
+    2 | struct P { int x, y; };
+      |                   ^
+init_e2.c:5:15: warning: missing braces around initializer [-Wmissing-braces]
+    5 | struct L l2 = { { 1, 2 }, 3 };
+      |               ^
+init_e2.c:5:8: warning: missing initializer for field 'c' of 'struct L' [-Wmissing-field-initializers]
+    5 | struct L l2 = { { 1, 2 }, 3 };
+      |        ^
+init_e2.c:3:40: note: 'c' declared here
+    3 | struct L { struct P a; struct P b; int c; };
+      |                                        ^
+init_e2.c:6:15: warning: missing braces around initializer [-Wmissing-braces]
+    6 | struct L l3 = { 1, 2, { 3, 4 } };
+      |               ^
+init_e2.c:6:15: warning: missing braces around initializer [-Wmissing-braces]
+    6 | struct L l3 = { 1, 2, { 3, 4 } };
+      |               ^
+init_e2.c:6:8: warning: missing initializer for field 'c' of 'struct L' [-Wmissing-field-initializers]
+    6 | struct L l3 = { 1, 2, { 3, 4 } };
+      |        ^
+init_e2.c:3:40: note: 'c' declared here
+    3 | struct L { struct P a; struct P b; int c; };
+      |                                        ^
+init_e2.c:7:34: warning: initialized field overwritten [-Woverride-init]
+    7 | struct L l4 = { .a.x = 1, .a.x = 2 };
+      |                                  ^
+init_e2.c:7:34: note: (near initialization for 'l4.a.x')
+    7 | struct L l4 = { .a.x = 1, .a.x = 2 };
+      |                                  ^
+init_e2.c:8:8: warning: missing initializer for field 'y' of 'struct P' [-Wmissing-field-initializers]
+    8 | struct L l5 = { 1, [1] = 2 };
+      |        ^
+init_e2.c:2:19: note: 'y' declared here
+    2 | struct P { int x, y; };
+      |                   ^
+init_e2.c:8:21: error: array index in non-array initializer
+    8 | struct L l5 = { 1, [1] = 2 };
+      |                     ^
+init_e2.c:8:21: note: (near initialization for 'l5')
+    8 | struct L l5 = { 1, [1] = 2 };
+      |                     ^
+init_e2.c:8:15: warning: missing braces around initializer [-Wmissing-braces]
+    8 | struct L l5 = { 1, [1] = 2 };
+      |               ^
+init_e2.c:9:15: warning: missing braces around initializer [-Wmissing-braces]
+    9 | int a[2][2] = { 1, 2, 3 };
+      |               ^
+init_e2.c:11:15: warning: missing braces around initializer [-Wmissing-braces]
+   11 | int c[2][2] = { { 1 }, 2 };
+      |               ^
+init_e2.c:12:8: warning: missing initializer for field 'b' of 'struct Q' [-Wmissing-field-initializers]
+   12 | struct Q { int a; int b; int c; } q1 = { 1 };
+      |        ^
+init_e2.c:12:23: note: 'b' declared here
+   12 | struct Q { int a; int b; int c; } q1 = { 1 };
+      |                       ^
+init_e2.c:14:28: warning: initialized field overwritten [-Woverride-init]
+   14 | struct Q q3 = { 1, 2, .a = 3 };
+      |                            ^
+init_e2.c:14:28: note: (near initialization for 'q3.a')
+   14 | struct Q q3 = { 1, 2, .a = 3 };
+      |                            ^
+init_e2.c:15:43: warning: ISO C99 doesn't support unnamed structs/unions [-Wpedantic]
+   15 | struct A { int x; struct { int y; int z; }; int w; };
+      |                                           ^
+init_e2.c:16:8: warning: missing initializer for field 'z' of 'struct <anonymous>' [-Wmissing-field-initializers]
+   16 | struct A an1 = { 1, 2 };
+      |        ^
+init_e2.c:15:39: note: 'z' declared here
+   15 | struct A { int x; struct { int y; int z; }; int w; };
+      |                                       ^
+init_e2.c:16:16: warning: missing braces around initializer [-Wmissing-braces]
+   16 | struct A an1 = { 1, 2 };
+      |                ^
+init_e2.c:16:8: warning: missing initializer for field 'w' of 'struct A' [-Wmissing-field-initializers]
+   16 | struct A an1 = { 1, 2 };
+      |        ^
+init_e2.c:15:49: note: 'w' declared here
+   15 | struct A { int x; struct { int y; int z; }; int w; };
+      |                                                 ^
+init_e2.c:17:16: warning: missing braces around initializer [-Wmissing-braces]
+   17 | struct A an2 = { 1, 2, 3, 4 };
+      |                ^
+init_e2.c:21:49: warning: initialized field overwritten [-Woverride-init]
+   21 | int f(void) { int x = 1; struct P p = { x, .x = 3 }; int i[3] = { x, [0] = 1 }; return p.x + i[0]; }
+      |                                                 ^
+init_e2.c:21:49: note: (near initialization for 'p.x')
+   21 | int f(void) { int x = 1; struct P p = { x, .x = 3 }; int i[3] = { x, [0] = 1 }; return p.x + i[0]; }
+      |                                                 ^
+init_e2.c:21:76: warning: initialized field overwritten [-Woverride-init]
+   21 | int f(void) { int x = 1; struct P p = { x, .x = 3 }; int i[3] = { x, [0] = 1 }; return p.x + i[0]; }
+      |                                                                            ^
+init_e2.c:21:76: note: (near initialization for 'i[0]')
+   21 | int f(void) { int x = 1; struct P p = { x, .x = 3 }; int i[3] = { x, [0] = 1 }; return p.x + i[0]; }
+      |                                                                            ^
+init_e2.c:24:23: warning: excess elements in struct initializer
+   24 | struct B b2 = { 1, 2, 3 };
+      |                       ^
+init_e2.c:24:23: note: (near initialization for 'b2')
+   24 | struct B b2 = { 1, 2, 3 };
+      |                       ^
+init_e2.c:29:17: warning: initializer-string for array of 'char' is too long
+   29 | struct C c4 = { "abcde", 1 };
+      |                 ^
+init_e2.c:29:17: note: (near initialization for 'c4.s')
+   29 | struct C c4 = { "abcde", 1 };
+      |                 ^
+init_e2.c:30:30: warning: excess elements in array initializer
+   30 | char s[2][3] = { "ab", "cd", "ef" };
+      |                              ^
+init_e2.c:30:30: note: (near initialization for 's')
+   30 | char s[2][3] = { "ab", "cd", "ef" };
+      |                              ^
+init_e2.c:31:25: warning: initializer-string for array of 'char' is too long
+   31 | char t[2][3] = { "abc", "abcd" };
+      |                         ^
+init_e2.c:31:25: note: (near initialization for 't[1]')
+   31 | char t[2][3] = { "abc", "abcd" };
+      |                         ^

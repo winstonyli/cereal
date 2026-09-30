@@ -1,0 +1,31 @@
+// flags: -Wall -Wextra
+struct P { int x, y; };
+struct L { struct P a; struct P b; int c; };
+struct L l1 = { 1, 2, 3, 4, 5 };
+struct L l2 = { { 1, 2 }, 3 };
+struct L l3 = { 1, 2, { 3, 4 } };
+struct L l4 = { .a.x = 1, .a.x = 2 };
+struct L l5 = { 1, [1] = 2 };
+int a[2][2] = { 1, 2, 3 };
+int b[2][2] = { { 1 }, { 2 } };
+int c[2][2] = { { 1 }, 2 };
+struct Q { int a; int b; int c; } q1 = { 1 };
+struct Q q2 = { .b = 1 };
+struct Q q3 = { 1, 2, .a = 3 };
+struct A { int x; struct { int y; int z; }; int w; };
+struct A an1 = { 1, 2 };
+struct A an2 = { 1, 2, 3, 4 };
+struct A an3 = { .y = 1 };
+struct A an4 = { 1, { 2, 3 }, 4 };
+struct A an5 = { .z = 1, 2 };
+int f(void) { int x = 1; struct P p = { x, .x = 3 }; int i[3] = { x, [0] = 1 }; return p.x + i[0]; }
+struct B { int : 3; int x; int : 4; int y; };
+struct B b1 = { 1, 2 };
+struct B b2 = { 1, 2, 3 };
+struct C { char s[4]; int n; };
+struct C c1 = { "abc", 1 };
+struct C c2 = { { 'a', 'b' }, 1 };
+struct C c3 = { "abcd", 1 };
+struct C c4 = { "abcde", 1 };
+char s[2][3] = { "ab", "cd", "ef" };
+char t[2][3] = { "abc", "abcd" };

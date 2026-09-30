@@ -1,0 +1,63 @@
+init_e3.c:4:14: warning: initializer-string for array of 'char' is too long
+    4 | char c2[2] = "abc";
+      |              ^
+init_e3.c:6:23: warning: initializer-string for array of 'unsigned char' is too long
+    6 | unsigned char c4[2] = "abc";
+      |                       ^
+init_e3.c:8:17: warning: initializer-string for array of 'int' is too long
+    8 | wchar_t w2[2] = L"abc";
+      |                 ^
+init_e3.c:9:13: error: cannot initialize array of 'char' from a string literal with type array of 'int'
+    9 | char c5[] = L"ab";
+      |             ^
+init_e3.c:10:16: error: cannot initialize array of 'int' from a string literal with type array of 'char'
+   10 | wchar_t w3[] = "ab";
+      |                ^
+init_e3.c:11:12: error: cannot initialize array of 'int' from a string literal with type array of 'char'
+   11 | int i1[] = "ab";
+      |            ^
+init_e3.c:12:14: error: array of inappropriate type initialized from string constant
+   12 | short s1[] = "ab";
+      |              ^
+init_e3.c:14:21: error: excess elements in 'char' array initializer
+   14 | char c7[] = { "ab", "cd" };
+      |                     ^
+init_e3.c:14:21: note: (near initialization for 'c7')
+   14 | char c7[] = { "ab", "cd" };
+      |                     ^
+init_e3.c:15:14: warning: array initialized from parenthesized string constant [-Wpedantic]
+   15 | char c8[3] = ("ab");
+      |              ^
+init_e3.c:17:1: warning: braces around scalar initializer
+   17 | char *p2 = { { "ab" } };
+      | ^
+init_e3.c:17:1: note: (near initialization for 'p2')
+   17 | char *p2 = { { "ab" } };
+      | ^
+init_e3.c:22:17: warning: initializer-string for array of 'char' is too long
+   22 | struct S s2 = { "xyz", "z" };
+      |                 ^
+init_e3.c:22:17: note: (near initialization for 's2.a')
+   22 | struct S s2 = { "xyz", "z" };
+      |                 ^
+init_e3.c:23:15: warning: missing braces around initializer [-Wmissing-braces]
+   23 | struct S s3 = { 'x', 'y', "z" };
+      |               ^
+init_e3.c:25:14: error: cannot initialize array of 'char' from a string literal with type array of 'int'
+   25 | char c14[] = "ab" L"cd";
+      |              ^
+init_e3.c:27:15: warning: initializer-string for array of 'char' is too long
+   27 |   char a[2] = "abc";
+      |               ^
+init_e3.c:30:11: warning: unused variable 'd' [-Wunused-variable]
+   30 |   wchar_t d[2] = L"ab";
+      |           ^
+init_e3.c:29:8: warning: unused variable 'c' [-Wunused-variable]
+   29 |   char c[] = { 'a', 'b' };
+      |        ^
+init_e3.c:28:8: warning: unused variable 'b' [-Wunused-variable]
+   28 |   char b[] = "abc";
+      |        ^
+init_e3.c:27:8: warning: unused variable 'a' [-Wunused-variable]
+   27 |   char a[2] = "abc";
+      |        ^

@@ -1,0 +1,75 @@
+init_q2.c:2:15: error: 'undecl' undeclared here (not in a function)
+    2 | int a[4] = { [undecl] = 1, 2 };
+      |               ^
+init_q2.c:2:15: error: array index in initializer not of integer type
+    2 | int a[4] = { [undecl] = 1, 2 };
+      |               ^
+init_q2.c:2:15: note: (near initialization for 'a')
+    2 | int a[4] = { [undecl] = 1, 2 };
+      |               ^
+init_q2.c:3:15: error: array index in initializer not of integer type
+    3 | int b[4] = { [1.5] = 1 };
+      |               ^
+init_q2.c:3:15: note: (near initialization for 'b')
+    3 | int b[4] = { [1.5] = 1 };
+      |               ^
+init_q2.c:4:1: warning: excess elements in array initializer
+    4 | int c2[2][2] = { 1, 2, 3, 4, 5 };
+      | ^
+init_q2.c:4:1: note: (near initialization for 'c2')
+    4 | int c2[2][2] = { 1, 2, 3, 4, 5 };
+      | ^
+init_q2.c:4:16: warning: missing braces around initializer [-Wmissing-braces]
+    4 | int c2[2][2] = { 1, 2, 3, 4, 5 };
+      |                ^
+init_q2.c:5:1: warning: excess elements in array initializer
+    5 | int d[2][2] = { {1, 2}, {3, 4}, 5 };
+      | ^
+init_q2.c:5:1: note: (near initialization for 'd')
+    5 | int d[2][2] = { {1, 2}, {3, 4}, 5 };
+      | ^
+init_q2.c:5:15: warning: missing braces around initializer [-Wmissing-braces]
+    5 | int d[2][2] = { {1, 2}, {3, 4}, 5 };
+      |               ^
+init_q2.c:6:20: warning: excess elements in array initializer
+    6 | int e[2] = { 1, 2, 3 };
+      |                    ^
+init_q2.c:6:20: note: (near initialization for 'e')
+    6 | int e[2] = { 1, 2, 3 };
+      |                    ^
+init_q2.c:8:20: warning: initialization of a flexible array member [-Wpedantic]
+    8 | struct S s1 = { 1, "abc" };
+      |                    ^
+init_q2.c:8:20: note: (near initialization for 's1.y')
+    8 | struct S s1 = { 1, "abc" };
+      |                    ^
+init_q2.c:9:10: warning: invalid use of structure with flexible array member [-Wpedantic]
+    9 | struct S s2[] = { { 1, "abc" } };
+      |          ^
+init_q2.c:9:24: error: initialization of flexible array member in a nested context
+    9 | struct S s2[] = { { 1, "abc" } };
+      |                        ^
+init_q2.c:9:24: note: (near initialization for 's2[0]')
+    9 | struct S s2[] = { { 1, "abc" } };
+      |                        ^
+init_q2.c:10:20: warning: initialization of a flexible array member [-Wpedantic]
+   10 | struct S s3 = { 1, {2,3} };
+      |                    ^
+init_q2.c:10:20: note: (near initialization for 's3.y')
+   10 | struct S s3 = { 1, {2,3} };
+      |                    ^
+init_q2.c:11:50: warning: invalid use of structure with flexible array member [-Wpedantic]
+   11 | typedef struct { int a; struct { int b; struct S s; } in; } N;
+      |                                                  ^
+init_q2.c:12:22: error: initialization of flexible array member in a nested context
+   12 | N n = { 1, { 2, { 3, {4,5} } } };
+      |                      ^
+init_q2.c:12:22: note: (near initialization for 'n.in.s.y')
+   12 | N n = { 1, { 2, { 3, {4,5} } } };
+      |                      ^
+init_q2.c:13:33: error: non-static initialization of a flexible array member
+   13 | int f(void) { struct S z = { 1, "ab" }; return z.x; }
+      |                                 ^
+init_q2.c:13:33: note: (near initialization for 'z')
+   13 | int f(void) { struct S z = { 1, "ab" }; return z.x; }
+      |                                 ^

@@ -1,0 +1,30 @@
+init_t2.c:7:11: warning: cast from pointer to integer of different size [-Wpointer-to-int-cast]
+    7 | char p3 = (char)&z;
+      |           ^
+init_t2.c:7:11: error: initializer element is not constant
+    7 | char p3 = (char)&z;
+      |           ^
+init_t2.c:17:10: error: initializer element is not constant
+   17 | int i4 = z ? 2 : 3;
+      |          ^
+init_t2.c:18:12: warning: left-hand operand of comma expression has no effect [-Wunused-value]
+   18 | int i5 = (z, 2);
+      |            ^
+init_t2.c:18:10: error: initializer element is not constant
+   18 | int i5 = (z, 2);
+      |          ^
+init_t2.c:24:10: warning: initialization of 'int' from 'char *' makes integer from pointer without a cast [-Wint-conversion]
+   24 | int i6 = "abc";
+      |          ^
+init_t2.c:24:10: error: initializer element is not computable at load time
+   24 | int i6 = "abc";
+      |          ^
+init_t2.c:31:11: error: initializer element is not constant
+   31 | int i12 = z++;
+      |           ^
+init_t2.c:32:11: warning: initialization of 'int' from 'void (*)(void)' makes integer from pointer without a cast [-Wint-conversion]
+   32 | int i13 = f;
+      |           ^
+init_t2.c:32:11: error: initializer element is not computable at load time
+   32 | int i13 = f;
+      |           ^

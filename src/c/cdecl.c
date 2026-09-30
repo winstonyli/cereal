@@ -48,10 +48,6 @@
 #define TT (&c->tt)
 #define ERRT TYPE_B(ERROR)
 
-/* Private symbol flags (see above). */
-#define CSF_DECL_EXTERNAL 16384
-#define CSF_TREE_STATIC 32768
-
 enum { DC_NORMAL, DC_FIELD, DC_PARM, DC_TYPENAME };
 
 /* ---- small helpers ------------------------------------------------------ */
@@ -238,6 +234,11 @@ static SrcLoc iloc(Checker *c, uint32_t L)
     return cinput_loc(c, L);
 }
 
+SrcLoc cdecl_iloc(Checker *c, uint32_t tok)
+{
+    return iloc(c, tok);
+}
+
 /* A pedantic pedwarn about node/token tok, off under __extension__. */
 static bool in_extension(Checker *c, uint32_t node)
 {
@@ -328,6 +329,8 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             a->deprecated = true;
         } else if (!strcmp(name, "unused")) {
             a->unused = true;
+        } else if (!strcmp(name, "weak") || !strcmp(name, "__weak__")) {
+            a->weak = true;
         } else if (!strcmp(name, "vector_size") && arg != NO_NODE) {
             if ((c->ck[arg] == K_ICE || c->ck[arg] == K_FOLD) &&
                 type_is_integer(TT, c->ty[arg]))
@@ -1542,6 +1545,8 @@ static bool valid_array_size(Checker *c, SrcLoc loc, TypeId elem, uint64_t n,
     return true;
 }
 
+static bool flex_struct(Checker *c, TypeId t);
+
 /* grokdeclarator.  ltok: gcc's lookahead token at the diagnostics without a
  * location of their own (input_location); after: the token after the
  * declarator (for the location of an abstract one). */
@@ -1725,6 +1730,9 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                            "functions");
                 type = ERRT;
             }
+            if (c->opt.pedantic && flex_struct(c, type))
+                cpedantic(c, loc, "invalid use of structure with flexible "
+                          "array member");
             if (sz != NO_NODE && c->ck[sz] == K_ERR &&
                 is_err(c, c->ty[sz]))
                 type = ERRT;
@@ -2093,7 +2101,7 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         g->array_param = arrp;
         g->ty = type;
         g->s.kind = CS_OBJ;
-        g->s.flags = CSF_PARAM | CSF_DEFINED;
+        g->s.flags = CSF_PARAM | CSF_DEFINED | (arrp ? CSF_ARRAY_PARM : 0);
         g->s.ty = type;
         return;
     }
@@ -2614,7 +2622,8 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     if ((!sym_defined(nw) && sym_defined(o)) || (old_proto && !new_proto))
         m.loc = o->loc;
     m.flags |= o->flags & (CSF_DEFINED | CSF_USED | CSF_NORETURN | CSF_THREAD |
-                           CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE);
+                           CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE |
+                           CSF_WEAK | CSF_ADDR_WARNED);
     if (!new_def)
         m.flags |= o->flags & (CSF_PROTO_DEF | CSF_KR_DEF);
     m.def_loc = sym_defined(nw) ? nw->loc : o->def_loc;
@@ -2931,117 +2940,6 @@ static uint32_t strip_parens(Checker *c, uint32_t e)
     return e;
 }
 
-/* The scalars a brace-elided initializer of type t takes. */
-static uint64_t nslots(Checker *c, TypeId t, int depth)
-{
-    TypeId k = type_canon(TT, t);
-    if (depth > 8)
-        return 1;
-    switch (tkind(c, k)) {
-    case TY_ARRAY: {
-        const TypeEnt *e = type_ent(TT, k);
-        if (e->flags & TF_INCOMPLETE)
-            return 1;
-        return e->n * nslots(c, type_base(TT, k), depth + 1);
-    }
-    case TY_STRUCT:
-    case TY_UNION: {
-        Record *r = type_record(TT, k);
-        uint32_t f;
-        uint64_t n = 0;
-        if (!r || !(r->flags & RF_COMPLETE))
-            return 1;
-        for (f = 0; f < r->nfields; f++) {
-            const Field *fl = &TT->fields.data[r->fields + f];
-            if (!fl->name && (fl->flags & FF_BITFIELD))
-                continue;
-            n += nslots(c, fl->ty, depth + 1);
-            if (r->flags & RF_UNION)
-                break;
-        }
-        return n ? n : 1;
-    }
-    default:
-        return 1;
-    }
-}
-
-static bool aggregate_type(Checker *c, TypeId t)
-{
-    TypeKind k = tkind(c, t);
-    return k == TY_ARRAY || k == TY_STRUCT || k == TY_UNION;
-}
-
-/* The number of elements (max index + 1) an initializer list gives an array
- * of elem; -1 if there is none.  *nelts: the number of items. */
-static int64_t init_list_count(Checker *c, uint32_t list, TypeId elem,
-                               uint32_t *nitems)
-{
-    Kids k;
-    uint32_t j;
-    int64_t idx = 0, max = 0;
-    bool any = false;
-    *nitems = 0;
-    kids_get(c, list, &k);
-    for (j = 0; j < k.n; j++) {
-        uint32_t it = k.p[j], val = it;
-        (*nitems)++;
-        any = true;
-        if (ntag(c, it) == N_DESIGNATED) {
-            Kids dk;
-            uint32_t q;
-            bool first = true;
-            kids_get(c, it, &dk);
-            for (q = 0; q < dk.n; q++) {
-                uint32_t d = dk.p[q];
-                if (ntag(c, d) == N_DESIG_INDEX && first) {
-                    uint32_t e = first_child(c, d);
-                    if (e != NO_NODE && (c->ck[e] == K_ICE ||
-                                         c->ck[e] == K_FOLD))
-                        idx = cexpr_sval(c, e);
-                    first = false;
-                } else if (ntag(c, d) == N_DESIG_RANGE && first) {
-                    uint32_t e2 = d - 1;
-                    if (c->ck[e2] == K_ICE || c->ck[e2] == K_FOLD)
-                        idx = cexpr_sval(c, e2);
-                    first = false;
-                } else if (ntag(c, d) == N_DESIG_FIELD && first) {
-                    first = false;
-                }
-            }
-            kids_free(&dk);
-            val = NO_NODE;
-            if (idx + 1 > max)
-                max = idx + 1;
-            idx++;
-            continue;
-        }
-        /* a positional item: an element, or several with brace elision */
-        {
-            uint64_t take = 1;
-            if (idx + 1 > max)
-                max = idx + 1;
-            idx++;
-            if (aggregate_type(c, elem) && ntag(c, val) != N_INIT_LIST &&
-                !(strip_parens(c, val) != NO_NODE &&
-                  ntag(c, strip_parens(c, val)) == N_STRING) &&
-                !type_compatible(TT, TYPE_UNQUAL(cexpr_rvalue_type(c, val)),
-                                 TYPE_UNQUAL(type_canon(TT, elem)))) {
-                take = nslots(c, elem, 0);
-                /* the rest of this element's scalars */
-                while (take > 1 && j + 1 < k.n &&
-                       ntag(c, k.p[j + 1]) != N_DESIGNATED) {
-                    j++;
-                    (*nitems)++;
-                    take--;
-                }
-            }
-        }
-    }
-    kids_free(&k);
-    return any ? max : -1;
-}
-
 /* complete_array_type for the initializer init (NO_NODE: none); returns
  * gcc's failure code, the completed array type in *out. */
 static int complete_array(Checker *c, TypeId type, uint32_t init,
@@ -3054,32 +2952,13 @@ static int complete_array(Checker *c, TypeId type, uint32_t init,
     if (init != NO_NODE) {
         uint32_t e = strip_parens(c, init);
         if (ntag(c, init) == N_INIT_LIST) {
-            uint32_t items;
-            int64_t m;
-            Kids k;
-            kids_get(c, init, &k);
-            /* {"abc"}: a string in braces initializes a char array */
-            if (k.n == 1 && ntag(c, strip_parens(c, k.p[0])) == N_STRING &&
-                type_is_integer(TT, elem)) {
-                uint32_t s = strip_parens(c, k.p[0]);
-                bool o1, o2;
-                uint64_t bytes = type_size(TT, c->ty[s], &o1);
-                uint64_t es = type_size(TT, elem, &o2);
-                kids_free(&k);
-                if (o1 && o2 && es)
-                    n = (int64_t)(bytes / es);
-                else
-                    n = 1;
-                goto done;
-            }
-            kids_free(&k);
-            m = init_list_count(c, init, elem, &items);
-            if (m < 0) {
-                if (c->opt.pedantic)
+            /* cinit.c left the element count in cv */
+            if (c->ck[init] == K_ICE) {
+                n = (int64_t)c->cv[init];
+                if (n == 0 && c->opt.pedantic)
                     failure = 3;
-                n = 0;
             } else
-                n = m;
+                n = 1;
         } else if (ntag(c, e) == N_STRING) {
             bool o1, o2;
             uint64_t bytes = type_size(TT, c->ty[e], &o1);
@@ -3088,8 +2967,14 @@ static int complete_array(Checker *c, TypeId type, uint32_t init,
                 n = (int64_t)(bytes / es);
             else
                 n = 1;
+        } else if (c->ck[init] != K_ERR && !is_err(c, c->ty[init]) &&
+                   ntag(c, e) == N_COMPOUND_LIT &&
+                   tkind(c, c->ty[e]) == TY_ARRAY &&
+                   !is_incomplete_array(c, c->ty[e])) {
+            /* the literal is replaced by its constructor */
+            n = (int64_t)type_ent(TT, type_canon(TT, c->ty[e]))->n;
         } else {
-            if (!(c->ck[init] == K_ERR && is_err(c, c->ty[init])))
+            if (!(c->ck[init] == K_ERR || is_err(c, c->ty[init])))
                 failure = 1;
             n = 1;
         }
@@ -3099,7 +2984,6 @@ static int complete_array(Checker *c, TypeId type, uint32_t init,
             return failure;
         n = 1;
     }
-done:
     *out = type_array(TT, elem, (uint64_t)n);
     return failure;
 }
@@ -3295,6 +3179,8 @@ static void declared_visit(Checker *c, uint32_t i)
         s.align = (uint16_t)a.aligned;
     if (a.unused)
         s.flags |= CSF_USED;
+    if (a.weak)
+        s.flags |= CSF_WEAK;
     if (a.noreturn && s.kind == CS_FUNC)
         s.flags |= CSF_NORETURN;
     if (file && g.what == GD_VAR && s.sc == SC_REGISTER &&
@@ -3364,6 +3250,8 @@ static void declared_visit(Checker *c, uint32_t i)
     }
     c->cb[i] = ref + 1;
     c->cv[i] = initialized ? 1 : 0;
+    if (g.what == GD_FUNC)
+        cexpr_record_params(c, i, ref, false);
     if (g.what == GD_VAR || g.what == GD_FUNC)
         ensure_finish_cue(c, ref);
 }
@@ -3382,6 +3270,7 @@ static void init_decl_visit(Checker *c, uint32_t idecl)
     init_ok = c->cv[declared] & 1;
     if (declared != idecl - 1 && init_ok)
         init = idecl - 1;
+    cinit_decl_done(c, idecl);
     type = s->ty;
     if ((s->flags & CSF_AUTO_TYPE) && init != NO_NODE) {
         /* __auto_type: the initializer's type after lvalue conversion */
@@ -4179,6 +4068,15 @@ static void member_decl_visit(Checker *c, uint32_t i)
                         ? g.s.align : (uint16_t)sp.attrs.aligned;
                     fi.packed = sp.attrs.packed;
                     fi.loc = tloc(c, ltok);
+                    {
+                        /* gcc locates an anonymous member at its '{' */
+                        uint32_t q;
+                        for (q = cfirst(c, sn); q <= sn; q++)
+                            if (ntag(c, q) == N_OPEN) {
+                                fi.loc = tloc(c, cnode(c, q)->tok);
+                                break;
+                            }
+                    }
                     vec_push(&c->fields, fi);
                 }
             }
@@ -4754,6 +4652,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     c->func_node = fnode;
     c->ty[declared] = csym(c, ref)->ty;
     c->cb[declared] = ref + 1;
+    cexpr_record_params(c, declared, ref, true);
     c->cv[declared] = 1;
     ensure_finish_cue(c, ref);
 }
@@ -5108,8 +5007,10 @@ static void unused_scan(Checker *c, uint32_t first, uint32_t last)
             cand[nc++] = k;
         }
     }
-    if (!nc)
+    if (!nc) {
+        cstmt_emit_labels(c, first, -1);
         return;
+    }
     names = xmalloc(nc * sizeof *names);
     read = xcalloc(nc, 1);
     for (j = 0; j < nc; j++) {
@@ -5125,6 +5026,7 @@ static void unused_scan(Checker *c, uint32_t first, uint32_t last)
         memset(read, 1, nc);
     for (j = nc; j-- > 0;) {
         CSym *s = csym(c, c->cb[cand[j]] - 1);
+        cstmt_emit_labels(c, first, (int64_t)cand[j]);
         if (s->kind == CS_OBJ && !(s->flags & CSF_PARAM) && s->name) {
             if (!(s->flags & CSF_USED)) {
                 cwarn(c, s->loc, "unused-variable", "unused variable '%s'",
@@ -5139,6 +5041,7 @@ static void unused_scan(Checker *c, uint32_t first, uint32_t last)
             cerror(c, s->loc, "nested function '%s' declared but never "
                    "defined", sname(c, s));
     }
+    cstmt_emit_labels(c, first, -1);
     free(cand);
     free(names);
     free(read);
@@ -5339,6 +5242,7 @@ void cdecl_node(Checker *c, uint32_t i)
         break;
     case N_DECLARED:
         declared_visit(c, i);
+        cinit_declared(c, i);
         break;
     case N_INIT_DECL:
         init_decl_visit(c, i);

@@ -1,0 +1,165 @@
+init_e4.c:4:20: warning: initialization of a flexible array member [-Wpedantic]
+    4 | struct F f1 = { 1, { 2, 3 } };
+      |                    ^
+init_e4.c:4:20: note: (near initialization for 'f1.y')
+    4 | struct F f1 = { 1, { 2, 3 } };
+      |                    ^
+init_e4.c:6:15: warning: initialization of a flexible array member [-Wpedantic]
+    6 | struct F f3 = { 1, 2 };
+      |               ^
+init_e4.c:6:15: note: (near initialization for 'f3.y')
+    6 | struct F f3 = { 1, 2 };
+      |               ^
+init_e4.c:6:15: warning: missing braces around initializer [-Wmissing-braces]
+    6 | struct F f3 = { 1, 2 };
+      |               ^
+init_e4.c:7:20: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    7 | struct F f4 = { 1, { } };
+      |                    ^
+init_e4.c:8:28: warning: invalid use of structure with flexible array member [-Wpedantic]
+    8 | struct G { int a; struct F f; };
+      |                            ^
+init_e4.c:9:25: error: initialization of flexible array member in a nested context
+    9 | struct G g1 = { 1, { 2, { 3 } } };
+      |                         ^
+init_e4.c:9:25: note: (near initialization for 'g1.f.y')
+    9 | struct G g1 = { 1, { 2, { 3 } } };
+      |                         ^
+init_e4.c:10:21: warning: invalid use of structure with flexible array member [-Wpedantic]
+   10 | struct H { struct F f; int z; };
+      |                     ^
+init_e4.c:12:14: error: variable-sized object may not be initialized except with an empty initializer
+   12 |   int v[k] = { 1 };
+      |              ^
+init_e4.c:13:14: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   13 |   int w[k] = { };
+      |              ^
+init_e4.c:14:17: error: variable-sized object may not be initialized except with an empty initializer
+   14 |   int u[k][2] = { { 1 } };
+      |                 ^
+init_e4.c:16:14: error: variable-sized object may not be initialized except with an empty initializer
+   16 |   int y[k] = 1;
+      |              ^
+init_e4.c:17:15: error: variable-sized object may not be initialized except with an empty initializer
+   17 |   char s[k] = "a";
+      |               ^
+init_e4.c:18:17: error: nonconstant array index in initializer
+   18 |   int z[2] = { [k] = 1 };
+      |                 ^
+init_e4.c:18:17: note: (near initialization for 'z')
+   18 |   int z[2] = { [k] = 1 };
+      |                 ^
+init_e4.c:19:17: error: nonconstant array index in initializer
+   19 |   int q[3] = { [1 ... k] = 1 };
+      |                 ^
+init_e4.c:19:17: note: (near initialization for 'q')
+   19 |   int q[3] = { [1 ... k] = 1 };
+      |                 ^
+init_e4.c:19:19: warning: ISO C forbids specifying range of elements to initialize [-Wpedantic]
+   19 |   int q[3] = { [1 ... k] = 1 };
+      |                   ^
+init_e4.c:20:21: warning: initialization of a flexible array member [-Wpedantic]
+   20 |   struct F f = { 1, { 2 } };
+      |                     ^
+init_e4.c:20:21: note: (near initialization for 'f.y')
+   20 |   struct F f = { 1, { 2 } };
+      |                     ^
+init_e4.c:20:21: error: non-static initialization of a flexible array member
+   20 |   struct F f = { 1, { 2 } };
+      |                     ^
+init_e4.c:20:21: note: (near initialization for 'f')
+   20 |   struct F f = { 1, { 2 } };
+      |                     ^
+init_e4.c:21:29: warning: initialization of a flexible array member [-Wpedantic]
+   21 |   static struct F sf = { 1, { 2 } };
+      |                             ^
+init_e4.c:21:29: note: (near initialization for 'sf.y')
+   21 |   static struct F sf = { 1, { 2 } };
+      |                             ^
+init_e4.c:23:33: warning: initialization of a flexible array member [-Wpedantic]
+   23 |   struct F *p = &(struct F){ 1, { 2 } };
+      |                                 ^
+init_e4.c:23:33: note: (near initialization for '(anonymous).y')
+   23 |   struct F *p = &(struct F){ 1, { 2 } };
+      |                                 ^
+init_e4.c:23:33: error: non-static initialization of a flexible array member
+   23 |   struct F *p = &(struct F){ 1, { 2 } };
+      |                                 ^
+init_e4.c:23:33: note: (near initialization for '(anonymous)')
+   23 |   struct F *p = &(struct F){ 1, { 2 } };
+      |                                 ^
+init_e4.c:26:19: error: initializer element is not constant
+   26 |   static int st = k;
+      |                   ^
+init_e4.c:27:28: error: initializer element is not constant
+   27 |   static int st2[2] = { 1, k };
+      |                            ^
+init_e4.c:27:28: note: (near initialization for 'st2[1]')
+   27 |   static int st2[2] = { 1, k };
+      |                            ^
+init_e4.c:28:20: error: initializer element is not constant
+   28 |   static int *sp = &k;
+      |                    ^
+init_e4.c:29:19: error: initializer element is not constant
+   29 |   static int sn = n;
+      |                   ^
+init_e4.c:29:14: warning: unused variable 'sn' [-Wunused-variable]
+   29 |   static int sn = n;
+      |              ^
+init_e4.c:28:15: warning: unused variable 'sp' [-Wunused-variable]
+   28 |   static int *sp = &k;
+      |               ^
+init_e4.c:27:14: warning: unused variable 'st2' [-Wunused-variable]
+   27 |   static int st2[2] = { 1, k };
+      |              ^
+init_e4.c:26:14: warning: unused variable 'st' [-Wunused-variable]
+   26 |   static int st = k;
+      |              ^
+init_e4.c:25:7: warning: unused variable 'rr' [-Wunused-variable]
+   25 |   int rr[2] = { k, k + 1 };
+      |       ^
+init_e4.c:24:7: warning: unused variable 'r' [-Wunused-variable]
+   24 |   int r = { k };
+      |       ^
+init_e4.c:23:13: warning: unused variable 'p' [-Wunused-variable]
+   23 |   struct F *p = &(struct F){ 1, { 2 } };
+      |             ^
+init_e4.c:22:12: warning: unused variable 'f5' [-Wunused-variable]
+   22 |   struct F f5 = { 1 };
+      |            ^
+init_e4.c:21:19: warning: unused variable 'sf' [-Wunused-variable]
+   21 |   static struct F sf = { 1, { 2 } };
+      |                   ^
+init_e4.c:20:12: warning: unused variable 'f' [-Wunused-variable]
+   20 |   struct F f = { 1, { 2 } };
+      |            ^
+init_e4.c:19:7: warning: unused variable 'q' [-Wunused-variable]
+   19 |   int q[3] = { [1 ... k] = 1 };
+      |       ^
+init_e4.c:18:7: warning: unused variable 'z' [-Wunused-variable]
+   18 |   int z[2] = { [k] = 1 };
+      |       ^
+init_e4.c:17:8: warning: unused variable 's' [-Wunused-variable]
+   17 |   char s[k] = "a";
+      |        ^
+init_e4.c:16:7: warning: unused variable 'y' [-Wunused-variable]
+   16 |   int y[k] = 1;
+      |       ^
+init_e4.c:15:7: warning: unused variable 'x' [-Wunused-variable]
+   15 |   int x[n];
+      |       ^
+init_e4.c:14:7: warning: unused variable 'u' [-Wunused-variable]
+   14 |   int u[k][2] = { { 1 } };
+      |       ^
+init_e4.c:13:7: warning: unused variable 'w' [-Wunused-variable]
+   13 |   int w[k] = { };
+      |       ^
+init_e4.c:12:7: warning: unused variable 'v' [-Wunused-variable]
+   12 |   int v[k] = { 1 };
+      |       ^
+init_e4.c:31:5: error: variably modified 'vla_file' at file scope
+   31 | int vla_file[n];
+      |     ^
+init_e4.c:32:5: error: variably modified 'ar' at file scope
+   32 | int ar[n] = { 1 };
+      |     ^

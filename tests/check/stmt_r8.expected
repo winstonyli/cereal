@@ -1,0 +1,15 @@
+stmt_r8.c:2:8: warning: return type defaults to 'int' [-Wimplicit-int]
+    2 | static f(void) {}
+      |        ^
+stmt_r8.c:3:8: warning: type qualifiers ignored on function return type [-Wignored-qualifiers]
+    3 | static const g(void) {}
+      |        ^
+stmt_r8.c:3:14: warning: return type defaults to 'int' [-Wimplicit-int]
+    3 | static const g(void) {}
+      |              ^
+stmt_r8.c:4:1: warning: return type defaults to 'int' [-Wimplicit-int]
+    4 | h(void) {}
+      | ^
+stmt_r8.c:5:1: warning: no return statement in function returning non-void [-Wreturn-type]
+    5 | static inline int k(void) {}
+      | ^

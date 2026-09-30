@@ -1,0 +1,3 @@
+init_d3.c:6:11: error: initializer element is not constant
+    6 | int *p6 = (int*)a;
+      |           ^

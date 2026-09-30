@@ -1,0 +1,6 @@
+expr_bin.c:2:9: warning: binary constants are a C2X feature or GCC extension
+    2 | int a = 0b101;
+      |         ^
+expr_bin.c:3:21: warning: binary constants are a C2X feature or GCC extension
+    3 | int f(void){ return 0B11 + 1; }
+      |                     ^

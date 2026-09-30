@@ -1,0 +1,30 @@
+init_d5.c:3:14: warning: initializer element is not constant [-Wpedantic]
+    3 | int d[1] = { (struct S){1} };
+      |              ^
+init_d5.c:3:14: note: (near initialization for 'd[0]')
+    3 | int d[1] = { (struct S){1} };
+      |              ^
+init_d5.c:3:14: error: incompatible types when initializing type 'int' using type 'struct S'
+    3 | int d[1] = { (struct S){1} };
+      |              ^
+init_d5.c:4:14: warning: initialization of 'int' from 'int *' makes integer from pointer without a cast [-Wint-conversion]
+    4 | int e[1] = { (int[1]){1} };
+      |              ^
+init_d5.c:4:14: note: (near initialization for 'e[0]')
+    4 | int e[1] = { (int[1]){1} };
+      |              ^
+init_d5.c:4:14: error: initializer element is not computable at load time
+    4 | int e[1] = { (int[1]){1} };
+      |              ^
+init_d5.c:4:14: note: (near initialization for 'e[0]')
+    4 | int e[1] = { (int[1]){1} };
+      |              ^
+init_d5.c:5:27: warning: initializer element is not constant [-Wpedantic]
+    5 | struct T { int a; } t = { (struct S){1} };
+      |                           ^
+init_d5.c:5:27: note: (near initialization for 't.a')
+    5 | struct T { int a; } t = { (struct S){1} };
+      |                           ^
+init_d5.c:5:27: error: incompatible types when initializing type 'int' using type 'struct S'
+    5 | struct T { int a; } t = { (struct S){1} };
+      |                           ^

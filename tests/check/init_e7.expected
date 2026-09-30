@@ -1,0 +1,123 @@
+init_e7.c:5:29: error: initializer element is not constant
+    5 | struct P *p2 = &(struct P){ g, 2 };
+      |                             ^
+init_e7.c:5:29: note: (near initialization for '(anonymous).x')
+    5 | struct P *p2 = &(struct P){ g, 2 };
+      |                             ^
+init_e7.c:7:30: warning: excess elements in array initializer
+    7 | int *p4 = (int[3]){ 1, 2, 3, 4 };
+      |                              ^
+init_e7.c:7:30: note: (near initialization for '(anonymous)')
+    7 | int *p4 = (int[3]){ 1, 2, 3, 4 };
+      |                              ^
+init_e7.c:8:20: error: initializer element is not constant
+    8 | int *p5 = (int[]){ g };
+      |                    ^
+init_e7.c:8:20: note: (near initialization for '(anonymous)[0]')
+    8 | int *p5 = (int[]){ g };
+      |                    ^
+init_e7.c:9:15: warning: initializer element is not constant [-Wpedantic]
+    9 | struct P p6 = (struct P){ 1, 2 };
+      |               ^
+init_e7.c:10:27: error: initializer element is not constant
+   10 | struct P p7 = (struct P){ g, 2 };
+      |                           ^
+init_e7.c:10:27: note: (near initialization for '(anonymous).x')
+   10 | struct P p7 = (struct P){ g, 2 };
+      |                           ^
+init_e7.c:11:10: warning: initializer element is not constant [-Wpedantic]
+   11 | int p8 = (int){ 3 };
+      |          ^
+init_e7.c:12:17: error: initializer element is not constant
+   12 | int p9 = (int){ g };
+      |                 ^
+init_e7.c:12:17: note: (near initialization for '(anonymous)')
+   12 | int p9 = (int){ g };
+      |                 ^
+init_e7.c:15:13: warning: initializer element is not constant [-Wpedantic]
+   15 | int p12[] = (int[]){ 1, 2 };
+      |             ^
+init_e7.c:16:41: warning: initializer element is not constant [-Wpedantic]
+   16 | struct Q { struct P a; int *b; } q1 = { (struct P){1,2}, (int[]){1} };
+      |                                         ^
+init_e7.c:16:41: note: (near initialization for 'q1.a')
+   16 | struct Q { struct P a; int *b; } q1 = { (struct P){1,2}, (int[]){1} };
+      |                                         ^
+init_e7.c:18:29: error: initializer element is not constant
+   18 | struct Q q3 = { (struct P){ g, 2 }, 0 };
+      |                             ^
+init_e7.c:18:29: note: (near initialization for '(anonymous).x')
+   18 | struct Q q3 = { (struct P){ g, 2 }, 0 };
+      |                             ^
+init_e7.c:23:20: error: initializer element is not constant
+   23 |   static int *l3 = (int[]){ 1, 2 };
+      |                    ^
+init_e7.c:24:20: error: initializer element is not constant
+   24 |   static int *l4 = (int[]){ g };
+      |                    ^
+init_e7.c:25:24: warning: initializer element is not constant [-Wpedantic]
+   25 |   static struct P l5 = (struct P){ 1, 2 };
+      |                        ^
+init_e7.c:27:34: warning: initialized field overwritten [-Woverride-init]
+   27 |   (void)(struct P){ .x = 1, .x = 2 };
+      |                                  ^
+init_e7.c:27:34: note: (near initialization for '(anonymous).x')
+   27 |   (void)(struct P){ .x = 1, .x = 2 };
+      |                                  ^
+init_e7.c:28:27: warning: excess elements in struct initializer
+   28 |   (void)(struct P){ 1, 2, 3 };
+      |                           ^
+init_e7.c:28:27: note: (near initialization for '(anonymous)')
+   28 |   (void)(struct P){ 1, 2, 3 };
+      |                           ^
+init_e7.c:30:16: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   30 |   (void)(int[]){ };
+      |                ^
+init_e7.c:31:21: warning: excess elements in struct initializer
+   31 |   (void)(struct R){ 1 };
+      |                     ^
+init_e7.c:31:21: note: (near initialization for '(anonymous)')
+   31 |   (void)(struct R){ 1 };
+      |                     ^
+init_e7.c:31:19: error: invalid use of undefined type 'struct R'
+   31 |   (void)(struct R){ 1 };
+      |                   ^
+init_e7.c:32:9: error: compound literal has variable size
+   32 |   (void)(int[g]){ 1 };
+      |         ^
+init_e7.c:33:17: error: invalid initializer
+   33 |   (void)(void){ 1 };
+      |                 ^
+init_e7.c:33:17: note: (near initialization for '(anonymous)')
+   33 |   (void)(void){ 1 };
+      |                 ^
+init_e7.c:34:19: warning: excess elements in scalar initializer
+   34 |   (void)(int){ 1, 2 };
+      |                   ^
+init_e7.c:34:19: note: (near initialization for '(anonymous)')
+   34 |   (void)(int){ 1, 2 };
+      |                   ^
+init_e7.c:37:18: warning: initializer-string for array of 'char' is too long
+   37 |   (void)(char[2]){ "abc" };
+      |                  ^
+init_e7.c:40:9: error: compound literal has function type
+   40 |   (void)(int(int)){ 1 };
+      |         ^
+init_e7.c:26:16: warning: unused variable 'r' [-Wunused-variable]
+   26 |   register int r = (int){ 1 };
+      |                ^
+init_e7.c:25:19: warning: unused variable 'l5' [-Wunused-variable]
+   25 |   static struct P l5 = (struct P){ 1, 2 };
+      |                   ^
+init_e7.c:24:15: warning: unused variable 'l4' [-Wunused-variable]
+   24 |   static int *l4 = (int[]){ g };
+      |               ^
+init_e7.c:23:15: warning: unused variable 'l3' [-Wunused-variable]
+   23 |   static int *l3 = (int[]){ 1, 2 };
+      |               ^
+init_e7.c:22:8: warning: unused variable 'l2' [-Wunused-variable]
+   22 |   int *l2 = (int[]){ g, 1 };
+      |        ^
+init_e7.c:21:12: warning: unused variable 'l1' [-Wunused-variable]
+   21 |   struct P l1 = (struct P){ g, 2 };
+      |            ^

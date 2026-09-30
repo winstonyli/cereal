@@ -1,0 +1,54 @@
+stmt_q1.c:4:18: warning: overflow in conversion from 'long int' to 'int' changes value from '4294967296' to '0' [-Woverflow]
+    4 |     switch (i) { case 4294967296L: break; case 3000000000U: break; case -1L: break; case 2147483648: break; }
+      |                  ^
+stmt_q1.c:4:85: warning: overflow in conversion from 'long int' to 'int' changes value from '2147483648' to '-2147483648' [-Woverflow]
+    4 |     switch (i) { case 4294967296L: break; case 3000000000U: break; case -1L: break; case 2147483648: break; }
+      |                                                                                     ^
+stmt_q1.c:5:34: warning: unsigned conversion from 'long int' to 'unsigned int' changes value from '5000000000' to '705032704' [-Woverflow]
+    5 |     switch (u) { case -1: break; case 5000000000: break; case -5000000000: break; case 4294967296UL: break; }
+      |                                  ^
+stmt_q1.c:5:58: warning: unsigned conversion from 'long int' to 'unsigned int' changes value from '-5000000000' to '3589934592' [-Woverflow]
+    5 |     switch (u) { case -1: break; case 5000000000: break; case -5000000000: break; case 4294967296UL: break; }
+      |                                                          ^
+stmt_q1.c:5:83: warning: conversion from 'long unsigned int' to 'unsigned int' changes value from '4294967296' to '0' [-Woverflow]
+    5 |     switch (u) { case -1: break; case 5000000000: break; case -5000000000: break; case 4294967296UL: break; }
+      |                                                                                   ^
+stmt_q1.c:6:35: error: duplicate case value
+    6 |     switch (ul) { case -1: break; case -1L: break; case 1: break; }
+      |                                   ^
+stmt_q1.c:6:19: note: previously used here
+    6 |     switch (ul) { case -1: break; case -1L: break; case 1: break; }
+      |                   ^
+stmt_q1.c:8:35: warning: case label value is less than minimum value for type [-Wswitch-outside-range]
+    8 |     switch (c) { case 300: break; case -300: break; case 'a': break; case 128: break; }
+      |                                   ^
+stmt_q1.c:8:70: warning: case label value exceeds maximum value for type [-Wswitch-outside-range]
+    8 |     switch (c) { case 300: break; case -300: break; case 'a': break; case 128: break; }
+      |                                                                      ^
+stmt_q1.c:8:18: warning: case label value exceeds maximum value for type [-Wswitch-outside-range]
+    8 |     switch (c) { case 300: break; case -300: break; case 'a': break; case 128: break; }
+      |                  ^
+stmt_q1.c:9:36: warning: case label value is less than minimum value for type [-Wswitch-outside-range]
+    9 |     switch (uc) { case 256: break; case -1: break; case 255: break; }
+      |                                    ^
+stmt_q1.c:9:19: warning: case label value exceeds maximum value for type [-Wswitch-outside-range]
+    9 |     switch (uc) { case 256: break; case -1: break; case 255: break; }
+      |                   ^
+stmt_q1.c:10:37: warning: range expressions in switch statements are non-standard [-Wpedantic]
+   10 |     switch (s) { case 40000: break; case 1 ... 70000: break; case -70000 ... 5: break; }
+      |                                     ^
+stmt_q1.c:10:37: error: duplicate (or overlapping) case value
+   10 |     switch (s) { case 40000: break; case 1 ... 70000: break; case -70000 ... 5: break; }
+      |                                     ^
+stmt_q1.c:10:18: note: this is the first entry overlapping that value
+   10 |     switch (s) { case 40000: break; case 1 ... 70000: break; case -70000 ... 5: break; }
+      |                  ^
+stmt_q1.c:10:62: warning: range expressions in switch statements are non-standard [-Wpedantic]
+   10 |     switch (s) { case 40000: break; case 1 ... 70000: break; case -70000 ... 5: break; }
+      |                                                              ^
+stmt_q1.c:10:62: warning: lower value in case label range less than minimum value for type [-Wswitch-outside-range]
+   10 |     switch (s) { case 40000: break; case 1 ... 70000: break; case -70000 ... 5: break; }
+      |                                                              ^
+stmt_q1.c:10:18: warning: case label value exceeds maximum value for type [-Wswitch-outside-range]
+   10 |     switch (s) { case 40000: break; case 1 ... 70000: break; case -70000 ... 5: break; }
+      |                  ^

@@ -1,0 +1,41 @@
+// flags: -Wall -Wextra
+struct P { int x, y; };
+int g;
+struct P *p1 = &(struct P){ 1, 2 };
+struct P *p2 = &(struct P){ g, 2 };
+int *p3 = (int[]){ 1, 2, 3 };
+int *p4 = (int[3]){ 1, 2, 3, 4 };
+int *p5 = (int[]){ g };
+struct P p6 = (struct P){ 1, 2 };
+struct P p7 = (struct P){ g, 2 };
+int p8 = (int){ 3 };
+int p9 = (int){ g };
+char *p10 = (char[]){ "abc" };
+int *p11 = (int[2][2]){ {1,2}, {3,4} }[1];
+int p12[] = (int[]){ 1, 2 };
+struct Q { struct P a; int *b; } q1 = { (struct P){1,2}, (int[]){1} };
+struct Q q2 = { { 1, 2 }, (int[]){ 1, 2 } };
+struct Q q3 = { (struct P){ g, 2 }, 0 };
+int *p13 = &(int){ 5 };
+void f(void) {
+  struct P l1 = (struct P){ g, 2 };
+  int *l2 = (int[]){ g, 1 };
+  static int *l3 = (int[]){ 1, 2 };
+  static int *l4 = (int[]){ g };
+  static struct P l5 = (struct P){ 1, 2 };
+  register int r = (int){ 1 };
+  (void)(struct P){ .x = 1, .x = 2 };
+  (void)(struct P){ 1, 2, 3 };
+  (void)(int[]){ [2] = 1 };
+  (void)(int[]){ };
+  (void)(struct R){ 1 };
+  (void)(int[g]){ 1 };
+  (void)(void){ 1 };
+  (void)(int){ 1, 2 };
+  (void)(char[]){ "abc" };
+  (void)(const char[]){ "abc" };
+  (void)(char[2]){ "abc" };
+  (void)sizeof((int[]){ 1, 2, 3 });
+  (void)sizeof(int[]){ 1, 2, 3, 4 };
+  (void)(int(int)){ 1 };
+}

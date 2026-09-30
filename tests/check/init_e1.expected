@@ -1,0 +1,126 @@
+init_e1.c:4:15: warning: missing braces around initializer [-Wmissing-braces]
+    4 | struct L l1 = { 1, 2, 3, 4, 5 };
+      |               ^
+init_e1.c:5:15: warning: missing braces around initializer [-Wmissing-braces]
+    5 | struct L l2 = { { 1, 2 }, 3, 4 };
+      |               ^
+init_e1.c:5:8: warning: missing initializer for field 'c' of 'struct L' [-Wmissing-field-initializers]
+    5 | struct L l2 = { { 1, 2 }, 3, 4 };
+      |        ^
+init_e1.c:3:40: note: 'c' declared here
+    3 | struct L { struct P a; struct P b; int c; };
+      |                                        ^
+init_e1.c:7:15: warning: missing braces around initializer [-Wmissing-braces]
+    7 | struct L l4 = { .a = 1 };
+      |               ^
+init_e1.c:8:18: error: 'struct L' has no member named 'q'
+    8 | struct L l5 = { .q = 1 };
+      |                  ^
+init_e1.c:8:15: warning: missing braces around initializer [-Wmissing-braces]
+    8 | struct L l5 = { .q = 1 };
+      |               ^
+init_e1.c:9:18: error: array index in non-array initializer
+    9 | struct L l6 = { [0] = 1 };
+      |                  ^
+init_e1.c:9:18: note: (near initialization for 'l6')
+    9 | struct L l6 = { [0] = 1 };
+      |                  ^
+init_e1.c:9:15: warning: missing braces around initializer [-Wmissing-braces]
+    9 | struct L l6 = { [0] = 1 };
+      |               ^
+init_e1.c:11:18: warning: ISO C forbids specifying range of elements to initialize [-Wpedantic]
+   11 | int a2[5] = { [1 ... 3] = 9 };
+      |                  ^
+init_e1.c:12:16: error: empty index range in initializer
+   12 | int a3[5] = { [3 ... 1] = 9 };
+      |                ^
+init_e1.c:12:16: note: (near initialization for 'a3')
+   12 | int a3[5] = { [3 ... 1] = 9 };
+      |                ^
+init_e1.c:12:18: warning: ISO C forbids specifying range of elements to initialize [-Wpedantic]
+   12 | int a3[5] = { [3 ... 1] = 9 };
+      |                  ^
+init_e1.c:13:16: error: array index in initializer exceeds array bounds
+   13 | int a4[5] = { [5] = 1 };
+      |                ^
+init_e1.c:13:16: note: (near initialization for 'a4')
+   13 | int a4[5] = { [5] = 1 };
+      |                ^
+init_e1.c:14:16: error: array index in initializer exceeds array bounds
+   14 | int a5[5] = { [-1] = 1 };
+      |                ^
+init_e1.c:14:16: note: (near initialization for 'a5')
+   14 | int a5[5] = { [-1] = 1 };
+      |                ^
+init_e1.c:16:15: error: field name not in record or union initializer
+   16 | int a7[5] = { .x = 1 };
+      |               ^
+init_e1.c:16:15: note: (near initialization for 'a7')
+   16 | int a7[5] = { .x = 1 };
+      |               ^
+init_e1.c:18:19: warning: excess elements in union initializer
+   18 | union U u1 = { 1, 2 };
+      |                   ^
+init_e1.c:18:19: note: (near initialization for 'u1')
+   18 | union U u1 = { 1, 2 };
+      |                   ^
+init_e1.c:21:29: warning: initialized field overwritten [-Woverride-init]
+   21 | union U u4 = { .i = 1, .f = 2 };
+      |                             ^
+init_e1.c:21:29: note: (near initialization for 'u4.f')
+   21 | union U u4 = { .i = 1, .f = 2 };
+      |                             ^
+init_e1.c:22:30: warning: initialized field overwritten [-Woverride-init]
+   22 | struct P p1 = { .x = 1, .x = 2 };
+      |                              ^
+init_e1.c:22:30: note: (near initialization for 'p1.x')
+   22 | struct P p1 = { .x = 1, .x = 2 };
+      |                              ^
+init_e1.c:23:25: warning: initialized field overwritten [-Woverride-init]
+   23 | struct P p2 = { 1, .x = 2 };
+      |                         ^
+init_e1.c:23:25: note: (near initialization for 'p2.x')
+   23 | struct P p2 = { 1, .x = 2 };
+      |                         ^
+init_e1.c:24:41: warning: initialized field overwritten [-Woverride-init]
+   24 | struct P arr[3] = { 1, 2, 3, 4, [1].y = 7 };
+      |                                         ^
+init_e1.c:24:41: note: (near initialization for 'arr[1].y')
+   24 | struct P arr[3] = { 1, 2, 3, 4, [1].y = 7 };
+      |                                         ^
+init_e1.c:24:19: warning: missing braces around initializer [-Wmissing-braces]
+   24 | struct P arr[3] = { 1, 2, 3, 4, [1].y = 7 };
+      |                   ^
+init_e1.c:25:15: warning: missing braces around initializer [-Wmissing-braces]
+   25 | int m[2][3] = { 1, 2, 3, 4, 5, 6 };
+      |               ^
+init_e1.c:27:15: warning: missing braces around initializer [-Wmissing-braces]
+   27 | int m3[][2] = { 1, 2, 3 };
+      |               ^
+init_e1.c:29:10: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   29 | int s2 = { };
+      |          ^
+init_e1.c:30:1: warning: braces around scalar initializer
+   30 | int s3 = {{ 1 }};
+      | ^
+init_e1.c:30:1: note: (near initialization for 's3')
+   30 | int s3 = {{ 1 }};
+      | ^
+init_e1.c:31:15: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   31 | struct P pe = { };
+      |               ^
+init_e1.c:32:5: warning: ISO C forbids zero-size array 'vz' [-Wpedantic]
+   32 | int vz[0] = { };
+      |     ^
+init_e1.c:32:13: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   32 | int vz[0] = { };
+      |             ^
+init_e1.c:33:5: warning: ISO C forbids zero-size array 'vz2' [-Wpedantic]
+   33 | int vz2[0] = { 1 };
+      |     ^
+init_e1.c:33:16: warning: excess elements in array initializer
+   33 | int vz2[0] = { 1 };
+      |                ^
+init_e1.c:33:16: note: (near initialization for 'vz2')
+   33 | int vz2[0] = { 1 };
+      |                ^

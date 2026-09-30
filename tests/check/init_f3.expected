@@ -1,0 +1,69 @@
+init_f3.c:2:21: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+    2 | int i2 = 2147483647 + 1;
+      |                     ^
+init_f3.c:2:1: warning: overflow in constant expression [-Woverflow]
+    2 | int i2 = 2147483647 + 1;
+      | ^
+init_f3.c:3:32: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+    3 |   static   int i3 = 2147483647 + 1;
+      |                                ^
+init_f3.c:3:3: warning: overflow in constant expression [-Woverflow]
+    3 |   static   int i3 = 2147483647 + 1;
+      |   ^
+init_f3.c:6:14: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+    6 |   2147483647 + 1,
+      |              ^
+init_f3.c:6:3: warning: overflow in constant expression [-Woverflow]
+    6 |   2147483647 + 1,
+      |   ^
+init_f3.c:9:15: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+    9 |    2147483647 + 1 };
+      |               ^
+init_f3.c:9:4: warning: overflow in constant expression [-Woverflow]
+    9 |    2147483647 + 1 };
+      |    ^
+init_f3.c:11:22: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+   11 |   int l = 2147483647 + 1;
+      |                      ^
+init_f3.c:13:19: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+   13 |        2147483647 + 1 };
+      |                   ^
+init_f3.c:13:8: warning: overflow in constant expression [-Woverflow]
+   13 |        2147483647 + 1 };
+      |        ^
+init_f3.c:14:22: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+   14 |   int n = 2147483647 + 1, o = 1 - -2147483647 - 3;
+      |                      ^
+init_f3.c:14:33: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+   14 |   int n = 2147483647 + 1, o = 1 - -2147483647 - 3;
+      |                                 ^
+init_f3.c:14:27: warning: unused variable 'o' [-Wunused-variable]
+   14 |   int n = 2147483647 + 1, o = 1 - -2147483647 - 3;
+      |                           ^
+init_f3.c:14:7: warning: unused variable 'n' [-Wunused-variable]
+   14 |   int n = 2147483647 + 1, o = 1 - -2147483647 - 3;
+      |       ^
+init_f3.c:12:14: warning: unused variable 'm' [-Wunused-variable]
+   12 |   static int m[] = { 1,
+      |              ^
+init_f3.c:11:7: warning: unused variable 'l' [-Wunused-variable]
+   11 |   int l = 2147483647 + 1;
+      |       ^
+init_f3.c:16:29: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+   16 | int j1 = 1, j2 = 2147483647 + 1;
+      |                             ^
+init_f3.c:16:1: warning: overflow in constant expression [-Woverflow]
+   16 | int j1 = 1, j2 = 2147483647 + 1;
+      | ^
+init_f3.c:17:31: warning: integer overflow in expression of type 'long int' results in '-9223372036854775808' [-Woverflow]
+   17 | long k1 = 9223372036854775807 + 1;
+      |                               ^
+init_f3.c:17:1: warning: overflow in constant expression [-Woverflow]
+   17 | long k1 = 9223372036854775807 + 1;
+      | ^
+init_f3.c:19:10: warning: integer overflow in expression '-2147483648' of type 'int' results in '-2147483648' [-Woverflow]
+   19 | int k3 = -(-2147483647 - 1);
+      |          ^
+init_f3.c:19:1: warning: overflow in constant expression [-Woverflow]
+   19 | int k3 = -(-2147483647 - 1);
+      | ^

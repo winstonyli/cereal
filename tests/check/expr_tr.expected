@@ -1,0 +1,306 @@
+expr_tr.c:15:9: warning: the address of 'g' will always evaluate as 'true' [-Waddress]
+   15 |     r = !g;
+      |         ^
+expr_tr.c:16:9: warning: the address of 'a' will always evaluate as 'true' [-Waddress]
+   16 |     r = !a;
+      |         ^
+expr_tr.c:17:9: warning: the address of 'i' will always evaluate as 'true' [-Waddress]
+   17 |     r = !&i;
+      |         ^
+expr_tr.c:19:9: warning: the address of 'ga' will always evaluate as 'true' [-Waddress]
+   19 |     r = !ga;
+      |         ^
+expr_tr.c:20:9: warning: the comparison will always evaluate as 'true' for the address of 'b' will never be NULL [-Waddress]
+   20 |     r = !gs.b;
+      |         ^
+expr_tr.c:2:23: note: 'b' declared here
+    2 | struct S { int a; int b[2]; };
+      |                       ^
+expr_tr.c:21:9: warning: the comparison will always evaluate as 'true' for the address of 'b' will never be NULL [-Waddress]
+   21 |     r = !sp->b;
+      |         ^
+expr_tr.c:2:23: note: 'b' declared here
+    2 | struct S { int a; int b[2]; };
+      |                       ^
+expr_tr.c:22:9: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   22 |     r = a && i;
+      |         ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:23:11: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   23 |     r = i && a;
+      |           ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:24:9: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   24 |     r = a || i;
+      |         ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:25:9: warning: the comparison will always evaluate as 'true' for the address of 'g' will never be NULL [-Waddress]
+   25 |     r = g || i;
+      |         ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:27:11: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   27 |     r = a ? 1 : 2;
+      |           ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:28:11: warning: the comparison will always evaluate as 'true' for the address of 'g' will never be NULL [-Waddress]
+   28 |     r = g ? 1 : 2;
+      |           ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:29:13: warning: the address of 'gv' will always evaluate as 'true' [-Waddress]
+   29 |     r = &gv ? 1 : 2;
+      |             ^
+expr_tr.c:30:14: warning: the comparison will always evaluate as 'true' for the address of 'b' will never be NULL [-Waddress]
+   30 |     r = gs.b ? 1 : 2;
+      |              ^
+expr_tr.c:2:23: note: 'b' declared here
+    2 | struct S { int a; int b[2]; };
+      |                       ^
+expr_tr.c:31:15: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   31 |     r = &gs.a ? 1 : 2;
+      |               ^
+expr_tr.c:2:16: note: 'a' declared here
+    2 | struct S { int a; int b[2]; };
+      |                ^
+expr_tr.c:32:13: warning: the address of 'gs' will always evaluate as 'true' [-Waddress]
+   32 |     r = &gs ? 1 : 2;
+      |             ^
+expr_tr.c:33:15: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   33 |     r = &a[1] ? 1 : 2;
+      |               ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:34:15: warning: the comparison will always evaluate as 'false' for the address of 'a' will never be NULL [-Waddress]
+   34 |     r = &a[1] == 0;
+      |               ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:35:15: warning: the comparison will always evaluate as 'false' for the address of 'a' will never be NULL [-Waddress]
+   35 |     r = &gs.a == 0;
+      |               ^
+expr_tr.c:2:16: note: 'a' declared here
+    2 | struct S { int a; int b[2]; };
+      |                ^
+expr_tr.c:36:14: warning: the comparison will always evaluate as 'false' for the address of 'b' will never be NULL [-Waddress]
+   36 |     r = gs.b == 0;
+      |              ^
+expr_tr.c:2:23: note: 'b' declared here
+    2 | struct S { int a; int b[2]; };
+      |                       ^
+expr_tr.c:37:11: warning: the comparison will always evaluate as 'false' for the address of 'g' will never be NULL [-Waddress]
+   37 |     r = 0 == g;
+      |           ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:38:11: warning: the comparison will always evaluate as 'true' for the address of 'g' will never be NULL [-Waddress]
+   38 |     r = g != 0;
+      |           ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:39:11: warning: the comparison will always evaluate as 'false' for the address of 'g' will never be NULL [-Waddress]
+   39 |     r = g == (void *)0;
+      |           ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:40:9: warning: ISO C forbids conversion of function pointer to object pointer type [-Wpedantic]
+   40 |     r = (void *)g == 0;
+      |         ^
+expr_tr.c:40:19: warning: the comparison will always evaluate as 'false' for the address of 'g' will never be NULL [-Waddress]
+   40 |     r = (void *)g == 0;
+      |                   ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:44:12: warning: the address of 'sf' will always evaluate as 'true' [-Waddress]
+   44 |     r = sf ? 1 : 2;
+      |            ^
+expr_tr.c:45:13: warning: the address of 'st' will always evaluate as 'true' [-Waddress]
+   45 |     r = &st ? 1 : 2;
+      |             ^
+expr_tr.c:46:12: warning: the address of 's' will always evaluate as 'true' [-Waddress]
+   46 |     r = &s ? 1 : 2;
+      |            ^
+expr_tr.c:47:14: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   47 |     r = &s.a ? 1 : 2;
+      |              ^
+expr_tr.c:2:16: note: 'a' declared here
+    2 | struct S { int a; int b[2]; };
+      |                ^
+expr_tr.c:48:13: warning: the comparison will always evaluate as 'true' for the address of 'b' will never be NULL [-Waddress]
+   48 |     r = s.b ? 1 : 2;
+      |             ^
+expr_tr.c:2:23: note: 'b' declared here
+    2 | struct S { int a; int b[2]; };
+      |                       ^
+expr_tr.c:51:12: warning: the comparison will always evaluate as 'false' for the address of 'r' will never be NULL [-Waddress]
+   51 |     r = &r == 0;
+      |            ^
+expr_tr.c:12:9: note: 'r' declared here
+   12 |     int r, a[3], *lp = &r;
+      |         ^
+expr_tr.c:53:15: warning: the comparison will always evaluate as 'false' for the pointer operand in '(int *)&a + 4' must not be NULL [-Waddress]
+   53 |     r = a + 1 == 0;
+      |               ^
+expr_tr.c:54:15: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + 4' must not be NULL [-Waddress]
+   54 |     r = p + 1 == 0;
+      |               ^
+expr_tr.c:55:17: warning: the comparison will always evaluate as 'true' for the pointer operand in '(int *)&a + 4' must not be NULL [-Waddress]
+   55 |     r = (a + 1) ? 1 : 2;
+      |                 ^
+expr_tr.c:56:17: warning: the comparison will always evaluate as 'false' for the pointer operand in '&gv + 4' must not be NULL [-Waddress]
+   56 |     r = &gv + 1 == 0;
+      |                 ^
+expr_tr.c:57:15: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   57 |     r = &a[0] != 0;
+      |               ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:59:15: warning: the comparison will always evaluate as 'false' for the address of 'b' will never be NULL [-Waddress]
+   59 |     r = sp->b == 0;
+      |               ^
+expr_tr.c:2:23: note: 'b' declared here
+    2 | struct S { int a; int b[2]; };
+      |                       ^
+expr_tr.c:60:16: warning: the comparison will always evaluate as 'false' for the address of 'b' will never be NULL [-Waddress]
+   60 |     r = &sp->b == 0;
+      |                ^
+expr_tr.c:2:23: note: 'b' declared here
+    2 | struct S { int a; int b[2]; };
+      |                       ^
+expr_tr.c:61:16: warning: the comparison will always evaluate as 'false' for the address of 'a' will never be NULL [-Waddress]
+   61 |     r = &sp->a == 0;
+      |                ^
+expr_tr.c:2:16: note: 'a' declared here
+    2 | struct S { int a; int b[2]; };
+      |                ^
+expr_tr.c:62:19: warning: the comparison will always evaluate as 'false' for the address of 'b' will never be NULL [-Waddress]
+   62 |     r = &sp->b[1] == 0;
+      |                   ^
+expr_tr.c:2:23: note: 'b' declared here
+    2 | struct S { int a; int b[2]; };
+      |                       ^
+expr_tr.c:63:18: warning: the comparison will always evaluate as 'false' for the address of 'b' will never be NULL [-Waddress]
+   63 |     r = &gs.b[1] == 0;
+      |                  ^
+expr_tr.c:2:23: note: 'b' declared here
+    2 | struct S { int a; int b[2]; };
+      |                       ^
+expr_tr.c:64:28: warning: the comparison will always evaluate as 'true' for the address of 'g' will never be NULL [-Waddress]
+   64 |     r = __builtin_expect(g != 0, 1);
+      |                            ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:65:11: warning: comparison between two arrays [-Warray-compare]
+   65 |     r = a == a;
+      |           ^
+expr_tr.c:65:11: note: use '&a[0] == &a[0]' to compare the addresses
+   65 |     r = a == a;
+      |           ^
+expr_tr.c:70:11: warning: comparison between two arrays [-Warray-compare]
+   70 |     r = a >= ga;
+      |           ^
+expr_tr.c:70:11: note: use '&a[0] >= &ga[0]' to compare the addresses
+   70 |     r = a >= ga;
+      |           ^
+expr_tr.c:71:13: warning: comparison with string literal results in unspecified behavior [-Waddress]
+   71 |     r = "a" == "a";
+      |             ^
+expr_tr.c:74:9: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   74 |     if (a) {}
+      |         ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:75:9: warning: the comparison will always evaluate as 'true' for the address of 'g' will never be NULL [-Waddress]
+   75 |     if (g) {}
+      |         ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:76:12: warning: the comparison will always evaluate as 'true' for the address of 'g' will never be NULL [-Waddress]
+   76 |     while (g) {}
+      |            ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:77:11: warning: the comparison will always evaluate as 'true' for the address of 'g' will never be NULL [-Waddress]
+   77 |     for (;g;) {}
+      |           ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:78:18: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   78 |     do {} while (a);
+      |                  ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:79:9: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   79 |     if (!a) {}
+      |         ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:80:9: warning: the comparison will always evaluate as 'true' for the address of 'g' will never be NULL [-Waddress]
+   80 |     if (g && i) {}
+      |         ^
+expr_tr.c:3:5: note: 'g' declared here
+    3 | int g(void);
+      |     ^
+expr_tr.c:81:10: warning: left-hand operand of comma expression has no effect [-Wunused-value]
+   81 |     if (a, i) {}
+      |          ^
+expr_tr.c:82:9: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   82 |     if ((a)) {}
+      |         ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:83:9: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   83 |     if ((void *)a) {}
+      |         ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:85:9: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   85 |     if (&a[0]) {}
+      |         ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:86:9: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   86 |     if (a + 0) {}
+      |         ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:87:13: warning: the comparison will always evaluate as 'true' for the address of 'a' will never be NULL [-Waddress]
+   87 |     if (g() && a) {}
+      |             ^
+expr_tr.c:12:12: note: 'a' declared here
+   12 |     int r, a[3], *lp = &r;
+      |            ^
+expr_tr.c:14:18: warning: unused variable 'rg' [-Wunused-variable]
+   14 |     register int rg;
+      |                  ^
+expr_tr.c:9:12: warning: 'sf' used but never defined
+    9 | static int sf(void);
+      |            ^

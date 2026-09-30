@@ -1,0 +1,36 @@
+init_d4.c:3:9: error: incompatible types when initializing type 'int' using type 'struct S'
+    3 | int a = s;
+      |         ^
+init_d4.c:4:9: error: incompatible types when initializing type 'int' using type 'struct S'
+    4 | int b = (struct S){1};
+      |         ^
+init_d4.c:5:13: error: incompatible types when initializing type 'int' using type 'struct S'
+    5 | int c[] = { s };
+      |             ^
+init_d4.c:6:13: warning: initializer element is not constant [-Wpedantic]
+    6 | int d[] = { (struct S){1} };
+      |             ^
+init_d4.c:6:13: note: (near initialization for 'd[0]')
+    6 | int d[] = { (struct S){1} };
+      |             ^
+init_d4.c:6:13: error: incompatible types when initializing type 'int' using type 'struct S'
+    6 | int d[] = { (struct S){1} };
+      |             ^
+init_d4.c:7:24: error: incompatible types when initializing type 'int' using type 'struct S'
+    7 | void f(void) { int e = (struct S){1}; int g[] = { (struct S){1} }; int h = s; }
+      |                        ^
+init_d4.c:7:51: error: incompatible types when initializing type 'int' using type 'struct S'
+    7 | void f(void) { int e = (struct S){1}; int g[] = { (struct S){1} }; int h = s; }
+      |                                                   ^
+init_d4.c:7:76: error: incompatible types when initializing type 'int' using type 'struct S'
+    7 | void f(void) { int e = (struct S){1}; int g[] = { (struct S){1} }; int h = s; }
+      |                                                                            ^
+init_d4.c:7:72: warning: unused variable 'h' [-Wunused-variable]
+    7 | void f(void) { int e = (struct S){1}; int g[] = { (struct S){1} }; int h = s; }
+      |                                                                        ^
+init_d4.c:7:43: warning: unused variable 'g' [-Wunused-variable]
+    7 | void f(void) { int e = (struct S){1}; int g[] = { (struct S){1} }; int h = s; }
+      |                                           ^
+init_d4.c:7:20: warning: unused variable 'e' [-Wunused-variable]
+    7 | void f(void) { int e = (struct S){1}; int g[] = { (struct S){1} }; int h = s; }
+      |                    ^

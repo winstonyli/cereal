@@ -1,0 +1,15 @@
+stmt_q3.c:5:7: warning: suggest explicit braces to avoid ambiguous 'else' [-Wdangling-else]
+    5 |     if(a) if(b) g(1); else g(2);
+      |       ^
+stmt_q3.c:6:8: warning: suggest explicit braces to avoid ambiguous 'else' [-Wdangling-else]
+    6 |     if (a)
+      |        ^
+stmt_q3.c:11:8: warning: suggest explicit braces to avoid ambiguous 'else' [-Wdangling-else]
+   11 |     if (a) while (b) if (b) g(1); else g(2);
+      |        ^
+stmt_q3.c:14:8: warning: suggest explicit braces to avoid ambiguous 'else' [-Wdangling-else]
+   14 |     if (a) for (;;) if (b) g(1); else g(2);
+      |        ^
+stmt_q3.c:16:8: warning: suggest explicit braces to avoid ambiguous 'else' [-Wdangling-else]
+   16 |     if (a) if (b) g(1);
+      |        ^

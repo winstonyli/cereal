@@ -1,0 +1,24 @@
+expr_fp2.c:4:20: warning: ISO C requires a named argument before '...' before C2X [-Wpedantic]
+    4 | typedef void (*c3)(...);
+      |                    ^
+expr_fp2.c:5:27: warning: 'struct S' declared inside parameter list will not be visible outside of this definition or declaration
+    5 | typedef void (*c4)(struct S, int, ...);
+      |                           ^
+expr_fp2.c:7:30: warning: passing argument 1 of 'a1' from incompatible pointer type [-Wincompatible-pointer-types]
+    7 | void f(void (*p)(void)) { a1(p); a2(p); a4(p); }
+      |                              ^
+expr_fp2.c:6:9: note: expected 'c1' {aka 'void (*)(int, ...)'} but argument is of type 'void (*)(void)'
+    6 | void a1(c1); void a2(c2); void a4(c4);
+      |         ^
+expr_fp2.c:7:37: warning: passing argument 1 of 'a2' from incompatible pointer type [-Wincompatible-pointer-types]
+    7 | void f(void (*p)(void)) { a1(p); a2(p); a4(p); }
+      |                                     ^
+expr_fp2.c:6:22: note: expected 'c2' {aka 'void (*)(char *, ...)'} but argument is of type 'void (*)(void)'
+    6 | void a1(c1); void a2(c2); void a4(c4);
+      |                      ^
+expr_fp2.c:7:44: warning: passing argument 1 of 'a4' from incompatible pointer type [-Wincompatible-pointer-types]
+    7 | void f(void (*p)(void)) { a1(p); a2(p); a4(p); }
+      |                                            ^
+expr_fp2.c:6:35: note: expected 'c4' {aka 'void (*)(struct S,  int, ...)'} but argument is of type 'void (*)(void)'
+    6 | void a1(c1); void a2(c2); void a4(c4);
+      |                                   ^

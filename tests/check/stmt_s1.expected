@@ -1,0 +1,129 @@
+stmt_s1.c:6:3: warning: enumeration value 'B' not handled in switch [-Wswitch]
+    6 |   switch (e) { case A: g(); break; }
+      |   ^
+stmt_s1.c:6:3: warning: enumeration value 'C' not handled in switch [-Wswitch]
+    6 |   switch (e) { case A: g(); break; }
+      |   ^
+stmt_s1.c:8:3: warning: enumeration value 'B' not handled in switch [-Wswitch]
+    8 |   switch (e) { case A: case 7: break; }
+      |   ^
+stmt_s1.c:8:3: warning: enumeration value 'C' not handled in switch [-Wswitch]
+    8 |   switch (e) { case A: case 7: break; }
+      |   ^
+stmt_s1.c:8:24: warning: case value '7' not in enumerated type 'enum E' [-Wswitch]
+    8 |   switch (e) { case A: case 7: break; }
+      |                        ^
+stmt_s1.c:9:3: warning: enumeration value 'Y' not handled in switch [-Wswitch]
+    9 |   switch (f) { case X: break; case 5: break; }
+      |   ^
+stmt_s1.c:9:31: warning: case value '5' not in enumerated type 'enum F' [-Wswitch]
+    9 |   switch (f) { case X: break; case 5: break; }
+      |                               ^
+stmt_s1.c:11:3: warning: enumeration value 'C' not handled in switch [-Wswitch]
+   11 |   switch ((enum E)n) { case A: break; case B: break; }
+      |   ^
+stmt_s1.c:12:3: warning: enumeration value 'A' not handled in switch [-Wswitch]
+   12 |   switch (e) { }
+      |   ^
+stmt_s1.c:12:3: warning: enumeration value 'B' not handled in switch [-Wswitch]
+   12 |   switch (e) { }
+      |   ^
+stmt_s1.c:12:3: warning: enumeration value 'C' not handled in switch [-Wswitch]
+   12 |   switch (e) { }
+      |   ^
+stmt_s1.c:14:25: error: multiple default labels in one switch
+   14 |   switch (n) { default: default: break; }
+      |                         ^
+stmt_s1.c:14:16: note: this is the first default label
+   14 |   switch (n) { default: default: break; }
+      |                ^
+stmt_s1.c:15:24: error: duplicate case value
+   15 |   switch (n) { case 1: case 1: break; case 2 ... 1: break; }
+      |                        ^
+stmt_s1.c:15:16: note: previously used here
+   15 |   switch (n) { case 1: case 1: break; case 2 ... 1: break; }
+      |                ^
+stmt_s1.c:15:39: warning: range expressions in switch statements are non-standard [-Wpedantic]
+   15 |   switch (n) { case 1: case 1: break; case 2 ... 1: break; }
+      |                                       ^
+stmt_s1.c:15:39: warning: empty range specified
+   15 |   switch (n) { case 1: case 1: break; case 2 ... 1: break; }
+      |                                       ^
+stmt_s1.c:16:11: error: switch quantity not an integer
+   16 |   switch (1.0) { case 1: break; }
+      |           ^
+stmt_s1.c:17:3: warning: switch condition has boolean value [-Wswitch-bool]
+   17 |   switch (n == 1) { case 1: case 2: break; }
+      |   ^
+stmt_s1.c:20:16: error: case label does not reduce to an integer constant
+   20 |   switch (n) { case 1.0: break; case "a": break; case n: break; }
+      |                ^
+stmt_s1.c:20:33: error: pointers are not permitted as case values
+   20 |   switch (n) { case 1.0: break; case "a": break; case n: break; }
+      |                                 ^
+stmt_s1.c:20:50: error: case label does not reduce to an integer constant
+   20 |   switch (n) { case 1.0: break; case "a": break; case n: break; }
+      |                                                  ^
+stmt_s1.c:21:3: error: case label not within a switch statement
+   21 |   case 3: break;
+      |   ^
+stmt_s1.c:21:11: error: break statement not within loop or switch
+   21 |   case 3: break;
+      |           ^
+stmt_s1.c:22:3: error: 'default' label not within a switch statement
+   22 |   default: break;
+      |   ^
+stmt_s1.c:22:12: error: break statement not within loop or switch
+   22 |   default: break;
+      |            ^
+stmt_s1.c:23:3: error: break statement not within loop or switch
+   23 |   break;
+      |   ^
+stmt_s1.c:24:3: error: continue statement not within a loop
+   24 |   continue;
+      |   ^
+stmt_s1.c:30:10: error: break statement not within loop or switch
+   30 |   if (n) break;
+      |          ^
+stmt_s1.c:32:16: warning: 'return' with no value, in function returning non-void [-Wreturn-type]
+   32 | int f3(void) { return; }
+      |                ^
+stmt_s1.c:32:5: note: declared here
+   32 | int f3(void) { return; }
+      |     ^
+stmt_s1.c:33:24: warning: 'return' with a value, in function returning void [-Wreturn-type]
+   33 | void f4(void) { return 1; }
+      |                        ^
+stmt_s1.c:33:6: note: declared here
+   33 | void f4(void) { return 1; }
+      |      ^
+stmt_s1.c:34:24: warning: ISO C forbids 'return' with expression, in function returning void [-Wpedantic]
+   34 | void f5(void) { return f4(); }
+      |                        ^
+stmt_s1.c:34:6: note: declared here
+   34 | void f5(void) { return f4(); }
+      |      ^
+stmt_s1.c:35:32: warning: returning 'int *' from a function with return type 'int' makes integer from pointer without a cast [-Wint-conversion]
+   35 | int f6(int *p) { int x; return &x; }
+      |                                ^
+stmt_s1.c:35:13: warning: unused parameter 'p' [-Wunused-parameter]
+   35 | int f6(int *p) { int x; return &x; }
+      |             ^
+stmt_s1.c:36:31: warning: function returns address of local variable [-Wreturn-local-addr]
+   36 | int *f7(void) { int x; return &x; }
+      |                               ^
+stmt_s1.c:37:36: warning: function returns address of local variable [-Wreturn-local-addr]
+   37 | char *f8(void) { char b[4]; return b; }
+      |                                    ^
+stmt_s1.c:39:24: warning: returning 'char *' from a function with return type 'int' makes integer from pointer without a cast [-Wint-conversion]
+   39 | int f10(void) { return "a"; }
+      |                        ^
+stmt_s1.c:40:25: warning: returning 'int' from a function with return type 'int *' makes pointer from integer without a cast [-Wint-conversion]
+   40 | int *f11(void) { return 1; }
+      |                         ^
+stmt_s1.c:42:29: error: incompatible types when returning type 'int' but 'struct S' was expected
+   42 | struct S f12(void) { return 1; }
+      |                             ^
+stmt_s1.c:43:30: error: incompatible types when returning type 'struct S' but 'int' was expected
+   43 | int f13(struct S s) { return s; }
+      |                              ^

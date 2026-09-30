@@ -1,0 +1,144 @@
+expr_l1.c:10:7: error: assignment of read-only variable 'g'
+   10 |     g = 2;
+      |       ^
+expr_l1.c:11:7: error: assignment of read-only variable 'x'
+   11 |     x = 3;
+      |       ^
+expr_l1.c:12:7: error: assignment of read-only parameter 'p'
+   12 |     p = 1;
+      |       ^
+expr_l1.c:13:6: error: increment of read-only variable 'x'
+   13 |     x++;
+      |      ^
+expr_l1.c:14:5: error: decrement of read-only variable 'x'
+   14 |     --x;
+      |     ^
+expr_l1.c:15:7: error: assignment of read-only variable 'g'
+   15 |     g += 1;
+      |       ^
+expr_l1.c:16:10: error: assignment of member 'a' in read-only object
+   16 |     cs.a = 1;
+      |          ^
+expr_l1.c:17:10: error: assignment of member 'b' in read-only object
+   17 |     cs.b = 1;
+      |          ^
+expr_l1.c:18:11: error: assignment of read-only member 'b'
+   18 |     ps->b = 2;
+      |           ^
+expr_l1.c:20:12: error: assignment of member 'a' in read-only object
+   20 |     cps->a = 1;
+      |            ^
+expr_l1.c:21:9: error: assignment of read-only member 's'
+   21 |     t.s = *ps;
+      |         ^
+expr_l1.c:22:11: error: assignment of read-only member 'b'
+   22 |     t.s.b = 1;
+      |           ^
+expr_l1.c:24:10: error: assignment of read-only location '*cps'
+   24 |     *cps = *ps;
+      |          ^
+expr_l1.c:25:11: error: assignment of read-only location 'ca[1]'
+   25 |     ca[1] = 2;
+      |           ^
+expr_l1.c:26:9: error: assignment to expression with array type
+   26 |     arr = 0;
+      |         ^
+expr_l1.c:27:7: error: lvalue required as left operand of assignment
+   27 |     f = 0;
+      |       ^
+expr_l1.c:28:7: error: lvalue required as left operand of assignment
+   28 |     1 = y;
+      |       ^
+expr_l1.c:29:11: error: lvalue required as left operand of assignment
+   29 |     y + 1 = 2;
+      |           ^
+expr_l1.c:31:9: error: assignment of read-only variable 'x'
+   31 |     (x) = 1;
+      |         ^
+expr_l1.c:32:9: error: lvalue required as left operand of assignment
+   32 |     y++ = 1;
+      |         ^
+expr_l1.c:33:9: error: lvalue required as left operand of assignment
+   33 |     ++y = 1;
+      |         ^
+expr_l1.c:34:8: error: lvalue required as increment operand
+   34 |     y++++;
+      |        ^
+expr_l1.c:35:6: error: lvalue required as increment operand
+   35 |     3++;
+      |      ^
+expr_l1.c:36:12: error: lvalue required as increment operand
+   36 |     (y + 1)++;
+      |            ^
+expr_l1.c:37:8: error: lvalue required as left operand of assignment
+   37 |     -y = 1;
+      |        ^
+expr_l1.c:38:22: error: assignment of read-only location '*(const int *)&y'
+   38 |     *(const int *)&y = 1;
+      |                      ^
+expr_l1.c:39:18: error: lvalue required as left operand of assignment
+   39 |     (const int)y = 2;
+      |                  ^
+expr_l1.c:40:7: error: void value not ignored as it ought to be
+   40 |     y = (void)0;
+      |       ^
+expr_l1.c:41:7: error: void value not ignored as it ought to be
+   41 |     y = f(0,cs,0,0,t);
+      |       ^
+expr_l1.c:42:8: error: lvalue required as left operand of assignment
+   42 |     &y = 0;
+      |        ^
+expr_l1.c:44:7: error: invalid operands to binary << (have 'int' and 'double')
+   44 |     y <<= 1.5;
+      |       ^
+expr_l1.c:45:7: error: invalid operands to binary % (have 'int' and 'double')
+   45 |     y %= 2.0;
+      |       ^
+expr_l1.c:46:7: warning: assignment to 'int' from 'struct S *' makes integer from pointer without a cast [-Wint-conversion]
+   46 |     y += ps;
+      |       ^
+expr_l1.c:48:8: warning: assignment to 'struct S *' from 'long int' makes pointer from integer without a cast [-Wint-conversion]
+   48 |     ps -= ps;
+      |        ^
+expr_l1.c:49:8: error: invalid operands to binary * (have 'struct S *' and 'int')
+   49 |     ps *= 2;
+      |        ^
+expr_l1.c:50:8: error: invalid operands to binary + (have 'struct S *' and 'double')
+   50 |     ps += 1.0;
+      |        ^
+expr_l1.c:51:7: error: invalid operands to binary & (have 'int' and 'struct S *')
+   51 |     y &= ps;
+      |       ^
+expr_l1.c:54:10: warning: overflow in conversion from 'int' to 'char' changes value from '300' to '44' [-Woverflow]
+   54 |     ch = 300;
+      |          ^
+expr_l1.c:56:18: error: invalid operands to binary % (have 'float' and 'int')
+   56 |     float fl; fl %= 2;
+      |                  ^
+expr_l1.c:57:8: error: invalid operands to binary << (have 'float' and 'int')
+   57 |     fl <<= 1;
+      |        ^
+expr_l1.c:58:8: error: invalid operands to binary << (have 'struct S *' and 'int')
+   58 |     ps <<= 1;
+      |        ^
+expr_l1.c:59:9: error: invalid operands to binary + (have 'struct S' and 'int')
+   59 |     *ps += 1;
+      |         ^
+expr_l1.c:59:9: error: assignment of read-only location '*ps'
+   59 |     *ps += 1;
+      |         ^
+expr_l1.c:60:8: error: invalid operands to binary + (have 'const struct S' and 'int')
+   60 |     cs += 1;
+      |        ^
+expr_l1.c:60:8: error: assignment of read-only parameter 'cs'
+   60 |     cs += 1;
+      |        ^
+expr_l1.c:9:15: warning: variable 'ca' set but not used [-Wunused-but-set-variable]
+    9 |     const int ca[3] = {0};
+      |               ^
+expr_l1.c:8:12: warning: variable 'arr' set but not used [-Wunused-but-set-variable]
+    8 |     int y, arr[3];
+      |            ^
+expr_l1.c:5:18: warning: parameter 'p' set but not used [-Wunused-but-set-parameter]
+    5 | void f(const int p, const struct S cs, struct S *ps, const struct S *cps, struct T t)
+      |                  ^

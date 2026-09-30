@@ -1,0 +1,75 @@
+init_t5.c:6:4: warning: missing initializer for field 'z' of 'struct S' [-Wmissing-field-initializers]
+    6 |    }
+      |    ^
+init_t5.c:2:22: note: 'z' declared here
+    2 | struct S { int x, y, z; };
+      |                      ^
+init_t5.c:8:8: warning: missing initializer for field 'y' of 'struct S' [-Wmissing-field-initializers]
+    8 | struct S b[] = { { 1 },
+      |        ^
+init_t5.c:2:19: note: 'y' declared here
+    2 | struct S { int x, y, z; };
+      |                   ^
+init_t5.c:10:6: warning: missing initializer for field 'z' of 'struct S' [-Wmissing-field-initializers]
+   10 |      3 }
+      |      ^
+init_t5.c:2:22: note: 'z' declared here
+    2 | struct S { int x, y, z; };
+      |                      ^
+init_t5.c:11:4: warning: missing initializer for field 'y' of 'struct S' [-Wmissing-field-initializers]
+   11 |    , { 4 } };
+      |    ^
+init_t5.c:2:19: note: 'y' declared here
+    2 | struct S { int x, y, z; };
+      |                   ^
+init_t5.c:13:10: warning: missing initializer for field 'y' of 'struct S' [-Wmissing-field-initializers]
+   13 |   struct S c = { 1 },
+      |          ^
+init_t5.c:2:19: note: 'y' declared here
+    2 | struct S { int x, y, z; };
+      |                   ^
+init_t5.c:16:4: warning: missing initializer for field 'y' of 'struct S' [-Wmissing-field-initializers]
+   16 |    }; int q;
+      |    ^
+init_t5.c:2:19: note: 'y' declared here
+    2 | struct S { int x, y, z; };
+      |                   ^
+init_t5.c:17:10: warning: missing initializer for field 'y' of 'struct S' [-Wmissing-field-initializers]
+   17 |   struct S e = {1}; struct S g = { 1 };
+      |          ^
+init_t5.c:2:19: note: 'y' declared here
+    2 | struct S { int x, y, z; };
+      |                   ^
+init_t5.c:17:28: warning: missing initializer for field 'y' of 'struct S' [-Wmissing-field-initializers]
+   17 |   struct S e = {1}; struct S g = { 1 };
+      |                            ^
+init_t5.c:2:19: note: 'y' declared here
+    2 | struct S { int x, y, z; };
+      |                   ^
+init_t5.c:23:11: warning: excess elements in scalar initializer
+   23 |        1, 2 };
+      |           ^
+init_t5.c:23:11: note: (near initialization for 'sd')
+   23 |        1, 2 };
+      |           ^
+init_t5.c:21:7: warning: unused variable 'sd' [-Wunused-variable]
+   21 |   int sd =
+      |       ^
+init_t5.c:18:7: warning: unused variable 'sc' [-Wunused-variable]
+   18 |   int sc = {
+      |       ^
+init_t5.c:17:30: warning: unused variable 'g' [-Wunused-variable]
+   17 |   struct S e = {1}; struct S g = { 1 };
+      |                              ^
+init_t5.c:17:12: warning: unused variable 'e' [-Wunused-variable]
+   17 |   struct S e = {1}; struct S g = { 1 };
+      |            ^
+init_t5.c:16:11: warning: unused variable 'q' [-Wunused-variable]
+   16 |    }; int q;
+      |           ^
+init_t5.c:14:5: warning: unused variable 'd' [-Wunused-variable]
+   14 |     d = {
+      |     ^
+init_t5.c:13:12: warning: unused variable 'c' [-Wunused-variable]
+   13 |   struct S c = { 1 },
+      |            ^

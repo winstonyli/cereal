@@ -1,0 +1,30 @@
+expr_ft2.c:6:34: error: incompatible type for argument 1 of 'r1'
+    6 | void f(double d, float *fl) { r1(d); r1(fl); r2(d); r2(fl); r3(fl); }
+      |                                  ^
+expr_ft2.c:5:9: note: expected 'ip' {aka 'int *'} but argument is of type 'double'
+    5 | void r1(ip); void r2(fpt); void r3(cip);
+      |         ^
+expr_ft2.c:6:41: warning: passing argument 1 of 'r1' from incompatible pointer type [-Wincompatible-pointer-types]
+    6 | void f(double d, float *fl) { r1(d); r1(fl); r2(d); r2(fl); r3(fl); }
+      |                                         ^
+expr_ft2.c:5:9: note: expected 'ip' {aka 'int *'} but argument is of type 'float *'
+    5 | void r1(ip); void r2(fpt); void r3(cip);
+      |         ^
+expr_ft2.c:6:49: error: incompatible type for argument 1 of 'r2'
+    6 | void f(double d, float *fl) { r1(d); r1(fl); r2(d); r2(fl); r3(fl); }
+      |                                                 ^
+expr_ft2.c:5:22: note: expected 'fpt' {aka 'void (*)(int)'} but argument is of type 'double'
+    5 | void r1(ip); void r2(fpt); void r3(cip);
+      |                      ^
+expr_ft2.c:6:56: warning: passing argument 1 of 'r2' from incompatible pointer type [-Wincompatible-pointer-types]
+    6 | void f(double d, float *fl) { r1(d); r1(fl); r2(d); r2(fl); r3(fl); }
+      |                                                        ^
+expr_ft2.c:5:22: note: expected 'fpt' {aka 'void (*)(int)'} but argument is of type 'float *'
+    5 | void r1(ip); void r2(fpt); void r3(cip);
+      |                      ^
+expr_ft2.c:6:64: warning: passing argument 1 of 'r3' from incompatible pointer type [-Wincompatible-pointer-types]
+    6 | void f(double d, float *fl) { r1(d); r1(fl); r2(d); r2(fl); r3(fl); }
+      |                                                                ^
+expr_ft2.c:5:36: note: expected 'cip' {aka 'const int *'} but argument is of type 'float *'
+    5 | void r1(ip); void r2(fpt); void r3(cip);
+      |                                    ^

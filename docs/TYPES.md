@@ -105,12 +105,38 @@ comparisons use gcc 13.3 with `LC_ALL=C`.
   a few cases with an incomplete struct return; not modelled.
 - `empty enum is invalid` is not reported.
 - typedef notes print `'S'` with an extra `{aka 'struct S'}` where gcc omits it.
-- Binary constants (`0b101`) are rejected in `-std=c99`; gcc accepts them
-  as an extension with a pedwarn.
 - Parse-level message wording: gcc's "expected '=', ',', ';', 'asm' or
   '__attribute__' before ..." variants differ in a few declarator error
   cases (the parser's, not the checker's).
-- Initializer checks (non-constant initializers, VLA initialization),
-  jump-into-VLA-scope, attribute argument counts, call argument checks and
-  statement-level checks are not (or not fully) implemented; gcc.dg shows
-  these as accepts-invalid.
+- Expression and conversion checks (`cexpr.c`): assignment/argument/return
+  conversions with notes, calls, implicit declarations and built-ins (the
+  prototype table in `cbuiltin_tab.h` covers the common libc/`__builtin_`
+  set only), lvalue/read-only checks, operand errors, casts, and the
+  `-Wparentheses`, `-Wunused-value`, `-Waddress`, `-Wbool-compare`,
+  `-Wtautological-compare`, `-Wtype-limits`, `-Wsign-compare`,
+  `-Wsizeof-array-argument` and `-Woverflow` families.  Known diffs: a
+  parameter's top-level `const` is missing from the `{aka ...}` of a
+  function-pointer typedef in call-argument notes; `-Wtype-limits` and
+  `-Wtautological-compare` do not model every gcc folding (e.g. through
+  `fold_build` rewrites of nested constant expressions); `-Wunused-value`
+  columns for some folded comparisons follow `EF_GCCFOLD`.
+- Jump-into-VLA-scope and attribute argument counts are not implemented.
+- Initializers (`cinit.c`): gcc 13's digest_init / process_init_element /
+  push_init_level model (designators including ranges, brace elision, string
+  initializers, array completion, flexible-array and VLA rules, compound
+  literals, constant-initializer rules, `-Wmissing-braces`,
+  `-Wmissing-field-initializers`, `-Woverride-init`, pedantic variants).
+  Known diffs: `g == g` (same address) is not folded to 1, so it is reported
+  as non-constant; `-Waddress` "will always evaluate as 'true'" is not emitted
+  for bool initializers; `int f(void) = {1};` (and typedef/parameter
+  initializers) lack the extra "invalid initializer" note; bit-field
+  conversion warnings from pointer-to-int use `unsigned int` rather than gcc's
+  `unsigned char:3` spelling, float-to-bit-field overflow and assignments to
+  bit-fields (`b.a = 9`) are not warned; the location of "overflow in constant
+  expression" for elements emitted from the pending set (random-order
+  designators) differs from gcc's stale input_location; an error inside an
+  erroneous scalar brace group followed by a compound literal may add one extra
+  diagnostic; `-Wdesignated-init`/traditional warnings, the c89-only
+  require_constant_elements pedwarn and the maybe_const pedantic warning are
+  skipped; very large range designators (`[0 ... 1000000]`) cost memory
+  proportional to the range.

@@ -1,0 +1,3 @@
+stmt_r2.c:4:18: warning: case label value is less than minimum value for type [-Wswitch-outside-range]
+    4 |   switch (s.b) { case -1: ; }
+      |                  ^

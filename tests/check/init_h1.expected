@@ -1,0 +1,60 @@
+init_h1.c:4:21: error: field name not in record or union initializer
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                     ^
+init_h1.c:4:21: note: (near initialization for 'v0')
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                     ^
+init_h1.c:4:1: warning: braces around scalar initializer
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      | ^
+init_h1.c:4:1: note: (near initialization for 'v0[0]')
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      | ^
+init_h1.c:4:1: warning: braces around scalar initializer
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      | ^
+init_h1.c:4:1: note: (near initialization for 'v0[0]')
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      | ^
+init_h1.c:4:30: warning: initialization of 'int' from 'char *' makes integer from pointer without a cast [-Wint-conversion]
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                              ^
+init_h1.c:4:30: note: (near initialization for 'v0[0]')
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                              ^
+init_h1.c:4:30: error: initializer element is not computable at load time
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                              ^
+init_h1.c:4:30: note: (near initialization for 'v0[0]')
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                              ^
+init_h1.c:4:36: warning: excess elements in scalar initializer
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                                    ^
+init_h1.c:4:36: note: (near initialization for 'v0[0]')
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                                    ^
+init_h1.c:4:53: warning: excess elements in scalar initializer
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                                                     ^
+init_h1.c:4:53: note: (near initialization for 'v0[0]')
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                                                     ^
+init_h1.c:4:57: warning: excess elements in scalar initializer
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                                                         ^
+init_h1.c:4:57: note: (near initialization for 'v0[0]')
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                                                         ^
+init_h1.c:4:44: warning: braces around scalar initializer
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                                            ^
+init_h1.c:4:44: note: (near initialization for 'v0[0]')
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                                            ^
+init_h1.c:4:62: warning: excess elements in scalar initializer
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                                                              ^
+init_h1.c:4:62: note: (near initialization for 'v0[0]')
+    4 | static int v0[] = { .s = { { "ab", (struct P){1,2}, fn, g }, { 1 } } };
+      |                                                              ^
