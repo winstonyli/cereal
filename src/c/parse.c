@@ -191,10 +191,10 @@ static const char *tok_desc(Parser *p, uint32_t i, char *buf, size_t n)
     }
 }
 
-static Diagnostic *perr(Parser *p, uint32_t i, const char *fmt, ...)
+static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
+                         va_list ap)
 {
     Diagnostic *d;
-    va_list ap;
     void (*chain)(void *, SrcLoc **, int *) = p->diag->include_chain;
     if (p->unwind || (p->have_err && i <= p->last_err))
         return NULL; /* one error per place: no cascades */
@@ -202,10 +202,35 @@ static Diagnostic *perr(Parser *p, uint32_t i, const char *fmt, ...)
     p->last_err = i;
     p->errors++;
     p->diag->include_chain = NULL; /* the preprocessor has moved on */
-    va_start(ap, fmt);
-    d = diag_vreport(p->diag, DL_ERROR, "", tok_loc(p, i), fmt, ap);
-    va_end(ap);
+    d = diag_vreport(p->diag, DL_ERROR, "", loc, fmt, ap);
     p->diag->include_chain = chain;
+    return d;
+}
+
+static Diagnostic *perr(Parser *p, uint32_t i, const char *fmt, ...)
+{
+    Diagnostic *d;
+    va_list ap;
+    va_start(ap, fmt);
+    d = vperr(p, i, tok_loc(p, i), fmt, ap);
+    va_end(ap);
+    return d;
+}
+
+/* Like perr, but at the end of the token before i when that is plain
+ * source text (gcc's c_parser_require for a missing ';'). */
+static Diagnostic *perr_after_prev(Parser *p, uint32_t i, const char *fmt, ...)
+{
+    Diagnostic *d;
+    va_list ap;
+    SrcLoc loc = tok_loc(p, i);
+    if (i > 0 && i - 1 < p->toks.len &&
+        (!p->toks.data[i - 1].exp ||
+         p->toks.data[i - 1].exp == p->toks.data[i - 1].t.loc))
+        loc = p->toks.data[i - 1].t.loc + p->toks.data[i - 1].t.len;
+    va_start(ap, fmt);
+    d = vperr(p, i, loc, fmt, ap);
+    va_end(ap);
     return d;
 }
 
@@ -1928,6 +1953,30 @@ static void declaration(Parser *p, bool top)
             function_def(p, &d, start, first, flags);
             return;
         }
+        t = ct(p);
+        if (d.inner != DK_FUNC &&
+            !(at(p, P_ASSIGN) || at(p, P_COMMA) || at(p, P_SEMI) ||
+              ckw_of(p, &t) == CK_ASM ||
+              (ckw_of(p, &t) == CK_ATTRIBUTE && !t.stdattr))) {
+            /* gcc: not a declarator list or a function definition */
+            if (n == 0 && is_decl_start(p, &t)) { /* a missing ';' */
+                char buf[160];
+                perr_after_prev(p, ci(p), "expected ';'%s",
+                                tok_desc(p, ci(p), buf, sizeof buf));
+            } else {
+                expected(p, "'=', ',', ';', 'asm' or '__attribute__'");
+                if (top)
+                    sync_top(p);
+                else
+                    sync_stmt(p);
+            }
+            scope_declare(&p->scope, p->toks.data[d.name].t.aux,
+                          s.is_typedef ? SYM_TYPEDEF : SYM_ORDINARY);
+            leaf(p, N_DECLARED, d.name);
+            emit(p, N_INIT_DECL, d.name, is, 0);
+            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            return;
+        }
         attributes(p);
         if (ckw(p) == CK_ASM)
             asm_label(p);
@@ -1942,7 +1991,7 @@ static void declaration(Parser *p, bool top)
             break;
     }
     if (!accept(p, P_SEMI)) {
-        expected(p, "';'");
+        expected(p, "',' or ';'");
         flags |= NF_ERROR;
         if (top)
             sync_top(p);

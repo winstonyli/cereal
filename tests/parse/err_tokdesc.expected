@@ -1,16 +1,16 @@
 err_tokdesc.c:1:9: error: expected expression before ';' token
     1 | int a = ;
       |         ^
-err_tokdesc.c:2:11: error: expected ';' before numeric constant
+err_tokdesc.c:2:11: error: expected ',' or ';' before numeric constant
     2 | int d = 1 2;
       |           ^
-err_tokdesc.c:3:13: error: expected ';' before 'y'
+err_tokdesc.c:3:13: error: expected ',' or ';' before 'y'
     3 | int e = 'x' 'y';
       |             ^
-err_tokdesc.c:4:14: error: expected ';' before L'a'
+err_tokdesc.c:4:14: error: expected ',' or ';' before L'a'
     4 | int f = '\n' L'a';
       |              ^
-err_tokdesc.c:5:11: error: expected ';' before string constant
+err_tokdesc.c:5:11: error: expected ',' or ';' before string constant
     5 | int g = 1 "x";
       |           ^
 DECL 'int' 1:1

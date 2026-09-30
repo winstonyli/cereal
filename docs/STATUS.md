@@ -43,6 +43,11 @@ layouts, gcc rules ported, walk design).
    (about 80 cascade pairs in gcc.dg, e.g. c2x-constexpr-1.c): not emulated.
    gcc puts "expected ';'" at the end of the previous token in some cases
    (`foo void *v;` 1:4 vs cereal 1:5).
+   Better metric (par.py now prints it): gcc errors reproduced exactly in
+   both-reject files: 6935/10063 after token descriptions, 7079 after unknown
+   type name, 7525 (74.8%) after the declarator-list expectations ("expected
+   ',' or ';'", "'=', ',', ';', 'asm' or '__attribute__'", missing ';' at
+   the end of the previous token).  Identical-header files: 379/939.
 2. gcc.dg gaps: parser "expected X before Y" wording; "excess elements in
    struct initializer"; "jump into scope of identifier with variably
    modified type"; attribute-ignored/argument-count warnings; __builtin_*

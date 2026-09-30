@@ -50,3 +50,6 @@ if __name__=="__main__":
     both=[r for r in res if not r.get("to") and r["grc"]!=0 and r["crc"]!=0]
     same=[r for r in both if r["g"]==r["c"]]
     print(f"n={n} rejects-valid={len(rv)} accepts-invalid={len(ai)} crash={len(cr)} timeouts={sum(1 for r in res if r.get('to'))} bothfail={len(both)} identical-hdrs={len(same)}")
+    ge=sum(len([x for x in r["g"] if x[2]!="warning"]) for r in both)
+    gm=sum(sum(1 for x in r["g"] if x[2]!="warning" and x in r["c"]) for r in both)
+    print(f"both-reject files: gcc errors {ge}, reproduced exactly (line:col:text) {gm}")
