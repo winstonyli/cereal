@@ -1,0 +1,15 @@
+array_params.c:5:5: error: static or type qualifiers in non-parameter array declarator
+    5 | int k[static 3];
+      |     ^
+array_params.c:6:12: error: array type has incomplete element type 'int[]'
+    6 | void l(int a[][]);
+      |            ^
+array_params.c:6:12: note: declaration of 'a' as multidimensional array must have bounds for all dimensions except the first
+    6 | void l(int a[][]);
+      |            ^
+array_params.c:10:12: error: static or type qualifiers in non-parameter array declarator
+   10 | void p(int a[3][static 2]);
+      |            ^
+array_params.c:11:11: error: size of array 'a' has non-integer type
+   11 | int q(int a[n]);
+      |           ^

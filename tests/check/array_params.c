@@ -1,0 +1,11 @@
+void f(int a[static 3]);
+void g(int a[const]);
+void h(int a[*]);
+void i(int n, int a[n]);
+int k[static 3];
+void l(int a[][]);
+void m(int a[][3]);
+void n(int (*a)[*]);
+void o(int a[restrict]);
+void p(int a[3][static 2]);
+int q(int a[n]);

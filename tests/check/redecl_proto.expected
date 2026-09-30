@@ -1,0 +1,21 @@
+redecl_proto.c:6:5: warning: prototype for 'h' follows non-prototype definition
+    6 | int h(int);
+      |     ^
+redecl_proto.c:7:5: error: conflicting types for 'h'; have 'int(long int)'
+    7 | int h(long);
+      |     ^
+redecl_proto.c:5:5: note: previous definition of 'h' with type 'int(int)'
+    5 | int h(a) int a; { return a; }
+      |     ^
+redecl_proto.c:9:5: error: conflicting types for 'k'; have 'int(int)'
+    9 | int k(int);
+      |     ^
+redecl_proto.c:8:5: note: previous declaration of 'k' with type 'int(int, ...)'
+    8 | int k(int, ...);
+      |     ^
+redecl_proto.c:13:6: error: conflicting types for 'q'; have 'void(const int *)'
+   13 | void q(const int *);
+      |      ^
+redecl_proto.c:12:6: note: previous declaration of 'q' with type 'void(int *)'
+   12 | void q(int *);
+      |      ^

@@ -1,0 +1,42 @@
+redecl_conflict.c:2:6: error: conflicting types for 'a'; have 'long int'
+    2 | long a;
+      |      ^
+redecl_conflict.c:1:5: note: previous declaration of 'a' with type 'int'
+    1 | int a;
+      |     ^
+redecl_conflict.c:4:13: error: conflicting types for 'b'; have 'char'
+    4 | extern char b;
+      |             ^
+redecl_conflict.c:3:12: note: previous declaration of 'b' with type 'int'
+    3 | extern int b;
+      |            ^
+redecl_conflict.c:6:5: error: conflicting types for 'c'; have 'int(void)'
+    6 | int c(void);
+      |     ^
+redecl_conflict.c:5:8: note: previous declaration of 'c' with type 'double(void)'
+    5 | double c(void);
+      |        ^
+redecl_conflict.c:8:6: error: conflicting types for 'd'; have 'void(long int)'
+    8 | void d(long);
+      |      ^
+redecl_conflict.c:7:6: note: previous declaration of 'd' with type 'void(int)'
+    7 | void d(int);
+      |      ^
+redecl_conflict.c:10:5: error: conflicting types for 'e'; have 'int[4]'
+   10 | int e[4];
+      |     ^
+redecl_conflict.c:9:5: note: previous declaration of 'e' with type 'int[3]'
+    9 | int e[3];
+      |     ^
+redecl_conflict.c:12:14: error: conflicting types for 'T'; have 'long int'
+   12 | typedef long T;
+      |              ^
+redecl_conflict.c:11:13: note: previous declaration of 'T' with type 'T' {aka 'int'}
+   11 | typedef int T;
+      |             ^
+redecl_conflict.c:14:5: error: conflicting types for 'f'; have 'int(int,  int)'
+   14 | int f(int, int);
+      |     ^
+redecl_conflict.c:13:5: note: previous declaration of 'f' with type 'int(int)'
+   13 | int f(int);
+      |     ^

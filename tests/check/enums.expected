@@ -1,0 +1,48 @@
+enums.c:2:27: warning: ISO C restricts enumerator values to range of 'int' before C2X [-Wpedantic]
+    2 | enum B { b1 = 0x7fffffff, b2 };
+      |                           ^
+enums.c:3:24: warning: ISO C restricts enumerator values to range of 'int' before C2X [-Wpedantic]
+    3 | enum C { c1 = -1, c2 = 0x80000000u };
+      |                        ^
+enums.c:4:15: error: enumerator value for 'd1' is not an integer constant
+    4 | enum D { d1 = 1.5 };
+      |               ^
+enums.c:6:10: error: enumerator value for 'e1' is not an integer constant
+    6 | enum E { e1 = n };
+      |          ^
+enums.c:8:14: error: redeclaration of enumerator 'g1'
+    8 | enum G { g1, g1 };
+      |              ^
+enums.c:8:10: note: previous definition of 'g1' with type 'int'
+    8 | enum G { g1, g1 };
+      |          ^
+enums.c:10:15: error: 'h1' redeclared as different kind of symbol
+   10 | enum H { h1 } h1;
+      |               ^
+enums.c:10:10: note: previous definition of 'h1' with type 'enum H'
+   10 | enum H { h1 } h1;
+      |          ^
+enums.c:12:10: error: 'h2' redeclared as different kind of symbol
+   12 | enum I { h2 };
+      |          ^
+enums.c:11:5: note: previous declaration of 'h2' with type 'int'
+   11 | int h2;
+      |     ^
+enums.c:14:15: warning: ISO C restricts enumerator values to range of 'int' before C2X [-Wpedantic]
+   14 | enum K { k1 = 1ULL << 63 };
+      |               ^
+enums.c:15:15: warning: ISO C restricts enumerator values to range of 'int' before C2X [-Wpedantic]
+   15 | enum L { l1 = -2147483649 };
+      |               ^
+enums.c:16:6: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+   16 | enum M;
+      |      ^
+enums.c:17:6: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+   17 | enum M m;
+      |      ^
+enums.c:18:15: warning: ISO C restricts enumerator values to range of 'int' before C2X [-Wpedantic]
+   18 | enum N { n1 = 3000000000, n2 = -1 };
+      |               ^
+enums.c:17:8: error: storage size of 'm' isn't known
+   17 | enum M m;
+      |        ^

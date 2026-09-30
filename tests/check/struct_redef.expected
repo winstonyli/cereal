@@ -1,0 +1,21 @@
+struct_redef.c:2:8: error: redefinition of 'struct S'
+    2 | struct S { int b; };
+      |        ^
+struct_redef.c:1:8: note: originally defined here
+    1 | struct S { int a; };
+      |        ^
+struct_redef.c:6:7: error: 'U2' defined as wrong kind of tag
+    6 | union U2 { int a; };
+      |       ^
+struct_redef.c:8:6: error: redeclaration of 'enum E'
+    8 | enum E { B };
+      |      ^
+struct_redef.c:7:6: note: originally defined here
+    7 | enum E { A };
+      |      ^
+struct_redef.c:10:7: error: 'S' defined as wrong kind of tag
+   10 | union S;
+      |       ^
+struct_redef.c:11:19: error: nested redefinition of 'struct T'
+   11 | struct T { struct T { int x; } t; };
+      |                   ^

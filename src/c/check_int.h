@@ -34,7 +34,8 @@ enum {
     CSF_PROTO_DEF = 1024,    /* a function defined with a prototype */
     CSF_KR_DEF = 2048,       /* a function defined K&R style */
     CSF_REGISTER_NAMED = 4096, /* file-scope register with an asm label */
-    CSF_ERROR = 8192         /* its declaration had errors */
+    CSF_ERROR = 8192,        /* its declaration had errors */
+    CSF_AUTO_TYPE = 65536    /* __auto_type: type comes from the initializer */
 };
 
 typedef struct CSym {
@@ -42,7 +43,7 @@ typedef struct CSym {
     uint8_t kind;            /* CSymKind */
     uint8_t sc;              /* StorageClass as written */
     uint8_t linkage;
-    uint16_t flags;
+    uint32_t flags;
     uint16_t align;          /* _Alignas / aligned (bytes), 0: none */
     TypeId ty;
     SrcLoc loc;
@@ -224,6 +225,7 @@ struct Checker {
     VEC(unsigned) pack_stack;
     uint32_t func_sym;       /* the function being defined, SYM_NONE */
     uint32_t cur_func_node;
+    uint32_t cur_node;      /* the node being visited (NO_NODE: none) */
     uint32_t func_node;      /* the FUNC declarator of the definition */
     VEC(uint32_t) nested_undef; /* block-scope auto functions declared */
     VEC(uint32_t) tentative; /* file-scope objects to check at the end */
@@ -259,11 +261,12 @@ static inline const Node *cnode(const Checker *c, uint32_t i)
     return &c->nodes[i];
 }
 
-/* A node's token location as gcc reports it (the expansion point). */
+/* A token's location as gcc's diagnostics report it: the spelling location
+ * (a macro body's token at its definition, an argument at the use site). */
 static inline SrcLoc ctok_loc(const Checker *c, uint32_t tok)
 {
     const PTok *t = &c->u->toks[tok];
-    return t->exp ? t->exp : t->t.loc;
+    return t->t.loc;
 }
 static inline SrcLoc cnode_loc(const Checker *c, uint32_t i)
 {

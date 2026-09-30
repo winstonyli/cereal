@@ -1,0 +1,12 @@
+func_ptr_decls.c:2:7: error: conflicting types for 'fp'; have 'int (*)(long int)'
+    2 | int (*fp)(long);
+      |       ^
+func_ptr_decls.c:1:7: note: previous declaration of 'fp' with type 'int (*)(int)'
+    1 | int (*fp)(int);
+      |       ^
+func_ptr_decls.c:4:5: error: 'f' declared as function returning an array
+    4 | int f(void)[3];
+      |     ^
+func_ptr_decls.c:5:5: error: 'g' declared as function returning a function
+    5 | int g(void)(void);
+      |     ^

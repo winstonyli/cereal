@@ -1,0 +1,30 @@
+spec_storage.c:2:1: error: multiple storage classes in declaration specifiers
+    2 | static extern int a;
+      | ^
+spec_storage.c:3:1: error: multiple storage classes in declaration specifiers
+    3 | typedef static int b;
+      | ^
+spec_storage.c:4:1: error: multiple storage classes in declaration specifiers
+    4 | register auto int c;
+      | ^
+spec_storage.c:4:1: warning: file-scope declaration of 'c' specifies 'register' [-Wpedantic]
+    4 | register auto int c;
+      | ^
+spec_storage.c:5:15: error: expected identifier or '(' before 'static'
+    5 | extern int d, static e;
+      |               ^
+spec_storage.c:11:1: error: '__thread' before 'static'
+   11 | __thread static int j;
+      | ^
+spec_storage.c:14:10: error: file-scope declaration of 'm' specifies 'auto'
+   14 | auto int m;
+      |          ^
+spec_storage.c:15:1: warning: file-scope declaration of 'n' specifies 'register' [-Wpedantic]
+   15 | register int n;
+      | ^
+spec_storage.c:4:19: error: register name not specified for 'c'
+    4 | register auto int c;
+      |                   ^
+spec_storage.c:15:14: error: register name not specified for 'n'
+   15 | register int n;
+      |              ^

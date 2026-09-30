@@ -1,0 +1,24 @@
+typedef_redecl.c:2:13: warning: redefinition of typedef 'T' [-Wpedantic]
+    2 | typedef int T;
+      |             ^
+typedef_redecl.c:1:13: note: previous declaration of 'T' with type 'T' {aka 'int'}
+    1 | typedef int T;
+      |             ^
+typedef_redecl.c:3:14: error: conflicting types for 'T'; have 'long int'
+    3 | typedef long T;
+      |              ^
+typedef_redecl.c:2:13: note: previous declaration of 'T' with type 'T' {aka 'int'}
+    2 | typedef int T;
+      |             ^
+typedef_redecl.c:5:13: error: redefinition of typedef 'A' with different type
+    5 | typedef int A[3];
+      |             ^
+typedef_redecl.c:4:13: note: previous declaration of 'A' with type 'A' {aka 'int[]'}
+    4 | typedef int A[];
+      |             ^
+typedef_redecl.c:6:13: error: conflicting types for 'A'; have 'int[4]'
+    6 | typedef int A[4];
+      |             ^
+typedef_redecl.c:5:13: note: previous declaration of 'A' with type 'A' {aka 'int[3]'}
+    5 | typedef int A[3];
+      |             ^

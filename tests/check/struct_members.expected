@@ -1,0 +1,36 @@
+struct_members.c:4:8: error: variable or field 'v' declared void
+    4 |   void v;
+      |        ^
+struct_members.c:5:7: error: field 'f' declared as a function
+    5 |   int f(void);
+      |       ^
+struct_members.c:6:12: error: field 'self' has incomplete type
+    6 |   struct S self;
+      |            ^
+struct_members.c:7:14: error: field 'inc' has incomplete type
+    7 |   struct Inc inc;
+      |              ^
+struct_members.c:8:7: error: flexible array member not at end of struct
+    8 |   int arr[];
+      |       ^
+struct_members.c:3:7: error: duplicate member 'a'
+    3 |   int a;
+      |       ^
+struct_members.c:12:23: error: flexible array member in a struct with no named members
+   12 | struct OnlyFlex { int d[]; };
+      |                       ^
+struct_members.c:13:8: warning: struct has no members [-Wpedantic]
+   13 | struct Z { };
+      |        ^
+struct_members.c:14:19: error: flexible array member in union
+   14 | union Flex2 { int d[]; int e; };
+      |                   ^
+struct_members.c:15:29: warning: invalid use of structure with flexible array member [-Wpedantic]
+   15 | struct Nested { struct Flex f; int g; };
+      |                             ^
+struct_members.c:16:26: error: size of array 'c' is negative
+   16 | struct Neg { int n; char c[-1]; };
+      |                          ^
+struct_members.c:17:34: error: field 'x' declared as a function
+   17 | struct Fn { int (*fp)(void); int x(int); };
+      |                                  ^

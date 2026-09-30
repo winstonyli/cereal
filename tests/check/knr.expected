@@ -1,0 +1,15 @@
+knr.c:1:5: warning: type of 'b' defaults to 'int' [-Wimplicit-int]
+    1 | int f(a, b) int a; { return a; }
+      |     ^
+knr.c:2:21: error: declaration for parameter 'c' but no such parameter
+    2 | int g(a) int a; int c; { return a; }
+      |                     ^
+knr.c:3:17: error: multiple parameters named 'a'
+    3 | int h(a, a) int a; { return a; }
+      |                 ^
+knr.c:6:21: error: storage class specified for parameter 'a'
+    6 | int n(a) static int a; { return a; }
+      |                     ^
+knr.c:13:19: error: parameter 'a' has incomplete type
+   13 | int t(a) struct S a; { return 0; }
+      |                   ^

@@ -63,6 +63,10 @@ static Diagnostic *vped(Checker *c, SrcLoc loc, const char *id,
 {
     if (id && *id && !diag_enabled(c->diag, id))
         return NULL;
+    /* gcc clears `pedantic` while parsing under __extension__ */
+    if (id && !strcmp(id, "pedantic") && c->cur_node != NO_NODE &&
+        cexpr_in_extension(c, c->cur_node))
+        return NULL;
     if (in_system(c, loc) && !c->diag->show_system)
         return NULL;
     return vrep(c, c->opt.pedantic_errors ? DL_ERROR : DL_WARNING, id, loc,
@@ -317,6 +321,7 @@ static void scope_close(Checker *c, uint32_t i)
 static void visit(Checker *c, uint32_t i)
 {
     unsigned tag = cnode(c, i)->tag;
+    c->cur_node = i;
     c->ty[i] = TYPE_B(ERROR);
     c->cv[i] = 0;
     c->cb[i] = 0;
@@ -361,6 +366,7 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     c->func_node = NO_NODE;
     for (i = 0; i < c->nn; i++)
         visit(c, i);
+    c->cur_node = NO_NODE;
     while (c->scopes.len > 1)
         cscope_pop(c, NULL);
     /* the last line start, for input_location in the next unit */
@@ -406,6 +412,7 @@ Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
                type_typedef(&c->tt, intern_cstr(in, "__uint128_t")->id,
                             TYPE_B(UINT128)));
     c->func_sym = SYM_NONE;
+    c->cur_node = NO_NODE;
     return c;
 }
 

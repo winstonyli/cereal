@@ -166,6 +166,8 @@ Reused units are immutable and reference counted (like `Cell`) and
 spliced by reference.  Units with errors are cacheable.
 
 ## Type checking (P2)
+The checker as built is described in [TYPES.md](TYPES.md).
+
 ### Decisions
 1. **Placement: a separate check pass per unit** (Carbon-style), run right
    after the unit parses.  An RPN stack machine over the post-order tree,

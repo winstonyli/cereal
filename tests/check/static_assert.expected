@@ -1,0 +1,45 @@
+static_assert.c:1:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    1 | _Static_assert(1, "ok");
+      | ^
+static_assert.c:2:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    2 | _Static_assert(0, "fail");
+      | ^
+static_assert.c:2:1: error: static assertion failed: "fail"
+    2 | _Static_assert(0, "fail");
+      | ^
+static_assert.c:3:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    3 | _Static_assert(sizeof(int) == 4, "int size");
+      | ^
+static_assert.c:4:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    4 | _Static_assert(sizeof(long) == 4, "long size");
+      | ^
+static_assert.c:4:1: error: static assertion failed: "long size"
+    4 | _Static_assert(sizeof(long) == 4, "long size");
+      | ^
+static_assert.c:6:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    6 | _Static_assert(n == 2, "not constant");
+      | ^
+static_assert.c:6:18: error: expression in static assertion is not constant
+    6 | _Static_assert(n == 2, "not constant");
+      |                  ^
+static_assert.c:7:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    7 | _Static_assert(1.5, "float");
+      | ^
+static_assert.c:7:16: error: expression in static assertion is not an integer
+    7 | _Static_assert(1.5, "float");
+      |                ^
+static_assert.c:8:12: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    8 | struct S { _Static_assert(1, "in struct"); int x; };
+      |            ^
+static_assert.c:9:16: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    9 | void f(void) { _Static_assert(2 > 1, "in func"); _Static_assert(0, "in func fail"); }
+      |                ^
+static_assert.c:9:50: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    9 | void f(void) { _Static_assert(2 > 1, "in func"); _Static_assert(0, "in func fail"); }
+      |                                                  ^
+static_assert.c:9:50: error: static assertion failed: "in func fail"
+    9 | void f(void) { _Static_assert(2 > 1, "in func"); _Static_assert(0, "in func fail"); }
+      |                                                  ^
+static_assert.c:10:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   10 | _Static_assert((char)300 == 44, "trunc");
+      | ^

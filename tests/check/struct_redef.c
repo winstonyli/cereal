@@ -1,0 +1,11 @@
+struct S { int a; };
+struct S { int b; };
+union U { int a; };
+union U;
+struct U2;
+union U2 { int a; };
+enum E { A };
+enum E { B };
+struct S;
+union S;
+struct T { struct T { int x; } t; };

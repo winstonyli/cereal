@@ -1,0 +1,18 @@
+enum A { a1 = 1, a2, a1b = 1 };
+enum B { b1 = 0x7fffffff, b2 };
+enum C { c1 = -1, c2 = 0x80000000u };
+enum D { d1 = 1.5 };
+int n;
+enum E { e1 = n };
+enum F { f1 = sizeof(int), f2 = f1 * 2 };
+enum G { g1, g1 };
+enum { anon1, anon2 } ev;
+enum H { h1 } h1;
+int h2;
+enum I { h2 };
+enum J { j1 = 1, j2, };
+enum K { k1 = 1ULL << 63 };
+enum L { l1 = -2147483649 };
+enum M;
+enum M m;
+enum N { n1 = 3000000000, n2 = -1 };

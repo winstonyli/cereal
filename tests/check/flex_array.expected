@@ -1,0 +1,18 @@
+flex_array.c:2:16: error: flexible array member in a struct with no named members
+    2 | struct B { int d[]; };
+      |                ^
+flex_array.c:3:23: error: flexible array member not at end of struct
+    3 | struct C { int n; int d[]; int m; };
+      |                       ^
+flex_array.c:4:15: error: flexible array member in union
+    4 | union U { int d[]; };
+      |               ^
+flex_array.c:5:21: warning: invalid use of structure with flexible array member [-Wpedantic]
+    5 | struct D { struct A a; int x; };
+      |                     ^
+flex_array.c:7:38: error: storage size of 'w' isn't constant
+    7 | void g(int n) { int v[n]; static int w[n]; }
+      |                                      ^
+flex_array.c:6:5: warning: array 'f' assumed to have one element
+    6 | int f[];
+      |     ^

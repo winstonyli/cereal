@@ -1,0 +1,20 @@
+struct B {
+  int a : 3;
+  int b : 0;
+  int : 0;
+  int : 4;
+  int c : -1;
+  int d : 100;
+  float e : 2;
+  char f : 9;
+  _Bool g : 2;
+  unsigned h : 32;
+  long i : 40;
+  int j : 1.5;
+  double k : 3;
+  void *l : 1;
+};
+int n = 3;
+struct C { int z : n; };
+enum En { X, Y };
+struct D { enum En e : 1; enum En e2 : 8; };

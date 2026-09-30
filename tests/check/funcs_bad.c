@@ -1,0 +1,14 @@
+int f(void)[3];
+int (g(void))(void);
+void h(void)(void);
+int k[3](void);
+typedef int F(void);
+F m;
+struct S { int x; } s(void);
+void t(int a, int a);
+void u(void, int);
+void v(int, void);
+void w(void x);
+void y(const void);
+void z(int, ...);
+void z2(...);

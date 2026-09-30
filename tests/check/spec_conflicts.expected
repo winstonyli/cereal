@@ -1,0 +1,48 @@
+spec_conflicts.c:2:6: error: both 'long' and 'short' in declaration specifiers
+    2 | long short a;
+      |      ^
+spec_conflicts.c:3:7: error: both 'long' and 'short' in declaration specifiers
+    3 | short long b;
+      |       ^
+spec_conflicts.c:4:8: error: both 'signed' and 'unsigned' in declaration specifiers
+    4 | signed unsigned c;
+      |        ^
+spec_conflicts.c:5:10: error: both 'signed' and 'unsigned' in declaration specifiers
+    5 | unsigned signed d;
+      |          ^
+spec_conflicts.c:6:6: error: both 'long' and 'float' in declaration specifiers
+    6 | long float e;
+      |      ^
+spec_conflicts.c:7:7: error: both 'short' and 'double' in declaration specifiers
+    7 | short double f;
+      |       ^
+spec_conflicts.c:8:6: error: two or more data types in declaration specifiers
+    8 | void int g;
+      |      ^
+spec_conflicts.c:9:11: error: 'long long long' is too long for GCC
+    9 | long long long h;
+      |           ^
+spec_conflicts.c:10:13: error: both 'long long' and 'double' in declaration specifiers
+   10 | long double long i;
+      |             ^
+spec_conflicts.c:11:7: error: two or more data types in declaration specifiers
+   11 | _Bool char j;
+      |       ^
+spec_conflicts.c:12:6: error: two or more data types in declaration specifiers
+   12 | char int k;
+      |      ^
+spec_conflicts.c:13:6: error: both 'long' and 'char' in declaration specifiers
+   13 | long char l;
+      |      ^
+spec_conflicts.c:14:7: error: two or more data types in declaration specifiers
+   14 | float double m;
+      |       ^
+spec_conflicts.c:15:5: error: two or more data types in declaration specifiers
+   15 | int int n;
+      |     ^
+spec_conflicts.c:16:10: error: duplicate 'unsigned'
+   16 | unsigned unsigned o;
+      |          ^
+spec_conflicts.c:17:13: warning: type defaults to 'int' in declaration of 'p' [-Wimplicit-int]
+   17 | const const p;
+      |             ^

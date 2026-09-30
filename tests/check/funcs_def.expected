@@ -1,0 +1,30 @@
+funcs_def.c:2:6: error: redefinition of 'f'
+    2 | void f(void) { }
+      |      ^
+funcs_def.c:1:6: note: previous definition of 'f' with type 'void(void)'
+    1 | void f(void) { }
+      |      ^
+funcs_def.c:4:5: error: conflicting types for 'g'; have 'int(long int)'
+    4 | int g(long a) { return a; }
+      |     ^
+funcs_def.c:3:5: note: previous definition of 'g' with type 'int(int)'
+    3 | int g(int a) { return a; }
+      |     ^
+funcs_def.c:8:14: error: function definition declared 'register'
+    8 | register int m(void) { return 0; }
+      |              ^
+funcs_def.c:9:13: error: function definition declared 'typedef'
+    9 | typedef int n(void) { return 0; }
+      |             ^
+funcs_def.c:10:8: warning: ISO C does not support omitting parameter names in function definitions before C2X [-Wpedantic]
+   10 | void p(int) { }
+      |        ^
+funcs_def.c:11:15: warning: 'struct Inc' declared inside parameter list will not be visible outside of this definition or declaration
+   11 | void q(struct Inc a) { }
+      |               ^
+funcs_def.c:11:19: error: parameter 1 ('a') has incomplete type
+   11 | void q(struct Inc a) { }
+      |                   ^
+funcs_def.c:15:17: warning: ISO C forbids nested functions [-Wpedantic]
+   15 | void s2(void) { void inner(void) { } }
+      |                 ^

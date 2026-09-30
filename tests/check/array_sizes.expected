@@ -1,0 +1,39 @@
+array_sizes.c:1:5: error: size of array 'a' is negative
+    1 | int a[-1];
+      |     ^
+array_sizes.c:2:5: warning: ISO C forbids zero-size array 'b' [-Wpedantic]
+    2 | int b[0];
+      |     ^
+array_sizes.c:3:5: error: size of array 'c' has non-integer type
+    3 | int c[1.5];
+      |     ^
+array_sizes.c:5:5: error: variably modified 'd' at file scope
+    5 | int d[n];
+      |     ^
+array_sizes.c:6:5: error: array type has incomplete element type 'int[]'
+    6 | int e[2][];
+      |     ^
+array_sizes.c:6:5: note: declaration of 'e' as multidimensional array must have bounds for all dimensions except the first
+    6 | int e[2][];
+      |     ^
+array_sizes.c:8:5: warning: ISO C forbids zero-size array 'g' [-Wpedantic]
+    8 | int g[3][0];
+      |     ^
+array_sizes.c:11:6: error: declaration of 'v' as array of voids
+   11 | void v[2];
+      |      ^
+array_sizes.c:16:6: error: size of array 't' exceeds maximum object size '9223372036854775807'
+   16 | long t[9223372036854775807L];
+      |      ^
+array_sizes.c:17:6: error: size of array 'u' exceeds maximum object size '9223372036854775807'
+   17 | char u[4294967296L][4294967296L];
+      |      ^
+array_sizes.c:19:10: error: array type has incomplete element type 'struct S'
+   19 | struct S w[2];
+      |          ^
+array_sizes.c:7:5: warning: array 'f' assumed to have one element
+    7 | int f[][2];
+      |     ^
+array_sizes.c:10:3: warning: array 'h' assumed to have one element
+   10 | T h;
+      |   ^

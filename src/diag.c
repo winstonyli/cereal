@@ -507,6 +507,27 @@ static const char *level_color(DiagLevel l)
     }
 }
 
+/* gcc's default column unit is the display column: tabs advance to the next
+ * multiple of 8 and a UTF-8 sequence counts once. */
+static uint32_t display_col(SrcFile *f, uint32_t line, uint32_t col)
+{
+    uint32_t len, i, dc = 0;
+    const char *text;
+    if (f->kind == SF_VIRTUAL)
+        return col;
+    text = srcmgr_line_text(f, line, &len);
+    if (!text)
+        return col;
+    for (i = 0; i + 1 < col && i < len; i++) {
+        unsigned char ch = (unsigned char)text[i];
+        if (ch == '\t')
+            dc = (dc + 8) & ~7u;
+        else if ((ch & 0xC0) != 0x80)
+            dc++;
+    }
+    return dc + 1 + (col > len + 1 ? col - len - 1 : 0);
+}
+
 static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
                            const char *msg, const char *id, SrcRange range)
 {
@@ -517,7 +538,7 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
         fputs("\033[1m", o);
     if (f) {
         srcmgr_linecol(f, loc, &line, &col);
-        fprintf(o, "%s:%u:%u: ", f->name, line, col);
+        fprintf(o, "%s:%u:%u: ", f->name, line, display_col(f, line, col));
     } else {
         fputs("cereal: ", o);
     }

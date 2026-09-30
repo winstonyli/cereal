@@ -1,0 +1,16 @@
+int a;
+long a;
+extern int b;
+extern char b;
+double c(void);
+int c(void);
+void d(int);
+void d(long);
+int e[3];
+int e[4];
+typedef int T;
+typedef long T;
+int f(int);
+int f(int, int);
+struct S { int x; };
+int S;

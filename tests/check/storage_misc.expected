@@ -1,0 +1,45 @@
+storage_misc.c:1:1: warning: file-scope declaration of 'a' specifies 'register' [-Wpedantic]
+    1 | register int a;
+      | ^
+storage_misc.c:2:10: error: file-scope declaration of 'b' specifies 'auto'
+    2 | auto int b;
+      |          ^
+storage_misc.c:3:33: error: storage class specified for parameter 'y'
+    3 | void f(register int x, auto int y, static int z) { }
+      |                                 ^
+storage_misc.c:3:47: error: storage class specified for parameter 'z'
+    3 | void f(register int x, auto int y, static int z) { }
+      |                                               ^
+storage_misc.c:4:27: error: 'e' has both 'extern' and initializer
+    4 | void g(void) { extern int e = 1; }
+      |                           ^
+storage_misc.c:7:29: error: function-scope 't2' implicitly auto and declared '__thread'
+    7 | void i(void) { __thread int t2; static __thread int t3; extern __thread int t4; }
+      |                             ^
+storage_misc.c:8:1: warning: ISO C99 does not support '_Thread_local' [-Wpedantic]
+    8 | _Thread_local int t5;
+      | ^
+storage_misc.c:9:15: warning: ISO C forbids nested functions [-Wpedantic]
+    9 | int j(void) { extern void jj(void) { } }
+      |               ^
+storage_misc.c:9:27: error: nested function 'jj' declared 'extern'
+    9 | int j(void) { extern void jj(void) { } }
+      |                           ^
+storage_misc.c:10:16: warning: ISO C99 does not support '_Noreturn' [-Wpedantic]
+   10 | _Noreturn void nr(void);
+      |                ^
+storage_misc.c:11:15: warning: variable 'nr2' declared '_Noreturn'
+   11 | _Noreturn int nr2;
+      |               ^
+storage_misc.c:12:12: warning: variable 'il' declared 'inline'
+   12 | inline int il;
+      |            ^
+storage_misc.c:14:27: warning: variable 'q' declared 'inline'
+   14 | void k(void) { inline int q; }
+      |                           ^
+storage_misc.c:13:13: warning: inline function 'il2' declared but never defined
+   13 | inline void il2(void);
+      |             ^
+storage_misc.c:1:14: error: register name not specified for 'a'
+    1 | register int a;
+      |              ^

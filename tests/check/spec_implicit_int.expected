@@ -1,0 +1,21 @@
+spec_implicit_int.c:2:1: warning: data definition has no type or storage class
+    2 | x;
+      | ^
+spec_implicit_int.c:2:1: warning: type defaults to 'int' in declaration of 'x' [-Wimplicit-int]
+    2 | x;
+      | ^
+spec_implicit_int.c:3:8: warning: type defaults to 'int' in declaration of 'y' [-Wimplicit-int]
+    3 | static y;
+      |        ^
+spec_implicit_int.c:4:7: warning: type defaults to 'int' in declaration of 'z' [-Wimplicit-int]
+    4 | const z = 3;
+      |       ^
+spec_implicit_int.c:5:1: warning: return type defaults to 'int' [-Wimplicit-int]
+    5 | f() { return 0; }
+      | ^
+spec_implicit_int.c:6:8: warning: return type defaults to 'int' [-Wimplicit-int]
+    6 | static g(void) { return 1; }
+      |        ^
+spec_implicit_int.c:7:8: warning: type defaults to 'int' in declaration of 'h' [-Wimplicit-int]
+    7 | extern h;
+      |        ^

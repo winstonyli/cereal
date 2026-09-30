@@ -1,0 +1,27 @@
+decl_redefinition.c:2:5: error: redefinition of 'a'
+    2 | int a = 2;
+      |     ^
+decl_redefinition.c:1:5: note: previous definition of 'a' with type 'int'
+    1 | int a = 1;
+      |     ^
+decl_redefinition.c:3:12: warning: 'b' initialized and declared 'extern'
+    3 | extern int b = 1;
+      |            ^
+decl_redefinition.c:7:1: error: typedef 'T' is initialized (use '__typeof__' instead)
+    7 | typedef int T = 3;
+      | ^
+decl_redefinition.c:8:1: error: function 'f' is initialized like a variable
+    8 | void f(void) = 0;
+      | ^
+decl_redefinition.c:10:5: error: redefinition of 'h'
+   10 | int h(void) { }
+      |     ^
+decl_redefinition.c:9:5: note: previous definition of 'h' with type 'int(void)'
+    9 | int h(void) { }
+      |     ^
+decl_redefinition.c:13:18: error: 'k' redeclared as different kind of symbol
+   13 | int k(void); int k = 1;
+      |                  ^
+decl_redefinition.c:13:5: note: previous declaration of 'k' with type 'int(void)'
+   13 | int k(void); int k = 1;
+      |     ^

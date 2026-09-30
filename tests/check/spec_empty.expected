@@ -1,0 +1,24 @@
+spec_empty.c:2:1: warning: useless type name in empty declaration
+    2 | int;
+      | ^
+spec_empty.c:4:8: warning: unnamed struct/union that defines no instances
+    4 | struct { int x; };
+      |        ^
+spec_empty.c:7:14: warning: useless type qualifier in empty declaration
+    7 | const struct S2 { int y; };
+      |              ^
+spec_empty.c:8:15: warning: useless storage class specifier in empty declaration
+    8 | static struct S3 { int z; };
+      |               ^
+spec_empty.c:9:20: error: 'register' in file-scope empty declaration
+    9 | register enum E2 { B };
+      |                    ^
+spec_empty.c:11:1: warning: useless type name in empty declaration
+   11 | T;
+      | ^
+spec_empty.c:12:15: error: 'inline' in empty declaration
+   12 | inline struct S4;
+      |               ^
+spec_empty.c:13:1: warning: useless type name in empty declaration
+   13 | const int;
+      | ^

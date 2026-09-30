@@ -1819,6 +1819,17 @@ static void e_index(Checker *c, uint32_t i)
     }
     a = k[0];
     x = k[1];
+    if (tkind(c, c->ty[a]) == TY_VECTOR) {
+        if (!is_int(c, rvt(c, x))) {
+            cerror(c, loc, "array subscript is not an integer");
+            set_err(c, i);
+            return;
+        }
+        c->ty[i] = type_base(TT, type_canon(TT, c->ty[a])) |
+                   TYPE_QUALS(c->ty[a]);
+        c->ef[i] = (c->ef[a] & EF_LVALUE) | ((c->ef[a] | c->ef[x]) & EF_SIDE);
+        return;
+    }
     if (!is_array(c, c->ty[a]) && !is_ptr(c, c->ty[a])) {
         if (!is_array(c, c->ty[x]) && !is_ptr(c, c->ty[x])) {
             cerror(c, loc, "subscripted value is neither array nor pointer "
@@ -2175,6 +2186,12 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
     if (is_void(c, t)) {
         cerror(c, loc, "invalid use of void expression");
         set_err(c, i);
+        return;
+    }
+    if (tkind(c, t) == TY_VECTOR && op != P_BANG) {
+        /* vector operands: the result has the vector's type */
+        c->ty[i] = TYPE_UNQUAL(type_canon(TT, t));
+        c->ef[i] = c->ef[a] & EF_SIDE;
         return;
     }
     switch (op) {

@@ -1,0 +1,24 @@
+enum_conflict.c:1:16: error: redeclaration of enumerator 'A'
+    1 | enum E { A, B, A };
+      |                ^
+enum_conflict.c:1:10: note: previous definition of 'A' with type 'int'
+    1 | enum E { A, B, A };
+      |          ^
+enum_conflict.c:2:33: error: enumerator value for 'E2' is not an integer constant
+    2 | enum F { C = 1, D = C + 1, E2 = 1.5 };
+      |                                 ^
+enum_conflict.c:3:26: warning: ISO C restricts enumerator values to range of 'int' before C2X [-Wpedantic]
+    3 | enum G { H = 0x7fffffff, I };
+      |                          ^
+enum_conflict.c:4:6: error: redeclaration of 'enum E'
+    4 | enum E { Z };
+      |      ^
+enum_conflict.c:1:6: note: originally defined here
+    1 | enum E { A, B, A };
+      |      ^
+enum_conflict.c:5:5: error: 'B' redeclared as different kind of symbol
+    5 | int B;
+      |     ^
+enum_conflict.c:1:13: note: previous definition of 'B' with type 'enum E'
+    1 | enum E { A, B, A };
+      |             ^

@@ -1,0 +1,33 @@
+funcs_bad.c:1:5: error: 'f' declared as function returning an array
+    1 | int f(void)[3];
+      |     ^
+funcs_bad.c:2:6: error: 'g' declared as function returning a function
+    2 | int (g(void))(void);
+      |      ^
+funcs_bad.c:3:6: error: 'h' declared as function returning a function
+    3 | void h(void)(void);
+      |      ^
+funcs_bad.c:4:5: error: declaration of 'k' as array of functions
+    4 | int k[3](void);
+      |     ^
+funcs_bad.c:8:19: error: redefinition of parameter 'a'
+    8 | void t(int a, int a);
+      |                   ^
+funcs_bad.c:8:12: note: previous definition of 'a' with type 'int'
+    8 | void t(int a, int a);
+      |            ^
+funcs_bad.c:9:8: error: 'void' must be the only parameter
+    9 | void u(void, int);
+      |        ^
+funcs_bad.c:10:13: error: 'void' must be the only parameter
+   10 | void v(int, void);
+      |             ^
+funcs_bad.c:11:13: warning: parameter 1 ('x') has void type
+   11 | void w(void x);
+      |             ^
+funcs_bad.c:12:8: error: 'void' as only parameter may not be qualified
+   12 | void y(const void);
+      |        ^
+funcs_bad.c:14:9: warning: ISO C requires a named argument before '...' before C2X [-Wpedantic]
+   14 | void z2(...);
+      |         ^

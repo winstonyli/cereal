@@ -1,0 +1,30 @@
+local_decls.c:2:14: error: redeclaration of 'a' with no linkage
+    2 |   int a; int a;
+      |              ^
+local_decls.c:2:7: note: previous declaration of 'a' with type 'int'
+    2 |   int a; int a;
+      |       ^
+local_decls.c:3:28: error: extern declaration of 'b' follows declaration with no linkage
+    3 |   static int b; extern int b;
+      |                            ^
+local_decls.c:3:14: note: previous declaration of 'b' with type 'int'
+    3 |   static int b; extern int b;
+      |              ^
+local_decls.c:4:21: error: declaration of 'c' with no linkage follows extern declaration
+    4 |   extern int c; int c;
+      |                     ^
+local_decls.c:4:14: note: previous declaration of 'c' with type 'int'
+    4 |   extern int c; int c;
+      |              ^
+local_decls.c:5:3: error: address of register variable 'd' requested
+    5 |   register int d; register int *pd = &d;
+      |   ^
+local_decls.c:6:3: error: duplicate 'auto'
+    6 |   auto int e; auto auto int g;
+      |   ^
+local_decls.c:7:14: error: 'h' has both 'extern' and initializer
+    7 |   extern int h = 1;
+      |              ^
+local_decls.c:9:27: error: invalid storage class for function 'j'
+    9 |   int i(void); static int j(void);
+      |                           ^

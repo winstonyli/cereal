@@ -35,7 +35,8 @@ static bool ent_eq(const TypeTable *tt, const TypeEnt *a, const TypeEnt *b)
         return false;
     if (a->kind != TY_FUNC)
         return a->extra == b->extra;
-    return !memcmp(tt->params.data + a->extra, tt->params.data + b->extra,
+    return a->n == 0 ||
+           !memcmp(tt->params.data + a->extra, tt->params.data + b->extra,
                    a->n * sizeof(TypeId));
 }
 

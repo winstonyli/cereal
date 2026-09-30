@@ -1,0 +1,42 @@
+redecl_linkage.c:3:5: error: non-static declaration of 'a' follows static declaration
+    3 | int a;
+      |     ^
+redecl_linkage.c:2:12: note: previous declaration of 'a' with type 'int'
+    2 | extern int a;
+      |            ^
+redecl_linkage.c:5:12: error: static declaration of 'b' follows non-static declaration
+    5 | static int b;
+      |            ^
+redecl_linkage.c:4:12: note: previous declaration of 'b' with type 'int'
+    4 | extern int b;
+      |            ^
+redecl_linkage.c:9:13: error: static declaration of 'g' follows non-static declaration
+    9 | static void g(void);
+      |             ^
+redecl_linkage.c:8:6: note: previous declaration of 'g' with type 'void(void)'
+    8 | void g(void);
+      |      ^
+redecl_linkage.c:11:5: error: redefinition of 'h'
+   11 | int h = 2;
+      |     ^
+redecl_linkage.c:10:5: note: previous definition of 'h' with type 'int'
+   10 | int h = 1;
+      |     ^
+redecl_linkage.c:12:27: error: redeclaration of 'q' with no linkage
+   12 | void k(void) { int q; int q; }
+      |                           ^
+redecl_linkage.c:12:20: note: previous declaration of 'q' with type 'int'
+   12 | void k(void) { int q; int q; }
+      |                    ^
+redecl_linkage.c:13:21: error: 'p' redeclared as different kind of symbol
+   13 | void m(int p) { int p; }
+      |                     ^
+redecl_linkage.c:13:12: note: previous definition of 'p' with type 'int'
+   13 | void m(int p) { int p; }
+      |            ^
+redecl_linkage.c:14:41: error: extern declaration of 'r' follows declaration with no linkage
+   14 | void n(void) { static int r; extern int r; }
+      |                                         ^
+redecl_linkage.c:14:27: note: previous declaration of 'r' with type 'int'
+   14 | void n(void) { static int r; extern int r; }
+      |                           ^

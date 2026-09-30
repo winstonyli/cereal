@@ -1,0 +1,3 @@
+valid_decls.c:14:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   14 | _Static_assert(sizeof(size_t) == 8, "lp64");
+      | ^

@@ -14,20 +14,22 @@ const char *const node_names[N_COUNT] = {
 uint32_t node_children(const Node *nodes, uint32_t i, uint32_t *out,
                        uint32_t max)
 {
-    uint32_t n = 0, j = i, lo = i + 1 - nodes[i].size, k;
+    /* Walk the children last to first; the first `max` in source order are
+     * stored (out[0] is the first child), the return value is the total. */
+    uint32_t n = 0, j = i, lo = i + 1 - nodes[i].size, pos;
     while (j > lo) {
         j--;
-        if (n < max)
-            out[n] = j;
         n++;
         j = j + 1 - nodes[j].size;
     }
-    /* collected last to first */
-    k = n < max ? n : max;
-    for (j = 0; j < k / 2; j++) {
-        uint32_t t = out[j];
-        out[j] = out[k - 1 - j];
-        out[k - 1 - j] = t;
+    pos = n;
+    j = i;
+    while (j > lo) {
+        j--;
+        pos--;
+        if (pos < max)
+            out[pos] = j;
+        j = j + 1 - nodes[j].size;
     }
     return n;
 }

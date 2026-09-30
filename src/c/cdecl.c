@@ -288,7 +288,7 @@ static uint32_t check_user_alignment(Checker *c, uint32_t e, SrcLoc loc)
         cerror(c, loc, "requested alignment is not a positive power of 2");
         return 0;
     }
-    if (v >= ((int64_t)1 << 28)) {
+    if (v >= ((int64_t)1 << 29)) {
         cerror(c, loc, "requested alignment is too large");
         return 0;
     }
@@ -542,6 +542,8 @@ static void add_qual(Checker *c, Spec *s, uint32_t tok)
     case CK_ATOMIC: q = TQ_ATOMIC; idx = 3; break;
     default: return;
     }
+    if (q == TQ_ATOMIC)
+        cpedantic(c, loc, "ISO C99 does not support the '_Atomic' qualifier");
     dupe = (s->quals & q) != 0;
     prev = s->qual_tok[idx];
     s->quals |= q;
@@ -1870,6 +1872,8 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 }
                 type = ERRT;
             } else {
+                if (!vla && type_is_vm(TT, type))
+                    vla = true;    /* an array of variably modified type */
                 if (vla)
                     type = type_vla(TT, type);
                 else if (sz != NO_NODE || (unspec && !vla))
@@ -3328,6 +3332,8 @@ static void declared_visit(Checker *c, uint32_t i)
             break;
         }
     }
+    if (initialized && g.what == GD_VAR && sp.word == TW_AUTO_TYPE)
+        s.flags |= CSF_AUTO_TYPE;
     if (initialized) {
         s.flags |= CSF_DEFINED;
         s.def_loc = s.loc;
@@ -3377,6 +3383,13 @@ static void init_decl_visit(Checker *c, uint32_t idecl)
     if (declared != idecl - 1 && init_ok)
         init = idecl - 1;
     type = s->ty;
+    if ((s->flags & CSF_AUTO_TYPE) && init != NO_NODE) {
+        /* __auto_type: the initializer's type after lvalue conversion */
+        TypeId it = cexpr_rvalue_type(c, init);
+        if (!is_err(c, it) && type_ckind(TT, it) != TY_ERROR) {
+            s->ty = type = it | TYPE_QUALS(s->ty);
+        }
+    }
     if (s->kind == CS_OBJ && !(s->flags & CSF_PARAM)) {
         if (is_incomplete_array(c, type) &&
             !(sym_public(s) && !file)) {
@@ -3847,7 +3860,7 @@ static void enumerator_visit(Checker *c, uint32_t i)
     uint32_t name = cnode_ident(c, i), vn = NO_NODE, k;
     RecDef *rd;
     SrcLoc nloc = tloc(c, cnode(c, i)->tok), vloc = nloc;
-    TypeId vt = TYPE_B(INT), ety;
+    TypeId vt = TYPE_B(INT);
     uint64_t v = 0;
     bool have = false, wide = false;
     Kids kk;
@@ -3856,7 +3869,6 @@ static void enumerator_visit(Checker *c, uint32_t i)
     if (!c->recs.len || !vec_last(&c->recs).is_enum)
         return;
     rd = &vec_last(&c->recs);
-    ety = rd->ty;
     iloc_event(c, cnode(c, i)->tok);
     kids_get(c, i, &kk);
     for (k = 0; k < kk.n; k++)
@@ -3934,7 +3946,7 @@ static void enumerator_visit(Checker *c, uint32_t i)
     memset(&s, 0, sizeof s);
     s.name = name;
     s.kind = CS_ENUMCONST;
-    s.ty = ety;
+    s.ty = vt;      /* the value's type until the enum is finished */
     s.loc = nloc;
     s.val = v;
     s.vty = vt;
@@ -4018,6 +4030,7 @@ static void enum_finish(Checker *c, uint32_t i, uint32_t open)
     e->complete = true;
     for (k = 0; k < ne; k++) {
         CSym *s = csym(c, c->ecs.data[rd.first_ec + k]);
+        s->ty = t;
         if (wider)
             s->vty = t;
     }
@@ -4737,6 +4750,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     dump_decl(c, csym(c, ref));
     c->func_sym = ref;
     c->cur_func_node = fd;
+    c->ef[fd] = 0;
     c->func_node = fnode;
     c->ty[declared] = csym(c, ref)->ty;
     c->cb[declared] = ref + 1;
@@ -5121,7 +5135,7 @@ static void unused_scan(Checker *c, uint32_t first, uint32_t last)
                 cwarn(c, s->loc, "unused-but-set-variable", "variable '%s' set "
                       "but not used", sname(c, s));
         } else if (s->kind == CS_FUNC && !sym_public(s) && !sym_defined(s) &&
-                   s->name)
+                   s->name && !ref_file_scope(c->cb[cand[j]] - 1))
             cerror(c, s->loc, "nested function '%s' declared but never "
                    "defined", sname(c, s));
     }
@@ -5319,6 +5333,9 @@ void cdecl_node(Checker *c, uint32_t i)
         break;
     case N_DECL:
         decl_visit(c, i);
+        break;
+    case N_GOTO_EXPR:
+        cpedantic(c, tloc(c, cnode(c, i)->tok), "ISO C forbids 'goto *expr;'");
         break;
     case N_DECLARED:
         declared_visit(c, i);
