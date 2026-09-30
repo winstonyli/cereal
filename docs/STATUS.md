@@ -21,9 +21,10 @@ layouts, gcc rules ported, walk design).
    units x 30 mutants, seed 7, gcc 15.2): 5004 agree, 33 gcc-only semantic
    rejects, 3 "failures", all `char x[4]` -> `char x[]` inside glibc's
    pthread unions: cereal says "flexible array member in union", gcc >= 14
-   accepts it (extension).  Believed a gcc-version difference, not checked
-   against gcc 13.  lua52/lua53 lua.c are skipped (need libreadline-dev).
-   Next: rerun with gcc 13 if obtainable, larger N/other seeds.
+   accepts it (extension).  Confirmed a gcc-version difference: gcc 13.3
+   c-decl.cc:9242 errors unconditionally, so cereal matches the reference.  lua52/lua53 lua.c are skipped (need libreadline-dev).
+   Next: larger N/other seeds; a gcc 13 binary would remove the -fpermissive
+   and flexible-array-union noise.
 2. gcc.dg gaps: parser "expected X before Y" wording; "excess elements in
    struct initializer"; "jump into scope of identifier with variably
    modified type"; attribute-ignored/argument-count warnings; __builtin_*
