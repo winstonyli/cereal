@@ -147,6 +147,13 @@ static SrcLoc tok_loc(Parser *p, uint32_t i)
     return p->toks.len ? p->toks.data[p->toks.len - 1].exp : 0;
 }
 
+/* Where gcc reports a token: its spelling (a macro body token at its
+ * definition). */
+static SrcLoc spell_loc(Parser *p, uint32_t i)
+{
+    return i < p->toks.len ? p->toks.data[i].t.loc : tok_loc(p, i);
+}
+
 /* How gcc's c_parse_error names the offending token: " before ..." or
  * " at end of input".  Keywords read like identifiers, punctuators are
  * spelled canonically (digraphs included) and followed by "token". */
@@ -215,7 +222,7 @@ static Diagnostic *perr(Parser *p, uint32_t i, const char *fmt, ...)
     Diagnostic *d;
     va_list ap;
     va_start(ap, fmt);
-    d = vperr(p, i, tok_loc(p, i), fmt, ap);
+    d = vperr(p, i, spell_loc(p, i), fmt, ap);
     va_end(ap);
     return d;
 }
@@ -226,7 +233,7 @@ static Diagnostic *perr_after_prev(Parser *p, uint32_t i, const char *fmt, ...)
 {
     Diagnostic *d;
     va_list ap;
-    SrcLoc loc = tok_loc(p, i);
+    SrcLoc loc = spell_loc(p, i);
     if (i > 0 && i - 1 < p->toks.len &&
         (!p->toks.data[i - 1].exp ||
          p->toks.data[i - 1].exp == p->toks.data[i - 1].t.loc))
