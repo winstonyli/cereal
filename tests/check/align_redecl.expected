@@ -1,0 +1,42 @@
+align_redecl.c:2:17: warning: ISO C99 does not support '_Alignof' [-Wpedantic]
+    2 | _Static_assert (_Alignof (c) == 2, "var aligned below its type");
+      |                 ^
+align_redecl.c:2:17: warning: ISO C does not allow '_Alignof (expression)' [-Wpedantic]
+    2 | _Static_assert (_Alignof (c) == 2, "var aligned below its type");
+      |                 ^
+align_redecl.c:2:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    2 | _Static_assert (_Alignof (c) == 2, "var aligned below its type");
+      | ^
+align_redecl.c:4:13: warning: redefinition of typedef 'T' [-Wpedantic]
+    4 | typedef int T __attribute__((aligned (64)));
+      |             ^
+align_redecl.c:3:13: note: previous declaration of 'T' with type 'T' {aka 'int'}
+    3 | typedef int T;
+      |             ^
+align_redecl.c:5:13: warning: redefinition of typedef 'T' [-Wpedantic]
+    5 | typedef int T __attribute__((aligned (128)));
+      |             ^
+align_redecl.c:4:13: note: previous declaration of 'T' with type 'T' {aka 'int'}
+    4 | typedef int T __attribute__((aligned (64)));
+      |             ^
+align_redecl.c:6:13: warning: redefinition of typedef 'T' [-Wpedantic]
+    6 | typedef int T __attribute__((aligned (64)));
+      |             ^
+align_redecl.c:5:13: note: previous declaration of 'T' with type 'T' {aka 'int'}
+    5 | typedef int T __attribute__((aligned (128)));
+      |             ^
+align_redecl.c:7:17: warning: ISO C99 does not support '_Alignof' [-Wpedantic]
+    7 | _Static_assert (_Alignof (T) == 128, "typedef redeclaration only raises");
+      |                 ^
+align_redecl.c:7:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    7 | _Static_assert (_Alignof (T) == 128, "typedef redeclaration only raises");
+      | ^
+align_redecl.c:8:17: warning: ISO C99 does not support '_Alignof' [-Wpedantic]
+    8 | _Static_assert (_Alignof (T) == 64, "expected to fail");
+      |                 ^
+align_redecl.c:8:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    8 | _Static_assert (_Alignof (T) == 64, "expected to fail");
+      | ^
+align_redecl.c:8:1: error: static assertion failed: "expected to fail"
+    8 | _Static_assert (_Alignof (T) == 64, "expected to fail");
+      | ^

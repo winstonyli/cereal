@@ -4404,8 +4404,9 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
             uint32_t s = strip_paren(c, a);
             if (s != NO_NODE && ntag(c, s) == N_IDENT) {
                 uint32_t ref = lookup_ord(c, cnode_ident(c, s));
+                /* aligned (n) sets a variable's alignment, even below the type's */
                 if (ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ &&
-                    csym(c, ref)->align > v)
+                    csym(c, ref)->align)
                     v = csym(c, ref)->align;
             } else if (s != NO_NODE && ntag(c, s) == N_MEMBER_EXPR) {
                 TypeId rec = 0;

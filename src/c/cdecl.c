@@ -4231,11 +4231,13 @@ static void declared_visit(Checker *c, uint32_t i)
     if (g.what == GD_TYPEDEF) {
         uint32_t nents = (uint32_t)TT->ents.len;
         ref = pushdecl(c, &s, false);
-        if (s.align && TT->ents.len > nents &&
-            type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
+        /* a redeclaration can only raise the alignment */
+        if (s.align && type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
             TypeEnt *te = &TT->ents.data[TYPE_IDX(csym(c, ref)->ty)];
-            te->align = s.align;
-            te->flags |= TF_ALIGNED;
+            if (TT->ents.len > nents || s.align > te->align) {
+                te->align = s.align;
+                te->flags |= TF_ALIGNED;
+            }
         }
     } else
         ref = pushdecl(c, &s, false);

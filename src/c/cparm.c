@@ -47,7 +47,17 @@ typedef struct PDim {
     bool bad;                /* D_EXPR: not an integer (gcc reports an error) */
 } PDim;
 
+enum { L_PTR, L_ARR, L_FUN };
+
+typedef struct PLev {            /* one declarator level, the parameter's own first */
+    uint8_t k;               /* L_* */
+    unsigned quals;          /* L_PTR: the pointer's qualifiers */
+    char *txt;               /* L_FUN: "(int, char *)" */
+} PLev;
+
 typedef struct PParm {
+    uint32_t nl;             /* levels recorded (nested declarators); 0: use np */
+    PLev *lv;
     bool arr;                /* declared as an array */
     bool stat;               /* [static n] */
     bool rst;                /* a restrict-qualified pointer */
@@ -82,6 +92,9 @@ static void pdesc_free(CParmDesc *pd)
                 free(pd->p[i].d[j].key);
             }
         free(pd->p[i].d);
+        for (j = 0; j < pd->p[i].nl; j++)
+            free(pd->p[i].lv[j].txt);
+        free(pd->p[i].lv);
     }
     free(pd);
 }
@@ -210,11 +223,120 @@ static void dim_of(Checker *c, uint32_t dn, PDim *d, bool first,
             d->arg = j + 1;
 }
 
+/* "(int, char *)": the parameter list of function type f. */
+static char *fparams(Checker *c, TypeId f)
+{
+    StrBuf sb = {0};
+    const TypeEnt *en = type_ent(TT, type_canon(TT, f));
+    const TypeId *ps = type_params(TT, type_canon(TT, f));
+    uint64_t k;
+    char *r;
+    sb_putc(&sb, '(');
+    if (!en->n && !(en->flags & TF_NOPROTO))
+        sb_puts(&sb, "void");
+    for (k = 0; k < en->n; k++) {
+        StrBuf t = {0};
+        type_print(TT, &t, ps[k]);
+        if (k)
+            sb_puts(&sb, ", ");
+        sb_puts(&sb, sb_cstr(&t));
+        sb_free(&t);
+    }
+    if (en->flags & TF_VARIADIC)
+        sb_puts(&sb, en->n ? ", ..." : "...");
+    sb_putc(&sb, ')');
+    r = xstrdup(sb_cstr(&sb));
+    sb_free(&sb);
+    return r;
+}
+
+/* Declarators with a function level or an array past a pointer: record every
+ * level (w[0] is the one nearest the base type) so the type can be printed. */
+static void levels_of(Checker *c, uint32_t p, PParm *o, const uint32_t *w,
+                      uint32_t nw, char *const *names, uint32_t nnames)
+{
+    TypeId t = o->ty, pre = pre_of(c, p);
+    uint32_t i, nd = 0;
+    if (nw && ntag(c, w[nw - 1]) == N_ARRAY) {
+        if (!pre)
+            return;
+        t = pre;
+    } else if (!nw || ntag(c, w[nw - 1]) != N_PTR) {
+        return;
+    }
+    o->lv = xcalloc(nw, sizeof *o->lv);
+    o->d = xcalloc(nw, sizeof *o->d);
+    o->nl = nw;
+    for (i = 0; i < nw; i++) {
+        uint32_t d = w[nw - 1 - i];
+        PLev *l = &o->lv[i];
+        TypeKind k = type_ckind(TT, t);
+        switch (ntag(c, d)) {
+        case N_ARRAY:
+            if (k != TY_ARRAY && k != TY_VLA)
+                goto bad;
+            l->k = L_ARR;
+            dim_of(c, d, &o->d[nd], nd == 0 && i == 0, names, nnames);
+            if (o->d[nd].bad)
+                o->unk = true;
+            if (i == 0) {
+                o->stat = (cnode(c, d)->flags & NF_STATIC) != 0;
+                o->quals = cdecl_quals_of(c, d);
+            }
+            nd++;
+            break;
+        case N_PTR:
+            if (k != TY_PTR)
+                goto bad;
+            l->k = L_PTR;
+            l->quals = TYPE_QUALS(t);
+            break;
+        default:
+            if (k != TY_FUNC)
+                goto bad;
+            l->k = L_FUN;
+            l->txt = fparams(c, t);
+            break;
+        }
+        t = type_base(TT, t);
+    }
+    o->nd = nd;
+    o->arr = o->lv[0].k == L_ARR;
+    o->base = t;
+    if (!nd)
+        goto bad;
+    if (!tail_dims(c, o, t))
+        o->unk = true;
+    else {
+        o->lv = xrealloc(o->lv, (o->nl + o->nd - nd) * sizeof *o->lv);
+        for (i = nd; i < o->nd; i++) {
+            memset(&o->lv[o->nl], 0, sizeof *o->lv);
+            o->lv[o->nl++].k = L_ARR;
+        }
+    }
+    return;
+bad:
+    for (i = 0; i < o->nl; i++)
+        free(o->lv[i].txt);
+    for (i = 0; i < nd; i++) {
+        free(o->d[i].txt);
+        free(o->d[i].ttxt);
+        free(o->d[i].key);
+    }
+    free(o->lv);
+    free(o->d);
+    o->lv = NULL;
+    o->d = NULL;
+    o->nl = o->nd = 0;
+    o->arr = o->stat = false;
+    o->quals = 0;
+}
+
 /* How parameter node p was declared. */
 static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
                     uint32_t nnames)
 {
-    uint32_t kids[32], nk, l = NO_NODE, d, dn[16], nd = 0, m;
+    uint32_t kids[32], nk, l = NO_NODE, d, dn[16], nd = 0, m, w[32], nw = 0;
     bool ptr_after = false, other = false;
     TypeId t = c->ty[p], pt, e;
     memset(o, 0, sizeof *o);
@@ -243,6 +365,10 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
         return;
     for (d = l; d != NO_NODE; d = cdecl_inner_decl(c, d)) {
         unsigned tg = ntag(c, d);
+        if (nw < 32 && (tg == N_ARRAY || tg == N_PTR || tg == N_FUNC))
+            w[nw++] = d;
+        else if (nw == 32)
+            other = true;
         if (tg == N_ARRAY) {
             if (nd == 16 || ptr_after)
                 other = true;
@@ -257,8 +383,11 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
             other = true;
         }
     }
-    if (other)
+    if (other) {
+        if (nw < 32)
+            levels_of(c, p, o, w, nw, names, nnames);
         return;
+    }
     if (!nd) {
         /* no brackets written: an array typedef, or a pointer to one */
         TypeId pre = pre_of(c, p), q = pre ? pre : type_base(TT, t);
@@ -382,6 +511,88 @@ static void put_dim(StrBuf *sb, const PDim *d)
     }
 }
 
+/* One pair of brackets; the first ones of an array parameter carry
+ * [static const n]. */
+static void put_arr(StrBuf *sb, const PParm *p, uint32_t i)
+{
+    bool sp = false;
+    sb_putc(sb, '[');
+    if (i == 0 && p->arr) {
+        if (p->stat) {
+            sb_puts(sb, "static");
+            sp = true;
+        }
+        if (p->quals & TQ_CONST) {
+            sb_puts(sb, sp ? " const" : "const");
+            sp = true;
+        }
+        if (p->quals & TQ_VOLATILE) {
+            sb_puts(sb, sp ? " volatile" : "volatile");
+            sp = true;
+        }
+        if (p->quals & TQ_RESTRICT) {
+            sb_puts(sb, sp ? " restrict" : "restrict");
+            sp = true;
+        }
+        if (p->quals & TQ_ATOMIC) {
+            sb_puts(sb, sp ? " _Atomic" : "_Atomic");
+            sp = true;
+        }
+        if (sp && p->d[i].k != D_NONE)
+            sb_putc(sb, ' ');
+        if (sp && p->d[i].k == D_EXPR)
+            sb_putc(sb, ' ');
+    }
+    put_dim(sb, &p->d[i]);
+    sb_putc(sb, ']');
+}
+
+/* A recorded declarator: wrap from the parameter's own level outwards, as
+ * gcc's type printer does (void (* (*[2])[n])(void)). */
+static void put_levels(Checker *c, StrBuf *sb, const PParm *p)
+{
+    char *s = xstrdup("");
+    uint32_t i, di = 0;
+    StrBuf t = {0};
+    type_print(TT, sb, p->base);
+    for (i = 0; i < p->nl; i++) {
+        const PLev *l = &p->lv[i];
+        char *r;
+        t.len = 0;
+        if (l->k == L_PTR) {
+            sb_putc(&t, '*');
+            if (l->quals & TQ_CONST)
+                sb_puts(&t, " const");
+            if (l->quals & TQ_VOLATILE)
+                sb_puts(&t, " volatile");
+            if (l->quals & TQ_RESTRICT)
+                sb_puts(&t, " restrict");
+            if (*s == '(' || (l->quals && *s && *s != '[' && *s != ')'))
+                sb_putc(&t, 32);
+            sb_puts(&t, s);
+        } else {
+            if (*s == '*') {
+                sb_putc(&t, '(');
+                sb_puts(&t, s);
+                sb_putc(&t, ')');
+            } else {
+                sb_puts(&t, s);
+            }
+            if (l->k == L_ARR)
+                put_arr(&t, p, di++);
+            else
+                sb_puts(&t, l->txt);
+        }
+        r = xstrdup(sb_cstr(&t));
+        free(s);
+        s = r;
+    }
+    sb_putc(sb, 32);
+    sb_puts(sb, s);
+    free(s);
+    sb_free(&t);
+}
+
 /* The parameter's type as gcc prints it: int[n + 1], int (*)[2], int *. */
 static const char *pstr(Checker *c, StrBuf *sb, const PParm *p)
 {
@@ -391,6 +602,10 @@ static const char *pstr(Checker *c, StrBuf *sb, const PParm *p)
     sb->len = 0;
     if (!p->nd) {
         type_print(TT, sb, p->ty);
+        return sb_cstr(sb);
+    }
+    if (p->nl) {
+        put_levels(c, sb, p);
         return sb_cstr(sb);
     }
     type_print(TT, sb, p->base);

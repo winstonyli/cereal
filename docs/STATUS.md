@@ -159,6 +159,8 @@ layouts, gcc rules ported, walk design).
    Performance of the checks above (2026-10-01, bench/tools/perf_check.py: old = 52037d8 vs new, -fsyntax-only -Wall, best of 15): header-heavy TU and 20k plain functions are within noise (callgrind: +3.5% instructions on plain functions, the per-prototype CParmDesc); a pathological 20k prototypes x 5 array/restrict params, each redeclared, plus 20k calls costs +15% wall (+10% instructions). Costs are cparm_make/node_children per parameter; the descriptor is needed for any prototype since a later array declaration is compared against a pointer-only first one. Not measured: corpus-wide wall time.
 
    -fshort-enums (driver.c -> CheckOptions.short_enums): enum_finish treats every enum like a packed one (smallest integer type); the seven dg tests that use it (Wbuiltin-declaration-mismatch-5, compare9, enum2, init-string-2, pr17844-1, pr22311-1, pr94172-2) now match gcc.
+
+   cparm.c declarator levels (2026-10-01): a parameter whose declarator has a function level or an array past a pointer (`void (*(*(*[6])[5])(void))(void)`) records each level (PLev: ptr/arr/fun, levels_of) and prints through put_levels, the wrap-outwards printer; plain cases keep the older np/arr path. Warray-parameter-4 and Wvla-parameter-{2,3} now match gcc. `_Alignof` of a variable with `aligned(n)` returns n even below the type's (cexpr.c e_sizeof); a typedef redeclaration with `aligned` raises the typedef's alignment (cdecl.c, never lowers). dg-options: rejects-valid 15, accepts-invalid 40, exact 5946 of 6380; tests 602.
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15
    header dirs under -pedantic-errors (environment, 5 files).
    Output order: parser errors of a unit print before its checker

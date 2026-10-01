@@ -1,0 +1,24 @@
+array_parameter3.c:3:10: warning: argument 1 of type 'void (* (* (*[7])[5])(void))(void)' with mismatched bound [-Warray-parameter=]
+    3 | void f1 (void (*(*(*[7])[5])(void))(void));
+      |          ^
+array_parameter3.c:2:10: note: previously declared as 'void (* (* (*[6])[5])(void))(void)'
+    2 | void f1 (void (*(*(*[6])[5])(void))(void));
+      |          ^
+array_parameter3.c:4:10: warning: argument 1 of type 'void (* (* (**)[5])(void))(void)' declared as a pointer [-Warray-parameter=]
+    4 | void f1 (void (*(*(**)[5])(void))(void));
+      |          ^
+array_parameter3.c:2:10: note: previously declared as an array 'void (* (* (*[6])[5])(void))(void)'
+    2 | void f1 (void (*(*(*[6])[5])(void))(void));
+      |          ^
+array_parameter3.c:7:10: warning: argument 1 of type 'int * (* (*[2])[1])[n2]' declared with mismatched bound 'n2' [-Wvla-parameter]
+    7 | void f2 (int *(*(*[2])[1])[n2]);
+      |          ^
+array_parameter3.c:6:10: note: previously declared as 'int * (* (*[2])[n1])[1]' with bound 'n1'
+    6 | void f2 (int *(*(*[2])[n1])[1]);
+      |          ^
+array_parameter3.c:9:10: warning: mismatch in bounds 2, 3 of argument 1 declared as 'int (* (* (*)[2])[1])[n2]' [-Wvla-parameter]
+    9 | void f3 (int (*(*(*)[2])[1])[n2]);
+      |          ^
+array_parameter3.c:8:10: note: previously declared as 'int (* (* (*)[2])[n1])[1]'
+    8 | void f3 (int (*(*(*)[2])[n1])[1]);
+      |          ^
