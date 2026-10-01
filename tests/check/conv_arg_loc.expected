@@ -1,0 +1,15 @@
+conv_arg_loc.c:7:7: warning: overflow in conversion from 'int' to 'signed char' changes value from '201' to '-55' [-Woverflow]
+    7 |   fsc(200 + 1);
+      |       ^
+conv_arg_loc.c:2:11: warning: overflow in conversion from 'int' to 'signed char' changes value from '128' to '-128' [-Woverflow]
+    2 | #define M 127
+      |           ^
+conv_arg_loc.c:9:7: warning: overflow in conversion from 'int' to 'signed char' changes value from '128' to '-128' [-Woverflow]
+    9 |   fsc(1 + M);
+      |       ^
+conv_arg_loc.c:10:7: warning: overflow in conversion from 'int' to 'signed char' changes value from '255' to '-1' [-Woverflow]
+   10 |   fsc(255);
+      |       ^
+conv_arg_loc.c:11:7: warning: unsigned conversion from 'int' to 'unsigned char' changes value from '256' to '0' [-Woverflow]
+   11 |   fuc(256);
+      |       ^

@@ -2176,6 +2176,16 @@ static void conv_arith(Conv *x)
     uint32_t e = x->expr;
     TypeId lt = x->type, rt = x->rhstype;
     SrcLoc l = x->eloc ? x->eloc : x->loc;
+    if (x->ci->context == CONV_ARG && !x->ci->loc) {    /* the argument's start,
+                                                        * at the macro use in a
+                                                        * system header */
+        uint32_t t = first_tok(c, e);
+        SrcFile *sf;
+        l = ctok_loc(c, t);
+        sf = srcmgr_file_of(c->sm, l);
+        if (sf && sf->system_header && c->u->toks[t].exp)
+            l = c->u->toks[t].exp;
+    }
     if (!is_int(c, lt) || tkind(c, lt) == TY_BOOL || inhibited(c, e, false) ||
         (c->ef[e] & EF_OVERFLOW))
         return;
