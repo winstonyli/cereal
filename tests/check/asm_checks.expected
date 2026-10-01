@@ -1,0 +1,42 @@
+asm_checks.c:7:18: error: duplicate 'asm' qualifier 'volatile'
+    7 |     asm volatile volatile ("" :::);
+      |                  ^
+asm_checks.c:7:9: note: first seen here
+    7 |     asm volatile volatile ("" :::);
+      |         ^
+asm_checks.c:8:14: error: duplicate 'asm' qualifier 'goto'
+    8 |     asm goto goto ("" :::: l);
+      |              ^
+asm_checks.c:8:9: note: first seen here
+    8 |     asm goto goto ("" :::: l);
+      |         ^
+asm_checks.c:9:5: error: lvalue required in 'asm' statement
+    9 |     asm("" : "=r" ((char)i));
+      |     ^
+asm_checks.c:10:5: error: read-only variable 'ci' used as 'asm' output
+   10 |     asm("" : "=m" (ci));
+      |     ^
+asm_checks.c:11:5: error: read-only parameter 'cp' use as 'asm' output
+   11 |     asm("" : "=r" (cp));
+      |     ^
+asm_checks.c:12:5: error: address of register variable 'r' requested
+   12 |     asm("" : : "m" (r));
+      |     ^
+asm_checks.c:13:21: warning: dereferencing 'void *' pointer
+   13 |     asm("" : : "r" (*v));
+      |                     ^
+asm_checks.c:13:5: error: invalid use of void expression
+   13 |     asm("" : : "r" (*v));
+      |     ^
+asm_checks.c:14:5: error: duplicate 'asm' operand name 'a'
+   14 |     asm("" : [a] "=r" (i) : [a] "r" (i));
+      |     ^
+asm_checks.c:15:5: error: undefined named operand 'nope'
+   15 |     asm("%[nope]" :: [x] "r" (i));
+      |     ^
+asm_checks.c:16:5: error: output operand constraint lacks '='
+   16 |     asm("" : "r" (i));
+      |     ^
+asm_checks.c:17:5: error: invalid punctuation '\x0a' in constraint
+   17 |     asm("" :: "\n" (i));
+      |     ^
