@@ -1492,6 +1492,8 @@ static int check_bitfield(Checker *c, SrcLoc loc, TypeId *ty, uint32_t w,
             if (!node_int_cst(c, w))
                 cpedantic(c, loc, "bit-field '%s' width not an integer "
                           "constant expression", nm);
+            if (c->ef[w] & EF_OVERFLOW)
+                cpedwarn(c, loc, "overflow", "overflow in constant expression");
             width = cexpr_sval(c, w);
             if (width < 0 && !type_is_signed(TT, c->ty[w]))
                 width = INT64_MAX;
@@ -3878,6 +3880,9 @@ static void enumerator_visit(Checker *c, uint32_t i)
                 cerror(c, iloc(c, after_tok(c, vn)), "enumerator value for "
                        "'%s' is not an integer constant", cident(c, name));
             else {
+                if (c->ef[vn] & EF_OVERFLOW)
+                    cpedwarn(c, nloc, "overflow",
+                             "overflow in constant expression");
                 vt = type_int_promote(TT, ty);
                 v = cexpr_trunc(c, vt, (uint64_t)cexpr_sval(c, vn));
                 have = true;

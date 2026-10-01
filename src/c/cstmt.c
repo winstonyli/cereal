@@ -763,6 +763,8 @@ static bool case_value(Checker *c, SrcLoc loc, const CSwitch *sw, uint32_t e,
         cerror(c, loc, "case label does not reduce to an integer constant");
         return false;
     }
+    if (c->ef[e] & EF_OVERFLOW)
+        cpedwarn(c, loc, "overflow", "overflow in constant expression");
     pt = type_int_promote(TT, c->ty[e]);
     conv_check(c, loc, sw->ty, pt, cexpr_trunc(c, pt, c->cv[e]), out);
     return true;

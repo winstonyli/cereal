@@ -4239,7 +4239,9 @@ static void e_logical(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         return;
     }
     c->cv[i] = (uint64_t)r;
-    if (is_intcst(c, a) && is_intcst(c, b)) {
+    /* DR#031: an unevaluated integer-operand right side (2 || 1/0) is OK */
+    if (is_intcst(c, a) && (is_intcst(c, b) ||
+        (!(tb >= 0) && c->ck[a] == K_ICE && intops(c, b)))) {
         c->ck[i] = K_ICE;
         c->ef[i] |= EF_INTOPS | ((c->ef[a] | c->ef[b]) & EF_OVERFLOW);
         return;

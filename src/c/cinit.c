@@ -876,7 +876,22 @@ static int const_class(Checker *c, uint32_t n, TypeId vt, TypeId target)
         }
     }
     switch (c->ck[n]) {
-    case K_ICE: case K_FOLD: case K_FLOAT: case K_ERR:
+    case K_FOLD:        /* an integer expression ISO C does not call constant */
+        {
+            uint32_t s = n;
+            while (ntag(c, s) == N_PAREN && s > 0)
+                s--;
+            if (ntag(c, s) == N_COND && !(c->nodes[s].flags & NF_OMITTED)) {
+                /* only the chosen arm counts (the other is not evaluated) */
+                uint32_t f3 = s - 1, t2 = f3 - c->nodes[f3].size;
+                uint32_t c1 = t2 - c->nodes[t2].size;
+                if (c->ck[c1] == K_ICE || c->ck[c1] == K_FOLD)
+                    return const_class(c, c->cv[c1] ? t2 : f3, vt, target);
+            }
+        }
+        return (c->ef[n] & EF_INTOPS) && !(c->ef[n] & EF_CST) &&
+               type_is_integer(TT, vt) ? 3 : 2;
+    case K_ICE: case K_FLOAT: case K_ERR:
         return 2;
     case K_NONE:
         g_pedw = false;
@@ -1280,7 +1295,7 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             bitfield_overflow(c, L, &v, type);
         }
         if (rq && const_overflowed(c, v.node, type))
-            cwarn(c, tloc(c, first_tok(c, v.node)), "overflow",
+            cpedwarn(c, tloc(c, first_tok(c, v.node)), "overflow",
                   "overflow in constant expression");
         zero = post_zero(c, &v, type);
         if (v.str && !v.decayed && is_arr(c, type)) {
@@ -2436,7 +2451,7 @@ void cinit_decl_done(Checker *c, uint32_t idecl)
         uint32_t dp = c->par[idecl];
         if ((s->flags & CSF_TREE_STATIC) && const_overflowed(c, init, type) &&
             dp != NOB && dp < c->nn)
-            cwarn(c, tloc(c, first_tok(c, dp)), "overflow",
+            cpedwarn(c, tloc(c, first_tok(c, dp)), "overflow",
                   "overflow in constant expression");
         if ((TYPE_QUALS(type) & (TQ_CONST | TQ_VOLATILE)) == TQ_CONST &&
             !is_aggr(c, type) && !is_arr(c, type) && v.kind == V_EXPR &&

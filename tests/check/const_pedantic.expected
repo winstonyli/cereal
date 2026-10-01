@@ -1,0 +1,24 @@
+const_pedantic.c:2:9: error: initializer element is not a constant expression [-Wpedantic]
+    2 | int a = -1 << 0;
+      |         ^
+const_pedantic.c:4:42: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+    4 | enum { E1 = 2 || 1 / 0, E2 = __INT_MAX__ + 1 };
+      |                                          ^
+const_pedantic.c:4:25: error: overflow in constant expression [-Woverflow]
+    4 | enum { E1 = 2 || 1 / 0, E2 = __INT_MAX__ + 1 };
+      |                         ^
+const_pedantic.c:5:35: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+    5 | struct s { int : 0 * (__INT_MAX__ + 1); };
+      |                                   ^
+const_pedantic.c:5:8: error: overflow in constant expression [-Woverflow]
+    5 | struct s { int : 0 * (__INT_MAX__ + 1); };
+      |        ^
+const_pedantic.c:5:8: error: struct has no named members [-Wpedantic]
+    5 | struct s { int : 0 * (__INT_MAX__ + 1); };
+      |        ^
+const_pedantic.c:8:31: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+    8 |     case 1 + 0 * (__INT_MAX__ + 1): return 1;
+      |                               ^
+const_pedantic.c:8:5: error: overflow in constant expression [-Woverflow]
+    8 |     case 1 + 0 * (__INT_MAX__ + 1): return 1;
+      |     ^
