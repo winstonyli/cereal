@@ -493,6 +493,10 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 a->aligned = v;
         } else if (!strcmp(name, "packed")) {
             a->packed = true;
+        } else if (!strcmp(name, "ms_struct")) {
+            a->ms = 1;
+        } else if (!strcmp(name, "gcc_struct")) {
+            a->ms = -1;
         } else if (!strcmp(name, "transparent_union")) {
             a->transparent_union = true;
         } else if (!strcmp(name, "noreturn") || !strcmp(name, "__noreturn__")) {
@@ -723,6 +727,8 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     if (from->aligned > to->aligned)
         to->aligned = from->aligned;
     to->packed |= from->packed;
+    if (from->ms)
+        to->ms = from->ms;
     to->transparent_union |= from->transparent_union;
     if (from->has_mode) {
         to->has_mode = true;
@@ -4840,7 +4846,8 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
         if (!is_err(c, f[k].ty))
             f[m++] = f[k];
     csum_read_pack(c);
-    type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed);
+    type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed,
+                         a.ms);
     if (a.desig && want != TY_UNION)
         type_record(TT, t)->flags |= RF_DESIGNATED;
     r = type_record(TT, t);

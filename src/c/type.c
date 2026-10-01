@@ -108,7 +108,7 @@ static void init_va_list(TypeTable *tt)
             {intern_cstr(tt->in, "overflow_arg_area")->id, vp, -1, 0, false, 0, 0, 0, 0},
             {intern_cstr(tt->in, "reg_save_area")->id, vp, -1, 0, false, 0, 0, 0, 0},
         };
-        type_complete_record(tt, r, f, 4, 0, 0, false);
+        type_complete_record(tt, r, f, 4, 0, 0, false, 0);
         type_record(tt, r)->flags |= RF_NOKEYWORD;
         tt->va_list = type_typedef(tt, name, type_array(tt, r, 1));
         return;
@@ -123,7 +123,7 @@ static void init_va_list(TypeTable *tt)
             {intern_cstr(tt->in, "__gr_offs")->id, TYPE_B(INT), -1, 0, false, 0, 0, 0, 0},
             {intern_cstr(tt->in, "__vr_offs")->id, TYPE_B(INT), -1, 0, false, 0, 0, 0, 0},
         };
-        type_complete_record(tt, r, f, 5, 0, 0, false);
+        type_complete_record(tt, r, f, 5, 0, 0, false, 0);
         type_record(tt, r)->flags |= RF_NOKEYWORD;
         tt->va_list = type_typedef(tt, name, r);
         return;
@@ -847,7 +847,7 @@ static void ms_field(Layout *L, const FieldIn *f, uint64_t tsize,
 
 void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
                           uint32_t n, unsigned pack, unsigned align,
-                          bool packed)
+                          bool packed, int ms)
 {
     Record *r = type_record(tt, t);
     Layout L = {0};
@@ -881,7 +881,7 @@ void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
                 flags |= RF_VLA;
         }
         uint64_t tyalign = (uint64_t)type_member_align(tt, f[i].ty) * 8;
-        if (tt->tgt->ms_bitfields)
+        if (ms > 0 || (!ms && tt->tgt->ms_bitfields))
             ms_field(&L, &f[i], tsize, tyalign, &out);
         else
             sysv_field(tt, &L, &f[i], tsize, tyalign, &out);

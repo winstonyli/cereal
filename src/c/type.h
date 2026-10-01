@@ -186,7 +186,7 @@ typedef struct FieldIn {
  * none); align: the record's aligned attribute (0: none). */
 void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
                           uint32_t n, unsigned pack, unsigned align,
-                          bool packed);
+                          bool packed, int ms);  /* ms: 1 ms_struct, -1 gcc_struct, 0 target default */
 
 /* Function accessors (canonical or not). */
 static inline const TypeId *type_params(const TypeTable *tt, TypeId f)
