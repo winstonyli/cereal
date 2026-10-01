@@ -99,6 +99,19 @@ layouts, gcc rules ported, walk design).
    baseline from now on.  Parser errors on macro-body tokens now carry
    "in expansion of macro 'X'" (outermost macro only; nested levels and
    gcc's order of parser errors vs checker warnings are not reproduced).
+   Then `&a == &b` of distinct non-weak objects folds; library calls gcc
+   folds (atan, nan, sin, ...) with constant arguments are pedwarn-only
+   initializers (cinit.c foldable_libcall): rejects-valid 53.  Remaining
+   rejects-valid (dg-options baseline): u/U/u8 string and char prefixes in
+   -std=gnu99 (8 files: utf16-*, utf32-*, utf-type, utf-inc-init; lex.c
+   knows only L), GNU forward parameter declarations `f(int n; int a[n])`
+   (parm-forwdecl-*), `"str"[i]` and `p - (p - 1)` constant folding
+   (pr69960, pr61240), __TIMESTAMP__ undefined, builtin-tgmath, `copysign`
+   in array-parameter bounds, #include_next pedwarn from cereal's gcc-15
+   header dirs under -pedantic-errors (environment, 5 files).
+   Output order: parser errors of a unit print before its checker
+   diagnostics, gcc interleaves them in emission order; not changed (no
+   metric sees it, and a correct merge needs emission points in the checker).
    Not done: did-you-mean for macro names (42 gcc.dg cases; needs the
    macro table at the token's version in the checker, with read-set
    consequences for P3), "expected ... at end of input" location (gcc
