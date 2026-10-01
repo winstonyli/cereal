@@ -671,6 +671,13 @@ static bool node_err(Checker *c, uint32_t n)
 /* gcc folds a read of a const object with a constant initializer (in_init
  * decl_constant_value): an expression built only from such reads and
  * constants is a constant. */
+/* gcc folds calls of the library functions it knows as builtins (atan,
+ * nan, ...) when the arguments are constant; an initializer made of them
+ * is accepted with a pedwarn. */
+static bool g_pedw;
+
+static bool foldable_libcall(Checker *c, uint32_t n, int depth);
+
 static bool const_varlike(Checker *c, uint32_t n, int depth)
 {
     uint32_t e2, e1;
@@ -685,6 +692,8 @@ static bool const_varlike(Checker *c, uint32_t n, int depth)
         return n > 0 && const_varlike(c, n - 1, depth + 1);
     case N_NUMBER:              /* e.g. an imaginary constant */
         return true;
+    case N_CALL:
+        return foldable_libcall(c, n, depth);
     case N_IDENT: {
         uint32_t id = cnode_ident(c, n), ref = lookup_ord(c, id);
         CSym *s;
@@ -731,7 +740,42 @@ static bool const_varlike(Checker *c, uint32_t n, int depth)
     }
 }
 
-/* 2: a constant gcc can emit; 1: constant but not computable at load time;
+static bool foldable_libcall(Checker *c, uint32_t n, int depth)
+{
+    static const char *const fns[] = {"atan", "nan", "sin", "cos", "tan",
+        "exp", "log", "sqrt", "fabs", "floor", "ceil", "pow", "fmod",
+        "atan2", "asin", "acos", "sinh", "cosh", "tanh", "log10", "exp2",
+        "cbrt", "trunc", "round", "copysign", "fmin", "fmax", "hypot"};
+    uint32_t k[9], nk, j, id, ref;
+    char name[32];
+    size_t len, m;
+    if (ntag(c, n) != N_CALL)
+        return false;
+    nk = node_children(c->nodes, n, k, 9);
+    if (!nk || nk > 8 || ntag(c, k[0]) != N_IDENT)
+        return false;
+    id = cnode_ident(c, k[0]);
+    ref = lookup_ord(c, id);
+    if (ref == SYM_NONE || csym(c, ref)->kind != CS_FUNC)
+        return false;
+    snprintf(name, sizeof name, "%s", cident(c, id));
+    len = strlen(name);
+    for (m = 0; m < sizeof fns / sizeof *fns; m++)
+        if (!strcmp(name, fns[m]) ||
+            (len > 1 && (name[len - 1] == 'f' || name[len - 1] == 'l') &&
+             !strncmp(name, fns[m], len - 1) && !fns[m][len - 1]))
+            break;
+    if (m == sizeof fns / sizeof *fns)
+        return false;
+    for (j = 1; j < nk; j++)
+        if (ntag(c, k[j]) != N_STRING && !const_varlike(c, k[j], depth + 1))
+            return false;
+    g_pedw = true;
+    return true;
+}
+
+/* 3: constant after gcc's folding of a library call (pedwarn); 2: a
+ * constant gcc can emit; 1: constant but not computable at load time;
  * 0: not constant.  vt: the value's type after array decay. */
 static int const_class(Checker *c, uint32_t n, TypeId vt, TypeId target)
 {
@@ -756,7 +800,10 @@ static int const_class(Checker *c, uint32_t n, TypeId vt, TypeId target)
     case K_ICE: case K_FOLD: case K_FLOAT: case K_ERR:
         return 2;
     case K_NONE:
-        return const_varlike(c, n, 0) ? 2 : 0;
+        g_pedw = false;
+        if (!const_varlike(c, n, 0))
+            return 0;
+        return g_pedw ? 3 : 2;
     default:
         break;
     }
@@ -889,9 +936,15 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
                  "expression");
             return false;
         }
-        if (reqc && v->node != NOB && const_class(c, v->node, vt, type) != 2) {
-            ierr(c, x, lt, "initializer element is not constant");
-            return false;
+        if (reqc && v->node != NOB) {
+            int cc = const_class(c, v->node, vt, type);
+            if (cc == 3) {
+                ipdt(c, x, lt, "initializer element is not a constant "
+                     "expression");
+            } else if (cc != 2) {
+                ierr(c, x, lt, "initializer element is not constant");
+                return false;
+            }
         }
         return true;
     }
@@ -917,6 +970,9 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
                 ierr(c, x, lt, "initializer element is not constant");
                 return false;
             }
+            if (cls == 3)
+                ipdt(c, x, lt, "initializer element is not a constant "
+                     "expression");
             if (cls == 1) {
                 ierr(c, x, lt, "initializer element is not computable at "
                      "load time");

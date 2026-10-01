@@ -1,0 +1,9 @@
+init_const_fold.c:7:19: warning: initializer element is not a constant expression [-Wpedantic]
+    7 | const double pi = 4 * atan(1.0);
+      |                   ^
+init_const_fold.c:8:19: warning: initializer element is not a constant expression [-Wpedantic]
+    8 | const double nn = nan("");
+      |                   ^
+init_const_fold.c:9:20: error: initializer element is not constant
+    9 | const double bad = e(1.0);
+      |                    ^

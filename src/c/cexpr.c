@@ -4282,6 +4282,15 @@ static bool addr_val(Checker *c, uint32_t n, uint32_t *cb, uint64_t *cv)
     return false;
 }
 
+/* A base symbol whose address may equal another's (weak) or is not
+ * an object or function. */
+static bool addr_weak(Checker *c, uint32_t cb)
+{
+    CSym *s = csym(c, cb - 1);
+    return (s->kind != CS_OBJ && s->kind != CS_FUNC) ||
+           (s->flags & CSF_WEAK);
+}
+
 static bool from_macro(Checker *c, uint32_t tok);
 
 /* ---- -Wall / -Wextra expression warnings -------------------------------------
@@ -5374,6 +5383,9 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                 }
             } else if (eq && ((cba == 0 && va == 0) || (cbb == 0 && vb == 0))) {
                 r = op == P_NE;
+            } else if (eq && cba && cbb && !(cba & CB_NODE) && !(cbb & CB_NODE) &&
+                       !addr_weak(c, cba) && !addr_weak(c, cbb)) {
+                r = op == P_NE;         /* distinct declared objects */
             }
         }
         if (r >= 0) {
