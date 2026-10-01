@@ -21,13 +21,13 @@ err_unknown_type.c:10:1: error: expected identifier or '(' before '+' token
       | ^
 DECL 'foo' 1:1
   SPECS 'foo' 1:1
-    TYPEDEF_NAME 'foo' 1:1
+    TYPEDEF_NAME 'foo' 1:1 [1]
   INIT_DECL 'x' 1:5
     NAME 'x' 1:5
     DECLARED 'x' 1:5
 DECL 'foo' 2:1
   SPECS 'foo' 2:1
-    TYPEDEF_NAME 'foo' 2:1
+    TYPEDEF_NAME 'foo' 2:1 [1]
   INIT_DECL 'y' 2:6
     PTR '*' 2:5
       NAME 'y' 2:6
@@ -40,7 +40,7 @@ DECL 'void' 3:1 [1]
     SCOPE '(' 3:7
     PARAM 'size_t' 3:8
       SPECS 'size_t' 3:8
-        TYPEDEF_NAME 'size_t' 3:8
+        TYPEDEF_NAME 'size_t' 3:8 [1]
       NAME 'n' 3:15
     PARAM 'int' 3:18
       SPECS 'int' 3:18
@@ -54,7 +54,7 @@ DECL 'struct' 4:1
       OPEN '{' 4:10
       MEMBER_DECL 'bar' 4:12
         SPECS 'bar' 4:12
-          TYPEDEF_NAME 'bar' 4:12
+          TYPEDEF_NAME 'bar' 4:12 [1]
         MEMBER 'm' 4:16
           NAME 'm' 4:16
 FUNC_DEF 'void' 5:1
@@ -73,13 +73,13 @@ FUNC_DEF 'void' 5:1
     BODY '{' 5:14
     DECL 'baz' 6:5
       SPECS 'baz' 6:5
-        TYPEDEF_NAME 'baz' 6:5
+        TYPEDEF_NAME 'baz' 6:5 [1]
       INIT_DECL 'z' 6:9
         NAME 'z' 6:9
         DECLARED 'z' 6:9
     DECL 'baz' 7:5
       SPECS 'baz' 7:5
-        TYPEDEF_NAME 'baz' 7:5
+        TYPEDEF_NAME 'baz' 7:5 [1]
       INIT_DECL 'w' 7:10
         PTR '*' 7:9
           NAME 'w' 7:10

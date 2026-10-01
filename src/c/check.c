@@ -367,7 +367,7 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     c->u = u;
     c->nodes = u->nodes;
     c->nn = u->nnodes;
-    c->quiet = had_errors;
+    c->quiet = had_errors && !(u->nnodes && u->nodes[u->nnodes - 1].tag == N_FUNC_DEF);
     c->fold_pending = 0;
     if (c->cs)
         csum_unit_begin(c);

@@ -1,0 +1,27 @@
+kr_cascade.c:4:1: error: expected declaration specifiers before 'alignas'
+    4 | alignas (int) int i;
+      | ^
+kr_cascade.c:6:14: error: expected '=', ',', ';', 'asm' or '__attribute__' before '{' token
+    6 | void g(void) { }
+      |              ^
+kr_cascade.c:7:7: error: unknown type name 'unknown_t'
+    7 | int h(unknown_t x) int y;
+      |       ^
+kr_cascade.c:8:6: error: expected '{' at end of input
+    8 | int k;
+      |      ^
+kr_cascade.c:1:8: warning: return type defaults to 'int' [-Wimplicit-int]
+    1 | extern alignas (max_align_t) char c;
+      |        ^
+kr_cascade.c:2:13: error: storage class specified for parameter 'c'
+    2 | extern char c;
+      |             ^
+kr_cascade.c:2:13: error: redefinition of parameter 'c'
+    2 | extern char c;
+      |             ^
+kr_cascade.c:1:35: note: previous definition of 'c' with type 'char'
+    1 | extern alignas (max_align_t) char c;
+      |                                   ^
+kr_cascade.c:5:12: error: storage class specified for parameter 'i'
+    5 | extern int i;
+      |            ^

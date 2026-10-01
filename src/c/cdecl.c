@@ -999,7 +999,9 @@ static void specs_visit(Checker *c, uint32_t i)
         case N_TYPEDEF_NAME: {
             uint32_t ref = lookup_ord(c, cnode_ident(c, n));
             TypeId t = ERRT;
-            if (ref != SYM_NONE && csym(c, ref)->kind == CS_TYPEDEF)
+            if (nd->flags & NF_ERROR) /* an unknown type name, diagnosed */
+                ref = SYM_NONE;
+            else if (ref != SYM_NONE && csym(c, ref)->kind == CS_TYPEDEF)
                 t = csym(c, ref)->ty;
             else if (ref == SYM_NONE || csym(c, ref)->kind != CS_TYPEDEF)
                 cerror(c, iloc(c, nd->tok), "'%s' fails to be a typedef or "

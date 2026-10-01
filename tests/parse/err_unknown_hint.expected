@@ -57,32 +57,32 @@ DECL 'typedef' 4:1
     DECLARED 'myint' 4:13
 DECL 'S' 5:1
   SPECS 'S' 5:1
-    TYPEDEF_NAME 'S' 5:1
+    TYPEDEF_NAME 'S' 5:1 [1]
   INIT_DECL 's1' 5:3
     NAME 's1' 5:3
     DECLARED 's1' 5:3
 DECL 'U' 6:1
   SPECS 'U' 6:1
-    TYPEDEF_NAME 'U' 6:1
+    TYPEDEF_NAME 'U' 6:1 [1]
   INIT_DECL 'u1' 6:4
     PTR '*' 6:3
       NAME 'u1' 6:4
     DECLARED 'u1' 6:4
 DECL 'E' 7:1
   SPECS 'E' 7:1
-    TYPEDEF_NAME 'E' 7:1
+    TYPEDEF_NAME 'E' 7:1 [1]
   INIT_DECL 'e2' 7:3
     NAME 'e2' 7:3
     DECLARED 'e2' 7:3
 DECL 'myin' 8:1
   SPECS 'myin' 8:1
-    TYPEDEF_NAME 'myin' 8:1
+    TYPEDEF_NAME 'myin' 8:1 [1]
   INIT_DECL 'x1' 8:6
     NAME 'x1' 8:6
     DECLARED 'x1' 8:6
 DECL 'singed' 9:1
   SPECS 'singed' 9:1
-    TYPEDEF_NAME 'singed' 9:1
+    TYPEDEF_NAME 'singed' 9:1 [1]
   INIT_DECL 'y1' 9:8
     NAME 'y1' 9:8
     DECLARED 'y1' 9:8
@@ -112,20 +112,20 @@ FUNC_DEF 'void' 10:1
               NAME 'a' 11:20
     DECL 'L' 12:5
       SPECS 'L' 12:5
-        TYPEDEF_NAME 'L' 12:5
+        TYPEDEF_NAME 'L' 12:5 [1]
       INIT_DECL 'l1' 12:7
         NAME 'l1' 12:7
         DECLARED 'l1' 12:7
     DECL 'myit' 13:5
       SPECS 'myit' 13:5
-        TYPEDEF_NAME 'myit' 13:5
+        TYPEDEF_NAME 'myit' 13:5 [1]
       INIT_DECL 'z' 13:10
         NAME 'z' 13:10
         DECLARED 'z' 13:10
   SCOPE_END '}' 14:1
 DECL 'L' 15:1
   SPECS 'L' 15:1
-    TYPEDEF_NAME 'L' 15:1
+    TYPEDEF_NAME 'L' 15:1 [1]
   INIT_DECL 'l2' 15:3
     NAME 'l2' 15:3
     DECLARED 'l2' 15:3

@@ -361,7 +361,7 @@ static void sync_top(Parser *p)
             break;
         if (t.t.punct == P_LBRACE)
             depth++;
-        else if (t.t.punct == P_RBRACE && depth > 0 && --depth == 0)
+        else if (t.t.punct == P_RBRACE && (depth == 0 || --depth == 0))
             break;
     }
 }
@@ -844,7 +844,7 @@ static void specs(Parser *p, Specs *s, Lookahead la)
             if (!s->type && unknown_type(p, ci(p), la)) {
                 /* as gcc: diagnosed, then parsed as if it were a type */
                 unknown_type_error(p, &t);
-                leaf(p, N_TYPEDEF_NAME, adv(p));
+                emit(p, N_TYPEDEF_NAME, adv(p), nmark(p), NF_ERROR);
                 s->type = true;
                 break;
             }
@@ -1957,7 +1957,7 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
         } else {
             uint32_t at0 = p->pos;
             expected(p, "declaration specifiers");
-            sync_stmt(p);
+            sync_top(p);
             if (p->pos == at0) /* gcc's skip consumes a stray '}' */
                 adv(p);
         }
@@ -2015,7 +2015,7 @@ static void declaration(Parser *p, bool top)
                 expected(p, "identifier or '('");
             else
                 expected(p, "declaration");
-            if (top)
+            if (top || p->kr_params)
                 sync_top(p);
             else
                 sync_stmt(p);
@@ -2034,7 +2034,7 @@ static void declaration(Parser *p, bool top)
         declarator_init(&d);
         declarator(p, DCL_NAMED, &d);
         if (d.failed) {
-            if (top)
+            if (top || p->kr_params)
                 sync_top(p);
             else
                 sync_stmt(p);
@@ -2043,7 +2043,7 @@ static void declaration(Parser *p, bool top)
         }
         if (d.name == NO_TOK) {
             expected(p, "identifier or '('");
-            if (top)
+            if (top || p->kr_params)
                 sync_top(p);
             else
                 sync_stmt(p);
@@ -2092,15 +2092,12 @@ static void declaration(Parser *p, bool top)
                                 tok_desc(p, ci(p), buf, sizeof buf));
             } else {
                 expected(p, "'=', ',', ';', 'asm' or '__attribute__'");
-                if (top)
+                if (top || p->kr_params)
                     sync_top(p);
                 else
                     sync_stmt(p);
             }
-            scope_declare(&p->scope, p->toks.data[d.name].t.aux,
-                          s.is_typedef ? SYM_TYPEDEF : SYM_ORDINARY);
-            leaf(p, N_DECLARED, d.name);
-            emit(p, N_INIT_DECL, d.name, is, 0);
+            /* gcc has not declared the name yet */
             emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
@@ -2120,7 +2117,7 @@ static void declaration(Parser *p, bool top)
     if (!accept(p, P_SEMI)) {
         expected(p, "',' or ';'");
         flags |= NF_ERROR;
-        if (top)
+        if (top || p->kr_params)
             sync_top(p);
         else
             sync_stmt(p);

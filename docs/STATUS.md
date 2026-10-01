@@ -52,6 +52,27 @@ layouts, gcc rules ported, walk design).
    goes at the end of the previous token unless an error is pending,
    Parser.err_live) and gcc's struct-member terminator lists: 7929/10063
    (78.8%), identical-header files 382/939.  Biggest known levers left:
+   Later the same day (8 commits on top): aligned/_Alignas wording; wide
+   string arrays by compatibility; block-scope `extern` of an incomplete
+   array merged with the file-scope declaration; unknown-type-name tag hint
+   and did-you-mean (typedefs + type keywords; Parser.tags, src/c/fuzzy.c
+   shared with the checker); gcc's K&R-mode cascade: a file-scope function
+   declarator not followed by `= , ; asm __attribute__` starts a definition
+   whose parameter declarations run to the next `{` (Parser.kr_params: no
+   definitions there, plain "expected '=', ..." errors, "expected
+   declaration specifiers" + gcc's skip), an error inside a parameter list
+   drops the declarator (DeclInfo.failed), a failed declarator list entry is
+   not declared, the fabricated unknown type name node carries NF_ERROR, and
+   function definitions with syntax errors are now checked (check.c:
+   quiet only for other units).  gcc.dg exact 7929 -> 8772 of 10063
+   (87.2%; cereal-only errors 846 -> 1020: precision 90%, recall 87%, F1
+   unchanged by the last step), identical headers 392/940, corpus 0/0.
+   Not done: did-you-mean for macro names (42 gcc.dg cases; needs the
+   macro table at the token's version in the checker, with read-set
+   consequences for P3), "expected ... at end of input" location (gcc
+   prints `N:` with no column at the line after the last), read-only
+   location expression text (43), sizeof of a member whose type is a
+   typedef (gcc drops the typedef name).
    (a) tokens from macro expansions: gcc reports at the spelling location
    inside the macro definition (20020103-1.c:22:7), cereal at the expansion
    point (37:3) -- about 500 gcc-only/cereal-only pairs; (b) "expected X"
