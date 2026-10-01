@@ -1957,6 +1957,10 @@ static void e_ident(Checker *c, uint32_t i)
     s = csym(c, ref);
     if (!in_has_attr(c, i))
         s->flags |= CSF_USED;
+    if (c->func_sym != SYM_NONE && !(ref & SYM_LOCAL) &&
+        (s->kind == CS_OBJ || s->kind == CS_FUNC) && s->linkage == LK_INTERNAL)
+        cdecl_record_inline_static(c, ctok_loc(c, c->nodes[i].tok), s->name,
+                                   false);
     cdep_use(c, cinput_loc(c, c->nodes[i].tok), s, &s->loc);
     switch (s->kind) {
     case CS_TYPEDEF:

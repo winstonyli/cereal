@@ -1,0 +1,9 @@
+inline_static.c:4:33: warning: 'n' is static but declared in inline function 'h' which is not static
+    4 | inline int h(void) { static int n; return n; }
+      |                                 ^
+inline_static.c:3:33: warning: 'f' is static but used in inline function 'g' which is not static
+    3 | inline int g(void) { return s + f(); }
+      |                                 ^
+inline_static.c:3:29: warning: 's' is static but used in inline function 'g' which is not static
+    3 | inline int g(void) { return s + f(); }
+      |                             ^

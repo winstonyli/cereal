@@ -58,6 +58,14 @@ typedef struct AName {
     char name[32];           /* without the __ affixes */
 } AName;
 
+/* A reference to / declaration of a static in an inline definition of a
+ * function with external linkage (C99 6.7.4p3), diagnosed at the end. */
+typedef struct InlStatic {
+    SrcLoc loc;
+    uint32_t fref, name;
+    bool modifiable;
+} InlStatic;
+
 typedef struct CSym {
     uint32_t name;           /* ident */
     uint8_t kind;            /* CSymKind */
@@ -287,6 +295,7 @@ struct Checker {
     uint32_t func_node;      /* the FUNC declarator of the definition */
     VEC(uint32_t) nested_undef; /* block-scope auto functions declared */
     VEC(uint32_t) tentative; /* file-scope objects to check at the end */
+    VEC(InlStatic) inl_statics; /* statics seen in extern inline functions */
     SrcLoc last_bol;         /* the last token that began a line */
     /* cdecl.c: the latest place gcc's parser set input_location to a token
      * itself (a tag name, an enumerator): the token's index in the TU's
@@ -424,6 +433,9 @@ void cdecl_body_scope(Checker *c, uint32_t scope);
 void cdecl_func_end(Checker *c, uint32_t scope_end);
 /* End of the TU: one entry of Checker.tentative. */
 void cdecl_finish_object(Checker *c, uint32_t ref);
+void cdecl_record_inline_static(Checker *c, SrcLoc loc, uint32_t name,
+                                bool modifiable);
+void cdecl_check_inline_statics(Checker *c);
 TypeId type_of_typename(Checker *c, uint32_t i);   /* a TYPE_NAME node */
 
 /* Array parameters redeclared with other bounds (cparm.c). */

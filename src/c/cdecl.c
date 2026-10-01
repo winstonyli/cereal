@@ -505,6 +505,20 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 if ((rc->flags & RF_USER_ALIGN) && rc->align > a->aligned)
                     a->aligned = rc->align;
             }
+        } else if ((!strcmp(name, "constructor") ||
+                    !strcmp(name, "destructor")) && arg != NO_NODE) {
+            int64_t pv = 0;
+            SrcLoc il = cinput_loc(c, c->nodes[item].tok);
+            bool isc = name[0] == 'c';
+            if (!(c->ck[arg] == K_ICE || c->ck[arg] == K_FOLD) ||
+                !type_is_integer(TT, c->ty[arg]) ||
+                (pv = cexpr_sval(c, arg)) < 0 || pv > 65535)
+                cerror(c, il, "%s priorities must be integers from 0 to "
+                       "65535 inclusive", isc ? "constructor" : "destructor");
+            else if (pv <= 100)
+                cwarn(c, il, "prio-ctor-dtor", "%s priorities from 0 to 100 "
+                      "are reserved for the implementation",
+                      isc ? "constructor" : "destructor");
         } else if (!strcmp(name, "ms_struct")) {
             a->ms = 1;
         } else if (!strcmp(name, "gcc_struct")) {
@@ -2970,10 +2984,12 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             type = qualify(c, type, type_quals, ltok);
         if (sp->is_inline)
             cpedwarn(c, loc, "", "parameter '%s' declared 'inline'",
-                     name ? cident(c, name) : "");
+                     name && *cident(c, name) ? cident(c, name)
+                                              : "({anonymous})");
         if (sp->is_noreturn)
             cpedwarn(c, loc, "", "parameter '%s' declared '_Noreturn'",
-                     name ? cident(c, name) : "");
+                     name && *cident(c, name) ? cident(c, name)
+                                              : "({anonymous})");
         g->what = GD_PARM;
         g->array_param = arrp;
         g->ty = type;
@@ -4240,6 +4256,13 @@ static void declared_visit(Checker *c, uint32_t i)
                      g.what == GD_FUNC ? 'f' :
                      file ? 'g' : s.sc == SC_STATIC ? 's' :
                      s.sc == SC_EXTERN ? 'g' : 'a', !file, 0, ltok);
+    if (s.kind == CS_OBJ && !file && (s.flags & CSF_TREE_STATIC)) {
+        TypeId et = s.ty;
+        while (is_arr(c, et))
+            et = type_base(TT, type_canon(TT, et));
+        if (!(TYPE_QUALS(et) & TQ_CONST))
+            cdecl_record_inline_static(c, s.loc, s.name, true);
+    }
     if (a.cleanup && a.cleanup_arg && s.kind == CS_OBJ && !file &&
         s.sc != SC_STATIC && s.sc != SC_EXTERN && !kr) {
         /* handle_cleanup_attribute: a function taking the variable's address;
@@ -6590,6 +6613,37 @@ void cdecl_body_scope(Checker *c, uint32_t scope)
 }
 
 /* ---- the end of the translation unit ----------------------------------------- */
+
+void cdecl_record_inline_static(Checker *c, SrcLoc loc, uint32_t name,
+                                bool modifiable)
+{
+    InlStatic is;
+    if (c->func_sym == SYM_NONE || !extern_inline(csym(c, c->func_sym)))
+        return;
+    is.loc = loc;
+    is.fref = c->func_sym;
+    is.name = name;
+    is.modifiable = modifiable;
+    vec_push(&c->inl_statics, is);
+}
+
+/* check_inline_statics: newest first, and only the functions that are still
+ * inline definitions. */
+void cdecl_check_inline_statics(Checker *c)
+{
+    size_t k;
+    for (k = c->inl_statics.len; k-- > 0;) {
+        const InlStatic *is = &c->inl_statics.data[k];
+        const CSym *f = csym(c, is->fref);
+        if (!extern_inline(f))
+            continue;
+        cpedwarn(c, is->loc, "", is->modifiable
+                 ? "'%s' is static but declared in inline function '%s' which "
+                   "is not static"
+                 : "'%s' is static but used in inline function '%s' which is "
+                   "not static", cident(c, is->name), sname(c, f));
+    }
+}
 
 void cdecl_finish_object(Checker *c, uint32_t ref)
 {

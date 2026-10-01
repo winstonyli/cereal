@@ -1,0 +1,9 @@
+ctor_priority.c:1:1: warning: constructor priorities from 0 to 100 are reserved for the implementation [-Wprio-ctor-dtor]
+    1 | void a(void) __attribute__((constructor(50)));
+      | ^
+ctor_priority.c:2:1: error: destructor priorities must be integers from 0 to 65535 inclusive
+    2 | void b(void) __attribute__((destructor(70000)));
+      | ^
+ctor_priority.c:3:1: error: constructor priorities must be integers from 0 to 65535 inclusive
+    3 | void c(void) __attribute__((constructor(-1)));
+      | ^

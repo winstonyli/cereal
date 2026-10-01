@@ -493,6 +493,7 @@ Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
 void checker_finish(Checker *c)
 {
     size_t k;
+    cdecl_check_inline_statics(c);
     for (k = 0; k < c->tentative.len; k++)
         cdecl_finish_object(c, c->tentative.data[k]);
     if (c->opt.dump)
@@ -504,6 +505,7 @@ void checker_free(Checker *c)
     if (!c)
         return;
     vec_free(&c->undecl);
+    vec_free(&c->inl_statics);
     for (uint32_t i = 0; i < c->dep_msgs.len; i++)
         free(c->dep_msgs.data[i]);
     vec_free(&c->dep_msgs);

@@ -1,0 +1,75 @@
+pragma_message.c:3:9: warning: expected a string after '#pragma message' [-Wpragmas]
+    3 | #pragma message                  /* { dg-warning "expected a string" } */
+      |         ^
+pragma_message.c:4:9: warning: expected a string after '#pragma message' [-Wpragmas]
+    4 | #pragma message 0                /* { dg-warning "expected a string" } */
+      |         ^
+pragma_message.c:5:9: warning: expected a string after '#pragma message' [-Wpragmas]
+    5 | #pragma message id               /* { dg-warning "expected a string" } */
+      |         ^
+pragma_message.c:6:9: warning: expected a string after '#pragma message' [-Wpragmas]
+    6 | #pragma message (                /* { dg-warning "expected a string" } */
+      |         ^
+pragma_message.c:7:9: warning: expected a string after '#pragma message' [-Wpragmas]
+    7 | #pragma message (0               /* { dg-warning "expected a string" } */
+      |         ^
+pragma_message.c:8:9: warning: expected a string after '#pragma message' [-Wpragmas]
+    8 | #pragma message (id              /* { dg-warning "expected a string" } */
+      |         ^
+pragma_message.c:9:9: warning: expected a string after '#pragma message' [-Wpragmas]
+    9 | #pragma message ()               /* { dg-warning "expected a string" } */
+      |         ^
+pragma_message.c:10:9: warning: expected a string after '#pragma message' [-Wpragmas]
+   10 | #pragma message (0)              /* { dg-warning "expected a string" } */
+      |         ^
+pragma_message.c:11:9: warning: expected a string after '#pragma message' [-Wpragmas]
+   11 | #pragma message (id)             /* { dg-warning "expected a string" } */
+      |         ^
+pragma_message.c:18:17: warning: missing terminating " character
+   18 | #pragma message "
+      |                 ^
+pragma_message.c:18:17: error: missing terminating " character
+   18 | #pragma message "
+      |                 ^
+pragma_message.c:18:9: warning: expected a string after '#pragma message' [-Wpragmas]
+   18 | #pragma message "
+      |         ^
+pragma_message.c:21:17: warning: missing terminating " character
+   21 | #pragma message "Bad 1
+      |                 ^~~~~~
+pragma_message.c:21:17: error: missing terminating " character
+   21 | #pragma message "Bad 1
+      |                 ^~~~~~
+pragma_message.c:21:9: warning: expected a string after '#pragma message' [-Wpragmas]
+   21 | #pragma message "Bad 1
+      |         ^
+pragma_message.c:24:18: warning: missing terminating " character
+   24 | #pragma message ("Bad 2
+      |                  ^~~~~~
+pragma_message.c:24:18: error: missing terminating " character
+   24 | #pragma message ("Bad 2
+      |                  ^~~~~~
+pragma_message.c:24:9: warning: expected a string after '#pragma message' [-Wpragmas]
+   24 | #pragma message ("Bad 2
+      |         ^
+pragma_message.c:27:9: warning: malformed '#pragma message', ignored [-Wpragmas]
+   27 | #pragma message ("Bad 3"
+      |         ^
+pragma_message.c:30:20: warning: junk at end of '#pragma message' [-Wpragmas]
+   30 | #pragma message "" junk
+      |                    ^
+pragma_message.c:33:22: warning: junk at end of '#pragma message' [-Wpragmas]
+   33 | #pragma message ("") junk
+      |                      ^
+pragma_message.c:39:9: note: #pragma message: Okay 1
+   39 | #pragma message "Okay 1"         /* { dg-message "Okay 1" } */
+      |         ^
+pragma_message.c:40:9: note: #pragma message: Okay 2
+   40 | #pragma message ("Okay 2")       /* { dg-message "Okay 2" } */
+      |         ^
+pragma_message.c:42:9: note: #pragma message: Okay 3
+   42 | #pragma message ("Okay " THREE)  /* { dg-message "Okay 3" } */
+      |         ^
+pragma_message.c:45:22: note: #pragma message: TODO - Okay 4
+   45 | #define DO_PRAGMA(x) _Pragma (#x) /* { dg-line pragma_loc1 } */
+      |                      ^

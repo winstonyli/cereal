@@ -76,6 +76,10 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         vec_push(&o->wflags, "pedantic");
     } else if (!strcmp(a, "-trigraphs")) {
         o->pp.lex.trigraphs = true;
+    } else if (!strcmp(a, "-Wsystem-headers")) {
+        o->show_system = true;
+    } else if (!strcmp(a, "-Wno-system-headers")) {
+        o->show_system = false;
     } else if (!strncmp(a, "-W", 2) && a[2]) {
         vec_push(&o->wflags, a + 2);
     } else if (!strcmp(a, "-fdiagnostics-format=json")) {

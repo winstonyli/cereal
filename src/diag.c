@@ -147,6 +147,8 @@ static const DiagOption options[] = {
     {"shadow", "c", DL_WARNING, false, 0, "declaration shadows another"},
     {"redundant-decls", "c", DL_WARNING, false, 0, "redundant redeclaration in the same scope"},
     {"nested-externs", "c", DL_WARNING, false, 0, "extern declaration inside a function"},
+    {"pragmas", "pp", DL_WARNING, true, 0, "malformed or misused pragma"},
+    {"prio-ctor-dtor", "c", DL_WARNING, true, 0, "constructor/destructor priority reserved for the implementation"},
     {"absolute-value", "c", DL_WARNING, false, DO_EXTRA, "abs/fabs/cabs called with an argument of the wrong kind"},
     {"bad-function-cast", "c", DL_WARNING, false, 0, "cast of a call to a non-matching type"},
     {"cast-qual", "c", DL_WARNING, false, 0, "cast removes a qualifier from the target type"},

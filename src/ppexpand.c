@@ -1023,6 +1023,57 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                 PP_EMIT(pp, checkpoint, PLOC(&toks.t[0]), pp->seq);
             }
         }
+    } else if (word(pp, toks, 0, "message")) {
+        /* handle_pragma_message: [(] string... [)] then junk; macros in the
+         * operands are expanded */
+        TokBuf ex;
+        TokSpan rest;
+        const Tok *et;
+        uint32_t k = 0, en, nstr = 0;
+        bool paren;
+        StrBuf msg = {0};
+        rest.t = toks.t + 1;
+        rest.n = toks.n - 1;
+        for (k = 0; k < rest.n; k++) {
+            const Tok *t = &rest.t[k];
+            if (t->kind == TK_OTHER && (t->flags & TF_UNTERMINATED)) {
+                pp_warn_at(pp, t, "",
+                           "missing terminating \" character");
+                pp_error_at(pp, t, "missing terminating \" character");
+            }
+        }
+        k = 0;
+        tokbuf_init(pp, &ex, rest.n + 8);
+        pp_expand_into(pp, rest, &ex);
+        et = ex.t;
+        en = ex.len;
+        paren = en && tok_is_punct(&et[0], P_LPAREN);
+        if (paren)
+            k++;
+        while (k < en && et[k].kind == TK_STRING) {
+            const Tok *t = &et[k++];
+            nstr++;
+            if (t->len >= 2)
+                sb_putn(&msg, pp_text(pp, t) + 1, t->len - 2);
+        }
+        if (!nstr) {
+            diag_report(pp->diag, DL_WARNING, "pragmas", PLOC(&toks.t[0]),
+                        "expected a string after '#pragma message'");
+        } else if (paren && !(k < en && tok_is_punct(&et[k], P_RPAREN))) {
+            diag_report(pp->diag, DL_WARNING, "pragmas", PLOC(&toks.t[0]),
+                        "malformed '#pragma message', ignored");
+        } else {
+            if (paren)
+                k++;
+            if (k < en)
+                diag_report(pp->diag, DL_WARNING, "pragmas", PLOC(&et[k]),
+                            "junk at end of '#pragma message'");
+            if (msg.len)
+                diag_report(pp->diag, DL_NOTE, "", PLOC(&toks.t[0]),
+                            "#pragma message: %.*s", (int)msg.len, msg.data);
+        }
+        sb_free(&msg);
+        tokbuf_release(pp, &ex);
     } else if (toks.n) {
         diag_report(pp->diag, DL_WARNING, "unknown-pragma", PLOC(&toks.t[0]),
                     "unknown pragma ignored");
