@@ -1,0 +1,15 @@
+cxx_compat_kw.c:2:5: warning: identifier "and" is a special operator name in C++ [-Wc++-compat]
+    2 | int and;
+      |     ^~~
+cxx_compat_kw.c:3:5: warning: identifier 'class' conflicts with C++ keyword [-Wc++-compat]
+    3 | int class;
+      |     ^
+cxx_compat_kw.c:4:5: warning: identifier 'new' conflicts with C++ keyword [-Wc++-compat]
+    4 | int new, delete;
+      |     ^
+cxx_compat_kw.c:4:10: warning: identifier 'delete' conflicts with C++ keyword [-Wc++-compat]
+    4 | int new, delete;
+      |          ^
+cxx_compat_kw.c:5:16: warning: identifier 'template' conflicts with C++ keyword [-Wc++-compat]
+    5 | struct S { int template; } not_a_kw;
+      |                ^

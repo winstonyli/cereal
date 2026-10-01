@@ -92,6 +92,23 @@ static void check_poison_tok(PP *pp, const Tok *t)
         pp_error_at(pp, t, "attempt to use poisoned \"%s\"", id->str);
 }
 
+/* libcpp's -Wc++-compat: C++ operator names used as identifiers. */
+static void check_cxx_opname(PP *pp, const Tok *t)
+{
+    static const char *const ops[] = {"and", "and_eq", "bitand", "bitor",
+        "compl", "not", "not_eq", "or", "or_eq", "xor", "xor_eq"};
+    Ident *id = ident_by_id(pp->in, t->aux);
+    size_t k;
+    if (id->len > 6 || id->len < 2)
+        return;
+    for (k = 0; k < sizeof ops / sizeof *ops; k++)
+        if (!strcmp(id->str, ops[k]) && diag_enabled(pp->diag, "c++-compat")) {
+            pp_warn_at(pp, t, "c++-compat", "identifier \"%s\" is a special "
+                       "operator name in C++", id->str);
+            return;
+        }
+}
+
 static void check_poison(PP *pp, TokSpan s)
 {
     uint32_t i;
@@ -161,6 +178,8 @@ TokSrc pp_read_raw(PP *pp, Tok *t)
                 cell_reads_note(pp->reads, t->aux, pp->version_item);
             if (!reread && pp->mt->npoison)
                 check_poison_tok(pp, t);
+            if (!reread)
+                check_cxx_opname(pp, t);
         }
         pp->tok_exp_loc = t->loc;
         pp->tok_root_obj = false;
@@ -770,6 +789,12 @@ static TokSpan read_line(PP *pp)
     s.n = pp->line.len;
     if (pp->dir_poison)
         check_poison(pp, s);
+    if (diag_enabled(pp->diag, "c++-compat")) {
+        uint32_t k;
+        for (k = 0; k < s.n; k++)
+            if (s.t[k].kind == TK_IDENT)
+                check_cxx_opname(pp, &s.t[k]);
+    }
     return s;
 }
 

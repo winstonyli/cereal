@@ -637,6 +637,12 @@ static bool inhibited(Checker *c, uint32_t i, bool fold)
     return false;
 }
 
+bool cexpr_cxx_compat(Checker *c, uint32_t node)
+{
+    return diag_enabled(c->diag, "c++-compat") &&
+           (node == NO_NODE || !cexpr_in_extension(c, node));
+}
+
 bool cexpr_in_extension(Checker *c, uint32_t i)
 {
     uint32_t p;
@@ -2300,6 +2306,35 @@ static void conv_diag(Conv *x, int rk, const char *opt, char (*m)[640],
         cnote(c, d, l, "(near initialization for '%s')", x->ci->near);
 }
 
+/* comptypes_internal's enum_and_int_p: compatible types that differ in
+ * being an enum on one side and an integer type on the other. */
+bool cexpr_enum_int_mix(Checker *c, TypeId a, TypeId b, int depth)
+{
+    TypeKind ka, kb;
+    a = type_canon(TT, a);
+    b = type_canon(TT, b);
+    ka = tkind(c, a);
+    kb = tkind(c, b);
+    if ((ka == TY_ENUM) != (kb == TY_ENUM))
+        return type_is_integer(TT, a) && type_is_integer(TT, b);
+    if (ka != kb || depth > 8)
+        return false;
+    if (ka == TY_PTR || ka == TY_ARRAY)
+        return cexpr_enum_int_mix(c, type_base(TT, a), type_base(TT, b), depth + 1);
+    if (ka == TY_FUNC) {
+        uint32_t k, n = type_ent(TT, a)->n;
+        if (n != type_ent(TT, b)->n)
+            return false;
+        if (cexpr_enum_int_mix(c, type_base(TT, a), type_base(TT, b), depth + 1))
+            return true;
+        for (k = 0; k < n; k++)
+            if (cexpr_enum_int_mix(c, type_params(TT, a)[k], type_params(TT, b)[k],
+                             depth + 1))
+                return true;
+    }
+    return false;
+}
+
 /* comp_target_types of two pointer types (a pedantic note for arrays of
  * differently qualified elements). */
 static int comp_target(Conv *x, TypeId lt, TypeId rt)
@@ -2311,6 +2346,10 @@ static int comp_target(Conv *x, TypeId lt, TypeId rt)
     if (is_array(c, mvl) && is_array(c, mvr))
         val_ped = type_compatible(TT, mvl, mvr);
     val = type_compatible(TT, mvt(c, mvl), mvt(c, mvr));
+    if (val && cexpr_cxx_compat(c, x->expr) &&
+        cexpr_enum_int_mix(c, mvl, mvr, 0))
+        cwarn(c, x->loc, "c++-compat", "pointer target types incompatible in "
+              "C++");
     if (val && !val_ped)
         cpedantic(c, x->loc, "invalid use of pointers to arrays with "
                   "different qualifiers in ISO C before C2X");
@@ -2472,6 +2511,17 @@ static void conv_arith(Conv *x)
 static TypeId orig_type(Checker *c, uint32_t e)
 {
     uint32_t s = strip_paren(c, e);
+    if (s != NO_NODE && ntag(c, s) == N_COND) {
+        /* c_parser_conditional_expression: both arms' original types, when
+         * they agree */
+        uint32_t k[3], n = nkids(c, s, k, 3);
+        if (n >= 2) {
+            TypeId t1 = orig_type(c, k[n - 2]), t2 = orig_type(c, k[n - 1]);
+            if (mainv(c, t1) == mainv(c, t2))
+                return t1;
+        }
+        return rvt(c, s);
+    }
     if (s != NO_NODE && ntag(c, s) == N_IDENT) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, s));
         if (ref != SYM_NONE && csym(c, ref)->kind == CS_ENUMCONST)
@@ -2522,6 +2572,25 @@ bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
     kl = tkind(c, cl);
     kr = tkind(c, cr);
 
+    if (cexpr_cxx_compat(c, expr) && kl == TY_ENUM &&
+        mainv(c, orig_type(c, expr)) != mainv(c, lt)) {
+        sp(m[CONV_ARG], "enum conversion when passing argument %d of '%s' is "
+           "invalid in C++", pn, fn);
+        if (ci->lhs_bitfield) {
+            sp(m[CONV_ASSIGN], "enum conversion in assignment is invalid in "
+               "C++");
+            sp(m[CONV_INIT], "enum conversion in initialization is invalid in "
+               "C++");
+        } else {
+            sp(m[CONV_ASSIGN], "enum conversion from %s to %s in assignment "
+               "is invalid in C++", type_q(TT, rt), type_q(TT, lt));
+            sp(m[CONV_INIT], "enum conversion from %s to %s in initialization "
+               "is invalid in C++", type_q(TT, rt), type_q(TT, lt));
+        }
+        sp(m[CONV_RETURN], "enum conversion from %s to %s in return is "
+           "invalid in C++", type_q(TT, rt), type_q(TT, lt));
+        conv_diag(&x, RK_PED, "c++-compat", m, true);
+    }
     if (diag_enabled(c->diag, "enum-conversion")) {
         TypeId ot = orig_type(c, expr);
         if (tkind(c, ot) == TY_ENUM && kl == TY_ENUM &&
@@ -2686,6 +2755,12 @@ bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
                     conv_diag(&x, RK_PED, "discarded-qualifiers", m, true);
                 }
             }
+            /* C++ has no implicit void * -> T *; a null pointer constant
+             * (NULL is usually (void *) 0) is tolerated */
+            if (rvoid && !x.npc && !lvoid && cexpr_cxx_compat(c, expr))
+                cwarn(c, x.loc, "c++-compat", "request for implicit conversion "
+                      "from %s to %s not permitted in C++", type_q(TT, rt),
+                      type_q(TT, lt));
         } else {
             T = type_q(TT, lt);
             R = type_q(TT, rt);
@@ -4337,6 +4412,10 @@ static void incdec(Checker *c, uint32_t i, uint32_t a, bool inc)
         set_err(c, i);
         return;
     }
+    if (tkind(c, t) == TY_ENUM && cexpr_cxx_compat(c, i))
+        cwarn(c, loc, "c++-compat", inc ? "increment of enumeration value is "
+              "invalid in C++" : "decrement of enumeration value is invalid in "
+              "C++");
     if (tkind(c, t) == TY_BOOL)
         cwarn(c, loc, "bool-operation", inc ? "increment of a boolean "
               "expression" : "decrement of a boolean expression");
@@ -5207,6 +5286,9 @@ static void e_va_arg(Checker *c, uint32_t i)
         set_err(c, i);
         return;
     }
+    if (tkind(c, t) == TY_ENUM && cexpr_cxx_compat(c, i))
+        cwarn(c, first_loc(c, k[1]), "c++-compat", "C++ requires promoted "
+              "type, not enum type, in 'va_arg'");
     c->ty[i] = t;
     c->ef[i] = EF_SIDE;
 }
@@ -7565,6 +7647,14 @@ static void e_cond(Checker *c, uint32_t i)
     ch = mid != NO_NODE ? mid : cond;
     t1 = rvt(c, ch);
     t2 = rvt(c, els);
+    if (cexpr_cxx_compat(c, i)) {
+        TypeId o1 = orig_type(c, ch), o2 = orig_type(c, els);
+        if (tkind(c, o1) == TY_ENUM && tkind(c, o2) == TY_ENUM &&
+            mainv(c, o1) != mainv(c, o2))
+            cwarn(c, cl, "c++-compat", "different enum types in conditional "
+                  "is invalid in C++: %s vs %s", type_q(TT, o1),
+                  type_q(TT, o2));
+    }
     c->ef[i] = (c->ef[cond] | c->ef[els] | (mid != NO_NODE ? c->ef[mid] : 0)) &
                EF_SIDE;
     if (mainv(c, t1) == mainv(c, t2) && !is_arith(c, t1)) {
@@ -7685,6 +7775,7 @@ static void e_assign(Checker *c, uint32_t i)
         memset(&ci, 0, sizeof ci);
         ci.context = CONV_ASSIGN;
         ci.loc = loc;
+        ci.lhs_bitfield = (c->ef[l] & EF_BITFIELD) != 0;
         if (op != P_ASSIGN) {
             /* a op= b: the operation first, then the conversion of its
              * result */

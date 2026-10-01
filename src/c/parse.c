@@ -19,6 +19,9 @@ static bool is_p(const PTok *t, Punct x);
 /* ---- tokens ------------------------------------------------------------- */
 
 /* Make toks[i] available; false past the end of the input. */
+/* c_lex_one_token's -Wc++-compat: a C++ keyword used as an identifier. */
+static void check_cxx_keyword(Parser *p, const Tok *t, size_t i);
+
 static bool fill(Parser *p, size_t i)
 {
     while (p->toks.len <= i) {
@@ -31,6 +34,8 @@ static bool fill(Parser *p, size_t i)
             return false;
         }
         vec_push(&p->toks, pt);
+        if (pt.t.kind == TK_IDENT && !p->unwind)
+            check_cxx_keyword(p, &pt.t, p->toks.len - 1);
         if (is_p(&pt, P_LBRACKET)) {    /* '[[': look one token ahead */
             size_t k = p->toks.len;
             if (fill(p, k) && is_p(&p->toks.data[k], P_LBRACKET))
@@ -300,6 +305,35 @@ static Diagnostic *perr_after_prev(Parser *p, uint32_t i, const char *fmt, ...)
     d = vperr(p, i, loc, fmt, ap);
     va_end(ap);
     return d;
+}
+
+static void check_cxx_keyword(Parser *p, const Tok *t, size_t i)
+{
+    static const char *const kw[] = {"alignas", "alignof", "bool", "catch",
+        "char8_t", "char16_t", "char32_t", "class", "consteval", "constexpr",
+        "constinit", "const_cast", "decltype", "delete", "dynamic_cast",
+        "explicit", "export", "false", "friend", "mutable", "namespace", "new",
+        "noexcept", "nullptr", "operator", "private", "protected", "public",
+        "reinterpret_cast", "static_assert", "static_cast", "template", "this",
+        "thread_local", "throw", "true", "try", "typename", "typeid", "using",
+        "virtual", "concept", "requires", "co_await", "co_yield", "co_return"};
+    size_t k, n = t->len;
+    const char *s;
+    if (n < 3 || n > 16 || !diag_enabled(p->diag, "c++-compat"))
+        return;
+    s = tok_text_raw(p->sm, p->in, t);
+    for (k = 0; k < sizeof kw / sizeof *kw; k++)
+        if (strlen(kw[k]) == n && !memcmp(s, kw[k], n)) {
+            PTok pt = p->toks.data[i];
+            void (*chain)(void *, SrcLoc **, int *) = p->diag->include_chain;
+            if (ckw_of(p, &pt))
+                return;
+            p->diag->include_chain = NULL;
+            diag_report(p->diag, DL_WARNING, "c++-compat", tok_loc(p, (uint32_t)i),
+                        "identifier '%s' conflicts with C++ keyword", kw[k]);
+            p->diag->include_chain = chain;
+            return;
+        }
 }
 
 static void pwarn(Parser *p, uint32_t i, const char *fmt, ...)

@@ -1,0 +1,39 @@
+cxx_compat.c:6:34: warning: enum conversion from 'enum E1' to 'enum E2' in return is invalid in C++ [-Wc++-compat]
+    6 | enum E2 conv(enum E1 e) { return e; }
+      |                                  ^
+cxx_compat.c:10:18: warning: enum conversion from 'enum E1' to 'enum E2' in initialization is invalid in C++ [-Wc++-compat]
+   10 |     enum E2 e2 = e1;
+      |                  ^
+cxx_compat.c:11:20: warning: enum conversion in initialization is invalid in C++ [-Wc++-compat]
+   11 |     struct S s = { B };
+      |                    ^
+cxx_compat.c:11:20: note: (near initialization for 's.f')
+   11 |     struct S s = { B };
+      |                    ^
+cxx_compat.c:15:14: warning: request for implicit conversion from 'void *' to 'int *' not permitted in C++ [-Wc++-compat]
+   15 |     int *q = vp;
+      |              ^
+cxx_compat.c:17:9: warning: enum conversion in assignment is invalid in C++ [-Wc++-compat]
+   17 |     t.f = e1;
+      |         ^
+cxx_compat.c:18:17: warning: different enum types in conditional is invalid in C++: 'enum E1' vs 'enum E2' [-Wc++-compat]
+   18 |     e2 = x ? e1 : e2;
+      |                 ^
+cxx_compat.c:18:8: warning: enum conversion from 'unsigned int' to 'enum E2' in assignment is invalid in C++ [-Wc++-compat]
+   18 |     e2 = x ? e1 : e2;
+      |        ^
+cxx_compat.c:19:7: warning: increment of enumeration value is invalid in C++ [-Wc++-compat]
+   19 |     e1++;
+      |       ^
+cxx_compat.c:20:7: warning: enum conversion when passing argument 1 of 'g' is invalid in C++ [-Wc++-compat]
+   20 |     g(e2);
+      |       ^
+cxx_compat.c:5:23: note: expected 'enum E1' but argument is of type 'enum E2'
+    5 | static void g(enum E1 e) { (void)e; }
+      |                       ^
+cxx_compat.c:22:25: warning: defining type in 'sizeof' expression is invalid in C++ [-Wc++-compat]
+   22 |     (void)sizeof(struct T { int a; });
+      |                         ^
+cxx_compat.c:23:11: warning: defining a type in a cast is invalid in C++ [-Wc++-compat]
+   23 |     (void)(struct U { int a; } *)0;
+      |           ^

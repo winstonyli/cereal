@@ -433,6 +433,7 @@ void cdecl_body_scope(Checker *c, uint32_t scope);
 void cdecl_func_end(Checker *c, uint32_t scope_end);
 /* End of the TU: one entry of Checker.tentative. */
 void cdecl_finish_object(Checker *c, uint32_t ref);
+bool cexpr_enum_int_mix(Checker *c, TypeId a, TypeId b, int depth);
 void cdecl_record_inline_static(Checker *c, SrcLoc loc, uint32_t name,
                                 bool modifiable);
 void cdecl_check_inline_statics(Checker *c);
@@ -481,6 +482,8 @@ bool cexpr_find_member(Checker *c, TypeId rec, uint32_t name, TypeId *ty,
                        uint64_t *off_bits, bool *bitfield);
 /* Is node i inside __extension__ (pedantic warnings off)? */
 bool cexpr_in_extension(Checker *c, uint32_t i);
+/* -Wc++-compat is on and node is not inside __extension__ */
+bool cexpr_cxx_compat(Checker *c, uint32_t node);
 bool cexpr_is_extension(Checker *c, uint32_t i);   /* an __extension__ unary */
 
 /* Implicit conversion to an object's type (gcc's convert_for_assignment,
@@ -524,6 +527,8 @@ typedef struct ConvInfo {
     /* CONV_ARG to an unprototyped builtin etc.: report as this warning
      * option instead of an error (NULL: normal). */
     const char *warnopt;
+    bool lhs_bitfield;       /* the target is a bit-field (gcc's -Wc++-compat
+                              * enum message then omits the types) */
 } ConvInfo;
 
 /* Checks the conversion of node expr (by gcc's rules for the context) to

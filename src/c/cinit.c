@@ -1062,6 +1062,9 @@ static void maybe_warn_string(Checker *c, CCtx *x, uint32_t lt, TypeId type,
 
 /* Returns false after an error.  x is NULL for the top level of a
  * brace-less initializer (no spelling stack). */
+/* set by the caller of digest while the target is a bit-field member */
+static bool digest_bitfield;
+
 static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
                    TypeId type, IVal *v)
 {
@@ -1103,6 +1106,10 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
                 if (n + 1 < v->strn)
                     iped(c, x, lt, "initializer-string for array of %s is "
                          "too long", type_q(TT, typ1));
+                else if (n < v->strn && cexpr_cxx_compat(c, v->node))
+                    cwarn(c, rloc(c, x, lt), "c++-compat", "initializer-string "
+                          "for array of %s is too long for C++",
+                          type_q(TT, typ1));
             }
             return true;
         } else if (type_is_integer(TT, typ1)) {
@@ -1113,7 +1120,9 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
     }
 
     /* any type can be initialized from an expression of the same type */
-    if (compat(c, mainv(c, vt), mainv(c, type)) ||
+    if ((compat(c, mainv(c, vt), mainv(c, type)) &&
+         !(tk == TY_PTR && cexpr_cxx_compat(c, v->node) &&
+           cexpr_enum_int_mix(c, vt, type, 0))) ||
         (tk == TY_ARRAY && compat(c, vt, type)) ||
         (tk == TY_VECTOR && compat(c, vt, type)) ||
         (tk == TY_PTR && is_arr(c, vt) &&
@@ -1159,6 +1168,7 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
         memset(&ci, 0, sizeof ci);
         ci.context = CONV_INIT;
         ci.loc = rloc(c, x, lt);
+        ci.lhs_bitfield = digest_bitfield;
         ci.near = x && x->path.len ? sb_cstr(&x->path) : NULL;
         if (!cexpr_assign_check(c, v->node, type, &ci))
             return false;
@@ -1413,7 +1423,7 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
         }
     }
     if (v.kind == V_EXPR && !v.digested) {
-        bool bf = false, had = false;
+        bool bf = false, had = false, ok;
         uint32_t bn = v.node;
         if (bn != NOB && (k == LV_REC || k == LV_UNI) && L->fi < L->nf &&
             (lf(c, L, L->fi)->flags & FF_BITFIELD)) {
@@ -1421,7 +1431,11 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             bf = true;
             c->ef[bn] |= EF_OVERFLOW;   /* the bit-field type reports it */
         }
-        if (!digest(c, x, lt, false, rq, type, &v)) {
+        digest_bitfield = (k == LV_REC || k == LV_UNI) && L->fi < L->nf &&
+                          (lf(c, L, L->fi)->flags & FF_BITFIELD);
+        ok = digest(c, x, lt, false, rq, type, &v);
+        digest_bitfield = false;
+        if (!ok) {
             if (bf && !had)
                 c->ef[bn] &= ~(uint64_t)EF_OVERFLOW;
             L->erroneous = true;

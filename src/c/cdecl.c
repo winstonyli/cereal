@@ -4655,6 +4655,40 @@ static void open_visit(Checker *c, uint32_t i)
         r->flags |= RF_DEFINING;
         rd.first_ec = open_tok + 1;
     }
+    if (cexpr_cxx_compat(c, st)) {
+        /* in_sizeof / in_typeof / in_alignof: the parser is inside one */
+        bool in_sz = false, in_ty = false, in_al = false;
+        uint32_t a;
+        for (a = c->par[st]; a != NO_NODE; a = c->par[a])
+            switch (ntag(c, a)) {
+            case N_SIZEOF_EXPR: case N_SIZEOF_TYPE: in_sz = true; break;
+            case N_TYPEOF: in_ty = true; break;
+            case N_ALIGNOF_EXPR: case N_ALIGNOF_TYPE: in_al = true; break;
+            default: break;
+            }
+        if (in_sz || in_ty || in_al)
+            cwarn(c, loc, "c++-compat", "defining type in '%s' expression is "
+                  "invalid in C++", in_sz ? "sizeof" : in_ty ? "typeof"
+                                                              : "alignof");
+    }
+    if (cexpr_cxx_compat(c, st)) {
+        /* c_cast_expr / the compound literal: the type name itself defines
+         * the tag (ctsk_tagdef) */
+        uint32_t a = c->par[st], prev = st;
+        for (; a != NO_NODE; prev = a, a = c->par[a]) {
+            unsigned tg = ntag(c, a);
+            if (tg == N_CAST || tg == N_COMPOUND_LIT) {
+                if (first_child(c, a) == prev)
+                    cwarn(c, tloc(c, cnode(c, a)->tok), "c++-compat",
+                          "defining a type in a %s is invalid in C++",
+                          tg == N_CAST ? "cast" : "compound literal");
+                break;
+            }
+            if (tg == N_STRUCT || tg == N_ENUM || tg == N_COMPOUND ||
+                tg == N_DECL || tg == N_FUNC_DEF)
+                break;
+        }
+    }
     rd.ty = t;
     rd.first = (uint32_t)c->fields.len;
     vec_push(&c->recs, rd);
