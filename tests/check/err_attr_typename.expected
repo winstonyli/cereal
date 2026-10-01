@@ -1,9 +1,6 @@
 err_attr_typename.c:1:17: error: expected expression before '[' token
     1 | int z = sizeof ([[]] int);
       |                 ^
-err_attr_typename.c:1:22: error: expected ')' before 'int'
-    1 | int z = sizeof ([[]] int);
-      |                      ^
 err_attr_typename.c:2:14: error: expected expression before '[' token
     2 | int w = (int)[[]];
       |              ^

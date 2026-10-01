@@ -1385,6 +1385,7 @@ static void postfix_tail(Parser *p, uint32_t start)
         if (p->nodes.len && p->err_live &&
             p->nodes.data[p->nodes.len - 1].tag == N_ERROR && !p->hush) {
             p->hush = true;
+            p->hushed = true;
             postfix_tail(p, start);
             p->hush = false;
             return;
@@ -1546,11 +1547,15 @@ static void primary(Parser *p)
                 emit(p, N_STMT_EXPR, lp, start, 0);
                 return;
             }
+            p->hushed = false;
             parse_expr(p);
             if (!at(p, P_RPAREN)) {
                 /* gcc: c_parser_skip_until_found(')'), balancing */
                 int depth = 0;
+                bool hush = p->hush;
+                p->hush = hush || p->hushed;    /* gcc: parser->error */
                 expect(p, P_RPAREN);
+                p->hush = hush;
                 while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
                        !at(p, P_LBRACE)) {
                     if (at(p, P_LPAREN) || at(p, P_LBRACKET))
