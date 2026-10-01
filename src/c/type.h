@@ -65,7 +65,8 @@ enum {
     RF_NOKEYWORD = 128,      /* prints without struct (__va_list_tag) */
     RF_VLA = 256,            /* has a variably modified member */
     RF_DESIGNATED = 512,     /* designated_init */
-    RF_USER_ALIGN = 1024     /* aligned attribute given (copy copies it) */
+    RF_USER_ALIGN = 1024,    /* aligned attribute given (copy copies it) */
+    RF_VMOD = 2048           /* a member is variably modified (C_TYPE_VARIABLY_MODIFIED) */
 };
 
 /* Field.flags */

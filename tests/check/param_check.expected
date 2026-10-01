@@ -1,0 +1,5 @@
+cereal: error: unrecognized command-line option '--param=max-early-inliner-iteration=3'; did you mean '--param=max-early-inliner-iterations='?
+cereal: error: argument to '--param=align-threshold=' is not between 1 and 65536
+cereal: error: unrecognized command-line option '--param=zzzz=1'
+cereal: error: argument to '--param=max-inline-insns-single=' should be a non-negative integer
+cereal: error: argument to '--param=max-inline-insns-single=' is bigger than 2147483647

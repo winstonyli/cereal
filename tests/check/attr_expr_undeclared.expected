@@ -1,0 +1,15 @@
+attr_expr_undeclared.c:1:34: error: 'UND2' undeclared here (not in a function)
+    1 | char b[2] __attribute__((aligned(UND2)));
+      |                                  ^
+attr_expr_undeclared.c:2:34: error: 'UND6' undeclared here (not in a function)
+    2 | int z __attribute__((vector_size(UND6)));
+      |                                  ^
+attr_expr_undeclared.c:3:41: error: 'UND5' undeclared here (not in a function)
+    3 | struct S { int a __attribute__((aligned(UND5))); };
+      |                                         ^
+attr_expr_undeclared.c:4:50: error: 'UND' undeclared (first use in this function)
+    4 | void f(void) { char a[16] __attribute__((aligned(UND))); }
+      |                                                  ^
+attr_expr_undeclared.c:4:50: note: each undeclared identifier is reported only once for each function it appears in
+    4 | void f(void) { char a[16] __attribute__((aligned(UND))); }
+      |                                                  ^

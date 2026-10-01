@@ -1,0 +1,15 @@
+init_desig_noeq.c:3:18: warning: obsolete use of designated initializer without '=' [-Wpedantic]
+    3 | int x1[] = { [0] 1 };
+      |                  ^
+init_desig_noeq.c:4:25: error: expected '=' before numeric constant
+    4 | int x2[2][2] = { [0][0] 1 };
+      |                         ^
+init_desig_noeq.c:5:20: error: expected '=' before numeric constant
+    5 | struct s s2 = { .a 1 };
+      |                    ^
+init_desig_noeq.c:6:20: error: expected '=' before numeric constant
+    6 | struct s s3 = { .a 1, };
+      |                    ^
+init_desig_noeq.c:7:19: warning: obsolete use of designated initializer without '=' [-Wpedantic]
+    7 | int x3[2] = { [0] 1, [1] = 2 };
+      |                   ^

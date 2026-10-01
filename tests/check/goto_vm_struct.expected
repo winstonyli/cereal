@@ -1,0 +1,42 @@
+goto_vm_struct.c:4:21: warning: a member of a structure or union cannot have a variably modified type [-Wpedantic]
+    4 |   struct T { char (*p)[a]; int z; char (*q)[a]; } B;
+      |                     ^
+goto_vm_struct.c:4:42: warning: a member of a structure or union cannot have a variably modified type [-Wpedantic]
+    4 |   struct T { char (*p)[a]; int z; char (*q)[a]; } B;
+      |                                          ^
+goto_vm_struct.c:3:3: error: jump into scope of identifier with variably modified type
+    3 |   goto x;
+      |   ^
+goto_vm_struct.c:6:3: note: label 'x' defined here
+    6 |   x : ;
+      |   ^
+goto_vm_struct.c:4:51: note: 'B' declared here
+    4 |   struct T { char (*p)[a]; int z; char (*q)[a]; } B;
+      |                                                   ^
+goto_vm_struct.c:3:3: error: jump into scope of identifier with variably modified type
+    3 |   goto x;
+      |   ^
+goto_vm_struct.c:6:3: note: label 'x' defined here
+    6 |   x : ;
+      |   ^
+goto_vm_struct.c:4:42: note: '({anonymous})' declared here
+    4 |   struct T { char (*p)[a]; int z; char (*q)[a]; } B;
+      |                                          ^
+goto_vm_struct.c:3:3: error: jump into scope of identifier with variably modified type
+    3 |   goto x;
+      |   ^
+goto_vm_struct.c:6:3: note: label 'x' defined here
+    6 |   x : ;
+      |   ^
+goto_vm_struct.c:4:21: note: '({anonymous})' declared here
+    4 |   struct T { char (*p)[a]; int z; char (*q)[a]; } B;
+      |                     ^
+goto_vm_struct.c:3:3: error: jump into scope of identifier with variably modified type
+    3 |   goto x;
+      |   ^
+goto_vm_struct.c:6:3: note: label 'x' defined here
+    6 |   x : ;
+      |   ^
+goto_vm_struct.c:4:10: note: '({anonymous})' declared here
+    4 |   struct T { char (*p)[a]; int z; char (*q)[a]; } B;
+      |          ^

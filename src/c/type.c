@@ -390,6 +390,8 @@ bool type_is_vm(TypeTable *tt, TypeId t)
         const TypeEnt *e = cent(tt, t);
         switch (e->kind) {
         case TY_VLA: return true;
+        case TY_STRUCT: case TY_UNION:
+            return (type_record(tt, t)->flags & RF_VMOD) != 0;
         case TY_PTR: case TY_ARRAY: t = e->base; break;
         case TY_FUNC: t = e->base; break;
         default: return false;
@@ -882,6 +884,8 @@ void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
             else if (type_ckind(tt, f[i].ty) == TY_VLA)
                 flags |= RF_VLA;
         }
+        if (type_is_vm(tt, f[i].ty))
+            flags |= RF_VMOD;
         uint64_t tyalign = (uint64_t)type_member_align(tt, f[i].ty) * 8;
         if (ms > 0 || (!ms && tt->tgt->ms_bitfields))
             ms_field(&L, &f[i], tsize, tyalign, &out);

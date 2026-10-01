@@ -1476,9 +1476,12 @@ static void init_list(Parser *p)
     while (!at(p, P_RBRACE) && !at_eof(p)) {
         uint32_t s = nmark(p), first = ci(p);
         bool desig = false, old = false;
+        int nd = 0;
+        bool dot = false;
         for (;;) {
             PTok t = ct(p), n;
             if (is_p(&t, P_DOT)) {
+                dot = true;
                 adv(p);
                 t = ct(p);
                 if (t.t.kind != TK_IDENT) {
@@ -1508,10 +1511,35 @@ static void init_list(Parser *p)
                 break;
             }
             desig = true;
+            nd++;
         }
-        if (desig && !old)
-            accept(p, P_ASSIGN); /* GNU: [index] value, without '=' */
-        initializer(p);
+        if (desig && !old && !accept(p, P_ASSIGN) && (dot || nd > 1)) {
+            /* only a single array designator may omit the '=' */
+            uint32_t at0 = ci(p);
+            int depth = 0;
+            expected(p, "'='");
+            while (!at_eof(p)) {
+                PTok t = ct(p);
+                if (t.t.kind == TK_PUNCT) {
+                    if (depth == 0 && (t.t.punct == P_COMMA ||
+                                       t.t.punct == P_RBRACE))
+                        break;
+                    if (t.t.punct == P_LPAREN || t.t.punct == P_LBRACKET ||
+                        t.t.punct == P_LBRACE)
+                        depth++;
+                    else if ((t.t.punct == P_RPAREN ||
+                              t.t.punct == P_RBRACKET ||
+                              t.t.punct == P_RBRACE) && depth > 0)
+                        depth--;
+                }
+                adv(p);
+            }
+            p->err_live = false;
+            leaf(p, N_ERROR, at0);
+            flags |= NF_ERROR;
+        } else {
+            initializer(p);
+        }
         if (desig)
             emit(p, N_DESIGNATED, first, s, 0);
         if (!accept(p, P_COMMA))

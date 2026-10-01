@@ -6,6 +6,7 @@
 #include <string.h>
 #include "c/fuzzy.h"
 #include "gcc_wopts.h"
+#include "gcc_params.h"
 
 extern const char *const host_include_dirs[];
 extern const char *const host_attrs[];
@@ -20,6 +21,74 @@ void options_init(Options *o)
     o->pp.lex.dollar_idents = true;
     o->linemarkers = true;
     o->parallel = 'a';
+}
+
+/* --param NAME=VALUE: the parameter only matters to the middle end, but gcc
+ * rejects an unknown name or a value out of range. */
+static void check_param(Options *o, const char *arg)
+{
+    const char *eq = strchr(arg, '=');
+    size_t nlen = eq ? (size_t)(eq - arg) : strlen(arg), k;
+    long long v = 0, lo = 0, hi = 0;
+    bool known = false, digits;
+    const char *p;
+    for (k = 0; eq && k < sizeof gcc_params / sizeof *gcc_params; k++)
+        if (strlen(gcc_params[k].name) == nlen &&
+            !strncmp(gcc_params[k].name, arg, nlen)) {
+            known = true;
+            lo = gcc_params[k].lo;
+            hi = gcc_params[k].hi;
+            break;
+        }
+    if (!known) {
+        enum { NP = sizeof gcc_params / sizeof *gcc_params };
+        char (*cand)[96] = malloc(NP * sizeof *cand);   /* Best keeps pointers */
+        const char *dym = NULL;
+        Best b;
+        uint64_t work = 0;
+        if (cand) {
+            best_init(&b, arg, &work);
+            for (k = 0; k < NP; k++) {
+                snprintf(cand[k], sizeof cand[k], "%s=", gcc_params[k].name);
+                best_consider(&b, cand[k]);
+            }
+            dym = best_get(&b);
+        }
+        if (dym)
+            fprintf(stderr, "cereal: error: unrecognized command-line option "
+                    "'--param=%s'; did you mean '--param=%s'?\n", arg, dym);
+        else
+            fprintf(stderr, "cereal: error: unrecognized command-line option "
+                    "'--param=%s'\n", arg);
+        free(cand);
+        o->bad_options++;
+        return;
+    }
+    if (hi < lo)
+        return;                 /* an enumerated argument */
+    p = eq + 1;
+    digits = *p != '\0';
+    for (; *p; p++) {
+        if (*p < '0' || *p > '9') {
+            digits = false;
+            break;
+        }
+        if (v <= (1LL << 40))
+            v = v * 10 + (*p - '0');
+    }
+    if (!digits) {
+        fprintf(stderr, "cereal: error: argument to '--param=%.*s=' should be "
+                "a non-negative integer\n", (int)nlen, arg);
+        o->bad_options++;
+    } else if (v > hi && hi == 2147483647) {
+        fprintf(stderr, "cereal: error: argument to '--param=%.*s=' is bigger "
+                "than %lld\n", (int)nlen, arg, hi);
+        o->bad_options++;
+    } else if (v < lo || v > hi) {
+        fprintf(stderr, "cereal: error: argument to '--param=%.*s=' is not "
+                "between %lld and %lld\n", (int)nlen, arg, lo, hi);
+        o->bad_options++;
+    }
 }
 
 static const char *arg_value(int argc, char **argv, int *i, const char *flag)
@@ -98,9 +167,9 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     } else if (!strncmp(a, "-fdump-", 7) || !strncmp(a, "-fcompare-debug", 15)) {
         /* middle-end only: no effect on diagnostics */
     } else if (!strcmp(a, "--param")) {
-        (void)arg_value(argc, argv, &i, "--param");
+        check_param(o, arg_value(argc, argv, &i, "--param"));
     } else if (!strncmp(a, "--param=", 8)) {
-        /* middle-end only */
+        check_param(o, a + 8);
     } else if (!strcmp(a, "-fsystem-warnings")) {
         o->show_system = true;
     } else if (a[1] == 'O') {

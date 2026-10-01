@@ -145,6 +145,8 @@ typedef struct Attrs {
     uint64_t vector_size;    /* bytes, 0: none (or invalid) */
     bool vs_seen;            /* a valid vector_size argument */
     SrcLoc vs_loc;           /* input_location when it was read */
+    SrcLoc vs_dup;           /* a second vector_size (0: none): it applies to
+                              * the vector type the first one made */
     int8_t ms;               /* ms_struct 1, gcc_struct -1 */
     bool deprecated, unused, noreturn, weak, alias, section, cleanup;
     uint32_t cleanup_arg;

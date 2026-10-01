@@ -1566,6 +1566,56 @@ static void local_labels(Checker *c, CStmt *s, uint32_t i)
     }
 }
 
+/* A struct/union defined in a block with variably modified members: gcc
+ * declares the tag (at its name, else the keyword), then one nameless
+ * declaration per member whose type is a pointer to a variably modified
+ * type (at the member). */
+static void stmt_struct_defined(Checker *c, CStmt *s, uint32_t i)
+{
+    TypeId t = c->ty[i];
+    const Record *r;
+    CUnsafe u;
+    uint32_t tag, k;
+    TypeKind tk = type_ckind(TT, t);
+    if ((tk != TY_STRUCT && tk != TY_UNION) || !(c->nodes[i].flags & NF_BODY))
+        return;
+    r = type_record(TT, t);
+    if (!(r->flags & RF_VMOD))
+        return;
+    memset(&u, 0, sizeof u);
+    tag = NO_NODE;
+    for (k = cfirst(c, i); k < i; k++)
+        if (tg(c, k) == N_TAG && c->par[k] == i) {
+            tag = k;
+            break;
+        }
+    u.block = s->cur;
+    u.loc = ctok_loc(c, tag != NO_NODE ? c->nodes[tag].tok : c->nodes[i].tok);
+    u.vm = true;
+    u.anon = true;
+    u.seq = ++top(s)->seq;
+    vec_push(&s->unsafe, u);
+    for (k = 0; k < r->nfields; k++) {
+        const Field *f = &c->tt.fields.data[r->fields + k];
+        TypeId ft = type_canon(TT, f->ty);
+        for (;;) {
+            TypeKind fk = type_ckind(TT, ft);
+            if (fk == TY_ARRAY || fk == TY_VLA) {
+                ft = type_canon(TT, type_base(TT, ft));
+            } else if (fk == TY_PTR && type_is_vm(TT, type_base(TT, ft)) &&
+                       type_ckind(TT, type_base(TT, ft)) != TY_STRUCT &&
+                       type_ckind(TT, type_base(TT, ft)) != TY_UNION) {
+                u.loc = f->loc;
+                u.seq = ++top(s)->seq;
+                vec_push(&s->unsafe, u);
+                ft = type_canon(TT, type_base(TT, ft));
+            } else {
+                break;
+            }
+        }
+    }
+}
+
 static void stmt_declared(Checker *c, CStmt *s, uint32_t i)
 {
     uint32_t ref = c->cb[i];
@@ -1605,7 +1655,9 @@ static void stmt_declared(Checker *c, CStmt *s, uint32_t i)
                 break;
             if (k == TY_ARRAY || k == TY_VLA || k == TY_FUNC) {
                 t = type_base(TT, b);
-            } else if (k == TY_PTR && type_is_vm(TT, type_base(TT, b))) {
+            } else if (k == TY_PTR && type_is_vm(TT, type_base(TT, b)) &&
+                       type_ckind(TT, type_base(TT, b)) != TY_STRUCT &&
+                       type_ckind(TT, type_base(TT, b)) != TY_UNION) {
                 CUnsafe a = u;
                 a.anon = true;
                 a.seq = ++top(s)->seq;
@@ -1832,6 +1884,9 @@ void cstmt_node(Checker *c, uint32_t i)
     switch (tg(c, i)) {
     case N_DECLARED:
         stmt_declared(c, s, i);
+        break;
+    case N_STRUCT:
+        stmt_struct_defined(c, s, i);
         break;
     case N_DECL:
         if (c->par[i] != NOB && tg(c, c->par[i]) == N_FOR)

@@ -646,6 +646,9 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                     cerror(c, il, "'vector_size' attribute argument value "
                            "'%llu' exceeds 9223372036854775807",
                            (unsigned long long)v);
+                } else if (a->vs_seen) {
+                    if (!a->vs_dup)
+                        a->vs_dup = il;
                 } else {
                     a->vector_size = (uint64_t)v;
                     a->vs_seen = true;
@@ -743,6 +746,9 @@ static TypeId attr_apply_type(Checker *c, TypeId t, const Attrs *a)
                    "2147483646", (unsigned long long)(a->vector_size / esz));
         } else {
             t = type_vector(TT, TYPE_UNQUAL(el), a->vector_size) | q;
+            if (a->vs_dup)
+                cerror(c, a->vs_dup, "invalid vector type for attribute "
+                       "'vector_size'");
         }
     }
     return t;
@@ -766,6 +772,7 @@ static void attrs_merge(Attrs *to, const Attrs *from)
         to->vector_size = from->vector_size;
         to->vs_seen = true;
         to->vs_loc = from->vs_loc;
+        to->vs_dup = from->vs_dup;
     }
     to->deprecated |= from->deprecated;
     to->unavailable |= from->unavailable;

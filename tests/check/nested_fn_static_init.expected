@@ -1,0 +1,12 @@
+nested_fn_static_init.c:4:3: warning: ISO C forbids nested functions [-Wpedantic]
+    4 |   void bar1(int v) { (void)v; }
+      |   ^
+nested_fn_static_init.c:5:26: error: initializer element is not constant
+    5 |   static struct S s1 = { bar1 };
+      |                          ^
+nested_fn_static_init.c:5:26: note: (near initialization for 's1.f')
+    5 |   static struct S s1 = { bar1 };
+      |                          ^
+nested_fn_static_init.c:6:27: error: initializer element is not constant
+    6 |   static void (*p)(int) = &bar1;
+      |                           ^

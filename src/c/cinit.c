@@ -1001,6 +1001,13 @@ static int const_class0(Checker *c, uint32_t n, TypeId vt, TypeId target)
     }
     if (c->cb[n] == 0)
         return 2;
+    if (!(c->cb[n] & CB_NODE)) {
+        /* a nested function's address needs a trampoline: never constant */
+        const CSym *fs = csym(c, c->cb[n] - 1);
+        if (((c->cb[n] - 1) & SYM_LOCAL) && fs->kind == CS_FUNC &&
+            (fs->flags & CSF_DEFINED))
+            return 0;
+    }
     cls = 2;
     vk = ck_(c, vt);
     if (vk != TY_PTR) {

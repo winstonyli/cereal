@@ -1,0 +1,3 @@
+vector_size_twice.c:1:1: error: invalid vector type for attribute 'vector_size'
+    1 | int __attribute__ ((vector_size (8), vector_size (8))) v;
+      | ^
