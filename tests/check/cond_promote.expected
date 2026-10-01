@@ -1,0 +1,48 @@
+cond_promote.c:4:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    4 | _Static_assert(sizeof(n ? sc : sc) == 1, "char promotes");
+      | ^
+cond_promote.c:4:1: error: static assertion failed: "char promotes"
+    4 | _Static_assert(sizeof(n ? sc : sc) == 1, "char promotes");
+      | ^
+cond_promote.c:5:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    5 | _Static_assert(sizeof(n ? us : us) == 2, "short promotes");
+      | ^
+cond_promote.c:5:1: error: static assertion failed: "short promotes"
+    5 | _Static_assert(sizeof(n ? us : us) == 2, "short promotes");
+      | ^
+cond_promote.c:6:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    6 | _Static_assert(sizeof(n ? b : b) == 1, "bool promotes");
+      | ^
+cond_promote.c:6:1: error: static assertion failed: "bool promotes"
+    6 | _Static_assert(sizeof(n ? b : b) == 1, "bool promotes");
+      | ^
+cond_promote.c:7:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    7 | _Static_assert(sizeof(n ? fl : fl) == 1, "float stays");
+      | ^
+cond_promote.c:7:1: error: static assertion failed: "float stays"
+    7 | _Static_assert(sizeof(n ? fl : fl) == 1, "float stays");
+      | ^
+cond_promote.c:8:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    8 | _Static_assert(sizeof(n ? e : e) == 1, "enum");
+      | ^
+cond_promote.c:8:1: error: static assertion failed: "enum"
+    8 | _Static_assert(sizeof(n ? e : e) == 1, "enum");
+      | ^
+cond_promote.c:9:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    9 | _Static_assert(sizeof(n ? bf.x : bf.x) == 1, "bitfield");
+      | ^
+cond_promote.c:9:1: error: static assertion failed: "bitfield"
+    9 | _Static_assert(sizeof(n ? bf.x : bf.x) == 1, "bitfield");
+      | ^
+cond_promote.c:10:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   10 | _Static_assert(sizeof(n ? bf.y : bf.y) == 1, "ubitfield");
+      | ^
+cond_promote.c:10:1: error: static assertion failed: "ubitfield"
+   10 | _Static_assert(sizeof(n ? bf.y : bf.y) == 1, "ubitfield");
+      | ^
+cond_promote.c:11:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   11 | _Static_assert(sizeof(n ? dc : dc) == 1, "complex");
+      | ^
+cond_promote.c:11:1: error: static assertion failed: "complex"
+   11 | _Static_assert(sizeof(n ? dc : dc) == 1, "complex");
+      | ^

@@ -1,0 +1,3 @@
+vla_star_nested.c:2:1: error: '[*]' not allowed in other than function prototype scope
+    2 | void b(int p[*]) {}
+      | ^

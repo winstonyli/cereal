@@ -1719,7 +1719,7 @@ static void unary(Parser *p)
         switch (t.t.punct) {
         case P_INC: case P_DEC: {
             uint32_t op = adv(p);
-            unary(p);
+            parse_cast(p);   /* gcc: c_parser_cast_expression, so ++(T){...} parses */
             emit(p, N_UNARY, op, start, 0);
             return;
         }

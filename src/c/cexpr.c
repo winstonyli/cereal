@@ -6810,7 +6810,7 @@ static void e_cond(Checker *c, uint32_t i)
     t2 = rvt(c, els);
     c->ef[i] = (c->ef[cond] | c->ef[els] | (mid != NO_NODE ? c->ef[mid] : 0)) &
                EF_SIDE;
-    if (mainv(c, t1) == mainv(c, t2)) {
+    if (mainv(c, t1) == mainv(c, t2) && !is_arith(c, t1)) {
         rt = unqual(c, t1);
     } else if (is_arith(c, t1) && is_arith(c, t2)) {
         rt = common_type(c, promoted(c, ch), promoted(c, els));

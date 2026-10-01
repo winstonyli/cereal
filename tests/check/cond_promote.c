@@ -1,0 +1,11 @@
+signed char sc; unsigned short us; _Bool b; float fl; enum E { A, B } e;
+struct { int x : 3; unsigned y : 5; } bf; double _Complex dc;
+int n;
+_Static_assert(sizeof(n ? sc : sc) == 1, "char promotes");
+_Static_assert(sizeof(n ? us : us) == 2, "short promotes");
+_Static_assert(sizeof(n ? b : b) == 1, "bool promotes");
+_Static_assert(sizeof(n ? fl : fl) == 1, "float stays");
+_Static_assert(sizeof(n ? e : e) == 1, "enum");
+_Static_assert(sizeof(n ? bf.x : bf.x) == 1, "bitfield");
+_Static_assert(sizeof(n ? bf.y : bf.y) == 1, "ubitfield");
+_Static_assert(sizeof(n ? dc : dc) == 1, "complex");

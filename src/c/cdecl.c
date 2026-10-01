@@ -2095,10 +2095,17 @@ static bool func_has_params(Checker *c, uint32_t f)
 
 static bool func_has_vla_unspec(Checker *c, uint32_t f)
 {
-    uint32_t k;
-    for (k = cfirst(c, f); k < f; k++)
+    uint32_t k = f, lo = cfirst(c, f);
+    /* a function declarator inside a parameter has a prototype scope of its own */
+    while (k > lo) {
+        k--;
+        if (ntag(c, k) == N_FUNC) {
+            k = cfirst(c, k);
+            continue;
+        }
         if (ntag(c, k) == N_ARRAY && (cnode(c, k)->flags & NF_STAR))
             return true;
+    }
     return false;
 }
 
