@@ -273,6 +273,8 @@ struct Checker {
     uint64_t iloc_tok;
     /* cdecl.c: the parser's lookahead token at the diagnostic being made */
     uint32_t cd_ltok;
+    uint64_t il_first;       /* cinput_loc memo: the unit (first_tok), token + 1, its BOL token + 1 (0: none) */
+    uint32_t il_tok, il_bol;
     TypeId attr_fty;         /* the function type attributes are being applied to (0: unknown) */
     uint32_t cd_clit;       /* '{' token of the compound literal being typed */
     /* cdecl.c: the prototype a K&R definition is checked against (gcc's
@@ -368,6 +370,7 @@ void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...);
 /* gcc's input_location while the parser looks at token tok: the first
  * token of that token's line. */
 SrcLoc cinput_loc(Checker *c, uint32_t tok);
+uint32_t cbol_tok(Checker *c, uint32_t tok);   /* BOL token + 1 of tok's line (0: none); memoized */
 /* The first ';' at nesting depth 0 from token tok. */
 uint32_t cfind_semi(Checker *c, uint32_t tok);
 

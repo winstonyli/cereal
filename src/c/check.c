@@ -113,17 +113,37 @@ void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...)
 
 /* gcc's input_location while the parser looks at token tok: the first
  * token of that token's line (libcpp's line_change callback). */
+uint32_t cbol_tok(Checker *c, uint32_t tok)
+{
+    uint32_t k, bol = 0;        /* bol: BOL token + 1, 0 when none */
+    for (k = tok + 1; k-- > 0;) {
+        if (c->il_first == c->u->first_tok && c->il_tok == k + 1) {    /* the memo: callers walk forward */
+            bol = c->il_bol;
+            break;
+        }
+        if (c->u->toks[k].t.flags & TF_BOL) {
+            bol = k + 1;
+            break;
+        }
+    }
+    c->il_first = c->u->first_tok;
+    c->il_tok = tok + 1;
+    c->il_bol = bol;
+    return bol;
+}
+
 SrcLoc cinput_loc(Checker *c, uint32_t tok)
 {
-    uint32_t k;
+    uint32_t bol;
     if (!c->u->ntoks)
         return c->last_bol;
     if (tok >= c->u->ntoks)
         tok = c->u->ntoks - 1;
-    for (k = tok + 1; k-- > 0;)
-        if (c->u->toks[k].t.flags & TF_BOL)
-            return c->u->toks[k].exp ? c->u->toks[k].exp : ctok_loc(c, k);
-    return c->last_bol ? c->last_bol : ctok_loc(c, 0);
+    bol = cbol_tok(c, tok);
+    if (!bol)
+        return c->last_bol ? c->last_bol : ctok_loc(c, 0);
+    return c->u->toks[bol - 1].exp ? c->u->toks[bol - 1].exp
+                                   : ctok_loc(c, bol - 1);
 }
 
 /* The index of the first ';' at nesting depth 0 from token tok, or the
@@ -372,6 +392,7 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
 {
     uint32_t i;
     c->u = u;
+    c->il_tok = 0;              /* drop the cinput_loc memo */
     c->nodes = u->nodes;
     c->nn = u->nnodes;
     c->quiet = had_errors && !(u->nnodes && u->nodes[u->nnodes - 1].tag == N_FUNC_DEF);

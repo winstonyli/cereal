@@ -223,9 +223,7 @@ static SrcLoc iloc(Checker *c, uint32_t L)
         return c->last_bol;
     if (L >= c->u->ntoks)
         L = c->u->ntoks - 1;
-    for (b = L + 1; b-- > 0;)
-        if (c->u->toks[b].t.flags & TF_BOL)
-            break;
+    b = cbol_tok(c, L) - 1;
     if (c->iloc_tok > c->u->first_tok) {
         uint64_t t = c->iloc_tok - 1 - c->u->first_tok;
         if (t <= L && (b == UINT32_MAX || t >= b))
