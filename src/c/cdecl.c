@@ -305,6 +305,51 @@ static uint32_t check_user_alignment(Checker *c, uint32_t e, SrcLoc loc,
     return (uint32_t)v;
 }
 
+/* handle_*_attribute argument counts: "wrong number of arguments", at
+ * input_location. */
+static void gnu_attr_argc(Checker *c, uint32_t attr)
+{
+    static const struct { const char *n; uint32_t lo, hi; } t[] = {
+        {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"copy", 1, 1}};
+    Kids k;
+    uint32_t j;
+    if (tokp(c, cnode(c, attr)->tok)->kind == TK_PUNCT)
+        return;
+    uint32_t at = c->nodes[attr].tok;
+    Kids sib;
+    uint32_t up = attr, lv;
+    for (lv = 0; lv < 3 && up != NO_NODE && at == c->nodes[attr].tok; lv++) {
+        up = c->par[up];
+        if (up == NO_NODE)
+            break;
+        kids_get(c, up, &sib);     /* a leading attribute: applied at the declarator */
+        for (j = 0; j < sib.n; j++)
+            if (sib.p[j] > attr && (ntag(c, sib.p[j]) == N_DECLARED ||
+                                    ntag(c, sib.p[j]) == N_INIT_DECL)) {
+                at = c->nodes[cfirst(c, sib.p[j])].tok;
+                break;
+            }
+        kids_free(&sib);
+    }
+    kids_get(c, attr, &k);
+    for (j = 0; j < k.n; j++) {
+        char name[48];
+        Kids ak;
+        size_t n;
+        if (ntag(c, k.p[j]) != N_ATTR_ITEM)
+            continue;
+        attr_norm(tstr(c, c->nodes[k.p[j]].tok), name, sizeof name);
+        kids_get(c, k.p[j], &ak);
+        for (n = 0; n < sizeof t / sizeof *t; n++)
+            if (!strcmp(name, t[n].n) && (ak.n < t[n].lo || ak.n > t[n].hi))
+                cerror(c, cinput_loc(c, at),
+                       "wrong number of arguments specified for '%s' "
+                       "attribute", name);
+        kids_free(&ak);
+    }
+    kids_free(&k);
+}
+
 /* gcc's c_parser_std_attribute: a name without a namespace that is not one
  * of the standard attributes is pedwarned and dropped, at input_location
  * with the lookahead just past the name and its arguments.  (Before C2X
@@ -5592,6 +5637,7 @@ void cdecl_node(Checker *c, uint32_t i)
             cpedantic(c, tloc(c, cnode(c, i)->tok), "ISO C does not support "
                       "'[[]]' attributes before C2X");
         std_attr_unknown(c, i);
+        gnu_attr_argc(c, i);
         c->quiet = quiet;
         break;
     }
