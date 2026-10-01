@@ -7,6 +7,7 @@
 #include "pp.h"
 
 #include <string.h>
+#include <time.h>
 #include <sys/stat.h>
 
 #define ARGS_INLINE 8
@@ -794,6 +795,22 @@ static Tok builtin_token(PP *pp, Macro *m, const Tok *name, SrcLoc exp_loc)
         s = pp->opt->time_str;
         k = TK_STRING;
         break;
+    case BUILTIN_TIMESTAMP: {   /* the current file's modification time */
+        struct stat st;
+        time_t t;
+        const char *a = "??? ??? ?? ??:??:?? ????";
+        char tb[32];
+        if (!stat(pp->inc->file->path, &st)) {
+            t = st.st_mtime;
+            if (ctime_r(&t, tb)) {
+                tb[24] = 0;
+                a = tb;
+            }
+        }
+        snprintf(buf, sizeof buf, "\"%s\"", a);
+        k = TK_STRING;
+        break;
+    }
     case BUILTIN_COUNTER:
         if (pp->mode == PPM_PLAN)
             pp->diverged = true; /* value depends on other segments */

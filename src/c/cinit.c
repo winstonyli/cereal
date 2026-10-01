@@ -678,6 +678,50 @@ static bool g_pedw;
 
 static bool foldable_libcall(Checker *c, uint32_t n, int depth);
 
+static bool is_icelike(Checker *c, uint32_t n)
+{
+    return c->ck[n] == K_ICE || c->ck[n] == K_FOLD;
+}
+
+/* An object pointer plus or minus integer constants: the variable's
+ * symbol (gcc folds the difference of two such expressions). */
+static uint32_t ptr_off_base(Checker *c, uint32_t n, int depth)
+{
+    uint32_t e2, e1, r;
+    int op;
+    if (depth > 20)
+        return SYM_NONE;
+    switch (ntag(c, n)) {
+    case N_PAREN:
+        return n > 0 ? ptr_off_base(c, n - 1, depth + 1) : SYM_NONE;
+    case N_IDENT: {
+        uint32_t ref = lookup_ord(c, cnode_ident(c, n));
+        CSym *s;
+        if (ref == SYM_NONE)
+            return SYM_NONE;
+        s = csym(c, ref);
+        if (s->kind != CS_OBJ || is_err(c, s->ty) || ck_(c, s->ty) != TY_PTR ||
+            (TYPE_QUALS(s->ty) & TQ_VOLATILE))
+            return SYM_NONE;
+        return ref;
+    }
+    case N_BINARY:
+        op = tpunct(c, c->nodes[n].tok);
+        e2 = n - 1;
+        e1 = e2 - c->nodes[e2].size;
+        if (op == P_PLUS || op == P_MINUS) {
+            if (is_icelike(c, e2))
+                return ptr_off_base(c, e1, depth + 1);
+            if (op == P_PLUS && is_icelike(c, e1) &&
+                (r = ptr_off_base(c, e2, depth + 1)) != SYM_NONE)
+                return r;
+        }
+        return SYM_NONE;
+    default:
+        return SYM_NONE;
+    }
+}
+
 static bool const_varlike(Checker *c, uint32_t n, int depth)
 {
     uint32_t e2, e1;
@@ -710,6 +754,22 @@ static bool const_varlike(Checker *c, uint32_t n, int depth)
         return k != TY_ARRAY && k != TY_STRUCT && k != TY_UNION &&
                k != TY_VLA;
     }
+    case N_COND: {          /* constant operands: gcc folds the choice */
+        uint32_t f3 = n - 1, t2, c1;
+        if (c->nodes[n].flags & NF_OMITTED)
+            return false;
+        t2 = f3 - c->nodes[f3].size;
+        c1 = t2 - c->nodes[t2].size;
+        return const_varlike(c, c1, depth + 1) &&
+               const_varlike(c, t2, depth + 1) &&
+               const_varlike(c, f3, depth + 1);
+    }
+    case N_INDEX: {         /* "str"[constant] */
+        uint32_t b2 = n - 1, b1 = b2 - c->nodes[b2].size;
+        while (ntag(c, b1) == N_PAREN && b1 > 0)
+            b1--;
+        return ntag(c, b1) == N_STRING && is_icelike(c, b2);
+    }
     case N_UNARY:
         op = tpunct(c, c->nodes[n].tok);
         return (op == P_PLUS || op == P_MINUS || op == P_TILDE ||
@@ -727,6 +787,11 @@ static bool const_varlike(Checker *c, uint32_t n, int depth)
             while (ntag(c, b) == N_PAREN || ntag(c, b) == N_CAST)
                 b--;
             if (ntag(c, a) == N_ADDR_LABEL && ntag(c, b) == N_ADDR_LABEL)
+                return true;
+        }
+        if (op == P_MINUS) {    /* p + a - (p + b): the same variable */
+            uint32_t ba = ptr_off_base(c, e1, 0);
+            if (ba != SYM_NONE && ba == ptr_off_base(c, e2, 0))
                 return true;
         }
         if ((op == P_SLASH || op == P_PERCENT) &&

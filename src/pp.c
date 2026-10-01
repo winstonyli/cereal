@@ -553,6 +553,7 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
     new_builtin(pp, "__LINE__", BUILTIN_LINE, false);
     new_builtin(pp, "__DATE__", BUILTIN_DATE, false);
     new_builtin(pp, "__TIME__", BUILTIN_TIME, false);
+    new_builtin(pp, "__TIMESTAMP__", BUILTIN_TIMESTAMP, false);
     new_builtin(pp, "_Pragma", BUILTIN_PRAGMA_OP, true);
     if (opt->gnu_extensions) {
         new_builtin(pp, "__COUNTER__", BUILTIN_COUNTER, false);
@@ -1027,7 +1028,8 @@ static bool is_builtin_name(const Ident *id)
 {
     static const char *const names[] = {
         "__STDC__", "__STDC_VERSION__", "__STDC_HOSTED__", "__FILE__",
-        "__LINE__", "__DATE__", "__TIME__", "__STDC_IEC_559__",
+        "__LINE__", "__DATE__", "__TIME__", "__TIMESTAMP__",
+        "__STDC_IEC_559__",
         "__STDC_IEC_559_COMPLEX__", "__STDC_ISO_10646__", NULL};
     int i;
     for (i = 0; names[i]; i++)

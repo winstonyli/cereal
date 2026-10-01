@@ -121,8 +121,13 @@ layouts, gcc rules ported, walk design).
    operands, jump into VM scope (pr108375-1), compound-literal pedwarns in
    static initializers (c99-const-expr-11/14, gnu99-const-expr-3/4), #pragma
    message wording.
-   Remaining rejects-valid (dg-options baseline): `"str"[i]` and `p - (p - 1)` constant folding
-   (pr69960, pr61240), __TIMESTAMP__ undefined, builtin-tgmath, `copysign`
+   Folding (cinit.c const_varlike): `"str"[i]`, same-variable pointer difference
+   `p - (p - 1)`, `?:` of constants; `__TIMESTAMP__` (file mtime); label-address
+   pedwarn at the input location; initializer of an incomplete struct digested.
+   Metrics: dg-options rejects-valid 39, accepts-invalid 86, exact 5560 of 6059
+   (was 5563 mid-step; not yet explained -- diff the per-file exact set);
+   default gcc.dg 70/101, exact 8993 of 10067; corpus 0/0; tests 540.
+   Remaining rejects-valid (dg-options baseline): builtin-tgmath, `copysign`
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15
    header dirs under -pedantic-errors (environment, 5 files).
    Output order: parser errors of a unit print before its checker
