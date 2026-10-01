@@ -4628,7 +4628,7 @@ static void enum_finish(Checker *c, uint32_t i, uint32_t open)
         prec = p2;
     wider = !cexpr_fits(c, mn, mnt, TYPE_B(INT)) ||
             !cexpr_fits(c, mx, mxt, TYPE_B(INT));
-    if (e->packed || prec > 32) {
+    if (e->packed || c->opt.short_enums || prec > 32) {
         tem = type_for_bits(c, prec, uns);
         if (is_err(c, tem)) {
             cpedwarn(c, iloc(c, after_tok(c, i)), "", "enumeration values "

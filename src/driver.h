@@ -23,6 +23,7 @@ typedef struct Options {
     bool json;
     bool color;
     bool pedantic_errors;
+    bool short_enums;           /* -fshort-enums */
     bool show_system;
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */
     bool check_versions;

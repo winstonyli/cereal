@@ -79,6 +79,10 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     } else if (!strcmp(a, "-fcolor-diagnostics") ||
                !strcmp(a, "-fdiagnostics-color")) {
         o->color = true;
+    } else if (!strcmp(a, "-fshort-enums")) {
+        o->short_enums = true;
+    } else if (!strcmp(a, "-fno-short-enums")) {
+        o->short_enums = false;
     } else if (!strcmp(a, "-fsystem-warnings")) {
         o->show_system = true;
     } else if (a[1] == 'O') {

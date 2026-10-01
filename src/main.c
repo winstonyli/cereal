@@ -248,6 +248,7 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         memset(&co, 0, sizeof co);
         co.target = check_target;
         co.gnu = o->pp.gnu_mode;
+        co.short_enums = o->short_enums;
         co.pedantic = tu.diag.pedantic;
         co.pedantic_errors = tu.diag.pedantic_errors;
         co.dump = dump_types ? out : NULL;

@@ -21,6 +21,7 @@ typedef struct CheckOptions {
     bool gnu;                   /* -std=gnu99 */
     bool pedantic;
     bool pedantic_errors;
+    bool short_enums;           /* -fshort-enums */
     FILE *dump;                 /* --dump-types: declarations and layouts */
     bool summaries;             /* keep per-unit summaries (csum.h) */
     FILE *dump_summaries;       /* --dump-summaries: print them (implies) */
