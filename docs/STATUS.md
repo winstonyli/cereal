@@ -70,7 +70,16 @@ layouts, gcc rules ported, walk design).
    Then `__GIMPLE` (skip the body) and `[[ns::x]]` before C2X (skip to the
    closing `]` like gcc, so later lists in a sequence are diagnosed): exact
    8853 of 10064, identical headers 446/940, rejects-valid 81,
-   accepts-invalid 102, tests 525.  Missing: gcc's "'gnu' attribute ignored".
+   accepts-invalid 102, tests 525.  Then "'X' attribute ignored" for
+   unknown namespace-less `[[X]]` (incl. `gnu` before C2X; cdecl.c
+   std_attr_unknown), emitted with the `[[]]` pedwarn even in units with
+   syntax errors (parser diagnostics bypass quiet mode), and cinput_loc now
+   uses the expansion point for macro tokens: exact 8862.  Still missing
+   (~150 warnings): attribute-ignored for known standard names on the wrong
+   entity (deprecated/maybe_unused/fallthrough/nodiscard), GNU-style
+   `__attribute__((x))` ignored/conflict/mismatch warnings (noinline, used,
+   weak ... in attr-invalid.c), and `sizeof ([[]] int)` should be a syntax
+   error.
    Not done: did-you-mean for macro names (42 gcc.dg cases; needs the
    macro table at the token's version in the checker, with read-set
    consequences for P3), "expected ... at end of input" location (gcc

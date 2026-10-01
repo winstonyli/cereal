@@ -122,7 +122,7 @@ SrcLoc cinput_loc(Checker *c, uint32_t tok)
         tok = c->u->ntoks - 1;
     for (k = tok + 1; k-- > 0;)
         if (c->u->toks[k].t.flags & TF_BOL)
-            return ctok_loc(c, k);
+            return c->u->toks[k].exp ? c->u->toks[k].exp : ctok_loc(c, k);
     return c->last_bol ? c->last_bol : ctok_loc(c, 0);
 }
 

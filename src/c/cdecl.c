@@ -305,6 +305,37 @@ static uint32_t check_user_alignment(Checker *c, uint32_t e, SrcLoc loc,
     return (uint32_t)v;
 }
 
+/* gcc's c_parser_std_attribute: a name without a namespace that is not one
+ * of the standard attributes is pedwarned and dropped, at input_location
+ * with the lookahead just past the name and its arguments.  (Before C2X
+ * 'ns::name' is not parsed: 'ns' is such a name.) */
+static void std_attr_unknown(Checker *c, uint32_t attr)
+{
+    static const char *const known[] = {"deprecated", "fallthrough",
+        "maybe_unused", "nodiscard", "noreturn", "_Noreturn"};
+    Kids k;
+    uint32_t j;
+    if (tokp(c, cnode(c, attr)->tok)->kind != TK_PUNCT)
+        return;
+    if (c->par[attr] != NO_NODE && ntag(c, c->par[attr]) == N_ENUMERATOR)
+        iloc_event(c, cnode(c, c->par[attr])->tok);
+    kids_get(c, attr, &k);
+    for (j = 0; j < k.n; j++) {
+        char name[48];
+        size_t n;
+        if (ntag(c, k.p[j]) != N_ATTR_ITEM)
+            continue;
+        attr_norm(tstr(c, c->nodes[k.p[j]].tok), name, sizeof name);
+        for (n = 0; n < sizeof known / sizeof *known; n++)
+            if (!strcmp(name, known[n]))
+                break;
+        if (n < sizeof known / sizeof *known)
+            continue;
+        cwarn(c, iloc(c, last_tok(c, k.p[j]) + 1), "attributes",
+              "'%s' attribute ignored", name);
+    }
+}
+
 /* Collects the type-affecting attributes of one ATTRIBUTE node. */
 static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
 {
@@ -5343,11 +5374,17 @@ void cdecl_node(Checker *c, uint32_t i)
     case N_INIT_DECL:
         init_decl_visit(c, i);
         break;
-    case N_ATTRIBUTE:
+    case N_ATTRIBUTE: {
+        /* parser diagnostics: gcc gives them in units with errors too */
+        bool quiet = c->quiet;
+        c->quiet = false;
         if (tokp(c, cnode(c, i)->tok)->kind == TK_PUNCT)
             cpedantic(c, tloc(c, cnode(c, i)->tok), "ISO C does not support "
                       "'[[]]' attributes before C2X");
+        std_attr_unknown(c, i);
+        c->quiet = quiet;
         break;
+    }
     case N_STRUCT:
     case N_ENUM:
         struct_visit(c, i);
