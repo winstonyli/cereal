@@ -1,0 +1,27 @@
+absolute_value.c:7:11: warning: taking the absolute value of unsigned type 'unsigned int' has no effect [-Wabsolute-value]
+    7 |   p->ui = __builtin_abs(p->ui);
+      |           ^
+absolute_value.c:8:38: warning: taking the absolute value of unsigned type 'unsigned int' has no effect [-Wabsolute-value]
+    8 |   p->ui = 0 ? __builtin_abs(p->ui) : __builtin_abs(p->ui);
+      |                                      ^
+absolute_value.c:9:37: warning: absolute value function '__builtin_fabsf' given an argument of type 'double' but has parameter of type 'float' which may cause truncation of value [-Wabsolute-value]
+    9 |   p->d = 0 ? __builtin_fabs(p->d) : __builtin_fabsf(p->d);
+      |                                     ^
+absolute_value.c:10:10: warning: using integer absolute value function 'abs' when argument is of floating-point type 'double' [-Wabsolute-value]
+   10 |   p->i = abs(p->d);
+      |          ^
+absolute_value.c:11:10: warning: using floating-point absolute value function 'fabs' when argument is of integer type 'int' [-Wabsolute-value]
+   11 |   p->d = fabs(p->i);
+      |          ^
+absolute_value.c:12:10: warning: using complex absolute value function 'cabs' when argument is of integer type 'int' [-Wabsolute-value]
+   12 |   p->d = cabs(p->i);
+      |          ^
+absolute_value.c:13:10: warning: absolute value function 'cabsf' given an argument of type 'double' but has parameter of type 'float' which may cause truncation of value [-Wabsolute-value]
+   13 |   p->d = cabsf(*pc);
+      |          ^
+absolute_value.c:14:11: warning: absolute value function 'abs' given an argument of type 'long long int' but has parameter of type 'int' which may cause truncation of value [-Wabsolute-value]
+   14 |   p->ll = abs(p->ll);
+      |           ^
+absolute_value.c:15:10: warning: using integer absolute value function 'labs' when argument is of complex type 'complex double' [-Wabsolute-value]
+   15 |   p->i = labs(*pc);
+      |          ^

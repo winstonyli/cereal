@@ -3785,6 +3785,101 @@ static TypeId atomic_result(Checker *c, uint32_t i, const char *name)
     return unqual(c, pointee(c, t));
 }
 
+/* -Wabsolute-value: warn_for_abs of c-parser.cc, for a call of a library
+ * absolute value function with one argument of an unsuitable type. */
+static void warn_for_abs(Checker *c, uint32_t i, const uint32_t *k, uint32_t n)
+{
+    uint32_t fn = strip_paren(c, k[0]), a = n == 2 ? k[1] : NO_NODE;
+    const CSym *sy = NULL;
+    const BTab *bt = NULL;
+    const char *nm, *base;
+    TypeId at, ft = 0, bft;
+    int fam;
+    bool integ, flt, cpx;
+    if (a == NO_NODE || fn == NO_NODE || ntag(c, fn) != N_IDENT ||
+        !diag_enabled(c->diag, "absolute-value") || node_err(c, a) ||
+        inhibited(c, i, false))
+        return;
+    if (c->ck[fn] == K_ADDR && c->cb[fn] && !(c->cb[fn] & CB_NODE)) {
+        sy = csym(c, c->cb[fn] - 1);
+        if (sy->kind != CS_FUNC)
+            return;
+        nm = cident(c, sy->name);
+    } else
+        nm = cident(c, cnode_ident(c, fn));
+    if (strncmp(nm, "__builtin_", 10) && !sy)
+        return;
+    base = !strncmp(nm, "__builtin_", 10) ? nm + 10 : nm;
+    if (!strcmp(base, "abs") || !strcmp(base, "labs") ||
+        !strcmp(base, "llabs") || !strcmp(base, "imaxabs"))
+        fam = 0;
+    else if (!strcmp(base, "fabs") || !strcmp(base, "fabsf") ||
+             !strcmp(base, "fabsl"))
+        fam = 1;
+    else if (!strcmp(base, "cabs") || !strcmp(base, "cabsf") ||
+             !strcmp(base, "cabsl")) {
+        fam = 2;   /* not in the built-in table: the parameter is a complex */
+        ft = !strcmp(base, "cabs") ? TYPE_B(DOUBLE)
+           : !strcmp(base, "cabsf") ? TYPE_B(FLOAT) : TYPE_B(LDOUBLE);
+    } else
+        return;
+    if (fam != 2) {
+        bt = sy ? bt_for_decl(c, sy)
+                : bt_find(c, nm + 10, true);
+        if (!bt || (sy && !builtin_decl_ok(c, sy)))
+            return;
+    }
+    at = unqual(c, rvt(c, a));
+    if (is_err(c, at))
+        return;
+    integ = is_int(c, at);
+    flt = is_flt(c, at);
+    cpx = is_complex(c, at);
+    if (!integ && !flt && !cpx)
+        return;
+    if (fam == 0 && !integ) {
+        cwarn(c, call_loc(c, k[0]), "absolute-value", "using integer absolute "
+              "value function '%s' when argument is of %s type %s", nm,
+              flt ? "floating-point" : "complex", type_q(TT, at));
+        return;
+    }
+    if (fam == 1 && !flt) {
+        cwarn(c, call_loc(c, k[0]), "absolute-value", "using floating-point "
+              "absolute value function '%s' when argument is of %s type %s",
+              nm, integ ? "integer" : "complex", type_q(TT, at));
+        return;
+    }
+    if (fam == 2 && !cpx) {
+        cwarn(c, call_loc(c, k[0]), "absolute-value", "using complex absolute "
+              "value function '%s' when argument is of %s type %s", nm,
+              integ ? "integer" : "floating-point", type_q(TT, at));
+        return;
+    }
+    if (fam == 0 && integ && !type_is_signed(TT, at) && tkind(c, at) != TY_BOOL)
+        cwarn(c, call_loc(c, k[0]), "absolute-value", "taking the absolute "
+              "value of unsigned type %s has no effect", type_q(TT, at));
+    if (fam != 2) {
+        bft = type_canon(TT, bt_func_type(c, bt));
+        if (!type_ent(TT, bft)->n)
+            return;
+        ft = type_params(TT, bft)[0];
+    }
+    if (cpx) {
+        at = type_canon(TT, type_base(TT, type_canon(TT, at)));
+        if (fam != 2)
+            ft = type_canon(TT, type_base(TT, type_canon(TT, ft)));
+    }
+    {
+        bool ok1, ok2;
+        uint64_t sa = type_size(TT, at, &ok1), sf = type_size(TT, ft, &ok2);
+        if (ok1 && ok2 && sf < sa)
+            cwarn(c, call_loc(c, k[0]), "absolute-value", "absolute value "
+                  "function '%s' given an argument of type %s but has "
+                  "parameter of type %s which may cause truncation of value",
+                  nm, type_q(TT, at), type_q(TT, ft));
+    }
+}
+
 static void e_call(Checker *c, uint32_t i)
 {
     uint32_t k[3], n = nkids(c, i, k, 3), f;
@@ -3901,6 +3996,7 @@ static void e_call(Checker *c, uint32_t i)
         set_err(c, i);
         return;
     }
+    warn_for_abs(c, i, k, n);
     if (!call_args(c, i, k[0], t)) {
         set_err(c, i);
         return;
@@ -4822,6 +4918,23 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
 
 /* ---- casts ----------------------------------------------------------------------- */
 
+
+/* gcc's TREE_CODE class of a type for -Wbad-function-cast: all integer
+ * types but _Bool and enums share INTEGER_TYPE. */
+static int cast_class(Checker *c, TypeId t)
+{
+    TypeKind k = tkind(c, t);
+    if (k == TY_BOOL || k == TY_ENUM)
+        return (int)k;
+    if (is_int(c, t))
+        return -1;
+    if (is_flt(c, t))
+        return -2;
+    if (is_complex(c, t))
+        return -3;
+    return (int)k;
+}
+
 static void e_cast(Checker *c, uint32_t i)
 {
     uint32_t k[2], a;
@@ -4958,9 +5071,16 @@ static void e_cast(Checker *c, uint32_t i)
                int_bits(c, t) != int_bits(c, ot)) {
         cwarn(c, loc, "pointer-to-int-cast",
               "cast from pointer to integer of different size");
-    } else if (is_ptr(c, t) && is_int(c, ot) && tkind(c, ot) != TY_BOOL &&
-               tkind(c, ot) != TY_ENUM && int_bits(c, t) != int_bits(c, ot) &&
-               c->ck[a] != K_ICE && c->ck[a] != K_FOLD) {
+    }
+    /* -Wbad-function-cast: a call cast to a type of another tree code */
+    if (ntag(c, strip_paren(c, a)) == N_CALL && diag_enabled(c->diag, "bad-function-cast") &&
+        cast_class(c, t) != cast_class(c, ot))
+        cwarn(c, loc, "bad-function-cast", "cast from function call of type "
+              "%s to non-matching type %s", type_q(TT, ot), type_q(TT, t));
+    if (!(is_ptr(c, t) && is_ptr(c, ot)) &&
+        is_ptr(c, t) && is_int(c, ot) && tkind(c, ot) != TY_BOOL &&
+        tkind(c, ot) != TY_ENUM && int_bits(c, t) != int_bits(c, ot) &&
+        c->ck[a] != K_ICE && c->ck[a] != K_FOLD) {
         cwarn(c, loc, "int-to-pointer-cast",
               "cast to pointer from integer of different size");
     }

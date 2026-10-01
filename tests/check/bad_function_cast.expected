@@ -1,0 +1,30 @@
+bad_function_cast.c:42:3: warning: cast from function call of type 'int' to non-matching type 'float' [-Wbad-function-cast]
+   42 |   (float)if1(); /* { dg-warning "cast from function call of type 'int' to non-matching type 'float'" } */
+      |   ^
+bad_function_cast.c:43:3: warning: cast from function call of type 'char' to non-matching type 'double' [-Wbad-function-cast]
+   43 |   (double)if2(); /* { dg-warning "cast from function call of type 'char' to non-matching type 'double'" } */
+      |   ^
+bad_function_cast.c:44:3: warning: cast from function call of type 'long int' to non-matching type '_Bool' [-Wbad-function-cast]
+   44 |   (_Bool)if3(); /* { dg-warning "cast from function call of type 'long int' to non-matching type '_Bool'" } */
+      |   ^
+bad_function_cast.c:45:3: warning: cast from function call of type 'float' to non-matching type 'int' [-Wbad-function-cast]
+   45 |   (int)rf1(); /* { dg-warning "cast from function call of type 'float' to non-matching type 'int'" } */
+      |   ^
+bad_function_cast.c:46:3: warning: cast from function call of type 'double' to non-matching type 'long int' [-Wbad-function-cast]
+   46 |   (long)rf2(); /* { dg-warning "cast from function call of type 'double' to non-matching type 'long int'" } */
+      |   ^
+bad_function_cast.c:47:3: warning: cast from function call of type 'complex double' to non-matching type 'double' [-Wbad-function-cast]
+   47 |   (double)cf(); /* { dg-warning "cast from function call of type 'complex double' to non-matching type 'double'" } */
+      |   ^
+bad_function_cast.c:48:3: warning: cast from function call of type 'enum e' to non-matching type 'int' [-Wbad-function-cast]
+   48 |   (int)ef(); /* { dg-warning "cast from function call of type 'enum e' to non-matching type 'int'" } */
+      |   ^
+bad_function_cast.c:49:3: warning: cast from function call of type '_Bool' to non-matching type 'int' [-Wbad-function-cast]
+   49 |   (int)bf(); /* { dg-warning "cast from function call of type '_Bool' to non-matching type 'int'" } */
+      |   ^
+bad_function_cast.c:50:3: warning: cast from function call of type 'char *' to non-matching type 'long unsigned int' [-Wbad-function-cast]
+   50 |   (__SIZE_TYPE__)pf1(); /* { dg-warning "cast from function call of type 'char \\*' to non-matching type '\[^\\n\]*'" } */
+      |   ^
+bad_function_cast.c:51:3: warning: cast from function call of type 'int *' to non-matching type 'long int' [-Wbad-function-cast]
+   51 |   (__PTRDIFF_TYPE__)pf2(); /* { dg-warning "cast from function call of type 'int \\*' to non-matching type '\[^\\n\]*'" } */
+      |   ^
