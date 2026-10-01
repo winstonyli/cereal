@@ -1,0 +1,48 @@
+nonnull.c:9:3: warning: argument 1 null where non-null expected [-Wnonnull]
+    9 |   f1 (0, q, i);
+      |   ^
+nonnull.c:10:3: warning: argument 2 null where non-null expected [-Wnonnull]
+   10 |   f1 (p, (void *) 0, i);
+      |   ^
+nonnull.c:12:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   12 |   f2 (0, p);
+      |   ^
+nonnull.c:13:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   13 |   f4 (0, p);
+      |   ^
+nonnull.c:14:3: warning: argument 2 null where non-null expected [-Wnonnull]
+   14 |   f4 (p, 0);
+      |   ^
+nonnull.c:15:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   15 |   f1 (i ? p : 0, q, i);
+      |   ^
+nonnull.c:16:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   16 |   f1 (i ? 0 : p, q, i);
+      |   ^
+nonnull.c:17:9: warning: passing argument 1 of 'f1' makes pointer from integer without a cast [-Wint-conversion]
+   17 |   f1 ((i, 0), q, i);
+      |         ^
+nonnull.c:2:17: note: expected 'char *' but argument is of type 'int'
+    2 | extern void f1 (char *, char *, int) __attribute__((nonnull));
+      |                 ^
+nonnull.c:18:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   18 |   memcpy (0, p, 1);
+      |   ^
+nonnull.c:19:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   19 |   __builtin_strlen (0);
+      |   ^
+nonnull.c:22:1: error: 'nonnull' attribute without arguments on a non-prototype
+   22 | extern void e1 () __attribute__((nonnull));
+      | ^
+nonnull.c:23:1: warning: 'nonnull' attribute argument value '2' exceeds the number of function parameters 1 [-Wattributes]
+   23 | extern void e2 (char *) __attribute__((nonnull(2)));
+      | ^
+nonnull.c:24:49: error: 'foo' undeclared here (not in a function)
+   24 | extern void e3 (char *) __attribute__((nonnull (foo)));
+      |                                                 ^
+nonnull.c:24:1: warning: 'nonnull' attribute argument is invalid [-Wattributes]
+   24 | extern void e3 (char *) __attribute__((nonnull (foo)));
+      | ^
+nonnull.c:25:1: warning: 'nonnull' attribute argument value '1' refers to parameter type 'int' [-Wattributes]
+   25 | extern void e4 (int) __attribute__((nonnull(1)));
+      | ^

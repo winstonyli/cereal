@@ -445,6 +445,53 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 a->deprecated = true;
             if (arg != NO_NODE && ntag(c, arg) == N_STRING)
                 a->dep_msg = cdep_msg(c, arg);
+        } else if (!strcmp(name, "nonnull")) {
+            uint64_t m = 0;
+            uint32_t q;
+            TypeId ft = c->attr_fty;
+            bool fn = ft && type_ckind(TT, ft) == TY_FUNC;
+            bool proto = fn && !(type_ent(TT, ft)->flags & TF_NOPROTO), ok = true;
+            SrcLoc il = cinput_loc(c, c->nodes[item].tok);
+            if (!ak.n) {
+                if (fn && !proto) {
+                    cerror(c, il, "'nonnull' attribute without arguments on a "
+                           "non-prototype");
+                    ok = false;
+                } else
+                    m = NN_ALL;
+            }
+            for (q = 0; q < ak.n && ok; q++) {
+                uint32_t x = ak.p[q];
+                int64_t v = 0;
+                if (!(c->ck[x] == K_ICE || c->ck[x] == K_FOLD) ||
+                    !type_is_integer(TT, c->ty[x]) ||
+                    (v = cexpr_sval(c, x)) < 1) {
+                    cwarn(c, il, "attributes",
+                          "'nonnull' attribute argument is invalid");
+                    ok = false;
+                } else if (proto) {
+                    const TypeEnt *fe = type_ent(TT, ft);
+                    if ((uint64_t)v > fe->n && !(fe->flags & TF_VARIADIC)) {
+                        cwarn(c, il, "attributes", "'nonnull' attribute "
+                              "argument value '%lld' exceeds the number of "
+                              "function parameters %u", (long long)v,
+                              (unsigned)fe->n);
+                        ok = false;
+                    } else if ((uint64_t)v <= fe->n &&
+                               type_ckind(TT, type_params(TT, ft)[v - 1]) !=
+                                   TY_PTR) {
+                        cwarn(c, il, "attributes", "'nonnull' attribute "
+                              "argument value '%lld' refers to parameter type "
+                              "%s", (long long)v,
+                              type_q(TT, type_params(TT, ft)[v - 1]));
+                        ok = false;
+                    }
+                }
+                if (ok && v <= 63)
+                    m |= (uint64_t)1 << (v - 1);
+            }
+            if (ok)
+                a->nonnull |= m;
         } else if (!strcmp(name, "gnu_inline")) {
             a->gnu_inline = true;
         } else if (!strcmp(name, "unused")) {
@@ -587,6 +634,7 @@ static void attrs_merge(Attrs *to, const Attrs *from)
         to->dep_msg = from->dep_msg;
     to->unused |= from->unused;
     to->noreturn |= from->noreturn;
+    to->nonnull |= from->nonnull;
 }
 
 /* The attributes of node i's ATTRIBUTE children (direct). */
@@ -2870,6 +2918,7 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
                            CSF_UNAVAILABLE | CSF_INNER_COMP | CSF_GNU_INLINE);
     if (!m.dep_msg)
         m.dep_msg = o->dep_msg;
+    m.nonnull |= o->nonnull;
     if (!new_def)
         m.flags |= o->flags & (CSF_PROTO_DEF | CSF_KR_DEF);
     m.def_loc = sym_defined(nw) ? nw->loc : o->def_loc;
@@ -3497,7 +3546,9 @@ static void declared_visit(Checker *c, uint32_t i)
     if (g.what == GD_NONE)
         return;
     s = g.s;
+    c->attr_fty = s.kind == CS_FUNC ? type_canon(TT, s.ty) : 0;
     decl_attrs(c, idecl, &a);
+    c->attr_fty = 0;
     if (a.has_mode || a.vs_seen) {
         s.ty = attr_apply_type(c, s.ty, &a);
         g.ty = s.ty;
@@ -3532,6 +3583,8 @@ static void declared_visit(Checker *c, uint32_t i)
         s.flags |= CSF_WEAK;
     if (a.noreturn && s.kind == CS_FUNC)
         s.flags |= CSF_NORETURN;
+    if (a.nonnull && s.kind == CS_FUNC)
+        s.nonnull = a.nonnull;
     if (file && g.what == GD_VAR && s.sc == SC_REGISTER &&
         find_child(c, idecl, N_ASM_LABEL) != NO_NODE)
         s.flags |= CSF_REGISTER_NAMED;

@@ -295,6 +295,8 @@ static void sym_fill(CSum *cs, const CSym *s, SumEntry *e)
         d = H(d, H(s->val, tdigest(cs, s->vty)));
     } else if (s->flags & CSF_CONST_INIT)
         d = H(d, s->val);
+    if (s->nonnull)
+        d = H(d, s->nonnull);
     if (!d)
         d = 1;
     e->iface = d;

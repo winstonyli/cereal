@@ -1807,6 +1807,15 @@ static void e_ident(Checker *c, uint32_t i)
             c->ck[i] = K_ADDR;
             return;
         }
+        if (p != NO_NODE && ntag(c, p) == N_ATTR_ITEM) {
+            size_t al;
+            const char *an = ttext(c, c->nodes[p].tok, &al);
+            if (al >= 7 && (!strncmp(an, "nonnull", 7) ||
+                            !strncmp(an, "__nonnull__", 11))) {
+                undeclared(c, i, id);
+                return;
+            }
+        }
         if (builtin_name(name) || (p != NO_NODE && ntag(c, p) == N_ATTR_ITEM)) {
             if (builtin_name(name))
                 reject_builtin(c, i, name);
@@ -2652,6 +2661,148 @@ static SrcLoc call_loc(Checker *c, uint32_t f)
     return cnode_loc(c, f);
 }
 
+/* gcc 13's built-in library functions that carry the nonnull attribute:
+ * the argument numbers, one digit each (probed from gcc itself). */
+static uint64_t builtin_nonnull(const char *name)
+{
+    static const struct { const char *n, *pos; } t[] = {
+        {"bcmp", "12"}, {"bcopy", "12"}, {"bzero", "1"}, {"fprintf", "12"},
+        {"fputc", "2"}, {"fputs", "12"}, {"fscanf", "2"}, {"fwrite", "14"},
+        {"index", "1"}, {"memchr", "1"}, {"memcmp", "12"}, {"memcpy", "12"},
+        {"memmove", "12"}, {"mempcpy", "12"}, {"memset", "1"}, {"nan", "1"},
+        {"nanf", "1"}, {"nanl", "1"}, {"nans", "1"}, {"nansf", "1"},
+        {"nansl", "1"}, {"printf", "1"}, {"putc", "2"},
+        {"puts_unlocked", "1"}, {"fputc_unlocked", "2"},
+        {"fputs_unlocked", "12"}, {"fwrite_unlocked", "14"},
+        {"printf_unlocked", "1"}, {"fprintf_unlocked", "12"},
+        {"putc_unlocked", "2"},
+        {"puts", "1"}, {"rindex", "1"}, {"scanf", "1"}, {"snprintf", "3"},
+        {"sprintf", "12"}, {"sscanf", "2"}, {"stpcpy", "12"},
+        {"stpncpy", "12"}, {"strcasecmp", "12"}, {"strcat", "12"},
+        {"strchr", "1"}, {"strcmp", "12"}, {"strcpy", "12"},
+        {"strcspn", "12"}, {"strdup", "1"}, {"strftime", "3"},
+        {"strlen", "1"}, {"strncasecmp", "12"}, {"strncat", "12"},
+        {"strncmp", "12"}, {"strncpy", "12"}, {"strndup", "1"},
+        {"strpbrk", "12"}, {"strrchr", "1"}, {"strspn", "12"},
+        {"strstr", "12"}};
+    size_t k;
+    uint64_t m = 0;
+    const char *p;
+    if (!strncmp(name, "__builtin_", 10))
+        name += 10;
+    for (k = 0; k < sizeof t / sizeof *t; k++)
+        if (!strcmp(name, t[k].n)) {
+            for (p = t[k].pos; *p; p++)
+                m |= (uint64_t)1 << (*p - '1');
+            break;
+        }
+    return m;
+}
+
+/* Do the declared types of a library built-in's declaration still match the
+ * built-in's, as far as gcc's match_builtin_function_types cares: pointers
+ * stay pointers (void * matches any) and the pointees agree?  A declaration
+ * that conflicts (-Wbuiltin-declaration-mismatch) does not get its attributes. */
+static bool builtin_shape(Checker *c, TypeId a, TypeId b)
+{
+    if (is_ptr(c, a) != is_ptr(c, b))
+        return false;
+    if (is_ptr(c, a) && !is_void(c, pointee(c, a)) && !is_void(c, pointee(c, b)))
+        return type_compatible(TT, unqual(c, pointee(c, a)),
+                               unqual(c, pointee(c, b)));
+    return true;
+}
+
+static bool builtin_decl_ok(Checker *c, const CSym *s)
+{
+    const BTab *bt = bt_find(cident(c, s->name));
+    TypeId bft, dft;
+    uint32_t n, j;
+    const TypeId *bp, *dp;
+    if (!bt || !strcmp(strchr(bt->sig, '|') + 1, "?") || (s->flags & CSF_IMPLICIT))
+        return true;
+    dft = type_canon(TT, s->ty);
+    bft = type_canon(TT, bt_func_type(c, bt));
+    if (type_ent(TT, dft)->kind != TY_FUNC || type_ent(TT, bft)->kind != TY_FUNC)
+        return true;
+    if (!builtin_shape(c, type_base(TT, dft), type_base(TT, bft)))
+        return false;
+    if (type_ent(TT, dft)->flags & TF_NOPROTO)
+        return true;
+    n = (uint32_t)type_ent(TT, dft)->n;
+    if (n > (uint32_t)type_ent(TT, bft)->n)
+        n = (uint32_t)type_ent(TT, bft)->n;
+    dp = type_params(TT, dft);
+    bp = type_params(TT, bft);
+    for (j = 0; j < n; j++)
+        if (!builtin_shape(c, dp[j], bp[j]))
+            return false;
+    return true;
+}
+
+/* A constant null pointer as gcc's integer_zerop sees it: argument a of a
+ * nonnull parameter, looking into the arms of ?: and the value of a comma. */
+static void nonnull_arg(Checker *c, uint32_t a, uint32_t parm, bool ptr, SrcLoc loc)
+{
+    uint32_t k[3], n;
+    a = strip_paren(c, a);
+    if (a == NO_NODE || node_err(c, a))
+        return;
+    if (((c->ef[a] & EF_NPC) && (ptr || is_ptr(c, c->ty[a]))) ||
+        (c->ck[a] == K_ADDR && !c->cb[a] && c->cv[a] == 0 && is_ptr(c, c->ty[a])) ||
+        (ptr && has_ival(c, a) && c->cv[a] == 0 &&
+         !(ntag(c, a) == N_BINARY && npunct(c, a) == P_COMMA))) {
+        cwarn(c, loc, "nonnull", "argument %u null where non-null expected",
+              parm);
+        return;
+    }
+    switch (ntag(c, a)) {
+    case N_COND:
+        n = nkids(c, a, k, 3);
+        if (n < 2)
+            return;
+        if (has_ival(c, k[0])) {
+            if (c->cv[k[0]] != 0)
+                nonnull_arg(c, n == 3 ? k[1] : k[0], parm, ptr, loc);
+            else
+                nonnull_arg(c, k[n - 1], parm, ptr, loc);
+        } else {
+            nonnull_arg(c, n == 3 ? k[1] : k[0], parm, ptr, loc);
+            nonnull_arg(c, k[n - 1], parm, ptr, loc);
+        }
+        break;
+    case N_BINARY:
+        if (npunct(c, a) == P_COMMA && nkids(c, a, k, 2) == 2)
+            nonnull_arg(c, k[1], parm, ptr && is_ptr(c, c->ty[a]), loc);
+        break;
+    case N_CAST:
+        if (is_ptr(c, c->ty[a]) && nkids(c, a, k, 2) == 2)
+            nonnull_arg(c, k[1], parm, false, loc);
+        break;
+    default:
+        break;
+    }
+}
+
+/* -Wnonnull for a call's arguments kv[1..nk) against the mask (a declared
+ * attribute or a built-in's); pt/nparm: the prototype, if any. */
+static void check_nonnull(Checker *c, const uint32_t *kv, uint32_t nk,
+                          uint64_t mask, const TypeId *pt, uint32_t nparm,
+                          bool proto, bool builtin, SrcLoc loc)
+{
+    uint32_t j;
+    for (j = 0; j + 1 < nk && j < 63; j++) {
+        uint32_t a = kv[j + 1];
+        bool ptr;
+        if (node_err(c, a))
+            continue;
+        ptr = builtin || (proto && j < nparm ? is_ptr(c, pt[j]) : is_ptr(c, rvt(c, a)));
+        if (!((mask >> j) & 1) && !((mask & NN_ALL) && ptr))
+            continue;
+        nonnull_arg(c, a, j + 1, ptr, loc);
+    }
+}
+
 /* convert_arguments: the arguments of call i (callee node fn, of pointer to
  * function type ft) against the prototype.  False if the call is erroneous. */
 static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
@@ -2751,6 +2902,15 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
                 (void)cexpr_assign_check(c, a, bpt[j], &ci);
             }
         }
+    }
+    if (!too_many && !bad && fref != SYM_NONE) {
+        uint64_t mask = csym(c, fref)->nonnull;
+        if (builtin_decl_ok(c, csym(c, fref)))
+            mask |= builtin_nonnull(cident(c, csym(c, fref)->name));
+        /* (types made meanwhile may have moved the parameter arrays) */
+        pt = type_params(TT, type_ent(TT, ufty)->kind == TY_FUNC ? ufty : fty);
+        if (mask)
+            check_nonnull(c, kv, nk, mask, pt, nparm, proto, false, loc);
     }
     if (!too_many && !proto && bn != NO_NODE && bn != 0xFFFFFFFEu &&
         nk - 1 < bn)
@@ -3077,6 +3237,12 @@ static void e_call(Checker *c, uint32_t i)
         if (!builtin_args_ok(c, i, k[0], name)) {
             set_err(c, i);
             return;
+        }
+        if (!strncmp(name, "__builtin_", 10) && builtin_nonnull(name)) {
+            uint32_t av[32], an = nkids(c, i, av, 32);
+            if (an <= 32)
+                check_nonnull(c, av, an, builtin_nonnull(name), NULL, 0, false,
+                              true, call_loc(c, k[0]));
         }
         if (!strcmp(name, "__builtin_tgmath")) {
             if (!e_tgmath(c, i))
@@ -6799,7 +6965,9 @@ void cexpr_node(Checker *c, uint32_t i)
     }
     /* a null pointer constant: an integer constant expression with value 0 */
     if (is_intcst(c, i) && !(c->ef[i] & EF_OVERFLOW) && c->cv[i] == 0 &&
-        is_int(c, c->ty[i]))
+        is_int(c, c->ty[i]) &&
+        !(ntag(c, strip_paren(c, i)) == N_BINARY &&
+          npunct(c, strip_paren(c, i)) == P_COMMA))
         c->ef[i] |= EF_NPC;
     p = c->par[i];
     if (c->fold_pending && (p == NO_NODE || !cexpr_is_expr(ntag(c, p))))

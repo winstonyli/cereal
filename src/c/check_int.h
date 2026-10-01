@@ -64,6 +64,7 @@ typedef struct CSym {
     uint64_t val;            /* enumeration constants: the value */
     TypeId vty;              /* enumeration constants: the value's type */
     uint32_t dep_msg;        /* deprecated/unavailable message: Checker.dep_msgs + 1 */
+    uint64_t nonnull;        /* the 'nonnull' attribute (Attrs.nonnull) */
 } CSym;
 
 /* A symbol reference: an index into the persistent symbols (file scope,
@@ -111,6 +112,8 @@ typedef enum {
 } TypeSpecKind;
 
 /* Attributes that change types and layout. */
+#define NN_ALL ((uint64_t)1 << 63)
+
 typedef struct Attrs {
     uint32_t aligned;        /* bytes, 0: none */
     bool packed;
@@ -123,6 +126,7 @@ typedef struct Attrs {
     SrcLoc vs_loc;           /* input_location when it was read */
     bool deprecated, unused, noreturn, weak, alias, section, cleanup;
     bool unavailable, gnu_inline;
+    uint64_t nonnull;        /* bit j: argument j + 1; NN_ALL: every pointer */
     uint32_t dep_msg;        /* Checker.dep_msgs + 1, 0: none */
 } Attrs;
 
@@ -268,6 +272,7 @@ struct Checker {
     uint64_t iloc_tok;
     /* cdecl.c: the parser's lookahead token at the diagnostic being made */
     uint32_t cd_ltok;
+    TypeId attr_fty;         /* the function type attributes are being applied to (0: unknown) */
     uint32_t cd_clit;       /* '{' token of the compound literal being typed */
     /* cdecl.c: the prototype a K&R definition is checked against (gcc's
      * current_function_prototype_*) */
