@@ -47,7 +47,8 @@ enum {
     CSF_FWD = 4194304,       /* parameter only forward-declared so far */
     CSF_DEPRECATED = 8388608, /* __attribute__((deprecated)) */
     CSF_UNAVAILABLE = 16777216, /* __attribute__((unavailable)) */
-    CSF_INNER_COMP = 33554432 /* incomplete array completed in an inner scope */
+    CSF_INNER_COMP = 33554432, /* incomplete array completed in an inner scope */
+    CSF_GNU_INLINE = 67108864 /* __attribute__((gnu_inline)) */
 };
 
 typedef struct CSym {
@@ -120,7 +121,7 @@ typedef struct Attrs {
     bool vs_seen;            /* a valid vector_size argument */
     SrcLoc vs_loc;           /* input_location when it was read */
     bool deprecated, unused, noreturn, weak, alias, section, cleanup;
-    bool unavailable;
+    bool unavailable, gnu_inline;
     uint32_t dep_msg;        /* Checker.dep_msgs + 1, 0: none */
 } Attrs;
 

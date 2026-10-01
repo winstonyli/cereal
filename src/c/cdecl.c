@@ -445,6 +445,8 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 a->deprecated = true;
             if (arg != NO_NODE && ntag(c, arg) == N_STRING)
                 a->dep_msg = cdep_msg(c, arg);
+        } else if (!strcmp(name, "gnu_inline")) {
+            a->gnu_inline = true;
         } else if (!strcmp(name, "unused")) {
             a->unused = true;
         } else if (!strcmp(name, "weak") || !strcmp(name, "__weak__")) {
@@ -580,6 +582,7 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     }
     to->deprecated |= from->deprecated;
     to->unavailable |= from->unavailable;
+    to->gnu_inline |= from->gnu_inline;
     if (from->dep_msg)
         to->dep_msg = from->dep_msg;
     to->unused |= from->unused;
@@ -2077,8 +2080,15 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 }
                 type = ERRT;
             } else {
-                if (!vla && type_is_vm(TT, type))
-                    vla = true;    /* an array of variably modified type */
+                if (!vla) {      /* an array of variable-size type */
+                    TypeId et = type_canon(TT, type);
+                    while (tkind(c, et) == TY_ARRAY)
+                        et = type_canon(TT, type_base(TT, et));
+                    if (tkind(c, et) == TY_VLA ||
+                        ((tkind(c, et) == TY_STRUCT || tkind(c, et) == TY_UNION) &&
+                         (type_record(TT, et)->flags & RF_VLA)))
+                        vla = true;
+                }
                 if (vla)
                     type = type_vla(TT, type);
                 else if (sz != NO_NODE || (unspec && !vla))
@@ -2356,7 +2366,8 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         if (sc == SC_AUTO && fs)
             g->s.flags &= ~(unsigned)CSF_DECL_EXTERNAL;
         else if (sp->is_inline && sc != SC_STATIC) {
-            if (sc != SC_EXTERN)
+            /* DECL_EXTERNAL = (extern) == gnu89 semantics */
+            if ((sc == SC_EXTERN) == sp->attrs.gnu_inline)
                 g->s.flags |= CSF_DECL_EXTERNAL;
         } else if (!initialized)
             g->s.flags |= CSF_DECL_EXTERNAL;
@@ -2370,6 +2381,8 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         } else {
             if (sp->is_inline)
                 g->s.flags |= CSF_INLINE;
+            if (sp->attrs.gnu_inline)
+                g->s.flags |= CSF_GNU_INLINE;
             if (sp->is_noreturn) {
                 cpedantic(c, loc, "ISO C99 does not support '_Noreturn'");
                 g->s.flags |= CSF_NORETURN;
@@ -2490,6 +2503,29 @@ static bool compat_gcc(Checker *c, TypeId a, TypeId b)
         }
     }
     return type_compatible(TT, a, b);
+}
+
+/* Two function types whose return types differ only by volatile (gcc
+ * accepts them, with a pedwarn: the old way to write noreturn). */
+static bool volatile_ret_only(Checker *c, TypeId a, TypeId b)
+{
+    TypeId ca = type_canon(TT, a), cb = type_canon(TT, b), ra, rb;
+    const TypeEnt *ea, *eb;
+    if (type_kind(TT, ca) != TY_FUNC || type_kind(TT, cb) != TY_FUNC)
+        return false;
+    ea = type_ent(TT, ca);
+    eb = type_ent(TT, cb);
+    ra = type_base(TT, ca);
+    rb = type_base(TT, cb);
+    if ((TYPE_QUALS(ra) ^ TYPE_QUALS(rb)) != TQ_VOLATILE ||
+        ea->n != eb->n || (ea->flags & TF_NOPROTO) != (eb->flags & TF_NOPROTO))
+        return false;
+    ra = TYPE_UNQUAL(ra) | (TYPE_QUALS(ra) & ~TQ_VOLATILE);
+    rb = TYPE_UNQUAL(rb) | (TYPE_QUALS(rb) & ~TQ_VOLATILE);
+    return type_compatible(TT, type_func(TT, ra, type_params(TT, ca), ea->n,
+                                         ea->flags),
+                           type_func(TT, rb, type_params(TT, cb), eb->n,
+                                     eb->flags));
 }
 
 /* The note of locate_old_decl. */
@@ -2646,7 +2682,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                 is_void(c, type_base(TT, oldtype)) &&
                 type_canon(TT, type_base(TT, newtype)) == TYPE_B(INT) &&
                 new_implicit_int && !sym_defined(o)) {
-                d = cpedwarn(c, iloc(c, c->cd_ltok), "", "conflicting types "
+                d = cpedwarn(c, nw->loc, "", "conflicting types "
                              "for '%s'", sname(c, nw));
                 pedwarned = d != NULL;
                 wd = d;
@@ -2663,6 +2699,11 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                 wd = d;
                 oldtype = newtype;
                 *oldtypep = oldtype;
+            } else if (nw->kind == CS_FUNC && volatile_ret_only(c, a, b)) {
+                int k;
+                for (k = 0; k < 3; k++)     /* comptypes runs three times */
+                    cpedwarn(c, cinput_loc(c, c->cd_ltok), "", "function "
+                             "return types not compatible due to 'volatile'");
             } else {
                 if (TYPE_QUALS(b) != TYPE_QUALS(a))
                     d = cerror_d(c, nw->loc, "conflicting type qualifiers for "
@@ -2704,7 +2745,10 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
         return true;
     } else if (nw->kind == CS_FUNC) {
         if (sym_defined(nw)) {
-            if (sym_defined(o)) {
+            /* an extern inline (gnu_inline) definition may be overridden */
+            if (sym_defined(o) &&
+                (!extern_inline(o) || extern_inline(nw) ||
+                 !(o->flags & CSF_GNU_INLINE))) {
                 d = cerror_d(c, nw->loc, "redefinition of '%s'", sname(c, nw));
                 locate_old_decl(c, d, o);
                 return false;
@@ -2823,7 +2867,7 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     m.flags |= o->flags & (CSF_DEFINED | CSF_USED | CSF_NORETURN | CSF_THREAD |
                            CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE |
                            CSF_WEAK | CSF_ADDR_WARNED | CSF_DEPRECATED |
-                           CSF_UNAVAILABLE | CSF_INNER_COMP);
+                           CSF_UNAVAILABLE | CSF_INNER_COMP | CSF_GNU_INLINE);
     if (!m.dep_msg)
         m.dep_msg = o->dep_msg;
     if (!new_def)
@@ -2835,6 +2879,7 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     if (o->align > m.align)
         m.align = o->align;
     if (is_fn && (nw->flags & CSF_INLINE || o->flags & CSF_INLINE) &&
+        !((nw->flags | o->flags) & CSF_GNU_INLINE) &&
         (!(nw->flags & CSF_INLINE) || !(o->flags & CSF_INLINE) ||
          !sym_external(o)) &&
         ext_new && !infunc)
@@ -3928,7 +3973,7 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     TypeId t = c->ty[open];
     RecDef rd;
     FieldIn *f;
-    uint32_t n, k, m = 0, close_tok, last;
+    uint32_t n, k, m = 0, close_tok;
     Attrs a;
     SrcLoc loc;
     bool named = false, saw_named = false;
@@ -3936,7 +3981,6 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     size_t ns = 0, cap = 0;
     Record *r;
     int depth = 0;
-    Kids kk;
     if (!c->recs.len)
         return;
     rd = vec_last(&c->recs);
@@ -3954,19 +3998,6 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
         }
     }
     struct_semis(c, close_tok);
-    last = NO_NODE;
-    kids_get(c, i, &kk);
-    for (k = 0; k < kk.n; k++) {
-        unsigned tg = ntag(c, kk.p[k]);
-        if (tg == N_MEMBER_DECL || tg == N_STATIC_ASSERT || tg == N_PRAGMA)
-            last = kk.p[k];
-    }
-    kids_free(&kk);
-    if (last != NO_NODE && ntag(c, last) != N_PRAGMA && close_tok > 0 &&
-        tpunct(c, close_tok - 1) != P_SEMI &&
-        tpunct(c, close_tok - 1) != P_LBRACE)
-        cpedwarn(c, tloc(c, close_tok), "", "no semicolon at end of struct or "
-                 "union");
     memset(&a, 0, sizeof a);
     attrs_of_children(c, i, &a);
     n = (uint32_t)c->fields.len - rd.first;
@@ -5047,7 +5078,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
             cpedwarn(c, loc, "main", "'main' is normally a non-static "
                      "function");
     }
-    ref = pushdecl(c, &s, false);
+    ref = pushdecl(c, &s, g.default_int);
     {
         CSym *t = csym(c, ref);
         t->flags |= CSF_DEFINED | CSF_TREE_STATIC |

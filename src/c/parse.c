@@ -982,7 +982,7 @@ static void member_decl(Parser *p)
         emit(p, N_MEMBER_DECL, first, start, NF_ERROR);
         return;
     }
-    if (!at(p, P_SEMI))
+    if (!at(p, P_SEMI) && !at(p, P_RBRACE))
         for (;;) {
             uint32_t m = nmark(p), mfirst = ci(p);
             unsigned flags = 0;
@@ -1536,13 +1536,16 @@ static void offsetof_expr(Parser *p)
     else
         expected(p, "field name");
     for (;;) {
-        if (accept(p, P_DOT)) {
+        if (at(p, P_DOT) || at(p, P_ARROW)) {
+            bool arrow = at(p, P_ARROW);    /* gcc: 'a->b' is 'a[0].b' */
+            uint32_t d = nmark(p);
+            adv(p);
             t = ct(p);
             if (t.t.kind != TK_IDENT) {
                 expected(p, "field name");
                 break;
             }
-            leaf(p, N_DESIG_FIELD, adv(p));
+            emit(p, N_DESIG_FIELD, adv(p), d, arrow);
         } else if (at(p, P_LBRACKET)) {
             uint32_t d = nmark(p), lb = adv(p);
             parse_expr(p);

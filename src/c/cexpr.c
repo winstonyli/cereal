@@ -3958,6 +3958,8 @@ static void e_cast(Checker *c, uint32_t i)
     conv_const(c, i, a, c->ty[i]);
     if (is_ptr(c, t) && c->ck[i] == K_ADDR && c->cb[i] == 0 &&
         c->cv[i] == 0 && is_intcst(c, a) && !(c->ef[a] & EF_OVERFLOW) &&
+        !(ntag(c, strip_paren(c, a)) == N_BINARY &&
+          npunct(c, strip_paren(c, a)) == P_COMMA) &&
         is_void(c, pointee(c, t)) && tquals(c, pointee(c, t)) == 0)
         c->ef[i] |= EF_NPC;
 }
@@ -4106,6 +4108,8 @@ static void e_offsetof(Checker *c, uint32_t i)
             const Field *f;
             uint64_t o = 0;
             unsigned q = 0;
+            if (tag == N_DESIG_FIELD && c->nodes[k[j]].flags && is_array(c, cur))
+                cur = elem_of(c, cur);
             if (!is_record(c, cur)) {
                 if (!is_err(c, cur))
                     cerror(c, loc, "request for member '%s' in something not a "
@@ -4406,6 +4410,10 @@ static void e_comma(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     c->ef[i] = (c->ef[a] | c->ef[b]) & EF_SIDE;
     if (c->ef[a] & EF_SIDE)
         return;
+    /* C99 DR031: a comma of integer constant operands may appear in an
+     * unevaluated operand of an integer constant expression */
+    if (intops(c, a) && intops(c, b))
+        c->ef[i] |= EF_INTOPS;
     switch (c->ck[b]) {
     case K_ICE: case K_FOLD:
         c->ck[i] = K_FOLD;
@@ -5600,6 +5608,13 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                 }
             } else if (eq && ((cba == 0 && va == 0) || (cbb == 0 && vb == 0))) {
                 r = op == P_NE;
+            } else if (!eq && ((cba == 0 && va == 0 && cbb && !(cbb & CB_NODE) &&
+                                !addr_weak(c, cbb)) ||
+                               (cbb == 0 && vb == 0 && cba && !(cba & CB_NODE) &&
+                                !addr_weak(c, cba)))) {
+                int cmp = cba == 0 ? -1 : 1;    /* an object address > null */
+                r = op == P_LT ? cmp < 0 : op == P_GT ? cmp > 0 :
+                    op == P_LE ? cmp <= 0 : cmp >= 0;
             } else if (eq && cba && cbb && !(cba & CB_NODE) && !(cbb & CB_NODE) &&
                        !addr_weak(c, cba) && !addr_weak(c, cbb)) {
                 r = op == P_NE;         /* distinct declared objects */

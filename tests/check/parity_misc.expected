@@ -1,0 +1,30 @@
+parity_misc.c:3:1: warning: return type defaults to 'int' [-Wimplicit-int]
+    3 | foo (int x, int y) { return x + y; }
+      | ^
+parity_misc.c:3:1: warning: conflicting types for 'foo'
+    3 | foo (int x, int y) { return x + y; }
+      | ^
+parity_misc.c:2:6: note: previous declaration of 'foo' with type 'void(int,  int *)'
+    2 | void foo (int, int[*]);
+      |      ^
+parity_misc.c:3:31: warning: 'return' with a value, in function returning void
+    3 | foo (int x, int y) { return x + y; }
+      |                               ^
+parity_misc.c:3:1: note: declared here
+    3 | foo (int x, int y) { return x + y; }
+      | ^
+parity_misc.c:5:1: warning: function return types not compatible due to 'volatile'
+    5 | volatile extern int xxx (void);
+      | ^
+parity_misc.c:5:1: warning: function return types not compatible due to 'volatile'
+    5 | volatile extern int xxx (void);
+      | ^
+parity_misc.c:5:1: warning: function return types not compatible due to 'volatile'
+    5 | volatile extern int xxx (void);
+      | ^
+parity_misc.c:26:17: warning: ordered comparison of pointer with integer zero [-Wpedantic]
+   26 | int cmp = (&obj >= 0);
+      |                 ^
+parity_misc.c:27:18: warning: no semicolon at end of struct or union
+   27 | struct T { int z };
+      |                  ^
