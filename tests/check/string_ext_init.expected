@@ -1,0 +1,9 @@
+string_ext_init.c:2:18: warning: array initialized from parenthesized string constant [-Wpedantic]
+    2 | const char b[] = ("abc");
+      |                  ^
+string_ext_init.c:3:18: warning: array initialized from parenthesized string constant [-Wpedantic]
+    3 | const char c[] = __extension__ ("abc");
+      |                  ^
+string_ext_init.c:4:18: warning: array initialized from parenthesized string constant [-Wpedantic]
+    4 | const char d[] = (__extension__ "abc");
+      |                  ^

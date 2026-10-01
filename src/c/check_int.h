@@ -465,6 +465,7 @@ bool cexpr_find_member(Checker *c, TypeId rec, uint32_t name, TypeId *ty,
                        uint64_t *off_bits, bool *bitfield);
 /* Is node i inside __extension__ (pedantic warnings off)? */
 bool cexpr_in_extension(Checker *c, uint32_t i);
+bool cexpr_is_extension(Checker *c, uint32_t i);   /* an __extension__ unary */
 
 /* Implicit conversion to an object's type (gcc's convert_for_assignment,
  * with its constraint errors and warnings): the value of expression node

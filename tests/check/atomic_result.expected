@@ -1,0 +1,18 @@
+atomic_result.c:5:49: warning: initialization of 'int *' from incompatible pointer type 'long int *' [-Wincompatible-pointer-types]
+    5 |   __typeof(__atomic_load_n(q, 0)) x2; int *a2 = &x2;
+      |                                                 ^
+atomic_result.c:6:65: warning: initialization of 'int *' from incompatible pointer type '_Bool *' [-Wincompatible-pointer-types]
+    6 |   __typeof(__sync_bool_compare_and_swap(p, 1, 2)) x3; int *a3 = &x3;
+      |                                                                 ^
+atomic_result.c:8:73: warning: initialization of 'int *' from incompatible pointer type '_Bool *' [-Wincompatible-pointer-types]
+    8 |   __typeof(__atomic_compare_exchange_n(p, p, 1, 0, 0, 0)) x5; int *a5 = &x5;
+      |                                                                         ^
+atomic_result.c:9:56: warning: initialization of 'char *' from incompatible pointer type 'int *' [-Wincompatible-pointer-types]
+    9 |   __typeof(__atomic_add_fetch(p, 1, 0)) x6; char *a6 = &x6;
+      |                                                        ^
+atomic_result.c:10:52: warning: initialization of 'char *' from incompatible pointer type 'long int *' [-Wincompatible-pointer-types]
+   10 |   __typeof(__atomic_load_n(&cl, 0)) x7; char *a7 = &x7;
+      |                                                    ^
+atomic_result.c:11:58: warning: initialization of 'char *' from incompatible pointer type '_Bool *' [-Wincompatible-pointer-types]
+   11 |   __typeof(__atomic_exchange_n(bp, 1, 0)) x8; char *a8 = &x8;
+      |                                                          ^

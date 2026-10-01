@@ -1,0 +1,51 @@
+builtin_proto.c:1:1: warning: ISO C99 does not support the '_Atomic' qualifier [-Wpedantic]
+    1 | _Atomic int a; int b; unsigned u;
+      | ^
+builtin_proto.c:9:20: warning: passing argument 1 of '__builtin_strlen' makes pointer from integer without a cast [-Wint-conversion]
+    9 |   __builtin_strlen(n);
+      |                    ^
+builtin_proto.c:9:20: note: expected 'const char *' but argument is of type 'int'
+    9 |   __builtin_strlen(n);
+      |                    ^
+builtin_proto.c:10:3: error: too few arguments to function '__builtin_pow'
+   10 |   __builtin_pow(1);
+      |   ^
+builtin_proto.c:12:5: warning: assignment to 'int' from 'double (*)(double,  double)' makes integer from pointer without a cast [-Wint-conversion]
+   12 |   n = __builtin_pow;
+      |     ^
+builtin_proto.c:17:33: warning: passing argument 3 of '__builtin_sadd_overflow' from incompatible pointer type [-Wincompatible-pointer-types]
+   17 |   __builtin_sadd_overflow(1, 2, &a);
+      |                                 ^
+builtin_proto.c:17:33: note: expected 'int *' but argument is of type '_Atomic int *'
+   17 |   __builtin_sadd_overflow(1, 2, &a);
+      |                                 ^
+builtin_proto.c:18:33: warning: pointer targets in passing argument 3 of '__builtin_sadd_overflow' differ in signedness [-Wpointer-sign]
+   18 |   __builtin_sadd_overflow(1, 2, &u);
+      |                                 ^
+builtin_proto.c:18:33: note: expected 'int *' but argument is of type 'unsigned int *'
+   18 |   __builtin_sadd_overflow(1, 2, &u);
+      |                                 ^
+builtin_proto.c:19:33: warning: pointer targets in passing argument 3 of '__builtin_uadd_overflow' differ in signedness [-Wpointer-sign]
+   19 |   __builtin_uadd_overflow(1, 2, &b);
+      |                                 ^
+builtin_proto.c:19:33: note: expected 'unsigned int *' but argument is of type 'int *'
+   19 |   __builtin_uadd_overflow(1, 2, &b);
+      |                                 ^
+builtin_proto.c:20:34: warning: passing argument 3 of '__builtin_saddl_overflow' from incompatible pointer type [-Wincompatible-pointer-types]
+   20 |   __builtin_saddl_overflow(1, 2, &b);
+      |                                  ^
+builtin_proto.c:20:34: note: expected 'long int *' but argument is of type 'int *'
+   20 |   __builtin_saddl_overflow(1, 2, &b);
+      |                                  ^
+builtin_proto.c:21:3: warning: argument 3 null where non-null expected [-Wnonnull]
+   21 |   __builtin_sadd_overflow(1, 2, 0);
+      |   ^
+builtin_proto.c:22:3: error: too few arguments to function '__builtin_sadd_overflow'
+   22 |   __builtin_sadd_overflow(1, 2);
+      |   ^
+builtin_proto.c:23:37: warning: passing argument 3 of '__builtin_ssubll_overflow' from incompatible pointer type [-Wincompatible-pointer-types]
+   23 |   __builtin_ssubll_overflow(1.5, b, &b);
+      |                                     ^
+builtin_proto.c:23:37: note: expected 'long long int *' but argument is of type 'int *'
+   23 |   __builtin_ssubll_overflow(1.5, b, &b);
+      |                                     ^

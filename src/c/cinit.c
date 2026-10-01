@@ -654,7 +654,12 @@ static void ival_from(Checker *c, uint32_t e, IVal *v)
     while (ntag(c, s) == N_PAREN && c->nodes[s].size > 1)
         s = s - 1;
     v->kind = V_EXPR;
-    v->strict = ntag(c, e) == N_STRING;
+    {
+        uint32_t u = e;     /* __extension__ does not parenthesize */
+        while (cexpr_is_extension(c, u) && first_child(c, u) != NO_NODE)
+            u = first_child(c, u);
+        v->strict = ntag(c, u) == N_STRING;
+    }
     v->str = (c->ef[e] & EF_STRING) && is_arr(c, c->ty[e]);
     v->cl = ntag(c, s) == N_COMPOUND_LIT;
     v->side = (c->ef[e] & EF_SIDE) != 0;

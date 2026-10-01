@@ -3965,6 +3965,8 @@ static int complete_array(Checker *c, TypeId type, uint32_t init,
     *out = type;
     if (init != NO_NODE) {
         uint32_t e = strip_parens(c, init);
+        while (e != NO_NODE && cexpr_is_extension(c, e))
+            e = strip_parens(c, first_child(c, e));
         if (ntag(c, init) == N_INIT_LIST) {
             /* cinit.c left the element count in cv */
             if (c->ck[init] == K_ICE) {

@@ -137,6 +137,11 @@ static SrcLoc after_loc(Checker *c, uint32_t i)
     return cinput_loc(c, last_tok(c, i) + 1);
 }
 
+bool cexpr_is_extension(Checker *c, uint32_t i)
+{
+    return ntag(c, i) == N_UNARY && tckw(c, c->nodes[i].tok) == CK_EXTENSION;
+}
+
 static bool in_function(const Checker *c)
 {
     return c->func_sym != SYM_NONE;
@@ -989,6 +994,37 @@ static TypeId bt_func_type(Checker *c, const BTab *b)
         p = *q ? q + 1 : q;
     }
     return type_func(TT, ret, ps, n, flags);
+}
+
+/* __builtin_{s,u}{add,sub,mul}{,l,ll}_overflow: _Bool (T, T, T *). */
+static TypeId overflow_func_type(Checker *c, const char *b)
+{
+    static const char *const op[] = {"add", "sub", "mul"};
+    bool sg = *b == 's';
+    TypeKind k;
+    TypeId t, ps[3];
+    size_t k2;
+    int found = 0;
+    if (*b != 's' && *b != 'u')
+        return ERRT;
+    for (k2 = 0; k2 < 3; k2++)
+        if (!strncmp(b + 1, op[k2], 3))
+            found = 1;
+    if (!found)
+        return ERRT;
+    b += 4;
+    if (!strncmp(b, "ll_overflow", 12))
+        k = sg ? TY_LLONG : TY_ULLONG;
+    else if (!strncmp(b, "l_overflow", 11))
+        k = sg ? TY_LONG : TY_ULONG;
+    else if (!strncmp(b, "_overflow", 10))
+        k = sg ? TY_INT : TY_UINT;
+    else
+        return ERRT;
+    t = TYPE_MK(k, 0);
+    ps[0] = ps[1] = t;
+    ps[2] = type_ptr(TT, t);
+    return type_func(TT, TYPE_B(BOOL), ps, 3, 0);
 }
 
 /* gcc's builtin type declarations, candidates for misspelled names. */
@@ -1894,6 +1930,17 @@ static void e_ident(Checker *c, uint32_t i)
                 return;
             }
         }
+        if (!strncmp(name, "__builtin_", 10)) {
+            /* a built-in with a library counterpart has that function's type */
+            const BTab *bt = bt_find(c, name + 10, true);
+            TypeId ft = bt ? bt_func_type(c, bt) : overflow_func_type(c, name + 10);
+            if (!is_err(c, ft)) {
+                c->ty[i] = ft;
+                c->ck[i] = K_ADDR;
+                c->ef[i] = EF_ADDRLV;
+                return;
+            }
+        }
         if (builtin_name(name) || (p != NO_NODE && ntag(c, p) == N_ATTR_ITEM)) {
             if (builtin_name(name))
                 reject_builtin(c, i, name);
@@ -2773,6 +2820,18 @@ static uint64_t builtin_nonnull(const char *name)
     const char *p;
     if (!strncmp(name, "__builtin_", 10))
         name += 10;
+    /* {s,u}{add,sub,mul}{,l,ll}_overflow: the result pointer */
+    if ((*name == 's' || *name == 'u') &&
+        (!strncmp(name + 1, "add", 3) || !strncmp(name + 1, "sub", 3) ||
+         !strncmp(name + 1, "mul", 3))) {
+        const char *q = name + 4;
+        if (!strncmp(q, "ll", 2))
+            q += 2;
+        else if (*q == 'l')
+            q++;
+        if (!strcmp(q, "_overflow"))
+            return 4;
+    }
     for (k = 0; k < sizeof t / sizeof *t; k++)
         if (!strcmp(name, t[k].n)) {
             for (p = t[k].pos; *p; p++)
@@ -3655,6 +3714,29 @@ static bool e_tgmath(Checker *c, uint32_t i)
     return true;
 }
 
+/* The type of a call of an overloaded atomic or sync built-in; ERRT for the
+ * others. */
+static TypeId atomic_result(Checker *c, uint32_t i, const char *name)
+{
+    int kind = atomic_kind(name);
+    const char *b = !strncmp(name, "__sync_", 7) ? name + 7 : name + 9;
+    uint32_t all[16], n = nkids(c, i, all, 16);
+    TypeId t;
+    if (!kind || n < 2 || n > 16 || node_err(c, all[1]))
+        return ERRT;
+    if (kind == 1)
+        return !strcmp(b, "compare_exchange") ? TYPE_B(BOOL) : TYPE_B(VOID);
+    t = rvt(c, all[1]);
+    if (!is_ptr(c, t))
+        return ERRT;
+    if (!strcmp(b, "bool_compare_and_swap") ||
+        !strcmp(b, "compare_exchange_n"))
+        return TYPE_B(BOOL);
+    if (!strcmp(b, "lock_release") || !strcmp(b, "store_n"))
+        return TYPE_B(VOID);
+    return unqual(c, pointee(c, t));
+}
+
 static void e_call(Checker *c, uint32_t i)
 {
     uint32_t k[3], n = nkids(c, i, k, 3), f;
@@ -3676,6 +3758,14 @@ static void e_call(Checker *c, uint32_t i)
             if (an <= 32)
                 check_nonnull(c, av, an, builtin_nonnull(name), NULL, 0, false,
                               true, call_loc(c, k[0]));
+        }
+        {
+            TypeId rt = atomic_result(c, i, name);
+            if (!is_err(c, rt)) {
+                c->ty[i] = rt;
+                c->ef[i] = EF_SIDE;
+                return;
+            }
         }
         if (!strcmp(name, "__builtin_tgmath")) {
             if (!e_tgmath(c, i))
