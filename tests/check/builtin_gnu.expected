@@ -1,0 +1,33 @@
+builtin_gnu.c:4:15: warning: implicit declaration of function 'strdup' [-Wimplicit-function-declaration]
+    4 |     char *p = strdup("a");
+      |               ^
+builtin_gnu.c:4:15: warning: incompatible implicit declaration of built-in function 'strdup' [-Wbuiltin-declaration-mismatch]
+    4 |     char *p = strdup("a");
+      |               ^
+builtin_gnu.c:5:9: warning: implicit declaration of function 'index' [-Wimplicit-function-declaration]
+    5 |     p = index(p, 1);
+      |         ^
+builtin_gnu.c:5:9: warning: incompatible implicit declaration of built-in function 'index' [-Wbuiltin-declaration-mismatch]
+    5 |     p = index(p, 1);
+      |         ^
+builtin_gnu.c:6:5: warning: implicit declaration of function 'stpcpy' [-Wimplicit-function-declaration]
+    6 |     stpcpy(p, p);
+      |     ^
+builtin_gnu.c:6:5: warning: incompatible implicit declaration of built-in function 'stpcpy' [-Wbuiltin-declaration-mismatch]
+    6 |     stpcpy(p, p);
+      |     ^
+builtin_gnu.c:7:5: warning: implicit declaration of function 'strnlen' [-Wimplicit-function-declaration]
+    7 |     strnlen(p, 1);
+      |     ^
+builtin_gnu.c:7:5: warning: incompatible implicit declaration of built-in function 'strnlen' [-Wbuiltin-declaration-mismatch]
+    7 |     strnlen(p, 1);
+      |     ^
+builtin_gnu.c:8:5: warning: implicit declaration of function 'ffs' [-Wimplicit-function-declaration]
+    8 |     ffs(1);
+      |     ^
+builtin_gnu.c:11:7: warning: conflicting types for built-in function 'strndup'; expected 'char *(const char *, long unsigned int)' [-Wbuiltin-declaration-mismatch]
+   11 | char *strndup(int);
+      |       ^
+builtin_gnu.c:12:5: warning: conflicting types for built-in function 'rindex'; expected 'char *(const char *, int)' [-Wbuiltin-declaration-mismatch]
+   12 | int rindex(void);
+      |     ^

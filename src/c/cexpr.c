@@ -901,16 +901,19 @@ typedef struct BTab {
     const char *name, *hdr;
     unsigned char mismatch;
     const char *sig;
+    unsigned char gnu;       /* a built-in only outside -std=c99 */
 } BTab;
 
-static const BTab *bt_find(const char *name)
+/* any: the __builtin_ spelling, which exists in every mode */
+static const BTab *bt_find(Checker *c, const char *name, bool any)
 {
     size_t lo = 0, hi = sizeof cbuiltin_tab / sizeof *cbuiltin_tab;
     while (lo < hi) {
         size_t mid = (lo + hi) / 2;
         int r = strcmp(name, cbuiltin_tab[mid].name);
         if (!r)
-            return (const BTab *)&cbuiltin_tab[mid];
+            return cbuiltin_tab[mid].gnu && !c->opt.gnu && !any
+                       ? NULL : (const BTab *)&cbuiltin_tab[mid];
         if (r < 0)
             hi = mid;
         else
@@ -1650,7 +1653,7 @@ static void builtin_mismatch(Checker *c, SrcLoc loc, const BTab *bt)
     Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "builtin-declaration-mismatch",
                             "incompatible implicit declaration of built-in "
                             "function '%s'", bt->name);
-    if (d)
+    if (d && bt->hdr[0])
         cnote(c, d, loc, "include '%s' or provide a declaration of '%s'",
               bt->hdr, bt->name);
 }
@@ -1661,7 +1664,7 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
     const char *name = cident(c, id);
     SrcLoc loc = cnode_loc(c, i);
     uint32_t ref = id < c->nidents && c->ext[id] ? c->ext[id] - 1 : SYM_NONE;
-    const BTab *bt = bt_find(name);
+    const BTab *bt = bt_find(c, name, false);
     csum_touch(c, SUM_EXT, id);
     CSym s;
     Diagnostic *d;
@@ -1684,7 +1687,7 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
     if (bt) {
         d = cpedwarn(c, loc, "implicit-function-declaration",
                      "implicit declaration of function '%s'", name);
-        if (d)
+        if (d && bt->hdr[0])
             cnote(c, d, header_note_loc(c, loc, bt->hdr), "include '%s' or "
                   "provide a declaration of '%s'", bt->hdr, name);
         if (bt->mismatch)
@@ -1790,7 +1793,7 @@ static void reject_builtin(Checker *c, uint32_t i, const char *name)
     uint32_t n = i, p, k[2];
     SrcLoc loc = cinput_loc(c, c->nodes[i].tok);
     int op;
-    if (bt_find(name + (!strncmp(name, "__builtin_", 10) ? 10 : 0)) &&
+    if (bt_find(c, name + (!strncmp(name, "__builtin_", 10) ? 10 : 0), true) &&
         !strncmp(name, "__builtin_", 10))
         return;             /* has a library fallback */
     for (;;) {
@@ -2865,7 +2868,8 @@ static BtMatch bt_match(Checker *c, const BTab *bt, TypeId declty)
 static const BTab *bt_for_decl(Checker *c, const CSym *s)
 {
     const char *n = cident(c, s->name);
-    return bt_find(!strncmp(n, "__builtin_", 10) ? n + 10 : n);
+    return bt_find(c, !strncmp(n, "__builtin_", 10) ? n + 10 : n,
+                   !strncmp(n, "__builtin_", 10));
 }
 
 static bool builtin_decl_ok(Checker *c, const CSym *s)
@@ -2945,7 +2949,7 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
                     "declaration of built-in function '%s' without a "
                     "prototype; expected '%s'", dn, sb_cstr(&sb));
     }
-    if (d)
+    if (d && bt->hdr[0])
         cnote(c, d, header_note_loc(c, s->loc, bt->hdr), "'%s' is declared in "
               "header '%s'", bt->name, bt->hdr);
     sb_free(&sb);
@@ -3051,7 +3055,7 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
     }
     if (!proto && fref != SYM_NONE) {
         bool impl = (csym(c, fref)->flags & CSF_IMPLICIT) != 0;
-        const BTab *bt = bt_find(cident(c, csym(c, fref)->name));
+        const BTab *bt = bt_find(c, cident(c, csym(c, fref)->name), false);
         if (bt && (impl ? !bt->mismatch : builtin_decl_ok(c, csym(c, fref))) &&
             strcmp(strchr(bt->sig, '|') + 1, "?")) {
             TypeId bft = type_canon(TT, bt_func_type(c, bt));
