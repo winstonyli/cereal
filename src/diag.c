@@ -175,6 +175,7 @@ struct DiagConfig {
     DiagLevel overrides[NOPTIONS];
     bool overridden[NOPTIONS];
     bool error[NOPTIONS];            /* -Werror=X */
+    bool noerror[NOPTIONS];          /* -Wno-error=X: not promoted by -Werror */
     signed char umbrella[NUMBRELLA];
     bool everything;
     bool werror;
@@ -191,6 +192,16 @@ DiagConfig *diag_config_new(void)
 void diag_config_free(DiagConfig *c)
 {
     free(c);
+}
+
+DiagConfig *diag_config_clone(const DiagConfig *c)
+{
+    DiagConfig *n = xcalloc(1, sizeof(DiagConfig));
+    if (c)
+        *n = *c;
+    else
+        memset(n->umbrella, -1, sizeof n->umbrella);
+    return n;
 }
 
 bool diag_config_werror(const DiagConfig *c)
@@ -303,6 +314,17 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
         c->everything = true;
         return true;
     }
+    if (strncmp(flag, "no-error=", 9) == 0) {
+        for (i = 0; i < NOPTIONS; i++) {
+            long lv;
+            if (name_matches(&options[i], flag + 9, &lv)) {
+                c->error[i] = false;
+                c->noerror[i] = true;
+                found = true;
+            }
+        }
+        return found;
+    }
     if (strncmp(flag, "error=", 6) == 0) {
         err = true;
         flag += 6;
@@ -335,8 +357,10 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
             bool en = on && lv != 0;
             c->overrides[i] = en ? options[i].level : DL_IGNORED;
             c->overridden[i] = true;
-            if (err)
+            if (err) {
                 c->error[i] = true;
+                c->noerror[i] = false;
+            }
             found = true;
         }
     }
@@ -418,6 +442,15 @@ DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested)
     return l;
 }
 
+bool diag_noerror(DiagEngine *d, const char *id)
+{
+    long i;
+    if (!d->cfg || !id || !*id)
+        return false;
+    i = find_index_cached(d, id);
+    return i >= 0 && d->cfg->noerror[i];
+}
+
 bool diag_enabled(DiagEngine *d, const char *id)
 {
     return diag_level_for(d, id, DL_WARNING) != DL_IGNORED;
@@ -450,7 +483,7 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
         return NULL;
     if (lvl <= DL_WARNING && !d->show_system && in_system_header(d, loc))
         return NULL;
-    if (lvl == DL_WARNING && d->werror)
+    if (lvl == DL_WARNING && d->werror && !diag_noerror(d, id))
         lvl = DL_ERROR;
     promoted = id && *id && req < DL_ERROR && req != DL_NOTE && lvl == DL_ERROR;
     dg = NEW(d->arena, Diagnostic);

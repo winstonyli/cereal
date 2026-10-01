@@ -4533,6 +4533,76 @@ static void static_assert_visit(Checker *c, uint32_t i)
     }
 }
 
+/* #pragma GCC diagnostic push | pop | ignored|warning|error|fatal "-Wname";
+ * s is just past "GCC".  The checker's diagnostics follow the new state. */
+static void diag_pragma(Checker *c, const char *s, const char *end)
+{
+    char kind[16], opt[96], flag[112];
+    size_t n = 0;
+    uint64_t h;
+    while (s < end && (*s == ' ' || *s == '\t'))
+        s++;
+    if (end - s < 10 || strncmp(s, "diagnostic", 10))
+        return;
+    s += 10;
+    while (s < end && (*s == ' ' || *s == '\t'))
+        s++;
+    while (s < end && *s >= 'a' && *s <= 'z' && n < sizeof kind - 1)
+        kind[n++] = *s++;
+    kind[n] = 0;
+    if (!strcmp(kind, "push")) {
+        DiagState st;
+        st.cfg = c->diag_cur ? diag_config_clone(c->diag_cur) : NULL;
+        st.dig = c->diag_dig;
+        vec_push(&c->diag_stack, st);
+        return;
+    }
+    if (!strcmp(kind, "pop")) {
+        DiagState st;
+        if (!c->diag_stack.len)
+            return;
+        st = vec_last(&c->diag_stack);
+        c->diag_stack.len--;
+        diag_config_free(c->diag_cur);
+        c->diag_cur = st.cfg;
+        c->diag_dig = st.dig;
+        c->diag->cfg = c->diag_cur ? c->diag_cur : c->diag_cfg0;
+        return;
+    }
+    if (strcmp(kind, "ignored") && strcmp(kind, "warning") &&
+        strcmp(kind, "error") && strcmp(kind, "fatal"))
+        return;
+    while (s < end && (*s == ' ' || *s == '\t'))
+        s++;
+    if (end - s < 5 || s[0] != '"' || s[1] != '-' || s[2] != 'W')
+        return;
+    s += 3;
+    for (n = 0; s < end && *s != '"' && n < sizeof opt - 1; s++)
+        opt[n++] = *s;
+    opt[n] = 0;
+    if (!c->diag_cur) {
+        c->diag_cfg0 = c->diag->cfg;
+        c->diag_cur = diag_config_clone(c->diag->cfg);
+    }
+    if (!strcmp(kind, "ignored")) {
+        snprintf(flag, sizeof flag, "no-%s", opt);
+        diag_config_apply(c->diag_cur, flag);
+    } else if (!strcmp(kind, "warning")) {
+        diag_config_apply(c->diag_cur, opt);
+        snprintf(flag, sizeof flag, "no-error=%s", opt);
+        diag_config_apply(c->diag_cur, flag);
+    } else {
+        snprintf(flag, sizeof flag, "error=%s", opt);
+        diag_config_apply(c->diag_cur, flag);
+    }
+    c->diag->cfg = c->diag_cur;
+    for (h = 14695981039346656037ull, s = kind; *s; s++)
+        h = (h ^ (unsigned char)*s) * 1099511628211ull;
+    for (s = opt; *s; s++)
+        h = (h ^ (unsigned char)*s) * 1099511628211ull;
+    c->diag_dig = (c->diag_dig + h) * 0x9E3779B97F4A7C15ull | 1;
+}
+
 static void pragma_visit(Checker *c, uint32_t i)
 {
     const Tok *t = tokp(c, cnode(c, i)->tok);
@@ -4550,6 +4620,10 @@ static void pragma_visit(Checker *c, uint32_t i)
         s += 6;
     while (s < end && (*s == ' ' || *s == '\t'))
         s++;
+    if (end - s > 3 && !strncmp(s, "GCC", 3) && (s[3] == ' ' || s[3] == '	')) {
+        diag_pragma(c, s + 3, end);
+        return;
+    }
     if (end - s < 4 || strncmp(s, "pack", 4))
         return;
     s += 4;

@@ -524,6 +524,8 @@ static uint64_t pack_digest(const Checker *c)
 {
     uint64_t d = H(D_PACK, c->pack);
     size_t k;
+    if (c->diag_dig)
+        d = H(d, c->diag_dig);
     for (k = 0; k < c->pack_stack.len; k++)
         d = H(d, c->pack_stack.data[k]);
     return nz(d);

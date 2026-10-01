@@ -1725,6 +1725,66 @@ static void undeclared(Checker *c, uint32_t i, uint32_t id)
     }
 }
 
+/* gcc's reject_gcc_builtin: a built-in function without a library fallback
+ * (__builtin_trap, __sync_*, ...) may only be called, cast to void or
+ * evaluated as a statement; anything that would take its address is an error.
+ * The consumer of the value (through parentheses and '*') decides, and where
+ * gcc reports: input_location, except an arithmetic, relational or equality
+ * operand (the operand's own place for the left, the operator for the right)
+ * and the right side of && and ||. */
+static void reject_builtin(Checker *c, uint32_t i, const char *name)
+{
+    uint32_t n = i, p, k[2];
+    SrcLoc loc = cinput_loc(c, c->nodes[i].tok);
+    int op;
+    if (bt_find(name + (!strncmp(name, "__builtin_", 10) ? 10 : 0)) &&
+        !strncmp(name, "__builtin_", 10))
+        return;             /* has a library fallback */
+    for (;;) {
+        p = c->par[n];
+        if (p == NO_NODE)
+            return;
+        if (ntag(c, p) == N_PAREN ||
+            (ntag(c, p) == N_UNARY && npunct(c, p) == P_STAR)) {
+            n = p;
+            continue;
+        }
+        break;
+    }
+    switch (ntag(c, p)) {
+    case N_CALL:
+        if (first_child(c, p) == n)
+            return;
+        break;
+    case N_CAST:
+        if (nkids(c, p, k, 2) < 2 || k[1] != n || is_void(c, type_of_typename(c, k[0])))
+            return;
+        break;
+    case N_BINARY:
+        op = npunct(c, p);
+        if (op == P_COMMA || nkids(c, p, k, 2) < 2)
+            return;
+        if (k[0] != n)
+            loc = cnode_loc(c, p);
+        else if (op != P_ANDAND && op != P_OROR)
+            loc = cnode_loc(c, n);
+        break;
+    case N_ASSIGN:
+        if (nkids(c, p, k, 2) < 2 || k[1] != n)
+            return;
+        if (npunct(c, p) != P_ASSIGN)
+            loc = cnode_loc(c, n);
+        break;
+    case N_UNARY: case N_COND: case N_RETURN: case N_IF: case N_WHILE:
+    case N_DO: case N_SWITCH: case N_FOR: case N_INIT_DECL:
+    case N_INIT_LIST: case N_DESIGNATED:
+        break;
+    default:
+        return;
+    }
+    cerror(c, loc, "built-in function '%s' must be directly called", name);
+}
+
 static void e_ident(Checker *c, uint32_t i)
 {
     uint32_t id = cnode_ident(c, i), ref = lookup_ord(c, id);
@@ -1748,6 +1808,8 @@ static void e_ident(Checker *c, uint32_t i)
             return;
         }
         if (builtin_name(name) || (p != NO_NODE && ntag(c, p) == N_ATTR_ITEM)) {
+            if (builtin_name(name))
+                reject_builtin(c, i, name);
             set_err(c, i);
             return;
         }
@@ -3847,8 +3909,12 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
     if (align && !cexpr_in_extension(c, i)) {
         size_t len;
         const char *s = ttext(c, c->nodes[i].tok, &len);
-        if (len == 8 && !memcmp(s, "_Alignof", 8))
+        if (len == 8 && !memcmp(s, "_Alignof", 8)) {
             cpedantic(c, cnode_loc(c, i), "ISO C99 does not support '_Alignof'");
+            if (!is_type)
+                cpedantic(c, cnode_loc(c, i),
+                          "ISO C does not allow '_Alignof (expression)'");
+        }
     }
     if (is_type) {
         t = type_of_typename(c, a);

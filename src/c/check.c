@@ -494,6 +494,14 @@ void checker_free(Checker *c)
     vec_free(&c->saved);
     vec_free(&c->stack);
     vec_free(&c->pack_stack);
+    if (c->diag_cur || c->diag_stack.len) {
+        size_t k;
+        for (k = 0; k < c->diag_stack.len; k++)
+            diag_config_free(c->diag_stack.data[k].cfg);
+        diag_config_free(c->diag_cur);
+        c->diag->cfg = c->diag_cfg0;
+    }
+    vec_free(&c->diag_stack);
     vec_free(&c->nested_undef);
     vec_free(&c->tentative);
     sb_free(&c->sb);

@@ -42,6 +42,7 @@ typedef enum { DIAG_FMT_TEXT, DIAG_FMT_JSON } DiagFormat;
 typedef struct DiagConfig DiagConfig;
 DiagConfig *diag_config_new(void);
 void diag_config_free(DiagConfig *c);
+DiagConfig *diag_config_clone(const DiagConfig *c);   /* NULL: the defaults */
 /* "foo", "no-foo", "error", "group", "all", "everything"; false if unknown */
 bool diag_config_apply(DiagConfig *c, const char *flag);
 bool diag_config_werror(const DiagConfig *c);
@@ -97,6 +98,8 @@ void diag_free(DiagEngine *d);
 
 DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested);
 bool diag_enabled(DiagEngine *d, const char *id);
+/* -Wno-error=id (or #pragma GCC diagnostic warning): -Werror leaves it a warning */
+bool diag_noerror(DiagEngine *d, const char *id);
 /* 1: enabled; 0: disabled by a flag (-Wno-X, or -Wno-all for an option
  * -Wall enables); -1: disabled by default.  gcc emits some pedwarns
  * untagged when the option is merely at its default (warn_return_type

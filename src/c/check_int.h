@@ -85,6 +85,7 @@ typedef struct Bind {
 } Bind;
 
 typedef VEC(Bind) BindVec;
+typedef struct DiagState { DiagConfig *cfg; uint64_t dig; } DiagState;
 
 #define NO_NODE 0xFFFFFFFFu
 
@@ -247,6 +248,11 @@ struct Checker {
     VEC(uint32_t) stack;     /* scratch */
     unsigned pack;           /* #pragma pack, bytes; 0: none */
     VEC(unsigned) pack_stack;
+    const DiagConfig *diag_cfg0;  /* the command line's -W state while a pragma
+                                     has changed it (c->diag->cfg) */
+    DiagConfig *diag_cur;    /* #pragma GCC diagnostic applied; NULL: none */
+    uint64_t diag_dig;       /* digest of that state */
+    VEC(DiagState) diag_stack;
     uint32_t func_sym;       /* the function being defined, SYM_NONE */
     uint32_t cur_func_node;
     uint32_t cur_node;      /* the node being visited (NO_NODE: none) */

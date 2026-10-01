@@ -1,0 +1,45 @@
+builtin_addr.c:6:3: error: built-in function '__builtin_trap' must be directly called
+    6 |   F *p = __builtin_trap;
+      |   ^
+builtin_addr.c:7:3: error: built-in function '__builtin_trap' must be directly called
+    7 |   void *q = (__builtin_trap);
+      |   ^
+builtin_addr.c:8:3: error: built-in function '__builtin_trap' must be directly called
+    8 |   n = -__builtin_trap;
+      |   ^
+builtin_addr.c:9:7: error: built-in function '__builtin_trap' must be directly called
+    9 |   n = __builtin_trap * 2;
+      |       ^
+builtin_addr.c:10:9: error: built-in function '__builtin_trap' must be directly called
+   10 |   n = n * __builtin_trap;
+      |         ^
+builtin_addr.c:11:3: error: built-in function '__builtin_trap' must be directly called
+   11 |   n = __builtin_trap && n;
+      |   ^
+builtin_addr.c:12:9: error: built-in function '__builtin_trap' must be directly called
+   12 |   n = n || __builtin_trap;
+      |         ^
+builtin_addr.c:13:8: error: built-in function '__builtin_trap' must be directly called
+   13 |   n += __builtin_trap;
+      |        ^
+builtin_addr.c:14:3: error: built-in function '__builtin_trap' must be directly called
+   14 |   p = &__builtin_trap;
+      |   ^
+builtin_addr.c:15:3: error: built-in function '__builtin_trap' must be directly called
+   15 |   p = *__builtin_trap;
+      |   ^
+builtin_addr.c:21:3: error: built-in function '__builtin_trap' must be directly called
+   21 |   g(__builtin_trap);
+      |   ^
+builtin_addr.c:22:3: error: built-in function '__builtin_trap' must be directly called
+   22 |   n = n ? __builtin_trap : 0;
+      |   ^
+builtin_addr.c:25:10: warning: ISO C99 does not support '_Alignof' [-Wpedantic]
+   25 | long a = _Alignof i;
+      |          ^
+builtin_addr.c:25:10: warning: ISO C does not allow '_Alignof (expression)' [-Wpedantic]
+   25 | long a = _Alignof i;
+      |          ^
+builtin_addr.c:31:7: warning: implicit declaration of function 'bar' [-Wimplicit-function-declaration]
+   31 |   n = bar(n);
+      |       ^
