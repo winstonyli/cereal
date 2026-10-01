@@ -46,7 +46,11 @@ def dgjobs(extra):
                 o=[x for x in shlex.split(m.group(1)) if not x.startswith("-O") and x!="-g"]
                 if any(x.startswith("-std=") and x not in ("-std=c99","-std=gnu99","-std=iso9899:1999") for x in o) or "-ansi" in o:
                     continue            # cereal is C99 only
-                if any(x == "-W" or not x.startswith(("-W","-D","-U","-I","-std=","-pedantic")) for x in o):
+                o2=[]; k=0
+                while k<len(o):         # --param N=V is accepted and ignored
+                    if o[k]=="--param": k+=2; o2.append("--param"); continue
+                    o2.append(o[k]); k+=1
+                if any(x == "-W" or (x!="--param" and x!="-w" and not x.startswith(("-W","-D","-U","-I","-std=","-pedantic","-fdump-","-fcompare-debug","-ftrack-macro-expansion=","--param="))) for x in o2):
                     continue            # options cereal does not take
                 std=o if any(x.startswith("-std=") for x in o) else ["-std=c99"]+o
                 if not any(x.startswith("-pedantic") for x in std): std=std+["-pedantic"]

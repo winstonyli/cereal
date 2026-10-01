@@ -217,6 +217,8 @@ void pp_add_expansion_notes(PP *pp, Diagnostic *d)
 {
     size_t i = pp->ctx.len;
     int n = 0;
+    if (pp->diag->track0)
+        return;
     while (d && i-- > 0 && n < 16) {
         Context *c = &pp->ctx.data[i];
         if (c->macro && c->name_loc) {

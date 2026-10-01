@@ -499,7 +499,7 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     DiagLevel req = lvl;
     bool promoted;
     lvl = diag_level_for(d, id, lvl);
-    if (lvl == DL_IGNORED)
+    if (lvl == DL_IGNORED || (lvl == DL_WARNING && d->no_warnings))
         return NULL;
     if (lvl <= DL_WARNING && !d->show_system && in_system_header(d, loc))
         return NULL;
@@ -649,19 +649,33 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
     if (f && f->kind != SF_VIRTUAL && !eof) {
         uint32_t len, i, caret_end = col;
         const char *text = srcmgr_line_text(f, line, &len);
-        fprintf(o, "%5u | %.*s\n      | ", line, (int)len, text);
+        uint32_t dcol = display_col(f, line, col), dend, dc = 0;
+        fprintf(o, "%5u | ", line);
+        for (i = 0; i < len; i++) {     /* gcc expands tabs to 8-column stops */
+            if (text[i] == '\t') {
+                do
+                    fputc(' ', o);
+                while (++dc & 7);
+            } else {
+                fputc(text[i], o);
+                if (((unsigned char)text[i] & 0xC0) != 0x80)
+                    dc++;
+            }
+        }
+        fputs("\n      | ", o);
         if (range.end > range.begin && srcmgr_file_of(d->sm, range.end) == f) {
             uint32_t el, ec;
             srcmgr_linecol(f, range.end, &el, &ec);
             if (el == line && ec > col)
                 caret_end = ec - 1;
         }
-        for (i = 1; i < col && i <= len; i++)
-            fputc(text[i - 1] == '\t' ? '\t' : ' ', o);
+        dend = display_col(f, line, caret_end);
+        for (i = 1; i < dcol; i++)
+            fputc(' ', o);
         if (d->color)
             fputs("\033[1;32m", o);
         fputc('^', o);
-        for (i = col + 1; i <= caret_end && i <= len; i++)
+        for (i = dcol + 1; i <= dend && caret_end <= len; i++)
             fputc('~', o);
         if (d->color)
             fputs("\033[0m", o);

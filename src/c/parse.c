@@ -152,7 +152,8 @@ static SrcLoc tok_loc(Parser *p, uint32_t i)
  * definition). */
 static SrcLoc spell_loc(Parser *p, uint32_t i)
 {
-    return i < p->toks.len ? p->toks.data[i].t.loc : tok_loc(p, i);
+    return i < p->toks.len && !p->diag->track0 ? p->toks.data[i].t.loc
+                                              : tok_loc(p, i);
 }
 
 /* The file of the last token read (the end of input is its end). */
@@ -249,7 +250,7 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
     p->diag->include_chain = NULL; /* the preprocessor has moved on */
     d = diag_vreport(p->diag, DL_ERROR, "", loc, fmt, ap);
     p->diag->include_chain = chain;
-    if (d && i < p->toks.len && p->toks.data[i].exp &&
+    if (d && !p->diag->track0 && i < p->toks.len && p->toks.data[i].exp &&
         p->toks.data[i].exp != p->toks.data[i].t.loc) {
         /* a macro body token: gcc names the macro at the invocation (the
          * outermost one; nested expansions are not tracked) */

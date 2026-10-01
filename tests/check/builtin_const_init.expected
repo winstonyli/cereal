@@ -1,0 +1,12 @@
+builtin_const_init.c:4:20: warning: initializer element is not a constant expression [-Wpedantic]
+    4 | const double lib = 4*atan(1.0);       /* pedwarn: library call folded */
+      |                    ^
+builtin_const_init.c:5:21: warning: initializer element is not a constant expression [-Wpedantic]
+    5 | const double lib2 = nan("");
+      |                     ^
+builtin_const_init.c:9:11: warning: initialization of 'int' from 'char *' makes integer from pointer without a cast [-Wint-conversion]
+    9 | int tab = 1 +   "x";
+      |           ^
+builtin_const_init.c:9:11: error: initializer element is not computable at load time
+    9 | int tab = 1 +   "x";
+      |           ^

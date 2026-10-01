@@ -56,6 +56,9 @@ typedef struct DiagEngine {
     bool werror;
     bool pedantic;
     bool pedantic_errors;
+    bool no_warnings;        /* -w */
+    bool track0;             /* -ftrack-macro-expansion=0: report macro
+                                tokens at the expansion point */
     bool show_system;        /* report warnings located in system headers */
     bool immediate;          /* print as reported (text format) */
     bool color;

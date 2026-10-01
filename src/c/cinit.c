@@ -728,6 +728,38 @@ static uint32_t ptr_off_base(Checker *c, uint32_t n, int depth)
     }
 }
 
+/* A read of an element of a static const aggregate with a constant
+ * initializer (`a[27]`, `e[1].c[4]`): gcc folds it to the stored value. */
+static bool const_agg_read(Checker *c, uint32_t n, int depth)
+{
+    while (ntag(c, n) == N_PAREN && n > 0)
+        n--;
+    if (depth > 40)
+        return false;
+    switch (ntag(c, n)) {
+    case N_IDENT: {
+        uint32_t ref = lookup_ord(c, cnode_ident(c, n));
+        CSym *sy;
+        if (ref == SYM_NONE)
+            return false;
+        sy = csym(c, ref);
+        return sy->kind == CS_OBJ && (sy->flags & CSF_CONST_INIT) &&
+               !is_err(c, sy->ty) &&
+               (is_arr(c, sy->ty) || is_aggr(c, sy->ty));
+    }
+    case N_INDEX: {
+        uint32_t b2 = n - 1, b1 = b2 - c->nodes[b2].size;
+        return is_icelike(c, b2) && !(c->ef[b2] & EF_OVERFLOW) &&
+               const_agg_read(c, b1, depth + 1);
+    }
+    case N_MEMBER_EXPR:
+        return !(c->nodes[n].flags & NF_ARROW) &&
+               const_agg_read(c, n - 1, depth + 1);
+    default:
+        return false;
+    }
+}
+
 static bool const_varlike(Checker *c, uint32_t n, int depth)
 {
     uint32_t e2, e1;
@@ -783,13 +815,17 @@ static bool const_varlike(Checker *c, uint32_t n, int depth)
             s = b2;
             ix = b1;
         } else {
-            return false;
+            return !is_aggr(c, c->ty[n]) && !is_arr(c, c->ty[n]) &&
+                   const_agg_read(c, n, depth);
         }
         if (!is_icelike(c, ix) || (c->ef[ix] & EF_OVERFLOW))
             return false;
         v = cexpr_sval(c, ix);  /* gcc: only an index inside the string */
         return v >= 0 && (uint64_t)v < type_ent(TT, c->ty[s])->n;
     }
+    case N_MEMBER_EXPR:
+        return !is_aggr(c, c->ty[n]) && !is_arr(c, c->ty[n]) &&
+               const_agg_read(c, n, depth);
     case N_UNARY:
         op = tpunct(c, c->nodes[n].tok);
         return (op == P_PLUS || op == P_MINUS || op == P_TILDE ||
@@ -840,10 +876,35 @@ static bool foldable_libcall(Checker *c, uint32_t n, int depth)
     if (!nk || nk > 8 || ntag(c, k[0]) != N_IDENT)
         return false;
     id = cnode_ident(c, k[0]);
+    snprintf(name, sizeof name, "%s", cident(c, id));
+    if (!strncmp(name, "__builtin_", 10)) {
+        /* gcc folds a __builtin_ call of constants to a true constant */
+        static const char *const bfns[] = {"inf", "huge_val", "abs", "labs",
+            "llabs", "strlen", "ffs", "clz", "ctz", "popcount", "parity"};
+        const char *b = name + 10;
+        size_t q, bl = strlen(b);
+        for (q = 0; q < sizeof fns / sizeof *fns; q++)
+            if (!strcmp(b, fns[q]) ||
+                (bl > 1 && (b[bl - 1] == 'f' || b[bl - 1] == 'l') &&
+                 !strncmp(b, fns[q], bl - 1) && !fns[q][bl - 1]))
+                break;
+        if (q == sizeof fns / sizeof *fns) {
+            for (q = 0; q < sizeof bfns / sizeof *bfns; q++)
+                if (!strncmp(b, bfns[q], strlen(bfns[q])) &&
+                    (!b[strlen(bfns[q])] || !strcmp(b + strlen(bfns[q]), "f") ||
+                     !strcmp(b + strlen(bfns[q]), "l")))
+                    break;
+            if (q == sizeof bfns / sizeof *bfns)
+                return false;
+        }
+        for (j = 1; j < nk; j++)
+            if (ntag(c, k[j]) != N_STRING && !const_varlike(c, k[j], depth + 1))
+                return false;
+        return true;
+    }
     ref = lookup_ord(c, id);
     if (ref == SYM_NONE || csym(c, ref)->kind != CS_FUNC)
         return false;
-    snprintf(name, sizeof name, "%s", cident(c, id));
     len = strlen(name);
     for (m = 0; m < sizeof fns / sizeof *fns; m++)
         if (!strcmp(name, fns[m]) ||
@@ -2483,6 +2544,19 @@ void cinit_post(Checker *c, uint32_t i)
 
 /* ---- brace-less initializers ---------------------------------------------------------------------- */
 
+/* A static const aggregate: reads of its elements fold (a[27]). */
+static void mark_const_agg(Checker *c, CSym *s, TypeId type)
+{
+    TypeId et = type;
+    if ((!is_aggr(c, type) && !is_arr(c, type)) ||
+        !(s->flags & CSF_TREE_STATIC))
+        return;
+    while (is_arr(c, et))
+        et = type_base(TT, type_canon(TT, et));
+    if ((TYPE_QUALS(et) & (TQ_CONST | TQ_VOLATILE)) == TQ_CONST)
+        s->flags |= CSF_CONST_INIT;
+}
+
 void cinit_decl_done(Checker *c, uint32_t idecl)
 {
     uint32_t declared = idecl, init;
@@ -2504,9 +2578,12 @@ void cinit_decl_done(Checker *c, uint32_t idecl)
     }
     if (declared == NOB || !c->cb[declared] || !(c->cv[declared] & 1))
         return;
-    if (ntag(c, init) == N_INIT_LIST)
-        return;
     s = csym(c, c->cb[declared] - 1);
+    if (ntag(c, init) == N_INIT_LIST) {
+        if (!is_err(c, s->ty))
+            mark_const_agg(c, s, s->ty);
+        return;
+    }
     if (s->flags & CSF_AUTO_TYPE)
         return;
     type = s->ty;
@@ -2537,5 +2614,7 @@ void cinit_decl_done(Checker *c, uint32_t idecl)
             !is_aggr(c, type) && !is_arr(c, type) && v.kind == V_EXPR &&
             !v.str && !v.cl && const_class(c, init, v.type, type) == 2)
             s->flags |= CSF_CONST_INIT;
+        else
+            mark_const_agg(c, s, type);
     }
 }

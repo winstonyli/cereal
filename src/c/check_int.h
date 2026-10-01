@@ -339,7 +339,7 @@ static inline const Node *cnode(const Checker *c, uint32_t i)
 static inline SrcLoc ctok_loc(const Checker *c, uint32_t tok)
 {
     const PTok *t = &c->u->toks[tok];
-    return t->t.loc;
+    return c->diag->track0 && t->exp ? t->exp : t->t.loc;
 }
 static inline SrcLoc cnode_loc(const Checker *c, uint32_t i)
 {

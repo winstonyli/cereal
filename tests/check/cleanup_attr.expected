@@ -1,41 +1,41 @@
 cleanup_attr.c:23:7: error: too many arguments to function 'f3'
-   23 |   int o3 C(f3);		/* { dg-error "too many arguments" } */
+   23 |   int o3 C(f3);         /* { dg-error "too many arguments" } */
       |       ^
 cleanup_attr.c:11:13: note: declared here
    11 | static void f3(void) { } /* { dg-message "note: declared here" } */
       |             ^
 cleanup_attr.c:26:3: warning: passing argument 1 of 'f6' from incompatible pointer type [-Wincompatible-pointer-types]
-   26 |   int o6 C(f6);		/* { dg-warning "incompatible pointer type" } */
+   26 |   int o6 C(f6);         /* { dg-warning "incompatible pointer type" } */
       |   ^
 cleanup_attr.c:14:24: note: expected 'double *' but argument is of type 'int *'
    14 | static void f6(double *x U) { } /* { dg-message "note: expected '\[^\n'\]*' but argument is of type '\[^\n'\]*'" "note: expected" } */
       |                        ^
 cleanup_attr.c:28:7: error: too few arguments to function 'f8'
-   28 |   int o8 C(f8);		/* { dg-error "too few arguments" } */
+   28 |   int o8 C(f8);         /* { dg-error "too few arguments" } */
       |       ^
 cleanup_attr.c:16:13: note: declared here
    16 | static void f8(const int *x U, int y U) { } /* { dg-message "note: declared here" } */
       |             ^
 cleanup_attr.c:29:3: warning: passing argument 1 of 'f9' makes integer from pointer without a cast [-Wint-conversion]
-   29 |   int o9 C(f9);		/* { dg-warning "from pointer without a cast" } */
+   29 |   int o9 C(f9);         /* { dg-warning "from pointer without a cast" } */
       |   ^
 cleanup_attr.c:17:20: note: expected 'int' but argument is of type 'int *'
    17 | static void f9(int x U) { } /* { dg-message "note: expected '\[^\n'\]*' but argument is of type '\[^\n'\]*'" "note: expected" } */
       |                    ^
 cleanup_attr.c:30:3: error: cleanup argument not a function
-   30 |   int o10 U C(undef);	/* { dg-error "not a function" } */
+   30 |   int o10 U C(undef);   /* { dg-error "not a function" } */
       |   ^
 cleanup_attr.c:31:3: error: cleanup argument not a function
-   31 |   int o11 U C(o1);	/* { dg-error "not a function" } */
+   31 |   int o11 U C(o1);      /* { dg-error "not a function" } */
       |   ^
 cleanup_attr.c:32:3: error: cleanup argument not an identifier
-   32 |   int o12 U C("f1");	/* { dg-error "not an identifier" } */
+   32 |   int o12 U C("f1");    /* { dg-error "not an identifier" } */
       |   ^
 cleanup_attr.c:33:3: warning: 'cleanup' attribute ignored [-Wattributes]
    33 |   static int o13 U C(f1); /* { dg-warning "attribute ignored" } */
       |   ^
 cleanup_attr.c:36:1: warning: 'cleanup' attribute ignored [-Wattributes]
-   36 | int o14 C(f1);		/* { dg-warning "attribute ignored" } */
+   36 | int o14 C(f1);          /* { dg-warning "attribute ignored" } */
       | ^
 cleanup_attr.c:37:1: warning: 'cleanup' attribute ignored [-Wattributes]
    37 | void t15(int o U C(f1)) {} /* { dg-warning "attribute ignored" } */

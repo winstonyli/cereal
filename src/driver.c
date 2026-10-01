@@ -83,6 +83,16 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->short_enums = true;
     } else if (!strcmp(a, "-fno-short-enums")) {
         o->short_enums = false;
+    } else if (!strcmp(a, "-w")) {
+        o->no_warnings = true;
+    } else if (!strncmp(a, "-ftrack-macro-expansion=", 24)) {
+        o->track0 = a[24] == '0';
+    } else if (!strncmp(a, "-fdump-", 7) || !strncmp(a, "-fcompare-debug", 15)) {
+        /* middle-end only: no effect on diagnostics */
+    } else if (!strcmp(a, "--param")) {
+        (void)arg_value(argc, argv, &i, "--param");
+    } else if (!strncmp(a, "--param=", 8)) {
+        /* middle-end only */
     } else if (!strcmp(a, "-fsystem-warnings")) {
         o->show_system = true;
     } else if (a[1] == 'O') {
@@ -168,9 +178,12 @@ void tu_init_shared(TU *tu, Options *opt, Interner *in)
     tu->diag.cfg = opt->diag;
     tu->diag.werror = diag_config_werror(opt->diag);
     tu->diag.pedantic = opt->pp.pedantic || diag_config_pedantic(opt->diag);
-    tu->diag.pedantic_errors = opt->pedantic_errors;
+    /* -w also silences pedwarns, even under -pedantic-errors */
+    tu->diag.pedantic_errors = opt->pedantic_errors && !opt->no_warnings;
     tu->diag.color = opt->color;
     tu->diag.show_system = opt->show_system;
+    tu->diag.no_warnings = opt->no_warnings;
+    tu->diag.track0 = opt->track0;
     pp_init(&tu->pp, &tu->arena, tu->in, &tu->sm, &tu->diag, &opt->pp);
     tu->pp.host_attrs = host_attrs;
     tu->pp.check_versions = opt->check_versions;
