@@ -97,7 +97,9 @@ Diagnostic *cped11(Checker *c, SrcLoc loc, const char *fmt, ...)
     if (!c->opt.pedantic || !diag_enabled(c->diag, "c99-c11-compat"))
         return NULL;
     va_start(ap, fmt);
-    d = vped(c, loc, "pedantic", fmt, ap);
+    /* gcc tags the pedwarn with the option when it was given explicitly */
+    d = vped(c, loc, diag_option_explicit(c->diag, "c99-c11-compat") ?
+             "c99-c11-compat" : "pedantic", fmt, ap);
     va_end(ap);
     return d;
 }

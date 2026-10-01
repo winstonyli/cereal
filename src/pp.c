@@ -1527,7 +1527,11 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
             tokbuf_push(pp, &src, rest.t[i]);
         line.t = src.t;
         line.n = src.len;
-        pedantic(pp, kw->loc, "style of line directive is a GCC extension");
+        /* cpp_pedwarning (CPP_W_NONE, ...): not tagged with -Wpedantic */
+        if (pp->opt->pedantic)
+            diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR
+                        : DL_WARNING, "", kw->loc,
+                        "style of line directive is a GCC extension");
     } else {
         line = read_line(pp);
     }

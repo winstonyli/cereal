@@ -105,6 +105,8 @@ bool diag_noerror(DiagEngine *d, const char *id);
  * untagged when the option is merely at its default (warn_return_type
  * == -1) and not at all when it is turned off. */
 int diag_option_state(DiagEngine *d, const char *id);
+/* true when -Wid itself was given on the command line */
+bool diag_option_explicit(DiagEngine *d, const char *id);
 /* N of -Wid=N as given on the command line, else dflt */
 int diag_option_level(DiagEngine *d, const char *id, int dflt);
 

@@ -1,0 +1,30 @@
+c11_compat_explicit.c:5:36: warning: ISO C99 doesn't support unnamed structs/unions [-Wc99-c11-compat]
+    5 | struct S { int i; struct { int a; }; }; /* { dg-warning "ISO C99 doesn.t support unnamed structs/unions" } */
+      |                                    ^
+c11_compat_explicit.c:6:16: warning: ISO C99 does not support '_Noreturn' [-Wc99-c11-compat]
+    6 | _Noreturn void foo (void); /* { dg-warning "ISO C99 does not support ._Noreturn." } */
+      |                ^
+c11_compat_explicit.c:8:13: warning: redefinition of typedef 'A' [-Wc99-c11-compat]
+    8 | typedef int A; /* { dg-warning "redefinition of typedef .A." } */
+      |             ^
+c11_compat_explicit.c:7:13: note: previous declaration of 'A' with type 'A' {aka 'int'}
+    7 | typedef int A;
+      |             ^
+c11_compat_explicit.c:9:1: warning: ISO C99 does not support '_Thread_local' [-Wc99-c11-compat]
+    9 | _Thread_local int i; /* { dg-warning "ISO C99 does not support ._Thread_local." } */
+      | ^
+c11_compat_explicit.c:10:1: warning: ISO C99 does not support '_Static_assert' [-Wc99-c11-compat]
+   10 | _Static_assert (1, "foo"); /* { dg-warning "ISO C99 does not support ._Static_assert." } */
+      | ^
+c11_compat_explicit.c:11:1: warning: ISO C99 does not support the '_Atomic' qualifier [-Wc99-c11-compat]
+   11 | _Atomic int a; /* { dg-warning "ISO C99 does not support the ._Atomic. qualifier" } */
+      | ^
+c11_compat_explicit.c:12:1: warning: ISO C99 does not support '_Alignas' [-Wc99-c11-compat]
+   12 | _Alignas (int) int aa; /* { dg-warning "ISO C99 does not support ._Alignas." } */
+      | ^
+c11_compat_explicit.c:13:14: warning: ISO C99 does not support '_Alignof' [-Wc99-c11-compat]
+   13 | enum e { E = _Alignof (double) }; /* { dg-warning "ISO C99 does not support ._Alignof." } */
+      |              ^
+c11_compat_explicit.c:18:3: warning: ISO C99 does not support '_Generic' [-Wc99-c11-compat]
+   18 |   _Generic (n, int: 0); /* { dg-warning "ISO C99 does not support ._Generic." } */
+      |   ^

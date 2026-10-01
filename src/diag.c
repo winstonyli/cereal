@@ -477,6 +477,13 @@ int diag_option_state(DiagEngine *d, const char *id)
     return option_state(d->cfg, (size_t)i, &l);
 }
 
+bool diag_option_explicit(DiagEngine *d, const char *id)
+{
+    long i = find_index_cached(d, id);
+    return i >= 0 && d->cfg && d->cfg->overridden[i] &&
+           d->cfg->overrides[i] != DL_IGNORED;
+}
+
 static bool in_system_header(DiagEngine *d, SrcLoc loc)
 {
     SrcFile *f = srcmgr_file_of(d->sm, loc);
