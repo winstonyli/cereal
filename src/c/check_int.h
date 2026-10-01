@@ -79,6 +79,7 @@ typedef struct CSym {
     uint64_t val;            /* enumeration constants: the value */
     TypeId vty;              /* enumeration constants: the value's type */
     uint32_t dep_msg;        /* deprecated/unavailable message: Checker.dep_msgs + 1 */
+    uint32_t sect;           /* section(".."): Checker.dep_msgs + 1, 0: none */
     uint64_t nonnull;        /* the 'nonnull' attribute (Attrs.nonnull) */
     uint32_t aset;           /* attribute names written or copied: Checker.anames set id */
     uint32_t parms;          /* cparm.c: how the parameters were declared (the
@@ -157,6 +158,10 @@ typedef struct Attrs {
     bool unavailable, gnu_inline;
     uint64_t nonnull;        /* bit j: argument j + 1; NN_ALL: every pointer */
     uint32_t dep_msg;        /* Checker.dep_msgs + 1, 0: none */
+    uint32_t sec, sec2;      /* section("..") strings (Checker.dep_msgs + 1);
+                              * sec2: a later one, compared with sec */
+    bool sec_any;            /* a section attribute was written */
+    SrcLoc sec_bad;          /* input_location of a non-string argument */
 } Attrs;
 
 /* The declaration specifiers of one declaration (gcc's c_declspecs). */

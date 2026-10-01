@@ -1,0 +1,48 @@
+attr_section.c:3:1: warning: ignoring attribute 'section ("s2")' because it conflicts with previous 'section ("s1")' [-Wattributes]
+    3 | __attribute__ ((section ("s2"))) void f1 (void);
+      | ^
+attr_section.c:4:55: error: section of 'f2' conflicts with previous declaration
+    4 | __attribute__ ((section ("s3"), section ("s4"))) void f2 (void);
+      |                                                       ^
+attr_section.c:5:70: error: section of 'f3' conflicts with previous declaration
+    5 | __attribute__ ((section ("s5"))) __attribute ((section ("s6"))) void f3 (void);
+      |                                                                      ^
+attr_section.c:7:1: warning: ignoring attribute 'section ("b")' because it conflicts with previous 'section ("a")' [-Wattributes]
+    7 | int v1 __attribute__((section("b")));
+      | ^
+attr_section.c:8:1: error: section attribute argument not a string constant
+    8 | int v2 __attribute__((section(3)));
+      | ^
+attr_section.c:9:1: error: wrong number of arguments specified for 'section' attribute
+    9 | int v3 __attribute__((section));
+      | ^
+attr_section.c:12:7: error: section attribute cannot be specified for local variables
+   12 |   int l __attribute__((section("x")));
+      |       ^
+attr_section.c:13:14: warning: unused variable 's' [-Wunused-variable]
+   13 |   static int s __attribute__((section("y")));
+      |              ^
+attr_section.c:12:7: warning: unused variable 'l' [-Wunused-variable]
+   12 |   int l __attribute__((section("x")));
+      |       ^
+attr_section.c:15:13: error: section attribute not allowed for 'T'
+   15 | typedef int T __attribute__((section("t")));
+      |             ^
+attr_section.c:16:16: error: section attribute not allowed for 'm'
+   16 | struct S { int m __attribute__((section("z"))); };
+      |                ^
+attr_section.c:17:13: error: section attribute not allowed for 'p'
+   17 | void f4(int p __attribute__((section("q"))));
+      |             ^
+attr_section.c:23:1: warning: ignoring attribute 'section ("b")' because it conflicts with previous 'section ("a")' [-Wattributes]
+   23 | void fa(void) __attribute__((section("b")));
+      | ^
+attr_section.c:25:1: warning: ignoring attribute 'section ("c")' because it conflicts with previous 'section ("a")' [-Wattributes]
+   25 | void fb(void) __attribute__((section("c")));
+      | ^
+attr_section.c:28:16: error: section attribute cannot be specified for local variables
+   28 |     extern int le __attribute__((section("x")));
+      |                ^
+attr_section.c:28:16: warning: unused variable 'le' [-Wunused-variable]
+   28 |     extern int le __attribute__((section("x")));
+      |                ^

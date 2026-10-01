@@ -52,6 +52,8 @@ typedef struct Parser {
     VEC(uint32_t) open_braces;  /* '{' of the compound statements open */
     int fn_depth;
     bool unwind;                /* ending an unclosed function body */
+    uint8_t loop_pragma;        /* 1: #pragma GCC ivdep, 2: unroll just before the
+                                 * statement being parsed */
     uint32_t unwind_to;
     bool have_err;
     bool eof_stmt_err;          /* the unclosed-body error was reported */

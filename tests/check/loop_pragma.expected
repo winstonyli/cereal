@@ -1,0 +1,12 @@
+loop_pragma.c:5:15: error: missing loop condition in loop with 'GCC unroll' pragma before ';' token
+    5 |   for (i = 0; ; ++i) a[i] = 0;
+      |               ^
+loop_pragma.c:9:3: error: for, while or do statement expected before 'a'
+    9 |   a[0] = 2;
+      |   ^
+loop_pragma.c:12:9: error: missing loop condition in loop with 'GCC ivdep' pragma before ';' token
+   12 |   for (;;) ;
+      |         ^
+loop_pragma.c:16:1: error: for, while or do statement expected before '}' token
+   16 | }
+      | ^

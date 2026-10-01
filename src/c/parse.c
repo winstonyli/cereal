@@ -492,10 +492,43 @@ static void sync_top(Parser *p)
 /* Pragmas where an item may start become items. */
 static void item_pragmas(Parser *p)
 {
+    bool loops = false;
+    p->loop_pragma = 0;
     while (!p->unwind && fill(p, p->pos) &&
            p->toks.data[p->pos].t.kind == TK_PRAGMA) {
+        const Tok *t = &p->toks.data[p->pos].t;
+        const char *s = tok_text_raw(p->sm, p->in, t), *e = s + t->len;
+        while (s < e && (*s == ' ' || *s == '	'))
+            s++;
+        if (e - s > 6 && !strncmp(s, "pragma", 6))
+            s += 6;
+        while (s < e && (*s == ' ' || *s == '	'))
+            s++;
+        if (e - s > 4 && !strncmp(s, "GCC", 3) && (s[3] == ' ' || s[3] == '	')) {
+            s += 3;
+            while (s < e && (*s == ' ' || *s == '	'))
+                s++;
+            if (e - s >= 5 && !strncmp(s, "ivdep", 5) &&
+                (e - s == 5 || s[5] == ' ' || s[5] == '	')) {
+                p->loop_pragma |= 1;
+                loops = true;
+            } else if (e - s >= 6 && !strncmp(s, "unroll", 6) &&
+                       (e - s == 6 || s[6] == ' ' || s[6] == '	')) {
+                p->loop_pragma |= 2;
+                loops = true;
+            }
+        }
         leaf(p, N_PRAGMA, p->pos);
         p->pos++;
+    }
+    if (loops && !p->unwind) {
+        int k = ckw(p);
+        if (k != CK_FOR && k != CK_WHILE && k != CK_DO) {
+            char buf[160];
+            perr(p, ci(p), "for, while or do statement expected%s",
+                 tok_desc(p, ci(p), buf, sizeof buf));
+            p->loop_pragma = 0;
+        }
     }
 }
 
@@ -2075,6 +2108,8 @@ static void statement(Parser *p)
         return;
     case CK_FOR: {
         PTok c;
+        unsigned lp = p->loop_pragma;
+        p->loop_pragma = 0;
         adv(p);
         open_scope(p, i, 0);
         expect(p, P_LPAREN);
@@ -2087,7 +2122,13 @@ static void statement(Parser *p)
             parse_expr(p);
             expect(p, P_SEMI);
         }
-        if (at(p, P_SEMI))
+        if (at(p, P_SEMI) && lp) {
+            char buf[160];
+            perr(p, ci(p), "missing loop condition in loop with 'GCC %s' "
+                 "pragma%s", lp & 1 ? "ivdep" : "unroll",
+                 tok_desc(p, ci(p), buf, sizeof buf));
+            leaf(p, N_ERROR, ci(p));
+        } else if (at(p, P_SEMI))
             leaf(p, N_NONE, i);
         else
             parse_expr(p);

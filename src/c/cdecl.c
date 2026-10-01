@@ -308,7 +308,8 @@ static uint32_t check_user_alignment(Checker *c, uint32_t e, SrcLoc loc,
 static void gnu_attr_argc(Checker *c, uint32_t attr)
 {
     static const struct { const char *n; uint32_t lo, hi; } t[] = {
-        {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"copy", 1, 1}};
+        {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"copy", 1, 1},
+        {"section", 1, 1}};
     Kids k;
     uint32_t j;
     if (tokp(c, cnode(c, attr)->tok)->kind == TK_PUNCT)
@@ -519,6 +520,16 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 cwarn(c, il, "prio-ctor-dtor", "%s priorities from 0 to 100 "
                       "are reserved for the implementation",
                       isc ? "constructor" : "destructor");
+        } else if (!strcmp(name, "section") && arg != NO_NODE) {
+            a->sec_any = true;
+            if (ntag(c, arg) != N_STRING) {
+                if (!a->sec_bad)
+                    a->sec_bad = cinput_loc(c, c->nodes[item].tok);
+            } else if (!a->sec) {
+                a->sec = cdep_msg(c, arg);
+            } else if (!a->sec2) {
+                a->sec2 = cdep_msg(c, arg);
+            }
         } else if (!strcmp(name, "ms_struct")) {
             a->ms = 1;
         } else if (!strcmp(name, "gcc_struct")) {
@@ -779,6 +790,17 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     to->gnu_inline |= from->gnu_inline;
     if (from->dep_msg)
         to->dep_msg = from->dep_msg;
+    if (from->sec_any) {
+        to->sec_any = true;
+        if (!to->sec)
+            to->sec = from->sec;
+        else if (from->sec && !to->sec2)
+            to->sec2 = from->sec;
+        if (!to->sec2)
+            to->sec2 = from->sec2;
+        if (!to->sec_bad)
+            to->sec_bad = from->sec_bad;
+    }
     to->unused |= from->unused;
     to->noinline |= from->noinline;
     to->alias |= from->alias;
@@ -850,6 +872,29 @@ static void attrs_misapplied(Checker *c, const Attrs *a, char where, bool local,
         cwarn(c, loc, "attributes", "'warning' attribute ignored");
     if (a->cleanup && (where != 'a' && !(local && where == 'g')))
         cwarn(c, loc, "attributes", "'cleanup' attribute ignored");
+}
+
+/* handle_section_attribute for a declaration of `name` at nloc.  where is
+ * attrs_misapplied's code; localvar: an automatic or block-scope extern
+ * variable (no TREE_STATIC). */
+static void attrs_section_check(Checker *c, const Attrs *a, char where,
+                                bool localvar, uint32_t name, SrcLoc nloc)
+{
+    if (!a->sec_any)
+        return;
+    if (where == 't' || where == 'p' || where == 'm')
+        cerror(c, nloc, "section attribute not allowed for '%s'",
+               cident(c, name));
+    else if (a->sec_bad)
+        cerror(c, a->sec_bad, "section attribute argument not a string "
+               "constant");
+    else if (localvar)
+        cerror(c, nloc, "section attribute cannot be specified for local "
+               "variables");
+    else if (a->sec2 && strcmp(c->dep_msgs.data[a->sec - 1],
+                               c->dep_msgs.data[a->sec2 - 1]))
+        cerror(c, nloc, "section of '%s' conflicts with previous "
+               "declaration", cident(c, name));
 }
 
 /* An alloc_align/alloc_size argument as gcc prints it (%qE): an integer
@@ -3592,6 +3637,14 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
                "existing, static definition", sname(c, nw));
     if (!m.dep_msg)
         m.dep_msg = o->dep_msg;
+    if (o->sect && nw->sect &&
+        strcmp(c->dep_msgs.data[o->sect - 1], c->dep_msgs.data[nw->sect - 1]))
+        cwarn(c, iloc(c, c->cd_ltok), "attributes", "ignoring attribute "
+              "'section (\"%s\")' because it conflicts with previous "
+              "'section (\"%s\")'", c->dep_msgs.data[nw->sect - 1],
+              c->dep_msgs.data[o->sect - 1]);
+    if (o->sect)
+        m.sect = o->sect;
     m.nonnull |= o->nonnull;
     if (o->aset)
         m.aset = o->aset;
@@ -4263,6 +4316,11 @@ static void declared_visit(Checker *c, uint32_t i)
                      g.what == GD_FUNC ? 'f' :
                      file ? 'g' : s.sc == SC_STATIC ? 's' :
                      s.sc == SC_EXTERN ? 'g' : 'a', !file, 0, ltok);
+    attrs_section_check(c, &a, kr ? 'p' : g.what == GD_TYPEDEF ? 't' :
+                        g.what == GD_FUNC ? 'f' : 'g',
+                        g.what == GD_VAR && !file && s.sc != SC_STATIC,
+                        s.name, s.loc);
+    s.sect = a.sec;
     if (s.kind == CS_OBJ && !file && (s.flags & CSF_TREE_STATIC)) {
         TypeId et = s.ty;
         while (is_arr(c, et))
@@ -5348,6 +5406,7 @@ static void member_visit(Checker *c, uint32_t i)
         ptr_type_attrs(c, top, g.ty, ltok, &a);
     attrs_merge(&a, &sp.attrs);
     attrs_misapplied(c, &a, 'm', false, w == NO_NODE ? g.ty : 0, ltok);
+    attrs_section_check(c, &a, 'm', false, g.name, g.loc);
     memset(&fi, 0, sizeof fi);
     fi.name = g.name;
     fi.ty = g.ty;
@@ -5676,6 +5735,7 @@ static void param_visit(Checker *c, uint32_t p)
     attrs_unknown_emit(c, &sp.attrs, first_tok(c, p));
     attrs_merge(&a, &sp.attrs);
     attrs_misapplied(c, &a, 'p', false, 0, first_tok(c, p));
+    attrs_section_check(c, &a, 'p', false, s.name, s.loc);
     if (a.unused)
         s.flags |= CSF_USED | CSF_ATTR_UNUSED;
     if (a.deprecated || a.unavailable) {
@@ -6028,6 +6088,8 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         g.s.flags |= (st.pure ? CSF_PURE : 0) | (st.cnst ? CSF_CONSTFN : 0);
         g.s.nonnull |= st.nonnull | sp.attrs.nonnull;
     }
+    attrs_section_check(c, &sp.attrs, 'f', false, g.s.name, g.s.loc);
+    g.s.sect = sp.attrs.sec;
     s = g.s;
     loc = s.loc;
     name = cident(c, s.name);
