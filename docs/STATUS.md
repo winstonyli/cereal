@@ -92,6 +92,13 @@ layouts, gcc rules ported, walk design).
    mode/argument checks, ~100 files) are mostly tests run with -std=c2x or
    per-attribute handlers; par.py runs everything at -std=c99, so these are
    low value until the harness honours each test's dg-options.
+   par.py CEREAL_DGOPTS=1 honours each test's dg-options and keeps only
+   C99 tests with options cereal knows (cereal is C99-only: -std=c11/c2x
+   tests are out of scope): n=2934, rejects-valid 56, accepts-invalid 92,
+   exact 5486 of 6051 (90.7%), identical headers 283/546 -- the honest
+   baseline from now on.  Parser errors on macro-body tokens now carry
+   "in expansion of macro 'X'" (outermost macro only; nested levels and
+   gcc's order of parser errors vs checker warnings are not reproduced).
    Not done: did-you-mean for macro names (42 gcc.dg cases; needs the
    macro table at the token's version in the checker, with read-set
    consequences for P3), "expected ... at end of input" location (gcc

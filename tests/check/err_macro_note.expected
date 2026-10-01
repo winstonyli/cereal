@@ -1,0 +1,12 @@
+err_macro_note.c:4:16: error: expected ']' before ':' token
+    4 | #define C [[gnu::x]] int
+      |                ^
+err_macro_note.c:5:1: note: in expansion of macro 'C'
+    5 | C v;
+      | ^
+err_macro_note.c:4:11: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    4 | #define C [[gnu::x]] int
+      |           ^
+err_macro_note.c:5:1: warning: 'gnu' attribute ignored [-Wattributes]
+    5 | C v;
+      | ^

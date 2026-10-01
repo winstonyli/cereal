@@ -1,6 +1,7 @@
 /* parse.c - recursive-descent C99 + GNU parser (parse.h). */
 #include "c/parse.h"
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <string.h>
 
@@ -214,6 +215,18 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
     p->diag->include_chain = NULL; /* the preprocessor has moved on */
     d = diag_vreport(p->diag, DL_ERROR, "", loc, fmt, ap);
     p->diag->include_chain = chain;
+    if (d && i < p->toks.len && p->toks.data[i].exp &&
+        p->toks.data[i].exp != p->toks.data[i].t.loc) {
+        /* a macro body token: gcc names the macro at the invocation (the
+         * outermost one; nested expansions are not tracked) */
+        const char *s = srcmgr_ptr(p->sm, p->toks.data[i].exp);
+        int n = 0;
+        while (isalnum((unsigned char)s[n]) || s[n] == '_')
+            n++;
+        if (n)
+            diag_note(p->diag, d, p->toks.data[i].exp,
+                      "in expansion of macro '%.*s'", n, s);
+    }
     return d;
 }
 
