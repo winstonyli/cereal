@@ -1,0 +1,51 @@
+attr_copy_excl.c:5:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+    5 | __attribute__((const, pure)) int c(void);
+      | ^
+attr_copy_excl.c:6:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+    6 | __attribute__((pure, const)) int d(void);
+      | ^
+attr_copy_excl.c:8:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+    8 | __attribute__((pure)) int e(void);
+      | ^
+attr_copy_excl.c:7:28: note: previous declaration here
+    7 | __attribute__((const)) int e(void);
+      |                            ^
+attr_copy_excl.c:10:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+   10 | __attribute__((const)) int f(void);
+      | ^
+attr_copy_excl.c:9:27: note: previous declaration here
+    9 | __attribute__((pure)) int f(void);
+      |                           ^
+attr_copy_excl.c:11:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+   11 | __attribute__((copy(a), copy(b))) int g(void);
+      | ^
+attr_copy_excl.c:3:28: note: previous declaration here
+    3 | __attribute__((const)) int a(void);
+      |                            ^
+attr_copy_excl.c:12:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+   12 | __attribute__((pure, copy(a))) int h(void);
+      | ^
+attr_copy_excl.c:13:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+   13 | int __attribute__((const, pure)) c1(void);
+      | ^
+attr_copy_excl.c:14:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+   14 | extern int c3(void) __attribute__((const, pure));
+      | ^
+attr_copy_excl.c:16:4: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+   16 |    c6(void) __attribute__((pure, const));
+      |    ^
+attr_copy_excl.c:19:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+   19 | c8(void) __attribute__((pure));
+      | ^
+attr_copy_excl.c:17:5: note: previous declaration here
+   17 | int c8(void) __attribute__((const));
+      |     ^
+attr_copy_excl.c:27:5: warning: argument 1 null where non-null expected [-Wnonnull]
+   27 |     u(0);
+      |     ^
+attr_copy_excl.c:28:5: warning: argument 1 null where non-null expected [-Wnonnull]
+   28 |     v(0);
+      |     ^
+attr_copy_excl.c:29:5: warning: argument 1 null where non-null expected [-Wnonnull]
+   29 |     w(0);
+      |     ^

@@ -894,10 +894,62 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
     kids_free(&k);
 }
 
+/* The function attributes a declaration ends up with, applied in source order
+ * (gcc's decl_attributes): 'pure' and 'const' exclude each other, and 'copy'
+ * brings the referenced symbol's along.  *_loc: where the attribute came from
+ * (for the note), have_*: whether it came from another declaration. */
+typedef struct AttrState {
+    bool pure, cnst;
+    bool pure_from, cnst_from;
+    SrcLoc pure_loc, cnst_loc;
+    uint64_t nonnull;
+    bool inited;             /* the declared name looked up (a summary read) */
+} AttrState;
+
+static void attr_excl(Checker *c, uint32_t tok, bool fn_pure, AttrState *st,
+                      bool from, SrcLoc loc)
+{
+    /* fn_pure: the incoming attribute is 'pure', else 'const' */
+    bool conflict = fn_pure ? st->cnst : st->pure;
+    if (conflict) {
+        Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok), "attributes",
+                                "ignoring attribute '%s' because it conflicts "
+                                "with attribute '%s'", fn_pure ? "pure" : "const",
+                                fn_pure ? "const" : "pure");
+        if (d && (fn_pure ? st->cnst_from : st->pure_from))
+            cnote(c, d, fn_pure ? st->cnst_loc : st->pure_loc,
+                  "previous declaration here");
+    } else if (fn_pure) {
+        st->pure = true;
+        st->pure_from = from;
+        st->pure_loc = loc;
+    } else {
+        st->cnst = true;
+        st->cnst_from = from;
+        st->cnst_loc = loc;
+    }
+}
+
+static void attrs_state_init(Checker *c, AttrState *st, uint32_t kind,
+                             uint32_t name)
+{
+    uint32_t ref = name ? lookup_ord(c, name) : SYM_NONE;
+    st->inited = true;
+    if (ref != SYM_NONE && kind == CS_FUNC) {
+        const CSym *r = csym(c, ref);
+        if (r->kind == CS_FUNC && r->name == name) {
+            st->pure = (r->flags & CSF_PURE) != 0;
+            st->cnst = (r->flags & CSF_CONSTFN) != 0;
+            st->pure_from = st->cnst_from = true;
+            st->pure_loc = st->cnst_loc = r->loc;
+        }
+    }
+}
+
 /* c-attribs.cc handle_copy_attribute: the symbol referenced must be a
  * different declaration of the same kind as the one being declared. */
 static void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
-                             uint32_t name, uint32_t tok)
+                             uint32_t name, uint32_t tok, AttrState *st)
 {
     Kids k;
     uint32_t j;
@@ -914,11 +966,19 @@ static void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
             if (ntag(c, it.p[q]) != N_ATTR_ITEM)
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+            if (kind == CS_FUNC && (!strcmp(an, "pure") || !strcmp(an, "const"))) {
+                if (!st->inited)
+                    attrs_state_init(c, st, kind, name);
+                attr_excl(c, tok, an[0] == 'p', st, false, 0);
+                continue;
+            }
             if (strcmp(an, "copy"))
                 continue;
             kids_get(c, it.p[q], &ak);
             if (ak.n == 1) {
                 uint32_t e = ak.p[0];
+                if (!st->inited)
+                    attrs_state_init(c, st, kind, name);
                 CSym *r = NULL;
                 for (;;) {
                     while (ntag(c, e) == N_PAREN && c->nodes[e].size > 1)
@@ -951,6 +1011,12 @@ static void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                         cnote(c, d, r->loc, "symbol '%s' referenced by '%s' "
                               "declared here", cident(c, r->name),
                               cident(c, name));
+                } else if (kind == CS_FUNC) {
+                    if (r->flags & CSF_PURE)
+                        attr_excl(c, tok, true, st, true, r->loc);
+                    if (r->flags & CSF_CONSTFN)
+                        attr_excl(c, tok, false, st, true, r->loc);
+                    st->nonnull |= r->nonnull;
                 }
             }
             kids_free(&ak);
@@ -3280,7 +3346,7 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     m.flags |= o->flags & (CSF_DEFINED | CSF_USED | CSF_NORETURN | CSF_THREAD |
                            CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE |
                            CSF_WEAK | CSF_ADDR_WARNED | CSF_DEPRECATED |
-                           CSF_UNAVAILABLE | CSF_INNER_COMP | CSF_GNU_INLINE);
+                           CSF_UNAVAILABLE | CSF_INNER_COMP | CSF_GNU_INLINE | CSF_PURE | CSF_CONSTFN);
     if (!m.dep_msg)
         m.dep_msg = o->dep_msg;
     m.nonnull |= o->nonnull;
@@ -3934,8 +4000,13 @@ static void declared_visit(Checker *c, uint32_t i)
         attrs_alloc_check(c, idecl, aft, ltok);
     }
     if (s.kind == CS_FUNC || s.kind == CS_OBJ) {
-        attrs_copy_check(c, sn, s.kind, s.name, ltok);
-        attrs_copy_check(c, idecl, s.kind, s.name, ltok);
+        AttrState st = {0};
+        attrs_copy_check(c, sn, s.kind, s.name, ltok, &st);
+        attrs_copy_check(c, idecl, s.kind, s.name, ltok, &st);
+        if (s.kind == CS_FUNC) {
+            s.flags |= (st.pure ? CSF_PURE : 0) | (st.cnst ? CSF_CONSTFN : 0);
+            a.nonnull |= st.nonnull;
+        }
     }
     attrs_merge(&a, &sp.attrs);
     if (a.desig && !(g.what == GD_TYPEDEF && type_ckind(TT, s.ty) == TY_STRUCT))
@@ -5560,7 +5631,12 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     attrs_unknown_emit(c, &sp.attrs, ltok);
     attrs_alloc_check(c, fp.specs, type_kind(TT, g.s.ty) == TY_FUNC ? g.s.ty :
                       type_canon(TT, g.s.ty), ltok);
-    attrs_copy_check(c, fp.specs, CS_FUNC, g.s.name, ltok);
+    {
+        AttrState st = {0};
+        attrs_copy_check(c, fp.specs, CS_FUNC, g.s.name, ltok, &st);
+        g.s.flags |= (st.pure ? CSF_PURE : 0) | (st.cnst ? CSF_CONSTFN : 0);
+        g.s.nonnull |= st.nonnull | sp.attrs.nonnull;
+    }
     s = g.s;
     loc = s.loc;
     name = cident(c, s.name);

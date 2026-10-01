@@ -48,7 +48,9 @@ enum {
     CSF_DEPRECATED = 8388608, /* __attribute__((deprecated)) */
     CSF_UNAVAILABLE = 16777216, /* __attribute__((unavailable)) */
     CSF_INNER_COMP = 33554432, /* incomplete array completed in an inner scope */
-    CSF_GNU_INLINE = 67108864 /* __attribute__((gnu_inline)) */
+    CSF_GNU_INLINE = 67108864, /* __attribute__((gnu_inline)) */
+    CSF_PURE = 134217728,    /* __attribute__((pure)), possibly copied */
+    CSF_CONSTFN = 268435456  /* __attribute__((const)), possibly copied */
 };
 
 typedef struct CSym {
