@@ -1726,9 +1726,10 @@ static void e_ident(Checker *c, uint32_t i)
             size_t n = 0;
             if (in_function(c))
                 n = strlen(cident(c, csym(c, c->func_sym)->name));
-            else
-                cwarn(c, cnode_loc(c, i), "",
-                      "'%s' is not defined outside of function scope", name);
+            else if (!strcmp(name, "__func__"))
+                cpedwarn(c, cnode_loc(c, i), "",
+                         "'%s' is not defined outside of function scope",
+                         name);
             c->ty[i] = type_array(TT, type_qual(TYPE_B(CHAR), TQ_CONST), n + 1);
             c->ef[i] = EF_LVALUE | EF_ADDRLV;
             c->cb[i] = CB_NODE | i;
@@ -2702,6 +2703,35 @@ static SrcLoc arg_loc(Checker *c, uint32_t a)
     return c->u->toks[t].exp ? c->u->toks[t].exp : expr_loc(c, a);
 }
 
+/* The argument count of an __atomic_* built-in (sized variants _1.._16
+ * included); 0 for the others. */
+static uint32_t atomic_argc(const char *name)
+{
+    static const struct { const char *n; uint32_t argc; } t[] = {
+        {"load_n", 2}, {"load", 3}, {"store_n", 3}, {"store", 3},
+        {"exchange_n", 3}, {"exchange", 4}, {"compare_exchange_n", 6},
+        {"compare_exchange", 6}, {"add_fetch", 3}, {"sub_fetch", 3},
+        {"and_fetch", 3}, {"xor_fetch", 3}, {"or_fetch", 3},
+        {"nand_fetch", 3}, {"fetch_add", 3}, {"fetch_sub", 3},
+        {"fetch_and", 3}, {"fetch_xor", 3}, {"fetch_or", 3},
+        {"fetch_nand", 3}, {"test_and_set", 2}, {"clear", 2},
+        {"thread_fence", 1}, {"signal_fence", 1}};
+    char b[32];
+    size_t n, len;
+    if (strncmp(name, "__atomic_", 9))
+        return 0;
+    snprintf(b, sizeof b, "%s", name + 9);
+    len = strlen(b);
+    while (len && b[len - 1] >= '0' && b[len - 1] <= '9')
+        b[--len] = 0;
+    if (len < strlen(name + 9) && len && b[len - 1] == '_')
+        b[--len] = 0;
+    for (n = 0; n < sizeof t / sizeof *t; n++)
+        if (!strcmp(b, t[n].n))
+            return t[n].argc;
+    return 0;
+}
+
 /* check_builtin_function_arguments, for the built-ins gcc validates itself:
  * argument counts and the argument kinds.  False after an error. */
 static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
@@ -2711,9 +2741,20 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
     const char *b = name + 10;
     SrcLoc loc = call_loc(c, fn);
     bool ovf = false, ovfp = false, fp1 = false, cmp = false;
-    if (strncmp(name, "__builtin_", 10) || n == 0 || n > 16)
+    if (n == 0 || n > 16)
         return true;
     n--;
+    if ((want = atomic_argc(name)) != 0) {
+        if (n != want) {
+            cerror(c, loc, n < want ? "too few arguments to function '%s'"
+                                    : "too many arguments to function '%s'",
+                   name);
+            return false;
+        }
+        return true;
+    }
+    if (strncmp(name, "__builtin_", 10))
+        return true;
     if (!strcmp(b, "constant_p")) {
         want = 1;
     } else if (!strcmp(b, "alloca_with_align")) {

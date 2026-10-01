@@ -116,7 +116,9 @@ typedef struct Attrs {
     bool has_mode;
     uint8_t mode_bytes;      /* mode(QI..TI): integer size; 0: word etc. */
     uint8_t mode_float;      /* mode(SF/DF/XF/TF): 1 */
-    uint64_t vector_size;    /* bytes, 0: none */
+    uint64_t vector_size;    /* bytes, 0: none (or invalid) */
+    bool vs_seen;            /* a valid vector_size argument */
+    SrcLoc vs_loc;           /* input_location when it was read */
     bool deprecated, unused, noreturn, weak, alias, section, cleanup;
     bool unavailable;
     uint32_t dep_msg;        /* Checker.dep_msgs + 1, 0: none */

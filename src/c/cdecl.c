@@ -451,8 +451,22 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             a->weak = true;
         } else if (!strcmp(name, "vector_size") && arg != NO_NODE) {
             if ((c->ck[arg] == K_ICE || c->ck[arg] == K_FOLD) &&
-                type_is_integer(TT, c->ty[arg]))
-                a->vector_size = (uint64_t)cexpr_sval(c, arg);
+                type_is_integer(TT, c->ty[arg])) {
+                int64_t v = cexpr_sval(c, arg);
+                SrcLoc il = cinput_loc(c, c->nodes[item].tok);
+                if (v < 0 && type_is_signed(TT, c->ty[arg])) {
+                    cerror(c, il, "'vector_size' attribute argument value "
+                           "'%lld' is negative", (long long)v);
+                } else if (v < 0) {
+                    cerror(c, il, "'vector_size' attribute argument value "
+                           "'%llu' exceeds 9223372036854775807",
+                           (unsigned long long)v);
+                } else {
+                    a->vector_size = (uint64_t)v;
+                    a->vs_seen = true;
+                    a->vs_loc = il;
+                }
+            }
         } else if (!strcmp(name, "mode") && arg != NO_NODE &&
                    ntag(c, arg) == N_IDENT) {
             char m[16];
@@ -523,11 +537,27 @@ static TypeId attr_apply_type(Checker *c, TypeId t, const Attrs *a)
         if (type_ckind(TT, n) != TY_ERROR)
             t = n | q;
     }
-    if (a->vector_size) {
+    if (a->vs_seen) {
         TypeId el = type_canon(TT, t);
         unsigned q = TYPE_QUALS(t);
-        if (type_is_arith(TT, el))
+        bool ok = true;
+        uint64_t esz;
+        if (type_ckind(TT, el) == TY_ERROR)
+            return t;
+        if (!(type_is_integer(TT, el) || type_is_float(TT, el))) {
+            cerror(c, a->vs_loc, "invalid vector type for attribute "
+                   "'vector_size'");
+        } else if (a->vector_size == 0) {
+            cerror(c, a->vs_loc, "zero vector size");
+        } else if ((esz = type_size(TT, el, &ok)) && a->vector_size % esz) {
+            cerror(c, a->vs_loc, "vector size not an integral multiple of "
+                   "component size");
+        } else if (a->vector_size / esz > 2147483646u) {
+            cerror(c, a->vs_loc, "number of vector components %llu exceeds "
+                   "2147483646", (unsigned long long)(a->vector_size / esz));
+        } else {
             t = type_vector(TT, TYPE_UNQUAL(el), a->vector_size) | q;
+        }
     }
     return t;
 }
@@ -543,8 +573,11 @@ static void attrs_merge(Attrs *to, const Attrs *from)
         to->mode_bytes = from->mode_bytes;
         to->mode_float = from->mode_float;
     }
-    if (from->vector_size)
+    if (from->vs_seen) {
         to->vector_size = from->vector_size;
+        to->vs_seen = true;
+        to->vs_loc = from->vs_loc;
+    }
     to->deprecated |= from->deprecated;
     to->unavailable |= from->unavailable;
     if (from->dep_msg)
@@ -1225,7 +1258,7 @@ static void specs_visit(Checker *c, uint32_t i)
     finish_declspecs(c, &s);
     if (s.attrs.aligned > s.align)
         s.align = s.attrs.aligned;
-    if (s.attrs.has_mode || s.attrs.vector_size)
+    if (s.attrs.has_mode || s.attrs.vs_seen)
         s.ty = attr_apply_type(c, s.ty, &s.attrs);
     if (type_ckind(TT, s.ty) == TY_ERROR)
         s.error = true;
@@ -3420,7 +3453,7 @@ static void declared_visit(Checker *c, uint32_t i)
         return;
     s = g.s;
     decl_attrs(c, idecl, &a);
-    if (a.has_mode || a.vector_size) {
+    if (a.has_mode || a.vs_seen) {
         s.ty = attr_apply_type(c, s.ty, &a);
         g.ty = s.ty;
     }
@@ -4336,7 +4369,7 @@ static void member_visit(Checker *c, uint32_t i)
         return;
     memset(&a, 0, sizeof a);
     attrs_of_children(c, i, &a);
-    if (a.has_mode || a.vector_size)
+    if (a.has_mode || a.vs_seen)
         g.ty = attr_apply_type(c, g.ty, &a);
     attrs_merge(&a, &sp.attrs);
     memset(&fi, 0, sizeof fi);

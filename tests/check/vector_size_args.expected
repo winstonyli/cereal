@@ -1,0 +1,18 @@
+vector_size_args.c:2:1: error: 'vector_size' attribute argument value '-1' is negative
+    2 | int vs (-1) a;
+      | ^
+vector_size_args.c:3:1: error: zero vector size
+    3 | int vs (0) b;
+      | ^
+vector_size_args.c:4:1: error: vector size not an integral multiple of component size
+    4 | int vs (1) c;
+      | ^
+vector_size_args.c:6:1: error: 'vector_size' attribute argument value '9223372036854775808' exceeds 9223372036854775807
+    6 | vs (1LLU << 63) char v63;
+      | ^
+vector_size_args.c:7:17: warning: '__func__' is not defined outside of function scope
+    7 | const char *p = __func__;
+      |                 ^
+vector_size_args.c:8:18: error: too few arguments to function '__atomic_exchange_n'
+    8 | void f(int *i) { __atomic_exchange_n (i, 1); }
+      |                  ^
