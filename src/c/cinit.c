@@ -261,9 +261,9 @@ static bool char_like(Checker *c, TypeId t)   /* t: main variant */
 
 static bool wide_like(Checker *c, TypeId t)
 {
-    return t == TYPE_MK(c->tgt->wchar_type, 0) ||
-           t == TYPE_MK(c->tgt->char16_type, 0) ||
-           t == TYPE_MK(c->tgt->char32_type, 0);
+    return type_compatible(TT, t, TYPE_MK(c->tgt->wchar_type, 0)) ||
+           type_compatible(TT, t, TYPE_MK(c->tgt->char16_type, 0)) ||
+           type_compatible(TT, t, TYPE_MK(c->tgt->char32_type, 0));
 }
 
 static int lkind(Checker *c, TypeId t)

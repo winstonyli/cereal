@@ -1,0 +1,6 @@
+extern_incomplete_block.c:5:11: error: invalid application of 'sizeof' to incomplete type 'IA' {aka 'int[]'}
+    5 |     sizeof(a0);
+      |           ^
+extern_incomplete_block.c:4:15: warning: array 'a0' assumed to have one element
+    4 |     extern IA a0;
+      |               ^

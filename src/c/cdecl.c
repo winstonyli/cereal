@@ -3359,7 +3359,7 @@ static void init_decl_visit(Checker *c, uint32_t idecl)
         }
         if (!is_err(c, type) && !type_is_complete(TT, type) &&
             ((s->flags & CSF_TREE_STATIC)
-                 ? (sym_defined(s) || !file)
+                 ? (sym_defined(s) || !ref_file_scope(ref))
                  : !(s->flags & CSF_DECL_EXTERNAL))) {
             cerror(c, s->loc, "storage size of '%s' isn't known", sname(c, s));
             s->ty = type = ERRT;
