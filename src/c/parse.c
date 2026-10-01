@@ -1939,13 +1939,20 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
         const SymSave *s = &p->saved.data[d->save_start + i];
         scope_declare(&p->scope, s->ident, (SymKind)s->kind);
     }
-    if (d->kr) /* K&R: declarations of the parameters */
-        for (;;) {
-            PTok t = ct(p);
-            if (at(p, P_LBRACE) || at_eof(p) || !is_decl_start(p, &t))
-                break;
+    /* as gcc, whatever follows the declarator up to the '{' is a
+     * declaration of a parameter (K&R), diagnosed as such */
+    while (!at(p, P_LBRACE) && !at_eof(p)) {
+        PTok t = ct(p);
+        if (is_decl_start_la(p, &t))
             declaration(p, false);
+        else {
+            uint32_t at0 = p->pos;
+            expected(p, "declaration specifiers");
+            sync_stmt(p);
+            if (p->pos == at0) /* gcc's skip consumes a stray '}' */
+                adv(p);
         }
+    }
     p->fn_depth++;
     if (at(p, P_LBRACE)) {
         compound(p, false);
@@ -2028,8 +2035,12 @@ static void declaration(Parser *p, bool top)
         }
         /* a definition: '{', or a K&R declaration list (attributes
          * first belong to a declaration: f(x) __attribute__((...)); */
+        t = ct(p);
         if (n == 0 && d.inner == DK_FUNC &&
             (at(p, P_LBRACE) ||
+             (top && !(at(p, P_ASSIGN) || at(p, P_COMMA) || at(p, P_SEMI) ||
+                       ckw_of(p, &t) == CK_ASM ||
+                       (ckw_of(p, &t) == CK_ATTRIBUTE && !t.stdattr))) ||
              (d.kr && (t = tok_at(p, skip_attrs_ahead(p, ci(p))),
                        ckw_of(p, &t) != CK_ATTRIBUTE &&
                        is_decl_start(p, &t))))) {
