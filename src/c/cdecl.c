@@ -1731,6 +1731,7 @@ typedef struct GDecl {
     TypeId ty;
     CSym s;
     bool array_param;
+    TypeId pre;              /* DC_PARM: the array type before it decayed */
     int width;               /* fields: bits, -1: not a bit-field */
     bool default_int;
     bool funcdef_ok;
@@ -2651,6 +2652,7 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         bool arrp = false;
         if (is_arr(c, type)) {
             TypeId e = type_base(TT, type);
+            g->pre = type;
             if (type_quals)
                 e = qualify(c, e, type_quals, ltok);
             type = type_ptr(TT, e);
@@ -5196,6 +5198,8 @@ static void param_visit(Checker *c, uint32_t p)
     c->ty[p] = g.ty;
     c->cb[p] = ref + 1;
     c->cv[p] = (g.name ? 1 : 0) | (sp.sc == SC_REGISTER ? 2 : 0);
+    if (g.array_param)
+        c->cv[p] |= (uint64_t)g.pre << 32;
     pop_specs(c, p);
 }
 

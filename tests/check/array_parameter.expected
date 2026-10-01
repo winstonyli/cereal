@@ -97,7 +97,7 @@ array_parameter.c:30:17: note: previously declared as 'int (*)[n]'
 array_parameter.c:34:10: warning: argument 1 of type 'int[3]' with mismatched bound [-Warray-parameter=]
    34 | void g5 (int[3]);
       |          ^
-array_parameter.c:33:10: note: previously declared as 'int *'
+array_parameter.c:33:10: note: previously declared as 'int[2]'
    33 | void g5 (A2);
       |          ^
 array_parameter.c:37:10: warning: argument 1 of type 'int[2]' with mismatched bound [-Warray-parameter=]

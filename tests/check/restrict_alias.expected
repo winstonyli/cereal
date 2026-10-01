@@ -1,0 +1,30 @@
+restrict_alias.c:12:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   12 |   memcpy (p, p, 1);
+      |   ^
+restrict_alias.c:14:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   14 |   mempcpy (p, p, 0);
+      |   ^
+restrict_alias.c:16:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   16 |   memcpy (p, p + 0, n);
+      |   ^
+restrict_alias.c:17:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   17 |   memcpy (p, (char *)p, n);
+      |   ^
+restrict_alias.c:20:11: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   20 |   memcpy (arr, arr, 1);
+      |           ^
+restrict_alias.c:22:12: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   22 |   memcpy (r->p, r->p, 1);
+      |            ^
+restrict_alias.c:23:12: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   23 |   memcpy (r->p, &r->p[0], 1);
+      |            ^
+restrict_alias.c:25:12: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   25 |   strcat (r->a, r->a);
+      |            ^
+restrict_alias.c:26:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   26 |   user (p, p); user (p, p);
+      |   ^
+restrict_alias.c:26:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   26 |   user (p, p); user (p, p);
+      |   ^

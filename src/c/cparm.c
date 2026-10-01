@@ -39,6 +39,7 @@ typedef struct PDim {
 typedef struct PParm {
     bool arr;                /* declared as an array */
     bool stat;               /* [static n] */
+    bool rst;                /* a restrict-qualified pointer */
     unsigned quals;          /* qualifiers inside the first brackets */
     uint32_t nd;             /* the bracket pairs; 0: any other type */
     PDim *d;                 /* natural order: d[0] is the first brackets */
@@ -79,6 +80,40 @@ void cparm_free(Checker *c)
             pdesc_free((CParmDesc *)c->pdescs.data[i]);
     vec_free(&c->pdescs);
 }
+
+/* cdecl.c param_visit keeps the pre-decay array type in CV[p] bits 32+. */
+static TypeId pre_of(const Checker *c, uint32_t node)
+{
+    return (TypeId)(c->cv[node] >> 32);
+}
+
+/* The array dimensions typedef'd into type e, appended after the declarator's;
+ * false when one is variable. */
+static bool tail_dims(Checker *c, PParm *o, TypeId e)
+{
+    for (;;) {
+        TypeKind k = type_ckind(TT, e);
+        const TypeEnt *en;
+        PDim *d;
+        if (k == TY_VLA)
+            return false;
+        if (k != TY_ARRAY)
+            break;
+        e = type_canon(TT, e);
+        en = type_ent(TT, e);
+        o->d = xrealloc(o->d, (o->nd + 1) * sizeof *o->d);
+        d = &o->d[o->nd++];
+        memset(d, 0, sizeof *d);
+        if (!(en->flags & TF_INCOMPLETE) && en->n) {
+            d->k = D_CONST;
+            d->n = en->n;
+        }
+        e = type_base(TT, e);
+    }
+    o->base = e;
+    return true;
+}
+
 
 /* ---- building ------------------------------------------------------------------ */
 
@@ -138,6 +173,7 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
     TypeId t = c->ty[p], pt, e;
     memset(o, 0, sizeof *o);
     o->ty = t;
+    o->rst = type_ckind(TT, t) == TY_PTR && (TYPE_QUALS(t) & TQ_RESTRICT);
     o->loc = tloc(c, min_tok(c, p));
     for (m = cfirst(c, p); m <= p; m++)
         if (ntag(c, m) == N_NAME) {
@@ -150,8 +186,8 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
             l = kids[m - 1];
             break;
         }
-    if (l == NO_NODE || !is_declarator_tag(ntag(c, l)))
-        return;
+    if (l != NO_NODE && !is_declarator_tag(ntag(c, l)))
+        l = NO_NODE;
     if (type_ckind(TT, t) != TY_PTR)
         return;
     for (d = l; d != NO_NODE; d = cdecl_inner_decl(c, d)) {
@@ -168,8 +204,21 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
             other = true;
         }
     }
-    if (other || !nd)
+    if (other)
         return;
+    if (!nd) {
+        /* no brackets written: an array typedef, or a pointer to one */
+        TypeId pre = pre_of(c, p), q = pre ? pre : type_base(TT, t);
+        if (type_ckind(TT, q) != TY_ARRAY)
+            return;
+        o->arr = pre != 0;
+        if (!tail_dims(c, o, q)) {
+            free(o->d);
+            o->d = NULL;
+            o->nd = 0;
+        }
+        return;
+    }
     /* the brackets are nested outermost-last: reverse into source order */
     o->d = xcalloc(nd, sizeof *o->d);
     o->nd = nd;
@@ -191,6 +240,23 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
         e = type_base(TT, e);
     }
     o->base = e;
+    if (!tail_dims(c, o, e)) {
+        for (m = 0; m < o->nd; m++) {
+            free(o->d[m].txt);
+            free(o->d[m].ttxt);
+        }
+        free(o->d);
+        o->d = NULL;
+        o->nd = 0;
+        o->arr = false;
+    }
+}
+
+/* Is parameter j (0-based) of a function with record d declared as a restrict pointer? */
+bool cparm_restrict(Checker *c, uint32_t d, uint32_t j)
+{
+    const CParmDesc *pd = d ? (const CParmDesc *)c->pdescs.data[d - 1] : NULL;
+    return pd && j < pd->n && pd->p[j].rst;
 }
 
 uint32_t cparm_make(Checker *c, uint32_t fnode)

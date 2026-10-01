@@ -3018,6 +3018,11 @@ static void check_nonnull(Checker *c, const uint32_t *kv, uint32_t nk,
     }
 }
 
+static bool zero_size_ok(const char *name);
+static void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk,
+                           uint32_t parms, uint32_t nparm, SrcLoc loc,
+                           bool builtin);
+
 /* convert_arguments: the arguments of call i (callee node fn, of pointer to
  * function type ft) against the prototype.  False if the call is erroneous. */
 static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
@@ -3129,6 +3134,11 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
         if (mask)
             check_nonnull(c, kv, nk, mask, pt, nparm, proto, false, loc);
     }
+    if (!too_many && !bad && proto && nparm > 1 && fref != SYM_NONE &&
+        csym(c, fref)->parms)
+        check_restrict(c, kv, nk, csym(c, fref)->parms, nparm, loc,
+                       builtin_decl_ok(c, csym(c, fref)) &&
+                       zero_size_ok(cident(c, csym(c, fref)->name)));
     if (!too_many && !proto && bn != NO_NODE && bn != 0xFFFFFFFEu &&
         nk - 1 < bn)
         cwarn(c, loc, "builtin-declaration-mismatch", "too few arguments to "
@@ -5539,6 +5549,85 @@ static bool opeq(Checker *c, uint32_t x, uint32_t y)
                opeq(c, kx[nx - 1], ky[ny - 1]);
     default:
         return false;
+    }
+}
+
+/* The first token of loc's line: where gcc reports a restrict clash it has no
+ * better location for. */
+static SrcLoc line_start_loc(Checker *c, SrcLoc loc)
+{
+    SrcFile *f = srcmgr_file_of(c->sm, loc);
+    uint32_t line, col, len, j = 0;
+    const char *s;
+    if (!f)
+        return loc;
+    srcmgr_linecol(f, loc, &line, &col);
+    s = srcmgr_line_text(f, line, &len);
+    while (j < len && (s[j] == 32 || s[j] == 9))
+        j++;
+    return j < col ? srcmgr_loc_of(f, line, j + 1) : loc;
+}
+
+/* The built-ins whose call with a zero size is not diagnosed. */
+static bool zero_size_ok(const char *name)
+{
+    if (!strncmp(name, "__builtin_", 10))
+        name += 10;
+    return !strcmp(name, "memcpy") || !strcmp(name, "strncpy") ||
+           !strcmp(name, "strncat");
+}
+
+/* The address an argument stands for: casts, `&E[0]` and `E + 0` look through. */
+static uint32_t restrict_base(Checker *c, uint32_t a)
+{
+    for (;;) {
+        uint32_t k[3], n, in, ik[3];
+        a = strip_paren(c, a);
+        n = nkids(c, a, k, 3);
+        if (ntag(c, a) == N_CAST && n >= 1 && is_ptr(c, c->ty[a])) {
+            a = k[n - 1];
+        } else if (ntag(c, a) == N_UNARY && npunct(c, a) == P_AMP && n == 1 &&
+                   ntag(c, in = strip_paren(c, k[0])) == N_INDEX &&
+                   nkids(c, in, ik, 3) == 2 && is_intcst(c, ik[1]) &&
+                   c->cv[ik[1]] == 0 && is_ptr(c, c->ty[strip_paren(c, ik[0])])) {
+            a = ik[0];
+        } else if (ntag(c, a) == N_BINARY && npunct(c, a) == P_PLUS && n == 2 &&
+                   is_ptr(c, rvt(c, k[0])) && is_intcst(c, k[1]) &&
+                   c->cv[k[1]] == 0) {
+            a = k[0];
+        } else {
+            return a;
+        }
+    }
+}
+
+/* c-family warn_for_restrict: two arguments of restrict-qualified parameters
+ * that are the same address.  A built-in copy of zero bytes is fine. */
+static bool zero_size_ok(const char *name);
+static void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk,
+                           uint32_t parms, uint32_t nparm, SrcLoc loc,
+                           bool builtin)
+{
+    uint32_t i, j;
+    for (i = 0; i < nparm && i + 1 < nk; i++) {
+        if (!cparm_restrict(c, parms, i))
+            continue;
+        for (j = i + 1; j < nparm && j + 1 < nk; j++) {
+            uint32_t a = kv[i + 1], first;
+            SrcLoc l = line_start_loc(c, loc);
+            if (!cparm_restrict(c, parms, j) || node_err(c, a) || node_err(c, kv[j + 1]))
+                continue;
+            if (!opeq(c, restrict_base(c, a), restrict_base(c, kv[j + 1])))
+                continue;
+            if (builtin && nparm == 3 && nk > 3 && is_intcst(c, kv[3]) &&
+                c->cv[kv[3]] == 0)
+                continue;
+            first = strip_paren(c, a);
+            if (ntag(c, first) != N_IDENT || is_array(c, c->ty[first]))
+                l = expr_loc(c, a);
+            cwarn(c, l, "restrict", "passing argument %u to 'restrict'-qualified "
+                  "parameter aliases with argument %u", i + 1, j + 1);
+        }
     }
 }
 

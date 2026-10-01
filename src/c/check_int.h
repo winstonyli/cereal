@@ -415,6 +415,7 @@ uint32_t cparm_make(Checker *c, uint32_t fnode);    /* a prototype's record + 1 
 void cparm_compare(Checker *c, uint32_t nw, uint32_t old);
 void cparm_release(Checker *c, uint32_t d);
 void cparm_free(Checker *c);
+bool cparm_restrict(Checker *c, uint32_t d, uint32_t j);
 /* Declarator helpers cparm.c shares (cdecl.c). */
 uint32_t cdecl_inner_decl(const Checker *c, uint32_t i);
 uint32_t cdecl_array_size_node(Checker *c, uint32_t a);
