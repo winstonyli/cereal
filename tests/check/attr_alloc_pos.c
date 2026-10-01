@@ -1,0 +1,23 @@
+typedef long L; typedef void *VP;
+void *a1(int) __attribute__((alloc_align(-1)));
+void *a2(int, ...) __attribute__((alloc_align(3)));
+void *a3() __attribute__((alloc_align(3)));
+void *a4(VP) __attribute__((alloc_align(1)));
+void *a5(L, VP) __attribute__((alloc_size(1, 2)));
+void *a6(int, float) __attribute__((alloc_size(2)));
+void *a7(int) __attribute__((alloc_size(1, 1)));
+void *a8(int, int) __attribute__((alloc_size(5, 6)));
+void *a9(int) __attribute__((alloc_size(1.5)));
+int a10(int) __attribute__((alloc_size(1)));
+void *a11(char) __attribute__((alloc_size(1)));
+void *a12(_Bool) __attribute__((alloc_align(1)));
+enum E { X };
+void *a13(enum E) __attribute__((alloc_size(1)));
+void *a14(int) __attribute__((alloc_size("a", 3)));
+void *a15(int) __attribute__((alloc_size(1L)));
+void *a16(int) __attribute__((alloc_size(1u)));
+void *a17(int) __attribute__((alloc_align(1), alloc_size(1)));
+__attribute__((alloc_align(1))) void fv(int);
+__attribute__((alloc_size(2))) void *
+fs(int, struct S { int i; });
+void *fn(int, int) __attribute__((alloc_size(0)));

@@ -1,0 +1,42 @@
+attr_misapplied.c:2:3: warning: 'dllimport' attribute directive ignored [-Wattributes]
+    2 |   f1();
+      |   ^
+attr_misapplied.c:2:3: warning: 'unk' attribute directive ignored [-Wattributes]
+    2 |   f1();
+      |   ^
+attr_misapplied.c:3:1: warning: 'nosuch' attribute directive ignored [-Wattributes]
+    3 | void __attribute__((nosuch)) f2() { }
+      | ^
+attr_misapplied.c:4:1: warning: 'noinline' attribute ignored [-Wattributes]
+    4 | typedef int T __attribute__((noinline, weak, used));
+      | ^
+attr_misapplied.c:4:1: warning: 'weak' attribute ignored [-Wattributes]
+    4 | typedef int T __attribute__((noinline, weak, used));
+      | ^
+attr_misapplied.c:5:8: warning: 'noinline' attribute ignored [-Wattributes]
+    5 | struct S { char c __attribute__((noinline, used, weak)); } __attribute__((used));
+      |        ^
+attr_misapplied.c:5:8: warning: 'used' attribute ignored [-Wattributes]
+    5 | struct S { char c __attribute__((noinline, used, weak)); } __attribute__((used));
+      |        ^
+attr_misapplied.c:5:8: warning: 'weak' attribute ignored [-Wattributes]
+    5 | struct S { char c __attribute__((noinline, used, weak)); } __attribute__((used));
+      |        ^
+attr_misapplied.c:5:8: warning: 'used' attribute does not apply to types [-Wattributes]
+    5 | struct S { char c __attribute__((noinline, used, weak)); } __attribute__((used));
+      |        ^
+attr_misapplied.c:6:1: warning: 'noinline' attribute ignored [-Wattributes]
+    6 | int v __attribute__((noinline, used, weak));
+      | ^
+attr_misapplied.c:7:1: warning: 'used' attribute ignored [-Wattributes]
+    7 | int g(int p __attribute__((used, weak)))
+      | ^
+attr_misapplied.c:7:1: warning: 'weak' attribute ignored [-Wattributes]
+    7 | int g(int p __attribute__((used, weak)))
+      | ^
+attr_misapplied.c:9:3: warning: 'noinline' attribute ignored [-Wattributes]
+    9 |   static int s __attribute__((noinline, used));
+      |   ^
+attr_misapplied.c:10:3: warning: 'used' attribute ignored [-Wattributes]
+   10 |   auto int a __attribute__((used));
+      |   ^

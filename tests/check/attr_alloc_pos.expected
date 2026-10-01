@@ -1,0 +1,42 @@
+attr_alloc_pos.c:2:1: warning: 'alloc_align' attribute argument value '-1' exceeds the number of function parameters 1 [-Wattributes]
+    2 | void *a1(int) __attribute__((alloc_align(-1)));
+      | ^
+attr_alloc_pos.c:3:1: warning: 'alloc_align' attribute argument value '3' exceeds the number of function parameters 1 [-Wattributes]
+    3 | void *a2(int, ...) __attribute__((alloc_align(3)));
+      | ^
+attr_alloc_pos.c:5:1: warning: 'alloc_align' attribute argument value '1' refers to parameter type 'VP' {aka 'void *'} [-Wattributes]
+    5 | void *a4(VP) __attribute__((alloc_align(1)));
+      | ^
+attr_alloc_pos.c:6:1: warning: 'alloc_size' attribute argument 2 value '2' refers to parameter type 'VP' {aka 'void *'} [-Wattributes]
+    6 | void *a5(L, VP) __attribute__((alloc_size(1, 2)));
+      | ^
+attr_alloc_pos.c:7:1: warning: 'alloc_size' attribute argument value '2' refers to parameter type 'float' [-Wattributes]
+    7 | void *a6(int, float) __attribute__((alloc_size(2)));
+      | ^
+attr_alloc_pos.c:9:1: warning: 'alloc_size' attribute argument 1 value '5' exceeds the number of function parameters 2 [-Wattributes]
+    9 | void *a8(int, int) __attribute__((alloc_size(5, 6)));
+      | ^
+attr_alloc_pos.c:10:1: warning: 'alloc_size' attribute argument has type 'double' [-Wattributes]
+   10 | void *a9(int) __attribute__((alloc_size(1.5)));
+      | ^
+attr_alloc_pos.c:11:1: warning: 'alloc_size' attribute ignored on a function returning 'int' [-Wattributes]
+   11 | int a10(int) __attribute__((alloc_size(1)));
+      | ^
+attr_alloc_pos.c:13:1: warning: 'alloc_align' attribute argument value '1' refers to parameter type '_Bool' [-Wattributes]
+   13 | void *a12(_Bool) __attribute__((alloc_align(1)));
+      | ^
+attr_alloc_pos.c:16:1: warning: 'alloc_size' attribute argument 1 has type 'char[2]' [-Wattributes]
+   16 | void *a14(int) __attribute__((alloc_size("a", 3)));
+      | ^
+attr_alloc_pos.c:20:1: warning: 'alloc_align' attribute ignored on a function returning 'void' [-Wattributes]
+   20 | __attribute__((alloc_align(1))) void fv(int);
+      | ^
+attr_alloc_pos.c:22:16: warning: 'struct S' declared inside parameter list will not be visible outside of this definition or declaration
+   22 | fs(int, struct S { int i; });
+      |                ^
+attr_alloc_pos.c:22:16: warning: 'alloc_size' attribute argument value '2' refers to parameter type 'struct S' [-Wattributes]
+   22 | fs(int, struct S { int i; });
+      |                ^
+attr_alloc_pos.c:23:1: warning: 'alloc_size' attribute argument value '0' does not refer to a function parameter [-Wattributes]
+   23 | void *fn(int, int) __attribute__((alloc_size(0)));
+      | ^

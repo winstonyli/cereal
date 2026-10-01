@@ -472,7 +472,11 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
         attr_norm(tstr(c, c->nodes[item].tok), name, sizeof name);
         kids_get(c, item, &ak);
         arg = ak.n ? ak.p[0] : NO_NODE;
-        if (!c->attr_quiet && strcmp(name, "gnu") && !attr_known(name))   /* gnu:: is a [[]] scope */
+        if (c->attr_defer && !c->attr_quiet && strcmp(name, "gnu") &&
+            !attr_known(name)) {
+            if (a->nunk < 2)
+                snprintf(a->unk[a->nunk++], sizeof a->unk[0], "%s", name);
+        } else if (!c->attr_quiet && strcmp(name, "gnu") && !attr_known(name))   /* gnu:: is a [[]] scope */
             cwarn(c, c->attr_at_set ? c->attr_at : iloc(c, c->nodes[item].tok),
                   "attributes", "'%s' attribute directive ignored", name);
         if (!strcmp(name, "aligned")) {
@@ -568,6 +572,10 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 a->nonnull |= m;
         } else if (!strcmp(name, "gnu_inline")) {
             a->gnu_inline = true;
+        } else if (!strcmp(name, "noinline")) {
+            a->noinline = true;
+        } else if (!strcmp(name, "used")) {
+            a->used = true;
         } else if (!strcmp(name, "unused")) {
             a->unused = true;
         } else if (!strcmp(name, "weak") || !strcmp(name, "__weak__")) {
@@ -709,8 +717,146 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     if (from->dep_msg)
         to->dep_msg = from->dep_msg;
     to->unused |= from->unused;
+    to->noinline |= from->noinline;
+    to->used |= from->used;
+    to->weak |= from->weak;
     to->noreturn |= from->noreturn;
     to->nonnull |= from->nonnull;
+}
+
+/* Unknown specifier attributes are reported once the declarator is known:
+ * gcc's input_location is then that declarator's line. */
+static void attrs_unknown_emit(Checker *c, const Attrs *sa, uint32_t tok)
+{
+    uint8_t k;
+    for (k = 0; k < sa->nunk; k++)
+        cwarn(c, iloc(c, tok), "attributes",
+              "'%s' attribute directive ignored", sa->unk[k]);
+}
+
+/* Attributes that gcc's handlers drop on the wrong kind of declaration
+ * (handle_noinline/used/weak_attribute): 'where' is 't' typedef, 'f'
+ * function, 'g' file-scope or static variable, 'a' automatic variable, 'p'
+ * parameter or field. */
+static void attrs_misapplied(Checker *c, const Attrs *a, char where,
+                             uint32_t tok)
+{
+    if (where == 'f')
+        return;
+    if (a->noinline)
+        cwarn(c, iloc(c, tok), "attributes", "'noinline' attribute ignored");
+    if (a->used && (where == 'a' || where == 'p'))
+        cwarn(c, iloc(c, tok), "attributes", "'used' attribute ignored");
+    if (a->weak && (where == 't' || where == 'p'))
+        cwarn(c, iloc(c, tok), "attributes", "'weak' attribute ignored");
+}
+
+/* An alloc_align/alloc_size argument as gcc prints it (%qE): an integer
+ * constant by value, anything else as written. */
+static void pos_arg_str(Checker *c, uint32_t arg, char *buf, size_t n)
+{
+    if (c->ck[arg] == K_ICE || c->ck[arg] == K_FOLD) {
+        int64_t v = cexpr_sval(c, arg);
+        if (type_is_signed(TT, c->ty[arg]))
+            snprintf(buf, n, "%lld", (long long)v);
+        else
+            snprintf(buf, n, "%llu", (unsigned long long)v);
+    } else
+        snprintf(buf, n, "%s", cexpr_str(c, arg));
+}
+
+/* c-attribs.cc positional_argument for one argument of alloc_align or
+ * alloc_size on a function of type fty; false when it warned. */
+static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno,
+                           TypeId fty, SrcLoc loc)
+{
+    char pre[24] = "", val[96];
+    TypeId t = c->ty[arg], pt;
+    int64_t v;
+    uint32_t n;
+    uint64_t pos;
+    if (argno)
+        snprintf(pre, sizeof pre, "%d ", argno);
+    if (type_ckind(TT, t) == TY_ERROR)
+        return false;
+    if (!type_is_integer(TT, t)) {
+        cwarn(c, loc, "attributes", "'%s' attribute argument %shas type %s",
+              name, pre, type_q(TT, t));
+        return false;
+    }
+    pos_arg_str(c, arg, val, sizeof val);
+    if (c->ck[arg] != K_ICE && c->ck[arg] != K_FOLD) {
+        cwarn(c, loc, "attributes", "'%s' attribute argument %svalue '%s' is "
+              "not an integer constant", name, pre, val);
+        return false;
+    }
+    v = cexpr_sval(c, arg);
+    if (!v) {
+        cwarn(c, loc, "attributes", "'%s' attribute argument %svalue '%s' does "
+              "not refer to a function parameter", name, pre, val);
+        return false;
+    }
+    if (type_ent(TT, fty)->flags & TF_NOPROTO)
+        return true;
+    n = type_ent(TT, fty)->n;
+    pos = (uint64_t)v;
+    if (pos > n) {
+        cwarn(c, loc, "attributes", "'%s' attribute argument %svalue '%s' "
+              "exceeds the number of function parameters %u", name, pre, val, n);
+        return false;
+    }
+    pt = type_params(TT, fty)[pos - 1];
+    if (!type_is_integer(TT, pt) ||
+        type_kind(TT, TYPE_UNQUAL(type_canon(TT, pt))) == TY_BOOL) {
+        cwarn(c, loc, "attributes", "'%s' attribute argument %svalue '%s' "
+              "refers to parameter type %s", name, pre, val, type_q(TT, pt));
+        return false;
+    }
+    return true;
+}
+
+/* handle_alloc_align_attribute / handle_alloc_size_attribute for the
+ * attributes among holder's children, applied to a function of type fty. */
+static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
+                              uint32_t tok)
+{
+    Kids k;
+    uint32_t j;
+    kids_get(c, holder, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n; q++) {
+            char name[48];
+            Kids ak;
+            size_t i;
+            bool align, ok = true;
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
+            align = !strcmp(name, "alloc_align");
+            if (!align && strcmp(name, "alloc_size"))
+                continue;
+            kids_get(c, it.p[q], &ak);
+            if (ak.n && (align ? ak.n == 1 : ak.n <= 2)) {
+                SrcLoc loc = iloc(c, tok);
+                TypeId rt = type_base(TT, fty);
+                if (type_ckind(TT, rt) != TY_PTR)
+                    cwarn(c, loc, "attributes", "'%s' attribute ignored on a "
+                          "function returning %s", name, type_q(TT, rt));
+                else
+                    for (i = 0; i < ak.n && ok; i++)
+                        ok = positional_arg(c, name, ak.p[i],
+                                            ak.n > 1 ? (int)i + 1 : 0, fty, loc);
+            }
+            kids_free(&ak);
+        }
+        kids_free(&it);
+    }
+    kids_free(&k);
 }
 
 /* The attributes of node i's ATTRIBUTE children (direct). */
@@ -1374,7 +1520,9 @@ static void specs_visit(Checker *c, uint32_t i)
         }
         case N_ATTRIBUTE:
             s.has_attrs = true;
+            c->attr_defer = true;
             attr_collect(c, n, &s.attrs);
+            c->attr_defer = false;
             break;
         default:
             break;
@@ -3631,7 +3779,18 @@ static void declared_visit(Checker *c, uint32_t i)
         s.ty = attr_apply_type(c, s.ty, &a);
         g.ty = s.ty;
     }
+    attrs_unknown_emit(c, &sp.attrs, ltok);
+    if (g.what == GD_FUNC && s.kind == CS_FUNC) {
+        /* the declared type keeps the typedef names of the parameters */
+        TypeId aft = type_kind(TT, s.ty) == TY_FUNC ? s.ty : type_canon(TT, s.ty);
+        attrs_alloc_check(c, sn, aft, ltok);
+        attrs_alloc_check(c, idecl, aft, ltok);
+    }
     attrs_merge(&a, &sp.attrs);
+    attrs_misapplied(c, &a, kr ? 'p' : g.what == GD_TYPEDEF ? 't' :
+                     g.what == GD_FUNC ? 'f' :
+                     (!file && s.sc != SC_STATIC && s.sc != SC_EXTERN) ? 'a' : 'g',
+                     ltok);
     if (a.transparent_union && g.what == GD_TYPEDEF &&
         type_ckind(TT, s.ty) == TY_UNION) {
         /* handle_transparent_union_attribute on a typedef: the union type
@@ -4144,6 +4303,12 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     c->attr_at_set = true;
     attrs_of_children(c, i, &a);
     c->attr_at_set = false;
+    if (a.noinline)
+        cwarn(c, iloc(c, close_tok), "attributes",
+              "'noinline' attribute does not apply to types");
+    if (a.used)
+        cwarn(c, iloc(c, close_tok), "attributes",
+              "'used' attribute does not apply to types");
     n = (uint32_t)c->fields.len - rd.first;
     f = c->fields.data + rd.first;
     if (c->opt.pedantic) {
@@ -4557,7 +4722,9 @@ static void member_visit(Checker *c, uint32_t i)
     attrs_of_children(c, i, &a);
     if (a.has_mode || a.vs_seen)
         g.ty = attr_apply_type(c, g.ty, &a);
+    attrs_unknown_emit(c, &sp.attrs, ltok);
     attrs_merge(&a, &sp.attrs);
+    attrs_misapplied(c, &a, 'p', ltok);
     memset(&fi, 0, sizeof fi);
     fi.name = g.name;
     fi.ty = g.ty;
@@ -4879,7 +5046,9 @@ static void param_visit(Checker *c, uint32_t p)
     }
     memset(&a, 0, sizeof a);
     attrs_of_children(c, p, &a);
+    attrs_unknown_emit(c, &sp.attrs, first_tok(c, p));
     attrs_merge(&a, &sp.attrs);
+    attrs_misapplied(c, &a, 'p', first_tok(c, p));
     if (a.unused)
         s.flags |= CSF_USED | CSF_ATTR_UNUSED;
     if (a.deprecated || a.unavailable) {
@@ -5206,6 +5375,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     grok(c, &sp, top, DC_NORMAL, true, true, NO_NODE, ltok, ltok, &g);
     if (g.what != GD_FUNC || !is_func(c, g.s.ty))
         return;
+    attrs_unknown_emit(c, &sp.attrs, ltok);
     s = g.s;
     loc = s.loc;
     name = cident(c, s.name);

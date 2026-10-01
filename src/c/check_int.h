@@ -120,12 +120,15 @@ typedef struct Attrs {
     bool transparent_union;
     bool has_mode;
     uint8_t mode_bytes;      /* mode(QI..TI): integer size; 0: word etc. */
+    uint8_t nunk;            /* unknown attribute names deferred to the declarator */
+    char unk[2][48];
     char mode_name[16];      /* the mode as written, for diagnostics */
     uint8_t mode_float;      /* mode(SF/DF/XF/TF): 1 */
     uint64_t vector_size;    /* bytes, 0: none (or invalid) */
     bool vs_seen;            /* a valid vector_size argument */
     SrcLoc vs_loc;           /* input_location when it was read */
     bool deprecated, unused, noreturn, weak, alias, section, cleanup;
+    bool noinline, used;     /* seen, for the 'attribute ignored' checks */
     bool unavailable, gnu_inline;
     uint64_t nonnull;        /* bit j: argument j + 1; NN_ALL: every pointer */
     uint32_t dep_msg;        /* Checker.dep_msgs + 1, 0: none */
@@ -275,6 +278,7 @@ struct Checker {
     uint32_t cd_ltok;
     uint64_t il_first;       /* cinput_loc memo: the unit (first_tok), token + 1, its BOL token + 1 (0: none) */
     uint32_t il_tok, il_bol;
+    bool attr_defer;         /* record unknown names in Attrs.unk instead */
     bool attr_quiet;         /* attr_collect emits no unknown-attribute warning */
     bool attr_at_set;        /* ... and locates it at attr_at */
     SrcLoc attr_at;
