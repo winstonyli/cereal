@@ -576,6 +576,16 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             a->noinline = true;
         } else if (!strcmp(name, "used")) {
             a->used = true;
+        } else if (!strcmp(name, "alias")) {
+            a->alias = true;
+        } else if (!strcmp(name, "weakref")) {
+            a->weakref = true;
+        } else if (!strcmp(name, "error")) {
+            a->errattr = true;
+        } else if (!strcmp(name, "warning")) {
+            a->warnattr = true;
+        } else if (!strcmp(name, "cleanup")) {
+            a->cleanup = true;
         } else if (!strcmp(name, "unused")) {
             a->unused = true;
         } else if (!strcmp(name, "weak") || !strcmp(name, "__weak__")) {
@@ -718,6 +728,11 @@ static void attrs_merge(Attrs *to, const Attrs *from)
         to->dep_msg = from->dep_msg;
     to->unused |= from->unused;
     to->noinline |= from->noinline;
+    to->alias |= from->alias;
+    to->weakref |= from->weakref;
+    to->errattr |= from->errattr;
+    to->warnattr |= from->warnattr;
+    to->cleanup |= from->cleanup;
     to->used |= from->used;
     to->weak |= from->weak;
     to->noreturn |= from->noreturn;
@@ -734,21 +749,38 @@ static void attrs_unknown_emit(Checker *c, const Attrs *sa, uint32_t tok)
               "'%s' attribute directive ignored", sa->unk[k]);
 }
 
-/* Attributes that gcc's handlers drop on the wrong kind of declaration
- * (handle_noinline/used/weak_attribute): 'where' is 't' typedef, 'f'
- * function, 'g' file-scope or static variable, 'a' automatic variable, 'p'
- * parameter or field. */
-static void attrs_misapplied(Checker *c, const Attrs *a, char where,
-                             uint32_t tok)
+/* Attributes that gcc's handlers drop on the wrong kind of declaration:
+ * 'where' is 't' typedef, 'f' function, 'g' file-scope variable, 's' static
+ * local, 'a' automatic local, 'p' parameter, 'm' field (of type fty, 0 for a
+ * bit-field); local: declared in a block. */
+static void attrs_misapplied(Checker *c, const Attrs *a, char where, bool local,
+                             TypeId fty, uint32_t tok)
 {
-    if (where == 'f')
-        return;
-    if (a->noinline)
-        cwarn(c, iloc(c, tok), "attributes", "'noinline' attribute ignored");
-    if (a->used && (where == 'a' || where == 'p'))
-        cwarn(c, iloc(c, tok), "attributes", "'used' attribute ignored");
-    if (a->weak && (where == 't' || where == 'p'))
-        cwarn(c, iloc(c, tok), "attributes", "'weak' attribute ignored");
+    bool var = where == 'g' || where == 's' || where == 'a';
+    bool nofn = where != 'f';
+    SrcLoc loc = iloc(c, tok);
+    if (a->noinline && nofn)
+        cwarn(c, loc, "attributes", "'noinline' attribute ignored");
+    if (a->used && (where == 'a' || where == 'p' || where == 'm'))
+        cwarn(c, loc, "attributes", "'used' attribute ignored");
+    if (a->weak && (where == 't' || where == 'p' || where == 'm'))
+        cwarn(c, loc, "attributes", "'weak' attribute ignored");
+    if (a->packed && where != 'm')
+        cwarn(c, loc, "attributes", "'packed' attribute ignored");
+    if (a->packed && where == 'm' && fty && type_align(TT, fty) == 1)
+        cwarn(c, loc, "attributes", "'packed' attribute ignored for field of "
+              "type %s", type_q(TT, fty));
+    if (a->alias && (where == 't' || where == 'p' || where == 'm' ||
+                     (local && (where == 'f' || var))))
+        cwarn(c, loc, "attributes", "'alias' attribute ignored");
+    if (a->weakref && (where == 't' || where == 'p' || where == 'm'))
+        cwarn(c, loc, "attributes", "'weakref' attribute ignored");
+    if (a->errattr && nofn)
+        cwarn(c, loc, "attributes", "'error' attribute ignored");
+    if (a->warnattr && nofn)
+        cwarn(c, loc, "attributes", "'warning' attribute ignored");
+    if (a->cleanup && (where != 'a' && !(local && where == 'g')))
+        cwarn(c, loc, "attributes", "'cleanup' attribute ignored");
 }
 
 /* An alloc_align/alloc_size argument as gcc prints it (%qE): an integer
@@ -3789,8 +3821,8 @@ static void declared_visit(Checker *c, uint32_t i)
     attrs_merge(&a, &sp.attrs);
     attrs_misapplied(c, &a, kr ? 'p' : g.what == GD_TYPEDEF ? 't' :
                      g.what == GD_FUNC ? 'f' :
-                     (!file && s.sc != SC_STATIC && s.sc != SC_EXTERN) ? 'a' : 'g',
-                     ltok);
+                     file ? 'g' : s.sc == SC_STATIC ? 's' :
+                     s.sc == SC_EXTERN ? 'g' : 'a', !file, 0, ltok);
     if (a.transparent_union && g.what == GD_TYPEDEF &&
         type_ckind(TT, s.ty) == TY_UNION) {
         /* handle_transparent_union_attribute on a typedef: the union type
@@ -4724,7 +4756,7 @@ static void member_visit(Checker *c, uint32_t i)
         g.ty = attr_apply_type(c, g.ty, &a);
     attrs_unknown_emit(c, &sp.attrs, ltok);
     attrs_merge(&a, &sp.attrs);
-    attrs_misapplied(c, &a, 'p', ltok);
+    attrs_misapplied(c, &a, 'm', false, w == NO_NODE ? g.ty : 0, ltok);
     memset(&fi, 0, sizeof fi);
     fi.name = g.name;
     fi.ty = g.ty;
@@ -5048,7 +5080,7 @@ static void param_visit(Checker *c, uint32_t p)
     attrs_of_children(c, p, &a);
     attrs_unknown_emit(c, &sp.attrs, first_tok(c, p));
     attrs_merge(&a, &sp.attrs);
-    attrs_misapplied(c, &a, 'p', first_tok(c, p));
+    attrs_misapplied(c, &a, 'p', false, 0, first_tok(c, p));
     if (a.unused)
         s.flags |= CSF_USED | CSF_ATTR_UNUSED;
     if (a.deprecated || a.unavailable) {
@@ -5376,6 +5408,8 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     if (g.what != GD_FUNC || !is_func(c, g.s.ty))
         return;
     attrs_unknown_emit(c, &sp.attrs, ltok);
+    attrs_alloc_check(c, fp.specs, type_kind(TT, g.s.ty) == TY_FUNC ? g.s.ty :
+                      type_canon(TT, g.s.ty), ltok);
     s = g.s;
     loc = s.loc;
     name = cident(c, s.name);

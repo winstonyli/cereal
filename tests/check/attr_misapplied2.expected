@@ -1,0 +1,54 @@
+attr_misapplied2.c:3:16: warning: 'packed' attribute ignored [-Wattributes]
+    3 | typedef struct u1 T1 __attribute__((packed));
+      |                ^
+attr_misapplied2.c:4:1: warning: 'packed' attribute ignored [-Wattributes]
+    4 | typedef int T2 __attribute__((packed));
+      | ^
+attr_misapplied2.c:6:3: warning: 'packed' attribute ignored for field of type 'unsigned char[1]' [-Wattributes]
+    6 |   unsigned char f[1] __attribute__((packed));
+      |   ^
+attr_misapplied2.c:7:3: warning: 'packed' attribute ignored for field of type 'char' [-Wattributes]
+    7 |   char c __attribute__((packed));
+      |   ^
+attr_misapplied2.c:11:3: warning: 'packed' attribute ignored for field of type 'char[3][2]' [-Wattributes]
+   11 |   char ca[3][2] __attribute__((packed));
+      |   ^
+attr_misapplied2.c:14:1: warning: 'packed' attribute ignored [-Wattributes]
+   14 | int v __attribute__((packed));
+      | ^
+attr_misapplied2.c:15:1: warning: 'packed' attribute ignored [-Wattributes]
+   15 | void fn(void) __attribute__((packed));
+      | ^
+attr_misapplied2.c:16:1: warning: 'alias' attribute ignored [-Wattributes]
+   16 | typedef int Ti __attribute__((alias("x")));
+      | ^
+attr_misapplied2.c:18:1: warning: 'alias' attribute ignored [-Wattributes]
+   18 | void g1(void) { extern void bar() __attribute__((alias("BAR"))); extern int w __attribute__((alias("v"))); }
+      | ^
+attr_misapplied2.c:18:1: warning: 'alias' attribute ignored [-Wattributes]
+   18 | void g1(void) { extern void bar() __attribute__((alias("BAR"))); extern int w __attribute__((alias("v"))); }
+      | ^
+attr_misapplied2.c:19:1: warning: 'alias' attribute ignored [-Wattributes]
+   19 | void g2(int p __attribute__((alias("v"))));
+      | ^
+attr_misapplied2.c:20:1: warning: 'weakref' attribute ignored [-Wattributes]
+   20 | typedef int Tw __attribute__((weakref("U")));
+      | ^
+attr_misapplied2.c:22:1: warning: 'weakref' attribute ignored [-Wattributes]
+   22 | void g3(int p __attribute__((weakref("U"))));
+      | ^
+attr_misapplied2.c:23:1: warning: 'error' attribute ignored [-Wattributes]
+   23 | int ev __attribute__((error("foo")));
+      | ^
+attr_misapplied2.c:25:1: warning: 'cleanup' attribute ignored [-Wattributes]
+   25 | void g4(void) { static int s1 __attribute__((cleanup(cl))); int a1 __attribute__((cleanup(cl))); extern int e1 __attribute__((cleanup(cl))); }
+      | ^
+attr_misapplied2.c:26:1: warning: 'cleanup' attribute ignored [-Wattributes]
+   26 | int fv __attribute__((cleanup(cl)));
+      | ^
+attr_misapplied2.c:27:1: warning: 'cleanup' attribute ignored [-Wattributes]
+   27 | void g5(int p __attribute__((cleanup(cl))));
+      | ^
+attr_misapplied2.c:28:1: warning: 'cleanup' attribute ignored [-Wattributes]
+   28 | void g6(void) __attribute__((cleanup(cl)));
+      | ^
