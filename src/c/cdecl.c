@@ -492,6 +492,11 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                                          true);
             if (v > a->aligned)
                 a->aligned = v;
+        } else if (!strcmp(name, "warn_if_not_aligned")) {
+            a->wina = true;
+            if (arg != NO_NODE)
+                (void)check_user_alignment(c, arg,
+                                           iloc(c, after_tok(c, attr)), true);
         } else if (!strcmp(name, "packed")) {
             a->packed = true;
         } else if (!strcmp(name, "copy") && arg != NO_NODE &&
@@ -790,6 +795,8 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     to->gnu_inline |= from->gnu_inline;
     if (from->dep_msg)
         to->dep_msg = from->dep_msg;
+    if (from->wina)
+        to->wina = true;
     if (from->sec_any) {
         to->sec_any = true;
         if (!to->sec)
@@ -895,6 +902,21 @@ static void attrs_section_check(Checker *c, const Attrs *a, char where,
                                c->dep_msgs.data[a->sec2 - 1]))
         cerror(c, nloc, "section of '%s' conflicts with previous "
                "declaration", cident(c, name));
+}
+
+/* common_handle_aligned_attribute for warn_if_not_aligned: only a type or a
+ * non-bit-field member may carry it. */
+static void attrs_wina_check(Checker *c, const Attrs *a, char where,
+                             bool bitfield, uint32_t name, SrcLoc nloc)
+{
+    if (!a->wina || where == 't' || (where == 'm' && !bitfield))
+        return;
+    if (where == 'p')
+        cerror(c, nloc, "alignment may not be specified for '%s'",
+               cident(c, name));
+    else
+        cerror(c, nloc, "'warn_if_not_aligned' may not be specified for '%s'",
+               cident(c, name));
 }
 
 /* An alloc_align/alloc_size argument as gcc prints it (%qE): an integer
@@ -4320,6 +4342,8 @@ static void declared_visit(Checker *c, uint32_t i)
                         g.what == GD_FUNC ? 'f' : 'g',
                         g.what == GD_VAR && !file && s.sc != SC_STATIC,
                         s.name, s.loc);
+    attrs_wina_check(c, &a, kr ? 'p' : g.what == GD_TYPEDEF ? 't' : 'g', false,
+                     s.name, s.loc);
     s.sect = a.sec;
     if (s.kind == CS_OBJ && !file && (s.flags & CSF_TREE_STATIC)) {
         TypeId et = s.ty;
@@ -5407,6 +5431,7 @@ static void member_visit(Checker *c, uint32_t i)
     attrs_merge(&a, &sp.attrs);
     attrs_misapplied(c, &a, 'm', false, w == NO_NODE ? g.ty : 0, ltok);
     attrs_section_check(c, &a, 'm', false, g.name, g.loc);
+    attrs_wina_check(c, &a, 'm', g.width >= 0, g.name, g.loc);
     memset(&fi, 0, sizeof fi);
     fi.name = g.name;
     fi.ty = g.ty;
@@ -6089,6 +6114,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         g.s.nonnull |= st.nonnull | sp.attrs.nonnull;
     }
     attrs_section_check(c, &sp.attrs, 'f', false, g.s.name, g.s.loc);
+    attrs_wina_check(c, &sp.attrs, 'f', false, g.s.name, g.s.loc);
     g.s.sect = sp.attrs.sec;
     s = g.s;
     loc = s.loc;

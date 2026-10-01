@@ -1,0 +1,9 @@
+attr_wina.c:1:5: error: 'warn_if_not_aligned' may not be specified for 'foo1'
+    1 | int foo1 __attribute__((warn_if_not_aligned(8)));
+      |     ^
+attr_wina.c:5:1: error: 'warn_if_not_aligned' may not be specified for 'foo2'
+    5 | foo2 (void)
+      | ^
+attr_wina.c:11:7: error: 'warn_if_not_aligned' may not be specified for 'i'
+   11 |   int i : 2 __attribute__((warn_if_not_aligned(8)));
+      |       ^

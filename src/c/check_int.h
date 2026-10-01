@@ -161,6 +161,7 @@ typedef struct Attrs {
     uint32_t sec, sec2;      /* section("..") strings (Checker.dep_msgs + 1);
                               * sec2: a later one, compared with sec */
     bool sec_any;            /* a section attribute was written */
+    bool wina;               /* warn_if_not_aligned was written */
     SrcLoc sec_bad;          /* input_location of a non-string argument */
 } Attrs;
 
