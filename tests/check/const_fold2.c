@@ -6,3 +6,6 @@ int e = 1 ? 2 : 3;
 #ifndef __TIMESTAMP__
 #error no timestamp
 #endif
+char c1 = 1["bar"];
+char c2 = "str"[4];
+char c3 = "str"[-1];

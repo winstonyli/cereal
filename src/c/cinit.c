@@ -766,9 +766,23 @@ static bool const_varlike(Checker *c, uint32_t n, int depth)
     }
     case N_INDEX: {         /* "str"[constant] */
         uint32_t b2 = n - 1, b1 = b2 - c->nodes[b2].size;
+        uint32_t s, ix;
+        int64_t v;
         while (ntag(c, b1) == N_PAREN && b1 > 0)
             b1--;
-        return ntag(c, b1) == N_STRING && is_icelike(c, b2);
+        if (ntag(c, b1) == N_STRING) {
+            s = b1;
+            ix = b2;
+        } else if (ntag(c, b2) == N_STRING) {   /* 1["bar"] */
+            s = b2;
+            ix = b1;
+        } else {
+            return false;
+        }
+        if (!is_icelike(c, ix) || (c->ef[ix] & EF_OVERFLOW))
+            return false;
+        v = cexpr_sval(c, ix);  /* gcc: only an index inside the string */
+        return v >= 0 && (uint64_t)v < type_ent(TT, c->ty[s])->n;
     }
     case N_UNARY:
         op = tpunct(c, c->nodes[n].tok);

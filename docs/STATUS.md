@@ -124,8 +124,8 @@ layouts, gcc rules ported, walk design).
    Folding (cinit.c const_varlike): `"str"[i]`, same-variable pointer difference
    `p - (p - 1)`, `?:` of constants; `__TIMESTAMP__` (file mtime); label-address
    pedwarn at the input location; initializer of an incomplete struct digested.
-   Metrics: dg-options rejects-valid 39, accepts-invalid 86, exact 5560 of 6059
-   (was 5563 mid-step; not yet explained -- diff the per-file exact set);
+   Metrics: dg-options rejects-valid 39, accepts-invalid 86, exact 5563 of 6059
+   ("str"[i] folds only for an in-range, non-overflowed index; 1["bar"] too);
    default gcc.dg 70/101, exact 8993 of 10067; corpus 0/0; tests 540.
    Remaining rejects-valid (dg-options baseline): builtin-tgmath, `copysign`
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15

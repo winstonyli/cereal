@@ -1,0 +1,6 @@
+const_fold2.c:10:11: error: initializer element is not constant
+   10 | char c2 = "str"[4];
+      |           ^
+const_fold2.c:11:11: error: initializer element is not constant
+   11 | char c3 = "str"[-1];
+      |           ^
