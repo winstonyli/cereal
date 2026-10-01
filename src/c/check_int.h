@@ -138,7 +138,9 @@ typedef struct Attrs {
     bool vs_seen;            /* a valid vector_size argument */
     SrcLoc vs_loc;           /* input_location when it was read */
     bool deprecated, unused, noreturn, weak, alias, section, cleanup;
-    bool weakref, errattr, warnattr, desig;
+    bool weakref, ifunc, errattr, warnattr, desig;
+    bool defn;               /* alias/ifunc/weakref naming a target */
+    bool e_wi, e_iw;         /* weak then ifunc, ifunc then weak (both errors) */
     bool noinline, used;     /* seen, for the 'attribute ignored' checks */
     bool unavailable, gnu_inline;
     uint64_t nonnull;        /* bit j: argument j + 1; NN_ALL: every pointer */

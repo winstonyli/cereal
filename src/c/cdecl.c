@@ -472,6 +472,9 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
         attr_norm(tstr(c, c->nodes[item].tok), name, sizeof name);
         kids_get(c, item, &ak);
         arg = ak.n ? ak.p[0] : NO_NODE;
+        if (arg != NO_NODE && (!strcmp(name, "alias") || !strcmp(name, "ifunc") ||
+                               !strcmp(name, "weakref")))
+            a->defn = true;
         if (c->attr_defer && !c->attr_quiet && strcmp(name, "gnu") &&
             !attr_known(name)) {
             if (a->nunk < 2)
@@ -580,6 +583,11 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             a->desig = true;
         } else if (!strcmp(name, "alias")) {
             a->alias = true;
+        } else if (!strcmp(name, "ifunc")) {
+            if (a->weak || a->weakref)
+                a->e_wi = true;
+            else
+                a->ifunc = true;
         } else if (!strcmp(name, "weakref")) {
             a->weakref = true;
         } else if (!strcmp(name, "error")) {
@@ -591,7 +599,10 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
         } else if (!strcmp(name, "unused")) {
             a->unused = true;
         } else if (!strcmp(name, "weak") || !strcmp(name, "__weak__")) {
-            a->weak = true;
+            if (a->ifunc)
+                a->e_iw = true;
+            else
+                a->weak = true;
         } else if (!strcmp(name, "vector_size") && arg != NO_NODE) {
             if ((c->ck[arg] == K_ICE || c->ck[arg] == K_FOLD) &&
                 type_is_integer(TT, c->ty[arg])) {
@@ -731,6 +742,19 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     to->unused |= from->unused;
     to->noinline |= from->noinline;
     to->alias |= from->alias;
+    to->defn |= from->defn;
+    /* from (the specifiers) was written first */
+    if (from->ifunc && to->weak) {
+        to->weak = false;
+        to->e_iw = true;
+    }
+    if ((from->weak || from->weakref) && to->ifunc) {
+        to->ifunc = false;
+        to->e_wi = true;
+    }
+    to->e_wi |= from->e_wi;
+    to->e_iw |= from->e_iw;
+    to->ifunc |= from->ifunc;
     to->desig |= from->desig;
     to->weakref |= from->weakref;
     to->errattr |= from->errattr;
@@ -3463,6 +3487,24 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
     return true;
 }
 
+/* handle_weak_attribute + declare_weak for a declaration of an object or
+ * function: an inline function ignores it, a symbol without external linkage
+ * cannot be weak. */
+static void weak_apply(Checker *c, CSym *s, bool is_inline)
+{
+    if (s->kind == CS_FUNC && is_inline) {
+        cwarn(c, s->loc, "attributes", "inline function '%s' declared weak",
+              sname(c, s));
+        return;
+    }
+    if (!sym_public(s)) {
+        cerror(c, s->loc, "weak declaration of '%s' must be public",
+               sname(c, s));
+        return;
+    }
+    s->flags |= CSF_WEAK;
+}
+
 /* merge_decls: nw is consistent with o; o becomes the merged declaration. */
 static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
                         TypeId oldtype)
@@ -3484,6 +3526,11 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
                            CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE |
                            CSF_WEAK | CSF_ADDR_WARNED | CSF_DEPRECATED |
                            CSF_UNAVAILABLE | CSF_INNER_COMP | CSF_GNU_INLINE | CSF_PURE | CSF_CONSTFN);
+    /* merge_weak: PR 49899, a static function cannot become weak and public */
+    if ((nw->flags & CSF_WEAK) && !(o->flags & CSF_WEAK) && !sym_public(o) &&
+        sym_public(nw))
+        cerror(c, m.loc, "weak declaration of '%s' being applied to a already "
+               "existing, static definition", sname(c, nw));
     if (!m.dep_msg)
         m.dep_msg = o->dep_msg;
     m.nonnull |= o->nonnull;
@@ -4180,8 +4227,22 @@ static void declared_visit(Checker *c, uint32_t i)
         s.flags |= a.unavailable ? CSF_UNAVAILABLE : CSF_DEPRECATED;
         s.dep_msg = a.dep_msg;
     }
-    if (a.weak)
-        s.flags |= CSF_WEAK;
+    if (a.e_wi)
+        cerror(c, s.loc, "weak '%s' cannot be defined 'ifunc'", sname(c, &s));
+    if (a.e_iw)
+        cerror(c, s.loc, "indirect function '%s' cannot be declared weak",
+               sname(c, &s));
+    if (a.weakref && (s.kind == CS_OBJ || s.kind == CS_FUNC) && sym_public(&s))
+        cerror(c, s.loc, "'weakref' symbol '%s' must have static linkage",
+               sname(c, &s));
+    if (a.weak && !kr && (s.kind == CS_OBJ || s.kind == CS_FUNC))
+        weak_apply(c, &s, sp.is_inline);
+    if (a.weakref && (s.kind == CS_OBJ || s.kind == CS_FUNC))
+        s.flags |= CSF_WEAK;   /* a weakref is weak too */
+    /* handle_alias_ifunc_attributes: a function alias has an initial value, so
+     * a later definition (or an earlier one) is a redefinition */
+    if (a.defn && s.kind == CS_FUNC && g.what == GD_FUNC)
+        s.flags |= CSF_DEFINED;
     if (a.noreturn && s.kind == CS_FUNC)
         s.flags |= CSF_NORETURN;
     if (a.nonnull && s.kind == CS_FUNC)
@@ -5801,6 +5862,8 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     name = cident(c, s.name);
     if (nested)
         s.linkage = LK_INTERNAL;
+    if (sp.attrs.weak)
+        weak_apply(c, &s, sp.is_inline);
     /* the return type */
     rt = type_base(TT, s.ty);
     if (!is_err(c, rt) && !is_void(c, rt) && !type_is_complete(TT, rt)) {
