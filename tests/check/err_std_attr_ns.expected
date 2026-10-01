@@ -1,0 +1,30 @@
+err_std_attr_ns.c:2:8: error: expected ']' before ':' token
+    2 |   [[gnu::assume (k >= 92)]] [[gnu::assume (k >= 92)]]
+      |        ^
+err_std_attr_ns.c:2:34: error: expected ']' before ':' token
+    2 |   [[gnu::assume (k >= 92)]] [[gnu::assume (k >= 92)]]
+      |                                  ^
+err_std_attr_ns.c:4:8: error: expected ']' before ':' token
+    4 |   [[gnu::assume (k >= 92)]] ;
+      |        ^
+err_std_attr_ns.c:5:8: error: expected ']' before ':' token
+    5 |   [[gnu::assume (k >= 92)]] [[gnu::assume (k >= 92)]] ;
+      |        ^
+err_std_attr_ns.c:5:34: error: expected ']' before ':' token
+    5 |   [[gnu::assume (k >= 92)]] [[gnu::assume (k >= 92)]] ;
+      |                                  ^
+err_std_attr_ns.c:2:3: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    2 |   [[gnu::assume (k >= 92)]] [[gnu::assume (k >= 92)]]
+      |   ^
+err_std_attr_ns.c:2:29: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    2 |   [[gnu::assume (k >= 92)]] [[gnu::assume (k >= 92)]]
+      |                             ^
+err_std_attr_ns.c:4:3: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    4 |   [[gnu::assume (k >= 92)]] ;
+      |   ^
+err_std_attr_ns.c:5:3: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    5 |   [[gnu::assume (k >= 92)]] [[gnu::assume (k >= 92)]] ;
+      |   ^
+err_std_attr_ns.c:5:29: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    5 |   [[gnu::assume (k >= 92)]] [[gnu::assume (k >= 92)]] ;
+      |                             ^

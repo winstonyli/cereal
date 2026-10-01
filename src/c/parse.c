@@ -610,7 +610,25 @@ static void std_attribute(Parser *p)
         if (!accept(p, P_COMMA))
             break;
     }
-    expect(p, P_RBRACKET);
+    if (!at(p, P_RBRACKET)) {
+        /* gcc: c_parser_skip_until_found(']'), balancing brackets */
+        int depth = 0;
+        expect(p, P_RBRACKET);
+        while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
+               !at(p, P_LBRACE)) {
+            if (at(p, P_LPAREN) || at(p, P_LBRACKET))
+                depth++;
+            else if (at(p, P_RPAREN))
+                depth--;
+            else if (at(p, P_RBRACKET) && depth-- <= 0) {
+                adv(p);
+                break;
+            }
+            adv(p);
+        }
+    } else {
+        expect(p, P_RBRACKET);
+    }
     expect(p, P_RBRACKET);
     emit(p, N_ATTRIBUTE, kw, start, 0);
 }

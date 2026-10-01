@@ -67,6 +67,10 @@ layouts, gcc rules ported, walk design).
    quiet only for other units).  gcc.dg exact 7929 -> 8772 of 10063
    (87.2%; cereal-only errors 846 -> 1020: precision 90%, recall 87%, F1
    unchanged by the last step), identical headers 392/940, corpus 0/0.
+   Then `__GIMPLE` (skip the body) and `[[ns::x]]` before C2X (skip to the
+   closing `]` like gcc, so later lists in a sequence are diagnosed): exact
+   8853 of 10064, identical headers 446/940, rejects-valid 81,
+   accepts-invalid 102, tests 525.  Missing: gcc's "'gnu' attribute ignored".
    Not done: did-you-mean for macro names (42 gcc.dg cases; needs the
    macro table at the token's version in the checker, with read-set
    consequences for P3), "expected ... at end of input" location (gcc
