@@ -1,0 +1,42 @@
+fwd_params.c:1:1: warning: ISO C forbids forward parameter declarations [-Wpedantic]
+    1 | int f1(int a; int a);
+      | ^
+fwd_params.c:2:1: warning: ISO C forbids forward parameter declarations [-Wpedantic]
+    2 | int f2(int a; int a) { return 0; }
+      | ^
+fwd_params.c:3:1: warning: ISO C forbids forward parameter declarations [-Wpedantic]
+    3 | int f5(int a; int (*x)[a], int a);
+      | ^
+fwd_params.c:4:1: warning: ISO C forbids forward parameter declarations [-Wpedantic]
+    4 | int f7(int a; int (*x)[a]; int (*y)[x[1][2]], int (*x)[a], int a) { return 0; }
+      | ^
+fwd_params.c:5:1: warning: ISO C forbids forward parameter declarations [-Wpedantic]
+    5 | int h1(int a; int b);
+      | ^
+fwd_params.c:5:12: error: parameter 'a' has just a forward declaration
+    5 | int h1(int a; int b);
+      |            ^
+fwd_params.c:6:1: warning: ISO C forbids forward parameter declarations [-Wpedantic]
+    6 | int h2(int; int b);
+      | ^
+fwd_params.c:6:8: error: parameter '({anonymous})' has just a forward declaration
+    6 | int h2(int; int b);
+      |        ^
+fwd_params.c:7:1: warning: ISO C forbids forward parameter declarations [-Wpedantic]
+    7 | int h3(int a; long a);
+      | ^
+fwd_params.c:7:20: error: conflicting types for 'a'; have 'long int'
+    7 | int h3(int a; long a);
+      |                    ^
+fwd_params.c:7:12: note: previous definition of 'a' with type 'int'
+    7 | int h3(int a; long a);
+      |            ^
+fwd_params.c:7:12: error: parameter 'a' has just a forward declaration
+    7 | int h3(int a; long a);
+      |            ^
+fwd_params.c:8:20: error: redefinition of parameter 'a'
+    8 | int dup(int a, int a);
+      |                    ^
+fwd_params.c:8:13: note: previous definition of 'a' with type 'int'
+    8 | int dup(int a, int a);
+      |             ^

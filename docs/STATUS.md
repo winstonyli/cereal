@@ -103,9 +103,10 @@ layouts, gcc rules ported, walk design).
    folds (atan, nan, sin, ...) with constant arguments are pedwarn-only
    initializers (cinit.c foldable_libcall): rejects-valid 53.  u/U/u8 string and char
    prefixes under -std=gnu99 now lexed (rejects-valid 45, exact 5524 of 6051).
-   Remaining
-   rejects-valid (dg-options baseline): GNU forward parameter declarations `f(int n; int a[n])`
-   (parm-forwdecl-*), `"str"[i]` and `p - (p - 1)` constant folding
+   GNU forward parameter declarations
+   (`f(int n; int a[n])`: NF_FWD/NF_SEMI on N_PARAM, CSF_FWD, "just a forward
+   declaration"; cdecl.c fwd_params) done: rejects-valid 43, exact 5531.
+   Remaining rejects-valid (dg-options baseline): `"str"[i]` and `p - (p - 1)` constant folding
    (pr69960, pr61240), __TIMESTAMP__ undefined, builtin-tgmath, `copysign`
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15
    header dirs under -pedantic-errors (environment, 5 files).

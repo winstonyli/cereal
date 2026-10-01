@@ -43,7 +43,8 @@ enum {
     CSF_WEAK = 262144,       /* __attribute__((weak)) */
     CSF_ADDR_WARNED = 524288, /* -Waddress 'will always be true' given */
     CSF_CONST_INIT = 1048576, /* const scalar with a constant initializer */
-    CSF_ATTR_UNUSED = 2097152 /* __attribute__((unused)) */
+    CSF_ATTR_UNUSED = 2097152, /* __attribute__((unused)) */
+    CSF_FWD = 4194304        /* parameter only forward-declared so far */
 };
 
 typedef struct CSym {
@@ -236,6 +237,8 @@ struct Checker {
     uint32_t func_sym;       /* the function being defined, SYM_NONE */
     uint32_t cur_func_node;
     uint32_t cur_node;      /* the node being visited (NO_NODE: none) */
+    uint32_t fwd_warned;     /* 1 + the FUNC whose forward-declaration pedwarn
+                                was given (0: none) */
     uint32_t func_node;      /* the FUNC declarator of the definition */
     VEC(uint32_t) nested_undef; /* block-scope auto functions declared */
     VEC(uint32_t) tentative; /* file-scope objects to check at the end */
@@ -303,6 +306,12 @@ static inline const char *cident(const Checker *c, uint32_t id)
 {
     return ident_by_id(c->in, id)->str;
 }
+
+/* a parameter that is part of the function's type (not a GNU forward
+ * declaration) */
+#define is_real_param(c, n) \
+    (ntag(c, n) == N_PARAM && !(cnode(c, n)->flags & NF_FWD))
+
 static inline CSym *csym(Checker *c, uint32_t ref)
 {
     return ref & SYM_LOCAL ? &c->lsyms.data[ref & ~SYM_LOCAL]

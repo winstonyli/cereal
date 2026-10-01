@@ -1303,7 +1303,7 @@ static void func_params(Checker *c, uint32_t f, PInfo *pi)
         pi->krlist = true;
     for (j = 0; j < k.n; j++) {
         uint32_t p = k.p[j];
-        if (ntag(c, p) == N_PARAM) {
+        if (is_real_param(c, p)) {
             bool named = c->cv[p] & 1;
             TypeId t = c->ty[p];
             /* a void parameter without a name is (void) or an error */
@@ -1328,12 +1328,12 @@ static bool lone_void(Checker *c, uint32_t f)
     bool r;
     kids_get(c, f, &k);
     for (j = 0; j < k.n; j++)
-        if (ntag(c, k.p[j]) == N_PARAM || ntag(c, k.p[j]) == N_KR_IDENT) {
+        if (is_real_param(c, k.p[j]) || ntag(c, k.p[j]) == N_KR_IDENT) {
             np++;
             only = k.p[j];
         }
     kids_free(&k);
-    r = np == 1 && ntag(c, only) == N_PARAM && !(c->cv[only] & 1) &&
+    r = np == 1 && is_real_param(c, only) && !(c->cv[only] & 1) &&
         is_void(c, c->ty[only]);
     return r;
 }
@@ -1345,7 +1345,7 @@ static bool func_has_params(Checker *c, uint32_t f)
     bool r = false;
     kids_get(c, f, &k);
     for (j = 0; j < k.n; j++)
-        if (ntag(c, k.p[j]) == N_PARAM || ntag(c, k.p[j]) == N_KR_IDENT)
+        if (is_real_param(c, k.p[j]) || ntag(c, k.p[j]) == N_KR_IDENT)
             r = true;
     kids_free(&k);
     return r;
@@ -1388,7 +1388,7 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
         uint32_t p = k.p[j];
         TypeId t;
         bool named;
-        if (ntag(c, p) != N_PARAM)
+        if (!is_real_param(c, p))
             continue;
         t = c->ty[p];
         named = c->cv[p] & 1;
@@ -2646,13 +2646,14 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
             return false;
         }
     }
-    if (nw->kind == CS_OBJ && (nw->flags & CSF_PARAM)) {
+    if (nw->kind == CS_OBJ && (nw->flags & CSF_PARAM) &&
+        !(o->flags & CSF_FWD)) {
         d = cerror_d(c, nw->loc, "redefinition of parameter '%s'",
                      sname(c, nw));
         locate_old_decl(c, d, o);
         return false;
     }
-    if (!wd &&
+    if (!wd && !((nw->flags & CSF_PARAM) && (o->flags & CSF_FWD)) &&
         !(nw->kind == CS_FUNC && sym_defined(nw) && !sym_defined(o)) &&
         !(sym_external(o) && !sym_external(nw)) &&
         !(nw->kind == CS_OBJ && sym_defined(nw) && !sym_defined(o)))
@@ -4377,7 +4378,17 @@ static void param_visit(Checker *c, uint32_t p)
     attrs_merge(&a, &sp.attrs);
     if (a.unused)
         s.flags |= CSF_USED | CSF_ATTR_UNUSED;
+    if ((cnode(c, p)->flags & NF_SEMI) && c->fwd_warned != c->par[p] + 1) {
+        /* mark_forward_parm_decls: once per parameter scope */
+        c->fwd_warned = c->par[p] + 1;
+        cpedantic(c, iloc(c, after + 1),
+                  "ISO C forbids forward parameter declarations");
+    }
     ref = pushdecl(c, &s, false);
+    if (cnode(c, p)->flags & NF_FWD)
+        csym(c, ref)->flags |= CSF_FWD;
+    else
+        csym(c, ref)->flags &= ~(unsigned)CSF_FWD;
     c->ty[p] = g.ty;
     c->cb[p] = ref + 1;
     c->cv[p] = (g.name ? 1 : 0) | (sp.sc == SC_REGISTER ? 2 : 0);
@@ -4411,6 +4422,31 @@ static SrcLoc param_loc(Checker *c, uint32_t p)
     return tloc(c, cnode(c, p)->tok);
 }
 
+/* GNU forward parameter declarations (mark_forward_parm_decls, and
+ * get_parm_info's check that each was declared again). */
+static void fwd_params(Checker *c, uint32_t f)
+{
+    Kids k;
+    uint32_t j, m;
+    c->fwd_warned = 0;
+    kids_get(c, f, &k);
+    for (j = 0; j < k.n; j++) {
+        uint32_t p = k.p[j];
+        bool redone = false;
+        if (ntag(c, p) != N_PARAM || !(cnode(c, p)->flags & NF_FWD))
+            continue;
+        for (m = 0; m < k.n && !redone; m++)
+            redone = c->cb[p] && is_real_param(c, k.p[m]) &&
+                     c->cb[k.p[m]] == c->cb[p];
+        if (!redone)
+            cerror(c, param_loc(c, p), "parameter '%s' has just a forward "
+                   "declaration", c->cb[p] && csym(c, c->cb[p] - 1)->name
+                       ? cident(c, csym(c, c->cb[p] - 1)->name)
+                       : "({anonymous})");
+    }
+    kids_free(&k);
+}
+
 /* get_parm_info, at the FUNC node. */
 static void func_visit(Checker *c, uint32_t f)
 {
@@ -4423,6 +4459,7 @@ static void func_visit(Checker *c, uint32_t f)
                   "argument before '...' before C2X");
     if (!has || (fl & NF_KR))
         return;
+    fwd_params(c, f);
     c->stack.len = 0;
     for (k = f; k-- > first;) {
         unsigned t = ntag(c, k);
@@ -4432,7 +4469,7 @@ static void func_visit(Checker *c, uint32_t f)
             k = cfirst(c, k);
             continue;
         }
-        if (t == N_PARAM) {
+        if (t == N_PARAM && !(cnode(c, k)->flags & NF_FWD)) {
             nparm++;
             vec_push(&c->stack, k);
         } else if ((t == N_STRUCT || t == N_ENUM) && (c->ef[k] & 2)) {
@@ -4451,7 +4488,7 @@ static void func_visit(Checker *c, uint32_t f)
     }
     for (j = 0; j < c->stack.len; j++) {
         uint32_t e = c->stack.data[j];
-        if (ntag(c, e) == N_PARAM) {
+        if (is_real_param(c, e)) {
             if (!(c->cv[e] & 1) && is_void(c, c->ty[e]) && !is_err(c, c->ty[e])
                 && !gave) {
                 cerror(c, param_loc(c, e), "'void' must be the only "
@@ -4834,7 +4871,7 @@ static void body_visit(Checker *c, uint32_t i)
         for (j = 0; j < k.n; j++) {
             uint32_t p = k.p[j];
             CSym *s;
-            if (ntag(c, p) != N_PARAM || !c->cb[p])
+            if (!is_real_param(c, p) || !c->cb[p])
                 continue;
             if (!(c->cv[p] & 1) && is_void(c, c->ty[p]) &&
                 !is_err(c, c->ty[p]))
@@ -5203,7 +5240,7 @@ void cdecl_func_end(Checker *c, uint32_t se)
     pl = xmalloc((nk + 1) * sizeof *pl);
     for (j = 0; j < nk; j++) {
         uint32_t kn = k.p[j];
-        if (ntag(c, kn) == N_PARAM) {
+        if (is_real_param(c, kn)) {
             if (c->cb[kn] && (c->cv[kn] & 1) &&
                 !in_seen(pl, np, c->cb[kn] - 1))
                 pl[np++] = c->cb[kn] - 1;

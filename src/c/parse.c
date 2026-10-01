@@ -1158,6 +1158,7 @@ static bool paren_is_params(Parser *p)
 static void params(Parser *p, unsigned *flags)
 {
     PTok t = ct(p), n = pk(p, 1);
+    uint32_t list0;
     if (is_p(&t, P_RPAREN))
         return;
     if (is_name(p, &t) && !is_typedef_name(p, &t) &&
@@ -1176,6 +1177,7 @@ static void params(Parser *p, unsigned *flags)
         }
         return;
     }
+    list0 = nmark(p);
     for (;;) {
         uint32_t s = nmark(p), first = ci(p);
         Specs sp;
@@ -1197,6 +1199,21 @@ static void params(Parser *p, unsigned *flags)
             scope_declare(&p->scope, p->toks.data[d.name].t.aux,
                           sp.is_typedef ? SYM_TYPEDEF : SYM_ORDINARY);
         emit(p, N_PARAM, first, s, 0);
+        if (at(p, P_SEMI)) {
+            /* GNU forward declarations: everything so far in this list */
+            uint32_t i = nmark(p);
+            p->nodes.data[i - 1].flags |= NF_SEMI;
+            while (i > list0) {
+                Node *nd = &p->nodes.data[i - 1];
+                nd->flags |= NF_FWD;
+                i -= nd->size;
+            }
+            adv(p);
+            attributes(p);
+            if (at(p, P_RPAREN))
+                break;
+            continue;
+        }
         if (!accept(p, P_COMMA))
             break;
     }

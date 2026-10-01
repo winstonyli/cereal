@@ -148,7 +148,9 @@ enum {
     NF_OMITTED = NF_STATIC, /* COND: a ?: b */
     NF_RANGE = NF_STATIC,  /* CASE: case a ... b */
     NF_EXTENSION = NF_KR,  /* DECL/FUNC_DEF: after __extension__ */
-    NF_PARAMS = 1 << 7     /* SCOPE: a function body's, with parameters */
+    NF_PARAMS = 1 << 7,    /* SCOPE: a function body's, with parameters */
+    NF_FWD = 1 << 7,       /* PARAM: GNU forward declaration (before ';') */
+    NF_SEMI = NF_BODY      /* PARAM: the one just before that ';' */
 };
 
 typedef struct Node {

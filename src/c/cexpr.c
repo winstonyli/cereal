@@ -1998,7 +1998,7 @@ void cexpr_record_params(Checker *c, uint32_t declared, uint32_t ref, bool def)
     locs = xcalloc(n + 1, sizeof *locs);
     for (j = 0; j < n && j < 64; j++) {
         uint32_t q = kids[j];
-        if (ntag(c, q) != N_PARAM)
+        if (!is_real_param(c, q))
             continue;
         locs[np] = first_loc(c, q);
         for (m = cfirst(c, q); m <= q; m++)
