@@ -42,6 +42,8 @@ typedef struct Parser {
     VEC(Node) nodes;
     Scope scope;
     Scope tags;                 /* struct/union/enum tags (SYM_TAG_*) */
+    uint32_t nerrs;             /* errors reported so far */
+    bool kr_params;             /* in a definition's parameter declarations */
     uint64_t fuzzy_work;        /* spelling-suggestion effort spent */
     SymSaveVec saved;           /* parameters of function declarators */
     VEC(uint32_t) open_braces;  /* '{' of the compound statements open */

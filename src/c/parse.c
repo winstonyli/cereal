@@ -201,6 +201,7 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
         return NULL; /* one error per place: no cascades */
     p->have_err = true;
     p->err_live = true;
+    p->nerrs++;
     p->last_err = i;
     p->errors++;
     p->diag->include_chain = NULL; /* the preprocessor has moved on */
@@ -1032,6 +1033,8 @@ typedef struct DeclInfo {
     bool kr;                    /* ... a K&R identifier list */
     uint32_t save_start, save_len; /* ... its parameters (p->saved) */
     bool any;                   /* produced nodes */
+    bool failed;                /* an error in a parameter list: gcc gives up
+                                   on the declarator */
 } DeclInfo;
 
 static void declarator(Parser *p, int mode, DeclInfo *di);
@@ -1150,6 +1153,7 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             uint32_t lp = adv(p), save = (uint32_t)p->saved.len;
             unsigned flags = 0;
             bool adjacent = di->inner == DK_NONE;
+            uint32_t nerrs = p->nerrs;
             open_scope(p, lp, 0); /* function prototype scope */
             params(p, &flags);
             /* only this declarator's own parameters are saved (not
@@ -1157,6 +1161,8 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             p->saved.len = save;
             close_scope(p, adjacent ? &p->saved : NULL);
             expect(p, P_RPAREN);
+            if (p->nerrs != nerrs)
+                di->failed = true;
             emit(p, N_FUNC, lp, start, flags);
             if (adjacent) {
                 di->inner = DK_FUNC;
@@ -1943,9 +1949,12 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
      * declaration of a parameter (K&R), diagnosed as such */
     while (!at(p, P_LBRACE) && !at_eof(p)) {
         PTok t = ct(p);
-        if (is_decl_start_la(p, &t))
+        if (is_decl_start_la(p, &t)) {
+            bool save = p->kr_params;
+            p->kr_params = true;    /* no definition here (fndef_ok false) */
             declaration(p, false);
-        else {
+            p->kr_params = save;
+        } else {
             uint32_t at0 = p->pos;
             expected(p, "declaration specifiers");
             sync_stmt(p);
@@ -2024,6 +2033,14 @@ static void declaration(Parser *p, bool top)
         DeclInfo d;
         declarator_init(&d);
         declarator(p, DCL_NAMED, &d);
+        if (d.failed) {
+            if (top)
+                sync_top(p);
+            else
+                sync_stmt(p);
+            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            return;
+        }
         if (d.name == NO_TOK) {
             expected(p, "identifier or '('");
             if (top)
@@ -2036,7 +2053,7 @@ static void declaration(Parser *p, bool top)
         /* a definition: '{', or a K&R declaration list (attributes
          * first belong to a declaration: f(x) __attribute__((...)); */
         t = ct(p);
-        if (n == 0 && d.inner == DK_FUNC &&
+        if (n == 0 && d.inner == DK_FUNC && !p->kr_params &&
             (at(p, P_LBRACE) ||
              (top && !(at(p, P_ASSIGN) || at(p, P_COMMA) || at(p, P_SEMI) ||
                        ckw_of(p, &t) == CK_ASM ||
@@ -2063,12 +2080,13 @@ static void declaration(Parser *p, bool top)
             return;
         }
         t = ct(p);
-        if (d.inner != DK_FUNC &&
+        if ((d.inner != DK_FUNC || p->kr_params) &&
             !(at(p, P_ASSIGN) || at(p, P_COMMA) || at(p, P_SEMI) ||
               ckw_of(p, &t) == CK_ASM ||
               (ckw_of(p, &t) == CK_ATTRIBUTE && !t.stdattr))) {
             /* gcc: not a declarator list or a function definition */
-            if (n == 0 && is_decl_start(p, &t)) { /* a missing ';' */
+            if (n == 0 && !p->kr_params &&
+                is_decl_start(p, &t)) { /* a missing ';' */
                 char buf[160];
                 perr_after_prev(p, ci(p), "expected ';'%s",
                                 tok_desc(p, ci(p), buf, sizeof buf));
