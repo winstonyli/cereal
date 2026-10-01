@@ -597,6 +597,26 @@ static bool at_col0(Parser *p, uint32_t i)
 
 /* ---- attributes, asm ---------------------------------------------------- */
 
+/* The standard attributes gcc 13 knows (an unknown one's arguments are
+ * skipped as balanced tokens, not parsed). */
+static bool std_attr_known(Parser *p, uint32_t tok)
+{
+    static const char *const known[] = {"deprecated", "fallthrough",
+        "maybe_unused", "nodiscard", "noreturn", "_Noreturn"};
+    PTok t = tok_at(p, tok);
+    const Ident *id = ident_by_id(p->in, t.t.aux);
+    const char *s = id->str;
+    size_t n = id->len, k;
+    if (n > 4 && !strncmp(s, "__", 2) && !strcmp(s + n - 2, "__")) {
+        s += 2;
+        n -= 4;
+    }
+    for (k = 0; k < sizeof known / sizeof *known; k++)
+        if (strlen(known[k]) == n && !strncmp(s, known[k], n))
+            return true;
+    return false;
+}
+
 /* [[ name [(args)] , ... ]] (no 'ns::' before C2X) */
 static void std_attribute(Parser *p)
 {
@@ -610,7 +630,18 @@ static void std_attribute(Parser *p)
         if (t.t.kind == TK_IDENT) {
             uint32_t s = nmark(p), name = adv(p);
             if (accept(p, P_LPAREN)) {
-                if (!at(p, P_RPAREN)) {
+                if (!std_attr_known(p, name)) {
+                    int depth = 0;      /* c_parser_balanced_token_sequence */
+                    while (!at_eof(p) && !(depth == 0 && at(p, P_RPAREN))) {
+                        if (at(p, P_LPAREN) || at(p, P_LBRACKET) ||
+                            at(p, P_LBRACE))
+                            depth++;
+                        else if (at(p, P_RPAREN) || at(p, P_RBRACKET) ||
+                                 at(p, P_RBRACE))
+                            depth--;
+                        adv(p);
+                    }
+                } else if (!at(p, P_RPAREN)) {
                     parse_assign(p);
                     while (accept(p, P_COMMA))
                         parse_assign(p);
@@ -628,6 +659,7 @@ static void std_attribute(Parser *p)
     if (!at(p, P_RBRACKET)) {
         /* gcc: c_parser_skip_until_found(']'), balancing brackets */
         int depth = 0;
+        bool hush = p->hush;
         expect(p, P_RBRACKET);
         while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
                !at(p, P_LBRACE)) {
@@ -641,6 +673,11 @@ static void std_attribute(Parser *p)
             }
             adv(p);
         }
+        p->hush = true;                 /* parser->error is set */
+        expect(p, P_RBRACKET);
+        p->hush = hush;
+        emit(p, N_ATTRIBUTE, kw, start, 0);
+        return;
     } else {
         expect(p, P_RBRACKET);
     }
