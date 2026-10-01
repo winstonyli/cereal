@@ -1,0 +1,2 @@
+cereal: error: unrecognized command-line option '-Wcoercion'; did you mean '-Wconversion'?
+cereal: error: argument to '-Walloca-larger-than=' should be a non-negative integer optionally followed by a size unit

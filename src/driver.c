@@ -1,7 +1,11 @@
 /* driver.c - option parsing and translation-unit setup. */
 #include "driver.h"
 
+#include <ctype.h>
+#include <strings.h>
 #include <string.h>
+#include "c/fuzzy.h"
+#include "gcc_wopts.h"
 
 extern const char *const host_include_dirs[];
 extern const char *const host_attrs[];
@@ -133,6 +137,92 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     return i - start + 1;
 }
 
+/* Is name (a -W option without the -W, any no-/error= prefix and value
+ * stripped) one of gcc's?  A valued option is looked up as name=. */
+static bool gcc_wopt_known(const char *name, bool *valued)
+{
+    size_t k, n = strlen(name);
+    for (k = 0; k < sizeof gcc_wopts / sizeof *gcc_wopts; k++) {
+        const char *g = gcc_wopts[k];
+        size_t gl = strlen(g);
+        if (gl > 1 && g[gl - 1] == '-' && n >= gl && !strncmp(g, name, gl)) {
+            *valued = false;    /* a joined form: -Wlarger-than-32768 */
+            return true;
+        }
+        if (gl == n && !strcmp(g, name)) {
+            *valued = false;
+            return true;
+        }
+        if (gl == n + 1 && g[n] == '=' && !strncmp(g, name, n)) {
+            *valued = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* gcc's size arguments: digits and an optional unit (kB, KiB, MB, ...). */
+static bool size_arg_ok(const char *v)
+{
+    static const char *const units[] = {"", "B", "kB", "KB", "KiB", "MB",
+        "MiB", "GB", "GiB", "TB", "TiB", "PB", "PiB", "EB", "EiB"};
+    size_t k;
+    if (!isdigit((unsigned char)*v))
+        return false;
+    while (isdigit((unsigned char)*v))
+        v++;
+    for (k = 0; k < sizeof units / sizeof *units; k++)
+        if (!strcasecmp(v, units[k]))
+            return true;
+    return false;
+}
+
+static void bad_wopt(Options *o, const char *flag)
+{
+    const char *p = flag, *eq, *dym = NULL;
+    char name[128];
+    bool valued = false;
+    size_t n;
+    if (!strncmp(p, "no-error=", 9))
+        p += 9;
+    else if (!strncmp(p, "error=", 6))
+        p += 6;
+    else if (!strncmp(p, "no-", 3))
+        p += 3;
+    eq = strchr(p, '=');
+    n = eq ? (size_t)(eq - p) : strlen(p);
+    snprintf(name, sizeof name, "%.*s", (int)n, p);
+    if (gcc_wopt_known(name, &valued)) {
+        size_t m = strlen(name);
+        if (eq && valued && m > 12 &&
+            !strcmp(name + m - 12, "-larger-than") && !size_arg_ok(eq + 1)) {
+            fprintf(stderr, "cereal: error: argument to '-W%s=' should be a "
+                    "non-negative integer optionally followed by a size "
+                    "unit\n", name);
+            o->bad_options++;
+        }
+        return;                 /* a real gcc option cereal does not model */
+    }
+    if (!strncmp(flag, "no-", 3))
+        return;                 /* gcc ignores an unknown -Wno-... */
+    {
+        Best b;
+        uint64_t work = 0;
+        size_t k;
+        best_init(&b, flag, &work);
+        for (k = 0; k < sizeof gcc_wopts / sizeof *gcc_wopts; k++)
+            best_consider(&b, gcc_wopts[k]);
+        dym = best_get(&b);
+    }
+    if (dym)
+        fprintf(stderr, "cereal: error: unrecognized command-line option "
+                "'-W%s'; did you mean '-W%s'?\n", flag, dym);
+    else
+        fprintf(stderr, "cereal: error: unrecognized command-line option "
+                "'-W%s'\n", flag);
+    o->bad_options++;
+}
+
 void options_finish(Options *o)
 {
     int i;
@@ -141,8 +231,7 @@ void options_finish(Options *o)
     pp_options_finish(&o->pp);
     for (k = 0; k < o->wflags.len; k++)
         if (!diag_config_apply(o->diag, o->wflags.data[k]))
-            fprintf(stderr, "cereal: warning: unknown warning option "
-                            "'-W%s'\n", o->wflags.data[k]);
+            bad_wopt(o, o->wflags.data[k]);
     if (!o->pp.nostdinc)
         for (i = 0; host_include_dirs[i]; i++)
             vec_push(&o->pp.system_dirs, host_include_dirs[i]);

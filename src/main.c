@@ -1074,6 +1074,8 @@ int main(int argc, char **argv)
         i += n - 1;
     }
     options_finish(&o);
+    if (o.bad_options)
+        return 1;
     if (!mode) {
         usage(stderr);
         return 2;

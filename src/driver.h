@@ -26,6 +26,7 @@ typedef struct Options {
     bool short_enums;           /* -fshort-enums */
     bool show_system;
     bool no_warnings;           /* -w */
+    int bad_options;            /* command-line errors reported */
     bool track0;                /* -ftrack-macro-expansion=0 */
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */
     bool check_versions;

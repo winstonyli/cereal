@@ -859,6 +859,8 @@ void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
     uint16_t flags = r->flags & (RF_UNION | RF_NOKEYWORD | RF_TRANSPARENT);
     if (packed)
         flags |= RF_PACKED;
+    if (align)
+        flags |= RF_USER_ALIGN;
     for (uint32_t i = 0; i < n; i++) {
         Field out = {0};
         out.name = f[i].name;

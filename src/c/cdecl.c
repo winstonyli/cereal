@@ -493,6 +493,18 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 a->aligned = v;
         } else if (!strcmp(name, "packed")) {
             a->packed = true;
+        } else if (!strcmp(name, "copy") && arg != NO_NODE &&
+                   type_ckind(TT, c->ty[arg]) == TY_PTR) {
+            /* copy((T *)0) of a packed struct/union type copies packed */
+            TypeId bt = type_canon(TT, type_base(TT, type_canon(TT, c->ty[arg])));
+            if (type_ckind(TT, bt) == TY_STRUCT ||
+                type_ckind(TT, bt) == TY_UNION) {
+                const Record *rc = type_record(TT, bt);
+                if (rc->flags & RF_PACKED)
+                    a->packed = true;
+                if ((rc->flags & RF_USER_ALIGN) && rc->align > a->aligned)
+                    a->aligned = rc->align;
+            }
         } else if (!strcmp(name, "ms_struct")) {
             a->ms = 1;
         } else if (!strcmp(name, "gcc_struct")) {
@@ -1164,6 +1176,8 @@ static void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                                             "referenced symbol");
                     if (d)
                         cnote(c, d, r->loc, "previous declaration here");
+                } else if (!r && ntag(c, e) == N_CAST) {
+                    /* copy of a type's attributes: nothing to diagnose */
                 } else if (!r || r->kind != kind) {
                     Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
                                             "attributes", "'copy' attribute "
@@ -5177,6 +5191,53 @@ static uint32_t member_delim(Checker *c, uint32_t start, uint32_t j)
     }
 }
 
+/* Attributes written after a '*' in a declarator belong to the pointer
+ * type: aligned sets its alignment, packed is dropped with a warning (and
+ * conflicts with an aligned before it in the same list). */
+static void ptr_type_attrs(Checker *c, uint32_t d, TypeId ty, uint32_t tok,
+                           Attrs *out)
+{
+    Kids k;
+    uint32_t j;
+    kids_get(c, d, &k);
+    for (j = 0; j < k.n; j++) {
+        uint32_t x = k.p[j];
+        if (is_declarator_tag(ntag(c, x))) {
+            ptr_type_attrs(c, x, ty, tok, out);
+        } else if (ntag(c, d) == N_PTR && ntag(c, x) == N_ATTRIBUTE) {
+            Attrs t;
+            Kids it;
+            uint32_t q;
+            bool saw_aligned = false;
+            memset(&t, 0, sizeof t);
+            attr_collect(c, x, &t);
+            if (t.aligned > out->aligned)
+                out->aligned = t.aligned;
+            kids_get(c, x, &it);
+            for (q = 0; q < it.n; q++) {
+                char an[48];
+                if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                    continue;
+                attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+                if (!strcmp(an, "aligned"))
+                    saw_aligned = true;
+                else if (!strcmp(an, "packed")) {
+                    if (saw_aligned)
+                        cwarn(c, iloc(c, tok), "attributes", "ignoring "
+                              "attribute 'packed' because it conflicts with "
+                              "attribute 'aligned'");
+                    else
+                        cwarn(c, iloc(c, tok), "attributes", "'packed' "
+                              "attribute ignored for type %s",
+                              type_q(TT, ty));
+                }
+            }
+            kids_free(&it);
+        }
+    }
+    kids_free(&k);
+}
+
 static void member_visit(Checker *c, uint32_t i)
 {
     uint32_t md = c->par[i], sn, top = NO_NODE, w = NO_NODE, k, idx = 0, ltok;
@@ -5219,6 +5280,8 @@ static void member_visit(Checker *c, uint32_t i)
     if (a.has_mode || a.vs_seen)
         g.ty = attr_apply_type(c, g.ty, &a);
     attrs_unknown_emit(c, &sp.attrs, ltok);
+    if (top != NO_NODE)
+        ptr_type_attrs(c, top, g.ty, ltok, &a);
     attrs_merge(&a, &sp.attrs);
     attrs_misapplied(c, &a, 'm', false, w == NO_NODE ? g.ty : 0, ltok);
     memset(&fi, 0, sizeof fi);

@@ -1,0 +1,21 @@
+ptr_type_attrs.c:6:3: warning: 'packed' attribute ignored for type 'int *' [-Wattributes]
+    6 |   int* __attribute__ ((packed)) ppacked;
+      |   ^
+ptr_type_attrs.c:7:3: warning: ignoring attribute 'packed' because it conflicts with attribute 'aligned' [-Wattributes]
+    7 |   int* __attribute__ ((aligned (16), packed)) qaligned;
+      |   ^
+ptr_type_attrs.c:8:3: warning: 'packed' attribute ignored for type 'int *' [-Wattributes]
+    8 |   int* __attribute__ ((packed, aligned (16))) qpacked;
+      |   ^
+ptr_type_attrs.c:17:37: warning: redefinition of typedef 'AssertExpr' [-Wpedantic]
+   17 | #define Assert(expr)   typedef char AssertExpr[2 * !!(expr) - 1]
+      |                                     ^
+ptr_type_attrs.c:17:37: note: previous declaration of 'AssertExpr' with type 'AssertExpr' {aka 'char[1]'}
+   17 | #define Assert(expr)   typedef char AssertExpr[2 * !!(expr) - 1]
+      |                                     ^
+ptr_type_attrs.c:17:37: warning: redefinition of typedef 'AssertExpr' [-Wpedantic]
+   17 | #define Assert(expr)   typedef char AssertExpr[2 * !!(expr) - 1]
+      |                                     ^
+ptr_type_attrs.c:17:37: note: previous declaration of 'AssertExpr' with type 'AssertExpr' {aka 'char[1]'}
+   17 | #define Assert(expr)   typedef char AssertExpr[2 * !!(expr) - 1]
+      |                                     ^
