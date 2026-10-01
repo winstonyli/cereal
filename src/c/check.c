@@ -456,6 +456,9 @@ void checker_free(Checker *c)
     if (!c)
         return;
     vec_free(&c->undecl);
+    for (uint32_t i = 0; i < c->dep_msgs.len; i++)
+        free(c->dep_msgs.data[i]);
+    vec_free(&c->dep_msgs);
     cinit_free(c);
     cstmt_free(c);
     cexpr_free_params(c);

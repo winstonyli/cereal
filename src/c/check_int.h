@@ -44,7 +44,9 @@ enum {
     CSF_ADDR_WARNED = 524288, /* -Waddress 'will always be true' given */
     CSF_CONST_INIT = 1048576, /* const scalar with a constant initializer */
     CSF_ATTR_UNUSED = 2097152, /* __attribute__((unused)) */
-    CSF_FWD = 4194304        /* parameter only forward-declared so far */
+    CSF_FWD = 4194304,       /* parameter only forward-declared so far */
+    CSF_DEPRECATED = 8388608, /* __attribute__((deprecated)) */
+    CSF_UNAVAILABLE = 16777216 /* __attribute__((unavailable)) */
 };
 
 typedef struct CSym {
@@ -59,6 +61,7 @@ typedef struct CSym {
     SrcLoc def_loc;          /* the definition, if any */
     uint64_t val;            /* enumeration constants: the value */
     TypeId vty;              /* enumeration constants: the value's type */
+    uint32_t dep_msg;        /* deprecated/unavailable message: Checker.dep_msgs + 1 */
 } CSym;
 
 /* A symbol reference: an index into the persistent symbols (file scope,
@@ -111,6 +114,8 @@ typedef struct Attrs {
     uint8_t mode_float;      /* mode(SF/DF/XF/TF): 1 */
     uint64_t vector_size;    /* bytes, 0: none */
     bool deprecated, unused, noreturn, weak, alias, section, cleanup;
+    bool unavailable;
+    uint32_t dep_msg;        /* Checker.dep_msgs + 1, 0: none */
 } Attrs;
 
 /* The declaration specifiers of one declaration (gcc's c_declspecs). */
@@ -207,6 +212,7 @@ struct Checker {
     /* symbols */
     VEC(CSym) gsyms;         /* persistent */
     VEC(CSym) lsyms;         /* this unit's */
+    VEC(char *) dep_msgs;    /* deprecated/unavailable attribute messages */
     BindVec log;
     uint32_t *top[2];        /* by ident: innermost binding + 1 */
     uint32_t *ext;           /* by ident: external declaration + 1 */
@@ -372,7 +378,12 @@ TypeId type_of_typename(Checker *c, uint32_t i);   /* a TYPE_NAME node */
 
 /* Expressions (cexpr.c). */
 void cexpr_node(Checker *c, uint32_t i);
-void cexpr_asm(Checker *c, uint32_t i);   /* an asm statement's operands */
+void cexpr_asm(Checker *c, uint32_t i);
+/* A use of a deprecated/unavailable declaration, at loc. */
+void cdep_use(Checker *c, SrcLoc loc, const CSym *s, const SrcLoc *note);
+/* The value of a string literal node, for an attribute message: its index
+ * in Checker.dep_msgs + 1. */
+uint32_t cdep_msg(Checker *c, uint32_t str_node);   /* an asm statement's operands */
 bool cexpr_is_expr(unsigned tag);
 /* The type of an expression after lvalue conversion (arrays and functions
  * decay, qualifiers dropped). */

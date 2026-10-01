@@ -1748,6 +1748,7 @@ static void e_ident(Checker *c, uint32_t i)
     }
     s = csym(c, ref);
     s->flags |= CSF_USED;
+    cdep_use(c, cinput_loc(c, c->nodes[i].tok), s, &s->loc);
     switch (s->kind) {
     case CS_TYPEDEF:
         set_err(c, i);
@@ -6186,6 +6187,35 @@ static void asm_operand(Checker *c, SrcLoc loc, uint32_t e, bool out, bool reg,
                    cident(c, cnode_ident(c, s)));
         }
     }
+}
+
+uint32_t cdep_msg(Checker *c, uint32_t str_node)
+{
+    char buf[512];
+    asm_string(c, str_node, buf, sizeof buf);
+    vec_push(&c->dep_msgs, xstrdup(buf));
+    return c->dep_msgs.len;
+}
+
+void cdep_use(Checker *c, SrcLoc loc, const CSym *s, const SrcLoc *note)
+{
+    const char *msg = NULL, *name;
+    Diagnostic *d;
+    if (!(s->flags & (CSF_DEPRECATED | CSF_UNAVAILABLE)) || !s->name)
+        return;
+    if (s->dep_msg && s->dep_msg <= c->dep_msgs.len)
+        msg = c->dep_msgs.data[s->dep_msg - 1];
+    name = cident(c, s->name);
+    if (s->flags & CSF_UNAVAILABLE)
+        d = msg ? cerror_d(c, loc, "'%s' is unavailable: %s", name, msg)
+                : cerror_d(c, loc, "'%s' is unavailable", name);
+    else
+        d = msg ? cwarn_d(c, DL_WARNING, loc, "deprecated-declarations",
+                          "'%s' is deprecated: %s", name, msg)
+                : cwarn_d(c, DL_WARNING, loc, "deprecated-declarations",
+                          "'%s' is deprecated", name);
+    if (d && note)
+        cnote(c, d, *note, "declared here");
 }
 
 typedef struct AsmOp {

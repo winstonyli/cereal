@@ -336,6 +336,32 @@ static void std_attr_unknown(Checker *c, uint32_t attr)
     }
 }
 
+/* Whether declaration node d itself carries a deprecated/unavailable
+ * attribute (not one on a nested parameter): its uses of such typedefs
+ * are not reported. */
+static bool decl_has_dep_attr(Checker *c, uint32_t d)
+{
+    uint32_t k;
+    if (d == NO_NODE)
+        return false;
+    for (k = cfirst(c, d); k < d; k++) {
+        char name[48];
+        uint32_t at, owner;
+        if (ntag(c, k) != N_ATTR_ITEM)
+            continue;
+        attr_norm(tstr(c, c->nodes[k].tok), name, sizeof name);
+        if (strcmp(name, "deprecated") && strcmp(name, "unavailable"))
+            continue;
+        at = c->par[k];
+        owner = at == NO_NODE ? NO_NODE : c->par[at];
+        if (owner == d || (owner != NO_NODE && c->par[owner] == d &&
+                           (ntag(c, owner) == N_INIT_DECL ||
+                            ntag(c, owner) == N_MEMBER)))
+            return true;
+    }
+    return false;
+}
+
 /* Collects the type-affecting attributes of one ATTRIBUTE node. */
 static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
 {
@@ -366,8 +392,14 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             a->transparent_union = true;
         } else if (!strcmp(name, "noreturn") || !strcmp(name, "__noreturn__")) {
             a->noreturn = true;
-        } else if (!strcmp(name, "deprecated")) {
-            a->deprecated = true;
+        } else if (!strcmp(name, "deprecated") ||
+                   !strcmp(name, "unavailable")) {
+            if (name[0] == 'u')
+                a->unavailable = true;
+            else
+                a->deprecated = true;
+            if (arg != NO_NODE && ntag(c, arg) == N_STRING)
+                a->dep_msg = cdep_msg(c, arg);
         } else if (!strcmp(name, "unused")) {
             a->unused = true;
         } else if (!strcmp(name, "weak") || !strcmp(name, "__weak__")) {
@@ -469,6 +501,9 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     if (from->vector_size)
         to->vector_size = from->vector_size;
     to->deprecated |= from->deprecated;
+    to->unavailable |= from->unavailable;
+    if (from->dep_msg)
+        to->dep_msg = from->dep_msg;
     to->unused |= from->unused;
     to->noreturn |= from->noreturn;
 }
@@ -1038,8 +1073,32 @@ static void specs_visit(Checker *c, uint32_t i)
                 cerror(c, iloc(c, nd->tok), "'%s' fails to be a typedef or "
                        "built in type", tstr(c, nd->tok));
             add_type_whole(c, &s, t, TSK_TYPEDEF, nd->tok);
-            if (ref != SYM_NONE)
+            if (ref != SYM_NONE) {
                 csym(c, ref)->flags |= CSF_USED;
+                if ((csym(c, ref)->flags & (CSF_DEPRECATED | CSF_UNAVAILABLE)) &&
+                    !decl_has_dep_attr(c, c->par[c->par[n]]))
+                {
+                    /* gcc names the tagged type, not a plain typedef */
+                    const CSym *ts = csym(c, ref);
+                    TypeId ct = type_canon(TT, ts->ty);
+                    SrcLoc nl = 0;
+                    bool have = false;
+                    if (type_ckind(TT, ct) == TY_STRUCT || type_ckind(TT, ct) == TY_UNION) {
+                        const Record *r = type_record(TT, ct);
+                        if (r) {
+                            nl = r->loc;
+                            have = true;
+                        }
+                    } else if (type_ckind(TT, ct) == TY_ENUM) {
+                        const Enum *en = type_enum(TT, ct);
+                        if (en) {
+                            nl = en->loc;
+                            have = true;
+                        }
+                    }
+                    cdep_use(c, cinput_loc(c, nd->tok), ts, have ? &nl : NULL);
+                }
+            }
             break;
         }
         case N_STRUCT:
@@ -2685,7 +2744,10 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
         m.loc = o->loc;
     m.flags |= o->flags & (CSF_DEFINED | CSF_USED | CSF_NORETURN | CSF_THREAD |
                            CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE |
-                           CSF_WEAK | CSF_ADDR_WARNED);
+                           CSF_WEAK | CSF_ADDR_WARNED | CSF_DEPRECATED |
+                           CSF_UNAVAILABLE);
+    if (!m.dep_msg)
+        m.dep_msg = o->dep_msg;
     if (!new_def)
         m.flags |= o->flags & (CSF_PROTO_DEF | CSF_KR_DEF);
     m.def_loc = sym_defined(nw) ? nw->loc : o->def_loc;
@@ -3263,6 +3325,10 @@ static void declared_visit(Checker *c, uint32_t i)
         s.align = (uint16_t)a.aligned;
     if (a.unused)
         s.flags |= CSF_USED | CSF_ATTR_UNUSED;
+    if (a.deprecated || a.unavailable) {
+        s.flags |= a.unavailable ? CSF_UNAVAILABLE : CSF_DEPRECATED;
+        s.dep_msg = a.dep_msg;
+    }
     if (a.weak)
         s.flags |= CSF_WEAK;
     if (a.noreturn && s.kind == CS_FUNC)
@@ -4384,6 +4450,10 @@ static void param_visit(Checker *c, uint32_t p)
     attrs_merge(&a, &sp.attrs);
     if (a.unused)
         s.flags |= CSF_USED | CSF_ATTR_UNUSED;
+    if (a.deprecated || a.unavailable) {
+        s.flags |= a.unavailable ? CSF_UNAVAILABLE : CSF_DEPRECATED;
+        s.dep_msg = a.dep_msg;
+    }
     if ((cnode(c, p)->flags & NF_SEMI) && c->fwd_warned != c->par[p] + 1) {
         /* mark_forward_parm_decls: once per parameter scope */
         c->fwd_warned = c->par[p] + 1;

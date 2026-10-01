@@ -1,0 +1,15 @@
+attr_deprecated.c:5:1: error: 'f' is unavailable: gone
+    5 | void h(void) { f(); g = 1; T x = 0; (void)x; }
+      | ^
+attr_deprecated.c:2:6: note: declared here
+    2 | void f(void) __attribute__((unavailable("gone")));
+      |      ^
+attr_deprecated.c:5:1: warning: 'g' is deprecated: old [-Wdeprecated-declarations]
+    5 | void h(void) { f(); g = 1; T x = 0; (void)x; }
+      | ^
+attr_deprecated.c:3:5: note: declared here
+    3 | int g __attribute__((deprecated("old")));
+      |     ^
+attr_deprecated.c:5:1: warning: 'T' is deprecated [-Wdeprecated-declarations]
+    5 | void h(void) { f(); g = 1; T x = 0; (void)x; }
+      | ^

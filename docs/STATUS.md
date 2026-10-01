@@ -135,7 +135,7 @@ layouts, gcc rules ported, walk design).
    lvalue/read-only outputs, register `m` operands, void/incomplete
    operands; parse.c duplicate qualifiers).  dg-options: rejects-valid 39,
    accepts-invalid 72, exact 5643 of 6118+; default gcc.dg 70/94, exact 9014;
-   corpus 0/0; tests 544.  Known gap: block-scope extern composite types are
+   corpus 0/0; tests 547.  `deprecated`/`unavailable` uses (cexpr.c cdep_use; CSF_DEPRECATED/CSF_UNAVAILABLE + CSym.dep_msg) are diagnosed for variables, functions and typedefs at gcc's input_location (line start); NOT yet for fields (`s.field`) and struct/union/enum tags (attr-unavailable-1/-4).  Known gap: block-scope extern composite types are
    kept per binding in gcc (c_binding.u.type) but merged into the file-scope
    symbol here (redecl-7/14/18); UCN operand names in asm are not compared.   Remaining rejects-valid (dg-options baseline): builtin-tgmath, `copysign`
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15
