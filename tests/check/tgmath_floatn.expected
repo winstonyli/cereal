@@ -1,0 +1,9 @@
+tgmath_floatn.c:10:1: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   10 | _Float32x x; _Float64 y;
+      | ^
+tgmath_floatn.c:10:14: warning: ISO C does not support the '_Float64' type [-Wpedantic]
+   10 | _Float32x x; _Float64 y;
+      |              ^
+tgmath_floatn.c:11:1: warning: ISO C does not support the '_Float64' type [-Wpedantic]
+   11 | _Float64 u(void) { return x + y; }
+      | ^

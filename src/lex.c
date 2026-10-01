@@ -203,6 +203,39 @@ static bool s_is_idstart(Slow *s, int c)
     return (s->L->opt.dollar_idents ? cls_dollar : cls)[c & 0xFF] & C_IDSTART;
 }
 
+/* The identifier text with every UCN spelled \uXXXX / \UXXXXXXXX (upper-case
+ * hex, the shorter form when it fits); 0 if it does not fit in cap. */
+static size_t ucn_canon(const char *p, size_t n, char *out, size_t cap)
+{
+    size_t i = 0, o = 0;
+    while (i < n) {
+        if (p[i] == '\\' && i + 1 < n && (p[i + 1] == 'u' || p[i + 1] == 'U')) {
+            size_t want = p[i + 1] == 'u' ? 4 : 8, k;
+            unsigned long v = 0;
+            char buf[16];
+            int w;
+            if (i + 2 + want > n)
+                return 0;
+            for (k = 0; k < want; k++) {
+                char h = p[i + 2 + k];
+                v = v * 16 + (unsigned long)(h <= '9' ? h - '0' : (h | 32) - 'a' + 10);
+            }
+            w = v <= 0xFFFF ? snprintf(buf, sizeof buf, "\\u%04lX", v)
+                            : snprintf(buf, sizeof buf, "\\U%08lX", v);
+            if (o + (size_t)w >= cap)
+                return 0;
+            memcpy(out + o, buf, (size_t)w);
+            o += (size_t)w;
+            i += 2 + want;
+        } else {
+            if (o + 1 >= cap)
+                return 0;
+            out[o++] = p[i++];
+        }
+    }
+    return o;
+}
+
 static int s_ucn_len(Slow *s)
 {
     const char *p = s->p;
@@ -408,7 +441,13 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
         memcmp(start, L->clean.data, t->len) != 0)
         flags |= TF_SPLICED;
     if (t->kind == TK_IDENT) {
-        t->aux = intern(L->in, L->clean.data, L->clean.len)->id;
+        char canon[512];
+        size_t cn = (flags & TF_UCN) ? ucn_canon(L->clean.data, L->clean.len,
+                                                 canon, sizeof canon) : 0;
+        if (cn)         /* \u00c1, \u00C1 and \U000000C1 name one identifier */
+            t->aux = intern(L->in, canon, cn)->id;
+        else
+            t->aux = intern(L->in, L->clean.data, L->clean.len)->id;
     } else if ((flags & TF_SPLICED) && L->scratch) {
         t->aux = srcmgr_scratch(L->sm, L->scratch, L->clean.data, L->clean.len);
         flags |= TF_SPELL;

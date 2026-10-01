@@ -302,6 +302,16 @@ static int float_prec(Checker *c, TypeKind k)
     }
 }
 
+/* Preference among floating types of one precision. */
+static int fl_pref(TypeKind k)
+{
+    if (k == TY_FLOAT32X || k == TY_FLOAT64X)
+        return 0;
+    if (k == TY_FLOAT || k == TY_DOUBLE || k == TY_LDOUBLE)
+        return 1;
+    return 2;
+}
+
 /* The usual arithmetic conversions of two promoted arithmetic types. */
 static TypeId common_type(Checker *c, TypeId a, TypeId b)
 {
@@ -329,11 +339,12 @@ static TypeId common_type(Checker *c, TypeId a, TypeId b)
             return b;
         if (float_prec(c, ka) != float_prec(c, kb))
             return float_prec(c, ka) > float_prec(c, kb) ? a : b;
-        /* same precision: prefer _FloatN, then long double, double */
+        /* same precision: prefer _FloatN, then long double, double, and
+         * last _FloatNx */
+        if (fl_pref(ka) != fl_pref(kb))
+            return fl_pref(ka) > fl_pref(kb) ? a : b;
         if (ka >= TY_FLOAT32 && ka <= TY_FLOAT64X)
             return a;
-        if (kb >= TY_FLOAT32 && kb <= TY_FLOAT64X)
-            return b;
         if (ka == TY_LDOUBLE || kb == TY_LDOUBLE)
             return TYPE_B(LDOUBLE);
         if (ka == TY_DOUBLE || kb == TY_DOUBLE)
@@ -2887,6 +2898,108 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
     return true;
 }
 
+/* __builtin_tgmath (functions..., arguments...): the call of the function
+ * whose generic parameter type fits the arguments.  Sets i's type to its
+ * return type; false (no diagnostic) if the call is malformed. */
+static bool e_tgmath(Checker *c, uint32_t i)
+{
+    uint32_t all[16], n = nkids(c, i, all, 16), na, nf, nargs, j, m, sel = 0;
+    uint32_t *a = all + 1;
+    TypeId rt = ERRT, ft[16];
+    bool any_cplx = false, any_flt = false, found = false, rint = false;
+    int pass;
+    int rprec = 0, bestp = 1 << 30;
+    TypeKind rk = TY_DOUBLE;
+    if (n < 4)
+        return false;
+    na = n - 1;
+    for (j = 0; j < na; j++)
+        if (node_err(c, a[j]))
+            return false;
+    for (nf = 0; nf < na; nf++) {
+        TypeId t = rvt(c, a[nf]);
+        if (!is_ptr(c, t) || !is_func(c, pointee(c, t)))
+            break;
+        ft[nf] = type_canon(TT, pointee(c, t));
+    }
+    if (nf < 2 || nf >= na)
+        return false;
+    nargs = na - nf;
+    for (j = 0; j < nf; j++)
+        if (type_ent(TT, ft[j])->n != nargs)
+            return false;
+    /* the argument types: an integer argument counts as double */
+    for (m = 0; m < nargs; m++) {
+        TypeId t = unqual(c, rvt(c, a[nf + m]));
+        bool generic = false;
+        for (j = 1; j < nf; j++)
+            if (unqual(c, type_params(TT, ft[j])[m]) !=
+                unqual(c, type_params(TT, ft[0])[m]))
+                generic = true;
+        if (!generic)
+            continue;
+        if (is_complex(c, t)) {
+            any_cplx = true;
+            t = type_base(TT, type_canon(TT, t));
+        }
+        bool ig = is_int(c, t);
+        if (ig)
+            t = TYPE_B(DOUBLE);
+        if (is_flt(c, t)) {
+            int p = float_prec(c, tkind(c, t));
+            if (!any_flt || p > rprec || (p == rprec && rint && !ig)) {
+                rprec = p;
+                rk = tkind(c, t);
+                rt = unqual(c, t);
+                rint = ig;
+            }
+            any_flt = true;
+        } else {
+            return false;
+        }
+    }
+    for (pass = 0; pass < 2 && !found; pass++)
+    for (j = 0; j < nf; j++) {      /* an exact match, else the narrowest fit */
+        bool ok = true, exact = true;
+        int p = 0;
+        for (m = 0; m < nargs; m++) {
+            TypeId pt = unqual(c, type_params(TT, ft[j])[m]), q = pt;
+            bool cx = is_complex(c, pt), gen = false;
+            uint32_t u;
+            for (u = 0; u < nf; u++)
+                if (unqual(c, type_params(TT, ft[u])[m]) != pt)
+                    gen = true;
+            if (!gen)
+                continue;
+            if (pass == 0 && cx != any_cplx)
+                ok = false;
+            if (cx)
+                q = type_base(TT, type_canon(TT, pt));
+            if (!is_flt(c, q) || float_prec(c, tkind(c, q)) < rprec)
+                ok = false;
+            else if (unqual(c, q) != rt)
+                exact = false;
+            p = float_prec(c, tkind(c, q));
+        }
+        if (!ok)
+            continue;
+        if (exact)
+            p = -1;
+        if (!found || p < bestp) {
+            found = true;
+            bestp = p;
+            sel = j;
+        }
+    }
+    (void)rk;
+    if (!found)
+        return false;
+    rt = unqual(c, type_base(TT, ft[sel]));
+    c->ty[i] = rt;
+    c->ef[i] = EF_SIDE;
+    return true;
+}
+
 static void e_call(Checker *c, uint32_t i)
 {
     uint32_t k[3], n = nkids(c, i, k, 3), f;
@@ -2901,6 +3014,11 @@ static void e_call(Checker *c, uint32_t i)
         const char *name = cident(c, cnode_ident(c, f));
         if (!builtin_args_ok(c, i, k[0], name)) {
             set_err(c, i);
+            return;
+        }
+        if (!strcmp(name, "__builtin_tgmath")) {
+            if (!e_tgmath(c, i))
+                set_err(c, i);
             return;
         }
         if (!strcmp(name, "__builtin_constant_p") && n >= 2) {
