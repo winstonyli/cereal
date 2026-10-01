@@ -2713,6 +2713,19 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 }
                 type = ERRT;
             } else {
+                if (sp->node != NO_NODE) {
+                    /* layout_type: a user alignment the element size does not
+                     * respect */
+                    bool ok;
+                    uint64_t esz = type_size(TT, type, &ok);
+                    unsigned al = type_align(TT, type);
+                    if (ok && al && esz % al)
+                        cerror(c, tloc(c, first_tok(c, sp->node)),
+                               esz < al ? "alignment of array elements is "
+                               "greater than element size" :
+                               "size of array element is not a multiple of "
+                               "its alignment");
+                }
                 if (!vla) {      /* an array of variable-size type */
                     TypeId et = type_canon(TT, type);
                     while (tkind(c, et) == TY_ARRAY)

@@ -1,0 +1,21 @@
+array_elem_align.c:5:1: error: size of array element is not a multiple of its alignment
+    5 | B a[2];
+      | ^
+array_elem_align.c:8:3: error: size of array element is not a multiple of its alignment
+    8 |   B b[4];
+      |   ^
+array_elem_align.c:11:1: error: size of array element is not a multiple of its alignment
+   11 | typedef B D[3];
+      | ^
+array_elem_align.c:14:3: error: size of array element is not a multiple of its alignment
+   14 |   B v[n];
+      |   ^
+array_elem_align.c:15:3: error: size of array element is not a multiple of its alignment
+   15 |   B w[3];
+      |   ^
+array_elem_align.c:20:1: error: alignment of array elements is greater than element size
+   20 | C x[3];
+      | ^
+array_elem_align.c:21:1: error: alignment of array elements is greater than element size
+   21 | C y[8];
+      | ^

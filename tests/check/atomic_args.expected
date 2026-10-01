@@ -1,0 +1,93 @@
+atomic_args.c:1:6: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+    1 | enum E;
+      |      ^
+atomic_args.c:4:6: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+    4 | enum E *ep;
+      |      ^
+atomic_args.c:13:3: error: operand type 'float *' is incompatible with argument 1 of '__atomic_load_n'
+   13 |   __atomic_load_n(&f, 0);
+      |   ^
+atomic_args.c:14:3: error: operand type 'int' is incompatible with argument 1 of '__atomic_load_n'
+   14 |   __atomic_load_n(i, 0);
+      |   ^
+atomic_args.c:16:3: error: operand type 'struct S *' is incompatible with argument 1 of '__atomic_load_n'
+   16 |   __atomic_load_n(&s, 0);
+      |   ^
+atomic_args.c:17:27: error: operand type 'struct T *' is incompatible with argument 1 of '__atomic_load_n'
+   17 |   __atomic_load_n((struct T *)0, 0);
+      |                           ^
+atomic_args.c:18:3: error: operand type '_Bool *' is incompatible with argument 1 of '__atomic_fetch_add'
+   18 |   __atomic_fetch_add(&bb, 1, 0);
+      |   ^
+atomic_args.c:19:3: error: operand type '_Bool *' is incompatible with argument 1 of '__sync_fetch_and_add'
+   19 |   __sync_fetch_and_add(&bb, 1);
+      |   ^
+atomic_args.c:20:3: error: operand type 'float *' is incompatible with argument 1 of '__sync_fetch_and_add'
+   20 |   __sync_fetch_and_add(&f, 1);
+      |   ^
+atomic_args.c:23:3: error: argument 1 of '__atomic_load' must be a non-void pointer type
+   23 |   __atomic_load(i, &i, 0);
+      |   ^
+atomic_args.c:24:3: error: argument 1 of '__atomic_load' must be a non-void pointer type
+   24 |   __atomic_load((void *)0, &i, 0);
+      |   ^
+atomic_args.c:25:3: error: argument 1 of '__atomic_load' must be a pointer to a complete type
+   25 |   __atomic_load((struct T *)0, &i, 0);
+      |   ^
+atomic_args.c:26:3: error: argument 2 of '__atomic_load' must be a pointer type
+   26 |   __atomic_load(&i, i, 0);
+      |   ^
+atomic_args.c:28:3: error: size mismatch in argument 2 of '__atomic_load'
+   28 |   __atomic_load(&i, (long *)0, 0);
+      |   ^
+atomic_args.c:29:3: error: non-integer memory model argument 3 of '__atomic_load'
+   29 |   __atomic_load(&i, &i, f);
+      |   ^
+atomic_args.c:30:3: warning: invalid memory model argument 3 of '__atomic_load' [-Winvalid-memory-model]
+   30 |   __atomic_load(&i, &i, 99);
+      |   ^
+atomic_args.c:32:3: warning: argument 2 of '__atomic_load' discards 'const' qualifier [-Wincompatible-pointer-types]
+   32 |   __atomic_load(&i, (const int *)0, 0);
+      |   ^
+atomic_args.c:33:3: warning: argument 2 of '__atomic_load' discards 'volatile' qualifier [-Wincompatible-pointer-types]
+   33 |   __atomic_load(&i, (volatile int *)0, 0);
+      |   ^
+atomic_args.c:35:3: error: incorrect number of arguments to function '__atomic_exchange'
+   35 |   __atomic_exchange(&i, &i, &i);
+      |   ^
+atomic_args.c:36:3: warning: argument 3 of '__atomic_exchange' discards 'const' qualifier [-Wincompatible-pointer-types]
+   36 |   __atomic_exchange(&i, &i, (const int *)0, 0);
+      |   ^
+atomic_args.c:38:3: error: argument 1 of '__atomic_load' must be a pointer to a constant size type
+   38 |   __atomic_load(&v, &i, 0);
+      |   ^
+atomic_args.c:41:3: warning: invalid memory model argument 6 of '__atomic_compare_exchange' [-Winvalid-memory-model]
+   41 |   __atomic_compare_exchange(&i, &i, &i, f, 0, 99);
+      |   ^
+atomic_args.c:47:3: error: operand type 'struct T *' is incompatible with argument 1 of '__atomic_load_n'
+   47 |   __atomic_load_n(tp, 0);
+      |   ^
+atomic_args.c:49:5: error: operand type 'enum E *' is incompatible with argument 1 of '__atomic_load_n'
+   49 |     ep, 0);
+      |     ^
+atomic_args.c:50:27: error: operand type 'struct T *' is incompatible with argument 1 of '__atomic_load_n'
+   50 |   __atomic_load_n((struct T *)0, 0);
+      |                           ^
+atomic_args.c:51:29: error: operand type 'struct T *' is incompatible with argument 1 of '__atomic_load_n'
+   51 |   __atomic_load_n(  (struct T *)0, 0);
+      |                             ^
+atomic_args.c:52:25: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+   52 |   __atomic_load_n((enum E *)tp, 0);
+      |                         ^
+atomic_args.c:52:25: error: operand type 'enum E *' is incompatible with argument 1 of '__atomic_load_n'
+   52 |   __atomic_load_n((enum E *)tp, 0);
+      |                         ^
+atomic_args.c:53:32: error: operand type 'struct T *' is incompatible with argument 1 of '__sync_fetch_and_add'
+   53 |   __sync_fetch_and_add((struct T*)tp, 1);
+      |                                ^
+atomic_args.c:55:1: warning: ISO C99 does not support the '_Atomic' qualifier [-Wpedantic]
+   55 | _Atomic int ai;
+      | ^
+atomic_args.c:59:32: error: argument 3 in call to function '__builtin_add_overflow' has pointer to '_Atomic' type ('_Atomic int *')
+   59 |   __builtin_add_overflow(1, 2, &ai);
+      |                                ^

@@ -3215,6 +3215,176 @@ static uint32_t atomic_argc(const char *name)
     return 0;
 }
 
+/* The __atomic_ and __sync_ built-ins gcc resolves itself: 1 the generic
+ * (void *-based) __atomic_load/store/exchange/compare_exchange, 2 the _n and
+ * __sync ones sized by the first argument, 3 those same for fetch operations
+ * (a _Bool operand is refused); 0 the others. */
+static int atomic_kind(const char *name)
+{
+    static const char *const ops[] = {"add", "sub", "and", "nand", "xor", "or"};
+    const char *b;
+    size_t k, n;
+    if (!strncmp(name, "__sync_", 7)) {
+        b = name + 7;
+        if (!strcmp(b, "bool_compare_and_swap") ||
+            !strcmp(b, "val_compare_and_swap") ||
+            !strcmp(b, "lock_test_and_set") || !strcmp(b, "lock_release"))
+            return 2;
+        for (k = 0; k < sizeof ops / sizeof *ops; k++) {
+            n = strlen(ops[k]);
+            if (!strncmp(b, "fetch_and_", 10) && !strcmp(b + 10, ops[k]))
+                return 3;
+            if (!strncmp(b, ops[k], n) && !strcmp(b + n, "_and_fetch"))
+                return 3;
+        }
+        return 0;
+    }
+    if (strncmp(name, "__atomic_", 9))
+        return 0;
+    b = name + 9;
+    if (!strcmp(b, "load") || !strcmp(b, "store") || !strcmp(b, "exchange") ||
+        !strcmp(b, "compare_exchange"))
+        return 1;
+    if (!strcmp(b, "load_n") || !strcmp(b, "store_n") ||
+        !strcmp(b, "exchange_n") || !strcmp(b, "compare_exchange_n"))
+        return 2;
+    for (k = 0; k < sizeof ops / sizeof *ops; k++) {
+        n = strlen(ops[k]);
+        if (!strncmp(b, "fetch_", 6) && !strcmp(b + 6, ops[k]))
+            return 3;
+        if (!strncmp(b, ops[k], n) && !strcmp(b + n, "_fetch"))
+            return 3;
+    }
+    return 0;
+}
+
+static bool vla_pointee(Checker *c, TypeId e)
+{
+    e = type_canon(TT, e);
+    while (tkind(c, e) == TY_ARRAY)
+        e = type_canon(TT, type_base(TT, e));
+    return tkind(c, e) == TY_VLA ||
+           ((tkind(c, e) == TY_STRUCT || tkind(c, e) == TY_UNION) &&
+            (type_record(TT, e)->flags & RF_VLA));
+}
+
+/* sync_resolve_size / get_atomic_generic_size: the argument checks gcc makes
+ * while resolving an overloaded atomic or sync built-in.  a: the
+ * arguments, n their count.  False after an error. */
+static bool atomic_args_ok(Checker *c, uint32_t i, const uint32_t *a,
+                           uint32_t n, const char *name, SrcLoc loc)
+{
+    int kind = atomic_kind(name);
+    uint32_t k;
+    TypeId t0, e0;
+    bool ok;
+    uint64_t sz0;
+    if (!kind || n == 0)
+        return true;
+    for (k = 0; k < n; k++)
+        if (node_err(c, a[k]))
+            return true;
+    t0 = rvt(c, a[0]);
+    if (kind != 1) {
+        TypeId e = is_ptr(c, t0) ? pointee(c, t0) : ERRT;
+        uint64_t sz = 0;
+        bool good = is_ptr(c, t0) &&
+                    (is_int(c, e) || is_ptr(c, e)) &&
+                    type_is_complete(TT, e) &&
+                    !(kind == 3 && tkind(c, e) == TY_BOOL);
+        if (good) {
+            sz = type_size(TT, e, &ok);
+            good = ok && (sz == 1 || sz == 2 || sz == 4 || sz == 8 || sz == 16);
+        }
+        if (!good) {
+            cerror(c, cdecl_iloc(c, last_tok(c, i) + 1), "operand type %s is incompatible with "
+                   "argument 1 of '%s'", type_q(TT, t0), name);
+            return false;
+        }
+        return true;
+    }
+    /* the generic functions */
+    if (!is_ptr(c, t0) || is_void(c, pointee(c, t0))) {
+        cerror(c, loc, "argument 1 of '%s' must be a non-void pointer type",
+               name);
+        return false;
+    }
+    e0 = pointee(c, t0);
+    if (!type_is_complete(TT, e0)) {
+        cerror(c, loc, "argument 1 of '%s' must be a pointer to a complete "
+               "type", name);
+        return false;
+    }
+    if (vla_pointee(c, e0)) {
+        cerror(c, loc, "argument 1 of '%s' must be a pointer to a constant "
+               "size type", name);
+        return false;
+    }
+    sz0 = type_size(TT, e0, &ok);
+    if (!sz0) {
+        cerror(c, loc, "argument 1 of '%s' must be a pointer to a nonzero "
+               "size object", name);
+        return false;
+    }
+    {
+        const char *b = name + 9;
+        unsigned nparam = !strcmp(b, "exchange") ? 4 :
+                          !strcmp(b, "compare_exchange") ? 6 : 3;
+        unsigned nmodel = nparam == 6 ? 2 : 1;
+        unsigned outputs = !strcmp(b, "exchange") ? 5 :
+                           !strcmp(b, "load") ? 2 :
+                           !strcmp(b, "store") ? 1 : 3;
+        unsigned x;
+        for (x = 0; x < nparam - nmodel; x++) {
+            TypeId t = rvt(c, a[x]), e;
+            uint64_t sz;
+            unsigned q;
+            if (nparam == 6 && x == 3)
+                continue;
+            if (!is_ptr(c, t)) {
+                cerror(c, loc, "argument %u of '%s' must be a pointer type",
+                       x + 1, name);
+                return false;
+            }
+            e = pointee(c, t);
+            if (vla_pointee(c, e)) {
+                cerror(c, loc, "argument %u of '%s' must be a pointer to a "
+                       "constant size type", x + 1, name);
+                return false;
+            }
+            if (is_func(c, e)) {
+                cerror(c, loc, "argument %u of '%s' must not be a pointer to "
+                       "a function", x + 1, name);
+                return false;
+            }
+            sz = type_is_complete(TT, e) ? type_size(TT, e, &ok) : 0;
+            if (sz != sz0) {
+                cerror(c, loc, "size mismatch in argument %u of '%s'", x + 1,
+                       name);
+                return false;
+            }
+            q = tquals(c, e);
+            if ((outputs & (1u << x)) && (q & TQ_CONST))
+                cwarn(c, loc, "incompatible-pointer-types", "argument %u of "
+                      "'%s' discards 'const' qualifier", x + 1, name);
+            if (x > 0 && (q & TQ_VOLATILE))
+                cwarn(c, loc, "incompatible-pointer-types", "argument %u of "
+                      "'%s' discards 'volatile' qualifier", x + 1, name);
+        }
+        for (x = nparam - nmodel; x < nparam; x++) {
+            if (!is_int(c, rvt(c, a[x]))) {
+                cerror(c, loc, "non-integer memory model argument %u of '%s'",
+                       x + 1, name);
+                return false;
+            }
+            if (c->ck[a[x]] == K_ICE && (c->cv[a[x]] & 0xffff) >= 6)
+                cwarn(c, loc, "invalid-memory-model", "invalid memory model "
+                      "argument %u of '%s'", x + 1, name);
+        }
+    }
+    return true;
+}
+
 /* check_builtin_function_arguments, for the built-ins gcc validates itself:
  * argument counts and the argument kinds.  False after an error. */
 static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
@@ -3229,13 +3399,19 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
     n--;
     if ((want = atomic_argc(name)) != 0) {
         if (n != want) {
-            cerror(c, loc, n < want ? "too few arguments to function '%s'"
-                                    : "too many arguments to function '%s'",
-                   name);
+            if (atomic_kind(name) == 1)
+                cerror(c, loc, "incorrect number of arguments to function "
+                       "'%s'", name);
+            else
+                cerror(c, loc, n < want ? "too few arguments to function "
+                       "'%s'" : "too many arguments to function '%s'",
+                       name);
             return false;
         }
-        return true;
+        return atomic_args_ok(c, i, a, n, name, loc);
     }
+    if (!strncmp(name, "__sync_", 7))
+        return atomic_args_ok(c, i, a, n, name, loc);
     if (strncmp(name, "__builtin_", 10))
         return true;
     if (!strcmp(b, "constant_p")) {
@@ -3354,6 +3530,12 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
             if (tquals(c, e) & TQ_CONST) {
                 cerror(c, arg_loc(c, a[2]), "argument 3 in call to function "
                        "'%s' has pointer to 'const' type (%s)", name,
+                       type_q(TT, t));
+                return false;
+            }
+            if (tquals(c, e) & TQ_ATOMIC) {
+                cerror(c, arg_loc(c, a[2]), "argument 3 in call to function "
+                       "'%s' has pointer to '_Atomic' type (%s)", name,
                        type_q(TT, t));
                 return false;
             }
