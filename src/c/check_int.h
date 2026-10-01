@@ -372,6 +372,7 @@ TypeId type_of_typename(Checker *c, uint32_t i);   /* a TYPE_NAME node */
 
 /* Expressions (cexpr.c). */
 void cexpr_node(Checker *c, uint32_t i);
+void cexpr_asm(Checker *c, uint32_t i);   /* an asm statement's operands */
 bool cexpr_is_expr(unsigned tag);
 /* The type of an expression after lvalue conversion (arrays and functions
  * decay, qualifiers dropped). */

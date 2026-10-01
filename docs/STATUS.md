@@ -127,7 +127,17 @@ layouts, gcc rules ported, walk design).
    Metrics: dg-options rejects-valid 39, accepts-invalid 86, exact 5563 of 6059
    ("str"[i] folds only for an in-range, non-overflowed index; 1["bar"] too);
    default gcc.dg 70/101, exact 8993 of 10067; corpus 0/0; tests 540.
-   Remaining rejects-valid (dg-options baseline): builtin-tgmath, `copysign`
+   Constant-expression pedwarns (cinit.c const_class: integer K_FOLD with
+   EF_INTOPS, chosen ?: arm, casts to VM types whose bound has a call/
+   assignment/++/comma), "overflow in constant expression" as a pedwarn for
+   enumerators/bit-fields/case labels, DR031 `2 || 1/0` is an ICE; asm
+   statement checks (cexpr.c cexpr_asm: constraints, named operands,
+   lvalue/read-only outputs, register `m` operands, void/incomplete
+   operands; parse.c duplicate qualifiers).  dg-options: rejects-valid 39,
+   accepts-invalid 72, exact 5643 of 6118+; default gcc.dg 70/94, exact 9014;
+   corpus 0/0; tests 544.  Known gap: block-scope extern composite types are
+   kept per binding in gcc (c_binding.u.type) but merged into the file-scope
+   symbol here (redecl-7/14/18); UCN operand names in asm are not compared.   Remaining rejects-valid (dg-options baseline): builtin-tgmath, `copysign`
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15
    header dirs under -pedantic-errors (environment, 5 files).
    Output order: parser errors of a unit print before its checker

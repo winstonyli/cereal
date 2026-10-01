@@ -1801,6 +1801,9 @@ void cstmt_node(Checker *c, uint32_t i)
         }
         break;
     }
+    case N_ASM:
+        cexpr_asm(c, i);
+        break;
     case N_BREAK:
         stmt_bc(c, i, true);
         break;

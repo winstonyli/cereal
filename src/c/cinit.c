@@ -853,10 +853,41 @@ static bool foldable_libcall(Checker *c, uint32_t n, int depth)
     return true;
 }
 
+/* A cast to a variably modified type whose size expression has side
+ * effects, a call or a comma (a volatile read does not count): gcc keeps it wrapped in a
+ * C_MAYBE_CONST_EXPR (a pedwarn in an initializer, never an ICE). */
+static bool cast_bound_side(Checker *c, uint32_t n)
+{
+    uint32_t k, op;
+    while (ntag(c, n) == N_PAREN && n > 0)
+        n--;
+    if (ntag(c, n) != N_CAST || n == 0)
+        return false;
+    op = n - 1;
+    for (k = cfirst(c, n); k < cfirst(c, op); k++)
+        switch (ntag(c, k)) {
+        case N_CALL: case N_ASSIGN: case N_POSTFIX: case N_STMT_EXPR:
+            return true;
+        case N_UNARY:
+            if (tpunct(c, c->nodes[k].tok) == P_INC ||
+                tpunct(c, c->nodes[k].tok) == P_DEC)
+                return true;
+            break;
+        case N_BINARY:
+            if (tpunct(c, c->nodes[k].tok) == P_COMMA)
+                return true;
+            break;
+        default:
+            break;
+        }
+    return false;
+}
+
 /* 3: constant after gcc's folding of a library call (pedwarn); 2: a
  * constant gcc can emit; 1: constant but not computable at load time;
  * 0: not constant.  vt: the value's type after array decay. */
-static int const_class(Checker *c, uint32_t n, TypeId vt, TypeId target)
+static int const_class(Checker *c, uint32_t n, TypeId vt, TypeId target);
+static int const_class0(Checker *c, uint32_t n, TypeId vt, TypeId target)
 {
     int cls;
     TypeKind tk, vk;
@@ -886,7 +917,7 @@ static int const_class(Checker *c, uint32_t n, TypeId vt, TypeId target)
                 uint32_t f3 = s - 1, t2 = f3 - c->nodes[f3].size;
                 uint32_t c1 = t2 - c->nodes[t2].size;
                 if (c->ck[c1] == K_ICE || c->ck[c1] == K_FOLD)
-                    return const_class(c, c->cv[c1] ? t2 : f3, vt, target);
+                    return const_class0(c, c->cv[c1] ? t2 : f3, vt, target);
             }
         }
         return (c->ef[n] & EF_INTOPS) && !(c->ef[n] & EF_CST) &&
@@ -925,6 +956,12 @@ static int const_class(Checker *c, uint32_t n, TypeId vt, TypeId target)
         return 0;
     }
     return cls;
+}
+
+static int const_class(Checker *c, uint32_t n, TypeId vt, TypeId target)
+{
+    int r = const_class0(c, n, vt, target);
+    return r == 2 && cast_bound_side(c, n) ? 3 : r;
 }
 
 /* The value after conversion to target is an integer zero (null pointer). */

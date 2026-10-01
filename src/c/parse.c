@@ -773,10 +773,22 @@ static void asm_stmt(Parser *p, bool top)
 {
     uint32_t start = nmark(p), kw = adv(p);
     int section;
+    uint32_t seen[3] = { 0, 0, 0 };     /* volatile, inline, goto: token + 1 */
     for (;;) {
         int k = ckw(p);
+        int q = k == CK_VOLATILE ? 0 : k == CK_INLINE ? 1 : 2;
         if (k != CK_VOLATILE && k != CK_INLINE && k != CK_GOTO)
             break;
+        if (seen[q]) {
+            Diagnostic *d = perr(p, ci(p), "duplicate 'asm' qualifier '%s'",
+                                 q == 0 ? "volatile" : q == 1 ? "inline"
+                                                              : "goto");
+            if (d)
+                diag_note(p->diag, d, tok_loc(p, seen[q] - 1),
+                          "first seen here");
+        } else {
+            seen[q] = ci(p) + 1;
+        }
         leaf(p, N_QUAL, adv(p));
     }
     if (!expect(p, P_LPAREN)) {

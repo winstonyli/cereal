@@ -19,6 +19,7 @@
 #include "c/check_int.h"
 #include "c/fuzzy.h"
 
+#include <ctype.h>
 #include <math.h>
 #include <string.h>
 
@@ -5991,6 +5992,332 @@ static void fold_flush(Checker *c, uint32_t i)
             cwarn(c, cnode_loc(c, k), "overflow", "integer overflow in "
                   "expression of type %s results in '%s'", type_q(TT, t),
                   vstr(c, t, c->cv[k]));
+        }
+    }
+}
+
+/* ---- asm statements ------------------------------------------------------------------- */
+
+/* The characters of the string literal node n (adjacent literals joined;
+ * simple escapes decoded). */
+static size_t asm_string(Checker *c, uint32_t n, char *out, size_t cap)
+{
+    uint32_t np = c->nodes[n].aux ? c->nodes[n].aux : 1, t;
+    size_t o = 0;
+    for (t = 0; t < np; t++) {
+        size_t len, j;
+        const char *s = ttext(c, c->nodes[n].tok + t, &len);
+        for (j = 0; j < len && s[j] != '"'; j++)
+            ;
+        for (j++; j + 1 < len && o + 1 < cap; j++) {
+            char ch = s[j];
+            if (ch == '\\' && j + 2 < len) {
+                ch = s[++j];
+                switch (ch) {
+                case 'n': ch = '\n'; break;
+                case 't': ch = '\t'; break;
+                case 'r': ch = '\r'; break;
+                case 'u': case 'U': ch = '\1'; break;  /* UCN: not decoded */
+                case 'x': {
+                    int v = 0;
+                    while (j + 2 < len && isxdigit((unsigned char)s[j + 1])) {
+                        char h = s[++j];
+                        v = v * 16 + (h <= '9' ? h - '0' : (h | 32) - 'a' + 10);
+                    }
+                    ch = (char)v;
+                    break;
+                }
+                default:
+                    if (ch >= '0' && ch <= '7') {
+                        int v = ch - '0', k = 0;
+                        while (k++ < 2 && j + 2 < len && s[j + 1] >= '0' &&
+                               s[j + 1] <= '7')
+                            v = v * 8 + (s[++j] - '0');
+                        ch = (char)v;
+                    }
+                    break;
+                }
+            }
+            out[o++] = ch;
+        }
+    }
+    out[o] = 0;
+    return o;
+}
+
+static const char *asm_chr(char ch, char *buf)
+{
+    if (ch >= 32 && ch < 127)
+        snprintf(buf, 8, "%c", ch);
+    else
+        snprintf(buf, 8, "\\x%02x", (unsigned char)ch);
+    return buf;
+}
+
+/* parse_output_constraint / parse_input_constraint, as far as they report
+ * errors; false after one. */
+static bool asm_constraint(Checker *c, SrcLoc loc, const char *k, bool out,
+                           bool last, bool *reg, bool *mem)
+{
+    const char *p;
+    char b[8];
+    *reg = *mem = false;
+    if (out && k[0] != '=' && k[0] != '+') {
+        cerror(c, loc, "output operand constraint lacks '='");
+        return false;
+    }
+    for (p = k; *p; p++) {
+        switch (*p) {
+        case '=': case '+':
+            if (!out) {
+                cerror(c, loc, "input operand constraint contains '%c'", *p);
+                return false;
+            }
+            if (p != k) {
+                cerror(c, loc, "operand constraint contains incorrectly "
+                       "positioned '+' or '='");
+                return false;
+            }
+            break;
+        case '&':
+            if (!out) {
+                cerror(c, loc, "input operand constraint contains '&'");
+                return false;
+            }
+            break;
+        case '%':
+            if (last) {
+                cerror(c, loc, "'%%' constraint used with last operand");
+                return false;
+            }
+            break;
+        case '?': case '!': case '*': case '#': case '$': case '^': case ',':
+        case ' ': case '\t': case '<': case '>':
+            break;
+        case 'V': case 'm': case 'o':
+            *mem = true;
+            break;
+        case 'g': case 'X':
+            *reg = *mem = true;
+            break;
+        case 'r': case 'p': case 'a': case 'b': case 'c': case 'd': case 'S':
+        case 'D': case 'q': case 'Q': case 'R': case 'l': case 'A': case 'f':
+        case 't': case 'u': case 'y': case 'x': case 'Y': case 'k': case 'v':
+            *reg = true;
+            break;
+        case 'E': case 'F': case 'G': case 'H': case 's': case 'i': case 'n':
+        case 'I': case 'J': case 'K': case 'L': case 'M': case 'N': case 'O':
+        case 'P': case 'e': case 'Z': case 'B': case 'C': case 'T': case 'W':
+            break;
+        case '[':
+            while (p[1] && p[1] != ']')
+                p++;
+            *reg = true;
+            if (p[1])
+                p++;
+            break;
+        default:
+            if (*p >= '0' && *p <= '9') {
+                if (out) {
+                    cerror(c, loc, "matching constraint not valid in output "
+                           "operand");
+                    return false;
+                }
+                *reg = true;
+            } else if (!isalpha((unsigned char)*p)) {
+                cerror(c, loc, "invalid punctuation '%s' in constraint",
+                       asm_chr(*p, b));
+                return false;
+            } else {
+                *reg = *mem = true;     /* unknown: treat like "g" */
+            }
+            break;
+        }
+    }
+    return true;
+}
+
+/* An asm operand's expression e (build_asm_expr). */
+static void asm_operand(Checker *c, SrcLoc loc, uint32_t e, bool out, bool reg,
+                        bool mem)
+{
+    uint32_t s;
+    TypeId t;
+    if (node_err(c, e))
+        return;
+    t = c->ty[e];
+    if (out) {
+        if (!(c->ef[e] & EF_LVALUE)) {
+            cerror(c, loc, "lvalue required in 'asm' statement");
+            return;
+        }
+        if (tquals(c, t) & TQ_CONST) {
+            uint32_t v = strip_paren(c, e), ref = SYM_NONE;
+            if (ntag(c, v) == N_IDENT)
+                ref = lookup_ord(c, cnode_ident(c, v));
+            if (ntag(c, v) == N_MEMBER_EXPR && cnode_ident(c, v))
+                cerror(c, loc, "read-only member '%s' used as 'asm' output",
+                       cident(c, cnode_ident(c, v)));
+            else if (ref != SYM_NONE && csym(c, ref)->kind != CS_FUNC)
+                cerror(c, loc, csym(c, ref)->flags & CSF_PARAM
+                           ? "read-only parameter '%s' use as 'asm' output"
+                           : "read-only variable '%s' used as 'asm' output",
+                       cident(c, cnode_ident(c, v)));
+            else
+                cerror(c, loc, "read-only location '%s' used as 'asm' output",
+                       estr(c, e));
+            return;
+        }
+    }
+    if (reg && (is_void(c, t) || (!out && !is_func(c, t) && tkind(c, t) != TY_ARRAY &&
+                                   !type_is_complete(TT, rvt(c, e))))) {
+        incomplete_error(c, loc, NO_NODE, rvt(c, e));
+        return;
+    }
+    if (!reg && mem) {          /* c_mark_addressable */
+        s = strip_paren(c, e);
+        while (ntag(c, s) == N_CAST && s > 0)
+            s = strip_paren(c, s - 1);
+        if (ntag(c, s) == N_IDENT && (c->ef[s] & EF_REGISTER)) {
+            uint32_t ref = lookup_ord(c, cnode_ident(c, s));
+            cerror(c, loc, ref != SYM_NONE && !(ref & SYM_LOCAL)
+                       ? "address of global register variable '%s' requested"
+                       : "address of register variable '%s' requested",
+                   cident(c, cnode_ident(c, s)));
+        }
+    }
+}
+
+typedef struct AsmOp {
+    uint32_t e;
+    bool out, reg, mem;
+} AsmOp;
+
+void cexpr_asm(Checker *c, uint32_t i)
+{
+    uint32_t kids[64], nk = node_children(c->nodes, i, kids, 64), k, j;
+    SrcLoc loc = cnode_loc(c, i);
+    char tmpl[1024], names[64][64];
+    uint32_t nname = 0, nops = 0, tn = NO_NODE, nouts = 0, nins = 0;
+    bool extended = false, ok = true;
+    AsmOp ops[64];
+    if (nk > 64)
+        return;
+    /* count the operands first (the last one may not use '%') */
+    for (k = 0; k < nk; k++) {
+        if (ntag(c, kids[k]) == N_STRING && tn == NO_NODE)
+            tn = kids[k];
+        if (ntag(c, kids[k]) == N_ASM_SECTION) {
+            uint32_t sec = c->nodes[kids[k]].aux, oc[64];
+            uint32_t n2 = node_children(c->nodes, kids[k], oc, 64);
+            extended = true;
+            for (j = 0; j < n2 && j < 64; j++)
+                if (ntag(c, oc[j]) == N_ASM_OPERAND) {
+                    if (sec == 1)
+                        nouts++;
+                    else if (sec == 2)
+                        nins++;
+                }
+        }
+    }
+    for (k = 0; k < nk; k++) {
+        uint32_t sec, n2, o, all[64];
+        if (ntag(c, kids[k]) != N_ASM_SECTION)
+            continue;
+        sec = c->nodes[kids[k]].aux;
+        n2 = node_children(c->nodes, kids[k], all, 64);
+        if (sec > 2) {
+            if (sec == 4)
+                for (j = 0; j < n2 && j < 64; j++)
+                    if (ntag(c, all[j]) == N_NAME && nname < 64) {
+                        size_t len;
+                        const char *s = ttext(c, c->nodes[all[j]].tok, &len);
+                        snprintf(names[nname++], 64, "%.*s", (int)len, s);
+                    }
+            continue;
+        }
+        for (o = 0; o < n2 && o < 64; o++) {
+            uint32_t oper = all[o], pc, st = NO_NODE, ex = NO_NODE;
+            uint32_t nm = NO_NODE, ch[8];
+            char con[256];
+            bool reg, mem;
+            if (ntag(c, oper) != N_ASM_OPERAND)
+                continue;
+            pc = node_children(c->nodes, oper, ch, 8);
+            for (j = 0; j < pc && j < 8; j++) {
+                if (ntag(c, ch[j]) == N_NAME)
+                    nm = ch[j];
+                else if (ntag(c, ch[j]) == N_STRING)
+                    st = ch[j];
+                else
+                    ex = ch[j];
+            }
+            if (nm != NO_NODE && nname < 64) {
+                size_t len, q;
+                const char *s = ttext(c, c->nodes[nm].tok, &len);
+                char nb[64];
+                snprintf(nb, sizeof nb, "%.*s", (int)len, s);
+                for (q = 0; q < nname; q++)
+                    if (!strcmp(names[q], nb)) {
+                        cerror(c, loc, "duplicate 'asm' operand name '%s'", nb);
+                        ok = false;
+                        break;
+                    }
+                strcpy(names[nname++], nb);
+            }
+            if (st == NO_NODE || ex == NO_NODE)
+                continue;
+            asm_string(c, st, con, sizeof con);
+            if (asm_constraint(c, loc, con, sec == 1,
+                               nops + 1 == nouts + nins, &reg, &mem) &&
+                nops < 64) {
+                ops[nops].e = ex;
+                ops[nops].out = sec == 1;
+                ops[nops].reg = reg;
+                ops[nops].mem = mem;
+                nops++;
+            }
+        }
+    }
+    for (j = 0; j < nops; j++)
+        asm_operand(c, loc, ops[j].e, ops[j].out, ops[j].reg, ops[j].mem);
+    if (!extended || tn == NO_NODE || !ok)
+        return;
+    /* %[name] in the template must name an operand */
+    asm_string(c, tn, tmpl, sizeof tmpl);
+    {
+        const char *p;
+        for (p = tmpl; *p; p++) {
+            const char *q;
+            size_t len, m;
+            bool found = false;
+            char nb[64];
+            if (*p != '%')
+                continue;
+            q = p + 1;
+            if (*q == '%') {
+                p++;
+                continue;
+            }
+            while (isalpha((unsigned char)*q) || *q == '=' || *q == '+' ||
+                   *q == '-' || *q == '#' || *q == '*' || *q == '&')
+                q++;
+            if (*q != '[')
+                continue;
+            q++;
+            len = strcspn(q, "]");
+            if (!q[len])
+                continue;
+            snprintf(nb, sizeof nb, "%.*s", (int)len, q);
+            for (m = 0; m < nname; m++)
+                if (!strcmp(names[m], nb) || strchr(names[m], 92) ||
+                    strchr(nb, 1) || (unsigned char)nb[0] >= 0x80)
+                    found = true;
+            if (!found) {
+                cerror(c, loc, "undefined named operand '%s'", nb);
+                return;
+            }
+            p = q + len;
         }
     }
 }
