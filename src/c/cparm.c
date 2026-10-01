@@ -174,18 +174,23 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
     memset(o, 0, sizeof *o);
     o->ty = t;
     o->rst = type_ckind(TT, t) == TY_PTR && (TYPE_QUALS(t) & TQ_RESTRICT);
-    o->loc = tloc(c, min_tok(c, p));
     for (m = cfirst(c, p); m <= p; m++)
         if (ntag(c, m) == N_NAME) {
             o->loc = cnode_loc(c, m);
             break;
         }
-    nk = node_children(c->nodes, p, kids, 32);
-    for (m = nk > 32 ? 32 : nk; m > 0; m--)
-        if (ntag(c, kids[m - 1]) != N_ATTRIBUTE) {
-            l = kids[m - 1];
-            break;
-        }
+    if (m > p)
+        o->loc = tloc(c, min_tok(c, p));
+    if (c->nodes[p].size > 1 && ntag(c, p - 1) != N_ATTRIBUTE) {
+        l = p - 1;                 /* the last child comes right before its parent */
+    } else {
+        nk = node_children(c->nodes, p, kids, 32);
+        for (m = nk > 32 ? 32 : nk; m > 0; m--)
+            if (ntag(c, kids[m - 1]) != N_ATTRIBUTE) {
+                l = kids[m - 1];
+                break;
+            }
+    }
     if (l != NO_NODE && !is_declarator_tag(ntag(c, l)))
         l = NO_NODE;
     if (type_ckind(TT, t) != TY_PTR)
