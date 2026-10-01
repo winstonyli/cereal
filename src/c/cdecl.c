@@ -445,6 +445,27 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 a->deprecated = true;
             if (arg != NO_NODE && ntag(c, arg) == N_STRING)
                 a->dep_msg = cdep_msg(c, arg);
+        } else if (!strcmp(name, "access") && ak.n) {
+            uint32_t x = ak.p[0];
+            static const char *const mo[] = {"read_only", "read_write",
+                                             "write_only", "none"};
+            char md[24];
+            size_t q;
+            bool ok = false;
+            SrcLoc il = cinput_loc(c, c->nodes[item].tok);
+            if (ntag(c, x) == N_IDENT) {
+                attr_norm(tstr(c, c->nodes[x].tok), md, sizeof md);
+                for (q = 0; q < 4; q++)
+                    ok |= !strcmp(md, mo[q]);
+                if (!ok)
+                    cerror(c, il, "attribute 'access' invalid mode '%s'; "
+                           "expected one of 'read_only', 'read_write', "
+                           "'write_only', or 'none'", tstr(c, c->nodes[x].tok));
+            } else if (type_ckind(TT, c->ty[x]) != TY_ERROR) {
+                cerror(c, il, "attribute 'access' mode '%s' is not an "
+                       "identifier; expected one of 'read_only', 'read_write', "
+                       "'write_only', or 'none'", cexpr_str(c, x));
+            }
         } else if (!strcmp(name, "nonnull")) {
             uint64_t m = 0;
             uint32_t q;
@@ -521,6 +542,7 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             char m[16];
             attr_norm(tstr(c, c->nodes[arg].tok), m, sizeof m);
             a->has_mode = true;
+            snprintf(a->mode_name, sizeof a->mode_name, "%s", m);
             a->mode_bytes = 0;
             a->mode_float = 0;
             if (!strcmp(m, "QI") || !strcmp(m, "byte"))
@@ -621,6 +643,7 @@ static void attrs_merge(Attrs *to, const Attrs *from)
         to->has_mode = true;
         to->mode_bytes = from->mode_bytes;
         to->mode_float = from->mode_float;
+        memcpy(to->mode_name, from->mode_name, sizeof to->mode_name);
     }
     if (from->vs_seen) {
         to->vector_size = from->vector_size;
@@ -4052,6 +4075,14 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     }
     struct_semis(c, close_tok);
     memset(&a, 0, sizeof a);
+    {
+        Attrs ma;
+        memset(&ma, 0, sizeof ma);
+        attrs_of_children(c, i, &ma);
+        if (ma.has_mode)
+            cerror(c, tloc(c, close_tok), "mode '%s' applied to inappropriate "
+                   "type", ma.mode_name);
+    }
     attrs_of_children(c, i, &a);
     n = (uint32_t)c->fields.len - rd.first;
     f = c->fields.data + rd.first;
@@ -4339,6 +4370,17 @@ static void enum_finish(Checker *c, uint32_t i, uint32_t open)
         if (utn != NO_NODE && !is_err(c, c->ty[utn]) &&
             type_is_integer(TT, c->ty[utn])) {
             tem = c->ty[utn];       /* C2X fixed underlying type */
+            wider = false;
+        }
+    }
+    if (a.has_mode && a.mode_bytes) {
+        TypeId mt = int_of_size(c, a.mode_bytes, uns);
+        if (!is_err(c, mt)) {
+            if (prec > a.mode_bytes * 8u && ne)
+                cerror(c, csym(c, c->ecs.data[rd.first_ec])->loc,
+                       "specified mode too small for enumerated values");
+            else
+                tem = mt;
             wider = false;
         }
     }

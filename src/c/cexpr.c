@@ -1079,6 +1079,7 @@ static bool prints_value(Checker *c, uint32_t i)
            (c->ck[i] == K_ICE || (c->ef[i] & (EF_CST | EF_NOPCST)));
 }
 
+static bool pfloat(Checker *c, StrBuf *sb, const char *s, size_t len);
 static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec);
 
 /* Operand i converted to type t (an implicit conversion prints as a
@@ -1138,6 +1139,8 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
     switch (ntag(c, i)) {
     case N_IDENT: case N_NUMBER: case N_CHAR:
         s = ttext(c, c->nodes[i].tok, &len);
+        if (ntag(c, i) == N_NUMBER && pfloat(c, sb, s, len))
+            break;
         sb_putn(sb, s, len);
         break;
     case N_STRING: {
@@ -1276,6 +1279,51 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
         sb_putc(sb, ')');
 }
 
+/* A floating literal as gcc prints it (real_to_decimal at the type's full
+ * digit count, trailing zeros dropped: 'd.ddde+X', and the f/l suffix);
+ * false for anything else. */
+static bool pfloat(Checker *c, StrBuf *sb, const char *s, size_t len)
+{
+    char t[96], o[64], *e, *ep, *z;
+    long double v;
+    int ex;
+    char sfx = 0;
+    bool hex = len > 1 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X');
+    (void)c;
+    if (len >= sizeof t || len == 0)
+        return false;
+    memcpy(t, s, len);
+    t[len] = 0;
+    if (t[len - 1] == 'f' || t[len - 1] == 'F' || t[len - 1] == 'l' ||
+        t[len - 1] == 'L') {
+        if (!hex || strpbrk(t, "pP")) {
+            sfx = (char)tolower((unsigned char)t[len - 1]);
+            t[--len] = 0;
+        }
+    }
+    if (!strpbrk(t, hex ? ".pP" : ".eE"))
+        return false;
+    v = strtold(t, &e);
+    if (*e)
+        return false;
+    if (sfx == 'f')
+        snprintf(o, sizeof o, "%.8e", (double)(float)v);
+    else if (sfx == 'l')
+        snprintf(o, sizeof o, "%.20Le", v);
+    else
+        snprintf(o, sizeof o, "%.16e", (double)v);
+    ep = strchr(o, 'e');
+    ex = atoi(ep + 1);
+    *ep = 0;
+    for (z = ep - 1; z > o && *z == '0' && z[-1] != '.'; z--)
+        *z = 0;
+    sb_puts(sb, o);
+    sb_printf(sb, "e%c%d", ex < 0 ? '-' : '+', ex < 0 ? -ex : ex);
+    if (sfx)
+        sb_putc(sb, sfx);
+    return true;
+}
+
 /* %E of node i, in a buffer valid until the next call (two rotate). */
 static const char *estr(Checker *c, uint32_t i)
 {
@@ -1283,6 +1331,11 @@ static const char *estr(Checker *c, uint32_t i)
     sb->len = 0;
     pexpr(c, sb, i, PR_COMMA);
     return sb_cstr(sb);
+}
+
+const char *cexpr_str(Checker *c, uint32_t i)
+{
+    return estr(c, i);
 }
 
 static const char *vstr(Checker *c, TypeId t, uint64_t v)

@@ -120,6 +120,7 @@ typedef struct Attrs {
     bool transparent_union;
     bool has_mode;
     uint8_t mode_bytes;      /* mode(QI..TI): integer size; 0: word etc. */
+    char mode_name[16];      /* the mode as written, for diagnostics */
     uint8_t mode_float;      /* mode(SF/DF/XF/TF): 1 */
     uint64_t vector_size;    /* bytes, 0: none (or invalid) */
     bool vs_seen;            /* a valid vector_size argument */
@@ -411,6 +412,7 @@ bool cexpr_is_expr(unsigned tag);
 TypeId cexpr_rvalue_type(Checker *c, uint32_t i);
 /* An integer constant's value as signed (per its type). */
 int64_t cexpr_sval(Checker *c, uint32_t i);
+const char *cexpr_str(Checker *c, uint32_t i);
 /* Truncates v to type t (two's complement, sign-extended if signed). */
 uint64_t cexpr_trunc(Checker *c, TypeId t, uint64_t v);
 /* Does the value v of type from fit type to? */

@@ -1,0 +1,12 @@
+attr_mode_access.c:1:1: error: attribute 'access' invalid mode 'read_onl'; expected one of 'read_only', 'read_write', 'write_only', or 'none'
+    1 | __attribute__ ((access (read_onl))) int f0 (char*);
+      | ^
+attr_mode_access.c:2:1: error: attribute 'access' mode '1.5e+0' is not an identifier; expected one of 'read_only', 'read_write', 'write_only', or 'none'
+    2 | __attribute__ ((access (1.5))) int f1 (char*);
+      | ^
+attr_mode_access.c:4:11: error: specified mode too small for enumerated values
+    4 | enum e1 { A = 256 } __attribute__((__mode__(__byte__)));
+      |           ^
+attr_mode_access.c:7:51: error: mode 'SI' applied to inappropriate type
+    7 | typedef struct __attribute__((mode(SI))) { int x; } S;
+      |                                                   ^
