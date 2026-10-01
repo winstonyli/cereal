@@ -138,6 +138,7 @@ typedef struct Attrs {
     bool vs_seen;            /* a valid vector_size argument */
     SrcLoc vs_loc;           /* input_location when it was read */
     bool deprecated, unused, noreturn, weak, alias, section, cleanup;
+    uint32_t cleanup_arg;
     bool weakref, ifunc, errattr, warnattr, desig;
     bool defn;               /* alias/ifunc/weakref naming a target */
     bool e_wi, e_iw;         /* weak then ifunc, ifunc then weak (both errors) */
@@ -532,6 +533,8 @@ void cstmt_enter(Checker *c, uint32_t i);
 void cstmt_expr(Checker *c, uint32_t i);
 void cstmt_node(Checker *c, uint32_t i);
 void cstmt_emit_labels(Checker *c, uint32_t scope_node, int64_t min_key);
+void cexpr_cleanup_call(Checker *c, uint32_t fsym, TypeId vty, SrcLoc dloc,
+                        SrcLoc il);
 bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
                         const ConvInfo *ci);
 /* The spelling suggestion for a misspelled member of rec (NULL: none). */

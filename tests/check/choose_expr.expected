@@ -1,0 +1,12 @@
+choose_expr.c:8:11: error: first argument to '__builtin_choose_expr' not a constant
+    8 |   int b = __builtin_choose_expr(n, 1, 2);
+      |           ^
+choose_expr.c:9:11: error: wrong number of arguments to '__builtin_choose_expr'
+    9 |   int c = __builtin_choose_expr(1, 2);
+      |           ^
+choose_expr.c:11:11: error: first argument to '__builtin_call_with_static_chain' must be a call expression
+   11 |   int e = __builtin_call_with_static_chain(n, fp);
+      |           ^
+choose_expr.c:12:11: error: second argument to '__builtin_call_with_static_chain' must be a pointer type
+   12 |   int g = __builtin_call_with_static_chain(f(1), n);
+      |           ^

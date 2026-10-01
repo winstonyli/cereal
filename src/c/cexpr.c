@@ -3238,6 +3238,54 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
     return !bad;
 }
 
+/* handle_cleanup_attribute: the call fn(&var) of the cleanup function fsym on
+ * an automatic variable of type vty.  dloc is the declarator, iloc gcc's
+ * input_location. */
+void cexpr_cleanup_call(Checker *c, uint32_t fsym, TypeId vty, SrcLoc dloc,
+                        SrcLoc il)
+{
+    CSym *f = csym(c, fsym);
+    TypeId fty = type_canon(TT, f->ty), at, pt, cp, ca;
+    const TypeEnt *fe;
+    char fname[256];
+    Diagnostic *d;
+    if (tkind(c, fty) != TY_FUNC)
+        return;
+    fe = type_ent(TT, fty);
+    if (fe->flags & TF_NOPROTO)
+        return;
+    snprintf(fname, sizeof fname, "%s", cident(c, f->name));
+    if (fe->n == 0 || (fe->n > 1 && !(fe->flags & TF_VARIADIC))) {
+        d = cerror_d(c, dloc, fe->n ? "too few arguments to function '%s'"
+                                    : "too many arguments to function '%s'",
+                     fname);
+        cnote(c, d, f->loc, "declared here");
+        return;
+    }
+    pt = type_params(TT, fty)[0];
+    at = type_ptr(TT, vty);
+    cp = type_canon(TT, unqual(c, pt));
+    ca = type_canon(TT, at);
+    if (mainv(c, cp) == mainv(c, ca))
+        return;
+    if (tkind(c, cp) == TY_PTR) {
+        TypeId tl = type_canon(TT, type_base(TT, cp));
+        if (is_void(c, tl) || type_compatible(TT, mvt(c, tl),
+                mvt(c, type_canon(TT, type_base(TT, ca)))))
+            return;
+        d = cwarn_d(c, DL_WARNING, il, "incompatible-pointer-types", "passing "
+                    "argument 1 of '%s' from incompatible pointer type", fname);
+    } else if (gcc_integer(c, cp))
+        d = cwarn_d(c, DL_WARNING, il, "int-conversion", "passing argument 1 "
+                    "of '%s' makes integer from pointer without a cast", fname);
+    else
+        return;
+    if (d)
+        cnote(c, d, param_loc(c, fsym, 0, NO_NODE, il),
+              "expected %s but argument is of type %s", type_q(TT, pt),
+              type_q(TT, at));
+}
+
 /* ARG_LOCATION: the expression's location, at the macro use when its first
  * token comes from an expansion. */
 static SrcLoc arg_loc(Checker *c, uint32_t a)
@@ -3767,6 +3815,43 @@ static void e_call(Checker *c, uint32_t i)
                 return;
             }
         }
+        if (!strcmp(name, "__builtin_choose_expr") ||
+            !strcmp(name, "__builtin_call_with_static_chain")) {
+            uint32_t av[4], an = nkids(c, i, av, 4), j;
+            bool choose = name[10] == 'c' && name[11] == 'h';
+            SrcLoc bl = call_loc(c, k[0]);
+            if (an > 4 || an - 1 != (choose ? 3u : 2u)) {
+                cerror(c, bl, "wrong number of arguments to '%s'", name);
+                set_err(c, i);
+                return;
+            }
+            for (j = 1; j < an; j++)
+                if (node_err(c, av[j])) {
+                    set_err(c, i);
+                    return;
+                }
+            if (choose) {
+                if (c->ck[av[1]] != K_ICE || !is_int(c, rvt(c, av[1])))
+                    cerror(c, bl, "first argument to '__builtin_choose_expr' "
+                           "not a constant");
+                copy_node(c, i, c->cv[av[1]] && c->ck[av[1]] == K_ICE
+                                    ? av[2] : av[3]);
+                return;
+            }
+            {
+                uint32_t a0 = strip_paren(c, av[1]);
+                if (a0 == NO_NODE || ntag(c, a0) != N_CALL)
+                    cerror(c, bl, "first argument to "
+                           "'__builtin_call_with_static_chain' must be a call "
+                           "expression");
+                else if (!is_ptr(c, rvt(c, av[2])))
+                    cerror(c, bl, "second argument to "
+                           "'__builtin_call_with_static_chain' must be a "
+                           "pointer type");
+            }
+            copy_node(c, i, av[1]);
+            return;
+        }
         if (!strcmp(name, "__builtin_tgmath")) {
             if (!e_tgmath(c, i))
                 set_err(c, i);
@@ -3819,6 +3904,36 @@ static void e_call(Checker *c, uint32_t i)
     if (!call_args(c, i, k[0], t)) {
         set_err(c, i);
         return;
+    }
+    {
+        TypeId ret = type_base(TT, pointee(c, t));
+        SrcLoc cl = call_loc(c, k[0]);
+        uint32_t cf = strip_paren(c, k[0]);
+        bool qv = is_void(c, ret) && tquals(c, ret) != 0;
+        /* a function designator cast to an incompatible function type */
+        if (cf != NO_NODE && ntag(c, cf) == N_CAST) {
+            uint32_t ck2[2], op;
+            if (nkids(c, cf, ck2, 2) == 2 &&
+                (op = strip_paren(c, ck2[1])) != NO_NODE &&
+                ntag(c, op) == N_IDENT && is_func(c, c->ty[op]) &&
+                !type_compatible(TT, mvt(c, c->ty[op]),
+                                 mvt(c, pointee(c, t)))) {
+                cwarn(c, cl, "", "function called through a non-compatible "
+                      "type");
+                if (qv)
+                    cpedwarn(c, cl, "", "function with qualified void return "
+                             "type called");
+            }
+        }
+        if (is_void(c, ret)) {
+            if (qv)
+                cpedwarn(c, cl, "", "function with qualified void return type "
+                         "called");
+        } else if (!complete(c, ret)) {
+            incomplete_error(c, cl, NO_NODE, ret);
+            set_err(c, i);
+            return;
+        }
     }
     c->ty[i] = unqual(c, type_base(TT, pointee(c, t)));
     c->ef[i] = EF_SIDE;

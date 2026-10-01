@@ -596,6 +596,7 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             a->warnattr = true;
         } else if (!strcmp(name, "cleanup")) {
             a->cleanup = true;
+            a->cleanup_arg = arg == NO_NODE ? 0 : arg;
         } else if (!strcmp(name, "unused")) {
             a->unused = true;
         } else if (!strcmp(name, "weak") || !strcmp(name, "__weak__")) {
@@ -760,6 +761,8 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     to->errattr |= from->errattr;
     to->warnattr |= from->warnattr;
     to->cleanup |= from->cleanup;
+    if (from->cleanup_arg)
+        to->cleanup_arg = from->cleanup_arg;
     to->used |= from->used;
     to->weak |= from->weak;
     to->noreturn |= from->noreturn;
@@ -4217,6 +4220,23 @@ static void declared_visit(Checker *c, uint32_t i)
                      g.what == GD_FUNC ? 'f' :
                      file ? 'g' : s.sc == SC_STATIC ? 's' :
                      s.sc == SC_EXTERN ? 'g' : 'a', !file, 0, ltok);
+    if (a.cleanup && a.cleanup_arg && s.kind == CS_OBJ && !file &&
+        s.sc != SC_STATIC && s.sc != SC_EXTERN && !kr) {
+        /* handle_cleanup_attribute: a function taking the variable's address;
+         * it counts as a use of the variable */
+        uint32_t ca = a.cleanup_arg, fr = SYM_NONE;
+        if (ntag(c, ca) == N_IDENT)
+            fr = lookup_ord(c, cnode_ident(c, ca));
+        if (ntag(c, ca) != N_IDENT)
+            cerror(c, il, "cleanup argument not an identifier");
+        else if (fr == SYM_NONE || csym(c, fr)->kind != CS_FUNC)
+            cerror(c, il, "cleanup argument not a function");
+        else {
+            csym(c, fr)->flags |= CSF_USED;
+            cexpr_cleanup_call(c, fr, s.ty, s.loc, il);
+        }
+        s.flags |= CSF_USED | CSF_ATTR_UNUSED;   /* never warned about */
+    }
     if (a.transparent_union && g.what == GD_TYPEDEF &&
         type_ckind(TT, s.ty) == TY_UNION) {
         /* handle_transparent_union_attribute on a typedef: the union type

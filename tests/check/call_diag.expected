@@ -1,0 +1,21 @@
+call_diag.c:11:18: error: function with qualified void return type called
+   11 | void g1 (void) { f_cv (); } /* { dg-error "qualified void" } */
+      |                  ^
+call_diag.c:12:18: error: invalid use of undefined type 'struct s'
+   12 | void g2 (void) { f_s (); } /* { dg-error "invalid use of undefined type" } */
+      |                  ^
+call_diag.c:13:19: warning: function called through a non-compatible type
+   13 | void g3 (void) { ((const void (*) (void)) f_v) (); } /* { dg-error "qualified void" } */
+      |                   ^
+call_diag.c:13:19: error: function with qualified void return type called
+   13 | void g3 (void) { ((const void (*) (void)) f_v) (); } /* { dg-error "qualified void" } */
+      |                   ^
+call_diag.c:13:19: error: function with qualified void return type called
+   13 | void g3 (void) { ((const void (*) (void)) f_v) (); } /* { dg-error "qualified void" } */
+      |                   ^
+call_diag.c:15:19: warning: function called through a non-compatible type
+   15 | void g4 (void) { ((struct s (*) (void)) f_v) (), (void) 0; } /* { dg-error "invalid use of undefined type" } */
+      |                   ^
+call_diag.c:15:19: error: invalid use of undefined type 'struct s'
+   15 | void g4 (void) { ((struct s (*) (void)) f_v) (), (void) 0; } /* { dg-error "invalid use of undefined type" } */
+      |                   ^
