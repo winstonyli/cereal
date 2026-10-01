@@ -668,7 +668,19 @@ TypeId type_composite(TypeTable *tt, TypeId a, TypeId b)
         return a;
     TypeId ca = type_canon(tt, a), cb = type_canon(tt, b);
     unsigned q = TYPE_QUALS(ca);
-    const TypeEnt *ea = type_ent(tt, ca), *eb = type_ent(tt, cb);
+    /* the entities as written, so that the parts keep their typedef names
+     * (gcc's composite_type recurses on TREE_TYPE of the originals) */
+    TypeId pa = a, pb = b;
+    while (type_ent(tt, pa)->kind == TY_TYPEDEF)
+        pa = type_ent(tt, pa)->base | TYPE_QUALS(pa);
+    while (type_ent(tt, pb)->kind == TY_TYPEDEF)
+        pb = type_ent(tt, pb)->base | TYPE_QUALS(pb);
+    if (TYPE_QUALS(pa) || TYPE_QUALS(pb) ||
+        type_ent(tt, pa)->kind != type_ent(tt, ca)->kind ||
+        type_ent(tt, pb)->kind != type_ent(tt, cb)->kind)
+        pa = ca, pb = cb;
+    TypeEnt xa = *type_ent(tt, pa), xb = *type_ent(tt, pb);
+    const TypeEnt *ea = &xa, *eb = &xb;   /* ents may grow below */
     if (is_array_kind(ea->kind)) {
         TypeId el = type_composite(tt, ea->base, eb->base);
         if (ea->kind == TY_ARRAY && !(ea->flags & TF_INCOMPLETE))

@@ -189,9 +189,16 @@ void cbind(Checker *c, int ns, uint32_t ident, uint32_t ref)
     b.ident = ident;
     b.prev = c->top[ns][ident];
     b.ref = ref;
+    b.ty = 0;
     b.ns = (uint8_t)ns;
     vec_push(&c->log, b);
     c->top[ns][ident] = (uint32_t)c->log.len;
+}
+
+uint32_t cbind_type(Checker *c, uint32_t ident)
+{
+    uint32_t b = ident && ident < c->nidents ? c->top[NS_ORD][ident] : 0;
+    return b ? c->log.data[b - 1].ty : 0;
 }
 
 uint32_t clookup(Checker *c, int ns, uint32_t ident)

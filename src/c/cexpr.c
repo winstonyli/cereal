@@ -1764,7 +1764,7 @@ static void e_ident(Checker *c, uint32_t i)
         c->ef[i] = EF_INTOPS;
         return;
     case CS_FUNC:
-        c->ty[i] = s->ty;
+        c->ty[i] = cbind_type(c, id) ? cbind_type(c, id) - 1 : s->ty;
         c->ck[i] = K_ADDR;
         c->cb[i] = ref + 1;
         c->ef[i] = EF_ADDRLV;
@@ -1772,7 +1772,7 @@ static void e_ident(Checker *c, uint32_t i)
     default:
         break;
     }
-    c->ty[i] = s->ty;
+    c->ty[i] = cbind_type(c, id) ? cbind_type(c, id) - 1 : s->ty;
     if (is_err(c, s->ty)) {
         set_err(c, i);
         return;

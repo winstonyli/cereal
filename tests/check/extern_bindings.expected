@@ -1,0 +1,9 @@
+extern_bindings.c:15:9: error: invalid application of 'sizeof' to incomplete type 'IA' {aka 'int[]'}
+   15 |   sizeof(*a[0]);
+      |         ^
+extern_bindings.c:24:11: error: invalid application of 'sizeof' to incomplete type 'int[]'
+   24 |     sizeof(b);
+      |           ^
+extern_bindings.c:31:14: error: type of array 'x' completed incompatibly with implicit initialization
+   31 |   extern int x[2];
+      |              ^

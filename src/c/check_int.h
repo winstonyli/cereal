@@ -46,7 +46,8 @@ enum {
     CSF_ATTR_UNUSED = 2097152, /* __attribute__((unused)) */
     CSF_FWD = 4194304,       /* parameter only forward-declared so far */
     CSF_DEPRECATED = 8388608, /* __attribute__((deprecated)) */
-    CSF_UNAVAILABLE = 16777216 /* __attribute__((unavailable)) */
+    CSF_UNAVAILABLE = 16777216, /* __attribute__((unavailable)) */
+    CSF_INNER_COMP = 33554432 /* incomplete array completed in an inner scope */
 };
 
 typedef struct CSym {
@@ -76,6 +77,9 @@ typedef struct Bind {
     uint32_t ident;
     uint32_t prev;           /* the binding it shadows + 1, 0: none */
     uint32_t ref;            /* NS_ORD: symbol ref; NS_TAG: TypeId */
+    uint32_t ty;             /* NS_ORD: the type of the symbol in this scope
+                              * when it differs from the symbol's, + 1 (gcc's
+                              * c_binding.u.type) */
     uint8_t ns;
 } Bind;
 
@@ -355,6 +359,7 @@ uint32_t cfind_semi(Checker *c, uint32_t tok);
 /* Symbols and scopes (check.c). */
 uint32_t csym_new(Checker *c, bool global, const CSym *s);
 void cbind(Checker *c, int ns, uint32_t ident, uint32_t ref);
+uint32_t cbind_type(Checker *c, uint32_t ident);  /* top binding's type + 1 */
 /* The innermost binding's ref: SYM_NONE (NS_ORD) / 0 (NS_TAG) if none. */
 uint32_t clookup(Checker *c, int ns, uint32_t ident);
 uint32_t lookup_ord(Checker *c, uint32_t ident);   /* SYM_NONE if none */

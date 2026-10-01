@@ -2745,7 +2745,7 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     m.flags |= o->flags & (CSF_DEFINED | CSF_USED | CSF_NORETURN | CSF_THREAD |
                            CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE |
                            CSF_WEAK | CSF_ADDR_WARNED | CSF_DEPRECATED |
-                           CSF_UNAVAILABLE);
+                           CSF_UNAVAILABLE | CSF_INNER_COMP);
     if (!m.dep_msg)
         m.dep_msg = o->dep_msg;
     if (!new_def)
@@ -2840,6 +2840,66 @@ static void warn_if_shadowing(Checker *c, const CSym *x)
     }
 }
 
+/* The enclosing bindings of name when a block-scope external declaration
+ * of type newty arrives: the first one of a file-scope entity keeps the type
+ * it has now, and an incomplete array at file scope completed here (other
+ * than to one element) is diagnosed at the end of the file. */
+static void outer_bindings(Checker *c, uint32_t name, TypeId newty)
+{
+    uint32_t bi = c->top[NS_ORD][name];
+    bool saved = false;
+    TypeId vt = 0;
+    bool have_vt = false;
+    const TypeEnt *ne = type_ent(TT, type_canon(TT, newty));
+    for (; bi; bi = c->log.data[bi - 1].prev) {
+        Bind *bd = &c->log.data[bi - 1];
+        CSym *s = csym(c, bd->ref);
+        bool var_fn = (s->kind == CS_OBJ && !(s->flags & CSF_PARAM)) ||
+                      s->kind == CS_FUNC;
+        if (!have_vt) {
+            vt = bd->ty ? bd->ty - 1 : s->ty;
+            have_vt = true;
+        }
+        if (!var_fn || !ref_file_scope(bd->ref))
+            continue;
+        if (!saved && !bd->ty) {
+            bd->ty = s->ty + 1;
+            saved = true;
+        } else if (!saved) {
+            saved = true;
+        }
+        if (cbind_scope(c, bi) == SCK_FILE && s->kind == CS_OBJ &&
+            (s->flags & CSF_TREE_STATIC) && type_ckind(TT, vt) == TY_ARRAY &&
+            !type_is_complete(TT, vt) && ne->kind == TY_ARRAY &&
+            !(ne->flags & TF_INCOMPLETE) && ne->n != 1)
+            s->flags |= CSF_INNER_COMP;
+    }
+}
+
+/* The type the innermost binding of name gives symbol s (gcc keeps it per
+ * binding in c_binding.u.type; the symbol's own type is the composite of
+ * all its declarations). */
+static TypeId bound_type(Checker *c, uint32_t name, const CSym *s)
+{
+    uint32_t t = cbind_type(c, name);
+    return t ? t - 1 : s->ty;
+}
+
+/* A block-scope external declaration of type newty was merged into symbol
+ * ref: the binding it made (bi, an index + 1 into the log) sees only the
+ * composite of the type visible before (vt, or none) and newty. */
+static void bind_this_type(Checker *c, uint32_t bi, uint32_t ref, TypeId vt,
+                           bool have_vt, TypeId newty)
+{
+    TypeId all = csym(c, ref)->ty, t = all;
+    if (!have_vt)
+        t = newty;
+    else if (!is_err(c, vt) && type_compatible(TT, vt, newty))
+        t = type_composite(TT, vt, newty);
+    if (t != all || c->log.data[bi - 1].ty)
+        c->log.data[bi - 1].ty = t + 1;
+}
+
 /* pushdecl: enters x in the current scope, merging it with an earlier
  * declaration of the same entity.  Returns the symbol the name now denotes. */
 static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
@@ -2864,10 +2924,18 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
     b = cbound_here(c, NS_ORD, name);
     if (b) {
         uint32_t vis = c->log.data[b - 1].ref, use = vis;
-        if (varfn && pub && sym_public(csym(c, vis)) && c->ext[name])
+        bool split = varfn && pub && sym_public(csym(c, vis)) && c->ext[name];
+        TypeId vt = bound_type(c, name, csym(c, vis)), newty = x.ty;
+        if (split)
             use = c->ext[name] - 1;
-        if (duplicate_decls(c, &x, nfile, use, implicit_int))
+        if (x.kind == CS_OBJ && type_ckind(TT, newty) == TY_ARRAY &&
+            type_is_complete(TT, newty))
+            csym(c, vis)->flags &= ~(unsigned)CSF_INNER_COMP;
+        if (duplicate_decls(c, &x, nfile, use, implicit_int)) {
+            if (split && !is_err(c, newty))
+                bind_this_type(c, b, use, vt, true, newty);
             return use;
+        }
         skip = true;
     }
     ref = SYM_NONE;
@@ -2883,11 +2951,19 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
                     ref_file_scope(r))
                     visref = r;
             }
+            TypeId newty = x.ty;
+            TypeId vt = visref != SYM_NONE ? bound_type(c, name, csym(c, visref))
+                                           : 0;
             if (!filescope)
                 cwarn(c, x.loc, "nested-externs", "nested extern declaration "
                       "of '%s'", sname(c, &x));
+            if (e && !filescope && !is_err(c, newty))
+                outer_bindings(c, name, newty);
             if (e && duplicate_decls(c, &x, nfile, e - 1, implicit_int)) {
                 cbind(c, NS_ORD, name, e - 1);
+                if (!filescope && !is_err(c, newty))
+                    bind_this_type(c, (uint32_t)c->log.len, e - 1, vt,
+                                   visref != SYM_NONE, newty);
                 return e - 1;
             } else if (pub) {
                 if (visref != SYM_NONE && !e &&
@@ -5423,6 +5499,9 @@ void cdecl_finish_object(Checker *c, uint32_t ref)
     /* the file scope */
     for (k = 0; k < c->gsyms.len; k++) {
         const CSym *s = &c->gsyms.data[k];
+        if (s->kind == CS_OBJ && (s->flags & CSF_INNER_COMP) && s->name)
+            cerror(c, s->loc, "type of array '%s' completed incompatibly with "
+                   "implicit initialization", sname(c, s));
         if (s->kind == CS_FUNC && !sym_public(s) && !sym_defined(s) &&
             (s->flags & CSF_DECL_EXTERNAL) && s->name) {
             if (s->flags & CSF_USED)
