@@ -1,0 +1,4 @@
+eof_c.c:2: error: expected '(' at end of input
+eof_c.c:1:1: error: expected declaration or statement at end of input
+    1 | void g(void) { for
+      | ^

@@ -1,0 +1,6 @@
+eof_h.c:1:1: error: expected expression at end of input
+    1 | void g(void) { if (1)
+      | ^
+eof_h.c:1:1: error: expected declaration or statement at end of input
+    1 | void g(void) { if (1)
+      | ^

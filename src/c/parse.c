@@ -155,6 +155,40 @@ static SrcLoc spell_loc(Parser *p, uint32_t i)
     return i < p->toks.len ? p->toks.data[i].t.loc : tok_loc(p, i);
 }
 
+/* The file of the last token read (the end of input is its end). */
+static SrcFile *eof_file(Parser *p)
+{
+    return p->toks.len ? srcmgr_file_of(p->sm, p->toks.data[p->toks.len - 1].t.loc)
+                       : NULL;
+}
+
+/* gcc's location of the end-of-input token: the end of the file, printed
+ * without a column (c_parser_require reports a missing token there). */
+static SrcLoc eof_loc(Parser *p)
+{
+    SrcFile *f = eof_file(p);
+    return f ? f->base + f->size : tok_loc(p, p->toks.len);
+}
+
+/* gcc's input_location at the end of input, where c_parser_error reports:
+ * the first token of the last line read (cb_line_change). */
+static SrcLoc eof_input_loc(Parser *p)
+{
+    SrcFile *f = eof_file(p);
+    uint32_t line, col = 1;
+    if (!f)
+        return tok_loc(p, p->toks.len);
+    srcmgr_linecol(f, p->toks.data[p->toks.len - 1].t.loc, &line, &col);
+    {
+        SrcLoc ls = srcmgr_loc_of(f, line, 1);
+        const char *b = f->buf + (ls - f->base);
+        col = 1;
+        while (b[col - 1] == ' ' || b[col - 1] == '	')
+            col++;
+    }
+    return srcmgr_loc_of(f, line, col);
+}
+
 /* How gcc's c_parse_error names the offending token: " before ..." or
  * " at end of input".  Keywords read like identifiers, punctuators are
  * spelled canonically (digraphs included) and followed by "token". */
@@ -240,6 +274,16 @@ static Diagnostic *perr(Parser *p, uint32_t i, const char *fmt, ...)
     return d;
 }
 
+static Diagnostic *perr_at(Parser *p, uint32_t i, SrcLoc loc, const char *fmt, ...)
+{
+    Diagnostic *d;
+    va_list ap;
+    va_start(ap, fmt);
+    d = vperr(p, i, loc, fmt, ap);
+    va_end(ap);
+    return d;
+}
+
 /* Like perr, but at the end of the token before i when that is plain
  * source text (gcc's c_parser_require for a missing ';'). */
 static Diagnostic *perr_after_prev(Parser *p, uint32_t i, const char *fmt, ...)
@@ -274,7 +318,28 @@ static void expected(Parser *p, const char *what)
 {
     char buf[160];
     uint32_t i = ci(p);
+    if (!fill(p, i) && p->toks.len) {
+        /* c_parser_error at the end of input: input_location */
+        va_list none;
+        (void)none;
+        perr_at(p, i, eof_input_loc(p), "expected %s%s", what,
+                tok_desc(p, i, buf, sizeof buf));
+        return;
+    }
     perr(p, i, "expected %s%s", what, tok_desc(p, i, buf, sizeof buf));
+}
+
+/* c_parser_require of a token that never moves "after the previous": at the
+ * end of input it is reported at the end-of-file location. */
+static void expected_req(Parser *p, const char *what)
+{
+    char buf[160];
+    uint32_t i = ci(p);
+    if (!fill(p, i) && p->toks.len)
+        perr_at(p, i, eof_loc(p), "expected %s%s", what,
+                tok_desc(p, i, buf, sizeof buf));
+    else
+        expected(p, what);
 }
 
 static bool expect(Parser *p, Punct x)
@@ -289,6 +354,9 @@ static bool expect(Parser *p, Punct x)
                          x == P_COMMA || x == P_COLON))
         perr_after_prev(p, ci(p), "expected %s%s", what,
                         tok_desc(p, ci(p), buf, sizeof buf));
+    else if (!fill(p, ci(p)) && p->toks.len)
+        perr_at(p, ci(p), eof_loc(p), "expected %s%s", what,
+                tok_desc(p, ci(p), buf, sizeof buf));
     else
         expected(p, what);
     return false;
@@ -2131,9 +2199,13 @@ static void compound(Parser *p, bool push)
     }
     if (!accept(p, P_RBRACE)) {
         flags |= NF_ERROR;
-        if (!p->unwind) {
-            Diagnostic *d = perr(p, ci(p), "expected '}' at end of input");
-            diag_note(p->diag, d, tok_loc(p, lb), "to match this '{'");
+        if (!p->unwind && !p->eof_stmt_err) {
+            /* c_parser_error: gcc has recovered from any earlier error and
+             * reports the unclosed body once, at input_location */
+            p->eof_stmt_err = true;
+            p->have_err = false;
+            perr_at(p, ci(p), eof_input_loc(p), "expected declaration or "
+                    "statement at end of input");
         }
     }
     if (push)
@@ -2186,7 +2258,7 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
     } else if (at(p, P_LBRACE)) {
         compound(p, false);
     } else {
-        expected(p, "'{'");
+        expected_req(p, "'{'");
         flags |= NF_ERROR;
     }
     p->fn_depth--;

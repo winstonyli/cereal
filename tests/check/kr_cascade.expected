@@ -7,9 +7,7 @@ kr_cascade.c:6:14: error: expected '=', ',', ';', 'asm' or '__attribute__' befor
 kr_cascade.c:7:7: error: unknown type name 'unknown_t'
     7 | int h(unknown_t x) int y;
       |       ^
-kr_cascade.c:8:6: error: expected '{' at end of input
-    8 | int k;
-      |      ^
+kr_cascade.c:9: error: expected '{' at end of input
 kr_cascade.c:1:8: warning: return type defaults to 'int' [-Wimplicit-int]
     1 | extern alignas (max_align_t) char c;
       |        ^
