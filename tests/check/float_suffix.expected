@@ -1,0 +1,9 @@
+float_suffix.c:2:1: warning: non-standard suffix on floating constant [-Wpedantic]
+    2 | __float80 a = 123.456789w;
+      | ^
+float_suffix.c:3:1: warning: non-standard suffix on floating constant [-Wpedantic]
+    3 | int f(void){ double d = 1.0w; return 0; }
+      | ^
+float_suffix.c:4:3: warning: non-standard suffix on floating constant [-Wpedantic]
+    4 |   double e = 1.0q + 2;
+      |   ^

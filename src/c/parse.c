@@ -2387,10 +2387,12 @@ static void declaration(Parser *p, bool top)
                                 tok_desc(p, ci(p), buf, sizeof buf));
             } else {
                 expected(p, "'=', ',', ';', 'asm' or '__attribute__'");
+                /* gcc's c_parser_declaration_or_fndef just returns: in a
+                 * block the statements go on from this very token */
                 if (top || p->kr_params)
                     sync_top(p);
                 else
-                    sync_stmt(p);
+                    p->err_live = false; /* error = false after each item */
             }
             /* gcc has not declared the name yet */
             emit(p, N_DECL, first, start, flags | NF_ERROR);

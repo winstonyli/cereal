@@ -273,7 +273,7 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
                   memchr(str, 'D', (size_t)(limit - str))))
             note(out, 0, "pedantic", "suffix for double constant is a GCC extension");
         if (nonstd)
-            note(out, 0, "pedantic", "non-standard suffix on floating constant");
+            note(out, 0, "inputloc", "non-standard suffix on floating constant");
         else if (imag)
             note(out, 0, "pedantic", "imaginary constants are a GCC extension");
         m = (size_t)(str - s);

@@ -1,0 +1,30 @@
+fold_ident.c:2:12: warning: enumerator value for 'A' is not an integer constant expression [-Wpedantic]
+    2 | enum { A = n * 0 + 1 };
+      |            ^
+fold_ident.c:3:12: warning: enumerator value for 'B' is not an integer constant expression [-Wpedantic]
+    3 | enum { B = 0 * n };
+      |            ^
+fold_ident.c:4:12: warning: enumerator value for 'C' is not an integer constant expression [-Wpedantic]
+    4 | enum { C = 0 & n, D = n - n, E = n * 0 };
+      |            ^
+fold_ident.c:4:23: warning: enumerator value for 'D' is not an integer constant expression [-Wpedantic]
+    4 | enum { C = 0 & n, D = n - n, E = n * 0 };
+      |                       ^
+fold_ident.c:4:34: warning: enumerator value for 'E' is not an integer constant expression [-Wpedantic]
+    4 | enum { C = 0 & n, D = n - n, E = n * 0 };
+      |                                  ^
+fold_ident.c:5:16: warning: bit-field 'a' width not an integer constant expression [-Wpedantic]
+    5 | struct s { int a : (n * 0 + 1); };
+      |                ^
+fold_ident.c:6:15: warning: array index in initializer is not an integer constant expression [-Wpedantic]
+    6 | int v[2] = { [(n * 0 + 1)] = 1 };
+      |               ^
+fold_ident.c:6:15: note: (near initialization for 'v')
+    6 | int v[2] = { [(n * 0 + 1)] = 1 };
+      |               ^
+fold_ident.c:7:30: warning: case label is not an integer constant expression [-Wpedantic]
+    7 | void f(int x) { switch (x) { case n * 0 + 1: ; } }
+      |                              ^
+fold_ident.c:8:1: warning: variably modified 'g' at file scope
+    8 | int g[n * 0 + 1];
+      | ^

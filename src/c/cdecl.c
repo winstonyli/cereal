@@ -5398,7 +5398,9 @@ static void static_assert_visit(Checker *c, uint32_t i)
         return;
     vloc = cnode_loc(c, e);
     if (!type_is_integer(TT, c->ty[e])) {
-        cerror(c, vloc, "expression in static assertion is not an integer");
+        /* an erroneous value has no location of its own: the first token */
+        cerror(c, is_err(c, c->ty[e]) ? tloc(c, first_tok(c, e)) : vloc,
+               "expression in static assertion is not an integer");
         return;
     }
     if (c->ck[e] != K_ICE) {

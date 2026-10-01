@@ -1523,9 +1523,16 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
             cwarn(c, loc, l->id, "%s", l->msg);
         break;
     default:
-        /* libcpp's pedwarns carry no option tag */
-        if (c->opt.pedantic && !cexpr_in_extension(c, i))
-            cpedwarn(c, loc, "", "%s", l->msg);
+        /* libcpp's pedwarns carry no option tag; interpret_float's
+         * non-standard suffix pedwarn is c-family's: [-Wpedantic] at
+         * input_location */
+        if (c->opt.pedantic && !cexpr_in_extension(c, i)) {
+            if (l->id && !strcmp(l->id, "inputloc"))
+                cpedwarn(c, cinput_loc(c, c->nodes[i].tok), "pedantic", "%s",
+                         l->msg);
+            else
+                cpedwarn(c, loc, "", "%s", l->msg);
+        }
         break;
     }
 }
@@ -4838,7 +4845,11 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
         }
     } else {
         if (node_err(c, a)) {
-            set_err(c, i);
+            /* c_alignof_expr of an erroneous operand is a constant 1 */
+            if (align)
+                set_ice(c, i, size_type(c), 1);
+            else
+                set_err(c, i);
             return;
         }
         t = c->ty[a];
@@ -7349,6 +7360,30 @@ static void ptr_diff(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     }
 }
 
+static bool zero_ice(Checker *c, uint32_t n)
+{
+    return is_intcst(c, n) && c->ck[n] == K_ICE && c->cv[n] == 0;
+}
+
+/* fold-const's x * 0, 0 * x, x & 0, 0 & x and x - x (x a plain variable) */
+static bool fold_zero_ident(Checker *c, int op, uint32_t a, uint32_t b)
+{
+    if (((c->ef[a] | c->ef[b]) & EF_SIDE) || !is_int(c, rvt(c, a)) ||
+        !is_int(c, rvt(c, b)))
+        return false;
+    if (op == P_STAR || op == P_AMP)
+        return zero_ice(c, a) || zero_ice(c, b);
+    if (op == P_MINUS) {
+        uint32_t sa = strip_paren(c, a), sb = strip_paren(c, b);
+        return sa != NO_NODE && sb != NO_NODE && ntag(c, sa) == N_IDENT &&
+               ntag(c, sb) == N_IDENT &&
+               cnode_ident(c, sa) == cnode_ident(c, sb) &&
+               lookup_ord(c, cnode_ident(c, sa)) != SYM_NONE &&
+               !(TYPE_QUALS(rvt(c, a)) & TQ_VOLATILE);
+    }
+    return false;
+}
+
 static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
 {
     SrcLoc loc = cnode_loc(c, i);
@@ -7405,6 +7440,13 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
             uint64_t v = int_op(c, op, rt, cexpr_trunc(c, rt, c->cv[a]),
                                 cexpr_trunc(c, rt, c->cv[b]), &ovf, &zd);
             bin_value(c, i, a, b, v, ovf, true, loc);
+            return;
+        }
+        /* fold's identities make x * 0, 0 & x and x - x constants (not
+         * integer constant expressions) when x has no side effects */
+        if (int_bits(c, rt) <= 64 && fold_zero_ident(c, op, a, b)) {
+            c->cv[i] = 0;
+            c->ck[i] = K_FOLD;
             return;
         }
     } else if (!is_decimal_flt(c, rt) && !zero_div && fval(c, a, &fa) &&
