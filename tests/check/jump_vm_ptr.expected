@@ -1,0 +1,63 @@
+jump_vm_ptr.c:2:17: error: jump into scope of identifier with variably modified type
+    2 | void f(int n) { goto a; { int (**b)[n]; a: 0; } }
+      |                 ^
+jump_vm_ptr.c:2:41: note: label 'a' defined here
+    2 | void f(int n) { goto a; { int (**b)[n]; a: 0; } }
+      |                                         ^
+jump_vm_ptr.c:2:34: note: 'b' declared here
+    2 | void f(int n) { goto a; { int (**b)[n]; a: 0; } }
+      |                                  ^
+jump_vm_ptr.c:2:17: error: jump into scope of identifier with variably modified type
+    2 | void f(int n) { goto a; { int (**b)[n]; a: 0; } }
+      |                 ^
+jump_vm_ptr.c:2:41: note: label 'a' defined here
+    2 | void f(int n) { goto a; { int (**b)[n]; a: 0; } }
+      |                                         ^
+jump_vm_ptr.c:2:34: note: '({anonymous})' declared here
+    2 | void f(int n) { goto a; { int (**b)[n]; a: 0; } }
+      |                                  ^
+jump_vm_ptr.c:2:17: error: jump into scope of identifier with variably modified type
+    2 | void f(int n) { goto a; { int (**b)[n]; a: 0; } }
+      |                 ^
+jump_vm_ptr.c:2:41: note: label 'a' defined here
+    2 | void f(int n) { goto a; { int (**b)[n]; a: 0; } }
+      |                                         ^
+jump_vm_ptr.c:2:34: note: '({anonymous})' declared here
+    2 | void f(int n) { goto a; { int (**b)[n]; a: 0; } }
+      |                                  ^
+jump_vm_ptr.c:3:17: error: jump into scope of identifier with variably modified type
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                 ^
+jump_vm_ptr.c:3:57: note: label 'a' defined here
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                                                         ^
+jump_vm_ptr.c:3:50: note: 'c' declared here
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                                                  ^
+jump_vm_ptr.c:3:17: error: jump into scope of identifier with variably modified type
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                 ^
+jump_vm_ptr.c:3:57: note: label 'a' defined here
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                                                         ^
+jump_vm_ptr.c:3:50: note: '({anonymous})' declared here
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                                                  ^
+jump_vm_ptr.c:3:17: error: jump into scope of identifier with variably modified type
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                 ^
+jump_vm_ptr.c:3:57: note: label 'a' defined here
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                                                         ^
+jump_vm_ptr.c:3:41: note: 'b' declared here
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                                         ^
+jump_vm_ptr.c:3:17: error: jump into scope of identifier with variably modified type
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                 ^
+jump_vm_ptr.c:3:57: note: label 'a' defined here
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                                                         ^
+jump_vm_ptr.c:3:41: note: '({anonymous})' declared here
+    3 | void g(int n) { goto a; { typedef int (*b)[n], (*c)[n]; a: 0; } }
+      |                                         ^

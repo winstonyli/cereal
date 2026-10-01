@@ -33,6 +33,7 @@ typedef struct CUnsafe {
     SrcLoc loc;
     uint32_t name;
     bool vm;
+    bool anon;               /* gcc's nameless declaration of a VM pointee */
 } CUnsafe;
 
 typedef struct CGoto {
@@ -314,7 +315,8 @@ static void warn_about_goto(Checker *c, SrcLoc gloc, const CLabel *l,
     if (!d)
         return;
     cnote(c, d, l->loc, "label '%s' defined here", label_name(c, l));
-    cnote(c, d, u->loc, "'%s' declared here", cident(c, u->name));
+    cnote(c, d, u->loc, "'%s' declared here",
+          u->anon ? "({anonymous})" : cident(c, u->name));
 }
 
 /* check_earlier_gotos / the decls_in_scope loop of lookup_label_for_goto:
@@ -1573,9 +1575,12 @@ static void stmt_declared(Checker *c, CStmt *s, uint32_t i)
     if (!ref)
         return;
     sy = csym(c, ref - 1);
-    if (!sy->name || (sy->kind != CS_OBJ && sy->kind != CS_TYPEDEF))
+    if (!sy->name || (sy->kind != CS_OBJ && sy->kind != CS_TYPEDEF &&
+                      sy->kind != CS_FUNC))
         return;
     vm = !(sy->ty == ERRT) && type_is_vm(TT, sy->ty);
+    if (!vm && sy->kind == CS_FUNC)
+        return;
     if (!vm) {
         uint32_t p = c->par[i];
         if (sy->kind != CS_OBJ || sy->sc == SC_STATIC || sy->sc == SC_EXTERN ||
@@ -1584,11 +1589,33 @@ static void stmt_declared(Checker *c, CStmt *s, uint32_t i)
             diag_option_state(c->diag, "jump-misses-init") <= 0)
             return;
     }
-    u.seq = ++top(s)->seq;
     u.block = s->cur;
     u.loc = sy->loc;
     u.name = sy->name;
     u.vm = vm;
+    u.anon = false;
+    if (vm) {
+        /* gcc also declares, before the object, one nameless declaration
+         * for every pointer whose target is variably modified */
+        TypeId t = sy->ty;
+        for (;;) {
+            TypeId b = type_canon(TT, t);
+            TypeKind k = type_ckind(TT, b);
+            if (sy->kind == CS_FUNC)
+                break;
+            if (k == TY_ARRAY || k == TY_VLA || k == TY_FUNC) {
+                t = type_base(TT, b);
+            } else if (k == TY_PTR && type_is_vm(TT, type_base(TT, b))) {
+                CUnsafe a = u;
+                a.anon = true;
+                a.seq = ++top(s)->seq;
+                vec_push(&s->unsafe, a);
+                t = type_base(TT, b);
+            } else
+                break;
+        }
+    }
+    u.seq = ++top(s)->seq;
     vec_push(&s->unsafe, u);
 }
 
