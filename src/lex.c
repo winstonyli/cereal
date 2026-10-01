@@ -315,6 +315,20 @@ static const PunctEnt *s_match_punct(Slow *s)
 }
 
 /* Lex one token starting at `start` the careful way. */
+/* Length of a string/char literal prefix at p (0: none). */
+static int qprefix(const char *p, bool uliterals)
+{
+    if (p[0] == 'L' && (p[1] == '\'' || p[1] == '"'))
+        return 1;
+    if (!uliterals)
+        return 0;
+    if ((p[0] == 'u' || p[0] == 'U') && (p[1] == '\'' || p[1] == '"'))
+        return 1;
+    if (p[0] == 'u' && p[1] == '8' && p[2] == '"')
+        return 2;
+    return 0;
+}
+
 static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
 {
     Slow s;
@@ -325,7 +339,8 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
     L->clean.len = 0;
     c = s_peek(&s);
     t->punct = 0;
-    if (c == 'L' && (s_peek2(&s) == '\'' || s_peek2(&s) == '"')) {
+    if ((c == 'L' || (L->opt.uliterals && (c == 'u' || c == 'U'))) &&
+        (s_peek2(&s) == '\'' || s_peek2(&s) == '"')) {
         int q;
         s_take(&s);
         q = s_peek(&s);
@@ -585,7 +600,8 @@ void lex_next(Lexer *L, Tok *t)
     }
 
     if (cl[c] & C_IDSTART) {
-        if (c == 'L' && (p[1] == '\'' || p[1] == '"'))
+        if ((c == 'L' || c == 'u' || c == 'U') &&
+            qprefix(p, L->opt.uliterals))
             goto quoted;
         q = scan_ident(p + 1, L->opt.dollar_idents);
         if (*q == '\\' || (*q == '?' && trig))
@@ -625,9 +641,7 @@ void lex_next(Lexer *L, Tok *t)
     quoted:
         {
             char quote;
-            q = p;
-            if (*q == 'L')
-                q++;
+            q = p + qprefix(p, L->opt.uliterals);
             quote = *q++;
             for (;;) {
                 unsigned char d;

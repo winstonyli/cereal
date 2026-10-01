@@ -1,0 +1,6 @@
+gnu99_ulit.c:11:1: error: unsupported non-standard concatenation of string literals
+   11 | void *bad = u8"a" u"b";
+      | ^
+gnu99_ulit.c:11:1: error: unsupported non-standard concatenation of string literals
+   11 | void *bad = u8"a" u"b";
+      | ^

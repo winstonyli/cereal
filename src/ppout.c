@@ -84,7 +84,7 @@ static bool needs_space(const SrcMgr *sm, const Interner *in, const Tok *a,
     y = (unsigned char)tok_text_raw(sm, in, b)[0];
     if (a->kind == TK_PPNUM && (y == '.' || y == '+' || y == '-' || is_idchar(y)))
         return true;
-    if (a->kind == TK_IDENT && a->len == 1 && x == 'L' &&
+    if (a->kind == TK_IDENT &&
         (b->kind == TK_STRING || b->kind == TK_CHAR))
         return true;
     if (x == '.' && b->kind == TK_PPNUM)

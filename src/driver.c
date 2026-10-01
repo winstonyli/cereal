@@ -60,6 +60,7 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     } else if (!strcmp(a, "-std=gnu99")) {
         o->pp.gnu_extensions = true;
         o->pp.gnu_mode = true;
+        o->pp.lex.uliterals = true;
     } else if (!strncmp(a, "-std=", 5)) {
         fatal("only C99 is supported (got '%s')", a);
     } else if (!strcmp(a, "-pedantic") || !strcmp(a, "-Wpedantic")) {

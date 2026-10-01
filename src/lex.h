@@ -9,6 +9,7 @@
 typedef struct LexOptions {
     bool trigraphs;      /* C99 requires them; GCC disables by default */
     bool dollar_idents;  /* accept '$' in identifiers (GNU) */
+    bool uliterals;      /* u'' U'' u"" U"" u8"" (gnu99, C11) */
 } LexOptions;
 
 typedef struct Lexer {

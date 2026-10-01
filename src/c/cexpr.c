@@ -1510,17 +1510,21 @@ static void e_string(Checker *c, uint32_t i)
         size_t len;
         const char *s = ttext(c, c->nodes[i].tok + k, &len);
         int p = lit_str_prefix(s, len);
-        if (p == '8')
-            p = 0;
         if (p && prefix && p != prefix) {
-            cerror(c, ctok_loc(c, c->nodes[i].tok + k),
-                   "unsupported non-standard concatenation of string literals");
+            /* gcc's lexer reports it twice, at the lookahead's line */
+            SrcLoc il = cinput_loc(c, c->nodes[i].tok + np);
+            cerror(c, il, "unsupported non-standard concatenation of string "
+                   "literals");
+            cerror(c, il, "unsupported non-standard concatenation of string "
+                   "literals");
             set_err(c, i);
             return;
         }
         if (p)
             prefix = p;
     }
+    if (prefix == '8')
+        prefix = 0;
     switch (prefix) {
     case 'L': ek = c->tgt->wchar_type; break;
     case 'u': ek = c->tgt->char16_type; break;

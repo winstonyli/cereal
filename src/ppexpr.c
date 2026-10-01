@@ -178,11 +178,14 @@ static int hexval(char c)
 static Val parse_char(EP *p, const Tok *t)
 {
     const char *s = TXT(p, t), *end = s + t->len - 1;
-    bool wide = false;
+    bool wide = false, uns = false;
     intmax_t v = 0;
     int nchars = 0;
-    if (*s == 'L') {
+    int ubits = 32;
+    if (*s == 'L' || *s == 'u' || *s == 'U') {  /* u, U: gnu99/C11 */
         wide = true;
+        uns = *s != 'L';
+        ubits = *s == 'u' ? 16 : 32;
         s++;
     }
     s++; /* opening quote */
@@ -234,7 +237,9 @@ static Val parse_char(EP *p, const Tok *t)
             c = (unsigned char)*s++;
         }
         nchars++;
-        if (wide)
+        if (wide && uns)
+            v = (intmax_t)(ubits == 16 ? (uint16_t)c : (uint32_t)c);
+        else if (wide)
             v = (intmax_t)(int32_t)(uint32_t)c;
         else
             v = nchars == 1 ? (intmax_t)(signed char)(unsigned char)c
@@ -246,7 +251,7 @@ static Val parse_char(EP *p, const Tok *t)
     else if (nchars > 1)
         diag_report(p->pp->diag, DL_WARNING, "", t->loc,
                     "multi-character character constant");
-    return mkval((uintmax_t)v, false);
+    return mkval((uintmax_t)v, uns);
 }
 
 /* ---- grammar -------------------------------------------------------- */
