@@ -107,6 +107,7 @@ typedef struct CCtx {
     uint32_t lav;
     int64_t rtop;            /* the element count the root ended with */
     bool found_mb_unused;
+    char *dwpath;            /* a positional-init warning waiting for the next element */
 } CCtx;
 
 typedef struct CInit {
@@ -1289,14 +1290,42 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
     uint64_t strn = 0;
 
     L->eldes = false;
+    if (x->dwpath && !implicit) {
+        /* gcc reports a positional element of an elided-brace level at the
+         * next element it reads (input_location), with that level's path */
+        Diagnostic *d = cwarn_d(c, DL_WARNING, rloc(c, x, lt), "designated-init",
+                                "positional initialization of field in "
+                                "'struct' declared with 'designated_init' "
+                                "attribute");
+        if (d && *x->dwpath)
+            cnote(c, d, rloc(c, x, lt), "(near initialization for '%s')",
+                  x->dwpath);
+        free(x->dwpath);
+        x->dwpath = NULL;
+    }
     if (is_err(c, type) || v.kind == V_ERR) {
         L->erroneous = true;
         return;
     }
     if (k == LV_REC && !des && ck_(c, L->type) == TY_STRUCT &&
-        (type_record(TT, type_canon(TT, L->type))->flags & RF_DESIGNATED))
-        iwarn(c, x, lt, "designated-init", "positional initialization of "
-              "field in 'struct' declared with 'designated_init' attribute");
+        (type_record(TT, type_canon(TT, L->type))->flags & RF_DESIGNATED)) {
+        char *pp = xstrdup(sb_cstr(&x->path));
+        if (strrchr(pp, '.'))
+            *strrchr(pp, '.') = 0;     /* gcc names the struct, not the field */
+        if (L->implicit) {
+            x->dwpath = pp;
+            pp = NULL;
+        } else {
+            Diagnostic *d = cwarn_d(c, DL_WARNING, rloc(c, x, lt),
+                                    "designated-init", "positional "
+                                    "initialization of field in 'struct' "
+                                    "declared with 'designated_init' attribute");
+            if (d && *pp)
+                cnote(c, d, rloc(c, x, lt),
+                      "(near initialization for '%s')", pp);
+        }
+        free(pp);
+    }
     if (v.kind == V_EXPR && !v.digested && (v.str || v.cl) && is_arr(c, v.type)
         && !(v.str && is_arr(c, type) &&
              type_is_integer(TT, type_base(TT, type_canon(TT, type)))) &&
@@ -2134,6 +2163,7 @@ static void ctx_close(Checker *c, CCtx *x)
         r = n;
     }
     sb_free(&x->path);
+    free(x->dwpath);
     free(x->dl);
     ci->top = x->prev;
     free(x);

@@ -10,151 +10,151 @@ designated_init.c:10:15: error: 'designated_init' attribute is only valid on 'st
 designated_init.c:22:19: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    22 | struct Des d1 = { 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                   ^
-designated_init.c:22:19: note: (near initialization for 'd1.x')
+designated_init.c:22:19: note: (near initialization for 'd1')
    22 | struct Des d1 = { 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                   ^
 designated_init.c:22:22: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    22 | struct Des d1 = { 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                      ^
-designated_init.c:22:22: note: (near initialization for 'd1.y')
+designated_init.c:22:22: note: (near initialization for 'd1')
    22 | struct Des d1 = { 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                      ^
 designated_init.c:24:27: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    24 | struct Des d3 = { .x = 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                           ^
-designated_init.c:24:27: note: (near initialization for 'd3.y')
+designated_init.c:24:27: note: (near initialization for 'd3')
    24 | struct Des d3 = { .x = 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                           ^
 designated_init.c:28:25: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    28 |   return (struct Des) { 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                         ^
-designated_init.c:28:25: note: (near initialization for '(anonymous).x')
+designated_init.c:28:25: note: (near initialization for '(anonymous)')
    28 |   return (struct Des) { 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                         ^
 designated_init.c:28:28: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    28 |   return (struct Des) { 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                            ^
-designated_init.c:28:28: note: (near initialization for '(anonymous).y')
+designated_init.c:28:28: note: (near initialization for '(anonymous)')
    28 |   return (struct Des) { 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                            ^
 designated_init.c:38:33: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    38 |   return (struct Des) { .x = 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                                 ^
-designated_init.c:38:33: note: (near initialization for '(anonymous).y')
+designated_init.c:38:33: note: (near initialization for '(anonymous)')
    38 |   return (struct Des) { .x = 5, 5 }; /* { dg-warning "(positional|near initialization)" } */
       |                                 ^
 designated_init.c:46:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    46 | struct Wrap w1 = { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                    ^
-designated_init.c:46:20: note: (near initialization for 'w1.p')
+designated_init.c:46:20: note: (near initialization for 'w1')
    46 | struct Wrap w1 = { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                    ^
 designated_init.c:46:32: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    46 | struct Wrap w1 = { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                ^
-designated_init.c:46:32: note: (near initialization for 'w1.d.x')
+designated_init.c:46:32: note: (near initialization for 'w1.d')
    46 | struct Wrap w1 = { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                ^
 designated_init.c:46:35: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    46 | struct Wrap w1 = { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                   ^
-designated_init.c:46:35: note: (near initialization for 'w1.d.y')
+designated_init.c:46:35: note: (near initialization for 'w1.d')
    46 | struct Wrap w1 = { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                   ^
 designated_init.c:46:30: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    46 | struct Wrap w1 = { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                              ^
-designated_init.c:46:30: note: (near initialization for 'w1.d')
+designated_init.c:46:30: note: (near initialization for 'w1')
    46 | struct Wrap w1 = { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                              ^
 designated_init.c:47:37: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    47 | struct Wrap w2 = { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                     ^
-designated_init.c:47:37: note: (near initialization for 'w2.d.x')
+designated_init.c:47:37: note: (near initialization for 'w2.d')
    47 | struct Wrap w2 = { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                     ^
 designated_init.c:47:40: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    47 | struct Wrap w2 = { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                        ^
-designated_init.c:47:40: note: (near initialization for 'w2.d.y')
+designated_init.c:47:40: note: (near initialization for 'w2.d')
    47 | struct Wrap w2 = { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                        ^
 designated_init.c:47:35: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    47 | struct Wrap w2 = { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                   ^
-designated_init.c:47:35: note: (near initialization for 'w2.d')
+designated_init.c:47:35: note: (near initialization for 'w2')
    47 | struct Wrap w2 = { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                   ^
 designated_init.c:48:42: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    48 | struct Wrap w3 = { .p = { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                          ^
-designated_init.c:48:42: note: (near initialization for 'w3.d.x')
+designated_init.c:48:42: note: (near initialization for 'w3.d')
    48 | struct Wrap w3 = { .p = { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                          ^
 designated_init.c:48:45: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    48 | struct Wrap w3 = { .p = { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                             ^
-designated_init.c:48:45: note: (near initialization for 'w3.d.y')
+designated_init.c:48:45: note: (near initialization for 'w3.d')
    48 | struct Wrap w3 = { .p = { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                             ^
 designated_init.c:49:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    49 | struct Wrap w4 = { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                    ^
-designated_init.c:49:20: note: (near initialization for 'w4.p')
+designated_init.c:49:20: note: (near initialization for 'w4')
    49 | struct Wrap w4 = { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                    ^
 designated_init.c:49:37: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    49 | struct Wrap w4 = { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                     ^
-designated_init.c:49:37: note: (near initialization for 'w4.d.x')
+designated_init.c:49:37: note: (near initialization for 'w4.d')
    49 | struct Wrap w4 = { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                     ^
 designated_init.c:49:40: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    49 | struct Wrap w4 = { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                        ^
-designated_init.c:49:40: note: (near initialization for 'w4.d.y')
+designated_init.c:49:40: note: (near initialization for 'w4.d')
    49 | struct Wrap w4 = { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                        ^
 designated_init.c:52:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    52 | struct Wrap w6 = { { 0, 1 }, .d.x = 2, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                    ^
-designated_init.c:52:20: note: (near initialization for 'w6.p')
+designated_init.c:52:20: note: (near initialization for 'w6')
    52 | struct Wrap w6 = { { 0, 1 }, .d.x = 2, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                    ^
 designated_init.c:54:42: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    54 | struct Wrap w8 = { .p = { 0, 1 }, .d = { 2, 0 }, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                                          ^
-designated_init.c:54:42: note: (near initialization for 'w8.d.x')
+designated_init.c:54:42: note: (near initialization for 'w8.d')
    54 | struct Wrap w8 = { .p = { 0, 1 }, .d = { 2, 0 }, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                                          ^
 designated_init.c:54:45: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    54 | struct Wrap w8 = { .p = { 0, 1 }, .d = { 2, 0 }, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                                             ^
-designated_init.c:54:45: note: (near initialization for 'w8.d.y')
+designated_init.c:54:45: note: (near initialization for 'w8.d')
    54 | struct Wrap w8 = { .p = { 0, 1 }, .d = { 2, 0 }, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                                             ^
 designated_init.c:59:26: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    59 |   return (struct Wrap) { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                          ^
-designated_init.c:59:26: note: (near initialization for '(anonymous).p')
+designated_init.c:59:26: note: (near initialization for '(anonymous)')
    59 |   return (struct Wrap) { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                          ^
 designated_init.c:59:38: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    59 |   return (struct Wrap) { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                      ^
-designated_init.c:59:38: note: (near initialization for '(anonymous).d.x')
+designated_init.c:59:38: note: (near initialization for '(anonymous).d')
    59 |   return (struct Wrap) { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                      ^
 designated_init.c:59:41: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    59 |   return (struct Wrap) { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                         ^
-designated_init.c:59:41: note: (near initialization for '(anonymous).d.y')
+designated_init.c:59:41: note: (near initialization for '(anonymous).d')
    59 |   return (struct Wrap) { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                         ^
 designated_init.c:59:36: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    59 |   return (struct Wrap) { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                    ^
-designated_init.c:59:36: note: (near initialization for '(anonymous).d')
+designated_init.c:59:36: note: (near initialization for '(anonymous)')
    59 |   return (struct Wrap) { { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                    ^
 designated_init.c:60:2: warning: ISO C does not allow extra ';' outside of a function [-Wpedantic]
@@ -163,78 +163,78 @@ designated_init.c:60:2: warning: ISO C does not allow extra ';' outside of a fun
 designated_init.c:64:43: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    64 |   return (struct Wrap) { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                           ^
-designated_init.c:64:43: note: (near initialization for '(anonymous).d.x')
+designated_init.c:64:43: note: (near initialization for '(anonymous).d')
    64 |   return (struct Wrap) { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                           ^
 designated_init.c:64:46: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    64 |   return (struct Wrap) { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                              ^
-designated_init.c:64:46: note: (near initialization for '(anonymous).d.y')
+designated_init.c:64:46: note: (near initialization for '(anonymous).d')
    64 |   return (struct Wrap) { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                              ^
 designated_init.c:64:41: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    64 |   return (struct Wrap) { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                         ^
-designated_init.c:64:41: note: (near initialization for '(anonymous).d')
+designated_init.c:64:41: note: (near initialization for '(anonymous)')
    64 |   return (struct Wrap) { .p = { 0, 1 }, { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                         ^
 designated_init.c:69:48: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    69 |   return (struct Wrap) { .p = { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                                ^
-designated_init.c:69:48: note: (near initialization for '(anonymous).d.x')
+designated_init.c:69:48: note: (near initialization for '(anonymous).d')
    69 |   return (struct Wrap) { .p = { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                                ^
 designated_init.c:69:51: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    69 |   return (struct Wrap) { .p = { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                                   ^
-designated_init.c:69:51: note: (near initialization for '(anonymous).d.y')
+designated_init.c:69:51: note: (near initialization for '(anonymous).d')
    69 |   return (struct Wrap) { .p = { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                                   ^
 designated_init.c:74:26: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    74 |   return (struct Wrap) { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                          ^
-designated_init.c:74:26: note: (near initialization for '(anonymous).p')
+designated_init.c:74:26: note: (near initialization for '(anonymous)')
    74 |   return (struct Wrap) { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                          ^
 designated_init.c:74:43: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    74 |   return (struct Wrap) { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                           ^
-designated_init.c:74:43: note: (near initialization for '(anonymous).d.x')
+designated_init.c:74:43: note: (near initialization for '(anonymous).d')
    74 |   return (struct Wrap) { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                           ^
 designated_init.c:74:46: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    74 |   return (struct Wrap) { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                              ^
-designated_init.c:74:46: note: (near initialization for '(anonymous).d.y')
+designated_init.c:74:46: note: (near initialization for '(anonymous).d')
    74 |   return (struct Wrap) { { 0, 1 }, .d = { 2, 3} }; /* { dg-warning "(positional|near initialization)" } */
       |                                              ^
 designated_init.c:84:26: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    84 |   return (struct Wrap) { { 0, 1 }, .d.x = 2, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                          ^
-designated_init.c:84:26: note: (near initialization for '(anonymous).p')
+designated_init.c:84:26: note: (near initialization for '(anonymous)')
    84 |   return (struct Wrap) { { 0, 1 }, .d.x = 2, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                          ^
 designated_init.c:94:48: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    94 |   return (struct Wrap) { .p = { 0, 1 }, .d = { 2, 0 }, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                                                ^
-designated_init.c:94:48: note: (near initialization for '(anonymous).d.x')
+designated_init.c:94:48: note: (near initialization for '(anonymous).d')
    94 |   return (struct Wrap) { .p = { 0, 1 }, .d = { 2, 0 }, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                                                ^
 designated_init.c:94:51: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
    94 |   return (struct Wrap) { .p = { 0, 1 }, .d = { 2, 0 }, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                                                   ^
-designated_init.c:94:51: note: (near initialization for '(anonymous).d.y')
+designated_init.c:94:51: note: (near initialization for '(anonymous).d')
    94 |   return (struct Wrap) { .p = { 0, 1 }, .d = { 2, 0 }, .d.y = 3 }; /* { dg-warning "(positional|near initialization)" } */
       |                                                   ^
 designated_init.c:104:5: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
   104 |   { 5, 5 } /* { dg-warning "(positional|near initialization)" } */
       |     ^
-designated_init.c:104:5: note: (near initialization for 'da[1].x')
+designated_init.c:104:5: note: (near initialization for 'da[1]')
   104 |   { 5, 5 } /* { dg-warning "(positional|near initialization)" } */
       |     ^
 designated_init.c:104:8: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
   104 |   { 5, 5 } /* { dg-warning "(positional|near initialization)" } */
       |        ^
-designated_init.c:104:8: note: (near initialization for 'da[1].y')
+designated_init.c:104:8: note: (near initialization for 'da[1]')
   104 |   { 5, 5 } /* { dg-warning "(positional|near initialization)" } */
       |        ^
