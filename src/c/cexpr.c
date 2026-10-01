@@ -2684,6 +2684,158 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
     return !bad;
 }
 
+/* ARG_LOCATION: the expression's location, at the macro use when its first
+ * token comes from an expansion. */
+static SrcLoc arg_loc(Checker *c, uint32_t a)
+{
+    uint32_t t = first_tok(c, a);
+    return c->u->toks[t].exp ? c->u->toks[t].exp : expr_loc(c, a);
+}
+
+/* check_builtin_function_arguments, for the built-ins gcc validates itself:
+ * argument counts and the argument kinds.  False after an error. */
+static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
+                            const char *name)
+{
+    uint32_t all[16], *a = all + 1, n = nkids(c, i, all, 16), k, want = 0;
+    const char *b = name + 10;
+    SrcLoc loc = call_loc(c, fn);
+    bool ovf = false, ovfp = false, fp1 = false, cmp = false;
+    if (strncmp(name, "__builtin_", 10) || n == 0 || n > 16)
+        return true;
+    n--;
+    if (!strcmp(b, "constant_p")) {
+        want = 1;
+    } else if (!strcmp(b, "alloca_with_align")) {
+        want = 2;
+    } else if (!strcmp(b, "alloca_with_align_and_max")) {
+        want = 3;
+    } else if (!strcmp(b, "assume_aligned")) {
+        want = n > 2 ? 3 : 2;
+    } else if (!strcmp(b, "fpclassify")) {
+        want = 6;
+    } else if (!strcmp(b, "va_start")) {
+        if (n == 0) {
+            cerror(c, loc, "too few arguments to function '%s'", name);
+            return false;
+        }
+        return true;
+    } else if (!strcmp(b, "isfinite") || !strcmp(b, "isinf_sign") ||
+               !strcmp(b, "isinf") || !strcmp(b, "isnan") ||
+               !strcmp(b, "isnormal") || !strcmp(b, "signbit")) {
+        want = 1;
+        fp1 = true;
+    } else if (!strcmp(b, "isgreater") || !strcmp(b, "isgreaterequal") ||
+               !strcmp(b, "isless") || !strcmp(b, "islessequal") ||
+               !strcmp(b, "islessgreater") || !strcmp(b, "isunordered")) {
+        want = 2;
+        cmp = true;
+    } else if (!strcmp(b, "add_overflow") || !strcmp(b, "sub_overflow") ||
+               !strcmp(b, "mul_overflow")) {
+        want = 3;
+        ovf = true;
+    } else if (!strcmp(b, "add_overflow_p") || !strcmp(b, "sub_overflow_p") ||
+               !strcmp(b, "mul_overflow_p")) {
+        want = 3;
+        ovfp = true;
+    } else {
+        return true;
+    }
+    if (n != want) {
+        cerror(c, loc, n < want ? "too few arguments to function '%s'"
+                                : "too many arguments to function '%s'", name);
+        return false;
+    }
+    for (k = 0; k < n; k++)
+        if (node_err(c, a[k]))
+            return true;
+    if (!strcmp(b, "alloca_with_align")) {
+        bool ok = c->ck[a[1]] == K_ICE && !(c->ef[a[1]] & EF_OVERFLOW);
+        uint64_t v = c->cv[a[1]];
+        if (ok && (v < 8 || v > 2147483648u || (v & (v - 1))))
+            ok = false;
+        if (!ok) {
+            cerror(c, arg_loc(c, a[1]), "second argument to function '%s' "
+                   "must be a constant integer power of 2 between '8' and "
+                   "'2147483648' bits", name);
+            return false;
+        }
+    } else if (!strcmp(b, "assume_aligned")) {
+        if (n == 3 && !is_int(c, rvt(c, a[2]))) {
+            cerror(c, arg_loc(c, a[2]), "non-integer argument 3 in call to "
+                   "function '%s'", name);
+            return false;
+        }
+    } else if (!strcmp(b, "fpclassify")) {
+        for (k = 0; k < 5; k++)
+            if (c->ck[a[k]] != K_ICE) {
+                cerror(c, arg_loc(c, a[k]), "non-const integer argument %u "
+                       "in call to function '%s'", k + 1, name);
+                return false;
+            }
+        if (!is_flt(c, rvt(c, a[5]))) {
+            cerror(c, arg_loc(c, a[5]), "non-floating-point argument in call "
+                   "to function '%s'", name);
+            return false;
+        }
+    } else if (fp1) {
+        if (!is_flt(c, rvt(c, a[0]))) {
+            cerror(c, arg_loc(c, a[0]), "non-floating-point argument in call "
+                   "to function '%s'", name);
+            return false;
+        }
+    } else if (cmp) {
+        TypeId t0 = rvt(c, a[0]), t1 = rvt(c, a[1]);
+        if (!(is_flt(c, t0) || is_flt(c, t1)) ||
+            !(is_flt(c, t0) || is_int(c, t0)) ||
+            !(is_flt(c, t1) || is_int(c, t1))) {
+            cerror(c, loc, "non-floating-point arguments in call to function "
+                   "'%s'", name);
+            return false;
+        }
+    } else if (ovf || ovfp) {
+        for (k = 0; k < (ovf ? 2u : 3u); k++)
+            if (!is_int(c, rvt(c, a[k]))) {
+                cerror(c, arg_loc(c, a[k]), "argument %u in call to function "
+                       "'%s' does not have integral type", k + 1, name);
+                return false;
+            }
+        if (ovf) {
+            TypeId t = rvt(c, a[2]), e;
+            if (!is_ptr(c, t) || !is_int(c, e = pointee(c, t))) {
+                cerror(c, arg_loc(c, a[2]), "argument 3 in call to function "
+                       "'%s' does not have pointer to integral type", name);
+                return false;
+            }
+            if (tkind(c, e) == TY_ENUM) {
+                cerror(c, arg_loc(c, a[2]), "argument 3 in call to function "
+                       "'%s' has pointer to enumerated type", name);
+                return false;
+            }
+            if (tkind(c, e) == TY_BOOL) {
+                cerror(c, arg_loc(c, a[2]), "argument 3 in call to function "
+                       "'%s' has pointer to boolean type", name);
+                return false;
+            }
+            if (tquals(c, e) & TQ_CONST) {
+                cerror(c, arg_loc(c, a[2]), "argument 3 in call to function "
+                       "'%s' has pointer to 'const' type (%s)", name,
+                       type_q(TT, t));
+                return false;
+            }
+        } else {
+            TypeId t = rvt(c, a[2]);
+            if (tkind(c, t) == TY_ENUM || tkind(c, t) == TY_BOOL) {
+                cerror(c, arg_loc(c, a[2]), "argument 3 in call to function "
+                       "'%s' has %s type", name,
+                       tkind(c, t) == TY_ENUM ? "enumerated" : "boolean");
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static void e_call(Checker *c, uint32_t i)
 {
     uint32_t k[3], n = nkids(c, i, k, 3), f;
@@ -2696,6 +2848,10 @@ static void e_call(Checker *c, uint32_t i)
     if (f != NO_NODE && ntag(c, f) == N_IDENT && f == k[0] &&
         lookup_ord(c, cnode_ident(c, f)) == SYM_NONE) {
         const char *name = cident(c, cnode_ident(c, f));
+        if (!builtin_args_ok(c, i, k[0], name)) {
+            set_err(c, i);
+            return;
+        }
         if (!strcmp(name, "__builtin_constant_p") && n >= 2) {
             c->ty[i] = TYPE_B(INT);
             if (c->ck[k[1]] == K_ICE && !(c->ef[k[1]] & EF_OVERFLOW)) {

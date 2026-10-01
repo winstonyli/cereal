@@ -1,0 +1,51 @@
+builtin_args.c:9:38: error: second argument to function '__builtin_alloca_with_align' must be a constant integer power of 2 between '8' and '2147483648' bits
+    9 |   p = __builtin_alloca_with_align(n, 6);
+      |                                      ^
+builtin_args.c:10:38: error: second argument to function '__builtin_alloca_with_align' must be a constant integer power of 2 between '8' and '2147483648' bits
+   10 |   p = __builtin_alloca_with_align(n, SIZE_MAX);
+      |                                      ^
+builtin_args.c:12:24: error: non-floating-point argument in call to function '__builtin_isnan'
+   12 |   r += __builtin_isnan(0);
+      |                        ^
+builtin_args.c:14:8: error: non-floating-point arguments in call to function '__builtin_isgreater'
+   14 |   r += __builtin_isgreater(0, 0);
+      |        ^
+builtin_args.c:16:8: error: non-floating-point arguments in call to function '__builtin_isgreater'
+   16 |   r += __builtin_isgreater(&x, 0);
+      |        ^
+builtin_args.c:17:35: error: non-const integer argument 3 in call to function '__builtin_fpclassify'
+   17 |   r += __builtin_fpclassify(1, 2, n, 4, 5, x);
+      |                                   ^
+builtin_args.c:18:44: error: non-floating-point argument in call to function '__builtin_fpclassify'
+   18 |   r += __builtin_fpclassify(1, 2, 3, 4, 5, 6);
+      |                                            ^
+builtin_args.c:19:38: error: non-integer argument 3 in call to function '__builtin_assume_aligned'
+   19 |   d = __builtin_assume_aligned(p, n, p);
+      |                                      ^
+builtin_args.c:20:7: error: too many arguments to function '__builtin_assume_aligned'
+   20 |   d = __builtin_assume_aligned(p, n, 1, 2);
+      |       ^
+builtin_args.c:21:34: error: argument 2 in call to function '__builtin_add_overflow' does not have integral type
+   21 |   r += __builtin_add_overflow(n, x, &r);
+      |                                  ^
+builtin_args.c:22:37: error: argument 3 in call to function '__builtin_add_overflow' has pointer to 'const' type ('const int *')
+   22 |   r += __builtin_add_overflow(n, n, cp);
+      |                                     ^
+builtin_args.c:23:37: error: argument 3 in call to function '__builtin_add_overflow' has pointer to boolean type
+   23 |   r += __builtin_add_overflow(n, n, bp);
+      |                                     ^
+builtin_args.c:24:37: error: argument 3 in call to function '__builtin_add_overflow' has pointer to enumerated type
+   24 |   r += __builtin_add_overflow(n, n, ep);
+      |                                     ^
+builtin_args.c:25:39: error: argument 3 in call to function '__builtin_add_overflow_p' has boolean type
+   25 |   r += __builtin_add_overflow_p(n, n, (_Bool)1);
+      |                                       ^
+builtin_args.c:26:39: error: argument 3 in call to function '__builtin_add_overflow_p' does not have integral type
+   26 |   r += __builtin_add_overflow_p(n, n, 1.0);
+      |                                       ^
+builtin_args.c:27:7: error: too few arguments to function '__builtin_constant_p'
+   27 |   if (__builtin_constant_p()) r = 1;
+      |       ^
+builtin_args.c:28:7: error: too many arguments to function '__builtin_constant_p'
+   28 |   if (__builtin_constant_p(1, 2)) r = 2;
+      |       ^
