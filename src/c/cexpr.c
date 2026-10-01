@@ -1974,6 +1974,7 @@ static bool is_const(Checker *c, uint32_t i)
 static bool is_npc(Checker *c, uint32_t n);
 static bool float_to_int(Checker *c, long double f, TypeId t, uint64_t *out);
 static bool rvalue_ok(Checker *c, uint32_t i);
+static TypeId vec_elem(Checker *c, TypeId vt);
 
 /* ---- implicit conversions (gcc's convert_for_assignment) ----------------------------------- */
 
@@ -4029,7 +4030,8 @@ static void incdec(Checker *c, uint32_t i, uint32_t a, bool inc)
               "expression" : "decrement of a boolean expression");
     if (is_complex(c, t))
         ped(c, i, loc, "ISO C does not support '++' and '--' on complex types");
-    else if (!is_ptr(c, t) && !is_int(c, t) && !is_flt(c, t)) {
+    else if (!is_ptr(c, t) && !is_int(c, t) && !is_flt(c, t) &&
+             tkind(c, t) != TY_VECTOR) {
         cerror(c, loc, inc ? "wrong type argument to increment"
                            : "wrong type argument to decrement");
         set_err(c, i);
@@ -4159,6 +4161,12 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
     t = rvt(c, a);
     if (is_void(c, t)) {
         cerror(c, loc, "invalid use of void expression");
+        set_err(c, i);
+        return;
+    }
+    if (tkind(c, t) == TY_VECTOR && op == P_TILDE &&
+        is_flt(c, vec_elem(c, t))) {
+        cerror(c, loc, "wrong type argument to bit-complement");
         set_err(c, i);
         return;
     }
@@ -6833,17 +6841,10 @@ static bool vec_binop(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
                 la = vt;
         } else if (!(shift && va && int_type(c, st) && is_int(c, el))) {
             if (!shift && !need_int && is_int(c, el) && is_flt(c, st)) {
-                SrcLoc fl = first_loc(c, i), ol = cnode_loc(c, i);
-                SrcFile *sf = srcmgr_file_of(c->sm, fl);
-                uint32_t l1 = 0, l2 = 0, cc;
-                /* gcc: the start of the expression, or the operator when it
-                 * is on a later line */
-                if (sf && srcmgr_file_of(c->sm, ol) == sf) {
-                    srcmgr_linecol(sf, fl, &l1, &cc);
-                    srcmgr_linecol(sf, ol, &l2, &cc);
-                }
-                cerror(c, l1 == l2 ? fl : ol, "cannot convert value to a "
-                       "vector");
+                /* error() at gcc's input_location: the parser is past the
+                 * right operand */
+                cerror(c, cdecl_iloc(c, last_tok(c, i) + 1), "cannot convert "
+                       "value to a vector");
                 set_err(c, i);
                 return false;
             }

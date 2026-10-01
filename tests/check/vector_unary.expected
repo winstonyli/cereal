@@ -1,0 +1,75 @@
+vector_unary.c:7:15: error: wrong type argument to unary exclamation mark
+    7 |   -a; +a; ~a; !a; -f; ~f; !f; ++a; a++; --f; f--; ~l;
+      |               ^
+vector_unary.c:7:23: error: wrong type argument to bit-complement
+    7 |   -a; +a; ~a; !a; -f; ~f; !f; ++a; a++; --f; f--; ~l;
+      |                       ^
+vector_unary.c:7:27: error: wrong type argument to unary exclamation mark
+    7 |   -a; +a; ~a; !a; -f; ~f; !f; ++a; a++; --f; f--; ~l;
+      |                           ^
+vector_unary.c:8:3: error: wrong type argument to bit-complement
+    8 |   ~x; -s; +s; !s; ~s;
+      |   ^
+vector_unary.c:8:7: error: wrong type argument to unary minus
+    8 |   ~x; -s; +s; !s; ~s;
+      |       ^
+vector_unary.c:8:11: error: wrong type argument to unary plus
+    8 |   ~x; -s; +s; !s; ~s;
+      |           ^
+vector_unary.c:8:15: error: wrong type argument to unary exclamation mark
+    8 |   ~x; -s; +s; !s; ~s;
+      |               ^
+vector_unary.c:8:19: error: wrong type argument to bit-complement
+    8 |   ~x; -s; +s; !s; ~s;
+      |                   ^
+vector_unary.c:9:5: error: used vector type where scalar is required
+    9 |   a ? a : b;
+      |     ^
+vector_unary.c:10:5: error: used vector type where scalar is required
+   10 |   a ? 1 : 2;
+      |     ^
+vector_unary.c:12:9: error: type mismatch in conditional expression
+   12 |   n ? a : 1;
+      |         ^
+vector_unary.c:13:9: error: type mismatch in conditional expression
+   13 |   n ? a : f;
+      |         ^
+vector_unary.c:15:5: error: used vector type where scalar is required
+   15 |   a ? f : g;
+      |     ^
+vector_unary.c:16:5: error: used vector type where scalar is required
+   16 |   a ? a : f;
+      |     ^
+vector_unary.c:17:5: error: used vector type where scalar is required
+   17 |   a ? a : l;
+      |     ^
+vector_unary.c:18:5: error: used vector type where scalar is required
+   18 |   a ? 1 : a;
+      |     ^
+vector_unary.c:19:5: error: used vector type where scalar is required
+   19 |   a ? x : f;
+      |     ^
+vector_unary.c:20:5: error: used vector type where scalar is required
+   20 |   f ? a : b;
+      |     ^
+vector_unary.c:21:5: error: used struct type value where scalar is required
+   21 |   s ? a : b;
+      |     ^
+vector_unary.c:22:9: error: type mismatch in conditional expression
+   22 |   n ? a : s;
+      |         ^
+vector_unary.c:23:5: error: used vector type where scalar is required
+   23 |   a ? s : s;
+      |     ^
+vector_unary.c:24:5: error: used vector type where scalar is required
+   24 |   a ? (void)0 : (void)0;
+      |     ^
+vector_unary.c:25:10: error: used vector type where scalar is required
+   25 |   a == b ? a : b;
+      |          ^
+vector_unary.c:26:5: error: used vector type where scalar is required
+   26 |   a ? 1 : 2.0;
+      |     ^
+vector_unary.c:27:5: error: used vector type where scalar is required
+   27 |   a ? n : n;
+      |     ^

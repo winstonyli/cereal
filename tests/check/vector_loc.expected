@@ -1,0 +1,63 @@
+vector_loc.c:8:3: error: cannot convert value to a vector
+    8 |   ADD(a, x);
+      |   ^
+vector_loc.c:9:3: error: cannot convert value to a vector
+    9 |   ADD(x, a);
+      |   ^
+vector_loc.c:10:3: error: cannot convert value to a vector
+   10 |   ID(a + x);
+      |   ^
+vector_loc.c:11:3: error: cannot convert value to a vector
+   11 |   ID(a) + x;
+      |   ^
+vector_loc.c:12:3: error: cannot convert value to a vector
+   12 |   TWO;
+      |   ^
+vector_loc.c:13:3: error: cannot convert value to a vector
+   13 |   a + ID(x);
+      |   ^
+vector_loc.c:14:3: error: cannot convert value to a vector
+   14 |   (a + ID(x));
+      |   ^
+vector_loc.c:15:3: error: cannot convert value to a vector
+   15 |   ID(ID(a) + x);
+      |   ^
+vector_loc.c:16:3: error: cannot convert value to a vector
+   16 |   ADD(a,
+      |   ^
+vector_loc.c:23:3: error: cannot convert value to a vector
+   23 |   r = a + x;
+      |   ^
+vector_loc.c:24:3: error: cannot convert value to a vector
+   24 |   r = (a + x);
+      |   ^
+vector_loc.c:25:3: error: cannot convert value to a vector
+   25 |   r = 1 + (a + x);
+      |   ^
+vector_loc.c:26:3: error: cannot convert value to a vector
+   26 |   r = ((a) + x);
+      |   ^
+vector_loc.c:27:3: error: cannot convert value to a vector
+   27 |   r = (a) + x;
+      |   ^
+vector_loc.c:28:3: error: cannot convert value to a vector
+   28 |   r = ID(a) + x;
+      |   ^
+vector_loc.c:29:3: error: cannot convert value to a vector
+   29 |   r = a + ID(x);
+      |   ^
+vector_loc.c:30:3: error: cannot convert value to a vector
+   30 |   r = (a + ID(x));
+      |   ^
+vector_loc.c:31:3: error: cannot convert value to a vector
+   31 |   r = 1 + (a + ID(x));
+      |   ^
+vector_loc.c:32:3: error: cannot convert value to a vector
+   32 |   r = 1 + ID(a + x);
+      |   ^
+vector_loc.c:33:3: error: cannot convert value to a vector
+   33 |   r = ID(1) + (a + x);
+      |   ^
+vector_loc.c:34:3: error: cannot convert value to a vector
+   34 |   r = ID(1) + (ID(a) + x);
+      |   ^
