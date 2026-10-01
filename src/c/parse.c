@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "c/ckw.h"
+#include "c/fuzzy.h"
 #include "c/lit.h"
 #include "c/target.h"
 
@@ -305,6 +306,7 @@ static void set_aux(Parser *p, uint32_t n)
 static void open_scope(Parser *p, uint32_t tok, unsigned flags)
 {
     scope_push(&p->scope);
+    scope_push(&p->tags);
     emit(p, N_SCOPE, tok, nmark(p), flags);
 }
 
@@ -312,6 +314,7 @@ static void close_scope(Parser *p, SymSaveVec *save)
 {
     leaf(p, N_SCOPE_END, p->pos ? p->pos - 1 : 0);
     scope_pop(&p->scope, save);
+    scope_pop(&p->tags, NULL);
 }
 
 /* ---- recovery ------------------------------------------------------------- */
@@ -450,6 +453,67 @@ static bool unknown_type(Parser *p, uint32_t i, Lookahead la)
         return true;
     n = tok_at(p, i + 1);
     return is_name(p, &n) || is_p(&n, P_STAR);
+}
+
+/* lookup_name_fuzzy (FUZZY_LOOKUP_TYPENAME): a visible typedef name or a
+ * type keyword close to the identifier. */
+static const char *fuzzy_typename(Parser *p, const char *goal)
+{
+    static const char *const kws[] = {
+        "_Atomic", "_Bool", "_Complex", "_Decimal128", "_Decimal32",
+        "_Decimal64", "_Float128", "_Float128x", "_Float16", "_Float32",
+        "_Float32x", "_Float64", "_Float64x", "__int128", "char", "const",
+        "double", "enum", "float", "int", "long", "restrict", "short",
+        "signed", "struct", "typeof", "union", "unsigned", "void", "volatile"
+    };
+    Best b;
+    size_t k;
+    bool res_ok = goal[0] == '_';
+    best_init(&b, goal, &p->fuzzy_work);
+    for (k = p->scope.log.len; k-- > 0;) {
+        const SymEnt *e = &p->scope.log.data[k];
+        const Ident *id;
+        if (e->kind != SYM_TYPEDEF || p->scope.top[e->ident] == 0 ||
+            p->scope.log.data[p->scope.top[e->ident] - 1].kind != SYM_TYPEDEF)
+            continue;
+        if (p->fuzzy_work > SC_BUDGET)
+            return NULL;
+        id = ident_by_id(p->in, e->ident);
+        if (!res_ok && reserved_name(id->str))
+            continue;
+        best_consider_n(&b, id->str, id->len);
+    }
+    for (k = 0; k < sizeof kws / sizeof *kws; k++)
+        best_consider(&b, kws[k]);
+    return best_get(&b);
+}
+
+/* c_parser_declaration_or_fndef's unknown type name error: a tag of that
+ * name wants its keyword, else a close spelling is suggested. */
+static void unknown_type_error(Parser *p, const PTok *t)
+{
+    static const char *const kw[] = {"struct", "union", "enum"};
+    SymKind k = t->t.aux < p->tags.ntop ? scope_lookup(&p->tags, t->t.aux)
+                                        : SYM_NONE;
+    const char *name = tok_text_raw(p->sm, p->in, &t->t), *sug;
+    int len = (int)t->t.len;
+    if (k >= SYM_TAG_STRUCT) {
+        perr(p, ci(p), "unknown type name '%.*s'; use '%s' keyword to refer "
+             "to the type", len, name, kw[k - SYM_TAG_STRUCT]);
+        return;
+    }
+    {
+        char buf[SC_MAXLEN + 1];
+        size_t n = t->t.len < SC_MAXLEN ? t->t.len : SC_MAXLEN;
+        memcpy(buf, name, n);
+        buf[n] = 0;
+        sug = fuzzy_typename(p, buf);
+    }
+    if (sug)
+        perr(p, ci(p), "unknown type name '%.*s'; did you mean '%s'?", len,
+             name, sug);
+    else
+        perr(p, ci(p), "unknown type name '%.*s'", len, name);
 }
 
 /* Can the token at ci start a declaration (block scope)? */
@@ -778,8 +842,7 @@ static void specs(Parser *p, Specs *s, Lookahead la)
             }
             if (!s->type && unknown_type(p, ci(p), la)) {
                 /* as gcc: diagnosed, then parsed as if it were a type */
-                perr(p, ci(p), "unknown type name '%.*s'", (int)t.t.len,
-                     tok_text_raw(p->sm, p->in, &t.t));
+                unknown_type_error(p, &t);
                 leaf(p, N_TYPEDEF_NAME, adv(p));
                 s->type = true;
                 break;
@@ -859,6 +922,14 @@ static void static_assert_decl(Parser *p)
     emit(p, N_STATIC_ASSERT, kw, start, 0);
 }
 
+/* A tag is declared where first seen (a use declares it too); a visible
+ * one of any kind is left alone. */
+static void tag_declare(Parser *p, uint32_t ident, SymKind kind)
+{
+    if (scope_lookup(&p->tags, ident) == SYM_NONE)
+        scope_declare(&p->tags, ident, kind);
+}
+
 static void struct_spec(Parser *p)
 {
     uint32_t start = nmark(p), kw = adv(p);
@@ -866,8 +937,11 @@ static void struct_spec(Parser *p)
     PTok t;
     attributes(p);
     t = ct(p);
-    if (is_name(p, &t))
+    if (is_name(p, &t)) {
+        tag_declare(p, t.t.aux, ckw_of(p, &p->toks.data[kw]) == CK_UNION
+                                    ? SYM_TAG_UNION : SYM_TAG_STRUCT);
         leaf(p, N_TAG, adv(p));
+    }
     attributes(p);
     if (at(p, P_LBRACE)) {
         leaf(p, N_OPEN, adv(p));
@@ -901,8 +975,10 @@ static void enum_spec(Parser *p)
     PTok t;
     attributes(p);
     t = ct(p);
-    if (is_name(p, &t))
+    if (is_name(p, &t)) {
+        tag_declare(p, t.t.aux, SYM_TAG_ENUM);
         leaf(p, N_TAG, adv(p));
+    }
     attributes(p);
     {   /* enum e : type (C2X underlying type) */
         PTok n1 = pk(p, 1);
@@ -2039,6 +2115,7 @@ void parser_init(Parser *p, SrcMgr *sm, Interner *in, DiagEngine *diag,
     p->src = src;
     p->src_ctx = ctx;
     scope_init(&p->scope);
+    scope_init(&p->tags);
     for (i = 0; builtin_types[i]; i++)
         scope_declare(&p->scope, intern_cstr(in, builtin_types[i])->id,
                       SYM_TYPEDEF);
@@ -2051,6 +2128,7 @@ void parser_free(Parser *p)
     vec_free(&p->saved);
     vec_free(&p->open_braces);
     scope_free(&p->scope);
+    scope_free(&p->tags);
 }
 
 bool parser_next(Parser *p, ParseUnit *u)

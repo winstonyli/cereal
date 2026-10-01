@@ -11,7 +11,10 @@
 
 #include "common.h"
 
-typedef enum { SYM_NONE, SYM_ORDINARY, SYM_TYPEDEF } SymKind;
+typedef enum {
+    SYM_NONE, SYM_ORDINARY, SYM_TYPEDEF,
+    SYM_TAG_STRUCT, SYM_TAG_UNION, SYM_TAG_ENUM  /* in the parser's tag scope */
+} SymKind;
 
 typedef struct SymEnt {
     uint32_t ident;

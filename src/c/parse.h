@@ -41,6 +41,8 @@ typedef struct Parser {
     uint32_t unit_end;          /* tokens of the unit last returned */
     VEC(Node) nodes;
     Scope scope;
+    Scope tags;                 /* struct/union/enum tags (SYM_TAG_*) */
+    uint64_t fuzzy_work;        /* spelling-suggestion effort spent */
     SymSaveVec saved;           /* parameters of function declarators */
     VEC(uint32_t) open_braces;  /* '{' of the compound statements open */
     int fn_depth;
