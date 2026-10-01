@@ -1,0 +1,87 @@
+vector_binop.c:16:3: error: cannot convert value to a vector
+   16 |   a + 1.0;                       /* cannot convert */
+      |   ^
+vector_binop.c:17:5: error: invalid operands to binary % (have 'i4' {aka '__vector(4) int'} and 'double')
+   17 |   a % 1.5;                       /* invalid operands, real scalar */
+      |     ^
+vector_binop.c:18:5: error: conversion of scalar 'int' to vector 's8' {aka '__vector(8) short int'} involves truncation
+   18 |   s + 65535;                     /* truncation (constant out of range) */
+      |     ^
+vector_binop.c:19:5: error: conversion of scalar 'int' to vector 's8' {aka '__vector(8) short int'} involves truncation
+   19 |   s + n;                         /* truncation (non-constant) */
+      |     ^
+vector_binop.c:20:5: error: conversion of scalar 'double' to vector 'f4' {aka '__vector(4) float'} involves truncation
+   20 |   f + 1.1;                       /* truncation (inexact) */
+      |     ^
+vector_binop.c:21:5: error: conversion of scalar 'int' to vector 'f4' {aka '__vector(4) float'} involves truncation
+   21 |   f + n;                         /* int does not fit a float lane */
+      |     ^
+vector_binop.c:22:5: error: conversion of scalar 'long long int' to vector 'd2' {aka '__vector(2) double'} involves truncation
+   22 |   d + ll;
+      |     ^
+vector_binop.c:23:5: error: conversion of scalar 'long long int' to vector 'i4' {aka '__vector(4) int'} involves truncation
+   23 |   a + ll;
+      |     ^
+vector_binop.c:24:6: error: conversion of scalar 'long long int' to vector 'i4' {aka '__vector(4) int'} involves truncation
+   24 |   ll << a;                       /* a scalar shifted by a vector converts */
+      |      ^
+vector_binop.c:25:5: error: invalid operands to binary + (have 'i4' {aka '__vector(4) int'} and 'f4' {aka '__vector(4) float'})
+   25 |   a + f;                         /* different element types */
+      |     ^
+vector_binop.c:26:5: error: invalid operands to binary + (have 'i4' {aka '__vector(4) int'} and 's8' {aka '__vector(8) short int'})
+   26 |   a + s;
+      |     ^
+vector_binop.c:27:5: error: invalid operands to binary % (have 'f4' {aka '__vector(4) float'} and 'f4' {aka '__vector(4) float'})
+   27 |   f % f; f & n; d | d; f << 1;   /* integer-only operators */
+      |     ^
+vector_binop.c:27:12: error: invalid operands to binary & (have 'f4' {aka '__vector(4) float'} and 'int')
+   27 |   f % f; f & n; d | d; f << 1;   /* integer-only operators */
+      |            ^
+vector_binop.c:27:19: error: invalid operands to binary | (have 'd2' {aka '__vector(2) double'} and 'd2' {aka '__vector(2) double'})
+   27 |   f % f; f & n; d | d; f << 1;   /* integer-only operators */
+      |                   ^
+vector_binop.c:27:26: error: invalid operands to binary << (have 'f4' {aka '__vector(4) float'} and 'int')
+   27 |   f % f; f & n; d | d; f << 1;   /* integer-only operators */
+      |                          ^
+vector_binop.c:28:5: error: invalid operands to binary + (have 'i4' {aka '__vector(4) int'} and 'enum E')
+   28 |   a + e; a + (_Bool)1; a + st; a + &n;
+      |     ^
+vector_binop.c:28:12: error: invalid operands to binary + (have 'i4' {aka '__vector(4) int'} and '_Bool')
+   28 |   a + e; a + (_Bool)1; a + st; a + &n;
+      |            ^
+vector_binop.c:28:26: error: invalid operands to binary + (have 'i4' {aka '__vector(4) int'} and 'struct S')
+   28 |   a + e; a + (_Bool)1; a + st; a + &n;
+      |                          ^
+vector_binop.c:28:34: error: invalid operands to binary + (have 'i4' {aka '__vector(4) int'} and 'int *')
+   28 |   a + e; a + (_Bool)1; a + st; a + &n;
+      |                                  ^
+vector_binop.c:29:5: error: comparing vectors with different element types
+   29 |   a == f; a == s; a == dd; s == n;
+      |     ^
+vector_binop.c:29:13: error: comparing vectors with different element types
+   29 |   a == f; a == s; a == dd; s == n;
+      |             ^
+vector_binop.c:29:21: error: invalid operands to binary == (have 'i4' {aka '__vector(4) int'} and 'double')
+   29 |   a == f; a == s; a == dd; s == n;
+      |                     ^
+vector_binop.c:29:30: error: conversion of scalar 'int' to vector 's8' {aka '__vector(8) short int'} involves truncation
+   29 |   a == f; a == s; a == dd; s == n;
+      |                              ^
+vector_binop.c:30:3: error: used vector type where scalar is required
+   30 |   a && n; n && a; a || a; n || st; st && n;
+      |   ^
+vector_binop.c:30:13: error: invalid operands to binary && (have 'int' and 'i4' {aka '__vector(4) int'})
+   30 |   a && n; n && a; a || a; n || st; st && n;
+      |             ^
+vector_binop.c:30:19: error: used vector type where scalar is required
+   30 |   a && n; n && a; a || a; n || st; st && n;
+      |                   ^
+vector_binop.c:30:29: error: invalid operands to binary || (have 'int' and 'struct S')
+   30 |   a && n; n && a; a || a; n || st; st && n;
+      |                             ^
+vector_binop.c:30:36: error: used struct type value where scalar is required
+   30 |   a && n; n && a; a || a; n || st; st && n;
+      |                                    ^
+vector_binop.c:31:7: error: used vector type where scalar is required
+   31 |   if (a) ;
+      |       ^

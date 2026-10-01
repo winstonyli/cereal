@@ -5086,12 +5086,19 @@ static bool binop_operand(Checker *c, uint32_t a)
     return rvalue_ok(c, a);
 }
 
+static void vec_invalid(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
+                        TypeId la, TypeId lb);
+
 static bool truth_ok_at(Checker *c, uint32_t a, SrcLoc loc)
 {
     TypeId t = rvt(c, a);
     if (is_record(c, t)) {
         cerror(c, loc, "used %s type value where scalar is "
                "required", tkind(c, t) == TY_UNION ? "union" : "struct");
+        return false;
+    }
+    if (tkind(c, t) == TY_VECTOR) {
+        cerror(c, loc, "used vector type where scalar is required");
         return false;
     }
     return true;
@@ -5152,8 +5159,14 @@ static void e_logical(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
 {
     bool andand = op == P_ANDAND, ok;
     int ta, tb, r = -1;
+    /* gcc converts the left operand when it sees the operator and stops at an
+     * error; a right operand of aggregate type is just an invalid operand */
     ok = truth_ok(c, a);
-    ok = truth_ok(c, b) && ok;
+    if (ok && (is_record(c, rvt(c, b)) || tkind(c, rvt(c, b)) == TY_VECTOR)) {
+        vec_invalid(c, i, a, b, op, TYPE_B(INT), 0);   /* a is already an int */
+        return;
+    }
+    ok = ok && truth_ok(c, b);
     if (!ok) {
         set_err(c, i);
         return;
@@ -6277,6 +6290,13 @@ static bool compare_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b,
 }
 
 
+static TypeId vec_elem(Checker *c, TypeId vt);
+static unsigned vec_esize(Checker *c, TypeId el);
+static int vec_scalar(Checker *c, uint32_t i, uint32_t sn, TypeId st, TypeId vt,
+                      bool strict_int);
+static void vec_invalid(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
+                        TypeId la, TypeId lb);
+
 static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
 {
     SrcLoc loc = cnode_loc(c, i);
@@ -6290,6 +6310,33 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         TypeId vt = tkind(c, ta) == TY_VECTOR ? ta : tb, el, rt;
         bool ok;
         uint64_t esz;
+        if (tkind(c, ta) == TY_VECTOR && tkind(c, tb) == TY_VECTOR) {
+            TypeId e1 = vec_elem(c, ta), e2 = vec_elem(c, tb);
+            if (vec_esize(c, e1) != vec_esize(c, e2) ||
+                is_int(c, e1) != is_int(c, e2)) {
+                cerror(c, loc, "comparing vectors with different element "
+                       "types");
+                set_err(c, i);
+                return;
+            }
+            if (type_ent(TT, type_canon(TT, ta))->n !=
+                type_ent(TT, type_canon(TT, tb))->n) {
+                cerror(c, loc, "comparing vectors with different number of "
+                       "elements");
+                set_err(c, i);
+                return;
+            }
+        } else {
+            bool lv = tkind(c, ta) == TY_VECTOR;
+            int r = vec_scalar(c, i, lv ? b : a,
+                               unqual(c, rvt(c, lv ? b : a)), vt, false);
+            if (r < 0)
+                return;
+            if (!r) {
+                vec_invalid(c, i, a, b, op, 0, 0);
+                return;
+            }
+        }
         vt = type_canon(TT, vt);
         el = type_base(TT, vt);
         esz = type_size(TT, el, &ok);
@@ -6477,6 +6524,161 @@ static unsigned min_prec_signed(uint64_t v)
     return n + 1;
 }
 
+/* ---- vector operands (c-typeck.cc build_binary_op, c-common.cc scalar_to_vector) ---- */
+
+static TypeId vec_elem(Checker *c, TypeId vt)
+{
+    return type_base(TT, type_canon(TT, vt));
+}
+
+static unsigned vec_esize(Checker *c, TypeId el)
+{
+    bool ok;
+    return (unsigned)type_size(TT, el, &ok);
+}
+
+/* gcc's INTEGER_TYPE: no _Bool, no enum. */
+static bool int_type(Checker *c, TypeId t)
+{
+    TypeKind k = tkind(c, t);
+    return is_int(c, t) && k != TY_BOOL && k != TY_ENUM;
+}
+
+/* unsafe_conversion_p of scalar operand s (type st) to vector element el. */
+static bool vec_unsafe(Checker *c, uint32_t s, TypeId st, TypeId el)
+{
+    unsigned esz = vec_esize(c, el);
+    long double f;
+    if (is_int(c, el)) {
+        unsigned p = int_bits(c, el), sp = int_bits(c, st);
+        if (p >= sp)
+            return false;
+        if (has_ival(c, s)) {
+            bool neg = ival_neg(c, st, c->cv[s]);
+            int64_t v = (int64_t)c->cv[s];
+            if (!neg && p < 64 && c->cv[s] >> (p - (is_signed(c, el) ? 1 : 0)))
+                return true;
+            if (neg && p < 64 && v < -((int64_t)1 << (p - 1)))
+                return true;
+            return false;
+        }
+        return true;
+    }
+    if (fval(c, s, &f)) {
+        if (f != f)
+            return false;
+        if (esz == 4)
+            return (long double)(float)f != f;
+        if (esz == 8)
+            return (long double)(double)f != f;
+        return false;
+    }
+    if (is_int(c, st)) {
+        unsigned mant = esz == 4 ? 24 : esz == 8 ? 53 : 64;
+        return int_bits(c, st) > mant;
+    }
+    return vec_esize(c, st) > esz;
+}
+
+/* scalar_to_vector: operand sn (type st) of a binary operator with vector
+ * type vt is converted to vt's element type.  1: converted, 0: not a scalar
+ * it converts, -1: an error was reported. */
+static int vec_scalar(Checker *c, uint32_t i, uint32_t sn, TypeId st, TypeId vt,
+                      bool strict_int)
+{
+    TypeId el = vec_elem(c, vt);
+    bool isc = int_type(c, st), fsc = is_flt(c, st);
+    if (strict_int ? !isc : (!isc && !fsc))
+        return 0;
+    if (is_int(c, el) && fsc)
+        return 0;
+    if (vec_unsafe(c, sn, st, el)) {
+        cerror(c, cnode_loc(c, i), "conversion of scalar %s to vector %s "
+               "involves truncation", type_q(TT, st), type_q(TT, vt));
+        set_err(c, i);
+        return -1;
+    }
+    return 1;
+}
+
+/* "invalid operands": the scalar keeps its own type here, not the promoted
+ * one; la/lb override an operand's type once it was converted. */
+static void vec_invalid(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
+                        TypeId la, TypeId lb)
+{
+    cerror(c, cnode_loc(c, i), "invalid operands to binary %s (have %s and %s)",
+           punct_spelling[op], type_q(TT, la ? la : unqual(c, rvt(c, a))),
+           type_q(TT, lb ? lb : unqual(c, rvt(c, b))));
+    set_err(c, i);
+}
+
+/* gcc's rules for a binary operator with a vector operand: both vectors of
+ * the same shape, or a vector and a scalar converted to the element type.
+ * False (after an error) when they do not apply. */
+static bool vec_binop(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
+                      bool shift)
+{
+    TypeId ta = promoted(c, a), tb = promoted(c, b);
+    bool va = tkind(c, ta) == TY_VECTOR, vb = tkind(c, tb) == TY_VECTOR;
+    TypeId vt = va ? ta : tb, el = vec_elem(c, vt), la = ta, lb = tb;
+    bool need_int = shift || op == P_PERCENT || op == P_AMP || op == P_PIPE ||
+                    op == P_CARET;
+    bool ok = true;
+    /* & | ^ and shifts check the element type before converting a scalar; %
+     * converts first */
+    if ((shift || op == P_AMP || op == P_PIPE || op == P_CARET) &&
+        !is_int(c, el))
+        ok = false;
+    else if (va && vb) {
+        TypeId e2 = vec_elem(c, tb);
+        ok = type_ent(TT, type_canon(TT, ta))->n ==
+                 type_ent(TT, type_canon(TT, tb))->n &&
+             vec_esize(c, el) == vec_esize(c, e2) &&
+             ((is_int(c, el) && is_int(c, e2)) ||
+              (is_flt(c, el) && is_flt(c, e2)));
+    } else {
+        uint32_t sn = va ? b : a;
+        TypeId st = unqual(c, rvt(c, sn));
+        int r = 0;
+        if (!shift || !va)    /* a vector shifted by a scalar converts nothing */
+            r = vec_scalar(c, i, sn, st, vt, shift);
+        if (r < 0)
+            return false;
+        if (r > 0) {
+            if (va)
+                lb = vt;
+            else
+                la = vt;
+        } else if (!(shift && va && int_type(c, st) && is_int(c, el))) {
+            if (!shift && !need_int && is_int(c, el) && is_flt(c, st)) {
+                SrcLoc fl = first_loc(c, i), ol = cnode_loc(c, i);
+                SrcFile *sf = srcmgr_file_of(c->sm, fl);
+                uint32_t l1 = 0, l2 = 0, cc;
+                /* gcc: the start of the expression, or the operator when it
+                 * is on a later line */
+                if (sf && srcmgr_file_of(c->sm, ol) == sf) {
+                    srcmgr_linecol(sf, fl, &l1, &cc);
+                    srcmgr_linecol(sf, ol, &l2, &cc);
+                }
+                cerror(c, l1 == l2 ? fl : ol, "cannot convert value to a "
+                       "vector");
+                set_err(c, i);
+                return false;
+            }
+            ok = false;
+        }
+    }
+    if (ok && need_int && !is_int(c, el))
+        ok = false;
+    if (!ok) {
+        vec_invalid(c, i, a, b, op, la == ta ? 0 : la, lb == tb ? 0 : lb);
+        return false;
+    }
+    c->ty[i] = vt;
+    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_SIDE;
+    return true;
+}
+
 static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
 {
     SrcLoc loc = cnode_loc(c, i);
@@ -6484,11 +6686,11 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     bool left = op == P_SHL, int_const = true, cnt_ok = false;
     unsigned prec;
     const char *dir = left ? "left" : "right";
+    if (tkind(c, ta) == TY_VECTOR || tkind(c, tb) == TY_VECTOR) {
+        vec_binop(c, i, a, b, op, true);
+        return;
+    }
     if (!is_int(c, ta) || !is_int(c, tb)) {
-        if (tkind(c, ta) == TY_VECTOR) {
-            c->ty[i] = ta;
-            return;
-        }
         invalid_operands(c, i, a, b, op);
         return;
     }
@@ -6643,7 +6845,7 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     bool zero_div = false;
     long double fa, fb;
     if (tkind(c, ta) == TY_VECTOR || tkind(c, tb) == TY_VECTOR) {
-        c->ty[i] = tkind(c, ta) == TY_VECTOR ? ta : tb;
+        vec_binop(c, i, a, b, op, false);
         return;
     }
     if (op == P_PLUS) {
