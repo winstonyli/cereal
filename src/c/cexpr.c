@@ -4084,7 +4084,7 @@ static void e_addr_label(Checker *c, uint32_t i)
         c->ef[i] = EF_NPC;
         return;
     }
-    ped(c, i, ctok_loc(c, tok > 0 ? tok - 1 : tok), "taking the address of a "
+    ped(c, i, cinput_loc(c, tok + 1), "taking the address of a "
                                                     "label is non-standard");
     c->ty[i] = type_ptr(TT, TYPE_B(VOID));
     c->ck[i] = K_ADDR;

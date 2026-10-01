@@ -2055,7 +2055,9 @@ void cinit_declared(Checker *c, uint32_t declared)
         return;
     if (c->cb[declared]) {
         s = csym(c, c->cb[declared] - 1);
-        if ((c->cv[declared] & 1) && !(s->flags & CSF_AUTO_TYPE)) {
+        if ((c->cv[declared] & 2) && !(s->flags & CSF_AUTO_TYPE))
+            type = s->ty;   /* incomplete struct: digested, all excess */
+        else if ((c->cv[declared] & 1) && !(s->flags & CSF_AUTO_TYPE)) {
             type = s->ty;
             reqc = (s->flags & CSF_TREE_STATIC) != 0;
         }

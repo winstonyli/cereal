@@ -3201,7 +3201,7 @@ static void declared_visit(Checker *c, uint32_t i)
     uint32_t idecl = c->par[i], decl, sn, top, name_tok, end, ltok, ref;
     int si;
     Spec sp;
-    bool initialized, kr, file;
+    bool initialized, kr, file, incomp_init = false;
     GDecl g;
     CSym s;
     Attrs a;
@@ -3296,6 +3296,7 @@ static void declared_visit(Checker *c, uint32_t i)
                 cerror(c, il, "variable '%s' has initializer but incomplete "
                        "type", cident(c, g.name));
                 initialized = false;
+                incomp_init = true;   /* gcc still digests the initializer */
             }
             break;
         }
@@ -3331,7 +3332,7 @@ static void declared_visit(Checker *c, uint32_t i)
         c->ty[i] = t->ty;
     }
     c->cb[i] = ref + 1;
-    c->cv[i] = initialized ? 1 : 0;
+    c->cv[i] = initialized ? 1 : incomp_init ? 2 : 0;
     if (g.what == GD_FUNC)
         cexpr_record_params(c, i, ref, false);
     if (g.what == GD_VAR || g.what == GD_FUNC)
