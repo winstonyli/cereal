@@ -80,6 +80,18 @@ layouts, gcc rules ported, walk design).
    `__attribute__((x))` ignored/conflict/mismatch warnings (noinline, used,
    weak ... in attr-invalid.c), and `sizeof ([[]] int)` should be a syntax
    error.
+   Then: `[[` is not a type-name start after `(` (sizeof/cast); an erroneous
+   primary silences its postfix tail and the closing `)` (Parser.hush/hushed,
+   gcc's parser->error); unknown `[[x(...)]]` arguments are skipped as
+   balanced tokens; syntax errors are reported at the token's spelling
+   location (macro body tokens at the definition, spell_loc): exact 8986 of
+   10064, identical headers 448/940, tests 527, corpus 0/0.  A global "no
+   error while err_live" rule was tried and is worse (8821): gcc's
+   parser->error is reset at more places than sync_stmt/sync_top.
+   Attribute semantic warnings (wrong-entity std attributes, GNU conflict/
+   mode/argument checks, ~100 files) are mostly tests run with -std=c2x or
+   per-attribute handlers; par.py runs everything at -std=c99, so these are
+   low value until the harness honours each test's dg-options.
    Not done: did-you-mean for macro names (42 gcc.dg cases; needs the
    macro table at the token's version in the checker, with read-set
    consequences for P3), "expected ... at end of input" location (gcc
