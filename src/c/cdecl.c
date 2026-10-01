@@ -3164,6 +3164,8 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
                     cbind(c, NS_ORD, name, visref);
                     return visref;
                 }
+                if (x.kind == CS_FUNC && !e)
+                    cexpr_builtin_decl(c, &x);
                 ref = csym_new(c, global, &x);
                 c->ext[name] = (ref & ~SYM_LOCAL) + 1;
                 if (ref & SYM_LOCAL)

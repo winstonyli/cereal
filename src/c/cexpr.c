@@ -2273,15 +2273,18 @@ static SrcLoc builtin_loc(Checker *c)
 static void builtin_noproto_arg(Conv *x)
 {
     Checker *c = x->c;
-    TypeId pt = x->type, at = x->rhstype, pr = at;
+    TypeId pt = x->type, at = x->rhstype, pr = TYPE_UNQUAL(at);
     TypeKind pk = tkind(c, pt), ak = tkind(c, at);
     int pc, ac;
     Diagnostic *d;
     if (is_int(c, at)) {
-        pr = type_int_promote(TT, at);
-        if (tkind(c, pr) == TY_ENUM)
-            pr = TYPE_B(UINT);
-        pr = TYPE_UNQUAL(type_canon(TT, pr));
+        /* gcc keeps the argument's own type node (typedef and all) when the
+         * promotion changes nothing; an enum as wide as int stays itself */
+        TypeId pm = type_int_promote(TT, at);
+        if (ak == TY_ENUM && int_bits(c, at) < int_bits(c, TYPE_B(INT)))
+            pr = TYPE_B(INT);
+        else if (ak != TY_ENUM && mainv(c, pm) != mainv(c, at))
+            pr = mainv(c, pm);
     } else if (is_flt(c, at) && ak != TY_DOUBLE && ak != TY_LDOUBLE &&
                float_prec(c, ak) <= 53 && ak >= TY_FLOAT16 && ak <= TY_FLOAT)
         pr = TYPE_B(DOUBLE);
@@ -2295,7 +2298,7 @@ static void builtin_noproto_arg(Conv *x)
         TYPE_UNQUAL(type_canon(TT, pt)) == TYPE_UNQUAL(type_canon(TT, pr)))
         return;
     d = cwarn_d(c, DL_WARNING, x->eloc, "builtin-declaration-mismatch",
-                TYPE_UNQUAL(type_canon(TT, pr)) == TYPE_UNQUAL(type_canon(TT, at))
+                pr == mainv(c, at)
                 ? "'%s' argument %d type is %s where %s is expected in a call "
                   "to built-in function declared without prototype"
                 : "'%s' argument %d promotes to %s where %s is expected in a "
@@ -2752,45 +2755,200 @@ static uint64_t builtin_nonnull(const char *name)
     return m;
 }
 
-/* Do the declared types of a library built-in's declaration still match the
- * built-in's, as far as gcc's match_builtin_function_types cares: pointers
- * stay pointers (void * matches any) and the pointees agree?  A declaration
- * that conflicts (-Wbuiltin-declaration-mismatch) does not get its attributes. */
-static bool builtin_shape(Checker *c, TypeId a, TypeId b)
+/* gcc's match_builtin_function_types, as probed from gcc 13.  Compare the
+ * declared type n with the built-in's o in one position (ret: the return
+ * type): 0 equal, 1 a mismatch gcc only warns about ("mismatch in argument N
+ * type"), 2 a conflict.  A FILE * parameter of the table is a void * that
+ * accepts any pointer. */
+static int bt_cmp(Checker *c, TypeId o, TypeId n, bool ret, bool file)
 {
-    if (is_ptr(c, a) != is_ptr(c, b))
-        return false;
-    if (is_ptr(c, a) && !is_void(c, pointee(c, a)) && !is_void(c, pointee(c, b)))
-        return type_compatible(TT, unqual(c, pointee(c, a)),
-                               unqual(c, pointee(c, b)));
-    return true;
+    TypeId uo = unqual(c, o), un = unqual(c, n);
+    if (is_ptr(c, o) || is_ptr(c, n)) {
+        TypeId po, pn;
+        if (!is_ptr(c, o) || !is_ptr(c, n))
+            return 2;
+        if (file)
+            return 0;
+        po = pointee(c, o);
+        pn = pointee(c, n);
+        if (type_compatible(TT, po, pn))
+            return 0;
+        if (ret || type_compatible(TT, unqual(c, po), unqual(c, pn)))
+            return 1;
+        return 2;
+    }
+    if (type_compatible(TT, uo, un))
+        return 0;
+    if (is_int(c, o) && is_int(c, n) && tkind(c, uo) != TY_BOOL &&
+        tkind(c, un) != TY_BOOL) {
+        bool ok1 = true, ok2 = true;
+        return type_size(TT, uo, &ok1) == type_size(TT, un, &ok2) ? 1 : 2;
+    }
+    return 2;
+}
+
+/* Is parameter j (0-based) of the library built-in a FILE * or struct tm *
+ * (a void * to gcc until the type is declared)? */
+static bool extra_on(Checker *c);
+static bool bt_file_param(const char *name, uint32_t j)
+{
+    static const struct { const char *n; unsigned char j; } t[] = {
+        {"fprintf", 0}, {"fscanf", 0}, {"vfprintf", 0}, {"vfscanf", 0},
+        {"fputc", 1}, {"fputs", 1}, {"putc", 1}, {"fwrite", 3},
+        {"fprintf_unlocked", 0}, {"fputc_unlocked", 1},
+        {"fputs_unlocked", 1}, {"fwrite_unlocked", 3},
+        {"putc_unlocked", 1}, {"strftime", 3}};
+    size_t k;
+    for (k = 0; k < sizeof t / sizeof *t; k++)
+        if (t[k].j == j && !strcmp(t[k].n, name))
+            return true;
+    return false;
+}
+
+typedef struct BtMatch {
+    bool conflict;           /* gcc: "conflicting types for built-in function" */
+    int soft;                /* the first soft mismatch: 0 none, 1 return, j + 2 */
+    TypeId bft, dft;
+} BtMatch;
+
+static BtMatch bt_match(Checker *c, const BTab *bt, TypeId declty)
+{
+    BtMatch m;
+    uint32_t n, j;
+    const TypeId *bp, *dp;
+    int r;
+    memset(&m, 0, sizeof m);
+    m.dft = type_canon(TT, declty);
+    m.bft = type_canon(TT, bt_func_type(c, bt));
+    if (type_ent(TT, m.dft)->kind != TY_FUNC ||
+        type_ent(TT, m.bft)->kind != TY_FUNC)
+        return m;
+    r = bt_cmp(c, type_base(TT, m.bft), type_base(TT, m.dft), true, false);
+    if (r == 2) {
+        m.conflict = true;
+        return m;
+    }
+    if (r)
+        m.soft = 1;
+    if (type_ent(TT, m.dft)->flags & TF_NOPROTO) {
+        m.conflict = (type_ent(TT, m.bft)->flags & TF_VARIADIC) != 0;
+        bp = type_params(TT, m.bft);
+        for (j = 0; j < (uint32_t)type_ent(TT, m.bft)->n; j++) {
+            TypeId pj = unqual(c, bp[j]);
+            if ((is_flt(c, pj) && tkind(c, pj) == TY_FLOAT) ||
+                (is_int(c, pj) && mainv(c, type_int_promote(TT, pj)) != mainv(c, pj)))
+                m.conflict = true;     /* the argument would be promoted */
+        }
+        return m;
+    }
+    n = (uint32_t)type_ent(TT, m.dft)->n;
+    if (n != (uint32_t)type_ent(TT, m.bft)->n ||
+        (type_ent(TT, m.dft)->flags & TF_VARIADIC) !=
+            (type_ent(TT, m.bft)->flags & TF_VARIADIC)) {
+        m.conflict = true;
+        return m;
+    }
+    dp = type_params(TT, m.dft);
+    bp = type_params(TT, m.bft);
+    for (j = 0; j < n; j++) {
+        r = bt_cmp(c, bp[j], dp[j], false, bt_file_param(bt->name, j));
+        if (r == 2) {
+            m.conflict = true;
+            return m;
+        }
+        if (r && !m.soft)
+            m.soft = (int)j + 2;
+    }
+    return m;
+}
+
+static const BTab *bt_for_decl(Checker *c, const CSym *s)
+{
+    const char *n = cident(c, s->name);
+    return bt_find(!strncmp(n, "__builtin_", 10) ? n + 10 : n);
 }
 
 static bool builtin_decl_ok(Checker *c, const CSym *s)
 {
-    const BTab *bt = bt_find(cident(c, s->name));
-    TypeId bft, dft;
-    uint32_t n, j;
-    const TypeId *bp, *dp;
+    const BTab *bt = bt_for_decl(c, s);
     if (!bt || !strcmp(strchr(bt->sig, '|') + 1, "?") || (s->flags & CSF_IMPLICIT))
         return true;
-    dft = type_canon(TT, s->ty);
-    bft = type_canon(TT, bt_func_type(c, bt));
-    if (type_ent(TT, dft)->kind != TY_FUNC || type_ent(TT, bft)->kind != TY_FUNC)
-        return true;
-    if (!builtin_shape(c, type_base(TT, dft), type_base(TT, bft)))
-        return false;
-    if (type_ent(TT, dft)->flags & TF_NOPROTO)
-        return true;
-    n = (uint32_t)type_ent(TT, dft)->n;
-    if (n > (uint32_t)type_ent(TT, bft)->n)
-        n = (uint32_t)type_ent(TT, bft)->n;
-    dp = type_params(TT, dft);
-    bp = type_params(TT, bft);
-    for (j = 0; j < n; j++)
-        if (!builtin_shape(c, dp[j], bp[j]))
-            return false;
-    return true;
+    return !bt_match(c, bt, s->ty).conflict;
+}
+
+/* gcc prints a built-in's type: 'ret(a, b)', with a second space after an
+ * argument that is not a pointer. */
+static void bt_sig_print(StrBuf *sb, const char *sig)
+{
+    const char *p = strchr(sig, '|'), *q;
+    bool first = true, prev_ptr = true;
+    sb_putn(sb, sig, (size_t)(p - sig));
+    sb_putc(sb, '(');
+    for (p++; *p; p = *q ? q + 1 : q) {
+        q = strchr(p, '|');
+        if (!q)
+            q = p + strlen(p);
+        if (!first)
+            sb_puts(sb, prev_ptr ? ", " : ",  ");
+        sb_putn(sb, p, (size_t)(q - p));
+        prev_ptr = q > p && q[-1] == '*';
+        first = false;
+    }
+    if (first)
+        sb_puts(sb, "void");
+    sb_putc(sb, ')');
+}
+
+/* -Wbuiltin-declaration-mismatch for the first declaration of a library
+ * built-in (gcc's diagnose_mismatched_decls on the undeclared built-in). */
+void cexpr_builtin_decl(Checker *c, const CSym *s)
+{
+    const BTab *bt = bt_for_decl(c, s);
+    const char *dn = cident(c, s->name);
+    BtMatch m;
+    StrBuf sb;
+    const char *p;
+    Diagnostic *d = NULL;
+    if (!bt || !strcmp(strchr(bt->sig, '|') + 1, "?") || (s->flags & CSF_IMPLICIT) ||
+        !diag_enabled(c->diag, "builtin-declaration-mismatch"))
+        return;
+    m = bt_match(c, bt, s->ty);
+    memset(&sb, 0, sizeof sb);
+    if (m.conflict) {
+        bt_sig_print(&sb, bt->sig);
+        d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
+                    "conflicting types for built-in function '%s'; expected "
+                    "'%s'", dn, sb_cstr(&sb));
+    } else if (m.soft && extra_on(c)) {
+        uint32_t j = (uint32_t)m.soft - 2;
+        p = strchr(bt->sig, '|');
+        if (m.soft == 1) {
+            sb_putn(&sb, bt->sig, (size_t)(p - bt->sig));
+            d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
+                        "mismatch in return type of built-in function '%s'; "
+                        "expected '%s'", dn, sb_cstr(&sb));
+        } else {
+            const char *q;
+            for (p++; j; j--)
+                p = strchr(p, '|') + 1;
+            q = strchr(p, '|');
+            sb_putn(&sb, p, q ? (size_t)(q - p) : strlen(p));
+            d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
+                        "mismatch in argument %d type of built-in function "
+                        "'%s'; expected '%s'", m.soft - 1, dn,
+                        sb_cstr(&sb));
+        }
+    } else if ((type_ent(TT, m.dft)->flags & TF_NOPROTO) && extra_on(c) &&
+               type_ent(TT, m.dft)->kind == TY_FUNC && type_ent(TT, m.bft)->n) {
+        bt_sig_print(&sb, bt->sig);
+        d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
+                    "declaration of built-in function '%s' without a "
+                    "prototype; expected '%s'", dn, sb_cstr(&sb));
+    }
+    if (d)
+        cnote(c, d, header_note_loc(c, s->loc, bt->hdr), "'%s' is declared in "
+              "header '%s'", bt->name, bt->hdr);
+    sb_free(&sb);
 }
 
 /* A constant null pointer as gcc's integer_zerop sees it: argument a of a
@@ -2891,9 +3049,11 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
             show = strip_paren(c, first_child(c, show));
         snprintf(fname, sizeof fname, "%s", show == NO_NODE ? "" : estr(c, show));
     }
-    if (!proto && fref != SYM_NONE && (csym(c, fref)->flags & CSF_IMPLICIT)) {
+    if (!proto && fref != SYM_NONE) {
+        bool impl = (csym(c, fref)->flags & CSF_IMPLICIT) != 0;
         const BTab *bt = bt_find(cident(c, csym(c, fref)->name));
-        if (bt && !bt->mismatch && strcmp(strchr(bt->sig, '|') + 1, "?")) {
+        if (bt && (impl ? !bt->mismatch : builtin_decl_ok(c, csym(c, fref))) &&
+            strcmp(strchr(bt->sig, '|') + 1, "?")) {
             TypeId bft = type_canon(TT, bt_func_type(c, bt));
             bn = (uint32_t)type_ent(TT, bft)->n;
             bpt = type_params(TT, bft);

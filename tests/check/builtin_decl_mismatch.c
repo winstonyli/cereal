@@ -1,0 +1,10 @@
+int abort ();
+char *strlen (const char *);
+int strcmp (const char *, const char *, int);
+void *memcpy (void *, const void *, int);
+int printf ();
+int exit (int);
+unsigned long strlen2 (const char *);
+int puts (char *);
+void *memchr (const void *, int, unsigned long);
+static int strncmp (const char *, const char *, unsigned long);
