@@ -576,6 +576,8 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             a->noinline = true;
         } else if (!strcmp(name, "used")) {
             a->used = true;
+        } else if (!strcmp(name, "designated_init")) {
+            a->desig = true;
         } else if (!strcmp(name, "alias")) {
             a->alias = true;
         } else if (!strcmp(name, "weakref")) {
@@ -729,6 +731,7 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     to->unused |= from->unused;
     to->noinline |= from->noinline;
     to->alias |= from->alias;
+    to->desig |= from->desig;
     to->weakref |= from->weakref;
     to->errattr |= from->errattr;
     to->warnattr |= from->warnattr;
@@ -3819,6 +3822,9 @@ static void declared_visit(Checker *c, uint32_t i)
         attrs_alloc_check(c, idecl, aft, ltok);
     }
     attrs_merge(&a, &sp.attrs);
+    if (a.desig && !(g.what == GD_TYPEDEF && type_ckind(TT, s.ty) == TY_STRUCT))
+        cerror(c, iloc(c, ltok), "'designated_init' attribute is only valid on "
+               "'struct' type");
     attrs_misapplied(c, &a, kr ? 'p' : g.what == GD_TYPEDEF ? 't' :
                      g.what == GD_FUNC ? 'f' :
                      file ? 'g' : s.sc == SC_STATIC ? 's' :
@@ -4341,6 +4347,9 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     if (a.used)
         cwarn(c, iloc(c, close_tok), "attributes",
               "'used' attribute does not apply to types");
+    if (a.desig && want == TY_UNION)
+        cerror(c, iloc(c, close_tok), "'designated_init' attribute is only "
+               "valid on 'struct' type");
     n = (uint32_t)c->fields.len - rd.first;
     f = c->fields.data + rd.first;
     if (c->opt.pedantic) {
@@ -4395,6 +4404,8 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
             f[m++] = f[k];
     csum_read_pack(c);
     type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed);
+    if (a.desig && want != TY_UNION)
+        type_record(TT, t)->flags |= RF_DESIGNATED;
     r = type_record(TT, t);
     r->dep = (a.deprecated ? CSF_DEPRECATED : 0) |
              (a.unavailable ? CSF_UNAVAILABLE : 0);
@@ -4590,6 +4601,10 @@ static void enum_finish(Checker *c, uint32_t i, uint32_t open)
     e->dep = (a.deprecated ? CSF_DEPRECATED : 0) |
              (a.unavailable ? CSF_UNAVAILABLE : 0);
     e->dmsg = a.dep_msg;
+    if (a.desig)
+        cerror(c, ne ? csym(c, c->ecs.data[rd.first_ec + ne - 1])->loc :
+               tloc(c, cnode(c, i)->tok), "'designated_init' attribute is "
+               "only valid on 'struct' type");
     for (k = 0; k < ne; k++) {
         const CSym *s = csym(c, c->ecs.data[rd.first_ec + k]);
         if (k == 0) {

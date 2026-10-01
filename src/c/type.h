@@ -63,7 +63,8 @@ enum {
     RF_CONST_MEMBER = 32,    /* a member (recursively) is const */
     RF_TRANSPARENT = 64,     /* transparent_union */
     RF_NOKEYWORD = 128,      /* prints without struct (__va_list_tag) */
-    RF_VLA = 256             /* has a variably modified member */
+    RF_VLA = 256,            /* has a variably modified member */
+    RF_DESIGNATED = 512      /* designated_init */
 };
 
 /* Field.flags */

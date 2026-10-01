@@ -79,7 +79,7 @@ typedef struct Lvl {
     struct Lvl *up;
     uint8_t kind;
     bool implicit, designated, erroneous, varsize, inc, hasmax, flex, fhn;
-    bool has_repl, lag, onlyzero, lastside, anyside;
+    bool has_repl, lag, onlyzero, lastside, anyside, eldes;
     TypeId type;             /* as declared, qualifiers included */
     TypeId elem;
     int64_t maxidx, idx, ui, lagmax;
@@ -1285,13 +1285,18 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
 {
     Lvl *L = x->stk;
     int k = L->kind;
-    bool zero, rq = x->reqc;
+    bool zero, rq = x->reqc, des = L->eldes;
     uint64_t strn = 0;
 
+    L->eldes = false;
     if (is_err(c, type) || v.kind == V_ERR) {
         L->erroneous = true;
         return;
     }
+    if (k == LV_REC && !des && ck_(c, L->type) == TY_STRUCT &&
+        (type_record(TT, type_canon(TT, L->type))->flags & RF_DESIGNATED))
+        iwarn(c, x, lt, "designated-init", "positional initialization of "
+              "field in 'struct' declared with 'designated_init' attribute");
     if (v.kind == V_EXPR && !v.digested && (v.str || v.cl) && is_arr(c, v.type)
         && !(v.str && is_arr(c, type) &&
              type_is_integer(TT, type_base(TT, type_canon(TT, type)))) &&
@@ -1923,6 +1928,7 @@ static bool set_designator(Checker *c, CCtx *x, uint32_t lt, bool array)
             process_element(c, x, LT_IN, r, true);
         }
         x->stk->designated = true;
+        x->stk->eldes = true;
         return false;
     }
     if (L->kind == LV_REC || L->kind == LV_UNI) {
@@ -1941,8 +1947,10 @@ static bool set_designator(Checker *c, CCtx *x, uint32_t lt, bool array)
         return true;
     }
     L->designated = true;
+    L->eldes = true;
     finish_implicit_inits(c, x, lt);
     push_level(c, x, lt, 2);
+    x->stk->eldes = true;           /* the level's first element is the designated one */
     return false;
 }
 
