@@ -1,0 +1,69 @@
+array_parameter2.c:3:17: warning: argument 2 of type 'int[static  n + 2]' declared with mismatched bound 'n + 2' [-Wvla-parameter]
+    3 | void a1 (int n, int[static n + 2]);
+      |                 ^
+array_parameter2.c:2:17: note: previously declared as 'int[static  n + 1]' with bound 'n + 1'
+    2 | void a1 (int n, int[static n + 1]);
+      |                 ^
+array_parameter2.c:5:17: warning: argument 2 of type 'int[const  n + 2]' declared with mismatched bound 'n + 2' [-Wvla-parameter]
+    5 | void a2 (int n, int[const n + 2]);
+      |                 ^
+array_parameter2.c:4:17: note: previously declared as 'int[const  n + 1]' with bound 'n + 1'
+    4 | void a2 (int n, int[const n + 1]);
+      |                 ^
+array_parameter2.c:7:17: warning: argument 2 of type 'int[volatile restrict  n + 1]' declared with mismatched bound 'n + 1' [-Wvla-parameter]
+    7 | void a3 (int n, int[restrict volatile n + 1]);
+      |                 ^
+array_parameter2.c:6:17: note: previously declared as 'int[volatile restrict  n]' with bound argument 1
+    6 | void a3 (int n, int[restrict volatile n]);
+      |                 ^
+array_parameter2.c:9:17: warning: argument 2 of type 'int[++n + 1]' declared with mismatched bound ' ++n + 1' [-Wvla-parameter]
+    9 | void a4 (int n, int[++n + 1]);
+      |                 ^
+array_parameter2.c:8:17: note: previously declared as 'int[++n]' with bound ' ++n'
+    8 | void a4 (int n, int[++n]);
+      |                 ^
+array_parameter2.c:11:17: warning: argument 2 of type 'int[~n]' declared with mismatched bound '~n' [-Wvla-parameter]
+   11 | void a6 (int n, int[~n]);
+      |                 ^
+array_parameter2.c:10:17: note: previously declared as 'int[-n]' with bound '-n'
+   10 | void a6 (int n, int[-n]);
+      |                 ^
+array_parameter2.c:16:10: warning: argument 1 of type 'int[2]' with mismatched bound [-Warray-parameter=]
+   16 | void t1 (IA2);
+      |          ^
+array_parameter2.c:15:10: note: previously declared as 'int[1]'
+   15 | void t1 (IA1);
+      |          ^
+array_parameter2.c:18:10: warning: mismatch in bound 1 of argument 1 declared as 'int (**)[n]' [-Wvla-parameter]
+   18 | void t2 (int (**)[n]);
+      |          ^
+array_parameter2.c:17:10: note: previously declared as 'int (**)[]'
+   17 | void t2 (int (**)[]);
+      |          ^
+array_parameter2.c:19:10: warning: mismatch in bound 1 of argument 1 declared as 'int (**)[n + 1]' [-Wvla-parameter]
+   19 | void t2 (int (**)[n + 1]);
+      |          ^
+array_parameter2.c:17:10: note: previously declared as 'int (**)[]'
+   17 | void t2 (int (**)[]);
+      |          ^
+array_parameter2.c:22:17: warning: argument 2 of type 'int[k + 2]' declared with mismatched bound 'k + 2' [-Wvla-parameter]
+   22 | void t3 (int k, int [k + 2]);
+      |                 ^
+array_parameter2.c:20:17: note: previously declared as 'int[k + 1]' with bound 'k + 1'
+   20 | void t3 (int k, int [k + 1]);
+      |                 ^
+array_parameter2.c:23:15: warning: ISO C99 does not support the '_Atomic' qualifier [-Wpedantic]
+   23 | void t4 (int [_Atomic 1]);
+      |               ^
+array_parameter2.c:24:15: warning: ISO C99 does not support the '_Atomic' qualifier [-Wpedantic]
+   24 | void t4 (int [_Atomic 2]);
+      |               ^
+array_parameter2.c:24:10: warning: argument 1 of type 'int[_Atomic 2]' with mismatched bound [-Warray-parameter=]
+   24 | void t4 (int [_Atomic 2]);
+      |          ^
+array_parameter2.c:23:10: note: previously declared as 'int[_Atomic 1]'
+   23 | void t4 (int [_Atomic 1]);
+      |          ^
+array_parameter2.c:26:14: error: 'undeclared' undeclared here (not in a function)
+   26 | void t5 (int[undeclared]);
+      |              ^

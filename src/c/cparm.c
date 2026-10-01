@@ -15,6 +15,15 @@
 
 #define TT (&c->tt)
 
+static int tpunct(const Checker *c, uint32_t tok)
+{
+    const Tok *t;
+    if (tok >= c->u->ntoks)
+        return P_NONE;
+    t = &c->u->toks[tok].t;
+    return t->kind == TK_PUNCT ? t->punct : P_NONE;
+}
+
 static unsigned ntag(const Checker *c, uint32_t i)
 {
     return c->nodes[i].tag;
@@ -34,12 +43,16 @@ typedef struct PDim {
     char *ttxt;              /* ... and inside a type: f(0), not f (0) */
     bool inner;              /* D_STAR past the first brackets: printed 0 */
     uint32_t arg;            /* D_EXPR naming a parameter: its position, 1-based */
+    char *key;               /* D_EXPR: txt with a commutative top operator sorted */
+    bool bad;                /* D_EXPR: not an integer (gcc reports an error) */
 } PDim;
 
 typedef struct PParm {
     bool arr;                /* declared as an array */
     bool stat;               /* [static n] */
     bool rst;                /* a restrict-qualified pointer */
+    bool unk;                /* a variable-length typedef: not described */
+    unsigned np;             /* pointer levels around the brackets (arr unset) */
     unsigned quals;          /* qualifiers inside the first brackets */
     uint32_t nd;             /* the bracket pairs; 0: any other type */
     PDim *d;                 /* natural order: d[0] is the first brackets */
@@ -66,6 +79,7 @@ static void pdesc_free(CParmDesc *pd)
             {
                 free(pd->p[i].d[j].txt);
                 free(pd->p[i].d[j].ttxt);
+                free(pd->p[i].d[j].key);
             }
         free(pd->p[i].d);
     }
@@ -149,8 +163,40 @@ static void dim_of(Checker *c, uint32_t dn, PDim *d, bool first,
         return;
     }
     d->k = D_EXPR;
+    d->bad = !type_is_integer(TT, c->ty[sz]);
     d->txt = xstrdup(cexpr_str(c, sz));
+    if (ntag(c, sz) == N_BINARY &&
+        (tpunct(c, c->nodes[sz].tok) == P_PLUS ||
+         tpunct(c, c->nodes[sz].tok) == P_STAR)) {
+        uint32_t k2[3];
+        if (node_children(c->nodes, sz, k2, 3) == 2) {
+            char *a = xstrdup(cexpr_str(c, k2[0])), *b = xstrdup(cexpr_str(c, k2[1]));
+            size_t l = strlen(a) + strlen(b) + 4;
+            d->key = xmalloc(l);
+            snprintf(d->key, l, "%s%c%s", strcmp(a, b) <= 0 ? a : b,
+                     tpunct(c, c->nodes[sz].tok) == P_PLUS ? 43 : 42,
+                     strcmp(a, b) <= 0 ? b : a);
+            free(a);
+            free(b);
+        }
+    }
     d->ttxt = xstrdup(d->txt);
+    {
+        /* gcc's %E spells (T) x and a leading ++x with a space */
+        size_t i, n = strlen(d->txt), k = 0;
+        char *t = xmalloc(n * 2 + 2);
+        if (!strncmp(d->txt, "++", 2) || !strncmp(d->txt, "--", 2))
+            t[k++] = 32;
+        for (i = 0; i < n; i++) {
+            t[k++] = d->txt[i];
+            if (d->txt[i] == 41 && (isalnum((unsigned char)d->txt[i + 1]) ||
+                                    d->txt[i + 1] == 95 || d->txt[i + 1] == 40))
+                t[k++] = 32;
+        }
+        t[k] = 0;
+        free(d->txt);
+        d->txt = t;
+    }
     for (r = w = d->ttxt; *r; r++) {
         /* gcc prints a call as f(0) */
         if (*r == 32 && r[1] == 40 && w > d->ttxt &&
@@ -203,8 +249,10 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
             else
                 dn[nd++] = d;
         } else if (tg == N_PTR) {
-            if (nd)
+            if (nd) {
                 ptr_after = true;
+                o->np++;
+            }
         } else if (tg == N_FUNC) {
             other = true;
         }
@@ -221,6 +269,7 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
             free(o->d);
             o->d = NULL;
             o->nd = 0;
+            o->unk = true;
         }
         return;
     }
@@ -230,6 +279,9 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
     for (m = 0; m < nd; m++)
         dim_of(c, dn[nd - 1 - m], &o->d[m], m == 0 && !ptr_after, names,
                 nnames);
+    for (m = 0; m < nd; m++)
+        if (o->d[m].bad)
+            o->unk = true;
     o->arr = !ptr_after;
     if (o->arr) {
         const Node *an = cnode(c, dn[nd - 1]);
@@ -237,6 +289,8 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
         o->quals = cdecl_quals_of(c, dn[nd - 1]);
     }
     pt = type_base(TT, t);
+    for (m = 1; m < o->np && type_ckind(TT, pt) == TY_PTR; m++)
+        pt = type_base(TT, pt);
     e = pt;
     for (m = o->arr ? 1 : 0; m < nd; m++) {
         TypeKind k = type_ckind(TT, e);
@@ -249,11 +303,13 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
         for (m = 0; m < o->nd; m++) {
             free(o->d[m].txt);
             free(o->d[m].ttxt);
+            free(o->d[m].key);
         }
         free(o->d);
         o->d = NULL;
         o->nd = 0;
         o->arr = false;
+        o->unk = true;
     }
 }
 
@@ -340,8 +396,15 @@ static const char *pstr(Checker *c, StrBuf *sb, const PParm *p)
     type_print(TT, sb, p->base);
     b = sb_cstr(sb);
     bl = strlen(b);
-    if (!p->arr)
-        sb_puts(sb, bl && b[bl - 1] == '*' ? "(*)" : " (*)");
+    if (!p->arr) {
+        unsigned k;
+        if (!(bl && b[bl - 1] == '*'))
+            sb_putc(sb, 32);
+        sb_putc(sb, 40);
+        for (k = 0; k < (p->np ? p->np : 1); k++)
+            sb_putc(sb, '*');
+        sb_putc(sb, 41);
+    }
     for (i = 0; i < p->nd; i++) {
         bool sp = false;
         sb_putc(sb, '[');
@@ -362,7 +425,13 @@ static const char *pstr(Checker *c, StrBuf *sb, const PParm *p)
                 sb_puts(sb, sp ? " restrict" : "restrict");
                 sp = true;
             }
+            if (p->quals & TQ_ATOMIC) {
+                sb_puts(sb, sp ? " _Atomic" : "_Atomic");
+                sp = true;
+            }
             if (sp && p->d[i].k != D_NONE)
+                sb_putc(sb, ' ');
+            if (sp && p->d[i].k == D_EXPR)
                 sb_putc(sb, ' ');
         }
         put_dim(sb, &p->d[i]);
@@ -403,7 +472,8 @@ static bool dim_same(const PDim *a, const PDim *b)
     case D_CONST:
         return a->n == b->n;
     case D_EXPR:
-        return a->arg || b->arg ? a->arg == b->arg : !strcmp(a->txt, b->txt);
+        return a->arg || b->arg ? a->arg == b->arg :
+               !strcmp(a->key ? a->key : a->txt, b->key ? b->key : b->txt);
     default:
         return true;
     }
@@ -439,6 +509,8 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
     Diagnostic *d;
     unsigned olv = count_vla(o, false), nlv = count_vla(n, false);
     int lvl = diag_option_level(c->diag, "array-parameter=", 2);
+    if (o->unk || n->unk)
+        goto out;
     if (!n->arr && !o->arr) {
         /* pointers to arrays: the bounds past the first */
         unsigned i, cnt = 0, w = 0;
@@ -449,7 +521,7 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
         for (i = 0; i < n->nd; i++)
             if (!dim_same(&o->d[i], &n->d[i])) {
                 cnt++;
-                if (n->d[i].k >= D_STAR || o->d[i].k >= D_STAR)
+                if (n->d[i].k == D_EXPR || o->d[i].k == D_EXPR)
                     vla = true;
                 if (w++)
                     sb_puts(&lst, ", ");

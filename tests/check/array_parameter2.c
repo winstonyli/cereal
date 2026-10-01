@@ -1,0 +1,26 @@
+// flags: -Wall -Warray-parameter=2 -Wvla-parameter
+void a1 (int n, int[static n + 1]);
+void a1 (int n, int[static n + 2]);
+void a2 (int n, int[const n + 1]);
+void a2 (int n, int[const n + 2]);
+void a3 (int n, int[restrict volatile n]);
+void a3 (int n, int[restrict volatile n + 1]);
+void a4 (int n, int[++n]);
+void a4 (int n, int[++n + 1]);
+void a6 (int n, int[-n]);
+void a6 (int n, int[~n]);
+extern int m, n;
+typedef int IA1[1];
+typedef int IA2[2];
+void t1 (IA1);
+void t1 (IA2);
+void t2 (int (**)[]);
+void t2 (int (**)[n]);
+void t2 (int (**)[n + 1]);
+void t3 (int k, int [k + 1]);
+void t3 (int k, int [1 + k]);
+void t3 (int k, int [k + 2]);
+void t4 (int [_Atomic 1]);
+void t4 (int [_Atomic 2]);
+void t5 (int[]);
+void t5 (int[undeclared]);

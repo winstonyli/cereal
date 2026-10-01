@@ -1654,6 +1654,21 @@ static bool is_err(Checker *c, TypeId t)
     return tkind(c, t) == TY_ERROR;
 }
 
+/* Does function type t have a parameter of erroneous type? */
+static bool func_err_param(Checker *c, TypeId t)
+{
+    const TypeEnt *e;
+    uint32_t i;
+    t = type_canon(TT, t);
+    if (type_ckind(TT, t) != TY_FUNC)
+        return false;
+    e = type_ent(TT, t);
+    for (i = 0; i < e->n; i++)
+        if (is_err(c, type_params(TT, t)[i]))
+            return true;
+    return false;
+}
+
 static bool is_arr(Checker *c, TypeId t)
 {
     TypeKind k = tkind(c, t);
@@ -1766,6 +1781,23 @@ static unsigned quals_of(Checker *c, uint32_t node)
             default: break;
             }
     kids_free(&k);
+    return q;
+}
+
+static unsigned quals_of_warn(Checker *c, uint32_t node)
+{
+    unsigned q = quals_of(c, node);
+    if (q & TQ_ATOMIC) {
+        Kids k;
+        uint32_t j;
+        kids_get(c, node, &k);
+        for (j = 0; j < k.n; j++)
+            if (ntag(c, k.p[j]) == N_QUAL &&
+                tckw(c, cnode(c, k.p[j])->tok) == CK_ATOMIC)
+                cpedantic(c, tloc(c, cnode(c, k.p[j])->tok),
+                          "ISO C99 does not support the '_Atomic' qualifier");
+        kids_free(&k);
+    }
     return q;
 }
 
@@ -2281,7 +2313,7 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             bool vla = false;
             uint64_t n = 0;
             const Node *an = cnode(c, dn);
-            array_ptr_quals = quals_of(c, dn);
+            array_ptr_quals = quals_of_warn(c, dn);
             array_ptr_attrs = has_child_attr(c, dn);
             array_parm_static = (an->flags & NF_STATIC) != 0;
             unspec = (an->flags & NF_STAR) && !(c->cv[dn] & 1);
@@ -2542,7 +2574,7 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 type = qualify(c, type, type_quals, ltok);
             size_varies = false;
             type = type_ptr(TT, type);
-            type_quals = quals_of(c, pn);
+            type_quals = quals_of_warn(c, pn);
         }
     }
     chain_free(&ch);
@@ -3074,6 +3106,10 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                 wd = d;
                 oldtype = newtype;
                 *oldtypep = oldtype;
+            } else if (nw->kind == CS_FUNC && func_err_param(c, newtype)) {
+                /* a parameter that was already diagnosed matches anything */
+                nw->ty = newtype = oldtype;
+                *newtypep = newtype;
             } else if (nw->kind == CS_FUNC && volatile_ret_only(c, a, b)) {
                 int k;
                 for (k = 0; k < 3; k++)     /* comptypes runs three times */
