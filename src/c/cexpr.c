@@ -1413,7 +1413,7 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
         cerror(c, loc, "%s", l->msg);
         break;
     case 1:
-        if (l->flags & LIT_TOO_LARGE)
+        if (l->flags & (LIT_TOO_LARGE | LIT_UNSIGNED_WARN))
             cpedwarn(c, loc, l->id, "%s", l->msg);
         else
             cwarn(c, loc, l->id, "%s", l->msg);

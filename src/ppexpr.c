@@ -157,8 +157,13 @@ static Val parse_number(EP *p, const Tok *t)
         pp_error_at(p->pp, t, "integer constant is too large for its type");
         uns = true;
     } else if (!uns && v > (uintmax_t)INTMAX_MAX) {
-        pp_warn_at(p->pp, t, "", "integer constant is so large that it is "
+        /* libcpp CPP_DL_PEDWARN: an error under -pedantic-errors */
+        if (p->pp->diag->pedantic_errors)
+            pp_error_at(p->pp, t, "integer constant is so large that it is "
                                   "unsigned");
+        else
+            pp_warn_at(p->pp, t, "", "integer constant is so large that it "
+                                     "is unsigned");
         uns = true;
     }
     return mkval(v, uns);

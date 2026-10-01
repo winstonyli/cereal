@@ -310,12 +310,24 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
         on = false;
         flag += 3;
     }
-    if (!err)
-        for (i = 0; i < NUMBRELLA; i++)
-            if (strcmp(flag, umbrellas[i]) == 0) {
+    for (i = 0; i < NUMBRELLA; i++)
+        if (strcmp(flag, umbrellas[i]) == 0) {
+            /* DiagOption.by bits: all, extra, pedantic, unused, implicit */
+            static const unsigned bit[NUMBRELLA] = {1, 2, 8, 16};
+            size_t k;
+            if (!err) {
                 c->umbrella[i] = on;
                 return true;
             }
+            c->umbrella[i] = true;
+            for (k = 0; k < NOPTIONS; k++)
+                if (options[k].by & bit[i]) {
+                    c->overrides[k] = options[k].level;
+                    c->overridden[k] = true;
+                    c->error[k] = true;
+                }
+            return true;
+        }
     for (i = 0; i < NOPTIONS; i++) {
         long lv;
         if (name_matches(&options[i], flag, &lv) ||
@@ -431,6 +443,8 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
 {
     Diagnostic *dg;
     StrBuf sb = {0};
+    DiagLevel req = lvl;
+    bool promoted;
     lvl = diag_level_for(d, id, lvl);
     if (lvl == DL_IGNORED)
         return NULL;
@@ -438,7 +452,9 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
         return NULL;
     if (lvl == DL_WARNING && d->werror)
         lvl = DL_ERROR;
+    promoted = id && *id && req < DL_ERROR && req != DL_NOTE && lvl == DL_ERROR;
     dg = NEW(d->arena, Diagnostic);
+    dg->promoted = promoted;
     dg->level = lvl;
     dg->id = id ? id : "";
     dg->loc = loc;
@@ -543,17 +559,24 @@ static uint32_t display_col(SrcFile *f, uint32_t line, uint32_t col)
 }
 
 static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
-                           const char *msg, const char *id, SrcRange range)
+                           const char *msg, const char *id, SrcRange range,
+                           bool dg_promoted)
 {
     FILE *o = d->out;
     SrcFile *f = srcmgr_file_of(d->sm, loc);
     uint32_t line = 0, col = 0;
+    bool eof = false;
     if (d->color)
         fputs("\033[1m", o);
     if (f) {
         srcmgr_linecol(f, loc, &line, &col);
+        eof = f->kind != SF_VIRTUAL && srcmgr_offset(f, loc) == f->size;
+        if (eof && col > 1)
+            line++;     /* the implied final newline */
         if (f->kind == SF_VIRTUAL && !strcmp(f->name, "<built-in>"))
             fprintf(o, "%s: ", f->name);
+        else if (eof)   /* gcc: the end-of-file token has no column */
+            fprintf(o, "%s:%u: ", f->name, line);
         else
             fprintf(o, "%s:%u:%u: ", f->name, line, display_col(f, line, col));
     } else {
@@ -568,9 +591,9 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
     if (d->color)
         fputs("\033[0m", o);
     if (id && *id)
-        fprintf(o, " [-W%s]", id);
+        fprintf(o, dg_promoted ? " [-Werror=%s]" : " [-W%s]", id);
     fputc('\n', o);
-    if (f && f->kind != SF_VIRTUAL) {
+    if (f && f->kind != SF_VIRTUAL && !eof) {
         uint32_t len, i, caret_end = col;
         const char *text = srcmgr_line_text(f, line, &len);
         fprintf(o, "%5u | %.*s\n      | ", line, (int)len, text);
@@ -608,10 +631,11 @@ void diag_print(DiagEngine *d, Diagnostic *dg)
                 i == dg->ninc - 1 ? "In file included from" : "                 from",
                 f->name, line);
     }
-    print_loc_line(d, dg->loc, dg->level, dg->msg, dg->id, dg->range);
+    print_loc_line(d, dg->loc, dg->level, dg->msg, dg->id, dg->range,
+                   dg->promoted);
     for (k = 0; k < dg->notes.len; k++)
         print_loc_line(d, dg->notes.data[k].loc, DL_NOTE,
-                       dg->notes.data[k].msg, NULL, none);
+                       dg->notes.data[k].msg, NULL, none, false);
 }
 
 void diag_flush(DiagEngine *d)

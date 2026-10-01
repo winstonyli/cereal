@@ -28,6 +28,8 @@ typedef struct Diagnostic {
     VEC(DiagNote) notes;
     SrcLoc *inc_chain;       /* #include locations, innermost first */
     int ninc;
+    bool promoted;           /* a warning made an error by -Werror[=X]:
+                                shown as [-Werror=X] like gcc */
     const char *fixit;       /* optional suggested replacement text */
     uint32_t key;            /* plan item at the time (parallel ordering) */
     uint8_t once;            /* nonzero: report at most once per (once, loc);

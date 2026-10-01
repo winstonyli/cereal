@@ -106,6 +106,21 @@ layouts, gcc rules ported, walk design).
    GNU forward parameter declarations
    (`f(int n; int a[n])`: NF_FWD/NF_SEMI on N_PARAM, CSF_FWD, "just a forward
    declaration"; cdecl.c fwd_params) done: rejects-valid 43, exact 5531.
+   accepts-invalid triage (92 -> 86, exact 5531 -> 5561): "empty enum is
+   invalid", -Werror=implicit (umbrellas with =; promoted warnings print
+   [-Werror=X] like gcc), -Wdeclaration-after-statement (cstmt.c
+   decl_after_stmt, gcc's last_stmt), "ISO C forbids label declarations",
+   "integer constant is so large that it is unsigned" as a pedwarn (pp and
+   C), "ISO C forbids an empty translation unit" (main.c; diag.c prints
+   end-of-file locations as `file:N:` without column or snippet).  The
+   remaining accepts-invalid are a long tail: ~35 attribute/builtin
+   argument checks (attr-*, builtin-*, atomic-*), ~15 asm operand checks, ~10
+   vector operations, "size of array element is not a multiple of its
+   alignment" (pr36093, pr43783), block-scope `extern` of an incomplete array
+   composite (redecl-7/14/18), "invalid use of void expression" in asm
+   operands, jump into VM scope (pr108375-1), compound-literal pedwarns in
+   static initializers (c99-const-expr-11/14, gnu99-const-expr-3/4), #pragma
+   message wording.
    Remaining rejects-valid (dg-options baseline): `"str"[i]` and `p - (p - 1)` constant folding
    (pr69960, pr61240), __TIMESTAMP__ undefined, builtin-tgmath, `copysign`
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15

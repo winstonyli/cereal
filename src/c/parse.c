@@ -1093,6 +1093,11 @@ static void enum_spec(Parser *p)
         leaf(p, N_OPEN, adv(p));
         set_aux(p, 2);
         flags |= NF_BODY;
+        if (at(p, P_RBRACE)) {
+            /* gcc: "nicer error for enum {}" */
+            perr(p, ci(p), "empty enum is invalid");
+            flags |= NF_ERROR;
+        }
         while (!at(p, P_RBRACE) && !at_eof(p)) {
             PTok e = ct(p);
             uint32_t s, name;

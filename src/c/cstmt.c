@@ -1728,6 +1728,44 @@ static void stmt_empty(Checker *c, uint32_t i)
               "body in an 'else' statement");
 }
 
+/* -Wdeclaration-after-statement (gcc's last_stmt in
+ * c_parser_compound_statement_nostart): a declaration directly in a block
+ * whose previous item is a statement; labels reset it. */
+static void decl_after_stmt(Checker *c, uint32_t i)
+{
+    uint32_t par = c->par[i], prev;
+    if (par == NOB || tg(c, par) != N_COMPOUND || cfirst(c, i) == 0)
+        return;
+    prev = cfirst(c, i) - 1;
+    if (c->par[prev] != par)
+        return;
+    switch (tg(c, prev)) {
+    case N_DECL: case N_BODY: case N_LOCAL_LABEL: case N_STATIC_ASSERT:
+    case N_PRAGMA: case N_SCOPE:
+        return;
+    case N_LABEL: case N_CASE: case N_DEFAULT: {
+        /* the label resets it; a statement after the label sets it again */
+        uint32_t kids[32], n = node_children(c->nodes, prev, kids, 32), k;
+        unsigned t = tg(c, prev);
+        bool stmt = false;
+        if (t == N_LABEL) {
+            for (k = 0; k < n; k++)
+                stmt |= !is_attr_kid(c, kids[k]);
+        } else {
+            stmt = n > (t == N_CASE && (c->nodes[prev].flags & NF_RANGE) ? 2u
+                                                                         : t == N_CASE ? 1u : 0u);
+        }
+        if (!stmt)
+            return;
+        break;
+    }
+    default:
+        break;
+    }
+    cwarn(c, first_loc(c, i), "declaration-after-statement",
+          "ISO C90 forbids mixed declarations and code");
+}
+
 /* After cdecl_node for a non-expression node. */
 void cstmt_node(Checker *c, uint32_t i)
 {
@@ -1741,6 +1779,7 @@ void cstmt_node(Checker *c, uint32_t i)
     case N_DECL:
         if (c->par[i] != NOB && tg(c, c->par[i]) == N_FOR)
             for_loop_decls(c, c->par[i]);
+        decl_after_stmt(c, i);
         break;
     case N_GOTO: {
         uint32_t tok = c->nodes[i].tok;
@@ -1778,6 +1817,8 @@ void cstmt_node(Checker *c, uint32_t i)
         break;
     case N_LOCAL_LABEL:
         local_labels(c, s, i);
+        cpedantic(c, cnode_loc(c, i), "ISO C forbids label "
+                  "declarations");
         break;
     case N_IF:
         stmt_if(c, i);

@@ -1,0 +1,21 @@
+diag_misc.c:2:5: warning: integer constant is so large that it is unsigned
+    2 | #if 9223372036854775808LL
+      |     ^~~~~~~~~~~~~~~~~~~~~
+diag_misc.c:4:9: error: empty enum is invalid
+    4 | enum E {};
+      |         ^
+diag_misc.c:7:3: warning: ISO C forbids label declarations [-Wpedantic]
+    7 |   __label__ a;
+      |   ^
+diag_misc.c:10:3: warning: ISO C90 forbids mixed declarations and code [-Wdeclaration-after-statement]
+   10 |   int j = i;
+      |   ^
+diag_misc.c:12:3: warning: ISO C90 forbids mixed declarations and code [-Wdeclaration-after-statement]
+   12 |   int k = j;
+      |   ^
+diag_misc.c:14:11: error: implicit declaration of function 'g' [-Werror=implicit-function-declaration]
+   14 |   int m = g(i);
+      |           ^
+diag_misc.c:14:3: warning: ISO C90 forbids mixed declarations and code [-Wdeclaration-after-statement]
+   14 |   int m = g(i);
+      |   ^

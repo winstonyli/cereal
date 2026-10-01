@@ -1,0 +1,1 @@
+empty_tu.c:2: warning: ISO C forbids an empty translation unit [-Wpedantic]

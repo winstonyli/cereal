@@ -262,6 +262,19 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         if (chk)
             checker_unit(chk, &u, p.errors > errs);
     }
+    if (chk && tu.diag.pedantic && p.units == 0 && p.base + p.unit_end == 0) {
+        uint32_t k;
+        for (k = 0; k < srcmgr_nfiles(&tu.sm); k++) {
+            SrcFile *f = srcmgr_file(&tu.sm, k);
+            if (f->kind == SF_VIRTUAL)
+                continue;
+            diag_report(&tu.diag,
+                        tu.diag.pedantic_errors ? DL_ERROR : DL_WARNING,
+                        "pedantic", f->base + f->size,
+                        "ISO C forbids an empty translation unit");
+            break;
+        }
+    }
     if (chk) {
         checker_finish(chk);
         checker_free(chk);
