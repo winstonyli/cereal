@@ -1,0 +1,36 @@
+conv_bitfield.c:9:12: warning: conversion from 'int' to 'unsigned char:1' may change value [-Wconversion]
+    9 |     ub.x = bar;
+      |            ^
+conv_bitfield.c:10:12: warning: unsigned conversion from 'int' to 'unsigned char:1' changes the value of '-1' [-Wsign-conversion]
+   10 |     ub.x = bar != 0 ? 0 : -1;
+      |            ^
+conv_bitfield.c:11:12: warning: unsigned conversion from 'int' to 'unsigned char:3' changes value from '9' to '1' [-Woverflow]
+   11 |     ub.y = 9;
+      |            ^
+conv_bitfield.c:12:12: warning: conversion from 'unsigned int' to 'unsigned char:3' may change value [-Wconversion]
+   12 |     ub.y = u;
+      |            ^
+conv_bitfield.c:13:12: warning: conversion from 'char' to 'unsigned char:3' may change value [-Wconversion]
+   13 |     ub.y = c;
+      |            ^
+conv_bitfield.c:14:12: warning: overflow in conversion from 'int' to 'signed char:1' changes value from '1' to '-1' [-Woverflow]
+   14 |     sb.x = 1;
+      |            ^
+conv_bitfield.c:15:12: warning: conversion to 'signed char:1' from boolean expression [-Wconversion]
+   15 |     sb.x = (bar != 0);
+      |            ^
+conv_bitfield.c:16:12: warning: conversion to 'signed char:1' from boolean expression [-Wconversion]
+   16 |     sb.x = bar != 0 ? 1 : 0;
+      |            ^
+conv_bitfield.c:17:12: warning: conversion to 'signed char:1' from boolean expression [-Wconversion]
+   17 |     sb.x = !bar;
+      |            ^
+conv_bitfield.c:18:12: warning: overflow in conversion from 'int' to 'signed char:5' changes value from '40' to '8' [-Woverflow]
+   18 |     sb.z = 40;
+      |            ^
+conv_bitfield.c:19:12: warning: conversion from 'int' to 'signed char:5' may change value [-Wconversion]
+   19 |     sb.z = bar;
+      |            ^
+conv_bitfield.c:20:12: warning: conversion from 'char' to 'signed char:5' may change value [-Wconversion]
+   20 |     sb.z = (char)bar;
+      |            ^

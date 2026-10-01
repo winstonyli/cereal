@@ -477,6 +477,8 @@ bool cexpr_is_expr(unsigned tag);
 TypeId cexpr_rvalue_type(Checker *c, uint32_t i);
 /* An integer constant's value as signed (per its type). */
 int64_t cexpr_sval(Checker *c, uint32_t i);
+bool cexpr_bf_overflow(Checker *c, SrcLoc loc, uint32_t n, TypeId ft,
+                       TypeId rt, unsigned w);
 const char *cexpr_str(Checker *c, uint32_t i);
 void cexpr_builtin_decl(Checker *c, const CSym *s);
 /* Truncates v to type t (two's complement, sign-extended if signed). */
@@ -534,6 +536,7 @@ typedef struct ConvInfo {
     /* CONV_ARG to an unprototyped builtin etc.: report as this warning
      * option instead of an error (NULL: normal). */
     const char *warnopt;
+    unsigned lhs_bits;       /* the target is a bit-field of this width */
     bool lhs_bitfield;       /* the target is a bit-field (gcc's -Wc++-compat
                               * enum message then omits the types) */
 } ConvInfo;

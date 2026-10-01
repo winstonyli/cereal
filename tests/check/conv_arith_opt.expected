@@ -1,0 +1,39 @@
+conv_arith_opt.c:4:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+    4 |   s = s + 1;
+      |       ^
+conv_arith_opt.c:5:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+    5 |   s = s + t;
+      |       ^
+conv_arith_opt.c:6:7: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+    6 |   s = a + a;
+      |       ^
+conv_arith_opt.c:7:7: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+    7 |   s = s + a;
+      |       ^
+conv_arith_opt.c:8:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+    8 |   s = -s;
+      |       ^
+conv_arith_opt.c:9:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+    9 |   s = ~s;
+      |       ^
+conv_arith_opt.c:10:8: warning: conversion from 'int' to 'unsigned char' may change value [-Warith-conversion]
+   10 |   uc = uc + 1;
+      |        ^
+conv_arith_opt.c:11:8: warning: conversion from 'int' to 'unsigned char' may change value [-Warith-conversion]
+   11 |   uc = uc * uc;
+      |        ^
+conv_arith_opt.c:12:8: warning: conversion from 'int' to 'unsigned char' may change value [-Wconversion]
+   12 |   uc = c + uc;
+      |        ^
+conv_arith_opt.c:13:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+   13 |   s = s << 1;
+      |       ^
+conv_arith_opt.c:14:7: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+   14 |   s = a / 2;
+      |       ^
+conv_arith_opt.c:17:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+   17 |   s = s * 3;
+      |       ^
+conv_arith_opt.c:18:7: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+   18 |   s = s % a;
+      |       ^

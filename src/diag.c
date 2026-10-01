@@ -156,6 +156,7 @@ static const DiagOption options[] = {
     {"cast-align", "c", DL_WARNING, false, 0, "cast increases the required alignment"},
     {"conversion", "c", DL_WARNING, false, 0, "implicit conversion that may change a value"},
     {"sign-conversion", "c", DL_WARNING, false, 0, "implicit conversion that may change the sign"},
+    {"arith-conversion", "c", DL_WARNING, false, 0, "conversion of an arithmetic result may change its value"},
     {"float-conversion", "c", DL_WARNING, false, 0, "implicit conversion that reduces floating precision"},
     {"float-equal", "c", DL_WARNING, false, 0, "floating-point values compared for equality"},
     {"jump-misses-init", "c", DL_WARNING, false, 0, "goto or switch jumps over a variable initialization"},
@@ -187,6 +188,7 @@ struct DiagConfig {
     bool everything;
     bool werror;
     bool pedantic;
+    signed char conv;        /* -Wconversion given: 1 on, -1 off, 0 unset */
 };
 
 DiagConfig *diag_config_new(void)
@@ -362,6 +364,8 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
         if (name_matches(&options[i], flag, &lv) ||
             (!err && strcmp(options[i].group, flag) == 0)) {
             bool en = on && lv != 0;
+            if (!strcmp(options[i].name, "conversion") && !err)
+                c->conv = en ? 1 : -1;
             c->overrides[i] = en ? options[i].level : DL_IGNORED;
             c->overridden[i] = true;
             c->optlevel[i] = strchr(flag, 61) ? (signed char)lv : 0;
@@ -413,6 +417,17 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
         if (*lvl != DL_IGNORED && c->error[i])
             *lvl = DL_ERROR;
         return *lvl != DL_IGNORED;
+    }
+    /* gcc: -Wconversion enables -Wsign-conversion and -Wfloat-conversion in C
+     * unless they were set explicitly */
+    if (c && c->conv && (!strcmp(o->name, "sign-conversion") ||
+                         !strcmp(o->name, "float-conversion"))) {
+        if (c->conv > 0) {
+            *lvl = o->level;
+            return 1;
+        }
+        *lvl = DL_IGNORED;
+        return 0;
     }
     u = umbrella_state(c, o);
     if (u > 0 || (c && c->everything) || (u < 0 && o->on)) {

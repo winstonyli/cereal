@@ -1,0 +1,33 @@
+conv_cond_sign.c:4:11: warning: operand of '?:' changes signedness from 'int' to 'unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    4 |   u = a ? a : u; u = a ? u : a; u = a ? 5 : u; u = a ? -5 : u; u = a ? s : u; u = a ? us : a; u = a ? c : uc;
+      |           ^
+conv_cond_sign.c:4:30: warning: operand of '?:' changes signedness from 'int' to 'unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    4 |   u = a ? a : u; u = a ? u : a; u = a ? 5 : u; u = a ? -5 : u; u = a ? s : u; u = a ? us : a; u = a ? c : uc;
+      |                              ^
+conv_cond_sign.c:4:56: warning: operand of '?:' changes signedness from 'int' to 'unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    4 |   u = a ? a : u; u = a ? u : a; u = a ? 5 : u; u = a ? -5 : u; u = a ? s : u; u = a ? us : a; u = a ? c : uc;
+      |                                                        ^
+conv_cond_sign.c:4:72: warning: operand of '?:' changes signedness from 'short int' to 'unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    4 |   u = a ? a : u; u = a ? u : a; u = a ? 5 : u; u = a ? -5 : u; u = a ? s : u; u = a ? us : a; u = a ? c : uc;
+      |                                                                        ^
+conv_cond_sign.c:5:12: warning: operand of '?:' changes signedness from 'long int' to 'long unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    5 |   ul = a ? l : ul; ul = a ? u : l; l = a ? u : l; u = a ? a & 3 : u; u = a ? (unsigned char)c : a;
+      |            ^
+conv_cond_sign.c:6:11: warning: operand of '?:' changes signedness from 'int' to 'unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    6 |   u = a ? a : 1u; u = a ? -1 : 1u; u = a ? 1 : 1u; u = a ? a >> 1 : u; u = a ? a % 5 : u;
+      |           ^
+conv_cond_sign.c:6:27: warning: operand of '?:' changes signedness from 'int' to 'unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    6 |   u = a ? a : 1u; u = a ? -1 : 1u; u = a ? 1 : 1u; u = a ? a >> 1 : u; u = a ? a % 5 : u;
+      |                           ^
+conv_cond_sign.c:6:60: warning: operand of '?:' changes signedness from 'int' to 'unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    6 |   u = a ? a : 1u; u = a ? -1 : 1u; u = a ? 1 : 1u; u = a ? a >> 1 : u; u = a ? a % 5 : u;
+      |                                                            ^
+conv_cond_sign.c:6:80: warning: operand of '?:' changes signedness from 'int' to 'unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    6 |   u = a ? a : 1u; u = a ? -1 : 1u; u = a ? 1 : 1u; u = a ? a >> 1 : u; u = a ? a % 5 : u;
+      |                                                                                ^
+conv_cond_sign.c:7:11: warning: operand of '?:' changes signedness from 'int' to 'unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    7 |   l = a ? a : u; a = a ? a : u; u = a ? uc : a; u = a ? s : us;
+      |           ^
+conv_cond_sign.c:7:26: warning: operand of '?:' changes signedness from 'int' to 'unsigned int' due to unsignedness of other operand [-Wsign-compare]
+    7 |   l = a ? a : u; a = a ? a : u; u = a ? uc : a; u = a ? s : us;
+      |                          ^

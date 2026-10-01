@@ -1260,12 +1260,6 @@ static void bitfield_overflow(Checker *c, const Lvl *L, const IVal *v,
                               TypeId ft)
 {
     const Field *f;
-    unsigned w, su_bits;
-    bool tu, su;
-    int64_t sv;
-    uint64_t uv, mask, r;
-    const char *base;
-    char tname[64], vs[32], rs[32];
     TypeId rt;
     uint32_t n = v->node;
     if ((L->kind != LV_REC && L->kind != LV_UNI) || L->fi >= L->nf ||
@@ -1281,60 +1275,7 @@ static void bitfield_overflow(Checker *c, const Lvl *L, const IVal *v,
     if (c->ef[n] & EF_OVERFLOW)
         return;
     rt = v->type;
-    if (!type_is_integer(TT, rt) || type_int_bits(TT, rt) > 64)
-        return;
-    w = f->width;
-    su_bits = type_int_bits(TT, ft);
-    if (w >= su_bits)
-        return;
-    tu = !type_is_signed(TT, ft);
-    su = !type_is_signed(TT, rt);
-    sv = cexpr_sval(c, n);
-    uv = (uint64_t)sv;
-    mask = ((uint64_t)1 << w) - 1;
-    {
-        bool fits;
-        if (su)
-            fits = tu ? uv <= mask : uv <= (mask >> 1);
-        else if (tu)
-            fits = sv >= 0 && uv <= mask;
-        else
-            fits = sv >= -(int64_t)(mask >> 1) - 1 && sv <= (int64_t)(mask >> 1);
-        if (fits)
-            return;
-    }
-    r = uv & mask;
-    if (!tu && (r >> (w - 1)))
-        r |= ~mask;
-    base = w <= 8 ? (tu ? "unsigned char" : "signed char")
-         : w <= 16 ? (tu ? "short unsigned int" : "short int")
-         : w <= 32 ? (tu ? "unsigned int" : "int")
-                   : (tu ? "long unsigned int" : "long int");
-    snprintf(tname, sizeof tname, "'%s:%u'", base, w);
-    if (su)
-        snprintf(vs, sizeof vs, "%" PRIu64, uv);
-    else
-        snprintf(vs, sizeof vs, "%" PRId64, sv);
-    if (tu)
-        snprintf(rs, sizeof rs, "%" PRIu64, r);
-    else
-        snprintf(rs, sizeof rs, "%" PRId64, (int64_t)r);
-    if (su) {
-        cwarn(c, cnode_loc(c, n), "overflow", "conversion from %s to %s "
-              "changes value from '%s' to '%s'", type_q(TT, rt), tname, vs, rs);
-    } else if (tu) {
-        bool sfit = sv >= -(int64_t)(mask >> 1) - 1 && sv <= (int64_t)(mask >> 1);
-        if (!sfit)
-            cwarn(c, cnode_loc(c, n), "overflow", "unsigned conversion from "
-                  "%s to %s changes value from '%s' to '%s'", type_q(TT, rt),
-                  tname, vs, rs);
-    } else {
-        bool ufit = sv >= 0 && uv <= mask;
-        if (!ufit || c->opt.pedantic)
-            cwarn(c, cnode_loc(c, n), "overflow", "overflow in conversion "
-                  "from %s to %s changes value from '%s' to '%s'",
-                  type_q(TT, rt), tname, vs, rs);
-    }
+    cexpr_bf_overflow(c, cnode_loc(c, n), n, ft, rt, f->width);
 }
 
 /* gcc's constant_expression_warning: the constant (after conversion to

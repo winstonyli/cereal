@@ -1,0 +1,45 @@
+conv_const.c:4:8: warning: signed conversion from 'unsigned int' to 'int' changes value from '3000000000' to '-1294967296' [-Wsign-conversion]
+    4 |   si = 3000000000u;
+      |        ^
+conv_const.c:5:8: warning: unsigned conversion from 'int' to 'unsigned int' changes value from '-1' to '4294967295' [-Wsign-conversion]
+    5 |   ui = -1;
+      |        ^
+conv_const.c:6:8: warning: signed conversion from 'long long unsigned int' to 'long long int' changes value from '10000000000000000000' to '-8446744073709551616' [-Wsign-conversion]
+    6 |   sl = 10000000000000000000ull;
+      |        ^
+conv_const.c:7:8: warning: unsigned conversion from 'int' to 'long long unsigned int' changes value from '-5' to '18446744073709551611' [-Wsign-conversion]
+    7 |   ul = -5;
+      |        ^
+conv_const.c:8:8: warning: unsigned conversion from 'int' to 'unsigned char' changes value from '-1' to '255' [-Wsign-conversion]
+    8 |   uc = -1;
+      |        ^
+conv_const.c:9:8: warning: overflow in conversion from 'int' to 'signed char' changes value from '200' to '-56' [-Woverflow]
+    9 |   sc = 200;
+      |        ^
+conv_const.c:10:8: warning: overflow in conversion from 'unsigned int' to 'signed char' changes value from '200' to '-56' [-Woverflow]
+   10 |   sc = 200u;
+      |        ^
+conv_const.c:12:7: warning: conversion from 'double' to 'float' changes value from '1.0000000000000001e-1' to '1.00000001e-1f' [-Wfloat-conversion]
+   12 |   f = 0.1;
+      |       ^
+conv_const.c:13:7: warning: conversion from 'unsigned int' to 'float' changes value from '16777217' to '1.6777216e+7f' [-Wfloat-conversion]
+   13 |   f = 16777217u;
+      |       ^
+conv_const.c:15:7: warning: conversion from 'double' to 'float' changes value from '1.0e+40' to '+Inff' [-Wfloat-conversion]
+   15 |   f = 1.0e40;
+      |       ^
+conv_const.c:16:8: warning: overflow in conversion from 'double' to 'int' changes value from '2.147483648e+9' to '2147483647' [-Woverflow]
+   16 |   si = 2147483648.0;
+      |        ^
+conv_const.c:18:8: warning: unsigned conversion from 'int' to 'unsigned int' changes the value of '-1' [-Wsign-conversion]
+   18 |   ui = a ? -1 : 0;
+      |        ^
+conv_const.c:19:8: warning: conversion from 'int' to 'unsigned char' changes the value of '300' [-Wconversion]
+   19 |   uc = a ? 1 : 300;
+      |        ^
+conv_const.c:20:8: warning: signed conversion from 'unsigned int' to 'signed char' changes the value of '3000000000' [-Wsign-conversion]
+   20 |   sc = a ? 1u : 3000000000u;
+      |        ^
+conv_const.c:21:8: warning: conversion from 'double' to 'unsigned int' changes the value of '-1.5e+0' [-Wfloat-conversion]
+   21 |   ui = a ? -1.5 : 2;
+      |        ^

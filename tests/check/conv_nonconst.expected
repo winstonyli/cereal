@@ -1,0 +1,174 @@
+conv_nonconst.c:4:26: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+    4 | short r1(int x) { return x; }
+      |                          ^
+conv_nonconst.c:5:31: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+    5 | unsigned r2(int x) { return x - 1; }
+      |                               ^
+conv_nonconst.c:6:29: warning: conversion from 'double' to 'float' may change value [-Wfloat-conversion]
+    6 | float r3(double x) { return x; }
+      |                             ^
+conv_nonconst.c:8:8: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+    8 |   s += a; s += 1; s -= s; s *= 2; s <<= 1; uc += u; u += a; u += -1; a += u; f += d; f += a; a += f; c += 1;
+      |        ^
+conv_nonconst.c:8:50: warning: conversion from 'unsigned int' to 'unsigned char' may change value [-Wconversion]
+    8 |   s += a; s += 1; s -= s; s *= 2; s <<= 1; uc += u; u += a; u += -1; a += u; f += d; f += a; a += f; c += 1;
+      |                                                  ^
+conv_nonconst.c:8:55: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+    8 |   s += a; s += 1; s -= s; s *= 2; s <<= 1; uc += u; u += a; u += -1; a += u; f += d; f += a; a += f; c += 1;
+      |                                                       ^
+conv_nonconst.c:8:63: warning: unsigned conversion from 'int' to 'unsigned int' changes value from '-1' to '4294967295' [-Wsign-conversion]
+    8 |   s += a; s += 1; s -= s; s *= 2; s <<= 1; uc += u; u += a; u += -1; a += u; f += d; f += a; a += f; c += 1;
+      |                                                               ^
+conv_nonconst.c:8:72: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+    8 |   s += a; s += 1; s -= s; s *= 2; s <<= 1; uc += u; u += a; u += -1; a += u; f += d; f += a; a += f; c += 1;
+      |                                                                        ^
+conv_nonconst.c:8:75: warning: conversion to 'int' from 'unsigned int' may change the sign of the result [-Wsign-conversion]
+    8 |   s += a; s += 1; s -= s; s *= 2; s <<= 1; uc += u; u += a; u += -1; a += u; f += d; f += a; a += f; c += 1;
+      |                                                                           ^
+conv_nonconst.c:8:83: warning: conversion from 'double' to 'float' may change value [-Wfloat-conversion]
+    8 |   s += a; s += 1; s -= s; s *= 2; s <<= 1; uc += u; u += a; u += -1; a += u; f += d; f += a; a += f; c += 1;
+      |                                                                                   ^
+conv_nonconst.c:8:88: warning: conversion from 'int' to 'float' may change value [-Wconversion]
+    8 |   s += a; s += 1; s -= s; s *= 2; s <<= 1; uc += u; u += a; u += -1; a += u; f += d; f += a; a += f; c += 1;
+      |                                                                                        ^
+conv_nonconst.c:8:96: warning: conversion from 'int' to 'float' may change value [-Wconversion]
+    8 |   s += a; s += 1; s -= s; s *= 2; s <<= 1; uc += u; u += a; u += -1; a += u; f += d; f += a; a += f; c += 1;
+      |                                                                                                ^
+conv_nonconst.c:8:99: warning: conversion from 'float' to 'int' may change value [-Wfloat-conversion]
+    8 |   s += a; s += 1; s -= s; s *= 2; s <<= 1; uc += u; u += a; u += -1; a += u; f += d; f += a; a += f; c += 1;
+      |                                                                                                   ^
+conv_nonconst.c:9:9: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+    9 |   u = u + a; u = a + 1; u = a + 1u; a = a + u; a = u * 2;
+      |         ^
+conv_nonconst.c:9:18: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+    9 |   u = u + a; u = a + 1; u = a + 1u; a = a + u; a = u * 2;
+      |                  ^
+conv_nonconst.c:9:31: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+    9 |   u = u + a; u = a + 1; u = a + 1u; a = a + u; a = u * 2;
+      |                               ^
+conv_nonconst.c:9:43: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+    9 |   u = u + a; u = a + 1; u = a + 1u; a = a + u; a = u * 2;
+      |                                           ^
+conv_nonconst.c:9:41: warning: conversion to 'int' from 'unsigned int' may change the sign of the result [-Wsign-conversion]
+    9 |   u = u + a; u = a + 1; u = a + 1u; a = a + u; a = u * 2;
+      |                                         ^
+conv_nonconst.c:9:52: warning: conversion to 'int' from 'unsigned int' may change the sign of the result [-Wsign-conversion]
+    9 |   u = u + a; u = a + 1; u = a + 1u; a = a + u; a = u * 2;
+      |                                                    ^
+conv_nonconst.c:10:7: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   10 |   u = a & b; u = a | 1; a = u & 0x7fffffff;
+      |       ^
+conv_nonconst.c:10:18: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   10 |   u = a & b; u = a | 1; a = u & 0x7fffffff;
+      |                  ^
+conv_nonconst.c:12:9: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   12 |   l = a + u; ul = a; ul = l; l = ul;
+      |         ^
+conv_nonconst.c:12:19: warning: conversion to 'long unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   12 |   l = a + u; ul = a; ul = l; l = ul;
+      |                   ^
+conv_nonconst.c:12:27: warning: conversion to 'long unsigned int' from 'long long int' may change the sign of the result [-Wsign-conversion]
+   12 |   l = a + u; ul = a; ul = l; l = ul;
+      |                           ^
+conv_nonconst.c:12:34: warning: conversion to 'long long int' from 'long unsigned int' may change the sign of the result [-Wsign-conversion]
+   12 |   l = a + u; ul = a; ul = l; l = ul;
+      |                                  ^
+conv_nonconst.c:13:7: warning: conversion from 'long long int' to 'int' may change value [-Wconversion]
+   13 |   a = l >> 3; a = (int)l >> 3; s = c; c = s; uc = c; c = uc;
+      |       ^
+conv_nonconst.c:13:43: warning: conversion from 'short int' to 'char' may change value [-Wconversion]
+   13 |   a = l >> 3; a = (int)l >> 3; s = c; c = s; uc = c; c = uc;
+      |                                           ^
+conv_nonconst.c:13:51: warning: conversion to 'unsigned char' from 'char' may change the sign of the result [-Wsign-conversion]
+   13 |   a = l >> 3; a = (int)l >> 3; s = c; c = s; uc = c; c = uc;
+      |                                                   ^
+conv_nonconst.c:13:58: warning: conversion to 'char' from 'unsigned char' may change the sign of the result [-Wsign-conversion]
+   13 |   a = l >> 3; a = (int)l >> 3; s = c; c = s; uc = c; c = uc;
+      |                                                          ^
+conv_nonconst.c:14:7: warning: conversion from 'long long int' to 'float' may change value [-Wconversion]
+   14 |   f = l; d = f; f = ld; a = ld; ld = a;
+      |       ^
+conv_nonconst.c:14:21: warning: conversion from 'long double' to 'float' may change value [-Wfloat-conversion]
+   14 |   f = l; d = f; f = ld; a = ld; ld = a;
+      |                     ^
+conv_nonconst.c:14:29: warning: conversion from 'long double' to 'int' may change value [-Wfloat-conversion]
+   14 |   f = l; d = f; f = ld; a = ld; ld = a;
+      |                             ^
+conv_nonconst.c:15:6: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+   15 |   fs(a); fu(a); ff(d); fs(c); fu(u + a);
+      |      ^
+conv_nonconst.c:15:13: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   15 |   fs(a); fu(a); ff(d); fs(c); fu(u + a);
+      |             ^
+conv_nonconst.c:15:20: warning: conversion from 'double' to 'float' may change value [-Wfloat-conversion]
+   15 |   fs(a); fu(a); ff(d); fs(c); fu(u + a);
+      |                    ^
+conv_nonconst.c:15:36: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   15 |   fs(a); fu(a); ff(d); fs(c); fu(u + a);
+      |                                    ^
+conv_nonconst.c:16:13: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   16 |   u = a ? u : a; a = a ? 1.5 : 2;
+      |             ^
+conv_nonconst.c:16:22: warning: conversion from 'double' to 'int' changes the value of '1.5e+0' [-Wfloat-conversion]
+   16 |   u = a ? u : a; a = a ? 1.5 : 2;
+      |                      ^
+conv_nonconst.c:17:7: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+   17 |   s = a++; s = (short)a; s = a, s = b;
+      |       ^
+conv_nonconst.c:17:30: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+   17 |   s = a++; s = (short)a; s = a, s = b;
+      |                              ^
+conv_nonconst.c:17:37: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+   17 |   s = a++; s = (short)a; s = a, s = b;
+      |                                     ^
+conv_nonconst.c:18:27: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   18 |   uc = ~uc; uc = -uc; u = -a; u = ~a; a = -u;
+      |                           ^
+conv_nonconst.c:18:35: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   18 |   uc = ~uc; uc = -uc; u = -a; u = ~a; a = -u;
+      |                                   ^
+conv_nonconst.c:18:43: warning: conversion to 'int' from 'unsigned int' may change the sign of the result [-Wsign-conversion]
+   18 |   uc = ~uc; uc = -uc; u = -a; u = ~a; a = -u;
+      |                                           ^
+conv_nonconst.c:19:7: warning: conversion to 'int' from 'unsigned int' may change the sign of the result [-Wsign-conversion]
+   19 |   a = u / 2; a = u % 3; u = a / 2; u = a % 3;
+      |       ^
+conv_nonconst.c:19:18: warning: conversion to 'int' from 'unsigned int' may change the sign of the result [-Wsign-conversion]
+   19 |   a = u / 2; a = u % 3; u = a / 2; u = a % 3;
+      |                  ^
+conv_nonconst.c:19:29: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   19 |   a = u / 2; a = u % 3; u = a / 2; u = a % 3;
+      |                             ^
+conv_nonconst.c:19:40: warning: conversion to 'unsigned int' from 'int' may change the sign of the result [-Wsign-conversion]
+   19 |   a = u / 2; a = u % 3; u = a / 2; u = a % 3;
+      |                                        ^
+conv_nonconst.c:20:32: warning: overflow in conversion from 'int' to 'short int' changes value from '1048576' to '0' [-Woverflow]
+   20 |   a = 1u << 3; u = 1 << 3; s = 1 << 20; uc = 1 << 7;
+      |                                ^
+conv_nonconst.c:21:23: warning: signed conversion from 'unsigned int' to 'int' changes value from '2147483648' to '-2147483648' [-Wsign-conversion]
+   21 |   u = 0x80000000; a = 0x80000000; a = 4294967295; uc = 'a'; uc = -1; c = 200;
+      |                       ^
+conv_nonconst.c:21:39: warning: overflow in conversion from 'long int' to 'int' changes value from '4294967295' to '-1' [-Woverflow]
+   21 |   u = 0x80000000; a = 0x80000000; a = 4294967295; uc = 'a'; uc = -1; c = 200;
+      |                                       ^
+conv_nonconst.c:21:66: warning: unsigned conversion from 'int' to 'unsigned char' changes value from '-1' to '255' [-Wsign-conversion]
+   21 |   u = 0x80000000; a = 0x80000000; a = 4294967295; uc = 'a'; uc = -1; c = 200;
+      |                                                                  ^
+conv_nonconst.c:21:74: warning: overflow in conversion from 'int' to 'char' changes value from '200' to '-56' [-Woverflow]
+   21 |   u = 0x80000000; a = 0x80000000; a = 4294967295; uc = 'a'; uc = -1; c = 200;
+      |                                                                          ^
+conv_nonconst.c:22:7: warning: conversion from 'double' to 'float' changes value from '1.1000000000000001e+0' to '1.10000002e+0f' [-Wfloat-conversion]
+   22 |   f = 1.1; f = 1.5; f = 3; d = 1.1f; f = 1e300; a = 1.5; u = 1.5; a = 1e10;
+      |       ^
+conv_nonconst.c:22:42: warning: conversion from 'double' to 'float' changes value from '1.0000000000000001e+300' to '+Inff' [-Wfloat-conversion]
+   22 |   f = 1.1; f = 1.5; f = 3; d = 1.1f; f = 1e300; a = 1.5; u = 1.5; a = 1e10;
+      |                                          ^
+conv_nonconst.c:22:53: warning: conversion from 'double' to 'int' changes value from '1.5e+0' to '1' [-Wfloat-conversion]
+   22 |   f = 1.1; f = 1.5; f = 3; d = 1.1f; f = 1e300; a = 1.5; u = 1.5; a = 1e10;
+      |                                                     ^
+conv_nonconst.c:22:62: warning: conversion from 'double' to 'unsigned int' changes value from '1.5e+0' to '1' [-Wfloat-conversion]
+   22 |   f = 1.1; f = 1.5; f = 3; d = 1.1f; f = 1e300; a = 1.5; u = 1.5; a = 1e10;
+      |                                                              ^
+conv_nonconst.c:22:71: warning: overflow in conversion from 'double' to 'int' changes value from '1.0e+10' to '2147483647' [-Woverflow]
+   22 |   f = 1.1; f = 1.5; f = 3; d = 1.1f; f = 1e300; a = 1.5; u = 1.5; a = 1e10;
+      |                                                                       ^
