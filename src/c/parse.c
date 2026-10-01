@@ -197,7 +197,7 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
 {
     Diagnostic *d;
     void (*chain)(void *, SrcLoc **, int *) = p->diag->include_chain;
-    if (p->unwind || (p->have_err && i <= p->last_err))
+    if (p->unwind || p->hush || (p->have_err && i <= p->last_err))
         return NULL; /* one error per place: no cascades */
     p->have_err = true;
     p->err_live = true;
@@ -409,6 +409,14 @@ static bool is_type_start(Parser *p, const PTok *t)
     default:
         return false;
     }
+}
+
+/* A type name after '(' (sizeof, cast): gcc's
+ * c_parser_next_tokens_start_typename has no '[[' (attributes there are
+ * only for declarations). */
+static bool is_typename_start(Parser *p, const PTok *t)
+{
+    return !t->stdattr && is_type_start(p, t);
 }
 
 /* Storage-class specifiers a compound literal may carry (C2X). */
@@ -1372,6 +1380,15 @@ static void postfix_tail(Parser *p, uint32_t start)
         PTok t = ct(p);
         if (t.t.kind != TK_PUNCT)
             return;
+        /* an erroneous primary: gcc's pending error silences the rest of
+         * the postfix expression */
+        if (p->nodes.len && p->err_live &&
+            p->nodes.data[p->nodes.len - 1].tag == N_ERROR && !p->hush) {
+            p->hush = true;
+            postfix_tail(p, start);
+            p->hush = false;
+            return;
+        }
         switch (t.t.punct) {
         case P_LBRACKET: {
             uint32_t lb = adv(p);
@@ -1530,6 +1547,21 @@ static void primary(Parser *p)
                 return;
             }
             parse_expr(p);
+            if (!at(p, P_RPAREN)) {
+                /* gcc: c_parser_skip_until_found(')'), balancing */
+                int depth = 0;
+                expect(p, P_RPAREN);
+                while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
+                       !at(p, P_LBRACE)) {
+                    if (at(p, P_LPAREN) || at(p, P_LBRACKET))
+                        depth++;
+                    else if (at(p, P_RBRACKET))
+                        depth--;
+                    else if (at(p, P_RPAREN) && depth-- <= 0)
+                        break;
+                    adv(p);
+                }
+            }
             expect(p, P_RPAREN);
             emit(p, N_PAREN, lp, start, 0);
             return;
@@ -1579,7 +1611,7 @@ static void unary(Parser *p)
         uint32_t kw = adv(p);
         PTok n0 = ct(p), n1 = pk(p, 1);
         if (is_p(&n0, P_LPAREN) &&
-            (is_type_start(p, &n1) || is_clit_storage(p, &n1))) {
+            (is_typename_start(p, &n1) || is_clit_storage(p, &n1))) {
             uint32_t s2 = nmark(p), lp = adv(p);
             type_name(p);
             expect(p, P_RPAREN);
@@ -1612,7 +1644,7 @@ static void unary(Parser *p)
 static void parse_cast(Parser *p)
 {
     PTok n = pk(p, 1);
-    if (at(p, P_LPAREN) && (is_type_start(p, &n) || is_clit_storage(p, &n))) {
+    if (at(p, P_LPAREN) && (is_typename_start(p, &n) || is_clit_storage(p, &n))) {
         uint32_t start = nmark(p), lp = adv(p);
         type_name(p);
         expect(p, P_RPAREN);
