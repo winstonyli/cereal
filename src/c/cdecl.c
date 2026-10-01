@@ -894,6 +894,72 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
     kids_free(&k);
 }
 
+/* c-attribs.cc handle_copy_attribute: the symbol referenced must be a
+ * different declaration of the same kind as the one being declared. */
+static void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
+                             uint32_t name, uint32_t tok)
+{
+    Kids k;
+    uint32_t j;
+    kids_get(c, holder, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n; q++) {
+            char an[48];
+            Kids ak;
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+            if (strcmp(an, "copy"))
+                continue;
+            kids_get(c, it.p[q], &ak);
+            if (ak.n == 1) {
+                uint32_t e = ak.p[0];
+                CSym *r = NULL;
+                for (;;) {
+                    while (ntag(c, e) == N_PAREN && c->nodes[e].size > 1)
+                        e--;
+                    if (ntag(c, e) == N_UNARY && (tpunct(c, c->nodes[e].tok) == P_AMP ||
+                                                  tpunct(c, c->nodes[e].tok) == P_STAR))
+                        e = first_child(c, e);
+                    else
+                        break;
+                }
+                if (ntag(c, e) == N_IDENT) {
+                    uint32_t ref = lookup_ord(c, cnode_ident(c, e));
+                    if (ref != SYM_NONE)
+                        r = csym(c, ref);
+                }
+                if (r && r->name == name) {
+                    Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
+                                            "attributes", "'copy' attribute "
+                                            "ignored on a redeclaration of the "
+                                            "referenced symbol");
+                    if (d)
+                        cnote(c, d, r->loc, "previous declaration here");
+                } else if (!r || r->kind != kind) {
+                    Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
+                                            "attributes", "'copy' attribute "
+                                            "ignored on a declaration of a "
+                                            "different kind than referenced "
+                                            "symbol");
+                    if (d && r)
+                        cnote(c, d, r->loc, "symbol '%s' referenced by '%s' "
+                              "declared here", cident(c, r->name),
+                              cident(c, name));
+                }
+            }
+            kids_free(&ak);
+        }
+        kids_free(&it);
+    }
+    kids_free(&k);
+}
+
 /* The attributes of node i's ATTRIBUTE children (direct). */
 static void attrs_of_children(Checker *c, uint32_t i, Attrs *a)
 {
@@ -3829,6 +3895,10 @@ static void declared_visit(Checker *c, uint32_t i)
         attrs_alloc_check(c, sn, aft, ltok);
         attrs_alloc_check(c, idecl, aft, ltok);
     }
+    if (s.kind == CS_FUNC || s.kind == CS_OBJ) {
+        attrs_copy_check(c, sn, s.kind, s.name, ltok);
+        attrs_copy_check(c, idecl, s.kind, s.name, ltok);
+    }
     attrs_merge(&a, &sp.attrs);
     if (a.desig && !(g.what == GD_TYPEDEF && type_ckind(TT, s.ty) == TY_STRUCT))
         cerror(c, iloc(c, ltok), "'designated_init' attribute is only valid on "
@@ -5450,6 +5520,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     attrs_unknown_emit(c, &sp.attrs, ltok);
     attrs_alloc_check(c, fp.specs, type_kind(TT, g.s.ty) == TY_FUNC ? g.s.ty :
                       type_canon(TT, g.s.ty), ltok);
+    attrs_copy_check(c, fp.specs, CS_FUNC, g.s.name, ltok);
     s = g.s;
     loc = s.loc;
     name = cident(c, s.name);

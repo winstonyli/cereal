@@ -1,0 +1,33 @@
+attr_copy_kind.c:8:1: warning: 'copy' attribute ignored on a declaration of a different kind than referenced symbol [-Wattributes]
+    8 | f3 (void);
+      | ^
+attr_copy_kind.c:6:5: note: symbol 'v0' referenced by 'f3' declared here
+    6 | int v0;
+      |     ^
+attr_copy_kind.c:11:1: warning: 'copy' attribute ignored on a declaration of a different kind than referenced symbol [-Wattributes]
+   11 | v1;
+      | ^
+attr_copy_kind.c:9:6: note: symbol 'f4' referenced by 'v1' declared here
+    9 | void f4 (void);
+      |      ^
+attr_copy_kind.c:13:1: warning: 'copy' attribute ignored on a declaration of a different kind than referenced symbol [-Wattributes]
+   13 | void f5 (void);
+      | ^
+attr_copy_kind.c:16:1: warning: 'copy' attribute ignored on a redeclaration of the referenced symbol [-Wattributes]
+   16 | xref1 (void);
+      | ^
+attr_copy_kind.c:14:6: note: previous declaration here
+   14 | void xref1 (void);
+      |      ^
+attr_copy_kind.c:18:1: warning: 'copy' attribute ignored on a redeclaration of the referenced symbol [-Wattributes]
+   18 | xref1 (void);
+      | ^
+attr_copy_kind.c:16:1: note: previous declaration here
+   16 | xref1 (void);
+      | ^
+attr_copy_kind.c:18:1: warning: 'copy' attribute ignored on a redeclaration of the referenced symbol [-Wattributes]
+   18 | xref1 (void);
+      | ^
+attr_copy_kind.c:16:1: note: previous declaration here
+   16 | xref1 (void);
+      | ^
