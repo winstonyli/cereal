@@ -174,6 +174,7 @@ enum { U_ALL, U_EXTRA, U_UNUSED, U_IMPLICIT, NUMBRELLA };
 struct DiagConfig {
     DiagLevel overrides[NOPTIONS];
     bool overridden[NOPTIONS];
+    signed char optlevel[NOPTIONS];  /* -Wfoo=N: N, 0: not given */
     bool error[NOPTIONS];            /* -Werror=X */
     bool noerror[NOPTIONS];          /* -Wno-error=X: not promoted by -Werror */
     signed char umbrella[NUMBRELLA];
@@ -357,6 +358,7 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
             bool en = on && lv != 0;
             c->overrides[i] = en ? options[i].level : DL_IGNORED;
             c->overridden[i] = true;
+            c->optlevel[i] = strchr(flag, 61) ? (signed char)lv : 0;
             if (err) {
                 c->error[i] = true;
                 c->noerror[i] = false;
@@ -454,6 +456,14 @@ bool diag_noerror(DiagEngine *d, const char *id)
 bool diag_enabled(DiagEngine *d, const char *id)
 {
     return diag_level_for(d, id, DL_WARNING) != DL_IGNORED;
+}
+
+int diag_option_level(DiagEngine *d, const char *id, int dflt)
+{
+    long i = find_index_cached(d, id);
+    if (i < 0 || !d->cfg || !d->cfg->optlevel[i])
+        return dflt;
+    return d->cfg->optlevel[i];
 }
 
 int diag_option_state(DiagEngine *d, const char *id)

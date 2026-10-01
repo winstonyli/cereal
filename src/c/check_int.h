@@ -65,6 +65,8 @@ typedef struct CSym {
     TypeId vty;              /* enumeration constants: the value's type */
     uint32_t dep_msg;        /* deprecated/unavailable message: Checker.dep_msgs + 1 */
     uint64_t nonnull;        /* the 'nonnull' attribute (Attrs.nonnull) */
+    uint32_t parms;          /* cparm.c: how the parameters were declared (the
+                              * first prototype's): Checker.pdescs + 1 */
 } CSym;
 
 /* A symbol reference: an index into the persistent symbols (file scope,
@@ -230,6 +232,7 @@ struct Checker {
     VEC(CSym) gsyms;         /* persistent */
     VEC(CSym) lsyms;         /* this unit's */
     VEC(char *) dep_msgs;    /* deprecated/unavailable attribute messages */
+    VEC(struct CParmDesc *) pdescs;   /* cparm.c: parameter declarations */
     BindVec log;
     uint32_t *top[2];        /* by ident: innermost binding + 1 */
     uint32_t *ext;           /* by ident: external declaration + 1 */
@@ -406,6 +409,16 @@ void cdecl_func_end(Checker *c, uint32_t scope_end);
 /* End of the TU: one entry of Checker.tentative. */
 void cdecl_finish_object(Checker *c, uint32_t ref);
 TypeId type_of_typename(Checker *c, uint32_t i);   /* a TYPE_NAME node */
+
+/* Array parameters redeclared with other bounds (cparm.c). */
+uint32_t cparm_make(Checker *c, uint32_t fnode);    /* a prototype's record + 1 */
+void cparm_compare(Checker *c, uint32_t nw, uint32_t old);
+void cparm_release(Checker *c, uint32_t d);
+void cparm_free(Checker *c);
+/* Declarator helpers cparm.c shares (cdecl.c). */
+uint32_t cdecl_inner_decl(const Checker *c, uint32_t i);
+uint32_t cdecl_array_size_node(Checker *c, uint32_t a);
+unsigned cdecl_quals_of(Checker *c, uint32_t node);
 
 /* Expressions (cexpr.c). */
 void cexpr_node(Checker *c, uint32_t i);

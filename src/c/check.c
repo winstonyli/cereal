@@ -490,6 +490,7 @@ void checker_free(Checker *c)
     cinit_free(c);
     cstmt_free(c);
     cexpr_free_params(c);
+    cparm_free(c);
     csum_free(c);
     sb_free(&c->esb[0]);
     sb_free(&c->esb[1]);

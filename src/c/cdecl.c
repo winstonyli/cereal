@@ -3143,6 +3143,8 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
         locate_old_decl(c, d, o);
         return false;
     }
+    if (nw->kind == CS_FUNC && nw->parms && o->parms)
+        cparm_compare(c, nw->parms, o->parms);
     if (!wd && !((nw->flags & CSF_PARAM) && (o->flags & CSF_FWD)) &&
         !(nw->kind == CS_FUNC && sym_defined(nw) && !sym_defined(o)) &&
         !(sym_external(o) && !sym_external(nw)) &&
@@ -3178,6 +3180,11 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     if (!m.dep_msg)
         m.dep_msg = o->dep_msg;
     m.nonnull |= o->nonnull;
+    if (o->parms) {
+        m.parms = o->parms;
+        if (nw->parms != o->parms)
+            cparm_release(c, nw->parms);
+    }
     if (!new_def)
         m.flags |= o->flags & (CSF_PROTO_DEF | CSF_KR_DEF);
     m.def_loc = sym_defined(nw) ? nw->loc : o->def_loc;
@@ -3746,6 +3753,7 @@ static uint32_t find_declared(Checker *c, uint32_t idecl)
 }
 
 static void funcdef_declared(Checker *c, uint32_t declared);
+static uint32_t funcdef_fnode(Checker *c, uint32_t top);
 static uint32_t find_child(Checker *c, uint32_t i, unsigned tag);
 
 static void decl_visit(Checker *c, uint32_t i)
@@ -3860,6 +3868,8 @@ static void declared_visit(Checker *c, uint32_t i)
         s.flags |= CSF_NORETURN;
     if (a.nonnull && s.kind == CS_FUNC)
         s.nonnull = a.nonnull;
+    if (g.what == GD_FUNC && s.kind == CS_FUNC && !kr)
+        s.parms = cparm_make(c, funcdef_fnode(c, top));
     if (file && g.what == GD_VAR && s.sc == SC_REGISTER &&
         find_child(c, idecl, N_ASM_LABEL) != NO_NODE)
         s.flags |= CSF_REGISTER_NAMED;
@@ -5327,6 +5337,21 @@ static void fd_parts(Checker *c, uint32_t fd, FdParts *p)
     kids_free(&k);
 }
 
+uint32_t cdecl_inner_decl(const Checker *c, uint32_t i)
+{
+    return inner_decl(c, i);
+}
+
+uint32_t cdecl_array_size_node(Checker *c, uint32_t a)
+{
+    return array_size_node(c, a);
+}
+
+unsigned cdecl_quals_of(Checker *c, uint32_t node)
+{
+    return quals_of(c, node);
+}
+
 /* The FUNC declarator directly around the name. */
 static uint32_t funcdef_fnode(Checker *c, uint32_t top)
 {
@@ -5526,6 +5551,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
             cpedwarn(c, loc, "main", "'main' is normally a non-static "
                      "function");
     }
+    s.parms = cparm_make(c, funcdef_fnode(c, top));
     ref = pushdecl(c, &s, g.default_int);
     {
         CSym *t = csym(c, ref);

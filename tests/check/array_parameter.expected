@@ -1,0 +1,252 @@
+array_parameter.c:3:10: warning: argument 1 of type 'int[2]' with mismatched bound [-Warray-parameter=]
+    3 | void f1 (int[2]);
+      |          ^
+array_parameter.c:2:10: note: previously declared as 'int[1]'
+    2 | void f1 (int[1]);
+      |          ^
+array_parameter.c:5:10: warning: argument 1 of type 'int[3]' with mismatched bound [-Warray-parameter=]
+    5 | void f2 (int[3]);
+      |          ^
+array_parameter.c:4:10: note: previously declared as 'int[]'
+    4 | void f2 (int[]);
+      |          ^
+array_parameter.c:7:10: warning: argument 1 of type 'int[4]' with mismatched bound [-Warray-parameter=]
+    7 | void f3 (int[4]);
+      |          ^
+array_parameter.c:6:10: note: previously declared as 'int *'
+    6 | void f3 (int*);
+      |          ^
+array_parameter.c:9:10: warning: argument 1 of type 'int[5]' declared as an ordinary array [-Wvla-parameter]
+    9 | void f4 (int[5]);
+      |          ^
+array_parameter.c:8:10: note: previously declared as a variable length array 'int[*]'
+    8 | void f4 (int[*]);
+      |          ^
+array_parameter.c:11:17: warning: argument 2 of type 'int[]' declared as an ordinary array [-Wvla-parameter]
+   11 | void f5 (int n, int[]);
+      |                 ^
+array_parameter.c:10:17: note: previously declared as a variable length array 'int[n]'
+   10 | void f5 (int n, int[n]);
+      |                 ^
+array_parameter.c:13:17: warning: argument 2 of type 'int[n + 1]' declared with mismatched bound 'n + 1' [-Wvla-parameter]
+   13 | void f6 (int n, int[n + 1]);
+      |                 ^
+array_parameter.c:12:17: note: previously declared as 'int[n]' with bound argument 1
+   12 | void f6 (int n, int[n]);
+      |                 ^
+array_parameter.c:14:15: warning: argument 2 of type 'int[*]' declared with 1 unspecified variable bound [-Wvla-parameter]
+   14 | void f7 (int, int[*]);
+      |               ^
+array_parameter.c:15:21: note: subsequently declared as 'int[n]' with 0 unspecified variable bounds
+   15 | void f7 (int n, int a[n]);
+      |                     ^
+array_parameter.c:17:6: error: conflicting types for 'f8'; have 'void(int (*)[4])'
+   17 | void f8 (int[2][4]);
+      |      ^
+array_parameter.c:16:6: note: previous declaration of 'f8' with type 'void(int (*)[3])'
+   16 | void f8 (int[2][3]);
+      |      ^
+array_parameter.c:19:10: warning: argument 1 of type 'int[3]' with mismatched bound [-Warray-parameter=]
+   19 | void f9 (int[3]);
+      |          ^
+array_parameter.c:18:10: note: previously declared as 'int[static 2]'
+   18 | void f9 (int[static 2]);
+      |          ^
+array_parameter.c:21:15: warning: argument 1 of type 'int[2]' with mismatched bound [-Warray-parameter=]
+   21 | void f10 (int a[2]) { }
+      |               ^
+array_parameter.c:20:15: note: previously declared as 'int[1]'
+   20 | void f10 (int a[1]);
+      |               ^
+array_parameter.c:23:10: warning: argument 1 of type 'int[2]' with mismatched bound [-Warray-parameter=]
+   23 | void g1 (int[2]);
+      |          ^
+array_parameter.c:22:10: note: previously declared as 'int[1]'
+   22 | void g1 (int[1]);
+      |          ^
+array_parameter.c:24:10: warning: argument 1 of type 'int[3]' with mismatched bound [-Warray-parameter=]
+   24 | void g1 (int[3]);
+      |          ^
+array_parameter.c:22:10: note: previously declared as 'int[1]'
+   22 | void g1 (int[1]);
+      |          ^
+array_parameter.c:26:10: warning: argument 1 of type 'int[]' with mismatched bound [-Warray-parameter=]
+   26 | void g2 (int[]);
+      |          ^
+array_parameter.c:25:10: note: previously declared as 'int[2]'
+   25 | void g2 (int[2]);
+      |          ^
+array_parameter.c:27:10: warning: argument 1 of type 'int[3]' with mismatched bound [-Warray-parameter=]
+   27 | void g2 (int[3]);
+      |          ^
+array_parameter.c:25:10: note: previously declared as 'int[2]'
+   25 | void g2 (int[2]);
+      |          ^
+array_parameter.c:29:6: error: conflicting types for 'g3'; have 'void(int (*)[3])'
+   29 | void g3 (int (*)[3]);
+      |      ^
+array_parameter.c:28:6: note: previous declaration of 'g3' with type 'void(int (*)[2])'
+   28 | void g3 (int (*)[2]);
+      |      ^
+array_parameter.c:31:17: warning: mismatch in bound 1 of argument 2 declared as 'int (*)[2]' [-Wvla-parameter]
+   31 | void g4 (int n, int (*)[2]);
+      |                 ^
+array_parameter.c:30:17: note: previously declared as 'int (*)[n]'
+   30 | void g4 (int n, int (*)[n]);
+      |                 ^
+array_parameter.c:34:10: warning: argument 1 of type 'int[3]' with mismatched bound [-Warray-parameter=]
+   34 | void g5 (int[3]);
+      |          ^
+array_parameter.c:33:10: note: previously declared as 'int *'
+   33 | void g5 (A2);
+      |          ^
+array_parameter.c:37:10: warning: argument 1 of type 'int[2]' with mismatched bound [-Warray-parameter=]
+   37 | void g6 (int[2]);
+      |          ^
+array_parameter.c:35:10: note: previously declared as 'int *'
+   35 | void g6 (int *);
+      |          ^
+array_parameter.c:39:10: warning: argument 1 of type 'int (*)[3]' declared as a pointer [-Warray-parameter=]
+   39 | void g7 (int(*)[3]);
+      |          ^
+array_parameter.c:38:10: note: previously declared as an array 'int[2][3]'
+   38 | void g7 (int[2][3]);
+      |          ^
+array_parameter.c:41:14: warning: argument 1 of type 'int[restrict 3]' with mismatched bound [-Warray-parameter=]
+   41 | void g8 (int a[restrict 3]);
+      |              ^
+array_parameter.c:40:14: note: previously declared as 'int[restrict 2]'
+   40 | void g8 (int a[restrict 2]);
+      |              ^
+array_parameter.c:45:29: warning: argument 3 of type 'int[m][n]' declared with mismatched bound argument 2 [-Wvla-parameter]
+   45 | void g10 (int n, int m, int a[m][n]);
+      |                             ^
+array_parameter.c:44:29: note: previously declared as 'int[n][m]' with bound argument 1
+   44 | void g10 (int n, int m, int a[n][m]);
+      |                             ^
+array_parameter.c:45:29: warning: argument 3 of type 'int[m][n]' declared with mismatched bound argument 1 [-Wvla-parameter]
+   45 | void g10 (int n, int m, int a[m][n]);
+      |                             ^
+array_parameter.c:44:29: note: previously declared as 'int[n][m]' with bound argument 2
+   44 | void g10 (int n, int m, int a[n][m]);
+      |                             ^
+array_parameter.c:47:29: warning: argument 3 of type 'int[*][0]' declared with 2 unspecified variable bounds [-Wvla-parameter]
+   47 | void g11 (int n, int m, int a[*][*]);
+      |                             ^
+array_parameter.c:46:29: note: previously declared as 'int[n][m]' with 0 unspecified variable bounds
+   46 | void g11 (int n, int m, int a[n][m]);
+      |                             ^
+array_parameter.c:49:29: warning: argument 3 of type 'int[3][m]' declared with 1 variable bound [-Wvla-parameter]
+   49 | void g12 (int n, int m, int a[3][m]);
+      |                             ^
+array_parameter.c:48:29: note: previously declared as 'int[n][m]' with 2 variable bounds
+   48 | void g12 (int n, int m, int a[n][m]);
+      |                             ^
+array_parameter.c:51:10: warning: argument 1 of type 'int[2]' with mismatched bound [-Warray-parameter=]
+   51 | void h1 (int[2]);
+      |          ^
+array_parameter.c:50:10: note: previously declared as 'int *'
+   50 | void h1 (int *);
+      |          ^
+array_parameter.c:52:10: warning: argument 1 of type 'int[3]' with mismatched bound [-Warray-parameter=]
+   52 | void h1 (int[3]);
+      |          ^
+array_parameter.c:50:10: note: previously declared as 'int *'
+   50 | void h1 (int *);
+      |          ^
+array_parameter.c:54:10: warning: argument 1 of type 'int *' declared as a pointer [-Warray-parameter=]
+   54 | void h2 (int *);
+      |          ^
+array_parameter.c:53:10: note: previously declared as an array 'int[2]'
+   53 | void h2 (int[2]);
+      |          ^
+array_parameter.c:55:10: warning: argument 1 of type 'int[3]' with mismatched bound [-Warray-parameter=]
+   55 | void h2 (int[3]);
+      |          ^
+array_parameter.c:53:10: note: previously declared as 'int[2]'
+   53 | void h2 (int[2]);
+      |          ^
+array_parameter.c:57:10: warning: argument 1 of type 'int[1]' with mismatched bound [-Warray-parameter=]
+   57 | void h3 (int[1]);
+      |          ^
+array_parameter.c:56:10: note: previously declared as 'int[]'
+   56 | void h3 (int[]);
+      |          ^
+array_parameter.c:59:10: warning: argument 1 of type 'int[]' with mismatched bound [-Warray-parameter=]
+   59 | void h4 (int[]);
+      |          ^
+array_parameter.c:58:10: note: previously declared as 'int[1]'
+   58 | void h4 (int[1]);
+      |          ^
+array_parameter.c:60:13: warning: ISO C forbids zero-size array [-Wpedantic]
+   60 | void h5 (int[0]);
+      |             ^
+array_parameter.c:61:10: warning: argument 1 of type 'int[2]' with mismatched bound [-Warray-parameter=]
+   61 | void h5 (int[2]);
+      |          ^
+array_parameter.c:60:10: note: previously declared as 'int[]'
+   60 | void h5 (int[0]);
+      |          ^
+array_parameter.c:63:13: warning: ISO C does not support omitting parameter names in function definitions before C2X [-Wpedantic]
+   63 | void h6 (int[2]) {}
+      |             ^
+array_parameter.c:65:14: warning: argument 1 of type 'int[3]' with mismatched bound [-Warray-parameter=]
+   65 | void h7 (int a[3]) {}
+      |              ^
+array_parameter.c:64:10: note: previously declared as 'int[2]'
+   64 | void h7 (int[2]);
+      |          ^
+array_parameter.c:67:10: warning: argument 1 of type 'int[static 3]' with mismatched bound [-Warray-parameter=]
+   67 | void h8 (int[static 3]);
+      |          ^
+array_parameter.c:66:10: note: previously declared as 'int[static 2]'
+   66 | void h8 (int[static 2]);
+      |          ^
+array_parameter.c:71:11: warning: argument 1 of type 'int[]' declared as an ordinary array [-Wvla-parameter]
+   71 | void h10 (int[]);
+      |           ^
+array_parameter.c:70:11: note: previously declared as a variable length array 'int[*]'
+   70 | void h10 (int[*]);
+      |           ^
+array_parameter.c:72:16: warning: argument 2 of type 'int[*]' declared with 1 unspecified variable bound [-Wvla-parameter]
+   72 | void h11 (int, int[*]);
+      |                ^
+array_parameter.c:73:18: note: subsequently declared as 'int[n]' with 0 unspecified variable bounds
+   73 | void h11 (int n, int[n]);
+      |                  ^
+array_parameter.c:72:16: warning: argument 2 of type 'int[*]' declared with 1 unspecified variable bound [-Wvla-parameter]
+   72 | void h11 (int, int[*]);
+      |                ^
+array_parameter.c:74:18: note: subsequently declared as 'int[n]' with 0 unspecified variable bounds
+   74 | void h11 (int n, int[n]);
+      |                  ^
+array_parameter.c:77:16: warning: argument 2 of type 'int[*]' declared with 1 unspecified variable bound [-Wvla-parameter]
+   77 | void h12 (int, int[*]);
+      |                ^
+array_parameter.c:75:18: note: previously declared as 'int[n]' with 0 unspecified variable bounds
+   75 | void h12 (int n, int[n]);
+      |                  ^
+array_parameter.c:79:11: warning: mismatch in bound 1 of argument 1 declared as 'int (*)[2]' [-Warray-parameter=]
+   79 | void h13 (int (*)[2]);
+      |           ^
+array_parameter.c:78:11: note: previously declared as 'int (*)[]'
+   78 | void h13 (int (*)[]);
+      |           ^
+array_parameter.c:81:11: warning: argument 1 of type 'int[3][2]' with mismatched bound [-Warray-parameter=]
+   81 | void h14 (int[3][2]);
+      |           ^
+array_parameter.c:80:11: note: previously declared as 'int[][2]'
+   80 | void h14 (int[][2]);
+      |           ^
+array_parameter.c:83:11: warning: argument 1 of type 'void *[3]' with mismatched bound [-Warray-parameter=]
+   83 | void h15 (void *[3]);
+      |           ^
+array_parameter.c:82:11: note: previously declared as 'void *[2]'
+   82 | void h15 (void *[2]);
+      |           ^
+array_parameter.c:85:6: error: conflicting types for 'h16'; have 'void(int *)'
+   85 | void h16 (int[2]);
+      |      ^
+array_parameter.c:84:6: note: previous declaration of 'h16' with type 'void(int (*)(void))'
+   84 | void h16 (int (*)(void));
+      |      ^
