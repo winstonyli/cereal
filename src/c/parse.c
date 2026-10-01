@@ -402,7 +402,7 @@ static bool is_type_start(Parser *p, const PTok *t)
     case CK_BOOL: case CK_COMPLEX: case CK_IMAGINARY: case CK_INT128:
     case CK_FLOATN: case CK_DECIMAL: case CK_AUTO_TYPE:
     case CK_STRUCT: case CK_UNION: case CK_ENUM: case CK_TYPEOF:
-    case CK_ATTRIBUTE: case CK_ALIGNAS:
+    case CK_ATTRIBUTE: case CK_ALIGNAS: case CK_GIMPLE:
         return true;
     case CK_NONE:
         return is_typedef_name(p, t);
@@ -747,6 +747,7 @@ typedef struct Specs {
     bool any;                   /* something was there */
     bool type;                  /* a type specifier */
     bool is_typedef;
+    bool gimple;                /* __GIMPLE: the body is not C */
 } Specs;
 
 static void struct_spec(Parser *p);
@@ -804,6 +805,23 @@ static void specs(Parser *p, Specs *s, Lookahead la)
         }
         case CK_INLINE: case CK_NORETURN:
             leaf(p, N_FUNCSPEC, adv(p));
+            break;
+        case CK_GIMPLE:
+            /* gcc diagnoses it without -fgimple and goes on; the pass
+             * list is skipped and the body is not parsed as C */
+            perr(p, ci(p), "'__GIMPLE' only valid with '-fgimple'");
+            adv(p);
+            s->gimple = true;
+            if (at(p, P_LPAREN)) {
+                int depth = 0;
+                do {
+                    if (at(p, P_LPAREN))
+                        depth++;
+                    else if (at(p, P_RPAREN))
+                        depth--;
+                    adv(p);
+                } while (depth > 0 && !at_eof(p));
+            }
             break;
         case CK_VOID: case CK_CHAR: case CK_SHORT: case CK_INT: case CK_LONG:
         case CK_FLOAT: case CK_DOUBLE: case CK_SIGNED: case CK_UNSIGNED:
@@ -1963,7 +1981,16 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
         }
     }
     p->fn_depth++;
-    if (at(p, P_LBRACE)) {
+    if (at(p, P_LBRACE) && p->gimple_body) {
+        int depth = 0;
+        do {
+            if (at(p, P_LBRACE))
+                depth++;
+            else if (at(p, P_RBRACE))
+                depth--;
+            adv(p);
+        } while (depth > 0 && !at_eof(p));
+    } else if (at(p, P_LBRACE)) {
         compound(p, false);
     } else {
         expected(p, "'{'");
@@ -2076,7 +2103,9 @@ static void declaration(Parser *p, bool top)
                 p->unwind_to = first;
                 return;
             }
+            p->gimple_body = s.gimple;
             function_def(p, &d, start, first, flags);
+            p->gimple_body = false;
             return;
         }
         t = ct(p);

@@ -43,6 +43,7 @@ typedef struct Parser {
     Scope scope;
     Scope tags;                 /* struct/union/enum tags (SYM_TAG_*) */
     uint32_t nerrs;             /* errors reported so far */
+    bool gimple_body;           /* the definition being parsed is __GIMPLE */
     bool kr_params;             /* in a definition's parameter declarations */
     uint64_t fuzzy_work;        /* spelling-suggestion effort spent */
     SymSaveVec saved;           /* parameters of function declarators */
