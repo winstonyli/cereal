@@ -275,6 +275,9 @@ struct Checker {
     uint32_t cd_ltok;
     uint64_t il_first;       /* cinput_loc memo: the unit (first_tok), token + 1, its BOL token + 1 (0: none) */
     uint32_t il_tok, il_bol;
+    bool attr_quiet;         /* attr_collect emits no unknown-attribute warning */
+    bool attr_at_set;        /* ... and locates it at attr_at */
+    SrcLoc attr_at;
     TypeId attr_fty;         /* the function type attributes are being applied to (0: unknown) */
     uint32_t cd_clit;       /* '{' token of the compound literal being typed */
     /* cdecl.c: the prototype a K&R definition is checked against (gcc's

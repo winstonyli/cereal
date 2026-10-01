@@ -405,6 +405,58 @@ static bool decl_has_dep_attr(Checker *c, uint32_t d)
     return false;
 }
 
+/* The attribute names gcc 13 registers for C on x86-64 (probed with
+ * __has_attribute), sorted, without the __ affixes. */
+static const char *const known_attrs[] = {
+    "access", "alias", "aligned", "alloc_align", "alloc_size",
+    "always_inline", "artificial", "assume", "assume_aligned",
+    "callee_pop_aggregate_return", "cdecl", "cf_check", "cleanup", "cold",
+    "common", "const", "constructor", "copy", "deprecated", "designated_init",
+    "destructor", "error", "externally_visible", "fallthrough", "fastcall",
+    "fd_arg", "fd_arg_read", "fd_arg_write", "fentry_name", "fentry_section",
+    "flatten", "force_align_arg_pointer", "format", "format_arg",
+    "function_return", "gcc_struct", "gnu_inline", "hot", "ifunc",
+    "indirect_branch", "indirect_return", "interrupt", "leaf", "malloc",
+    "may_alias", "maybe_unused", "mode", "ms_abi", "ms_hook_prologue",
+    "ms_struct", "naked", "no_address_safety_analysis",
+    "no_caller_saved_registers", "no_icf", "no_instrument_function",
+    "no_profile_instrument_function", "no_reorder", "no_sanitize",
+    "no_sanitize_address", "no_sanitize_coverage", "no_sanitize_thread",
+    "no_sanitize_undefined", "no_split_stack", "no_stack_limit",
+    "no_stack_protector", "nocf_check", "noclone", "nocommon",
+    "nodirect_extern_access", "nodiscard", "noinit", "noinline", "noipa",
+    "nonnull", "nonstring", "noplt", "noreturn", "nothrow",
+    "objc_nullability", "objc_root_class", "optimize", "packed",
+    "patchable_function_entry", "pure", "regparm", "retain",
+    "returns_nonnull", "returns_twice", "scalar_storage_order", "section",
+    "sentinel", "signed_bool_precision", "simd", "sseregparm",
+    "stack_protect", "stdcall", "strict_flex_array", "symver", "sysv_abi",
+    "tainted_args", "target", "target_clones", "thiscall", "tls_model",
+    "transaction_callable", "transaction_may_cancel_outer",
+    "transaction_pure", "transaction_safe", "transaction_safe_dynamic",
+    "transaction_unsafe", "transaction_wrap", "transparent_union",
+    "unavailable", "uninitialized", "unused", "used", "vector_mask",
+    "vector_size", "visibility", "volatile", "warn_if_not_aligned",
+    "warn_unused", "warn_unused_result", "warning", "weak", "weakref",
+    "zero_call_used_regs",
+};
+
+static bool attr_known(const char *name)
+{
+    size_t lo = 0, hi = sizeof known_attrs / sizeof *known_attrs;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        int r = strcmp(name, known_attrs[mid]);
+        if (!r)
+            return true;
+        if (r < 0)
+            hi = mid;
+        else
+            lo = mid + 1;
+    }
+    return false;
+}
+
 /* Collects the type-affecting attributes of one ATTRIBUTE node. */
 static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
 {
@@ -420,6 +472,9 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
         attr_norm(tstr(c, c->nodes[item].tok), name, sizeof name);
         kids_get(c, item, &ak);
         arg = ak.n ? ak.p[0] : NO_NODE;
+        if (!c->attr_quiet && strcmp(name, "gnu") && !attr_known(name))   /* gnu:: is a [[]] scope */
+            cwarn(c, c->attr_at_set ? c->attr_at : iloc(c, c->nodes[item].tok),
+                  "attributes", "'%s' attribute directive ignored", name);
         if (!strcmp(name, "aligned")) {
             uint32_t v;
             if (arg == NO_NODE)
@@ -4078,12 +4133,17 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     {
         Attrs ma;
         memset(&ma, 0, sizeof ma);
+        c->attr_quiet = true;
         attrs_of_children(c, i, &ma);
+        c->attr_quiet = false;
         if (ma.has_mode)
             cerror(c, tloc(c, close_tok), "mode '%s' applied to inappropriate "
                    "type", ma.mode_name);
     }
+    c->attr_at = loc;               /* gcc reports a tag attribute at the tag name */
+    c->attr_at_set = true;
     attrs_of_children(c, i, &a);
+    c->attr_at_set = false;
     n = (uint32_t)c->fields.len - rd.first;
     f = c->fields.data + rd.first;
     if (c->opt.pedantic) {

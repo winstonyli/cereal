@@ -1,0 +1,15 @@
+attr_unknown.c:1:1: warning: 'foo' attribute directive ignored [-Wattributes]
+    1 | int a __attribute__((foo));
+      | ^
+attr_unknown.c:2:1: warning: 'bar' attribute directive ignored [-Wattributes]
+    2 | int b __attribute__((__bar__, unused));
+      | ^
+attr_unknown.c:3:1: warning: 'qux' attribute directive ignored [-Wattributes]
+    3 | void f(void) __attribute__((qux));
+      | ^
+attr_unknown.c:4:28: warning: 'ww' attribute directive ignored [-Wattributes]
+    4 | struct __attribute__((yy)) S { int x __attribute__((ww)); };
+      |                            ^
+attr_unknown.c:4:28: warning: 'yy' attribute directive ignored [-Wattributes]
+    4 | struct __attribute__((yy)) S { int x __attribute__((ww)); };
+      |                            ^
