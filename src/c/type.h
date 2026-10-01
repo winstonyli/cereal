@@ -80,6 +80,7 @@ typedef struct Field {
     uint16_t flags;
     uint16_t align;          /* aligned attribute (bytes), 0: none */
     SrcLoc loc;
+    uint32_t dep, dmsg;      /* CSF_DEPRECATED/UNAVAILABLE bits; message */
 } Field;
 
 typedef struct Record {
@@ -90,6 +91,7 @@ typedef struct Record {
     uint32_t align;          /* bytes */
     uint16_t flags;
     TypeId ty;               /* its TY_STRUCT / TY_UNION type */
+    uint32_t dep, dmsg;      /* CSF_DEPRECATED/UNAVAILABLE bits; message */
 } Record;
 
 typedef struct Enum {
@@ -98,6 +100,7 @@ typedef struct Enum {
     TypeId underlying;       /* uint until a value is negative */
     bool complete, packed;
     TypeId ty;
+    uint32_t dep, dmsg;
 } Enum;
 
 typedef struct TypeTable {
@@ -172,6 +175,7 @@ typedef struct FieldIn {
     uint16_t align;          /* aligned attribute, 0: none */
     bool packed;
     SrcLoc loc;
+    uint32_t dep, dmsg;
 } FieldIn;
 
 /* Lays out and completes a record.  pack: #pragma pack value in bytes (0:

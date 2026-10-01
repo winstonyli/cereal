@@ -3760,9 +3760,18 @@ static void xref_visit(Checker *c, uint32_t i, int want)
         }
         ref = 0;
     }
-    if (ref)
+    if (ref) {
         t = ref;
-    else {
+        /* straight from the table: a name-only use is not a layout read */
+        uint32_t x = type_ent(TT, type_canon(TT, t))->extra;
+        if (want == TY_ENUM) {
+            const Enum *e = &TT->enums.data[x];
+            cdep_report(c, loc, name, e->dep, e->dmsg, &e->loc);
+        } else {
+            const Record *r = &TT->recs.data[x];
+            cdep_report(c, loc, name, r->dep, r->dmsg, &r->loc);
+        }
+    } else {
         t = new_tag(c, want, name, loc);
         kind = TSK_TAGFIRSTREF;
         if (cscope_kind(c) == SCK_PROTO)
@@ -3937,6 +3946,9 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     csum_read_pack(c);
     type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed);
     r = type_record(TT, t);
+    r->dep = (a.deprecated ? CSF_DEPRECATED : 0) |
+             (a.unavailable ? CSF_UNAVAILABLE : 0);
+    r->dmsg = a.dep_msg;
     if (a.transparent_union && want == TY_UNION) {
         bool ok = r->nfields > 0;
         if (ok) {
@@ -4125,6 +4137,9 @@ static void enum_finish(Checker *c, uint32_t i, uint32_t open)
     e = type_enum(TT, t);
     if (a.packed)
         e->packed = true;
+    e->dep = (a.deprecated ? CSF_DEPRECATED : 0) |
+             (a.unavailable ? CSF_UNAVAILABLE : 0);
+    e->dmsg = a.dep_msg;
     for (k = 0; k < ne; k++) {
         const CSym *s = csym(c, c->ecs.data[rd.first_ec + k]);
         if (k == 0) {
@@ -4286,6 +4301,9 @@ static void member_visit(Checker *c, uint32_t i)
     fi.align = g.s.align > a.aligned ? g.s.align : (uint16_t)a.aligned;
     fi.packed = a.packed;
     fi.loc = g.loc;
+    fi.dep = (a.deprecated ? CSF_DEPRECATED : 0) |
+             (a.unavailable ? CSF_UNAVAILABLE : 0);
+    fi.dmsg = a.dep_msg;
     vec_push(&c->fields, fi);
 }
 

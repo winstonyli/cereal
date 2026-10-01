@@ -388,7 +388,9 @@ void cexpr_asm(Checker *c, uint32_t i);
 void cdep_use(Checker *c, SrcLoc loc, const CSym *s, const SrcLoc *note);
 /* The value of a string literal node, for an attribute message: its index
  * in Checker.dep_msgs + 1. */
-uint32_t cdep_msg(Checker *c, uint32_t str_node);   /* an asm statement's operands */
+uint32_t cdep_msg(Checker *c, uint32_t str_node);
+void cdep_report(Checker *c, SrcLoc loc, uint32_t nameid, uint32_t flags,
+                 uint32_t dep_msg, const SrcLoc *note);   /* an asm statement's operands */
 bool cexpr_is_expr(unsigned tag);
 /* The type of an expression after lvalue conversion (arrays and functions
  * decay, qualifiers dropped). */

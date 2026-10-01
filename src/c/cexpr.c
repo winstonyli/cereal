@@ -3071,6 +3071,8 @@ static void e_member(Checker *c, uint32_t i)
         set_err(c, i);
         return;
     }
+    cdep_report(c, cinput_loc(c, c->nodes[i].tok), f->name, f->dep, f->dmsg,
+                &f->loc);
     ft = type_qual(f->ty, q | tquals(c, rec));
     c->ty[i] = ft;
     c->ef[i] = c->ef[d] & EF_SIDE;
@@ -6365,14 +6367,20 @@ uint32_t cdep_msg(Checker *c, uint32_t str_node)
 
 void cdep_use(Checker *c, SrcLoc loc, const CSym *s, const SrcLoc *note)
 {
+    cdep_report(c, loc, s->name, s->flags, s->dep_msg, note);
+}
+
+void cdep_report(Checker *c, SrcLoc loc, uint32_t nameid, uint32_t flags,
+                 uint32_t dep_msg, const SrcLoc *note)
+{
     const char *msg = NULL, *name;
     Diagnostic *d;
-    if (!(s->flags & (CSF_DEPRECATED | CSF_UNAVAILABLE)) || !s->name)
+    if (!(flags & (CSF_DEPRECATED | CSF_UNAVAILABLE)) || !nameid)
         return;
-    if (s->dep_msg && s->dep_msg <= c->dep_msgs.len)
-        msg = c->dep_msgs.data[s->dep_msg - 1];
-    name = cident(c, s->name);
-    if (s->flags & CSF_UNAVAILABLE)
+    if (dep_msg && dep_msg <= c->dep_msgs.len)
+        msg = c->dep_msgs.data[dep_msg - 1];
+    name = cident(c, nameid);
+    if (flags & CSF_UNAVAILABLE)
         d = msg ? cerror_d(c, loc, "'%s' is unavailable: %s", name, msg)
                 : cerror_d(c, loc, "'%s' is unavailable", name);
     else

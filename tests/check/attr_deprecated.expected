@@ -1,15 +1,33 @@
-attr_deprecated.c:5:1: error: 'f' is unavailable: gone
-    5 | void h(void) { f(); g = 1; T x = 0; (void)x; }
+attr_deprecated.c:4:1: error: 'f' is unavailable: gone
+    4 | void h(void) { f(); g = 1; T x = 0; (void)x; }
       | ^
-attr_deprecated.c:2:6: note: declared here
-    2 | void f(void) __attribute__((unavailable("gone")));
+attr_deprecated.c:1:6: note: declared here
+    1 | void f(void) __attribute__((unavailable("gone")));
       |      ^
-attr_deprecated.c:5:1: warning: 'g' is deprecated: old [-Wdeprecated-declarations]
-    5 | void h(void) { f(); g = 1; T x = 0; (void)x; }
+attr_deprecated.c:4:1: warning: 'g' is deprecated: old [-Wdeprecated-declarations]
+    4 | void h(void) { f(); g = 1; T x = 0; (void)x; }
       | ^
-attr_deprecated.c:3:5: note: declared here
-    3 | int g __attribute__((deprecated("old")));
+attr_deprecated.c:2:5: note: declared here
+    2 | int g __attribute__((deprecated("old")));
       |     ^
-attr_deprecated.c:5:1: warning: 'T' is deprecated [-Wdeprecated-declarations]
-    5 | void h(void) { f(); g = 1; T x = 0; (void)x; }
+attr_deprecated.c:4:1: warning: 'T' is deprecated [-Wdeprecated-declarations]
+    4 | void h(void) { f(); g = 1; T x = 0; (void)x; }
       | ^
+attr_deprecated.c:7:8: warning: 'D' is deprecated [-Wdeprecated-declarations]
+    7 | struct D *pd;
+      |        ^
+attr_deprecated.c:6:36: note: declared here
+    6 | struct __attribute__((deprecated)) D { int x; };
+      |                                    ^
+attr_deprecated.c:10:3: warning: 'a' is deprecated: f [-Wdeprecated-declarations]
+   10 |   return s->a + s->b;
+      |   ^
+attr_deprecated.c:5:16: note: declared here
+    5 | struct S { int a __attribute__((deprecated("f"))); int b __attribute__((unavailable)); };
+      |                ^
+attr_deprecated.c:10:3: error: 'b' is unavailable
+   10 |   return s->a + s->b;
+      |   ^
+attr_deprecated.c:5:56: note: declared here
+    5 | struct S { int a __attribute__((deprecated("f"))); int b __attribute__((unavailable)); };
+      |                                                        ^
