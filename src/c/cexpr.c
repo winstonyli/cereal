@@ -4608,7 +4608,7 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
         size_t len;
         const char *s = ttext(c, c->nodes[i].tok, &len);
         if (len == 8 && !memcmp(s, "_Alignof", 8)) {
-            cpedantic(c, cnode_loc(c, i), "ISO C99 does not support '_Alignof'");
+            cped11(c, cnode_loc(c, i), "ISO C99 does not support '_Alignof'");
             if (!is_type)
                 cpedantic(c, cnode_loc(c, i),
                           "ISO C does not allow '_Alignof (expression)'");
@@ -5197,7 +5197,8 @@ static void e_generic(Checker *c, uint32_t i)
         set_err(c, i);
         return;
     }
-    ped(c, i, cnode_loc(c, i), "ISO C99 does not support '_Generic'");
+    if (!cexpr_in_extension(c, i))
+        cped11(c, cnode_loc(c, i), "ISO C99 does not support '_Generic'");
     if (node_err(c, k[0])) {
         set_err(c, i);
         return;

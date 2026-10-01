@@ -7,10 +7,15 @@
 
 /* ---- diagnostics ------------------------------------------------------ */
 
+bool cin_system(Checker *c, SrcLoc loc);
+bool cin_system(Checker *c, SrcLoc loc)
+{
+    return srcmgr_is_system(srcmgr_file_of(c->sm, loc), loc);
+}
+
 static bool in_system(Checker *c, SrcLoc loc)
 {
-    SrcFile *f = srcmgr_file_of(c->sm, loc);
-    return f && f->system_header;
+    return cin_system(c, loc);
 }
 
 static Diagnostic *vrep(Checker *c, DiagLevel lvl, const char *id, SrcLoc loc,
@@ -80,6 +85,19 @@ Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
     va_list ap;
     va_start(ap, fmt);
     d = vped(c, loc, id, fmt, ap);
+    va_end(ap);
+    return d;
+}
+
+/* gcc's pedwarn_c11: -Wno-c99-c11-compat hides these in C99 mode. */
+Diagnostic *cped11(Checker *c, SrcLoc loc, const char *fmt, ...)
+{
+    Diagnostic *d;
+    va_list ap;
+    if (!c->opt.pedantic || !diag_enabled(c->diag, "c99-c11-compat"))
+        return NULL;
+    va_start(ap, fmt);
+    d = vped(c, loc, "pedantic", fmt, ap);
     va_end(ap);
     return d;
 }

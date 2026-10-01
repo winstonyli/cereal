@@ -385,6 +385,8 @@ Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
                      const char *fmt, ...);
 /* A pedwarn under -Wpedantic only ([-Wpedantic]). */
 Diagnostic *cpedantic(Checker *c, SrcLoc loc, const char *fmt, ...);
+Diagnostic *cped11(Checker *c, SrcLoc loc, const char *fmt, ...);
+bool cin_system(Checker *c, SrcLoc loc);
 Diagnostic *cerror_d(Checker *c, SrcLoc loc, const char *fmt, ...);
 Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, const char *id,
                     const char *fmt, ...);

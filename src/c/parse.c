@@ -1888,6 +1888,13 @@ static void label_body(Parser *p)
     if (at(p, P_RBRACE))
         return;
     t = ct(p);
+    {
+        PTok n1 = pk(p, 1);
+        if (is_name(p, &t) && is_p(&n1, P_COLON)) {   /* labels do not start declarations */
+            statement(p);
+            return;
+        }
+    }
     if (is_decl_start_la(p, &t) && ckw_of(p, &t) != CK_STATIC_ASSERT &&
         (ckw_of(p, &t) != CK_ATTRIBUTE || t.stdattr))
         declaration(p, false);  /* C2X; the checker pedwarns */

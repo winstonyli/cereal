@@ -54,7 +54,7 @@ void srcmgr_free(SrcMgr *sm)
 {
     uint32_t i;
     for (i = 0; i < sm->nfiles; i++)
-        free(srcmgr_file(sm, i)->lines);
+        free(srcmgr_file(sm, i)->lines), free(srcmgr_file(sm, i)->sysmarks);
     for (i = 0; i < FILE_CHUNKS; i++)
         free(sm->fchunks[i]);
     free(sm->path_slots);
@@ -331,6 +331,32 @@ static void compute_lines(SrcFile *f)
     f->nlines = (uint32_t)v.len;
     atomic_store_ptr((void **)&f->lines, v.data);
     mutex_unlock(&lines_lock);
+}
+
+void srcmgr_mark_system(SrcFile *f, uint32_t line, bool sys)
+{
+    uint32_t *v = realloc(f->sysmarks, (f->nsysmarks + 2) * sizeof *v);
+    if (!v)
+        return;
+    f->sysmarks = v;
+    v[f->nsysmarks++] = line;
+    v[f->nsysmarks++] = sys;
+}
+
+bool srcmgr_is_system(SrcFile *f, SrcLoc loc)
+{
+    uint32_t line, col, k;
+    bool sys;
+    if (!f)
+        return false;
+    sys = f->system_header;
+    if (!f->nsysmarks)
+        return sys;
+    srcmgr_linecol(f, loc, &line, &col);
+    for (k = 0; k < f->nsysmarks; k += 2)
+        if (f->sysmarks[k] <= line)
+            sys = f->sysmarks[k + 1] != 0;
+    return sys;
 }
 
 void srcmgr_linecol(SrcFile *f, SrcLoc loc, uint32_t *line, uint32_t *col)

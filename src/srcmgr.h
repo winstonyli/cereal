@@ -40,6 +40,8 @@ typedef struct SrcFile {
     SrcFileKind kind;
     bool pragma_once;
     bool system_header;
+    uint32_t *sysmarks;    /* line markers: (physical line, 1 = system flag) pairs */
+    uint32_t nsysmarks;    /* entries in sysmarks (2 per marker) */
     struct Ident *guard;   /* detected include guard macro */
     bool guard_checked;
     void *skel;            /* cached Skeleton (skel.c) */
@@ -115,6 +117,11 @@ SrcFile *srcmgr_file_of(const SrcMgr *sm, SrcLoc loc);
 uint32_t srcmgr_offset(const SrcFile *f, SrcLoc loc);
 /* 1-based line and column (column counts bytes). */
 void srcmgr_linecol(SrcFile *f, SrcLoc loc, uint32_t *line, uint32_t *col);
+/* A '# N "file" [flags]' marker: from physical line `line` on, the text is in
+ * a system header iff `sys` (flag 3). */
+void srcmgr_mark_system(SrcFile *f, uint32_t line, bool sys);
+/* Is loc in a system header, counting line-marker flags? */
+bool srcmgr_is_system(SrcFile *f, SrcLoc loc);
 SrcLoc srcmgr_loc_of(SrcFile *f, uint32_t line, uint32_t col);
 const char *srcmgr_line_text(SrcFile *f, uint32_t line, uint32_t *len);
 

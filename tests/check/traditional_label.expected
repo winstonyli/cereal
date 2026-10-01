@@ -1,0 +1,15 @@
+traditional_label.c:16:2: warning: traditional C lacks a separate namespace for labels, identifier 'foo4' conflicts [-Wtraditional]
+   16 |  foo4: 
+      |  ^
+traditional_label.c:17:2: warning: traditional C lacks a separate namespace for labels, identifier 'foo5' conflicts [-Wtraditional]
+   17 |  foo5: 
+      |  ^
+traditional_label.c:18:2: warning: traditional C lacks a separate namespace for labels, identifier 'foo6' conflicts [-Wtraditional]
+   18 |  foo6: 
+      |  ^
+traditional_label.c:19:2: warning: traditional C lacks a separate namespace for labels, identifier 'foo7' conflicts [-Wtraditional]
+   19 |  foo7: 
+      |  ^
+traditional_label.c:20:2: warning: traditional C lacks a separate namespace for labels, identifier 'testfunc1' conflicts [-Wtraditional]
+   20 |  testfunc1: 
+      |  ^

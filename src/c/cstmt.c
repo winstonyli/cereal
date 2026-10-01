@@ -398,6 +398,10 @@ static void define_label(Checker *c, CStmt *s, uint32_t node, uint32_t key)
     FuncState *f = top(s);
     if (!name)
         return;
+    if (lookup_ord(c, name) != SYM_NONE && !cin_system(c, loc))
+        cwarn(c, loc, "traditional", "traditional C lacks a separate "
+              "namespace for labels, identifier '%s' conflicts",
+              cident(c, name));
     if (idx) {
         CLabel *l = &s->labels.data[idx - 1];
         if ((l->fn == fn && l->defined) || (l->fn != fn && l->declared)) {

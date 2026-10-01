@@ -1571,6 +1571,15 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
     if (!gnu_marker)
         check_eol(pp, span_from(s, k), "line");
     srcmgr_linecol(pp->inc->file, hash->loc, &phys, &col);
+    if (gnu_marker) {           /* flags: 3 = the following text is a system header */
+        bool sys = false;
+        for (; k < s.n; k++)
+            if (s.t[k].kind == TK_PPNUM && s.t[k].len == 1 &&
+                pp_text(pp, &s.t[k])[0] == '3')
+                sys = true;
+        if (sys || pp->inc->file->nsysmarks)
+            srcmgr_mark_system(pp->inc->file, phys + 1, sys);
+    }
     {
         LineAdj *a = NEW(pp->arena, LineAdj);
         a->prev = pp->inc->adj;

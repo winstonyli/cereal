@@ -1226,7 +1226,7 @@ static void add_scspec(Checker *c, Spec *s, uint32_t tok)
             s->thread = true;
             s->thread_gnu = !strcmp(sp, "__thread");
             if (!s->thread_gnu)
-                cpedantic(c, loc, "ISO C99 does not support '%s'", sp);
+                cped11(c, loc, "ISO C99 does not support '%s'", sp);
             s->thread_loc = loc;
         }
         break;
@@ -1294,7 +1294,7 @@ static void add_qual(Checker *c, Spec *s, uint32_t tok)
     default: return;
     }
     if (q == TQ_ATOMIC)
-        cpedantic(c, loc, "ISO C99 does not support the '_Atomic' qualifier");
+        cped11(c, loc, "ISO C99 does not support the '_Atomic' qualifier");
     dupe = (s->quals & q) != 0;
     prev = s->qual_tok[idx];
     s->quals |= q;
@@ -1800,7 +1800,7 @@ static void specs_visit(Checker *c, uint32_t i)
             uint32_t a = first_child(c, n);
             TypeId t = a != NO_NODE ? c->ty[a] : ERRT;
             SrcLoc loc = tloc(c, nd->tok);
-            cpedantic(c, loc, "ISO C99 does not support the '_Atomic' "
+            cped11(c, loc, "ISO C99 does not support the '_Atomic' "
                       "qualifier");
             if (type_ckind(TT, t) != TY_ERROR) {
                 if (type_ckind(TT, t) == TY_ARRAY ||
@@ -1825,7 +1825,7 @@ static void specs_visit(Checker *c, uint32_t i)
             uint32_t v = 0;
             s.alignas_seen = true;
             s.alignas_loc = loc;
-            cpedantic(c, loc, "ISO C99 does not support '%s'",
+            cped11(c, loc, "ISO C99 does not support '%s'",
                       tstr(c, nd->tok));
             if (a != NO_NODE) {
                 if (ntag(c, a) == N_TYPE_NAME) {
@@ -2014,7 +2014,7 @@ static unsigned quals_of_warn(Checker *c, uint32_t node)
         for (j = 0; j < k.n; j++)
             if (ntag(c, k.p[j]) == N_QUAL &&
                 tckw(c, cnode(c, k.p[j])->tok) == CK_ATOMIC)
-                cpedantic(c, tloc(c, cnode(c, k.p[j])->tok),
+                cped11(c, tloc(c, cnode(c, k.p[j])->tok),
                           "ISO C99 does not support the '_Atomic' qualifier");
         kids_free(&k);
     }
@@ -3031,7 +3031,7 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             if (sp->attrs.gnu_inline)
                 g->s.flags |= CSF_GNU_INLINE;
             if (sp->is_noreturn) {
-                cpedantic(c, loc, "ISO C99 does not support '_Noreturn'");
+                cped11(c, loc, "ISO C99 does not support '_Noreturn'");
                 g->s.flags |= CSF_NORETURN;
             }
         }
@@ -3389,7 +3389,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                          "variably modified type", sname(c, nw));
             locate_old_decl(c, d, o);
         } else {
-            d = cpedantic(c, nw->loc, "redefinition of typedef '%s'",
+            d = cped11(c, nw->loc, "redefinition of typedef '%s'",
                           sname(c, nw));
             locate_old_decl(c, d, o);
         }
@@ -5233,7 +5233,7 @@ static void member_decl_visit(Checker *c, uint32_t i)
                          "anything");
             else {
                 GDecl g;
-                cpedantic(c, tloc(c, ltok), "ISO C99 doesn't support unnamed "
+                cped11(c, tloc(c, ltok), "ISO C99 doesn't support unnamed "
                           "structs/unions");
                 grok(c, &sp, NO_NODE, DC_FIELD, false, false, NO_NODE, ltok,
                      ltok, &g);
@@ -5273,7 +5273,7 @@ static void static_assert_visit(Checker *c, uint32_t i)
     if (c->par[i] != NO_NODE && ntag(c, c->par[i]) == N_STRUCT)
         struct_semis(c, cnode(c, i)->tok);
     if (!in_extension(c, i))
-        cpedantic(c, aloc, "ISO C99 does not support '_Static_assert'");
+        cped11(c, aloc, "ISO C99 does not support '_Static_assert'");
     if (e == NO_NODE)
         return;
     kids_get(c, i, &kk);

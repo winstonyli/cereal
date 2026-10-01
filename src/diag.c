@@ -8,6 +8,7 @@
 static const DiagOption options[] = {
     /* preprocessor core */
     {"pp-warning-directive", "pp", DL_WARNING, true, 0, "#warning directive"},
+    {"c99-c11-compat", "c", DL_WARNING, true, 0, "C11 features in C99 mode (pedantic pedwarns)"},
     {"deprecated", "pp", DL_WARNING, true, 0, "GCC assertions (#assert, #unassert, #pred(answer) in #if)"},
     {"undef", "cond", DL_WARNING, false, 0, "undefined identifier evaluates to 0 in #if"},
     {"macro-redefined", "pp", DL_WARNING, true, 0, "non-identical macro redefinition (C99 6.10.3p2)"},
@@ -127,6 +128,7 @@ static const DiagOption options[] = {
     {"unused-but-set-parameter", "c", DL_WARNING, false, DO_UNUSED_EXTRA, "parameter set but not used"},
     {"ignored-qualifiers", "c", DL_WARNING, false, DO_EXTRA, "type qualifiers ignored (e.g. on a return type)"},
     {"old-style-declaration", "c", DL_WARNING, false, DO_EXTRA, "storage class not at the beginning of a declaration"},
+    {"traditional", "c", DL_WARNING, false, 0, "constructs with different meaning in traditional C"},
     {"missing-field-initializers", "c", DL_WARNING, false, DO_EXTRA, "struct initializer leaves fields uninitialized"},
     {"missing-parameter-type", "c", DL_WARNING, false, DO_EXTRA, "K&R parameter without a type"},
     {"override-init", "c", DL_WARNING, false, DO_EXTRA, "initialized field overwritten"},
