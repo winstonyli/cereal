@@ -894,6 +894,136 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
     kids_free(&k);
 }
 
+/* ---- attribute names ---------------------------------------------------
+ * Every attribute written on (or copied to) a symbol, field or record is kept
+ * by name, for __builtin_has_attribute and for 'copy'. */
+
+bool cdecl_aset_has(const Checker *c, uint32_t set, const char *name)
+{
+    size_t k;
+    if (!set)
+        return false;
+    for (k = 0; k < c->anames.len; k++)
+        if (c->anames.data[k].set == set && !strcmp(c->anames.data[k].name, name))
+            return true;
+    return false;
+}
+
+void cdecl_attr_name(const char *s, char *out, size_t n)
+{
+    attr_norm(s, out, n);
+}
+
+static void aset_add(Checker *c, uint32_t *set, const char *name)
+{
+    AName n;
+    if (cdecl_aset_has(c, *set, name))
+        return;
+    if (!*set)
+        *set = ++c->nasets;
+    n.set = *set;
+    snprintf(n.name, sizeof n.name, "%s", name);
+    vec_push(&c->anames, n);
+}
+
+/* handle_copy_attribute: what is not copied. */
+static bool copy_excluded(const char *n)
+{
+    static const char *const x[] = {
+        "alias", "ifunc", "always_inline", "gnu_inline", "noinline",
+        "visibility", "weakref", "target_clones", "deprecated", "unavailable",
+        "weak", "malloc", "warn_unused_result", "artificial", "fallthrough",
+        "copy"};
+    size_t k;
+    for (k = 0; k < sizeof x / sizeof *x; k++)
+        if (!strcmp(n, x[k]))
+            return true;
+    return false;
+}
+
+static void aset_drop(Checker *c, uint32_t set, const char *name)
+{
+    size_t k;
+    for (k = 0; set && k < c->anames.len; k++)
+        if (c->anames.data[k].set == set && !strcmp(c->anames.data[k].name, name))
+            c->anames.data[k].name[0] = '';
+}
+
+static void aset_copy(Checker *c, uint32_t *dst, uint32_t src)
+{
+    size_t k;
+    if (!src || src == *dst)
+        return;
+    for (k = 0; k < c->anames.len; k++) {
+        AName a = c->anames.data[k];
+        if (a.set == src && !copy_excluded(a.name))
+            aset_add(c, dst, a.name);
+    }
+}
+
+/* The attribute names of one ATTRIBUTE node; copy(X) brings X's. */
+void cdecl_attrs_names(Checker *c, uint32_t attr, uint32_t *set)
+{
+    Kids it;
+    uint32_t q;
+    kids_get(c, attr, &it);
+    for (q = 0; q < it.n; q++) {
+        char an[32];
+        if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+            continue;
+        attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+        if (!strcmp(an, "copy")) {
+            Kids ak;
+            kids_get(c, it.p[q], &ak);
+            if (ak.n == 1) {
+                uint32_t s3[3], n = cexpr_asets(c, ak.p[0], true, s3), m;
+                for (m = 0; m < n; m++)
+                    aset_copy(c, set, s3[m]);
+            }
+            kids_free(&ak);
+        } else
+            aset_add(c, set, an);
+    }
+    kids_free(&it);
+}
+
+/* Whether holder writes the attribute `want` itself (not through copy). */
+static bool attrs_item_named(Checker *c, uint32_t holder, const char *want)
+{
+    Kids k;
+    uint32_t j;
+    bool found = false;
+    kids_get(c, holder, &k);
+    for (j = 0; j < k.n && !found; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n && !found; q++) {
+            char an[32];
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+            found = !strcmp(an, want);
+        }
+        kids_free(&it);
+    }
+    kids_free(&k);
+    return found;
+}
+
+static void attrs_names(Checker *c, uint32_t holder, uint32_t *set)
+{
+    Kids k;
+    uint32_t j;
+    kids_get(c, holder, &k);
+    for (j = 0; j < k.n; j++)
+        if (ntag(c, k.p[j]) == N_ATTRIBUTE)
+            cdecl_attrs_names(c, k.p[j], set);
+    kids_free(&k);
+}
+
 /* The function attributes a declaration ends up with, applied in source order
  * (gcc's decl_attributes): 'pure' and 'const' exclude each other, and 'copy'
  * brings the referenced symbol's along.  *_loc: where the attribute came from
@@ -3350,6 +3480,8 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     if (!m.dep_msg)
         m.dep_msg = o->dep_msg;
     m.nonnull |= o->nonnull;
+    if (o->aset)
+        m.aset = o->aset;
     if (o->parms) {
         m.parms = o->parms;
         if (nw->parms != o->parms)
@@ -4115,6 +4247,17 @@ static void declared_visit(Checker *c, uint32_t i)
         }
         c->ty[i] = t->ty;
     }
+    attrs_names(c, sn, &csym(c, ref)->aset);
+    attrs_names(c, idecl, &csym(c, ref)->aset);
+    if (sp.is_noreturn)
+        aset_add(c, &csym(c, ref)->aset, "noreturn");
+    if (csym(c, ref)->kind == CS_FUNC && csym(c, ref)->linkage == LK_INTERNAL) {
+        /* leaf only means something for external functions */
+        if (attrs_item_named(c, sn, "leaf") || attrs_item_named(c, idecl, "leaf"))
+            cwarn(c, iloc(c, ltok), "attributes", "'leaf' attribute has no "
+                  "effect on unit local functions");
+        aset_drop(c, csym(c, ref)->aset, "leaf");
+    }
     c->cb[i] = ref + 1;
     c->cv[i] = initialized ? 1 : incomp_init ? 2 : 0;
     if (g.what == GD_FUNC)
@@ -4596,6 +4739,11 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     if (a.desig && want != TY_UNION)
         type_record(TT, t)->flags |= RF_DESIGNATED;
     r = type_record(TT, t);
+    {
+        uint32_t as = r->aset;
+        attrs_names(c, i, &as);
+        r->aset = as;
+    }
     r->dep = (a.deprecated ? CSF_DEPRECATED : 0) |
              (a.unavailable ? CSF_UNAVAILABLE : 0);
     r->dmsg = a.dep_msg;
@@ -4971,6 +5119,8 @@ static void member_visit(Checker *c, uint32_t i)
     fi.dep = (a.deprecated ? CSF_DEPRECATED : 0) |
              (a.unavailable ? CSF_UNAVAILABLE : 0);
     fi.dmsg = a.dep_msg;
+    attrs_names(c, sp.node, &fi.aset);
+    attrs_names(c, i, &fi.aset);
     vec_push(&c->fields, fi);
 }
 
@@ -5746,6 +5896,9 @@ static void funcdef_declared(Checker *c, uint32_t declared)
                     (s.flags & (CSF_PROTO_DEF | CSF_KR_DEF));
         t->def_loc = loc;
     }
+    attrs_names(c, fp.specs, &csym(c, ref)->aset);
+    if (sp.is_noreturn)
+        aset_add(c, &csym(c, ref)->aset, "noreturn");
     dump_decl(c, csym(c, ref));
     c->func_sym = ref;
     c->cur_func_node = fd;
@@ -6291,7 +6444,8 @@ void cdecl_finish_object(Checker *c, uint32_t ref)
             cerror(c, s->loc, "type of array '%s' completed incompatibly with "
                    "implicit initialization", sname(c, s));
         if (s->kind == CS_FUNC && !sym_public(s) && !sym_defined(s) &&
-            (s->flags & CSF_DECL_EXTERNAL) && s->name) {
+            (s->flags & CSF_DECL_EXTERNAL) && s->name &&
+            !cdecl_aset_has(c, s->aset, "weakref")) {
             if (s->flags & CSF_USED)
                 cpedwarn(c, s->loc, "", "'%s' used but never defined",
                          sname(c, s));

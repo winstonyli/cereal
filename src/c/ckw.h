@@ -16,7 +16,7 @@
     X(GOTO) X(CONTINUE) X(BREAK) X(RETURN)                                 \
     X(SIZEOF) X(ALIGNOF) X(GENERIC) X(STATIC_ASSERT) X(ALIGNAS)            \
     X(ATTRIBUTE) X(ASM) X(TYPEOF) X(EXTENSION) X(LABEL) X(REAL) X(IMAG)    \
-    X(VA_ARG) X(OFFSETOF) X(TYPES_COMPATIBLE) X(CONVERTVECTOR) X(GIMPLE)
+    X(VA_ARG) X(OFFSETOF) X(TYPES_COMPATIBLE) X(CONVERTVECTOR) X(GIMPLE) X(HAS_ATTRIBUTE)
 
 typedef enum {
     CK_NONE,
@@ -77,6 +77,7 @@ static const CKwSpelling ckw_spellings[] = {
     {"__builtin_va_arg", CK_VA_ARG}, {"__builtin_offsetof", CK_OFFSETOF},
     {"__builtin_types_compatible_p", CK_TYPES_COMPATIBLE},
     {"__builtin_convertvector", CK_CONVERTVECTOR},
+    {"__builtin_has_attribute", CK_HAS_ATTRIBUTE},
     {0, 0}};
 
 #endif

@@ -1574,6 +1574,40 @@ static void builtin2(Parser *p, NodeTag tag, bool first_type)
     emit(p, tag, kw, start, 0);
 }
 
+/* __builtin_has_attribute ( expr | type-name , attribute ) */
+static void has_attr_expr(Parser *p)
+{
+    uint32_t start = nmark(p), kw = adv(p);
+    PTok n = ct(p), n1 = pk(p, 1);
+    expect(p, P_LPAREN);
+    n = ct(p);
+    if (is_typename_start(p, &n) || is_clit_storage(p, &n))
+        type_name(p);
+    else
+        parse_assign(p);
+    (void)n1;
+    expect(p, P_COMMA);
+    {
+        PTok t = ct(p);
+        if (t.t.kind == TK_IDENT) {
+            uint32_t s = nmark(p), name = adv(p);
+            if (accept(p, P_LPAREN)) {
+                if (!at(p, P_RPAREN)) {
+                    parse_assign(p);
+                    while (accept(p, P_COMMA))
+                        parse_assign(p);
+                }
+                expect(p, P_RPAREN);
+            }
+            emit(p, N_ATTR_ITEM, name, s, 0);
+        } else {
+            expected(p, "attribute name");
+        }
+    }
+    expect(p, P_RPAREN);
+    emit(p, N_HAS_ATTR, kw, start, 0);
+}
+
 static void generic_expr(Parser *p)
 {
     uint32_t start = nmark(p), kw = adv(p);
@@ -1611,6 +1645,9 @@ static void primary(Parser *p)
             return;
         case CK_CONVERTVECTOR:
             builtin2(p, N_CONVERTVECTOR, false);
+            return;
+        case CK_HAS_ATTRIBUTE:
+            has_attr_expr(p);
             return;
         case CK_TYPES_COMPATIBLE:
             builtin2(p, N_TYPES_COMPAT, true);

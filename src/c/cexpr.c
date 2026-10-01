@@ -1841,6 +1841,28 @@ static void reject_builtin(Checker *c, uint32_t i, const char *name)
     cerror(c, loc, "built-in function '%s' must be directly called", name);
 }
 
+/* An operand of __builtin_has_attribute names a declaration without using it. */
+static bool in_has_attr(const Checker *c, uint32_t i)
+{
+    unsigned depth;
+    for (depth = 0; depth < 8; depth++) {
+        uint32_t p = c->par[i];
+        if (p == NO_NODE)
+            return false;
+        switch (ntag(c, p)) {
+        case N_HAS_ATTR:
+            return true;
+        case N_PAREN: case N_MEMBER_EXPR: case N_INDEX: case N_UNARY:
+        case N_CAST: case N_BINARY:
+            i = p;
+            break;
+        default:
+            return false;
+        }
+    }
+    return false;
+}
+
 static void e_ident(Checker *c, uint32_t i)
 {
     uint32_t id = cnode_ident(c, i), ref = lookup_ord(c, id);
@@ -1886,7 +1908,8 @@ static void e_ident(Checker *c, uint32_t i)
         return;
     }
     s = csym(c, ref);
-    s->flags |= CSF_USED;
+    if (!in_has_attr(c, i))
+        s->flags |= CSF_USED;
     cdep_use(c, cinput_loc(c, c->nodes[i].tok), s, &s->loc);
     switch (s->kind) {
     case CS_TYPEDEF:
@@ -4285,6 +4308,8 @@ static void set_ice(Checker *c, uint32_t i, TypeId t, uint64_t v)
     c->ef[i] = EF_INTOPS;
 }
 
+static const Field *member_field_of(Checker *c, uint32_t x, TypeId *recp);
+
 static void e_sizeof(Checker *c, uint32_t i, bool align)
 {
     uint32_t a = first_child(c, i);
@@ -4382,6 +4407,17 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
                 if (ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ &&
                     csym(c, ref)->align > v)
                     v = csym(c, ref)->align;
+            } else if (s != NO_NODE && ntag(c, s) == N_MEMBER_EXPR) {
+                TypeId rec = 0;
+                const Field *f = member_field_of(c, s, &rec);
+                if (f) {
+                    bool pk = (f->flags & FF_PACKED) ||
+                              (type_record(TT, rec)->flags & RF_PACKED);
+                    if (pk)
+                        v = f->align ? f->align : 1;
+                    else if (f->align > v)
+                        v = f->align;
+                }
             }
         }
     }
@@ -4760,6 +4796,108 @@ static void e_types_compat(Checker *c, uint32_t i)
         return;
     }
     set_ice(c, i, TYPE_B(INT), type_compatible(TT, mainv(c, a), mainv(c, b)));
+}
+
+/* ---- __builtin_has_attribute ---------------------------------------------------------- */
+
+/* The field a member-access node names (no diagnostics), and its record. */
+static const Field *member_field_of(Checker *c, uint32_t x, TypeId *recp)
+{
+    uint32_t d = first_child(c, x);
+    TypeId rt;
+    uint64_t off;
+    unsigned q;
+    if (d == NO_NODE || node_err(c, d))
+        return NULL;
+    rt = c->ty[d];
+    if (c->nodes[x].flags & NF_ARROW) {
+        if (type_ckind(TT, rt) != TY_PTR && type_ckind(TT, rt) != TY_ARRAY)
+            return NULL;
+        rt = pointee(c, rt);
+    }
+    rt = type_canon(TT, rt);
+    if (!is_record(c, rt))
+        return NULL;
+    if (recp)
+        *recp = rt;
+    return find_field(c, rt, cnode_ident(c, x), &off, &q);
+}
+
+/* The sets of attribute names that belong to the expression e: its declaration
+ * (a symbol, a member), and its type's record.  strip: look through the
+ * pointers and arrays of the type (what 'copy' does). */
+unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3])
+{
+    unsigned n = 0;
+    uint32_t x = strip_paren(c, e);
+    TypeId t;
+    if (x == NO_NODE)
+        return 0;
+    if (ntag(c, x) == N_IDENT) {
+        uint32_t ref = lookup_ord(c, cnode_ident(c, x));
+        if (ref != SYM_NONE && csym(c, ref)->aset)
+            out[n++] = csym(c, ref)->aset;
+    } else if (ntag(c, x) == N_MEMBER_EXPR) {
+        const Field *f = member_field_of(c, x, NULL);
+        if (f && f->aset)
+            out[n++] = f->aset;
+    }
+    if (node_err(c, x))
+        return n;
+    t = c->ty[x];
+    while (strip && (type_ckind(TT, t) == TY_PTR || type_ckind(TT, t) == TY_ARRAY))
+        t = type_base(TT, t);
+    t = type_canon(TT, t);
+    if (is_record(c, t) && type_record(TT, t)->aset)
+        out[n++] = type_record(TT, t)->aset;
+    return n;
+}
+
+static void e_has_attr(Checker *c, uint32_t i)
+{
+    uint32_t k[2], sets[3], n = 0, j;
+    char an[32];
+    bool has = false;
+    if (nkids(c, i, k, 2) < 2 || ntag(c, k[1]) != N_ATTR_ITEM) {
+        set_err(c, i);
+        return;
+    }
+    {
+        size_t len;
+        char raw[48];
+        const char *tx = ttext(c, c->nodes[k[1]].tok, &len);
+        if (len >= sizeof raw)
+            len = sizeof raw - 1;
+        memcpy(raw, tx, len);
+        raw[len] = 0;
+        cdecl_attr_name(raw, an, sizeof an);
+    }
+    if (ntag(c, k[0]) == N_TYPE_NAME) {
+        TypeId t = type_of_typename(c, k[0]);
+        uint32_t q, tmp = 0;
+        if (is_err(c, t)) {
+            set_err(c, i);
+            return;
+        }
+        t = type_canon(TT, t);
+        if (is_record(c, t))
+            sets[n++] = type_record(TT, t)->aset;
+        /* attributes written in the type name itself */
+        for (q = cfirst(c, k[0]); q < k[0]; q++)
+            if (ntag(c, q) == N_ATTRIBUTE)
+                cdecl_attrs_names(c, q, &tmp);
+        if (tmp)
+            sets[n++] = tmp;
+    } else {
+        if (node_err(c, k[0])) {
+            set_err(c, i);
+            return;
+        }
+        n = cexpr_asets(c, k[0], false, sets);
+    }
+    for (j = 0; j < n; j++)
+        has |= cdecl_aset_has(c, sets[j], an);
+    set_ice(c, i, TYPE_B(INT), has);
 }
 
 /* ---- _Generic ------------------------------------------------------------------------ */
@@ -6843,7 +6981,7 @@ bool cexpr_is_expr(unsigned tag)
     case N_ALIGNOF_TYPE: case N_CAST: case N_COMPOUND_LIT: case N_BINARY:
     case N_ASSIGN: case N_COND: case N_STMT_EXPR: case N_VA_ARG:
     case N_OFFSETOF: case N_TYPES_COMPAT: case N_CONVERTVECTOR: case N_GENERIC:
-    case N_GENERIC_ASSOC: case N_ADDR_LABEL:
+    case N_GENERIC_ASSOC: case N_ADDR_LABEL: case N_HAS_ATTR:
         return true;
     default:
         return false;
@@ -7263,6 +7401,7 @@ void cexpr_node(Checker *c, uint32_t i)
     case N_VA_ARG: e_va_arg(c, i); break;
     case N_OFFSETOF: e_offsetof(c, i); break;
     case N_TYPES_COMPAT: e_types_compat(c, i); break;
+    case N_HAS_ATTR: e_has_attr(c, i); break;
     case N_CONVERTVECTOR: e_convertvector(c, i); break;
     case N_GENERIC: e_generic(c, i); break;
     case N_GENERIC_ASSOC: e_generic_assoc(c, i); break;

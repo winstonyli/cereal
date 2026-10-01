@@ -512,6 +512,7 @@ void checker_free(Checker *c)
     vec_free(&c->specs);
     vec_free(&c->recs);
     vec_free(&c->fields);
+    vec_free(&c->anames);
     vec_free(&c->ecs);
     vec_free(&c->saved);
     vec_free(&c->stack);

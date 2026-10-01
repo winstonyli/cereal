@@ -1073,6 +1073,27 @@ static uint32_t child_index(Checker *c, uint32_t p, uint32_t i, uint32_t *n)
 
 static void unused_value(Checker *c, uint32_t e, SrcLoc dloc);
 
+/* gcc's built-in functions that do not return (also undeclared, in their
+ * library spelling). */
+static bool builtin_noreturn(const char *n)
+{
+    static const char *const x[] = {"abort", "exit", "_exit", "_Exit",
+                                    "quick_exit", "longjmp", "unreachable",
+                                    "trap"};
+    size_t k;
+    if (!strncmp(n, "__builtin_", 10)) {
+        n += 10;
+        if (!strcmp(n, "unwind_resume") || !strcmp(n, "eh_return") ||
+            !strcmp(n, "__unreachable"))
+            return true;
+    } else if (!strcmp(n, "unreachable") || !strcmp(n, "trap"))
+        return false;
+    for (k = 0; k < sizeof x / sizeof *x; k++)
+        if (!strcmp(n, x[k]))
+            return true;
+    return false;
+}
+
 /* After the expression node i was checked. */
 void cstmt_expr(Checker *c, uint32_t i)
 {
@@ -1087,6 +1108,9 @@ void cstmt_expr(Checker *c, uint32_t i)
         if (tg(c, f) == N_IDENT && cnode_ident(c, f)) {
             uint32_t ref = lookup_ord(c, cnode_ident(c, f));
             if (ref != SYM_NONE && (csym(c, ref)->flags & CSF_NORETURN))
+                top(s)->abn = true;
+            else if ((ref == SYM_NONE || (csym(c, ref)->flags & CSF_IMPLICIT)) &&
+                     builtin_noreturn(cident(c, cnode_ident(c, f))))
                 top(s)->abn = true;
         }
     }

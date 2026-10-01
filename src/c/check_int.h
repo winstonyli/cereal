@@ -53,6 +53,11 @@ enum {
     CSF_CONSTFN = 268435456  /* __attribute__((const)), possibly copied */
 };
 
+typedef struct AName {
+    uint32_t set;
+    char name[32];           /* without the __ affixes */
+} AName;
+
 typedef struct CSym {
     uint32_t name;           /* ident */
     uint8_t kind;            /* CSymKind */
@@ -67,6 +72,7 @@ typedef struct CSym {
     TypeId vty;              /* enumeration constants: the value's type */
     uint32_t dep_msg;        /* deprecated/unavailable message: Checker.dep_msgs + 1 */
     uint64_t nonnull;        /* the 'nonnull' attribute (Attrs.nonnull) */
+    uint32_t aset;           /* attribute names written or copied: Checker.anames set id */
     uint32_t parms;          /* cparm.c: how the parameters were declared (the
                               * first prototype's): Checker.pdescs + 1 */
 } CSym;
@@ -235,6 +241,8 @@ struct Checker {
     VEC(CSym) lsyms;         /* this unit's */
     VEC(char *) dep_msgs;    /* deprecated/unavailable attribute messages */
     VEC(struct CParmDesc *) pdescs;   /* cparm.c: parameter declarations */
+    VEC(AName) anames;       /* attribute names by set (__builtin_has_attribute, copy) */
+    uint32_t nasets;
     BindVec log;
     uint32_t *top[2];        /* by ident: innermost binding + 1 */
     uint32_t *ext;           /* by ident: external declaration + 1 */
@@ -413,6 +421,10 @@ void cdecl_finish_object(Checker *c, uint32_t ref);
 TypeId type_of_typename(Checker *c, uint32_t i);   /* a TYPE_NAME node */
 
 /* Array parameters redeclared with other bounds (cparm.c). */
+bool cdecl_aset_has(const Checker *c, uint32_t set, const char *name);
+void cdecl_attrs_names(Checker *c, uint32_t attr, uint32_t *set);
+void cdecl_attr_name(const char *s, char *out, size_t n);
+unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3]);
 uint32_t cparm_make(Checker *c, uint32_t fnode);    /* a prototype's record + 1 */
 void cparm_compare(Checker *c, uint32_t nw, uint32_t old);
 void cparm_release(Checker *c, uint32_t d);

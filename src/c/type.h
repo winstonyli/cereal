@@ -82,6 +82,7 @@ typedef struct Field {
     uint16_t align;          /* aligned attribute (bytes), 0: none */
     SrcLoc loc;
     uint32_t dep, dmsg;      /* CSF_DEPRECATED/UNAVAILABLE bits; message */
+    uint32_t aset;           /* attribute names (Checker.anames set id), 0: none */
 } Field;
 
 typedef struct Record {
@@ -93,6 +94,7 @@ typedef struct Record {
     uint16_t flags;
     TypeId ty;               /* its TY_STRUCT / TY_UNION type */
     uint32_t dep, dmsg;      /* CSF_DEPRECATED/UNAVAILABLE bits; message */
+    uint32_t aset;           /* attribute names, as Field.aset */
 } Record;
 
 typedef struct Enum {
@@ -177,6 +179,7 @@ typedef struct FieldIn {
     bool packed;
     SrcLoc loc;
     uint32_t dep, dmsg;
+    uint32_t aset;
 } FieldIn;
 
 /* Lays out and completes a record.  pack: #pragma pack value in bytes (0:

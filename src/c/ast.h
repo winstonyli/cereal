@@ -118,6 +118,7 @@
     X(GENERIC)       /* expr generic-assoc+ */                              \
     X(GENERIC_ASSOC) /* (type-name | none) expr */                          \
     X(ADDR_LABEL)    /* tok: the label */                                   \
+    X(HAS_ATTR)      /* (expr | type-name) attr-item */                     \
     /* markers: leaves placing scope events in post-order for the checker */ \
     X(SCOPE)         /* a scope opens (NF_PARAMS: a function body's, with \
                         its parameters) */                                  \

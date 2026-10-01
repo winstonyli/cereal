@@ -1,0 +1,33 @@
+has_attribute.c:13:1: warning: 'fd' is deprecated [-Wdeprecated-declarations]
+   13 | ATTR (copy (fd)) int fdc (void);
+      | ^
+has_attribute.c:12:39: note: declared here
+   12 | ATTR (noinline, deprecated, pure) int fd (void);
+      |                                       ^
+has_attribute.c:14:1: warning: 'fd' is deprecated [-Wdeprecated-declarations]
+   14 | YES (fd, noinline);
+      | ^
+has_attribute.c:12:39: note: declared here
+   12 | ATTR (noinline, deprecated, pure) int fd (void);
+      |                                       ^
+has_attribute.c:15:1: warning: 'fd' is deprecated [-Wdeprecated-declarations]
+   15 | typedef int Tfd[__builtin_has_attribute (fd, deprecated) ? 1 : -1];
+      | ^
+has_attribute.c:12:39: note: declared here
+   12 | ATTR (noinline, deprecated, pure) int fd (void);
+      |                                       ^
+has_attribute.c:19:16: warning: ISO C99 does not support '_Noreturn' [-Wpedantic]
+   19 | _Noreturn void fnr (void);
+      |                ^
+has_attribute.c:49:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   49 | _Static_assert (__alignof__ (((struct S *) 0)->i) == 8, "member alignof");
+      | ^
+has_attribute.c:50:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   50 | _Static_assert (__alignof__ (((struct P *) 0)->i) == 1, "packed alignof");
+      | ^
+has_attribute.c:53:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   53 | static ATTR (leaf) int fsl (void);
+      | ^
+has_attribute.c:53:24: warning: 'fsl' declared 'static' but never defined [-Wunused-function]
+   53 | static ATTR (leaf) int fsl (void);
+      |                        ^
