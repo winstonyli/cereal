@@ -55,6 +55,7 @@ enum {
 
 typedef struct AName {
     uint32_t set;
+    uint32_t prev;           /* the set's previous entry, 1-based; 0: none */
     char name[32];           /* without the __ affixes */
 } AName;
 
@@ -266,6 +267,7 @@ struct Checker {
     VEC(char *) dep_msgs;    /* deprecated/unavailable attribute messages */
     VEC(struct CParmDesc *) pdescs;   /* cparm.c: parameter declarations */
     VEC(AName) anames;       /* attribute names by set (__builtin_has_attribute, copy) */
+    VEC(uint32_t) ahead;     /* per set: its newest entry in anames, 1-based */
     uint32_t nasets;
     char ign[8][24];         /* attributes the declaration being checked lost to an exclusion */
     unsigned nign;

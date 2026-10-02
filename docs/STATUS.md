@@ -10,13 +10,18 @@ layouts, gcc rules ported, walk design).
 - Real-code corpus (170 files): 0 rejects-valid, 0 accepts-invalid.
 - gcc.dg (6217): 77 rejects-valid, 104 accepts-invalid; 47% of files with any
   diagnostic have identical message+line:col.
-- Speed (2026-10-01, best of 10, machine 14-19% busy, Defender real-time off):
-  check/parse = 1.95 (lua54.c, 0.117/0.060 s) and 1.89 (loop.c, 0.358/0.189 s);
-  the 2026-10-01 11:23 binary gave 1.72 and 1.88.  Check is ~14-20% slower than
-  that binary and parse ~5-8%, spread over the day's changes; `-Wsequence-point`
-  is not the cause (loop.c check 0.385 s default, 0.402 with
-  `-Wno-sequence-point`, 0.421 with it on: noise).  Goal check <= parse not
-  met.  Not profiled yet (needs the Samply task).
+- Speed: measure with `bench/tools/icount.sh CEREAL FILE flags` (callgrind
+  instruction counts; wall time swung 2x with other sessions' load).
+  loop.c, 2026-10-01: check 3.98G -> 3.27G, parse 2.29G -> 1.71G instructions
+  after three fixes found by callgrind: `fill` (parse.c) had its slow path
+  inlined, so every call paid a large frame (now an inline fast path plus a
+  noinline `fill_slow`); `aset_add` scanned every attribute name per add
+  (O(N^2); now a per-set chain, `Checker.ahead`); `builtin_nonnull` and
+  `check_cxx_opname`/`check_cxx_keyword` ran strcmp/`diag_enabled` per call or
+  identifier (first-letter filters).  check/parse is ~1.9 (goal <= 1); parse
+  at 1.71G is below the earlier 2.29G.  Remaining check-side cost: `diag_enabled`
+  (~860k calls, ~80M instr; callers `grok`/`specs_visit`/`cdecl_node` inlined
+  helpers), `ct` and `node_children`.
 - ASAN/UBSAN (`bench/tools/san.py CEREAL corpus|tests|dg [flags]`, build with
   `make CFLAGS="-O1 -g -fsanitize=address,undefined" LDFLAGS=-fsanitize=address,undefined`
   in a copy): 0 findings over corpus (170), tests/check+parse (206) and gcc.dg

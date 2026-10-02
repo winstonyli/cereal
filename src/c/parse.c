@@ -22,7 +22,15 @@ static bool is_p(const PTok *t, Punct x);
 /* c_lex_one_token's -Wc++-compat: a C++ keyword used as an identifier. */
 static void check_cxx_keyword(Parser *p, const Tok *t, size_t i);
 
-static bool fill(Parser *p, size_t i)
+static bool fill_slow(Parser *p, size_t i);
+
+/* The fast path is inline: the slow path's frame is costly per call. */
+static inline bool fill(Parser *p, size_t i)
+{
+    return p->toks.len > i || fill_slow(p, i);
+}
+
+__attribute__((noinline)) static bool fill_slow(Parser *p, size_t i)
 {
     while (p->toks.len <= i) {
         PTok pt;
@@ -319,9 +327,11 @@ static void check_cxx_keyword(Parser *p, const Tok *t, size_t i)
         "virtual", "concept", "requires", "co_await", "co_yield", "co_return"};
     size_t k, n = t->len;
     const char *s;
-    if (n < 3 || n > 16 || !diag_enabled(p->diag, "c++-compat"))
+    if (n < 3 || n > 16)
         return;
     s = tok_text_raw(p->sm, p->in, t);
+    if (!strchr("abcdefmnoprstuv", *s) || !diag_enabled(p->diag, "c++-compat"))
+        return;
     for (k = 0; k < sizeof kw / sizeof *kw; k++)
         if (strlen(kw[k]) == n && !memcmp(s, kw[k], n)) {
             PTok pt = p->toks.data[i];

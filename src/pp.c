@@ -99,7 +99,7 @@ static void check_cxx_opname(PP *pp, const Tok *t)
         "compl", "not", "not_eq", "or", "or_eq", "xor", "xor_eq"};
     Ident *id = ident_by_id(pp->in, t->aux);
     size_t k;
-    if (id->len > 6 || id->len < 2)
+    if (id->len > 6 || id->len < 2 || !strchr("abcnox", id->str[0]))
         return;
     for (k = 0; k < sizeof ops / sizeof *ops; k++)
         if (!strcmp(id->str, ops[k]) && diag_enabled(pp->diag, "c++-compat")) {

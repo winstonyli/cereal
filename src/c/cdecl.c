@@ -1346,8 +1346,8 @@ bool cdecl_aset_has(const Checker *c, uint32_t set, const char *name)
     size_t k;
     if (!set)
         return false;
-    for (k = 0; k < c->anames.len; k++)
-        if (c->anames.data[k].set == set && !strcmp(c->anames.data[k].name, name))
+    for (k = c->ahead.data[set - 1]; k; k = c->anames.data[k - 1].prev)
+        if (!strcmp(c->anames.data[k - 1].name, name))
             return true;
     return false;
 }
@@ -1365,11 +1365,16 @@ static void aset_add(Checker *c, uint32_t *set, const char *name)
             return;             /* dropped by an exclusion */
     if (cdecl_aset_has(c, *set, name))
         return;
-    if (!*set)
+    if (!*set) {
+        uint32_t z = 0;
         *set = ++c->nasets;
+        vec_push(&c->ahead, z);
+    }
     n.set = *set;
+    n.prev = c->ahead.data[*set - 1];
     snprintf(n.name, sizeof n.name, "%s", name);
     vec_push(&c->anames, n);
+    c->ahead.data[*set - 1] = (uint32_t)c->anames.len;
 }
 
 /* handle_copy_attribute: what is not copied. */
@@ -1390,9 +1395,9 @@ static bool copy_excluded(const char *n)
 static void aset_drop(Checker *c, uint32_t set, const char *name)
 {
     size_t k;
-    for (k = 0; set && k < c->anames.len; k++)
-        if (c->anames.data[k].set == set && !strcmp(c->anames.data[k].name, name))
-            c->anames.data[k].name[0] = '';
+    for (k = set ? c->ahead.data[set - 1] : 0; k; k = c->anames.data[k - 1].prev)
+        if (!strcmp(c->anames.data[k - 1].name, name))
+            c->anames.data[k - 1].name[0] = '';
 }
 
 static void aset_copy(Checker *c, uint32_t *dst, uint32_t src)

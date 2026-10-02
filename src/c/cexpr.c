@@ -4537,7 +4537,7 @@ static uint64_t builtin_nonnull(const char *name)
             return 4;
     }
     for (k = 0; k < sizeof t / sizeof *t; k++)
-        if (!strcmp(name, t[k].n)) {
+        if (*name == *t[k].n && !strcmp(name, t[k].n)) {
             for (p = t[k].pos; *p; p++)
                 m |= (uint64_t)1 << (*p - '1');
             break;
