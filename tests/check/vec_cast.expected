@@ -1,0 +1,63 @@
+vec_cast.c:8:32: warning: ISO C does not support complex integer types [-Wpedantic]
+    8 | void *p; struct S s; _Bool bb; _Complex int ci; float f; double d; long long ll; int i; short sh; v2sf vf; v2si vi; v4si v4;
+      |                                ^
+vec_cast.c:8:117: error: unknown type name 'v4si'; did you mean 'v2si'?
+    8 | void *p; struct S s; _Bool bb; _Complex int ci; float f; double d; long long ll; int i; short sh; v2sf vf; v2si vi; v4si v4;
+      |                                                                                                                     ^
+vec_cast.c:10:4: error: 'v4si' undeclared (first use in this function); did you mean 'v2si'?
+   10 |   (v4si) 1;       /* 1 int -> 16 */
+      |    ^
+vec_cast.c:10:4: note: each undeclared identifier is reported only once for each function it appears in
+   10 |   (v4si) 1;       /* 1 int -> 16 */
+      |    ^
+vec_cast.c:10:9: error: expected ';' before numeric constant
+   10 |   (v4si) 1;       /* 1 int -> 16 */
+      |         ^
+vec_cast.c:12:9: error: expected ';' before 'll'
+   12 |   (v4si) ll;
+      |         ^
+vec_cast.c:13:3: error: cannot convert value to a vector
+   13 |   (v2sf) d;
+      |   ^
+vec_cast.c:15:3: error: cannot convert value to a vector
+   15 |   (v2sf) f;
+      |   ^
+vec_cast.c:16:3: error: cannot convert value to a vector
+   16 |   (v2si) p;
+      |   ^
+vec_cast.c:17:3: error: cannot convert value to a vector
+   17 |   (v2si) s;
+      |   ^
+vec_cast.c:18:3: error: cannot convert a value of type 'int' to vector type '__vector(2) int' which has different size
+   18 |   (v2si) A;
+      |   ^
+vec_cast.c:19:3: error: cannot convert value to a vector
+   19 |   (v2si) bb;
+      |   ^
+vec_cast.c:20:3: error: cannot convert value to a vector
+   20 |   (v2si) ci;
+      |   ^
+vec_cast.c:22:9: error: expected ';' before 'vi'
+   22 |   (v4si) vi;
+      |         ^
+vec_cast.c:23:3: error: cannot convert a vector of type 'v2si' {aka '__vector(2) int'} to type 'int' which has different size
+   23 |   (int) vi;
+      |   ^
+vec_cast.c:25:3: error: aggregate value used where a floating-point was expected
+   25 |   (double) vi;
+      |   ^
+vec_cast.c:26:3: error: cannot convert to a pointer type
+   26 |   (void *) vi;
+      |   ^
+vec_cast.c:27:3: error: used vector type where scalar is required
+   27 |   (_Bool) vi;
+      |   ^
+vec_cast.c:28:11: error: conversion to non-scalar type requested
+   28 |   (struct S) vi;
+      |           ^
+vec_cast.c:29:3: error: cannot convert a value of type 'int' to vector type '__vector(2) int' which has different size
+   29 |   (v2si) 0;
+      |   ^
+vec_cast.c:30:3: error: cannot convert a value of type 'short int' to vector type '__vector(2) int' which has different size
+   30 |   (v2si) sh;
+      |   ^

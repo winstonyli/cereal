@@ -419,3 +419,23 @@ layouts, gcc rules ported, walk design).
   Goldens builtin_location, has_attr_args.  Tests 840; ASan+UBSan clean
   (840/0; leaks at exit are not tracked).  Open: step 2 cheap accepts-invalid
   list; -Wbidi-chars and UTF-8 "stray in program" (do at intern time).
+- Round 13 (2026-10-02): c-c++-common accepts-invalid 19 -> 6 (identical
+  468 -> 479; gcc.dg unchanged: 0 rejects-valid, 0 accepts-invalid).  New
+  checks: pointer difference of an empty aggregate; returns_nonnull on a
+  non-pointer function; address of a bit-field as an asm "m" operand;
+  __builtin_clear_padding / __builtin_speculation_safe_value /
+  __atomic_is_lock_free / __atomic_always_lock_free argument checks;
+  scalar<->vector casts (size mismatch, non-integer scalars); vector_size on
+  _Bool; __builtin_shufflevector (new e_shufflevector: vectors, element type,
+  power-of-two count, constant indices < sum of both lengths; VEC_CONVERT(x)
+  expression text); simd and zero_call_used_regs attribute arguments (arity
+  via gnu_attr_argc, errors at the declared name via attrs_zcur_check).
+  Goldens vec_cast, shufflevector, attr_args2, builtin_args2.  Tests 848;
+  ASan+UBSan clean.  Left in c-c++-common: attr-nocf-check-3 (needs
+  -fcf-protection), pr68657-2/3 (-Wlarger-than=N incl. pragma diagnostic),
+  pr68833-2 (-Wmissing-format-attribute on __builtin_vprintf), pr79428-3
+  (#pragma GCC pch_preprocess), unroll-5 (#pragma GCC unroll argument needs
+  the macro-expanded expression; the pragma token is raw).  Not done:
+  gcc.dg bitfld-12 (offsetof bit-field message: "attempt to take address of
+  bit-field structure member", at the tag name), -Wbidi-chars and UTF-8
+  "stray in program" (step 3).

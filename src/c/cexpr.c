@@ -1573,6 +1573,15 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
         sb_putc(sb, ')');
         break;
     }
+    case N_CONVERTVECTOR: {
+        uint32_t a[2];
+        if (nkids(c, i, a, 2) < 1)
+            break;
+        sb_puts(sb, "VEC_CONVERT(");
+        pexpr(c, sb, a[0], PR_ASSIGN);
+        sb_putc(sb, ')');
+        break;
+    }
     default:
         sb_puts(sb, "...");
         break;
@@ -2322,6 +2331,7 @@ static bool is_npc(Checker *c, uint32_t n);
 static bool float_to_int(Checker *c, long double f, TypeId t, uint64_t *out);
 static bool rvalue_ok(Checker *c, uint32_t i);
 static bool rvalue_ok_at(Checker *c, uint32_t i, SrcLoc loc);
+static unsigned vec_esize(Checker *c, TypeId el);
 static TypeId vec_elem(Checker *c, TypeId vt);
 
 /* ---- implicit conversions (gcc's convert_for_assignment) ----------------------------------- */
@@ -5399,7 +5409,8 @@ static uint32_t atomic_argc(const char *name)
         {"nand_fetch", 3}, {"fetch_add", 3}, {"fetch_sub", 3},
         {"fetch_and", 3}, {"fetch_xor", 3}, {"fetch_or", 3},
         {"fetch_nand", 3}, {"test_and_set", 2}, {"clear", 2},
-        {"thread_fence", 1}, {"signal_fence", 1}};
+        {"thread_fence", 1}, {"signal_fence", 1}, {"is_lock_free", 2},
+        {"always_lock_free", 2}};
     char b[32];
     size_t n, len;
     if (strncmp(name, "__atomic_", 9))
@@ -5609,6 +5620,25 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
                        name);
             return false;
         }
+        if (!atomic_kind(name) && !node_err(c, a[1])) {
+            TypeId t = rvt(c, a[1]);
+            if (is_int(c, t) && !(c->ef[a[1]] & EF_NPC)) {
+                Diagnostic *d = cwarn_d(c, DL_WARNING, arg_loc(c, a[1]),
+                                        "int-conversion", "passing argument 2 "
+                                        "of '%s' makes pointer from integer "
+                                        "without a cast", name);
+                cnote(c, d, arg_loc(c, a[1]), "expected 'const volatile void "
+                      "*' but argument is of type %s", type_q(TT, t));
+            }
+            if (!is_ptr(c, t) && !is_int(c, t)) {     /* is/always_lock_free */
+                Diagnostic *d = cerror_d(c, arg_loc(c, a[1]), "incompatible "
+                                         "type for argument 2 of '%s'", name);
+                cnote(c, d, arg_loc(c, a[1]), "expected 'const volatile void "
+                      "*' but argument is of type %s", type_q(TT, t));
+                return false;
+            }
+            return true;
+        }
         return atomic_args_ok(c, i, a, n, name, loc);
     }
     if (!strncmp(name, "__sync_", 7))
@@ -5625,6 +5655,12 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
         want = n > 2 ? 3 : 2;
     } else if (!strcmp(b, "fpclassify")) {
         want = 6;
+    } else if (!strcmp(b, "clear_padding")) {
+        want = 1;
+    } else if (!strcmp(b, "speculation_safe_value")) {
+        want = n < 1 ? 1 : n > 2 ? 2 : n;
+        if (!n)         /* gcc reports this one at input_location */
+            loc = after_loc(c, i);
     } else if (!strcmp(b, "va_start")) {
         if (n == 0) {
             cerror(c, loc, "too few arguments to function '%s'", name);
@@ -5675,6 +5711,23 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
         if (n == 3 && !is_int(c, rvt(c, a[2]))) {
             cerror(c, arg_loc(c, a[2]), "non-integer argument 3 in call to "
                    "function '%s'", name);
+            return false;
+        }
+    } else if (!strcmp(b, "clear_padding")) {
+        TypeId t = rvt(c, a[0]), e;
+        const char *why = NULL;
+        if (!is_ptr(c, t))
+            why = "does not have pointer type";
+        else if (!type_is_complete(TT, e = pointee(c, t)))
+            why = "points to incomplete type";
+        if (why) {
+            cerror(c, arg_loc(c, a[0]), "argument 1 in call to function '%s' "
+                   "%s", name, why);
+            return false;
+        }
+        if (tquals(c, e) & TQ_CONST) {
+            cerror(c, arg_loc(c, a[0]), "argument 1 in call to function '%s' "
+                   "has pointer to 'const' type (%s)", name, type_q(TT, t));
             return false;
         }
     } else if (!strcmp(b, "fpclassify")) {
@@ -6156,6 +6209,61 @@ static void warn_for_abs(Checker *c, uint32_t i, const uint32_t *k, uint32_t n)
 
 static size_t asm_string(Checker *c, uint32_t n, char *out, size_t cap);
 
+/* __builtin_shufflevector (v0, v1, index...): a vector of the indices'
+ * count whose elements come from the two vectors. */
+static void e_shufflevector(Checker *c, uint32_t i, const char *name)
+{
+    uint32_t av[66], an = nkids(c, i, av, 66), j;
+    SrcLoc bl = call_loc(c, av[0]);
+    TypeId t0, t1, e0, e1;
+    unsigned nidx, nsub;
+    if (an < 4 || an > 66) {
+        cerror(c, bl, "wrong number of arguments to '__builtin_shuffle'");
+        set_err(c, i);
+        return;
+    }
+    for (j = 1; j < an; j++)
+        if (node_err(c, av[j])) {
+            set_err(c, i);
+            return;
+        }
+    t0 = rvt(c, av[1]);
+    t1 = rvt(c, av[2]);
+    nidx = an - 3;
+    if (tkind(c, t0) != TY_VECTOR || tkind(c, t1) != TY_VECTOR)
+        cerror(c, bl, "'%s' arguments must be vectors", name);
+    else if (!type_compatible(TT, e0 = unqual(c, vec_elem(c, t0)),
+                              e1 = unqual(c, vec_elem(c, t1))))
+        cerror(c, bl, "'%s' argument vectors must have the same element type",
+               name);
+    else if (nidx & (nidx - 1))
+        cerror(c, bl, "'%s' must specify a result with a power of two number "
+               "of elements", name);
+    else {
+        nsub = (type_ent(TT, type_canon(TT, t0))->n +
+                type_ent(TT, type_canon(TT, t1))->n) / vec_esize(c, e0);
+        for (j = 3; j < an; j++) {
+            uint32_t x = av[j];
+            bool cst = is_int(c, rvt(c, x)) &&
+                       (c->ck[x] == K_ICE ||
+                        (c->ck[x] == K_FOLD && (c->ef[x] & EF_CST)));
+            int64_t v = cst ? cexpr_sval(c, x) : 0;
+            if (!cst || v < -1 || v >= (int64_t)nsub) {
+                cerror(c, bl, "invalid element index '%s' to '%s'", estr(c, x),
+                       name);
+                set_err(c, i);
+                return;
+            }
+        }
+        c->ty[i] = type_vector(TT, e0, (uint64_t)nidx * vec_esize(c, e0));
+        c->ef[i] = 0;
+        for (j = 1; j < an; j++)
+            c->ef[i] |= c->ef[av[j]] & EF_PROP;
+        return;
+    }
+    set_err(c, i);
+}
+
 /* The line loc has after the #line directives before it (found by scanning
  * the text back; the checker has no line map). */
 static uint32_t presumed_line(Checker *c, SrcLoc loc)
@@ -6303,6 +6411,10 @@ static void e_call(Checker *c, uint32_t i)
                            "pointer type");
             }
             copy_node(c, i, av[1]);
+            return;
+        }
+        if (!strcmp(name, "__builtin_shufflevector")) {
+            e_shufflevector(c, i, name);
             return;
         }
         if (!strcmp(name, "__builtin_tgmath")) {
@@ -7400,8 +7512,44 @@ static void e_cast(Checker *c, uint32_t i)
     }
     c->ty[i] = unqual(c, t);
     c->ef[i] = c->ef[a] & EF_PROP;
-    if (tk == TY_VECTOR || (tkind(c, ot) == TY_VECTOR && tk != TY_UNION))
+    if (tk == TY_VECTOR) {
+        /* an integer or a vector of the vector's size converts */
+        bool v = tkind(c, ot) == TY_VECTOR, ok = true;
+        if (!v && !(is_int(c, ot) && tkind(c, ot) != TY_BOOL))
+            cerror(c, after_loc(c, i), "cannot convert value to a vector");
+        else if (type_size(TT, type_canon(TT, t), &ok) !=
+                 type_size(TT, type_canon(TT, ot), &ok))
+            cerror(c, after_loc(c, i), "cannot convert a value of type %s to "
+                   "vector type %s which has different size",
+                   type_q(TT, ot), type_q(TT, type_canon(TT, t)));
+        else
+            return;
+        set_err(c, i);
         return;
+    }
+    if (tkind(c, ot) == TY_VECTOR && tk != TY_UNION && !is_record(c, t)) {
+        bool ok = true;
+        if (is_int(c, t) && tk != TY_BOOL) {
+            if (type_size(TT, type_canon(TT, t), &ok) ==
+                type_size(TT, type_canon(TT, ot), &ok))
+                return;
+            cerror(c, after_loc(c, i), "cannot convert a vector of type %s to "
+                   "type %s which has different size", type_q(TT, ot),
+                   type_q(TT, t));
+        } else if (tk == TY_BOOL)
+            cerror(c, after_loc(c, i), "used vector type where scalar is "
+                   "required");
+        else if (is_flt(c, t))
+            cerror(c, after_loc(c, i), "aggregate value used where a "
+                   "floating-point was expected");
+        else if (is_ptr(c, t))
+            cerror(c, after_loc(c, i), "cannot convert to a pointer type");
+        else
+            cerror(c, after_loc(c, i), "aggregate value used where a complex "
+                   "was expected");
+        set_err(c, i);
+        return;
+    }
     if (is_record(c, t) || tk == TY_UNION) {
         if (mainv(c, t) == mainv(c, ot)) {
             ped(c, i, loc, "ISO C forbids casting nonscalar to the same type");
@@ -9866,9 +10014,14 @@ static void ptr_diff(Checker *c, uint32_t i, uint32_t a, uint32_t b)
         set_err(c, i);
         return;
     }
+    sz = elem_size(c, ta);
+    if (!is_void(c, pa) && !is_func(c, pa) && sz == 0 && !var_size(c, pa)) {
+        cerror(c, loc, "arithmetic on pointer to an empty aggregate");
+        set_err(c, i);
+        return;
+    }
     c->ty[i] = TYPE_MK(c->tgt->ptrdiff_type, 0);
     c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
-    sz = elem_size(c, ta);
     if (c->ck[a] == K_ADDR && c->ck[b] == K_ADDR && sz > 0 &&
         !var_size(c, pa) && (c->cb[a] == c->cb[b] || same_addr_const(c, a, b))) {
         c->ck[i] = K_FOLD;
@@ -10522,7 +10675,11 @@ static void asm_operand(Checker *c, SrcLoc loc, uint32_t e, bool out, bool reg,
         s = strip_paren(c, e);
         while (ntag(c, s) == N_CAST && s > 0)
             s = strip_paren(c, s - 1);
-        if (ntag(c, s) == N_IDENT && (c->ef[s] & EF_REGISTER)) {
+        if (c->ef[e] & EF_BITFIELD)
+            cerror(c, loc, "cannot take address of bit-field '%s'",
+                   ntag(c, s) == N_MEMBER_EXPR ? cident(c, cnode_ident(c, s))
+                                               : "");
+        else if (ntag(c, s) == N_IDENT && (c->ef[s] & EF_REGISTER)) {
             uint32_t ref = lookup_ord(c, cnode_ident(c, s));
             cerror(c, loc, ref != SYM_NONE && !(ref & SYM_LOCAL)
                        ? "address of global register variable '%s' requested"

@@ -1,0 +1,48 @@
+shufflevector.c:9:3: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    9 |   _Static_assert(_Generic(__builtin_shufflevector(a, b, 0, 1), v2si: 1, default: 0), "r1");
+      |   ^
+shufflevector.c:9:18: warning: ISO C99 does not support '_Generic' [-Wpedantic]
+    9 |   _Static_assert(_Generic(__builtin_shufflevector(a, b, 0, 1), v2si: 1, default: 0), "r1");
+      |                  ^
+shufflevector.c:10:3: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   10 |   _Static_assert(_Generic(__builtin_shufflevector(a, b, 0, 1, 2, 3, 4, 5, 6, 7), v8si: 1, default: 0), "r2");
+      |   ^
+shufflevector.c:10:18: warning: ISO C99 does not support '_Generic' [-Wpedantic]
+   10 |   _Static_assert(_Generic(__builtin_shufflevector(a, b, 0, 1, 2, 3, 4, 5, 6, 7), v8si: 1, default: 0), "r2");
+      |                  ^
+shufflevector.c:14:3: error: invalid element index 'i' to '__builtin_shufflevector'
+   14 |   __builtin_shufflevector(a, b, i, 1);
+      |   ^
+shufflevector.c:15:3: error: invalid element index '1.0e+0' to '__builtin_shufflevector'
+   15 |   __builtin_shufflevector(a, b, 1.0, 1);
+      |   ^
+shufflevector.c:16:3: error: wrong number of arguments to '__builtin_shuffle'
+   16 |   __builtin_shufflevector(a, b);
+      |   ^
+shufflevector.c:19:3: error: wrong number of arguments to '__builtin_shuffle'
+   19 |   __builtin_shufflevector(a);
+      |   ^
+shufflevector.c:20:3: error: wrong number of arguments to '__builtin_shuffle'
+   20 |   __builtin_shufflevector();
+      |   ^
+shufflevector.c:21:3: error: '__builtin_shufflevector' must specify a result with a power of two number of elements
+   21 |   __builtin_shufflevector(a, b, 0, 1, 2);
+      |   ^
+shufflevector.c:22:3: error: '__builtin_shufflevector' arguments must be vectors
+   22 |   __builtin_shufflevector(i, i, 0, 1);
+      |   ^
+shufflevector.c:23:3: error: '__builtin_shufflevector' arguments must be vectors
+   23 |   __builtin_shufflevector(st, st, 0, 1);
+      |   ^
+shufflevector.c:24:11: error: incompatible types when initializing type 'int' using type '__vector(2) int'
+   24 |   int x = __builtin_shufflevector(a, b, 0, 1);
+      |           ^
+shufflevector.c:25:3: error: invalid element index '8' to '__builtin_shufflevector'
+   25 |   __builtin_shufflevector(a, b, 7, 8);
+      |   ^
+shufflevector.c:31:3: error: invalid element index '6' to '__builtin_shufflevector'
+   31 |   __builtin_shufflevector(c, a, 6);
+      |   ^
+shufflevector.c:33:3: error: invalid element index '6' to '__builtin_shufflevector'
+   33 |   __builtin_shufflevector(a, c, 6);
+      |   ^

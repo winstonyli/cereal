@@ -160,6 +160,8 @@ typedef struct Attrs {
     bool e_wi, e_iw;         /* weak then ifunc, ifunc then weak (both errors) */
     bool noinline, used;     /* seen, for the 'attribute ignored' checks */
     bool unavailable, gnu_inline;
+    uint8_t zcur;            /* zero_call_used_regs: 1 ok, 2 not a string, 3 unrecognized */
+    char zcur_arg[24];
     uint64_t nonnull;        /* bit j: argument j + 1; NN_ALL: every pointer */
     uint32_t fmt;            /* format(printf|scanf, N, M): kind 1|2 << 24, N << 12, M */
     uint32_t dep_msg;        /* Checker.dep_msgs + 1, 0: none */

@@ -1,0 +1,57 @@
+builtin_args2.c:10:3: error: too few arguments to function '__builtin_clear_padding'
+   10 |   __builtin_clear_padding ();
+      |   ^
+builtin_args2.c:11:28: error: argument 1 in call to function '__builtin_clear_padding' does not have pointer type
+   11 |   __builtin_clear_padding (1);
+      |                            ^
+builtin_args2.c:12:3: error: too many arguments to function '__builtin_clear_padding'
+   12 |   __builtin_clear_padding (&p, 1);
+      |   ^
+builtin_args2.c:13:28: error: argument 1 in call to function '__builtin_clear_padding' points to incomplete type
+   13 |   __builtin_clear_padding (p);
+      |                            ^
+builtin_args2.c:14:28: error: argument 1 in call to function '__builtin_clear_padding' points to incomplete type
+   14 |   __builtin_clear_padding (q);
+      |                            ^
+builtin_args2.c:16:28: error: argument 1 in call to function '__builtin_clear_padding' has pointer to 'const' type ('const struct T *')
+   16 |   __builtin_clear_padding (s);
+      |                            ^
+builtin_args2.c:17:3: error: too many arguments to function '__atomic_is_lock_free'
+   17 |   __atomic_is_lock_free (2, a, 2);
+      |   ^
+builtin_args2.c:18:3: error: too few arguments to function '__atomic_is_lock_free'
+   18 |   __atomic_is_lock_free (2);
+      |   ^
+builtin_args2.c:19:29: error: incompatible type for argument 2 of '__atomic_is_lock_free'
+   19 |   __atomic_is_lock_free (2, b);
+      |                             ^
+builtin_args2.c:19:29: note: expected 'const volatile void *' but argument is of type 'double'
+   19 |   __atomic_is_lock_free (2, b);
+      |                             ^
+builtin_args2.c:21:29: warning: passing argument 2 of '__atomic_is_lock_free' makes pointer from integer without a cast [-Wint-conversion]
+   21 |   __atomic_is_lock_free (2, x);
+      |                             ^
+builtin_args2.c:21:29: note: expected 'const volatile void *' but argument is of type 'int'
+   21 |   __atomic_is_lock_free (2, x);
+      |                             ^
+builtin_args2.c:22:3: error: too few arguments to function '__builtin_speculation_safe_value'
+   22 |   x = x == __builtin_speculation_safe_value ();
+      |   ^
+builtin_args2.c:23:11: error: too many arguments to function '__builtin_speculation_safe_value'
+   23 |   x = 1 + __builtin_speculation_safe_value (1, 2, 3);
+      |           ^
+builtin_args2.c:24:3: error: cannot take address of bit-field 'a'
+   24 |   __asm__ ("" : "+m" (bp->a));
+      |   ^
+builtin_args2.c:25:3: error: cannot take address of bit-field 'a'
+   25 |   __asm__ ("" : : "m" (bp->a));
+      |   ^
+builtin_args2.c:27:26: warning: ISO C forbids zero-size array 'p' [-Wpedantic]
+   27 | __PTRDIFF_TYPE__ pd (int p[3][0], int q[3][0]) { return p - q; }
+      |                          ^
+builtin_args2.c:27:39: warning: ISO C forbids zero-size array 'q' [-Wpedantic]
+   27 | __PTRDIFF_TYPE__ pd (int p[3][0], int q[3][0]) { return p - q; }
+      |                                       ^
+builtin_args2.c:27:59: error: arithmetic on pointer to an empty aggregate
+   27 | __PTRDIFF_TYPE__ pd (int p[3][0], int q[3][0]) { return p - q; }
+      |                                                           ^

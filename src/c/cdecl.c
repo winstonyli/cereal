@@ -312,7 +312,8 @@ static void gnu_attr_argc(Checker *c, uint32_t attr)
 {
     static const struct { const char *n; uint32_t lo, hi; } t[] = {
         {"access", 1, 3}, {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"copy", 1, 1},
-        {"malloc", 0, 2}, {"section", 1, 1}, {"strict_flex_array", 1, 1}};
+        {"malloc", 0, 2}, {"section", 1, 1}, {"simd", 0, 1},
+        {"strict_flex_array", 1, 1}, {"zero_call_used_regs", 1, 1}};
     Kids k;
     uint32_t j;
     if (tokp(c, cnode(c, attr)->tok)->kind == TK_PUNCT)
@@ -355,6 +356,17 @@ static void gnu_attr_argc(Checker *c, uint32_t attr)
                           "expected between %u and %u, found %u", t[n].lo,
                           t[n].hi, (unsigned)ak.n);
             }
+        if (!strcmp(name, "simd") && ak.n == 1) {
+            char v[24];
+            cdecl_attr_args(c, k.p[j], v, sizeof v);
+            if (ntag(c, ak.p[0]) != N_STRING)
+                cerror(c, cinput_loc(c, at),
+                       "attribute 'simd' argument not a string");
+            else if (strcmp(v, "\"inbranch\"") && strcmp(v, "\"notinbranch\""))
+                cerror(c, cinput_loc(c, at), "only 'inbranch' and "
+                       "'notinbranch' flags are allowed for '__simd__' "
+                       "attribute");
+        }
         kids_free(&ak);
     }
     kids_free(&k);
@@ -824,6 +836,13 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             }
             if (ok)
                 a->nonnull |= m;
+        } else if (!strcmp(name, "returns_nonnull")) {
+            TypeId ft = c->attr_fty;
+            if (ft && type_ckind(TT, ft) == TY_FUNC &&
+                type_ckind(TT, type_ent(TT, ft)->base) != TY_PTR)
+                cerror(c, cinput_loc(c, c->nodes[item].tok),
+                       "'returns_nonnull' attribute on a function not "
+                       "returning a pointer");
         } else if (!strcmp(name, "format") && ak.n == 3 &&
                    ntag(c, ak.p[0]) == N_IDENT) {
             char ar[24];
@@ -843,6 +862,21 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                                  (uint32_t)fv;
                 }
             }
+        } else if (!strcmp(name, "zero_call_used_regs") && ak.n == 1) {
+            static const char *const ok[] = {"skip", "used-gpr-arg", "used-arg",
+                "used-gpr", "used", "all-gpr-arg", "all-arg", "all-gpr", "all"};
+            char v[24];
+            unsigned q;
+            cdecl_attr_args(c, item, v, sizeof v);
+            a->zcur = 3;
+            snprintf(a->zcur_arg, sizeof a->zcur_arg, "%s", v + 1);
+            a->zcur_arg[strcspn(a->zcur_arg, "\"")] = 0;
+            if (ntag(c, ak.p[0]) != N_STRING)
+                a->zcur = 2;
+            else
+                for (q = 0; q < sizeof ok / sizeof *ok; q++)
+                    if (!strcmp(a->zcur_arg, ok[q]))
+                        a->zcur = 1;
         } else if (!strcmp(name, "gnu_inline")) {
             a->gnu_inline = true;
         } else if (!strcmp(name, "noinline")) {
@@ -973,7 +1007,8 @@ static TypeId attr_apply_type(Checker *c, TypeId t, const Attrs *a)
         uint64_t esz;
         if (type_ckind(TT, el) == TY_ERROR)
             return t;
-        if (!(type_is_integer(TT, el) || type_is_float(TT, el))) {
+        if (!(type_is_integer(TT, el) || type_is_float(TT, el)) ||
+            type_kind(TT, el) == TY_BOOL) {
             cerror(c, a->vs_loc, "invalid vector type for attribute "
                    "'vector_size'");
         } else if (a->vector_size == 0) {
@@ -1019,6 +1054,10 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     to->deprecated |= from->deprecated;
     to->unavailable |= from->unavailable;
     to->gnu_inline |= from->gnu_inline;
+    if (from->zcur) {
+        to->zcur = from->zcur;
+        memcpy(to->zcur_arg, from->zcur_arg, sizeof to->zcur_arg);
+    }
     if (from->dep_msg)
         to->dep_msg = from->dep_msg;
     if (from->wina)
@@ -1134,6 +1173,22 @@ static void attrs_section_check(Checker *c, const Attrs *a, char where,
 
 /* common_handle_aligned_attribute for warn_if_not_aligned: only a type or a
  * non-bit-field member may carry it. */
+/* zero_call_used_regs: functions only, with a known string argument; the
+ * errors are at the declared name. */
+static void attrs_zcur_check(Checker *c, const Attrs *a, bool fn, SrcLoc nloc)
+{
+    if (!a->zcur)
+        return;
+    if (!fn)
+        cerror(c, nloc, "'zero_call_used_regs' attribute applies only to "
+               "functions");
+    else if (a->zcur == 2)
+        cerror(c, nloc, "'zero_call_used_regs' argument not a string");
+    else if (a->zcur == 3)
+        cerror(c, nloc, "unrecognized 'zero_call_used_regs' attribute "
+               "argument '%s'", a->zcur_arg);
+}
+
 static void attrs_wina_check(Checker *c, const Attrs *a, char where,
                              bool bitfield, uint32_t name, SrcLoc nloc)
 {
@@ -5237,6 +5292,7 @@ static void declared_visit(Checker *c, uint32_t i)
                         g.what == GD_FUNC ? 'f' : 'g',
                         g.what == GD_VAR && !file && s.sc != SC_STATIC,
                         s.name, s.loc);
+    attrs_zcur_check(c, &a, g.what == GD_FUNC && !kr, s.loc);
     attrs_wina_check(c, &a, kr ? 'p' : g.what == GD_TYPEDEF ? 't' : 'g', false,
                      s.name, s.loc);
     s.sect = a.sec;
@@ -6357,6 +6413,7 @@ static void member_visit(Checker *c, uint32_t i)
     attrs_section_check(c, &a, 'm', false, g.name, g.loc);
     strict_flex_check(c, sp.node, true, g.ty, g.name, g.loc, sp.tok0);
     strict_flex_check(c, i, true, g.ty, g.name, g.loc, NO_NODE);
+    attrs_zcur_check(c, &a, false, g.loc);
     attrs_wina_check(c, &a, 'm', g.width >= 0, g.name, g.loc);
     memset(&fi, 0, sizeof fi);
     fi.name = g.name;
@@ -6689,6 +6746,7 @@ static void param_visit(Checker *c, uint32_t p)
     attrs_unknown_emit(c, &sp.attrs, first_tok(c, p));
     attrs_merge(&a, &sp.attrs);
     attrs_misapplied(c, &a, 'p', false, 0, first_tok(c, p));
+    attrs_zcur_check(c, &a, false, s.loc);
     attrs_section_check(c, &a, 'p', false, s.name, s.loc);
     if (a.unused)
         s.flags |= CSF_USED | CSF_ATTR_UNUSED;
@@ -7045,6 +7103,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
             g.s.fmt = sp.attrs.fmt;
     }
     attrs_section_check(c, &sp.attrs, 'f', false, g.s.name, g.s.loc);
+    attrs_zcur_check(c, &sp.attrs, true, g.s.loc);
     attrs_wina_check(c, &sp.attrs, 'f', false, g.s.name, g.s.loc);
     g.s.sect = sp.attrs.sec;
     s = g.s;

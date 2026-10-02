@@ -1,0 +1,48 @@
+attr_args2.c:3:1: error: wrong number of arguments specified for 'simd' attribute
+    3 | int f(void) __attribute__((simd("notinbranch","inbranch")));
+      | ^
+attr_args2.c:3:1: note: expected between 0 and 1, found 2
+    3 | int f(void) __attribute__((simd("notinbranch","inbranch")));
+      | ^
+attr_args2.c:4:1: error: attribute 'simd' argument not a string
+    4 | int g(void) __attribute__((simd(1)));
+      | ^
+attr_args2.c:5:1: error: only 'inbranch' and 'notinbranch' flags are allowed for '__simd__' attribute
+    5 | int h(void) __attribute__((simd("bug")));
+      | ^
+attr_args2.c:7:5: error: 'zero_call_used_regs' attribute applies only to functions
+    7 | int result __attribute__ ((zero_call_used_regs("all")));
+      |     ^
+attr_args2.c:8:58: error: unrecognized 'zero_call_used_regs' attribute argument 'gpr-arg-all'
+    8 | int __attribute__ ((zero_call_used_regs("gpr-arg-all"))) foo1 (int x) {return 0;}
+      |                                                          ^
+attr_args2.c:9:46: error: 'zero_call_used_regs' argument not a string
+    9 | int __attribute__ ((zero_call_used_regs(1))) foo2 (int x) {return 0;}
+      |                                              ^
+attr_args2.c:10:1: error: wrong number of arguments specified for 'zero_call_used_regs' attribute
+   10 | int __attribute__ ((zero_call_used_regs())) foo3 (int x) {return 0;}
+      | ^
+attr_args2.c:10:1: note: expected 1, found 0
+   10 | int __attribute__ ((zero_call_used_regs())) foo3 (int x) {return 0;}
+      | ^
+attr_args2.c:12:1: error: wrong number of arguments specified for 'zero_call_used_regs' attribute
+   12 | int __attribute__ ((zero_call_used_regs("used-gpr","x"))) foo5 (int x) {return 0;}
+      | ^
+attr_args2.c:12:1: note: expected 1, found 2
+   12 | int __attribute__ ((zero_call_used_regs("used-gpr","x"))) foo5 (int x) {return 0;}
+      | ^
+attr_args2.c:13:1: error: wrong number of arguments specified for 'zero_call_used_regs' attribute
+   13 | int __attribute__ ((zero_call_used_regs)) foo6 (int x) {return 0;}
+      | ^
+attr_args2.c:13:1: note: expected 1, found 0
+   13 | int __attribute__ ((zero_call_used_regs)) foo6 (int x) {return 0;}
+      | ^
+attr_args2.c:14:16: error: 'zero_call_used_regs' attribute applies only to functions
+   14 | struct S { int z __attribute__ ((zero_call_used_regs("all")));};
+      |                ^
+attr_args2.c:15:13: error: 'zero_call_used_regs' attribute applies only to functions
+   15 | typedef int T __attribute__ ((zero_call_used_regs("all")));
+      |             ^
+attr_args2.c:16:1: error: 'returns_nonnull' attribute on a function not returning a pointer
+   16 | extern int rn() __attribute__((returns_nonnull));
+      | ^
