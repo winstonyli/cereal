@@ -1,0 +1,30 @@
+builtin_knr_notes.c:7:3: warning: too few arguments to built-in function 'exit' expecting 1 [-Wbuiltin-declaration-mismatch]
+    7 |   exit ();
+      |   ^
+builtin_knr_notes.c:3:6: note: declared here
+    3 | void exit ();
+      |      ^
+builtin_knr_notes.c:8:3: warning: too many arguments to built-in function 'exit' expecting 1 [-Wbuiltin-declaration-mismatch]
+    8 |   exit (1, 2);
+      |   ^
+builtin_knr_notes.c:3:6: note: declared here
+    3 | void exit ();
+      |      ^
+builtin_knr_notes.c:9:9: warning: passing argument 1 of 'exit' makes integer from pointer without a cast [-Wint-conversion]
+    9 |   exit ("");
+      |         ^
+builtin_knr_notes.c:3:6: note: expected 'int' but argument is of type 'char *'
+    3 | void exit ();
+      |      ^
+builtin_knr_notes.c:10:11: warning: passing argument 1 of 'memcpy' discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   10 |   memcpy (q, p, n);
+      |           ^
+builtin_knr_notes.c:4:7: note: expected 'void *' but argument is of type 'const void *'
+    4 | void* memcpy ();
+      |       ^
+builtin_knr_notes.c:11:3: warning: too few arguments to built-in function 'memcpy' expecting 3 [-Wbuiltin-declaration-mismatch]
+   11 |   memcpy (p);
+      |   ^
+builtin_knr_notes.c:4:7: note: declared here
+    4 | void* memcpy ();
+      |       ^

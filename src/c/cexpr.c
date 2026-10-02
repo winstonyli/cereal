@@ -5270,9 +5270,13 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
             /* a built-in declared without a prototype: the arguments are
              * matched against the built-in's own parameters */
             if (j >= bn) {
-                cwarn(c, loc, "builtin-declaration-mismatch", "too many "
-                      "arguments to built-in function '%s' expecting %u",
-                      fname, bn);
+                Diagnostic *d = cwarn_d(c, DL_WARNING, loc,
+                                        "builtin-declaration-mismatch", "too "
+                                        "many arguments to built-in function "
+                                        "'%s' expecting %u", fname, bn);
+                if (d && fref != SYM_NONE &&
+                    !(csym(c, fref)->flags & CSF_IMPLICIT))
+                    cnote(c, d, csym(c, fref)->loc, "declared here");
                 bn = 0xFFFFFFFEu;
             } else {
                 ConvInfo ci;
@@ -5281,6 +5285,8 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
                 ci.fname = fname;
                 ci.parmnum = (int)j + 1;
                 ci.warnopt = "builtin-declaration-mismatch";
+                if (fref != SYM_NONE && !(csym(c, fref)->flags & CSF_IMPLICIT))
+                    ci.note_loc = csym(c, fref)->loc;
                 (void)cexpr_assign_check(c, a, bpt[j], &ci);
             }
         }
@@ -5304,8 +5310,14 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
                        zero_size_ok(cident(c, csym(c, fref)->name)));
     if (!too_many && !proto && bn != NO_NODE && bn != 0xFFFFFFFEu &&
         nk - 1 < bn)
-        cwarn(c, loc, "builtin-declaration-mismatch", "too few arguments to "
-              "built-in function '%s' expecting %u", fname, bn);
+    {
+        Diagnostic *d = cwarn_d(c, DL_WARNING, loc,
+                                "builtin-declaration-mismatch", "too few "
+                                "arguments to built-in function '%s' expecting "
+                                "%u", fname, bn);
+        if (d && fref != SYM_NONE && !(csym(c, fref)->flags & CSF_IMPLICIT))
+            cnote(c, d, csym(c, fref)->loc, "declared here");
+    }
     if (!too_many && proto && nk - 1 < nparm) {
         Diagnostic *d = cerror_d(c, loc, "too few arguments to function '%s'",
                                  fname);

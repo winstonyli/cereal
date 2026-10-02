@@ -370,4 +370,11 @@ layouts, gcc rules ported, walk design).
   parameter with a non-union one (type_tu_mixed; gcc matches at file and block
   scope).  Goldens transparent_pedantic; transparent_redecl regenerated.
   gcc.dg 3615 of 3875 identical; tests 828.
+  Builtins declared without a prototype: the too-few/too-many-arguments
+  warnings carry a "declared here" note, and the argument-conversion notes
+  point at the declaration (gcc), golden builtin_knr_notes.  Not done (one
+  file, Wbuiltin-declaration-mismatch-3.c): -Wincompatible-pointer-types for a
+  K&R-declared builtin used as a function pointer ("pointer to
+  '__builtin_memset' with incompatible type", incl. gcc's double-space
+  "int,  long" spelling) in init/assign/argument/conditional/return.
 
