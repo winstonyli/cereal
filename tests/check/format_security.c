@@ -26,3 +26,4 @@ void f(char *s, const char *cs)
   printf(s, 1);
   printf("%s", s);
 }
+void oneline(char *s){ printf(s); }

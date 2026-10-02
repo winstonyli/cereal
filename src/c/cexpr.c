@@ -1153,9 +1153,124 @@ static void pconv(Checker *c, StrBuf *sb, uint32_t i, TypeId t, int prec)
     pexpr(c, sb, i, prec);
 }
 
+/* gcc builds p[i] on a pointer as *(p + i * size) and prints that tree:
+ * the byte offset of a constant index, (sizetype)(...) of a variable one.
+ * Returns the base and index nodes when node i is such a subscript and its
+ * spelling is one cereal reproduces (no folded sums of a signed index). */
+static bool lowered_sub(Checker *c, uint32_t i, uint32_t *base, uint32_t *idx,
+                        uint64_t *size)
+{
+    uint32_t k[3], b, x, sx;
+    TypeId bt, pt;
+    bool ov;
+    if (ntag(c, i) != N_INDEX || nkids(c, i, k, 3) < 2)
+        return false;
+    b = strip_paren(c, k[0]);
+    x = strip_paren(c, k[1]);
+    if (b == NO_NODE || x == NO_NODE)
+        return false;
+    bt = type_canon(TT, c->ty[b]);
+    if (type_ckind(TT, bt) != TY_PTR) {
+        uint32_t t = b;
+        b = x;
+        x = t;
+        bt = type_canon(TT, c->ty[b]);
+        if (type_ckind(TT, bt) != TY_PTR)
+            return false;
+    }
+    if (!is_int(c, rvt(c, x)))
+        return false;
+    pt = type_canon(TT, type_base(TT, bt));
+    *size = type_size(TT, pt, &ov);
+    if (!ov || !*size || tkind(c, pt) == TY_VLA)
+        return false;
+    if (c->ck[x] != K_ICE) {
+        sx = x;
+        /* sums and differences of a signed index are folded by gcc */
+        if (ntag(c, sx) == N_BINARY && (npunct(c, sx) == P_PLUS ||
+                                        npunct(c, sx) == P_MINUS) &&
+            is_signed(c, rvt(c, sx))) {
+            uint32_t sk[3];
+            if (nkids(c, sx, sk, 3) >= 2 &&
+                c->ck[strip_paren(c, sk[1])] == K_ICE &&
+                (npunct(c, sx) != P_PLUS ||
+                 cexpr_sval(c, strip_paren(c, sk[1])) <= 0 ||
+                 c->ck[strip_paren(c, sk[0])] == K_ICE ||
+                 type_size(TT, rvt(c, sx), &ov) != 4))
+                return false;
+        }
+        if (ntag(c, sx) == N_COND || has_ival(c, sx))
+            return false;
+    }
+    *base = b;
+    *idx = x;
+    return true;
+}
+
+static void plowered(Checker *c, StrBuf *sb, uint32_t b, uint32_t x,
+                     uint64_t size)
+{
+    char num[32];
+    sb_putc(sb, '*');
+    if (c->ck[x] == K_ICE) {
+        int64_t off = cexpr_sval(c, x) * (int64_t)size;
+        if (off == 0) {
+            pexpr(c, sb, b, PR_UNARY);
+            return;
+        }
+        sb_putc(sb, '(');
+        pexpr(c, sb, b, PR_ADD);
+        snprintf(num, sizeof num, " + %lld)", (long long)off);
+        sb_puts(sb, num);
+        return;
+    }
+    sb_putc(sb, '(');
+    pexpr(c, sb, b, PR_ADD);
+    sb_puts(sb, " + ");
+    {
+        uint32_t sk[3], sx = strip_paren(c, x);
+        if (ntag(c, sx) == N_BINARY && npunct(c, sx) == P_PLUS &&
+            is_signed(c, rvt(c, sx)) && nkids(c, sx, sk, 3) >= 2 &&
+            c->ck[strip_paren(c, sk[1])] == K_ICE) {
+            /* gcc distributes: ((sizetype)i + 1) * size */
+            snprintf(num, sizeof num, " + %lld)", (long long)
+                     cexpr_sval(c, strip_paren(c, sk[1])));
+            sb_puts(sb, "((sizetype)");
+            pexpr(c, sb, sk[0], PR_UNARY);
+            sb_puts(sb, num);
+            if (size != 1) {
+                snprintf(num, sizeof num, " * %llu", (unsigned long long)size);
+                sb_puts(sb, num);
+            }
+            sb_putc(sb, ')');
+            return;
+        }
+    }
+    sb_puts(sb, "(sizetype)");
+    {
+        TypeId xt = type_canon(TT, rvt(c, x));
+        bool wide_u = type_size(TT, xt, &(bool){0}) == 8 && !is_signed(c, xt);
+        if (size == 1) {
+            pexpr(c, sb, x, PR_UNARY);
+        } else if (wide_u) {
+            sb_putc(sb, '(');
+            pexpr(c, sb, x, PR_MUL);
+            snprintf(num, sizeof num, " * %llu)", (unsigned long long)size);
+            sb_puts(sb, num);
+        } else {
+            sb_puts(sb, "((long unsigned int)");
+            pexpr(c, sb, x, PR_UNARY);
+            snprintf(num, sizeof num, " * %llu)", (unsigned long long)size);
+            sb_puts(sb, num);
+        }
+    }
+    sb_putc(sb, ')');
+}
+
 static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
 {
-    uint32_t k[3], n;
+    uint32_t k[3], n, lb, lx;
+    uint64_t lsz;
     int my = PR_PRIMARY, op;
     size_t len;
     const char *s;
@@ -1176,7 +1291,8 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
         my = PR_UNARY;
         break;
     case N_INDEX: case N_CALL: case N_MEMBER_EXPR: case N_POSTFIX:
-        my = PR_POSTFIX;
+        my = ntag(c, i) == N_INDEX && lowered_sub(c, i, &lb, &lx, &lsz)
+                 ? PR_UNARY : PR_POSTFIX;
         break;
     default: break;
     }
@@ -1288,6 +1404,10 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
     case N_INDEX:
         if (n < 2)
             break;
+        if (lowered_sub(c, i, &lb, &lx, &lsz)) {
+            plowered(c, sb, lb, lx, lsz);
+            break;
+        }
         pexpr(c, sb, k[0], PR_POSTFIX);
         sb_putc(sb, '[');
         pexpr(c, sb, k[1], PR_COMMA);
@@ -3611,6 +3731,8 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     if (!pos || nk - 1 < pos)
         return;
     a = kv[pos];
+    /* gcc's input_location: the line of the token after the call's ')' */
+    where = cinput_loc(c, last_tok(c, kv[nk - 1]) + 2);
     s = strip_paren(c, a);
     if (s == NO_NODE || node_err(c, a))
         return;
@@ -3622,6 +3744,9 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
             nonlit = true;
             where = expr_loc(c, a);
         }
+    } else if (type_ckind(TT, c->ty[s]) == TY_VLA && c->ck[s] != K_ERR) {
+        nonlit = true;          /* never read through an initializer */
+        where = expr_loc(c, a);
     } else if (c->ck[s] == K_NONE) {
         nonlit = true;
     }

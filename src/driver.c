@@ -266,7 +266,18 @@ static void bad_wopt(Options *o, const char *flag)
     n = eq ? (size_t)(eq - p) : strlen(p);
     snprintf(name, sizeof name, "%.*s", (int)n, p);
     if (gcc_wopt_known(name, &valued)) {
-        size_t m = strlen(name);
+        size_t m = strlen(name), k;
+        bool exact = false;
+        for (k = 0; !eq && valued && k < sizeof gcc_wopts / sizeof *gcc_wopts; k++)
+            exact |= !strcmp(gcc_wopts[k], name);
+        if (!eq && valued && !exact && strncmp(flag, "no-", 3) && m > 12 &&
+            !strcmp(name + m - 12, "-larger-than")) {
+            /* a valued-only option written without its value */
+            fprintf(stderr, "cereal: error: unrecognized command-line option "
+                    "'-W%s'; did you mean '-W%s='?\n", flag, name);
+            o->bad_options++;
+            return;
+        }
         if (eq && valued && m > 12 &&
             !strcmp(name + m - 12, "-larger-than") && !size_arg_ok(eq + 1)) {
             fprintf(stderr, "cereal: error: argument to '-W%s=' should be a "

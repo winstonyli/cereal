@@ -1,0 +1,75 @@
+readonly_subscript.c:6:8: error: assignment of read-only location '*p'
+    6 |   p[0] = 1; p[3] = 1; p[-1] = 1; p[i] = 1; p[i + 1] = 1; p[u] = 1; p[ul] = 1; p[s] = 1;
+      |        ^
+readonly_subscript.c:6:18: error: assignment of read-only location '*(p + 12)'
+    6 |   p[0] = 1; p[3] = 1; p[-1] = 1; p[i] = 1; p[i + 1] = 1; p[u] = 1; p[ul] = 1; p[s] = 1;
+      |                  ^
+readonly_subscript.c:6:29: error: assignment of read-only location '*(p + -4)'
+    6 |   p[0] = 1; p[3] = 1; p[-1] = 1; p[i] = 1; p[i + 1] = 1; p[u] = 1; p[ul] = 1; p[s] = 1;
+      |                             ^
+readonly_subscript.c:6:39: error: assignment of read-only location '*(p + (sizetype)((long unsigned int)i * 4))'
+    6 |   p[0] = 1; p[3] = 1; p[-1] = 1; p[i] = 1; p[i + 1] = 1; p[u] = 1; p[ul] = 1; p[s] = 1;
+      |                                       ^
+readonly_subscript.c:6:53: error: assignment of read-only location '*(p + ((sizetype)i + 1) * 4)'
+    6 |   p[0] = 1; p[3] = 1; p[-1] = 1; p[i] = 1; p[i + 1] = 1; p[u] = 1; p[ul] = 1; p[s] = 1;
+      |                                                     ^
+readonly_subscript.c:6:63: error: assignment of read-only location '*(p + (sizetype)((long unsigned int)u * 4))'
+    6 |   p[0] = 1; p[3] = 1; p[-1] = 1; p[i] = 1; p[i + 1] = 1; p[u] = 1; p[ul] = 1; p[s] = 1;
+      |                                                               ^
+readonly_subscript.c:6:74: error: assignment of read-only location '*(p + (sizetype)(ul * 4))'
+    6 |   p[0] = 1; p[3] = 1; p[-1] = 1; p[i] = 1; p[i + 1] = 1; p[u] = 1; p[ul] = 1; p[s] = 1;
+      |                                                                          ^
+readonly_subscript.c:6:84: error: assignment of read-only location '*(p + (sizetype)((long unsigned int)s * 4))'
+    6 |   p[0] = 1; p[3] = 1; p[-1] = 1; p[i] = 1; p[i + 1] = 1; p[u] = 1; p[ul] = 1; p[s] = 1;
+      |                                                                                    ^
+readonly_subscript.c:7:8: error: assignment of read-only location '*q'
+    7 |   q[0] = 1; q[2] = 1; q[i] = 1; q[i + j] = 1; q[1 + i] = 1; q[i + 1] = 1; q[-i] = 1;
+      |        ^
+readonly_subscript.c:7:18: error: assignment of read-only location '*(q + 2)'
+    7 |   q[0] = 1; q[2] = 1; q[i] = 1; q[i + j] = 1; q[1 + i] = 1; q[i + 1] = 1; q[-i] = 1;
+      |                  ^
+readonly_subscript.c:7:28: error: assignment of read-only location '*(q + (sizetype)i)'
+    7 |   q[0] = 1; q[2] = 1; q[i] = 1; q[i + j] = 1; q[1 + i] = 1; q[i + 1] = 1; q[-i] = 1;
+      |                            ^
+readonly_subscript.c:7:42: error: assignment of read-only location '*(q + (sizetype)(i + j))'
+    7 |   q[0] = 1; q[2] = 1; q[i] = 1; q[i + j] = 1; q[1 + i] = 1; q[i + 1] = 1; q[-i] = 1;
+      |                                          ^
+readonly_subscript.c:7:56: error: assignment of read-only location '*(q + (sizetype)(1 + i))'
+    7 |   q[0] = 1; q[2] = 1; q[i] = 1; q[i + j] = 1; q[1 + i] = 1; q[i + 1] = 1; q[-i] = 1;
+      |                                                        ^
+readonly_subscript.c:7:70: error: assignment of read-only location '*(q + ((sizetype)i + 1))'
+    7 |   q[0] = 1; q[2] = 1; q[i] = 1; q[i + j] = 1; q[1 + i] = 1; q[i + 1] = 1; q[-i] = 1;
+      |                                                                      ^
+readonly_subscript.c:7:81: error: assignment of read-only location '*(q + (sizetype)-i)'
+    7 |   q[0] = 1; q[2] = 1; q[i] = 1; q[i + j] = 1; q[1 + i] = 1; q[i + 1] = 1; q[-i] = 1;
+      |                                                                                 ^
+readonly_subscript.c:8:8: error: assignment of read-only location '*(l + (sizetype)((long unsigned int)i * 8))'
+    8 |   l[i] = 1; l[2] = 1;
+      |        ^
+readonly_subscript.c:8:18: error: assignment of read-only location '*(l + 16)'
+    8 |   l[i] = 1; l[2] = 1;
+      |                  ^
+readonly_subscript.c:9:12: error: assignment of read-only location '(*(pa + 12))[2]'
+    9 |   pa[1][2] = 1; pa[i][j] = 1; (*pa)[1] = 1;
+      |            ^
+readonly_subscript.c:9:26: error: assignment of read-only location '(*(pa + (sizetype)((long unsigned int)i * 12)))[j]'
+    9 |   pa[1][2] = 1; pa[i][j] = 1; (*pa)[1] = 1;
+      |                          ^
+readonly_subscript.c:9:40: error: assignment of read-only location '(*pa)[1]'
+    9 |   pa[1][2] = 1; pa[i][j] = 1; (*pa)[1] = 1;
+      |                                        ^
+readonly_subscript.c:10:12: error: assignment of read-only location '*(*(pp + 8) + (sizetype)((long unsigned int)i * 4))'
+   10 |   pp[1][i] = 1; pp[i][1] = 1;
+      |            ^
+readonly_subscript.c:10:26: error: assignment of read-only location '*(*(pp + (sizetype)((long unsigned int)i * 8)) + 4)'
+   10 |   pp[1][i] = 1; pp[i][1] = 1;
+      |                          ^
+readonly_subscript.c:11:11: error: assignment of read-only location 'arr2[0]'
+   11 |   arr2[0] = 1; arr2[i] = 1;
+      |           ^
+readonly_subscript.c:11:24: error: assignment of read-only location 'arr2[i]'
+   11 |   arr2[0] = 1; arr2[i] = 1;
+      |                        ^
+readonly_subscript.c:12:6: error: assignment of read-only location '*p'
+   12 |   *p = 1;
+      |      ^

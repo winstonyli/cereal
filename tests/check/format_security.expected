@@ -43,3 +43,6 @@ format_security.c:25:3: warning: format not a string literal and no format argum
 format_security.c:26:3: warning: format not a string literal, argument types not checked [-Wformat-nonliteral]
    26 |   printf(s, 1);
       |   ^
+format_security.c:29:1: warning: format not a string literal and no format arguments [-Wformat-security]
+   29 | void oneline(char *s){ printf(s); }
+      | ^

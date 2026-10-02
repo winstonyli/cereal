@@ -157,7 +157,7 @@ static const DiagOption options[] = {
     {"conversion", "c", DL_WARNING, false, 0, "implicit conversion that may change a value"},
     {"sign-conversion", "c", DL_WARNING, false, 0, "implicit conversion that may change the sign"},
     {"arith-conversion", "c", DL_WARNING, false, 0, "conversion of an arithmetic result may change its value"},
-    {"format-security", "c", DL_WARNING, false, 0, "format string that is not a literal and has no arguments"},
+    {"format-security", "c", DL_WARNING, true, 0, "format string that is not a literal and has no arguments"},
     {"format-nonliteral", "c", DL_WARNING, false, 0, "format string that is not a literal"},
     {"float-conversion", "c", DL_WARNING, false, 0, "implicit conversion that reduces floating precision"},
     {"float-equal", "c", DL_WARNING, false, 0, "floating-point values compared for equality"},
