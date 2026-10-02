@@ -2469,6 +2469,8 @@ static void specs_visit(Checker *c, uint32_t i)
                 ref = SYM_NONE;
             else if (ref != SYM_NONE && csym(c, ref)->kind == CS_TYPEDEF)
                 t = csym(c, ref)->ty;
+            else if (ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ)
+                t = csym(c, ref)->ty;   /* the parser took it for a typedef: gcc types it as the variable */
             else if (ref == SYM_NONE || csym(c, ref)->kind != CS_TYPEDEF)
                 cerror(c, iloc(c, nd->tok), "'%s' fails to be a typedef or "
                        "built in type", tstr(c, nd->tok));
@@ -4518,6 +4520,8 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
                 bind_this_type(c, b, use, vt, true, newty);
             return use;
         }
+        if (x.kind == CS_TYPEDEF && csym(c, vis)->kind == CS_OBJ)
+            return vis;     /* gcc keeps the variable: the name stays bound to it */
         skip = true;
     }
     ref = SYM_NONE;
@@ -6239,9 +6243,7 @@ static void member_decl_visit(Checker *c, uint32_t i)
         Spec sp = c->specs.data[si];
         uint32_t ltok = sp.tok1;
         struct_semis(c, first_tok(c, i));
-        if (sp.kind == TSK_NONE && !sp.has_type && sp.word == TW_NONE &&
-            !sp.is_long && !sp.is_short && !sp.is_signed && !sp.is_unsigned &&
-            !sp.is_complex) {
+        if (sp.kind == TSK_NONE && !sp.has_type && sp.default_int) {
             cpedantic(c, tloc(c, sp.tok0), "ISO C forbids member declarations "
                       "with no members");
             shadow_tag(c, &sp, c->opt.pedantic ? 1 : 0, ltok);
@@ -7663,10 +7665,18 @@ void cdecl_node(Checker *c, uint32_t i)
     case N_GOTO_EXPR:
         cpedantic(c, tloc(c, cnode(c, i)->tok), "ISO C forbids 'goto *expr;'");
         break;
-    case N_DECLARED:
+    case N_DECLARED: {
+        /* gcc declares the name before it parses the initializer: a
+         * conflict is reported even if the initializer has a syntax error */
+        bool quiet = c->quiet;
+        c->quiet = quiet && i + 1 < c->nn && ntag(c, i + 1) == N_INIT_DECL;
+        DiagOrd o0 = diag_ord(c->diag, ORD_EARLY);
         declared_visit(c, i);
+        diag_ord(c->diag, o0);
+        c->quiet = quiet;
         cinit_declared(c, i);
         break;
+    }
     case N_INIT_DECL:
         init_decl_visit(c, i);
         break;

@@ -327,3 +327,19 @@ layouts, gcc rules ported, walk design).
   Wstringop-overflow-22, -overread-6 need -O2 constant propagation (gcc folds
   `strlen (a)` after propagating loop-free locals); skip.
 
+- Round 6 (2026-10-02, after 37fe051):
+  * Struct member `const;` (no type, no declarator) is "ISO C forbids member
+    declarations with no members": the check keys on Spec.default_int
+    (finish_declspecs turns word NONE into INT, so the old test never fired).
+  * `typedef float t;` over `extern int t;`: gcc keeps the variable bound, so
+    a later `t v` is typed int.  checker: the failed typedef returns the old
+    symbol; N_TYPEDEF_NAME resolving to an object uses its type.
+  * N_DECLARED runs unquiet (ORD_EARLY) in a unit with syntax errors unless
+    an N_INIT_DECL follows directly (a failed attribute list): gcc declares
+    `a = <error>` before parsing the initializer, so redeclaration conflicts
+    still show.  Goldens decl_before_init_err, typedef_over_var.
+  gcc.dg 3607 of 3875 identical (missing 901, extra 380); tests 820.
+  Remaining clusters are <= 3 files each (incompatible-pointer arg notes,
+  -Wlarger-than, -Wdangling-else, shadow=compatible-local); `chk.h` not found
+  is the missing gcc.c-torture dir of the sparse checkout (harness artifact).
+

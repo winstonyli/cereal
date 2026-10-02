@@ -1,0 +1,15 @@
+typedef_over_var.c:3:15: error: 't' redeclared as different kind of symbol
+    3 | typedef float t;
+      |               ^
+typedef_over_var.c:2:12: note: previous declaration of 't' with type 'int'
+    2 | extern int t;
+      |            ^
+typedef_over_var.c:4:3: error: conflicting types for 'v'; have 'int'
+    4 | t v = 4.5f;
+      |   ^
+typedef_over_var.c:1:14: note: previous declaration of 'v' with type 'float'
+    1 | extern float v;
+      |              ^
+typedef_over_var.c:8:3: warning: ISO C forbids member declarations with no members [-Wpedantic]
+    8 |   const;
+      |   ^

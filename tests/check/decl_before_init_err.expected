@@ -1,0 +1,15 @@
+decl_before_init_err.c:3:1: warning: data definition has no type or storage class
+    3 | a = 1 +
+      | ^
+decl_before_init_err.c:3:1: warning: type defaults to 'int' in declaration of 'a' [-Wimplicit-int]
+    3 | a = 1 +
+      | ^
+decl_before_init_err.c:3:1: error: conflicting types for 'a'; have 'int'
+    3 | a = 1 +
+      | ^
+decl_before_init_err.c:1:8: note: previous declaration of 'a' with type 'void **'
+    1 | void **a;
+      |        ^
+decl_before_init_err.c:3:1: error: expected expression at end of input
+    3 | a = 1 +
+      | ^
