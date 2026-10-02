@@ -10,11 +10,18 @@ layouts, gcc rules ported, walk design).
 - Real-code corpus (170 files): 0 rejects-valid, 0 accepts-invalid.
 - gcc.dg (6217): 77 rejects-valid, 104 accepts-invalid; 47% of files with any
   diagnostic have identical message+line:col.
-- Speed: check ~1.6x (lua54.c) to ~2x (loop.c) parse time; goal check <= parse
-  not met.  Summaries add ~4% to the check pass.  RSS check vs parse: 13/11 MB
-  (lua54), 28/24 MB (loop.c).
-- ASAN/UBSAN clean on corpus and gcc.dg except a 300 s timeout on pr59992.c;
-  not rerun over tests/ after the last edits.
+- Speed (2026-10-01, best of 10, machine 14-19% busy, Defender real-time off):
+  check/parse = 1.95 (lua54.c, 0.117/0.060 s) and 1.89 (loop.c, 0.358/0.189 s);
+  the 2026-10-01 11:23 binary gave 1.72 and 1.88.  Check is ~14-20% slower than
+  that binary and parse ~5-8%, spread over the day's changes; `-Wsequence-point`
+  is not the cause (loop.c check 0.385 s default, 0.402 with
+  `-Wno-sequence-point`, 0.421 with it on: noise).  Goal check <= parse not
+  met.  Not profiled yet (needs the Samply task).
+- ASAN/UBSAN (`bench/tools/san.py CEREAL corpus|tests|dg [flags]`, build with
+  `make CFLAGS="-O1 -g -fsanitize=address,undefined" LDFLAGS=-fsanitize=address,undefined`
+  in a copy): 0 findings over corpus (170), tests/check+parse (206) and gcc.dg
+  with `CEREAL_DGOPTS=1` (3875), `-Wsequence-point` enabled, 2026-10-01.  Corpus
+  parity with `CEREAL_GCC=gcc-13`: 0 rejects-valid, 0 accepts-invalid.
 
 ## Next work
 1. Mutated-corpus verdict parity: ran 2026-09-30 (bench/tools/mut.py, 170

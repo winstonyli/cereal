@@ -17,10 +17,10 @@ def w(job):
     return None
 if __name__=="__main__":
     cer,st=sys.argv[1:3]; extra=ARGS[3:]
-    jobs=[(f,fl,cw) for n,f,fl,cw in units(S+"/corpus")] if st=="corpus" else dgjobs([])
+    jobs=[(f,fl,cw) for n,f,fl,cw in units(os.environ.get("CEREAL_CORPUS",os.path.expanduser("~/corpus")))] if st=="corpus" else dgjobs([])
     if st=="tests":
-        jobs=[(f,[],os.path.dirname(f)) for f in sorted(glob.glob("/home/user/cereal/tests/check/*.c")+glob.glob("/home/user/cereal/tests/parse/*.c"))]
-    jobs=[(cer,f,fl,cw,extra) for f,fl,cw in jobs]
+        jobs=[(f,[],os.path.dirname(f)) for f in sorted(glob.glob(S+"/../../tests/check/*.c")+glob.glob(S+"/../../tests/parse/*.c"))]
+    jobs=[(cer,j[0],j[1],j[2],extra) for j in jobs]
     with multiprocessing.Pool(6) as p: res=[r for r in p.map(w,jobs,chunksize=2) if r]
     g=collections.defaultdict(list)
     for f,m in res: g[m].append(f.split("/")[-1])
