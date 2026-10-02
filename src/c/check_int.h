@@ -485,6 +485,10 @@ bool cexpr_is_expr(unsigned tag);
 /* The type of an expression after lvalue conversion (arrays and functions
  * decay, qualifiers dropped). */
 TypeId cexpr_rvalue_type(Checker *c, uint32_t i);
+/* An operand used for its value: false (after an error) when its type is
+ * incomplete. */
+bool cexpr_rvalue_ok(Checker *c, uint32_t i);
+bool cexpr_rvalue_ok_at(Checker *c, uint32_t i, SrcLoc loc);
 /* An integer constant's value as signed (per its type). */
 int64_t cexpr_sval(Checker *c, uint32_t i);
 bool cexpr_bf_overflow(Checker *c, SrcLoc loc, uint32_t n, TypeId ft,

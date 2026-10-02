@@ -2300,6 +2300,7 @@ static bool is_const(Checker *c, uint32_t i)
 static bool is_npc(Checker *c, uint32_t n);
 static bool float_to_int(Checker *c, long double f, TypeId t, uint64_t *out);
 static bool rvalue_ok(Checker *c, uint32_t i);
+static bool rvalue_ok_at(Checker *c, uint32_t i, SrcLoc loc);
 static TypeId vec_elem(Checker *c, TypeId vt);
 
 /* ---- implicit conversions (gcc's convert_for_assignment) ----------------------------------- */
@@ -5962,6 +5963,11 @@ static void e_index(Checker *c, uint32_t i)
         x = k[0];
         swapped = true;
     }
+    /* require_complete_type at gcc's input_location: the line's first token */
+    if (!rvalue_ok_at(c, x, cinput_loc(c, c->nodes[i].tok))) {
+        set_err(c, i);
+        return;
+    }
     if (!is_int(c, rvt(c, x))) {
         cerror(c, loc, "array subscript is not an integer");
         set_err(c, i);
@@ -6112,13 +6118,28 @@ static void e_member(Checker *c, uint32_t i)
 
 /* convert_lvalue_to_rvalue's check: an operand used for its value must not
  * have an incomplete (non-void) type.  Reported at its first token. */
-static bool rvalue_ok(Checker *c, uint32_t i)
+static bool rvalue_ok_at(Checker *c, uint32_t i, SrcLoc loc)
 {
     TypeId t = rvt(c, i);
     if (is_void(c, t) || complete(c, t))
         return true;
-    incomplete_error(c, first_loc(c, i), i, t);
+    incomplete_error(c, loc, i, t);
     return false;
+}
+
+static bool rvalue_ok(Checker *c, uint32_t i)
+{
+    return rvalue_ok_at(c, i, first_loc(c, i));
+}
+
+bool cexpr_rvalue_ok(Checker *c, uint32_t i)
+{
+    return rvalue_ok(c, i);
+}
+
+bool cexpr_rvalue_ok_at(Checker *c, uint32_t i, SrcLoc loc)
+{
+    return rvalue_ok_at(c, i, loc);
 }
 
 /* Value flags of a unary result from its operand a: see the file
@@ -6698,6 +6719,16 @@ static void set_ice(Checker *c, uint32_t i, TypeId t, uint64_t v)
 
 static const Field *member_field_of(Checker *c, uint32_t x, TypeId *recp);
 
+/* Whether x (parentheses ignored) names an object. */
+static bool obj_ident(Checker *c, uint32_t x)
+{
+    uint32_t s = strip_paren(c, x), ref;
+    if (s == NO_NODE || ntag(c, s) != N_IDENT)
+        return false;
+    ref = lookup_ord(c, cnode_ident(c, s));
+    return ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ;
+}
+
 static void e_sizeof(Checker *c, uint32_t i, bool align)
 {
     uint32_t a = first_child(c, i);
@@ -6777,6 +6808,10 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
         snprintf(buf, sizeof buf, "invalid application of '%s' to a void type",
                  op);
         ped_arith(c, i, loc, buf);
+    } else if (align && !is_type && !complete(c, t) && obj_ident(c, a)) {
+        /* c_alignof_expr takes a variable's DECL_ALIGN: an incomplete object
+         * is accepted */
+        v = tkind(c, type_canon(TT, t)) == TY_ARRAY ? type_align(TT, t) : 1;
     } else if (!complete(c, t)) {
         cerror(c, loc, "invalid application of '%s' to incomplete type %s", op,
                type_q(TT, t));
@@ -6864,6 +6899,10 @@ static void e_cast(Checker *c, uint32_t i)
         return;
     }
     if (tk == TY_VOID) {
+        if (!rvalue_ok(c, a)) {
+            set_err(c, i);
+            return;
+        }
         c->ty[i] = unqual(c, t);
         c->ef[i] = c->ef[a] & EF_SIDE;
         return;
@@ -7497,13 +7536,18 @@ static void invalid_operands(Checker *c, uint32_t i, uint32_t a, uint32_t b,
 
 /* An operand of a binary operator used for its value: false (after an
  * error) for void and incomplete ones. */
-static bool binop_operand(Checker *c, uint32_t a)
+static bool binop_operand_at(Checker *c, uint32_t a, SrcLoc loc)
 {
     if (is_void(c, rvt(c, a))) {
         cerror(c, expr_loc(c, a), "void value not ignored as it ought to be");
         return false;
     }
-    return rvalue_ok(c, a);
+    return rvalue_ok_at(c, a, loc);
+}
+
+static bool binop_operand(Checker *c, uint32_t a)
+{
+    return binop_operand_at(c, a, first_loc(c, a));
 }
 
 static void vec_invalid(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
@@ -9379,8 +9423,9 @@ static void e_binary(Checker *c, uint32_t i)
         set_err(c, i);
         return;
     }
+    /* gcc reports the right operand at its operator */
     ok = binop_operand(c, k[0]);
-    ok = binop_operand(c, k[1]) && ok;
+    ok = binop_operand_at(c, k[1], cnode_loc(c, i)) && ok;
     if (!ok) {
         set_err(c, i);
         return;
@@ -9444,7 +9489,7 @@ static void e_cond(Checker *c, uint32_t i)
     if (mid == NO_NODE)
         ped(c, i, cl, "ISO C forbids omitting the middle term of a '?:' "
                       "expression");
-    ok = binop_operand(c, cond) && truth_ok_at(c, cond, cnode_loc(c, i));
+    ok = binop_operand_at(c, cond, cnode_loc(c, i)) && truth_ok_at(c, cond, cnode_loc(c, i));
     if (ok)
         cexpr_truth_warn(c, cond, cnode_loc(c, i));
     if (mid != NO_NODE && !is_void(c, rvt(c, mid)))
@@ -9599,6 +9644,18 @@ static void e_assign(Checker *c, uint32_t i)
         cerror(c, loc, "assignment to expression with array type");
         set_err(c, i);
         return;
+    }
+    if (op == P_ASSIGN) {
+        bool bad = !rvalue_ok(c, r);
+        TypeId lt = unqual(c, c->ty[l]);
+        if (!is_void(c, lt) && !complete(c, lt)) {
+            incomplete_error(c, loc, l, c->ty[l]);
+            bad = true;
+        }
+        if (bad) {
+            set_err(c, i);
+            return;
+        }
     }
     {
         ConvInfo ci;

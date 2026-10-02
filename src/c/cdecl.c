@@ -3156,13 +3156,9 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                         cerror(c, loc, "size of unnamed array has non-integer "
                                "type");
                     bad_size = true;
-                } else if (!type_is_complete(TT, st)) {
-                    if (name)
-                        cerror(c, loc, "size of array '%s' has incomplete "
-                               "type", cident(c, name));
-                    else
-                        cerror(c, loc, "size of unnamed array has incomplete "
-                               "type");
+                } else if (!cexpr_rvalue_ok_at(c, sz,
+                                               cnode_loc(c, dn))) {
+                    /* require_complete_type, at the '[' */
                     bad_size = true;
                 }
                 if (bad_size) {

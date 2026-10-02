@@ -32,6 +32,16 @@ layouts, gcc rules ported, walk design).
   with `CEREAL_DGOPTS=1` (3875), `-Wsequence-point` enabled, 2026-10-01.  Corpus
   parity with `CEREAL_GCC=gcc-13`: 0 rejects-valid, 0 accepts-invalid.
 
+- Incomplete operands (2026-10-01): `require_complete_type` now runs where gcc
+  runs it, at gcc's locations: right operand and `?:` condition at their
+  operator, expression statements, void casts, `if`/`while`/`for`/`switch`
+  conditions, plain `=` (right operand at its start, then the left at `=`),
+  array sizes (at `[`) and subscripts (at the line's first token, gcc's
+  input_location, after the "neither array nor pointer" check).
+  `__alignof__ (object)` of an incomplete object is accepted (DECL_ALIGN).
+  enum-incomplete-1/3 and pr63549 match gcc; test `check/incomplete_use.c`.
+  gcc.dg with dg-options, 2026-10-01: 3522 of 3875 files identical.
+
 ## Next work
 1. Mutated-corpus verdict parity: ran 2026-09-30 (bench/tools/mut.py, 170
    units x 30 mutants, seed 7, gcc 15.2): 5004 agree, 33 gcc-only semantic

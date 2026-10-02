@@ -1,0 +1,48 @@
+incomplete_use.c:2:6: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+    2 | enum E e;
+      |      ^
+incomplete_use.c:3:13: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+    3 | extern enum F ve;
+      |             ^
+incomplete_use.c:6:14: error: 'e' has an incomplete type 'enum E'
+    6 | void bar(int [e]);
+      |              ^
+incomplete_use.c:9:3: error: 've' has an incomplete type 'enum F'
+    9 |   int x = a[ve];
+      |   ^
+incomplete_use.c:10:3: error: 've' has an incomplete type 'enum F'
+   10 |   ve;
+      |   ^
+incomplete_use.c:11:10: error: 'vs' has an incomplete type 'struct S'
+   11 |   (void) vs;
+      |          ^
+incomplete_use.c:12:13: error: 've' has an incomplete type 'enum F'
+   12 |   (void) (i * ve);
+      |             ^
+incomplete_use.c:13:14: error: 've' has an incomplete type 'enum F'
+   13 |   (void) (ve ? 1 : 1);
+      |              ^
+incomplete_use.c:14:16: error: 've' has an incomplete type 'enum F'
+   14 |   (void) (ve = ve);
+      |                ^
+incomplete_use.c:14:14: error: 've' has an incomplete type 'enum F'
+   14 |   (void) (ve = ve);
+      |              ^
+incomplete_use.c:15:7: error: 've' has an incomplete type 'enum F'
+   15 |   i = ve;
+      |       ^
+incomplete_use.c:16:7: error: 've' has an incomplete type 'enum F'
+   16 |   if (ve)
+      |       ^
+incomplete_use.c:18:10: error: 'vs' has an incomplete type 'struct S'
+   18 |   while (vs)
+      |          ^
+incomplete_use.c:20:11: error: 've' has an incomplete type 'enum F'
+   20 |   switch (ve)
+      |           ^
+incomplete_use.c:25:15: error: subscripted value is neither array nor pointer nor vector
+   25 |   return x + i[ve];
+      |               ^
+incomplete_use.c:2:8: error: storage size of 'e' isn't known
+    2 | enum E e;
+      |        ^

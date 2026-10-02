@@ -672,7 +672,7 @@ static void start_switch(Checker *c, CStmt *s, uint32_t sw_node, uint32_t e)
     sw.cond = e;
     sw.cbase = (uint32_t)s->cases.len;
     sw.ty = TYPE_B(INT);
-    if (node_err(c, e)) {
+    if (node_err(c, e) || !cexpr_rvalue_ok(c, e)) {
         sw.cond_err = true;
         sw.orig = ERRT;
     } else {
@@ -1039,7 +1039,7 @@ static bool assign_truth(Checker *c, uint32_t e)
 static void cond_check(Checker *c, uint32_t e)
 {
     TypeId t;
-    if (node_err(c, e))
+    if (node_err(c, e) || !cexpr_rvalue_ok(c, e))
         return;
     t = cexpr_rvalue_type(c, e);
     switch (type_ckind(TT, t)) {
@@ -1144,6 +1144,10 @@ void cstmt_expr(Checker *c, uint32_t i)
     }
     case N_SWITCH:
         start_switch(c, s, p, i);
+        break;
+    case N_EXPR_STMT:
+        if (!node_err(c, i))
+            cexpr_rvalue_ok(c, i);
         break;
     case N_CASE: {
         bool range = c->nodes[p].flags & NF_RANGE;
