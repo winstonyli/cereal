@@ -384,10 +384,9 @@ layouts, gcc rules ported, walk design).
   strcmp is 2% spread over many callers (bt_find 0.6%, find_index_cached
   0.4%); no single hotspot remains.
 - Round 9 (2026-10-02): -Wsign-compare false positives: nonneg() (gcc's
-  tree_expr_nonnegative_p) now knows  of nonnegatives (signed overflow is
-  undefined),  of two zero-extended operands narrower than the result,
+  tree_expr_nonnegative_p) now knows `*` of nonnegatives (signed overflow is
+  undefined), `+` of two zero-extended operands narrower than the result,
   comma (right operand), simple assignment (right operand), and a statement
-  expression's value.  Golden sign_compare_nonneg.  Known extra: 
+  expression's value.  Golden sign_compare_nonneg.  Known extra: `b + b + b`
   (uchar b) warns here, gcc folds it to b * 3 first.  gcc.dg 3620 of 3875
   identical; tests 832.
-
