@@ -1,0 +1,246 @@
+format_args.c:8:12: warning: format '%s' expects argument of type 'char *', but argument 2 has type 'int' [-Wformat=]
+    8 |   printf("%s", i);
+      |            ^
+format_args.c:9:17: warning: format '%d' expects argument of type 'int', but argument 2 has type 'long int' [-Wformat=]
+    9 |   printf("a\tb %d %s", l, i);
+      |                 ^
+format_args.c:9:20: warning: format '%s' expects argument of type 'char *', but argument 3 has type 'int' [-Wformat=]
+    9 |   printf("a\tb %d %s", l, i);
+      |                    ^
+format_args.c:10:12: warning: format '%d' expects argument of type 'int', but argument 2 has type 'size_t' {aka 'long unsigned int'} [-Wformat=]
+   10 |   printf("%d", z);
+      |            ^
+format_args.c:11:12: warning: format '%d' expects argument of type 'int', but argument 2 has type 'UL' {aka 'long unsigned int'} [-Wformat=]
+   11 |   printf("%d", ul);
+      |            ^
+format_args.c:12:12: warning: format '%p' expects argument of type 'void *', but argument 2 has type 'float *' [-Wformat=]
+   12 |   printf("%p", fp);
+      |            ^
+format_args.c:13:12: warning: format '%d' expects a matching 'int' argument [-Wformat=]
+   13 |   printf("%d");
+      |            ^
+format_args.c:14:15: warning: format '%d' expects a matching 'int' argument [-Wformat=]
+   14 |   printf("%s %d", s);
+      |               ^
+format_args.c:15:10: warning: too many arguments for format [-Wformat-extra-args]
+   15 |   printf("%d %d", i, i, i);
+      |          ^
+format_args.c:16:10: warning: too many arguments for format [-Wformat-extra-args]
+   16 |   printf("%d\n", i, i);
+      |          ^
+format_args.c:17:11: warning: spurious trailing '%' in format [-Wformat=]
+   17 |   printf("%", i);
+      |           ^
+format_args.c:17:10: warning: too many arguments for format [-Wformat-extra-args]
+   17 |   printf("%", i);
+      |          ^
+format_args.c:18:12: warning: unknown conversion type character 'y' in format [-Wformat=]
+   18 |   printf("%y", i);
+      |            ^
+format_args.c:18:10: warning: too many arguments for format [-Wformat-extra-args]
+   18 |   printf("%y", i);
+      |          ^
+format_args.c:19:13: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   19 |   printf("%ld", i);
+      |             ^
+format_args.c:20:13: warning: format '%lu' expects argument of type 'long unsigned int', but argument 2 has type 'int' [-Wformat=]
+   20 |   printf("%lu %u %x", i, i, l);
+      |             ^
+format_args.c:20:19: warning: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'long int' [-Wformat=]
+   20 |   printf("%lu %u %x", i, i, l);
+      |                   ^
+format_args.c:21:12: warning: format '%f' expects argument of type 'double', but argument 2 has type 'int' [-Wformat=]
+   21 |   printf("%f", i);
+      |            ^
+format_args.c:22:12: warning: format '%d' expects argument of type 'int', but argument 2 has type 'double' [-Wformat=]
+   22 |   printf("%d", d);
+      |            ^
+format_args.c:23:12: warning: format '%c' expects argument of type 'int', but argument 2 has type 'char *' [-Wformat=]
+   23 |   printf("%c", s);
+      |            ^
+format_args.c:24:12: warning: format '%d' expects argument of type 'int', but argument 2 has type 'char *' [-Wformat=]
+   24 |   printf("%d", s);
+      |            ^
+format_args.c:25:12: warning: format '%d' expects argument of type 'int', but argument 2 has type 'void *' [-Wformat=]
+   25 |   printf("%d", p);
+      |            ^
+format_args.c:26:12: warning: format '%s' expects argument of type 'char *', but argument 2 has type 'int *' [-Wformat=]
+   26 |   printf("%s", ip);
+      |            ^
+format_args.c:27:12: warning: format '%n' expects argument of type 'int *', but argument 2 has type 'int' [-Wformat=]
+   27 |   printf("%n", i);
+      |            ^
+format_args.c:29:14: warning: format '%lld' expects argument of type 'long long int', but argument 2 has type 'long int' [-Wformat=]
+   29 |   printf("%lld", l);
+      |              ^
+format_args.c:30:13: warning: field precision specifier '.*' expects argument of type 'int', but argument 2 has type 'long int' [-Wformat=]
+   30 |   printf("%.*d", l, i);
+      |             ^
+format_args.c:32:15: warning: format '%s' expects argument of type 'char *', but argument 2 has type 'int' [-Wformat=]
+   32 |   printf("%5.2s", i);
+      |               ^
+format_args.c:34:10: warning: format '%s' expects argument of type 'char *', but argument 3 has type 'int' [-Wformat=]
+   34 |   printf("%d" "%s", i, i);
+      |          ^
+format_args.c:35:16: warning: format '%d' expects argument of type 'int', but argument 3 has type 'double' [-Wformat=]
+   35 |   sprintf(s, "%d", d);
+      |                ^
+format_args.c:36:12: warning: conversion lacks type at end of format [-Wformat=]
+   36 |   printf("%1", i);
+      |            ^
+format_args.c:36:10: warning: too many arguments for format [-Wformat-extra-args]
+   36 |   printf("%1", i);
+      |          ^
+format_args.c:37:10: warning: zero-length gnu_printf format string [-Wformat-zero-length]
+   37 |   printf("");
+      |          ^
+format_args.c:38:12: warning: conversion lacks type at end of format [-Wformat=]
+   38 |   printf("%z", i);
+      |            ^
+format_args.c:38:10: warning: too many arguments for format [-Wformat-extra-args]
+   38 |   printf("%z", i);
+      |          ^
+format_args.c:40:13: warning: format '%Lf' expects argument of type 'long double', but argument 2 has type 'double' [-Wformat=]
+   40 |   printf("%Lf", d);
+      |             ^
+format_args.c:41:10: warning: too many arguments for format [-Wformat-extra-args]
+   41 |   printf("%s", "x", 1);
+      |          ^
+format_args.c:42:12: warning: format '%d' expects argument of type 'int', but argument 2 has type 'double' [-Wformat=]
+   42 |   printf("%d", 1.0);
+      |            ^
+format_args.c:43:12: warning: format '%d' expects argument of type 'int', but argument 2 has type 'long unsigned int' [-Wformat=]
+   43 |   printf("%d", 1UL);
+      |            ^
+format_args.c:45:12: warning: format '%i' expects argument of type 'int', but argument 2 has type 'double' [-Wformat=]
+   45 |   printf("%i %o %X %e %g %a %A %E %G", d, d, d, i, i, i, i, i, i);
+      |            ^
+format_args.c:45:15: warning: format '%o' expects argument of type 'unsigned int', but argument 3 has type 'double' [-Wformat=]
+   45 |   printf("%i %o %X %e %g %a %A %E %G", d, d, d, i, i, i, i, i, i);
+      |               ^
+format_args.c:45:18: warning: format '%X' expects argument of type 'unsigned int', but argument 4 has type 'double' [-Wformat=]
+   45 |   printf("%i %o %X %e %g %a %A %E %G", d, d, d, i, i, i, i, i, i);
+      |                  ^
+format_args.c:45:21: warning: format '%e' expects argument of type 'double', but argument 5 has type 'int' [-Wformat=]
+   45 |   printf("%i %o %X %e %g %a %A %E %G", d, d, d, i, i, i, i, i, i);
+      |                     ^
+format_args.c:45:24: warning: format '%g' expects argument of type 'double', but argument 6 has type 'int' [-Wformat=]
+   45 |   printf("%i %o %X %e %g %a %A %E %G", d, d, d, i, i, i, i, i, i);
+      |                        ^
+format_args.c:45:27: warning: format '%a' expects argument of type 'double', but argument 7 has type 'int' [-Wformat=]
+   45 |   printf("%i %o %X %e %g %a %A %E %G", d, d, d, i, i, i, i, i, i);
+      |                           ^
+format_args.c:45:30: warning: format '%A' expects argument of type 'double', but argument 8 has type 'int' [-Wformat=]
+   45 |   printf("%i %o %X %e %g %a %A %E %G", d, d, d, i, i, i, i, i, i);
+      |                              ^
+format_args.c:45:33: warning: format '%E' expects argument of type 'double', but argument 9 has type 'int' [-Wformat=]
+   45 |   printf("%i %o %X %e %g %a %A %E %G", d, d, d, i, i, i, i, i, i);
+      |                                 ^
+format_args.c:45:36: warning: format '%G' expects argument of type 'double', but argument 10 has type 'int' [-Wformat=]
+   45 |   printf("%i %o %X %e %g %a %A %E %G", d, d, d, i, i, i, i, i, i);
+      |                                    ^
+format_args.c:49:10: warning: ' ' flag ignored with '+' flag in gnu_printf format [-Wformat=]
+   49 |   printf("%+ d", i);
+      |          ^
+format_args.c:50:10: warning: '0' flag ignored with '-' flag in gnu_printf format [-Wformat=]
+   50 |   printf("%-05d", i);
+      |          ^
+format_args.c:51:10: warning: '0' flag ignored with precision and '%d' gnu_printf format [-Wformat=]
+   51 |   printf("%05.3d", i);
+      |          ^
+format_args.c:52:13: warning: repeated '-' flag in format [-Wformat=]
+   52 |   printf("%--d", i);
+      |             ^
+format_args.c:54:13: warning: '0' flag used with '%s' gnu_printf format [-Wformat=]
+   54 |   printf("%0s", s);
+      |             ^
+format_args.c:55:13: warning: field width used with '%n' gnu_printf format [-Wformat=]
+   55 |   printf("%5n", &i);
+      |             ^
+format_args.c:56:13: warning: '#' flag used with '%s' gnu_printf format [-Wformat=]
+   56 |   printf("%#s", s);
+      |             ^
+format_args.c:57:10: warning: ISO C does not support the ''' printf flag [-Wformat=]
+   57 |   printf("%'d %Id", i, i);
+      |          ^
+format_args.c:57:10: warning: ISO C does not support the 'I' printf flag [-Wformat=]
+   57 |   printf("%'d %Id", i, i);
+      |          ^
+format_args.c:58:21: warning: '#' flag used with '%u' gnu_printf format [-Wformat=]
+   58 |   printf("%#x %#o %#u", i, i, i);
+      |                     ^
+format_args.c:59:13: warning: '+' flag used with '%c' gnu_printf format [-Wformat=]
+   59 |   printf("%+c", i);
+      |             ^
+format_args.c:60:14: warning: precision used with '%p' gnu_printf format [-Wformat=]
+   60 |   printf("%.3p", s);
+      |              ^
+format_args.c:61:10: warning: ' ' flag ignored with '+' flag in gnu_printf format [-Wformat=]
+   61 |   printf("%-+ 05d", i);
+      |          ^
+format_args.c:61:10: warning: '0' flag ignored with '-' flag in gnu_printf format [-Wformat=]
+   61 |   printf("%-+ 05d", i);
+      |          ^
+format_args.c:62:12: warning: conversion lacks type at end of format [-Wformat=]
+   62 |   printf("%5%");
+      |            ^
+format_args.c:62:13: warning: spurious trailing '%' in format [-Wformat=]
+   62 |   printf("%5%");
+      |             ^
+format_args.c:63:12: warning: conversion lacks type at end of format [-Wformat=]
+   63 |   printf("%l%");
+      |            ^
+format_args.c:63:13: warning: spurious trailing '%' in format [-Wformat=]
+   63 |   printf("%l%");
+      |             ^
+format_args.c:64:13: warning: spurious trailing '%' in format [-Wformat=]
+   64 |   printf("%c%", i);
+      |             ^
+format_args.c:65:14: warning: format '%d' expects a matching 'int' argument [-Wformat=]
+   65 |   printf("%.*d", i);
+      |              ^
+format_args.c:66:12: warning: field width specifier '*' expects a matching 'int' argument [-Wformat=]
+   66 |   printf("%*d");
+      |            ^
+format_args.c:66:13: warning: format '%d' expects a matching 'int' argument [-Wformat=]
+   66 |   printf("%*d");
+      |             ^
+format_args.c:67:3: warning: ISO C does not support %n$ operand number formats [-Wformat=]
+   67 |   printf("%1$d", i);
+      |   ^
+format_args.c:68:14: warning: unknown conversion type character 'h' in format [-Wformat=]
+   68 |   printf("%hhhd", i);
+      |              ^
+format_args.c:68:10: warning: too many arguments for format [-Wformat-extra-args]
+   68 |   printf("%hhhd", i);
+      |          ^
+format_args.c:69:14: warning: unknown conversion type character 'l' in format [-Wformat=]
+   69 |   printf("%llld", i);
+      |              ^
+format_args.c:69:10: warning: too many arguments for format [-Wformat-extra-args]
+   69 |   printf("%llld", i);
+      |          ^
+format_args.c:70:13: warning: unknown conversion type character 'h' in format [-Wformat=]
+   70 |   printf("%lhd", i);
+      |             ^
+format_args.c:70:10: warning: too many arguments for format [-Wformat-extra-args]
+   70 |   printf("%lhd", i);
+      |          ^
+format_args.c:71:13: warning: unknown conversion type character 'z' in format [-Wformat=]
+   71 |   printf("%zzd", i);
+      |             ^
+format_args.c:71:10: warning: too many arguments for format [-Wformat-extra-args]
+   71 |   printf("%zzd", i);
+      |          ^
+format_args.c:72:15: warning: unknown conversion type character '.' in format [-Wformat=]
+   72 |   printf("%5.5.5d", i);
+      |               ^
+format_args.c:72:10: warning: too many arguments for format [-Wformat-extra-args]
+   72 |   printf("%5.5.5d", i);
+      |          ^
+format_args.c:73:10: warning: too many arguments for format [-Wformat-extra-args]
+   73 |   printf("%d%s", i, s, s);
+      |          ^
+format_args.c:74:12: warning: format '%d' expects a matching 'int' argument [-Wformat=]
+   74 |   printf("%d");
+      |            ^

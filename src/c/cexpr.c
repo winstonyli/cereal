@@ -3475,7 +3475,9 @@ bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
             cwarn(c, x.loc, ci->warnopt, "void value not ignored as it ought "
                   "to be");
         else
-            cerror(c, x.loc, "void value not ignored as it ought to be");
+            cerror(c, x.loc, ci->context == CONV_ARG
+                   ? "invalid use of void expression"
+                   : "void value not ignored as it ought to be");
         return false;
     }
     if (!complete(c, rt)) {
@@ -3763,6 +3765,488 @@ static uint32_t builtin_format_pos(const char *name)
     return 0;
 }
 
+/* ---- -Wformat: the conversions of a printf-style literal against its
+ * arguments (gcc's check_format_info for gnu_printf). ---- */
+
+enum { FW_INT, FW_FLT, FW_LDBL, FW_PCHAR, FW_PVOID, FW_PINT, FW_ANY };
+enum { FL_NONE, FL_HH, FL_H, FL_L, FL_LL, FL_BIGL, FL_Z, FL_T, FL_J };
+
+typedef struct FmtWant {
+    int shape;
+    int cls;                    /* FW_INT, FW_PINT: fmt_cls of the integer */
+    char name[40];              /* as the message spells the wanted type */
+    bool write;                 /* %n: the argument is written through */
+} FmtWant;
+
+/* An integer type's width class, signedness ignored (0: not an integer). */
+static int fmt_cls(TypeKind k)
+{
+    switch (k) {
+    case TY_CHAR: case TY_SCHAR: case TY_UCHAR: return 1;
+    case TY_SHORT: case TY_USHORT: return 2;
+    case TY_INT: case TY_UINT: return 3;
+    case TY_LONG: case TY_ULONG: return 4;
+    case TY_LLONG: case TY_ULLONG: return 5;
+    case TY_INT128: case TY_UINT128: return 6;
+    default: return 0;
+    }
+}
+
+static bool fmt_unsigned_kind(TypeKind k)
+{
+    return k == TY_UCHAR || k == TY_USHORT || k == TY_UINT || k == TY_ULONG ||
+           k == TY_ULLONG || k == TY_UINT128;
+}
+
+/* What conversion `conv` with length `len` takes; false: no argument. */
+static bool fmt_want(Checker *c, char conv, int len, FmtWant *w)
+{
+    bool uns = conv == 'o' || conv == 'u' || conv == 'x' || conv == 'X';
+    bool ptr = conv == 'n';
+    const char *nm;
+    w->cls = 3;
+    w->write = ptr;
+    switch (conv) {
+    case 'd': case 'i': case 'o': case 'u': case 'x': case 'X': case 'n':
+        w->shape = ptr ? FW_PINT : FW_INT;
+        switch (len) {
+        case FL_NONE: nm = uns ? "unsigned int" : "int"; break;
+        case FL_HH: case FL_H:
+            if (ptr) {
+                w->cls = len == FL_HH ? 1 : 2;
+                nm = len == FL_HH ? "signed char" : "short int";
+            } else {
+                nm = "int";
+            }
+            break;
+        case FL_L: w->cls = 4; nm = uns ? "long unsigned int" : "long int";
+            break;
+        case FL_LL: case FL_BIGL: w->cls = 5;
+            nm = uns ? "long long unsigned int" : "long long int";
+            break;
+        case FL_Z: w->cls = fmt_cls(c->tgt->size_type);
+            nm = uns ? "size_t" : "signed size_t"; break;
+        case FL_T: w->cls = fmt_cls(c->tgt->ptrdiff_type);
+            nm = uns ? "unsigned ptrdiff_t" : "ptrdiff_t"; break;
+        default: w->cls = fmt_cls(c->tgt->intmax_type);
+            nm = uns ? "uintmax_t" : "intmax_t"; break;
+        }
+        snprintf(w->name, sizeof w->name, "%s%s", nm, ptr ? " *" : "");
+        return true;
+    case 'c': case 'C':
+        w->shape = FW_INT;
+        if (len == FL_L || conv == 'C') {
+            w->cls = fmt_cls(c->tgt->wint_type);
+            snprintf(w->name, sizeof w->name, "wint_t");
+        } else {
+            snprintf(w->name, sizeof w->name, "int");
+        }
+        return true;
+    case 's': case 'S':
+        if (len == FL_L || conv == 'S') {
+            w->shape = FW_PINT;
+            w->cls = fmt_cls(c->tgt->wchar_type);
+            snprintf(w->name, sizeof w->name, "wchar_t *");
+        } else {
+            w->shape = FW_PCHAR;
+            snprintf(w->name, sizeof w->name, "char *");
+        }
+        return true;
+    case 'p':
+        w->shape = FW_PVOID;
+        snprintf(w->name, sizeof w->name, "void *");
+        return true;
+    case 'm':
+        return false;
+    default:
+        w->shape = len == FL_BIGL ? FW_LDBL : FW_FLT;
+        snprintf(w->name, sizeof w->name, "%s",
+                 len == FL_BIGL ? "long double" : "double");
+        return true;
+    }
+}
+
+/* The type an argument has when passed: arrays decayed, the default
+ * promotions applied (the typedef spelling kept when they change nothing). */
+static TypeId fmt_argtype(Checker *c, uint32_t a)
+{
+    TypeId t = rvt(c, a), p;
+    if (type_ckind(TT, t) == TY_FLOAT)
+        return TYPE_B(DOUBLE);
+    if (is_int(c, t)) {
+        p = promoted(c, a);
+        if (p != TYPE_UNQUAL(type_canon(TT, t)))
+            return p;
+    }
+    return unqual(c, t);
+}
+
+/* Does an argument of type t (from fmt_argtype) satisfy w? */
+static bool fmt_arg_ok(Checker *c, const FmtWant *w, TypeId t)
+{
+    TypeKind k = type_ckind(TT, t), pk;
+    TypeId ct;
+    switch (w->shape) {
+    case FW_INT: return fmt_cls(k) == w->cls;
+    case FW_FLT: return k == TY_DOUBLE;
+    case FW_LDBL: return k == TY_LDOUBLE;
+    case FW_ANY: return true;
+    default: break;
+    }
+    if (k != TY_PTR)
+        return false;
+    ct = type_canon(TT, t);
+    pk = type_kind(TT, TYPE_UNQUAL(type_canon(TT, type_base(TT, ct))));
+    switch (w->shape) {
+    case FW_PCHAR: return fmt_cls(pk) == 1;
+    case FW_PVOID: return !c->opt.pedantic || pk == TY_VOID || fmt_cls(pk) == 1;
+    default:
+        return fmt_cls(pk) == w->cls &&
+               (!c->opt.pedantic ||
+                (!fmt_unsigned_kind(pk) && !(w->cls == 1 && pk == TY_CHAR)));
+    }
+}
+
+typedef struct FmtCtx {
+    Checker *c;
+    const uint32_t *kv;
+    uint32_t nk, ai;            /* the next argument to take (an index in kv) */
+    SrcLoc whole, base, call;   /* the literal; its first byte (exact); the call */
+    const uint32_t *off;        /* byte offsets in the spelling, if exact */
+    bool exact;
+} FmtCtx;
+
+static SrcLoc fmt_loc(const FmtCtx *x, size_t i)
+{
+    return x->exact ? x->base + x->off[i] : x->whole;
+}
+
+/* Takes the next argument for `what` (a description such as "format '%d'"),
+ * checking it against w. */
+static void fmt_take(FmtCtx *x, const FmtWant *w, SrcLoc loc, const char *what)
+{
+    Checker *c = x->c;
+    uint32_t a;
+    TypeId t;
+    TypeKind k;
+    if (x->ai >= x->nk) {
+        cwarn(c, loc, "format=", "%s expects a matching '%s' argument", what,
+              w->name);
+        return;
+    }
+    a = x->kv[x->ai];
+    if (node_err(c, a) || c->ty[a] == ERRT) {
+        x->ai++;
+        return;
+    }
+    t = fmt_argtype(c, a);
+    k = type_ckind(TT, t);
+    if (w->write && k == TY_PTR &&
+        (tquals(c, type_base(TT, type_canon(TT, t))) & TQ_CONST))
+        cwarn(c, x->call, "format=", "writing into constant object "
+              "(argument %u)", x->ai);
+    if ((fmt_cls(k) || k == TY_DOUBLE || k == TY_LDOUBLE || k == TY_PTR ||
+         is_record(c, t)) && !fmt_arg_ok(c, w, t))
+        cwarn(c, loc, "format=", "%s expects argument of type '%s', but "
+              "argument %u has type %s", what, w->name, x->ai, type_q(TT, t));
+    x->ai++;
+}
+
+/* The bytes of a format literal (its pieces concatenated and unescaped),
+ * with each byte's offset in its piece's spelling when the literal is a
+ * single piece written in the file. */
+static bool fmt_decode(Checker *c, uint32_t s, char **buf, uint32_t **off,
+                       size_t *n, bool *exact)
+{
+    uint32_t np = c->nodes[s].aux ? c->nodes[s].aux : 1, t;
+    size_t cap = 1, m = 0, len, j;
+    const char *tx;
+    for (t = 0; t < np; t++) {
+        tx = ttext(c, c->nodes[s].tok + t, &len);
+        cap += len;
+    }
+    *buf = malloc(cap);
+    *off = malloc(cap * sizeof **off);
+    /* a token a macro expansion made has no substring location in gcc */
+    *exact = np == 1 && (!c->u->toks[c->nodes[s].tok].exp ||
+                         c->u->toks[c->nodes[s].tok].exp ==
+                             c->u->toks[c->nodes[s].tok].t.loc);
+    for (t = 0; t < np; t++) {
+        tx = ttext(c, c->nodes[s].tok + t, &len);
+        if (lit_str_prefix(tx, len) || len < 2)
+            goto bad;
+        for (j = 1; j + 1 < len; j++) {
+            unsigned char ch = (unsigned char)tx[j];
+            size_t at = j;
+            if (ch >= 0x80 || ch == '\t')
+                *exact = false;
+            if (ch == '\\') {
+                ch = (unsigned char)tx[++j];
+                switch (ch) {
+                case 'n': ch = '\n'; break;
+                case 't': ch = '\t'; break;
+                case 'r': ch = '\r'; break;
+                case 'a': ch = '\a'; break;
+                case 'b': ch = '\b'; break;
+                case 'f': ch = '\f'; break;
+                case 'v': ch = '\v'; break;
+                case 'e': ch = 27; break;
+                case '\\': case '\'': case '"': case '?': break;
+                case 'x': {
+                    unsigned v = 0;
+                    while (j + 2 < len && isxdigit((unsigned char)tx[j + 1])) {
+                        char d = tx[++j];
+                        v = v * 16 + (unsigned)(d <= '9' ? d - '0'
+                                                : (d | 32) - 'a' + 10);
+                    }
+                    ch = (unsigned char)v;
+                    break;
+                }
+                case '0': case '1': case '2': case '3': case '4': case '5':
+                case '6': case '7': {
+                    unsigned v = (unsigned)(ch - '0'), d = 1;
+                    while (d < 3 && j + 2 < len && tx[j + 1] >= '0' &&
+                           tx[j + 1] <= '7') {
+                        v = v * 8 + (unsigned)(tx[++j] - '0');
+                        d++;
+                    }
+                    ch = (unsigned char)v;
+                    break;
+                }
+                default: goto bad;
+                }
+            }
+            (*buf)[m] = (char)ch;
+            (*off)[m++] = (uint32_t)at;
+        }
+    }
+    *n = m;
+    return true;
+bad:
+    free(*buf);
+    free(*off);
+    return false;
+}
+
+static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
+                             uint32_t pos, uint32_t s, SrcLoc whole,
+                             SrcLoc call)
+{
+    static const struct { char conv; const char *flags; } ft[] = {
+        {'d', "-+ 0'I"}, {'i', "-+ 0'I"}, {'o', "-0#"}, {'x', "-0#"},
+        {'X', "-0#"}, {'u', "-0'I"}, {'f', "-0 +#'I"}, {'g', "-0 +#'I"},
+        {'G', "-0 +#'I"}, {'e', "-0 +#I"}, {'E', "-0 +#I"}, {'a', "-0 +#I"},
+        {'A', "-0 +#I"}, {'F', "-0 +#I"}, {'c', "-"}, {'C', "-"}, {'s', "-"},
+        {'S', "-"}, {'p', "-"}, {'n', ""}};
+    FmtCtx x;
+    char *f;
+    uint32_t *off;
+    size_t n, i = 0, t, st;
+    bool exact, dollar = false;
+    if (!diag_enabled(c->diag, "format="))
+        return;
+    if (!fmt_decode(c, s, &f, &off, &n, &exact))
+        return;
+    x.c = c;
+    x.kv = kv;
+    x.nk = nk;
+    x.ai = pos + 1;
+    x.whole = whole;
+    x.call = call;
+    x.exact = false;
+    x.base = 0;
+    if (exact) {
+        size_t len;
+        const char *tx = ttext(c, c->nodes[s].tok, &len);
+        SrcLoc b = ctok_loc(c, c->nodes[s].tok);
+        if (!memcmp(srcmgr_ptr(c->sm, b), tx, len)) {
+            x.exact = true;
+            x.base = b;
+        }
+    }
+    x.off = off;
+    for (t = 0; t < n; t++)
+        if (!f[t]) {
+            cwarn(c, fmt_loc(&x, t), "format-contains-nul",
+                  "embedded '\\0' in format");
+            n = t;
+            break;
+        }
+    if (!n) {
+        cwarn(c, whole, "format-zero-length",
+              "zero-length gnu_printf format string");
+        goto out;
+    }
+    while (i < n && !dollar) {
+        char seen[128] = {0}, conv, flags[16];
+        unsigned nf = 0;
+        bool width = false, prec = false;
+        int len = FL_NONE;
+        bool badlen = false;
+        char lsp[3] = {0, 0, 0};
+        FmtWant w;
+        char what[24];
+        if (f[i] != '%') {
+            i++;
+            continue;
+        }
+        st = i++;
+        if (i >= n) {
+            cwarn(c, fmt_loc(&x, st), "format=",
+                  "spurious trailing '%%' in format");
+            break;
+        }
+        while (i < n && strchr("-+ #0'I", f[i])) {
+            if (seen[(int)f[i]])
+                cwarn(c, fmt_loc(&x, i), "format=",
+                      "repeated '%c' flag in format", f[i]);
+            else if (nf < sizeof flags - 1)
+                flags[nf++] = f[i];
+            if (c->opt.pedantic && (f[i] == '\'' || f[i] == 'I'))
+                cwarn(c, whole, "format=", "ISO C does not support the '%c' "
+                      "printf flag", f[i]);
+            seen[(int)f[i]] = 1;
+            i++;
+        }
+        flags[nf] = 0;
+        if (i < n && f[i] == '*') {
+            FmtWant iw = {FW_INT, 3, "int", false};
+            fmt_take(&x, &iw, fmt_loc(&x, i), "field width specifier '*'");
+            width = true;
+            i++;
+        } else {
+            while (i < n && isdigit((unsigned char)f[i])) {
+                width = true;
+                i++;
+            }
+            if (width && i < n && f[i] == '$') {
+                if (c->opt.pedantic)
+                    cwarn(c, call, "format=", "ISO C does not support %%n$ "
+                          "operand number formats");
+                dollar = true;
+                break;
+            }
+        }
+        if (i < n && f[i] == '.') {
+            i++;
+            prec = true;
+            if (i < n && f[i] == '*') {
+                FmtWant iw = {FW_INT, 3, "int", false};
+                fmt_take(&x, &iw, fmt_loc(&x, i),
+                         "field precision specifier '.*'");
+                i++;
+            } else {
+                while (i < n && isdigit((unsigned char)f[i]))
+                    i++;
+            }
+        }
+        if (i < n) {
+            switch (f[i]) {
+            case 'h': len = i + 1 < n && f[i + 1] == 'h' ? FL_HH : FL_H; break;
+            case 'l': len = i + 1 < n && f[i + 1] == 'l' ? FL_LL : FL_L; break;
+            case 'L': len = FL_BIGL; break;
+            case 'q': len = FL_LL; break;
+            case 'z': case 'Z': len = FL_Z; break;
+            case 't': len = FL_T; break;
+            case 'j': len = FL_J; break;
+            default: break;
+            }
+            if (len != FL_NONE) {
+                lsp[0] = f[i];
+                lsp[1] = len == FL_HH || (len == FL_LL && f[i] == 'l') ? f[i] : 0;
+                i += lsp[1] ? 2 : 1;
+                if ((f[i - 1] == 'q' || f[i - 1] == 'Z') && c->opt.pedantic)
+                    cwarn(c, whole, "format=", "ISO C does not support the "
+                          "'%c' gnu_printf length modifier", f[i - 1]);
+            }
+        }
+        if (i >= n) {
+            cwarn(c, fmt_loc(&x, i - 1), "format=",
+                  "conversion lacks type at end of format");
+            break;
+        }
+        conv = f[i];
+        if (conv == '%') {
+            if (i - 1 > st) {
+                cwarn(c, fmt_loc(&x, i - 1), "format=",
+                      "conversion lacks type at end of format");
+                continue;       /* the '%' starts the next conversion */
+            }
+            i++;
+            continue;
+        }
+        if (!conv || !strchr("diouxXfFeEgGaAcsCSpnm", conv)) {
+            if (isprint((unsigned char)conv))
+                cwarn(c, fmt_loc(&x, i), "format=",
+                      "unknown conversion type character '%c' in format",
+                      conv);
+            else
+                cwarn(c, fmt_loc(&x, i), "format=", "unknown conversion type "
+                      "character '\\x%02x' in format", (unsigned char)conv);
+            i++;
+            continue;
+        }
+        for (t = 0; t < sizeof ft / sizeof *ft; t++)
+            if (ft[t].conv == conv)
+                break;
+        if (t < sizeof ft / sizeof *ft) {
+            bool intc = strchr("diouxX", conv) != NULL;
+            bool lenok;
+            if (seen[' '] && seen['+'])
+                cwarn(c, whole, "format=",
+                      "' ' flag ignored with '+' flag in gnu_printf format");
+            if (seen['0'] && seen['-'])
+                cwarn(c, whole, "format=",
+                      "'0' flag ignored with '-' flag in gnu_printf format");
+            if (seen['0'] && prec && intc)
+                cwarn(c, whole, "format=", "'0' flag ignored with precision "
+                      "and '%%%c' gnu_printf format", conv);
+            for (st = 0; flags[st]; st++)
+                if (!strchr(ft[t].flags, flags[st]))
+                    cwarn(c, fmt_loc(&x, i), "format=", "'%c' flag used with "
+                          "'%%%c' gnu_printf format", flags[st], conv);
+            if (width && conv == 'n')
+                cwarn(c, fmt_loc(&x, i), "format=", "field width used with "
+                      "'%%%c' gnu_printf format", conv);
+            if (prec && !strchr("diouxXfFeEgGaAsSn", conv))
+                cwarn(c, fmt_loc(&x, i), "format=", "precision used with "
+                      "'%%%c' gnu_printf format", conv);
+            if (len == FL_NONE || intc || conv == 'n')
+                lenok = true;
+            else if (conv == 'c' || conv == 's')
+                lenok = len == FL_L;
+            else if (strchr("fFeEgGaA", conv))
+                lenok = len == FL_BIGL || len == FL_L;
+            else
+                lenok = conv == 'C' || conv == 'S';
+            if (!lenok) {
+                cwarn(c, fmt_loc(&x, i), "format=", "use of '%s' length "
+                      "modifier with '%c' type character has either no "
+                      "effect or undefined behavior", lsp, conv);
+                len = FL_NONE;
+                lsp[0] = 0;
+                badlen = true;
+            }
+        }
+        if (c->opt.pedantic && (strchr("mCS", conv) ||
+                                (len == FL_BIGL && strchr("diouxX", conv))))
+            cwarn(c, fmt_loc(&x, i), "format=", "ISO C does not support the "
+                  "'%%%s%c' gnu_printf format", lsp, conv);
+        if (fmt_want(c, conv, len, &w)) {
+            if (badlen)
+                w.shape = FW_ANY;   /* gcc has no type for it */
+            snprintf(what, sizeof what, "format '%%%s%c'", lsp, conv);
+            fmt_take(&x, &w, fmt_loc(&x, i), what);
+        }
+        i++;
+    }
+    if (!dollar && x.ai < nk)
+        cwarn(c, whole, "format-extra-args", "too many arguments for format");
+out:
+    free(f);
+    free(off);
+}
+
 /* check_format_info's complaint about a format that is not a string
  * literal: -Wformat-security (or -Wformat-nonliteral) with no arguments to
  * check, -Wformat-nonliteral with some. */
@@ -3780,6 +4264,10 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     s = strip_paren(c, a);
     if (s == NO_NODE || node_err(c, a))
         return;
+    if (ntag(c, s) == N_STRING) {
+        fmt_check_printf(c, kv, nk, pos, s, expr_loc(c, a), loc);
+        return;
+    }
     if (type_ckind(TT, c->ty[s]) == TY_ARRAY && c->ck[s] != K_ERR) {
         /* a writable array: its address has a location of its own; a
          * const one is read through its initializer */
@@ -4202,8 +4690,7 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
             if (!cexpr_assign_check(c, a, pt[j], &ci))
                 bad = true;
         } else if (is_void(c, rvt(c, a))) {
-            cerror(c, expr_loc(c, a), "void value not ignored as it ought to "
-                   "be");
+            cerror(c, expr_loc(c, a), "invalid use of void expression");
             bad = true;
         } else if (bn != NO_NODE && bn != 0xFFFFFFFEu) {
             /* a built-in declared without a prototype: the arguments are
