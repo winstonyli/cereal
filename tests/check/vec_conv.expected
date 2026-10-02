@@ -1,0 +1,18 @@
+vec_conv.c:6:1: note: use '-flax-vector-conversions' to permit conversions between vectors with differing element types or numbers of subparts
+    6 | vc y = (vs){1,2,3,4};
+      | ^
+vec_conv.c:6:8: error: incompatible types when initializing type 'vc' {aka '__vector(8) char'} using type 'vs' {aka '__vector(4) short int'}
+    6 | vc y = (vs){1,2,3,4};
+      |        ^
+vec_conv.c:7:8: error: incompatible types when initializing type 'vc' {aka '__vector(8) char'} using type 'vs' {aka '__vector(4) short int'}
+    7 | vc z = q;
+      |        ^
+vec_conv.c:12:12: error: incompatible types when initializing type 'vc' {aka '__vector(8) char'} using type 'vs' {aka '__vector(4) short int'}
+   12 |     vc m = q;
+      |            ^
+vec_conv.c:14:14: error: incompatible types when initializing type 'vu' {aka '__vector(4) unsigned int'} using type 'vi' {aka '__vector(4) int'}
+   14 |     vu bad = a;
+      |              ^
+vec_conv.c:15:9: error: incompatible types when assigning to type 'vc' {aka '__vector(8) char'} from type 'vs' {aka '__vector(4) short int'}
+   15 |     m = q;
+      |         ^

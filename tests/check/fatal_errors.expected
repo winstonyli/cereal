@@ -1,0 +1,7 @@
+fatal_errors.c:2:11: warning: division by zero [-Wdiv-by-zero]
+    2 | int a = 1 / 0;
+      |           ^
+fatal_errors.c:2:9: error: initializer element is not constant
+    2 | int a = 1 / 0;
+      |         ^
+compilation terminated due to -Wfatal-errors.

@@ -24,8 +24,10 @@ typedef struct Options {
     bool color;
     bool pedantic_errors;
     bool short_enums;           /* -fshort-enums */
+    bool lax_vector;            /* -flax-vector-conversions */
     bool show_system;
     bool no_warnings;           /* -w */
+    bool fatal_errors;          /* -Wfatal-errors */
     int bad_options;            /* command-line errors reported */
     bool track0;                /* -ftrack-macro-expansion=0 */
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */

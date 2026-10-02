@@ -3364,6 +3364,20 @@ static SrcLoc conv_loc(Conv *x)
     return l;
 }
 
+static bool is_cmp_op(int op);
+
+/* gcc builds the result of a vector comparison or ! as an opaque vector
+ * type, convertible to any vector of the same size. */
+static bool vector_truth_node(Checker *c, uint32_t e)
+{
+    e = strip_paren(c, e);
+    if (e == NO_NODE)
+        return false;
+    if (ntag(c, e) == N_BINARY)
+        return is_cmp_op(npunct(c, e));
+    return ntag(c, e) == N_UNARY && npunct(c, e) == P_BANG;
+}
+
 static bool conv_overflow(Conv *x)
 {
     Checker *c = x->c;
@@ -3596,8 +3610,31 @@ bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
         conv_arith(&x);
         return true;
     }
-    if (kl == TY_VECTOR && kr == TY_VECTOR)
-        return true;
+    if (kl == TY_VECTOR && kr == TY_VECTOR) {
+        /* vector_types_convertible_p */
+        bool same_size, el_int, er_int, lax_ok, ok_a, ok_b;
+        if (type_compatible(TT, mvt(c, cl), mvt(c, cr)))
+            return true;
+        if (expr != NO_NODE && vector_truth_node(c, expr) &&
+            type_size(TT, cl, &ok_a) == type_size(TT, cr, &ok_b))
+            return true;        /* a comparison yields an opaque vector */
+        same_size = type_size(TT, cl, &ok_a) == type_size(TT, cr, &ok_b);
+        el_int = type_is_integer(TT, type_base(TT, cl));
+        er_int = type_is_integer(TT, type_base(TT, cr));
+        lax_ok = same_size && el_int == er_int &&
+                 (type_is_integer(TT, type_base(TT, cl)) ||
+                  type_ent(TT, cl)->n == type_ent(TT, cr)->n);
+        if (c->opt.lax_vector && lax_ok)
+            return true;
+        if (lax_ok && !c->lax_noted) {
+            c->lax_noted = true;
+            diag_report(c->diag, DL_NOTE, "", cinput_loc(c, c->nodes[expr].tok),
+                        "use '-flax-vector-conversions' to permit conversions "
+                        "between vectors with differing element types or "
+                        "numbers of subparts");
+        }
+        goto incompatible;
+    }
     if (kl == TY_UNION && kr != TY_UNION &&
         (type_record(TT, cl)->flags & RF_TRANSPARENT)) {
         /* gcc: a transparent union accepts any of its members' types
@@ -3793,6 +3830,7 @@ bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
     if (kl == TY_BOOL && kr == TY_PTR)
         return true;
 
+incompatible:
     T = type_q(TT, lt);
     R = type_q(TT, rt);
     switch (ctx) {

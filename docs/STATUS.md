@@ -78,6 +78,20 @@ layouts, gcc rules ported, walk design).
   Goldens zdiv_const, dep_type_use; asm_ident, kr_cascade regenerated.
   gcc.dg: 3548 of 3875 identical; tests 764, corpus 0/0, ASAN/UBSAN 0.
   Not done: -Wtraditional-conversion (overflow-warn-2), init-bad-4 recovery.
+- Vector conversions, -Wfatal-errors (2026-10-01):
+  * Assigning/initializing/passing/returning between differing vector types is
+    "incompatible types ..." (vector_types_convertible_p): compatible types,
+    or `-flax-vector-conversions` (new driver flag, CheckOptions.lax_vector)
+    with equal size/integrality; the "use '-flax-vector-conversions'" note is
+    given once per TU.  A vector comparison or `!` is an opaque vector
+    (vector_truth_node): convertible to any vector of the same size.
+  * `-Wfatal-errors`: diag_flush stops after the first error-level
+    diagnostic and prints "compilation terminated due to -Wfatal-errors."
+    Caveat: "first" is cereal's emission order (parse errors precede checker
+    ones), not gcc's.
+  Goldens vec_conv, fatal_errors.  icount loop.c: parse 1.707G, check 3.294G
+  (+1.3% vs 3.25G, after ef became 32 bits).  gcc.dg: 3553 of 3875 identical;
+  tests 768, corpus 0/0, ASAN/UBSAN 0.
 
 ## Next work
 1. Mutated-corpus verdict parity: ran 2026-09-30 (bench/tools/mut.py, 170

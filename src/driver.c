@@ -147,6 +147,10 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         vec_push(&o->wflags, "pedantic");
     } else if (!strcmp(a, "-trigraphs")) {
         o->pp.lex.trigraphs = true;
+    } else if (!strcmp(a, "-Wfatal-errors")) {
+        o->fatal_errors = true;
+    } else if (!strcmp(a, "-Wno-fatal-errors")) {
+        o->fatal_errors = false;
     } else if (!strcmp(a, "-Wsystem-headers")) {
         o->show_system = true;
     } else if (!strcmp(a, "-Wno-system-headers")) {
@@ -162,6 +166,10 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->short_enums = true;
     } else if (!strcmp(a, "-fno-short-enums")) {
         o->short_enums = false;
+    } else if (!strcmp(a, "-flax-vector-conversions")) {
+        o->lax_vector = true;
+    } else if (!strcmp(a, "-fno-lax-vector-conversions")) {
+        o->lax_vector = false;
     } else if (!strcmp(a, "-w")) {
         o->no_warnings = true;
     } else if (!strncmp(a, "-ftrack-macro-expansion=", 24)) {
@@ -412,6 +420,7 @@ void tu_init_shared(TU *tu, Options *opt, Interner *in)
     tu->diag.color = opt->color;
     tu->diag.show_system = opt->show_system;
     tu->diag.no_warnings = opt->no_warnings;
+    tu->diag.fatal_errors = opt->fatal_errors;
     tu->diag.track0 = opt->track0;
     pp_init(&tu->pp, &tu->arena, tu->in, &tu->sm, &tu->diag, &opt->pp);
     tu->pp.host_attrs = host_attrs;
