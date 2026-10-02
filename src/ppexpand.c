@@ -165,8 +165,10 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
         a->start.len = a->count.len = a->present.len = 0;
 
     if (m->variadic && (int)a->start.len == m->nparams - 1) {
-        if (pp->opt->pedantic && !m->gnu_named_variadic)
-            diag_report(pp->diag, DL_WARNING, "pedantic", name->loc,
+        /* gcc: at the ')', and only where __VA_OPT__ is not available (the
+         * GNU modes), with no option tag */
+        if (pp->opt->pedantic && !pp->opt->gnu_mode && !m->gnu_named_variadic)
+            diag_report(pp->diag, DL_WARNING, "", a->rparen_loc,
                         "ISO C99 requires at least one argument for the "
                         "\"...\" in a variadic macro");
         av_push(&a->start, a->all.len);
@@ -484,10 +486,6 @@ static void subst(PP *pp, Macro *m, Args *a, uint16_t lead, SrcLoc site,
                  * arguments are omitted entirely (GCC keeps it for F(a,)) */
                 if (!a->present.data[rp]) {
                     out->len--;
-                    if (pp->opt->pedantic)
-                        diag_report(pp->diag, DL_WARNING, "pedantic", op->loc,
-                                    "token pasting of ',' and __VA_ARGS__ is "
-                                    "a GNU extension");
                 } else {
                     push_arg(pp, out, arg_span(a, rp),
                              (uint16_t)(rt->flags & TF_SPACE));

@@ -1,0 +1,12 @@
+variadic_pedantic.c:5:21: warning: ISO C99 requires at least one argument for the "..." in a variadic macro
+    5 | void t(void) { L("a"); L("a", 1); N(1); N(1, 2); }
+      |                     ^
+variadic_pedantic.c:5:38: warning: ISO C99 requires at least one argument for the "..." in a variadic macro
+    5 | void t(void) { L("a"); L("a", 1); N(1); N(1, 2); }
+      |                                      ^
+variadic_pedantic.c:3:35: error: expected expression before ')' token
+    3 | #define N(a, ...) h(a, __VA_ARGS__)
+      |                                   ^
+variadic_pedantic.c:5:35: note: in expansion of macro 'N'
+    5 | void t(void) { L("a"); L("a", 1); N(1); N(1, 2); }
+      |                                   ^
