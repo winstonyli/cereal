@@ -3892,15 +3892,14 @@ static bool volatile_ret_only(Checker *c, TypeId a, TypeId b)
     eb = type_ent(TT, cb);
     ra = type_base(TT, ca);
     rb = type_base(TT, cb);
-    if ((TYPE_QUALS(ra) ^ TYPE_QUALS(rb)) != TQ_VOLATILE ||
-        ea->n != eb->n || (ea->flags & TF_NOPROTO) != (eb->flags & TF_NOPROTO))
+    if ((TYPE_QUALS(ra) ^ TYPE_QUALS(rb)) != TQ_VOLATILE)
         return false;
     ra = TYPE_UNQUAL(ra) | (TYPE_QUALS(ra) & ~TQ_VOLATILE);
     rb = TYPE_UNQUAL(rb) | (TYPE_QUALS(rb) & ~TQ_VOLATILE);
-    return type_compatible(TT, type_func(TT, ra, type_params(TT, ca), ea->n,
-                                         ea->flags),
-                           type_func(TT, rb, type_params(TT, cb), eb->n,
-                                     eb->flags));
+    return compat_gcc(c, type_func(TT, ra, type_params(TT, ca), ea->n,
+                                   ea->flags),
+                      type_func(TT, rb, type_params(TT, cb), eb->n,
+                                eb->flags));
 }
 
 /* The note of locate_old_decl. */
@@ -4081,7 +4080,8 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                 *newtypep = newtype;
             } else if (nw->kind == CS_FUNC && volatile_ret_only(c, a, b)) {
                 int k;
-                for (k = 0; k < 3; k++)     /* comptypes runs three times */
+                /* comptypes runs three times (twice for a block-scope one) */
+                for (k = 0; k < (cat_file_scope(c) ? 3 : 2); k++)
                     cpedwarn(c, cinput_loc(c, c->cd_ltok), "", "function "
                              "return types not compatible due to 'volatile'");
             } else {

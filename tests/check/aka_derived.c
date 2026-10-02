@@ -1,0 +1,12 @@
+typedef int IA10[10];
+typedef IA10 *P;
+typedef int F(void);
+typedef int *T;
+extern int x;
+extern P x;
+extern int a[];
+extern P a[];
+extern int b[];
+extern T b[];
+extern int c;
+extern F *c[];

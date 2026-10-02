@@ -151,7 +151,7 @@ enum {
     NF_EXTENSION = NF_KR,  /* DECL/FUNC_DEF: after __extension__ */
     NF_NESTED = NF_BODY,   /* DECL+ERROR: gcc took it for a nested function */
     NF_PARAMS = 1 << 7,    /* SCOPE: a function body's, with parameters */
-    NF_CUT = 1 << 7,       /* CALL: the ')' is missing */
+    NF_CUT = 1 << 7,       /* CALL/INDEX: the closing token is missing or the args had an error */
     NF_FWD = 1 << 7,       /* PARAM: GNU forward declaration (before ';') */
     NF_SEMI = NF_BODY      /* PARAM: the one just before that ';' */
 };

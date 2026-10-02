@@ -1,0 +1,9 @@
+index_cut.c:3:13: error: expected ']' before ';' token
+    3 |   z = z[1, 2;
+      |             ^
+index_cut.c:3:8: error: subscripted value is neither array nor pointer nor vector
+    3 |   z = z[1, 2;
+      |        ^
+index_cut.c:3:14: error: expected ';' before '}' token
+    3 |   z = z[1, 2;
+      |              ^

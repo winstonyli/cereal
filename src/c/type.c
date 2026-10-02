@@ -633,8 +633,9 @@ bool type_compatible(TypeTable *tt, TypeId a, TypeId b)
     if (TYPE_QUALS(a) != TYPE_QUALS(b))
         return false;
     const TypeEnt *ea = type_ent(tt, a), *eb = type_ent(tt, b);
-    if (ea->kind == TY_ENUM && eb->kind != TY_ENUM)
-        return TYPE_UNQUAL(type_canon(tt, enum_rd(tt, ea->extra)->underlying))
+    if (ea->kind == TY_ENUM && eb->kind != TY_ENUM) /* no underlying type before the '{' */
+        return enum_rd(tt, ea->extra)->complete &&
+               TYPE_UNQUAL(type_canon(tt, enum_rd(tt, ea->extra)->underlying))
                == TYPE_UNQUAL(b);
     if (eb->kind == TY_ENUM && ea->kind != TY_ENUM)
         return type_compatible(tt, b, a);
@@ -1030,6 +1031,16 @@ void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
         if (tt->aka && e->kind == TY_TYPEDEF && !aka_atomic(tt, e)) {
             t = e->base | q;
             continue;
+        }
+        if (k != D_EMPTY && e->kind == TY_TYPEDEF) {
+            /* gcc names a typedef of a derived type only as the whole
+             * type; inside a declarator it is spelled out */
+            TypeKind bk = type_ckind(tt, e->base);
+            if (bk == TY_PTR || bk == TY_ARRAY || bk == TY_VLA ||
+                bk == TY_FUNC) {
+                t = e->base | q;
+                continue;
+            }
         }
         if (e->kind == TY_PTR) {
             tmp.len = 0;

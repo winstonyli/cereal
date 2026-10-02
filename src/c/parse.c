@@ -1778,8 +1778,8 @@ static void postfix_tail(Parser *p, uint32_t start)
         case P_LBRACKET: {
             uint32_t lb = adv(p);
             parse_expr(p);
-            expect_skip(p, P_RBRACKET);
-            emit(p, N_INDEX, lb, start, 0);
+            emit(p, N_INDEX, lb, start,
+                 expect_skip(p, P_RBRACKET) ? 0 : NF_CUT);
             break;
         }
         case P_LPAREN: {

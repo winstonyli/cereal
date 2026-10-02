@@ -11169,7 +11169,14 @@ void cexpr_node(Checker *c, uint32_t i)
     case N_STRING: e_string(c, i); break;
     case N_PAREN: e_paren(c, i); break;
     case N_CALL: e_call(c, i); break;
-    case N_INDEX: e_index(c, i); break;
+    case N_INDEX: {
+        /* a subscript cut short by a syntax error is checked after it */
+        DiagOrd o0 = diag_ord(c->diag, c->nodes[i].flags & NF_CUT ? ORD_CUT
+                                                                  : ORD_NORMAL);
+        e_index(c, i);
+        diag_ord(c->diag, o0);
+        break;
+    }
     case N_MEMBER_EXPR: e_member(c, i); break;
     case N_POSTFIX: e_postfix(c, i); break;
     case N_UNARY: e_unary(c, i); break;

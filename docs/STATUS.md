@@ -311,3 +311,19 @@ layouts, gcc rules ported, walk design).
   `conflicting types ... have` 4 files / 23 diags; `-Wstringop-overread` 86
   diags in 3 files).
 
+- Round 5 (2026-10-02, after 55d2e3a):
+  * N_INDEX gets NF_CUT when `]` is missing: the subscript check is ordered
+    after the syntax error (ORD_CUT), as for calls.  Golden index_cut.
+  * volatile-return redeclarations (`void f(void); volatile void f() {}`):
+    volatile_ret_only now goes through compat_gcc (prototype vs K&R), and a
+    block-scope redeclaration warns twice, not three times.
+  * An incomplete enum is compatible with no integer type
+    (type_compatible): `extern enum E e; unsigned e;` conflicts.
+  * type_print: a typedef of a pointer/array/function type nested inside a
+    declarator is spelled out (gcc: 'int (*[])[10]', not 'IA10P[]');
+    top-level keeps the name + aka.  Golden aka_derived, qual_enum_redecl.
+  gcc.dg 3602 of 3875 identical (missing 906, extra 383); tests 816.
+  Not feasible front-end-only: -Wstringop-overread in warn-strlen-no-nul.c,
+  Wstringop-overflow-22, -overread-6 need -O2 constant propagation (gcc folds
+  `strlen (a)` after propagating loop-free locals); skip.
+

@@ -1,0 +1,39 @@
+qual_enum_redecl.c:3:1: warning: function definition has qualified void return type
+    3 | volatile void bar () { }
+      | ^
+qual_enum_redecl.c:3:1: warning: function return types not compatible due to 'volatile'
+    3 | volatile void bar () { }
+      | ^
+qual_enum_redecl.c:3:1: warning: function return types not compatible due to 'volatile'
+    3 | volatile void bar () { }
+      | ^
+qual_enum_redecl.c:3:1: warning: function return types not compatible due to 'volatile'
+    3 | volatile void bar () { }
+      | ^
+qual_enum_redecl.c:5:1: warning: function return types not compatible due to 'volatile'
+    5 | void baz () { }
+      | ^
+qual_enum_redecl.c:5:1: warning: function return types not compatible due to 'volatile'
+    5 | void baz () { }
+      | ^
+qual_enum_redecl.c:5:1: warning: function return types not compatible due to 'volatile'
+    5 | void baz () { }
+      | ^
+qual_enum_redecl.c:6:13: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+    6 | extern enum E e;
+      |             ^
+qual_enum_redecl.c:7:10: error: conflicting types for 'e'; have 'unsigned int'
+    7 | unsigned e;
+      |          ^
+qual_enum_redecl.c:6:15: note: previous declaration of 'e' with type 'enum E'
+    6 | extern enum E e;
+      |               ^
+qual_enum_redecl.c:8:13: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+    8 | extern enum E *p;
+      |             ^
+qual_enum_redecl.c:9:11: error: conflicting types for 'p'; have 'unsigned int *'
+    9 | unsigned *p;
+      |           ^
+qual_enum_redecl.c:8:16: note: previous declaration of 'p' with type 'enum E *'
+    8 | extern enum E *p;
+      |                ^

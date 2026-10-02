@@ -1,0 +1,24 @@
+aka_derived.c:6:10: error: conflicting types for 'x'; have 'P' {aka 'int (*)[10]'}
+    6 | extern P x;
+      |          ^
+aka_derived.c:5:12: note: previous declaration of 'x' with type 'int'
+    5 | extern int x;
+      |            ^
+aka_derived.c:8:10: error: conflicting types for 'a'; have 'int (*[])[10]'
+    8 | extern P a[];
+      |          ^
+aka_derived.c:7:12: note: previous declaration of 'a' with type 'int[]'
+    7 | extern int a[];
+      |            ^
+aka_derived.c:10:10: error: conflicting types for 'b'; have 'int *[]'
+   10 | extern T b[];
+      |          ^
+aka_derived.c:9:12: note: previous declaration of 'b' with type 'int[]'
+    9 | extern int b[];
+      |            ^
+aka_derived.c:12:11: error: conflicting types for 'c'; have 'int (*[])(void)'
+   12 | extern F *c[];
+      |           ^
+aka_derived.c:11:12: note: previous declaration of 'c' with type 'int'
+   11 | extern int c;
+      |            ^
