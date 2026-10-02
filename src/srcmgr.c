@@ -318,7 +318,16 @@ static void compute_lines(SrcFile *f)
         return;
     }
     vec_push(&v, 0);
-    for (i = 0; i < f->size; i++) {
+    i = 0;
+    if (!memchr(f->buf, 0x0d, f->size)) { /* the common case: memchr's speed */
+        const char *p = f->buf, *end = f->buf + f->size;
+        while ((p = memchr(p, '\n', (size_t)(end - p)))) {
+            p++;
+            vec_push(&v, (uint32_t)(p - f->buf));
+        }
+        i = f->size;
+    }
+    for (; i < f->size; i++) {
         char c = f->buf[i];
         if (c == '\n') {
             vec_push(&v, i + 1);

@@ -377,4 +377,10 @@ layouts, gcc rules ported, walk design).
   K&R-declared builtin used as a function pointer ("pointer to
   '__builtin_memset' with incompatible type", incl. gcc's double-space
   "int,  long" spelling) in init/assign/argument/conditional/return.
+- Profile (callgrind, uvloop loop.c, -fsyntax-only, 2026-10-02): flat; top
+  self cost pp_read_raw 4.9%, checker_unit 3.6%, parse ct 2.9%, then
+  compute_lines 2.9%.  compute_lines now memchr's for newlines when the file
+  has no CR: check 3.377G -> 3.289G (-2.6%), parse 1.703G -> 1.615G.  Left:
+  strcmp is 2% spread over many callers (bt_find 0.6%, find_index_cached
+  0.4%); no single hotspot remains.
 
