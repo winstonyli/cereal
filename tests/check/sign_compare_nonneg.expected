@@ -1,0 +1,24 @@
+sign_compare_nonneg.c:9:10: warning: comparison of integer expressions of different signedness: 'unsigned int' and 'int' [-Wsign-compare]
+    9 |   r += u > b + 100;
+      |          ^
+sign_compare_nonneg.c:10:10: warning: comparison of integer expressions of different signedness: 'unsigned int' and 'int' [-Wsign-compare]
+   10 |   r += u > s + 65535;
+      |          ^
+sign_compare_nonneg.c:11:10: warning: comparison of integer expressions of different signedness: 'unsigned int' and 'int' [-Wsign-compare]
+   11 |   r += u > i * 100;
+      |          ^
+sign_compare_nonneg.c:12:10: warning: comparison of integer expressions of different signedness: 'unsigned int' and 'int' [-Wsign-compare]
+   12 |   r += u > 100 + b;
+      |          ^
+sign_compare_nonneg.c:16:12: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   16 |   r += u > ({tf; 64;});
+      |            ^
+sign_compare_nonneg.c:17:12: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   17 |   r += u > ({tf; tf ? 64 : -1;});
+      |            ^
+sign_compare_nonneg.c:17:10: warning: comparison of integer expressions of different signedness: 'unsigned int' and 'int' [-Wsign-compare]
+   17 |   r += u > ({tf; tf ? 64 : -1;});
+      |          ^
+sign_compare_nonneg.c:19:10: warning: comparison of integer expressions of different signedness: 'unsigned int' and 'int' [-Wsign-compare]
+   19 |   r += u > (tf, -5);
+      |          ^

@@ -7465,9 +7465,19 @@ static void e_complit(Checker *c, uint32_t i)
     }
 }
 
-static void e_stmt_expr(Checker *c, uint32_t i)
+/* The node of the value of the statement expression i (NO_NODE: none). */
+static uint32_t stmt_expr_value(Checker *c, uint32_t i)
 {
     uint32_t k = i - 1;
+    if (c->nodes[i].size >= 4 && k >= 3 && ntag(c, k - 1) == N_SCOPE_END &&
+        ntag(c, k - 2) == N_EXPR_STMT && c->nodes[k - 2].size > 1)
+        return k - 3;
+    return NO_NODE;
+}
+
+static void e_stmt_expr(Checker *c, uint32_t i)
+{
+    uint32_t k = i - 1, e;
     SrcLoc loc = cnode_loc(c, i);
     if (!in_function(c)) {
         cerror(c, loc, "braced-group within expression allowed only inside a "
@@ -7493,9 +7503,7 @@ static void e_stmt_expr(Checker *c, uint32_t i)
     }
     c->ty[i] = TYPE_B(VOID);
     c->ef[i] = EF_SIDE;
-    if (c->nodes[i].size >= 4 && k >= 3 && ntag(c, k - 1) == N_SCOPE_END &&
-        ntag(c, k - 2) == N_EXPR_STMT && c->nodes[k - 2].size > 1) {
-        uint32_t e = k - 3;
+    if ((e = stmt_expr_value(c, i)) != NO_NODE) {
         if (node_err(c, e)) {
             set_err(c, i);
             return;
@@ -8191,6 +8199,22 @@ static void cst_parts(Checker *c, uint32_t n, bool *neg, uint64_t *mag)
     *mag = *neg ? (uint64_t)0 - v : v;
 }
 
+/* The precision of n before its widening conversions when it is an unsigned
+ * integer type, else 0 (tree_binary_nonnegative_warnv_p's zero-extension). */
+static unsigned zext_bits(Checker *c, uint32_t n)
+{
+    TypeId t;
+    n = strip_paren(c, n);
+    if (ntag(c, n) == N_CAST) {
+        uint32_t k[3], cnt = nkids(c, n, k, 3);
+        if (cnt >= 1)
+            n = strip_paren(c, k[cnt - 1]);
+    }
+    t = rvt(c, n);
+    return is_int(c, t) && tkind(c, t) != TY_BOOL && !is_signed(c, t)
+           ? int_bits(c, t) : 0;
+}
+
 /* tree_expr_nonnegative_p of a (signed) operand. */
 static bool nonneg(Checker *c, uint32_t n)
 {
@@ -8227,11 +8251,23 @@ static bool nonneg(Checker *c, uint32_t n)
         case P_PIPE: case P_CARET: case P_SLASH:
             return nonneg(c, k[0]) && nonneg(c, k[1]);
         case P_PERCENT: case P_SHR: return nonneg(c, k[0]);
+        case P_COMMA: return nonneg(c, k[1]);
+        case P_STAR: /* signed overflow is undefined */
+            return nonneg(c, k[0]) && nonneg(c, k[1]);
+        case P_PLUS: { /* two zero-extended operands cannot overflow */
+            unsigned x = zext_bits(c, k[0]), y = zext_bits(c, k[1]);
+            return x && y && (x > y ? x : y) + 1 < int_bits(c, t);
+        }
         case P_EQEQ: case P_NE: case P_LT: case P_GT: case P_LE: case P_GE:
         case P_ANDAND: case P_OROR:
             return true;
         default: return false;
         }
+    case N_ASSIGN:
+        return npunct(c, n) == P_ASSIGN && nkids(c, n, k, 3) >= 2 &&
+               nonneg(c, k[1]);
+    case N_STMT_EXPR:
+        return (cnt = stmt_expr_value(c, n)) != NO_NODE && nonneg(c, cnt);
     case N_UNARY:
         if (nkids(c, n, k, 3) < 1)
             return false;
