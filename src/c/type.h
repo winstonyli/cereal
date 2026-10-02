@@ -227,6 +227,7 @@ TypeId type_to_unsigned(TypeTable *tt, TypeId t);
 
 /* C99 6.2.7 compatibility (qualifiers must match). */
 bool type_compatible(TypeTable *tt, TypeId a, TypeId b);
+bool type_tu_mixed(TypeTable *tt, TypeId a, TypeId b);
 /* The composite of two compatible types (6.2.7p3). */
 TypeId type_composite(TypeTable *tt, TypeId a, TypeId b);
 /* The type of a parameter declared with type t: arrays and functions

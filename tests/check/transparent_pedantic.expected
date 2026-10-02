@@ -1,0 +1,18 @@
+transparent_pedantic.c:4:1: warning: function types not truly compatible in ISO C [-Wpedantic]
+    4 | void f(int *);
+      | ^
+transparent_pedantic.c:4:1: warning: function types not truly compatible in ISO C [-Wpedantic]
+    4 | void f(int *);
+      | ^
+transparent_pedantic.c:6:1: warning: function types not truly compatible in ISO C [-Wpedantic]
+    6 | void g(U);
+      | ^
+transparent_pedantic.c:6:1: warning: function types not truly compatible in ISO C [-Wpedantic]
+    6 | void g(U);
+      | ^
+transparent_pedantic.c:9:1: warning: function types not truly compatible in ISO C [-Wpedantic]
+    9 | void bl(void) { void f(int *); void k(U); void k(long *); }
+      | ^
+transparent_pedantic.c:9:1: warning: function types not truly compatible in ISO C [-Wpedantic]
+    9 | void bl(void) { void f(int *); void k(U); void k(long *); }
+      | ^

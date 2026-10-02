@@ -4097,6 +4097,11 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                 locate_old_decl(c, d, o);
                 return false;
             }
+        } else if (nw->kind == CS_FUNC && type_tu_mixed(TT, a, b)) {
+            int k;
+            for (k = 0; k < 2; k++)
+                cpedwarn(c, cinput_loc(c, c->cd_ltok), "pedantic", "function types "
+                         "not truly compatible in ISO C");
         } else if (nw->kind != CS_TYPEDEF && enum_int_pair(c, a, b) &&
                    type_canon(TT, a) != type_canon(TT, b)) {
             enum_and_int = true;

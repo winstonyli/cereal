@@ -624,6 +624,29 @@ static bool tu_param_match(TypeTable *tt, TypeId u, TypeId o)
     return false;
 }
 
+/* Compatible function types where some parameter is a transparent union on
+ * one side only: gcc pedwarns that they are not truly compatible. */
+bool type_tu_mixed(TypeTable *tt, TypeId a, TypeId b)
+{
+    a = type_canon(tt, a);
+    b = type_canon(tt, b);
+    if (type_kind(tt, a) != TY_FUNC || type_kind(tt, b) != TY_FUNC)
+        return false;
+    const TypeEnt *ea = type_ent(tt, a), *eb = type_ent(tt, b);
+    if ((ea->flags | eb->flags) & TF_NOPROTO || ea->n != eb->n)
+        return false;
+    for (uint32_t i = 0; i < ea->n; i++) {
+        TypeId x = tt->params.data[ea->extra + i], y = tt->params.data[eb->extra + i];
+        bool ux = type_ckind(tt, x) == TY_UNION &&
+                  (type_record(tt, type_canon(tt, x))->flags & RF_TRANSPARENT);
+        bool uy = type_ckind(tt, y) == TY_UNION &&
+                  (type_record(tt, type_canon(tt, y))->flags & RF_TRANSPARENT);
+        if (ux != uy)
+            return true;
+    }
+    return false;
+}
+
 bool type_compatible(TypeTable *tt, TypeId a, TypeId b)
 {
     a = type_canon(tt, a);

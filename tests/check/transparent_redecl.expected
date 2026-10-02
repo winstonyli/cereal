@@ -1,3 +1,15 @@
+transparent_redecl.c:4:1: warning: function types not truly compatible in ISO C [-Wpedantic]
+    4 | extern void f2 (int *);
+      | ^
+transparent_redecl.c:4:1: warning: function types not truly compatible in ISO C [-Wpedantic]
+    4 | extern void f2 (int *);
+      | ^
+transparent_redecl.c:6:1: warning: function types not truly compatible in ISO C [-Wpedantic]
+    6 | extern void h (U2);
+      | ^
+transparent_redecl.c:6:1: warning: function types not truly compatible in ISO C [-Wpedantic]
+    6 | extern void h (U2);
+      | ^
 transparent_redecl.c:8:18: warning: passing argument 1 of 'f2' from incompatible pointer type [-Wincompatible-pointer-types]
     8 | void g(void){ f2(&l); h(&l); }
       |                  ^

@@ -359,3 +359,15 @@ layouts, gcc rules ported, walk design).
     3.376G.
   gcc.dg 3614 of 3875 identical (missing 867, extra 363); tests 826.
 
+- Round 8 (2026-10-02): -pedantic "function types not truly compatible in ISO C"
+  (2x, [-Wpedantic]) when a compatible redeclaration pairs a transparent-union
+  parameter with a non-union one (type_tu_mixed; gcc matches at file and block
+  scope).  Goldens transparent_pedantic; transparent_redecl regenerated.
+  gcc.dg 3615 of 3875 identical; tests 828.
+
+- Round 8 (2026-10-02): -pedantic "function types not truly compatible in ISO C"
+  (2x, [-Wpedantic]) when a compatible redeclaration pairs a transparent-union
+  parameter with a non-union one (type_tu_mixed; gcc matches at file and block
+  scope).  Goldens transparent_pedantic; transparent_redecl regenerated.
+  gcc.dg 3615 of 3875 identical; tests 828.
+
