@@ -1316,6 +1316,16 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 kids_free(&ak);
                 continue;
             }
+            if (!strcmp(name, "warn_unused_result") &&
+                type_ckind(TT, type_base(TT, fty)) == TY_VOID &&
+                type_ckind(TT, fty) == TY_FUNC) {
+                /* handle_warn_unused_result_attribute */
+                cwarn(c, iloc(c, tok), "attributes",
+                      "'warn_unused_result' attribute ignored");
+                if (c->nign < 8)
+                    snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", name);
+                continue;
+            }
             if (!align && strcmp(name, "alloc_size"))
                 continue;
             kids_get(c, it.p[q], &ak);
@@ -1572,6 +1582,16 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, const char *an,
                                         "'%s'", an, o);
                 if (d && prev)
                     cnote(c, d, st->prevloc, "previous declaration here");
+                /* gcc 13 says it twice when noreturn meets an earlier
+                 * alloc_align or alloc_size (Wattributes-6.c) */
+                if (prev && !strcmp(an, "noreturn") &&
+                    (!strcmp(o, "alloc_align") || !strcmp(o, "alloc_size"))) {
+                    d = cwarn_d(c, DL_WARNING, iloc(c, tok), "attributes",
+                                "ignoring attribute '%s' because it conflicts "
+                                "with attribute '%s'", an, o);
+                    if (d)
+                        cnote(c, d, st->prevloc, "previous declaration here");
+                }
             }
             if (c->nign < 8)
                 snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", an);
@@ -4082,6 +4102,36 @@ static void weak_apply(Checker *c, CSym *s, bool is_inline)
     s->flags |= CSF_WEAK;
 }
 
+/* diagnose_mismatched_decls: an inline declaration after one with
+ * noinline, or noinline after an inline one. */
+static void inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
+                           uint32_t sn, uint32_t idecl)
+{
+    uint32_t ref = lookup_ord(c, nw->name);
+    const CSym *o;
+    Diagnostic *d = NULL;
+    bool nw_noinline;
+    unsigned k;
+    if (ref == SYM_NONE || csym(c, ref)->kind != CS_FUNC)
+        return;
+    o = csym(c, ref);
+    nw_noinline = attrs_item_named(c, sn, "noinline") ||
+                  attrs_item_named(c, idecl, "noinline");
+    for (k = 0; k < c->nign; k++)
+        if (!strcmp(c->ign[k], "noinline"))
+            nw_noinline = false;
+    if ((nw->flags & CSF_INLINE) && !(o->flags & CSF_INLINE) &&
+        cdecl_aset_has(c, o->aset, "noinline"))
+        d = cwarn_d(c, DL_WARNING, iloc(c, ltok), "attributes", "inline declaration "
+                    "of '%s' follows declaration with attribute 'noinline'",
+                    sname(c, nw));
+    else if ((o->flags & CSF_INLINE) && nw_noinline)
+        d = cwarn_d(c, DL_WARNING, nw->loc, "attributes", "declaration of "
+                    "'%s' with attribute 'noinline' follows inline "
+                    "declaration", sname(c, nw));
+    locate_old_decl(c, d, o);
+}
+
 /* merge_decls: nw is consistent with o; o becomes the merged declaration. */
 static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
                         TypeId oldtype)
@@ -4136,6 +4186,8 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     m.flags &= ~(unsigned)CSF_IMPLICIT;
     if (o->align > m.align)
         m.align = o->align;
+    if (o->ualign > m.ualign)
+        m.ualign = o->ualign;
     if (is_fn && (nw->flags & CSF_INLINE || o->flags & CSF_INLINE) &&
         !((nw->flags | o->flags) & CSF_GNU_INLINE) &&
         (!(nw->flags & CSF_INLINE) || !(o->flags & CSF_INLINE) ||
@@ -4959,8 +5011,11 @@ static void declared_visit(Checker *c, uint32_t i)
                 te->flags |= TF_ALIGNED;
             }
         }
-    } else
+    } else {
+        if (g.what == GD_FUNC)
+            inline_follows(c, &s, ltok, sn, idecl);
         ref = pushdecl(c, &s, false);
+    }
     {
         CSym *t = csym(c, ref);
         if (initialized && (t->flags & CSF_DECL_EXTERNAL)) {

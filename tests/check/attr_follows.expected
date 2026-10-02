@@ -1,0 +1,42 @@
+attr_follows.c:4:1: warning: inline declaration of 'f' follows declaration with attribute 'noinline' [-Wattributes]
+    4 | inline void f(void);
+      | ^
+attr_follows.c:3:32: note: previous declaration of 'f' with type 'void(void)'
+    3 | void __attribute__((noinline)) f(void);
+      |                                ^
+attr_follows.c:6:32: warning: declaration of 'g' with attribute 'noinline' follows inline declaration [-Wattributes]
+    6 | void __attribute__((noinline)) g(void);
+      |                                ^
+attr_follows.c:5:13: note: previous declaration of 'g' with type 'void(void)'
+    5 | inline void g(void);
+      |             ^
+attr_follows.c:7:1: warning: 'warn_unused_result' attribute ignored [-Wattributes]
+    7 | void __attribute__((warn_unused_result)) h(void);
+      | ^
+attr_follows.c:10:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'alloc_size' [-Wattributes]
+   10 | void *__attribute__((noreturn)) a(int);
+      | ^
+attr_follows.c:9:38: note: previous declaration here
+    9 | void *__attribute__((alloc_size(1))) a(int);
+      |                                      ^
+attr_follows.c:10:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'alloc_size' [-Wattributes]
+   10 | void *__attribute__((noreturn)) a(int);
+      | ^
+attr_follows.c:9:38: note: previous declaration here
+    9 | void *__attribute__((alloc_size(1))) a(int);
+      |                                      ^
+attr_follows.c:13:1: warning: ignoring attribute 'aligned (4)' because it conflicts with attribute 'aligned (8)' [-Wattributes]
+   13 | inline int __attribute__((aligned(4))) m(int);
+      | ^
+attr_follows.c:12:27: note: previous declaration here
+   12 | int __attribute__((cold)) m(int);
+      |                           ^
+attr_follows.c:13:40: warning: inline function 'm' declared but never defined
+   13 | inline int __attribute__((aligned(4))) m(int);
+      |                                        ^
+attr_follows.c:6:32: warning: inline function 'g' declared but never defined
+    6 | void __attribute__((noinline)) g(void);
+      |                                ^
+attr_follows.c:4:13: warning: inline function 'f' declared but never defined
+    4 | inline void f(void);
+      |             ^

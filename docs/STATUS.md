@@ -42,6 +42,15 @@ layouts, gcc rules ported, walk design).
   enum-incomplete-1/3 and pr63549 match gcc; test `check/incomplete_use.c`.
   gcc.dg with dg-options, 2026-10-01: 3522 of 3875 files identical.
 
+- -Wattributes (2026-10-01): inline/noinline "follows" pair
+  (diagnose_mismatched_decls; the first at gcc's input_location, the second at
+  the declarator), `warn_unused_result` ignored on a void function (not on a
+  pointer-to-function variable: gcc also warns there, cereal does not yet),
+  `ualign` kept through redeclarations, and gcc's doubled
+  noreturn-after-alloc_align/alloc_size warning.  Wattributes-6.c now matches
+  gcc; test `check/attr_follows.c`.  ASAN/UBSAN re-run: 0 findings.
+  gcc.dg: 3523 of 3875 identical.
+
 ## Next work
 1. Mutated-corpus verdict parity: ran 2026-09-30 (bench/tools/mut.py, 170
    units x 30 mutants, seed 7, gcc 15.2): 5004 agree, 33 gcc-only semantic
