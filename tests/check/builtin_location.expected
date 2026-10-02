@@ -1,0 +1,42 @@
+builtin_location.c:8:8: warning: enumerator value for 'e0' is not an integer constant expression [-Wpedantic]
+    8 |   e0 = __FILE__ - __FILE__,
+      |        ^
+builtin_location.c:9:8: warning: enumerator value for 'e1' is not an integer constant expression [-Wpedantic]
+    9 |   e1 = __builtin_FILE () - __builtin_FILE (),
+      |        ^
+builtin_location.c:10:8: warning: ISO C does not support '__FUNCTION__' predefined identifier [-Wpedantic]
+   10 |   e2 = __FUNCTION__ - __FUNCTION__,
+      |        ^
+builtin_location.c:10:23: warning: ISO C does not support '__FUNCTION__' predefined identifier [-Wpedantic]
+   10 |   e2 = __FUNCTION__ - __FUNCTION__,
+      |                       ^
+builtin_location.c:10:8: warning: enumerator value for 'e2' is not an integer constant expression [-Wpedantic]
+   10 |   e2 = __FUNCTION__ - __FUNCTION__,
+      |        ^
+builtin_location.c:11:8: warning: enumerator value for 'e3' is not an integer constant expression [-Wpedantic]
+   11 |   e3 = __builtin_FUNCTION () - __builtin_FUNCTION (),
+      |        ^
+builtin_location.c:13:1: error: enumerator value for 'e4' is not an integer constant
+   13 | };
+      | ^
+builtin_location.c:19:5: error: size of array 'l2' is negative
+   19 | int l2[__builtin_LINE () == 20 ? 1 : -1];
+      |     ^
+builtin_location.c:21:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   21 | _Static_assert (_Generic (__builtin_fabsq (0), __float128: 1, default: 0), "q");
+      | ^
+builtin_location.c:21:17: warning: ISO C99 does not support '_Generic' [-Wpedantic]
+   21 | _Static_assert (_Generic (__builtin_fabsq (0), __float128: 1, default: 0), "q");
+      |                 ^
+builtin_location.c:22:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   22 | _Static_assert (_Generic (__builtin_infq (), double: 1, default: 0), "q2");
+      | ^
+builtin_location.c:22:17: warning: ISO C99 does not support '_Generic' [-Wpedantic]
+   22 | _Static_assert (_Generic (__builtin_infq (), double: 1, default: 0), "q2");
+      |                 ^
+builtin_location.c:22:1: error: static assertion failed: "q2"
+   22 | _Static_assert (_Generic (__builtin_infq (), double: 1, default: 0), "q2");
+      | ^
+builtin_location.c:25:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   25 | _Static_assert (__builtin_offsetof (struct C, i) == 1, "copy packed");
+      | ^

@@ -409,3 +409,13 @@ layouts, gcc rules ported, walk design).
   like gcc\x27s user-align bit).  c-c++-common rejects-valid 9 -> 5
   (builtin-has-attribute-2..7).  Golden has_attr_args.  Left: attr-copy
   (copy of packed bit-field offsetof), builtin_location, pr109884.
+- Round 12 (2026-10-02): c-c++-common rejects-valid 0 (n=657: 468 identical,
+  19 accepts-invalid); gcc.dg unchanged (3620/3875 identical, 0 rejects-valid).
+  vector_size is a type property in __builtin_has_attribute; copy(packed)
+  packs a field; __float128 base type and the six *q builtins (gnu=3);
+  __builtin_FILE/FUNCTION are K_ADDR const char *, __builtin_LINE is an ICE
+  (presumed_line scans back for #line); __builtin_constant_p is always an ICE
+  (gcc -O0); pointer difference of equal address constants folds (same_addr_const).
+  Goldens builtin_location, has_attr_args.  Tests 840; ASan+UBSan clean
+  (840/0; leaks at exit are not tracked).  Open: step 2 cheap accepts-invalid
+  list; -Wbidi-chars and UTF-8 "stray in program" (do at intern time).

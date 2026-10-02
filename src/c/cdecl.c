@@ -1512,10 +1512,10 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
 
 /* Whether the attribute `name` written with arguments have equals the query
  * want.  nonnull without arguments covers every parameter; nonnull(N,...)
- * is a list. */
+ * and alloc_size(N,M) are lists any element of which is found. */
 static bool attr_arg_eq(const char *name, const char *have, const char *want)
 {
-    if (!strcmp(name, "nonnull") && *want) {
+    if ((!strcmp(name, "nonnull") || !strcmp(name, "alloc_size")) && *want) {
         size_t n = strlen(want);
         const char *p;
         if (!*have)
@@ -5392,6 +5392,8 @@ static void declared_visit(Checker *c, uint32_t i)
     attrs_names(c, sn, &csym(c, ref)->aset);
     attrs_names_ptrs(c, idecl, &csym(c, ref)->aset);
     attrs_names(c, idecl, &csym(c, ref)->aset);
+    if (a.packed)               /* ignored (attrs_misapplied), so not kept */
+        aset_drop(c, csym(c, ref)->aset, "packed");
     if (csym(c, ref)->kind == CS_TYPEDEF && csym(c, ref)->aset &&
         type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
         uint32_t p[2] = {TYPE_IDX(csym(c, ref)->ty), csym(c, ref)->aset};
@@ -6368,6 +6370,8 @@ static void member_visit(Checker *c, uint32_t i)
     fi.dmsg = a.dep_msg;
     attrs_names(c, sp.node, &fi.aset);
     attrs_names(c, i, &fi.aset);
+    if (!fi.packed && cdecl_aset_has(c, fi.aset, "packed", NULL))
+        fi.packed = true;       /* copied from another declaration */
     vec_push(&c->fields, fi);
 }
 

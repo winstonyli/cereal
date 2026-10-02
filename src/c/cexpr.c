@@ -915,7 +915,7 @@ typedef struct BTab {
     const char *name, *hdr;
     unsigned char mismatch;
     const char *sig;
-    unsigned char gnu;       /* a built-in only outside -std=c99 */
+    unsigned char gnu;       /* 1: a built-in only outside -std=c99; 2, 3: only as __builtin_NAME (3: typed) */
 } BTab;
 
 /* any: the __builtin_ spelling, which exists in every mode */
@@ -927,7 +927,7 @@ static const BTab *bt_find(Checker *c, const char *name, bool any)
         int r = strcmp(name, cbuiltin_tab[mid].name);
         if (!r)
             return (cbuiltin_tab[mid].gnu == 1 && !c->opt.gnu && !any) ||
-                           (cbuiltin_tab[mid].gnu == 2 && !any)
+                           (cbuiltin_tab[mid].gnu >= 2 && !any)
                        ? NULL : (const BTab *)&cbuiltin_tab[mid];
         if (r < 0)
             hi = mid;
@@ -963,7 +963,8 @@ static TypeId bt_type(Checker *c, const char *s, size_t n)
             {"void", TY_VOID}, {"int", TY_INT}, {"char", TY_CHAR},
             {"long int", TY_LONG}, {"long long int", TY_LLONG},
             {"long unsigned int", TY_ULONG}, {"double", TY_DOUBLE},
-            {"float", TY_FLOAT}, {"long double", TY_LDOUBLE}
+            {"float", TY_FLOAT}, {"long double", TY_LDOUBLE},
+            {"__float128", TY_FLOAT128}
         };
         t = ERRT;
         for (k = 0; k < sizeof base / sizeof *base; k++)
@@ -2227,7 +2228,7 @@ static void e_ident(Checker *c, uint32_t i)
         if (!strncmp(name, "__builtin_", 10)) {
             /* a built-in with a library counterpart has that function's type */
             const BTab *bt = bt_find(c, name + 10, true);
-            TypeId ft = bt && bt->gnu != 2 ? bt_func_type(c, bt)
+            TypeId ft = bt && (bt->gnu != 2) ? bt_func_type(c, bt)
                                            : overflow_func_type(c, name + 10);
             if (!is_err(c, ft)) {
                 c->ty[i] = ft;
@@ -6153,6 +6154,84 @@ static void warn_for_abs(Checker *c, uint32_t i, const uint32_t *k, uint32_t n)
     }
 }
 
+static size_t asm_string(Checker *c, uint32_t n, char *out, size_t cap);
+
+/* The line loc has after the #line directives before it (found by scanning
+ * the text back; the checker has no line map). */
+static uint32_t presumed_line(Checker *c, SrcLoc loc)
+{
+    SrcFile *f = srcmgr_file_of(c->sm, loc);
+    uint32_t line, col, l, len;
+    if (!f)
+        return 0;
+    srcmgr_linecol(f, loc, &line, &col);
+    for (l = line; l-- > 1;) {
+        const char *t = srcmgr_line_text(f, l, &len), *e = t + len;
+        unsigned long v;
+        char *end;
+        while (t < e && (*t == ' ' || *t == '\t'))
+            t++;
+        if (t >= e || *t++ != '#')
+            continue;
+        while (t < e && (*t == ' ' || *t == '\t'))
+            t++;
+        if (e - t > 4 && !strncmp(t, "line", 4))
+            t += 4;
+        while (t < e && (*t == ' ' || *t == '\t'))
+            t++;
+        if (t >= e || *t < '0' || *t > '9')
+            continue;
+        v = strtoul(t, &end, 10);
+        return (uint32_t)(v + (line - (l + 1)));
+    }
+    return line;
+}
+
+/* A call of __builtin_FILE () or __builtin_FUNCTION (). */
+static bool loc_builtin(Checker *c, uint32_t i)
+{
+    uint32_t k[2], f;
+    const char *nm;
+    if (ntag(c, i) != N_CALL || nkids(c, i, k, 2) != 1)
+        return false;
+    f = strip_paren(c, k[0]);
+    if (f == NO_NODE || ntag(c, f) != N_IDENT)
+        return false;
+    nm = cident(c, cnode_ident(c, f));
+    return !strcmp(nm, "__builtin_FILE") || !strcmp(nm, "__builtin_FUNCTION");
+}
+
+/* __func__, __FUNCTION__ or __PRETTY_FUNCTION__: the function name. */
+static bool predef_ident(Checker *c, uint32_t n)
+{
+    const char *nm = cident(c, cnode_ident(c, n));
+    return lookup_ord(c, cnode_ident(c, n)) == SYM_NONE &&
+           (!strcmp(nm, "__func__") || !strcmp(nm, "__FUNCTION__") ||
+            !strcmp(nm, "__PRETTY_FUNCTION__"));
+}
+
+/* Two address operands that gcc folds to the same address: equal string
+ * literals, or the same __builtin_FILE/FUNCTION call. */
+static bool same_addr_const(Checker *c, uint32_t a, uint32_t b)
+{
+    char x[512], y[512];
+    size_t lx, ly;
+    a = strip_paren(c, a);
+    b = strip_paren(c, b);
+    if (a == NO_NODE || b == NO_NODE)
+        return false;
+    if (loc_builtin(c, a) && loc_builtin(c, b))
+        return cnode_ident(c, strip_paren(c, first_child(c, a))) ==
+               cnode_ident(c, strip_paren(c, first_child(c, b)));
+    if (ntag(c, a) == N_IDENT && ntag(c, b) == N_IDENT)
+        return predef_ident(c, a) && predef_ident(c, b);
+    if (ntag(c, a) != N_STRING || ntag(c, b) != N_STRING)
+        return false;
+    lx = asm_string(c, a, x, sizeof x);
+    ly = asm_string(c, b, y, sizeof y);
+    return lx < sizeof x - 1 && lx == ly && !memcmp(x, y, lx);
+}
+
 static void e_call(Checker *c, uint32_t i)
 {
     uint32_t k[3], n = nkids(c, i, k, 3), f;
@@ -6237,14 +6316,25 @@ static void e_call(Checker *c, uint32_t i)
                 c->ck[i] = K_ICE;
                 c->cv[i] = 1;
                 c->ef[i] = EF_INTOPS;
-            } else if (is_const(c, k[1])) {
-                c->ck[i] = K_FOLD;
-                c->cv[i] = 1;
-                c->ef[i] = EF_CST;
-            } else if (!in_function(c)) {
-                c->ck[i] = K_FOLD;
-                c->ef[i] = EF_CST;
+            } else {
+                /* at -O0 gcc folds the call to 1 for a constant, else 0 */
+                c->ck[i] = K_ICE;
+                c->cv[i] = is_const(c, k[1]);
+                c->ef[i] = EF_INTOPS;
             }
+            return;
+        }
+        if (!strcmp(name, "__builtin_LINE") && n == 1) {
+            c->ty[i] = TYPE_B(INT);
+            c->ck[i] = K_ICE;
+            c->cv[i] = presumed_line(c, cnode_loc(c, i));
+            c->ef[i] = EF_INTOPS;
+            return;
+        }
+        if (loc_builtin(c, i)) {        /* the address of a string */
+            c->ty[i] = type_ptr(TT, type_qual(TYPE_B(CHAR), TQ_CONST));
+            c->ck[i] = K_ADDR;
+            c->cb[i] = CB_NODE | i;
             return;
         }
         if (!strcmp(name, "__builtin_expect") && n >= 2) {
@@ -7774,6 +7864,26 @@ static void e_has_attr(Checker *c, uint32_t i)
         cdecl_attr_name(raw, an, sizeof an);
         cdecl_attr_args(c, k[1], args, sizeof args);
         nonnull = !strcmp(an, "nonnull");
+    }
+    if (!strcmp(an, "vector_size")) {
+        /* a property of the (vector) type itself, never of a declaration */
+        TypeId t;
+        if (ntag(c, k[0]) == N_TYPE_NAME)
+            t = type_of_typename(c, k[0]);
+        else if (node_err(c, k[0])) {
+            set_err(c, i);
+            return;
+        } else
+            t = c->ty[k[0]];
+        if (is_err(c, t)) {
+            set_err(c, i);
+            return;
+        }
+        t = type_canon(TT, t);
+        set_ice(c, i, TYPE_B(INT),
+                type_kind(TT, t) == TY_VECTOR &&
+                (!args[0] || (uint64_t)atoll(args) == type_ent(TT, t)->n));
+        return;
     }
     if (ntag(c, k[0]) == N_TYPE_NAME) {
         TypeId t = type_of_typename(c, k[0]);
@@ -9759,12 +9869,13 @@ static void ptr_diff(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     c->ty[i] = TYPE_MK(c->tgt->ptrdiff_type, 0);
     c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
     sz = elem_size(c, ta);
-    if (c->ck[a] == K_ADDR && c->ck[b] == K_ADDR && c->cb[a] == c->cb[b] &&
-        sz > 0 && !var_size(c, pa)) {
+    if (c->ck[a] == K_ADDR && c->ck[b] == K_ADDR && sz > 0 &&
+        !var_size(c, pa) && (c->cb[a] == c->cb[b] || same_addr_const(c, a, b))) {
         c->ck[i] = K_FOLD;
-        c->cv[i] = cexpr_trunc(c, c->ty[i],
-                               (uint64_t)((int64_t)(c->cv[a] - c->cv[b]) /
-                                          (int64_t)sz));
+        c->cv[i] = c->cb[a] == c->cb[b]
+            ? cexpr_trunc(c, c->ty[i], (uint64_t)((int64_t)(c->cv[a] - c->cv[b]) /
+                                                  (int64_t)sz))
+            : 0;
     }
 }
 
