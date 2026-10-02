@@ -200,9 +200,9 @@ static SrcLoc eof_input_loc(Parser *p)
         while (b[col - 1] == ' ' || b[col - 1] == '	')
             col++;
         /* ... unless a primary-expression error on that line moved it */
-        if (p->expr_err_tok && p->expr_err_tok - 1 < p->toks.len) {
+        if (p->err.expr_tok && p->err.expr_tok - 1 < p->toks.len) {
             uint32_t l2, c2;
-            srcmgr_linecol(f, p->toks.data[p->expr_err_tok - 1].t.loc, &l2, &c2);
+            srcmgr_linecol(f, p->toks.data[p->err.expr_tok - 1].t.loc, &l2, &c2);
             if (l2 == line && c2 > col)
                 col = c2;
         }
@@ -272,11 +272,11 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
                          va_list ap)
 {
     Diagnostic *d;
-    if (p->unwind || p->hush || (p->have_err && i <= p->last_err))
+    if (p->unwind || p->hush || (p->err.have && i <= p->err.last))
         return NULL; /* one error per place: no cascades */
-    p->have_err = true;
-    p->err_live = true;
-    p->last_err = i;
+    p->err.have = true;
+    p->err.live = true;
+    p->err.last = i;
     p->errors++;
     d = pvreport(p, DL_ERROR, "", loc, fmt, ap);
     if (d && !p->diag->track0 && i < p->toks.len && p->toks.data[i].exp &&
@@ -418,10 +418,12 @@ static bool expect(Parser *p, Punct x)
     char what[16], buf[160];
     if (accept(p, x))
         return true;
+    if (p->err.live)
+        return false;           /* c_parser_error is silent while parser->error is set */
     snprintf(what, sizeof what, "'%s'", punct_spelling[x]);
     /* gcc's c_parser_require puts a missing closing token, ';', ',' or
      * ':' after the previous token, unless an error is already pending */
-    if (!p->err_live && (x == P_RPAREN || x == P_RBRACKET || x == P_SEMI ||
+    if (!p->err.live && (x == P_RPAREN || x == P_RBRACKET || x == P_SEMI ||
                          x == P_COMMA || x == P_COLON))
         perr_after_prev(p, ci(p), "expected %s%s", what,
                         tok_desc(p, ci(p), buf, sizeof buf));
@@ -484,7 +486,7 @@ static void close_scope(Parser *p, SymSaveVec *save)
 static void sync_stmt(Parser *p)
 {
     int depth = 0;
-    p->err_live = false;
+    p->err.live = false;
     while (!at_eof(p)) {
         PTok t = ct(p);
         if (t.t.kind == TK_PUNCT) {
@@ -526,7 +528,17 @@ static void skip_until(Parser *p, Punct want)
         }
         adv(p);
     }
-    p->err_live = false;
+    p->err.live = false;
+}
+
+/* gcc's c_parser_skip_until_found (parser, WANT, msg): the missing token is
+ * reported, then skipped to. */
+static bool expect_skip(Parser *p, Punct want)
+{
+    if (expect(p, want))
+        return true;
+    skip_until(p, want);
+    return false;
 }
 
 /* Skip to the end of an external declaration: past a ';' at the top, or
@@ -534,7 +546,7 @@ static void skip_until(Parser *p, Punct want)
 static void sync_top(Parser *p)
 {
     int depth = 0;
-    p->err_live = false;
+    p->err.live = false;
     while (!at_eof(p)) {
         PTok t = ct(p);
         adv(p);
@@ -900,6 +912,7 @@ static void std_attribute(Parser *p)
             }
             adv(p);
         }
+        p->err.live = false;            /* skip_until_found cleared it */
         p->hush = true;                 /* parser->error is set */
         expect(p, P_RBRACKET);
         p->hush = hush;
@@ -1514,7 +1527,7 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             } else if (!at(p, P_RBRACKET)) {
                 parse_assign(p);
             }
-            expect(p, P_RBRACKET);
+            expect_skip(p, P_RBRACKET);
             emit(p, N_ARRAY, lb, start, flags);
             if (di->inner == DK_NONE)
                 di->inner = DK_ARRAY;
@@ -1626,10 +1639,10 @@ static void init_list(Parser *p)
                 parse_cond(p);
                 if (accept(p, P_ELLIPSIS)) {
                     parse_cond(p);
-                    expect(p, P_RBRACKET);
+                    expect_skip(p, P_RBRACKET);
                     emit(p, N_DESIG_RANGE, lbk, d, 0);
                 } else {
-                    expect(p, P_RBRACKET);
+                    expect_skip(p, P_RBRACKET);
                     emit(p, N_DESIG_INDEX, lbk, d, 0);
                 }
             } else if (!desig && is_name(p, &t) &&
@@ -1666,7 +1679,7 @@ static void init_list(Parser *p)
                 }
                 adv(p);
             }
-            p->err_live = false;
+            p->err.live = false;
             leaf(p, N_ERROR, at0);
             flags |= NF_ERROR;
         } else {
@@ -1750,7 +1763,7 @@ static void postfix_tail(Parser *p, uint32_t start)
             return;
         /* an erroneous primary: gcc's pending error silences the rest of
          * the postfix expression */
-        if (p->nodes.len && p->err_live &&
+        if (p->nodes.len && p->err.live &&
             p->nodes.data[p->nodes.len - 1].tag == N_ERROR && !p->hush) {
             p->hush = true;
             p->hushed = true;
@@ -1762,7 +1775,7 @@ static void postfix_tail(Parser *p, uint32_t start)
         case P_LBRACKET: {
             uint32_t lb = adv(p);
             parse_expr(p);
-            expect(p, P_RBRACKET);
+            expect_skip(p, P_RBRACKET);
             emit(p, N_INDEX, lb, start, 0);
             break;
         }
@@ -1828,7 +1841,7 @@ static void offsetof_expr(Parser *p)
         } else if (at(p, P_LBRACKET)) {
             uint32_t d = nmark(p), lb = adv(p);
             parse_expr(p);
-            expect(p, P_RBRACKET);
+            expect_skip(p, P_RBRACKET);
             emit(p, N_DESIG_INDEX, lb, d, 0);
         } else {
             break;
@@ -1988,8 +2001,8 @@ static void primary(Parser *p)
         break;
     }
     /* c_parser_error is silent while parser->error is set */
-    if (!p->err_live) {
-        p->expr_err_tok = ci(p) + 1; /* gcc sets input_location here */
+    if (!p->err.live) {
+        p->err.expr_tok = ci(p) + 1; /* gcc sets input_location here */
         expected(p, "expression");
     }
     emit(p, N_ERROR, i, start, NF_ERROR);
@@ -2419,7 +2432,7 @@ static void compound(Parser *p, bool push)
             break;
         before = p->pos;
         block_item(p);
-        p->err_live = false; /* gcc: parser->error is cleared after each item */
+        p->err.live = false; /* gcc: parser->error is cleared after each item */
         if (p->pos == before && !p->unwind) { /* no progress: skip */
             expected(p, "statement");
             adv(p);
@@ -2427,11 +2440,11 @@ static void compound(Parser *p, bool push)
     }
     if (!accept(p, P_RBRACE)) {
         flags |= NF_ERROR;
-        if (!p->unwind && !p->eof_stmt_err) {
+        if (!p->unwind && !p->err.eof_stmt) {
             /* c_parser_error: gcc has recovered from any earlier error and
              * reports the unclosed body once, at input_location */
-            p->eof_stmt_err = true;
-            p->have_err = false;
+            p->err.eof_stmt = true;
+            p->err.have = false;
             perr_at(p, ci(p), eof_input_loc(p), "expected declaration or "
                     "statement at end of input");
             diag_mark_last(p->diag, ORD_EOF);
@@ -2461,7 +2474,7 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
      * declaration of a parameter (K&R), diagnosed as such */
     while (!at(p, P_LBRACE) && !at_eof(p)) {
         PTok t = ct(p);
-        if (is_decl_start_la(p, &t)) {
+        if (is_decl_start_la(p, &t) && ckw(p) != CK_ATTRIBUTE) {   /* start_attr_ok is false */
             bool save = p->kr_params;
             p->kr_params = true;    /* no definition here (fndef_ok false) */
             declaration(p, false);
@@ -2621,7 +2634,7 @@ static void declaration(Parser *p, bool top)
                 if (top || p->kr_params || n > 0 || s.err)
                     sync_top(p); /* skip_to_end_of_block_or_statement */
                 else
-                    p->err_live = false; /* error = false after each item */
+                    p->err.live = false; /* error = false after each item */
             }
             /* gcc has not declared the name yet */
             if (!top && !p->kr_params && n == 0 && !s.err && !is_decl_start(p, &t))
@@ -2701,8 +2714,8 @@ bool parser_next(Parser *p, ParseUnit *u)
     }
     p->nodes.len = 0;
     p->saved.len = 0;
-    p->have_err = false;
-    p->err_live = false;
+    p->err.have = false;
+    p->err.live = false;
     if (fill(p, p->pos) && p->toks.data[p->pos].t.kind == TK_PRAGMA) {
         leaf(p, N_PRAGMA, p->pos);
         p->pos++;

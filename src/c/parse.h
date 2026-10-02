@@ -54,11 +54,13 @@ typedef struct Parser {
     uint8_t loop_pragma;        /* 1: #pragma GCC ivdep, 2: unroll just before the
                                  * statement being parsed */
     uint32_t unwind_to;
-    bool have_err;
-    uint32_t expr_err_tok;      /* 1 + token of the last "expected expression" */
-    bool eof_stmt_err;          /* the unclosed-body error was reported */
-    bool err_live;      /* gcc's parser->error: no sync since the last error */
-    uint32_t last_err;          /* token of the last error (no cascades) */
+    struct {                    /* gcc's parser->error and what hangs off it */
+        bool have;              /* an error was reported since the unit began */
+        bool live;              /* parser->error: no sync since the last error */
+        bool eof_stmt;          /* the unclosed-body error was reported */
+        uint32_t last;          /* token of the last error (no cascades) */
+        uint32_t expr_tok;      /* 1 + token of the last "expected expression" */
+    } err;
     uint64_t units, errors;
     uint64_t soft_errors; /* of errors: a stray token after a complete
                            * declaration, which gcc still processes */

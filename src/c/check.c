@@ -144,7 +144,9 @@ uint32_t cbol_tok(Checker *c, uint32_t tok)
 {
     uint32_t k, bol = 0;        /* bol: BOL token + 1, 0 when none */
     for (k = tok + 1; k-- > 0;) {
-        if (c->il_first == c->u->first_tok && c->il_tok == k + 1) {    /* the memo: callers walk forward */
+        /* the memo covers [its BOL token, its token]: no BOL lies in between */
+        if (c->il_first == c->u->first_tok && c->il_tok > k &&
+            k + 1 >= (c->il_bol ? c->il_bol : 1)) {
             bol = c->il_bol;
             break;
         }

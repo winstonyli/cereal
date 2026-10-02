@@ -1,0 +1,10 @@
+kr_attr_start.c:1:16: error: expected declaration specifiers before 'asm'
+    1 | int lib(int n) asm("lib");
+      |                ^
+kr_attr_start.c:4:1: error: expected '=', ',', ';', 'asm' or '__attribute__' before '{' token
+    4 | {
+      | ^
+kr_attr_start.c:7:1: error: expected declaration specifiers before '__attribute__'
+    7 | __attribute__((noinline))
+      | ^
+kr_attr_start.c:12: error: expected '{' at end of input

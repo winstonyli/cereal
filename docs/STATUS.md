@@ -271,8 +271,29 @@ layouts, gcc rules ported, walk design).
     that error (ORD_CUT around call_args, not only format checks).
   Goldens builtin_pfx_decl, expr_err_cascade.  gcc.dg 3587 of 3875 identical;
   tests 802; ASAN/UBSAN 0.
-  Perf lead: gcc.dg/pr59992.c (one function of ~100k `if (p[n]) { foo##n (..);
+  (Fixed 2026-10-02, see below.)  Old lead: gcc.dg/pr59992.c (one function of ~100k `if (p[n]) { foo##n (..);
   return; }`) takes ~70-85 s of cereal CPU in -fsyntax-only (also at a7b156c);
   bench/tools/par.py's 30 s timeout flags it when the machine is busy.  Likely
   something super-linear in the checker/parser per function body.
+
+- pr59992 perf, parser error state (2026-10-02):
+  * cbol_tok's memo now covers [BOL token, queried token], so backward queries
+    on a long macro-expanded line no longer rescan to the line start
+    (callgrind: 94% of a 10k-statement input).  pr59992.c 70-85 s -> 0.9 s;
+    dg timeouts=0, so par.py needs no long-timeout copy.  check icount +0.1%.
+  * Parser error state is one struct `p->err` {have, live, eof_stmt, last,
+    expr_tok}; `errors`/`soft_errors` stay as cross-module counters (main.c).
+  * `expect()` is silent while err.live (c_parser_error).  `expect_skip` =
+    gcc's c_parser_skip_until_found for `]` in array declarators, designators
+    and subscripts (not attributes: they have their own skip).  The K&R
+    declaration-list loop rejects a leading __attribute__ (start_attr_ok
+    false) -> "expected declaration specifiers before '__attribute__'".
+    Trying expect_skip for `)` in expressions gained nothing and broke 4
+    goldens; reverted.
+  Goldens bracket_skip, err_live_expect, kr_attr_start.  gcc.dg 3590 of 3875
+  identical; tests 808; ASAN/UBSAN 0.  Open: `int a[2, 3];` still declares `a`
+  (gcc drops it: later "'a' undeclared" missing); `z[1, 2;` orders the
+  subscript diagnostic before the syntax error; nofixed-point-1 needs
+  gnu-mode `_Fract/_Accum/_Sat` keywords ("fixed-point types not supported for
+  this target" + pedwarns); for-1's line numbers after `# 0` linemarkers.
 
