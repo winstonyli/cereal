@@ -56,6 +56,7 @@ typedef struct Parser {
                                  * statement being parsed */
     uint32_t unwind_to;
     bool have_err;
+    uint32_t expr_err_tok;      /* 1 + token of the last "expected expression" */
     bool eof_stmt_err;          /* the unclosed-body error was reported */
     bool err_live;      /* gcc's parser->error: no sync since the last error */
     uint32_t last_err;          /* token of the last error (no cascades) */

@@ -216,3 +216,26 @@ layouts, gcc rules ported, walk design).
   Remaining order-only files: 20020104-1, asm-8, init-bad-4, pr105853,
   redecl-21, spellcheck-inttypes, struct-semi-4, vla-stexp-8 and two more.
 
+- Recovery locations and ordering round 3 (2026-10-02):
+  * After "expected '=', ',', ';' ..." gcc skips to the end of the block or
+    statement (consuming a `}`) for a later declarator (n > 0) or an unknown
+    type name (`Specs.err`); the first declarator of a known type just returns
+    (and gets the nested-function pedwarn).  Fixes the missing "expected
+    declaration or statement at end of input" (pr98198, pr54355).
+  * That EOF error sits at input_location: the first token of the last line,
+    or the last "expected expression" token on that line (`Parser.expr_err_tok`).
+  * "conflicting types for 'f'; have 'void()'" (implicit decl vs definition)
+    is at the name; its note shows the new type.
+  * diag_merge_from flags: `Diagnostic.eof` (unclosed-body error goes after
+    all checker diags), `tie` (parser "no semicolon at end of struct": checker
+    diags at the same loc first), `early` (checker diag before a parser one at
+    the same loc: label-declaration pedwarn), `cut` (call with a missing ')'
+    (`NF_CUT`): its format warnings follow that syntax error), `late` now also
+    for unused-variable (scope close) and "struct has no named members".
+    Braced-group pedwarn is hoisted before the scope-end diags.
+  Goldens eof_expr_loc, decl_skip_brace, unk_type_skip, implicit_void_def,
+  stexp_unused_ord, struct_semi_ord, call_cut_fmt.  gcc.dg: 3583+ of 3875
+  identical; order-only differences 110 -> 3 (binary-constants-1, init-bad-4,
+  one more); tests 798, corpus 0/0, ASAN/UBSAN 0; check 3.373G.  Known gap:
+  the "'X' is defined in header" note of spellcheck-inttypes.
+

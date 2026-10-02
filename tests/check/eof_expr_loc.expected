@@ -1,0 +1,6 @@
+eof_expr_loc.c:4:7: error: expected expression before '_Complex'
+    4 |   z = _Complex (1, 0);
+      |       ^
+eof_expr_loc.c:4:7: error: expected declaration or statement at end of input
+    4 |   z = _Complex (1, 0);
+      |       ^

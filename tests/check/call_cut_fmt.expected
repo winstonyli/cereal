@@ -1,0 +1,12 @@
+call_cut_fmt.c:5:14: error: expected ')' before 'PRIfoo'
+    5 |   printf ("%" PRIfoo "\n", i);
+      |              ^
+call_cut_fmt.c:5:12: warning: spurious trailing '%' in format [-Wformat=]
+    5 |   printf ("%" PRIfoo "\n", i);
+      |            ^
+call_cut_fmt.c:6:14: error: expected ')' before 'PRIfoo'
+    6 |   printf ("%" PRIfoo "\n", i);
+      |              ^
+call_cut_fmt.c:6:12: warning: spurious trailing '%' in format [-Wformat=]
+    6 |   printf ("%" PRIfoo "\n", i);
+      |            ^

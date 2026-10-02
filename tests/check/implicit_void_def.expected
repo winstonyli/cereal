@@ -1,0 +1,18 @@
+implicit_void_def.c:1:22: warning: implicit declaration of function 'g' [-Wimplicit-function-declaration]
+    1 | int f(void) { return g(1); }
+      |                      ^
+implicit_void_def.c:2:6: warning: conflicting types for 'g'; have 'void()'
+    2 | void g() { }
+      |      ^
+implicit_void_def.c:1:22: note: previous implicit declaration of 'g' with type 'void()'
+    1 | int f(void) { return g(1); }
+      |                      ^
+implicit_void_def.c:3:22: warning: implicit declaration of function 'k' [-Wimplicit-function-declaration]
+    3 | int h(void) { return k(1); }
+      |                      ^
+implicit_void_def.c:4:6: warning: conflicting types for 'k'; have 'void(int)'
+    4 | void k(int a) { }
+      |      ^
+implicit_void_def.c:3:22: note: previous implicit declaration of 'k' with type 'void(int)'
+    3 | int h(void) { return k(1); }
+      |                      ^

@@ -30,6 +30,13 @@ typedef struct Diagnostic {
     int ninc;
     bool late;               /* gcc reports it after a syntax error that
                                 follows (K&R parameter checks) */
+    bool cut;                /* a call cut short by a syntax error: gcc
+                                checks it after that error */
+    bool tie;                /* checker diagnostics at its location first */
+    bool eof;                /* the unclosed-body error: after everything
+                                the body's checking reports */
+    bool early;              /* gcc reports it before a syntax error at
+                                the same place (label-declaration pedwarn) */
     bool promoted;           /* a warning made an error by -Werror[=X]:
                                 shown as [-Werror=X] like gcc */
     const char *fixit;       /* optional suggested replacement text */
@@ -81,6 +88,8 @@ typedef struct DiagEngine {
     uint32_t memo_gen;
     uint8_t memo[512];
     bool late;               /* mark new diagnostics late */
+    bool early;              /* mark new diagnostics early */
+    bool cut;                /* mark new diagnostics cut */
 } DiagEngine;
 
 /* Warning option registry.  An option is enabled by an explicit -W flag,

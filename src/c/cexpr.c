@@ -5285,9 +5285,13 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
         pt = type_params(TT, type_ent(TT, ufty)->kind == TY_FUNC ? ufty : fty);
         if (mask)
             check_nonnull(c, kv, nk, mask, pt, nparm, proto, false, loc);
-        if (csym(c, fref)->fmt || builtin_decl_ok(c, csym(c, fref)))
+        if (csym(c, fref)->fmt || builtin_decl_ok(c, csym(c, fref))) {
+            /* a call cut short by a syntax error is checked after it */
+            c->diag->cut = (c->nodes[i].flags & NF_CUT) != 0;
             check_format_literal(c, kv, nk, csym(c, fref),
                                  cident(c, csym(c, fref)->name), loc);
+            c->diag->cut = false;
+        }
     }
     if (!too_many && !bad && proto && nparm > 1 && fref != SYM_NONE &&
         csym(c, fref)->parms)
@@ -7451,7 +7455,13 @@ static void e_stmt_expr(Checker *c, uint32_t i)
         set_err(c, i);
         return;
     }
-    ped(c, i, loc, "ISO C forbids braced-groups within expressions");
+    {
+        size_t n0 = c->diag->all.len;
+        ped(c, i, loc, "ISO C forbids braced-groups within expressions");
+        /* gcc: after the body, before its scope closes (unused variables) */
+        if (k >= 1 && ntag(c, k - 1) == N_SCOPE_END)
+            choist(c, k - 1, n0);
+    }
     c->ty[i] = TYPE_B(VOID);
     c->ef[i] = EF_SIDE;
     if (c->nodes[i].size >= 4 && k >= 3 && ntag(c, k - 1) == N_SCOPE_END &&

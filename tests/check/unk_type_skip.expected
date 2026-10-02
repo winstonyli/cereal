@@ -1,0 +1,12 @@
+unk_type_skip.c:5:11: warning: a label can only be part of a statement and a declaration is not a statement [-Wpedantic]
+    5 |   case 0: T x >
+      |           ^
+unk_type_skip.c:5:11: error: unknown type name 'T'
+    5 |   case 0: T x >
+      |           ^
+unk_type_skip.c:5:15: error: expected '=', ',', ';', 'asm' or '__attribute__' before '>' token
+    5 |   case 0: T x >
+      |               ^
+unk_type_skip.c:7:1: error: expected declaration or statement at end of input
+    7 | }
+      | ^

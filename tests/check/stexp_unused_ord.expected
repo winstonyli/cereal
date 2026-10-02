@@ -1,0 +1,6 @@
+stexp_unused_ord.c:4:11: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    4 |   int s = ({ int n = 0; 1; });
+      |           ^
+stexp_unused_ord.c:4:18: warning: unused variable 'n' [-Wunused-variable]
+    4 |   int s = ({ int n = 0; 1; });
+      |                  ^

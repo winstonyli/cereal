@@ -1,0 +1,6 @@
+decl_skip_brace.c:4:1: error: expected '=', ',', ';', 'asm' or '__attribute__' before '}' token
+    4 | }
+      | ^
+decl_skip_brace.c:5:1: error: expected declaration or statement at end of input
+    5 | int g;
+      | ^

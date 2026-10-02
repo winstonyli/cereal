@@ -1,0 +1,9 @@
+struct_semi_ord.c:2:30: warning: ISO C99 doesn't support unnamed structs/unions [-Wpedantic]
+    2 | struct s { struct { int a; } };
+      |                              ^
+struct_semi_ord.c:2:30: warning: no semicolon at end of struct or union
+    2 | struct s { struct { int a; } };
+      |                              ^
+struct_semi_ord.c:2:8: warning: struct has no named members [-Wpedantic]
+    2 | struct s { struct { int a; } };
+      |        ^

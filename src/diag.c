@@ -552,6 +552,8 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     dg = NEW(d->arena, Diagnostic);
     dg->promoted = promoted;
     dg->late = d->late;
+    dg->early = d->early;
+    dg->cut = d->cut;
     dg->level = lvl;
     dg->id = id ? id : "";
     dg->loc = loc;
@@ -823,7 +825,16 @@ void diag_merge_from(DiagEngine *d, size_t from, size_t mid)
     out = xmalloc(n * sizeof *out);
     while (i < mid && j < d->all.len) {
         SrcLoc pl = d->all.data[i]->loc;
-        if (pl && !d->all.data[j]->late && d->all.data[j]->loc < pl)
+        Diagnostic *cj = d->all.data[j];
+        if (cj->cut) {
+            if (i > from && d->all.data[i - 1]->loc >= cj->loc)
+                out[k++] = d->all.data[j++];
+            else
+                out[k++] = d->all.data[i++];
+        } else if (pl && !d->all.data[j]->late &&
+            (d->all.data[i]->eof || d->all.data[j]->loc < pl ||
+             (d->all.data[i]->tie && d->all.data[j]->loc == pl) ||
+             (d->all.data[j]->early && d->all.data[j]->loc == pl)))
             out[k++] = d->all.data[j++];
         else
             out[k++] = d->all.data[i++];

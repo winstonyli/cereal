@@ -199,6 +199,13 @@ static SrcLoc eof_input_loc(Parser *p)
         col = 1;
         while (b[col - 1] == ' ' || b[col - 1] == '	')
             col++;
+        /* ... unless a primary-expression error on that line moved it */
+        if (p->expr_err_tok && p->expr_err_tok - 1 < p->toks.len) {
+            uint32_t l2, c2;
+            srcmgr_linecol(f, p->toks.data[p->expr_err_tok - 1].t.loc, &l2, &c2);
+            if (l2 == line && c2 > col)
+                col = c2;
+        }
     }
     return srcmgr_loc_of(f, line, col);
 }
@@ -356,6 +363,8 @@ static void pwarn(Parser *p, uint32_t i, const char *fmt, ...)
     va_start(ap, fmt);
     diag_vreport(p->diag, DL_WARNING, "", tok_loc(p, i), fmt, ap);
     va_end(ap);
+    if (p->diag->all.len)
+        p->diag->all.data[p->diag->all.len - 1]->tie = true;
     p->diag->include_chain = chain;
 }
 
@@ -1026,6 +1035,7 @@ typedef struct Specs {
     bool type;                  /* a type specifier */
     bool is_typedef;
     bool gimple;                /* __GIMPLE: the body is not C */
+    bool err;                   /* an unknown type name */
 } Specs;
 
 static void struct_spec(Parser *p);
@@ -1142,6 +1152,7 @@ static void specs(Parser *p, Specs *s, Lookahead la)
                 unknown_type_error(p, &t);
                 emit(p, N_TYPEDEF_NAME, adv(p), nmark(p), NF_ERROR);
                 s->type = true;
+                s->err = true;
                 break;
             }
             goto done;
@@ -1721,8 +1732,7 @@ static void postfix_tail(Parser *p, uint32_t start)
                 while (accept(p, P_COMMA))
                     parse_assign(p);
             }
-            expect(p, P_RPAREN);
-            emit(p, N_CALL, lp, start, 0);
+            emit(p, N_CALL, lp, start, expect(p, P_RPAREN) ? 0 : NF_CUT);
             break;
         }
         case P_DOT: case P_ARROW: {
@@ -1933,6 +1943,7 @@ static void primary(Parser *p)
     default:
         break;
     }
+    p->expr_err_tok = ci(p) + 1; /* gcc sets input_location here */
     expected(p, "expression");
     emit(p, N_ERROR, i, start, NF_ERROR);
 }
@@ -2373,6 +2384,8 @@ static void compound(Parser *p, bool push)
             p->have_err = false;
             perr_at(p, ci(p), eof_input_loc(p), "expected declaration or "
                     "statement at end of input");
+            if (p->diag->all.len)
+                p->diag->all.data[p->diag->all.len - 1]->eof = true;
         }
     }
     if (push)
@@ -2556,13 +2569,13 @@ static void declaration(Parser *p, bool top)
                 expected(p, "'=', ',', ';', 'asm' or '__attribute__'");
                 /* gcc's c_parser_declaration_or_fndef just returns: in a
                  * block the statements go on from this very token */
-                if (top || p->kr_params)
-                    sync_top(p);
+                if (top || p->kr_params || n > 0 || s.err)
+                    sync_top(p); /* skip_to_end_of_block_or_statement */
                 else
                     p->err_live = false; /* error = false after each item */
             }
             /* gcc has not declared the name yet */
-            if (!top && !p->kr_params && n == 0 && !is_decl_start(p, &t))
+            if (!top && !p->kr_params && n == 0 && !s.err && !is_decl_start(p, &t))
                 flags |= NF_NESTED; /* ... but warned of a nested function */
             emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;

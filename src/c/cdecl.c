@@ -2430,8 +2430,12 @@ static void specs_visit(Checker *c, uint32_t i)
             cfirst(c, d) == cfirst(c, i) &&
             (ntag(c, l) == N_LABEL || ntag(c, l) == N_CASE ||
              ntag(c, l) == N_DEFAULT))
+        {
+            c->diag->early = true;
             cpedantic(c, s.loc, "a label can only be part of a statement "
                       "and a declaration is not a statement");
+            c->diag->early = false;
+        }
     }
     s.tok1 = s.tok0;
     kids_get(c, i, &k);
@@ -4019,7 +4023,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
 {
     TypeId newtype = nw->ty, oldtype = o->ty;
     Diagnostic *d, *wd = NULL;
-    bool pedwarned = false, enum_and_int = false;
+    bool pedwarned = false, enum_and_int = false, note_new = false;
     *newtypep = newtype;
     *oldtypep = oldtype;
     if (is_err(c, oldtype) || is_err(c, newtype))
@@ -4054,11 +4058,12 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                        is_void(c, type_base(TT, newtype)) &&
                        type_canon(TT, type_base(TT, oldtype)) == TYPE_B(INT) &&
                        (o->flags & CSF_IMPLICIT) && !sym_defined(o)) {
-                d = cpedwarn(c, iloc(c, c->cd_ltok), "", "conflicting types "
-                             "for '%s'; have %s", sname(c, nw),
-                             type_q(TT, newtype));
+                d = cpedwarn(c, sym_defined(nw) ? nw->loc : iloc(c, c->cd_ltok),
+                             "", "conflicting types for '%s'; have %s",
+                             sname(c, nw), type_q(TT, newtype));
                 pedwarned = d != NULL;
                 wd = d;
+                note_new = true; /* gcc retypes the implicit decl first */
                 oldtype = newtype;
                 *oldtypep = oldtype;
             } else if (nw->kind == CS_FUNC && func_err_param(c, newtype)) {
@@ -4211,7 +4216,11 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
         wd = cwarn_d(c, DL_WARNING, nw->loc, "redundant-decls", "redundant "
                      "redeclaration of '%s'", sname(c, nw));
     if (wd || pedwarned)
-        locate_old_decl(c, wd, o);
+    {
+        CSym tmp = *o;
+        tmp.ty = newtype;
+        locate_old_decl(c, wd, note_new ? &tmp : o);
+    }
     return true;
 }
 
@@ -5719,12 +5728,14 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
             if (f[k].name)
                 named = true;
         if (!named) {
+            c->diag->late = n > 0; /* finish_struct: after a missing semicolon */
             if (want == TY_UNION)
                 cpedantic(c, loc, n ? "union has no named members"
                                     : "union has no members");
             else
                 cpedantic(c, loc, n ? "struct has no named members"
                                     : "struct has no members");
+            c->diag->late = false;
         }
     }
     for (k = 0; k < n; k++) {
@@ -7392,8 +7403,10 @@ static void unused_scan(Checker *c, uint32_t first, uint32_t last)
         cstmt_emit_labels(c, first, (int64_t)cand[j]);
         if (s->kind == CS_OBJ && !(s->flags & CSF_PARAM) && s->name) {
             if (!(s->flags & CSF_USED)) {
+                c->diag->late = true; /* reported when the scope closes */
                 cwarn(c, s->loc, "unused-variable", "unused variable '%s'",
                       sname(c, s));
+                c->diag->late = false;
                 if (sym_public(s))
                     s->flags |= CSF_USED;
             } else if (!read[j] && !sym_public(s) &&
