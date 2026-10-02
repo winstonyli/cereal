@@ -25,6 +25,8 @@ void options_init(Options *o)
 
 /* --param NAME=VALUE: the parameter only matters to the middle end, but gcc
  * rejects an unknown name or a value out of range. */
+static void check_dump(Options *o, const char *a);
+
 static void check_param(Options *o, const char *arg)
 {
     const char *eq = strchr(arg, '=');
@@ -165,7 +167,9 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     } else if (!strncmp(a, "-ftrack-macro-expansion=", 24)) {
         o->track0 = a[24] == '0';
     } else if (!strncmp(a, "-fdump-", 7) || !strncmp(a, "-fcompare-debug", 15)) {
-        /* middle-end only: no effect on diagnostics */
+        /* middle-end only: no effect on diagnostics, but the pass names are
+         * checked */
+        check_dump(o, a);
     } else if (!strcmp(a, "--param")) {
         check_param(o, arg_value(argc, argv, &i, "--param"));
     } else if (!strncmp(a, "--param=", 8)) {
@@ -304,6 +308,58 @@ static void bad_wopt(Options *o, const char *flag)
     else
         fprintf(stderr, "cereal: error: unrecognized command-line option "
                 "'-W%s'\n", flag);
+    o->bad_options++;
+}
+
+/* -fdump-{ipa,tree,rtl}-PASS[-flags][=file]: gcc rejects an unknown pass
+ * (the table is src/gcc_dumps.h, probed from gcc-13). */
+static void check_dump(Options *o, const char *a)
+{
+    static const struct { const char *name; int reg; } dumps[] = {
+#include "gcc_dumps.h"
+    };
+    enum { ND = sizeof dumps / sizeof *dumps };
+    const char *rest = a + 7, *dym = NULL;
+    size_t k, len, cut;
+    char *cand;
+    Best b;
+    uint64_t work = 0;
+    if (strncmp(rest, "ipa-", 4) && strncmp(rest, "tree-", 5) &&
+        strncmp(rest, "rtl-", 4))
+        return;
+    len = strcspn(rest, "=");
+    /* a pass name followed by dump flags: any '-' boundary may end the name */
+    for (cut = len;; cut--) {
+        if (cut == len || rest[cut] == '-')
+            for (k = 0; k < ND; k++)
+                if (strlen(dumps[k].name) == cut &&
+                    !strncmp(dumps[k].name, rest, cut))
+                    return;
+        if (cut == 0)
+            break;
+    }
+    cand = malloc(64 + len);
+    if (cand) {
+        char (*nm)[96] = malloc(ND * sizeof *nm);
+        if (nm) {
+            best_init(&b, rest, &work);
+            for (k = 0; k < ND; k++) {
+                if (!dumps[k].reg)
+                    continue;
+                snprintf(nm[k], sizeof nm[k], "%s", dumps[k].name);
+                best_consider(&b, nm[k]);
+            }
+            dym = best_get(&b);
+        }
+        if (dym)
+            fprintf(stderr, "cereal: error: unrecognized command-line option "
+                    "'%s'; did you mean '-fdump-%s'?\n", a, dym);
+        else
+            fprintf(stderr, "cereal: error: unrecognized command-line option "
+                    "'%s'\n", a);
+        free(nm);
+        free(cand);
+    }
     o->bad_options++;
 }
 

@@ -1128,6 +1128,7 @@ static bool prints_value(Checker *c, uint32_t i)
 static bool pfloat(Checker *c, StrBuf *sb, const char *s, size_t len);
 static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec);
 static void pcond_arm(Checker *c, StrBuf *sb, uint32_t arm, TypeId rt, int prec);
+static void pcond_test(Checker *c, StrBuf *sb, uint32_t cond);
 
 /* Operand i converted to type t (an implicit conversion prints as a
  * cast). */
@@ -1295,6 +1296,74 @@ static bool const_through(Checker *c, uint32_t i)
     return false;
 }
 
+/* The condition of `?:` as gcc prints it after truth-value conversion:
+ * `(c) != 0`, `(d) != (0.0)`, `(a) < (b)`, `(c) == 0` for `!c`. */
+static void pcond_test(Checker *c, StrBuf *sb, uint32_t cond)
+{
+    uint32_t e = strip_paren(c, cond), k[3];
+    TypeId t;
+    int op;
+    if (e == NO_NODE || has_ival(c, e) || prints_value(c, e) ||
+        c->ck[e] == K_ERR || is_err(c, c->ty[e])) {
+        pexpr(c, sb, cond, PR_LOR);
+        return;
+    }
+    t = rvt(c, e);
+    if (ntag(c, e) == N_BINARY && nkids(c, e, k, 3) == 2) {
+        op = npunct(c, e);
+        if (op == P_ANDAND || op == P_OROR) {
+            pcond_test(c, sb, k[0]);
+            sb_puts(sb, op == P_ANDAND ? " && " : " || ");
+            pcond_test(c, sb, k[1]);
+            return;
+        }
+        if (bin_prec(op) == PR_EQ || bin_prec(op) == PR_REL) {
+            bool ar = is_arith(c, rvt(c, k[0])) && is_arith(c, rvt(c, k[1]));
+            if (ar) {
+                sb_putc(sb, '(');
+                pexpr(c, sb, k[0], PR_COMMA);
+                sb_putc(sb, ')');
+            } else {
+                pexpr(c, sb, k[0], bin_prec(op));
+            }
+            sb_printf(sb, " %s ", punct_spelling[op]);
+            if (ar) {
+                sb_putc(sb, '(');
+                pexpr(c, sb, k[1], PR_COMMA);
+                sb_putc(sb, ')');
+            } else {
+                pexpr(c, sb, k[1], bin_prec(op) + 1);
+            }
+            return;
+        }
+    }
+    if (ntag(c, e) == N_UNARY && npunct(c, e) == P_BANG &&
+        nkids(c, e, k, 3) == 1 && is_arith(c, rvt(c, k[0]))) {
+        sb_putc(sb, '(');
+        pexpr(c, sb, k[0], PR_COMMA);
+        sb_puts(sb, ") == 0");
+        return;
+    }
+    if (is_ptr(c, t)) {
+        pexpr(c, sb, e, PR_EQ);
+        sb_puts(sb, " != 0");
+    } else if (is_arith(c, t)) {
+        sb_putc(sb, '(');
+        if (tkind(c, t) == TY_CHAR || tkind(c, t) == TY_SCHAR) {
+            sb_puts(sb, "(signed char)");
+            pexpr(c, sb, e, PR_UNARY);
+        } else if (tkind(c, t) == TY_UCHAR) {
+            sb_puts(sb, "(unsigned char)");
+            pexpr(c, sb, e, PR_UNARY);
+        } else {
+            pexpr(c, sb, e, PR_COMMA);
+        }
+        sb_puts(sb, is_flt(c, t) ? ") != (0.0)" : ") != 0");
+    } else {
+        pexpr(c, sb, cond, PR_LOR);
+    }
+}
+
 /* An arm of `?:` with a pointer result: gcc prints it converted to the
  * result type (an array arm as the address of the whole array). */
 static void pcond_arm(Checker *c, StrBuf *sb, uint32_t arm, TypeId rt, int prec)
@@ -1398,7 +1467,7 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
     case N_COND:
         if (n < 2)
             break;
-        pexpr(c, sb, k[0], PR_LOR);
+        pcond_test(c, sb, k[0]);
         sb_puts(sb, " ? ");
         if (n == 3)
             pcond_arm(c, sb, k[1], c->ty[i], PR_COMMA);

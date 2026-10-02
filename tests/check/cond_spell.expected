@@ -1,0 +1,36 @@
+cond_spell.c:3:18: error: assignment of read-only location '*((c) != 0 ? (const double *)r : q)'
+    3 |     *(c ? r : q) = 1;
+      |                  ^
+cond_spell.c:4:18: error: assignment of read-only location '*((l) != 0 ? (const double *)r : q)'
+    4 |     *(l ? r : q) = 1;
+      |                  ^
+cond_spell.c:5:18: error: assignment of read-only location '*((d) != (0.0) ? (const double *)r : q)'
+    5 |     *(d ? r : q) = 1;
+      |                  ^
+cond_spell.c:6:18: error: assignment of read-only location '*(r != 0 ? (const double *)r : q)'
+    6 |     *(r ? r : q) = 1;
+      |                  ^
+cond_spell.c:7:22: error: assignment of read-only location '*((a) < (b) ? (const double *)r : q)'
+    7 |     *(a < b ? r : q) = 1;
+      |                      ^
+cond_spell.c:8:19: error: assignment of read-only location '*((c) == 0 ? (const double *)r : q)'
+    8 |     *(!c ? r : q) = 1;
+      |                   ^
+cond_spell.c:9:23: error: assignment of read-only location '*((a) != 0 && (b) != 0 ? (const double *)r : q)'
+    9 |     *(a && b ? r : q) = 1;
+      |                       ^
+cond_spell.c:10:20: error: assignment of read-only location '*((c) != 0 ? (const double *)r : q)'
+   10 |     *((c) ? r : q) = 1;
+      |                    ^
+cond_spell.c:11:22: error: assignment of read-only location '*((a + b) != 0 ? (const double *)r : q)'
+   11 |     *(a + b ? r : q) = 1;
+      |                      ^
+cond_spell.c:12:19: error: assignment of read-only location '*(((signed char)ch) != 0 ? (const double *)r : q)'
+   12 |     *(ch ? r : q) = 1;
+      |                   ^
+cond_spell.c:13:18: error: assignment of read-only location '*((u) != 0 ? (const double *)r : q)'
+   13 |     *(u ? r : q) = 1;
+      |                  ^
+cond_spell.c:14:20: error: assignment of read-only location '*((c++) != 0 ? (const double *)r : q)'
+   14 |     *(c++ ? r : q) = 1;
+      |                    ^
