@@ -92,6 +92,11 @@ layouts, gcc rules ported, walk design).
   Goldens vec_conv, fatal_errors.  icount loop.c: parse 1.707G, check 3.294G
   (+1.3% vs 3.25G, after ef became 32 bits).  gcc.dg: 3553 of 3875 identical;
   tests 768, corpus 0/0, ASAN/UBSAN 0.
+- Diagnostic ORDER (measured 2026-10-01): of the 3553 dg files with the right
+  multiset, 109 (3%) print in a different order than gcc (parser errors come
+  before checker diagnostics).  Sorting by line fixes 10 of them but breaks 54
+  that match today, so a cheap merge does not work; only true incremental
+  parse/check interleaving would.  Low value (diagstat ignores order): parked.
 
 ## Next work
 1. Mutated-corpus verdict parity: ran 2026-09-30 (bench/tools/mut.py, 170
