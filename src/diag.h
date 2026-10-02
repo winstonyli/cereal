@@ -74,6 +74,9 @@ typedef struct DiagEngine {
      * literals); a hit is verified by name */
     const char *idc_key[128];
     int16_t idc_val[128];
+    /* option -> level+1 under the config generation memo_gen (0: unknown) */
+    uint32_t memo_gen;
+    uint8_t memo[512];
 } DiagEngine;
 
 /* Warning option registry.  An option is enabled by an explicit -W flag,

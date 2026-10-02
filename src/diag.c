@@ -195,12 +195,16 @@ struct DiagConfig {
     bool werror;
     bool pedantic;
     signed char conv;        /* -Wconversion given: 1 on, -1 off, 0 unset */
+    uint32_t gen;            /* changes with every edit: keys DiagEngine.memo */
 };
+
+static uint32_t cfg_gen_next;
 
 DiagConfig *diag_config_new(void)
 {
     DiagConfig *c = xcalloc(1, sizeof(DiagConfig));
     memset(c->umbrella, -1, sizeof c->umbrella);
+    c->gen = ++cfg_gen_next;
     return c;
 }
 
@@ -216,6 +220,7 @@ DiagConfig *diag_config_clone(const DiagConfig *c)
         *n = *c;
     else
         memset(n->umbrella, -1, sizeof n->umbrella);
+    n->gen = ++cfg_gen_next;
     return n;
 }
 
@@ -316,6 +321,7 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
                                                      "implicit"};
     bool on = true, err = false;
     size_t i;
+    c->gen = ++cfg_gen_next;
     bool found = false;
     if (strcmp(flag, "error") == 0) {
         c->werror = true;
@@ -467,7 +473,19 @@ DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested)
     i = find_index_cached(d, id);
     if (i < 0)
         return requested;
-    option_state(d->cfg, (size_t)i, &l);
+    {
+        uint32_t g = d->cfg ? d->cfg->gen : 0;
+        _Static_assert(sizeof options / sizeof *options <= sizeof d->memo,
+                       "DiagEngine.memo too small");
+        if (d->memo_gen != g) {
+            memset(d->memo, 0, sizeof d->memo);
+            d->memo_gen = g;
+        }
+        if (d->memo[i])
+            return (DiagLevel)(d->memo[i] - 1);
+        option_state(d->cfg, (size_t)i, &l);
+        d->memo[i] = (uint8_t)(l + 1);
+    }
     return l;
 }
 

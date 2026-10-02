@@ -18,13 +18,17 @@ layouts, gcc rules ported, walk design).
   noinline `fill_slow`); `aset_add` scanned every attribute name per add
   (O(N^2); now a per-set chain, `Checker.ahead`); `builtin_nonnull` and
   `check_cxx_opname`/`check_cxx_keyword` ran strcmp/`diag_enabled` per call or
-  identifier (first-letter filters).  check/parse is ~1.9 (goal <= 1); parse
-  at 1.71G is below the earlier 2.29G.  Remaining check-side cost: `diag_enabled`
-  (~860k calls, ~80M instr; callers `grok`/`specs_visit`/`cdecl_node` inlined
-  helpers), `ct` and `node_children`.
+  identifier (first-letter filters); `diag_level_for` memoizes per option under
+  the config's generation (`DiagConfig.gen`, bumped by every apply/clone), -20M.
+  loop.c now: parse 1.71G, check 3.25G (ratio 1.9, goal <= 1).  What is left
+  is spread thin: the per-node pass is ~2100 instr/node (720k nodes);
+  top self costs `checker_unit` (visit, 117M), `node_children` 66M,
+  `cstmt_enter` 62M, `cinit_post` 58M, `cexpr_node` 53M, `unused_scan` 49M.
+  Closing the gap means making the per-node hooks (cstmt_enter, cinit_pre/post)
+  skip nodes they cannot affect, not more point fixes.
 - ASAN/UBSAN (`bench/tools/san.py CEREAL corpus|tests|dg [flags]`, build with
   `make CFLAGS="-O1 -g -fsanitize=address,undefined" LDFLAGS=-fsanitize=address,undefined`
-  in a copy): 0 findings over corpus (170), tests/check+parse (206) and gcc.dg
+  in a copy): 0 findings (re-run after the speed fixes, same result) over corpus (170), tests/check+parse (206) and gcc.dg
   with `CEREAL_DGOPTS=1` (3875), `-Wsequence-point` enabled, 2026-10-01.  Corpus
   parity with `CEREAL_GCC=gcc-13`: 0 rejects-valid, 0 accepts-invalid.
 
