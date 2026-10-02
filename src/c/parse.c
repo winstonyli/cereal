@@ -505,6 +505,30 @@ static void sync_stmt(Parser *p)
     }
 }
 
+/* gcc's c_parser_skip_until_found: past the next token WANT at this nesting
+ * level, or up to an unmatched closing bracket; clears the error state. */
+static void skip_until(Parser *p, Punct want)
+{
+    int depth = 0;
+    while (!at_eof(p)) {
+        PTok t = ct(p);
+        if (t.t.kind == TK_PUNCT) {
+            Punct x = t.t.punct;
+            if (depth == 0 && x == want) {
+                adv(p);
+                break;
+            }
+            if (x == P_LPAREN || x == P_LBRACKET || x == P_LBRACE)
+                depth++;
+            else if ((x == P_RPAREN || x == P_RBRACKET || x == P_RBRACE) &&
+                     depth-- == 0)
+                break;
+        }
+        adv(p);
+    }
+    p->err_live = false;
+}
+
 /* Skip to the end of an external declaration: past a ';' at the top, or
  * past a '}' that closes a brace opened while skipping. */
 static void sync_top(Parser *p)
@@ -1744,12 +1768,15 @@ static void postfix_tail(Parser *p, uint32_t start)
         }
         case P_LPAREN: {
             uint32_t lp = adv(p);
+            uint64_t e0 = p->errors;
             if (!at(p, P_RPAREN)) {
                 parse_assign(p);
                 while (accept(p, P_COMMA))
                     parse_assign(p);
             }
-            emit(p, N_CALL, lp, start, expect(p, P_RPAREN) ? 0 : NF_CUT);
+            /* a call cut short by a syntax error is checked after it */
+            emit(p, N_CALL, lp, start,
+                 expect(p, P_RPAREN) && p->errors == e0 ? 0 : NF_CUT);
             break;
         }
         case P_DOT: case P_ARROW: {
@@ -1960,8 +1987,11 @@ static void primary(Parser *p)
     default:
         break;
     }
-    p->expr_err_tok = ci(p) + 1; /* gcc sets input_location here */
-    expected(p, "expression");
+    /* c_parser_error is silent while parser->error is set */
+    if (!p->err_live) {
+        p->expr_err_tok = ci(p) + 1; /* gcc sets input_location here */
+        expected(p, "expression");
+    }
     emit(p, N_ERROR, i, start, NF_ERROR);
 }
 
@@ -2211,7 +2241,8 @@ static void statement(Parser *p)
             declaration(p, false);
         } else {
             parse_expr(p);
-            expect(p, P_SEMI);
+            if (!expect(p, P_SEMI))
+                skip_until(p, P_SEMI);
         }
         if (at(p, P_SEMI) && lp) {
             char buf[160];
@@ -2223,7 +2254,8 @@ static void statement(Parser *p)
             leaf(p, N_NONE, i);
         else
             parse_expr(p);
-        expect(p, P_SEMI);
+        if (!expect(p, P_SEMI))
+            skip_until(p, P_SEMI);
         if (at(p, P_RPAREN))
             leaf(p, N_NONE, i);
         else
@@ -2387,6 +2419,7 @@ static void compound(Parser *p, bool push)
             break;
         before = p->pos;
         block_item(p);
+        p->err_live = false; /* gcc: parser->error is cleared after each item */
         if (p->pos == before && !p->unwind) { /* no progress: skip */
             expected(p, "statement");
             adv(p);

@@ -255,3 +255,24 @@ layouts, gcc rules ported, walk design).
   -Wbuiltin-declaration-mismatch (cbuiltin_tab.h only lists library built-ins
   reachable undeclared; needs a __builtin_-only flag).
 
+- __builtin_-only builtins, error cascades (2026-10-02):
+  * cbuiltin_tab.h: `gnu = 2` entries exist only as __builtin_NAME (112, from
+    bench/tools/gen_builtin_pfx.py, restricted to types bt_type parses) plus
+    `__clear_cache`; bt_find skips them for a plain spelling; they are not
+    typed as functions by the identifier path and do not count as having a
+    library fallback.  -Wbuiltin-declaration-mismatch now fires for
+    `__builtin_trap (int)`, `__builtin_prefetch`, `__clear_cache`.  Open: a
+    declarator with an error in its parameter list (`__builtin_exit (int,
+    int[+])`) still gets no warning.
+  * parser->error model: "expected expression" is silent while err_live
+    (gcc's c_parser_error); err_live is cleared after every block item;
+    for-statement `;` failures skip_until(';') like c_parser_skip_until_found.
+  * A call whose argument list had a syntax error (NF_CUT) is checked after
+    that error (ORD_CUT around call_args, not only format checks).
+  Goldens builtin_pfx_decl, expr_err_cascade.  gcc.dg 3587 of 3875 identical;
+  tests 802; ASAN/UBSAN 0.
+  Perf lead: gcc.dg/pr59992.c (one function of ~100k `if (p[n]) { foo##n (..);
+  return; }`) takes ~70-85 s of cereal CPU in -fsyntax-only (also at a7b156c);
+  bench/tools/par.py's 30 s timeout flags it when the machine is busy.  Likely
+  something super-linear in the checker/parser per function body.
+

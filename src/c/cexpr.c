@@ -926,7 +926,8 @@ static const BTab *bt_find(Checker *c, const char *name, bool any)
         size_t mid = (lo + hi) / 2;
         int r = strcmp(name, cbuiltin_tab[mid].name);
         if (!r)
-            return cbuiltin_tab[mid].gnu && !c->opt.gnu && !any
+            return (cbuiltin_tab[mid].gnu == 1 && !c->opt.gnu && !any) ||
+                           (cbuiltin_tab[mid].gnu == 2 && !any)
                        ? NULL : (const BTab *)&cbuiltin_tab[mid];
         if (r < 0)
             hi = mid;
@@ -2104,9 +2105,11 @@ static void reject_builtin(Checker *c, uint32_t i, const char *name)
     uint32_t n = i, p, k[2];
     SrcLoc loc = cinput_loc(c, c->nodes[i].tok);
     int op;
-    if (bt_find(c, name + (!strncmp(name, "__builtin_", 10) ? 10 : 0), true) &&
-        !strncmp(name, "__builtin_", 10))
-        return;             /* has a library fallback */
+    if (!strncmp(name, "__builtin_", 10)) {
+        const BTab *bt = bt_find(c, name + 10, true);
+        if (bt && bt->gnu != 2)
+            return;         /* has a library fallback */
+    }
     for (;;) {
         p = c->par[n];
         if (p == NO_NODE)
@@ -2220,7 +2223,8 @@ static void e_ident(Checker *c, uint32_t i)
         if (!strncmp(name, "__builtin_", 10)) {
             /* a built-in with a library counterpart has that function's type */
             const BTab *bt = bt_find(c, name + 10, true);
-            TypeId ft = bt ? bt_func_type(c, bt) : overflow_func_type(c, name + 10);
+            TypeId ft = bt && bt->gnu != 2 ? bt_func_type(c, bt)
+                                           : overflow_func_type(c, name + 10);
             if (!is_err(c, ft)) {
                 c->ty[i] = ft;
                 c->ck[i] = K_ADDR;
@@ -5285,14 +5289,9 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
         pt = type_params(TT, type_ent(TT, ufty)->kind == TY_FUNC ? ufty : fty);
         if (mask)
             check_nonnull(c, kv, nk, mask, pt, nparm, proto, false, loc);
-        if (csym(c, fref)->fmt || builtin_decl_ok(c, csym(c, fref))) {
-            /* a call cut short by a syntax error is checked after it */
-            DiagOrd o0 = diag_ord(c->diag, c->nodes[i].flags & NF_CUT
-                                                ? ORD_CUT : ORD_NORMAL);
+        if (csym(c, fref)->fmt || builtin_decl_ok(c, csym(c, fref)))
             check_format_literal(c, kv, nk, csym(c, fref),
                                  cident(c, csym(c, fref)->name), loc);
-            diag_ord(c->diag, o0);
-        }
     }
     if (!too_many && !bad && proto && nparm > 1 && fref != SYM_NONE &&
         csym(c, fref)->parms)
@@ -6261,7 +6260,11 @@ static void e_call(Checker *c, uint32_t i)
         return;
     }
     warn_for_abs(c, i, k, n);
-    if (!call_args(c, i, k[0], t)) {
+    DiagOrd o0 = diag_ord(c->diag, c->nodes[i].flags & NF_CUT ? ORD_CUT
+                                                              : ORD_NORMAL);
+    bool ok = call_args(c, i, k[0], t);
+    diag_ord(c->diag, o0);
+    if (!ok) {
         set_err(c, i);
         return;
     }

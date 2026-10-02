@@ -1,0 +1,9 @@
+builtin_pfx_decl.c:2:13: warning: conflicting types for built-in function '__clear_cache'; expected 'void(void *, void *)' [-Wbuiltin-declaration-mismatch]
+    2 | extern void __clear_cache (char*, char*);
+      |             ^
+builtin_pfx_decl.c:3:6: warning: conflicting types for built-in function '__builtin_prefetch'; expected 'void(const void *, ...)' [-Wbuiltin-declaration-mismatch]
+    3 | void __builtin_prefetch (const char *, ...);
+      |      ^
+builtin_pfx_decl.c:4:6: warning: conflicting types for built-in function '__builtin_trap'; expected 'void(void)' [-Wbuiltin-declaration-mismatch]
+    4 | void __builtin_trap (int);
+      |      ^

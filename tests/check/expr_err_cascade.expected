@@ -1,0 +1,18 @@
+expr_err_cascade.c:5:13: error: expected expression before ',' token
+    5 |   a ^= foo (,);
+      |             ^
+expr_err_cascade.c:5:8: error: too many arguments to function 'foo'
+    5 |   a ^= foo (,);
+      |        ^
+expr_err_cascade.c:2:5: note: declared here
+    2 | int foo(int);
+      |     ^
+expr_err_cascade.c:6:10: error: expected expression before 'int'
+    6 |   for (; int ; );
+      |          ^
+expr_err_cascade.c:7:10: error: expected expression before ',' token
+    7 |   sizeof(,);
+      |          ^
+expr_err_cascade.c:8:11: error: expected expression before ',' token
+    8 |   switch (,) { }
+      |           ^
