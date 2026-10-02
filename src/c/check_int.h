@@ -83,6 +83,7 @@ typedef struct CSym {
     uint64_t nonnull;        /* the 'nonnull' attribute (Attrs.nonnull) */
     uint32_t fmt;            /* the 'format' attribute (Attrs.fmt) */
     uint32_t aset;           /* attribute names written or copied: Checker.anames set id */
+    uint32_t ualign;         /* a function's user alignment in bytes (aligned attribute) */
     uint32_t parms;          /* cparm.c: how the parameters were declared (the
                               * first prototype's): Checker.pdescs + 1 */
 } CSym;
@@ -266,6 +267,9 @@ struct Checker {
     VEC(struct CParmDesc *) pdescs;   /* cparm.c: parameter declarations */
     VEC(AName) anames;       /* attribute names by set (__builtin_has_attribute, copy) */
     uint32_t nasets;
+    char ign[8][24];         /* attributes the declaration being checked lost to an exclusion */
+    unsigned nign;
+    uint32_t last_ualign;    /* the declaration's user alignment, for the symbol */
     BindVec log;
     uint32_t *top[2];        /* by ident: innermost binding + 1 */
     uint32_t *ext;           /* by ident: external declaration + 1 */

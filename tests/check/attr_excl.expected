@@ -1,0 +1,54 @@
+attr_excl.c:2:1: warning: ignoring attribute 'packed' because it conflicts with attribute 'aligned' [-Wattributes]
+    2 | void __attribute__((aligned(8), packed)) f1(void);
+      | ^
+attr_excl.c:4:1: warning: ignoring attribute 'packed' because it conflicts with attribute 'aligned' [-Wattributes]
+    4 | void __attribute__((packed)) f2(void);
+      | ^
+attr_excl.c:3:34: note: previous declaration here
+    3 | void __attribute__((aligned(8))) f2(void);
+      |                                  ^
+attr_excl.c:6:1: warning: ignoring attribute 'warn_unused_result' because it conflicts with attribute 'noreturn' [-Wattributes]
+    6 | int __attribute__((warn_unused_result)) f3(void);
+      | ^
+attr_excl.c:5:31: note: previous declaration here
+    5 | int __attribute__((noreturn)) f3(void);
+      |                               ^
+attr_excl.c:7:1: warning: ignoring attribute 'warn_unused_result' because it conflicts with attribute 'noreturn' [-Wattributes]
+    7 | int __attribute__((noreturn, warn_unused_result)) f4(void);
+      | ^
+attr_excl.c:9:1: warning: ignoring attribute 'alloc_align' because it conflicts with attribute 'noreturn' [-Wattributes]
+    9 | void *__attribute__((alloc_align(1))) f5(int);
+      | ^
+attr_excl.c:8:33: note: previous declaration here
+    8 | void *__attribute__((noreturn)) f5(int);
+      |                                 ^
+attr_excl.c:11:1: warning: ignoring attribute 'malloc' because it conflicts with attribute 'noreturn' [-Wattributes]
+   11 | void __attribute__((malloc)) f6(int);
+      | ^
+attr_excl.c:10:32: note: previous declaration here
+   10 | void __attribute__((noreturn)) f6(int);
+      |                                ^
+attr_excl.c:13:1: warning: ignoring attribute 'noinline' because it conflicts with attribute 'always_inline' [-Wattributes]
+   13 | void __attribute__((noinline)) f7(void) { }
+      | ^
+attr_excl.c:12:37: note: previous declaration here
+   12 | void __attribute__((always_inline)) f7(void);
+      |                                     ^
+attr_excl.c:15:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'pure' [-Wattributes]
+   15 | int __attribute__((pure, noreturn)) f8(void);
+      | ^
+attr_excl.c:17:1: warning: ignoring attribute 'aligned (16)' because it conflicts with attribute 'aligned (32)' [-Wattributes]
+   17 | void __attribute__((aligned(16))) f9(void);
+      | ^
+attr_excl.c:16:35: note: previous declaration here
+   16 | void __attribute__((aligned(32))) f9(void);
+      |                                   ^
+attr_excl.c:18:1: warning: ignoring attribute 'aligned (16)' because it conflicts with attribute 'aligned (32)' [-Wattributes]
+   18 | void __attribute__((aligned(32), aligned(16))) f10(void);
+      | ^
+attr_excl.c:20:1: warning: ignoring attribute 'nocommon' because it conflicts with attribute 'common' [-Wattributes]
+   20 | extern int __attribute__((nocommon)) v1;
+      | ^
+attr_excl.c:19:36: note: previous declaration here
+   19 | extern int __attribute__((common)) v1;
+      |                                    ^

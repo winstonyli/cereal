@@ -1360,6 +1360,9 @@ void cdecl_attr_name(const char *s, char *out, size_t n)
 static void aset_add(Checker *c, uint32_t *set, const char *name)
 {
     AName n;
+    for (unsigned k = 0; k < c->nign; k++)
+        if (!strcmp(c->ign[k], name))
+            return;             /* dropped by an exclusion */
     if (cdecl_aset_has(c, *set, name))
         return;
     if (!*set)
@@ -1467,6 +1470,24 @@ static void attrs_names(Checker *c, uint32_t holder, uint32_t *set)
     kids_free(&k);
 }
 
+/* Attributes after a '*' of the declarator belong to the declaration too. */
+static void attrs_names_ptrs(Checker *c, uint32_t h, uint32_t *set)
+{
+    for (;;) {
+        Kids hk;
+        uint32_t m, nx = NO_NODE;
+        kids_get(c, h, &hk);
+        for (m = 0; m < hk.n && nx == NO_NODE; m++)
+            if (ntag(c, hk.p[m]) == N_PTR)
+                nx = hk.p[m];
+        kids_free(&hk);
+        if (nx == NO_NODE)
+            return;
+        attrs_names(c, nx, set);
+        h = nx;
+    }
+}
+
 /* The function attributes a declaration ends up with, applied in source order
  * (gcc's decl_attributes): 'pure' and 'const' exclude each other, and 'copy'
  * brings the referenced symbol's along.  *_loc: where the attribute came from
@@ -1477,7 +1498,90 @@ typedef struct AttrState {
     SrcLoc pure_loc, cnst_loc;
     uint64_t nonnull;
     bool inited;             /* the declared name looked up (a summary read) */
+    uint32_t pset;           /* the previous declaration's attribute names */
+    bool hasprev;
+    SrcLoc prevloc;
+    char cur[24][24];        /* the attributes this declaration kept so far */
+    unsigned ncur;
+    bool ign_packed, ign_aligned;
+    uint32_t calign, palign;
 } AttrState;
+
+/* attribs.cc diag_attr_exclusions over c-attribs.cc's attr_*_exclusions:
+ * each attribute with the ones it may not be combined with.  fn_only: the
+ * exclusion does not apply to variables and types. */
+static const struct AttrExcl {
+    const char *n, *ex[8];
+    bool fn_only;
+} attr_excl_tab[] = {
+    {"aligned", {"packed"}, true}, {"packed", {"aligned"}, true},
+    {"cold", {"cold", "hot"}, false}, {"hot", {"cold", "hot"}, false},
+    {"common", {"common", "nocommon"}, false},
+    {"nocommon", {"common", "nocommon"}, false},
+    {"always_inline", {"noinline"}, false}, {"gnu_inline", {"noinline"}, false},
+    {"noinline", {"always_inline", "gnu_inline"}, false},
+    {"noreturn", {"alloc_align", "alloc_size", "const", "malloc", "pure",
+                  "returns_twice", "warn_unused_result"}, false},
+    {"warn_unused_result", {"noreturn", "warn_unused_result"}, false},
+    {"returns_twice", {"noreturn"}, false},
+    {"alloc_align", {"const", "noreturn", "pure"}, false},
+    {"alloc_size", {"const", "noreturn", "pure"}, false},
+    {"malloc", {"const", "noreturn", "pure"}, false},
+    {"const", {"const", "alloc_align", "alloc_size", "malloc", "noreturn",
+               "pure"}, false},
+    {"pure", {"const", "alloc_align", "alloc_size", "malloc", "noreturn",
+              "pure"}, false},
+    {"stack_protect", {"stack_protect", "no_stack_protector"}, true},
+    {"no_stack_protector", {"stack_protect", "no_stack_protector"}, true},
+};
+
+/* True when attribute an conflicts with one already on this declaration or
+ * on the previous one (it is then ignored, with a warning). */
+static bool attr_excl_generic(Checker *c, uint32_t tok, const char *an,
+                              uint32_t kind, AttrState *st)
+{
+    size_t i, e;
+    unsigned k;
+    for (i = 0; i < sizeof attr_excl_tab / sizeof *attr_excl_tab; i++) {
+        const struct AttrExcl *x = &attr_excl_tab[i];
+        if (strcmp(x->n, an) || (x->fn_only && kind != CS_FUNC))
+            continue;
+        for (e = 0; e < 8 && x->ex[e]; e++) {
+            const char *o = x->ex[e];
+            bool prev = false, hit = false;
+            if (!strcmp(o, an))
+                continue;
+            if ((!strcmp(an, "pure") || !strcmp(an, "const")) &&
+                (!strcmp(o, "pure") || !strcmp(o, "const")))
+                continue;               /* attr_excl */
+            for (k = 0; k < st->ncur && !hit; k++)
+                hit = !strcmp(st->cur[k], o);
+            if (!hit && st->hasprev && cdecl_aset_has(c, st->pset, o))
+                hit = prev = true;
+            if (!hit)
+                continue;
+            {
+                Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
+                                        "attributes", "ignoring attribute '%s' "
+                                        "because it conflicts with attribute "
+                                        "'%s'", an, o);
+                if (d && prev)
+                    cnote(c, d, st->prevloc, "previous declaration here");
+            }
+            if (c->nign < 8)
+                snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", an);
+            if (!strcmp(an, "packed"))
+                st->ign_packed = true;
+            if (!strcmp(an, "aligned"))
+                st->ign_aligned = true;
+            return true;
+        }
+        break;
+    }
+    if (st->ncur < 24)
+        snprintf(st->cur[st->ncur++], sizeof st->cur[0], "%.23s", an);
+    return false;
+}
 
 static void attr_excl(Checker *c, uint32_t tok, bool fn_pure, AttrState *st,
                       bool from, SrcLoc loc)
@@ -1508,9 +1612,13 @@ static void attrs_state_init(Checker *c, AttrState *st, uint32_t kind,
 {
     uint32_t ref = name ? lookup_ord(c, name) : SYM_NONE;
     st->inited = true;
-    if (ref != SYM_NONE && kind == CS_FUNC) {
+    if (ref != SYM_NONE && (kind == CS_FUNC || kind == CS_OBJ)) {
         const CSym *r = csym(c, ref);
-        if (r->kind == CS_FUNC && r->name == name) {
+        if (r->kind == kind && r->name == name) {
+            st->pset = r->aset;
+            st->hasprev = true;
+            st->prevloc = r->loc;
+            st->palign = r->ualign;
             st->pure = (r->flags & CSF_PURE) != 0;
             st->cnst = (r->flags & CSF_CONSTFN) != 0;
             st->pure_from = st->cnst_from = true;
@@ -1539,9 +1647,39 @@ static void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
             if (ntag(c, it.p[q]) != N_ATTR_ITEM)
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+            if (!st->inited) {
+                attrs_state_init(c, st, kind, name);
+                c->nign = 0;
+            }
+            if (attr_excl_generic(c, tok, an, kind, st))
+                continue;
+            if (kind == CS_FUNC && !strcmp(an, "aligned")) {
+                Kids aa;
+                uint32_t na = 0;
+                kids_get(c, it.p[q], &aa);
+                if (!aa.n)
+                    na = c->tgt->default_aligned;
+                else if ((c->ck[aa.p[0]] == K_ICE || c->ck[aa.p[0]] == K_FOLD) &&
+                         type_is_integer(TT, c->ty[aa.p[0]]) &&
+                         cexpr_sval(c, aa.p[0]) > 0)
+                    na = (uint32_t)cexpr_sval(c, aa.p[0]);
+                kids_free(&aa);
+                if (na && (st->calign > na || st->palign > na)) {
+                    bool note = st->palign > st->calign;
+                    uint32_t shown = note ? st->palign : st->calign;
+                    Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
+                                            "attributes", "ignoring attribute "
+                                            "'aligned (%u)' because it "
+                                            "conflicts with attribute 'aligned "
+                                            "(%u)'", na, shown);
+                    if (d && note)
+                        cnote(c, d, st->prevloc, "previous declaration here");
+                    continue;
+                }
+                if (na && na > st->calign)
+                    st->calign = na;
+            }
             if (kind == CS_FUNC && (!strcmp(an, "pure") || !strcmp(an, "const"))) {
-                if (!st->inited)
-                    attrs_state_init(c, st, kind, name);
                 attr_excl(c, tok, an[0] == 'p', st, false, 0);
                 continue;
             }
@@ -4641,16 +4779,38 @@ static void declared_visit(Checker *c, uint32_t i)
         attrs_alloc_check(c, sn, type_base(TT, s.ty), ltok);
         attrs_alloc_check(c, idecl, type_base(TT, s.ty), ltok);
     }
+    bool ign_packed = false, ign_aligned = false;
     if (s.kind == CS_FUNC || s.kind == CS_OBJ) {
         AttrState st = {0};
+        uint32_t h = idecl;
         attrs_copy_check(c, sn, s.kind, s.name, ltok, &st);
+        for (;;) {       /* attributes after a '*' belong to the declaration */
+            Kids hk;
+            uint32_t m, nx = NO_NODE;
+            kids_get(c, h, &hk);
+            for (m = 0; m < hk.n && nx == NO_NODE; m++)
+                if (ntag(c, hk.p[m]) == N_PTR)
+                    nx = hk.p[m];
+            kids_free(&hk);
+            if (nx == NO_NODE)
+                break;
+            attrs_copy_check(c, nx, s.kind, s.name, ltok, &st);
+            h = nx;
+        }
         attrs_copy_check(c, idecl, s.kind, s.name, ltok, &st);
+        c->last_ualign = st.calign;
+        ign_packed = st.ign_packed;
+        ign_aligned = st.ign_aligned;
         if (s.kind == CS_FUNC) {
             s.flags |= (st.pure ? CSF_PURE : 0) | (st.cnst ? CSF_CONSTFN : 0);
             a.nonnull |= st.nonnull;
         }
     }
     attrs_merge(&a, &sp.attrs);
+    if (ign_packed)
+        a.packed = false;
+    if (ign_aligned)
+        a.aligned = 0;
     if (a.desig && !(g.what == GD_TYPEDEF && type_ckind(TT, s.ty) == TY_STRUCT))
         cerror(c, iloc(c, ltok), "'designated_init' attribute is only valid on "
                "'struct' type");
@@ -4809,7 +4969,12 @@ static void declared_visit(Checker *c, uint32_t i)
         c->ty[i] = t->ty;
     }
     attrs_names(c, sn, &csym(c, ref)->aset);
+    attrs_names_ptrs(c, idecl, &csym(c, ref)->aset);
     attrs_names(c, idecl, &csym(c, ref)->aset);
+    if (c->last_ualign > csym(c, ref)->ualign)
+        csym(c, ref)->ualign = c->last_ualign;
+    c->last_ualign = 0;
+    c->nign = 0;
     if (sp.is_noreturn)
         aset_add(c, &csym(c, ref)->aset, "noreturn");
     if (csym(c, ref)->kind == CS_FUNC && csym(c, ref)->linkage == LK_INTERNAL) {
