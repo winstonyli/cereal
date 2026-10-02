@@ -1,0 +1,60 @@
+conv_divshift.c:5:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+    5 |   s = s / t;
+      |       ^
+conv_divshift.c:6:7: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+    6 |   s = s / i;
+      |       ^
+conv_divshift.c:8:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+    8 |   s = s % t;
+      |       ^
+conv_divshift.c:10:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+   10 |   s = s >> t;
+      |       ^
+conv_divshift.c:11:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+   11 |   s = s << 1;
+      |       ^
+conv_divshift.c:12:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+   12 |   s = s << t;
+      |       ^
+conv_divshift.c:13:7: warning: conversion to 'short int' from 'int' may change the sign of the result [-Wsign-conversion]
+   13 |   s = us / 2;
+      |       ^
+conv_divshift.c:15:8: warning: conversion from 'int' to 'short unsigned int' may change value [-Warith-conversion]
+   15 |   us = us % uc;
+      |        ^
+conv_divshift.c:18:7: warning: conversion to 'signed char' from 'int' may change the sign of the result [-Wsign-conversion]
+   18 |   c = uc / 2;
+      |       ^
+conv_divshift.c:21:7: warning: conversion from 'int' to 'signed char' may change value [-Wconversion]
+   21 |   c = s / 2;
+      |       ^
+conv_divshift.c:22:7: warning: conversion from 'int' to 'signed char' may change value [-Wconversion]
+   22 |   c = i / 2;
+      |       ^
+conv_divshift.c:23:7: warning: conversion from 'int' to 'signed char' may change value [-Wconversion]
+   23 |   c = i >> 1;
+      |       ^
+conv_divshift.c:24:7: warning: conversion from 'int' to 'signed char' may change value [-Wconversion]
+   24 |   c = us >> 9;
+      |       ^
+conv_divshift.c:25:7: warning: conversion from 'int' to 'signed char' may change value [-Wconversion]
+   25 |   c = us >> 8;
+      |       ^
+conv_divshift.c:26:7: warning: conversion from 'int' to 'signed char' may change value [-Wconversion]
+   26 |   c = us >> 7;
+      |       ^
+conv_divshift.c:27:7: warning: conversion from 'int' to 'short int' may change value [-Wconversion]
+   27 |   s = (s + t) / 2;
+      |       ^
+conv_divshift.c:28:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+   28 |   s = c / t;
+      |       ^
+conv_divshift.c:37:7: warning: conversion from 'int' to 'short int' may change value [-Warith-conversion]
+   37 |   s = s - t;
+      |       ^
+conv_divshift.c:41:7: error: 'l' undeclared (first use in this function)
+   41 |   s = l ^ l;
+      |       ^
+conv_divshift.c:41:7: note: each undeclared identifier is reported only once for each function it appears in
+   41 |   s = l ^ l;
+      |       ^

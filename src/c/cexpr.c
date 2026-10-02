@@ -2660,6 +2660,37 @@ static bool const_fits(Checker *c, uint32_t n, TypeId as, TypeId t)
            cexpr_fits(c, cexpr_trunc(c, as, c->cv[n]), as, t);
 }
 
+/* build_binary_op narrows a division, a modulus or a right shift to its
+ * operands' narrower type: wt is that type when it did. */
+static bool shorten_divshift(Checker *c, uint32_t ws, TypeId *wt)
+{
+    uint32_t k[2], s1;
+    TypeId t0, t1;
+    unsigned p = npunct(c, ws);
+    bool div = p == P_SLASH || p == P_PERCENT, cst;
+    if ((!div && p != P_SHR) || nkids(c, ws, k, 2) != 2)
+        return false;
+    unwidened(c, k[0], &t0);
+    s1 = strip_paren(c, unwidened(c, k[1], &t1));
+    if (int_bits(c, t0) >= int_bits(c, rvt(c, ws)))
+        return false;
+    cst = has_ival(c, s1);
+    if (div) {
+        if (cst && is_signed(c, rvt(c, s1)) && (int64_t)c->cv[s1] == -1)
+            cst = false, t1 = 0;
+        if (!(!is_signed(c, rvt(c, k[0])) || cst))
+            return false;
+        if (cst ? !const_fits(c, s1, rvt(c, s1), t0)
+                : !t1 || mainv(c, t0) != mainv(c, t1))
+            return false;
+    } else if (!cst || (is_signed(c, rvt(c, s1)) && (int64_t)c->cv[s1] < 0) ||
+               c->cv[s1] >= int_bits(c, t0)) {
+        return false;
+    }
+    *wt = t0;
+    return true;
+}
+
 /* The narrowed type of a bitwise node's operands (shorten_binary_op) and
  * gcc's BIT_AND special cases: true when the result surely fits lt. */
 static bool shorten_bitwise(Checker *c, uint32_t ws, TypeId lt, TypeId et,
@@ -2771,6 +2802,8 @@ static int unsafe_conv_t(Checker *c, TypeId lt, uint32_t e, TypeId et,
             bitwise_op(npunct(c, ws)) &&
             shorten_bitwise(c, ws, lt, et, &wt))
             return UC_SAFE;
+        if (ws != NO_NODE && ntag(c, ws) == N_BINARY)
+            shorten_divshift(c, ws, &wt);
         unsigned bw = ws != NO_NODE ? bf_width(c, ws) : 0;
         wb = int_bits(c, wt);
         if (bw && bw < wb)
@@ -2786,6 +2819,8 @@ static int unsafe_conv_t(Checker *c, TypeId lt, uint32_t e, TypeId et,
         TypeId wt;
         unsigned fp;
         uint32_t w = unwidened(c, s, &wt), bw = bf_width(c, w);
+        if (w != NO_NODE && ntag(c, strip_paren(c, w)) == N_BINARY)
+            shorten_divshift(c, strip_paren(c, w), &wt);
         fp = int_bits(c, wt);
         if (bw && bw < fp)
             fp = bw;
@@ -2857,6 +2892,22 @@ static bool bool_valued(Checker *c, uint32_t s)
 }
 
 /* An expression built only from numeric literals (a complex constant). */
+static bool opeq(Checker *c, uint32_t x, uint32_t y);
+
+/* gcc folds x - x and x ^ x (also as -= and ^=) of integers to 0. */
+static bool folds_to_zero(Checker *c, uint32_t n)
+{
+    uint32_t k[3];
+    unsigned p;
+    if ((ntag(c, n) != N_BINARY && ntag(c, n) != N_ASSIGN) ||
+        !gcc_integer(c, rvt(c, n)))
+        return false;
+    p = npunct(c, n);
+    return (p == P_MINUS || p == P_CARET || p == P_SUB_ASSIGN ||
+            p == P_XOR_ASSIGN) &&
+           nkids(c, n, k, 3) == 2 && opeq(c, k[0], k[1]);
+}
+
 static bool cplx_const(Checker *c, uint32_t n)
 {
     uint32_t k[3], m, i;
@@ -2886,7 +2937,7 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
     int kind;
     const char *opt;
     bool cst;
-    if (s == NO_NODE || node_err(c, s))
+    if (s == NO_NODE || node_err(c, s) || folds_to_zero(c, s))
         return;
     cst = has_ival(c, s) || c->ck[s] == K_FLOAT;
     if (ntag(c, s) == N_COND && !cst && !bool_valued(c, s)) {

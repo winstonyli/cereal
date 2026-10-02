@@ -168,6 +168,8 @@ Non-constant -Wconversion/-Wsign-conversion/-Wfloat-conversion/-Warith-conversio
 
 Complex -Wconversion: non-constant complex->real/int ("discards imaginary component"), complex->complex narrowing and sign changes; unsigned complex types print `_Complex unsigned ...` as gcc does. Complex constants (`1i`, `1 + 1i`) have no representation, so sources built only from numeric literals stay silent (gcc prints `(_Complex int){1, 1}` forms; ~30 dg lines missing). Golden: conv_complex.c.
 
+-Wconversion division/shift narrowing: `/`, `%`, `>>` are narrowed to the operands' narrower type as build_binary_op does (op0 unsigned or constant divisor != -1; same-type or fitting-constant operand; shift count constant in [0, width)), and `x - x` / `x ^ x` (also `-=`, `^=`) fold to 0 silently. Golden: conv_divshift.c (gcc-identical). Not done: arms folding to one constant (pr35635:88).
+
 Still open accepts-invalid: ivdep, init-desig-obs-1, pr55570, nested-func-2, pr80163, pr79677, pr53037-4, pr29736, attr-malloc, tgmath-err-1/2, pr108375-1, --param name validation (spellcheck-params*, pr98271), attr-section/sso-* (parked). Pointer-type attrs on variables still field-only.
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15
    header dirs under -pedantic-errors (environment, 5 files).
