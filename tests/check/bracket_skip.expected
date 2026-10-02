@@ -4,6 +4,12 @@ bracket_skip.c:3:10: error: expected ']' before ',' token
 bracket_skip.c:5:17: error: expected ']' before ',' token
     5 |   int b[] = { [1, 2] = 3 };
       |                 ^
-bracket_skip.c:7:15: error: expected ']' before ',' token
-    7 | void g(int x[2, 3]);
+bracket_skip.c:6:3: error: 'a' undeclared (first use in this function)
+    6 |   a[0] = 1;
+      |   ^
+bracket_skip.c:6:3: note: each undeclared identifier is reported only once for each function it appears in
+    6 |   a[0] = 1;
+      |   ^
+bracket_skip.c:8:15: error: expected ']' before ',' token
+    8 | void g(int x[2, 3]);
       |               ^

@@ -544,7 +544,11 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     lvl = diag_level_for(d, id, lvl);
     if (lvl == DL_IGNORED || (lvl == DL_WARNING && d->no_warnings))
         return NULL;
-    if (lvl <= DL_WARNING && !d->show_system && in_system_header(d, loc))
+    /* a warning asked for is suppressed in a system header even when
+     * -pedantic-errors or -Werror made it an error */
+    if ((lvl <= DL_WARNING || (lvl == DL_ERROR && id && *id &&
+                               (req == DL_WARNING || d->pedantic_errors))) &&
+        !d->show_system && in_system_header(d, loc))
         return NULL;
     if (lvl == DL_WARNING && d->werror && !diag_noerror(d, id))
         lvl = DL_ERROR;

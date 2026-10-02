@@ -2279,6 +2279,15 @@ static void add_type_kw(Checker *c, Spec *s, uint32_t tok)
             nw = TW_FLOATN;
             break;
         }
+        case CK_SAT:
+            cpedantic(c, loc, "ISO C does not support saturating types");
+            return;
+        case CK_FIXED:
+            /* no fixed-point support on this target; typed as int */
+            cerror(c, loc, "fixed-point types not supported for this target");
+            cpedantic(c, loc, "ISO C does not support fixed-point types");
+            nw = TW_INT;
+            break;
         case CK_DECIMAL: {
             const char *m = s->long_long ? "long long" : s->is_long ? "long"
                 : s->is_short ? "short" : s->is_signed ? "signed"

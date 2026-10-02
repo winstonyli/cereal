@@ -628,7 +628,8 @@ static bool is_type_start(Parser *p, const PTok *t)
     case CK_VOID: case CK_CHAR: case CK_SHORT: case CK_INT: case CK_LONG:
     case CK_FLOAT: case CK_DOUBLE: case CK_SIGNED: case CK_UNSIGNED:
     case CK_BOOL: case CK_COMPLEX: case CK_IMAGINARY: case CK_INT128:
-    case CK_FLOATN: case CK_DECIMAL: case CK_AUTO_TYPE:
+    case CK_FLOATN: case CK_DECIMAL: case CK_FIXED: case CK_SAT:
+        case CK_AUTO_TYPE:
     case CK_STRUCT: case CK_UNION: case CK_ENUM: case CK_TYPEOF:
     case CK_ATTRIBUTE: case CK_ALIGNAS: case CK_GIMPLE:
         return true;
@@ -1168,7 +1169,8 @@ static void specs(Parser *p, Specs *s, Lookahead la)
         case CK_VOID: case CK_CHAR: case CK_SHORT: case CK_INT: case CK_LONG:
         case CK_FLOAT: case CK_DOUBLE: case CK_SIGNED: case CK_UNSIGNED:
         case CK_BOOL: case CK_COMPLEX: case CK_IMAGINARY: case CK_INT128:
-        case CK_FLOATN: case CK_DECIMAL: case CK_AUTO_TYPE:
+        case CK_FLOATN: case CK_DECIMAL: case CK_FIXED: case CK_SAT:
+        case CK_AUTO_TYPE:
             leaf(p, N_TYPESPEC, adv(p));
             s->type = true;
             break;
@@ -1527,7 +1529,8 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             } else if (!at(p, P_RBRACKET)) {
                 parse_assign(p);
             }
-            expect_skip(p, P_RBRACKET);
+            if (!expect_skip(p, P_RBRACKET))
+                di->failed = true;
             emit(p, N_ARRAY, lb, start, flags);
             if (di->inner == DK_NONE)
                 di->inner = DK_ARRAY;

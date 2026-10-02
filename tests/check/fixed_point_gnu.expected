@@ -1,0 +1,21 @@
+fixed_point_gnu.c:2:1: error: fixed-point types not supported for this target
+    2 | _Fract w;
+      | ^
+fixed_point_gnu.c:2:1: warning: ISO C does not support fixed-point types [-Wpedantic]
+    2 | _Fract w;
+      | ^
+fixed_point_gnu.c:3:1: warning: ISO C does not support saturating types [-Wpedantic]
+    3 | _Sat _Fract x;
+      | ^
+fixed_point_gnu.c:3:6: error: fixed-point types not supported for this target
+    3 | _Sat _Fract x;
+      |      ^
+fixed_point_gnu.c:3:6: warning: ISO C does not support fixed-point types [-Wpedantic]
+    3 | _Sat _Fract x;
+      |      ^
+fixed_point_gnu.c:4:1: error: fixed-point types not supported for this target
+    4 | _Accum y;
+      | ^
+fixed_point_gnu.c:4:1: warning: ISO C does not support fixed-point types [-Wpedantic]
+    4 | _Accum y;
+      | ^

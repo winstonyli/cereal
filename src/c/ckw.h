@@ -10,7 +10,7 @@
     X(INLINE) X(NORETURN)                                                  \
     X(VOID) X(CHAR) X(SHORT) X(INT) X(LONG) X(FLOAT) X(DOUBLE) X(SIGNED)   \
     X(UNSIGNED) X(BOOL) X(COMPLEX) X(IMAGINARY) X(INT128) X(FLOATN)        \
-    X(DECIMAL) X(AUTO_TYPE)                                                \
+    X(DECIMAL) X(FIXED) X(SAT) X(AUTO_TYPE)                                                \
     X(STRUCT) X(UNION) X(ENUM)                                             \
     X(IF) X(ELSE) X(SWITCH) X(CASE) X(DEFAULT) X(WHILE) X(DO) X(FOR)       \
     X(GOTO) X(CONTINUE) X(BREAK) X(RETURN)                                 \
@@ -57,6 +57,8 @@ static const CKwSpelling ckw_spellings[] = {
     {"_Float64x", CK_FLOATN}, {"_Float128x", CK_FLOATN},
     {"__float128", CK_FLOATN}, {"__float80", CK_FLOATN},
     {"__ibm128", CK_FLOATN}, {"__bf16", CK_FLOATN},
+    {"_Fract", CK_FIXED | CKW_GNU_ONLY}, {"_Accum", CK_FIXED | CKW_GNU_ONLY},
+    {"_Sat", CK_SAT | CKW_GNU_ONLY},
     {"_Decimal32", CK_DECIMAL}, {"_Decimal64", CK_DECIMAL},
     {"_Decimal128", CK_DECIMAL}, {"__auto_type", CK_AUTO_TYPE},
     {"struct", CK_STRUCT}, {"union", CK_UNION}, {"enum", CK_ENUM},

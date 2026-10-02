@@ -297,3 +297,17 @@ layouts, gcc rules ported, walk design).
   gnu-mode `_Fract/_Accum/_Sat` keywords ("fixed-point types not supported for
   this target" + pedwarns); for-1's line numbers after `# 0` linemarkers.
 
+- Round 4 (2026-10-02, after f202aa4):
+  * A failed `]` in an array declarator sets DeclInfo.failed (gcc drops the
+    declarator; later uses give "'a' undeclared").  bracket_skip golden covers it.
+  * gnu-mode `_Fract/_Accum` ("fixed-point types not supported for this
+    target" + pedwarn) and `_Sat` (pedwarn), typed as int; golden fixed_point_gnu.
+  * diag_vreport: a pedwarn in a system header is dropped even when
+    -pedantic-errors made it an error (gcc's own stdint.h `#include_next`);
+    dg rejects-valid 5 -> 0.  No golden (needs a real system header; the dg
+    run is the check).
+  gcc.dg 3597 of 3875 identical (missing 942, extra 397); tests 810.
+  Long tail: no diagnostic cluster spans more than ~8 files (largest missing:
+  `conflicting types ... have` 4 files / 23 diags; `-Wstringop-overread` 86
+  diags in 3 files).
+
