@@ -1,0 +1,102 @@
+tgmath_err1.c:18:1: warning: ISO C does not support complex integer types [-Wpedantic]
+   18 | _Complex int f_ci_d (double);
+      | ^
+tgmath_err1.c:21:16: warning: ISO C does not support complex integer types [-Wpedantic]
+   21 | double f_d_ci (_Complex int);
+      |                ^
+tgmath_err1.c:35:3: error: too few arguments to '__builtin_tgmath'
+   35 |   __builtin_tgmath (); /* { dg-error "too few arguments" } */
+      |   ^
+tgmath_err1.c:36:3: error: too few arguments to '__builtin_tgmath'
+   36 |   __builtin_tgmath (f_d); /* { dg-error "too few arguments" } */
+      |   ^
+tgmath_err1.c:37:3: error: too few arguments to '__builtin_tgmath'
+   37 |   __builtin_tgmath (f_d, f_ld); /* { dg-error "too few arguments" } */
+      |   ^
+tgmath_err1.c:38:3: error: too few arguments to '__builtin_tgmath'
+   38 |   __builtin_tgmath (many_args, many_args, many_args); /* { dg-error "too few arguments" } */
+      |   ^
+tgmath_err1.c:39:3: error: too few arguments to '__builtin_tgmath'
+   39 |   __builtin_tgmath (many_args, d, d, d, d); /* { dg-error "too few arguments" } */
+      |   ^
+tgmath_err1.c:40:3: error: argument 2 of '__builtin_tgmath' has wrong number of arguments
+   40 |   __builtin_tgmath (f_ld, many_args, d); /* { dg-error "has wrong number of arguments" } */
+      |   ^
+tgmath_err1.c:41:3: error: argument 1 of '__builtin_tgmath' is unprototyped
+   41 |   __builtin_tgmath (unprototyped_d, unprototyped_ld, d); /* { dg-error "is unprototyped" } */
+      |   ^
+tgmath_err1.c:42:3: error: argument 2 of '__builtin_tgmath' is unprototyped
+   42 |   __builtin_tgmath (f_d, unprototyped_ld, d); /* { dg-error "is unprototyped" } */
+      |   ^
+tgmath_err1.c:43:3: error: argument 1 of '__builtin_tgmath' has variable arguments
+   43 |   __builtin_tgmath (variadic_d, variadic_ld, d); /* { dg-error "variable arguments" } */
+      |   ^
+tgmath_err1.c:44:3: error: argument 2 of '__builtin_tgmath' has variable arguments
+   44 |   __builtin_tgmath (f_d, variadic_ld, d); /* { dg-error "variable arguments" } */
+      |   ^
+tgmath_err1.c:45:21: error: argument 1 of '__builtin_tgmath' is not a function pointer
+   45 |   __builtin_tgmath (p, p, p); /* { dg-error "is not a function pointer" } */
+      |                     ^
+tgmath_err1.c:46:26: error: argument 2 of '__builtin_tgmath' is not a function pointer
+   46 |   __builtin_tgmath (f_d, p, p); /* { dg-error "is not a function pointer" } */
+      |                          ^
+tgmath_err1.c:47:3: error: argument 1 of '__builtin_tgmath' has no arguments
+   47 |   __builtin_tgmath (no_arguments_d, no_arguments_d, no_arguments_ld); /* { dg-error "has no arguments" } */
+      |   ^
+tgmath_err1.c:48:3: error: argument 2 of '__builtin_tgmath' has no arguments
+   48 |   __builtin_tgmath (f_d, no_arguments_d, no_arguments_ld); /* { dg-error "has no arguments" } */
+      |   ^
+tgmath_err1.c:51:3: error: invalid type-generic return type for argument 1 of '__builtin_tgmath'
+   51 |   __builtin_tgmath (f_i_d, f_ld, 0); /* { dg-error "invalid type-generic return type" } */
+      |   ^
+tgmath_err1.c:52:3: error: invalid type-generic return type for argument 1 of '__builtin_tgmath'
+   52 |   __builtin_tgmath (f_ci_d, f_ld, 0); /* { dg-error "invalid type-generic return type" } */
+      |   ^
+tgmath_err1.c:53:3: error: invalid type-generic return type for argument 1 of '__builtin_tgmath'
+   53 |   __builtin_tgmath (f_p_d, f_ld, 0); /* { dg-error "invalid type-generic return type" } */
+      |   ^
+tgmath_err1.c:54:3: error: invalid type-generic return type for argument 2 of '__builtin_tgmath'
+   54 |   __builtin_tgmath (f_ld, f_i_d, 0); /* { dg-error "invalid type-generic return type" } */
+      |   ^
+tgmath_err1.c:55:3: error: invalid type-generic return type for argument 2 of '__builtin_tgmath'
+   55 |   __builtin_tgmath (f_ld, f_ci_d, 0); /* { dg-error "invalid type-generic return type" } */
+      |   ^
+tgmath_err1.c:56:3: error: invalid type-generic return type for argument 2 of '__builtin_tgmath'
+   56 |   __builtin_tgmath (f_ld, f_p_d, 0); /* { dg-error "invalid type-generic return type" } */
+      |   ^
+tgmath_err1.c:57:3: error: invalid type-generic type for argument 1 of argument 1 of '__builtin_tgmath'
+   57 |   __builtin_tgmath (f_d_i, f_ld, 0); /* { dg-error "invalid type-generic type for argument" } */
+      |   ^
+tgmath_err1.c:58:3: error: invalid type-generic type for argument 1 of argument 1 of '__builtin_tgmath'
+   58 |   __builtin_tgmath (f_d_ci, f_ld, 0); /* { dg-error "invalid type-generic type for argument" } */
+      |   ^
+tgmath_err1.c:59:3: error: invalid type-generic type for argument 1 of argument 1 of '__builtin_tgmath'
+   59 |   __builtin_tgmath (f_d_p, f_ld, 0); /* { dg-error "invalid type-generic type for argument" } */
+      |   ^
+tgmath_err1.c:60:3: error: invalid type-generic type for argument 1 of argument 2 of '__builtin_tgmath'
+   60 |   __builtin_tgmath (f_ld, f_d_i, 0); /* { dg-error "invalid type-generic type for argument" } */
+      |   ^
+tgmath_err1.c:61:3: error: invalid type-generic type for argument 1 of argument 2 of '__builtin_tgmath'
+   61 |   __builtin_tgmath (f_ld, f_d_ci, 0); /* { dg-error "invalid type-generic type for argument" } */
+      |   ^
+tgmath_err1.c:62:3: error: invalid type-generic type for argument 1 of argument 2 of '__builtin_tgmath'
+   62 |   __builtin_tgmath (f_ld, f_d_p, 0); /* { dg-error "invalid type-generic type for argument" } */
+      |   ^
+tgmath_err1.c:65:3: error: function arguments of '__builtin_tgmath' all have the same type
+   65 |   __builtin_tgmath (f_d, f_d, 0); /* { dg-error "all have the same type" } */
+      |   ^
+tgmath_err1.c:68:3: error: function arguments of '__builtin_tgmath' lack type-generic parameter
+   68 |   __builtin_tgmath (f_d, f_ld_d, 0); /* { dg-error "lack type-generic parameter" } */
+      |   ^
+tgmath_err1.c:69:3: error: function arguments of '__builtin_tgmath' lack type-generic parameter
+   69 |   __builtin_tgmath (f_d, f_ld, f_cd_d, 0); /* { dg-error "lack type-generic parameter" } */
+      |   ^
+tgmath_err1.c:70:3: error: duplicate type-generic parameter type for function argument 3 of '__builtin_tgmath'
+   70 |   __builtin_tgmath (f_d, f_ld, f_d, 0); /* { dg-error "duplicate type-generic parameter type" } */
+      |   ^
+tgmath_err1.c:74:3: error: bad return type for function argument 3 of '__builtin_tgmath'
+   74 |   __builtin_tgmath (f_d, f_ld, f_d_f, 0); /* { dg-error "bad return type for function argument" } */
+      |   ^
+tgmath_err1.c:75:3: error: bad type for argument 2 of function argument 3 of '__builtin_tgmath'
+   75 |   __builtin_tgmath (f_d_dd, f_ld_ldld, f_f_fd, 0, 0); /* { dg-error "bad type for argument" } */
+      |   ^

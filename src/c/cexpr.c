@@ -4452,102 +4452,283 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
     return true;
 }
 
+/* A function designator or array operand takes the builtin's location when
+ * converted to a pointer. */
+static SrcLoc tg_loc(Checker *c, uint32_t n, SrcLoc loc)
+{
+    TypeId t = type_canon(TT, c->ty[n]);
+    return is_func(c, t) || type_ckind(TT, t) == TY_ARRAY ? loc : cnode_loc(c, n);
+}
+
+/* check_tgmath_function: the parameter count of function-pointer argument
+ * a (position pos), or 0 after an error. */
+static uint32_t tgmath_function(Checker *c, uint32_t a, unsigned pos,
+                                SrcLoc loc)
+{
+    TypeId t = rvt(c, a), f = 0;
+    SrcLoc l = tg_loc(c, a, loc);
+    const char *why;
+    if (!is_ptr(c, t) || !is_func(c, pointee(c, t)))
+        why = "is not a function pointer";
+    else if ((type_ent(TT, f = type_canon(TT, pointee(c, t)))->flags &
+              TF_NOPROTO))
+        why = "is unprototyped";
+    else if (type_ent(TT, f)->flags & TF_VARIADIC)
+        why = "has variable arguments";
+    else if (!type_ent(TT, f)->n)
+        why = "has no arguments";
+    else
+        return (uint32_t)type_ent(TT, f)->n;
+    cerror(c, l, "argument %u of '__builtin_tgmath' %s", pos, why);
+    return 0;
+}
+
+/* common_type of two real floating types: the wider; of equal value sets,
+ * _FloatN over _FloatNx over the standard type.  True if a wins over b. */
+static int tg_rank(Checker *c, TypeId t)
+{
+    switch (tkind(c, t)) {
+    case TY_FLOAT16: case TY_FLOAT32: case TY_FLOAT64: case TY_FLOAT128:
+        return 2;
+    case TY_FLOAT32X: case TY_FLOAT64X:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static bool tg_better(Checker *c, TypeId a, TypeId b)
+{
+    int pa = float_prec(c, tkind(c, a)), pb = float_prec(c, tkind(c, b));
+    return pa > pb || (pa == pb && tg_rank(c, a) > tg_rank(c, b));
+}
+
+static TypeId tg_mv(Checker *c, TypeId t)
+{
+    return unqual(c, type_canon(TT, t));
+}
+
+static bool tg_fl(Checker *c, TypeId t)
+{
+    return is_flt(c, t) ||
+           (is_complex(c, t) && is_flt(c, type_base(TT, type_canon(TT, t))));
+}
+
+/* The checks of c_parser_postfix_expression on how the functions' return and
+ * parameter types vary; false after an error. */
+static bool tgmath_variation(Checker *c, const uint32_t *a, const TypeId *ft,
+                             uint32_t nf, uint32_t nargs, SrcLoc loc,
+                             int *kind, TypeId *tg)
+{
+    TypeId pf[17];
+    bool pcx[17] = {false}, pvar[17] = {false};
+    int maxv = 0, tgarg = 0;
+    uint32_t j, m, u;
+    pf[0] = tg_mv(c, type_base(TT, ft[0]));
+    pcx[0] = is_complex(c, pf[0]);
+    for (m = 0; m < nargs; m++) {
+        pf[m + 1] = tg_mv(c, type_params(TT, ft[0])[m]);
+        pcx[m + 1] = is_complex(c, pf[m + 1]);
+    }
+    for (j = 1; j < nf; j++) {
+        TypeId ret = tg_mv(c, type_base(TT, ft[j]));
+        if (ret != pf[0]) {
+            pvar[0] = true;
+            if (!tg_fl(c, pf[0])) {
+                cerror(c, tg_loc(c, a[0], loc), "invalid type-generic return "
+                       "type for argument 1 of '__builtin_tgmath'");
+                return false;
+            }
+            if (!tg_fl(c, ret)) {
+                cerror(c, tg_loc(c, a[j], loc), "invalid type-generic return "
+                       "type for argument %u of '__builtin_tgmath'", j + 1);
+                return false;
+            }
+        }
+        if (is_complex(c, ret))
+            pcx[0] = true;
+        for (m = 0; m < nargs; m++) {
+            TypeId t = tg_mv(c, type_params(TT, ft[j])[m]);
+            if (t != pf[m + 1]) {
+                pvar[m + 1] = true;
+                if (!tg_fl(c, pf[m + 1])) {
+                    cerror(c, tg_loc(c, a[0], loc), "invalid type-generic type "
+                           "for argument %u of argument %u of "
+                           "'__builtin_tgmath'", m + 1, 1);
+                    return false;
+                }
+                if (!tg_fl(c, t)) {
+                    cerror(c, tg_loc(c, a[j], loc), "invalid type-generic type "
+                           "for argument %u of argument %u of "
+                           "'__builtin_tgmath'", m + 1, j + 1);
+                    return false;
+                }
+            }
+            if (is_complex(c, t))
+                pcx[m + 1] = true;
+        }
+    }
+    for (j = 0; j <= nargs; j++) {          /* 0 fixed, 1 real, 2 complex */
+        if (!pvar[j])
+            kind[j] = 0;
+        else if (pcx[j])
+            maxv = kind[j] = 2;
+        else {
+            kind[j] = 1;
+            if (maxv != 2)
+                maxv = 1;
+        }
+    }
+    if (!maxv) {
+        cerror(c, loc, "function arguments of '__builtin_tgmath' all have "
+               "the same type");
+        return false;
+    }
+    for (j = 1; j <= nargs && !tgarg; j++)
+        if (kind[j] == maxv)
+            tgarg = (int)j;
+    if (!tgarg) {
+        cerror(c, loc, "function arguments of '__builtin_tgmath' lack "
+               "type-generic parameter");
+        return false;
+    }
+    for (j = 0; j < nf; j++) {
+        tg[j] = tg_mv(c, type_params(TT, ft[j])[tgarg - 1]);
+        for (u = 0; u < j; u++)
+            if (tg[u] == tg[j]) {
+                cerror(c, tg_loc(c, a[j], loc), "duplicate type-generic "
+                       "parameter type for function argument %u of "
+                       "'__builtin_tgmath'", j + 1);
+                return false;
+            }
+    }
+    for (j = 0; j < nf; j++) {
+        TypeId et = tg[j], er = is_complex(c, et)
+                    ? tg_mv(c, type_base(TT, type_canon(TT, et))) : et;
+        TypeId ret = tg_mv(c, type_base(TT, ft[j]));
+        if ((kind[0] == 2 && ret != et) || (kind[0] == 1 && ret != er)) {
+            cerror(c, tg_loc(c, a[j], loc), "bad return type for function "
+                   "argument %u of '__builtin_tgmath'", j + 1);
+            return false;
+        }
+        for (m = 0; m < nargs; m++) {
+            TypeId t = tg_mv(c, type_params(TT, ft[j])[m]);
+            if ((kind[m + 1] == 2 && t != et) ||
+                (kind[m + 1] == 1 && t != er)) {
+                cerror(c, tg_loc(c, a[j], loc), "bad type for argument %u of "
+                       "function argument %u of '__builtin_tgmath'", m + 1,
+                       j + 1);
+                return false;
+            }
+        }
+    }
+    for (m = 0; m < nargs; m++) {
+        uint32_t ar = a[nf + m];
+        TypeId t;
+        if (!kind[m + 1])
+            continue;
+        t = rvt(c, ar);
+        if (!is_int(c, t) && !is_flt(c, t) && !is_complex(c, t)) {
+            cerror(c, cnode_loc(c, ar), "invalid type of argument %u of "
+                   "type-generic function", m + 1);
+            return false;
+        }
+    }
+    return true;
+}
+
 /* __builtin_tgmath (functions..., arguments...): the call of the function
  * whose generic parameter type fits the arguments.  Sets i's type to its
  * return type; false (no diagnostic) if the call is malformed. */
 static bool e_tgmath(Checker *c, uint32_t i)
 {
-    uint32_t all[16], n = nkids(c, i, all, 16), na, nf, nargs, j, m, sel = 0;
+    uint32_t all[16], n = nkids(c, i, all, 16), na, nf, nargs, j, m, sel;
     uint32_t *a = all + 1;
-    TypeId rt = ERRT, ft[16];
-    bool any_cplx = false, any_flt = false, found = false, rint = false;
-    int pass;
-    int rprec = 0, bestp = 1 << 30;
-    TypeKind rk = TY_DOUBLE;
-    if (n < 4)
+    TypeId rt, ft[16], tg[16], areal = 0;
+    int kind[17];
+    bool arg_cx, floatnx = false;
+    SrcLoc loc;
+    if (n < 1 || n > 16)
         return false;
+    loc = cnode_loc(c, all[0]);
     na = n - 1;
     for (j = 0; j < na; j++)
         if (node_err(c, a[j]))
             return false;
-    for (nf = 0; nf < na; nf++) {
-        TypeId t = rvt(c, a[nf]);
-        if (!is_ptr(c, t) || !is_func(c, pointee(c, t)))
-            break;
-        ft[nf] = type_canon(TT, pointee(c, t));
-    }
-    if (nf < 2 || nf >= na)
+    if (na < 3) {
+        cerror(c, loc, "too few arguments to '__builtin_tgmath'");
         return false;
-    nargs = na - nf;
+    }
+    nargs = tgmath_function(c, a[0], 1, loc);
+    if (!nargs)
+        return false;
+    if (na < nargs || na - nargs < 2) {
+        cerror(c, loc, "too few arguments to '__builtin_tgmath'");
+        return false;
+    }
+    nf = na - nargs;
+    sel = nf;
+    ft[0] = type_canon(TT, pointee(c, rvt(c, a[0])));
+    for (j = 1; j < nf; j++) {
+        uint32_t tn = tgmath_function(c, a[j], j + 1, loc);
+        if (!tn)
+            return false;
+        if (tn != nargs) {
+            cerror(c, tg_loc(c, a[j], loc), "argument %u of '__builtin_tgmath' "
+                   "has wrong number of arguments", j + 1);
+            return false;
+        }
+        ft[j] = type_canon(TT, pointee(c, rvt(c, a[j])));
+    }
+    if (!tgmath_variation(c, a, ft, nf, nargs, loc, kind, tg))
+        return false;
+    arg_cx = true;
     for (j = 0; j < nf; j++)
-        if (type_ent(TT, ft[j])->n != nargs)
-            return false;
-    /* the argument types: an integer argument counts as double */
+        if (!is_complex(c, tg[j]))
+            arg_cx = false;
+    for (m = 0; m < nargs; m++) {       /* integers become _Float32x if any
+                                         * generic argument is _FloatNx */
+        TypeId t;
+        if (!kind[m + 1])
+            continue;
+        t = tg_mv(c, rvt(c, a[nf + m]));
+        if (is_complex(c, t))
+            t = tg_mv(c, type_base(TT, type_canon(TT, t)));
+        if (tkind(c, t) == TY_FLOAT32X || tkind(c, t) == TY_FLOAT64X)
+            floatnx = true;
+    }
     for (m = 0; m < nargs; m++) {
-        TypeId t = unqual(c, rvt(c, a[nf + m]));
-        bool generic = false;
-        for (j = 1; j < nf; j++)
-            if (unqual(c, type_params(TT, ft[j])[m]) !=
-                unqual(c, type_params(TT, ft[0])[m]))
-                generic = true;
-        if (!generic)
+        TypeId t;
+        if (!kind[m + 1])
             continue;
+        t = tg_mv(c, rvt(c, a[nf + m]));
         if (is_complex(c, t)) {
-            any_cplx = true;
-            t = type_base(TT, type_canon(TT, t));
+            arg_cx = true;
+            t = tg_mv(c, type_base(TT, type_canon(TT, t)));
         }
-        bool ig = is_int(c, t);
-        if (ig)
-            t = TYPE_B(DOUBLE);
-        if (is_flt(c, t)) {
-            int p = float_prec(c, tkind(c, t));
-            if (!any_flt || p > rprec || (p == rprec && rint && !ig)) {
-                rprec = p;
-                rk = tkind(c, t);
-                rt = unqual(c, t);
-                rint = ig;
-            }
-            any_flt = true;
-        } else {
-            return false;
-        }
+        if (is_int(c, t))
+            t = floatnx ? TYPE_B(FLOAT32X) : TYPE_B(DOUBLE);
+        if (!areal || tg_better(c, t, areal))
+            areal = t;
     }
-    for (pass = 0; pass < 2 && !found; pass++)
-    for (j = 0; j < nf; j++) {      /* an exact match, else the narrowest fit */
-        bool ok = true, exact = true;
-        int p = 0;
-        for (m = 0; m < nargs; m++) {
-            TypeId pt = unqual(c, type_params(TT, ft[j])[m]), q = pt;
-            bool cx = is_complex(c, pt), gen = false;
-            uint32_t u;
-            for (u = 0; u < nf; u++)
-                if (unqual(c, type_params(TT, ft[u])[m]) != pt)
-                    gen = true;
-            if (!gen)
-                continue;
-            if (pass == 0 && cx != any_cplx)
-                ok = false;
-            if (cx)
-                q = type_base(TT, type_canon(TT, pt));
-            if (!is_flt(c, q) || float_prec(c, tkind(c, q)) < rprec)
-                ok = false;
-            else if (unqual(c, q) != rt)
-                exact = false;
-            p = float_prec(c, tkind(c, q));
-        }
-        if (!ok)
-            continue;
-        if (exact)
-            p = -1;
-        if (!found || p < bestp) {
-            found = true;
-            bestp = p;
+    for (j = 0; j < nf && sel == nf; j++) {
+        TypeId t = is_complex(c, tg[j]) ? tg_mv(c, type_base(TT, type_canon(TT, tg[j])))
+                                        : tg[j];
+        if (is_complex(c, tg[j]) == arg_cx && t == areal)
             sel = j;
-        }
     }
-    (void)rk;
-    if (!found)
+    if (sel == nf && !kind[0] && is_flt(c, tg_mv(c, type_base(TT, ft[0]))))
+        for (j = 0; j < nf && sel == nf; j++) {
+            TypeId t = is_complex(c, tg[j])
+                       ? tg_mv(c, type_base(TT, type_canon(TT, tg[j]))) : tg[j];
+            if (is_complex(c, tg[j]) == arg_cx && areal && is_flt(c, t) &&
+                float_prec(c, tkind(c, areal)) <= float_prec(c, tkind(c, t)))
+                sel = j;
+        }
+    if (sel == nf) {
+        cerror(c, loc, "no matching function for type-generic call");
         return false;
+    }
     rt = unqual(c, type_base(TT, ft[sel]));
     c->ty[i] = rt;
     c->ef[i] = EF_SIDE;

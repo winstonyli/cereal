@@ -172,6 +172,8 @@ Complex -Wconversion: non-constant complex->real/int ("discards imaginary compon
 
 attribute malloc (dealloc): argument 1 must name a function whose first parameter is a pointer (cdecl.c attr_malloc_dealloc); malloc's args are now expression-checked (undeclared names). Parser: a typedef name in an expression is "expected expression before 'T'" (primary), and an error inside GNU attribute args skips past the next ')' and abandons the attribute list, as c_parser_gnu_attribute does (gives gcc's follow-on "expected ',' or ';' before ')'"). Golden: attr_malloc.c. Not done: malloc's second (ref-index) argument validation.
 
+__builtin_tgmath: full c_parser port of the argument validation (too few arguments, unprototyped/variadic/no-arg functions, varying-type checks, duplicate/bad types, invalid argument, no matching function) and gcc's selection (_FloatN > _FloatNx > standard at equal precision; ints become _Float32x when an argument is _FloatNx). Function designators take the builtin's location. Not done: decimal float. pr80163: a label difference converted to an integer wider than the pointer is "not computable at load time". Goldens: tgmath_err1/2, tgmath_floatnx, init_labeldiff.
+
 Still open accepts-invalid: ivdep, init-desig-obs-1, pr55570, nested-func-2, pr80163, pr79677, pr53037-4, pr29736, attr-malloc, tgmath-err-1/2, pr108375-1, --param name validation (spellcheck-params*, pr98271), attr-section/sso-* (parked). Pointer-type attrs on variables still field-only.
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15
    header dirs under -pedantic-errors (environment, 5 files).

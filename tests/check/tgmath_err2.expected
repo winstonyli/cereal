@@ -1,0 +1,9 @@
+tgmath_err2.c:16:37: error: invalid type of argument 1 of type-generic function
+   16 |   __builtin_tgmath (f_f, f_d, f_ld, p); /* { dg-error "invalid type of argument" } */
+      |                                     ^
+tgmath_err2.c:17:3: error: no matching function for type-generic call
+   17 |   __builtin_tgmath (f_f, f_d, ld); /* { dg-error "no matching function for type-generic call" } */
+      |   ^
+tgmath_err2.c:18:3: error: no matching function for type-generic call
+   18 |   __builtin_tgmath (f_f, f_d, cf); /* { dg-error "no matching function for type-generic call" } */
+      |   ^

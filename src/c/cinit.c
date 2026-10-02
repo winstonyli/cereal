@@ -995,12 +995,36 @@ static int const_class0(Checker *c, uint32_t n, TypeId vt, TypeId target)
         g_pedw = false;
         if (!const_varlike(c, n, 0))
             return 0;
+        if (!g_pedw && type_is_integer(TT, vt) &&
+            type_is_integer(TT, target)) {
+            /* an address difference converted to a wider integer */
+            bool ok1, ok2;
+            uint64_t vs = type_size(TT, vt, &ok1);
+            uint64_t ts = type_size(TT, target, &ok2);
+            if (ok1 && ok2 && vs >= c->tgt->ptr_size && ts > vs)
+                return 1;
+        }
         return g_pedw ? 3 : 2;
     default:
         break;
     }
     if (c->cb[n] == 0)
         return 2;
+    {
+        /* an integer address value (a label difference) converted to a
+         * wider integer cannot be emitted */
+        uint32_t s = n;
+        while (ntag(c, s) == N_PAREN && s > 0)
+            s--;
+        if (ntag(c, s) == N_CAST && s > 0 && c->ck[s - 1] == K_ADDR &&
+            type_is_integer(TT, vt) && type_is_integer(TT, c->ty[s - 1])) {
+            bool ok1, ok2;
+            uint64_t a1 = type_size(TT, vt, &ok1);
+            uint64_t a2 = type_size(TT, c->ty[s - 1], &ok2);
+            if (ok1 && ok2 && a1 > a2)
+                return 1;
+        }
+    }
     if (!(c->cb[n] & CB_NODE)) {
         /* a nested function's address needs a trampoline: never constant */
         const CSym *fs = csym(c, c->cb[n] - 1);
@@ -1025,8 +1049,13 @@ static int const_class0(Checker *c, uint32_t n, TypeId vt, TypeId target)
         if (tk == TY_BOOL)
             return 2;
         sz = type_size(TT, target, &ok);
-        if (type_is_integer(TT, target))
+        if (type_is_integer(TT, target)) {
+            bool ok2;
+            uint64_t vs = type_size(TT, vt, &ok2);
+            if (ok && ok2 && vk != TY_PTR && sz > vs)
+                return 1;       /* a wider integer than the address value */
             return ok && sz >= c->tgt->ptr_size ? 2 : 1;
+        }
         return 0;
     }
     return cls;

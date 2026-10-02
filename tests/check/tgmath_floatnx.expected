@@ -1,0 +1,66 @@
+tgmath_floatnx.c:24:8: warning: ISO C does not support the '_Float32' type [-Wpedantic]
+   24 | extern _Float32 var_f32;
+      |        ^
+tgmath_floatnx.c:25:8: warning: ISO C does not support the '_Float64' type [-Wpedantic]
+   25 | extern _Float64 var_f64;
+      |        ^
+tgmath_floatnx.c:26:8: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   26 | extern _Float32x var_f32x;
+      |        ^
+tgmath_floatnx.c:27:17: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   27 | extern _Complex _Float32x var_cf32x;
+      |                 ^
+tgmath_floatnx.c:29:1: warning: ISO C does not support the '_Float32' type [-Wpedantic]
+   29 | _Float32 t1f (float x) { return x + 1; }
+      | ^
+tgmath_floatnx.c:30:1: warning: ISO C does not support the '_Float32' type [-Wpedantic]
+   30 | _Float32 t1d (double x) { return x + 2; }
+      | ^
+tgmath_floatnx.c:31:1: warning: ISO C does not support the '_Float32' type [-Wpedantic]
+   31 | _Float32 t1l (long double x) { return x + 3; }
+      | ^
+tgmath_floatnx.c:32:1: warning: ISO C does not support the '_Float32' type [-Wpedantic]
+   32 | _Float32 t1f64 (_Float64 x) { return x + 4; }
+      | ^
+tgmath_floatnx.c:32:17: warning: ISO C does not support the '_Float64' type [-Wpedantic]
+   32 | _Float32 t1f64 (_Float64 x) { return x + 4; }
+      |                 ^
+tgmath_floatnx.c:42:3: warning: ISO C does not support the '_Float64' type [-Wpedantic]
+   42 |   _Float64 f64 = 4;
+      |   ^
+tgmath_floatnx.c:54:1: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   54 | _Float32x t2f32x (_Float32x x, _Float32x y) { return 10000 * x + y; }
+      | ^
+tgmath_floatnx.c:54:19: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   54 | _Float32x t2f32x (_Float32x x, _Float32x y) { return 10000 * x + y; }
+      |                   ^
+tgmath_floatnx.c:54:32: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   54 | _Float32x t2f32x (_Float32x x, _Float32x y) { return 10000 * x + y; }
+      |                                ^
+tgmath_floatnx.c:55:1: warning: ISO C does not support the '_Float64' type [-Wpedantic]
+   55 | _Float64 t2f64 (_Float64 x, _Float64 y) { return 100000 * x + y; }
+      | ^
+tgmath_floatnx.c:55:17: warning: ISO C does not support the '_Float64' type [-Wpedantic]
+   55 | _Float64 t2f64 (_Float64 x, _Float64 y) { return 100000 * x + y; }
+      |                 ^
+tgmath_floatnx.c:55:29: warning: ISO C does not support the '_Float64' type [-Wpedantic]
+   55 | _Float64 t2f64 (_Float64 x, _Float64 y) { return 100000 * x + y; }
+      |                             ^
+tgmath_floatnx.c:57:10: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   57 | _Complex _Float32x
+      |          ^
+tgmath_floatnx.c:58:19: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   58 | ct2f32x (_Complex _Float32x x, _Complex _Float32x y)
+      |                   ^
+tgmath_floatnx.c:58:41: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   58 | ct2f32x (_Complex _Float32x x, _Complex _Float32x y)
+      |                                         ^
+tgmath_floatnx.c:69:3: warning: ISO C does not support the '_Float64' type [-Wpedantic]
+   69 |   _Float64 f64 = 6;
+      |   ^
+tgmath_floatnx.c:70:3: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   70 |   _Float32x f32x = 7;
+      |   ^
+tgmath_floatnx.c:72:12: warning: ISO C does not support the '_Float32x' type [-Wpedantic]
+   72 |   _Complex _Float32x cf32x = 8;
+      |            ^

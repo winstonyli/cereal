@@ -1,0 +1,9 @@
+init_labeldiff.c:14:3: warning: taking the address of a label is non-standard [-Wpedantic]
+   14 |   static __int128_t d = (intptr_t) &&a - (intptr_t) &&b;        /* { dg-error "initializer element is not computable at load time" } */
+      |   ^
+init_labeldiff.c:14:3: warning: taking the address of a label is non-standard [-Wpedantic]
+   14 |   static __int128_t d = (intptr_t) &&a - (intptr_t) &&b;        /* { dg-error "initializer element is not computable at load time" } */
+      |   ^
+init_labeldiff.c:14:25: error: initializer element is not computable at load time
+   14 |   static __int128_t d = (intptr_t) &&a - (intptr_t) &&b;        /* { dg-error "initializer element is not computable at load time" } */
+      |                         ^
