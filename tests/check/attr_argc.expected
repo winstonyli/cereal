@@ -1,12 +1,24 @@
 attr_argc.c:1:1: error: wrong number of arguments specified for 'alloc_align' attribute
     1 | void *f3 (void) __attribute__((alloc_align));
       | ^
+attr_argc.c:1:1: note: expected 1, found 0
+    1 | void *f3 (void) __attribute__((alloc_align));
+      | ^
 attr_argc.c:2:1: error: wrong number of arguments specified for 'alloc_align' attribute
+    2 | void *f4 (int, int) __attribute__((alloc_align (1, 2)));
+      | ^
+attr_argc.c:2:1: note: expected 1, found 2
     2 | void *f4 (int, int) __attribute__((alloc_align (1, 2)));
       | ^
 attr_argc.c:3:1: error: wrong number of arguments specified for 'assume_aligned' attribute
     3 | void *f5 (void) __attribute__((assume_aligned (32, 16, 8)));
       | ^
+attr_argc.c:3:1: note: expected between 1 and 2, found 3
+    3 | void *f5 (void) __attribute__((assume_aligned (32, 16, 8)));
+      | ^
 attr_argc.c:5:1: error: wrong number of arguments specified for 'copy' attribute
+    5 | f6 (void);
+      | ^
+attr_argc.c:5:1: note: expected 1, found 0
     5 | f6 (void);
       | ^

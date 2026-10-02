@@ -245,6 +245,9 @@ static bool in_extension(Checker *c, uint32_t node)
 
 /* ---- attributes ---------------------------------------------------------- */
 
+static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
+                         TypeId ft);
+
 /* The attribute's name without the leading and trailing "__". */
 static void attr_norm(const char *s, char *out, size_t n)
 {
@@ -308,7 +311,7 @@ static uint32_t check_user_alignment(Checker *c, uint32_t e, SrcLoc loc,
 static void gnu_attr_argc(Checker *c, uint32_t attr)
 {
     static const struct { const char *n; uint32_t lo, hi; } t[] = {
-        {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"copy", 1, 1},
+        {"access", 1, 3}, {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"copy", 1, 1},
         {"section", 1, 1}};
     Kids k;
     uint32_t j;
@@ -340,10 +343,18 @@ static void gnu_attr_argc(Checker *c, uint32_t attr)
         attr_norm(tstr(c, c->nodes[k.p[j]].tok), name, sizeof name);
         kids_get(c, k.p[j], &ak);
         for (n = 0; n < sizeof t / sizeof *t; n++)
-            if (!strcmp(name, t[n].n) && (ak.n < t[n].lo || ak.n > t[n].hi))
-                cerror(c, cinput_loc(c, at),
+            if (!strcmp(name, t[n].n) && (ak.n < t[n].lo || ak.n > t[n].hi)) {
+                Diagnostic *d = cerror_d(c, cinput_loc(c, at),
                        "wrong number of arguments specified for '%s' "
                        "attribute", name);
+                if (d && t[n].lo == t[n].hi)
+                    cnote(c, d, cinput_loc(c, at), "expected %u, found %u",
+                          t[n].lo, (unsigned)ak.n);
+                else if (d)
+                    cnote(c, d, cinput_loc(c, at),
+                          "expected between %u and %u, found %u", t[n].lo,
+                          t[n].hi, (unsigned)ak.n);
+            }
         kids_free(&ak);
     }
     kids_free(&k);
@@ -721,27 +732,6 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 a->deprecated = true;
             if (arg != NO_NODE && ntag(c, arg) == N_STRING)
                 a->dep_msg = cdep_msg(c, arg);
-        } else if (!strcmp(name, "access") && ak.n) {
-            uint32_t x = ak.p[0];
-            static const char *const mo[] = {"read_only", "read_write",
-                                             "write_only", "none"};
-            char md[24];
-            size_t q;
-            bool ok = false;
-            SrcLoc il = cinput_loc(c, c->nodes[item].tok);
-            if (ntag(c, x) == N_IDENT) {
-                attr_norm(tstr(c, c->nodes[x].tok), md, sizeof md);
-                for (q = 0; q < 4; q++)
-                    ok |= !strcmp(md, mo[q]);
-                if (!ok)
-                    cerror(c, il, "attribute 'access' invalid mode '%s'; "
-                           "expected one of 'read_only', 'read_write', "
-                           "'write_only', or 'none'", tstr(c, c->nodes[x].tok));
-            } else if (type_ckind(TT, c->ty[x]) != TY_ERROR) {
-                cerror(c, il, "attribute 'access' mode '%s' is not an "
-                       "identifier; expected one of 'read_only', 'read_write', "
-                       "'write_only', or 'none'", cexpr_str(c, x));
-            }
         } else if (!strcmp(name, "nonnull")) {
             uint64_t m = 0;
             uint32_t q;
@@ -1126,6 +1116,126 @@ static void pos_arg_str(Checker *c, uint32_t arg, char *buf, size_t n)
         snprintf(buf, n, "%s", cexpr_str(c, arg));
 }
 
+/* handle_access_attribute: the mode, then up to two positional arguments
+ * checked against the function type of the declaration (when known). */
+static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
+                         TypeId ft)
+{
+    static const char *const mo[] = {"read_only", "read_write", "write_only",
+                                     "none"};
+    char md[24], list[256], val[96];
+    const char *mode;
+    uint32_t x = arg[0], q, m;
+    bool ok = false;
+    if (ntag(c, x) == N_CALL) {         /* read_only () */
+        uint32_t cal = cfirst(c, x);
+        if (ntag(c, cal) != N_IDENT)
+            cal = NO_NODE;
+        if (cal == NO_NODE)
+            return;
+        mode = tstr(c, c->nodes[cal].tok);
+        attr_norm(mode, md, sizeof md);
+        for (q = 0; q < 4; q++)
+            ok |= !strcmp(md, mo[q]);
+        if (ok)
+            cerror(c, il, "attribute 'access' unexpected '(' after mode '%s'; "
+                   "expected a positional argument or ')'", mode);
+        else
+            cerror(c, il, "attribute 'access' invalid mode '%s'; expected one "
+                   "of 'read_only', 'read_write', 'write_only', or 'none'",
+                   mode);
+        return;
+    }
+    if (ntag(c, x) != N_IDENT) {
+        if (type_ckind(TT, c->ty[x]) != TY_ERROR)
+            cerror(c, il, "attribute 'access' mode '%s' is not an identifier; "
+                   "expected one of 'read_only', 'read_write', 'write_only', "
+                   "or 'none'", cexpr_str(c, x));
+        return;
+    }
+    mode = tstr(c, c->nodes[x].tok);
+    attr_norm(mode, md, sizeof md);
+    for (q = 0, m = 0; q < 4; q++)
+        if (!strcmp(md, mo[q])) {
+            ok = true;
+            m = q;
+        }
+    if (!ok) {
+        cerror(c, il, "attribute 'access' invalid mode '%s'; expected one of "
+               "'read_only', 'read_write', 'write_only', or 'none'", mode);
+        return;
+    }
+    if (n < 2) {
+        cerror(c, il, "attribute 'access(%s)' missing an argument", md);
+        return;
+    }
+    snprintf(list, sizeof list, "%s", md);
+    for (q = 1; q < n && q < 3; q++) {
+        size_t l = strlen(list);
+        pos_arg_str(c, arg[q], val, sizeof val);
+        snprintf(list + l, sizeof list - l, ", %s", val);
+    }
+    for (q = 1; q < n && q < 3; q++) {
+        uint32_t e = arg[q];
+        int64_t v;
+        if (type_ckind(TT, c->ty[e]) == TY_ERROR)
+            return;
+        if (!(c->ck[e] == K_ICE || c->ck[e] == K_FOLD) ||
+            !type_is_integer(TT, c->ty[e])) {
+            cerror(c, il, "attribute 'access(%s)' invalid positional argument "
+                   "%u", list, q);
+            return;
+        }
+        v = cexpr_sval(c, e);
+        pos_arg_str(c, e, val, sizeof val);
+        if (v < 1) {
+            cerror(c, il, "attribute 'access(%s)' positional argument %u "
+                   "invalid value %s", list, q, val);
+            return;
+        }
+        if (ft && type_ckind(TT, ft) == TY_FUNC) {
+            const TypeEnt *fe = type_ent(TT, ft);
+            TypeId pt;
+            if ((uint64_t)v > fe->n) {
+                if (fe->flags & TF_VARIADIC)
+                    continue;
+                cerror(c, il, "attribute 'access(%s)' positional argument %u "
+                       "value %s exceeds number of function arguments %u",
+                       list, q, val, (unsigned)fe->n);
+                return;
+            }
+            pt = type_params(TT, ft)[v - 1];
+            if (q == 1) {
+                TypeId tgt;
+                if (type_ckind(TT, pt) != TY_PTR) {
+                    cerror(c, il, "attribute 'access(%s)' positional argument "
+                           "1 references non-pointer argument type %s", list,
+                           type_q(TT, pt));
+                    return;
+                }
+                tgt = type_base(TT, pt);
+                if (type_ckind(TT, tgt) == TY_FUNC) {
+                    cerror(c, il, "attribute 'access(%s)' positional argument "
+                           "1 references argument of function type %s", list,
+                           type_q(TT, tgt));
+                    return;
+                }
+                if (m >= 1 && m <= 2 && (TYPE_QUALS(tgt) & TQ_CONST)) {
+                    cerror(c, il, "attribute 'access(%s)' positional argument "
+                           "1 references 'const'-qualified argument type %s",
+                           list, type_q(TT, pt));
+                    return;
+                }
+            } else if (!type_is_integer(TT, pt)) {
+                cerror(c, il, "attribute 'access(%s)' positional argument 2 "
+                       "references non-integer argument type %s", list,
+                       type_q(TT, pt));
+                return;
+            }
+        }
+    }
+}
+
 /* c-attribs.cc positional_argument for one argument of alloc_align or
  * alloc_size on a function of type fty; false when it warned. */
 static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno,
@@ -1199,6 +1309,13 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
             align = !strcmp(name, "alloc_align");
+            if (!strcmp(name, "access")) {
+                kids_get(c, it.p[q], &ak);
+                if (ak.n)
+                    access_check(c, ak.p, ak.n, iloc(c, tok), fty);
+                kids_free(&ak);
+                continue;
+            }
             if (!align && strcmp(name, "alloc_size"))
                 continue;
             kids_get(c, it.p[q], &ak);
@@ -4517,6 +4634,12 @@ static void declared_visit(Checker *c, uint32_t i)
         TypeId aft = type_kind(TT, s.ty) == TY_FUNC ? s.ty : type_canon(TT, s.ty);
         attrs_alloc_check(c, sn, aft, ltok);
         attrs_alloc_check(c, idecl, aft, ltok);
+    }
+    if (s.kind == CS_OBJ && type_ckind(TT, s.ty) == TY_PTR &&
+        type_ckind(TT, type_base(TT, s.ty)) == TY_FUNC) {
+        /* a pointer to function: the attributes describe the function */
+        attrs_alloc_check(c, sn, type_base(TT, s.ty), ltok);
+        attrs_alloc_check(c, idecl, type_base(TT, s.ty), ltok);
     }
     if (s.kind == CS_FUNC || s.kind == CS_OBJ) {
         AttrState st = {0};

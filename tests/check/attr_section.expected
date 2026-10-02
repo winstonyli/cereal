@@ -16,6 +16,9 @@ attr_section.c:8:1: error: section attribute argument not a string constant
 attr_section.c:9:1: error: wrong number of arguments specified for 'section' attribute
     9 | int v3 __attribute__((section));
       | ^
+attr_section.c:9:1: note: expected 1, found 0
+    9 | int v3 __attribute__((section));
+      | ^
 attr_section.c:12:7: error: section attribute cannot be specified for local variables
    12 |   int l __attribute__((section("x")));
       |       ^

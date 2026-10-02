@@ -1,0 +1,42 @@
+attr_access.c:6:1: error: wrong number of arguments specified for 'access' attribute
+    6 | none (void);
+      | ^
+attr_access.c:6:1: note: expected between 1 and 3, found 0
+    6 | none (void);
+      | ^
+attr_access.c:8:1: error: attribute 'access' invalid mode 'rdonly'; expected one of 'read_only', 'read_write', 'write_only', or 'none'
+    8 | bad_mode (void);
+      | ^
+attr_access.c:10:1: error: attribute 'access(read_only)' missing an argument
+   10 | no_arg (void);
+      | ^
+attr_access.c:11:29: warning: implicit declaration of function 'read_only' [-Wimplicit-function-declaration]
+   11 | int __attribute__ ((access (read_only ())))
+      |                             ^
+attr_access.c:12:1: error: attribute 'access' unexpected '(' after mode 'read_only'; expected a positional argument or ')'
+   12 | call_mode (void);
+      | ^
+attr_access.c:13:1: error: attribute 'access(read_only, 1, 1)' positional argument 2 references non-integer argument type 'const void *'
+   13 | int RO (1, 1) f1 (const void *, const int *);
+      | ^
+attr_access.c:14:1: error: attribute 'access(read_only, 4)' positional argument 1 value 4 exceeds number of function arguments 3
+   14 | int RO (4) f2 (int, int, int);
+      | ^
+attr_access.c:15:1: error: attribute 'access(read_only, 1)' positional argument 1 references non-pointer argument type 'int'
+   15 | int RO (1) f3 (int);
+      | ^
+attr_access.c:16:1: error: attribute 'access(read_only, -1)' positional argument 1 invalid value -1
+   16 | int RO (-1) f4 (const void *);
+      | ^
+attr_access.c:17:1: error: attribute 'access(read_only, 1, "s")' invalid positional argument 2
+   17 | int RO (1, "s") f5 (const void *, int);
+      | ^
+attr_access.c:18:1: error: attribute 'access(read_write, 1)' positional argument 1 references 'const'-qualified argument type 'const char *'
+   18 | int RW (1) f6 (const char *);
+      | ^
+attr_access.c:19:1: error: attribute 'access(read_only, 1)' positional argument 1 references argument of function type 'F' {aka 'int(int,  int)'}
+   19 | int RO (1) f7 (F *);
+      | ^
+attr_access.c:21:1: error: attribute 'access(read_only, 1, 2)' positional argument 1 references non-pointer argument type 'int'
+   21 | void RO (1, 2) (*pf) (int, int);
+      | ^
