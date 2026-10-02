@@ -2993,6 +2993,18 @@ static bool shorten_bitwise(Checker *c, uint32_t ws, TypeId lt, TypeId et,
             *wt = et;
     } else if (c0 != c1) {
         TypeId vt = c0 ? t1 : t0;
+        uint32_t ks = c0 ? s0 : s1;
+        unsigned tp = tgt_bits(c, lt);
+        uint64_t m = tp >= 64 ? ~0ull : (1ull << tp) - 1;
+        /* a constant that does not fit lt (and is not a full mask) keeps
+         * the operation at its own width */
+        if (gcc_integer(c, lt) && tp < 64 && int_bits(c, vt) <= tp &&
+            (int64_t)c->cv[ks] > 0 && c->cv[ks] >> tp &&
+            ntag(c, c0 ? s1 : s0) != N_BINARY &&
+            !(npunct(c, ws) == P_AMP && (c->cv[ks] & m) == m)) {
+            *wt = et;
+            return false;
+        }
         if (int_bits(c, vt) < int_bits(c, *wt))
             *wt = vt;
     }
@@ -3226,6 +3238,7 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
             int j;
             char wb[40];
             const char *saved = uc_whole;
+            size_t first_seen = c->diag->all.len;
             uc_whole = NULL;
             /* arms that convert to one value make the whole a constant */
             if (gcc_integer(c, lt) && int_bits(c, lt) <= 64 &&
@@ -3240,6 +3253,9 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
             }
             for (j = n - 2; j < (int)n; j++) {
                 bool ar = is_arith(c, ct) && !is_complex(c, ct);
+                size_t seen = c->diag->all.len;
+                if (j == (int)n - 1 && seen != first_seen)
+                    break;      /* gcc stops at the first arm that warns */
                 /* gcc warned about an arm's conversion to ct already */
                 if (ar && mainv(c, promoted(c, k[j])) != mainv(c, ct) &&
                     unsafe_conv_t(c, ct, k[j], promoted(c, k[j]), true) !=
@@ -3263,6 +3279,46 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
             cwarn(c, l, "conversion", "conversion to %s from boolean "
                   "expression", tgt_name(c, lt, tb));
         return;
+    }
+    if (top && !cst && ntag(c, s) == N_BINARY && bitwise_op(npunct(c, s)) &&
+        gcc_integer(c, lt) && gcc_integer(c, et) && int_bits(c, lt) < 64 &&
+        nkids(c, s, k, 2) == 2) {
+        /* a constant beyond lt's width: fold turns `x & K` into 0 when K has
+         * no bit in lt's width; otherwise the constant itself is the culprit */
+        uint32_t a = strip_paren(c, k[0]), b = strip_paren(c, k[1]);
+        bool ca = has_ival(c, a);
+        uint32_t ks = ca ? a : b, os = ca ? b : a;
+        unsigned tp = tgt_bits(c, lt);
+        uint64_t m = (1ull << tp) - 1;
+        TypeId ot;
+        uint32_t ow = unwidened(c, os, &ot);
+        if (ca != has_ival(c, b) && (int64_t)c->cv[ks] > 0 &&
+            c->cv[ks] >> tp && ntag(c, strip_paren(c, ow)) != N_BINARY) {
+            char sb[200];
+            if ((c->cv[ks] & m) == 0 && npunct(c, s) == P_AMP) {
+                if (diag_enabled(c->diag, "overflow")) {
+                    const char *tq = type_q(TT, rvt(c, s));
+                    char pn[80] = "";
+                    if (rvt(c, k[ca]) != rvt(c, s))
+                        snprintf(pn, sizeof pn, "(%.*s)", (int)strlen(tq) - 2,
+                                 tq + 1);
+                    snprintf(sb, sizeof sb, "%s%s & %s", pn,
+                             cexpr_str(c, k[ca]), vstr(c, rvt(c, ks), c->cv[ks]));
+                    cwarn(c, l, "overflow", "overflow in conversion from %s "
+                          "to %s changes value from '%s' to '0'",
+                          type_q(TT, et), type_q(TT, lt), sb);
+                }
+                return;
+            }
+            if (int_bits(c, ot) <= tp &&
+                !(npunct(c, s) == P_AMP && (c->cv[ks] & m) == m)) {
+                if (diag_enabled(c->diag, "conversion"))
+                    cwarn(c, l, "conversion", "conversion from %s to %s "
+                          "changes the value of '%s'", type_q(TT, et),
+                          type_q(TT, lt), vstr(c, rvt(c, ks), c->cv[ks]));
+                return;
+            }
+        }
     }
     kind = unsafe_conv_t(c, lt, s, et, true);
     if (kind == UC_SAFE)

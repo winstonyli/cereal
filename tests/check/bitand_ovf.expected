@@ -1,0 +1,42 @@
+bitand_ovf.c:2:46: warning: conversion from 'int' to 'unsigned char' changes the value of '770' [-Wconversion]
+    2 | unsigned char h1(unsigned char p) { return p & 0x302; }
+      |                                              ^
+bitand_ovf.c:3:46: warning: overflow in conversion from 'int' to 'unsigned char' changes value from '(int)p & 768' to '0' [-Woverflow]
+    3 | unsigned char h2(unsigned char p) { return p & 0x300; }
+      |                                              ^
+bitand_ovf.c:4:44: warning: overflow in conversion from 'int' to 'unsigned char' changes value from '(int)p & 512' to '0' [-Woverflow]
+    4 | unsigned char h3(signed char p) { return p & 512; }
+      |                                            ^
+bitand_ovf.c:5:47: warning: overflow in conversion from 'int' to 'unsigned char' changes value from '(int)p & 65536' to '0' [-Woverflow]
+    5 | unsigned char h4(unsigned short p) { return p & 0x10000; }
+      |                                               ^
+bitand_ovf.c:7:44: warning: conversion to 'signed char' from 'int' may change the sign of the result [-Wsign-conversion]
+    7 | signed char h8(unsigned char p) { return p & 0x80; }
+      |                                            ^
+bitand_ovf.c:8:47: warning: overflow in conversion from 'int' to 'unsigned char' changes value from '(int)p & 256' to '0' [-Woverflow]
+    8 | unsigned char h9(unsigned short p) { return p & 0x100; }
+      |                                               ^
+bitand_ovf.c:9:48: warning: conversion from 'int' to 'unsigned char' may change value [-Wconversion]
+    9 | unsigned char h10(unsigned short p) { return p & 0x1f0; }
+      |                                                ^
+bitand_ovf.c:10:49: warning: overflow in conversion from 'int' to 'unsigned char' changes value from '(int)p & 512' to '0' [-Woverflow]
+   10 | unsigned char h11(unsigned char p) { return 512 & p; }
+      |                                                 ^
+bitand_ovf.c:11:46: warning: overflow in conversion from 'int' to 'unsigned char' changes value from '(int)p & 512' to '0' [-Woverflow]
+   11 | unsigned char k1(unsigned char p) { return p & 512; }
+      |                                              ^
+bitand_ovf.c:13:53: warning: conversion from 'int' to 'unsigned char' may change value [-Wconversion]
+   13 | unsigned char k3(unsigned char p, int q) { return p & q; }
+      |                                                     ^
+bitand_ovf.c:14:46: warning: conversion from 'int' to 'unsigned char' changes the value of '512' [-Wconversion]
+   14 | unsigned char k4(unsigned char p) { return p | 512; }
+      |                                              ^
+bitand_ovf.c:16:46: warning: conversion from 'int' to 'unsigned char' changes the value of '256' [-Wconversion]
+   16 | unsigned char k6(unsigned char p) { return p ^ 256; }
+      |                                              ^
+bitand_ovf.c:20:7: warning: conversion from 'int' to 'unsigned char' changes value from '256' to '0' [-Wconversion]
+   20 |   c = b ? 256 : 512;
+      |       ^
+bitand_ovf.c:21:7: warning: conversion from 'int' to 'unsigned char' changes the value of '256' [-Wconversion]
+   21 |   c = b ? 256 : 1;
+      |       ^

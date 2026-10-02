@@ -390,11 +390,8 @@ const char *cident_ucn(const char *s);
 
 static inline const char *cident(const Checker *c, uint32_t id)
 {
-    const char *s = ident_by_id(c->in, id)->str, *q;
-    for (q = s; *q; q++)
-        if (*q == '\\' || (unsigned char)*q >= 0x80)
-            return cident_ucn(s);
-    return s;
+    const Ident *i = ident_by_id(c->in, id);
+    return i->ext ? cident_ucn(i->str) : i->str;
 }
 
 /* a parameter that is part of the function's type (not a GNU forward

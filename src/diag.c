@@ -807,3 +807,29 @@ void diag_print_json(DiagEngine *d, FILE *out)
     json_end_array(&w);
     fputc('\n', out);
 }
+
+/* Merges the diagnostics reported since all[from] (the parser's, up to
+ * all[mid]) with the checker's (from mid on) by location, each side keeping
+ * its own order: gcc checks as it parses, so a syntax error follows the
+ * diagnostics of what precedes it. */
+void diag_merge_from(DiagEngine *d, size_t from, size_t mid)
+{
+    size_t i = from, j = mid, n = d->all.len - from, k = 0;
+    Diagnostic **out;
+    if (mid <= from || mid >= d->all.len)
+        return;
+    out = xmalloc(n * sizeof *out);
+    while (i < mid && j < d->all.len) {
+        SrcLoc pl = d->all.data[i]->loc;
+        if (pl && d->all.data[j]->loc < pl)
+            out[k++] = d->all.data[j++];
+        else
+            out[k++] = d->all.data[i++];
+    }
+    while (i < mid)
+        out[k++] = d->all.data[i++];
+    while (j < d->all.len)
+        out[k++] = d->all.data[j++];
+    memcpy(d->all.data + from, out, n * sizeof *out);
+    free(out);
+}

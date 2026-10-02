@@ -24,6 +24,7 @@ typedef struct Ident {
     uint64_t digest;       /* 64-bit content hash (hash.h: token hashes) */
     uint16_t kw;           /* keyword/special id, 0 if none */
     uint16_t ckw;          /* C keyword (c/ckw.h), 0 if none */
+    uint8_t ext;           /* spelled with a backslash or a byte >= 0x80 */
 } Ident;
 
 #define INTERN_SHARDS 64

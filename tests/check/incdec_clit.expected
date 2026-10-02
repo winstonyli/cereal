@@ -1,12 +1,12 @@
-incdec_clit.c:3:28: error: expected ';' before '{' token
-    3 | void g(void){ ++(typeof(i)){2}; }
-      |                            ^
 incdec_clit.c:3:18: warning: implicit declaration of function 'typeof' [-Wimplicit-function-declaration]
     3 | void g(void){ ++(typeof(i)){2}; }
       |                  ^
 incdec_clit.c:3:15: error: lvalue required as increment operand
     3 | void g(void){ ++(typeof(i)){2}; }
       |               ^
+incdec_clit.c:3:28: error: expected ';' before '{' token
+    3 | void g(void){ ++(typeof(i)){2}; }
+      |                            ^
 incdec_clit.c:5:15: error: lvalue required as increment operand
     5 | void k(void){ ++(int)i; --(char)i; }
       |               ^

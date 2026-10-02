@@ -176,3 +176,24 @@ layouts, gcc rules ported, walk design).
   tests 778, corpus 0/0, ASAN/UBSAN 0.  Open: Wconversion-complex-c99,
   overflow-warn-5, pr35635, init-bad-4 recovery, -Wstringop-overread.
 
+- Diagnostic order, bit-and conversions, init recovery (2026-10-02):
+  * Order: in a unit with a syntax error, main.c merges the parser's
+    diagnostics with the checker's by location (diag_merge_from; each side
+    keeps its own order), since gcc checks as it parses.  Order-only
+    differences vs gcc: 110 -> 32 files (bench: compare g and c lists of
+    dg_out.json in order, not as multisets).  Still off: K&R cascades, macro
+    notes, `expected '}'` that gcc prints before later checker diagnostics.
+  * `x & K` converted to a narrower integer: K with no bit inside the
+    target width -> -Woverflow "changes value from '(int)p & 512' to '0'"
+    (operands printed with the promotion cast, constant last); K beyond the
+    width otherwise (also `|`, `^`) -> -Wconversion "changes the value of
+    'K'".  `?:` arms stop at the first arm that warns.  Golden bitand_ovf.
+    Open: `p & 256 & 512` (gcc silent); bit-field `?:` (gcc warns on the
+    whole conditional, -Woverflow, pr35635).
+  * A missing '}' in an initializer skips to the matching '}' like gcc's
+    c_parser_skip_until_found and is a soft error (checker still runs):
+    init-bad-4 now has gcc's diagnostics.  Golden init_brace_err.
+  * Perf: cident() tested every identifier for UCN spelling on each call
+    (+2.3% check); the flag is now Ident.ext, set at interning.  uvloop
+    check 3.357G (parse 1.702G).
+

@@ -1,0 +1,24 @@
+init_brace_err.c:1:8: warning: struct has no members [-Wpedantic]
+    1 | struct A { } a = (struct A) {{ (X)0 }};
+      |        ^
+init_brace_err.c:1:30: error: extra brace group at end of initializer
+    1 | struct A { } a = (struct A) {{ (X)0 }};
+      |                              ^
+init_brace_err.c:1:30: note: (near initialization for '(anonymous)')
+    1 | struct A { } a = (struct A) {{ (X)0 }};
+      |                              ^
+init_brace_err.c:1:33: error: 'X' undeclared here (not in a function)
+    1 | struct A { } a = (struct A) {{ (X)0 }};
+      |                                 ^
+init_brace_err.c:1:30: warning: excess elements in struct initializer
+    1 | struct A { } a = (struct A) {{ (X)0 }};
+      |                              ^
+init_brace_err.c:1:30: note: (near initialization for '(anonymous)')
+    1 | struct A { } a = (struct A) {{ (X)0 }};
+      |                              ^
+init_brace_err.c:1:18: warning: initializer element is not constant [-Wpedantic]
+    1 | struct A { } a = (struct A) {{ (X)0 }};
+      |                  ^
+init_brace_err.c:1:35: error: expected '}' before numeric constant
+    1 | struct A { } a = (struct A) {{ (X)0 }};
+      |                                   ^

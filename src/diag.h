@@ -128,6 +128,7 @@ void diag_print(DiagEngine *d, Diagnostic *dg);
 void diag_flush(DiagEngine *d);   /* print everything not yet printed */
 void diag_print_json(DiagEngine *d, FILE *out);
 void diag_list_options(FILE *out);
+void diag_merge_from(DiagEngine *d, size_t from, size_t mid);
 
 const DiagOption *diag_find_option(const char *name);
 

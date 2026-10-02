@@ -1,24 +1,24 @@
-trail_decl.c:2:14: error: expected ',' or ';' before string constant
-    2 | int a[0] = y "s";
-      |              ^
 trail_decl.c:2:5: warning: ISO C forbids zero-size array 'a' [-Wpedantic]
     2 | int a[0] = y "s";
       |     ^
 trail_decl.c:2:12: error: 'y' undeclared here (not in a function)
     2 | int a[0] = y "s";
       |            ^
+trail_decl.c:2:14: error: expected ',' or ';' before string constant
+    2 | int a[0] = y "s";
+      |              ^
 trail_decl.c:3:11: error: expected ',' or ';' before string constant
     3 | int b = 1 "s";
       |           ^
-trail_decl.c:4:15: error: expected ',' or ';' before numeric constant
-    4 | int c[2] = yy 5;
-      |               ^
 trail_decl.c:4:12: error: 'yy' undeclared here (not in a function)
     4 | int c[2] = yy 5;
       |            ^
-trail_decl.c:6:11: error: expected ',' or ';' before string constant
-    6 | int d = q "x";
-      |           ^
+trail_decl.c:4:15: error: expected ',' or ';' before numeric constant
+    4 | int c[2] = yy 5;
+      |               ^
 trail_decl.c:6:9: error: initializer element is not constant
     6 | int d = q "x";
       |         ^
+trail_decl.c:6:11: error: expected ',' or ';' before string constant
+    6 | int d = q "x";
+      |           ^

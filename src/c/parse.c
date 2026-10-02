@@ -1625,9 +1625,23 @@ static void init_list(Parser *p)
         if (!accept(p, P_COMMA))
             break;
     }
+    uint64_t before = p->errors;
     if (!expect(p, P_RBRACE)) {
+        p->soft_errors += p->errors - before;
+        /* gcc: c_parser_skip_until_found('}'), balancing brackets; the
+         * declaration goes on from there */
+        int depth = 0;
         flags |= NF_ERROR;
-        sync_stmt(p);
+        while (!at_eof(p) && !(depth == 0 && at(p, P_SEMI))) {
+            if (at(p, P_LPAREN) || at(p, P_LBRACKET) || at(p, P_LBRACE))
+                depth++;
+            else if (at(p, P_RBRACE) && depth-- <= 0) {
+                adv(p);
+                break;
+            } else if ((at(p, P_RPAREN) || at(p, P_RBRACKET)) && depth > 0)
+                depth--;
+            adv(p);
+        }
     }
     emit(p, N_INIT_LIST, lb, start, flags);
 }

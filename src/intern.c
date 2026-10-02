@@ -149,6 +149,9 @@ Ident *intern(Interner *in, const char *str, size_t n)
         id->str = arena_strndup(&s->arena, str, n);
         id->len = (uint32_t)n;
         id->hash = h;
+        for (size_t k = 0; k < n; k++)
+            if (str[k] == '\\' || (unsigned char)str[k] >= 0x80)
+                id->ext = 1;
         id->digest = hash64(str, n, 0);
         id->id = atomic_add_u32(&in->next_id, 1);
         register_id(in, id);
