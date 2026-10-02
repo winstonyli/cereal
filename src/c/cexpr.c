@@ -10490,6 +10490,17 @@ restart:
             sq_merge(s, pno, tmp_list2, false);
             return;
         }
+        if (n == 2 && sq_eq(c, sq_strip(c, k[0]), sq_strip(c, k[1])) &&
+            !sq_side(c, k[0]) && !(c->ef[k[0]] & EF_SIDE) &&
+            is_int(c, c->ty[k[0]])) {
+            switch (npunct(c, x)) {     /* fold: x op x is a constant */
+            case P_MINUS: case P_CARET: case P_LT: case P_GT: case P_LE:
+            case P_GE: case P_EQEQ: case P_NE: case P_SLASH: case P_PERCENT:
+                return;
+            default:
+                break;
+            }
+        }
         sq_ops(s, k, n, pno);
         return;
     case N_COND: {
