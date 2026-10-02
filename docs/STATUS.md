@@ -161,3 +161,18 @@ layouts, gcc rules ported, walk design).
   gives gcc a second warning at the tag (c99-flex-array-7/typedef-7); `u8""`
   literals in -std=c99; `__mode__(\u00e9)` unknown-mode error.
 
+- Trailing-token recovery, -Wtraditional ints, __int128 literals (2026-10-02):
+  * "expected ',' or ';'" after a complete init-declarator no longer silences
+    the checker (Parser.soft_errors is subtracted in main.c's had_errors):
+    gcc has already processed the declarator, so undeclared identifiers,
+    zero-size-array pedwarns and "initializer element is not constant" still
+    follow.  Other syntax errors still quiet the whole unit.  Order stays
+    parser-errors-first (parked).
+  * -Wtraditional: "this decimal constant would be unsigned in ISO C90" and
+    "traditional C rejects the \"u\" suffix" (not in system headers).
+  * Unsuffixed decimals above LLONG_MAX are __int128: overflow-in-conversion
+    to long long is pedantic-only, to int always; 128-bit values print unsigned.
+  Goldens trad_int, trail_decl.  gcc.dg 3572/3875 identical (unchanged),
+  tests 778, corpus 0/0, ASAN/UBSAN 0.  Open: Wconversion-complex-c99,
+  overflow-warn-5, pr35635, init-bad-4 recovery, -Wstringop-overread.
+

@@ -397,7 +397,9 @@ int64_t cexpr_sval(Checker *c, uint32_t i)
 
 bool cexpr_fits(Checker *c, uint64_t v, TypeId from, TypeId to)
 {
-    bool neg = is_int(c, from) && is_signed(c, from) && (int64_t)v < 0;
+    /* a 128-bit value reaching here is an unsigned-range literal */
+    bool neg = is_int(c, from) && is_signed(c, from) && (int64_t)v < 0 &&
+               int_bits(c, from) <= 64;
     unsigned bits = int_bits(c, to);
     if (tkind(c, to) == TY_BOOL)
         return v <= 1 && !neg;
@@ -1639,7 +1641,7 @@ const char *cexpr_str(Checker *c, uint32_t i)
 static const char *vstr(Checker *c, TypeId t, uint64_t v)
 {
     char *b = c->vbuf[c->vnext++ & 1];
-    if (is_int(c, t) && is_signed(c, t))
+    if (is_int(c, t) && is_signed(c, t) && int_bits(c, t) <= 64)
         snprintf(b, sizeof c->vbuf[0], "%lld", (long long)(int64_t)v);
     else
         snprintf(b, sizeof c->vbuf[0], "%llu", (unsigned long long)v);
@@ -1794,6 +1796,9 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
         }
         break;
     }
+    if ((l->flags & LIT_UNSIGNED_WARN) && !cin_system(c, loc))
+        cwarn(c, cinput_loc(c, c->nodes[i].tok), "traditional",
+              "this decimal constant would be unsigned in ISO C90");
 }
 
 static void e_number(Checker *c, uint32_t i)
@@ -1814,6 +1819,10 @@ static void e_number(Checker *c, uint32_t i)
         return;
     }
     c->ty[i] = t;
+    if (!(l.flags & LIT_FLOAT) && (memchr(s, 'u', len) || memchr(s, 'U', len)) &&
+        !cin_system(c, cnode_loc(c, i)))
+        cwarn(c, cnode_loc(c, i), "traditional",
+              "traditional C rejects the \"u\" suffix");
     if (l.flags & LIT_FLOAT) {
         long double v = fround(c, t, l.f);
         size_t k;
@@ -3388,7 +3397,11 @@ static bool conv_overflow(Conv *x)
         return true;
     if (!is_int(c, lt) || tkind(c, lt) == TY_BOOL)
         return false;
-    if (has_ival(c, e) && int_bits(c, rt) <= 64 && int_bits(c, lt) <= 64) {
+    /* a __int128 literal (an unsuffixed decimal above LLONG_MAX) keeps its
+     * value in cv; computed 128-bit values are not tracked */
+    if (has_ival(c, e) && int_bits(c, lt) <= 64 &&
+        (int_bits(c, rt) <= 64 ||
+         (int_bits(c, rt) == 128 && ntag(c, strip_paren(c, e)) == N_NUMBER))) {
         uint64_t v = c->cv[e], r = cexpr_trunc(c, lt, v);
         TypeId us, sg, dummy;
         bool warn = false;

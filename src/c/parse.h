@@ -60,6 +60,8 @@ typedef struct Parser {
     bool err_live;      /* gcc's parser->error: no sync since the last error */
     uint32_t last_err;          /* token of the last error (no cascades) */
     uint64_t units, errors;
+    uint64_t soft_errors; /* of errors: a stray token after a complete
+                           * declaration, which gcc still processes */
 } Parser;
 
 void parser_init(Parser *p, SrcMgr *sm, Interner *in, DiagEngine *diag,

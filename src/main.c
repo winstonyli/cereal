@@ -258,11 +258,12 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         co.summaries = keep_summaries;
         chk = checker_new(&tu.sm, tu.in, &tu.diag, &co);
     }
-    for (errs = p.errors; parser_next(&p, &u); errs = p.errors) {
+    for (errs = p.errors - p.soft_errors; parser_next(&p, &u);
+         errs = p.errors - p.soft_errors) {
         if (parse_dump)
             ast_dump(out, &u, &tu.sm, tu.in);
         if (chk)
-            checker_unit(chk, &u, p.errors > errs);
+            checker_unit(chk, &u, p.errors - p.soft_errors > errs);
     }
     if (chk && tu.diag.pedantic && p.units == 0 && p.base + p.unit_end == 0) {
         uint32_t k;

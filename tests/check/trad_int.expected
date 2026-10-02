@@ -1,0 +1,39 @@
+trad_int.c:3:16: warning: integer constant is so large that it is unsigned
+    3 | long long b0 = 18446744073709551615;
+      |                ^
+trad_int.c:3:1: warning: this decimal constant would be unsigned in ISO C90 [-Wtraditional]
+    3 | long long b0 = 18446744073709551615;
+      | ^
+trad_int.c:3:16: warning: overflow in conversion from '__int128' to 'long long int' changes value from '18446744073709551615' to '-1' [-Woverflow]
+    3 | long long b0 = 18446744073709551615;
+      |                ^
+trad_int.c:7:16: warning: traditional C rejects the "u" suffix [-Wtraditional]
+    7 | long long f0 = 18446744073709551615u;
+      |                ^
+trad_int.c:8:16: warning: integer constant is so large that it is unsigned
+    8 | long long b1 = 18446744073709551615;
+      |                ^
+trad_int.c:8:1: warning: this decimal constant would be unsigned in ISO C90 [-Wtraditional]
+    8 | long long b1 = 18446744073709551615;
+      | ^
+trad_int.c:8:16: warning: overflow in conversion from '__int128' to 'long long int' changes value from '18446744073709551615' to '-1' [-Woverflow]
+    8 | long long b1 = 18446744073709551615;
+      |                ^
+trad_int.c:9:16: warning: integer constant is too large for its type
+    9 | long long c1 = 18446744073709551616;
+      |                ^
+trad_int.c:10:10: warning: integer constant is so large that it is unsigned
+   10 | int z1 = 18446744073709551615;
+      |          ^
+trad_int.c:10:1: warning: this decimal constant would be unsigned in ISO C90 [-Wtraditional]
+   10 | int z1 = 18446744073709551615;
+      | ^
+trad_int.c:10:10: warning: overflow in conversion from '__int128' to 'int' changes value from '18446744073709551615' to '-1' [-Woverflow]
+   10 | int z1 = 18446744073709551615;
+      |          ^
+trad_int.c:11:25: warning: integer constant is so large that it is unsigned
+   11 | unsigned long long d1 = 18446744073709551615;
+      |                         ^
+trad_int.c:11:1: warning: this decimal constant would be unsigned in ISO C90 [-Wtraditional]
+   11 | unsigned long long d1 = 18446744073709551615;
+      | ^

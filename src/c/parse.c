@@ -2567,7 +2567,9 @@ static void declaration(Parser *p, bool top)
             break;
     }
     if (!accept(p, P_SEMI)) {
+        uint64_t before = p->errors;
         expected(p, "',' or ';'");
+        p->soft_errors += p->errors - before;
         flags |= NF_ERROR;
         if (top || p->kr_params)
             sync_top(p);
