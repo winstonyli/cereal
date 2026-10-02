@@ -1,0 +1,21 @@
+stmt_expr_label_value.c:4:11: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    4 |   int a = ({ l1: 1; });
+      |           ^
+stmt_expr_label_value.c:5:11: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    5 |   int b = ({ k; l2: l3: 2; });
+      |           ^
+stmt_expr_label_value.c:6:11: warning: ISO C forbids label declarations [-Wpedantic]
+    6 |   *p = ({ __label__ h; h: &&h; });
+      |           ^
+stmt_expr_label_value.c:6:3: warning: taking the address of a label is non-standard [-Wpedantic]
+    6 |   *p = ({ __label__ h; h: &&h; });
+      |   ^
+stmt_expr_label_value.c:6:8: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    6 |   *p = ({ __label__ h; h: &&h; });
+      |        ^
+stmt_expr_label_value.c:7:11: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    7 |   int c = ({ if (k) k; l4: ; });
+      |           ^
+stmt_expr_label_value.c:7:11: error: void value not ignored as it ought to be
+    7 |   int c = ({ if (k) k; l4: ; });
+      |           ^

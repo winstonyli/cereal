@@ -3,6 +3,7 @@
 CEREAL_GCCTS (default ~/gccts: sparse gcc-13.3.0 checkout of gcc/testsuite/gcc.dg),
 CEREAL_CORPUS (default ~/corpus), CEREAL_PYINC as for corpus.py; CEREAL_GCC (default gcc)
 should be 13 (messages and permerrors differ in 14+).
+CEREAL_DGDIR (default gcc.dg; e.g. c-c++-common) picks the testsuite directory.
 CEREAL_DGOPTS=1 (dg set): honour each test's first `dg-options` line (replacing
 the default -std=c99 -pedantic where it gives -std=/-pedantic*) and skip tests
 whose dg-options use a target selector a standard other than C99, or options
@@ -33,7 +34,7 @@ def work(job):
         g=hdrs(g.stderr.decode(errors="replace")),c=hdrs(c.stderr.decode(errors="replace")),
         cerr=c.stderr.decode(errors="replace")[-300:] if c.returncode not in (0,1) else "")
 def dgjobs(extra):
-    root=os.environ.get("CEREAL_GCCTS",os.path.expanduser("~/gccts"))+"/gcc/testsuite/gcc.dg"
+    root=os.environ.get("CEREAL_GCCTS",os.path.expanduser("~/gccts"))+"/gcc/testsuite/"+os.environ.get("CEREAL_DGDIR","gcc.dg")
     jobs=[]
     dgo=os.environ.get("CEREAL_DGOPTS")=="1"
     for f in sorted(glob.glob(root+"/*.c")):

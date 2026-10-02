@@ -390,3 +390,14 @@ layouts, gcc rules ported, walk design).
   expression's value.  Golden sign_compare_nonneg.  Known extra: `b + b + b`
   (uchar b) warns here, gcc folds it to b * 3 first.  gcc.dg 3620 of 3875
   identical; tests 832.
+- Round 10 (2026-10-02): widened to c-c++-common (CEREAL_DGDIR=c-c++-common
+  for bench/tools/par.py; gcc-13, CEREAL_DGOPTS=1): n=657, rejects-valid 9,
+  accepts-invalid 19 (was 12/28).  Fixed: malloc(dealloc, pos) checks,
+  statement-expression value behind a label, pedantic C99 Annex D check of
+  UCNs in identifiers (src/ucn99.h from bench/tools/gen_ucn99.py).
+  pp_read_raw (top self cost) is the bulk newline/char scan already; no
+  further bulk-scan saving found.  Open: raw UTF-8 identifier validation +
+  "stray in program", -Wbidi-chars, __builtin_has_attribute argument
+  comparison, builtin_location constants, pr109884 (__float128), and the
+  accepts-invalid list (attr-nocf-check-3, attr-simd-5, pr100785, pr20318,
+  pr58346-2/3, pr68657-2/3, ...).  Tests 836; gcc.dg 3620/3875 identical.

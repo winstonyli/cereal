@@ -236,6 +236,29 @@ static size_t ucn_canon(const char *p, size_t n, char *out, size_t cap)
     return o;
 }
 
+#include "ucn99.h"
+
+/* ucn_valid_in_identifier under -pedantic in C99: 1 ok, 0 not an identifier
+ * character, 2 ok but not as the first one. */
+static int ucn99_class(const char *p, int digits)
+{
+    unsigned long v = 0;
+    size_t lo = 0, hi = sizeof ucn99 / sizeof *ucn99;
+    int k;
+    for (k = 0; k < digits; k++)
+        v = v * 16 + (unsigned long)(p[k] <= '9' ? p[k] - '0' : (p[k] | 32) - 'a' + 10);
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (v < ucn99[mid].lo)
+            hi = mid;
+        else if (v > ucn99[mid].hi)
+            lo = mid + 1;
+        else
+            return ucn99[mid].nostart ? 2 : 1;
+    }
+    return 0;
+}
+
 static int s_ucn_len(Slow *s)
 {
     const char *p = s->p;
@@ -392,6 +415,15 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
                 s_take(&s);
             } else if ((u = s_ucn_len(&s)) != 0) {
                 flags |= TF_UCN;
+                if (L->opt.ucn_c99 && L->diag) {
+                    int cl = ucn99_class(s.p + 2, u - 2);
+                    if (cl == 0 || (cl == 2 && s.p == start))
+                        diag_report(L->diag, DL_ERROR, "",
+                                    (SrcLoc)(start - L->region),
+                                    "universal character %.*s is not valid %s"
+                                    "an identifier", u, s.p,
+                                    cl ? "at the start of " : "in ");
+                }
                 s_take_n(&s, u);
             } else {
                 break;

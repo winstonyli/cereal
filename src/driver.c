@@ -140,9 +140,11 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         fatal("only C99 is supported (got '%s')", a);
     } else if (!strcmp(a, "-pedantic") || !strcmp(a, "-Wpedantic")) {
         o->pp.pedantic = true;
+        o->pp.lex.ucn_c99 = true;
         vec_push(&o->wflags, "pedantic");
     } else if (!strcmp(a, "-pedantic-errors")) {
         o->pp.pedantic = true;
+        o->pp.lex.ucn_c99 = true;
         o->pedantic_errors = true;
         vec_push(&o->wflags, "pedantic");
     } else if (!strcmp(a, "-trigraphs")) {

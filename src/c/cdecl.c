@@ -312,7 +312,7 @@ static void gnu_attr_argc(Checker *c, uint32_t attr)
 {
     static const struct { const char *n; uint32_t lo, hi; } t[] = {
         {"access", 1, 3}, {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"copy", 1, 1},
-        {"section", 1, 1}, {"strict_flex_array", 1, 1}};
+        {"malloc", 0, 2}, {"section", 1, 1}, {"strict_flex_array", 1, 1}};
     Kids k;
     uint32_t j;
     if (tokp(c, cnode(c, attr)->tok)->kind == TK_PUNCT)
@@ -485,9 +485,10 @@ static bool attr_known(const char *name)
     return false;
 }
 
-/* malloc (dealloc): the deallocator must name a function whose first
- * parameter is a pointer. */
-static void attr_malloc_dealloc(Checker *c, uint32_t arg, SrcLoc loc)
+/* malloc (dealloc[, pos]): the deallocator must name a function whose
+ * parameter number pos (default 1) is a pointer. */
+static void attr_malloc_dealloc(Checker *c, uint32_t arg, uint32_t pos,
+                                SrcLoc loc)
 {
     TypeId ft;
     if (ntag(c, arg) != N_IDENT || type_ckind(TT, c->ty[arg]) != TY_FUNC) {
@@ -498,6 +499,29 @@ static void attr_malloc_dealloc(Checker *c, uint32_t arg, SrcLoc loc)
     ft = c->ty[arg];
     if (type_ckind(TT, ft) != TY_FUNC)
         return;
+    if (pos != NO_NODE) {
+        uint32_t n = type_ent(TT, ft)->n;
+        if (!(c->ck[pos] == K_ICE || c->ck[pos] == K_FOLD)) {
+            cwarn(c, loc, "attributes", "'malloc' attribute argument has type "
+                  "%s", type_q(TT, c->ty[pos]));
+        } else if (type_ent(TT, ft)->flags & TF_NOPROTO) {
+            /* nothing is known of the parameters */
+        } else if (c->cv[pos] < 1) {
+            cwarn(c, loc, "attributes", "'malloc' attribute argument value "
+                  "'%lld' does not refer to a function parameter",
+                  (long long)c->cv[pos]);
+        } else if (c->cv[pos] > n) {
+            cwarn(c, loc, "attributes", "'malloc' attribute argument value "
+                  "'%lld' exceeds the number of function parameters %u",
+                  (long long)c->cv[pos], n);
+        } else if (type_ckind(TT, type_params(TT, ft)[c->cv[pos] - 1]) !=
+                   TY_PTR) {
+            cwarn(c, loc, "attributes", "'malloc' attribute argument value "
+                  "'%lld' refers to parameter type %s", (long long)c->cv[pos],
+                  type_q(TT, type_params(TT, ft)[c->cv[pos] - 1]));
+        }
+        return;
+    }
     if (!type_ent(TT, ft)->n) {
         if (type_ent(TT, ft)->flags & TF_NOPROTO)
             cerror(c, loc, "'malloc' attribute argument 1 must take a "
@@ -506,9 +530,12 @@ static void attr_malloc_dealloc(Checker *c, uint32_t arg, SrcLoc loc)
             cerror(c, loc, "'malloc' attribute argument 1 must take a "
                    "pointer type as its first argument; have 'void'");
     } else if (type_ckind(TT, type_params(TT, ft)[0]) != TY_PTR) {
-        cerror(c, loc, "'malloc' attribute argument 1 must take a pointer "
-               "type as its first argument; have %s",
-               type_q(TT, type_params(TT, ft)[0]));
+        Diagnostic *d = cerror_d(c, loc, "'malloc' attribute argument 1 must "
+                                 "take a pointer type as its first argument; "
+                                 "have %s", type_q(TT, type_params(TT, ft)[0]));
+        if (d && c->cb[arg] && !(c->cb[arg] & CB_NODE))
+            cnote(c, d, csym(c, c->cb[arg] - 1)->loc,
+                  "referenced symbol declared here");
     }
 }
 
@@ -691,7 +718,8 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                                            iloc(c, after_tok(c, attr)), true);
         } else if (!strcmp(name, "malloc") && arg != NO_NODE &&
                    c->ck[arg] != K_ERR) {
-            attr_malloc_dealloc(c, arg, iloc(c, after_tok(c, attr)));
+            attr_malloc_dealloc(c, arg, ak.n > 1 ? ak.p[1] : NO_NODE,
+                                iloc(c, after_tok(c, attr)));
         } else if (!strcmp(name, "packed")) {
             a->packed = true;
         } else if (!strcmp(name, "copy") && arg != NO_NODE &&

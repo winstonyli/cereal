@@ -16,12 +16,18 @@ attr_malloc.c:13:1: error: 'malloc' attribute argument 1 must take a pointer typ
 attr_malloc.c:14:1: error: 'malloc' attribute argument 1 must take a pointer type as its first argument; have 'int'
    14 | void *a5 (int) __attribute__((malloc(fvi)));
       | ^
+attr_malloc.c:5:6: note: referenced symbol declared here
+    5 | void fvi (int);
+      |      ^
 attr_malloc.c:15:1: error: 'malloc' attribute argument 1 must take a pointer type as its first argument; have 'void'
    15 | void *a6 (int) __attribute__((malloc(fvv)));
       | ^
 attr_malloc.c:16:1: error: 'malloc' attribute argument 1 must take a pointer type as its first argument; have 'Type'
    16 | void *a7 (int) __attribute__((malloc(fvi_vp)));
       | ^
+attr_malloc.c:7:6: note: referenced symbol declared here
+    7 | void fvi_vp (Type, void*);
+      |      ^
 attr_malloc.c:18:38: error: expected expression before 'T'
    18 | void *a9 (int) __attribute__((malloc(T)));
       |                                      ^

@@ -1,0 +1,30 @@
+malloc_dealloc_pos.c:8:1: warning: 'malloc' attribute argument value '2' refers to parameter type 'int' [-Wattributes]
+    8 | long *a2 (int) __attribute__ ((malloc (d2, 2)));
+      | ^
+malloc_dealloc_pos.c:9:1: warning: 'malloc' attribute argument value '3' exceeds the number of function parameters 2 [-Wattributes]
+    9 | long *a3 (int) __attribute__ ((malloc (d1, 3)));
+      | ^
+malloc_dealloc_pos.c:10:1: warning: 'malloc' attribute argument value '0' does not refer to a function parameter [-Wattributes]
+   10 | long *a4 (int) __attribute__ ((malloc (d1, 0)));
+      | ^
+malloc_dealloc_pos.c:11:1: warning: 'malloc' attribute argument value '1' exceeds the number of function parameters 0 [-Wattributes]
+   11 | long *a5 (int) __attribute__ ((malloc (d3, 1)));
+      | ^
+malloc_dealloc_pos.c:13:1: error: 'malloc' attribute argument 1 must take a pointer type as its first argument; have 'int'
+   13 | long *a7 (int) __attribute__ ((malloc (d5)));
+      | ^
+malloc_dealloc_pos.c:6:6: note: referenced symbol declared here
+    6 | void d5 (int);
+      |      ^
+malloc_dealloc_pos.c:14:1: warning: 'malloc' attribute argument value '1' refers to parameter type 'int' [-Wattributes]
+   14 | long *a8 (int) __attribute__ ((malloc (d1, 1)));
+      | ^
+malloc_dealloc_pos.c:15:1: error: wrong number of arguments specified for 'malloc' attribute
+   15 | long *a9 (int) __attribute__ ((malloc (d1, 2, 3)));
+      | ^
+malloc_dealloc_pos.c:15:1: note: expected between 0 and 2, found 3
+   15 | long *a9 (int) __attribute__ ((malloc (d1, 2, 3)));
+      | ^
+malloc_dealloc_pos.c:16:1: warning: 'malloc' attribute argument has type 'double' [-Wattributes]
+   16 | long *aa (int) __attribute__ ((malloc (d1, 1.0)));
+      | ^

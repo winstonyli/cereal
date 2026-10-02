@@ -7468,11 +7468,15 @@ static void e_complit(Checker *c, uint32_t i)
 /* The node of the value of the statement expression i (NO_NODE: none). */
 static uint32_t stmt_expr_value(Checker *c, uint32_t i)
 {
-    uint32_t k = i - 1;
-    if (c->nodes[i].size >= 4 && k >= 3 && ntag(c, k - 1) == N_SCOPE_END &&
-        ntag(c, k - 2) == N_EXPR_STMT && c->nodes[k - 2].size > 1)
-        return k - 3;
-    return NO_NODE;
+    uint32_t k = i - 1, it;
+    if (c->nodes[i].size < 4 || k < 3 || ntag(c, k - 1) != N_SCOPE_END)
+        return NO_NODE;
+    it = k - 2;
+    while (it > 0 && (ntag(c, it) == N_LABEL || ntag(c, it) == N_CASE ||
+                      ntag(c, it) == N_DEFAULT))
+        it--;  /* a labeled last statement yields its own value */
+    return ntag(c, it) == N_EXPR_STMT && c->nodes[it].size > 1 ? it - 1
+                                                                : NO_NODE;
 }
 
 static void e_stmt_expr(Checker *c, uint32_t i)
