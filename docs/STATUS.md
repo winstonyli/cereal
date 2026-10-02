@@ -439,3 +439,40 @@ layouts, gcc rules ported, walk design).
   gcc.dg bitfld-12 (offsetof bit-field message: "attempt to take address of
   bit-field structure member", at the tag name), -Wbidi-chars and UTF-8
   "stray in program" (step 3).
+- Round 14 (2026-10-02): -Wbidi-chars and UTF-8 "stray in program".
+  gcc.dg identical 3618 -> 3620 (0 rejects-valid, 0 accepts-invalid);
+  c-c++-common identical 479 -> 496 (accepts-invalid still 6).  Tests 864;
+  ASan+UBSan clean (also bidi_fuzz); check icount 3.294G -> 3.303G.
+  -Wbidi-chars[=none|unpaired|any|ucn,...] ports libcpp's bidi::vec (global
+  stack of {pdf?, ucn?}; LRE/RLE/LRO/RLO push PDF contexts, LRI/RLI/FSI PDI
+  contexts; LTR/RTL flagged only; closed at string/char end, each block-comment
+  line, line comments containing 0xE2, identifiers containing UTF-8/UCN).
+  Default unpaired; bare option = any; UCNs checked only with ucn.  The column
+  of a diagnostic is gcc's display column (wcwidth tables, src/wcwidth.h).
+  UTF-8 identifiers are validated against the C99 table under -pedantic and
+  the C99|C++|C11 union otherwise (src/ucnx.h); an invalid character is a
+  TK_OTHER token that the parser reports as "stray '\ooo' in program" /
+  "stray 'c'" / "missing terminating c character" and skips; # and ## left in
+  program text are stray too (gcc spells "##").  lexer_set_diag(L, d) sets
+  hi8/bidi_live for lexer_init and the plan-segment lexers (the --cells path
+  lexed UTF-8 on the fast path before); phase A clears bidi_live while diag
+  is NULL.  Fixed a Round 13 regression: the argument-2 pointer check applied
+  to every non-generic __atomic_* (test_and_set/clear take a memory order);
+  now only *_lock_free (golden atomic_order).
+  Goldens bidi_chars, bidi_any, bidi_ucn, bidi_any_ucn, bidi_off,
+  stray_utf8, stray_ascii (each header-for-header equal to gcc-13).
+  Tools: bench/tools/bidi_fuzz.py (differential: strings, char constants,
+  comments, identifiers x 9 modes x pedantic; 0 diffs on 8 seeds),
+  bidi_probe*.py, gen_wcwidth.py, gen_ucnx.py.  par.py now caches gcc's
+  result (~/.cache/cereal-par, CEREAL_PARCACHE=0 off; clear it if ~/gccts
+  headers change), CEREAL_JOBS (12), cereal timeout 10 s.
+  Known gaps: the bidi stack does not carry across parallel chunks (a stray
+  control left open is closed in a later chunk in gcc only); no bidi in
+  skipped #if groups; \u{...} in identifiers and gcc's "delimited escape
+  sequences" pedwarn; $ identifiers and numbers do not close contexts;
+  UTF-8 and UCN spellings of one identifier are not unified; diagnostics are
+  location-sorted, so lexer and parser messages can order differently from
+  gcc.  Parser cascade: gcc suppresses a later "expected ... before" after an
+  "expected expression" error (cereal does not).  Open: -Wlarger-than=N and
+  -Wmissing-format-attribute on __builtin_vprintf (pr68657-2/3, pr68833-2),
+  bitfld-12.

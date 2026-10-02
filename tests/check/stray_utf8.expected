@@ -1,0 +1,18 @@
+stray_utf8.c:3:6: error: stray '\314' in program
+    3 | int x́y;
+      |      ^
+stray_utf8.c:3:6: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'y'
+    3 | int x́y;
+      |      ^
+stray_utf8.c:6:6: error: stray '\342' in program
+    6 | int a‮b;
+      |      ^
+stray_utf8.c:6:6: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'b'
+    6 | int a‮b;
+      |      ^
+stray_utf8.c:7:9: error: stray '\342' in program
+    7 | int y = €;
+      |         ^
+stray_utf8.c:7:10: error: expected expression before ';' token
+    7 | int y = €;
+      |          ^

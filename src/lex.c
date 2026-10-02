@@ -10,7 +10,9 @@
  * buffer in the location space; a 0 byte at or after `lim` is end of input. */
 #include "lex.h"
 #include "simd.h"
+#include "utf8.h"
 
+#include <ctype.h>
 #include <pthread.h>
 #include <string.h>
 
@@ -64,6 +66,43 @@ void lex_global_init(void)
 
 /* ---- setup ---------------------------------------------------------- */
 
+/* Does the file have a byte >= 0x80? */
+static bool has_high(const char *p, size_t n)
+{
+    size_t i = 0;
+    for (; i + 8 <= n; i += 8) {
+        uint64_t w;
+        memcpy(&w, p + i, 8);
+        if (w & 0x8080808080808080ull)
+            return true;
+    }
+    for (; i < n; i++)
+        if ((unsigned char)p[i] & 0x80)
+            return true;
+    return false;
+}
+
+static inline bool has_high_in(const char *p, const char *q)
+{
+    for (; p < q; p++)
+        if ((unsigned char)*p & 0x80)
+            return true;
+    return false;
+}
+
+/* Attach the diagnostics and decide, from [p, lim), whether the text can
+ * need the slow path's UTF-8 handling (hi8) or -Wbidi-chars (bidi_live). */
+void lexer_set_diag(Lexer *L, DiagEngine *d)
+{
+    size_t n = (size_t)(L->lim - L->p);
+    L->diag = d;
+    L->hi8 = d && has_high(L->p, n);
+    L->bidi_live = d && (L->opt.bidi & (BIDI_UNPAIRED | BIDI_ANY)) &&
+                   ((L->hi8 && memchr(L->p, 0xE2, n)) ||
+                    (L->opt.bidi & BIDI_UCN));
+    L->bidi_hi = L->p;
+}
+
 void lexer_init(Lexer *L, SrcMgr *sm, Interner *in, DiagEngine *d,
                 ScratchCursor *sc, LexOptions opt, SrcFile *f)
 {
@@ -78,6 +117,7 @@ void lexer_init(Lexer *L, SrcMgr *sm, Interner *in, DiagEngine *d,
     L->scratch = sc;
     L->opt = opt;
     L->bol = true;
+    lexer_set_diag(L, d);
 }
 
 void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, ScratchCursor *sc,
@@ -88,6 +128,7 @@ void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, ScratchCursor *sc,
     L->region = sm->region;
     L->p = L->line_begin = sm->region + begin;
     L->lim = L->p + len;
+    L->hi8 = has_high(L->p, len);   /* diagnostics come later */
     L->sm = sm;
     L->in = in;
     L->scratch = sc;
@@ -108,6 +149,221 @@ void lexer_seek(Lexer *L, SrcLoc loc, bool bol)
     if (bol)
         L->line_begin = L->p;
     L->space = false;
+}
+
+/* ---- -Wbidi-chars (libcpp's bidi namespace) ------------------------ */
+
+enum { BK_NONE, BK_LRE, BK_RLE, BK_LRO, BK_RLO, BK_LRI, BK_RLI, BK_FSI,
+       BK_PDF, BK_PDI, BK_LTR, BK_RTL };
+
+static const char *const bk_name[] = {
+    "", "U+202A (LEFT-TO-RIGHT EMBEDDING)", "U+202B (RIGHT-TO-LEFT EMBEDDING)",
+    "U+202D (LEFT-TO-RIGHT OVERRIDE)", "U+202E (RIGHT-TO-LEFT OVERRIDE)",
+    "U+2066 (LEFT-TO-RIGHT ISOLATE)", "U+2067 (RIGHT-TO-LEFT ISOLATE)",
+    "U+2068 (FIRST STRONG ISOLATE)", "U+202C (POP DIRECTIONAL FORMATTING)",
+    "U+2069 (POP DIRECTIONAL ISOLATE)", "U+200E (LEFT-TO-RIGHT MARK)",
+    "U+200F (RIGHT-TO-LEFT MARK)",
+};
+
+/* The control character whose UTF-8 form starts at p (p[0] == 0xE2). */
+static int bidi_utf8_kind(const unsigned char *p)
+{
+    if (p[1] == 0x80) {
+        switch (p[2]) {
+        case 0xaa: return BK_LRE;
+        case 0xab: return BK_RLE;
+        case 0xac: return BK_PDF;
+        case 0xad: return BK_LRO;
+        case 0xae: return BK_RLO;
+        case 0x8e: return BK_LTR;
+        case 0x8f: return BK_RTL;
+        }
+    } else if (p[1] == 0x81) {
+        switch (p[2]) {
+        case 0xa6: return BK_LRI;
+        case 0xa7: return BK_RLI;
+        case 0xa8: return BK_FSI;
+        case 0xa9: return BK_PDI;
+        }
+    }
+    return BK_NONE;
+}
+
+/* The same for a UCN whose \u or \U ends just before p. */
+static int bidi_ucn_kind(const unsigned char *p, bool big)
+{
+    if (big) {
+        if (p[0] != '0' || p[1] != '0' || p[2] != '0' || p[3] != '0')
+            return BK_NONE;
+        p += 4;
+    } else if (p[0] == '{') {
+        p++;
+        while (*p == '0')
+            p++;
+        if (p[0] != '2' || p[1] != '0' || !isxdigit(p[2]) || !isxdigit(p[3]) ||
+            p[4] != '}')
+            return BK_NONE;
+    }
+    if (p[0] != '2' || p[1] != '0')
+        return BK_NONE;
+    if (p[2] == '2') {
+        switch (p[3] | 0x20) {
+        case 'a': return BK_LRE;
+        case 'b': return BK_RLE;
+        case 'c': return BK_PDF;
+        case 'd': return BK_LRO;
+        case 'e': return BK_RLO;
+        }
+    } else if (p[2] == '6') {
+        switch (p[3]) {
+        case '6': return BK_LRI;
+        case '7': return BK_RLI;
+        case '8': return BK_FSI;
+        case '9': return BK_PDI;
+        }
+    } else if (p[2] == '0') {
+        switch (p[3] | 0x20) {
+        case 'e': return BK_LTR;
+        case 'f': return BK_RTL;
+        }
+    }
+    return BK_NONE;
+}
+
+/* The pop kind of the innermost open context (PDF, PDI or none). */
+static int bidi_cur(const Lexer *L)
+{
+    return L->bd_n ? (L->bd[L->bd_n - 1] & 1 ? BK_PDF : BK_PDI) : BK_NONE;
+}
+
+/* A bidirectional control character at p, written as a UCN or not. */
+static void bidi_char(Lexer *L, const char *p, int kind, bool ucn)
+{
+    unsigned f = L->opt.bidi;
+    SrcLoc loc = (SrcLoc)(p - L->region);
+    if (kind == bidi_cur(L)) {
+        if (f == (BIDI_UNPAIRED | BIDI_UCN) &&
+            ((L->bd[L->bd_n - 1] >> 1) & 1u) != (unsigned)ucn)
+            diag_report(L->diag, DL_WARNING, "bidi-chars=", loc,
+                        "UTF-8 vs UCN mismatch when closing a context by "
+                        "\"%s\"", bk_name[kind]);
+    } else if ((f & BIDI_ANY) && (!ucn || (f & BIDI_UCN))) {
+        if (kind == BK_PDF || kind == BK_PDI)
+            diag_report(L->diag, DL_WARNING, "bidi-chars=", loc,
+                        "\"%s\" is closing an unopened context", bk_name[kind]);
+        else
+            diag_report(L->diag, DL_WARNING, "bidi-chars=", loc,
+                        "found problematic Unicode character \"%s\"",
+                        bk_name[kind]);
+    }
+    switch (kind) {
+    case BK_LRE: case BK_RLE: case BK_LRO: case BK_RLO:
+    case BK_LRI: case BK_RLI: case BK_FSI:
+        if (L->bd_n < sizeof L->bd)
+            L->bd[L->bd_n++] = (uint8_t)((kind <= BK_RLO ? 1 : 0) | ucn << 1);
+        break;
+    case BK_PDF:
+        if (bidi_cur(L) == BK_PDF)
+            L->bd_n--;
+        break;
+    case BK_PDI: {
+        uint32_t i;
+        for (i = L->bd_n; i-- > 0;)
+            if (!(L->bd[i] & 1)) {
+                L->bd_n = i;
+                break;
+            }
+        break;
+    }
+    }
+}
+
+/* A comment, literal or identifier ends at p: warn if a context it opened is
+ * still open at the character before p. */
+static void bidi_close(Lexer *L, const char *p)
+{
+    unsigned f = L->opt.bidi;
+    if (L->bd_n && (f & BIDI_UNPAIRED) &&
+        (!(L->bd[L->bd_n - 1] & 2) || (f & BIDI_UCN)))
+        diag_report(L->diag, DL_WARNING, "bidi-chars=",
+                    (SrcLoc)(p - 1 - L->region),
+                    L->bd_n > 1 ? "unpaired UTF-8 bidirectional control "
+                                  "characters detected"
+                                : "unpaired UTF-8 bidirectional control "
+                                  "character detected");
+    L->bd_n = 0;
+}
+
+/* The controls in [s, e), UCNs only where a literal may have them. */
+static void bidi_scan(Lexer *L, const char *s, const char *e, bool ucn_ok)
+{
+    const char *p = s;
+    while (p < e) {
+        unsigned char c = (unsigned char)*p;
+        int k;
+        if (c == 0xE2) {
+            if ((k = bidi_utf8_kind((const unsigned char *)p)) != BK_NONE)
+                bidi_char(L, p, k, false);
+            p++;
+        } else if (c == '\\' && ucn_ok) {
+            if ((p[1] == 'u' || p[1] == 'U') &&
+                (k = bidi_ucn_kind((const unsigned char *)p + 2, p[1] == 'U')) !=
+                    BK_NONE)
+                bidi_char(L, p, k, true);
+            p += 2;
+        } else {
+            p++;
+        }
+    }
+}
+
+/* forms_identifier_p met a backslash at p: a UCN is a candidate. */
+static void bidi_try_ucn(Lexer *L, const char *p)
+{
+    int k;
+    if ((p[1] == 'u' || p[1] == 'U') &&
+        (k = bidi_ucn_kind((const unsigned char *)p + 2, p[1] == 'U')) != BK_NONE)
+        bidi_char(L, p, k, true);
+}
+
+/* One context [s, e) closing at p (the pointer libcpp gives
+ * maybe_warn_bidi_on_close). */
+static void bidi_ctx(Lexer *L, const char *s, const char *e, const char *p,
+                     bool ucn_ok)
+{
+    size_t n;
+    if (s < L->bidi_hi)         /* the line is being lexed again */
+        return;
+    n = (size_t)(e - s);
+    if (memchr(s, 0xE2, n) ||
+        (ucn_ok && ((L->opt.bidi & BIDI_UCN) || L->bd_n) &&
+         memchr(s, '\\', n)))
+        bidi_scan(L, s, e, ucn_ok);
+    if (L->bd_n)
+        bidi_close(L, p);
+    L->bidi_hi = e;
+}
+
+/* A string or character constant whose text is [s, e), e the closing quote. */
+static inline void bidi_lit(Lexer *L, const char *s, const char *e)
+{
+    if (__builtin_expect(L->bidi_live, 0))
+        bidi_ctx(L, s, e, e, true);
+}
+
+/* A comment's text [s, e): a block comment is a context a line, closed at
+ * each newline and after the final slash; a line comment is one only if it
+ * has a 0xE2 byte (libcpp skips it by bytes otherwise). */
+static void bidi_comment(Lexer *L, const char *s, const char *e, bool block)
+{
+    const char *nl;
+    if (!block && !memchr(s, 0xE2, (size_t)(e - s)))
+        return;
+    while (block && (nl = memchr(s, '\n', (size_t)(e - s))) != NULL) {
+        bidi_ctx(L, s, nl, nl > s && nl[-1] == '\r' ? nl : nl + 1, false);
+        s = nl + 1;
+    }
+    bidi_ctx(L, s, e, e, false);
 }
 
 /* ---- slow path: logical characters ---------------------------------- */
@@ -198,7 +454,7 @@ static int s_take(Slow *s)
 
 static bool s_is_idstart(Slow *s, int c)
 {
-    if (c == LEOF)
+    if (c == LEOF || c >= 0x80)
         return false;
     return (s->L->opt.dollar_idents ? cls_dollar : cls)[c & 0xFF] & C_IDSTART;
 }
@@ -238,15 +494,13 @@ static size_t ucn_canon(const char *p, size_t n, char *out, size_t cap)
 
 #include "ucn99.h"
 
+#include "ucnx.h"
+
 /* ucn_valid_in_identifier under -pedantic in C99: 1 ok, 0 not an identifier
  * character, 2 ok but not as the first one. */
-static int ucn99_class(const char *p, int digits)
+static int ucn99_cp(unsigned long v)
 {
-    unsigned long v = 0;
     size_t lo = 0, hi = sizeof ucn99 / sizeof *ucn99;
-    int k;
-    for (k = 0; k < digits; k++)
-        v = v * 16 + (unsigned long)(p[k] <= '9' ? p[k] - '0' : (p[k] | 32) - 'a' + 10);
     while (lo < hi) {
         size_t mid = (lo + hi) / 2;
         if (v < ucn99[mid].lo)
@@ -257,6 +511,47 @@ static int ucn99_class(const char *p, int digits)
             return ucn99[mid].nostart ? 2 : 1;
     }
     return 0;
+}
+
+static int ucn99_class(const char *p, int digits)
+{
+    unsigned long v = 0;
+    int k;
+    for (k = 0; k < digits; k++)
+        v = v * 16 + (unsigned long)(p[k] <= '9' ? p[k] - '0' : (p[k] | 32) - 'a' + 10);
+    return ucn99_cp(v);
+}
+
+/* The same for a code point written in UTF-8: without -pedantic gcc accepts
+ * the union of the C99, C++ and C11 sets. */
+static int utf8_id_class(const Lexer *L, uint32_t cp)
+{
+    size_t lo = 0, hi = sizeof ucnx / sizeof *ucnx;
+    if (L->opt.ucn_c99)
+        return cp > 0xFFFF ? 0 : ucn99_cp(cp);
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (cp < ucnx[mid].lo)
+            hi = mid;
+        else if (cp > ucnx[mid].hi)
+            lo = mid + 1;
+        else
+            return ucnx[mid].cls;
+    }
+    return 0;
+}
+
+/* The UTF-8 character at s->p as an identifier character: its class (see
+ * ucn99_class) and byte length; 0 if it is not valid UTF-8 or no identifier
+ * character, in which case it is a token of its own. */
+static int s_utf8_id(Slow *s, int *len)
+{
+    uint32_t cp;
+    int n = utf8_dec((const unsigned char *)s->p, (size_t)(s->L->lim - s->p), &cp);
+    if (!n)
+        return 0;
+    *len = n;
+    return utf8_id_class(s->L, cp);
 }
 
 static int s_ucn_len(Slow *s)
@@ -402,18 +697,37 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
         q = s_peek(&s);
         if (s_quoted(&s, q)) {
             t->kind = q == '"' ? TK_STRING : TK_CHAR;
+            bidi_lit(L, start + 2, s.p - 1);
         } else {
             s_rest_of_line(&s);
             t->kind = TK_OTHER;
             flags |= TF_UNTERMINATED;
         }
-    } else if (s_is_idstart(&s, c) || s_ucn_len(&s)) {
+    } else if (s_is_idstart(&s, c) || s_ucn_len(&s) ||
+               (c >= 0x80 && s_utf8_id(&s, &(int){0}))) {
+        bool ext = false;           /* has a UTF-8 character or a UCN */
         t->kind = TK_IDENT;
         for (;;) {
-            int d = s_peek(&s), u;
+            int d = s_peek(&s), u, k;
+            if (d == '\\' && L->bidi_live)
+                bidi_try_ucn(L, s.p);
             if (s_is_idstart(&s, d) || (d >= '0' && d <= '9')) {
                 s_take(&s);
+            } else if (d >= 0x80) {
+                int bk;
+                if (d == 0xE2 && L->bidi_live &&
+                    (bk = bidi_utf8_kind((const unsigned char *)s.p)) != BK_NONE)
+                    bidi_char(L, s.p, bk, false);
+                if (!(k = s_utf8_id(&s, &u)))
+                    break;
+                if (k == 2 && s.p == start && L->diag)
+                    diag_report(L->diag, DL_ERROR, "", (SrcLoc)(start - L->region),
+                                "extended character %.*s is not valid at the "
+                                "start of an identifier", u, s.p);
+                ext = true;
+                s_take_n(&s, u);
             } else if ((u = s_ucn_len(&s)) != 0) {
+                ext = true;
                 flags |= TF_UCN;
                 if (L->opt.ucn_c99 && L->diag) {
                     int cl = ucn99_class(s.p + 2, u - 2);
@@ -429,6 +743,8 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
                 break;
             }
         }
+        if (ext && L->bidi_live)
+            bidi_close(L, s.p);
     } else if ((c >= '0' && c <= '9') ||
                (c == '.' && s_peek2(&s) >= '0' && s_peek2(&s) <= '9')) {
         t->kind = TK_PPNUM;
@@ -444,6 +760,8 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
                 s_take(&s);
             } else if ((u = s_ucn_len(&s)) != 0) {
                 s_take_n(&s, u);
+            } else if (d >= 0x80 && s_utf8_id(&s, &u)) {
+                s_take_n(&s, u);
             } else {
                 break;
             }
@@ -451,6 +769,7 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
     } else if (c == '\'' || c == '"') {
         if (s_quoted(&s, c)) {
             t->kind = c == '"' ? TK_STRING : TK_CHAR;
+            bidi_lit(L, start + 1, s.p - 1);
         } else {
             s_rest_of_line(&s);
             t->kind = TK_OTHER;
@@ -463,8 +782,19 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
             flags |= TF_DIGRAPH;
         s_take_n(&s, (int)strlen(pe->s));
     } else {
+        int u = 1;
         t->kind = TK_OTHER;
-        s_take(&s);
+        if (c >= 0x80) {        /* a whole valid UTF-8 character, else a byte */
+            uint32_t cp;
+            int bk;
+            if (L->bidi_live && c == 0xE2 &&
+                (bk = bidi_utf8_kind((const unsigned char *)s.p)) != BK_NONE)
+                bidi_char(L, s.p, bk, false);
+            u = utf8_dec((const unsigned char *)s.p, (size_t)(L->lim - s.p), &cp);
+            if (!u)
+                u = 1;
+        }
+        s_take_n(&s, u);
     }
     t->loc = (SrcLoc)(start - L->region);
     t->len = (uint32_t)L->clean.len;
@@ -560,8 +890,11 @@ static const char *skip_blank(Lexer *L, const char *p)
                     break;
                 }
             }
+            if (L->bidi_live)
+                bidi_comment(L, start + 2, p, true);
             L->space = true;
         } else if (c == '/' && p[1] == '/') {
+            const char *cs = p + 2;
             p += 2;
             for (;;) {
                 unsigned char d;
@@ -576,6 +909,8 @@ static const char *skip_blank(Lexer *L, const char *p)
                 }
                 p++;
             }
+            if (L->bidi_live)
+                bidi_comment(L, cs, p, false);
             L->space = true;
         } else if (c == '/' || c == '\\' || c == '?') {
             int sp = splice_at(L, c == '/' ? p + 1 : p);
@@ -675,7 +1010,7 @@ void lex_next(Lexer *L, Tok *t)
             qprefix(p, L->opt.uliterals))
             goto quoted;
         q = scan_ident(p + 1, L->opt.dollar_idents);
-        if (*q == '\\' || (*q == '?' && trig))
+        if (*q == '\\' || (*q == '?' && trig) || (L->hi8 && has_high_in(p, q)))
             goto slow;
         t->kind = TK_IDENT;
         t->loc = (SrcLoc)(p - L->region);
@@ -702,7 +1037,7 @@ void lex_next(Lexer *L, Tok *t)
             }
             break;
         }
-        if (*q == '\\' || (*q == '?' && trig))
+        if (*q == '\\' || (*q == '?' && trig) || (L->hi8 && has_high_in(p, q)))
             goto slow;
         finish_simple(L, t, TK_PPNUM, p, q, flags);
         return;
@@ -712,8 +1047,10 @@ void lex_next(Lexer *L, Tok *t)
     quoted:
         {
             char quote;
+            const char *qs;
             q = p + qprefix(p, L->opt.uliterals);
             quote = *q++;
+            qs = q;
             for (;;) {
                 unsigned char d;
                 q = scan_find5(q, quote, '\\', '\n', '\r', '?');
@@ -733,6 +1070,7 @@ void lex_next(Lexer *L, Tok *t)
                     goto slow;
                 q++; /* '?' without trigraphs, or an embedded NUL */
             }
+            bidi_lit(L, qs, q - 1);
             finish_simple(L, t, quote == '"' ? TK_STRING : TK_CHAR, p, q, flags);
             return;
         }

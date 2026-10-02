@@ -1,0 +1,27 @@
+bidi_any.c:2:5: warning: found problematic Unicode character "U+202E (RIGHT-TO-LEFT OVERRIDE)" [-Wbidi-chars=]
+    2 | /* a‮b */
+      |     ^
+bidi_any.c:3:4: warning: "U+202C (POP DIRECTIONAL FORMATTING)" is closing an unopened context [-Wbidi-chars=]
+    3 | /* ‬ */
+      |    ^
+bidi_any.c:4:14: warning: found problematic Unicode character "U+202E (RIGHT-TO-LEFT OVERRIDE)" [-Wbidi-chars=]
+    4 | char *s1 = "i‮j‎k";
+      |              ^
+bidi_any.c:4:15: warning: found problematic Unicode character "U+200E (LEFT-TO-RIGHT MARK)" [-Wbidi-chars=]
+    4 | char *s1 = "i‮j‎k";
+      |               ^
+bidi_any.c:5:13: warning: found problematic Unicode character "U+2066 (LEFT-TO-RIGHT ISOLATE)" [-Wbidi-chars=]
+    5 | char *s2 = "⁦‮⁩";
+      |             ^
+bidi_any.c:5:13: warning: found problematic Unicode character "U+202E (RIGHT-TO-LEFT OVERRIDE)" [-Wbidi-chars=]
+    5 | char *s2 = "⁦‮⁩";
+      |             ^
+bidi_any.c:5:13: warning: "U+2069 (POP DIRECTIONAL ISOLATE)" is closing an unopened context [-Wbidi-chars=]
+    5 | char *s2 = "⁦‮⁩";
+      |             ^
+bidi_any.c:6:13: warning: found problematic Unicode character "U+202E (RIGHT-TO-LEFT OVERRIDE)" [-Wbidi-chars=]
+    6 | char *s3 = "‮⁩";
+      |             ^
+bidi_any.c:6:13: warning: "U+2069 (POP DIRECTIONAL ISOLATE)" is closing an unopened context [-Wbidi-chars=]
+    6 | char *s3 = "‮⁩";
+      |             ^

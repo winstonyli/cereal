@@ -11,7 +11,12 @@ typedef struct LexOptions {
     bool dollar_idents;  /* accept '$' in identifiers (GNU) */
     bool uliterals;      /* u'' U'' u"" U"" u8"" (gnu99, C11) */
     bool ucn_c99;        /* -pedantic: only C99 Annex D UCNs in identifiers */
+    uint8_t bidi;        /* -Wbidi-chars=: BIDI_* */
 } LexOptions;
+
+/* -Wbidi-chars= values: unpaired and any are exclusive; ucn extends either to
+ * bidirectional controls written as UCNs. */
+enum { BIDI_UNPAIRED = 1, BIDI_ANY = 2, BIDI_UCN = 4 };
 
 typedef struct Lexer {
     const char *p;       /* cursor */
@@ -26,6 +31,11 @@ typedef struct Lexer {
     const char *line_begin; /* start of the last line the cursor entered */
     bool unterminated;      /* met a block comment that runs to the end */
     const char *nul_line;   /* line of the last null-character warning */
+    bool hi8;               /* the file has a byte >= 0x80 */
+    bool bidi_live;         /* -Wbidi-chars can fire in this file */
+    const char *bidi_hi;    /* the contexts before this were scanned */
+    uint32_t bd_n;          /* open bidirectional contexts (libcpp bidi::vec) */
+    uint8_t bd[32];         /* bit 0: closed by PDF (else PDI), bit 1: a UCN */
     StrBuf clean;        /* slow-path spelling buffer */
 } Lexer;
 
@@ -36,6 +46,7 @@ void lexer_init(Lexer *L, SrcMgr *sm, Interner *in, DiagEngine *d,
 /* Lex an arbitrary byte range of the location space (scratch). */
 void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, ScratchCursor *sc,
                       LexOptions opt, SrcLoc begin, uint32_t len);
+void lexer_set_diag(Lexer *L, DiagEngine *d);
 void lexer_free(Lexer *L);
 
 void lex_next(Lexer *L, Tok *t);

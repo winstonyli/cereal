@@ -19,6 +19,7 @@ void options_init(Options *o)
     memset(o, 0, sizeof *o);
     o->pp.gnu_extensions = true;
     o->pp.lex.dollar_idents = true;
+    o->pp.lex.bidi = BIDI_UNPAIRED;
     o->linemarkers = true;
     o->parallel = 'a';
 }
@@ -26,6 +27,7 @@ void options_init(Options *o)
 /* --param NAME=VALUE: the parameter only matters to the middle end, but gcc
  * rejects an unknown name or a value out of range. */
 static void check_dump(Options *o, const char *a);
+static void bidi_option(Options *o, const char *a);
 
 static void check_param(Options *o, const char *arg)
 {
@@ -157,6 +159,10 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->show_system = true;
     } else if (!strcmp(a, "-Wno-system-headers")) {
         o->show_system = false;
+    } else if (!strncmp(a, "-Wbidi-chars", 12) && (!a[12] || a[12] == '=')) {
+        bidi_option(o, a);
+    } else if (!strcmp(a, "-Wno-bidi-chars")) {
+        o->pp.lex.bidi = 0;
     } else if (!strncmp(a, "-W", 2) && a[2]) {
         vec_push(&o->wflags, a + 2);
     } else if (!strcmp(a, "-fdiagnostics-format=json")) {
@@ -262,6 +268,45 @@ static bool size_arg_ok(const char *v)
         if (!strcasecmp(v, units[k]))
             return true;
     return false;
+}
+
+/* -Wbidi-chars[=none|unpaired|any][,ucn]: one of the first three (unpaired
+ * when only ucn is given), plus ucn at most once; bare -Wbidi-chars is any. */
+static void bidi_option(Options *o, const char *a)
+{
+    const char *v = a[12] ? a + 13 : "any", *p = v;
+    int base = -1, ucn = 0;
+    for (;;) {
+        size_t n = strcspn(p, ",");
+        int b = -1;
+        if (n == 4 && !strncmp(p, "none", 4))
+            b = 0;
+        else if (n == 8 && !strncmp(p, "unpaired", 8))
+            b = BIDI_UNPAIRED;
+        else if (n == 3 && !strncmp(p, "any", 3))
+            b = BIDI_ANY;
+        else if (!(n == 3 && !strncmp(p, "ucn", 3))) {
+            fprintf(stderr, "cereal: error: argument '%.*s' to '-Wbidi-chars' "
+                    "not recognized\ncereal: note: valid arguments to "
+                    "'-Wbidi-chars=' are: any none ucn unpaired\n", (int)n, p);
+            o->bad_options++;
+            return;
+        }
+        if (b >= 0 ? base >= 0 : ucn) {
+            fprintf(stderr, "cereal: error: invalid argument in option "
+                    "'-Wbidi-chars=%s'\n", v);
+            o->bad_options++;
+            return;
+        }
+        if (b >= 0)
+            base = b;
+        else
+            ucn = BIDI_UCN;
+        if (!p[n])
+            break;
+        p += n + 1;
+    }
+    o->pp.lex.bidi = (uint8_t)((base < 0 ? BIDI_UNPAIRED : base) | ucn);
 }
 
 static void bad_wopt(Options *o, const char *flag)

@@ -1,6 +1,8 @@
 /* diag.c - diagnostics engine. */
 #include "diag.h"
 #include "json.h"
+#include "utf8.h"
+#include "wcwidth.h"
 
 #include <string.h>
 
@@ -15,6 +17,7 @@ static const DiagOption options[] = {
     {"builtin-macro-redefined", "pp", DL_WARNING, true, 0, "redefining or undefining a predefined macro"},
     {"unknown-pragma", "pp", DL_WARNING, false, DO_ALL | DO_EXTRA, "unrecognized #pragma"},
     {"invalid-pp-token", "pp", DL_WARNING, true, 0, "unterminated character or string literal"},
+    {"bidi-chars=", "pp", DL_WARNING, true, 0, "bidirectional control characters in comments, literals and identifiers"},
     {"directive-in-macro-args", "pp", DL_WARNING, true, 0, "directive inside macro arguments (C99 6.10.3p11 UB)"},
     {"extra-tokens", "pp", DL_WARNING, true, 0, "extra tokens at end of directive"},
     {"include-next-in-primary", "pp", DL_WARNING, true, 0, "#include_next in primary source file"},
@@ -654,25 +657,78 @@ static const char *level_color(DiagLevel l)
     }
 }
 
-/* gcc's default column unit is the display column: tabs advance to the next
- * multiple of 8 and a UTF-8 sequence counts once. */
+/* libcpp's cpp_wcwidth: 0 for combining marks, format characters and Hangul
+ * medial/final jamo, 2 for East Asian wide, else 1. */
+int wc_width(uint32_t c)
+{
+    size_t lo, hi, n;
+    if (c < 0x300)
+        return 1;
+    n = sizeof wc_zero / sizeof *wc_zero;
+    for (lo = 0, hi = n; lo < hi;) {
+        size_t mid = (lo + hi) / 2;
+        if (c < wc_zero[mid].lo)
+            hi = mid;
+        else if (c > wc_zero[mid].hi)
+            lo = mid + 1;
+        else
+            return 0;
+    }
+    n = sizeof wc_wide / sizeof *wc_wide;
+    for (lo = 0, hi = n; lo < hi;) {
+        size_t mid = (lo + hi) / 2;
+        if (c < wc_wide[mid].lo)
+            hi = mid;
+        else if (c > wc_wide[mid].hi)
+            lo = mid + 1;
+        else
+            return 2;
+    }
+    return 1;
+}
+
+/* Display width of the character at text[i] (n bytes available) and its
+ * length in bytes: a tab is handled by the caller; a byte that does not
+ * start a valid sequence counts as one column. */
+static uint32_t char_width(const char *text, uint32_t i, uint32_t n,
+                           uint32_t *nb)
+{
+    uint32_t cp;
+    int k;
+    if ((unsigned char)text[i] < 0x80 ||
+        !(k = utf8_dec((const unsigned char *)text + i, n - i, &cp))) {
+        *nb = 1;
+        return 1;
+    }
+    *nb = (uint32_t)k;
+    return (uint32_t)wc_width(cp);
+}
+
+/* gcc's default column unit is the display column (cpp_byte_column_to_
+ * display_column): the width of the first `col` bytes of the line, tabs
+ * advancing to the next multiple of 8, characters by wcwidth, a sequence cut
+ * short by col counting one column a byte, bytes past the end one each. */
 static uint32_t display_col(SrcFile *f, uint32_t line, uint32_t col)
 {
-    uint32_t len, i, dc = 0;
+    uint32_t len, i = 0, dc = 0, end;
     const char *text;
     if (f->kind == SF_VIRTUAL)
         return col;
     text = srcmgr_line_text(f, line, &len);
     if (!text)
         return col;
-    for (i = 0; i + 1 < col && i < len; i++) {
-        unsigned char ch = (unsigned char)text[i];
-        if (ch == '\t')
+    end = col < len ? col : len;
+    while (i < end) {
+        uint32_t nb;
+        if (text[i] == '\t') {
             dc = (dc + 8) & ~7u;
-        else if ((ch & 0xC0) != 0x80)
-            dc++;
+            i++;
+        } else {
+            dc += char_width(text, i, end, &nb);
+            i += nb;
+        }
     }
-    return dc + 1 + (col > len + 1 ? col - len - 1 : 0);
+    return dc + (col > len ? col - len : 0);
 }
 
 static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
@@ -721,9 +777,10 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
                     fputc(' ', o);
                 while (++dc & 7);
             } else {
-                fputc(text[i], o);
-                if (((unsigned char)text[i] & 0xC0) != 0x80)
-                    dc++;
+                uint32_t nb;
+                dc += char_width(text, i, len, &nb);
+                fwrite(text + i, 1, nb, o);
+                i += nb - 1;
             }
         }
         fputs("\n      | ", o);

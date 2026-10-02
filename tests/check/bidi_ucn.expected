@@ -1,0 +1,15 @@
+bidi_ucn.c:2:18: warning: unpaired UTF-8 bidirectional control character detected [-Wbidi-chars=]
+    2 | char *s1 = "\u202e";
+      |                  ^
+bidi_ucn.c:4:13: warning: UTF-8 vs UCN mismatch when closing a context by "U+202C (POP DIRECTIONAL FORMATTING)" [-Wbidi-chars=]
+    4 | char *s3 = "‮\u202c";
+      |             ^
+bidi_ucn.c:5:19: warning: UTF-8 vs UCN mismatch when closing a context by "U+2069 (POP DIRECTIONAL ISOLATE)" [-Wbidi-chars=]
+    5 | char *s4 = "\u2066⁩";
+      |                   ^
+bidi_ucn.c:6:18: warning: unpaired UTF-8 bidirectional control characters detected [-Wbidi-chars=]
+    6 | char *s5 = "‮\u202e";
+      |                  ^
+bidi_ucn.c:7:22: warning: unpaired UTF-8 bidirectional control character detected [-Wbidi-chars=]
+    7 | char *s6 = "\U0000202e";
+      |                      ^

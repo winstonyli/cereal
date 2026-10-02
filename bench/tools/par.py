@@ -8,8 +8,10 @@ CEREAL_DGOPTS=1 (dg set): honour each test's first `dg-options` line (replacing
 the default -std=c99 -pedantic where it gives -std=/-pedantic*) and skip tests
 whose dg-options use a target selector a standard other than C99, or options
 cereal lacks (anything but -W*, -D, -U, -I, -std, -pedantic*).
+CEREAL_PARCACHE=DIR (default ~/.cache/cereal-par; 0 disables) caches gcc's result per
+(gcc version, file content, flags); CEREAL_JOBS (default 12) sizes the pool.
 Compares gcc vs cereal -fsyntax-only verdicts and diagnostic headers."""
-import sys, os, re, json, subprocess, glob, multiprocessing, shlex
+import sys, os, re, json, subprocess, glob, multiprocessing, shlex, hashlib
 S = os.path.dirname(os.path.abspath(__file__))
 sys.argv, ARGS = sys.argv[:3], sys.argv
 exec(open(os.path.join(S,"..","corpus.py")).read().split("\ndef run(")[0])
@@ -21,17 +23,40 @@ def hdrs(txt, kinds=("error","warning","fatal error")):
         m=HDR.match(l)
         if m and m.group(3) in kinds: out.append((int(m.group(1)),int(m.group(2)),m.group(3),m.group(4)))
     return out
+GCC = os.environ.get("CEREAL_GCC", "gcc")
+CACHE = os.environ.get("CEREAL_PARCACHE", os.path.expanduser("~/.cache/cereal-par"))
+def gcc_run(base, f, cwd, env):
+    """(returncode, stderr text) of gcc, cached: gcc's side never depends on cereal."""
+    key = None
+    if CACHE != "0":
+        h = hashlib.sha1(subprocess.run([GCC, "--version"], capture_output=True).stdout)
+        h.update(repr((base, cwd)).encode())
+        h.update(open(f, "rb").read())
+        key = os.path.join(CACHE, h.hexdigest() + ".json")
+        try:
+            r = json.load(open(key))
+            return r[0], r[1]
+        except (OSError, ValueError):
+            pass
+    g = subprocess.run([GCC] + base + [f], cwd=cwd, capture_output=True, timeout=30, env=env)
+    r = (g.returncode, g.stderr.decode(errors="replace"))
+    if key:
+        os.makedirs(CACHE, exist_ok=True)
+        tmp = key + ".tmp%d" % os.getpid()
+        json.dump(r, open(tmp, "w"))
+        os.replace(tmp, key)
+    return r
 def work(job):
     cer, f, flags, cwd, extra, std = job
     base=["-fsyntax-only"]+std+extra+flags
     env=dict(os.environ,LC_ALL="C")
     try:
-        g=subprocess.run([os.environ.get("CEREAL_GCC","gcc")]+base+[f],cwd=cwd,capture_output=True,timeout=30,env=env)
-        c=subprocess.run([cer]+base+[f],cwd=cwd,capture_output=True,timeout=30,env=env)
+        grc,gerr=gcc_run(base,f,cwd,env)
+        c=subprocess.run([cer]+base+[f],cwd=cwd,capture_output=True,timeout=10,env=env)
     except subprocess.TimeoutExpired:
         return dict(f=f,to=1)
-    return dict(f=f,cwd=cwd,flags=flags,grc=g.returncode,crc=c.returncode,
-        g=hdrs(g.stderr.decode(errors="replace")),c=hdrs(c.stderr.decode(errors="replace")),
+    return dict(f=f,cwd=cwd,flags=flags,grc=grc,crc=c.returncode,
+        g=hdrs(gerr),c=hdrs(c.stderr.decode(errors="replace")),
         cerr=c.stderr.decode(errors="replace")[-300:] if c.returncode not in (0,1) else "")
 def dgjobs(extra):
     root=os.environ.get("CEREAL_GCCTS",os.path.expanduser("~/gccts"))+"/gcc/testsuite/"+os.environ.get("CEREAL_DGDIR","gcc.dg")
@@ -63,7 +88,8 @@ if __name__=="__main__":
         jobs=[(f,fl,cw,["-std=c99","-pedantic"]) for n,f,fl,cw in units(os.environ.get("CEREAL_CORPUS",os.path.expanduser("~/corpus")))]
     else: jobs=dgjobs(extra)
     jobs=[(cer,f,fl,cw,extra,std) for f,fl,cw,std in jobs]
-    with multiprocessing.Pool(8) as p: res=p.map(work,jobs,chunksize=4)
+    with multiprocessing.Pool(int(os.environ.get("CEREAL_JOBS", "12"))) as p:
+        res=list(p.imap(work,jobs,chunksize=1))
     json.dump(res,open(out,"w"))
     n=len(res); rv=[r for r in res if not r.get("to") and r["grc"]==0 and r["crc"]!=0]
     ai=[r for r in res if not r.get("to") and r["grc"]!=0 and r["crc"]==0]

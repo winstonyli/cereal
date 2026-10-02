@@ -5620,7 +5620,7 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
                        name);
             return false;
         }
-        if (!atomic_kind(name) && !node_err(c, a[1])) {
+        if (strstr(name, "lock_free") && !node_err(c, a[1])) {
             TypeId t = rvt(c, a[1]);
             if (is_int(c, t) && !(c->ef[a[1]] & EF_NPC)) {
                 Diagnostic *d = cwarn_d(c, DL_WARNING, arg_loc(c, a[1]),

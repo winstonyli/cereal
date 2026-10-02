@@ -1,0 +1,18 @@
+bidi_chars.c:2:8: warning: unpaired UTF-8 bidirectional control character detected [-Wbidi-chars=]
+    2 | /* a‮b */
+      |        ^
+bidi_chars.c:3:6: warning: unpaired UTF-8 bidirectional control character detected [-Wbidi-chars=]
+    3 | /* c‮d
+      |      ^
+bidi_chars.c:4:8: warning: unpaired UTF-8 bidirectional control character detected [-Wbidi-chars=]
+    4 |    e⁦f */
+      |        ^
+bidi_chars.c:5:5: warning: unpaired UTF-8 bidirectional control character detected [-Wbidi-chars=]
+    5 | // g‮h
+      |     ^
+bidi_chars.c:6:14: warning: unpaired UTF-8 bidirectional control character detected [-Wbidi-chars=]
+    6 | char *s1 = "i‮j";
+      |              ^
+bidi_chars.c:7:15: warning: unpaired UTF-8 bidirectional control characters detected [-Wbidi-chars=]
+    7 | char *s2 = "k‮l⁦m";
+      |               ^

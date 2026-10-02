@@ -1,0 +1,21 @@
+stray_ascii.c:2:7: error: stray '@' in program
+    2 | int a @ b;
+      |       ^
+stray_ascii.c:2:9: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'b'
+    2 | int a @ b;
+      |         ^
+stray_ascii.c:3:7: error: stray '`' in program
+    3 | int c ` d;
+      |       ^
+stray_ascii.c:3:9: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'd'
+    3 | int c ` d;
+      |         ^
+stray_ascii.c:4:5: error: stray '\' in program
+    4 | int \ e;
+      |     ^
+stray_ascii.c:5:11: error: stray '#' in program
+    5 | int f = 1 # 2;
+      |           ^
+stray_ascii.c:5:13: error: expected ',' or ';' before numeric constant
+    5 | int f = 1 # 2;
+      |             ^

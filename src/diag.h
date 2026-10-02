@@ -162,5 +162,7 @@ void diag_list_options(FILE *out);
 void diag_merge_from(DiagEngine *d, size_t from, size_t mid);
 
 const DiagOption *diag_find_option(const char *name);
+/* Display width of a code point as gcc counts it (libcpp wcwidth). */
+int wc_width(uint32_t cp);
 
 #endif

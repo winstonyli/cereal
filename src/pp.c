@@ -1948,7 +1948,9 @@ static void phase_a_segment(PP *pp)
     size_t max = plan->cdc ? 4 * chunk : chunk;
     bool cut = false;
     DiagEngine *d = L->diag;
+    bool bidi = L->bidi_live;
     L->diag = NULL; /* the workers lex this text and report */
+    L->bidi_live = false;
     if (plan->cdc && plan->cdc_fire) { /* due since before the directive */
         cut = true;
         plan->cdc_fire = false;
@@ -2007,6 +2009,7 @@ static void phase_a_segment(PP *pp)
     L->bol = true;
     L->space = false;
     L->diag = d;
+    L->bidi_live = bidi;
 }
 
 static void phase_a_read(PP *pp, Tok *t)
@@ -2137,8 +2140,8 @@ static bool plan_read(PP *pp, Tok *t)
             lexer_free(&pp->lex);
             lexer_init_range(&pp->lex, pp->sm, pp->in, &pp->scratch,
                              pp->opt->lex, it->begin, it->end - it->begin);
-            pp->lex.diag = pp->diag;
             pp->lex.opt = pp->opt->lex;
+            lexer_set_diag(&pp->lex, pp->diag);
             pp->seg_active = true;
             pp->plan_pos++;
             continue;

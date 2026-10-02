@@ -24,6 +24,23 @@ static void check_cxx_keyword(Parser *p, const Tok *t, size_t i);
 
 static bool fill_slow(Parser *p, size_t i);
 
+/* c_lex_one_token: a token of no C syntax is an error and is skipped; the
+ * first byte names it. */
+static void stray_token(Parser *p, const Tok *t)
+{
+    unsigned c = (unsigned char)*tok_text_raw(p->sm, p->in, t);
+    if (c == '"' || c == '\'')
+        diag_report(p->diag, DL_ERROR, "", t->loc,
+                    "missing terminating %c character", (int)c);
+    else if (c == '#' && tok_text_raw(p->sm, p->in, t)[1] == '#')
+        diag_report(p->diag, DL_ERROR, "", t->loc, "stray '##' in program");
+    else if (c > ' ' && c < 0x7f)
+        diag_report(p->diag, DL_ERROR, "", t->loc, "stray '%c' in program",
+                    (int)c);
+    else
+        diag_report(p->diag, DL_ERROR, "", t->loc, "stray '\\%o' in program", c);
+}
+
 /* The fast path is inline: the slow path's frame is costly per call. */
 static inline bool fill(Parser *p, size_t i)
 {
@@ -40,6 +57,10 @@ __attribute__((noinline)) static bool fill_slow(Parser *p, size_t i)
         if (!p->src(p->src_ctx, &pt.t, &pt.exp)) {
             p->src_done = true;
             return false;
+        }
+        if (pt.t.kind == TK_OTHER || is_p(&pt, P_HASH) || is_p(&pt, P_HASHHASH)) {
+            stray_token(p, &pt.t);
+            continue;
         }
         vec_push(&p->toks, pt);
         if (pt.t.kind == TK_IDENT && !p->unwind)
