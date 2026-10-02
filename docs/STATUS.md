@@ -401,3 +401,11 @@ layouts, gcc rules ported, walk design).
   comparison, builtin_location constants, pr109884 (__float128), and the
   accepts-invalid list (attr-nocf-check-3, attr-simd-5, pr100785, pr20318,
   pr58346-2/3, pr68657-2/3, ...).  Tests 836; gcc.dg 3620/3875 identical.
+- Round 11 (2026-10-02): __builtin_has_attribute compares attribute
+  arguments (AName.arg: canonical ints/strings/idents; nonnull() covers every
+  parameter, nonnull(N,..) is a list) and sees typedef-declared attributes
+  (Checker.tdas: typedef type -> attribute set; a typedef keeps only its
+  largest aligned; an array without its own aligned takes its element type\x27s,
+  like gcc\x27s user-align bit).  c-c++-common rejects-valid 9 -> 5
+  (builtin-has-attribute-2..7).  Golden has_attr_args.  Left: attr-copy
+  (copy of packed bit-field offsetof), builtin_location, pr109884.

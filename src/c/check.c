@@ -606,6 +606,7 @@ void checker_free(Checker *c)
     vec_free(&c->recs);
     vec_free(&c->fields);
     vec_free(&c->anames);
+    vec_free(&c->tdas);
     vec_free(&c->ahead);
     vec_free(&c->ecs);
     vec_free(&c->saved);

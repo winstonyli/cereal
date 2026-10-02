@@ -7701,6 +7701,28 @@ static const Field *member_field_of(Checker *c, uint32_t x, TypeId *recp)
     return find_field(c, rt, cnode_ident(c, x), &off, &q);
 }
 
+/* The attribute sets of the typedefs t goes through, appended to out[0..n)
+ * (at most max).  An array without an aligned attribute of its own takes
+ * its element type's (gcc propagates the user-alignment bit). */
+static unsigned typedef_asets(Checker *c, TypeId t, uint32_t *out, unsigned n,
+                              unsigned max)
+{
+    bool al = false;
+    for (;;) {
+        while (type_kind(TT, t) == TY_TYPEDEF) {
+            uint32_t s = cdecl_typedef_aset(c, t);
+            if (s && n < max) {
+                out[n++] = s;
+                al |= cdecl_aset_has(c, s, "aligned", NULL);
+            }
+            t = type_ent(TT, t)->base;
+        }
+        if (al || type_kind(TT, t) != TY_ARRAY)
+            return n;
+        t = type_ent(TT, t)->base;
+    }
+}
+
 /* The sets of attribute names that belong to the expression e: its declaration
  * (a symbol, a member), and its type's record.  strip: look through the
  * pointers and arrays of the type (what 'copy' does). */
@@ -7725,8 +7747,9 @@ unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3])
     t = c->ty[x];
     while (strip && (type_ckind(TT, t) == TY_PTR || type_ckind(TT, t) == TY_ARRAY))
         t = type_base(TT, t);
+    n = typedef_asets(c, t, out, n, 3);
     t = type_canon(TT, t);
-    if (is_record(c, t) && type_record(TT, t)->aset)
+    if (is_record(c, t) && type_record(TT, t)->aset && n < 3)
         out[n++] = type_record(TT, t)->aset;
     return n;
 }
@@ -7734,8 +7757,8 @@ unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3])
 static void e_has_attr(Checker *c, uint32_t i)
 {
     uint32_t k[2], sets[3], n = 0, j;
-    char an[32];
-    bool has = false;
+    char an[32], args[24];
+    bool has = false, nonnull = false;
     if (nkids(c, i, k, 2) < 2 || ntag(c, k[1]) != N_ATTR_ITEM) {
         set_err(c, i);
         return;
@@ -7749,6 +7772,8 @@ static void e_has_attr(Checker *c, uint32_t i)
         memcpy(raw, tx, len);
         raw[len] = 0;
         cdecl_attr_name(raw, an, sizeof an);
+        cdecl_attr_args(c, k[1], args, sizeof args);
+        nonnull = !strcmp(an, "nonnull");
     }
     if (ntag(c, k[0]) == N_TYPE_NAME) {
         TypeId t = type_of_typename(c, k[0]);
@@ -7757,6 +7782,7 @@ static void e_has_attr(Checker *c, uint32_t i)
             set_err(c, i);
             return;
         }
+        n = typedef_asets(c, t, sets, n, 2);
         t = type_canon(TT, t);
         if (is_record(c, t))
             sets[n++] = type_record(TT, t)->aset;
@@ -7774,7 +7800,9 @@ static void e_has_attr(Checker *c, uint32_t i)
         n = cexpr_asets(c, k[0], false, sets);
     }
     for (j = 0; j < n; j++)
-        has |= cdecl_aset_has(c, sets[j], an);
+        {
+            has |= cdecl_aset_has(c, sets[j], an, args[0] || nonnull ? args : NULL);
+        }
     set_ice(c, i, TYPE_B(INT), has);
 }
 

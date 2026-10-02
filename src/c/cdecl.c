@@ -1510,15 +1510,77 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
  * Every attribute written on (or copied to) a symbol, field or record is kept
  * by name, for __builtin_has_attribute and for 'copy'. */
 
-bool cdecl_aset_has(const Checker *c, uint32_t set, const char *name)
+/* Whether the attribute `name` written with arguments have equals the query
+ * want.  nonnull without arguments covers every parameter; nonnull(N,...)
+ * is a list. */
+static bool attr_arg_eq(const char *name, const char *have, const char *want)
+{
+    if (!strcmp(name, "nonnull") && *want) {
+        size_t n = strlen(want);
+        const char *p;
+        if (!*have)
+            return true;
+        for (p = have; (p = strstr(p, want)) != NULL; p++)
+            if ((p == have || p[-1] == ',') && (!p[n] || p[n] == ','))
+                return true;
+        return false;
+    }
+    return !strcmp(have, want);
+}
+
+/* Whether the set has the attribute name; with arg (not NULL) one whose
+ * arguments are those. */
+bool cdecl_aset_has(const Checker *c, uint32_t set, const char *name,
+                    const char *arg)
 {
     size_t k;
     if (!set)
         return false;
     for (k = c->ahead.data[set - 1]; k; k = c->anames.data[k - 1].prev)
-        if (!strcmp(c->anames.data[k - 1].name, name))
+        if (!strcmp(c->anames.data[k - 1].name, name) &&
+            (!arg || attr_arg_eq(name, c->anames.data[k - 1].arg, arg)))
             return true;
     return false;
+}
+
+/* The attribute set written on the typedef declaration t names (0: none). */
+uint32_t cdecl_typedef_aset(const Checker *c, TypeId t)
+{
+    size_t k;
+    for (k = 0; k + 1 < c->tdas.len; k += 2)
+        if (c->tdas.data[k] == TYPE_IDX(t))
+            return c->tdas.data[k + 1];
+    return 0;
+}
+
+/* The arguments of an attribute item as one comparable string: integer
+ * values, string contents, identifiers, comma separated. */
+void cdecl_attr_args(Checker *c, uint32_t item, char *out, size_t n)
+{
+    Kids ak;
+    uint32_t j;
+    size_t l = 0;
+    out[0] = 0;
+    kids_get(c, item, &ak);
+    for (j = 0; j < ak.n && l + 1 < n; j++) {
+        uint32_t a = ak.p[j];
+        if (ntag(c, a) == N_STRING) {
+            uint32_t m = cdep_msg(c, a);   /* pushes: read it back, then drop */
+            l += snprintf(out + l, n - l, "%s\"%s\"", j ? "," : "",
+                          c->dep_msgs.data[m - 1]);
+            free(c->dep_msgs.data[--c->dep_msgs.len]);
+        }
+        else if (c->ck[a] == K_ICE ||
+                 (c->ck[a] == K_FOLD && (c->ef[a] & EF_CST)))
+            l += snprintf(out + l, n - l, "%s%lld", j ? "," : "",
+                          (long long)c->cv[a]);
+        else if (ntag(c, a) == N_IDENT)
+            l += snprintf(out + l, n - l, "%s%s", j ? "," : "",
+                          cident(c, cnode_ident(c, a)));
+        if (l >= n)
+            l = n - 1;
+    }
+    kids_free(&ak);
 }
 
 void cdecl_attr_name(const char *s, char *out, size_t n)
@@ -1526,13 +1588,14 @@ void cdecl_attr_name(const char *s, char *out, size_t n)
     attr_norm(s, out, n);
 }
 
-static void aset_add(Checker *c, uint32_t *set, const char *name)
+static void aset_add(Checker *c, uint32_t *set, const char *name,
+                     const char *arg)
 {
     AName n;
     for (unsigned k = 0; k < c->nign; k++)
         if (!strcmp(c->ign[k], name))
             return;             /* dropped by an exclusion */
-    if (cdecl_aset_has(c, *set, name))
+    if (cdecl_aset_has(c, *set, name, arg))
         return;
     if (!*set) {
         uint32_t z = 0;
@@ -1542,6 +1605,7 @@ static void aset_add(Checker *c, uint32_t *set, const char *name)
     n.set = *set;
     n.prev = c->ahead.data[*set - 1];
     snprintf(n.name, sizeof n.name, "%s", name);
+    snprintf(n.arg, sizeof n.arg, "%s", arg);
     vec_push(&c->anames, n);
     c->ahead.data[*set - 1] = (uint32_t)c->anames.len;
 }
@@ -1569,6 +1633,22 @@ static void aset_drop(Checker *c, uint32_t set, const char *name)
             c->anames.data[k - 1].name[0] = '';
 }
 
+/* A typedef keeps only its largest aligned attribute. */
+static void aset_keep_max_aligned(Checker *c, uint32_t set)
+{
+    size_t k;
+    long long best = 0;
+    for (k = c->ahead.data[set - 1]; k; k = c->anames.data[k - 1].prev)
+        if (!strcmp(c->anames.data[k - 1].name, "aligned") &&
+            atoll(c->anames.data[k - 1].arg) > best)
+            best = atoll(c->anames.data[k - 1].arg);
+    for (k = c->ahead.data[set - 1]; k; k = c->anames.data[k - 1].prev)
+        if (!strcmp(c->anames.data[k - 1].name, "aligned") &&
+            c->anames.data[k - 1].arg[0] &&
+            atoll(c->anames.data[k - 1].arg) < best)
+            c->anames.data[k - 1].name[0] = 0;
+}
+
 static void aset_copy(Checker *c, uint32_t *dst, uint32_t src)
 {
     size_t k;
@@ -1577,7 +1657,7 @@ static void aset_copy(Checker *c, uint32_t *dst, uint32_t src)
     for (k = 0; k < c->anames.len; k++) {
         AName a = c->anames.data[k];
         if (a.set == src && !copy_excluded(a.name))
-            aset_add(c, dst, a.name);
+            aset_add(c, dst, a.name, a.arg);
     }
 }
 
@@ -1601,8 +1681,11 @@ void cdecl_attrs_names(Checker *c, uint32_t attr, uint32_t *set)
                     aset_copy(c, set, s3[m]);
             }
             kids_free(&ak);
-        } else
-            aset_add(c, set, an);
+        } else {
+            char args[24];
+            cdecl_attr_args(c, it.p[q], args, sizeof args);
+            aset_add(c, set, an, args);
+        }
     }
     kids_free(&it);
 }
@@ -1730,7 +1813,7 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, const char *an,
                 continue;               /* attr_excl */
             for (k = 0; k < st->ncur && !hit; k++)
                 hit = !strcmp(st->cur[k], o);
-            if (!hit && st->hasprev && cdecl_aset_has(c, st->pset, o))
+            if (!hit && st->hasprev && cdecl_aset_has(c, st->pset, o, NULL))
                 hit = prev = true;
             if (!hit)
                 continue;
@@ -4305,7 +4388,7 @@ static void inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
         if (!strcmp(c->ign[k], "noinline"))
             nw_noinline = false;
     if ((nw->flags & CSF_INLINE) && !(o->flags & CSF_INLINE) &&
-        cdecl_aset_has(c, o->aset, "noinline"))
+        cdecl_aset_has(c, o->aset, "noinline", NULL))
         d = cwarn_d(c, DL_WARNING, iloc(c, ltok), "attributes", "inline declaration "
                     "of '%s' follows declaration with attribute 'noinline'",
                     sname(c, nw));
@@ -5309,12 +5392,19 @@ static void declared_visit(Checker *c, uint32_t i)
     attrs_names(c, sn, &csym(c, ref)->aset);
     attrs_names_ptrs(c, idecl, &csym(c, ref)->aset);
     attrs_names(c, idecl, &csym(c, ref)->aset);
+    if (csym(c, ref)->kind == CS_TYPEDEF && csym(c, ref)->aset &&
+        type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
+        uint32_t p[2] = {TYPE_IDX(csym(c, ref)->ty), csym(c, ref)->aset};
+        aset_keep_max_aligned(c, p[1]);
+        vec_push(&c->tdas, p[0]);
+        vec_push(&c->tdas, p[1]);
+    }
     if (c->last_ualign > csym(c, ref)->ualign)
         csym(c, ref)->ualign = c->last_ualign;
     c->last_ualign = 0;
     c->nign = 0;
     if (sp.is_noreturn)
-        aset_add(c, &csym(c, ref)->aset, "noreturn");
+        aset_add(c, &csym(c, ref)->aset, "noreturn", "");
     if (csym(c, ref)->kind == CS_FUNC && csym(c, ref)->linkage == LK_INTERNAL) {
         /* leaf only means something for external functions */
         if (attrs_item_named(c, sn, "leaf") || attrs_item_named(c, idecl, "leaf"))
@@ -7066,7 +7156,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     }
     attrs_names(c, fp.specs, &csym(c, ref)->aset);
     if (sp.is_noreturn)
-        aset_add(c, &csym(c, ref)->aset, "noreturn");
+        aset_add(c, &csym(c, ref)->aset, "noreturn", "");
     dump_decl(c, csym(c, ref));
     c->func_sym = ref;
     c->cur_func_node = fd;
@@ -7655,7 +7745,7 @@ void cdecl_finish_object(Checker *c, uint32_t ref)
                    "implicit initialization", sname(c, s));
         if (s->kind == CS_FUNC && !sym_public(s) && !sym_defined(s) &&
             (s->flags & CSF_DECL_EXTERNAL) && s->name &&
-            !cdecl_aset_has(c, s->aset, "weakref")) {
+            !cdecl_aset_has(c, s->aset, "weakref", NULL)) {
             if (s->flags & CSF_USED)
                 cpedwarn(c, s->loc, "", "'%s' used but never defined",
                          sname(c, s));

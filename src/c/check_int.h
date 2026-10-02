@@ -57,6 +57,7 @@ typedef struct AName {
     uint32_t set;
     uint32_t prev;           /* the set's previous entry, 1-based; 0: none */
     char name[32];           /* without the __ affixes */
+    char arg[24];            /* canonical arguments (cdecl_attr_args) */
 } AName;
 
 /* A reference to / declaration of a static in an inline definition of a
@@ -272,6 +273,7 @@ struct Checker {
     VEC(AName) anames;       /* attribute names by set (__builtin_has_attribute, copy) */
     VEC(uint32_t) ahead;     /* per set: its newest entry in anames, 1-based */
     uint32_t nasets;
+    VEC(uint32_t) tdas;      /* (typedef type, attribute set) pairs */
     char ign[8][24];         /* attributes the declaration being checked lost to an exclusion */
     unsigned nign;
     uint32_t last_ualign;    /* the declaration's user alignment, for the symbol */
@@ -475,8 +477,11 @@ void cdecl_check_inline_statics(Checker *c);
 TypeId type_of_typename(Checker *c, uint32_t i);   /* a TYPE_NAME node */
 
 /* Array parameters redeclared with other bounds (cparm.c). */
-bool cdecl_aset_has(const Checker *c, uint32_t set, const char *name);
+bool cdecl_aset_has(const Checker *c, uint32_t set, const char *name,
+                    const char *arg);
 void cdecl_attrs_names(Checker *c, uint32_t attr, uint32_t *set);
+uint32_t cdecl_typedef_aset(const Checker *c, TypeId t);
+void cdecl_attr_args(Checker *c, uint32_t item, char *out, size_t n);
 void cdecl_attr_name(const char *s, char *out, size_t n);
 unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3]);
 uint32_t cparm_make(Checker *c, uint32_t fnode);    /* a prototype's record + 1 */
