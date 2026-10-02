@@ -286,6 +286,7 @@ struct Checker {
     const Node *nodes;
     uint32_t nn;
     bool quiet;              /* the unit has syntax errors */
+    size_t *dm;              /* per node: diagnostics so far when visited */
     TypeId *ty;              /* per node */
     uint64_t *cv;
     uint32_t *cb;            /* K_ADDR: base symbol ref + 1, 0: null */
@@ -387,6 +388,11 @@ static inline uint32_t cnode_ident(const Checker *c, uint32_t i)
 /* An identifier with extended characters as gcc prints it in the C locale:
  * each as \UXXXXXXXX (UCN or UTF-8 spelled alike). */
 const char *cident_ucn(const char *s);
+
+/* gcc reports a keyword extension at the keyword, before its operand is
+ * parsed: moves the diagnostic added since n0 (if one was) in front of
+ * those of node i's operand. */
+void choist(Checker *c, uint32_t i, size_t n0);
 
 static inline const char *cident(const Checker *c, uint32_t id)
 {

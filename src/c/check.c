@@ -372,6 +372,18 @@ static void grow_nodes(Checker *c, uint32_t n)
     c->ck = xrealloc(c->ck, c->cap * sizeof *c->ck);
     c->ef = xrealloc(c->ef, c->cap * sizeof *c->ef);
     c->par = xrealloc(c->par, c->cap * sizeof *c->par);
+    c->dm = xrealloc(c->dm, c->cap * sizeof *c->dm);
+}
+
+void choist(Checker *c, uint32_t i, size_t n0)
+{
+    size_t at = c->dm[cfirst(c, i)];
+    Diagnostic **d = c->diag->all.data;
+    if (c->diag->all.len == n0 + 1 && at < n0) {
+        Diagnostic *x = d[n0];
+        memmove(d + at + 1, d + at, (n0 - at) * sizeof *d);
+        d[at] = x;
+    }
 }
 
 static void compute_parents(Checker *c)
@@ -479,8 +491,10 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     c->func_sym = SYM_NONE;
     c->cur_func_node = NO_NODE;
     c->func_node = NO_NODE;
-    for (i = 0; i < c->nn; i++)
+    for (i = 0; i < c->nn; i++) {
+        c->dm[i] = c->diag->all.len;
         visit(c, i);
+    }
     c->cur_node = NO_NODE;
     while (c->scopes.len > 1)
         cscope_pop(c, NULL);

@@ -28,6 +28,8 @@ typedef struct Diagnostic {
     VEC(DiagNote) notes;
     SrcLoc *inc_chain;       /* #include locations, innermost first */
     int ninc;
+    bool late;               /* gcc reports it after a syntax error that
+                                follows (K&R parameter checks) */
     bool promoted;           /* a warning made an error by -Werror[=X]:
                                 shown as [-Werror=X] like gcc */
     const char *fixit;       /* optional suggested replacement text */
@@ -78,6 +80,7 @@ typedef struct DiagEngine {
     /* option -> level+1 under the config generation memo_gen (0: unknown) */
     uint32_t memo_gen;
     uint8_t memo[512];
+    bool late;               /* mark new diagnostics late */
 } DiagEngine;
 
 /* Warning option registry.  An option is enabled by an explicit -W flag,

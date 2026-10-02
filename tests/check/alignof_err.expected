@@ -1,69 +1,69 @@
-alignof_err.c:1:25: error: 'undef1' undeclared here (not in a function)
-    1 | _Static_assert(_Alignof(undef1) == 0, "a0");
-      |                         ^
-alignof_err.c:1:16: warning: ISO C99 does not support '_Alignof' [-Wpedantic]
-    1 | _Static_assert(_Alignof(undef1) == 0, "a0");
-      |                ^
-alignof_err.c:1:16: warning: ISO C does not allow '_Alignof (expression)' [-Wpedantic]
-    1 | _Static_assert(_Alignof(undef1) == 0, "a0");
-      |                ^
 alignof_err.c:1:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     1 | _Static_assert(_Alignof(undef1) == 0, "a0");
       | ^
+alignof_err.c:1:16: warning: ISO C99 does not support '_Alignof' [-Wpedantic]
+    1 | _Static_assert(_Alignof(undef1) == 0, "a0");
+      |                ^
+alignof_err.c:1:25: error: 'undef1' undeclared here (not in a function)
+    1 | _Static_assert(_Alignof(undef1) == 0, "a0");
+      |                         ^
+alignof_err.c:1:16: warning: ISO C does not allow '_Alignof (expression)' [-Wpedantic]
+    1 | _Static_assert(_Alignof(undef1) == 0, "a0");
+      |                ^
 alignof_err.c:1:1: error: static assertion failed: "a0"
     1 | _Static_assert(_Alignof(undef1) == 0, "a0");
       | ^
-alignof_err.c:2:25: error: 'undef2' undeclared here (not in a function)
+alignof_err.c:2:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     2 | _Static_assert(_Alignof(undef2) == 1, "a1");
-      |                         ^
+      | ^
 alignof_err.c:2:16: warning: ISO C99 does not support '_Alignof' [-Wpedantic]
     2 | _Static_assert(_Alignof(undef2) == 1, "a1");
       |                ^
+alignof_err.c:2:25: error: 'undef2' undeclared here (not in a function)
+    2 | _Static_assert(_Alignof(undef2) == 1, "a1");
+      |                         ^
 alignof_err.c:2:16: warning: ISO C does not allow '_Alignof (expression)' [-Wpedantic]
     2 | _Static_assert(_Alignof(undef2) == 1, "a1");
       |                ^
-alignof_err.c:2:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
-    2 | _Static_assert(_Alignof(undef2) == 1, "a1");
+alignof_err.c:3:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    3 | _Static_assert(sizeof(undef3) == 0, "s0");
       | ^
 alignof_err.c:3:23: error: 'undef3' undeclared here (not in a function)
     3 | _Static_assert(sizeof(undef3) == 0, "s0");
       |                       ^
-alignof_err.c:3:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
-    3 | _Static_assert(sizeof(undef3) == 0, "s0");
-      | ^
 alignof_err.c:3:16: error: expression in static assertion is not an integer
     3 | _Static_assert(sizeof(undef3) == 0, "s0");
       |                ^
-alignof_err.c:4:23: error: 'undef4' undeclared here (not in a function)
-    4 | _Static_assert(sizeof(undef4) == 1, "s1");
-      |                       ^
 alignof_err.c:4:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     4 | _Static_assert(sizeof(undef4) == 1, "s1");
       | ^
+alignof_err.c:4:23: error: 'undef4' undeclared here (not in a function)
+    4 | _Static_assert(sizeof(undef4) == 1, "s1");
+      |                       ^
 alignof_err.c:4:16: error: expression in static assertion is not an integer
     4 | _Static_assert(sizeof(undef4) == 1, "s1");
       |                ^
-alignof_err.c:5:35: error: 'undef5' undeclared here (not in a function)
-    5 | _Static_assert(sizeof(int) == 1 + undef5, "s2");
-      |                                   ^
 alignof_err.c:5:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     5 | _Static_assert(sizeof(int) == 1 + undef5, "s2");
       | ^
+alignof_err.c:5:35: error: 'undef5' undeclared here (not in a function)
+    5 | _Static_assert(sizeof(int) == 1 + undef5, "s2");
+      |                                   ^
 alignof_err.c:5:16: error: expression in static assertion is not an integer
     5 | _Static_assert(sizeof(int) == 1 + undef5, "s2");
-      |                ^
-alignof_err.c:6:25: error: 'undef6' undeclared here (not in a function)
-    6 | _Static_assert(_Alignof(undef6) >= 2, "a2");
-      |                         ^
-alignof_err.c:6:16: warning: ISO C99 does not support '_Alignof' [-Wpedantic]
-    6 | _Static_assert(_Alignof(undef6) >= 2, "a2");
-      |                ^
-alignof_err.c:6:16: warning: ISO C does not allow '_Alignof (expression)' [-Wpedantic]
-    6 | _Static_assert(_Alignof(undef6) >= 2, "a2");
       |                ^
 alignof_err.c:6:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     6 | _Static_assert(_Alignof(undef6) >= 2, "a2");
       | ^
+alignof_err.c:6:16: warning: ISO C99 does not support '_Alignof' [-Wpedantic]
+    6 | _Static_assert(_Alignof(undef6) >= 2, "a2");
+      |                ^
+alignof_err.c:6:25: error: 'undef6' undeclared here (not in a function)
+    6 | _Static_assert(_Alignof(undef6) >= 2, "a2");
+      |                         ^
+alignof_err.c:6:16: warning: ISO C does not allow '_Alignof (expression)' [-Wpedantic]
+    6 | _Static_assert(_Alignof(undef6) >= 2, "a2");
+      |                ^
 alignof_err.c:6:1: error: static assertion failed: "a2"
     6 | _Static_assert(_Alignof(undef6) >= 2, "a2");
       | ^

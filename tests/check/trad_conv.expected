@@ -1,0 +1,81 @@
+trad_conv.c:19:6: warning: passing argument 1 of 'fb' with different width due to prototype [-Wtraditional-conversion]
+   19 |   fb(i); fb(c); fb(b);
+      |      ^
+trad_conv.c:19:13: warning: passing argument 1 of 'fb' with different width due to prototype [-Wtraditional-conversion]
+   19 |   fb(i); fb(c); fb(b);
+      |             ^
+trad_conv.c:19:20: warning: passing argument 1 of 'fb' with different width due to prototype [-Wtraditional-conversion]
+   19 |   fb(i); fb(c); fb(b);
+      |                    ^
+trad_conv.c:21:6: warning: passing argument 1 of 'fc' with different width due to prototype [-Wtraditional-conversion]
+   21 |   fc(c); fc(i); fc(1); fc(sh);
+      |      ^
+trad_conv.c:21:13: warning: passing argument 1 of 'fc' with different width due to prototype [-Wtraditional-conversion]
+   21 |   fc(c); fc(i); fc(1); fc(sh);
+      |             ^
+trad_conv.c:21:20: warning: passing argument 1 of 'fc' with different width due to prototype [-Wtraditional-conversion]
+   21 |   fc(c); fc(i); fc(1); fc(sh);
+      |                    ^
+trad_conv.c:21:27: warning: passing argument 1 of 'fc' with different width due to prototype [-Wtraditional-conversion]
+   21 |   fc(c); fc(i); fc(1); fc(sh);
+      |                           ^
+trad_conv.c:22:29: warning: passing argument 1 of 'fi' as signed due to prototype [-Wtraditional-conversion]
+   22 |   fi(c); fi(us); fi(sh); fi(u); fi(e); fi(b); fi(1u); fi(~0u);
+      |                             ^
+trad_conv.c:22:36: warning: passing argument 1 of 'fi' as signed due to prototype [-Wtraditional-conversion]
+   22 |   fi(c); fi(us); fi(sh); fi(u); fi(e); fi(b); fi(1u); fi(~0u);
+      |                                    ^
+trad_conv.c:22:58: warning: passing argument 1 of 'fi' as signed due to prototype [-Wtraditional-conversion]
+   22 |   fi(c); fi(us); fi(sh); fi(u); fi(e); fi(b); fi(1u); fi(~0u);
+      |                                                          ^
+trad_conv.c:23:6: warning: passing argument 1 of 'fu' as unsigned due to prototype [-Wtraditional-conversion]
+   23 |   fu(i); fu(c); fu(-1); fu(1);
+      |      ^
+trad_conv.c:23:13: warning: passing argument 1 of 'fu' as unsigned due to prototype [-Wtraditional-conversion]
+   23 |   fu(i); fu(c); fu(-1); fu(1);
+      |             ^
+trad_conv.c:23:20: warning: passing argument 1 of 'fu' as unsigned due to prototype [-Wtraditional-conversion]
+   23 |   fu(i); fu(c); fu(-1); fu(1);
+      |                    ^
+trad_conv.c:24:20: warning: passing argument 1 of 'fd' as floating rather than integer due to prototype [-Wtraditional-conversion]
+   24 |   fd(f); fd(d); fd(i); fd(l);
+      |                    ^
+trad_conv.c:24:27: warning: passing argument 1 of 'fd' as floating rather than integer due to prototype [-Wtraditional-conversion]
+   24 |   fd(f); fd(d); fd(i); fd(l);
+      |                           ^
+trad_conv.c:25:6: warning: passing argument 1 of 'ff' as 'float' rather than 'double' due to prototype
+   25 |   ff(f); ff(d); ff(i);
+      |      ^
+trad_conv.c:25:13: warning: passing argument 1 of 'ff' as 'float' rather than 'double' due to prototype
+   25 |   ff(f); ff(d); ff(i);
+      |             ^
+trad_conv.c:25:20: warning: passing argument 1 of 'ff' as floating rather than integer due to prototype [-Wtraditional-conversion]
+   25 |   ff(f); ff(d); ff(i);
+      |                    ^
+trad_conv.c:26:7: warning: passing argument 1 of 'fcd' as complex rather than floating due to prototype [-Wtraditional-conversion]
+   26 |   fcd(d); fcd(i); fcd(f);
+      |       ^
+trad_conv.c:26:15: warning: passing argument 1 of 'fcd' as complex rather than integer due to prototype [-Wtraditional-conversion]
+   26 |   fcd(d); fcd(i); fcd(f);
+      |               ^
+trad_conv.c:26:23: warning: passing argument 1 of 'fcd' as complex rather than floating due to prototype [-Wtraditional-conversion]
+   26 |   fcd(d); fcd(i); fcd(f);
+      |                       ^
+trad_conv.c:27:6: warning: passing argument 1 of 'fl' with different width due to prototype [-Wtraditional-conversion]
+   27 |   fl(i); fl(u); fl(l);
+      |      ^
+trad_conv.c:27:13: warning: passing argument 1 of 'fl' with different width due to prototype [-Wtraditional-conversion]
+   27 |   fl(i); fl(u); fl(l);
+      |             ^
+trad_conv.c:28:7: warning: passing argument 1 of 's.p' with different width due to prototype [-Wtraditional-conversion]
+   28 |   s.p(i); s.p(sh); s.p(us);
+      |       ^
+trad_conv.c:28:15: warning: passing argument 1 of 's.p' with different width due to prototype [-Wtraditional-conversion]
+   28 |   s.p(i); s.p(sh); s.p(us);
+      |               ^
+trad_conv.c:28:24: warning: passing argument 1 of 's.p' with different width due to prototype [-Wtraditional-conversion]
+   28 |   s.p(i); s.p(sh); s.p(us);
+      |                        ^
+trad_conv.c:29:6: warning: passing argument 1 of 'fi' as integer rather than floating due to prototype [-Wtraditional-conversion]
+   29 |   fi(1.0);
+      |      ^

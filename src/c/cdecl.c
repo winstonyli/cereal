@@ -6273,8 +6273,11 @@ static void static_assert_visit(Checker *c, uint32_t i)
     Kids kk;
     if (c->par[i] != NO_NODE && ntag(c, c->par[i]) == N_STRUCT)
         struct_semis(c, cnode(c, i)->tok);
-    if (!in_extension(c, i))
+    if (!in_extension(c, i)) {
+        size_t n0 = c->diag->all.len;
         cped11(c, aloc, "ISO C99 does not support '_Static_assert'");
+        choist(c, i, n0);
+    }
     if (e == NO_NODE)
         return;
     kids_get(c, i, &kk);
@@ -7149,8 +7152,10 @@ static void body_visit(Checker *c, uint32_t i)
                 n.loc = fnloc;
                 ref = pushdecl(c, &n, false);
                 warn_if_shadowing(c, csym(c, ref));
+                c->diag->late = true;
                 cpedwarn(c, fnloc, "implicit-int", "type of '%s' defaults to "
                          "'int'", cident(c, name));
+                c->diag->late = false;
             }
             seen[ns++] = ref;
             pl[np++] = ref;
@@ -7170,8 +7175,10 @@ static void body_visit(Checker *c, uint32_t i)
                 s->ty = ERRT;
             }
             if (!in_seen(seen, ns, bd->ref)) {
+                c->diag->late = true;
                 cerror(c, s->loc, "declaration for parameter '%s' but no "
                        "such parameter", sname(c, s));
+                c->diag->late = false;
                 if (np < cap)
                     pl[np++] = bd->ref;
             }

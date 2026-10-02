@@ -129,6 +129,7 @@ static const DiagOption options[] = {
     {"ignored-qualifiers", "c", DL_WARNING, false, DO_EXTRA, "type qualifiers ignored (e.g. on a return type)"},
     {"old-style-declaration", "c", DL_WARNING, false, DO_EXTRA, "storage class not at the beginning of a declaration"},
     {"traditional", "c", DL_WARNING, false, 0, "constructs with different meaning in traditional C"},
+    {"traditional-conversion", "c", DL_WARNING, false, 0, "conversion of an argument that a prototype changes"},
     {"missing-field-initializers", "c", DL_WARNING, false, DO_EXTRA, "struct initializer leaves fields uninitialized"},
     {"missing-parameter-type", "c", DL_WARNING, false, DO_EXTRA, "K&R parameter without a type"},
     {"override-init", "c", DL_WARNING, false, DO_EXTRA, "initialized field overwritten"},
@@ -550,6 +551,7 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     promoted = id && *id && req < DL_ERROR && req != DL_NOTE && lvl == DL_ERROR;
     dg = NEW(d->arena, Diagnostic);
     dg->promoted = promoted;
+    dg->late = d->late;
     dg->level = lvl;
     dg->id = id ? id : "";
     dg->loc = loc;
@@ -821,7 +823,7 @@ void diag_merge_from(DiagEngine *d, size_t from, size_t mid)
     out = xmalloc(n * sizeof *out);
     while (i < mid && j < d->all.len) {
         SrcLoc pl = d->all.data[i]->loc;
-        if (pl && d->all.data[j]->loc < pl)
+        if (pl && !d->all.data[j]->late && d->all.data[j]->loc < pl)
             out[k++] = d->all.data[j++];
         else
             out[k++] = d->all.data[i++];

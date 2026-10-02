@@ -197,3 +197,22 @@ layouts, gcc rules ported, walk design).
     (+2.3% check); the flag is now Ident.ext, set at interning.  uvloop
     check 3.357G (parse 1.702G).
 
+- Ordering round 2, -Wtraditional-conversion (2026-10-02):
+  * Parser pedwarns and errors are merged with the checker's in every unit
+    that has any parser diagnostic (strictly-earlier checker diagnostics go
+    first); diagnostics of K&R parameter checks ("type of 'x' defaults to
+    'int'", "declaration for parameter ... but no such parameter") are marked
+    Diagnostic.late and sort after the parser's.  Order-only differences vs
+    gcc: 110 -> 10 files.
+  * choist(c, node, n0): a keyword extension warning (`_Static_assert`,
+    `_Alignof`) that gcc emits at the keyword is moved in front of the
+    diagnostics of its operand (Checker.dm records the diagnostic count at
+    each node's visit).
+  * -Wtraditional-conversion (cexpr.c trad_conv, called from assign_check
+    for CONV_ARG): integer/floating/complex kind changes, "with different
+    width", "as signed/unsigned", and the untagged "as 'float' rather than
+    'double'"; not for __builtin_ callees or system headers; a constant
+    argument is located at its macro expansion point.  Golden trad_conv.
+  Remaining order-only files: 20020104-1, asm-8, init-bad-4, pr105853,
+  redecl-21, spellcheck-inttypes, struct-semi-4, vla-stexp-8 and two more.
+

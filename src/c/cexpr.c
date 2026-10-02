@@ -3773,6 +3773,64 @@ bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
     return r;
 }
 
+/* -Wtraditional-conversion: an argument whose prototype conversion differs
+ * from the default promotions an unprototyped call would apply. */
+static bool trad_integral(Checker *c, TypeId t)
+{
+    TypeKind k = tkind(c, t);
+    return gcc_integer(c, t) || k == TY_ENUM || k == TY_BOOL;
+}
+
+static void trad_conv(Checker *c, uint32_t e, TypeId lt, TypeId rt, SrcLoc l,
+                      const char *fn, int pn)
+{
+    TypeId cl = type_canon(TT, lt), cr = type_canon(TT, rt);
+    bool li = trad_integral(c, cl), ri = trad_integral(c, cr);
+    bool lr = gcc_real(c, cl), rr = gcc_real(c, cr);
+    bool lc = is_complex(c, cl), rc = is_complex(c, cr);
+    const char *w = NULL;
+    if (li && rr)
+        w = "integer rather than floating";
+    else if (li && rc)
+        w = "integer rather than complex";
+    else if (lc && rr)
+        w = "complex rather than floating";
+    else if (lc && ri)
+        w = "complex rather than integer";
+    else if (lr && ri)
+        w = "floating rather than integer";
+    else if (lr && rc)
+        w = "floating rather than complex";
+    else if (lr && rr) {
+        if (uc_prec(c, cl) == (unsigned)float_prec(c, TY_FLOAT) &&
+            diag_enabled(c->diag, "traditional-conversion"))
+            cwarn(c, l, "", "passing argument %d of '%s' as 'float' rather "
+                  "than 'double' due to prototype", pn, fn);
+        return;
+    } else if (li && ri) {
+        TypeId t1 = promoted(c, e);
+        bool lu = !is_signed(c, cl), u1 = !is_signed(c, t1);
+        if (tkind(c, cl) == TY_ENUM && mainv(c, cl) == mainv(c, cr))
+            return;
+        if (int_bits(c, cl) != int_bits(c, t1))
+            w = "with different width";
+        else if (lu == u1 || tkind(c, cl) == TY_ENUM)
+            return;
+        else {
+            if (const_fits(c, e, t1, cl))
+                return;
+            w = lu ? "as unsigned" : "as signed";
+        }
+        if (diag_enabled(c->diag, "traditional-conversion"))
+            cwarn(c, l, "traditional-conversion", "passing argument %d of "
+                  "'%s' %s due to prototype", pn, fn, w);
+        return;
+    }
+    if (w && diag_enabled(c->diag, "traditional-conversion"))
+        cwarn(c, l, "traditional-conversion", "passing argument %d of '%s' as "
+              "%s due to prototype", pn, fn, w);
+}
+
 static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                          const ConvInfo *ci)
 {
@@ -3809,6 +3867,15 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
     default:
         x.loc = x.eloc = ci->loc ? ci->loc : expr_loc(c, expr);
         break;
+    }
+    if (ctx == CONV_ARG && diag_enabled(c->diag, "traditional-conversion") &&
+        strncmp(fn, "__builtin_", 10)) {
+        SrcLoc tl = has_ival(c, strip_paren(c, expr))
+                    ? (c->u->toks[first_tok(c, expr)].exp
+                       ? c->u->toks[first_tok(c, expr)].exp
+                       : first_loc(c, expr)) : x.loc;
+        if (!cin_system(c, tl))
+            trad_conv(c, expr, lt, rt, tl, fn, pn);
     }
     cl = type_canon(TT, lt);
     cr = type_canon(TT, rt);
@@ -7045,7 +7112,9 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
         size_t len;
         const char *s = ttext(c, c->nodes[i].tok, &len);
         if (len == 8 && !memcmp(s, "_Alignof", 8)) {
+            size_t n0 = c->diag->all.len;
             cped11(c, cnode_loc(c, i), "ISO C99 does not support '_Alignof'");
+            choist(c, i, n0);
             if (!is_type)
                 cpedantic(c, cnode_loc(c, i),
                           "ISO C does not allow '_Alignof (expression)'");
