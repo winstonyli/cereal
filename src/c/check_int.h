@@ -393,6 +393,7 @@ const char *cident_ucn(const char *s);
  * parsed: moves the diagnostic added since n0 (if one was) in front of
  * those of node i's operand. */
 void choist(Checker *c, uint32_t i, size_t n0);
+void choist_at(Checker *c, size_t n0, size_t at);
 
 static inline const char *cident(const Checker *c, uint32_t id)
 {

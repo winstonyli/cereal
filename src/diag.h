@@ -14,6 +14,20 @@ typedef enum {
     DL_FATAL
 } DiagLevel;
 
+/* How a diagnostic merges with the parser's diagnostics of the same unit
+ * (diag_merge_from).  gcc checks as it parses, so by default the two
+ * lists merge by location. */
+typedef enum DiagOrd {
+    ORD_NORMAL,
+    ORD_LATE,   /* checker: after every parser diagnostic (K&R checks, scope
+                   close, finish_struct after a missing ';') */
+    ORD_CUT,    /* checker: after the first parser diagnostic at or past its
+                   location (a call cut short by a syntax error) */
+    ORD_EARLY,  /* checker: before a parser diagnostic at its location */
+    ORD_TIE,    /* parser: checker diagnostics at its location come first */
+    ORD_EOF     /* parser: after every checker diagnostic (unclosed body) */
+} DiagOrd;
+
 typedef struct DiagNote {
     SrcLoc loc;
     const char *msg;
@@ -28,15 +42,7 @@ typedef struct Diagnostic {
     VEC(DiagNote) notes;
     SrcLoc *inc_chain;       /* #include locations, innermost first */
     int ninc;
-    bool late;               /* gcc reports it after a syntax error that
-                                follows (K&R parameter checks) */
-    bool cut;                /* a call cut short by a syntax error: gcc
-                                checks it after that error */
-    bool tie;                /* checker diagnostics at its location first */
-    bool eof;                /* the unclosed-body error: after everything
-                                the body's checking reports */
-    bool early;              /* gcc reports it before a syntax error at
-                                the same place (label-declaration pedwarn) */
+    uint8_t ord;             /* DiagOrd: where it merges with the parser's */
     bool promoted;           /* a warning made an error by -Werror[=X]:
                                 shown as [-Werror=X] like gcc */
     const char *fixit;       /* optional suggested replacement text */
@@ -87,10 +93,23 @@ typedef struct DiagEngine {
     /* option -> level+1 under the config generation memo_gen (0: unknown) */
     uint32_t memo_gen;
     uint8_t memo[512];
-    bool late;               /* mark new diagnostics late */
-    bool early;              /* mark new diagnostics early */
-    bool cut;                /* mark new diagnostics cut */
+    uint8_t ord;             /* DiagOrd of new diagnostics */
 } DiagEngine;
+
+/* Set the order of new diagnostics, returning the previous one. */
+static inline DiagOrd diag_ord(DiagEngine *d, DiagOrd o)
+{
+    DiagOrd old = (DiagOrd)d->ord;
+    d->ord = (uint8_t)o;
+    return old;
+}
+
+/* Mark the diagnostic just reported. */
+static inline void diag_mark_last(DiagEngine *d, DiagOrd o)
+{
+    if (d->all.len)
+        d->all.data[d->all.len - 1]->ord = (uint8_t)o;
+}
 
 /* Warning option registry.  An option is enabled by an explicit -W flag,
  * else by an umbrella flag in `by` (gcc's EnabledBy), else by default.

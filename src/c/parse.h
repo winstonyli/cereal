@@ -42,7 +42,6 @@ typedef struct Parser {
     VEC(Node) nodes;
     Scope scope;
     Scope tags;                 /* struct/union/enum tags (SYM_TAG_*) */
-    uint32_t nerrs;             /* errors reported so far */
     bool gimple_body;           /* the definition being parsed is __GIMPLE */
     bool hushed;        /* the last postfix tail was silenced */
     bool hush;           /* errors silenced (erroneous primary's tail) */

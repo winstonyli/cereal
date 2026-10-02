@@ -239,3 +239,19 @@ layouts, gcc rules ported, walk design).
   one more); tests 798, corpus 0/0, ASAN/UBSAN 0; check 3.373G.  Known gap:
   the "'X' is defined in header" note of spellcheck-inttypes.
 
+- Ordering unification (2026-10-02):
+  * The five bool flags (late/early/cut on Diagnostic+DiagEngine, tie/eof on
+    Diagnostic) are one `DiagOrd ord` (diag.h: ORD_NORMAL/LATE/CUT/EARLY/TIE/
+    EOF); diag_merge_from asks `checker_first()`.  Set with
+    `diag_ord(diag, ORD_X)` (returns the previous one; restore it) or
+    `diag_mark_last(diag, ORD_X)` for a parser diagnostic just reported.
+    Adding a new ordering quirk = a new enum value and one line there.
+  * Parser: `nerrs` duplicated `errors` (removed); the include-chain dance of
+    vperr/pwarn/c++-compat is `pvreport`.
+  * Braced-group pedwarn is hoisted (choist_at) before the "statement with no
+    effect" warnings of its body, else before the scope-end diagnostics.
+  Still order-only: binary-constants-1, init-bad-4.  Not done: __builtin_trap /
+  unreachable / prefetch / __clear_cache signatures for
+  -Wbuiltin-declaration-mismatch (cbuiltin_tab.h only lists library built-ins
+  reachable undeclared; needs a __builtin_-only flag).
+

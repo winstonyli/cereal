@@ -375,6 +375,16 @@ static void grow_nodes(Checker *c, uint32_t n)
     c->dm = xrealloc(c->dm, c->cap * sizeof *c->dm);
 }
 
+void choist_at(Checker *c, size_t n0, size_t at)
+{
+    Diagnostic **d = c->diag->all.data;
+    if (c->diag->all.len == n0 + 1 && at < n0) {
+        Diagnostic *x = d[n0];
+        memmove(d + at + 1, d + at, (n0 - at) * sizeof *d);
+        d[at] = x;
+    }
+}
+
 void choist(Checker *c, uint32_t i, size_t n0)
 {
     size_t at = c->dm[cfirst(c, i)];

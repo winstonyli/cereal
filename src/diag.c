@@ -551,9 +551,7 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     promoted = id && *id && req < DL_ERROR && req != DL_NOTE && lvl == DL_ERROR;
     dg = NEW(d->arena, Diagnostic);
     dg->promoted = promoted;
-    dg->late = d->late;
-    dg->early = d->early;
-    dg->cut = d->cut;
+    dg->ord = d->ord;
     dg->level = lvl;
     dg->id = id ? id : "";
     dg->loc = loc;
@@ -816,6 +814,18 @@ void diag_print_json(DiagEngine *d, FILE *out)
  * all[mid]) with the checker's (from mid on) by location, each side keeping
  * its own order: gcc checks as it parses, so a syntax error follows the
  * diagnostics of what precedes it. */
+/* Does the checker diagnostic j go before the parser diagnostic i? */
+static bool checker_first(const DiagEngine *d, size_t from, size_t i, size_t j)
+{
+    const Diagnostic *p = d->all.data[i], *c = d->all.data[j];
+    if (c->ord == ORD_CUT)
+        return i > from && d->all.data[i - 1]->loc >= c->loc;
+    if (c->ord == ORD_LATE || !p->loc)
+        return false;
+    return p->ord == ORD_EOF || c->loc < p->loc ||
+           (c->loc == p->loc && (p->ord == ORD_TIE || c->ord == ORD_EARLY));
+}
+
 void diag_merge_from(DiagEngine *d, size_t from, size_t mid)
 {
     size_t i = from, j = mid, n = d->all.len - from, k = 0;
@@ -823,22 +833,9 @@ void diag_merge_from(DiagEngine *d, size_t from, size_t mid)
     if (mid <= from || mid >= d->all.len)
         return;
     out = xmalloc(n * sizeof *out);
-    while (i < mid && j < d->all.len) {
-        SrcLoc pl = d->all.data[i]->loc;
-        Diagnostic *cj = d->all.data[j];
-        if (cj->cut) {
-            if (i > from && d->all.data[i - 1]->loc >= cj->loc)
-                out[k++] = d->all.data[j++];
-            else
-                out[k++] = d->all.data[i++];
-        } else if (pl && !d->all.data[j]->late &&
-            (d->all.data[i]->eof || d->all.data[j]->loc < pl ||
-             (d->all.data[i]->tie && d->all.data[j]->loc == pl) ||
-             (d->all.data[j]->early && d->all.data[j]->loc == pl)))
-            out[k++] = d->all.data[j++];
-        else
-            out[k++] = d->all.data[i++];
-    }
+    while (i < mid && j < d->all.len)
+        out[k++] = checker_first(d, from, i, j) ? d->all.data[j++]
+                                                : d->all.data[i++];
     while (i < mid)
         out[k++] = d->all.data[i++];
     while (j < d->all.len)

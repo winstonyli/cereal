@@ -255,21 +255,30 @@ static const char *tok_desc(Parser *p, uint32_t i, char *buf, size_t n)
     }
 }
 
+/* Report from the parser: the preprocessor has moved on, so the include
+ * chain is not the one of the token's own place. */
+static Diagnostic *pvreport(Parser *p, DiagLevel lvl, const char *opt,
+                            SrcLoc loc, const char *fmt, va_list ap)
+{
+    void (*chain)(void *, SrcLoc **, int *) = p->diag->include_chain;
+    Diagnostic *d;
+    p->diag->include_chain = NULL;
+    d = diag_vreport(p->diag, lvl, opt, loc, fmt, ap);
+    p->diag->include_chain = chain;
+    return d;
+}
+
 static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
                          va_list ap)
 {
     Diagnostic *d;
-    void (*chain)(void *, SrcLoc **, int *) = p->diag->include_chain;
     if (p->unwind || p->hush || (p->have_err && i <= p->last_err))
         return NULL; /* one error per place: no cascades */
     p->have_err = true;
     p->err_live = true;
-    p->nerrs++;
     p->last_err = i;
     p->errors++;
-    p->diag->include_chain = NULL; /* the preprocessor has moved on */
-    d = diag_vreport(p->diag, DL_ERROR, "", loc, fmt, ap);
-    p->diag->include_chain = chain;
+    d = pvreport(p, DL_ERROR, "", loc, fmt, ap);
     if (d && !p->diag->track0 && i < p->toks.len && p->toks.data[i].exp &&
         p->toks.data[i].exp != p->toks.data[i].t.loc) {
         /* a macro body token: gcc names the macro at the invocation (the
@@ -322,6 +331,9 @@ static Diagnostic *perr_after_prev(Parser *p, uint32_t i, const char *fmt, ...)
     return d;
 }
 
+static void pwarn_opt(Parser *p, const char *opt, uint32_t i, const char *fmt,
+                      ...);
+
 static void check_cxx_keyword(Parser *p, const Tok *t, size_t i)
 {
     static const char *const kw[] = {"alignas", "alignof", "bool", "catch",
@@ -342,30 +354,35 @@ static void check_cxx_keyword(Parser *p, const Tok *t, size_t i)
     for (k = 0; k < sizeof kw / sizeof *kw; k++)
         if (strlen(kw[k]) == n && !memcmp(s, kw[k], n)) {
             PTok pt = p->toks.data[i];
-            void (*chain)(void *, SrcLoc **, int *) = p->diag->include_chain;
             if (ckw_of(p, &pt))
                 return;
-            p->diag->include_chain = NULL;
-            diag_report(p->diag, DL_WARNING, "c++-compat", tok_loc(p, (uint32_t)i),
-                        "identifier '%s' conflicts with C++ keyword", kw[k]);
-            p->diag->include_chain = chain;
+            pwarn_opt(p, "c++-compat", (uint32_t)i,
+                      "identifier '%s' conflicts with C++ keyword", kw[k]);
             return;
         }
 }
 
+static void pwarn_opt(Parser *p, const char *opt, uint32_t i, const char *fmt,
+                      ...)
+{
+    va_list ap;
+    if (p->unwind)
+        return;
+    va_start(ap, fmt);
+    pvreport(p, DL_WARNING, opt, tok_loc(p, i), fmt, ap);
+    va_end(ap);
+}
+
+/* A parser warning that gcc reports before the checker's at its place. */
 static void pwarn(Parser *p, uint32_t i, const char *fmt, ...)
 {
     va_list ap;
-    void (*chain)(void *, SrcLoc **, int *) = p->diag->include_chain;
     if (p->unwind)
         return;
-    p->diag->include_chain = NULL;
     va_start(ap, fmt);
-    diag_vreport(p->diag, DL_WARNING, "", tok_loc(p, i), fmt, ap);
+    pvreport(p, DL_WARNING, "", tok_loc(p, i), fmt, ap);
     va_end(ap);
-    if (p->diag->all.len)
-        p->diag->all.data[p->diag->all.len - 1]->tie = true;
-    p->diag->include_chain = chain;
+    diag_mark_last(p->diag, ORD_TIE);
 }
 
 static void expected(Parser *p, const char *what)
@@ -889,13 +906,13 @@ static void attribute(Parser *p)
         if (t.t.kind == TK_IDENT) {
             uint32_t s = nmark(p), name = adv(p);
             if (accept(p, P_LPAREN)) {
-                unsigned ne = p->nerrs;
+                uint64_t ne = p->errors;
                 if (!at(p, P_RPAREN)) {
                     parse_assign(p);
                     while (accept(p, P_COMMA))
                         parse_assign(p);
                 }
-                if (p->nerrs != ne && !at(p, P_RPAREN)) {
+                if (p->errors != ne && !at(p, P_RPAREN)) {
                     /* c_parser_gnu_attribute: skip past the next ')' and
                      * give up on the attribute list */
                     int depth = 0;
@@ -1482,7 +1499,7 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             uint32_t lp = adv(p), save = (uint32_t)p->saved.len;
             unsigned flags = 0;
             bool adjacent = di->inner == DK_NONE;
-            uint32_t nerrs = p->nerrs;
+            uint64_t nerrs = p->errors;
             open_scope(p, lp, 0); /* function prototype scope */
             params(p, &flags);
             /* only this declarator's own parameters are saved (not
@@ -1490,7 +1507,7 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             p->saved.len = save;
             close_scope(p, adjacent ? &p->saved : NULL);
             expect(p, P_RPAREN);
-            if (p->nerrs != nerrs)
+            if (p->errors != nerrs)
                 di->failed = true;
             emit(p, N_FUNC, lp, start, flags);
             if (adjacent) {
@@ -2384,8 +2401,7 @@ static void compound(Parser *p, bool push)
             p->have_err = false;
             perr_at(p, ci(p), eof_input_loc(p), "expected declaration or "
                     "statement at end of input");
-            if (p->diag->all.len)
-                p->diag->all.data[p->diag->all.len - 1]->eof = true;
+            diag_mark_last(p->diag, ORD_EOF);
         }
     }
     if (push)

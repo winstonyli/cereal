@@ -2431,10 +2431,10 @@ static void specs_visit(Checker *c, uint32_t i)
             (ntag(c, l) == N_LABEL || ntag(c, l) == N_CASE ||
              ntag(c, l) == N_DEFAULT))
         {
-            c->diag->early = true;
+            DiagOrd o0 = diag_ord(c->diag, ORD_EARLY);
             cpedantic(c, s.loc, "a label can only be part of a statement "
                       "and a declaration is not a statement");
-            c->diag->early = false;
+            diag_ord(c->diag, o0);
         }
     }
     s.tok1 = s.tok0;
@@ -5728,14 +5728,15 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
             if (f[k].name)
                 named = true;
         if (!named) {
-            c->diag->late = n > 0; /* finish_struct: after a missing semicolon */
+            DiagOrd o0 = diag_ord(c->diag, n > 0 ? ORD_LATE : ORD_NORMAL);
+            /* finish_struct: after a missing semicolon */
             if (want == TY_UNION)
                 cpedantic(c, loc, n ? "union has no named members"
                                     : "union has no members");
             else
                 cpedantic(c, loc, n ? "struct has no named members"
                                     : "struct has no members");
-            c->diag->late = false;
+            diag_ord(c->diag, o0);
         }
     }
     for (k = 0; k < n; k++) {
@@ -7163,10 +7164,10 @@ static void body_visit(Checker *c, uint32_t i)
                 n.loc = fnloc;
                 ref = pushdecl(c, &n, false);
                 warn_if_shadowing(c, csym(c, ref));
-                c->diag->late = true;
+                DiagOrd o0 = diag_ord(c->diag, ORD_LATE);
                 cpedwarn(c, fnloc, "implicit-int", "type of '%s' defaults to "
                          "'int'", cident(c, name));
-                c->diag->late = false;
+                diag_ord(c->diag, o0);
             }
             seen[ns++] = ref;
             pl[np++] = ref;
@@ -7186,10 +7187,10 @@ static void body_visit(Checker *c, uint32_t i)
                 s->ty = ERRT;
             }
             if (!in_seen(seen, ns, bd->ref)) {
-                c->diag->late = true;
+                DiagOrd o0 = diag_ord(c->diag, ORD_LATE);
                 cerror(c, s->loc, "declaration for parameter '%s' but no "
                        "such parameter", sname(c, s));
-                c->diag->late = false;
+                diag_ord(c->diag, o0);
                 if (np < cap)
                     pl[np++] = bd->ref;
             }
@@ -7403,10 +7404,10 @@ static void unused_scan(Checker *c, uint32_t first, uint32_t last)
         cstmt_emit_labels(c, first, (int64_t)cand[j]);
         if (s->kind == CS_OBJ && !(s->flags & CSF_PARAM) && s->name) {
             if (!(s->flags & CSF_USED)) {
-                c->diag->late = true; /* reported when the scope closes */
+                DiagOrd o0 = diag_ord(c->diag, ORD_LATE); /* reported when the scope closes */
                 cwarn(c, s->loc, "unused-variable", "unused variable '%s'",
                       sname(c, s));
-                c->diag->late = false;
+                diag_ord(c->diag, o0);
                 if (sym_public(s))
                     s->flags |= CSF_USED;
             } else if (!read[j] && !sym_public(s) &&

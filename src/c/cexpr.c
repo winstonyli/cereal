@@ -5287,10 +5287,11 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
             check_nonnull(c, kv, nk, mask, pt, nparm, proto, false, loc);
         if (csym(c, fref)->fmt || builtin_decl_ok(c, csym(c, fref))) {
             /* a call cut short by a syntax error is checked after it */
-            c->diag->cut = (c->nodes[i].flags & NF_CUT) != 0;
+            DiagOrd o0 = diag_ord(c->diag, c->nodes[i].flags & NF_CUT
+                                                ? ORD_CUT : ORD_NORMAL);
             check_format_literal(c, kv, nk, csym(c, fref),
                                  cident(c, csym(c, fref)->name), loc);
-            c->diag->cut = false;
+            diag_ord(c->diag, o0);
         }
     }
     if (!too_many && !bad && proto && nparm > 1 && fref != SYM_NONE &&
@@ -7458,9 +7459,18 @@ static void e_stmt_expr(Checker *c, uint32_t i)
     {
         size_t n0 = c->diag->all.len;
         ped(c, i, loc, "ISO C forbids braced-groups within expressions");
-        /* gcc: after the body, before its scope closes (unused variables) */
-        if (k >= 1 && ntag(c, k - 1) == N_SCOPE_END)
-            choist(c, k - 1, n0);
+        /* gcc: after the body, before the statement-with-no-effect warnings
+         * it defers to the end and before its scope closes */
+        if (k >= 1 && ntag(c, k - 1) == N_SCOPE_END) {
+            size_t at = c->dm[k - 1], j;
+            Diagnostic **dd = c->diag->all.data;
+            for (j = c->dm[cfirst(c, i)]; j < at && j < n0; j++)
+                if (!strcmp(dd[j]->id, "unused-value")) {
+                    at = j;
+                    break;
+                }
+            choist_at(c, n0, at);
+        }
     }
     c->ty[i] = TYPE_B(VOID);
     c->ef[i] = EF_SIDE;
