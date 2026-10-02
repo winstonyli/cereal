@@ -1,0 +1,39 @@
+array_ptr_quals.c:9:7: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+    9 |     a = pc;                         /* const void * -> pointer to const array */
+      |       ^
+array_ptr_quals.c:11:16: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+   11 |     d = &x1[1] - &z1[0];
+      |                ^
+array_ptr_quals.c:12:12: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+   12 |     d = x1 == z1;
+      |            ^
+array_ptr_quals.c:13:12: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+   13 |     d = x1 < z1;
+      |            ^
+array_ptr_quals.c:15:17: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+   15 |     v = (1 ? z1 : v);
+      |                 ^
+array_ptr_quals.c:15:7: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+   15 |     v = (1 ? z1 : v);
+      |       ^
+array_ptr_quals.c:15:7: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-array-qualifiers]
+   15 |     v = (1 ? z1 : v);
+      |       ^
+array_ptr_quals.c:16:16: warning: pointer to array loses qualifier in conditional expression [-Wdiscarded-array-qualifiers]
+   16 |     v = (1 ? p : z1);
+      |                ^
+array_ptr_quals.c:17:7: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   17 |     v = (1 ? pc : x1);
+      |       ^
+array_ptr_quals.c:18:20: error: assignment of read-only location '*(1 ? (const double *)&x0 : (const double *)&z0)'
+   18 |     *(1 ? x0 : z0) = 1;
+      |                    ^
+array_ptr_quals.c:19:15: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+   19 |     (*(1 ? x1 : z1))[0] = 1;
+      |               ^
+array_ptr_quals.c:19:25: error: assignment of read-only location '(*(1 ? (const double (*)[2])&x1 : (const double (*)[2])&z1))[0]'
+   19 |     (*(1 ? x1 : z1))[0] = 1;
+      |                         ^
+array_ptr_quals.c:20:19: warning: pointer type mismatch in conditional expression
+   20 |     (void)(1 ? x0 : x1);
+      |                   ^

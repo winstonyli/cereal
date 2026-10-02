@@ -1127,6 +1127,7 @@ static bool prints_value(Checker *c, uint32_t i)
 
 static bool pfloat(Checker *c, StrBuf *sb, const char *s, size_t len);
 static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec);
+static void pcond_arm(Checker *c, StrBuf *sb, uint32_t arm, TypeId rt, int prec);
 
 /* Operand i converted to type t (an implicit conversion prints as a
  * cast). */
@@ -1294,6 +1295,24 @@ static bool const_through(Checker *c, uint32_t i)
     return false;
 }
 
+/* An arm of `?:` with a pointer result: gcc prints it converted to the
+ * result type (an array arm as the address of the whole array). */
+static void pcond_arm(Checker *c, StrBuf *sb, uint32_t arm, TypeId rt, int prec)
+{
+    TypeId at = c->ty[arm];
+    bool arr = is_array(c, at);
+    if (is_ptr(c, rt) && (arr || is_ptr(c, at)) && (arr || at != rt)) {
+        sb_putc(sb, '(');
+        type_print(TT, sb, rt);
+        sb_putc(sb, ')');
+        if (arr)
+            sb_putc(sb, '&');
+        pexpr(c, sb, arm, PR_UNARY);
+        return;
+    }
+    pexpr(c, sb, arm, prec);
+}
+
 static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
 {
     uint32_t k[3], n, lb, lx;
@@ -1382,9 +1401,9 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
         pexpr(c, sb, k[0], PR_LOR);
         sb_puts(sb, " ? ");
         if (n == 3)
-            pexpr(c, sb, k[1], PR_COMMA);
+            pcond_arm(c, sb, k[1], c->ty[i], PR_COMMA);
         sb_puts(sb, " : ");
-        pexpr(c, sb, k[n - 1], PR_COND);
+        pcond_arm(c, sb, k[n - 1], c->ty[i], PR_COND);
         break;
     case N_CAST:
         if (n < 2)
@@ -2530,6 +2549,19 @@ static int comp_target(Conv *x, TypeId lt, TypeId rt)
     return val;
 }
 
+/* comp_target_types of two pointer targets (-, comparison, ?:): arrays of
+ * differently qualified elements are compatible, with a pedantic note. */
+static bool targets_compat(Checker *c, SrcLoc loc, TypeId pa, TypeId pb)
+{
+    TypeId a = type_canon(TT, pa), b = type_canon(TT, pb);
+    bool ped = !(is_array(c, a) && is_array(c, b)) || type_compatible(TT, a, b);
+    bool val = type_compatible(TT, mvt(c, a), mvt(c, b));
+    if (val && !ped)
+        cpedantic(c, loc, "invalid use of pointers to arrays with different "
+                  "qualifiers in ISO C before C2X");
+    return val;
+}
+
 /* The location of gcc's built-in declarations ("<built-in>"). */
 static SrcLoc builtin_loc(Checker *c)
 {
@@ -3584,10 +3616,17 @@ bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
                 unsigned warn_q = TYPE_QUALS(ttr) & qnoat &
                                   ~gq(c, ttl);
                 /* the qualifiers of an array target live on its elements */
+                unsigned miss = gq(c, ttr) & ~gq(c, ttl);
                 if (is_array(c, ttl))
                     warn_ped = gq(c, ttr) & qnoat & ~gq(c, ttl);
+                /* gcc compares a void source with the array type's own
+                 * qualifiers: const void * -> const T (*)[N] discards */
+                if (rvoid && is_array(c, ttl) && !lvoid) {
+                    miss = TYPE_QUALS(ttr);
+                    warn_q = warn_ped = miss & qnoat;
+                }
                 if (warn_q || (warn_ped && c->opt.pedantic)) {
-                    const char *qs = qual_str(q, gq(c, ttr) & ~gq(c, ttl));
+                    const char *qs = qual_str(q, miss);
                     sp(m[CONV_ARG], "passing argument %d of '%s' discards '%s' "
                        "qualifier from pointer target type", pn, fn, qs);
                     sp(m[CONV_ASSIGN], "assignment discards '%s' qualifier from "
@@ -8688,7 +8727,7 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     }
     if (pa && pb) {
         TypeId tta = pointee(c, ta), ttb = pointee(c, tb);
-        bool compat = type_compatible(TT, mainv(c, tta), mainv(c, ttb));
+        bool compat = targets_compat(c, loc, tta, ttb);
         if (eq) {
             if (!compat) {
                 if (is_void(c, tta) && !(tquals(c, tta) & TQ_ATOMIC)) {
@@ -9116,7 +9155,7 @@ static void ptr_diff(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     TypeId pa = pointee(c, ta), pb = pointee(c, tb);
     SrcLoc loc = cnode_loc(c, i);
     uint64_t sz;
-    if (!type_compatible(TT, mainv(c, pa), mainv(c, pb))) {
+    if (!targets_compat(c, loc, pa, pb)) {
         invalid_operands(c, i, a, b, P_MINUS);
         return;
     }
@@ -9386,19 +9425,23 @@ static void e_cond(Checker *c, uint32_t i)
         rt = TYPE_B(VOID);
     } else if (is_ptr(c, t1) && is_ptr(c, t2)) {
         TypeId p1 = pointee(c, t1), p2 = pointee(c, t2);
-        unsigned q = tquals(c, p1) | tquals(c, p2);
-        if (type_compatible(TT, mainv(c, p1), mainv(c, p2))) {
-            rt = type_ptr(TT, type_qual(type_composite(TT, mainv(c, p1),
-                                                       mainv(c, p2)), q));
+        unsigned q = gq(c, p1) | gq(c, p2);
+        if (targets_compat(c, cl, p1, p2)) {
+            rt = type_ptr(TT, type_qual(type_composite(TT, mvt(c, p1),
+                                                       mvt(c, p2)), q));
         } else if (is_npc(c, ch)) {
             rt = t2;
         } else if (is_npc(c, els)) {
             rt = t1;
         } else if (is_void(c, p1) || is_void(c, p2)) {
+            TypeId vo = is_void(c, p1) ? p1 : p2, ot = vo == p1 ? p2 : p1;
+            if (is_array(c, ot) && (gq(c, ot) & ~TYPE_QUALS(vo)))
+                cwarn(c, cl, "discarded-array-qualifiers", "pointer to array "
+                      "loses qualifier in conditional expression");
             if (is_func(c, p1) || is_func(c, p2))
                 ped(c, i, cl, "ISO C forbids conditional expr between 'void *' "
                               "and function pointer");
-            rt = type_ptr(TT, type_qual(TYPE_B(VOID), q));
+            rt = type_ptr(TT, type_qual(TYPE_B(VOID), tquals(c, p1) | tquals(c, p2)));
         } else {
             cpedwarn(c, cl, "", "pointer type mismatch in conditional "
                                 "expression");
