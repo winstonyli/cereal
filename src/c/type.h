@@ -66,7 +66,8 @@ enum {
     RF_VLA = 256,            /* has a variably modified member */
     RF_DESIGNATED = 512,     /* designated_init */
     RF_USER_ALIGN = 1024,    /* aligned attribute given (copy copies it) */
-    RF_VMOD = 2048           /* a member is variably modified (C_TYPE_VARIABLY_MODIFIED) */
+    RF_VMOD = 2048,          /* a member is variably modified (C_TYPE_VARIABLY_MODIFIED) */
+    RF_SSO = 4096            /* scalar_storage_order: pointers are not constants */
 };
 
 /* Field.flags */
@@ -169,6 +170,9 @@ static inline TypeId type_qual(TypeId t, unsigned q) { return t | q; }
 TypeId type_new_record(TypeTable *tt, uint32_t tag, bool is_union,
                        SrcLoc loc);
 TypeId type_new_enum(TypeTable *tt, uint32_t tag, SrcLoc loc);
+/* A distinct copy of a complete record type (same tag, shared fields) that
+ * is incompatible with the original and marked RF_SSO. */
+TypeId type_clone_record(TypeTable *tt, TypeId t);
 Record *type_record(TypeTable *tt, TypeId t);   /* canonical struct/union */
 Enum *type_enum(TypeTable *tt, TypeId t);       /* canonical enum */
 

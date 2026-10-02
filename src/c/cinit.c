@@ -1412,6 +1412,13 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
                           (lf(c, L, L->fi)->flags & FF_BITFIELD);
         ok = digest(c, x, lt, false, rq, type, &v);
         digest_bitfield = false;
+        if (ok && rq && k == LV_REC && v.node != NOB &&
+            (type_record(TT, type_canon(TT, L->type))->flags & RF_SSO) &&
+            ck_(c, type) == TY_PTR && c->ck[v.node] == K_ADDR) {
+            /* a reverse-order pointer cannot be an address constant */
+            ierr(c, NULL, x->init_loc, "initializer element is not constant");
+            ok = false;
+        }
         if (!ok) {
             if (bf && !had)
                 c->ef[bn] &= ~(uint64_t)EF_OVERFLOW;

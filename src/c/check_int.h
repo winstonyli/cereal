@@ -162,6 +162,7 @@ typedef struct Attrs {
                               * sec2: a later one, compared with sec */
     bool sec_any;            /* a section attribute was written */
     bool wina;               /* warn_if_not_aligned was written */
+    uint8_t sso;             /* scalar_storage_order: 1 big-endian, 2 little */
     SrcLoc sec_bad;          /* input_location of a non-string argument */
 } Attrs;
 

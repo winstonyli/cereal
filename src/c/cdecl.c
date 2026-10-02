@@ -485,6 +485,143 @@ static void attr_malloc_dealloc(Checker *c, uint32_t arg, SrcLoc loc)
     }
 }
 
+static bool is_rec(Checker *c, TypeId t);
+
+/* 1: big-endian, 2: little-endian, 0: anything else. */
+static int sso_value(Checker *c, uint32_t arg)
+{
+    uint32_t mi = cdep_msg(c, arg);
+    const char *sv = c->dep_msgs.data[mi - 1];
+    return !strcmp(sv, "big-endian") ? 1 : !strcmp(sv, "little-endian") ? 2 : 0;
+}
+
+/* The scalar_storage_order given on a tag node (`struct S __attribute__`). */
+static uint8_t sso_of_tag(Checker *c, uint32_t n)
+{
+    Kids k;
+    uint32_t j;
+    uint8_t v = 0;
+    kids_get(c, n, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n; q++) {
+            char name[48];
+            Kids ak;
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
+            if (strcmp(name, "scalar_storage_order"))
+                continue;
+            kids_get(c, it.p[q], &ak);
+            if (ak.n && ntag(c, ak.p[0]) == N_STRING)
+                v = (uint8_t)sso_value(c, ak.p[0]);
+            kids_free(&ak);
+        }
+        kids_free(&it);
+    }
+    kids_free(&k);
+    return v;
+}
+
+/* handle_scalar_storage_order_attribute's errors.  gcc reports them at the
+ * tag name for a tag attribute (or one following a tag), else at the token
+ * after the attribute. */
+static void sso_check(Checker *c, uint32_t attr)
+{
+    Kids k;
+    uint32_t j, up = c->par[attr];
+    kids_get(c, attr, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids ak;
+        char name[48];
+        SrcLoc loc;
+        if (ntag(c, k.p[j]) != N_ATTR_ITEM)
+            continue;
+        attr_norm(tstr(c, c->nodes[k.p[j]].tok), name, sizeof name);
+        if (strcmp(name, "scalar_storage_order"))
+            continue;
+        kids_get(c, k.p[j], &ak);
+        if (!ak.n)
+            continue;
+        {
+            uint32_t at = c->nodes[attr].tok, before;
+            int depth = 0;
+            bool tdef = false, tagp = up != NO_NODE &&
+                        (ntag(c, up) == N_STRUCT || ntag(c, up) == N_ENUM);
+            for (;; at++) {
+                int pu = tpunct(c, at);
+                if (pu == P_LPAREN)
+                    depth++;
+                else if (pu == P_RPAREN && --depth == 0) {
+                    at++;
+                    break;
+                }
+                if (at + 1 >= c->u->ntoks)
+                    break;
+            }
+            loc = tloc(c, at);          /* the token after the attribute */
+            before = c->nodes[attr].tok ? c->nodes[attr].tok - 1 : 0;
+            if (tagp && tpunct(c, before) == P_RBRACE) {
+                /* after the body: the tag name */
+                uint32_t tt = c->nodes[up].tok + 1;
+                while (!strncmp(tstr(c, tt), "__attribute", 11)) {
+                    int dp = 0;
+                    for (tt++; tt < c->u->ntoks; tt++) {
+                        int pu = tpunct(c, tt);
+                        if (pu == P_LPAREN)
+                            dp++;
+                        else if (pu == P_RPAREN && --dp == 0) {
+                            tt++;
+                            break;
+                        }
+                    }
+                }
+                if (tpunct(c, tt) == P_NONE)
+                    loc = tloc(c, tt);
+            } else if (!tagp || tpunct(c, before) != P_NONE ||
+                       !strcmp(tstr(c, before), "struct") ||
+                       !strcmp(tstr(c, before), "union") ||
+                       !strcmp(tstr(c, before), "enum")) {
+                /* before the tag name: reported at the name (loc) */
+                if (!tagp)
+                    goto decl_attr;
+            } else {
+                /* `struct S __attribute__`: a typedef's type attribute, else
+                 * a declaration attribute (-Wattributes) */
+                uint32_t tk;
+            decl_attr:
+                for (tk = c->nodes[attr].tok; tk-- > 0; ) {
+                    int pu = tpunct(c, tk);
+                    if (pu == P_SEMI || pu == P_LBRACE || pu == P_RBRACE)
+                        break;
+                    if (!strcmp(tstr(c, tk), "typedef")) {
+                        tdef = true;
+                        break;
+                    }
+                }
+                if (!tdef) {
+                    kids_free(&ak);
+                    continue;
+                }
+                if (tagp)
+                    loc = tloc(c, before);   /* the tag name */
+            }
+        }
+        if (ntag(c, ak.p[0]) != N_STRING)
+            cerror(c, loc, "attribute 'scalar_storage_order' argument not a "
+                   "string");
+        else if (!sso_value(c, ak.p[0]))
+            cerror(c, loc, "attribute 'scalar_storage_order' argument must "
+                   "be one of 'big-endian' or 'little-endian'");
+        kids_free(&ak);
+    }
+    kids_free(&k);
+}
+
 /* Collects the type-affecting attributes of one ATTRIBUTE node. */
 static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
 {
@@ -565,6 +702,9 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             } else if (!a->sec2) {
                 a->sec2 = cdep_msg(c, arg);
             }
+        } else if (!strcmp(name, "scalar_storage_order") && arg != NO_NODE) {
+            if (ntag(c, arg) == N_STRING)
+                a->sso = (uint8_t)sso_value(c, arg);
         } else if (!strcmp(name, "ms_struct")) {
             a->ms = 1;
         } else if (!strcmp(name, "gcc_struct")) {
@@ -805,6 +945,8 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     if (from->aligned > to->aligned)
         to->aligned = from->aligned;
     to->packed |= from->packed;
+    if (from->sso)
+        to->sso = from->sso;
     if (from->ms)
         to->ms = from->ms;
     to->transparent_union |= from->transparent_union;
@@ -1924,6 +2066,8 @@ static void specs_visit(Checker *c, uint32_t i)
             }
             if (!s.error || s.has_type)
                 s.tag_node = n;
+            if (sso_of_tag(c, n))
+                s.attrs.sso = sso_of_tag(c, n);
             break;
         case N_TYPEOF: {
             uint32_t a = first_child(c, n);
@@ -4495,6 +4639,8 @@ static void declared_visit(Checker *c, uint32_t i)
         s.flags |= CSF_TENTATIVE;
     if (g.what == GD_TYPEDEF) {
         uint32_t nents = (uint32_t)TT->ents.len;
+        if (a.sso == 1 && is_rec(c, type_canon(TT, s.ty)))
+            s.ty = type_clone_record(TT, s.ty);   /* a distinct variant */
         ref = pushdecl(c, &s, false);
         /* a redeclaration can only raise the alignment */
         if (s.align && type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
@@ -5040,6 +5186,8 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
                          a.ms);
     if (a.desig && want != TY_UNION)
         type_record(TT, t)->flags |= RF_DESIGNATED;
+    if (a.sso == 1)     /* the target is little-endian */
+        type_record(TT, t)->flags |= RF_SSO;
     r = type_record(TT, t);
     {
         uint32_t as = r->aset;
@@ -6909,6 +7057,7 @@ void cdecl_node(Checker *c, uint32_t i)
                       "'[[]]' attributes before C2X");
         std_attr_unknown(c, i);
         gnu_attr_argc(c, i);
+        sso_check(c, i);
         c->quiet = quiet;
         break;
     }

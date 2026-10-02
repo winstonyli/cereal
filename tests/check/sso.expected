@@ -1,0 +1,15 @@
+sso.c:4:16: error: initializer element is not constant
+    4 | struct Rec r = { &i };
+      |                ^
+sso.c:10:16: error: attribute 'scalar_storage_order' argument must be one of 'big-endian' or 'little-endian'
+   10 | typedef struct S __attribute__((scalar_storage_order("other"))) S3;
+      |                ^
+sso.c:11:51: error: attribute 'scalar_storage_order' argument must be one of 'big-endian' or 'little-endian'
+   11 | struct __attribute__((scalar_storage_order("x"))) Bad { int i; };
+      |                                                   ^
+sso.c:16:8: error: incompatible types when assigning to type 'struct S' from type 'S1' {aka 'struct S'}
+   16 |   *s = *s1, *s = *s2;
+      |        ^
+sso.c:17:9: error: incompatible types when assigning to type 'S1' {aka 'struct S'} from type 'S2' {aka 'struct S'}
+   17 |   *s1 = *s2;
+      |         ^

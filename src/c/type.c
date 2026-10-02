@@ -270,6 +270,21 @@ TypeId type_new_record(TypeTable *tt, uint32_t tag, bool is_union,
     return r.ty;
 }
 
+TypeId type_clone_record(TypeTable *tt, TypeId t)
+{
+    TypeId ct = type_canon(tt, t);
+    Record r = *type_record(tt, ct);
+    TypeEnt e = *type_ent(tt, ct);
+    if (!(r.flags & RF_COMPLETE) || (r.flags & RF_SSO))
+        return t;
+    e.extra = (uint32_t)tt->recs.len;
+    e.canon = 0;
+    r.ty = add_ent(tt, e);
+    r.flags |= RF_SSO;
+    vec_push(&tt->recs, r);
+    return r.ty | TYPE_QUALS(t);
+}
+
 TypeId type_new_enum(TypeTable *tt, uint32_t tag, SrcLoc loc)
 {
     Enum en = {0};
