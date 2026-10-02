@@ -1,0 +1,45 @@
+readonly_qualmember.c:6:6: error: assignment of read-only location '*(const int *)&a'
+    6 |   *a = 1; **a2 = 1; *a2[1] = 1;
+      |      ^
+readonly_qualmember.c:6:16: error: assignment of read-only location '*(const int *)&a2'
+    6 |   *a = 1; **a2 = 1; *a2[1] = 1;
+      |                ^
+readonly_qualmember.c:6:28: error: assignment of read-only location '*(const int *)&a2[1]'
+    6 |   *a = 1; **a2 = 1; *a2[1] = 1;
+      |                            ^
+readonly_qualmember.c:7:8: error: assignment of read-only location '*(const int *)&v.e'
+    7 |   *v.e = 1; *cv.b = 1; *pcv->b = 1; *pv->e = 1; *pcv->c[1] = 1; **pcv->c = 1;
+      |        ^
+readonly_qualmember.c:7:19: error: assignment of read-only location '*(const int *)&cv.b'
+    7 |   *v.e = 1; *cv.b = 1; *pcv->b = 1; *pv->e = 1; *pcv->c[1] = 1; **pcv->c = 1;
+      |                   ^
+readonly_qualmember.c:7:32: error: assignment of read-only location '*(const int *)&pcv->b'
+    7 |   *v.e = 1; *cv.b = 1; *pcv->b = 1; *pv->e = 1; *pcv->c[1] = 1; **pcv->c = 1;
+      |                                ^
+readonly_qualmember.c:7:44: error: assignment of read-only location '*(const int *)&pv->e'
+    7 |   *v.e = 1; *cv.b = 1; *pcv->b = 1; *pv->e = 1; *pcv->c[1] = 1; **pcv->c = 1;
+      |                                            ^
+readonly_qualmember.c:7:60: error: assignment of read-only location '*(const int *)&pcv->c[1]'
+    7 |   *v.e = 1; *cv.b = 1; *pcv->b = 1; *pv->e = 1; *pcv->c[1] = 1; **pcv->c = 1;
+      |                                                            ^
+readonly_qualmember.c:7:74: error: assignment of read-only location '*(const int *)&pcv->c'
+    7 |   *v.e = 1; *cv.b = 1; *pcv->b = 1; *pv->e = 1; *pcv->c[1] = 1; **pcv->c = 1;
+      |                                                                          ^
+readonly_qualmember.c:8:9: error: assignment of read-only location '*(const int *)&cv.e'
+    8 |   *cv.e = 1; **cv.f = 1; *cv.f[1] = 1; *cv.c[1] = 1;
+      |         ^
+readonly_qualmember.c:8:21: error: assignment of read-only location '*(const int *)&cv.f'
+    8 |   *cv.e = 1; **cv.f = 1; *cv.f[1] = 1; *cv.c[1] = 1;
+      |                     ^
+readonly_qualmember.c:8:35: error: assignment of read-only location '*(const int *)&cv.f[1]'
+    8 |   *cv.e = 1; **cv.f = 1; *cv.f[1] = 1; *cv.c[1] = 1;
+      |                                   ^
+readonly_qualmember.c:8:49: error: assignment of read-only location '*(const int *)&cv.c[1]'
+    8 |   *cv.e = 1; **cv.f = 1; *cv.f[1] = 1; *cv.c[1] = 1;
+      |                                                 ^
+readonly_qualmember.c:9:11: error: assignment of read-only location 'cv.b[0]'
+    9 |   cv.b[0] = 1; cv.c[1][2] = 1;
+      |           ^
+readonly_qualmember.c:9:27: error: assignment of read-only location 'cv.c[1][2]'
+    9 |   cv.b[0] = 1; cv.c[1][2] = 1;
+      |                           ^

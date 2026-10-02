@@ -1267,6 +1267,33 @@ static void plowered(Checker *c, StrBuf *sb, uint32_t b, uint32_t x,
     sb_putc(sb, ')');
 }
 
+/* Whether the lvalue at node i is const through its own type or through a
+ * const-qualified enclosing object (gcc's tree gives such members const
+ * types). */
+static bool const_through(Checker *c, uint32_t i)
+{
+    uint32_t b;
+    while (i != NO_NODE && ntag(c, i) == N_PAREN)
+        i = first_child(c, i);
+    if (i == NO_NODE)
+        return false;
+    if (tquals(c, c->ty[i]) & TQ_CONST)
+        return true;
+    if (ntag(c, i) == N_MEMBER_EXPR) {
+        b = first_child(c, i);
+        if (b == NO_NODE)
+            return false;
+        if ((c->nodes[i].flags & NF_ARROW) && is_ptr(c, rvt(c, b)))
+            return tquals(c, pointee(c, rvt(c, b))) & TQ_CONST;
+        return const_through(c, b);
+    }
+    if (ntag(c, i) == N_INDEX) {
+        b = first_child(c, i);
+        return b != NO_NODE && is_array(c, c->ty[b]) && const_through(c, b);
+    }
+    return false;
+}
+
 static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
 {
     uint32_t k[3], n, lb, lx;
@@ -1375,6 +1402,23 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
         if (n < 1)
             break;
         op = npunct(c, i);
+        if (op == P_STAR && c->ty[k[0]] != ERRT && is_array(c, c->ty[k[0]])) {
+            /* gcc prints a deref of an array as *(T *)&array */
+            uint32_t x = k[0];
+            TypeId et = elem_of(c, c->ty[x]);
+            while (ntag(c, x) == N_UNARY && npunct(c, x) == P_STAR &&
+                   nkids(c, x, k, 3) >= 1 && is_array(c, c->ty[k[0]]))
+                x = k[0];
+            while (is_array(c, et))
+                et = elem_of(c, et);
+            if (const_through(c, x))
+                et = type_qual(et, TQ_CONST);
+            sb_puts(sb, "*(");
+            type_print(TT, sb, et);
+            sb_puts(sb, " *)&");
+            pexpr(c, sb, x, PR_UNARY);
+            break;
+        }
         if (op != P_NONE) {
             sb_puts(sb, punct_spelling[op]);
         } else {
