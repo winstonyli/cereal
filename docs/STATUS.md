@@ -50,6 +50,18 @@ layouts, gcc rules ported, walk design).
   noreturn-after-alloc_align/alloc_size warning.  Wattributes-6.c now matches
   gcc; test `check/attr_follows.c`.  ASAN/UBSAN re-run: 0 findings.
   gcc.dg: 3523 of 3875 identical.
+- K&R definition without a body (2026-10-01): the parser leaves an N_BODY leaf
+  when no '{' follows the declarations, so store_parm_decls still runs
+  ("type of X defaults to 'int'", "declaration for parameter X but no such
+  parameter"); "parameter/typedef/function X is initialized" still digests the
+  initializer; pedantic "ISO C does not support __FUNCTION__ /
+  __PRETTY_FUNCTION__ predefined identifier".  Test check/kr_nobody.c;
+  kr_cascade golden regenerated (now has gcc's full set).
+  Open: diagnostics are emitted parse-first (gcc interleaves them);
+  deprecated/unavailable on an anonymous struct's own declaration
+  (deprecated-2/5, attr-unavailable-2/5; also
+  `struct __attribute__((deprecated)) S {..} z;`).
+  gcc.dg: 3534 of 3875 identical; tests 760, corpus 0/0, ASAN/UBSAN 0 findings.
 
 ## Next work
 1. Mutated-corpus verdict parity: ran 2026-09-30 (bench/tools/mut.py, 170

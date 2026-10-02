@@ -4963,15 +4963,18 @@ static void declared_visit(Checker *c, uint32_t i)
             cerror(c, il, "typedef '%s' is initialized (use '__typeof__' "
                    "instead)", cident(c, g.name));
             initialized = false;
+            incomp_init = true;   /* the initializer is still parsed */
             break;
         case GD_FUNC:
             cerror(c, il, "function '%s' is initialized like a variable",
                    cident(c, g.name));
             initialized = false;
+            incomp_init = true;   /* the initializer is still parsed */
             break;
         case GD_PARM:
             cerror(c, il, "parameter '%s' is initialized", cident(c, g.name));
             initialized = false;
+            incomp_init = true;   /* the initializer is still parsed */
             break;
         default:
             if (is_err(c, s.ty))
@@ -6816,9 +6819,14 @@ static void body_visit(Checker *c, uint32_t i)
     bool krf, proto;
     SrcLoc il, fnloc;
     Kids k;
-    if (comp == NO_NODE || ntag(c, comp) != N_COMPOUND)
+    if (comp == NO_NODE)
         return;
-    fd = c->par[comp];
+    if (ntag(c, comp) == N_FUNC_DEF)    /* no '{' followed the declarations */
+        fd = comp;
+    else if (ntag(c, comp) == N_COMPOUND)
+        fd = c->par[comp];
+    else
+        return;
     if (fd == NO_NODE || ntag(c, fd) != N_FUNC_DEF || c->cur_func_node != fd ||
         c->func_node == NO_NODE)
         return;

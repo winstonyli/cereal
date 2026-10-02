@@ -23,3 +23,18 @@ kr_cascade.c:1:35: note: previous definition of 'c' with type 'char'
 kr_cascade.c:5:12: error: storage class specified for parameter 'i'
     5 | extern int i;
       |            ^
+kr_cascade.c:1:8: warning: type of 'max_align_t' defaults to 'int' [-Wimplicit-int]
+    1 | extern alignas (max_align_t) char c;
+      |        ^
+kr_cascade.c:8:5: error: declaration for parameter 'k' but no such parameter
+    8 | int k;
+      |     ^
+kr_cascade.c:5:12: error: declaration for parameter 'i' but no such parameter
+    5 | extern int i;
+      |            ^
+kr_cascade.c:2:13: error: declaration for parameter 'c' but no such parameter
+    2 | extern char c;
+      |             ^
+kr_cascade.c:1:35: error: declaration for parameter 'c' but no such parameter
+    1 | extern alignas (max_align_t) char c;
+      |                                   ^

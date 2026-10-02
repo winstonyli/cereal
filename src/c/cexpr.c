@@ -2175,6 +2175,9 @@ static void e_ident(Checker *c, uint32_t i)
         if (!strcmp(name, "__func__") || !strcmp(name, "__FUNCTION__") ||
             !strcmp(name, "__PRETTY_FUNCTION__")) {
             size_t n = 0;
+            if (strcmp(name, "__func__"))
+                cpedantic(c, cnode_loc(c, i), "ISO C does not support '%s' "
+                          "predefined identifier", name);
             if (in_function(c))
                 n = strlen(cident(c, csym(c, c->func_sym)->name));
             else if (!strcmp(name, "__func__"))

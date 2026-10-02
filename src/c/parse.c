@@ -2394,6 +2394,7 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
         compound(p, false);
     } else {
         expected_req(p, "'{'");
+        leaf(p, N_BODY, p->pos ? p->pos - 1 : 0); /* store_parm_decls still runs */
         flags |= NF_ERROR;
     }
     p->fn_depth--;
