@@ -3353,12 +3353,12 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                             this_varies = size_varies = true;
                         if (this_varies) {
                             if (name)
-                                cwarn(c, iloc(c, ltok), "vla", "variable "
-                                      "length array '%s' is used",
+                                cwarn(c, iloc(c, ltok), "vla", "ISO C90 "
+                                      "forbids variable length array '%s'",
                                       cident(c, name));
                             else
-                                cwarn(c, iloc(c, ltok), "vla", "variable "
-                                      "length array is used");
+                                cwarn(c, iloc(c, ltok), "vla", "ISO C90 "
+                                      "forbids variable length array");
                         }
                     }
                 } else if ((ctx == DC_NORMAL || ctx == DC_FIELD) && filescope) {
@@ -3369,11 +3369,11 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 } else {
                     this_varies = size_varies = true;
                     if (name)
-                        cwarn(c, iloc(c, ltok), "vla", "variable length array "
-                              "'%s' is used", cident(c, name));
+                        cwarn(c, iloc(c, ltok), "vla", "ISO C90 forbids "
+                              "variable length array '%s'", cident(c, name));
                     else
-                        cwarn(c, iloc(c, ltok), "vla", "variable length array "
-                              "is used");
+                        cwarn(c, iloc(c, ltok), "vla", "ISO C90 forbids "
+                              "variable length array");
                 }
                 if (this_varies)
                     vla = true;

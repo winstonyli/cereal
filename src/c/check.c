@@ -3,6 +3,7 @@
  * docs/TYPES.md).  Declarations are in cdecl.c, expressions in cexpr.c. */
 #include "c/check_int.h"
 
+#include <ctype.h>
 #include <string.h>
 
 /* ---- diagnostics ------------------------------------------------------ */
@@ -156,6 +157,44 @@ uint32_t cbol_tok(Checker *c, uint32_t tok)
     c->il_tok = tok + 1;
     c->il_bol = bol;
     return bol;
+}
+
+const char *cident_ucn(const char *s)
+{
+    static __thread char ring[4][256];
+    static __thread unsigned next;
+    char *out = ring[next++ & 3], *o = out;
+    const unsigned char *p = (const unsigned char *)s;
+    while (*p && o < out + 240) {
+        uint32_t cp = 0;
+        unsigned n = 0, k;
+        if (p[0] == '\\' && (p[1] == 'u' || p[1] == 'U')) {
+            unsigned digits = p[1] == 'u' ? 4 : 8;
+            for (k = 0; k < digits && isxdigit(p[2 + k]); k++)
+                cp = cp << 4 | (uint32_t)(isdigit(p[2 + k]) ? p[2 + k] - '0'
+                                          : (p[2 + k] | 32) - 'a' + 10);
+            if (k == digits)
+                n = 2 + digits;
+        } else if (p[0] >= 0xC0) {
+            n = p[0] >= 0xF0 ? 4 : p[0] >= 0xE0 ? 3 : 2;
+            cp = p[0] & (0xFFu >> (n + 1));
+            for (k = 1; k < n; k++) {
+                if ((p[k] & 0xC0) != 0x80) {
+                    n = 0;
+                    break;
+                }
+                cp = cp << 6 | (p[k] & 0x3F);
+            }
+        }
+        if (n) {
+            o += snprintf(o, 12, "\\U%08x", cp);
+            p += n;
+        } else {
+            *o++ = (char)*p++;
+        }
+    }
+    *o = 0;
+    return out;
 }
 
 SrcLoc cinput_loc(Checker *c, uint32_t tok)

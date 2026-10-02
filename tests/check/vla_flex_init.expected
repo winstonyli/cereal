@@ -1,0 +1,75 @@
+vla_flex_init.c:2:1: warning: ISO C90 forbids variable length array 'array' [-Wvla]
+    2 | extern void func (int i, int array[i]);
+      | ^
+vla_flex_init.c:3:1: warning: ISO C90 forbids variable length array 'a' [-Wvla]
+    3 | void g (int n) { int a[n]; (void) a; }
+      | ^
+vla_flex_init.c:4:1: warning: ISO C90 forbids variable length array [-Wvla]
+    4 | extern int h (int n, int (*)[n]);
+      | ^
+vla_flex_init.c:5:1: warning: ISO C90 forbids variable length array 'p' [-Wvla]
+    5 | void k (int n) { char *p[n]; int é[n]; (void) p; }
+      | ^
+vla_flex_init.c:5:1: warning: ISO C90 forbids variable length array '\U000000e9' [-Wvla]
+    5 | void k (int n) { char *p[n]; int é[n]; (void) p; }
+      | ^
+vla_flex_init.c:6:12: warning: ISO C forbids zero-size array 'e0' [-Wpedantic]
+    6 | const char e0[0] = "";
+      |            ^
+vla_flex_init.c:6:20: warning: initialization of a flexible array member [-Wpedantic]
+    6 | const char e0[0] = "";
+      |                    ^
+vla_flex_init.c:7:12: warning: ISO C forbids zero-size array 'e1' [-Wpedantic]
+    7 | const char e1[0] = "a";
+      |            ^
+vla_flex_init.c:7:20: warning: initialization of a flexible array member [-Wpedantic]
+    7 | const char e1[0] = "a";
+      |                    ^
+vla_flex_init.c:7:20: warning: initializer-string for array of 'char' is too long
+    7 | const char e1[0] = "a";
+      |                    ^
+vla_flex_init.c:8:12: warning: ISO C forbids zero-size array 'e3' [-Wpedantic]
+    8 | const char e3[0] = { 0 };
+      |            ^
+vla_flex_init.c:8:22: warning: excess elements in array initializer
+    8 | const char e3[0] = { 0 };
+      |                      ^
+vla_flex_init.c:8:22: note: (near initialization for 'e3')
+    8 | const char e3[0] = { 0 };
+      |                      ^
+vla_flex_init.c:9:12: warning: ISO C forbids zero-size array 'e5' [-Wpedantic]
+    9 | const char e5[0] = { "a" };
+      |            ^
+vla_flex_init.c:9:20: warning: initialization of a flexible array member [-Wpedantic]
+    9 | const char e5[0] = { "a" };
+      |                    ^
+vla_flex_init.c:9:20: warning: initializer-string for array of 'char' is too long
+    9 | const char e5[0] = { "a" };
+      |                    ^
+vla_flex_init.c:11:28: warning: ISO C forbids zero-size array 'e' [-Wpedantic]
+   11 | void f (void) { const char e[0] = ""; (void)(const char[0]){ "" }; }
+      |                            ^
+vla_flex_init.c:11:35: warning: initialization of a flexible array member [-Wpedantic]
+   11 | void f (void) { const char e[0] = ""; (void)(const char[0]){ "" }; }
+      |                                   ^
+vla_flex_init.c:11:56: warning: ISO C forbids zero-size array [-Wpedantic]
+   11 | void f (void) { const char e[0] = ""; (void)(const char[0]){ "" }; }
+      |                                                        ^
+vla_flex_init.c:11:60: warning: initialization of a flexible array member [-Wpedantic]
+   11 | void f (void) { const char e[0] = ""; (void)(const char[0]){ "" }; }
+      |                                                            ^
+vla_flex_init.c:12:24: warning: ISO C forbids zero-size array 'b' [-Wpedantic]
+   12 | struct t { int a; char b[0]; };
+      |                        ^
+vla_flex_init.c:13:20: warning: initialization of a flexible array member [-Wpedantic]
+   13 | struct t t0 = { 0, "" };
+      |                    ^
+vla_flex_init.c:13:20: note: (near initialization for 't0.b')
+   13 | struct t t0 = { 0, "" };
+      |                    ^
+vla_flex_init.c:14:22: warning: excess elements in array initializer
+   14 | struct t t1 = { 0, { 0 } };
+      |                      ^
+vla_flex_init.c:14:22: note: (near initialization for 't1.b')
+   14 | struct t t1 = { 0, { 0 } };
+      |                      ^

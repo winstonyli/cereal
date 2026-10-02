@@ -134,3 +134,30 @@ layouts, gcc rules ported, walk design).
     non-array field; `[[...]]` after a type specifier warns "does not apply to
     types".  Golden attr_args (-std=gnu99).
   gcc.dg: 3556 of 3875 identical; tests 770, corpus 0/0, ASAN/UBSAN 0.
+
+- Packed pointers, -Wvla text, zero-length string init (2026-10-01):
+  * `-Waddress-of-packed-member` (cexpr.c packed_ptr_check, c-warn.cc
+    warn_for_address_or_pointer_of_packed_member): run after every pointer
+    conversion (cexpr_assign_check wrapper, casts, cinit's compatible-type
+    path via cexpr_packed_check).  "taking address of packed member of 'S'":
+    `&x.m`, `&p->a[i]`, array-typed `p->arr`, when the pointee is more aligned
+    than the member (a member is DECL_PACKED only if its record is packed AND
+    its type is aligned > 1; char members never warn).  "converting a packed
+    'S' pointer (alignment 1) to a 'T' pointer (alignment N)": a variable,
+    parameter or call result of pointer-to-packed type, with a "defined here"
+    note on named non-empty records.  Offsetof-style folded addresses are
+    skipped.  Location: the expression for the first form; for the second
+    gcc uses input_location, modelled by cdecl_iloc(last_tok+1) (tag
+    references are iloc events).  TypeTable.any_packed is set but does not
+    help the speed (uvloop includes packed headers); check cost +1.4%
+    (3.296G -> 3.341G on uvloop/loop.c), accepted.
+  * -Wvla: gcc 13 says "ISO C90 forbids variable length array 'x'" in every
+    mode (it was "is used").  Identifiers with extended characters print as
+    \UXXXXXXXX (cident_ucn, C locale), UCN- or UTF-8-spelled alike.
+  * "initialization of a flexible array member" also for a string initializing
+    a zero-length array ([0], braced or not, compound literals too).
+  Goldens packed_ptr, vla_flex_init.  gcc.dg: 3572 of 3875 identical; tests
+  774, corpus 0/0.  Known gaps: designated `.b = ""` on a flexible member
+  gives gcc a second warning at the tag (c99-flex-array-7/typedef-7); `u8""`
+  literals in -std=c99; `__mode__(\u00e9)` unknown-mode error.
+

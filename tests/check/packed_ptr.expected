@@ -1,0 +1,57 @@
+packed_ptr.c:10:12: warning: taking address of packed member of 'struct P' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   10 |   int *a = &p->i;
+      |            ^
+packed_ptr.c:13:12: warning: initialization of 'int *' from incompatible pointer type 'char *' [-Wincompatible-pointer-types]
+   13 |   int *d = p->a;
+      |            ^
+packed_ptr.c:14:12: warning: initialization of 'int *' from incompatible pointer type 'char *' [-Wincompatible-pointer-types]
+   14 |   int *e = &p->a[1];
+      |            ^
+packed_ptr.c:15:12: warning: taking address of packed member of 'struct P' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   15 |   int *f = &p->b.i;
+      |            ^
+packed_ptr.c:16:3: warning: converting a packed 'struct P' pointer (alignment 1) to a 'int' pointer (alignment 4) may result in an unaligned pointer value [-Waddress-of-packed-member]
+   16 |   int *h = (int *) &gp;
+      |   ^
+packed_ptr.c:2:8: note: defined here
+    2 | struct P { char c; int i; char a[8]; struct B b; } __attribute__ ((packed));
+      |        ^
+packed_ptr.c:17:3: warning: converting a packed 'struct P' pointer (alignment 1) to a 'long int' pointer (alignment 8) may result in an unaligned pointer value [-Waddress-of-packed-member]
+   17 |   long *k = (long *) g ();
+      |   ^
+packed_ptr.c:2:8: note: defined here
+    2 | struct P { char c; int i; char a[8]; struct B b; } __attribute__ ((packed));
+      |        ^
+packed_ptr.c:18:12: warning: taking address of packed member of 'struct P' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   18 |   int *m = &ga[1].i;
+      |            ^
+packed_ptr.c:19:12: warning: taking address of packed member of 'struct P' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   19 |   int *n = &(*p).i;
+      |            ^
+packed_ptr.c:24:8: warning: passing argument 1 of 'use' from incompatible pointer type [-Wincompatible-pointer-types]
+   24 |   use (&p->i, &p->i, &p->c, p);
+      |        ^
+packed_ptr.c:7:11: note: expected 'long int *' but argument is of type 'int *'
+    7 | void use (long *, int *, char *, void *);
+      |           ^
+packed_ptr.c:24:8: warning: taking address of packed member of 'struct P' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   24 |   use (&p->i, &p->i, &p->c, p);
+      |        ^
+packed_ptr.c:24:15: warning: taking address of packed member of 'struct P' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   24 |   use (&p->i, &p->i, &p->c, p);
+      |               ^
+packed_ptr.c:25:25: warning: taking address of packed member of 'struct P' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   25 |   use ((void *) 0, pp ? &p->i : &pp->i, 0, 0);
+      |                         ^
+packed_ptr.c:25:33: warning: taking address of packed member of 'struct P' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   25 |   use ((void *) 0, pp ? &p->i : &pp->i, 0, 0);
+      |                                 ^
+packed_ptr.c:26:10: warning: returning 'struct P *' from a function with incompatible return type 'long int *' [-Wincompatible-pointer-types]
+   26 |   return p;
+      |          ^
+packed_ptr.c:26:3: warning: converting a packed 'struct P' pointer (alignment 1) to a 'long int' pointer (alignment 8) may result in an unaligned pointer value [-Waddress-of-packed-member]
+   26 |   return p;
+      |   ^
+packed_ptr.c:2:8: note: defined here
+    2 | struct P { char c; int i; char a[8]; struct B b; } __attribute__ ((packed));
+      |        ^

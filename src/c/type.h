@@ -121,6 +121,7 @@ typedef struct TypeTable {
     VEC(Field) fields;
     VEC(Enum) enums;
     TypeId va_list;          /* __builtin_va_list */
+    bool any_packed;         /* a packed record or member was laid out */
     /* csum.c: records / enums below these indices are older than the unit
      * being checked; reading their contents calls rd_hook (idx, is_enum) */
     uint32_t unit_rec0, unit_enum0;

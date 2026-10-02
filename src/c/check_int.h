@@ -384,9 +384,17 @@ static inline uint32_t cnode_ident(const Checker *c, uint32_t i)
     const Tok *t = cnode_tok(c, i);
     return t->kind == TK_IDENT ? t->aux : 0;
 }
+/* An identifier with extended characters as gcc prints it in the C locale:
+ * each as \UXXXXXXXX (UCN or UTF-8 spelled alike). */
+const char *cident_ucn(const char *s);
+
 static inline const char *cident(const Checker *c, uint32_t id)
 {
-    return ident_by_id(c->in, id)->str;
+    const char *s = ident_by_id(c->in, id)->str, *q;
+    for (q = s; *q; q++)
+        if (*q == '\\' || (unsigned char)*q >= 0x80)
+            return cident_ucn(s);
+    return s;
 }
 
 /* a parameter that is part of the function's type (not a GNU forward
@@ -585,6 +593,8 @@ void cstmt_node(Checker *c, uint32_t i);
 void cstmt_emit_labels(Checker *c, uint32_t scope_node, int64_t min_key);
 void cexpr_cleanup_call(Checker *c, uint32_t fsym, TypeId vty, SrcLoc dloc,
                         SrcLoc il);
+/* -Waddress-of-packed-member for a conversion cexpr_assign_check skips */
+void cexpr_packed_check(Checker *c, uint32_t expr, TypeId to);
 bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
                         const ConvInfo *ci);
 /* The spelling suggestion for a misspelled member of rec (NULL: none). */

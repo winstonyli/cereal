@@ -3516,8 +3516,196 @@ static TypeId orig_type(Checker *c, uint32_t e)
     return rvt(c, e);
 }
 
+/* ---- -Waddress-of-packed-member ----------------------------------------------
+ * c-family/c-warn.cc warn_for_address_or_pointer_of_packed_member: a pointer
+ * that takes the address of a member of a packed struct, or converts a
+ * pointer to a packed struct, to a type that is more strictly aligned. */
+
+/* min_align_of_type, in bytes (1 for void, functions, incomplete types). */
+static unsigned pk_align(Checker *c, TypeId t)
+{
+    TypeId k = type_canon(TT, t);
+    TypeKind kk = tkind(c, k);
+    if (kk == TY_VOID || kk == TY_FUNC || kk == TY_ERROR || !complete(c, k))
+        return 1;
+    return type_align(TT, k);
+}
+
+static bool pk_packed_rec(Checker *c, TypeId t)
+{
+    TypeId k = type_canon(TT, t);
+    return is_record(c, k) && (type_record(TT, k)->flags & RF_PACKED);
+}
+
+static void pk_defined_here(Checker *c, Diagnostic *d, TypeId t)
+{
+    TypeId k = type_canon(TT, t);
+    if (d && is_record(c, k) && type_record(TT, k)->tag &&
+        type_record(TT, k)->nfields)
+        cnote(c, d, type_record(TT, k)->loc, "defined here");
+}
+
+/* check_alignment_of_packed_member for field f of record rec at offset off
+ * (bits): whether the member may be misaligned for a pointer to type. */
+static bool pk_member(Checker *c, TypeId type, TypeId rec, const Field *f,
+                      uint64_t off, bool rvalue)
+{
+    unsigned ta;
+    /* finish_struct gives DECL_PACKED to the members of a packed record
+     * whose type is aligned more than a byte */
+    if (!((f->flags & FF_PACKED) ||
+          (pk_packed_rec(c, rec) && pk_align(c, f->ty) > 1) ||
+          pk_packed_rec(c, f->ty)) ||
+        (f->flags & FF_BITFIELD) || (rvalue && !is_array(c, f->ty)))
+        return false;
+    ta = pk_align(c, type);
+    return pk_align(c, rec) < ta || (off / 8) % ta != 0;
+}
+
+static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
+{
+    bool rvalue = true, indirect = false;
+    uint32_t r, k[3];
+    TypeId type;
+    if (!TT->any_packed || e == NO_NODE || node_err(c, e) || !is_ptr(c, to))
+        return;
+    e = strip_paren(c, e);
+    if (e == NO_NODE || node_err(c, e))
+        return;
+    if (c->ck[e] == K_ADDR && c->cb[e] == 0)
+        return;                 /* folded to a constant (offsetof idiom) */
+    type = pointee(c, type_canon(TT, to));
+    if (ntag(c, e) == N_COND) {
+        if (nkids(c, e, k, 3) == 3) {
+            packed_ptr_check(c, to, k[1]);
+            packed_ptr_check(c, to, k[2]);
+        }
+        return;
+    }
+    r = e;
+    if (ntag(c, r) == N_UNARY && npunct(c, r) == P_STAR) {
+        r = strip_paren(c, first_child(c, r));
+        indirect = true;
+        if (r == NO_NODE)
+            return;
+    }
+    if (ntag(c, r) == N_UNARY && npunct(c, r) == P_AMP) {
+        r = strip_paren(c, first_child(c, r));
+        rvalue = indirect;
+        if (r == NO_NODE)
+            return;
+    }
+    if (node_err(c, r))
+        return;
+    {
+        TypeId rt = 0;
+        bool decl = false;
+        if (ntag(c, r) == N_IDENT) {
+            decl = true;        /* a variable or parameter: only they have a packed type */
+            rt = c->ty[r];
+        } else if (ntag(c, r) == N_CALL) {
+            uint32_t fn = first_child(c, r);
+            TypeId ft;
+            if (fn == NO_NODE || node_err(c, fn))
+                return;
+            ft = type_canon(TT, c->ty[fn]);
+            if (tkind(c, ft) == TY_PTR)
+                ft = type_canon(TT, pointee(c, ft));
+            if (tkind(c, ft) != TY_FUNC)
+                return;
+            rt = type_base(TT, ft);
+            if (!is_ptr(c, rt))
+                return;
+            decl = true;
+            rvalue = true;
+        }
+        if (decl) {
+            if (is_err(c, rt))
+                return;
+            if (rvalue && is_ptr(c, rt))
+                rt = pointee(c, type_canon(TT, rt));
+            while (is_array(c, rt))
+                rt = elem_of(c, rt);
+            if (pk_packed_rec(c, rt)) {
+                unsigned ta = pk_align(c, type), ra = pk_align(c, rt);
+                if (ra < ta) {
+                    Diagnostic *d = cwarn_d(c, DL_WARNING,
+                        cdecl_iloc(c, last_tok(c, e) + 1),
+                        "address-of-packed-member", "converting a packed %s "
+                        "pointer (alignment %u) to a %s pointer (alignment "
+                        "%u) may result in an unaligned pointer value",
+                        type_q(TT, rt), ra, type_q(TT, type), ta);
+                    pk_defined_here(c, d, rt);
+                    pk_defined_here(c, d, type);
+                }
+            }
+            return;
+        }
+    }
+    while (ntag(c, r) == N_MEMBER_EXPR || ntag(c, r) == N_INDEX) {
+        uint32_t base = first_child(c, r);
+        bool arrow = false;
+        if (rvalue && !is_array(c, c->ty[r]))
+            return;             /* a member value, not an address */
+        if (ntag(c, r) == N_MEMBER_EXPR) {
+            TypeId rec;
+            const Field *f;
+            uint64_t off = 0;
+            unsigned q = 0;
+            arrow = (c->nodes[r].flags & NF_ARROW) != 0;
+            if (base == NO_NODE || node_err(c, base))
+                return;
+            rec = type_canon(TT, arrow ? pointee(c, rvt(c, base)) : c->ty[base]);
+            f = find_field(c, rec, cnode_ident(c, r), &off, &q);
+            if (!f)
+                return;
+            if (pk_member(c, type, rec, f, off, rvalue)) {
+                cwarn(c, first_loc(c, e), "address-of-packed-member",
+                      "taking address of packed member of %s may result in "
+                      "an unaligned pointer value", type_q(TT, mainv(c, rec)));
+                return;
+            }
+            if (is_array(c, c->ty[r]))
+                rvalue = false;
+            if (rvalue || arrow)
+                return;
+        } else {
+            uint32_t kk[2];
+            if (nkids(c, r, kk, 2) < 2)
+                return;
+            base = strip_paren(c, kk[0]);
+            if (base == NO_NODE || !is_array(c, c->ty[base]))
+                return;         /* p[i] is *(p + i) */
+            if (is_array(c, c->ty[r]))
+                rvalue = false;
+            if (rvalue)
+                return;
+        }
+        r = strip_paren(c, base);
+        if (r == NO_NODE)
+            return;
+    }
+}
+
+static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
+                         const ConvInfo *ci);
+
+void cexpr_packed_check(Checker *c, uint32_t expr, TypeId to)
+{
+    packed_ptr_check(c, to, expr);
+}
+
 bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
                         const ConvInfo *ci)
+{
+    bool r = assign_check(c, expr, lhs, ci);
+    if (expr != NO_NODE && !is_err(c, lhs))
+        packed_ptr_check(c, lhs, expr);
+    return r;
+}
+
+static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
+                         const ConvInfo *ci)
 {
     Conv x;
     char m[4][640], q[48];
@@ -7053,6 +7241,7 @@ static void e_cast(Checker *c, uint32_t i)
         cwarn(c, loc, "pointer-to-int-cast",
               "cast from pointer to integer of different size");
     }
+    packed_ptr_check(c, t, a);
     /* -Wbad-function-cast: a call cast to a type of another tree code */
     if (ntag(c, strip_paren(c, a)) == N_CALL && diag_enabled(c->diag, "bad-function-cast") &&
         cast_class(c, t) != cast_class(c, ot))

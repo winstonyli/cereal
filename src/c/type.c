@@ -876,6 +876,11 @@ void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
     uint16_t flags = r->flags & (RF_UNION | RF_NOKEYWORD | RF_TRANSPARENT);
     if (packed)
         flags |= RF_PACKED;
+    for (uint32_t i = 0; i < n; i++)
+        if (f[i].packed)
+            packed = true;
+    if (packed)
+        tt->any_packed = true;
     if (align)
         flags |= RF_USER_ALIGN;
     for (uint32_t i = 0; i < n; i++) {

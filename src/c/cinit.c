@@ -1121,7 +1121,9 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
             bool incompat = false;
             if (!v->strict)
                 maybe_warn_string(c, x, lt, type, v);
-            if (!top && incomplete_arr(c, type))
+            if ((!top && incomplete_arr(c, type)) ||
+                (tk == TY_ARRAY && !incomplete_arr(c, type) &&
+                 type_ent(TT, cn)->n == 0))     /* a zero-length array too */
                 ipdt(c, x, lt, "initialization of a flexible array member");
             if (compat(c, mainv(c, vt), mainv(c, type)))
                 return true;
@@ -1164,6 +1166,8 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
         (tk == TY_PTR && is_arr(c, vt) &&
          compat(c, type_base(TT, type_canon(TT, vt)),
                 type_base(TT, type_canon(TT, type))))) {
+        if (tk == TY_PTR && v->node != NOB)
+            cexpr_packed_check(c, v->node, type);
         if (tk == TY_PTR && is_arr(c, vt)) {
             /* string and compound literal decay */
             v->decayed = true;
