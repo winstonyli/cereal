@@ -3583,6 +3583,61 @@ static SrcLoc call_loc(Checker *c, uint32_t f)
     return cnode_loc(c, f);
 }
 
+/* The position of the format argument of the printf-like library functions
+ * (gcc's built-in attributes); 0: not one. */
+static uint32_t builtin_format_pos(const char *name)
+{
+    static const struct { const char *n; uint32_t pos; } t[] = {
+        {"printf", 1}, {"fprintf", 2}, {"sprintf", 2}, {"snprintf", 3},
+        {"dprintf", 2}, {"printf_unlocked", 1}, {"fprintf_unlocked", 2}};
+    size_t m;
+    if (!strncmp(name, "__builtin_", 10))
+        name += 10;
+    for (m = 0; m < sizeof t / sizeof *t; m++)
+        if (!strcmp(name, t[m].n))
+            return t[m].pos;
+    return 0;
+}
+
+/* check_format_info's complaint about a format that is not a string
+ * literal: -Wformat-security (or -Wformat-nonliteral) with no arguments to
+ * check, -Wformat-nonliteral with some. */
+static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
+                                 const char *name, SrcLoc loc)
+{
+    uint32_t pos = builtin_format_pos(name), a, s;
+    SrcLoc where = loc;
+    bool nonlit = false;
+    if (!pos || nk - 1 < pos)
+        return;
+    a = kv[pos];
+    s = strip_paren(c, a);
+    if (s == NO_NODE || node_err(c, a))
+        return;
+    if (type_ckind(TT, c->ty[s]) == TY_ARRAY && c->ck[s] != K_ERR) {
+        /* a writable array: its address has a location of its own; a
+         * const one is read through its initializer */
+        if (!(TYPE_QUALS(type_base(TT, type_canon(TT, c->ty[s]))) & TQ_CONST) &&
+            !(c->ck[s] == K_ADDR && (c->cb[s] & CB_NODE))) {
+            nonlit = true;
+            where = expr_loc(c, a);
+        }
+    } else if (c->ck[s] == K_NONE) {
+        nonlit = true;
+    }
+    if (!nonlit)
+        return;
+    if (nk - 1 == pos) {
+        const char *opt = diag_enabled(c->diag, "format-security")
+                          ? "format-security" : "format-nonliteral";
+        cwarn(c, where, opt, "format not a string literal and no format "
+              "arguments");
+    } else {
+        cwarn(c, where, "format-nonliteral", "format not a string literal, "
+              "argument types not checked");
+    }
+}
+
 /* gcc 13's built-in library functions that carry the nonnull attribute:
  * the argument numbers, one digit each (probed from gcc itself). */
 static uint64_t builtin_nonnull(const char *name)
@@ -4008,6 +4063,9 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
         pt = type_params(TT, type_ent(TT, ufty)->kind == TY_FUNC ? ufty : fty);
         if (mask)
             check_nonnull(c, kv, nk, mask, pt, nparm, proto, false, loc);
+        if (builtin_decl_ok(c, csym(c, fref)))
+            check_format_literal(c, kv, nk, cident(c, csym(c, fref)->name),
+                                 loc);
     }
     if (!too_many && !bad && proto && nparm > 1 && fref != SYM_NONE &&
         csym(c, fref)->parms)
@@ -4874,6 +4932,11 @@ static void e_call(Checker *c, uint32_t i)
             if (an <= 32)
                 check_nonnull(c, av, an, builtin_nonnull(name), NULL, 0, false,
                               true, call_loc(c, k[0]));
+        }
+        if (!strncmp(name, "__builtin_", 10) && builtin_format_pos(name)) {
+            uint32_t av[32], an = nkids(c, i, av, 32);
+            if (an <= 32)
+                check_format_literal(c, av, an, name, call_loc(c, k[0]));
         }
         {
             TypeId rt = atomic_result(c, i, name);

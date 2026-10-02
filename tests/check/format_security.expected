@@ -1,0 +1,45 @@
+format_security.c:12:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   12 |   printf(s);
+      |   ^
+format_security.c:13:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   13 |   printf(cs);
+      |   ^
+format_security.c:14:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   14 |   printf(g);
+      |   ^
+format_security.c:15:10: warning: format not a string literal and no format arguments [-Wformat-security]
+   15 |   printf(ga);
+      |          ^
+format_security.c:16:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   16 |   printf(cg);
+      |   ^
+format_security.c:17:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   17 |   printf(ccg);
+      |   ^
+format_security.c:18:10: warning: format not a string literal and no format arguments [-Wformat-security]
+   18 |   printf(loc);
+      |          ^
+format_security.c:19:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   19 |   printf(lp);
+      |   ^
+format_security.c:20:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   20 |   printf(ext());
+      |   ^
+format_security.c:21:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   21 |   printf(s + 1);
+      |   ^
+format_security.c:22:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   22 |   printf(*&s);
+      |   ^
+format_security.c:23:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   23 |   printf(1 ? s : cs);
+      |   ^
+format_security.c:25:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   25 |   fprintf((void *)0, s);
+      |   ^
+format_security.c:25:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   25 |   fprintf((void *)0, s);
+      |   ^
+format_security.c:26:3: warning: format not a string literal, argument types not checked [-Wformat-nonliteral]
+   26 |   printf(s, 1);
+      |   ^
