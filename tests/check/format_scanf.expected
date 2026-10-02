@@ -1,0 +1,168 @@
+format_scanf.c:8:11: warning: format '%d' expects argument of type 'int *', but argument 2 has type 'int' [-Wformat=]
+    8 |   scanf("%d", i);
+      |           ^
+format_scanf.c:9:11: warning: format '%d' expects argument of type 'int *', but argument 2 has type 'long int *' [-Wformat=]
+    9 |   scanf("%d", lp);
+      |           ^
+format_scanf.c:10:11: warning: format '%d' expects argument of type 'int *', but argument 2 has type 'unsigned int *' [-Wformat=]
+   10 |   scanf("%d", up);
+      |           ^
+format_scanf.c:11:11: warning: format '%u' expects argument of type 'unsigned int *', but argument 2 has type 'int *' [-Wformat=]
+   11 |   scanf("%u", ip);
+      |           ^
+format_scanf.c:12:12: warning: format '%ld' expects argument of type 'long int *', but argument 2 has type 'int *' [-Wformat=]
+   12 |   scanf("%ld", ip);
+      |            ^
+format_scanf.c:13:12: warning: format '%lf' expects argument of type 'double *', but argument 2 has type 'float *' [-Wformat=]
+   13 |   scanf("%lf", fp);
+      |            ^
+format_scanf.c:14:11: warning: format '%f' expects argument of type 'float *', but argument 2 has type 'double *' [-Wformat=]
+   14 |   scanf("%f", dp);
+      |           ^
+format_scanf.c:16:12: warning: format '%Lf' expects argument of type 'long double *', but argument 2 has type 'double *' [-Wformat=]
+   16 |   scanf("%Lf", dp);
+      |            ^
+format_scanf.c:17:11: warning: format '%s' expects argument of type 'char *', but argument 2 has type 'int *' [-Wformat=]
+   17 |   scanf("%s", ip);
+      |           ^
+format_scanf.c:20:11: warning: format '%c' expects argument of type 'char *', but argument 2 has type 'int *' [-Wformat=]
+   20 |   scanf("%c", ip);
+      |           ^
+format_scanf.c:21:12: warning: format '%hd' expects argument of type 'short int *', but argument 2 has type 'int *' [-Wformat=]
+   21 |   scanf("%hd", ip);
+      |            ^
+format_scanf.c:23:13: warning: format '%hhd' expects argument of type 'signed char *', but argument 2 has type 'char *' [-Wformat=]
+   23 |   scanf("%hhd", cp);
+      |             ^
+format_scanf.c:25:12: warning: format '%zu' expects argument of type 'size_t *', but argument 2 has type 'long int *' [-Wformat=]
+   25 |   scanf("%zu", lp);
+      |            ^
+format_scanf.c:26:13: warning: format '%lld' expects argument of type 'long long int *', but argument 2 has type 'long int *' [-Wformat=]
+   26 |   scanf("%lld", lp);
+      |             ^
+format_scanf.c:28:11: warning: format '%p' expects argument of type 'void **', but argument 2 has type 'int *' [-Wformat=]
+   28 |   scanf("%p", ip);
+      |           ^
+format_scanf.c:29:3: warning: writing into constant object (argument 2) [-Wformat=]
+   29 |   scanf("%d", cip);
+      |   ^
+format_scanf.c:30:11: warning: format '%d' expects a matching 'int *' argument [-Wformat=]
+   30 |   scanf("%d");
+      |           ^
+format_scanf.c:31:14: warning: format '%d' expects a matching 'int *' argument [-Wformat=]
+   31 |   scanf("%d %d", ip);
+      |              ^
+format_scanf.c:32:9: warning: too many arguments for format [-Wformat-extra-args]
+   32 |   scanf("%d", ip, ip);
+      |         ^
+format_scanf.c:34:9: warning: too many arguments for format [-Wformat-extra-args]
+   34 |   scanf("%*d", ip);
+      |         ^
+format_scanf.c:36:11: warning: unknown conversion type character '.' in format [-Wformat=]
+   36 |   scanf("%.2d", ip);
+      |           ^
+format_scanf.c:36:9: warning: too many arguments for format [-Wformat-extra-args]
+   36 |   scanf("%.2d", ip);
+      |         ^
+format_scanf.c:38:14: warning: format '%[a-z' expects argument of type 'char *', but argument 2 has type 'int *' [-Wformat=]
+   38 |   scanf("%[a-z]", ip);
+      |              ^
+format_scanf.c:39:14: warning: no closing ']' for '%[' format [-Wformat=]
+   39 |   scanf("%[a-z", cp);
+      |              ^
+format_scanf.c:41:11: warning: format '%n' expects argument of type 'int *', but argument 2 has type 'long int *' [-Wformat=]
+   41 |   scanf("%n", lp);
+      |           ^
+format_scanf.c:43:12: warning: format '%ls' expects argument of type 'wchar_t *', but argument 2 has type 'char *' [-Wformat=]
+   43 |   scanf("%ls", cp);
+      |            ^
+format_scanf.c:44:11: warning: unknown conversion type character 'y' in format [-Wformat=]
+   44 |   scanf("%y", ip);
+      |           ^
+format_scanf.c:44:9: warning: too many arguments for format [-Wformat-extra-args]
+   44 |   scanf("%y", ip);
+      |         ^
+format_scanf.c:45:10: warning: spurious trailing '%' in format [-Wformat=]
+   45 |   scanf("%", ip);
+      |          ^
+format_scanf.c:45:9: warning: too many arguments for format [-Wformat-extra-args]
+   45 |   scanf("%", ip);
+      |         ^
+format_scanf.c:47:14: warning: format '%o' expects argument of type 'unsigned int *', but argument 3 has type 'int *' [-Wformat=]
+   47 |   scanf("%i %o %x %X %e %g %a", ip, ip, ip, ip, fp, fp, fp);
+      |              ^
+format_scanf.c:47:17: warning: format '%x' expects argument of type 'unsigned int *', but argument 4 has type 'int *' [-Wformat=]
+   47 |   scanf("%i %o %x %X %e %g %a", ip, ip, ip, ip, fp, fp, fp);
+      |                 ^
+format_scanf.c:47:20: warning: format '%X' expects argument of type 'unsigned int *', but argument 5 has type 'int *' [-Wformat=]
+   47 |   scanf("%i %o %x %X %e %g %a", ip, ip, ip, ip, fp, fp, fp);
+      |                    ^
+format_scanf.c:48:11: warning: format '%i' expects argument of type 'int *', but argument 2 has type 'unsigned int *' [-Wformat=]
+   48 |   scanf("%i", up);
+      |           ^
+format_scanf.c:49:11: warning: format '%o' expects argument of type 'unsigned int *', but argument 2 has type 'int *' [-Wformat=]
+   49 |   scanf("%o", ip);
+      |           ^
+format_scanf.c:50:9: warning: ISO C does not support the ''' scanf flag [-Wformat=]
+   50 |   scanf("%'d", ip);
+      |         ^
+format_scanf.c:51:11: warning: unknown conversion type character '+' in format [-Wformat=]
+   51 |   scanf("%+d", ip);
+      |           ^
+format_scanf.c:51:9: warning: too many arguments for format [-Wformat-extra-args]
+   51 |   scanf("%+d", ip);
+      |         ^
+format_scanf.c:52:11: warning: conversion lacks type at end of format [-Wformat=]
+   52 |   scanf("%m", cp);
+      |           ^
+format_scanf.c:52:9: warning: too many arguments for format [-Wformat-extra-args]
+   52 |   scanf("%m", cp);
+      |         ^
+format_scanf.c:53:9: warning: ISO C does not support the 'm' scanf flag [-Wformat=]
+   53 |   scanf("%ms", &cp);
+      |         ^
+format_scanf.c:54:9: warning: ISO C does not support the 'm' scanf flag [-Wformat=]
+   54 |   scanf("%ms", cp);
+      |         ^
+format_scanf.c:54:12: warning: format '%ms' expects argument of type 'char **', but argument 2 has type 'char *' [-Wformat=]
+   54 |   scanf("%ms", cp);
+      |            ^
+format_scanf.c:55:11: warning: format '%a' expects argument of type 'float *', but argument 2 has type 'char *' [-Wformat=]
+   55 |   scanf("%as", cp);
+      |           ^
+format_scanf.c:56:15: warning: format '%d' expects argument of type 'int *', but argument 3 has type 'double' [-Wformat=]
+   56 |   sscanf(s, "%d", d);
+      |               ^
+format_scanf.c:57:15: warning: format '%d' expects argument of type 'int *', but argument 3 has type 'long int *' [-Wformat=]
+   57 |   fscanf(p, "%d", lp);
+      |               ^
+format_scanf.c:58:9: warning: zero-length gnu_scanf format string [-Wformat-zero-length]
+   58 |   scanf("");
+      |         ^
+format_scanf.c:59:11: warning: format '%d' expects argument of type 'int *', but argument 2 has type 'int' [-Wformat=]
+   59 |   scanf("%d", 0);
+      |           ^
+format_scanf.c:60:11: warning: format '%s' expects argument of type 'char *', but argument 2 has type 'int' [-Wformat=]
+   60 |   scanf("%s", 0);
+      |           ^
+format_scanf.c:62:11: warning: ISO C does not support the '%C' gnu_scanf format [-Wformat=]
+   62 |   scanf("%C", wp);
+      |           ^
+format_scanf.c:63:11: warning: ISO C does not support the '%S' gnu_scanf format [-Wformat=]
+   63 |   scanf("%S", wp);
+      |           ^
+format_scanf.c:64:3: warning: ISO C does not support %n$ operand number formats [-Wformat=]
+   64 |   scanf("%1$d", ip);
+      |   ^
+format_scanf.c:65:12: warning: use of 'h' length modifier with 's' type character has either no effect or undefined behavior [-Wformat=]
+   65 |   scanf("%hs", cp);
+      |            ^
+format_scanf.c:66:12: warning: use of 'l' length modifier with 'p' type character has either no effect or undefined behavior [-Wformat=]
+   66 |   scanf("%lp", pp);
+      |            ^
+format_scanf.c:68:11: warning: format '%d' expects argument of type 'int *', but argument 2 has type 'long int *' [-Wformat=]
+   68 |   scanf("%d", &l);
+      |           ^
+format_scanf.c:69:11: warning: format '%s' expects argument of type 'char *', but argument 2 has type 'char **' [-Wformat=]
+   69 |   scanf("%s", &s);
+      |           ^

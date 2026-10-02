@@ -81,6 +81,7 @@ typedef struct CSym {
     uint32_t dep_msg;        /* deprecated/unavailable message: Checker.dep_msgs + 1 */
     uint32_t sect;           /* section(".."): Checker.dep_msgs + 1, 0: none */
     uint64_t nonnull;        /* the 'nonnull' attribute (Attrs.nonnull) */
+    uint32_t fmt;            /* the 'format' attribute (Attrs.fmt) */
     uint32_t aset;           /* attribute names written or copied: Checker.anames set id */
     uint32_t parms;          /* cparm.c: how the parameters were declared (the
                               * first prototype's): Checker.pdescs + 1 */
@@ -157,6 +158,7 @@ typedef struct Attrs {
     bool noinline, used;     /* seen, for the 'attribute ignored' checks */
     bool unavailable, gnu_inline;
     uint64_t nonnull;        /* bit j: argument j + 1; NN_ALL: every pointer */
+    uint32_t fmt;            /* format(printf|scanf, N, M): kind 1|2 << 24, N << 12, M */
     uint32_t dep_msg;        /* Checker.dep_msgs + 1, 0: none */
     uint32_t sec, sec2;      /* section("..") strings (Checker.dep_msgs + 1);
                               * sec2: a later one, compared with sec */

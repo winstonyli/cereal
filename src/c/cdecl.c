@@ -789,6 +789,25 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             }
             if (ok)
                 a->nonnull |= m;
+        } else if (!strcmp(name, "format") && ak.n == 3 &&
+                   ntag(c, ak.p[0]) == N_IDENT) {
+            char ar[24];
+            int kind = 0;
+            attr_norm(tstr(c, c->nodes[ak.p[0]].tok), ar, sizeof ar);
+            if (!strcmp(ar, "printf") || !strcmp(ar, "gnu_printf"))
+                kind = 1;
+            else if (!strcmp(ar, "scanf") || !strcmp(ar, "gnu_scanf"))
+                kind = 2;
+            if (kind) {
+                uint32_t xs = ak.p[1], xf = ak.p[2];
+                if ((c->ck[xs] == K_ICE || c->ck[xs] == K_FOLD) &&
+                    (c->ck[xf] == K_ICE || c->ck[xf] == K_FOLD)) {
+                    int64_t sv = cexpr_sval(c, xs), fv = cexpr_sval(c, xf);
+                    if (sv >= 1 && sv < 4096 && fv >= 0 && fv < 4096)
+                        a->fmt = (uint32_t)kind << 24 | (uint32_t)sv << 12 |
+                                 (uint32_t)fv;
+                }
+            }
         } else if (!strcmp(name, "gnu_inline")) {
             a->gnu_inline = true;
         } else if (!strcmp(name, "noinline")) {
@@ -1007,6 +1026,8 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     to->weak |= from->weak;
     to->noreturn |= from->noreturn;
     to->nonnull |= from->nonnull;
+    if (from->fmt)
+        to->fmt = from->fmt;
 }
 
 /* Unknown specifier attributes are reported once the declarator is known:
@@ -3842,6 +3863,8 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     if (o->sect)
         m.sect = o->sect;
     m.nonnull |= o->nonnull;
+    if (o->fmt)
+        m.fmt = o->fmt;
     if (o->aset)
         m.aset = o->aset;
     if (o->parms) {
@@ -4588,6 +4611,8 @@ static void declared_visit(Checker *c, uint32_t i)
         s.flags |= CSF_NORETURN;
     if (a.nonnull && s.kind == CS_FUNC)
         s.nonnull = a.nonnull;
+    if (a.fmt && s.kind == CS_FUNC)
+        s.fmt = a.fmt;
     if (g.what == GD_FUNC && s.kind == CS_FUNC && !kr)
         s.parms = cparm_make(c, funcdef_fnode(c, top));
     if (file && g.what == GD_VAR && s.sc == SC_REGISTER &&
@@ -6290,6 +6315,8 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         attrs_copy_check(c, fp.specs, CS_FUNC, g.s.name, ltok, &st);
         g.s.flags |= (st.pure ? CSF_PURE : 0) | (st.cnst ? CSF_CONSTFN : 0);
         g.s.nonnull |= st.nonnull | sp.attrs.nonnull;
+        if (sp.attrs.fmt)
+            g.s.fmt = sp.attrs.fmt;
     }
     attrs_section_check(c, &sp.attrs, 'f', false, g.s.name, g.s.loc);
     attrs_wina_check(c, &sp.attrs, 'f', false, g.s.name, g.s.loc);

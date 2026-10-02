@@ -1,0 +1,33 @@
+format_attr.c:15:16: warning: format '%d' expects argument of type 'int', but argument 3 has type 'long int' [-Wformat=]
+   15 |     mylog(1, "%d\n", l);
+      |                ^
+format_attr.c:16:16: warning: format '%s' expects argument of type 'char *', but argument 3 has type 'int' [-Wformat=]
+   16 |     mylog(1, "%s", 3);
+      |                ^
+format_attr.c:17:19: warning: format '%d' expects a matching 'int' argument [-Wformat=]
+   17 |     mylog(1, "%d %d", 1);
+      |                   ^
+format_attr.c:18:14: warning: too many arguments for format [-Wformat-extra-args]
+   18 |     mylog(1, "hi", 1);
+      |              ^
+format_attr.c:19:5: warning: format not a string literal and no format arguments [-Wformat-security]
+   19 |     mylog(1, u);
+      |     ^
+format_attr.c:20:19: warning: format '%d' expects argument of type 'int *', but argument 3 has type 'long int *' [-Wformat=]
+   20 |     myscan("x", "%d", &l);
+      |                   ^
+format_attr.c:22:19: warning: format '%d' expects argument of type 'int *', but argument 3 has type 'int' [-Wformat=]
+   22 |     myscan("x", "%d", i);
+      |                   ^
+format_attr.c:24:10: warning: ISO C does not support the 'q' gnu_printf length modifier [-Wformat=]
+   24 |     vlog("%q", ap);
+      |          ^
+format_attr.c:24:12: warning: conversion lacks type at end of format [-Wformat=]
+   24 |     vlog("%q", ap);
+      |            ^
+format_attr.c:25:10: warning: format '%s' expects argument of type 'char *', but argument 2 has type 'int' [-Wformat=]
+   25 |     lg("%s", 1);
+      |          ^
+format_attr.c:26:5: warning: format not a string literal and no format arguments [-Wformat-security]
+   26 |     lg(u);
+      |     ^

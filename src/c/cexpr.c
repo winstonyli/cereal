@@ -3768,14 +3768,16 @@ static uint32_t builtin_format_pos(const char *name)
 /* ---- -Wformat: the conversions of a printf-style literal against its
  * arguments (gcc's check_format_info for gnu_printf). ---- */
 
-enum { FW_INT, FW_FLT, FW_LDBL, FW_PCHAR, FW_PVOID, FW_PINT, FW_ANY };
+enum { FW_INT, FW_FLT, FW_LDBL, FW_PCHAR, FW_PVOID, FW_PINT, FW_ANY,
+       FW_PFLT, FW_PPCHAR, FW_PPVOID };
 enum { FL_NONE, FL_HH, FL_H, FL_L, FL_LL, FL_BIGL, FL_Z, FL_T, FL_J };
 
 typedef struct FmtWant {
     int shape;
     int cls;                    /* FW_INT, FW_PINT: fmt_cls of the integer */
     char name[40];              /* as the message spells the wanted type */
-    bool write;                 /* %n: the argument is written through */
+    bool write;                 /* the argument is written through */
+    bool uns;                   /* FW_PINT: an unsigned integer */
 } FmtWant;
 
 /* An integer type's width class, signedness ignored (0: not an integer). */
@@ -3798,14 +3800,17 @@ static bool fmt_unsigned_kind(TypeKind k)
            k == TY_ULLONG || k == TY_UINT128;
 }
 
-/* What conversion `conv` with length `len` takes; false: no argument. */
-static bool fmt_want(Checker *c, char conv, int len, FmtWant *w)
+/* What conversion `conv` with length `len` takes; false: no argument.  scan:
+ * scanf's (pointers to the objects), mflag: its 'm' allocation flag. */
+static bool fmt_want(Checker *c, char conv, int len, bool scan, bool mflag,
+                     FmtWant *w)
 {
     bool uns = conv == 'o' || conv == 'u' || conv == 'x' || conv == 'X';
-    bool ptr = conv == 'n';
+    bool ptr = conv == 'n' || scan;
     const char *nm;
     w->cls = 3;
     w->write = ptr;
+    w->uns = uns && scan;
     switch (conv) {
     case 'd': case 'i': case 'o': case 'u': case 'x': case 'X': case 'n':
         w->shape = ptr ? FW_PINT : FW_INT;
@@ -3814,7 +3819,8 @@ static bool fmt_want(Checker *c, char conv, int len, FmtWant *w)
         case FL_HH: case FL_H:
             if (ptr) {
                 w->cls = len == FL_HH ? 1 : 2;
-                nm = len == FL_HH ? "signed char" : "short int";
+                nm = len == FL_HH ? (uns ? "unsigned char" : "signed char")
+                                  : (uns ? "short unsigned int" : "short int");
             } else {
                 nm = "int";
             }
@@ -3833,12 +3839,16 @@ static bool fmt_want(Checker *c, char conv, int len, FmtWant *w)
         }
         snprintf(w->name, sizeof w->name, "%s%s", nm, ptr ? " *" : "");
         return true;
-    case 'c': case 'C':
-        w->shape = FW_INT;
+    case 'c': case 'C': case '[':
         if (len == FL_L || conv == 'C') {
-            w->cls = fmt_cls(c->tgt->wint_type);
-            snprintf(w->name, sizeof w->name, "wint_t");
+            w->shape = scan ? FW_PINT : FW_INT;
+            w->cls = fmt_cls(scan ? c->tgt->wchar_type : c->tgt->wint_type);
+            snprintf(w->name, sizeof w->name, scan ? "wchar_t *" : "wint_t");
+        } else if (scan) {
+            w->shape = mflag ? FW_PPCHAR : FW_PCHAR;
+            snprintf(w->name, sizeof w->name, mflag ? "char **" : "char *");
         } else {
+            w->shape = FW_INT;
             snprintf(w->name, sizeof w->name, "int");
         }
         return true;
@@ -3848,17 +3858,25 @@ static bool fmt_want(Checker *c, char conv, int len, FmtWant *w)
             w->cls = fmt_cls(c->tgt->wchar_type);
             snprintf(w->name, sizeof w->name, "wchar_t *");
         } else {
-            w->shape = FW_PCHAR;
-            snprintf(w->name, sizeof w->name, "char *");
+            w->shape = mflag ? FW_PPCHAR : FW_PCHAR;
+            snprintf(w->name, sizeof w->name, mflag ? "char **" : "char *");
         }
         return true;
     case 'p':
-        w->shape = FW_PVOID;
-        snprintf(w->name, sizeof w->name, "void *");
+        w->shape = scan ? FW_PPVOID : FW_PVOID;
+        snprintf(w->name, sizeof w->name, scan ? "void **" : "void *");
         return true;
     case 'm':
         return false;
     default:
+        if (scan) {
+            w->shape = FW_PFLT;
+            w->cls = len == FL_BIGL ? 3 : len == FL_L ? 2 : 1;
+            snprintf(w->name, sizeof w->name, "%s *",
+                     w->cls == 3 ? "long double" : w->cls == 2 ? "double"
+                                                                : "float");
+            return true;
+        }
         w->shape = len == FL_BIGL ? FW_LDBL : FW_FLT;
         snprintf(w->name, sizeof w->name, "%s",
                  len == FL_BIGL ? "long double" : "double");
@@ -3884,8 +3902,8 @@ static TypeId fmt_argtype(Checker *c, uint32_t a)
 /* Does an argument of type t (from fmt_argtype) satisfy w? */
 static bool fmt_arg_ok(Checker *c, const FmtWant *w, TypeId t)
 {
-    TypeKind k = type_ckind(TT, t), pk;
-    TypeId ct;
+    TypeKind k = type_ckind(TT, t), pk, qk;
+    TypeId ct, pt;
     switch (w->shape) {
     case FW_INT: return fmt_cls(k) == w->cls;
     case FW_FLT: return k == TY_DOUBLE;
@@ -3896,14 +3914,27 @@ static bool fmt_arg_ok(Checker *c, const FmtWant *w, TypeId t)
     if (k != TY_PTR)
         return false;
     ct = type_canon(TT, t);
-    pk = type_kind(TT, TYPE_UNQUAL(type_canon(TT, type_base(TT, ct))));
+    pt = type_canon(TT, type_base(TT, ct));
+    pk = type_kind(TT, TYPE_UNQUAL(pt));
     switch (w->shape) {
     case FW_PCHAR: return fmt_cls(pk) == 1;
     case FW_PVOID: return !c->opt.pedantic || pk == TY_VOID || fmt_cls(pk) == 1;
+    case FW_PFLT:
+        return pk == (w->cls == 3 ? TY_LDOUBLE : w->cls == 2 ? TY_DOUBLE
+                                                             : TY_FLOAT);
+    case FW_PPCHAR: case FW_PPVOID:
+        if (pk != TY_PTR)
+            return false;
+        qk = type_kind(TT, TYPE_UNQUAL(type_canon(TT, type_base(TT, pt))));
+        return w->shape == FW_PPVOID ? qk == TY_VOID : fmt_cls(qk) == 1;
     default:
-        return fmt_cls(pk) == w->cls &&
-               (!c->opt.pedantic ||
-                (!fmt_unsigned_kind(pk) && !(w->cls == 1 && pk == TY_CHAR)));
+        if (fmt_cls(pk) != w->cls)
+            return false;
+        if (!c->opt.pedantic)
+            return true;
+        if (w->cls == 1)
+            return w->uns ? pk == TY_UCHAR : pk == TY_SCHAR;
+        return w->uns == fmt_unsigned_kind(pk);
     }
 }
 
@@ -3914,6 +3945,7 @@ typedef struct FmtCtx {
     SrcLoc whole, base, call;   /* the literal; its first byte (exact); the call */
     const uint32_t *off;        /* byte offsets in the spelling, if exact */
     bool exact;
+    bool va;                    /* a va_list: arguments not checked */
 } FmtCtx;
 
 static SrcLoc fmt_loc(const FmtCtx *x, size_t i)
@@ -3929,6 +3961,8 @@ static void fmt_take(FmtCtx *x, const FmtWant *w, SrcLoc loc, const char *what)
     uint32_t a;
     TypeId t;
     TypeKind k;
+    if (x->va)
+        return;
     if (x->ai >= x->nk) {
         cwarn(c, loc, "format=", "%s expects a matching '%s' argument", what,
               w->name);
@@ -4028,9 +4062,12 @@ bad:
     return false;
 }
 
-static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
-                             uint32_t pos, uint32_t s, SrcLoc whole,
-                             SrcLoc call)
+/* The conversions of a literal format s of a printf-like (or, scan, scanf-like)
+ * function against the arguments kv[first..nk) (first 0: a va_list, the
+ * arguments are not checked). */
+static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
+                      uint32_t first, bool scan, uint32_t s, SrcLoc whole,
+                      SrcLoc call)
 {
     static const struct { char conv; const char *flags; } ft[] = {
         {'d', "-+ 0'I"}, {'i', "-+ 0'I"}, {'o', "-0#"}, {'x', "-0#"},
@@ -4038,6 +4075,8 @@ static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
         {'G', "-0 +#'I"}, {'e', "-0 +#I"}, {'E', "-0 +#I"}, {'a', "-0 +#I"},
         {'A', "-0 +#I"}, {'F', "-0 +#I"}, {'c', "-"}, {'C', "-"}, {'s', "-"},
         {'S', "-"}, {'p', "-"}, {'n', ""}};
+    const char *kname = scan ? "gnu_scanf" : "gnu_printf";
+    const char *convs = scan ? "diouxXaAeEfFgGcspnCS[" : "diouxXfFeEgGaAcsCSpnm";
     FmtCtx x;
     char *f;
     uint32_t *off;
@@ -4050,7 +4089,8 @@ static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
     x.c = c;
     x.kv = kv;
     x.nk = nk;
-    x.ai = pos + 1;
+    x.va = first == 0;
+    x.ai = first ? first : nk;
     x.whole = whole;
     x.call = call;
     x.exact = false;
@@ -4073,19 +4113,19 @@ static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
             break;
         }
     if (!n) {
-        cwarn(c, whole, "format-zero-length",
-              "zero-length gnu_printf format string");
+        cwarn(c, whole, "format-zero-length", "zero-length %s format string",
+              kname);
         goto out;
     }
     while (i < n && !dollar) {
         char seen[128] = {0}, conv, flags[16];
         unsigned nf = 0;
-        bool width = false, prec = false;
+        bool width = false, prec = false, supp = false, mflag = false;
         int len = FL_NONE;
         bool badlen = false;
         char lsp[3] = {0, 0, 0};
         FmtWant w;
-        char what[24];
+        char what[48];
         if (f[i] != '%') {
             i++;
             continue;
@@ -4096,7 +4136,7 @@ static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
                   "spurious trailing '%%' in format");
             break;
         }
-        while (i < n && strchr("-+ #0'I", f[i])) {
+        while (i < n && strchr(scan ? "*'m" : "-+ #0'I", f[i])) {
             if (seen[(int)f[i]])
                 cwarn(c, fmt_loc(&x, i), "format=",
                       "repeated '%c' flag in format", f[i]);
@@ -4104,13 +4144,15 @@ static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
                 flags[nf++] = f[i];
             if (c->opt.pedantic && (f[i] == '\'' || f[i] == 'I'))
                 cwarn(c, whole, "format=", "ISO C does not support the '%c' "
-                      "printf flag", f[i]);
+                      "%s flag", f[i], scan ? "scanf" : "printf");
             seen[(int)f[i]] = 1;
+            supp |= scan && f[i] == '*';
+            mflag |= scan && f[i] == 'm';
             i++;
         }
         flags[nf] = 0;
-        if (i < n && f[i] == '*') {
-            FmtWant iw = {FW_INT, 3, "int", false};
+        if (!scan && i < n && f[i] == '*') {
+            FmtWant iw = {FW_INT, 3, "int", false, false};
             fmt_take(&x, &iw, fmt_loc(&x, i), "field width specifier '*'");
             width = true;
             i++;
@@ -4127,11 +4169,11 @@ static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
                 break;
             }
         }
-        if (i < n && f[i] == '.') {
+        if (!scan && i < n && f[i] == '.') {
             i++;
             prec = true;
             if (i < n && f[i] == '*') {
-                FmtWant iw = {FW_INT, 3, "int", false};
+                FmtWant iw = {FW_INT, 3, "int", false, false};
                 fmt_take(&x, &iw, fmt_loc(&x, i),
                          "field precision specifier '.*'");
                 i++;
@@ -4157,7 +4199,7 @@ static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
                 i += lsp[1] ? 2 : 1;
                 if ((f[i - 1] == 'q' || f[i - 1] == 'Z') && c->opt.pedantic)
                     cwarn(c, whole, "format=", "ISO C does not support the "
-                          "'%c' gnu_printf length modifier", f[i - 1]);
+                          "'%c' %s length modifier", f[i - 1], kname);
             }
         }
         if (i >= n) {
@@ -4175,7 +4217,7 @@ static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
             i++;
             continue;
         }
-        if (!conv || !strchr("diouxXfFeEgGaAcsCSpnm", conv)) {
+        if (!conv || !strchr(convs, conv)) {
             if (isprint((unsigned char)conv))
                 cwarn(c, fmt_loc(&x, i), "format=",
                       "unknown conversion type character '%c' in format",
@@ -4186,34 +4228,60 @@ static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
             i++;
             continue;
         }
-        for (t = 0; t < sizeof ft / sizeof *ft; t++)
-            if (ft[t].conv == conv)
-                break;
-        if (t < sizeof ft / sizeof *ft) {
-            bool intc = strchr("diouxX", conv) != NULL;
-            bool lenok;
-            if (seen[' '] && seen['+'])
-                cwarn(c, whole, "format=",
-                      "' ' flag ignored with '+' flag in gnu_printf format");
-            if (seen['0'] && seen['-'])
-                cwarn(c, whole, "format=",
-                      "'0' flag ignored with '-' flag in gnu_printf format");
-            if (seen['0'] && prec && intc)
-                cwarn(c, whole, "format=", "'0' flag ignored with precision "
-                      "and '%%%c' gnu_printf format", conv);
-            for (st = 0; flags[st]; st++)
-                if (!strchr(ft[t].flags, flags[st]))
-                    cwarn(c, fmt_loc(&x, i), "format=", "'%c' flag used with "
-                          "'%%%c' gnu_printf format", flags[st], conv);
-            if (width && conv == 'n')
-                cwarn(c, fmt_loc(&x, i), "format=", "field width used with "
-                      "'%%%c' gnu_printf format", conv);
-            if (prec && !strchr("diouxXfFeEgGaAsSn", conv))
-                cwarn(c, fmt_loc(&x, i), "format=", "precision used with "
-                      "'%%%c' gnu_printf format", conv);
+        snprintf(what, sizeof what, "format '%%%s%s%c'", mflag ? "m" : "", lsp,
+                 conv);
+        if (mflag && c->opt.pedantic)
+            cwarn(c, whole, "format=", "ISO C does not support the 'm' scanf "
+                  "flag");
+        if (conv == '[') {
+            /* a scan set: the conversion is located at its last character */
+            size_t j = i + 1, e;
+            if (j < n && f[j] == '^')
+                j++;
+            if (j < n && f[j] == ']')
+                j++;
+            while (j < n && f[j] != ']')
+                j++;
+            e = j < n ? j - 1 : n - 1;
+            if (j >= n)
+                cwarn(c, fmt_loc(&x, e), "format=",
+                      "no closing ']' for '%%[' format");
+            snprintf(what, sizeof what, "format '%%%s%.*s'", lsp,
+                     (int)(e - i + 1), f + i);
+            i = e;
+        }
+        if (!scan) {
+            for (t = 0; t < sizeof ft / sizeof *ft; t++)
+                if (ft[t].conv == conv)
+                    break;
+            if (t < sizeof ft / sizeof *ft) {
+                bool intc = strchr("diouxX", conv) != NULL;
+                if (seen[' '] && seen['+'])
+                    cwarn(c, whole, "format=", "' ' flag ignored with '+' flag "
+                          "in %s format", kname);
+                if (seen['0'] && seen['-'])
+                    cwarn(c, whole, "format=", "'0' flag ignored with '-' flag "
+                          "in %s format", kname);
+                if (seen['0'] && prec && intc)
+                    cwarn(c, whole, "format=", "'0' flag ignored with "
+                          "precision and '%%%c' %s format", conv, kname);
+                for (st = 0; flags[st]; st++)
+                    if (!strchr(ft[t].flags, flags[st]))
+                        cwarn(c, fmt_loc(&x, i), "format=", "'%c' flag used "
+                              "with '%%%c' %s format", flags[st], conv, kname);
+                if (width && conv == 'n')
+                    cwarn(c, fmt_loc(&x, i), "format=", "field width used "
+                          "with '%%%c' %s format", conv, kname);
+                if (prec && !strchr("diouxXfFeEgGaAsSn", conv))
+                    cwarn(c, fmt_loc(&x, i), "format=", "precision used with "
+                          "'%%%c' %s format", conv, kname);
+            }
+        }
+        {
+            bool intc = strchr("diouxX", conv) != NULL, lenok;
             if (len == FL_NONE || intc || conv == 'n')
                 lenok = true;
-            else if (conv == 'c' || conv == 's')
+            else if (conv == 'c' || conv == 's' || conv == '[')
                 lenok = len == FL_L;
             else if (strchr("fFeEgGaA", conv))
                 lenok = len == FL_BIGL || len == FL_L;
@@ -4226,36 +4294,60 @@ static void fmt_check_printf(Checker *c, const uint32_t *kv, uint32_t nk,
                 len = FL_NONE;
                 lsp[0] = 0;
                 badlen = true;
+                snprintf(what, sizeof what, "format '%%%c'", conv);
             }
+            if (c->opt.pedantic && (strchr(scan ? "CS" : "mCS", conv) ||
+                                    (len == FL_BIGL && intc)))
+                cwarn(c, fmt_loc(&x, i), "format=", "ISO C does not support "
+                      "the '%%%s%c' %s format", lsp, conv, kname);
         }
-        if (c->opt.pedantic && (strchr("mCS", conv) ||
-                                (len == FL_BIGL && strchr("diouxX", conv))))
-            cwarn(c, fmt_loc(&x, i), "format=", "ISO C does not support the "
-                  "'%%%s%c' gnu_printf format", lsp, conv);
-        if (fmt_want(c, conv, len, &w)) {
+        if (supp) {
+            i++;
+            continue;           /* assignment suppressed: no argument */
+        }
+        if (fmt_want(c, conv, len, scan, mflag, &w)) {
             if (badlen)
                 w.shape = FW_ANY;   /* gcc has no type for it */
-            snprintf(what, sizeof what, "format '%%%s%c'", lsp, conv);
             fmt_take(&x, &w, fmt_loc(&x, i), what);
         }
         i++;
     }
-    if (!dollar && x.ai < nk)
+    if (!dollar && !x.va && x.ai < nk)
         cwarn(c, whole, "format-extra-args", "too many arguments for format");
 out:
     free(f);
     free(off);
 }
 
+/* The position of the format argument of the scanf-like library functions. */
+static uint32_t builtin_scanf_pos(const char *name)
+{
+    if (!strncmp(name, "__builtin_", 10))
+        name += 10;
+    if (!strcmp(name, "scanf"))
+        return 1;
+    return !strcmp(name, "fscanf") || !strcmp(name, "sscanf") ? 2 : 0;
+}
+
 /* check_format_info's complaint about a format that is not a string
  * literal: -Wformat-security (or -Wformat-nonliteral) with no arguments to
  * check, -Wformat-nonliteral with some. */
 static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
-                                 const char *name, SrcLoc loc)
+                                 const CSym *sy, const char *name, SrcLoc loc)
 {
-    uint32_t pos = builtin_format_pos(name), a, s;
+    uint32_t pos = 0, first = 0, a, s;
     SrcLoc where = loc;
-    bool nonlit = false;
+    bool nonlit = false, scan = false;
+    if (sy && sy->fmt) {
+        pos = (sy->fmt >> 12) & 0xfff;
+        first = sy->fmt & 0xfff;
+        scan = (sy->fmt >> 24) == 2;
+    } else if ((pos = builtin_format_pos(name))) {
+        first = pos + 1;
+    } else if ((pos = builtin_scanf_pos(name))) {
+        first = pos + 1;
+        scan = true;
+    }
     if (!pos || nk - 1 < pos)
         return;
     a = kv[pos];
@@ -4265,7 +4357,7 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     if (s == NO_NODE || node_err(c, a))
         return;
     if (ntag(c, s) == N_STRING) {
-        fmt_check_printf(c, kv, nk, pos, s, expr_loc(c, a), loc);
+        fmt_check(c, kv, nk, first, scan, s, expr_loc(c, a), loc);
         return;
     }
     if (type_ckind(TT, c->ty[s]) == TY_ARRAY && c->ck[s] != K_ERR) {
@@ -4284,8 +4376,8 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     }
     if (!nonlit)
         return;
-    if (nk - 1 == pos) {
-        const char *opt = diag_enabled(c->diag, "format-security")
+    if (first && nk <= first) {
+        const char *opt = !scan && diag_enabled(c->diag, "format-security")
                           ? "format-security" : "format-nonliteral";
         cwarn(c, where, opt, "format not a string literal and no format "
               "arguments");
@@ -4719,9 +4811,9 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
         pt = type_params(TT, type_ent(TT, ufty)->kind == TY_FUNC ? ufty : fty);
         if (mask)
             check_nonnull(c, kv, nk, mask, pt, nparm, proto, false, loc);
-        if (builtin_decl_ok(c, csym(c, fref)))
-            check_format_literal(c, kv, nk, cident(c, csym(c, fref)->name),
-                                 loc);
+        if (csym(c, fref)->fmt || builtin_decl_ok(c, csym(c, fref)))
+            check_format_literal(c, kv, nk, csym(c, fref),
+                                 cident(c, csym(c, fref)->name), loc);
     }
     if (!too_many && !bad && proto && nparm > 1 && fref != SYM_NONE &&
         csym(c, fref)->parms)
@@ -5589,10 +5681,11 @@ static void e_call(Checker *c, uint32_t i)
                 check_nonnull(c, av, an, builtin_nonnull(name), NULL, 0, false,
                               true, call_loc(c, k[0]));
         }
-        if (!strncmp(name, "__builtin_", 10) && builtin_format_pos(name)) {
+        if (!strncmp(name, "__builtin_", 10) &&
+            (builtin_format_pos(name) || builtin_scanf_pos(name))) {
             uint32_t av[32], an = nkids(c, i, av, 32);
             if (an <= 32)
-                check_format_literal(c, av, an, name, call_loc(c, k[0]));
+                check_format_literal(c, av, an, NULL, name, call_loc(c, k[0]));
         }
         {
             TypeId rt = atomic_result(c, i, name);
