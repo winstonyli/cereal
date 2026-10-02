@@ -961,7 +961,13 @@ static void print_spec(TypeTable *tt, StrBuf *sb, TypeId t)
         put_ident(tt, sb, e->extra);
         break;
     case TY_COMPLEX:
-        sb_puts(sb, "complex ");
+        {   /* gcc names only the signed complex types; unsigned ones print
+             * with the keyword */
+            const TypeEnt *b = type_ent(tt, e->base);
+            bool u = b->kind < TY_NBUILTIN &&
+                     strstr(builtin_names[b->kind], "unsigned");
+            sb_puts(sb, u ? "_Complex " : "complex ");
+        }
         print_spec(tt, sb, e->base);
         break;
     case TY_VECTOR: {

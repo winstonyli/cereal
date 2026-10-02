@@ -1,0 +1,42 @@
+conv_complex.c:3:14: warning: ISO C does not support complex integer types [-Wpedantic]
+    3 | void fci(int _Complex); void fcu(unsigned _Complex);
+      |              ^
+conv_complex.c:3:43: warning: ISO C does not support complex integer types [-Wpedantic]
+    3 | void fci(int _Complex); void fcu(unsigned _Complex);
+      |                                           ^
+conv_complex.c:4:25: warning: ISO C does not support complex integer types [-Wpedantic]
+    4 | double _Complex dc; int _Complex ic; unsigned _Complex uc;
+      |                         ^
+conv_complex.c:4:47: warning: ISO C does not support complex integer types [-Wpedantic]
+    4 | double _Complex dc; int _Complex ic; unsigned _Complex uc;
+      |                                               ^
+conv_complex.c:5:20: warning: ISO C does not support complex integer types [-Wpedantic]
+    5 | long long unsigned _Complex llc; float _Complex fc;
+      |                    ^
+conv_complex.c:8:8: warning: conversion from 'complex double' to 'int' discards imaginary component [-Wconversion]
+    8 |     fi(dc);
+      |        ^
+conv_complex.c:9:8: warning: conversion from 'complex int' to 'unsigned int' discards imaginary component [-Wconversion]
+    9 |     fu(ic);
+      |        ^
+conv_complex.c:10:8: warning: conversion from '_Complex unsigned int' to 'double' discards imaginary component [-Wconversion]
+   10 |     fd(uc);
+      |        ^
+conv_complex.c:11:9: warning: conversion from 'complex double' to 'complex int' may change value [-Wfloat-conversion]
+   11 |     fci(dc);
+      |         ^
+conv_complex.c:12:9: warning: conversion from '_Complex long long unsigned int' to '_Complex unsigned int' may change value [-Wconversion]
+   12 |     fcu(llc);
+      |         ^
+conv_complex.c:13:9: warning: conversion from 'complex double' to 'complex float' may change value [-Wfloat-conversion]
+   13 |     fcf(dc);
+      |         ^
+conv_complex.c:14:13: warning: imaginary constants are a GCC extension
+   14 |     fci(1 + 1i);       /* constant: not modelled, stays silent */
+      |             ^
+conv_complex.c:15:13: warning: conversion from 'complex double' to 'complex int' may change value [-Wfloat-conversion]
+   15 |     fi(ic = dc);
+      |             ^
+conv_complex.c:15:8: warning: conversion from 'complex int' to 'int' discards imaginary component [-Wconversion]
+   15 |     fi(ic = dc);
+      |        ^

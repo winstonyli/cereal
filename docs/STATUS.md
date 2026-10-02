@@ -166,6 +166,8 @@ Non-constant -Wconversion/-Wsign-conversion/-Wfloat-conversion/-Warith-conversio
 
 `warn_if_not_aligned` is checked (errors on variables, functions, bit-field members; golden attr_wina); not done: "cannot declare bit-field 'i' with 'warn_if_not_aligned' type" (needs a typedef flag; CSF_* flags are nearly full). `#pragma GCC unroll N` argument validation deliberately skipped (no corpus signal: only unroll-10.c, already identical). pr80163 (label-difference initializer wider than a pointer) not done. dg parity: accepts-invalid 9, identical 3483, missing 1708, extra 616.
 
+Complex -Wconversion: non-constant complex->real/int ("discards imaginary component"), complex->complex narrowing and sign changes; unsigned complex types print `_Complex unsigned ...` as gcc does. Complex constants (`1i`, `1 + 1i`) have no representation, so sources built only from numeric literals stay silent (gcc prints `(_Complex int){1, 1}` forms; ~30 dg lines missing). Golden: conv_complex.c.
+
 Still open accepts-invalid: ivdep, init-desig-obs-1, pr55570, nested-func-2, pr80163, pr79677, pr53037-4, pr29736, attr-malloc, tgmath-err-1/2, pr108375-1, --param name validation (spellcheck-params*, pr98271), attr-section/sso-* (parked). Pointer-type attrs on variables still field-only.
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15
    header dirs under -pedantic-errors (environment, 5 files).

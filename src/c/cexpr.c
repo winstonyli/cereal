@@ -2495,7 +2495,7 @@ bool cexpr_bf_overflow(Checker *c, SrcLoc loc, uint32_t n, TypeId ft,
 
 /* ---- -Wconversion: gcc's unsafe_conversion_p and conversion_warning ------- */
 
-enum { UC_SAFE, UC_OTHER, UC_SIGN, UC_REAL };
+enum { UC_SAFE, UC_OTHER, UC_SIGN, UC_REAL, UC_IMAG };
 
 static unsigned bf_width(Checker *c, uint32_t n);
 
@@ -2737,6 +2737,29 @@ static int unsafe_conv_t(Checker *c, TypeId lt, uint32_t e, TypeId et,
             return real_round(c, f, lt) == f ? UC_SAFE : UC_REAL;
         return UC_SAFE;
     }
+    if (is_complex(c, et)) {
+        TypeId ef = mainv(c, type_base(TT, type_canon(TT, et))), tf;
+        if (!is_complex(c, lt))
+            return UC_IMAG;
+        tf = mainv(c, type_base(TT, type_canon(TT, lt)));
+        if (gcc_real(c, ef) && gcc_integer(c, tf))
+            return UC_REAL;
+        if (gcc_real(c, ef) && gcc_real(c, tf))
+            return uc_prec(c, tf) < uc_prec(c, ef) ? UC_REAL : UC_SAFE;
+        if (gcc_integer(c, ef) && gcc_integer(c, tf)) {
+            bool eu = !is_signed(c, ef), tu = !is_signed(c, tf);
+            if (int_bits(c, tf) < int_bits(c, ef))
+                return UC_OTHER;
+            if (check_sign && ((int_bits(c, tf) == int_bits(c, ef) && eu != tu) ||
+                               (tu && !eu)))
+                return UC_SIGN;
+            return UC_SAFE;
+        }
+        if (gcc_integer(c, ef) && gcc_real(c, tf))
+            return int_bits(c, ef) - (is_signed(c, ef) ? 1u : 0u) <=
+                   uc_prec(c, tf) ? UC_SAFE : UC_OTHER;
+        return UC_SAFE;
+    }
     if (gcc_real(c, et) && gcc_integer(c, lt))
         return UC_REAL;
     if (gcc_integer(c, et) && gcc_integer(c, lt)) {
@@ -2833,6 +2856,27 @@ static bool bool_valued(Checker *c, uint32_t s)
            p == P_GE || p == P_ANDAND || p == P_OROR;
 }
 
+/* An expression built only from numeric literals (a complex constant). */
+static bool cplx_const(Checker *c, uint32_t n)
+{
+    uint32_t k[3], m, i;
+    n = strip_paren(c, n);
+    if (n == NO_NODE)
+        return false;
+    switch (ntag(c, n)) {
+    case N_NUMBER:
+        return true;
+    case N_UNARY: case N_BINARY:
+        m = nkids(c, n, k, 3);
+        for (i = 0; i < m; i++)
+            if (!cplx_const(c, k[i]))
+                return false;
+        return m > 0;
+    default:
+        return false;
+    }
+}
+
 /* conversion_warning: e converted to lt.  top: e is the converted expression,
  * not an arm of a conditional. */
 static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
@@ -2879,9 +2923,11 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
         }
         return;
     }
-    if (!(gcc_integer(c, et) || gcc_real(c, et)) ||
-        !(gcc_integer(c, lt) || gcc_real(c, lt)))
+    if (!(gcc_integer(c, et) || gcc_real(c, et) || is_complex(c, et)) ||
+        !(gcc_integer(c, lt) || gcc_real(c, lt) || is_complex(c, lt)))
         return;
+    if (is_complex(c, et) && cplx_const(c, s))
+        return;      /* gcc prints complex constants in a form we lack */
     if (!cst && bool_valued(c, s)) {
         char tb[64];
         if (uc_bw == 1 && is_signed(c, lt) && diag_enabled(c->diag, "conversion"))
@@ -2894,6 +2940,14 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
         return;
     opt = kind == UC_REAL ? "float-conversion"
           : kind == UC_SIGN ? "sign-conversion" : "conversion";
+    if (kind == UC_IMAG) {
+        if (diag_enabled(c->diag, opt)) {
+            char tb[64];
+            cwarn(c, l, opt, "conversion from %s to %s discards imaginary "
+                  "component", type_q(TT, et), tgt_name(c, lt, tb));
+        }
+        return;
+    }
     if (kind != UC_REAL && !cst) {
         int i, n = arith_operands(c, s, k);
         bool safe = n > 0;
