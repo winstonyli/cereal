@@ -1,0 +1,33 @@
+attr_malloc.c:9:1: error: 'malloc' attribute argument 1 does not name a function
+    9 | void *a0 (int) __attribute__((malloc(0)));
+      | ^
+attr_malloc.c:10:1: error: 'malloc' attribute argument 1 does not name a function
+   10 | void *a1 (int) __attribute__((malloc("")));
+      | ^
+attr_malloc.c:11:1: error: 'malloc' attribute argument 1 does not name a function
+   11 | void *a2 (int) __attribute__((malloc(var)));
+      | ^
+attr_malloc.c:12:38: error: 'unknown' undeclared here (not in a function)
+   12 | void *a3 (int) __attribute__((malloc(unknown)));
+      |                                      ^
+attr_malloc.c:13:1: error: 'malloc' attribute argument 1 must take a pointer type as its first argument
+   13 | void *a4 (int) __attribute__((malloc(fv_)));
+      | ^
+attr_malloc.c:14:1: error: 'malloc' attribute argument 1 must take a pointer type as its first argument; have 'int'
+   14 | void *a5 (int) __attribute__((malloc(fvi)));
+      | ^
+attr_malloc.c:15:1: error: 'malloc' attribute argument 1 must take a pointer type as its first argument; have 'void'
+   15 | void *a6 (int) __attribute__((malloc(fvv)));
+      | ^
+attr_malloc.c:16:1: error: 'malloc' attribute argument 1 must take a pointer type as its first argument; have 'Type'
+   16 | void *a7 (int) __attribute__((malloc(fvi_vp)));
+      | ^
+attr_malloc.c:18:38: error: expected expression before 'T'
+   18 | void *a9 (int) __attribute__((malloc(T)));
+      |                                      ^
+attr_malloc.c:18:40: error: expected ',' or ';' before ')' token
+   18 | void *a9 (int) __attribute__((malloc(T)));
+      |                                        ^
+attr_malloc.c:19:9: error: expected expression before 'T'
+   19 | int x = T;
+      |         ^

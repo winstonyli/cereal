@@ -852,10 +852,29 @@ static void attribute(Parser *p)
         if (t.t.kind == TK_IDENT) {
             uint32_t s = nmark(p), name = adv(p);
             if (accept(p, P_LPAREN)) {
+                unsigned ne = p->nerrs;
                 if (!at(p, P_RPAREN)) {
                     parse_assign(p);
                     while (accept(p, P_COMMA))
                         parse_assign(p);
+                }
+                if (p->nerrs != ne && !at(p, P_RPAREN)) {
+                    /* c_parser_gnu_attribute: skip past the next ')' and
+                     * give up on the attribute list */
+                    int depth = 0;
+                    while (!at_eof(p) && !at(p, P_SEMI) &&
+                           !at(p, P_RBRACE) && !at(p, P_LBRACE)) {
+                        if (at(p, P_LPAREN))
+                            depth++;
+                        else if (at(p, P_RPAREN) && depth-- <= 0) {
+                            adv(p);
+                            break;
+                        }
+                        adv(p);
+                    }
+                    emit(p, N_ATTR_ITEM, name, s, 0);
+                    emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
+                    return;
                 }
                 expect(p, P_RPAREN);
             }
@@ -1799,6 +1818,8 @@ static void primary(Parser *p)
     case TK_IDENT:
         switch (ckw_of(p, &t)) {
         case CK_NONE:
+            if (is_typedef_name(p, &t))
+                break;          /* c_parser_postfix_expression: a type name */
             leaf(p, N_IDENT, adv(p));
             return;
         case CK_GENERIC:

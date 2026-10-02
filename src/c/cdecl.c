@@ -458,6 +458,33 @@ static bool attr_known(const char *name)
     return false;
 }
 
+/* malloc (dealloc): the deallocator must name a function whose first
+ * parameter is a pointer. */
+static void attr_malloc_dealloc(Checker *c, uint32_t arg, SrcLoc loc)
+{
+    TypeId ft;
+    if (ntag(c, arg) != N_IDENT || type_ckind(TT, c->ty[arg]) != TY_FUNC) {
+        cerror(c, loc, "'malloc' attribute argument 1 does not name a "
+               "function");
+        return;
+    }
+    ft = c->ty[arg];
+    if (type_ckind(TT, ft) != TY_FUNC)
+        return;
+    if (!type_ent(TT, ft)->n) {
+        if (type_ent(TT, ft)->flags & TF_NOPROTO)
+            cerror(c, loc, "'malloc' attribute argument 1 must take a "
+                   "pointer type as its first argument");
+        else
+            cerror(c, loc, "'malloc' attribute argument 1 must take a "
+                   "pointer type as its first argument; have 'void'");
+    } else if (type_ckind(TT, type_params(TT, ft)[0]) != TY_PTR) {
+        cerror(c, loc, "'malloc' attribute argument 1 must take a pointer "
+               "type as its first argument; have %s",
+               type_q(TT, type_params(TT, ft)[0]));
+    }
+}
+
 /* Collects the type-affecting attributes of one ATTRIBUTE node. */
 static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
 {
@@ -497,6 +524,9 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             if (arg != NO_NODE)
                 (void)check_user_alignment(c, arg,
                                            iloc(c, after_tok(c, attr)), true);
+        } else if (!strcmp(name, "malloc") && arg != NO_NODE &&
+                   c->ck[arg] != K_ERR) {
+            attr_malloc_dealloc(c, arg, iloc(c, after_tok(c, attr)));
         } else if (!strcmp(name, "packed")) {
             a->packed = true;
         } else if (!strcmp(name, "copy") && arg != NO_NODE &&

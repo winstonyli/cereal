@@ -1940,14 +1940,14 @@ static void e_ident(Checker *c, uint32_t i)
             const char *an = ttext(c, c->nodes[p].tok, &al);
             static const char *const ex[] = {
                 "nonnull", "aligned", "vector_size", "warn_if_not_aligned",
-                "alloc_size", "alloc_align", "assume_aligned"};
+                "alloc_size", "alloc_align", "assume_aligned", "malloc"};
             size_t q;
             if (al > 4 && !strncmp(an, "__", 2) && !strncmp(an + al - 2, "__", 2)) {
                 an += 2;
                 al -= 4;
             }
             /* attributes whose arguments are expressions */
-            for (q = 0; q < sizeof ex / sizeof *ex; q++)
+            for (q = 0; q < sizeof ex / sizeof *ex && strncmp(name, "__builtin_", 10); q++)
                 if (strlen(ex[q]) == al && !strncmp(an, ex[q], al)) {
                     undeclared(c, i, id);
                     return;

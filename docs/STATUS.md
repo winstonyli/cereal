@@ -170,6 +170,8 @@ Complex -Wconversion: non-constant complex->real/int ("discards imaginary compon
 
 -Wconversion division/shift narrowing: `/`, `%`, `>>` are narrowed to the operands' narrower type as build_binary_op does (op0 unsigned or constant divisor != -1; same-type or fitting-constant operand; shift count constant in [0, width)), and `x - x` / `x ^ x` (also `-=`, `^=`) fold to 0 silently. Golden: conv_divshift.c (gcc-identical). Not done: arms folding to one constant (pr35635:88).
 
+attribute malloc (dealloc): argument 1 must name a function whose first parameter is a pointer (cdecl.c attr_malloc_dealloc); malloc's args are now expression-checked (undeclared names). Parser: a typedef name in an expression is "expected expression before 'T'" (primary), and an error inside GNU attribute args skips past the next ')' and abandons the attribute list, as c_parser_gnu_attribute does (gives gcc's follow-on "expected ',' or ';' before ')'"). Golden: attr_malloc.c. Not done: malloc's second (ref-index) argument validation.
+
 Still open accepts-invalid: ivdep, init-desig-obs-1, pr55570, nested-func-2, pr80163, pr79677, pr53037-4, pr29736, attr-malloc, tgmath-err-1/2, pr108375-1, --param name validation (spellcheck-params*, pr98271), attr-section/sso-* (parked). Pointer-type attrs on variables still field-only.
    in array-parameter bounds, #include_next pedwarn from cereal's gcc-15
    header dirs under -pedantic-errors (environment, 5 files).
