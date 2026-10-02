@@ -245,8 +245,11 @@ enum {
     EF_NOPCST = 8192,        /* K_FOLD: an INTEGER_CST under a conversion */
     EF_FOLDWARN = 16384,     /* a warning is due when the full expression is
                                 folded (gcc's c_fully_fold) */
-    EF_GCCFOLD = 32768       /* a comparison gcc folds to a constant (only
+    EF_GCCFOLD = 32768,      /* a comparison gcc folds to a constant (only
                                 the location of -Wunused-value changes) */
+    EF_ZDIV = 65536,         /* contains an integer division by constant zero:
+                                fold keeps it, so x * 0 is not folded away */
+    EF_PROP = EF_SIDE | EF_ZDIV  /* what an operator inherits from operands */
 };
 
 /* Checker.cb for addresses not of a symbol: the node (string literal,
@@ -287,7 +290,7 @@ struct Checker {
     uint64_t *cv;
     uint32_t *cb;            /* K_ADDR: base symbol ref + 1, 0: null */
     uint8_t *ck;
-    uint16_t *ef;
+    uint32_t *ef;
     uint32_t *par;
     uint32_t cap;            /* capacity of the per-node arrays */
     VEC(long double) fv;     /* K_FLOAT values */
@@ -413,6 +416,8 @@ Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
                      const char *fmt, ...);
 /* A pedwarn under -Wpedantic only ([-Wpedantic]). */
 Diagnostic *cpedantic(Checker *c, SrcLoc loc, const char *fmt, ...);
+/* constant_expression_warning: only under -pedantic, tagged -Woverflow */
+void cconst_overflow(Checker *c, SrcLoc loc);
 Diagnostic *cped11(Checker *c, SrcLoc loc, const char *fmt, ...);
 bool cin_system(Checker *c, SrcLoc loc);
 Diagnostic *cerror_d(Checker *c, SrcLoc loc, const char *fmt, ...);
@@ -480,7 +485,9 @@ void cdep_use(Checker *c, SrcLoc loc, const CSym *s, const SrcLoc *note);
  * in Checker.dep_msgs + 1. */
 uint32_t cdep_msg(Checker *c, uint32_t str_node);
 void cdep_report(Checker *c, SrcLoc loc, uint32_t nameid, uint32_t flags,
-                 uint32_t dep_msg, const SrcLoc *note);   /* an asm statement's operands */
+                 uint32_t dep_msg, const SrcLoc *note);
+void cdep_named(Checker *c, SrcLoc loc, const char *name, uint32_t flags,
+                uint32_t dep_msg, const SrcLoc *note);   /* an asm statement's operands */
 bool cexpr_is_expr(unsigned tag);
 /* The type of an expression after lvalue conversion (arrays and functions
  * decay, qualifiers dropped). */

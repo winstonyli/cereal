@@ -2852,7 +2852,7 @@ static int check_bitfield(Checker *c, SrcLoc loc, TypeId *ty, uint32_t w,
                 cpedantic(c, loc, "bit-field '%s' width not an integer "
                           "constant expression", nm);
             if (c->ef[w] & EF_OVERFLOW)
-                cpedwarn(c, loc, "overflow", "overflow in constant expression");
+                cconst_overflow(c, loc);
             width = cexpr_sval(c, w);
             if (width < 0 && !type_is_signed(TT, c->ty[w]))
                 width = INT64_MAX;
@@ -4756,6 +4756,10 @@ static uint32_t find_child(Checker *c, uint32_t i, unsigned tag);
 static void decl_visit(Checker *c, uint32_t i)
 {
     uint32_t sn = first_child(c, i);
+    if ((cnode(c, i)->flags & (NF_NESTED | NF_ERROR)) == (NF_NESTED | NF_ERROR) &&
+        !in_extension(c, i))
+        cpedantic(c, tloc(c, cnode(c, i)->tok), "ISO C forbids nested "
+                  "functions");
     if (sn != NO_NODE && ntag(c, sn) == N_SPECS &&
         c->nodes[i].size == c->nodes[sn].size + 1) {
         int si = find_spec(c, sn);
@@ -4772,6 +4776,70 @@ static void decl_attrs(Checker *c, uint32_t idecl, Attrs *a)
 {
     memset(a, 0, sizeof *a);
     attrs_of_children(c, idecl, a);
+}
+
+static uint32_t last_enumerator(Checker *c, uint32_t n)
+{
+    Kids k;
+    uint32_t j, r = NO_NODE;
+    kids_get(c, n, &k);
+    for (j = 0; j < k.n; j++)
+        if (ntag(c, k.p[j]) == N_ENUMERATOR)
+            r = k.p[j];
+    kids_free(&k);
+    return r;
+}
+
+/* A declarator whose specifiers define a deprecated/unavailable tag uses the
+ * type: gcc warns at the tag (anonymous struct: its '{', enum: its first
+ * enumerator) once per declarator. */
+static void dep_spec_use(Checker *c, const Spec *sp)
+{
+    uint32_t n = sp->tag_node, tag, tok;
+    TypeId t;
+    SrcLoc loc, note;
+    uint32_t dep, dmsg;
+    bool isenum;
+    if (n == NO_NODE || (ntag(c, n) != N_STRUCT && ntag(c, n) != N_ENUM) ||
+        !(cnode(c, n)->flags & NF_BODY))
+        return;
+    t = type_canon(TT, c->ty[n]);
+    isenum = type_ckind(TT, t) == TY_ENUM;
+    if (isenum) {
+        const Enum *e = type_enum(TT, t);
+        if (!e)
+            return;
+        dep = e->dep;
+        dmsg = e->dmsg;
+    } else {
+        const Record *r = type_record(TT, t);
+        if (!r)
+            return;
+        dep = r->dep;
+        dmsg = r->dmsg;
+    }
+    if (!(dep & (CSF_DEPRECATED | CSF_UNAVAILABLE)))
+        return;
+    tag = find_child(c, n, N_TAG);
+    for (tok = cnode(c, n)->tok; tpunct(c, tok) != P_LBRACE; tok++)
+        ;
+    if (tag != NO_NODE) {
+        loc = note = tloc(c, cnode(c, tag)->tok);
+        if (isenum) {
+            uint32_t en = last_enumerator(c, n);
+            if (en != NO_NODE)
+                loc = tloc(c, cnode(c, en)->tok);
+        }
+    } else if (isenum) {
+        uint32_t en = last_enumerator(c, n);
+        note = tloc(c, tok);
+        loc = en != NO_NODE ? tloc(c, cnode(c, en)->tok) : note;
+    } else {
+        loc = tloc(c, tok);
+        note = tloc(c, cnode(c, n)->tok);
+    }
+    cdep_named(c, loc, tag != NO_NODE ? cident(c, cnode_ident(c, tag)) : NULL,
+               dep, dmsg, &note);
 }
 
 static void declared_visit(Checker *c, uint32_t i)
@@ -4800,6 +4868,7 @@ static void declared_visit(Checker *c, uint32_t i)
                  "no type or storage class");
     pending_xref(c, &c->specs.data[si]);
     sp = c->specs.data[si];
+    dep_spec_use(c, &sp);
     name_tok = cnode(c, idecl)->tok;
     end = scan_end(c, name_tok, true);
     initialized = tpunct(c, end) == P_ASSIGN;
@@ -5655,8 +5724,7 @@ static void enumerator_visit(Checker *c, uint32_t i)
                        "'%s' is not an integer constant", cident(c, name));
             else {
                 if (c->ef[vn] & EF_OVERFLOW)
-                    cpedwarn(c, nloc, "overflow",
-                             "overflow in constant expression");
+                    cconst_overflow(c, nloc);
                 vt = type_int_promote(TT, ty);
                 v = cexpr_trunc(c, vt, (uint64_t)cexpr_sval(c, vn));
                 have = true;
@@ -5952,6 +6020,7 @@ static void member_visit(Checker *c, uint32_t i)
     struct_semis(c, first_tok(c, md));
     pending_xref(c, &c->specs.data[si]);
     sp = c->specs.data[si];
+    dep_spec_use(c, &sp);
     kids_get(c, i, &kk);
     for (k = 0; k < kk.n; k++) {
         if (is_declarator_tag(ntag(c, kk.p[k])))

@@ -4,6 +4,9 @@ asm_ident.c:2:21: error: expected '=', ',', ';', 'asm' or '__attribute__' before
 asm_ident.c:3:14: error: expected ')' before ':' token
     3 |   asm ("blah" : "r" (arg));
       |              ^
+asm_ident.c:2:3: warning: ISO C forbids nested functions [-Wpedantic]
+    2 |   register long var asm ("r1");
+      |   ^
 asm_ident.c:2:21: warning: implicit declaration of function 'asm' [-Wimplicit-function-declaration]
     2 |   register long var asm ("r1");
       |                     ^

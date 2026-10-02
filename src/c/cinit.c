@@ -1430,8 +1430,7 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             bitfield_overflow(c, L, &v, type);
         }
         if (rq && const_overflowed(c, v.node, type))
-            cpedwarn(c, tloc(c, first_tok(c, v.node)), "overflow",
-                  "overflow in constant expression");
+            cconst_overflow(c, tloc(c, first_tok(c, v.node)));
         zero = post_zero(c, &v, type);
         if (v.str && !v.decayed && is_arr(c, type)) {
             strn = v.strn;
@@ -2606,8 +2605,7 @@ void cinit_decl_done(Checker *c, uint32_t idecl)
         uint32_t dp = c->par[idecl];
         if ((s->flags & CSF_TREE_STATIC) && const_overflowed(c, init, type) &&
             dp != NOB && dp < c->nn)
-            cpedwarn(c, tloc(c, first_tok(c, dp)), "overflow",
-                  "overflow in constant expression");
+            cconst_overflow(c, tloc(c, first_tok(c, dp)));
         if ((TYPE_QUALS(type) & (TQ_CONST | TQ_VOLATILE)) == TQ_CONST &&
             !is_aggr(c, type) && !is_arr(c, type) && v.kind == V_EXPR &&
             !v.str && !v.cl && const_class(c, init, v.type, type) == 2)

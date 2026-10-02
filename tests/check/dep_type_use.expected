@@ -1,0 +1,78 @@
+dep_type_use.c:2:36: warning: 'S2' is deprecated [-Wdeprecated-declarations]
+    2 | struct __attribute__((deprecated)) S2 { int a; } z2;
+      |                                    ^
+dep_type_use.c:2:36: note: declared here
+    2 | struct __attribute__((deprecated)) S2 { int a; } z2;
+      |                                    ^
+dep_type_use.c:3:8: warning: 'S3' is deprecated [-Wdeprecated-declarations]
+    3 | struct S3 { int a; } __attribute__((deprecated)) z3;
+      |        ^
+dep_type_use.c:3:8: note: declared here
+    3 | struct S3 { int a; } __attribute__((deprecated)) z3;
+      |        ^
+dep_type_use.c:5:8: warning: type is deprecated [-Wdeprecated-declarations]
+    5 | struct { int a; } __attribute__((deprecated)) z5, z6;
+      |        ^
+dep_type_use.c:5:1: note: declared here
+    5 | struct { int a; } __attribute__((deprecated)) z5, z6;
+      | ^
+dep_type_use.c:5:8: warning: type is deprecated [-Wdeprecated-declarations]
+    5 | struct { int a; } __attribute__((deprecated)) z5, z6;
+      |        ^
+dep_type_use.c:5:1: note: declared here
+    5 | struct { int a; } __attribute__((deprecated)) z5, z6;
+      | ^
+dep_type_use.c:6:23: warning: type is deprecated [-Wdeprecated-declarations]
+    6 | void f(void) { struct { int a; } __attribute__((deprecated)) l; (void)l; }
+      |                       ^
+dep_type_use.c:6:16: note: declared here
+    6 | void f(void) { struct { int a; } __attribute__((deprecated)) l; (void)l; }
+      |                ^
+dep_type_use.c:7:19: warning: type is deprecated [-Wdeprecated-declarations]
+    7 | struct T { struct { int a; } __attribute__((deprecated)) m; };
+      |                   ^
+dep_type_use.c:7:12: note: declared here
+    7 | struct T { struct { int a; } __attribute__((deprecated)) m; };
+      |            ^
+dep_type_use.c:8:35: warning: 'U' is deprecated [-Wdeprecated-declarations]
+    8 | union __attribute__((deprecated)) U { int a; } u1;
+      |                                   ^
+dep_type_use.c:8:35: note: declared here
+    8 | union __attribute__((deprecated)) U { int a; } u1;
+      |                                   ^
+dep_type_use.c:9:38: warning: 'E' is deprecated [-Wdeprecated-declarations]
+    9 | enum __attribute__((deprecated)) E { A } e1;
+      |                                      ^
+dep_type_use.c:9:34: note: declared here
+    9 | enum __attribute__((deprecated)) E { A } e1;
+      |                                  ^
+dep_type_use.c:10:36: warning: 'S7' is deprecated [-Wdeprecated-declarations]
+   10 | struct __attribute__((deprecated)) S7 { int a; } *z7;
+      |                                    ^
+dep_type_use.c:10:36: note: declared here
+   10 | struct __attribute__((deprecated)) S7 { int a; } *z7;
+      |                                    ^
+dep_type_use.c:11:36: warning: type is deprecated [-Wdeprecated-declarations]
+   11 | enum __attribute__((deprecated)) { A1 } e;
+      |                                    ^
+dep_type_use.c:11:34: note: declared here
+   11 | enum __attribute__((deprecated)) { A1 } e;
+      |                                  ^
+dep_type_use.c:12:40: warning: type is deprecated [-Wdeprecated-declarations]
+   12 | enum __attribute__((deprecated)) { B1, B2 } e2, e3;
+      |                                        ^
+dep_type_use.c:12:34: note: declared here
+   12 | enum __attribute__((deprecated)) { B1, B2 } e2, e3;
+      |                                  ^
+dep_type_use.c:12:40: warning: type is deprecated [-Wdeprecated-declarations]
+   12 | enum __attribute__((deprecated)) { B1, B2 } e2, e3;
+      |                                        ^
+dep_type_use.c:12:34: note: declared here
+   12 | enum __attribute__((deprecated)) { B1, B2 } e2, e3;
+      |                                  ^
+dep_type_use.c:13:36: warning: type is deprecated [-Wdeprecated-declarations]
+   13 | struct __attribute__((deprecated)) { int a; } s1;
+      |                                    ^
+dep_type_use.c:13:1: note: declared here
+   13 | struct __attribute__((deprecated)) { int a; } s1;
+      | ^

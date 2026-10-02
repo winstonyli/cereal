@@ -2530,6 +2530,8 @@ static void declaration(Parser *p, bool top)
                     p->err_live = false; /* error = false after each item */
             }
             /* gcc has not declared the name yet */
+            if (!top && !p->kr_params && n == 0 && !is_decl_start(p, &t))
+                flags |= NF_NESTED; /* ... but warned of a nested function */
             emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }

@@ -1,0 +1,24 @@
+zdiv_const.c:2:16: warning: division by zero [-Wdiv-by-zero]
+    2 | int a = 0 * (1 / 0);
+      |                ^
+zdiv_const.c:2:9: error: initializer element is not constant
+    2 | int a = 0 * (1 / 0);
+      |         ^
+zdiv_const.c:3:12: warning: division by zero [-Wdiv-by-zero]
+    3 | int b = (1 % 0) * 0;
+      |            ^
+zdiv_const.c:3:9: error: initializer element is not constant
+    3 | int b = (1 % 0) * 0;
+      |         ^
+zdiv_const.c:4:20: warning: division by zero [-Wdiv-by-zero]
+    4 | int c = 0 * (1 + 2 / 0);
+      |                    ^
+zdiv_const.c:4:9: error: initializer element is not constant
+    4 | int c = 0 * (1 + 2 / 0);
+      |         ^
+zdiv_const.c:5:17: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+    5 | int d = INT_MAX + 1;
+      |                 ^
+zdiv_const.c:5:1: warning: overflow in constant expression [-Woverflow]
+    5 | int d = INT_MAX + 1;
+      | ^

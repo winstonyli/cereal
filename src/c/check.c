@@ -104,6 +104,12 @@ Diagnostic *cped11(Checker *c, SrcLoc loc, const char *fmt, ...)
     return d;
 }
 
+void cconst_overflow(Checker *c, SrcLoc loc)
+{
+    if (diag_enabled(c->diag, "pedantic"))
+        cpedwarn(c, loc, "overflow", "overflow in constant expression");
+}
+
 Diagnostic *cpedantic(Checker *c, SrcLoc loc, const char *fmt, ...)
 {
     Diagnostic *d;

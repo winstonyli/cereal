@@ -5952,7 +5952,7 @@ static void e_index(Checker *c, uint32_t i)
         }
         c->ty[i] = type_base(TT, type_canon(TT, c->ty[a])) |
                    TYPE_QUALS(c->ty[a]);
-        c->ef[i] = (c->ef[a] & EF_LVALUE) | ((c->ef[a] | c->ef[x]) & EF_SIDE);
+        c->ef[i] = (c->ef[a] & EF_LVALUE) | ((c->ef[a] | c->ef[x]) & EF_PROP);
         return;
     }
     if (!is_array(c, c->ty[a]) && !is_ptr(c, c->ty[a])) {
@@ -6004,7 +6004,7 @@ static void e_index(Checker *c, uint32_t i)
             cwarn(c, loc, "", "dereferencing 'void *' pointer");
     }
     c->ty[i] = et;
-    c->ef[i] = EF_LVALUE | ((c->ef[a] | c->ef[x]) & EF_SIDE);
+    c->ef[i] = EF_LVALUE | ((c->ef[a] | c->ef[x]) & EF_PROP);
     if (tquals(c, et) & TQ_VOLATILE)
         c->ef[i] |= EF_SIDE;
     if (c->ck[a] == K_ADDR && has_ival(c, x)) {
@@ -6098,7 +6098,7 @@ static void e_member(Checker *c, uint32_t i)
                 &f->loc);
     ft = type_qual(f->ty, q | tquals(c, rec));
     c->ty[i] = ft;
-    c->ef[i] = c->ef[d] & EF_SIDE;
+    c->ef[i] = c->ef[d] & EF_PROP;
     if (tquals(c, ft) & TQ_VOLATILE)
         c->ef[i] |= EF_SIDE;
     if (arrow || (c->ef[d] & EF_LVALUE))
@@ -6326,7 +6326,7 @@ static void addr_of(Checker *c, uint32_t i, uint32_t a)
         return;
     }
     c->ty[i] = type_ptr(TT, t);
-    c->ef[i] = c->ef[a] & EF_SIDE;
+    c->ef[i] = c->ef[a] & EF_PROP;
     if (c->ef[a] & EF_ADDRLV) {
         c->ck[i] = K_ADDR;
         c->cb[i] = c->cb[a];
@@ -6361,7 +6361,7 @@ static void deref(Checker *c, uint32_t i, uint32_t a)
     if (is_void(c, b) && !inhibited(c, i, false))
         cwarn(c, loc, "", "dereferencing 'void *' pointer");
     c->ty[i] = b;
-    c->ef[i] = EF_LVALUE | (c->ef[a] & EF_SIDE);
+    c->ef[i] = EF_LVALUE | (c->ef[a] & EF_PROP);
     if (tquals(c, b) & TQ_VOLATILE)
         c->ef[i] |= EF_SIDE;
     if (c->ck[a] == K_ADDR) {
@@ -6395,7 +6395,7 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
     if (tkind(c, t) == TY_VECTOR && op != P_BANG) {
         /* vector operands: the result has the vector's type */
         c->ty[i] = TYPE_UNQUAL(type_canon(TT, t));
-        c->ef[i] = c->ef[a] & EF_SIDE;
+        c->ef[i] = c->ef[a] & EF_PROP;
         return;
     }
     switch (op) {
@@ -6429,7 +6429,7 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
         }
         cexpr_truth_warn(c, a, loc);
         c->ty[i] = TYPE_B(INT);
-        c->ef[i] = c->ef[a] & EF_SIDE;
+        c->ef[i] = c->ef[a] & EF_PROP;
         {
             int tv = truth(c, a, true);
             if (tv < 0) {
@@ -6455,7 +6455,7 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
         return;
     }
     c->ty[i] = promoted(c, a);
-    c->ef[i] = c->ef[a] & EF_SIDE;
+    c->ef[i] = c->ef[a] & EF_PROP;
     if (c->ck[a] == K_FLOAT) {
         long double f = c->fv.data[c->cv[a]];
         c->ck[i] = K_FLOAT;
@@ -6517,7 +6517,7 @@ static void real_imag(Checker *c, uint32_t i, uint32_t a, bool real)
         return;
     }
     c->ty[i] = t;
-    c->ef[i] = c->ef[a] & EF_SIDE;
+    c->ef[i] = c->ef[a] & EF_PROP;
     if (is_flt(c, t)) {
         c->ck[i] = K_FLOAT;
         c->cv[i] = fpush(c, 0);
@@ -6907,7 +6907,7 @@ static void e_cast(Checker *c, uint32_t i)
             return;
         }
         c->ty[i] = unqual(c, t);
-        c->ef[i] = c->ef[a] & EF_SIDE;
+        c->ef[i] = c->ef[a] & EF_PROP;
         return;
     }
     ot = rvt(c, a);
@@ -6921,7 +6921,7 @@ static void e_cast(Checker *c, uint32_t i)
         return;
     }
     c->ty[i] = unqual(c, t);
-    c->ef[i] = c->ef[a] & EF_SIDE;
+    c->ef[i] = c->ef[a] & EF_PROP;
     if (tk == TY_VECTOR || (tkind(c, ot) == TY_VECTOR && tk != TY_UNION))
         return;
     if (is_record(c, t) || tk == TY_UNION) {
@@ -7156,7 +7156,7 @@ static void e_convertvector(Checker *c, uint32_t i)
         return;
     }
     c->ty[i] = t;
-    c->ef[i] = c->ef[k[0]] & EF_SIDE;
+    c->ef[i] = c->ef[k[0]] & EF_PROP;
 }
 
 static void e_offsetof(Checker *c, uint32_t i)
@@ -7597,7 +7597,7 @@ static void e_comma(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     }
     t = rvt(c, b);
     c->ty[i] = t;
-    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_SIDE;
+    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
     if (c->ef[a] & EF_SIDE)
         return;
     /* C99 DR031: a comma of integer constant operands may appear in an
@@ -7641,7 +7641,7 @@ static void e_logical(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     cexpr_truth_warn(c, a, first_loc(c, a));
     cexpr_truth_warn(c, b, cnode_loc(c, i));
     c->ty[i] = TYPE_B(INT);
-    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_SIDE;
+    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
     ta = truth(c, a, true);
     tb = truth(c, b, true);
     if (ta >= 0 && tb >= 0)
@@ -8820,7 +8820,7 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         return;
     }
     c->ty[i] = TYPE_B(INT);
-    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_SIDE;
+    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
     {
         bool fold = false;
         if (is_arith(c, ta) && is_arith(c, tb))
@@ -9135,7 +9135,7 @@ static bool vec_binop(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
         return false;
     }
     c->ty[i] = vt;
-    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_SIDE;
+    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
     return true;
 }
 
@@ -9155,7 +9155,7 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         return;
     }
     c->ty[i] = ta;
-    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_SIDE;
+    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
     prec = int_bits(c, ta);
     if (has_ival(c, b)) {
         if (ival_neg(c, tb, c->cv[b])) {
@@ -9256,7 +9256,7 @@ static void ptr_int(Checker *c, uint32_t i, uint32_t p, uint32_t n, bool minus)
         return;
     }
     c->ty[i] = pt;
-    c->ef[i] = (c->ef[p] | c->ef[n]) & EF_SIDE;
+    c->ef[i] = (c->ef[p] | c->ef[n]) & EF_PROP;
     if (c->ck[p] == K_ADDR && has_ival(c, n)) {
         uint64_t d = c->cv[n] * elem_size(c, pt);
         c->ck[i] = K_ADDR;
@@ -9285,7 +9285,7 @@ static void ptr_diff(Checker *c, uint32_t i, uint32_t a, uint32_t b)
         return;
     }
     c->ty[i] = TYPE_MK(c->tgt->ptrdiff_type, 0);
-    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_SIDE;
+    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
     sz = elem_size(c, ta);
     if (c->ck[a] == K_ADDR && c->ck[b] == K_ADDR && c->cb[a] == c->cb[b] &&
         sz > 0 && !var_size(c, pa)) {
@@ -9304,7 +9304,7 @@ static bool zero_ice(Checker *c, uint32_t n)
 /* fold-const's x * 0, 0 * x, x & 0, 0 & x and x - x (x a plain variable) */
 static bool fold_zero_ident(Checker *c, int op, uint32_t a, uint32_t b)
 {
-    if (((c->ef[a] | c->ef[b]) & EF_SIDE) || !is_int(c, rvt(c, a)) ||
+    if (((c->ef[a] | c->ef[b]) & EF_PROP) || !is_int(c, rvt(c, a)) ||
         !is_int(c, rvt(c, b)))
         return false;
     if (op == P_STAR || op == P_AMP)
@@ -9358,7 +9358,7 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     }
     rt = common_type(c, ta, tb);
     c->ty[i] = rt;
-    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_SIDE;
+    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
     if (!is_complex(c, rt) && is_arith(c, rt)) {
         conv_operand(c, loc, rt, a, false);
         conv_operand(c, loc, rt, b, false);
@@ -9368,6 +9368,7 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     if ((op == P_SLASH || op == P_PERCENT) && is_int(c, tb) &&
         is_intcst(c, b) && c->cv[b] == 0) {
         zero_div = true;
+        c->ef[i] |= EF_ZDIV;
         if (!inhibited(c, i, false))
             cwarn(c, loc, "div-by-zero", "division by zero");
     }
@@ -9587,7 +9588,7 @@ static void e_cond(Checker *c, uint32_t i)
     tv = truth(c, cond, true);
     if (tv >= 0 && (is_scalar(c, rt))) {
         uint32_t pick = tv ? ch : els;
-        uint16_t keep = c->ef[i];
+        uint32_t keep = c->ef[i];
         if (c->ck[pick] == K_NONE || c->ck[pick] == K_ERR)
             return;
         conv_const(c, i, pick, rt);
@@ -9964,21 +9965,33 @@ void cdep_use(Checker *c, SrcLoc loc, const CSym *s, const SrcLoc *note)
 void cdep_report(Checker *c, SrcLoc loc, uint32_t nameid, uint32_t flags,
                  uint32_t dep_msg, const SrcLoc *note)
 {
-    const char *msg = NULL, *name;
+    if (nameid)
+        cdep_named(c, loc, cident(c, nameid), flags, dep_msg, note);
+}
+
+/* name NULL: an anonymous type ("type is deprecated") */
+void cdep_named(Checker *c, SrcLoc loc, const char *name, uint32_t flags,
+                uint32_t dep_msg, const SrcLoc *note)
+{
+    const char *msg = NULL;
+    char what[160];
     Diagnostic *d;
-    if (!(flags & (CSF_DEPRECATED | CSF_UNAVAILABLE)) || !nameid)
+    if (!(flags & (CSF_DEPRECATED | CSF_UNAVAILABLE)))
         return;
     if (dep_msg && dep_msg <= c->dep_msgs.len)
         msg = c->dep_msgs.data[dep_msg - 1];
-    name = cident(c, nameid);
+    if (name)
+        snprintf(what, sizeof what, "'%s'", name);
+    else
+        snprintf(what, sizeof what, "type");
     if (flags & CSF_UNAVAILABLE)
-        d = msg ? cerror_d(c, loc, "'%s' is unavailable: %s", name, msg)
-                : cerror_d(c, loc, "'%s' is unavailable", name);
+        d = msg ? cerror_d(c, loc, "%s is unavailable: %s", what, msg)
+                : cerror_d(c, loc, "%s is unavailable", what);
     else
         d = msg ? cwarn_d(c, DL_WARNING, loc, "deprecated-declarations",
-                          "'%s' is deprecated: %s", name, msg)
+                          "%s is deprecated: %s", what, msg)
                 : cwarn_d(c, DL_WARNING, loc, "deprecated-declarations",
-                          "'%s' is deprecated", name);
+                          "%s is deprecated", what);
     if (d && note)
         cnote(c, d, *note, "declared here");
 }

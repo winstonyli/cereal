@@ -62,6 +62,22 @@ layouts, gcc rules ported, walk design).
   (deprecated-2/5, attr-unavailable-2/5; also
   `struct __attribute__((deprecated)) S {..} z;`).
   gcc.dg: 3534 of 3875 identical; tests 760, corpus 0/0, ASAN/UBSAN 0 findings.
+- Constants, nested functions, type deprecation (2026-10-01):
+  * EF_ZDIV (ef widened to uint32_t; EF_PROP = EF_SIDE|EF_ZDIV is what
+    operators inherit): an integer division by constant zero keeps `0 * (1/0)`
+    from folding to a constant (pr66066-*, overflow-warn-*).
+  * "overflow in constant expression" is a -pedantic-only pedwarn tagged
+    -Woverflow (cconst_overflow in check.c); it was unconditional.
+  * A declaration gcc mistakes for a nested function definition
+    (`register long v asm ("r1");` in a block) carries NF_NESTED on its
+    N_DECL+NF_ERROR node, so the checker emits "ISO C forbids nested functions".
+  * A declarator whose specifiers define a deprecated/unavailable struct,
+    union or enum warns "'S' is deprecated" / "type is deprecated" once per
+    declarator and member (dep_spec_use, cdep_named; anonymous struct at its
+    '{', enum at its last enumerator).
+  Goldens zdiv_const, dep_type_use; asm_ident, kr_cascade regenerated.
+  gcc.dg: 3548 of 3875 identical; tests 764, corpus 0/0, ASAN/UBSAN 0.
+  Not done: -Wtraditional-conversion (overflow-warn-2), init-bad-4 recovery.
 
 ## Next work
 1. Mutated-corpus verdict parity: ran 2026-09-30 (bench/tools/mut.py, 170
