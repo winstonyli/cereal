@@ -1674,6 +1674,10 @@ static SrcLoc expr_loc(Checker *c, uint32_t i)
         return first_loc(c, i);
     case N_MEMBER_EXPR:
         return ctok_loc(c, c->nodes[i].tok - 1);
+    case N_UNARY:   /* __extension__ makes no node of its own in gcc */
+        if (cexpr_is_extension(c, i) && i > 0)
+            return expr_loc(c, i - 1);
+        return cnode_loc(c, i);
     default:
         return cnode_loc(c, i);
     }

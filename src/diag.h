@@ -88,8 +88,8 @@ typedef struct DiagEngine {
     uint32_t key;            /* current plan item (set by the preprocessor) */
     /* option lookup cache keyed by the id string's address (ids are
      * literals); a hit is verified by name */
-    const char *idc_key[128];
-    int16_t idc_val[128];
+    const char *idc_key[512];
+    int16_t idc_val[512];
     /* option -> level+1 under the config generation memo_gen (0: unknown) */
     uint32_t memo_gen;
     uint8_t memo[512];

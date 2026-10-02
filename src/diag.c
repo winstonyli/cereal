@@ -146,6 +146,8 @@ static const DiagOption options[] = {
     {"missing-declarations", "c", DL_WARNING, false, 0, "global function defined without a previous declaration"},
     {"strict-prototypes", "c", DL_WARNING, false, 0, "function declared without parameter types"},
     {"shadow", "c", DL_WARNING, false, 0, "declaration shadows another"},
+    {"shadow=local", "c", DL_WARNING, false, 0, "declaration shadows a parameter or local"},
+    {"shadow=compatible-local", "c", DL_WARNING, false, 0, "declaration shadows a parameter or local of a compatible type"},
     {"redundant-decls", "c", DL_WARNING, false, 0, "redundant redeclaration in the same scope"},
     {"nested-externs", "c", DL_WARNING, false, 0, "extern declaration inside a function"},
     {"pragmas", "pp", DL_WARNING, true, 0, "malformed or misused pragma"},
@@ -324,6 +326,8 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
     size_t i;
     c->gen = ++cfg_gen_next;
     bool found = false;
+    if (strcmp(flag, "shadow=global") == 0)
+        flag = "shadow";                /* gcc: an alias of -Wshadow */
     if (strcmp(flag, "error") == 0) {
         c->werror = true;
         return true;
@@ -442,6 +446,18 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
         *lvl = DL_IGNORED;
         return 0;
     }
+    /* gcc: -Wshadow enables -Wshadow=local, which enables
+     * -Wshadow=compatible-local */
+    if (!strcmp(o->name, "shadow=local") ||
+        !strcmp(o->name, "shadow=compatible-local"))
+        return option_state(c, i - 1, lvl);
+    if (c && !strcmp(o->name, "dangling-else")) {       /* gcc: enabled by -Wparentheses */
+        static long p = -2;
+        if (p == -2)
+            p = find_index("parentheses");
+        if (p >= 0 && c->overridden[p])
+            return option_state(c, (size_t)p, lvl);
+    }
     u = umbrella_state(c, o);
     if (u > 0 || (c && c->everything) || (u < 0 && o->on)) {
         *lvl = o->level;
@@ -453,7 +469,7 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
 
 static long find_index_cached(DiagEngine *d, const char *id)
 {
-    size_t h = ((uintptr_t)id >> 3) * 0x9E3779B1u >> 7 & 127;
+    size_t h = ((uintptr_t)id >> 3) * 0x9E3779B1u >> 7 & 511;
     long i;
     if (d->idc_key[h] == id && !strcmp(options[d->idc_val[h]].name, id))
         return d->idc_val[h];

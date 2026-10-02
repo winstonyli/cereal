@@ -4393,6 +4393,17 @@ static bool fn_pointer_type(Checker *c, TypeId t)
     return tkind(c, t) == TY_PTR && is_func(c, type_base(TT, t));
 }
 
+/* The option of a parameter/local shadow warning: -Wshadow itself, else
+ * -Wshadow=compatible-local when the types are compatible, else
+ * -Wshadow=local. */
+static const char *shadow_id(Checker *c, const CSym *old, const CSym *x)
+{
+    if (diag_enabled(c->diag, "shadow"))
+        return "shadow";
+    return type_compatible(TT, old->ty, x->ty) ? "shadow=compatible-local"
+                                               : "shadow=local";
+}
+
 static void warn_if_shadowing(Checker *c, const CSym *x)
 {
     uint32_t bi;
@@ -4407,8 +4418,9 @@ static void warn_if_shadowing(Checker *c, const CSym *x)
         if (old->flags & CSF_ERROR)
             continue;
         if (old->flags & CSF_PARAM)
-            d = cwarn_d(c, DL_WARNING, x->loc, "shadow", "declaration of '%s' "
-                        "shadows a parameter", sname(c, x));
+            d = cwarn_d(c, DL_WARNING, x->loc, shadow_id(c, old, x),
+                        "declaration of '%s' shadows a parameter",
+                        sname(c, x));
         else if (ref_file_scope(ref)) {
             if (old->kind == CS_FUNC && x->kind != CS_FUNC &&
                 !fn_pointer_type(c, x->ty))
@@ -4416,8 +4428,9 @@ static void warn_if_shadowing(Checker *c, const CSym *x)
             d = cwarn_d(c, DL_WARNING, x->loc, "shadow", "declaration of '%s' "
                         "shadows a global declaration", sname(c, x));
         } else
-            d = cwarn_d(c, DL_WARNING, x->loc, "shadow", "declaration of '%s' "
-                        "shadows a previous local", sname(c, x));
+            d = cwarn_d(c, DL_WARNING, x->loc, shadow_id(c, old, x),
+                        "declaration of '%s' shadows a previous local",
+                        sname(c, x));
         if (d)
             cnote(c, d, old->loc, "shadowed declaration is here");
         break;

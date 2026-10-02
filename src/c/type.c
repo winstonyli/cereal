@@ -722,8 +722,18 @@ TypeId type_composite(TypeTable *tt, TypeId a, TypeId b)
         TypeId *ps = xmalloc((n ? n : 1) * sizeof *ps);
         for (uint32_t i = 0; i < n; i++) {
             TypeId x = tt->params.data[ea->extra + i];
-            ps[i] = npa || npb ? tt->params.data[p->extra + i]
-                               : type_composite(tt, x, tt->params.data[eb->extra + i]);
+            if (npa || npb) {
+                ps[i] = tt->params.data[p->extra + i];
+                continue;
+            }
+            TypeId y = tt->params.data[eb->extra + i];
+            /* gcc: of a transparent union and one of its member types the
+             * member type is kept, whichever came first */
+            bool ua = type_ckind(tt, x) == TY_UNION &&
+                      (type_record(tt, type_canon(tt, x))->flags & RF_TRANSPARENT);
+            bool ub = type_ckind(tt, y) == TY_UNION &&
+                      (type_record(tt, type_canon(tt, y))->flags & RF_TRANSPARENT);
+            ps[i] = ua && !ub ? y : ub && !ua ? x : type_composite(tt, x, y);
         }
         TypeId r = type_func(tt, ret, ps, n, p->flags & TF_VARIADIC);
         free(ps);

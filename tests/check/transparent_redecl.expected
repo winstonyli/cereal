@@ -1,0 +1,18 @@
+transparent_redecl.c:8:18: warning: passing argument 1 of 'f2' from incompatible pointer type [-Wincompatible-pointer-types]
+    8 | void g(void){ f2(&l); h(&l); }
+      |                  ^
+transparent_redecl.c:3:17: note: expected 'int *' but argument is of type 'long int *'
+    3 | extern void f2 (U2);
+      |                 ^
+transparent_redecl.c:8:25: warning: passing argument 1 of 'h' from incompatible pointer type [-Wincompatible-pointer-types]
+    8 | void g(void){ f2(&l); h(&l); }
+      |                         ^
+transparent_redecl.c:5:16: note: expected 'int *' but argument is of type 'long int *'
+    5 | extern void h (int *);
+      |                ^
+transparent_redecl.c:10:32: warning: passing argument 1 of 'k' from incompatible pointer type [-Wincompatible-pointer-types]
+   10 | void k2(void){ k(__extension__ (char *) 0, 0); }
+      |                                ^
+transparent_redecl.c:9:13: note: expected 'int *' but argument is of type 'char *'
+    9 | void k(int *p, long *q);
+      |             ^

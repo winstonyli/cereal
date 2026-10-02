@@ -343,3 +343,19 @@ layouts, gcc rules ported, walk design).
   -Wlarger-than, -Wdangling-else, shadow=compatible-local); `chk.h` not found
   is the missing gcc.c-torture dir of the sparse checkout (harness artifact).
 
+- Round 7 (2026-10-02, after 3450e7c):
+  * type_composite: of a transparent union parameter and a member type the
+    member type is kept, whichever came first (gcc) -> `f2 (&l)` warns after
+    `f2 (U2); f2 (int *)`.  expr_loc: `__extension__ e` has e's location
+    (call-argument warning column).  Goldens transparent_redecl.
+    Open: gcc's "function types not truly compatible in ISO C" pedwarn (2x per
+    such redeclaration under -pedantic) is not emitted.
+  * Options: -Wshadow=local / =compatible-local / =global (alias of -Wshadow);
+    -Wshadow enables local enables compatible-local; the param/local shadow
+    warning picks its tag by type compatibility (shadow_id).  -Wparentheses
+    enables -Wdangling-else.  Goldens shadow_levels, dangling_paren.
+  * diag.c's id cache (idc_*) grew 128 -> 512 slots: adding two option names
+    moved rodata and two hot ids collided (+1.2% check instructions); back to
+    3.376G.
+  gcc.dg 3614 of 3875 identical (missing 867, extra 363); tests 826.
+

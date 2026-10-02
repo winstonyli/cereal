@@ -1,0 +1,3 @@
+dangling_paren.c:2:27: warning: suggest explicit braces to avoid ambiguous 'else' [-Wdangling-else]
+    2 | void f(int a, int b) { if (a) if (b) a = 1; else a = 2; }
+      |                           ^
