@@ -1,0 +1,60 @@
+attr_args.c:3:1: warning: 'assume_aligned' attribute argument i is not an integer constant [-Wattributes]
+    3 | void *f1 (void) __attribute__((assume_aligned (i)));
+      | ^
+attr_args.c:4:1: warning: 'assume_aligned' attribute argument 15 is not a power of 2 [-Wattributes]
+    4 | void *f2 (void) __attribute__((assume_aligned (15)));
+      | ^
+attr_args.c:5:1: warning: 'assume_aligned' attribute argument i is not an integer constant [-Wattributes]
+    5 | void *f3 (void) __attribute__((assume_aligned (16, i)));
+      | ^
+attr_args.c:6:1: warning: 'assume_aligned' attribute argument 32 is not in the range [0, 15] [-Wattributes]
+    6 | void *f4 (void) __attribute__((assume_aligned (16, 32)));
+      | ^
+attr_args.c:7:1: warning: 'assume_aligned' attribute argument -1 is not positive [-Wattributes]
+    7 | void *f5 (void) __attribute__((assume_aligned (16, -1)));
+      | ^
+attr_args.c:8:1: warning: 'assume_aligned' attribute argument 0 is not a power of 2 [-Wattributes]
+    8 | void *f6 (void) __attribute__((assume_aligned (0)));
+      | ^
+attr_args.c:9:1: warning: 'assume_aligned' attribute argument 1.5e+0 is not an integer constant [-Wattributes]
+    9 | void *f7 (void) __attribute__((assume_aligned (1.5)));
+      | ^
+attr_args.c:10:1: warning: 'assume_aligned' attribute ignored on a function returning 'int' [-Wattributes]
+   10 | int f8 (void) __attribute__((assume_aligned (16)));
+      | ^
+attr_args.c:12:1: warning: 'assume_aligned' attribute argument "x" is not an integer constant [-Wattributes]
+   12 | void *f10 (void) __attribute__((assume_aligned ("x")));
+      | ^
+attr_args.c:13:1: warning: 'assume_aligned' attribute argument -16 is not positive [-Wattributes]
+   13 | void *f11 (void) __attribute__((assume_aligned (-16)));
+      | ^
+attr_args.c:14:1: warning: 'assume_aligned' attribute only applies to function types [-Wattributes]
+   14 | int v __attribute__((assume_aligned (16)));
+      | ^
+attr_args.c:16:5: error: 'strict_flex_array' attribute may not be specified for 'sx'
+   16 | int sx __attribute__ ((strict_flex_array (1)));
+      |     ^
+attr_args.c:18:5: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+   18 | int [[gnu::strict_flex_array(1)]] sy;
+      |     ^
+attr_args.c:18:1: warning: 'strict_flex_array' attribute does not apply to types [-Wattributes]
+   18 | int [[gnu::strict_flex_array(1)]] sy;
+      | ^
+attr_args.c:22:5: error: wrong number of arguments specified for 'strict_flex_array' attribute
+   22 |     int c __attribute ((strict_flex_array));
+      |     ^
+attr_args.c:22:5: note: expected 1, found 0
+   22 |     int c __attribute ((strict_flex_array));
+      |     ^
+attr_args.c:28:9: error: 'strict_flex_array' attribute may not be specified for a non-array field
+   28 |     int c __attribute ((strict_flex_array (2)));
+      |         ^
+attr_args.c:36:9: error: 'strict_flex_array' attribute argument not an integer
+   36 |     int c[1] __attribute ((strict_flex_array (d)));
+      |         ^
+attr_args.c:42:9: warning: ISO C forbids zero-size array 'c' [-Wpedantic]
+   42 |     int c[0] __attribute ((strict_flex_array (5)));
+      |         ^
+attr_args.c:42:9: error: 'strict_flex_array' attribute argument '5' is not an integer constant between 0 and 3
+   42 |     int c[0] __attribute ((strict_flex_array (5)));
+      |         ^

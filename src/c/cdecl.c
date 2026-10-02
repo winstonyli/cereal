@@ -312,7 +312,7 @@ static void gnu_attr_argc(Checker *c, uint32_t attr)
 {
     static const struct { const char *n; uint32_t lo, hi; } t[] = {
         {"access", 1, 3}, {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"copy", 1, 1},
-        {"section", 1, 1}};
+        {"section", 1, 1}, {"strict_flex_array", 1, 1}};
     Kids k;
     uint32_t j;
     if (tokp(c, cnode(c, attr)->tok)->kind == TK_PUNCT)
@@ -360,6 +360,13 @@ static void gnu_attr_argc(Checker *c, uint32_t attr)
     kids_free(&k);
 }
 
+/* [[ns::name]]: the token of ns is followed by :: (two colons). */
+static bool attr_scope_of(Checker *c, uint32_t tok)
+{
+    return c->opt.gnu && tpunct(c, tok + 1) == P_COLON &&
+           tpunct(c, tok + 2) == P_COLON;
+}
+
 /* gcc's c_parser_std_attribute: a name without a namespace that is not one
  * of the standard attributes is pedwarned and dropped, at input_location
  * with the lookahead just past the name and its arguments.  (Before C2X
@@ -380,14 +387,23 @@ static void std_attr_unknown(Checker *c, uint32_t attr)
         size_t n;
         if (ntag(c, k.p[j]) != N_ATTR_ITEM)
             continue;
-        attr_norm(tstr(c, c->nodes[k.p[j]].tok), name, sizeof name);
+        uint32_t at = c->nodes[k.p[j]].tok;
+        attr_norm(tstr(c, at), name, sizeof name);
+        if (c->opt.gnu && at >= 2 && tpunct(c, at - 1) == P_COLON &&
+            tpunct(c, at - 2) == P_COLON)
+            continue;           /* gnu::name, taken as a GNU attribute */
         for (n = 0; n < sizeof known / sizeof *known; n++)
             if (!strcmp(name, known[n]))
                 break;
         if (n < sizeof known / sizeof *known)
             continue;
-        cwarn(c, iloc(c, last_tok(c, k.p[j]) + 1), "attributes",
-              "'%s' attribute ignored", name);
+        if (attr_scope_of(c, at))
+            cwarn(c, iloc(c, last_tok(c, k.p[j]) + 1), "attributes",
+                  "'%s::%s' scoped attribute directive ignored", name,
+                  tstr(c, at + 3));
+        else
+            cwarn(c, iloc(c, last_tok(c, k.p[j]) + 1), "attributes",
+                  "'%s' attribute ignored", name);
     }
 }
 
@@ -652,10 +668,11 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                                !strcmp(name, "weakref")))
             a->defn = true;
         if (c->attr_defer && !c->attr_quiet && strcmp(name, "gnu") &&
-            !attr_known(name)) {
+            !attr_known(name) && !attr_scope_of(c, c->nodes[item].tok)) {
             if (a->nunk < 2)
                 snprintf(a->unk[a->nunk++], sizeof a->unk[0], "%s", name);
-        } else if (!c->attr_quiet && strcmp(name, "gnu") && !attr_known(name))   /* gnu:: is a [[]] scope */
+        } else if (!c->attr_quiet && strcmp(name, "gnu") && !attr_known(name) &&
+                   !attr_scope_of(c, c->nodes[item].tok))   /* gnu:: is a [[]] scope */
             cwarn(c, c->attr_at_set ? c->attr_at : iloc(c, c->nodes[item].tok),
                   "attributes", "'%s' attribute directive ignored", name);
         if (!strcmp(name, "aligned")) {
@@ -1286,6 +1303,113 @@ static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno
     return true;
 }
 
+/* handle_assume_aligned_attribute, for a function of type fty. */
+static void assume_aligned_check(Checker *c, const uint32_t *arg, uint32_t n,
+                                 TypeId fty, SrcLoc loc)
+{
+    TypeId rt = type_base(TT, fty);
+    uint32_t k;
+    int64_t first = 0;
+    if (type_ckind(TT, rt) != TY_PTR) {
+        cwarn(c, loc, "attributes", "'assume_aligned' attribute ignored on a "
+              "function returning %s", type_q(TT, rt));
+        return;
+    }
+    for (k = 0; k < n && k < 2; k++) {
+        char val[96];
+        int64_t v;
+        if (type_ckind(TT, c->ty[arg[k]]) == TY_ERROR)
+            return;
+        pos_arg_str(c, arg[k], val, sizeof val);
+        if (!type_is_integer(TT, c->ty[arg[k]]) ||
+            (c->ck[arg[k]] != K_ICE && c->ck[arg[k]] != K_FOLD)) {
+            cwarn(c, loc, "attributes", "'assume_aligned' attribute argument "
+                  "%s is not an integer constant", val);
+            return;
+        }
+        v = cexpr_sval(c, arg[k]);
+        if (v < 0) {
+            cwarn(c, loc, "attributes", "'assume_aligned' attribute argument "
+                  "%s is not positive", val);
+            return;
+        }
+        if (k == 0) {
+            if (v == 0 || (v & (v - 1))) {
+                cwarn(c, loc, "attributes", "'assume_aligned' attribute "
+                      "argument %s is not a power of 2", val);
+                return;
+            }
+            first = v;
+        } else if (v >= first) {
+            cwarn(c, loc, "attributes", "'assume_aligned' attribute argument "
+                  "%s is not in the range [0, %lld]", val,
+                  (long long)first - 1);
+            return;
+        }
+    }
+}
+
+/* handle_strict_flex_array_attribute: only an array field may carry it, with
+ * an integer constant argument in 0..3. */
+static void strict_flex_check(Checker *c, uint32_t holder, bool field,
+                              TypeId ty, uint32_t name, SrcLoc loc,
+                              uint32_t tok0)
+{
+    Kids k;
+    uint32_t j;
+    kids_get(c, holder, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n; q++) {
+            char an[32];
+            Kids ak;
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+            if (strcmp(an, "strict_flex_array"))
+                continue;
+            if (tok0 != NO_NODE && c->nodes[k.p[j]].tok > tok0 &&
+                tokp(c, c->nodes[k.p[j]].tok)->kind == TK_PUNCT) {
+                /* [[...]] after a type specifier appertains to the type */
+                cwarn(c, tloc(c, tok0), "attributes", "'strict_flex_array' "
+                      "attribute does not apply to types");
+                continue;
+            }
+            if (!field) {
+                cerror(c, loc, "'strict_flex_array' attribute may not be "
+                       "specified for '%s'", cident(c, name));
+                continue;
+            }
+            kids_get(c, it.p[q], &ak);
+            if (ak.n == 1 && type_ckind(TT, c->ty[ak.p[0]]) != TY_ERROR) {
+                uint32_t a0 = ak.p[0];
+                bool ice = type_is_integer(TT, c->ty[a0]) &&
+                           (c->ck[a0] == K_ICE || c->ck[a0] == K_FOLD);
+                int64_t v = ice ? cexpr_sval(c, a0) : 0;
+                char val[96];
+                pos_arg_str(c, a0, val, sizeof val);
+                if (!ice)
+                    cerror(c, loc, "'strict_flex_array' attribute argument "
+                           "not an integer");
+                else if (v < 0 || v > 3)
+                    cerror(c, loc, "'strict_flex_array' attribute argument "
+                           "'%s' is not an integer constant between 0 and 3",
+                           val);
+                else if (type_ckind(TT, ty) != TY_ARRAY)
+                    cerror(c, loc, "'strict_flex_array' attribute may not be "
+                           "specified for a non-array field");
+            }
+            kids_free(&ak);
+        }
+        kids_free(&it);
+    }
+    kids_free(&k);
+}
+
 /* handle_alloc_align_attribute / handle_alloc_size_attribute for the
  * attributes among holder's children, applied to a function of type fty. */
 static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
@@ -1324,6 +1448,13 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                       "'warn_unused_result' attribute ignored");
                 if (c->nign < 8)
                     snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", name);
+                continue;
+            }
+            if (!strcmp(name, "assume_aligned")) {
+                kids_get(c, it.p[q], &ak);
+                if (ak.n && ak.n <= 2)
+                    assume_aligned_check(c, ak.p, ak.n, fty, iloc(c, tok));
+                kids_free(&ak);
                 continue;
             }
             if (!align && strcmp(name, "alloc_size"))
@@ -4901,6 +5032,17 @@ static void declared_visit(Checker *c, uint32_t i)
         attrs_alloc_check(c, sn, type_base(TT, s.ty), ltok);
         attrs_alloc_check(c, idecl, type_base(TT, s.ty), ltok);
     }
+    if (s.kind == CS_OBJ) {
+        strict_flex_check(c, sn, false, s.ty, s.name, s.loc, sp.tok0);
+        strict_flex_check(c, idecl, false, s.ty, s.name, s.loc, NO_NODE);
+    }
+    if (s.kind == CS_OBJ && !(type_ckind(TT, s.ty) == TY_PTR &&
+        type_ckind(TT, type_base(TT, s.ty)) == TY_FUNC) &&
+        (attrs_item_named(c, sn, "assume_aligned") ||
+         attrs_item_named(c, idecl, "assume_aligned"))) {
+        cwarn(c, iloc(c, ltok), "attributes", "'assume_aligned' attribute only "
+              "applies to function types");
+    }
     bool ign_packed = false, ign_aligned = false;
     if (s.kind == CS_FUNC || s.kind == CS_OBJ) {
         AttrState st = {0};
@@ -6050,6 +6192,8 @@ static void member_visit(Checker *c, uint32_t i)
     attrs_merge(&a, &sp.attrs);
     attrs_misapplied(c, &a, 'm', false, w == NO_NODE ? g.ty : 0, ltok);
     attrs_section_check(c, &a, 'm', false, g.name, g.loc);
+    strict_flex_check(c, sp.node, true, g.ty, g.name, g.loc, sp.tok0);
+    strict_flex_check(c, i, true, g.ty, g.name, g.loc, NO_NODE);
     attrs_wina_check(c, &a, 'm', g.width >= 0, g.name, g.loc);
     memset(&fi, 0, sizeof fi);
     fi.name = g.name;

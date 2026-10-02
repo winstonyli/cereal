@@ -788,6 +788,24 @@ static void std_attribute(Parser *p)
         PTok t = ct(p);
         if (t.t.kind == TK_IDENT) {
             uint32_t s = nmark(p), name = adv(p);
+            PTok c2 = pk(p, 1);
+            if (p->gnu && at(p, P_COLON) && is_p(&c2, P_COLON) &&
+                !(c2.t.flags & TF_SPACE)) {
+                /* scope::name (the lexer has no :: token); gnu:: is
+                 * dropped, any other scope keeps the attribute unknown */
+                PTok n2 = pk(p, 2);
+                if (n2.t.kind == TK_IDENT) {
+                    const Ident *sc = ident_by_id(p->in, p->toks.data[name].t.aux);
+                    bool gnu_scope = !strcmp(sc->str, "gnu") ||
+                                     !strcmp(sc->str, "__gnu__");
+                    adv(p);
+                    adv(p);
+                    if (gnu_scope)
+                        name = adv(p);
+                    else
+                        adv(p);
+                }
+            }
             if (accept(p, P_LPAREN)) {
                 if (!std_attr_known(p, name)) {
                     int depth = 0;      /* c_parser_balanced_token_sequence */
