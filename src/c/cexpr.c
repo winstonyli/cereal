@@ -4014,6 +4014,8 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
             conv_arith(&x);        /* a bit-field is narrower than its type */
         return true;
     }
+    if (kl == TY_BOOL && expr != NO_NODE && gcc_integer(c, cr))
+        cexpr_truth_warn(c, expr, cinput_loc(c, c->nodes[expr].tok));
     if (kr == TY_VOID) {
         if (ci->warnopt)
             cwarn(c, x.loc, ci->warnopt, "void value not ignored as it ought "
@@ -8271,7 +8273,7 @@ static void e_cast(Checker *c, uint32_t i)
     packed_ptr_check(c, t, a);
     if (is_ptr(c, t))
         alias_cast(c, a, c->ty[i]);
-    if (tk == TY_BOOL && is_ptr(c, ot))
+    if (tk == TY_BOOL && (is_ptr(c, ot) || is_int(c, ot)))
         cexpr_truth_warn(c, a, cinput_loc(c, c->nodes[i].tok));
     /* -Wbad-function-cast: a call cast to a type of another tree code */
     if (ntag(c, strip_paren(c, a)) == N_CALL && diag_enabled(c->diag, "bad-function-cast") &&
@@ -9759,6 +9761,69 @@ static bool val_lt(uint64_t a, uint64_t b, bool sgn)
     return sgn ? (int64_t)a < (int64_t)b : a < b;
 }
 
+/* The ~E of a comparison operand x, E an unsigned value narrower than the
+ * type x is compared in: *w is that type's width, *p the width of E before
+ * its promotion (-Wsign-compare's "promoted bitwise complement"). */
+static bool bitnot_operand(Checker *c, uint32_t x, unsigned *w, unsigned *p)
+{
+    uint32_t u = strip_paren(c, x), k[3];
+    TypeId t;
+    unsigned prec;
+    if (u == NO_NODE)
+        return false;
+    *w = int_bits(c, rvt(c, u));
+    if (ntag(c, u) == N_CAST) {
+        unsigned n = nkids(c, u, k, 3);
+        if (!n || !is_int(c, c->ty[u]))
+            return false;
+        *w = int_bits(c, c->ty[u]);
+        u = strip_paren(c, k[n - 1]);
+    }
+    if (u == NO_NODE || ntag(c, u) != N_UNARY || npunct(c, u) != P_TILDE ||
+        nkids(c, u, k, 2) < 1)
+        return false;
+    narrower(c, k[0], &t, &prec);
+    if (!is_int(c, t) || is_signed(c, t) || tkind(c, t) == TY_BOOL)
+        return false;
+    *p = prec ? prec : int_bits(c, t);
+    return *p < *w;
+}
+
+/* The "promoted bitwise complement of an unsigned value" warnings: ~E can
+ * only equal values with ones above E's width. */
+static bool bitnot_cmp(Checker *c, SrcLoc loc, uint32_t a, uint32_t b)
+{
+    unsigned w, p, i;
+    for (i = 0; i < 2; i++) {
+        uint32_t x = i ? b : a, y = strip_paren(c, i ? a : b);
+        if (!bitnot_operand(c, x, &w, &p))
+            continue;
+        if (is_intcst(c, y)) {
+            uint64_t m = w >= 64 ? ~UINT64_C(0) : (UINT64_C(1) << w) - 1;
+            uint64_t ones = m & ~((UINT64_C(1) << p) - 1);
+            uint64_t v = c->cv[y] & m;
+            if ((v & ones) == ones)
+                return false;
+            cwarn(c, loc, "sign-compare", c->cv[y] == 0 ?
+                  "promoted bitwise complement of an unsigned value is always "
+                  "nonzero" : "comparison of promoted bitwise complement of an "
+                  "unsigned value with constant");
+            return true;
+        } else {
+            TypeId t;
+            unsigned prec;
+            narrower(c, y, &t, &prec);
+            if (!is_int(c, t) || is_signed(c, t) || tkind(c, t) == TY_BOOL ||
+                (prec ? prec : int_bits(c, t)) >= w)
+                return false;
+            cwarn(c, loc, "sign-compare", "comparison of promoted bitwise "
+                  "complement of an unsigned value with unsigned");
+            return true;
+        }
+    }
+    return false;
+}
+
 /* shorten_compare's diagnostics.  True when gcc folds the comparison (and
  * so skips the sign-compare check). */
 static bool type_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
@@ -10662,6 +10727,14 @@ void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc)
 {
     AddrInfo ai;
     uint32_t s = strip_paren(c, n), k[3];
+    unsigned bw, bp;
+    if (diag_enabled(c->diag, "sign-compare") && !node_err(c, n) &&
+        !inhibited(c, n, false) && ntag(c, s) == N_UNARY &&
+        bitnot_operand(c, s, &bw, &bp)) {
+        cwarn(c, loc, "sign-compare", "promoted bitwise complement of an "
+              "unsigned value is always nonzero");
+        return;
+    }
     for (;;) { /* pointer conversions and '+ 0' fold away */
         if (ntag(c, s) == N_CAST && is_ptr(c, mainv(c, c->ty[s])) &&
             (nkids(c, s, k, 3) >= 1)) {
@@ -10970,6 +11043,9 @@ static bool compare_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b,
                 rt = tb;
         }
     }
+    if (!inhibited(c, i, false) && diag_enabled(c->diag, "sign-compare") &&
+        bitnot_cmp(c, loc, a, b))
+        return bfold;
     folded = type_limits(c, i, a, b, op, rt, loc);
     if (!folded && !inhibited(c, i, false) && diag_enabled(c->diag, "sign-compare"))
         sign_compare(c, loc, a, b, op, rt);

@@ -1021,3 +1021,14 @@ layouts, gcc rules ported, walk design).
   type (the `'%s'` in `cmp_param` messages became `%s`). Wvla-parameter-4.c is identical. Golden
   `vla_param_typedef_ptrs`. Still differing: `IA3 x[*]` vs `IA3 x[n]` (gcc's first-bound quirk), `IA3 *(*x)[*]`.
 - Parity: tests 1005, gcc.dg 3660 identical (215 differ), c-c++-common 559 (98), san clean (331).
+
+### Round 46 — -Wsign-compare: promoted bitwise complement
+- cexpr.c `bitnot_operand`/`bitnot_cmp`: in a comparison, `~E` (E unsigned, narrower than the type the operand is
+  compared in, W; casts set W) against a constant whose bits p..W-1 are not all ones ("with constant", or "is always
+  nonzero" for 0) or against an unsigned operand narrower than W ("with unsigned"). Reported at the operator,
+  replaces the ordinary sign-compare/type-limits check. `cexpr_truth_warn` gives the "always nonzero" form for `~E` in
+  truth contexts (`if`, `!`, `&&`, `?:`, casts and conversions to `_Bool`). Golden `sign_compare_bitnot`.
+- Open: `b = c ? ~c : 0` (gcc folds the bool conversion into the arms). The survey's other sign-compare misses are
+  vector-compare-4.c (12, vector element signedness) and pr35430.c (complex int). `-Warray-bounds` has no misses left
+  in the gcc.dg/c-c++-common/-O lists (the "60" in the earlier note was stale).
+- Parity: tests 1007, gcc.dg 3662 identical (213 differ), c-c++-common 560 (97), san clean (332).
