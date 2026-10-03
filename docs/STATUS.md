@@ -855,3 +855,26 @@ layouts, gcc rules ported, walk design).
   '__builtin_has_attribute'", at the attribute token; result 0).
   builtin-has-attribute-4.c has no gcc-only diagnostics left.  Goldens:
   attr_fmt_noproto, attr_has_warn.
+
+- Round 36: three fixes.  (1) A local typedef that is redeclared in its scope
+  counts as used (gcc gives no -Wunused-local-typedefs), and a variable named
+  in __builtin_has_attribute counts as used (a function does not: it keeps
+  "declared 'static' but never defined").  c-c++-common/builtin-has-attribute-4.c
+  is identical now.  (2) A call to a no-prototype built-in with too few
+  arguments warns first and then skips the nonnull and format checks
+  (check_builtin_function_arguments fails); builtins.c is identical.  (3)
+  access attribute merging (append_access_attrs): per function, one accepted
+  access attribute per pointer argument, the first wins; a later one for the
+  same pointer is dropped with "attribute 'access(M, P[, S])' mismatch with
+  mode 'M0'" / "positional argument 2 missing in previous designation" /
+  "missing positional argument 2 provided in previous designation by
+  argument S0" / "mismatched positional argument values S and S0", at the
+  declarator name, with "previous declaration here" when an earlier
+  declaration exists (acc_start / acc_replay / acc_add in cdecl.c; the replay
+  reads the symbol's attribute chain lazily so the summary records no extra
+  lookups).  Checked against gcc-13 on all 36x36 pairs, same declaration and
+  redeclaration (no checked-in generator; see the goldens).  Goldens:
+  local_typedef_redecl, builtin_few_nofmt, attr_access_redecl.  Tests 965;
+  gcc.dg 3649, c-c++-common 552.  Gaps: the access attribute implied by VLA
+  parameters (attr-access-2.c, Wvla-parameter-7.c: "conflicts with previous
+  designation", "designating the bound of variable length array argument").

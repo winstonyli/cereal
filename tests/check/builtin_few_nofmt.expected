@@ -1,0 +1,24 @@
+builtin_few_nofmt.c:3:1: warning: 'format' attribute cannot be applied to a function that does not take variable arguments [-Wattributes]
+    3 | int vfscanf ();
+      | ^
+builtin_few_nofmt.c:4:1: warning: 'format' attribute cannot be applied to a function that does not take variable arguments [-Wattributes]
+    4 | int vprintf ();
+      | ^
+builtin_few_nofmt.c:7:12: warning: passing argument 1 of 'vfscanf' makes pointer from integer without a cast [-Wint-conversion]
+    7 |   vfscanf (1, "");
+      |            ^
+builtin_few_nofmt.c:3:5: note: expected 'void *' but argument is of type 'int'
+    3 | int vfscanf ();
+      |     ^
+builtin_few_nofmt.c:7:3: warning: too few arguments to built-in function 'vfscanf' expecting 3 [-Wbuiltin-declaration-mismatch]
+    7 |   vfscanf (1, "");
+      |   ^
+builtin_few_nofmt.c:3:5: note: declared here
+    3 | int vfscanf ();
+      |     ^
+builtin_few_nofmt.c:8:3: warning: too few arguments to built-in function 'vprintf' expecting 2 [-Wbuiltin-declaration-mismatch]
+    8 |   vprintf ("");
+      |   ^
+builtin_few_nofmt.c:4:5: note: declared here
+    4 | int vprintf ();
+      |     ^

@@ -245,7 +245,7 @@ static bool in_extension(Checker *c, uint32_t node)
 
 /* ---- attributes ---------------------------------------------------------- */
 
-static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
+static bool access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
                          TypeId ft);
 
 /* The attribute's name without the leading and trailing "__". */
@@ -1307,7 +1307,7 @@ static void pos_arg_str(Checker *c, uint32_t arg, char *buf, size_t n)
 
 /* handle_access_attribute: the mode, then up to two positional arguments
  * checked against the function type of the declaration (when known). */
-static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
+static bool access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
                          TypeId ft)
 {
     static const char *const mo[] = {"read_only", "read_write", "write_only",
@@ -1321,7 +1321,7 @@ static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
         if (ntag(c, cal) != N_IDENT)
             cal = NO_NODE;
         if (cal == NO_NODE)
-            return;
+            return false;
         mode = tstr(c, c->nodes[cal].tok);
         attr_norm(mode, md, sizeof md);
         for (q = 0; q < 4; q++)
@@ -1333,14 +1333,14 @@ static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
             cerror(c, il, "attribute 'access' invalid mode '%s'; expected one "
                    "of 'read_only', 'read_write', 'write_only', or 'none'",
                    mode);
-        return;
+        return false;
     }
     if (ntag(c, x) != N_IDENT) {
         if (type_ckind(TT, c->ty[x]) != TY_ERROR)
             cerror(c, il, "attribute 'access' mode '%s' is not an identifier; "
                    "expected one of 'read_only', 'read_write', 'write_only', "
                    "or 'none'", cexpr_str(c, x));
-        return;
+        return false;
     }
     mode = tstr(c, c->nodes[x].tok);
     attr_norm(mode, md, sizeof md);
@@ -1352,11 +1352,11 @@ static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
     if (!ok) {
         cerror(c, il, "attribute 'access' invalid mode '%s'; expected one of "
                "'read_only', 'read_write', 'write_only', or 'none'", mode);
-        return;
+        return false;
     }
     if (n < 2) {
         cerror(c, il, "attribute 'access(%s)' missing an argument", md);
-        return;
+        return false;
     }
     snprintf(list, sizeof list, "%s", md);
     for (q = 1; q < n && q < 3; q++) {
@@ -1368,19 +1368,19 @@ static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
         uint32_t e = arg[q];
         int64_t v;
         if (type_ckind(TT, c->ty[e]) == TY_ERROR)
-            return;
+            return false;
         if (!(c->ck[e] == K_ICE || c->ck[e] == K_FOLD) ||
             !type_is_integer(TT, c->ty[e])) {
             cerror(c, il, "attribute 'access(%s)' invalid positional argument "
                    "%u", list, q);
-            return;
+            return false;
         }
         v = cexpr_sval(c, e);
         pos_arg_str(c, e, val, sizeof val);
         if (v < 1) {
             cerror(c, il, "attribute 'access(%s)' positional argument %u "
                    "invalid value %s", list, q, val);
-            return;
+            return false;
         }
         if (ft && type_ckind(TT, ft) == TY_FUNC) {
             const TypeEnt *fe = type_ent(TT, ft);
@@ -1391,7 +1391,7 @@ static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
                 cerror(c, il, "attribute 'access(%s)' positional argument %u "
                        "value %s exceeds number of function arguments %u",
                        list, q, val, (unsigned)fe->n);
-                return;
+                return false;
             }
             pt = type_params(TT, ft)[v - 1];
             if (q == 1) {
@@ -1400,29 +1400,29 @@ static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
                     cerror(c, il, "attribute 'access(%s)' positional argument "
                            "1 references non-pointer argument type %s", list,
                            type_q(TT, pt));
-                    return;
+                    return false;
                 }
                 tgt = type_base(TT, pt);
                 if (type_ckind(TT, tgt) == TY_FUNC) {
                     cerror(c, il, "attribute 'access(%s)' positional argument "
                            "1 references argument of function type %s", list,
                            type_q(TT, tgt));
-                    return;
+                    return false;
                 }
                 if (m >= 1 && m <= 2 && (TYPE_QUALS(tgt) & TQ_CONST)) {
                     cerror(c, il, "attribute 'access(%s)' positional argument "
                            "1 references 'const'-qualified argument type %s",
                            list, type_q(TT, pt));
-                    return;
+                    return false;
                 }
             } else if (!type_is_integer(TT, pt)) {
                 cerror(c, il, "attribute 'access(%s)' positional argument 2 "
                        "references non-integer argument type %s", list,
                        type_q(TT, pt));
-                return;
+                return false;
             }
         }
-    }
+    }    return true;
 }
 
 /* c-attribs.cc positional_argument for one argument of alloc_align or
@@ -1590,6 +1590,7 @@ static bool alloc_via_ptr;
  * for a function so that a redeclaration's alloc_size / alloc_align can be
  * compared with the previous declaration's. */
 static uint32_t alloc_name;
+static SrcLoc alloc_loc;
 
 /* decl_attributes: an attribute that needs a function type, written on an
  * object or typedef whose type is neither a function nor a pointer to one. */
@@ -1672,6 +1673,112 @@ static void alloc_redecl(Checker *c, uint32_t item, const char *name, SrcLoc loc
         snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", name);
 }
 
+/* c-attribs.cc append_access_attrs: the access attributes a function has
+ * accepted so far, one per pointer argument; the first one wins and a
+ * conflicting later one is dropped with a warning. */
+typedef struct {
+    char mode[16];
+    uint32_t ptr, size;
+} AccSeen;
+static AccSeen acc_l[32];
+static unsigned acc_n;
+
+static bool acc_parse(const char *arg, AccSeen *o)
+{
+    char md[32];
+    const char *q = strchr(arg, ',');
+    char *e;
+    unsigned long p, z = 0;
+    if (!q || (size_t)(q - arg) >= sizeof md)
+        return false;
+    memcpy(md, arg, (size_t)(q - arg));
+    md[q - arg] = 0;
+    attr_norm(md, o->mode, sizeof o->mode);
+    p = strtoul(q + 1, &e, 10);
+    if (e == q + 1 || !p)
+        return false;
+    if (*e == ',')
+        z = strtoul(e + 1, &e, 10);
+    o->ptr = (uint32_t)p;
+    o->size = (uint32_t)z;
+    return true;
+}
+
+static void acc_add(Checker *c, const AccSeen *x, bool warn)
+{
+    unsigned i;
+    char spec[96], sz[16] = "";
+    Diagnostic *d = NULL;
+    const AccSeen *e = NULL;
+    for (i = 0; i < acc_n; i++)
+        if (acc_l[i].ptr == x->ptr) {
+            e = &acc_l[i];
+            break;
+        }
+    if (!e) {
+        if (acc_n < 32)
+            acc_l[acc_n++] = *x;
+        return;
+    }
+    if (!warn)
+        return;
+    if (x->size)
+        snprintf(sz, sizeof sz, ", %u", x->size);
+    snprintf(spec, sizeof spec, "access(%s, %u%s)", x->mode, x->ptr, sz);
+    if (strcmp(e->mode, x->mode))
+        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+                    "mismatch with mode '%s'", spec, e->mode);
+    else if (!e->size && x->size)
+        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+                    "positional argument 2 missing in previous designation",
+                    spec);
+    else if (e->size && !x->size)
+        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+                    "missing positional argument 2 provided in previous "
+                    "designation by argument %u", spec, e->size);
+    else if (e->size != x->size)
+        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+                    "mismatched positional argument values %u and %u", spec,
+                    x->size, e->size);
+    if (d) {
+        uint32_t ref = lookup_ord(c, alloc_name);
+        if (ref != SYM_NONE && csym(c, ref)->kind == CS_FUNC)
+            cnote(c, d, csym(c, ref)->loc, "previous declaration here");
+    }
+}
+
+static bool acc_ready;
+
+/* Start a function declaration; the lookup that replays its earlier
+ * declarations waits for the first access attribute (a lookup is recorded
+ * in the unit's summary). */
+static void acc_start(uint32_t name, SrcLoc loc)
+{
+    alloc_name = name;
+    alloc_loc = loc;
+    acc_n = 0;
+    acc_ready = false;
+}
+
+/* Replay what the earlier declarations accepted (the symbol's attribute
+ * chain, oldest first). */
+static void acc_replay(Checker *c)
+{
+    uint32_t ref = lookup_ord(c, alloc_name), idx[64], n = 0, k, i;
+    acc_ready = true;
+    if (ref == SYM_NONE || csym(c, ref)->kind != CS_FUNC || !csym(c, ref)->aset)
+        return;
+    for (k = c->ahead.data[csym(c, ref)->aset - 1]; k && n < 64;
+         k = c->anames.data[k - 1].prev)
+        if (!strcmp(c->anames.data[k - 1].name, "access"))
+            idx[n++] = k;
+    for (i = n; i-- > 0;) {
+        AccSeen x;
+        if (acc_parse(c->anames.data[idx[i] - 1].arg, &x))
+            acc_add(c, &x, false);
+    }
+}
+
 /* handle_alloc_align_attribute / handle_alloc_size_attribute for the
  * attributes among holder's children, applied to a function of type fty. */
 static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
@@ -1732,8 +1839,17 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
             }
             if (!strcmp(name, "access")) {
                 kids_get(c, it.p[q], &ak);
-                if (ak.n)
-                    access_check(c, ak.p, ak.n, iloc(c, tok), fty);
+                if (ak.n && access_check(c, ak.p, ak.n, iloc(c, tok), fty) &&
+                    alloc_name && !alloc_via_ptr &&
+                    type_ckind(TT, fty) == TY_FUNC) {
+                    char buf[64];
+                    AccSeen x;
+                    cdecl_attr_args(c, it.p[q], buf, sizeof buf);
+                    if (!acc_ready)
+                        acc_replay(c);
+                    if (acc_parse(buf, &x))
+                        acc_add(c, &x, true);
+                }
                 kids_free(&ak);
                 continue;
             }
@@ -4765,9 +4881,11 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     bool ext_new = sym_external(nw), pub, ext_final, static_final;
     bool infunc = c->func_sym != SYM_NONE;
     CSym m = *nw;
-    if (nw->kind == CS_TYPEDEF)
+    if (nw->kind == CS_TYPEDEF) {
         m.ty = o->ty;
-    else
+        if (infunc)
+            m.flags |= CSF_USED;   /* gcc: a redeclared local typedef is used */
+    } else
         m.ty = type_composite(TT, newtype, oldtype);
     if ((!sym_defined(nw) && sym_defined(o)) || (old_proto && !new_proto))
         m.loc = o->loc;
@@ -5531,7 +5649,7 @@ static void declared_visit(Checker *c, uint32_t i)
     if (g.what == GD_FUNC && s.kind == CS_FUNC) {
         /* the declared type keeps the typedef names of the parameters */
         TypeId aft = type_kind(TT, s.ty) == TY_FUNC ? s.ty : type_canon(TT, s.ty);
-        alloc_name = s.name;
+        acc_start(s.name, s.loc);
         attrs_alloc_check(c, sn, aft, ltok);
         attrs_alloc_check(c, idecl, aft, ltok);
         alloc_name = 0;
@@ -7468,7 +7586,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     if (g.what != GD_FUNC || !is_func(c, g.s.ty))
         return;
     attrs_unknown_emit(c, &sp.attrs, ltok);
-    alloc_name = g.s.name;
+    acc_start(g.s.name, g.s.loc);
     attrs_alloc_check(c, fp.specs, type_kind(TT, g.s.ty) == TY_FUNC ? g.s.ty :
                       type_canon(TT, g.s.ty), ltok);
     alloc_name = 0;

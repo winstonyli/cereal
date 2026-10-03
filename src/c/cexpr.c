@@ -2171,7 +2171,7 @@ static void reject_builtin(Checker *c, uint32_t i, const char *name)
     cerror(c, loc, "built-in function '%s' must be directly called", name);
 }
 
-/* An operand of __builtin_has_attribute names a declaration without using it. */
+/* An operand of __builtin_has_attribute names a function without using it. */
 static bool in_has_attr(const Checker *c, uint32_t i)
 {
     unsigned depth;
@@ -2262,7 +2262,9 @@ static void e_ident(Checker *c, uint32_t i)
         return;
     }
     s = csym(c, ref);
-    if (!in_has_attr(c, i))
+    /* gcc marks a variable named in __builtin_has_attribute used; a function
+     * stays unused ("declared static but never defined") */
+    if (s->kind != CS_FUNC || !in_has_attr(c, i))
         s->flags |= CSF_USED;
     if (c->func_sym != SYM_NONE && !(ref & SYM_LOCAL) &&
         (s->kind == CS_OBJ || s->kind == CS_FUNC) && s->linkage == LK_INTERNAL)
@@ -5364,7 +5366,7 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
     TypeId fty = type_canon(TT, pointee(c, ft));
     const TypeEnt *fe = type_ent(TT, fty);
     bool proto = !(fe->flags & TF_NOPROTO), variadic = (fe->flags & TF_VARIADIC) != 0;
-    bool bad = false, too_many = false;
+    bool bad = false, too_many = false, builtin_few = false;
     uint32_t fnode = strip_paren(c, fn), fref = SYM_NONE, nparm = (uint32_t)fe->n;
     TypeId ufty = pointee(c, ft);
     const TypeId *pt, *bpt = NULL;
@@ -5463,7 +5465,19 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
             }
         }
     }
-    if (!too_many && !bad && fref != SYM_NONE) {
+    /* check_builtin_function_arguments fails: no nonnull / format checks */
+    if (!too_many && !proto && bn != NO_NODE && bn != 0xFFFFFFFEu &&
+        nk - 1 < bn)
+    {
+        builtin_few = true;
+        Diagnostic *d = cwarn_d(c, DL_WARNING, loc,
+                                "builtin-declaration-mismatch", "too few "
+                                "arguments to built-in function '%s' expecting "
+                                "%u", fname, bn);
+        if (d && fref != SYM_NONE && !(csym(c, fref)->flags & CSF_IMPLICIT))
+            cnote(c, d, csym(c, fref)->loc, "declared here");
+    }
+    if (!too_many && !bad && !builtin_few && fref != SYM_NONE) {
         uint64_t mask = csym(c, fref)->nonnull;
         if (builtin_decl_ok(c, csym(c, fref)))
             mask |= builtin_nonnull(cident(c, csym(c, fref)->name));
@@ -5486,16 +5500,6 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
          (fref != SYM_NONE && bt_for_decl(c, csym(c, fref)) &&
           builtin_decl_ok(c, csym(c, fref)))))
         sizeof_memaccess(c, kv, nk, fname);
-    if (!too_many && !proto && bn != NO_NODE && bn != 0xFFFFFFFEu &&
-        nk - 1 < bn)
-    {
-        Diagnostic *d = cwarn_d(c, DL_WARNING, loc,
-                                "builtin-declaration-mismatch", "too few "
-                                "arguments to built-in function '%s' expecting "
-                                "%u", fname, bn);
-        if (d && fref != SYM_NONE && !(csym(c, fref)->flags & CSF_IMPLICIT))
-            cnote(c, d, csym(c, fref)->loc, "declared here");
-    }
     if (!too_many && proto && nk - 1 < nparm) {
         Diagnostic *d = cerror_d(c, loc, "too few arguments to function '%s'",
                                  fname);

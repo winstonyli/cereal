@@ -1,0 +1,12 @@
+local_typedef_redecl.c:10:15: warning: redefinition of typedef 'T' [-Wpedantic]
+   10 |   typedef int T[1];
+      |               ^
+local_typedef_redecl.c:9:15: note: previous declaration of 'T' with type 'T' {aka 'int[1]'}
+    9 |   typedef int T[1];
+      |               ^
+local_typedef_redecl.c:11:15: warning: typedef 'U' locally defined but not used [-Wunused-local-typedefs]
+   11 |   typedef int U[1];
+      |               ^
+local_typedef_redecl.c:4:12: warning: 'sf' declared 'static' but never defined [-Wunused-function]
+    4 | static int sf (void);
+      |            ^
