@@ -1,0 +1,21 @@
+parse_macro_chain.c:1:21: error: expected expression before ';' token
+    1 | #define BAD int x = ;
+      |                     ^
+parse_macro_chain.c:2:15: note: in expansion of macro 'BAD'
+    2 | #define OUTER BAD
+      |               ^
+parse_macro_chain.c:5:3: note: in expansion of macro 'OUTER'
+    5 |   OUTER
+      |   ^
+parse_macro_chain.c:1:21: error: expected expression before ';' token
+    1 | #define BAD int x = ;
+      |                     ^
+parse_macro_chain.c:2:15: note: in expansion of macro 'BAD'
+    2 | #define OUTER BAD
+      |               ^
+parse_macro_chain.c:3:18: note: in expansion of macro 'OUTER'
+    3 | #define TWO(a) a OUTER
+      |                  ^
+parse_macro_chain.c:8:3: note: in expansion of macro 'TWO'
+    8 |   TWO(int y;)
+      |   ^

@@ -646,3 +646,17 @@ layouts, gcc rules ported, walk design).
   Known gaps: floats and enums-as-pointers are not folded; call arguments and
   return values keep the variable; a file-scope const is folded from the
   persistent symbol only if its val survives (cells path untested for -O).
+- Round 22 (2026-10-02): attribute-list recovery (gcc.dg/pr67964) and macro
+  chains on parse errors.  parse.c attribute(): after an attribute (name and
+  optional arguments) gcc takes one more name, with its arguments, silently;
+  then the list must end.  If ')' follows, the first ')' ends the attribute
+  silently; otherwise "expected ')' before X" is reported at X.  Either way the
+  parser skips past the first ')' (skip_past_rparen) and leaves the second to
+  the declaration, which reports "expected ',' or ';' before ')' token"
+  (probed over 12 shapes against gcc-13: /tmp/lt/at1..12.c).  vperr now emits
+  the same per-macro note chain as the checker (Parser.macro_chain, set in
+  main.c).  gcc.dg 3636, c-c++-common 529 identical; tests 922; ASan/UBSan
+  clean.  Goldens: attr_list_recover, parse_macro_chain.
+  Known gaps: the order of a parse error against a semantic error in the same
+  function (gcc prints the parse error first in a function body); the
+  previous-declaration note chain (see Round 20).

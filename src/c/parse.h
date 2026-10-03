@@ -33,6 +33,11 @@ typedef struct Parser {
     SrcMgr *sm;
     Interner *in;
     DiagEngine *diag;
+    /* the macros a replacement-list token was expanded through (pp.c
+     * pp_macro_chain), for the notes of an error in a macro expansion */
+    size_t (*macro_chain)(void *ctx, SrcLoc spelled, SrcLoc exp,
+                          MacroNote *out, size_t max);
+    void *macro_ctx;
     bool gnu;                   /* typeof and asm are keywords */
     /* toks[0] is the current unit's first token; lookahead follows */
     VEC(PTok) toks;

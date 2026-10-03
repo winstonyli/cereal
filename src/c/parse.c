@@ -302,15 +302,31 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
     d = pvreport(p, DL_ERROR, "", loc, fmt, ap);
     if (d && !p->diag->track0 && i < p->toks.len && p->toks.data[i].exp &&
         p->toks.data[i].exp != p->toks.data[i].t.loc) {
-        /* a macro body token: gcc names the macro at the invocation (the
-         * outermost one; nested expansions are not tracked) */
-        const char *s = srcmgr_ptr(p->sm, p->toks.data[i].exp);
-        int n = 0;
-        while (isalnum((unsigned char)s[n]) || s[n] == '_')
-            n++;
-        if (n)
-            diag_note(p->diag, d, p->toks.data[i].exp,
-                      "in expansion of macro '%.*s'", n, s);
+        /* a macro body token: gcc names each macro it was expanded
+         * through, innermost first; an argument or pasted name only the
+         * outermost one */
+        const PTok *tk = &p->toks.data[i];
+        MacroNote notes[10];
+        size_t k, cnt = 0;
+        if (p->macro_chain && (tk->t.flags & TF_ORIGIN_BODY) &&
+            !(tk->t.flags & TF_ORIGIN_ARG))
+            cnt = p->macro_chain(p->macro_ctx, tk->t.loc, tk->exp, notes, 10);
+        if (!cnt) {
+            const char *s = srcmgr_ptr(p->sm, tk->exp);
+            uint32_t n = 0;
+            while (isalnum((unsigned char)s[n]) || s[n] == '_')
+                n++;
+            if (n) {
+                notes[0].name = s;
+                notes[0].len = n;
+                notes[0].loc = tk->exp;
+                cnt = 1;
+            }
+        }
+        for (k = 0; k < cnt; k++)
+            diag_note(p->diag, d, notes[k].loc,
+                      "in expansion of macro '%.*s'", (int)notes[k].len,
+                      notes[k].name);
     }
     return d;
 }
@@ -1116,6 +1132,24 @@ static void std_attribute(Parser *p)
     emit(p, N_ATTRIBUTE, kw, start, 0);
 }
 
+/* c_parser_skip_until_found (')'): past the next ')' of the current nesting,
+ * stopping at a ';' or brace. */
+static void skip_past_rparen(Parser *p)
+{
+    int depth = 0;
+    while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
+           !at(p, P_LBRACE)) {
+        if (at(p, P_LPAREN))
+            depth++;
+        else if (at(p, P_RPAREN) && depth-- <= 0) {
+            adv(p);
+            break;
+        }
+        adv(p);
+    }
+    p->err.live = false;                /* skip_until_found cleared it */
+}
+
 static void attribute(Parser *p)
 {
     uint32_t start, kw;
@@ -1143,18 +1177,7 @@ static void attribute(Parser *p)
                 if (p->errors != ne && !at(p, P_RPAREN)) {
                     /* c_parser_gnu_attribute: skip past the next ')' and
                      * give up on the attribute list */
-                    int depth = 0;
-                    while (!at_eof(p) && !at(p, P_SEMI) &&
-                           !at(p, P_RBRACE) && !at(p, P_LBRACE)) {
-                        if (at(p, P_LPAREN))
-                            depth++;
-                        else if (at(p, P_RPAREN) && depth-- <= 0) {
-                            adv(p);
-                            break;
-                        }
-                        adv(p);
-                    }
-                    p->err.live = false;    /* skip_until_found */
+                    skip_past_rparen(p);
                     emit(p, N_ATTR_ITEM, name, s, 0);
                     emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
                     return;
@@ -1162,6 +1185,28 @@ static void attribute(Parser *p)
                 expect(p, P_RPAREN);
             }
             emit(p, N_ATTR_ITEM, name, s, 0);
+            if (ct(p).t.kind == TK_IDENT) {
+                /* gcc (PR c/67964) takes one more name, with its arguments,
+                 * after an attribute; then the list must end, and either way
+                 * the first ')' is the end of the attribute and the second
+                 * is left to the declaration */
+                adv(p);
+                if (at(p, P_LPAREN)) {
+                    int depth = 0;
+                    do {
+                        if (at(p, P_LPAREN))
+                            depth++;
+                        else if (at(p, P_RPAREN))
+                            depth--;
+                        adv(p);
+                    } while (depth > 0 && !at_eof(p) && !at(p, P_SEMI));
+                }
+                if (!at(p, P_RPAREN))
+                    expect(p, P_RPAREN);
+                skip_past_rparen(p);
+                emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
+                return;
+            }
         } else if (!is_p(&t, P_COMMA)) {
             expected(p, "attribute name");
             break;

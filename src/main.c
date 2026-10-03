@@ -244,6 +244,8 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         goto done;
     }
     parser_init(&p, &tu.sm, tu.in, &tu.diag, o->pp.gnu_mode, src, ctx);
+    p.macro_chain = pp_macro_chain;
+    p.macro_ctx = &tu.pp;
     if (parse_check) {
         CheckOptions co;
         memset(&co, 0, sizeof co);
