@@ -1,0 +1,96 @@
+attr_ignored_ctx.c:2:1: warning: 'visibility' attribute ignored [-Wattributes]
+    2 | typedef int T1 __attribute__((visibility("hidden")));
+      | ^
+attr_ignored_ctx.c:3:1: warning: 'retain' attribute ignored [-Wattributes]
+    3 | typedef int T2 __attribute__((retain, nodirect_extern_access, externally_visible));
+      | ^
+attr_ignored_ctx.c:3:1: warning: 'nodirect_extern_access' attribute ignored [-Wattributes]
+    3 | typedef int T2 __attribute__((retain, nodirect_extern_access, externally_visible));
+      | ^
+attr_ignored_ctx.c:3:1: warning: 'externally_visible' attribute ignored [-Wattributes]
+    3 | typedef int T2 __attribute__((retain, nodirect_extern_access, externally_visible));
+      | ^
+attr_ignored_ctx.c:5:1: warning: 'noreturn' attribute ignored [-Wattributes]
+    5 | int g1 __attribute__((noreturn, hot, flatten));
+      | ^
+attr_ignored_ctx.c:5:1: warning: 'hot' attribute ignored [-Wattributes]
+    5 | int g1 __attribute__((noreturn, hot, flatten));
+      | ^
+attr_ignored_ctx.c:5:1: warning: 'flatten' attribute ignored [-Wattributes]
+    5 | int g1 __attribute__((noreturn, hot, flatten));
+      | ^
+attr_ignored_ctx.c:7:1: warning: 'interrupt' attribute only applies to function types [-Wattributes]
+    7 | int g3 __attribute__((interrupt, sseregparm));
+      | ^
+attr_ignored_ctx.c:7:1: warning: 'sseregparm' attribute only applies to function types [-Wattributes]
+    7 | int g3 __attribute__((interrupt, sseregparm));
+      | ^
+attr_ignored_ctx.c:8:1: warning: 'visibility' attribute ignored [-Wattributes]
+    8 | void f(int p1 __attribute__((visibility("default"))),
+      | ^
+attr_ignored_ctx.c:9:8: warning: 'nonnull' attribute only applies to function types [-Wattributes]
+    9 |        int p2 __attribute__((nonnull)),
+      |        ^
+attr_ignored_ctx.c:10:8: warning: 'used' attribute ignored [-Wattributes]
+   10 |        int p3 __attribute__((used)));
+      |        ^
+attr_ignored_ctx.c:12:5: warning: 'alias' attribute ignored [-Wattributes]
+   12 |     int a __attribute__((alias("x"), common));
+      |     ^
+attr_ignored_ctx.c:12:5: warning: 'common' attribute ignored [-Wattributes]
+   12 |     int a __attribute__((alias("x"), common));
+      |     ^
+attr_ignored_ctx.c:13:5: warning: 'format' attribute only applies to function types [-Wattributes]
+   13 |     int b __attribute__((format(printf, 1, 2)));
+      |     ^
+attr_ignored_ctx.c:15:10: warning: 'visibility' attribute ignored [-Wattributes]
+   15 | enum E { A __attribute__((visibility("hidden"))), B __attribute__((malloc)) };
+      |          ^
+attr_ignored_ctx.c:15:51: warning: 'malloc' attribute ignored; valid only for functions [-Wattributes]
+   15 | enum E { A __attribute__((visibility("hidden"))), B __attribute__((malloc)) };
+      |                                                   ^
+attr_ignored_ctx.c:16:46: warning: 'visibility' attribute ignored on types [-Wattributes]
+   16 | struct __attribute__((visibility("hidden"))) V { int x; };
+      |                                              ^
+attr_ignored_ctx.c:17:1: warning: 'malloc' attribute ignored on functions returning 'void'; valid only for pointer return types [-Wattributes]
+   17 | void __attribute__((malloc)) m1(void);
+      | ^
+attr_ignored_ctx.c:18:1: warning: 'malloc' attribute ignored on functions returning 'int'; valid only for pointer return types [-Wattributes]
+   18 | int m2(void) __attribute__((malloc));
+      | ^
+attr_ignored_ctx.c:19:1: warning: 'malloc' attribute ignored; valid only for functions [-Wattributes]
+   19 | int m3 __attribute__((malloc));
+      | ^
+attr_ignored_ctx.c:22:5: warning: 'retain' attribute ignored [-Wattributes]
+   22 |     int l1 __attribute__((retain, hot, visibility("hidden")));
+      |     ^
+attr_ignored_ctx.c:22:5: warning: 'hot' attribute ignored [-Wattributes]
+   22 |     int l1 __attribute__((retain, hot, visibility("hidden")));
+      |     ^
+attr_ignored_ctx.c:22:5: warning: 'visibility' attribute ignored [-Wattributes]
+   22 |     int l1 __attribute__((retain, hot, visibility("hidden")));
+      |     ^
+attr_ignored_ctx.c:23:5: warning: 'pure' attribute ignored [-Wattributes]
+   23 |     static int l2 __attribute__((pure));
+      |     ^
+attr_ignored_ctx.c:24:5: warning: 'volatile' attribute ignored [-Wattributes]
+   24 |     extern int l3 __attribute__((volatile));
+      |     ^
+attr_ignored_ctx.c:26:1: warning: 'nonstring' attribute does not apply to types [-Wattributes]
+   26 | typedef char T3 __attribute__((nonstring));
+      | ^
+attr_ignored_ctx.c:28:1: warning: 'nonstring' attribute ignored on objects of type 'char *[2]' [-Wattributes]
+   28 | char *n2[2] __attribute__((nonstring));
+      | ^
+attr_ignored_ctx.c:29:1: warning: 'nonstring' attribute ignored on objects of type 'unsigned char[2][3]' [-Wattributes]
+   29 | unsigned char n3[2][3] __attribute__((nonstring));
+      | ^
+attr_ignored_ctx.c:30:1: warning: 'nonstring' attribute ignored on objects of type 'int[4]' [-Wattributes]
+   30 | int n4[4] __attribute__((nonstring));
+      | ^
+attr_ignored_ctx.c:31:1: warning: 'nonstring' attribute ignored on objects of type 'int *' [-Wattributes]
+   31 | int *n5 __attribute__((nonstring));
+      | ^
+attr_ignored_ctx.c:32:8: warning: 'nonstring' attribute ignored on objects of type 'long int' [-Wattributes]
+   32 | struct N { char a[3] __attribute__((nonstring)); long b __attribute__((nonstring)); };
+      |        ^

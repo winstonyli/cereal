@@ -878,3 +878,17 @@ layouts, gcc rules ported, walk design).
   gcc.dg 3649, c-c++-common 552.  Gaps: the access attribute implied by VLA
   parameters (attr-access-2.c, Wvla-parameter-7.c: "conflicts with previous
   designation", "designating the bound of variable length array argument").
+
+## Round 37 — "attribute ignored" by declaration context
+
+- `attrs_ctx_check` (cdecl.c) replaces `attrs_fn_only`: a gcc-13-probed table gives, per context (typedef, file var,
+  auto local, static local, parameter, field), the attributes that are "ignored" on non-function types, plus the
+  function-only list (six names added, `format`). Names with an Attrs flag (noinline, used, weak, packed, alias,
+  weakref, error, warning, cleanup) stay in `attrs_misapplied`.
+- `nonstring` (objects: char array/pointer else "ignored on objects of type"; typedef: "does not apply to types"),
+  `malloc` on non-functions/enumerators, `malloc` return-type warning skipped when a prior declaration's
+  noreturn/const/pure excludes it, enumerator attributes, `visibility` on tag definitions.
+- Golden: `attr_ignored_ctx`. Parity: tests 967, gcc.dg 3652 identical (223 differ), c-c++-common 554, san clean (312).
+- Known gaps: `tls_model` without thread storage, `leaf` on function-pointer parameters, warning order when
+  `attrs_misapplied` and the table both fire on one declaration, `packed` on typedef of incomplete struct,
+  fallthrough, alloc_size/alloc_align in has_attribute type-names.

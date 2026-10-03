@@ -1592,22 +1592,65 @@ static bool alloc_via_ptr;
 static uint32_t alloc_name;
 static SrcLoc alloc_loc;
 
-/* decl_attributes: an attribute that needs a function type, written on an
- * object or typedef whose type is neither a function nor a pointer to one. */
-static void attrs_fn_only(Checker *c, uint32_t holder, TypeId ty, uint32_t tok)
+/* Declaration contexts for attrs_ctx_check. */
+enum { AC_T = 1, AC_G = 2, AC_L = 4, AC_S = 8, AC_P = 16, AC_F = 32, AC_ALL = 63 };
+
+/* Attributes whose handler returns "ignored" on a declaration that is not a
+ * function, by context (typedef, file-scope variable, automatic local, static
+ * local, parameter, field).  The ones with an Attrs flag (noinline, used,
+ * weak, packed, alias, weakref, error, warning, cleanup) are in
+ * attrs_misapplied. */
+static const struct { const char *name; unsigned ctx; } attr_ign_tab[] = {
+    {"always_inline", AC_ALL}, {"artificial", AC_ALL}, {"assume", AC_ALL},
+    {"cold", AC_ALL}, {"common", AC_T|AC_P|AC_F}, {"const", AC_ALL},
+    {"constructor", AC_ALL}, {"destructor", AC_ALL},
+    {"externally_visible", AC_T|AC_P|AC_F}, {"fallthrough", AC_ALL},
+    {"fentry_name", AC_ALL}, {"fentry_section", AC_ALL}, {"flatten", AC_ALL},
+    {"gcc_struct", AC_ALL}, {"gnu_inline", AC_ALL}, {"hot", AC_ALL},
+    {"ifunc", AC_ALL}, {"leaf", AC_G}, 
+    {"ms_struct", AC_ALL}, {"no_address_safety_analysis", AC_ALL},
+    {"no_icf", AC_ALL}, {"no_profile_instrument_function", AC_ALL},
+    {"no_sanitize", AC_ALL}, {"no_sanitize_address", AC_ALL},
+    {"no_sanitize_coverage", AC_ALL}, {"no_sanitize_thread", AC_ALL},
+    {"no_sanitize_undefined", AC_ALL}, {"no_stack_protector", AC_ALL},
+    {"noclone", AC_ALL}, {"nocommon", AC_T|AC_P|AC_F},
+    {"nodirect_extern_access", AC_T|AC_P|AC_F}, {"noipa", AC_ALL},
+    {"noreturn", AC_ALL}, {"nothrow", AC_ALL}, {"optimize", AC_ALL},
+    {"pure", AC_ALL}, {"retain", AC_T|AC_L|AC_P|AC_F},
+    {"returns_twice", AC_ALL}, {"scalar_storage_order", AC_ALL},
+    {"signed_bool_precision", AC_ALL}, {"simd", AC_ALL},
+    {"stack_protect", AC_ALL}, {"target", AC_ALL}, {"target_clones", AC_ALL},
+    {"transaction_callable", AC_ALL},
+    {"transaction_may_cancel_outer", AC_ALL}, {"transaction_pure", AC_ALL},
+    {"transaction_safe", AC_ALL}, {"transaction_safe_dynamic", AC_ALL},
+    {"transaction_unsafe", AC_ALL}, {"transaction_wrap", AC_ALL},
+    {"transparent_union", AC_ALL}, {"vector_mask", AC_ALL},
+    {"visibility", AC_T|AC_L|AC_S|AC_P|AC_F}, {"volatile", AC_ALL},
+    {"warn_unused", AC_ALL},
+};
+
+/* Attributes that need a function type. */
+static const char *const attr_fnonly_tab[] = {
+    "access", "alloc_align", "alloc_size", "assume_aligned",
+    "callee_pop_aggregate_return", "cdecl", "fastcall", "fd_arg",
+    "fd_arg_read", "fd_arg_write", "force_align_arg_pointer", "format", "format_arg",
+    "indirect_return", "interrupt", "ms_abi", "no_caller_saved_registers",
+    "nocf_check", "nonnull", "regparm", "returns_nonnull", "sentinel",
+    "sseregparm", "stdcall", "sysv_abi", "thiscall", "warn_unused_result"};
+
+/* decl_attributes on an object, typedef, parameter or field whose type is
+ * neither a function nor a pointer to one: attributes that apply only to
+ * functions, and the ones ignored in this context. */
+static void attrs_ctx_check(Checker *c, uint32_t holder, TypeId ty, uint32_t tok,
+                            unsigned ctx)
 {
-    static const char *const fnonly[] = {
-        "fd_arg", "fd_arg_read", "fd_arg_write", "nocf_check",
-        "warn_unused_result", "alloc_size", "alloc_align", "access", "format",
-        "nonnull", "sentinel", "returns_nonnull", "assume_aligned",
-        "format_arg", "regparm", "stdcall", "cdecl", "fastcall", "thiscall",
-        "ms_abi", "sysv_abi"};
     Kids k;
     uint32_t j;
+    bool fnty;
+    TypeId oty = ty;
     if (type_ckind(TT, ty) == TY_PTR)       /* a pointer to function is fine */
         ty = type_base(TT, ty);
-    if (type_ckind(TT, ty) == TY_FUNC)
-        return;
+    fnty = type_ckind(TT, ty) == TY_FUNC;
     kids_get(c, holder, &k);
     for (j = 0; j < k.n; j++) {
         Kids it;
@@ -1621,10 +1664,48 @@ static void attrs_fn_only(Checker *c, uint32_t holder, TypeId ty, uint32_t tok)
             if (ntag(c, it.p[q]) != N_ATTR_ITEM)
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
-            for (f = 0; f < sizeof fnonly / sizeof *fnonly; f++)
-                if (!strcmp(name, fnonly[f])) {
+            if (!strcmp(name, "malloc")) {
+                cwarn(c, iloc(c, tok), "attributes", "'malloc' attribute "
+                      "ignored; valid only for functions");
+                continue;
+            }
+            if (!strcmp(name, "nonstring")) {
+                /* handle_nonstring_attribute: a character array or pointer */
+                TypeId e = type_canon(TT, oty);
+                unsigned kd = type_ckind(TT, e);
+                bool ok = false;
+                if (ctx == AC_T) {
+                    cwarn(c, iloc(c, tok), "attributes", "'nonstring' "
+                          "attribute does not apply to types");
+                    continue;
+                }
+                if (kd == TY_PTR || kd == TY_ARRAY || kd == TY_VLA) {
+                    e = type_base(TT, e);
+                    kd = type_ckind(TT, e);
+                    ok = kd == TY_CHAR || kd == TY_SCHAR || kd == TY_UCHAR;
+                }
+                if (!ok)
+                    cwarn(c, iloc(c, tok), "attributes", "'nonstring' "
+                          "attribute ignored on objects of type %s",
+                          type_q(TT, oty));
+                continue;
+            }
+            if (type_ckind(TT, ty) == TY_UNION && !strcmp(name, "transparent_union"))
+                continue;
+            if (fnty)
+                continue;
+            for (f = 0; f < sizeof attr_fnonly_tab / sizeof *attr_fnonly_tab; f++)
+                if (!strcmp(name, attr_fnonly_tab[f])) {
                     cwarn(c, iloc(c, tok), "attributes", "'%s' attribute only "
                           "applies to function types", name);
+                    break;
+                }
+            if (f < sizeof attr_fnonly_tab / sizeof *attr_fnonly_tab)
+                continue;
+            for (f = 0; f < sizeof attr_ign_tab / sizeof *attr_ign_tab; f++)
+                if ((attr_ign_tab[f].ctx & ctx) && !strcmp(name, attr_ign_tab[f].name)) {
+                    cwarn(c, iloc(c, tok), "attributes", "'%s' attribute "
+                          "ignored", name);
                     break;
                 }
         }
@@ -1835,6 +1916,26 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 if (ak.n == 1)
                     (void)positional_arg(c, name, ak.p[0], 0, fty, iloc(c, tok));
                 kids_free(&ak);
+                continue;
+            }
+            if (!strcmp(name, "malloc") && type_ckind(TT, fty) == TY_FUNC &&
+                !alloc_via_ptr) {
+                /* handle_malloc_attribute */
+                TypeId rt = type_base(TT, fty);
+                uint32_t pr = alloc_name ? lookup_ord(c, alloc_name) : SYM_NONE;
+                bool excl = false;      /* dropped by an earlier declaration's */
+                if (pr != SYM_NONE && csym(c, pr)->kind == CS_FUNC)
+                    excl = cdecl_aset_has(c, csym(c, pr)->aset, "noreturn", NULL) ||
+                            cdecl_aset_has(c, csym(c, pr)->aset, "const", NULL) ||
+                            cdecl_aset_has(c, csym(c, pr)->aset, "pure", NULL);
+                if (!excl && type_ckind(TT, rt) != TY_PTR &&
+                    type_ckind(TT, rt) != TY_ERROR) {
+                    cwarn(c, iloc(c, tok), "attributes", "'malloc' attribute "
+                          "ignored on functions returning %s; valid only for "
+                          "pointer return types", type_q(TT, rt));
+                    if (c->nign < 8)
+                        snprintf(c->ign[c->nign++], sizeof c->ign[0], "malloc");
+                }
                 continue;
             }
             if (!strcmp(name, "access")) {
@@ -5657,8 +5758,10 @@ static void declared_visit(Checker *c, uint32_t i)
     if (s.kind == CS_FUNC)
         cexpr_builtin_noproto_fmt(c, &s, tloc(c, sp.tok0));
     if (s.kind == CS_OBJ || s.kind == CS_TYPEDEF) {
-        attrs_fn_only(c, sn, s.ty, ltok);
-        attrs_fn_only(c, idecl, s.ty, ltok);
+        unsigned ac = s.kind == CS_TYPEDEF ? AC_T : file ? AC_G :
+                      s.sc == SC_STATIC ? AC_S : AC_L;
+        attrs_ctx_check(c, sn, s.ty, ltok, ac);
+        attrs_ctx_check(c, idecl, s.ty, ltok, ac);
     }
     if (s.kind == CS_OBJ && type_ckind(TT, s.ty) == TY_PTR &&
         type_ckind(TT, type_base(TT, s.ty)) == TY_FUNC) {
@@ -6538,6 +6641,93 @@ static bool val_lt(Checker *c, uint64_t a, TypeId ta, uint64_t b, TypeId tb)
     return a < b;
 }
 
+/* Attributes written on an enumerator (a CONST_DECL): decl_attributes finds
+ * a handler that does not take it.  Probed on gcc 13. */
+static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name)
+{
+    static const char *const ignored[] = {
+        "alias", "always_inline", "artificial", "assume", "cleanup", "cold",
+        "common", "const", "constructor", "destructor", "error",
+        "externally_visible", "fallthrough", "fentry_name", "fentry_section",
+        "flatten", "gcc_struct", "gnu_inline", "hot", "ifunc", "mode",
+        "ms_struct", "no_address_safety_analysis", "no_icf",
+        "no_profile_instrument_function", "no_sanitize",
+        "no_sanitize_address", "no_sanitize_coverage", "no_sanitize_thread",
+        "no_sanitize_undefined", "no_stack_protector", "noclone", "nocommon",
+        "nodirect_extern_access", "noinline", "noipa", "nonstring",
+        "noreturn", "nothrow", "optimize", "packed", "pure", "retain",
+        "returns_twice", "scalar_storage_order", "signed_bool_precision",
+        "simd", "stack_protect", "target", "target_clones",
+        "transaction_callable", "transaction_may_cancel_outer",
+        "transaction_pure", "transaction_safe", "transaction_safe_dynamic",
+        "transaction_unsafe", "transaction_wrap", "transparent_union", "used",
+        "vector_mask", "visibility", "volatile", "warn_unused", "warning",
+        "weak", "weakref"};
+    static const char *const fnonly[] = {
+        "access", "alloc_align", "alloc_size", "assume_aligned",
+        "callee_pop_aggregate_return", "cdecl", "fastcall", "fd_arg",
+        "fd_arg_read", "fd_arg_write", "force_align_arg_pointer",
+        "format_arg", "indirect_return", "interrupt", "ms_abi",
+        "no_caller_saved_registers", "nocf_check", "nonnull", "regparm",
+        "returns_nonnull", "sentinel", "sseregparm", "stdcall", "sysv_abi",
+        "thiscall", "warn_unused_result"};
+    Kids k;
+    uint32_t j;
+    kids_get(c, i, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n; q++) {
+            char an[48];
+            size_t f;
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+            if (!strcmp(an, "gnu") || attr_scope_of(c, c->nodes[it.p[q]].tok))
+                continue;
+            if (!attr_known(an) || !strcmp(an, "maybe_unused") ||
+                !strcmp(an, "nodiscard")) {
+                cwarn(c, loc, "attributes", "'%s' attribute directive "
+                      "ignored", an);
+                continue;
+            }
+            if (!strcmp(an, "malloc")) {
+                cwarn(c, loc, "attributes", "'malloc' attribute ignored; "
+                      "valid only for functions");
+                continue;
+            }
+            if (!strcmp(an, "aligned")) {
+                cerror(c, loc, "alignment may not be specified for '%s'",
+                       cident(c, name));
+                continue;
+            }
+            if (!strcmp(an, "section")) {
+                cerror(c, loc, "section attribute not allowed for '%s'",
+                       cident(c, name));
+                continue;
+            }
+            for (f = 0; f < sizeof fnonly / sizeof *fnonly; f++)
+                if (!strcmp(an, fnonly[f])) {
+                    cwarn(c, loc, "attributes", "'%s' attribute only applies "
+                          "to function types", an);
+                    break;
+                }
+            if (f < sizeof fnonly / sizeof *fnonly)
+                continue;
+            for (f = 0; f < sizeof ignored / sizeof *ignored; f++)
+                if (!strcmp(an, ignored[f])) {
+                    cwarn(c, loc, "attributes", "'%s' attribute ignored", an);
+                    break;
+                }
+        }
+        kids_free(&it);
+    }
+    kids_free(&k);
+}
+
 static void enumerator_visit(Checker *c, uint32_t i)
 {
     uint32_t name = cnode_ident(c, i), vn = NO_NODE, k;
@@ -6637,6 +6827,7 @@ static void enumerator_visit(Checker *c, uint32_t i)
     s.vty = vt;
     ref = pushdecl(c, &s, false);
     vec_push(&c->ecs, ref);
+    enumerator_attrs(c, i, nloc, name);
 }
 
 /* c_common_type_for_size */
@@ -6769,6 +6960,40 @@ static void enum_finish(Checker *c, uint32_t i, uint32_t open)
         c->ef[i] |= 2;
 }
 
+/* handle_visibility_attribute on a tagged definition: C has no class types. */
+static void tag_visibility(Checker *c, uint32_t i)
+{
+    uint32_t tg = find_child(c, i, N_TAG), j, etok = 0;
+    Kids k;
+    if (tg == NO_NODE)
+        return;
+    if (cnode(c, i)->tag == N_ENUM) {   /* gcc's input_location: the first enumerator */
+        for (etok = cnode(c, i)->tok; tpunct(c, etok) != P_LBRACE; etok++)
+            ;
+        etok++;
+    }
+    kids_get(c, i, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n; q++) {
+            char an[48];
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+            if (!strcmp(an, "visibility") &&
+                !attr_scope_of(c, c->nodes[it.p[q]].tok))
+                cwarn(c, tloc(c, etok ? etok : cnode(c, tg)->tok),
+                      "attributes", "'visibility' attribute ignored on types");
+        }
+        kids_free(&it);
+    }
+    kids_free(&k);
+}
+
 static void struct_visit(Checker *c, uint32_t i)
 {
     uint32_t open = find_child(c, i, N_OPEN);
@@ -6785,6 +7010,8 @@ static void struct_visit(Checker *c, uint32_t i)
                   "ISO C does not support specifying 'enum' underlying types "
                   "before C2X");
     }
+    if (open != NO_NODE)
+        tag_visibility(c, i);
     if (open == NO_NODE)
         xref_visit(c, i, want);
     else if (want == TY_ENUM)
@@ -6903,6 +7130,8 @@ static void member_visit(Checker *c, uint32_t i)
         ptr_type_attrs(c, top, g.ty, ltok, &a);
     attrs_merge(&a, &sp.attrs);
     attrs_misapplied(c, &a, 'm', false, w == NO_NODE ? g.ty : 0, ltok);
+    attrs_ctx_check(c, sp.node, g.ty, ltok, AC_F);
+    attrs_ctx_check(c, i, g.ty, ltok, AC_F);
     attrs_section_check(c, &a, 'm', false, g.name, g.loc);
     strict_flex_check(c, sp.node, true, g.ty, g.name, g.loc, sp.tok0);
     strict_flex_check(c, i, true, g.ty, g.name, g.loc, NO_NODE);
@@ -7240,6 +7469,8 @@ static void param_visit(Checker *c, uint32_t p)
     attrs_unknown_emit(c, &sp.attrs, first_tok(c, p));
     attrs_merge(&a, &sp.attrs);
     attrs_misapplied(c, &a, 'p', false, 0, first_tok(c, p));
+    attrs_ctx_check(c, sp.node, s.ty, first_tok(c, p), AC_P);
+    attrs_ctx_check(c, p, s.ty, first_tok(c, p), AC_P);
     attrs_zcur_check(c, &a, false, s.loc);
     attrs_section_check(c, &a, 'p', false, s.name, s.loc);
     if (a.unused)
