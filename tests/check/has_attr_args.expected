@@ -1,42 +1,84 @@
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:16:3: note: in expansion of macro 'Y'
+   16 |   Y(1, v8, aligned(8));
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:17:3: note: in expansion of macro 'Y'
+   17 |   Y(0, v8, aligned(4));
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:18:3: note: in expansion of macro 'Y'
+   18 |   Y(1, T16, aligned(16));
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:19:3: note: in expansion of macro 'Y'
+   19 |   Y(0, T16, aligned(8));      /* a typedef keeps only its largest */
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:20:3: note: in expansion of macro 'Y'
+   20 |   Y(0, PT, aligned);          /* pointer to an aligned type */
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:21:3: note: in expansion of macro 'Y'
+   21 |   Y(1, AAT, aligned(16));     /* user alignment propagates to arrays */
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:22:3: note: in expansion of macro 'Y'
+   22 |   Y(0, AAT, aligned(8));
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:23:3: note: in expansion of macro 'Y'
+   23 |   Y(1, f, nonnull(2));
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:24:3: note: in expansion of macro 'Y'
+   24 |   Y(0, f, nonnull(1));
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:25:3: note: in expansion of macro 'Y'
+   25 |   Y(1, FNN, nonnull(1));
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:26:3: note: in expansion of macro 'Y'
+   26 |   Y(0, FN2, nonnull);
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:27:3: note: in expansion of macro 'Y'
+   27 |   Y(1, FN2, nonnull(2));
+      |   ^
 has_attr_args.c:3:20: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:28:3: note: in expansion of macro 'Y'
+   28 |   Y(1, f, nonnull(1));        /* wrong: fails */
+      |   ^
 has_attr_args.c:3:20: error: static assertion failed: "f, nonnull(1)"
     3 | #define Y(e, s, a) _Static_assert(__builtin_has_attribute(s, a) == e, #s ", " #a)
       |                    ^
+has_attr_args.c:28:3: note: in expansion of macro 'Y'
+   28 |   Y(1, f, nonnull(1));        /* wrong: fails */
+      |   ^

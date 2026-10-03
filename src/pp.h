@@ -423,6 +423,8 @@ static inline Ident *pp_ident(const PP *pp, const Tok *t)
 
 /* helpers shared with printers and analyzers */
 void pp_add_expansion_notes(PP *pp, Diagnostic *d);
+size_t pp_macro_chain(void *ctx, SrcLoc spelled, SrcLoc exp,
+                      MacroNote *out, size_t max);
 Diagnostic *pp_error_at(PP *pp, const Tok *t, const char *fmt, ...);
 Diagnostic *pp_warn_at(PP *pp, const Tok *t, const char *id,
                        const char *fmt, ...);

@@ -28,6 +28,12 @@ typedef struct CheckOptions {
     FILE *dump_summaries;       /* --dump-summaries: print them (implies) */
     const char *validate_summaries; /* --validate-summaries=FILE: check each
                                    unit's recorded read set on entry */
+    /* The macros a token spelled at `spelled` (a replacement-list token)
+     * was expanded through, innermost first, ending with the invocation
+     * at `exp`; 0 if the chain is unknown (pp.c pp_macro_chain). */
+    size_t (*macro_chain)(void *ctx, SrcLoc spelled, SrcLoc exp,
+                          MacroNote *out, size_t max);
+    void *macro_ctx;
 } CheckOptions;
 
 Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,

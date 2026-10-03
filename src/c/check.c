@@ -19,12 +19,90 @@ static bool in_system(Checker *c, SrcLoc loc)
     return cin_system(c, loc);
 }
 
+/* gcc follows a diagnostic located in a macro expansion with a note per
+ * macro it was expanded through.  Diagnostics carry only a location: the
+ * token is the one of this unit spelled there, nearest the node being
+ * checked (the same spelled location recurs in every use of a macro). */
+static void macro_notes(Checker *c, Diagnostic *d, SrcLoc loc, bool is_note)
+{
+    const PTok *tk = c->u ? c->u->toks : NULL;
+    uint32_t n = c->u ? c->u->ntoks : 0, i, best = 0, from = 0, bd = 0;
+    bool found = false;
+    int pass;
+    MacroNote notes[10];
+    size_t k, cnt = 0;
+    if (!tk || c->diag->track0 || !loc)
+        return;
+    if (c->cur_node != NO_NODE && c->cur_node < c->nn)
+        from = c->nodes[c->cur_node].tok;
+    /* the common case, a token written in the source itself or an argument
+     * (no note), is near the node: settle it without scanning the unit */
+    for (i = from > 256 ? from - 256 : 0; i < n && i < from + 256; i++)
+        if (tk[i].t.loc == loc && (!tk[i].exp || tk[i].exp == loc ||
+                                     (tk[i].t.flags & TF_ORIGIN_ARG)))
+            return;
+    /* the token nearest the node is wanted: look near it first, and scan
+     * the unit only if nothing is there */
+    for (pass = is_note; pass < 2 && !found; pass++)
+    for (i = pass ? 0 : (from > 256 ? from - 256 : 0);
+         i < (pass ? n : (n < from + 256 ? n : from + 256)); i++) {
+        uint32_t dist;
+        if (tk[i].t.loc != loc || !tk[i].exp || tk[i].exp == loc ||
+            (tk[i].t.flags & TF_ORIGIN_ARG)) /* gcc: no note for an argument */
+            continue;
+        if (is_note && loc == c->mn_loc) {
+            /* the same replacement token: an earlier use of the macro */
+            if (tk[i].exp == c->mn_exp || i >= c->mn_idx)
+                continue;
+            dist = c->mn_idx - i;
+        } else if (is_note) {
+            /* another token of the diagnostics invocation */
+            if (tk[i].exp != c->mn_exp)
+                continue;
+            dist = i > c->mn_idx ? i - c->mn_idx : c->mn_idx - i;
+        } else
+            dist = i > from ? i - from : from - i;
+        if (!found || dist < bd) {
+            found = true;
+            best = i;
+            bd = dist;
+        }
+    }
+    if (!found)
+        return;
+    if (!is_note)
+        c->mn_exp = tk[best].exp, c->mn_idx = best, c->mn_loc = loc;
+    if (c->opt.macro_chain && (tk[best].t.flags & TF_ORIGIN_BODY) &&
+        !(tk[best].t.flags & TF_ORIGIN_ARG))
+        cnt = c->opt.macro_chain(c->opt.macro_ctx, loc, tk[best].exp, notes,
+                                 10);
+    if (!cnt) {
+        const char *s = srcmgr_ptr(c->sm, tk[best].exp);
+        uint32_t len = 0;
+        while (isalnum((unsigned char)s[len]) || s[len] == '_')
+            len++;
+        if (!len)
+            return;
+        notes[0].name = s;
+        notes[0].len = len;
+        notes[0].loc = tk[best].exp;
+        cnt = 1;
+    }
+    for (k = 0; k < cnt; k++)
+        diag_note(c->diag, d, notes[k].loc, "in expansion of macro '%.*s'",
+                  (int)notes[k].len, notes[k].name);
+}
+
 static Diagnostic *vrep(Checker *c, DiagLevel lvl, const char *id, SrcLoc loc,
                         const char *fmt, va_list ap)
 {
+    Diagnostic *d;
     if (c->quiet)
         return NULL;
-    return diag_vreport(c->diag, lvl, id ? id : "", loc, fmt, ap);
+    d = diag_vreport(c->diag, lvl, id ? id : "", loc, fmt, ap);
+    if (d && lvl != DL_NOTE)
+        macro_notes(c, d, loc, false);
+    return d;
 }
 
 void cerror(Checker *c, SrcLoc loc, const char *fmt, ...)
@@ -136,6 +214,7 @@ void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...)
     n.loc = loc;
     n.msg = arena_strndup(c->diag->arena, c->sb.data, c->sb.len);
     vec_push(&d->notes, n);
+    macro_notes(c, d, loc, true);   /* a note inside a macro has its chain too */
 }
 
 /* gcc's input_location while the parser looks at token tok: the first

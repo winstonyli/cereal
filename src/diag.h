@@ -166,4 +166,11 @@ const DiagOption *diag_find_option(const char *name);
 /* Display width of a code point as gcc counts it (libcpp wcwidth). */
 int wc_width(uint32_t cp);
 
+/* One "in expansion of macro" note: the macro and where it was invoked. */
+typedef struct MacroNote {
+    const char *name;
+    uint32_t len;
+    SrcLoc loc;
+} MacroNote;
+
 #endif

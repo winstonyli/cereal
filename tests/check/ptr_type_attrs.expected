@@ -10,12 +10,18 @@ ptr_type_attrs.c:8:3: warning: 'packed' attribute ignored for type 'int *' [-Wat
 ptr_type_attrs.c:17:37: warning: redefinition of typedef 'AssertExpr' [-Wpedantic]
    17 | #define Assert(expr)   typedef char AssertExpr[2 * !!(expr) - 1]
       |                                     ^
+ptr_type_attrs.c:21:1: note: in expansion of macro 'Assert'
+   21 | Assert (__alignof (struct PackedA) == __alignof (struct PackedB));
+      | ^
 ptr_type_attrs.c:17:37: note: previous declaration of 'AssertExpr' with type 'AssertExpr' {aka 'char[1]'}
    17 | #define Assert(expr)   typedef char AssertExpr[2 * !!(expr) - 1]
       |                                     ^
 ptr_type_attrs.c:17:37: warning: redefinition of typedef 'AssertExpr' [-Wpedantic]
    17 | #define Assert(expr)   typedef char AssertExpr[2 * !!(expr) - 1]
       |                                     ^
+ptr_type_attrs.c:23:1: note: in expansion of macro 'Assert'
+   23 | Assert (__alignof (struct Unpacked) > 1);
+      | ^
 ptr_type_attrs.c:17:37: note: previous declaration of 'AssertExpr' with type 'AssertExpr' {aka 'char[1]'}
    17 | #define Assert(expr)   typedef char AssertExpr[2 * !!(expr) - 1]
       |                                     ^

@@ -2,6 +2,7 @@
  * conditional compilation (C99 6.10.1-6.10.8). */
 #include "pp.h"
 
+#include <ctype.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -230,6 +231,95 @@ Tok pp_make_token(PP *pp, TokKind k, const char *text, size_t n, SrcLoc loc,
         t.flags |= TF_SPELL;
     }
     return t;
+}
+
+/* Which macros a replacement-list token spelled at `spelled` was expanded
+ * through to reach the invocation at `exp` (the outermost one).  The
+ * preprocessor keeps no per-token expansion record, so the chain is
+ * recovered from the definitions: the innermost macro is the one whose
+ * definition contains `spelled`, the outermost is named at `exp`, and the
+ * macros between are found by searching the outer replacement lists for
+ * the inner name.  Innermost first; each note's location is where that
+ * macro was invoked (a name inside the next macro's replacement list, or
+ * `exp`).  0 if no chain is found (arguments, pasted names). */
+static bool chain_dfs(PP *pp, Macro *cur, Macro *target, int depth,
+                      Macro **stk, uint32_t *at, int *n)
+{
+    uint32_t j;
+    int k;
+    if (cur == target)
+        return true;
+    if (depth >= 8)
+        return false;
+    for (j = 0; j < cur->body_len; j++) {
+        const Tok *b = &cur->body[j];
+        Macro *m2;
+        if (b->kind != TK_IDENT || (b->flags & TF_PARAM))
+            continue;
+        m2 = mt_hist(pp->mt, ident_by_id(pp->in, b->aux));
+        if (!m2 || m2->builtin)
+            continue;
+        if (m2->funclike && !(j + 1 < cur->body_len &&
+                              tok_is_punct(&cur->body[j + 1], P_LPAREN)))
+            continue;
+        for (k = 0; k < *n; k++)
+            if (stk[k] == m2)
+                break;
+        if (m2 == cur || k < *n)
+            continue;
+        stk[*n] = m2;
+        at[*n] = b->loc;
+        (*n)++;
+        if (chain_dfs(pp, m2, target, depth + 1, stk, at, n))
+            return true;
+        (*n)--;
+    }
+    return false;
+}
+
+size_t pp_macro_chain(void *ctx, SrcLoc spelled, SrcLoc exp, MacroNote *out,
+                      size_t max)
+{
+    PP *pp = ctx;
+    Macro *target = NULL, *m0;
+    Macro *stk[10];
+    uint32_t at[10];
+    int n = 0, i;
+    size_t k = 0, len = 0;
+    const char *s = srcmgr_ptr(pp->sm, exp);
+    Ident *id0;
+    while (isalnum((unsigned char)s[len]) || s[len] == '_')
+        len++;
+    if (!len)
+        return 0;
+    id0 = intern_find(pp->in, s, len);
+    if (!id0)
+        return 0;
+    for (i = (int)pp->macros.len; i-- > 0;) {
+        Macro *m = pp->macros.data[i];
+        if (!m->predefined && m->hash_loc <= spelled && spelled < m->end_loc) {
+            target = m;
+            break;
+        }
+    }
+    if (!target)
+        return 0;
+    for (m0 = mt_hist(pp->mt, id0); m0; m0 = m0->prev) {
+        n = 0;
+        if (chain_dfs(pp, m0, target, 0, stk, at, &n))
+            break;
+    }
+    if (!m0)
+        return 0;
+    /* stk[0..n): the macros after m0, each invoked at at[i] in the previous */
+    for (i = n; i >= 0 && k < max; i--) {
+        Macro *m = i ? stk[i - 1] : m0;
+        out[k].name = m->name->str;
+        out[k].len = (uint32_t)m->name->len;
+        out[k].loc = i ? at[i - 1] : exp;
+        k++;
+    }
+    return k;
 }
 
 void pp_add_expansion_notes(PP *pp, Diagnostic *d)

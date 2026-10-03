@@ -1,0 +1,36 @@
+macro_chain.c:2:20: warning: macro expands to multiple statements [-Wmultistatement-macros]
+    2 | #define SWAP(X, Y) tmp = X; X = Y; Y = tmp
+      |                    ^
+macro_chain.c:3:19: note: in expansion of macro 'SWAP'
+    3 | #define M1 if (x) SWAP (x, y)
+      |                   ^
+macro_chain.c:7:3: note: in expansion of macro 'M1'
+    7 |   M1;
+      |   ^
+macro_chain.c:3:12: note: some parts of macro expansion are not guarded by this 'if' clause
+    3 | #define M1 if (x) SWAP (x, y)
+      |            ^
+macro_chain.c:7:3: note: in expansion of macro 'M1'
+    7 |   M1;
+      |   ^
+macro_chain.c:2:20: warning: macro expands to multiple statements [-Wmultistatement-macros]
+    2 | #define SWAP(X, Y) tmp = X; X = Y; Y = tmp
+      |                    ^
+macro_chain.c:3:19: note: in expansion of macro 'SWAP'
+    3 | #define M1 if (x) SWAP (x, y)
+      |                   ^
+macro_chain.c:4:14: note: in expansion of macro 'M1'
+    4 | #define M2() M1
+      |              ^
+macro_chain.c:8:3: note: in expansion of macro 'M2'
+    8 |   M2();
+      |   ^
+macro_chain.c:3:12: note: some parts of macro expansion are not guarded by this 'if' clause
+    3 | #define M1 if (x) SWAP (x, y)
+      |            ^
+macro_chain.c:4:14: note: in expansion of macro 'M1'
+    4 | #define M2() M1
+      |              ^
+macro_chain.c:8:3: note: in expansion of macro 'M2'
+    8 |   M2();
+      |   ^

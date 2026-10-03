@@ -4,6 +4,9 @@ conv_arg_loc.c:7:7: warning: overflow in conversion from 'int' to 'signed char' 
 conv_arg_loc.c:2:11: warning: overflow in conversion from 'int' to 'signed char' changes value from '128' to '-128' [-Woverflow]
     2 | #define M 127
       |           ^
+conv_arg_loc.c:8:7: note: in expansion of macro 'M'
+    8 |   fsc(M + 1);
+      |       ^
 conv_arg_loc.c:9:7: warning: overflow in conversion from 'int' to 'signed char' changes value from '128' to '-128' [-Woverflow]
     9 |   fsc(1 + M);
       |       ^

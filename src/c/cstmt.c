@@ -2396,7 +2396,6 @@ static void multistatement(Checker *c, uint32_t g, uint32_t body,
 {
     uint32_t b = first_tok(c, body), n = last + 1;
     uint64_t kb, kn, kg;
-    const PTok *t;
     Diagnostic *d;
     if (!diag_enabled(c->diag, "multistatement-macros") ||
         n >= c->u->ntoks || c->u->toks[n].t.kind == TK_EOF)
@@ -2449,15 +2448,6 @@ static void multistatement(Checker *c, uint32_t g, uint32_t body,
     }
     d = cwarn_d(c, DL_WARNING, ctok_loc(c, b), "multistatement-macros",
                 "macro expands to multiple statements");
-    t = &c->u->toks[b];
-    if (d && !c->diag->track0 && t->exp && t->exp != t->t.loc) {
-        const char *s = srcmgr_ptr(c->sm, t->exp);
-        int len = 0;
-        while (isalnum((unsigned char)s[len]) || s[len] == '_')
-            len++;
-        if (len)
-            cnote(c, d, t->exp, "in expansion of macro '%.*s'", len, s);
-    }
     cnote(c, d, ctok_loc(c, g), "some parts of macro expansion are not "
           "guarded by this '%s' clause", kw);
 }

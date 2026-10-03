@@ -55,9 +55,15 @@ multistatement.c:17:3: note: some parts of macro expansion are not guarded by th
 multistatement.c:2:20: warning: macro expands to multiple statements [-Wmultistatement-macros]
     2 | #define SWAP(X, Y) tmp = X; X = Y; Y = tmp
       |                    ^
+multistatement.c:4:23: note: in expansion of macro 'SWAP'
+    4 | #define STUFF3 if (x) SWAP(x, y)
+      |                       ^
 multistatement.c:20:3: note: in expansion of macro 'STUFF3'
    20 |   STUFF3;
       |   ^
 multistatement.c:4:16: note: some parts of macro expansion are not guarded by this 'if' clause
     4 | #define STUFF3 if (x) SWAP(x, y)
       |                ^
+multistatement.c:20:3: note: in expansion of macro 'STUFF3'
+   20 |   STUFF3;
+      |   ^

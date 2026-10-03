@@ -608,3 +608,22 @@ layouts, gcc rules ported, walk design).
   malloc(n2) with equal arguments (Wstringop-overflow-59 line 20).
   Also: "called object ... is not a function" on a compound literal or
   statement expression callee sits at its opening brace.
+- Round 20 (2026-10-02): "in expansion of macro" note chains.  Any checker
+  diagnostic located in a macro replacement list now gets a note per macro it
+  expanded through (check.c macro_notes, called from vrep and cnote), innermost
+  first.  The chain is recovered from definitions (pp.c pp_macro_chain: the
+  macro whose #define contains the spelled location, the outer macro named at
+  the expansion point, nested names searched through mt_hist); the token is the
+  one with that spelled location nearest the node (a window of 256 tokens
+  first, then the whole unit).  Argument-origin tokens get no note (gcc prints
+  none).  A note inside a macro uses the same invocation (cnote), except a note
+  at the diagnostic's own location (previous declaration), which names an
+  earlier use of the macro.  Tests 914; ASan/UBSan clean; gcc.dg 3634 and
+  c-c++-common 529 identical (the harness ignores notes; the note-aware scan
+  /tmp/notescan.sh: 172 -> 135 files differ, 96 of them over missing semantic
+  warnings); icount 5.988G.  Golden: macro_chain.
+  Known gaps: a previous-declaration note inside a macro prints no chain when
+  the earlier use is not among the unit's tokens (gcc prints one; would need an
+  expansion location on CSym); parse errors (vperr) still print a single
+  outermost note; pasted names and argument tokens fall back to a single
+  outermost note.

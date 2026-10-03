@@ -257,6 +257,8 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         co.dump_summaries = dump_summaries ? out : NULL;
         co.validate_summaries = validate_summaries;
         co.summaries = keep_summaries;
+        co.macro_chain = pp_macro_chain;
+        co.macro_ctx = &tu.pp;
         chk = checker_new(&tu.sm, tu.in, &tu.diag, &co);
     }
     for (errs = p.errors - p.soft_errors, mark = tu.diag.all.len;
