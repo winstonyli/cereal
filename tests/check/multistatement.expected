@@ -1,0 +1,63 @@
+multistatement.c:2:20: warning: macro expands to multiple statements [-Wmultistatement-macros]
+    2 | #define SWAP(X, Y) tmp = X; X = Y; Y = tmp
+      |                    ^
+multistatement.c:12:10: note: in expansion of macro 'SWAP'
+   12 |   if (x) SWAP(x, y);
+      |          ^
+multistatement.c:12:3: note: some parts of macro expansion are not guarded by this 'if' clause
+   12 |   if (x) SWAP(x, y);
+      |   ^
+multistatement.c:2:20: warning: macro expands to multiple statements [-Wmultistatement-macros]
+    2 | #define SWAP(X, Y) tmp = X; X = Y; Y = tmp
+      |                    ^
+multistatement.c:13:13: note: in expansion of macro 'SWAP'
+   13 |   while (x) SWAP(x, y);
+      |             ^
+multistatement.c:13:3: note: some parts of macro expansion are not guarded by this 'while' clause
+   13 |   while (x) SWAP(x, y);
+      |   ^
+multistatement.c:2:20: warning: macro expands to multiple statements [-Wmultistatement-macros]
+    2 | #define SWAP(X, Y) tmp = X; X = Y; Y = tmp
+      |                    ^
+multistatement.c:14:13: note: in expansion of macro 'SWAP'
+   14 |   for (;x;) SWAP(x, y);
+      |             ^
+multistatement.c:14:3: note: some parts of macro expansion are not guarded by this 'for' clause
+   14 |   for (;x;) SWAP(x, y);
+      |   ^
+multistatement.c:2:20: warning: macro expands to multiple statements [-Wmultistatement-macros]
+    2 | #define SWAP(X, Y) tmp = X; X = Y; Y = tmp
+      |                    ^
+multistatement.c:15:17: note: in expansion of macro 'SWAP'
+   15 |   if (x) ; else SWAP(x, y);
+      |                 ^
+multistatement.c:15:12: note: some parts of macro expansion are not guarded by this 'else' clause
+   15 |   if (x) ; else SWAP(x, y);
+      |            ^
+multistatement.c:2:20: warning: macro expands to multiple statements [-Wmultistatement-macros]
+    2 | #define SWAP(X, Y) tmp = X; X = Y; Y = tmp
+      |                    ^
+multistatement.c:16:22: note: in expansion of macro 'SWAP'
+   16 |   switch (x) case 1: SWAP(x, y);
+      |                      ^
+multistatement.c:16:3: note: some parts of macro expansion are not guarded by this 'switch' clause
+   16 |   switch (x) case 1: SWAP(x, y);
+      |   ^
+multistatement.c:8:22: warning: macro expands to multiple statements [-Wmultistatement-macros]
+    8 | #define M(N) L ## N: x++; x++
+      |                      ^
+multistatement.c:17:10: note: in expansion of macro 'M'
+   17 |   if (x) M(0);
+      |          ^
+multistatement.c:17:3: note: some parts of macro expansion are not guarded by this 'if' clause
+   17 |   if (x) M(0);
+      |   ^
+multistatement.c:2:20: warning: macro expands to multiple statements [-Wmultistatement-macros]
+    2 | #define SWAP(X, Y) tmp = X; X = Y; Y = tmp
+      |                    ^
+multistatement.c:20:3: note: in expansion of macro 'STUFF3'
+   20 |   STUFF3;
+      |   ^
+multistatement.c:4:16: note: some parts of macro expansion are not guarded by this 'if' clause
+    4 | #define STUFF3 if (x) SWAP(x, y)
+      |                ^

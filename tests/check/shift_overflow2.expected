@@ -1,0 +1,48 @@
+shift_overflow2.c:2:12: warning: result of '-9 << 31' requires 36 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+    2 | int a = -9 << 31;
+      |            ^
+shift_overflow2.c:2:9: warning: initializer element is not a constant expression [-Wpedantic]
+    2 | int a = -9 << 31;
+      |         ^
+shift_overflow2.c:3:25: warning: result of '-2147483648 << 1' requires 33 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+    3 | int b = (-2147483647-1) << 1;
+      |                         ^
+shift_overflow2.c:3:9: warning: initializer element is not a constant expression [-Wpedantic]
+    3 | int b = (-2147483647-1) << 1;
+      |         ^
+shift_overflow2.c:4:18: warning: result of '-65536 << 16' requires 33 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+    4 | int c = (-65536) << 16;
+      |                  ^
+shift_overflow2.c:4:9: warning: initializer element is not a constant expression [-Wpedantic]
+    4 | int c = (-65536) << 16;
+      |         ^
+shift_overflow2.c:5:18: warning: result of '-32768 << 17' requires 33 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+    5 | int d = (-32768) << 17;
+      |                  ^
+shift_overflow2.c:5:9: warning: initializer element is not a constant expression [-Wpedantic]
+    5 | int d = (-32768) << 17;
+      |         ^
+shift_overflow2.c:6:21: warning: result of '-2147483647 << 1' requires 33 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+    6 | int e = -2147483647 << 1;
+      |                     ^
+shift_overflow2.c:6:9: warning: initializer element is not a constant expression [-Wpedantic]
+    6 | int e = -2147483647 << 1;
+      |         ^
+shift_overflow2.c:7:11: warning: result of '1 << 31' requires 33 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+    7 | int h = 1 << 31;
+      |           ^
+shift_overflow2.c:7:9: warning: initializer element is not a constant expression [-Wpedantic]
+    7 | int h = 1 << 31;
+      |         ^
+shift_overflow2.c:8:16: warning: result of '1 << 31' requires 33 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+    8 | unsigned u = 1 << 31;
+      |                ^
+shift_overflow2.c:8:14: warning: initializer element is not a constant expression [-Wpedantic]
+    8 | unsigned u = 1 << 31;
+      |              ^
+shift_overflow2.c:9:11: warning: result of '5 << 31' requires 35 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+    9 | int m = 5 << 31;
+      |           ^
+shift_overflow2.c:9:9: warning: initializer element is not a constant expression [-Wpedantic]
+    9 | int m = 5 << 31;
+      |         ^

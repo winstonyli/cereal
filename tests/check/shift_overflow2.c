@@ -1,0 +1,9 @@
+// flags: -Wshift-overflow=2
+int a = -9 << 31;
+int b = (-2147483647-1) << 1;
+int c = (-65536) << 16;
+int d = (-32768) << 17;
+int e = -2147483647 << 1;
+int h = 1 << 31;
+unsigned u = 1 << 31;
+int m = 5 << 31;

@@ -114,6 +114,7 @@ static const DiagOption options[] = {
     {"logical-not-parentheses", "c", DL_WARNING, false, DO_ALL, "logical not on the left of a comparison"},
     {"tautological-compare", "c", DL_WARNING, false, DO_ALL, "comparison always evaluates to true or false"},
     {"misleading-indentation", "c", DL_WARNING, false, DO_ALL, "indentation does not reflect the block structure"},
+    {"multistatement-macros", "c", DL_WARNING, false, DO_ALL, "macro expands to multiple statements guarded by one clause"},
     {"int-in-bool-context", "c", DL_WARNING, false, DO_ALL, "suspicious integer expression in a boolean context"},
     {"array-compare", "c", DL_WARNING, false, DO_ALL, "comparison of two arrays"},
     {"array-parameter=", "c", DL_WARNING, false, DO_ALL, "array parameter redeclared with a different bound"},

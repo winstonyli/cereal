@@ -12,6 +12,7 @@
  * made early: cstmt_enter runs at the first node of a LABEL/DEFAULT
  * subtree, and cstmt_expr after the expressions that decide things (the
  * case values, the controlling expressions).  See docs/TYPES.md. */
+#include <ctype.h>
 #include "c/check_int.h"
 
 #include <stdio.h>
@@ -2043,6 +2044,113 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
           "misleadingly indented as if it were guarded by the '%s'", kw);
 }
 
+/* The macro invocation a macro-originated token belongs to (gcc: the
+ * outermost expansion point). */
+static SrcLoc tok_expansion(const Checker *c, uint32_t tok)
+{
+    const PTok *t = &c->u->toks[tok];
+    return t->exp ? t->exp : t->t.loc;
+}
+
+/* Which macro definition a body token was spelled in: the first line of
+ * its logical #define line (the macro an argument token was substituted
+ * into is not tracked: 0). */
+static uint64_t tok_macro(const Checker *c, uint32_t tok)
+{
+    const PTok *t = &c->u->toks[tok];
+    SrcFile *f;
+    uint32_t line, col, len;
+    const char *text;
+    if (!(t->t.flags & TF_ORIGIN_BODY) || (t->t.flags & TF_ORIGIN_ARG))
+        return 0;
+    f = srcmgr_file_of(c->sm, t->t.loc);
+    if (!f)
+        return 1;
+    srcmgr_linecol(f, t->t.loc, &line, &col);
+    while (line > 1) {
+        text = srcmgr_line_text(f, line - 1, &len);
+        while (text && len && (text[len - 1] == 10 || text[len - 1] == 13))
+            len--;
+        if (!text || !len || text[len - 1] != 92)
+            break;
+        line--;
+    }
+    return ((uint64_t)(uintptr_t)f << 20) ^ line;
+}
+
+/* warn_for_multistatement_macros: the body of a guard starts in a macro
+ * expansion and the token after it is from the same expansion. */
+static void multistatement(Checker *c, uint32_t g, uint32_t body,
+                           uint32_t last, const char *kw)
+{
+    uint32_t b = first_tok(c, body), n = last + 1;
+    uint64_t kb, kn, kg;
+    const PTok *t;
+    Diagnostic *d;
+    if (!diag_enabled(c->diag, "multistatement-macros") ||
+        n >= c->u->ntoks || c->u->toks[n].t.kind == TK_EOF)
+        return;
+    /* the body proper starts after its labels */
+    while (b + 1 < n) {
+        if (c->u->toks[b].t.kind == TK_IDENT && tok_is_p(c, b + 1, P_COLON))
+            b += 2;
+        else if (tok_is_kw(c, b, CK_DEFAULT) && tok_is_p(c, b + 1, P_COLON))
+            b += 2;
+        else if (tok_is_kw(c, b, CK_CASE)) {
+            while (b < n && !tok_is_p(c, b, P_COLON))
+                b++;
+            b++;
+        } else
+            break;
+    }
+    if (b >= n || tok_is_p(c, b, P_LBRACE))
+        return;
+    if (!tok_from_macro(c, b) || !tok_from_macro(c, n) ||
+        tok_expansion(c, b) != tok_expansion(c, n))
+        return;
+    if (tok_is_p(c, n, P_SEMI))
+        return;
+    kb = tok_macro(c, b);
+    kn = tok_macro(c, n);
+    if (kb && kn) {
+        uint32_t k, prev = b;
+        if (kb != kn)
+            return;
+        /* one expansion: the spelled locations never go back */
+        for (k = b + 1; k <= n; k++)
+            if (tok_macro(c, k) == kb) {
+                if (c->u->toks[k].t.loc < c->u->toks[prev].t.loc)
+                    return;
+                prev = k;
+            }
+    }
+    if (tok_from_macro(c, g) && tok_expansion(c, g) == tok_expansion(c, b)) {
+        /* a guard from the same invocation: the body must not belong to a
+         * macro that the guard's own macro was expanded inside */
+        uint32_t k;
+        kg = tok_macro(c, g);
+        if (!kg || !kb || kg == kb)
+            return;
+        for (k = g; k-- > 0;)
+            if (tok_from_macro(c, k) && tok_macro(c, k) == kb &&
+                tok_expansion(c, k) == tok_expansion(c, b))
+                return;
+    }
+    d = cwarn_d(c, DL_WARNING, ctok_loc(c, b), "multistatement-macros",
+                "macro expands to multiple statements");
+    t = &c->u->toks[b];
+    if (d && !c->diag->track0 && t->exp && t->exp != t->t.loc) {
+        const char *s = srcmgr_ptr(c->sm, t->exp);
+        int len = 0;
+        while (isalnum((unsigned char)s[len]) || s[len] == '_')
+            len++;
+        if (len)
+            cnote(c, d, t->exp, "in expansion of macro '%.*s'", len, s);
+    }
+    cnote(c, d, ctok_loc(c, g), "some parts of macro expansion are not "
+          "guarded by this '%s' clause", kw);
+}
+
 /* The SCOPE_END i closed the body of an if/else/while/for. */
 static void misleading_scope_end(Checker *c, uint32_t i, uint32_t p)
 {
@@ -2076,11 +2184,18 @@ static void misleading_scope_end(Checker *c, uint32_t i, uint32_t p)
         if (k == 6)
             kw = "for";
         break;
+    case N_SWITCH:
+        if (k == 4)
+            kw = "switch";
+        break;
     default:
         break;
     }
-    if (kw)
-        misleading(c, g, body, c->nodes[i].tok, kw);
+    if (kw) {
+        if (tg(c, p) != N_SWITCH)
+            misleading(c, g, body, c->nodes[i].tok, kw);
+        multistatement(c, g, body, c->nodes[i].tok, kw);
+    }
 }
 
 /* Before scope_close for the SCOPE_END at i. */
@@ -2092,7 +2207,7 @@ void cstmt_scope_end(Checker *c, uint32_t i)
         return;
     p = c->par[i];
     if (p != NOB && (tg(c, p) == N_IF || tg(c, p) == N_WHILE ||
-                     tg(c, p) == N_FOR))
+                     tg(c, p) == N_FOR || tg(c, p) == N_SWITCH))
         misleading_scope_end(c, i, p);
     if (p != NOB && tg(c, p) == N_SWITCH && i + 1 == p && s->sw.len &&
         s->sw.len > top(s)->sw_base)

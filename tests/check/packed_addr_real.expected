@@ -1,0 +1,9 @@
+packed_addr_real.c:6:12: warning: ISO C does not support complex integer types [-Wpedantic]
+    6 | struct A { __complex int i; };
+      |            ^
+packed_addr_real.c:16:10: warning: taking address of packed member of 'struct C' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   16 |   return &__real(p->b.a.i);
+      |          ^
+packed_addr_real.c:23:10: warning: taking address of packed member of 'struct C' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   23 |   return &__imag(p->b.a.i);
+      |          ^

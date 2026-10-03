@@ -1,0 +1,54 @@
+packed_addr2.c:29:8: warning: taking address of packed member of 'struct s' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   29 |   i0 = s0.p.a;               /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |        ^
+packed_addr2.c:30:8: warning: taking address of packed member of 'struct t' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   30 |   i0 = t0.p.a;               /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |        ^
+packed_addr2.c:31:8: warning: taking address of packed member of 'struct s' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   31 |   i0 = s0.p.b[0];            /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |        ^
+packed_addr2.c:32:8: warning: taking address of packed member of 'struct t' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   32 |   i0 = t0.p.b[0];            /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |        ^
+packed_addr2.c:33:8: warning: taking address of packed member of 'struct s' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   33 |   i0 = &s0.p.a[0];           /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |        ^
+packed_addr2.c:34:8: warning: taking address of packed member of 'struct t' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   34 |   i0 = &t0.p.a[0];           /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |        ^
+packed_addr2.c:35:8: warning: taking address of packed member of 'struct s' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   35 |   i0 = &s0.p.b[0][0];        /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |        ^
+packed_addr2.c:36:8: warning: taking address of packed member of 'struct t' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   36 |   i0 = &t0.p.b[0][0];        /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |        ^
+packed_addr2.c:37:9: warning: taking address of packed member of 'struct s' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   37 |   i0 = *s0.p.b;              /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |         ^
+packed_addr2.c:38:9: warning: taking address of packed member of 'struct t' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   38 |   i0 = *t0.p.b;              /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |         ^
+packed_addr2.c:39:11: warning: taking address of packed member of 'struct s' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   39 |   i0 = &**s0.p.b;            /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |           ^
+packed_addr2.c:40:11: warning: taking address of packed member of 'struct t' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   40 |   i0 = &**t0.p.b;            /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |           ^
+packed_addr2.c:41:9: warning: taking address of packed member of 'struct s' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   41 |   i0 = **&s0.p.b;            /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |         ^
+packed_addr2.c:42:9: warning: taking address of packed member of 'struct t' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   42 |   i0 = **&t0.p.b;            /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |         ^
+packed_addr2.c:43:10: warning: taking address of packed member of 'struct s' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   43 |   i0 = &*s0.p.a;             /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |          ^
+packed_addr2.c:44:10: warning: taking address of packed member of 'struct t' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   44 |   i0 = &*t0.p.a;             /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |          ^
+packed_addr2.c:45:8: warning: taking address of packed member of 'struct s' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   45 |   i0 = *&s0.p.a;             /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |        ^
+packed_addr2.c:46:8: warning: taking address of packed member of 'struct t' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   46 |   i0 = *&t0.p.a;             /* { dg-warning "may result in an unaligned pointer value" ""  { target { ! default_packed } } } */
+      |        ^

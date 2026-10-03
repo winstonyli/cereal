@@ -3650,6 +3650,40 @@ static bool pk_member(Checker *c, TypeId type, TypeId rec, const Field *f,
     return pk_align(c, rec) < ta || (off / 8) % ta != 0;
 }
 
+/* Where gcc reports a packed-member address: the location of the folded
+ * expression (&*P is P, *&P is P at the * ), and of the operand when the
+ * outermost operator is a dereference. */
+static SrcLoc pk_loc(Checker *c, uint32_t e)
+{
+    uint32_t ops[16], n = 0, b = e, i;
+    SrcLoc loc, under;
+    int kind = 0;               /* 0 plain, 1 addr, 2 deref */
+    while (n < 16 && b != NO_NODE && ntag(c, b) == N_UNARY &&
+           (npunct(c, b) == P_STAR || npunct(c, b) == P_AMP)) {
+        ops[n++] = b;
+        b = strip_paren(c, first_child(c, b));
+    }
+    if (b == NO_NODE)
+        return first_loc(c, e);
+    loc = under = first_loc(c, b);
+    for (i = n; i-- > 0;) {
+        SrcLoc ol = first_loc(c, ops[i]);
+        bool amp = npunct(c, ops[i]) == P_AMP;
+        if (amp && kind == 2) {
+            kind = 0;
+            loc = first_loc(c, b);
+        } else if (!amp && kind == 1) {
+            kind = 0;
+            loc = ol;
+        } else {
+            under = loc;
+            kind = amp ? 1 : 2;
+            loc = ol;
+        }
+    }
+    return kind == 2 ? under : loc;
+}
+
 static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
 {
     bool rvalue = true, indirect = false;
@@ -3670,6 +3704,11 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
         }
         return;
     }
+    if (ntag(c, e) == N_BINARY && npunct(c, e) == P_COMMA) {
+        if (nkids(c, e, k, 2) == 2)
+            packed_ptr_check(c, to, k[1]);
+        return;
+    }
     r = e;
     if (ntag(c, r) == N_UNARY && npunct(c, r) == P_STAR) {
         r = strip_paren(c, first_child(c, r));
@@ -3682,8 +3721,24 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
         rvalue = indirect;
         if (r == NO_NODE)
             return;
+        if (!indirect && ntag(c, r) == N_UNARY && npunct(c, r) == P_STAR) {
+            /* &*p folds to p (&*&x is handled below) */
+            uint32_t x = strip_paren(c, first_child(c, r));
+            if (x != NO_NODE && !(ntag(c, x) == N_UNARY &&
+                                  npunct(c, x) == P_AMP)) {
+                packed_ptr_check(c, to, x);
+                return;
+            }
+        }
     }
-    if (node_err(c, r))
+    /* *&x folds to x */
+    while (r != NO_NODE && ntag(c, r) == N_UNARY && npunct(c, r) == P_STAR) {
+        uint32_t u = strip_paren(c, first_child(c, r));
+        if (u == NO_NODE || ntag(c, u) != N_UNARY || npunct(c, u) != P_AMP)
+            break;
+        r = strip_paren(c, first_child(c, u));
+    }
+    if (r == NO_NODE || node_err(c, r))
         return;
     {
         TypeId rt = 0;
@@ -3730,9 +3785,19 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
             return;
         }
     }
-    while (ntag(c, r) == N_MEMBER_EXPR || ntag(c, r) == N_INDEX) {
+    while (ntag(c, r) == N_MEMBER_EXPR || ntag(c, r) == N_INDEX ||
+           (ntag(c, r) == N_UNARY && (tckw(c, c->nodes[r].tok) == CK_REAL ||
+                                      tckw(c, c->nodes[r].tok) == CK_IMAG))) {
         uint32_t base = first_child(c, r);
         bool arrow = false;
+        if (ntag(c, r) == N_UNARY) {
+            if (rvalue)
+                return;
+            r = strip_paren(c, base);
+            if (r == NO_NODE)
+                return;
+            continue;
+        }
         if (rvalue && !is_array(c, c->ty[r]))
             return;             /* a member value, not an address */
         if (ntag(c, r) == N_MEMBER_EXPR) {
@@ -3748,7 +3813,7 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
             if (!f)
                 return;
             if (pk_member(c, type, rec, f, off, rvalue)) {
-                cwarn(c, first_loc(c, e), "address-of-packed-member",
+                cwarn(c, pk_loc(c, e), "address-of-packed-member",
                       "taking address of packed member of %s may result in "
                       "an unaligned pointer value", type_q(TT, mainv(c, rec)));
                 return;
@@ -3762,7 +3827,9 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
             if (nkids(c, r, kk, 2) < 2)
                 return;
             base = strip_paren(c, kk[0]);
-            if (base == NO_NODE || !is_array(c, c->ty[base]))
+            if (base == NO_NODE || (!is_array(c, c->ty[base]) &&
+                                    tkind(c, type_canon(TT, c->ty[base])) !=
+                                        TY_VECTOR))
                 return;         /* p[i] is *(p + i) */
             if (is_array(c, c->ty[r]))
                 rvalue = false;
@@ -9982,9 +10049,14 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     if (left && is_intcst(c, a) && is_intcst(c, b) && is_signed(c, ta)) {
         unsigned mp = min_prec_signed(cexpr_trunc(c, ta, c->cv[a])) +
                       (unsigned)c->cv[b];
-        if (mp == prec + 1) {
+        /* 1 << 31 only reaches the sign bit; a negative operand has no such
+         * exemption */
+        bool neg = ival_neg(c, ta, c->cv[a]);
+        bool sign = mp == prec + 1 && !neg;
+        if (sign)
             int_const = false;
-        } else if (mp > prec + 1) {
+        if (mp > prec + 1 || (mp == prec + 1 && neg) ||
+            (sign && diag_option_level(c->diag, "shift-overflow=", 1) >= 2)) {
             int_const = false;
             if (!inhibited(c, i, false))
                 cwarn(c, loc, "shift-overflow=", "result of '%s' requires %u "

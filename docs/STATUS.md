@@ -539,3 +539,29 @@ layouts, gcc rules ported, walk design).
   icount 5.978G (unchanged).  Goldens packed_struct, packed_struct2,
   packed_field, asm_named_loc.  Remaining gcc.dg gaps are a long tail:
   stringop-overread, parentheses, c++-compat, attributes, pedantic.
+- Round 17 (2026-10-02): c-c++-common 501 -> 512 -> 518 identical (gcc.dg
+  unchanged at 3624; 0 rejects-valid, 0 accepts-invalid there).  Tests 900;
+  ASan+UBSan clean; icount 5.988G (+0.16%).
+  -Wmultistatement-macros (in -Wall): after an if/else/while/for/switch
+  body (labels skipped, not a compound or a following ;), warn at the
+  bodys
+- Round 17 (2026-10-02): c-c++-common 501 -> 518 identical (gcc.dg unchanged
+  at 3624; 0 rejects-valid, 0 accepts-invalid there).  Tests 900; ASan+UBSan
+  clean; icount 5.988G (+0.16%).
+  -Wmultistatement-macros (in -Wall): after an if/else/while/for/switch body
+  (labels skipped; not a compound statement, not a following ';'), warn at the
+  body's first token when it and the next token are from one macro expansion
+  and the guard is not (cstmt.c multistatement).  gcc compares macro maps;
+  cereal has no per-token macro id, so tok_macro() derives the defining
+  #define from the spelled location (argument tokens are wildcards) and
+  detects separate expansions of one macro by spelled locations going back.
+  Known gap: the note chain for nested macros ("in expansion of macro" per
+  level) is not produced, only the outermost level.
+  -Wshift-overflow=2 (the 1 << 31 sign-bit case), and negative left operands
+  ((-32768) << 17 warns at level 1: the sign-bit exemption is for
+  non-negative operands only).  -Waddress-of-packed-member: comma operands
+  (last operand), *&x and &*p folding with gcc's locations (pk_loc),
+  __real__/__imag__, vector subscripts.
+  Left: const variables folded under -O (gcc substitutes a const int with a
+  constant initializer in c_fully_fold: Wshift-overflow-1/3/4 lines 59-61),
+  -Wduplicated-branches (needs operand_equal_p with macro-location rules).
