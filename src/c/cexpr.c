@@ -5489,6 +5489,17 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
             check_format_literal(c, kv, nk, csym(c, fref),
                                  cident(c, csym(c, fref)->name), loc);
     }
+    /* a call through a pointer declared with 'nonnull' */
+    if (!too_many && !bad && !builtin_few && fref == SYM_NONE &&
+        fnode != NO_NODE && ntag(c, fnode) == N_IDENT) {
+        uint32_t ps = lookup_ord(c, cnode_ident(c, fnode));
+        uint32_t tb = c->top[NS_ORD][cnode_ident(c, fnode)];
+        uint64_t nn = ps != SYM_NONE && csym(c, ps)->kind == CS_OBJ
+                          ? csym(c, ps)->nonnull | (tb ? c->log.data[tb - 1].nn : 0)
+                          : 0;
+        if (nn)
+            check_nonnull(c, kv, nk, nn, pt, nparm, proto, false, loc);
+    }
     if (!too_many && !bad && proto && nparm > 1 && fref != SYM_NONE &&
         csym(c, fref)->parms)
         check_restrict(c, kv, nk, csym(c, fref)->parms, nparm, loc,

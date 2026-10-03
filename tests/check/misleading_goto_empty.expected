@@ -1,0 +1,60 @@
+misleading_goto_empty.c:7:3: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+    7 |   if (a)
+      |   ^
+misleading_goto_empty.c:4:15: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+    4 | #define BAR() foo (0)
+      |               ^
+misleading_goto_empty.c:10:3: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   10 |   if (a)
+      |   ^
+misleading_goto_empty.c:12:5: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+   12 |     foo (2);
+      |     ^
+misleading_goto_empty.c:18:3: warning: this 'while' clause does not guard... [-Wmisleading-indentation]
+   18 |   while (a);
+      |   ^
+misleading_goto_empty.c:19:5: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'while'
+   19 |     foo (0);
+      |     ^
+misleading_goto_empty.c:28:3: warning: this 'for' clause does not guard... [-Wmisleading-indentation]
+   28 |   for (;;) ;
+      |   ^
+misleading_goto_empty.c:29:7: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'for'
+   29 |       foo (2);
+      |       ^
+misleading_goto_empty.c:31:1: error: stray '\' in program
+   31 | \tfoo (3);
+      | ^
+misleading_goto_empty.c:31:2: warning: implicit declaration of function 'tfoo'; did you mean 'foo'? [-Wimplicit-function-declaration]
+   31 | \tfoo (3);
+      |  ^
+misleading_goto_empty.c:32:17: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   32 |   if (a) ; else if (b);
+      |                 ^
+misleading_goto_empty.c:33:5: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+   33 |     foo (4);
+      |     ^
+misleading_goto_empty.c:45:3: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   45 |   if (a);
+      |   ^
+misleading_goto_empty.c:46:7: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+   46 |       foo (7);
+      |       ^
+misleading_goto_empty.c:53:9: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   53 |         if (a)
+      |         ^
+misleading_goto_empty.c:55:17: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+   55 |                 a = 2;
+      |                 ^
+misleading_goto_empty.c:56:9: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   56 |         if (a)
+      |         ^
+misleading_goto_empty.c:58:17: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+   58 |                 return 2;
+      |                 ^
+misleading_goto_empty.c:61:9: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   61 |         if (a)
+      |         ^
+misleading_goto_empty.c:63:17: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+   63 |                 goto f;
+      |                 ^

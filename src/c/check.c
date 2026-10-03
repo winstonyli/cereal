@@ -358,6 +358,7 @@ void cbind(Checker *c, int ns, uint32_t ident, uint32_t ref)
     b.prev = c->top[ns][ident];
     b.ref = ref;
     b.ty = 0;
+    b.nn = 0;
     b.ns = (uint8_t)ns;
     vec_push(&c->log, b);
     c->top[ns][ident] = (uint32_t)c->log.len;

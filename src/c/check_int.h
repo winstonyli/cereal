@@ -108,6 +108,7 @@ typedef struct Bind {
     uint32_t ty;             /* NS_ORD: the type of the symbol in this scope
                               * when it differs from the symbol's, + 1 (gcc's
                               * c_binding.u.type) */
+    uint64_t nn;             /* NS_ORD: 'nonnull' of a block-scope function pointer */
     uint8_t ns;
 } Bind;
 

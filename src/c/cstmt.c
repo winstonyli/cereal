@@ -1976,11 +1976,19 @@ typedef struct {
     uint32_t line, vcol;
 } TokPos;
 
+static bool tok_from_macro(const Checker *c, uint32_t tok)
+{
+    return (c->u->toks[tok].t.flags &
+            (TF_ORIGIN_BODY | TF_ORIGIN_ARG | TF_PASTED | TF_SYNTH)) != 0;
+}
+
 /* The file, line and display column (tabs to multiples of 8) of a token. */
 static bool tok_pos(Checker *c, uint32_t tok, TokPos *p)
 {
     SrcLoc loc = ctok_loc(c, tok);
     uint32_t col, len, i, dc = 0;
+    if (tok_from_macro(c, tok) && c->u->toks[tok].exp)
+        loc = c->u->toks[tok].exp;      /* the expansion point */
     const char *text;
     p->f = srcmgr_file_of(c->sm, loc);
     if (!p->f)
@@ -2002,11 +2010,6 @@ static bool tok_pos(Checker *c, uint32_t tok, TokPos *p)
     return true;
 }
 
-static bool tok_from_macro(const Checker *c, uint32_t tok)
-{
-    return (c->u->toks[tok].t.flags &
-            (TF_ORIGIN_BODY | TF_ORIGIN_ARG | TF_PASTED | TF_SYNTH)) != 0;
-}
 
 static bool tok_is_p(const Checker *c, uint32_t tok, Punct p)
 {
@@ -2028,13 +2031,13 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
     uint32_t b = first_tok(c, body), n = last + 1, l;
     TokPos gp, bp, np, lp;
     Diagnostic *d;
+    if (tg(c, body) == N_GOTO)
+        b = c->nodes[body].tok - 1;     /* the 'goto' before the label name */
     if (n >= c->u->ntoks || c->u->toks[n].t.kind == TK_EOF)
         return;
     if (tok_is_p(c, b, P_LBRACE) ||
         tok_is_p(c, n, P_SEMI) || tok_is_p(c, n, P_RBRACE) ||
         tok_is_kw(c, n, CK_ELSE))
-        return;
-    if (tok_from_macro(c, g) || tok_from_macro(c, b) || tok_from_macro(c, n))
         return;
     if (!tok_pos(c, g, &gp) || !tok_pos(c, b, &bp) || !tok_pos(c, n, &np) ||
         np.f != bp.f)
@@ -2046,8 +2049,11 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
     if (np.line == bp.line) {
         if (gp.line == bp.line && !(c->u->toks[g].t.flags & TF_BOL))
             return;
-    } else if (tok_is_p(c, b, P_SEMI) ||
-               !(bp.vcol == np.vcol && bp.vcol > lp.vcol))
+    } else if (tok_is_p(c, b, P_SEMI)) {
+        /* an empty body: the next statement indented past the guard line */
+        if (gp.line != bp.line || np.vcol <= lp.vcol)
+            return;
+    } else if (!(bp.vcol == np.vcol && bp.vcol > lp.vcol))
         return;
     d = cwarn_d(c, DL_WARNING, ctok_loc(c, g), "misleading-indentation",
                 "this '%s' clause does not guard...", kw);

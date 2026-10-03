@@ -1,0 +1,18 @@
+nonnull_fnptr.c:6:3: warning: argument 1 null where non-null expected [-Wnonnull]
+    6 |   fnonnull3 (0);    // { dg-warning "\\\[-Wnonnull" }
+      |   ^
+nonnull_fnptr.c:13:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   13 |   fnonnull3 (0);    // { dg-warning "\\\[-Wnonnull" }
+      |   ^
+nonnull_fnptr.c:21:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   21 |   pfnonnull1 (0);   // { dg-warning "\\\[-Wnonnull" }
+      |   ^
+nonnull_fnptr.c:36:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   36 |   pfnonnull2 (0);   // { dg-warning "\\\[-Wnonnull" }
+      |   ^
+nonnull_fnptr.c:51:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   51 |   pfnonnull3 (0);   // { dg-warning "\\\[-Wnonnull" }
+      |   ^
+nonnull_fnptr.c:58:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   58 |   pfnonnull3 (0);   // { dg-warning "\\\[-Wnonnull" }
+      |   ^

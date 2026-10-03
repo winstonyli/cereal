@@ -961,3 +961,16 @@ layouts, gcc rules ported, walk design).
 - parse.c `lbl_ok`: `__label__` is accepted only before the first declaration/statement of a block; later it is
   `error: expected expression before '__label__'`. Golden `label_decl_late`.
 - Parity unchanged: tests 983, gcc.dg 3656 identical (219 differ), c-c++-common 555 (102), san clean (320).
+
+### Round 41b — misleading-indentation, nonnull on function pointers
+- cstmt.c `misleading`: macro tokens are positioned at their expansion point (no longer skipped); a `goto` body
+  uses the `goto` keyword column; an empty body `;` on the guard line warns when the next statement is indented past
+  the guard line. Golden `misleading_goto_empty`.
+- Still open in Wmisleading-indentation.c: empty macro invocations between body and next statement (gcc stays quiet;
+  cereal has no "preceded by empty expansion" token flag), `#if`-skipped regions, `if (...);` followed by a `{`
+  block, statement-expression bodies, `else if (b)` chains at 1154.
+- `nonnull` on a function-pointer object: file-scope attribute stored on the symbol, block-scope attribute on the
+  binding (`Bind.nn`), so a later unrelated local redeclaration does not inherit it (matches gcc's xfail cases in
+  Wnonnull-6.c). Golden `nonnull_fnptr`. Open: built-in nonnull via `__builtin_va_arg_pack` (pr62090.c),
+  builtin-arith-overflow-1.c arg 3.
+- Parity: tests 987, gcc.dg 3657 identical (218 differ), c-c++-common 555 (102), san clean (322).

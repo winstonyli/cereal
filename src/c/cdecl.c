@@ -6118,8 +6118,8 @@ static void declared_visit(Checker *c, uint32_t i)
         s.flags |= CSF_DEFINED;
     if (a.noreturn && s.kind == CS_FUNC)
         s.flags |= CSF_NORETURN;
-    if (a.nonnull && s.kind == CS_FUNC)
-        s.nonnull = a.nonnull;
+    if (a.nonnull && (s.kind == CS_FUNC || (s.kind == CS_OBJ && file)))
+        s.nonnull = a.nonnull;     /* an object: a function pointer */
     if (a.fmt && s.kind == CS_FUNC)
         s.fmt = a.fmt;
     if (g.what == GD_FUNC && s.kind == CS_FUNC && !kr)
@@ -6202,6 +6202,9 @@ static void declared_visit(Checker *c, uint32_t i)
         }
         c->ty[i] = t->ty;
     }
+    if (a.nonnull && !file && csym(c, ref)->kind == CS_OBJ && s.name &&
+        c->top[NS_ORD][s.name])
+        c->log.data[c->top[NS_ORD][s.name] - 1].nn = a.nonnull;
     if (csym(c, ref)->kind == CS_TYPEDEF)
         cparm_typedef(c, top, csym(c, ref)->ty);
     if (g.what == GD_FUNC && csym(c, ref)->kind == CS_FUNC)
