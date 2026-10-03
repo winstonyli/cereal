@@ -174,6 +174,10 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->short_enums = true;
     } else if (!strcmp(a, "-fno-short-enums")) {
         o->short_enums = false;
+    } else if (!strcmp(a, "-fstrict-aliasing")) {
+        o->strict_alias = 1;
+    } else if (!strcmp(a, "-fno-strict-aliasing")) {
+        o->strict_alias = 2;
     } else if (!strcmp(a, "-flax-vector-conversions")) {
         o->lax_vector = true;
     } else if (!strcmp(a, "-fno-lax-vector-conversions")) {

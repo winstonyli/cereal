@@ -253,6 +253,7 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         co.gnu = o->pp.gnu_mode;
         co.short_enums = o->short_enums;
         co.opt_level = o->opt_level;
+        co.strict_alias = o->strict_alias;
         co.lax_vector = o->lax_vector;
         co.pedantic = tu.diag.pedantic;
         co.pedantic_errors = tu.diag.pedantic_errors;

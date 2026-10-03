@@ -6652,6 +6652,8 @@ static void e_call(Checker *c, uint32_t i)
     c->ef[i] = EF_SIDE;
 }
 
+static void alias_deref(Checker *c, uint32_t p, bool use_loc, SrcLoc loc);
+
 static void e_index(Checker *c, uint32_t i)
 {
     uint32_t k[2], a, x;
@@ -6722,6 +6724,8 @@ static void e_index(Checker *c, uint32_t i)
         et = pointee(c, pt);
         if (is_void(c, et) && !inhibited(c, i, false))
             cwarn(c, loc, "", "dereferencing 'void *' pointer");
+        if (has_ival(c, x) && c->cv[x] == 0)    /* p[0] is *p */
+            alias_deref(c, a, true, loc);
     }
     c->ty[i] = et;
     c->ef[i] = EF_LVALUE | ((c->ef[a] | c->ef[x]) & EF_PROP);
@@ -6751,6 +6755,7 @@ static bool member_datum(Checker *c, uint32_t i, uint32_t d, TypeId *rec)
         *rec = pointee(c, t);
         if (is_void(c, *rec) && !inhibited(c, i, false))
             cwarn(c, loc, "", "dereferencing 'void *' pointer");
+        alias_deref(c, d, false, loc);
         return true;
     }
     *rec = c->ty[d];
@@ -7054,6 +7059,136 @@ static void addr_of(Checker *c, uint32_t i, uint32_t a)
     }
 }
 
+/* ---- -Wstrict-aliasing (gcc's c-family strict_aliasing_warning) ---------- */
+
+static bool strict_alias_on(Checker *c)
+{
+    char o = c->opt.opt_level;
+    if (c->opt.strict_alias)
+        return c->opt.strict_alias == 1;
+    return o == '2' || o == '3' || o == 's' || o == 'z' || o == 'f';
+}
+
+/* Looks through parentheses and pointer conversions for the address of an
+ * object (&decl, &a.b, &a[i], &p->m) or an array that decays: the node whose
+ * address it is, with the object's type in *ot and the outermost conversion
+ * in *first.  &*p and &p[i] are not: gcc folds them to p. */
+static uint32_t alias_base(Checker *c, uint32_t e, TypeId *ot, uint32_t *first)
+{
+    uint32_t k[2], x;
+    bool ok;
+    *first = NO_NODE;
+    for (;;) {
+        e = strip_paren(c, e);
+        if (e == NO_NODE || node_err(c, e))
+            return NO_NODE;
+        if (ntag(c, e) == N_CAST && nkids(c, e, k, 2) == 2 &&
+            is_ptr(c, c->ty[e]) &&
+            (is_ptr(c, c->ty[k[1]]) || is_array(c, c->ty[k[1]]))) {
+            if (*first == NO_NODE)
+                *first = e;
+            e = k[1];
+            continue;
+        }
+        break;
+    }
+    if (ntag(c, e) == N_UNARY && npunct(c, e) == P_AMP) {
+        x = first_child(c, e);
+        x = x == NO_NODE ? x : strip_paren(c, x);
+    } else if (is_array(c, c->ty[e])) {
+        x = e;
+    } else {
+        return NO_NODE;
+    }
+    if (x == NO_NODE || node_err(c, x))
+        return NO_NODE;
+    switch (ntag(c, x)) {
+    case N_IDENT:
+        ok = (c->ef[x] & EF_LVALUE) && !is_func(c, c->ty[x]);
+        break;
+    case N_MEMBER_EXPR:
+        ok = true;
+        break;
+    case N_UNARY: {             /* __real__ x, __imag__ x */
+        uint32_t b = first_child(c, x);
+        ok = (tckw(c, c->nodes[x].tok) == CK_REAL ||
+              tckw(c, c->nodes[x].tok) == CK_IMAG) && b != NO_NODE &&
+             ntag(c, strip_paren(c, b)) == N_IDENT;
+        break;
+    }
+    case N_INDEX: {
+        uint32_t b = first_child(c, x);
+        ok = b != NO_NODE && is_array(c, c->ty[b]);
+        break;
+    }
+    default:
+        ok = false;
+        break;
+    }
+    if (!ok || (is_record(c, c->ty[x]) && !complete(c, c->ty[x])))
+        return NO_NODE;
+    *ot = c->ty[x];
+    return e;
+}
+
+/* pt: the pointer type, obj: the type of the object it points into.
+ * Level 2 warns at the cast, level 3 at the dereference. */
+static void alias_warn(Checker *c, SrcLoc loc, TypeId obj, TypeId pt,
+                       bool at_cast)
+{
+    TypeId tg = pointee(c, pt);
+    int r;
+    if (is_void(c, tg) || type_ptr_may_alias(TT, pt))
+        return;
+    if (!complete(c, tg)) {
+        if (at_cast)
+            cwarn(c, loc, "strict-aliasing=", "type-punning to incomplete "
+                  "type might break strict-aliasing rules");
+        return;
+    }
+    r = type_alias_rel(TT, obj, tg);
+    if (r == AL_DISJOINT)
+        cwarn(c, loc, "strict-aliasing=", "dereferencing type-punned "
+              "pointer will break strict-aliasing rules");
+    else if (r == AL_MAY && at_cast)
+        cwarn(c, loc, "strict-aliasing=", "dereferencing type-punned "
+              "pointer might break strict-aliasing rules");
+}
+
+static bool alias_wanted(Checker *c, int lvl)
+{
+    return strict_alias_on(c) && diag_enabled(c->diag, "strict-aliasing=") &&
+           diag_option_level(c->diag, "strict-aliasing=", 3) == lvl;
+}
+
+/* *p, p->m, p[0] with p = (T *)&obj (level 3); loc: where gcc reports a
+ * subscript (else at the conversion). */
+static void alias_deref(Checker *c, uint32_t p, bool use_loc, SrcLoc loc)
+{
+    TypeId ot;
+    uint32_t first, b;
+    if (!alias_wanted(c, 3))
+        return;
+    b = alias_base(c, p, &ot, &first);
+    if (b == NO_NODE)
+        return;
+    alias_warn(c, !use_loc && first != NO_NODE ? cnode_loc(c, first) : loc, ot,
+               rvt(c, p), false);
+}
+
+/* (T *)&obj itself (level 2). */
+static void alias_cast(Checker *c, uint32_t a, TypeId pt)
+{
+    TypeId ot;
+    uint32_t first, b;
+    if (!alias_wanted(c, 2))
+        return;
+    b = alias_base(c, a, &ot, &first);
+    if (b == NO_NODE)
+        return;
+    alias_warn(c, cnode_loc(c, strip_paren(c, a)), ot, pt, true);
+}
+
 static void deref(Checker *c, uint32_t i, uint32_t a)
 {
     SrcLoc loc = cnode_loc(c, i);
@@ -7080,6 +7215,7 @@ static void deref(Checker *c, uint32_t i, uint32_t a)
     }
     if (is_void(c, b) && !inhibited(c, i, false))
         cwarn(c, loc, "", "dereferencing 'void *' pointer");
+    alias_deref(c, a, false, loc);
     c->ty[i] = b;
     c->ef[i] = EF_LVALUE | (c->ef[a] & EF_PROP);
     if (tquals(c, b) & TQ_VOLATILE)
@@ -7774,6 +7910,8 @@ static void e_cast(Checker *c, uint32_t i)
               "cast from pointer to integer of different size");
     }
     packed_ptr_check(c, t, a);
+    if (is_ptr(c, t))
+        alias_cast(c, a, c->ty[i]);
     /* -Wbad-function-cast: a call cast to a type of another tree code */
     if (ntag(c, strip_paren(c, a)) == N_CALL && diag_enabled(c->diag, "bad-function-cast") &&
         cast_class(c, t) != cast_class(c, ot))

@@ -40,7 +40,8 @@ enum {
     TF_VARIADIC = 2,         /* function: ... */
     TF_NOPROTO = 4,          /* function: () declared without a prototype */
     TF_ALIGNED = 8,          /* typedef: .align overrides */
-    TF_SYSHDR = 16           /* typedef: declared in a system header */
+    TF_SYSHDR = 16,          /* typedef: declared in a system header */
+    TF_MAYALIAS = 32         /* typedef: may_alias */
 };
 
 typedef struct TypeEnt {
@@ -67,7 +68,8 @@ enum {
     RF_DESIGNATED = 512,     /* designated_init */
     RF_USER_ALIGN = 1024,    /* aligned attribute given (copy copies it) */
     RF_VMOD = 2048,          /* a member is variably modified (C_TYPE_VARIABLY_MODIFIED) */
-    RF_SSO = 4096            /* scalar_storage_order: pointers are not constants */
+    RF_SSO = 4096,           /* scalar_storage_order: pointers are not constants */
+    RF_MAYALIAS = 8192       /* may_alias */
 };
 
 /* Field.flags */
@@ -239,6 +241,16 @@ TypeId type_param_adjust(TypeTable *tt, TypeId t);
 /* The promoted type of an argument without a prototype (6.5.2.2p6). */
 TypeId type_default_promote(TypeTable *tt, TypeId t);
 TypeId type_int_promote(TypeTable *tt, TypeId t);
+
+/* ---- alias sets (alias.c) --------------------------------------------- */
+
+enum { AL_SAME, AL_MAY, AL_DISJOINT };
+/* How the alias sets of two object types relate, as gcc's
+ * -Wstrict-aliasing asks: AL_SAME (one set, or a character type), AL_MAY
+ * (they conflict: one holds the other, or a char member) or AL_DISJOINT. */
+int type_alias_rel(TypeTable *tt, TypeId a, TypeId b);
+/* The pointer, as written, points to a may_alias type. */
+bool type_ptr_may_alias(TypeTable *tt, TypeId p);
 
 /* ---- printing (gcc's spelling) --------------------------------------- */
 

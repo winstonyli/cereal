@@ -79,6 +79,7 @@ static const DiagOption options[] = {
     {"return-local-addr", "c", DL_WARNING, true, 0, "function returns the address of a local variable"},
     {"shift-count-negative", "c", DL_WARNING, true, 0, "shift count is negative"},
     {"shift-count-overflow", "c", DL_WARNING, true, 0, "shift count >= width of type"},
+    {"strict-aliasing=", "c", DL_WARNING, false, DO_ALL, "dereferencing a pointer that breaks type-based aliasing (level 2: casts, 3: dereferences)"},
     {"shift-overflow=", "c", DL_WARNING, true, 0, "left shift overflows (level 1: signed, 2: also into the sign bit)"},
     {"pointer-compare", "c", DL_WARNING, true, 0, "comparison of a pointer with a zero character constant"},
     {"switch-bool", "c", DL_WARNING, true, 0, "switch on a boolean expression"},
@@ -824,7 +825,8 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
     if (d->color)
         fputs("\033[0m", o);
     if (id && *id)
-        fprintf(o, dg_promoted ? " [-Werror=%s]" : " [-W%s]", id);
+        fprintf(o, dg_promoted ? " [-Werror=%s]" : " [-W%s]",
+                strcmp(id, "strict-aliasing=") ? id : "strict-aliasing");
     fputc('\n', o);
     if (f && f->kind != SF_VIRTUAL && !eof) {
         uint32_t len, i, caret_end = col;

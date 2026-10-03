@@ -1,0 +1,42 @@
+strict_aliasing_2.c:15:37: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   15 | double *c1(void) { return (double *)ai; }
+      |                                     ^
+strict_aliasing_2.c:16:37: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   16 | double *c2(void) { return (double *)&ai[0]; }
+      |                                     ^
+strict_aliasing_2.c:17:31: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   17 | int *c3(void) { return (int *)&__imag x; }
+      |                               ^
+strict_aliasing_2.c:18:33: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   18 | void *c4(void) { return (long *)&s1; }
+      |                                 ^
+strict_aliasing_2.c:19:32: warning: dereferencing type-punned pointer might break strict-aliasing rules [-Wstrict-aliasing]
+   19 | void *c5(void) { return (int *)&s1; }                     /* held: might */
+      |                                ^
+strict_aliasing_2.c:20:38: warning: dereferencing type-punned pointer might break strict-aliasing rules [-Wstrict-aliasing]
+   20 | void *c6(void) { return (struct S1 *)&ai[1]; }
+      |                                      ^
+strict_aliasing_2.c:21:38: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   21 | void *c7(void) { return (struct S2 *)&s1; }
+      |                                      ^
+strict_aliasing_2.c:22:32: warning: dereferencing type-punned pointer might break strict-aliasing rules [-Wstrict-aliasing]
+   22 | void *c8(void) { return (int *)&uu; }
+      |                                ^
+strict_aliasing_2.c:25:40: warning: type-punning to incomplete type might break strict-aliasing rules [-Wstrict-aliasing]
+   25 | void *c11(void) { return (struct INC *)&lg; }             /* incomplete target */
+      |                                        ^
+strict_aliasing_2.c:27:34: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   27 | void *c13(void) { return (long *)(void *)&s1.b; }
+      |                                  ^
+strict_aliasing_2.c:28:34: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   28 | void *c14(void) { return (long *)(char *)&s1.b; }
+      |                                  ^
+strict_aliasing_2.c:32:42: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   32 | void *c18(struct S1 *p) { return (long *)&p->b; }
+      |                                          ^
+strict_aliasing_2.c:33:35: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   33 | void *c19(void) { return (float *)&lg; }
+      |                                   ^
+strict_aliasing_2.c:34:44: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   34 | void *c20(void) { return (_Complex float *)&lg; }
+      |                                            ^

@@ -676,3 +676,21 @@ layouts, gcc rules ported, walk design).
   strict_aliasing_warning, needs alias sets: gcc.dg/alias-9,
   Wstrict-aliasing-*; -Wall -O2 enables it, so it matters on real code),
   -Wfree-nonheap-object (middle end, not modelled).
+- Round 24 (2026-10-02): -Wstrict-aliasing (levels 2 and 3).  alias.c models
+  gcc alias sets as a canonical key per type (signedness, qualifiers,
+  typedefs, arrays and enums folded; char types are set 0; every pointer chain
+  ending in void is void *) plus a walk that asks whether one type holds the
+  other.  type_alias_rel gives AL_SAME / AL_MAY / AL_DISJOINT, probed against
+  gcc-13 over two 25-type matrices (/tmp/lt/mx.c, my.c): a struct with a char
+  member conflicts with everything only as the *object*.  cexpr.c alias_base
+  looks through parentheses and pointer casts for &decl, &a.b, &a[i], &p->m,
+  __real/__imag or a decaying array (not &*p, &p[i]).  Level 3 (-Wall) warns
+  at a dereference: *p, p->m, p[0] (not p[1]), at the cast (the [ for a
+  subscript); level 2 warns at the cast, at its operand, with "might break"
+  when the sets conflict, and the incomplete-target message.  Active at -O2,
+  -O3, -Os, -Oz, -Ofast or -fstrict-aliasing; -fno-strict-aliasing wins.
+  may_alias is kept on typedefs (TF_MAYALIAS) and records (RF_MAYALIAS).
+  Tests 929; gcc.dg 3636 identical with -O (was 3633), c-c++-common 529.
+  Goldens: strict_aliasing, strict_aliasing_2.  Gaps: level 1; constant-folded
+  conditional operands (*(long *)(1 ? &x : &x)); a doubly parenthesised
+  operand column at level 2; gcc underlines the whole cast operand.

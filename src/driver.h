@@ -31,6 +31,7 @@ typedef struct Options {
     int bad_options;            /* command-line errors reported */
     bool track0;                /* -ftrack-macro-expansion=0 */
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */
+    char strict_alias;  /* -fstrict-aliasing 1, -fno-strict-aliasing 2 */
     bool check_versions;
     char parallel;      /* 'a'uto, 'y' on (forced), 'n' off */
     int par_threads;    /* <= 0: cpu_count() */

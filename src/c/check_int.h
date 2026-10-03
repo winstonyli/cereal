@@ -143,6 +143,7 @@ typedef struct Attrs {
     uint32_t aligned;        /* bytes, 0: none */
     bool packed;
     bool transparent_union;
+    bool may_alias;
     bool has_mode;
     uint8_t mode_bytes;      /* mode(QI..TI): integer size; 0: word etc. */
     uint8_t nunk;            /* unknown attribute names deferred to the declarator */

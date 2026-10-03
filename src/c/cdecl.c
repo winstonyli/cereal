@@ -849,6 +849,8 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             a->ms = -1;
         } else if (!strcmp(name, "transparent_union")) {
             a->transparent_union = true;
+        } else if (!strcmp(name, "may_alias")) {
+            a->may_alias = true;
         } else if (!strcmp(name, "noreturn") || !strcmp(name, "__noreturn__")) {
             a->noreturn = true;
         } else if (!strcmp(name, "deprecated") ||
@@ -1109,6 +1111,7 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     if (from->ms)
         to->ms = from->ms;
     to->transparent_union |= from->transparent_union;
+    to->may_alias |= from->may_alias;
     if (from->has_mode) {
         to->has_mode = true;
         to->mode_bytes = from->mode_bytes;
@@ -5521,6 +5524,8 @@ static void declared_visit(Checker *c, uint32_t i)
         if (a.sso == 1 && is_rec(c, type_canon(TT, s.ty)))
             s.ty = type_clone_record(TT, s.ty);   /* a distinct variant */
         ref = pushdecl(c, &s, false);
+        if (a.may_alias && type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF)
+            TT->ents.data[TYPE_IDX(csym(c, ref)->ty)].flags |= TF_MAYALIAS;
         /* a redeclaration can only raise the alignment */
         if (s.align && type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
             TypeEnt *te = &TT->ents.data[TYPE_IDX(csym(c, ref)->ty)];
@@ -6155,6 +6160,8 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     r->dep = (a.deprecated ? CSF_DEPRECATED : 0) |
              (a.unavailable ? CSF_UNAVAILABLE : 0);
     r->dmsg = a.dep_msg;
+    if (a.may_alias)
+        r->flags |= RF_MAYALIAS;
     if (a.transparent_union && want == TY_UNION) {
         bool ok = r->nfields > 0;
         if (ok) {
