@@ -5328,6 +5328,8 @@ static void check_nonnull(Checker *c, const uint32_t *kv, uint32_t nk,
 }
 
 static bool zero_size_ok(const char *name);
+static void sizeof_memaccess(Checker *c, const uint32_t *kv, uint32_t nk,
+                             const char *name);
 static void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk,
                            uint32_t parms, uint32_t nparm, SrcLoc loc,
                            bool builtin);
@@ -5456,6 +5458,12 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
         check_restrict(c, kv, nk, csym(c, fref)->parms, nparm, loc,
                        builtin_decl_ok(c, csym(c, fref)) &&
                        zero_size_ok(cident(c, csym(c, fref)->name)));
+    if (!too_many && fnode != NO_NODE && ntag(c, fnode) == N_IDENT &&
+        ((!strncmp(fname, "__builtin_", 10) && fref == SYM_NONE &&
+          strncmp(fname, "__builtin___", 12)) ||
+         (fref != SYM_NONE && bt_for_decl(c, csym(c, fref)) &&
+          builtin_decl_ok(c, csym(c, fref)))))
+        sizeof_memaccess(c, kv, nk, fname);
     if (!too_many && !proto && bn != NO_NODE && bn != 0xFFFFFFFEu &&
         nk - 1 < bn)
     {
@@ -6492,6 +6500,11 @@ static void e_call(Checker *c, uint32_t i)
         if (!builtin_args_ok(c, i, k[0], name)) {
             set_err(c, i);
             return;
+        }
+        if (!strncmp(name, "__builtin___", 12)) {  /* the _chk functions */
+            uint32_t av[32], an = nkids(c, i, av, 32);
+            if (an <= 32)
+                sizeof_memaccess(c, av, an, name);
         }
         if (!strncmp(name, "__builtin_", 10) && builtin_nonnull(name)) {
             uint32_t av[32], an = nkids(c, i, av, 32);
@@ -10227,6 +10240,200 @@ void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc)
         return;
     }
     null_addr_msg(c, loc, &ai, P_NE);
+}
+
+/* ---- -Wsizeof-pointer-memaccess ---- */
+
+enum { MA_CMP = 1, MA_STR = 2, MA_COPY = 4 };
+typedef struct {
+    const char *name;
+    signed char dst, src, len; /* argument positions, -1 for none */
+    unsigned char flags;       /* compares / string functions / strn*cpy */
+} MemAcc;
+
+static const MemAcc memacc_tab[] = {
+    {"strncmp", 0, 1, 2, MA_CMP | MA_STR},
+    {"strncasecmp", 0, 1, 2, MA_CMP | MA_STR},
+    {"strncpy", 0, 1, 2, MA_STR | MA_COPY},
+    {"strncat", 0, 1, 2, MA_STR | MA_COPY},
+    {"stpncpy", 0, 1, 2, MA_STR | MA_COPY},
+    {"bcopy", 1, 0, 2, 0},
+    {"memcpy", 0, 1, 2, 0},
+    {"memmove", 0, 1, 2, 0},
+    {"bcmp", 0, 1, 2, MA_CMP},
+    {"memcmp", 0, 1, 2, MA_CMP},
+    {"memset", 0, -1, 2, 0},
+    {"bzero", 0, -1, 1, 0},
+    {"memchr", -1, 0, 2, 0},
+    {"snprintf", 0, -1, 1, MA_STR},
+    {"vsnprintf", 0, -1, 1, MA_STR},
+};
+
+/* Is `a` (a call argument) the sizeof operand `x`?  `&*p` is `p` for gcc. */
+static bool memacc_same(Checker *c, uint32_t a, uint32_t x)
+{
+    uint32_t k[3];
+    a = strip_paren(c, a);
+    x = strip_paren(c, x);
+    if (ntag(c, a) == N_UNARY && npunct(c, a) == P_AMP &&
+        nkids(c, a, k, 3) >= 1 && ntag(c, strip_paren(c, k[0])) == N_UNARY &&
+        npunct(c, strip_paren(c, k[0])) == P_STAR &&
+        nkids(c, strip_paren(c, k[0]), k, 3) >= 1)
+        a = strip_paren(c, k[0]);
+    if (ntag(c, a) == N_STRING && ntag(c, x) == N_STRING) {
+        StrBuf s0 = {0}, s1 = {0};
+        bool eq;
+        pexpr(c, &s0, a, PR_UNARY);
+        pexpr(c, &s1, x, PR_UNARY);
+        eq = !strcmp(sb_cstr(&s0), sb_cstr(&s1));
+        sb_free(&s0);
+        sb_free(&s1);
+        return eq;
+    }
+    return opeq(c, a, x);
+}
+
+/* An array whose size is known (a VLA included). */
+static bool array_known(Checker *c, TypeId t)
+{
+    bool ok = false;
+    if (tkind(c, t) == TY_VLA)
+        return true;
+    return tkind(c, t) == TY_ARRAY && (type_size(TT, t, &ok), ok);
+}
+
+static void sizeof_memaccess(Checker *c, const uint32_t *kv, uint32_t nk,
+                             const char *name)
+{
+    const char *nm = name;
+    size_t j, len;
+    const MemAcc *m = NULL;
+    uint32_t sz, a, role;
+    TypeId ty;
+    bool is_expr, chk = false, legit = false;
+    SrcLoc loc;
+    if (!diag_enabled(c->diag, "sizeof-pointer-memaccess"))
+        return;
+    if (!strncmp(nm, "__builtin___", 12)) {
+        nm += 12;
+        chk = true;
+    } else if (!strncmp(nm, "__builtin_", 10))
+        nm += 10;
+    len = strlen(nm);
+    if (chk) {
+        if (len < 5 || strcmp(nm + len - 4, "_chk"))
+            return;
+        len -= 4;
+    }
+    for (j = 0; j < sizeof memacc_tab / sizeof *memacc_tab; j++)
+        if (strlen(memacc_tab[j].name) == len &&
+            !strncmp(memacc_tab[j].name, nm, len))
+            m = &memacc_tab[j];
+    if (!m || nk < (uint32_t)m->len + 2 || nk < 3)
+        return;
+    sz = strip_paren(c, kv[1 + m->len]);
+    if (ntag(c, sz) != N_SIZEOF_EXPR && ntag(c, sz) != N_SIZEOF_TYPE)
+        return;
+    a = first_child(c, sz);
+    if (a == NO_NODE || node_err(c, a) || is_err(c, c->ty[a]))
+        return;
+    is_expr = ntag(c, sz) == N_SIZEOF_EXPR;
+    ty = c->ty[a];
+    loc = first_loc(c, a);
+    for (role = 0; role < 2; role++) {
+        int idx = role ? m->src : m->dst;
+        if (idx >= 0 && node_err(c, kv[1 + idx]))
+            return;
+    }
+    if (!is_ptr(c, ty)) {
+        /* strncpy (d, s, sizeof s) with an array or literal s; an array
+         * destination or a nonstring source is no mistake */
+        uint32_t sa = (m->flags & MA_COPY) ? strip_paren(c, kv[1 + m->src])
+                                           : NO_NODE;
+        uint32_t sref = sa != NO_NODE && ntag(c, sa) == N_IDENT
+                            ? lookup_ord(c, cnode_ident(c, sa)) : SYM_NONE;
+        if ((m->flags & MA_COPY) && is_expr && is_array(c, ty) &&
+            !array_known(c, c->ty[strip_paren(c, kv[1 + m->dst])]) &&
+            !(sref != SYM_NONE &&
+              cdecl_aset_has(c, csym(c, sref)->aset, "nonstring", NULL)) &&
+            memacc_same(c, kv[1 + m->src], a) &&
+            !memacc_same(c, kv[1 + m->dst], kv[1 + m->src]))
+            cwarn(c, loc, "sizeof-pointer-memaccess", "argument to 'sizeof' "
+                  "in '%s' call is the same expression as the source; did you "
+                  "mean to use the size of the destination?", name);
+        return;
+    }
+    /* memcpy (&p, q, sizeof p): an argument whose pointee is the sizeof type
+     * is what the size is meant for (casts look through) */
+    for (role = 0; role < 2; role++) {
+        int idx = role ? m->src : m->dst;
+        uint32_t arg;
+        uint32_t ck[3];
+        TypeId at;
+        if (idx < 0)
+            continue;
+        arg = strip_paren(c, kv[1 + idx]);
+        while (ntag(c, arg) == N_CAST && nkids(c, arg, ck, 3) >= 1)
+            arg = strip_paren(c, ck[nkids(c, arg, ck, 3) - 1]);
+        if (node_err(c, arg))
+            continue;
+        at = rvt(c, arg);
+        if (is_ptr(c, at) && !is_void(c, pointee(c, at)) &&
+            type_compatible(TT, mainv(c, pointee(c, at)), mainv(c, ty)))
+            legit = true;
+    }
+    for (role = 0; role < 2; role++) {
+        int idx = role ? m->src : m->dst;
+        const char *what;
+        uint32_t arg;
+        TypeId at;
+        bool same;
+        if (idx < 0)
+            continue;
+        arg = strip_paren(c, kv[1 + idx]);
+        if (node_err(c, arg) || ntag(c, arg) == N_CAST)
+            continue;
+        at = rvt(c, arg);
+        if (!is_ptr(c, at))
+            continue;
+        what = role ? ((m->flags & MA_CMP) ? "second source" : "source")
+                    : ((m->flags & MA_CMP) ? "first source" : "destination");
+        if (m->dst < 0)
+            what = "source";
+        same = is_expr && memacc_same(c, arg, a);
+        if (same) {
+            const char *how;
+            TypeId pt = pointee(c, at);
+            uint32_t op = strip_paren(c, a);
+            bool one = is_int(c, pt) && !is_void(c, pt);
+            if (one) {
+                bool ok = false;
+                uint64_t sz1 = type_size(TT, pt, &ok);
+                one = ok && sz1 == 1;
+            }
+            if (ntag(c, op) == N_UNARY && npunct(c, op) == P_AMP)
+                how = "remove the addressof";
+            else if ((m->flags & MA_STR) || one)
+                how = "provide an explicit length";
+            else
+                how = "dereference it";
+            cwarn(c, loc, "sizeof-pointer-memaccess", "argument to 'sizeof' "
+                  "in '%s' call is the same expression as the %s; did you "
+                  "mean to %s?", name, what, how);
+            return;
+        }
+        if (!legit && !(m->flags & MA_STR) && !is_void(c, pointee(c, at)) &&
+            tquals(c, ty) == tquals(c, at) &&
+            type_compatible(TT, mainv(c, ty), mainv(c, at))) {
+            char b0[256], b1[256];
+            snprintf(b0, sizeof b0, "%s", type_q(TT, at));
+            snprintf(b1, sizeof b1, "%s", type_q(TT, unqual(c, pointee(c, at))));
+            cwarn(c, loc, "sizeof-pointer-memaccess", "argument to 'sizeof' "
+                  "in '%s' call is the same pointer type %s as the %s; "
+                  "expected %s or an explicit length", name, b0, what, b1);
+            return;
+        }
+    }
 }
 
 /* ---- -Wsizeof-pointer-div ---- */

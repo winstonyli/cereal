@@ -123,6 +123,7 @@ static const DiagOption options[] = {
     {"array-parameter=", "c", DL_WARNING, false, DO_ALL, "array parameter redeclared with a different bound"},
     {"vla-parameter", "c", DL_WARNING, false, DO_ALL, "VLA parameter redeclared with a different bound"},
     {"sizeof-pointer-div", "c", DL_WARNING, false, DO_ALL, "sizeof (pointer) / sizeof (element)"},
+    {"sizeof-pointer-memaccess", "c", DL_WARNING, false, DO_ALL, "sizeof of a pointer as the size of a memory access"},
     {"sizeof-array-div", "c", DL_WARNING, false, DO_ALL, "sizeof (array) / sizeof (wrong type)"},
     {"nonnull-compare", "c", DL_WARNING, false, DO_ALL, "nonnull parameter compared with null"},
     {"restrict", "c", DL_WARNING, false, DO_ALL, "overlapping arguments to restrict parameters"},

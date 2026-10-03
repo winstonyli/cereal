@@ -1,0 +1,177 @@
+sizeof_memaccess.c:21:24: warning: argument to 'sizeof' in 'memset' call is the same pointer type 'int *' as the destination; expected 'int' or an explicit length [-Wsizeof-pointer-memaccess]
+   21 |   memset (p, 0, sizeof q);
+      |                        ^
+sizeof_memaccess.c:22:24: warning: argument to 'sizeof' in 'memset' call is the same expression as the destination; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   22 |   memset (v, 0, sizeof v);
+      |                        ^
+sizeof_memaccess.c:23:25: warning: argument to 'sizeof' in 'memset' call is the same expression as the destination; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   23 |   memset (p, 0, (sizeof (p)));
+      |                         ^
+sizeof_memaccess.c:26:24: warning: argument to 'sizeof' in 'memcpy' call is the same expression as the destination; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   26 |   memcpy (p, q, sizeof p);
+      |                        ^
+sizeof_memaccess.c:27:24: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'int *' as the destination; expected 'int' or an explicit length [-Wsizeof-pointer-memaccess]
+   27 |   memcpy (p, q, sizeof q);
+      |                        ^
+sizeof_memaccess.c:28:25: warning: argument to 'sizeof' in 'memcpy' call is the same expression as the source; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   28 |   memcpy (p, cq, sizeof cq);
+      |                         ^
+sizeof_memaccess.c:29:25: warning: argument to 'sizeof' in 'memcpy' call is the same expression as the destination; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   29 |   memcpy (cp, q, sizeof cp);
+      |                         ^
+sizeof_memaccess.c:30:26: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'const int *' as the source; expected 'int' or an explicit length [-Wsizeof-pointer-memaccess]
+   30 |   memcpy (p, cp, sizeof (const int *));
+      |                          ^
+sizeof_memaccess.c:31:26: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'int *' as the destination; expected 'int' or an explicit length [-Wsizeof-pointer-memaccess]
+   31 |   memcpy (p, cp, sizeof (int *));
+      |                          ^
+sizeof_memaccess.c:32:24: warning: argument to 'sizeof' in 'memcmp' call is the same expression as the first source; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   32 |   memcmp (p, q, sizeof p);
+      |                        ^
+sizeof_memaccess.c:38:26: warning: argument to 'sizeof' in 'strncmp' call is the same expression as the first source; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   38 |   strncmp (c, cq, sizeof c);
+      |                          ^
+sizeof_memaccess.c:39:26: warning: argument to 'sizeof' in 'strncmp' call is the same expression as the second source; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   39 |   strncmp (c, cq, sizeof cq);
+      |                          ^
+sizeof_memaccess.c:40:26: warning: argument to 'sizeof' in 'strncpy' call is the same expression as the source; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   40 |   strncpy (c, cq, sizeof cq);
+      |                          ^
+sizeof_memaccess.c:43:27: warning: argument to 'sizeof' in 'strncpy' call is the same expression as the source; did you mean to use the size of the destination? [-Wsizeof-pointer-memaccess]
+   43 |   strncpy (c, arr, sizeof arr);
+      |                           ^
+sizeof_memaccess.c:44:29: warning: argument to 'sizeof' in 'strncpy' call is the same expression as the source; did you mean to use the size of the destination? [-Wsizeof-pointer-memaccess]
+   44 |   strncpy (c, "abc", sizeof "abc");
+      |                             ^
+sizeof_memaccess.c:45:27: warning: argument to 'sizeof' in 'strncpy' call is the same expression as the destination; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   45 |   strncpy (pa, cq, sizeof pa);
+      |                           ^
+sizeof_memaccess.c:47:23: warning: argument to 'sizeof' in 'snprintf' call is the same expression as the destination; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   47 |   snprintf (c, sizeof c, "x");
+      |                       ^
+sizeof_memaccess.c:48:23: warning: argument to 'sizeof' in 'snprintf' call is the same expression as the destination; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   48 |   snprintf (p, sizeof p, "x");
+      |                       ^
+sizeof_memaccess.c:51:26: warning: 'sizeof' on array function parameter 'a10' will return size of 'char *' [-Wsizeof-array-argument]
+   51 |   memchr (a10, 0, sizeof a10);
+      |                          ^
+sizeof_memaccess.c:18:15: note: declared here
+   18 |          char a10[10], unsigned char *u, int **pp, struct A s)
+      |               ^
+sizeof_memaccess.c:51:26: warning: argument to 'sizeof' in 'memchr' call is the same expression as the source; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   51 |   memchr (a10, 0, sizeof a10);
+      |                          ^
+sizeof_memaccess.c:52:24: warning: argument to 'sizeof' in 'memchr' call is the same expression as the source; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   52 |   memchr (u, 0, sizeof u);
+      |                        ^
+sizeof_memaccess.c:53:25: warning: argument to 'sizeof' in 'memset' call is the same expression as the destination; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   53 |   memset (pp, 0, sizeof pp);
+      |                         ^
+sizeof_memaccess.c:54:25: warning: argument to 'sizeof' in 'memset' call is the same expression as the destination; did you mean to remove the addressof? [-Wsizeof-pointer-memaccess]
+   54 |   memset (&p, 0, sizeof &p);
+      |                         ^
+sizeof_memaccess.c:55:25: warning: argument to 'sizeof' in 'memset' call is the same expression as the destination; did you mean to remove the addressof? [-Wsizeof-pointer-memaccess]
+   55 |   memset (&s, 0, sizeof &s);
+      |                         ^
+sizeof_memaccess.c:56:25: warning: argument to 'sizeof' in 'memset' call is the same expression as the destination; did you mean to remove the addressof? [-Wsizeof-pointer-memaccess]
+   56 |   memset (&s, 0, sizeof (&s));
+      |                         ^
+sizeof_memaccess.c:57:25: warning: argument to 'sizeof' in 'memset' call is the same expression as the destination; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   57 |   memset (pa, 0, sizeof pa);
+      |                         ^
+sizeof_memaccess.c:59:30: warning: argument to 'sizeof' in 'memset' call is the same expression as the destination; did you mean to remove the addressof? [-Wsizeof-pointer-memaccess]
+   59 |   memset (&arr[0], 0, sizeof &arr[0]);
+      |                              ^
+sizeof_memaccess.c:61:26: warning: argument to 'sizeof' in 'memset' call is the same pointer type 'char *' as the destination; expected 'char' or an explicit length [-Wsizeof-pointer-memaccess]
+   61 |   memset (arr, 0, sizeof (arr + 1));
+      |                          ^
+sizeof_memaccess.c:62:30: warning: argument to 'sizeof' in 'memset' call is the same expression as the destination; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   62 |   memset (arr + 1, 0, sizeof (arr + 1));
+      |                              ^
+sizeof_memaccess.c:63:28: warning: argument to 'sizeof' in 'memset' call is the same expression as the destination; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   63 |   memset (p + 1, 0, sizeof (p + 1));
+      |                            ^
+sizeof_memaccess.c:70:25: warning: argument to 'sizeof' in 'memcpy' call is the same expression as the source; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   70 |   memcpy (v, cv, sizeof cv);
+      |                         ^
+sizeof_memaccess.c:72:25: warning: argument to 'sizeof' in 'memcpy' call is the same expression as the source; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   72 |   memcpy (v, pa, sizeof pa);
+      |                         ^
+sizeof_memaccess.c:73:26: warning: argument to 'sizeof' in 'memmove' call is the same expression as the source; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   73 |   memmove (v, pa, sizeof pa);
+      |                          ^
+sizeof_memaccess.c:74:26: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'struct A *' as the destination; expected 'struct A' or an explicit length [-Wsizeof-pointer-memaccess]
+   74 |   memcpy (pb, pa, sizeof pa);
+      |                          ^
+sizeof_memaccess.c:75:27: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'struct A *' as the destination; expected 'struct A' or an explicit length [-Wsizeof-pointer-memaccess]
+   75 |   memcpy (pb, pa, sizeof (struct A *));
+      |                           ^
+sizeof_memaccess.c:76:26: warning: argument to 'sizeof' in 'memcmp' call is the same pointer type 'struct A *' as the first source; expected 'struct A' or an explicit length [-Wsizeof-pointer-memaccess]
+   76 |   memcmp (pa, pb, sizeof pb);
+      |                          ^
+sizeof_memaccess.c:77:25: warning: argument to 'sizeof' in 'memcmp' call is the same expression as the second source; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   77 |   memcmp (pa, p, sizeof p);
+      |                         ^
+sizeof_memaccess.c:78:25: warning: argument to 'sizeof' in 'memcmp' call is the same expression as the first source; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   78 |   memcmp (p, pa, sizeof p);
+      |                         ^
+sizeof_memaccess.c:80:26: warning: argument to 'sizeof' in 'memchr' call is the same pointer type 'struct A *' as the source; expected 'struct A' or an explicit length [-Wsizeof-pointer-memaccess]
+   80 |   memchr (pa, 0, sizeof (struct A *));
+      |                          ^
+sizeof_memaccess.c:81:25: warning: argument to 'sizeof' in 'memcpy' call is the same expression as the source; did you mean to dereference it? [-Wsizeof-pointer-memaccess]
+   81 |   memcpy (p, cp, sizeof cp);
+      |                         ^
+sizeof_memaccess.c:82:26: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'const int *' as the source; expected 'int' or an explicit length [-Wsizeof-pointer-memaccess]
+   82 |   memcpy (p, cp, sizeof (const int *));
+      |                          ^
+sizeof_memaccess.c:83:26: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'const int *' as the source; expected 'int' or an explicit length [-Wsizeof-pointer-memaccess]
+   83 |   memcpy (v, cp, sizeof (const int *));
+      |                          ^
+sizeof_memaccess.c:85:24: warning: argument to 'sizeof' in 'memcpy' call is the same expression as the destination; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   85 |   memcpy (c, c, sizeof c);
+      |                        ^
+sizeof_memaccess.c:86:25: warning: argument to 'sizeof' in 'strncpy' call is the same expression as the destination; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   86 |   strncpy (c, c, sizeof c);
+      |                         ^
+sizeof_memaccess.c:87:29: warning: argument to 'sizeof' in 'strncpy' call is the same expression as the source; did you mean to use the size of the destination? [-Wsizeof-pointer-memaccess]
+   87 |   strncpy (c, "abc", sizeof ("abc"));
+      |                             ^
+sizeof_memaccess.c:88:26: warning: argument to 'sizeof' in 'strncpy' call is the same expression as the source; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+   88 |   strncpy (c, cp, sizeof cp);
+      |                          ^
+sizeof_memaccess.c:97:24: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'char *' as the destination; expected 'char' or an explicit length [-Wsizeof-pointer-memaccess]
+   97 |   memcpy (y, z, sizeof y3);
+      |                        ^
+sizeof_memaccess.c:98:26: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'char *' as the destination; expected 'char' or an explicit length [-Wsizeof-pointer-memaccess]
+   98 |   memcpy (y, buf, sizeof y3);
+      |                          ^
+sizeof_memaccess.c:99:24: warning: argument to 'sizeof' in 'memset' call is the same pointer type 'char *' as the destination; expected 'char' or an explicit length [-Wsizeof-pointer-memaccess]
+   99 |   memset (y, 0, sizeof y3);
+      |                        ^
+sizeof_memaccess.c:104:24: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'char *' as the source; expected 'char' or an explicit length [-Wsizeof-pointer-memaccess]
+  104 |   memcpy (x, y, sizeof y3);
+      |                        ^
+sizeof_memaccess.c:106:24: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'char *' as the destination; expected 'char' or an explicit length [-Wsizeof-pointer-memaccess]
+  106 |   memcpy (z, y, sizeof y3);
+      |                        ^
+sizeof_memaccess.c:107:24: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'char *' as the source; expected 'char' or an explicit length [-Wsizeof-pointer-memaccess]
+  107 |   memcpy (q, y, sizeof y3);
+      |                        ^
+sizeof_memaccess.c:108:24: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'char *' as the source; expected 'char' or an explicit length [-Wsizeof-pointer-memaccess]
+  108 |   memcpy (q, z, sizeof y3);
+      |                        ^
+sizeof_memaccess.c:109:24: warning: argument to 'sizeof' in 'memcpy' call is the same pointer type 'char *' as the source; expected 'char' or an explicit length [-Wsizeof-pointer-memaccess]
+  109 |   memcpy (x, z, sizeof y3);
+      |                        ^
+sizeof_memaccess.c:110:40: warning: argument to 'sizeof' in '__builtin___memset_chk' call is the same expression as the destination; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+  110 |   __builtin___memset_chk (y, 0, sizeof y, __builtin_object_size (y, 1));
+      |                                        ^
+sizeof_memaccess.c:111:41: warning: argument to 'sizeof' in '__builtin___strncpy_chk' call is the same expression as the source; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+  111 |   __builtin___strncpy_chk (y, z, sizeof z, 8);
+      |                                         ^
+sizeof_memaccess.c:112:34: warning: argument to 'sizeof' in '__builtin_memset' call is the same expression as the destination; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+  112 |   __builtin_memset (y, 0, sizeof (y));
+      |                                  ^
+sizeof_memaccess.c:113:35: warning: argument to 'sizeof' in '__builtin_strncat' call is the same expression as the destination; did you mean to provide an explicit length? [-Wsizeof-pointer-memaccess]
+  113 |   __builtin_strncat (y, z, sizeof (y));
+      |                                   ^

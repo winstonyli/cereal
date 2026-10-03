@@ -755,3 +755,20 @@ layouts, gcc rules ported, walk design).
   in warn-strlen-no-nul.c (76, -O2), Wstringop-overread-6.c and
   Wstringop-overflow-22.c (5 each); needs -O2 const-array contents and
   index/range tracking (middle-end).  Low value; not planned.
+- Round 29 (2026-10-03): -Wsizeof-pointer-memaccess (in -Wall; c-c++-common
+  Wsizeof-pointer-memaccess1-3 SAME).  sizeof_memaccess (cexpr.c) runs from
+  call_args and, for __builtin___*_chk (no call_args), from e_call.  Table
+  MemAcc: strncmp/strncasecmp, strn{cpy,cat}/stpncpy, bcopy, memcpy, memmove,
+  bcmp, memcmp, memset, bzero, memchr, snprintf, vsnprintf (not mempcpy;
+  bcmp/bzero/bcopy only in gnu mode).  The sizeof operand must be a direct
+  argument (parens ok).  Destination is checked first, then source; explicit
+  casts on an argument block it.  "same expression" (opeq, &*p = p, string
+  literals by spelling): "remove the addressof" for &x, "explicit length" for
+  char-sized pointees or string functions, else "dereference it".  Otherwise
+  "same pointer type" (not string functions, not void*), skipped when another
+  argument points to the sizeof type (memcpy (&p, q, sizeof p)).
+  strncpy (d, s, sizeof s) with an array s: "use the size of the destination",
+  unless d is a known-size array/VLA, s is nonstring, or dest == src.
+  Tests 939; gcc.dg 3641, c-c++-common 540.  Golden: sizeof_memaccess.
+  bench/tools/cmp.sh and verify.sh (kept in the repo; WSL upgrades wipe /tmp)
+  replace the old /tmp helpers; verify.sh pins CEREAL_GCC=gcc-13.
