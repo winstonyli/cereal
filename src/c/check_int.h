@@ -331,6 +331,9 @@ struct Checker {
     uint64_t il_first;       /* cinput_loc memo: the unit (first_tok), token + 1, its BOL token + 1 (0: none) */
     uint32_t il_tok, il_bol;
     bool attr_defer;         /* record unknown names in Attrs.unk instead */
+    uint64_t align_err_u;    /* the aligned() argument last diagnosed, so */
+    uint32_t align_err_node; /* a specifier's attributes collected twice */
+                             /* report it once */
     bool attr_quiet;         /* attr_collect emits no unknown-attribute warning */
     bool attr_at_set;        /* ... and locates it at attr_at */
     SrcLoc attr_at;

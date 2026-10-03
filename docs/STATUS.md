@@ -565,3 +565,16 @@ layouts, gcc rules ported, walk design).
   Left: const variables folded under -O (gcc substitutes a const int with a
   constant initializer in c_fully_fold: Wshift-overflow-1/3/4 lines 59-61),
   -Wduplicated-branches (needs operand_equal_p with macro-location rules).
+  Also in Round 17: "size 'N' of array 'x' exceeds maximum object size" now
+  carries N when the byte size is representable in 64 bits (gcc omits it
+  otherwise, e.g. a multi-dimensional overflow); aligned() errors: values >=
+  2^63 print unsigned, "exceeds object file maximum" only when the attribute
+  lands on a static-storage variable or function (attr_on_object), plain
+  "exceeds maximum" on types/fields/params/auto variables, and the error is
+  reported once per argument node (a struct specifier collected its
+  attributes twice).  gcc.dg identical 3624 -> 3628, c-c++-common 520;
+  tests 904; icount 5.988G.
+  Deferred: the nocf_check function-type attribute (default under gcc-13
+  -fcf-protection; needs attribute-carrying function types, compatibility,
+  and type printing such as 'void (__attribute__((nocf_check)) *)(void)');
+  affects 4 c-c++-common files (attr-nocf-check-1/2/3, pointer-to-fn1).

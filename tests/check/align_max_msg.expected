@@ -1,0 +1,39 @@
+align_max_msg.c:2:1: error: requested alignment '536870912' exceeds maximum 268435456
+    2 | typedef A char T1;
+      | ^
+align_max_msg.c:3:1: error: requested alignment '536870912' exceeds maximum 268435456
+    3 | typedef char T2 A;
+      | ^
+align_max_msg.c:4:1: error: requested alignment '536870912' exceeds object file maximum 268435456
+    4 | A char v1;
+      | ^
+align_max_msg.c:5:1: error: requested alignment '536870912' exceeds object file maximum 268435456
+    5 | char v2 A;
+      | ^
+align_max_msg.c:6:8: error: requested alignment '536870912' exceeds maximum 268435456
+    6 | struct S1 { A char f; };
+      |        ^
+align_max_msg.c:7:10: error: requested alignment '536870912' exceeds maximum 268435456
+    7 | struct A S2 { char f; };
+      |          ^
+align_max_msg.c:8:8: error: requested alignment '536870912' exceeds maximum 268435456
+    8 | struct S3 { char f; } A;
+      |        ^
+align_max_msg.c:9:1: error: requested alignment '536870912' exceeds maximum 268435456
+    9 | void f(void) { A char loc; static A char sl; }
+      | ^
+align_max_msg.c:9:1: error: requested alignment '536870912' exceeds object file maximum 268435456
+    9 | void f(void) { A char loc; static A char sl; }
+      | ^
+align_max_msg.c:10:1: error: requested alignment '536870912' exceeds maximum 268435456
+   10 | void g(A char p);
+      | ^
+align_max_msg.c:11:1: error: requested alignment '536870912' exceeds object file maximum 268435456
+   11 | A void h(void);
+      | ^
+align_max_msg.c:12:7: error: requested alignment '536870912' exceeds maximum 268435456
+   12 | union U { char x A; };
+      |       ^
+align_max_msg.c:13:16: error: requested alignment '536870912' exceeds maximum 268435456
+   13 | typedef struct { char c; } A T4;
+      |                ^

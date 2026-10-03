@@ -1,0 +1,24 @@
+array_size_msg.c:2:12: error: size '9223372036854775808' of array 'c1' exceeds maximum object size '9223372036854775807'
+    2 | extern int c1[(((size_t)-1 >> 1) + 1) / sizeof(int)];
+      |            ^
+array_size_msg.c:3:12: error: size '18446744073709551612' of array 'c2' exceeds maximum object size '9223372036854775807'
+    3 | extern int c2[(size_t)-1 / sizeof(int)];
+      |            ^
+array_size_msg.c:4:12: error: size of array 'c3' exceeds maximum object size '9223372036854775807'
+    4 | extern int c3[(size_t)-1 / sizeof(int)][4];
+      |            ^
+array_size_msg.c:5:12: error: size '18446744073709551612' of array 'c4' exceeds maximum object size '9223372036854775807'
+    5 | extern int c4[100][(size_t)-1 / sizeof(int)];
+      |            ^
+array_size_msg.c:6:19: error: size of array 'x' exceeds maximum object size '9223372036854775807'
+    6 | void f(void){ int x[((size_t)-1 >> 1) / 2][4]; (void)sizeof(int[(size_t)-1/2][4]); }
+      |                   ^
+array_size_msg.c:6:64: error: size of array exceeds maximum object size '9223372036854775807'
+    6 | void f(void){ int x[((size_t)-1 >> 1) / 2][4]; (void)sizeof(int[(size_t)-1/2][4]); }
+      |                                                                ^
+array_size_msg.c:7:16: error: size '9223372036854775808' of array 'm' exceeds maximum object size '9223372036854775807'
+    7 | struct S { int m[(((size_t)-1 >> 1) + 1) / sizeof(int)]; };
+      |                ^
+array_size_msg.c:8:13: error: size '9223372036854775808' of array 'T' exceeds maximum object size '9223372036854775807'
+    8 | typedef int T[(((size_t)-1 >> 1) + 1) / sizeof(int)];
+      |             ^

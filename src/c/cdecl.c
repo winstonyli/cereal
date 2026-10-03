@@ -272,37 +272,59 @@ static bool is_pow2(uint64_t v)
  * in bytes (0: none, silently ignored or already diagnosed).  loc: where
  * gcc's error() points; objfile: the attribute form (gcc's caller passes
  * true), which words the upper bound as the object file maximum. */
+static uint32_t check_user_alignment_(Checker *c, uint32_t e, SrcLoc loc,
+                                      bool objfile);
+
 static uint32_t check_user_alignment(Checker *c, uint32_t e, SrcLoc loc,
                                      bool objfile)
 {
+    uint32_t v = check_user_alignment_(c, e, loc, objfile);
+    if (!v && c->ck[e] != K_ERR) {
+        c->align_err_u = c->u->first_tok + 1;
+        c->align_err_node = e;
+    }
+    return v;
+}
+
+static uint32_t check_user_alignment_(Checker *c, uint32_t e, SrcLoc loc,
+                                      bool objfile)
+{
     TypeId t;
     int64_t v;
+    uint64_t uv;
     if (c->ck[e] == K_ERR)
         return 0;
+    if (c->align_err_u == c->u->first_tok + 1 && c->align_err_node == e)
+        return 0;               /* already diagnosed */
     t = c->ty[e];
     if (!(c->ck[e] == K_ICE || (c->ck[e] == K_FOLD && (c->ef[e] & EF_CST))) ||
         !type_is_integer(TT, t)) {
         cerror(c, loc, "requested alignment is not an integer constant");
         return 0;
     }
-    v = cexpr_sval(c, e);
-    if (v == 0)
+    uv = (uint64_t)cexpr_sval(c, e);
+    if (uv == 0)
         return 0;
-    if (v < 0 || !is_pow2((uint64_t)v)) {
-        cerror(c, loc, "requested alignment '%lld' is not a positive power "
-               "of 2", (long long)v);
-        return 0;
-    }
-    if (objfile && v > ((int64_t)1 << 28)) {
-        cerror(c, loc, "requested alignment '%lld' exceeds object file "
-               "maximum %u", (long long)v, 1U << 28);
-        return 0;
-    }
-    if (v >= ((int64_t)1 << 29)) {
-        cerror(c, loc, "requested alignment '%lld' exceeds maximum %u",
-               (long long)v, 1U << 28);
+    if ((type_is_signed(TT, t) && (int64_t)uv < 0) || !is_pow2(uv)) {
+        if (type_is_signed(TT, t))
+            cerror(c, loc, "requested alignment '%lld' is not a positive "
+                   "power of 2", (long long)uv);
+        else
+            cerror(c, loc, "requested alignment '%llu' is not a positive "
+                   "power of 2", (unsigned long long)uv);
         return 0;
     }
+    if (objfile && uv > ((uint64_t)1 << 28)) {
+        cerror(c, loc, "requested alignment '%llu' exceeds object file "
+               "maximum %u", (unsigned long long)uv, 1U << 28);
+        return 0;
+    }
+    if (uv >= ((uint64_t)1 << 29)) {
+        cerror(c, loc, "requested alignment '%llu' exceeds maximum %u",
+               (unsigned long long)uv, 1U << 28);
+        return 0;
+    }
+    v = (int64_t)uv;
     return (uint32_t)v;
 }
 
@@ -689,6 +711,53 @@ static void sso_check(Checker *c, uint32_t attr)
 }
 
 /* Collects the type-affecting attributes of one ATTRIBUTE node. */
+/* gcc words an over-large aligned() as the object file maximum when the
+ * attribute lands on a variable with static storage or on a function, and
+ * as the plain maximum on a type (typedef, tag, field, parameter, auto). */
+static bool attr_on_object(Checker *c, uint32_t attr)
+{
+    uint32_t p = c->par[attr], d, up, j;
+    Kids k;
+    bool storage = false, ext = false;
+    if (p == NO_NODE)
+        return false;
+    if (ntag(c, p) == N_INIT_DECL)
+        d = c->par[p];
+    else if (ntag(c, p) == N_SPECS)
+        d = c->par[p];
+    else
+        return false;
+    if (d == NO_NODE || ntag(c, d) != N_DECL)
+        return false;
+    kids_get(c, d, &k);
+    for (j = 0; j < k.n; j++)
+        if (ntag(c, k.p[j]) == N_SPECS) {
+            Kids sk;
+            uint32_t q;
+            kids_get(c, k.p[j], &sk);
+            for (q = 0; q < sk.n; q++)
+                if (ntag(c, sk.p[q]) == N_STORAGE) {
+                    int kw = tckw(c, c->nodes[sk.p[q]].tok);
+                    if (kw == CK_TYPEDEF) {
+                        kids_free(&sk);
+                        kids_free(&k);
+                        return false;
+                    }
+                    if (kw == CK_STATIC || kw == CK_EXTERN)
+                        storage = true;
+                    ext |= kw == CK_EXTERN;
+                }
+            kids_free(&sk);
+        }
+    kids_free(&k);
+    (void)ext;
+    for (up = c->par[d]; up != NO_NODE; up = c->par[up])
+        if (ntag(c, up) == N_COMPOUND || ntag(c, up) == N_PARAM ||
+            ntag(c, up) == N_MEMBER_DECL || ntag(c, up) == N_STRUCT)
+            return storage;
+    return true;
+}
+
 static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
 {
     Kids k;
@@ -720,14 +789,15 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 v = c->tgt->default_aligned;
             else
                 v = check_user_alignment(c, arg, iloc(c, after_tok(c, attr)),
-                                         true);
+                                         attr_on_object(c, attr));
             if (v > a->aligned)
                 a->aligned = v;
         } else if (!strcmp(name, "warn_if_not_aligned")) {
             a->wina = true;
             if (arg != NO_NODE)
                 (void)check_user_alignment(c, arg,
-                                           iloc(c, after_tok(c, attr)), true);
+                                           iloc(c, after_tok(c, attr)),
+                                           attr_on_object(c, attr));
         } else if (!strcmp(name, "malloc") && arg != NO_NODE &&
                    c->ck[arg] != K_ERR) {
             attr_malloc_dealloc(c, arg, ak.n > 1 ? ak.p[1] : NO_NODE,
@@ -3277,7 +3347,17 @@ static bool valid_array_size(Checker *c, SrcLoc loc, TypeId elem, uint64_t n,
     if (!ok || !es)
         return true;
     if (n > (uint64_t)INT64_MAX / es) {
-        if (name)
+        /* gcc prints the size only when it is a representable constant */
+        if (n <= UINT64_MAX / es) {
+            unsigned long long sz = (unsigned long long)(n * es);
+            if (name)
+                cerror(c, loc, "size '%llu' of array '%s' exceeds maximum "
+                       "object size '9223372036854775807'", sz,
+                       cident(c, name));
+            else
+                cerror(c, loc, "size '%llu' of array exceeds maximum object "
+                       "size '9223372036854775807'", sz);
+        } else if (name)
             cerror(c, loc, "size of array '%s' exceeds maximum object size "
                    "'9223372036854775807'", cident(c, name));
         else
