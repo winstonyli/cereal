@@ -121,6 +121,8 @@ static uint32_t last_tok(const Checker *c, uint32_t i)
 static uint32_t first_tok(const Checker *c, uint32_t i)
 {
     uint32_t k, m = c->nodes[i].tok;
+    if (c->nodes[i].tag == N_ADDR_LABEL)
+        return m - 1;   /* the && before the label name */
     for (k = cfirst(c, i); k < i; k++)
         if (c->nodes[k].tok < m)
             m = c->nodes[k].tok;
@@ -9818,6 +9820,7 @@ typedef struct AddrInfo {
     SrcLoc dloc;
     bool direct;         /* the address of a declared object, itself */
     char buf[96];        /* storage for a '*p' name */
+    bool label;          /* &&label */
     uint32_t ref;        /* its symbol, SYM_NONE for a member */
 } AddrInfo;
 
@@ -9855,6 +9858,12 @@ static bool addr_target(Checker *c, uint32_t n, AddrInfo *ai)
     n = strip_paren(c, n);
     memset(ai, 0, sizeof *ai);
     ai->ref = SYM_NONE;
+    if (ntag(c, n) == N_ADDR_LABEL) { /* a label is never null */
+        ai->name = cident(c, cnode_ident(c, n));
+        ai->direct = true;
+        ai->label = true;
+        return true;
+    }
     if (ntag(c, n) == N_IDENT) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, n));
         CSym *s;
@@ -9885,6 +9894,30 @@ static bool addr_target(Checker *c, uint32_t n, AddrInfo *ai)
             nkids(c, n, k, 3) < 1)
             return false;
         e = strip_paren(c, k[0]);
+        if (ntag(c, e) == N_UNARY && (tckw(c, c->nodes[e].tok) == CK_REAL ||
+                                      tckw(c, c->nodes[e].tok) == CK_IMAG) &&
+            nkids(c, e, k, 3) >= 1) {
+            /* &__real__ x: never null; named '__real__ x' */
+            uint32_t in = strip_paren(c, k[0]), ik[3];
+            StrBuf sb = {0};
+            bool ptr_idx = ntag(c, in) == N_INDEX && nkids(c, in, ik, 3) >= 1 &&
+                           !is_array(c, c->ty[strip_paren(c, ik[0])]);
+            if (ptr_idx || ntag(c, in) == N_CALL ||
+                (ntag(c, in) == N_UNARY && npunct(c, in) != P_STAR))
+                return false;
+            sb_puts(&sb, tckw(c, c->nodes[e].tok) == CK_REAL ? "__real__ "
+                                                              : "__imag__ ");
+            pexpr(c, &sb, in, PR_UNARY);
+            snprintf(ai->buf, sizeof ai->buf, "%s", sb_cstr(&sb));
+            sb_free(&sb);
+            {   /* gcc prints a call as f() */
+                char *sp = strstr(ai->buf, " ()");
+                if (sp)
+                    memmove(sp, sp + 1, strlen(sp));
+            }
+            ai->name = ai->buf;
+            return true;
+        }
     }
     for (;;) {
         if (ntag(c, e) == N_MEMBER_EXPR) {
@@ -10142,6 +10175,23 @@ static bool null_addr_warn(Checker *c, SrcLoc loc, uint32_t x, int code,
 
 /* c_common_truthvalue_conversion's -Waddress checks of the truth-value n
  * (the diagnostic location loc). */
+/* Has the truth-value warning for label id already been given in this
+ * function?  Records it if not. */
+static bool label_warned(Checker *c, uint32_t id)
+{
+    uint32_t j;
+    if (c->lbl_fn != c->func_sym) {
+        c->lbl_fn = c->func_sym;
+        c->lbl_n = 0;
+    }
+    for (j = 0; j < c->lbl_n; j++)
+        if (c->lbl_ids[j] == id)
+            return true;
+    if (c->lbl_n < 64)
+        c->lbl_ids[c->lbl_n++] = id;
+    return false;
+}
+
 void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc)
 {
     AddrInfo ai;
@@ -10164,9 +10214,14 @@ void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc)
         return;
     if (!addr_target(c, s, &ai))
         return;
-    if (ai.direct && ai.ref != SYM_NONE &&
-        !(csym(c, ai.ref)->flags & CSF_ADDR_WARNED)) {
-        csym(c, ai.ref)->flags |= CSF_ADDR_WARNED;
+    if (ai.label && label_warned(c, cnode_ident(c, s)))
+        ai.label = false;       /* gcc says it once per label */
+    if (ai.label || (ai.direct && ai.ref != SYM_NONE &&
+        !(csym(c, ai.ref)->flags & CSF_ADDR_WARNED))) {
+        if (!ai.label)
+            csym(c, ai.ref)->flags |= CSF_ADDR_WARNED;
+        else if (loc == ctok_loc(c, c->nodes[s].tok))
+            loc = ctok_loc(c, c->nodes[s].tok - 1);   /* the && of &&label */
         cwarn(c, loc, "address", "the address of '%s' will always evaluate as "
               "'true'", ai.name);
         return;

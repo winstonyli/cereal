@@ -738,3 +738,20 @@ layouts, gcc rules ported, walk design).
   functions with equal arguments as equal.  Tests 935; gcc.dg 3639,
   c-c++-common 536; ASan/UBSan clean.  Goldens: type_limits_left, logical_op.
   Remaining -Wlogical-op gap: signedness casts inside a range test.
+- Round 28 (2026-10-03): -Waddress for &&label and &__real__/&__imag__ x.
+  &&lab is checked as a truth value in if/while/do (cond_check in cstmt.c);
+  the warning sits at the && column, and the "will always evaluate as true"
+  form is given once per label per function (Checker.lbl_*), later uses get
+  the comparison form.  &__real__ x is named "__real__ x".  Gap: pointer-index
+  operands (__real__ *(p + (sizetype)...), gcc.dg/Waddress-3 lines 30-31).
+  Tests 937; gcc.dg 3640, c-c++-common 536; ASan/UBSan clean.  Golden:
+  address_label_real.
+  Re-bucket of what is still missing (diags/files, gcc.dg + c-c++-common):
+  -Wsizeof-pointer-memaccess 166/5, errors 161/79, -Wattributes 142/43,
+  -Warray-bounds= 106/5, -Wstringop-overread 86/3, -Wparentheses 69/3,
+  plain warnings 58/26, -Wc++-compat 54/14, -Wpedantic 44/18, -Wformat= 37/6,
+  -Wpragmas 35/11, -Wcast-qual 34/4, -Wsign-compare 25/5, -Wtraditional 25/11.
+  Survey -Wstringop-overread: all 86 are "argument missing terminating nul"
+  in warn-strlen-no-nul.c (76, -O2), Wstringop-overread-6.c and
+  Wstringop-overflow-22.c (5 each); needs -O2 const-array contents and
+  index/range tracking (middle-end).  Low value; not planned.

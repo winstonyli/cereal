@@ -1126,6 +1126,10 @@ void cstmt_expr(Checker *c, uint32_t i)
         if (c->func_sym != SYM_NONE && cnode_ident(c, i))
             use_label(c, s, cnode_ident(c, i), ctok_loc(c, tok - 1),
                       cinput_loc(c, tok), i);
+        p = c->par[i];     /* an if/while/do condition is still a truth value */
+        if (p != NOB && (tg(c, p) == N_IF || tg(c, p) == N_WHILE ||
+                         tg(c, p) == N_DO))
+            cond_check(c, i);
         return;
     }
     p = c->par[i];

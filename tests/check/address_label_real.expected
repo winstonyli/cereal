@@ -1,0 +1,51 @@
+address_label_real.c:2:1: warning: taking the address of a label is non-standard [-Wpedantic]
+    2 | int f(int a) { lab: if (&&lab) a++; int b = !&&lab; return a == 0 ? b : (&&lab == 0); }
+      | ^
+address_label_real.c:2:25: warning: the address of 'lab' will always evaluate as 'true' [-Waddress]
+    2 | int f(int a) { lab: if (&&lab) a++; int b = !&&lab; return a == 0 ? b : (&&lab == 0); }
+      |                         ^
+address_label_real.c:2:1: warning: taking the address of a label is non-standard [-Wpedantic]
+    2 | int f(int a) { lab: if (&&lab) a++; int b = !&&lab; return a == 0 ? b : (&&lab == 0); }
+      | ^
+address_label_real.c:2:45: warning: the comparison will always evaluate as 'true' for the address of 'lab' will never be NULL [-Waddress]
+    2 | int f(int a) { lab: if (&&lab) a++; int b = !&&lab; return a == 0 ? b : (&&lab == 0); }
+      |                                             ^
+address_label_real.c:2:1: warning: taking the address of a label is non-standard [-Wpedantic]
+    2 | int f(int a) { lab: if (&&lab) a++; int b = !&&lab; return a == 0 ? b : (&&lab == 0); }
+      | ^
+address_label_real.c:2:80: warning: the comparison will always evaluate as 'false' for the address of 'lab' will never be NULL [-Waddress]
+    2 | int f(int a) { lab: if (&&lab) a++; int b = !&&lab; return a == 0 ? b : (&&lab == 0); }
+      |                                                                                ^
+address_label_real.c:3:1: warning: taking the address of a label is non-standard [-Wpedantic]
+    3 | int l_f(int a) { lb: if (&&lb) a++; return a; }
+      | ^
+address_label_real.c:3:26: warning: the address of 'lb' will always evaluate as 'true' [-Waddress]
+    3 | int l_f(int a) { lb: if (&&lb) a++; return a; }
+      |                          ^
+address_label_real.c:4:1: warning: taking the address of a label is non-standard [-Wpedantic]
+    4 | int l_g(int a) { lb: while (&&lb) a++; return a; }
+      | ^
+address_label_real.c:4:29: warning: the address of 'lb' will always evaluate as 'true' [-Waddress]
+    4 | int l_g(int a) { lb: while (&&lb) a++; return a; }
+      |                             ^
+address_label_real.c:5:1: warning: taking the address of a label is non-standard [-Wpedantic]
+    5 | int l_h(int a) { lb: return &&lb ? a : 1; }
+      | ^
+address_label_real.c:5:34: warning: the address of 'lb' will always evaluate as 'true' [-Waddress]
+    5 | int l_h(int a) { lb: return &&lb ? a : 1; }
+      |                                  ^
+address_label_real.c:6:1: warning: taking the address of a label is non-standard [-Wpedantic]
+    6 | int l_k(int a) { lb: if (!&&lb) a++; return a; }
+      | ^
+address_label_real.c:6:26: warning: the address of 'lb' will always evaluate as 'true' [-Waddress]
+    6 | int l_k(int a) { lb: if (!&&lb) a++; return a; }
+      |                          ^
+address_label_real.c:10:18: warning: the comparison will always evaluate as 'false' for the address of '__real__ cf' will never be NULL [-Waddress]
+   10 |   T(&__real__ cf == 0);
+      |                  ^
+address_label_real.c:11:7: warning: the comparison will always evaluate as 'true' for the address of '__imag__ cf' will never be NULL [-Waddress]
+   11 |   T(0 != &__imag__ cf);
+      |       ^
+address_label_real.c:12:22: warning: the comparison will always evaluate as 'false' for the address of '__real__ cfa[0]' will never be NULL [-Waddress]
+   12 |   T(&__real__ cfa[0] == 0);
+      |                      ^

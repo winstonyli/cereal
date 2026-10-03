@@ -317,6 +317,7 @@ struct Checker {
     uint64_t diag_dig;       /* digest of that state */
     VEC(DiagState) diag_stack;
     uint32_t func_sym;       /* the function being defined, SYM_NONE */
+    uint32_t lbl_fn, lbl_n, lbl_ids[64]; /* labels already warned about (-Waddress) */
     uint32_t cur_func_node;
     uint32_t cur_node;      /* the node being visited (NO_NODE: none) */
     uint32_t fwd_warned;     /* 1 + the FUNC whose forward-declaration pedwarn
