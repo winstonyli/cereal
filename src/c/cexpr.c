@@ -4377,6 +4377,7 @@ typedef struct FmtWant {
     char name[40];              /* as the message spells the wanted type */
     bool write;                 /* the argument is written through */
     bool uns;                   /* FW_PINT: an unsigned integer */
+    int sgn;                    /* FW_INT: 1 signed, 2 unsigned conversion */
 } FmtWant;
 
 /* An integer type's width class, signedness ignored (0: not an integer). */
@@ -4410,6 +4411,7 @@ static bool fmt_want(Checker *c, char conv, int len, bool scan, bool mflag,
     w->cls = 3;
     w->write = ptr;
     w->uns = uns && scan;
+    w->sgn = 0;
     switch (conv) {
     case 'd': case 'i': case 'o': case 'u': case 'x': case 'X': case 'n':
         w->shape = ptr ? FW_PINT : FW_INT;
@@ -4436,6 +4438,8 @@ static bool fmt_want(Checker *c, char conv, int len, bool scan, bool mflag,
         default: w->cls = fmt_cls(c->tgt->intmax_type);
             nm = uns ? "uintmax_t" : "intmax_t"; break;
         }
+        /* %hhu / %hu take an int: no complaint about a signed argument */
+        w->sgn = ptr || (uns && (len == FL_H || len == FL_HH)) ? 0 : uns ? 2 : 1;
         snprintf(w->name, sizeof w->name, "%s%s", nm, ptr ? " *" : "");
         return true;
     case 'c': case 'C': case '[':
@@ -4448,6 +4452,7 @@ static bool fmt_want(Checker *c, char conv, int len, bool scan, bool mflag,
             snprintf(w->name, sizeof w->name, mflag ? "char **" : "char *");
         } else {
             w->shape = FW_INT;
+            w->sgn = 1;
             snprintf(w->name, sizeof w->name, "int");
         }
         return true;
@@ -4578,6 +4583,18 @@ static void fmt_take(FmtCtx *x, const FmtWant *w, SrcLoc loc, const char *what)
         (tquals(c, type_base(TT, type_canon(TT, t))) & TQ_CONST))
         cwarn(c, x->call, "format=", "writing into constant object "
               "(argument %u)", x->ai);
+    if (w->shape == FW_INT && w->sgn && fmt_cls(k) && fmt_arg_ok(c, w, t) &&
+        diag_enabled(c->diag, "format-signedness")) {
+        /* -Wformat-signedness: an unsigned type narrower than int promotes
+         * to int but is still fine for either conversion */
+        TypeKind ok = type_ckind(TT, rvt(c, a));
+        bool small_u = ok == TY_UCHAR || ok == TY_USHORT;
+        bool uk = fmt_unsigned_kind(k);
+        if (!small_u && k != TY_CHAR && (w->sgn == 2) != uk)
+            cwarn(c, loc, "format=", "%s expects argument of type '%s', but "
+                  "argument %u has type %s", what, w->name, x->ai,
+                  type_q(TT, t));
+    }
     if ((fmt_cls(k) || k == TY_DOUBLE || k == TY_LDOUBLE || k == TY_PTR ||
          is_record(c, t)) && !fmt_arg_ok(c, w, t))
         cwarn(c, loc, "format=", "%s expects argument of type '%s', but "
@@ -4666,7 +4683,7 @@ bad:
  * arguments are not checked). */
 static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
                       uint32_t first, bool scan, uint32_t s, SrcLoc whole,
-                      SrcLoc call)
+                      SrcLoc call, size_t skip)
 {
     static const struct { char conv; const char *flags; } ft[] = {
         {'d', "-+ 0'I"}, {'i', "-+ 0'I"}, {'o', "-0#"}, {'x', "-0#"},
@@ -4685,6 +4702,12 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
         return;
     if (!fmt_decode(c, s, &f, &off, &n, &exact))
         return;
+    if (skip) {                 /* "%d%d" + 2: gcc keeps the old columns */
+        if (skip > n)
+            skip = n;
+        memmove(f, f + skip, n - skip + 1 > 0 ? n - skip : 0);
+        n -= skip;
+    }
     x.c = c;
     x.kv = kv;
     x.nk = nk;
@@ -4698,7 +4721,8 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
         size_t len;
         const char *tx = ttext(c, c->nodes[s].tok, &len);
         SrcLoc b = ctok_loc(c, c->nodes[s].tok);
-        if (!memcmp(srcmgr_ptr(c->sm, b), tx, len)) {
+        /* a parenthesized literal has only its parenthesis's location */
+        if (whole == b && !memcmp(srcmgr_ptr(c->sm, b), tx, len)) {
             x.exact = true;
             x.base = b;
         }
@@ -4751,7 +4775,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
         }
         flags[nf] = 0;
         if (!scan && i < n && f[i] == '*') {
-            FmtWant iw = {FW_INT, 3, "int", false, false};
+            FmtWant iw = {FW_INT, 3, "int", false, false, 0};
             fmt_take(&x, &iw, fmt_loc(&x, i), "field width specifier '*'");
             width = true;
             i++;
@@ -4772,7 +4796,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
             i++;
             prec = true;
             if (i < n && f[i] == '*') {
-                FmtWant iw = {FW_INT, 3, "int", false, false};
+                FmtWant iw = {FW_INT, 3, "int", false, false, 0};
                 fmt_take(&x, &iw, fmt_loc(&x, i),
                          "field precision specifier '.*'");
                 i++;
@@ -4970,6 +4994,74 @@ static void suggest_format(Checker *c, bool scan, SrcLoc where)
     }
 }
 
+/* check_format_arg: the string literals a format expression can be: the arms
+ * of ?:, and the result of a call to a function with a format_arg attribute
+ * (its own argument).  False when some arm is something else. */
+static bool fmt_leaves(Checker *c, uint32_t s, uint32_t *out, uint32_t *n,
+                       unsigned depth)
+{
+    uint32_t k[33], nk;
+    s = strip_paren(c, s);
+    if (s == NO_NODE || node_err(c, s) || depth > 8 || *n >= 16)
+        return false;
+    switch (ntag(c, s)) {
+    case N_STRING:
+        out[(*n)++] = s;
+        return true;
+    case N_COND:
+        nk = nkids(c, s, k, 3);
+    {
+        uint32_t n0 = *n;
+        /* a constant condition folds to one arm */
+        if (nk == 3 && (c->ck[k[0]] == K_ICE || c->ck[k[0]] == K_FOLD) &&
+            is_int(c, c->ty[k[0]]))
+            return fmt_leaves(c, cexpr_sval(c, k[0]) ? k[1] : k[2], out, n,
+                              depth + 1);
+        if (nk < 2 || !fmt_leaves(c, nk == 3 ? k[1] : k[0], out, n, depth + 1) ||
+            !fmt_leaves(c, k[nk - 1], out, n, depth + 1))
+            return false;
+        /* gcc folds `c ? "x" : "x"` to "x" */
+        if (*n == n0 + 2 &&
+            ntag(c, strip_paren(c, nk == 3 ? k[1] : k[0])) == N_STRING &&
+            ntag(c, strip_paren(c, k[nk - 1])) == N_STRING) {
+            char *f1, *f2;
+            uint32_t *o1, *o2;
+            size_t n1, n2;
+            bool x1, x2, same = false;
+            if (fmt_decode(c, out[n0], &f1, &o1, &n1, &x1)) {
+                if (fmt_decode(c, out[n0 + 1], &f2, &o2, &n2, &x2)) {
+                    same = n1 == n2 && !memcmp(f1, f2, n1);
+                    free(f2);
+                    free(o2);
+                }
+                free(f1);
+                free(o1);
+            }
+            if (same)
+                (*n)--;
+        }
+        return true;
+    }
+    case N_CALL: {
+        uint32_t f, fn;
+        nk = nkids(c, s, k, 33);
+        if (nk < 2)
+            return false;
+        f = strip_paren(c, k[0]);
+        if (f == NO_NODE || ntag(c, f) != N_IDENT || c->ck[f] != K_ADDR ||
+            !c->cb[f] || (c->cb[f] & CB_NODE) ||
+            csym(c, c->cb[f] - 1)->kind != CS_FUNC)
+            return false;
+        fn = csym(c, c->cb[f] - 1)->fmtarg;
+        if (!fn || fn >= nk)
+            return false;
+        return fmt_leaves(c, k[fn], out, n, depth + 1);
+    }
+    default:
+        return false;
+    }
+}
+
 /* check_format_info's complaint about a format that is not a string
  * literal: -Wformat-security (or -Wformat-nonliteral) with no arguments to
  * check, -Wformat-nonliteral with some. */
@@ -4998,8 +5090,76 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     if (s == NO_NODE || node_err(c, a))
         return;
     if (ntag(c, s) == N_STRING) {
-        fmt_check(c, kv, nk, first, scan, s, expr_loc(c, a), loc);
+        fmt_check(c, kv, nk, first, scan, s,
+                  a != s && ntag(c, a) == N_PAREN ? ctok_loc(c, c->nodes[a].tok)
+                                                  : expr_loc(c, a), loc, 0);
         return;
+    }
+    {
+        /* casts, "str" + N and &"str"[N] of a literal */
+        uint32_t u = s, k[3];
+        int64_t off = 0;
+        bool moved = false, amp = false;
+        for (;;) {
+            u = strip_paren(c, u);
+            if (u == NO_NODE || node_err(c, u))
+                break;
+            if (ntag(c, u) == N_CAST && nkids(c, u, k, 2) == 2) {
+                u = k[1];
+                moved = true;
+                continue;
+            }
+            if (ntag(c, u) == N_BINARY && npunct(c, u) == P_PLUS &&
+                nkids(c, u, k, 2) == 2) {
+                uint32_t sd = strip_paren(c, k[0]), nd = k[1];
+                if (!(c->ck[nd] == K_ICE || c->ck[nd] == K_FOLD)) {
+                    sd = strip_paren(c, k[1]);
+                    nd = k[0];
+                }
+                if ((c->ck[nd] == K_ICE || c->ck[nd] == K_FOLD) &&
+                    is_int(c, c->ty[nd])) {
+                    off += cexpr_sval(c, nd);
+                    u = sd;
+                    moved = true;
+                    continue;
+                }
+            }
+            if (ntag(c, u) == N_UNARY && npunct(c, u) == P_AMP &&
+                (nkids(c, u, k, 1), first_child(c, u) != NO_NODE)) {
+                uint32_t ix = strip_paren(c, first_child(c, u));
+                if (ix != NO_NODE && ntag(c, ix) == N_INDEX &&
+                    nkids(c, ix, k, 2) == 2 && (c->ck[k[1]] == K_ICE ||
+                                                c->ck[k[1]] == K_FOLD)) {
+                    off += cexpr_sval(c, k[1]);
+                    u = k[0];
+                    moved = amp = true;
+                    continue;
+                }
+            }
+            break;
+        }
+        if (moved && u != NO_NODE && !node_err(c, u) && ntag(c, u) == N_STRING) {
+            size_t len;
+            const char *tx = ttext(c, c->nodes[u].tok, &len);
+            if (lit_str_prefix(tx, len)) {
+                cwarn(c, ctok_loc(c, c->nodes[u].tok), "format=",
+                      "format is a wide character string");
+                return;
+            }
+            if (off >= 0)
+                fmt_check(c, kv, nk, first, scan, u,
+                          amp ? expr_loc(c, a) : ctok_loc(c, c->nodes[u].tok),
+                          loc, (size_t)off);
+            return;
+        }
+    }
+    {
+        uint32_t lv[16], nl = 0, m;
+        if (fmt_leaves(c, s, lv, &nl, 0)) {
+            for (m = 0; m < nl; m++)
+                fmt_check(c, kv, nk, first, scan, lv[m], expr_loc(c, lv[m]), loc, 0);
+            return;
+        }
     }
     if (type_ckind(TT, c->ty[s]) == TY_ARRAY && c->ck[s] != K_ERR) {
         /* a writable array: its address has a location of its own; a

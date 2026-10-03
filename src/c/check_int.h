@@ -87,6 +87,7 @@ typedef struct CSym {
     uint32_t sect;           /* section(".."): Checker.dep_msgs + 1, 0: none */
     uint64_t nonnull;        /* the 'nonnull' attribute (Attrs.nonnull) */
     uint32_t fmt;            /* the 'format' attribute (Attrs.fmt) */
+    uint8_t fmtarg;          /* the 'format_arg' attribute's argument number */
     uint32_t aset;           /* attribute names written or copied: Checker.anames set id */
     uint32_t ualign;         /* a function's user alignment in bytes (aligned attribute) */
     uint32_t parms;          /* cparm.c: how the parameters were declared (the
@@ -169,6 +170,7 @@ typedef struct Attrs {
     char zcur_arg[24];
     uint64_t nonnull;        /* bit j: argument j + 1; NN_ALL: every pointer */
     uint32_t fmt;            /* format(printf|scanf, N, M): kind 1|2 << 24, N << 12, M */
+    uint8_t fmtarg;          /* format_arg(N) */
     uint32_t dep_msg;        /* Checker.dep_msgs + 1, 0: none */
     uint32_t sec, sec2;      /* section("..") strings (Checker.dep_msgs + 1);
                               * sec2: a later one, compared with sec */

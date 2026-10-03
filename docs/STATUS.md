@@ -983,3 +983,17 @@ layouts, gcc rules ported, walk design).
   `__attribute__((const)) int (*)(int)` (type.c); the "makes … qualified function pointer" text uses the same names.
 - Goldens `cast_qual_ptrs`, `cast_qual_func`, `cast_qual_basic` (gcc testsuite files).
 - Parity: tests 993, gcc.dg 3659 identical (216 differ), c-c++-common 556 (101), san clean (325).
+
+### Round 43 — -Wformat forms
+- `format_arg(N)` attribute stored (`CSym.fmtarg`, `Attrs.fmtarg`); the format expression is resolved through
+  `?:` arms (a constant condition folds to one arm; identical literal arms are checked once, like gcc's fold) and
+  calls of format_arg functions (`fmt_leaves`). Golden `format_arg_cond` (Wformat-pr104148.c).
+- A parenthesized literal reports at its parenthesis; casts, `"str" + N` and `&"str"[N]` of a literal are checked
+  (`fmt_check` takes a skip count; columns stay those of the unshifted string, as gcc does), a wide literal gives
+  "format is a wide character string". Golden `format_literal_forms`.
+- `-Wformat-signedness` (new option): %d/%i against an unsigned and %u/%o/%x/%X against a signed argument; unsigned
+  types narrower than int are exempt; `%hhu`/`%hu` take any int; `%c` wants a signed int. Golden `format_signedness`.
+- Open: a format read through a `const char[]` initializer (gcc checks `const char fmt[] = "%d"; printf(fmt, 1.0)`
+  and warns "format string is not an array of type 'char'" for `const unsigned char[]`) — symbols keep no
+  initializer reference; unterminated-format-string (Wstringop-overflow-22.c); Darwin CFString/NSString formats.
+- Parity: tests 999, gcc.dg 3659 identical (216 differ), c-c++-common 558 (99), san clean (328).

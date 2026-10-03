@@ -180,6 +180,7 @@ static const DiagOption options[] = {
     {"format-contains-nul", "c", DL_WARNING, true, 0, "format string with an embedded NUL"},
     {"format-security", "c", DL_WARNING, true, 0, "format string that is not a literal and has no arguments"},
     {"format-nonliteral", "c", DL_WARNING, false, 0, "format string that is not a literal"},
+    {"format-signedness", "c", DL_WARNING, false, 0, "format conversions that differ in signedness"},
     {"float-conversion", "c", DL_WARNING, false, 0, "implicit conversion that reduces floating precision"},
     {"float-equal", "c", DL_WARNING, false, 0, "floating-point values compared for equality"},
     {"jump-misses-init", "c", DL_WARNING, false, 0, "goto or switch jumps over a variable initialization"},

@@ -1,0 +1,72 @@
+format_arg_cond.c:12:11: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   12 |   bar ("%ld", x);                       /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |           ^
+format_arg_cond.c:13:15: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   13 |   bar (x ? "%ld" : "%ld", x);           /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |               ^
+format_arg_cond.c:14:15: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   14 |   bar (x ? "%ld" : "%lld", x);          /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |               ^
+format_arg_cond.c:14:24: warning: format '%lld' expects argument of type 'long long int', but argument 2 has type 'int' [-Wformat=]
+   14 |   bar (x ? "%ld" : "%lld", x);          /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                        ^
+format_arg_cond.c:16:16: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   16 |   bar (foo ("%ld"), x);                 /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                ^
+format_arg_cond.c:17:20: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   17 |   bar (x ? foo ("%ld") : "%ld", x);     /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                    ^
+format_arg_cond.c:17:29: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   17 |   bar (x ? foo ("%ld") : "%ld", x);     /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                             ^
+format_arg_cond.c:18:20: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   18 |   bar (x ? foo ("%ld") : "%lld", x);    /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                    ^
+format_arg_cond.c:18:30: warning: format '%lld' expects argument of type 'long long int', but argument 2 has type 'int' [-Wformat=]
+   18 |   bar (x ? foo ("%ld") : "%lld", x);    /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                              ^
+format_arg_cond.c:20:20: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   20 |   bar (foo (x ? "%ld" : "%ld"), x);     /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                    ^
+format_arg_cond.c:21:20: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   21 |   bar (foo (x ? "%ld" : "%lld"), x);    /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                    ^
+format_arg_cond.c:21:29: warning: format '%lld' expects argument of type 'long long int', but argument 2 has type 'int' [-Wformat=]
+   21 |   bar (foo (x ? "%ld" : "%lld"), x);    /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                             ^
+format_arg_cond.c:23:8: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   23 |   bar (("%ld"), x);                     /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |        ^
+format_arg_cond.c:24:16: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   24 |   bar ((x ? "%ld" : "%ld"), x);         /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                ^
+format_arg_cond.c:25:16: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   25 |   bar ((x ? "%ld" : "%lld"), x);        /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                ^
+format_arg_cond.c:25:25: warning: format '%lld' expects argument of type 'long long int', but argument 2 has type 'int' [-Wformat=]
+   25 |   bar ((x ? "%ld" : "%lld"), x);        /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                         ^
+format_arg_cond.c:27:17: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   27 |   bar ((foo ("%ld")), x);               /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                 ^
+format_arg_cond.c:28:21: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   28 |   bar ((x ? foo ("%ld") : "%ld"), x);   /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                     ^
+format_arg_cond.c:28:30: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   28 |   bar ((x ? foo ("%ld") : "%ld"), x);   /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                              ^
+format_arg_cond.c:29:21: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   29 |   bar ((x ? foo ("%ld") : "%lld"), x);  /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                     ^
+format_arg_cond.c:29:31: warning: format '%lld' expects argument of type 'long long int', but argument 2 has type 'int' [-Wformat=]
+   29 |   bar ((x ? foo ("%ld") : "%lld"), x);  /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                               ^
+format_arg_cond.c:31:21: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   31 |   bar ((foo (x ? "%ld" : "%ld")), x);   /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                     ^
+format_arg_cond.c:32:21: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+   32 |   bar ((foo (x ? "%ld" : "%lld")), x);  /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                     ^
+format_arg_cond.c:32:30: warning: format '%lld' expects argument of type 'long long int', but argument 2 has type 'int' [-Wformat=]
+   32 |   bar ((foo (x ? "%ld" : "%lld")), x);  /* { dg-warning "format '%ld' expects argument of type 'long int', but argument 2 has type 'int'" } */
+      |                              ^

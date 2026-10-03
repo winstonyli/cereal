@@ -950,6 +950,13 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                                  (uint32_t)fv;
                 }
             }
+        } else if (!strcmp(name, "format_arg") && ak.n == 1) {
+            uint32_t xs = ak.p[0];
+            if (c->ck[xs] == K_ICE || c->ck[xs] == K_FOLD) {
+                int64_t sv = cexpr_sval(c, xs);
+                if (sv >= 1 && sv < 256)
+                    a->fmtarg = (uint8_t)sv;
+            }
         } else if (!strcmp(name, "zero_call_used_regs") && ak.n == 1) {
             static const char *const ok[] = {"skip", "used-gpr-arg", "used-arg",
                 "used-gpr", "used", "all-gpr-arg", "all-arg", "all-gpr", "all"};
@@ -1191,6 +1198,8 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     to->nonnull |= from->nonnull;
     if (from->fmt)
         to->fmt = from->fmt;
+    if (from->fmtarg)
+        to->fmtarg = from->fmtarg;
 }
 
 /* Unknown specifier attributes are reported once the declarator is known:
@@ -5225,6 +5234,8 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     m.nonnull |= o->nonnull;
     if (o->fmt)
         m.fmt = o->fmt;
+    if (o->fmtarg)
+        m.fmtarg = o->fmtarg;
     if (o->aset)
         m.aset = o->aset;
     if (o->parms) {
@@ -6124,6 +6135,8 @@ static void declared_visit(Checker *c, uint32_t i)
         s.nonnull = a.nonnull;     /* an object: a function pointer */
     if (a.fmt && s.kind == CS_FUNC)
         s.fmt = a.fmt;
+    if (a.fmtarg && s.kind == CS_FUNC)
+        s.fmtarg = a.fmtarg;
     if (g.what == GD_FUNC && s.kind == CS_FUNC && !kr)
         s.parms = cparm_make(c, funcdef_fnode(c, top));
     if (file && g.what == GD_VAR && s.sc == SC_REGISTER &&
@@ -8067,6 +8080,8 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         g.s.nonnull |= st.nonnull | sp.attrs.nonnull;
         if (sp.attrs.fmt)
             g.s.fmt = sp.attrs.fmt;
+        if (sp.attrs.fmtarg)
+            g.s.fmtarg = sp.attrs.fmtarg;
     }
     attrs_section_check(c, &sp.attrs, 'f', false, g.s.name, g.s.loc);
     attrs_zcur_check(c, &sp.attrs, true, g.s.loc);

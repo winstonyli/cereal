@@ -1,0 +1,54 @@
+format_signedness.c:7:34: warning: format '%d' expects argument of type 'int', but argument 6 has type 'unsigned int' [-Wformat=]
+    7 |   __builtin_printf("%d %d %d %d %d %d %d\n", c, uc, sc, us, u, ul, b);
+      |                                  ^
+format_signedness.c:7:37: warning: format '%d' expects argument of type 'int', but argument 7 has type 'long unsigned int' [-Wformat=]
+    7 |   __builtin_printf("%d %d %d %d %d %d %d\n", c, uc, sc, us, u, ul, b);
+      |                                     ^
+format_signedness.c:8:22: warning: format '%u' expects argument of type 'unsigned int', but argument 2 has type 'int' [-Wformat=]
+    8 |   __builtin_printf("%u %u %u %u %u %u %u\n", c, i, l, ll, z, e, b);
+      |                      ^
+format_signedness.c:8:25: warning: format '%u' expects argument of type 'unsigned int', but argument 3 has type 'int' [-Wformat=]
+    8 |   __builtin_printf("%u %u %u %u %u %u %u\n", c, i, l, ll, z, e, b);
+      |                         ^
+format_signedness.c:8:28: warning: format '%u' expects argument of type 'unsigned int', but argument 4 has type 'long int' [-Wformat=]
+    8 |   __builtin_printf("%u %u %u %u %u %u %u\n", c, i, l, ll, z, e, b);
+      |                            ^
+format_signedness.c:8:31: warning: format '%u' expects argument of type 'unsigned int', but argument 5 has type 'long long int' [-Wformat=]
+    8 |   __builtin_printf("%u %u %u %u %u %u %u\n", c, i, l, ll, z, e, b);
+      |                               ^
+format_signedness.c:8:34: warning: format '%u' expects argument of type 'unsigned int', but argument 6 has type 'size_t' {aka 'long unsigned int'} [-Wformat=]
+    8 |   __builtin_printf("%u %u %u %u %u %u %u\n", c, i, l, ll, z, e, b);
+      |                                  ^
+format_signedness.c:8:40: warning: format '%u' expects argument of type 'unsigned int', but argument 8 has type 'int' [-Wformat=]
+    8 |   __builtin_printf("%u %u %u %u %u %u %u\n", c, i, l, ll, z, e, b);
+      |                                        ^
+format_signedness.c:9:22: warning: format '%x' expects argument of type 'unsigned int', but argument 2 has type 'int' [-Wformat=]
+    9 |   __builtin_printf("%x %o %X\n", i, l, ll);
+      |                      ^
+format_signedness.c:9:25: warning: format '%o' expects argument of type 'unsigned int', but argument 3 has type 'long int' [-Wformat=]
+    9 |   __builtin_printf("%x %o %X\n", i, l, ll);
+      |                         ^
+format_signedness.c:9:28: warning: format '%X' expects argument of type 'unsigned int', but argument 4 has type 'long long int' [-Wformat=]
+    9 |   __builtin_printf("%x %o %X\n", i, l, ll);
+      |                            ^
+format_signedness.c:10:23: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'long unsigned int' [-Wformat=]
+   10 |   __builtin_printf("%ld %lu %lld %llu\n", ul, l, ull, ll);
+      |                       ^
+format_signedness.c:10:27: warning: format '%lu' expects argument of type 'long unsigned int', but argument 3 has type 'long int' [-Wformat=]
+   10 |   __builtin_printf("%ld %lu %lld %llu\n", ul, l, ull, ll);
+      |                           ^
+format_signedness.c:10:32: warning: format '%lld' expects argument of type 'long long int', but argument 4 has type 'long long unsigned int' [-Wformat=]
+   10 |   __builtin_printf("%ld %lu %lld %llu\n", ul, l, ull, ll);
+      |                                ^
+format_signedness.c:10:37: warning: format '%llu' expects argument of type 'long long unsigned int', but argument 5 has type 'long long int' [-Wformat=]
+   10 |   __builtin_printf("%ld %lu %lld %llu\n", ul, l, ull, ll);
+      |                                     ^
+format_signedness.c:11:27: warning: format '%zd' expects argument of type 'signed size_t', but argument 3 has type 'size_t' {aka 'long unsigned int'} [-Wformat=]
+   11 |   __builtin_printf("%zu %zd\n", z, z);
+      |                           ^
+format_signedness.c:12:28: warning: format '%hd' expects argument of type 'int', but argument 3 has type 'unsigned int' [-Wformat=]
+   12 |   __builtin_printf("%hhu %hd %c\n", i, u, u);
+      |                            ^
+format_signedness.c:12:31: warning: format '%c' expects argument of type 'int', but argument 4 has type 'unsigned int' [-Wformat=]
+   12 |   __builtin_printf("%hhu %hd %c\n", i, u, u);
+      |                               ^
