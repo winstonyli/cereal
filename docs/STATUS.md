@@ -997,3 +997,14 @@ layouts, gcc rules ported, walk design).
   and warns "format string is not an array of type 'char'" for `const unsigned char[]`) — symbols keep no
   initializer reference; unterminated-format-string (Wstringop-overflow-22.c); Darwin CFString/NSString formats.
 - Parity: tests 999, gcc.dg 3659 identical (216 differ), c-c++-common 558 (99), san clean (328).
+
+### Round 44 — misleading-indentation source gap
+- cstmt.c `gap_scan`: the source text between the body's last token and the next token is scanned (comments and
+  white space skipped). A preprocessing directive there (`#if`, `#ifdef`, …) silences the warning; the text of a macro
+  invocation that expanded to nothing stands in for the next statement's position (no preprocessor flag needed).
+  Empty `;` bodies on a line of their own count as properly indented; one behind a comment does not.
+  Goldens `misleading_gap`, `misleading_goto_empty`.
+- Still differing in Wmisleading-indentation.c (4 diagnostics): `for` produced by a macro (704), `else if (b);`
+  followed by a `{` at the `else` column (804), the statement-expression `while`/`if` (924), `} else if` with an
+  over-indented body (1154).
+- Parity: tests 1001, gcc.dg 3659 identical (216 differ), c-c++-common 558 (99), san clean (329).

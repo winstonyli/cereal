@@ -1,0 +1,12 @@
+misleading_gap.c:17:3: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   17 |   if (a)
+      |   ^
+misleading_gap.c:20:5: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+   20 |     foo (3);
+      |     ^
+misleading_gap.c:25:3: warning: this 'while' clause does not guard... [-Wmisleading-indentation]
+   25 |   while (a)
+      |   ^
+misleading_gap.c:27:5: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'while'
+   27 |     foo (6);
+      |     ^

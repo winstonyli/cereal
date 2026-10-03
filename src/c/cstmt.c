@@ -2023,6 +2023,76 @@ static bool tok_is_kw(const Checker *c, uint32_t tok, int kw)
     return t->kind == TK_IDENT && (ident_by_id(c->in, t->aux)->ckw & 0xFF) == kw;
 }
 
+/* The display column (tabs to multiples of 8) of byte col (0-based) of a line. */
+static uint32_t line_vcol(const char *text, uint32_t len, uint32_t col)
+{
+    uint32_t i, dc = 0;
+    for (i = 0; i < col && i < len; i++) {
+        unsigned char ch = (unsigned char)text[i];
+        if (ch == '	')
+            dc = (dc + 8) & ~7u;
+        else if ((ch & 0xC0) != 0x80)
+            dc++;
+    }
+    return dc + 1;
+}
+
+/* What lies in the source between the end of token `last` and the start of
+ * token n besides white space and comments: a preprocessing directive (1;
+ * gcc then does not compare the indentation), or the text of a macro
+ * invocation that expanded to nothing (2; *at its first character). */
+static int gap_scan(Checker *c, uint32_t last, uint32_t n, TokPos *at)
+{
+    SrcLoc ll = ctok_loc(c, last), nl = ctok_loc(c, n);
+    SrcFile *f = srcmgr_file_of(c->sm, ll);
+    uint32_t l1, c1, l2, c2, L, len, tl;
+    bool in_block = false, found = false;
+    if (!f || srcmgr_file_of(c->sm, nl) != f)
+        return 0;
+    srcmgr_linecol(f, ll, &l1, &c1);
+    srcmgr_linecol(f, nl, &l2, &c2);
+    tl = c->u->toks[last].t.len;
+    c1 += tl - 1;                       /* 1-based column of the last byte */
+    if (l2 < l1 || (l2 == l1 && c2 <= c1))
+        return 0;
+    for (L = l1; L <= l2; L++) {
+        const char *text = srcmgr_line_text(f, L, &len);
+        uint32_t i = L == l1 ? c1 : 0, e = L == l2 ? c2 - 1 : len;
+        bool first_nws = L != l1;
+        if (!text)
+            return 0;
+        for (; i < e && i < len; i++) {
+            char ch = text[i];
+            if (in_block) {
+                if (ch == '*' && i + 1 < len && text[i + 1] == '/') {
+                    in_block = false;
+                    i++;
+                }
+                continue;
+            }
+            if (ch == ' ' || ch == '\t' || ch == '\r')
+                continue;
+            if (ch == '/' && i + 1 < len && text[i + 1] == '*') {
+                in_block = true;
+                i++;
+                continue;
+            }
+            if (ch == '/' && i + 1 < len && text[i + 1] == '/')
+                break;
+            if (ch == '#' && first_nws)
+                return 1;
+            first_nws = false;
+            if (!found) {
+                found = true;
+                at->f = f;
+                at->line = L;
+                at->vcol = line_vcol(text, len, i);
+            }
+        }
+    }
+    return found ? 2 : 0;
+}
+
 /* warn_for_misleading_indentation: guard token g (if, else, while, for), the
  * body statement node, and the last token of the body. */
 static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
@@ -2042,6 +2112,14 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
     if (!tok_pos(c, g, &gp) || !tok_pos(c, b, &bp) || !tok_pos(c, n, &np) ||
         np.f != bp.f)
         return;
+    switch (gap_scan(c, last, n, &np)) {
+    case 1:
+        return;
+    case 2:
+        break;                  /* np: where the empty expansion starts */
+    default:
+        break;
+    }
     for (l = g; l > 0 && !(c->u->toks[l].t.flags & TF_BOL); l--)
         ;
     if (!tok_pos(c, l, &lp))
@@ -2051,8 +2129,18 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
             return;
     } else if (tok_is_p(c, b, P_SEMI)) {
         /* an empty body: the next statement indented past the guard line */
-        if (gp.line != bp.line || np.vcol <= lp.vcol)
+        if (np.vcol <= lp.vcol)
             return;
+        if (gp.line != bp.line) {
+            /* a ';' alone on its line is the body, indented as one; text
+             * (a comment) before it makes it look misplaced */
+            uint32_t tl2, k2;
+            const char *tx2 = srcmgr_line_text(bp.f, bp.line, &tl2);
+            for (k2 = 0; tx2 && k2 < tl2 && (tx2[k2] == ' ' || tx2[k2] == 9); k2++)
+                ;
+            if (!tx2 || line_vcol(tx2, tl2, k2) == bp.vcol)
+                return;
+        }
     } else if (!(bp.vcol == np.vcol && bp.vcol > lp.vcol))
         return;
     d = cwarn_d(c, DL_WARNING, ctok_loc(c, g), "misleading-indentation",
