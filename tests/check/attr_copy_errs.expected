@@ -1,0 +1,18 @@
+attr_copy_errs.c:2:1: warning: 'alloc_size' attribute ignored on a function returning 'void' [-Wattributes]
+    2 | void v1 (void) __attribute__ ((alloc_size (1)));
+      | ^
+attr_copy_errs.c:6:23: error: 'foobar' undeclared here (not in a function)
+    6 | __attribute__ ((copy (foobar))) void f1 (void);
+      |                       ^
+attr_copy_errs.c:7:40: error: 'copy' attribute argument cannot be a string
+    7 | __attribute__ ((copy ("foobar"))) void f2 (void);
+      |                                        ^
+attr_copy_errs.c:8:35: error: 'copy' attribute argument cannot be a constant arithmetic expression
+    8 | __attribute__ ((copy (123))) void f3 (void);
+      |                                   ^
+attr_copy_errs.c:10:25: warning: left-hand operand of comma expression has no effect [-Wunused-value]
+   10 | __attribute__ ((copy ((a, al)))) void f4 (void);
+      |                         ^
+attr_copy_errs.c:10:1: warning: 'alloc_size' attribute ignored on a function returning 'void' [-Wattributes]
+   10 | __attribute__ ((copy ((a, al)))) void f4 (void);
+      | ^

@@ -252,7 +252,9 @@ static void access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
 static void attr_norm(const char *s, char *out, size_t n)
 {
     size_t len = strlen(s);
-    if (len > 4 && s[0] == '_' && s[1] == '_' && s[len - 1] == '_' &&
+    if (!strcmp(s, "__const"))      /* a keyword: gcc names it by its RID, "const" */
+        s += 2, len -= 2;
+    else if (len > 4 && s[0] == '_' && s[1] == '_' && s[len - 1] == '_' &&
         s[len - 2] == '_') {
         s += 2;
         len -= 4;
@@ -1613,16 +1615,47 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 kids_free(&ak);
                 continue;
             }
+            if (!strcmp(name, "copy") &&
+                type_ckind(TT, type_base(TT, fty)) != TY_PTR &&
+                type_ckind(TT, fty) == TY_FUNC) {
+                /* the copied alloc_align / alloc_size meet the same check */
+                static const char *const an2[] = {"alloc_align", "alloc_size"};
+                uint32_t s3[3], ns, m, w;
+                kids_get(c, it.p[q], &ak);
+                ns = ak.n == 1 ? cexpr_asets(c, ak.p[0], true, s3) : 0;
+                if (ns) {   /* a source that ignored them has nothing to copy */
+                    TypeId st = c->ty[ak.p[0]];
+                    while (type_ckind(TT, st) == TY_PTR)
+                        st = type_base(TT, st);
+                    if (type_ckind(TT, st) == TY_FUNC &&
+                        type_ckind(TT, type_base(TT, st)) != TY_PTR)
+                        ns = 0;
+                }
+                for (w = 0; w < 2; w++)
+                    for (m = 0; m < ns; m++)
+                        if (cdecl_aset_has(c, s3[m], an2[w], NULL)) {
+                            cwarn(c, iloc(c, tok), "attributes", "'%s' "
+                                  "attribute ignored on a function returning "
+                                  "%s", an2[w],
+                                  type_q(TT, type_base(TT, fty)));
+                            break;
+                        }
+                kids_free(&ak);
+                continue;
+            }
             if (!align && strcmp(name, "alloc_size"))
                 continue;
             kids_get(c, it.p[q], &ak);
             if (ak.n && (align ? ak.n == 1 : ak.n <= 2)) {
                 SrcLoc loc = iloc(c, tok);
                 TypeId rt = type_base(TT, fty);
-                if (type_ckind(TT, rt) != TY_PTR)
+                if (type_ckind(TT, rt) != TY_PTR) {
                     cwarn(c, loc, "attributes", "'%s' attribute ignored on a "
                           "function returning %s", name, type_q(TT, rt));
-                else
+                    if (c->nign < 8)
+                        snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s",
+                                 name);
+                } else
                     for (i = 0; i < ak.n && ok; i++)
                         ok = positional_arg(c, name, ak.p[i],
                                             ak.n > 1 ? (int)i + 1 : 0, fty, loc);
@@ -2092,13 +2125,40 @@ static void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                     if (ntag(c, e) == N_UNARY && (tpunct(c, c->nodes[e].tok) == P_AMP ||
                                                   tpunct(c, c->nodes[e].tok) == P_STAR))
                         e = first_child(c, e);
-                    else
+                    else if (ntag(c, e) == N_INDEX)
+                        e = first_child(c, e);
+                    else if (ntag(c, e) == N_BINARY &&
+                             tpunct(c, c->nodes[e].tok) == P_COMMA) {
+                        uint32_t bk[3], bn = node_children(c->nodes, e, bk, 3);
+                        if (bn < 2)
+                            break;
+                        e = bk[1];   /* a comma expression: its value */
+                    } else
                         break;
                 }
                 if (ntag(c, e) == N_IDENT) {
                     uint32_t ref = lookup_ord(c, cnode_ident(c, e));
                     if (ref != SYM_NONE)
                         r = csym(c, ref);
+                    else if (c->func_sym == SYM_NONE) {
+                        cerror(c, cnode_loc(c, e), "'%s' undeclared here (not "
+                               "in a function)", cident(c, cnode_ident(c, e)));
+                        kids_free(&ak);
+                        continue;
+                    }
+                }
+                if (ntag(c, e) == N_STRING || (ntag(c, e) != N_IDENT && !r &&
+                    (c->ck[e] == K_ICE || c->ck[e] == K_FOLD))) {
+                    /* handle_copy_attribute: reported at the declarator */
+                    uint32_t t = tok;
+                    while (t > 0 && strcmp(tstr(c, t), cident(c, name)))
+                        t--;
+                    cerror(c, ctok_loc(c, t), ntag(c, e) == N_STRING ?
+                           "'copy' attribute argument cannot be a string" :
+                           "'copy' attribute argument cannot be a constant "
+                           "arithmetic expression");
+                    kids_free(&ak);
+                    continue;
                 }
                 if (r && r->name == name) {
                     Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),

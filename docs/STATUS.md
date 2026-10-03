@@ -783,3 +783,21 @@ layouts, gcc rules ported, walk design).
   function types" (7/3).  Extras: "ignored on a declaration of a different
   kind than referenced symbol" (5), "attribute directive ignored" (3).
   Best first target: the 11 extras (wrong, not just absent).
+- Round 31 (2026-10-03): -Wattributes extras fixed.  copy(X) source unwrap now
+  looks through index and comma expressions (cexpr_asets too); copy of
+  alloc_size/alloc_align onto a non-pointer function warns (a source that is
+  itself non-pointer-returning has nothing to copy); copy(undeclared),
+  copy("str"), copy(const) are errors as in gcc;  attribute names
+  "const" (no "directive ignored").  Golden: attr_copy_errs.  Tests 943;
+  gcc.dg 3645, c-c++-common 540.  Known gap: 'const' attribute on a function
+  returning void is not warned.
+  bench/tools/san.sh: ASan+UBSan build in ~/cereal-san, run.sh + san.py over
+  tests/check and tests/parse: 943 passed, 300 files, 0 findings (also covers
+  sizeof-pointer-memaccess, parentheses, attributes work).
+  -Warray-bounds= survey (c-c++-common only, 106 missing in 5 files, none in
+  gcc.dg): Warray-bounds-7.c 60 (constant-string offsets, needs middle-end
+  range tracking); builtin-offsetof-2.c 35, pr41935.c 8, builtin-offsetof.c 1
+  ("index N denotes an offset greater than size of T" on __builtin_offsetof
+  array indices, no -O needed: a front-end fold check); vector-subscript-3.c 2
+  ("index value is out of bound", constant vector subscript).  Cheap target:
+  the 46 offsetof + 2 vector diagnostics.

@@ -8280,6 +8280,12 @@ unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3])
     TypeId t;
     if (x == NO_NODE)
         return 0;
+    while (ntag(c, x) == N_BINARY && npunct(c, x) == P_COMMA) {
+        uint32_t bk[3];
+        if (nkids(c, x, bk, 3) < 2)
+            break;
+        x = strip_paren(c, bk[1]);     /* a comma expression: its value */
+    }
     if (ntag(c, x) == N_IDENT) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, x));
         if (ref != SYM_NONE && csym(c, ref)->aset)
