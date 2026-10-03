@@ -694,3 +694,16 @@ layouts, gcc rules ported, walk design).
   Goldens: strict_aliasing, strict_aliasing_2.  Gaps: level 1; constant-folded
   conditional operands (*(long *)(1 ? &x : &x)); a doubly parenthesised
   operand column at level 2; gcc underlines the whole cast operand.
+- Round 25 (2026-10-02): -Waddress parity.  A weak declaration or weakref may
+  be null, a weak *definition* cannot (CSF_WEAKREF, weak_maybe_null).  A
+  pointer/array/function converted to _Bool (argument, assignment, return,
+  initializer, cast) warns at gcc's input_location (cinput_loc).  Pointer sums
+  print as gcc's folded tree: p + (sizetype)((long unsigned int)i * 4),
+  (sizetype)(z * 4) for size_t, pc + (sizetype)i for char, -(sizetype)... for
+  subtraction, ((sizetype)i + 1) * 4 when a constant is added, (int *)&arr and
+  (int *)pa for array operands, pa + 8 for pa[1]; &p[0] and p + 0 fold away.
+  addr_target names '*pa' for &pa[0][i] / &(*pa)[0] and __builtin_* functions.
+  The macro test uses the comparison token (F (p) is silent, G (*p, i) != 0 and
+  a macro-named function are not).  Tests 931; c-c++-common 533 (was 529),
+  gcc.dg 3636.  Golden: address_ptr_plus.  Gaps: &&label truth values,
+  &__real__/__imag__ x names, brace-initializer location.

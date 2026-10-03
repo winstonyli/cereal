@@ -1,0 +1,123 @@
+address_ptr_plus.c:7:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + (sizetype)((long unsigned int)i * 4)' must not be NULL [-Waddress]
+    7 |   T(p + i == 0);
+      |           ^
+address_ptr_plus.c:8:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + (sizetype)((long unsigned int)u * 4)' must not be NULL [-Waddress]
+    8 |   T(p + u == 0);
+      |           ^
+address_ptr_plus.c:9:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + (sizetype)((long unsigned int)l * 4)' must not be NULL [-Waddress]
+    9 |   T(p + l == 0);
+      |           ^
+address_ptr_plus.c:10:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + (sizetype)(z * 4)' must not be NULL [-Waddress]
+   10 |   T(p + z == 0);
+      |           ^
+address_ptr_plus.c:11:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + (sizetype)((long unsigned int)s * 4)' must not be NULL [-Waddress]
+   11 |   T(p + s == 0);
+      |           ^
+address_ptr_plus.c:12:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + (sizetype)((long unsigned int)c * 4)' must not be NULL [-Waddress]
+   12 |   T(p + c == 0);
+      |           ^
+address_ptr_plus.c:13:12: warning: the comparison will always evaluate as 'false' for the pointer operand in 'pc + (sizetype)i' must not be NULL [-Waddress]
+   13 |   T(pc + i == 0);
+      |            ^
+address_ptr_plus.c:14:12: warning: the comparison will always evaluate as 'false' for the pointer operand in 'pc + (sizetype)z' must not be NULL [-Waddress]
+   14 |   T(pc + z == 0);
+      |            ^
+address_ptr_plus.c:15:12: warning: the comparison will always evaluate as 'false' for the pointer operand in 'pc + -(sizetype)u' must not be NULL [-Waddress]
+   15 |   T(pc - u == 0);
+      |            ^
+address_ptr_plus.c:16:12: warning: the comparison will always evaluate as 'false' for the pointer operand in 'pl + (sizetype)((long unsigned int)i * 8)' must not be NULL [-Waddress]
+   16 |   T(pl + i == 0);
+      |            ^
+address_ptr_plus.c:17:12: warning: the comparison will always evaluate as 'false' for the pointer operand in 'pl + -(sizetype)((long unsigned int)l * 8)' must not be NULL [-Waddress]
+   17 |   T(pl - l == 0);
+      |            ^
+address_ptr_plus.c:18:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + (sizetype)((long unsigned int)i * 4)' must not be NULL [-Waddress]
+   18 |   T(i + p == 0);
+      |           ^
+address_ptr_plus.c:19:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + -(sizetype)(z * 4)' must not be NULL [-Waddress]
+   19 |   T(p - z == 0);
+      |           ^
+address_ptr_plus.c:20:15: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + ((sizetype)i + 1) * 4' must not be NULL [-Waddress]
+   20 |   T(p + i + 1 == 0);
+      |               ^
+address_ptr_plus.c:21:15: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + ((sizetype)i + 1) * 4' must not be NULL [-Waddress]
+   21 |   T(p + 1 + i == 0);
+      |               ^
+address_ptr_plus.c:22:17: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + ((sizetype)i + 1) * 4' must not be NULL [-Waddress]
+   22 |   T(p + (i + 1) == 0);
+      |                 ^
+address_ptr_plus.c:23:15: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + (sizetype)((long unsigned int)(i * 2) * 4)' must not be NULL [-Waddress]
+   23 |   T(p + i * 2 == 0);
+      |               ^
+address_ptr_plus.c:24:15: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + ((sizetype)i + 1) * 4' must not be NULL [-Waddress]
+   24 |   T(&p[i + 1] == 0);
+      |               ^
+address_ptr_plus.c:25:12: warning: the comparison will always evaluate as 'false' for the pointer operand in '(int *)&ai + (sizetype)((long unsigned int)i * 4)' must not be NULL [-Waddress]
+   25 |   T(ai + i == 0);
+      |            ^
+address_ptr_plus.c:26:12: warning: the comparison will always evaluate as 'false' for the pointer operand in '(char *)&ac + (sizetype)i' must not be NULL [-Waddress]
+   26 |   T(ac + i == 0);
+      |            ^
+address_ptr_plus.c:27:12: warning: the comparison will always evaluate as 'false' for the pointer operand in '(long int *)&al + -(sizetype)((long unsigned int)i * 8)' must not be NULL [-Waddress]
+   27 |   T(al - i == 0);
+      |            ^
+address_ptr_plus.c:28:12: warning: the comparison will always evaluate as 'false' for the address of 'ai' will never be NULL [-Waddress]
+   28 |   T(&ai[i] == 0);
+      |            ^
+address_ptr_plus.c:4:12: note: 'ai' declared here
+    4 | extern int ai[4]; extern char ac[4]; extern long al[4];
+      |            ^
+address_ptr_plus.c:29:16: warning: the comparison will always evaluate as 'false' for the pointer operand in '&ai[1] + (sizetype)((long unsigned int)i * 4)' must not be NULL [-Waddress]
+   29 |   T(&ai[1] + i == 0);
+      |                ^
+address_ptr_plus.c:30:13: warning: the comparison will always evaluate as 'false' for the pointer operand in '(int *)pa + 4' must not be NULL [-Waddress]
+   30 |   T(*pa + 1 == 0);
+      |             ^
+address_ptr_plus.c:31:13: warning: the comparison will always evaluate as 'false' for the pointer operand in '(int *)pa + (sizetype)((long unsigned int)i * 4)' must not be NULL [-Waddress]
+   31 |   T(*pa + i == 0);
+      |             ^
+address_ptr_plus.c:32:12: warning: the comparison will always evaluate as 'false' for the pointer operand in 'pa + 8' must not be NULL [-Waddress]
+   32 |   T(pa + 1 == 0);
+      |            ^
+address_ptr_plus.c:33:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'pa + 8' must not be NULL [-Waddress]
+   33 |   T(pa[1] == 0);
+      |           ^
+address_ptr_plus.c:34:15: warning: the comparison will always evaluate as 'false' for the address of '*pa' will never be NULL [-Waddress]
+   34 |   T(&pa[0][i] == 0);
+      |               ^
+address_ptr_plus.c:5:7: note: '*pa' declared here
+    5 | int (*pa)[2]; int *p; char *pc; long *pl; 
+      |       ^
+address_ptr_plus.c:35:15: warning: the comparison will always evaluate as 'false' for the address of '*pa' will never be NULL [-Waddress]
+   35 |   T(&(*pa)[0] == 0);
+      |               ^
+address_ptr_plus.c:5:7: note: '*pa' declared here
+    5 | int (*pa)[2]; int *p; char *pc; long *pl; 
+      |       ^
+address_ptr_plus.c:37:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'q + (sizetype)((long unsigned int)i * 4)' must not be NULL [-Waddress]
+   37 |   T(&q[i] == 0);
+      |           ^
+address_ptr_plus.c:38:11: warning: the comparison will always evaluate as 'false' for the pointer operand in 'q + (sizetype)((long unsigned int)i * 4)' must not be NULL [-Waddress]
+   38 |   T(q + i == 0);
+      |           ^
+address_ptr_plus.c:41:44: warning: the comparison will always evaluate as 'true' for the pointer operand in 'p + (sizetype)((long unsigned int)i * 4)' must not be NULL [-Waddress]
+   41 | int m_f (int *p, int i) { return G (*p, i) != 0; }
+      |                                            ^
+address_ptr_plus.c:42:46: warning: the comparison will always evaluate as 'true' for the pointer operand in 'p + (sizetype)((long unsigned int)i * 4)' must not be NULL [-Waddress]
+   42 | int m_g (int *p, int i) { return ((&*p) + i) != 0; }
+      |                                              ^
+address_ptr_plus.c:43:42: warning: the comparison will always evaluate as 'true' for the pointer operand in 'p + (sizetype)((long unsigned int)i * 4)' must not be NULL [-Waddress]
+   43 | int m_h (int *p, int i) { return (p + i) != 0; }
+      |                                          ^
+address_ptr_plus.c:44:42: warning: the comparison will always evaluate as 'true' for the address of '__builtin_malloc' will never be NULL [-Waddress]
+   44 | int b_f (void) { return __builtin_malloc != 0; }
+      |                                          ^
+address_ptr_plus.c:45:41: warning: the comparison will always evaluate as 'true' for the address of '__builtin_abort' will never be NULL [-Waddress]
+   45 | int b_g (void) { return __builtin_abort != 0; }
+      |                                         ^
+address_ptr_plus.c:46:42: warning: the comparison will always evaluate as 'true' for the address of '__builtin_strlen' will never be NULL [-Waddress]
+   46 | int b_h (void) { return __builtin_strlen != 0; }
+      |                                          ^
+address_ptr_plus.c:47:42: warning: the comparison will always evaluate as 'true' for the address of '__builtin_printf' will never be NULL [-Waddress]
+   47 | int b_k (void) { return __builtin_printf != 0; }
+      |                                          ^

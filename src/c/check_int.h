@@ -51,8 +51,9 @@ enum {
     CSF_GNU_INLINE = 67108864, /* __attribute__((gnu_inline)) */
     CSF_PURE = 134217728,    /* __attribute__((pure)), possibly copied */
     CSF_CONSTFN = 268435456, /* __attribute__((const)), possibly copied */
-    CSF_CONST_VAL = 536870912 /* -O: const integer, constant initializer in
+    CSF_CONST_VAL = 536870912, /* -O: const integer, constant initializer in
                                  CSym.val (gcc's decl_constant_value) */
+    CSF_WEAKREF = 1073741824 /* __attribute__((weakref)) */
 };
 
 typedef struct AName {

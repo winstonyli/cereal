@@ -4237,8 +4237,11 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
         conv_diag(&x, RK_PED, "int-conversion", m, true);
         return true;
     }
-    if (kl == TY_BOOL && kr == TY_PTR)
+    if (kl == TY_BOOL && kr == TY_PTR) {
+        /* convert_for_assignment: c_objc_common_truthvalue_conversion */
+        cexpr_truth_warn(c, expr, cinput_loc(c, c->nodes[expr].tok));
         return true;
+    }
 
 incompatible:
     T = type_q(TT, lt);
@@ -7912,6 +7915,8 @@ static void e_cast(Checker *c, uint32_t i)
     packed_ptr_check(c, t, a);
     if (is_ptr(c, t))
         alias_cast(c, a, c->ty[i]);
+    if (tk == TY_BOOL && is_ptr(c, ot))
+        cexpr_truth_warn(c, a, cinput_loc(c, c->nodes[i].tok));
     /* -Wbad-function-cast: a call cast to a type of another tree code */
     if (ntag(c, strip_paren(c, a)) == N_CALL && diag_enabled(c->diag, "bad-function-cast") &&
         cast_class(c, t) != cast_class(c, ot))
@@ -9485,8 +9490,34 @@ typedef struct AddrInfo {
     const char *name;
     SrcLoc dloc;
     bool direct;         /* the address of a declared object, itself */
+    char buf[96];        /* storage for a '*p' name */
     uint32_t ref;        /* its symbol, SYM_NONE for a member */
 } AddrInfo;
+
+/* decl_with_nonnull_addr_p: a weak declaration may be null, a weak definition
+ * (not a weakref) cannot be. */
+static bool weak_maybe_null(const CSym *s)
+{
+    return (s->flags & CSF_WEAK) &&
+           ((s->flags & CSF_WEAKREF) || (s->flags & CSF_DECL_EXTERNAL));
+}
+
+/* '*p' for an identifier p that points to an array. */
+static bool deref_name(Checker *c, uint32_t id, AddrInfo *ai)
+{
+    uint32_t ref;
+    id = strip_paren(c, id);
+    if (ntag(c, id) != N_IDENT || !is_ptr(c, rvt(c, id)) ||
+        !is_array(c, pointee(c, rvt(c, id))))
+        return false;
+    ref = lookup_ord(c, cnode_ident(c, id));
+    if (ref == SYM_NONE)
+        return false;
+    snprintf(ai->buf, sizeof ai->buf, "*%s", cident(c, csym(c, ref)->name));
+    ai->name = ai->buf;
+    ai->dloc = csym(c, ref)->loc;
+    return true;
+}
 
 /* The object whose address the pointer-valued expression n is, if it is one
  * gcc's decl_with_nonnull_addr_p accepts. */
@@ -9500,12 +9531,18 @@ static bool addr_target(Checker *c, uint32_t n, AddrInfo *ai)
     if (ntag(c, n) == N_IDENT) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, n));
         CSym *s;
-        if (ref == SYM_NONE)
-            return false;
+        if (ref == SYM_NONE) {
+            const char *nm = cident(c, cnode_ident(c, n));
+            if (!is_func(c, c->ty[n]) || strncmp(nm, "__builtin_", 10))
+                return false;
+            ai->name = nm; /* a built-in function has no symbol */
+            ai->direct = true;
+            return true;
+        }
         s = csym(c, ref);
         if (!((s->kind == CS_FUNC) ||
               (s->kind == CS_OBJ && is_array(c, c->ty[n]))) ||
-            (s->flags & CSF_WEAK))
+            weak_maybe_null(s))
             return false;
         ai->name = cident(c, s->name);
         ai->dloc = s->loc;
@@ -9546,20 +9583,23 @@ static bool addr_target(Checker *c, uint32_t n, AddrInfo *ai)
                 return false;
             base = strip_paren(c, k[0]);
             if (!is_array(c, c->ty[base]))
-                return false;
+                return deref_name(c, base, ai);
             e = base;
             deref = true;
             continue;
         }
         break;
     }
+    if (ntag(c, e) == N_UNARY && npunct(c, e) == P_STAR && is_array(c, c->ty[e]) &&
+        nkids(c, e, k, 3) >= 1)
+        return deref_name(c, k[0], ai);
     if (ntag(c, e) == N_IDENT) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, e));
         CSym *s;
         if (ref == SYM_NONE)
             return false;
         s = csym(c, ref);
-        if ((s->kind != CS_OBJ && s->kind != CS_FUNC) || (s->flags & CSF_WEAK))
+        if ((s->kind != CS_OBJ && s->kind != CS_FUNC) || weak_maybe_null(s))
             return false;
         ai->name = cident(c, s->name);
         ai->dloc = s->loc;
@@ -9570,49 +9610,164 @@ static bool addr_target(Checker *c, uint32_t n, AddrInfo *ai)
     return false;
 }
 
-/* maybe_warn_for_null_address's POINTER_PLUS_EXPR case: x is 'ptr +- N'
- * with a constant N.  Returns true when x is such a sum (warned or not). */
-static bool ptr_plus_warn(Checker *c, SrcLoc loc, uint32_t x, int code)
+/* x is 'ptr +- int' or '&ptr[int]': the pointer, the integer and the sign. */
+static bool plus_split(Checker *c, uint32_t x, uint32_t *pn, uint32_t *in,
+                       int *op)
 {
-    uint32_t k[3], pn, in;
-    int op;
-    int64_t off;
-    TypeId pt;
-    StrBuf sb = {0};
-    if (ntag(c, x) != N_BINARY || nkids(c, x, k, 3) != 2)
-        return false;
-    op = npunct(c, x);
-    if (op != P_PLUS && op != P_MINUS)
-        return false;
-    if (is_ptr(c, rvt(c, k[0])) && is_int(c, rvt(c, k[1]))) {
-        pn = k[0];
-        in = k[1];
-    } else if (op == P_PLUS && is_ptr(c, rvt(c, k[1])) &&
-               is_int(c, rvt(c, k[0]))) {
-        pn = k[1];
-        in = k[0];
-    } else {
+    uint32_t k[3];
+    x = strip_paren(c, x);
+    if (ntag(c, x) == N_UNARY && npunct(c, x) == P_AMP &&
+        nkids(c, x, k, 3) >= 1) {
+        uint32_t e = strip_paren(c, k[0]), ek[3];
+        if (ntag(c, e) != N_INDEX || nkids(c, e, ek, 3) != 2)
+            return false;
+        if (is_ptr(c, rvt(c, ek[0])) && !is_array(c, c->ty[strip_paren(c, ek[0])]) &&
+            is_int(c, rvt(c, ek[1]))) {
+            *pn = ek[0];
+            *in = ek[1];
+            *op = P_PLUS;
+            return true;
+        }
         return false;
     }
+    if (ntag(c, x) == N_INDEX && is_array(c, c->ty[x]) && nkids(c, x, k, 3) == 2 &&
+        is_ptr(c, rvt(c, k[0])) && !is_array(c, c->ty[strip_paren(c, k[0])]) &&
+        is_int(c, rvt(c, k[1]))) {
+        *pn = k[0];
+        *in = k[1];
+        *op = P_PLUS;
+        return true;
+    }
+    if (ntag(c, x) != N_BINARY || nkids(c, x, k, 3) != 2)
+        return false;
+    *op = npunct(c, x);
+    if (*op != P_PLUS && *op != P_MINUS)
+        return false;
+    if (is_ptr(c, rvt(c, k[0])) && is_int(c, rvt(c, k[1]))) {
+        *pn = k[0];
+        *in = k[1];
+        return true;
+    }
+    if (*op == P_PLUS && is_ptr(c, rvt(c, k[1])) && is_int(c, rvt(c, k[0]))) {
+        *pn = k[1];
+        *in = k[0];
+        return true;
+    }
+    return false;
+}
+
+/* maybe_warn_for_null_address's POINTER_PLUS_EXPR case: x is 'ptr +- N'.
+ * Prints the sum as gcc's folded tree: base + (sizetype)((unsigned long)N * size).
+ * Returns true when x is such a sum (warned or not). */
+static bool ptr_plus_warn(Checker *c, SrcLoc loc, uint32_t x, int code)
+{
+    uint32_t pn, in, pn2, in2;
+    int op, op2;
+    int64_t k = 0;
+    uint32_t var = NO_NODE;
+    bool vneg = false;
+    uint64_t sz;
+    TypeId pt;
+    StrBuf sb = {0};
+    if (!plus_split(c, x, &pn, &in, &op))
+        return false;
     pt = rvt(c, x);
     if (!is_ptr(c, pt) || is_void(c, pointee(c, pt)))
         return true;
-    if (!prints_value(c, in))
+    sz = elem_size(c, is_array(c, c->ty[strip_paren(c, pn)]) ? pt : rvt(c, pn));
+    for (;;) {
+        uint32_t ik[3];
+        /* gcc distributes a constant: p + (i + 1) is p + i + 1 */
+        in = strip_paren(c, in);
+        if (!prints_value(c, in) && ntag(c, in) == N_BINARY &&
+            (npunct(c, in) == P_PLUS || npunct(c, in) == P_MINUS) &&
+            nkids(c, in, ik, 3) == 2 && prints_value(c, ik[1]) &&
+            !prints_value(c, ik[0])) {
+            int64_t v = (int64_t)cexpr_trunc(c, rvt(c, ik[1]), c->cv[ik[1]]);
+            k += (op == P_MINUS) == (npunct(c, in) == P_MINUS) ? v : -v;
+            in = ik[0];
+        }
+        if (prints_value(c, in)) {
+            int64_t v = (int64_t)cexpr_trunc(c, rvt(c, in), c->cv[in]);
+            k += op == P_MINUS ? -v : v;
+        } else {
+            if (var != NO_NODE)
+                return true;
+            var = in;
+            vneg = op == P_MINUS;
+        }
+        pn = strip_paren(c, pn);
+        if (!is_array(c, c->ty[pn]) && plus_split(c, pn, &pn2, &in2, &op2)) {
+            pn = pn2;
+            in = in2;
+            op = op2;
+            continue;
+        }
+        break;
+    }
+    if (ntag(c, pn) == N_UNARY && npunct(c, pn) == P_AMP) { /* &*p is p */
+        uint32_t uk[3], inner;
+        if (nkids(c, pn, uk, 3) >= 1) {
+            inner = strip_paren(c, uk[0]);
+            if (ntag(c, inner) == N_UNARY && npunct(c, inner) == P_STAR &&
+                nkids(c, inner, uk, 3) >= 1 && !is_array(c, c->ty[inner]))
+                pn = strip_paren(c, uk[0]);
+        }
+    }
+    if (var == NO_NODE && k == 0) /* folds to the pointer itself */
         return true;
-    off = (int64_t)cexpr_trunc(c, rvt(c, in), c->cv[in]) *
-          (int64_t)elem_size(c, pt);
-    if (op == P_MINUS)
-        off = -off;
-    pn = strip_paren(c, pn);
+    {   /* a cast of an array: (char *)&a */
+        uint32_t ck[3];
+        if (ntag(c, pn) == N_CAST && is_ptr(c, rvt(c, pn)) &&
+            nkids(c, pn, ck, 3) >= 1 &&
+            is_array(c, c->ty[strip_paren(c, ck[nkids(c, pn, ck, 3) - 1])])) {
+            pt = rvt(c, pn);
+            pn = strip_paren(c, ck[nkids(c, pn, ck, 3) - 1]);
+        }
+    }
     if (is_array(c, c->ty[pn])) {
         sb_putc(&sb, '(');
-        type_print(TT, &sb, rvt(c, pn));
-        sb_puts(&sb, ")&");
-        pexpr(c, &sb, pn, PR_UNARY);
+        type_print(TT, &sb, pt);
+        sb_putc(&sb, ')');
+        if (ntag(c, pn) == N_UNARY && npunct(c, pn) == P_STAR) {
+            uint32_t dk[3];
+            if (nkids(c, pn, dk, 3) >= 1)
+                pexpr(c, &sb, strip_paren(c, dk[0]), PR_UNARY);
+        } else {
+            sb_putc(&sb, '&');
+            pexpr(c, &sb, pn, PR_UNARY);
+        }
     } else {
         pexpr(c, &sb, pn, PR_ADD);
     }
-    sb_printf(&sb, " + %lld", (long long)off);
+    if (var == NO_NODE) {
+        sb_printf(&sb, " + %lld", (long long)(k * (int64_t)sz));
+    } else {
+        TypeId vt = rvt(c, var);
+        bool ul = !is_signed(c, vt) && type_size(TT, vt, NULL) == 8;
+        StrBuf v = {0};
+        if (sz == 1) {
+            sb_puts(&v, "(sizetype)");
+            pexpr(c, &v, var, PR_UNARY);
+        } else {
+            if (k) {
+                sb_puts(&v, "((sizetype)");
+                pexpr(c, &v, var, PR_UNARY);
+                sb_printf(&v, " + %lld) * %llu", (long long)k,
+                          (unsigned long long)sz);
+            } else {
+                sb_puts(&v, "(sizetype)(");
+                if (!ul)
+                    sb_puts(&v, "(long unsigned int)");
+                pexpr(c, &v, var, PR_UNARY);
+                sb_printf(&v, " * %llu)", (unsigned long long)sz);
+            }
+        }
+        sb_printf(&sb, " + %s%s", vneg ? "-" : "", sb_cstr(&v));
+        if (sz == 1 && k)
+            sb_printf(&sb, " + %lld", (long long)k);
+        sb_free(&v);
+    }
     cwarn(c, loc, "address", "the comparison will always evaluate as '%s' for "
           "the pointer operand in '%s' must not be NULL",
           code == P_EQEQ ? "false" : "true", sb_cstr(&sb));
@@ -9626,11 +9781,13 @@ static void null_addr_msg(Checker *c, SrcLoc loc, const AddrInfo *ai, int code)
                             "always evaluate as '%s' for the address of '%s' "
                             "will never be NULL",
                             code == P_EQEQ ? "false" : "true", ai->name);
-    cnote(c, d, ai->dloc, "'%s' declared here", ai->name);
+    if (ai->dloc)
+        cnote(c, d, ai->dloc, "'%s' declared here", ai->name);
 }
 
 /* maybe_warn_for_null_address */
-static bool null_addr_warn(Checker *c, SrcLoc loc, uint32_t x, int code)
+static bool null_addr_warn(Checker *c, SrcLoc loc, uint32_t x, int code,
+                           uint32_t cmp)
 {
     AddrInfo ai;
     uint32_t k[3];
@@ -9644,7 +9801,9 @@ static bool null_addr_warn(Checker *c, SrcLoc loc, uint32_t x, int code)
         nkids(c, x, k, 3) == 2 && is_ptr(c, rvt(c, k[0])) &&
         prints_value(c, k[1]) && c->cv[k[1]] == 0) /* folds to the pointer */
         x = strip_paren(c, k[0]);
-    if (inhibited(c, x, false) || from_macro(c, c->nodes[strip_paren(c, x)].tok))
+    /* judged by the comparison: G (*p, i) != 0 and 'malloc != 0' (malloc a
+     * macro) are user code, F (p) with the comparison inside F is not */
+    if (inhibited(c, x, false) || from_macro(c, c->nodes[cmp].tok))
         return false;
     if (ptr_plus_warn(c, loc, x, code))
         return true;
@@ -9845,9 +10004,9 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         if (is_arith(c, ta) && is_arith(c, tb))
             fold = compare_limits(c, i, a, b, op, ta, tb);
         else if (eq && pa && is_npc(c, b))
-            fold = null_addr_warn(c, loc, a, op);
+            fold = null_addr_warn(c, loc, a, op, i);
         else if (eq && pb && is_npc(c, a))
-            fold = null_addr_warn(c, loc, b, op);
+            fold = null_addr_warn(c, loc, b, op, i);
         if (!fold && !is_flt(c, ta) && !is_flt(c, tb) && opeq(c, a, b))
             fold = true; /* x == x and the like */
         if (fold)

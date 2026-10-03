@@ -4571,7 +4571,7 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
         m.loc = o->loc;
     m.flags |= o->flags & (CSF_DEFINED | CSF_USED | CSF_NORETURN | CSF_THREAD |
                            CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE |
-                           CSF_WEAK | CSF_ADDR_WARNED | CSF_DEPRECATED |
+                           CSF_WEAK | CSF_WEAKREF | CSF_ADDR_WARNED | CSF_DEPRECATED |
                            CSF_UNAVAILABLE | CSF_INNER_COMP | CSF_GNU_INLINE | CSF_PURE | CSF_CONSTFN);
     /* merge_weak: PR 49899, a static function cannot become weak and public */
     if ((nw->flags & CSF_WEAK) && !(o->flags & CSF_WEAK) && !sym_public(o) &&
@@ -5456,7 +5456,7 @@ static void declared_visit(Checker *c, uint32_t i)
     if (a.weak && !kr && (s.kind == CS_OBJ || s.kind == CS_FUNC))
         weak_apply(c, &s, sp.is_inline);
     if (a.weakref && (s.kind == CS_OBJ || s.kind == CS_FUNC))
-        s.flags |= CSF_WEAK;   /* a weakref is weak too */
+        s.flags |= CSF_WEAK | CSF_WEAKREF;   /* a weakref is weak too */
     /* handle_alias_ifunc_attributes: a function alias has an initial value, so
      * a later definition (or an earlier one) is a redefinition */
     if (a.defn && s.kind == CS_FUNC && g.what == GD_FUNC)
