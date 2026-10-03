@@ -1,0 +1,318 @@
+logical_op.c:6:13: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+    6 |   if (x < 0 && x > 10) {}
+      |             ^
+logical_op.c:7:13: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+    7 |   if (x < 5 || x > 3) {}
+      |             ^
+logical_op.c:9:14: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+    9 |   if (x == 1 && x == 2) {}
+      |              ^
+logical_op.c:10:14: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+   10 |   if (x != 1 || x != 2) {}
+      |              ^
+logical_op.c:12:9: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+   12 |   if (x && !x) {}
+      |         ^
+logical_op.c:13:9: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+   13 |   if (x || !x) {}
+      |         ^
+logical_op.c:14:14: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+   14 |   if (x >= 0 || x < 0) {}
+      |              ^
+logical_op.c:15:14: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+   15 |   if (x == 1 || x != 1) {}
+      |              ^
+logical_op.c:16:13: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+   16 |   if (x > 1 && x < 1) {}
+      |             ^
+logical_op.c:17:9: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+   17 |   if (p && !p) {}
+      |         ^
+logical_op.c:18:14: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+   18 |   if (p == 0 || p != 0) {}
+      |              ^
+logical_op.c:19:15: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+   19 |   if (ch == 3 && ch == 4) {}
+      |               ^
+logical_op.c:21:17: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+   21 |   if (x + 1 > 3 && x + 1 < 2) {}
+      |                 ^
+logical_op.c:24:15: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+   24 |   if (x == E1 && x == E2) {}
+      |               ^
+logical_op.c:25:15: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   25 |   if ((x & 1) && 4) {}
+      |               ^
+logical_op.c:26:15: warning: logical 'or' applied to non-boolean constant [-Wlogical-op]
+   26 |   if ((x & 1) || 4) {}
+      |               ^
+logical_op.c:27:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   27 |   if (x && 2) {}
+      |         ^
+logical_op.c:28:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   28 |   if (x && E2) {}
+      |         ^
+logical_op.c:31:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   31 |   if (x && M) {}
+      |         ^
+logical_op.c:32:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   32 |   if (x && (1+1)) {}
+      |         ^
+logical_op.c:33:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   33 |   if (x && (char)3) {}
+      |         ^
+logical_op.c:34:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   34 |   if (x && 2u) {}
+      |         ^
+logical_op.c:36:15: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   36 |   if ((x > 1) && 2) {}
+      |               ^
+logical_op.c:38:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   38 |   if (u && 0x100) {}
+      |         ^
+logical_op.c:39:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   39 |   if (p && 2) {}
+      |         ^
+logical_op.c:40:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   40 |   if (d && 2) {}
+      |         ^
+logical_op.c:42:11: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   42 |   if (g() && 2) {}
+      |           ^
+logical_op.c:43:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+   43 |   if (x && -1) {}
+      |         ^
+logical_op.c:47:13: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+   47 |   if (x > 3 && !x) {}
+      |             ^
+logical_op.c:48:13: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+   48 |   if (u > 3 || u <= 3) {}
+      |             ^
+logical_op.c:50:14: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+   50 |   if (x >= 3 || x <= 3) {}
+      |              ^
+logical_op.c:52:15: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+   52 |   if (x && (y || !y)) {}
+      |               ^
+logical_op.c:54:13: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+   54 |   int z = x && !x;
+      |             ^
+logical_op.c:55:15: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+   55 |   z = (x < 0) || (x >= 0);
+      |               ^
+logical_op.c:59:14: warning: logical 'and' of equal expressions [-Wlogical-op]
+   59 |   if (x == 1 && x == 1) {}
+      |              ^
+logical_op.c:60:13: warning: logical 'and' of equal expressions [-Wlogical-op]
+   60 |   if (x < y && x < y) {}
+      |             ^
+logical_op.c:61:13: warning: logical 'and' of equal expressions [-Wlogical-op]
+   61 |   if (x < y && y > x) {}
+      |             ^
+logical_op.c:64:13: warning: logical 'and' of equal expressions [-Wlogical-op]
+   64 |   if (d > 1 && d > 1) {}
+      |             ^
+logical_op.c:67:13: warning: logical 'and' of equal expressions [-Wlogical-op]
+   67 |   if (x + y && y + x) {}
+      |             ^
+logical_op.c:69:14: warning: logical 'and' of equal expressions [-Wlogical-op]
+   69 |   if (arr[x] && arr[x]) {}
+      |              ^
+logical_op.c:70:13: warning: logical 'and' of equal expressions [-Wlogical-op]
+   70 |   if (ps->a && ps->a) {}
+      |             ^
+logical_op.c:71:15: warning: logical 'and' of equal expressions [-Wlogical-op]
+   71 |   if ((u > 2) && (u > 2)) {}
+      |               ^
+logical_op.c:73:9: warning: logical 'and' of equal expressions [-Wlogical-op]
+   73 |   if (x && x && x) {}
+      |         ^
+logical_op.c:74:9: warning: logical 'or' of equal expressions [-Wlogical-op]
+   74 |   if (x || x || y) {}
+      |         ^
+logical_op.c:76:13: warning: logical 'and' of equal expressions [-Wlogical-op]
+   76 |   if (x & 1 && x & 1) {}
+      |             ^
+logical_op.c:79:10: warning: logical 'and' of equal expressions [-Wlogical-op]
+   79 |   if (ch && (int)ch) {}
+      |          ^
+logical_op.c:80:9: warning: logical 'and' of equal expressions [-Wlogical-op]
+   80 |   if (u && (int)u) {}
+      |         ^
+logical_op.c:81:15: warning: logical 'and' of equal expressions [-Wlogical-op]
+   81 |   if ((long)x && x) {}
+      |               ^
+logical_op.c:82:16: warning: logical 'and' of equal expressions [-Wlogical-op]
+   82 |   if ((short)x && (short)x) {}
+      |                ^
+logical_op.c:83:14: warning: logical 'and' of equal expressions [-Wlogical-op]
+   83 |   if (d == d && d == d) {}
+      |              ^
+logical_op.c:85:10: warning: logical 'and' of equal expressions [-Wlogical-op]
+   85 |   if (-x && -x) {}
+      |          ^
+logical_op.c:86:10: warning: logical 'and' of equal expressions [-Wlogical-op]
+   86 |   if (~x && ~x) {}
+      |          ^
+logical_op.c:88:14: warning: logical 'or' of equal expressions [-Wlogical-op]
+   88 |   if (x == y || y == x) {}
+      |              ^
+logical_op.c:89:14: warning: logical 'and' of equal expressions [-Wlogical-op]
+   89 |   if (x != y && y != x) {}
+      |              ^
+logical_op.c:90:17: warning: logical 'and' of equal expressions [-Wlogical-op]
+   90 |   if (x + 1 > 3 && 3 < x + 1) {}
+      |                 ^
+logical_op.c:91:13: warning: logical 'and' of equal expressions [-Wlogical-op]
+   91 |   if (x > 3 && 3 < x) {}
+      |             ^
+logical_op.c:94:13: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+   94 |   if (x > 3 || x < 4) {}
+      |             ^
+logical_op.c:95:14: warning: logical 'and' of equal expressions [-Wlogical-op]
+   95 |   if (p == 0 && p == 0) {}
+      |              ^
+logical_op.c:96:14: warning: logical 'and' of equal expressions [-Wlogical-op]
+   96 |   if (x == 0 && !x) {}
+      |              ^
+logical_op.c:97:10: warning: logical 'or' of equal expressions [-Wlogical-op]
+   97 |   if (!x || x == 0) {}
+      |          ^
+logical_op.c:98:14: warning: logical 'and' of equal expressions [-Wlogical-op]
+   98 |   if (x == 3 && 3 == x) {}
+      |              ^
+logical_op.c:99:16: warning: logical 'and' of equal expressions [-Wlogical-op]
+   99 |   _Bool b1 = x && x;
+      |                ^
+logical_op.c:100:13: warning: logical 'or' of equal expressions [-Wlogical-op]
+  100 |   int r = x || x;
+      |             ^
+logical_op.c:101:12: warning: logical 'and' of equal expressions [-Wlogical-op]
+  101 |   while (x && x) {}
+      |            ^
+logical_op.c:102:12: warning: logical 'and' of equal expressions [-Wlogical-op]
+  102 |   for (; x && x;) {}
+      |            ^
+logical_op.c:103:10: warning: logical 'and' of equal expressions [-Wlogical-op]
+  103 |   r = (x && x) ? 1 : 0;
+      |          ^
+logical_op.c:104:14: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+  104 |   r = x == 1 && x != 1;
+      |              ^
+logical_op.c:105:10: warning: logical 'and' of equal expressions [-Wlogical-op]
+  105 |   if ((x && x) && y) {}
+      |          ^
+logical_op.c:110:9: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+  110 |   if (p || !p) {}
+      |         ^
+logical_op.c:112:9: warning: logical 'and' of equal expressions [-Wlogical-op]
+  112 |   if (b && b) {}
+      |         ^
+logical_op.c:113:9: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+  113 |   if (b || !b) {}
+      |         ^
+logical_op.c:115:15: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+  115 |   if (uc < 10 && uc > 20) {}
+      |               ^
+logical_op.c:116:15: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+  116 |   if (uc == 1 || uc != 1) {}
+      |               ^
+logical_op.c:117:13: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+  117 |   if (l < 0 || l >= 0) {}
+      |             ^
+logical_op.c:118:15: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+  118 |   if ((x & 1) && !(x & 1)) {}
+      |               ^
+logical_op.c:119:13: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+  119 |   if (x < 3 && x >= 3) {}
+      |             ^
+logical_op.c:122:14: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+  122 |   if (x == 2 && x == 2 + 1) {}
+      |              ^
+logical_op.c:123:13: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+  123 |   if (x < 1 || x > 0) {}
+      |             ^
+logical_op.c:124:14: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+  124 |   if (x <= 1 && x > 1) {}
+      |              ^
+logical_op.c:125:17: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+  125 |   if (x + 1 < 3 && x + 1 > 5) {}
+      |                 ^
+logical_op.c:129:14: warning: logical 'and' of equal expressions [-Wlogical-op]
+  129 |   if (x == y && x == y) {}
+      |              ^
+logical_op.c:130:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+  130 |   if (x && 2 && y) {}
+      |         ^
+logical_op.c:132:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+  132 |   if (x && sizeof x) {}
+      |         ^
+logical_op.c:134:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+  134 |   if (b && 2) {}
+      |         ^
+logical_op.c:135:14: warning: logical 'and' of mutually exclusive tests is always false [-Wlogical-op]
+  135 |   if (x == 5 && (x > 7)) {}
+      |              ^
+logical_op.c:136:14: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+  136 |   if (x == 5 || (x != 5)) {}
+      |              ^
+logical_op.c:137:13: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+  137 |   int r = x && 2;
+      |             ^
+logical_op.c:138:15: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+  138 |   r = (x ^ y) && 8;
+      |               ^
+logical_op.c:139:16: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+  139 |   r = (x == y) && 8;
+      |                ^
+logical_op.c:140:10: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+  140 |   r = -x && 3;
+      |          ^
+logical_op.c:141:11: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+  141 |   r = x++ && 4;
+      |           ^
+logical_op.c:142:9: warning: logical 'and' applied to non-boolean constant [-Wlogical-op]
+  142 |   r = x && 0x7fffffff;
+      |         ^
+logical_op.c:148:9: warning: logical 'and' of equal expressions [-Wlogical-op]
+  148 |   if (p && p != 0) {}
+      |         ^
+logical_op.c:151:10: warning: logical 'and' of equal expressions [-Wlogical-op]
+  151 |   if (!p && !p) {}
+      |          ^
+logical_op.c:152:14: warning: logical 'and' of equal expressions [-Wlogical-op]
+  152 |   if (p == 0 && !p) {}
+      |              ^
+logical_op.c:153:14: warning: logical 'and' of equal expressions [-Wlogical-op]
+  153 |   if (p != 0 && p != 0) {}
+      |              ^
+logical_op.c:154:10: warning: logical 'and' of equal expressions [-Wlogical-op]
+  154 |   if (fl && fl != 0) {}
+      |          ^
+logical_op.c:155:11: warning: logical 'and' of equal expressions [-Wlogical-op]
+  155 |   if (!fl && !fl) {}
+      |           ^
+logical_op.c:157:15: warning: logical 'and' of equal expressions [-Wlogical-op]
+  157 |   if (fl == 0 && !fl) {}
+      |               ^
+logical_op.c:158:9: warning: logical 'and' of equal expressions [-Wlogical-op]
+  158 |   if (p && (p != 0)) {}
+      |         ^
+logical_op.c:160:9: warning: logical 'and' of equal expressions [-Wlogical-op]
+  160 |   if (x && x != 0) {}
+      |         ^
+logical_op.c:161:9: warning: logical 'and' of equal expressions [-Wlogical-op]
+  161 |   if (p && p != (void *)0) {}
+      |         ^
+logical_op.c:162:9: warning: logical 'and' of equal expressions [-Wlogical-op]
+  162 |   if (p && p != (int *)0) {}
+      |         ^
+logical_op.c:163:14: warning: comparison between pointer and integer
+  163 |   if (x && x != (void *)0) {}
+      |              ^
+logical_op.c:163:9: warning: logical 'and' of equal expressions [-Wlogical-op]
+  163 |   if (x && x != (void *)0) {}
+      |         ^
+logical_op.c:164:9: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
+  164 |   if (p || !p) {}
+      |         ^

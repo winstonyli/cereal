@@ -8618,6 +8618,315 @@ static void e_comma(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     }
 }
 
+static bool from_macro(Checker *c, uint32_t tok);
+static bool is_npc(Checker *c, uint32_t n);
+static void cst_parts(Checker *c, uint32_t n, bool *neg, uint64_t *mag);
+
+/* ---- -Wlogical-op ----------------------------------------------------------
+ * c-family warn_logical_operator: a non-boolean constant operand, operands
+ * that are the same test, and range tests on one expression that are always
+ * false (&&) or always true (||). */
+
+__extension__ typedef __int128 i128;
+
+typedef struct {
+    int op;          /* P_EQEQ, P_NE, P_LT, P_LE, P_GT, P_GE */
+    uint32_t l, r;   /* r == NO_NODE: compared with zero */
+} LForm;
+
+typedef struct {
+    int n;
+    i128 lo[4], hi[4];
+} IvSet;
+
+static bool lg_cmp(int op)
+{
+    return op == P_EQEQ || op == P_NE || op == P_LT || op == P_LE ||
+           op == P_GT || op == P_GE;
+}
+
+static int lg_swap(int op)
+{
+    switch (op) {
+    case P_LT: return P_GT;
+    case P_GT: return P_LT;
+    case P_LE: return P_GE;
+    case P_GE: return P_LE;
+    default: return op;
+    }
+}
+
+static int lg_inv(int op)
+{
+    switch (op) {
+    case P_EQEQ: return P_NE;
+    case P_NE: return P_EQEQ;
+    case P_LT: return P_GE;
+    case P_GE: return P_LT;
+    case P_GT: return P_LE;
+    default: return P_GT;
+    }
+}
+
+/* e without the conversions fold removes from a comparison with zero. */
+static uint32_t lg_strip(Checker *c, uint32_t e)
+{
+    for (;;) {
+        uint32_t k[3], n;
+        e = strip_paren(c, e);
+        if (ntag(c, e) != N_CAST || (n = nkids(c, e, k, 3)) < 1)
+            return e;
+        if (!is_int(c, rvt(c, e)) || !is_int(c, rvt(c, k[n - 1])) ||
+            int_bits(c, rvt(c, e)) < int_bits(c, rvt(c, k[n - 1])))
+            return e;
+        e = k[n - 1];
+    }
+}
+
+/* A null pointer or integer zero constant. */
+static bool lg_zero(Checker *c, uint32_t n)
+{
+    return is_npc(c, n) || (c->ck[n] == K_ADDR && !c->cb[n] && !c->cv[n]);
+}
+
+/* The operand as the comparison gcc builds from it (c_common_truthvalue_
+ * conversion, with ! folded into the comparison).  False if not a test. */
+static bool lg_form(Checker *c, uint32_t n, LForm *f)
+{
+    uint32_t k[3], cnt;
+    n = strip_paren(c, n);
+    cnt = nkids(c, n, k, 3);
+    if (ntag(c, n) == N_BINARY && lg_cmp(npunct(c, n)) && cnt >= 2) {
+        f->op = npunct(c, n);
+        f->l = k[0];
+        f->r = k[1];
+        /* x == 0 and x != 0 are the truth conversions of x and !x */
+        if (f->op == P_EQEQ || f->op == P_NE) {
+            if (lg_zero(c, f->r) && !lg_zero(c, f->l)) {
+                f->r = NO_NODE;
+            } else if (lg_zero(c, f->l) && !lg_zero(c, f->r)) {
+                f->l = f->r;
+                f->r = NO_NODE;
+            }
+            if (f->r == NO_NODE)
+                f->l = lg_strip(c, f->l);
+        }
+        return true;
+    }
+    if (ntag(c, n) == N_BINARY &&
+        (npunct(c, n) == P_ANDAND || npunct(c, n) == P_OROR))
+        return false;
+    if (ntag(c, n) == N_UNARY && npunct(c, n) == P_BANG && cnt >= 1) {
+        uint32_t in = strip_paren(c, k[0]);
+        if (!lg_form(c, in, f))
+            return false;
+        if (f->r != NO_NODE && (is_flt(c, rvt(c, f->l)) || is_flt(c, rvt(c, f->r))))
+            return false;
+        f->op = lg_inv(f->op);
+        return true;
+    }
+    if (ntag(c, n) == N_CAST && tkind(c, rvt(c, n)) == TY_BOOL && cnt >= 1)
+        return lg_form(c, k[cnt - 1], f);
+    f->op = P_NE;
+    f->l = lg_strip(c, n);
+    f->r = NO_NODE;
+    return true;
+}
+
+static bool lg_eqn(Checker *c, uint32_t x, uint32_t y)
+{
+    if (x == NO_NODE || y == NO_NODE)
+        return x == y;
+    return opeq(c, x, y);
+}
+
+static bool lg_same(Checker *c, const LForm *a, const LForm *b)
+{
+    return (a->op == b->op && lg_eqn(c, a->l, b->l) && lg_eqn(c, a->r, b->r)) ||
+           (a->r != NO_NODE && b->r != NO_NODE && a->op == lg_swap(b->op) &&
+            lg_eqn(c, a->l, b->r) && lg_eqn(c, a->r, b->l));
+}
+
+/* A test gcc's warning looks at: a comparison, ! or integral value. */
+static bool lg_eligible(Checker *c, uint32_t n)
+{
+    n = strip_paren(c, n);
+    if (ntag(c, n) == N_BINARY && (lg_cmp(npunct(c, n)) ||
+                                   npunct(c, n) == P_ANDAND ||
+                                   npunct(c, n) == P_OROR))
+        return true;
+    if (ntag(c, n) == N_UNARY && npunct(c, n) == P_BANG)
+        return true;
+    return is_int(c, rvt(c, n));
+}
+
+static i128 lg_val(Checker *c, uint32_t n)
+{
+    bool neg;
+    uint64_t mag;
+    cst_parts(c, n, &neg, &mag);
+    return neg ? -(i128)mag : (i128)mag;
+}
+
+static void iv_add(IvSet *s, i128 lo, i128 hi)
+{
+    if (lo <= hi && s->n < 4) {
+        s->lo[s->n] = lo;
+        s->hi[s->n++] = hi;
+    }
+}
+
+/* The values v in [mn, mx] with 'v op k'. */
+static void iv_cmp(IvSet *s, int op, i128 k, i128 mn, i128 mx)
+{
+    s->n = 0;
+    switch (op) {
+    case P_EQEQ: iv_add(s, k < mn ? mx + 1 : k, k > mx ? mn - 1 : k); break;
+    case P_NE:
+        iv_add(s, mn, k - 1 < mx ? k - 1 : mx);
+        iv_add(s, k + 1 > mn ? k + 1 : mn, mx);
+        if (k < mn || k > mx) {
+            s->n = 0;
+            iv_add(s, mn, mx);
+        }
+        break;
+    case P_LT: iv_add(s, mn, k - 1 < mx ? k - 1 : mx); break;
+    case P_LE: iv_add(s, mn, k < mx ? k : mx); break;
+    case P_GT: iv_add(s, k + 1 > mn ? k + 1 : mn, mx); break;
+    default: iv_add(s, k > mn ? k : mn, mx); break;
+    }
+}
+
+static void iv_comp(IvSet *r, const IvSet *s, i128 mn, i128 mx)
+{
+    i128 at = mn;
+    int i;
+    r->n = 0;
+    for (i = 0; i < s->n; i++) {
+        iv_add(r, at, s->lo[i] - 1);
+        at = s->hi[i] + 1;
+    }
+    iv_add(r, at, mx);
+}
+
+static void iv_and(IvSet *r, const IvSet *a, const IvSet *b)
+{
+    int i, j;
+    r->n = 0;
+    for (i = 0; i < a->n; i++)
+        for (j = 0; j < b->n; j++)
+            iv_add(r, a->lo[i] > b->lo[j] ? a->lo[i] : b->lo[j],
+                   a->hi[i] < b->hi[j] ? a->hi[i] : b->hi[j]);
+}
+
+/* The expression a test constrains and the values that make it true. */
+static bool lg_atom(Checker *c, const LForm *f, uint32_t *e, IvSet *s,
+                    i128 *mn, i128 *mx)
+{
+    int op = f->op;
+    i128 k = 0;
+    TypeId t;
+    unsigned bits;
+    if (f->r == NO_NODE) {
+        *e = f->l;
+    } else if (is_intcst(c, f->r) && !is_intcst(c, f->l)) {
+        *e = f->l;
+        k = lg_val(c, f->r);
+    } else if (is_intcst(c, f->l) && !is_intcst(c, f->r)) {
+        *e = f->r;
+        op = lg_swap(op);
+        k = lg_val(c, f->l);
+    } else {
+        return false;
+    }
+    t = rvt(c, *e);
+    if (is_ptr(c, t)) {
+        *mn = 0;
+        *mx = ((i128)1 << int_bits(c, t)) - 1;
+    } else if (is_int(c, t)) {
+        bits = tkind(c, t) == TY_BOOL ? 1 : int_bits(c, t);
+        if (is_signed(c, t)) {
+            *mn = -((i128)1 << (bits - 1));
+            *mx = ((i128)1 << (bits - 1)) - 1;
+        } else {
+            *mn = 0;
+            *mx = ((i128)1 << bits) - 1;
+        }
+    } else {
+        return false;
+    }
+    iv_cmp(s, op, k, *mn, *mx);
+    return true;
+}
+
+/* An operator expression from a macro (constants and names carry no location
+ * in gcc's tree). */
+static bool lg_macro(Checker *c, uint32_t n)
+{
+    return ntag(c, n) != N_IDENT && ntag(c, n) != N_NUMBER &&
+           ntag(c, n) != N_CHAR && from_macro(c, c->nodes[n].tok);
+}
+
+static void logical_op_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
+{
+    bool orop = op == P_OROR;
+    uint32_t sa = strip_paren(c, a), sb = strip_paren(c, b), ea, eb;
+    SrcLoc loc = cnode_loc(c, i);
+    LForm fa, fb;
+    IvSet ia, ib, ca, cb, r;
+    i128 mna, mxa, mnb, mxb;
+    bool okb;
+    if (!diag_enabled(c->diag, "logical-op") || inhibited(c, i, false) ||
+        lg_macro(c, sa) || lg_macro(c, sb))
+        return;
+    if (is_intcst(c, sb) && is_int(c, rvt(c, sb)) && truth(c, sa, true) < 0 &&
+        !(ntag(c, sb) == N_BINARY && npunct(c, sb) == P_COMMA) &&
+        !is_intcst(c, sa)) {
+        bool neg;
+        uint64_t mag;
+        int ta = ntag(c, a), pa = npunct(c, a);
+        bool truthy = (ta == N_BINARY && (lg_cmp(pa) || pa == P_ANDAND ||
+                                          pa == P_OROR)) ||
+                      (ta == N_UNARY && pa == P_BANG);
+        cst_parts(c, sb, &neg, &mag);
+        if (!truthy && (neg || mag > 1)) {
+            cwarn(c, loc, "logical-op", "logical '%s' applied to non-boolean "
+                  "constant", orop ? "or" : "and");
+            return;
+        }
+    }
+    if (truth(c, sa, true) >= 0 || truth(c, sb, true) >= 0)
+        return;
+    if (!lg_form(c, sa, &fa) || !(okb = lg_form(c, sb, &fb)))
+        return;
+    (void)okb;
+    /* the left operand is already a truth value, the right one is not */
+    if (lg_eligible(c, sb) && lg_same(c, &fa, &fb)) {
+        cwarn(c, loc, "logical-op", "logical '%s' of equal expressions",
+              orop ? "or" : "and");
+        return;
+    }
+    if (!lg_atom(c, &fa, &ea, &ia, &mna, &mxa) ||
+        !lg_atom(c, &fb, &eb, &ib, &mnb, &mxb) || mna != mnb || mxa != mxb ||
+        !opeq(c, ea, eb))
+        return;
+    iv_comp(&ca, &ia, mna, mxa);
+    iv_comp(&cb, &ib, mna, mxa);
+    if (orop ? (ca.n == 0 || cb.n == 0) : (ia.n == 0 || ib.n == 0))
+        return;     /* one side alone is already always true / false */
+    if (orop) {
+        iv_and(&r, &ca, &cb);
+        if (r.n == 0)
+            cwarn(c, loc, "logical-op", "logical 'or' of collectively "
+                  "exhaustive tests is always true");
+    } else {
+        iv_and(&r, &ia, &ib);
+        if (r.n == 0)
+            cwarn(c, loc, "logical-op", "logical 'and' of mutually exclusive "
+                  "tests is always false");
+    }
+}
+
 static void e_logical(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
 {
     bool andand = op == P_ANDAND, ok;
@@ -8634,6 +8943,7 @@ static void e_logical(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         set_err(c, i);
         return;
     }
+    logical_op_warn(c, i, a, b, op);
     cexpr_truth_warn(c, a, first_loc(c, a));
     cexpr_truth_warn(c, b, cnode_loc(c, i));
     c->ty[i] = TYPE_B(INT);

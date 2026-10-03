@@ -707,3 +707,27 @@ layouts, gcc rules ported, walk design).
   a macro-named function are not).  Tests 931; c-c++-common 533 (was 529),
   gcc.dg 3636.  Golden: address_ptr_plus.  Gaps: &&label truth values,
   &__real__/__imag__ x names, brace-initializer location.
+- Round 26 (2026-10-02): -Wlogical-op (not in -Wall/-Wextra), cexpr.c
+  logical_op_warn, called from e_logical before the -Waddress truth checks,
+  located at the operator.  Three warnings, probed against gcc-13 (/tmp/lt/lo1..4.c):
+  (1) "applied to non-boolean constant": right operand an integer constant
+  other than 0/1 (enumerators, 1+1, sizeof count; a comma expression does
+  not), left not constant and not written as a comparison, !, && or || (a
+  parenthesised comparison counts as plain).  (2) "of equal expressions":
+  both operands reduce to the same truth comparison (lg_form: x -> x != 0,
+  !x -> x == 0, ! folded into the comparison, == 0 / != 0 / != NULL
+  normalised, swapped comparisons equal, widening and same-width casts of a
+  plain operand dropped) and opeq says the expressions match; the left operand
+  is already a truth value but the right one must be a comparison, ! or
+  integral (so p && p and fl && fl are silent, p && p != 0 is not).
+  (3) "mutually exclusive tests is always false" / "collectively exhaustive
+  tests is always true": both tests compare one expression with constants;
+  interval sets in the expression type (iv_*) are intersected (&&) or
+  complemented and intersected (||); a side that is trivially false/true
+  alone is skipped.  Operators from macros are skipped, constants and
+  names are not (gcc has no location for them).  Corpus scan (643 files):
+  4 of 4 gcc warnings, no extras.  Tests 933; gcc.dg 3638, c-c++-common 536.
+  Golden: logical_op.  Gaps: const/pure function calls as equal operands
+  (pure (x) && pure (x)); a cast between signedness inside a range test
+  ((unsigned) x < 3 && x > 5); -Wlogical-op is silent on &&/|| operands
+  that are themselves && / ||.
