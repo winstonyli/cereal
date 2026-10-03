@@ -1,0 +1,30 @@
+packed_struct2.c:2:8: warning: packed attribute is unnecessary for 'D' [-Wpacked]
+    2 | struct D { int i; int j; } __attribute__((packed));
+      |        ^
+packed_struct2.c:6:1: warning: packed attribute is unnecessary for 'M1' [-Wpacked]
+    6 | } __attribute__((packed));
+      | ^
+packed_struct2.c:10:1: warning: packed attribute is unnecessary for 'M2' [-Wpacked]
+   10 | } __attribute__((packed));
+      | ^
+packed_struct2.c:12:3: warning: packed attribute is unnecessary for 'M3' [-Wpacked]
+   12 |   int j; } __attribute__((packed));
+      |   ^
+packed_struct2.c:14:3: warning: packed attribute is unnecessary for 'M4' [-Wpacked]
+   14 |   __attribute__((packed));
+      |   ^
+packed_struct2.c:16:3: warning: packed attribute is unnecessary for 'M5' [-Wpacked]
+   16 |   x;
+      |   ^
+packed_struct2.c:17:28: warning: packed attribute is unnecessary [-Wpacked]
+   17 | struct M6 { char c; struct { char q; } __attribute__((packed)) in; } __attribute__((packed));
+      |                            ^
+packed_struct2.c:17:28: warning: packed attribute is unnecessary for 'M6' [-Wpacked]
+   17 | struct M6 { char c; struct { char q; } __attribute__((packed)) in; } __attribute__((packed));
+      |                            ^
+packed_struct2.c:18:32: warning: packed attribute is unnecessary for 'M7' [-Wpacked]
+   18 | struct __attribute__((packed)) M7 { char c; };
+      |                                ^
+packed_struct2.c:19:8: warning: packed attribute is unnecessary for 'M8' [-Wpacked]
+   19 | struct M8 { int a; } __attribute__((packed, aligned(4)));
+      |        ^

@@ -527,3 +527,15 @@ layouts, gcc rules ported, walk design).
   (initializer element is not constant, undeclared names) are missing;
   UTF-8 identifier spelling in "undeclared" messages (gnu mode prints the
   character, cereal \U000020ac).
+- Round 16 (2026-10-02): -Wpacked (struct level: "packed attribute is
+  unnecessary for X", re-lays the record out without packed via
+  type_packed_unnecessary and compares every offset and the size; located
+  by gcc input_location rule, see packed_unnecessary in cdecl.c) and the
+  field level ("packed attribute is unnecessary for NAME" [-Wattributes] at
+  the field name; not for unions, aligned fields or 1-aligned types).  Asm
+  named-operand error now at cinput_loc.  gcc.dg identical stays 3624 (those
+  tests lack -Wpacked); 0 rejects-valid, 0 accepts-invalid; c-c++-common
+  accepts-invalid 1 (attr-nocf-check-3).  Tests 888; ASan+UBSan clean;
+  icount 5.978G (unchanged).  Goldens packed_struct, packed_struct2,
+  packed_field, asm_named_loc.  Remaining gcc.dg gaps are a long tail:
+  stringop-overread, parentheses, c++-compat, attributes, pedantic.

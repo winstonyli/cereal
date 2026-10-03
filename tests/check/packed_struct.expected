@@ -1,0 +1,36 @@
+packed_struct.c:2:8: warning: packed attribute is unnecessary for 'A' [-Wpacked]
+    2 | struct A { char c; } __attribute__((packed));
+      |        ^
+packed_struct.c:5:8: warning: packed attribute is unnecessary for 'D' [-Wpacked]
+    5 | struct D { int i; int j; } __attribute__((packed));
+      |        ^
+packed_struct.c:6:8: warning: packed attribute is unnecessary for 'E' [-Wpacked]
+    6 | struct E { char c; char d; short s; } __attribute__((packed));
+      |        ^
+packed_struct.c:8:8: warning: packed attribute is unnecessary for 'G' [-Wpacked]
+    8 | struct G { int i; char c; } __attribute__((packed, aligned(8)));
+      |        ^
+packed_struct.c:9:19: warning: packed attribute is unnecessary for 'H' [-Wpacked]
+    9 | struct H { struct D d; char c; } __attribute__((packed));
+      |                   ^
+packed_struct.c:12:27: warning: packed attribute is unnecessary for 'I' [-Wpacked]
+   12 | struct I { char c; struct D d; } __attribute__((packed));
+      |                           ^
+packed_struct.c:14:23: warning: packed attribute is unnecessary for 'b' [-Wattributes]
+   14 | struct K { int a; int b __attribute__((packed)); };
+      |                       ^
+packed_struct.c:15:8: warning: struct has no members [-Wpedantic]
+   15 | struct L { } __attribute__((packed));
+      |        ^
+packed_struct.c:15:8: warning: packed attribute is unnecessary for 'L' [-Wpacked]
+   15 | struct L { } __attribute__((packed));
+      |        ^
+packed_struct.c:16:8: warning: packed attribute is unnecessary for 'M' [-Wpacked]
+   16 | struct M { char c[3]; } __attribute__((packed));
+      |        ^
+packed_struct.c:22:32: warning: packed attribute is unnecessary for 'S' [-Wpacked]
+   22 | struct __attribute__((packed)) S { int i; int j; };
+      |                                ^
+packed_struct.c:23:16: warning: packed attribute is unnecessary [-Wpacked]
+   23 | typedef struct { int i; } __attribute__((packed)) T;
+      |                ^

@@ -10927,7 +10927,8 @@ void cexpr_asm(Checker *c, uint32_t i)
                     strchr(nb, 1) || (unsigned char)nb[0] >= 0x80)
                     found = true;
             if (!found) {
-                cerror(c, loc, "undefined named operand '%s'", nb);
+                cerror(c, cinput_loc(c, last_tok(c, i) + 1),
+                       "undefined named operand '%s'", nb);
                 return;
             }
             p = q + len;

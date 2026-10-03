@@ -1,0 +1,6 @@
+asm_named_loc.c:7:8: error: undefined named operand 'zz'
+    7 |        : "memory");
+      |        ^
+asm_named_loc.c:12:3: error: undefined named operand 'qq'
+   12 |   "%[qq]" ::);
+      |   ^

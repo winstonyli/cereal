@@ -896,6 +896,45 @@ static void ms_field(Layout *L, const FieldIn *f, uint64_t tsize,
     L->size = w == 0 ? off : off + tsize;
 }
 
+/* -Wpacked: would the record t, just completed from f[0..n) with the packed
+ * attribute, lay out the same (every offset and the size) without it?  With
+ * only >= 0: does field `only`, whose own packed attribute is the question,
+ * sit at the same offset without it? */
+bool type_packed_unnecessary(TypeTable *tt, TypeId t, const FieldIn *f,
+                             uint32_t n, unsigned pack, unsigned align, int ms,
+                             long only)
+{
+    const Record *r = type_record(tt, t);
+    Layout L = {0};
+    uint32_t i;
+    L.align = 8;
+    L.is_union = r->flags & RF_UNION;
+    L.pack = (uint64_t)pack * 8;
+    for (i = 0; i < n; i++) {
+        Field out = {0};
+        FieldIn fi = f[i];
+        bool ok;
+        uint64_t tsize = type_size(tt, f[i].ty, &ok) * 8;
+        uint64_t tyalign = (uint64_t)type_member_align(tt, f[i].ty) * 8;
+        if (!ok)
+            tsize = 0;
+        if (only >= 0)
+            fi.packed = f[i].packed && i != (uint32_t)only;
+        if (ms > 0 || (!ms && tt->tgt->ms_bitfields))
+            ms_field(&L, &fi, tsize, tyalign, &out);
+        else
+            sysv_field(tt, &L, &fi, tsize, tyalign, &out);
+        if (only >= 0 ? i == (uint32_t)only : 1)
+            if (out.off_bits != tt->fields.data[r->fields + i].off_bits)
+                return false;
+        if (only >= 0 && i == (uint32_t)only)
+            return true;
+    }
+    if (align)
+        L.align = MAX(L.align, (uint64_t)align * 8);
+    return align_up(L.size, L.align) / 8 == r->size;
+}
+
 void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
                           uint32_t n, unsigned pack, unsigned align,
                           bool packed, int ms)

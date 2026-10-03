@@ -5891,6 +5891,54 @@ static bool is_rec(Checker *c, TypeId t)
     return tkind(c, t) == TY_STRUCT || tkind(c, t) == TY_UNION;
 }
 
+/* -Wpacked at gcc's input_location when finish_struct runs: the last
+ * struct/union/enum tag (or the record's own tag or '{') lexed, unless a
+ * later token, up to the one after the attributes, starts a line. */
+static void packed_unnecessary(Checker *c, TypeId t, uint32_t open,
+                               uint32_t close_tok)
+{
+    uint32_t k, tag, peek = close_tok + 1, last;
+    const Record *r = type_record(TT, t);
+    int depth;
+    for (open = cnode(c, open)->tok; open < close_tok; open++)
+        if (tpunct(c, open) == P_LBRACE)
+            break;
+    tag = open;
+    if (open > 0 && c->u->toks[open - 1].t.kind == TK_IDENT &&
+        tckw(c, open - 1) == CK_NONE)
+        tag = open - 1;
+    for (k = open + 1; k < close_tok; k++) {
+        int kw = tckw(c, k);
+        if ((kw == CK_STRUCT || kw == CK_UNION || kw == CK_ENUM) &&
+            k + 1 < close_tok)
+            tag = k + 1;
+    }
+    /* trailing attributes */
+    while (peek < c->u->ntoks && tckw(c, peek) == CK_ATTRIBUTE) {
+        peek++;
+        for (depth = 0; peek < c->u->ntoks; peek++) {
+            int p = tpunct(c, peek);
+            if (p == P_LPAREN)
+                depth++;
+            else if (p == P_RPAREN && --depth == 0) {
+                peek++;
+                break;
+            }
+        }
+    }
+    last = tag;
+    for (k = tag + 1; k <= peek && k < c->u->ntoks; k++)
+        if (c->u->toks[k].t.flags & TF_BOL)
+            last = 0;
+    if (r->tag)
+        cwarn(c, last ? tloc(c, tag) : cinput_loc(c, peek), "packed",
+              "packed attribute is unnecessary for '%s'",
+              cident(c, r->tag));
+    else
+        cwarn(c, last ? tloc(c, tag) : cinput_loc(c, peek), "packed",
+              "packed attribute is unnecessary");
+}
+
 static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
 {
     TypeId t = c->ty[open];
@@ -6003,6 +6051,17 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     csum_read_pack(c);
     type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed,
                          a.ms);
+    if (a.packed && want != TY_UNION && diag_enabled(c->diag, "packed") &&
+        type_packed_unnecessary(TT, t, f, m, c->pack, a.aligned, a.ms, -1))
+        packed_unnecessary(c, t, open, close_tok);
+    if (!a.packed && want != TY_UNION && diag_enabled(c->diag, "packed"))
+        for (k = 0; k < m; k++)
+            if (f[k].packed && !f[k].align && f[k].name &&
+                type_align(TT, f[k].ty) != 1 &&
+                type_packed_unnecessary(TT, t, f, m, c->pack, a.aligned, a.ms,
+                                        (long)k))
+                cwarn(c, f[k].loc, "attributes", "packed attribute is "
+                      "unnecessary for '%s'", cident(c, f[k].name));
     if (a.desig && want != TY_UNION)
         type_record(TT, t)->flags |= RF_DESIGNATED;
     if (a.sso == 1)     /* the target is little-endian */

@@ -1,0 +1,21 @@
+packed_field.c:2:24: warning: packed attribute is unnecessary for 'b' [-Wattributes]
+    2 | struct A1 { int a; int b __attribute__((packed)); };
+      |                        ^
+packed_field.c:4:8: warning: 'packed' attribute ignored for field of type 'char' [-Wattributes]
+    4 | struct A3 { char a; char b __attribute__((packed)); };
+      |        ^
+packed_field.c:5:17: warning: packed attribute is unnecessary for 'a' [-Wattributes]
+    5 | struct A4 { int a __attribute__((packed)); };
+      |                 ^
+packed_field.c:8:17: warning: packed attribute is unnecessary for 'a' [-Wattributes]
+    8 | struct A7 { int a : 3 __attribute__((packed)); };
+      |                 ^
+packed_field.c:11:28: warning: packed attribute is unnecessary for 'b' [-Wattributes]
+   11 | struct B1 { char a[4]; int b __attribute__((packed)); };
+      |                            ^
+packed_field.c:13:38: warning: packed attribute is unnecessary for 's' [-Wattributes]
+   13 | struct B2 { int a; struct { int x; } s __attribute__((packed)); };
+      |                                      ^
+packed_field.c:14:8: warning: packed attribute is unnecessary for 'B3' [-Wpacked]
+   14 | struct B3 { int a; int b __attribute__((packed)); } __attribute__((packed));
+      |        ^

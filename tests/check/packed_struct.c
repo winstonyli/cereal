@@ -1,0 +1,23 @@
+// flags: -Wpacked
+struct A { char c; } __attribute__((packed));
+struct B { int i; char c; } __attribute__((packed));
+struct C { char c; int i; } __attribute__((packed));
+struct D { int i; int j; } __attribute__((packed));
+struct E { char c; char d; short s; } __attribute__((packed));
+struct F { int i : 3; int j : 5; } __attribute__((packed));
+struct G { int i; char c; } __attribute__((packed, aligned(8)));
+struct H { struct D d; char c; } __attribute__((packed));
+union U { int i; char c; } __attribute__((packed));
+union V { char c; short s; } __attribute__((packed));
+struct I { char c; struct D d; } __attribute__((packed));
+struct J { char a; int b __attribute__((packed)); };
+struct K { int a; int b __attribute__((packed)); };
+struct L { } __attribute__((packed));
+struct M { char c[3]; } __attribute__((packed));
+struct N { double d; char c; } __attribute__((packed));
+struct O { char c; double d; } __attribute__((packed));
+struct P { int i; short s; } __attribute__((packed));
+struct Q { short s; int i; char c; } __attribute__((packed));
+struct R { int i; char c[3]; } __attribute__((packed));
+struct __attribute__((packed)) S { int i; int j; };
+typedef struct { int i; } __attribute__((packed)) T;

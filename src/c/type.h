@@ -191,6 +191,9 @@ typedef struct FieldIn {
 
 /* Lays out and completes a record.  pack: #pragma pack value in bytes (0:
  * none); align: the record's aligned attribute (0: none). */
+bool type_packed_unnecessary(TypeTable *tt, TypeId t, const FieldIn *f,
+                             uint32_t n, unsigned pack, unsigned align, int ms,
+                             long only);
 void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
                           uint32_t n, unsigned pack, unsigned align,
                           bool packed, int ms);  /* ms: 1 ms_struct, -1 gcc_struct, 0 target default */
