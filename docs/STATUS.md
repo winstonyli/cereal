@@ -927,3 +927,26 @@ layouts, gcc rules ported, walk design).
 - `duplicated-cond` is registered off by default (not in -Wall); a side-effecting condition resets the chain's
   comparisons (Wduplicated-cond-1..4 match). Parity: tests 975, gcc.dg 3655 identical (220 differ),
   c-c++-common 555 (102), san clean (316).
+
+## Round 40 — duplicated-cond folding, VLA-typedef parameters
+
+- `-Wstringop-overread` triaged and NOT started: the 86 missing diagnostics are in 3 files. `warn-strlen-no-nul.c`
+  (76) needs the -O2 strlen pass (variable offsets into arrays); `Wstringop-overread-6.c` and `-overflow-22.c` need
+  front-end folding of `strlen`/`copysign` etc. on constant arrays (gcc folds `__builtin_strlen(arr)` to a constant
+  at parse time, which also shifts -Wparentheses columns). Prerequisite for any of them: a builtin constant folder.
+- `cstmt_dup_cond`: conditions now compare after gcc's fold (`dup_cmp_of`/`dup_cond_same`): operands of a comparison
+  with the constant on the right, `>`/`>=` turned into `<`/`<=`, `< C` into `<= C-1`, `x ± K cmp C` into `x cmp C∓K`
+  (signed, or ==/!=), `-x cmp C` mirrored, `!` pushed into the comparison (not for floats), `v` as `v != 0`.
+  The warning column is the condition's first token for a non-boolean binary expression (gcc wraps it in `!= 0`).
+  Probe of 40 pairs matches gcc. Goldens `dup_cond_fold`. Not folded by gcc either: `a&&b` vs `b&&a`, `i*2` vs `i<<1`.
+- cparm.c: a parameter whose type is a typedef of a VLA is "not described" (`unk`) instead of looking like a
+  pointer; removes five false -Wvla-parameter warnings in Wvla-parameter-4.c. Parameters whose adjusted types differ
+  in kind (conflicting redeclaration, an error already) are not compared (pr105635.c). Golden `vla_param_typedef`.
+- Still open in Wvla-parameter-4.c: the typedef'd VLA bound text for "mismatched bound 'n'" (VLA types carry no bound
+  expression), and `int (*[*])[3]` {aka …} type printing for arrays of pointers to arrays. Warray-parameter-11.c
+  needs constant folding of `!__builtin_copysign(~2, 3)`.
+- `-Wvla-parameter` "ordinary char[]" quirk after explicit `access` (64 matrix combinations, no testsuite file hits
+  it): not done. Observed model: with an explicit access attribute on the argument in either declaration, gcc
+  describes the older declaration's pointer/VLA/[*] parameter as `T[]`; needs the attribute presence plumbed into
+  cparm_compare (attributes are processed after the merge).
+- Parity: tests 979, gcc.dg 3656 identical (219 differ), c-c++-common 555 (102), san clean (318).

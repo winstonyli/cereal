@@ -1,0 +1,15 @@
+vla_param_typedef.c:13:1: warning: return type defaults to 'int' [-Wimplicit-int]
+   13 | foo (int x, int y)
+      | ^
+vla_param_typedef.c:13:1: warning: conflicting types for 'foo'
+   13 | foo (int x, int y)
+      | ^
+vla_param_typedef.c:12:6: note: previous declaration of 'foo' with type 'void(int,  int *)'
+   12 | void foo (int, int[*]);
+      |      ^
+vla_param_typedef.c:15:19: warning: 'return' with a value, in function returning void [-Wreturn-type]
+   15 |   return (x >= 0) != (y < 0);
+      |                   ^
+vla_param_typedef.c:13:1: note: declared here
+   13 | foo (int x, int y)
+      | ^

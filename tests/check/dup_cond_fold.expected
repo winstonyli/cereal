@@ -1,0 +1,246 @@
+dup_cond_fold.c:3:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+    3 |   if (i<j) return 1; else if (j>i) return 2; /*P0*/
+      |                                ^
+dup_cond_fold.c:3:8: note: previously used here
+    3 |   if (i<j) return 1; else if (j>i) return 2; /*P0*/
+      |        ^
+dup_cond_fold.c:4:33: warning: duplicated 'if' condition [-Wduplicated-cond]
+    4 |   if (i<=j) return 1; else if (j>=i) return 2; /*P1*/
+      |                                 ^
+dup_cond_fold.c:4:8: note: previously used here
+    4 |   if (i<=j) return 1; else if (j>=i) return 2; /*P1*/
+      |        ^
+dup_cond_fold.c:5:33: warning: duplicated 'if' condition [-Wduplicated-cond]
+    5 |   if (i==j) return 1; else if (j==i) return 2; /*P2*/
+      |                                 ^
+dup_cond_fold.c:5:8: note: previously used here
+    5 |   if (i==j) return 1; else if (j==i) return 2; /*P2*/
+      |        ^
+dup_cond_fold.c:6:35: warning: duplicated 'if' condition [-Wduplicated-cond]
+    6 |   if (i+1==3) return 1; else if (i==2) return 2; /*P3*/
+      |                                   ^
+dup_cond_fold.c:6:10: note: previously used here
+    6 |   if (i+1==3) return 1; else if (i==2) return 2; /*P3*/
+      |          ^
+dup_cond_fold.c:7:35: warning: duplicated 'if' condition [-Wduplicated-cond]
+    7 |   if (i-1==3) return 1; else if (i==4) return 2; /*P4*/
+      |                                   ^
+dup_cond_fold.c:7:10: note: previously used here
+    7 |   if (i-1==3) return 1; else if (i==4) return 2; /*P4*/
+      |          ^
+dup_cond_fold.c:8:35: warning: duplicated 'if' condition [-Wduplicated-cond]
+    8 |   if (1+i==3) return 1; else if (i==2) return 2; /*P5*/
+      |                                   ^
+dup_cond_fold.c:8:10: note: previously used here
+    8 |   if (1+i==3) return 1; else if (i==2) return 2; /*P5*/
+      |          ^
+dup_cond_fold.c:9:35: warning: duplicated 'if' condition [-Wduplicated-cond]
+    9 |   if (!(i<j)) return 1; else if (i>=j) return 2; /*P6*/
+      |                                   ^
+dup_cond_fold.c:9:7: note: previously used here
+    9 |   if (!(i<j)) return 1; else if (i>=j) return 2; /*P6*/
+      |       ^
+dup_cond_fold.c:10:36: warning: duplicated 'if' condition [-Wduplicated-cond]
+   10 |   if (!(i==j)) return 1; else if (i!=j) return 2; /*P7*/
+      |                                    ^
+dup_cond_fold.c:10:7: note: previously used here
+   10 |   if (!(i==j)) return 1; else if (i!=j) return 2; /*P7*/
+      |       ^
+dup_cond_fold.c:11:30: warning: duplicated 'if' condition [-Wduplicated-cond]
+   11 |   if (i) return 1; else if (i!=0) return 2; /*P8*/
+      |                              ^
+dup_cond_fold.c:11:7: note: previously used here
+   11 |   if (i) return 1; else if (i!=0) return 2; /*P8*/
+      |       ^
+dup_cond_fold.c:12:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   12 |   if (!i) return 1; else if (i==0) return 2; /*P9*/
+      |                               ^
+dup_cond_fold.c:12:7: note: previously used here
+   12 |   if (!i) return 1; else if (i==0) return 2; /*P9*/
+      |       ^
+dup_cond_fold.c:13:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   13 |   if (i<j) return 1; else if (!(i>=j)) return 2; /*P10*/
+      |                               ^
+dup_cond_fold.c:13:8: note: previously used here
+   13 |   if (i<j) return 1; else if (!(i>=j)) return 2; /*P10*/
+      |        ^
+dup_cond_fold.c:15:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+   15 |   if (i<2) return 1; else if (i<=1) return 2; /*P12*/
+      |                                ^
+dup_cond_fold.c:15:8: note: previously used here
+   15 |   if (i<2) return 1; else if (i<=1) return 2; /*P12*/
+      |        ^
+dup_cond_fold.c:16:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   16 |   if (i+j) return 1; else if (j+i) return 2; /*P13*/
+      |                               ^
+dup_cond_fold.c:16:7: note: previously used here
+   16 |   if (i+j) return 1; else if (j+i) return 2; /*P13*/
+      |       ^
+dup_cond_fold.c:17:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   17 |   if ((i)) return 1; else if (i) return 2; /*P14*/
+      |                               ^
+dup_cond_fold.c:17:8: note: previously used here
+   17 |   if ((i)) return 1; else if (i) return 2; /*P14*/
+      |        ^
+dup_cond_fold.c:19:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+   19 |   if (i>0) return 1; else if (0<i) return 2; /*P16*/
+      |                                ^
+dup_cond_fold.c:19:8: note: previously used here
+   19 |   if (i>0) return 1; else if (0<i) return 2; /*P16*/
+      |        ^
+dup_cond_fold.c:20:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+   20 |   if (i==0) return 1; else if (!i) return 2; /*P17*/
+      |                                ^
+dup_cond_fold.c:20:8: note: previously used here
+   20 |   if (i==0) return 1; else if (!i) return 2; /*P17*/
+      |        ^
+dup_cond_fold.c:21:35: warning: duplicated 'if' condition [-Wduplicated-cond]
+   21 |   if ((long)i) return 1; else if ((long)i) return 2; /*P18*/
+      |                                   ^
+dup_cond_fold.c:21:7: note: previously used here
+   21 |   if ((long)i) return 1; else if ((long)i) return 2; /*P18*/
+      |       ^
+dup_cond_fold.c:22:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+   22 |   if (i>j) return 1; else if (j<i) return 2; /*P19*/
+      |                                ^
+dup_cond_fold.c:22:8: note: previously used here
+   22 |   if (i>j) return 1; else if (j<i) return 2; /*P19*/
+      |        ^
+dup_cond_fold.c:23:34: warning: duplicated 'if' condition [-Wduplicated-cond]
+   23 |   if (i+1<3) return 1; else if (i<2) return 2; /*P20*/
+      |                                  ^
+dup_cond_fold.c:23:10: note: previously used here
+   23 |   if (i+1<3) return 1; else if (i<2) return 2; /*P20*/
+      |          ^
+dup_cond_fold.c:24:33: warning: duplicated 'if' condition [-Wduplicated-cond]
+   24 |   if (-i<3) return 1; else if (i>-3) return 2; /*P21*/
+      |                                 ^
+dup_cond_fold.c:24:9: note: previously used here
+   24 |   if (-i<3) return 1; else if (i>-3) return 2; /*P21*/
+      |         ^
+dup_cond_fold.c:30:35: warning: duplicated 'if' condition [-Wduplicated-cond]
+   30 |   if (u+1==3) return 1; else if (u==2) return 2;
+      |                                   ^
+dup_cond_fold.c:30:10: note: previously used here
+   30 |   if (u+1==3) return 1; else if (u==2) return 2;
+      |          ^
+dup_cond_fold.c:32:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+   32 |   if (f<g) return 1; else if (g>f) return 2;
+      |                                ^
+dup_cond_fold.c:32:8: note: previously used here
+   32 |   if (f<g) return 1; else if (g>f) return 2;
+      |        ^
+dup_cond_fold.c:33:30: warning: duplicated 'if' condition [-Wduplicated-cond]
+   33 |   if (p) return 1; else if (p!=0) return 2;
+      |                              ^
+dup_cond_fold.c:33:7: note: previously used here
+   33 |   if (p) return 1; else if (p!=0) return 2;
+      |       ^
+dup_cond_fold.c:34:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   34 |   if (!p) return 1; else if (p==0) return 2;
+      |                               ^
+dup_cond_fold.c:34:7: note: previously used here
+   34 |   if (!p) return 1; else if (p==0) return 2;
+      |       ^
+dup_cond_fold.c:37:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+   37 |   if (i<2) return 1; else if (i<=1) return 2;
+      |                                ^
+dup_cond_fold.c:37:8: note: previously used here
+   37 |   if (i<2) return 1; else if (i<=1) return 2;
+      |        ^
+dup_cond_fold.c:38:33: warning: duplicated 'if' condition [-Wduplicated-cond]
+   38 |   if (i>=2) return 1; else if (i>1) return 2;
+      |                                 ^
+dup_cond_fold.c:38:8: note: previously used here
+   38 |   if (i>=2) return 1; else if (i>1) return 2;
+      |        ^
+dup_cond_fold.c:39:33: warning: duplicated 'if' condition [-Wduplicated-cond]
+   39 |   if (i<=2) return 1; else if (i<3) return 2;
+      |                                 ^
+dup_cond_fold.c:39:8: note: previously used here
+   39 |   if (i<=2) return 1; else if (i<3) return 2;
+      |        ^
+dup_cond_fold.c:40:35: warning: duplicated 'if' condition [-Wduplicated-cond]
+   40 |   if (c+1==3) return 1; else if (c==2) return 2;
+      |                                   ^
+dup_cond_fold.c:40:10: note: previously used here
+   40 |   if (c+1==3) return 1; else if (c==2) return 2;
+      |          ^
+dup_cond_fold.c:41:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   41 |   if (!!i) return 1; else if (i) return 2;
+      |                               ^
+dup_cond_fold.c:41:7: note: previously used here
+   41 |   if (!!i) return 1; else if (i) return 2;
+      |       ^
+dup_cond_fold.c:42:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+   42 |   if (!!i) return 1; else if (i!=0) return 2;
+      |                                ^
+dup_cond_fold.c:42:7: note: previously used here
+   42 |   if (!!i) return 1; else if (i!=0) return 2;
+      |       ^
+dup_cond_fold.c:43:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+   43 |   if (i==j) return 1; else if (!(i!=j)) return 2;
+      |                                ^
+dup_cond_fold.c:43:8: note: previously used here
+   43 |   if (i==j) return 1; else if (!(i!=j)) return 2;
+      |        ^
+dup_cond_fold.c:44:34: warning: duplicated 'if' condition [-Wduplicated-cond]
+   44 |   if (i-1<2) return 1; else if (i<3) return 2;
+      |                                  ^
+dup_cond_fold.c:44:10: note: previously used here
+   44 |   if (i-1<2) return 1; else if (i<3) return 2;
+      |          ^
+dup_cond_fold.c:45:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+   45 |   if (2<i) return 1; else if (i>2) return 2;
+      |                                ^
+dup_cond_fold.c:45:8: note: previously used here
+   45 |   if (2<i) return 1; else if (i>2) return 2;
+      |        ^
+dup_cond_fold.c:46:34: warning: duplicated 'if' condition [-Wduplicated-cond]
+   46 |   if (l+1<3) return 1; else if (l<2) return 2;
+      |                                  ^
+dup_cond_fold.c:46:10: note: previously used here
+   46 |   if (l+1<3) return 1; else if (l<2) return 2;
+      |          ^
+dup_cond_fold.c:50:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   50 |   if (i+j) return 1; else if (i+j) return 2;
+      |                               ^
+dup_cond_fold.c:50:7: note: previously used here
+   50 |   if (i+j) return 1; else if (i+j) return 2;
+      |       ^
+dup_cond_fold.c:51:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   51 |   if (i+j) return 1; else if (j+i) return 2;
+      |                               ^
+dup_cond_fold.c:51:7: note: previously used here
+   51 |   if (i+j) return 1; else if (j+i) return 2;
+      |       ^
+dup_cond_fold.c:52:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   52 |   if (i*j) return 1; else if (j*i) return 2;
+      |                               ^
+dup_cond_fold.c:52:7: note: previously used here
+   52 |   if (i*j) return 1; else if (j*i) return 2;
+      |       ^
+dup_cond_fold.c:53:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   53 |   if (i&j) return 1; else if (j&i) return 2;
+      |                               ^
+dup_cond_fold.c:53:7: note: previously used here
+   53 |   if (i&j) return 1; else if (j&i) return 2;
+      |       ^
+dup_cond_fold.c:54:33: warning: duplicated 'if' condition [-Wduplicated-cond]
+   54 |   if (i==j) return 1; else if (j==i) return 2;
+      |                                 ^
+dup_cond_fold.c:54:8: note: previously used here
+   54 |   if (i==j) return 1; else if (j==i) return 2;
+      |        ^
+dup_cond_fold.c:55:32: warning: duplicated 'if' condition [-Wduplicated-cond]
+   55 |   if (i<j) return 1; else if (j>i) return 2;
+      |                                ^
+dup_cond_fold.c:55:8: note: previously used here
+   55 |   if (i<j) return 1; else if (j>i) return 2;
+      |        ^
+dup_cond_fold.c:56:31: warning: duplicated 'if' condition [-Wduplicated-cond]
+   56 |   if (i-j) return 1; else if (i-j) return 2;
+      |                               ^
+dup_cond_fold.c:56:7: note: previously used here
+   56 |   if (i-j) return 1; else if (i-j) return 2;
+      |       ^

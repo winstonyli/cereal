@@ -2403,12 +2403,203 @@ void cstmt_dup_branches(Checker *c, uint32_t scope, uint32_t end)
 /* -Wduplicated-cond: a condition repeated in an if / else-if chain (the
  * parser compares each new condition with the earlier ones; conditions
  * with side effects are not compared). */
+/* What gcc's fold makes of an if condition: a comparison, with the constant
+ * (if any) on the right, > and >= turned into < and <=, a constant bound
+ * moved into the constant, and ! pushed into the comparison. */
+typedef struct {
+    int op;                     /* P_EQEQ P_NE P_LT P_LE P_GT P_GE */
+    uint32_t l, r;              /* r is NO_NODE when rc */
+    bool rc;
+    int64_t cv;
+} DupCmp;
+
+static int dup_mirror(int op)
+{
+    switch (op) {
+    case P_LT: return P_GT;
+    case P_GT: return P_LT;
+    case P_LE: return P_GE;
+    case P_GE: return P_LE;
+    default: return op;
+    }
+}
+
+static int dup_negate(int op)
+{
+    switch (op) {
+    case P_EQEQ: return P_NE;
+    case P_NE: return P_EQEQ;
+    case P_LT: return P_GE;
+    case P_GE: return P_LT;
+    case P_LE: return P_GT;
+    default: return P_LE;
+    }
+}
+
+static bool dup_intlike(Checker *c, uint32_t e)
+{
+    TypeId t = c->ty[e];
+    return type_is_integer(TT, t) || type_ckind(TT, t) == TY_PTR;
+}
+
+static bool dup_cmp_of(Checker *c, uint32_t e, DupCmp *d)
+{
+    uint32_t k[3];
+    unsigned n;
+    bool neg = false;
+    e = dup_strip(c, e);
+    while (tg(c, e) == N_UNARY && dup_punct(c, e) == P_BANG &&
+           node_children(c->nodes, e, k, 3) == 1) {
+        uint32_t in = dup_strip(c, k[0]);
+        neg = !neg;
+        if (tg(c, in) == N_BINARY) {
+            switch (dup_punct(c, in)) {
+            case P_EQEQ: case P_NE: case P_LT: case P_LE: case P_GT: case P_GE:
+                e = in;
+                goto cmp;
+            default:
+                break;
+            }
+        }
+        e = in;
+        if (tg(c, e) == N_UNARY && dup_punct(c, e) == P_BANG)
+            continue;
+        d->op = neg ? P_EQEQ : P_NE;        /* !v is v == 0 */
+        if (!dup_intlike(c, e))
+            return false;
+        d->l = e;
+        d->r = NO_NODE;
+        d->rc = true;
+        d->cv = 0;
+        goto norm;
+    }
+    if (tg(c, e) == N_BINARY) {
+        switch (dup_punct(c, e)) {
+        case P_EQEQ: case P_NE: case P_LT: case P_LE: case P_GT: case P_GE:
+            goto cmp;
+        default:
+            break;
+        }
+    }
+    if (!dup_intlike(c, e) || dup_const(c, e))
+        return false;
+    d->op = P_NE;
+    d->l = e;
+    d->r = NO_NODE;
+    d->rc = true;
+    d->cv = 0;
+    goto norm;
+cmp:
+    n = node_children(c->nodes, e, k, 3);
+    if (n != 2)
+        return false;
+    if (!dup_intlike(c, k[0]) || !dup_intlike(c, k[1])) {
+        /* floats swap operands, but ! cannot invert (NaN) */
+        if (neg || !type_is_arith(TT, c->ty[k[0]]) ||
+            !type_is_arith(TT, c->ty[k[1]]))
+            return false;
+    }
+    d->op = dup_punct(c, e);
+    if (neg)
+        d->op = dup_negate(d->op);
+    d->l = dup_strip(c, k[0]);
+    d->r = dup_strip(c, k[1]);
+    d->rc = false;
+    if (dup_const(c, d->l) && !dup_const(c, d->r)) {
+        uint32_t t = d->l;
+        d->l = d->r;
+        d->r = t;
+        d->op = dup_mirror(d->op);
+    }
+    if (dup_const(c, d->r)) {
+        d->rc = true;
+        d->cv = (int64_t)c->cv[d->r];
+        d->r = NO_NODE;
+    }
+norm:
+    if (d->rc) {
+        bool sgn = type_is_signed(TT, c->ty[d->l]);
+        for (;;) {
+            uint32_t m[3], x;
+            d->l = dup_strip(c, d->l);
+            if (tg(c, d->l) == N_UNARY && dup_punct(c, d->l) == P_MINUS &&
+                node_children(c->nodes, d->l, m, 3) == 1 && sgn) {
+                d->l = m[0];
+                d->op = dup_mirror(d->op);
+                d->cv = -d->cv;
+                continue;
+            }
+            if (tg(c, d->l) != N_BINARY ||
+                (dup_punct(c, d->l) != P_PLUS && dup_punct(c, d->l) != P_MINUS) ||
+                node_children(c->nodes, d->l, m, 3) != 2 ||
+                !(sgn || d->op == P_EQEQ || d->op == P_NE) ||
+                !type_is_integer(TT, c->ty[m[0]]) ||
+                !type_is_integer(TT, c->ty[m[1]]))
+                break;
+            if (dup_const(c, m[1]) && !dup_const(c, m[0]))
+                x = m[0];
+            else if (dup_punct(c, d->l) == P_PLUS && dup_const(c, m[0]) &&
+                     !dup_const(c, m[1]))
+                x = m[1];
+            else
+                break;
+            {
+                uint32_t kc = x == m[0] ? m[1] : m[0];
+                int64_t v = (int64_t)c->cv[kc];
+                d->cv = dup_punct(c, d->l) == P_PLUS ? d->cv - v : d->cv + v;
+            }
+            d->l = x;
+        }
+        if (d->op == P_LT)
+            d->op = P_LE, d->cv--;
+        else if (d->op == P_GT)
+            d->op = P_GE, d->cv++;
+    } else if (d->op == P_GT || d->op == P_GE) {
+        uint32_t t = d->l;
+        d->l = d->r;
+        d->r = t;
+        d->op = dup_mirror(d->op);
+    }
+    return true;
+}
+
+/* The same condition after folding (or structurally the same). */
+static bool dup_cond_same(Checker *c, uint32_t a, uint32_t b)
+{
+    DupCmp x, y;
+    if (dup_expr(c, a, b))
+        return true;
+    if (!dup_cmp_of(c, a, &x) || !dup_cmp_of(c, b, &y) || x.op != y.op ||
+        x.rc != y.rc)
+        return false;
+    if (x.rc)
+        return x.cv == y.cv && dup_expr(c, x.l, y.l);
+    return dup_expr(c, x.l, y.l) && dup_expr(c, x.r, y.r);
+}
+
 typedef struct { uint32_t cond, prev; } DupCond;
 
 static int dupcond_cmp(const void *x, const void *y)
 {
     uint32_t a = ((const DupCond *)x)->cond, b = ((const DupCond *)y)->cond;
     return a < b ? -1 : a > b;
+}
+
+/* Where gcc puts the condition: a value that is not already a truth value
+ * is wrapped in "!= 0" at the start of the expression, so an arithmetic
+ * operator's location is its first token. */
+static SrcLoc dupcond_loc(Checker *c, uint32_t e)
+{
+    if (tg(c, e) == N_BINARY)
+        switch (dup_punct(c, e)) {
+        case P_EQEQ: case P_NE: case P_LT: case P_LE: case P_GT: case P_GE:
+        case P_ANDAND: case P_OROR: case P_COMMA:
+            break;
+        default:
+            if (!dup_const(c, e))
+                return ctok_loc(c, first_tok(c, e));
+        }
+    return cnode_loc(c, e);
 }
 
 void cstmt_dup_cond(Checker *c, uint32_t scope, uint32_t end)
@@ -2437,7 +2628,7 @@ void cstmt_dup_cond(Checker *c, uint32_t scope, uint32_t end)
             if (!node_err(c, cond) && !(c->ef[cond] & EF_SIDE) &&
                 !dup_const(c, cond)) {
                 for (j = 0; j < ns; j++)
-                    if (dup_expr(c, seen[j], cond)) {
+                    if (dup_cond_same(c, seen[j], cond)) {
                         if (nw == cap)
                             w = xrealloc(w, (cap *= 2) * sizeof *w);
                         w[nw].cond = cond;
@@ -2455,11 +2646,11 @@ void cstmt_dup_cond(Checker *c, uint32_t scope, uint32_t end)
     /* gcc warns as the parser reaches each condition */
     qsort(w, nw, sizeof *w, dupcond_cmp);
     for (j = 0; j < nw; j++) {
-        Diagnostic *dg = cwarn_d(c, DL_WARNING, cnode_loc(c, w[j].cond),
+        Diagnostic *dg = cwarn_d(c, DL_WARNING, dupcond_loc(c, w[j].cond),
                                  "duplicated-cond", "duplicated 'if' "
                                  "condition");
         if (dg)
-            cnote(c, dg, cnode_loc(c, w[j].prev), "previously used here");
+            cnote(c, dg, dupcond_loc(c, w[j].prev), "previously used here");
     }
     free(w);
 }

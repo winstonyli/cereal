@@ -393,6 +393,10 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
     if (!nd) {
         /* no brackets written: an array typedef, or a pointer to one */
         TypeId pre = pre_of(c, p), q = pre ? pre : type_base(TT, t);
+        if (type_ckind(TT, q) == TY_VLA) {
+            o->unk = true;          /* its bound is not recorded */
+            return;
+        }
         if (type_ckind(TT, q) != TY_ARRAY)
             return;
         o->arr = pre != 0;
@@ -752,6 +756,8 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
     int lvl = diag_option_level(c->diag, "array-parameter=", 2);
     if (o->unk || n->unk)
         goto out;
+    if (type_ckind(TT, o->ty) != type_ckind(TT, n->ty))
+        goto out;               /* conflicting types: already an error */
     if (!n->arr && !o->arr) {
         /* pointers to arrays: the bounds past the first */
         unsigned i, cnt = 0, w = 0;
