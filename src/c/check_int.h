@@ -393,11 +393,16 @@ static inline const Node *cnode(const Checker *c, uint32_t i)
     return &c->nodes[i];
 }
 
+SrcLoc cbuiltin_loc_(const Checker *c, SrcLoc loc, SrcLoc exp);
+#define cbuiltin_loc(c, t) cbuiltin_loc_((c), (t)->t.loc, (t)->exp)
+
 /* A token's location as gcc's diagnostics report it: the spelling location
  * (a macro body's token at its definition, an argument at the use site). */
 static inline SrcLoc ctok_loc(const Checker *c, uint32_t tok)
 {
     const PTok *t = &c->u->toks[tok];
+    if (t->exp && t->exp != t->t.loc && !c->diag->track0)
+        return cbuiltin_loc(c, t);
     return c->diag->track0 && t->exp ? t->exp : t->t.loc;
 }
 static inline SrcLoc cnode_loc(const Checker *c, uint32_t i)

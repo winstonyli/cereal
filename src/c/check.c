@@ -191,6 +191,17 @@ void cconst_overflow(Checker *c, SrcLoc loc)
         cpedwarn(c, loc, "overflow", "overflow in constant expression");
 }
 
+/* A token of a predefined macro (__INT_MAX__) has no spelling location of
+ * its own: gcc reports it at the use. */
+SrcLoc cbuiltin_loc_(const Checker *c, SrcLoc loc, SrcLoc exp)
+{
+    SrcFile *f = srcmgr_file_of(c->sm, loc);
+    if (f && f->kind == SF_VIRTUAL && (!strcmp(f->name, "<built-in>") ||
+                       !strcmp(f->name, "<command line>")))
+        return exp;
+    return loc;
+}
+
 Diagnostic *cpedantic(Checker *c, SrcLoc loc, const char *fmt, ...)
 {
     Diagnostic *d;

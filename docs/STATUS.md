@@ -1042,3 +1042,12 @@ layouts, gcc rules ported, walk design).
   "argument missing terminating nul" at -O2 (warn-strlen-no-nul.c alone is 76: arrays, struct members, `?:` arms,
   odd locations); the const-array initializer table (Round 45) is the base for it.
 - Parity: tests 1009, gcc.dg 3662 identical (213 differ), c-c++-common 561 (96), san clean (333).
+
+### Round 48 — -Wpedantic: shift in initializers
+- A shift whose count >= width (or whose result overflows) makes an initializer a non-ICE constant, so `-pedantic`
+  warns "initializer element is not a constant expression" (cexpr.c `e_shift` marks it K_FOLD; negative count does not).
+- `ctok_loc` reports tokens of predefined macros (`<built-in>`, `<command line>`) at the use site (check.c
+  `cbuiltin_loc_`), so `__INT_MAX__ << 2` is no longer dropped as a system-header location. Side effect: a user
+  `-D` macro is also reported at the use (gcc: at the -D location); no verify regression seen.
+- Golden `shift_init_pedantic`; Wshift-overflow-1..4.c identical.
+- Parity: tests 1011, gcc.dg 3662 identical (213 differ), c-c++-common 565 (92), san clean (334).

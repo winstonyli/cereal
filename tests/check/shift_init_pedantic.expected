@@ -1,0 +1,27 @@
+shift_init_pedantic.c:2:20: warning: result of '2147483647 << 2' requires 34 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+    2 | int b = 2147483647 << 2;
+      |                    ^
+shift_init_pedantic.c:2:9: warning: initializer element is not a constant expression [-Wpedantic]
+    2 | int b = 2147483647 << 2;
+      |         ^
+shift_init_pedantic.c:3:11: warning: left shift count >= width of type [-Wshift-count-overflow]
+    3 | int e = 1 << 40;
+      |           ^
+shift_init_pedantic.c:3:9: warning: initializer element is not a constant expression [-Wpedantic]
+    3 | int e = 1 << 40;
+      |         ^
+shift_init_pedantic.c:4:12: warning: left shift count >= width of type [-Wshift-count-overflow]
+    4 | int e2 = 1 << 32;
+      |            ^
+shift_init_pedantic.c:4:10: warning: initializer element is not a constant expression [-Wpedantic]
+    4 | int e2 = 1 << 32;
+      |          ^
+shift_init_pedantic.c:5:12: warning: left shift count is negative [-Wshift-count-negative]
+    5 | int e3 = 1 << -1;
+      |            ^
+shift_init_pedantic.c:6:12: warning: left shift count >= width of type [-Wshift-count-overflow]
+    6 | int e4 = 3 << 40;
+      |            ^
+shift_init_pedantic.c:6:10: warning: initializer element is not a constant expression [-Wpedantic]
+    6 | int e4 = 3 << 40;
+      |          ^

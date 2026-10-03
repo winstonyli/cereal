@@ -11492,6 +11492,13 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     if (!(cnt_ok && has_ival(c, a) && prec <= 64)) {
         if (intops(c, a) && intops(c, b))
             c->ef[i] |= EF_INTOPS;
+        if (!cnt_ok && !int_const && is_intcst(c, a) && is_intcst(c, b) &&
+            !ival_neg(c, tb, c->cv[b])) {
+            /* a count past the width: not an ICE, but a constant to gcc's
+             * initializers (a pedwarn there) */
+            c->ck[i] = K_FOLD;
+            c->cv[i] = 0;
+        }
         return;
     }
     if (left && is_intcst(c, a) && is_intcst(c, b) && is_signed(c, ta)) {
