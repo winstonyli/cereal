@@ -1,0 +1,21 @@
+attr_pure_const_void.c:2:1: warning: 'const' attribute on function returning 'void' [-Wattributes]
+    2 | void f1 (void) __attribute__ ((const));
+      | ^
+attr_pure_const_void.c:3:1: warning: 'pure' attribute on function returning 'void' [-Wattributes]
+    3 | void f2 (void) __attribute__ ((pure));
+      | ^
+attr_pure_const_void.c:4:1: warning: 'const' attribute on function returning 'void' [-Wattributes]
+    4 | __attribute__ ((const)) void f3 (void);
+      | ^
+attr_pure_const_void.c:5:1: warning: 'pure' attribute on function returning 'void' [-Wattributes]
+    5 | void f4 (void) __attribute__ ((__pure__, const));
+      | ^
+attr_pure_const_void.c:5:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+    5 | void f4 (void) __attribute__ ((__pure__, const));
+      | ^
+attr_pure_const_void.c:8:1: warning: 'const' attribute on function returning 'void' [-Wattributes]
+    8 | void f5 (void) __attribute__ ((const));
+      | ^
+attr_pure_const_void.c:9:1: warning: 'pure' attribute on function returning 'void' [-Wattributes]
+    9 | __attribute__ ((pure)) void f6 (void) { }
+      | ^

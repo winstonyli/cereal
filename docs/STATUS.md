@@ -801,3 +801,18 @@ layouts, gcc rules ported, walk design).
   array indices, no -O needed: a front-end fold check); vector-subscript-3.c 2
   ("index value is out of bound", constant vector subscript).  Cheap target:
   the 46 offsetof + 2 vector diagnostics.
+- Round 32 (2026-10-03): -Warray-bounds= front-end parts.  fold_offsetof_1:
+  "index N denotes an offset greater than size of T" for constant offsetof
+  array indices (one past the end is fine for the outermost reference only;
+  no warning when every component back to the start is the last member of its
+  struct or in a union -- the poor man's flexible array), at the type name's
+  tag, or the statement start for a typedef name (offsetof_bf_loc);
+  offsetof through a pointer member is "cannot apply 'offsetof' to a non
+  constant address".  Constant vector subscripts: "index value is out of
+  bound".  Option array-bounds= (-Wall).  Also "'pure'/'const' attribute on
+  function returning 'void'" (not for pointers to function).  Goldens:
+  array_bounds_offsetof, attr_pure_const_void.  Tests 947; gcc.dg 3645,
+  c-c++-common 544.  Remaining array-bounds: Warray-bounds-7.c (60, constant
+  strings, middle-end).  -Wstrict-aliasing level 1 and -Wlogical-op signedness
+  casts: no diagnostics missing in either corpus, so no work needed.  Still
+  unimplemented: "'const' attribute ignored" on typedefs and variables.

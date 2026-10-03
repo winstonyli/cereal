@@ -121,6 +121,7 @@ static const DiagOption options[] = {
     {"int-in-bool-context", "c", DL_WARNING, false, DO_ALL, "suspicious integer expression in a boolean context"},
     {"array-compare", "c", DL_WARNING, false, DO_ALL, "comparison of two arrays"},
     {"array-parameter=", "c", DL_WARNING, false, DO_ALL, "array parameter redeclared with a different bound"},
+    {"array-bounds=", "c", DL_WARNING, false, DO_ALL, "constant array index out of bounds"},
     {"vla-parameter", "c", DL_WARNING, false, DO_ALL, "VLA parameter redeclared with a different bound"},
     {"sizeof-pointer-div", "c", DL_WARNING, false, DO_ALL, "sizeof (pointer) / sizeof (element)"},
     {"sizeof-pointer-memaccess", "c", DL_WARNING, false, DO_ALL, "sizeof of a pointer as the size of a memory access"},

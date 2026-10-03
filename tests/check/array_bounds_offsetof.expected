@@ -1,0 +1,27 @@
+array_bounds_offsetof.c:6:31: warning: ISO C forbids zero-size array 't' [-Wpedantic]
+    6 | struct M { char m[3][4]; char t[0]; int z; };
+      |                               ^
+array_bounds_offsetof.c:14:32: warning: index 4 denotes an offset greater than size of 'char[1]' [-Warray-bounds=]
+   14 |     __builtin_offsetof (struct B, a.p[4]),     /* warns */
+      |                                ^
+array_bounds_offsetof.c:15:31: warning: index 4 denotes an offset greater than size of 'char[1]' [-Warray-bounds=]
+   15 |     __builtin_offsetof (union D, b.a.p[4]),    /* warns */
+      |                               ^
+array_bounds_offsetof.c:18:32: warning: index 4 denotes an offset greater than size of 'char[3][4]' [-Warray-bounds=]
+   18 |     __builtin_offsetof (struct M, m[4]),       /* warns */
+      |                                ^
+array_bounds_offsetof.c:20:5: warning: index 3 denotes an offset greater than size of 'char[3][4]' [-Warray-bounds=]
+   20 |     __builtin_offsetof (TM, m[3][0]),          /* warns, typedef location */
+      |     ^
+array_bounds_offsetof.c:21:32: warning: index 5 denotes an offset greater than size of 'char[4]' [-Warray-bounds=]
+   21 |     __builtin_offsetof (struct M, m[1][5]),    /* warns */
+      |                                ^
+array_bounds_offsetof.c:22:32: warning: index 5 denotes an offset greater than size of 'char[4]' [-Warray-bounds=]
+   22 |     __builtin_offsetof (struct M, m[k][5]),    /* variable index: no check */
+      |                                ^
+array_bounds_offsetof.c:25:25: warning: index value is out of bound [-Warray-bounds=]
+   25 |   return a[0] + v[3] + v[4] + v[-1] + v[k];
+      |                         ^
+array_bounds_offsetof.c:25:32: warning: index value is out of bound [-Warray-bounds=]
+   25 |   return a[0] + v[3] + v[4] + v[-1] + v[k];
+      |                                ^

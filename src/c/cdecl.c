@@ -1568,6 +1568,10 @@ static void strict_flex_check(Checker *c, uint32_t holder, bool field,
     kids_free(&k);
 }
 
+/* Set while the attributes of a pointer to function are checked: pure and
+ * const are not diagnosed there. */
+static bool alloc_via_ptr;
+
 /* handle_alloc_align_attribute / handle_alloc_size_attribute for the
  * attributes among holder's children, applied to a function of type fty. */
 static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
@@ -1575,6 +1579,7 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
 {
     Kids k;
     uint32_t j;
+    bool seen_pure = false, seen_const = false;
     kids_get(c, holder, &k);
     for (j = 0; j < k.n; j++) {
         Kids it;
@@ -1591,6 +1596,22 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
             align = !strcmp(name, "alloc_align");
+            if ((!strcmp(name, "pure") || !strcmp(name, "const")) &&
+                type_ckind(TT, fty) == TY_FUNC && !alloc_via_ptr) {
+                /* handle_pure/const_attribute; the second of the pair is
+                 * dropped by the exclusion before its handler runs */
+                bool isp = name[0] == 'p';
+                if (isp ? seen_const : seen_pure)
+                    continue;
+                if (isp)
+                    seen_pure = true;
+                else
+                    seen_const = true;
+                if (type_ckind(TT, type_base(TT, fty)) == TY_VOID)
+                    cwarn(c, iloc(c, tok), "attributes", "'%s' attribute on "
+                          "function returning 'void'", name);
+                continue;
+            }
             if (!strcmp(name, "access")) {
                 kids_get(c, it.p[q], &ak);
                 if (ak.n)
@@ -5395,8 +5416,10 @@ static void declared_visit(Checker *c, uint32_t i)
     if (s.kind == CS_OBJ && type_ckind(TT, s.ty) == TY_PTR &&
         type_ckind(TT, type_base(TT, s.ty)) == TY_FUNC) {
         /* a pointer to function: the attributes describe the function */
+        alloc_via_ptr = true;
         attrs_alloc_check(c, sn, type_base(TT, s.ty), ltok);
         attrs_alloc_check(c, idecl, type_base(TT, s.ty), ltok);
+        alloc_via_ptr = false;
     }
     if (s.kind == CS_OBJ) {
         strict_flex_check(c, sn, false, s.ty, s.name, s.loc, sp.tok0);

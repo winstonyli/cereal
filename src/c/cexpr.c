@@ -6693,6 +6693,14 @@ static void e_index(Checker *c, uint32_t i)
         c->ty[i] = type_base(TT, type_canon(TT, c->ty[a])) |
                    TYPE_QUALS(c->ty[a]);
         c->ef[i] = (c->ef[a] & EF_LVALUE) | ((c->ef[a] | c->ef[x]) & EF_PROP);
+        if (has_ival(c, x)) {      /* build_array_ref: a constant index */
+            bool ok = false;
+            uint64_t es = type_size(TT, c->ty[i], &ok);
+            uint64_t vb = type_ent(TT, type_canon(TT, c->ty[a]))->n;
+            if (ok && es && (ival_neg(c, rvt(c, x), c->cv[x]) ||
+                             c->cv[x] >= vb / es))
+                cwarn(c, loc, "array-bounds=", "index value is out of bound");
+        }
         return;
     }
     if (!is_array(c, c->ty[a]) && !is_ptr(c, c->ty[a])) {
@@ -8121,12 +8129,49 @@ static SrcLoc offsetof_bf_loc(Checker *c, uint32_t ty, uint32_t peek)
     return tag ? ctok_loc(c, tag) : cinput_loc(c, peek);
 }
 
+/* One step of an offsetof designator, for fold_offsetof_1's bounds check. */
+typedef struct OffStep {
+    bool arr, known, cons, last, ptr;
+    TypeId ty;
+    uint64_t n, idx;
+} OffStep;
+
+/* fold_offsetof_1: an index beyond the array's last element (one past it is
+ * fine when nothing is selected from the element) warns, unless the array is
+ * a "poor man's flexible array": every component on the way back to the
+ * start is the last member of its struct (or in a union). */
+static void offsetof_bounds(Checker *c, const OffStep *st, uint32_t ns, SrcLoc loc)
+{
+    uint32_t j, q;
+    if (!diag_enabled(c->diag, "array-bounds="))
+        return;
+    for (j = 0; j < ns; j++) {
+        uint64_t up;
+        if (!st[j].arr || !st[j].known || !st[j].cons)
+            continue;
+        up = st[j].n - 1;
+        if (j + 1 == ns)
+            up++;                   /* the outermost reference: one past */
+        if (up >= st[j].idx)
+            continue;
+        for (q = j; q > 0 && !st[q - 1].arr && !st[q - 1].ptr && st[q - 1].last;)
+            q--;
+        if (q == 0)
+            continue;               /* reached the base: a trailing array */
+        cwarn(c, loc, "array-bounds=", "index %llu denotes an offset greater "
+              "than size of %s", (unsigned long long)st[j].idx,
+              type_q(TT, st[j].ty));
+    }
+}
+
 static void e_offsetof(Checker *c, uint32_t i)
 {
     uint32_t k[64], n = nkids(c, i, k, 64), j;
     TypeId t, cur;
     uint64_t off = 0;
-    bool konst = true;
+    bool konst = true, nonconst_addr = false;
+    OffStep st[64] = {{0}};
+    uint32_t ns = 0;
     if (n < 2) {
         set_err(c, i);
         return;
@@ -8174,12 +8219,31 @@ static void e_offsetof(Checker *c, uint32_t i)
                 return;
             }
             off += o / 8;
+            if (ns < 64) {
+                const Record *rec = type_record(TT, type_canon(TT, cur));
+                st[ns].arr = false;
+                st[ns].last = (rec->flags & RF_UNION) ||
+                              f == &TT->fields.data[rec->fields + rec->nfields - 1];
+                ns++;
+            }
             cur = f->ty;
         } else if (tag == N_DESIG_INDEX) {
             uint32_t e = first_child(c, k[j]);
             if (e == NO_NODE || node_err(c, e)) {
                 set_err(c, i);
                 return;
+            }
+            if (tkind(c, cur) == TY_PTR) {   /* *(p + n): reported once the
+                                              * whole designator is known */
+                nonconst_addr = true;
+                konst = false;
+                cur = pointee(c, cur);
+                if (ns < 64) {
+                    st[ns].arr = false;
+                    st[ns].last = false;
+                    st[ns++].ptr = true;
+                }
+                continue;
             }
             if (!is_array(c, cur)) {
                 cerror(c, cnode_loc(c, k[j]), "subscripted value is neither "
@@ -8198,9 +8262,27 @@ static void e_offsetof(Checker *c, uint32_t i)
                                                                  elem_of(c, cur)));
             else
                 konst = false;
+            if (ns < 64) {
+                const TypeEnt *te = type_ent(TT, type_canon(TT, cur));
+                st[ns].arr = true;
+                st[ns].ty = cur;
+                st[ns].known = tkind(c, cur) == TY_ARRAY && te->n &&
+                               !(te->flags & TF_INCOMPLETE);
+                st[ns].n = te->n;
+                st[ns].cons = has_ival(c, e) && (int64_t)c->cv[e] >= 0;
+                st[ns].idx = (uint64_t)c->cv[e];
+                ns++;
+            }
             cur = elem_of(c, cur);
         }
     }
+    if (nonconst_addr) {
+        cerror(c, offsetof_bf_loc(c, k[0], first_tok(c, k[1]) - 1),
+               "cannot apply 'offsetof' to a non constant address");
+        set_err(c, i);
+        return;
+    }
+    offsetof_bounds(c, st, ns, offsetof_bf_loc(c, k[0], first_tok(c, k[1]) - 1));
     c->ty[i] = size_type(c);
     if (konst)
         set_ice(c, i, size_type(c), off);
