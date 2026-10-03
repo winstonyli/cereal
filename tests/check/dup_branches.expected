@@ -1,0 +1,30 @@
+dup_branches.c:24:15: warning: this condition has identical branches [-Wduplicated-branches]
+   24 |   *p += i ? 1 : 1;                             /* warn */
+      |               ^
+dup_branches.c:27:14: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   27 |   return i ? ({ foo (i); 1; }) : ({ foo (i); 1; });  /* warn */
+      |              ^
+dup_branches.c:27:34: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   27 |   return i ? ({ foo (i); 1; }) : ({ foo (i); 1; });  /* warn */
+      |                                  ^
+dup_branches.c:11:6: warning: this condition has identical branches [-Wduplicated-branches]
+   11 |   if (i == 0) g = i * 6; else g = 6 * i;       /* warn: commutative */
+      |      ^
+dup_branches.c:13:6: warning: this condition has identical branches [-Wduplicated-branches]
+   13 |   if (i == 2) { p++; return *p; } else { p++; return *p; }   /* warn */
+      |      ^
+dup_branches.c:15:6: warning: this condition has identical branches [-Wduplicated-branches]
+   15 |   if (i == 4) p += (g + (1 + 2)); else p += (g + (1 + 1 + 1));  /* warn */
+      |      ^
+dup_branches.c:16:6: warning: this condition has identical branches [-Wduplicated-branches]
+   16 |   if (i == 5) { { g++; } } else { { g++; } }   /* warn: nested blocks */
+      |      ^
+dup_branches.c:19:6: warning: this condition has identical branches [-Wduplicated-branches]
+   19 |   if (i == 8) s.x = 1; else s.x = 1;           /* warn */
+      |      ^
+dup_branches.c:23:34: warning: this condition has identical branches [-Wduplicated-branches]
+   23 |   if (i == 12) g = a[i]; else if (i == 13) g = 2; else g = 2;    /* warn inner */
+      |                                  ^
+dup_branches.c:25:17: warning: this condition has identical branches [-Wduplicated-branches]
+   25 |   *p += i ? i++ : i++;                         /* warn, deferred */
+      |                 ^

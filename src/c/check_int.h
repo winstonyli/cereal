@@ -331,6 +331,7 @@ struct Checker {
     uint64_t il_first;       /* cinput_loc memo: the unit (first_tok), token + 1, its BOL token + 1 (0: none) */
     uint32_t il_tok, il_bol;
     bool attr_defer;         /* record unknown names in Attrs.unk instead */
+    bool dup_no_cond;        /* -Wduplicated-branches: ?: not comparable */
     uint64_t align_err_u;    /* the aligned() argument last diagnosed, so */
     uint32_t align_err_node; /* a specifier's attributes collected twice */
                              /* report it once */
@@ -603,6 +604,9 @@ void cstmt_scope_end(Checker *c, uint32_t i);
 void cstmt_scope_end_post(Checker *c, uint32_t i);
 void cstmt_enter(Checker *c, uint32_t i);
 void cstmt_expr(Checker *c, uint32_t i);
+bool cstmt_cond_identical(Checker *c, uint32_t i, bool immediate);
+void cstmt_dup_branches(Checker *c, uint32_t scope, uint32_t end);
+SrcLoc cexpr_colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els);
 void cstmt_node(Checker *c, uint32_t i);
 void cstmt_emit_labels(Checker *c, uint32_t scope_node, int64_t min_key);
 void cexpr_cleanup_call(Checker *c, uint32_t fsym, TypeId vty, SrcLoc dloc,

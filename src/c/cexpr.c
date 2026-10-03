@@ -10362,6 +10362,11 @@ static SrcLoc colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els)
     return cnode_loc(c, i);
 }
 
+SrcLoc cexpr_colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els)
+{
+    return colon_loc(c, i, mid, els);
+}
+
 static void e_cond(Checker *c, uint32_t i)
 {
     uint32_t k[3], n = nkids(c, i, k, 3), cond, mid, els, ch;
@@ -10399,6 +10404,13 @@ static void e_cond(Checker *c, uint32_t i)
     ch = mid != NO_NODE ? mid : cond;
     t1 = rvt(c, ch);
     t2 = rvt(c, els);
+    /* operands with side effects are compared later, with the ifs */
+    if (mid != NO_NODE && c->func_node != NO_NODE &&
+        !((c->ef[mid] | c->ef[els]) & EF_SIDE) &&
+        diag_enabled(c->diag, "duplicated-branches") &&
+        cstmt_cond_identical(c, i, true))
+        cwarn(c, cl, "duplicated-branches", "this condition has identical "
+              "branches");
     if (cexpr_cxx_compat(c, i)) {
         TypeId o1 = orig_type(c, ch), o2 = orig_type(c, els);
         if (tkind(c, o1) == TY_ENUM && tkind(c, o2) == TY_ENUM &&

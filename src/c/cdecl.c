@@ -7815,8 +7815,10 @@ void cdecl_func_end(Checker *c, uint32_t se)
         return;
     fd_parts(c, fd, &fp);
     f = c->func_node;
-    if (fp.scope != NO_NODE)
+    if (fp.scope != NO_NODE) {
         unused_scan(c, fp.scope, se - 1);
+        cstmt_dup_branches(c, fp.scope, se - 1);
+    }
     /* the parameters, in order */
     kids_get(c, f, &k);
     nk = k.n;

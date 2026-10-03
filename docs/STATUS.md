@@ -585,3 +585,26 @@ layouts, gcc rules ported, walk design).
   flagged RF_FLEXIBLE (type.c).  "called object is not a function" for a
   compound-literal or statement-expression callee sits at its opening brace
   (callee_err_loc).  Goldens: flex_assign, callee_loc.
+- Round 19 (2026-10-02): -Wduplicated-branches (not in -Wall).  c-c++-common
+  521 -> 529 identical, gcc.dg 3634; tests 912; ASan/UBSan clean; icount
+  5.987G.  cstmt.c dup_expr is gcc's operand_equal_p(OEP_LEXICOGRAPHIC) on
+  checker nodes: same shape/declarations, folded equal constants, same cast
+  types, commutative + * & | ^ == != on arithmetic operands, and for nodes
+  with a location the same defining macro (tok_macro).  Statements compared:
+  expression statements, return, break/continue, nested if; blocks flattened,
+  empty statements dropped, empty branches never warn; declarations, loops,
+  switch, labels, compound literals are never equal.  A statement expression
+  is equal only as a single statement.  `if`: reported at the token after
+  `if` from cdecl_func_end (cstmt_dup_branches, pre-order by token), as gcc
+  does at genericize.  `?:`: reported at the colon.  Arms without side effects
+  are compared at parse time in e_cond (cstmt_cond_identical, immediate):
+  arms already converted to the result type (equal constants and null values
+  match; no nested ?: or statement expressions; a constant condition with
+  constant arms is folded away; a __builtin_constant_p condition is skipped);
+  arms with side effects are compared with the ifs.  File-scope ?: never.
+  Known gaps: const variables folded under -O (Wduplicated-branches-1 line
+  15), pointer arithmetic folding (p + 1 - 1 vs p), a few macro-expanded
+  typeof null-pointer cases (c90-const-expr-7, c90-intconst-1), malloc(n1) vs
+  malloc(n2) with equal arguments (Wstringop-overflow-59 line 20).
+  Also: "called object ... is not a function" on a compound literal or
+  statement expression callee sits at its opening brace.

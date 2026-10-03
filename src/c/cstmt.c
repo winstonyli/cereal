@@ -2078,6 +2078,317 @@ static uint64_t tok_macro(const Checker *c, uint32_t tok)
     return ((uint64_t)(uintptr_t)f << 20) ^ line;
 }
 
+/* ---- -Wduplicated-branches ------------------------------------------------------ */
+
+/* gcc's operand_equal_p (OEP_LEXICOGRAPHIC) on the trees the C front end
+ * builds: same shape, same declarations, equal constants (folded), same
+ * types in casts, commutative operands in either order, and, for nodes
+ * that carry a location, the same macro (a node written in one macro
+ * never equals one from another macro or from plain source). */
+
+static unsigned dup_punct(const Checker *c, uint32_t i)
+{
+    return c->u->toks[c->nodes[i].tok].t.punct;
+}
+
+static uint32_t dup_strip(const Checker *c, uint32_t e)
+{
+    uint32_t k[2];
+    while (tg(c, e) == N_PAREN && node_children(c->nodes, e, k, 2) >= 1)
+        e = k[0];
+    return e;
+}
+
+static bool dup_same_tok(const Checker *c, uint32_t a, uint32_t b)
+{
+    const Tok *x = &c->u->toks[a].t, *y = &c->u->toks[b].t;
+    return x->len == y->len &&
+           !memcmp(tok_text_raw(c->sm, c->in, x), tok_text_raw(c->sm, c->in, y),
+                   x->len);
+}
+
+static bool dup_commutes(Checker *c, uint32_t e, uint32_t l, uint32_t r)
+{
+    switch (dup_punct(c, e)) {
+    case P_PLUS: case P_STAR: case P_AMP: case P_PIPE: case P_CARET:
+    case P_EQEQ: case P_NE:
+        return type_is_arith(TT, c->ty[l]) && type_is_arith(TT, c->ty[r]);
+    default:
+        return false;
+    }
+}
+
+static bool dup_stmts_eq(Checker *c, uint32_t a, uint32_t b);
+static bool dup_flatten(Checker *c, uint32_t s, uint32_t *out, uint32_t *n,
+                        uint32_t max);
+static bool dup_stmt(Checker *c, uint32_t a, uint32_t b);
+
+static bool dup_expr(Checker *c, uint32_t a, uint32_t b)
+{
+    uint32_t ka[8], kb[8], na, nb, j;
+    a = dup_strip(c, a);
+    b = dup_strip(c, b);
+    if (c->ck[a] == K_ERR || c->ck[b] == K_ERR)
+        return false;
+    if (c->ck[a] == c->ck[b] &&
+        type_canon(TT, c->ty[a]) == type_canon(TT, c->ty[b])) {
+        if ((c->ck[a] == K_ICE || c->ck[a] == K_FOLD) && c->cv[a] == c->cv[b])
+            return true;
+        if (c->ck[a] == K_FLOAT && c->fv.data[c->cv[a]] == c->fv.data[c->cv[b]])
+            return true;
+    }
+    if (tg(c, a) != tg(c, b))
+        return false;
+    switch (tg(c, a)) {
+    case N_IDENT:
+        return cnode_ident(c, a) == cnode_ident(c, b);
+    case N_STRING: {
+        uint32_t t;
+        if (c->nodes[a].aux != c->nodes[b].aux)
+            return false;
+        for (t = 0; t < c->nodes[a].aux; t++)
+            if (!dup_same_tok(c, c->nodes[a].tok + t, c->nodes[b].tok + t))
+                return false;
+        return true;
+    }
+    case N_STMT_EXPR: {
+        /* only a block of one statement compares equal */
+        uint32_t la[2], lb[2], ma = 0, mb = 0;
+        na = node_children(c->nodes, a, ka, 8);
+        nb = node_children(c->nodes, b, kb, 8);
+        return na == 1 && nb == 1 && dup_flatten(c, ka[0], la, &ma, 2) &&
+               dup_flatten(c, kb[0], lb, &mb, 2) && ma == 1 && mb == 1 &&
+               dup_stmt(c, la[0], lb[0]);
+    }
+    case N_BINARY: case N_ASSIGN: case N_UNARY: case N_POSTFIX: case N_CALL:
+    case N_INDEX: case N_CAST: case N_MEMBER_EXPR:
+        break;
+    case N_COND:
+        if (c->dup_no_cond)
+            return false;
+        break;
+    default:
+        return false;
+    }
+    if (tok_macro(c, c->nodes[a].tok) != tok_macro(c, c->nodes[b].tok))
+        return false;
+    na = node_children(c->nodes, a, ka, 8);
+    nb = node_children(c->nodes, b, kb, 8);
+    if (na != nb || na >= 8)
+        return false;
+    switch (tg(c, a)) {
+    case N_BINARY: case N_ASSIGN: case N_UNARY: case N_POSTFIX:
+        if (dup_punct(c, a) != dup_punct(c, b))
+            return false;
+        if (tg(c, a) == N_BINARY && dup_commutes(c, a, ka[0], ka[1]) &&
+            dup_expr(c, ka[0], kb[1]) && dup_expr(c, ka[1], kb[0]))
+            return true;
+        break;
+    case N_CAST:
+        if (type_canon(TT, c->ty[a]) != type_canon(TT, c->ty[b]))
+            return false;
+        return dup_expr(c, ka[na - 1], kb[nb - 1]);
+    case N_MEMBER_EXPR:
+        if (cnode_ident(c, a) != cnode_ident(c, b) ||
+            dup_punct(c, a - 0) != dup_punct(c, b - 0))
+            return false;
+        break;
+    default:
+        break;
+    }
+    for (j = 0; j < na; j++)
+        if (!dup_expr(c, ka[j], kb[j]))
+            return false;
+    return true;
+}
+
+/* The statements of a branch with nested blocks flattened and empty
+ * statements dropped; false if one is of a kind not compared. */
+static bool dup_flatten(Checker *c, uint32_t s, uint32_t *out, uint32_t *n,
+                        uint32_t max)
+{
+    uint32_t k[256], nk, j;
+    switch (tg(c, s)) {
+    case N_COMPOUND:
+        nk = node_children(c->nodes, s, k, 256);
+        if (nk >= 256)
+            return false;
+        for (j = 0; j < nk; j++) {
+            unsigned t = tg(c, k[j]);
+            if (t == N_SCOPE || t == N_SCOPE_END || t == N_BODY)
+                continue;
+            if (!dup_flatten(c, k[j], out, n, max))
+                return false;
+        }
+        return true;
+    case N_EXPR_STMT:
+        if (c->nodes[s].size <= 1)
+            return true;
+        /* fall through */
+    case N_RETURN: case N_IF: case N_BREAK: case N_CONTINUE:
+        if (*n >= max)
+            return false;
+        out[(*n)++] = s;
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool dup_stmt(Checker *c, uint32_t a, uint32_t b)
+{
+    uint32_t ka[8], kb[8], na, nb;
+    if (tg(c, a) != tg(c, b))
+        return false;
+    na = node_children(c->nodes, a, ka, 8);
+    nb = node_children(c->nodes, b, kb, 8);
+    switch (tg(c, a)) {
+    case N_BREAK: case N_CONTINUE:
+        return true;
+    case N_EXPR_STMT: case N_RETURN:
+        if (na != nb || na >= 8)
+            return false;
+        return na == 0 || dup_expr(c, ka[na - 1], kb[nb - 1]);
+    case N_IF:
+        if (na != nb || (na != 6 && na != 9))
+            return false;
+        return dup_expr(c, ka[1], kb[1]) && dup_stmts_eq(c, ka[3], kb[3]) &&
+               (na == 6 || dup_stmts_eq(c, ka[6], kb[6]));
+    default:
+        return false;
+    }
+}
+
+static bool dup_stmts_eq(Checker *c, uint32_t a, uint32_t b)
+{
+    uint32_t la[64], lb[64], na = 0, nb = 0, j;
+    if (!dup_flatten(c, a, la, &na, 64) || !dup_flatten(c, b, lb, &nb, 64))
+        return false;
+    if (na != nb)
+        return false;
+    for (j = 0; j < na; j++)
+        if (!dup_stmt(c, la[j], lb[j]))
+            return false;
+    return true;
+}
+
+static bool dup_const(const Checker *c, uint32_t e)
+{
+    return c->ck[e] == K_ICE || c->ck[e] == K_FOLD;
+}
+
+/* A null value of any pointer or integer type (the arms are converted to
+ * the result type before they are compared). */
+static bool dup_isnull(const Checker *c, uint32_t e)
+{
+    return (dup_const(c, e) || (c->ck[e] == K_ADDR && !c->cb[e])) && !c->cv[e];
+}
+
+/* The arms of the ?: node i are the same expression.  build_conditional_expr
+ * (immediate) compares the arms already converted to the result type and
+ * does not see through statement expressions or nested ?:; the later walk
+ * (not immediate) compares them as written.  A __builtin_constant_p
+ * condition is folded away first. */
+bool cstmt_cond_identical(Checker *c, uint32_t i, bool immediate)
+{
+    uint32_t k[4], x, y, cd, f[4];
+    bool ok;
+    if (node_children(c->nodes, i, k, 4) != 3)
+        return false;
+    cd = dup_strip(c, k[0]);
+    if (tg(c, cd) == N_CALL && node_children(c->nodes, cd, f, 4) >= 1 &&
+        tg(c, f[0]) == N_IDENT && c->u->toks[c->nodes[f[0]].tok].t.len == 20 &&
+        !memcmp(tok_text_raw(c->sm, c->in, &c->u->toks[c->nodes[f[0]].tok].t),
+                "__builtin_constant_p", 20))
+        return false;
+    x = dup_strip(c, k[1]);
+    y = dup_strip(c, k[2]);
+    if (!immediate)
+        return dup_expr(c, x, y);
+    if (tg(c, x) == N_STMT_EXPR || tg(c, x) == N_COND ||
+        tg(c, y) == N_STMT_EXPR || tg(c, y) == N_COND)
+        return false;
+    if (dup_isnull(c, x) && dup_isnull(c, y))
+        return !dup_const(c, cd) || !dup_const(c, x);
+    if ((c->ck[x] == K_ICE || c->ck[x] == K_FOLD) && c->ck[y] == c->ck[x])
+        /* a constant condition folds the ?: away */
+        return c->cv[x] == c->cv[y] && !dup_const(c, cd);
+    c->dup_no_cond = true;     /* a ?: inside the arms is not comparable */
+    ok = dup_expr(c, x, y);
+    c->dup_no_cond = false;
+    return ok;
+}
+
+/* The if statements with identical, non-empty branches, and the ?:
+ * expressions whose equal arms have side effects (gcc: c_genericize's
+ * pre-order walk, so by first token; nodes are post-order). */
+/* An arm has side effects (a statement expression counts by its only
+ * statement: cereal flags every one). */
+static bool dup_side(Checker *c, uint32_t e)
+{
+    uint32_t k[8], l[2], m = 0;
+    e = dup_strip(c, e);
+    if (tg(c, e) != N_STMT_EXPR)
+        return c->ef[e] & EF_SIDE;
+    if (node_children(c->nodes, e, k, 8) != 1 || !dup_flatten(c, k[0], l, &m, 2) ||
+        m != 1 || tg(c, l[0]) != N_EXPR_STMT)
+        return true;
+    return c->ef[node_children(c->nodes, l[0], k, 8) ? k[0] : l[0]] & EF_SIDE;
+}
+
+static uint32_t dup_key(const Checker *c, uint32_t k)
+{
+    return tg(c, k) == N_IF ? c->nodes[k].tok : first_tok(c, k);
+}
+
+void cstmt_dup_branches(Checker *c, uint32_t scope, uint32_t end)
+{
+    uint32_t k, n = 0, cap = 16, *v, j, p;
+    if (!diag_enabled(c->diag, "duplicated-branches"))
+        return;
+    v = xmalloc(cap * sizeof *v);
+    for (k = cfirst(c, scope); k <= end; k++) {
+        uint32_t kids[8];
+        if (tg(c, k) == N_IF)
+            ;
+        else if (tg(c, k) == N_COND && (c->ef[k] & EF_SIDE) &&
+                 node_children(c->nodes, k, kids, 8) == 3 &&
+                 (dup_side(c, kids[1]) || dup_side(c, kids[2])))
+            ;
+        else
+            continue;
+        if (n == cap)
+            v = xrealloc(v, (cap *= 2) * sizeof *v);
+        v[n++] = k;
+    }
+    for (j = 1; j < n; j++) {
+        uint32_t x = v[j];
+        for (p = j; p > 0 && dup_key(c, v[p - 1]) > dup_key(c, x); p--)
+            v[p] = v[p - 1];
+        v[p] = x;
+    }
+    for (j = 0; j < n; j++) {
+        uint32_t kids[16], nk = node_children(c->nodes, v[j], kids, 16);
+        uint32_t l[64], m = 0, o[64], q = 0;
+        if (tg(c, v[j]) == N_COND) {
+            if (cstmt_cond_identical(c, v[j], false))
+                cwarn(c, cexpr_colon_loc(c, v[j], kids[1], kids[2]),
+                      "duplicated-branches", "this condition has identical "
+                      "branches");
+            continue;
+        }
+        if (nk != 9)
+            continue;
+        if (!dup_flatten(c, kids[3], l, &m, 64) ||
+            !dup_flatten(c, kids[6], o, &q, 64) || !m || !q)
+            continue;
+        if (dup_stmts_eq(c, kids[3], kids[6]))
+            cwarn(c, ctok_loc(c, c->nodes[v[j]].tok + 1), "duplicated-branches",
+                  "this condition has identical branches");
+    }
+    free(v);
+}
+
 /* warn_for_multistatement_macros: the body of a guard starts in a macro
  * expansion and the token after it is from the same expansion. */
 static void multistatement(Checker *c, uint32_t g, uint32_t body,
