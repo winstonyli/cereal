@@ -731,3 +731,10 @@ layouts, gcc rules ported, walk design).
   (pure (x) && pure (x)); a cast between signedness inside a range test
   ((unsigned) x < 3 && x > 5); -Wlogical-op is silent on &&/|| operands
   that are themselves && / ||.
+- Round 27 (2026-10-02): -Wtype-limits: a constant on the left of a narrower
+  unsigned operand (0ULL > p, p unsigned int) gets the "limited range of data
+  type" message, not the "unsigned expression in < 0" one (gcc.dg/pr59846).
+  opeq (-Wlogical-op, -Wtautological-compare) treats calls of const/pure
+  functions with equal arguments as equal.  Tests 935; gcc.dg 3639,
+  c-c++-common 536; ASan/UBSan clean.  Goldens: type_limits_left, logical_op.
+  Remaining -Wlogical-op gap: signedness casts inside a range test.

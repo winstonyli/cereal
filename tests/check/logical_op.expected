@@ -316,3 +316,6 @@ logical_op.c:163:9: warning: logical 'and' of equal expressions [-Wlogical-op]
 logical_op.c:164:9: warning: logical 'or' of collectively exhaustive tests is always true [-Wlogical-op]
   164 |   if (p || !p) {}
       |         ^
+logical_op.c:168:29: warning: logical 'and' of equal expressions [-Wlogical-op]
+  168 | void f5(void) { if (pure(x) && pure(x)) {} if (pure(x) && pure(x + 1)) {} }
+      |                             ^

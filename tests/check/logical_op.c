@@ -164,3 +164,5 @@ void f4(void) {
   if (p || !p) {}
   if (p && (void*)p) {}
 }
+int pure(int) __attribute__((const)); extern int x;
+void f5(void) { if (pure(x) && pure(x)) {} if (pure(x) && pure(x + 1)) {} }

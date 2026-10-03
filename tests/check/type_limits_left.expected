@@ -1,0 +1,18 @@
+type_limits_left.c:2:34: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+    2 | _Bool f(unsigned p){ return 0ULL > p; }
+      |                                  ^
+type_limits_left.c:3:34: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+    3 | _Bool g(unsigned p){ return 0ULL <= p; }
+      |                                  ^
+type_limits_left.c:4:32: warning: comparison of unsigned expression in '< 0' is always false [-Wtype-limits]
+    4 | _Bool h(unsigned p){ return 0U > p; }
+      |                                ^
+type_limits_left.c:5:31: warning: comparison of unsigned expression in '< 0' is always false [-Wtype-limits]
+    5 | _Bool i(unsigned p){ return 0 > p; }
+      |                               ^
+type_limits_left.c:6:39: warning: comparison of unsigned expression in '< 0' is always false [-Wtype-limits]
+    6 | _Bool j(unsigned long p){ return 0ULL > p; }
+      |                                       ^
+type_limits_left.c:7:33: warning: comparison is always true due to limited range of data type [-Wtype-limits]
+    7 | _Bool k(unsigned p){ return 0LL <= p; }
+      |                                 ^

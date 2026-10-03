@@ -9343,7 +9343,9 @@ static bool type_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
         return false;
     warn = !inhibited(c, i, false) && !from_macro(c, c->nodes[i].tok);
     rts = is_signed(c, rt);
-    if (!rts && c->cv[y] == 0 && (code == P_GE || code == P_LT)) {
+    /* constant on the left of a narrower operand: only the range message */
+    if (!rts && c->cv[y] == 0 && (code == P_GE || code == P_LT) &&
+        !(y == p0 && (prx ? prx : int_bits(c, tx)) < int_bits(c, rt))) {
         if (warn && tkind(c, tx) != TY_ENUM)
             cwarn(c, loc, "type-limits", code == P_GE
                   ? "comparison of unsigned expression in '>= 0' is always true"
@@ -9457,7 +9459,8 @@ static bool opeq(Checker *c, uint32_t x, uint32_t y)
     uint32_t kx[3], ky[3], nx, ny;
     x = strip_paren(c, x);
     y = strip_paren(c, y);
-    if (ntag(c, x) != ntag(c, y) || (c->ef[x] | c->ef[y]) & EF_SIDE)
+    if (ntag(c, x) != ntag(c, y) ||
+        (ntag(c, x) != N_CALL && (c->ef[x] | c->ef[y]) & EF_SIDE))
         return false;
     if (tquals(c, c->ty[x]) & TQ_VOLATILE)
         return false;
@@ -9500,6 +9503,20 @@ static bool opeq(Checker *c, uint32_t x, uint32_t y)
     case N_CAST:
         return nx >= 1 && ny >= 1 && mainv(c, c->ty[x]) == mainv(c, c->ty[y]) &&
                opeq(c, kx[nx - 1], ky[ny - 1]);
+    case N_CALL: { /* calls of a const or pure function with equal arguments */
+        uint32_t ref, j;
+        if (nx < 1 || nx != ny || ntag(c, strip_paren(c, kx[0])) != N_IDENT ||
+            ntag(c, strip_paren(c, ky[0])) != N_IDENT || nx > 3)
+            return false;
+        ref = lookup_ord(c, cnode_ident(c, strip_paren(c, kx[0])));
+        if (ref == SYM_NONE || ref != lookup_ord(c, cnode_ident(c, strip_paren(c, ky[0]))) ||
+            !(csym(c, ref)->flags & (CSF_PURE | CSF_CONSTFN)))
+            return false;
+        for (j = 1; j < nx; j++)
+            if (!opeq(c, kx[j], ky[j]))
+                return false;
+        return true;
+    }
     default:
         return false;
     }
