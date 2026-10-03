@@ -5536,6 +5536,8 @@ static void declared_visit(Checker *c, uint32_t i)
         attrs_alloc_check(c, idecl, aft, ltok);
         alloc_name = 0;
     }
+    if (s.kind == CS_FUNC)
+        cexpr_builtin_noproto_fmt(c, &s, tloc(c, sp.tok0));
     if (s.kind == CS_OBJ || s.kind == CS_TYPEDEF) {
         attrs_fn_only(c, sn, s.ty, ltok);
         attrs_fn_only(c, idecl, s.ty, ltok);

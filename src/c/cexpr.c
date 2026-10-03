@@ -5264,6 +5264,28 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
     sb_free(&sb);
 }
 
+/* The v* printf/scanf built-ins carry a 'format' attribute whose first-argument
+ * is 0; a declaration without a prototype cannot take it (gcc's
+ * handle_format_attribute on the redeclaration). */
+void cexpr_builtin_noproto_fmt(Checker *c, const CSym *s, SrcLoc loc)
+{
+    static const char *const vf[] = {"vprintf", "vfprintf", "vsprintf",
+                                     "vsnprintf", "vscanf", "vsscanf",
+                                     "vfscanf"};
+    const char *dn = cident(c, s->name);
+    size_t i;
+    if (s->sc == SC_STATIC || (s->flags & CSF_IMPLICIT) || c->ext[s->name] ||
+        !(type_ent(TT, s->ty)->flags & TF_NOPROTO) ||
+        type_ent(TT, s->ty)->kind != TY_FUNC)
+        return;
+    for (i = 0; i < sizeof vf / sizeof *vf; i++)
+        if (!strcmp(dn, vf[i])) {
+            cwarn(c, loc, "attributes", "'format' attribute cannot be applied "
+                  "to a function that does not take variable arguments");
+            return;
+        }
+}
+
 /* A constant null pointer as gcc's integer_zerop sees it: argument a of a
  * nonnull parameter, looking into the arms of ?: and the value of a comma. */
 static void nonnull_arg(Checker *c, uint32_t a, uint32_t parm, bool ptr, SrcLoc loc)
@@ -8410,6 +8432,15 @@ static void e_has_attr(Checker *c, uint32_t i)
         cdecl_attr_args(c, k[1], args, sizeof args);
         nonnull = !strcmp(an, "nonnull");
     }
+    if (!strcmp(an, "mode")) {
+        cwarn(c, ctok_loc(c, c->nodes[k[1]].tok), "attributes", "'mode' attribute "
+              "not supported in '__builtin_has_attribute'");
+        set_ice(c, i, TYPE_B(INT), 0);
+        return;
+    }
+    if (!strcmp(an, "aligned") && !strcmp(args, "0"))
+        cwarn(c, cnode_loc(c, i), "attributes", "requested alignment '0' is "
+              "not a positive power of 2");
     if (!strcmp(an, "vector_size")) {
         /* a property of the (vector) type itself, never of a declaration */
         TypeId t;

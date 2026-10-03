@@ -1,0 +1,27 @@
+attr_fmt_noproto.c:2:1: warning: 'format' attribute cannot be applied to a function that does not take variable arguments [-Wattributes]
+    2 | int vprintf ();
+      | ^
+attr_fmt_noproto.c:3:1: warning: 'format' attribute cannot be applied to a function that does not take variable arguments [-Wattributes]
+    3 | int vfprintf ();
+      | ^
+attr_fmt_noproto.c:4:1: warning: 'format' attribute cannot be applied to a function that does not take variable arguments [-Wattributes]
+    4 | int vsprintf ();
+      | ^
+attr_fmt_noproto.c:5:1: warning: 'format' attribute cannot be applied to a function that does not take variable arguments [-Wattributes]
+    5 | int vsnprintf ();
+      | ^
+attr_fmt_noproto.c:6:1: warning: 'format' attribute cannot be applied to a function that does not take variable arguments [-Wattributes]
+    6 | int vscanf ();
+      | ^
+attr_fmt_noproto.c:7:1: warning: 'format' attribute cannot be applied to a function that does not take variable arguments [-Wattributes]
+    7 | int vsscanf ();
+      | ^
+attr_fmt_noproto.c:8:1: warning: 'format' attribute cannot be applied to a function that does not take variable arguments [-Wattributes]
+    8 | int vfscanf ();
+      | ^
+attr_fmt_noproto.c:9:5: warning: conflicting types for built-in function 'printf'; expected 'int(const char *, ...)' [-Wbuiltin-declaration-mismatch]
+    9 | int printf ();
+      |     ^
+attr_fmt_noproto.c:1:1: note: 'printf' is declared in header '<stdio.h>'
+    1 | // flags: 
+      | ^

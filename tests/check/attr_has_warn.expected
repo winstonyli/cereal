@@ -1,0 +1,18 @@
+attr_has_warn.c:7:3: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    7 |   A (0, v1, aligned (0));
+      |   ^
+attr_has_warn.c:7:3: warning: requested alignment '0' is not a positive power of 2 [-Wattributes]
+    7 |   A (0, v1, aligned (0));
+      |   ^
+attr_has_warn.c:8:3: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    8 |   A (0, v2, aligned (0));
+      |   ^
+attr_has_warn.c:8:3: warning: requested alignment '0' is not a positive power of 2 [-Wattributes]
+    8 |   A (0, v2, aligned (0));
+      |   ^
+attr_has_warn.c:9:3: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    9 |   A (1, v2, aligned (4));
+      |   ^
+attr_has_warn.c:11:38: warning: 'mode' attribute not supported in '__builtin_has_attribute' [-Wattributes]
+   11 |   (void)__builtin_has_attribute (i8, mode);
+      |                                      ^

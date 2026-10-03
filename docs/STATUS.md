@@ -843,3 +843,15 @@ layouts, gcc rules ported, walk design).
   Tests 955; gcc.dg 3647, c-c++-common 547.  Gaps seen: __builtin_has_attribute
   does not warn for aligned(0) or 'mode'; warn_unused_result on a void
   function typedef; typedef alloc_size conflicts.
+
+- Round 35: gcc's "'format' attribute cannot be applied to a function that
+  does not take variable arguments" for a first, non-static, no-prototype
+  declaration of vprintf / vfprintf / vsprintf / vsnprintf / vscanf / vsscanf
+  / vfscanf (built-in format attribute with first-arg 0), at the start of the
+  declaration (cexpr_builtin_noproto_fmt).  The non-v built-ins keep
+  -Wbuiltin-declaration-mismatch.  __builtin_has_attribute warns for
+  aligned(0) (at the expression, i.e. the macro expansion point with
+  -ftrack-macro-expansion=0) and for 'mode' ("not supported in
+  '__builtin_has_attribute'", at the attribute token; result 0).
+  builtin-has-attribute-4.c has no gcc-only diagnostics left.  Goldens:
+  attr_fmt_noproto, attr_has_warn.
