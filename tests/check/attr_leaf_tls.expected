@@ -1,0 +1,114 @@
+attr_leaf_tls.c:2:1: warning: 'tls_model' attribute ignored because 'v' does not have thread storage duration [-Wattributes]
+    2 | int v __attribute__((tls_model("global-dynamic")));
+      | ^
+attr_leaf_tls.c:4:1: warning: 'tls_model' attribute ignored because 's' does not have thread storage duration [-Wattributes]
+    4 | static int s __attribute__((tls_model("bogus")));
+      | ^
+attr_leaf_tls.c:5:1: error: 'tls_model' argument must be one of 'local-exec', 'initial-exec', 'local-dynamic', or 'global-dynamic'
+    5 | __thread int u __attribute__((tls_model("bogus")));
+      | ^
+attr_leaf_tls.c:6:1: warning: 'tls_model' attribute ignored because 'l' does not have thread storage duration [-Wattributes]
+    6 | void f(void) { static int l __attribute__((tls_model("local-exec"))); (void)l; }
+      | ^
+attr_leaf_tls.c:7:1: warning: 'leaf' attribute ignored [-Wattributes]
+    7 | void (*fp)(int *__attribute__((leaf)) p);
+      | ^
+attr_leaf_tls.c:7:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+    7 | void (*fp)(int *__attribute__((leaf)) p);
+      | ^
+attr_leaf_tls.c:8:1: warning: 'leaf' attribute ignored [-Wattributes]
+    8 | void g(int *p __attribute__((leaf)));
+      | ^
+attr_leaf_tls.c:8:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+    8 | void g(int *p __attribute__((leaf)));
+      | ^
+attr_leaf_tls.c:9:1: warning: 'leaf' attribute ignored [-Wattributes]
+    9 | void q1(int *p __attribute__((leaf)));
+      | ^
+attr_leaf_tls.c:9:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+    9 | void q1(int *p __attribute__((leaf)));
+      | ^
+attr_leaf_tls.c:10:1: warning: 'leaf' attribute ignored [-Wattributes]
+   10 | void q2(int *p __attribute__((leaf))) { (void)p; }
+      | ^
+attr_leaf_tls.c:10:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   10 | void q2(int *p __attribute__((leaf))) { (void)p; }
+      | ^
+attr_leaf_tls.c:11:1: warning: 'leaf' attribute ignored [-Wattributes]
+   11 | static void q3(int *p __attribute__((leaf)));
+      | ^
+attr_leaf_tls.c:11:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   11 | static void q3(int *p __attribute__((leaf)));
+      | ^
+attr_leaf_tls.c:12:1: warning: 'leaf' attribute ignored [-Wattributes]
+   12 | void (*r1)(int *__attribute__((leaf)) p);
+      | ^
+attr_leaf_tls.c:12:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   12 | void (*r1)(int *__attribute__((leaf)) p);
+      | ^
+attr_leaf_tls.c:13:1: warning: 'leaf' attribute ignored [-Wattributes]
+   13 | void (*r2)(int p __attribute__((leaf)));
+      | ^
+attr_leaf_tls.c:13:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   13 | void (*r2)(int p __attribute__((leaf)));
+      | ^
+attr_leaf_tls.c:14:8: warning: 'leaf' attribute ignored [-Wattributes]
+   14 | struct S2 { int a __attribute__((leaf)); void (*f)(int p __attribute__((leaf))); };
+      |        ^
+attr_leaf_tls.c:14:8: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   14 | struct S2 { int a __attribute__((leaf)); void (*f)(int p __attribute__((leaf))); };
+      |        ^
+attr_leaf_tls.c:14:8: warning: 'leaf' attribute ignored [-Wattributes]
+   14 | struct S2 { int a __attribute__((leaf)); void (*f)(int p __attribute__((leaf))); };
+      |        ^
+attr_leaf_tls.c:14:8: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   14 | struct S2 { int a __attribute__((leaf)); void (*f)(int p __attribute__((leaf))); };
+      |        ^
+attr_leaf_tls.c:15:1: warning: 'leaf' attribute ignored [-Wattributes]
+   15 | typedef void (*T2)(int p __attribute__((leaf)));
+      | ^
+attr_leaf_tls.c:15:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   15 | typedef void (*T2)(int p __attribute__((leaf)));
+      | ^
+attr_leaf_tls.c:16:1: warning: 'leaf' attribute ignored [-Wattributes]
+   16 | void h2(void) { int l __attribute__((leaf)); void (*q)(int __attribute__((leaf))); (void)l; (void)q; }
+      | ^
+attr_leaf_tls.c:16:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   16 | void h2(void) { int l __attribute__((leaf)); void (*q)(int __attribute__((leaf))); (void)l; (void)q; }
+      | ^
+attr_leaf_tls.c:16:1: warning: 'leaf' attribute ignored [-Wattributes]
+   16 | void h2(void) { int l __attribute__((leaf)); void (*q)(int __attribute__((leaf))); (void)l; (void)q; }
+      | ^
+attr_leaf_tls.c:16:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   16 | void h2(void) { int l __attribute__((leaf)); void (*q)(int __attribute__((leaf))); (void)l; (void)q; }
+      | ^
+attr_leaf_tls.c:17:1: warning: 'leaf' attribute ignored [-Wattributes]
+   17 | int w1 __attribute__((leaf));
+      | ^
+attr_leaf_tls.c:18:1: warning: 'leaf' attribute ignored [-Wattributes]
+   18 | int *__attribute__((leaf)) y1;
+      | ^
+attr_leaf_tls.c:19:1: warning: 'leaf' attribute ignored [-Wattributes]
+   19 | void p1(int *__attribute__((leaf)) p);
+      | ^
+attr_leaf_tls.c:19:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   19 | void p1(int *__attribute__((leaf)) p);
+      | ^
+attr_leaf_tls.c:20:8: warning: 'leaf' attribute ignored [-Wattributes]
+   20 | struct S3 { int *__attribute__((leaf)) a; };
+      |        ^
+attr_leaf_tls.c:20:8: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   20 | struct S3 { int *__attribute__((leaf)) a; };
+      |        ^
+attr_leaf_tls.c:21:1: warning: 'leaf' attribute ignored [-Wattributes]
+   21 | void h3(void) { int *__attribute__((leaf)) l; (void)l; }
+      | ^
+attr_leaf_tls.c:21:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   21 | void h3(void) { int *__attribute__((leaf)) l; (void)l; }
+      | ^
+attr_leaf_tls.c:22:1: warning: 'hot' attribute ignored [-Wattributes]
+   22 | int *__attribute__((hot)) y2;
+      | ^
+attr_leaf_tls.c:23:1: warning: 'hot' attribute ignored [-Wattributes]
+   23 | void p2(int *__attribute__((hot)) p);
+      | ^

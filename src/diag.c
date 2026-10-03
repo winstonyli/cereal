@@ -116,6 +116,7 @@ static const DiagOption options[] = {
     {"tautological-compare", "c", DL_WARNING, false, DO_ALL, "comparison always evaluates to true or false"},
     {"misleading-indentation", "c", DL_WARNING, false, DO_ALL, "indentation does not reflect the block structure"},
     {"duplicated-branches", "c", DL_WARNING, false, 0, "if or ?: with identical branches"},
+    {"duplicated-cond", "c", DL_WARNING, false, 0, "repeated condition in an if / else-if chain"},
     {"logical-op", "c", DL_WARNING, false, 0, "suspicious uses of logical operators (equal or exclusive tests, non-boolean constant)"},
     {"multistatement-macros", "c", DL_WARNING, false, DO_ALL, "macro expands to multiple statements guarded by one clause"},
     {"int-in-bool-context", "c", DL_WARNING, false, DO_ALL, "suspicious integer expression in a boolean context"},

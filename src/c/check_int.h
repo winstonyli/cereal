@@ -623,6 +623,7 @@ void cstmt_enter(Checker *c, uint32_t i);
 void cstmt_expr(Checker *c, uint32_t i);
 bool cstmt_cond_identical(Checker *c, uint32_t i, bool immediate);
 void cstmt_dup_branches(Checker *c, uint32_t scope, uint32_t end);
+void cstmt_dup_cond(Checker *c, uint32_t scope, uint32_t end);
 SrcLoc cexpr_colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els);
 void cstmt_node(Checker *c, uint32_t i);
 void cstmt_emit_labels(Checker *c, uint32_t scope_node, int64_t min_key);

@@ -1593,7 +1593,9 @@ static uint32_t alloc_name;
 static SrcLoc alloc_loc;
 
 /* Declaration contexts for attrs_ctx_check. */
-enum { AC_T = 1, AC_G = 2, AC_L = 4, AC_S = 8, AC_P = 16, AC_F = 32, AC_ALL = 63 };
+enum { AC_T = 1, AC_G = 2, AC_L = 4, AC_S = 8, AC_P = 16, AC_F = 32, AC_ALL = 63,
+       AC_TLS = 64, AC_PUB = 128 };    /* ... / is externally visible */    /* the object has thread storage duration */
+static const char *ctx_vname;   /* the object attrs_ctx_check is looking at */
 
 /* Attributes whose handler returns "ignored" on a declaration that is not a
  * function, by context (typedef, file-scope variable, automatic local, static
@@ -1607,8 +1609,7 @@ static const struct { const char *name; unsigned ctx; } attr_ign_tab[] = {
     {"externally_visible", AC_T|AC_P|AC_F}, {"fallthrough", AC_ALL},
     {"fentry_name", AC_ALL}, {"fentry_section", AC_ALL}, {"flatten", AC_ALL},
     {"gcc_struct", AC_ALL}, {"gnu_inline", AC_ALL}, {"hot", AC_ALL},
-    {"ifunc", AC_ALL}, {"leaf", AC_G}, 
-    {"ms_struct", AC_ALL}, {"no_address_safety_analysis", AC_ALL},
+    {"ifunc", AC_ALL},     {"ms_struct", AC_ALL}, {"no_address_safety_analysis", AC_ALL},
     {"no_icf", AC_ALL}, {"no_profile_instrument_function", AC_ALL},
     {"no_sanitize", AC_ALL}, {"no_sanitize_address", AC_ALL},
     {"no_sanitize_coverage", AC_ALL}, {"no_sanitize_thread", AC_ALL},
@@ -1641,8 +1642,8 @@ static const char *const attr_fnonly_tab[] = {
 /* decl_attributes on an object, typedef, parameter or field whose type is
  * neither a function nor a pointer to one: attributes that apply only to
  * functions, and the ones ignored in this context. */
-static void attrs_ctx_check(Checker *c, uint32_t holder, TypeId ty, uint32_t tok,
-                            unsigned ctx)
+static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t tok,
+                             unsigned ctx)
 {
     Kids k;
     uint32_t j;
@@ -1667,6 +1668,32 @@ static void attrs_ctx_check(Checker *c, uint32_t holder, TypeId ty, uint32_t tok
             if (!strcmp(name, "malloc")) {
                 cwarn(c, iloc(c, tok), "attributes", "'malloc' attribute "
                       "ignored; valid only for functions");
+                continue;
+            }
+            if (!strcmp(name, "leaf")) {
+                /* on anything but a function; a decl that is not public
+                 * also trips the unit-local check */
+                cwarn(c, iloc(c, tok), "attributes", "'leaf' attribute "
+                      "ignored");
+                if (!(ctx & AC_PUB))
+                    cwarn(c, iloc(c, tok), "attributes", "'leaf' attribute "
+                          "has no effect on unit local functions");
+                continue;
+            }
+            if (!strcmp(name, "tls_model") && (ctx & (AC_G | AC_S | AC_L))) {
+                char v[24];
+                if (!(ctx & AC_TLS)) {
+                    cwarn(c, iloc(c, tok), "attributes", "'tls_model' "
+                          "attribute ignored because '%s' does not have "
+                          "thread storage duration", ctx_vname);
+                    continue;
+                }
+                cdecl_attr_args(c, it.p[q], v, sizeof v);
+                if (strcmp(v, "\"local-exec\"") && strcmp(v, "\"initial-exec\"") &&
+                    strcmp(v, "\"local-dynamic\"") && strcmp(v, "\"global-dynamic\""))
+                    cerror(c, iloc(c, tok), "'tls_model' argument must be "
+                           "one of 'local-exec', 'initial-exec', "
+                           "'local-dynamic', or 'global-dynamic'");
                 continue;
             }
             if (!strcmp(name, "nonstring")) {
@@ -1712,6 +1739,27 @@ static void attrs_ctx_check(Checker *c, uint32_t holder, TypeId ty, uint32_t tok
         kids_free(&it);
     }
     kids_free(&k);
+}
+
+/* ... on the holder and on the attributes after its '*'s. */
+static void attrs_ctx_check(Checker *c, uint32_t holder, TypeId ty, uint32_t tok,
+                            unsigned ctx)
+{
+    uint32_t h = holder;
+    attrs_ctx_check1(c, holder, ty, tok, ctx);
+    for (;;) {
+        Kids hk;
+        uint32_t m, nx = NO_NODE;
+        kids_get(c, h, &hk);
+        for (m = 0; m < hk.n && nx == NO_NODE; m++)
+            if (ntag(c, hk.p[m]) == N_PTR)
+                nx = hk.p[m];
+        kids_free(&hk);
+        if (nx == NO_NODE)
+            return;
+        attrs_ctx_check1(c, nx, ty, tok, ctx);
+        h = nx;
+    }
 }
 
 /* A redeclaration whose alloc_size / alloc_align differs from the previous
@@ -5929,6 +5977,11 @@ static void declared_visit(Checker *c, uint32_t i)
     if (s.kind == CS_OBJ || s.kind == CS_TYPEDEF) {
         unsigned ac = s.kind == CS_TYPEDEF ? AC_T : file ? AC_G :
                       s.sc == SC_STATIC ? AC_S : AC_L;
+        if (sp.thread)
+            ac |= AC_TLS;
+        if (s.kind == CS_OBJ && s.sc != SC_STATIC && (file || s.sc == SC_EXTERN))
+            ac |= AC_PUB;
+        ctx_vname = sname(c, &s);
         attrs_ctx_check(c, sn, s.ty, ltok, ac);
         attrs_ctx_check(c, idecl, s.ty, ltok, ac);
     }
@@ -8569,6 +8622,7 @@ void cdecl_func_end(Checker *c, uint32_t se)
     if (fp.scope != NO_NODE) {
         unused_scan(c, fp.scope, se - 1);
         cstmt_dup_branches(c, fp.scope, se - 1);
+        cstmt_dup_cond(c, fp.scope, se - 1);
     }
     /* the parameters, in order */
     kids_get(c, f, &k);

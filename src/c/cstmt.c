@@ -1941,8 +1941,15 @@ void cstmt_node(Checker *c, uint32_t i)
         break;
     case N_LOCAL_LABEL:
         local_labels(c, s, i);
-        cpedantic(c, cnode_loc(c, i), "ISO C forbids label "
-                  "declarations");
+        {
+            /* gcc warns once for a run of them, at the last */
+            uint32_t par = c->par[i], j = i + 1;
+            while (j < par && c->par[j] != par)
+                j = c->par[j];
+            if (j >= par || tg(c, j) != N_LOCAL_LABEL)
+                cpedantic(c, cnode_loc(c, i), "ISO C forbids label "
+                          "declarations");
+        }
         break;
     case N_IF:
         stmt_if(c, i);
@@ -2391,6 +2398,70 @@ void cstmt_dup_branches(Checker *c, uint32_t scope, uint32_t end)
                   "this condition has identical branches");
     }
     free(v);
+}
+
+/* -Wduplicated-cond: a condition repeated in an if / else-if chain (the
+ * parser compares each new condition with the earlier ones; conditions
+ * with side effects are not compared). */
+typedef struct { uint32_t cond, prev; } DupCond;
+
+static int dupcond_cmp(const void *x, const void *y)
+{
+    uint32_t a = ((const DupCond *)x)->cond, b = ((const DupCond *)y)->cond;
+    return a < b ? -1 : a > b;
+}
+
+void cstmt_dup_cond(Checker *c, uint32_t scope, uint32_t end)
+{
+    uint32_t k, nw = 0, cap = 8, j;
+    DupCond *w;
+    if (!diag_enabled(c->diag, "duplicated-cond"))
+        return;
+    w = xmalloc(cap * sizeof *w);
+    for (k = cfirst(c, scope); k <= end; k++) {
+        uint32_t kids[16], seen[32], n, ns = 0, cur = k;
+        if (tg(c, k) != N_IF)
+            continue;
+        if (c->par[k] != NOB && tg(c, c->par[k]) == N_IF &&
+            node_children(c->nodes, c->par[k], kids, 16) == 9 &&
+            kids[6] == k)
+            continue;           /* not the head of its chain */
+        for (;;) {
+            uint32_t cond;
+            n = node_children(c->nodes, cur, kids, 16);
+            if (n < 6)
+                break;
+            cond = dup_strip(c, kids[1]);
+            if (c->ef[cond] & EF_SIDE)
+                ns = 0;         /* the chain's earlier tests may not hold now */
+            if (!node_err(c, cond) && !(c->ef[cond] & EF_SIDE) &&
+                !dup_const(c, cond)) {
+                for (j = 0; j < ns; j++)
+                    if (dup_expr(c, seen[j], cond)) {
+                        if (nw == cap)
+                            w = xrealloc(w, (cap *= 2) * sizeof *w);
+                        w[nw].cond = cond;
+                        w[nw++].prev = seen[j];
+                        break;
+                    }
+                if (ns < 32)
+                    seen[ns++] = cond;
+            }
+            if (n != 9 || tg(c, kids[6]) != N_IF)
+                break;
+            cur = kids[6];
+        }
+    }
+    /* gcc warns as the parser reaches each condition */
+    qsort(w, nw, sizeof *w, dupcond_cmp);
+    for (j = 0; j < nw; j++) {
+        Diagnostic *dg = cwarn_d(c, DL_WARNING, cnode_loc(c, w[j].cond),
+                                 "duplicated-cond", "duplicated 'if' "
+                                 "condition");
+        if (dg)
+            cnote(c, dg, cnode_loc(c, w[j].prev), "previously used here");
+    }
+    free(w);
 }
 
 /* warn_for_multistatement_macros: the body of a guard starts in a macro

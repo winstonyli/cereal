@@ -1,0 +1,6 @@
+label_decl_run.c:5:3: warning: ISO C forbids label declarations [-Wpedantic]
+    5 |   __label__ c;
+      |   ^
+label_decl_run.c:14:3: warning: ISO C forbids label declarations [-Wpedantic]
+   14 |   __label__ x;
+      |   ^

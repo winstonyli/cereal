@@ -907,3 +907,23 @@ layouts, gcc rules ported, walk design).
 - Known gap: after a declaration with an explicit `access` on a pointer/VLA parameter, gcc describes that parameter
   as an ordinary `char[]` in later -Wvla-parameter warnings (~64 matrix combinations); cereal does not.
 - Goldens must use LF line endings (a CR in the `// flags:` line breaks run.sh).
+
+## Round 39 — `__label__` runs, -Wduplicated-cond, tls_model/leaf contexts
+
+- cstmt.c: "ISO C forbids label declarations" once per leading run of `__label__` declarations, at the last
+  (`label-decl-4.c` matches). Golden `label_decl_run`. Gap: a `__label__` after a declaration/statement should be
+  `error: expected expression before '__label__'`; cereal accepts it with a warning.
+- `-Wduplicated-cond` (`cstmt_dup_cond`, cstmt.c): per else-if chain (head = an `if` that is not the else of
+  another), each condition without side effects and not constant is compared (`dup_expr`) with the earlier ones;
+  warns at the condition, note "previously used here" at the first match. Sorted by condition position
+  (gcc warns while parsing). Golden `dup_cond`. Gap: gcc also matches conditions its folder canonicalises
+  (`n+1 == 3` vs `n == 2`, `i<j` vs `j>i`); cereal compares structurally only.
+- cdecl.c `attrs_ctx_check`: `tls_model` on objects (no thread storage → "ignored because 'v' does not have thread
+  storage duration"; with it, bad argument → error) via the `AC_TLS` flag; `leaf` on any non-function (ignored, plus
+  "no effect on unit local functions" when not public: static, param, field, typedef, auto local; `AC_PUB`);
+  attributes after a declarator's `*` are now checked too (wrapper walks the N_PTR chain). Golden `attr_leaf_tls`.
+- Known gaps unchanged otherwise: warning order when `attrs_misapplied` and the table both fire, `packed` on typedef
+  of incomplete struct, fallthrough, `-Wvla-parameter` "ordinary char[]" quirk.
+- `duplicated-cond` is registered off by default (not in -Wall); a side-effecting condition resets the chain's
+  comparisons (Wduplicated-cond-1..4 match). Parity: tests 975, gcc.dg 3655 identical (220 differ),
+  c-c++-common 555 (102), san clean (316).
