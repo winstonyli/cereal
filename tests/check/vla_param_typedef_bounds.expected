@@ -1,0 +1,18 @@
+vla_param_typedef_bounds.c:8:16: warning: argument 1 of type 'int[n]' declared with mismatched bound 'n' [-Wvla-parameter]
+    8 |   void* g_IAm (int[n]);
+      |                ^
+vla_param_typedef_bounds.c:7:16: note: previously declared as 'int[m]' with bound 'm'
+    7 |   void* g_IAm (IAm);
+      |                ^
+vla_param_typedef_bounds.c:10:16: warning: argument 1 of type 'int[n]' declared with mismatched bound 'n' [-Wvla-parameter]
+   10 |   void* g_iam (IAn);
+      |                ^
+vla_param_typedef_bounds.c:9:16: note: previously declared as 'int[m]' with bound 'm'
+    9 |   void* g_iam (int[m]);
+      |                ^
+vla_param_typedef_bounds.c:15:16: warning: argument 1 of type 'int[n]' declared with mismatched bound 'n' [-Wvla-parameter]
+   15 |   void* g_iam (int[n]);
+      |                ^
+vla_param_typedef_bounds.c:9:16: note: previously declared as 'int[m]' with bound 'm'
+    9 |   void* g_iam (int[m]);
+      |                ^

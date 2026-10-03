@@ -1,0 +1,15 @@
+label_decl_late.c:5:3: error: expected expression before '__label__'
+    5 |   __label__ a;
+      |   ^
+label_decl_late.c:7:3: error: expected expression before '__label__'
+    7 |   __label__ b;
+      |   ^
+label_decl_late.c:12:5: warning: ISO C forbids label declarations [-Wpedantic]
+   12 |   { __label__ q; goto q; q:; }
+      |     ^
+label_decl_late.c:14:3: error: expected expression before '__label__'
+   14 |   __label__ z;
+      |   ^
+label_decl_late.c:16:27: warning: ISO C forbids label declarations [-Wpedantic]
+   16 | void h(void) { for (;;) { __label__ k; goto k; k:; } }
+      |                           ^

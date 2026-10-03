@@ -6202,6 +6202,8 @@ static void declared_visit(Checker *c, uint32_t i)
         }
         c->ty[i] = t->ty;
     }
+    if (csym(c, ref)->kind == CS_TYPEDEF)
+        cparm_typedef(c, top, csym(c, ref)->ty);
     if (g.what == GD_FUNC && csym(c, ref)->kind == CS_FUNC)
         acc_implied(c, ref, csym(c, ref)->parms != s.parms, false);
     attrs_names(c, sn, &csym(c, ref)->aset);

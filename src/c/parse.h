@@ -54,6 +54,7 @@ typedef struct Parser {
     uint64_t fuzzy_work;        /* spelling-suggestion effort spent */
     SymSaveVec saved;           /* parameters of function declarators */
     VEC(uint32_t) open_braces;  /* '{' of the compound statements open */
+    bool lbl_ok;                /* __label__ may still be declared in this block */
     int fn_depth;
     bool unwind;                /* ending an unclosed function body */
     uint8_t loop_pragma;        /* 1: #pragma GCC ivdep, 2: unroll just before the

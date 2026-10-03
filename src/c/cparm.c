@@ -107,6 +107,7 @@ void cparm_free(Checker *c)
         if (c->pdescs.data[i])
             pdesc_free((CParmDesc *)c->pdescs.data[i]);
     vec_free(&c->pdescs);
+    vec_free(&c->tdvla);
 }
 
 /* cdecl.c param_visit keeps the pre-decay array type in CV[p] bits 32+. */
@@ -393,8 +394,51 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
     if (!nd) {
         /* no brackets written: an array typedef, or a pointer to one */
         TypeId pre = pre_of(c, p), q = pre ? pre : type_base(TT, t);
-        if (type_ckind(TT, q) == TY_VLA) {
+        if (type_ckind(TT, q) == TY_VLA && pre) {
+            TypeId e2 = q;
+            const CParmDesc *td;
+            bool ok = true;
+            o->arr = true;
+            /* the bounds of the typedef, then of the typedef it is an array of */
+            while (ok && type_ckind(TT, e2) == TY_VLA) {
+                uint32_t k, n0 = o->nd;
+                td = NULL;
+                for (k = 0; k + 1 < c->tdvla.len; k += 2)
+                    if (c->tdvla.data[k] == e2)
+                        td = desc_of(c, c->tdvla.data[k + 1]);
+                if (!td) {
+                    ok = false;
+                    break;
+                }
+                o->d = xrealloc(o->d, (n0 + td->p[0].nd) * sizeof *o->d);
+                for (m = 0; m < td->p[0].nd; m++) {
+                    PDim *x = &o->d[n0 + m];
+                    *x = td->p[0].d[m];
+                    if (x->txt) {
+                        x->txt = xstrdup(x->txt);
+                        x->ttxt = xstrdup(x->ttxt);
+                        x->key = x->key ? xstrdup(x->key) : NULL;
+                    }
+                    e2 = type_base(TT, e2);
+                }
+                o->nd = n0 + td->p[0].nd;
+            }
+            if (ok && tail_dims(c, o, e2))
+                return;
+            for (m = 0; m < o->nd; m++) {
+                free(o->d[m].txt);
+                free(o->d[m].ttxt);
+                free(o->d[m].key);
+            }
+            free(o->d);
+            o->d = NULL;
+            o->nd = 0;
+            o->arr = false;
             o->unk = true;          /* its bound is not recorded */
+            return;
+        }
+        if (type_ckind(TT, q) == TY_VLA) {
+            o->unk = true;
             return;
         }
         if (type_ckind(TT, q) != TY_ARRAY)
@@ -487,6 +531,37 @@ uint32_t cparm_make(Checker *c, uint32_t fnode)
         parm_of(c, pn[i], &pd->p[i], names, np);
     vec_push(&c->pdescs, (struct CParmDesc *)pd);
     return (uint32_t)c->pdescs.len;
+}
+
+/* A typedef of a variable length array: remember its bounds, for the
+ * parameters later declared with it. */
+void cparm_typedef(Checker *c, uint32_t top, TypeId ty)
+{
+    uint32_t l, d, dn[16], nd = 0, m;
+    CParmDesc *pd;
+    if (type_ckind(TT, ty) != TY_VLA || type_kind(TT, ty) != TY_TYPEDEF)
+        return;
+    l = top;
+    if (l == NO_NODE || !is_declarator_tag(ntag(c, l)))
+        return;
+    for (d = l; d != NO_NODE; d = cdecl_inner_decl(c, d)) {
+        if (ntag(c, d) == N_ARRAY && nd < 16)
+            dn[nd++] = d;
+        else if (ntag(c, d) == N_ARRAY || ntag(c, d) == N_PTR ||
+                 ntag(c, d) == N_FUNC)
+            return;
+    }
+    if (!nd)
+        return;
+    pd = xcalloc(1, sizeof *pd);
+    pd->n = 1;
+    pd->p[0].nd = nd;
+    pd->p[0].d = xcalloc(nd, sizeof *pd->p[0].d);
+    for (m = 0; m < nd; m++)
+        dim_of(c, dn[nd - 1 - m], &pd->p[0].d[m], false, NULL, 0);
+    vec_push(&c->pdescs, (struct CParmDesc *)pd);
+    vec_push(&c->tdvla, ty);
+    vec_push(&c->tdvla, (uint32_t)c->pdescs.len);
 }
 
 unsigned cparm_implied(Checker *c, uint32_t d, CImplied *out, unsigned max)

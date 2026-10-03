@@ -950,3 +950,14 @@ layouts, gcc rules ported, walk design).
   describes the older declaration's pointer/VLA/[*] parameter as `T[]`; needs the attribute presence plumbed into
   cparm_compare (attributes are processed after the merge).
 - Parity: tests 979, gcc.dg 3656 identical (219 differ), c-c++-common 555 (102), san clean (318).
+
+## Round 41 — typedef VLA bounds, `__label__` placement
+- cparm.c `cparm_typedef` (called from `declared_visit` for typedef declarators) records a VLA typedef's bound
+  expressions in `c->tdvla`; `parm_of` resolves parameters of such typedefs (including typedefs of typedefs) from it,
+  so Wvla-parameter-4.c's "mismatched bound" warnings now match gcc. Golden `vla_param_typedef_bounds`.
+- Still open there: type printing `int (*[*])[3]` {aka `int (*[])[3]`} (cereal prints `int (*)[3][*]`, 3 lines);
+  gcc warns "int[2][n][3] declared as a variable length array" when the older declaration is a typedef with a
+  constant first bound (gcc quirk, not modelled).
+- parse.c `lbl_ok`: `__label__` is accepted only before the first declaration/statement of a block; later it is
+  `error: expected expression before '__label__'`. Golden `label_decl_late`.
+- Parity unchanged: tests 983, gcc.dg 3656 identical (219 differ), c-c++-common 555 (102), san clean (320).

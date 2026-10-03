@@ -275,6 +275,7 @@ struct Checker {
     VEC(CSym) gsyms;         /* persistent */
     VEC(CSym) lsyms;         /* this unit's */
     VEC(char *) dep_msgs;    /* deprecated/unavailable attribute messages */
+    VEC(uint32_t) tdvla;              /* cparm.c: (typedef type, pdescs index + 1) pairs */
     VEC(struct CParmDesc *) pdescs;   /* cparm.c: parameter declarations */
     VEC(AName) anames;       /* attribute names by set (__builtin_has_attribute, copy) */
     VEC(uint32_t) ahead;     /* per set: its newest entry in anames, 1-based */
@@ -511,6 +512,7 @@ typedef struct {
     bool bnamed;
 } CImplied;       /* size 0: a [*] bound */
 unsigned cparm_implied(Checker *c, uint32_t d, CImplied *out, unsigned max);
+void cparm_typedef(Checker *c, uint32_t top, TypeId ty);
 /* Declarator helpers cparm.c shares (cdecl.c). */
 uint32_t cdecl_inner_decl(const Checker *c, uint32_t i);
 uint32_t cdecl_array_size_node(Checker *c, uint32_t a);

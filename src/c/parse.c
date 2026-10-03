@@ -2593,7 +2593,7 @@ static void block_item(Parser *p)
         static_assert_decl(p);
         return;
     }
-    if (k == CK_LABEL) { /* GNU: __label__ a, b; */
+    if (k == CK_LABEL && p->lbl_ok) { /* GNU: __label__ a, b; */
         adv(p);
         for (;;) {
             PTok x = ct(p);
@@ -2644,18 +2644,25 @@ static void compound(Parser *p, bool push)
 {
     uint32_t start = nmark(p), lb = adv(p);
     unsigned flags = 0;
+    bool saved_lbl;
     vec_push(&p->open_braces, lb);
     if (push)
         open_scope(p, lb, 0);
     else
         leaf(p, N_BODY, lb);
+    saved_lbl = p->lbl_ok;
+    p->lbl_ok = true;           /* only before the first declaration or statement */
     for (;;) {
         uint32_t before;
+        PTok it;
         item_pragmas(p);
         if (at(p, P_RBRACE) || at_eof(p))
             break;
         before = p->pos;
+        it = ct(p);
         block_item(p);
+        if (ckw_of(p, &it) != CK_LABEL)
+            p->lbl_ok = false;
         p->err.live = false; /* gcc: parser->error is cleared after each item */
         if (p->pos == before && !p->unwind) { /* no progress: skip */
             expected(p, "statement");
@@ -2677,6 +2684,7 @@ static void compound(Parser *p, bool push)
     if (push)
         close_scope(p, NULL);
     p->open_braces.len--;
+    p->lbl_ok = saved_lbl;
     emit(p, N_COMPOUND, lb, start, flags);
 }
 
