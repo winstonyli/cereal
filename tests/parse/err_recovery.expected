@@ -107,7 +107,7 @@ DECL 'struct' 20:1
           TYPESPEC 'int' 20:12
         MEMBER 'm' 20:16
           NAME 'm' 20:16
-DECL 'int' 21:1
+DECL 'int' 21:1 [1]
   SPECS 'int' 21:1
     TYPESPEC 'int' 21:1
   INIT_DECL 'c' 21:5
@@ -117,9 +117,3 @@ DECL 'int' 21:1
       BINARY '+' 21:12
         NUMBER '1' 21:10
         ERROR ';' 21:14 [1]
-DECL 'int' 22:1
-  SPECS 'int' 22:1
-    TYPESPEC 'int' 22:1
-  INIT_DECL 'd' 22:5
-    NAME 'd' 22:5
-    DECLARED 'd' 22:5

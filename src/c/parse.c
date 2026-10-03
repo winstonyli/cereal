@@ -410,6 +410,8 @@ static void expected(Parser *p, const char *what)
 {
     char buf[160];
     uint32_t i = ci(p);
+    if (p->err.live)
+        return;                 /* c_parser_error is silent while parser->error is set */
     if (!fill(p, i) && p->toks.len) {
         /* c_parser_error at the end of input: input_location */
         va_list none;
@@ -549,7 +551,8 @@ static void skip_until(Parser *p, Punct want)
         }
         adv(p);
     }
-    p->err.live = false;
+    if (!at_eof(p))             /* gcc returns at EOF with the error set */
+        p->err.live = false;
 }
 
 /* gcc's c_parser_skip_until_found (parser, WANT, msg): the missing token is
@@ -582,6 +585,153 @@ static void sync_top(Parser *p)
     }
 }
 
+/* #pragma GCC unroll N: is the argument certainly not an integer constant
+ * expression in 0..65534?  Only literals and arithmetic (+ - * / % ~ ! and
+ * parentheses) are judged; names, sizeof and casts are left to be valid. */
+typedef struct {
+    const char *q, *e;
+    bool bad, unknown;
+} UnrollArg;
+
+static long double unroll_expr(UnrollArg *x);
+
+static void unroll_ws(UnrollArg *x)
+{
+    while (x->q < x->e && (*x->q == ' ' || *x->q == '\t'))
+        x->q++;
+}
+
+static long double unroll_primary(UnrollArg *x)
+{
+    long double r;
+    unroll_ws(x);
+    if (x->q >= x->e) {
+        x->unknown = true;
+        return 0;
+    }
+    if (*x->q == '-' || *x->q == '+' || *x->q == '~' || *x->q == '!') {
+        char c = *x->q++;
+        r = unroll_primary(x);
+        return c == '-' ? -r : c == '~' ? (long double)~(long long)r
+               : c == '!' ? (long double)!r : r;
+    }
+    if (*x->q == '(') {
+        x->q++;
+        r = unroll_expr(x);
+        unroll_ws(x);
+        if (x->q >= x->e || *x->q != ')')
+            x->unknown = true;
+        else
+            x->q++;
+        return r;
+    }
+    if (isdigit((unsigned char)*x->q) ||
+        (*x->q == '.' && x->q + 1 < x->e && isdigit((unsigned char)x->q[1]))) {
+        const char *b = x->q;
+        bool hex = x->q + 1 < x->e && x->q[0] == '0' &&
+                   (x->q[1] == 'x' || x->q[1] == 'X');
+        bool fl = false;
+        char buf[64];
+        size_t n;
+        while (x->q < x->e &&
+               (isalnum((unsigned char)*x->q) || *x->q == '.' ||
+                ((*x->q == '+' || *x->q == '-') && !hex &&
+                 (x->q[-1] == 'e' || x->q[-1] == 'E')))) {
+            if (*x->q == '.' || (!hex && (*x->q == 'e' || *x->q == 'E')))
+                fl = true;
+            x->q++;
+        }
+        if (fl) {
+            x->bad = true;
+            return 0;
+        }
+        n = (size_t)(x->q - b);
+        if (n >= sizeof buf) {
+            x->unknown = true;
+            return 0;
+        }
+        memcpy(buf, b, n);
+        buf[n] = 0;
+        return (long double)strtoull(buf, NULL, 0);
+    }
+    x->unknown = true;
+    return 0;
+}
+
+static long double unroll_term(UnrollArg *x)
+{
+    long double r = unroll_primary(x);
+    for (;;) {
+        char c;
+        long double d;
+        unroll_ws(x);
+        if (x->q >= x->e || (*x->q != '*' && *x->q != '/' && *x->q != '%'))
+            return r;
+        c = *x->q++;
+        d = unroll_primary(x);
+        if (c == '*')
+            r *= d;
+        else if ((long long)d == 0)
+            x->unknown = true;
+        else if (c == '/')
+            r = (long double)((long long)r / (long long)d);
+        else
+            r = (long double)((long long)r % (long long)d);
+    }
+}
+
+static long double unroll_expr(UnrollArg *x)
+{
+    long double r = unroll_term(x);
+    for (;;) {
+        char c;
+        unroll_ws(x);
+        if (x->q >= x->e || (*x->q != '+' && *x->q != '-'))
+            return r;
+        c = *x->q++;
+        r = c == '+' ? r + unroll_term(x) : r - unroll_term(x);
+    }
+}
+
+static bool unroll_arg_bad(const char *s, const char *e)
+{
+    UnrollArg x;
+    long double v;
+    x.q = s;
+    x.e = e;
+    x.bad = x.unknown = false;
+    v = unroll_expr(&x);
+    unroll_ws(&x);
+    if (x.bad)
+        return true;
+    return !x.unknown && x.q >= x.e && (v < 0 || v > 65534);
+}
+
+/* c_parser_pragma: #pragma GCC pch_preprocess may only be the very first
+ * token. */
+static void pch_pragma_check(Parser *p)
+{
+    const Tok *t = &p->toks.data[p->pos].t;
+    const char *s = tok_text_raw(p->sm, p->in, t), *e = s + t->len;
+    if (p->base + p->pos == 0)
+        return;
+    while (s < e && (*s == ' ' || *s == '	'))
+        s++;
+    if (e - s > 6 && !strncmp(s, "pragma", 6))
+        s += 6;
+    while (s < e && (*s == ' ' || *s == '	'))
+        s++;
+    if (e - s > 4 && !strncmp(s, "GCC", 3) && (s[3] == ' ' || s[3] == '	')) {
+        s += 3;
+        while (s < e && (*s == ' ' || *s == '	'))
+            s++;
+        if (e - s >= 14 && !strncmp(s, "pch_preprocess", 14) &&
+            (e - s == 14 || s[14] == ' ' || s[14] == '	'))
+            perr_at(p, p->pos, t->loc + 8, "'#pragma GCC pch_preprocess' "
+                    "must be first before '#pragma'");
+    }
+}
+
 /* Pragmas where an item may start become items. */
 static void item_pragmas(Parser *p)
 {
@@ -609,8 +759,27 @@ static void item_pragmas(Parser *p)
                        (e - s == 6 || s[6] == ' ' || s[6] == '	')) {
                 p->loop_pragma |= 2;
                 loops = true;
+                s += 6;
+                while (s < e && (*s == ' ' || *s == '\t'))
+                    s++;
+                if (s < e && unroll_arg_bad(s, e)) {
+                    /* the argument's place in the source line, whose
+                     * spacing the token text may have lost */
+                    const char *r = srcmgr_ptr(p->sm, t->loc), *a = r;
+                    while (*a && *a != '\n' && strncmp(a, "unroll", 6))
+                        a++;
+                    a += 6;
+                    while (*a == ' ' || *a == '\t')
+                        a++;
+                    perr_at(p, p->pos, t->loc + (SrcLoc)(a - r),
+                            "'#pragma GCC unroll' requires an assignment-"
+                            "expression that evaluates to a non-negative "
+                            "integral constant less than 65535");
+                    p->err.live = false;    /* error_at, not c_parser_error */
+                }
             }
         }
+        pch_pragma_check(p);
         leaf(p, N_PRAGMA, p->pos);
         p->pos++;
     }
@@ -985,6 +1154,7 @@ static void attribute(Parser *p)
                         }
                         adv(p);
                     }
+                    p->err.live = false;    /* skip_until_found */
                     emit(p, N_ATTR_ITEM, name, s, 0);
                     emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
                     return;
@@ -1718,20 +1888,10 @@ static void init_list(Parser *p)
     uint64_t before = p->errors;
     if (!expect(p, P_RBRACE)) {
         p->soft_errors += p->errors - before;
-        /* gcc: c_parser_skip_until_found('}'), balancing brackets; the
-         * declaration goes on from there */
-        int depth = 0;
+        /* gcc: c_parser_skip_until_found (CPP_CLOSE_BRACE); the declaration goes on
+         * from there */
         flags |= NF_ERROR;
-        while (!at_eof(p) && !(depth == 0 && at(p, P_SEMI))) {
-            if (at(p, P_LPAREN) || at(p, P_LBRACKET) || at(p, P_LBRACE))
-                depth++;
-            else if (at(p, P_RBRACE) && depth-- <= 0) {
-                adv(p);
-                break;
-            } else if ((at(p, P_RPAREN) || at(p, P_RBRACKET)) && depth > 0)
-                depth--;
-            adv(p);
-        }
+        skip_until(p, P_RBRACE);
     }
     emit(p, N_INIT_LIST, lb, start, flags);
 }
@@ -1814,7 +1974,7 @@ static void postfix_tail(Parser *p, uint32_t start)
             }
             /* a call cut short by a syntax error is checked after it */
             emit(p, N_CALL, lp, start,
-                 expect(p, P_RPAREN) && p->errors == e0 ? 0 : NF_CUT);
+                 expect_skip(p, P_RPAREN) && p->errors == e0 ? 0 : NF_CUT);
             break;
         }
         case P_DOT: case P_ARROW: {
@@ -2000,23 +2160,14 @@ static void primary(Parser *p)
             p->hushed = false;
             parse_expr(p);
             if (!at(p, P_RPAREN)) {
-                /* gcc: c_parser_skip_until_found(')'), balancing */
-                int depth = 0;
+                /* gcc: c_parser_skip_until_found(')') */
                 bool hush = p->hush;
                 p->hush = hush || p->hushed;    /* gcc: parser->error */
                 expect(p, P_RPAREN);
                 p->hush = hush;
-                while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
-                       !at(p, P_LBRACE)) {
-                    if (at(p, P_LPAREN) || at(p, P_LBRACKET))
-                        depth++;
-                    else if (at(p, P_RBRACKET))
-                        depth--;
-                    else if (at(p, P_RPAREN) && depth-- <= 0)
-                        break;
-                    adv(p);
-                }
-                p->err.live = false;    /* skip_until_found cleared it */
+                skip_until(p, P_RPAREN);        /* clears parser->error */
+                emit(p, N_PAREN, lp, start, 0);
+                return;
             }
             expect(p, P_RPAREN);
             emit(p, N_PAREN, lp, start, 0);
@@ -2074,7 +2225,7 @@ static void unary(Parser *p)
             (is_typename_start(p, &n1) || is_clit_storage(p, &n1))) {
             uint32_t s2 = nmark(p), lp = adv(p);
             type_name(p);
-            expect(p, P_RPAREN);
+            expect_skip(p, P_RPAREN);
             if (at(p, P_LBRACE)) { /* sizeof (T){...}: a compound literal */
                 init_list(p);
                 emit(p, N_COMPOUND_LIT, lp, s2, 0);
@@ -2107,7 +2258,7 @@ static void parse_cast(Parser *p)
     if (at(p, P_LPAREN) && (is_typename_start(p, &n) || is_clit_storage(p, &n))) {
         uint32_t start = nmark(p), lp = adv(p);
         type_name(p);
-        expect(p, P_RPAREN);
+        expect_skip(p, P_RPAREN);
         if (at(p, P_LBRACE)) {
             init_list(p);
             emit(p, N_COMPOUND_LIT, lp, start, 0);
@@ -2754,6 +2905,7 @@ bool parser_next(Parser *p, ParseUnit *u)
     p->saved.len = 0;
     p->err.have = false;
     if (fill(p, p->pos) && p->toks.data[p->pos].t.kind == TK_PRAGMA) {
+        pch_pragma_check(p);
         leaf(p, N_PRAGMA, p->pos);
         p->pos++;
     } else {

@@ -476,8 +476,8 @@ layouts, gcc rules ported, walk design).
   open here; all done in Round 15.)
 - Round 15 (2026-10-02): -Wlarger-than=N, -Wsuggest-attribute=format, the
   offsetof bit-field message, and gcc's parser->error cascade.  gcc.dg
-  identical 3620 -> 3623 (0 rejects-valid, 0 accepts-invalid);
-  c-c++-common 496 -> 500, accepts-invalid 6 -> 3.  Tests 874; ASan+UBSan
+  identical 3620 -> 3624 (0 rejects-valid, 0 accepts-invalid);
+  c-c++-common 496 -> 501, accepts-invalid 6 -> 1.  Tests 880; ASan+UBSan
   clean; check icount 5.960G -> 5.978G (+0.3%, uvloop loop.c with
   -std=c99 -pedantic -I/usr/include/python3.13 -I.../libuv/include).
   -Wlarger-than=N[kB|KiB|MB..] warns at each object declaration (extern,
@@ -504,9 +504,26 @@ layouts, gcc rules ported, walk design).
   it.  Goldens: larger_than, larger_than_pragma, suggest_format,
   offsetof_bitfield, err_cascade; parse goldens err_gimple, err_recovery,
   err_tokdesc regenerated (err_gimple/err_tokdesc now header-equal to gcc).
-  Known gaps: the cascade flag does not cross parallel chunks; other
-  c_parser_skip_until_found sites (calls, sizeof(type), casts) still use
-  expect() and may not clear the flag as gcc does; "int e = ) 2;" gcc says
-  "expected ',' or ';' before numeric constant" (cereal: expected
-  expression); UTF-8 identifier spelling in "undeclared" messages
-  (gnu mode prints the character, cereal \U000020ac).
+  Skip sites now follow c_parser_skip_until_found: calls, casts,
+  sizeof (type), parenthesised expressions and brace initialisers skip with
+  skip_until (no stop at ';', '{' or '}'; an unclosed bracket swallows the
+  rest of the file silently, and EOF leaves the flag set); the attribute
+  argument skip clears it; expected() is silent while the flag is set.
+  Golden err_skip.  #pragma GCC unroll N: a literal/arithmetic argument that
+  is a float or outside 0..65534 is an error at the argument (unroll_arg_bad
+  in parse.c; names, sizeof and casts are left valid, so unroll-5's
+  "#pragma GCC unroll j" is still missed).  #pragma GCC pch_preprocess after
+  the first token is an error.  Goldens unroll_arg, pch_pragma.
+  c-c++-common accepts-invalid 3 -> 1 (this round; only attr-nocf-check-3 remains: it
+  needs the nocf_check type attribute, default-on in Ubuntu's gcc).
+  Known gaps: the bidi stack is still per chunk with --cells/parallel
+  (a stray control left open in code, e.g. U+202E outside strings, is not
+  closed by a later string in another chunk: gcc warns, cereal does not;
+  fixing it needs deferred closer events and a serial prefix-stack pass).
+  The parser cascade flag is not affected (the parser is sequential).
+  Other gaps: "int e = ) 2;" gcc says "expected ',' or ';' before numeric
+  constant" (cereal: expected expression); a call with a syntax error in
+  its arguments is not built, so gcc's follow-up semantic errors on it
+  (initializer element is not constant, undeclared names) are missing;
+  UTF-8 identifier spelling in "undeclared" messages (gnu mode prints the
+  character, cereal \U000020ac).

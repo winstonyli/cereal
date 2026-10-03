@@ -1,0 +1,33 @@
+err_skip.c:2:15: error: expected expression before ')' token
+    2 | int a1 = (1 + );
+      |               ^
+err_skip.c:4:12: error: expected ')' before numeric constant
+    4 | int a3 = (1 2);
+      |            ^
+err_skip.c:5:10: error: expected expression before ';' token
+    5 | int a4 = ;
+      |          ^
+err_skip.c:7:14: error: expected ')' before numeric constant
+    7 | int a6 = (int 3);
+      |              ^
+err_skip.c:7:17: error: expected expression before ';' token
+    7 | int a6 = (int 3);
+      |                 ^
+err_skip.c:9:10: error: expected expression before ';' token
+    9 | int a8 = ;
+      |          ^
+err_skip.c:10:17: warning: ISO C does not allow extra ';' outside of a function [-Wpedantic]
+   10 | int a9 = { 1 + };
+      |                 ^
+err_skip.c:11:10: error: expected expression before ';' token
+   11 | int b1 = ;
+      |          ^
+err_skip.c:13:21: error: expected ')' before numeric constant
+   13 | int b3 = sizeof (int 3);
+      |                     ^
+err_skip.c:14:10: error: expected expression before ';' token
+   14 | int b4 = ;
+      |          ^
+err_skip.c:17:1: error: expected expression before 'int'
+   17 | int b7 = ;
+      | ^
