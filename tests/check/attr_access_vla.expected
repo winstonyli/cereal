@@ -1,0 +1,36 @@
+attr_access_vla.c:6:16: warning: attribute 'access(read_write, 2, 3)' positional argument 2 conflicts with previous designation by argument 1 [-Wattributes]
+    6 | RW (2, 3) void f1 (int n, int[n], int);
+      |                ^
+attr_access_vla.c:4:14: note: designating the bound of variable length array argument 2
+    4 | void f1 (int n, int[n], int);
+      |              ^
+attr_access_vla.c:13:13: warning: attribute 'access(read_write, 2)' missing positional argument 2 provided in previous designation by argument 1 [-Wattributes]
+   13 | RW (2) void f7 (int n, int[n]);
+      |             ^
+attr_access_vla.c:12:21: note: designating the bound of variable length array argument 2
+   12 |        void f7 (int n, int[n]);
+      |                     ^
+attr_access_vla.c:16:32: warning: argument 2 of type 'char[n]' declared as a variable length array [-Wvla-parameter]
+   16 | RW (2)    void f9 (int n, char a[n])
+      |                                ^
+attr_access_vla.c:15:25: note: previously declared as an ordinary array 'char[]'
+   15 |           void f9 (int, char[]);
+      |                         ^
+attr_access_vla.c:16:16: warning: attribute 'access (read_write, 2)' positional argument 2 missing in previous designation [-Wattributes]
+   16 | RW (2)    void f9 (int n, char a[n])
+      |                ^
+attr_access_vla.c:16:24: note: designating the bound of variable length array argument 2
+   16 | RW (2)    void f9 (int n, char a[n])
+      |                        ^
+attr_access_vla.c:21:16: warning: attribute 'access (read_write, 2, 3)' positional argument 2 conflicts with previous designation by argument 3 [-Wattributes]
+   21 | RW (2, 3) void g1 (int n, int[n], int);
+      |                ^
+attr_access_vla.c:21:24: note: designating the bound of variable length array argument 2
+   21 | RW (2, 3) void g1 (int n, int[n], int);
+      |                        ^
+attr_access_vla.c:24:16: warning: attribute 'access(read_write, 2, 3)' positional argument 2 conflicts with previous designation by argument 1 [-Wattributes]
+   24 | RW (2, 3) void f11 (int n, char a[*], int m);
+      |                ^
+attr_access_vla.c:23:16: note: previous declaration here
+   23 | RW (2, 1) void f11 (int n, char a[*], int m);
+      |                ^

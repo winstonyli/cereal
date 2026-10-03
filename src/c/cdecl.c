@@ -1760,16 +1760,29 @@ static void alloc_redecl(Checker *c, uint32_t item, const char *name, SrcLoc loc
 typedef struct {
     char mode[16];
     uint32_t ptr, size;
+    bool implied;               /* from a VLA parameter's bound */
+    bool star;                  /* an attribute on a [*] parameter */
+    bool bnamed;
+    SrcLoc bloc;                /* ... and where that bound is declared */
 } AccSeen;
 static AccSeen acc_l[32];
 static unsigned acc_n;
+static CImplied imp_l[16];      /* this declaration's VLA designations */
+static unsigned imp_n;
+static uint32_t imp_name;
 
 static bool acc_parse(const char *arg, AccSeen *o)
 {
     char md[32];
-    const char *q = strchr(arg, ',');
+    const char *q;
     char *e;
     unsigned long p, z = 0;
+    memset(o, 0, sizeof *o);
+    if (*arg == '~') {
+        o->implied = true;
+        arg++;
+    }
+    q = strchr(arg, ',');
     if (!q || (size_t)(q - arg) >= sizeof md)
         return false;
     memcpy(md, arg, (size_t)(q - arg));
@@ -1785,11 +1798,96 @@ static bool acc_parse(const char *arg, AccSeen *o)
     return true;
 }
 
+/* How the new access designation x disagrees with the accepted e (0: it
+ * does not). */
+enum { AK_NONE, AK_CONFLICT, AK_MODE, AK_MISSING_OLD, AK_MISSING_NEW, AK_VALUES };
+
+static int acc_kind(const AccSeen *e, const AccSeen *x)
+{
+    bool vla = e->implied || x->implied || e->star;
+    if ((e->implied || e->star) && !e->size)
+        return AK_NONE;     /* a [*] bound only says the argument is an array */
+    if ((x->implied && !x->size) || (e->implied && x->implied))
+        return AK_NONE;
+    if (vla && x->size && e->size && x->size != e->size &&
+        !strcmp(e->mode, x->mode))
+        return AK_CONFLICT;
+    if (strcmp(e->mode, x->mode))
+        return AK_MODE;
+    if (!e->size && x->size)
+        return AK_MISSING_OLD;
+    if (e->size && !x->size)
+        return AK_MISSING_NEW;
+    if (e->size != x->size)
+        return AK_VALUES;
+    return AK_NONE;
+}
+
+static void acc_diag(Checker *c, const AccSeen *e, const AccSeen *x, int kind)
+{
+    char spec[96], sz[16] = "";
+    Diagnostic *d = NULL;
+    bool vla = e->implied || x->implied;
+    /* a VLA designation found after the attribute: gcc names the attribute,
+     * in its tree form */
+    const AccSeen *sx = x->implied ? e : x;
+    if (sx->size)
+        snprintf(sz, sizeof sz, ", %u", sx->size);
+    snprintf(spec, sizeof spec, x->implied ? "access (%s, %u%s)" :
+             "access(%s, %u%s)", sx->mode, sx->ptr, sz);
+    switch (kind) {
+    case AK_CONFLICT:
+        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+                    "positional argument 2 conflicts with previous "
+                    "designation by argument %u", spec, e->size);
+        break;
+    case AK_MODE:
+        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+                    "mismatch with mode '%s'", spec, e->mode);
+        break;
+    case AK_MISSING_OLD:
+        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+                    "positional argument 2 missing in previous designation",
+                    spec);
+        break;
+    case AK_MISSING_NEW:
+        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+                    "missing positional argument 2 provided in previous "
+                    "designation by argument %u", spec, e->size);
+        break;
+    case AK_VALUES:
+        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+                    "mismatched positional argument values %u and %u", spec,
+                    x->size, e->size);
+        break;
+    }
+    if (d && vla) {
+        const AccSeen *iv = e->implied ? e : x;
+        SrcLoc bl = alloc_loc;
+        unsigned j;
+        if (iv->bnamed)
+            bl = iv->bloc;
+        else
+            for (j = 0; j < imp_n; j++)
+                if (imp_l[j].ptr == iv->ptr)
+                    bl = imp_l[j].bloc;
+        cnote(c, d, bl, "designating the bound of variable length array "
+              "argument %u", iv->ptr);
+    } else if (d) {
+        uint32_t ref = lookup_ord(c, alloc_name);
+        if (ref != SYM_NONE && csym(c, ref)->kind == CS_FUNC)
+            cnote(c, d, csym(c, ref)->loc, "previous declaration here");
+    }
+}
+
+/* VLA designations an earlier declaration lost to its attribute: a
+ * redeclaration reports them again. */
+static struct { AccSeen e, x; } acc_redo[8];
+static unsigned acc_nredo;
+
 static void acc_add(Checker *c, const AccSeen *x, bool warn)
 {
     unsigned i;
-    char spec[96], sz[16] = "";
-    Diagnostic *d = NULL;
     const AccSeen *e = NULL;
     for (i = 0; i < acc_n; i++)
         if (acc_l[i].ptr == x->ptr) {
@@ -1801,30 +1899,24 @@ static void acc_add(Checker *c, const AccSeen *x, bool warn)
             acc_l[acc_n++] = *x;
         return;
     }
-    if (!warn)
+    if ((e->implied || e->star) && !e->size)
         return;
-    if (x->size)
-        snprintf(sz, sizeof sz, ", %u", x->size);
-    snprintf(spec, sizeof spec, "access(%s, %u%s)", x->mode, x->ptr, sz);
-    if (strcmp(e->mode, x->mode))
-        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
-                    "mismatch with mode '%s'", spec, e->mode);
-    else if (!e->size && x->size)
-        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
-                    "positional argument 2 missing in previous designation",
-                    spec);
-    else if (e->size && !x->size)
-        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
-                    "missing positional argument 2 provided in previous "
-                    "designation by argument %u", spec, e->size);
-    else if (e->size != x->size)
-        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
-                    "mismatched positional argument values %u and %u", spec,
-                    x->size, e->size);
-    if (d) {
-        uint32_t ref = lookup_ord(c, alloc_name);
-        if (ref != SYM_NONE && csym(c, ref)->kind == CS_FUNC)
-            cnote(c, d, csym(c, ref)->loc, "previous declaration here");
+    if (x->implied && !x->size)
+        acc_l[e - acc_l].star = true;       /* the explicit one is as weak */
+    else if (x->implied && !e->implied && !acc_kind(e, x)) {
+        /* the same designation twice: the bound's wording wins */
+        acc_l[e - acc_l].implied = true;
+        acc_l[e - acc_l].bnamed = x->bnamed;
+        acc_l[e - acc_l].bloc = x->bloc;
+    }
+    if (warn) {
+        int k = acc_kind(e, x);
+        if (k)
+            acc_diag(c, e, x, k);
+    } else if (x->implied && !e->implied && acc_kind(e, x) && acc_nredo < 8) {
+        acc_redo[acc_nredo].e = *e;
+        acc_redo[acc_nredo].x = *x;
+        acc_nredo++;
     }
 }
 
@@ -1839,13 +1931,15 @@ static void acc_start(uint32_t name, SrcLoc loc)
     alloc_loc = loc;
     acc_n = 0;
     acc_ready = false;
+    imp_n = 0;
+    acc_nredo = 0;
 }
 
 /* Replay what the earlier declarations accepted (the symbol's attribute
  * chain, oldest first). */
-static void acc_replay(Checker *c)
+static void acc_replay_ref(Checker *c, uint32_t ref)
 {
-    uint32_t ref = lookup_ord(c, alloc_name), idx[64], n = 0, k, i;
+    uint32_t idx[64], n = 0, k, i;
     acc_ready = true;
     if (ref == SYM_NONE || csym(c, ref)->kind != CS_FUNC || !csym(c, ref)->aset)
         return;
@@ -1853,11 +1947,80 @@ static void acc_replay(Checker *c)
          k = c->anames.data[k - 1].prev)
         if (!strcmp(c->anames.data[k - 1].name, "access"))
             idx[n++] = k;
-    for (i = n; i-- > 0;) {
-        AccSeen x;
-        if (acc_parse(c->anames.data[idx[i] - 1].arg, &x))
+    {
+        CImplied oi[16];
+        unsigned on = cparm_implied(c, csym(c, ref)->parms, oi, 16), j;
+        for (i = n; i-- > 0;) {
+            AccSeen x;
+            if (!acc_parse(c->anames.data[idx[i] - 1].arg, &x))
+                continue;
+            for (j = 0; x.implied && j < on; j++)
+                if (oi[j].ptr == x.ptr && oi[j].size == x.size) {
+                    x.bloc = oi[j].bloc;
+                    x.bnamed = oi[j].bnamed;
+                }
             acc_add(c, &x, false);
+        }
     }
+}
+
+static void acc_replay(Checker *c)
+{
+    acc_replay_ref(c, lookup_ord(c, alloc_name));
+}
+
+/* The access attributes the declaration's own VLA parameters imply, checked
+ * against what is accepted so far (after the redeclaration's merge, so
+ * after the parameter warnings). */
+static void acc_implied(Checker *c, uint32_t ref, bool redecl, bool def)
+{
+    CImplied oi[16];
+    unsigned on, j, m;
+    if (!imp_n && !cdecl_aset_has(c, csym(c, ref)->aset, "access", NULL))
+        return;
+    on = cparm_implied(c, csym(c, ref)->parms, oi, 16);
+    alloc_name = imp_name;
+    if (!acc_ready)
+        acc_replay_ref(c, ref);
+    if (redecl || def)
+        for (j = 0; j < acc_nredo; j++)
+            acc_diag(c, &acc_redo[j].e, &acc_redo[j].x,
+                     acc_kind(&acc_redo[j].e, &acc_redo[j].x));
+    if (redecl && !def)
+        imp_n = 0;      /* a redeclaration's own bounds add nothing */
+    for (j = 0; j < imp_n; j++) {
+        AccSeen x;
+        memset(&x, 0, sizeof x);
+        snprintf(x.mode, sizeof x.mode, "read_write");
+        x.ptr = imp_l[j].ptr;
+        x.size = imp_l[j].size;
+        x.implied = true;
+        x.bnamed = imp_l[j].bnamed;
+        x.bloc = imp_l[j].bloc;
+        for (m = 0; m < on; m++)     /* the earlier declaration's, if it names it */
+            if (oi[m].ptr == x.ptr && oi[m].bnamed) {
+                x.bloc = oi[m].bloc;
+                x.bnamed = true;
+            }
+        acc_add(c, &x, true);
+    }
+    alloc_name = 0;
+}
+
+static void aset_add(Checker *c, uint32_t *set, const char *name,
+                     const char *arg);
+
+/* Keep the declaration's VLA designations with the function's attributes. */
+static void acc_chain_implied(Checker *c, uint32_t ref)
+{
+    unsigned j;
+    for (j = 0; j < imp_n; j++) {
+        char buf[48];
+        snprintf(buf, sizeof buf, "~read_write,%u,%u", imp_l[j].ptr,
+                 imp_l[j].size);
+        aset_add(c, &csym(c, ref)->aset, "access", buf);
+    }
+    imp_n = 0;
 }
 
 /* handle_alloc_align_attribute / handle_alloc_size_attribute for the
@@ -5751,6 +5914,12 @@ static void declared_visit(Checker *c, uint32_t i)
         /* the declared type keeps the typedef names of the parameters */
         TypeId aft = type_kind(TT, s.ty) == TY_FUNC ? s.ty : type_canon(TT, s.ty);
         acc_start(s.name, s.loc);
+        imp_name = alloc_name;
+        if (!kr) {
+            uint32_t pt = cparm_make(c, funcdef_fnode(c, top));
+            imp_n = cparm_implied(c, pt, imp_l, 16);
+            cparm_release(c, pt);
+        }
         attrs_alloc_check(c, sn, aft, ltok);
         attrs_alloc_check(c, idecl, aft, ltok);
         alloc_name = 0;
@@ -5980,9 +6149,13 @@ static void declared_visit(Checker *c, uint32_t i)
         }
         c->ty[i] = t->ty;
     }
+    if (g.what == GD_FUNC && csym(c, ref)->kind == CS_FUNC)
+        acc_implied(c, ref, csym(c, ref)->parms != s.parms, false);
     attrs_names(c, sn, &csym(c, ref)->aset);
     attrs_names_ptrs(c, idecl, &csym(c, ref)->aset);
     attrs_names(c, idecl, &csym(c, ref)->aset);
+    if (g.what == GD_FUNC && csym(c, ref)->kind == CS_FUNC)
+        acc_chain_implied(c, ref);
     if (a.packed)               /* ignored (attrs_misapplied), so not kept */
         aset_drop(c, csym(c, ref)->aset, "packed");
     if (csym(c, ref)->kind == CS_TYPEDEF && csym(c, ref)->aset &&
@@ -7818,6 +7991,12 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         return;
     attrs_unknown_emit(c, &sp.attrs, ltok);
     acc_start(g.s.name, g.s.loc);
+    imp_name = alloc_name;
+    {
+        uint32_t pt = cparm_make(c, funcdef_fnode(c, top));
+        imp_n = cparm_implied(c, pt, imp_l, 16);
+        cparm_release(c, pt);
+    }
     attrs_alloc_check(c, fp.specs, type_kind(TT, g.s.ty) == TY_FUNC ? g.s.ty :
                       type_canon(TT, g.s.ty), ltok);
     alloc_name = 0;
@@ -7944,7 +8123,9 @@ static void funcdef_declared(Checker *c, uint32_t declared)
                     (s.flags & (CSF_PROTO_DEF | CSF_KR_DEF));
         t->def_loc = loc;
     }
+    acc_implied(c, ref, false, true);
     attrs_names(c, fp.specs, &csym(c, ref)->aset);
+    acc_chain_implied(c, ref);
     if (sp.is_noreturn)
         aset_add(c, &csym(c, ref)->aset, "noreturn", "");
     dump_decl(c, csym(c, ref));

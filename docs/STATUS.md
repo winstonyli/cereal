@@ -892,3 +892,18 @@ layouts, gcc rules ported, walk design).
 - Known gaps: `tls_model` without thread storage, `leaf` on function-pointer parameters, warning order when
   `attrs_misapplied` and the table both fire on one declaration, `packed` on typedef of incomplete struct,
   fallthrough, alloc_size/alloc_align in has_attribute type-names.
+
+## Round 38 — access attribute implied by VLA parameters
+
+- A prototype's `T a[n]` parameter implies `access(read_write, pos, n)` (`cparm_implied`, cparm.c); `[*]` implies a
+  weak size-less entry that never warns. Implied entries are kept in the function's attribute chain as `~mode,p,s`
+  and carry the bound parameter's location for the "designating the bound of variable length array argument N" note
+  (old declaration's name if it names the parameter, else the current one).
+- cdecl.c: `acc_kind`/`acc_diag`/`acc_add`/`acc_implied`. Explicit-vs-implied size mismatch reads "conflicts with
+  previous designation by argument N"; a VLA bound found after the attribute names the attribute as `access (…)`.
+  A non-definition redeclaration adds no implied entry of its own but repeats earlier conflicts (gcc re-merges).
+- Golden `attr_access_vla`. All 256 old/new declaration-form combinations in a probe matrix match gcc on the access
+  warnings. Parity: tests 969, gcc.dg 3653 identical (222 differ), c-c++-common 554, san clean (313).
+- Known gap: after a declaration with an explicit `access` on a pointer/VLA parameter, gcc describes that parameter
+  as an ordinary `char[]` in later -Wvla-parameter warnings (~64 matrix combinations); cereal does not.
+- Goldens must use LF line endings (a CR in the `// flags:` line breaks run.sh).

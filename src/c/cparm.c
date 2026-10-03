@@ -62,6 +62,7 @@ typedef struct PParm {
     bool stat;               /* [static n] */
     bool rst;                /* a restrict-qualified pointer */
     bool unk;                /* a variable-length typedef: not described */
+    bool named;              /* loc is the parameter's name */
     unsigned np;             /* pointer levels around the brackets (arr unset) */
     unsigned quals;          /* qualifiers inside the first brackets */
     uint32_t nd;             /* the bracket pairs; 0: any other type */
@@ -345,6 +346,7 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
     for (m = cfirst(c, p); m <= p; m++)
         if (ntag(c, m) == N_NAME) {
             o->loc = cnode_loc(c, m);
+            o->named = true;
             break;
         }
     if (m > p)
@@ -481,6 +483,30 @@ uint32_t cparm_make(Checker *c, uint32_t fnode)
         parm_of(c, pn[i], &pd->p[i], names, np);
     vec_push(&c->pdescs, (struct CParmDesc *)pd);
     return (uint32_t)c->pdescs.len;
+}
+
+unsigned cparm_implied(Checker *c, uint32_t d, CImplied *out, unsigned max)
+{
+    const CParmDesc *pd = d ? desc_of(c, d) : NULL;
+    unsigned i, n = 0;
+    for (i = 0; pd && i < pd->n && n < max; i++) {
+        const PParm *p = &pd->p[i];
+        if (p->arr && p->nd && p->d[0].k == D_STAR && !p->d[0].inner) {
+            out[n].ptr = i + 1;
+            out[n].size = 0;
+            out[n].bloc = p->loc;
+            out[n].bnamed = false;
+            n++;
+        } else if (p->arr && p->nd && p->d[0].k == D_EXPR && p->d[0].arg &&
+            p->d[0].arg <= pd->n) {
+            out[n].ptr = i + 1;
+            out[n].size = p->d[0].arg;
+            out[n].bloc = pd->p[p->d[0].arg - 1].loc;
+            out[n].bnamed = pd->p[p->d[0].arg - 1].named;
+            n++;
+        }
+    }
+    return n;
 }
 
 /* A redeclaration whose record was not kept: forget it again. */

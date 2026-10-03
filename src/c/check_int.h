@@ -503,6 +503,14 @@ void cparm_compare(Checker *c, uint32_t nw, uint32_t old);
 void cparm_release(Checker *c, uint32_t d);
 void cparm_free(Checker *c);
 bool cparm_restrict(Checker *c, uint32_t d, uint32_t j);
+/* The access attributes a prototype's VLA parameters imply: parameter ptr
+ * (1-based) has its bound in parameter size; bloc: where that is declared. */
+typedef struct {
+    uint32_t ptr, size;
+    SrcLoc bloc;
+    bool bnamed;
+} CImplied;       /* size 0: a [*] bound */
+unsigned cparm_implied(Checker *c, uint32_t d, CImplied *out, unsigned max);
 /* Declarator helpers cparm.c shares (cdecl.c). */
 uint32_t cdecl_inner_decl(const Checker *c, uint32_t i);
 uint32_t cdecl_array_size_node(Checker *c, uint32_t a);
