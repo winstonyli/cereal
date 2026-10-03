@@ -1596,6 +1596,16 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
             align = !strcmp(name, "alloc_align");
+            if ((!strcmp(name, "error") || !strcmp(name, "warning")) &&
+                type_ckind(TT, fty) == TY_FUNC && !alloc_via_ptr) {
+                /* handle_error_attribute: the message must be a string */
+                kids_get(c, it.p[q], &ak);
+                if (ak.n && ntag(c, ak.p[0]) != N_STRING)
+                    cwarn(c, iloc(c, tok), "attributes",
+                          "'%s' attribute ignored", name);
+                kids_free(&ak);
+                continue;
+            }
             if ((!strcmp(name, "pure") || !strcmp(name, "const")) &&
                 type_ckind(TT, fty) == TY_FUNC && !alloc_via_ptr) {
                 /* handle_pure/const_attribute; the second of the pair is

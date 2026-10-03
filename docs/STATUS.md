@@ -816,3 +816,14 @@ layouts, gcc rules ported, walk design).
   strings, middle-end).  -Wstrict-aliasing level 1 and -Wlogical-op signedness
   casts: no diagnostics missing in either corpus, so no work needed.  Still
   unimplemented: "'const' attribute ignored" on typedefs and variables.
+- Round 33 (2026-10-03): ASan/UBSan (san.sh) on the Round 32 tree: 947 passed,
+  302 files, 0 findings.  error/warning attribute with a non-string message on
+  a function: "'error' attribute ignored" (golden attr_error_nonstring).
+  Tests 949; gcc.dg 3646, c-c++-common 544.
+  -Wattributes missing now (gcc.dg + c-c++-common, diagnostics/files):
+  alloc_align conflicts with previous designation 20/3; "'X' attribute
+  ignored" 14/6 (each a different handler: 'used' on unnamed parameter
+  declarators attr-nest.c, 'packed' on a typedef of an incomplete struct
+  pack-test-3.c, const/pure on typedefs and variables); requested alignment
+  '0' not a positive power of 2 11/4; access(mode) mismatch 10/1; fd_arg only
+  applies to function types 9/4; format on non-variadic function 6/1.

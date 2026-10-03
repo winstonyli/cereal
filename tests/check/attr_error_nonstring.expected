@@ -1,0 +1,9 @@
+attr_error_nonstring.c:2:1: warning: 'error' attribute ignored [-Wattributes]
+    2 | extern void foo (void) __attribute__ ((error (0)));
+      | ^
+attr_error_nonstring.c:3:1: warning: 'warning' attribute ignored [-Wattributes]
+    3 | extern void bar (void) __attribute__ ((warning (0)));
+      | ^
+attr_error_nonstring.c:6:1: warning: 'error' attribute ignored [-Wattributes]
+    6 | int var __attribute__ ((error ("foo")));
+      | ^
