@@ -1,0 +1,6 @@
+cast_qual_basic.c:18:3: warning: cast discards 'const' qualifier from pointer target type [-Wcast-qual]
+   18 |   (const char **)bar; /* { dg-warning "cast discards" "discarding `const' warning" } */
+      |   ^
+cast_qual_basic.c:30:22: warning: initialization discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   30 |   const char **foo = bar; /* { dg-warning "initialization discards" "discarding `const' warning" } */
+      |                      ^

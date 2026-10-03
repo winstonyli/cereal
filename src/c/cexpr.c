@@ -2360,6 +2360,17 @@ static void sp(char *b, const char *fmt, ...)
 }
 
 /* %qv: the qualifiers in q. */
+/* a function type's const / volatile are the attributes const / noreturn */
+static const char *fqual_str(char *b, unsigned q)
+{
+    b[0] = 0;
+    if (q & TQ_CONST)
+        strcat(b, "__attribute__((const))");
+    if (q & TQ_VOLATILE)
+        strcat(b, b[0] ? " __attribute__((noreturn))" : "__attribute__((noreturn))");
+    return b;
+}
+
 static const char *qual_str(char *b, unsigned q)
 {
     b[0] = 0;
@@ -4178,7 +4189,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
             } else if (is_func(c, ttl) && is_func(c, ttr)) {
                 unsigned lq = TYPE_QUALS(ttl) & qnoat, rq = TYPE_QUALS(ttr) & qnoat;
                 if (lq & ~rq) {
-                    const char *qs = qual_str(q, lq & ~rq);
+                    const char *qs = fqual_str(q, lq & ~rq);
                     sp(m[CONV_ARG], "passing argument %d of '%s' makes '%s' "
                        "qualified function pointer from unqualified", pn, fn, qs);
                     sp(m[CONV_ASSIGN], "assignment makes '%s' qualified "
@@ -7795,6 +7806,65 @@ static int cast_class(Checker *c, TypeId t)
     return (int)k;
 }
 
+/* gcc's handle_warn_cast_qual: a pointer cast that drops a qualifier of a
+ * target type, or that is unsafe through an unqualified intermediate level. */
+static void cast_qual(Checker *c, SrcLoc loc, TypeId t, TypeId ot)
+{
+    TypeId it = t, io = ot;
+    unsigned discarded = 0, added = 0, qnoat = TQ_CONST | TQ_VOLATILE | TQ_RESTRICT | TQ_ATOMIC;
+    bool is_const;
+    char b[48];
+    if (!diag_enabled(c->diag, "cast-qual"))
+        return;
+    do {
+        it = type_canon(TT, type_base(TT, type_canon(TT, it)));
+        io = type_canon(TT, type_base(TT, type_canon(TT, io)));
+        if (is_func(c, it) && is_func(c, io))
+            added |= tquals(c, it) & ~tquals(c, io) & qnoat;
+        else
+            discarded |= tquals(c, strip_arr(c, io)) & ~tquals(c, strip_arr(c, it)) & qnoat;
+    } while (tkind(c, it) == TY_PTR && tkind(c, io) == TY_PTR);
+    if (added)
+        cwarn(c, loc, "cast-qual", "cast adds '%s%s%s' qualifier to function "
+              "type", added & TQ_CONST ? "__attribute__((const))" : "",
+              (added & TQ_CONST) && (added & TQ_VOLATILE) ? " " : "",
+              added & TQ_VOLATILE ? "__attribute__((noreturn))" : "");
+    if (discarded)
+        cwarn(c, loc, "cast-qual", "cast discards '%s' qualifier from pointer "
+              "target type", qual_str(b, discarded));
+    if (added || discarded)
+        return;
+    it = t;
+    io = ot;
+    /* only when the types are otherwise the same */
+    for (;;) {
+        it = type_canon(TT, type_base(TT, type_canon(TT, it)));
+        io = type_canon(TT, type_base(TT, type_canon(TT, io)));
+        if (tkind(c, it) == TY_PTR && tkind(c, io) == TY_PTR)
+            continue;
+        if (tkind(c, it) == TY_PTR || tkind(c, io) == TY_PTR ||
+            !type_compatible(TT, mainv(c, it), mainv(c, io)))
+            return;
+        break;
+    }
+    it = t;
+    io = ot;
+    is_const = (tquals(c, pointee(c, it)) & TQ_CONST) != 0;
+    do {
+        it = type_canon(TT, type_base(TT, type_canon(TT, it)));
+        io = type_canon(TT, type_base(TT, type_canon(TT, io)));
+        if (!is_func(c, it) && (tquals(c, it) & ~tquals(c, io) & qnoat) &&
+            !is_const) {
+            cwarn(c, loc, "cast-qual", "to be safe all intermediate pointers "
+                  "in cast from %s to %s must be 'const' qualified",
+                  type_q(TT, ot), type_q(TT, t));
+            break;
+        }
+        if (is_const)
+            is_const = (tquals(c, it) & TQ_CONST) != 0;
+    } while (tkind(c, it) == TY_PTR && tkind(c, io) == TY_PTR);
+}
+
 static void e_cast(Checker *c, uint32_t i)
 {
     uint32_t k[2], a;
@@ -7960,6 +8030,7 @@ static void e_cast(Checker *c, uint32_t i)
     }
     if (is_ptr(c, t) && is_ptr(c, ot)) {
         TypeId pt = pointee(c, t), po = pointee(c, ot);
+        cast_qual(c, loc, t, ot);
         if (is_func(c, pt) && !is_func(c, po) && !(c->ef[a] & EF_NPC))
             ped(c, i, loc, "ISO C forbids conversion of object pointer to "
                            "function pointer type");

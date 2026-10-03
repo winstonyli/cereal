@@ -974,3 +974,12 @@ layouts, gcc rules ported, walk design).
   Wnonnull-6.c). Golden `nonnull_fnptr`. Open: built-in nonnull via `__builtin_va_arg_pack` (pr62090.c),
   builtin-arith-overflow-1.c arg 3.
 - Parity: tests 987, gcc.dg 3657 identical (218 differ), c-c++-common 555 (102), san clean (322).
+
+### Round 42 — -Wcast-qual
+- cexpr.c `cast_qual` (gcc's handle_warn_cast_qual) called from e_cast for pointer→pointer casts: discarded target
+  qualifiers, qualifiers added to function types (`__attribute__((const))` / `noreturn`), and the "all intermediate
+  pointers must be const" check, only when the types are otherwise the same (same depth, compatible base).
+- Function types now keep their qualifiers on a plain declaration (`const fnt f;`) and print them as
+  `__attribute__((const)) int (*)(int)` (type.c); the "makes … qualified function pointer" text uses the same names.
+- Goldens `cast_qual_ptrs`, `cast_qual_func`, `cast_qual_basic` (gcc testsuite files).
+- Parity: tests 993, gcc.dg 3659 identical (216 differ), c-c++-common 556 (101), san clean (325).

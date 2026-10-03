@@ -1,0 +1,93 @@
+cast_qual_ptrs.c:37:21: warning: to be safe all intermediate pointers in cast from 'void **' to 'const void **' must be 'const' qualified [-Wcast-qual]
+   37 |   const void **p3 = (const void **) bar; /* { dg-warning "cast" } */
+      |                     ^
+cast_qual_ptrs.c:70:22: warning: to be safe all intermediate pointers in cast from 'void ***' to 'const void ***' must be 'const' qualified [-Wcast-qual]
+   70 |   const void ***p9 = (const void ***) bar; /* { dg-warning "cast" } */
+      |                      ^
+cast_qual_ptrs.c:72:24: warning: to be safe all intermediate pointers in cast from 'void ***' to 'void * const**' must be 'const' qualified [-Wcast-qual]
+   72 |   void * const **p11 = (void * const **) bar; /* { dg-warning "cast" } */
+      |                        ^
+cast_qual_ptrs.c:76:30: warning: to be safe all intermediate pointers in cast from 'void ***' to 'const void * const**' must be 'const' qualified [-Wcast-qual]
+   76 |   const void * const **p15 = (const void * const **) bar; /* { dg-warning "cast" } */
+      |                              ^
+cast_qual_ptrs.c:78:30: warning: to be safe all intermediate pointers in cast from 'void ***' to 'const void ** const*' must be 'const' qualified [-Wcast-qual]
+   78 |   const void ** const *p17 = (const void ** const *) bar; /* { dg-warning "cast" } */
+      |                              ^
+cast_qual_ptrs.c:89:22: warning: cast discards 'const' qualifier from pointer target type [-Wcast-qual]
+   89 |   const void ***p9 = (const void ***) bar; /* { dg-warning "cast" } */
+      |                      ^
+cast_qual_ptrs.c:91:24: warning: cast discards 'const' qualifier from pointer target type [-Wcast-qual]
+   91 |   void ** const *p13 = (void ** const *) bar; /* { dg-warning "cast" } */
+      |                        ^
+cast_qual_ptrs.c:92:30: warning: to be safe all intermediate pointers in cast from 'void * const**' to 'const void * const**' must be 'const' qualified [-Wcast-qual]
+   92 |   const void * const **p15 = (const void * const **) bar; /* { dg-warning "cast" } */
+      |                              ^
+cast_qual_ptrs.c:93:30: warning: cast discards 'const' qualifier from pointer target type [-Wcast-qual]
+   93 |   const void ** const *p17 = (const void ** const *) bar; /* { dg-warning "cast" } */
+      |                              ^
+cast_qual_ptrs.c:101:31: warning: to be safe all intermediate pointers in cast from 'char ***' to 'const volatile char ***' must be 'const' qualified [-Wcast-qual]
+  101 |   volatile const char ***p9 = (volatile const char ***) bar; /* { dg-warning "cast" } */
+      |                               ^
+cast_qual_ptrs.c:102:33: warning: to be safe all intermediate pointers in cast from 'char ***' to 'volatile char * const**' must be 'const' qualified [-Wcast-qual]
+  102 |   volatile char * const **p11 = (volatile char * const **) bar; /* { dg-warning "cast" } */
+      |                                 ^
+cast_qual_ptrs.c:103:33: warning: to be safe all intermediate pointers in cast from 'char ***' to 'volatile char ** const*' must be 'const' qualified [-Wcast-qual]
+  103 |   volatile char ** const *p13 = (volatile char ** const *) bar; /* { dg-warning "cast" } */
+      |                                 ^
+cast_qual_ptrs.c:104:39: warning: to be safe all intermediate pointers in cast from 'char ***' to 'const volatile char * const**' must be 'const' qualified [-Wcast-qual]
+  104 |   volatile const char * const **p15 = (volatile const char * const **) bar; /* { dg-warning "cast" } */
+      |                                       ^
+cast_qual_ptrs.c:105:39: warning: to be safe all intermediate pointers in cast from 'char ***' to 'const volatile char ** const*' must be 'const' qualified [-Wcast-qual]
+  105 |   volatile const char ** const *p17 = (volatile const char ** const *) bar; /* { dg-warning "cast" } */
+      |                                       ^
+cast_qual_ptrs.c:113:32: warning: to be safe all intermediate pointers in cast from 'char ***' to 'const char * volatile**' must be 'const' qualified [-Wcast-qual]
+  113 |   const char * volatile **p9 = (const char * volatile **) bar; /* { dg-warning "cast" } */
+      |                                ^
+cast_qual_ptrs.c:114:33: warning: to be safe all intermediate pointers in cast from 'char ***' to 'char * const volatile**' must be 'const' qualified [-Wcast-qual]
+  114 |   char * volatile const **p11 = (char * volatile const **) bar; /* { dg-warning "cast" } */
+      |                                 ^
+cast_qual_ptrs.c:116:39: warning: to be safe all intermediate pointers in cast from 'char ***' to 'const char * const volatile**' must be 'const' qualified [-Wcast-qual]
+  116 |   const char * volatile const **p15 = (const char * volatile const **) bar; /* { dg-warning "cast" } */
+      |                                       ^
+cast_qual_ptrs.c:117:40: warning: to be safe all intermediate pointers in cast from 'char ***' to 'const char * volatile* const*' must be 'const' qualified [-Wcast-qual]
+  117 |   const char * volatile * const *p17 = (const char * volatile * const *) bar; /* { dg-warning "cast" } */
+      |                                        ^
+cast_qual_ptrs.c:125:32: warning: to be safe all intermediate pointers in cast from 'char ***' to 'const char ** volatile*' must be 'const' qualified [-Wcast-qual]
+  125 |   const char ** volatile *p9 = (const char ** volatile *) bar; /* { dg-warning "cast" } */
+      |                                ^
+cast_qual_ptrs.c:126:34: warning: to be safe all intermediate pointers in cast from 'char ***' to 'char * const* volatile*' must be 'const' qualified [-Wcast-qual]
+  126 |   char * const * volatile *p11 = (char * const * volatile *) bar; /* { dg-warning "cast" } */
+      |                                  ^
+cast_qual_ptrs.c:128:40: warning: to be safe all intermediate pointers in cast from 'char ***' to 'const char * const* volatile*' must be 'const' qualified [-Wcast-qual]
+  128 |   const char * const * volatile *p15 = (const char * const * volatile *) bar; /* { dg-warning "cast" } */
+      |                                        ^
+cast_qual_ptrs.c:129:39: warning: to be safe all intermediate pointers in cast from 'char ***' to 'const char ** const volatile*' must be 'const' qualified [-Wcast-qual]
+  129 |   const char ** volatile const *p17 = (const char ** volatile const *) bar; /* { dg-warning "cast" } */
+      |                                       ^
+cast_qual_ptrs.c:136:22: warning: ISO C forbids qualified function types [-Wpedantic]
+  136 | typedef const intfn *constfn;
+      |                      ^
+cast_qual_ptrs.c:149:25: warning: to be safe all intermediate pointers in cast from '__attribute__((const)) int (****)(int)' to '__attribute__((const)) int (* const***)(int)' must be 'const' qualified [-Wcast-qual]
+  149 |   const constfn ***p9 = (const constfn ***) bar; /* { dg-warning "cast" } */
+      |                         ^
+cast_qual_ptrs.c:150:25: warning: to be safe all intermediate pointers in cast from '__attribute__((const)) int (****)(int)' to 'int (* const***)(int)' must be 'const' qualified [-Wcast-qual]
+  150 |   const pintfn ***p10 = (const pintfn ***) bar; /* { dg-warning "cast" } */
+      |                         ^
+cast_qual_ptrs.c:151:27: warning: to be safe all intermediate pointers in cast from '__attribute__((const)) int (****)(int)' to '__attribute__((const)) int (** const**)(int)' must be 'const' qualified [-Wcast-qual]
+  151 |   constfn * const **p11 = (constfn * const **) bar; /* { dg-warning "cast" } */
+      |                           ^
+cast_qual_ptrs.c:152:26: warning: to be safe all intermediate pointers in cast from '__attribute__((const)) int (****)(int)' to 'int (** const**)(int)' must be 'const' qualified [-Wcast-qual]
+  152 |   pintfn * const **p12 = (pintfn * const **) bar; /* { dg-warning "cast" } */
+      |                          ^
+cast_qual_ptrs.c:155:33: warning: to be safe all intermediate pointers in cast from '__attribute__((const)) int (****)(int)' to '__attribute__((const)) int (* const* const**)(int)' must be 'const' qualified [-Wcast-qual]
+  155 |   const constfn * const **p15 = (const constfn * const **) bar; /* { dg-warning "cast" } */
+      |                                 ^
+cast_qual_ptrs.c:156:32: warning: to be safe all intermediate pointers in cast from '__attribute__((const)) int (****)(int)' to 'int (* const* const**)(int)' must be 'const' qualified [-Wcast-qual]
+  156 |   const pintfn * const **p16 = (const pintfn * const **) bar; /* { dg-warning "cast" } */
+      |                                ^
+cast_qual_ptrs.c:157:33: warning: to be safe all intermediate pointers in cast from '__attribute__((const)) int (****)(int)' to '__attribute__((const)) int (* const** const*)(int)' must be 'const' qualified [-Wcast-qual]
+  157 |   const constfn ** const *p17 = (const constfn ** const *) bar; /* { dg-warning "cast" } */
+      |                                 ^
+cast_qual_ptrs.c:158:32: warning: to be safe all intermediate pointers in cast from '__attribute__((const)) int (****)(int)' to 'int (* const** const*)(int)' must be 'const' qualified [-Wcast-qual]
+  158 |   const pintfn ** const *p18 = (const pintfn ** const *) bar; /* { dg-warning "cast" } */
+      |                                ^

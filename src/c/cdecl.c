@@ -4634,6 +4634,8 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             type_quals &= ~(unsigned)TQ_ATOMIC;
         } else if (type_quals)
             cpedantic(c, loc, "ISO C forbids qualified function types");
+        if (type_quals && !is_err(c, type))
+            type = qualify(c, type, type_quals, ltok);
         if (sc == SC_AUTO && fs)
             g->s.flags &= ~(unsigned)CSF_DECL_EXTERNAL;
         else if (sp->is_inline && sc != SC_STATIC) {

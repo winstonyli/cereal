@@ -1100,6 +1100,7 @@ void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
 {
     StrBuf d = {0}, tmp = {0};
     int k = D_EMPTY;
+    unsigned fq = 0;            /* qualifiers of a function type */
     for (;;) {
         const TypeEnt *e = type_ent(tt, t);
         unsigned q = TYPE_QUALS(t);
@@ -1171,12 +1172,18 @@ void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
                         sb_puts(&d, e->n ? ", ..." : "...");
                 }
                 sb_putc(&d, ')');
+                if (!fq)
+                    fq = q & (TQ_CONST | TQ_VOLATILE);
                 t = e->base;
             }
             continue;
         }
         break;
     }
+    if (fq & TQ_CONST)
+        sb_puts(sb, "__attribute__((const)) ");
+    if (fq & TQ_VOLATILE)
+        sb_puts(sb, "__attribute__((noreturn)) ");
     print_spec(tt, sb, t);
     if (k == D_PTR || k == D_PAREN)
         sb_putc(sb, ' ');
