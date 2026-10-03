@@ -31,6 +31,9 @@ attr_args.c:13:1: warning: 'assume_aligned' attribute argument -16 is not positi
 attr_args.c:14:1: warning: 'assume_aligned' attribute only applies to function types [-Wattributes]
    14 | int v __attribute__((assume_aligned (16)));
       | ^
+attr_args.c:14:1: warning: 'assume_aligned' attribute only applies to function types [-Wattributes]
+   14 | int v __attribute__((assume_aligned (16)));
+      | ^
 attr_args.c:16:5: error: 'strict_flex_array' attribute may not be specified for 'sx'
    16 | int sx __attribute__ ((strict_flex_array (1)));
       |     ^

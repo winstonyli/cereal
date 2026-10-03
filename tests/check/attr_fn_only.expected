@@ -1,0 +1,27 @@
+attr_fn_only.c:2:1: warning: 'fd_arg' attribute only applies to function types [-Wattributes]
+    2 | int v1 __attribute__ ((fd_arg (1)));
+      | ^
+attr_fn_only.c:3:1: warning: 'nocf_check' attribute only applies to function types [-Wattributes]
+    3 | int *v2 __attribute__ ((nocf_check));
+      | ^
+attr_fn_only.c:4:1: warning: 'nocf_check' attribute only applies to function types [-Wattributes]
+    4 | void (**v3) (void) __attribute__ ((nocf_check));
+      | ^
+attr_fn_only.c:6:1: warning: 'warn_unused_result' attribute only applies to function types [-Wattributes]
+    6 | typedef int T1 __attribute__ ((warn_unused_result));
+      | ^
+attr_fn_only.c:8:1: warning: 'format' attribute only applies to function types [-Wattributes]
+    8 | int v5 __attribute__ ((format (printf, 1, 2)));
+      | ^
+attr_fn_only.c:9:1: warning: 'fd_arg' attribute argument value '1' refers to parameter type 'char *' [-Wattributes]
+    9 | void f1 (char *p) __attribute__ ((fd_arg (1)));
+      | ^
+attr_fn_only.c:10:1: warning: 'fd_arg' attribute argument value '0' does not refer to a function parameter [-Wattributes]
+   10 | void f2 (int fd) __attribute__ ((fd_arg (0)));
+      | ^
+attr_fn_only.c:11:1: warning: 'fd_arg' attribute argument value '2' exceeds the number of function parameters 1 [-Wattributes]
+   11 | void f3 (int fd) __attribute__ ((fd_arg (2)));
+      | ^
+attr_fn_only.c:12:1: warning: 'fd_arg' attribute argument has type 'char[2]' [-Wattributes]
+   12 | void f4 (int fd) __attribute__ ((fd_arg ("x")));
+      | ^

@@ -827,3 +827,19 @@ layouts, gcc rules ported, walk design).
   pack-test-3.c, const/pure on typedefs and variables); requested alignment
   '0' not a positive power of 2 11/4; access(mode) mismatch 10/1; fd_arg only
   applies to function types 9/4; format on non-variadic function 6/1.
+- Round 34 (2026-10-03): -Wattributes batch.  aligned(0) warns "requested
+  alignment '0' is not a positive power of 2" (once per attribute; a struct's
+  are seen twice).  A redeclaration whose alloc_size / alloc_align differs
+  from the oldest recorded one is ignored with "ignoring attribute 'X (a)'
+  because it conflicts with previous 'X (b)'" (functions only; the typedef
+  case in attr-alloc_size-13.c line 34 is still missing).  fd_arg /
+  fd_arg_read / fd_arg_write use positional_arg.  "'X' attribute only applies
+  to function types" for fd_arg*, nocf_check, warn_unused_result, alloc_*,
+  access, format, nonnull, sentinel, returns_nonnull, assume_aligned,
+  format_arg and the calling-convention attributes, on an object or typedef
+  whose type is neither a function nor a pointer to one (attrs_fn_only).
+  The attr_args golden was stale (gcc does print it for assume_aligned on an
+  int).  Goldens: attr_aligned_zero, attr_alloc_redecl, attr_fn_only.
+  Tests 955; gcc.dg 3647, c-c++-common 547.  Gaps seen: __builtin_has_attribute
+  does not warn for aligned(0) or 'mode'; warn_unused_result on a void
+  function typedef; typedef alloc_size conflicts.

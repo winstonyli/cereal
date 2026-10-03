@@ -1,0 +1,18 @@
+attr_alloc_redecl.c:6:1: warning: ignoring attribute 'alloc_size (2)' because it conflicts with previous 'alloc_size (1)' [-Wattributes]
+    6 | AS (2) char *f1 (int, int);
+      | ^
+attr_alloc_redecl.c:7:1: warning: ignoring attribute 'alloc_size (1, 2)' because it conflicts with previous 'alloc_size (1)' [-Wattributes]
+    7 | AS (1, 2) char *f1 (int, int);
+      | ^
+attr_alloc_redecl.c:10:1: warning: ignoring attribute 'alloc_align (2)' because it conflicts with previous 'alloc_align (1)' [-Wattributes]
+   10 | AA (2) char *g1 (int, int, int);
+      | ^
+attr_alloc_redecl.c:11:1: warning: ignoring attribute 'alloc_align (3)' because it conflicts with previous 'alloc_align (1)' [-Wattributes]
+   11 | AA (3) char *g1 (int, int, int);
+      | ^
+attr_alloc_redecl.c:15:18: warning: ISO C does not support omitting parameter names in function definitions before C2X [-Wpedantic]
+   15 | AS (2) char *h1 (int, int) { return 0; }
+      |                  ^
+attr_alloc_redecl.c:15:23: warning: ISO C does not support omitting parameter names in function definitions before C2X [-Wpedantic]
+   15 | AS (2) char *h1 (int, int) { return 0; }
+      |                       ^

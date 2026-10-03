@@ -1,0 +1,24 @@
+attr_aligned_zero.c:2:1: warning: requested alignment '0' is not a positive power of 2 [-Wattributes]
+    2 | __attribute__((aligned(0))) void f0(void) { }
+      | ^
+attr_aligned_zero.c:3:1: warning: requested alignment '0' is not a positive power of 2 [-Wattributes]
+    3 | void f1(void) __attribute__((aligned(0)));
+      | ^
+attr_aligned_zero.c:4:1: warning: requested alignment '0' is not a positive power of 2 [-Wattributes]
+    4 | int v __attribute__((aligned(0)));
+      | ^
+attr_aligned_zero.c:5:1: warning: requested alignment '0' is not a positive power of 2 [-Wattributes]
+    5 | typedef int T __attribute__((aligned(0)));
+      | ^
+attr_aligned_zero.c:6:8: warning: requested alignment '0' is not a positive power of 2 [-Wattributes]
+    6 | struct S { int a __attribute__((aligned(0))); } __attribute__((aligned(0)));
+      |        ^
+attr_aligned_zero.c:6:8: warning: requested alignment '0' is not a positive power of 2 [-Wattributes]
+    6 | struct S { int a __attribute__((aligned(0))); } __attribute__((aligned(0)));
+      |        ^
+attr_aligned_zero.c:7:1: warning: requested alignment '0' is not a positive power of 2 [-Wattributes]
+    7 | void g(void) { int l __attribute__((aligned(0))); }
+      | ^
+attr_aligned_zero.c:7:20: warning: unused variable 'l' [-Wunused-variable]
+    7 | void g(void) { int l __attribute__((aligned(0))); }
+      |                    ^

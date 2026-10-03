@@ -274,6 +274,9 @@ static bool is_pow2(uint64_t v)
  * in bytes (0: none, silently ignored or already diagnosed).  loc: where
  * gcc's error() points; objfile: the attribute form (gcc's caller passes
  * true), which words the upper bound as the object file maximum. */
+/* The aligned(0) attribute last warned about (a struct's are seen twice). */
+static uint32_t zero_warn_u, zero_warn_node;
+
 static uint32_t check_user_alignment_(Checker *c, uint32_t e, SrcLoc loc,
                                       bool objfile);
 
@@ -792,6 +795,17 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             else
                 v = check_user_alignment(c, arg, iloc(c, after_tok(c, attr)),
                                          attr_on_object(c, attr));
+            if (!v && arg != NO_NODE && c->ck[arg] != K_ERR &&
+                (c->ck[arg] == K_ICE ||
+                 (c->ck[arg] == K_FOLD && (c->ef[arg] & EF_CST))) &&
+                type_is_integer(TT, c->ty[arg]) && cexpr_sval(c, arg) == 0 &&
+                !(zero_warn_u == c->u->first_tok + 1 &&
+                  zero_warn_node == arg)) {         /* once per attribute */
+                cwarn(c, iloc(c, after_tok(c, attr)), "attributes",
+                      "requested alignment '0' is not a positive power of 2");
+                zero_warn_u = c->u->first_tok + 1;
+                zero_warn_node = arg;
+            }
             if (v > a->aligned)
                 a->aligned = v;
         } else if (!strcmp(name, "warn_if_not_aligned")) {
@@ -1572,6 +1586,92 @@ static void strict_flex_check(Checker *c, uint32_t holder, bool field,
  * const are not diagnosed there. */
 static bool alloc_via_ptr;
 
+/* The function being declared (ident id), 0: none; set around the calls
+ * for a function so that a redeclaration's alloc_size / alloc_align can be
+ * compared with the previous declaration's. */
+static uint32_t alloc_name;
+
+/* decl_attributes: an attribute that needs a function type, written on an
+ * object or typedef whose type is neither a function nor a pointer to one. */
+static void attrs_fn_only(Checker *c, uint32_t holder, TypeId ty, uint32_t tok)
+{
+    static const char *const fnonly[] = {
+        "fd_arg", "fd_arg_read", "fd_arg_write", "nocf_check",
+        "warn_unused_result", "alloc_size", "alloc_align", "access", "format",
+        "nonnull", "sentinel", "returns_nonnull", "assume_aligned",
+        "format_arg", "regparm", "stdcall", "cdecl", "fastcall", "thiscall",
+        "ms_abi", "sysv_abi"};
+    Kids k;
+    uint32_t j;
+    if (type_ckind(TT, ty) == TY_PTR)       /* a pointer to function is fine */
+        ty = type_base(TT, ty);
+    if (type_ckind(TT, ty) == TY_FUNC)
+        return;
+    kids_get(c, holder, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n; q++) {
+            char name[48];
+            size_t f;
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
+            for (f = 0; f < sizeof fnonly / sizeof *fnonly; f++)
+                if (!strcmp(name, fnonly[f])) {
+                    cwarn(c, iloc(c, tok), "attributes", "'%s' attribute only "
+                          "applies to function types", name);
+                    break;
+                }
+        }
+        kids_free(&it);
+    }
+    kids_free(&k);
+}
+
+/* A redeclaration whose alloc_size / alloc_align differs from the previous
+ * declaration's is ignored, with a warning. */
+static void alloc_redecl(Checker *c, uint32_t item, const char *name, SrcLoc loc)
+{
+    uint32_t ref = lookup_ord(c, alloc_name), set, k, first;
+    char now[96], was[96];
+    if (ref == SYM_NONE || csym(c, ref)->kind != CS_FUNC)
+        return;
+    set = csym(c, ref)->aset;
+    if (!set)
+        return;
+    cdecl_attr_args(c, item, now, sizeof now);
+    for (k = c->ahead.data[set - 1], first = 0; k; k = c->anames.data[k - 1].prev)
+        if (!strcmp(c->anames.data[k - 1].name, name))
+            first = k;          /* the oldest: the ignored ones come later */
+    if (!first || !strcmp(c->anames.data[first - 1].arg, now))
+        return;
+    snprintf(was, sizeof was, "%s", c->anames.data[first - 1].arg);
+    {
+        char a[128], b[128];
+        size_t i, l = 0;
+        for (i = 0; now[i] && l + 2 < sizeof a; i++) {
+            a[l++] = now[i];
+            if (now[i] == ',')
+                a[l++] = ' ';
+        }
+        a[l] = 0;
+        for (i = 0, l = 0; was[i] && l + 2 < sizeof b; i++) {
+            b[l++] = was[i];
+            if (was[i] == ',')
+                b[l++] = ' ';
+        }
+        b[l] = 0;
+        cwarn(c, loc, "attributes", "ignoring attribute '%s (%s)' because it "
+              "conflicts with previous '%s (%s)'", name, a, name, b);
+    }
+    if (c->nign < 8)
+        snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", name);
+}
+
 /* handle_alloc_align_attribute / handle_alloc_size_attribute for the
  * attributes among holder's children, applied to a function of type fty. */
 static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
@@ -1620,6 +1720,14 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 if (type_ckind(TT, type_base(TT, fty)) == TY_VOID)
                     cwarn(c, iloc(c, tok), "attributes", "'%s' attribute on "
                           "function returning 'void'", name);
+                continue;
+            }
+            if (!strncmp(name, "fd_arg", 6) && type_ckind(TT, fty) == TY_FUNC) {
+                /* handle_fd_arg_attribute: one integer parameter position */
+                kids_get(c, it.p[q], &ak);
+                if (ak.n == 1)
+                    (void)positional_arg(c, name, ak.p[0], 0, fty, iloc(c, tok));
+                kids_free(&ak);
                 continue;
             }
             if (!strcmp(name, "access")) {
@@ -1686,10 +1794,13 @@ static void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                     if (c->nign < 8)
                         snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s",
                                  name);
-                } else
+                } else {
                     for (i = 0; i < ak.n && ok; i++)
                         ok = positional_arg(c, name, ak.p[i],
                                             ak.n > 1 ? (int)i + 1 : 0, fty, loc);
+                    if (ok && alloc_name && !alloc_via_ptr)
+                        alloc_redecl(c, it.p[q], name, loc);
+                }
             }
             kids_free(&ak);
         }
@@ -5420,8 +5531,14 @@ static void declared_visit(Checker *c, uint32_t i)
     if (g.what == GD_FUNC && s.kind == CS_FUNC) {
         /* the declared type keeps the typedef names of the parameters */
         TypeId aft = type_kind(TT, s.ty) == TY_FUNC ? s.ty : type_canon(TT, s.ty);
+        alloc_name = s.name;
         attrs_alloc_check(c, sn, aft, ltok);
         attrs_alloc_check(c, idecl, aft, ltok);
+        alloc_name = 0;
+    }
+    if (s.kind == CS_OBJ || s.kind == CS_TYPEDEF) {
+        attrs_fn_only(c, sn, s.ty, ltok);
+        attrs_fn_only(c, idecl, s.ty, ltok);
     }
     if (s.kind == CS_OBJ && type_ckind(TT, s.ty) == TY_PTR &&
         type_ckind(TT, type_base(TT, s.ty)) == TY_FUNC) {
@@ -7349,8 +7466,10 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     if (g.what != GD_FUNC || !is_func(c, g.s.ty))
         return;
     attrs_unknown_emit(c, &sp.attrs, ltok);
+    alloc_name = g.s.name;
     attrs_alloc_check(c, fp.specs, type_kind(TT, g.s.ty) == TY_FUNC ? g.s.ty :
                       type_canon(TT, g.s.ty), ltok);
+    alloc_name = 0;
     {
         AttrState st = {0};
         attrs_copy_check(c, fp.specs, CS_FUNC, g.s.name, ltok, &st);
