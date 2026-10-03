@@ -772,3 +772,14 @@ layouts, gcc rules ported, walk design).
   Tests 939; gcc.dg 3641, c-c++-common 540.  Golden: sizeof_memaccess.
   bench/tools/cmp.sh and verify.sh (kept in the repo; WSL upgrades wipe /tmp)
   replace the old /tmp helpers; verify.sh pins CEREAL_GCC=gcc-13.
+- Round 30 (2026-10-03): -Wparentheses: `!a & b` / `!a | b` (right operand not
+  a comparison, && , || or !; lognot_bitop in cexpr.c; location is the `!`, or
+  the operator for a constant operand) and `_Bool d = a = b` (e_assign).
+  gcc.dg Wparentheses-3 and -11 SAME.  Tests 941; gcc.dg 3643, c-c++-common 540.
+  Golden: parens_lognot_bitop.
+  -Wattributes survey (108 missing in 37 files, 11 extra): a long tail with no
+  dominant message; biggest are "attribute ignored" (15/7 files), "conflicts
+  with previous" (11/2), "mismatch with mode" (10/1), "only applies to
+  function types" (7/3).  Extras: "ignored on a declaration of a different
+  kind than referenced symbol" (5), "attribute directive ignored" (3).
+  Best first target: the 11 extras (wrong, not just absent).

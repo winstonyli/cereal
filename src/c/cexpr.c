@@ -9695,6 +9695,25 @@ static int orig_op(Checker *c, uint32_t n)
 
 #define PW(l, ...) cwarn(c, (l), "parentheses", __VA_ARGS__)
 
+/* `!a & b`, `!a | b`: the right operand is no truth value (gcc's original
+ * code is not a comparison, && , || or !). */
+static bool lognot_bitop(Checker *c, uint32_t a, uint32_t b, int op, SrcLoc la)
+{
+    uint32_t k[3], r;
+    int rop;
+    if (ntag(c, a) != N_UNARY || npunct(c, a) != P_BANG || nkids(c, a, k, 3) < 1)
+        return false;
+    r = strip_paren(c, b);
+    rop = ntag(c, r) == N_BINARY ? npunct(c, r) : 0;
+    if (is_cmp_op(rop) || rop == P_ANDAND || rop == P_OROR ||
+        (ntag(c, r) == N_UNARY && npunct(c, r) == P_BANG))
+        return false;
+    PW(la, "suggest parentheses around operand of '!' or "
+       "change '%s' to '%s' or '!' to '~'", op == P_AMP ? "&" : "|",
+       op == P_AMP ? "&&" : "||");
+    return true;
+}
+
 /* warn_about_parentheses */
 static void parens_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
 {
@@ -9722,6 +9741,8 @@ static void parens_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
             PW(lb, "suggest parentheses around '&&' within '||'");
         return;
     case P_PIPE:
+        if (lognot_bitop(c, a, b, op, la))
+            return;
         if (ca == P_AMP || ca == P_CARET || ca == P_PLUS || ca == P_MINUS)
             PW(la, "suggest parentheses around arithmetic in operand of '|'");
         else if (cb == P_AMP || cb == P_CARET || cb == P_PLUS || cb == P_MINUS)
@@ -9742,6 +9763,8 @@ static void parens_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
             PW(lb, "suggest parentheses around comparison in operand of '^'");
         return;
     case P_AMP:
+        if (lognot_bitop(c, a, b, op, la))
+            return;
         if (ca == P_PLUS)
             PW(la, "suggest parentheses around '+' in operand of '&'");
         else if (cb == P_PLUS)
@@ -11464,6 +11487,11 @@ static void e_assign(Checker *c, uint32_t i)
             return;
         }
     }
+    /* _Bool = a = b: the inner assignment is a truth value */
+    if (op == P_ASSIGN && tkind(c, unqual(c, c->ty[l])) == TY_BOOL &&
+        ntag(c, r) == N_ASSIGN && npunct(c, r) == P_ASSIGN)
+        PW(first_loc(c, i), "suggest parentheses around assignment used as "
+           "truth value");
     {
         ConvInfo ci;
         TypeId lt = unqual(c, c->ty[l]);

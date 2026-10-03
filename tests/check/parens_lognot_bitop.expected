@@ -1,0 +1,21 @@
+parens_lognot_bitop.c:8:8: warning: suggest parentheses around operand of '!' or change '&' to '&&' or '!' to '~' [-Wparentheses]
+    8 |   foo (!x & y);
+      |        ^
+parens_lognot_bitop.c:9:8: warning: suggest parentheses around operand of '!' or change '|' to '||' or '!' to '~' [-Wparentheses]
+    9 |   foo (!x | y);
+      |        ^
+parens_lognot_bitop.c:10:8: warning: suggest parentheses around operand of '!' or change '&' to '&&' or '!' to '~' [-Wparentheses]
+   10 |   foo (!x & 2);
+      |        ^
+parens_lognot_bitop.c:11:11: warning: suggest parentheses around operand of '!' or change '&' to '&&' or '!' to '~' [-Wparentheses]
+   11 |   foo (!1 & 2);
+      |           ^
+parens_lognot_bitop.c:12:8: warning: suggest parentheses around operand of '!' or change '&' to '&&' or '!' to '~' [-Wparentheses]
+   12 |   foo (!x & (y + z));
+      |        ^
+parens_lognot_bitop.c:13:8: warning: suggest parentheses around operand of '!' or change '|' to '||' or '!' to '~' [-Wparentheses]
+   13 |   foo (!x | ~y);
+      |        ^
+parens_lognot_bitop.c:20:3: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+   20 |   d = a = b;
+      |   ^
