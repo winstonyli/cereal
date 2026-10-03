@@ -1717,7 +1717,7 @@ static void incomplete_error(Checker *c, SrcLoc loc, uint32_t value, TypeId t)
             return;
         case TY_ARRAY:
             if (type_ent(TT, ct)->flags & TF_INCOMPLETE) {
-                cerror(c, loc, "invalid use of array with unspecified bounds");
+                cerror(c, loc, "invalid use of flexible array member");
                 return;
             }
             t = type_base(TT, ct);
@@ -4309,6 +4309,25 @@ static SrcLoc call_loc(Checker *c, uint32_t f)
     return cnode_loc(c, f);
 }
 
+/* Where gcc reports a bad callee: a compound literal or statement
+ * expression is located at its opening brace, other callees as call_loc. */
+static SrcLoc callee_err_loc(Checker *c, uint32_t f)
+{
+    uint32_t g = f, k;
+    while (g != NO_NODE && ntag(c, g) == N_PAREN)
+        g = strip_paren(c, g);
+    if (g != NO_NODE && ntag(c, g) == N_COMPOUND_LIT) {
+        uint32_t b = g - 1;
+        if (c->nodes[g].size > 1 && ntag(c, b) == N_INIT_LIST)
+            return cnode_loc(c, b);
+    } else if (g != NO_NODE && ntag(c, g) == N_STMT_EXPR) {
+        k = first_child(c, g);
+        if (k != NO_NODE)
+            return cnode_loc(c, k);
+    }
+    return call_loc(c, f);
+}
+
 /* The position of the format argument of the printf-like library functions
  * (gcc's built-in attributes); 0: not one. */
 static uint32_t builtin_format_pos(const char *name)
@@ -6581,9 +6600,9 @@ static void e_call(Checker *c, uint32_t i)
         uint32_t ref = f != NO_NODE && ntag(c, f) == N_IDENT
                            ? lookup_ord(c, cnode_ident(c, f)) : SYM_NONE;
         Diagnostic *d = ref != SYM_NONE
-            ? cerror_d(c, call_loc(c, k[0]), "called object '%s' is not a "
+            ? cerror_d(c, callee_err_loc(c, k[0]), "called object '%s' is not a "
                        "function or function pointer", estr(c, k[0]))
-            : cerror_d(c, call_loc(c, k[0]), "called object is not a "
+            : cerror_d(c, callee_err_loc(c, k[0]), "called object is not a "
                        "function or function pointer");
         if (ref != SYM_NONE)
             cnote(c, d, csym(c, ref)->loc, "declared here");
@@ -10518,7 +10537,10 @@ static void e_assign(Checker *c, uint32_t i)
         return;
     }
     if (is_array(c, c->ty[l])) {
-        cerror(c, loc, "assignment to expression with array type");
+        if (!complete(c, c->ty[l]))
+            incomplete_error(c, loc, l, c->ty[l]);
+        else
+            cerror(c, loc, "assignment to expression with array type");
         set_err(c, i);
         return;
     }

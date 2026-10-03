@@ -1,0 +1,21 @@
+flex_assign.c:5:7: error: invalid use of flexible array member
+    5 |   b.a = "hi";
+      |       ^
+flex_assign.c:6:8: error: invalid use of flexible array member
+    6 |   p->a = "x";
+      |        ^
+flex_assign.c:7:6: error: 'ea' has an incomplete type 'int[]'
+    7 |   ea = q;
+      |      ^
+flex_assign.c:8:5: error: lvalue required as increment operand
+    8 |   ea++;
+      |     ^
+flex_assign.c:9:6: error: lvalue required as increment operand
+    9 |   b.a++;
+      |      ^
+flex_assign.c:10:15: error: invalid application of 'sizeof' to incomplete type 'char[]'
+   10 |   (void)sizeof(b.a);
+      |               ^
+flex_assign.c:11:7: error: invalid use of flexible array member
+   11 |   b.a += 1;
+      |       ^

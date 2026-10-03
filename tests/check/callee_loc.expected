@@ -1,0 +1,15 @@
+callee_loc.c:2:8: warning: struct has no members [-Wpedantic]
+    2 | struct A {};
+      |        ^
+callee_loc.c:4:13: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    4 |   (struct A){}();
+      |             ^
+callee_loc.c:4:13: error: called object is not a function or function pointer
+    4 |   (struct A){}();
+      |             ^
+callee_loc.c:5:3: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    5 |   ({ int i; i; })();
+      |   ^
+callee_loc.c:5:4: error: called object is not a function or function pointer
+    5 |   ({ int i; i; })();
+      |    ^

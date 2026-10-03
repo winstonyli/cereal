@@ -578,3 +578,10 @@ layouts, gcc rules ported, walk design).
   -fcf-protection; needs attribute-carrying function types, compatibility,
   and type printing such as 'void (__attribute__((nocf_check)) *)(void)');
   affects 4 c-c++-common files (attr-nocf-check-1/2/3, pointer-to-fn1).
+- Round 18 (2026-10-02): gcc.dg identical 3628 -> 3634, c-c++-common 521;
+  tests 908.  Flexible arrays: assigning to one is "invalid use of flexible
+  array member", an incomplete array object on the LHS is "'x' has an
+  incomplete type"; a union containing a flexible-array struct is itself
+  flagged RF_FLEXIBLE (type.c).  "called object is not a function" for a
+  compound-literal or statement-expression callee sits at its opening brace
+  (callee_err_loc).  Goldens: flex_assign, callee_loc.

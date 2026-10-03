@@ -977,6 +977,9 @@ void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
             else if (type_ckind(tt, f[i].ty) == TY_VLA)
                 flags |= RF_VLA;
         }
+        if (ok && L.is_union && type_is_record(tt, f[i].ty) &&
+            (type_record(tt, type_canon(tt, f[i].ty))->flags & RF_FLEXIBLE))
+            flags |= RF_FLEXIBLE;   /* a union includes a flexible array */
         if (type_is_vm(tt, f[i].ty))
             flags |= RF_VMOD;
         uint64_t tyalign = (uint64_t)type_member_align(tt, f[i].ty) * 8;
