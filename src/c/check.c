@@ -662,6 +662,9 @@ void checker_free(Checker *c)
     for (uint32_t i = 0; i < c->dep_msgs.len; i++)
         free(c->dep_msgs.data[i]);
     vec_free(&c->dep_msgs);
+    for (uint32_t i = 0; i < c->strinits.len; i++)
+        free(c->strinits.data[i].b);
+    vec_free(&c->strinits);
     cinit_free(c);
     cstmt_free(c);
     cexpr_free_params(c);

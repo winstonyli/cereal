@@ -1,0 +1,21 @@
+vla_param_typedef_ptrs.c:4:13: error: variably modified 'IAn' at file scope
+    4 | typedef int IAn[n];
+      |             ^
+vla_param_typedef_ptrs.c:5:15: warning: argument 1 of type 'int (*[*])[3]' {aka 'int (*[])[3]'} declared with 1 unspecified variable bound [-Wvla-parameter]
+    5 | void a1 (IA3 *x[*]);
+      |               ^
+vla_param_typedef_ptrs.c:6:15: note: subsequently declared as 'int (*[n])[3]' with 0 unspecified variable bounds
+    6 | void a1 (IA3 *x[n]);
+      |               ^
+vla_param_typedef_ptrs.c:7:16: warning: argument 1 of type 'int (*[*])[3]' declared with 1 unspecified variable bound [-Wvla-parameter]
+    7 | void a2 (int (*x[*])[3]);
+      |                ^
+vla_param_typedef_ptrs.c:8:16: note: subsequently declared as 'int (*[n])[3]' with 0 unspecified variable bounds
+    8 | void a2 (int (*x[n])[3]);
+      |                ^
+vla_param_typedef_ptrs.c:9:15: warning: argument 1 of type 'int *[*]' declared with 1 unspecified variable bound [-Wvla-parameter]
+    9 | void a3 (int *x[*]);
+      |               ^
+vla_param_typedef_ptrs.c:10:15: note: subsequently declared as 'int *[n]' with 0 unspecified variable bounds
+   10 | void a3 (int *x[n]);
+      |               ^

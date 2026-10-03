@@ -4542,6 +4542,10 @@ static bool fmt_arg_ok(Checker *c, const FmtWant *w, TypeId t)
     }
 }
 
+/* where conversion warnings go in a format without exact columns, when
+ * that differs from the format's location ("fmt + N" reports at the '+') */
+static SrcLoc fmt_mloc;
+
 typedef struct FmtCtx {
     Checker *c;
     const uint32_t *kv;
@@ -4554,7 +4558,7 @@ typedef struct FmtCtx {
 
 static SrcLoc fmt_loc(const FmtCtx *x, size_t i)
 {
-    return x->exact ? x->base + x->off[i] : x->whole;
+    return x->exact ? x->base + x->off[i] : fmt_mloc ? fmt_mloc : x->whole;
 }
 
 /* Takes the next argument for `what` (a description such as "format '%d'"),
@@ -4683,7 +4687,7 @@ bad:
  * arguments are not checked). */
 static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
                       uint32_t first, bool scan, uint32_t s, SrcLoc whole,
-                      SrcLoc call, size_t skip)
+                      SrcLoc call, size_t skip, const StrInit *si)
 {
     static const struct { char conv; const char *flags; } ft[] = {
         {'d', "-+ 0'I"}, {'i', "-+ 0'I"}, {'o', "-0#"}, {'x', "-0#"},
@@ -4700,7 +4704,13 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
     bool exact, dollar = false;
     if (!diag_enabled(c->diag, "format="))
         return;
-    if (!fmt_decode(c, s, &f, &off, &n, &exact))
+    if (si) {
+        n = si->n;
+        f = malloc(n + 1);
+        off = calloc(n + 1, sizeof *off);
+        memcpy(f, si->b, n);
+        exact = false;
+    } else if (!fmt_decode(c, s, &f, &off, &n, &exact))
         return;
     if (skip) {                 /* "%d%d" + 2: gcc keeps the old columns */
         if (skip > n)
@@ -5065,6 +5075,35 @@ static bool fmt_leaves(Checker *c, uint32_t s, uint32_t *out, uint32_t *n,
 /* check_format_info's complaint about a format that is not a string
  * literal: -Wformat-security (or -Wformat-nonliteral) with no arguments to
  * check, -Wformat-nonliteral with some. */
+/* Record the bytes of a const char array's string initializer: a format
+ * read through the array is checked like the literal (c-family
+ * check_format_arg via decl_constant_value). */
+void cexpr_note_strinit(Checker *c, CSym *s, uint32_t init)
+{
+    uint32_t lit = strip_paren(c, init);
+    TypeId et;
+    StrInit si;
+    char *f;
+    uint32_t *off;
+    size_t n;
+    bool exact;
+    if (lit == NO_NODE || ntag(c, lit) != N_STRING || type_ckind(TT, s->ty) != TY_ARRAY)
+        return;
+    et = type_base(TT, type_canon(TT, s->ty));
+    if ((TYPE_QUALS(et) & (TQ_CONST | TQ_VOLATILE)) != TQ_CONST ||
+        (mainv(c, et) != TYPE_B(CHAR) && mainv(c, et) != TYPE_B(UCHAR) &&
+         mainv(c, et) != TYPE_B(SCHAR)))
+        return;
+    if (!fmt_decode(c, lit, &f, &off, &n, &exact))
+        return;
+    free(off);
+    si.b = f;
+    si.n = n;
+    si.uns = mainv(c, et) != TYPE_B(CHAR);
+    vec_push(&c->strinits, si);
+    s->strinit = (uint32_t)c->strinits.len;
+}
+
 static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
                                  const CSym *sy, const char *name, SrcLoc loc)
 {
@@ -5092,16 +5131,19 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     if (ntag(c, s) == N_STRING) {
         fmt_check(c, kv, nk, first, scan, s,
                   a != s && ntag(c, a) == N_PAREN ? ctok_loc(c, c->nodes[a].tok)
-                                                  : expr_loc(c, a), loc, 0);
+                                                  : expr_loc(c, a), loc, 0, NULL);
         return;
     }
     {
         /* casts, "str" + N and &"str"[N] of a literal */
         uint32_t u = s, k[3];
         int64_t off = 0;
-        bool moved = false, amp = false;
+        bool moved = false, amp = false, plus = false;
+        uint32_t pn = NO_NODE;
         for (;;) {
+            uint32_t u0 = u;
             u = strip_paren(c, u);
+            pn = u0 != u && ntag(c, u0) == N_PAREN ? u0 : NO_NODE;
             if (u == NO_NODE || node_err(c, u))
                 break;
             if (ntag(c, u) == N_CAST && nkids(c, u, k, 2) == 2) {
@@ -5120,7 +5162,7 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
                     is_int(c, c->ty[nd])) {
                     off += cexpr_sval(c, nd);
                     u = sd;
-                    moved = true;
+                    moved = plus = true;
                     continue;
                 }
             }
@@ -5138,6 +5180,29 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
             }
             break;
         }
+        if (u != NO_NODE && !node_err(c, u) && ntag(c, u) == N_IDENT &&
+            type_ckind(TT, c->ty[u]) == TY_ARRAY && !amp) {
+            /* a const array is read through its initializer */
+            uint32_t ref = lookup_ord(c, cnode_ident(c, u));
+            const StrInit *si = NULL;
+            if (ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ &&
+                csym(c, ref)->strinit)
+                si = &c->strinits.data[csym(c, ref)->strinit - 1];
+            if (si) {
+                SrcLoc w = pn != NO_NODE ? ctok_loc(c, c->nodes[pn].tok)
+                                         : expr_loc(c, u);
+                if (si->uns)
+                    cwarn(c, expr_loc(c, u), "format=", "format string is not "
+                          "an array of type 'char'");
+                else if (off >= 0) {
+                    fmt_mloc = plus ? expr_loc(c, strip_paren(c, a)) : 0;
+                    fmt_check(c, kv, nk, first, scan, NO_NODE, w, loc,
+                              (size_t)off, si);
+                    fmt_mloc = 0;
+                }
+                return;
+            }
+        }
         if (moved && u != NO_NODE && !node_err(c, u) && ntag(c, u) == N_STRING) {
             size_t len;
             const char *tx = ttext(c, c->nodes[u].tok, &len);
@@ -5149,7 +5214,7 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
             if (off >= 0)
                 fmt_check(c, kv, nk, first, scan, u,
                           amp ? expr_loc(c, a) : ctok_loc(c, c->nodes[u].tok),
-                          loc, (size_t)off);
+                          loc, (size_t)off, NULL);
             return;
         }
     }
@@ -5157,7 +5222,7 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
         uint32_t lv[16], nl = 0, m;
         if (fmt_leaves(c, s, lv, &nl, 0)) {
             for (m = 0; m < nl; m++)
-                fmt_check(c, kv, nk, first, scan, lv[m], expr_loc(c, lv[m]), loc, 0);
+                fmt_check(c, kv, nk, first, scan, lv[m], expr_loc(c, lv[m]), loc, 0, NULL);
             return;
         }
     }

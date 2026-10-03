@@ -71,6 +71,12 @@ typedef struct InlStatic {
     bool modifiable;
 } InlStatic;
 
+typedef struct StrInit {
+    char *b;                 /* the decoded bytes */
+    size_t n;
+    bool uns;                /* element type is not plain char */
+} StrInit;
+
 typedef struct CSym {
     uint32_t name;           /* ident */
     uint8_t kind;            /* CSymKind */
@@ -90,6 +96,7 @@ typedef struct CSym {
     uint8_t fmtarg;          /* the 'format_arg' attribute's argument number */
     uint32_t aset;           /* attribute names written or copied: Checker.anames set id */
     uint32_t ualign;         /* a function's user alignment in bytes (aligned attribute) */
+    uint32_t strinit;        /* const char array initialised by a string: Checker.strinits + 1 */
     uint32_t parms;          /* cparm.c: how the parameters were declared (the
                               * first prototype's): Checker.pdescs + 1 */
 } CSym;
@@ -277,6 +284,7 @@ struct Checker {
     /* symbols */
     VEC(CSym) gsyms;         /* persistent */
     VEC(CSym) lsyms;         /* this unit's */
+    VEC(StrInit) strinits;   /* string initializers of const char arrays (cexpr.c) */
     VEC(char *) dep_msgs;    /* deprecated/unavailable attribute messages */
     VEC(uint32_t) tdvla;              /* cparm.c: (typedef type, pdescs index + 1) pairs */
     VEC(struct CParmDesc *) pdescs;   /* cparm.c: parameter declarations */
@@ -646,6 +654,7 @@ const char *cexpr_fuzzy_field(Checker *c, TypeId rec, uint32_t name);
 void cinit_declared(Checker *c, uint32_t declared);
 /* An INIT_DECL is about to finish: checks a brace-less initializer. */
 void cinit_decl_done(Checker *c, uint32_t idecl);
+void cexpr_note_strinit(Checker *c, CSym *s, uint32_t init);
 /* Before / after every node is visited (cinit.c follows the initializer
  * lists as the nodes arrive). */
 void cinit_pre(Checker *c, uint32_t i);

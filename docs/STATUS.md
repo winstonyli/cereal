@@ -1008,3 +1008,16 @@ layouts, gcc rules ported, walk design).
   followed by a `{` at the `else` column (804), the statement-expression `while`/`if` (924), `} else if` with an
   over-indented body (1154).
 - Parity: tests 1001, gcc.dg 3659 identical (216 differ), c-c++-common 558 (99), san clean (329).
+
+### Round 45 — const-array formats, typedef pointer-array printing
+- `cexpr_note_strinit` (called from `cinit_decl_done`) records the decoded bytes of a string initializer of a
+  const `char`/`signed char`/`unsigned char` array (`CSym.strinit` → `Checker.strinits`). `check_format_literal`
+  reads a format given as such an array (also through casts, parentheses, `+ N`): checked like the literal, columns
+  inexact (the argument's location; `fmt + N` reports mismatches at the `+`, other warnings at `fmt`);
+  a non-`char` array gives "format string is not an array of type 'char'". Golden `format_const_array`
+  (Wformat-pr84258.c). Not done: writable arrays (gcc does not read them), strlen folding / `-Wstringop-overread`.
+- cparm.c: an array of pointers to a typedef'd array (`IA3 *x[*]`) now goes through the level printer
+  (`int (*[*])[3]`) and gets gcc's ` {aka 'int (*[])[3]'}` when it has `[*]` bounds. `pstr` returns the quoted
+  type (the `'%s'` in `cmp_param` messages became `%s`). Wvla-parameter-4.c is identical. Golden
+  `vla_param_typedef_ptrs`. Still differing: `IA3 x[*]` vs `IA3 x[n]` (gcc's first-bound quirk), `IA3 *(*x)[*]`.
+- Parity: tests 1005, gcc.dg 3660 identical (215 differ), c-c++-common 559 (98), san clean (331).

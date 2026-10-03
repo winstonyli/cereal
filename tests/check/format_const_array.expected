@@ -1,0 +1,27 @@
+format_const_array.c:10:24: warning: format '%s' expects argument of type 'char *', but argument 2 has type 'int' [-Wformat=]
+   10 |   printf((const char *)l, 1);
+      |                        ^
+format_const_array.c:11:24: warning: format '%s' expects argument of type 'char *', but argument 2 has type 'int' [-Wformat=]
+   11 |   printf((const char *)(l), 1);
+      |                        ^
+format_const_array.c:12:10: warning: format '%d' expects a matching 'int' argument [-Wformat=]
+   12 |   printf(g, 1);
+      |          ^
+format_const_array.c:13:12: warning: format '%d' expects argument of type 'int', but argument 2 has type 'double' [-Wformat=]
+   13 |   printf(g + 3, 1.0);
+      |            ^
+format_const_array.c:14:10: warning: too many arguments for format [-Wformat-extra-args]
+   14 |   printf(l + 1, 1);
+      |          ^
+format_const_array.c:15:10: warning: zero-length gnu_printf format string [-Wformat-zero-length]
+   15 |   printf(q, 1);
+      |          ^
+format_const_array.c:16:10: warning: format '%d' expects argument of type 'int', but argument 2 has type 'double' [-Wformat=]
+   16 |   printf(h, 1.0);
+      |          ^
+format_const_array.c:17:18: warning: format string is not an array of type 'char' [-Wformat=]
+   17 |   printf((char *)sc, 1);
+      |                  ^
+format_const_array.c:20:47: warning: format '%f' expects argument of type 'double', but argument 2 has type 'int' [-Wformat=]
+   20 | void g2(void) { const char g[] = "%f"; printf(g, 1); }
+      |                                               ^

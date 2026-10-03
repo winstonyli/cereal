@@ -2626,5 +2626,6 @@ void cinit_decl_done(Checker *c, uint32_t idecl)
             s->flags |= CSF_CONST_INIT;
         else
             mark_const_agg(c, s, type);
+        cexpr_note_strinit(c, s, init);
     }
 }

@@ -62,6 +62,7 @@ typedef struct PParm {
     bool stat;               /* [static n] */
     bool rst;                /* a restrict-qualified pointer */
     bool unk;                /* a variable-length typedef: not described */
+    bool aka;                /* levels end in a typedef'd array: gcc adds {aka ..} */
     bool named;              /* loc is the parameter's name */
     unsigned np;             /* pointer levels around the brackets (arr unset) */
     unsigned quals;          /* qualifiers inside the first brackets */
@@ -310,6 +311,7 @@ static void levels_of(Checker *c, uint32_t p, PParm *o, const uint32_t *w,
     if (!tail_dims(c, o, t))
         o->unk = true;
     else {
+        o->aka = o->nd > nd && type_kind(TT, t) == TY_TYPEDEF;
         o->lv = xrealloc(o->lv, (o->nl + o->nd - nd) * sizeof *o->lv);
         for (i = nd; i < o->nd; i++) {
             memset(&o->lv[o->nl], 0, sizeof *o->lv);
@@ -489,6 +491,29 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
         o->nd = 0;
         o->arr = false;
         o->unk = true;
+    } else if (nw < 32) {
+        /* an array of pointers to an array typedef (IA3 *x[n]): the
+         * typedef's bounds come last, int (*[n])[3] */
+        TypeId z = pt;
+        TypeKind zk;
+        while (type_ckind(TT, z) == TY_PTR)
+            z = type_base(TT, z);
+        zk = type_ckind(TT, z);
+        for (m = 0; m < nw && ntag(c, w[m]) != N_PTR; m++)
+            ;
+        if (m < nw && o->arr && (zk == TY_ARRAY || zk == TY_VLA)) {
+            for (m = 0; m < o->nd; m++) {
+                free(o->d[m].txt);
+                free(o->d[m].ttxt);
+                free(o->d[m].key);
+            }
+            free(o->d);
+            o->d = NULL;
+            o->nd = 0;
+            o->arr = o->stat = false;
+            o->quals = 0;
+            levels_of(c, p, o, w, nw, names, nnames);
+        }
     }
 }
 
@@ -599,6 +624,8 @@ void cparm_release(Checker *c, uint32_t d)
 
 /* ---- printing ------------------------------------------------------------------ */
 
+static bool aka_print;      /* put_dim: the canonical spelling, [*] as [] */
+
 static void put_dim(StrBuf *sb, const PDim *d)
 {
     switch (d->k) {
@@ -606,7 +633,8 @@ static void put_dim(StrBuf *sb, const PDim *d)
         sb_printf(sb, "%" PRIu64, d->n);
         break;
     case D_STAR:
-        sb_putc(sb, d->inner ? '0' : '*');
+        if (!aka_print)
+            sb_putc(sb, d->inner ? '0' : '*');
         break;
     case D_EXPR:
         sb_puts(sb, d->ttxt);
@@ -699,7 +727,42 @@ static void put_levels(Checker *c, StrBuf *sb, const PParm *p)
 }
 
 /* The parameter's type as gcc prints it: int[n + 1], int (*)[2], int *. */
+static const char *pstr_raw(Checker *c, StrBuf *sb, const PParm *p);
+
+/* The parameter's type quoted for a message, with gcc's {aka '..'} when
+ * typedef'd bounds make the canonical spelling differ. */
 static const char *pstr(Checker *c, StrBuf *sb, const PParm *p)
+{
+    StrBuf r = {0};
+    char *q;
+    sb_putc(&r, 39);
+    sb_puts(&r, pstr_raw(c, sb, p));
+    sb_putc(&r, 39);
+    if (p->aka && p->nl) {
+        bool star = false;
+        uint32_t i;
+        for (i = 0; i < p->nd; i++)
+            star |= p->d[i].k == D_STAR;
+        if (star) {
+            StrBuf t = {0};
+            aka_print = true;
+            put_levels(c, &t, p);
+            aka_print = false;
+            sb_puts(&r, " {aka '");
+            sb_puts(&r, sb_cstr(&t));
+            sb_puts(&r, "'}");
+            sb_free(&t);
+        }
+    }
+    q = xstrdup(sb_cstr(&r));
+    sb->len = 0;
+    sb_puts(sb, q);
+    free(q);
+    sb_free(&r);
+    return sb_cstr(sb);
+}
+
+static const char *pstr_raw(Checker *c, StrBuf *sb, const PParm *p)
 {
     uint32_t i;
     const char *b;
@@ -852,10 +915,10 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
         if (cnt) {
             d = cwarn_d(c, DL_WARNING, n->loc, vla ? "vla-parameter" :
                         "array-parameter=", "mismatch in bound%s %s of "
-                        "argument %u declared as '%s'", plural(cnt),
+                        "argument %u declared as %s", plural(cnt),
                         sb_cstr(&lst), no, pstr(c, &ns, n));
             if (d)
-                cnote(c, d, o->loc, "previously declared as '%s'",
+                cnote(c, d, o->loc, "previously declared as %s",
                       pstr(c, &os, o));
         }
         sb_free(&lst);
@@ -866,19 +929,19 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
         if (o->d[0].k == D_NONE) {
             if (vlaany(o)) {
                 d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument "
-                            "%u of type '%s' declared as an ordinary array",
+                            "%u of type %s declared as an ordinary array",
                             no, pstr(c, &ns, n));
                 if (d)
                     cnote(c, d, o->loc, "previously declared as a variable "
-                          "length array '%s'", pstr(c, &os, o));
+                          "length array %s", pstr(c, &os, o));
             }
             goto out;
         }
         d = cwarn_d(c, DL_WARNING, n->loc, vla0(o) ? "vla-parameter" :
-                    "array-parameter=", "argument %u of type '%s' declared as "
+                    "array-parameter=", "argument %u of type %s declared as "
                     "a pointer", no, pstr(c, &ns, n));
         if (d)
-            cnote(c, d, o->loc, "previously declared as %s '%s'",
+            cnote(c, d, o->loc, "previously declared as %s %s",
                   vla0(o) ? "a variable length array" : "an array",
                   pstr(c, &os, o));
         goto out;
@@ -887,27 +950,27 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
         /* declared as a pointer first, now as an array */
         if (vlaany(n)) {
             d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument "
-                        "%u of type '%s' declared as a variable length array",
+                        "%u of type %s declared as a variable length array",
                         no, pstr(c, &ns, n));
             if (d)
-                cnote(c, d, o->loc, "previously declared as a pointer '%s'",
+                cnote(c, d, o->loc, "previously declared as a pointer %s",
                       pstr(c, &os, o));
         } else if (n->d[0].k != D_NONE && (lvl >= 2 || n->stat)) {
             d = cwarn_d(c, DL_WARNING, n->loc, "array-parameter=", "argument "
-                        "%u of type '%s' with mismatched bound", no,
+                        "%u of type %s with mismatched bound", no,
                         pstr(c, &ns, n));
             if (d)
-                cnote(c, d, o->loc, "previously declared as '%s'",
+                cnote(c, d, o->loc, "previously declared as %s",
                       pstr(c, &os, o));
         }
         goto out;
     }
     if (vlaany(o) != vlaany(n)) {
         d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument %u of "
-                    "type '%s' declared as %s", no, pstr(c, &ns, n),
+                    "type %s declared as %s", no, pstr(c, &ns, n),
                     vlaany(n) ? "a variable length array" : "an ordinary array");
         if (d)
-            cnote(c, d, o->loc, "previously declared as %s '%s'",
+            cnote(c, d, o->loc, "previously declared as %s %s",
                   vlaany(o) ? "a variable length array" : "an ordinary array",
                   pstr(c, &os, o));
         goto out;
@@ -916,30 +979,30 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
         unsigned ost = count_vla(o, true), nst = count_vla(n, true), i, j = 0;
         if (!(ost && nst) && olv != nlv) {
             d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument %u "
-                        "of type '%s' declared with %u variable bound%s", no,
+                        "of type %s declared with %u variable bound%s", no,
                         pstr(c, &ns, n), nlv, plural(nlv));
             if (d)
-                cnote(c, d, o->loc, "previously declared as '%s' with %u "
+                cnote(c, d, o->loc, "previously declared as %s with %u "
                       "variable bound%s", pstr(c, &os, o), olv, plural(olv));
             goto out;
         }
         if (!ost != !nst) {
             if (nst > ost) {
                 d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument "
-                            "%u of type '%s' declared with %u unspecified "
+                            "%u of type %s declared with %u unspecified "
                             "variable bound%s", no, pstr(c, &ns, n), nst,
                             plural(nst));
                 if (d)
-                    cnote(c, d, o->loc, "previously declared as '%s' with %u "
+                    cnote(c, d, o->loc, "previously declared as %s with %u "
                           "unspecified variable bound%s", pstr(c, &os, o), ost,
                           plural(ost));
             } else {
                 d = cwarn_d(c, DL_WARNING, o->loc, "vla-parameter", "argument "
-                            "%u of type '%s' declared with %u unspecified "
+                            "%u of type %s declared with %u unspecified "
                             "variable bound%s", no, pstr(c, &os, o), ost,
                             plural(ost));
                 if (d)
-                    cnote(c, d, n->loc, "subsequently declared as '%s' with %u "
+                    cnote(c, d, n->loc, "subsequently declared as %s with %u "
                           "unspecified variable bound%s", pstr(c, &ns, n), nst,
                           plural(nst));
             }
@@ -957,10 +1020,10 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
             ob = &o->d[j++];
             if (nb->k == D_EXPR && ob->k == D_EXPR && !dim_same(ob, nb)) {
                 d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument "
-                            "%u of type '%s' declared with mismatched bound "
+                            "%u of type %s declared with mismatched bound "
                             "%s", no, pstr(c, &ns, n), bstr(&bs, nb));
                 if (d)
-                    cnote(c, d, o->loc, "previously declared as '%s' with "
+                    cnote(c, d, o->loc, "previously declared as %s with "
                           "bound %s", pstr(c, &os, o), bstr(&bo, ob));
             }
         }
@@ -968,10 +1031,10 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
             if (!dim_same(&o->d[0], &n->d[0]) && (lvl >= 2 || n->stat ||
                                                    o->stat)) {
                 d = cwarn_d(c, DL_WARNING, n->loc, "array-parameter=",
-                            "argument %u of type '%s' with mismatched bound",
+                            "argument %u of type %s with mismatched bound",
                             no, pstr(c, &ns, n));
                 if (d)
-                    cnote(c, d, o->loc, "previously declared as '%s'",
+                    cnote(c, d, o->loc, "previously declared as %s",
                           pstr(c, &os, o));
             }
         }
@@ -979,9 +1042,9 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
     }
     if (!dim_same(&o->d[0], &n->d[0]) && (lvl >= 2 || n->stat || o->stat)) {
         d = cwarn_d(c, DL_WARNING, n->loc, "array-parameter=", "argument %u "
-                    "of type '%s' with mismatched bound", no, pstr(c, &ns, n));
+                    "of type %s with mismatched bound", no, pstr(c, &ns, n));
         if (d)
-            cnote(c, d, o->loc, "previously declared as '%s'",
+            cnote(c, d, o->loc, "previously declared as %s",
                   pstr(c, &os, o));
     }
 out:
