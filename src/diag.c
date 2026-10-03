@@ -637,6 +637,7 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     dg->level = lvl;
     dg->id = id ? id : "";
     dg->loc = loc;
+    dg->oloc = loc;
     dg->key = d->key;
     sb_vprintf(&sb, fmt, ap);
     dg->msg = arena_strndup(d->arena, sb_cstr(&sb), sb.len);
@@ -955,11 +956,15 @@ static bool checker_first(const DiagEngine *d, size_t from, size_t i, size_t j)
 {
     const Diagnostic *p = d->all.data[i], *c = d->all.data[j];
     if (c->ord == ORD_CUT)
-        return i > from && d->all.data[i - 1]->loc >= c->loc;
-    if (c->ord == ORD_LATE || !p->loc)
+        return i > from && d->all.data[i - 1]->oloc >= c->oloc;
+    if (c->ord == ORD_LATE || !p->oloc)
         return false;
-    return p->ord == ORD_EOF || c->loc < p->loc ||
-           (c->loc == p->loc && (p->ord == ORD_TIE || c->ord == ORD_EARLY));
+    /* within one macro invocation, by spelled location */
+    return p->ord == ORD_EOF || c->oloc < p->oloc ||
+           (c->oloc == p->oloc &&
+            (c->loc < p->loc ||
+             (c->loc == p->loc &&
+              (p->ord == ORD_TIE || c->ord == ORD_EARLY))));
 }
 
 void diag_merge_from(DiagEngine *d, size_t from, size_t mid)

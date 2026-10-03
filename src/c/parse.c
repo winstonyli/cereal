@@ -308,6 +308,8 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
         const PTok *tk = &p->toks.data[i];
         MacroNote notes[10];
         size_t k, cnt = 0;
+        if (tk->t.flags & TF_ORIGIN_BODY)
+            d->oloc = tk->exp;
         if (p->macro_chain && (tk->t.flags & TF_ORIGIN_BODY) &&
             !(tk->t.flags & TF_ORIGIN_ARG))
             cnt = p->macro_chain(p->macro_ctx, tk->t.loc, tk->exp, notes, 10);

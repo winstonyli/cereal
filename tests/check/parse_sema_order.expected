@@ -1,0 +1,24 @@
+parse_sema_order.c:1:21: error: expected expression before ';' token
+    1 | #define BAD int x = ;
+      |                     ^
+parse_sema_order.c:3:3: note: in expansion of macro 'BAD'
+    3 |   BAD
+      |   ^
+parse_sema_order.c:1:17: error: redefinition of 'x'
+    1 | #define BAD int x = ;
+      |                 ^
+parse_sema_order.c:4:3: note: in expansion of macro 'BAD'
+    4 |   BAD
+      |   ^
+parse_sema_order.c:1:17: note: previous definition of 'x' with type 'int'
+    1 | #define BAD int x = ;
+      |                 ^
+parse_sema_order.c:3:3: note: in expansion of macro 'BAD'
+    3 |   BAD
+      |   ^
+parse_sema_order.c:1:21: error: expected expression before ';' token
+    1 | #define BAD int x = ;
+      |                     ^
+parse_sema_order.c:4:3: note: in expansion of macro 'BAD'
+    4 |   BAD
+      |   ^

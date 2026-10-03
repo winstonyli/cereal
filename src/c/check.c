@@ -70,8 +70,10 @@ static void macro_notes(Checker *c, Diagnostic *d, SrcLoc loc, bool is_note)
     }
     if (!found)
         return;
-    if (!is_note)
+    if (!is_note) {
         c->mn_exp = tk[best].exp, c->mn_idx = best, c->mn_loc = loc;
+        d->oloc = tk[best].exp;     /* it follows what precedes the use */
+    }
     if (c->opt.macro_chain && (tk[best].t.flags & TF_ORIGIN_BODY) &&
         !(tk[best].t.flags & TF_ORIGIN_ARG))
         cnt = c->opt.macro_chain(c->opt.macro_ctx, loc, tk[best].exp, notes,

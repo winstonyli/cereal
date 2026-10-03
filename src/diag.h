@@ -37,6 +37,9 @@ typedef struct Diagnostic {
     DiagLevel level;
     const char *id;          /* warning option name, "" for hard errors */
     SrcLoc loc;
+    SrcLoc oloc;             /* where it merges with the parser's: loc, or
+                                the invocation of the macro whose
+                                replacement list holds loc */
     SrcRange range;          /* optional highlight (end == 0 if none) */
     const char *msg;
     VEC(DiagNote) notes;

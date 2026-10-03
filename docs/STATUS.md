@@ -660,3 +660,19 @@ layouts, gcc rules ported, walk design).
   Known gaps: the order of a parse error against a semantic error in the same
   function (gcc prints the parse error first in a function body); the
   previous-declaration note chain (see Round 20).
+- Round 23 (2026-10-02): diagnostic order inside macro expansions; -O file-scope
+  initializers.  Diagnostic.oloc is where a diagnostic merges with the
+  parser's (diag_merge_from): its location, or for a replacement-list token the
+  macro's invocation (the spelled location repeats in every use of a macro, so
+  two uses of one macro in a function merged in the wrong order).  Within one
+  invocation the order falls back to the spelled location.  Set in
+  check.c macro_notes and parse.c vperr.  -O const folding also applies in a
+  file-scope initializer (const int h = g + 1), as gcc's in_init, but not in
+  an array bound or declarator.  Verified the cells path gives the same -O
+  warnings.  Tests 924; ASan/UBSan clean; gcc.dg 3636, c-c++-common 529 identical (-O runs:
+  3633 / 528, the rest gcc-only middle-end warnings).  Goldens:
+  parse_sema_order, const_fold_O (file-scope cases).
+  -O-only gcc warnings still missing: -Wstrict-aliasing (c-family
+  strict_aliasing_warning, needs alias sets: gcc.dg/alias-9,
+  Wstrict-aliasing-*; -Wall -O2 enables it, so it matters on real code),
+  -Wfree-nonheap-object (middle end, not modelled).

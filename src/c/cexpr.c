@@ -11695,14 +11695,22 @@ static void sq_check(Checker *c, uint32_t e, bool cond)
 
 /* gcc -O: c_fully_fold replaces a read of a const, non-volatile integer
  * variable that has a constant initializer by that value (decl_constant_
- * value), inside a function.  Done where the identifier is an operand;
+ * value), inside a function or an initializer.  Done where the identifier is an operand;
  * &a, a++, a = .. and the like keep the variable. */
 static void fold_const_var(Checker *c, uint32_t i)
 {
     uint32_t t = i, p = c->par[i], ref;
     const CSym *s;
-    if (!in_function(c))
-        return;
+    if (!in_function(c)) {
+        /* file scope: only an initializer folds (gcc, in_init), not an array
+         * bound or a declarator */
+        uint32_t r = i;
+        while (c->par[r] != NO_NODE && cexpr_is_expr(ntag(c, c->par[r])))
+            r = c->par[r];
+        if (c->par[r] == NO_NODE || ntag(c, c->par[r]) != N_INIT_DECL ||
+            r != c->par[r] - 1)
+            return;
+    }
     while (p != NO_NODE && ntag(c, p) == N_PAREN) {
         t = p;
         p = c->par[t];

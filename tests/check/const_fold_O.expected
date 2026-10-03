@@ -13,3 +13,15 @@ const_fold_O.c:12:14: warning: result of '10 << 31' requires 36 bits to represen
 const_fold_O.c:13:6: warning: this condition has identical branches [-Wduplicated-branches]
    13 |   if (i > 10)
       |      ^
+const_fold_O.c:21:27: warning: result of '11 << 31' requires 36 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+   21 | void ff(void) { int k = h << 31; (void)k; }
+      |                           ^
+const_fold_O.c:22:66: warning: result of '11 << 31' requires 36 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+   22 | void f3(void) { const int a = 10; const int b = a + 1; int k = b << 31; (void)k; }
+      |                                                                  ^
+const_fold_O.c:24:5: error: variably modified 'arr' at file scope
+   24 | int arr[n];
+      |     ^
+const_fold_O.c:25:5: error: variably modified 'm' at file scope
+   25 | int m[n + 1] = {0};
+      |     ^
