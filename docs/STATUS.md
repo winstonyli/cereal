@@ -787,7 +787,7 @@ layouts, gcc rules ported, walk design).
   looks through index and comma expressions (cexpr_asets too); copy of
   alloc_size/alloc_align onto a non-pointer function warns (a source that is
   itself non-pointer-returning has nothing to copy); copy(undeclared),
-  copy("str"), copy(const) are errors as in gcc;  attribute names
+  copy("str"), copy(const) are errors as in gcc; the __const attribute name is
   "const" (no "directive ignored").  Golden: attr_copy_errs.  Tests 943;
   gcc.dg 3645, c-c++-common 540.  Known gap: 'const' attribute on a function
   returning void is not warned.
