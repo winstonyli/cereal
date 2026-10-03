@@ -10,31 +10,13 @@ DECL 'int' 1:1
   INIT_DECL 'i' 1:5
     NAME 'i' 1:5
     DECLARED 'i' 1:5
-FUNC_DEF 'void' 2:1
+ERROR 'void' 2:1 #11 [1]
   SPECS 'void' 2:1
     TYPESPEC 'void' 2:1
-  FUNC '(' 2:18
-    NAME 'foo' 2:15
-    SCOPE '(' 2:18
-    SCOPE_END '(' 2:18
-  DECLARED 'foo' 2:15 [2]
-  SCOPE '{' 3:1 [80]
-  SCOPE_END '}' 5:1
-FUNC_DEF 'unsigned' 6:1
+ERROR 'unsigned' 6:1 #28 [1]
   SPECS 'unsigned' 6:1
     TYPESPEC 'unsigned' 6:1
     TYPESPEC 'int' 6:10
-  FUNC '(' 6:45
-    NAME 'f' 6:44
-    SCOPE '(' 6:45
-    PARAM 'int' 6:46
-      SPECS 'int' 6:46
-        TYPESPEC 'int' 6:46
-      NAME 'a' 6:50
-    SCOPE_END 'a' 6:50
-  DECLARED 'f' 6:44 [2]
-  SCOPE '{' 7:1 [80]
-  SCOPE_END '}' 11:1
 DECL 'int' 12:1
   SPECS 'int' 12:1
     TYPESPEC 'int' 12:1

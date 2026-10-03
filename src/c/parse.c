@@ -1227,6 +1227,7 @@ static void specs(Parser *p, Specs *s, Lookahead la)
             if (!s->type && unknown_type(p, ci(p), la)) {
                 /* as gcc: diagnosed, then parsed as if it were a type */
                 unknown_type_error(p, &t);
+                p->err.live = false;    /* error_at, not c_parser_error */
                 emit(p, N_TYPEDEF_NAME, adv(p), nmark(p), NF_ERROR);
                 s->type = true;
                 s->err = true;
@@ -2015,6 +2016,7 @@ static void primary(Parser *p)
                         break;
                     adv(p);
                 }
+                p->err.live = false;    /* skip_until_found cleared it */
             }
             expect(p, P_RPAREN);
             emit(p, N_PAREN, lp, start, 0);
@@ -2564,6 +2566,18 @@ static void declaration(Parser *p, bool top)
         return;
     }
     specs(p, &s, top ? LA_DECL_TOP : LA_DECL);
+    if (p->err.live && !p->unwind) {
+        /* gcc's c_parser_declaration_or_fndef: an error still pending after
+         * the declaration specifiers (an earlier item's, which file scope
+         * never clears) skips the declaration, silently */
+        if (top || p->kr_params)
+            sync_top(p);
+        else
+            sync_stmt(p);
+        emit(p, N_ERROR, first, start, NF_ERROR);
+        set_aux(p, p->pos - first);
+        return;
+    }
     if (!s.any) {
         /* no specifiers: at file scope gcc goes on to the declarator
          * (implicit int, accepted with a warning): f(void) {...}, x;
@@ -2739,7 +2753,6 @@ bool parser_next(Parser *p, ParseUnit *u)
     p->nodes.len = 0;
     p->saved.len = 0;
     p->err.have = false;
-    p->err.live = false;
     if (fill(p, p->pos) && p->toks.data[p->pos].t.kind == TK_PRAGMA) {
         leaf(p, N_PRAGMA, p->pos);
         p->pos++;

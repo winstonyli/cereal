@@ -1,0 +1,63 @@
+suggest_format.c:4:1: warning: function 'a1' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+    4 | void a1 (const char *fmt, va_list ap) { vprintf (fmt, ap); }
+      | ^
+suggest_format.c:7:3: warning: function 'a2' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+    7 |   vprintf (fmt, ap);
+      |   ^
+suggest_format.c:12:3: warning: function 'a3' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   12 |   x++; vprintf (fmt, ap);
+      |   ^
+suggest_format.c:13:3: warning: function 'a3' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   13 |   vprintf (fmt, ap);
+      |   ^
+suggest_format.c:15:1: warning: function 'a4' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   15 | void a4 (const char *fmt, ...) { va_list ap; va_start (ap, fmt); vprintf (fmt, ap); va_end (ap); }
+      | ^
+suggest_format.c:21:5: warning: function 'a5' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   21 |     vprintf (fmt, ap);
+      |     ^
+suggest_format.c:26:3: warning: function 'a6' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   26 |   ap); } }
+      |   ^
+suggest_format.c:30:1: warning: function 'd1' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   30 | void d1 (const char *f, va_list ap) { my (f, ap); }
+      | ^
+suggest_format.c:34:1: warning: function 'd3' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   34 | void d3 (const char *f, va_list ap) { my (f, ap); mys (f, ap); }
+      | ^
+suggest_format.c:36:1: warning: function 'd5' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   36 | void d5 (int x, va_list ap, char *const q) { my (q, ap); }
+      | ^
+suggest_format.c:40:1: warning: function 'd9' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   40 | void d9 (const char *f, va_list ap) { char b[10]; vsnprintf (b, 10, f, ap); vsprintf (b, f, ap); vfprintf (stderr, f, ap); }
+      | ^
+suggest_format.c:40:1: warning: function 'd9' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   40 | void d9 (const char *f, va_list ap) { char b[10]; vsnprintf (b, 10, f, ap); vsprintf (b, f, ap); vfprintf (stderr, f, ap); }
+      | ^
+suggest_format.c:40:1: warning: function 'd9' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   40 | void d9 (const char *f, va_list ap) { char b[10]; vsnprintf (b, 10, f, ap); vsprintf (b, f, ap); vfprintf (stderr, f, ap); }
+      | ^
+suggest_format.c:41:1: warning: function 'd10' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   41 | void d10 (const char f[], va_list ap) { vprintf (f, ap); }
+      | ^
+suggest_format.c:46:3: warning: function 'foo0' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   46 |   __builtin_vprintf (fmt, ap);
+      |   ^
+suggest_format.c:47:3: warning: function 'foo0' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   47 |   vprintf (fmt, ap);
+      |   ^
+suggest_format.c:48:3: warning: function 'foo0' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   48 |   vfprintf (stdout, fmt, ap);
+      |   ^
+suggest_format.c:51:1: warning: function 'bar0' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   51 | void bar0 (const char *fmt, va_list ap) { vprintf (fmt, ap); }
+      | ^
+suggest_format.c:52:1: warning: function 'baz0' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   52 | void baz0 (const char *fmt, va_list ap) { __builtin_vprintf (fmt, ap); }
+      | ^
+suggest_format.c:53:1: warning: function 'qux0' might be a candidate for 'gnu_printf' format attribute [-Wsuggest-attribute=format]
+   53 | void qux0 (const char *fmt, ...) { va_list ap; va_start (ap, fmt); __builtin_vsnprintf (0, 0, fmt, ap); __builtin_vscanf(fmt, ap); va_end (ap); }
+      | ^
+suggest_format.c:53:1: warning: function 'qux0' might be a candidate for 'gnu_scanf' format attribute [-Wsuggest-attribute=format]
+   53 | void qux0 (const char *fmt, ...) { va_list ap; va_start (ap, fmt); __builtin_vsnprintf (0, 0, fmt, ap); __builtin_vscanf(fmt, ap); va_end (ap); }
+      | ^

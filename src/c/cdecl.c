@@ -3254,6 +3254,21 @@ static void chain_free(Chain *ch)
         free(ch->p);
 }
 
+/* -Wlarger-than=N: an object declaration (layout_decl) of more than N bytes. */
+static void larger_than(Checker *c, SrcLoc loc, uint32_t name, TypeId ty)
+{
+    uint64_t lim, sz;
+    bool ok;
+    if (!name || !diag_enabled(c->diag, "larger-than=") ||
+        !(lim = diag_option_size(c->diag, "larger-than=")))
+        return;
+    sz = type_size(TT, ty, &ok);
+    if (ok && sz > lim)
+        cwarn(c, loc, "larger-than=", "size of '%s' %llu bytes exceeds "
+              "maximum object size %llu", cident(c, name),
+              (unsigned long long)sz, (unsigned long long)lim);
+}
+
 static bool valid_array_size(Checker *c, SrcLoc loc, TypeId elem, uint64_t n,
                              uint32_t name)
 {
@@ -5218,6 +5233,8 @@ static void declared_visit(Checker *c, uint32_t i)
     if (g.what == GD_NONE)
         return;
     s = g.s;
+    if (s.kind == CS_OBJ)
+        larger_than(c, s.loc, s.name, s.ty);
     c->attr_fty = s.kind == CS_FUNC ? type_canon(TT, s.ty) : 0;
     decl_attrs(c, idecl, &a);
     c->attr_fty = 0;
@@ -6743,6 +6760,7 @@ static void param_visit(Checker *c, uint32_t p)
     }
     memset(&a, 0, sizeof a);
     attrs_of_children(c, p, &a);
+    larger_than(c, s.loc, s.name, s.ty);
     attrs_unknown_emit(c, &sp.attrs, first_tok(c, p));
     attrs_merge(&a, &sp.attrs);
     attrs_misapplied(c, &a, 'p', false, 0, first_tok(c, p));
@@ -7296,6 +7314,7 @@ static void body_visit(Checker *c, uint32_t i)
                 !is_err(c, c->ty[p]))
                 continue;
             s = csym(c, c->cb[p] - 1);
+            larger_than(c, s->loc, s->name, s->ty);   /* declared again in the body */
             if (s->name) {
                 cbind(c, NS_ORD, s->name, c->cb[p] - 1);
                 if (!(s->flags & CSF_USED))

@@ -1,0 +1,6 @@
+larger_than_pragma.c:3:5: error: size of 'a' 524288 bytes exceeds maximum object size 65536 [-Werror=larger-than=]
+    3 | int a[131072];
+      |     ^
+larger_than_pragma.c:8:5: warning: size of 'e' 524288 bytes exceeds maximum object size 65536 [-Wlarger-than=]
+    8 | int e[131072];
+      |     ^

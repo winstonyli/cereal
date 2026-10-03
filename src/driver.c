@@ -329,16 +329,16 @@ static void bad_wopt(Options *o, const char *flag)
         bool exact = false;
         for (k = 0; !eq && valued && k < sizeof gcc_wopts / sizeof *gcc_wopts; k++)
             exact |= !strcmp(gcc_wopts[k], name);
-        if (!eq && valued && !exact && strncmp(flag, "no-", 3) && m > 12 &&
-            !strcmp(name + m - 12, "-larger-than")) {
+        bool sized = !strcmp(name, "larger-than") ||
+                     (m > 12 && !strcmp(name + m - 12, "-larger-than"));
+        if (!eq && valued && !exact && strncmp(flag, "no-", 3) && sized) {
             /* a valued-only option written without its value */
             fprintf(stderr, "cereal: error: unrecognized command-line option "
                     "'-W%s'; did you mean '-W%s='?\n", flag, name);
             o->bad_options++;
             return;
         }
-        if (eq && valued && m > 12 &&
-            !strcmp(name + m - 12, "-larger-than") && !size_arg_ok(eq + 1)) {
+        if (eq && valued && sized && !size_arg_ok(eq + 1)) {
             fprintf(stderr, "cereal: error: argument to '-W%s=' should be a "
                     "non-negative integer optionally followed by a size "
                     "unit\n", name);

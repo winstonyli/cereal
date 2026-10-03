@@ -1,0 +1,45 @@
+larger_than.c:2:5: warning: size of 'g' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+    2 | int g[131072];
+      |     ^
+larger_than.c:3:12: warning: size of 's' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+    3 | static int s[131072];
+      |            ^
+larger_than.c:4:12: warning: size of 'e' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+    4 | extern int e[131072];
+      |            ^
+larger_than.c:5:5: warning: size of 'tent' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+    5 | int tent[131072];
+      |     ^
+larger_than.c:6:5: warning: size of 'tent' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+    6 | int tent[131072];
+      |     ^
+larger_than.c:8:10: warning: size of 'gs' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+    8 | struct S gs;
+      |          ^
+larger_than.c:9:31: warning: size of 'x' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+    9 | struct S ret(void) { struct S x; return x; }
+      |                               ^
+larger_than.c:10:17: warning: size of 'p' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+   10 | void f(struct S p) {}
+      |                 ^
+larger_than.c:10:17: warning: size of 'p' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+   10 | void f(struct S p) {}
+      |                 ^
+larger_than.c:11:20: warning: size of 'loc' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+   11 | void h(void) { int loc[131072]; static int st[131072]; struct S ls; }
+      |                    ^
+larger_than.c:11:44: warning: size of 'st' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+   11 | void h(void) { int loc[131072]; static int st[131072]; struct S ls; }
+      |                                            ^
+larger_than.c:11:65: warning: size of 'ls' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+   11 | void h(void) { int loc[131072]; static int st[131072]; struct S ls; }
+      |                                                                 ^
+larger_than.c:13:3: warning: size of 'tt' 524288 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+   13 | T tt;
+      |   ^
+larger_than.c:16:6: warning: size of 'c' 65536 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+   16 | char c[65536];
+      |      ^
+larger_than.c:17:6: warning: size of 'c2' 65537 bytes exceeds maximum object size 64000 [-Wlarger-than=]
+   17 | char c2[65537];
+      |      ^

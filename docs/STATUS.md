@@ -472,7 +472,41 @@ layouts, gcc rules ported, walk design).
   sequences" pedwarn; $ identifiers and numbers do not close contexts;
   UTF-8 and UCN spellings of one identifier are not unified; diagnostics are
   location-sorted, so lexer and parser messages can order differently from
-  gcc.  Parser cascade: gcc suppresses a later "expected ... before" after an
-  "expected expression" error (cereal does not).  Open: -Wlarger-than=N and
-  -Wmissing-format-attribute on __builtin_vprintf (pr68657-2/3, pr68833-2),
-  bitfld-12.
+  gcc.  (Parser cascade, larger-than, missing-format-attribute and bitfld-12 were
+  open here; all done in Round 15.)
+- Round 15 (2026-10-02): -Wlarger-than=N, -Wsuggest-attribute=format, the
+  offsetof bit-field message, and gcc's parser->error cascade.  gcc.dg
+  identical 3620 -> 3623 (0 rejects-valid, 0 accepts-invalid);
+  c-c++-common 496 -> 500, accepts-invalid 6 -> 3.  Tests 874; ASan+UBSan
+  clean; check icount 5.960G -> 5.978G (+0.3%, uvloop loop.c with
+  -std=c99 -pedantic -I/usr/include/python3.13 -I.../libuv/include).
+  -Wlarger-than=N[kB|KiB|MB..] warns at each object declaration (extern,
+  tentative, locals; a parameter at the prototype and again at the
+  definition); bad value = driver error; bare -Wlarger-than is unrecognized.
+  -Wsuggest-attribute=format (alias -Wmissing-format-attribute): a v*printf
+  /v*scanf call (builtin tables gained the v variants) whose format is not
+  a literal, inside a function with a char * parameter and no format
+  attribute of that kind; reported at gcc's input_location.  That location
+  is the first token of the line of the call's closing ')' (last_tok + 1),
+  which also fixes -Wformat-security / -Wformat-nonliteral on multi-line
+  calls.  -Wformat=2 now enables -Wformat-nonliteral and -Wformat-security;
+  -Wno-format disables the default-on -Wformat-security.
+  offsetof of a bit-field: "attempt to take address of bit-field structure
+  member" at the tag (or '{') of a struct/union/enum specifier in the type
+  name, else at the first token of the line of the ',' after the type name;
+  a later token that starts a line overrides the tag (input_location).
+  Parser cascade: gcc's c_parser_declaration_or_fndef skips a declaration
+  silently when parser->error is still set after its declaration specifiers,
+  and file scope never clears the flag, so consecutive broken declarations
+  report every other one.  declaration() does the same (p->err.live is no
+  longer reset per external declaration); a parenthesised expression clears
+  it only when skip_until_found really skips; unknown type name does not set
+  it.  Goldens: larger_than, larger_than_pragma, suggest_format,
+  offsetof_bitfield, err_cascade; parse goldens err_gimple, err_recovery,
+  err_tokdesc regenerated (err_gimple/err_tokdesc now header-equal to gcc).
+  Known gaps: the cascade flag does not cross parallel chunks; other
+  c_parser_skip_until_found sites (calls, sizeof(type), casts) still use
+  expect() and may not clear the flag as gcc does; "int e = ) 2;" gcc says
+  "expected ',' or ';' before numeric constant" (cereal: expected
+  expression); UTF-8 identifier spelling in "undeclared" messages
+  (gnu mode prints the character, cereal \U000020ac).

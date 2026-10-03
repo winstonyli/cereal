@@ -147,6 +147,7 @@ int diag_option_state(DiagEngine *d, const char *id);
 bool diag_option_explicit(DiagEngine *d, const char *id);
 /* N of -Wid=N as given on the command line, else dflt */
 int diag_option_level(DiagEngine *d, const char *id, int dflt);
+uint64_t diag_option_size(DiagEngine *d, const char *id);
 
 Diagnostic *diag_report(DiagEngine *d, DiagLevel lvl, const char *id,
                         SrcLoc loc, const char *fmt, ...);

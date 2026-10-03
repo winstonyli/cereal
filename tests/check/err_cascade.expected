@@ -1,0 +1,21 @@
+err_cascade.c:1:9: error: expected expression before ';' token
+    1 | int b = ;
+      |         ^
+err_cascade.c:3:9: error: expected expression before ';' token
+    3 | int d = ;
+      |         ^
+err_cascade.c:6:9: error: expected expression before ';' token
+    6 | int g = ;
+      |         ^
+err_cascade.c:8:12: error: expected expression before ';' token
+    8 | int i = 2 +;
+      |            ^
+err_cascade.c:10:9: error: expected expression before ';' token
+   10 | int l = ;
+      |         ^
+err_cascade.c:12:9: error: expected expression before ';' token
+   12 | int n = ;
+      |         ^
+err_cascade.c:15:9: error: expected expression before ';' token
+   15 | int q = ;
+      |         ^

@@ -4248,7 +4248,9 @@ static uint32_t builtin_format_pos(const char *name)
 {
     static const struct { const char *n; uint32_t pos; } t[] = {
         {"printf", 1}, {"fprintf", 2}, {"sprintf", 2}, {"snprintf", 3},
-        {"dprintf", 2}, {"printf_unlocked", 1}, {"fprintf_unlocked", 2}};
+        {"dprintf", 2}, {"printf_unlocked", 1}, {"fprintf_unlocked", 2},
+        {"vprintf", 1}, {"vfprintf", 2}, {"vsprintf", 2}, {"vsnprintf", 3},
+        {"vdprintf", 2}};
     size_t m;
     if (!strncmp(name, "__builtin_", 10))
         name += 10;
@@ -4819,7 +4821,49 @@ static uint32_t builtin_scanf_pos(const char *name)
         name += 10;
     if (!strcmp(name, "scanf"))
         return 1;
-    return !strcmp(name, "fscanf") || !strcmp(name, "sscanf") ? 2 : 0;
+    if (!strcmp(name, "vscanf"))
+        return 1;
+    return !strcmp(name, "fscanf") || !strcmp(name, "sscanf") ||
+           !strcmp(name, "vfscanf") || !strcmp(name, "vsscanf") ? 2 : 0;
+}
+
+/* A library function taking a va_list: gcc's built-in format attribute has
+ * first_arg_num 0. */
+static bool builtin_is_va(const char *name)
+{
+    if (!strncmp(name, "__builtin_", 10))
+        name += 10;
+    return name[0] == 'v';
+}
+
+/* check_function_format's -Wsuggest-attribute=format: a call with a va_list
+ * and a format that is not a literal, in a function that has a char *
+ * parameter but no format attribute of its own for that kind. */
+static void suggest_format(Checker *c, bool scan, SrcLoc where)
+{
+    const CSym *f;
+    TypeId ft;
+    uint32_t k, n;
+    if (c->func_sym == SYM_NONE || !diag_enabled(c->diag, "suggest-attribute=format"))
+        return;
+    f = csym(c, c->func_sym);
+    if (f->fmt && (f->fmt >> 24) == (scan ? 2u : 1u))
+        return;
+    ft = type_canon(TT, f->ty);
+    if (type_kind(TT, ft) != TY_FUNC)
+        return;
+    n = type_ent(TT, ft)->n;
+    for (k = 0; k < n; k++) {
+        TypeId t = type_canon(TT, type_params(TT, ft)[k]);
+        if (type_kind(TT, t) == TY_PTR &&
+            type_kind(TT, TYPE_UNQUAL(type_canon(TT, type_base(TT, t)))) ==
+                TY_CHAR) {
+            cwarn(c, where, "suggest-attribute=format", "function '%s' might "
+                  "be a candidate for '%s' format attribute",
+                  cident(c, f->name), scan ? "gnu_scanf" : "gnu_printf");
+            return;
+        }
+    }
 }
 
 /* check_format_info's complaint about a format that is not a string
@@ -4829,23 +4873,23 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
                                  const CSym *sy, const char *name, SrcLoc loc)
 {
     uint32_t pos = 0, first = 0, a, s;
-    SrcLoc where = loc;
+    SrcLoc where = loc, input;
     bool nonlit = false, scan = false;
     if (sy && sy->fmt) {
         pos = (sy->fmt >> 12) & 0xfff;
         first = sy->fmt & 0xfff;
         scan = (sy->fmt >> 24) == 2;
     } else if ((pos = builtin_format_pos(name))) {
-        first = pos + 1;
+        first = builtin_is_va(name) ? 0 : pos + 1;
     } else if ((pos = builtin_scanf_pos(name))) {
-        first = pos + 1;
+        first = builtin_is_va(name) ? 0 : pos + 1;
         scan = true;
     }
     if (!pos || nk - 1 < pos)
         return;
     a = kv[pos];
     /* gcc's input_location: the line of the token after the call's ')' */
-    where = cinput_loc(c, last_tok(c, kv[nk - 1]) + 2);
+    where = input = cinput_loc(c, last_tok(c, kv[nk - 1]) + 1);
     s = strip_paren(c, a);
     if (s == NO_NODE || node_err(c, a))
         return;
@@ -4869,6 +4913,8 @@ static void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     }
     if (!nonlit)
         return;
+    if (!first)
+        suggest_format(c, scan, input);
     if (first && nk <= first) {
         const char *opt = !scan && diag_enabled(c->diag, "format-security")
                           ? "format-security" : "format-nonliteral";
@@ -7813,6 +7859,24 @@ static void e_convertvector(Checker *c, uint32_t i)
     c->ef[i] = c->ef[k[0]] & EF_PROP;
 }
 
+/* gcc's input_location when offsetof's member is a bit-field: a struct,
+ * union or enum specifier in the type name leaves it at the tag (or '{');
+ * a later token that starts a line, or a plain typedef name, leaves the
+ * line change's location.  peek: the ',' after the type name. */
+static SrcLoc offsetof_bf_loc(Checker *c, uint32_t ty, uint32_t peek)
+{
+    uint32_t t, tag = 0;
+    for (t = first_tok(c, ty); t < peek; t++) {
+        int kw = tckw(c, t);
+        if (kw == CK_STRUCT || kw == CK_UNION || kw == CK_ENUM)
+            tag = t + 1;
+    }
+    for (t = tag + 1; tag && t <= peek; t++)
+        if (c->u->toks[t].t.flags & TF_BOL)
+            tag = 0;
+    return tag ? ctok_loc(c, tag) : cinput_loc(c, peek);
+}
+
 static void e_offsetof(Checker *c, uint32_t i)
 {
     uint32_t k[64], n = nkids(c, i, k, 64), j;
@@ -7859,8 +7923,9 @@ static void e_offsetof(Checker *c, uint32_t i)
                 return;
             }
             if (f->flags & FF_BITFIELD) {
-                cerror(c, loc, "cannot take address of bit-field '%s'",
-                       cident(c, name));
+                cerror(c, offsetof_bf_loc(c, k[0], first_tok(c, k[1]) - 1),
+                       "attempt to take address of bit-field structure member "
+                       "'%s'", cident(c, name));
                 set_err(c, i);
                 return;
             }

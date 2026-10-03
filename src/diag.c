@@ -4,7 +4,9 @@
 #include "utf8.h"
 #include "wcwidth.h"
 
+#include <ctype.h>
 #include <string.h>
+#include <strings.h>
 
 /* Every configurable diagnostic.  Hard errors use id "" and are not listed. */
 static const DiagOption options[] = {
@@ -17,6 +19,8 @@ static const DiagOption options[] = {
     {"builtin-macro-redefined", "pp", DL_WARNING, true, 0, "redefining or undefining a predefined macro"},
     {"unknown-pragma", "pp", DL_WARNING, false, DO_ALL | DO_EXTRA, "unrecognized #pragma"},
     {"invalid-pp-token", "pp", DL_WARNING, true, 0, "unterminated character or string literal"},
+    {"suggest-attribute=format", "c", DL_WARNING, false, 0, "a function calling a v*printf/v*scanf-like function with its own format might take the format attribute (-Wmissing-format-attribute)"},
+    {"larger-than=", "c", DL_WARNING, false, 0, "object larger than N bytes (N: a size, kB/MB.. units)"},
     {"bidi-chars=", "pp", DL_WARNING, true, 0, "bidirectional control characters in comments, literals and identifiers"},
     {"directive-in-macro-args", "pp", DL_WARNING, true, 0, "directive inside macro arguments (C99 6.10.3p11 UB)"},
     {"extra-tokens", "pp", DL_WARNING, true, 0, "extra tokens at end of directive"},
@@ -194,6 +198,7 @@ struct DiagConfig {
     DiagLevel overrides[NOPTIONS];
     bool overridden[NOPTIONS];
     signed char optlevel[NOPTIONS];  /* -Wfoo=N: N, 0: not given */
+    uint64_t optsize[NOPTIONS];      /* -Wfoo=N for a size N, units applied */
     bool error[NOPTIONS];            /* -Werror=X */
     bool noerror[NOPTIONS];          /* -Wno-error=X: not promoted by -Werror */
     signed char umbrella[NUMBRELLA];
@@ -248,6 +253,8 @@ static bool name_matches(const DiagOption *o, const char *flag, long *level)
     *level = 1;
     if (strcmp(o->name, flag) == 0)
         return true;
+    if (!strcmp(flag, "missing-format-attribute"))   /* gcc's alias */
+        return !strcmp(o->name, "suggest-attribute=format");
     if (n && o->name[n - 1] == '=') {
         if (strncmp(o->name, flag, n - 1) != 0)
             return false;
@@ -258,6 +265,27 @@ static bool name_matches(const DiagOption *o, const char *flag, long *level)
         *level = strtol(flag + n, NULL, 10);
         return true;
     }
+    return false;
+}
+
+/* gcc's size arguments: digits and an optional unit (kB 1000, KiB 1024, ...). */
+static bool parse_size(const char *v, uint64_t *out)
+{
+    static const struct { const char *u; uint64_t m; } units[] = {
+        {"", 1}, {"B", 1}, {"kB", 1000}, {"KB", 1000}, {"KiB", 1024},
+        {"MB", 1000000}, {"MiB", 1u << 20}, {"GB", 1000000000},
+        {"GiB", 1u << 30}};
+    char *e;
+    uint64_t n;
+    size_t k;
+    if (!isdigit((unsigned char)*v))
+        return false;
+    n = strtoull(v, &e, 10);
+    for (k = 0; k < sizeof units / sizeof *units; k++)
+        if (!strcasecmp(e, units[k].u)) {
+            *out = n * units[k].m;
+            return true;
+        }
     return false;
 }
 
@@ -384,11 +412,16 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
         if (name_matches(&options[i], flag, &lv) ||
             (!err && strcmp(options[i].group, flag) == 0)) {
             bool en = on && lv != 0;
+            uint64_t sz = 0;
+            if (!strcmp(options[i].name, "larger-than=") && on &&
+                (!strchr(flag, 61) || !parse_size(strchr(flag, 61) + 1, &sz)))
+                return false;       /* the driver reports the bad size */
             if (!strcmp(options[i].name, "conversion") && !err)
                 c->conv = en ? 1 : -1;
             c->overrides[i] = en ? options[i].level : DL_IGNORED;
             c->overridden[i] = true;
             c->optlevel[i] = strchr(flag, 61) ? (signed char)lv : 0;
+            c->optsize[i] = sz;
             if (err) {
                 c->error[i] = true;
                 c->noerror[i] = false;
@@ -448,6 +481,23 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
         }
         *lvl = DL_IGNORED;
         return 0;
+    }
+    /* gcc: -Wformat=2 enables -Wformat-nonliteral and -Wformat-security */
+    if (c && (!strcmp(o->name, "format-nonliteral") ||
+              !strcmp(o->name, "format-security"))) {
+        static long f = -2;
+        if (f == -2)
+            f = find_index("format=");
+        if (f >= 0 && c->overridden[f] && c->overrides[f] != DL_IGNORED &&
+            c->optlevel[f] >= 2) {
+            *lvl = o->level;
+            return 1;
+        }
+        if (f >= 0 && c->overridden[f] && c->overrides[f] == DL_IGNORED &&
+            !strcmp(o->name, "format-security")) {      /* -Wno-format */
+            *lvl = DL_IGNORED;
+            return 0;
+        }
     }
     /* gcc: -Wshadow enables -Wshadow=local, which enables
      * -Wshadow=compatible-local */
@@ -529,6 +579,13 @@ int diag_option_level(DiagEngine *d, const char *id, int dflt)
     if (i < 0 || !d->cfg || !d->cfg->optlevel[i])
         return dflt;
     return d->cfg->optlevel[i];
+}
+
+/* -Wfoo=SIZE: the size as given (units applied); 0 when not given. */
+uint64_t diag_option_size(DiagEngine *d, const char *id)
+{
+    long i = find_index_cached(d, id);
+    return i < 0 || !d->cfg ? 0 : d->cfg->optsize[i];
 }
 
 int diag_option_state(DiagEngine *d, const char *id)
