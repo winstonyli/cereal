@@ -1,0 +1,15 @@
+const_fold_O.c:9:14: warning: result of '10 << 31' requires 36 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+    9 |   int k1 = a << b;
+      |              ^
+const_fold_O.c:10:15: warning: result of '10 << 31' requires 36 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+   10 |   int k2 = 10 << b;
+      |               ^
+const_fold_O.c:11:14: warning: left shift count >= width of type [-Wshift-count-overflow]
+   11 |   int k3 = v << 40;
+      |              ^
+const_fold_O.c:12:14: warning: result of '10 << 31' requires 36 bits to represent, but 'int' only has 32 bits [-Wshift-overflow=]
+   12 |   int k4 = n << 31;
+      |              ^
+const_fold_O.c:13:6: warning: this condition has identical branches [-Wduplicated-branches]
+   13 |   if (i > 10)
+      |      ^

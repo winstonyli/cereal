@@ -10028,7 +10028,17 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     unsigned prec;
     const char *dir = left ? "left" : "right";
     if (tkind(c, ta) == TY_VECTOR || tkind(c, tb) == TY_VECTOR) {
-        vec_binop(c, i, a, b, op, true);
+        /* a constant scalar count is checked against the element's width */
+        if (vec_binop(c, i, a, b, op, true) && tkind(c, ta) == TY_VECTOR &&
+            tkind(c, tb) != TY_VECTOR && has_ival(c, b) &&
+            !inhibited(c, i, false)) {
+            if (ival_neg(c, tb, c->cv[b]))
+                cwarn(c, loc, "shift-count-negative", "%s shift count is "
+                      "negative", dir);
+            else if (c->cv[b] >= int_bits(c, vec_elem(c, ta)))
+                cwarn(c, loc, "shift-count-overflow", "%s shift count >= "
+                      "width of vector element", dir);
+        }
         return;
     }
     if (!is_int(c, ta) || !is_int(c, tb)) {
@@ -11683,11 +11693,60 @@ static void sq_check(Checker *c, uint32_t e, bool cond)
     }
 }
 
+/* gcc -O: c_fully_fold replaces a read of a const, non-volatile integer
+ * variable that has a constant initializer by that value (decl_constant_
+ * value), inside a function.  Done where the identifier is an operand;
+ * &a, a++, a = .. and the like keep the variable. */
+static void fold_const_var(Checker *c, uint32_t i)
+{
+    uint32_t t = i, p = c->par[i], ref;
+    const CSym *s;
+    if (!in_function(c))
+        return;
+    while (p != NO_NODE && ntag(c, p) == N_PAREN) {
+        t = p;
+        p = c->par[t];
+    }
+    if (p == NO_NODE)
+        return;
+    switch (ntag(c, p)) {
+    case N_BINARY: case N_COND: case N_CAST: case N_INIT_DECL:
+        break;
+    case N_UNARY:
+        if (npunct(c, p) != P_PLUS && npunct(c, p) != P_MINUS &&
+            npunct(c, p) != P_TILDE && npunct(c, p) != P_BANG)
+            return;
+        break;
+    case N_ASSIGN:
+        if (t != p - 1)
+            return;
+        break;
+    default:
+        return;
+    }
+    ref = lookup_ord(c, cnode_ident(c, i));
+    if (ref == SYM_NONE)
+        return;
+    s = csym(c, ref);
+    if (s->kind != CS_OBJ || !(s->flags & CSF_CONST_VAL) ||
+        !is_int(c, c->ty[i]) || (tquals(c, s->ty) & TQ_VOLATILE))
+        return;
+    c->ck[i] = K_FOLD;
+    c->cv[i] = s->val;
+    c->cb[i] = 0;
+    c->ef[i] = EF_CST;
+}
+
 void cexpr_node(Checker *c, uint32_t i)
 {
     uint32_t p;
     switch (ntag(c, i)) {
-    case N_IDENT: e_ident(c, i); break;
+    case N_IDENT:
+        e_ident(c, i);
+        if (c->opt.opt_level && c->opt.opt_level != '0' && c->ck[i] != K_ERR &&
+            !(c->ef[i] & EF_SIDE))
+            fold_const_var(c, i);
+        break;
     case N_NUMBER: e_number(c, i); break;
     case N_CHAR: e_char(c, i); break;
     case N_STRING: e_string(c, i); break;

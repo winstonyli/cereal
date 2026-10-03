@@ -1,0 +1,6 @@
+vec_shift_count.c:2:23: warning: left shift count >= width of vector element [-Wshift-count-overflow]
+    2 | v4 f(v4 x) { return x << 40; }
+      |                       ^
+vec_shift_count.c:3:23: warning: right shift count is negative [-Wshift-count-negative]
+    3 | v4 g(v4 x) { return x >> -1; }
+      |                       ^

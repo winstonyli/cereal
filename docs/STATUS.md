@@ -627,3 +627,22 @@ layouts, gcc rules ported, walk design).
   expansion location on CSym); parse errors (vperr) still print a single
   outermost note; pasted names and argument tokens fall back to a single
   outermost note.
+- Round 21 (2026-10-02): -O folding of const variables, vector shift counts.
+  Under -O (any level but -O0; CheckOptions.opt_level) a read of a const,
+  non-volatile integer variable with a constant initializer folds to that value
+  inside a function, as gcc's decl_constant_value does in c_fully_fold: the
+  initializer value is kept in CSym.val (flag CSF_CONST_VAL, cinit.c
+  cinit_decl_done) and cexpr.c fold_const_var turns the identifier node into a
+  K_FOLD/EF_CST constant when its parent uses the value (binary, ?:, cast,
+  initializer, unary + - ~ !, right side of an assignment; never &, ++, --, the
+  left side).  Fixes Wshift-overflow-1/3/4 and Wduplicated-branches-1 under -O.
+  Vector shifts by a constant scalar count now warn "shift count is negative" /
+  ">= width of vector element" (gcc.dg/vshift-7 under -O1).  Harness: par.py
+  drops dg-options -O* unless CEREAL_DGO=1 (gcc then warns more than cereal
+  does at -O: 3 gcc.dg + 1 c-c++-common files differ for that reason only:
+  Wfree-nonheap-object-2, alias-9, Wstrict-aliasing-*).  Without -O: gcc.dg
+  3635, c-c++-common 529 identical; tests 918; ASan/UBSan clean; icount 5.989G.  Goldens:
+  const_fold_O, vec_shift_count.
+  Known gaps: floats and enums-as-pointers are not folded; call arguments and
+  return values keep the variable; a file-scope const is folded from the
+  persistent symbol only if its val survives (cells path untested for -O).

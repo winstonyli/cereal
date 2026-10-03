@@ -2611,6 +2611,16 @@ void cinit_decl_done(Checker *c, uint32_t idecl)
             dp != NOB && dp < c->nn)
             cconst_overflow(c, tloc(c, first_tok(c, dp)));
         if ((TYPE_QUALS(type) & (TQ_CONST | TQ_VOLATILE)) == TQ_CONST &&
+            c->opt.opt_level && c->opt.opt_level != '0' &&
+            type_is_integer(TT, type) && type_is_integer(TT, c->ty[init]) &&
+            (c->ck[init] == K_ICE ||
+             (c->ck[init] == K_FOLD && (c->ef[init] & EF_CST))) &&
+            !(c->ef[init] & EF_OVERFLOW)) {
+            /* -O: reads of it fold to the value (cexpr.c fold_const_var) */
+            s->val = cexpr_trunc(c, type, c->cv[init]);
+            s->flags |= CSF_CONST_VAL;
+        }
+        if ((TYPE_QUALS(type) & (TQ_CONST | TQ_VOLATILE)) == TQ_CONST &&
             !is_aggr(c, type) && !is_arr(c, type) && v.kind == V_EXPR &&
             !v.str && !v.cl && const_class(c, init, v.type, type) == 2)
             s->flags |= CSF_CONST_INIT;

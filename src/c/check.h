@@ -22,6 +22,7 @@ typedef struct CheckOptions {
     bool pedantic;
     bool pedantic_errors;
     bool short_enums;           /* -fshort-enums */
+    char opt_level;             /* -O level: 0 or '0': none (-O0) */
     bool lax_vector;            /* -flax-vector-conversions */
     FILE *dump;                 /* --dump-types: declarations and layouts */
     bool summaries;             /* keep per-unit summaries (csum.h) */
