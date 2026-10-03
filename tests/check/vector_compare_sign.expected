@@ -1,0 +1,18 @@
+vector_compare_sign.c:14:11: warning: comparison between types 'v4qi' {aka '__vector(4) signed char'} and 'uv4qi' {aka '__vector(4) unsigned char'} [-Wsign-compare]
+   14 |   v += (a == b); /* { dg-warning "comparison between types" } */
+      |           ^
+vector_compare_sign.c:15:11: warning: comparison between types 'v4qi' {aka '__vector(4) signed char'} and 'uv4qi' {aka '__vector(4) unsigned char'} [-Wsign-compare]
+   15 |   v += (a != b); /* { dg-warning "comparison between types" } */
+      |           ^
+vector_compare_sign.c:16:11: warning: comparison between types 'v4qi' {aka '__vector(4) signed char'} and 'uv4qi' {aka '__vector(4) unsigned char'} [-Wsign-compare]
+   16 |   v += (a >= b); /* { dg-warning "comparison between types" } */
+      |           ^
+vector_compare_sign.c:17:11: warning: comparison between types 'v4qi' {aka '__vector(4) signed char'} and 'uv4qi' {aka '__vector(4) unsigned char'} [-Wsign-compare]
+   17 |   v += (a <= b); /* { dg-warning "comparison between types" } */
+      |           ^
+vector_compare_sign.c:18:11: warning: comparison between types 'v4qi' {aka '__vector(4) signed char'} and 'uv4qi' {aka '__vector(4) unsigned char'} [-Wsign-compare]
+   18 |   v += (a > b); /* { dg-warning "comparison between types" } */
+      |           ^
+vector_compare_sign.c:19:11: warning: comparison between types 'v4qi' {aka '__vector(4) signed char'} and 'uv4qi' {aka '__vector(4) unsigned char'} [-Wsign-compare]
+   19 |   v += (a < b); /* { dg-warning "comparison between types" } */
+      |           ^

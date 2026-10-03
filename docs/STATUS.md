@@ -1032,3 +1032,13 @@ layouts, gcc rules ported, walk design).
   vector-compare-4.c (12, vector element signedness) and pr35430.c (complex int). `-Warray-bounds` has no misses left
   in the gcc.dg/c-c++-common/-O lists (the "60" in the earlier note was stale).
 - Parity: tests 1007, gcc.dg 3662 identical (213 differ), c-c++-common 560 (97), san clean (332).
+
+### Round 47 — vector sign-compare; survey of float-conversion / stringop-overread
+- Comparing two integer vectors whose element signedness differs warns "comparison between types 'v4qi' {aka ..}
+  and 'uv4qi' {aka ..}" (-Wsign-compare, at the operator). Golden `vector_compare_sign`; vector-compare-4.c identical.
+- Survey, nothing implemented: all 40 missing `-Wfloat-conversion` diagnostics are constant *complex* values
+  (Wconversion-complex-{c99,gnu}.c; need complex constant folding and `(_Complex double){..}` printing, which would
+  also fix missing -Wconversion/-Woverflow lines in the same files). All 86 `-Wstringop-overread` are strlen/strcspn
+  "argument missing terminating nul" at -O2 (warn-strlen-no-nul.c alone is 76: arrays, struct members, `?:` arms,
+  odd locations); the const-array initializer table (Round 45) is the base for it.
+- Parity: tests 1009, gcc.dg 3662 identical (213 differ), c-c++-common 561 (96), san clean (333).

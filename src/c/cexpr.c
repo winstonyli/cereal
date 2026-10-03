@@ -11089,6 +11089,10 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                 set_err(c, i);
                 return;
             }
+            if (is_int(c, e1) && is_signed(c, e1) != is_signed(c, e2) &&
+                !inhibited(c, i, false))
+                cwarn(c, loc, "sign-compare", "comparison between types %s "
+                      "and %s", type_q(TT, rvt(c, a)), type_q(TT, rvt(c, b)));
         } else {
             bool lv = tkind(c, ta) == TY_VECTOR;
             int r = vec_scalar(c, i, lv ? b : a,
