@@ -173,7 +173,8 @@ TypeId type_canon(TypeTable *tt, TypeId t)
         if (ek == TY_VLA)
             return type_vla(tt, el);
         if (ef & TF_INCOMPLETE)
-            return type_array_incomplete(tt, el);
+            return (ef & TF_FLEX) ? type_array_flex(tt, el)
+                                  : type_array_incomplete(tt, el);
         return type_array(tt, el, en);
     }
     return c;
@@ -205,6 +206,11 @@ TypeId type_array(TypeTable *tt, TypeId elem, uint64_t n)
 TypeId type_array_incomplete(TypeTable *tt, TypeId elem)
 {
     return mk_array(tt, TY_ARRAY, TF_INCOMPLETE, elem, 0);
+}
+
+TypeId type_array_flex(TypeTable *tt, TypeId elem)
+{
+    return mk_array(tt, TY_ARRAY, TF_INCOMPLETE | TF_FLEX, elem, 0);
 }
 
 TypeId type_vla(TypeTable *tt, TypeId elem)
@@ -731,6 +737,8 @@ TypeId type_composite(TypeTable *tt, TypeId a, TypeId b)
             return type_array(tt, el, eb->n);
         if (ea->kind == TY_VLA || eb->kind == TY_VLA)
             return type_vla(tt, el);
+        if ((ea->flags | eb->flags) & TF_FLEX)
+            return type_array_flex(tt, el);
         return type_array_incomplete(tt, el);
     }
     switch (ea->kind) {

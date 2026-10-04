@@ -1586,7 +1586,9 @@ void incomplete_error(Checker *c, SrcLoc loc, uint32_t value, TypeId t)
             return;
         case TY_ARRAY:
             if (type_ent(TT, ct)->flags & TF_INCOMPLETE) {
-                cerror(c, loc, "invalid use of flexible array member");
+                cerror(c, loc, (type_ent(TT, ct)->flags & TF_FLEX) ?
+                       "invalid use of flexible array member" :
+                       "invalid use of array with unspecified bounds");
                 return;
             }
             t = type_base(TT, ct);

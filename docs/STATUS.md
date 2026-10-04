@@ -1380,3 +1380,7 @@ diagnostics and builds on the strinit table.
 
 ## Round 81 — verify.sh honours dg-additional-options
 - `bench/tools/par.py` (CEREAL_DGOPTS=1) now merges every selector-free `dg-additional-options` into the test's flags (a selector skips the file, as for dg-options); `-fcf-protection*` is an accepted option. Files whose options cereal lacks are skipped, so the denominators shrink: gcc.dg 3875 -> 3744 files run, c-c++-common 657 -> 636; differ 126 / 41 (was 126 / 42). Baseline for the gate: gcc.dg 126, c-c++-common 41 (gate.sh header updated).
+
+## Round 82 — flexible array member vs unspecified bounds
+- A struct's `[]` member gets `type_array_flex` (`TF_INCOMPLETE|TF_FLEX`; TF_FLEX shares bit 64 with TF_NOCF, which only applies to function types). The canonical form and `type_composite` keep the bit. `incomplete_error` says "invalid use of flexible array member" only for those; any other incomplete array (`int (*A)[]`, typedef'd `T[]`) says "invalid use of array with unspecified bounds", as gcc does (it keys on TYPE_DOMAIN). Closes c-c++-common `pr70756`; golden `misc_90`.
+- Gate: 1127 goldens, san 388/0, gcc.dg differ 126, c-c++-common 40, callgrind ~3.654G.

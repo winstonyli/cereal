@@ -4587,6 +4587,8 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                     type = type_vla(TT, type);
                 else if (sz != NO_NODE || (unspec && !vla))
                     type = type_array(TT, type, n);
+                else if (ctx == DC_FIELD)
+                    type = type_array_flex(TT, type);
                 else
                     type = type_array_incomplete(TT, type);
                 if (!vla && sz != NO_NODE &&

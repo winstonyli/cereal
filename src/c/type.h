@@ -43,6 +43,7 @@ enum {
     TF_SYSHDR = 16,          /* typedef: declared in a system header */
     TF_MAYALIAS = 32,        /* typedef: may_alias */
     TF_NOCF = 64,            /* function: nocf_check (part of the type) */
+    TF_FLEX = 64,            /* incomplete array: a flexible array member (shares the bit) */
     TF_TXUNSAFE = 128        /* function: transaction_unsafe */
 };
 
@@ -163,6 +164,7 @@ static inline TypeKind type_ckind(const TypeTable *tt, TypeId t)
 TypeId type_ptr(TypeTable *tt, TypeId to);
 TypeId type_array(TypeTable *tt, TypeId elem, uint64_t n);
 TypeId type_array_incomplete(TypeTable *tt, TypeId elem);
+TypeId type_array_flex(TypeTable *tt, TypeId elem);
 TypeId type_vla(TypeTable *tt, TypeId elem);
 /* flags: TF_VARIADIC, TF_NOPROTO. */
 TypeId type_func(TypeTable *tt, TypeId ret, const TypeId *params,
