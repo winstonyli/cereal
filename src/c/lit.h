@@ -38,6 +38,7 @@ typedef struct Lit {
 /* A pp-number (integer or floating constant). */
 void lit_number(const Target *tgt, const char *s, size_t n, Lit *out);
 /* A character constant, prefix included. */
+uint32_t lit_named_ucn(const char *s, const char *e);
 void lit_char(const Target *tgt, const char *s, size_t n, Lit *out);
 
 /* String literal prefixes, from the spelling: 0 none, 'L', 'u', 'U', '8'

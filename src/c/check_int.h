@@ -297,6 +297,7 @@ struct Checker {
     VEC(CSym) lsyms;         /* this unit's */
     VEC(StrInit) strinits;   /* string initializers of const char arrays (cexpr.c) */
     VEC(char *) dep_msgs;    /* deprecated/unavailable attribute messages */
+    VEC(uint32_t) ucn_seen;           /* cexpr.c: literal tokens whose escapes were checked */
     VEC(uint32_t) tdvla;              /* cparm.c: (typedef type, pdescs index + 1) pairs */
     VEC(struct CParmDesc *) pdescs;   /* cparm.c: parameter declarations */
     VEC(AName) anames;       /* attribute names by set (__builtin_has_attribute, copy) */

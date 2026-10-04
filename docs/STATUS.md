@@ -1285,3 +1285,13 @@ diagnostics and builds on the strinit table.
 - Golden `misc_69`. Gate: 1085 pass, san 367/0, gcc.dg differ 139, c-c++-common 55.
 - Gotcha: including `c/check_int.h` in `parse.c` silently changed parser behaviour; declare `cident_ucn` locally.
 - Not done: libcpp UCN validation (`not a valid universal character`, incomplete, codespace), `\u{}`/`\N{}`, UCNs in identifiers per `_cpp_valid_ucn` (rules recorded in Round 68 research).
+
+## Round 70 — UCN validation, `\u{}`/`\N{}`, faster gate
+
+- Literals: `\u`/`\U` values validated like `_cpp_valid_ucn` ("is not a valid universal character": < 0xA0 except $ @ `, surrogates, >= 0x80000000); `\u{..}`/`\U{..}`/`\N{NAME}` (bidi names only) parsed, with the C++23 pedwarns after the closing brace; one report per token (`ucn_seen`, keyed by token location).
+- Identifiers: UCN validity checked at every `-std=c99` (not only `-pedantic`); bidi `\N{NAME}` recognised in strings/comments and as a stray `\` token (gcc's repeated `forms_identifier_p` lexing, so the plural message matches).
+- Lookahead heuristic: a literal's bidi warning is placed at the previous token's start (gcc lexes it as lookahead) — Wbidi-chars-12/13 now SAME.
+- Wbidi-chars-4/5/11/12/13/25 SAME. Left: 24 (pp-number "invalid suffix" in recovery), 6 ("unpaired" location 78:50 vs 79:4). gnu99 `\u{}` in identifiers not done.
+- Golden `misc_70`. Cells-mode gotcha: lexer diagnostics are emitted before the unit's checker ones, so a golden with a lexer error after checker diagnostics differs between plain and `--cells`; keep lexer errors first in the file.
+- Gate speed: `tests/run.sh` shards the parse and check golden loops (`par_goldens`, `GOLDEN_JOBS`, default 4); `bench/tools/gate.sh` overlaps run/verify/san/callgrind within 12 threads (`SAN_JOBS`, `SAN_PY_JOBS`, `CEREAL_JOBS`): 3m01 wall (was >10 min serial). Callgrind uvloop 3.631G. Inner loop: `sh tests/run.sh` alone.
+- Gate: 1087 pass, san 368/0, gcc.dg differ 139, c-c++-common 54.

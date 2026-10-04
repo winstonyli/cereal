@@ -1815,11 +1815,127 @@ static void traditional_escapes(Checker *c, uint32_t tok, const char *s,
         }
 }
 
+/* libcpp's _cpp_valid_ucn for the escapes of a literal token: the -pedantic
+ * notes on delimited and named forms, then the errors for a malformed or
+ * invalid one.  Reported once per token, at loc (the token after a string,
+ * a character constant's own start). */
+static void ucn_literal(Checker *c, uint32_t tok, const char *s, size_t len,
+                        SrcLoc loc)
+{
+    size_t k = 0, e = len ? len - 1 : 0, j;
+    bool any = false, ped = c->opt.pedantic;
+    for (j = 0; j + 1 < len; j++)
+        if (s[j] == '\\') {
+            any |= s[j + 1] == 'u' || s[j + 1] == 'U' || s[j + 1] == 'N';
+            j++;
+        }
+    if (!any || cin_system(c, loc))
+        return;
+    for (j = c->ucn_seen.len; j-- > 0;)     /* the token's spelling place */
+        if (c->ucn_seen.data[j] == ctok_loc(c, tok))
+            return;
+    vec_push(&c->ucn_seen, ctok_loc(c, tok));
+    while (k < e && s[k] != '"' && s[k] != '\'')
+        k++;
+    for (k = 0; k < e && s[k] != '"' && s[k] != '\''; k++)
+        ;
+    for (k++; k < e; k++) {
+        size_t b, p;
+        char kind;
+        uint64_t v = 0;
+        unsigned nd = 0;
+        if (s[k] != '\\') {
+            continue;
+        }
+        b = k++;
+        kind = k < e ? s[k] : 0;
+        if (kind != 'u' && kind != 'U' && kind != 'N')
+            continue;
+        p = k + 1;
+        if (kind == 'N') {
+            size_t ns;
+            if (p >= e || s[p] != '{') {
+                cerror(c, loc, "'\\N' not followed by '{'");
+                cerror(c, loc, "incomplete universal character name \\N");
+                k = p - 1;
+                continue;
+            }
+            ns = ++p;
+            while (p < e && (isalnum((unsigned char)s[p]) || s[p] == ' ' ||
+                             s[p] == '-'))
+                p++;
+            if (p >= e || s[p] != '}') {
+                cerror(c, loc, "'\\N{' not terminated with '}' after "
+                       "%.*s", (int)(p - b), s + b);
+                cerror(c, loc, "%.*s is not a valid universal character",
+                       (int)(p - b), s + b);
+                k = p - 1;
+                continue;
+            }
+            if (p == ns)
+                cerror(c, loc, "empty named universal character escape "
+                       "sequence");
+            else if (ped)
+                cpedwarn(c, loc, "", "named universal character escapes are "
+                         "only valid in C++23");
+            /* a name is not looked up: the Unicode database is not here */
+            k = p;
+            continue;
+        }
+        if (p < e && s[p] == '{') {
+            size_t ds;
+            ds = ++p;
+            while (p < e && isxdigit((unsigned char)s[p])) {
+                v = v << 4 | (uint64_t)(isdigit((unsigned char)s[p])
+                                        ? s[p] - '0' : (s[p] | 32) - 'a' + 10);
+                if (v > 0xFFFFFFFFu)
+                    v = 0xFFFFFFFFu;
+                p++;
+            }
+            if (p >= e || s[p] != '}') {
+                cerror(c, loc, "'\\%c{' not terminated with '}' after %.*s",
+                       kind, (int)(p - b), s + b);
+                k = p - 1;
+                continue;
+            }
+            if (p == ds)
+                cerror(c, loc, "empty delimited escape sequence");
+            else if (ped)
+                cpedwarn(c, loc, "", "delimited escape sequences are only "
+                         "valid in C++23");
+            p++;
+        } else {
+            unsigned want = kind == 'u' ? 4 : 8;
+            while (nd < want && p < e && isxdigit((unsigned char)s[p])) {
+                v = v << 4 | (uint64_t)(isdigit((unsigned char)s[p])
+                                        ? s[p] - '0' : (s[p] | 32) - 'a' + 10);
+                p++;
+                nd++;
+            }
+            if (nd < want) {
+                cerror(c, loc, "incomplete universal character name %.*s",
+                       (int)(p - b), s + b);
+                k = p - 1;
+                continue;
+            }
+        }
+        if (v > 0x10FFFF && v < 0x80000000u)
+            cpedwarn(c, loc, "", "%.*s is outside the UCS codespace",
+                     (int)(p - b), s + b);
+        else if ((v < 0xA0 && v != 0x24 && v != 0x40 && v != 0x60) ||
+                 v >= 0x80000000u || (v >= 0xD800 && v <= 0xDFFF))
+            cerror(c, loc, "%.*s is not a valid universal character",
+                   (int)(p - b), s + b);
+        k = p - 1;
+    }
+}
+
 static void e_char(Checker *c, uint32_t i)
 {
     size_t len;
     const char *s = ttext(c, c->nodes[i].tok, &len);
     Lit l;
+    ucn_literal(c, c->nodes[i].tok, s, len, ctok_loc(c, c->nodes[i].tok));
     lit_char(c->tgt, s, len, &l);
     traditional_escapes(c, c->nodes[i].tok, s, len);
     lit_report(c, i, &l);
@@ -1851,6 +1967,8 @@ static void e_string(Checker *c, uint32_t i)
         const char *s = ttext(c, c->nodes[i].tok + k, &len);
         int p = lit_str_prefix(s, len);
         traditional_escapes(c, c->nodes[i].tok + k, s, len);
+        ucn_literal(c, c->nodes[i].tok + k, s, len,
+                    tloc(c, c->nodes[i].tok + np));
         if (p && prefix && p != prefix) {
             /* gcc's lexer reports it twice, at the lookahead's line */
             SrcLoc il = cinput_loc(c, c->nodes[i].tok + np);

@@ -21,7 +21,7 @@ if __name__=="__main__":
     if st=="tests":
         jobs=[(f,[],os.path.dirname(f)) for f in sorted(glob.glob(S+"/../../tests/check/*.c")+glob.glob(S+"/../../tests/parse/*.c"))]
     jobs=[(cer,j[0],j[1],j[2],extra) for j in jobs]
-    with multiprocessing.Pool(6) as p: res=[r for r in p.map(w,jobs,chunksize=2) if r]
+    with multiprocessing.Pool(int(os.environ.get("SAN_PY_JOBS","6"))) as p: res=[r for r in p.map(w,jobs,chunksize=2) if r]
     g=collections.defaultdict(list)
     for f,m in res: g[m].append(f.split("/")[-1])
     for m,fs in sorted(g.items(),key=lambda kv:-len(kv[1])): print(len(fs),m,fs[:3])

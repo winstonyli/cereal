@@ -239,11 +239,42 @@ parse_golden() { # parse_golden NAME FLAGS...  (in tests/parse)
         diff "$name.expected" "$TMP/p" | head -20 | sed 's/^/    /'
     fi
 }
+# par_goldens FUNC: run FUNC NAME and FUNC NAME <cells flags> over *.c in the
+# current directory, sharded over $GOLDEN_JOBS subshells (each with its own
+# scratch dir); their output and counts are merged in shard order.
+par_goldens() {
+    pg_n=${GOLDEN_JOBS:-4}
+    pg_out=$TMP
+    pg_k=0
+    while [ "$pg_k" -lt "$pg_n" ]; do
+        (
+            TMP=$pg_out/s$pg_k
+            mkdir -p "$TMP"
+            pass=0 fail=0 i=0
+            for f in *.c; do
+                [ -f "$f" ] || continue
+                i=$((i + 1))
+                [ $((i % pg_n)) -eq "$pg_k" ] || continue
+                "$1" "${f%.c}"
+                "$1" "${f%.c}" --cells -fparallel-chunk=1 -fparallel-threads=2
+            done
+            echo "$pass $fail" >"$pg_out/r$pg_k"
+        ) >"$pg_out/o$pg_k" 2>&1 &
+        pg_k=$((pg_k + 1))
+    done
+    wait
+    pg_k=0
+    while [ "$pg_k" -lt "$pg_n" ]; do
+        cat "$pg_out/o$pg_k"
+        read -r pg_p pg_f <"$pg_out/r$pg_k"
+        pass=$((pass + pg_p))
+        fail=$((fail + pg_f))
+        pg_k=$((pg_k + 1))
+    done
+}
+
 cd "$ROOT/tests/parse"
-for f in *.c; do
-    parse_golden "${f%.c}"
-    parse_golden "${f%.c}" --cells -fparallel-chunk=1 -fparallel-threads=2
-done
+par_goldens parse_golden
 cd "$ROOT"
 for f in "$ROOT"/src/*.c "$ROOT"/src/analysis/*.c "$ROOT"/src/lsp/*.c \
     "$ROOT"/src/c/*.c; do
@@ -276,11 +307,7 @@ check_golden() { # check_golden NAME FLAGS...  (in tests/check)
 }
 if [ -d "$ROOT/tests/check" ]; then
     cd "$ROOT/tests/check"
-    for f in *.c; do
-        [ -f "$f" ] || continue
-        check_golden "${f%.c}"
-        check_golden "${f%.c}" --cells -fparallel-chunk=1 -fparallel-threads=2
-    done
+    par_goldens check_golden
     cd "$ROOT"
 fi
 

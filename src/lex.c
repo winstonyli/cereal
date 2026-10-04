@@ -230,6 +230,28 @@ static int bidi_ucn_kind(const unsigned char *p, bool big)
     return BK_NONE;
 }
 
+/* A control written \N{NAME} (the text after the brace, up to the end). */
+static int bidi_named_kind(const char *p, const char *e)
+{
+    static const struct { const char *name; int kind; } t[] = {
+        {"LEFT-TO-RIGHT EMBEDDING", BK_LRE}, {"RIGHT-TO-LEFT EMBEDDING", BK_RLE},
+        {"POP DIRECTIONAL FORMATTING", BK_PDF},
+        {"LEFT-TO-RIGHT OVERRIDE", BK_LRO}, {"RIGHT-TO-LEFT OVERRIDE", BK_RLO},
+        {"LEFT-TO-RIGHT ISOLATE", BK_LRI}, {"RIGHT-TO-LEFT ISOLATE", BK_RLI},
+        {"FIRST STRONG ISOLATE", BK_FSI}, {"POP DIRECTIONAL ISOLATE", BK_PDI},
+        {"LEFT-TO-RIGHT MARK", BK_LTR}, {"RIGHT-TO-LEFT MARK", BK_RTL},
+    };
+    size_t k, n = 0;
+    while (p + n < e && p[n] != '}')
+        n++;
+    if (p + n >= e)
+        return BK_NONE;
+    for (k = 0; k < sizeof t / sizeof *t; k++)
+        if (strlen(t[k].name) == n && !strncmp(t[k].name, p, n))
+            return t[k].kind;
+    return BK_NONE;
+}
+
 /* The pop kind of the innermost open context (PDF, PDI or none). */
 static int bidi_cur(const Lexer *L)
 {
@@ -310,6 +332,9 @@ static void bidi_scan(Lexer *L, const char *s, const char *e, bool ucn_ok)
                 (k = bidi_ucn_kind((const unsigned char *)p + 2, p[1] == 'U')) !=
                     BK_NONE)
                 bidi_char(L, p, k, true);
+            else if (p[1] == 'N' && p + 2 < e && p[2] == '{' &&
+                     (k = bidi_named_kind(p + 3, e)) != BK_NONE)
+                bidi_char(L, p, k, true);
             p += 2;
         } else {
             p++;
@@ -323,6 +348,9 @@ static void bidi_try_ucn(Lexer *L, const char *p)
     int k;
     if ((p[1] == 'u' || p[1] == 'U') &&
         (k = bidi_ucn_kind((const unsigned char *)p + 2, p[1] == 'U')) != BK_NONE)
+        bidi_char(L, p, k, true);
+    else if (p[1] == 'N' && p[2] == '{' &&
+             (k = bidi_named_kind(p + 3, L->lim)) != BK_NONE)
         bidi_char(L, p, k, true);
 }
 
@@ -349,6 +377,18 @@ static void bidi_ctx(Lexer *L, const char *s, const char *e, const char *p,
         for (k = 0; k < 3 && s > L->region + 1 && s[-1] &&
                     strchr("\"'LuU8", s[-1]); k++)
             s--;
+        /* gcc has lexed this token as the lookahead of the one before it,
+         * so the diagnostics of that token's parse follow */
+        while (s > L->region + 1 && (s[-1] == ' ' || s[-1] == '\t'))
+            s--;
+        if (s > L->region + 1) {
+            if (isalnum((unsigned char)s[-1]) || s[-1] == '_')
+                while (s > L->region + 1 &&
+                       (isalnum((unsigned char)s[-1]) || s[-1] == '_'))
+                    s--;
+            else
+                s--;
+        }
     }
     for (; n0 < L->diag->all.len; n0++)
         if (s > L->region + 1)
@@ -525,13 +565,13 @@ static int ucn99_cp(unsigned long v)
     return 0;
 }
 
-static int ucn99_class(const char *p, int digits)
+static unsigned long ucn_value(const char *p, int digits)
 {
     unsigned long v = 0;
     int k;
     for (k = 0; k < digits; k++)
         v = v * 16 + (unsigned long)(p[k] <= '9' ? p[k] - '0' : (p[k] | 32) - 'a' + 10);
-    return ucn99_cp(v);
+    return v;
 }
 
 /* The same for a code point written in UTF-8: without -pedantic gcc accepts
@@ -741,14 +781,24 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
             } else if ((u = s_ucn_len(&s)) != 0) {
                 ext = true;
                 flags |= TF_UCN;
-                if (L->opt.ucn_c99 && L->diag) {
-                    int cl = ucn99_class(s.p + 2, u - 2);
-                    if (cl == 0 || (cl == 2 && s.p == start))
+                if (L->diag) {          /* _cpp_valid_ucn in an identifier */
+                    unsigned long v = ucn_value(s.p + 2, u - 2);
+                    int cl;
+                    if ((v < 0xA0 && v != 0x24 && v != 0x40 && v != 0x60) ||
+                        v >= 0x80000000ul || (v >= 0xD800 && v <= 0xDFFF))
                         diag_report(L->diag, DL_ERROR, "",
                                     (SrcLoc)(start - L->region),
-                                    "universal character %.*s is not valid %s"
-                                    "an identifier", u, s.p,
-                                    cl ? "at the start of " : "in ");
+                                    "%.*s is not a valid universal character",
+                                    u, s.p);
+                    else if (v != 0x24 || !L->opt.dollar_idents) {
+                        cl = utf8_id_class(L, (uint32_t)v);
+                        if (cl == 0 || (cl == 2 && s.p == start))
+                            diag_report(L->diag, DL_ERROR, "",
+                                        (SrcLoc)(start - L->region),
+                                        "universal character %.*s is not "
+                                        "valid %san identifier", u, s.p,
+                                        cl ? "at the start of " : "in ");
+                    }
                 }
                 s_take_n(&s, u);
             } else {
@@ -796,6 +846,8 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
     } else {
         int u = 1;
         t->kind = TK_OTHER;
+        if (c == '\\' && L->bidi_live)    /* forms_identifier_p looked here */
+            bidi_try_ucn(L, s.p);
         if (c >= 0x80) {        /* a whole valid UTF-8 character, else a byte */
             uint32_t cp;
             int bk;

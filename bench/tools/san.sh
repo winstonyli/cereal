@@ -10,7 +10,7 @@ mkdir -p "$DST"
 rsync -a --delete --exclude build --exclude cereal --exclude .git \
     --exclude '*.o' --exclude '*.d' "$ROOT/" "$DST/"
 cd "$DST"
-nice -n 10 make -j8 CFLAGS="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined" >/dev/null
+nice -n 10 make -j${SAN_JOBS:-8} CFLAGS="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined" >/dev/null
 export ASAN_OPTIONS=detect_leaks=${LEAKS:-0} UBSAN_OPTIONS=print_stacktrace=1
 nice -n 10 sh tests/run.sh 2>&1 | tail -3
 nice -n 10 python3 bench/tools/san.py "$DST/cereal" tests

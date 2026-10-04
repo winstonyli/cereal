@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 static int hexval(int c)
 {
@@ -355,6 +356,24 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
     }
 }
 
+/* The code point of a Unicode character name; the bidi controls are the
+ * names known, any other is taken to be some character past U+00FF. */
+uint32_t lit_named_ucn(const char *s, const char *e)
+{
+    static const struct { const char *name; uint32_t cp; } t[] = {
+        {"LEFT-TO-RIGHT EMBEDDING", 0x202A}, {"RIGHT-TO-LEFT EMBEDDING", 0x202B},
+        {"POP DIRECTIONAL FORMATTING", 0x202C},
+        {"LEFT-TO-RIGHT OVERRIDE", 0x202D}, {"RIGHT-TO-LEFT OVERRIDE", 0x202E},
+        {"LEFT-TO-RIGHT ISOLATE", 0x2066}, {"RIGHT-TO-LEFT ISOLATE", 0x2067},
+        {"FIRST STRONG ISOLATE", 0x2068}, {"POP DIRECTIONAL ISOLATE", 0x2069},
+    };
+    size_t k, n = (size_t)(e - s);
+    for (k = 0; k < sizeof t / sizeof *t; k++)
+        if (strlen(t[k].name) == n && !strncasecmp(t[k].name, s, n))
+            return t[k].cp;
+    return 0x100;
+}
+
 /* One character (or escape) of a char or string literal body; returns
  * its value and advances *p. */
 static uint32_t lit_one(const char **p, const char *end, bool wide,
@@ -400,11 +419,29 @@ static uint32_t lit_one(const char **p, const char *end, bool wide,
         int k = *s == 'u' ? 4 : 8;
         s++;
         c = 0;
-        while (k-- > 0 && s < end && hexval((unsigned char)*s) >= 0)
-            c = c * 16 + (uint32_t)hexval((unsigned char)*s++);
+        if (s < end && *s == '{') {        /* \u{...}: any number of digits */
+            s++;
+            while (s < end && hexval((unsigned char)*s) >= 0)
+                c = c << 4 | (uint32_t)hexval((unsigned char)*s++);
+            if (s < end && *s == '}')
+                s++;
+        } else {
+            while (k-- > 0 && s < end && hexval((unsigned char)*s) >= 0)
+                c = c * 16 + (uint32_t)hexval((unsigned char)*s++);
+        }
         *ucn = true;
         break;
     }
+    case 'N':
+        if (s + 1 < end && s[1] == '{') {  /* \N{NAME}: only the bidi names */
+            const char *e = memchr(s, '}', (size_t)(end - s));
+            c = lit_named_ucn(s + 2, e ? e : end);
+            s = e ? e + 1 : end;
+            *ucn = true;
+        } else {
+            c = (unsigned char)*s++;
+        }
+        break;
     default:
         if (*s >= '0' && *s <= '7') {
             int k = 0;
