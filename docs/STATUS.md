@@ -1317,3 +1317,10 @@ diagnostics and builds on the strinit table.
 - `Wbidi-chars-24` SAME: gcc classifies a pp-number when it lexes it, so a malformed one the parser never reads is still diagnosed. `classify_num` (parse.c) reports "invalid suffix / digit" for the token an error names as current (before that error) and for tokens skipped in recovery (`skip_tok` in sync_stmt / skip_until / sync_top); `lit_report` drops an identical error already at that location. Errors only, with the x86_64 classifier (messages are target independent).
 - Golden `misc_73`. Gate: 1093 pass, san 371/0, gcc.dg differ 135, c-c++-common 53, callgrind 3.632G.
 - Not pursued: variable-index `&obj.m[v]` through nested structs / arrays of structs. gcc-13 warns for `&cc.x.b[v0]` and `&sa[0].b[v0]` but not `&s.b[v0]`, `&sa[1].b[v0]`, `&dd.y[0].b[v0]` (all const objects of the same shape): no rule visible from the source forms — it depends on how the address folds. Left as is.
+
+## Round 73 — c-c++-common triage (enumerators, overflow builtins)
+- Deprecated/unavailable enumerators now carry `CSF_DEPRECATED`/`CSF_UNAVAILABLE` + message (`enumerator_visit`), so uses warn (`attributes-enum-1` SAME). Golden `misc_74`.
+- `-Wnonnull` for a null 3rd argument of generic `__builtin_{add,sub,mul}_overflow` (`builtin_nonnull` mask 4). `builtin-arith-overflow-1` SAME bar a cmp.sh `-Wall` artifact. Golden `misc_75`.
+- Gate: 1097 goldens pass; san 373/0; gcc.dg differ 135; c-c++-common differ 52 (was 53); callgrind 3.633G.
+- Still open from triage: `builtin-has-attribute` (wording of lines 33-35, missing errors 42-44); `pr84999` needs `typeof`.
+- Not started: gcc.dg tail (`nofixed-point-2`, `diag-aka-5a/5b`, `overflow-warn-8`, `init-excess-2`); cells-mode release heuristic with includes.

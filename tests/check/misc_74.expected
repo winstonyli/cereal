@@ -1,0 +1,18 @@
+misc_74.c:2:1: warning: 'A' is deprecated [-Wdeprecated-declarations]
+    2 | int f(int i){ i += A; i += B; i += U; return i; }
+      | ^
+misc_74.c:1:10: note: declared here
+    1 | enum E { A __attribute__((deprecated)), B, U __attribute__((unavailable("gone"))) };
+      |          ^
+misc_74.c:2:1: error: 'U' is unavailable: gone
+    2 | int f(int i){ i += A; i += B; i += U; return i; }
+      | ^
+misc_74.c:1:44: note: declared here
+    1 | enum E { A __attribute__((deprecated)), B, U __attribute__((unavailable("gone"))) };
+      |                                            ^
+misc_74.c:4:1: warning: 'C' is deprecated: use D [-Wdeprecated-declarations]
+    4 | int g(void){ return C; }
+      | ^
+misc_74.c:3:10: note: declared here
+    3 | enum F { C __attribute__((deprecated("use D"))) = 3 };
+      |          ^

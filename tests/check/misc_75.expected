@@ -1,0 +1,9 @@
+misc_75.c:5:10: warning: argument 3 null where non-null expected [-Wnonnull]
+    5 |     x += __builtin_add_overflow(a, b, (int *)0);
+      |          ^
+misc_75.c:6:10: warning: argument 3 null where non-null expected [-Wnonnull]
+    6 |     x += __builtin_sub_overflow(0, 0, (char *)0);
+      |          ^
+misc_75.c:8:10: warning: argument 3 null where non-null expected [-Wnonnull]
+    8 |     x += __builtin_smul_overflow(a, b, (int *)0);
+      |          ^

@@ -39,6 +39,10 @@ static uint64_t builtin_nonnull(const char *name)
     const char *p;
     if (!strncmp(name, "__builtin_", 10))
         name += 10;
+    /* {add,sub,mul}_overflow: the result pointer */
+    if ((!strncmp(name, "add", 3) || !strncmp(name, "sub", 3) ||
+         !strncmp(name, "mul", 3)) && !strcmp(name + 3, "_overflow"))
+        return 4;
     /* {s,u}{add,sub,mul}{,l,ll}_overflow: the result pointer */
     if ((*name == 's' || *name == 'u') &&
         (!strncmp(name + 1, "add", 3) || !strncmp(name + 1, "sub", 3) ||

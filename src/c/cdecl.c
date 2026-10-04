@@ -7718,6 +7718,15 @@ static void enumerator_visit(Checker *c, uint32_t i)
     s.vty = vt;
     if (type_enum(TT, rd->ty)->in_struct)
         s.flags |= CSF_IN_STRUCT;
+    {
+        Attrs ea;
+        memset(&ea, 0, sizeof ea);
+        attrs_of_children(c, i, &ea);
+        if (ea.deprecated || ea.unavailable) {
+            s.flags |= ea.unavailable ? CSF_UNAVAILABLE : CSF_DEPRECATED;
+            s.dep_msg = ea.dep_msg;
+        }
+    }
     ref = pushdecl(c, &s, false);
     vec_push(&c->ecs, ref);
     enumerator_attrs(c, i, nloc, name, ref);
