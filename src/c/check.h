@@ -25,6 +25,7 @@ typedef struct CheckOptions {
     char opt_level;             /* -O level: 0 or '0': none (-O0) */
     char strict_alias;          /* -fstrict-aliasing 1, -fno-strict-aliasing 2 */
     bool lax_vector;            /* -flax-vector-conversions */
+    bool cf_nobranch;           /* -fcf-protection=none|return: nocf_check is ignored */
     FILE *dump;                 /* --dump-types: declarations and layouts */
     bool summaries;             /* keep per-unit summaries (csum.h) */
     FILE *dump_summaries;       /* --dump-summaries: print them (implies) */

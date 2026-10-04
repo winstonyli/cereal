@@ -25,6 +25,7 @@ typedef struct Options {
     bool pedantic_errors;
     bool short_enums;           /* -fshort-enums */
     bool lax_vector;            /* -flax-vector-conversions */
+    bool cf_nobranch;           /* -fcf-protection=none|return */
     bool show_system;
     bool no_warnings;           /* -w */
     bool fatal_errors;          /* -Wfatal-errors */

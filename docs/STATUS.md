@@ -1353,3 +1353,8 @@ diagnostics and builds on the strinit table.
 - `type_print` shows `__attribute__((nocf_check|transaction_unsafe)) ` before the `*` of a pointer to such a function. `type_compatible` compares only `TF_NOCF` (gcc ignores transaction_unsafe); `type_composite` and the incomplete-return rebuild carry both.
 - Closes gcc.dg `diag-aka-5a/5b` (golden `misc_84`). Gate: 1115 goldens, san 382/0, gcc.dg differ 129, c-c++-common 50, callgrind uvloop ~3.643G.
 - Open: `attr-nocf-check-1/3` need the "'nocf_check' attribute ignored. Use '-fcf-protection' option to enable it" warning when `-fcf-protection=none` (option not modelled).
+
+## Round 77 — -fcf-protection and the nocf_check ignored warning
+- Driver: `-fcf-protection[=full|branch|return|check|none]`, `-fno-cf-protection` set `cf_nobranch` (none/return) -> `Checker.opt.cf_nobranch`. With it, `nocf_check` warns "'nocf_check' attribute ignored. Use '-fcf-protection' option to enable it" (at the declaration's first specifier token; for a parameter at the function's first token) and is left out of the type (`nocf_ignored` in cdecl.c). Default stays "enabled" like Ubuntu gcc-13, where a `nocf_check` declaration followed by a plain definition is "conflicting types" (matched).
+- `attr-nocf-check-1/3` are SAME under their `-fcf-protection=none` and under the default. Goldens `misc_85` (none) and `misc_86` (full). Gate: 1119 goldens, san 384/0, gcc.dg differ 129, c-c++-common 50, callgrind ~3.647G.
+- Note: `verify.sh` does not read `dg-additional-options`, so those two files were never in the differ list; their real-flag behaviour is only checked by cmp.sh.

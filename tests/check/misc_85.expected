@@ -1,0 +1,15 @@
+misc_85.c:3:1: warning: 'nocf_check' attribute ignored. Use '-fcf-protection' option to enable it [-Wattributes]
+    3 | int func (int) __attribute__ ((nocf_check)); /* { dg-warning "'nocf_check' attribute ignored" } */
+      | ^
+misc_85.c:4:1: warning: 'nocf_check' attribute ignored. Use '-fcf-protection' option to enable it [-Wattributes]
+    4 | int (*fptr) (int) __attribute__ ((nocf_check)); /* { dg-warning "'nocf_check' attribute ignored" } */
+      | ^
+misc_85.c:5:1: warning: 'nocf_check' attribute ignored. Use '-fcf-protection' option to enable it [-Wattributes]
+    5 | typedef void (*nocf_check_t) (void) __attribute__ ((nocf_check)); /* { dg-warning "'nocf_check' attribute ignored" } */
+      | ^
+misc_85.c:16:3: warning: 'nocf_check' attribute ignored. Use '-fcf-protection' option to enable it [-Wattributes]
+   16 |   void (*func) (void) __attribute__((nocf_check)) = foo; /* { dg-warning "'nocf_check' attribute ignored" } */
+      |   ^
+misc_85.c:27:1: warning: 'nocf_check' attribute ignored. Use '-fcf-protection' option to enable it [-Wattributes]
+   27 | foo4 (void (*foo) (void) __attribute__((nocf_check))) /* { dg-warning "'nocf_check' attribute ignored" } */
+      | ^

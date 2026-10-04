@@ -182,6 +182,12 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->lax_vector = true;
     } else if (!strcmp(a, "-fno-lax-vector-conversions")) {
         o->lax_vector = false;
+    } else if (!strncmp(a, "-fcf-protection=", 16)) {
+        o->cf_nobranch = !strcmp(a + 16, "none") || !strcmp(a + 16, "return");
+    } else if (!strcmp(a, "-fcf-protection")) {
+        o->cf_nobranch = false;
+    } else if (!strcmp(a, "-fno-cf-protection")) {
+        o->cf_nobranch = true;
     } else if (!strcmp(a, "-w")) {
         o->no_warnings = true;
     } else if (!strncmp(a, "-ftrack-macro-expansion=", 24)) {

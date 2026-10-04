@@ -1,0 +1,12 @@
+misc_86.c:8:1: error: conflicting types for 'foo'; have 'int(void)'
+    8 | foo (void) /* The function's address is not tracked.  */
+      | ^
+misc_86.c:3:6: note: previous declaration of 'foo' with type 'int(void)'
+    3 | int  foo (void) __attribute__ ((nocf_check)); /* { dg-warning "'nocf_check' attribute ignored" } */
+      |      ^
+misc_86.c:14:8: warning: assignment to 'void (__attribute__((nocf_check)) *)(void)' from incompatible pointer type 'void (*)(void)' [-Wincompatible-pointer-types]
+   14 |   foo1 = foo2;
+      |        ^
+misc_86.c:23:8: warning: assignment to 'void (*)(void)' from incompatible pointer type 'void (__attribute__((nocf_check)) *)(void)' [-Wincompatible-pointer-types]
+   23 |   foo2 = foo1;
+      |        ^

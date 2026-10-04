@@ -6310,6 +6310,18 @@ static unsigned fn_attr_walk(Checker *c, uint32_t h, int depth)
     return bits;
 }
 
+/* The bits a declaration puts into its type.  nocf_check is ignored (with a
+ * warning) without -fcf-protection. */
+static unsigned nocf_ignored(Checker *c, unsigned bits, SrcLoc loc)
+{
+    if ((bits & TF_NOCF) && c->opt.cf_nobranch) {
+        cwarn(c, loc, "attributes", "'nocf_check' attribute ignored. Use "
+              "'-fcf-protection' option to enable it");
+        bits &= ~(unsigned)TF_NOCF;
+    }
+    return bits;
+}
+
 static unsigned fn_attr_bits(Checker *c, uint32_t sn, uint32_t idecl, bool isfunc)
 {
     unsigned bits = fn_attr_walk(c, idecl, 0);
@@ -6359,8 +6371,11 @@ static void declared_visit(Checker *c, uint32_t i)
     s = g.s;
     {
         unsigned fb = fn_attr_bits(c, sn, idecl, s.kind == CS_FUNC);
-        if (fb)
-            s.ty = fn_attr_type(c, s.ty, fb);
+        if (fb) {
+            fb = nocf_ignored(c, fb, tloc(c, c->specs.data[si].tok0));
+            if (fb)
+                s.ty = fn_attr_type(c, s.ty, fb);
+        }
     }
     if (s.kind == CS_FUNC)
         cpragma_optimize_repeat(c, il);
@@ -8330,6 +8345,15 @@ static void param_visit(Checker *c, uint32_t p)
     }
     memset(&a, 0, sizeof a);
     attrs_of_children(c, p, &a);
+    {
+        unsigned fb = fn_attr_walk(c, p, 0);
+        if (fb) {
+            uint32_t fn = c->par[p];
+            fb = nocf_ignored(c, fb, tloc(c, first_tok(c, fn)));
+            if (fb)
+                s.ty = fn_attr_type(c, s.ty, fb);
+        }
+    }
     larger_than(c, s.loc, s.name, s.ty);
     attrs_unknown_emit(c, &sp.attrs, first_tok(c, p));
     attrs_merge(&a, &sp.attrs);
@@ -8711,8 +8735,11 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     s = g.s;
     {
         unsigned fb = fn_attr_bits(c, fp.specs, fd, true);
-        if (fb)
-            s.ty = fn_attr_type(c, s.ty, fb);
+        if (fb) {
+            fb = nocf_ignored(c, fb, tloc(c, c->specs.data[si].tok0));
+            if (fb)
+                s.ty = fn_attr_type(c, s.ty, fb);
+        }
     }
     loc = s.loc;
     name = cident(c, s.name);
