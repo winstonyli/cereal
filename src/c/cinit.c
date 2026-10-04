@@ -96,6 +96,7 @@ typedef struct CCtx {
     uint32_t list, lo, hi;   /* the INIT_LIST and its node range */
     bool reqc, dm, varroot;
     uint32_t init_loc;       /* token of the brace (or the type name) */
+    SrcLoc trad_loc;         /* -Wtraditional's location, 0 if none */
     Lvl *stk;
     StrBuf path;
     size_t *dl;
@@ -1397,6 +1398,9 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             v.izero = false;
         }
     }
+    bool pre_zero = v.kind == V_EXPR && v.node != NOB &&
+                    (v.izero || (c->ck[v.node] == K_FLOAT &&
+                                 c->fv.data[c->cv[v.node]] == 0));
     if (v.kind == V_EXPR && !v.digested) {
         bool bf = false, had = false, ok;
         uint32_t bn = v.node;
@@ -1471,6 +1475,12 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             L->nel = 0;
     }
 
+    /* process_init_element: a union's nonzero, undesignated initializer */
+    if (k == LV_UNI && x->trad_loc && !des && (v.kind == V_CTOR || !zero) &&
+        !pre_zero &&
+        !cin_system(c, x->trad_loc))
+        cwarn(c, x->trad_loc, "traditional", "traditional C rejects "
+              "initialization of unions");
     /* output the element */
     if (use_ps(x, L)) {
         bool ex;
@@ -2299,6 +2309,8 @@ void cinit_declared(Checker *c, uint32_t declared)
         label = cident(c, s->name);
     }
     x = ctx_open(c, list, reqc, label, c->nodes[list].tok, false);
+    if (diag_enabled(c->diag, "traditional"))
+        x->trad_loc = ctrad_decl_loc(c, declared, c->nodes[list].tok);
     x->varroot = !is_err(c, type) && is_varsize(c, type);
     x->rtop = 0;
     (void)type;
@@ -2406,6 +2418,15 @@ static void finalize_root(Checker *c, CCtx *x)
         c->ck[list] = K_ICE;
         c->cv[list] = 0;
     }
+    {
+        uint32_t cl = c->par[list];
+        if (x->trad_loc && cl != NOB && cl < c->nn &&
+            ntag(c, cl) == N_COMPOUND_LIT && !cat_file_scope(c) &&
+            (is_aggr(c, rtype) || is_arr(c, rtype)) &&
+            !cin_system(c, x->trad_loc))
+            cwarn(c, x->trad_loc, "traditional", "traditional C rejects "
+                  "automatic aggregate initialization");
+    }
     ctx_close(c, x);
 }
 
@@ -2436,6 +2457,9 @@ static void open_complit(Checker *c, uint32_t tn)
     }
     c->ty[tn] = t;
     x = ctx_open(c, list, cat_file_scope(c), "(anonymous)", c->nodes[list].tok, false);
+    if (diag_enabled(c->diag, "traditional"))
+        x->trad_loc = ctrad_loc(c, ctrad_tag(c, tt_, c->nodes[list].tok),
+                                c->nodes[list].tok);
     x->varroot = false;
     {
         Lvl *L = lvl_new(ci);

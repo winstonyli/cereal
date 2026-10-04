@@ -1,0 +1,120 @@
+traditional_1.c:5:6: warning: non-static declaration of 'sf' follows static declaration [-Wtraditional]
+    5 | void sf() {}
+      |      ^
+traditional_1.c:4:13: note: previous declaration of 'sf' with type 'void(void)'
+    4 | static void sf(void);
+      |             ^
+traditional_1.c:8:5: warning: non-static declaration of 'ef2' follows static declaration [-Wtraditional]
+    8 | int ef2(void) { return 0; }
+      |     ^
+traditional_1.c:7:12: note: previous declaration of 'ef2' with type 'int(void)'
+    7 | static int ef2(void);
+      |            ^
+traditional_1.c:8:5: warning: traditional C rejects ISO C style function definitions [-Wtraditional]
+    8 | int ef2(void) { return 0; }
+      |     ^
+traditional_1.c:9:6: warning: traditional C rejects ISO C style function definitions [-Wtraditional]
+    9 | void f(long l, int i, char c, unsigned char uc)
+      |      ^
+traditional_1.c:11:7: warning: traditional C rejects the unary plus operator [-Wtraditional]
+   11 |   i = +1;
+      |       ^
+traditional_1.c:12:7: warning: traditional C rejects the unary plus operator [-Wtraditional]
+   12 |   i = +i;
+      |       ^
+traditional_1.c:13:7: warning: traditional C rejects the unary plus operator [-Wtraditional]
+   13 |   i = + i + +i;
+      |       ^
+traditional_1.c:13:13: warning: traditional C rejects the unary plus operator [-Wtraditional]
+   13 |   i = + i + +i;
+      |             ^
+traditional_1.c:14:7: warning: the meaning of '\a' is different in traditional C [-Wtraditional]
+   14 |   c = '\a';
+      |       ^
+traditional_1.c:15:7: warning: the meaning of '\x' is different in traditional C [-Wtraditional]
+   15 |   c = '\x2';
+      |       ^
+traditional_1.c:16:7: warning: non-ISO-standard escape sequence, '\e'
+   16 |   c = '\e';
+      |       ^
+traditional_1.c:18:3: warning: traditional C rejects string constant concatenation [-Wtraditional]
+   18 |   const char *p = "a" "b";
+      |   ^
+traditional_1.c:19:3: warning: traditional C rejects string constant concatenation [-Wtraditional]
+   19 |   p = "a" "b" "c";
+      |   ^
+traditional_1.c:21:8: warning: traditional C rejects string constant concatenation [-Wtraditional]
+   21 |        "b");
+      |        ^
+traditional_1.c:22:11: warning: 'long' switch expression not converted to 'int' in ISO C [-Wtraditional]
+   22 |   switch (l) { default: break; }
+      |           ^
+traditional_1.c:26:11: warning: 'long' switch expression not converted to 'int' in ISO C [-Wtraditional]
+   26 |   switch (i + 0L) { default: break; }
+      |           ^
+traditional_1.c:27:12: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   27 |   { struct S s = { 0, { 0 } }; }
+      |            ^
+traditional_1.c:28:12: warning: traditional C rejects initialization of unions [-Wtraditional]
+   28 |   { struct S s = { 0, { 1 } }; }
+      |            ^
+traditional_1.c:28:12: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   28 |   { struct S s = { 0, { 1 } }; }
+      |            ^
+traditional_1.c:29:11: warning: traditional C rejects initialization of unions [-Wtraditional]
+   29 |   { union U u = { 1 }; }
+      |           ^
+traditional_1.c:29:11: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   29 |   { union U u = { 1 }; }
+      |           ^
+traditional_1.c:30:11: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   30 |   { union U u = { 0 }; }
+      |           ^
+traditional_1.c:31:11: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   31 |   { union U u = { .l = 0 }; }
+      |           ^
+traditional_1.c:32:11: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   32 |   { union U u = { .l = 1 }; }
+      |           ^
+traditional_1.c:33:18: warning: traditional C rejects initialization of unions [-Wtraditional]
+   33 |   { static union U u = { 1 }; }
+      |                  ^
+traditional_1.c:34:27: warning: traditional C rejects initialization of unions [-Wtraditional]
+   34 |   { union U u; u = (union U){ 1 }; }
+      |                           ^
+traditional_1.c:34:27: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   34 |   { union U u; u = (union U){ 1 }; }
+      |                           ^
+traditional_1.c:35:12: warning: traditional C rejects initialization of unions [-Wtraditional]
+   35 |   { struct S s = { 1, 2, 3 }; }
+      |            ^
+traditional_1.c:35:26: warning: excess elements in struct initializer
+   35 |   { struct S s = { 1, 2, 3 }; }
+      |                          ^
+traditional_1.c:35:26: note: (near initialization for 's')
+   35 |   { struct S s = { 1, 2, 3 }; }
+      |                          ^
+traditional_1.c:35:12: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   35 |   { struct S s = { 1, 2, 3 }; }
+      |            ^
+traditional_1.c:36:24: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   36 |   { struct S s; struct S t = s; }
+      |                        ^
+traditional_1.c:37:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   37 |   { int a[2] = { 1, 2 }; }
+      |   ^
+traditional_1.c:38:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   38 |   { char s[] = "abc"; }
+      |   ^
+traditional_1.c:39:12: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   39 |   { struct S s = { .a = 1 }; }
+      |            ^
+traditional_1.c:40:11: warning: traditional C rejects initialization of unions [-Wtraditional]
+   40 |   { union U u[2] = { { 1 }, { 2 } }; }
+      |           ^
+traditional_1.c:40:11: warning: traditional C rejects initialization of unions [-Wtraditional]
+   40 |   { union U u[2] = { { 1 }, { 2 } }; }
+      |           ^
+traditional_1.c:40:11: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   40 |   { union U u[2] = { { 1 }, { 2 } }; }
+      |           ^

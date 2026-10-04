@@ -1,0 +1,39 @@
+traditional_4.c:4:6: warning: traditional C rejects ISO C style function definitions [-Wtraditional]
+    4 | void f(void)
+      |      ^
+traditional_4.c:7:6: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    7 |      = { 1, 2 };
+      |      ^
+traditional_4.c:10:7: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   10 |       c[2] = { 1, 2 };
+      |       ^
+traditional_4.c:12:7: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   12 |       { 1, 2 };
+      |       ^
+traditional_4.c:15:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   15 |   x = { 1 };
+      |   ^
+traditional_4.c:18:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   18 |   = { 1 };
+      |   ^
+traditional_4.c:19:9: warning: traditional C rejects initialization of unions [-Wtraditional]
+   19 |   union U u = { 1 };
+      |         ^
+traditional_4.c:19:9: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   19 |   union U u = { 1 };
+      |         ^
+traditional_4.c:21:6: warning: traditional C rejects initialization of unions [-Wtraditional]
+   21 |      { 1 };
+      |      ^
+traditional_4.c:21:6: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   21 |      { 1 };
+      |      ^
+traditional_4.c:23:5: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   23 |     w = { 0 };
+      |     ^
+traditional_4.c:24:18: warning: traditional C rejects initialization of unions [-Wtraditional]
+   24 |   struct { union U q; int r; } an = { { 1 }, 2 };
+      |                  ^
+traditional_4.c:24:18: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   24 |   struct { union U q; int r; } an = { { 1 }, 2 };
+      |                  ^

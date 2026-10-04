@@ -677,6 +677,11 @@ const char *cexpr_fuzzy_field(Checker *c, TypeId rec, uint32_t name);
 /* Initializers (cinit.c): gcc's digest_init / process_init_element. */
 /* A DECLARED node was visited: opens the context of a braced initializer. */
 void cinit_declared(Checker *c, uint32_t declared);
+/* -Wtraditional's initializer warnings: gcc's location (the tag of the
+ * declaration's struct or union specifier, else the line of the initializer). */
+uint32_t ctrad_tag(Checker *c, uint32_t first, uint32_t stop);
+SrcLoc ctrad_loc(Checker *c, uint32_t tag, uint32_t init_tok);
+SrcLoc ctrad_decl_loc(Checker *c, uint32_t declared, uint32_t init_tok);
 /* An INIT_DECL is about to finish: checks a brace-less initializer. */
 void cinit_decl_done(Checker *c, uint32_t idecl);
 void cexpr_note_strinit(Checker *c, CSym *s, uint32_t init);

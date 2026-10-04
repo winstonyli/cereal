@@ -101,6 +101,10 @@ static Diagnostic *vrep(Checker *c, DiagLevel lvl, const char *id, SrcLoc loc,
     Diagnostic *d;
     if (c->quiet)
         return NULL;
+    /* gcc's disable_extension_diagnostics also clears warn_traditional */
+    if (id && !strcmp(id, "traditional") && c->cur_node != NO_NODE &&
+        cexpr_in_extension(c, c->cur_node))
+        return NULL;
     d = diag_vreport(c->diag, lvl, id ? id : "", loc, fmt, ap);
     if (d && lvl != DL_NOTE)
         macro_notes(c, d, loc, false);

@@ -1685,6 +1685,41 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
               "this decimal constant would be unsigned in ISO C90");
 }
 
+/* libcpp's -Wtraditional: a floating constant's suffix, or an integer
+ * constant's unsigned or imaginary one, as spelled. */
+static void traditional_suffix(Checker *c, uint32_t i, const char *s,
+                               size_t len, bool flt)
+{
+    size_t k = 0;
+    bool hex = len > 1 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X');
+    char suf[16];
+    if (!diag_enabled(c->diag, "traditional"))
+        return;
+    if (len > 1 && s[0] == '0' && (hex || s[1] == 'b' || s[1] == 'B'))
+        k = 2;
+    while (k < len) {
+        char ch = s[k];
+        if (isdigit((unsigned char)ch) || ch == '.' ||
+            (hex && isxdigit((unsigned char)ch)))
+            k++;
+        else if (ch == (hex ? 'p' : 'e') || ch == (hex ? 'P' : 'E')) {
+            k++;
+            if (k < len && (s[k] == '+' || s[k] == '-'))
+                k++;
+        } else
+            break;
+    }
+    if (k >= len || len - k >= sizeof suf)
+        return;
+    memcpy(suf, s + k, len - k);
+    suf[len - k] = 0;
+    if (!flt && !strpbrk(suf, "uUiIjJ"))
+        return;
+    if (!cin_system(c, cnode_loc(c, i)))
+        cwarn(c, cnode_loc(c, i), "traditional",
+              "traditional C rejects the \"%s\" suffix", suf);
+}
+
 static void e_number(Checker *c, uint32_t i)
 {
     size_t len;
@@ -1692,6 +1727,7 @@ static void e_number(Checker *c, uint32_t i)
     Lit l;
     TypeId t;
     lit_number(c->tgt, s, len, &l);
+    traditional_suffix(c, i, s, len, l.flags & LIT_FLOAT);
     lit_report(c, i, &l);
     if (l.flags & LIT_BAD) {
         set_err(c, i);
@@ -1716,10 +1752,6 @@ static void e_number(Checker *c, uint32_t i)
         return;
     }
     c->ty[i] = t;
-    if (!(l.flags & LIT_FLOAT) && (memchr(s, 'u', len) || memchr(s, 'U', len)) &&
-        !cin_system(c, cnode_loc(c, i)))
-        cwarn(c, cnode_loc(c, i), "traditional",
-              "traditional C rejects the \"u\" suffix");
     if (l.flags & LIT_FLOAT) {
         long double v = fround(c, t, l.f);
         size_t k;
@@ -1758,12 +1790,35 @@ static void e_number(Checker *c, uint32_t i)
         c->ef[i] |= EF_DECIMAL;   /* 0, 0u */
 }
 
+/* libcpp: \e is not ISO, and \a and \x mean something else in traditional C. */
+static void traditional_escapes(Checker *c, uint32_t tok, const char *s,
+                                size_t len)
+{
+    size_t k;
+    SrcLoc loc;
+    loc = ctok_loc(c, tok);
+    if (cin_system(c, loc))
+        return;
+    for (k = 0; k + 1 < len; k++)
+        if (s[k] == '\\') {
+            if (s[k + 1] == 'e' || s[k + 1] == 'E')
+                cpedwarn(c, loc, "", "non-ISO-standard escape sequence, '\\%c'",
+                          s[k + 1]);
+            if (diag_enabled(c->diag, "traditional") &&
+                (s[k + 1] == 'a' || s[k + 1] == 'x'))
+                cwarn(c, loc, "traditional", "the meaning of '\\%c' is "
+                      "different in traditional C", s[k + 1]);
+            k++;
+        }
+}
+
 static void e_char(Checker *c, uint32_t i)
 {
     size_t len;
     const char *s = ttext(c, c->nodes[i].tok, &len);
     Lit l;
     lit_char(c->tgt, s, len, &l);
+    traditional_escapes(c, c->nodes[i].tok, s, len);
     lit_report(c, i, &l);
     if (l.flags & LIT_BAD) {
         set_err(c, i);
@@ -1782,10 +1837,17 @@ static void e_string(Checker *c, uint32_t i)
     uint64_t units = 0;
     unsigned width;
     TypeKind ek = TY_CHAR;
+    if (np > 1 && diag_enabled(c->diag, "traditional")) {
+        SrcLoc il = cinput_loc(c, c->nodes[i].tok + 1);
+        if (!cin_system(c, il))
+            cwarn(c, il, "traditional", "traditional C rejects string "
+                  "constant concatenation");
+    }
     for (k = 0; k < np; k++) {
         size_t len;
         const char *s = ttext(c, c->nodes[i].tok + k, &len);
         int p = lit_str_prefix(s, len);
+        traditional_escapes(c, c->nodes[i].tok + k, s, len);
         if (p && prefix && p != prefix) {
             /* gcc's lexer reports it twice, at the lookahead's line */
             SrcLoc il = cinput_loc(c, c->nodes[i].tok + np);
@@ -3798,6 +3860,9 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
 {
     SrcLoc loc = cnode_loc(c, i);
     TypeId t;
+    if (op == P_PLUS && !cin_system(c, loc))
+        cwarn(c, loc, "traditional", "traditional C rejects the unary plus "
+              "operator");
     if (node_err(c, a) || !rvalue_ok(c, a)) {
         set_err(c, i);
         return;

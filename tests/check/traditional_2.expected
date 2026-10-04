@@ -1,0 +1,45 @@
+traditional_2.c:4:6: warning: traditional C rejects ISO C style function definitions [-Wtraditional]
+    4 | void f(int i)
+      |      ^
+traditional_2.c:6:5: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    6 |     int a[2] = { 1, 2 };
+      |     ^
+traditional_2.c:7:5: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    7 |     int b = 1, c[2] = { 1, 2 };
+      |     ^
+traditional_2.c:8:7: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    8 |       char s[] = "abc";
+      |       ^
+traditional_2.c:9:12: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    9 |     struct S x = { 1 }, y = { 2 };
+      |            ^
+traditional_2.c:9:12: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    9 |     struct S x = { 1 }, y = { 2 };
+      |            ^
+traditional_2.c:10:5: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   10 |     T z = { 3 };
+      |     ^
+traditional_2.c:11:18: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   11 |     const struct S w = { 4 };
+      |                  ^
+traditional_2.c:12:12: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   12 |     struct { int q; } an = { 5 };
+      |            ^
+traditional_2.c:13:12: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   13 |     struct S *p = 0, v = { 6 };
+      |            ^
+traditional_2.c:15:5: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   15 |     int d[1] = { 1 };
+      |     ^
+traditional_2.c:17:5: warning: implicit declaration of function 'typeof' [-Wimplicit-function-declaration]
+   17 |     typeof(a) e = { 1, 2 };
+      |     ^
+traditional_2.c:17:14: error: expected ';' before 'e'
+   17 |     typeof(a) e = { 1, 2 };
+      |              ^
+traditional_2.c:18:12: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   18 |     struct S arr[1] = { { 1 } };
+      |            ^
+traditional_2.c:19:21: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   19 |     register struct S r = { 7 };
+      |                     ^

@@ -4964,6 +4964,18 @@ static void locate_old_decl(Checker *c, Diagnostic *d, const CSym *o)
               sname(c, o), type_q(TT, o->ty));
 }
 
+/* -Wtraditional: a file-scope declaration without 'static' after a static one. */
+static void nonstatic_follows_static(Checker *c, CSym *nw, const CSym *o)
+{
+    Diagnostic *d;
+    if (cin_system(c, nw->loc))
+        return;
+    d = cwarn_d(c, DL_WARNING, nw->loc, "traditional", "non-static declaration "
+                "of '%s' follows static declaration", sname(c, nw));
+    if (d)
+        locate_old_decl(c, d, o);
+}
+
 /* Would conversion of the two types differ only by an enum against an
  * integer type somewhere (gcc's enum_and_int_p)? */
 static bool enum_int_pair(Checker *c, TypeId a, TypeId b)
@@ -5206,6 +5218,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                 locate_old_decl(c, d, o);
                 return false;
             }
+            nonstatic_follows_static(c, nw, o);
         }
     } else if (nw->kind == CS_OBJ && !(nw->flags & CSF_PARAM)) {
         if ((nw->flags & CSF_THREAD) != (o->flags & CSF_THREAD)) {
@@ -5234,6 +5247,8 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                     locate_old_decl(c, d, o);
                     return false;
                 }
+                if (sym_public(nw))
+                    nonstatic_follows_static(c, nw, o);
             } else {
                 if (sym_public(nw))
                     d = cerror_d(c, nw->loc, "non-static declaration of '%s' "
@@ -6478,6 +6493,58 @@ static void declared_visit(Checker *c, uint32_t i)
         ensure_finish_cue(c, ref);
 }
 
+/* The token after the last struct/union keyword in [first, stop) (the tag,
+ * or the '{' of an anonymous one); 0 if none. */
+uint32_t ctrad_tag(Checker *c, uint32_t first, uint32_t stop)
+{
+    uint32_t k, tag = 0;
+    for (k = first; k < stop; k++) {
+        int kw = tckw(c, k);
+        if (kw == CK_STRUCT || kw == CK_UNION)
+            tag = k + 1;
+    }
+    return tag;
+}
+
+SrcLoc ctrad_loc(Checker *c, uint32_t tag, uint32_t init_tok)
+{
+    if (tag && cinput_loc(c, tag) == cinput_loc(c, init_tok))
+        return ctok_loc(c, tag);
+    return cinput_loc(c, init_tok);
+}
+
+SrcLoc ctrad_decl_loc(Checker *c, uint32_t declared, uint32_t init_tok)
+{
+    uint32_t d = c->par[declared], stop = cnode(c, declared)->tok;
+    while (d != NO_NODE && ntag(c, d) != N_DECL)
+        d = c->par[d];
+    return ctrad_loc(c, ctrad_tag(c, d == NO_NODE ? stop : first_tok(c, d),
+                                  stop), init_tok);
+}
+
+/* -Wtraditional: an automatic aggregate with an initializer (start_init). */
+static void trad_aggr_init(Checker *c, uint32_t idecl, uint32_t declared,
+                           uint32_t init)
+{
+    CSym *s;
+    TypeKind k;
+    SrcLoc loc;
+    if (!diag_enabled(c->diag, "traditional") || init == NO_NODE ||
+        !c->cb[declared])
+        return;
+    s = csym(c, c->cb[declared] - 1);
+    if (s->kind != CS_OBJ || cat_file_scope(c) || (s->flags & CSF_TREE_STATIC))
+        return;
+    k = type_ckind(TT, s->ty);
+    if (k != TY_STRUCT && k != TY_UNION && k != TY_ARRAY && k != TY_VLA)
+        return;
+    loc = ctrad_decl_loc(c, declared, first_tok(c, init));
+    if (!cin_system(c, loc))
+        cwarn(c, loc, "traditional", "traditional C rejects automatic "
+              "aggregate initialization");
+    (void)idecl;
+}
+
 static void init_decl_visit(Checker *c, uint32_t idecl)
 {
     uint32_t declared = find_declared(c, idecl), ref;
@@ -6493,6 +6560,7 @@ static void init_decl_visit(Checker *c, uint32_t idecl)
     if (declared != idecl - 1 && init_ok)
         init = idecl - 1;
     cinit_decl_done(c, idecl);
+    trad_aggr_init(c, idecl, declared, init);
     type = s->ty;
     if ((s->flags & CSF_AUTO_TYPE) && init != NO_NODE) {
         /* __auto_type: the initializer's type after lvalue conversion */
@@ -8142,6 +8210,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     GDecl g;
     CSym s, oldc;
     bool have_old = false, nested = c->func_sym != SYM_NONE, pub, is_main, inl;
+    bool iso_def;
     SrcLoc loc;
     const char *name;
     TypeId rt;
@@ -8290,7 +8359,11 @@ static void funcdef_declared(Checker *c, uint32_t declared)
                      "function");
     }
     s.parms = cparm_make(c, funcdef_fnode(c, top));
+    iso_def = !nested && (s.flags & CSF_PROTO_DEF);
     ref = pushdecl(c, &s, g.default_int);
+    if (iso_def && !cin_system(c, loc))
+        cwarn(c, loc, "traditional", "traditional C rejects ISO C style "
+              "function definitions");
     {
         CSym *t = csym(c, ref);
         t->flags |= CSF_DEFINED | CSF_TREE_STATIC |

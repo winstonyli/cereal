@@ -671,6 +671,10 @@ static void start_switch(Checker *c, CStmt *s, uint32_t sw_node, uint32_t e)
             TypeId ct = type_canon(TT, t);
             bool cast_p = starts_typename_cast(c, e);
             sw.orig = t;
+            if ((type_ckind(TT, ct) == TY_LONG || type_ckind(TT, ct) == TY_ULONG) &&
+                !cin_system(c, first_loc(c, e)))
+                cwarn(c, first_loc(c, e), "traditional", "'long' switch "
+                      "expression not converted to 'int' in ISO C");
             if (tg(c, p) == N_CHAR &&
                 type_ckind(TT, c->ty[p]) == TY_INT)
                 sw.orig = TYPE_B(CHAR);   /* a narrow character constant */

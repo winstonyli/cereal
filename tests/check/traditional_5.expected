@@ -1,0 +1,18 @@
+traditional_5.c:5:6: warning: traditional C rejects ISO C style function definitions [-Wtraditional]
+    5 | void f(void)
+      |      ^
+traditional_5.c:7:26: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    7 |   struct S *p = &(struct S){ 1 };
+      |                          ^
+traditional_5.c:8:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    8 |   int *q = (int[2]){ 1, 2 };
+      |   ^
+traditional_5.c:10:34: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   10 |   static struct S *sp = &(struct S){ 1 };
+      |                                  ^
+traditional_5.c:10:25: error: initializer element is not constant
+   10 |   static struct S *sp = &(struct S){ 1 };
+      |                         ^
+traditional_5.c:12:15: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   12 |   s = (struct S){ 1 };
+      |               ^

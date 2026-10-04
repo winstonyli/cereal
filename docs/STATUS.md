@@ -1198,3 +1198,12 @@ diagnostics and builds on the strinit table.
 - Golden `tests/check/unused_pure.c`.
 - Gate: suite 1043/0; gcc.dg 3685 identical (190 differ); c-c++-common 575 (82); -O 3685 (190); san 346 / 0; icount 3.582G (+0.4%, the per-call attribute lookup).
 - Not done: plain-name library calls are treated as built-ins whenever declared (gcc also requires a compatible declaration / no `-fno-builtin`).
+
+## Round 61 — `-Wtraditional`
+
+- Rules (all probed against gcc-13): numeric suffix (`u`/`i`/`j` on integers, any suffix on floats), unary plus, `\a`/`\x` meaning change, `\e`/`\E` non-ISO pedwarn (no tag), string-constant concatenation, `long`/`unsigned long` switch, non-static after static (functions and extern objects, with old-decl note), ISO C style function definitions (`CSF_PROTO_DEF`, emitted after `pushdecl`), automatic aggregate initialization (declarations and function-scope compound literals), union initialization (non-designated, non-zero, incl. `{0}` converted to float and `{0.0}`).
+- Both init warnings share one location: the token after the last `struct`/`union` keyword before the declarator if on the initializer's line, else the first token of that line (`ctrad_tag`/`ctrad_loc`/`ctrad_decl_loc`).
+- `vrep` suppresses `traditional` under `__extension__` (gcc's `disable_extension_diagnostics`).
+- Goldens: `tests/check/traditional_1..6.c`.
+- Gate: suite 1055/0; gcc.dg 3696 identical (179 differ); c-c++-common 575 (82); -O 3696 (179); san 352 / 0; icount 3.596G (+0.4%, the pure-flag lookup from Round 60 plus these checks).
+- Not done: gnu89-only `wtr-*` tests (cereal rejects `-std=gnu89`); all `-Wc++-compat` rules.

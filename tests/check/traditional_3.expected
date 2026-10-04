@@ -1,0 +1,30 @@
+traditional_3.c:2:6: warning: traditional C rejects ISO C style function definitions [-Wtraditional]
+    2 | void f(void)
+      |      ^
+traditional_3.c:4:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    4 |   { int a[2] = { 1, 2 }; }
+      |   ^
+traditional_3.c:5:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    5 |   {    int a[2] = { 1, 2 }; }
+      |   ^
+traditional_3.c:6:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    6 |   { int b; int a[2] = { 1, 2 }; }
+      |   ^
+traditional_3.c:7:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    7 |   int c; int a[2] = { 1, 2 };
+      |   ^
+traditional_3.c:8:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    8 |   { char s[] = "abc"; }
+      |   ^
+traditional_3.c:9:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+    9 |   { const int a[2] = { 1, 2 }; }
+      |   ^
+traditional_3.c:10:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   10 |   { unsigned a[2] = { 1, 2 }; }
+      |   ^
+traditional_3.c:11:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   11 |   { signed char a[2] = { 1, 2 }; }
+      |   ^
+traditional_3.c:12:3: warning: traditional C rejects automatic aggregate initialization [-Wtraditional]
+   12 |   { long long a[2] = { 1, 2 }; }
+      |   ^
