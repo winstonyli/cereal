@@ -1,0 +1,30 @@
+misc_89.c:5:11: warning: taking address of packed member of 'struct A' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    5 | int *g1 = (int*)&b.a.i;
+      |           ^
+misc_89.c:6:17: warning: taking address of packed member of 'struct B' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    6 | int *g2 = (int*)&b.a;
+      |                 ^
+misc_89.c:7:11: warning: taking address of packed member of 'struct A' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    7 | int *g3 = (int*)&a2.i;
+      |           ^
+misc_89.c:8:11: warning: taking address of packed member of 'struct A' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    8 | int *g4 = &a2.i;
+      |           ^
+misc_89.c:11:7: warning: taking address of packed member of 'struct A' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   11 |   p = (int*)&b.a.i;
+      |       ^
+misc_89.c:12:7: warning: taking address of packed member of 'struct A' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   12 |   p = (int*)&a2.i;
+      |       ^
+misc_89.c:13:13: warning: taking address of packed member of 'struct B' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   13 |   p = (int*)&b.a;
+      |             ^
+misc_89.c:14:7: warning: taking address of packed member of 'struct A' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   14 |   bar((int*)&a2.i);
+      |       ^
+misc_89.c:15:7: warning: taking address of packed member of 'struct A' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   15 |   bar((int*)&b.a.i);
+      |       ^
+misc_89.c:16:7: warning: taking address of packed member of 'struct A' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   16 |   bar(&a2.i);
+      |       ^

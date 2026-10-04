@@ -1367,3 +1367,13 @@ diagnostics and builds on the strinit table.
 ## Round 79 — "parameter names (without types)" in an erroring unit
 - `grokparms` now reports the K&R-list pedwarn even when the unit is quiet (a parser error such as `unknown type name 'X'`), ordered after the parser's diagnostics (`ORD_LATE`): gcc emits it from the declarator parse itself. Closes gcc.dg `pr14963`; golden `misc_88`. A small whitelist exception to the quiet policy; the policy itself is unchanged.
 - Gate: 1123 goldens, san 386/0, gcc.dg differ 126, c-c++-common 43, callgrind ~3.647G.
+
+## Round 80 — -Waddress-of-packed-member locations
+- `packed_ptr_check_x` (cexpr.c) takes a mode. Context (assignment/init/argument) looks through a cast and reports a member whose record/field is packed at the cast's `(`; the cast itself reports only a member whose *type* is packed (at the `&`); a parenthesized cast operand (`(T*)(&p.i)`) is located by the cast site as before. A bare member passed as a call argument is located at its `->`/`.` (not through `?:`). `pk_member` now returns which clause matched. Goldens: `misc_89` (probe of all forms against gcc).
+- Closes c-c++-common `pr51628-8/9/16`. Gate: 1125 goldens, san 387/0, gcc.dg differ 126, c-c++-common 42, callgrind ~3.654G.
+- Note: a one-off "1 failed" appeared in the gate's san step under load and did not reproduce (san.sh and run.sh clean on rerun); keep an eye on the `--cells -fparallel-chunk=1` runs.
+
+## Round 80 — -Waddress-of-packed-member locations
+- `packed_ptr_check_x` (cexpr.c) takes a mode. Context (assignment/init/argument) looks through a cast and reports a member whose record/field is packed at the cast's `(`; the cast itself reports only a member whose *type* is packed (at the `&`); a parenthesized cast operand (`(T*)(&p.i)`) is located by the cast site as before. A bare member passed as a call argument is located at its `->`/`.` (not through `?:`). `pk_member` now returns which clause matched. Golden `misc_89` (a probe of all forms against gcc).
+- Closes c-c++-common `pr51628-8/9/16`. Gate: 1125 goldens, san 387/0, gcc.dg differ 126, c-c++-common 42, callgrind ~3.654G.
+- Note: a one-off "1 failed" appeared in the gate's san step under load and did not reproduce (san.sh and run.sh clean on rerun); watch the `--cells -fparallel-chunk=1` runs.

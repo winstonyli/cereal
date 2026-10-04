@@ -2918,19 +2918,22 @@ static void pk_defined_here(Checker *c, Diagnostic *d, TypeId t)
 
 /* check_alignment_of_packed_member for field f of record rec at offset off
  * (bits): whether the member may be misaligned for a pointer to type. */
-static bool pk_member(Checker *c, TypeId type, TypeId rec, const Field *f,
-                      uint64_t off, bool rvalue)
+static int pk_member(Checker *c, TypeId type, TypeId rec, const Field *f,
+                     uint64_t off, bool rvalue)
 {
     unsigned ta;
+    bool byfield;
     /* finish_struct gives DECL_PACKED to the members of a packed record
      * whose type is aligned more than a byte */
-    if (!((f->flags & FF_PACKED) ||
-          (pk_packed_rec(c, rec) && pk_align(c, f->ty) > 1) ||
-          pk_packed_rec(c, f->ty)) ||
+    byfield = (f->flags & FF_PACKED) ||
+              (pk_packed_rec(c, rec) && pk_align(c, f->ty) > 1);
+    if (!(byfield || pk_packed_rec(c, f->ty)) ||
         (f->flags & FF_BITFIELD) || (rvalue && !is_array(c, f->ty)))
-        return false;
+        return 0;
     ta = pk_align(c, type);
-    return pk_align(c, rec) < ta || (off / 8) % ta != 0;
+    if (!(pk_align(c, rec) < ta || (off / 8) % ta != 0))
+        return 0;
+    return byfield ? 1 : 2;     /* 2: only the member's type is packed */
 }
 
 /* Where gcc reports a packed-member address: the location of the folded
@@ -2967,7 +2970,21 @@ static SrcLoc pk_loc(Checker *c, uint32_t e)
     return kind == 2 ? under : loc;
 }
 
+/* mode 0: the conversion context (assignment, initializer, argument), which
+ * looks through a cast and reports a member of a packed record at the cast;
+ * 1: the cast itself, which reports only a member whose type is packed;
+ * 2: the operand of a cast seen from its context.  arg: a call argument,
+ * located at the member operator. */
+static void packed_ptr_check_x(Checker *c, TypeId to, uint32_t e, int mode,
+                               SrcLoc castloc, bool arg);
+
 static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
+{
+    packed_ptr_check_x(c, to, e, 0, 0, false);
+}
+
+static void packed_ptr_check_x(Checker *c, TypeId to, uint32_t e, int mode,
+                               SrcLoc castloc, bool arg)
 {
     bool rvalue = true, indirect = false;
     uint32_t r, k[3];
@@ -2980,16 +2997,25 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
     if (c->ck[e] == K_ADDR && c->cb[e] == 0)
         return;                 /* folded to a constant (offsetof idiom) */
     type = pointee(c, type_canon(TT, to));
+    if (mode == 0 && ntag(c, e) == N_CAST) {
+        uint32_t ck[4], in;
+        if (node_children(c->nodes, e, ck, 4) >= 2) {
+            in = strip_paren(c, ck[1]);
+            if (in == ck[1])      /* gcc locates a parenthesized operand itself */
+                packed_ptr_check_x(c, to, in, 2, first_loc(c, e), arg);
+        }
+        return;
+    }
     if (ntag(c, e) == N_COND) {
         if (nkids(c, e, k, 3) == 3) {
-            packed_ptr_check(c, to, k[1]);
-            packed_ptr_check(c, to, k[2]);
+            packed_ptr_check_x(c, to, k[1], mode, castloc, false);
+            packed_ptr_check_x(c, to, k[2], mode, castloc, false);
         }
         return;
     }
     if (ntag(c, e) == N_BINARY && npunct(c, e) == P_COMMA) {
         if (nkids(c, e, k, 2) == 2)
-            packed_ptr_check(c, to, k[1]);
+            packed_ptr_check_x(c, to, k[1], mode, castloc, false);
         return;
     }
     r = e;
@@ -3009,7 +3035,7 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
             uint32_t x = strip_paren(c, first_child(c, r));
             if (x != NO_NODE && !(ntag(c, x) == N_UNARY &&
                                   npunct(c, x) == P_AMP)) {
-                packed_ptr_check(c, to, x);
+                packed_ptr_check_x(c, to, x, mode, castloc, arg);
                 return;
             }
         }
@@ -3046,7 +3072,7 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
             rvalue = true;
         }
         if (decl) {
-            if (is_err(c, rt))
+            if (is_err(c, rt) || mode == 2)     /* the cast reports it */
                 return;
             if (rvalue && is_ptr(c, rt))
                 rt = pointee(c, type_canon(TT, rt));
@@ -3088,6 +3114,7 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
             const Field *f;
             uint64_t off = 0;
             unsigned q = 0;
+            int pk;
             arrow = (c->nodes[r].flags & NF_ARROW) != 0;
             if (base == NO_NODE || node_err(c, base))
                 return;
@@ -3095,12 +3122,18 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
             f = find_field(c, rec, cnode_ident(c, r), &off, &q);
             if (!f)
                 return;
-            if (pk_member(c, type, rec, f, off, rvalue)) {
-                cwarn(c, pk_loc(c, e), "address-of-packed-member",
+            pk = pk_member(c, type, rec, f, off, rvalue);
+            if (pk && (mode == 1 ? pk == 2 : mode == 2 ? pk == 1 : true)) {
+                SrcLoc wl = mode == 2 && castloc ? castloc : pk_loc(c, e);
+                if (arg && mode == 0 && ntag(c, e) == N_MEMBER_EXPR && !castloc)
+                    wl = expr_loc(c, e);
+                cwarn(c, wl, "address-of-packed-member",
                       "taking address of packed member of %s may result in "
                       "an unaligned pointer value", type_q(TT, mainv(c, rec)));
                 return;
             }
+            if (pk)
+                return;
             if (is_array(c, c->ty[r]))
                 rvalue = false;
             if (rvalue || arrow)
@@ -3140,7 +3173,7 @@ bool cexpr_assign_check(Checker *c, uint32_t expr, TypeId lhs,
 {
     bool r = assign_check(c, expr, lhs, ci);
     if (expr != NO_NODE && !is_err(c, lhs))
-        packed_ptr_check(c, lhs, expr);
+        packed_ptr_check_x(c, lhs, expr, 0, 0, ci && ci->context == CONV_ARG);
     return r;
 }
 
@@ -4833,7 +4866,7 @@ static void e_cast(Checker *c, uint32_t i)
         cwarn(c, loc, "pointer-to-int-cast",
               "cast from pointer to integer of different size");
     }
-    packed_ptr_check(c, t, a);
+    packed_ptr_check_x(c, t, a, a == strip_paren(c, a) ? 1 : 3, 0, false);
     if (is_ptr(c, t))
         alias_cast(c, a, c->ty[i]);
     if (tk == TY_BOOL && (is_ptr(c, ot) || is_int(c, ot) || is_flt(c, ot) || is_complex(c, ot)))
