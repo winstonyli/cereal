@@ -741,6 +741,57 @@ static bool fmt_leaves(Checker *c, uint32_t s, uint32_t *out, uint32_t *n,
 /* Record the bytes of a const char array's string initializer: a format
  * read through the array is checked like the literal (c-family
  * check_format_arg via decl_constant_value). */
+/* const char t[][N] = { "a", "b", ... }: the rows' bytes, zero padded to the
+ * array's size. */
+static void note_strinit_rows(Checker *c, CSym *s, uint32_t list)
+{
+    TypeId row = type_base(TT, type_canon(TT, s->ty)), ce;
+    uint32_t kk[256], nk;
+    bool ok = false, good = true;
+    uint64_t rs, total;
+    StrInit si;
+    uint32_t j;
+    if (type_ckind(TT, s->ty) != TY_ARRAY || type_ckind(TT, row) != TY_ARRAY)
+        return;
+    ce = type_base(TT, type_canon(TT, row));
+    if (((TYPE_QUALS(ce) | TYPE_QUALS(row) | TYPE_QUALS(s->ty)) &
+         (TQ_CONST | TQ_VOLATILE)) != TQ_CONST ||
+        mainv(c, ce) != TYPE_B(CHAR))
+        return;
+    rs = type_size(TT, row, &ok);
+    nk = nkids(c, list, kk, 256);
+    if (!ok || !rs || !nk || nk > 256)
+        return;
+    total = type_size(TT, s->ty, &ok);
+    if (!ok || !total)           /* a [] bound counts the initializers */
+        total = nk * rs;
+    si.b = xcalloc(1, total);
+    for (j = 0; good && j < nk; j++) {
+        char *f;
+        uint32_t *off;
+        size_t n;
+        bool exact;
+        if (ntag(c, kk[j]) != N_STRING || (j + 1) * rs > total ||
+            !fmt_decode(c, kk[j], &f, &off, &n, &exact)) {
+            good = false;
+            break;
+        }
+        free(off);
+        if (n > rs)
+            n = rs;
+        memcpy(si.b + j * rs, f, n);
+        free(f);
+    }
+    if (!good) {
+        free(si.b);
+        return;
+    }
+    si.n = total;
+    si.uns = false;
+    vec_push(&c->strinits, si);
+    s->strinit = (uint32_t)c->strinits.len;
+}
+
 void cexpr_note_strinit(Checker *c, CSym *s, uint32_t init)
 {
     uint32_t lit = strip_paren(c, init);
@@ -750,6 +801,10 @@ void cexpr_note_strinit(Checker *c, CSym *s, uint32_t init)
     uint32_t *off;
     size_t n;
     bool exact;
+    if (lit != NO_NODE && ntag(c, lit) == N_INIT_LIST) {
+        note_strinit_rows(c, s, lit);
+        return;
+    }
     if (lit == NO_NODE || ntag(c, lit) != N_STRING || type_ckind(TT, s->ty) != TY_ARRAY)
         return;
     et = type_base(TT, type_canon(TT, s->ty));
@@ -776,6 +831,7 @@ typedef struct SlRes {
     size_t n;                   /* literal bytes (without the nul) */
     int64_t size, off;
     bool known;
+    int64_t base;               /* the row's offset in a multidimensional array */
 } SlRes;
 
 static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
@@ -837,6 +893,26 @@ static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
         else
             known = false;
         return sl_resolve(c, k[0], off, known, out, max, depth + 1);
+    }
+    case N_INDEX: {
+        /* a row of a multidimensional array with a constant index */
+        bool ok = false;
+        uint64_t rs;
+        int r;
+        if (nkids(c, e, k, 2) != 2 || type_ckind(TT, c->ty[e]) != TY_ARRAY ||
+            type_ckind(TT, c->ty[k[0]]) != TY_ARRAY ||
+            !(c->ck[k[1]] == K_ICE || c->ck[k[1]] == K_FOLD))
+            return 0;
+        rs = type_size(TT, c->ty[e], &ok);
+        if (!ok || !rs)
+            return 0;
+        r = sl_resolve(c, k[0], off, known, out, max, depth + 1);
+        if (r == 1 && out[0].ref != SYM_NONE) {
+            out[0].base += cexpr_sval(c, k[1]) * (int64_t)rs;
+            out[0].size = (int64_t)rs;
+            return 1;
+        }
+        return 0;
     }
     case N_STRING: {
         char *f;
@@ -904,7 +980,7 @@ void check_strlen(Checker *c, const uint32_t *kv, uint32_t nk)
     n = sl_resolve(c, a, 0, true, r, 4, 0);
     loc = ntag(c, a) == N_PAREN ? ctok_loc(c, c->nodes[a].tok) : expr_loc(c, a);
     if (ntag(c, a) == N_COND && nkids(c, a, k3, 3) == 3)     /* gcc: the ':' */
-        loc = ctok_loc(c, last_tok(c, k3[1]) + 1);
+        loc = cexpr_colon_loc(c, a, k3[1], k3[2]);
     for (j = 0; j < n; j++) {
         const CSym *sy = r[j].ref != SYM_NONE ? csym(c, r[j].ref) : NULL;
         if (r[j].known && (r[j].off < 0 || r[j].off >= r[j].size)) {
@@ -916,14 +992,16 @@ void check_strlen(Checker *c, const uint32_t *kv, uint32_t nk)
                       cident(c, sy->name));
         } else if (sy && sy->strinit) {
             const StrInit *si = &c->strinits.data[sy->strinit - 1];
-            size_t from = r[j].known ? (size_t)r[j].off : 0;
-            if ((int64_t)si->n >= r[j].size &&
-                (from >= si->n || !memchr(si->b + from, 0, si->n - from))) {
+            size_t from = (size_t)r[j].base + (r[j].known ? (size_t)r[j].off : 0);
+            size_t end = (size_t)(r[j].base + r[j].size);
+            if ((int64_t)si->n >= r[j].base + r[j].size &&
+                (from >= end || !memchr(si->b + from, 0, end - from))) {
                 Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "stringop-overread",
                                         "'strlen' argument missing "
                                         "terminating nul");
                 if (d)
                     cnote(c, d, sy->loc, "referenced argument declared here");
+                break;      /* the call is then marked no-warning */
             }
         }
     }

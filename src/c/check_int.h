@@ -71,6 +71,11 @@ typedef struct InlStatic {
     bool modifiable;
 } InlStatic;
 
+typedef struct WinaEnt {
+    uint32_t key;
+    uint16_t wina;
+} WinaEnt;
+
 typedef struct StrInit {
     char *b;                 /* the decoded bytes */
     size_t n;
@@ -185,6 +190,7 @@ typedef struct Attrs {
                               * sec2: a later one, compared with sec */
     bool sec_any;            /* a section attribute was written */
     bool wina;               /* warn_if_not_aligned was written */
+    uint16_t wina_al;        /* its alignment in bytes (0: invalid) */
     uint8_t sso;             /* scalar_storage_order: 1 big-endian, 2 little */
     SrcLoc sec_bad;          /* input_location of a non-string argument */
 } Attrs;
@@ -321,6 +327,8 @@ struct Checker {
     uint32_t cap;            /* capacity of the per-node arrays */
     VEC(long double) fv;     /* K_FLOAT values */
     VEC(Spec) specs;         /* the specifier stack */
+    VEC(WinaEnt) wina_td;    /* typedefs with warn_if_not_aligned (type index) */
+    VEC(WinaEnt) wina_rec;   /* records with one (Record index) */
     VEC(RecDef) recs;        /* records and enums being defined */
     VEC(FieldIn) fields;
     VEC(uint32_t) ecs;       /* enumeration constants being defined */

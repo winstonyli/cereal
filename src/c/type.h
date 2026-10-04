@@ -187,6 +187,7 @@ typedef struct FieldIn {
     TypeId ty;
     int32_t width;           /* -1: not a bit-field */
     uint16_t align;          /* aligned attribute, 0: none */
+    uint16_t wina;           /* warn_if_not_aligned attribute, 0: none */
     bool packed;
     SrcLoc loc;
     uint32_t dep, dmsg;

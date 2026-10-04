@@ -7,3 +7,9 @@ attr_wina.c:5:1: error: 'warn_if_not_aligned' may not be specified for 'foo2'
 attr_wina.c:11:7: error: 'warn_if_not_aligned' may not be specified for 'i'
    11 |   int i : 2 __attribute__((warn_if_not_aligned(8)));
       |       ^
+attr_wina.c:13:1: warning: alignment 4 of 'struct foo3' is less than 8 [-Wif-not-aligned]
+   13 | };
+      | ^
+attr_wina.c:12:7: warning: 'j' offset 4 in 'struct foo3' isn't aligned to 8 [-Wif-not-aligned]
+   12 |   int j __attribute__((warn_if_not_aligned(8)));
+      |       ^

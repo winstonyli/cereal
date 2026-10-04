@@ -2611,8 +2611,10 @@ void cinit_decl_done(Checker *c, uint32_t idecl)
         return;
     s = csym(c, c->cb[declared] - 1);
     if (ntag(c, init) == N_INIT_LIST) {
-        if (!is_err(c, s->ty))
+        if (!is_err(c, s->ty)) {
             mark_const_agg(c, s, s->ty);
+            cexpr_note_strinit(c, s, init);
+        }
         return;
     }
     if (s->flags & CSF_AUTO_TYPE)

@@ -828,10 +828,14 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 a->aligned = v;
         } else if (!strcmp(name, "warn_if_not_aligned")) {
             a->wina = true;
-            if (arg != NO_NODE)
-                (void)check_user_alignment(c, arg,
-                                           iloc(c, after_tok(c, attr)),
-                                           attr_on_object(c, attr));
+            if (arg != NO_NODE) {
+                uint32_t v = check_user_alignment(c, arg,
+                                                  iloc(c, after_tok(c, attr)),
+                                                  attr_on_object(c, attr));
+                if (v > a->wina_al)
+                    a->wina_al = (uint16_t)v;
+            } else
+                a->wina_al = 16;     /* BIGGEST_ALIGNMENT */
         } else if (!strcmp(name, "malloc") && arg != NO_NODE &&
                    c->ck[arg] != K_ERR) {
             attr_malloc_dealloc(c, arg, ak.n > 1 ? ak.p[1] : NO_NODE,
@@ -1227,6 +1231,8 @@ static void attrs_merge(Attrs *to, const Attrs *from)
         to->dep_msg = from->dep_msg;
     if (from->wina)
         to->wina = true;
+    if (from->wina_al > to->wina_al)
+        to->wina_al = from->wina_al;
     if (from->sec_any) {
         to->sec_any = true;
         if (!to->sec)
@@ -6496,6 +6502,13 @@ static void declared_visit(Checker *c, uint32_t i)
         ref = pushdecl(c, &s, false);
         if (a.may_alias && type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF)
             TT->ents.data[TYPE_IDX(csym(c, ref)->ty)].flags |= TF_MAYALIAS;
+        if ((a.wina_al || sp.attrs.wina_al) &&
+            type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
+            WinaEnt we = {TYPE_IDX(csym(c, ref)->ty),
+                          a.wina_al > sp.attrs.wina_al ? a.wina_al
+                                                       : sp.attrs.wina_al};
+            vec_push(&c->wina_td, we);
+        }
         /* a redeclaration can only raise the alignment */
         if (s.align && type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
             TypeEnt *te = &TT->ents.data[TYPE_IDX(csym(c, ref)->ty)];
@@ -7181,6 +7194,110 @@ static void packed_unnecessary(Checker *c, TypeId t, uint32_t open,
               "packed attribute is unnecessary");
 }
 
+/* TYPE_WARN_IF_NOT_ALIGN: the warn_if_not_aligned of a typedef (or one it
+ * names), of a record, or of an array's element. */
+static unsigned type_wina(Checker *c, TypeId t)
+{
+    for (;;) {
+        const TypeEnt *e = type_ent(TT, t);
+        size_t k;
+        if (e->kind == TY_TYPEDEF) {
+            for (k = c->wina_td.len; k-- > 0;)
+                if (c->wina_td.data[k].key == TYPE_IDX(t))
+                    return c->wina_td.data[k].wina;
+            t = e->base;
+        } else if (e->kind == TY_ARRAY) {
+            t = e->base;
+        } else if (e->kind == TY_STRUCT || e->kind == TY_UNION) {
+            for (k = c->wina_rec.len; k-- > 0;)
+                if (c->wina_rec.data[k].key == e->extra)
+                    return c->wina_rec.data[k].wina;
+            return 0;
+        } else
+            return 0;
+    }
+}
+
+/* Does the type carry an aligned attribute (TYPE_ATTRIBUTES)? */
+static bool type_user_aligned(Checker *c, TypeId t)
+{
+    for (;;) {
+        const TypeEnt *e = type_ent(TT, t);
+        (void)c;
+        if (e->kind == TY_TYPEDEF) {
+            if (e->flags & TF_ALIGNED)
+                return true;
+            t = e->base;
+        } else if (e->kind == TY_STRUCT || e->kind == TY_UNION)
+            return (TT->recs.data[e->extra].flags & RF_USER_ALIGN) != 0;
+        else
+            return false;
+    }
+}
+
+/* place_field and finalize_record_size: -Wif-not-aligned and
+ * -Wpacked-not-aligned. */
+static void wina_check(Checker *c, TypeId t, const FieldIn *f, uint32_t m,
+                       unsigned attr_wina, SrcLoc end)
+{
+    Record *r = type_record(TT, t);
+    const Field *fl;
+    unsigned rw = attr_wina, rp = 0;
+    uint32_t k;
+    bool on_w = diag_enabled(c->diag, "if-not-aligned"),
+         on_p = diag_enabled(c->diag, "packed-not-aligned");
+    if (!r || m != r->nfields)
+        return;
+    fl = TT->fields.data + r->fields;
+    for (k = 0; k < m; k++) {
+        unsigned w, p = 0;
+        if (f[k].width >= 0)
+            continue;
+        w = f[k].wina > type_wina(c, f[k].ty) ? f[k].wina
+                                              : type_wina(c, f[k].ty);
+        if (!w && type_user_aligned(c, f[k].ty))
+            p = type_align(TT, f[k].ty);
+        if (w > rw)
+            rw = w;
+        if (p > rp)
+            rp = p;
+    }
+    if (rw) {
+        WinaEnt we = {(uint32_t)(r - TT->recs.data), (uint16_t)rw};
+        vec_push(&c->wina_rec, we);
+    }
+    if (rw && !on_w)
+        rw = 0;
+    if (rp && !on_p)
+        rp = 0;
+    if (rw ? r->align < rw : rp && r->align < rp) {
+        unsigned need = rw ? rw : rp;
+        cwarn(c, end, rw ? "if-not-aligned" : "packed-not-aligned",
+              "alignment %u of '%s %s' is less than %u", r->align,
+              r->flags & RF_UNION ? "union" : "struct",
+              r->tag ? cident(c, r->tag) : "", need);
+    }
+    for (k = 0; k < m; k++) {
+        unsigned w, p = 0, v;
+        if (f[k].width >= 0 || !f[k].name)
+            continue;
+        w = f[k].wina > type_wina(c, f[k].ty) ? f[k].wina
+                                              : type_wina(c, f[k].ty);
+        if (!w && type_user_aligned(c, f[k].ty))
+            p = type_align(TT, f[k].ty);
+        v = w ? w : p;
+        if (!v || !(w ? on_w : on_p))
+            continue;
+        if ((fl[k].off_bits / 8) % v)
+            cwarn(c, f[k].loc, w ? "if-not-aligned" : "packed-not-aligned",
+                  "'%s' offset %llu in '%s %s' isn't aligned to %u",
+                  cident(c, f[k].name),
+                  (unsigned long long)(fl[k].off_bits / 8),
+                  r->flags & RF_UNION ? "union" : "struct",
+                  r->tag ? cident(c, r->tag) : "", v);
+    }
+}
+
 static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
 {
     TypeId t = c->ty[open];
@@ -7308,6 +7425,10 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     csum_read_pack(c);
     type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed,
                          a.ms);
+    /* gcc reports at the closing brace when it starts its line, else at the tag */
+    wina_check(c, t, f, m, a.wina_al,
+               cbol_tok(c, close_tok) == close_tok + 1 ? cinput_loc(c, close_tok)
+                                                       : loc);
     if (a.packed && want != TY_UNION && diag_enabled(c->diag, "packed") &&
         type_packed_unnecessary(TT, t, f, m, c->pack, a.aligned, a.ms, -1))
         packed_unnecessary(c, t, open, close_tok);
@@ -7893,7 +8014,11 @@ static void member_visit(Checker *c, uint32_t i)
     strict_flex_check(c, i, true, g.ty, g.name, g.loc, NO_NODE);
     attrs_zcur_check(c, &a, false, g.loc);
     attrs_wina_check(c, &a, 'm', g.width >= 0, g.name, g.loc);
+    if (g.width >= 0 && g.name && type_wina(c, g.ty))
+        cerror(c, g.loc, "cannot declare bit-field '%s' with "
+               "'warn_if_not_aligned' type", cident(c, g.name));
     memset(&fi, 0, sizeof fi);
+    fi.wina = a.wina_al;
     fi.name = g.name;
     fi.ty = g.ty;
     fi.width = g.width;

@@ -1268,3 +1268,10 @@ diagnostics and builds on the strinit table.
 - `__builtin_speculation_safe_value` returns the first argument's type (spec-barrier-3).
 - Golden: `tests/check/misc_67.c`. Gate: 1081 pass, san 365/0, gcc.dg differ 149 (was 154), c-c++-common 58.
 - Optimize-pragma gaps (repeat order, combined strings): no corpus file exercises them; left open, low value.
+
+## Round 68 — strlen over rows, -Wif-not-aligned / -Wpacked-not-aligned, bidi survey
+- `-Wstringop-overread` on `strlen` of a row of a const 2-D char array (`b[3]`, `&b[3][1]`, `?:` of them): `StrInit` now records the byte image of `const char t[][N] = {"..",..}` (`note_strinit_rows`); `SlRes.base` offsets the row. One warning per call; the `?:` location uses `cexpr_colon_loc`. warn-strlen-no-nul 68 -> 47 missing.
+  Still open there: struct/array-of-struct member images (`s.b`, `ba[0].a[0].b`; needs a byte image of struct initializers) and gcc's optimizer constant propagation of locals (`b[i3]`).
+- `-Wif-not-aligned` (default on) and `-Wpacked-not-aligned`: `Attrs.wina_al`, `FieldIn.wina`, side tables `wina_td`/`wina_rec` (typedef / record warn_if_not_aligned), `wina_check` in `struct_finish`. Struct-level "alignment N of 'struct T' is less than M" first (at the closing brace when it starts its line, else the tag), then per-field "offset". Bit-field with a wina type is an error. pr53037-1..4 SAME; golden attr_wina.expected regenerated (it recorded the gap), new golden misc_68.
+- Gate: 1083 pass, san 366/0, gcc.dg differ 145 (was 149), c-c++-common 58.
+- Survey of the parked cross-chunk bidi fix: of the 8 differing Wbidi-chars files only a minority is chunking. 24/25 (42 diags) are `\u{...}` / `\N{...}` escapes in C (gcc: "delimited escape sequences are only valid in C++23", "named universal character escapes ..."); 4/5/6 (~21) are UCNs inside identifiers (`b\u202a` lexed as `b` + stray; "unknown type name 'b'"); 11 is the UCN spelling in an error (`\U0000202c` vs `\u202C`); 6 has one location difference. So the escape/identifier UCN work is worth more than the cross-chunk stack.

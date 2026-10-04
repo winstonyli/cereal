@@ -706,6 +706,8 @@ void checker_free(Checker *c)
     for (uint32_t i = 0; i < c->strinits.len; i++)
         free(c->strinits.data[i].b);
     vec_free(&c->strinits);
+    vec_free(&c->wina_td);
+    vec_free(&c->wina_rec);
     cinit_free(c);
     cstmt_free(c);
     cexpr_free_params(c);

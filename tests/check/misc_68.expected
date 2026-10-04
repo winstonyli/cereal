@@ -1,0 +1,51 @@
+misc_68.c:4:8: warning: alignment 4 of 'struct foo1' is less than 8 [-Wif-not-aligned]
+    4 | struct foo1 { int i1, i2, i3; __u64 x; };
+      |        ^
+misc_68.c:4:37: warning: 'x' offset 12 in 'struct foo1' isn't aligned to 8 [-Wif-not-aligned]
+    4 | struct foo1 { int i1, i2, i3; __u64 x; };
+      |                                     ^
+misc_68.c:5:37: warning: 'x' offset 12 in 'struct foo2' isn't aligned to 8 [-Wif-not-aligned]
+    5 | struct foo2 { int i1, i2, i3; __u64 x; } __attribute__((aligned(8)));
+      |                                     ^
+misc_68.c:10:1: warning: alignment 4 of 'struct foo5' is less than 16 [-Wif-not-aligned]
+   10 | };
+      | ^
+misc_68.c:9:7: warning: 'x' offset 4 in 'struct foo5' isn't aligned to 16 [-Wif-not-aligned]
+    9 |   int x __attribute__((warn_if_not_aligned(16)));
+      |       ^
+misc_68.c:11:7: warning: alignment 4 of 'union bar1' is less than 8 [-Wif-not-aligned]
+   11 | union bar1 { int i1; __u64 x; };
+      |       ^
+misc_68.c:15:1: warning: alignment 1 of 'struct S1' is less than 8 [-Wpacked-not-aligned]
+   15 | };
+      | ^
+misc_68.c:18:13: warning: 's8' offset 4 in 'struct S3' isn't aligned to 8 [-Wpacked-not-aligned]
+   18 |   struct S8 s8;
+      |             ^
+misc_68.c:20:19: error: cannot declare bit-field 'i' with 'warn_if_not_aligned' type
+   20 | struct bf { __u64 i : 2; };
+      |                   ^
+misc_68.c:26:18: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   26 |   return strlen(b[3]) + strlen(&b[3][1]) + strlen(v ? "" : b[3]) +
+      |                  ^
+misc_68.c:23:12: note: referenced argument declared here
+   23 | const char b[][5] = { "12", "123", "1234", "54321" };
+      |            ^
+misc_68.c:26:32: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   26 |   return strlen(b[3]) + strlen(&b[3][1]) + strlen(v ? "" : b[3]) +
+      |                                ^
+misc_68.c:23:12: note: referenced argument declared here
+   23 | const char b[][5] = { "12", "123", "1234", "54321" };
+      |            ^
+misc_68.c:26:58: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   26 |   return strlen(b[3]) + strlen(&b[3][1]) + strlen(v ? "" : b[3]) +
+      |                                                          ^
+misc_68.c:23:12: note: referenced argument declared here
+   23 | const char b[][5] = { "12", "123", "1234", "54321" };
+      |            ^
+misc_68.c:27:41: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   27 |          strlen(b[2]) + strlen(v ? b[3] : b[1]);
+      |                                         ^
+misc_68.c:23:12: note: referenced argument declared here
+   23 | const char b[][5] = { "12", "123", "1234", "54321" };
+      |            ^
