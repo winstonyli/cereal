@@ -1326,3 +1326,10 @@ diagnostics and builds on the strinit table.
 - Not started: gcc.dg tail (`nofixed-point-2`, `diag-aka-5a/5b`, `overflow-warn-8`, `init-excess-2`); cells-mode release heuristic with includes.
 - `__builtin_has_attribute` (Round 73b): "expected identifier" wording; `unknown attribute 'X'` error (`cdecl_attr_known`); non-power-of-2 `aligned(N)` error; `alloc_size`/`alloc_align` on a non-function operand warns. Golden `misc_76`. Gate: 1099 pass, san 374/0, dg 135, c-c++-common 52, callgrind 3.633G.
 - Still open in `builtin-has-attribute`: `aligned(i)` non-constant error (line 56) and the array-element alignment error location inside a type-name (gcc reports at statement start, we at the size expr).
+
+## Round 74 — gcc.dg tail
+- Fixed-point literals (`0r`, `0.5hr`, `1ulk`, ...): `-pedantic` "fixed-point constants are a GCC extension" then "fixed-point types not supported for this target" (`LIT_FIXED`, `fixed_lit`); bare `_Sat` errors ("'_Sat' is used without ..."). `nofixed-point-2` SAME. Golden `misc_77`.
+- aka: a system-header typedef of a vector type keeps its name (`aka_atomic`); `diag-aka-5a/5b` still differ only on `__attribute__((transaction_unsafe))` in function-pointer types (not modelled). Golden `misc_78` (via `<xmmintrin.h>`).
+- Overflow warnings issued at c_fully_fold time (operand not yet constant, e.g. through a `(double)` cast) print the expression: `expression '1 + 2147483647' of type ...` for binary nodes (`fold_flush`). `overflow-warn-8` SAME.
+- `pedwarn_init`/`warning_init` (`iped`, `iwarn`, designated-init): a token spelled in a system header macro (NULL) is reported at the macro's expansion point (`wloc`), so it is not dropped. `init-excess-2` SAME. Golden `misc_79`.
+- Gate: 1105 goldens pass; san 377/0; gcc.dg differ 132 (3743 identical); c-c++-common differ 52; callgrind 3.634G.

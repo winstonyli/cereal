@@ -1,0 +1,42 @@
+misc_77.c:2:34: warning: fixed-point constants are a GCC extension
+    2 | void f1(void) { asm ("" : : "r" (0r)); }
+      |                                  ^
+misc_77.c:2:34: error: fixed-point types not supported for this target
+    2 | void f1(void) { asm ("" : : "r" (0r)); }
+      |                                  ^
+misc_77.c:3:11: warning: fixed-point constants are a GCC extension
+    3 | __typeof (0.5hr) b2(void) { return 0ulk; }
+      |           ^
+misc_77.c:3:11: error: fixed-point types not supported for this target
+    3 | __typeof (0.5hr) b2(void) { return 0ulk; }
+      |           ^
+misc_77.c:3:36: warning: fixed-point constants are a GCC extension
+    3 | __typeof (0.5hr) b2(void) { return 0ulk; }
+      |                                    ^
+misc_77.c:3:36: error: fixed-point types not supported for this target
+    3 | __typeof (0.5hr) b2(void) { return 0ulk; }
+      |                                    ^
+misc_77.c:4:1: warning: ISO C does not support saturating types [-Wpedantic]
+    4 | _Sat f4(void) { return 1llr; }
+      | ^
+misc_77.c:4:1: error: '_Sat' is used without '_Fract' or '_Accum'
+    4 | _Sat f4(void) { return 1llr; }
+      | ^
+misc_77.c:4:1: error: fixed-point types not supported for this target
+    4 | _Sat f4(void) { return 1llr; }
+      | ^
+misc_77.c:4:24: warning: fixed-point constants are a GCC extension
+    4 | _Sat f4(void) { return 1llr; }
+      |                        ^
+misc_77.c:4:24: error: fixed-point types not supported for this target
+    4 | _Sat f4(void) { return 1llr; }
+      |                        ^
+misc_77.c:5:1: warning: ISO C does not support saturating types [-Wpedantic]
+    5 | _Sat _Fract s;
+      | ^
+misc_77.c:5:6: error: fixed-point types not supported for this target
+    5 | _Sat _Fract s;
+      |      ^
+misc_77.c:5:6: warning: ISO C does not support fixed-point types [-Wpedantic]
+    5 | _Sat _Fract s;
+      |      ^

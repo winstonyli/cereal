@@ -1,0 +1,33 @@
+misc_79.c:3:11: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+    3 | int a = 1 + INT_MAX;
+      |           ^
+misc_79.c:3:1: warning: overflow in constant expression [-Woverflow]
+    3 | int a = 1 + INT_MAX;
+      | ^
+misc_79.c:4:26: warning: integer overflow in expression '1 + 2147483647' of type 'int' results in '-2147483648' [-Woverflow]
+    4 | int b = (int)(double)1.0 + INT_MAX;
+      |                          ^
+misc_79.c:4:1: warning: overflow in constant expression [-Woverflow]
+    4 | int b = (int)(double)1.0 + INT_MAX;
+      | ^
+misc_79.c:5:42: warning: integer overflow in expression '1 + 2147483647' of type 'int' results in '-2147483648' [-Woverflow]
+    5 | int f(int j) { return j ? (int)(double)1 + INT_MAX : 0; }
+      |                                          ^
+misc_79.c:6:20: warning: excess elements in array initializer
+    6 | int* arr[1] = { 0, NULL };
+      |                    ^
+misc_79.c:6:20: note: (near initialization for 'arr')
+    6 | int* arr[1] = { 0, NULL };
+      |                    ^
+misc_79.c:7:31: warning: excess elements in struct initializer
+    7 | struct S { int *a; } s = { 0, NULL };
+      |                               ^
+misc_79.c:7:31: note: (near initialization for 's')
+    7 | struct S { int *a; } s = { 0, NULL };
+      |                               ^
+misc_79.c:8:63: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+    8 | struct __attribute__((designated_init)) S2 { int *a; } s2 = { NULL };
+      |                                                               ^
+misc_79.c:8:63: note: (near initialization for 's2')
+    8 | struct __attribute__((designated_init)) S2 { int *a; } s2 = { NULL };
+      |                                                               ^

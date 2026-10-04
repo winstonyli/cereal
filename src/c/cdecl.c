@@ -3322,6 +3322,8 @@ static void add_type_kw(Checker *c, Spec *s, uint32_t tok)
         }
         case CK_SAT:
             cpedantic(c, loc, "ISO C does not support saturating types");
+            s->sat = true;
+            s->sat_loc = loc;
             return;
         case CK_FIXED:
             /* no fixed-point support on this target; typed as int */
@@ -3395,6 +3397,12 @@ static void finish_declspecs(Checker *c, Spec *s)
             s->word = TW_DOUBLE;
             cpedantic(c, s->complex_loc, "ISO C does not support plain "
                       "'complex' meaning 'double complex'");
+        } else if (s->sat) {
+            cerror(c, s->sat_loc, "'_Sat' is used without '_Fract' or "
+                   "'_Accum'");
+            cerror(c, s->sat_loc, "fixed-point types not supported for this "
+                   "target");
+            s->word = TW_INT;
         } else {
             s->word = TW_INT;
             s->default_int = true;

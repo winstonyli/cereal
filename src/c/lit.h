@@ -20,7 +20,8 @@ enum {
     LIT_FLOAT = 8,           /* a floating constant */
     LIT_IMAGINARY = 16,      /* suffix i / j: _Complex */
     LIT_MULTICHAR = 32,      /* 'ab' */
-    LIT_BAD = 64             /* not understood (already diagnosed) */
+    LIT_BAD = 64,            /* not understood (already diagnosed) */
+    LIT_FIXED = 128          /* fixed-point suffix: pedantic, then unsupported */
 };
 
 typedef struct Lit {

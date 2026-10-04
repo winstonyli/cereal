@@ -1094,6 +1094,9 @@ static bool aka_atomic(const TypeTable *tt, const TypeEnt *e)
     if (b->kind == TY_ENUM)
         return (e->flags & TF_SYSHDR) || !tt->enums.data[b->extra].tag ||
                tt->enums.data[b->extra].tag == e->extra;
+    /* ... and so does a system header's vector type */
+    if (b->kind == TY_VECTOR)
+        return e->flags & TF_SYSHDR;
     return false;
 }
 

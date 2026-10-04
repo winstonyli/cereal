@@ -207,6 +207,8 @@ typedef struct Spec {
     uint8_t kind;            /* TypeSpecKind */
     bool thread, thread_gnu, is_inline, is_noreturn;
     bool is_long, long_long, is_short, is_signed, is_unsigned, is_complex;
+    bool sat;                /* _Sat seen (sat_loc) */
+    SrcLoc sat_loc;
     bool default_int;        /* no type specifier at all */
     bool non_sc_seen;
     bool restrict_q, alignas_seen, has_attrs;

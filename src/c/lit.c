@@ -52,6 +52,30 @@ static void bad(Lit *out, const char *msg)
     say(out, 2, "", "%.*s", msg, (int)strlen(msg));
 }
 
+/* libcpp's fixed-point suffix: [u] [h | l | ll] (r | k), one case throughout. */
+static bool fixed_suffix(const char *s, size_t len)
+{
+    size_t k = 0;
+    if (k < len && (s[k] == 'u' || s[k] == 'U'))
+        k++;
+    if (k < len && (s[k] == 'h' || s[k] == 'H'))
+        k++;
+    else if (k + 1 < len && (s[k] == 'l' || s[k] == 'L') && s[k + 1] == s[k])
+        k += 2;
+    else if (k < len && (s[k] == 'l' || s[k] == 'L'))
+        k++;
+    return k + 1 == len && strchr("rRkK", s[k]);
+}
+
+static bool fixed_lit(Lit *out, const char *s, size_t len, unsigned radix)
+{
+    if (radix == 16 || radix == 2 || !fixed_suffix(s, len))
+        return false;
+    out->flags |= LIT_FIXED | LIT_BAD;
+    note(out, 0, "", "fixed-point constants are a GCC extension");
+    return true;
+}
+
 /* libcpp's interpret_float_suffix: the type, or TY_ERROR if invalid. */
 static TypeKind float_suffix(const char *s, size_t len, bool *imag,
                              bool *nonstd)
@@ -245,6 +269,8 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
             bad(out, "hexadecimal floating constants require an exponent");
             return;
         }
+        if (fixed_lit(out, str, (size_t)(limit - str), radix))
+            return;
         t = float_suffix(str, (size_t)(limit - str), &imag, &nonstd);
         if (t == TY_ERROR) {
             say(out, 2, "", "invalid suffix \"%.*s\" on floating constant",
@@ -297,6 +323,8 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
                                          TY_LLONG, TY_ULLONG};
         const TypeKind *list;
         size_t nlist, k;
+        if (fixed_lit(out, str, (size_t)(limit - str), radix))
+            return;
         if (!int_suffix(str, (size_t)(limit - str), &u, &nl, &imag)) {
             say(out, 2, "", "invalid suffix \"%.*s\" on integer constant", str,
                 (int)(limit - str));

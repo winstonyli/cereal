@@ -1686,6 +1686,8 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
         }
         break;
     }
+    if (l->flags & LIT_FIXED)
+        cerror(c, loc, "fixed-point types not supported for this target");
     if ((l->flags & LIT_UNSIGNED_WARN) && !cin_system(c, loc))
         cwarn(c, cinput_loc(c, c->nodes[i].tok), "traditional",
               "this decimal constant would be unsigned in ISO C90");
@@ -8944,6 +8946,10 @@ static void fold_flush(Checker *c, uint32_t i)
             uint32_t a = first_child(c, k);
             cwarn(c, cnode_loc(c, k), "overflow", "integer overflow in "
                   "expression '%s' of type %s results in '%s'", estr(c, a),
+                  type_q(TT, t), vstr(c, t, c->cv[k]));
+        } else if (ntag(c, k) == N_BINARY) {
+            cwarn(c, cnode_loc(c, k), "overflow", "integer overflow in "
+                  "expression '%s' of type %s results in '%s'", estr(c, k),
                   type_q(TT, t), vstr(c, t, c->cv[k]));
         } else {
             cwarn(c, cnode_loc(c, k), "overflow", "integer overflow in "

@@ -1,0 +1,9 @@
+misc_78.c:11:9: error: incompatible types when assigning to type '__m128' from type 'struct s'
+   11 |     a = x;
+      |         ^
+misc_78.c:12:9: error: incompatible types when assigning to type 'm128_copy' {aka '__m128'} from type 'struct s'
+   12 |     b = x;
+      |         ^
+misc_78.c:13:9: error: incompatible types when assigning to type 'loc_vector' {aka '__vector(4) float'} from type 'struct s'
+   13 |     c = x;
+      |         ^

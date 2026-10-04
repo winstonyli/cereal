@@ -325,6 +325,18 @@ static SrcLoc rloc(Checker *c, CCtx *x, uint32_t lt)
     return tloc(c, lt);
 }
 
+/* pedwarn_init / warning_init: a token spelled in a system header macro is
+ * reported where the macro was expanded, or the warning would be dropped. */
+bool cin_system(Checker *c, SrcLoc loc);
+static SrcLoc wloc(Checker *c, CCtx *x, uint32_t lt)
+{
+    SrcLoc loc = rloc(c, x, lt);
+    if (lt != LT_IN && lt < c->u->ntoks && cin_system(c, loc) &&
+        c->u->toks[lt].exp)
+        return c->u->toks[lt].exp;
+    return loc;
+}
+
 static void la_set(CCtx *x, int mode, uint32_t v)
 {
     x->lam = (uint8_t)mode;
@@ -357,7 +369,7 @@ static void iped(Checker *c, CCtx *x, uint32_t lt, const char *fmt, ...)
 {
     char buf[1024];
     va_list ap;
-    SrcLoc loc = rloc(c, x, lt);
+    SrcLoc loc = wloc(c, x, lt);
     Diagnostic *d;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
@@ -389,7 +401,7 @@ static void iwarn(Checker *c, CCtx *x, uint32_t lt, const char *id,
 {
     char buf[1024];
     va_list ap;
-    SrcLoc loc = rloc(c, x, lt);
+    SrcLoc loc = wloc(c, x, lt);
     Diagnostic *d;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
@@ -1345,7 +1357,7 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
     if (x->dwpath && !implicit) {
         /* gcc reports a positional element of an elided-brace level at the
          * next element it reads (input_location), with that level's path */
-        Diagnostic *d = cwarn_d(c, DL_WARNING, rloc(c, x, lt), "designated-init",
+        Diagnostic *d = cwarn_d(c, DL_WARNING, wloc(c, x, lt), "designated-init",
                                 "positional initialization of field in "
                                 "'struct' declared with 'designated_init' "
                                 "attribute");
@@ -1368,12 +1380,12 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             x->dwpath = pp;
             pp = NULL;
         } else {
-            Diagnostic *d = cwarn_d(c, DL_WARNING, rloc(c, x, lt),
+            Diagnostic *d = cwarn_d(c, DL_WARNING, wloc(c, x, lt),
                                     "designated-init", "positional "
                                     "initialization of field in 'struct' "
                                     "declared with 'designated_init' attribute");
             if (d && *pp)
-                cnote(c, d, rloc(c, x, lt),
+                cnote(c, d, wloc(c, x, lt),
                       "(near initialization for '%s')", pp);
         }
         free(pp);
