@@ -1,0 +1,33 @@
+misc_67.c:6:20: warning: passing argument 1 of 'f1' makes '__attribute__((noreturn))' qualified function pointer from unqualified [-Wdiscarded-qualifiers]
+    6 | void f2(fp x) { f1(x); }
+      |                    ^
+misc_67.c:5:9: note: expected 'nrfp' {aka '__attribute__((noreturn)) void (*)(void)'} but argument is of type 'fp' {aka 'void (*)(void)'}
+    5 | void f1(nrfp);
+      |         ^
+misc_67.c:9:14: warning: initialization makes '__attribute__((noreturn))' qualified function pointer from unqualified [-Wdiscarded-qualifiers]
+    9 |     nrfp y = x;
+      |              ^
+misc_67.c:10:7: warning: assignment makes '__attribute__((noreturn))' qualified function pointer from unqualified [-Wdiscarded-qualifiers]
+   10 |     y = x;
+      |       ^
+misc_67.c:11:9: warning: assignment makes '__attribute__((noreturn))' qualified function pointer from unqualified [-Wdiscarded-qualifiers]
+   11 |     nr2 = x;
+      |         ^
+misc_67.c:12:9: warning: assignment makes '__attribute__((noreturn))' qualified function pointer from unqualified [-Wdiscarded-qualifiers]
+   12 |     nr3 = x;
+      |         ^
+misc_67.c:17:41: warning: 'sizeof' on array function parameter 'a' will return size of 'int *' [-Wsizeof-array-argument]
+   17 |     __builtin_printf("%zu %zu\n", sizeof(*&a), sizeof(*&b));
+      |                                         ^
+misc_67.c:15:13: note: declared here
+   15 | void f4(int a[], int *b[])
+      |             ^
+misc_67.c:17:54: warning: 'sizeof' on array function parameter 'b' will return size of 'int **' [-Wsizeof-array-argument]
+   17 |     __builtin_printf("%zu %zu\n", sizeof(*&a), sizeof(*&b));
+      |                                                      ^
+misc_67.c:15:23: note: declared here
+   15 | void f4(int a[], int *b[])
+      |                       ^
+misc_67.c:19:25: warning: returning 'int' from a function with return type 'int *' makes pointer from integer without a cast [-Wint-conversion]
+   19 | int *f5(int x) { return __builtin_speculation_safe_value(x); }
+      |                         ^

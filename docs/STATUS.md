@@ -1261,3 +1261,10 @@ diagnostics and builds on the strinit table.
 - Golden: `tests/check/misc_66.c`. Gate: 1079 pass, san 364/0, gcc.dg differ 154 (was 164), c-c++-common 58 (was 59).
 - Not fixed: location-less `cc1:` narrowing-cast warning; `a == __builtin_inf()` float-equal.
 - Remaining gcc.dg candidates: discarded-qualifiers noreturn fn-pointer (assign-warn-1/2, pr56724-2), pr53037-* (if-not-aligned), sso-11/13, spec-barrier-3 (builtin return type), Warray-parameter-10, Wbuiltin-declaration-mismatch-*, warn-strlen-no-nul, pr82167, pr68412-2, pr81779, pr23165, pr62090, unused-3.
+
+## Round 67 — gcc.dg tail (continued)
+- `noreturn` on a pointer-to-function declaration/typedef qualifies the function type (`-Wdiscarded-qualifiers` "qualified function pointer from unqualified"): assign-warn-1/2, pr56724-2.
+- `-Wsizeof-array-argument` sees through `*&x` (pr82167).
+- `__builtin_speculation_safe_value` returns the first argument's type (spec-barrier-3).
+- Golden: `tests/check/misc_67.c`. Gate: 1081 pass, san 365/0, gcc.dg differ 149 (was 154), c-c++-common 58.
+- Optimize-pragma gaps (repeat order, combined strings): no corpus file exercises them; left open, low value.

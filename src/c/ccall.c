@@ -1657,6 +1657,16 @@ void e_call(Checker *c, uint32_t i)
                 return;
             }
         }
+        if (!strcmp(name, "__builtin_speculation_safe_value")) {
+            /* the result has the type of the first argument */
+            uint32_t av[32], an = nkids(c, i, av, 32);
+            if (an >= 2 && an <= 32 && !node_err(c, av[1]) &&
+                !is_err(c, rvt(c, av[1]))) {
+                c->ty[i] = unqual(c, rvt(c, av[1]));
+                c->ef[i] = EF_SIDE;
+                return;
+            }
+        }
         if (!strcmp(name, "__builtin_choose_expr") ||
             !strcmp(name, "__builtin_call_with_static_chain")) {
             uint32_t av[4], an = nkids(c, i, av, 4), j;

@@ -4368,6 +4368,19 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
     }
     if (!is_type && !align) {
         uint32_t s = strip_paren(c, a);
+        /* *&x folds to x (PR c/82167) */
+        for (;;) {
+            uint32_t k1[3], k2[3];
+            uint32_t in;
+            if (s == NO_NODE || ntag(c, s) != N_UNARY ||
+                npunct(c, s) != P_STAR || nkids(c, s, k1, 3) != 1)
+                break;
+            in = strip_paren(c, k1[0]);
+            if (in == NO_NODE || ntag(c, in) != N_UNARY ||
+                npunct(c, in) != P_AMP || nkids(c, in, k2, 3) != 1)
+                break;
+            s = strip_paren(c, k2[0]);
+        }
         if (s != NO_NODE && ntag(c, s) == N_IDENT) {
             uint32_t ref = lookup_ord(c, cnode_ident(c, s));
             if (ref != SYM_NONE && (csym(c, ref)->flags & CSF_ARRAY_PARM)) {

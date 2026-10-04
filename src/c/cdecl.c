@@ -6260,6 +6260,16 @@ static void declared_visit(Checker *c, uint32_t i)
         s.ty = attr_apply_type(c, s.ty, &a);
         g.ty = s.ty;
     }
+    /* noreturn on a pointer to function qualifies the function type
+     * (handle_noreturn_attribute) */
+    if ((a.noreturn || sp.attrs.noreturn) && s.kind != CS_FUNC &&
+        type_kind(TT, s.ty) == TY_PTR) {
+        TypeId fn = type_base(TT, s.ty);
+        if (type_ckind(TT, fn) == TY_FUNC && !(TYPE_QUALS(fn) & TQ_VOLATILE)) {
+            s.ty = type_ptr(TT, fn | TQ_VOLATILE) | TYPE_QUALS(s.ty);
+            g.ty = s.ty;
+        }
+    }
     attrs_unknown_emit(c, &sp.attrs, ltok);
     if (g.what == GD_FUNC && s.kind == CS_FUNC) {
         /* the declared type keeps the typedef names of the parameters */
