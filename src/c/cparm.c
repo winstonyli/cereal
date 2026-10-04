@@ -29,11 +29,6 @@ static unsigned ntag(const Checker *c, uint32_t i)
     return c->nodes[i].tag;
 }
 
-static SrcLoc tloc(const Checker *c, uint32_t tok)
-{
-    return tok >= c->u->ntoks ? c->last_bol : ctok_loc(c, tok);
-}
-
 enum { D_NONE, D_CONST, D_STAR, D_EXPR };
 
 typedef struct PDim {

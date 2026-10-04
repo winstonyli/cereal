@@ -1168,3 +1168,8 @@ diagnostics and builds on the strinit table.
 - `Wc90-c99-compat-2.c` and `-9.c` identical to gcc. Other 7 tests need unsupported `-std` values.
 - Loose end: gcc's "C++ style comments are incompatible with C90" (cpp warning, once per file) is not implemented (lexer has no hook).
 - Parity: suite 1031/0; gcc.dg 3671 identical (204 differ); c-c++-common 573 (84); -O 3671 (204); san 343 files, findings 0.
+
+## Round 57 — refactors from the diagnostic-pattern scan
+- `tloc` is one inline in `check_int.h` (was 3 copies); `expr_loc` is one function in `cexpr.c` (the cstmt.c copy had diverged: union of both rules, incl. `__extension__` and `&&label`).
+- `sq_eq` (sequence-point) now delegates to `opeq` (operand_equal_p); it was a second copy. Parity unchanged (3671/573/3671), suite 1031/0, san 344/0.
+- Deliberately not done: a tag-and-gate resolver (`cc90_id` and `cped11` have different rules; the table would not remove duplication); merging `dup_expr` (statement-level, folded floats, `?:`) into `opeq`.

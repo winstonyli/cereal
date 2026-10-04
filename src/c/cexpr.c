@@ -1811,7 +1811,7 @@ static TypeId elem_of(Checker *c, TypeId t)
 }
 
 /* gcc's EXPR_LOCATION of an expression, as far as it matters. */
-static SrcLoc expr_loc(Checker *c, uint32_t i)
+SrcLoc expr_loc(Checker *c, uint32_t i)
 {
     switch (ntag(c, i)) {
     case N_PAREN:
@@ -1819,7 +1819,7 @@ static SrcLoc expr_loc(Checker *c, uint32_t i)
                                              : cnode_loc(c, i);
     case N_CALL:
         return first_loc(c, i);
-    case N_MEMBER_EXPR:
+    case N_MEMBER_EXPR: case N_ADDR_LABEL:
         return ctok_loc(c, c->nodes[i].tok - 1);
     case N_UNARY:   /* __extension__ makes no node of its own in gcc */
         if (cexpr_is_extension(c, i) && i > 0)
@@ -13223,56 +13223,11 @@ static uint32_t sq_strip(Checker *c, uint32_t x)
  * (operand_equal_p): no side effects, same structure. */
 static bool sq_eq(Checker *c, uint32_t x, uint32_t y)
 {
-    uint32_t kx[3], ky[3], nx, ny;
     x = sq_strip(c, x);
     y = sq_strip(c, y);
     if (x == y)
         return x != NO_NODE;
-    if (x == NO_NODE || y == NO_NODE || ntag(c, x) != ntag(c, y))
-        return false;
-    switch (ntag(c, x)) {
-    case N_IDENT:
-        return cnode_ident(c, x) == cnode_ident(c, y) &&
-               lookup_ord(c, cnode_ident(c, x)) != SYM_NONE;
-    case N_NUMBER: case N_CHAR:
-        return c->ck[x] == K_ICE && c->ck[y] == K_ICE && c->cv[x] == c->cv[y] &&
-               c->ty[x] == c->ty[y];
-    case N_UNARY:
-        if (npunct(c, x) != npunct(c, y) || npunct(c, x) == P_INC ||
-            npunct(c, x) == P_DEC)
-            return false;
-        break;
-    case N_BINARY:
-        if (npunct(c, x) != npunct(c, y) || npunct(c, x) == P_COMMA ||
-            npunct(c, x) == P_ANDAND || npunct(c, x) == P_OROR)
-            return false;
-        break;
-    case N_INDEX:
-        break;
-    case N_MEMBER_EXPR: {
-        size_t lx, ly;
-        const char *tx = ttext(c, c->nodes[x].tok, &lx);
-        const char *ty = ttext(c, c->nodes[y].tok, &ly);
-        if ((c->nodes[x].flags & NF_ARROW) != (c->nodes[y].flags & NF_ARROW) ||
-            lx != ly || memcmp(tx, ty, lx))
-            return false;
-        break;
-    }
-    case N_CAST:
-        if (c->ty[x] != c->ty[y])
-            return false;
-        break;
-    default:
-        return false;
-    }
-    nx = nkids(c, x, kx, 3);
-    ny = nkids(c, y, ky, 3);
-    if (nx != ny)
-        return false;
-    for (uint32_t k = ntag(c, x) == N_CAST ? 1 : 0; k < nx; k++)
-        if (!sq_eq(c, kx[k], ky[k]))
-            return false;
-    return true;
+    return x != NO_NODE && y != NO_NODE && opeq(c, x, y);
 }
 
 static bool sq_same(Checker *c, uint32_t x, uint32_t y)

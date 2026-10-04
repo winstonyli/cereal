@@ -129,13 +129,6 @@ static int tpunct(const Checker *c, uint32_t tok)
     return t->kind == TK_PUNCT ? t->punct : P_NONE;
 }
 
-static SrcLoc tloc(const Checker *c, uint32_t tok)
-{
-    if (tok >= c->u->ntoks)
-        return c->last_bol;
-    return ctok_loc(c, tok);
-}
-
 static unsigned ntag(const Checker *c, uint32_t i)
 {
     return c->nodes[i].tag;

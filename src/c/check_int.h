@@ -407,6 +407,11 @@ static inline SrcLoc ctok_loc(const Checker *c, uint32_t tok)
         return cbuiltin_loc(c, t);
     return c->diag->track0 && t->exp ? t->exp : t->t.loc;
 }
+/* ctok_loc, but a token index past the end (EOF) maps to the last line start. */
+static inline SrcLoc tloc(const Checker *c, uint32_t tok)
+{
+    return tok >= c->u->ntoks ? c->last_bol : ctok_loc(c, tok);
+}
 static inline SrcLoc cnode_loc(const Checker *c, uint32_t i)
 {
     return ctok_loc(c, c->nodes[i].tok);
@@ -478,6 +483,8 @@ void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...);
 /* gcc's input_location while the parser looks at token tok: the first
  * token of that token's line. */
 SrcLoc cinput_loc(Checker *c, uint32_t tok);
+/* gcc's expr_loc: the start of an expression (cexpr.c). */
+SrcLoc expr_loc(Checker *c, uint32_t i);
 uint32_t cbol_tok(Checker *c, uint32_t tok);   /* BOL token + 1 of tok's line (0: none); memoized */
 /* The first ';' at nesting depth 0 from token tok. */
 uint32_t cfind_semi(Checker *c, uint32_t tok);

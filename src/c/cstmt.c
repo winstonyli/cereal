@@ -154,21 +154,6 @@ static SrcLoc first_loc(const Checker *c, uint32_t i)
 
 /* gcc's EXPR_LOCATION of an expression, as far as it matters (cexpr.c's
  * expr_loc). */
-static SrcLoc expr_loc(Checker *c, uint32_t i)
-{
-    switch (tg(c, i)) {
-    case N_PAREN:
-        return i > 0 && c->nodes[i].size > 1 ? expr_loc(c, i - 1)
-                                             : cnode_loc(c, i);
-    case N_CALL:
-        return first_loc(c, i);
-    case N_MEMBER_EXPR: case N_ADDR_LABEL:
-        return ctok_loc(c, c->nodes[i].tok - 1);
-    default:
-        return cnode_loc(c, i);
-    }
-}
-
 static uint32_t strip_paren(const Checker *c, uint32_t i)
 {
     while (tg(c, i) == N_PAREN && c->nodes[i].size > 1)

@@ -95,13 +95,6 @@ static bool tfrom_macro(const Checker *c, uint32_t tok)
     return c->u->toks[tok].exp && c->u->toks[tok].exp != c->u->toks[tok].t.loc;
 }
 
-static SrcLoc tloc(const Checker *c, uint32_t tok)
-{
-    if (tok >= c->u->ntoks)
-        return c->last_bol;
-    return ctok_loc(c, tok);
-}
-
 typedef struct Kids {
     uint32_t buf[24];
     uint32_t *p;
