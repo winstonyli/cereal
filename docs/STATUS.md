@@ -1115,3 +1115,22 @@ Current model: `ck` kinds K_ICE/K_FOLD (integers in `cv`, uint64), K_FLOAT (`fv`
    float/double rounding of intermediate values are approximations. Neither shows up in the missing lists today.
 Suggested order: (2) complex is self-contained and mostly local to cexpr.c; (1) is larger but covers ~145
 diagnostics and builds on the strinit table.
+
+### Round 52 — complex constant folding (survey item 2)
+- Complex constants carry `EF_CPLXCST` (ck stays K_NONE): parts in `fv[cv]`, `fv[cv+1]`, rounded to the component type
+  (integer parts exact in long double). Producers: imaginary literals, `__builtin_complex` (now typed, with gcc's three
+  errors and "cannot take address"), `+ - * /` (float division by the textbook formula, integer `/` untracked),
+  unary `- + ~`, casts/usual conversions (`conv_const`), `__real__`/`__imag__` (fold to K_FLOAT / K_FOLD).
+- Consumers: `-Wconversion`/`-Wfloat-conversion`/`-Wsign-conversion` print `(_Complex T){re, im}` (`cplx_conv_warn`);
+  `-Woverflow` for complex -> integer (float parts saturate; integer parts only overflow a signed target);
+  initializer constness (`const_varlike`); `-Wsign-compare` for complex integers (pr35430).
+- Also: `real_cst_str` prints zero as `0.0`/`-0.0`; a folded real or complex binary expression passed as an argument is
+  located at its operator (gcc), not at the argument start.
+- Golden `cplx_const` (needs the runner's implicit `-pedantic`; generate with `-std=c99 -pedantic`).
+- Parity: tests 1019, gcc.dg 3667 (208), c-c++-common 572 (85), san 338 clean.
+- Found, not done: `-Wdouble-promotion` is not implemented at all (3 corpus files; Wdouble-promotion.c ~22 diagnostics);
+  `Wc90-c99-compat-2.c` (cereal prints 1 diagnostic vs 19: unrelated to folding); c99-const-expr-7.c (file-scope
+  "overflow in constant expression").
+- Step 2 of the survey (known bytes): gcc's `c_strlen` runs in the front end, so `Warray-bounds-7.c` ("offset 'N'
+  outside bounds of constant string", for `strlen` of a zero-length/flexible member of a const object, offsets truncated
+  to int) needs a new strlen-folding helper; cereal has none (strinits only serve format checks).

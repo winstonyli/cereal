@@ -266,6 +266,8 @@ enum {
                                 the location of -Wunused-value changes) */
     EF_ZDIV = 65536,         /* contains an integer division by constant zero:
                                 fold keeps it, so x * 0 is not folded away */
+    EF_CPLXCST = 131072,     /* a complex constant: its parts are in
+                                Checker.fv[cv] and fv[cv + 1] */
     EF_PROP = EF_SIDE | EF_ZDIV  /* what an operator inherits from operands */
 };
 

@@ -555,6 +555,141 @@ static bool has_ival(Checker *c, uint32_t i)
     return (c->ck[i] == K_ICE || c->ck[i] == K_FOLD) && is_int(c, rvt(c, i));
 }
 
+/* ---- complex constants ----------------------------------------------------
+ * A complex constant has EF_CPLXCST (its ck stays K_NONE); the real and
+ * imaginary parts, rounded to the component type, are fv[cv] and fv[cv + 1].
+ * Integer parts are held as exact long doubles. */
+static bool float_to_int(Checker *c, long double f, TypeId t, uint64_t *out);
+static bool is_decimal_flt(Checker *c, TypeId t);
+
+static TypeId cplx_comp(Checker *c, TypeId t)
+{
+    return mainv(c, type_base(TT, type_canon(TT, t)));
+}
+
+static void cplx_set(Checker *c, uint32_t i, long double re, long double im)
+{
+    c->cv[i] = fpush(c, re);
+    fpush(c, im);
+    c->ef[i] |= EF_CPLXCST;
+}
+
+static uint64_t cplx_u(long double v)
+{
+    return v < 0 ? (uint64_t)(int64_t)v : (uint64_t)v;
+}
+
+static long double cplx_ld(Checker *c, TypeId t, uint64_t u)
+{
+    return ival_neg(c, t, u) ? (long double)(int64_t)u : (long double)u;
+}
+
+/* Part v of component type from, converted to component type to. */
+static bool part_conv(Checker *c, TypeId from, TypeId to, long double v,
+                      long double *out)
+{
+    uint64_t u;
+    if (is_decimal_flt(c, from) || is_decimal_flt(c, to))
+        return false;
+    if (is_flt(c, to)) {
+        *out = fround(c, to, v);
+        return true;
+    }
+    if (!is_int(c, to) || int_bits(c, to) > 64 || tkind(c, to) == TY_BOOL)
+        return false;
+    if (is_int(c, from)) {
+        if (int_bits(c, from) > 64)
+            return false;
+        u = cexpr_trunc(c, to, cplx_u(v));
+    } else if (!float_to_int(c, v, to, &u)) {
+        return false;
+    }
+    *out = cplx_ld(c, to, u);
+    return true;
+}
+
+/* Node n as a constant pair: a complex constant, or a real one (imaginary
+ * part 0).  ct: the component type. */
+static bool cplx_get(Checker *c, uint32_t n, long double *re, long double *im,
+                     TypeId *ct)
+{
+    TypeId t;
+    long double f;
+    if (n == NO_NODE)
+        return false;
+    t = rvt(c, n);
+    if (is_complex(c, t)) {
+        if (!(c->ef[n] & EF_CPLXCST))
+            return false;
+        *re = c->fv.data[c->cv[n]];
+        *im = c->fv.data[c->cv[n] + 1];
+        *ct = cplx_comp(c, t);
+        return true;
+    }
+    if ((!is_int(c, t) && !is_flt(c, t)) || (is_int(c, t) && int_bits(c, t) > 64) ||
+        !fval(c, n, &f))
+        return false;
+    *re = f;
+    *im = 0;
+    *ct = mainv(c, t);
+    return true;
+}
+
+/* Node a converted to complex type to. */
+static bool cplx_conv(Checker *c, uint32_t a, TypeId to, long double *re,
+                      long double *im)
+{
+    long double r, m;
+    TypeId ct, tc = cplx_comp(c, to);
+    return cplx_get(c, a, &r, &m, &ct) && part_conv(c, ct, tc, r, re) &&
+           part_conv(c, ct, tc, m, im);
+}
+
+/* (a + bi) op (c + di) in component type tc. */
+static bool cplx_arith(Checker *c, int op, TypeId tc, long double ar,
+                       long double ai, long double br, long double bi,
+                       long double *rr, long double *ri)
+{
+    long double x, y;
+#define CR(v) fround(c, tc, (v))
+    if (is_int(c, tc)) {
+        uint64_t p = cplx_u(ar), q = cplx_u(ai), r = cplx_u(br),
+                 s = cplx_u(bi), u, w;
+        switch (op) {
+        case P_PLUS: u = p + r; w = q + s; break;
+        case P_MINUS: u = p - r; w = q - s; break;
+        case P_STAR: u = p * r - q * s; w = p * s + q * r; break;
+        default: return false;
+        }
+        *rr = cplx_ld(c, tc, cexpr_trunc(c, tc, u));
+        *ri = cplx_ld(c, tc, cexpr_trunc(c, tc, w));
+        return true;
+    }
+    if (!is_flt(c, tc) || is_decimal_flt(c, tc))
+        return false;
+    switch (op) {
+    case P_PLUS: x = CR(ar + br); y = CR(ai + bi); break;
+    case P_MINUS: x = CR(ar - br); y = CR(ai - bi); break;
+    case P_STAR:
+        x = CR(CR(ar * br) - CR(ai * bi));
+        y = CR(CR(ar * bi) + CR(ai * br));
+        break;
+    default: {
+        long double d = CR(CR(br * br) + CR(bi * bi));
+        if (d == 0)
+            return false;
+        x = CR(CR(CR(ar * br) + CR(ai * bi)) / d);
+        y = CR(CR(CR(ai * br) - CR(ar * bi)) / d);
+    }
+    }
+#undef CR
+    if (!isfinite(x) || !isfinite(y))
+        return false;
+    *rr = x;
+    *ri = y;
+    return true;
+}
+
 /* gcc: an INTEGER_CST once C_MAYBE_CONST_EXPRs are removed. */
 static bool is_intcst(Checker *c, uint32_t i)
 {
@@ -1832,7 +1967,20 @@ static void e_number(Checker *c, uint32_t i)
     }
     t = TYPE_MK(l.ty, 0);
     if (l.flags & LIT_IMAGINARY) {
-        c->ty[i] = type_complex(TT, t);   /* its value: not tracked */
+        long double im = 0;
+        bool ok = false;
+        c->ty[i] = type_complex(TT, t);
+        if (l.flags & LIT_FLOAT) {
+            ok = !(l.ty >= TY_DEC32 && l.ty <= TY_DEC128);
+            im = fround(c, t, l.f);
+        } else if (int_bits(c, t) <= 64) {
+            ok = true;
+            im = cplx_ld(c, t, cexpr_trunc(c, t, l.v));
+        }
+        if (ok) {
+            c->ef[i] = 0;
+            cplx_set(c, i, 0, im);
+        }
         return;
     }
     c->ty[i] = t;
@@ -2168,7 +2316,10 @@ static void reject_builtin(Checker *c, uint32_t i, const char *name)
     default:
         return;
     }
-    cerror(c, loc, "built-in function '%s' must be directly called", name);
+    if (!strcmp(name, "__builtin_complex"))
+        cerror(c, ctok_loc(c, last_tok(c, i) + 1), "cannot take address of '%s'", name);
+    else
+        cerror(c, loc, "built-in function '%s' must be directly called", name);
 }
 
 /* An operand of __builtin_has_attribute names a function without using it. */
@@ -2892,6 +3043,10 @@ static const char *real_cst_str(Checker *c, char *out, long double f, TypeId t)
         snprintf(out, 160, "%cInf%s", f < 0 ? '-' : '+', suf);
         return out;
     }
+    if (f == 0) {
+        snprintf(out, 160, "%s0.0%s", signbit(f) ? "-" : "", suf);
+        return out;
+    }
     snprintf(b, sizeof b, "%.*Le", dig - 1, f);
     e = strchr(b, 'e');
     if (!e) {
@@ -2919,6 +3074,82 @@ static long double real_round(Checker *c, long double f, TypeId t)
         (k == TY_LDOUBLE && c->tgt->long_double == LD_IEEE64))
         return (double)f;
     return f;
+}
+
+/* An integer part as gcc prints it. */
+static const char *part_istr(Checker *c, char *out, TypeId t, long double v)
+{
+    if (is_signed(c, t))
+        snprintf(out, 160, "%lld", (long long)(int64_t)v);
+    else
+        snprintf(out, 160, "%llu", (unsigned long long)(uint64_t)v);
+    return out;
+}
+
+/* A complex constant as gcc prints it: (_Complex double){1.0e+0, 0.0}. */
+static const char *cplx_str(Checker *c, char *out, long double re,
+                            long double im, TypeId ct)
+{
+    char a[160], b[160], tn[80];
+    const char *q = type_q(TT, ct);
+    snprintf(tn, sizeof tn, "%.*s", (int)strlen(q) - 2, q + 1);
+    if (is_flt(c, ct)) {
+        real_cst_str(c, a, re, ct);
+        real_cst_str(c, b, im, ct);
+    } else {
+        part_istr(c, a, ct, re);
+        part_istr(c, b, ct, im);
+    }
+    snprintf(out, 400, "(_Complex %s){%.140s, %.140s}", tn, a, b);
+    return out;
+}
+
+/* unsafe_conversion_p for one part v (of component type ct) converted to lt. */
+static int uc_part(Checker *c, TypeId lt, long double v, TypeId ct,
+                   bool check_sign)
+{
+    if (is_int(c, ct)) {
+        uint64_t u = cplx_u(v);
+        if (!gcc_integer(c, ct) || int_bits(c, ct) > 64)
+            return UC_SAFE;
+        if (gcc_integer(c, lt) && int_bits(c, lt) <= 64) {
+            if (tgt_fits(c, u, ct, lt))
+                return UC_SAFE;
+            if (!is_signed(c, lt) && is_signed(c, ct) && (int64_t)u < 0)
+                return check_sign ? UC_SIGN : UC_SAFE;
+            if (is_signed(c, lt) && !is_signed(c, ct))
+                return check_sign ? UC_SIGN : UC_SAFE;
+            return UC_OTHER;
+        }
+        if (gcc_real(c, lt))
+            return real_round(c, v, lt) == v ? UC_SAFE : UC_REAL;
+        return UC_SAFE;
+    }
+    if (gcc_real(c, ct)) {
+        if (gcc_integer(c, lt))
+            return v == truncl(v) ? UC_SAFE : UC_REAL;
+        if (gcc_real(c, lt) && uc_prec(c, lt) < uc_prec(c, ct))
+            return real_round(c, v, lt) == v ? UC_SAFE : UC_REAL;
+    }
+    return UC_SAFE;
+}
+
+/* Does float f overflow integer type lt?  r: the saturated result. */
+static bool float_ovf(Checker *c, long double f, TypeId lt, uint64_t *r)
+{
+    unsigned bits = int_bits(c, lt), k;
+    long double hi = 1.0L;
+    bool ovf;
+    if (f != f)
+        return false;
+    for (k = 0; k < bits - (is_signed(c, lt) ? 1u : 0u); k++)
+        hi *= 2.0L;
+    /* trunc(f) >= hi, or trunc(f) < lo */
+    if (is_signed(c, lt))
+        ovf = f >= hi || f <= -hi - 1.0L;
+    else
+        ovf = f >= hi || f <= -1.0L;
+    return ovf && float_to_int(c, f, lt, r);
 }
 
 static uint32_t uc_cast_operand(Checker *c, uint32_t e)
@@ -3253,6 +3484,63 @@ static bool cplx_const(Checker *c, uint32_t n)
     }
 }
 
+/* conversion_warning for a complex constant s (of type et) converted to lt. */
+static void cplx_conv_warn(Checker *c, SrcLoc l, TypeId lt, uint32_t s,
+                           TypeId et, bool top)
+{
+    long double re, im, ore, oim;
+    TypeId ct, tc;
+    int kind;
+    const char *opt, *tn, *w, *toS;
+    char fb[400], to[400], tb[64];
+    if (!cplx_get(c, s, &re, &im, &ct))
+        return;
+    if (is_complex(c, lt)) {
+        tc = cplx_comp(c, lt);
+        if (!part_conv(c, ct, tc, re, &ore) || !part_conv(c, ct, tc, im, &oim))
+            return;
+        kind = uc_part(c, tc, re, ct, true);
+        if (kind == UC_SAFE)
+            kind = uc_part(c, tc, im, ct, true);
+        cplx_str(c, to, ore, oim, tc);
+        tn = type_q(TT, lt);
+    } else {
+        tc = lt;
+        if (!part_conv(c, ct, lt, re, &ore))
+            return;
+        kind = im != 0 ? UC_OTHER : uc_part(c, lt, re, ct, true);
+        if (gcc_integer(c, lt))
+            snprintf(to, sizeof to, "%s",
+                     vstr(c, lt, tgt_trunc(c, lt, cplx_u(ore))));
+        else
+            real_cst_str(c, to, ore, lt);
+        tn = tgt_name(c, lt, tb);
+    }
+    if (kind == UC_SAFE)
+        return;
+    opt = kind == UC_REAL ? "float-conversion"
+          : kind == UC_SIGN ? "sign-conversion" : "conversion";
+    if (!diag_enabled(c->diag, opt))
+        return;
+    cplx_str(c, fb, re, im, ct);
+    toS = uc_whole ? uc_whole : to;
+    w = is_signed(c, tc) ? "signed" : "unsigned";
+    if (kind == UC_SIGN) {
+        if (top || uc_whole)
+            cwarn(c, l, opt, "%s conversion from %s to %s changes value from "
+                  "'%s' to '%s'", w, type_q(TT, et), tn, fb, toS);
+        else
+            cwarn(c, l, opt, "%s conversion from %s to %s changes the value "
+                  "of '%s'", w, type_q(TT, et), tn, fb);
+    } else if (top || uc_whole) {
+        cwarn(c, l, opt, "conversion from %s to %s changes value from '%s' to "
+              "'%s'", type_q(TT, et), tn, fb, toS);
+    } else {
+        cwarn(c, l, opt, "conversion from %s to %s changes the value of '%s'",
+              type_q(TT, et), tn, fb);
+    }
+}
+
 /* conversion_warning: e converted to lt.  top: e is the converted expression,
  * not an arm of a conditional. */
 static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
@@ -3306,8 +3594,12 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
     if (!(gcc_integer(c, et) || gcc_real(c, et) || is_complex(c, et)) ||
         !(gcc_integer(c, lt) || gcc_real(c, lt) || is_complex(c, lt)))
         return;
+    if (is_complex(c, et) && (c->ef[s] & EF_CPLXCST)) {
+        cplx_conv_warn(c, l, lt, s, et, top);
+        return;
+    }
     if (is_complex(c, et) && cplx_const(c, s))
-        return;      /* gcc prints complex constants in a form we lack */
+        return;      /* a constant we could not evaluate */
     if (!cst && bool_valued(c, s)) {
         char tb[64];
         if (uc_bw == 1 && is_signed(c, lt) && diag_enabled(c->diag, "conversion"))
@@ -3455,6 +3747,13 @@ static SrcLoc conv_loc(Conv *x)
         sf = srcmgr_file_of(c->sm, l);
         if (sf && sf->system_header && c->u->toks[t].exp)
             l = c->u->toks[t].exp;
+        {
+            /* a folded real or complex constant is located at its operator */
+            uint32_t s = strip_paren(c, x->expr);
+            if (s != NO_NODE && ntag(c, s) == N_BINARY &&
+                (c->ck[s] == K_FLOAT || (c->ef[s] & EF_CPLXCST)))
+                l = cnode_loc(c, s);
+        }
     } else {                /* a macro of a system header: where it is used */
         SrcFile *sf = srcmgr_file_of(c->sm, l);
         uint32_t t = first_tok(c, x->expr);
@@ -3523,29 +3822,35 @@ static bool conv_overflow(Conv *x)
     }
     if (c->ck[e] == K_FLOAT && is_flt(c, rt) && int_bits(c, lt) <= 64) {
         long double f = c->fv.data[c->cv[e]];
-        unsigned bits = int_bits(c, lt);
         uint64_t r;
-        bool ovf;
         char rb[160];
-        if (f != f)
-            return false;
-        {
-            long double hi = 1.0L;
-            unsigned k;
-            for (k = 0; k < bits - (is_signed(c, lt) ? 1u : 0u); k++)
-                hi *= 2.0L;
-            /* trunc(f) >= hi, or trunc(f) < lo */
-            if (is_signed(c, lt))
-                ovf = f >= hi || f <= -hi - 1.0L;
-            else
-                ovf = f >= hi || f <= -1.0L;
-        }
-        if (!ovf || !float_to_int(c, f, lt, &r))
+        if (!float_ovf(c, f, lt, &r))
             return false;
         cwarn(c, l, "overflow", "overflow in conversion from %s to %s changes "
               "value from '%s' to '%s'", type_q(TT, rt), type_q(TT, lt),
               real_cst_str(c, rb, f, rt), vstr(c, lt, r));
         return true;
+    }
+    if ((c->ef[e] & EF_CPLXCST) && is_complex(c, rt) && int_bits(c, lt) <= 64) {
+        /* the real part is converted; a signed target overflows when an
+         * integer part does not fit, any target when a float part saturates */
+        long double re, im;
+        TypeId ct;
+        uint64_t r = 0;
+        char fb[400];
+        bool ovf;
+        if (!cplx_get(c, e, &re, &im, &ct))
+            return false;
+        if (is_flt(c, ct))
+            ovf = float_ovf(c, re, lt, &r);
+        else if ((ovf = is_int(c, ct) && int_bits(c, ct) <= 64 &&
+                        is_signed(c, lt) && !cexpr_fits(c, cplx_u(re), ct, lt)))
+            r = cexpr_trunc(c, lt, cplx_u(re));
+        if (ovf)
+            cwarn(c, l, "overflow", "overflow in conversion from %s to %s "
+                  "changes value from '%s' to '%s'", type_q(TT, rt),
+                  type_q(TT, lt), cplx_str(c, fb, re, im, ct), vstr(c, lt, r));
+        return ovf;
     }
     return false;
 }
@@ -6761,6 +7066,40 @@ static bool same_addr_const(Checker *c, uint32_t a, uint32_t b)
     return lx < sizeof x - 1 && lx == ly && !memcmp(x, y, lx);
 }
 
+/* __builtin_complex (re, im) */
+static void e_builtin_complex(Checker *c, uint32_t i, SrcLoc bl)
+{
+    uint32_t av[8], an = nkids(c, i, av, 8);
+    TypeId t0, t1;
+    if (an != 3) {
+        cerror(c, bl, "wrong number of arguments to '__builtin_complex'");
+        set_err(c, i);
+        return;
+    }
+    if (node_err(c, av[1]) || node_err(c, av[2])) {
+        set_err(c, i);
+        return;
+    }
+    t0 = rvt(c, av[1]);
+    t1 = rvt(c, av[2]);
+    if (!is_flt(c, t0) || is_decimal_flt(c, t0) || !is_flt(c, t1) ||
+        is_decimal_flt(c, t1)) {
+        cerror(c, bl, "'__builtin_complex' operand not of real binary "
+               "floating-point type");
+        set_err(c, i);
+        return;
+    }
+    if (mainv(c, t0) != mainv(c, t1)) {
+        cerror(c, bl, "'__builtin_complex' operands of different types");
+        set_err(c, i);
+        return;
+    }
+    c->ty[i] = type_complex(TT, mainv(c, t0));
+    c->ef[i] = (c->ef[av[1]] | c->ef[av[2]]) & EF_PROP;
+    if (c->ck[av[1]] == K_FLOAT && c->ck[av[2]] == K_FLOAT)
+        cplx_set(c, i, c->fv.data[c->cv[av[1]]], c->fv.data[c->cv[av[2]]]);
+}
+
 static void e_call(Checker *c, uint32_t i)
 {
     uint32_t k[3], n = nkids(c, i, k, 3), f;
@@ -6846,6 +7185,10 @@ static void e_call(Checker *c, uint32_t i)
         if (!strcmp(name, "__builtin_tgmath")) {
             if (!e_tgmath(c, i))
                 set_err(c, i);
+            return;
+        }
+        if (!strcmp(name, "__builtin_complex")) {
+            e_builtin_complex(c, i, call_loc(c, k[0]));
             return;
         }
         if (!strcmp(name, "__builtin_constant_p") && n >= 2) {
@@ -7614,6 +7957,21 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
     }
     c->ty[i] = promoted(c, a);
     c->ef[i] = c->ef[a] & EF_PROP;
+    if ((c->ef[a] & EF_CPLXCST) && is_complex(c, c->ty[i]) &&
+        (op == P_MINUS || op == P_PLUS || op == P_TILDE)) {
+        TypeId tc = cplx_comp(c, c->ty[i]);
+        long double re = c->fv.data[c->cv[a]], im = c->fv.data[c->cv[a] + 1],
+                    ore, oim;
+        if (op == P_MINUS) {
+            re = -re;
+            im = -im;
+        } else if (op == P_TILDE) {
+            im = -im;
+        }
+        if (part_conv(c, tc, tc, re, &ore) && part_conv(c, tc, tc, im, &oim))
+            cplx_set(c, i, ore, oim);
+        return;
+    }
     if (c->ck[a] == K_FLOAT) {
         long double f = c->fv.data[c->cv[a]];
         c->ck[i] = K_FLOAT;
@@ -7660,6 +8018,18 @@ static void real_imag(Checker *c, uint32_t i, uint32_t a, bool real)
         c->ty[i] = type_qual(type_base(TT, type_canon(TT, t)),
                              tquals(c, c->ty[a]));
         c->ef[i] = c->ef[a] & (EF_LVALUE | EF_SIDE);
+        if (c->ef[a] & EF_CPLXCST) {
+            long double v = c->fv.data[c->cv[a] + (real ? 0 : 1)];
+            TypeId tc = cplx_comp(c, t);
+            if (is_flt(c, tc)) {
+                c->ck[i] = K_FLOAT;
+                c->cv[i] = fpush(c, v);
+            } else if (is_int(c, tc) && int_bits(c, tc) <= 64) {
+                c->ck[i] = K_FOLD;
+                c->cv[i] = cexpr_trunc(c, tc, cplx_u(v));
+                c->ef[i] |= EF_CST;
+            }
+        }
         return;
     }
     if (!is_int(c, t) && !is_flt(c, t)) {
@@ -7788,6 +8158,27 @@ static void conv_const(Checker *c, uint32_t i, uint32_t a, TypeId to)
     c->ck[i] = K_NONE;
     c->cv[i] = 0;
     c->cb[i] = 0;
+    if (is_complex(c, to)) {
+        long double re, im;
+        if (cplx_conv(c, a, to, &re, &im))
+            cplx_set(c, i, re, im);
+        return;
+    }
+    if (is_complex(c, from) && (is_int(c, to) || is_flt(c, to))) {
+        long double re, im, o;
+        TypeId ct;
+        if (!cplx_get(c, a, &re, &im, &ct) || !part_conv(c, ct, to, re, &o))
+            return;
+        if (is_flt(c, to)) {
+            c->ck[i] = K_FLOAT;
+            c->cv[i] = fpush(c, o);
+        } else {
+            c->ck[i] = K_FOLD;
+            c->cv[i] = cexpr_trunc(c, to, cplx_u(o));
+            c->ef[i] |= EF_NOPCST;
+        }
+        return;
+    }
     if (is_int(c, to)) {
         if (has_ival(c, a) && int_bits(c, to) <= 64 && int_bits(c, from) <= 64) {
             uint64_t v = tkind(c, to) == TY_BOOL ? c->cv[a] != 0
@@ -9700,6 +10091,13 @@ static void sign_compare(Checker *c, SrcLoc loc, uint32_t a, uint32_t b,
     TypeId ta = cmp_ty(c, a), tb = cmp_ty(c, b);
     bool sa, sb;
     uint32_t sop, uop;
+    /* a complex integer type counts by its component type */
+    if (is_complex(c, ta))
+        ta = cplx_comp(c, ta);
+    if (is_complex(c, tb))
+        tb = cplx_comp(c, tb);
+    if (is_complex(c, rt))
+        rt = cplx_comp(c, rt);
     if (is_signed(c, rt) || !is_int(c, ta) || !is_int(c, tb))
         return;
     sa = is_signed(c, ta);
@@ -11048,6 +11446,15 @@ static bool compare_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b,
     bool folded, bfold;
     TypeId rt;
     bfold = bool_compare(c, i, a, b, op, loc);
+    if (is_complex(c, ta) || is_complex(c, tb)) {
+        /* complex integers: only the sign comparison applies */
+        TypeId ca = is_complex(c, ta) ? cplx_comp(c, ta) : ta;
+        TypeId cb = is_complex(c, tb) ? cplx_comp(c, tb) : tb;
+        if (is_int(c, ca) && is_int(c, cb) && !inhibited(c, i, false) &&
+            diag_enabled(c->diag, "sign-compare"))
+            sign_compare(c, loc, a, b, op, common_type(c, ta, tb));
+        return bfold;
+    }
     if (!is_int(c, ta) || !is_int(c, tb))
         return bfold;
     rt = common_type(c, ta, tb);
@@ -11722,8 +12129,14 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         if (!inhibited(c, i, false))
             cwarn(c, loc, "div-by-zero", "division by zero");
     }
-    if (is_complex(c, rt))
+    if (is_complex(c, rt)) {
+        long double ar, ai, br, bi, rr, ri;
+        if ((op == P_PLUS || op == P_MINUS || op == P_STAR || op == P_SLASH) &&
+            cplx_conv(c, a, rt, &ar, &ai) && cplx_conv(c, b, rt, &br, &bi) &&
+            cplx_arith(c, op, cplx_comp(c, rt), ar, ai, br, bi, &rr, &ri))
+            cplx_set(c, i, rr, ri);
         return;
+    }
     if (is_int(c, rt)) {
         if (!zero_div && int_bits(c, rt) <= 64 && has_ival(c, a) &&
             has_ival(c, b)) {

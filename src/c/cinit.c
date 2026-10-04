@@ -766,7 +766,8 @@ static bool const_varlike(Checker *c, uint32_t n, int depth)
     int op;
     if (depth > 40)
         return false;
-    if (c->ck[n] == K_ICE || c->ck[n] == K_FOLD || c->ck[n] == K_FLOAT)
+    if (c->ck[n] == K_ICE || c->ck[n] == K_FOLD || c->ck[n] == K_FLOAT ||
+        (c->ef[n] & EF_CPLXCST))
         return true;
     switch (ntag(c, n)) {
     case N_PAREN:
