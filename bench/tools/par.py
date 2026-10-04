@@ -6,7 +6,7 @@ should be 13 (messages and permerrors differ in 14+).
 CEREAL_DGDIR (default gcc.dg; e.g. c-c++-common) picks the testsuite directory.
 CEREAL_DGOPTS=1 (dg set): honour each test's first `dg-options` line (replacing
 the default -std=c99 -pedantic where it gives -std=/-pedantic*) and skip tests
-whose dg-options use a target selector a standard other than C99, or options
+whose dg-options/dg-additional-options use a target selector a standard other than C99, or options
 cereal lacks (anything but -W*, -D, -U, -I, -std, -pedantic*).
 CEREAL_DGO=1: also keep -O* options (cereal folds const variables at -O).
 CEREAL_PARCACHE=DIR (default ~/.cache/cereal-par; 0 disables) caches gcc's result per
@@ -69,16 +69,19 @@ def dgjobs(extra):
         if dgo:
             src=open(f,errors="replace").read()
             m=re.search(r'dg-options\s+"([^"]*)"\s*(\{[^}]*\})?\s*\}',src)
-            if m:
-                if m.group(2): continue
-                o=[x for x in shlex.split(m.group(1)) if (keepO or not x.startswith("-O")) and x!="-g"]
+            adds=re.findall(r'dg-additional-options\s+"([^"]*)"\s*(\{[^}]*\})?\s*\}',src)
+            if any(sel for _,sel in adds): continue      # selector: skip like dg-options
+            raw=(m.group(1) if m and not m.group(2) else "")+" "+" ".join(o for o,_ in adds)
+            if m and m.group(2): continue
+            if m or adds:
+                o=[x for x in shlex.split(raw) if (keepO or not x.startswith("-O")) and x!="-g"]
                 if any(x.startswith("-std=") and x not in ("-std=c99","-std=gnu99","-std=iso9899:1999") for x in o) or "-ansi" in o:
                     continue            # cereal is C99 only
                 o2=[]; k=0
                 while k<len(o):         # --param N=V is accepted and ignored
                     if o[k]=="--param": k+=2; o2.append("--param"); continue
                     o2.append(o[k]); k+=1
-                if any(x == "-W" or (x!="--param" and x!="-w" and not x.startswith(("-O","-W","-D","-U","-I","-std=","-pedantic","-fdump-","-fcompare-debug","-ftrack-macro-expansion=","--param="))) for x in o2):
+                if any(x == "-W" or (x!="--param" and x!="-w" and not x.startswith(("-O","-W","-D","-U","-I","-std=","-pedantic","-fdump-","-fcf-protection","-fcompare-debug","-ftrack-macro-expansion=","--param="))) for x in o2):
                     continue            # options cereal does not take
                 std=o if any(x.startswith("-std=") for x in o) else ["-std=c99"]+o
                 if not any(x.startswith("-pedantic") for x in std): std=std+["-pedantic"]

@@ -1377,3 +1377,6 @@ diagnostics and builds on the strinit table.
 - `packed_ptr_check_x` (cexpr.c) takes a mode. Context (assignment/init/argument) looks through a cast and reports a member whose record/field is packed at the cast's `(`; the cast itself reports only a member whose *type* is packed (at the `&`); a parenthesized cast operand (`(T*)(&p.i)`) is located by the cast site as before. A bare member passed as a call argument is located at its `->`/`.` (not through `?:`). `pk_member` now returns which clause matched. Golden `misc_89` (a probe of all forms against gcc).
 - Closes c-c++-common `pr51628-8/9/16`. Gate: 1125 goldens, san 387/0, gcc.dg differ 126, c-c++-common 42, callgrind ~3.654G.
 - Note: a one-off "1 failed" appeared in the gate's san step under load and did not reproduce (san.sh and run.sh clean on rerun); watch the `--cells -fparallel-chunk=1` runs.
+
+## Round 81 — verify.sh honours dg-additional-options
+- `bench/tools/par.py` (CEREAL_DGOPTS=1) now merges every selector-free `dg-additional-options` into the test's flags (a selector skips the file, as for dg-options); `-fcf-protection*` is an accepted option. Files whose options cereal lacks are skipped, so the denominators shrink: gcc.dg 3875 -> 3744 files run, c-c++-common 657 -> 636; differ 126 / 41 (was 126 / 42). Baseline for the gate: gcc.dg 126, c-c++-common 41 (gate.sh header updated).
