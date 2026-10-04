@@ -1564,13 +1564,13 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
     SrcFile *f = NULL;
     TokBuf tmp = {0};
 
+    if (next)
+        pedantic(pp, kw->loc, "#include_next is a GCC extension");
     if (next && pp->inc->prev == NULL) {
         diag_report(pp->diag, DL_WARNING, "include-next-in-primary", kw->loc,
                     "#include_next in primary source file");
         next = false;
     }
-    if (next)
-        pedantic(pp, kw->loc, "#include_next is a GNU extension");
     if (line.n == 0) {
         diag_report(pp->diag, DL_ERROR, "", kw->loc,
                     "#include expects \"FILENAME\" or <FILENAME>");
@@ -1732,7 +1732,7 @@ static void do_message(PP *pp, const Tok *kw, bool is_error)
     if (is_error) {
         diag_report(pp->diag, DL_ERROR, "", kw->loc, "#error %s", text);
     } else {
-        pedantic(pp, kw->loc, "#warning is a GNU extension");
+        pedantic(pp, kw->loc, "#warning before C2X is a GCC extension");
         diag_report(pp->diag, DL_WARNING, "pp-warning-directive", kw->loc,
                     "#warning %s", text);
     }
@@ -1818,9 +1818,13 @@ static void do_assert(PP *pp, const Tok *kw, bool add)
     uint32_t i = 0;
     Ident *pred;
     const char *answer;
-    diag_report(pp->diag, DL_WARNING, "deprecated", kw->loc,
-                "#%s is a deprecated GCC extension",
-                add ? "assert" : "unassert");
+    if (pp->opt->pedantic)
+        pedantic(pp, kw->loc, "#%s is a GCC extension",
+                 add ? "assert" : "unassert");
+    else
+        diag_report(pp->diag, DL_WARNING, "deprecated", kw->loc,
+                    "#%s is a deprecated GCC extension",
+                    add ? "assert" : "unassert");
     if (!pp_parse_assertion(pp, line, &i, add, kw->loc + kw->len, &pred,
                             &answer))
         return;

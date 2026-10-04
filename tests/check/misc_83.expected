@@ -1,0 +1,18 @@
+misc_83.c:1:2: warning: #warning before C2X is a GCC extension [-Wpedantic]
+    1 | #warning hi
+      |  ^
+misc_83.c:1:2: warning: #warning hi [-Wpp-warning-directive]
+    1 | #warning hi
+      |  ^
+misc_83.c:2:2: warning: #assert is a GCC extension [-Wpedantic]
+    2 | #assert a(b)
+      |  ^
+misc_83.c:3:2: warning: #unassert is a GCC extension [-Wpedantic]
+    3 | #unassert a
+      |  ^
+misc_83.c:4:2: warning: #include_next is a GCC extension [-Wpedantic]
+    4 | #include_next <stddef.h>
+      |  ^
+misc_83.c:4:2: warning: #include_next in primary source file [-Winclude-next-in-primary]
+    4 | #include_next <stddef.h>
+      |  ^

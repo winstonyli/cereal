@@ -1,0 +1,48 @@
+misc_82.c:1:1: warning: useless storage class specifier in empty declaration
+    1 | static const;
+      | ^
+misc_82.c:1:1: warning: empty declaration
+    1 | static const;
+      | ^
+misc_82.c:2:1: warning: useless storage class specifier in empty declaration
+    2 | extern;
+      | ^
+misc_82.c:2:1: warning: empty declaration
+    2 | extern;
+      | ^
+misc_82.c:3:1: warning: useless '__thread' in empty declaration
+    3 | __thread;
+      | ^
+misc_82.c:3:1: warning: empty declaration
+    3 | __thread;
+      | ^
+misc_82.c:4:1: warning: useless type qualifier in empty declaration
+    4 | volatile;
+      | ^
+misc_82.c:4:1: warning: empty declaration
+    4 | volatile;
+      | ^
+misc_82.c:5:1: warning: ISO C99 does not support '_Alignas' [-Wpedantic]
+    5 | _Alignas(8);
+      | ^
+misc_82.c:5:1: warning: useless '_Alignas' in empty declaration
+    5 | _Alignas(8);
+      | ^
+misc_82.c:5:1: warning: empty declaration
+    5 | _Alignas(8);
+      | ^
+misc_82.c:6:1: warning: useless storage class specifier in empty declaration
+    6 | void f(void){ static; const; }
+      | ^
+misc_82.c:6:1: warning: empty declaration
+    6 | void f(void){ static; const; }
+      | ^
+misc_82.c:6:1: warning: useless type qualifier in empty declaration
+    6 | void f(void){ static; const; }
+      | ^
+misc_82.c:6:1: warning: empty declaration
+    6 | void f(void){ static; const; }
+      | ^
+misc_82.c:7:1: warning: useless type name in empty declaration
+    7 | int;
+      | ^

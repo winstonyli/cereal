@@ -6128,6 +6128,8 @@ static void shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok)
         cwarn(c, il, "", "useless '_Alignas' in empty declaration");
         warned = 2;
     }
+    if (warned == 2 && sp->default_int)   /* no type specifier at all */
+        cpedwarn(c, il, "", "empty declaration");
 
 }
 

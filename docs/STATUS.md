@@ -1340,3 +1340,10 @@ diagnostics and builds on the strinit table.
   2. "In file included from" was missing for diagnostics reported by the parser/checker in cells mode (no live pp). `SrcFile.inc_loc` is now set in `push_file`, and `diag_vreport` derives the chain from the diagnostic's own location (scratch/virtual locations still use the pp's live chain).
 - Note: the pp front end's option tags differ from gcc's (`[-Wextra-tokens]`, `[-Wpp-warning-directive]` on `#warning`, which gcc-13.4 words "before C2X is a GCC extension" under -pedantic); the pp goldens bake this in, so misc_80/81 use `#undef X junk`.
 - Gate: 1109 pass, san 379/0, dg 132, c-c++-common 52, callgrind 3.634G.
+
+## Round 75 — pp wording, empty declarations
+- verify compares (line, col, level, message) without option tags, so the pp's own tags (`[-Wextra-tokens]`, `[-Wpp-warning-directive]`) are invisible there; the *wording* was not: `#warning before C2X is a GCC extension`, `#assert/#unassert is a GCC extension` (under -pedantic; else the -Wdeprecated one), `#include_next is a GCC extension` (also in the primary file, before the "in primary source file" warning). Golden `misc_83`.
+- `shadow_tag`: a declaration with no type specifier whose only content is a useless storage class / qualifier / `_Alignas` / `__thread` also gets "empty declaration". `declspec-4` SAME. Golden `misc_82`.
+- Tried and dropped: `X Y(Z);` with unknown `X` should still give "parameter names (without types)"; the checker is quiet for units with a parser error, so it needs that policy changed (`pr14963`).
+- Gate: 1113 pass, san 381/0, dg 131, c-c++-common 52, callgrind 3.633G.
+- Open one-diff gcc.dg files worth a look: `20050209-1` (parser recovery after `return 1);`), `for-1`, `attr-copy-3/5`, `Wbuiltin-declaration-mismatch-8/16`, `pr15698-1/6`, `parm-impl-decl-2`.
