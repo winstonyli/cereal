@@ -424,6 +424,46 @@ static void pwarn(Parser *p, uint32_t i, const char *fmt, ...)
     diag_mark_last(p->diag, ORD_TIE);
 }
 
+static uint32_t skip_attrs_ahead(Parser *p, uint32_t i);
+static bool is_decl_start(Parser *p, const PTok *t);
+
+/* gcc: "'fallthrough' attribute not followed by ';'" for an attribute list
+ * that names fallthrough and is followed by something else.  Reported at the
+ * first token of the line, as gcc does for attribute-only declarations. */
+static void fallthrough_not_followed(Parser *p, uint32_t i)
+{
+    uint32_t j = skip_attrs_ahead(p, i), k, first = i, line, col, l2, c2;
+    PTok x = tok_at(p, j);
+    SrcFile *f;
+    bool ft = false;
+    if (is_p(&x, P_SEMI) || p->unwind || is_decl_start(p, &x))
+        return;     /* a declaration: the checker warns */
+    for (k = i; k < j; k++) {
+        PTok t = tok_at(p, k);
+        if (t.t.kind == TK_IDENT) {
+            const char *s = tok_text_raw(p->sm, p->in, &t.t);
+            size_t n = t.t.len;
+            if ((n == 11 && !memcmp(s, "fallthrough", 11)) ||
+                (n == 15 && !memcmp(s, "__fallthrough__", 15)))
+                ft = true;
+        }
+    }
+    if (!ft)
+        return;
+    f = srcmgr_file_of(p->sm, tok_loc(p, i));
+    if (f) {
+        srcmgr_linecol(f, tok_loc(p, i), &line, &col);
+        while (first > 0 && srcmgr_file_of(p->sm, tok_loc(p, first - 1)) == f) {
+            srcmgr_linecol(f, tok_loc(p, first - 1), &l2, &c2);
+            if (l2 != line)
+                break;
+            first--;
+        }
+    }
+    pwarn_opt(p, "attributes", first, "'fallthrough' attribute not followed "
+              "by ';'");
+}
+
 static void expected(Parser *p, const char *what)
 {
     char buf[160];
@@ -2417,6 +2457,17 @@ static void label_body(Parser *p)
             return;
         }
     }
+    if (ckw_of(p, &t) == CK_ATTRIBUTE && !t.stdattr) {
+        /* an attribute list starts a declaration unless it ends the statement */
+        PTok x = tok_at(p, skip_attrs_ahead(p, ci(p)));
+        if (is_p(&x, P_SEMI))
+            statement(p);
+        else {
+            fallthrough_not_followed(p, ci(p));
+            declaration(p, false);
+        }
+        return;
+    }
     if (is_decl_start_la(p, &t) && ckw_of(p, &t) != CK_STATIC_ASSERT &&
         (ckw_of(p, &t) != CK_ATTRIBUTE || t.stdattr))
         declaration(p, false);  /* C2X; the checker pedwarns */
@@ -2556,6 +2607,7 @@ static void statement(Parser *p)
         asm_stmt(p, false);
         return;
     case CK_ATTRIBUTE: /* __attribute__((fallthrough)); */
+        fallthrough_not_followed(p, ci(p));
         attributes(p);
         end_stmt(p, N_ATTR_STMT, i, start);
         return;
@@ -2625,8 +2677,10 @@ static void block_item(Parser *p)
         PTok x = tok_at(p, skip_attrs_ahead(p, i));
         if (is_p(&x, P_SEMI))
             statement(p); /* __attribute__((fallthrough)); */
-        else
+        else {
+            fallthrough_not_followed(p, i);
             declaration(p, false);
+        }
         return;
     }
     n = pk(p, 1);

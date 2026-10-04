@@ -1639,6 +1639,26 @@ static const struct { const char *name; unsigned ctx; } attr_ign_tab[] = {
     {"warn_unused", AC_ALL},
 };
 
+/* gcc locates an attribute-only declaration at the first token of its line. */
+static SrcLoc line_start_loc(Checker *c, uint32_t tok)
+{
+    uint32_t line, col, l2, c2;
+    SrcFile *f = srcmgr_file_of(c->sm, tloc(c, tok));
+    if (!f)
+        return tloc(c, tok);
+    srcmgr_linecol(f, tloc(c, tok), &line, &col);
+    while (tok > 0) {
+        SrcLoc pl = tloc(c, tok - 1);
+        if (srcmgr_file_of(c->sm, pl) != f)
+            break;
+        srcmgr_linecol(f, pl, &l2, &c2);
+        if (l2 != line)
+            break;
+        tok--;
+    }
+    return tloc(c, tok);
+}
+
 /* Attributes that need a function type. */
 static const char *const attr_fnonly_tab[] = {
     "access", "alloc_align", "alloc_size", "assume_aligned",
@@ -1740,6 +1760,18 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                 continue;
             for (f = 0; f < sizeof attr_ign_tab / sizeof *attr_ign_tab; f++)
                 if ((attr_ign_tab[f].ctx & ctx) && !strcmp(name, attr_ign_tab[f].name)) {
+                    if (!strcmp(name, "fallthrough") && !cat_file_scope(c)) {
+                        /* a leading attribute list that is not a statement */
+                        uint32_t d = holder;
+                        while (d != NO_NODE && ntag(c, d) != N_DECL &&
+                               d != c->par[d])
+                            d = c->par[d];
+                        if (d != NO_NODE && ntag(c, d) == N_DECL &&
+                            cfirst(c, d) == cfirst(c, k.p[j]))
+                            cwarn(c, line_start_loc(c, c->nodes[k.p[j]].tok),
+                                  "attributes", "'fallthrough' attribute "
+                                  "not followed by ';'");
+                    }
                     cwarn(c, iloc(c, tok), "attributes", "'%s' attribute "
                           "ignored", name);
                     break;
@@ -5712,6 +5744,61 @@ static int complete_array(Checker *c, TypeId type, uint32_t init,
 
 /* ---- shadow_tag: declarations without declarators ---------------------------- */
 
+/* An attribute-only statement: c_parser_declaration_or_fndef's checks. */
+static void attr_stmt_visit(Checker *c, uint32_t i)
+{
+    Kids k;
+    uint32_t j, n, nft = 0, other[16], nother = 0, par = c->par[i];
+    bool param = false;
+    SrcLoc loc;
+    char name[48];
+    if (tokp(c, c->nodes[i].tok)->kind == TK_PUNCT)
+        return;                 /* [[...]] */
+    if (par != NO_NODE && ntag(c, par) == N_LABEL)
+        return;                 /* attributes of the label */
+    if (par != NO_NODE && (ntag(c, par) == N_CASE || ntag(c, par) == N_DEFAULT) &&
+        par == i + 1)
+        cpedantic(c, tloc(c, c->nodes[i].tok), "a label can only be part of a "
+                  "statement and a declaration is not a statement");
+    loc = line_start_loc(c, c->nodes[i].tok);
+    kids_get(c, i, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids ak;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &ak);
+        for (n = 0; n < ak.n; n++) {
+            Kids args;
+            if (ntag(c, ak.p[n]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[ak.p[n]].tok), name, sizeof name);
+            if (!strcmp(name, "fallthrough")) {
+                nft++;
+                kids_get(c, ak.p[n], &args);
+                param |= args.n != 0;
+                kids_free(&args);
+            } else if (nother < 16)
+                other[nother++] = ak.p[n];
+        }
+        kids_free(&ak);
+    }
+    if (!nft)
+        cpedwarn(c, loc, "", "empty declaration");
+    else {
+        if (nft > 1)
+            cwarn(c, loc, "attributes", "attribute 'fallthrough' specified "
+                  "multiple times");
+        if (param)
+            cwarn(c, loc, "attributes", "'fallthrough' attribute specified "
+                  "with a parameter");
+        for (j = 0; j < nother; j++) {
+            attr_norm(tstr(c, c->nodes[other[j]].tok), name, sizeof name);
+            cwarn(c, loc, "attributes", "'%s' attribute ignored", name);
+        }
+    }
+    kids_free(&k);
+}
+
 static void shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok)
 {
     bool file = cat_file_scope(c);
@@ -8865,6 +8952,9 @@ void cdecl_node(Checker *c, uint32_t i)
     }
     case N_INIT_DECL:
         init_decl_visit(c, i);
+        break;
+    case N_ATTR_STMT:
+        attr_stmt_visit(c, i);
         break;
     case N_ATTRIBUTE: {
         /* parser diagnostics: gcc gives them in units with errors too */

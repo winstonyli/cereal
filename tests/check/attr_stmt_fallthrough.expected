@@ -1,0 +1,72 @@
+attr_stmt_fallthrough.c:8:5: warning: attribute 'fallthrough' specified multiple times [-Wattributes]
+    8 |     __attribute__((fallthrough, fallthrough, used));
+      |     ^
+attr_stmt_fallthrough.c:8:5: warning: 'used' attribute ignored [-Wattributes]
+    8 |     __attribute__((fallthrough, fallthrough, used));
+      |     ^
+attr_stmt_fallthrough.c:11:5: warning: empty declaration
+   11 |     __attribute__((used, unused));
+      |     ^
+attr_stmt_fallthrough.c:14:5: warning: 'used' attribute ignored [-Wattributes]
+   14 |     __attribute__((fallthrough)) __attribute__((used));
+      |     ^
+attr_stmt_fallthrough.c:23:5: warning: attribute 'fallthrough' specified multiple times [-Wattributes]
+   23 |     __attribute__((fallthrough)) __attribute__((fallthrough));
+      |     ^
+attr_stmt_fallthrough.c:26:5: warning: 'fallthrough' attribute not followed by ';' [-Wattributes]
+   26 |     __attribute__((fallthrough)) int j;
+      |     ^
+attr_stmt_fallthrough.c:26:5: warning: 'fallthrough' attribute ignored [-Wattributes]
+   26 |     __attribute__((fallthrough)) int j;
+      |     ^
+attr_stmt_fallthrough.c:29:5: warning: 'fallthrough' attribute not followed by ';' [-Wattributes]
+   29 |     __attribute__((fallthrough)) {}
+      |     ^
+attr_stmt_fallthrough.c:29:34: error: expected identifier or '(' before '{' token
+   29 |     __attribute__((fallthrough)) {}
+      |                                  ^
+attr_stmt_fallthrough.c:32:5: warning: 'used' attribute ignored [-Wattributes]
+   32 |     __attribute__((used)) int k;
+      |     ^
+attr_stmt_fallthrough.c:34:5: warning: empty declaration
+   34 |     __attribute__((deprecated)) ;
+      |     ^
+attr_stmt_fallthrough.c:35:5: warning: 'fallthrough' attribute not followed by ';' [-Wattributes]
+   35 |     __attribute__((fallthrough)) b(2);
+      |     ^
+attr_stmt_fallthrough.c:35:36: error: expected declaration specifiers or '...' before numeric constant
+   35 |     __attribute__((fallthrough)) b(2);
+      |                                    ^
+attr_stmt_fallthrough.c:32:31: warning: unused variable 'k' [-Wunused-variable]
+   32 |     __attribute__((used)) int k;
+      |                               ^
+attr_stmt_fallthrough.c:26:38: warning: unused variable 'j' [-Wunused-variable]
+   26 |     __attribute__((fallthrough)) int j;
+      |                                      ^
+attr_stmt_fallthrough.c:42:10: warning: a label can only be part of a statement and a declaration is not a statement [-Wpedantic]
+   42 |  case 2: __attribute__((used));
+      |          ^
+attr_stmt_fallthrough.c:42:2: warning: empty declaration
+   42 |  case 2: __attribute__((used));
+      |  ^
+attr_stmt_fallthrough.c:44:4: warning: a label can only be part of a statement and a declaration is not a statement [-Wpedantic]
+   44 |    __attribute__((used)) ;
+      |    ^
+attr_stmt_fallthrough.c:44:4: warning: empty declaration
+   44 |    __attribute__((used)) ;
+      |    ^
+attr_stmt_fallthrough.c:45:11: warning: a label can only be part of a statement and a declaration is not a statement [-Wpedantic]
+   45 |  default: __attribute__((used, unused)); 
+      |           ^
+attr_stmt_fallthrough.c:45:2: warning: empty declaration
+   45 |  default: __attribute__((used, unused)); 
+      |  ^
+attr_stmt_fallthrough.c:47:3: warning: empty declaration
+   47 |   { __attribute__((used)); __attribute__((fallthrough, used)); }
+      |   ^
+attr_stmt_fallthrough.c:47:3: warning: 'used' attribute ignored [-Wattributes]
+   47 |   { __attribute__((used)); __attribute__((fallthrough, used)); }
+      |   ^
+attr_stmt_fallthrough.c:48:3: warning: empty declaration
+   48 |   __attribute__((used)) __attribute__((unused));
+      |   ^

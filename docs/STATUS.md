@@ -1062,3 +1062,18 @@ layouts, gcc rules ported, walk design).
   parameter", "specified multiple times", "not preceding"); cereal's N_ATTR_STMT is never checked
   (attr-fallthrough-2.c, Wimplicit-fallthrough-20.c).
 - Parity: tests 1013, gcc.dg 3664 identical (211 differ), c-c++-common 565 (92), san clean (335).
+
+### Round 50 — attribute-only statements (fallthrough family)
+- cdecl.c `attr_stmt_visit` checks N_ATTR_STMT (`__attribute__((..));`): no fallthrough in the list gives
+  "empty declaration"; with fallthrough: "specified multiple times", "specified with a parameter", and
+  "'X' attribute ignored" for the others. Located at the first token of the line (gcc quirk, `line_start_loc`).
+  After `case`/`default` the label-declaration pedwarn comes first; after a named label the attributes belong to
+  the label (no warning). `[[..]]` statements are skipped.
+- "'fallthrough' attribute not followed by ';'": parse.c `fallthrough_not_followed` (when what follows is not a
+  declaration start; block items, statements, label bodies) and cdecl.c `attrs_ctx_check1` (leading list of a
+  block-scope declaration). `label_body` now sends a non-`;`-terminated `__attribute__` list to `declaration`.
+- Golden `attr_stmt_fallthrough`; attr-fallthrough-2.c and Wimplicit-fallthrough-20.c identical.
+- Open: fallthrough's arguments are not evaluated (`fallthrough(a)` should say `'a' undeclared`); file-scope
+  `__attribute__((used));` should give "empty declaration"; `m: __attribute__((fallthrough));` at the end of a
+  block should say "'fallthrough' attribute ignored" (label attribute).
+- Parity: tests 1015, gcc.dg 3664 identical (211 differ), c-c++-common 568 (89), san clean (336).
