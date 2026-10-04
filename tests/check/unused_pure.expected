@@ -1,0 +1,36 @@
+unused_pure.c:8:3: warning: statement with no effect [-Wunused-value]
+    8 |   strlen(d);
+      |   ^
+unused_pure.c:9:3: warning: statement with no effect [-Wunused-value]
+    9 |   __builtin_memchr(d, 0, 4);
+      |   ^
+unused_pure.c:10:3: warning: statement with no effect [-Wunused-value]
+   10 |   memcmp(d, d, 3);
+      |   ^
+unused_pure.c:11:3: warning: statement with no effect [-Wunused-value]
+   11 |   pf(1);
+      |   ^
+unused_pure.c:12:3: warning: statement with no effect [-Wunused-value]
+   12 |   cf(b);
+      |   ^
+unused_pure.c:14:12: warning: left-hand operand of comma expression has no effect [-Wunused-value]
+   14 |   strlen(d), sf(2);
+      |            ^
+unused_pure.c:15:8: warning: right-hand operand of comma expression has no effect [-Wunused-value]
+   15 |   sf(1), 1, sf(2);
+      |        ^
+unused_pure.c:16:9: warning: value computed is not used [-Wunused-value]
+   16 |   sf(1) + sf(2), sf(3);
+      |         ^
+unused_pure.c:17:3: warning: statement with no effect [-Wunused-value]
+   17 |   for (b; b < 3; b)
+      |   ^
+unused_pure.c:17:18: warning: statement with no effect [-Wunused-value]
+   17 |   for (b; b < 3; b)
+      |                  ^
+unused_pure.c:19:13: warning: right-hand operand of comma expression has no effect [-Wunused-value]
+   19 |   for (b = 0, b; b < 3; b++, b)
+      |             ^
+unused_pure.c:19:28: warning: right-hand operand of comma expression has no effect [-Wunused-value]
+   19 |   for (b = 0, b; b < 3; b++, b)
+      |                            ^

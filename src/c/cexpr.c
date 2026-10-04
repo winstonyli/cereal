@@ -5380,6 +5380,8 @@ static void e_comma(Checker *c, uint32_t i, uint32_t a, uint32_t b)
             cwarn(c, cnode_loc(c, i), "unused-value", "left-hand operand of "
                   "comma expression has no effect");
     }
+    else if (!inhibited(c, i, false))
+        unused_value(c, a, cnode_loc(c, i));    /* emit_side_effect_warnings */
     t = rvt(c, b);
     c->ty[i] = t;
     c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;

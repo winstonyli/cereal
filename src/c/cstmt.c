@@ -1063,7 +1063,6 @@ static uint32_t child_index(Checker *c, uint32_t p, uint32_t i, uint32_t *n)
     return NOB;
 }
 
-static void unused_value(Checker *c, uint32_t e, SrcLoc dloc);
 
 /* gcc's built-in functions that do not return (also undeclared, in their
  * library spelling). */
@@ -1128,8 +1127,8 @@ void cstmt_expr(Checker *c, uint32_t i)
         uint32_t n, k = child_index(c, p, i, &n);
         if (k == 2)
             cond_check(c, i);
-        else if (k == 1 || k == 3)
-            unused_value(c, i, cnode_loc(c, p));
+        else if (k == 1 || k == 3)      /* the increment has its own location */
+            unused_value(c, i, k == 3 ? first_loc(c, i) : cnode_loc(c, p));
         break;
     }
     case N_SWITCH:
@@ -1730,7 +1729,7 @@ static bool nop_cast(Checker *c, uint32_t e)
     return false;
 }
 
-static void unused_value(Checker *c, uint32_t e, SrcLoc dloc)
+void unused_value(Checker *c, uint32_t e, SrcLoc dloc)
 {
     uint32_t kids[4];
     e = strip_paren(c, e);

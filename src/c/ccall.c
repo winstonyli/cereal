@@ -1548,6 +1548,54 @@ static void e_builtin_complex(Checker *c, uint32_t i, SrcLoc bl)
         cplx_set(c, i, c->fv.data[c->cv[av[1]]], c->fv.data[c->cv[av[2]]]);
 }
 
+#include "c/cbuiltin_pure.h"
+
+/* A call gcc builds without TREE_SIDE_EFFECTS: a const or pure function (or a
+ * library built-in that is one) whose arguments have none either. */
+static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
+{
+    uint32_t f = strip_paren(c, callee), av[32], an, j;
+    const char *name;
+    uint32_t ref;
+    size_t lo = 0, hi = sizeof cbuiltin_pure / sizeof *cbuiltin_pure;
+    bool pure = false;
+    if (f == NO_NODE || ntag(c, f) != N_IDENT)
+        return false;
+    name = cident(c, cnode_ident(c, f));
+    ref = lookup_ord(c, cnode_ident(c, f));
+    if (ref != SYM_NONE) {
+        if (csym(c, ref)->kind != CS_FUNC)
+            return false;
+        pure = cdecl_aset_has(c, csym(c, ref)->aset, "const", NULL) ||
+               cdecl_aset_has(c, csym(c, ref)->aset, "pure", NULL);
+    }
+    if (!pure) {
+        if (ref == SYM_NONE && strncmp(name, "__builtin_", 10))
+            return false;
+        if (!strncmp(name, "__builtin_", 10))
+            name += 10;
+        while (lo < hi) {
+            size_t mid = (lo + hi) / 2;
+            int r = strcmp(name, cbuiltin_pure[mid]);
+            if (!r) {
+                pure = true;
+                break;
+            }
+            if (r < 0)
+                hi = mid;
+            else
+                lo = mid + 1;
+        }
+    }
+    if (!pure)
+        return false;
+    an = nkids(c, i, av, 32);
+    for (j = 1; j < an && j < 32; j++)
+        if (c->ef[av[j]] & EF_SIDE)
+            return false;
+    return true;
+}
+
 void e_call(Checker *c, uint32_t i)
 {
     uint32_t k[3], n = nkids(c, i, k, 3), f;
@@ -1739,7 +1787,7 @@ void e_call(Checker *c, uint32_t i)
         }
     }
     c->ty[i] = unqual(c, type_base(TT, pointee(c, t)));
-    c->ef[i] = EF_SIDE;
+    c->ef[i] = call_pure(c, i, k[0]) ? 0 : EF_SIDE;
 }
 
 void alias_deref(Checker *c, uint32_t p, bool use_loc, SrcLoc loc);
