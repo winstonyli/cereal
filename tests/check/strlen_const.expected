@@ -1,0 +1,99 @@
+strlen_const.c:3:21: warning: ISO C forbids zero-size array 'a' [-Wpedantic]
+    3 | struct A0 { char n, a[0]; };
+      |                     ^
+strlen_const.c:6:22: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    6 | const struct A0 a0 = { };
+      |                      ^
+strlen_const.c:18:11: warning: offset '4' outside bounds of constant string [-Warray-bounds=]
+   18 |   T("abc" + 4);
+      |           ^
+strlen_const.c:19:11: warning: offset '-1' outside bounds of constant string [-Warray-bounds=]
+   19 |   T("abc" - 1);
+      |           ^
+strlen_const.c:20:7: warning: offset '8' outside bounds of constant string [-Warray-bounds=]
+   20 |   T(c + 8);
+      |       ^
+strlen_const.c:9:12: note: 'c' declared here
+    9 | const char c[8] = "abc";
+      |            ^
+strlen_const.c:22:5: warning: offset '9' outside bounds of constant string [-Warray-bounds=]
+   22 |   T(&c[9]);
+      |     ^
+strlen_const.c:9:12: note: 'c' declared here
+    9 | const char c[8] = "abc";
+      |            ^
+strlen_const.c:23:7: warning: offset '-1' outside bounds of constant string [-Warray-bounds=]
+   23 |   T(c - 1);
+      |       ^
+strlen_const.c:9:12: note: 'c' declared here
+    9 | const char c[8] = "abc";
+      |            ^
+strlen_const.c:24:5: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   24 |   T(d);
+      |     ^
+strlen_const.c:10:12: note: referenced argument declared here
+   10 | const char d[3] = "abc";
+      |            ^
+strlen_const.c:25:7: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   25 |   T(d + 1);
+      |       ^
+strlen_const.c:10:12: note: referenced argument declared here
+   10 | const char d[3] = "abc";
+      |            ^
+strlen_const.c:26:7: warning: offset '3' outside bounds of constant string [-Warray-bounds=]
+   26 |   T(d + 3);
+      |       ^
+strlen_const.c:10:12: note: 'd' declared here
+   10 | const char d[3] = "abc";
+      |            ^
+strlen_const.c:28:7: warning: offset '0' outside bounds of constant string [-Warray-bounds=]
+   28 |   T(a0.a);
+      |       ^
+strlen_const.c:6:17: note: 'a0' declared here
+    6 | const struct A0 a0 = { };
+      |                 ^
+strlen_const.c:29:10: warning: offset '-1' outside bounds of constant string [-Warray-bounds=]
+   29 |   T(a0.a - 1);
+      |          ^
+strlen_const.c:6:17: note: 'a0' declared here
+    6 | const struct A0 a0 = { };
+      |                 ^
+strlen_const.c:31:10: warning: offset '1' outside bounds of constant string [-Warray-bounds=]
+   31 |   T(a1.a + 1);
+      |          ^
+strlen_const.c:7:17: note: 'a1' declared here
+    7 | const struct A1 a1 = { 0 };
+      |                 ^
+strlen_const.c:32:10: warning: offset '9' outside bounds of constant string [-Warray-bounds=]
+   32 |   T(ax.a + 9);
+      |          ^
+strlen_const.c:8:17: note: 'ax' declared here
+    8 | const struct Ax ax = { 0 };
+      |                 ^
+strlen_const.c:33:5: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   33 |   T(&*d);
+      |     ^
+strlen_const.c:10:12: note: referenced argument declared here
+   10 | const char d[3] = "abc";
+      |            ^
+strlen_const.c:34:5: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   34 |   T((d));
+      |     ^
+strlen_const.c:10:12: note: referenced argument declared here
+   10 | const char d[3] = "abc";
+      |            ^
+strlen_const.c:35:15: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   35 |   sink(strlen(e));
+      |               ^
+strlen_const.c:11:19: note: referenced argument declared here
+   11 | static const char e[3] = "abc";
+      |                   ^
+strlen_const.c:36:21: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   36 |   sink(strlen(i ? d : "x"));
+      |                     ^
+strlen_const.c:10:12: note: referenced argument declared here
+   10 | const char d[3] = "abc";
+      |            ^
+strlen_const.c:37:33: warning: offset '5' outside bounds of constant string [-Warray-bounds=]
+   37 |   sink(__builtin_strlen("ab\0c" + 5));
+      |                                 ^

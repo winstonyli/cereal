@@ -1134,3 +1134,11 @@ diagnostics and builds on the strinit table.
 - Step 2 of the survey (known bytes): gcc's `c_strlen` runs in the front end, so `Warray-bounds-7.c` ("offset 'N'
   outside bounds of constant string", for `strlen` of a zero-length/flexible member of a const object, offsets truncated
   to int) needs a new strlen-folding helper; cereal has none (strinits only serve format checks).
+
+## Round 53: strlen constant folding (c_strlen diagnostics)
+
+- `check_strlen`/`sl_resolve` (cexpr.c, before `check_format_literal`): argument of `strlen`/`__builtin_strlen` resolved through parens, casts, `?:` (location = the ':'), `x±K`, `&x[K]`, `&*x`, literals, const char arrays with string initializer (`strinits`), and `OBJ.member` of a const global (bounds only, no bytes).
+- Emits "offset 'N' outside bounds of constant string [-Warray-bounds=]" (N int-truncated) and "'strlen' argument missing terminating nul [-Wstringop-overread]" (new default-on option in diag.c), each with a note at the object.
+- Golden: tests/check/strlen_const.c. `Warray-bounds-7.c` now identical. Parity: gcc.dg 3666 identical (209 differ), c-c++-common 573 (84), san clean (339 files).
+- Not done: `warn-strlen-no-nul.c` (needs initializer bytes for 2D arrays and nested struct members via cinit's pending sets; some cases are -O2 middle-end); `&obj.m[K]` (gcc offsets from the whole object, skipped); bare `strlen(d);` lacks "statement with no effect".
+- Build noise: san.sh's -O2 build shows two -Wformat-truncation warnings in `real_cst_str` (cexpr.c ~3053, 3063); harmless, could size the buffer.
