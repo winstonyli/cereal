@@ -10,7 +10,7 @@ misc_90.c:10:18: error: invalid use of flexible array member
 misc_90.c:11:11: error: invalid use of flexible array member
    11 |     &p->y + 1;
       |           ^
-misc_90.c:12:11: error: invalid use of array with unspecified bounds
+misc_90.c:12:11: error: invalid use of flexible array member
    12 |     &u->z + 1;
       |           ^
 misc_90.c:13:10: error: invalid use of array with unspecified bounds

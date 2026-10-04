@@ -7554,6 +7554,12 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
                 cerror(c, f[k].loc, "flexible array member in a struct with "
                        "no named members");
                 f[k].ty = ERRT;
+            } else if (!(type_ent(TT, type_canon(TT, f[k].ty))->flags &
+                         TF_FLEX)) {
+                /* finish_struct gives a typedef'd `T[]` member its domain too */
+                TypeId ct = type_canon(TT, f[k].ty);
+                f[k].ty = type_array_flex(TT, type_base(TT, ct)) |
+                          TYPE_QUALS(f[k].ty);
             }
         }
         if (c->opt.pedantic && want == TY_STRUCT && flex_struct(c, f[k].ty))
