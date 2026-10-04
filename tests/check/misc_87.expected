@@ -1,0 +1,54 @@
+misc_87.c:7:5: warning: built-in function 'printf' declared as non-function [-Wbuiltin-declaration-mismatch]
+    7 | int printf;
+      |     ^
+misc_87.c:8:5: warning: built-in function 'abs' declared as non-function [-Wbuiltin-declaration-mismatch]
+    8 | int abs;
+      |     ^
+misc_87.c:10:1: warning: requested position is less than zero [-Wattributes]
+   10 | int f1(const char *, ...) __attribute__((sentinel(-1)));
+      | ^
+misc_87.c:11:1: warning: 'sentinel' attribute only applies to variadic functions [-Wattributes]
+   11 | int f2(int) __attribute__((sentinel));
+      | ^
+misc_87.c:12:1: warning: requested position is not an integer constant [-Wattributes]
+   12 | int f3(const char *, ...) __attribute__((sentinel(f1)));
+      | ^
+misc_87.c:13:1: warning: '__int128' attribute directive ignored [-Wattributes]
+   13 | __attribute__((__int128__)) int j;
+      | ^
+misc_87.c:14:1: warning: 'foo' attribute directive ignored [-Wattributes]
+   14 | __attribute__((__foo__)) int k;
+      | ^
+misc_87.c:17:5: warning: value computed is not used [-Wunused-value]
+   17 |   x + 1;
+      |     ^
+misc_87.c:18:5: warning: statement with no effect [-Wunused-value]
+   18 |   x + y;
+      |     ^
+misc_87.c:19:5: warning: value computed is not used [-Wunused-value]
+   19 |   x - d;
+      |     ^
+misc_87.c:20:5: warning: value computed is not used [-Wunused-value]
+   20 |   x / d;
+      |     ^
+misc_87.c:21:5: warning: statement with no effect [-Wunused-value]
+   21 |   d / x;
+      |     ^
+misc_87.c:22:6: warning: value computed is not used [-Wunused-value]
+   22 |   fz + x;
+      |      ^
+misc_87.c:23:5: warning: statement with no effect [-Wunused-value]
+   23 |   x == d;
+      |     ^
+misc_87.c:24:7: warning: imaginary constants are a GCC extension
+   24 |   x + 1.0iF;
+      |       ^
+misc_87.c:24:5: warning: statement with no effect [-Wunused-value]
+   24 |   x + 1.0iF;
+      |     ^
+misc_87.c:25:24: error: first argument to 'va_arg' not of type 'va_list'
+   25 |   __builtin_va_arg (d, double);
+      |                        ^
+misc_87.c:26:3: warning: switch condition has boolean value [-Wswitch-bool]
+   26 |   switch (b) { case true: case false: default: break; }
+      |   ^

@@ -962,9 +962,22 @@ static void finish_switch(Checker *c, CStmt *s)
     }
     if (!sw.has_default)
         cwarn(c, sw.loc, "switch-default", "switch missing default case");
+    bool covers_bool = false;
+    if (sw.bool_cond && n && sw.has_default) {
+        /* a default after labels for both 0 and 1 can never be taken */
+        bool z = false, o = false;
+        uint32_t kb;
+        for (kb = 0; kb < n; kb++) {
+            z |= cmp_val(cs[kb].lo, sgn, 0, false) <= 0 &&
+                 cmp_val(cs[kb].hi, sgn, 0, false) >= 0;
+            o |= cmp_val(cs[kb].lo, sgn, 1, false) <= 0 &&
+                 cmp_val(cs[kb].hi, sgn, 1, false) >= 0;
+        }
+        covers_bool = z && o;
+    }
     if (sw.bool_cond && n &&
         ((sgn && (int64_t)cs[0].lo < 0) ||
-         cmp_val(cs[n - 1].hi, sgn, 1, false) > 0))
+         cmp_val(cs[n - 1].hi, sgn, 1, false) > 0 || covers_bool))
         cwarn(c, sw.loc, "switch-bool", "switch condition has boolean value");
     if (sw.orig != ERRT && type_ckind(TT, sw.orig) == TY_ENUM &&
         (sw_enum > 0 || sw_enum_all > 0)) {
@@ -1744,6 +1757,32 @@ static bool nop_cast(Checker *c, uint32_t e)
     return false;
 }
 
+/* Complex arithmetic whose operands differ in type: gcc converts one of them
+ * through a SAVE_EXPR, so the result has side effects and the warning is
+ * "value computed is not used" (PR c/97748).  A real / complex division is
+ * expanded differently. */
+static bool mixed_complex(Checker *c, uint32_t e)
+{
+    uint32_t kids[4];
+    int op;
+    TypeId l, r;
+    if (tg(c, e) != N_BINARY || type_ckind(TT, c->ty[e]) != TY_COMPLEX)
+        return false;
+    op = c->u->toks[c->nodes[e].tok].t.punct;
+    if (op != P_PLUS && op != P_MINUS && op != P_STAR && op != P_SLASH)
+        return false;
+    node_children(c->nodes, e, kids, 4);
+    l = type_canon(TT, cexpr_rvalue_type(c, kids[0]));
+    r = type_canon(TT, cexpr_rvalue_type(c, kids[1]));
+    if (l == r)
+        return false;
+    if (type_ckind(TT, l) == TY_COMPLEX && type_ckind(TT, r) == TY_COMPLEX &&
+        (tg(c, strip_paren(c, kids[0])) == N_NUMBER ||
+         tg(c, strip_paren(c, kids[1])) == N_NUMBER))
+        return false;                    /* a constant is converted by folding */
+    return !(op == P_SLASH && type_ckind(TT, l) != TY_COMPLEX);
+}
+
 void unused_value(Checker *c, uint32_t e, SrcLoc dloc)
 {
     uint32_t kids[4];
@@ -1763,7 +1802,8 @@ void unused_value(Checker *c, uint32_t e, SrcLoc dloc)
             loc = tg(c, r) == N_IDENT ? dloc : cnode_loc(c, e);
         } else
             loc = value_loc(c, e, dloc);
-        cwarn(c, loc, "unused-value", "statement with no effect");
+        cwarn(c, loc, "unused-value", mixed_complex(c, e) ?
+              "value computed is not used" : "statement with no effect");
         return;
     }
     if (is_comma(c, e)) {

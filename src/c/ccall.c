@@ -209,6 +209,17 @@ static void bt_sig_print(StrBuf *sb, const char *sig)
     sb_putc(sb, ')');
 }
 
+/* A variable named like a library built-in (`int printf;`). */
+void cexpr_builtin_nonfn(Checker *c, const CSym *s)
+{
+    const BTab *bt = bt_for_decl(c, s);
+    if (bt && !strcmp(strchr(bt->sig, '|') + 1, "?"))
+        return;
+    if (bt && diag_enabled(c->diag, "builtin-declaration-mismatch"))
+        cwarn(c, s->loc, "builtin-declaration-mismatch", "built-in function "
+              "'%s' declared as non-function", cident(c, s->name));
+}
+
 /* -Wbuiltin-declaration-mismatch for the first declaration of a library
  * built-in (gcc's diagnose_mismatched_decls on the undeclared built-in). */
 void cexpr_builtin_decl(Checker *c, const CSym *s)

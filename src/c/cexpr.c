@@ -4976,7 +4976,7 @@ static void e_va_arg(Checker *c, uint32_t i)
                              type_ptr(TT, mainv(c, elem_of(c, vl)))))
         ok = true;
     if (!ok) {
-        cerror(c, expr_loc(c, k[0]), "first argument to 'va_arg' not of type "
+        cerror(c, first_loc(c, k[1]), "first argument to 'va_arg' not of type "
                                      "'va_list'");
         set_err(c, i);
         return;

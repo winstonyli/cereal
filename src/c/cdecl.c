@@ -808,12 +808,14 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             a->defn = true;
         if (c->attr_defer && !c->attr_quiet && strcmp(name, "gnu") &&
             !attr_known(name) && !attr_scope_of(c, c->nodes[item].tok)) {
-            if (a->nunk < 2)
-                snprintf(a->unk[a->nunk++], sizeof a->unk[0], "%s", name);
+            if (a->nunk < 2)      /* `__int128__` is the keyword's spelling */
+                snprintf(a->unk[a->nunk++], sizeof a->unk[0], "%s",
+                         strcmp(name, "int128") ? name : "__int128");
         } else if (!c->attr_quiet && strcmp(name, "gnu") && !attr_known(name) &&
                    !attr_scope_of(c, c->nodes[item].tok))   /* gnu:: is a [[]] scope */
             cwarn(c, c->attr_at_set ? c->attr_at : iloc(c, c->nodes[item].tok),
-                  "attributes", "'%s' attribute directive ignored", name);
+                  "attributes", "'%s' attribute directive ignored",
+                  strcmp(name, "int128") ? name : "__int128");
         if (!strcmp(name, "aligned")) {
             uint32_t v;
             if (arg == NO_NODE)
@@ -974,6 +976,25 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             }
             if (ok)
                 a->nonnull |= m;
+        } else if (!strcmp(name, "sentinel")) {
+            TypeId ft = c->attr_fty;
+            SrcLoc il = cinput_loc(c, c->nodes[item].tok);
+            if (ft && type_ckind(TT, ft) == TY_FUNC &&
+                !(type_ent(TT, type_canon(TT, ft))->flags & TF_VARIADIC))
+                cwarn(c, il, "attributes", "'sentinel' attribute only applies "
+                      "to variadic functions");
+            if (ft && type_ckind(TT, ft) == TY_FUNC && ak.n) {
+                uint32_t x = ak.p[0];
+                if (type_ckind(TT, c->ty[x]) == TY_ERROR)
+                    ;
+                else if (!(c->ck[x] == K_ICE || c->ck[x] == K_FOLD) ||
+                         !type_is_integer(TT, c->ty[x]))
+                    cwarn(c, il, "attributes", "requested position is not an "
+                          "integer constant");
+                else if (cexpr_sval(c, x) < 0)
+                    cwarn(c, il, "attributes", "requested position is less "
+                          "than zero");
+            }
         } else if (!strcmp(name, "returns_nonnull")) {
             TypeId ft = c->attr_fty;
             if (ft && type_ckind(TT, ft) == TY_FUNC &&
@@ -5735,6 +5756,8 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
                 }
                 if (x.kind == CS_FUNC && !e)
                     cexpr_builtin_decl(c, &x);
+                else if (x.kind == CS_OBJ && !e)
+                    cexpr_builtin_nonfn(c, &x);
                 ref = csym_new(c, global, &x);
                 c->ext[name] = (ref & ~SYM_LOCAL) + 1;
                 if (ref & SYM_LOCAL)
