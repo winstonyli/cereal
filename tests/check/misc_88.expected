@@ -1,0 +1,15 @@
+misc_88.c:1:1: error: unknown type name 'X'
+    1 | X Y(Z);
+      | ^
+misc_88.c:1:1: warning: parameter names (without types) in function declaration
+    1 | X Y(Z);
+      | ^
+misc_88.c:2:1: warning: parameter names (without types) in function declaration
+    2 | int ok(a, b);
+      | ^
+misc_88.c:3:1: error: unknown type name 'Q'
+    3 | Q W(R, S);
+      | ^
+misc_88.c:3:1: warning: parameter names (without types) in function declaration
+    3 | Q W(R, S);
+      | ^

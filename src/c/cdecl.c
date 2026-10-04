@@ -3958,9 +3958,15 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
         cwarn(c, il, "strict-prototypes", "function declaration isn't a "
               "prototype");
     if (pi->krlist) {
-        if (!funcdef)
+        if (!funcdef) {
+            bool q = c->quiet;
+            DiagOrd o0 = diag_ord(c->diag, q ? ORD_LATE : ORD_NORMAL);
+            c->quiet = false;     /* gcc issues this in the declarator parse */
             cpedwarn(c, il, "", "parameter names (without types) in function "
                      "declaration");
+            c->quiet = q;
+            diag_ord(c->diag, o0);
+        }
         return;
     }
     kids_get(c, f, &k);
