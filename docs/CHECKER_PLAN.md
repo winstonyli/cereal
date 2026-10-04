@@ -27,6 +27,9 @@ Older design discussion: transcript /root/.claude/projects/-home-user-cereal/a48
   src/main.c (or wherever main is: grep `parse_one`).
 - src/c/check.h: public API (CheckOptions, checker_new/unit/finish/free).
 - src/c/check_int.h: internal API shared by check.c / cdecl.c / cexpr.c.
+- src/c/cexpr_int.h: helpers shared by the expression checker units (cexpr.c core,
+  ccall.c calls/builtins/atomics/tgmath, cformat.c printf/scanf + strlen, cconv.c
+  -Wconversion family); node/type accessors are static inline there.
   Prototypes there are the contract.  If you must add one, add it in the
   section for your file; do not change others' signatures without saying so
   in your report.

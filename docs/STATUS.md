@@ -1173,3 +1173,10 @@ diagnostics and builds on the strinit table.
 - `tloc` is one inline in `check_int.h` (was 3 copies); `expr_loc` is one function in `cexpr.c` (the cstmt.c copy had diverged: union of both rules, incl. `__extension__` and `&&label`).
 - `sq_eq` (sequence-point) now delegates to `opeq` (operand_equal_p); it was a second copy. Parity unchanged (3671/573/3671), suite 1031/0, san 344/0.
 - Deliberately not done: a tag-and-gate resolver (`cc90_id` and `cped11` have different rules; the table would not remove duplication); merging `dup_expr` (statement-level, folded floats, `?:`) into `opeq`.
+
+## Round 58 — cexpr.c split (refactor, no behavior change)
+- `cexpr.c` 13.9k -> 9.6k lines. New: `cexpr_int.h` (node/type accessors as `static inline`, `BTab`, `Conv`, prototypes of the functions that now cross units), `cformat.c` (printf/scanf, strlen folding, string reads), `ccall.c` (e_call/e_index/e_member, builtin signatures, nonnull/restrict/atomic/tgmath), `cconv.c` (-Wconversion family, -Wdouble-promotion, decimal mix).
+- The old "-Wformat" banner in cexpr.c really covered format + calls; the split follows the actual contents.
+- Left in cexpr.c: -Waddress-of-packed-member, -Wstrict-aliasing, logical-op, sizeof checks etc. (each needs 40+ shared statics for 400-750 lines: not worth the header).
+- Gates: suite 1034/0, parity unchanged (3671/573/3671), san 344/0; check icount on uvloop/loop.c 3.578G -> 3.568G (-0.3%; inlined accessors offset the cross-unit calls).
+- Tooling used (scratch, not kept): a function mover that de-statics crossing functions and appends prototypes; if redoing another cut, expect forward `static` prototypes and shared typedefs to need hand moves.
