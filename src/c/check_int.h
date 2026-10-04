@@ -479,6 +479,8 @@ Diagnostic *cerror_d(Checker *c, SrcLoc loc, const char *fmt, ...);
 Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, const char *id,
                     const char *fmt, ...);
 void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...);
+/* cpragma.c: interpret the #pragma at token tok (pack, GCC diagnostic, ...) */
+void cpragma_apply(Checker *c, uint32_t tok);
 
 /* gcc's input_location while the parser looks at token tok: the first
  * token of that token's line. */

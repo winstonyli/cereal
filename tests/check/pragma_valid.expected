@@ -1,0 +1,69 @@
+pragma_valid.c:2:9: warning: '#pragma pack (pop)' encountered without matching '#pragma pack (push)' [-Wpragmas]
+    2 | #pragma pack(pop)
+      |         ^
+pragma_valid.c:4:9: warning: '#pragma pack(pop, c)' encountered without matching '#pragma pack(push, c)' [-Wpragmas]
+    4 | #pragma pack(pop, c)
+      |         ^
+pragma_valid.c:5:9: warning: '#pragma pack (pop)' encountered without matching '#pragma pack (push)' [-Wpragmas]
+    5 | #pragma pack(pop)
+      |         ^
+pragma_valid.c:6:9: warning: alignment must be a small power of two, not 3 [-Wpragmas]
+    6 | #pragma pack(push, a, 3)
+      |         ^
+pragma_valid.c:7:9: warning: malformed '#pragma pack' - ignored [-Wpragmas]
+    7 | #pragma pack(1 2)
+      |         ^
+pragma_valid.c:8:14: warning: invalid constant in '#pragma pack' - ignored [-Wpragmas]
+    8 | #pragma pack(2.5)
+      |              ^
+pragma_valid.c:9:14: warning: unknown action 'bogus' for '#pragma pack' - ignored [-Wpragmas]
+    9 | #pragma pack(bogus)
+      |              ^
+pragma_valid.c:10:9: warning: missing '(' after '#pragma pack' - ignored [-Wpragmas]
+   10 | #pragma pack
+      |         ^
+pragma_valid.c:11:9: warning: malformed '#pragma pack(pop[, id])' - ignored [-Wpragmas]
+   11 | #pragma pack(pop, a, 1)
+      |         ^
+pragma_valid.c:12:17: warning: junk at end of '#pragma pack' [-Wpragmas]
+   12 | #pragma pack(4) junk
+      |                 ^
+pragma_valid.c:15:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   15 | _Static_assert(sizeof(struct S) == 16, "pack 8");
+      | ^
+pragma_valid.c:17:24: warning: expected 'error', 'warning', 'ignored', 'push', 'pop', 'ignored_attributes' after '#pragma GCC diagnostic' [-Wpragmas]
+   17 | #pragma GCC diagnostic fatal "-Wunused"
+      |                        ^
+pragma_valid.c:18:23: warning: missing 'error', 'warning', 'ignored', 'push', 'pop', or 'ignored_attributes' after '#pragma GCC diagnostic' [-Wpragmas]
+   18 | #pragma GCC diagnostic
+      |                       ^
+pragma_valid.c:19:31: warning: missing option after '#pragma GCC diagnostic' kind [-Wpragmas]
+   19 | #pragma GCC diagnostic ignored
+      |                               ^
+pragma_valid.c:20:32: warning: option '-Wnoexcept' is valid for C++/ObjC++ but not for C [-Wpragmas]
+   20 | #pragma GCC diagnostic ignored "-Wnoexcept"
+      |                                ^
+pragma_valid.c:21:32: warning: '-fstrict-aliasing' is not an option that controls warnings [-Wpragmas]
+   21 | #pragma GCC diagnostic ignored "-fstrict-aliasing"
+      |                                ^
+pragma_valid.c:22:32: warning: unknown option after '#pragma GCC diagnostic' kind [-Wpragmas]
+   22 | #pragma GCC diagnostic ignored "-Wunuesd"
+      |                                ^
+pragma_valid.c:22:32: note: did you mean '-Wunused'?
+   22 | #pragma GCC diagnostic ignored "-Wunuesd"
+      |                                ^
+pragma_valid.c:23:32: warning: unknown option after '#pragma GCC diagnostic' kind [-Wpragmas]
+   23 | #pragma GCC diagnostic ignored "-Wno-vla"
+      |                                ^
+pragma_valid.c:25:9: warning: malformed '#pragma redefine_extname', ignored [-Wpragmas]
+   25 | #pragma redefine_extname foo
+      |         ^
+pragma_valid.c:26:9: warning: junk at end of '#pragma redefine_extname' [-Wpragmas]
+   26 | #pragma redefine_extname foo bar baz
+      |         ^
+pragma_valid.c:27:9: warning: missing 'big-endian', 'little-endian', or 'default' after '#pragma scalar_storage_order' [-Wpragmas]
+   27 | #pragma scalar_storage_order
+      |         ^
+pragma_valid.c:28:9: warning: expected 'big-endian', 'little-endian', or 'default' after '#pragma scalar_storage_order' [-Wpragmas]
+   28 | #pragma scalar_storage_order medium-endian
+      |         ^

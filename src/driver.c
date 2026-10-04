@@ -5,7 +5,7 @@
 #include <strings.h>
 #include <string.h>
 #include "c/fuzzy.h"
-#include "gcc_wopts.h"
+#include "gcc_opts.h"
 #include "gcc_params.h"
 
 extern const char *const host_include_dirs[];
@@ -234,30 +234,6 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     return i - start + 1;
 }
 
-/* Is name (a -W option without the -W, any no-/error= prefix and value
- * stripped) one of gcc's?  A valued option is looked up as name=. */
-static bool gcc_wopt_known(const char *name, bool *valued)
-{
-    size_t k, n = strlen(name);
-    for (k = 0; k < sizeof gcc_wopts / sizeof *gcc_wopts; k++) {
-        const char *g = gcc_wopts[k];
-        size_t gl = strlen(g);
-        if (gl > 1 && g[gl - 1] == '-' && n >= gl && !strncmp(g, name, gl)) {
-            *valued = false;    /* a joined form: -Wlarger-than-32768 */
-            return true;
-        }
-        if (gl == n && !strcmp(g, name)) {
-            *valued = false;
-            return true;
-        }
-        if (gl == n + 1 && g[n] == '=' && !strncmp(g, name, n)) {
-            *valued = true;
-            return true;
-        }
-    }
-    return false;
-}
-
 /* gcc's size arguments: digits and an optional unit (kB, KiB, MB, ...). */
 static bool size_arg_ok(const char *v)
 {
@@ -329,10 +305,8 @@ static void bad_wopt(Options *o, const char *flag)
     n = eq ? (size_t)(eq - p) : strlen(p);
     snprintf(name, sizeof name, "%.*s", (int)n, p);
     if (gcc_wopt_known(name, &valued)) {
-        size_t m = strlen(name), k;
-        bool exact = false;
-        for (k = 0; !eq && valued && k < sizeof gcc_wopts / sizeof *gcc_wopts; k++)
-            exact |= !strcmp(gcc_wopts[k], name);
+        size_t m = strlen(name);
+        bool exact = !eq && valued && gcc_wopt_exact(name);
         bool sized = !strcmp(name, "larger-than") ||
                      (m > 12 && !strcmp(name + m - 12, "-larger-than"));
         if (!eq && valued && !exact && strncmp(flag, "no-", 3) && sized) {
@@ -352,15 +326,7 @@ static void bad_wopt(Options *o, const char *flag)
     }
     if (!strncmp(flag, "no-", 3))
         return;                 /* gcc ignores an unknown -Wno-... */
-    {
-        Best b;
-        uint64_t work = 0;
-        size_t k;
-        best_init(&b, flag, &work);
-        for (k = 0; k < sizeof gcc_wopts / sizeof *gcc_wopts; k++)
-            best_consider(&b, gcc_wopts[k]);
-        dym = best_get(&b);
-    }
+    dym = gcc_wopt_suggest(flag);
     if (dym)
         fprintf(stderr, "cereal: error: unrecognized command-line option "
                 "'-W%s'; did you mean '-W%s'?\n", flag, dym);
