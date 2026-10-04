@@ -52,6 +52,7 @@ enum { DC_NORMAL, DC_FIELD, DC_PARM, DC_TYPENAME };
 
 /* ---- small helpers ------------------------------------------------------ */
 
+static void cxx_typedef_in_struct(Checker *c, uint32_t ident, uint32_t tok);
 static unsigned ntag(const Checker *c, uint32_t i)
 {
     return c->nodes[i].tag;
@@ -3486,6 +3487,8 @@ static void specs_visit(Checker *c, uint32_t i)
                 cerror(c, iloc(c, nd->tok), "'%s' fails to be a typedef or "
                        "built in type", tstr(c, nd->tok));
             add_type_whole(c, &s, t, TSK_TYPEDEF, nd->tok);
+            if (ref != SYM_NONE && c->recs.len)
+                cxx_typedef_in_struct(c, cnode_ident(c, n), nd->tok);
             if (ref != SYM_NONE) {
                 csym(c, ref)->flags |= CSF_USED;
                 if ((csym(c, ref)->flags & (CSF_DEPRECATED | CSF_UNAVAILABLE)) &&
@@ -5283,6 +5286,12 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
             return false;
         }
     }
+    if (nw->kind == CS_OBJ && nfile && ofile && !sym_external(nw) &&
+        !sym_external(o) && !cin_system(c, nw->loc)) {
+        d = cwarn_d(c, DL_WARNING, nw->loc, "c++-compat", "duplicate "
+                    "declaration of '%s' is invalid in C++", sname(c, nw));
+        locate_old_decl(c, d, o);
+    }
     if (nw->kind == CS_OBJ && (nw->flags & CSF_PARAM) &&
         !(o->flags & CSF_FWD)) {
         d = cerror_d(c, nw->loc, "redefinition of parameter '%s'",
@@ -5573,6 +5582,26 @@ static void bind_this_type(Checker *c, uint32_t bi, uint32_t ref, TypeId vt,
         c->log.data[bi - 1].ty = t + 1;
 }
 
+static void typedef_tag_clash(Checker *c, uint32_t name, SrcLoc at,
+                              SrcLoc old);
+
+/* -Wc++-compat: a typedef name used inside a struct body; a field of an open
+ * struct with that name would hide it in C++. */
+static void cxx_typedef_in_struct(Checker *c, uint32_t ident, uint32_t tok)
+{
+    size_t k = c->fields.len;
+    if (!diag_enabled(c->diag, "c++-compat"))
+        return;
+    vec_push(&c->tdseen, ident);
+    while (k-- > 0)
+        if (c->fields.data[k].name == ident) {
+            if (!cin_system(c, tloc(c, tok)))
+                cwarn(c, tloc(c, tok), "c++-compat", "C++ lookup of '%s' "
+                      "would return a field, not a type", cident(c, ident));
+            return;
+        }
+}
+
 /* pushdecl: enters x in the current scope, merging it with an earlier
  * declaration of the same entity.  Returns the symbol the name now denotes. */
 static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
@@ -5594,6 +5623,17 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
     if (!filescope && varfn && pub)
         x.flags |= CSF_BLOCK_EXTERN;
     csum_decl(c, name, filescope, varfn && pub);
+    if (x.kind == CS_TYPEDEF) {
+        uint32_t tb = cbound_here(c, NS_TAG, name);
+        if (tb) {
+            TypeId tt = c->log.data[tb - 1].ref;
+            if (type_canon(TT, x.ty & ~(TypeId)TQ_MASK) != type_canon(TT, tt))
+                typedef_tag_clash(c, name, x.loc,
+                                  type_ckind(TT, tt) == TY_ENUM
+                                  ? type_enum(TT, tt)->loc
+                                  : type_record(TT, tt)->loc);
+        }
+    }
     b = cbound_here(c, NS_ORD, name);
     if (b) {
         uint32_t vis = c->log.data[b - 1].ref, use = vis;
@@ -6555,6 +6595,74 @@ static void trad_aggr_init(Checker *c, uint32_t idecl, uint32_t declared,
     (void)idecl;
 }
 
+/* -Wc++-compat: gcc's diagnose_uninitialized_cst_member, one warning and note
+ * per const member found (nested records included). */
+static void cxx_uninit_members(Checker *c, SrcLoc loc, TypeId top, TypeId t)
+{
+    const Record *r;
+    uint32_t k;
+    TypeKind tk;
+    while (is_arr(c, t))
+        t = type_base(TT, t);
+    tk = type_ckind(TT, t);
+    if (tk != TY_STRUCT && tk != TY_UNION)
+        return;
+    r = type_record(TT, type_canon(TT, t));
+    for (k = 0; k < r->nfields; k++) {
+        const Field *fl = &TT->fields.data[r->fields + k];
+        TypeId ft = fl->ty;
+        while (is_arr(c, ft))
+            ft = type_base(TT, type_canon(TT, ft));
+        if (TYPE_QUALS(ft) & TQ_CONST) {
+            Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "c++-compat",
+                                    "uninitialized const member in %s is "
+                                    "invalid in C++", type_q(TT, top));
+            if (d && fl->name)
+                cnote(c, d, fl->loc, "'%s' should be initialized",
+                      cident(c, fl->name));
+        } else
+            cxx_uninit_members(c, loc, top, ft);
+    }
+}
+
+/* -Wc++-compat: a file-scope definition whose type is an unnamed struct,
+ * union or enum (not one a typedef names). */
+static void cxx_anon_type(Checker *c, const CSym *s)
+{
+    const TypeEnt *e;
+    if (s->kind != CS_OBJ || !cat_file_scope(c) || s->sc == SC_STATIC ||
+        s->sc == SC_EXTERN || !diag_enabled(c->diag, "c++-compat") ||
+        cin_system(c, s->loc))
+        return;
+    e = type_ent(TT, s->ty & ~(TypeId)TQ_MASK);
+    if (e->kind == TY_STRUCT || e->kind == TY_UNION) {
+        if (type_record(TT, type_canon(TT, s->ty))->tag)
+            return;
+    } else if (e->kind == TY_ENUM) {
+        if (type_enum(TT, type_canon(TT, s->ty))->tag)
+            return;
+    } else
+        return;
+    cwarn(c, s->loc, "c++-compat", "non-local variable '%s' with anonymous "
+          "type is questionable in C++", sname(c, s));
+}
+
+/* -Wc++-compat: a const object, or one with const members, without initializer. */
+static void cxx_uninit_const(Checker *c, const CSym *s)
+{
+    TypeId t = s->ty;
+    if (s->kind != CS_OBJ || s->sc == SC_EXTERN || (s->flags & CSF_PARAM) ||
+        !diag_enabled(c->diag, "c++-compat") || cin_system(c, s->loc))
+        return;
+    while (is_arr(c, t))
+        t = type_base(TT, t);
+    if (TYPE_QUALS(t) & TQ_CONST)
+        cwarn(c, s->loc, "c++-compat", "uninitialized 'const %s' is invalid "
+              "in C++", sname(c, s));
+    else
+        cxx_uninit_members(c, s->loc, t, t);
+}
+
 static void init_decl_visit(Checker *c, uint32_t idecl)
 {
     uint32_t declared = find_declared(c, idecl), ref;
@@ -6571,6 +6679,9 @@ static void init_decl_visit(Checker *c, uint32_t idecl)
         init = idecl - 1;
     cinit_decl_done(c, idecl);
     trad_aggr_init(c, idecl, declared, init);
+    cxx_anon_type(c, s);
+    if (init == NO_NODE)
+        cxx_uninit_const(c, s);
     type = s->ty;
     if ((s->flags & CSF_AUTO_TYPE) && init != NO_NODE) {
         /* __auto_type: the initializer's type after lvalue conversion */
@@ -6660,12 +6771,34 @@ static const char *tag_kw(int want)
     return want == TY_UNION ? "union" : want == TY_ENUM ? "enum" : "struct";
 }
 
+/* -Wc++-compat: a typedef and a tag of the same name in one scope that are
+ * not the same type; the earlier one is at old. */
+static void typedef_tag_clash(Checker *c, uint32_t name, SrcLoc at, SrcLoc old)
+{
+    Diagnostic *d;
+    if (cin_system(c, at))
+        return;
+    d = cwarn_d(c, DL_WARNING, at, "c++-compat", "using '%s' as both a typedef "
+                "and a tag is invalid in C++", cident(c, name));
+    if (d && old)
+        cnote(c, d, old, "originally defined here");
+}
+
 /* pushtag of a new forward reference. */
 static TypeId new_tag(Checker *c, int want, uint32_t name, SrcLoc loc)
 {
     TypeId t = want == TY_ENUM
         ? type_new_enum(TT, name, loc)
         : type_new_record(TT, name, want == TY_UNION, loc);
+    if (name) {
+        uint32_t ob = cbound_here(c, NS_ORD, name);
+        if (ob) {
+            const CSym *o = csym(c, c->log.data[ob - 1].ref);
+            if (o->kind == CS_TYPEDEF &&
+                type_canon(TT, o->ty & ~(TypeId)TQ_MASK) != type_canon(TT, t))
+                typedef_tag_clash(c, name, loc, o->loc);
+        }
+    }
     cbind(c, NS_TAG, name, t);
     return t;
 }
@@ -6716,6 +6849,29 @@ static bool being_defined(Checker *c, TypeId t)
 static void tag_visit(Checker *c, uint32_t i)
 {
     iloc_event(c, cnode(c, i)->tok);
+}
+
+/* c_cast_expr / the compound literal: the type name itself defines the tag
+ * (ctsk_tagdef, or names it for the first time). */
+static void cxx_defining_cast(Checker *c, uint32_t st, bool lit_only)
+{
+    if (cexpr_cxx_compat(c, st)) {
+        uint32_t a = c->par[st], prev = st;
+        for (; a != NO_NODE; prev = a, a = c->par[a]) {
+            unsigned tg = ntag(c, a);
+            if (tg == N_CAST || tg == N_COMPOUND_LIT) {
+                if (first_child(c, a) == prev &&
+                    (!lit_only || tg == N_COMPOUND_LIT))
+                    cwarn(c, tloc(c, cnode(c, a)->tok), "c++-compat",
+                          "defining a type in a %s is invalid in C++",
+                          tg == N_CAST ? "cast" : "compound literal");
+                break;
+            }
+            if (tg == N_STRUCT || tg == N_ENUM || tg == N_COMPOUND ||
+                tg == N_DECL || tg == N_FUNC_DEF)
+                break;
+        }
+    }
 }
 
 /* start_struct / start_enum, at the '{'. */
@@ -6813,30 +6969,34 @@ static void open_visit(Checker *c, uint32_t i)
                   "invalid in C++", in_sz ? "sizeof" : in_ty ? "typeof"
                                                               : "alignof");
     }
-    if (cexpr_cxx_compat(c, st)) {
-        /* c_cast_expr / the compound literal: the type name itself defines
-         * the tag (ctsk_tagdef) */
-        uint32_t a = c->par[st], prev = st;
-        for (; a != NO_NODE; prev = a, a = c->par[a]) {
-            unsigned tg = ntag(c, a);
-            if (tg == N_CAST || tg == N_COMPOUND_LIT) {
-                if (first_child(c, a) == prev)
-                    cwarn(c, tloc(c, cnode(c, a)->tok), "c++-compat",
-                          "defining a type in a %s is invalid in C++",
-                          tg == N_CAST ? "cast" : "compound literal");
-                break;
-            }
-            if (tg == N_STRUCT || tg == N_ENUM || tg == N_COMPOUND ||
-                tg == N_DECL || tg == N_FUNC_DEF)
-                break;
-        }
+    cxx_defining_cast(c, st, false);
+    if (c->recs.len && !vec_last(&c->recs).is_enum &&
+        diag_enabled(c->diag, "c++-compat")) {
+        if (want == TY_ENUM)
+            type_enum(TT, t)->in_struct = true;
+        else
+            type_record(TT, t)->flags |= RF_IN_STRUCT;
     }
     rd.ty = t;
     rd.first = (uint32_t)c->fields.len;
+    rd.first_td = (uint32_t)c->tdseen.len;
     vec_push(&c->recs, rd);
     c->ty[i] = t;
     if (created && cscope_kind(c) == SCK_PROTO)
         c->ef[i] |= 2;
+}
+
+/* -Wc++-compat: a type or enumerator defined inside a struct is used outside. */
+void cxx_in_struct_use(Checker *c, SrcLoc at, const char *what,
+                       const char *noted, SrcLoc def)
+{
+    Diagnostic *d;
+    if (cin_system(c, at))
+        return;
+    d = cwarn_d(c, DL_WARNING, at, "c++-compat", "%s defined in struct or "
+                "union is not visible in C++", what);
+    if (d && def)
+        cnote(c, d, def, "%s defined here", noted);
 }
 
 /* parser_xref_tag: 'struct S' without a body. */
@@ -6874,13 +7034,18 @@ static void xref_visit(Checker *c, uint32_t i, int want)
         if (want == TY_ENUM) {
             const Enum *e = &TT->enums.data[x];
             cdep_report(c, loc, name, e->dep, e->dmsg, &e->loc);
+            if (e->in_struct && !c->recs.len)
+                cxx_in_struct_use(c, loc, "enum type", "enum type", e->loc);
         } else {
             const Record *r = &TT->recs.data[x];
             cdep_report(c, loc, name, r->dep, r->dmsg, &r->loc);
+            if ((r->flags & RF_IN_STRUCT) && !c->recs.len)
+                cxx_in_struct_use(c, loc, tag_kw(want), tag_kw(want), r->loc);
         }
     } else {
         t = new_tag(c, want, name, loc);
         kind = TSK_TAGFIRSTREF;
+        cxx_defining_cast(c, i, true);
         if (cscope_kind(c) == SCK_PROTO)
             c->ef[i] |= 2;
     }
@@ -7072,6 +7237,21 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
             diag_ord(c->diag, o0);
         }
     }
+    for (k = 0; k < n; k++) {
+        size_t q;
+        for (q = rd.first_td; q < c->tdseen.len && f[k].name; q++)
+            if (c->tdseen.data[q] == f[k].name) {
+                if (!cin_system(c, f[k].loc))
+                    cwarn(c, f[k].loc, "c++-compat", "using '%s' as both "
+                          "field and typedef name is invalid in C++",
+                          cident(c, f[k].name));
+                break;
+            }
+    }
+    c->tdseen.len = rd.first_td;
+    if (n == 0 && !cin_system(c, loc))
+        cwarn(c, loc, "c++-compat", "empty %s has size 0 in C, size 1 in C++",
+              want == TY_UNION ? "union" : "struct");
     for (k = 0; k < n; k++) {
         bool is_last = k == n - 1 || want == TY_UNION;
         if (is_err(c, f[k].ty))
@@ -7368,6 +7548,8 @@ static void enumerator_visit(Checker *c, uint32_t i)
     s.loc = nloc;
     s.val = v;
     s.vty = vt;
+    if (type_enum(TT, rd->ty)->in_struct)
+        s.flags |= CSF_IN_STRUCT;
     ref = pushdecl(c, &s, false);
     vec_push(&c->ecs, ref);
     enumerator_attrs(c, i, nloc, name);

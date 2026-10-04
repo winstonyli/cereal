@@ -69,7 +69,8 @@ enum {
     RF_USER_ALIGN = 1024,    /* aligned attribute given (copy copies it) */
     RF_VMOD = 2048,          /* a member is variably modified (C_TYPE_VARIABLY_MODIFIED) */
     RF_SSO = 4096,           /* scalar_storage_order: pointers are not constants */
-    RF_MAYALIAS = 8192       /* may_alias */
+    RF_MAYALIAS = 8192,      /* may_alias */
+    RF_IN_STRUCT = 16384     /* defined inside a struct or union body */
 };
 
 /* Field.flags */
@@ -107,6 +108,7 @@ typedef struct Enum {
     SrcLoc loc;
     TypeId underlying;       /* uint until a value is negative */
     bool complete, packed;
+    bool in_struct;          /* defined inside a struct or union body */
     TypeId ty;
     uint32_t dep, dmsg;
 } Enum;

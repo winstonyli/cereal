@@ -1,0 +1,48 @@
+cxx_compat_4.c:21:13: warning: using 's5' as both a typedef and a tag is invalid in C++ [-Wc++-compat]
+   21 | typedef int s5;         /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |             ^
+cxx_compat_4.c:20:8: note: originally defined here
+   20 | struct s5 { int f; };   /* { dg-message "note: originally defined here" } */
+      |        ^
+cxx_compat_4.c:24:8: warning: using 's6' as both a typedef and a tag is invalid in C++ [-Wc++-compat]
+   24 | struct s6 { int f; };   /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |        ^
+cxx_compat_4.c:23:13: note: originally defined here
+   23 | typedef int s6;         /* { dg-message "note: originally defined here" } */
+      |             ^
+cxx_compat_4.c:30:15: warning: using 's7' as both a typedef and a tag is invalid in C++ [-Wc++-compat]
+   30 |   typedef int s7;       /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |               ^
+cxx_compat_4.c:29:10: note: originally defined here
+   29 |   struct s7 { int f; }; /* { dg-message "note: originally defined here" } */
+      |          ^
+cxx_compat_4.c:33:10: warning: using 's8' as both a typedef and a tag is invalid in C++ [-Wc++-compat]
+   33 |   struct s8 { int f; }; /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |          ^
+cxx_compat_4.c:32:15: note: originally defined here
+   32 |   typedef int s8;       /* { dg-message "note: originally defined here" } */
+      |               ^
+cxx_compat_4.c:55:13: warning: using 'e5' as both a typedef and a tag is invalid in C++ [-Wc++-compat]
+   55 | typedef int e5;         /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |             ^
+cxx_compat_4.c:54:6: note: originally defined here
+   54 | enum e5 { E };          /* { dg-message "note: originally defined here" } */
+      |      ^
+cxx_compat_4.c:58:6: warning: using 'e6' as both a typedef and a tag is invalid in C++ [-Wc++-compat]
+   58 | enum e6 { F };          /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |      ^
+cxx_compat_4.c:57:13: note: originally defined here
+   57 | typedef int e6;         /* { dg-message "note: originally defined here" } */
+      |             ^
+cxx_compat_4.c:64:15: warning: using 'e7' as both a typedef and a tag is invalid in C++ [-Wc++-compat]
+   64 |   typedef int e7;       /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |               ^
+cxx_compat_4.c:63:8: note: originally defined here
+   63 |   enum e7 { G };        /* { dg-message "note: originally defined here" } */
+      |        ^
+cxx_compat_4.c:67:8: warning: using 'e8' as both a typedef and a tag is invalid in C++ [-Wc++-compat]
+   67 |   enum e8 { H };        /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |        ^
+cxx_compat_4.c:66:15: note: originally defined here
+   66 |   typedef int e8;       /* { dg-message "note: originally defined here" } */
+      |               ^

@@ -946,7 +946,8 @@ void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
     L.pack = (uint64_t)pack * 8;
     L.packed = packed;
     uint32_t first = (uint32_t)tt->fields.len;
-    uint16_t flags = r->flags & (RF_UNION | RF_NOKEYWORD | RF_TRANSPARENT);
+    uint16_t flags = r->flags & (RF_UNION | RF_NOKEYWORD | RF_TRANSPARENT |
+                                  RF_IN_STRUCT);
     if (packed)
         flags |= RF_PACKED;
     for (uint32_t i = 0; i < n; i++)

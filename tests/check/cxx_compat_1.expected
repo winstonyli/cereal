@@ -1,0 +1,93 @@
+cxx_compat_1.c:6:4: warning: uninitialized 'const g1' is invalid in C++ [-Wc++-compat]
+    6 | CI g1;
+      |    ^
+cxx_compat_1.c:7:12: warning: uninitialized const member in 'struct two' is invalid in C++ [-Wc++-compat]
+    7 | struct two g2;
+      |            ^
+cxx_compat_1.c:2:24: note: 'a' should be initialized
+    2 | struct two { const int a; int m; const int b; };
+      |                        ^
+cxx_compat_1.c:7:12: warning: uninitialized const member in 'struct two' is invalid in C++ [-Wc++-compat]
+    7 | struct two g2;
+      |            ^
+cxx_compat_1.c:2:44: note: 'b' should be initialized
+    2 | struct two { const int a; int m; const int b; };
+      |                                            ^
+cxx_compat_1.c:8:20: warning: uninitialized const member in 'struct nest' is invalid in C++ [-Wc++-compat]
+    8 | static struct nest g3;
+      |                    ^
+cxx_compat_1.c:2:24: note: 'a' should be initialized
+    2 | struct two { const int a; int m; const int b; };
+      |                        ^
+cxx_compat_1.c:8:20: warning: uninitialized const member in 'struct nest' is invalid in C++ [-Wc++-compat]
+    8 | static struct nest g3;
+      |                    ^
+cxx_compat_1.c:2:44: note: 'b' should be initialized
+    2 | struct two { const int a; int m; const int b; };
+      |                                            ^
+cxx_compat_1.c:8:20: warning: uninitialized const member in 'struct nest' is invalid in C++ [-Wc++-compat]
+    8 | static struct nest g3;
+      |                    ^
+cxx_compat_1.c:3:46: note: 'z' should be initialized
+    3 | struct nest { int x; struct two t; const int z; };
+      |                                              ^
+cxx_compat_1.c:11:14: warning: uninitialized const member in 'struct two' is invalid in C++ [-Wc++-compat]
+   11 |   struct two v1;
+      |              ^
+cxx_compat_1.c:2:24: note: 'a' should be initialized
+    2 | struct two { const int a; int m; const int b; };
+      |                        ^
+cxx_compat_1.c:11:14: warning: uninitialized const member in 'struct two' is invalid in C++ [-Wc++-compat]
+   11 |   struct two v1;
+      |              ^
+cxx_compat_1.c:2:44: note: 'b' should be initialized
+    2 | struct two { const int a; int m; const int b; };
+      |                                            ^
+cxx_compat_1.c:12:15: warning: uninitialized const member in 'struct nest' is invalid in C++ [-Wc++-compat]
+   12 |   struct nest v2;
+      |               ^
+cxx_compat_1.c:2:24: note: 'a' should be initialized
+    2 | struct two { const int a; int m; const int b; };
+      |                        ^
+cxx_compat_1.c:12:15: warning: uninitialized const member in 'struct nest' is invalid in C++ [-Wc++-compat]
+   12 |   struct nest v2;
+      |               ^
+cxx_compat_1.c:2:44: note: 'b' should be initialized
+    2 | struct two { const int a; int m; const int b; };
+      |                                            ^
+cxx_compat_1.c:12:15: warning: uninitialized const member in 'struct nest' is invalid in C++ [-Wc++-compat]
+   12 |   struct nest v2;
+      |               ^
+cxx_compat_1.c:3:46: note: 'z' should be initialized
+    3 | struct nest { int x; struct two t; const int z; };
+      |                                              ^
+cxx_compat_1.c:13:14: warning: uninitialized const member in 'struct arr' is invalid in C++ [-Wc++-compat]
+   13 |   struct arr v3;
+      |              ^
+cxx_compat_1.c:4:24: note: 'a' should be initialized
+    4 | struct arr { const int a[2]; };
+      |                        ^
+cxx_compat_1.c:14:6: warning: uninitialized 'const v4' is invalid in C++ [-Wc++-compat]
+   14 |   CI v4;
+      |      ^
+cxx_compat_1.c:15:13: warning: uninitialized 'const v5' is invalid in C++ [-Wc++-compat]
+   15 |   const int v5[3];
+      |             ^
+cxx_compat_1.c:16:21: warning: uninitialized const member in 'struct two' is invalid in C++ [-Wc++-compat]
+   16 |   static struct two v6;
+      |                     ^
+cxx_compat_1.c:2:24: note: 'a' should be initialized
+    2 | struct two { const int a; int m; const int b; };
+      |                        ^
+cxx_compat_1.c:16:21: warning: uninitialized const member in 'struct two' is invalid in C++ [-Wc++-compat]
+   16 |   static struct two v6;
+      |                     ^
+cxx_compat_1.c:2:44: note: 'b' should be initialized
+    2 | struct two { const int a; int m; const int b; };
+      |                                            ^
+cxx_compat_1.c:17:20: warning: uninitialized 'const v7' is invalid in C++ [-Wc++-compat]
+   17 |   const struct two v7;
+      |                    ^
+cxx_compat_1.c:19:22: warning: uninitialized 'const r1' is invalid in C++ [-Wc++-compat]
+   19 |   register const int r1;
+      |                      ^

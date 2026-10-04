@@ -77,6 +77,8 @@ typedef struct StrInit {
     bool uns;                /* element type is not plain char */
 } StrInit;
 
+#define CSF_IN_STRUCT 0x80000000u   /* enumerator of an enum defined in a struct */
+
 typedef struct CSym {
     uint32_t name;           /* ident */
     uint8_t kind;            /* CSymKind */
@@ -223,6 +225,7 @@ typedef struct RecDef {
     TypeId ty;
     uint32_t first;          /* its fields in Checker.fields */
     uint32_t first_ec;       /* enums: its constants in Checker.ecs */
+    uint32_t first_td;       /* its typedef names in Checker.tdseen */
     bool is_enum;
     uint64_t next;           /* enums: the next implicit value */
     TypeId next_ty;          /* enums: its type */
@@ -325,6 +328,7 @@ struct Checker {
     VEC(uint32_t) stack;     /* scratch */
     unsigned pack;           /* #pragma pack, bytes; 0: none */
     VEC(unsigned) pack_stack;
+    VEC(uint32_t) tdseen;    /* typedef names used inside the open struct bodies */
     VEC(char *) opt_bad;     /* bad #pragma GCC optimize options in force */
     VEC(unsigned) opt_stack; /* push_options: opt_bad.len at each */
     uint64_t opt_dig;        /* digest of opt_bad */
@@ -486,6 +490,8 @@ void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...);
 void unused_value(Checker *c, uint32_t e, SrcLoc dloc);
 /* cpragma.c: interpret the #pragma at token tok (pack, GCC diagnostic, ...) */
 void cpragma_apply(Checker *c, uint32_t tok);
+void cxx_in_struct_use(Checker *c, SrcLoc at, const char *what,
+                       const char *noted, SrcLoc def);
 bool cpragma_optimize_bad(const char *opt);
 void cpragma_optimize_repeat(Checker *c, SrcLoc loc);
 

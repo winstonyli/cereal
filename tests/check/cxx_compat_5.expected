@@ -1,0 +1,12 @@
+cxx_compat_5.c:15:5: warning: C++ lookup of 'myint3' would return a field, not a type [-Wc++-compat]
+   15 |     myint3 f2;          /* { dg-warning "C\[+\]\[+\]" } */
+      |     ^
+cxx_compat_5.c:10:10: warning: using 'myint1' as both field and typedef name is invalid in C++ [-Wc++-compat]
+   10 |   myint1 myint1;        /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |          ^
+cxx_compat_5.c:11:11: warning: using 'myint2' as both field and typedef name is invalid in C++ [-Wc++-compat]
+   11 |   myint2 *myint2;       /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |           ^
+cxx_compat_5.c:31:7: warning: C++ lookup of 'myint1' would return a field, not a type [-Wc++-compat]
+   31 |       myint1 f4;        /* { dg-warning "C\[+\]\[+\]" } */
+      |       ^

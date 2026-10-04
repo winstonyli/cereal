@@ -1216,3 +1216,19 @@ diagnostics and builds on the strinit table.
 - Golden `tests/check/optimize_bad.c`.
 - Gate: suite 1057/0; gcc.dg 3697 identical (178 differ); c-c++-common 575 (82); -O 3697 (178); san 353 / 0.
 - Not done: the order gcc repeats several bad options in (not pragma order, apparently hash order); strings holding several space-separated options; `-O` argument errors (`-O2=1`, `"-Os -fno-lto"`); a bad option merged into a function that also has an explicit attribute.
+
+## Round 63 — `-Wc++-compat` rules
+
+- Duplicate file-scope object definition ("duplicate declaration of 'x' is invalid in C++", + previous-declaration note) when neither declaration is `extern`.
+- Uninitialized `const` object ("uninitialized 'const x'") and uninitialized const members (one warning + "'m' should be initialized" note per const field, nested records included), for every non-extern object without initializer.
+- Empty struct/union ("has size 0 in C, size 1 in C++"), after the pedantic "has no members".
+- Typedef/tag clash in one scope (`typedef_tag_clash`, from `new_tag` and `pushdecl`), with "originally defined here".
+- Typedef names used inside struct bodies: "C++ lookup of 'x' would return a field, not a type" (an open struct has a field of that name; `Checker.fields`) and, at the struct's end, "using 'x' as both field and typedef name" (`Checker.tdseen`, `RecDef.first_td`).
+- Non-local variable with an anonymous struct/union/enum type (a typedef-named one is fine).
+- Types/enumerators defined inside a struct and used outside it (`RF_IN_STRUCT`, `Enum.in_struct`, `CSF_IN_STRUCT`).
+- "defining a type in a compound literal" also for a first-reference tag (`cxx_defining_cast`).
+- Enum-conversion messages print a bit-field source as `unsigned char:3` (`cmp_tstr`); `orig_type` of a comma expression is its right operand's.
+- "request for implicit conversion" uses the macro expansion point (system-header macros).
+- Goldens `tests/check/cxx_compat_1..7.c`.
+- Gate: suite 1071/0; gcc.dg 3710 identical (165 differ); c-c++-common 575 (82); -O 3710 (165); san 360 / 0; icount 3.593G.
+- Not done: `builtin-has-attribute.c` (other diffs in that file), the `-Wc++-compat` rows that remain are in files whose other diagnostics differ.

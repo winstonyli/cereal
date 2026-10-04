@@ -1,0 +1,30 @@
+cxx_compat_6.c:5:5: warning: duplicate declaration of 'v1' is invalid in C++ [-Wc++-compat]
+    5 | int v1;                 /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |     ^
+cxx_compat_6.c:4:5: note: previous declaration of 'v1' with type 'int'
+    4 | int v1;                 /* { dg-message "previous declaration" } */
+      |     ^
+cxx_compat_6.c:7:5: warning: duplicate declaration of 'v2' is invalid in C++ [-Wc++-compat]
+    7 | int v2 = 1;             /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |     ^
+cxx_compat_6.c:6:5: note: previous declaration of 'v2' with type 'int'
+    6 | int v2;                 /* { dg-message "previous declaration" } */
+      |     ^
+cxx_compat_6.c:10:5: warning: duplicate declaration of 'v3' is invalid in C++ [-Wc++-compat]
+   10 | int v3 = 1;             /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |     ^
+cxx_compat_6.c:9:5: note: previous declaration of 'v3' with type 'int'
+    9 | int v3;                 /* { dg-message "previous declaration" } */
+      |     ^
+cxx_compat_6.c:14:12: warning: duplicate declaration of 'v5' is invalid in C++ [-Wc++-compat]
+   14 | static int v5;          /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |            ^
+cxx_compat_6.c:13:12: note: previous declaration of 'v5' with type 'int'
+   13 | static int v5;          /* { dg-message "previous declaration" } */
+      |            ^
+cxx_compat_6.c:16:12: warning: duplicate declaration of 'v6' is invalid in C++ [-Wc++-compat]
+   16 | static int v6 = 1;      /* { dg-warning "invalid in C\[+\]\[+\]" } */
+      |            ^
+cxx_compat_6.c:15:12: note: previous declaration of 'v6' with type 'int'
+   15 | static int v6;          /* { dg-message "previous declaration" } */
+      |            ^

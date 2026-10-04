@@ -1,0 +1,19 @@
+cxx_compat_2.c:7:25: warning: non-local variable 'c1' with anonymous type is questionable in C++ [-Wc++-compat]
+    7 | const struct { int a; } c1 = {1};
+      |                         ^
+cxx_compat_2.c:10:12: warning: non-local variable 'en' with anonymous type is questionable in C++ [-Wc++-compat]
+   10 | enum { Q } en;
+      |            ^
+cxx_compat_2.c:11:1: warning: return type defaults to 'int' [-Wimplicit-int]
+   11 | typeof(en) en2;
+      | ^
+cxx_compat_2.c:11:12: error: expected declaration specifiers before 'en2'
+   11 | typeof(en) en2;
+      |            ^
+cxx_compat_2.c:13: error: expected '{' at end of input
+cxx_compat_2.c:11:1: warning: type of 'en' defaults to 'int' [-Wimplicit-int]
+   11 | typeof(en) en2;
+      | ^
+cxx_compat_2.c:12:19: error: declaration for parameter 'fn' but no such parameter
+   12 | struct { int a; } fn(void);
+      |                   ^

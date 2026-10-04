@@ -2222,6 +2222,9 @@ static void e_ident(Checker *c, uint32_t i)
         set_err(c, i);
         return;
     case CS_ENUMCONST:
+        if ((s->flags & CSF_IN_STRUCT) && !c->recs.len)
+            cxx_in_struct_use(c, ctok_loc(c, c->nodes[i].tok),
+                              "enum constant", "enum constant", s->loc);
         c->ty[i] = s->vty ? s->vty : s->ty;
         if (is_err(c, c->ty[i])) {
             set_err(c, i);
@@ -2979,6 +2982,8 @@ static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
     }
 }
 
+static const char *cmp_tstr(Checker *c, uint32_t n);
+
 static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                          const ConvInfo *ci);
 
@@ -3116,12 +3121,12 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                "C++");
         } else {
             sp(m[CONV_ASSIGN], "enum conversion from %s to %s in assignment "
-               "is invalid in C++", type_q(TT, rt), type_q(TT, lt));
+               "is invalid in C++", cmp_tstr(c, expr), type_q(TT, lt));
             sp(m[CONV_INIT], "enum conversion from %s to %s in initialization "
-               "is invalid in C++", type_q(TT, rt), type_q(TT, lt));
+               "is invalid in C++", cmp_tstr(c, expr), type_q(TT, lt));
         }
         sp(m[CONV_RETURN], "enum conversion from %s to %s in return is "
-           "invalid in C++", type_q(TT, rt), type_q(TT, lt));
+           "invalid in C++", cmp_tstr(c, expr), type_q(TT, lt));
         conv_diag(&x, RK_PED, "c++-compat", m, true);
     }
     if (diag_enabled(c->diag, "enum-conversion")) {
@@ -3328,7 +3333,11 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
             /* C++ has no implicit void * -> T *; a null pointer constant
              * (NULL is usually (void *) 0) is tolerated */
             if (rvoid && !x.npc && !lvoid && cexpr_cxx_compat(c, expr))
-                cwarn(c, x.loc, "c++-compat", "request for implicit conversion "
+                cwarn(c, ctx == CONV_ASSIGN ? x.loc
+                      : c->u->toks[first_tok(c, expr)].exp
+                      ? c->u->toks[first_tok(c, expr)].exp : x.loc,
+                      "c++-compat",
+                      "request for implicit conversion "
                       "from %s to %s not permitted in C++", type_q(TT, rt),
                       type_q(TT, lt));
         } else {

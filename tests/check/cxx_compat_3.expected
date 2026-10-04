@@ -1,0 +1,30 @@
+cxx_compat_3.c:32:6: warning: enum type defined in struct or union is not visible in C++ [-Wc++-compat]
+   32 | enum e1 v2;     /* { dg-warning "not visible in C\[+\]\[+\]" } */
+      |      ^
+cxx_compat_3.c:7:8: note: enum type defined here
+    7 |   enum e1       /* { dg-message "note: enum type defined here" } */
+      |        ^
+cxx_compat_3.c:33:8: warning: struct defined in struct or union is not visible in C++ [-Wc++-compat]
+   33 | struct s2 v3;   /* { dg-warning "not visible in C\[+\]\[+\]" } */
+      |        ^
+cxx_compat_3.c:12:10: note: struct defined here
+   12 |   struct s2     /* { dg-message "note: struct defined here" } */
+      |          ^
+cxx_compat_3.c:34:8: warning: struct defined in struct or union is not visible in C++ [-Wc++-compat]
+   34 | struct s3 v4;   /* { dg-warning "not visible in C\[+\]\[+\]" } */
+      |        ^
+cxx_compat_3.c:14:12: note: struct defined here
+   14 |     struct s3   /* { dg-message "note: struct defined here" } */
+      |            ^
+cxx_compat_3.c:35:7: warning: union defined in struct or union is not visible in C++ [-Wc++-compat]
+   35 | union u1 v5;    /* { dg-warning "not visible in C\[+\]\[+\]" } */
+      |       ^
+cxx_compat_3.c:21:11: note: union defined here
+   21 |     union u1    /* { dg-message "note: union defined here" } */
+      |           ^
+cxx_compat_3.c:36:9: warning: enum constant defined in struct or union is not visible in C++ [-Wc++-compat]
+   36 | int i = A;      /* { dg-warning "not visible in C\[+\]\[+\]" } */
+      |         ^
+cxx_compat_3.c:9:5: note: enum constant defined here
+    9 |     A,          /* { dg-message "note: enum constant defined here" } */
+      |     ^

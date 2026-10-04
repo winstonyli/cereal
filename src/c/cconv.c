@@ -1009,6 +1009,11 @@ TypeId orig_type(Checker *c, uint32_t e)
         }
         return rvt(c, s);
     }
+    if (s != NO_NODE && ntag(c, s) == N_BINARY && npunct(c, s) == P_COMMA) {
+        uint32_t k[2];
+        if (nkids(c, s, k, 2) == 2)
+            return orig_type(c, k[1]);      /* the right operand's */
+    }
     if (s != NO_NODE && ntag(c, s) == N_IDENT) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, s));
         if (ref != SYM_NONE && csym(c, ref)->kind == CS_ENUMCONST)

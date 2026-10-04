@@ -1,0 +1,48 @@
+cxx_compat_7.c:4:8: warning: struct has no members [-Wpedantic]
+    4 | struct A {}; /* { dg-warning "empty struct has size 0 in C" } */
+      |        ^
+cxx_compat_7.c:4:8: warning: empty struct has size 0 in C, size 1 in C++ [-Wc++-compat]
+    4 | struct A {}; /* { dg-warning "empty struct has size 0 in C" } */
+      |        ^
+cxx_compat_7.c:5:7: warning: union has no members [-Wpedantic]
+    5 | union B {}; /* { dg-warning "empty union has size 0 in C" } */
+      |       ^
+cxx_compat_7.c:5:7: warning: empty union has size 0 in C, size 1 in C++ [-Wc++-compat]
+    5 | union B {}; /* { dg-warning "empty union has size 0 in C" } */
+      |       ^
+cxx_compat_7.c:6:19: warning: struct has no members [-Wpedantic]
+    6 | struct C { struct D {}; int x; }; /* { dg-warning "empty struct has size 0 in C|declaration does not declare anything" } */
+      |                   ^
+cxx_compat_7.c:6:19: warning: empty struct has size 0 in C, size 1 in C++ [-Wc++-compat]
+    6 | struct C { struct D {}; int x; }; /* { dg-warning "empty struct has size 0 in C|declaration does not declare anything" } */
+      |                   ^
+cxx_compat_7.c:6:23: warning: declaration does not declare anything
+    6 | struct C { struct D {}; int x; }; /* { dg-warning "empty struct has size 0 in C|declaration does not declare anything" } */
+      |                       ^
+cxx_compat_7.c:7:18: warning: union has no members [-Wpedantic]
+    7 | struct E { union F {}; int x; }; /* { dg-warning "empty union has size 0 in C|declaration does not declare anything" } */
+      |                  ^
+cxx_compat_7.c:7:18: warning: empty union has size 0 in C, size 1 in C++ [-Wc++-compat]
+    7 | struct E { union F {}; int x; }; /* { dg-warning "empty union has size 0 in C|declaration does not declare anything" } */
+      |                  ^
+cxx_compat_7.c:7:22: warning: declaration does not declare anything
+    7 | struct E { union F {}; int x; }; /* { dg-warning "empty union has size 0 in C|declaration does not declare anything" } */
+      |                      ^
+cxx_compat_7.c:8:17: warning: union has no members [-Wpedantic]
+    8 | union G { union H {}; int x; }; /* { dg-warning "empty union has size 0 in C|declaration does not declare anything" } */
+      |                 ^
+cxx_compat_7.c:8:17: warning: empty union has size 0 in C, size 1 in C++ [-Wc++-compat]
+    8 | union G { union H {}; int x; }; /* { dg-warning "empty union has size 0 in C|declaration does not declare anything" } */
+      |                 ^
+cxx_compat_7.c:8:21: warning: declaration does not declare anything
+    8 | union G { union H {}; int x; }; /* { dg-warning "empty union has size 0 in C|declaration does not declare anything" } */
+      |                     ^
+cxx_compat_7.c:9:18: warning: struct has no members [-Wpedantic]
+    9 | union I { struct J {}; int x; }; /* { dg-warning "empty struct has size 0 in C|declaration does not declare anything" } */
+      |                  ^
+cxx_compat_7.c:9:18: warning: empty struct has size 0 in C, size 1 in C++ [-Wc++-compat]
+    9 | union I { struct J {}; int x; }; /* { dg-warning "empty struct has size 0 in C|declaration does not declare anything" } */
+      |                  ^
+cxx_compat_7.c:9:22: warning: declaration does not declare anything
+    9 | union I { struct J {}; int x; }; /* { dg-warning "empty struct has size 0 in C|declaration does not declare anything" } */
+      |                      ^

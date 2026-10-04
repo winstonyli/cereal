@@ -738,6 +738,7 @@ void checker_free(Checker *c)
     vec_free(&c->saved);
     vec_free(&c->stack);
     vec_free(&c->pack_stack);
+    vec_free(&c->tdseen);
     while (c->opt_bad.len)
         free(c->opt_bad.data[--c->opt_bad.len]);
     vec_free(&c->opt_bad);
