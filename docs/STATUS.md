@@ -1310,3 +1310,10 @@ diagnostics and builds on the strinit table.
 - From cells the whole file is lexed before the first unit, so lexer/preprocessor diagnostics used to print before every checker diagnostic. `main.c` now holds them back and releases each with the unit whose tokens reach it (location < the lookahead token, else < the end of the unit's last token), ahead of that unit's parser diagnostics; leftovers are appended after the last unit. This removes the "keep lexer errors first" golden workaround noted in Round 70: `misc_70` is back in natural file order and identical plain / `--cells`.
 - Approximation: release is by location, so diagnostics from included files compare by global `SrcLoc`, not lexing time. fuzz_cells / lsp transcripts pass.
 - Gate: 1091 pass, san 370/0, gcc.dg differ 136, c-c++-common 54, callgrind 3.631G.
+
+## Round 72 — block-scope extern prototypes, numbers lexed but never read
+
+- `Warray-parameter-10` SAME (PR c/102759): a file-scope `void f ();` after only block-scope declarations of f does not inherit their prototype (`pushdecl`: the entity's type becomes the unprototyped one).
+- `Wbidi-chars-24` SAME: gcc classifies a pp-number when it lexes it, so a malformed one the parser never reads is still diagnosed. `classify_num` (parse.c) reports "invalid suffix / digit" for the token an error names as current (before that error) and for tokens skipped in recovery (`skip_tok` in sync_stmt / skip_until / sync_top); `lit_report` drops an identical error already at that location. Errors only, with the x86_64 classifier (messages are target independent).
+- Golden `misc_73`. Gate: 1093 pass, san 371/0, gcc.dg differ 135, c-c++-common 53, callgrind 3.632G.
+- Not pursued: variable-index `&obj.m[v]` through nested structs / arrays of structs. gcc-13 warns for `&cc.x.b[v0]` and `&sa[0].b[v0]` but not `&s.b[v0]`, `&sa[1].b[v0]`, `&dd.y[0].b[v0]` (all const objects of the same shape): no rule visible from the source forms — it depends on how the address folds. Left as is.

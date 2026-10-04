@@ -1,0 +1,12 @@
+misc_73.c:14:7: error: invalid suffix "abc" on integer constant
+   14 | int a 12abc;
+      |       ^
+misc_73.c:14:7: error: expected '=', ',', ';', 'asm' or '__attribute__' before numeric constant
+   14 | int a 12abc;
+      |       ^
+misc_73.c:15:7: error: invalid digit "9" in octal constant
+   15 | int b 089 c;
+      |       ^
+misc_73.c:15:7: error: expected '=', ',', ';', 'asm' or '__attribute__' before numeric constant
+   15 | int b 089 c;
+      |       ^

@@ -1658,9 +1658,15 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
     if (!l->msg[0])
         return;
     switch (l->level) {
-    case 2:
+    case 2: {
+        size_t k = c->diag->all.len, lim = k > 64 ? k - 64 : 0;
+        for (; k-- > lim;)      /* the parser reported it when it skipped the token */
+            if (c->diag->all.data[k]->loc == loc &&
+                !strcmp(c->diag->all.data[k]->msg, l->msg))
+                return;
         cerror(c, loc, "%s", l->msg);
         break;
+    }
     case 1:
         if (l->flags & (LIT_TOO_LARGE | LIT_UNSIGNED_WARN))
             cpedwarn(c, loc, l->id, "%s", l->msg);

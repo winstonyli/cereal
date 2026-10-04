@@ -67,6 +67,7 @@ typedef struct Parser {
         uint32_t last;          /* token of the last error (no cascades) */
         uint32_t expr_tok;      /* 1 + token of the last "expected expression" */
     } err;
+    uint64_t skipnum;           /* stream index + 1 of the last skipped number classified */
     uint64_t units, errors;
     uint64_t soft_errors; /* of errors: a stray token after a complete
                            * declaration, which gcc still processes */

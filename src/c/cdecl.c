@@ -5702,6 +5702,13 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
             if (e && !filescope && !is_err(c, newty))
                 outer_bindings(c, name, newty);
             if (e && duplicate_decls(c, &x, nfile, e - 1, implicit_int)) {
+                /* PR c/102759: a file-scope `f ()` after only block-scope
+                 * declarations of f does not inherit their prototype */
+                if (filescope && visref == SYM_NONE && x.kind == CS_FUNC &&
+                    type_ckind(TT, newty) == TY_FUNC &&
+                    (type_ent(TT, type_canon(TT, newty))->flags & TF_NOPROTO) &&
+                    !is_err(c, newty))
+                    csym(c, e - 1)->ty = newty;
                 cbind(c, NS_ORD, name, e - 1);
                 if (!filescope && !is_err(c, newty))
                     bind_this_type(c, (uint32_t)c->log.len, e - 1, vt,

@@ -296,6 +296,35 @@ static Diagnostic *pvreport(Parser *p, DiagLevel lvl, const char *opt,
     return d;
 }
 
+static void pdiag(Parser *p, DiagLevel lvl, SrcLoc loc, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    pvreport(p, lvl, "", loc, fmt, ap);
+    va_end(ap);
+}
+
+/* gcc classifies a number as it lexes it, so a malformed one is diagnosed
+ * even when no expression ever reads it: when an error names it as the
+ * current token, or recovery skips it.  (The checker reports the numbers
+ * that are read and drops a repeat of this report.) */
+static void classify_num(Parser *p, uint32_t i)
+{
+    uint64_t ix = p->base + i + 1;
+    Lit l;
+    const char *s;
+    PTok t;
+    if (i >= p->toks.len || p->toks.data[i].t.kind != TK_PPNUM ||
+        ix <= p->skipnum)
+        return;
+    t = p->toks.data[i];
+    p->skipnum = ix;
+    s = tok_text_raw(p->sm, p->in, &t.t);
+    lit_number(&target_x86_64, s, t.t.len, &l);
+    if (l.msg[0] && l.level == 2)
+        pdiag(p, DL_ERROR, t.exp ? t.exp : t.t.loc, "%s", l.msg);
+}
+
 static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
                          va_list ap)
 {
@@ -306,6 +335,8 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
     p->err.live = true;
     p->err.last = i;
     p->errors++;
+    if (i == ci(p))
+        classify_num(p, i);
     d = pvreport(p, DL_ERROR, "", loc, fmt, ap);
     if (d && !p->diag->track0 && i < p->toks.len && p->toks.data[i].exp &&
         p->toks.data[i].exp != p->toks.data[i].t.loc) {
@@ -569,8 +600,16 @@ static void close_scope(Parser *p, SymSaveVec *save)
 
 /* ---- recovery ------------------------------------------------------------- */
 
+
 /* Skip to the end of the statement: past a ';' or up to a '}' at this
  * nesting level. */
+/* A token skipped in recovery. */
+static void skip_tok(Parser *p)
+{
+    classify_num(p, p->pos);
+    adv(p);
+}
+
 static void sync_stmt(Parser *p)
 {
     int depth = 0;
@@ -591,7 +630,7 @@ static void sync_stmt(Parser *p)
                       t.t.punct == P_RBRACE) && depth > 0)
                 depth--;
         }
-        adv(p);
+        skip_tok(p);
     }
 }
 
@@ -614,7 +653,7 @@ static void skip_until(Parser *p, Punct want)
                      depth-- == 0)
                 break;
         }
-        adv(p);
+        skip_tok(p);
     }
     if (!at_eof(p))             /* gcc returns at EOF with the error set */
         p->err.live = false;
@@ -638,7 +677,7 @@ static void sync_top(Parser *p)
     p->err.live = false;
     while (!at_eof(p)) {
         PTok t = ct(p);
-        adv(p);
+        skip_tok(p);
         if (t.t.kind != TK_PUNCT)
             continue;
         if (depth == 0 && t.t.punct == P_SEMI)
