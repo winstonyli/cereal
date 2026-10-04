@@ -1250,3 +1250,14 @@ diagnostics and builds on the strinit table.
 - Gotcha: a `-W` option missing from `src/diag.c` is silently enabled by default; register new options there (DO_ALL for -Wall members).
 - Golden `tests/check/misc_64.c` (SAME against gcc-13).
 - Baselines: suite 1077/0; gcc.dg 3711 (164 differ); c-c++-common 598 (59); -O 3711 (164); san 363 files / 0 findings; icount 3.610G (+0.3%).
+
+## Round 66 — gcc.dg/c-c++-common single-rule triage (continued)
+- String-literal comparison (`-Waddress`): null pointer constants cast to pointer types exempt (`null_valued`).
+- `-Wswitch-enum` out-of-enum `case` warns without `-Wswitch`; type name omitted when the switch expression is a cast.
+- `-Wfloat-equal` for `==`/`!=` and truth-value contexts (float, complex twice).
+- `-Wunsuffixed-float-constants` (registered in `diag.c`).
+- `-Wenum-compare` sees enumerators through `orig_type`.
+- PR c/67730: `exp_if_system()` maps a system-header macro location (NULL) to its expansion point for conversion diagnostics (`conv_diag`) and `'return' with a value` in void functions.
+- Golden: `tests/check/misc_66.c`. Gate: 1079 pass, san 364/0, gcc.dg differ 154 (was 164), c-c++-common 58 (was 59).
+- Not fixed: location-less `cc1:` narrowing-cast warning; `a == __builtin_inf()` float-equal.
+- Remaining gcc.dg candidates: discarded-qualifiers noreturn fn-pointer (assign-warn-1/2, pr56724-2), pr53037-* (if-not-aligned), sso-11/13, spec-barrier-3 (builtin return type), Warray-parameter-10, Wbuiltin-declaration-mismatch-*, warn-strlen-no-nul, pr82167, pr68412-2, pr81779, pr23165, pr62090, unused-3.

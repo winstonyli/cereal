@@ -498,6 +498,7 @@ void cpragma_optimize_repeat(Checker *c, SrcLoc loc);
 /* gcc's input_location while the parser looks at token tok: the first
  * token of that token's line. */
 SrcLoc cinput_loc(Checker *c, uint32_t tok);
+SrcLoc exp_if_system(Checker *c, SrcLoc l, uint32_t expr);
 /* gcc's expr_loc: the start of an expression (cexpr.c). */
 SrcLoc expr_loc(Checker *c, uint32_t i);
 uint32_t cbol_tok(Checker *c, uint32_t tok);   /* BOL token + 1 of tok's line (0: none); memoized */

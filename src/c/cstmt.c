@@ -987,7 +987,7 @@ static void finish_switch(Checker *c, CStmt *s)
                 cwarn(c, sw.loc, "switch-enum", "enumeration value '%s' not "
                       "handled in switch", cident(c, e->name[q]));
         }
-        if (sw_enum > 0)
+        if (sw_enum > 0 || sw_enum_all > 0)
             for (k = 0; k < n; k++) {
                 int pass;
                 for (pass = 0; pass < (cs[k].range ? 2 : 1); pass++) {
@@ -999,8 +999,15 @@ static void finish_switch(Checker *c, CStmt *s)
                     if (found)
                         continue;
                     fmt_val(buf, sizeof buf, v, sgn);
-                    cwarn(c, cs[k].loc, "switch", "case value '%s' not in "
-                          "enumerated type %s", buf, type_q(TT, sw.orig));
+                    if (tg(c, strip_paren(c, sw.cond)) == N_CAST)
+                        /* a cast has no original type to name */
+                        cwarn(c, cs[k].loc, sw_enum > 0 ? "switch"
+                              : "switch-enum", "case value '%s' not in "
+                              "enumerated type", buf);
+                    else
+                        cwarn(c, cs[k].loc, sw_enum > 0 ? "switch"
+                              : "switch-enum", "case value '%s' not in "
+                              "enumerated type %s", buf, type_q(TT, sw.orig));
                 }
             }
     }
@@ -1399,7 +1406,7 @@ static void stmt_return(Checker *c, uint32_t i)
         if (node_err(c, e))
             return;
         if (type_ckind(TT, c->ty[e]) != TY_VOID)
-            d = return_pedwarn(c, loc, "'return' with a value, in function "
+            d = return_pedwarn(c, exp_if_system(c, loc, e), "'return' with a value, in function "
                                "returning void");
         else
             d = cpedantic(c, loc, "ISO C forbids 'return' with expression, "

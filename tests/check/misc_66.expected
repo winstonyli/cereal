@@ -1,0 +1,30 @@
+misc_66.c:6:5: warning: unsuffixed floating constant [-Wunsuffixed-float-constants]
+    6 |     if (x == 1.0) return 1;
+      |     ^
+misc_66.c:6:11: warning: comparing floating-point with '==' or '!=' is unsafe [-Wfloat-equal]
+    6 |     if (x == 1.0) return 1;
+      |           ^
+misc_66.c:7:11: warning: comparing floating-point with '==' or '!=' is unsafe [-Wfloat-equal]
+    7 |     if (y != 2) return 2;
+      |           ^
+misc_66.c:8:11: warning: comparing floating-point with '==' or '!=' is unsafe [-Wfloat-equal]
+    8 |     if (z == z) return 3;
+      |           ^
+misc_66.c:9:12: warning: comparing floating-point with '==' or '!=' is unsafe [-Wfloat-equal]
+    9 |     return !x;
+      |            ^
+misc_66.c:11:1: warning: unsuffixed floating constant [-Wunsuffixed-float-constants]
+   11 | double f2(void) { return 1.5 + 2.5f + 3.5L; }
+      | ^
+misc_66.c:12:25: warning: comparison between 'enum E' and 'enum F' [-Wenum-compare]
+   12 | int f3(void) { return A > D; }
+      |                         ^
+misc_66.c:15:5: warning: enumeration value 'B' not handled in switch [-Wswitch-enum]
+   15 |     switch (e) {
+      |     ^
+misc_66.c:15:5: warning: enumeration value 'C' not handled in switch [-Wswitch-enum]
+   15 |     switch (e) {
+      |     ^
+misc_66.c:17:5: warning: case value '7' not in enumerated type 'enum E' [-Wswitch-enum]
+   17 |     case (enum E)7: return 1;
+      |     ^

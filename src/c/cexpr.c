@@ -1759,6 +1759,9 @@ static void e_number(Checker *c, uint32_t i)
                                     (s[1] == 'x' || s[1] == 'X');
         if (l.ty >= TY_DEC32 && l.ty <= TY_DEC128)
             return;
+        if (!hex && len && !isalpha((unsigned char)s[len - 1]))
+            cwarn(c, cinput_loc(c, c->nodes[i].tok),
+                  "unsuffixed-float-constants", "unsuffixed floating constant");
         for (k = hex ? 2 : 0; k < len; k++) {
             char ch = s[k];
             if ((!hex && (ch == 'e' || ch == 'E')) ||
@@ -2532,6 +2535,19 @@ static SrcLoc conv_note_loc(const Conv *x)
 
 enum { RK_PED, RK_WARN };
 
+/* expansion_point_location_if_in_system_header (PR c/67730): a system
+ * header macro such as NULL still warns at its use. */
+SrcLoc exp_if_system(Checker *c, SrcLoc l, uint32_t expr)
+{
+    SrcFile *sf = srcmgr_file_of(c->sm, l);
+    if (sf && sf->system_header) {
+        const PTok *t = &c->u->toks[first_tok(c, expr)];
+        if (t->exp)
+            return t->exp;
+    }
+    return l;
+}
+
 /* One diagnostic of a conversion, the text per context in m[] (indexed by
  * CONV_*); the notes gcc adds follow a reported one. */
 static void conv_diag(Conv *x, int rk, const char *opt, char (*m)[640],
@@ -2541,6 +2557,7 @@ static void conv_diag(Conv *x, int rk, const char *opt, char (*m)[640],
     int ctx = x->ci->context;
     SrcLoc l = ctx == CONV_ARG ? x->eloc : x->loc;
     Diagnostic *d;
+    l = exp_if_system(c, l, x->expr);
     if (rk == RK_PED)
         d = cpedwarn(c, l, opt, "%s", m[ctx]);
     else
@@ -3141,7 +3158,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
             conv_arith(&x);        /* a bit-field is narrower than its type */
         return true;
     }
-    if (kl == TY_BOOL && expr != NO_NODE && gcc_integer(c, cr))
+    if (kl == TY_BOOL && expr != NO_NODE && (gcc_integer(c, cr) || is_flt(c, cr) || is_complex(c, cr)))
         cexpr_truth_warn(c, expr, cinput_loc(c, c->nodes[expr].tok));
     if (kr == TY_VOID) {
         if (ci->warnopt)
@@ -4680,7 +4697,7 @@ static void e_cast(Checker *c, uint32_t i)
     packed_ptr_check(c, t, a);
     if (is_ptr(c, t))
         alias_cast(c, a, c->ty[i]);
-    if (tk == TY_BOOL && (is_ptr(c, ot) || is_int(c, ot)))
+    if (tk == TY_BOOL && (is_ptr(c, ot) || is_int(c, ot) || is_flt(c, ot) || is_complex(c, ot)))
         cexpr_truth_warn(c, a, cinput_loc(c, c->nodes[i].tok));
     /* -Wbad-function-cast: a call cast to a type of another tree code */
     if (ntag(c, strip_paren(c, a)) == N_CALL && diag_enabled(c->diag, "bad-function-cast") &&
@@ -7253,6 +7270,13 @@ void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc)
     uint32_t s = strip_paren(c, n), k[3];
     unsigned bw, bp;
     int_bool_warn(c, n);
+    if (!node_err(c, n) && !inhibited(c, n, false) &&
+        (is_flt(c, rvt(c, n)) || is_complex(c, rvt(c, n)))) {
+        int rep = is_complex(c, rvt(c, n)) ? 2 : 1;     /* both parts */
+        while (rep--)
+            cwarn(c, loc, "float-equal", "comparing floating-point with "
+                  "'==' or '!=' is unsafe");
+    }
     if (diag_enabled(c->diag, "sign-compare") && !node_err(c, n) &&
         !inhibited(c, n, false) && ntag(c, s) == N_UNARY &&
         bitnot_operand(c, s, &bw, &bp)) {
@@ -7351,6 +7375,18 @@ static bool array_known(Checker *c, TypeId t)
     if (tkind(c, t) == TY_VLA)
         return true;
     return tkind(c, t) == TY_ARRAY && (type_size(TT, t, &ok), ok);
+}
+
+/* integer_zerop of the converted operand: a null pointer constant, also
+ * cast to another pointer type. */
+static bool null_valued(Checker *c, uint32_t n)
+{
+    uint32_t k[3];
+    n = strip_paren(c, n);
+    while (is_npc(c, n) == false && ntag(c, n) == N_CAST &&
+           is_ptr(c, c->ty[n]) && nkids(c, n, k, 3) >= 1)
+        n = strip_paren(c, k[nkids(c, n, k, 3) - 1]);
+    return is_npc(c, n);
 }
 
 /* A literal zero: one number or character token. */
@@ -7809,14 +7845,21 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         } else {
             cpedwarn(c, loc, "", "comparison between pointer and integer");
         }
-    } else if (tkind(c, rvt(c, a)) == TY_ENUM && tkind(c, rvt(c, b)) == TY_ENUM &&
-               mainv(c, rvt(c, a)) != mainv(c, rvt(c, b))) {
+    } else if (tkind(c, orig_type(c, a)) == TY_ENUM &&
+               tkind(c, orig_type(c, b)) == TY_ENUM &&
+               mainv(c, orig_type(c, a)) != mainv(c, orig_type(c, b))) {
         cwarn(c, loc, "enum-compare", "comparison between %s and %s",
-              type_q(TT, unqual(c, rvt(c, a))), type_q(TT, unqual(c, rvt(c, b))));
+              type_q(TT, unqual(c, orig_type(c, a))),
+              type_q(TT, unqual(c, orig_type(c, b))));
     }
+    if (eq && !inhibited(c, i, false) &&
+        (is_flt(c, rvt(c, a)) || is_complex(c, rvt(c, a)) ||
+         is_flt(c, rvt(c, b)) || is_complex(c, rvt(c, b))))
+        cwarn(c, loc, "float-equal", "comparing floating-point with '==' or "
+              "'!=' is unsafe");
     if (!inhibited(c, i, false) &&
-        (eq ? (((c->ef[sa] & EF_STRING) && !is_npc(c, b)) ||
-               ((c->ef[sb] & EF_STRING) && !is_npc(c, a)))
+        (eq ? (((c->ef[sa] & EF_STRING) && !null_valued(c, b)) ||
+               ((c->ef[sb] & EF_STRING) && !null_valued(c, a)))
             : (((c->ef[sa] | c->ef[sb]) & EF_STRING) != 0)))
         cwarn(c, loc, "address", "comparison with string literal results in "
                                  "unspecified behavior");

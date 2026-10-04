@@ -121,6 +121,7 @@ static const DiagOption options[] = {
     {"multistatement-macros", "c", DL_WARNING, false, DO_ALL, "macro expands to multiple statements guarded by one clause"},
     {"memset-transposed-args", "c", DL_WARNING, false, DO_ALL, "memset with a constant zero length"},
     {"memset-elt-size", "c", DL_WARNING, false, DO_ALL, "memset length equal to the number of elements"},
+    {"unsuffixed-float-constants", "c", DL_WARNING, false, 0, "floating constant without a suffix"},
     {"date-time", "c", DL_WARNING, false, 0, "use of __DATE__, __TIME__ or __TIMESTAMP__"},
     {"int-in-bool-context", "c", DL_WARNING, false, DO_ALL, "suspicious integer expression in a boolean context"},
     {"array-compare", "c", DL_WARNING, false, DO_ALL, "comparison of two arrays"},
