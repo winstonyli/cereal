@@ -3515,6 +3515,9 @@ static void specs_visit(Checker *c, uint32_t i)
                 cxx_typedef_in_struct(c, cnode_ident(c, n), nd->tok);
             if (ref != SYM_NONE) {
                 csym(c, ref)->flags |= CSF_USED;
+                if (csym(c, ref)->kind == CS_TYPEDEF &&
+                    (csym(c, ref)->flags & CSF_ATTR_UNUSED))
+                    s.attrs.unused = true;     /* TREE_USED of the type */
                 if ((csym(c, ref)->flags & (CSF_DEPRECATED | CSF_UNAVAILABLE)) &&
                     !decl_has_dep_attr(c, c->par[c->par[n]]))
                 {

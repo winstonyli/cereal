@@ -1,0 +1,30 @@
+misc_71.c:15:17: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   15 |   n += strlen (s.b);
+      |                 ^
+misc_71.c:4:16: note: referenced argument declared here
+    4 | const struct A s = { "1234", "12345" };
+      |                ^
+misc_71.c:16:24: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   16 |   n += strlen (&s.b[1] + v0);
+      |                        ^
+misc_71.c:4:16: note: referenced argument declared here
+    4 | const struct A s = { "1234", "12345" };
+      |                ^
+misc_71.c:18:26: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   18 |   n += strlen (ba[0].a[0].b);
+      |                          ^
+misc_71.c:6:16: note: referenced argument declared here
+    6 | const struct B ba[] = {
+      |                ^
+misc_71.c:19:26: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   19 |   n += strlen (ba[0].a[1].a);
+      |                          ^
+misc_71.c:6:16: note: referenced argument declared here
+    6 | const struct B ba[] = {
+      |                ^
+misc_71.c:21:16: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   21 |   n += strlen (&ba[0].a[1].a[1]);
+      |                ^
+misc_71.c:6:16: note: referenced argument declared here
+    6 | const struct B ba[] = {
+      |                ^

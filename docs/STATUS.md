@@ -1295,3 +1295,12 @@ diagnostics and builds on the strinit table.
 - Golden `misc_70`. Cells-mode gotcha: lexer diagnostics are emitted before the unit's checker ones, so a golden with a lexer error after checker diagnostics differs between plain and `--cells`; keep lexer errors first in the file.
 - Gate speed: `tests/run.sh` shards the parse and check golden loops (`par_goldens`, `GOLDEN_JOBS`, default 4); `bench/tools/gate.sh` overlaps run/verify/san/callgrind within 12 threads (`SAN_JOBS`, `SAN_PY_JOBS`, `CEREAL_JOBS`): 3m01 wall (was >10 min serial). Callgrind uvloop 3.631G. Inner loop: `sh tests/run.sh` alone.
 - Gate: 1087 pass, san 368/0, gcc.dg differ 139, c-c++-common 54.
+
+## Round 71 — struct byte image for strlen, `unused` typedefs, labelled empty bodies
+
+- `warn-strlen-no-nul` SAME (was 47 diagnostics short): a const struct / array-of-structs object with a positional brace initializer gets a byte image (`si_fill`, `StrInit.agg`; char-array members copied from string literals, the rest zero; designators and unions bail). `sl_obj` resolves `obj.m`, `obj[K].m`, `&obj.m[K]` (constant K only: gcc cannot place `&obj.m[var]`) to image offsets; `SlRes.mem` marks the `&obj.m[K]` path, which skips the array-bounds check. Struct images are ignored by the format-string and whole-array paths.
+- Known gap: `&ba[0].a[1].a[v0]` (variable index through an array of structs) warns in gcc, not here.
+- `unused-3`: a variable of a typedef declared `unused` is not warned about (TREE_USED of the type) via `Spec.attrs.unused`.
+- `pr23165`: `if (c) label: ;` / `else label: ;` / `do` — labels are looked through before the -Wempty-body test (c_parser_if_body).
+- Goldens `misc_71`, `misc_72`. Gate: 1091 pass, san 370/0, gcc.dg differ 136, c-c++-common 54, callgrind 3.632G.
+- Remaining gcc.dg tail, triaged: `Warray-parameter-10` (a block-scope extern's prototype must not carry into a later file-scope `void gia ();`), `pr68412-2` (self-comparison of statement expressions), `pr62090` (gnu_inline sprintf nonnull), `pr81779` (needs -std=c90), `Warray-parameter-11`, `Wbuiltin-declaration-mismatch-3`.

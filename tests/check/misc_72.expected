@@ -1,0 +1,12 @@
+misc_72.c:12:8: warning: suggest braces around empty body in an 'else' statement [-Wempty-body]
+   12 |     b: ;
+      |        ^
+misc_72.c:12:5: warning: label 'b' defined but not used [-Wunused-label]
+   12 |     b: ;
+      |     ^
+misc_72.c:10:5: warning: label 'a' defined but not used [-Wunused-label]
+   10 |     a: ;
+      |     ^
+misc_72.c:8:9: warning: unused variable 'x' [-Wunused-variable]
+    8 |   short x;
+      |         ^

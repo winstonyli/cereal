@@ -80,6 +80,7 @@ typedef struct StrInit {
     char *b;                 /* the decoded bytes */
     size_t n;
     bool uns;                /* element type is not plain char */
+    bool agg;                /* the image of a const struct / array of structs */
 } StrInit;
 
 #define CSF_IN_STRUCT 0x80000000u   /* enumerator of an enum defined in a struct */

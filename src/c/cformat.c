@@ -788,6 +788,100 @@ static void note_strinit_rows(Checker *c, CSym *s, uint32_t list)
     }
     si.n = total;
     si.uns = false;
+    si.agg = false;
+    vec_push(&c->strinits, si);
+    s->strinit = (uint32_t)c->strinits.len;
+}
+
+/* The bytes of a const struct (or array of structs) initializer: char array
+ * members initialized by string literals are copied in, everything else
+ * stays zero.  Positional braces only; false when the shape is not simple. */
+static bool si_fill(Checker *c, TypeId ty, uint32_t init, char *img,
+                    uint64_t base, uint64_t total, int depth)
+{
+    uint32_t kk[256], nk, j;
+    bool ok = false;
+    uint64_t es;
+    ty = type_canon(TT, ty);
+    if (depth > 6)
+        return false;
+    if (type_ckind(TT, ty) == TY_ARRAY) {
+        TypeId et = type_canon(TT, type_base(TT, ty));
+        if (ntag(c, init) == N_STRING) {
+            char *s;
+            uint32_t *off;
+            size_t n;
+            bool exact;
+            uint64_t sz = type_size(TT, ty, &ok);
+            if (!ok || base + sz > total || mainv(c, et) != TYPE_B(CHAR) ||
+                !fmt_decode(c, init, &s, &off, &n, &exact))
+                return false;
+            free(off);
+            memcpy(img + base, s, n < sz ? n : sz);
+            free(s);
+            return true;
+        }
+        if (ntag(c, init) != N_INIT_LIST)
+            return false;
+        es = type_size(TT, et, &ok);
+        nk = nkids(c, init, kk, 256);
+        if (!ok || !es || nk >= 256)
+            return false;
+        for (j = 0; j < nk; j++)
+            if (ntag(c, kk[j]) == N_DESIGNATED || base + (j + 1) * es > total ||
+                !si_fill(c, et, kk[j], img, base + j * es, total, depth + 1))
+                return false;
+        return true;
+    }
+    if (type_ckind(TT, ty) == TY_STRUCT) {
+        uint32_t nf = type_record(TT, ty)->nfields;
+        if (ntag(c, init) != N_INIT_LIST)
+            return false;
+        nk = nkids(c, init, kk, 256);
+        if (nk >= 256)
+            return false;
+        for (j = 0; j < nk && j < nf; j++) {
+            const Record *r = type_record(TT, ty);
+            const Field *fd = &c->tt.fields.data[r->fields + j];
+            if (ntag(c, kk[j]) == N_DESIGNATED || fd->width || !fd->name ||
+                !si_fill(c, fd->ty, kk[j], img, base + fd->off_bits / 8, total,
+                         depth + 1))
+                return false;
+        }
+        return true;
+    }
+    return ntag(c, init) != N_DESIGNATED;      /* a scalar: no bytes of interest */
+}
+
+static void note_strinit_agg(Checker *c, CSym *s, uint32_t list)
+{
+    TypeId ty = type_canon(TT, s->ty), et = ty;
+    uint32_t kk[256], nk;
+    bool ok = false;
+    uint64_t total;
+    StrInit si;
+    if (!(s->flags & CSF_CONST_INIT))
+        return;
+    while (type_ckind(TT, et) == TY_ARRAY)
+        et = type_canon(TT, type_base(TT, et));
+    if (type_ckind(TT, et) != TY_STRUCT)
+        return;
+    total = type_size(TT, ty, &ok);
+    if (!ok || !total) {         /* a [] bound counts the initializers */
+        uint64_t es = type_size(TT, type_canon(TT, type_base(TT, ty)), &ok);
+        nk = nkids(c, list, kk, 256);
+        if (type_ckind(TT, ty) != TY_ARRAY || !ok || !es || !nk || nk >= 256)
+            return;
+        total = nk * es;
+    }
+    si.b = xcalloc(1, total);
+    if (!si_fill(c, ty, list, si.b, 0, total, 0)) {
+        free(si.b);
+        return;
+    }
+    si.n = total;
+    si.uns = false;
+    si.agg = true;
     vec_push(&c->strinits, si);
     s->strinit = (uint32_t)c->strinits.len;
 }
@@ -803,6 +897,8 @@ void cexpr_note_strinit(Checker *c, CSym *s, uint32_t init)
     bool exact;
     if (lit != NO_NODE && ntag(c, lit) == N_INIT_LIST) {
         note_strinit_rows(c, s, lit);
+        if (!s->strinit)
+            note_strinit_agg(c, s, lit);
         return;
     }
     if (lit == NO_NODE || ntag(c, lit) != N_STRING || type_ckind(TT, s->ty) != TY_ARRAY)
@@ -818,6 +914,7 @@ void cexpr_note_strinit(Checker *c, CSym *s, uint32_t init)
     si.b = f;
     si.n = n;
     si.uns = mainv(c, et) != TYPE_B(CHAR);
+    si.agg = false;
     vec_push(&c->strinits, si);
     s->strinit = (uint32_t)c->strinits.len;
 }
@@ -832,7 +929,65 @@ typedef struct SlRes {
     int64_t size, off;
     bool known;
     int64_t base;               /* the row's offset in a multidimensional array */
+    bool mem;                   /* a member of a const struct's image */
 } SlRes;
+
+/* A member / constant-index chain rooted at a const object with a struct
+ * image: its symbol and the byte offset of the chain's end. */
+static bool sl_obj(Checker *c, uint32_t e, uint32_t *ref, int64_t *boff,
+                   int depth)
+{
+    uint32_t k[2], b;
+    if (depth > 8)
+        return false;
+    e = strip_paren(c, e);
+    if (e == NO_NODE || node_err(c, e))
+        return false;
+    switch (ntag(c, e)) {
+    case N_IDENT: {
+        uint32_t r = lookup_ord(c, cnode_ident(c, e));
+        if (r == SYM_NONE || csym(c, r)->kind != CS_OBJ ||
+            !csym(c, r)->strinit ||
+            !c->strinits.data[csym(c, r)->strinit - 1].agg)
+            return false;
+        *ref = r;
+        *boff = 0;
+        return true;
+    }
+    case N_MEMBER_EXPR: {
+        uint64_t off = 0;
+        unsigned q = 0;
+        const Field *fd;
+        b = first_child(c, e);
+        if (b == NO_NODE || (c->nodes[e].flags & NF_ARROW))
+            return false;
+        b = strip_paren(c, b);
+        if (b == NO_NODE || node_err(c, b) ||
+            !sl_obj(c, b, ref, boff, depth + 1))
+            return false;
+        fd = find_field(c, type_canon(TT, c->ty[b]), cnode_ident(c, e), &off, &q);
+        if (!fd || fd->width)
+            return false;
+        *boff += (int64_t)(off / 8);
+        return true;
+    }
+    case N_INDEX: {
+        bool ok = false;
+        uint64_t es;
+        if (nkids(c, e, k, 2) != 2 || type_ckind(TT, c->ty[k[0]]) != TY_ARRAY ||
+            !(c->ck[k[1]] == K_ICE || c->ck[k[1]] == K_FOLD) ||
+            cexpr_sval(c, k[1]) < 0)
+            return false;
+        es = type_size(TT, c->ty[e], &ok);
+        if (!ok || !es || !sl_obj(c, k[0], ref, boff, depth + 1))
+            return false;
+        *boff += cexpr_sval(c, k[1]) * (int64_t)es;
+        return true;
+    }
+    default:
+        return false;
+    }
+}
 
 static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
                       SlRes *out, int max, int depth)
@@ -886,8 +1041,21 @@ static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
             npunct(c, ix) == P_STAR && nkids(c, ix, k, 1) == 1)
             return sl_resolve(c, k[0], off, known, out, max, depth + 1);
         if (ix == NO_NODE || node_err(c, ix) || ntag(c, ix) != N_INDEX ||
-            nkids(c, ix, k, 2) != 2 || ntag(c, strip_paren(c, k[0])) == N_MEMBER_EXPR)
-            return 0;      /* (gcc offsets &obj.m[K] from the whole object) */
+            nkids(c, ix, k, 2) != 2)
+            return 0;
+        if (ntag(c, strip_paren(c, k[0])) == N_MEMBER_EXPR) {
+            uint32_t ref;
+            int64_t bo;
+            if (!(c->ck[k[1]] == K_ICE || c->ck[k[1]] == K_FOLD))
+                return 0;       /* gcc cannot place &obj.m[var] */
+            if (known)
+                off += cexpr_sval(c, k[1]);
+            m = sl_resolve(c, k[0], off, known, out, max, depth + 1);
+            if (m != 1 || !sl_obj(c, k[0], &ref, &bo, 0))
+                return 0;      /* (gcc offsets &obj.m[K] from the whole object) */
+            out[0].mem = true;
+            return 1;
+        }      /* (gcc offsets &obj.m[K] from the whole object) */
         if ((c->ck[k[1]] == K_ICE || c->ck[k[1]] == K_FOLD) && known)
             off += cexpr_sval(c, k[1]);
         else
@@ -927,10 +1095,16 @@ static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
         return 1;
     }
     case N_MEMBER_EXPR: {
-        /* a member array of a const object with an initializer (no bytes) */
+        /* a member array of a const object with an initializer */
         uint32_t b = first_child(c, e), ref;
+        int64_t bo;
         bool ok = false;
         uint64_t sz;
+        if (type_ckind(TT, c->ty[e]) == TY_ARRAY && sl_obj(c, e, &ref, &bo, 0)) {
+            sz = type_size(TT, c->ty[e], &ok);
+            out[0] = (SlRes){ref, 0, ok ? (int64_t)sz : 0, off, known, bo, false};
+            return 1;
+        }
         if (b == NO_NODE || (c->nodes[e].flags & NF_ARROW))
             return 0;
         b = strip_paren(c, b);
@@ -954,7 +1128,8 @@ static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
             return 0;
         ref = lookup_ord(c, cnode_ident(c, e));
         if (ref == SYM_NONE || csym(c, ref)->kind != CS_OBJ ||
-            !csym(c, ref)->strinit)
+            !csym(c, ref)->strinit ||
+            c->strinits.data[csym(c, ref)->strinit - 1].agg)
             return 0;
         sz = type_size(TT, c->ty[e], &ok);
         if (!ok)
@@ -983,7 +1158,10 @@ void check_strlen(Checker *c, const uint32_t *kv, uint32_t nk)
         loc = cexpr_colon_loc(c, a, k3[1], k3[2]);
     for (j = 0; j < n; j++) {
         const CSym *sy = r[j].ref != SYM_NONE ? csym(c, r[j].ref) : NULL;
-        if (r[j].known && (r[j].off < 0 || r[j].off >= r[j].size)) {
+        if (r[j].mem && r[j].known && (r[j].off < 0 || r[j].off >= r[j].size))
+            continue;
+        if (r[j].known && !r[j].mem &&
+            (r[j].off < 0 || r[j].off >= r[j].size)) {
             Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "array-bounds=",
                                     "offset '%d' outside bounds of constant "
                                     "string", (int)r[j].off);
@@ -1089,7 +1267,8 @@ void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
             uint32_t ref = lookup_ord(c, cnode_ident(c, u));
             const StrInit *si = NULL;
             if (ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ &&
-                csym(c, ref)->strinit)
+                csym(c, ref)->strinit &&
+                !c->strinits.data[csym(c, ref)->strinit - 1].agg)
                 si = &c->strinits.data[csym(c, ref)->strinit - 1];
             if (si) {
                 SrcLoc w = pn != NO_NODE ? ctok_loc(c, c->nodes[pn].tok)

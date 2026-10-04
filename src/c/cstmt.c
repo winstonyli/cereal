@@ -1826,11 +1826,18 @@ void unused_value(Checker *c, uint32_t e, SrcLoc dloc)
 
 static void stmt_empty(Checker *c, uint32_t i)
 {
-    uint32_t p = c->par[i], kids[32], n;
+    uint32_t p = c->par[i], kids[32], n, e = i;
     if (c->nodes[i].size != 1 || p == NOB)
         return;
+    while (p != NOB && (tg(c, p) == N_LABEL || tg(c, p) == N_CASE ||
+                        tg(c, p) == N_DEFAULT)) {  /* c_parser_if_body: labels first */
+        i = p;
+        p = c->par[p];
+    }
+    if (p == NOB)
+        return;
     if (tg(c, p) == N_DO) {
-        cwarn(c, cnode_loc(c, i), "empty-body", "suggest braces around empty "
+        cwarn(c, cnode_loc(c, e), "empty-body", "suggest braces around empty "
               "body in 'do' statement");
         return;
     }
@@ -1838,10 +1845,10 @@ static void stmt_empty(Checker *c, uint32_t i)
         return;
     n = node_children(c->nodes, p, kids, 32);
     if (n == 6 && kids[3] == i)
-        cwarn(c, cnode_loc(c, i), "empty-body", "suggest braces around empty "
+        cwarn(c, cnode_loc(c, e), "empty-body", "suggest braces around empty "
               "body in an 'if' statement");
     else if (n == 9 && kids[6] == i)
-        cwarn(c, cnode_loc(c, i), "empty-body", "suggest braces around empty "
+        cwarn(c, cnode_loc(c, e), "empty-body", "suggest braces around empty "
               "body in an 'else' statement");
 }
 
