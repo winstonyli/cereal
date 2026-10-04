@@ -1,0 +1,42 @@
+double_promo.c:7:5: warning: implicit conversion from 'float' to 'double' to match other operand of binary expression [-Wdouble-promotion]
+    7 |   f += d;
+      |     ^
+double_promo.c:8:9: warning: implicit conversion from 'float' to 'double' to match other operand of binary expression [-Wdouble-promotion]
+    8 |   f = f + 1.0;
+      |         ^
+double_promo.c:11:9: warning: implicit conversion from 'float' to 'double' to match other operand of binary expression [-Wdouble-promotion]
+   11 |   d = d * f;
+      |         ^
+double_promo.c:12:11: warning: implicit conversion from 'complex float' to 'complex double' to match other operand of binary expression [-Wdouble-promotion]
+   12 |   cf = cf * cd;
+      |           ^
+double_promo.c:13:11: warning: implicit conversion from 'complex float' to 'complex double' to match other operand of binary expression [-Wdouble-promotion]
+   13 |   cf = cf * 2.0;
+      |           ^
+double_promo.c:14:9: warning: implicit conversion from 'float' to 'double' to match other operand of binary expression [-Wdouble-promotion]
+   14 |   i = f < 1.0;
+      |         ^
+double_promo.c:18:10: warning: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+   18 |   i = i ?: f;
+      |          ^
+double_promo.c:19:16: warning: implicit conversion from 'float' to 'double' when passing argument to function [-Wdouble-promotion]
+   19 |   printf("%f", f);
+      |                ^
+double_promo.c:22:11: warning: implicit conversion from 'float' to 'double' when passing argument to function [-Wdouble-promotion]
+   22 |   unproto(f, cf, d);
+      |           ^
+double_promo.c:24:7: warning: implicit conversion from 'float' to 'double' when passing argument to function [-Wdouble-promotion]
+   24 |       f);
+      |       ^
+double_promo.c:25:29: warning: invalid application of 'sizeof' to a void type [-Wpointer-arith]
+   25 |   i = sizeof(f + d) + sizeof(unproto(f));
+      |                             ^
+double_promo.c:26:7: warning: ISO C99 does not support '_Generic' [-Wpedantic]
+   26 |   i = _Generic(f + d, double: 1, default: 2);
+      |       ^
+double_promo.c:27:19: warning: implicit conversion from 'float' to 'double' to match other result of conditional [-Wdouble-promotion]
+   27 |   f = -f + (f ? d : g);
+      |                   ^
+double_promo.c:27:10: warning: implicit conversion from 'float' to 'double' to match other operand of binary expression [-Wdouble-promotion]
+   27 |   f = -f + (f ? d : g);
+      |          ^

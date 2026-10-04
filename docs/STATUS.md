@@ -1142,3 +1142,11 @@ diagnostics and builds on the strinit table.
 - Golden: tests/check/strlen_const.c. `Warray-bounds-7.c` now identical. Parity: gcc.dg 3666 identical (209 differ), c-c++-common 573 (84), san clean (339 files).
 - Not done: `warn-strlen-no-nul.c` (needs initializer bytes for 2D arrays and nested struct members via cinit's pending sets; some cases are -O2 middle-end); `&obj.m[K]` (gcc offsets from the whole object, skipped); bare `strlen(d);` lacks "statement with no effect".
 - Build noise: san.sh's -O2 build shows two -Wformat-truncation warnings in `real_cst_str` (cexpr.c ~3053, 3063); harmless, could size the buffer.
+
+## Round 54: -Wdouble-promotion, decimal/binary float mixing error
+
+- `double_promo` (cexpr.c, before `conv_operand`): float / complex float -> double only (gcc does not warn for long double). Hooks: `e_arith` and `e_compare` (location = operator, "to match other operand of binary expression"), `e_cond` (location = ':', "to match other result of conditional"), `call_args` (unprototyped/implicit/variadic args, location = argument, "when passing argument to function"). Suppressed in unevaluated operands via `inhibited`. New option `double-promotion` in diag.c.
+- `dec_mix`: "cannot mix operands of decimal floating and other floating|complex types" for arithmetic, comparison, `?:`, compound assignment. Located at gcc's input_location (`cinput_loc` of the token after the expression), not the operator.
+- Goldens: tests/check/double_promo.c, dec_mix.c. `Wdouble-promotion.c`, `dfp/pr79515.c` identical.
+- Parity: gcc.dg 3667 identical (208 differ), c-c++-common 573 (84), san clean (341 files).
+- Survey: `-Wc90-c99-compat` is not implemented at all (the earlier "1 diagnostic" was something else). 9 corpus files, ~110 diagnostics, but only -2 and -9 are gnu99; about 15 distinct checks across parser, decl and preprocessor.

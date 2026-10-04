@@ -123,6 +123,7 @@ static const DiagOption options[] = {
     {"array-compare", "c", DL_WARNING, false, DO_ALL, "comparison of two arrays"},
     {"array-parameter=", "c", DL_WARNING, false, DO_ALL, "array parameter redeclared with a different bound"},
     {"array-bounds=", "c", DL_WARNING, false, DO_ALL, "constant array index out of bounds"},
+    {"double-promotion", "c", DL_WARNING, false, 0, "implicit conversion of float to double or long double"},
     {"stringop-overread", "c", DL_WARNING, true, 0, "string function reading past the end of its argument"},
     {"vla-parameter", "c", DL_WARNING, false, DO_ALL, "VLA parameter redeclared with a different bound"},
     {"sizeof-pointer-div", "c", DL_WARNING, false, DO_ALL, "sizeof (pointer) / sizeof (element)"},

@@ -1,0 +1,60 @@
+dec_mix.c:2:1: warning: ISO C does not support decimal floating-point before C2X [-Wpedantic]
+    2 | _Decimal32 a; _Decimal64 x; _Decimal128 y; double d; float f; int i; long double ld; _Complex double cd;
+      | ^
+dec_mix.c:2:15: warning: ISO C does not support decimal floating-point before C2X [-Wpedantic]
+    2 | _Decimal32 a; _Decimal64 x; _Decimal128 y; double d; float f; int i; long double ld; _Complex double cd;
+      |               ^
+dec_mix.c:2:29: warning: ISO C does not support decimal floating-point before C2X [-Wpedantic]
+    2 | _Decimal32 a; _Decimal64 x; _Decimal128 y; double d; float f; int i; long double ld; _Complex double cd;
+      |                             ^
+dec_mix.c:5:3: error: cannot mix operands of decimal floating and other floating types
+    5 |   x + 2.0;
+      |   ^
+dec_mix.c:6:3: error: cannot mix operands of decimal floating and other floating types
+    6 |   x <= 2.0;
+      |   ^
+dec_mix.c:7:3: error: cannot mix operands of decimal floating and other floating types
+    7 |   x == d;
+      |   ^
+dec_mix.c:8:3: error: cannot mix operands of decimal floating and other floating types
+    8 |   x * f;
+      |   ^
+dec_mix.c:9:5: warning: statement with no effect [-Wunused-value]
+    9 |   x + i;
+      |     ^
+dec_mix.c:10:5: warning: statement with no effect [-Wunused-value]
+   10 |   x + a;
+      |     ^
+dec_mix.c:11:5: warning: statement with no effect [-Wunused-value]
+   11 |   y - x;
+      |     ^
+dec_mix.c:12:3: error: cannot mix operands of decimal floating and other floating types
+   12 |   i ? x : d;
+      |   ^
+dec_mix.c:13:9: warning: statement with no effect [-Wunused-value]
+   13 |   i ? x : i;
+      |         ^
+dec_mix.c:14:9: warning: statement with no effect [-Wunused-value]
+   14 |   i ? x : a;
+      |         ^
+dec_mix.c:15:3: error: cannot mix operands of decimal floating and other floating types
+   15 |   x += d;
+      |   ^
+dec_mix.c:16:3: error: cannot mix operands of decimal floating and other floating types
+   16 |   d += x;
+      |   ^
+dec_mix.c:18:3: error: cannot mix operands of decimal floating and other floating types
+   18 |   x + ld;
+      |   ^
+dec_mix.c:19:3: error: cannot mix operands of decimal floating and complex types
+   19 |   x + cd;
+      |   ^
+dec_mix.c:20:3: warning: statement with no effect [-Wunused-value]
+   20 |   -x;
+      |   ^
+dec_mix.c:21:5: warning: statement with no effect [-Wunused-value]
+   21 |   x && d;
+      |     ^
+dec_mix.c:22:3: error: cannot mix operands of decimal floating and other floating types
+   22 |   x / 1.0f;
+      |   ^

@@ -3883,6 +3883,45 @@ static void conv_arith(Conv *x)
 
 /* convert_and_check of an operand to the type of its operation (build_binary_op,
  * build_conditional_expr); prom: the operand was promoted first. */
+/* build_binary_op: decimal floating operands do not mix with the other
+ * floating or complex types. */
+static bool dec_mix(Checker *c, uint32_t i, TypeId ta, TypeId tb)
+{
+    TypeKind ka = tkind(c, ta), kb = tkind(c, tb);
+    bool da = ka == TY_DEC32 || ka == TY_DEC64 || ka == TY_DEC128;
+    bool db = kb == TY_DEC32 || kb == TY_DEC64 || kb == TY_DEC128;
+    if (da == db || !is_arith(c, ta) || !is_arith(c, tb) || is_int(c, ta) ||
+        is_int(c, tb))
+        return false;
+    cerror(c, cinput_loc(c, last_tok(c, i) + 1), "cannot mix operands of decimal "
+           "floating and %s types", is_complex(c, ta) || is_complex(c, tb)
+           ? "complex" : "other floating");
+    set_err(c, i);
+    return true;
+}
+
+/* -Wdouble-promotion (do_warn_double_promotion): a float (or complex float)
+ * operand implicitly converted to double (long double does not warn). */
+static void double_promo(Checker *c, uint32_t at, SrcLoc loc, TypeId from,
+                         TypeId to, const char *what)
+{
+    TypeId f = mainv(c, from), t = mainv(c, to);
+    if (!diag_enabled(c->diag, "double-promotion"))
+        return;
+    if (is_complex(c, f) != is_complex(c, t))
+        return;
+    if (is_complex(c, f)) {
+        f = cplx_comp(c, f);
+        t = cplx_comp(c, t);
+    }
+    if (tkind(c, f) != TY_FLOAT ||
+        tkind(c, t) != TY_DOUBLE ||
+        inhibited(c, at, false))
+        return;
+    cwarn(c, loc, "double-promotion", "implicit conversion from %s to %s %s",
+          type_q(TT, mainv(c, from)), type_q(TT, mainv(c, to)), what);
+}
+
 static void conv_operand(Checker *c, SrcLoc l, TypeId lt, uint32_t a, bool prom)
 {
     ConvInfo ci;
@@ -6128,6 +6167,10 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
             bad = true;
             continue;
         }
+        if (!have && !is_void(c, rvt(c, a)) &&
+            !(bn != NO_NODE && bn != 0xFFFFFFFEu && j < bn))
+            double_promo(c, a, expr_loc(c, a), rvt(c, a), TYPE_B(DOUBLE),
+                         "when passing argument to function");
         if (have) {
             ConvInfo ci;
             if (!complete(c, pt[j])) {
@@ -11666,6 +11709,17 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     bool eq = op == P_EQEQ || op == P_NE;
     bool pa = is_ptr(c, ta), pb = is_ptr(c, tb);
     uint32_t sa = strip_paren(c, a), sb = strip_paren(c, b);
+    if (is_arith(c, ta) && is_arith(c, tb) && tkind(c, ta) != TY_VECTOR &&
+        tkind(c, tb) != TY_VECTOR && dec_mix(c, i, ta, tb))
+        return;
+    if (is_arith(c, ta) && is_arith(c, tb) && tkind(c, ta) != TY_VECTOR &&
+        tkind(c, tb) != TY_VECTOR && diag_enabled(c->diag, "double-promotion")) {
+        TypeId rt = common_type(c, ta, tb);
+        double_promo(c, i, loc, ta, rt, "to match other operand of binary "
+                     "expression");
+        double_promo(c, i, loc, tb, rt, "to match other operand of binary "
+                     "expression");
+    }
     if (tkind(c, ta) == TY_VECTOR || tkind(c, tb) == TY_VECTOR) {
         /* a vector comparison yields a signed integer vector of the same
          * lane size and count */
@@ -12283,9 +12337,15 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         invalid_operands(c, i, a, b, op);
         return;
     }
+    if (dec_mix(c, i, ta, tb))
+        return;
     rt = common_type(c, ta, tb);
     c->ty[i] = rt;
     c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
+    double_promo(c, i, loc, ta, rt, "to match other operand of binary "
+                 "expression");
+    double_promo(c, i, loc, tb, rt, "to match other operand of binary "
+                 "expression");
     if (!is_complex(c, rt) && is_arith(c, rt)) {
         conv_operand(c, loc, rt, a, false);
         conv_operand(c, loc, rt, b, false);
@@ -12465,7 +12525,13 @@ static void e_cond(Checker *c, uint32_t i)
     if (mainv(c, t1) == mainv(c, t2) && !is_arith(c, t1)) {
         rt = unqual(c, t1);
     } else if (is_arith(c, t1) && is_arith(c, t2)) {
+        if (dec_mix(c, i, promoted(c, ch), promoted(c, els)))
+            return;
         rt = common_type(c, promoted(c, ch), promoted(c, els));
+        double_promo(c, i, cl, promoted(c, ch), rt, "to match other result of "
+                     "conditional");
+        double_promo(c, i, cl, promoted(c, els), rt, "to match other result of "
+                     "conditional");
         if (is_int(c, rt) && !is_signed(c, rt) &&
             is_int(c, promoted(c, ch)) && is_int(c, promoted(c, els)) &&
             is_signed(c, promoted(c, ch)) != is_signed(c, promoted(c, els)) &&
