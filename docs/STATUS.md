@@ -1232,3 +1232,13 @@ diagnostics and builds on the strinit table.
 - Goldens `tests/check/cxx_compat_1..7.c`.
 - Gate: suite 1071/0; gcc.dg 3710 identical (165 differ); c-c++-common 575 (82); -O 3710 (165); san 360 / 0; icount 3.593G.
 - Not done: `builtin-has-attribute.c` (other diffs in that file), the `-Wc++-compat` rows that remain are in files whose other diagnostics differ.
+
+## Round 64 — `-Wlogical-not-parentheses` parity, `-Wint-in-bool-context`
+
+- `-Wlogical-not-parentheses`: `!(constant)` is no longer a double negation, and a tree of `| ^ & ~`/int casts over boolean leaves (`boolish_bits`) suppresses the warning (pr49706.c, Wlogical-not-parentheses-3.c).
+- `-Wint-in-bool-context` (new, `int_bool_warn` in `src/c/cexpr.c`, called from `cexpr_truth_warn`, so every truth-value context is covered: if/while/for/do, `!`, `&&`, `||`, `?:` condition, `_Bool` casts/assignments):
+  - `*` (any arithmetic type, constant-folded results skipped), signed-promoted-lhs `<<`, and `?:` with integer-constant arms (not both 0/1; "always true" when both nonzero), located at the colon.
+  - Passes through parens, unary `+`/`-`, comma right operand and non-narrowing arithmetic casts. Not implemented: gcc's location-less `cc1:` warning for narrowing casts.
+- Goldens `tests/check/int_bool_1.c`, `int_bool_2.c` (both SAME against gcc-13 via `cmp.sh`).
+- Baselines: suite 1075/0; gcc.dg 3711 identical (164 differ); c-c++-common 580 (77); -O 3711 (164); san 362 files / 0 findings; icount 3.598G (+0.14%).
+- Gate note: a single `to` (timeout) entry for gcc.dg/binary-constants-1.c broke `diagstat.py` in one run (load); rerunning par.py fixed it.

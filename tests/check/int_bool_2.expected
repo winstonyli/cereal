@@ -1,0 +1,120 @@
+int_bool_2.c:9:9: warning: '<<' in boolean context, did you mean '<'? [-Wint-in-bool-context]
+    9 |   if (l << b) r++;
+      |         ^
+int_bool_2.c:11:9: warning: '<<' in boolean context, did you mean '<'? [-Wint-in-bool-context]
+   11 |   if (c << b) r++;
+      |         ^
+int_bool_2.c:12:10: warning: '<<' in boolean context, did you mean '<'? [-Wint-in-bool-context]
+   12 |   if (uc << b) r++;
+      |          ^
+int_bool_2.c:13:9: warning: '<<' in boolean context, did you mean '<'? [-Wint-in-bool-context]
+   13 |   if (s << b) r++;
+      |         ^
+int_bool_2.c:14:9: warning: '<<' in boolean context, did you mean '<'? [-Wint-in-bool-context]
+   14 |   if (a << u) r++;
+      |         ^
+int_bool_2.c:15:9: warning: '<<' in boolean context, did you mean '<'? [-Wint-in-bool-context]
+   15 |   if (x << b) r++;
+      |         ^
+int_bool_2.c:16:10: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   16 |   if (uc * uc) r++;              /* 15 */
+      |          ^
+int_bool_2.c:17:9: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   17 |   if (s * s) r++;
+      |         ^
+int_bool_2.c:18:9: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   18 |   if (d * d) r++;
+      |         ^
+int_bool_2.c:19:9: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   19 |   if (a * 0) r++;
+      |         ^
+int_bool_2.c:20:9: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   20 |   if (a * 1) r++;
+      |         ^
+int_bool_2.c:21:9: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   21 |   if (0 * a) r++;
+      |         ^
+int_bool_2.c:22:9: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   22 |   if (a * x) r++;
+      |         ^
+int_bool_2.c:23:9: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   23 |   if (x * x) r++;
+      |         ^
+int_bool_2.c:24:11: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   24 |   BOOLM(a * b);                  /* 23 */
+      |           ^
+int_bool_2.c:4:19: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+    4 | #define ISM if (a * b) r++
+      |                   ^
+int_bool_2.c:26:3: note: in expansion of macro 'ISM'
+   26 |   ISM;
+      |   ^
+int_bool_2.c:3:20: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+    3 | #define W(a,b) (a) * (b)
+      |                    ^
+int_bool_2.c:27:7: note: in expansion of macro 'W'
+   27 |   if (W(a,b)) r++;
+      |       ^
+int_bool_2.c:28:15: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   28 |   _Bool y = a * b;               /* 27 */
+      |               ^
+int_bool_2.c:29:9: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   29 |   y = a * b;
+      |         ^
+int_bool_2.c:30:17: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   30 |   y = (_Bool)(a * b);
+      |                 ^
+int_bool_2.c:31:17: warning: '<<' in boolean context, did you mean '<'? [-Wint-in-bool-context]
+   31 |   y = (_Bool)(a << b);
+      |                 ^
+int_bool_2.c:32:13: warning: '?:' using integer constants in boolean context, the expression will always evaluate to 'true' [-Wint-in-bool-context]
+   32 |   y = a ? 1 : 2;
+      |             ^
+int_bool_2.c:33:16: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   33 |   r = (long)(a * b) ? 1 : 0;     /* 32 */
+      |                ^
+int_bool_2.c:38:11: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   38 |   if (+(a * b)) r++;
+      |           ^
+int_bool_2.c:39:11: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   39 |   if (((a * b))) r++;
+      |           ^
+int_bool_2.c:41:9: warning: '*' in boolean context, suggest '&&' instead [-Wint-in-bool-context]
+   41 |   if (a * b || d) r++;
+      |         ^
+int_bool_2.c:42:13: warning: '?:' using integer constants in boolean context [-Wint-in-bool-context]
+   42 |   if (a ? x : 2) r++;
+      |             ^
+int_bool_2.c:45:15: warning: '?:' using integer constants in boolean context, the expression will always evaluate to 'true' [-Wint-in-bool-context]
+   45 |   if (a ? 'a' : 'b') r++;
+      |               ^
+int_bool_2.c:46:13: warning: '?:' using integer constants in boolean context [-Wint-in-bool-context]
+   46 |   if (a ? 4 : 0) r++;
+      |             ^
+int_bool_2.c:47:13: warning: '?:' using integer constants in boolean context, the expression will always evaluate to 'true' [-Wint-in-bool-context]
+   47 |   if (a ? 4 : 5) r++;
+      |             ^
+int_bool_2.c:48:13: warning: '?:' using integer constants in boolean context, the expression will always evaluate to 'true' [-Wint-in-bool-context]
+   48 |   if (a ? 2 : 2) r++;
+      |             ^
+int_bool_2.c:49:14: warning: '?:' using integer constants in boolean context, the expression will always evaluate to 'true' [-Wint-in-bool-context]
+   49 |   if (a ? 2L : 3) r++;
+      |              ^
+int_bool_2.c:52:13: warning: '?:' using integer constants in boolean context [-Wint-in-bool-context]
+   52 |   if (a ? u : 2) r++;
+      |             ^
+int_bool_2.c:53:14: warning: '?:' using integer constants in boolean context, the expression will always evaluate to 'true' [-Wint-in-bool-context]
+   53 |   r = (a ? 2 : 3) && b;
+      |              ^
+int_bool_2.c:54:15: warning: '?:' using integer constants in boolean context, the expression will always evaluate to 'true' [-Wint-in-bool-context]
+   54 |   r = !(a ? 2 : 3);
+      |               ^
+int_bool_2.c:55:14: warning: '?:' using integer constants in boolean context, the expression will always evaluate to 'true' [-Wint-in-bool-context]
+   55 |   r = (a ? 3 : 4) || b;
+      |              ^
+int_bool_2.c:56:17: warning: '?:' using integer constants in boolean context, the expression will always evaluate to 'true' [-Wint-in-bool-context]
+   56 |   while ((a ? 2 : 3)) r++;
+      |                 ^
+int_bool_2.c:58:15: warning: '?:' using integer constants in boolean context, the expression will always evaluate to 'true' [-Wint-in-bool-context]
+   58 |   if (r++ ? 7 : 9) r++;
+      |               ^

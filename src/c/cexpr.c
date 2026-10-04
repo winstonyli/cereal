@@ -6719,6 +6719,26 @@ static void parens_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     }
 }
 
+/* A bit operation (| ^ & ~, int casts) whose leaves are all boolean. */
+static bool boolish_bits(Checker *c, uint32_t n)
+{
+    uint32_t k[3];
+    unsigned cnt;
+    n = strip_paren(c, n);
+    if (is_boolish(c, n))
+        return true;
+    cnt = nkids(c, n, k, 3);
+    if (ntag(c, n) == N_CAST && tkind(c, mainv(c, c->ty[n])) == TY_INT && cnt)
+        return boolish_bits(c, k[cnt - 1]);
+    if (ntag(c, n) == N_UNARY && npunct(c, n) == P_TILDE && cnt == 1)
+        return boolish_bits(c, k[0]);
+    if (ntag(c, n) == N_BINARY && cnt == 2 &&
+        (npunct(c, n) == P_PIPE || npunct(c, n) == P_CARET ||
+         npunct(c, n) == P_AMP))
+        return boolish_bits(c, k[0]) && boolish_bits(c, k[1]);
+    return false;
+}
+
 /* warn_logical_not_parentheses (the caller of it in parser_build_binary_op
  * included). */
 static void lognot_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
@@ -6730,7 +6750,7 @@ static void lognot_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         nkids(c, a, k, 3) < 1)
         return;
     x = strip_paren(c, k[0]);
-    if (ntag(c, x) == N_UNARY && npunct(c, x) == P_BANG)
+    if (ntag(c, x) == N_UNARY && npunct(c, x) == P_BANG && !cst_class(c, x))
         return;
     if (ntag(c, x) == N_BINARY && npunct(c, x) == P_EQEQ &&
         nkids(c, x, k, 3) == 2 && is_intcst(c, k[1]) && c->cv[k[1]] == 0)
@@ -6744,7 +6764,7 @@ static void lognot_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     if (tkind(c, rvt(c, y)) == TY_BOOL)
         return;
     if (tkind(c, rvt(c, b)) == TY_BOOL || truth_expr(c, b) ||
-        (is_intcst(c, b) && c->cv[b] == 0))
+        (is_intcst(c, b) && c->cv[b] == 0) || boolish_bits(c, b))
         return;
     d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), "logical-not-parentheses",
                 "logical not is only applied to the left hand side of "
@@ -7148,11 +7168,70 @@ static bool label_warned(Checker *c, uint32_t id)
     return false;
 }
 
+static SrcLoc colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els);
+
+/* c_common_truthvalue_conversion's -Wint-in-bool-context: the expression n
+ * is used as a truth value. */
+static void int_bool_warn(Checker *c, uint32_t n)
+{
+    uint32_t s = n, k[3], cnt;
+    TypeId t;
+    if (!diag_enabled(c->diag, "int-in-bool-context") || node_err(c, n))
+        return;
+    for (;;) {      /* operations that keep zero-ness */
+        s = strip_paren(c, s);
+        cnt = nkids(c, s, k, 3);
+        if (ntag(c, s) == N_UNARY && (npunct(c, s) == P_PLUS ||
+                                      npunct(c, s) == P_MINUS) && cnt == 1) {
+            s = k[0];
+        } else if (ntag(c, s) == N_BINARY && npunct(c, s) == P_COMMA &&
+                   cnt == 2) {
+            s = k[1];
+        } else if (ntag(c, s) == N_CAST && cnt >= 1 &&
+                   is_arith(c, c->ty[s]) && tkind(c, c->ty[s]) != TY_BOOL &&
+                   is_arith(c, rvt(c, k[cnt - 1])) &&
+                   type_size(TT, c->ty[s], &(bool){0}) >=
+                   type_size(TT, rvt(c, k[cnt - 1]), &(bool){0})) {
+            s = k[cnt - 1];
+        } else {
+            break;
+        }
+    }
+    if (is_intcst(c, s) || c->ck[s] == K_FLOAT || inhibited(c, s, false) ||
+        node_err(c, s))
+        return;
+    t = rvt(c, s);
+    if (ntag(c, s) == N_BINARY && npunct(c, s) == P_STAR && cnt == 2) {
+        if (is_arith(c, t))
+            cwarn(c, cnode_loc(c, s), "int-in-bool-context", "'*' in boolean "
+                  "context, suggest '&&' instead");
+    } else if (ntag(c, s) == N_BINARY && npunct(c, s) == P_SHL && cnt == 2) {
+        if (is_int(c, t) && is_signed(c, type_int_promote(TT, rvt(c, k[0]))))
+            cwarn(c, cnode_loc(c, s), "int-in-bool-context", "'<<' in boolean "
+                  "context, did you mean '<'?");
+    } else if (ntag(c, s) == N_COND && cnt == 3 && is_int(c, t)) {
+        bool c1 = is_intcst(c, k[1]), c2 = is_intcst(c, k[2]);
+        long long v1 = c1 ? (long long)c->cv[k[1]] : 0,
+                  v2 = c2 ? (long long)c->cv[k[2]] : 0;
+        bool nb1 = c1 && v1 != 0 && v1 != 1, nb2 = c2 && v2 != 0 && v2 != 1;
+        if (!nb1 && !nb2)
+            return;
+        if (c1 && c2 && v1 != 0 && v2 != 0)
+            cwarn(c, colon_loc(c, s, k[1], k[2]), "int-in-bool-context",
+                  "'?:' using integer constants in boolean context, the "
+                  "expression will always evaluate to 'true'");
+        else
+            cwarn(c, colon_loc(c, s, k[1], k[2]), "int-in-bool-context",
+                  "'?:' using integer constants in boolean context");
+    }
+}
+
 void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc)
 {
     AddrInfo ai;
     uint32_t s = strip_paren(c, n), k[3];
     unsigned bw, bp;
+    int_bool_warn(c, n);
     if (diag_enabled(c->diag, "sign-compare") && !node_err(c, n) &&
         !inhibited(c, n, false) && ntag(c, s) == N_UNARY &&
         bitnot_operand(c, s, &bw, &bp)) {
