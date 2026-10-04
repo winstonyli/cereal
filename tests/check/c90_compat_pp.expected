@@ -1,0 +1,39 @@
+c90_compat_pp.c:5:12: warning: anonymous variadic macros were introduced in C99
+    5 | #define V1(...) fn(__VA_ARGS__)
+      |            ^
+c90_compat_pp.c:6:15: warning: anonymous variadic macros were introduced in C99
+    6 | #define V2(x, ...) fn(x __VA_ARGS__)
+      |               ^
+c90_compat_pp.c:9:11: warning: invoking macro F argument 1: empty macro arguments are undefined in ISO C90 [-Wc90-c99-compat]
+    9 | int a = F();
+      |           ^
+c90_compat_pp.c:10:12: warning: invoking macro F argument 1: empty macro arguments are undefined in ISO C90 [-Wc90-c99-compat]
+   10 | int b = F( );
+      |            ^
+c90_compat_pp.c:11:13: warning: invoking macro G argument 1: empty macro arguments are undefined in ISO C90 [-Wc90-c99-compat]
+   11 | int c = G(,1);
+      |             ^
+c90_compat_pp.c:12:13: warning: invoking macro G argument 2: empty macro arguments are undefined in ISO C90 [-Wc90-c99-compat]
+   12 | int d = G(1,);
+      |             ^
+c90_compat_pp.c:13:12: warning: invoking macro G argument 1: empty macro arguments are undefined in ISO C90 [-Wc90-c99-compat]
+   13 | int e = G(,);
+      |            ^
+c90_compat_pp.c:13:12: warning: invoking macro G argument 2: empty macro arguments are undefined in ISO C90 [-Wc90-c99-compat]
+   13 | int e = G(,);
+      |            ^
+c90_compat_pp.c:15:12: warning: invoking macro V1 argument 1: empty macro arguments are undefined in ISO C90 [-Wc90-c99-compat]
+   15 | int g = V1();
+      |            ^
+c90_compat_pp.c:17:14: warning: ISO C99 requires at least one argument for the "..." in a variadic macro
+   17 | int ii = V2(1);
+      |              ^
+c90_compat_pp.c:17:14: warning: invoking macro V2 argument 2: empty macro arguments are undefined in ISO C90 [-Wc90-c99-compat]
+   17 | int ii = V2(1);
+      |              ^
+c90_compat_pp.c:18:14: warning: invoking macro V2 argument 2: empty macro arguments are undefined in ISO C90 [-Wc90-c99-compat]
+   18 | int j = V2(1,);
+      |              ^
+c90_compat_pp.c:20:1: warning: invoking macro F argument 1: empty macro arguments are undefined in ISO C90 [-Wc90-c99-compat]
+   20 | );
+      | ^

@@ -191,6 +191,16 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
         args_free(pp, a, 0);
         return false;
     }
+    if (m->nparams > 0 && diag_enabled(pp->diag, "c90-c99-compat")) {
+        int k;
+        for (k = 0; k < m->nparams; k++)
+            if (a->count.data[k] == 0)
+                diag_report(pp->diag, DL_WARNING, "c90-c99-compat",
+                            a->rparen_loc,
+                            "invoking macro %s argument %d: empty macro "
+                            "arguments are undefined in ISO C90",
+                            m->name->str, k + 1);
+    }
     a->expanded = m->nparams <= ARGS_INLINE
                       ? a->exp_inl
                       : xcalloc((size_t)m->nparams + 1, sizeof(TokBuf));

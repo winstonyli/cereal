@@ -2535,8 +2535,12 @@ void cinit_post(Checker *c, uint32_t i)
     if (par == NOB || par >= c->nn)
         return;
     if (tag == N_DESIG_FIELD || tag == N_DESIG_INDEX || tag == N_DESIG_RANGE) {
-        if (ntag(c, par) == N_DESIGNATED && par <= x->hi)
+        if (ntag(c, par) == N_DESIGNATED && par <= x->hi) {
+            if (i == first_child(c, par))
+                cc90(c, tloc(c, des_start(c, par)), NULL, "ISO C90 forbids "
+                     "specifying subobject to initialize");
             designator(c, x, i, par);
+        }
         return;
     }
     if (tag == N_DESIGNATED)

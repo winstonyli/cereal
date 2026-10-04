@@ -1,0 +1,90 @@
+c90_compat.c:2:1: warning: ISO C90 forbids variable length array 'a' [-Wc90-c99-compat]
+    2 | void f(int n, int a[n]) { n = 1; int i; long long l; }
+      | ^
+c90_compat.c:2:34: warning: ISO C90 forbids mixed declarations and code [-Wc90-c99-compat]
+    2 | void f(int n, int a[n]) { n = 1; int i; long long l; }
+      |                                  ^
+c90_compat.c:2:46: warning: ISO C90 does not support 'long long' [-Wlong-long]
+    2 | void f(int n, int a[n]) { n = 1; int i; long long l; }
+      |                                              ^
+c90_compat.c:3:1: warning: ISO C90 forbids variable length array 'a' [-Wc90-c99-compat]
+    3 | void fn7 (int n, int a[n]);
+      | ^
+c90_compat.c:4:1: warning: ISO C90 forbids variable length array 'a' [-Wc90-c99-compat]
+    4 | void fn8 (int n) { int a[n]; }
+      | ^
+c90_compat.c:5:6: warning: ISO C90 does not support 'long long' [-Wlong-long]
+    5 | long long l;
+      |      ^
+c90_compat.c:6:7: warning: duplicate 'const' declaration specifier [-Wc90-c99-compat]
+    6 | const const int i;
+      |       ^
+c90_compat.c:7:10: warning: duplicate 'volatile' declaration specifier [-Wc90-c99-compat]
+    7 | volatile volatile int v;
+      |          ^
+c90_compat.c:10:47: warning: ISO C90 does not support boolean types [-Wc90-c99-compat]
+   10 | struct B { int a:1; unsigned b:1; signed c:1; _Bool d:1; char e:1; short f:1; long g:1; long long h:1; enum E k:1; unsigned char m:2; signed int n:2; };
+      |                                               ^
+c90_compat.c:10:63: warning: type of bit-field 'e' is a GCC extension [-Wc90-c99-compat]
+   10 | struct B { int a:1; unsigned b:1; signed c:1; _Bool d:1; char e:1; short f:1; long g:1; long long h:1; enum E k:1; unsigned char m:2; signed int n:2; };
+      |                                                               ^
+c90_compat.c:10:74: warning: type of bit-field 'f' is a GCC extension [-Wc90-c99-compat]
+   10 | struct B { int a:1; unsigned b:1; signed c:1; _Bool d:1; char e:1; short f:1; long g:1; long long h:1; enum E k:1; unsigned char m:2; signed int n:2; };
+      |                                                                          ^
+c90_compat.c:10:84: warning: type of bit-field 'g' is a GCC extension [-Wc90-c99-compat]
+   10 | struct B { int a:1; unsigned b:1; signed c:1; _Bool d:1; char e:1; short f:1; long g:1; long long h:1; enum E k:1; unsigned char m:2; signed int n:2; };
+      |                                                                                    ^
+c90_compat.c:10:94: warning: ISO C90 does not support 'long long' [-Wlong-long]
+   10 | struct B { int a:1; unsigned b:1; signed c:1; _Bool d:1; char e:1; short f:1; long g:1; long long h:1; enum E k:1; unsigned char m:2; signed int n:2; };
+      |                                                                                              ^
+c90_compat.c:10:99: warning: type of bit-field 'h' is a GCC extension [-Wc90-c99-compat]
+   10 | struct B { int a:1; unsigned b:1; signed c:1; _Bool d:1; char e:1; short f:1; long g:1; long long h:1; enum E k:1; unsigned char m:2; signed int n:2; };
+      |                                                                                                   ^
+c90_compat.c:10:111: warning: type of bit-field 'k' is a GCC extension [-Wc90-c99-compat]
+   10 | struct B { int a:1; unsigned b:1; signed c:1; _Bool d:1; char e:1; short f:1; long g:1; long long h:1; enum E k:1; unsigned char m:2; signed int n:2; };
+      |                                                                                                               ^
+c90_compat.c:10:130: warning: type of bit-field 'm' is a GCC extension [-Wc90-c99-compat]
+   10 | struct B { int a:1; unsigned b:1; signed c:1; _Bool d:1; char e:1; short f:1; long g:1; long long h:1; enum E k:1; unsigned char m:2; signed int n:2; };
+      |                                                                                                                                  ^
+c90_compat.c:11:6: error: conflicting types for 'f'; have 'void(void)'
+   11 | void f(void)
+      |      ^
+c90_compat.c:2:6: note: previous definition of 'f' with type 'void(int,  int *)'
+    2 | void f(int n, int a[n]) { n = 1; int i; long long l; }
+      |      ^
+c90_compat.c:13:18: warning: ISO C90 forbids specifying subobject to initialize [-Wc90-c99-compat]
+   13 |   struct S s = { .i = 1, .a[1] = 2, .in.x = 3 };
+      |                  ^
+c90_compat.c:13:26: warning: ISO C90 forbids specifying subobject to initialize [-Wc90-c99-compat]
+   13 |   struct S s = { .i = 1, .a[1] = 2, .in.x = 3 };
+      |                          ^
+c90_compat.c:13:37: warning: ISO C90 forbids specifying subobject to initialize [-Wc90-c99-compat]
+   13 |   struct S s = { .i = 1, .a[1] = 2, .in.x = 3 };
+      |                                     ^
+c90_compat.c:14:16: warning: ISO C90 forbids specifying subobject to initialize [-Wc90-c99-compat]
+   14 |   int a[3] = { [1] = 2, [2] = 3 };
+      |                ^
+c90_compat.c:14:25: warning: ISO C90 forbids specifying subobject to initialize [-Wc90-c99-compat]
+   14 |   int a[3] = { [1] = 2, [2] = 3 };
+      |                         ^
+c90_compat.c:15:19: warning: ISO C90 forbids compound literals [-Wc90-c99-compat]
+   15 |   int *p = (int[]){ 1, 2 };
+      |                   ^
+c90_compat.c:16:28: warning: ISO C90 forbids compound literals [-Wc90-c99-compat]
+   16 |   struct S *q = &(struct S){ 1 };
+      |                            ^
+c90_compat.c:18:14: warning: comma at end of enumerator list [-Wc90-c99-compat]
+   18 | enum F { X, Y, };
+      |              ^
+c90_compat.c:19:11: warning: comma at end of enumerator list [-Wc90-c99-compat]
+   19 | enum G { Z, };
+      |           ^
+c90_compat.c:20:1: warning: ISO C90 does not support complex types [-Wc90-c99-compat]
+   20 | _Complex double cz = __builtin_complex(0.0, 0.0);
+      | ^
+c90_compat.c:20:22: warning: ISO C90 does not support complex types [-Wc90-c99-compat]
+   20 | _Complex double cz = __builtin_complex(0.0, 0.0);
+      |                      ^
+c90_compat.c:21:17: warning: ISO C90 does not support 'for' loop initial declarations [-Wc90-c99-compat]
+   21 | void lp(void) { for (int i = 0; i < 2; i++) ; }
+      |                 ^

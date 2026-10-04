@@ -92,7 +92,7 @@ static const char *tstr(const Checker *c, uint32_t tok)
 
 static bool tfrom_macro(const Checker *c, uint32_t tok)
 {
-    return c->u->toks[tok].exp != 0;
+    return c->u->toks[tok].exp && c->u->toks[tok].exp != c->u->toks[tok].t.loc;
 }
 
 static SrcLoc tloc(const Checker *c, uint32_t tok)
@@ -3020,9 +3020,11 @@ static void add_qual(Checker *c, Spec *s, uint32_t tok)
         s->qual_loc = loc;
     if (q == TQ_RESTRICT)
         s->restrict_q = true;
-    if (dupe && prev && !tfrom_macro(c, prev - 1) && !tfrom_macro(c, tok))
-        cwarn(c, loc, "duplicate-decl-specifier",
+    if (dupe && prev && !tfrom_macro(c, prev - 1) && !tfrom_macro(c, tok)) {
+        const char *id = cc90_id(c, NULL);
+        cwarn(c, loc, id ? id : "duplicate-decl-specifier",
               "duplicate '%s' declaration specifier", sp);
+    }
 }
 
 /* The name of the word currently in s, for "both 'X' and 'Y'". */
@@ -3092,6 +3094,9 @@ static void add_type_kw(Checker *c, Spec *s, uint32_t tok)
                 return;
             }
             s->long_long = true;
+            if (cc90_id(c, "long-long"))
+                cwarn(c, loc, "long-long", "ISO C90 does not support 'long "
+                      "long'");
             return;
         }
         if (s->is_short)
@@ -3140,6 +3145,7 @@ static void add_type_kw(Checker *c, Spec *s, uint32_t tok)
                           wbit(TW_DECIMAL), loc)) {
             s->is_complex = true;
             s->complex_loc = loc;
+            cc90(c, loc, NULL, "ISO C90 does not support complex types");
         }
         break;
     case CK_IMAGINARY:
@@ -3184,6 +3190,8 @@ static void add_type_kw(Checker *c, Spec *s, uint32_t tok)
                 return;
             }
             nw = kw == CK_VOID ? TW_VOID : TW_BOOL;
+            if (kw == CK_BOOL)
+                cc90(c, loc, NULL, "ISO C90 does not support boolean types");
             break;
         }
         case CK_CHAR: {
@@ -4022,6 +4030,10 @@ static int check_bitfield(Checker *c, SrcLoc loc, TypeId *ty, uint32_t w,
         t = TYPE_B(UINT) | TYPE_QUALS(t);
         *ty = t;
     }
+    if (TYPE_UNQUAL(type_canon(TT, t)) != TYPE_B(INT) &&
+        TYPE_UNQUAL(type_canon(TT, t)) != TYPE_B(UINT) &&
+        TYPE_UNQUAL(type_canon(TT, t)) != TYPE_B(BOOL))
+        cc90(c, loc, NULL, "type of bit-field '%s' is a GCC extension", nm);
     max = tkind(c, t) == TY_BOOL ? 1 : type_int_bits(TT, t);
     if (width > (int64_t)max) {
         cerror(c, loc, "width of '%s' exceeds its type", nm);
@@ -4304,6 +4316,13 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             array_parm_static = (an->flags & NF_STATIC) != 0;
             unspec = (an->flags & NF_STAR) && !(c->cv[dn] & 1);
             array_parm_vla_unspec = unspec;
+            if (unspec)
+                cc90(c, cnode_loc(c, dn), NULL, "ISO C90 does not support "
+                     "'[*]' array declarators");
+            if (array_parm_static || array_ptr_quals)
+                cc90(c, cnode_loc(c, dn), NULL, "ISO C90 does not support "
+                     "'static' or type qualifiers in parameter array "
+                     "declarators");
             if (is_void(c, type)) {
                 if (name)
                     cerror(c, loc, "declaration of '%s' as array of voids",
@@ -4395,12 +4414,12 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                             this_varies = size_varies = true;
                         if (this_varies) {
                             if (name)
-                                cwarn(c, iloc(c, ltok), "vla", "ISO C90 "
-                                      "forbids variable length array '%s'",
-                                      cident(c, name));
+                                cc90(c, iloc(c, ltok), "vla", "ISO C90 "
+                                     "forbids variable length array '%s'",
+                                     cident(c, name));
                             else
-                                cwarn(c, iloc(c, ltok), "vla", "ISO C90 "
-                                      "forbids variable length array");
+                                cc90(c, iloc(c, ltok), "vla", "ISO C90 "
+                                     "forbids variable length array");
                         }
                     }
                 } else if ((ctx == DC_NORMAL || ctx == DC_FIELD) && filescope) {
@@ -4411,11 +4430,11 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 } else {
                     this_varies = size_varies = true;
                     if (name)
-                        cwarn(c, iloc(c, ltok), "vla", "ISO C90 forbids "
-                              "variable length array '%s'", cident(c, name));
+                        cc90(c, iloc(c, ltok), "vla", "ISO C90 forbids "
+                             "variable length array '%s'", cident(c, name));
                     else
-                        cwarn(c, iloc(c, ltok), "vla", "ISO C90 forbids "
-                              "variable length array");
+                        cc90(c, iloc(c, ltok), "vla", "ISO C90 forbids "
+                             "variable length array");
                 }
                 if (this_varies)
                     vla = true;
@@ -4433,6 +4452,9 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                     itype_none = true;
             } else if (ctx == DC_FIELD) {
                 /* a flexible array member (or [*]) */
+                if (!array_parm_vla_unspec)
+                    cc90(c, loc, NULL, "ISO C90 does not support flexible "
+                         "array members");
                 if (array_parm_vla_unspec) {
                     size_varies = true;
                     vla = true;
@@ -7452,6 +7474,18 @@ static void struct_visit(Checker *c, uint32_t i)
         want = TY_ENUM;
     else
         want = tckw(c, cnode(c, i)->tok) == CK_UNION ? TY_UNION : TY_STRUCT;
+    if (want == TY_ENUM && open != NO_NODE) {   /* a trailing comma */
+        Kids ek;
+        uint32_t j, en = NO_NODE;
+        kids_get(c, i, &ek);
+        for (j = 0; j < ek.n; j++)
+            if (ntag(c, ek.p[j]) == N_ENUMERATOR)
+                en = ek.p[j];
+        kids_free(&ek);
+        if (en != NO_NODE && tpunct(c, last_tok(c, en) + 1) == P_COMMA)
+            cc90(c, tloc(c, last_tok(c, en) + 1), NULL, "comma at end of "
+                 "enumerator list");
+    }
     if (want == TY_ENUM && find_child(c, i, N_TYPE_NAME) != NO_NODE) {
         uint32_t tn = find_child(c, i, N_TYPE_NAME);
         uint32_t tg_ = find_child(c, i, N_TAG);

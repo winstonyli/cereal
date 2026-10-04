@@ -1880,8 +1880,8 @@ static void decl_after_stmt(Checker *c, uint32_t i)
     default:
         break;
     }
-    cwarn(c, first_loc(c, i), "declaration-after-statement",
-          "ISO C90 forbids mixed declarations and code");
+    cc90(c, first_loc(c, i), "declaration-after-statement",
+         "ISO C90 forbids mixed declarations and code");
 }
 
 /* After cdecl_node for a non-expression node. */
@@ -1898,8 +1898,11 @@ void cstmt_node(Checker *c, uint32_t i)
         stmt_struct_defined(c, s, i);
         break;
     case N_DECL:
-        if (c->par[i] != NOB && tg(c, c->par[i]) == N_FOR)
+        if (c->par[i] != NOB && tg(c, c->par[i]) == N_FOR) {
+            cc90(c, ctok_loc(c, c->nodes[c->par[i]].tok), NULL,
+                 "ISO C90 does not support 'for' loop initial declarations");
             for_loop_decls(c, c->par[i]);
+        }
         decl_after_stmt(c, i);
         break;
     case N_GOTO: {

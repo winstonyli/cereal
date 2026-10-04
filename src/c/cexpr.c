@@ -7279,6 +7279,7 @@ static void e_builtin_complex(Checker *c, uint32_t i, SrcLoc bl)
 {
     uint32_t av[8], an = nkids(c, i, av, 8);
     TypeId t0, t1;
+    cc90(c, bl, NULL, "ISO C90 does not support complex types");
     if (an != 3) {
         cerror(c, bl, "wrong number of arguments to '__builtin_complex'");
         set_err(c, i);
@@ -7573,6 +7574,9 @@ static void e_index(Checker *c, uint32_t i)
         if (v != NO_NODE && ntag(c, v) == N_IDENT &&
             (c->ef[v] & EF_REGISTER))
             ped(c, i, loc, "ISO C forbids subscripting 'register' array");
+        if (!(c->ef[a] & EF_LVALUE))
+            cc90(c, loc, NULL, "ISO C90 forbids subscripting non-lvalue "
+                 "array");
         et = elem_of(c, c->ty[a]);
     } else {
         if (!ptr_arith_ok(c, i, loc, pt)) {
@@ -8928,6 +8932,8 @@ static void e_complit(Checker *c, uint32_t i)
         uint64_t n = c->ck[k[1]] == K_ICE ? c->cv[k[1]] : 1;
         t = type_array(TT, elem_of(c, t), n);
     }
+    cc90(c, ctok_loc(c, c->nodes[k[1]].tok), NULL, "ISO C90 forbids compound "
+         "literals");
     if (c->ck[k[1]] == K_ERR) {
         set_err(c, i);
         return;

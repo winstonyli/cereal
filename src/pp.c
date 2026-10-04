@@ -1224,6 +1224,10 @@ static void do_define(PP *pp, const Tok *hash)
                     m->variadic = true;
                     vec_push(&params, pp->id_va_args);
                     vec_push(&plocs, t->loc);
+                    if (diag_enabled(pp->diag, "c90-c99-compat"))
+                        diag_report(pp->diag, DL_WARNING, "", t->loc,
+                                    "anonymous variadic macros were introduced "
+                                    "in C99");
                     i++;
                     if (i >= line.n || !tok_is_punct(&line.t[i], P_RPAREN)) {
                         diag_report(pp->diag, DL_ERROR, "", here,

@@ -123,6 +123,7 @@ static const DiagOption options[] = {
     {"array-compare", "c", DL_WARNING, false, DO_ALL, "comparison of two arrays"},
     {"array-parameter=", "c", DL_WARNING, false, DO_ALL, "array parameter redeclared with a different bound"},
     {"array-bounds=", "c", DL_WARNING, false, DO_ALL, "constant array index out of bounds"},
+    {"c90-c99-compat", "c", DL_WARNING, false, 0, "C99 features that C90 lacks"},
     {"double-promotion", "c", DL_WARNING, false, 0, "implicit conversion of float to double or long double"},
     {"stringop-overread", "c", DL_WARNING, true, 0, "string function reading past the end of its argument"},
     {"vla-parameter", "c", DL_WARNING, false, DO_ALL, "VLA parameter redeclared with a different bound"},
@@ -520,6 +521,16 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
             p = find_index("parentheses");
         if (p >= 0 && c->overridden[p])
             return option_state(c, (size_t)p, lvl);
+    }
+    /* gcc: -Wc90-c99-compat enables -Wlong-long */
+    if (c && !strcmp(o->name, "long-long")) {
+        static long p = -2;
+        if (p == -2)
+            p = find_index("c90-c99-compat");
+        if (p >= 0 && c->overridden[p] && c->overrides[p] != DL_IGNORED) {
+            *lvl = o->level;
+            return 1;
+        }
     }
     u = umbrella_state(c, o);
     if (u > 0 || (c && c->everything) || (u < 0 && o->on)) {

@@ -1159,3 +1159,12 @@ diagnostics and builds on the strinit table.
 - Golden: tests/check/const_expr_ovf.c. `c99-const-expr-7.c` identical. Parity: gcc.dg 3668 identical (207 differ), c-c++-common 573 (84), san clean (342 files).
 - Survey, strlen remainder (`warn-strlen-no-nul.c`): 8 of 76 warnings matched, 68 missing. By shape: ~40 nested `ba[i].a[j].a|b` member arrays (+ `&...[K]`, `+ K`, `+ v`), ~22 2D `b[i][j]` rows, ~6 `s.b` members, the rest `?:` mixes of these. All need initializer bytes keyed by member/element path: record string-literal leaves in cinit (PEnt PV_STR) for const objects, resolve `.m`/`[K]` chains in `sl_resolve`. About 150 lines; no false positives today. gcc quirks to respect: `&obj.m[K]` offsets from the whole object; non-constant outer indices (`b[i3]`) are not diagnosed under -fsyntax-only.
 - Survey, `Wc90-c99-compat-2.c`: -Wc90-c99-compat is entirely unimplemented (9 corpus files, ~110 diagnostics, only -2 and -9 are gnu99 so only ~27 diagnostics are reachable). About 15 checks across the lexer/parser/decl/preprocessor: bool, complex, long long, flexible array members, bit-field type, duplicate qualifiers, variadic macros, enumerator trailing comma, [*] declarators, static/qualifiers in array parameters, compound literals, designators, mixed declarations, subscripting non-lvalue arrays, empty macro arguments, VLAs.
+
+## Round 56 — `-Wc90-c99-compat`
+
+- New `c90-c99-compat` option (implies `-Wlong-long`); `cc90`/`cc90_id` in check.c implement gcc's `pedwarn_c90` rule (own option on, or compat on and own option not explicitly off; tag = own option else compat).
+- Covered: VLA, long long, mixed declarations, `_Complex`/`__builtin_complex`, `_Bool`, `[*]`, `static`/qualifiers in array params, flexible array members, bit-field types, enum trailing comma, duplicate qualifiers, compound literals, subscripting non-lvalue arrays, designators, `for` initial declarations; pp: anonymous variadic macros (untagged), empty macro arguments (tagged).
+- Goldens: `c90_compat`, `c90_compat_pp` (split because `--cells` emits pp diagnostics ahead of checker ones — pre-existing ordering difference).
+- `Wc90-c99-compat-2.c` and `-9.c` identical to gcc. Other 7 tests need unsupported `-std` values.
+- Loose end: gcc's "C++ style comments are incompatible with C90" (cpp warning, once per file) is not implemented (lexer has no hook).
+- Parity: suite 1031/0; gcc.dg 3671 identical (204 differ); c-c++-common 573 (84); -O 3671 (204); san 343 files, findings 0.

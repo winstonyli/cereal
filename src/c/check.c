@@ -185,6 +185,32 @@ Diagnostic *cped11(Checker *c, SrcLoc loc, const char *fmt, ...)
     return d;
 }
 
+/* gcc's pedwarn_c90 in C99 mode: the option to report a C90-only restriction
+ * under -- its own option when on, else -Wc90-c99-compat unless the own
+ * option was turned off; NULL when neither applies. */
+const char *cc90_id(Checker *c, const char *own)
+{
+    if (own && diag_enabled(c->diag, own))
+        return own;
+    if (diag_enabled(c->diag, "c90-c99-compat") &&
+        (!own || diag_option_state(c->diag, own) == -1))
+        return "c90-c99-compat";
+    return NULL;
+}
+
+void cc90(Checker *c, SrcLoc loc, const char *own, const char *fmt, ...)
+{
+    const char *id = cc90_id(c, own);
+    char buf[256];
+    va_list ap;
+    if (!id)
+        return;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof buf, fmt, ap);
+    va_end(ap);
+    cwarn(c, loc, id, "%s", buf);
+}
+
 void cconst_overflow(Checker *c, SrcLoc loc)
 {
     if (diag_enabled(c->diag, "pedantic"))

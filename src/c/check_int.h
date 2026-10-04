@@ -458,6 +458,8 @@ static inline bool is_declarator_tag(unsigned tag)
 
 void cerror(Checker *c, SrcLoc loc, const char *fmt, ...);
 void cwarn(Checker *c, SrcLoc loc, const char *id, const char *fmt, ...);
+const char *cc90_id(Checker *c, const char *own);
+void cc90(Checker *c, SrcLoc loc, const char *own, const char *fmt, ...);
 /* A pedwarn: a warning (an error with -pedantic-errors), enabled when its
  * option id is ("" / NULL: always). */
 Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
