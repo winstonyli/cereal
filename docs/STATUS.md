@@ -1347,3 +1347,9 @@ diagnostics and builds on the strinit table.
 - Tried and dropped: `X Y(Z);` with unknown `X` should still give "parameter names (without types)"; the checker is quiet for units with a parser error, so it needs that policy changed (`pr14963`).
 - Gate: 1113 pass, san 381/0, dg 131, c-c++-common 52, callgrind 3.633G.
 - Open one-diff gcc.dg files worth a look: `20050209-1` (parser recovery after `return 1);`), `for-1`, `attr-copy-3/5`, `Wbuiltin-declaration-mismatch-8/16`, `pr15698-1/6`, `parm-impl-decl-2`.
+
+## Round 76 — function-type attributes in the type (nocf_check, transaction_unsafe)
+- `TF_NOCF`/`TF_TXUNSAFE` (type.h bits 64/128) on function `TypeEnt`s. `declared_visit`/`funcdef_declared` read the attributes from the declspecs (functions only) and the declarator tree (`fn_attr_walk`, through N_PTR/N_FUNC/N_ARRAY) and rebuild the first function type under the pointers (`fn_attr_type`, keeps typedef'd return/params).
+- `type_print` shows `__attribute__((nocf_check|transaction_unsafe)) ` before the `*` of a pointer to such a function. `type_compatible` compares only `TF_NOCF` (gcc ignores transaction_unsafe); `type_composite` and the incomplete-return rebuild carry both.
+- Closes gcc.dg `diag-aka-5a/5b` (golden `misc_84`). Gate: 1115 goldens, san 382/0, gcc.dg differ 129, c-c++-common 50, callgrind uvloop ~3.643G.
+- Open: `attr-nocf-check-1/3` need the "'nocf_check' attribute ignored. Use '-fcf-protection' option to enable it" warning when `-fcf-protection=none` (option not modelled).

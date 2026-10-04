@@ -686,7 +686,8 @@ bool type_compatible(TypeTable *tt, TypeId a, TypeId b)
         if (npb)
             return proto_vs_noproto(tt, ea, eb);
         if (ea->n != eb->n ||
-            (ea->flags & TF_VARIADIC) != (eb->flags & TF_VARIADIC))
+            (ea->flags & TF_VARIADIC) != (eb->flags & TF_VARIADIC) ||
+            ((ea->flags ^ eb->flags) & TF_NOCF))   /* transaction_unsafe is ignored */
             return false;
         for (uint64_t i = 0; i < ea->n; i++)
         {
@@ -758,7 +759,8 @@ TypeId type_composite(TypeTable *tt, TypeId a, TypeId b)
                       (type_record(tt, type_canon(tt, y))->flags & RF_TRANSPARENT);
             ps[i] = ua && !ub ? y : ub && !ua ? x : type_composite(tt, x, y);
         }
-        TypeId r = type_func(tt, ret, ps, n, p->flags & TF_VARIADIC);
+        TypeId r = type_func(tt, ret, ps, n,
+                             p->flags & (TF_VARIADIC | TF_NOCF | TF_TXUNSAFE));
         free(ps);
         return r;
     }
@@ -1124,6 +1126,13 @@ void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
         }
         if (e->kind == TY_PTR) {
             tmp.len = 0;
+            {
+                const TypeEnt *pe = type_ent(tt, e->base);
+                if (pe->kind == TY_FUNC && (pe->flags & TF_NOCF))
+                    sb_puts(&tmp, "__attribute__((nocf_check)) ");
+                if (pe->kind == TY_FUNC && (pe->flags & TF_TXUNSAFE))
+                    sb_puts(&tmp, "__attribute__((transaction_unsafe)) ");
+            }
             sb_putc(&tmp, '*');
             if (q & TQ_CONST) sb_puts(&tmp, " const");
             if (q & TQ_VOLATILE) sb_puts(&tmp, " volatile");

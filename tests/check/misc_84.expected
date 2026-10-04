@@ -1,0 +1,9 @@
+misc_84.c:12:15: warning: assignment to 'user_int (__attribute__((transaction_unsafe)) *)(void)' {aka 'int (__attribute__((transaction_unsafe)) *)(void)'} from incompatible pointer type 'struct s *' [-Wincompatible-pointer-types]
+   12 |     unsafe_p1 = &s;
+      |               ^
+misc_84.c:13:15: warning: assignment to 'user_int_copy (__attribute__((transaction_unsafe)) *)(void)' {aka 'int (__attribute__((transaction_unsafe)) *)(void)'} from incompatible pointer type 'struct s *' [-Wincompatible-pointer-types]
+   13 |     unsafe_p2 = &s;
+      |               ^
+misc_84.c:16:10: error: incompatible types when assigning to type 'int (* (__attribute__((transaction_unsafe)) *)(void))(int)' from type 'double'
+   16 |     pp = 1.0;
+      |          ^

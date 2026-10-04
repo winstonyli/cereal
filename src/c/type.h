@@ -41,7 +41,9 @@ enum {
     TF_NOPROTO = 4,          /* function: () declared without a prototype */
     TF_ALIGNED = 8,          /* typedef: .align overrides */
     TF_SYSHDR = 16,          /* typedef: declared in a system header */
-    TF_MAYALIAS = 32         /* typedef: may_alias */
+    TF_MAYALIAS = 32,        /* typedef: may_alias */
+    TF_NOCF = 64,            /* function: nocf_check (part of the type) */
+    TF_TXUNSAFE = 128        /* function: transaction_unsafe */
 };
 
 typedef struct TypeEnt {

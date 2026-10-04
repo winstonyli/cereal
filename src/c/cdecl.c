@@ -6259,6 +6259,65 @@ static void dep_spec_use(Checker *c, const Spec *sp)
                dep, dmsg, &note);
 }
 
+/* nocf_check and transaction_unsafe belong to the function type: written on
+ * the declaration (or after a '*'), they reach the first function type under
+ * the pointers of ty. */
+static TypeId fn_attr_type(Checker *c, TypeId ty, unsigned bits)
+{
+    unsigned q = TYPE_QUALS(ty);
+    TypeId cn = type_canon(TT, ty);
+    if (type_ckind(TT, cn) == TY_PTR && type_kind(TT, ty) != TY_TYPEDEF) {
+        TypeId b = type_base(TT, ty), nb = fn_attr_type(c, b, bits);
+        return nb == b ? ty : type_ptr(TT, nb) | q;
+    }
+    if (type_kind(TT, ty) == TY_FUNC) {
+        const TypeEnt *e = type_ent(TT, ty);
+        return type_func(TT, type_base(TT, ty), type_params(TT, ty),
+                         (uint32_t)e->n, e->flags | bits) | q;
+    }
+    return ty;
+}
+
+static unsigned fn_attr_walk(Checker *c, uint32_t h, int depth)
+{
+    unsigned bits = 0;
+    Kids hk;
+    uint32_t m;
+    if (depth > 16)
+        return 0;
+    kids_get(c, h, &hk);
+    for (m = 0; m < hk.n; m++) {
+        int t = ntag(c, hk.p[m]);
+        if (t == N_ATTRIBUTE) {
+            Kids it;
+            uint32_t q;
+            kids_get(c, hk.p[m], &it);
+            for (q = 0; q < it.n; q++) {
+                char an[32];
+                if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                    continue;
+                attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+                if (!strcmp(an, "nocf_check"))
+                    bits |= TF_NOCF;
+                else if (!strcmp(an, "transaction_unsafe"))
+                    bits |= TF_TXUNSAFE;
+            }
+            kids_free(&it);
+        } else if (t == N_PTR || t == N_FUNC || t == N_ARRAY)
+            bits |= fn_attr_walk(c, hk.p[m], depth + 1);
+    }
+    kids_free(&hk);
+    return bits;
+}
+
+static unsigned fn_attr_bits(Checker *c, uint32_t sn, uint32_t idecl, bool isfunc)
+{
+    unsigned bits = fn_attr_walk(c, idecl, 0);
+    if (isfunc && sn != NO_NODE)
+        bits |= fn_attr_walk(c, sn, 0);
+    return bits;
+}
+
 static void declared_visit(Checker *c, uint32_t i)
 {
     uint32_t idecl = c->par[i], decl, sn, top, name_tok, end, ltok, ref;
@@ -6298,6 +6357,11 @@ static void declared_visit(Checker *c, uint32_t i)
     if (g.what == GD_NONE)
         return;
     s = g.s;
+    {
+        unsigned fb = fn_attr_bits(c, sn, idecl, s.kind == CS_FUNC);
+        if (fb)
+            s.ty = fn_attr_type(c, s.ty, fb);
+    }
     if (s.kind == CS_FUNC)
         cpragma_optimize_repeat(c, il);
     if (s.kind == CS_OBJ)
@@ -8645,6 +8709,11 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     attrs_wina_check(c, &sp.attrs, 'f', false, g.s.name, g.s.loc);
     g.s.sect = sp.attrs.sec;
     s = g.s;
+    {
+        unsigned fb = fn_attr_bits(c, fp.specs, fd, true);
+        if (fb)
+            s.ty = fn_attr_type(c, s.ty, fb);
+    }
     loc = s.loc;
     name = cident(c, s.name);
     if (nested)
@@ -8655,7 +8724,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     rt = type_base(TT, s.ty);
     if (!is_err(c, rt) && !is_void(c, rt) && !type_is_complete(TT, rt)) {
         const TypeEnt *e = type_ent(TT, type_canon(TT, s.ty));
-        uint32_t n = e->n, flags = e->flags & (TF_VARIADIC | TF_NOPROTO);
+        uint32_t n = e->n, flags = e->flags & (TF_VARIADIC | TF_NOPROTO | TF_NOCF | TF_TXUNSAFE);
         TypeId *ps = xmalloc((n + 1) * sizeof *ps);
         if (n)
             memcpy(ps, type_params(TT, type_canon(TT, s.ty)), n * sizeof *ps);
