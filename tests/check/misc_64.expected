@@ -1,0 +1,72 @@
+misc_64.c:9:20: warning: macro "__TIME__" might prevent reproducible builds [-Wdate-time]
+    9 | const char *when = __TIME__;
+      |                    ^~~~~~~~
+misc_64.c:16:3: warning: ISO C does not support complex integer types [-Wpedantic]
+   16 |   _Complex int cz;
+      |   ^
+misc_64.c:17:3: warning: 'memset' used with constant zero length parameter; this could be due to transposed parameters [-Wmemset-transposed-args]
+   17 |   memset(buf, sizeof buf, 0);
+      |   ^
+misc_64.c:18:3: warning: 'memset' used with length equal to number of elements without multiplication by element size [-Wmemset-elt-size]
+   18 |   memset(arr, 0, 10);
+      |   ^
+misc_64.c:19:19: warning: expression does not compute the number of elements in this array; element type is 'int', not 'short int' [-Wsizeof-array-div]
+   19 |   r += sizeof arr / sizeof(short);
+      |                   ^
+misc_64.c:19:19: note: add parentheses around the second 'sizeof' to silence this warning
+   19 |   r += sizeof arr / sizeof(short);
+      |                   ^
+misc_64.c:7:5: note: array 'arr' declared here
+    7 | int arr[10];
+      |     ^
+misc_64.c:21:8: warning: '~' on a boolean expression [-Wbool-operation]
+   21 |   r += ~bb;
+      |        ^
+misc_64.c:21:8: note: did you mean to use logical not?
+   21 |   r += ~bb;
+      |        ^
+misc_64.c:22:8: warning: '~' on a boolean expression [-Wbool-operation]
+   22 |   r += ~(a == b);
+      |        ^
+misc_64.c:22:8: note: did you mean to use logical not?
+   22 |   r += ~(a == b);
+      |        ^
+misc_64.c:23:8: warning: '~' on a boolean expression [-Wbool-operation]
+   23 |   r += ~(bar(), a < b);
+      |        ^
+misc_64.c:23:8: note: did you mean to use logical not?
+   23 |   r += ~(bar(), a < b);
+      |        ^
+misc_64.c:24:17: warning: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+   24 |   r += (a < b ? : 1);
+      |                 ^
+misc_64.c:24:17: warning: the omitted middle operand in '?:' will always be 'true', suggest explicit middle operand [-Wparentheses]
+   24 |   r += (a < b ? : 1);
+      |                 ^
+misc_64.c:25:14: warning: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+   25 |   r += (bb ? : 1);
+      |              ^
+misc_64.c:25:14: warning: the omitted middle operand in '?:' will always be 'true', suggest explicit middle operand [-Wparentheses]
+   25 |   r += (bb ? : 1);
+      |              ^
+misc_64.c:26:11: warning: logical not is only applied to the left hand side of comparison [-Wlogical-not-parentheses]
+   26 |   r += !a > 0;
+      |           ^
+misc_64.c:26:8: note: add parentheses around left hand side expression to silence this warning
+   26 |   r += !a > 0;
+      |        ^
+misc_64.c:28:12: warning: self-comparison always evaluates to true [-Wtautological-compare]
+   28 |   r += (nr == nr);
+      |            ^
+misc_64.c:32:3: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   32 |   ({ u = a; });
+      |   ^
+misc_64.c:16:16: warning: variable 'cz' set but not used [-Wunused-but-set-variable]
+   16 |   _Complex int cz;
+      |                ^
+misc_64.c:15:13: warning: variable 'w' set but not used [-Wunused-but-set-variable]
+   15 |   int u, v, w, r = 0;
+      |             ^
+misc_64.c:15:10: warning: variable 'v' set but not used [-Wunused-but-set-variable]
+   15 |   int u, v, w, r = 0;
+      |          ^

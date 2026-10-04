@@ -6136,8 +6136,14 @@ static void decl_visit(Checker *c, uint32_t i)
 /* Attributes given after the declarator. */
 static void decl_attrs(Checker *c, uint32_t idecl, Attrs *a)
 {
+    uint32_t d = first_child(c, idecl);
     memset(a, 0, sizeof *a);
     attrs_of_children(c, idecl, a);
+    /* attributes among a pointer's qualifiers belong to the declaration */
+    while (d != NO_NODE && ntag(c, d) == N_PTR) {
+        attrs_of_children(c, d, a);
+        d = first_child(c, d);
+    }
 }
 
 static uint32_t last_enumerator(Checker *c, uint32_t n)
@@ -7366,7 +7372,8 @@ static bool val_lt(Checker *c, uint64_t a, TypeId ta, uint64_t b, TypeId tb)
 
 /* Attributes written on an enumerator (a CONST_DECL): decl_attributes finds
  * a handler that does not take it.  Probed on gcc 13. */
-static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name)
+static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name,
+                             uint32_t ref)
 {
     static const char *const ignored[] = {
         "alias", "always_inline", "artificial", "assume", "cleanup", "cold",
@@ -7411,6 +7418,8 @@ static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name)
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
             if (!strcmp(an, "gnu") || attr_scope_of(c, c->nodes[it.p[q]].tok))
                 continue;
+            if (!strcmp(an, "unused") && ref != SYM_NONE)
+                csym(c, ref)->flags |= CSF_ATTR_UNUSED;
             if (!attr_known(an) || !strcmp(an, "maybe_unused") ||
                 !strcmp(an, "nodiscard")) {
                 cwarn(c, loc, "attributes", "'%s' attribute directive "
@@ -7552,7 +7561,7 @@ static void enumerator_visit(Checker *c, uint32_t i)
         s.flags |= CSF_IN_STRUCT;
     ref = pushdecl(c, &s, false);
     vec_push(&c->ecs, ref);
-    enumerator_attrs(c, i, nloc, name);
+    enumerator_attrs(c, i, nloc, name, ref);
 }
 
 /* c_common_type_for_size */
@@ -8837,6 +8846,13 @@ static void wr_mark(Checker *c, uint32_t e)
         case N_PAREN:
             e = first_child(c, e);
             continue;
+        case N_UNARY:               /* __real__ x = ..., __imag__ x = ... */
+            if (tckw(c, c->nodes[e].tok) == CK_REAL ||
+                tckw(c, c->nodes[e].tok) == CK_IMAG) {
+                e = first_child(c, e);
+                continue;
+            }
+            return;
         case N_MEMBER_EXPR:
             if (!(cnode(c, e)->flags & NF_ARROW)) {
                 e = first_child(c, e);
@@ -8858,12 +8874,16 @@ static void wr_mark(Checker *c, uint32_t e)
 }
 
 /* An expression whose value is not used. */
+static void st_mark_value(Checker *c, uint32_t e);
+
 static void st_mark(Checker *c, uint32_t e)
 {
     while (ntag(c, e) == N_PAREN)
         e = first_child(c, e);
     if (ntag(c, e) == N_ASSIGN && tpunct(c, cnode(c, e)->tok) == P_ASSIGN) {
         wr_mark(c, first_child(c, e));
+        if (last_child(c, e) != NO_NODE)
+            st_mark_value(c, last_child(c, e));
     } else if (ntag(c, e) == N_BINARY &&
                tpunct(c, cnode(c, e)->tok) == P_COMMA) {
         Kids k;
@@ -8878,6 +8898,29 @@ static void st_mark(Checker *c, uint32_t e)
 
 /* Which of the names are read (any use but assigning with '=') in nodes
  * [first, last]. */
+/* st_mark for the last statement of a statement expression: its value is
+ * used, only the left operands of commas are not. */
+static void st_mark_value(Checker *c, uint32_t e)
+{
+    for (;;) {
+        Kids k;
+        bool comma;
+        while (ntag(c, e) == N_PAREN)
+            e = first_child(c, e);
+        if (ntag(c, e) != N_BINARY || tpunct(c, cnode(c, e)->tok) != P_COMMA)
+            return;
+        kids_get(c, e, &k);
+        comma = k.n == 2;
+        if (comma) {
+            st_mark(c, k.p[0]);
+            e = k.p[1];
+        }
+        kids_free(&k);
+        if (!comma)
+            return;
+    }
+}
+
 static void read_scan(Checker *c, uint32_t first, uint32_t last,
                       const uint32_t *names, uint8_t *read, uint32_t n)
 {
@@ -8886,7 +8929,13 @@ static void read_scan(Checker *c, uint32_t first, uint32_t last,
     for (k = first; k <= last; k++) {
         if (ntag(c, k) == N_EXPR_STMT) {
             uint32_t e = first_child(c, k);
-            if (e != NO_NODE)
+            if (e == NO_NODE)
+                ;
+            else if (k + 1 < c->nn && ntag(c, k + 1) == N_SCOPE_END &&
+                     c->par[k + 1] != NO_NODE && c->par[c->par[k + 1]] != NO_NODE &&
+                     ntag(c, c->par[c->par[k + 1]]) == N_STMT_EXPR)
+                st_mark_value(c, e);
+            else
                 st_mark(c, e);
         } else if (ntag(c, k) == N_FOR) {
             Kids kk;
@@ -8969,7 +9018,7 @@ static void unused_scan(Checker *c, uint32_t first, uint32_t last)
                 diag_ord(c->diag, o0);
                 if (sym_public(s))
                     s->flags |= CSF_USED;
-            } else if (!read[j] && !sym_public(s) &&
+            } else if (!read[j] && !sym_public(s) && s->sc != SC_EXTERN &&
                        !(s->flags & CSF_ATTR_UNUSED))
                 cwarn(c, s->loc, "unused-but-set-variable", "variable '%s' set "
                       "but not used", sname(c, s));

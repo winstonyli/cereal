@@ -781,6 +781,12 @@ static Tok builtin_token(PP *pp, Macro *m, const Tok *name, SrcLoc exp_loc)
     const char *s = buf;
     TokKind k = TK_PPNUM;
     uint16_t fl = (uint16_t)((name->flags & (TF_SPACE | TF_BOL)) | TF_SYNTH);
+    if ((m->builtin == BUILTIN_DATE || m->builtin == BUILTIN_TIME ||
+         m->builtin == BUILTIN_TIMESTAMP) && diag_enabled(pp->diag, "date-time"))
+        pp_warn_at(pp, name, "date-time", "macro \"%s\" might prevent "
+                   "reproducible builds",
+                   m->builtin == BUILTIN_DATE ? "__DATE__" :
+                   m->builtin == BUILTIN_TIME ? "__TIME__" : "__TIMESTAMP__");
     switch (m->builtin) {
     case BUILTIN_LINE:
         if (pp->reads) /* the result depends on absolute line numbers */

@@ -87,6 +87,7 @@ typedef struct CEnumSet {
     uint32_t n;
     uint32_t *name;
     uint64_t *val;
+    uint8_t *unused;     /* __attribute__((unused)) enumerators */
 } CEnumSet;
 
 typedef struct CStmt {
@@ -219,6 +220,7 @@ static void enumset_free(CStmt *s)
 {
     free(s->en.name);
     free(s->en.val);
+    free(s->en.unused);
     memset(&s->en, 0, sizeof s->en);
 }
 
@@ -901,9 +903,11 @@ static void enum_collect(Checker *c, CStmt *s, TypeId et)
             cap = cap ? cap * 2 : 8;
             e->name = xrealloc(e->name, cap * sizeof *e->name);
             e->val = xrealloc(e->val, cap * sizeof *e->val);
+            e->unused = xrealloc(e->unused, cap);
         }
         e->name[e->n] = sy->name;
         e->val[e->n] = sy->val;
+        e->unused[e->n] = (sy->flags & CSF_ATTR_UNUSED) != 0;
         e->n++;
     }
 }
@@ -974,7 +978,7 @@ static void finish_switch(Checker *c, CStmt *s)
             for (k = 0; k < n && !found; k++)
                 found = cmp_key(&sw, sgn, cs[k].lo, v) <= 0 &&
                         cmp_key(&sw, sgn, v, cs[k].hi) <= 0;
-            if (found)
+            if (found || e->unused[q])      /* PR c++/105497 */
                 continue;
             if (!sw.has_default && sw_enum > 0)
                 cwarn(c, sw.loc, "switch", "enumeration value '%s' not "
@@ -2916,7 +2920,9 @@ void cstmt_scope_end_post(Checker *c, uint32_t i)
         if (type_ckind(TT, fty) == TY_FUNC &&
             type_ckind(TT, type_base(TT, fty)) != TY_VOID &&
             type_base(TT, fty) != ERRT && fs->linkage == LK_INTERNAL &&
-            !implicit_int && !is_main_name(c, fs))
+            !implicit_int && !is_main_name(c, fs) &&
+            !(fs->flags & CSF_NORETURN) &&
+            !cdecl_aset_has(c, fs->aset, "naked", NULL))
             cwarn(c, cinput_loc(c, c->nodes[i].tok), "return-type", "no return statement in "
                   "function returning non-void");
     }

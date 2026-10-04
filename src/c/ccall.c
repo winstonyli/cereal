@@ -501,7 +501,7 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
           strncmp(fname, "__builtin___", 12)) ||
          (fref != SYM_NONE && bt_for_decl(c, csym(c, fref)) &&
           builtin_decl_ok(c, csym(c, fref)))))
-        sizeof_memaccess(c, kv, nk, fname);
+        { memset_args(c, kv, nk, fname); sizeof_memaccess(c, kv, nk, fname); }
     if (!too_many && proto && nk - 1 < nparm) {
         Diagnostic *d = cerror_d(c, loc, "too few arguments to function '%s'",
                                  fname);

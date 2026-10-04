@@ -344,6 +344,7 @@ Diagnostic *ped(Checker *c, uint32_t i, SrcLoc loc, const char *fmt, ...);
 bool ptr_arith_ok(Checker *c, uint32_t i, SrcLoc loc, TypeId pt);
 bool rvalue_ok(Checker *c, uint32_t i);
 bool rvalue_ok_at(Checker *c, uint32_t i, SrcLoc loc);
+void memset_args(Checker *c, const uint32_t *kv, uint32_t nk, const char *name);
 void sizeof_memaccess(Checker *c, const uint32_t *kv, uint32_t nk, const char
                       *name);
 TypeId vec_elem(Checker *c, TypeId vt);

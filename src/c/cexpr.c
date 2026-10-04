@@ -3865,6 +3865,20 @@ static void deref(Checker *c, uint32_t i, uint32_t a)
     }
 }
 
+static bool is_boolish(Checker *c, uint32_t n);
+
+/* warn_about_bool_operation: a bool or truth-valued operand (through the
+ * right operand of commas). */
+static bool bool_operand(Checker *c, uint32_t n)
+{
+    uint32_t k[3];
+    for (n = strip_paren(c, n); ntag(c, n) == N_BINARY &&
+         npunct(c, n) == P_COMMA && nkids(c, n, k, 3) == 2;
+         n = strip_paren(c, k[1]))
+        ;
+    return is_boolish(c, n);
+}
+
 static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
 {
     SrcLoc loc = cnode_loc(c, i);
@@ -3910,7 +3924,7 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
             cerror(c, loc, "wrong type argument to bit-complement");
             set_err(c, i);
             return;
-        } else if (tkind(c, t) == TY_BOOL) {
+        } else if (bool_operand(c, a)) {
             /* -Wbool-operation (-Wall) */
             Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "bool-operation",
                                     "'~' on a boolean expression");
@@ -6540,7 +6554,7 @@ void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk,
 static void tauto_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
 {
     SrcLoc loc = cnode_loc(c, i);
-    uint32_t sa = strip_paren(c, a), sb = strip_paren(c, b), bit, cst;
+    uint32_t sa = strip_paren(c, a), sb = strip_paren(c, b), bit, cst, n;
     TypeId t;
     if (!is_cmp_op(op) || from_macro(c, c->nodes[i].tok))
         return;
@@ -6585,14 +6599,17 @@ static void tauto_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     if (ntag(c, sa) == N_CAST || ntag(c, sb) == N_CAST)
         return;
     t = c->ty[sa];
-    if (is_flt(c, t) || is_complex(c, t) || is_array(c, t) || is_func(c, t) ||
+    if (is_flt(c, t) || is_complex(c, t) || is_array(c, t) ||
         is_record(c, t) || tkind(c, t) == TY_VECTOR)
         return;
-    if (ntag(c, sa) == N_INDEX) {
-        uint32_t k[3];
-        if (nkids(c, sa, k, 3) == 2 && is_array(c, c->ty[strip_paren(c, k[0])]) &&
-            is_intcst(c, k[1]))
+    for (n = sa; ntag(c, n) == N_INDEX || ntag(c, n) == N_MEMBER_EXPR;) {
+        uint32_t k[3];      /* a constant index anywhere in the access chain */
+        if (nkids(c, n, k, 3) < 1)
+            break;
+        if (ntag(c, n) == N_INDEX && nkids(c, n, k, 3) == 2 &&
+            is_array(c, c->ty[strip_paren(c, k[0])]) && is_intcst(c, k[1]))
             return;
+        n = strip_paren(c, k[0]);
     }
     if (!opeq(c, sa, sb))
         return;
@@ -6764,7 +6781,8 @@ static void lognot_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     if (tkind(c, rvt(c, y)) == TY_BOOL)
         return;
     if (tkind(c, rvt(c, b)) == TY_BOOL || truth_expr(c, b) ||
-        (is_intcst(c, b) && c->cv[b] == 0) || boolish_bits(c, b))
+        (is_intcst(c, b) && c->cv[b] == 0 && (op == P_EQEQ || op == P_NE)) ||
+        boolish_bits(c, b))
         return;
     d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), "logical-not-parentheses",
                 "logical not is only applied to the left hand side of "
@@ -7172,11 +7190,14 @@ static SrcLoc colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els);
 
 /* c_common_truthvalue_conversion's -Wint-in-bool-context: the expression n
  * is used as a truth value. */
+static bool no_int_bool;
+
 static void int_bool_warn(Checker *c, uint32_t n)
 {
     uint32_t s = n, k[3], cnt;
     TypeId t;
-    if (!diag_enabled(c->diag, "int-in-bool-context") || node_err(c, n))
+    if (no_int_bool || !diag_enabled(c->diag, "int-in-bool-context") ||
+        node_err(c, n))
         return;
     for (;;) {      /* operations that keep zero-ness */
         s = strip_paren(c, s);
@@ -7330,6 +7351,57 @@ static bool array_known(Checker *c, TypeId t)
     if (tkind(c, t) == TY_VLA)
         return true;
     return tkind(c, t) == TY_ARRAY && (type_size(TT, t, &ok), ok);
+}
+
+/* A literal zero: one number or character token. */
+static bool literal_zero(Checker *c, uint32_t a)
+{
+    uint32_t t;
+    if (!is_intcst(c, a) || c->cv[a] != 0 || first_tok(c, a) != last_tok(c, a))
+        return false;
+    t = first_tok(c, a);
+    return c->u->toks[t].t.kind == TK_PPNUM || c->u->toks[t].t.kind == TK_CHAR;
+}
+
+/* warn_for_memset: -Wmemset-transposed-args and -Wmemset-elt-size of a call
+ * of memset (kv[0] the callee, then the arguments). */
+void memset_args(Checker *c, const uint32_t *kv, uint32_t nk, const char *name)
+{
+    uint32_t a, ck[3], j;
+    TypeId at, et;
+    bool ok = false, ok2 = false;
+    uint64_t sz, esz;
+    if (strcmp(name, "memset") && strcmp(name, "__builtin_memset"))
+        return;
+    if (nk != 4)
+        return;
+    for (j = 1; j < 4; j++)
+        if (node_err(c, kv[j]))
+            return;
+    if (diag_enabled(c->diag, "memset-transposed-args") &&
+        literal_zero(c, kv[3]) && !literal_zero(c, kv[2]) &&
+        is_intcst(c, kv[3]))
+        cwarn(c, first_loc(c, kv[0]), "memset-transposed-args", "'memset' used "
+              "with constant zero length parameter; this could be due to "
+              "transposed parameters");
+    if (!diag_enabled(c->diag, "memset-elt-size") || !is_intcst(c, kv[3]))
+        return;
+    a = strip_paren(c, kv[1]);
+    while (ntag(c, a) == N_CAST && nkids(c, a, ck, 3) >= 1)
+        a = strip_paren(c, ck[nkids(c, a, ck, 3) - 1]);
+    if (ntag(c, a) == N_UNARY && npunct(c, a) == P_AMP &&
+        nkids(c, a, ck, 3) == 1)
+        a = strip_paren(c, ck[0]);
+    at = c->ty[a];
+    if (tkind(c, at) != TY_ARRAY)
+        return;
+    et = elem_of(c, at);
+    sz = type_size(TT, at, &ok);
+    esz = type_size(TT, et, &ok2);
+    if (ok && ok2 && esz > 1 && sz / esz == (uint64_t)c->cv[kv[3]])
+        cwarn(c, first_loc(c, kv[0]), "memset-elt-size", "'memset' used with "
+              "length equal to number of elements without multiplication by "
+              "element size");
 }
 
 void sizeof_memaccess(Checker *c, const uint32_t *kv, uint32_t nk,
@@ -7496,7 +7568,33 @@ static void sizeof_div(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     StrBuf s0 = {0}, s1 = {0};
     Diagnostic *d;
     if (!sizeof_operand(c, a, &t0, &d0) || !sizeof_operand(c, b, &t1, &d1) ||
-        !is_ptr(c, t0) || is_err(c, t1))
+        is_err(c, t1))
+        return;
+    if (tkind(c, t0) == TY_ARRAY) {     /* -Wsizeof-array-div */
+        TypeId et = elem_of(c, t0);
+        bool ok0 = false, ok1 = false;
+        char n0[256], n1[256];
+        if (strip_paren(c, b) != b || !diag_enabled(c->diag, "sizeof-array-div") ||
+            tkind(c, et) == TY_CHAR || tkind(c, et) == TY_SCHAR ||
+            tkind(c, et) == TY_UCHAR || tkind(c, et) == TY_ARRAY ||
+            type_size(TT, et, &ok0) == type_size(TT, t1, &ok1) || !ok0 || !ok1)
+            return;
+        snprintf(n0, sizeof n0, "%s", type_q(TT, unqual(c, et)));
+        snprintf(n1, sizeof n1, "%s", type_q(TT, t1));
+        d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), "sizeof-array-div",
+                    "expression does not compute the number of elements in "
+                    "this array; element type is %s, not %s", n0, n1);
+        cnote(c, d, cnode_loc(c, i), "add parentheses around the second "
+              "'sizeof' to silence this warning");
+        if (d0 != NO_NODE) {
+            uint32_t ref = lookup_ord(c, cnode_ident(c, d0));
+            if (ref != SYM_NONE)
+                cnote(c, d, csym(c, ref)->loc, "array '%s' declared here",
+                      cident(c, cnode_ident(c, d0)));
+        }
+        return;
+    }
+    if (!is_ptr(c, t0))
         return;
     if (d0 != NO_NODE) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, d0));
@@ -8360,12 +8458,24 @@ static void e_cond(Checker *c, uint32_t i)
         return;
     }
     cl = colon_loc(c, i, mid, els);
-    if (mid == NO_NODE)
+    if (mid == NO_NODE) {
+        uint32_t q[3], tc;
         ped(c, i, cl, "ISO C forbids omitting the middle term of a '?:' "
                       "expression");
+        for (tc = strip_paren(c, cond); ntag(c, tc) == N_BINARY &&
+             npunct(c, tc) == P_COMMA && nkids(c, tc, q, 3) == 2;
+             tc = strip_paren(c, q[1]))
+            ;
+        if (is_boolish(c, tc) && !node_err(c, tc))
+            cwarn(c, cl, "parentheses", "the omitted middle operand in '?:' "
+                  "will always be 'true', suggest explicit middle operand");
+    }
     ok = binop_operand_at(c, cond, cnode_loc(c, i)) && truth_ok_at(c, cond, cnode_loc(c, i));
-    if (ok)
+    if (ok) {
+        no_int_bool = mid == NO_NODE;   /* the condition is also the value */
         cexpr_truth_warn(c, cond, cnode_loc(c, i));
+        no_int_bool = false;
+    }
     if (mid != NO_NODE && !is_void(c, rvt(c, mid)))
         ok = rvalue_ok(c, mid) && ok;
     if (!is_void(c, rvt(c, els)))

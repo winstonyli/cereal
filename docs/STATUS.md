@@ -1242,3 +1242,11 @@ diagnostics and builds on the strinit table.
 - Goldens `tests/check/int_bool_1.c`, `int_bool_2.c` (both SAME against gcc-13 via `cmp.sh`).
 - Baselines: suite 1075/0; gcc.dg 3711 identical (164 differ); c-c++-common 580 (77); -O 3711 (164); san 362 files / 0 findings; icount 3.598G (+0.14%).
 - Gate note: a single `to` (timeout) entry for gcc.dg/binary-constants-1.c broke `diagstat.py` in one run (load); rerunning par.py fixed it.
+
+## Round 65 — c-c++-common single-rule gaps
+
+- New: `-Wmemset-transposed-args`, `-Wmemset-elt-size` (`memset_args`, called beside `sizeof_memaccess`), `-Wsizeof-array-div` (array branch of `sizeof_div`), `-Wdate-time` (`builtin_token` in `src/ppexpand.c`), omitted-middle-operand `-Wparentheses` for `?:`.
+- Fixed: `-Wbool-operation` on truth-valued operands (`bool_operand`); `-Wlogical-not-parentheses` zero-rhs exemption only for `==`/`!=`; `-Wunused-but-set-variable` (statement-expression value is a use, comma left operands, `__real__`/`__imag__` stores, block-scope `extern`); attributes among pointer qualifiers apply to the declaration (`decl_attrs`); noreturn/naked functions skip "no return statement"; `-Wswitch` skips `unused` enumerators; `-Wtautological-compare` skips constant indices anywhere in the access chain and now covers function names.
+- Gotcha: a `-W` option missing from `src/diag.c` is silently enabled by default; register new options there (DO_ALL for -Wall members).
+- Golden `tests/check/misc_64.c` (SAME against gcc-13).
+- Baselines: suite 1077/0; gcc.dg 3711 (164 differ); c-c++-common 598 (59); -O 3711 (164); san 363 files / 0 findings; icount 3.610G (+0.3%).
