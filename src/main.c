@@ -212,6 +212,8 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
     Checker *chk = NULL;
     uint64_t errs;
     size_t mark, mid;
+    Diagnostic **pre = NULL;
+    size_t npre = 0, ipre = 0;
     int rc;
     tu_init(&tu, o);
     tu.diag.out = err;
@@ -265,17 +267,46 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         co.macro_ctx = &tu.pp;
         chk = checker_new(&tu.sm, tu.in, &tu.diag, &co);
     }
+    /* From cells the whole file is lexed before the first unit, so its lexer
+     * and preprocessor diagnostics are already reported; hold them back and
+     * release each with the unit whose tokens (and one of lookahead) reach
+     * it, where a sequential run lexes them. */
+    if (src == cell_source && tu.diag.all.len) {
+        npre = tu.diag.all.len;
+        pre = xmalloc(npre * sizeof *pre);
+        memcpy(pre, tu.diag.all.data, npre * sizeof *pre);
+        tu.diag.all.len = 0;
+    }
     for (errs = p.errors - p.soft_errors, mark = tu.diag.all.len;
          parser_next(&p, &u);
          errs = p.errors - p.soft_errors, mark = tu.diag.all.len) {
         if (parse_dump)
             ast_dump(out, &u, &tu.sm, tu.in);
+        if (ipre < npre) {
+            SrcLoc lim = p.toks.len > p.unit_end
+                             ? p.toks.data[p.unit_end].t.loc
+                             : p.unit_end ? p.toks.data[p.unit_end - 1].t.loc +
+                                                p.toks.data[p.unit_end - 1].t.len
+                                          : 0;
+            size_t nrel = 0, cnt = tu.diag.all.len - mark, q;
+            while (ipre + nrel < npre && pre[ipre + nrel]->loc < lim)
+                nrel++;
+            for (q = 0; q < nrel; q++)
+                vec_push(&tu.diag.all, NULL);
+            memmove(tu.diag.all.data + mark + nrel, tu.diag.all.data + mark,
+                    cnt * sizeof *pre);
+            memcpy(tu.diag.all.data + mark, pre + ipre, nrel * sizeof *pre);
+            ipre += nrel;
+        }
         mid = tu.diag.all.len;
         if (chk)
             checker_unit(chk, &u, p.errors - p.soft_errors > errs);
         if (mid > mark)
             diag_merge_from(&tu.diag, mark, mid);
     }
+    for (; ipre < npre; ipre++)
+        vec_push(&tu.diag.all, pre[ipre]);
+    free(pre);
     if (chk && tu.diag.pedantic && p.units == 0 && p.base + p.unit_end == 0) {
         uint32_t k;
         for (k = 0; k < srcmgr_nfiles(&tu.sm); k++) {

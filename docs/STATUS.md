@@ -1304,3 +1304,9 @@ diagnostics and builds on the strinit table.
 - `pr23165`: `if (c) label: ;` / `else label: ;` / `do` — labels are looked through before the -Wempty-body test (c_parser_if_body).
 - Goldens `misc_71`, `misc_72`. Gate: 1091 pass, san 370/0, gcc.dg differ 136, c-c++-common 54, callgrind 3.632G.
 - Remaining gcc.dg tail, triaged: `Warray-parameter-10` (a block-scope extern's prototype must not carry into a later file-scope `void gia ();`), `pr68412-2` (self-comparison of statement expressions), `pr62090` (gnu_inline sprintf nonnull), `pr81779` (needs -std=c90), `Warray-parameter-11`, `Wbuiltin-declaration-mismatch-3`.
+
+### Round 71 addendum — cells-mode order of lexer diagnostics
+
+- From cells the whole file is lexed before the first unit, so lexer/preprocessor diagnostics used to print before every checker diagnostic. `main.c` now holds them back and releases each with the unit whose tokens reach it (location < the lookahead token, else < the end of the unit's last token), ahead of that unit's parser diagnostics; leftovers are appended after the last unit. This removes the "keep lexer errors first" golden workaround noted in Round 70: `misc_70` is back in natural file order and identical plain / `--cells`.
+- Approximation: release is by location, so diagnostics from included files compare by global `SrcLoc`, not lexing time. fuzz_cells / lsp transcripts pass.
+- Gate: 1091 pass, san 370/0, gcc.dg differ 136, c-c++-common 54, callgrind 3.631G.

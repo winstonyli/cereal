@@ -1,21 +1,21 @@
-misc_70.c:2:5: error: \U0000003b is not a valid universal character
-    2 | int \U0000003b;
-      |     ^
-misc_70.c:3:5: error: \u007f is not a valid universal character
-    3 | int a\u007fb;
-      |     ^
-misc_70.c:5:26: error: \u001f is not a valid universal character
-    5 | const char *a1 = "\u001f";
+misc_70.c:2:26: error: \u001f is not a valid universal character
+    2 | const char *a1 = "\u001f";
       |                          ^
-misc_70.c:7:30: error: \U80000000 is not a valid universal character
-    7 | const char *a3 = "\U80000000";
+misc_70.c:4:30: error: \U80000000 is not a valid universal character
+    4 | const char *a3 = "\U80000000";
       |                              ^
-misc_70.c:8:26: warning: delimited escape sequences are only valid in C++23
-    8 | const char *a4 = "\u{41}";
+misc_70.c:5:26: warning: delimited escape sequences are only valid in C++23
+    5 | const char *a4 = "\u{41}";
       |                          ^
-misc_70.c:8:26: error: \u{41} is not a valid universal character
-    8 | const char *a4 = "\u{41}";
+misc_70.c:5:26: error: \u{41} is not a valid universal character
+    5 | const char *a4 = "\u{41}";
       |                          ^
-misc_70.c:9:47: warning: named universal character escapes are only valid in C++23
-    9 | const char *a5 = "\N{LEFT-TO-RIGHT OVERRIDE}x";
+misc_70.c:6:47: warning: named universal character escapes are only valid in C++23
+    6 | const char *a5 = "\N{LEFT-TO-RIGHT OVERRIDE}x";
       |                                               ^
+misc_70.c:7:5: error: \U0000003b is not a valid universal character
+    7 | int \U0000003b;
+      |     ^
+misc_70.c:8:5: error: \u007f is not a valid universal character
+    8 | int a\u007fb;
+      |     ^
