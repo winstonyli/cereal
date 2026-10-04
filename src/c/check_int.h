@@ -556,6 +556,7 @@ void cdecl_attrs_names(Checker *c, uint32_t attr, uint32_t *set);
 uint32_t cdecl_typedef_aset(const Checker *c, TypeId t);
 void cdecl_attr_args(Checker *c, uint32_t item, char *out, size_t n);
 void cdecl_attr_name(const char *s, char *out, size_t n);
+bool cdecl_attr_known(const char *name);
 unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3]);
 uint32_t cparm_make(Checker *c, uint32_t fnode);    /* a prototype's record + 1 */
 void cparm_compare(Checker *c, uint32_t nw, uint32_t old);

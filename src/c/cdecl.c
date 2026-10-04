@@ -542,6 +542,11 @@ static bool attr_known(const char *name)
     return false;
 }
 
+bool cdecl_attr_known(const char *name)
+{
+    return attr_known(name);
+}
+
 /* malloc (dealloc[, pos]): the deallocator must name a function whose
  * parameter number pos (default 1) is a pointer. */
 static void attr_malloc_dealloc(Checker *c, uint32_t arg, uint32_t pos,

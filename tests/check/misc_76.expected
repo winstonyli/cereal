@@ -1,0 +1,18 @@
+misc_76.c:6:38: error: unknown attribute 'align'
+    6 |   b = __builtin_has_attribute(fnone, align);
+      |                                      ^
+misc_76.c:7:3: error: requested alignment '3' is not a positive power of 2
+    7 |   b = __builtin_has_attribute(fnone, aligned (3));
+      |   ^
+misc_76.c:8:3: warning: 'alloc_size' attribute only applies to function types [-Wattributes]
+    8 |   b = __builtin_has_attribute(i, alloc_size (1));
+      |   ^
+misc_76.c:9:3: warning: 'alloc_size' attribute only applies to function types [-Wattributes]
+    9 |   b = __builtin_has_attribute(int, alloc_size (1));
+      |   ^
+misc_76.c:10:34: error: expected identifier before numeric constant
+   10 |   b = __builtin_has_attribute(1, 2, 3);
+      |                                  ^
+misc_76.c:11:34: error: expected identifier before string constant
+   11 |   b = __builtin_has_attribute(2, "aligned");
+      |                                  ^

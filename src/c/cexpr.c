@@ -5307,6 +5307,12 @@ static void e_has_attr(Checker *c, uint32_t i)
         cdecl_attr_name(raw, an, sizeof an);
         cdecl_attr_args(c, k[1], args, sizeof args);
         nonnull = !strcmp(an, "nonnull");
+        if (!cdecl_attr_known(an)) {
+            cerror(c, ctok_loc(c, c->nodes[k[1]].tok), "unknown attribute "
+                   "'%s'", raw);
+            set_err(c, i);
+            return;
+        }
     }
     if (!strcmp(an, "mode")) {
         cwarn(c, ctok_loc(c, c->nodes[k[1]].tok), "attributes", "'mode' attribute "
@@ -5317,6 +5323,12 @@ static void e_has_attr(Checker *c, uint32_t i)
     if (!strcmp(an, "aligned") && !strcmp(args, "0"))
         cwarn(c, cnode_loc(c, i), "attributes", "requested alignment '0' is "
               "not a positive power of 2");
+    if (!strcmp(an, "aligned") && args[0] >= '1' && args[0] <= '9') {
+        unsigned long long av = strtoull(args, NULL, 10);
+        if (av & (av - 1))
+            cerror(c, cdecl_line_start_loc(c, c->nodes[i].tok), "requested "
+                   "alignment '%s' is not a positive power of 2", args);
+    }
     if (!strcmp(an, "vector_size")) {
         /* a property of the (vector) type itself, never of a declaration */
         TypeId t;
@@ -5367,7 +5379,10 @@ static void e_has_attr(Checker *c, uint32_t i)
          * arguments keeps its own */
         TypeId ft = ntag(c, k[0]) == N_TYPE_NAME ? type_of_typename(c, k[0])
                                                 : c->ty[k[0]];
-        if (!is_err(c, ft) && type_ckind(TT, type_canon(TT, ft)) == TY_FUNC) {
+        if (!is_err(c, ft) && type_ckind(TT, type_canon(TT, ft)) != TY_FUNC)
+            cwarn(c, cdecl_line_start_loc(c, c->nodes[i].tok), "attributes",
+                  "'%s' attribute only applies to function types", an);
+        else if (!is_err(c, ft) && type_ckind(TT, type_canon(TT, ft)) == TY_FUNC) {
             TypeId rt = type_base(TT, type_canon(TT, ft));
             char was[96];
             if (type_ckind(TT, type_canon(TT, rt)) != TY_PTR)

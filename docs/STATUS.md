@@ -1324,3 +1324,5 @@ diagnostics and builds on the strinit table.
 - Gate: 1097 goldens pass; san 373/0; gcc.dg differ 135; c-c++-common differ 52 (was 53); callgrind 3.633G.
 - Still open from triage: `builtin-has-attribute` (wording of lines 33-35, missing errors 42-44); `pr84999` needs `typeof`.
 - Not started: gcc.dg tail (`nofixed-point-2`, `diag-aka-5a/5b`, `overflow-warn-8`, `init-excess-2`); cells-mode release heuristic with includes.
+- `__builtin_has_attribute` (Round 73b): "expected identifier" wording; `unknown attribute 'X'` error (`cdecl_attr_known`); non-power-of-2 `aligned(N)` error; `alloc_size`/`alloc_align` on a non-function operand warns. Golden `misc_76`. Gate: 1099 pass, san 374/0, dg 135, c-c++-common 52, callgrind 3.633G.
+- Still open in `builtin-has-attribute`: `aligned(i)` non-constant error (line 56) and the array-element alignment error location inside a type-name (gcc reports at statement start, we at the size expr).

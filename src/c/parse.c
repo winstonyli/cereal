@@ -1184,7 +1184,7 @@ static void std_attribute(Parser *p)
             }
             emit(p, N_ATTR_ITEM, name, s, 0);
         } else if (!is_p(&t, P_COMMA)) {
-            expected(p, "attribute name");
+            expected(p, "identifier");
             break;
         }
         if (!accept(p, P_COMMA))
@@ -1296,7 +1296,7 @@ static void attribute(Parser *p)
                 return;
             }
         } else if (!is_p(&t, P_COMMA)) {
-            expected(p, "attribute name");
+            expected(p, "identifier");
             break;
         }
         if (!accept(p, P_COMMA))
@@ -2214,7 +2214,7 @@ static void has_attr_expr(Parser *p)
             }
             emit(p, N_ATTR_ITEM, name, s, 0);
         } else {
-            expected(p, "attribute name");
+            expected(p, "identifier");
         }
     }
     expect(p, P_RPAREN);
