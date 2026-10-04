@@ -665,10 +665,22 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     sb_vprintf(&sb, fmt, ap);
     dg->msg = arena_strndup(d->arena, sb_cstr(&sb), sb.len);
     sb_free(&sb);
-    if (d->include_chain) {
-        SrcLoc *locs;
-        int n;
-        d->include_chain(d->include_chain_ctx, &locs, &n);
+    {
+        /* the chain of the location's own file, as gcc prints it; a location
+         * with no file of its own (a macro scratch spelling) takes the
+         * preprocessor's current one */
+        SrcLoc cl[16];
+        int n = 0;
+        SrcFile *f = d->sm ? srcmgr_file_of(d->sm, loc) : NULL;
+        SrcLoc *locs = cl;
+        if (f && f->kind != SF_SCRATCH && f->kind != SF_VIRTUAL) {
+            while (f && n < 16 && __atomic_load_n(&f->inc_loc, __ATOMIC_RELAXED)) {
+                cl[n] = __atomic_load_n(&f->inc_loc, __ATOMIC_RELAXED);
+                f = srcmgr_file_of(d->sm, cl[n++]);
+            }
+        } else if (d->include_chain) {
+            d->include_chain(d->include_chain_ctx, &locs, &n);
+        }
         if (n > 0) {
             dg->inc_chain = NEW_ARRAY(d->arena, SrcLoc, n);
             memcpy(dg->inc_chain, locs, sizeof(SrcLoc) * (size_t)n);

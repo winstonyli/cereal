@@ -1,0 +1,22 @@
+In file included from misc_81.c:2:
+misc_81.h:1:11: warning: extra tokens at end of #undef directive [-Wextra-tokens]
+    1 | #undef HY junk
+      |           ^~~~
+In file included from misc_81.c:3:
+misc_80.h:1:10: error: invalid suffix "g" on integer constant
+    1 | int ha = 0x1g;
+      |          ^
+In file included from misc_81.c:3:
+misc_80.h:2:11: warning: extra tokens at end of #undef directive [-Wextra-tokens]
+    2 | #undef HX junk
+      |           ^~~~
+In file included from misc_81.c:3:
+misc_80.h:4:10: error: invalid digit "8" in octal constant
+    4 | int hc = 08;
+      |          ^
+misc_81.c:4:9: error: exponent has no digits
+    4 | int b = 2.0e;
+      |         ^
+misc_81.c:5:23: error: expected ';' before '}' token
+    5 | int c(void) { return 3 }
+      |                       ^

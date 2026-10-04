@@ -1333,3 +1333,10 @@ diagnostics and builds on the strinit table.
 - Overflow warnings issued at c_fully_fold time (operand not yet constant, e.g. through a `(double)` cast) print the expression: `expression '1 + 2147483647' of type ...` for binary nodes (`fold_flush`). `overflow-warn-8` SAME.
 - `pedwarn_init`/`warning_init` (`iped`, `iwarn`, designated-init): a token spelled in a system header macro (NULL) is reported at the macro's expansion point (`wloc`), so it is not dropped. `init-excess-2` SAME. Golden `misc_79`.
 - Gate: 1105 goldens pass; san 377/0; gcc.dg differ 132 (3743 identical); c-c++-common differ 52; callgrind 3.634G.
+
+## Round 74b — cells mode with #include
+- Multi-file `--cells` probe (`misc_80`, `misc_81`) found two bugs, both fixed:
+  1. The cells hold-back/release compared SrcLocs numerically, but an included file's locs are numbered after the main file's. `main.c: pre_before` now orders a header's diagnostics by where its outermost #include sits (inc_chain), falling back to file load order inside a header.
+  2. "In file included from" was missing for diagnostics reported by the parser/checker in cells mode (no live pp). `SrcFile.inc_loc` is now set in `push_file`, and `diag_vreport` derives the chain from the diagnostic's own location (scratch/virtual locations still use the pp's live chain).
+- Note: the pp front end's option tags differ from gcc's (`[-Wextra-tokens]`, `[-Wpp-warning-directive]` on `#warning`, which gcc-13.4 words "before C2X is a GCC extension" under -pedantic); the pp goldens bake this in, so misc_80/81 use `#undef X junk`.
+- Gate: 1109 pass, san 379/0, dg 132, c-c++-common 52, callgrind 3.634G.

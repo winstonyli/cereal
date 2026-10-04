@@ -42,6 +42,7 @@ typedef struct SrcFile {
     bool system_header;
     uint32_t *sysmarks;    /* line markers: (physical line, 1 = system flag) pairs */
     uint32_t nsysmarks;    /* entries in sysmarks (2 per marker) */
+    SrcLoc inc_loc;        /* the #include that last entered it (0: main file) */
     struct Ident *guard;   /* detected include guard macro */
     bool guard_checked;
     void *skel;            /* cached Skeleton (skel.c) */

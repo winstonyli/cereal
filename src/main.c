@@ -199,6 +199,30 @@ static bool cell_source(void *ctx, Tok *t, SrcLoc *exp_loc)
     }
 }
 
+/* Whether a lexer diagnostic held back by --cells precedes the token lim in
+ * lex order.  Locations of an included file are numbered after the main
+ * file's, so compare an included file's diagnostics by where its (outermost)
+ * #include sits: lm is the last main-file token before lim. */
+static bool pre_before(SrcMgr *sm, const SrcFile *mf, const Diagnostic *d,
+                       SrcLoc lim, SrcLoc lm)
+{
+    bool dmain = d->loc >= mf->base && d->loc < mf->base + mf->span;
+    bool lmain = lim >= mf->base && lim < mf->base + mf->span;
+    SrcLoc k = !dmain && d->ninc ? d->inc_chain[d->ninc - 1] : d->loc;
+    if (lmain)
+        return k < lim;
+    if (dmain)
+        return d->loc <= lm;
+    if (k <= lm)
+        return true;
+    {
+        SrcFile *df = srcmgr_file_of(sm, d->loc), *lf = srcmgr_file_of(sm, lim);
+        if (!df || !lf)
+            return d->loc < lim;
+        return df == lf ? d->loc < lim : df->base < lf->base;
+    }
+}
+
 static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
 {
     TU tu;
@@ -214,6 +238,7 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
     size_t mark, mid;
     Diagnostic **pre = NULL;
     size_t npre = 0, ipre = 0;
+    SrcLoc lastm = 0;
     int rc;
     tu_init(&tu, o);
     tu.diag.out = err;
@@ -289,7 +314,19 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
                                                 p.toks.data[p.unit_end - 1].t.len
                                           : 0;
             size_t nrel = 0, cnt = tu.diag.all.len - mark, q;
-            while (ipre + nrel < npre && pre[ipre + nrel]->loc < lim)
+            const SrcFile *mf = NULL;
+            uint32_t ui, back;
+            for (ui = 0; ui < srcmgr_nfiles(&tu.sm) && !mf; ui++)
+                if (srcmgr_file(&tu.sm, ui)->kind == SF_USER)
+                    mf = srcmgr_file(&tu.sm, ui);
+            for (back = p.unit_end; mf && back-- > 0 && p.unit_end - back < 4096;)
+                if (p.toks.data[back].t.loc >= mf->base &&
+                    p.toks.data[back].t.loc < mf->base + mf->span) {
+                    lastm = p.toks.data[back].t.loc;
+                    break;
+                }
+            while (ipre + nrel < npre &&
+                   pre_before(&tu.sm, mf, pre[ipre + nrel], lim, lastm))
                 nrel++;
             for (q = 0; q < nrel; q++)
                 vec_push(&tu.diag.all, NULL);

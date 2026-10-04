@@ -490,6 +490,8 @@ static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
         pp->pframe = pf;
         plan_add(pp, PI_ENTER);
     }
+    if (include_loc)
+        __atomic_store_n(&f->inc_loc, include_loc, __ATOMIC_RELAXED);
     fr->prev = pp->inc;
     fr->file = f;
     fr->saved_lex = pp->lex;
