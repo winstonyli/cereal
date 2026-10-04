@@ -1435,7 +1435,7 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             bitfield_overflow(c, L, &v, type);
         }
         if (rq && const_overflowed(c, v.node, type))
-            cconst_overflow(c, tloc(c, first_tok(c, v.node)));
+            cconst_overflow(c, cinput_loc(c, last_tok(c, v.node) + 1));
         zero = post_zero(c, &v, type);
         if (v.str && !v.decayed && is_arr(c, type)) {
             strn = v.strn;
@@ -2085,6 +2085,11 @@ static void set_init_index(Checker *c, CCtx *x, uint32_t lt, uint32_t e1,
         ierr(c, x, lt, "array index in non-array initializer");
         return;
     }
+    /* constant_expression_warning on the index (and range end) */
+    if (c->ef[e1] & EF_OVERFLOW)
+        cconst_overflow(c, cinput_loc(c, last_tok(c, e1) + 1));
+    if (has_last && (c->ef[e2] & EF_OVERFLOW))
+        cconst_overflow(c, cinput_loc(c, last_tok(c, e2) + 1));
     first = cexpr_sval(c, e1);
     neg = type_is_signed(TT, c->ty[e1]) ? first < 0 : false;
     big = !type_is_signed(TT, c->ty[e1]) && first < 0;

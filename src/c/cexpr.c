@@ -8410,6 +8410,7 @@ static void conv_const(Checker *c, uint32_t i, uint32_t a, TypeId to)
             }
         } else if (c->ck[a] == K_FLOAT &&
                    float_to_int(c, c->fv.data[c->cv[a]], to, &c->cv[i])) {
+            uint64_t ov;
             if (c->ef[a] & EF_REALCST) {
                 c->ck[i] = K_ICE;
                 c->ef[i] |= EF_INTOPS;
@@ -8417,6 +8418,11 @@ static void conv_const(Checker *c, uint32_t i, uint32_t a, TypeId to)
                 c->ck[i] = K_FOLD;
                 c->ef[i] |= EF_NOPCST;
             }
+            /* fold_convert_const_int_from_real: TREE_OVERFLOW */
+            if (tkind(c, to) != TY_BOOL &&
+                (float_ovf(c, c->fv.data[c->cv[a]], to, &ov) ||
+                 c->fv.data[c->cv[a]] != c->fv.data[c->cv[a]]))
+                c->ef[i] |= EF_OVERFLOW;
         } else if (c->ck[a] == K_ADDR && is_ptr(c, from)) {
             if (c->cb[a] == 0) {
                 c->ck[i] = K_FOLD;
@@ -12146,8 +12152,9 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         if (intops(c, a) && intops(c, b))
             c->ef[i] |= EF_INTOPS;
         if (!cnt_ok && !int_const && is_intcst(c, a) && is_intcst(c, b) &&
-            !ival_neg(c, tb, c->cv[b])) {
-            /* a count past the width: not an ICE, but a constant to gcc's
+            (!ival_neg(c, tb, c->cv[b]) || c->cv[a] == 0)) {
+            /* (a negative count only for a zero operand, which fold
+             * leaves a constant) a count past the width: not an ICE, but a constant to gcc's
              * initializers (a pedwarn there) */
             c->ck[i] = K_FOLD;
             c->cv[i] = 0;

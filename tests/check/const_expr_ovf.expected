@@ -1,0 +1,63 @@
+const_expr_ovf.c:6:9: warning: overflow in conversion from 'double' to 'int' changes value from '1.7976931348623157e+308' to '2147483647' [-Woverflow]
+    6 | int a = DBL_MAX;
+      |         ^
+const_expr_ovf.c:6:1: error: overflow in constant expression [-Woverflow]
+    6 | int a = DBL_MAX;
+      | ^
+const_expr_ovf.c:7:1: error: overflow in constant expression [-Woverflow]
+    7 | int b = (int) DBL_MAX;
+      | ^
+const_expr_ovf.c:8:18: warning: overflow in conversion from 'double' to 'unsigned int' changes value from '-1.0e+0' to '0' [-Woverflow]
+    8 | unsigned int c = -1.0;
+      |                  ^
+const_expr_ovf.c:8:1: error: overflow in constant expression [-Woverflow]
+    8 | unsigned int c = -1.0;
+      | ^
+const_expr_ovf.c:9:1: error: overflow in constant expression [-Woverflow]
+    9 | unsigned int d = (unsigned)-1.0;
+      | ^
+const_expr_ovf.c:11:11: warning: left shift count >= width of type [-Wshift-count-overflow]
+   11 | int e = 0 << 1000;
+      |           ^
+const_expr_ovf.c:11:9: error: initializer element is not a constant expression [-Wpedantic]
+   11 | int e = 0 << 1000;
+      |         ^
+const_expr_ovf.c:12:11: warning: left shift count is negative [-Wshift-count-negative]
+   12 | int f = 0 << -1;
+      |           ^
+const_expr_ovf.c:12:9: error: initializer element is not a constant expression [-Wpedantic]
+   12 | int f = 0 << -1;
+      |         ^
+const_expr_ovf.c:13:11: warning: right shift count >= width of type [-Wshift-count-overflow]
+   13 | int g = 0 >> 1000;
+      |           ^
+const_expr_ovf.c:13:9: error: initializer element is not a constant expression [-Wpedantic]
+   13 | int g = 0 >> 1000;
+      |         ^
+const_expr_ovf.c:14:11: warning: right shift count is negative [-Wshift-count-negative]
+   14 | int h = 0 >> -1;
+      |           ^
+const_expr_ovf.c:14:9: error: initializer element is not a constant expression [-Wpedantic]
+   14 | int h = 0 >> -1;
+      |         ^
+const_expr_ovf.c:23:9: error: initializer element is not a constant expression [-Wpedantic]
+   23 | int i = -1 << 0;
+      |         ^
+const_expr_ovf.c:25:14: warning: overflow in conversion from 'double' to 'int' changes value from '1.7976931348623157e+308' to '2147483647' [-Woverflow]
+   25 | int j[1] = { DBL_MAX };
+      |              ^
+const_expr_ovf.c:25:1: error: overflow in constant expression [-Woverflow]
+   25 | int j[1] = { DBL_MAX };
+      | ^
+const_expr_ovf.c:27:32: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+   27 | int array[2] = { [0 * (INT_MAX + 1)] = 0 };
+      |                                ^
+const_expr_ovf.c:27:1: error: overflow in constant expression [-Woverflow]
+   27 | int array[2] = { [0 * (INT_MAX + 1)] = 0 };
+      | ^
+const_expr_ovf.c:29:19: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+   29 | _Bool k = INT_MAX + 1;
+      |                   ^
+const_expr_ovf.c:29:1: error: overflow in constant expression [-Woverflow]
+   29 | _Bool k = INT_MAX + 1;
+      | ^

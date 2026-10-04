@@ -1150,3 +1150,12 @@ diagnostics and builds on the strinit table.
 - Goldens: tests/check/double_promo.c, dec_mix.c. `Wdouble-promotion.c`, `dfp/pr79515.c` identical.
 - Parity: gcc.dg 3667 identical (208 differ), c-c++-common 573 (84), san clean (341 files).
 - Survey: `-Wc90-c99-compat` is not implemented at all (the earlier "1 diagnostic" was something else). 9 corpus files, ~110 diagnostics, but only -2 and -9 are gnu99; about 15 distinct checks across parser, decl and preprocessor.
+
+## Round 55: constant-expression overflow leftovers (c99-const-expr-7.c)
+
+- Explicit float->int cast of an out-of-range or NaN constant sets `EF_OVERFLOW` (conv_const), so `int b = (int) DBL_MAX;` gets "overflow in constant expression".
+- `0 << -1` / `0 >> -1` stay constants to initializers (pedwarn "initializer element is not a constant expression"); a nonzero left operand with a negative count is still a hard error (golden shift_init_pedantic).
+- Overflow in a braced-initializer element and in a designator array index (`[0 * (INT_MAX + 1)] = 0`) is reported at gcc's input_location (`cinput_loc` of the token after the expression), not the expression.
+- Golden: tests/check/const_expr_ovf.c. `c99-const-expr-7.c` identical. Parity: gcc.dg 3668 identical (207 differ), c-c++-common 573 (84), san clean (342 files).
+- Survey, strlen remainder (`warn-strlen-no-nul.c`): 8 of 76 warnings matched, 68 missing. By shape: ~40 nested `ba[i].a[j].a|b` member arrays (+ `&...[K]`, `+ K`, `+ v`), ~22 2D `b[i][j]` rows, ~6 `s.b` members, the rest `?:` mixes of these. All need initializer bytes keyed by member/element path: record string-literal leaves in cinit (PEnt PV_STR) for const objects, resolve `.m`/`[K]` chains in `sl_resolve`. About 150 lines; no false positives today. gcc quirks to respect: `&obj.m[K]` offsets from the whole object; non-constant outer indices (`b[i3]`) are not diagnosed under -fsyntax-only.
+- Survey, `Wc90-c99-compat-2.c`: -Wc90-c99-compat is entirely unimplemented (9 corpus files, ~110 diagnostics, only -2 and -9 are gnu99 so only ~27 diagnostics are reachable). About 15 checks across the lexer/parser/decl/preprocessor: bool, complex, long long, flexible array members, bit-field type, duplicate qualifiers, variadic macros, enumerator trailing comma, [*] declarators, static/qualifiers in array parameters, compound literals, designators, mixed declarations, subscripting non-lvalue arrays, empty macro arguments, VLAs.
