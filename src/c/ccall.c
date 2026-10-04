@@ -1550,6 +1550,20 @@ static void e_builtin_complex(Checker *c, uint32_t i, SrcLoc bl)
 
 #include "c/cbuiltin_pure.h"
 
+/* Whether some entry of cbuiltin_pure starts with ch: most calls are to
+ * names that do not, and skip the search. */
+static bool pure_first_char(char ch)
+{
+    static unsigned char seen[256], ready;
+    if (!__atomic_load_n(&ready, __ATOMIC_ACQUIRE)) {
+        size_t k;
+        for (k = 0; k < sizeof cbuiltin_pure / sizeof *cbuiltin_pure; k++)
+            seen[(unsigned char)cbuiltin_pure[k][0]] = 1;
+        __atomic_store_n(&ready, 1, __ATOMIC_RELEASE);
+    }
+    return seen[(unsigned char)ch];
+}
+
 /* A call gcc builds without TREE_SIDE_EFFECTS: a const or pure function (or a
  * library built-in that is one) whose arguments have none either. */
 static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
@@ -1561,19 +1575,26 @@ static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
     bool pure = false;
     if (f == NO_NODE || ntag(c, f) != N_IDENT)
         return false;
+    an = nkids(c, i, av, 32);
+    for (j = 1; j < an && j < 32; j++)
+        if (c->ef[av[j]] & EF_SIDE)
+            return false;
     name = cident(c, cnode_ident(c, f));
     ref = lookup_ord(c, cnode_ident(c, f));
     if (ref != SYM_NONE) {
         if (csym(c, ref)->kind != CS_FUNC)
             return false;
-        pure = cdecl_aset_has(c, csym(c, ref)->aset, "const", NULL) ||
-               cdecl_aset_has(c, csym(c, ref)->aset, "pure", NULL);
+        pure = csym(c, ref)->aset &&
+               (cdecl_aset_has(c, csym(c, ref)->aset, "const", NULL) ||
+               cdecl_aset_has(c, csym(c, ref)->aset, "pure", NULL));
     }
     if (!pure) {
         if (ref == SYM_NONE && strncmp(name, "__builtin_", 10))
             return false;
         if (!strncmp(name, "__builtin_", 10))
             name += 10;
+        if (!pure_first_char(*name))
+            return false;
         while (lo < hi) {
             size_t mid = (lo + hi) / 2;
             int r = strcmp(name, cbuiltin_pure[mid]);
@@ -1587,13 +1608,7 @@ static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
                 lo = mid + 1;
         }
     }
-    if (!pure)
-        return false;
-    an = nkids(c, i, av, 32);
-    for (j = 1; j < an && j < 32; j++)
-        if (c->ef[av[j]] & EF_SIDE)
-            return false;
-    return true;
+    return pure;
 }
 
 void e_call(Checker *c, uint32_t i)

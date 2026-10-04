@@ -863,6 +863,14 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 cwarn(c, il, "prio-ctor-dtor", "%s priorities from 0 to 100 "
                       "are reserved for the implementation",
                       isc ? "constructor" : "destructor");
+        } else if (!strcmp(name, "optimize") && arg != NO_NODE &&
+                   ntag(c, arg) == N_STRING) {
+            uint32_t m = cdep_msg(c, arg);  /* pushes: read it, then drop */
+            const char *o = c->dep_msgs.data[m - 1];
+            if (!strchr(o, ' ') && cpragma_optimize_bad(o))
+                cwarn(c, cinput_loc(c, c->nodes[item].tok), "attributes",
+                      "bad option '%s' to attribute 'optimize'", o);
+            free(c->dep_msgs.data[--c->dep_msgs.len]);
         } else if (!strcmp(name, "section") && arg != NO_NODE) {
             a->sec_any = true;
             if (ntag(c, arg) != N_STRING) {
@@ -6195,6 +6203,8 @@ static void declared_visit(Checker *c, uint32_t i)
     if (g.what == GD_NONE)
         return;
     s = g.s;
+    if (s.kind == CS_FUNC)
+        cpragma_optimize_repeat(c, il);
     if (s.kind == CS_OBJ)
         larger_than(c, s.loc, s.name, s.ty);
     c->attr_fty = s.kind == CS_FUNC ? type_canon(TT, s.ty) : 0;
@@ -8231,6 +8241,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     if (g.what != GD_FUNC || !is_func(c, g.s.ty))
         return;
     attrs_unknown_emit(c, &sp.attrs, ltok);
+    cpragma_optimize_repeat(c, cinput_loc(c, ltok));
     acc_start(g.s.name, g.s.loc);
     imp_name = alloc_name;
     {

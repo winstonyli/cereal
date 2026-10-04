@@ -1,0 +1,21 @@
+optimize_bad.c:2:9: warning: bad option '-fno-lto' to pragma 'optimize' [-Wpragmas]
+    2 | #pragma GCC optimize ("-fno-lto")
+      |         ^
+optimize_bad.c:6:1: warning: bad option '-fno-lto' to attribute 'optimize' [-Wattributes]
+    6 | { return 0; }
+      | ^
+optimize_bad.c:7:1: warning: bad option '-fno-lto' to attribute 'optimize' [-Wattributes]
+    7 | static int p1(void), p2(void);
+      | ^
+optimize_bad.c:7:1: warning: bad option '-fno-lto' to attribute 'optimize' [-Wattributes]
+    7 | static int p1(void), p2(void);
+      | ^
+optimize_bad.c:11:1: warning: bad option '-fno-lto' to attribute 'optimize' [-Wattributes]
+   11 | int a1(void) __attribute__((optimize("-fno-lto")));
+      | ^
+optimize_bad.c:12:1: warning: bad option '-march=x' to attribute 'optimize' [-Wattributes]
+   12 | __attribute__((optimize("-march=x"))) int a2(void) { return 0; }
+      | ^
+optimize_bad.c:13:9: warning: bad option '-fno-lto' to pragma 'optimize' [-Wpragmas]
+   13 | #pragma GCC optimize ("-fno-lto")
+      |         ^

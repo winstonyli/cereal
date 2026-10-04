@@ -325,6 +325,9 @@ struct Checker {
     VEC(uint32_t) stack;     /* scratch */
     unsigned pack;           /* #pragma pack, bytes; 0: none */
     VEC(unsigned) pack_stack;
+    VEC(char *) opt_bad;     /* bad #pragma GCC optimize options in force */
+    VEC(unsigned) opt_stack; /* push_options: opt_bad.len at each */
+    uint64_t opt_dig;        /* digest of opt_bad */
     const DiagConfig *diag_cfg0;  /* the command line's -W state while a pragma
                                      has changed it (c->diag->cfg) */
     DiagConfig *diag_cur;    /* #pragma GCC diagnostic applied; NULL: none */
@@ -483,6 +486,8 @@ void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...);
 void unused_value(Checker *c, uint32_t e, SrcLoc dloc);
 /* cpragma.c: interpret the #pragma at token tok (pack, GCC diagnostic, ...) */
 void cpragma_apply(Checker *c, uint32_t tok);
+bool cpragma_optimize_bad(const char *opt);
+void cpragma_optimize_repeat(Checker *c, SrcLoc loc);
 
 /* gcc's input_location while the parser looks at token tok: the first
  * token of that token's line. */

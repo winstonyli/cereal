@@ -528,6 +528,8 @@ static uint64_t pack_digest(const Checker *c)
     size_t k;
     if (c->diag_dig)
         d = H(d, c->diag_dig);
+    if (c->opt_dig)
+        d = H(d, c->opt_dig);
     for (k = 0; k < c->pack_stack.len; k++)
         d = H(d, c->pack_stack.data[k]);
     return nz(d);

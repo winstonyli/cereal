@@ -738,6 +738,10 @@ void checker_free(Checker *c)
     vec_free(&c->saved);
     vec_free(&c->stack);
     vec_free(&c->pack_stack);
+    while (c->opt_bad.len)
+        free(c->opt_bad.data[--c->opt_bad.len]);
+    vec_free(&c->opt_bad);
+    vec_free(&c->opt_stack);
     if (c->diag_cur || c->diag_stack.len) {
         size_t k;
         for (k = 0; k < c->diag_stack.len; k++)

@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "gcc_opts.h"
+#include "gcc_optimize_opts.h"
 
 enum { PK_EOF, PK_NAME, PK_NUM, PK_STR, PK_PUNCT };
 
@@ -478,6 +479,102 @@ static void pragma_sso(Prag *p)
     }
 }
 
+/* ---- #pragma GCC optimize and the option stack ------------------------------- */
+
+bool cpragma_optimize_bad(const char *opt)
+{
+    char key[96];
+    const char *eq = strchr(opt, '=');
+    size_t k, n = eq ? (size_t)(eq - opt) : strlen(opt);
+    if (opt[0] != '-' || opt[1] == 'O' || n >= sizeof key - 1)
+        return opt[0] == '-' && opt[1] != 'O';
+    memcpy(key, opt, n);
+    key[n] = 0;
+    for (k = 0; k < sizeof optimize_ok / sizeof *optimize_ok; k++) {
+        const char *o = optimize_ok[k];
+        size_t m = strlen(o);
+        bool val = m && o[m - 1] == '=', need = m > 1 && o[m - 2] == '=';
+        if (strncmp(o, key, n))
+            continue;
+        if ((m == n && !eq) || (val && !need && m == n + 1) ||
+            (need && m == n + 2 && eq))
+            return false;
+    }
+    return true;
+}
+
+static void opt_digest(Checker *c)
+{
+    uint64_t d = 0;
+    size_t k;
+    const char *q;
+    for (k = 0; k < c->opt_bad.len; k++) {
+        for (q = c->opt_bad.data[k]; *q; q++)
+            d = (d ^ (unsigned char)*q) * 1099511628211ull;
+        d = (d ^ 0xff) * 1099511628211ull;
+    }
+    c->opt_dig = d;
+}
+
+static void pragma_optimize(Prag *p, SrcLoc at)
+{
+    Checker *c = p->c;
+    PrTok t = lex(p);
+    if (!is_punct(&t, '('))
+        return;
+    for (;;) {
+        char opt[96];
+        size_t n = 0, k;
+        t = lex(p);
+        if (t.kind != PK_STR)
+            return;
+        for (k = 1; k + 1 < t.len && n < sizeof opt - 1; k++)
+            opt[n++] = p->s[t.off + k];
+        opt[n] = 0;
+        if (!strchr(opt, ' ') && opt[0] && cpragma_optimize_bad(opt)) {
+            cwarn(c, at, "pragmas", "bad option '%s' to pragma 'optimize'",
+                  opt);
+            vec_push(&c->opt_bad, xstrdup(opt));
+            opt_digest(c);
+        }
+        t = lex(p);
+        if (!is_punct(&t, ','))
+            return;
+    }
+}
+
+static void pragma_options_stack(Checker *c, const char *which)
+{
+    size_t keep;
+    if (!strcmp(which, "push_options")) {
+        vec_push(&c->opt_stack, (unsigned)c->opt_bad.len);
+        return;
+    }
+    if (!strcmp(which, "pop_options")) {
+        if (!c->opt_stack.len)
+            return;
+        keep = vec_last(&c->opt_stack);
+        c->opt_stack.len--;
+    } else
+        keep = 0;
+    while (c->opt_bad.len > keep)
+        free(c->opt_bad.data[--c->opt_bad.len]);
+    opt_digest(c);
+}
+
+/* gcc applies the pragma's options to every function it declares as an
+ * optimize attribute: each bad one is reported again at the declaration. */
+void cpragma_optimize_repeat(Checker *c, SrcLoc loc)
+{
+    size_t k;
+    if (!c->opt_bad.len)
+        return;
+    csum_read_pack(c);
+    for (k = 0; k < c->opt_bad.len; k++)
+        cwarn(c, loc, "attributes", "bad option '%s' to attribute 'optimize'",
+              c->opt_bad.data[k]);
+}
+
 /* The text of the #pragma token tok (from "pragma" on) is interpreted:
  * pack and GCC diagnostic change the checker's state. */
 void cpragma_apply(Checker *c, uint32_t tok)
@@ -517,8 +614,17 @@ void cpragma_apply(Checker *c, uint32_t tok)
         pragma_sso(&p);
     } else if (name_is(&p, &name, "GCC")) {
         PrTok w = lex(&p);
+        SrcLoc gcc_loc = p.name;
         p.name = w.loc;
         if (name_is(&p, &w, "diagnostic"))
             pragma_diagnostic(&p);
+        else if (name_is(&p, &w, "optimize"))
+            pragma_optimize(&p, gcc_loc);
+        else if (name_is(&p, &w, "push_options"))
+            pragma_options_stack(c, "push_options");
+        else if (name_is(&p, &w, "pop_options"))
+            pragma_options_stack(c, "pop_options");
+        else if (name_is(&p, &w, "reset_options"))
+            pragma_options_stack(c, "reset_options");
     }
 }
