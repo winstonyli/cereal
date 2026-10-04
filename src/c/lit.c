@@ -465,6 +465,10 @@ void lit_char(const Target *tgt, const char *s, size_t n, Lit *out)
             }
             nchars += len;
         } else {
+            if (prefix == 'u' && c > 0xFFFF) {  /* a surrogate pair */
+                nchars++;
+                c = 0xDC00 | ((c - 0x10000) & 0x3FF);
+            }
             nchars++;
             v = wide ? c : (v << 8) | (c & 0xFF);
         }

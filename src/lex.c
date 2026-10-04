@@ -331,16 +331,28 @@ static void bidi_try_ucn(Lexer *L, const char *p)
 static void bidi_ctx(Lexer *L, const char *s, const char *e, const char *p,
                      bool ucn_ok)
 {
-    size_t n;
+    size_t n, n0;
     if (s < L->bidi_hi)         /* the line is being lexed again */
         return;
     n = (size_t)(e - s);
+    n0 = L->diag->all.len;
     if (memchr(s, 0xE2, n) ||
         (ucn_ok && ((L->opt.bidi & BIDI_UCN) || L->bd_n) &&
          memchr(s, '\\', n)))
         bidi_scan(L, s, e, ucn_ok);
     if (L->bd_n)
         bidi_close(L, p);
+    /* gcc warns as it lexes the token: before any checker diagnostic at
+     * the token's own start */
+    if (ucn_ok) {                   /* back over the opening quote and prefix */
+        int k;
+        for (k = 0; k < 3 && s > L->region + 1 && s[-1] &&
+                    strchr("\"'LuU8", s[-1]); k++)
+            s--;
+    }
+    for (; n0 < L->diag->all.len; n0++)
+        if (s > L->region + 1)
+            L->diag->all.data[n0]->oloc = (SrcLoc)(s - L->region) - 1;
     L->bidi_hi = e;
 }
 

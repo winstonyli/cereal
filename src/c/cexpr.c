@@ -8835,7 +8835,29 @@ size_t asm_string(Checker *c, uint32_t n, char *out, size_t cap)
                 case 'n': ch = '\n'; break;
                 case 't': ch = '\t'; break;
                 case 'r': ch = '\r'; break;
-                case 'u': case 'U': ch = '\1'; break;  /* UCN: not decoded */
+                case 'u': case 'U': {   /* a UCN: its UTF-8 */
+                    unsigned digits = ch == 'u' ? 4 : 8, k = 0;
+                    uint32_t v = 0;
+                    while (k < digits && j + 1 + k < len &&
+                           isxdigit((unsigned char)s[j + 1 + k])) {
+                        char h = s[j + 1 + k++];
+                        v = v << 4 | (uint32_t)(h <= '9' ? h - '0'
+                                                : (h | 32) - 'a' + 10);
+                    }
+                    if (k == digits && v >= 0x80 && v < 0x110000 &&
+                        o + 4 < cap) {
+                        unsigned nb = v < 0x800 ? 2 : v < 0x10000 ? 3 : 4, b;
+                        out[o++] = (char)(nb == 2 ? 0xC0 | v >> 6
+                                          : nb == 3 ? 0xE0 | v >> 12
+                                                    : 0xF0 | v >> 18);
+                        for (b = nb - 1; b-- > 0;)
+                            out[o++] = (char)(0x80 | ((v >> (6 * b)) & 0x3F));
+                        j += digits;
+                        continue;
+                    }
+                    ch = '\1';         /* not a valid one: left undecoded */
+                    break;
+                }
                 case 'x': {
                     int v = 0;
                     while (j + 2 < len && isxdigit((unsigned char)s[j + 1])) {
@@ -9101,7 +9123,12 @@ void cexpr_asm(Checker *c, uint32_t i)
                     if (ntag(c, all[j]) == N_NAME && nname < 64) {
                         size_t len;
                         const char *s = ttext(c, c->nodes[all[j]].tok, &len);
-                        snprintf(names[nname++], 64, "%.*s", (int)len, s);
+                        const Tok *nt = cnode_tok(c, all[j]);
+                        if (nt->kind == TK_IDENT)   /* UTF-8, UCNs decoded */
+                            snprintf(names[nname++], 64, "%s",
+                                     ident_by_id(c->in, nt->aux)->str);
+                        else
+                            snprintf(names[nname++], 64, "%.*s", (int)len, s);
                     }
             continue;
         }
@@ -9180,11 +9207,11 @@ void cexpr_asm(Checker *c, uint32_t i)
             snprintf(nb, sizeof nb, "%.*s", (int)len, q);
             for (m = 0; m < nname; m++)
                 if (!strcmp(names[m], nb) || strchr(names[m], 92) ||
-                    strchr(nb, 1) || (unsigned char)nb[0] >= 0x80)
+                    strchr(nb, 1))
                     found = true;
             if (!found) {
                 cerror(c, cinput_loc(c, last_tok(c, i) + 1),
-                       "undefined named operand '%s'", nb);
+                       "undefined named operand '%s'", cident_ucn(nb));
                 return;
             }
             p = q + len;

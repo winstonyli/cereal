@@ -234,6 +234,8 @@ static SrcLoc eof_input_loc(Parser *p)
 /* How gcc's c_parse_error names the offending token: " before ..." or
  * " at end of input".  Keywords read like identifiers, punctuators are
  * spelled canonically (digraphs included) and followed by "token". */
+const char *cident_ucn(const char *s);   /* c/check.c */
+
 static const char *tok_desc(Parser *p, uint32_t i, char *buf, size_t n)
 {
     const Tok *t;
@@ -251,9 +253,14 @@ static const char *tok_desc(Parser *p, uint32_t i, char *buf, size_t n)
         return " before string constant";
     case TK_PRAGMA:
         return " before '#pragma'";
-    case TK_IDENT:
-        snprintf(buf, n, " before '%.*s'", (int)t->len, s);
+    case TK_IDENT: {
+        const Ident *id = ident_by_id(p->in, t->aux);
+        if (id->ext)                /* spelled as the checker does: \U form */
+            snprintf(buf, n, " before '%s'", cident_ucn(id->str));
+        else
+            snprintf(buf, n, " before '%.*s'", (int)t->len, s);
         return buf;
+    }
     case TK_CHAR: {
         Lit l;
         unsigned v;
@@ -1483,8 +1490,11 @@ static void specs(Parser *p, Specs *s, Lookahead la)
             }
             if (!s->type && unknown_type(p, ci(p), la)) {
                 /* as gcc: diagnosed, then parsed as if it were a type */
+                bool pending = p->err.live;
+                if (p->err.have && p->err.last == ci(p))
+                    p->err.have = false;    /* error_at: not one per place */
                 unknown_type_error(p, &t);
-                p->err.live = false;    /* error_at, not c_parser_error */
+                p->err.live = pending;  /* error_at, not c_parser_error */
                 emit(p, N_TYPEDEF_NAME, adv(p), nmark(p), NF_ERROR);
                 s->type = true;
                 s->err = true;
@@ -2929,10 +2939,12 @@ static void declaration(Parser *p, bool top)
                 expected(p, "'=', ',', ';', 'asm' or '__attribute__'");
                 /* gcc's c_parser_declaration_or_fndef just returns: in a
                  * block the statements go on from this very token */
-                if (top || p->kr_params || n > 0 || s.err)
+                if (p->kr_params || n > 0 || s.err)
                     sync_top(p); /* skip_to_end_of_block_or_statement */
-                else
+                else if (!top)
                     p->err.live = false; /* error = false after each item */
+                /* at file scope the error stays pending and the next
+                 * declaration starts at this token */
             }
             /* gcc has not declared the name yet */
             if (!top && !p->kr_params && n == 0 && !s.err && !is_decl_start(p, &t))

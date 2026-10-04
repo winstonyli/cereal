@@ -793,6 +793,9 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
         if (ntag(c, item) != N_ATTR_ITEM)
             continue;
         attr_norm(tstr(c, c->nodes[item].tok), name, sizeof name);
+        if (cnode_tok(c, item)->kind == TK_IDENT &&
+            ident_by_id(c->in, cnode_tok(c, item)->aux)->ext)
+            snprintf(name, sizeof name, "%s", cident(c, cnode_tok(c, item)->aux));
         kids_get(c, item, &ak);
         arg = ak.n ? ak.p[0] : NO_NODE;
         if (arg != NO_NODE && (!strcmp(name, "alias") || !strcmp(name, "ifunc") ||
@@ -1126,8 +1129,23 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 a->mode_float = 3;
             else if (!strcmp(m, "TF"))
                 a->mode_float = 4;
-            else
+            else {
+                /* machine modes are upper case apart from a few names */
+                const Tok *mt = cnode_tok(c, arg);
+                bool lower = false;
+                const char *q;
+                for (q = m; *q; q++)
+                    lower |= (*q >= 'a' && *q <= 'z') || (*q & 0x80);
+                if (mt->kind == TK_IDENT &&
+                    ident_by_id(c->in, mt->aux)->ext)
+                    lower = true;
+                if (lower && strncmp(m, "libgcc_", 7))
+                    cerror(c, c->attr_at_set ? c->attr_at
+                                             : iloc(c, c->nodes[item].tok),
+                           "unknown machine mode '%s'",
+                           cident(c, mt->aux));
                 a->has_mode = false;
+            }
         }
         kids_free(&ak);
     }

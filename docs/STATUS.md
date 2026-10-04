@@ -1275,3 +1275,13 @@ diagnostics and builds on the strinit table.
 - `-Wif-not-aligned` (default on) and `-Wpacked-not-aligned`: `Attrs.wina_al`, `FieldIn.wina`, side tables `wina_td`/`wina_rec` (typedef / record warn_if_not_aligned), `wina_check` in `struct_finish`. Struct-level "alignment N of 'struct T' is less than M" first (at the closing brace when it starts its line, else the tag), then per-field "offset". Bit-field with a wina type is an error. pr53037-1..4 SAME; golden attr_wina.expected regenerated (it recorded the gap), new golden misc_68.
 - Gate: 1083 pass, san 366/0, gcc.dg differ 145 (was 149), c-c++-common 58.
 - Survey of the parked cross-chunk bidi fix: of the 8 differing Wbidi-chars files only a minority is chunking. 24/25 (42 diags) are `\u{...}` / `\N{...}` escapes in C (gcc: "delimited escape sequences are only valid in C++23", "named universal character escapes ..."); 4/5/6 (~21) are UCNs inside identifiers (`b\u202a` lexed as `b` + stray; "unknown type name 'b'"); 11 is the UCN spelling in an error (`\U0000202c` vs `\u202C`); 6 has one location difference. So the escape/identifier UCN work is worth more than the cross-chunk stack.
+
+## Round 69 — parse recovery after declarator errors, UCN spelling
+
+- File scope: after "expected '=', ',', ';', 'asm' or '__attribute__' before X", gcc does not skip; it re-parses from X (so `int a b c;` also reports "unknown type name 'b'", `b c d;` stays silent after it). `parse.c`: no `sync_top` there at file scope; the unknown-type error keeps a pending error and bypasses the one-error-per-place dedup (error_at, not c_parser_error).
+- Parser "before 'ident'" messages spell extended identifiers as `\UXXXXXXXX` (`cident_ucn`), like the checker (C-locale model).
+- Bidi warnings inside literals precede checker diagnostics on the same token (`oloc` set to the literal start in `bidi_ctx`).
+- `u'\U00064321'` is two UTF-16 units: "too long for its type". Unknown `mode(x)` errors (lowercase / extended names only; upper-case modes are not validated). Attribute names and asm `%[\u00c3]` operands use the `\U` spelling; asm templates decode UCNs to UTF-8.
+- Golden `misc_69`. Gate: 1085 pass, san 367/0, gcc.dg differ 139, c-c++-common 55.
+- Gotcha: including `c/check_int.h` in `parse.c` silently changed parser behaviour; declare `cident_ucn` locally.
+- Not done: libcpp UCN validation (`not a valid universal character`, incomplete, codespace), `\u{}`/`\N{}`, UCNs in identifiers per `_cpp_valid_ucn` (rules recorded in Round 68 research).

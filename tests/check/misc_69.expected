@@ -1,0 +1,66 @@
+misc_69.c:2:7: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'b'
+    2 | int a b c;
+      |       ^
+misc_69.c:2:7: error: unknown type name 'b'
+    2 | int a b c;
+      |       ^
+misc_69.c:3:8: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'b1'
+    3 | int a1 b1 = 1;
+      |        ^
+misc_69.c:4:8: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'b3'
+    4 | int a3 b3 *c3;
+      |        ^
+misc_69.c:4:8: error: unknown type name 'b3'
+    4 | int a3 b3 *c3;
+      |        ^
+misc_69.c:5:8: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'b4'
+    5 | int a4 b4 q4 r4;
+      |        ^
+misc_69.c:5:8: error: unknown type name 'b4'
+    5 | int a4 b4 q4 r4;
+      |        ^
+misc_69.c:6:8: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'b5'
+    6 | int a5 b5 c5 d5;
+      |        ^
+misc_69.c:6:8: error: unknown type name 'b5'
+    6 | int a5 b5 c5 d5;
+      |        ^
+misc_69.c:7:16: warning: ISO C forbids nested functions [-Wpedantic]
+    7 | void f(void) { int a6 b6 c6; int a7 b7; }
+      |                ^
+misc_69.c:7:23: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'b6'
+    7 | void f(void) { int a6 b6 c6; int a7 b7; }
+      |                       ^
+misc_69.c:7:23: error: unknown type name 'b6'
+    7 | void f(void) { int a6 b6 c6; int a7 b7; }
+      |                       ^
+misc_69.c:7:30: warning: ISO C forbids nested functions [-Wpedantic]
+    7 | void f(void) { int a6 b6 c6; int a7 b7; }
+      |                              ^
+misc_69.c:7:37: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'b7'
+    7 | void f(void) { int a6 b6 c6; int a7 b7; }
+      |                                     ^
+misc_69.c:7:37: error: 'b7' undeclared (first use in this function)
+    7 | void f(void) { int a6 b6 c6; int a7 b7; }
+      |                                     ^
+misc_69.c:7:37: note: each undeclared identifier is reported only once for each function it appears in
+    7 | void f(void) { int a6 b6 c6; int a7 b7; }
+      |                                     ^
+misc_69.c:9:16: warning: character constant too long for its type
+    9 | char16_t c16 = u'\U00064321';
+      |                ^
+misc_69.c:10:1: error: unknown machine mode 'foo'
+   10 | int m __attribute__((mode(foo)));
+      | ^
+misc_69.c:11:1: warning: '\U000000c1' attribute directive ignored [-Wattributes]
+   11 | int Àx __attribute__((Á));
+      | ^
+misc_69.c:12:1: error: undefined named operand '\U000000c3'
+   12 | void g(void) { asm ("%[Ã]" : : ); }
+      | ^
+misc_69.c:13:7: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'b8'
+   13 | int Ä b8 c8;
+      |       ^
+misc_69.c:13:7: error: unknown type name 'b8'
+   13 | int Ä b8 c8;
+      |       ^
