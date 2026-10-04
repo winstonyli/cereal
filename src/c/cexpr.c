@@ -2223,7 +2223,8 @@ static void e_ident(Checker *c, uint32_t i)
             const char *an = ttext(c, c->nodes[p].tok, &al);
             static const char *const ex[] = {
                 "nonnull", "aligned", "vector_size", "warn_if_not_aligned",
-                "alloc_size", "alloc_align", "assume_aligned", "malloc"};
+                "alloc_size", "alloc_align", "assume_aligned", "malloc",
+                "fallthrough"};
             size_t q;
             if (al > 4 && !strncmp(an, "__", 2) && !strncmp(an + al - 2, "__", 2)) {
                 an += 2;
@@ -8797,6 +8798,27 @@ static void e_has_attr(Checker *c, uint32_t i)
             return;
         }
         n = cexpr_asets(c, k[0], false, sets);
+    }
+    if ((!strcmp(an, "alloc_align") || !strcmp(an, "alloc_size")) && args[0]) {
+        /* gcc applies the handler to the operand: a function that does not
+         * return a pointer ignores it, one that has the attribute with other
+         * arguments keeps its own */
+        TypeId ft = ntag(c, k[0]) == N_TYPE_NAME ? type_of_typename(c, k[0])
+                                                : c->ty[k[0]];
+        if (!is_err(c, ft) && type_ckind(TT, type_canon(TT, ft)) == TY_FUNC) {
+            TypeId rt = type_base(TT, type_canon(TT, ft));
+            char was[96];
+            if (type_ckind(TT, type_canon(TT, rt)) != TY_PTR)
+                cwarn(c, cdecl_line_start_loc(c, c->nodes[i].tok), "attributes", "'%s' attribute "
+                      "ignored on a function returning %s", an, type_q(TT, rt));
+            else
+                for (j = 0; j < n; j++)
+                    if (cdecl_aset_first_arg(c, sets[j], an, was, sizeof was)) {
+                        if (strcmp(was, args))
+                            cdecl_alloc_conflict(c, cdecl_line_start_loc(c, c->nodes[i].tok), an, args, was);
+                        break;
+                    }
+        }
     }
     for (j = 0; j < n; j++)
         {

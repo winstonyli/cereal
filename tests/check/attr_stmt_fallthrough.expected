@@ -70,3 +70,15 @@ attr_stmt_fallthrough.c:47:3: warning: 'used' attribute ignored [-Wattributes]
 attr_stmt_fallthrough.c:48:3: warning: empty declaration
    48 |   __attribute__((used)) __attribute__((unused));
       |   ^
+attr_stmt_fallthrough.c:50:1: warning: 'fallthrough' attribute ignored [-Wattributes]
+   50 | void g3(void) { m: __attribute__((fallthrough)); }
+      | ^
+attr_stmt_fallthrough.c:50:17: warning: label 'm' defined but not used [-Wunused-label]
+   50 | void g3(void) { m: __attribute__((fallthrough)); }
+      |                 ^
+attr_stmt_fallthrough.c:51:1: warning: empty declaration
+   51 | __attribute__((used));
+      | ^
+attr_stmt_fallthrough.c:52:1: warning: 'fallthrough' attribute at top level [-Wattributes]
+   52 | __attribute__((fallthrough));
+      | ^

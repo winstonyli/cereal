@@ -1,0 +1,51 @@
+attr_args_misc.c:2:65: error: 'bar' undeclared here (not in a function)
+    2 | void* my_calloc(unsigned, unsigned) __attribute__((alloc_size(1,bar)));
+      |                                                                 ^
+attr_args_misc.c:2:1: warning: 'alloc_size' attribute argument 2 is invalid [-Wattributes]
+    2 | void* my_calloc(unsigned, unsigned) __attribute__((alloc_size(1,bar)));
+      | ^
+attr_args_misc.c:3:1: warning: 'alloc_size' attribute argument is invalid [-Wattributes]
+    3 | void* my_realloc(void*, unsigned) __attribute__((alloc_size(bar)));
+      | ^
+attr_args_misc.c:4:1: warning: 'nonnull' attribute argument is invalid [-Wattributes]
+    4 | void f1(char*) __attribute__((nonnull(bar)));
+      | ^
+attr_args_misc.c:5:1: warning: 'nonnull' attribute argument 2 is invalid [-Wattributes]
+    5 | void f2(char*) __attribute__((nonnull(1,bar)));
+      | ^
+attr_args_misc.c:7:1: warning: 'nonnull' attribute argument has type 'void(int)' [-Wattributes]
+    7 | void f3(char*) __attribute__((nonnull(foo)));
+      | ^
+attr_args_misc.c:8:1: warning: 'nonnull' attribute argument 2 has type 'void(int)' [-Wattributes]
+    8 | void f4(char*) __attribute__((nonnull(1,foo)));
+      | ^
+attr_args_misc.c:9:1: error: 'vector_size' attribute argument value 'foo' is not an integer constant
+    9 | typedef char vec __attribute__((vector_size(foo)));
+      | ^
+attr_args_misc.c:10:1: warning: 'patchable_function_entry' attribute argument '-1' is not an integer constant [-Wattributes]
+   10 | __attribute__((patchable_function_entry (-1))) void p1 (void) {}
+      | ^
+attr_args_misc.c:11:1: warning: 'patchable_function_entry' attribute argument '-5' is not an integer constant [-Wattributes]
+   11 | __attribute__((patchable_function_entry (5, -5))) void p2 (void) {}
+      | ^
+attr_args_misc.c:13:1: warning: 'patchable_function_entry' attribute argument 'i' is not an integer constant [-Wattributes]
+   13 | __attribute__((patchable_function_entry (i))) void p3 (void) {}
+      | ^
+attr_args_misc.c:16:1: warning: 'patchable_function_entry' attribute argument '65536' exceeds 65535 [-Wattributes]
+   16 | p4 (void) {
+      | ^
+attr_args_misc.c:25:3: warning: 'alloc_align' attribute ignored on a function returning 'void' [-Wattributes]
+   25 |   (void)__builtin_has_attribute (fnone, alloc_align (1));
+      |   ^
+attr_args_misc.c:26:3: warning: 'alloc_size' attribute ignored on a function returning 'void' [-Wattributes]
+   26 |   (void)__builtin_has_attribute (fnone, alloc_size (1));
+      |   ^
+attr_args_misc.c:27:3: warning: ignoring attribute 'alloc_size (1)' because it conflicts with previous 'alloc_size (2)' [-Wattributes]
+   27 |   (void)__builtin_has_attribute (fa2, alloc_size (1));
+      |   ^
+attr_args_misc.c:29:3: warning: ignoring attribute 'alloc_size (2)' because it conflicts with previous 'alloc_size (2, 4)' [-Wattributes]
+   29 |   (void)__builtin_has_attribute (fa24, alloc_size (2));
+      |   ^
+attr_args_misc.c:31:3: warning: ignoring attribute 'alloc_align (1)' because it conflicts with previous 'alloc_align (2)' [-Wattributes]
+   31 |   (void)__builtin_has_attribute (fl2, alloc_align (1));
+      |   ^

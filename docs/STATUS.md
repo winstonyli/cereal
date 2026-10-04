@@ -1077,3 +1077,41 @@ layouts, gcc rules ported, walk design).
   `__attribute__((used));` should give "empty declaration"; `m: __attribute__((fallthrough));` at the end of a
   block should say "'fallthrough' attribute ignored" (label attribute).
 - Parity: tests 1015, gcc.dg 3664 identical (211 differ), c-c++-common 568 (89), san clean (336).
+
+### Round 51 — -Wattributes argument checks; fallthrough leftovers; constant-folding survey
+- `__builtin_has_attribute(x, alloc_size/alloc_align (args))`: "ignored on a function returning 'void'" and
+  "ignoring attribute 'X (a)' because it conflicts with previous 'X (b)'" (cexpr.c `e_has_attr`;
+  cdecl.c `cdecl_alloc_conflict`, `cdecl_aset_first_arg`); reported at the first token of the line.
+  builtin-has-attribute-3.c identical.
+- `nonnull`/`alloc_size` arguments: "argument [N ]is invalid" for an erroneous argument, "argument [N ]has type 'T'"
+  for a non-integer; `vector_size(foo)` with a non-constant gives the error; `patchable_function_entry` argument
+  checks ("is not an integer constant", "exceeds 65535"), located at the first token of the declarator's line
+  (`patchable_loc`). attributes-1.c, pr89946.c, patchable_function_entry-error-3.c identical.
+- Fallthrough leftovers: `fallthrough(args)` arguments are evaluated; file scope `__attribute__((x));` gives
+  "empty declaration" and `fallthrough` there "attribute at top level"; `m: __attribute__((fallthrough));` gives
+  "attribute ignored". Goldens `attr_args_misc`, `attr_stmt_fallthrough` (extended).
+- Not done (small): UCN/keyword attribute names print raw (`'__int128'`, ucnid-13*.c), access-attribute implicit
+  mode mismatch extras (uninit-37.c), other attributes' arguments are not evaluated (`used(b)` should say
+  `'b' undeclared`; needs the per-attribute identifier-argument list).
+- Parity: tests 1017, gcc.dg 3664 identical (211 differ), c-c++-common 572 (85), san clean (337).
+
+#### Survey: generalizing constant folding (nothing implemented)
+Current model: `ck` kinds K_ICE/K_FOLD (integers in `cv`, uint64), K_FLOAT (`fv`, host `long double`), K_ADDR
+(symbol base + offset). Missing diagnostics that trace to a folding gap, by size:
+1. Strings/arrays as constants (~145): `-Wstringop-overread` 86 (strlen/strcspn/... on arrays without a nul; needs
+   the const-array table of Round 45 plus builtin string evaluation, struct members, `?:` arms) and
+   `-Warray-bounds` "outside bounds of constant string" 60 (Warray-bounds-7.c: a K_ADDR whose base is a string
+   literal, with the offset checked against its length). One generalization serves both: a "known bytes" value
+   (literal or const-initialized array + offset) attached to pointer-valued expressions.
+2. Complex constants (~60): `-Wfloat-conversion` 20, `-Wconversion` 14, `-Woverflow` ~8 (Wconversion-complex-*.c,
+   overflow-warn-8.c, c99-const-expr-7.c), plus pr35430.c. Needs a K_COMPLEX (re, im in `fv`), folding of
+   `__builtin_complex`, `+ - * /`, casts and `__real__/__imag__`, and printing `(_Complex double){re, im}`. The
+   `-Wdouble-promotion` complex misses (14) are type-only, no folding.
+3. Not folding after all, despite appearing in the lists: `-Wint-in-bool-context` (`<<`), `-Wparentheses`
+   omitted-middle-operand, `-Wsizeof-array-div`, `-Wmemset-transposed-args` need flags/other rules; check each
+   file's dg-options before assuming a folding cause.
+4. Representation limits: `cv` is 64-bit, so `__int128` constants cannot be held (only 1 corpus diagnostic
+   depends on it, pr105186.c is a naming issue); `fv` is x87 `long double`, so `_Float128` arithmetic and exact
+   float/double rounding of intermediate values are approximations. Neither shows up in the missing lists today.
+Suggested order: (2) complex is self-contained and mostly local to cexpr.c; (1) is larger but covers ~145
+diagnostics and builds on the strinit table.

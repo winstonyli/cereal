@@ -508,6 +508,11 @@ void cdecl_check_inline_statics(Checker *c);
 TypeId type_of_typename(Checker *c, uint32_t i);   /* a TYPE_NAME node */
 
 /* Array parameters redeclared with other bounds (cparm.c). */
+SrcLoc cdecl_line_start_loc(Checker *c, uint32_t tok);
+void cdecl_alloc_conflict(Checker *c, SrcLoc loc, const char *name,
+                          const char *now, const char *was);
+bool cdecl_aset_first_arg(const Checker *c, uint32_t set, const char *name,
+                          char *out, size_t n);
 bool cdecl_aset_has(const Checker *c, uint32_t set, const char *name,
                     const char *arg);
 void cdecl_attrs_names(Checker *c, uint32_t attr, uint32_t *set);

@@ -245,6 +245,30 @@ static bool in_extension(Checker *c, uint32_t node)
 
 /* ---- attributes ---------------------------------------------------------- */
 
+static void pos_arg_str(Checker *c, uint32_t arg, char *buf, size_t n);
+
+/* gcc reports patchable_function_entry at the first token of the line of the
+ * declarator (the attr_at override when the checker has one). */
+static SrcLoc patchable_loc(Checker *c, uint32_t item)
+{
+    uint32_t at = c->nodes[item].tok, up = item, lv, j;
+    Kids sib;
+    for (lv = 0; lv < 3 && up != NO_NODE && at == c->nodes[item].tok; lv++) {
+        up = c->par[up];
+        if (up == NO_NODE)
+            break;
+        kids_get(c, up, &sib);   /* a leading list is applied at the declarator */
+        for (j = 0; j < sib.n; j++)
+            if (sib.p[j] > item && (ntag(c, sib.p[j]) == N_DECLARED ||
+                                    ntag(c, sib.p[j]) == N_INIT_DECL)) {
+                at = c->nodes[cfirst(c, sib.p[j])].tok;
+                break;
+            }
+        kids_free(&sib);
+    }
+    return cdecl_line_start_loc(c, at);
+}
+
 static bool access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
                          TypeId ft);
 
@@ -898,8 +922,20 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 if (!(c->ck[x] == K_ICE || c->ck[x] == K_FOLD) ||
                     !type_is_integer(TT, c->ty[x]) ||
                     (v = cexpr_sval(c, x)) < 1) {
-                    cwarn(c, il, "attributes",
-                          "'nonnull' attribute argument is invalid");
+                    char pre[16] = "";
+                    if (q)
+                        snprintf(pre, sizeof pre, "%u ", (unsigned)q + 1);
+                    if (type_ckind(TT, c->ty[x]) == TY_ERROR)
+                        cwarn(c, il, "attributes", "'nonnull' attribute "
+                              "argument %sis invalid", pre);
+                    else if (!(c->ck[x] == K_ICE || c->ck[x] == K_FOLD) ||
+                             !type_is_integer(TT, c->ty[x]))
+                        cwarn(c, il, "attributes", "'nonnull' attribute "
+                              "argument %shas type %s", pre,
+                              type_q(TT, c->ty[x]));
+                    else
+                        cwarn(c, il, "attributes", "'nonnull' attribute "
+                              "argument %sis invalid", pre);
                     ok = false;
                 } else if (proto) {
                     const TypeEnt *fe = type_ent(TT, ft);
@@ -1022,6 +1058,37 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                     a->vector_size = (uint64_t)v;
                     a->vs_seen = true;
                     a->vs_loc = il;
+                }
+            }            else if (type_ckind(TT, c->ty[arg]) != TY_ERROR) {
+                char val[96];
+                pos_arg_str(c, arg, val, sizeof val);
+                cerror(c, cinput_loc(c, c->nodes[item].tok), "'vector_size' "
+                       "attribute argument value '%s' is not an integer "
+                       "constant", val);
+            }
+        } else if (!strcmp(name, "patchable_function_entry")) {
+            uint32_t q;
+            for (q = 0; q < ak.n && q < 2; q++) {
+                uint32_t x = ak.p[q];
+                char val[96];
+                bool bad;
+                if (type_ckind(TT, c->ty[x]) == TY_ERROR)
+                    break;
+                pos_arg_str(c, x, val, sizeof val);
+                bad = !(c->ck[x] == K_ICE || c->ck[x] == K_FOLD) ||
+                      !type_is_integer(TT, c->ty[x]) ||
+                      (type_is_signed(TT, c->ty[x]) && cexpr_sval(c, x) < 0);
+                if (bad) {
+                    cwarn(c, patchable_loc(c, item), "attributes",
+                          "'patchable_function_entry' attribute argument '%s' "
+                          "is not an integer constant", val);
+                    break;
+                }
+                if ((uint64_t)cexpr_sval(c, x) > 65535) {
+                    cwarn(c, patchable_loc(c, item), "attributes",
+                          "'patchable_function_entry' attribute argument '%s' "
+                          "exceeds 65535", val);
+                    break;
                 }
             }
         } else if (!strcmp(name, "mode") && arg != NO_NODE &&
@@ -1446,8 +1513,11 @@ static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno
     uint64_t pos;
     if (argno)
         snprintf(pre, sizeof pre, "%d ", argno);
-    if (type_ckind(TT, t) == TY_ERROR)
+    if (type_ckind(TT, t) == TY_ERROR) {
+        cwarn(c, loc, "attributes", "'%s' attribute argument %sis invalid",
+              name, pre);
         return false;
+    }
     if (!type_is_integer(TT, t)) {
         cwarn(c, loc, "attributes", "'%s' attribute argument %shas type %s",
               name, pre, type_q(TT, t));
@@ -1640,7 +1710,7 @@ static const struct { const char *name; unsigned ctx; } attr_ign_tab[] = {
 };
 
 /* gcc locates an attribute-only declaration at the first token of its line. */
-static SrcLoc line_start_loc(Checker *c, uint32_t tok)
+SrcLoc cdecl_line_start_loc(Checker *c, uint32_t tok)
 {
     uint32_t line, col, l2, c2;
     SrcFile *f = srcmgr_file_of(c->sm, tloc(c, tok));
@@ -1768,7 +1838,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                             d = c->par[d];
                         if (d != NO_NODE && ntag(c, d) == N_DECL &&
                             cfirst(c, d) == cfirst(c, k.p[j]))
-                            cwarn(c, line_start_loc(c, c->nodes[k.p[j]].tok),
+                            cwarn(c, cdecl_line_start_loc(c, c->nodes[k.p[j]].tok),
                                   "attributes", "'fallthrough' attribute "
                                   "not followed by ';'");
                     }
@@ -1803,6 +1873,45 @@ static void attrs_ctx_check(Checker *c, uint32_t holder, TypeId ty, uint32_t tok
     }
 }
 
+/* "ignoring attribute 'alloc_size (2)' because it conflicts with previous
+ * 'alloc_size (1)'", the argument lists given as "a,b". */
+void cdecl_alloc_conflict(Checker *c, SrcLoc loc, const char *name,
+                          const char *now, const char *was)
+{
+    char a[128], b[128];
+    size_t i, l = 0;
+    for (i = 0; now[i] && l + 2 < sizeof a; i++) {
+        a[l++] = now[i];
+        if (now[i] == ',')
+            a[l++] = ' ';
+    }
+    a[l] = 0;
+    for (i = 0, l = 0; was[i] && l + 2 < sizeof b; i++) {
+        b[l++] = was[i];
+        if (was[i] == ',')
+            b[l++] = ' ';
+    }
+    b[l] = 0;
+    cwarn(c, loc, "attributes", "ignoring attribute '%s (%s)' because it "
+          "conflicts with previous '%s (%s)'", name, a, name, b);
+}
+
+/* The arguments of the oldest attribute `name` in the set (false: none). */
+bool cdecl_aset_first_arg(const Checker *c, uint32_t set, const char *name,
+                          char *out, size_t n)
+{
+    uint32_t k, first = 0;
+    if (!set)
+        return false;
+    for (k = c->ahead.data[set - 1]; k; k = c->anames.data[k - 1].prev)
+        if (!strcmp(c->anames.data[k - 1].name, name))
+            first = k;
+    if (!first)
+        return false;
+    snprintf(out, n, "%s", c->anames.data[first - 1].arg);
+    return true;
+}
+
 /* A redeclaration whose alloc_size / alloc_align differs from the previous
  * declaration's is ignored, with a warning. */
 static void alloc_redecl(Checker *c, uint32_t item, const char *name, SrcLoc loc)
@@ -1821,24 +1930,7 @@ static void alloc_redecl(Checker *c, uint32_t item, const char *name, SrcLoc loc
     if (!first || !strcmp(c->anames.data[first - 1].arg, now))
         return;
     snprintf(was, sizeof was, "%s", c->anames.data[first - 1].arg);
-    {
-        char a[128], b[128];
-        size_t i, l = 0;
-        for (i = 0; now[i] && l + 2 < sizeof a; i++) {
-            a[l++] = now[i];
-            if (now[i] == ',')
-                a[l++] = ' ';
-        }
-        a[l] = 0;
-        for (i = 0, l = 0; was[i] && l + 2 < sizeof b; i++) {
-            b[l++] = was[i];
-            if (was[i] == ',')
-                b[l++] = ' ';
-        }
-        b[l] = 0;
-        cwarn(c, loc, "attributes", "ignoring attribute '%s (%s)' because it "
-              "conflicts with previous '%s (%s)'", name, a, name, b);
-    }
+    cdecl_alloc_conflict(c, loc, name, now, was);
     if (c->nign < 8)
         snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", name);
 }
@@ -5745,22 +5837,32 @@ static int complete_array(Checker *c, TypeId type, uint32_t init,
 /* ---- shadow_tag: declarations without declarators ---------------------------- */
 
 /* An attribute-only statement: c_parser_declaration_or_fndef's checks. */
+static void attr_only_check(Checker *c, uint32_t i, uint32_t tok, bool top);
+
 static void attr_stmt_visit(Checker *c, uint32_t i)
 {
-    Kids k;
-    uint32_t j, n, nft = 0, other[16], nother = 0, par = c->par[i];
-    bool param = false;
-    SrcLoc loc;
-    char name[48];
+    uint32_t par = c->par[i];
     if (tokp(c, c->nodes[i].tok)->kind == TK_PUNCT)
         return;                 /* [[...]] */
     if (par != NO_NODE && ntag(c, par) == N_LABEL)
-        return;                 /* attributes of the label */
+        return;                 /* attributes of the label (N_ATTRIBUTE case) */
     if (par != NO_NODE && (ntag(c, par) == N_CASE || ntag(c, par) == N_DEFAULT) &&
         par == i + 1)
         cpedantic(c, tloc(c, c->nodes[i].tok), "a label can only be part of a "
                   "statement and a declaration is not a statement");
-    loc = line_start_loc(c, c->nodes[i].tok);
+    attr_only_check(c, i, c->nodes[i].tok, false);
+}
+
+/* c_parser_declaration_or_fndef for a list of attributes alone (holder's
+ * N_ATTRIBUTE kids), the first at token tok. */
+static void attr_only_check(Checker *c, uint32_t i, uint32_t tok, bool top)
+{
+    Kids k;
+    uint32_t j, n, nft = 0, other[16], nother = 0;
+    bool param = false;
+    SrcLoc loc;
+    char name[48];
+    loc = cdecl_line_start_loc(c, tok);
     kids_get(c, i, &k);
     for (j = 0; j < k.n; j++) {
         Kids ak;
@@ -5784,6 +5886,8 @@ static void attr_stmt_visit(Checker *c, uint32_t i)
     }
     if (!nft)
         cpedwarn(c, loc, "", "empty declaration");
+    else if (top)
+        cwarn(c, loc, "attributes", "'fallthrough' attribute at top level");
     else {
         if (nft > 1)
             cwarn(c, loc, "attributes", "attribute 'fallthrough' specified "
@@ -5932,7 +6036,20 @@ static void decl_visit(Checker *c, uint32_t i)
         int si = find_spec(c, sn);
         if (si >= 0) {
             Spec sp = c->specs.data[si];
-            shadow_tag(c, &sp, 0, sp.tok1);
+            uint32_t at = NO_NODE;
+            Kids sk;
+            if (sp.default_int && !sp.has_type && sp.kind == TSK_NONE &&
+                sp.sc == SC_NONE && !sp.quals) {
+                kids_get(c, sn, &sk);
+                if (sk.n && ntag(c, sk.p[0]) == N_ATTRIBUTE &&
+                    tokp(c, c->nodes[sk.p[0]].tok)->kind != TK_PUNCT)
+                    at = sk.p[0];
+                kids_free(&sk);
+            }
+            if (at != NO_NODE)
+                attr_only_check(c, sn, c->nodes[at].tok, cat_file_scope(c));
+            else
+                shadow_tag(c, &sp, 0, sp.tok1);
         }
     }
     pop_specs(c, i);
@@ -8966,6 +9083,22 @@ void cdecl_node(Checker *c, uint32_t i)
         std_attr_unknown(c, i);
         gnu_attr_argc(c, i);
         sso_check(c, i);
+        if (c->par[i] != NO_NODE && ntag(c, c->par[i]) == N_LABEL &&
+            tokp(c, cnode(c, i)->tok)->kind != TK_PUNCT) {
+            Kids ak;
+            uint32_t n;
+            kids_get(c, i, &ak);
+            for (n = 0; n < ak.n; n++) {
+                char nm[48];
+                if (ntag(c, ak.p[n]) != N_ATTR_ITEM)
+                    continue;
+                attr_norm(tstr(c, c->nodes[ak.p[n]].tok), nm, sizeof nm);
+                if (!strcmp(nm, "fallthrough"))
+                    cwarn(c, cdecl_line_start_loc(c, cnode(c, i)->tok),
+                          "attributes", "'fallthrough' attribute ignored");
+            }
+            kids_free(&ak);
+        }
         c->quiet = quiet;
         break;
     }

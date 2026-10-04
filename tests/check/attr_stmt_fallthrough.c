@@ -47,3 +47,6 @@ int f2(int i){
   { __attribute__((used)); __attribute__((fallthrough, used)); }
   __attribute__((used)) __attribute__((unused));
  return 0;}
+void g3(void) { m: __attribute__((fallthrough)); }
+__attribute__((used));
+__attribute__((fallthrough));
