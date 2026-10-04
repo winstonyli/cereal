@@ -2394,7 +2394,10 @@ static void finalize_root(Checker *c, CCtx *x)
     } else if (r.kind == V_EXPR && r.str && !r.digested && is_arr(c, rtype)) {
         IVal v = r;
         v.strict = true;
-        maybe_warn_string(c, NULL, x->init_loc, rtype, &r);
+        /* in a compound literal gcc's input_location is the literal's '(' */
+        uint32_t cl = c->par[list];
+        maybe_warn_string(c, NULL, cl != NOB && cl < c->nn && ntag(c, cl) == N_COMPOUND_LIT
+                          ? c->nodes[cl].tok : x->init_loc, rtype, &r);
         if (digest(c, NULL, x->init_loc, true, x->reqc, rtype, &v)) {
             c->ck[list] = K_ICE;
             c->cv[list] = r.strn;

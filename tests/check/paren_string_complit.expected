@@ -1,0 +1,15 @@
+paren_string_complit.c:2:10: warning: array initialized from parenthesized string constant [-Wpedantic]
+    2 | char a[]={("a")};
+      |          ^
+paren_string_complit.c:3:11: warning: array initialized from parenthesized string constant [-Wpedantic]
+    3 | char *o = (char []){ ("o") };
+      |           ^
+paren_string_complit.c:4:11: warning: array initialized from parenthesized string constant [-Wpedantic]
+    4 | char *q = (char [2]){ ("o") };
+      |           ^
+paren_string_complit.c:5:24: warning: array initialized from parenthesized string constant [-Wpedantic]
+    5 | void f(void){char *z = (char []){ ("o") }; char y[]=("x");}
+      |                        ^
+paren_string_complit.c:5:53: warning: array initialized from parenthesized string constant [-Wpedantic]
+    5 | void f(void){char *z = (char []){ ("o") }; char y[]=("x");}
+      |                                                     ^

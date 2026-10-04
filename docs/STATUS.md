@@ -1051,3 +1051,14 @@ layouts, gcc rules ported, walk design).
   `-D` macro is also reported at the use (gcc: at the -D location); no verify regression seen.
 - Golden `shift_init_pedantic`; Wshift-overflow-1..4.c identical.
 - Parity: tests 1011, gcc.dg 3662 identical (213 differ), c-c++-common 565 (92), san clean (334).
+
+### Round 49 — parenthesized string in a compound literal
+- "array initialized from parenthesized string constant" inside a compound literal is reported at the literal's
+  `(` (cinit.c, close path); other init diagnostics there keep the `{`. Golden `paren_string_complit`;
+  init-string-1.c identical.
+- Open (found while triaging -Wpedantic, not done): attribute-only statements. `__attribute__((used));` should give
+  "empty declaration" (location = first token on the line, gcc quirk), after a `case`/`default` label also the
+  label-declaration pedwarn, and fallthrough misuse gives -Wattributes ("not followed by", "specified with a
+  parameter", "specified multiple times", "not preceding"); cereal's N_ATTR_STMT is never checked
+  (attr-fallthrough-2.c, Wimplicit-fallthrough-20.c).
+- Parity: tests 1013, gcc.dg 3664 identical (211 differ), c-c++-common 565 (92), san clean (335).
