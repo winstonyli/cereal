@@ -1372,9 +1372,18 @@ static void asm_stmt(Parser *p, bool top)
     uint32_t start = nmark(p), kw = adv(p);
     int section;
     uint32_t seen[3] = { 0, 0, 0 };     /* volatile, inline, goto: token + 1 */
-    for (;;) {
+    for (; !top;) {
         int k = ckw(p);
         int q = k == CK_VOLATILE ? 0 : k == CK_INLINE ? 1 : 2;
+        if (k == CK_CONST || k == CK_RESTRICT) {
+            PTok t = ct(p);
+            pdiag(p, DL_ERROR, spell_loc(p, ci(p)),
+                  "'%.*s' is not a valid 'asm' qualifier", (int)t.t.len,
+                  tok_text_raw(p->sm, p->in, &t.t));
+            p->errors++;
+            leaf(p, N_QUAL, adv(p));
+            continue;
+        }
         if (k != CK_VOLATILE && k != CK_INLINE && k != CK_GOTO)
             break;
         if (seen[q]) {

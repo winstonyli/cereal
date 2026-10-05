@@ -1,0 +1,24 @@
+misc_98.c:2:5: error: expected '(' before 'const'
+    2 | asm const ("");    /* { dg-error {expected '\(' before 'const'} } */
+      |     ^
+misc_98.c:3:5: error: expected '(' before 'volatile'
+    3 | asm volatile (""); /* { dg-error {expected '\(' before 'volatile'} } */
+      |     ^
+misc_98.c:4:5: error: expected '(' before 'restrict'
+    4 | asm restrict (""); /* { dg-error {expected '\(' before 'restrict'} } */
+      |     ^
+misc_98.c:5:5: error: expected '(' before 'inline'
+    5 | asm inline ("");   /* { dg-error {expected '\(' before 'inline'} } */
+      |     ^
+misc_98.c:6:5: error: expected '(' before 'goto'
+    6 | asm goto ("");     /* { dg-error {expected '\(' before 'goto'} } */
+      |     ^
+misc_98.c:11:7: error: 'const' is not a valid 'asm' qualifier
+   11 |   asm const ("");
+      |       ^
+misc_98.c:12:7: error: 'restrict' is not a valid 'asm' qualifier
+   12 |   asm restrict ("");
+      |       ^
+misc_98.c:13:7: error: '__const__' is not a valid 'asm' qualifier
+   13 |   asm __const__ ("" ::: "memory");
+      |       ^

@@ -1419,3 +1419,10 @@ diagnostics and builds on the strinit table.
   union member of the other storage order warns "type punning toggles".
   Goldens misc_92..97 (all match gcc).  gcc.dg differ 124 -> 120.
   Gate: 1141 goldens, san 395/0, callgrind 3.666G (+0.3%).
+
+## Round 86 (asm qualifiers)
+- Top-level `asm` takes no qualifiers (gcc: "expected '(' before 'volatile'"
+  etc.); in a statement `const`/`restrict` give "'X' is not a valid 'asm'
+  qualifier" and parsing goes on.  Golden misc_98.  gcc.dg differ 120 -> 118.
+- pr89410-1 is a -pedantic artifact of cmp.sh (its dg-options is empty), not
+  a cereal difference worth chasing.

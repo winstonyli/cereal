@@ -37,7 +37,7 @@ docs/PARALLEL.md.
 
 The C99 + GNU parser and type checker are implemented (`cereal parse`,
 `-fsyntax-only`). They emit gcc-13-style diagnostics, checked against gcc's
-own testsuite (gcc.dg: 3624 of 3744 files identical; c-c++-common: 599 of
+own testsuite (gcc.dg: 3626 of 3744 files identical; c-c++-common: 599 of
 636). Design: docs/PARSER.md, docs/TYPES.md. Current state and open
 differences: docs/STATUS.md.
 
