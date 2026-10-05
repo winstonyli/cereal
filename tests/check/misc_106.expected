@@ -1,0 +1,45 @@
+misc_106.c:5:8: warning: implicit declaration of function 'f' [-Wimplicit-function-declaration]
+    5 |     ({ f(); })();
+      |        ^
+misc_106.c:5:5: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    5 |     ({ f(); })();
+      |     ^
+misc_106.c:5:6: error: called object is not a function or function pointer
+    5 |     ({ f(); })();
+      |      ^
+misc_106.c:6:8: error: 'x' undeclared (first use in this function)
+    6 |     ({ x; f(); })();
+      |        ^
+misc_106.c:6:8: note: each undeclared identifier is reported only once for each function it appears in
+    6 |     ({ x; f(); })();
+      |        ^
+misc_106.c:6:5: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    6 |     ({ x; f(); })();
+      |     ^
+misc_106.c:6:6: error: called object is not a function or function pointer
+    6 |     ({ x; f(); })();
+      |      ^
+misc_106.c:7:5: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    7 |     ({ (f()); })();
+      |     ^
+misc_106.c:7:6: error: called object is not a function or function pointer
+    7 |     ({ (f()); })();
+      |      ^
+misc_106.c:9:6: error: redefinition of 'g1'
+    9 | void g1(void){
+      |      ^
+misc_106.c:4:6: note: previous definition of 'g1' with type 'void(void)'
+    4 | void g1(void){
+      |      ^
+misc_106.c:10:5: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   10 |     ({ f(); })();
+      |     ^
+misc_106.c:10:6: error: called object is not a function or function pointer
+   10 |     ({ f(); })();
+      |      ^
+misc_106.c:13:5: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   13 |     ({ f(); })();
+      |     ^
+misc_106.c:13:6: error: called object is not a function or function pointer
+   13 |     ({ f(); })();
+      |      ^

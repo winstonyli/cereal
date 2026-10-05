@@ -3863,6 +3863,23 @@ SrcLoc call_loc(Checker *c, uint32_t f)
 
 static uint32_t stmt_expr_value(Checker *c, uint32_t i);
 
+/* A call (maybe parenthesized) of an implicitly declared function. */
+static bool implicit_call(Checker *c, uint32_t e)
+{
+    uint32_t f, ref;
+    while (e != NO_NODE && ntag(c, e) == N_PAREN)
+        e = strip_paren(c, e);
+    if (e == NO_NODE || ntag(c, e) != N_CALL)
+        return false;
+    f = first_child(c, e);
+    if (f == NO_NODE || ntag(c, f) != N_IDENT)
+        return false;
+    if (!c->cb[f])           /* the symbol the identifier resolved to */
+        return false;
+    ref = c->cb[f] - 1;
+    return csym(c, ref)->flags & CSF_IMPLICIT;
+}
+
 /* Where gcc reports a bad callee: a compound literal or statement
  * expression is located at its opening brace, other callees as call_loc. */
 SrcLoc callee_err_loc(Checker *c, uint32_t f)
@@ -3879,7 +3896,8 @@ SrcLoc callee_err_loc(Checker *c, uint32_t f)
         if (k != NO_NODE) {
             /* a lone expression or break/continue keeps its own location */
             uint32_t e = stmt_expr_value(c, g), it = g >= 3 ? g - 3 : NO_NODE;
-            if (e != NO_NODE && cfirst(c, e) == cfirst(c, k) + 1)
+            if (e != NO_NODE && cfirst(c, e) == cfirst(c, k) + 1 &&
+                !implicit_call(c, e))
                 return ntag(c, e) == N_PAREN ? cnode_loc(c, e)
                        : ntag(c, e) == N_CALL ? call_loc(c, e)
                        : expr_loc(c, e);

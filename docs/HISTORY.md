@@ -1508,3 +1508,11 @@ diagnostics and builds on the strinit table.
   to types.
 - Gate: 1157 pass, san 403/0, gcc.dg differ 106, c-c++-common 35, callgrind
   3.697G.
+
+## Round 92 (implicit-declaration callee location)
+- A statement expression whose lone value is a call of an implicitly
+  declared function (maybe parenthesized) is located at its brace, not at
+  the call (`implicit_call` in `callee_err_loc`).  Closes the Round 89
+  open item.  Golden misc_106.
+- Gate: 1159 pass, san 404/0, gcc.dg differ 106, c-c++-common 35, callgrind
+  3.697G.
