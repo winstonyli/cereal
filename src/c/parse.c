@@ -1546,6 +1546,8 @@ static void specs(Parser *p, Specs *s, Lookahead la)
             s->type = true;
             break;
         case CK_TYPEOF:
+            if (s->type)        /* gcc: typespec_ok is false */
+                goto done;
             paren_type_or_expr(p, N_TYPEOF);
             s->type = true;
             break;
@@ -2350,6 +2352,15 @@ static void primary(Parser *p)
         if (t.t.punct == P_LPAREN) {
             PTok n = pk(p, 1);
             uint32_t lp = adv(p);
+            if (is_p(&n, P_LBRACE) && !p->fn_depth) {
+                /* gcc: !building_stmt_list_p () */
+                perr(p, lp, "braced-group within expression allowed only "
+                     "inside a function");
+                skip_until(p, P_RBRACE);
+                skip_until(p, P_RPAREN);
+                emit(p, N_STMT_EXPR, lp, start, NF_ERROR);
+                return;
+            }
             if (is_p(&n, P_LBRACE)) { /* GNU statement expression */
                 compound(p, true);
                 expect(p, P_RPAREN);
@@ -2919,6 +2930,7 @@ static void declaration(Parser *p, bool top)
     Specs s;
     PTok t;
     int n;
+    bool fn_attr = false;
     while (ckw(p) == CK_EXTENSION) {
         adv(p);
         flags |= NF_EXTENSION;
@@ -3062,6 +3074,8 @@ static void declaration(Parser *p, bool top)
         if (ckw(p) == CK_ASM)
             asm_label(p);
         attributes(p);
+        if (n == 0 && d.inner == DK_FUNC && at(p, P_LBRACE))
+            fn_attr = true;
         scope_declare(&p->scope, p->toks.data[d.name].t.aux,
                       s.is_typedef ? SYM_TYPEDEF : SYM_ORDINARY);
         leaf(p, N_DECLARED, d.name);
@@ -3071,7 +3085,16 @@ static void declaration(Parser *p, bool top)
         if (!accept(p, P_COMMA))
             break;
     }
-    if (!accept(p, P_SEMI)) {
+    if (fn_attr && at(p, P_LBRACE)) {
+        /* gcc: attributes after the declarator of a function definition */
+        perr(p, first, "attributes should be specified before the "
+             "declarator in a function definition");
+        flags |= NF_ERROR;
+        if (top || p->kr_params)
+            sync_top(p);
+        else
+            sync_stmt(p);
+    } else if (!accept(p, P_SEMI)) {
         uint64_t before = p->errors;
         expected(p, "',' or ';'");
         p->soft_errors += p->errors - before;

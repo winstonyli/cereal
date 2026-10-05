@@ -5280,6 +5280,10 @@ static void e_stmt_expr(Checker *c, uint32_t i)
 {
     uint32_t k = i - 1, e;
     SrcLoc loc = cnode_loc(c, i);
+    if (cnode(c, i)->flags & NF_ERROR) {    /* the parser reported it */
+        set_err(c, i);
+        return;
+    }
     if (!in_function(c)) {
         cerror(c, loc, "braced-group within expression allowed only inside a "
                        "function");

@@ -1,0 +1,15 @@
+misc_114.c:6:7: error: braced-group within expression allowed only inside a function
+    6 | int a[({ int b })];
+      |       ^
+misc_114.c:7:7: error: braced-group within expression allowed only inside a function
+    7 | int c[({ int d () {}; })];
+      |       ^
+misc_114.c:8:5: error: expected identifier or '(' before 'typeof'
+    8 | int typeof;
+      |     ^
+misc_114.c:9:6: error: expected identifier or '(' before '__typeof__'
+    9 | long __typeof__(1) x;
+      |      ^
+misc_114.c:10:1: error: attributes should be specified before the declarator in a function definition
+   10 | void foo (void) __attribute__((__visibility__("default")))
+      | ^

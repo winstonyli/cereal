@@ -1611,3 +1611,18 @@ diagnostics and builds on the strinit table.
   histories uses the newest entries.
 - Gate: 1173 pass, san 411/0, gcc.dg differ 91, c-c++-common 35, callgrind
   3.704G.
+
+## Round 99: declaration recovery
+
+- A `({` outside a function body is an error at the `(` from the parser
+  (gcc: `!building_stmt_list_p`); the group is skipped through `}` and `)`,
+  and the node is an erroneous expression, so the array bound is not
+  "assumed to have one element" (20041014-1, pr84721).
+- `typeof` after a type specifier ends the specifiers (`int typeof;` is
+  "expected identifier or '(' before 'typeof'"; no-asm-3).
+- Attributes between the declarator and the `{` of a function definition:
+  "attributes should be specified before the declarator in a function
+  definition" at the declaration start, body skipped (pr60915).
+  Golden misc_114.
+- Gate: 1175 pass, san 412/0, gcc.dg differ 87, c-c++-common 35, callgrind
+  3.704G.
