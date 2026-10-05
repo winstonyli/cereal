@@ -5419,6 +5419,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                 return false;
             }
         } else if (sym_defined(o) && !is_prototype(c, oldtype) &&
+                   !o->olddef_merged &&
                    is_prototype(c, newtype) &&
                    (type_ent(TT, type_canon(TT, oldtype))->n ||
                     !has_err_param(c, newtype))) {
@@ -5619,6 +5620,8 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
                            CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE |
                            CSF_WEAK | CSF_WEAKREF | CSF_ADDR_WARNED | CSF_DEPRECATED |
                            CSF_UNAVAILABLE | CSF_INNER_COMP | CSF_GNU_INLINE | CSF_PURE | CSF_CONSTFN);
+    m.olddef_merged = o->olddef_merged ||
+                      (new_def && !new_proto && !sym_defined(o));
     /* merge_weak: PR 49899, a static function cannot become weak and public */
     if ((nw->flags & CSF_WEAK) && !(o->flags & CSF_WEAK) && !sym_public(o) &&
         sym_public(nw))

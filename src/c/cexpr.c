@@ -434,6 +434,19 @@ bool is_intcst(Checker *c, uint32_t i)
     return c->ck[i] == K_ICE || (c->ck[i] == K_FOLD && (c->ef[i] & EF_CST));
 }
 
+/* Does the expression read a const object that -O folded to its value?  Such
+ * an expression is no integer constant expression, hence no null pointer
+ * constant (the tree is postorder: the subtree ends at i). */
+static bool constvar_in(Checker *c, uint32_t i)
+{
+    uint32_t j;
+    for (j = i + 1 - c->nodes[i].size; j <= i; j++)
+        if (c->nodes[j].tag == N_IDENT && c->ck[j] == K_FOLD &&
+            (c->ef[j] & EF_CST))
+            return true;
+    return false;
+}
+
 /* EXPR_INT_CONST_OPERANDS. */
 static bool intops(Checker *c, uint32_t i)
 {
@@ -5276,7 +5289,8 @@ static void e_cast(Checker *c, uint32_t i)
     }
     conv_const(c, i, a, c->ty[i]);
     if (is_ptr(c, t) && c->ck[i] == K_ADDR && c->cb[i] == 0 &&
-        c->cv[i] == 0 && is_intcst(c, a) && !(c->ef[a] & EF_OVERFLOW) &&
+        c->cv[i] == 0 && is_intcst(c, a) && !constvar_in(c, a) &&
+        !(c->ef[a] & EF_OVERFLOW) &&
         !(ntag(c, strip_paren(c, a)) == N_BINARY &&
           npunct(c, strip_paren(c, a)) == P_COMMA) &&
         is_void(c, pointee(c, t)) && tquals(c, pointee(c, t)) == 0)
@@ -8988,7 +9002,6 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     } else if (!is_decimal_flt(c, rt) && !zero_div && fval(c, a, &fa) &&
                fval(c, b, &fb) && !((op == P_SLASH) && fb == 0)) {
         long double r = 0;
-        bool cst = c->ck[a] != K_ADDR && c->ck[b] != K_ADDR;
         switch (op) {
         case P_PLUS: r = fa + fb; break;
         case P_MINUS: r = fa - fb; break;
@@ -8997,8 +9010,6 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         }
         c->ck[i] = K_FLOAT;
         c->cv[i] = fpush(c, fround(c, rt, r));
-        if (cst)
-            c->ef[i] |= EF_REALCST;
         return;
     }
     if (intops(c, a) && intops(c, b))
@@ -10529,7 +10540,7 @@ void cexpr_node(Checker *c, uint32_t i)
     }
     /* a null pointer constant: an integer constant expression with value 0 */
     if (is_intcst(c, i) && !(c->ef[i] & EF_OVERFLOW) && c->cv[i] == 0 &&
-        is_int(c, c->ty[i]) &&
+        is_int(c, c->ty[i]) && !constvar_in(c, i) &&
         !(ntag(c, strip_paren(c, i)) == N_BINARY &&
           npunct(c, strip_paren(c, i)) == P_COMMA))
         c->ef[i] |= EF_NPC;

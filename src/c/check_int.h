@@ -105,6 +105,9 @@ typedef struct CSym {
     uint32_t sect;           /* section(".."): Checker.dep_msgs + 1, 0: none */
     uint64_t nonnull;        /* the 'nonnull' attribute (Attrs.nonnull) */
     uint32_t fmt;            /* the 'format' attribute (Attrs.fmt) */
+    bool olddef_merged;      /* an old-style definition merged into an earlier
+                              * declaration (gcc then keeps no actual argument
+                              * types to check) */
     uint8_t fmtarg;          /* the 'format_arg' attribute's argument number */
     uint32_t aset;           /* attribute names written or copied: Checker.anames set id */
     uint32_t ualign;         /* a function's user alignment in bytes (aligned attribute) */

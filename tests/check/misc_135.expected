@@ -1,0 +1,25 @@
+misc_135.c:3:30: warning: 'struct S' declared inside parameter list will not be visible outside of this definition or declaration
+    3 | void foo() { void foo(struct S); }
+      |                              ^
+misc_135.c:5:15: warning: 'struct S' declared inside parameter list will not be visible outside of this definition or declaration
+    5 | void h(struct S);
+      |               ^
+misc_135.c:5:6: error: prototype for 'h' declares more arguments than previous old-style definition
+    5 | void h(struct S);
+      |      ^
+misc_135.c:4:6: note: previous definition of 'h' with type 'void()'
+    4 | void h() {}
+      |      ^
+misc_135.c:9:1: warning: variably modified 'b1' at file scope
+    9 | int b1[(int)(1.0 + 2.0)];
+      | ^
+misc_135.c:10:14: warning: bit-field 'x' width not an integer constant expression [-Wpedantic]
+   10 | struct { int x : (int)(1.0 + 2.0); } s;
+      |              ^
+misc_135.c:13:5: warning: assignment to 'long int *' from incompatible pointer type 'int *' [-Wincompatible-pointer-types]
+   13 |   c = (1 ? a : (void *)(__SIZE_TYPE__)0);
+      |     ^
+misc_135.c:14:3: warning: style of line directive is a GCC extension
+   14 | # 40 "sys.h" 3
+      |   ^
+misc_135.c:45:8: warning: overflow in conversion from 'int' to 'char' changes value from '300' to '44' [-Woverflow]

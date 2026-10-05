@@ -634,7 +634,7 @@ bool diag_option_explicit(DiagEngine *d, const char *id)
 static bool in_system_header(DiagEngine *d, SrcLoc loc)
 {
     SrcFile *f = srcmgr_file_of(d->sm, loc);
-    return f && f->system_header;
+    return f && srcmgr_is_system(f, loc);    /* with '# N "f" 3' markers */
 }
 
 Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,

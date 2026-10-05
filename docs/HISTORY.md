@@ -1846,3 +1846,20 @@ diagnostics and builds on the strinit table.
   saturates at 65535; widening it costs memory on every node).
 - Golden misc_134. Gate: 1215 pass, san 432/0, gcc.dg 52 / c-c++-common 35,
   callgrind 3.708G.
+
+## Round 116: old-style merge, system-header markers, -O null pointer constants
+
+- A prototype after an old-style definition that was merged into an earlier
+  declaration (`void f(); void f(){}`) is not checked for "declares more
+  arguments": gcc keeps no actual argument types then (pr89211;
+  `CSym.olddef_merged`).
+- `diag.c` suppressed warnings only for files in system directories; it now
+  also honours `# N "file" 3` markers (`srcmgr_is_system`), so conversion
+  warnings in such regions are dropped (wtr-int-type-1).
+- Under -O, an expression reading a const object folded to its value is no
+  null pointer constant (`constvar_in`; c99-const-expr-3), and arithmetic on
+  floating constants, `(int)(0.0+0.0)`, is no integer constant expression
+  (the binary result no longer carries `EF_REALCST`): gcc warns about
+  variably modified / non-constant bit-field widths and enumerators there.
+- Golden misc_135. Gate: 1217 pass, san 433/0, gcc.dg 48 / c-c++-common 35,
+  callgrind 3.710G.
