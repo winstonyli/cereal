@@ -1516,3 +1516,18 @@ diagnostics and builds on the strinit table.
   open item.  Golden misc_106.
 - Gate: 1159 pass, san 404/0, gcc.dg differ 106, c-c++-common 35, callgrind
   3.697G.
+
+## Round 93 ("used but never defined", block-scope extern inline)
+- New `CSF_CUSED` (gcc's C_DECL_USED): a function named only in an
+  unevaluated sizeof, alignof or typeof is not "used" for "'f' used but
+  never defined"; a VLA sizeof or variably modified typeof evaluates its
+  operand, so it counts (gcc's pop_maybe_used; only the outermost wrapper
+  decides, a small simplification of its nesting rule).  CSF_USED is
+  unchanged, so unused-function warnings behave as before.
+  c99-static-1, gnu99-static-1.
+- A block-scope `extern inline` function declaration now merges with the
+  file-scope function (it is not DECL_EXTERNAL until defined, so pushdecl
+  skipped the merge and left a second, undefined symbol).  inline-40/42.
+  Golden misc_107.
+- Gate: 1161 pass, san 405/0, gcc.dg differ 102, c-c++-common 35, callgrind
+  3.701G.

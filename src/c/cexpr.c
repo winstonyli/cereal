@@ -2111,7 +2111,7 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
     s.kind = CS_FUNC;
     s.sc = SC_EXTERN;
     s.linkage = LK_EXTERNAL;
-    s.flags = CSF_IMPLICIT | CSF_USED;
+    s.flags = CSF_IMPLICIT | CSF_USED | CSF_CUSED;
     s.ty = bt && bt->mismatch ? bt_func_type(c, bt)
                               : type_func(TT, TYPE_B(INT), NULL, 0, TF_NOPROTO);
     s.loc = loc;
@@ -2248,6 +2248,8 @@ static void reject_builtin(Checker *c, uint32_t i, const char *name)
 }
 
 /* An operand of __builtin_has_attribute names a function without using it. */
+static uint32_t sizeof_outer(const Checker *c, uint32_t i);
+
 static bool in_has_attr(const Checker *c, uint32_t i)
 {
     unsigned depth;
@@ -2341,8 +2343,11 @@ static void e_ident(Checker *c, uint32_t i)
     s = csym(c, ref);
     /* gcc marks a variable named in __builtin_has_attribute used; a function
      * stays unused ("declared static but never defined") */
-    if (s->kind != CS_FUNC || !in_has_attr(c, i))
+    if (s->kind != CS_FUNC || !in_has_attr(c, i)) {
         s->flags |= CSF_USED;
+        if (s->kind == CS_FUNC && sizeof_outer(c, i) == NO_NODE)
+            s->flags |= CSF_CUSED;
+    }
     if (c->func_sym != SYM_NONE && !(ref & SYM_LOCAL) &&
         (s->kind == CS_OBJ || s->kind == CS_FUNC) && s->linkage == LK_INTERNAL)
         cdecl_record_inline_static(c, ctok_loc(c, c->nodes[i].tok), s->name,
@@ -4736,6 +4741,41 @@ static bool obj_ident(Checker *c, uint32_t x)
     return ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ;
 }
 
+/* The outermost sizeof around node i, or NO_NODE. */
+static uint32_t sizeof_outer(const Checker *c, uint32_t i)
+{
+    uint32_t r = NO_NODE, p;
+    unsigned depth;
+    for (depth = 0; depth < 256 && (p = c->par[i]) != NO_NODE; depth++) {
+        if (ntag(c, p) == N_SIZEOF_EXPR || ntag(c, p) == N_SIZEOF_TYPE ||
+            ntag(c, p) == N_ALIGNOF_EXPR || ntag(c, p) == N_ALIGNOF_TYPE ||
+            ntag(c, p) == N_TYPEOF)
+            r = p;
+        i = p;
+    }
+    return r;
+}
+
+/* A sizeof of a variable length type is evaluated: the functions named in it
+ * are used (pop_maybe_used). */
+static void sizeof_marks_used(Checker *c, uint32_t sz)
+{
+    uint32_t k;
+    for (k = cfirst(c, sz); k < sz; k++)
+        if (ntag(c, k) == N_IDENT && c->cb[k]) {
+            CSym *s = csym(c, c->cb[k] - 1);
+            if (s->kind == CS_FUNC)
+                s->flags |= CSF_CUSED;
+        }
+}
+
+/* typeof of a variably modified type is evaluated like sizeof of a VLA. */
+void cexpr_typeof_used(Checker *c, uint32_t n, TypeId t)
+{
+    if (type_is_vm(TT, t) && sizeof_outer(c, n) == NO_NODE)
+        sizeof_marks_used(c, n);
+}
+
 static void e_sizeof(Checker *c, uint32_t i, bool align)
 {
     uint32_t a = first_child(c, i);
@@ -4841,6 +4881,8 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
         return;
     } else if (!align) {
         if (var_size(c, t)) {
+            if (sizeof_outer(c, i) == NO_NODE)
+                sizeof_marks_used(c, i);
             c->ty[i] = size_type(c);
             return;
         }

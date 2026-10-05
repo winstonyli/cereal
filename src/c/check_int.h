@@ -56,6 +56,10 @@ enum {
     CSF_WEAKREF = 1073741824 /* __attribute__((weakref)) */
 };
 
+/* gcc's C_DECL_USED: the function is used other than in an unevaluated
+ * sizeof (a VLA one counts), which is what "used but never defined" asks */
+#define CSF_CUSED 0x80000000u
+
 typedef struct AName {
     uint32_t set;
     uint32_t prev;           /* the set's previous entry, 1-based; 0: none */
@@ -504,6 +508,7 @@ void unused_value(Checker *c, uint32_t e, SrcLoc dloc);
 void cpragma_apply(Checker *c, uint32_t tok);
 void cxx_in_struct_use(Checker *c, SrcLoc at, const char *what,
                        const char *noted, SrcLoc def);
+void cexpr_typeof_used(Checker *c, uint32_t n, TypeId t);
 bool cpragma_optimize_bad(const char *opt, char *norm, size_t n);
 void cpragma_optimize_repeat(Checker *c, SrcLoc loc);
 

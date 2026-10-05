@@ -3663,6 +3663,7 @@ static void specs_visit(Checker *c, uint32_t i)
                     t = c->ty[a];
                 else
                     t = c->ty[a];
+                cexpr_typeof_used(c, n, t);
             }
             add_type_whole(c, &s, t, TSK_TYPEOF, nd->tok);
             break;
@@ -5536,7 +5537,7 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
         m.ty = type_composite(TT, newtype, oldtype);
     if ((!sym_defined(nw) && sym_defined(o)) || (old_proto && !new_proto))
         m.loc = o->loc;
-    m.flags |= o->flags & (CSF_DEFINED | CSF_USED | CSF_NORETURN | CSF_THREAD |
+    m.flags |= o->flags & (CSF_DEFINED | CSF_USED | CSF_CUSED | CSF_NORETURN | CSF_THREAD |
                            CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE |
                            CSF_WEAK | CSF_WEAKREF | CSF_ADDR_WARNED | CSF_DEPRECATED |
                            CSF_UNAVAILABLE | CSF_INNER_COMP | CSF_GNU_INLINE | CSF_PURE | CSF_CONSTFN);
@@ -5808,7 +5809,10 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
     }
     ref = SYM_NONE;
     if (!skip) {
-        if (((x.flags & CSF_DECL_EXTERNAL) || filescope) && varfn) {
+        /* a block-scope function declaration names the external one, also
+         * `extern inline` (not DECL_EXTERNAL here until it is defined) */
+        if (((x.flags & CSF_DECL_EXTERNAL) || filescope ||
+             (x.kind == CS_FUNC && pub)) && varfn) {
             uint32_t tb = c->top[NS_ORD][name], visref = SYM_NONE;
             uint32_t e = c->ext[name];
             if (tb) {
@@ -6632,7 +6636,7 @@ static void declared_visit(Checker *c, uint32_t i)
         else if (fr == SYM_NONE || csym(c, fr)->kind != CS_FUNC)
             cerror(c, il, "cleanup argument not a function");
         else {
-            csym(c, fr)->flags |= CSF_USED;
+            csym(c, fr)->flags |= CSF_USED | CSF_CUSED;
             cexpr_cleanup_call(c, fr, s.ty, s.loc, il);
         }
         s.flags |= CSF_USED | CSF_ATTR_UNUSED;   /* never warned about */
@@ -9641,7 +9645,7 @@ void cdecl_finish_object(Checker *c, uint32_t ref)
         if (s->kind == CS_FUNC && !sym_public(s) && !sym_defined(s) &&
             (s->flags & CSF_DECL_EXTERNAL) && s->name &&
             !cdecl_aset_has(c, s->aset, "weakref", NULL)) {
-            if (s->flags & CSF_USED)
+            if (s->flags & CSF_CUSED)
                 cpedwarn(c, s->loc, "", "'%s' used but never defined",
                          sname(c, s));
             else

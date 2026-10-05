@@ -1,0 +1,18 @@
+misc_107.c:6:13: warning: 'f0' used but never defined
+    6 | static void f0(void); 
+      |             ^
+misc_107.c:10:13: warning: 'f1' used but never defined
+   10 | static void f1(void); 
+      |             ^
+misc_107.c:14:12: warning: 'f2' used but never defined
+   14 | static int f2(void); 
+      |            ^
+misc_107.c:26:12: warning: 'f5' used but never defined
+   26 | static int f5(void); 
+      |            ^
+misc_107.c:42:12: warning: 'h2' used but never defined
+   42 | static int h2(void); 
+      |            ^
+misc_107.c:46:12: warning: 'h3' used but never defined
+   46 | static int h3(void); 
+      |            ^
