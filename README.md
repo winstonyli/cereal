@@ -35,7 +35,14 @@ first, then the text on all cores. The output is byte-identical to a
 sequential run. See `-fparallel=auto|on|off`, `-fparallel-threads=N` and
 docs/PARALLEL.md.
 
-The C parser is planned in docs/PARSER.md.
+The C99 + GNU parser and type checker are implemented (`cereal parse`,
+`-fsyntax-only`). They emit gcc-13-style diagnostics, checked against gcc's
+own testsuite (gcc.dg: 3620 of 3744 files identical; c-c++-common: 596 of
+636). Design: docs/PARSER.md, docs/TYPES.md. Current state and open
+differences: docs/STATUS.md.
+
+Development and the test gates run on Linux (WSL). The build needs a POSIX
+shell and a host gcc.
 
 ## What lint finds
 

@@ -1385,3 +1385,14 @@ diagnostics and builds on the strinit table.
 - A struct's `[]` member gets `type_array_flex` (`TF_INCOMPLETE|TF_FLEX`; TF_FLEX shares bit 64 with TF_NOCF, which only applies to function types). The canonical form and `type_composite` keep the bit. `incomplete_error` says "invalid use of flexible array member" only for those; any other incomplete array (`int (*A)[]`, typedef'd `T[]`) says "invalid use of array with unspecified bounds", as gcc does (it keys on TYPE_DOMAIN). Closes c-c++-common `pr70756`; golden `misc_90`.
 - Gate: 1127 goldens, san 388/0, gcc.dg differ 126, c-c++-common 40, callgrind ~3.654G.
 - Fix-up (same round): a typedef'd `T[]` struct member is also a flexible member for gcc (finish_struct), so the last field of a struct is rebuilt with `type_array_flex` (loses the typedef name). `misc_90` now matches gcc line for line (the first commit of this round had a golden with one wrong line). Gate: 1127 goldens, san 388/0, gcc.dg differ 124, c-c++-common 40, callgrind ~3.654G.
+
+## Round 83 (re-baseline, flake check, portfolio tidy)
+- Open lists regenerated (verify.sh): gcc.dg 124 differ of 3744 (40 one-diff,
+  41 two-diff, 43 with 3+); c-c++-common 40 of 636 (12 / 14 / 14).  The
+  one/two-diff files are mostly distinct small causes (locations, attribute
+  conflicts, wording of range/overflow notes), not a shared bucket.
+- `--cells -fparallel-chunk=1` golden flake: not reproduced in 7 full
+  `tests/run.sh` runs (1 idle, 6 with four busy loops at nice 19); all 1127
+  pass.  Treat the single earlier failure as unexplained until it recurs.
+- README parser status refreshed; stray empty `null` file removed.  No
+  LICENSE added yet (owner to choose).
