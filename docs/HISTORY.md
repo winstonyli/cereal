@@ -1591,3 +1591,23 @@ diagnostics and builds on the strinit table.
 - Open: for-1 (extra "expected declaration or statement at end of input").
 - Gate: 1171 pass, san 410/0, gcc.dg differ 93, c-c++-common 35, callgrind
   3.704G.
+
+## Round 98: #line in diagnostics
+
+- Diagnostics ignored `#line` and linemarkers (they showed the physical
+  file and line).  Each SrcFile now keeps its #line history (`linemap`);
+  the location line, the "In file included from" chain and the source
+  snippet use the presumed name and line.  Presumed line 0 prints no
+  position (`q.c: error: ...`); the snippet is read at the presumed line
+  and shown only when the presumed file is the file itself and the line
+  exists, as gcc does.  for-1 and one more gcc.dg file now match.
+  Golden misc_113; builtin_location regenerated (its `#line 20` moved every
+  line after it).
+- "style of line directive is a GCC extension" stays untagged: gcc 13 does
+  not print `[-Wpedantic]` (newer gcc does, so the local `gcc` is not the
+  reference here).
+- Open: pp diagnostics are printed before parse errors of earlier lines;
+  one linemap per file, so a file included twice with different #line
+  histories uses the newest entries.
+- Gate: 1173 pass, san 411/0, gcc.dg differ 91, c-c++-common 35, callgrind
+  3.704G.

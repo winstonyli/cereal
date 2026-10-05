@@ -834,7 +834,8 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
 {
     FILE *o = d->out;
     SrcFile *f = srcmgr_file_of(d->sm, loc);
-    uint32_t line = 0, col = 0;
+    uint32_t line = 0, col = 0, pline = 0;
+    const char *fname = NULL;
     bool eof = false;
     if (d->color)
         fputs("\033[1m", o);
@@ -843,12 +844,16 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
         eof = f->kind != SF_VIRTUAL && srcmgr_offset(f, loc) == f->size;
         if (eof && col > 1)
             line++;     /* the implied final newline */
+        pline = srcmgr_presumed(f, line, &fname);
         if (f->kind == SF_VIRTUAL && !strcmp(f->name, "<built-in>"))
             fprintf(o, "%s: ", f->name);
+        else if (!pline)        /* gcc: line 0 prints no position */
+            fprintf(o, "%s: ", fname);
         else if (eof)   /* gcc: the end-of-file token has no column */
-            fprintf(o, "%s:%u: ", f->name, line);
+            fprintf(o, "%s:%u: ", fname, pline);
         else
-            fprintf(o, "%s:%u:%u: ", f->name, line, display_col(f, line, col));
+            fprintf(o, "%s:%u:%u: ", fname, pline,
+                    display_col(f, line, col));
     } else {
         fputs("cereal: ", o);
     }
@@ -864,9 +869,14 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
         fprintf(o, dg_promoted ? " [-Werror=%s]" : " [-W%s]",
                 strcmp(id, "strict-aliasing=") ? id : "strict-aliasing");
     fputc('\n', o);
-    if (f && f->kind != SF_VIRTUAL && !eof) {
+    /* gcc reads the snippet from the presumed file at the presumed line */
+    if (f && f->kind != SF_VIRTUAL && !eof && pline &&
+        !strcmp(fname, f->name) &&
+        (srcmgr_line_text(f, pline, &(uint32_t){0}), pline <= f->nlines)) {
         uint32_t len, i, caret_end = col;
-        const char *text = srcmgr_line_text(f, line, &len);
+        const char *text;
+        line = pline;
+        text = srcmgr_line_text(f, line, &len);
         uint32_t dcol = display_col(f, line, col), dend, dc = 0;
         fprintf(o, "%5u | ", line);
         for (i = 0; i < len; i++) {     /* gcc expands tabs to 8-column stops */
@@ -885,6 +895,8 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
         if (range.end > range.begin && srcmgr_file_of(d->sm, range.end) == f) {
             uint32_t el, ec;
             srcmgr_linecol(f, range.end, &el, &ec);
+            const char *en;
+            el = srcmgr_presumed(f, el, &en);
             if (el == line && ec > col)
                 caret_end = ec - 1;
         }
@@ -912,10 +924,12 @@ void diag_print(DiagEngine *d, Diagnostic *dg)
         uint32_t line, col;
         if (!f)
             continue;
+        const char *fname;
         srcmgr_linecol(f, dg->inc_chain[i], &line, &col);
+        line = srcmgr_presumed(f, line, &fname);
         fprintf(d->out, "%s %s:%u:\n",
                 i == dg->ninc - 1 ? "In file included from" : "                 from",
-                f->name, line);
+                fname, line);
     }
     print_loc_line(d, dg->loc, dg->level, dg->msg, dg->id, dg->range,
                    dg->promoted);

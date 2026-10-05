@@ -1,0 +1,5 @@
+zz.c:51:3: warning: style of line directive is a GCC extension
+zz.c:50:9: error: expected expression before ';' token
+misc_113.c:3:9: error: expected expression before ';' token
+    3 |  * presumed file is this one and the line exists. */
+      |         ^

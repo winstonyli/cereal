@@ -54,7 +54,8 @@ void srcmgr_free(SrcMgr *sm)
 {
     uint32_t i;
     for (i = 0; i < sm->nfiles; i++)
-        free(srcmgr_file(sm, i)->lines), free(srcmgr_file(sm, i)->sysmarks);
+        free(srcmgr_file(sm, i)->lines), free(srcmgr_file(sm, i)->sysmarks),
+        free(srcmgr_file(sm, i)->linemap);
     for (i = 0; i < FILE_CHUNKS; i++)
         free(sm->fchunks[i]);
     free(sm->path_slots);
@@ -350,6 +351,31 @@ void srcmgr_mark_system(SrcFile *f, uint32_t line, bool sys)
     f->sysmarks = v;
     v[f->nsysmarks++] = line;
     v[f->nsysmarks++] = sys;
+}
+
+void srcmgr_add_linemap(SrcFile *f, uint32_t from, int32_t delta,
+                        const char *name)
+{
+    LineMapEnt *v = realloc(f->linemap, (f->nlinemap + 1) * sizeof *v);
+    if (!v)
+        return;
+    f->linemap = v;
+    v[f->nlinemap].from = from;
+    v[f->nlinemap].delta = delta;
+    v[f->nlinemap].name = name;
+    f->nlinemap++;
+}
+
+uint32_t srcmgr_presumed(const SrcFile *f, uint32_t phys, const char **name)
+{
+    uint32_t k;
+    *name = f->name;
+    for (k = f->nlinemap; k--;)
+        if (phys >= f->linemap[k].from) {
+            *name = f->linemap[k].name;
+            return (uint32_t)((int32_t)phys + f->linemap[k].delta);
+        }
+    return phys;
 }
 
 bool srcmgr_is_system(SrcFile *f, SrcLoc loc)

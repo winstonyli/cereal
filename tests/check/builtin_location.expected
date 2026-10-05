@@ -19,24 +19,22 @@ builtin_location.c:11:8: warning: enumerator value for 'e3' is not an integer co
 builtin_location.c:13:1: error: enumerator value for 'e4' is not an integer constant
    13 | };
       | ^
-builtin_location.c:19:5: error: size of array 'l2' is negative
-   19 | int l2[__builtin_LINE () == 20 ? 1 : -1];
+builtin_location.c:21:5: error: size of array 'l2' is negative
+   21 | _Static_assert (_Generic (__builtin_fabsq (0), __float128: 1, default: 0), "q");
       |     ^
-builtin_location.c:21:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
-   21 | _Static_assert (_Generic (__builtin_fabsq (0), __float128: 1, default: 0), "q");
+builtin_location.c:23:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   23 | struct A { char c; } __attribute__ ((packed)) av;
       | ^
-builtin_location.c:21:17: warning: ISO C99 does not support '_Generic' [-Wpedantic]
-   21 | _Static_assert (_Generic (__builtin_fabsq (0), __float128: 1, default: 0), "q");
+builtin_location.c:23:17: warning: ISO C99 does not support '_Generic' [-Wpedantic]
+   23 | struct A { char c; } __attribute__ ((packed)) av;
       |                 ^
-builtin_location.c:22:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
-   22 | _Static_assert (_Generic (__builtin_infq (), double: 1, default: 0), "q2");
+builtin_location.c:24:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   24 | struct C { char c; __attribute__ ((copy (av))) int i; };
       | ^
-builtin_location.c:22:17: warning: ISO C99 does not support '_Generic' [-Wpedantic]
-   22 | _Static_assert (_Generic (__builtin_infq (), double: 1, default: 0), "q2");
+builtin_location.c:24:17: warning: ISO C99 does not support '_Generic' [-Wpedantic]
+   24 | struct C { char c; __attribute__ ((copy (av))) int i; };
       |                 ^
-builtin_location.c:22:1: error: static assertion failed: "q2"
-   22 | _Static_assert (_Generic (__builtin_infq (), double: 1, default: 0), "q2");
+builtin_location.c:24:1: error: static assertion failed: "q2"
+   24 | struct C { char c; __attribute__ ((copy (av))) int i; };
       | ^
-builtin_location.c:25:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
-   25 | _Static_assert (__builtin_offsetof (struct C, i) == 1, "copy packed");
-      | ^
+builtin_location.c:27:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]

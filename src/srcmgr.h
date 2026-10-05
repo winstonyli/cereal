@@ -26,6 +26,14 @@ typedef enum {
     SF_SCRATCH             /* synthesized spellings (##, #, builtins) */
 } SrcFileKind;
 
+/* One #line or linemarker: from physical line `from`, presumed line =
+ * physical + delta and the presumed file name is `name`. */
+typedef struct LineMapEnt {
+    uint32_t from;
+    int32_t delta;
+    const char *name;
+} LineMapEnt;
+
 typedef struct SrcFile {
     int id;
     const char *path;      /* as opened (normalized) */
@@ -42,6 +50,8 @@ typedef struct SrcFile {
     bool system_header;
     uint32_t *sysmarks;    /* line markers: (physical line, 1 = system flag) pairs */
     uint32_t nsysmarks;    /* entries in sysmarks (2 per marker) */
+    LineMapEnt *linemap;   /* #line history, oldest first (diagnostics) */
+    uint32_t nlinemap;
     SrcLoc inc_loc;        /* the #include that last entered it (0: main file) */
     struct Ident *guard;   /* detected include guard macro */
     bool guard_checked;
@@ -121,6 +131,10 @@ void srcmgr_linecol(SrcFile *f, SrcLoc loc, uint32_t *line, uint32_t *col);
 /* A '# N "file" [flags]' marker: from physical line `line` on, the text is in
  * a system header iff `sys` (flag 3). */
 void srcmgr_mark_system(SrcFile *f, uint32_t line, bool sys);
+void srcmgr_add_linemap(SrcFile *f, uint32_t from, int32_t delta,
+                        const char *name);
+/* The presumed line (0 allowed) and file name of physical line `phys`. */
+uint32_t srcmgr_presumed(const SrcFile *f, uint32_t phys, const char **name);
 /* Is loc in a system header, counting line-marker flags? */
 bool srcmgr_is_system(SrcFile *f, SrcLoc loc);
 SrcLoc srcmgr_loc_of(SrcFile *f, uint32_t line, uint32_t col);

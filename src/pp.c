@@ -1650,7 +1650,8 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
             tokbuf_push(pp, &src, rest.t[i]);
         line.t = src.t;
         line.n = src.len;
-        /* cpp_pedwarning (CPP_W_NONE, ...): not tagged with -Wpedantic */
+        /* cpp_pedwarning (CPP_W_NONE, ...): not tagged with -Wpedantic in
+         * gcc 13 (newer gcc tags it) */
         if (pp->opt->pedantic)
             diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR
                         : DL_WARNING, "", kw->loc,
@@ -1713,6 +1714,8 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
         a->from = phys + 1;
         a->delta = (int32_t)((long long)n - (long long)(phys + 1));
         pp->inc->adj = a;
+        srcmgr_add_linemap(pp->inc->file, a->from, a->delta,
+                           pp->inc->presumed_name);
     }
 out:
     tokbuf_release(pp, &tmp);
