@@ -1,0 +1,63 @@
+misc_92.c:6:30: warning: type punning toggles scalar storage order [-Wscalar-storage-order]
+    6 | union R UA { int x; struct B b; };
+      |                              ^
+misc_92.c:7:28: warning: type punning toggles scalar storage order [-Wscalar-storage-order]
+    7 | union UB { int x; struct A a; };
+      |                            ^
+misc_92.c:8:35: warning: type punning toggles scalar storage order [-Wscalar-storage-order]
+    8 | union R UC { struct A a; struct N n; int *p; int arr[2]; };
+      |                                   ^
+misc_92.c:14:5: warning: assignment to 'void *' from pointer type 'struct A *' with incompatible scalar storage order [-Wscalar-storage-order]
+   14 |   v = a;
+      |     ^
+misc_92.c:17:5: warning: assignment to 'struct A *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   17 |   a = v;
+      |     ^
+misc_92.c:18:6: warning: assignment to 'int *' from pointer type 'struct A *' with incompatible scalar storage order [-Wscalar-storage-order]
+   18 |   ip = a;
+      |      ^
+misc_92.c:18:6: warning: assignment to 'int *' from incompatible pointer type 'struct A *' [-Wincompatible-pointer-types]
+   18 |   ip = a;
+      |      ^
+misc_92.c:19:6: warning: assignment to 'char *' from pointer type 'struct A *' with incompatible scalar storage order [-Wscalar-storage-order]
+   19 |   cp = a;
+      |      ^
+misc_92.c:19:6: warning: assignment to 'char *' from incompatible pointer type 'struct A *' [-Wincompatible-pointer-types]
+   19 |   cp = a;
+      |      ^
+misc_92.c:21:6: warning: passing argument 1 of 'fa' from incompatible scalar storage order [-Wscalar-storage-order]
+   21 |   fa(v);
+      |      ^
+misc_92.c:11:16: note: expected 'struct A *' but argument is of type 'void *'
+   11 | extern void fa(struct A *);
+      |                ^
+misc_92.c:22:6: warning: passing argument 1 of 'fa' from incompatible scalar storage order [-Wscalar-storage-order]
+   22 |   fa(b);
+      |      ^
+misc_92.c:11:16: note: expected 'struct A *' but argument is of type 'struct B *'
+   11 | extern void fa(struct A *);
+      |                ^
+misc_92.c:22:6: warning: passing argument 1 of 'fa' from incompatible pointer type [-Wincompatible-pointer-types]
+   22 |   fa(b);
+      |      ^
+misc_92.c:11:16: note: expected 'struct A *' but argument is of type 'struct B *'
+   11 | extern void fa(struct A *);
+      |                ^
+misc_92.c:23:5: warning: assignment to 'struct A *' from pointer type 'struct N *' with incompatible scalar storage order [-Wscalar-storage-order]
+   23 |   a = n;
+      |     ^
+misc_92.c:23:5: warning: assignment to 'struct A *' from incompatible pointer type 'struct N *' [-Wincompatible-pointer-types]
+   23 |   a = n;
+      |     ^
+misc_92.c:31:18: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   31 |   int *q = (int*)s->a;
+      |                  ^
+misc_92.c:32:7: error: cannot take address of scalar with reverse storage order
+   32 |   q = &s->a[1];
+      |       ^
+misc_92.c:34:7: error: cannot take address of scalar with reverse storage order
+   34 |   q = &s->in.i;
+      |       ^
+misc_92.c:35:7: error: cannot take address of scalar with reverse storage order
+   35 |   q = &t.c;
+      |       ^

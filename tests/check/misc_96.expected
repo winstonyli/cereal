@@ -1,0 +1,36 @@
+misc_96.c:18:5: warning: assignment to 'struct A *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   18 |   a = v; b = v; c = v; d = v; e = v; ff = v;
+      |     ^
+misc_96.c:18:12: warning: assignment to 'struct B *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   18 |   a = v; b = v; c = v; d = v; e = v; ff = v;
+      |            ^
+misc_96.c:18:19: warning: assignment to 'struct C *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   18 |   a = v; b = v; c = v; d = v; e = v; ff = v;
+      |                   ^
+misc_96.c:18:26: warning: assignment to 'struct D *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   18 |   a = v; b = v; c = v; d = v; e = v; ff = v;
+      |                          ^
+misc_96.c:18:33: warning: assignment to 'struct E *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   18 |   a = v; b = v; c = v; d = v; e = v; ff = v;
+      |                                 ^
+misc_96.c:18:41: warning: assignment to 'struct F *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   18 |   a = v; b = v; c = v; d = v; e = v; ff = v;
+      |                                         ^
+misc_96.c:21:5: warning: assignment to 'void *' from pointer type 'struct A *' with incompatible scalar storage order [-Wscalar-storage-order]
+   21 |   v = a; v = b; v = c; v = d; v = e; v = ff;
+      |     ^
+misc_96.c:21:12: warning: assignment to 'void *' from pointer type 'struct B *' with incompatible scalar storage order [-Wscalar-storage-order]
+   21 |   v = a; v = b; v = c; v = d; v = e; v = ff;
+      |            ^
+misc_96.c:21:19: warning: assignment to 'void *' from pointer type 'struct C *' with incompatible scalar storage order [-Wscalar-storage-order]
+   21 |   v = a; v = b; v = c; v = d; v = e; v = ff;
+      |                   ^
+misc_96.c:21:26: warning: assignment to 'void *' from pointer type 'struct D *' with incompatible scalar storage order [-Wscalar-storage-order]
+   21 |   v = a; v = b; v = c; v = d; v = e; v = ff;
+      |                          ^
+misc_96.c:21:33: warning: assignment to 'void *' from pointer type 'struct E *' with incompatible scalar storage order [-Wscalar-storage-order]
+   21 |   v = a; v = b; v = c; v = d; v = e; v = ff;
+      |                                 ^
+misc_96.c:21:40: warning: assignment to 'void *' from pointer type 'struct F *' with incompatible scalar storage order [-Wscalar-storage-order]
+   21 |   v = a; v = b; v = c; v = d; v = e; v = ff;
+      |                                        ^

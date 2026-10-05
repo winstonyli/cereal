@@ -73,6 +73,7 @@ static const DiagOption options[] = {
     {"incompatible-pointer-types", "c", DL_WARNING, true, 0, "conversion between incompatible pointer types"},
     {"discarded-qualifiers", "c", DL_WARNING, true, 0, "conversion discards qualifiers from pointer target type"},
     {"discarded-array-qualifiers", "c", DL_WARNING, true, 0, "conversion discards qualifiers of array elements"},
+    {"scalar-storage-order", "c", DL_WARNING, true, 0, "reverse scalar storage order mismatch"},
     {"int-to-pointer-cast", "c", DL_WARNING, true, 0, "cast to pointer from integer of different size"},
     {"pointer-to-int-cast", "c", DL_WARNING, true, 0, "cast from pointer to integer of different size"},
     {"builtin-declaration-mismatch", "c", DL_WARNING, true, 0, "declaration of a builtin function with the wrong type"},

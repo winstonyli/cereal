@@ -1,0 +1,48 @@
+misc_97.c:11:18: warning: initialization of 'struct A *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   11 |   struct A *p1 = mk();
+      |                  ^
+misc_97.c:14:18: warning: initialization of 'struct A *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   14 |   struct A *p4 = (void *)mk();
+      |                  ^
+misc_97.c:16:18: warning: initialization of 'struct A *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   16 |   struct A *p6 = realloc(v, 4);
+      |                  ^
+misc_97.c:18:18: warning: initialization of 'struct A *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   18 |   struct A *p8 = (v);
+      |                  ^
+misc_97.c:19:18: warning: initialization of 'struct A *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   19 |   struct A *p9 = 1 ? v : v;
+      |                  ^
+misc_97.c:20:6: warning: passing argument 1 of 'cp' from incompatible scalar storage order [-Wscalar-storage-order]
+   20 |   cp(a, a, 4);
+      |      ^
+misc_97.c:7:10: note: expected 'void *' but argument is of type 'struct A *'
+    7 | void *cp(void *, const void *, unsigned long);
+      |          ^
+misc_97.c:20:9: warning: passing argument 2 of 'cp' from incompatible scalar storage order [-Wscalar-storage-order]
+   20 |   cp(a, a, 4);
+      |         ^
+misc_97.c:7:18: note: expected 'const void *' but argument is of type 'struct A *'
+    7 | void *cp(void *, const void *, unsigned long);
+      |                  ^
+misc_97.c:22:12: warning: passing argument 1 of 'memmove2' from incompatible scalar storage order [-Wscalar-storage-order]
+   22 |   memmove2(a, a, 4);
+      |            ^
+misc_97.c:8:23: note: expected 'void *' but argument is of type 'struct A *'
+    8 | extern void *memmove2(void *, const void *, unsigned long) __asm__("memmove");
+      |                       ^
+misc_97.c:22:15: warning: passing argument 2 of 'memmove2' from incompatible scalar storage order [-Wscalar-storage-order]
+   22 |   memmove2(a, a, 4);
+      |               ^
+misc_97.c:8:31: note: expected 'const void *' but argument is of type 'struct A *'
+    8 | extern void *memmove2(void *, const void *, unsigned long) __asm__("memmove");
+      |                               ^
+misc_97.c:25:10: warning: passing argument 1 of 'strcpy' from incompatible pointer type [-Wincompatible-pointer-types]
+   25 |   strcpy(a, "x");
+      |          ^
+/usr/include/string.h:141:39: note: expected 'char *' but argument is of type 'struct A *'
+  141 | extern char *strcpy (char *__restrict __dest, const char *__restrict __src)
+      |                                       ^
+misc_97.c:27:6: warning: assignment to 'struct A *' from pointer type 'void *' with incompatible scalar storage order [-Wscalar-storage-order]
+   27 |   p1 = memcpy(v, a, 4);
+      |      ^

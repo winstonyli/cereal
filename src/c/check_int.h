@@ -606,6 +606,7 @@ bool cexpr_bf_overflow(Checker *c, SrcLoc loc, uint32_t n, TypeId ft,
 const char *cexpr_str(Checker *c, uint32_t i);
 void cexpr_builtin_decl(Checker *c, const CSym *s);
 void cexpr_builtin_nonfn(Checker *c, const CSym *s);
+bool ccall_is_builtin(Checker *c, const char *name);
 void cexpr_builtin_noproto_fmt(Checker *c, const CSym *s, SrcLoc loc);
 /* Truncates v to type t (two's complement, sign-extended if signed). */
 uint64_t cexpr_trunc(Checker *c, TypeId t, uint64_t v);

@@ -1,0 +1,27 @@
+misc_94.c:2:181: warning: ISO C does not support complex integer types [-Wpedantic]
+    2 | struct R S { char c[3]; signed char sc[2]; unsigned char uc[2]; _Bool b[2]; short s[2]; long long ll[2]; float f[2]; char cc[2][2]; int v __attribute__((vector_size(16))); int *p; _Complex int zz[2]; int e[0]; };
+      |                                                                                                                                                                                     ^
+misc_94.c:2:205: warning: ISO C forbids zero-size array 'e' [-Wpedantic]
+    2 | struct R S { char c[3]; signed char sc[2]; unsigned char uc[2]; _Bool b[2]; short s[2]; long long ll[2]; float f[2]; char cc[2][2]; int v __attribute__((vector_size(16))); int *p; _Complex int zz[2]; int e[0]; };
+      |                                                                                                                                                                                                             ^
+misc_94.c:11:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   11 |   v = s->s;
+      |       ^
+misc_94.c:12:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   12 |   v = s->ll;
+      |       ^
+misc_94.c:13:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   13 |   v = s->f;
+      |       ^
+misc_94.c:15:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   15 |   v = s->zz;
+      |       ^
+misc_94.c:16:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   16 |   v = s->e;
+      |       ^
+misc_94.c:19:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   19 |   v = u->en;
+      |       ^
+misc_94.c:20:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   20 |   v = u->sp;
+      |       ^

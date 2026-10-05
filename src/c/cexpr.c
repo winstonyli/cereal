@@ -3160,6 +3160,155 @@ static void packed_ptr_check_x(Checker *c, TypeId to, uint32_t e, int mode,
     }
 }
 
+/* ---- scalar_storage_order ------------------------------------------------ */
+
+/* A record laid out in the byte order opposite to the target's.  Its scalar
+ * members, and the arrays of them (but not of bytes), are "reverse". */
+static bool sso_rec(Checker *c, TypeId t)
+{
+    TypeKind k;
+    t = type_canon(TT, t);
+    k = tkind(c, t);
+    return (k == TY_STRUCT || k == TY_UNION) &&
+           (type_record(TT, t)->flags & RF_SSO);
+}
+
+static bool sso_agg(Checker *c, TypeId t)
+{
+    TypeKind k = tkind(c, type_canon(TT, t));
+    return k == TY_STRUCT || k == TY_UNION;
+}
+
+static bool sso_arr(Checker *c, uint32_t e);
+
+/* Whether the member or element expression e lies in reverse storage. */
+static bool sso_container(Checker *c, uint32_t e)
+{
+    uint32_t k[2];
+    if (ntag(c, e) == N_MEMBER_EXPR) {
+        uint32_t base = first_child(c, e);
+        TypeId t;
+        if (base == NO_NODE || node_err(c, base))
+            return false;
+        if (c->nodes[e].flags & NF_ARROW) {
+            t = rvt(c, base);
+            if (!is_ptr(c, t))
+                return false;
+            t = pointee(c, type_canon(TT, t));
+        } else
+            t = c->ty[base];
+        return sso_rec(c, t);
+    }
+    if (nkids(c, e, k, 2) < 2)
+        return false;
+    k[0] = strip_paren(c, k[0]);
+    return k[0] != NO_NODE && is_array(c, c->ty[k[0]]) && sso_arr(c, k[0]);
+}
+
+/* An array expression of reverse order: the elements are scalars wider than
+ * a byte (TYPE_REVERSE_STORAGE_ORDER on the array type). */
+static bool sso_arr(Checker *c, uint32_t e)
+{
+    TypeId el;
+    bool ov;
+    e = strip_paren(c, e);
+    if (e == NO_NODE || node_err(c, e) || !is_array(c, c->ty[e]) ||
+        (ntag(c, e) != N_MEMBER_EXPR && ntag(c, e) != N_INDEX))
+        return false;
+    for (el = c->ty[e]; is_array(c, el);)
+        el = elem_of(c, el);
+    if (sso_agg(c, el) || !complete(c, el) || type_size(TT, el, &ov) <= 1)
+        return false;
+    return sso_container(c, e);
+}
+
+/* A scalar (not aggregate, pointer or vector) member or element of reverse
+ * storage: its address cannot be taken. */
+static bool sso_scalar_ref(Checker *c, uint32_t e)
+{
+    TypeId t;
+    e = strip_paren(c, e);
+    if (e == NO_NODE || node_err(c, e) ||
+        (ntag(c, e) != N_MEMBER_EXPR && ntag(c, e) != N_INDEX))
+        return false;
+    t = c->ty[e];
+    if (sso_agg(c, t) || is_array(c, t) || is_ptr(c, t) ||
+        tkind(c, type_canon(TT, t)) == TY_VECTOR)
+        return false;
+    return sso_container(c, e);
+}
+
+/* The pointer conversion of e takes a reverse record or array: a pointer to
+ * it, or a decaying array of reverse arrays. */
+static bool sso_ptr_src(Checker *c, uint32_t e)
+{
+    e = strip_paren(c, e);
+    if (e == NO_NODE || node_err(c, e))
+        return false;
+    if (ntag(c, e) == N_UNARY && npunct(c, e) == P_AMP)
+        return sso_arr(c, first_child(c, e));
+    return is_array(c, c->ty[e]) && is_array(c, elem_of(c, c->ty[e])) &&
+           sso_arr(c, e);
+}
+
+/* A call of an allocator (the malloc attribute, or a built-in one): gcc
+ * does not take its result for a pointer of another storage order. */
+static bool sso_alloc_call(Checker *c, uint32_t e)
+{
+    static const char *const alloc[] = {"malloc", "calloc", "alloca",
+        "aligned_alloc", "__builtin_malloc", "__builtin_calloc",
+        "__builtin_alloca", "__builtin_alloca_with_align",
+        "__builtin_aligned_alloc"};
+    uint32_t fn, sets[3];
+    unsigned n, k;
+    e = strip_paren(c, e);
+    if (e == NO_NODE || ntag(c, e) != N_CALL)
+        return false;
+    fn = strip_paren(c, first_child(c, e));
+    if (fn == NO_NODE)
+        return false;
+    if (ntag(c, fn) == N_IDENT)
+        for (k = 0; k < sizeof alloc / sizeof *alloc; k++)
+            if (!strcmp(cident(c, cnode_ident(c, fn)), alloc[k]))
+                return true;
+    n = cexpr_asets(c, fn, false, sets);
+    for (k = 0; k < n; k++)
+        if (cdecl_aset_has(c, sets[k], "malloc", NULL))
+            return true;
+    return false;
+}
+
+/* An array decays to a pointer unless it is the operand of &, sizeof,
+ * alignof, typeof or a subscript. */
+static void sso_decay(Checker *c, uint32_t i)
+{
+    uint32_t p = i, k[2];
+    if (c->ck[i] == K_ERR || !is_array(c, c->ty[i]) || !sso_arr(c, i))
+        return;
+    do {
+        i = p;
+        p = c->par[i];
+    } while (p != NO_NODE && ntag(c, p) == N_PAREN);
+    if (p != NO_NODE) {
+        switch (ntag(c, p)) {
+        case N_SIZEOF_EXPR: case N_ALIGNOF_EXPR: case N_TYPEOF:
+            return;
+        case N_UNARY:
+            if (npunct(c, p) == P_AMP)
+                return;
+            break;
+        case N_INDEX:
+            if (nkids(c, p, k, 2) == 2 && k[0] == i)
+                return;
+            break;
+        default:
+            break;
+        }
+    }
+    cwarn(c, first_loc(c, i), "scalar-storage-order", "address of array with "
+          "reverse scalar storage order requested");
+}
+
 static const char *cmp_tstr(Checker *c, uint32_t n);
 
 static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
@@ -3415,6 +3564,19 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
         bool ok = lvoid || rvoid;
         T = type_q(TT, lt);
         R = type_q(TT, rt);
+        if (sso_rec(c, ttl) != (sso_rec(c, ttr) || sso_ptr_src(c, expr)) &&
+            !(ctx == CONV_ARG && ci->fname && ccall_is_builtin(c, ci->fname)) &&
+            !sso_alloc_call(c, expr)) {
+            sp(m[CONV_ARG], "passing argument %d of '%s' from incompatible "
+               "scalar storage order", pn, fn);
+            sp(m[CONV_ASSIGN], "assignment to %s from pointer type %s with "
+               "incompatible scalar storage order", T, R);
+            sp(m[CONV_INIT], "initialization of %s from pointer type %s with "
+               "incompatible scalar storage order", T, R);
+            sp(m[CONV_RETURN], "returning %s from pointer type with "
+               "incompatible scalar storage order %s", R, T);
+            conv_diag(&x, RK_WARN, "scalar-storage-order", m, true);
+        }
         if (!ok)
             ok = (target_cmp = comp_target(&x, cl, cr)) != 0 || opaque;
         if (!ok) {
@@ -3855,6 +4017,15 @@ static void addr_of(Checker *c, uint32_t i, uint32_t a)
         set_err(c, i);
         return;
     }
+    if (sso_scalar_ref(c, s)) {
+        cerror(c, loc, "cannot take address of scalar with reverse storage "
+               "order");
+        set_err(c, i);
+        return;
+    }
+    if (sso_arr(c, s))
+        cwarn(c, loc, "scalar-storage-order", "address of array with reverse "
+              "scalar storage order requested");
     if (c->ef[a] & EF_REGISTER) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, s));
         bool global = ref != SYM_NONE && !(ref & SYM_LOCAL);
@@ -10091,6 +10262,8 @@ void cexpr_node(Checker *c, uint32_t i)
     case N_ADDR_LABEL: e_addr_label(c, i); break;
     default: set_err(c, i); break;
     }
+    if (ntag(c, i) == N_MEMBER_EXPR || ntag(c, i) == N_INDEX)
+        sso_decay(c, i);
     p = c->par[i];
     if (p != NO_NODE && !cexpr_is_expr(ntag(c, p))) {
         switch (ntag(c, p)) {

@@ -209,6 +209,13 @@ static void bt_sig_print(StrBuf *sb, const char *sig)
     sb_putc(sb, ')');
 }
 
+/* Whether name is a library built-in, spelled plain or __builtin_. */
+bool ccall_is_builtin(Checker *c, const char *n)
+{
+    bool pre = !strncmp(n, "__builtin_", 10);
+    return bt_find(c, pre ? n + 10 : n, pre) != NULL;
+}
+
 /* A variable named like a library built-in (`int printf;`). */
 void cexpr_builtin_nonfn(Checker *c, const CSym *s)
 {

@@ -7599,6 +7599,16 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
                                         (long)k))
                 cwarn(c, f[k].loc, "attributes", "packed attribute is "
                       "unnecessary for '%s'", cident(c, f[k].name));
+    if (want == TY_UNION)       /* a member of the other storage order */
+        for (k = 0; k < m; k++) {
+            TypeId ft = type_canon(TT, f[k].ty);
+            while (tkind(c, ft) == TY_ARRAY || tkind(c, ft) == TY_VLA)
+                ft = type_canon(TT, type_base(TT, ft));
+            if (is_rec(c, ft) &&
+                ((type_record(TT, ft)->flags & RF_SSO) != 0) != (a.sso == 1))
+                cwarn(c, f[k].loc, "scalar-storage-order", "type punning "
+                      "toggles scalar storage order");
+        }
     if (a.desig && want != TY_UNION)
         type_record(TT, t)->flags |= RF_DESIGNATED;
     if (a.sso == 1)     /* the target is little-endian */

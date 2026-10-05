@@ -1,0 +1,36 @@
+misc_93.c:9:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+    9 |   v = s->pa;
+      |       ^
+misc_93.c:13:5: warning: assignment to 'void *' from pointer type 'struct A *' with incompatible scalar storage order [-Wscalar-storage-order]
+   13 |   v = s->ia;
+      |     ^
+misc_93.c:14:7: error: cannot take address of scalar with reverse storage order
+   14 |   v = &s->z;
+      |       ^
+misc_93.c:15:7: error: cannot take address of scalar with reverse storage order
+   15 |   v = &s->d;
+      |       ^
+misc_93.c:16:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   16 |   v = t->t;
+      |       ^
+misc_93.c:17:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   17 |   v = t->tt;
+      |       ^
+misc_93.c:17:5: warning: assignment to 'void *' from pointer type 'int (*)[2]' with incompatible scalar storage order [-Wscalar-storage-order]
+   17 |   v = t->tt;
+      |     ^
+misc_93.c:18:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   18 |   v = &t->tt[1];
+      |       ^
+misc_93.c:18:5: warning: assignment to 'void *' from pointer type 'int (*)[2]' with incompatible scalar storage order [-Wscalar-storage-order]
+   18 |   v = &t->tt[1];
+      |     ^
+misc_93.c:19:7: warning: address of array with reverse scalar storage order requested [-Wscalar-storage-order]
+   19 |   v = t->tt[1];
+      |       ^
+misc_93.c:20:7: error: cannot take address of scalar with reverse storage order
+   20 |   v = &t->t[1];
+      |       ^
+misc_93.c:21:7: error: cannot take address of scalar with reverse storage order
+   21 |   v = &((s)->d);
+      |       ^

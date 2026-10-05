@@ -1407,3 +1407,15 @@ diagnostics and builds on the strinit table.
   Wscalar-storage-order; ~25 diagnostic lines across gcc.dg and
   c-c++-common).  asm-qual-3: gcc errors on 'asm' qualifiers in C99 data
   declarations ("expected identifier or '(' before string constant").
+
+## Round 85 (scalar_storage_order)
+- Reverse-order records (RF_SSO) now give gcc's four checks (cexpr.c
+  `sso_*`, cdecl.c record finish): `&` of a scalar member/element of reverse
+  storage is an error; `&` or decay of a reverse array (elements wider than a
+  byte, not records) warns (`sso_decay` at the end of `cexpr_node`);
+  pointer conversions between reverse and non-reverse pointees warn before
+  the incompatible-pointer warning, except for built-in callees' arguments
+  and results of allocators (malloc attribute / alloca; PR c/100920); a
+  union member of the other storage order warns "type punning toggles".
+  Goldens misc_92..97 (all match gcc).  gcc.dg differ 124 -> 120.
+  Gate: 1141 goldens, san 395/0, callgrind 3.666G (+0.3%).

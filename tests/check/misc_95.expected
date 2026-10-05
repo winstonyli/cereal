@@ -1,0 +1,21 @@
+misc_95.c:4:23: warning: type punning toggles scalar storage order [-Wscalar-storage-order]
+    4 | union R U1 { struct N n[2]; };
+      |                       ^
+misc_95.c:5:21: warning: type punning toggles scalar storage order [-Wscalar-storage-order]
+    5 | union U2 { struct A a[2]; };
+      |                     ^
+misc_95.c:6:44: warning: declaration does not declare anything
+    6 | union R U3 { struct { int q; } an; struct N;  };
+      |                                            ^
+misc_95.c:6:32: warning: type punning toggles scalar storage order [-Wscalar-storage-order]
+    6 | union R U3 { struct { int q; } an; struct N;  };
+      |                                ^
+misc_95.c:7:43: warning: ISO C99 doesn't support unnamed structs/unions [-Wpedantic]
+    7 | struct R S4 { union { struct N n; int i; }; };
+      |                                           ^
+misc_95.c:7:10: warning: struct has no named members [-Wpedantic]
+    7 | struct R S4 { union { struct N n; int i; }; };
+      |          ^
+misc_95.c:8:21: warning: type punning toggles scalar storage order [-Wscalar-storage-order]
+    8 | union U5 { struct A a; struct N n; };
+      |                     ^
