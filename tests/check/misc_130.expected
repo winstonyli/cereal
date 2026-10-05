@@ -1,0 +1,33 @@
+misc_130.c:2:6: warning: prototype for 'a5' follows non-prototype definition
+    2 | void a5 (void);
+      |      ^
+misc_130.c:4:1: error: function 'a6' is initialized like a variable
+    4 | void a6 (void) = 0;
+      | ^
+misc_130.c:4:6: warning: prototype for 'a6' follows non-prototype definition
+    4 | void a6 (void) = 0;
+      |      ^
+misc_130.c:4:18: error: invalid initializer
+    4 | void a6 (void) = 0;
+      |                  ^
+misc_130.c:6:1: error: function 'a7' is initialized like a variable
+    6 | void a7 (int) = 0;
+      | ^
+misc_130.c:6:6: error: prototype for 'a7' declares more arguments than previous old-style definition
+    6 | void a7 (int) = 0;
+      |      ^
+misc_130.c:5:6: note: previous definition of 'a7' with type 'void()'
+    5 | void a7 () {}
+      |      ^
+misc_130.c:8:5: error: redefinition of 'a8'
+    8 | int a8 (void) {return 1;}
+      |     ^
+misc_130.c:7:5: note: previous definition of 'a8' with type 'int()'
+    7 | int a8 () {return 0;}
+      |     ^
+misc_130.c:10:6: error: redefinition of 'a9'
+   10 | void a9 (void) {}
+      |      ^
+misc_130.c:9:6: note: previous definition of 'a9' with type 'void()'
+    9 | void a9 () {}
+      |      ^

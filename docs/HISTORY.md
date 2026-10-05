@@ -1771,3 +1771,20 @@ diagnostics and builds on the strinit table.
   "prototype follows non-prototype definition" warning is still missing when
   such a redeclaration is initialized. Golden misc_128.
 - Gate: 1203 pass, san 426/0, gcc.dg 66 / c-c++-common 35, callgrind 3.705G.
+
+## Round 111: visibility conflicts, prototype after an old-style definition
+
+- A redeclaration with a different explicit visibility warns "redeclaration
+  of 'X' with different visibility (old visibility preserved)" with the
+  previous-declaration note (visibility-7). It compares the oldest
+  `visibility` in the symbol's attribute set with the new declaration's;
+  `Checker.vis_old` keeps the symbol as it was before merge_decls.
+- `prototype follows non-prototype definition` also for a `()` definition
+  (the check required parameters), and the "invalid initializer" of an
+  initialized redeclaration of a defined function now comes after that
+  merge's diagnostics. Goldens misc_129, misc_130.
+- Not attempted (need the optimizer or symbolic offsets): invalid-call-1 and
+  pr62090 (-O2 inlining), pr83844 (-Wif-not-aligned on a VLA struct offset).
+  gcc also prints a bare "previous definition" note after a prototype whose
+  parameter is erroneous (proto-1); notes are not compared by par.py.
+- Gate: 1207 pass, san 428/0, gcc.dg 65 / c-c++-common 35, callgrind 3.706G.

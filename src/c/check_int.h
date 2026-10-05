@@ -392,6 +392,8 @@ struct Checker {
     bool cd_have_proto;
     TypeId bt_fileptr[2];    /* the first FILE *, struct tm * a built-in was declared with */
     bool cd_builtin;         /* ... the prototype is a library built-in's */
+    CSym vis_old;            /* the symbol a redeclaration merged into, before the merge */
+    bool vis_old_ok;
     bool lax_noted;          /* the -flax-vector-conversions note was given */
     /* cexpr.c: identifiers already reported undeclared in the function
      * undecl_key names; whether the once-per-TU note was given; nodes

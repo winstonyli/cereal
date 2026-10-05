@@ -1,0 +1,18 @@
+misc_129.c:2:6: warning: redeclaration of 'f1' with different visibility (old visibility preserved)
+    2 | void f1(void) __attribute__((visibility("default")));
+      |      ^
+misc_129.c:1:6: note: previous declaration of 'f1' with type 'void(void)'
+    1 | void f1(void) __attribute__((visibility("hidden")));
+      |      ^
+misc_129.c:9:6: warning: redeclaration of 'f4' with different visibility (old visibility preserved)
+    9 | void f4(void) __attribute__((visibility("internal")));
+      |      ^
+misc_129.c:8:6: note: previous definition of 'f4' with type 'void(void)'
+    8 | void f4(void) {}
+      |      ^
+misc_129.c:11:5: warning: redeclaration of 'v1' with different visibility (old visibility preserved)
+   11 | int v1 __attribute__((visibility("hidden"))) = 1;
+      |     ^
+misc_129.c:10:5: note: previous declaration of 'v1' with type 'int'
+   10 | int v1 __attribute__((visibility("protected")));
+      |     ^

@@ -5280,6 +5280,16 @@ static bool validate_proto_after_old_defn(Checker *c, const CSym *nw,
     return true;
 }
 
+static bool has_err_param(Checker *c, TypeId t)
+{
+    TypeId ct = type_canon(TT, t);
+    uint32_t k;
+    for (k = 0; k < (uint32_t)type_ent(TT, ct)->n; k++)
+        if (is_err(c, type_params(TT, ct)[k]))
+            return true;
+    return false;
+}
+
 /* diagnose_mismatched_decls: are the two consistent?  nfile/ofile:
  * DECL_FILE_SCOPE_P of the new and the old declaration. */
 static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
@@ -5398,7 +5408,8 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
             }
         } else if (sym_defined(o) && !is_prototype(c, oldtype) &&
                    is_prototype(c, newtype) &&
-                   type_ent(TT, type_canon(TT, oldtype))->n) {
+                   (type_ent(TT, type_canon(TT, oldtype))->n ||
+                    !has_err_param(c, newtype))) {
             if (!validate_proto_after_old_defn(c, nw, o, &d)) {
                 locate_old_decl(c, d, o);
                 return false;
@@ -5678,6 +5689,8 @@ static bool duplicate_decls(Checker *c, CSym *nw, bool nfile, uint32_t oldref,
     if (!diagnose_mismatched(c, nw, nfile, o, ref_file_scope(oldref),
                              implicit_int, &nt, &ot))
         return false;
+    c->vis_old = *o;
+    c->vis_old_ok = true;
     merge_decls(c, nw, o, nt, ot);
     return true;
 }
@@ -6514,7 +6527,7 @@ static void declared_visit(Checker *c, uint32_t i)
     uint32_t idecl = c->par[i], decl, sn, top, name_tok, end, ltok, ref;
     int si;
     Spec sp;
-    bool initialized, kr, file, incomp_init = false;
+    bool initialized, kr, file, incomp_init = false, fn_inv = false;
     GDecl g;
     CSym s;
     Attrs a;
@@ -6524,6 +6537,7 @@ static void declared_visit(Checker *c, uint32_t i)
         return;
     }
     decl = c->par[idecl];
+    c->vis_old_ok = false;
     sn = first_child(c, decl);
     top = first_child(c, idecl);
     kr = c->par[decl] != NO_NODE && ntag(c, c->par[decl]) == N_FUNC_DEF;
@@ -6770,11 +6784,10 @@ static void declared_visit(Checker *c, uint32_t i)
             cerror(c, il, "function '%s' is initialized like a variable",
                    cident(c, g.name));
             {   /* a redeclaration of a defined function: its initial value
-                 * is already set, and the initializer is invalid too */
+                 * is already set, and the initializer is invalid too
+                 * (after the merge's own diagnostics) */
                 uint32_t b = cbound_here(c, NS_ORD, g.name);
-                if (b && sym_defined(csym(c, c->log.data[b - 1].ref)))
-                    cerror(c, tloc(c, ltok),
-                           "invalid initializer");
+                fn_inv = b && sym_defined(csym(c, c->log.data[b - 1].ref));
             }
             initialized = false;
             incomp_init = true;   /* the initializer is still parsed */
@@ -6853,6 +6866,28 @@ static void declared_visit(Checker *c, uint32_t i)
         cparm_typedef(c, top, csym(c, ref)->ty);
     if (g.what == GD_FUNC && csym(c, ref)->kind == CS_FUNC)
         acc_implied(c, ref, csym(c, ref)->parms != s.parms, false);
+    if (fn_inv && c->vis_old_ok)
+        cerror(c, tloc(c, ltok), "invalid initializer");
+    {   /* merge_decls: a different explicit visibility is not applied */
+        char was[32], now[32];
+        uint32_t tmp = 0;
+        bool had = cdecl_aset_first_arg(c, csym(c, ref)->aset, "visibility",
+                                        was, sizeof was);
+        if (had) {
+            attrs_names(c, sn, &tmp);
+            attrs_names(c, idecl, &tmp);
+        }
+        if (had && (csym(c, ref)->kind == CS_OBJ ||
+                    csym(c, ref)->kind == CS_FUNC) &&
+            cdecl_aset_first_arg(c, tmp, "visibility", now, sizeof now) &&
+            strcmp(was, now)) {
+            Diagnostic *vd = cwarn_d(c, DL_WARNING, s.loc, "", "redeclaration "
+                                     "of '%s' with different visibility (old "
+                                     "visibility preserved)", sname(c, &s));
+            locate_old_decl(c, vd, c->vis_old_ok ? &c->vis_old : csym(c, ref));
+        }
+        c->vis_old_ok = false;
+    }
     attrs_names(c, sn, &csym(c, ref)->aset);
     attrs_names_ptrs(c, idecl, &csym(c, ref)->aset);
     attrs_names(c, idecl, &csym(c, ref)->aset);
