@@ -53,3 +53,4 @@ callgrind) in parallel; see its header for the expected numbers.
   first line `// flags: ...` when needed), verified against gcc-13 first.
 - Run long jobs at low priority and at most 12 of 16 threads.
 - Add a dated round entry to HISTORY.md after each batch of changes.
+- Work goes straight to `main`; milestones are tagged (`v0.1.0` is the first).
