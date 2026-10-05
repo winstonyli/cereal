@@ -1396,3 +1396,14 @@ diagnostics and builds on the strinit table.
   pass.  Treat the single earlier failure as unexplained until it recurs.
 - README parser status refreshed; stray empty `null` file removed.  No
   LICENSE added yet (owner to choose).
+
+## Round 84 (conflict markers)
+- A parser "expected ..." error at a token that starts a version-control
+  conflict marker (7 x '<', '>' or '=' at line start) now reads "version
+  control conflict marker in file", as gcc's c_parser_error does
+  (parse.c `conflict_marker`, in `vperr`).  Golden misc_91.  c-c++-common
+  differ 40 -> 37.  Gate: 1129 goldens, san 389/0, callgrind 3.654G.
+- Open cluster: scalar_storage_order is unimplemented (sso-2/3/11/13,
+  Wscalar-storage-order; ~25 diagnostic lines across gcc.dg and
+  c-c++-common).  asm-qual-3: gcc errors on 'asm' qualifiers in C99 data
+  declarations ("expected identifier or '(' before string constant").

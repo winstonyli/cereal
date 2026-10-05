@@ -325,6 +325,29 @@ static void classify_num(Parser *p, uint32_t i)
         pdiag(p, DL_ERROR, t.exp ? t.exp : t.t.loc, "%s", l.msg);
 }
 
+/* gcc's c_parser_error names a version control conflict marker (seven of
+ * '<', '>' or '=' at the start of a line) instead of the expected token. */
+static bool conflict_marker(Parser *p, uint32_t i)
+{
+    const Tok *t;
+    const char *s;
+    int k;
+    if (i >= p->toks.len)
+        return false;
+    t = &p->toks.data[i].t;
+    if (t->kind != TK_PUNCT || !(t->flags & TF_BOL) ||
+        (p->toks.data[i].exp && p->toks.data[i].exp != t->loc))
+        return false;
+    s = tok_text_raw(p->sm, p->in, t);
+    if (s[0] != '<' && s[0] != '>' && s[0] != '=')
+        return false;
+    for (k = 1; k < 7; k++)
+        if (s[k] != s[0])
+            return false;
+    return s[7] == ' ' || s[7] == '\t' || s[7] == '\n' || s[7] == '\r' ||
+           s[7] == 0;
+}
+
 static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
                          va_list ap)
 {
@@ -337,7 +360,11 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
     p->errors++;
     if (i == ci(p))
         classify_num(p, i);
-    d = pvreport(p, DL_ERROR, "", loc, fmt, ap);
+    if (!strncmp(fmt, "expected ", 9) && conflict_marker(p, i))
+        d = pvreport(p, DL_ERROR, "", loc,
+                     "version control conflict marker in file", ap);
+    else
+        d = pvreport(p, DL_ERROR, "", loc, fmt, ap);
     if (d && !p->diag->track0 && i < p->toks.len && p->toks.data[i].exp &&
         p->toks.data[i].exp != p->toks.data[i].t.loc) {
         /* a macro body token: gcc names each macro it was expanded
