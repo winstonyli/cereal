@@ -4151,6 +4151,9 @@ static bool enum_narrower(Checker *c, TypeId e, unsigned w)
     uint32_t k;
     bool uns = !type_is_signed(TT, e), narrow = false, any = false;
     TypeId ce = type_canon(TT, e);
+    /* gcc: a forward-referenced enum is wider than any bit-field of it */
+    if (!type_is_complete(TT, e))
+        return true;
     for (k = 0; k < c->gsyms.len + c->lsyms.len; k++) {
         const CSym *s = k < c->gsyms.len ? &c->gsyms.data[k]
                                          : &c->lsyms.data[k - c->gsyms.len];
@@ -4445,9 +4448,12 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             threadp = false;
         }
     } else if (sc == SC_EXTERN && initialized && !funcdef) {
-        if (filescope)
-            cwarn(c, loc, "", "'%s' initialized and declared 'extern'",
-                  cident(c, name));
+        if (filescope) {
+            /* gcc allows extern const (a C++ idiom for internal linkage) */
+            if (!(type_quals & TQ_CONST))
+                cwarn(c, loc, "", "'%s' initialized and declared 'extern'",
+                      cident(c, name));
+        }
         else
             cerror(c, loc, "'%s' has both 'extern' and initializer",
                    cident(c, name));

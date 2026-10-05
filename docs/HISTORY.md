@@ -1743,3 +1743,16 @@ diagnostics and builds on the strinit table.
   at the second qualifier, silent when either comes from a macro
   (quals_of_warn). Wduplicate-decl-specifier.c now matches. Golden misc_125.
 - Gate: 1197 pass, san 423/0, gcc.dg 72 / c-c++-common 35, callgrind 3.705G.
+
+## Round 109: four one-line differences
+
+- -Wc++-compat: `extern const T x = v;` is not "initialized and declared
+  'extern'" (Wc++-compat).
+- Built-ins with a struct tm * parameter (strftime) fix their own type apart
+  from FILE * (`bt_fileptr[2]`): Wbuiltin-declaration-mismatch-11.
+- __builtin_choose_expr with an overflowing constant condition: "overflow in
+  constant expression" at the line's first token (gnu99-const-expr-2).
+- A bit-field of a forward-referenced enum is always "narrower than values of
+  its type" (pr14475).
+  Golden misc_126. Gate: 1199 pass, san 424/0, gcc.dg 69 / c-c++-common 35,
+  callgrind 3.705G.

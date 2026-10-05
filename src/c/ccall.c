@@ -69,7 +69,7 @@ static uint64_t builtin_nonnull(const char *name)
  * type): 0 equal, 1 a mismatch gcc only warns about ("mismatch in argument N
  * type"), 2 a conflict.  A FILE * parameter of the table is a void * that
  * accepts any pointer. */
-static int bt_cmp(Checker *c, TypeId o, TypeId n, bool ret, bool file)
+static int bt_cmp(Checker *c, TypeId o, TypeId n, bool ret, int file)
 {
     TypeId uo = unqual(c, o), un = unqual(c, n);
     if (is_ptr(c, o) || is_ptr(c, n)) {
@@ -78,8 +78,8 @@ static int bt_cmp(Checker *c, TypeId o, TypeId n, bool ret, bool file)
             return 2;
         if (file) {
             /* once a declaration fixed the FILE type, others must agree */
-            if (c->bt_fileptr &&
-                !type_compatible(TT, unqual(c, pointee(c, c->bt_fileptr)),
+            if (c->bt_fileptr[file - 1] &&
+                !type_compatible(TT, unqual(c, pointee(c, c->bt_fileptr[file - 1])),
                                  unqual(c, pointee(c, n))))
                 return 1;
             return 0;
@@ -105,7 +105,7 @@ static int bt_cmp(Checker *c, TypeId o, TypeId n, bool ret, bool file)
 /* Is parameter j (0-based) of the library built-in a FILE * or struct tm *
  * (a void * to gcc until the type is declared)? */
 bool extra_on(Checker *c);
-static bool bt_file_param(const char *name, uint32_t j)
+static int bt_file_param(const char *name, uint32_t j)
 {
     static const struct { const char *n; unsigned char j; } t[] = {
         {"fprintf", 0}, {"fscanf", 0}, {"vfprintf", 0}, {"vfscanf", 0},
@@ -116,8 +116,8 @@ static bool bt_file_param(const char *name, uint32_t j)
     size_t k;
     for (k = 0; k < sizeof t / sizeof *t; k++)
         if (t[k].j == j && !strcmp(t[k].n, name))
-            return true;
-    return false;
+            return !strcmp(name, "strftime") ? 2 : 1;
+    return 0;
 }
 
 typedef struct BtMatch {
@@ -284,15 +284,17 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
     c->quiet = false;      /* gcc declares the name even after a parameter error */
     o0 = quiet ? diag_ord(c->diag, ORD_LATE) : (DiagOrd)c->diag->ord;
     memset(&sb, 0, sizeof sb);
-    if (!m.conflict && !c->bt_fileptr &&
+    if (!m.conflict &&
         !(type_ent(TT, m.dft)->flags & TF_NOPROTO) &&
         type_ent(TT, m.dft)->n == type_ent(TT, m.bft)->n) {
         /* the first declaration with a FILE * parameter fixes its type */
         uint32_t j;
+        int k;
         for (j = 0; j < type_ent(TT, m.dft)->n; j++)
-            if (bt_file_param(bt->name, j) &&
+            if ((k = bt_file_param(bt->name, j)) != 0 &&
+                !c->bt_fileptr[k - 1] &&
                 is_ptr(c, type_params(TT, m.dft)[j])) {
-                c->bt_fileptr = type_params(TT, m.dft)[j];
+                c->bt_fileptr[k - 1] = type_params(TT, m.dft)[j];
                 break;
             }
     }
@@ -314,8 +316,9 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
             for (p++; j; j--)
                 p = strchr(p, '|') + 1;
             q = strchr(p, '|');
-            if (bt_file_param(bt->name, (uint32_t)m.soft - 2) && c->bt_fileptr)
-                type_print(TT, &sb, unqual(c, c->bt_fileptr));
+            int k = bt_file_param(bt->name, (uint32_t)m.soft - 2);
+            if (k && c->bt_fileptr[k - 1])
+                type_print(TT, &sb, unqual(c, c->bt_fileptr[k - 1]));
             else
                 sb_putn(&sb, p, q ? (size_t)(q - p) : strlen(p));
             d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
@@ -1767,6 +1770,8 @@ void e_call(Checker *c, uint32_t i)
                 if (c->ck[av[1]] != K_ICE || !is_int(c, rvt(c, av[1])))
                     cerror(c, bl, "first argument to '__builtin_choose_expr' "
                            "not a constant");
+                else if (c->ef[av[1]] & EF_OVERFLOW)
+                    cconst_overflow(c, cdecl_line_start_loc(c, c->nodes[i].tok));
                 copy_node(c, i, c->cv[av[1]] && c->ck[av[1]] == K_ICE
                                     ? av[2] : av[3]);
                 return;

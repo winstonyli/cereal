@@ -390,7 +390,7 @@ struct Checker {
     TypeId cd_proto;
     SrcLoc cd_proto_loc;
     bool cd_have_proto;
-    TypeId bt_fileptr;       /* the first FILE * a built-in was declared with */
+    TypeId bt_fileptr[2];    /* the first FILE *, struct tm * a built-in was declared with */
     bool cd_builtin;         /* ... the prototype is a library built-in's */
     bool lax_noted;          /* the -flax-vector-conversions note was given */
     /* cexpr.c: identifiers already reported undeclared in the function

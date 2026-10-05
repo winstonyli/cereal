@@ -1,0 +1,60 @@
+misc_126.c:20:12: warning: 'bar' initialized and declared 'extern'
+   20 | extern int bar = 1;
+      |            ^
+misc_126.c:25:19: warning: 'q' initialized and declared 'extern'
+   25 | extern int *const q = 0;
+      |                   ^
+misc_126.c:26:1: warning: 'extern' is not at beginning of declaration [-Wold-style-declaration]
+   26 | volatile int extern v = 2;
+      | ^
+misc_126.c:26:21: warning: 'v' initialized and declared 'extern'
+   26 | volatile int extern v = 2;
+      |                     ^
+misc_126.c:29:44: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+   29 |   ca = __builtin_choose_expr (0 * (INT_MAX + 1), cb, cc);
+      |                                            ^
+misc_126.c:29:3: warning: overflow in constant expression [-Woverflow]
+   29 |   ca = __builtin_choose_expr (0 * (INT_MAX + 1), cb, cc);
+      |   ^
+misc_126.c:31:41: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+   31 |     __builtin_choose_expr (0 * (INT_MAX + 1), cb, cc);
+      |                                         ^
+misc_126.c:31:5: warning: overflow in constant expression [-Woverflow]
+   31 |     __builtin_choose_expr (0 * (INT_MAX + 1), cb, cc);
+      |     ^
+misc_126.c:32:47: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+   32 |   if (cc) __builtin_choose_expr (0 * (INT_MAX + 1), cb, cc);
+      |                                               ^
+misc_126.c:32:3: warning: overflow in constant expression [-Woverflow]
+   32 |   if (cc) __builtin_choose_expr (0 * (INT_MAX + 1), cb, cc);
+      |   ^
+misc_126.c:34:17: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+   34 | struct s { enum A a : 8; enum B b : 32; enum C c : 31; };
+      |                 ^
+misc_126.c:34:19: warning: 'a' is narrower than values of its type
+   34 | struct s { enum A a : 8; enum B b : 32; enum C c : 31; };
+      |                   ^
+misc_126.c:34:19: error: field 'a' has incomplete type
+   34 | struct s { enum A a : 8; enum B b : 32; enum C c : 31; };
+      |                   ^
+misc_126.c:34:31: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+   34 | struct s { enum A a : 8; enum B b : 32; enum C c : 31; };
+      |                               ^
+misc_126.c:34:33: warning: 'b' is narrower than values of its type
+   34 | struct s { enum A a : 8; enum B b : 32; enum C c : 31; };
+      |                                 ^
+misc_126.c:34:33: error: field 'b' has incomplete type
+   34 | struct s { enum A a : 8; enum B b : 32; enum C c : 31; };
+      |                                 ^
+misc_126.c:34:46: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+   34 | struct s { enum A a : 8; enum B b : 32; enum C c : 31; };
+      |                                              ^
+misc_126.c:34:48: warning: 'c' is narrower than values of its type
+   34 | struct s { enum A a : 8; enum B b : 32; enum C c : 31; };
+      |                                                ^
+misc_126.c:34:48: error: field 'c' has incomplete type
+   34 | struct s { enum A a : 8; enum B b : 32; enum C c : 31; };
+      |                                                ^
+misc_126.c:35:48: error: zero width for bit-field 'e'
+   35 | enum D { d1 }; struct t { enum D d : 1; enum D e: 0+0; };
+      |                                                ^
