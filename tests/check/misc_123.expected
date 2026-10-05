@@ -1,0 +1,33 @@
+misc_123.c:1:32: error: expected expression before ']' token
+    1 | void __builtin_exit (int, int[+]);
+      |                                ^
+misc_123.c:1:6: warning: conflicting types for built-in function '__builtin_exit'; expected 'void(int)' [-Wbuiltin-declaration-mismatch]
+    1 | void __builtin_exit (int, int[+]);
+      |      ^
+misc_123.c:1:6: note: '__builtin_exit' is declared in header '<stdlib.h>'
+    1 | void __builtin_exit (int, int[+]);
+      |      ^
+misc_123.c:3:27: error: expected expression before ']' token
+    3 | void __builtin_trap (int[+]);
+      |                           ^
+misc_123.c:3:6: warning: conflicting types for built-in function '__builtin_trap'; expected 'void(void)' [-Wbuiltin-declaration-mismatch]
+    3 | void __builtin_trap (int[+]);
+      |      ^
+misc_123.c:5:19: error: expected expression before ']' token
+    5 | int myf(int, int[+]);
+      |                   ^
+misc_123.c:7:19: error: expected expression before ']' token
+    7 | int myf(int, int[+]);
+      |                   ^
+misc_123.c:9:5: error: conflicting types for 'myf'; have 'int(long int)'
+    9 | int myf(long);
+      |     ^
+misc_123.c:7:5: note: previous declaration of 'myf' with type 'int(int,  <type-error>)'
+    7 | int myf(int, int[+]);
+      |     ^
+misc_123.c:10:15: error: too many arguments to function 'myf'
+   10 | void u(void){ myf(1,2); }
+      |               ^
+misc_123.c:9:5: note: declared here
+    9 | int myf(long);
+      |     ^

@@ -69,6 +69,7 @@ typedef struct Parser {
     } err;
     uint64_t skipnum;           /* stream index + 1 of the last skipped number classified */
     uint64_t units, errors;
+    uint64_t bound_errors; /* of errors: in an array bound that parsed on */
     uint64_t soft_errors; /* of errors: a stray token after a complete
                            * declaration, which gcc still processes */
 } Parser;

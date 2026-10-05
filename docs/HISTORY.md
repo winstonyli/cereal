@@ -1719,8 +1719,17 @@ diagnostics and builds on the strinit table.
   the include position, and names the __builtin_ spelling when used.
   Goldens attr_fmt_noproto, builtin_decl_mismatch regenerated (notes only).
   Golden misc_122.
-- Open: a declaration whose parameter list has a syntax error
-  (`void __builtin_exit (int, int[+]);`) is dropped, so its built-in mismatch
-  warning is missing (Wbuiltin-declaration-mismatch-16); -12 has an extra
-  `__clear_cache` mismatch.
+- Open: -12 has an extra `__clear_cache` mismatch (a declaration with a
+  parameter-list syntax error is handled in Round 107).
 - Gate: 1191 pass, san 420/0, gcc.dg 75 / c-c++-common 35, callgrind 3.706G.
+
+## Round 107: declarations with a bad parameter list
+
+- A syntax error inside an array bound in a parameter no longer drops the
+  declaration (gcc keeps it with a `<type-error>` parameter; redeclaration
+  notes print `int(int,  <type-error>)`): `Parser.bound_errors` separates
+  those errors from a failed declarator.
+- The built-in mismatch warning (and header note) is now issued for such a
+  declaration even though its unit has an error, after the parser's error
+  (ORD_LATE), as gcc does (Wbuiltin-declaration-mismatch-16). Golden misc_123.
+- Gate: 1193 pass, san 421/0, gcc.dg 74 / c-c++-common 35, callgrind 3.706G.

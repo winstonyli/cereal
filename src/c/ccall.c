@@ -274,10 +274,15 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
     StrBuf sb;
     const char *p;
     Diagnostic *d = NULL;
+    bool quiet;
+    DiagOrd o0;
     if (!bt || !strcmp(strchr(bt->sig, '|') + 1, "?") || (s->flags & CSF_IMPLICIT) ||
         !diag_enabled(c->diag, "builtin-declaration-mismatch"))
         return;
     m = bt_match(c, bt, s->ty);
+    quiet = c->quiet;
+    c->quiet = false;      /* gcc declares the name even after a parameter error */
+    o0 = quiet ? diag_ord(c->diag, ORD_LATE) : (DiagOrd)c->diag->ord;
     memset(&sb, 0, sizeof sb);
     if (!m.conflict && !c->bt_fileptr &&
         !(type_ent(TT, m.dft)->flags & TF_NOPROTO) &&
@@ -328,6 +333,8 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
     if (d && bt->hdr[0])
         cnote(c, d, s->loc, "'%s' is declared in "
               "header '%s'", dn, bt->hdr);
+    c->quiet = quiet;
+    diag_ord(c->diag, o0);
     sb_free(&sb);
 }
 

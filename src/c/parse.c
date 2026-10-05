@@ -1914,6 +1914,7 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
         if (at(p, P_LBRACKET)) {
             uint32_t lb = adv(p);
             unsigned flags = 0;
+            uint64_t bound_errs = 0;
             for (;;) {
                 int k = ckw(p);
                 if (k == CK_STATIC) {
@@ -1932,10 +1933,15 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
                 adv(p);
                 flags |= NF_STAR;
             } else if (!at(p, P_RBRACKET)) {
+                uint64_t e0 = p->errors;
                 parse_assign(p);
+                bound_errs = p->errors - e0;
             }
             if (!expect_skip(p, P_RBRACKET))
                 di->failed = true;
+            else
+                p->bound_errors += bound_errs; /* gcc goes on with an
+                                                  erroneous bound */
             emit(p, N_ARRAY, lb, start, flags);
             if (di->inner == DK_NONE)
                 di->inner = DK_ARRAY;
@@ -1944,7 +1950,7 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             uint32_t lp = adv(p), save = (uint32_t)p->saved.len;
             unsigned flags = 0;
             bool adjacent = di->inner == DK_NONE;
-            uint64_t nerrs = p->errors;
+            uint64_t nerrs = p->errors, nbound = p->bound_errors;
             open_scope(p, lp, 0); /* function prototype scope */
             params(p, &flags);
             /* only this declarator's own parameters are saved (not
@@ -1952,7 +1958,7 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             p->saved.len = save;
             close_scope(p, adjacent ? &p->saved : NULL);
             expect(p, P_RPAREN);
-            if (p->errors != nerrs)
+            if (p->errors - nerrs > p->bound_errors - nbound)
                 di->failed = true;
             emit(p, N_FUNC, lp, start, flags);
             if (adjacent) {

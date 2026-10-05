@@ -12,7 +12,7 @@
 
 /* Builtin type kinds: their TypeId index equals the kind (type.h). */
 #define BUILTIN_TYPES(X)                                                    \
-    X(ERROR, "<error>") X(VOID, "void") X(BOOL, "_Bool") X(CHAR, "char")    \
+    X(ERROR, "<type-error>") X(VOID, "void") X(BOOL, "_Bool") X(CHAR, "char")    \
     X(SCHAR, "signed char") X(UCHAR, "unsigned char")                      \
     X(SHORT, "short int") X(USHORT, "short unsigned int")                  \
     X(INT, "int") X(UINT, "unsigned int") X(LONG, "long int")              \
