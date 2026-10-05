@@ -608,6 +608,13 @@ TypeId type_default_promote(TypeTable *tt, TypeId t)
     TypeKind k = type_ckind(tt, t);
     if (k == TY_FLOAT)
         return TYPE_B(DOUBLE);
+    if (k == TY_ENUM) {
+        /* c_type_promotes_to: an enum as wide as int stays itself */
+        bool ok, ok2;
+        uint64_t sz = type_size(tt, t, &ok), isz = type_size(tt, TYPE_B(INT), &ok2);
+        if (ok && ok2 && sz >= isz)
+            return TYPE_UNQUAL(t);
+    }
     return type_int_promote(tt, t);
 }
 

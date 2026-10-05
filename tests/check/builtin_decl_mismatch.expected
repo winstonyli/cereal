@@ -1,15 +1,15 @@
 builtin_decl_mismatch.c:1:5: warning: conflicting types for built-in function 'abort'; expected 'void(void)' [-Wbuiltin-declaration-mismatch]
     1 | int abort ();
       |     ^
-builtin_decl_mismatch.c:1:1: note: 'abort' is declared in header '<stdlib.h>'
+builtin_decl_mismatch.c:1:5: note: 'abort' is declared in header '<stdlib.h>'
     1 | int abort ();
-      | ^
+      |     ^
 builtin_decl_mismatch.c:2:7: warning: conflicting types for built-in function 'strlen'; expected 'long unsigned int(const char *)' [-Wbuiltin-declaration-mismatch]
     2 | char *strlen (const char *);
       |       ^
-builtin_decl_mismatch.c:1:1: note: 'strlen' is declared in header '<string.h>'
-    1 | int abort ();
-      | ^
+builtin_decl_mismatch.c:2:7: note: 'strlen' is declared in header '<string.h>'
+    2 | char *strlen (const char *);
+      |       ^
 builtin_decl_mismatch.c:3:5: warning: conflicting types for built-in function 'strcmp'; expected 'int(const char *, const char *)' [-Wbuiltin-declaration-mismatch]
     3 | int strcmp (const char *, const char *, int);
       |     ^
@@ -25,9 +25,9 @@ builtin_decl_mismatch.c:4:7: note: 'memcpy' is declared in header '<string.h>'
 builtin_decl_mismatch.c:5:5: warning: conflicting types for built-in function 'printf'; expected 'int(const char *, ...)' [-Wbuiltin-declaration-mismatch]
     5 | int printf ();
       |     ^
-builtin_decl_mismatch.c:1:1: note: 'printf' is declared in header '<stdio.h>'
-    1 | int abort ();
-      | ^
+builtin_decl_mismatch.c:5:5: note: 'printf' is declared in header '<stdio.h>'
+    5 | int printf ();
+      |     ^
 builtin_decl_mismatch.c:6:5: warning: conflicting types for built-in function 'exit'; expected 'void(int)' [-Wbuiltin-declaration-mismatch]
     6 | int exit (int);
       |     ^

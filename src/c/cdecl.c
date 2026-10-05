@@ -8978,6 +8978,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     c->cd_have_proto = false;
     c->cd_proto = 0;
     c->cd_proto_loc = 0;
+    c->cd_builtin = false;
     if (!is_prototype(c, s.ty)) {
         TypeId oldt = have_old ? oldc.ty : s.ty;
         if (have_old && is_func(c, oldt) &&
@@ -9004,6 +9005,17 @@ static void funcdef_declared(Checker *c, uint32_t declared)
                         c->cd_proto = es->ty;
                     }
                 }
+            }
+        }
+        /* an old-style definition of a library built-in is checked against
+         * the built-in's prototype (current_function_prototype_built_in) */
+        if (!c->cd_have_proto && !have_old && sym_public(&s)) {
+            TypeId bp = ccall_builtin_ptype(c, name);
+            if (bp && is_func(c, bp) &&
+                type_compatible(TT, type_base(TT, s.ty),
+                                type_base(TT, bp))) {
+                c->cd_have_proto = c->cd_builtin = true;
+                c->cd_proto = bp;
             }
         }
     }
@@ -9270,9 +9282,14 @@ static void body_visit(Checker *c, uint32_t i)
                     break;
                 (void)variadic;
                 if (!parm || !tyvalid) {
-                    cerror(c, il, "number of arguments doesn't match "
-                           "prototype");
-                    cerror(c, c->cd_proto_loc, "prototype declaration");
+                    if (c->cd_builtin)
+                        cwarn(c, fnloc, "", "number of arguments doesn't match "
+                              "built-in prototype");
+                    else {
+                        cerror(c, il, "number of arguments doesn't match "
+                               "prototype");
+                        cerror(c, c->cd_proto_loc, "prototype declaration");
+                    }
                     break;
                 }
                 s = csym(c, pl[li]);
@@ -9289,8 +9306,12 @@ static void body_visit(Checker *c, uint32_t i)
                         plain_type(c, s->ty) == plain_type(c, vt)) {
                         cpedantic(c, s->loc, "promoted argument '%s' doesn't "
                                   "match prototype", sname(c, s));
-                        cpedantic(c, c->cd_proto_loc, "prototype "
-                                  "declaration");
+                        if (!c->cd_builtin)
+                            cpedantic(c, c->cd_proto_loc, "prototype "
+                                      "declaration");
+                    } else if (c->cd_builtin) {
+                        cwarn(c, s->loc, "", "argument '%s' doesn't match "
+                              "built-in prototype", sname(c, s));
                     } else {
                         cerror(c, s->loc, "argument '%s' doesn't match "
                                "prototype", sname(c, s));

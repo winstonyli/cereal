@@ -390,6 +390,8 @@ struct Checker {
     TypeId cd_proto;
     SrcLoc cd_proto_loc;
     bool cd_have_proto;
+    TypeId bt_fileptr;       /* the first FILE * a built-in was declared with */
+    bool cd_builtin;         /* ... the prototype is a library built-in's */
     bool lax_noted;          /* the -flax-vector-conversions note was given */
     /* cexpr.c: identifiers already reported undeclared in the function
      * undecl_key names; whether the once-per-TU note was given; nodes
@@ -613,6 +615,7 @@ const char *cexpr_str(Checker *c, uint32_t i);
 void cexpr_builtin_decl(Checker *c, const CSym *s);
 void cexpr_builtin_nonfn(Checker *c, const CSym *s);
 bool ccall_is_builtin(Checker *c, const char *name);
+TypeId ccall_builtin_ptype(Checker *c, const char *name);
 TypeId cexpr_builtin_ptr_type(Checker *c, uint32_t e, TypeId t);
 const char *ccall_builtin_ref(Checker *c, const CSym *s, TypeId *fty,
                               char *buf, size_t n);

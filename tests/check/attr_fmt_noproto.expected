@@ -22,6 +22,6 @@ attr_fmt_noproto.c:8:1: warning: 'format' attribute cannot be applied to a funct
 attr_fmt_noproto.c:9:5: warning: conflicting types for built-in function 'printf'; expected 'int(const char *, ...)' [-Wbuiltin-declaration-mismatch]
     9 | int printf ();
       |     ^
-attr_fmt_noproto.c:1:1: note: 'printf' is declared in header '<stdio.h>'
-    1 | // flags: 
-      | ^
+attr_fmt_noproto.c:9:5: note: 'printf' is declared in header '<stdio.h>'
+    9 | int printf ();
+      |     ^

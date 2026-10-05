@@ -1702,3 +1702,25 @@ diagnostics and builds on the strinit table.
 
 - A `)` or `]` where a statement should start is reported ("expected statement") and consumed, and the block goes on with the next item (`) y;` then reports `y` undeclared), as gcc's compound-statement loop does.  Golden misc_121.
 - Gate: 1189 pass, san 419/0, gcc.dg 78 / c-c++-common 35 (no file changed).
+
+## Round 106: old-style definitions against prototypes and built-ins
+
+- An enum as wide as int is not promoted (c_type_promotes_to), so an
+  old-style `void f(x) enum e2 x;` after `void f(enum e1);` is "argument 'x'
+  doesn't match prototype" (enum-compat-1).
+- An old-style definition of a library built-in (`char *strchr(a) const char
+  *a;`) is checked against the built-in's prototype: warnings "number of
+  arguments doesn't match built-in prototype" (at the name) and "argument
+  'a' doesn't match built-in prototype" (pr15698-1/-6).
+- A built-in with a FILE * parameter takes the first FILE type declared; a
+  later declaration with another struct warns "mismatch in argument N type"
+  under -Wextra (Wbuiltin-declaration-mismatch-8).
+- The "'X' is declared in header" note is at the declaration (gcc-13), not at
+  the include position, and names the __builtin_ spelling when used.
+  Goldens attr_fmt_noproto, builtin_decl_mismatch regenerated (notes only).
+  Golden misc_122.
+- Open: a declaration whose parameter list has a syntax error
+  (`void __builtin_exit (int, int[+]);`) is dropped, so its built-in mismatch
+  warning is missing (Wbuiltin-declaration-mismatch-16); -12 has an extra
+  `__clear_cache` mismatch.
+- Gate: 1191 pass, san 420/0, gcc.dg 75 / c-c++-common 35, callgrind 3.706G.

@@ -76,8 +76,14 @@ static int bt_cmp(Checker *c, TypeId o, TypeId n, bool ret, bool file)
         TypeId po, pn;
         if (!is_ptr(c, o) || !is_ptr(c, n))
             return 2;
-        if (file)
+        if (file) {
+            /* once a declaration fixed the FILE type, others must agree */
+            if (c->bt_fileptr &&
+                !type_compatible(TT, unqual(c, pointee(c, c->bt_fileptr)),
+                                 unqual(c, pointee(c, n))))
+                return 1;
             return 0;
+        }
         po = pointee(c, o);
         pn = pointee(c, n);
         if (type_compatible(TT, po, pn))
@@ -216,6 +222,15 @@ bool ccall_is_builtin(Checker *c, const char *n)
     return bt_find(c, pre ? n + 10 : n, pre) != NULL;
 }
 
+/* The prototype of the library built-in called name, 0 if none. */
+TypeId ccall_builtin_ptype(Checker *c, const char *name)
+{
+    const BTab *bt = bt_find(c, name, false);
+    if (!bt || !strcmp(strchr(bt->sig, '|') + 1, "?"))
+        return 0;
+    return bt_func_type(c, bt);
+}
+
 /* gcc names a built-in used as a function pointer value, "pointer to
  * '__builtin_X'": for __builtin_X itself, and for a library built-in
  * redeclared without a prototype, which keeps the built-in's own type
@@ -264,6 +279,18 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
         return;
     m = bt_match(c, bt, s->ty);
     memset(&sb, 0, sizeof sb);
+    if (!m.conflict && !c->bt_fileptr &&
+        !(type_ent(TT, m.dft)->flags & TF_NOPROTO) &&
+        type_ent(TT, m.dft)->n == type_ent(TT, m.bft)->n) {
+        /* the first declaration with a FILE * parameter fixes its type */
+        uint32_t j;
+        for (j = 0; j < type_ent(TT, m.dft)->n; j++)
+            if (bt_file_param(bt->name, j) &&
+                is_ptr(c, type_params(TT, m.dft)[j])) {
+                c->bt_fileptr = type_params(TT, m.dft)[j];
+                break;
+            }
+    }
     if (m.conflict) {
         bt_sig_print(&sb, bt->sig);
         d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
@@ -282,7 +309,10 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
             for (p++; j; j--)
                 p = strchr(p, '|') + 1;
             q = strchr(p, '|');
-            sb_putn(&sb, p, q ? (size_t)(q - p) : strlen(p));
+            if (bt_file_param(bt->name, (uint32_t)m.soft - 2) && c->bt_fileptr)
+                type_print(TT, &sb, unqual(c, c->bt_fileptr));
+            else
+                sb_putn(&sb, p, q ? (size_t)(q - p) : strlen(p));
             d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
                         "mismatch in argument %d type of built-in function "
                         "'%s'; expected '%s'", m.soft - 1, dn,
@@ -296,8 +326,8 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
                     "prototype; expected '%s'", dn, sb_cstr(&sb));
     }
     if (d && bt->hdr[0])
-        cnote(c, d, header_note_loc(c, s->loc, bt->hdr), "'%s' is declared in "
-              "header '%s'", bt->name, bt->hdr);
+        cnote(c, d, s->loc, "'%s' is declared in "
+              "header '%s'", dn, bt->hdr);
     sb_free(&sb);
 }
 
