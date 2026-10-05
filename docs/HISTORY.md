@@ -1667,3 +1667,15 @@ diagnostics and builds on the strinit table.
   and stays silent.  The note after an out-of-order `.b = "x", .a = 1` names
   `e1`, gcc `e1.a`.
 - Gate: 1181 pass, san 415/0, gcc.dg 83 / c-c++-common 35 differ, callgrind 3.704G.
+
+## Round 103: erroneous flexible member, typeof side effects, bare #if
+
+- A flexible array member in a struct with no named members is kept (gcc
+  keeps the erroneous member), so `q->b` and designators on it no longer add
+  "no member named".  Open: under -pedantic an initializer for it still gets
+  "initialization of a flexible array member" (gcc is silent: erroneous type).
+- A cast to a typeof whose type is not variably modified drops the side
+  effects of the typeof operand (gnu99-const-expr-3/4).
+- A bare `#if` / `#elif` is reported at the end of the line, after blanks
+  and comments (gcc's EOF token).  `u8"x"` in #if already matched.
+- Golden misc_118.  Gate: 1183 pass, san 416/0, gcc.dg 81 / c-c++-common 35.

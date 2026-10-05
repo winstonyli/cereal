@@ -1,0 +1,15 @@
+misc_118.c:6:17: error: flexible array member in a struct with no named members
+    6 | struct t { char b[]; };
+      |                 ^
+misc_118.c:13:27: error: initializer element is not a constant expression [-Wpedantic]
+   13 |     static int (*a5)[n] = (__typeof__((int (*)[m++])sa))sa;
+      |                           ^
+misc_118.c:18:4: error: #if with no expression
+   18 | #if
+      |    ^
+misc_118.c:20:13: error: #if with no expression
+   20 | #if  /* c */
+      |             ^
+misc_118.c:23:6: error: #elif with no expression
+   23 | #elif
+      |      ^

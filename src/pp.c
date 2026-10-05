@@ -382,6 +382,29 @@ static SrcLoc span_end(PP *pp, TokSpan s, SrcLoc fallback)
     return s.t[s.n - 1].loc + s.t[s.n - 1].len;
 }
 
+/* Where gcc's end-of-directive token is: after the keyword, blanks and
+ * comments. */
+static SrcLoc kw_eol(PP *pp, const Tok *kw)
+{
+    SrcLoc l = kw->loc + kw->len;
+    for (;;) {
+        const char *q = srcmgr_ptr(pp->sm, l);
+        if (*q == ' ' || *q == '\t')
+            l++;
+        else if (q[0] == '/' && q[1] == '*') {
+            const char *e = strstr(q + 2, "*/");
+            if (!e)
+                break;
+            l += (SrcLoc)(e + 2 - q);
+        } else if (q[0] == '/' && q[1] == '/') {
+            while (*q && *q != '\n')
+                q++, l++;
+        } else
+            break;
+    }
+    return l;
+}
+
 static void check_eol(PP *pp, TokSpan rest, const char *dir)
 {
     if (rest.n) {
@@ -1051,7 +1074,8 @@ static void do_if(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
 
     if (k == COND_IF) {
         if (line.n == 0) {
-            diag_report(pp->diag, DL_ERROR, "", kw->loc, "#if with no expression");
+            diag_report(pp->diag, DL_ERROR, "", kw_eol(pp, kw),
+                        "#if with no expression");
             ok = false;
         } else {
             val = pp_eval_if(pp, line, &ok);
@@ -1109,7 +1133,7 @@ static void do_elif_else(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
         bool val = false, ok = true, evaluated = false;
         if (c->parent_active && !c->taken_any) {
             if (line.n == 0) {
-                diag_report(pp->diag, DL_ERROR, "", kw->loc,
+                diag_report(pp->diag, DL_ERROR, "", kw_eol(pp, kw),
                             "#elif with no expression");
                 ok = false;
             } else {

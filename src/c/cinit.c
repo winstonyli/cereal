@@ -939,6 +939,9 @@ static bool cast_bound_side(Checker *c, uint32_t n)
         n--;
     if (ntag(c, n) != N_CAST || n == 0)
         return false;
+    /* a typeof's side effects vanish when its type is not variably modified */
+    if (!type_is_vm(TT, c->ty[n]))
+        return false;
     op = n - 1;
     for (k = cfirst(c, n); k < cfirst(c, op); k++)
         switch (ntag(c, k)) {
