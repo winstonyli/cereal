@@ -607,6 +607,9 @@ const char *cexpr_str(Checker *c, uint32_t i);
 void cexpr_builtin_decl(Checker *c, const CSym *s);
 void cexpr_builtin_nonfn(Checker *c, const CSym *s);
 bool ccall_is_builtin(Checker *c, const char *name);
+TypeId cexpr_builtin_ptr_type(Checker *c, uint32_t e, TypeId t);
+const char *ccall_builtin_ref(Checker *c, const CSym *s, TypeId *fty,
+                              char *buf, size_t n);
 void cexpr_builtin_noproto_fmt(Checker *c, const CSym *s, SrcLoc loc);
 /* Truncates v to type t (two's complement, sign-extended if signed). */
 uint64_t cexpr_trunc(Checker *c, TypeId t, uint64_t v);

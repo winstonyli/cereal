@@ -1,0 +1,39 @@
+misc_102.c:18:21: warning: initialization of 'void * (*)(void *, const void *, size_t)' {aka 'void * (*)(void *, const void *, long unsigned int)'} from pointer to '__builtin_memset' with incompatible type 'void * (*)(void *, int,  long unsigned int)' [-Wincompatible-pointer-types]
+   18 |     memcpy_t *bad = memset;
+      |                     ^
+misc_102.c:20:22: warning: initialization of 'void * (*)(void *, int,  size_t)' {aka 'void * (*)(void *, int,  long unsigned int)'} from incompatible pointer type 'void * (*)(void *, const void *, size_t)' {aka 'void * (*)(void *, const void *, long unsigned int)'} [-Wincompatible-pointer-types]
+   20 |     memset_t *bad2 = memmove;
+      |                      ^
+misc_102.c:21:27: warning: initialization of '_Bool (*)(int)' from pointer to '__builtin_abs' with incompatible type 'int (*)(int)' [-Wincompatible-pointer-types]
+   21 |     _Bool (*abs_f)(int) = __builtin_abs;
+      |                           ^
+misc_102.c:27:7: warning: assignment to 'void * (*)(void *, const void *, size_t)' {aka 'void * (*)(void *, const void *, long unsigned int)'} from pointer to '__builtin_memset' with incompatible type 'void * (*)(void *, int,  long unsigned int)' [-Wincompatible-pointer-types]
+   27 |     p = memset;
+      |       ^
+misc_102.c:28:7: warning: assignment to 'void * (*)(void *, const void *, size_t)' {aka 'void * (*)(void *, const void *, long unsigned int)'} from pointer to '__builtin_memset' with incompatible type 'void * (*)(void *, int,  long unsigned int)' [-Wincompatible-pointer-types]
+   28 |     p = (memset);
+      |       ^
+misc_102.c:29:7: warning: assignment to 'void * (*)(void *, const void *, size_t)' {aka 'void * (*)(void *, const void *, long unsigned int)'} from pointer to '__builtin_memset' with incompatible type 'void * (*)(void *, int,  long unsigned int)' [-Wincompatible-pointer-types]
+   29 |     p = &memset;
+      |       ^
+misc_102.c:34:17: warning: passing argument 1 of 'take_memcpy' from incompatible pointer type [-Wincompatible-pointer-types]
+   34 |     take_memcpy(memset);
+      |                 ^
+misc_102.c:12:18: note: expected 'void * (*)(void *, const void *, size_t)' {aka 'void * (*)(void *, const void *, long unsigned int)'} but argument is of type 'void * (*)(void *, int,  long unsigned int)'
+   12 | void take_memcpy(memcpy_t *);
+      |                  ^
+misc_102.c:35:28: warning: pointer type mismatch between 'void * (*)(void *, const void *, long unsigned int)' and 'void * (*)(void *, int,  long unsigned int)' of '__builtin_memcpy' and '__builtin_memset' in conditional expression [-Wincompatible-pointer-types]
+   35 |     take_any(0, i ? memcpy : memset);
+      |                            ^
+misc_102.c:37:12: warning: returning pointer to '__builtin_memcpy' of type 'void * (*)(void *, const void *, long unsigned int)' from a function with incompatible type 'void * (*)(void *, int,  size_t)' {aka 'void * (*)(void *, int,  long unsigned int)'} [-Wincompatible-pointer-types]
+   37 |     return memcpy;
+      |            ^
+misc_102.c:42:12: warning: returning pointer to '__builtin_abs' of type 'int (*)(int)' from a function with incompatible type 'int (*)(void)' [-Wincompatible-pointer-types]
+   42 |     return __builtin_abs;
+      |            ^
+misc_102.c:47:33: warning: pointer type mismatch between 'int (*)(int)' and 'long unsigned int (*)(const char *)' of '__builtin_abs' and '__builtin_strlen' in conditional expression [-Wincompatible-pointer-types]
+   47 |     void *v = i ? __builtin_abs : __builtin_strlen;
+      |                                 ^
+misc_102.c:48:22: warning: initialization of 'int (*)(void)' from incompatible pointer type 'int (*)(int)' [-Wincompatible-pointer-types]
+   48 |     int (*q)(void) = i ? __builtin_abs : 0;
+      |                      ^

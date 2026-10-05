@@ -216,6 +216,28 @@ bool ccall_is_builtin(Checker *c, const char *n)
     return bt_find(c, pre ? n + 10 : n, pre) != NULL;
 }
 
+/* gcc names a built-in used as a function pointer value, "pointer to
+ * '__builtin_X'": for __builtin_X itself, and for a library built-in
+ * redeclared without a prototype, which keeps the built-in's own type
+ * (returned in *fty).  NULL for anything else. */
+const char *ccall_builtin_ref(Checker *c, const CSym *s, TypeId *fty,
+                              char *buf, size_t n)
+{
+    const BTab *bt = bt_for_decl(c, s);
+    const char *nm = cident(c, s->name);
+    BtMatch m;
+    if (!bt || !strcmp(strchr(bt->sig, '|') + 1, "?"))
+        return NULL;
+    if (!strncmp(nm, "__builtin_", 10))
+        return nm;
+    m = bt_match(c, bt, s->ty);
+    if (m.conflict || !(type_ent(TT, m.dft)->flags & TF_NOPROTO))
+        return NULL;
+    *fty = m.bft;
+    snprintf(buf, n, "__builtin_%s", nm);
+    return buf;
+}
+
 /* A variable named like a library built-in (`int printf;`). */
 void cexpr_builtin_nonfn(Checker *c, const CSym *s)
 {

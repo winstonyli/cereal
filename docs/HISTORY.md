@@ -1445,3 +1445,21 @@ diagnostics and builds on the strinit table.
   diagnostic from a macro body at the macro use (binary-constants-2/3);
   `pp_eval_if` works on already-expanded tokens, so the use location is not
   at hand there.
+
+## Round 88 (built-ins as function pointers)
+- gcc names a built-in used as a function pointer value: "from pointer to
+  '__builtin_X' with incompatible type ..." (init, assignment), "returning
+  pointer to '__builtin_X' of type ..." (return), "pointer type mismatch
+  between ... of 'a' and 'b' in conditional expression" (both operands);
+  arguments stay plain.  It applies to `__builtin_X` itself (also through
+  `&`) and to a library built-in redeclared without a prototype, which keeps
+  the built-in's own type (so `void *memset();` is not compatible with a
+  `memcpy` function pointer).  A prototyped redeclaration is an ordinary
+  function.  `fnref_builtin` (cexpr.c) and `ccall_builtin_ref` (ccall.c);
+  cinit.c's `digest` uses the built-in's type, otherwise the compatible-type
+  shortcut hid the mismatch.  Golden misc_102.  gcc.dg differ 118 -> 116
+  (Wbuiltin-declaration-mismatch-3, pr59630).
+- Gate: 1151 pass, san 400/0, gcc.dg differ 116, c-c++-common 35,
+  callgrind 3.690G (+0.3%).
+- Mirror reminder: `rsync --delete` of src/tests/bench from `~/cereal-t`
+  overwrites edits made only in the repo; edit those trees in `~/cereal-t`.

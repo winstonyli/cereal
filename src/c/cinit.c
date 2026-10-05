@@ -1115,6 +1115,8 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
     TypeId vt = v->type;
     if (tk == TY_ERROR || v->kind == V_ERR || node_err(c, v->node))
         return false;
+    if (v->node != NOB && !v->str)
+        vt = cexpr_builtin_ptr_type(c, v->node, vt);
     if (v->kind == V_CTOR || v->kind == V_ZERO || v->digested)
         return true;
 

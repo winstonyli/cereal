@@ -3395,6 +3395,46 @@ static void trad_conv(Checker *c, uint32_t e, TypeId lt, TypeId rt, SrcLoc l,
               "%s due to prototype", pn, fn, w);
 }
 
+/* The built-in function expression e names (see ccall_builtin_ref); a
+ * replaced function type turns *pt (the decayed pointer type) into a pointer
+ * to it. */
+static const char *fnref_builtin(Checker *c, uint32_t e, TypeId *pt, char *buf,
+                                 size_t n)
+{
+    uint32_t ref;
+    const CSym *s;
+    TypeId fty = 0;
+    const char *nm;
+    e = strip_paren(c, e);
+    if (e != NO_NODE && !node_err(c, e) && ntag(c, e) == N_UNARY &&
+        npunct(c, e) == P_AMP)
+        e = strip_paren(c, first_child(c, e));
+    if (e == NO_NODE || node_err(c, e) || ntag(c, e) != N_IDENT)
+        return NULL;
+    ref = lookup_ord(c, cnode_ident(c, e));
+    if (ref == SYM_NONE) {      /* an undeclared __builtin_X */
+        nm = cident(c, cnode_ident(c, e));
+        return !strncmp(nm, "__builtin_", 10) && ccall_is_builtin(c, nm)
+               ? nm : NULL;
+    }
+    s = csym(c, ref);
+    if (s->kind != CS_FUNC)
+        return NULL;
+    nm = ccall_builtin_ref(c, s, &fty, buf, n);
+    if (nm && fty)
+        *pt = type_ptr(TT, fty);
+    return nm;
+}
+
+/* The type e has as an initializer or operand, where gcc keeps a built-in
+ * redeclared without a prototype at the built-in's own type. */
+TypeId cexpr_builtin_ptr_type(Checker *c, uint32_t e, TypeId t)
+{
+    char buf[48];
+    (void)fnref_builtin(c, e, &t, buf, sizeof buf);
+    return t;
+}
+
 static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                          const ConvInfo *ci)
 {
@@ -3405,12 +3445,15 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
     TypeId lt, rt, cl, cr;
     TypeKind kl, kr;
     uint32_t p;
+    char bnbuf[48];
+    const char *bname;
     if (expr == NO_NODE || node_err(c, expr) || is_err(c, lhs))
         return false;
     lt = unqual(c, lhs);
     rt = rvt(c, expr);
     if (is_err(c, rt))
         return false;
+    bname = fnref_builtin(c, expr, &rt, bnbuf, sizeof bnbuf);
     x.c = c;
     x.ci = ci;
     x.expr = expr;
@@ -3694,12 +3737,21 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
             R = type_q(TT, rt);
             sp(m[CONV_ARG], "passing argument %d of '%s' from incompatible "
                "pointer type", pn, fn);
-            sp(m[CONV_ASSIGN], "assignment to %s from incompatible pointer "
-               "type %s", T, R);
-            sp(m[CONV_INIT], "initialization of %s from incompatible pointer "
-               "type %s", T, R);
-            sp(m[CONV_RETURN], "returning %s from a function with "
-               "incompatible return type %s", R, T);
+            if (bname) {
+                sp(m[CONV_ASSIGN], "assignment to %s from pointer to '%s' with "
+                   "incompatible type %s", T, bname, R);
+                sp(m[CONV_INIT], "initialization of %s from pointer to '%s' "
+                   "with incompatible type %s", T, bname, R);
+                sp(m[CONV_RETURN], "returning pointer to '%s' of type %s from "
+                   "a function with incompatible type %s", bname, R, T);
+            } else {
+                sp(m[CONV_ASSIGN], "assignment to %s from incompatible pointer "
+                   "type %s", T, R);
+                sp(m[CONV_INIT], "initialization of %s from incompatible "
+                   "pointer type %s", T, R);
+                sp(m[CONV_RETURN], "returning %s from a function with "
+                   "incompatible return type %s", R, T);
+            }
             conv_diag(&x, RK_PED, "incompatible-pointer-types", m, true);
         }
         return true;
@@ -8854,6 +8906,8 @@ static void e_cond(Checker *c, uint32_t i)
 {
     uint32_t k[3], n = nkids(c, i, k, 3), cond, mid, els, ch;
     TypeId t1, t2, rt;
+    char nb1[48], nb2[48];
+    const char *n1, *n2;
     SrcLoc cl;
     bool ok, allint;
     int tv;
@@ -8899,6 +8953,8 @@ static void e_cond(Checker *c, uint32_t i)
     ch = mid != NO_NODE ? mid : cond;
     t1 = rvt(c, ch);
     t2 = rvt(c, els);
+    n1 = fnref_builtin(c, ch, &t1, nb1, sizeof nb1);
+    n2 = fnref_builtin(c, els, &t2, nb2, sizeof nb2);
     /* operands with side effects are compared later, with the ifs */
     if (mid != NO_NODE && c->func_node != NO_NODE &&
         !((c->ef[mid] | c->ef[els]) & EF_SIDE) &&
@@ -8966,8 +9022,14 @@ static void e_cond(Checker *c, uint32_t i)
                               "and function pointer");
             rt = type_ptr(TT, type_qual(TYPE_B(VOID), tquals(c, p1) | tquals(c, p2)));
         } else {
-            cpedwarn(c, cl, "", "pointer type mismatch in conditional "
-                                "expression");
+            if (n1 && n2)
+                cpedwarn(c, cl, "incompatible-pointer-types", "pointer type "
+                         "mismatch between %s and %s of '%s' and '%s' in "
+                         "conditional expression", type_q(TT, t1),
+                         type_q(TT, t2), n1, n2);
+            else
+                cpedwarn(c, cl, "", "pointer type mismatch in conditional "
+                                    "expression");
             rt = type_ptr(TT, type_qual(TYPE_B(VOID), q));
         }
     } else if (is_ptr(c, t1) && is_int(c, t2)) {
