@@ -443,6 +443,17 @@ static inline SrcLoc tloc(const Checker *c, uint32_t tok)
 {
     return tok >= c->u->ntoks ? c->last_bol : ctok_loc(c, tok);
 }
+/* The pieces of a (concatenated) string literal node: the run of string
+ * tokens from its first.  Not stored in Node.aux, which is 16 bits and would
+ * saturate (docs/DESIGN-NOTES.md, "Spilling Node.aux"). */
+static inline uint32_t node_pieces(const Checker *c, uint32_t i)
+{
+    uint32_t t = c->nodes[i].tok, n = 1;
+    while (t + n < c->u->ntoks && c->u->toks[t + n].t.kind == TK_STRING)
+        n++;
+    return n;
+}
+
 static inline SrcLoc cnode_loc(const Checker *c, uint32_t i)
 {
     return ctok_loc(c, c->nodes[i].tok);

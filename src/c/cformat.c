@@ -275,7 +275,7 @@ static void fmt_take(FmtCtx *x, const FmtWant *w, SrcLoc loc, const char *what)
 static bool fmt_decode(Checker *c, uint32_t s, char **buf, uint32_t **off,
                        size_t *n, bool *exact)
 {
-    uint32_t np = c->nodes[s].aux ? c->nodes[s].aux : 1, t;
+    uint32_t np = node_pieces(c, s), t;
     size_t cap = 1, m = 0, len, j;
     const char *tx;
     for (t = 0; t < np; t++) {

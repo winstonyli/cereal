@@ -1863,3 +1863,15 @@ diagnostics and builds on the strinit table.
   variably modified / non-constant bit-field widths and enumerators there.
 - Golden misc_135. Gate: 1217 pass, san 433/0, gcc.dg 48 / c-c++-common 35,
   callgrind 3.710G.
+
+## Round 117: string pieces derived from tokens
+
+- `Node.aux` (16 bits) saturated at 65535 string pieces: concat2 printed the
+  wrong length and `last_tok` computed wrong token offsets. A string node's
+  pieces are now the run of string tokens from its first (`node_pieces` in
+  check_int.h); `N_STRING` no longer stores them. The AST dump still shows
+  `#N`.
+- The rustc-`Span`-style alternative (a `0xFFFF` sentinel and a per-unit
+  spill table) is written up in docs/DESIGN-NOTES.md.
+- Golden misc_136. Gate: 1219 pass, san 434/0, gcc.dg 47 / c-c++-common 35,
+  callgrind 3.711G.

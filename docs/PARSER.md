@@ -70,7 +70,8 @@ and give their values to constant evaluation only (P3).
 
 ## Tree
 - Per unit (one external declaration): `Node{tag:u8, flags:u8, aux:u16,
-  tok:u32, size:u32}`, 12 bytes, in post-order (`src/c/ast.h`).  `size`
+  tok:u32, size:u32}`, 12 bytes, in post-order (`src/c/ast.h`; `aux` is 16 bits: string pieces are derived from the
+  tokens, see DESIGN-NOTES.md).  `size`
   is the node's subtree size, so children are found by walking back from
   the parent (Carbon's layout); no child pointers, no `extra[]`.  `tok` is
   relative to the unit's first token.  Optional parts are told apart by

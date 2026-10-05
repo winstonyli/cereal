@@ -167,8 +167,8 @@ static uint32_t last_tok(const Checker *c, uint32_t i)
     uint32_t k, m = 0;
     for (k = cfirst(c, i); k <= i; k++) {
         uint32_t t = c->nodes[k].tok;
-        if (c->nodes[k].tag == N_STRING && c->nodes[k].aux)
-            t += c->nodes[k].aux - 1u;
+        if (c->nodes[k].tag == N_STRING)
+            t += node_pieces(c, k) - 1u;
         if (t > m)
             m = t;
     }
@@ -8551,7 +8551,7 @@ static void static_assert_visit(Checker *c, uint32_t i)
     if (cexpr_sval(c, e) == 0) {
         if (s != NO_NODE) {
             StrBuf sb;
-            uint32_t p, np = cnode(c, s)->aux ? cnode(c, s)->aux : 1;
+            uint32_t p, np = node_pieces(c, s);
             memset(&sb, 0, sizeof sb);
             sb_putc(&sb, '"');
             for (p = 0; p < np; p++) {

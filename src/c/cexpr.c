@@ -1327,7 +1327,7 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
         break;
     case N_STRING: {
         uint32_t t;
-        for (t = 0; t < (c->nodes[i].aux ? c->nodes[i].aux : 1u); t++) {
+        for (t = 0; t < node_pieces(c, i); t++) {
             if (t)
                 sb_putc(sb, ' ');
             s = ttext(c, c->nodes[i].tok + t, &len);
@@ -2025,7 +2025,7 @@ static void e_char(Checker *c, uint32_t i)
 
 static void e_string(Checker *c, uint32_t i)
 {
-    uint32_t np = c->nodes[i].aux ? c->nodes[i].aux : 1, k;
+    uint32_t np = node_pieces(c, i), k;
     int prefix = 0;
     uint64_t units = 0;
     unsigned width;
@@ -9432,7 +9432,7 @@ static void fold_flush(Checker *c, uint32_t i)
  * simple escapes decoded). */
 size_t asm_string(Checker *c, uint32_t n, char *out, size_t cap)
 {
-    uint32_t np = c->nodes[n].aux ? c->nodes[n].aux : 1, t;
+    uint32_t np = node_pieces(c, n), t;
     size_t o = 0;
     for (t = 0; t < np; t++) {
         size_t len, j;

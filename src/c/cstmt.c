@@ -131,8 +131,8 @@ static uint32_t last_tok(const Checker *c, uint32_t i)
     uint32_t k, m = 0;
     for (k = cfirst(c, i); k <= i; k++) {
         uint32_t t = c->nodes[k].tok;
-        if (c->nodes[k].tag == N_STRING && c->nodes[k].aux)
-            t += c->nodes[k].aux - 1u;
+        if (c->nodes[k].tag == N_STRING)
+            t += node_pieces(c, k) - 1u;
         if (t > m)
             m = t;
     }
@@ -2305,9 +2305,9 @@ static bool dup_expr(Checker *c, uint32_t a, uint32_t b)
         return cnode_ident(c, a) == cnode_ident(c, b);
     case N_STRING: {
         uint32_t t;
-        if (c->nodes[a].aux != c->nodes[b].aux)
+        if (node_pieces(c, a) != node_pieces(c, b))
             return false;
-        for (t = 0; t < c->nodes[a].aux; t++)
+        for (t = 0; t < node_pieces(c, a); t++)
             if (!dup_same_tok(c, c->nodes[a].tok + t, c->nodes[b].tok + t))
                 return false;
         return true;

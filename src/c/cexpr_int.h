@@ -112,8 +112,8 @@ static inline uint32_t last_tok(const Checker *c, uint32_t i)
     uint32_t k, m = 0;
     for (k = cfirst(c, i); k <= i; k++) {
         uint32_t t = c->nodes[k].tok;
-        if (c->nodes[k].tag == N_STRING && c->nodes[k].aux)
-            t += c->nodes[k].aux - 1u;
+        if (c->nodes[k].tag == N_STRING)
+            t += node_pieces(c, k) - 1u;
         if (t > m)
             m = t;
     }

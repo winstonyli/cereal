@@ -1345,18 +1345,15 @@ static void attributes(Parser *p)
 
 static void string_lit(Parser *p)
 {
-    uint32_t first = ci(p), n = 0;
+    uint32_t first = ci(p);
     if (ct(p).t.kind != TK_STRING) {
         expected(p, "string literal");
         leaf(p, N_ERROR, first);
         return;
     }
-    while (ct(p).t.kind == TK_STRING) {
+    while (ct(p).t.kind == TK_STRING)
         adv(p);
-        n++;
-    }
     leaf(p, N_STRING, first);
-    set_aux(p, n);
 }
 
 /* asm-label: asm ( string ) */

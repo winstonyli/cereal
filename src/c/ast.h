@@ -94,7 +94,7 @@
     X(IDENT)         /* tok */                                              \
     X(NUMBER)        /* tok */                                              \
     X(CHAR)          /* tok */                                              \
-    X(STRING)        /* tok: first piece; aux: pieces */                    \
+    X(STRING)        /* tok: first piece (the rest: node_pieces) */      \
     X(PAREN)         /* expr */                                             \
     X(CALL)          /* expr arg* */                                        \
     X(INDEX)         /* expr expr */                                        \

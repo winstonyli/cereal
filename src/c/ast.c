@@ -53,8 +53,17 @@ static void dump_node(FILE *out, const ParseUnit *u, SrcMgr *sm,
             fprintf(out, " %u:%u", line, col);
         }
     }
-    if (n->aux)
-        fprintf(out, " #%u", n->aux);
+    {
+        uint32_t aux = n->aux;
+        if (n->tag == N_STRING) {       /* the pieces: the string-token run */
+            aux = 1;
+            while (n->tok + aux < u->ntoks &&
+                   u->toks[n->tok + aux].t.kind == TK_STRING)
+                aux++;
+        }
+        if (aux)
+            fprintf(out, " #%u", aux);
+    }
     if (n->flags)
         fprintf(out, " [%x]", n->flags);
     fputc('\n', out);

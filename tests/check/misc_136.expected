@@ -1,0 +1,9 @@
+misc_136.c:7:1: warning: string length '100000' is greater than the length '4095' ISO C99 compilers are required to support [-Woverlength-strings]
+    7 | void foo(void) { (void)(e5); int x = (e5); }
+      | ^
+misc_136.c:7:1: warning: string length '100000' is greater than the length '4095' ISO C99 compilers are required to support [-Woverlength-strings]
+    7 | void foo(void) { (void)(e5); int x = (e5); }
+      | ^
+misc_136.c:7:38: warning: initialization of 'int' from 'char *' makes integer from pointer without a cast [-Wint-conversion]
+    7 | void foo(void) { (void)(e5); int x = (e5); }
+      |                                      ^
