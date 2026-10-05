@@ -1424,5 +1424,7 @@ diagnostics and builds on the strinit table.
 - Top-level `asm` takes no qualifiers (gcc: "expected '(' before 'volatile'"
   etc.); in a statement `const`/`restrict` give "'X' is not a valid 'asm'
   qualifier" and parsing goes on.  Golden misc_98.  gcc.dg differ 120 -> 118.
-- pr89410-1 is a -pedantic artifact of cmp.sh (its dg-options is empty), not
-  a cereal difference worth chasing.
+- pr89410-1 stays open: after `#line 4294967295` gcc numbers the next line
+  -1 (a `#warning` there reads ":-1:2") and words the range warning without
+  "(C99 6.10.4p3) [-Wpedantic]"; cereal gives the real line and both
+  pedantic notes.
