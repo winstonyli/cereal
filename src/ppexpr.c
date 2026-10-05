@@ -15,6 +15,7 @@ typedef struct Val {
 typedef struct EP {
     PP *pp;
     const Tok *t;           /* the token array ends with a TK_EOF sentinel */
+    const Tok *start;       /* its first token */
     bool ok;
 } EP;
 
@@ -52,6 +53,60 @@ static void advance(EP *p)
 {
     if (p->t->kind != TK_EOF)
         p->t++;
+}
+
+/* gcc's operator table: a token that wants operands. */
+static bool is_operator(const Tok *t)
+{
+    static const Punct ops[] = {P_STAR, P_SLASH, P_PERCENT, P_PLUS, P_MINUS,
+        P_SHL, P_SHR, P_LT, P_GT, P_LE, P_GE, P_EQEQ, P_NE, P_AMP, P_CARET,
+        P_PIPE, P_ANDAND, P_OROR, P_QUESTION, P_COLON, P_COMMA, P_RPAREN};
+    size_t i;
+    if (t->kind != TK_PUNCT)
+        return false;
+    for (i = 0; i < sizeof ops / sizeof *ops; i++)
+        if (t->punct == ops[i])
+            return true;
+    return false;
+}
+
+/* A value was wanted and operator token t came instead (or the end): the
+ * wording follows the operator before it (gcc's _cpp_parse_expr). */
+static bool want_value_error(EP *p, const Tok *t)
+{
+    const Tok *prev = p->t > p->start ? p->t - 1 : NULL;
+    bool lparen = prev && tok_is_punct(prev, P_LPAREN);
+    if (t->kind == TK_EOF) {
+        if (!prev) {
+            fail(p, t, "#if with no expression", NULL, 0);
+            return true;
+        }
+    } else if (!is_operator(t)) {
+        return false;
+    }
+    if (!prev && tok_is_punct(t, P_RPAREN)) {
+        fail(p, t, "missing '(' in expression", NULL, 0);
+        return true;
+    }
+    if (lparen && t->kind == TK_EOF) {
+        fail(p, prev, "missing ')' in expression", NULL, 0);
+        return true;
+    }
+    if (prev && tok_is_punct(t, P_RPAREN) && lparen) {
+        fail(p, t, "missing expression between '(' and ')'", NULL, 0);
+        return true;
+    }
+    if (prev && !lparen && prev->kind == TK_PUNCT) {
+        fail(p, t, "operator '%.*s' has no right operand", TXT(p, prev),
+             (int)prev->len);
+        return true;
+    }
+    if (t->kind != TK_EOF) {
+        fail(p, t, "operator '%.*s' has no left operand", TXT(p, t),
+             (int)t->len);
+        return true;
+    }
+    return false;
 }
 
 static void overflow(EP *p, const Tok *op, bool eval)
@@ -309,12 +364,16 @@ static Val primary(EP *p, bool eval)
         }
         return mkval(0, false);
     case TK_EOF:
-        fail(p, t, "#if with no expression", NULL, 0);
+        if (!want_value_error(p, t))
+            fail(p, t, "#if with no expression", NULL, 0);
         return mkval(0, false);
     case TK_STRING:
-        fail(p, t, "token is not valid in preprocessor expressions", NULL, 0);
+        fail(p, t, "token \"%.*s\" is not valid in preprocessor expressions",
+             TXT(p, t), (int)t->len);
         return mkval(0, false);
     default:
+        if (want_value_error(p, t))
+            return mkval(0, false);
         if (t->kind == TK_PUNCT || t->kind == TK_OTHER)
             fail(p, t, "token \"%.*s\" is not valid in preprocessor expressions",
                  TXT(p, t), (int)t->len);
@@ -554,8 +613,8 @@ static Val cond(EP *p, bool eval)
     advance(p);
     x = expr_comma(p, eval && c.v != 0);
     if (!is_punct(p, P_COLON)) {
-        fail(p, p->t->kind == TK_EOF ? q : p->t, "'?' without following ':'",
-             NULL, 0);
+        (void)q;
+        fail(p, p->t, "'?' without following ':'", NULL, 0);
         return mkval(0, false);
     }
     advance(p);
@@ -660,10 +719,11 @@ bool pp_eval_if(PP *pp, TokSpan expr, bool *ok)
         *ok = false;
         return false;
     }
-    p.t = res.t;
+    p.t = p.start = res.t;
     v = expr_comma(&p, true);
     if (p.ok && p.t->kind != TK_EOF) {
-        if (p.t->kind == TK_PUNCT && p.t->punct >= P_ASSIGN)
+        if (p.t->kind == TK_STRING ||
+            (p.t->kind == TK_PUNCT && p.t->punct >= P_ASSIGN))
             fail(&p, p.t, "token \"%.*s\" is not valid in preprocessor "
                           "expressions", TXT(&p, p.t), (int)p.t->len);
         else

@@ -1639,3 +1639,16 @@ diagnostics and builds on the strinit table.
   (built-in prototype warning before the 'format' attribute one),
   pr89888 (case range warnings).
 - Gate: 1177 pass, san 413/0, callgrind 3.704G.
+
+## Round 101: #if expression errors
+
+- A string in an #if expression is "token "..." is not valid in
+  preprocessor expressions" (with the token text).  A value wanted where an
+  operator or the end came follows gcc's _cpp_parse_expr: "operator 'X' has
+  no right operand" (X the operator before), "missing expression between
+  '(' and ')'", "missing '(' / ')' in expression", "operator 'X' has no left
+  operand"; "'?' without following ':'" is at the current token.  Checked
+  against gcc-13 (`gcc-13` exists in WSL; plain `gcc` is 15).  Golden misc_116.
+- Open: a bare `#if` reports at column 2 (gcc: after the directive name);
+  `u8"x"` in #if lexes as an identifier and a string in -std=c99.
+- Gate: 1179 pass, san 414/0, gcc.dg 87 / c-c++-common 35 differ.

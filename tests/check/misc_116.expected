@@ -1,0 +1,40 @@
+misc_116.c:3:7: error: token ""x"" is not valid in preprocessor expressions
+    3 | #if 1 "x"
+      |       ^~~
+misc_116.c:5:5: error: token ""x"" is not valid in preprocessor expressions
+    5 | #if "x"
+      |     ^~~
+misc_116.c:7:8: error: operator '?' has no right operand
+    7 | #if 1 ?
+      |        ^
+misc_116.c:9:10: error: '?' without following ':'
+    9 | #if 1 ? 2
+      |          ^
+misc_116.c:11:12: error: operator ':' has no right operand
+   11 | #if 1 ? 2 :
+      |            ^
+misc_116.c:13:9: error: operator '?' has no right operand
+   13 | #if (1 ?)
+      |         ^
+misc_116.c:15:6: error: missing expression between '(' and ')'
+   15 | #if ()
+      |      ^
+misc_116.c:17:5: error: missing '(' in expression
+   17 | #if )
+      |     ^
+misc_116.c:19:5: error: missing ')' in expression
+   19 | #if (
+      |     ^
+misc_116.c:21:5: error: operator '*' has no left operand
+   21 | #if * 1
+      |     ^
+misc_116.c:23:9: error: operator '+' has no right operand
+   23 | #if 1 + * 2
+      |         ^
+misc_116.c:25:7: warning: comma operator in operand of #if [-Wpedantic]
+   25 | #if 1 ,
+      |       ^
+misc_116.c:25:8: error: operator ',' has no right operand
+   25 | #if 1 ,
+      |        ^
+misc_116.c:27: warning: ISO C forbids an empty translation unit [-Wpedantic]
