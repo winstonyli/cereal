@@ -169,9 +169,10 @@ TypeId type_canon(TypeTable *tt, TypeId t)
     if (e->kind == TY_ARRAY || e->kind == TY_VLA) {
         uint8_t ek = e->kind, ef = e->flags;   /* ents may grow below */
         uint64_t en = e->n;
+        uint32_t ex = e->extra;
         TypeId el = type_canon(tt, e->base | TYPE_QUALS(c));
         if (ek == TY_VLA)
-            return type_vla(tt, el);
+            return type_vla_x(tt, el, en, ef & TF_SIZED, ex);
         if (ef & TF_INCOMPLETE)
             return (ef & TF_FLEX) ? type_array_flex(tt, el)
                                   : type_array_incomplete(tt, el);
@@ -189,13 +190,19 @@ TypeId type_ptr(TypeTable *tt, TypeId to)
     return hashcons(tt, (TypeEnt){.kind = TY_PTR, .base = to}, canon);
 }
 
+static TypeId mk_array_x(TypeTable *tt, uint8_t kind, uint8_t flags,
+                         TypeId elem, uint64_t n, uint32_t extra)
+{
+    TypeId c = type_canon(tt, elem);
+    TypeId canon = c == elem ? 0 : mk_array_x(tt, kind, flags, c, n, extra);
+    return hashcons(tt, (TypeEnt){.kind = kind, .flags = flags, .base = elem,
+                                  .n = n, .extra = extra}, canon);
+}
+
 static TypeId mk_array(TypeTable *tt, uint8_t kind, uint8_t flags,
                        TypeId elem, uint64_t n)
 {
-    TypeId c = type_canon(tt, elem);
-    TypeId canon = c == elem ? 0 : mk_array(tt, kind, flags, c, n);
-    return hashcons(tt, (TypeEnt){.kind = kind, .flags = flags, .base = elem,
-                                  .n = n}, canon);
+    return mk_array_x(tt, kind, flags, elem, n, 0);
 }
 
 TypeId type_array(TypeTable *tt, TypeId elem, uint64_t n)
@@ -216,6 +223,32 @@ TypeId type_array_flex(TypeTable *tt, TypeId elem)
 TypeId type_vla(TypeTable *tt, TypeId elem)
 {
     return mk_array(tt, TY_VLA, 0, elem, 0);
+}
+
+TypeId type_vla_sized(TypeTable *tt, TypeId elem, uint64_t n)
+{
+    return mk_array(tt, TY_VLA, TF_SIZED, elem, n);
+}
+
+TypeId type_vla_x(TypeTable *tt, TypeId elem, uint64_t n, bool sized,
+                  uint32_t txt)
+{
+    return mk_array_x(tt, TY_VLA, sized ? TF_SIZED : 0, elem, n, txt);
+}
+
+uint32_t type_vla_text(TypeTable *tt, const char *s)
+{
+    return intern_cstr(tt->in, s)->id;
+}
+
+/* The element count of an array type when it is a known constant. */
+static bool known_count(const TypeEnt *e, uint64_t *n)
+{
+    if (e->kind == TY_ARRAY ? (e->flags & TF_INCOMPLETE)
+                            : !(e->flags & TF_SIZED))
+        return false;
+    *n = e->n;
+    return true;
 }
 
 TypeId type_func(TypeTable *tt, TypeId ret, const TypeId *params,
@@ -671,10 +704,10 @@ bool type_compatible(TypeTable *tt, TypeId a, TypeId b)
     if (is_array_kind(ea->kind) && is_array_kind(eb->kind)) {
         if (!type_compatible(tt, ea->base, eb->base))
             return false;
-        if (ea->kind == TY_VLA || eb->kind == TY_VLA ||
-            (ea->flags & TF_INCOMPLETE) || (eb->flags & TF_INCOMPLETE))
-            return true;
-        return ea->n == eb->n;
+        uint64_t na, nb;
+        if (known_count(ea, &na) && known_count(eb, &nb))
+            return na == nb;
+        return true;
     }
     if (ea->kind != eb->kind)
         return false;
@@ -735,8 +768,13 @@ TypeId type_composite(TypeTable *tt, TypeId a, TypeId b)
             return type_array(tt, el, ea->n);
         if (eb->kind == TY_ARRAY && !(eb->flags & TF_INCOMPLETE))
             return type_array(tt, el, eb->n);
-        if (ea->kind == TY_VLA || eb->kind == TY_VLA)
-            return type_vla(tt, el);
+        if (ea->kind == TY_VLA || eb->kind == TY_VLA) {
+            uint64_t n = 0;
+            bool sized = known_count(ea, &n) || known_count(eb, &n);
+            uint32_t ex = ea->kind == TY_VLA && ea->extra ? ea->extra
+                          : eb->kind == TY_VLA ? eb->extra : 0;
+            return type_vla_x(tt, el, n, sized, ex);
+        }
         if ((ea->flags | eb->flags) & TF_FLEX)
             return type_array_flex(tt, el);
         return type_array_incomplete(tt, el);
@@ -1172,7 +1210,12 @@ void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
                     sb_printf(&d, "[%llu]", (unsigned long long)e->n);
                 t = e->base | q;
             } else if (e->kind == TY_VLA) {
-                sb_puts(&d, "[*]");
+                if (e->flags & TF_SIZED)
+                    sb_printf(&d, "[%llu]", (unsigned long long)e->n);
+                else if (e->extra)
+                    sb_printf(&d, "[%s]", ident_by_id(tt->in, e->extra)->str);
+                else
+                    sb_puts(&d, "[*]");
                 t = e->base | q;
             } else {
                 sb_putc(&d, '(');

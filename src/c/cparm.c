@@ -221,6 +221,23 @@ static void dim_of(Checker *c, uint32_t dn, PDim *d, bool first,
             d->arg = j + 1;
 }
 
+/* The spelling of the size of array declarator dn inside a type (NULL when
+ * it is not an expression). */
+char *cparm_dim_text(Checker *c, uint32_t dn)
+{
+    PDim d;
+    char *r = NULL;
+    dim_of(c, dn, &d, true, NULL, 0);
+    if (d.k == D_EXPR) {
+        r = d.ttxt;
+        d.ttxt = NULL;
+    }
+    free(d.txt);
+    free(d.ttxt);
+    free(d.key);
+    return r;
+}
+
 /* "(int, char *)": the parameter list of function type f. */
 static char *fparams(Checker *c, TypeId f)
 {

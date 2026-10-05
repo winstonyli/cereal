@@ -2495,7 +2495,7 @@ TypeId mvt(Checker *c, TypeId t)
         const TypeEnt *e = type_ent(TT, k);
         TypeId el = mvt(c, e->base);
         if (e->kind == TY_VLA)
-            return type_vla(TT, el);
+            return type_vla_x(TT, el, e->n, e->flags & TF_SIZED, e->extra);
         if (e->flags & TF_INCOMPLETE)
             return type_array_incomplete(TT, el);
         return type_array(TT, el, e->n);

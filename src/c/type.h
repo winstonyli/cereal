@@ -37,6 +37,7 @@ enum {
 /* TypeEnt.flags */
 enum {
     TF_INCOMPLETE = 1,       /* array: [] */
+    TF_SIZED = 4,            /* VLA: the count is a known constant (array of variably modified type) */
     TF_VARIADIC = 2,         /* function: ... */
     TF_NOPROTO = 4,          /* function: () declared without a prototype */
     TF_ALIGNED = 8,          /* typedef: .align overrides */
@@ -166,6 +167,11 @@ TypeId type_array(TypeTable *tt, TypeId elem, uint64_t n);
 TypeId type_array_incomplete(TypeTable *tt, TypeId elem);
 TypeId type_array_flex(TypeTable *tt, TypeId elem);
 TypeId type_vla(TypeTable *tt, TypeId elem);
+TypeId type_vla_sized(TypeTable *tt, TypeId elem, uint64_t n);
+/* A VLA that remembers its size expression's spelling (TYPE_EXTRA 0: none). */
+TypeId type_vla_x(TypeTable *tt, TypeId elem, uint64_t n, bool sized,
+                  uint32_t txt);
+uint32_t type_vla_text(TypeTable *tt, const char *s);
 /* flags: TF_VARIADIC, TF_NOPROTO. */
 TypeId type_func(TypeTable *tt, TypeId ret, const TypeId *params,
                  uint32_t n, unsigned flags);

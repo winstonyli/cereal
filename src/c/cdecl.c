@@ -4465,7 +4465,7 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         if (tg == N_ARRAY) {
             uint32_t sz = array_size_node(c, dn);
             bool itype_none = true, unspec;
-            bool vla = false;
+            bool vla = false, sized = false, this_varies = false;
             uint64_t n = 0;
             const Node *an = cnode(c, dn);
             array_ptr_quals = quals_of_warn(c, dn);
@@ -4509,7 +4509,7 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             if (sz != NO_NODE) {
                 bool size_int_const = node_int_cst(c, sz);
                 bool folded = c->ck[sz] == K_ICE || c->ck[sz] == K_FOLD;
-                bool this_varies = false;
+                this_varies = false;
                 int64_t sv = 0;
                 TypeId st = c->ty[sz];
                 bool bad_size = false;
@@ -4667,10 +4667,17 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                     if (tkind(c, et) == TY_VLA ||
                         ((tkind(c, et) == TY_STRUCT || tkind(c, et) == TY_UNION) &&
                          (type_record(TT, et)->flags & RF_VLA)))
+                    {
                         vla = true;
+                        sized = sz != NO_NODE;
+                    }
                 }
-                if (vla)
-                    type = type_vla(TT, type);
+                if (vla) {
+                    char *tx = this_varies ? cparm_dim_text(c, dn) : NULL;
+                    type = type_vla_x(TT, type, n, sized,
+                                      tx ? type_vla_text(TT, tx) : 0);
+                    free(tx);
+                }
                 else if (sz != NO_NODE || (unspec && !vla))
                     type = type_array(TT, type, n);
                 else if (ctx == DC_FIELD)

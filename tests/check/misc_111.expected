@@ -1,0 +1,3 @@
+misc_111.c:9:7: warning: assignment to 'int (*)[4][n + 1]' from incompatible pointer type 'int (*)[6][m]' [-Wincompatible-pointer-types]
+    9 |     p = a;
+      |       ^

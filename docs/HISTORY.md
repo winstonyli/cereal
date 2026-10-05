@@ -1567,3 +1567,15 @@ diagnostics and builds on the strinit table.
   input).
 - Gate: 1167 pass, san 408/0, gcc.dg differ 95, c-c++-common 35, callgrind
   3.703G.
+
+## Round 96: VLA dimension sizes
+
+- A variable length array type keeps a constant dimension (TF_SIZED, count in
+  `n`) when it is an array of variably modified type, and the spelling of a
+  variable one (`TypeEnt.extra`, an interned string from the declarator's
+  size expression).  Compatibility compares known counts, composite keeps
+  them, and the type printer writes `[4][n + 1]` instead of `[*][*]`
+  (array-5 line 27, C99 6.7.5.2p9).  Golden misc_111.
+- Open: pr83415 vector-subscript spelling; Warray-parameter-11 folding.
+- Gate: 1169 pass, san 409/0, gcc.dg differ 94, c-c++-common 35, callgrind
+  3.704G.
