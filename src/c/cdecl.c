@@ -4449,8 +4449,9 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         }
     } else if (sc == SC_EXTERN && initialized && !funcdef) {
         if (filescope) {
-            /* gcc allows extern const (a C++ idiom for internal linkage) */
-            if (!(type_quals & TQ_CONST))
+            /* -Wc++-compat lets extern const pass (a C++ idiom for
+             * internal linkage) */
+            if (!(type_quals & TQ_CONST) || !diag_enabled(c->diag, "c++-compat"))
                 cwarn(c, loc, "", "'%s' initialized and declared 'extern'",
                       cident(c, name));
         }
@@ -8664,7 +8665,7 @@ static void param_visit(Checker *c, uint32_t p)
     if ((cnode(c, p)->flags & NF_SEMI) && c->fwd_warned != c->par[p] + 1) {
         /* mark_forward_parm_decls: once per parameter scope */
         c->fwd_warned = c->par[p] + 1;
-        cpedantic(c, iloc(c, after + 1),
+        cpedantic(c, cdecl_line_start_loc(c, after),
                   "ISO C forbids forward parameter declarations");
     }
     ref = pushdecl(c, &s, false);

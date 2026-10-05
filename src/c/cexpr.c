@@ -1376,6 +1376,17 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
         sb_putc(sb, '(');
         type_print(TT, sb, c->ty[i]);
         sb_putc(sb, ')');
+        if (c->ty[k[1]] != ERRT && tkind(c, c->ty[k[1]]) == TY_FUNC) {
+            /* a function designator has decayed: gcc prints its address */
+            uint32_t x = strip_paren(c, k[1]), q[3];
+            while (x != NO_NODE && ntag(c, x) == N_UNARY &&
+                   npunct(c, x) == P_STAR && nkids(c, x, q, 3) == 1 &&
+                   tkind(c, c->ty[q[0]]) == TY_FUNC)
+                x = strip_paren(c, q[0]);
+            sb_putc(sb, '&');
+            pexpr(c, sb, x, PR_UNARY);
+            break;
+        }
         pexpr(c, sb, k[1], PR_UNARY);
         break;
     case N_UNARY:

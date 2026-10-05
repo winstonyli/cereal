@@ -1831,3 +1831,18 @@ diagnostics and builds on the strinit table.
   width (9.5 to 7). `float_to_int_bits` takes the width; `conv_arith` sets
   `uc_bw` for real sources too. Golden misc_133.
 - Gate: 1213 pass, san 431/0, gcc.dg 56 / c-c++-common 35, callgrind 3.708G.
+
+## Round 115: four more gcc.dg files
+
+- `extern const T x = v` is exempt from "initialized and declared 'extern'"
+  only under -Wc++-compat (Wno-c++-compat.c).
+- A function designator under a cast prints as its address,
+  `(long int (*)(int))&foo` (call-diag-1).
+- The element type of a declared array keeps its typedef name for
+  initializer messages (`'A' has no member named 'D'`; c99-init-2).
+- "ISO C forbids forward parameter declarations" sits at the first token of
+  the line holding the ';' (pr68533).
+- Not changed: concat2 (a string of 100000 pieces: `Node.aux` is 16 bits and
+  saturates at 65535; widening it costs memory on every node).
+- Golden misc_134. Gate: 1215 pass, san 432/0, gcc.dg 52 / c-c++-common 35,
+  callgrind 3.708G.

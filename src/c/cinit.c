@@ -543,7 +543,9 @@ static void setup_kind(Checker *c, Lvl *N, TypeId t)
     case LV_ARR: {
         TypeId cn = type_canon(TT, t);
         const TypeEnt *e = type_ent(TT, cn);
-        N->elem = type_base(TT, cn);
+        /* the array's own element type keeps a typedef name for messages */
+        N->elem = type_base(TT, type_ent(TT, TYPE_UNQUAL(t))->kind == e->kind
+                                    ? t : cn);
         if (e->kind == TY_VLA) {
             N->hasmax = true;
             N->maxidx = -1;

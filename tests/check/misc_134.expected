@@ -1,0 +1,18 @@
+misc_134.c:1:18: warning: 'foo' initialized and declared 'extern'
+    1 | extern const int foo = 42;
+      |                  ^
+misc_134.c:3:15: error: 'A' has no member named 'D'
+    3 | A c[] = { [0].D = 1 };
+      |               ^
+misc_134.c:5:19: error: too few arguments to function '(long int (*)(int))&g'
+    5 | void bar(void) { ((long (*)(int))g)(); ((long (*)(int))*g)(); }
+      |                   ^
+misc_134.c:5:41: error: too few arguments to function '(long int (*)(int))&g'
+    5 | void bar(void) { ((long (*)(int))g)(); ((long (*)(int))*g)(); }
+      |                                         ^
+misc_134.c:8:4: warning: ISO C forbids forward parameter declarations [-Wpedantic]
+    8 |    x;
+      |    ^
+misc_134.c:8:4: error: parameter 'x' has just a forward declaration
+    8 |    x;
+      |    ^
