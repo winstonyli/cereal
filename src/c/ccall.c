@@ -1920,7 +1920,7 @@ void e_index(Checker *c, uint32_t i)
         return;
     }
     if (!swapped && mainv(c, rvt(c, x)) == TYPE_B(CHAR) && !is_intcst(c, x))
-        cwarn(c, expr_loc(c, x), "char-subscripts",
+        cwarn(c, loc, "char-subscripts",
               "array subscript has type 'char'");
     if (is_array(c, c->ty[a])) {
         uint32_t v = strip_paren(c, a);

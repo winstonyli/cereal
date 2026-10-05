@@ -6869,13 +6869,25 @@ SrcLoc ctrad_loc(Checker *c, uint32_t tag, uint32_t init_tok)
     return cinput_loc(c, init_tok);
 }
 
-SrcLoc ctrad_decl_loc(Checker *c, uint32_t declared, uint32_t init_tok)
+static uint32_t decl_tag(Checker *c, uint32_t declared)
 {
     uint32_t d = c->par[declared], stop = cnode(c, declared)->tok;
     while (d != NO_NODE && ntag(c, d) != N_DECL)
         d = c->par[d];
-    return ctrad_loc(c, ctrad_tag(c, d == NO_NODE ? stop : first_tok(c, d),
-                                  stop), init_tok);
+    return ctrad_tag(c, d == NO_NODE ? stop : first_tok(c, d), stop);
+}
+
+SrcLoc ctrad_decl_loc(Checker *c, uint32_t declared, uint32_t init_tok)
+{
+    return ctrad_loc(c, decl_tag(c, declared), init_tok);
+}
+
+/* Where gcc is when it finishes the initializer: at the declaration's last
+ * struct/union tag, 0 if it has none. */
+SrcLoc cdecl_tag_loc(Checker *c, uint32_t declared)
+{
+    uint32_t tag = decl_tag(c, declared);
+    return tag ? ctok_loc(c, tag) : 0;
 }
 
 /* -Wtraditional: an automatic aggregate with an initializer (start_init). */

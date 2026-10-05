@@ -1652,3 +1652,18 @@ diagnostics and builds on the strinit table.
 - Open: a bare `#if` reports at column 2 (gcc: after the directive name);
   `u8"x"` in #if lexes as an identifier and a string in -std=c99.
 - Gate: 1179 pass, san 414/0, gcc.dg 87 / c-c++-common 35 differ.
+
+## Round 102: flexible-array strings, char subscripts, missing include
+
+- A string for a flexible array member that is stored out of order (a
+  designator that skips the earlier fields: `{ .b = "x" }`) is digested again
+  when gcc outputs the pending elements, so it gets a second "initialization
+  of a flexible array member" at the declaration's last struct tag, with the
+  "(near initialization for 'd')" note (c99-flex-array-7, -typedef-7).
+- `-Wchar-subscripts` is located at the `[`; a missing include reads
+  "NAME: No such file or directory" (strerror's wording).  Golden misc_117.
+- Open: after "flexible array member in a struct with no named members" cereal
+  drops the field, so a later `.b = ""` errors; gcc keeps the erroneous field
+  and stays silent.  The note after an out-of-order `.b = "x", .a = 1` names
+  `e1`, gcc `e1.a`.
+- Gate: 1181 pass, san 415/0, gcc.dg 83 / c-c++-common 35 differ, callgrind 3.704G.

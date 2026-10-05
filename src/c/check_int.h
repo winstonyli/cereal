@@ -718,6 +718,7 @@ void cinit_declared(Checker *c, uint32_t declared);
 uint32_t ctrad_tag(Checker *c, uint32_t first, uint32_t stop);
 SrcLoc ctrad_loc(Checker *c, uint32_t tag, uint32_t init_tok);
 SrcLoc ctrad_decl_loc(Checker *c, uint32_t declared, uint32_t init_tok);
+SrcLoc cdecl_tag_loc(Checker *c, uint32_t declared);
 /* An INIT_DECL is about to finish: checks a brace-less initializer. */
 void cinit_decl_done(Checker *c, uint32_t idecl);
 void cexpr_note_strinit(Checker *c, CSym *s, uint32_t init);

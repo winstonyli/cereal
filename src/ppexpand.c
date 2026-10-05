@@ -876,7 +876,7 @@ static void pragma_dependency(PP *pp, TokSpan toks, SrcLoc at)
     name = arena_strndup(pp->arena, pp_text(pp, nt) + 1, nt->len - 2);
     f = pp_find_include(pp, name, false, false, &di);
     if (!f) {
-        diag_report(pp->diag, DL_ERROR, "", sc ? at : nt->loc, "'%s' file not found",
+        diag_report(pp->diag, DL_ERROR, "", sc ? at : nt->loc, "%s: No such file or directory",
                     name);
         return;
     }

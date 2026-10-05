@@ -80,6 +80,7 @@ typedef struct Lvl {
     uint8_t kind;
     bool implicit, designated, erroneous, varsize, inc, hasmax, flex, fhn;
     bool has_repl, lag, onlyzero, lastside, anyside, eldes;
+    bool fpend;              /* a flexible array's string is pending */
     TypeId type;             /* as declared, qualifiers included */
     TypeId elem;
     int64_t maxidx, idx, ui, lagmax;
@@ -97,6 +98,7 @@ typedef struct CCtx {
     bool reqc, dm, varroot;
     uint32_t init_loc;       /* token of the brace (or the type name) */
     SrcLoc trad_loc;         /* -Wtraditional's location, 0 if none */
+    SrcLoc decl_loc;         /* the declarator, 0 if none */
     Lvl *stk;
     StrBuf path;
     size_t *dl;
@@ -1294,6 +1296,11 @@ static void add_pending(Checker *c, CCtx *x, Lvl *L, uint32_t lt, int64_t key,
     }
     if (v->side)
         L->anyside = true;
+    /* an out-of-order string for a flexible array is digested again when the
+     * pending elements are output, at the declarator */
+    if (v->str && L->kind == LV_REC && key >= 0 && (uint32_t)key < L->nf &&
+        incomplete_arr(c, lf(c, L, (uint32_t)key)->ty))
+        L->fpend = true;
 }
 
 /* -Woverflow for a constant stored into a bit-field: gcc converts to the
@@ -1663,6 +1670,11 @@ static IVal pop_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
     }
     L = x->stk;
     flush_all(c, x, L);
+    if (L->fpend && x->decl_loc && c->opt.pedantic) {
+        Diagnostic *d = cpedantic(c, x->decl_loc,
+                                  "initialization of a flexible array member");
+        near_note(c, x, d, x->decl_loc);
+    }
 
     /* a flexible array member in an inappropriate context */
     if (L->kind == LV_ARR && L->flex) {
@@ -2323,6 +2335,10 @@ void cinit_declared(Checker *c, uint32_t declared)
         label = cident(c, s->name);
     }
     x = ctx_open(c, list, reqc, label, c->nodes[list].tok, false);
+    if (c->cb[declared])
+        x->decl_loc = cdecl_tag_loc(c, declared)
+                          ? cdecl_tag_loc(c, declared)
+                          : csym(c, c->cb[declared] - 1)->loc;
     if (diag_enabled(c->diag, "traditional"))
         x->trad_loc = ctrad_decl_loc(c, declared, c->nodes[list].tok);
     x->varroot = !is_err(c, type) && is_varsize(c, type);

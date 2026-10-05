@@ -1605,7 +1605,7 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
         ev.result = INC_NOT_FOUND;
         diag_report(pp->diag, pp->opt->fatal_missing_include ? DL_FATAL
                                                               : DL_ERROR,
-                    "", line.t[0].loc, "'%s' file not found", name);
+                    "", line.t[0].loc, "%s: No such file or directory", name);
         if (pp->opt->fatal_missing_include)
             pp->halted = true;
         PP_EMIT(pp, include, &ev);

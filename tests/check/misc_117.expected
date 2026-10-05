@@ -1,0 +1,45 @@
+misc_117.c:7:21: warning: initialization of a flexible array member [-Wpedantic]
+    7 | struct s d = { .b = "" };
+      |                     ^
+misc_117.c:7:21: note: (near initialization for 'd.b')
+    7 | struct s d = { .b = "" };
+      |                     ^
+misc_117.c:7:8: warning: initialization of a flexible array member [-Wpedantic]
+    7 | struct s d = { .b = "" };
+      |        ^
+misc_117.c:7:8: note: (near initialization for 'd')
+    7 | struct s d = { .b = "" };
+      |        ^
+misc_117.c:8:21: warning: initialization of a flexible array member [-Wpedantic]
+    8 | struct s e = { .b = "x", };
+      |                     ^
+misc_117.c:8:21: note: (near initialization for 'e.b')
+    8 | struct s e = { .b = "x", };
+      |                     ^
+misc_117.c:8:8: warning: initialization of a flexible array member [-Wpedantic]
+    8 | struct s e = { .b = "x", };
+      |        ^
+misc_117.c:8:8: note: (near initialization for 'e')
+    8 | struct s e = { .b = "x", };
+      |        ^
+misc_117.c:9:29: warning: initialization of a flexible array member [-Wpedantic]
+    9 | struct s f = { .a = 1, .b = "x" };
+      |                             ^
+misc_117.c:9:29: note: (near initialization for 'f.b')
+    9 | struct s f = { .a = 1, .b = "x" };
+      |                             ^
+misc_117.c:10:19: warning: initialization of a flexible array member [-Wpedantic]
+   10 | struct s g = { 1, "x" };
+      |                   ^
+misc_117.c:10:19: note: (near initialization for 'g.b')
+   10 | struct s g = { 1, "x" };
+      |                   ^
+misc_117.c:11:21: warning: initialization of a flexible array member [-Wpedantic]
+   11 | struct s h = { .b = { 1 } };
+      |                     ^
+misc_117.c:11:21: note: (near initialization for 'h.b')
+   11 | struct s h = { .b = { 1 } };
+      |                     ^
+misc_117.c:18:15: warning: array subscript has type 'char' [-Wchar-subscripts]
+   18 |     return arr[ch] + ch[arr];
+      |               ^
