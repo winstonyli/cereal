@@ -4317,7 +4317,9 @@ static void deref(Checker *c, uint32_t i, uint32_t a)
             return;
         }
     }
-    if (is_void(c, b) && !inhibited(c, i, false))
+    /* *&&label folds to the label (a void) */
+    if (is_void(c, b) && !inhibited(c, i, false) &&
+        ntag(c, s) != N_ADDR_LABEL)
         cwarn(c, loc, "", "dereferencing 'void *' pointer");
     alias_deref(c, a, false, loc);
     c->ty[i] = b;
@@ -5347,8 +5349,12 @@ static void e_va_arg(Checker *c, uint32_t i)
         return;
     }
     if (!complete(c, t)) {
-        cerror(c, first_loc(c, k[1]), "second argument to 'va_arg' is of "
-               "incomplete type %s", type_q(TT, t));
+        if (is_func(c, t))
+            cerror(c, first_loc(c, k[1]), "second argument to 'va_arg' is a "
+                   "function type %s", type_q(TT, t));
+        else
+            cerror(c, first_loc(c, k[1]), "second argument to 'va_arg' is of "
+                   "incomplete type %s", type_q(TT, t));
         set_err(c, i);
         return;
     }

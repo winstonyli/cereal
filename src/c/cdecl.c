@@ -5319,6 +5319,17 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
     {
         TypeId a = o->kind == CS_TYPEDEF ? typedef_under(c, oldtype) : oldtype;
         TypeId b = o->kind == CS_TYPEDEF ? typedef_under(c, newtype) : newtype;
+        /* gcc's noreturn is a volatile function type: 'volatile' written on
+         * one declaration agrees with 'noreturn' on the other */
+        if (nw->kind == CS_FUNC && type_ckind(TT, a) == TY_FUNC &&
+            type_ckind(TT, b) == TY_FUNC) {
+            if (!(TYPE_QUALS(a) & TQ_VOLATILE) && (TYPE_QUALS(b) & TQ_VOLATILE) &&
+                (o->flags & CSF_NORETURN))
+                a |= TQ_VOLATILE;
+            else if (!(TYPE_QUALS(b) & TQ_VOLATILE) &&
+                     (TYPE_QUALS(a) & TQ_VOLATILE) && (nw->flags & CSF_NORETURN))
+                b |= TQ_VOLATILE;
+        }
         if (!compat_gcc(c, a, b)) {
             if (nw->kind == CS_FUNC && sym_defined(nw) &&
                 is_void(c, type_base(TT, oldtype)) &&
@@ -5687,8 +5698,10 @@ static bool duplicate_decls(Checker *c, CSym *nw, bool nfile, uint32_t oldref,
     TypeId nt, ot;
     CSym *o = csym(c, oldref);
     if (!diagnose_mismatched(c, nw, nfile, o, ref_file_scope(oldref),
-                             implicit_int, &nt, &ot))
+                             implicit_int, &nt, &ot)) {
+        c->redecl_failed = true;
         return false;
+    }
     c->vis_old = *o;
     c->vis_old_ok = true;
     merge_decls(c, nw, o, nt, ot);
@@ -6538,6 +6551,7 @@ static void declared_visit(Checker *c, uint32_t i)
     }
     decl = c->par[idecl];
     c->vis_old_ok = false;
+    c->redecl_failed = false;
     sn = first_child(c, decl);
     top = first_child(c, idecl);
     kr = c->par[decl] != NO_NODE && ntag(c, c->par[decl]) == N_FUNC_DEF;
@@ -7107,8 +7121,10 @@ static void init_decl_visit(Checker *c, uint32_t idecl)
                            sname(c, s));
                 break;
             case 3:
-                cerror(c, s->loc, "zero or negative size array '%s'",
-                       sname(c, s));
+                /* a conflicting redeclaration left the old declaration */
+                if (!c->redecl_failed)
+                    cerror(c, s->loc, "zero or negative size array '%s'",
+                           sname(c, s));
                 break;
             default:
                 break;

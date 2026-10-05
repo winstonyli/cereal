@@ -1,0 +1,72 @@
+misc_131.c:3:59: error: second argument to 'va_arg' is a function type 'int(void)'
+    3 | void foo(int s, ...) { va_list ap; int e; e = va_arg (ap, int (void)) (); int a[2]; (void)va_arg(ap, int[2]); (void)va_arg(ap, void); (void)va_arg(ap, struct S); }
+      |                                                           ^
+misc_131.c:3:128: error: second argument to 'va_arg' is of incomplete type 'void'
+    3 | void foo(int s, ...) { va_list ap; int e; e = va_arg (ap, int (void)) (); int a[2]; (void)va_arg(ap, int[2]); (void)va_arg(ap, void); (void)va_arg(ap, struct S); }
+      |                                                                                                                                ^
+misc_131.c:3:152: error: second argument to 'va_arg' is of incomplete type 'struct S'
+    3 | void foo(int s, ...) { va_list ap; int e; e = va_arg (ap, int (void)) (); int a[2]; (void)va_arg(ap, int[2]); (void)va_arg(ap, void); (void)va_arg(ap, struct S); }
+      |                                                                                                                                                        ^
+misc_131.c:5:7: error: conflicting types for 'a'; have 'void *[]'
+    5 | void *a[] = {};
+      |       ^
+misc_131.c:4:5: note: previous declaration of 'a' with type 'int'
+    4 | int a;
+      |     ^
+misc_131.c:5:13: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    5 | void *a[] = {};
+      |             ^
+misc_131.c:6:11: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    6 | int b[] = {};
+      |           ^
+misc_131.c:6:5: error: zero or negative size array 'b'
+    6 | int b[] = {};
+      |     ^
+misc_131.c:8:5: error: conflicting types for 'c'; have 'int[]'
+    8 | int c[] = {};
+      |     ^
+misc_131.c:7:19: note: previous declaration of 'c' with type 'struct S'
+    7 | struct S {int q;} c;
+      |                   ^
+misc_131.c:8:11: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    8 | int c[] = {};
+      |           ^
+misc_131.c:10:5: error: conflicting types for 'd'; have 'int[]'
+   10 | int d[] = {1,2};
+      |     ^
+misc_131.c:9:5: note: previous declaration of 'd' with type 'int'
+    9 | int d;
+      |     ^
+misc_131.c:11:31: warning: a member of a structure or union cannot have a variably modified type [-Wpedantic]
+   11 | void f(int c){ struct s { int x[c]; struct { int z; } nest; } v = { 1, 2 }; int a[c] = {1,2}; int b[c] = {}; struct t { int n; int y[c]; } w = {1,2,3}; }
+      |                               ^
+misc_131.c:11:67: error: variable-sized object may not be initialized except with an empty initializer
+   11 | void f(int c){ struct s { int x[c]; struct { int z; } nest; } v = { 1, 2 }; int a[c] = {1,2}; int b[c] = {}; struct t { int n; int y[c]; } w = {1,2,3}; }
+      |                                                                   ^
+misc_131.c:11:88: error: variable-sized object may not be initialized except with an empty initializer
+   11 | void f(int c){ struct s { int x[c]; struct { int z; } nest; } v = { 1, 2 }; int a[c] = {1,2}; int b[c] = {}; struct t { int n; int y[c]; } w = {1,2,3}; }
+      |                                                                                        ^
+misc_131.c:11:106: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   11 | void f(int c){ struct s { int x[c]; struct { int z; } nest; } v = { 1, 2 }; int a[c] = {1,2}; int b[c] = {}; struct t { int n; int y[c]; } w = {1,2,3}; }
+      |                                                                                                          ^
+misc_131.c:11:132: warning: a member of a structure or union cannot have a variably modified type [-Wpedantic]
+   11 | void f(int c){ struct s { int x[c]; struct { int z; } nest; } v = { 1, 2 }; int a[c] = {1,2}; int b[c] = {}; struct t { int n; int y[c]; } w = {1,2,3}; }
+      |                                                                                                                                    ^
+misc_131.c:11:144: error: variable-sized object may not be initialized except with an empty initializer
+   11 | void f(int c){ struct s { int x[c]; struct { int z; } nest; } v = { 1, 2 }; int a[c] = {1,2}; int b[c] = {}; struct t { int n; int y[c]; } w = {1,2,3}; }
+      |                                                                                                                                                ^
+misc_131.c:14:26: warning: ISO C forbids qualified function types [-Wpedantic]
+   14 | __volatile extern voidfn xxx;
+      |                          ^
+misc_131.c:19:14: warning: ISO C forbids qualified function types [-Wpedantic]
+   19 | volatile vfn zzz;
+      |              ^
+misc_131.c:24:4: warning: taking the address of a label is non-standard [-Wpedantic]
+   24 |    p = &&L;
+      |    ^
+misc_131.c:25:4: warning: dereferencing 'void *' pointer
+   25 |    *p;
+      |    ^
+misc_131.c:26:4: warning: taking the address of a label is non-standard [-Wpedantic]
+   26 |    *&&L;
+      |    ^

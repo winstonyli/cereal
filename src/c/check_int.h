@@ -394,6 +394,7 @@ struct Checker {
     bool cd_builtin;         /* ... the prototype is a library built-in's */
     CSym vis_old;            /* the symbol a redeclaration merged into, before the merge */
     bool vis_old_ok;
+    bool redecl_failed;      /* the last declaration conflicted with its predecessor */
     bool lax_noted;          /* the -flax-vector-conversions note was given */
     /* cexpr.c: identifiers already reported undeclared in the function
      * undecl_key names; whether the once-per-TU note was given; nodes

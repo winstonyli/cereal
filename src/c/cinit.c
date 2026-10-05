@@ -96,6 +96,7 @@ typedef struct CCtx {
     struct CCtx *prev;
     uint32_t list, lo, hi;   /* the INIT_LIST and its node range */
     bool reqc, dm, varroot;
+    bool varerr;             /* "variable-sized object" was reported */
     uint32_t init_loc;       /* token of the brace (or the type name) */
     SrcLoc trad_loc;         /* -Wtraditional's location, 0 if none */
     SrcLoc decl_loc;         /* the declarator, 0 if none */
@@ -1244,9 +1245,12 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
         return true;
     }
 
-    if (tk != TY_ERROR && is_varsize(c, type))
+    if (tk != TY_ERROR && is_varsize(c, type)) {
         ierr(c, x, lt, "variable-sized object may not be initialized except "
              "with an empty initializer");
+        if (x)
+            x->varerr = true;
+    }
     else
         ierr(c, x, lt, "invalid initializer");
     return false;
@@ -1903,7 +1907,8 @@ static int element_step(Checker *c, CCtx *x, uint32_t lt, IVal *v,
             return ST_PUSHED;
         }
         if (L->hasmax && (L->maxidx < L->idx || L->maxidx == -1)) {
-            iped(c, x, lt, "excess elements in array initializer");
+            if (!x->varerr)
+                iped(c, x, lt, "excess elements in array initializer");
             return ST_BREAK;
         }
         if (has) {
@@ -2401,8 +2406,11 @@ void cinit_pre(Checker *c, uint32_t i)
             }
             start_root(c, x, type);
             if (x->varroot && c->nodes[list].size > 1)
+            {
                 cerror(c, tloc(c, lbrace), "variable-sized object may not be "
                        "initialized except with an empty initializer");
+                x->varerr = true;
+            }
             empty_braces(c, x, list);
         } else {
             uint32_t par = c->par[list];

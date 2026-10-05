@@ -1788,3 +1788,20 @@ diagnostics and builds on the strinit table.
   gcc also prints a bare "previous definition" note after a prototype whose
   parameter is erroneous (proto-1); notes are not compared by par.py.
 - Gate: 1207 pass, san 428/0, gcc.dg 65 / c-c++-common 35, callgrind 3.706G.
+
+## Round 112: five single-line gcc.dg differences
+
+- va_arg of a function type: "is a function type" (pr105149).
+- `*&&label` is not "dereferencing 'void *' pointer" (comp-goto-4).
+- A conflicting redeclaration of an array with `= {}` leaves the old
+  declaration: no "zero or negative size array" (pr94726;
+  `Checker.redecl_failed`).
+- After "variable-sized object may not be initialized", the rest of the
+  initializer gives no "excess elements" (pr93577-1; `CCtx.varerr`).
+- `volatile` written on a function declaration agrees with an earlier
+  `noreturn` (gcc's noreturn is a volatile function type; noreturn-5).
+  Golden misc_131.
+- By design, not changed: a missing #include is an error and the unit goes on
+  (gcc: fatal, stops; only -E stops, `fatal_missing_include`), so pr89434 and
+  files like it differ in severity.
+- Gate: 1209 pass, san 429/0, gcc.dg 60 / c-c++-common 35, callgrind 3.706G.
