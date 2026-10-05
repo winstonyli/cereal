@@ -677,8 +677,11 @@ static void skip_until(Parser *p, Punct want)
             if (x == P_LPAREN || x == P_LBRACKET || x == P_LBRACE)
                 depth++;
             else if ((x == P_RPAREN || x == P_RBRACKET || x == P_RBRACE) &&
-                     depth-- == 0)
+                     depth-- == 0) {
+                /* left for the caller, which may report it again */
+                p->err.have = false;
                 break;
+            }
         }
         skip_tok(p);
     }
@@ -2272,6 +2275,9 @@ static void has_attr_expr(Parser *p)
             emit(p, N_ATTR_ITEM, name, s, 0);
         } else {
             expected(p, "identifier");
+            skip_past_rparen(p);
+            emit(p, N_HAS_ATTR, kw, start, 0);
+            return;
         }
     }
     expect(p, P_RPAREN);
@@ -2535,10 +2541,8 @@ static void substatement(Parser *p)
 static void end_stmt(Parser *p, NodeTag tag, uint32_t tok, uint32_t start)
 {
     unsigned flags = 0;
-    if (!expect(p, P_SEMI)) {
-        sync_stmt(p);
+    if (!expect_skip(p, P_SEMI))
         flags = NF_ERROR;
-    }
     emit(p, tag, tok, start, flags);
 }
 
@@ -2546,7 +2550,7 @@ static void paren_expr(Parser *p)
 {
     expect(p, P_LPAREN);
     parse_expr(p);
-    expect(p, P_RPAREN);
+    expect_skip(p, P_RPAREN);
 }
 
 /* A label may end a compound statement (GNU, C23). */
@@ -2736,6 +2740,12 @@ static void statement(Parser *p)
         attributes(p);
         label_body(p);
         emit(p, N_LABEL, i, start, 0);
+        return;
+    }
+    if (is_p(&t, P_RPAREN) || is_p(&t, P_RBRACKET)) {
+        expected(p, "statement");
+        sync_stmt(p);
+        emit(p, N_EXPR_STMT, i, start, NF_ERROR);
         return;
     }
     parse_expr(p);

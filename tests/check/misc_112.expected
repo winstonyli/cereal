@@ -1,0 +1,24 @@
+misc_112.c:6:10: error: expected ';' before ')' token
+    6 |     x = 1); 
+      |          ^
+misc_112.c:6:10: error: expected statement before ')' token
+    6 |     x = 1); 
+      |          ^
+misc_112.c:7:10: error: expected ';' before ']' token
+    7 |     x = 2];
+      |          ^
+misc_112.c:7:10: error: expected statement before ']' token
+    7 |     x = 2];
+      |          ^
+misc_112.c:8:5: error: expected statement before ')' token
+    8 |     );
+      |     ^
+misc_112.c:9:12: error: expected expression before 'int'
+    9 |     while (int i);
+      |            ^
+misc_112.c:10:13: error: expected ';' before ')' token
+   10 |     return 1);
+      |             ^
+misc_112.c:10:13: error: expected statement before ')' token
+   10 |     return 1);
+      |             ^

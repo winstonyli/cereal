@@ -1579,3 +1579,15 @@ diagnostics and builds on the strinit table.
 - Open: pr83415 vector-subscript spelling; Warray-parameter-11 folding.
 - Gate: 1169 pass, san 409/0, gcc.dg differ 94, c-c++-common 35, callgrind
   3.704G.
+
+## Round 97: statement recovery
+
+- A missing ';' skips as gcc's c_parser_skip_until_found does and stops at an
+  unmatched ')' or ']' (clearing the one-error-per-place guard); a ')' or
+  ']' that starts a statement is "expected statement".  A parenthesised
+  condition skips to its ')' after a failed expression, and
+  __builtin_has_attribute skips past its ')' after a bad attribute
+  (20050209-1, 20031222-1 kept).  Golden misc_112.
+- Open: for-1 (extra "expected declaration or statement at end of input").
+- Gate: 1171 pass, san 410/0, gcc.dg differ 93, c-c++-common 35, callgrind
+  3.704G.
