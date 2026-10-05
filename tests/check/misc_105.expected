@@ -1,0 +1,114 @@
+misc_105.c:6:1: warning: 'used' attribute ignored [-Wattributes]
+    6 | void p1 (int (*U) (void));
+      | ^
+misc_105.c:7:1: warning: 'used' attribute ignored [-Wattributes]
+    7 | void p2 (int (*U bar) (void));
+      | ^
+misc_105.c:8:1: warning: 'used' attribute ignored [-Wattributes]
+    8 | void p3 (int *U q);
+      | ^
+misc_105.c:9:1: warning: 'used' attribute ignored [-Wattributes]
+    9 | void p4 (int U q);
+      | ^
+misc_105.c:10:1: warning: 'used' attribute ignored [-Wattributes]
+   10 | void p5 (U int q);
+      | ^
+misc_105.c:13:1: warning: ignoring attribute 'alloc_size (1)' because it conflicts with previous 'alloc_size (2, 3)' [-Wattributes]
+   13 | typedef A (1) char* F (int, int, int);
+      | ^
+misc_105.c:13:21: warning: redefinition of typedef 'F' [-Wpedantic]
+   13 | typedef A (1) char* F (int, int, int);
+      |                     ^
+misc_105.c:12:24: note: previous declaration of 'F' with type 'F' {aka 'char *(int,  int,  int)'}
+   12 | typedef A (2, 3) char* F (int, int, int);
+      |                        ^
+misc_105.c:15:1: warning: ignoring attribute 'alloc_size (2)' because it conflicts with previous 'alloc_size (1)' [-Wattributes]
+   15 | typedef A (2) char* G (int, int, int);
+      | ^
+misc_105.c:15:21: warning: redefinition of typedef 'G' [-Wpedantic]
+   15 | typedef A (2) char* G (int, int, int);
+      |                     ^
+misc_105.c:14:21: note: previous declaration of 'G' with type 'G' {aka 'char *(int,  int,  int)'}
+   14 | typedef A (1) char* G (int, int, int);
+      |                     ^
+misc_105.c:17:15: warning: redefinition of typedef 'H' [-Wpedantic]
+   17 | typedef char* H (int, int, int);
+      |               ^
+misc_105.c:16:21: note: previous declaration of 'H' with type 'H' {aka 'char *(int,  int,  int)'}
+   16 | typedef A (1) char* H (int, int, int);
+      |                     ^
+misc_105.c:20:1: warning: ignoring attribute 'nocommon' because it conflicts with attribute 'common' [-Wattributes]
+   20 | __attribute__ ((copy (cv), copy (nv))) long x1;
+      | ^
+misc_105.c:19:35: note: previous declaration here
+   19 | __attribute__ ((nocommon)) double nv;
+      |                                   ^
+misc_105.c:21:1: warning: ignoring attribute 'common' because it conflicts with attribute 'nocommon' [-Wattributes]
+   21 | __attribute__ ((copy (nv), copy (cv))) long x2;
+      | ^
+misc_105.c:18:30: note: previous declaration here
+   18 | __attribute__ ((common)) int cv;
+      |                              ^
+misc_105.c:22:1: warning: ignoring attribute 'nocommon' because it conflicts with attribute 'common' [-Wattributes]
+   22 | __attribute__ ((copy (cv))) __attribute__ ((nocommon)) long x3;
+      | ^
+misc_105.c:23:1: warning: ignoring attribute 'common' because it conflicts with attribute 'nocommon' [-Wattributes]
+   23 | __attribute__ ((nocommon)) __attribute__ ((copy (cv))) long x4;
+      | ^
+misc_105.c:18:30: note: previous declaration here
+   18 | __attribute__ ((common)) int cv;
+      |                              ^
+misc_105.c:24:1: error: wrong number of arguments specified for 'copy' attribute
+   24 | __attribute__ ((copy (cv, nv))) long x5;
+      | ^
+misc_105.c:24:1: note: expected 1, found 2
+   24 | __attribute__ ((copy (cv, nv))) long x5;
+      | ^
+misc_105.c:26:1: warning: 'tls_model' attribute ignored because 'nt' does not have thread storage duration [-Wattributes]
+   26 | int nt __attribute__ ((tls_model ("global-dynamic")));
+      | ^
+misc_105.c:27:1: warning: 'tls_model' attribute ignored because 'al1' does not have thread storage duration [-Wattributes]
+   27 | __attribute__ ((copy (tt))) extern int al1;
+      | ^
+misc_105.c:29:1: warning: 'tls_model' attribute ignored because 'al3' does not have thread storage duration [-Wattributes]
+   29 | extern int al3 __attribute__ ((copy (tt)));
+      | ^
+misc_105.c:30:1: warning: 'tls_model' attribute ignored because 'al4' does not have thread storage duration [-Wattributes]
+   30 | __attribute__ ((copy (tt))) int al4;
+      | ^
+misc_105.c:31:1: warning: 'tls_model' attribute ignored because 'al5' does not have thread storage duration [-Wattributes]
+   31 | void f (void) { __attribute__ ((copy (tt))) static int al5; }
+      | ^
+misc_105.c:32:1: warning: bad option '-fno-lto' to attribute 'optimize' [-Wattributes]
+   32 | int __attribute__((optimize("no-lto"))) a(void){return 0;}
+      | ^
+misc_105.c:33:1: warning: bad option '-flto' to attribute 'optimize' [-Wattributes]
+   33 | int __attribute__((optimize("lto"))) b(void){return 0;}
+      | ^
+misc_105.c:34:1: warning: bad option '-fno-lto' to attribute 'optimize' [-Wattributes]
+   34 | int __attribute__((optimize("-fno-lto"))) c(void){return 0;}
+      | ^
+misc_105.c:36:1: warning: bad option '-ffoo' to attribute 'optimize' [-Wattributes]
+   36 | int __attribute__((optimize("foo"))) e(void){return 0;}
+      | ^
+misc_105.c:37:1: warning: bad option '-fno-foo' to attribute 'optimize' [-Wattributes]
+   37 | int __attribute__((optimize("no-foo"))) f(void){return 0;}
+      | ^
+misc_105.c:37:41: error: conflicting types for 'f'; have 'int(void)'
+   37 | int __attribute__((optimize("no-foo"))) f(void){return 0;}
+      |                                         ^
+misc_105.c:31:6: note: previous definition of 'f' with type 'void(void)'
+   31 | void f (void) { __attribute__ ((copy (tt))) static int al5; }
+      |      ^
+misc_105.c:38:1: warning: bad option '-flto' to attribute 'optimize' [-Wattributes]
+   38 | int __attribute__((optimize("-flto"))) g(void){return 0;}
+      | ^
+misc_105.c:39:1: warning: bad option '-fno-fat-lto-objects' to attribute 'optimize' [-Wattributes]
+   39 | int __attribute__((optimize("no-fat-lto-objects"))) h(void){return 0;}
+      | ^
+misc_105.c:40:1: warning: bad option '-fwhole-program' to attribute 'optimize' [-Wattributes]
+   40 | int __attribute__((optimize("whole-program"))) i(void){return 0;}
+      | ^
+misc_105.c:41:1: warning: bad option '-fno-use-linker-plugin' to attribute 'optimize' [-Wattributes]
+   41 | int __attribute__((optimize("no-use-linker-plugin"))) j(void){return 0;}
+      | ^

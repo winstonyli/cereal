@@ -884,9 +884,10 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                    ntag(c, arg) == N_STRING) {
             uint32_t m = cdep_msg(c, arg);  /* pushes: read it, then drop */
             const char *o = c->dep_msgs.data[m - 1];
-            if (!strchr(o, ' ') && cpragma_optimize_bad(o))
+            char no[104];
+            if (!strchr(o, ' ') && *o && cpragma_optimize_bad(o, no, sizeof no))
                 cwarn(c, cinput_loc(c, c->nodes[item].tok), "attributes",
-                      "bad option '%s' to attribute 'optimize'", o);
+                      "bad option '%s' to attribute 'optimize'", no);
             free(c->dep_msgs.data[--c->dep_msgs.len]);
         } else if (!strcmp(name, "section") && arg != NO_NODE) {
             a->sec_any = true;
@@ -1792,6 +1793,28 @@ static const char *const attr_fnonly_tab[] = {
     "nocf_check", "nonnull", "regparm", "returns_nonnull", "sentinel",
     "sseregparm", "stdcall", "sysv_abi", "thiscall", "warn_unused_result"};
 
+/* The expression a copy attribute names, less &, *, [] and a comma list. */
+static uint32_t copy_target(Checker *c, uint32_t e)
+{
+    for (;;) {
+        while (ntag(c, e) == N_PAREN && c->nodes[e].size > 1)
+            e--;
+        if (ntag(c, e) == N_UNARY && (tpunct(c, c->nodes[e].tok) == P_AMP ||
+                                      tpunct(c, c->nodes[e].tok) == P_STAR))
+            e = first_child(c, e);
+        else if (ntag(c, e) == N_INDEX)
+            e = first_child(c, e);
+        else if (ntag(c, e) == N_BINARY &&
+                 tpunct(c, c->nodes[e].tok) == P_COMMA) {
+            uint32_t bk[3], bn = node_children(c->nodes, e, bk, 3);
+            if (bn < 2)
+                return e;
+            e = bk[1];       /* a comma expression: its value */
+        } else
+            return e;
+    }
+}
+
 /* decl_attributes on an object, typedef, parameter or field whose type is
  * neither a function nor a pointer to one: attributes that apply only to
  * functions, and the ones ignored in this context. */
@@ -1821,6 +1844,25 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
             if (!strcmp(name, "malloc")) {
                 cwarn(c, iloc(c, tok), "attributes", "'malloc' attribute "
                       "ignored; valid only for functions");
+                continue;
+            }
+            if (!strcmp(name, "copy") && (ctx & (AC_G | AC_S | AC_L)) &&
+                !(ctx & AC_TLS)) {
+                /* a copied tls_model needs thread storage */
+                Kids ak;
+                kids_get(c, it.p[q], &ak);
+                if (ak.n == 1) {
+                    uint32_t e = copy_target(c, ak.p[0]);
+                    uint32_t ref = ntag(c, e) == N_IDENT ?
+                                   lookup_ord(c, cnode_ident(c, e)) : SYM_NONE;
+                    if (ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ &&
+                        cdecl_aset_has(c, csym(c, ref)->aset, "tls_model",
+                                       NULL))
+                        cwarn(c, iloc(c, tok), "attributes", "'tls_model' "
+                              "attribute ignored because '%s' does not have "
+                              "thread storage duration", ctx_vname);
+                }
+                kids_free(&ak);
                 continue;
             }
             if (!strcmp(name, "leaf")) {
@@ -1972,7 +2014,8 @@ static void alloc_redecl(Checker *c, uint32_t item, const char *name, SrcLoc loc
 {
     uint32_t ref = lookup_ord(c, alloc_name), set, k, first;
     char now[96], was[96];
-    if (ref == SYM_NONE || csym(c, ref)->kind != CS_FUNC)
+    if (ref == SYM_NONE ||
+        (csym(c, ref)->kind != CS_FUNC && csym(c, ref)->kind != CS_TYPEDEF))
         return;
     set = csym(c, ref)->aset;
     if (!set)
@@ -2679,6 +2722,8 @@ typedef struct AttrState {
     char cur[24][24];        /* the attributes this declaration kept so far */
     unsigned ncur;
     bool ign_packed, ign_aligned;
+    bool copy_set;           /* the attribute being checked comes from copy */
+    SrcLoc copy_loc;
     uint32_t calign, palign;
 } AttrState;
 
@@ -2749,6 +2794,8 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, const char *an,
                                         "'%s'", ia, io);
                 if (d && prev)
                     cnote(c, d, st->prevloc, "previous declaration here");
+                else if (d && st->copy_set)
+                    cnote(c, d, st->copy_loc, "previous declaration here");
                 /* gcc 13 says it twice when noreturn meets an earlier
                  * alloc_align or alloc_size (Wattributes-6.c) */
                 if (prev && !strcmp(an, "noreturn") &&
@@ -2885,23 +2932,7 @@ static void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                 if (!st->inited)
                     attrs_state_init(c, st, kind, name);
                 CSym *r = NULL;
-                for (;;) {
-                    while (ntag(c, e) == N_PAREN && c->nodes[e].size > 1)
-                        e--;
-                    if (ntag(c, e) == N_UNARY && (tpunct(c, c->nodes[e].tok) == P_AMP ||
-                                                  tpunct(c, c->nodes[e].tok) == P_STAR))
-                        e = first_child(c, e);
-                    else if (ntag(c, e) == N_INDEX)
-                        e = first_child(c, e);
-                    else if (ntag(c, e) == N_BINARY &&
-                             tpunct(c, c->nodes[e].tok) == P_COMMA) {
-                        uint32_t bk[3], bn = node_children(c->nodes, e, bk, 3);
-                        if (bn < 2)
-                            break;
-                        e = bk[1];   /* a comma expression: its value */
-                    } else
-                        break;
-                }
+                e = copy_target(c, e);
                 if (ntag(c, e) == N_IDENT) {
                     uint32_t ref = lookup_ord(c, cnode_ident(c, e));
                     if (ref != SYM_NONE)
@@ -2951,6 +2982,17 @@ static void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                     if (r->flags & CSF_CONSTFN)
                         attr_excl(c, tok, false, st, true, r->loc);
                     st->nonnull |= r->nonnull;
+                } else if (kind == CS_OBJ) {
+                    /* the referenced variable's common/nocommon is copied */
+                    static const char *const cn[] = {"common", "nocommon"};
+                    unsigned m;
+                    for (m = 0; m < 2; m++)
+                        if (cdecl_aset_has(c, r->aset, cn[m], NULL)) {
+                            st->copy_set = true;
+                            st->copy_loc = r->loc;
+                            attr_excl_generic(c, tok, cn[m], kind, st);
+                            st->copy_set = false;
+                        }
                 }
             }
             kids_free(&ak);
@@ -6486,6 +6528,12 @@ static void declared_visit(Checker *c, uint32_t i)
         attrs_alloc_check(c, idecl, aft, ltok);
         alloc_name = 0;
     }
+    if (g.what == GD_TYPEDEF && type_ckind(TT, s.ty) == TY_FUNC) {
+        alloc_name = s.name;
+        attrs_alloc_check(c, sn, s.ty, ltok);
+        attrs_alloc_check(c, idecl, s.ty, ltok);
+        alloc_name = 0;
+    }
     if (s.kind == CS_FUNC)
         cexpr_builtin_noproto_fmt(c, &s, tloc(c, sp.tok0));
     if (s.kind == CS_OBJ || s.kind == CS_TYPEDEF) {
@@ -8436,6 +8484,14 @@ static void param_visit(Checker *c, uint32_t p)
     }
     memset(&a, 0, sizeof a);
     attrs_of_children(c, p, &a);
+    {   /* attributes among any pointer's qualifiers belong to the parameter */
+        uint32_t d = top;
+        while (d != NO_NODE) {
+            if (ntag(c, d) == N_PTR)
+                attrs_of_children(c, d, &a);
+            d = inner_decl(c, d);
+        }
+    }
     {
         unsigned fb = fn_attr_walk(c, p, 0);
         if (fb) {

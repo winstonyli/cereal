@@ -504,7 +504,7 @@ void unused_value(Checker *c, uint32_t e, SrcLoc dloc);
 void cpragma_apply(Checker *c, uint32_t tok);
 void cxx_in_struct_use(Checker *c, SrcLoc at, const char *what,
                        const char *noted, SrcLoc def);
-bool cpragma_optimize_bad(const char *opt);
+bool cpragma_optimize_bad(const char *opt, char *norm, size_t n);
 void cpragma_optimize_repeat(Checker *c, SrcLoc loc);
 
 /* gcc's input_location while the parser looks at token tok: the first

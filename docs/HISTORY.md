@@ -1489,3 +1489,22 @@ diagnostics and builds on the strinit table.
   name (pack-test-3).  Golden misc_104.
 - Gate: 1155 pass, 0 sanitizer findings,
   gcc.dg differ 111, c-c++-common 35, callgrind 3.693G.
+
+## Round 91 (attribute group, rest)
+- Attributes after a '*' in a parameter declarator, nested ones included,
+  belong to the parameter: `void f (int (*__attribute__((used))) (void))`
+  warns 'used' ignored (attr-nest).
+- copy of a variable copies its common/nocommon, so the exclusion applies
+  (note at the referenced variable); copy of a thread variable's tls_model
+  onto one without thread storage warns (attr-copy-3, attr-copy-5).
+  `copy_target` is shared by both checks.
+- alloc_size/alloc_align on a function typedef are checked as on a
+  function, including a conflicting redeclaration (attr-alloc_size-13).
+- optimize option strings are normalized as gcc does (`no-x` -> -fno-x,
+  `x` -> -fx, `2`/`Ofast` -> -O...); "no-lto" is a bad option
+  (Wattributes-4).  A first version missed Ofast/O2 and added eight false
+  warnings; the gate caught it.  Golden misc_105.
+- Open: `int (U *q) (void)` as a parameter, gcc says 'used' does not apply
+  to types.
+- Gate: 1157 pass, san 403/0, gcc.dg differ 106, c-c++-common 35, callgrind
+  3.697G.

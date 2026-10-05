@@ -481,9 +481,22 @@ static void pragma_sso(Prag *p)
 
 /* ---- #pragma GCC optimize and the option stack ------------------------------- */
 
-bool cpragma_optimize_bad(const char *opt)
+/* Whether the optimize option opt is not accepted; norm gets it the way gcc
+ * spells it: 2 is -O2, Ofast is -Ofast, no-x is -fno-x, x is -fx, -y stays. */
+bool cpragma_optimize_bad(const char *in, char *norm, size_t nn)
 {
     char key[96];
+    const char *opt = norm;
+    if (*in == '-')
+        snprintf(norm, nn, "%s", in);
+    else if (*in == 'O')
+        snprintf(norm, nn, "-%s", in);
+    else if (*in >= '0' && *in <= '9')
+        snprintf(norm, nn, "-O%s", in);
+    else if (!strncmp(in, "no-", 3))
+        snprintf(norm, nn, "-fno-%s", in + 3);
+    else
+        snprintf(norm, nn, "-f%s", in);
     const char *eq = strchr(opt, '=');
     size_t k, n = eq ? (size_t)(eq - opt) : strlen(opt);
     if (opt[0] != '-' || opt[1] == 'O' || n >= sizeof key - 1)
@@ -523,7 +536,7 @@ static void pragma_optimize(Prag *p, SrcLoc at)
     if (!is_punct(&t, '('))
         return;
     for (;;) {
-        char opt[96];
+        char opt[96], nopt[104];
         size_t n = 0, k;
         t = lex(p);
         if (t.kind != PK_STR)
@@ -531,10 +544,11 @@ static void pragma_optimize(Prag *p, SrcLoc at)
         for (k = 1; k + 1 < t.len && n < sizeof opt - 1; k++)
             opt[n++] = p->s[t.off + k];
         opt[n] = 0;
-        if (!strchr(opt, ' ') && opt[0] && cpragma_optimize_bad(opt)) {
+        if (!strchr(opt, ' ') && opt[0] &&
+            cpragma_optimize_bad(opt, nopt, sizeof nopt)) {
             cwarn(c, at, "pragmas", "bad option '%s' to pragma 'optimize'",
-                  opt);
-            vec_push(&c->opt_bad, xstrdup(opt));
+                  nopt);
+            vec_push(&c->opt_bad, xstrdup(nopt));
             opt_digest(c);
         }
         t = lex(p);
