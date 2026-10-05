@@ -1,0 +1,15 @@
+misc_110.c:5:15: error: expected declaration specifiers or '...' before numeric constant
+    5 | extern typeof(0,jc) j;
+      |               ^
+misc_110.c:5:17: error: expected declaration specifiers or '...' before 'jc'
+    5 | extern typeof(0,jc) j;
+      |                 ^
+misc_110.c:6:15: error: expected declaration specifiers or '...' before '+' token
+    6 | extern typeof(+jc) j;
+      |               ^
+misc_110.c:7:8: error: expected declaration specifiers or '...' before numeric constant
+    7 | void g(1, int a, 2);
+      |        ^
+misc_110.c:7:18: error: expected declaration specifiers or '...' before numeric constant
+    7 | void g(1, int a, 2);
+      |                  ^

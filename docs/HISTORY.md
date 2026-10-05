@@ -1553,3 +1553,17 @@ diagnostics and builds on the strinit table.
   builtin calls and address differences.
 - Gate: 1165 pass, san 407/0, gcc.dg differ 98, c-c++-common 35, callgrind
   3.703G.
+
+## Round 95: parameter-list recovery
+
+- A parameter that cannot start a declaration is diagnosed, then the list
+  continues after a following comma with the error state cleared, as gcc's
+  c_parser_parms_list_declarator does (lvalue-11, lvalue-3, qual-assign-7).
+  Golden misc_110.
+- Open, separate recovery differences: 20050209-1 (`return 1); }`: gcc
+  skips with skip_until_found, which stops at the unmatched ')' and then
+  reports "expected statement"; switching end_stmt to expect_skip alone
+  regressed misc_76 and did not produce it), for-1 (extra error at end of
+  input).
+- Gate: 1167 pass, san 408/0, gcc.dg differ 95, c-c++-common 35, callgrind
+  3.703G.

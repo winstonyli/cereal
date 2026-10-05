@@ -1792,8 +1792,12 @@ static void params(Parser *p, unsigned *flags)
     uint32_t list0;
     if (is_p(&t, P_RPAREN))
         return;
+    /* an identifier list (gcc: a first identifier that is not a type name and
+     * is followed by something that cannot continue a declaration) */
     if (is_name(p, &t) && !is_typedef_name(p, &t) &&
-        (is_p(&n, P_COMMA) || is_p(&n, P_RPAREN))) {
+        (is_p(&n, P_COMMA) || is_p(&n, P_RPAREN) || is_p(&n, P_DOT) ||
+         is_p(&n, P_ASSIGN) || is_p(&n, P_ARROW) || is_p(&n, P_PLUS) ||
+         is_p(&n, P_MINUS) || is_p(&n, P_SLASH))) {
         *flags |= NF_KR;
         for (;;) {
             PTok x = ct(p);
@@ -1819,8 +1823,25 @@ static void params(Parser *p, unsigned *flags)
         }
         specs(p, &sp, LA_TYPE);
         if (!sp.any) {
+            unsigned depth = 0;
             expected(p, "declaration specifiers or '...'");
             p->nodes.len = s;
+            /* gcc skips to the end of the parameter and goes on after a
+             * comma */
+            while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE)) {
+                if (!depth && (at(p, P_COMMA) || at(p, P_RPAREN)))
+                    break;
+                if (at(p, P_LPAREN) || at(p, P_LBRACKET) || at(p, P_LBRACE))
+                    depth++;
+                else if (depth && (at(p, P_RPAREN) || at(p, P_RBRACKET) ||
+                                   at(p, P_RBRACE)))
+                    depth--;
+                adv(p);
+            }
+            if (accept(p, P_COMMA)) {
+                p->err.live = false;
+                continue;
+            }
             break;
         }
         declarator_init(&d);
