@@ -1,0 +1,27 @@
+misc_125.c:2:30: warning: duplicate 'restrict' declaration specifier [-Wduplicate-decl-specifier]
+    2 | void f(void){ char *restrict restrict r4; char *const const c; int *volatile volatile v; }
+      |                              ^
+misc_125.c:2:55: warning: duplicate 'const' declaration specifier [-Wduplicate-decl-specifier]
+    2 | void f(void){ char *restrict restrict r4; char *const const c; int *volatile volatile v; }
+      |                                                       ^
+misc_125.c:2:78: warning: duplicate 'volatile' declaration specifier [-Wduplicate-decl-specifier]
+    2 | void f(void){ char *restrict restrict r4; char *const const c; int *volatile volatile v; }
+      |                                                                              ^
+misc_125.c:3:24: warning: duplicate 'restrict' declaration specifier [-Wduplicate-decl-specifier]
+    3 | void r4(char *restrict restrict t) {}
+      |                        ^
+misc_125.c:4:20: warning: duplicate 'const' declaration specifier [-Wduplicate-decl-specifier]
+    4 | void g(int a[const const 3], int b[static restrict restrict 2]);
+      |                    ^
+misc_125.c:4:52: warning: duplicate 'restrict' declaration specifier [-Wduplicate-decl-specifier]
+    4 | void g(int a[const const 3], int b[static restrict restrict 2]);
+      |                                                    ^
+misc_125.c:5:22: warning: duplicate 'const' declaration specifier [-Wduplicate-decl-specifier]
+    5 | int * const volatile const q;
+      |                      ^
+misc_125.c:6:23: warning: duplicate 'restrict' declaration specifier [-Wduplicate-decl-specifier]
+    6 | typedef int *restrict restrict IRR;
+      |                       ^
+misc_125.c:9:63: warning: duplicate 'restrict' declaration specifier [-Wduplicate-decl-specifier]
+    9 | void m(void) { RT1 restrict r1; RT2 restrict r2; RT2 restrict restrict r3; }
+      |                                                               ^

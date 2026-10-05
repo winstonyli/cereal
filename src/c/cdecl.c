@@ -3900,15 +3900,36 @@ static unsigned quals_of(Checker *c, uint32_t node)
 static unsigned quals_of_warn(Checker *c, uint32_t node)
 {
     unsigned q = quals_of(c, node);
-    if (q & TQ_ATOMIC) {
+    if (q) {
         Kids k;
         uint32_t j;
+        unsigned seen = 0;
+        uint32_t prev[4] = {0, 0, 0, 0};
         kids_get(c, node, &k);
-        for (j = 0; j < k.n; j++)
-            if (ntag(c, k.p[j]) == N_QUAL &&
-                tckw(c, cnode(c, k.p[j])->tok) == CK_ATOMIC)
-                cped11(c, tloc(c, cnode(c, k.p[j])->tok),
-                          "ISO C99 does not support the '_Atomic' qualifier");
+        for (j = 0; j < k.n; j++) {
+            uint32_t tk;
+            unsigned bit, ix;
+            const char *nm;
+            if (ntag(c, k.p[j]) != N_QUAL)
+                continue;
+            tk = cnode(c, k.p[j])->tok;
+            switch (tckw(c, tk)) {
+            case CK_CONST: bit = TQ_CONST; ix = 0; nm = "const"; break;
+            case CK_VOLATILE: bit = TQ_VOLATILE; ix = 1; nm = "volatile"; break;
+            case CK_RESTRICT: bit = TQ_RESTRICT; ix = 2; nm = "restrict"; break;
+            default:
+                bit = TQ_ATOMIC; ix = 3; nm = "_Atomic";
+                cped11(c, tloc(c, tk),
+                       "ISO C99 does not support the '_Atomic' qualifier");
+            }
+            /* gcc: a repeated pointer qualifier (not from a macro) */
+            if ((seen & bit) && !tfrom_macro(c, tk) && !tfrom_macro(c, prev[ix]))
+                cwarn(c, tloc(c, tk), cc90_id(c, NULL) ? cc90_id(c, NULL)
+                      : "duplicate-decl-specifier",
+                      "duplicate '%s' declaration specifier", nm);
+            seen |= bit;
+            prev[ix] = tk;
+        }
         kids_free(&k);
     }
     return q;

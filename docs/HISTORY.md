@@ -1735,3 +1735,11 @@ diagnostics and builds on the strinit table.
 - `__clear_cache` is a built-in only without -std=c99 (gnu = 1 in
   cbuiltin_tab.h), so a c99 redeclaration is silent (Wbuiltin-declaration-
   mismatch-12). Golden misc_124. Gate now: 1195 pass, san 422/0, gcc.dg 73.
+
+## Round 108: duplicate pointer qualifiers
+
+- -Wduplicate-decl-specifier now also covers qualifiers after '*' and inside
+  array parameter brackets (`char *restrict restrict`, `a[const const 3]`),
+  at the second qualifier, silent when either comes from a macro
+  (quals_of_warn). Wduplicate-decl-specifier.c now matches. Golden misc_125.
+- Gate: 1197 pass, san 423/0, gcc.dg 72 / c-c++-common 35, callgrind 3.705G.
