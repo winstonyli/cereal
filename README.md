@@ -1,9 +1,14 @@
 # cereal
 
-A C99 toolchain, written in C99, whose first milestone is a conforming
-preprocessor with deep static analysis of directives and macros. It also
-builds an index that gives macros the same editor features as variables and
-functions.
+A C99 + GNU front end, written in C99: a GCC-compatible preprocessor with
+deep static analysis of directives and macros, a parser, and a type checker
+that reports gcc-13's diagnostics. It also builds an index that gives macros
+the same editor features as variables and functions. It is a front end, not a
+compiler: it parses and checks C and emits no code.
+
+It targets Linux (x86-64) and is developed under WSL. It reads the host gcc's
+headers and predefined macros at build time, so it needs a POSIX shell and gcc
+(or another C compiler) to build; there is no native Windows or macOS support.
 
 ```
 make            # probes the host compiler, builds ./cereal
@@ -25,8 +30,15 @@ cereal --list-warnings
 ```
 
 Options: `-I -iquote -isystem -D -U -include -nostdinc -undef -std=c99|gnu99
--O<n> -pedantic -trigraphs -W<name> -Wno-<name> -W<group> -Wall -Werror
--Weverything -fdiagnostics-format=json -P -o`.
+-O<n> -pedantic -pedantic-errors -trigraphs -W<name> -Wno-<name> -W<group>
+-Wall -Werror -Weverything -w -fdiagnostics-format=json -P -o`.
+
+For the C front end (`cereal parse`, `-fsyntax-only`), `-W<name>` takes gcc's
+warning names (about 180 are known; `--list-warnings` prints them), plus
+`-fcf-protection`, `-ftrack-macro-expansion`, `-fshort-enums`,
+`-fstrict-aliasing`, `-flax-vector-conversions` and the other flags that
+change which diagnostics gcc emits. `-fsyntax-only` accepts `-std=c99` and
+`-std=gnu99` only.
 
 Several inputs are processed `-j N` at a time (default: all cores).
 Output and diagnostics come out in input order, identical to `-j1`.
@@ -35,14 +47,23 @@ first, then the text on all cores. The output is byte-identical to a
 sequential run. See `-fparallel=auto|on|off`, `-fparallel-threads=N` and
 docs/PARALLEL.md.
 
-The C99 + GNU parser and type checker are implemented (`cereal parse`,
-`-fsyntax-only`). They emit gcc-13-style diagnostics, checked against gcc's
-own testsuite (gcc.dg: 3626 of 3744 files identical; c-c++-common: 601 of
-636). Design: docs/PARSER.md, docs/TYPES.md. Current state and open
-differences: docs/STATUS.md.
+## Parity with gcc
 
-Development and the test gates run on Linux (WSL). The build needs a POSIX
-shell and a host gcc.
+The checker is tested against gcc-13's own testsuite: on the files it can run,
+3626 of 3744 in gcc.dg and 601 of 636 in c-c++-common report the same
+diagnostics as gcc (message, line and column). The testsuite is not part of
+this repository (it is GPL); clone it yourself:
+
+```
+git clone --filter=blob:none --no-checkout --depth 1 --branch releases/gcc-13.3.0 \
+    https://github.com/gcc-mirror/gcc ~/gccts
+git -C ~/gccts sparse-checkout set gcc/testsuite/gcc.dg gcc/testsuite/c-c++-common
+git -C ~/gccts checkout
+CEREAL_GCC=gcc-13 bench/tools/verify.sh     # needs gcc-13 and python3
+```
+
+Design: docs/PARSER.md, docs/TYPES.md. Current state and open differences:
+docs/STATUS.md; the full log: docs/HISTORY.md.
 
 ## What lint finds
 
@@ -72,6 +93,15 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short:
 - Conformance is tested by token-level diffs against `gcc -std=c99 -E` on the
   C99 standard's examples, all C99 and common POSIX headers, and cereal's
   own sources.
+
+## AI-assisted development
+
+Most of this code was written with Claude (Anthropic) under my direction:
+265 of the 266 commits carry a `Co-Authored-By: Claude` trailer, and 47 are
+authored by Claude directly. I set the goals, chose gcc-13 as the reference,
+reviewed the results, and kept the verification honest: every behaviour is
+checked against real gcc output, and each fix leaves a golden test in
+`tests/check`.
 
 ## License
 

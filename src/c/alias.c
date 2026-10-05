@@ -1,7 +1,7 @@
 /* alias.c - alias sets for -Wstrict-aliasing.  gcc's alias.c keeps a graph of
  * sets; the warning only asks whether two types' sets conflict, so a set is
  * the canonical type that names it and "holds" is a walk over the members.
- * Probed against gcc-13 (docs/STATUS.md, Round 24). */
+ * Probed against gcc-13 (docs/HISTORY.md, Round 24). */
 #include "c/type.h"
 
 /* The type that names t's set; 0 for the character types (set 0, which
