@@ -1,0 +1,45 @@
+misc_120.c:6:1: error: '__auto_type' in empty declaration
+    6 | __auto_type;
+      | ^
+misc_120.c:7:1: error: '__auto_type' requires a plain identifier as declarator
+    7 | __auto_type *p = (int *) 0;
+      | ^
+misc_120.c:9:17: error: '__auto_type' used with a bit-field initializer
+    9 | void f (void) { __auto_type v = x.i; }
+      |                 ^
+misc_120.c:10:1: error: '__auto_type' requires an initialized data declaration
+   10 | __auto_type i;
+      | ^
+misc_120.c:11:1: error: '__auto_type' requires an initialized data declaration
+   11 | __auto_type g { }
+      | ^
+misc_120.c:12:1: error: '__auto_type' may only be used with a single declarator
+   12 | __auto_type a = 1, b = 2;
+      | ^
+misc_120.c:17:29: warning: empty declaration with type qualifier does not redeclare tag
+   17 | void h(void) { const struct u3; }
+      |                             ^
+misc_120.c:17:29: error: 'u3' defined as wrong kind of tag
+   17 | void h(void) { const struct u3; }
+      |                             ^
+misc_120.c:18:30: warning: empty declaration with type qualifier does not redeclare tag
+   18 | void h2(void) { const struct s4; }
+      |                              ^
+misc_120.c:19:14: error: 'u3' defined as wrong kind of tag
+   19 | const struct u3;
+      |              ^
+misc_120.c:19:14: warning: empty declaration with type qualifier does not redeclare tag
+   19 | const struct u3;
+      |              ^
+misc_120.c:21:7: error: expected identifier or '(' before '_Imaginary'
+   21 | float _Imaginary;
+      |       ^
+misc_120.c:22:23: error: expected identifier or '(' before '_Imaginary'
+   22 | void k(void) { double _Imaginary z; double ) w; int * 3; }
+      |                       ^
+misc_120.c:22:44: error: expected identifier or '(' before ')' token
+   22 | void k(void) { double _Imaginary z; double ) w; int * 3; }
+      |                                            ^
+misc_120.c:22:55: error: expected identifier or '(' before numeric constant
+   22 | void k(void) { double _Imaginary z; double ) w; int * 3; }
+      |                                                       ^

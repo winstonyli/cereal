@@ -6182,7 +6182,10 @@ static void shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok)
     bool anyq = sp->quals != 0;
     SrcLoc il = iloc(c, ltok);
     TypeKind tk = tkind(c, sp->ty);
-    if (!sp->default_int && sp->kind != TSK_TYPEDEF) {
+    if (sp->word == TW_AUTO_TYPE) {
+        cerror(c, il, "'__auto_type' in empty declaration");
+        warned = 1;
+    } else if (!sp->default_int && sp->kind != TSK_TYPEDEF) {
         if (!sp->error && (tk == TY_STRUCT || tk == TY_UNION || tk == TY_ENUM)) {
             uint32_t name;
             if (tk == TY_ENUM)
@@ -6305,7 +6308,9 @@ static void decl_visit(Checker *c, uint32_t i)
         !in_extension(c, i))
         cpedantic(c, tloc(c, cnode(c, i)->tok), "ISO C forbids nested "
                   "functions");
+    /* a declaration whose declarator failed to parse is not an empty one */
     if (sn != NO_NODE && ntag(c, sn) == N_SPECS &&
+        !(cnode(c, i)->flags & NF_ERROR) &&
         c->nodes[i].size == c->nodes[sn].size + 1) {
         int si = find_spec(c, sn);
         if (si >= 0) {
@@ -7004,7 +7009,13 @@ static void init_decl_visit(Checker *c, uint32_t idecl)
     if ((s->flags & CSF_AUTO_TYPE) && init != NO_NODE) {
         /* __auto_type: the initializer's type after lvalue conversion */
         TypeId it = cexpr_rvalue_type(c, init);
-        if (!is_err(c, it) && type_ckind(TT, it) != TY_ERROR) {
+        if ((c->ef[init] & EF_BITFIELD) && !is_err(c, it)) {
+            uint32_t d = c->par[idecl];
+            while (d != NO_NODE && ntag(c, d) != N_DECL)
+                d = c->par[d];
+            cerror(c, d == NO_NODE ? s->loc : tloc(c, cnode(c, d)->tok),
+                   "'__auto_type' used with a bit-field initializer");
+        } else if (!is_err(c, it) && type_ckind(TT, it) != TY_ERROR) {
             s->ty = type = it | TYPE_QUALS(s->ty);
         }
     }
@@ -7324,6 +7335,7 @@ static void xref_visit(Checker *c, uint32_t i, int want)
     SrcLoc loc, xloc = 0;
     TypeId t, ref;
     unsigned kind = TSK_TAGREF;
+    bool wrong = false;
     uint32_t tt_tok;
     if (tagn == NO_NODE) {
         c->ty[i] = ERRT;
@@ -7344,6 +7356,7 @@ static void xref_visit(Checker *c, uint32_t i, int want)
             xloc = il;
         }
         ref = 0;
+        wrong = true;
     }
     if (ref) {
         t = ref;
@@ -7362,7 +7375,8 @@ static void xref_visit(Checker *c, uint32_t i, int want)
         }
     } else {
         t = new_tag(c, want, name, loc);
-        kind = TSK_TAGFIRSTREF;
+        /* a tag of the wrong kind is a reference, not a first one */
+        kind = wrong ? TSK_TAGREF : TSK_TAGFIRSTREF;
         cxx_defining_cast(c, i, true);
         if (cscope_kind(c) == SCK_PROTO)
             c->ef[i] |= 2;

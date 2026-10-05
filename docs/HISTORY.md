@@ -1679,3 +1679,23 @@ diagnostics and builds on the strinit table.
 - A bare `#if` / `#elif` is reported at the end of the line, after blanks
   and comments (gcc's EOF token).  `u8"x"` in #if already matched.
 - Golden misc_118.  Gate: 1185 pass, san 417/0, gcc.dg 81 / c-c++-common 35.
+
+## Round 104: empty declarations, __auto_type, _Imaginary
+
+- `__auto_type` misuse follows c_parser_declaration_or_fndef: "requires a
+  plain identifier as declarator", "requires an initialized data
+  declaration", "may only be used with a single declarator" are errors at the
+  declaration's first token, and the rest of the declaration is skipped;
+  "used with a bit-field initializer" is checked at the initializer;
+  "'__auto_type' in empty declaration" replaces "useless type name".
+- A qualifier on a tag of the wrong kind (`const struct u3;` with a union
+  u3) is a reference, so it gets "does not redeclare tag" plus "defined as
+  wrong kind of tag", not "useless type qualifier".
+- `_Imaginary` is a reserved word that cannot be a specifier: "expected
+  identifier or '(' before '_Imaginary'".
+- A block-scope declaration whose declarator failed to parse (`double ) z;`)
+  no longer also reports "useless type name in empty declaration".
+- Golden misc_120 (auto-type-2, c99-tag-3, c99-complex-3 now identical).
+- Open: after a leading `)` in a statement gcc goes on parsing the rest
+  (`) y;` reports `y` undeclared); cereal skips to the `;`.
+- Gate: 1187 pass, san 418/0, gcc.dg 78 / c-c++-common 35, callgrind 3.706G.

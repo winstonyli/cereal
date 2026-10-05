@@ -951,7 +951,7 @@ static bool is_type_start(Parser *p, const PTok *t)
     case CK_CONST: case CK_VOLATILE: case CK_RESTRICT: case CK_ATOMIC:
     case CK_VOID: case CK_CHAR: case CK_SHORT: case CK_INT: case CK_LONG:
     case CK_FLOAT: case CK_DOUBLE: case CK_SIGNED: case CK_UNSIGNED:
-    case CK_BOOL: case CK_COMPLEX: case CK_IMAGINARY: case CK_INT128:
+    case CK_BOOL: case CK_COMPLEX: case CK_INT128:
     case CK_FLOATN: case CK_DECIMAL: case CK_FIXED: case CK_SAT:
         case CK_AUTO_TYPE:
     case CK_STRUCT: case CK_UNION: case CK_ENUM: case CK_TYPEOF:
@@ -1454,6 +1454,7 @@ typedef struct Specs {
     bool is_typedef;
     bool gimple;                /* __GIMPLE: the body is not C */
     bool err;                   /* an unknown type name */
+    bool auto_type;             /* __auto_type */
 } Specs;
 
 static void struct_spec(Parser *p);
@@ -1531,9 +1532,11 @@ static void specs(Parser *p, Specs *s, Lookahead la)
             break;
         case CK_VOID: case CK_CHAR: case CK_SHORT: case CK_INT: case CK_LONG:
         case CK_FLOAT: case CK_DOUBLE: case CK_SIGNED: case CK_UNSIGNED:
-        case CK_BOOL: case CK_COMPLEX: case CK_IMAGINARY: case CK_INT128:
+        case CK_BOOL: case CK_COMPLEX: case CK_INT128:
         case CK_FLOATN: case CK_DECIMAL: case CK_FIXED: case CK_SAT:
         case CK_AUTO_TYPE:
+            if (ckw(p) == CK_AUTO_TYPE)
+                s->auto_type = true;
             leaf(p, N_TYPESPEC, adv(p));
             s->type = true;
             break;
@@ -1776,6 +1779,18 @@ typedef struct DeclInfo {
 
 static void declarator(Parser *p, int mode, DeclInfo *di);
 static void declarator_init(DeclInfo *d);
+
+/* gcc's c_parser_declaration_or_fndef gives up on a bad __auto_type
+ * declaration: the error is at its start, and the rest is skipped. */
+static void auto_type_error(Parser *p, uint32_t first, const char *what,
+                            bool top)
+{
+    perr(p, first, "'__auto_type' %s", what);
+    if (top || p->kr_params)
+        sync_top(p);
+    else
+        sync_stmt(p);
+}
 
 /* After '(' in a declarator that may be abstract: parameters (not a
  * nested declarator)?  C99 6.7.5.3p11: a typedef name there is a type. */
@@ -3011,6 +3026,12 @@ static void declaration(Parser *p, bool top)
             emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
+        if (s.auto_type && d.inner != DK_NONE) {
+            auto_type_error(p, first, "requires a plain identifier as "
+                            "declarator", top);
+            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            return;
+        }
         /* a definition: '{', or a K&R declaration list (attributes
          * first belong to a declaration: f(x) __attribute__((...)); */
         t = ct(p);
@@ -3048,7 +3069,10 @@ static void declaration(Parser *p, bool top)
               ckw_of(p, &t) == CK_ASM ||
               (ckw_of(p, &t) == CK_ATTRIBUTE && !t.stdattr))) {
             /* gcc: not a declarator list or a function definition */
-            if (n == 0 && !p->kr_params &&
+            if (s.auto_type) {
+                auto_type_error(p, first, "requires an initialized data "
+                                "declaration", top);
+            } else if (n == 0 && !p->kr_params &&
                 is_decl_start(p, &t)) { /* a missing ';' */
                 char buf[160];
                 perr_after_prev(p, ci(p), "expected ';'%s",
@@ -3076,12 +3100,24 @@ static void declaration(Parser *p, bool top)
         attributes(p);
         if (n == 0 && d.inner == DK_FUNC && at(p, P_LBRACE))
             fn_attr = true;
+        if (s.auto_type && !at(p, P_ASSIGN)) {
+            auto_type_error(p, first, "requires an initialized data "
+                            "declaration", top);
+            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            return;
+        }
         scope_declare(&p->scope, p->toks.data[d.name].t.aux,
                       s.is_typedef ? SYM_TYPEDEF : SYM_ORDINARY);
         leaf(p, N_DECLARED, d.name);
         if (accept(p, P_ASSIGN))
             initializer(p);
         emit(p, N_INIT_DECL, d.name, is, 0);
+        if (s.auto_type && at(p, P_COMMA)) {
+            auto_type_error(p, first, "may only be used with a single "
+                            "declarator", top);
+            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            return;
+        }
         if (!accept(p, P_COMMA))
             break;
     }
