@@ -72,3 +72,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short:
 - Conformance is tested by token-level diffs against `gcc -std=c99 -E` on the
   C99 standard's examples, all C99 and common POSIX headers, and cereal's
   own sources.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
