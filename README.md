@@ -59,7 +59,7 @@ git clone --filter=blob:none --no-checkout --depth 1 --branch releases/gcc-13.3.
     https://github.com/gcc-mirror/gcc ~/gccts
 git -C ~/gccts sparse-checkout set gcc/testsuite/gcc.dg gcc/testsuite/c-c++-common
 git -C ~/gccts checkout
-CEREAL_GCC=gcc-13 bench/tools/verify.sh     # needs gcc-13 and python3
+make -j6 && CEREAL_GCC=gcc-13 bench/tools/verify.sh   # needs gcc-13, python3
 ```
 
 Design: docs/PARSER.md, docs/TYPES.md. Current state and open differences:

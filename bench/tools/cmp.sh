@@ -3,7 +3,7 @@
 # file (< gcc only, > cereal only); prints SAME when they agree.
 f=$1; shift
 d=$(dirname "$f"); b=$(basename "$f")
-CER=${CEREAL:-$HOME/cereal-t/cereal}
+CER=${CEREAL:-$(cd "$(dirname "$0")/../.." && pwd)/cereal}
 hdr() { grep -E "^[^ ]+:[0-9]+:[0-9]+: (fatal error|error|warning): " | sed "s/^\.\///"; }
 cd "$d" || exit 1
 LC_ALL=C gcc-13 -fsyntax-only -std=c99 -pedantic -I. -I.. "$@" "$b" 2>&1 | hdr >/tmp/cmp_g.$$
