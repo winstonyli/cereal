@@ -1696,6 +1696,9 @@ diagnostics and builds on the strinit table.
 - A block-scope declaration whose declarator failed to parse (`double ) z;`)
   no longer also reports "useless type name in empty declaration".
 - Golden misc_120 (auto-type-2, c99-tag-3, c99-complex-3 now identical).
-- Open: after a leading `)` in a statement gcc goes on parsing the rest
-  (`) y;` reports `y` undeclared); cereal skips to the `;`.
 - Gate: 1187 pass, san 418/0, gcc.dg 78 / c-c++-common 35, callgrind 3.706G.
+
+## Round 105: statement recovery after a stray bracket
+
+- A `)` or `]` where a statement should start is reported ("expected statement") and consumed, and the block goes on with the next item (`) y;` then reports `y` undeclared), as gcc's compound-statement loop does.  Golden misc_121.
+- Gate: 1189 pass, san 419/0, gcc.dg 78 / c-c++-common 35 (no file changed).

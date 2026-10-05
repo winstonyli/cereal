@@ -1,0 +1,33 @@
+misc_121.c:3:16: error: expected statement before ')' token
+    3 | void g(void) { ) y; }
+      |                ^
+misc_121.c:3:18: error: 'y' undeclared (first use in this function)
+    3 | void g(void) { ) y; }
+      |                  ^
+misc_121.c:3:18: note: each undeclared identifier is reported only once for each function it appears in
+    3 | void g(void) { ) y; }
+      |                  ^
+misc_121.c:4:17: error: expected statement before ']' token
+    4 | void g2(void) { ] y; z; }
+      |                 ^
+misc_121.c:4:19: error: 'y' undeclared (first use in this function)
+    4 | void g2(void) { ] y; z; }
+      |                   ^
+misc_121.c:4:22: error: 'z' undeclared (first use in this function)
+    4 | void g2(void) { ] y; z; }
+      |                      ^
+misc_121.c:5:17: error: expected statement before ')' token
+    5 | void g3(void) { ) int q; q; }
+      |                 ^
+misc_121.c:6:17: error: 'a' undeclared (first use in this function)
+    6 | void g4(void) { a ) y; }
+      |                 ^
+misc_121.c:6:18: error: expected ';' before ')' token
+    6 | void g4(void) { a ) y; }
+      |                  ^
+misc_121.c:6:19: error: expected statement before ')' token
+    6 | void g4(void) { a ) y; }
+      |                   ^
+misc_121.c:6:21: error: 'y' undeclared (first use in this function)
+    6 | void g4(void) { a ) y; }
+      |                     ^

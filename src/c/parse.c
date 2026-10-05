@@ -2769,8 +2769,10 @@ static void statement(Parser *p)
         return;
     }
     if (is_p(&t, P_RPAREN) || is_p(&t, P_RBRACKET)) {
+        /* c_parser_statement_after_labels: the token is consumed and the
+         * block goes on with the next item */
         expected(p, "statement");
-        sync_stmt(p);
+        adv(p);
         emit(p, N_EXPR_STMT, i, start, NF_ERROR);
         return;
     }
