@@ -1074,7 +1074,15 @@ static bool lowered_sub(Checker *c, uint32_t i, uint32_t *base, uint32_t *idx,
                  type_size(TT, rvt(c, sx), &ov) != 4))
                 return false;
         }
-        if (ntag(c, sx) == N_COND || has_ival(c, sx))
+        if (ntag(c, sx) == N_COND) {
+            /* gcc folds a conditional with a constant arm */
+            uint32_t ck[3];
+            if (nkids(c, sx, ck, 3) < 3 ||
+                c->ck[strip_paren(c, ck[1])] == K_ICE ||
+                c->ck[strip_paren(c, ck[2])] == K_ICE)
+                return false;
+        }
+        if (has_ival(c, sx))
             return false;
     }
     *base = b;
@@ -2011,7 +2019,9 @@ static void e_string(Checker *c, uint32_t i)
                  "string length '%llu' is greater than the length '%d' ISO "
                  "C99 compilers are required to support",
                  (unsigned long long)units, 4095);
-    c->ty[i] = type_array(TT, TYPE_MK(ek, 0), units + 1);
+    /* -Wwrite-strings: the literal is an array of const char */
+    c->ty[i] = type_array(TT, TYPE_MK(ek, diag_enabled(c->diag, "write-strings")
+                                          ? TQ_CONST : 0), units + 1);
     c->ef[i] = EF_LVALUE | EF_STRING | EF_ADDRLV;
     c->cb[i] = CB_NODE | i;
     c->ck[i] = K_ADDR;
@@ -3983,6 +3993,18 @@ static bool readonly_check(Checker *c, uint32_t a, SrcLoc loc, int use)
     if (!ro && is_record(c, t)) {
         const Record *r = type_record(TT, t);
         ro = r && (r->flags & RF_CONST_MEMBER);
+    }
+    if (!ro && s != NO_NODE && ntag(c, s) == N_INDEX) {
+        /* an element of a string literal: a warning, not an error (PR 27676) */
+        uint32_t k[3], b;
+        if (nkids(c, s, k, 3) >= 2 && (b = strip_paren(c, k[0])) != NO_NODE &&
+            ntag(c, b) == N_STRING)
+        {
+            /* at the literal, or at a prefix operator before it */
+            SrcLoc fl = first_loc(c, a);
+            cwarn(c, loc < fl ? loc : fl, "", "%s of read-only location '%s'",
+                  verb[use], estr(c, a));
+        }
     }
     if (!ro)
         return false;

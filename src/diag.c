@@ -150,6 +150,7 @@ static const DiagOption options[] = {
     {"unused-but-set-parameter", "c", DL_WARNING, false, DO_UNUSED_EXTRA, "parameter set but not used"},
     {"ignored-qualifiers", "c", DL_WARNING, false, DO_EXTRA, "type qualifiers ignored (e.g. on a return type)"},
     {"old-style-declaration", "c", DL_WARNING, false, DO_EXTRA, "storage class not at the beginning of a declaration"},
+    {"write-strings", "c", DL_WARNING, false, 0, "string literals have type const char[]"},
     {"traditional", "c", DL_WARNING, false, 0, "constructs with different meaning in traditional C"},
     {"traditional-conversion", "c", DL_WARNING, false, 0, "conversion of an argument that a prototype changes"},
     {"missing-field-initializers", "c", DL_WARNING, false, DO_EXTRA, "struct initializer leaves fields uninitialized"},

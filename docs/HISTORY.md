@@ -1531,3 +1531,25 @@ diagnostics and builds on the strinit table.
   Golden misc_107.
 - Gate: 1161 pass, san 405/0, gcc.dg differ 102, c-c++-common 35, callgrind
   3.701G.
+
+## Round 94 (read-only locations, -Wwrite-strings, comma array sizes)
+- An element of a string literal assigned to or incremented warns
+  "assignment of read-only location '"foo"[0]'" (no option tag), at the
+  literal or a prefix operator (lvalue-5).  Concatenated pieces print
+  as written (`"a" "b"`), gcc prints `"ab"`; not done.
+- A subscript of a pointer by a conditional with no constant arm prints
+  lowered, `*(p + (sizetype)(c ? a : b))` (pr45079).  With a constant arm
+  gcc pushes the conversion into the arms; still printed as `p[...]`.
+- -Wwrite-strings is implemented: string literals are `const char[N]`
+  (new diag row, off by default).  Gives the const-discarding warnings for
+  initializations, and `&""` pointer-to-array diagnostics
+  (Wwrite-strings-1).  Goldens misc_108, misc_109.
+- A comma operator outside a sizeof operand makes an array size not an
+  integer constant, so the array is a VLA at block scope (array-5, part).
+- Open: compatibility of VLA types ignores constant dimensions
+  (`int (*)[4][n+1]` vs `int (*)[6][m]` should be incompatible; type_vla
+  keeps no sizes); pr83415 prints a vector subscript as
+  `((const short int[8])y)[i]`; Warray-parameter-11 needs gcc's folding of
+  builtin calls and address differences.
+- Gate: 1165 pass, san 407/0, gcc.dg differ 98, c-c++-common 35, callgrind
+  3.703G.

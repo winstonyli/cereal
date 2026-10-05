@@ -1,0 +1,45 @@
+misc_109.c:5:8: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+    5 | T *p = &"";
+      |        ^
+misc_109.c:5:8: warning: initialization discards 'const' qualifier from pointer target type [-Wdiscarded-array-qualifiers]
+    5 | T *p = &"";
+      |        ^
+misc_109.c:8:9: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+    8 | T *p2 = &cx;
+      |         ^
+misc_109.c:8:9: warning: initialization discards 'const' qualifier from pointer target type [-Wdiscarded-array-qualifiers]
+    8 | T *p2 = &cx;
+      |         ^
+misc_109.c:9:10: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+    9 | CT *q2 = &x;
+      |          ^
+misc_109.c:11:18: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+   11 | void h(void) { f(&cx); g(&x); T *r; r = &cx; }
+      |                  ^
+misc_109.c:11:18: warning: passing argument 1 of 'f' discards 'const' qualifier from pointer target type [-Wdiscarded-array-qualifiers]
+   11 | void h(void) { f(&cx); g(&x); T *r; r = &cx; }
+      |                  ^
+misc_109.c:10:11: note: expected 'char (*)[1]' but argument is of type 'const char (*)[1]'
+   10 | void f(T *a); void g(CT *a);
+      |           ^
+misc_109.c:11:26: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+   11 | void h(void) { f(&cx); g(&x); T *r; r = &cx; }
+      |                          ^
+misc_109.c:11:39: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+   11 | void h(void) { f(&cx); g(&x); T *r; r = &cx; }
+      |                                       ^
+misc_109.c:11:39: warning: assignment discards 'const' qualifier from pointer target type [-Wdiscarded-array-qualifiers]
+   11 | void h(void) { f(&cx); g(&x); T *r; r = &cx; }
+      |                                       ^
+misc_109.c:12:12: warning: initialization discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   12 | char *s2 = "";
+      |            ^
+misc_109.c:13:17: warning: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wpedantic]
+   13 | char (*p3)[1] = &"";
+      |                 ^
+misc_109.c:13:17: warning: initialization discards 'const' qualifier from pointer target type [-Wdiscarded-array-qualifiers]
+   13 | char (*p3)[1] = &"";
+      |                 ^
+misc_109.c:15:26: warning: initialization discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   15 | void f5(void){ char *t = "a"; (void)sizeof(""); }
+      |                          ^

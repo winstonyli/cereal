@@ -3819,11 +3819,32 @@ static TypeId qualify(Checker *c, TypeId t, unsigned q, uint32_t ltok)
     return t | q;
 }
 
+/* A comma operator outside a sizeof/alignof operand: the expression is not an
+ * integer constant expression, though gcc folds it (an array size of (2, 2)
+ * makes a VLA). */
+static bool evaluated_comma(Checker *c, uint32_t e)
+{
+    Kids k;
+    uint32_t j;
+    bool r = false;
+    if (ntag(c, e) == N_SIZEOF_EXPR || ntag(c, e) == N_SIZEOF_TYPE ||
+        ntag(c, e) == N_ALIGNOF_EXPR || ntag(c, e) == N_ALIGNOF_TYPE)
+        return false;
+    if (ntag(c, e) == N_BINARY && tpunct(c, c->nodes[e].tok) == P_COMMA)
+        return true;
+    kids_get(c, e, &k);
+    for (j = 0; j < k.n && !r; j++)
+        r = evaluated_comma(c, k.p[j]);
+    kids_free(&k);
+    return r;
+}
+
 /* Is the constant expression node e an INTEGER_CST (K_ICE, or a folded
  * constant)?  If not, may it still be folded to one? */
 static bool node_int_cst(Checker *c, uint32_t e)
 {
-    return c->ck[e] == K_ICE || (c->ck[e] == K_FOLD && (c->ef[e] & EF_CST));
+    return (c->ck[e] == K_ICE || (c->ck[e] == K_FOLD && (c->ef[e] & EF_CST))) &&
+           !evaluated_comma(c, e);
 }
 
 /* ---- declarator analysis ------------------------------------------------- */
