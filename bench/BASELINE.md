@@ -1,6 +1,6 @@
 # Baseline (before token-core rewrite)
 
-Commit d18f453-era core (eager linked-list tokens, Prosser hide sets). Best of
+Commit 77cd649-era core (eager linked-list tokens, Prosser hide sets). Best of
 3 runs, `python3 bench/bench.py`.
 
 | workload | MB | cereal s | cereal MB | gcc s | gcc MB | clang s | clang MB | vs gcc |

@@ -276,7 +276,7 @@ layouts, gcc rules ported, walk design).
   Goldens builtin_pfx_decl, expr_err_cascade.  gcc.dg 3587 of 3875 identical;
   tests 802; ASAN/UBSAN 0.
   (Fixed 2026-10-02, see below.)  Old lead: gcc.dg/pr59992.c (one function of ~100k `if (p[n]) { foo##n (..);
-  return; }`) takes ~70-85 s of cereal CPU in -fsyntax-only (also at a7b156c);
+  return; }`) takes ~70-85 s of cereal CPU in -fsyntax-only (also at 46760f0);
   bench/tools/par.py's 30 s timeout flags it when the machine is busy.  Likely
   something super-linear in the checker/parser per function body.
 
@@ -301,7 +301,7 @@ layouts, gcc rules ported, walk design).
   gnu-mode `_Fract/_Accum/_Sat` keywords ("fixed-point types not supported for
   this target" + pedwarns); for-1's line numbers after `# 0` linemarkers.
 
-- Round 4 (2026-10-02, after f202aa4):
+- Round 4 (2026-10-02, after ee26f53):
   * A failed `]` in an array declarator sets DeclInfo.failed (gcc drops the
     declarator; later uses give "'a' undeclared").  bracket_skip golden covers it.
   * gnu-mode `_Fract/_Accum` ("fixed-point types not supported for this
@@ -315,7 +315,7 @@ layouts, gcc rules ported, walk design).
   `conflicting types ... have` 4 files / 23 diags; `-Wstringop-overread` 86
   diags in 3 files).
 
-- Round 5 (2026-10-02, after 55d2e3a):
+- Round 5 (2026-10-02, after 8ad0073):
   * N_INDEX gets NF_CUT when `]` is missing: the subscript check is ordered
     after the syntax error (ORD_CUT), as for calls.  Golden index_cut.
   * volatile-return redeclarations (`void f(void); volatile void f() {}`):
@@ -331,7 +331,7 @@ layouts, gcc rules ported, walk design).
   Wstringop-overflow-22, -overread-6 need -O2 constant propagation (gcc folds
   `strlen (a)` after propagating loop-free locals); skip.
 
-- Round 6 (2026-10-02, after 37fe051):
+- Round 6 (2026-10-02, after 7938799):
   * Struct member `const;` (no type, no declarator) is "ISO C forbids member
     declarations with no members": the check keys on Spec.default_int
     (finish_declspecs turns word NONE into INT, so the old test never fired).
@@ -347,7 +347,7 @@ layouts, gcc rules ported, walk design).
   -Wlarger-than, -Wdangling-else, shadow=compatible-local); `chk.h` not found
   is the missing gcc.c-torture dir of the sparse checkout (harness artifact).
 
-- Round 7 (2026-10-02, after 3450e7c):
+- Round 7 (2026-10-02, after 59f196b):
   * type_composite: of a transparent union parameter and a member type the
     member type is kept, whichever came first (gcc) -> `f2 (&l)` warns after
     `f2 (U2); f2 (int *)`.  expr_loc: `__extension__ e` has e's location

@@ -231,7 +231,7 @@ must accept); docs/TYPES.md describing the checker.
 - main.c: `check` mode, -fsyntax-only = parse+check, --dump-types (per-unit output stream), --target=NAME.
 - tests/check/*.c goldens: `cereal -fsyntax-only -std=c99 -pedantic [// flags: ...] X.c`, stderr+stdout vs X.expected; also rerun with --cells. tests/gen_layout.py layout parity is wired in run.sh (LAYOUT_N seeds).
 
-## Status after P2a (commits cb902bb, 509f6fe)
+## Status after P2a (commits dd07fc7, 42f3871)
 P2a done: check.c, cdecl.c (assembled single file, edit directly), cexpr.c, docs/TYPES.md (read it), tests/check goldens (`X.c` + `X.expected`; only add cases whose diagnostic headers match gcc exactly). make test 396 pass.
 Known gaps: initializer checks, call args, assignment compat, statement checks (labels/switch/return/VLA jumps), -Wunused-value, -Wparentheses, -Wsign-compare etc., 0b constants under c99 (gcc pedwarns), "did you mean" sc_dist is slow on error path.
 P2b/c/d run concurrently: several agents edit the tree at once. Use small Edit calls (never rewrite whole shared files: check_int.h, check.c, cdecl.c, cexpr.c); if a build error appears in code you don't own, wait briefly and retry — another agent is mid-edit. Don't commit.
