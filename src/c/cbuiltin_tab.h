@@ -4,6 +4,7 @@
  * and the type "return|param|param..." ("?": declared without prototype).
  * Entries with gnu = 1 (empty header: gcc names none) exist only without
  * -std=c99; see bench/tools/gen_builtin_gnu.py.
+ * (__clear_cache is gnu = 1 by hand: gen_builtin_gnu.py skips _-prefixed names.)
  * Entries with gnu = 2 exist only as __builtin_NAME (bench/tools/gen_builtin_pfx.py).
  * Sorted by name.  Generated from gcc's own diagnostics. */
 static const struct { const char *name, *hdr; unsigned char mismatch; const char *sig; unsigned char gnu; } cbuiltin_tab[] = {
