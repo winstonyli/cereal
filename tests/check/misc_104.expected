@@ -1,0 +1,105 @@
+misc_104.c:11:1: error: attribute 'access(write_only, 2, 1)' positional argument 1 references 'const'-qualified argument type 'const int *'
+   11 | void af7(int n, const int a[n]) __attribute__((access(write_only, 2, 1)));
+      | ^
+misc_104.c:12:89: warning: attribute 'access(write_only, 2, 1)' mismatch with mode 'read_only' [-Wattributes]
+   12 | __attribute__((access(read_only, 2, 1))) __attribute__((access(write_only, 2, 1))) void af8(int n, int a[n]);
+      |                                                                                         ^
+misc_104.c:13:6: warning: attribute 'access (read_only, 2)' positional argument 2 missing in previous designation [-Wattributes]
+   13 | void af9(int n, int a[n]) __attribute__((access(read_only, 2)));
+      |      ^
+misc_104.c:13:14: note: designating the bound of variable length array argument 2
+   13 | void af9(int n, int a[n]) __attribute__((access(read_only, 2)));
+      |              ^
+misc_104.c:16:1: warning: ignoring attribute 'always_inline' because it conflicts with attribute 'noinline' [-Wattributes]
+   16 | static inline __attribute__((noipa, always_inline)) int ka(void) { return 1; }
+      | ^
+misc_104.c:16:57: warning: inline function 'ka' given attribute 'noinline' [-Wattributes]
+   16 | static inline __attribute__((noipa, always_inline)) int ka(void) { return 1; }
+      |                                                         ^
+misc_104.c:17:1: warning: ignoring attribute 'always_inline' because it conflicts with attribute 'noinline' [-Wattributes]
+   17 | static inline __attribute__((always_inline, noipa)) int kb(void) { return 1; }
+      | ^
+misc_104.c:17:57: warning: inline function 'kb' given attribute 'noinline' [-Wattributes]
+   17 | static inline __attribute__((always_inline, noipa)) int kb(void) { return 1; }
+      |                                                         ^
+misc_104.c:18:1: warning: ignoring attribute 'always_inline' because it conflicts with attribute 'noinline' [-Wattributes]
+   18 | static inline __attribute__((noipa)) __attribute__((always_inline)) int kc(void) { return 1; }
+      | ^
+misc_104.c:18:73: warning: inline function 'kc' given attribute 'noinline' [-Wattributes]
+   18 | static inline __attribute__((noipa)) __attribute__((always_inline)) int kc(void) { return 1; }
+      |                                                                         ^
+misc_104.c:20:1: warning: ignoring attribute 'always_inline' because it conflicts with attribute 'noinline' [-Wattributes]
+   20 | static __attribute__((always_inline)) int kd(void);
+      | ^
+misc_104.c:19:35: note: previous declaration here
+   19 | static __attribute__((noipa)) int kd(void);
+      |                                   ^
+misc_104.c:22:1: warning: ignoring attribute 'noinline' because it conflicts with attribute 'always_inline' [-Wattributes]
+   22 | static __attribute__((noipa)) int ke(void);
+      | ^
+misc_104.c:21:43: note: previous declaration here
+   21 | static __attribute__((always_inline)) int ke(void);
+      |                                           ^
+misc_104.c:23:1: warning: ignoring attribute 'gnu_inline' because it conflicts with attribute 'noinline' [-Wattributes]
+   23 | static __attribute__((gnu_inline, noipa)) int kf(void);
+      | ^
+misc_104.c:26:42: warning: inline function 'na' given attribute 'noinline' [-Wattributes]
+   26 | static inline int __attribute__((noipa)) na(void) { return 1; }
+      |                                          ^
+misc_104.c:27:45: warning: inline function 'nb' given attribute 'noinline' [-Wattributes]
+   27 | static inline int __attribute__((noinline)) nb(void) { return 1; }
+      |                                             ^
+misc_104.c:29:35: warning: inline function 'nd' given attribute 'noinline' [-Wattributes]
+   29 | inline int __attribute__((noipa)) nd(void) { return 1; }
+      |                                   ^
+misc_104.c:32:35: warning: declaration of 'nf' with attribute 'noinline' follows inline declaration [-Wattributes]
+   32 | static int __attribute__((noipa)) nf(void);
+      |                                   ^
+misc_104.c:31:19: note: previous declaration of 'nf' with type 'int(void)'
+   31 | static inline int nf(void);
+      |                   ^
+misc_104.c:34:35: warning: inline function 'ng' given attribute 'noinline' [-Wattributes]
+   34 | inline int __attribute__((noipa)) ng(void);
+      |                                   ^
+misc_104.c:35:19: warning: inline function 'nh' given attribute 'noinline' [-Wattributes]
+   35 | static inline int nh(void) __attribute__((noipa));
+      |                   ^
+misc_104.c:36:52: warning: inline function 'ni' given attribute 'noinline' [-Wattributes]
+   36 | static inline int __attribute__((noipa, noinline)) ni(void) { return 1; }
+      |                                                    ^
+misc_104.c:37:1: warning: ignoring attribute 'always_inline' because it conflicts with attribute 'noinline' [-Wattributes]
+   37 | static inline __attribute__((always_inline, noipa)) int nj(void) { return 1; }
+      | ^
+misc_104.c:37:57: warning: inline function 'nj' given attribute 'noinline' [-Wattributes]
+   37 | static inline __attribute__((always_inline, noipa)) int nj(void) { return 1; }
+      |                                                         ^
+misc_104.c:42:16: warning: 'packed' attribute ignored [-Wattributes]
+   42 | typedef struct p __attribute__ ((packed)) t1;
+      |                ^
+misc_104.c:43:41: warning: 'packed' attribute ignored [-Wattributes]
+   43 | typedef __attribute__ ((packed)) struct p t2;
+      |                                         ^
+misc_104.c:44:41: warning: 'packed' attribute ignored [-Wattributes]
+   44 | __attribute__ ((packed)) typedef struct p t3;
+      |                                         ^
+misc_104.c:45:16: warning: 'packed' attribute ignored [-Wattributes]
+   45 | typedef struct p t4 __attribute__ ((packed));
+      |                ^
+misc_104.c:46:16: warning: 'packed' attribute ignored [-Wattributes]
+   46 | typedef struct u1 __attribute__ ((packed)) t5;
+      |                ^
+misc_104.c:47:8: warning: 'packed' attribute ignored [-Wattributes]
+   47 | struct p __attribute__ ((packed)) v1;
+      |        ^
+misc_104.c:48:8: warning: 'packed' attribute ignored [-Wattributes]
+   48 | struct p v2 __attribute__ ((packed));
+      |        ^
+misc_104.c:51:1: warning: 'packed' attribute ignored [-Wattributes]
+   51 | typedef int __attribute__ ((packed)) t8;
+      | ^
+misc_104.c:53:14: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+   53 | typedef enum e2 __attribute__ ((packed)) t10;
+      |              ^
+misc_104.c:53:14: warning: 'packed' attribute ignored [-Wattributes]
+   53 | typedef enum e2 __attribute__ ((packed)) t10;
+      |              ^

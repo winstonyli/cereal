@@ -1477,3 +1477,15 @@ diagnostics and builds on the strinit table.
   `f`, cereal at the `(`.
 - Gate: 1153 pass, san 401/0, gcc.dg differ 114, c-c++-common 35, callgrind
   3.690G.
+
+## Round 90 (attribute diagnostics)
+- access: modes are not compared when a VLA bound implies one (uninit-37).
+- noipa acts as noinline: "inline function given attribute 'noinline'" on
+  an inline definition or declaration, and the always_inline/gnu_inline
+  conflict messages name noinline and drop the right attribute by order
+  (attr-noipa).
+- 'packed' after a reference to a tag (`typedef struct p __attribute__
+  ((packed)) t;`, enums too) warns "'packed' attribute ignored" at the tag
+  name (pack-test-3).  Golden misc_104.
+- Gate: 1155 pass, 0 sanitizer findings,
+  gcc.dg differ 111, c-c++-common 35, callgrind 3.693G.

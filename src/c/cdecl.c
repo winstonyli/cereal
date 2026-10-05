@@ -786,6 +786,8 @@ static bool attr_on_object(Checker *c, uint32_t attr)
     return true;
 }
 
+static uint32_t find_child(Checker *c, uint32_t i, unsigned tag);
+
 static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
 {
     Kids k;
@@ -2045,8 +2047,8 @@ static int acc_kind(const AccSeen *e, const AccSeen *x)
     if (vla && x->size && e->size && x->size != e->size &&
         !strcmp(e->mode, x->mode))
         return AK_CONFLICT;
-    if (strcmp(e->mode, x->mode))
-        return AK_MODE;
+    if (!e->implied && !x->implied && strcmp(e->mode, x->mode))
+        return AK_MODE;     /* a VLA bound implies no mode of its own */
     if (!e->size && x->size)
         return AK_MISSING_OLD;
     if (e->size && !x->size)
@@ -2691,8 +2693,10 @@ static const struct AttrExcl {
     {"cold", {"cold", "hot"}, false}, {"hot", {"cold", "hot"}, false},
     {"common", {"common", "nocommon"}, false},
     {"nocommon", {"common", "nocommon"}, false},
-    {"always_inline", {"noinline"}, false}, {"gnu_inline", {"noinline"}, false},
+    {"always_inline", {"noinline", "noipa"}, false},
+    {"gnu_inline", {"noinline", "noipa"}, false},
     {"noinline", {"always_inline", "gnu_inline"}, false},
+    {"noipa", {"always_inline", "gnu_inline"}, false},
     {"noreturn", {"alloc_align", "alloc_size", "const", "malloc", "pure",
                   "returns_twice", "warn_unused_result"}, false},
     {"warn_unused_result", {"noreturn", "warn_unused_result"}, false},
@@ -2734,10 +2738,15 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, const char *an,
             if (!hit)
                 continue;
             {
+                /* noipa acts as noinline; one met on this declaration after
+                 * an inline attribute makes gcc drop the inline attribute */
+                bool noipa = !strcmp(an, "noipa"), swap = noipa && !prev;
+                const char *ia = swap ? o : noipa ? "noinline" : an;
+                const char *io = swap || !strcmp(o, "noipa") ? "noinline" : o;
                 Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
                                         "attributes", "ignoring attribute '%s' "
                                         "because it conflicts with attribute "
-                                        "'%s'", an, o);
+                                        "'%s'", ia, io);
                 if (d && prev)
                     cnote(c, d, st->prevloc, "previous declaration here");
                 /* gcc 13 says it twice when noreturn meets an earlier
@@ -2752,7 +2761,9 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, const char *an,
                 }
             }
             if (c->nign < 8)
-                snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", an);
+                snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s",
+                         !strcmp(an, "noipa") && !prev ? o
+                         : !strcmp(an, "noipa") ? "noinline" : an);
             if (!strcmp(an, "packed"))
                 st->ign_packed = true;
             if (!strcmp(an, "aligned"))
@@ -3588,6 +3599,17 @@ static void specs_visit(Checker *c, uint32_t i)
             }
             if (!s.error || s.has_type)
                 s.tag_node = n;
+            if (!(nd->flags & NF_BODY) && find_child(c, n, N_TAG) != NO_NODE) {
+                /* packed after a reference to a tag is dropped, at the tag */
+                Attrs ta;
+                memset(&ta, 0, sizeof ta);
+                c->attr_quiet = true;
+                attrs_of_children(c, n, &ta);
+                c->attr_quiet = false;
+                if (ta.packed)
+                    cwarn(c, iloc(c, cnode(c, find_child(c, n, N_TAG))->tok),
+                          "attributes", "'packed' attribute ignored");
+            }
             if (sso_of_tag(c, n))
                 s.attrs.sso = sso_of_tag(c, n);
             break;
@@ -5403,6 +5425,31 @@ static void weak_apply(Checker *c, CSym *s, bool is_inline)
     s->flags |= CSF_WEAK;
 }
 
+/* Whether the specifiers sn or the declarator idecl give the function
+ * noinline (noipa implies it), unless the attribute was ignored. */
+static bool given_noinline(Checker *c, uint32_t sn, uint32_t idecl)
+{
+    unsigned k;
+    bool r = false;
+    static const char *const names[] = {"noinline", "noipa"};
+    for (k = 0; k < 2; k++)
+        r = r || (sn != NO_NODE && attrs_item_named(c, sn, names[k])) ||
+            attrs_item_named(c, idecl, names[k]);
+    for (k = 0; k < c->nign; k++)
+        if (!strcmp(c->ign[k], "noinline"))
+            r = false;
+    return r;
+}
+
+/* An inline function given the noinline attribute. */
+static void inline_given(Checker *c, const CSym *s, bool is_inline,
+                         uint32_t sn, uint32_t idecl)
+{
+    if (s->kind == CS_FUNC && is_inline && given_noinline(c, sn, idecl))
+        cwarn(c, s->loc, "attributes", "inline function '%s' given attribute "
+              "'noinline'", sname(c, s));
+}
+
 /* diagnose_mismatched_decls: an inline declaration after one with
  * noinline, or noinline after an inline one. */
 static void inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
@@ -5412,15 +5459,10 @@ static void inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
     const CSym *o;
     Diagnostic *d = NULL;
     bool nw_noinline;
-    unsigned k;
     if (ref == SYM_NONE || csym(c, ref)->kind != CS_FUNC)
         return;
     o = csym(c, ref);
-    nw_noinline = attrs_item_named(c, sn, "noinline") ||
-                  attrs_item_named(c, idecl, "noinline");
-    for (k = 0; k < c->nign; k++)
-        if (!strcmp(c->ign[k], "noinline"))
-            nw_noinline = false;
+    nw_noinline = given_noinline(c, sn, idecl);
     if ((nw->flags & CSF_INLINE) && !(o->flags & CSF_INLINE) &&
         cdecl_aset_has(c, o->aset, "noinline", NULL))
         d = cwarn_d(c, DL_WARNING, iloc(c, ltok), "attributes", "inline declaration "
@@ -6671,8 +6713,10 @@ static void declared_visit(Checker *c, uint32_t i)
             }
         }
     } else {
-        if (g.what == GD_FUNC)
+        if (g.what == GD_FUNC) {
+            inline_given(c, &s, sp.is_inline, sn, idecl);
             inline_follows(c, &s, ltok, sn, idecl);
+        }
         ref = pushdecl(c, &s, false);
     }
     {
@@ -8794,6 +8838,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         s.linkage = LK_INTERNAL;
     if (sp.attrs.weak)
         weak_apply(c, &s, sp.is_inline);
+    inline_given(c, &s, sp.is_inline, fp.specs, fd);
     /* the return type */
     rt = type_base(TT, s.ty);
     if (!is_err(c, rt) && !is_void(c, rt) && !type_is_complete(TT, rt)) {
