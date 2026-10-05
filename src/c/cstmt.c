@@ -1926,8 +1926,15 @@ static void decl_after_stmt(Checker *c, uint32_t i)
     default:
         break;
     }
-    cc90(c, first_loc(c, i), "declaration-after-statement",
-         "ISO C90 forbids mixed declarations and code");
+    {
+        uint32_t t = first_tok(c, i);
+        SrcLoc l = ctok_loc(c, t);
+        /* a system header's macro (bool): gcc reports at its expansion */
+        if (c->u->toks[t].exp && cin_system(c, l))
+            l = c->u->toks[t].exp;
+        cc90(c, l, "declaration-after-statement",
+             "ISO C90 forbids mixed declarations and code");
+    }
 }
 
 /* After cdecl_node for a non-expression node. */

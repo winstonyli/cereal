@@ -138,6 +138,7 @@ typedef struct TypeTable {
     StrBuf qbuf[4];          /* type_q */
     unsigned qnext;
     bool aka;                /* type_print: strip typedefs (aka spelling) */
+    bool noq_top;            /* type_print: a top-level typedef without quals */
 } TypeTable;
 
 void types_init(TypeTable *tt, const Target *tgt, Interner *in);
@@ -274,6 +275,7 @@ void type_quote(TypeTable *tt, StrBuf *sb, TypeId t);
 /* type_quote into a buffer owned by the table, valid until the next call
  * (four rotate, so one message can quote up to four types). */
 const char *type_q(TypeTable *tt, TypeId t);
+const char *type_q_decl(TypeTable *tt, TypeId t);
 
 /* ---- layout dump (--dump-types) -------------------------------------- */
 

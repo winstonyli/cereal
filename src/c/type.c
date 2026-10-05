@@ -1255,7 +1255,9 @@ void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
         sb_puts(sb, "__attribute__((const)) ");
     if (fq & TQ_VOLATILE)
         sb_puts(sb, "__attribute__((noreturn)) ");
-    print_spec(tt, sb, t);
+    /* gcc names a qualified typedef as an object's type by the typedef alone */
+    print_spec(tt, sb, tt->noq_top && k == D_EMPTY &&
+                       type_ent(tt, t)->kind == TY_TYPEDEF ? TYPE_UNQUAL(t) : t);
     if (k == D_PTR || k == D_PAREN)
         sb_putc(sb, ' ');
     sb_putn(sb, d.data, d.len);
@@ -1268,6 +1270,7 @@ void type_quote(TypeTable *tt, StrBuf *sb, TypeId t)
     size_t start = sb->len;
     sb_putc(sb, '\'');
     type_print(tt, sb, t);
+    tt->noq_top = false;
     sb_putc(sb, '\'');
     size_t end = sb->len;
     TypeId c = tt->ents.data[TYPE_IDX(t)].canon | TYPE_QUALS(t);
@@ -1285,6 +1288,17 @@ void type_quote(TypeTable *tt, StrBuf *sb, TypeId t)
         sb->data[end] = 0;
     } else
         sb_puts(sb, "'}");
+}
+
+/* type_q for the type of a declared object: a qualified typedef prints
+ * without its qualifiers (they show in the {aka}). */
+const char *type_q_decl(TypeTable *tt, TypeId t)
+{
+    const char *r;
+    tt->noq_top = true;
+    r = type_q(tt, t);
+    tt->noq_top = false;
+    return r;
 }
 
 const char *type_q(TypeTable *tt, TypeId t)

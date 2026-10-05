@@ -1,0 +1,42 @@
+misc_128.c:3:1: warning: taking the address of a label is non-standard [-Wpedantic]
+    3 | int k (int [sizeof &&z]);
+      | ^
+misc_128.c:3:1: error: label 'z' referenced outside of any function
+    3 | int k (int [sizeof &&z]);
+      | ^
+misc_128.c:4:1: warning: taking the address of a label is non-standard [-Wpedantic]
+    4 | void *p = &&w;
+      | ^
+misc_128.c:4:1: error: label 'w' referenced outside of any function
+    4 | void *p = &&w;
+      | ^
+misc_128.c:5:1: warning: taking the address of a label is non-standard [-Wpedantic]
+    5 | int q = (int)&&w;
+      | ^
+misc_128.c:5:1: error: label 'w' referenced outside of any function
+    5 | int q = (int)&&w;
+      | ^
+misc_128.c:5:9: warning: cast from pointer to integer of different size [-Wpointer-to-int-cast]
+    5 | int q = (int)&&w;
+      |         ^
+misc_128.c:7:1: error: function 'a1' is initialized like a variable
+    7 | void a1 () = 0;
+      | ^
+misc_128.c:7:14: error: invalid initializer
+    7 | void a1 () = 0;
+      |              ^
+misc_128.c:9:1: error: function 'a2' is initialized like a variable
+    9 | void a2 () = 0;
+      | ^
+misc_128.c:10:1: error: function 'a3' is initialized like a variable
+   10 | void a3 () = 0;
+      | ^
+misc_128.c:12:1: error: function 'a4' is initialized like a variable
+   12 | void a4 () = 1+2;
+      | ^
+misc_128.c:12:14: error: invalid initializer
+   12 | void a4 () = 1+2;
+      |              ^
+misc_128.c:17:3: warning: ISO C90 forbids mixed declarations and code [-Wdeclaration-after-statement]
+   17 |   bool r = true;
+      |   ^

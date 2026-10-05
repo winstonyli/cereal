@@ -5155,13 +5155,13 @@ static void locate_old_decl(Checker *c, Diagnostic *d, const CSym *o)
         return;
     if (sym_defined(o) || o->kind == CS_ENUMCONST)
         cnote(c, d, o->loc, "previous definition of '%s' with type %s",
-              sname(c, o), type_q(TT, o->ty));
+              sname(c, o), type_q_decl(TT, o->ty));
     else if (o->flags & CSF_IMPLICIT)
         cnote(c, d, o->loc, "previous implicit declaration of '%s' with type "
-              "%s", sname(c, o), type_q(TT, o->ty));
+              "%s", sname(c, o), type_q_decl(TT, o->ty));
     else
         cnote(c, d, o->loc, "previous declaration of '%s' with type %s",
-              sname(c, o), type_q(TT, o->ty));
+              sname(c, o), type_q_decl(TT, o->ty));
 }
 
 /* -Wtraditional: a file-scope declaration without 'static' after a static one. */
@@ -6769,6 +6769,13 @@ static void declared_visit(Checker *c, uint32_t i)
         case GD_FUNC:
             cerror(c, il, "function '%s' is initialized like a variable",
                    cident(c, g.name));
+            {   /* a redeclaration of a defined function: its initial value
+                 * is already set, and the initializer is invalid too */
+                uint32_t b = cbound_here(c, NS_ORD, g.name);
+                if (b && sym_defined(csym(c, c->log.data[b - 1].ref)))
+                    cerror(c, tloc(c, ltok),
+                           "invalid initializer");
+            }
             initialized = false;
             incomp_init = true;   /* the initializer is still parsed */
             break;

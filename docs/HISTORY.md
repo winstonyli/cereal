@@ -1756,3 +1756,18 @@ diagnostics and builds on the strinit table.
   its type" (pr14475).
   Golden misc_126. Gate: 1199 pass, san 424/0, gcc.dg 69 / c-c++-common 35,
   callgrind 3.705G.
+
+## Round 110: typedef notes and four small gcc.dg files
+
+- A redefinition note names an object's qualified typedef type by the typedef
+  alone (`CI {aka const int}`, `type_q_decl`); inside a pointer the
+  qualifier stays. Golden misc_127.
+- -Wdeclaration-after-statement on a declaration starting with a system
+  header's macro (`bool`) is reported at the expansion (pr81779).
+- `&&label` outside a function: the -Wpedantic warning comes before the error
+  (parm-impl-decl-2).
+- A function initialized like a variable after it was defined also gets
+  "invalid initializer" at the initializer (pr64766). Open: the
+  "prototype follows non-prototype definition" warning is still missing when
+  such a redeclaration is initialized. Golden misc_128.
+- Gate: 1203 pass, san 426/0, gcc.dg 66 / c-c++-common 35, callgrind 3.705G.

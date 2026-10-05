@@ -5878,6 +5878,8 @@ static void e_generic(Checker *c, uint32_t i)
 static void e_addr_label(Checker *c, uint32_t i)
 {
     uint32_t tok = c->nodes[i].tok;
+    ped(c, i, cinput_loc(c, tok + 1), "taking the address of a "
+                                                    "label is non-standard");
     if (!in_function(c)) {
         cerror(c, cinput_loc(c, tok + 1), "label '%s' referenced outside of "
                "any function", cident(c, cnode_ident(c, i)));
@@ -5886,8 +5888,6 @@ static void e_addr_label(Checker *c, uint32_t i)
         c->ef[i] = EF_NPC;
         return;
     }
-    ped(c, i, cinput_loc(c, tok + 1), "taking the address of a "
-                                                    "label is non-standard");
     c->ty[i] = type_ptr(TT, TYPE_B(VOID));
     c->ck[i] = K_ADDR;
     c->cb[i] = CB_NODE | i;

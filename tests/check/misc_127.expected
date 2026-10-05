@@ -1,0 +1,30 @@
+misc_127.c:2:23: error: conflicting type qualifiers for 'a'
+    2 | const I a = 0; double a;
+      |                       ^
+misc_127.c:2:9: note: previous definition of 'a' with type 'I' {aka 'const int'}
+    2 | const I a = 0; double a;
+      |         ^
+misc_127.c:3:23: error: conflicting type qualifiers for 'b'
+    3 | const P b = 0; double b;
+      |                       ^
+misc_127.c:3:9: note: previous definition of 'b' with type 'P' {aka 'int * const'}
+    3 | const P b = 0; double b;
+      |         ^
+misc_127.c:4:24: error: conflicting type qualifiers for 'c'
+    4 | const VI c = 0; double c;
+      |                        ^
+misc_127.c:4:10: note: previous definition of 'c' with type 'VI' {aka 'const volatile int'}
+    4 | const VI c = 0; double c;
+      |          ^
+misc_127.c:5:23: error: conflicting type qualifiers for 'd'
+    5 | volatile VI d; double d;
+      |                       ^
+misc_127.c:5:13: note: previous declaration of 'd' with type 'VI' {aka 'volatile int'}
+    5 | volatile VI d; double d;
+      |             ^
+misc_127.c:6:20: error: conflicting types for 'e'; have 'double'
+    6 | const I *e; double e;
+      |                    ^
+misc_127.c:6:10: note: previous declaration of 'e' with type 'const I *' {aka 'const int *'}
+    6 | const I *e; double e;
+      |          ^
