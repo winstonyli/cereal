@@ -1428,3 +1428,16 @@ diagnostics and builds on the strinit table.
   -1 (a `#warning` there reads ":-1:2") and words the range warning without
   "(C99 6.10.4p3) [-Wpedantic]"; cereal gives the real line and both
   pedantic notes.
+
+## Round 87 (packed-cast location, binary constants)
+- Packed-member check: a cast that changes the pointer type reports at the
+  operand (cast site, whether or not the operand is parenthesized); a cast
+  that leaves the type alone is looked through by the conversion that
+  receives it and reported at the cast (`noop_ptr_cast`).  Goldens misc_100,
+  101.  c-c++-common differ 37 -> 35.
+- `#if 0b11` under -pedantic-errors is an error (was a warning).  Golden
+  misc_99.
+- Open: with -ftrack-macro-expansion=0 gcc locates a pp-expression
+  diagnostic from a macro body at the macro use (binary-constants-2/3);
+  `pp_eval_if` works on already-expanded tokens, so the use location is not
+  at hand there.

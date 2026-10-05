@@ -2980,6 +2980,15 @@ static SrcLoc pk_loc(Checker *c, uint32_t e)
 static void packed_ptr_check_x(Checker *c, TypeId to, uint32_t e, int mode,
                                SrcLoc castloc, bool arg);
 
+/* gcc's build_c_cast does not look for packed members in a cast that leaves
+ * the pointer type as it is; the conversion it feeds checks them instead. */
+static bool noop_ptr_cast(Checker *c, TypeId to, uint32_t operand)
+{
+    TypeId o = rvt(c, operand);
+    return is_ptr(c, o) &&
+           type_canon(TT, unqual(c, o)) == type_canon(TT, unqual(c, to));
+}
+
 static void packed_ptr_check(Checker *c, TypeId to, uint32_t e)
 {
     packed_ptr_check_x(c, to, e, 0, 0, false);
@@ -3003,7 +3012,7 @@ static void packed_ptr_check_x(Checker *c, TypeId to, uint32_t e, int mode,
         uint32_t ck[4], in;
         if (node_children(c->nodes, e, ck, 4) >= 2) {
             in = strip_paren(c, ck[1]);
-            if (in == ck[1])      /* gcc locates a parenthesized operand itself */
+            if (in != NO_NODE && noop_ptr_cast(c, c->ty[e], in))
                 packed_ptr_check_x(c, to, in, 2, first_loc(c, e), arg);
         }
         return;
@@ -5039,7 +5048,7 @@ static void e_cast(Checker *c, uint32_t i)
         cwarn(c, loc, "pointer-to-int-cast",
               "cast from pointer to integer of different size");
     }
-    packed_ptr_check_x(c, t, a, a == strip_paren(c, a) ? 1 : 3, 0, false);
+    packed_ptr_check_x(c, t, a, noop_ptr_cast(c, t, a) ? 1 : 3, 0, false);
     if (is_ptr(c, t))
         alias_cast(c, a, c->ty[i]);
     if (tk == TY_BOOL && (is_ptr(c, ot) || is_int(c, ot) || is_flt(c, ot) || is_complex(c, ot)))

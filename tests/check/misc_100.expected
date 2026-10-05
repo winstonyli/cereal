@@ -1,0 +1,24 @@
+misc_100.c:2:41: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    2 | int *a(struct data *p) { return (int *) &p->ptr; }
+      |                                         ^
+misc_100.c:3:45: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    3 | int *b(struct data *p) { return p ? (int *) &p->ptr : (int *) 0; }
+      |                                             ^
+misc_100.c:4:58: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    4 | int *c(struct data *p, int *x) { return (*x = 1, (int *) &p->ptr); }
+      |                                                          ^
+misc_100.c:5:62: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    5 | int *d(struct data *p, int *x) { return p ? (*x = 1, (int *) &p->ptr) : (int *) 0; }
+      |                                                              ^
+misc_100.c:6:67: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    6 | int *e(struct data *p, int *x) { int *q; q = p ? (*x = 1, (int *) &p->ptr) : (int *) 0; return q; }
+      |                                                                   ^
+misc_100.c:7:62: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    7 | int *f(struct data *p, int *x) { return p ? (*x = 1, (int *) &(p->ptr)) : 0; }
+      |                                                              ^
+misc_100.c:8:54: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    8 | int *g(struct data *p, int *x) { return (p ? (int *) &p->ptr : 0); }
+      |                                                      ^
+misc_100.c:9:53: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    9 | int *h(struct data *p, int *x) { return (1, (int *) &p->ptr); }
+      |                                                     ^

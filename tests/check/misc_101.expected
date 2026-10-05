@@ -1,0 +1,30 @@
+misc_101.c:3:34: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    3 | int *r1(struct data *p) { return (int *) &p->i; }
+      |                                  ^
+misc_101.c:4:34: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    4 | int *r2(struct data *p) { return &p->i; }
+      |                                  ^
+misc_101.c:5:36: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    5 | void s1(struct data *p) { int *q = (int *) &p->i; (void)q; }
+      |                                    ^
+misc_101.c:6:36: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    6 | void s2(struct data *p) { int *q = &p->i; (void)q; }
+      |                                    ^
+misc_101.c:7:39: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    7 | void s3(struct data *p) { int *q; q = (int *) &p->i; q = (int *)(&p->i); (void)q; }
+      |                                       ^
+misc_101.c:7:58: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    7 | void s3(struct data *p) { int *q; q = (int *) &p->i; q = (int *)(&p->i); (void)q; }
+      |                                                          ^
+misc_101.c:8:31: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    8 | void s4(struct data *p) { bar((int *) &p->i); bar(&p->i); bar((int *)(&p->i)); }
+      |                               ^
+misc_101.c:8:51: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    8 | void s4(struct data *p) { bar((int *) &p->i); bar(&p->i); bar((int *)(&p->i)); }
+      |                                                   ^
+misc_101.c:8:63: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    8 | void s4(struct data *p) { bar((int *) &p->i); bar(&p->i); bar((int *)(&p->i)); }
+      |                                                               ^
+misc_101.c:10:46: warning: taking address of packed member of 'struct data' may result in an unaligned pointer value [-Waddress-of-packed-member]
+   10 | void s6(struct data *p) { long *q = (long *) &p->i; (void)q; }
+      |                                              ^

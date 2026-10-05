@@ -1,0 +1,6 @@
+misc_99.c:2:5: error: binary constants are a C2X feature or GCC extension
+    2 | #if 0b11
+      |     ^~~~
+misc_99.c:4:9: error: binary constants are a C2X feature or GCC extension
+    4 | int x = 0b1;
+      |         ^

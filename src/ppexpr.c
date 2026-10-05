@@ -150,9 +150,14 @@ static Val parse_number(EP *p, const Tok *t)
         return mkval(0, false);
     }
     uns = nu > 0;
-    if (base == 2 && p->pp->opt->pedantic)
-        pp_warn_at(p->pp, t, "", "binary constants are a C2X feature or GCC "
-                   "extension");
+    if (base == 2 && p->pp->opt->pedantic) {
+        if (p->pp->diag->pedantic_errors)
+            pp_error_at(p->pp, t, "binary constants are a C2X feature or GCC "
+                        "extension");
+        else
+            pp_warn_at(p->pp, t, "", "binary constants are a C2X feature or "
+                       "GCC extension");
+    }
     if (overflowed) {
         pp_error_at(p->pp, t, "integer constant is too large for its type");
         uns = true;
