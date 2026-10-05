@@ -7596,6 +7596,7 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     Attrs a;
     SrcLoc loc;
     bool named = false, saw_named = false;
+    int keep_err = -1;
     uint32_t *seen = NULL;
     size_t ns = 0, cap = 0;
     Record *r;
@@ -7689,6 +7690,9 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
             } else if (!saw_named) {
                 cerror(c, f[k].loc, "flexible array member in a struct with "
                        "no named members");
+                /* the member stays, erroneous (uses are silent) */
+                f[k].ty = ERRT;
+                keep_err = k;
             } else if (!(type_ent(TT, type_canon(TT, f[k].ty))->flags &
                          TF_FLEX)) {
                 /* finish_struct gives a typedef'd `T[]` member its domain too */
@@ -7714,7 +7718,7 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     }
     free(seen);
     for (k = 0; k < n; k++)
-        if (!is_err(c, f[k].ty))
+        if (!is_err(c, f[k].ty) || (int)k == keep_err)
             f[m++] = f[k];
     csum_read_pack(c);
     type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed,

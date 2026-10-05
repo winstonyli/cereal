@@ -1,0 +1,6 @@
+misc_119.c:4:17: error: flexible array member in a struct with no named members
+    4 | struct t { char b[]; };
+      |                 ^
+misc_119.c:7:15: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    7 | struct t t3 = { };
+      |               ^
