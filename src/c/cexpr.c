@@ -9024,6 +9024,7 @@ static void e_cond(Checker *c, uint32_t i)
     cl = colon_loc(c, i, mid, els);
     if (mid == NO_NODE) {
         uint32_t q[3], tc;
+        size_t n0 = c->diag->all.len, at = c->dm[cfirst(c, els)];
         ped(c, i, cl, "ISO C forbids omitting the middle term of a '?:' "
                       "expression");
         for (tc = strip_paren(c, cond); ntag(c, tc) == N_BINARY &&
@@ -9033,6 +9034,16 @@ static void e_cond(Checker *c, uint32_t i)
         if (is_boolish(c, tc) && !node_err(c, tc))
             cwarn(c, cl, "parentheses", "the omitted middle operand in '?:' "
                   "will always be 'true', suggest explicit middle operand");
+        /* gcc's parser reports both before it reads the third operand */
+        if (at < n0 && c->diag->all.len > n0) {
+            Diagnostic **d = c->diag->all.data, *tmp[2];
+            size_t k = c->diag->all.len - n0;
+            if (k <= 2) {
+                memcpy(tmp, d + n0, k * sizeof *d);
+                memmove(d + at + k, d + at, (n0 - at) * sizeof *d);
+                memcpy(d + at, tmp, k * sizeof *d);
+            }
+        }
     }
     ok = binop_operand_at(c, cond, cnode_loc(c, i)) && truth_ok_at(c, cond, cnode_loc(c, i));
     if (ok) {

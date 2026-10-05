@@ -1,0 +1,18 @@
+misc_115.c:4:27: warning: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+    4 | int f(int a) { return a ? : ({ 1; }); }
+      |                           ^
+misc_115.c:4:29: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    4 | int f(int a) { return a ? : ({ 1; }); }
+      |                             ^
+misc_115.c:5:23: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    5 | int g(int a) { return ({ 2; }) ? : 3; }
+      |                       ^
+misc_115.c:5:34: warning: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+    5 | int g(int a) { return ({ 2; }) ? : 3; }
+      |                                  ^
+misc_115.c:6:39: warning: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+    6 | int h(int a, int b) { return a == b ? : ({ a; }); }
+      |                                       ^
+misc_115.c:6:41: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    6 | int h(int a, int b) { return a == b ? : ({ a; }); }
+      |                                         ^

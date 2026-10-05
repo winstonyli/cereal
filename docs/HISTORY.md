@@ -1626,3 +1626,16 @@ diagnostics and builds on the strinit table.
   Golden misc_114.
 - Gate: 1175 pass, san 412/0, gcc.dg differ 87, c-c++-common 35, callgrind
   3.704G.
+
+## Round 100: diagnostic order of ?:
+
+- The omitted-middle-operand warnings (`-Wpedantic`, `-Wparentheses`) are
+  reported by gcc's parser before it reads the third operand; they now
+  precede the third operand's own warnings (Wduplicated-branches-9,
+  pr70144-1).  Golden misc_115.
+- The verify "differ" counts ignore diagnostic order, so they did not move
+  (gcc.dg 87, c-c++-common 35).  Order-only differences left: binary-constants-1,
+  init-bad-4 (parse error before the initializer's warnings), builtins.c
+  (built-in prototype warning before the 'format' attribute one),
+  pr89888 (case range warnings).
+- Gate: 1177 pass, san 413/0, callgrind 3.704G.
