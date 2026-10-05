@@ -1463,3 +1463,17 @@ diagnostics and builds on the strinit table.
   callgrind 3.690G (+0.3%).
 - Mirror reminder: `rsync --delete` of src/tests/bench from `~/cereal-t`
   overwrites edits made only in the repo; edit those trees in `~/cereal-t`.
+
+## Round 89 (statement-expression callee location, -Wextra tag)
+- A call of a statement expression that is not a function is located (as
+  gcc does) at the lone expression or `break`/`continue` inside it
+  (`callee_err_loc`); with several statements or a declaration it stays at
+  the opening brace.  gcc's location for a parenthesized value is the
+  paren, for a call the callee.  pr35742.
+- "ordered comparison of pointer with null pointer / integer zero" carries
+  `[-Wextra]` (they are warned through the -Wextra umbrella itself).
+  ordered-comparison-4.  Golden misc_103.
+- Open: for an implicitly declared function `({ f(); })()` gcc locates at
+  `f`, cereal at the `(`.
+- Gate: 1153 pass, san 401/0, gcc.dg differ 114, c-c++-common 35, callgrind
+  3.690G.

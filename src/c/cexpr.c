@@ -3861,6 +3861,8 @@ SrcLoc call_loc(Checker *c, uint32_t f)
     return cnode_loc(c, f);
 }
 
+static uint32_t stmt_expr_value(Checker *c, uint32_t i);
+
 /* Where gcc reports a bad callee: a compound literal or statement
  * expression is located at its opening brace, other callees as call_loc. */
 SrcLoc callee_err_loc(Checker *c, uint32_t f)
@@ -3874,8 +3876,18 @@ SrcLoc callee_err_loc(Checker *c, uint32_t f)
             return cnode_loc(c, b);
     } else if (g != NO_NODE && ntag(c, g) == N_STMT_EXPR) {
         k = first_child(c, g);
-        if (k != NO_NODE)
+        if (k != NO_NODE) {
+            /* a lone expression or break/continue keeps its own location */
+            uint32_t e = stmt_expr_value(c, g), it = g >= 3 ? g - 3 : NO_NODE;
+            if (e != NO_NODE && cfirst(c, e) == cfirst(c, k) + 1)
+                return ntag(c, e) == N_PAREN ? cnode_loc(c, e)
+                       : ntag(c, e) == N_CALL ? call_loc(c, e)
+                       : expr_loc(c, e);
+            if (it != NO_NODE && cfirst(c, it) == cfirst(c, k) + 1 &&
+                (ntag(c, it) == N_BREAK || ntag(c, it) == N_CONTINUE))
+                return cnode_loc(c, it);
             return cnode_loc(c, k);
+        }
     }
     return call_loc(c, f);
 }
@@ -8246,7 +8258,7 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                 ped(c, i, loc, "ISO C forbids ordered comparisons of pointers "
                                "to functions");
             else if (extra_on(c) && (is_npc(c, a) || is_npc(c, b)))
-                cwarn(c, loc, "", "ordered comparison of pointer with null "
+                cwarn(c, loc, "extra", "ordered comparison of pointer with null "
                                   "pointer");
         } else {
             cpedwarn(c, loc, "", "comparison of distinct pointer types lacks a "
@@ -8260,7 +8272,7 @@ static void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                     ped(c, i, loc, "ordered comparison of pointer with integer "
                                    "zero");
                 else if (extra_on(c))
-                    cwarn(c, loc, "", "ordered comparison of pointer with "
+                    cwarn(c, loc, "extra", "ordered comparison of pointer with "
                                       "integer zero");
             }
         } else {
