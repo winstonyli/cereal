@@ -615,6 +615,7 @@ int64_t cexpr_sval(Checker *c, uint32_t i);
 bool cexpr_bf_overflow(Checker *c, SrcLoc loc, uint32_t n, TypeId ft,
                        TypeId rt, unsigned w);
 const char *cexpr_str(Checker *c, uint32_t i);
+const char *cexpr_str_plain(Checker *c, uint32_t i);
 void cexpr_builtin_decl(Checker *c, const CSym *s);
 void cexpr_builtin_nonfn(Checker *c, const CSym *s);
 bool ccall_is_builtin(Checker *c, const char *name);

@@ -1,0 +1,30 @@
+misc_132.c:6:6: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+    6 | enum E;
+      |      ^
+misc_132.c:8:9: warning: assignment to 'signed char:1' from 'void (*)(int)' makes integer from pointer without a cast [-Wint-conversion]
+    8 |     s.x = f;
+      |         ^
+misc_132.c:9:9: warning: assignment to 'unsigned char:3' from 'void (*)(int)' makes integer from pointer without a cast [-Wint-conversion]
+    9 |     s.u = f;
+      |         ^
+misc_132.c:10:9: warning: assignment to 'long int:40' from 'void (*)(int)' makes integer from pointer without a cast [-Wint-conversion]
+   10 |     s.l = f;
+      |         ^
+misc_132.c:11:11: warning: overflow in conversion from 'int' to 'signed char:1' changes value from 'bar != 0 ? 2 : 0' to '0' [-Woverflow]
+   11 |     s.x = bar ? 2 : 0;
+      |           ^
+misc_132.c:12:11: warning: conversion from 'int' to 'signed char:1' changes value from '2' to '0' [-Wconversion]
+   12 |     s.x = bar ? 0 : 2;
+      |           ^
+misc_132.c:13:11: warning: conversion from 'int' to 'unsigned char:3' changes value from '9' to '1' [-Wconversion]
+   13 |     s.u = bar ? 9 : 1;
+      |           ^
+misc_132.c:14:11: error: assignment of read-only location '((const short int[8])cy)[i]'
+   14 |     cy[i] = 1;
+      |           ^
+misc_132.c:15:17: warning: ISO C forbids forward references to 'enum' types [-Wpedantic]
+   15 |     (void)(enum E)i;
+      |                 ^
+misc_132.c:15:17: error: conversion to incomplete type
+   15 |     (void)(enum E)i;
+      |                 ^

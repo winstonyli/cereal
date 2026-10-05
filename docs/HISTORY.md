@@ -1805,3 +1805,20 @@ diagnostics and builds on the strinit table.
   (gcc: fatal, stops; only -E stops, `fatal_missing_include`), so pr89434 and
   files like it differ in severity.
 - Gate: 1209 pass, san 429/0, gcc.dg 60 / c-c++-common 35, callgrind 3.706G.
+
+## Round 113: bit-field type names, vector subscripts, incomplete enum casts
+
+- Pointer-to-integer assignment to a bit-field names the bit-field type
+  (`signed char:4`; pr70174); `bf_tstr` is shared with -Wsign-compare.
+- A signed bit-field assigned `c ? K : x` with the true arm out of range gets
+  gcc's "overflow in conversion" naming the whole conditional as written
+  (`cexpr_str_plain`; pr35635).
+- A vector subscript prints as gcc's array view,
+  `((const short int[8])y)[i]` (pr83415).
+- `(enum T) x` with `enum T` incomplete: "conversion to incomplete type" at
+  the tag, no sizeof error (pr101171; `cast_tag_loc`).
+- Not changed: pr100547 (gcc places the vector-components error at the last
+  sizeof of a long product, at the closing paren otherwise; cereal uses the
+  typedef start for both).
+- Golden misc_132. Gate: 1211 pass, san 429/0, gcc.dg 56 / c-c++-common 35,
+  callgrind 3.708G.

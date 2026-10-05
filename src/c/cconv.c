@@ -637,6 +637,22 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
                     unsafe_conv_t(c, ct, k[j], promoted(c, k[j]), true) !=
                     UC_SAFE)
                     continue;
+                /* a signed bit-field's true arm that does not fit: gcc folds
+                 * the conditional and names it in an overflow warning */
+                if (uc_bw && j == (int)n - 2 && is_signed(c, lt) &&
+                    gcc_integer(c, ct) && int_bits(c, ct) <= 64 &&
+                    has_ival(c, strip_paren(c, k[j])) &&
+                    !tgt_fits(c, c->cv[strip_paren(c, k[j])], ct, lt)) {
+                    char tb[64];
+                    if (diag_enabled(c->diag, "overflow"))
+                        cwarn(c, l, "overflow", "overflow in conversion from "
+                              "%s to %s changes value from '%s' to '%s'",
+                              type_q(TT, ct), tgt_name(c, lt, tb),
+                              cexpr_str_plain(c, s),
+                              vstr(c, lt, tgt_trunc(c, lt,
+                                   c->cv[strip_paren(c, k[j])])));
+                    continue;
+                }
                 conversion_warning(c, l, lt, k[j], ar ? ct : rvt(c, k[j]),
                                    false);
             }

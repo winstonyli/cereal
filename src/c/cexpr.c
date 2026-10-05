@@ -1179,6 +1179,8 @@ static bool const_through(Checker *c, uint32_t i)
 
 /* The condition of `?:` as gcc prints it after truth-value conversion:
  * `(c) != 0`, `(d) != (0.0)`, `(a) < (b)`, `(c) == 0` for `!c`. */
+static bool pcond_plain;   /* print a ?: test as written, not folded */
+
 static void pcond_test(Checker *c, StrBuf *sb, uint32_t cond)
 {
     uint32_t e = strip_paren(c, cond), k[3];
@@ -1190,6 +1192,15 @@ static void pcond_test(Checker *c, StrBuf *sb, uint32_t cond)
         return;
     }
     t = rvt(c, e);
+    if (pcond_plain) {
+        bool lg = (ntag(c, e) == N_BINARY && (op = npunct(c, e), op == P_ANDAND ||
+                   op == P_OROR || bin_prec(op) == PR_EQ || bin_prec(op) == PR_REL)) ||
+                  (ntag(c, e) == N_UNARY && npunct(c, e) == P_BANG);
+        pexpr(c, sb, e, lg ? PR_LOR : PR_EQ);
+        if (!lg)
+            sb_puts(sb, " != 0");
+        return;
+    }
     if (ntag(c, e) == N_BINARY && nkids(c, e, k, 3) == 2) {
         op = npunct(c, e);
         if (op == P_ANDAND || op == P_OROR) {
@@ -1421,7 +1432,18 @@ static void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
             plowered(c, sb, lb, lx, lsz);
             break;
         }
-        pexpr(c, sb, k[0], PR_POSTFIX);
+        if (c->ty[k[0]] != ERRT && tkind(c, c->ty[k[0]]) == TY_VECTOR) {
+            /* gcc subscripts a vector through an array view of it */
+            TypeId vt = c->ty[k[0]];
+            uint64_t esz = type_size(TT, type_base(TT, vt), &(bool){0});
+            sb_puts(sb, "((");
+            type_print(TT, sb, type_qual(type_base(TT, vt), TYPE_QUALS(vt)));
+            sb_printf(sb, "[%u])", (unsigned)(type_size(TT, vt, &(bool){0}) / (esz ? esz : 1)));
+            pexpr(c, sb, k[0], PR_UNARY);
+            sb_putc(sb, ')');
+        } else {
+            pexpr(c, sb, k[0], PR_POSTFIX);
+        }
         sb_putc(sb, '[');
         pexpr(c, sb, k[1], PR_COMMA);
         sb_putc(sb, ']');
@@ -1524,6 +1546,16 @@ const char *estr(Checker *c, uint32_t i)
 const char *cexpr_str(Checker *c, uint32_t i)
 {
     return estr(c, i);
+}
+
+/* cexpr_str as written (gcc prints the unfolded expression in some messages) */
+const char *cexpr_str_plain(Checker *c, uint32_t i)
+{
+    const char *r;
+    pcond_plain = true;
+    r = estr(c, i);
+    pcond_plain = false;
+    return r;
 }
 
 const char *vstr(Checker *c, TypeId t, uint64_t v)
@@ -3334,6 +3366,7 @@ static void sso_decay(Checker *c, uint32_t i)
 }
 
 static const char *cmp_tstr(Checker *c, uint32_t n);
+static const char *bf_tstr(Checker *c, TypeId t, unsigned w);
 
 static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                          const ConvInfo *ci);
@@ -3788,7 +3821,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
         return true;
     }
     if (gcc_integer(c, cl) && kr == TY_PTR) {
-        T = type_q(TT, lt);
+        T = ctx == CONV_ASSIGN ? bf_tstr(c, lt, ci->lhs_bits) : type_q(TT, lt);
         R = type_q(TT, rt);
         sp(m[CONV_ARG], "passing argument %d of '%s' makes integer from "
            "pointer without a cast", pn, fn);
@@ -5018,6 +5051,21 @@ static void cast_qual(Checker *c, SrcLoc loc, TypeId t, TypeId ot)
     } while (tkind(c, it) == TY_PTR && tkind(c, io) == TY_PTR);
 }
 
+/* gcc points at the tag of a struct/union/enum type name */
+static SrcLoc cast_tag_loc(Checker *c, uint32_t i, uint32_t tn)
+{
+    SrcLoc el = after_loc(c, i);
+    uint32_t m;
+    for (m = cfirst(c, tn); m < tn; m++)
+        if (ntag(c, m) == N_TAG && c->par[m] != NO_NODE &&
+            (ntag(c, c->par[m]) == N_STRUCT || ntag(c, c->par[m]) == N_ENUM) &&
+            c->par[c->par[m]] != NO_NODE &&
+            ntag(c, c->par[c->par[m]]) == N_SPECS &&
+            c->par[c->par[c->par[m]]] == tn)
+            el = cnode_loc(c, m);
+    return el;
+}
+
 static void e_cast(Checker *c, uint32_t i)
 {
     uint32_t k[2], a;
@@ -5042,6 +5090,11 @@ static void e_cast(Checker *c, uint32_t i)
     }
     if (tk == TY_FUNC) {
         cerror(c, loc, "cast specifies function type");
+        set_err(c, i);
+        return;
+    }
+    if (tk == TY_ENUM && !complete(c, t)) {
+        cerror(c, cast_tag_loc(c, i, k[0]), "conversion to incomplete type");
         set_err(c, i);
         return;
     }
@@ -5127,17 +5180,8 @@ static void e_cast(Checker *c, uint32_t i)
             return;
         }
         {
-            SrcLoc el = after_loc(c, i);
-            uint32_t m;
-            /* gcc points at the tag of a struct/union type name */
-            for (m = cfirst(c, k[0]); m < k[0]; m++)
-                if (ntag(c, m) == N_TAG && c->par[m] != NO_NODE &&
-                    ntag(c, c->par[m]) == N_STRUCT &&
-                    c->par[c->par[m]] != NO_NODE &&
-                    ntag(c, c->par[c->par[m]]) == N_SPECS &&
-                    c->par[c->par[c->par[m]]] == k[0])
-                    el = cnode_loc(c, m);
-            cerror(c, el, "conversion to non-scalar type requested");
+            cerror(c, cast_tag_loc(c, i, k[0]),
+                   "conversion to non-scalar type requested");
         }
         set_err(c, i);
         return;
@@ -6627,10 +6671,8 @@ static TypeId cmp_ty(Checker *c, uint32_t n)
 
 /* The type of n as gcc names it in -Wsign-compare (a bit-field has a type
  * of its own width: 'signed char:4'). */
-static const char *cmp_tstr(Checker *c, uint32_t n)
+static const char *bf_tstr(Checker *c, TypeId t, unsigned w)
 {
-    unsigned w = bf_width(c, n);
-    TypeId t = rvt(c, n);
     bool sg = is_signed(c, t);
     if (w && is_int(c, t) && tkind(c, t) != TY_BOOL && w < int_bits(c, t)) {
         const char *base = w <= 8 ? (sg ? "signed char" : "unsigned char")
@@ -6643,6 +6685,11 @@ static const char *cmp_tstr(Checker *c, uint32_t n)
         return sb_cstr(sb);
     }
     return type_q(TT, t);
+}
+
+static const char *cmp_tstr(Checker *c, uint32_t n)
+{
+    return bf_tstr(c, rvt(c, n), bf_width(c, n));
 }
 
 /* warn_for_sign_compare */
