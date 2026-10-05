@@ -1,0 +1,6 @@
+misc_124.c:2:13: warning: conflicting types for built-in function '__clear_cache'; expected 'void(void *, void *)' [-Wbuiltin-declaration-mismatch]
+    2 | extern void __clear_cache (char*, char*);
+      |             ^
+misc_124.c:3:6: warning: conflicting types for built-in function '__builtin_prefetch'; expected 'void(const void *, ...)' [-Wbuiltin-declaration-mismatch]
+    3 | void __builtin_prefetch (const char *, ...);
+      |      ^

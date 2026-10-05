@@ -1719,8 +1719,7 @@ diagnostics and builds on the strinit table.
   the include position, and names the __builtin_ spelling when used.
   Goldens attr_fmt_noproto, builtin_decl_mismatch regenerated (notes only).
   Golden misc_122.
-- Open: -12 has an extra `__clear_cache` mismatch (a declaration with a
-  parameter-list syntax error is handled in Round 107).
+- Open: (-12's `__clear_cache` is fixed in Round 107.)
 - Gate: 1191 pass, san 420/0, gcc.dg 75 / c-c++-common 35, callgrind 3.706G.
 
 ## Round 107: declarations with a bad parameter list
@@ -1733,3 +1732,6 @@ diagnostics and builds on the strinit table.
   declaration even though its unit has an error, after the parser's error
   (ORD_LATE), as gcc does (Wbuiltin-declaration-mismatch-16). Golden misc_123.
 - Gate: 1193 pass, san 421/0, gcc.dg 74 / c-c++-common 35, callgrind 3.706G.
+- `__clear_cache` is a built-in only without -std=c99 (gnu = 1 in
+  cbuiltin_tab.h), so a c99 redeclaration is silent (Wbuiltin-declaration-
+  mismatch-12). Golden misc_124. Gate now: 1195 pass, san 422/0, gcc.dg 73.

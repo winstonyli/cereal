@@ -10,7 +10,7 @@ static const struct { const char *name, *hdr; unsigned char mismatch; const char
     {"FILE", "", 0, "const char *|", 2},
     {"FUNCTION", "", 0, "const char *|", 2},
     {"LINE", "", 0, "int|", 2},
-    {"__clear_cache", "", 0, "void|void *|void *", 0},
+    {"__clear_cache", "", 0, "void|void *|void *", 1},
     {"abort", "<stdlib.h>", 1, "void|", 0},
     {"abs", "<stdlib.h>", 0, "int|int", 0},
     {"acc_on_device", "", 0, "int|int", 2},
