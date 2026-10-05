@@ -1672,10 +1672,10 @@ diagnostics and builds on the strinit table.
 
 - A flexible array member in a struct with no named members is kept (gcc
   keeps the erroneous member), so `q->b` and designators on it no longer add
-  "no member named".  Open: under -pedantic an initializer for it still gets
-  "initialization of a flexible array member" (gcc is silent: erroneous type).
+  "no member named"; the member's type is erroneous, so initializers for it
+  are silent too (golden misc_119).
 - A cast to a typeof whose type is not variably modified drops the side
   effects of the typeof operand (gnu99-const-expr-3/4).
 - A bare `#if` / `#elif` is reported at the end of the line, after blanks
   and comments (gcc's EOF token).  `u8"x"` in #if already matched.
-- Golden misc_118.  Gate: 1183 pass, san 416/0, gcc.dg 81 / c-c++-common 35.
+- Golden misc_118.  Gate: 1185 pass, san 417/0, gcc.dg 81 / c-c++-common 35.
