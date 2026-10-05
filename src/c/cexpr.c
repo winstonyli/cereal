@@ -4628,7 +4628,13 @@ bool is_decimal_flt(Checker *c, TypeId t)
 /* A floating value converted to integer type t (saturating). */
 bool float_to_int(Checker *c, long double f, TypeId t, uint64_t *out)
 {
-    unsigned bits = int_bits(c, t);
+    return float_to_int_bits(c, f, t, int_bits(c, t), out);
+}
+
+/* bits: the width to saturate to (a bit-field's, or t's own) */
+bool float_to_int_bits(Checker *c, long double f, TypeId t, unsigned bits,
+                       uint64_t *out)
+{
     if (bits == 0 || bits > 64)
         return false;
     if (f != f) {

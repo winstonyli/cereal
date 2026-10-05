@@ -190,7 +190,7 @@ static int uc_part(Checker *c, TypeId lt, long double v, TypeId ct,
 /* Does float f overflow integer type lt?  r: the saturated result. */
 bool float_ovf(Checker *c, long double f, TypeId lt, uint64_t *r)
 {
-    unsigned bits = int_bits(c, lt), k;
+    unsigned bits = tgt_bits(c, lt), k;
     long double hi = 1.0L;
     bool ovf;
     if (f != f)
@@ -202,7 +202,7 @@ bool float_ovf(Checker *c, long double f, TypeId lt, uint64_t *r)
         ovf = f >= hi || f <= -hi - 1.0L;
     else
         ovf = f >= hi || f <= -1.0L;
-    return ovf && float_to_int(c, f, lt, r);
+    return ovf && float_to_int_bits(c, f, lt, bits, r);
 }
 
 static uint32_t uc_cast_operand(Checker *c, uint32_t e)
@@ -765,7 +765,7 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
             uint64_t r;
             from = real_cst_str(c, a, f, et);
             if (gcc_integer(c, lt)) {
-                if (!float_to_int(c, f, lt, &r))
+                if (!float_to_int_bits(c, f, lt, tgt_bits(c, lt), &r))
                     return;
                 to = vstr(c, lt, r);
             } else
@@ -895,8 +895,9 @@ static bool conv_overflow(Conv *x)
         char rb[160];
         if (!float_ovf(c, f, lt, &r))
             return false;
+        char tb[64];
         cwarn(c, l, "overflow", "overflow in conversion from %s to %s changes "
-              "value from '%s' to '%s'", type_q(TT, rt), type_q(TT, lt),
+              "value from '%s' to '%s'", type_q(TT, rt), tgt_name(c, lt, tb),
               real_cst_str(c, rb, f, rt), vstr(c, lt, r));
         return true;
     }
@@ -928,6 +929,16 @@ void conv_arith(Conv *x)
 {
     Checker *c = x->c;
     unsigned w = x->ci->lhs_bits;
+    if (w && gcc_integer(c, x->type) && w < int_bits(c, x->type) &&
+        gcc_real(c, x->rhstype) && !inhibited(c, x->expr, false) &&
+        !(c->ef[x->expr] & EF_OVERFLOW)) {
+        uc_bw = w;
+        if (!conv_overflow(x))
+            conversion_warning(c, conv_loc(x), x->type, x->expr, x->rhstype,
+                               true);
+        uc_bw = 0;
+        return;
+    }
     if (w && gcc_integer(c, x->type) && w < int_bits(c, x->type) &&
         gcc_integer(c, x->rhstype) && !inhibited(c, x->expr, false) &&
         !(c->ef[x->expr] & EF_OVERFLOW)) {

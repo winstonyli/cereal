@@ -1822,3 +1822,12 @@ diagnostics and builds on the strinit table.
   typedef start for both).
 - Golden misc_132. Gate: 1211 pass, san 429/0, gcc.dg 56 / c-c++-common 35,
   callgrind 3.708G.
+
+## Round 114: float to bit-field conversions
+
+- A real value assigned to a bit-field names the bit-field type
+  (`unsigned char:3`) in the -Wfloat-conversion / may-change-value messages,
+  and an out-of-range constant gives gcc's -Woverflow saturated to the field's
+  width (9.5 to 7). `float_to_int_bits` takes the width; `conv_arith` sets
+  `uc_bw` for real sources too. Golden misc_133.
+- Gate: 1213 pass, san 431/0, gcc.dg 56 / c-c++-common 35, callgrind 3.708G.

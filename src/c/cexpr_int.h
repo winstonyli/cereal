@@ -361,6 +361,8 @@ bool cplx_get(Checker *c, uint32_t n, long double *re, long double *im, TypeId
               *ct);
 uint64_t cplx_u(long double v);
 bool float_to_int(Checker *c, long double f, TypeId t, uint64_t *out);
+bool float_to_int_bits(Checker *c, long double f, TypeId t, unsigned bits,
+                       uint64_t *out);
 bool is_cmp_op(int op);
 bool opeq(Checker *c, uint32_t x, uint32_t y);
 bool part_conv(Checker *c, TypeId from, TypeId to, long double v, long double
