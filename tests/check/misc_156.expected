@@ -1,0 +1,24 @@
+misc_156.c:8:1: warning: 'malloc (d2)' attribute ignored with deallocation functions declared 'inline' [-Wattributes]
+    8 | __attribute__ ((malloc (d2))) float* a2 (int);
+      | ^
+misc_156.c:10:1: warning: 'malloc (d4)' attribute ignored with deallocation functions declared 'inline' [-Wattributes]
+   10 | __attribute__ ((malloc (d4))) float* a4 (int);
+      | ^
+misc_156.c:12:45: warning: inline function 'a6' given attribute 'noinline' [-Wattributes]
+   12 | __attribute__ ((malloc (d5))) inline float* a6 (int n) { return 0; }
+      |                                             ^
+misc_156.c:14:45: warning: inline function 'a8' given attribute 'noinline' [-Wattributes]
+   14 | inline __attribute__ ((malloc (d5))) float* a8 (int n);
+      |                                             ^
+misc_156.c:15:52: warning: inline function 'a9' given attribute 'noinline' [-Wattributes]
+   15 | __attribute__ ((malloc (d5))) static inline float* a9 (int n);
+      |                                                    ^
+misc_156.c:14:45: warning: inline function 'a8' declared but never defined
+   14 | inline __attribute__ ((malloc (d5))) float* a8 (int n);
+      |                                             ^
+misc_156.c:4:20: warning: 'd3' used but never defined
+    4 | static inline void d3 (float *p);
+      |                    ^
+misc_156.c:15:52: warning: 'a9' declared 'static' but never defined [-Wunused-function]
+   15 | __attribute__ ((malloc (d5))) static inline float* a9 (int n);
+      |                                                    ^

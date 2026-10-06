@@ -283,6 +283,8 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         co.strict_alias = o->strict_alias;
         co.lax_vector = o->lax_vector;
         co.cf_nobranch = o->cf_nobranch;
+        co.optimize = o->opt_level && o->opt_level != '0' &&
+                      o->opt_level != 'g';
         co.pedantic = tu.diag.pedantic;
         co.pedantic_errors = tu.diag.pedantic_errors;
         co.dump = dump_types ? out : NULL;

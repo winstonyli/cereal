@@ -1,0 +1,6 @@
+misc_159.c:5:1: warning: optimization attribute on 'fn0' follows definition but the attribute doesn't match [-Wattributes]
+    5 | extern void __attribute__((optimize ("O2"))) fn0 (void);
+      | ^
+misc_159.c:2:1: note: previous definition of 'fn0' with type 'void(void)'
+    2 | fn0 (void)
+      | ^

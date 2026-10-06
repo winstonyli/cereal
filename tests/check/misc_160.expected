@@ -1,0 +1,27 @@
+misc_160.c:7:9: warning: passing argument 2 to 'restrict'-qualified parameter aliases with argument 1 [-Wrestrict]
+    7 |   f(&a, &a);
+      |         ^
+misc_160.c:8:3: warning: passing argument 2 to 'restrict'-qualified parameter aliases with argument 1 [-Wrestrict]
+    8 |   f(p, p);
+      |   ^
+misc_160.c:10:10: warning: passing argument 2 to 'restrict'-qualified parameter aliases with argument 1 [-Wrestrict]
+   10 |   f(arr, arr);
+      |          ^
+misc_160.c:13:5: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   13 |   g(s, s, 1);
+      |     ^
+misc_160.c:15:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 3 [-Wrestrict]
+   15 |   h(p, q, p);
+      |   ^
+misc_160.c:16:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 2 [-Wrestrict]
+   16 |   h(p, p, q);
+      |   ^
+misc_160.c:17:9: warning: passing argument 2 to 'restrict'-qualified parameter aliases with argument 1 [-Wrestrict]
+   17 |   f(&a, (int *)&a);
+      |         ^
+misc_160.c:18:14: warning: passing argument 2 to 'restrict'-qualified parameter aliases with argument 1 [-Wrestrict]
+   18 |   f(p + 1, p + 1);
+      |              ^
+misc_160.c:19:3: warning: passing argument 2 to 'restrict'-qualified parameter aliases with argument 1 [-Wrestrict]
+   19 |   f(p, p + 0);
+      |   ^

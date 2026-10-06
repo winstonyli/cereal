@@ -1,0 +1,3 @@
+misc_158.c:2:5: error: size of 'a' 524288 bytes exceeds maximum object size 65536 [-Werror=larger-than=]
+    2 | int a[131072];
+      |     ^

@@ -1,0 +1,69 @@
+misc_154.c:2:8: warning: padding struct size to alignment boundary with 3 bytes [-Wpadded]
+    2 | struct S { __UINT32_TYPE__ i; char c; } __attribute__((aligned(4)));
+      |        ^
+misc_154.c:5:7: warning: padding struct to align 'b' [-Wpadded]
+    5 |   int b;
+      |       ^
+misc_154.c:7:1: warning: padding struct size to alignment boundary with 3 bytes [-Wpadded]
+    7 | };
+      | ^
+misc_154.c:10:10: warning: padding struct to align 'd' [-Wpadded]
+   10 |   double d;
+      |          ^
+misc_154.c:12:13: warning: padding struct to align 'p' [-Wpadded]
+   12 |   struct A *p;
+      |             ^
+misc_154.c:15:8: warning: padding struct size to alignment boundary with 1 bytes [-Wpadded]
+   15 | struct C { int a; char b[3]; };
+      |        ^
+misc_154.c:16:42: warning: padding struct to align 'y' [-Wpadded]
+   16 | struct D { char a; struct { char x; long y; } in; };
+      |                                          ^
+misc_154.c:16:47: warning: padding struct to align 'in' [-Wpadded]
+   16 | struct D { char a; struct { char x; long y; } in; };
+      |                                               ^
+misc_154.c:17:37: warning: padding struct to align 'l' [-Wpadded]
+   17 | struct E { char a; int bf : 3; long l; };
+      |                                     ^
+misc_154.c:19:40: warning: padding struct to align 'b' [-Wpadded]
+   19 | void f(void) { struct L { char a; long b; } l; (void)l; }
+      |                                        ^
+misc_154.c:21:3: warning: padding struct size to alignment boundary with 1 bytes [-Wpadded]
+   21 |   char b[3]; };
+      |   ^
+misc_154.c:23:1: warning: padding struct size to alignment boundary with 1 bytes [-Wpadded]
+   23 | C3 { int a; char b[3]; };
+      | ^
+misc_154.c:25:1: warning: padding struct size to alignment boundary with 1 bytes [-Wpadded]
+   25 | };
+      | ^
+misc_154.c:30:1: warning: padding struct size to alignment boundary with 1 bytes [-Wpadded]
+   30 | ;
+      | ^
+misc_154.c:31:8: warning: padding struct size to alignment boundary with 1 bytes [-Wpadded]
+   31 | struct { int a; char b[3]; } v6;
+      |        ^
+misc_154.c:32:16: warning: padding struct size to alignment boundary with 1 bytes [-Wpadded]
+   32 | typedef struct { int a; char b[3]; } T7;
+      |                ^
+misc_154.c:33:8: warning: padding struct size to alignment boundary with 1 bytes [-Wpadded]
+   33 | struct C8 { int a; char b[3]; } v8;
+      |        ^
+misc_154.c:35:3: warning: padding struct size to alignment boundary with 1 bytes [-Wpadded]
+   35 |   v9;
+      |   ^
+misc_154.c:36:7: warning: padding struct size to alignment boundary with 7 bytes [-Wpadded]
+   36 | union UU { long l; char b[9]; };
+      |       ^
+misc_154.c:37:26: warning: padding struct to align 'c' [-Wpadded]
+   37 | struct G { int a:3; char c; long l; int z[]; };
+      |                          ^
+misc_154.c:37:34: warning: padding struct to align 'l' [-Wpadded]
+   37 | struct G { int a:3; char c; long l; int z[]; };
+      |                                  ^
+misc_154.c:38:37: warning: ISO C99 doesn't support unnamed structs/unions [-Wpedantic]
+   38 | struct H { char a; struct { int q; }; };
+      |                                     ^
+misc_154.c:38:27: warning: padding struct to align '({anonymous})' [-Wpadded]
+   38 | struct H { char a; struct { int q; }; };
+      |                           ^

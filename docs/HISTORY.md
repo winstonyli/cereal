@@ -1958,3 +1958,25 @@ diagnostics and builds on the strinit table.
   and checker.
 - Goldens misc_144 to misc_153. Gate: 1253 pass, san 451/0, gcc.dg 36 /
   c-c++-common 22, callgrind 3.728G.
+
+## Round 124: c-c++-common leftovers
+
+- `-Wpadded`: "padding struct to align 'X'" at the field (named `({anonymous})`
+  for an unnamed member) and "padding struct size to alignment boundary with N
+  bytes" at gcc's finish_struct input_location (the token after `struct`
+  when the lookahead is on the same line, else the first token of the
+  lookahead's line). That location rule is shared with `-Wpacked`.
+- `-Wrestrict` compares each restrict parameter with every other pointer
+  argument, variadic ones too (not for built-ins), a restrict pair once.
+- `-Wattributes`: `malloc (dealloc)` on an inline function (needs `-O`:
+  `co.optimize`; at -O0 it is "given attribute 'noinline'") and an inline
+  deallocator (any with `-O`, else only `always_inline`); an `optimize`
+  attribute following a definition without one.
+- `__builtin_has_attribute`: non-constant `aligned (i)` error and array
+  element alignment error at input_location.
+- `-Wlarger-than-N` is `-Wlarger-than=N`.
+- Open: `-Wnormalized` (needs NFC tables), `#pragma GCC unroll j` with a
+  non-constant name (the parser cannot tell enumerators from objects),
+  `-Wmisleading-indentation`, `Wbidi-chars-6`, `conflict-markers-11`.
+- Goldens misc_154 to misc_160. Gate: 1267 pass, san 458/0, gcc.dg 36 /
+  c-c++-common 18, callgrind 3.734G.

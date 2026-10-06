@@ -372,6 +372,7 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
     static const char *const umbrellas[NUMBRELLA] = {"all", "extra", "unused",
                                                      "implicit"};
     bool on = true, err = false;
+    char joined[48];
     size_t i;
     c->gen = ++cfg_gen_next;
     bool found = false;
@@ -406,6 +407,11 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
     } else if (strncmp(flag, "no-", 3) == 0) {
         on = false;
         flag += 3;
+    }
+    /* -Wlarger-than-N is -Wlarger-than=N */
+    if (!strncmp(flag, "larger-than-", 12) && isdigit((unsigned char)flag[12])) {
+        snprintf(joined, sizeof joined, "larger-than=%s", flag + 12);
+        flag = joined;
     }
     for (i = 0; i < NUMBRELLA; i++)
         if (strcmp(flag, umbrellas[i]) == 0) {

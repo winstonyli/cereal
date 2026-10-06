@@ -43,6 +43,7 @@
 #include "c/check_int.h"
 
 #include <inttypes.h>
+#include <ctype.h>
 #include <string.h>
 
 #define TT (&c->tt)
@@ -573,6 +574,7 @@ static void attr_malloc_dealloc(Checker *c, uint32_t arg, uint32_t pos,
                                 SrcLoc loc)
 {
     TypeId ft;
+    uint32_t dr;
     if (ntag(c, arg) != N_IDENT || type_ckind(TT, c->ty[arg]) != TY_FUNC) {
         cerror(c, loc, "'malloc' attribute argument 1 does not name a "
                "function");
@@ -581,6 +583,14 @@ static void attr_malloc_dealloc(Checker *c, uint32_t arg, uint32_t pos,
     ft = c->ty[arg];
     if (type_ckind(TT, ft) != TY_FUNC)
         return;
+    /* an inline deallocator: with optimization any, else always_inline */
+    dr = lookup_ord(c, cnode_ident(c, arg));
+    if (dr != SYM_NONE && (csym(c, dr)->flags & CSF_INLINE) &&
+        (c->opt.optimize ||
+         cdecl_aset_has(c, csym(c, dr)->aset, "always_inline", NULL)))
+        cwarn(c, loc, "attributes", "'malloc (%s)' attribute ignored with "
+              "deallocation functions declared 'inline'",
+              cident(c, cnode_ident(c, arg)));
     if (pos != NO_NODE) {
         uint32_t n = type_ent(TT, ft)->n;
         if (!(c->ck[pos] == K_ICE || c->ck[pos] == K_FOLD)) {
@@ -4711,8 +4721,14 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                     bool ok;
                     uint64_t esz = type_size(TT, type, &ok);
                     unsigned al = type_align(TT, type);
+                    uint32_t up = c->par[sp->node];
+                    while (up != NO_NODE && ntag(c, up) != N_HAS_ATTR &&
+                           ntag(c, up) != N_DECL)
+                        up = c->par[up];
                     if (ok && al && esz % al)
-                        cerror(c, tloc(c, first_tok(c, sp->node)),
+                        cerror(c, up != NO_NODE && ntag(c, up) == N_HAS_ATTR
+                                  ? cdecl_line_start_loc(c, first_tok(c, sp->node))
+                                  : tloc(c, first_tok(c, sp->node)),
                                esz < al ? "alignment of array elements is "
                                "greater than element size" :
                                "size of array element is not a multiple of "
@@ -5599,10 +5615,74 @@ static bool given_noinline(Checker *c, uint32_t sn, uint32_t idecl)
     return r;
 }
 
-/* An inline function given the noinline attribute. */
+/* The deallocator named by a malloc attribute `holder` writes (into out). */
+static bool attrs_malloc_dealloc(Checker *c, uint32_t holder, char *out,
+                                 size_t n)
+{
+    Kids k;
+    uint32_t j;
+    bool found = false;
+    if (holder == NO_NODE)
+        return false;
+    kids_get(c, holder, &k);
+    for (j = 0; j < k.n && !found; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n && !found; q++) {
+            char an[32];
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+            if (!strcmp(an, "malloc")) {
+                char *cm;
+                cdecl_attr_args(c, it.p[q], out, n);
+                cm = strchr(out, ',');
+                if (cm)
+                    *cm = 0;
+                found = out[0] && !isdigit((unsigned char)out[0]);
+            }
+        }
+        kids_free(&it);
+    }
+    kids_free(&k);
+    return found;
+}
+
+/* The first token of loc's line, where gcc's input_location is. */
+static SrcLoc bol_loc(Checker *c, SrcLoc loc)
+{
+    uint32_t line, col = 1, len;
+    SrcFile *f = srcmgr_file_of(c->sm, loc);
+    const char *t;
+    if (!f)
+        return loc;
+    srcmgr_linecol(f, loc, &line, &col);
+    t = srcmgr_line_text(f, line, &len);
+    for (col = 1; col <= len && (t[col - 1] == ' ' || t[col - 1] == '	'); col++)
+        ;
+    return srcmgr_loc_of(f, line, col);
+}
+
+/* An inline function given the noinline attribute (malloc with a
+ * deallocator implies it; with optimization it is ignored instead). */
 static void inline_given(Checker *c, const CSym *s, bool is_inline,
                          uint32_t sn, uint32_t idecl)
 {
+    char dn[64];
+    if (s->kind == CS_FUNC && is_inline &&
+        (attrs_malloc_dealloc(c, sn, dn, sizeof dn) ||
+         attrs_malloc_dealloc(c, idecl, dn, sizeof dn))) {
+        if (c->opt.optimize)
+            cwarn(c, bol_loc(c, s->loc), "attributes", "'malloc (%s)' "
+                  "attribute ignored on functions declared 'inline'", dn);
+        else
+            cwarn(c, s->loc, "attributes", "inline function '%s' given "
+                  "attribute 'noinline'", sname(c, s));
+        return;
+    }
     if (s->kind == CS_FUNC && is_inline && given_noinline(c, sn, idecl))
         cwarn(c, s->loc, "attributes", "inline function '%s' given attribute "
               "'noinline'", sname(c, s));
@@ -5630,6 +5710,12 @@ static void inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
         d = cwarn_d(c, DL_WARNING, nw->loc, "attributes", "declaration of "
                     "'%s' with attribute 'noinline' follows inline "
                     "declaration", sname(c, nw));
+    else if ((o->flags & CSF_DEFINED) && !cdecl_aset_has(c, o->aset, "optimize", NULL) &&
+             ((sn != NO_NODE && attrs_item_named(c, sn, "optimize")) ||
+              attrs_item_named(c, idecl, "optimize")))
+        d = cwarn_d(c, DL_WARNING, iloc(c, ltok), "attributes", "optimization "
+                    "attribute on '%s' follows definition but the attribute "
+                    "doesn't match", sname(c, nw));
     locate_old_decl(c, d, o);
 }
 
@@ -7612,11 +7698,9 @@ static bool is_rec(Checker *c, TypeId t)
 /* -Wpacked at gcc's input_location when finish_struct runs: the last
  * struct/union/enum tag (or the record's own tag or '{') lexed, unless a
  * later token, up to the one after the attributes, starts a line. */
-static void packed_unnecessary(Checker *c, TypeId t, uint32_t open,
-                               uint32_t close_tok)
+static SrcLoc finish_loc(Checker *c, uint32_t open, uint32_t close_tok)
 {
     uint32_t k, tag, peek = close_tok + 1, last;
-    const Record *r = type_record(TT, t);
     int depth;
     for (open = cnode(c, open)->tok; open < close_tok; open++)
         if (tpunct(c, open) == P_LBRACE)
@@ -7648,13 +7732,45 @@ static void packed_unnecessary(Checker *c, TypeId t, uint32_t open,
     for (k = tag + 1; k <= peek && k < c->u->ntoks; k++)
         if (c->u->toks[k].t.flags & TF_BOL)
             last = 0;
+    return last ? tloc(c, tag) : cinput_loc(c, peek);
+}
+
+static void packed_unnecessary(Checker *c, TypeId t, uint32_t open,
+                               uint32_t close_tok)
+{
+    const Record *r = type_record(TT, t);
+    SrcLoc loc = finish_loc(c, open, close_tok);
     if (r->tag)
-        cwarn(c, last ? tloc(c, tag) : cinput_loc(c, peek), "packed",
-              "packed attribute is unnecessary for '%s'",
+        cwarn(c, loc, "packed", "packed attribute is unnecessary for '%s'",
               cident(c, r->tag));
     else
-        cwarn(c, last ? tloc(c, tag) : cinput_loc(c, peek), "packed",
-              "packed attribute is unnecessary");
+        cwarn(c, loc, "packed", "packed attribute is unnecessary");
+}
+
+/* place_field and finalize_record_size: -Wpadded.  A field placed past the
+ * end of the one before it, and the size rounded up to the alignment. */
+static void padded_check(Checker *c, TypeId t, bool is_union, uint32_t open,
+                         uint32_t close_tok)
+{
+    const Record *r = type_record(TT, t);
+    uint64_t pos = 0, end = 0;
+    uint32_t k;
+    for (k = 0; k < r->nfields; k++) {
+        const Field *fl = &TT->fields.data[r->fields + k];
+        bool bf = (fl->flags & FF_BITFIELD) != 0;
+        uint64_t bits = bf ? fl->width : type_size(TT, fl->ty, NULL) * 8;
+        if (!is_union && !bf && fl->off_bits > pos)
+            cwarn(c, fl->loc, "padded", "padding struct to align '%s'",
+                  fl->name ? cident(c, fl->name) : "({anonymous})");
+        if (is_union ? bits > end : fl->off_bits + bits > end)
+            end = is_union ? bits : fl->off_bits + bits;
+        pos = fl->off_bits + bits;
+    }
+    end = (end + 7) / 8;
+    if (r->size > end)
+        cwarn(c, finish_loc(c, open, close_tok), "padded", "padding struct "
+              "size to alignment boundary with %llu bytes",
+              (unsigned long long)(r->size - end));
 }
 
 /* TYPE_WARN_IF_NOT_ALIGN: the warn_if_not_aligned of a typedef (or one it
@@ -7906,6 +8022,8 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     wina_check(c, t, f, m, a.wina_al,
                cbol_tok(c, close_tok) == close_tok + 1 ? cinput_loc(c, close_tok)
                                                        : loc);
+    if (diag_enabled(c->diag, "padded"))
+        padded_check(c, t, want == TY_UNION, open, close_tok);
     if (a.packed && want != TY_UNION && diag_enabled(c->diag, "packed") &&
         type_packed_unnecessary(TT, t, f, m, c->pack, a.aligned, a.ms, -1))
         packed_unnecessary(c, t, open, close_tok);

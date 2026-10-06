@@ -1,0 +1,12 @@
+misc_155.c:5:3: error: alignment of array elements is greater than element size
+    5 |   b = __builtin_has_attribute (CA2[2], aligned);
+      |   ^
+misc_155.c:6:3: error: requested alignment is not an integer constant
+    6 |   b = __builtin_has_attribute (faligned_8, aligned (i));
+      |   ^
+misc_155.c:8:5: error: requested alignment is not an integer constant
+    8 |     __builtin_has_attribute (faligned_8, aligned (i));
+      |     ^
+misc_155.c:10:5: error: alignment of array elements is greater than element size
+   10 |     __builtin_has_attribute (CA2[2], aligned);
+      |     ^

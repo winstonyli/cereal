@@ -5891,6 +5891,16 @@ static void e_has_attr(Checker *c, uint32_t i)
     if (!strcmp(an, "aligned") && !strcmp(args, "0"))
         cwarn(c, cnode_loc(c, i), "attributes", "requested alignment '0' is "
               "not a positive power of 2");
+    if (!strcmp(an, "aligned") && args[0] && !isdigit((unsigned char)args[0])) {
+        uint32_t ak[2];
+        if (nkids(c, k[1], ak, 2) >= 1 && !node_err(c, ak[0]) &&
+            !is_intcst(c, ak[0])) {
+            cerror(c, cdecl_line_start_loc(c, c->nodes[i].tok), "requested "
+                   "alignment is not an integer constant");
+            set_err(c, i);
+            return;
+        }
+    }
     if (!strcmp(an, "aligned") && args[0] >= '1' && args[0] <= '9') {
         unsigned long long av = strtoull(args, NULL, 10);
         if (av & (av - 1))
@@ -7269,23 +7279,30 @@ static uint32_t restrict_base(Checker *c, uint32_t a)
 bool zero_size_ok(const char *name);
 void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk,
                            uint32_t parms, uint32_t nparm, SrcLoc loc,
-                           bool builtin)
+                           bool builtin, bool is_bt)
 {
     uint32_t i, j;
+    /* each restrict parameter against every other argument (the variadic ones
+     * too); a pair of restrict ones once, the lower first */
     for (i = 0; i < nparm && i + 1 < nk; i++) {
         if (!cparm_restrict(c, parms, i))
             continue;
-        for (j = i + 1; j < nparm && j + 1 < nk; j++) {
+        for (j = 0; j + 1 < nk; j++) {
             uint32_t a = kv[i + 1], first;
             SrcLoc l = line_start_loc(c, loc);
-            if (!cparm_restrict(c, parms, j) || node_err(c, a) || node_err(c, kv[j + 1]))
+            if (j == i || (j < i && j < nparm && cparm_restrict(c, parms, j)))
+                continue;
+            if (is_bt && j >= nparm)   /* the middle end handles those */
+                continue;
+            if (node_err(c, a) || node_err(c, kv[j + 1]) ||
+                !is_ptr(c, rvt(c, a)) || !is_ptr(c, rvt(c, kv[j + 1])))
                 continue;
             if (!opeq(c, restrict_base(c, a), restrict_base(c, kv[j + 1])))
                 continue;
             if (builtin && nparm == 3 && nk > 3 && is_intcst(c, kv[3]) &&
                 c->cv[kv[3]] == 0)
                 continue;
-            first = strip_paren(c, a);
+            first = restrict_base(c, a);
             if (ntag(c, first) != N_IDENT || is_array(c, c->ty[first]))
                 l = expr_loc(c, a);
             cwarn(c, l, "restrict", "passing argument %u to 'restrict'-qualified "

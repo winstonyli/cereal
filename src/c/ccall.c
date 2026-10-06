@@ -579,7 +579,8 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
         csym(c, fref)->parms)
         check_restrict(c, kv, nk, csym(c, fref)->parms, nparm, loc,
                        builtin_decl_ok(c, csym(c, fref)) &&
-                       zero_size_ok(cident(c, csym(c, fref)->name)));
+                       zero_size_ok(cident(c, csym(c, fref)->name)),
+                       builtin_decl_ok(c, csym(c, fref)));
     if (!too_many && fnode != NO_NODE && ntag(c, fnode) == N_IDENT &&
         ((!strncmp(fname, "__builtin_", 10) && fref == SYM_NONE &&
           strncmp(fname, "__builtin___", 12)) ||

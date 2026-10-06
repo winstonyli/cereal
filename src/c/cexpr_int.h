@@ -316,7 +316,7 @@ TypeId bt_func_type(Checker *c, const BTab *b);
 SrcLoc call_loc(Checker *c, uint32_t f);
 SrcLoc callee_err_loc(Checker *c, uint32_t f);
 void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk, uint32_t
-                    parms, uint32_t nparm, SrcLoc loc, bool builtin);
+                    parms, uint32_t nparm, SrcLoc loc, bool builtin, bool is_bt);
 bool complete(Checker *c, TypeId t);
 void cplx_set(Checker *c, uint32_t i, long double re, long double im);
 void double_promo(Checker *c, uint32_t at, SrcLoc loc, TypeId from, TypeId to,
