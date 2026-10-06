@@ -398,6 +398,7 @@ struct Checker {
     CSym vis_old;            /* the symbol a redeclaration merged into, before the merge */
     bool vis_old_ok;
     bool redecl_failed;      /* the last declaration conflicted with its predecessor */
+    bool kr_decls;           /* between a K&R definition's declarator and its body */
     bool lax_noted;          /* the -flax-vector-conversions note was given */
     /* cexpr.c: identifiers already reported undeclared in the function
      * undecl_key names; whether the once-per-TU note was given; nodes
@@ -707,6 +708,7 @@ typedef struct ConvInfo {
  * ref: its symbol; def: a definition); records the locations of the
  * parameters for the notes of argument diagnostics. */
 void cexpr_record_params(Checker *c, uint32_t declared, uint32_t ref, bool def);
+bool cexpr_undeclared_here(Checker *c, uint32_t id);
 void cexpr_free_params(Checker *c);
 /* -Waddress for a pointer used as a truth value (loc: diagnostic location) */
 void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc);

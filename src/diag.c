@@ -17,7 +17,7 @@ static const DiagOption options[] = {
     {"undef", "cond", DL_WARNING, false, 0, "undefined identifier evaluates to 0 in #if"},
     {"macro-redefined", "pp", DL_WARNING, true, 0, "non-identical macro redefinition (C99 6.10.3p2)"},
     {"builtin-macro-redefined", "pp", DL_WARNING, true, 0, "redefining or undefining a predefined macro"},
-    {"unknown-pragma", "pp", DL_WARNING, false, DO_ALL | DO_EXTRA, "unrecognized #pragma"},
+    {"unknown-pragmas", "pp", DL_WARNING, false, DO_ALL | DO_EXTRA, "unrecognized #pragma"},
     {"invalid-pp-token", "pp", DL_WARNING, true, 0, "unterminated character or string literal"},
     {"suggest-attribute=format", "c", DL_WARNING, false, 0, "a function calling a v*printf/v*scanf-like function with its own format might take the format attribute (-Wmissing-format-attribute)"},
     {"larger-than=", "c", DL_WARNING, true, 0, "object larger than N bytes (N: a size, kB/MB.. units)"},
@@ -650,7 +650,8 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     Diagnostic *dg;
     StrBuf sb = {0};
     DiagLevel req = lvl;
-    bool promoted;
+    bool promoted, nocol = d->nocol_next;
+    d->nocol_next = false;
     lvl = diag_level_for(d, id, lvl);
     if (lvl == DL_IGNORED || (lvl == DL_WARNING && d->no_warnings))
         return NULL;
@@ -665,6 +666,7 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     promoted = id && *id && req < DL_ERROR && req != DL_NOTE && lvl == DL_ERROR;
     dg = NEW(d->arena, Diagnostic);
     dg->promoted = promoted;
+    dg->nocol = nocol;
     dg->ord = d->ord;
     dg->level = lvl;
     dg->id = id ? id : "";
@@ -837,7 +839,7 @@ static uint32_t display_col(SrcFile *f, uint32_t line, uint32_t col)
 
 static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
                            const char *msg, const char *id, SrcRange range,
-                           bool dg_promoted)
+                           bool dg_promoted, bool nocol)
 {
     FILE *o = d->out;
     SrcFile *f = srcmgr_file_of(d->sm, loc);
@@ -848,8 +850,8 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
         fputs("\033[1m", o);
     if (f) {
         srcmgr_linecol(f, loc, &line, &col);
-        eof = f->kind != SF_VIRTUAL && srcmgr_offset(f, loc) == f->size;
-        if (eof && col > 1)
+        eof = nocol || (f->kind != SF_VIRTUAL && srcmgr_offset(f, loc) == f->size);
+        if (eof && !nocol && col > 1)
             line++;     /* the implied final newline */
         pline = srcmgr_presumed(f, line, &fname);
         if (f->kind == SF_VIRTUAL && !strcmp(f->name, "<built-in>"))
@@ -877,6 +879,12 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
                 strcmp(id, "strict-aliasing=") && strcmp(id, "cast-align=")
                     ? id : (id[0] == 99 ? "cast-align" : "strict-aliasing"));
     fputc('\n', o);
+    if (nocol && f && f->kind != SF_VIRTUAL && pline) {   /* no caret line */
+        uint32_t len;
+        const char *text = srcmgr_line_text(f, line, &len);
+        fprintf(o, "%5u | %.*s\n      | \n", pline, (int)len, text);
+        return;
+    }
     /* gcc reads the snippet from the presumed file at the presumed line */
     if (f && f->kind != SF_VIRTUAL && !eof && pline &&
         !strcmp(fname, f->name) &&
@@ -940,10 +948,10 @@ void diag_print(DiagEngine *d, Diagnostic *dg)
                 fname, line);
     }
     print_loc_line(d, dg->loc, dg->level, dg->msg, dg->id, dg->range,
-                   dg->promoted);
+                   dg->promoted, dg->nocol);
     for (k = 0; k < dg->notes.len; k++)
         print_loc_line(d, dg->notes.data[k].loc, DL_NOTE,
-                       dg->notes.data[k].msg, NULL, none, false);
+                       dg->notes.data[k].msg, NULL, none, false, false);
 }
 
 void diag_flush(DiagEngine *d)

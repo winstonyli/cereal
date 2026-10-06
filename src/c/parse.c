@@ -338,6 +338,14 @@ static bool conflict_marker(Parser *p, uint32_t i)
     if (t->kind != TK_PUNCT || !(t->flags & TF_BOL) ||
         (p->toks.data[i].exp && p->toks.data[i].exp != t->loc))
         return false;
+    {
+        uint32_t line, col = 0;
+        SrcFile *f = srcmgr_file_of(p->sm, t->loc);
+        if (f)
+            srcmgr_linecol(f, t->loc, &line, &col);
+        if (col != 1)
+            return false;
+    }
     s = tok_text_raw(p->sm, p->in, t);
     if (s[0] != '<' && s[0] != '>' && s[0] != '=')
         return false;

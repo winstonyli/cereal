@@ -1,0 +1,15 @@
+misc_161.c:2: warning: ignoring '#pragma foo ' [-Wunknown-pragmas]
+    2 | #pragma foo
+      | 
+misc_161.c:3: warning: ignoring '#pragma a b' [-Wunknown-pragmas]
+    3 |   #  pragma   a  b c
+      | 
+misc_161.c:5: warning: ignoring '#pragma foo ' [-Wunknown-pragmas]
+    5 | #pragma foo
+      | 
+misc_161.c:6: warning: ignoring '#pragma  ' [-Wunknown-pragmas]
+    6 | #pragma
+      | 
+misc_161.c:7: warning: ignoring '#pragma ms_struct on' [-Wunknown-pragmas]
+    7 | #pragma ms_struct on top of spaghetti
+      | 

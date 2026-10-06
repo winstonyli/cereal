@@ -2208,6 +2208,20 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
     c->cb[i] = ref + 1;
 }
 
+/* Whether id was already reported undeclared in the current function. */
+bool cexpr_undeclared_here(Checker *c, uint32_t id)
+{
+    uint64_t key = ((uint64_t)c->u->first_tok * UINT64_C(0x100000001)) ^
+                   c->func_sym;
+    size_t k;
+    if (key != c->undecl_key)
+        return false;
+    for (k = 0; k < c->undecl.len; k++)
+        if (c->undecl.data[k] == id)
+            return true;
+    return false;
+}
+
 static void undeclared(Checker *c, uint32_t i, uint32_t id)
 {
     const char *name = cident(c, id);
@@ -6091,7 +6105,7 @@ static void e_addr_label(Checker *c, uint32_t i)
     uint32_t tok = c->nodes[i].tok;
     ped(c, i, cinput_loc(c, tok + 1), "taking the address of a "
                                                     "label is non-standard");
-    if (!in_function(c)) {
+    if (!in_function(c) || c->kr_decls) {
         cerror(c, cinput_loc(c, tok + 1), "label '%s' referenced outside of "
                "any function", cident(c, cnode_ident(c, i)));
         c->ty[i] = type_ptr(TT, TYPE_B(VOID));

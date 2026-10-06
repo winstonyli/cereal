@@ -843,7 +843,7 @@ static Ident *pragma_macro_name(PP *pp, TokSpan s)
 {
     if (s.n < 3 || !tok_is_punct(&s.t[0], P_LPAREN) || s.t[1].kind != TK_STRING ||
         !tok_is_punct(&s.t[2], P_RPAREN)) {
-        diag_report(pp->diag, DL_WARNING, "unknown-pragma",
+        diag_report(pp->diag, DL_WARNING, "unknown-pragmas",
                     s.n ? s.t[0].loc : 0,
                     "expected (\"name\") in push_macro/pop_macro pragma");
         return NULL;
@@ -1088,9 +1088,18 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
         }
         sb_free(&msg);
         tokbuf_release(pp, &ex);
-    } else if (toks.n) {
-        diag_report(pp->diag, DL_WARNING, "unknown-pragma", PLOC(&toks.t[0]),
-                    "unknown pragma ignored");
+    } else {
+        /* cb_def_pragma: the first two tokens, at a line-only location */
+        const char *s1 = toks.n ? pp_text(pp, &toks.t[0]) : "", *s2 = "";
+        int n1 = toks.n ? (int)toks.t[0].len : 0, n2 = 0;
+        if (toks.n > 1) {
+            s2 = pp_text(pp, &toks.t[1]);
+            n2 = (int)toks.t[1].len;
+        }
+        pp->diag->nocol_next = true;
+        diag_report(pp->diag, DL_WARNING, "unknown-pragmas",
+                    toks.n ? PLOC(&toks.t[0]) : loc,
+                    "ignoring '#pragma %.*s %.*s'", n1, s1, n2, s2);
     }
     if (emit) {
         StrBuf *sb = &pp->sb;

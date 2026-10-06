@@ -1980,3 +1980,24 @@ diagnostics and builds on the strinit table.
   `-Wmisleading-indentation`, `Wbidi-chars-6`, `conflict-markers-11`.
 - Goldens misc_154 to misc_160. Gate: 1267 pass, san 458/0, gcc.dg 36 /
   c-c++-common 18, callgrind 3.734G.
+
+## Round 125: unknown pragmas, K&R parameter labels, conflict markers
+- Unknown pragmas print gcc's no-column form (`file:LINE: warning: ignoring
+  '#pragma T1 T2' [-Wunknown-pragmas]`, first two tokens) with an empty caret
+  line (`DiagEngine.nocol_next`); golden misc_161.
+- `&&label` in a K&R parameter declaration: "referenced outside of any
+  function" (`Checker.kr_decls`, set from the declarator to the body), no
+  use_label; no "type of 'x' defaults to int" for a parameter already
+  reported undeclared. Golden misc_162.
+- Conflict markers count only in column 1 (misc_163).
+- Builtin deallocators (free, realloc, __builtin_*) imply no noinline.
+- -Wrestrict: the built-in flag was true for every prototyped function
+  (`builtin_decl_ok` alone), so variadic arguments were skipped; now also
+  requires `bt_for_decl`.
+- Tried and dropped: spelling-location comparison for -Wmisleading-indentation
+  inside one macro expansion (fixes test04, regresses DLSYM_OPT and FOR_EACH).
+- Open: -Wnormalized, #pragma GCC unroll j, -Wmisleading-indentation (macro
+  cases), Wbidi-chars-6, builtin-has-attribute typedef redefinition after an
+  erroneous array size, -Wrestrict "arguments 3, 4" grouping.
+- Goldens misc_161 to misc_163. Gate: 1273 pass, san 461/0, gcc.dg 34 /
+  c-c++-common 14, callgrind 3.732G.

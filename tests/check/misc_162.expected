@@ -1,0 +1,27 @@
+misc_162.c:5:6: error: parameter 'par' is initialized
+    5 |      void *par = &&lab; /* { dg-error "is initialized|non-standard|outside of" } */
+      |      ^
+misc_162.c:5:6: warning: taking the address of a label is non-standard [-Wpedantic]
+    5 |      void *par = &&lab; /* { dg-error "is initialized|non-standard|outside of" } */
+      |      ^
+misc_162.c:5:6: error: label 'lab' referenced outside of any function
+    5 |      void *par = &&lab; /* { dg-error "is initialized|non-standard|outside of" } */
+      |      ^
+misc_162.c:9:6: error: parameter 'p' is initialized
+    9 |      int *p = &q; /* { dg-error "initialized|undeclared" } */
+      |      ^
+misc_162.c:9:16: error: 'q' undeclared (first use in this function)
+    9 |      int *p = &q; /* { dg-error "initialized|undeclared" } */
+      |                ^
+misc_162.c:9:16: note: each undeclared identifier is reported only once for each function it appears in
+    9 |      int *p = &q; /* { dg-error "initialized|undeclared" } */
+      |                ^
+misc_162.c:13:6: error: parameter 'j' is initialized
+   13 |      int j = i; /* { dg-error "initialized|undeclared|no such parameter" } */
+      |      ^
+misc_162.c:13:14: error: 'i' undeclared (first use in this function)
+   13 |      int j = i; /* { dg-error "initialized|undeclared|no such parameter" } */
+      |              ^
+misc_162.c:13:10: error: declaration for parameter 'j' but no such parameter
+   13 |      int j = i; /* { dg-error "initialized|undeclared|no such parameter" } */
+      |          ^

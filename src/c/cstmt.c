@@ -1135,7 +1135,7 @@ void cstmt_expr(Checker *c, uint32_t i)
     }
     if (tg(c, i) == N_ADDR_LABEL) {
         uint32_t tok = c->nodes[i].tok;
-        if (c->func_sym != SYM_NONE && cnode_ident(c, i))
+        if (c->func_sym != SYM_NONE && !c->kr_decls && cnode_ident(c, i))
             use_label(c, s, cnode_ident(c, i), ctok_loc(c, tok - 1),
                       cinput_loc(c, tok), i);
         p = c->par[i];     /* an if/while/do condition is still a truth value */

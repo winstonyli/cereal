@@ -46,6 +46,7 @@ typedef struct Diagnostic {
     SrcLoc *inc_chain;       /* #include locations, innermost first */
     int ninc;
     uint8_t ord;             /* DiagOrd: where it merges with the parser's */
+    bool nocol;              /* printed as file:line: with no snippet */
     bool promoted;           /* a warning made an error by -Werror[=X]:
                                 shown as [-Werror=X] like gcc */
     const char *fixit;       /* optional suggested replacement text */
@@ -76,6 +77,7 @@ typedef struct DiagEngine {
     bool pedantic_errors;
     bool no_warnings;        /* -w */
     bool fatal_errors;       /* -Wfatal-errors: stop after the first error */
+    bool nocol_next;         /* the next report prints no column (gcc: a line-only location) */
     uint64_t hdr_noted;      /* headers a missing-#include note suggested */
     bool track0;             /* -ftrack-macro-expansion=0: report macro
                                 tokens at the expansion point */

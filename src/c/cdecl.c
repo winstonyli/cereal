@@ -5642,7 +5642,10 @@ static bool attrs_malloc_dealloc(Checker *c, uint32_t holder, char *out,
                 cm = strchr(out, ',');
                 if (cm)
                     *cm = 0;
-                found = out[0] && !isdigit((unsigned char)out[0]);
+                /* gcc's own deallocators imply no noinline */
+                found = out[0] && !isdigit((unsigned char)out[0]) &&
+                        strncmp(out, "__builtin_", 10) &&
+                        strcmp(out, "free") && strcmp(out, "realloc");
             }
         }
         kids_free(&it);
@@ -9366,6 +9369,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         aset_add(c, &csym(c, ref)->aset, "noreturn", "");
     dump_decl(c, csym(c, ref));
     c->func_sym = ref;
+    c->kr_decls = (csym(c, ref)->flags & CSF_KR_DEF) != 0;
     c->cur_func_node = fd;
     c->ef[fd] = 0;
     c->func_node = fnode;
@@ -9401,6 +9405,7 @@ static void body_visit(Checker *c, uint32_t i)
     bool krf, proto;
     SrcLoc il, fnloc;
     Kids k;
+    c->kr_decls = false;
     if (comp == NO_NODE)
         return;
     if (ntag(c, comp) == N_FUNC_DEF)    /* no '{' followed the declarations */
@@ -9520,8 +9525,9 @@ static void body_visit(Checker *c, uint32_t i)
                 ref = pushdecl(c, &n, false);
                 warn_if_shadowing(c, csym(c, ref));
                 DiagOrd o0 = diag_ord(c->diag, ORD_LATE);
-                cpedwarn(c, fnloc, "implicit-int", "type of '%s' defaults to "
-                         "'int'", cident(c, name));
+                if (!cexpr_undeclared_here(c, name))    /* gcc bound it to an error */
+                    cpedwarn(c, fnloc, "implicit-int", "type of '%s' "
+                             "defaults to 'int'", cident(c, name));
                 diag_ord(c->diag, o0);
             }
             seen[ns++] = ref;
