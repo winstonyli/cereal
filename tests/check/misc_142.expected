@@ -1,0 +1,87 @@
+misc_142.c:2:14: warning: ISO C forbids qualified function types [-Wpedantic]
+    2 | volatile qft qvg;
+      |              ^
+misc_142.c:4:11: warning: ISO C forbids qualified function types [-Wpedantic]
+    4 | const qft qcg;
+      |           ^
+misc_142.c:6:24: warning: function declared 'noreturn' has a 'return' statement
+    6 | int qvg(void) { return 1; }
+      |                        ^
+misc_142.c:9:55: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    9 |   typedef int T6[1 + __builtin_has_attribute ((0, (S6){ }), aligned)];
+      |                                                       ^
+misc_142.c:10:55: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   10 |   typedef int T6[1 + __builtin_has_attribute ((0, (S6){ }), aligned)];
+      |                                                       ^
+misc_142.c:10:15: warning: redefinition of typedef 'T6' [-Wpedantic]
+   10 |   typedef int T6[1 + __builtin_has_attribute ((0, (S6){ }), aligned)];
+      |               ^
+misc_142.c:9:15: note: previous declaration of 'T6' with type 'T6' {aka 'int[1]'}
+    9 |   typedef int T6[1 + __builtin_has_attribute ((0, (S6){ }), aligned)];
+      |               ^
+misc_142.c:12:15: warning: redefinition of typedef 'U6' [-Wpedantic]
+   12 |   typedef int U6[1 + __builtin_has_attribute (*(S6*)0, aligned)];
+      |               ^
+misc_142.c:11:15: note: previous declaration of 'U6' with type 'U6' {aka 'int[1]'}
+   11 |   typedef int U6[1 + __builtin_has_attribute (*(S6*)0, aligned)];
+      |               ^
+misc_142.c:13:43: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   13 |   typedef int V6[1 + __alignof__ ((0, (S6){ }))];
+      |                                           ^
+misc_142.c:14:43: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   14 |   typedef int V6[1 + __alignof__ ((0, (S6){ }))];
+      |                                           ^
+misc_142.c:14:15: warning: redefinition of typedef 'V6' [-Wpedantic]
+   14 |   typedef int V6[1 + __alignof__ ((0, (S6){ }))];
+      |               ^
+misc_142.c:13:15: note: previous declaration of 'V6' with type 'V6' {aka 'int[2]'}
+   13 |   typedef int V6[1 + __alignof__ ((0, (S6){ }))];
+      |               ^
+misc_142.c:15:38: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   15 |   typedef int W6[1 + sizeof ((0, (S6){ }))];
+      |                                      ^
+misc_142.c:16:38: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   16 |   typedef int W6[1 + sizeof ((0, (S6){ }))];
+      |                                      ^
+misc_142.c:16:15: warning: redefinition of typedef 'W6' [-Wpedantic]
+   16 |   typedef int W6[1 + sizeof ((0, (S6){ }))];
+      |               ^
+misc_142.c:15:15: note: previous declaration of 'W6' with type 'W6' {aka 'int[9]'}
+   15 |   typedef int W6[1 + sizeof ((0, (S6){ }))];
+      |               ^
+misc_142.c:22:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   22 | _Static_assert(!__builtin_has_attribute((8, (A32_I4){ }), aligned), "a");
+      | ^
+misc_142.c:22:53: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   22 | _Static_assert(!__builtin_has_attribute((8, (A32_I4){ }), aligned), "a");
+      |                                                     ^
+misc_142.c:23:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   23 | _Static_assert(!__builtin_has_attribute(((I4){ },(A32_I4){ }), aligned(32)), "b");
+      | ^
+misc_142.c:23:46: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   23 | _Static_assert(!__builtin_has_attribute(((I4){ },(A32_I4){ }), aligned(32)), "b");
+      |                                              ^
+misc_142.c:23:58: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   23 | _Static_assert(!__builtin_has_attribute(((I4){ },(A32_I4){ }), aligned(32)), "b");
+      |                                                          ^
+misc_142.c:24:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   24 | _Static_assert(__alignof__(((I4){ },(A32_I4){ })) == 8, "c");
+      | ^
+misc_142.c:24:33: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   24 | _Static_assert(__alignof__(((I4){ },(A32_I4){ })) == 8, "c");
+      |                                 ^
+misc_142.c:24:45: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   24 | _Static_assert(__alignof__(((I4){ },(A32_I4){ })) == 8, "c");
+      |                                             ^
+misc_142.c:25:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   25 | _Static_assert(__alignof__((8, (A32_I4){ })) == 8, "d");
+      | ^
+misc_142.c:25:40: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   25 | _Static_assert(__alignof__((8, (A32_I4){ })) == 8, "d");
+      |                                        ^
+misc_142.c:26:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   26 | _Static_assert(!__builtin_has_attribute((0, (A32_I4){ }), aligned(64)), "e");
+      | ^
+misc_142.c:26:53: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+   26 | _Static_assert(!__builtin_has_attribute((0, (A32_I4){ }), aligned(64)), "e");
+      |                                                     ^

@@ -241,6 +241,52 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
 }
 
 /* gcc's size arguments: digits and an optional unit (kB, KiB, MB, ...). */
+/* One ns::attr or ns:: of -Wno-attributes=: identifier characters, and not
+ * only underscores. */
+static bool ign_name_ok(const char *s, size_t n, bool may_empty)
+{
+    size_t k;
+    bool other = false;
+    if (!n)
+        return may_empty;
+    for (k = 0; k < n; k++) {
+        if (!isalnum((unsigned char)s[k]) && s[k] != '_')
+            return false;
+        if (s[k] != '_')
+            other = true;
+    }
+    return other;
+}
+
+/* gcc's handle_ignored_attributes_option: a comma list of ns::attr / ns::;
+ * reports and returns false on a bad one. */
+static bool ignored_attrs_ok(const char *v)
+{
+    while (*v) {
+        size_t n = strcspn(v, ",");
+        const char *cc = NULL, *q;
+        for (q = v; q + 1 < v + n; q++)
+            if (q[0] == ':' && q[1] == ':') {
+                cc = q;
+                break;
+            }
+        if (n && !cc) {
+            fprintf(stderr, "<built-in>: error: wrong argument to ignored "
+                    "attributes\n<built-in>: note: valid format is "
+                    "'ns::attr' or 'ns::'\n");
+            return false;
+        }
+        if (n && (!ign_name_ok(v, (size_t)(cc - v), false) ||
+                  !ign_name_ok(cc + 2, (size_t)(v + n - cc - 2), true))) {
+            fprintf(stderr, "<built-in>: error: wrong argument to ignored "
+                    "attributes\n");
+            return false;
+        }
+        v += n + (v[n] == ',');
+    }
+    return true;
+}
+
 static bool size_arg_ok(const char *v)
 {
     static const char *const units[] = {"", "B", "kB", "KB", "KiB", "MB",
@@ -310,6 +356,11 @@ static void bad_wopt(Options *o, const char *flag)
     eq = strchr(p, '=');
     n = eq ? (size_t)(eq - p) : strlen(p);
     snprintf(name, sizeof name, "%.*s", (int)n, p);
+    if (eq && !strcmp(name, "attributes") && p != flag &&
+        !strncmp(flag, "no-", 3) && !ignored_attrs_ok(eq + 1)) {
+        o->bad_options++;
+        return;
+    }
     if (gcc_wopt_known(name, &valued)) {
         size_t m = strlen(name);
         bool exact = !eq && valued && gcc_wopt_exact(name);

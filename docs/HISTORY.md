@@ -1916,3 +1916,17 @@ diagnostics and builds on the strinit table.
   `-Wlarger-than=N` behave as before.
 - Golden misc_140. Gate: 1227 pass, san 438/0, gcc.dg 40 / c-c++-common 35,
   callgrind 3.717G.
+
+## Round 121: c-c++-common rejects-valid and accepts-invalid
+
+- A qualifier on a function declared through a typedef (`volatile ft vg;`) is a
+  flag of the declaration, not of its type: a later `int vg(void);` no longer
+  conflicts, and `volatile` makes the function noreturn (pr20000).
+- `__builtin_has_attribute` of a comma expression whose value is an array sees
+  the decayed pointer in C (no typedef attributes), and its operand is
+  unevaluated, so a comma inside it keeps the array size an integer constant
+  expression (builtin-has-attribute-7).
+- `-Wno-attributes=` is validated like gcc: a comma list of `ns::attr` or
+  `ns::`, identifier characters only, not all underscores (Wno-attributes-3).
+- Goldens misc_141, misc_142. Gate: 1231 pass, san 440/0, gcc.dg 40 /
+  c-c++-common 33, callgrind 3.718G.

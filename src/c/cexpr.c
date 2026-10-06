@@ -5742,6 +5742,7 @@ unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3])
     unsigned n = 0;
     uint32_t x = strip_paren(c, e);
     TypeId t;
+    bool comma = false;
     if (x == NO_NODE)
         return 0;
     while (ntag(c, x) == N_BINARY && npunct(c, x) == P_COMMA) {
@@ -5749,6 +5750,7 @@ unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3])
         if (nkids(c, x, bk, 3) < 2)
             break;
         x = strip_paren(c, bk[1]);     /* a comma expression: its value */
+        comma = true;
     }
     if (ntag(c, x) == N_IDENT) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, x));
@@ -5762,6 +5764,8 @@ unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3])
     if (node_err(c, x))
         return n;
     t = c->ty[x];
+    if (comma && type_ckind(TT, t) == TY_ARRAY)    /* C: it decays */
+        t = type_ptr(TT, type_base(TT, t));
     while (strip && (type_ckind(TT, t) == TY_PTR || type_ckind(TT, t) == TY_ARRAY))
         t = type_base(TT, t);
     n = typedef_asets(c, t, out, n, 3);

@@ -3828,7 +3828,8 @@ static bool evaluated_comma(Checker *c, uint32_t e)
     uint32_t j;
     bool r = false;
     if (ntag(c, e) == N_SIZEOF_EXPR || ntag(c, e) == N_SIZEOF_TYPE ||
-        ntag(c, e) == N_ALIGNOF_EXPR || ntag(c, e) == N_ALIGNOF_TYPE)
+        ntag(c, e) == N_ALIGNOF_EXPR || ntag(c, e) == N_ALIGNOF_TYPE ||
+        ntag(c, e) == N_HAS_ATTR)       /* unevaluated operands */
         return false;
     if (ntag(c, e) == N_BINARY && tpunct(c, c->nodes[e].tok) == P_COMMA)
         return true;
@@ -5332,6 +5333,12 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
             else if (!(TYPE_QUALS(b) & TQ_VOLATILE) &&
                      (TYPE_QUALS(a) & TQ_VOLATILE) && (nw->flags & CSF_NORETURN))
                 b |= TQ_VOLATILE;
+            /* a qualifier written on a function (a typedef of function type)
+             * is a flag of its declaration, not part of the type */
+            if ((TYPE_QUALS(a) ^ TYPE_QUALS(b)) & (TQ_CONST | TQ_VOLATILE)) {
+                a &= ~(TypeId)(TQ_CONST | TQ_VOLATILE);
+                b &= ~(TypeId)(TQ_CONST | TQ_VOLATILE);
+            }
         }
         if (!compat_gcc(c, a, b)) {
             if (nw->kind == CS_FUNC && sym_defined(nw) &&
@@ -6801,7 +6808,9 @@ static void declared_visit(Checker *c, uint32_t i)
      * a later definition (or an earlier one) is a redefinition */
     if (a.defn && s.kind == CS_FUNC && g.what == GD_FUNC)
         s.flags |= CSF_DEFINED;
-    if (a.noreturn && s.kind == CS_FUNC)
+    if ((a.noreturn || (type_ckind(TT, s.ty) == TY_FUNC &&
+                        (TYPE_QUALS(type_canon(TT, s.ty)) & TQ_VOLATILE))) &&
+        s.kind == CS_FUNC)           /* a volatile function is noreturn */
         s.flags |= CSF_NORETURN;
     if (a.nonnull && (s.kind == CS_FUNC || (s.kind == CS_OBJ && file)))
         s.nonnull = a.nonnull;     /* an object: a function pointer */
