@@ -8,9 +8,9 @@
 cd "$(dirname "$0")/../.." || exit 1
 O=/tmp/gate; rm -f $O.*
 t() { n=$1; shift; s=$(date +%s); "$@"; echo "$n $(( $(date +%s) - s ))s" >>$O.time; }
-t run env GOLDEN_JOBS=3 nice -n 10 sh tests/run.sh 2>&1 | tail -1 >$O.1run &
+t run env GOLDEN_JOBS=2 nice -n 10 sh tests/run.sh 2>&1 | tail -1 >$O.1run &
 t verify env CEREAL_JOBS=4 nice -n 10 bench/tools/verify.sh 2>&1 | tail -3 >$O.2verify &
-t san env SAN_JOBS=4 GOLDEN_JOBS=3 SAN_PY_JOBS=4 nice -n 10 bench/tools/san.sh 2>&1 | tail -2 >$O.3san &
+t san env SAN_JOBS=4 GOLDEN_JOBS=5 SAN_PY_JOBS=5 nice -n 10 bench/tools/san.sh 2>&1 | tail -2 >$O.3san &
 t callgrind nice -n 10 valgrind --tool=callgrind --callgrind-out-file=/dev/null ./cereal -fsyntax-only -std=c99 -w \
     -I/usr/include/python3.13 -I"$HOME/corpus/uvloop-0.22.1/vendor/libuv/include" \
     -I"$HOME/corpus/uvloop-0.22.1/uvloop" "$HOME/corpus/uvloop-0.22.1/uvloop/loop.c" 2>&1 |
