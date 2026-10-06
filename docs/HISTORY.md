@@ -2067,3 +2067,15 @@ diagnostics and builds on the strinit table.
 - Open in c-c++-common: attr-opt-1, builtin-convertvector-1, dump-ada-spec-14,
   pr68833-3 (-Wnormalized), unroll-5.
 - Gate: 1303 pass, san 476/0, gcc.dg 30 / c-c++-common 6, callgrind 3.732G.
+
+## Round 130: __builtin_convertvector (c-c++-common 5)
+- c_build_vec_convert's three errors: first argument not an integer/float
+  vector (at the builtin), second not a vector type (at the type), element
+  counts differ (at the builtin).
+- Parse recovery as gcc's: after any failure skip to the closing `)` and
+  build an error node (no implicit-int warnings, no "expected statement").
+  `type_name` now says "expected specifier-qualifier-list" like
+  c_parser_type_name (misc_179).
+- Not done: va_arg, offsetof and __builtin_types_compatible_p have the same
+  recovery gap (spurious implicit-int / "expected statement").
+- Gate: 1305 pass, san 477/0, gcc.dg 30 / c-c++-common 5, callgrind 3.731G.

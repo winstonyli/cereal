@@ -2035,7 +2035,7 @@ static void type_name(Parser *p)
     DeclInfo d;
     specs(p, &s, LA_TYPE);
     if (!s.any)
-        expected(p, "type name");
+        expected(p, "specifier-qualifier-list");
     declarator_init(&d);
     declarator(p, DCL_ABSTRACT, &d);
     emit(p, N_TYPE_NAME, first, start, 0);
@@ -2285,6 +2285,32 @@ static void builtin2(Parser *p, NodeTag tag, bool first_type)
     emit(p, tag, kw, start, 0);
 }
 
+/* __builtin_convertvector ( assignment-expression , type-name ): gcc skips
+ * to the closing parenthesis after any failure and builds an error. */
+static void convertvector_expr(Parser *p)
+{
+    uint32_t start = nmark(p), kw = adv(p), s;
+    uint64_t e0;
+    if (!expect(p, P_LPAREN)) {
+        emit(p, N_CONVERTVECTOR, kw, start, 0);
+        return;
+    }
+    parse_assign(p);
+    if (!expect(p, P_COMMA)) {
+        skip_past_rparen(p);
+        emit(p, N_CONVERTVECTOR, kw, start, 0);
+        return;
+    }
+    s = nmark(p);
+    e0 = p->errors;
+    type_name(p);
+    if (p->errors != e0)
+        p->nodes.len = s;
+    if (!expect(p, P_RPAREN))
+        skip_past_rparen(p);
+    emit(p, N_CONVERTVECTOR, kw, start, 0);
+}
+
 /* __builtin_has_attribute ( expr | type-name , attribute ) */
 static void has_attr_expr(Parser *p)
 {
@@ -2360,7 +2386,7 @@ static void primary(Parser *p)
             builtin2(p, N_VA_ARG, false);
             return;
         case CK_CONVERTVECTOR:
-            builtin2(p, N_CONVERTVECTOR, false);
+            convertvector_expr(p);
             return;
         case CK_HAS_ATTRIBUTE:
             has_attr_expr(p);

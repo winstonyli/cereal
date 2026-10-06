@@ -5570,6 +5570,19 @@ static void e_va_arg(Checker *c, uint32_t i)
     c->ef[i] = EF_SIDE;
 }
 
+static bool cv_elem_ok(Checker *c, TypeId vec)
+{
+    TypeId e = type_canon(TT, type_base(TT, vec));
+    return type_is_integer(TT, e) || type_is_float(TT, e);
+}
+
+static uint64_t cv_count(Checker *c, TypeId vec)
+{
+    bool ok;
+    uint64_t es = type_size(TT, type_base(TT, vec), &ok);
+    return es ? type_size(TT, vec, &ok) / es : 0;
+}
+
 static void e_convertvector(Checker *c, uint32_t i)
 {
     uint32_t k[2];
@@ -5582,6 +5595,30 @@ static void e_convertvector(Checker *c, uint32_t i)
     if (node_err(c, k[0]) || is_err(c, t)) {
         set_err(c, i);
         return;
+    }
+    {
+        /* c_build_vec_convert */
+        TypeId a = type_canon(TT, c->ty[k[0]]), v = type_canon(TT, t);
+        bool av = type_ckind(TT, a) == TY_VECTOR, tv = type_ckind(TT, v) == TY_VECTOR;
+        if (!av || !cv_elem_ok(c, a)) {
+            cerror(c, cnode_loc(c, i), "'__builtin_convertvector' first argument "
+                   "must be an integer or floating vector");
+            set_err(c, i);
+            return;
+        }
+        if (!tv || !cv_elem_ok(c, v)) {
+            cerror(c, first_loc(c, k[1]), "'__builtin_convertvector' second "
+                   "argument must be an integer or floating vector type");
+            set_err(c, i);
+            return;
+        }
+        if (cv_count(c, a) != cv_count(c, v)) {
+            cerror(c, cnode_loc(c, i), "'__builtin_convertvector' number of "
+                   "elements of the first argument vector and the second "
+                   "argument vector type should be the same");
+            set_err(c, i);
+            return;
+        }
     }
     c->ty[i] = t;
     c->ef[i] = c->ef[k[0]] & EF_PROP;

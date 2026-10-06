@@ -1,0 +1,24 @@
+misc_179.c:7:3: error: '__builtin_convertvector' number of elements of the first argument vector and the second argument vector type should be the same
+    7 |   __builtin_convertvector (*y, v8si);   /* { dg-error "number of elements of the first argument vector and the second argument vector type should be the same" } */
+      |   ^
+misc_179.c:8:3: error: '__builtin_convertvector' number of elements of the first argument vector and the second argument vector type should be the same
+    8 |   __builtin_convertvector (*x, v4di);   /* { dg-error "number of elements of the first argument vector and the second argument vector type should be the same" } */
+      |   ^
+misc_179.c:9:32: error: '__builtin_convertvector' second argument must be an integer or floating vector type
+    9 |   __builtin_convertvector (*x, int);    /* { dg-error "second argument must be an integer or floating vector type" } */
+      |                                ^
+misc_179.c:10:3: error: '__builtin_convertvector' first argument must be an integer or floating vector
+   10 |   __builtin_convertvector (z, v4di);    /* { dg-error "first argument must be an integer or floating vector" } */
+      |   ^
+misc_179.c:11:28: error: expected expression before ')' token
+   11 |   __builtin_convertvector ();           /* { dg-error "expected" } */
+      |                            ^
+misc_179.c:12:30: error: expected ',' before ')' token
+   12 |   __builtin_convertvector (*x);         /* { dg-error "expected" } */
+      |                              ^
+misc_179.c:13:32: error: expected specifier-qualifier-list before '*' token
+   13 |   __builtin_convertvector (*x, *y);     /* { dg-error "expected" } */
+      |                                ^
+misc_179.c:14:36: error: expected ')' before ',' token
+   14 |   __builtin_convertvector (*x, v8si, 1);/* { dg-error "expected" } */
+      |                                    ^
