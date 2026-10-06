@@ -2039,11 +2039,11 @@ static bool tok_from_macro(const Checker *c, uint32_t tok)
 }
 
 /* The file, line and display column (tabs to multiples of 8) of a token. */
-static bool tok_pos(Checker *c, uint32_t tok, TokPos *p)
+static bool tok_pos(Checker *c, uint32_t tok, TokPos *p, bool spell)
 {
     SrcLoc loc = ctok_loc(c, tok);
     uint32_t col, len, i, dc = 0;
-    if (tok_from_macro(c, tok) && c->u->toks[tok].exp)
+    if (!spell && tok_from_macro(c, tok) && c->u->toks[tok].exp)
         loc = c->u->toks[tok].exp;      /* the expansion point */
     const char *text;
     p->f = srcmgr_file_of(c->sm, loc);
@@ -2157,6 +2157,7 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
     uint32_t b = first_tok(c, body), n = last + 1, l;
     TokPos gp, bp, np, lp;
     Diagnostic *d;
+    bool spell;
     if (tg(c, body) == N_GOTO)
         b = c->nodes[body].tok - 1;     /* the 'goto' before the label name */
     if (n >= c->u->ntoks || c->u->toks[n].t.kind == TK_EOF)
@@ -2165,10 +2166,14 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
         tok_is_p(c, n, P_SEMI) || tok_is_p(c, n, P_RBRACE) ||
         tok_is_kw(c, n, CK_ELSE))
         return;
-    if (!tok_pos(c, g, &gp) || !tok_pos(c, b, &bp) || !tok_pos(c, n, &np) ||
-        np.f != bp.f)
+    spell = tok_from_macro(c, g) && tok_from_macro(c, n) &&
+            c->u->toks[g].exp && c->u->toks[g].exp == c->u->toks[n].exp;
+    if (spell && ((c->u->toks[b].t.flags | c->u->toks[n].t.flags) & TF_ORIGIN_ARG))
+        return;                 /* spelled at the use, not in the body */
+    if (!tok_pos(c, g, &gp, spell) || !tok_pos(c, b, &bp, spell) ||
+        !tok_pos(c, n, &np, spell) || np.f != bp.f)
         return;
-    switch (gap_scan(c, last, n, &np)) {
+    switch (spell ? 0 : gap_scan(c, last, n, &np)) {
     case 1:
         return;
     case 2:
@@ -2178,7 +2183,7 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
     }
     for (l = g; l > 0 && !(c->u->toks[l].t.flags & TF_BOL); l--)
         ;
-    if (!tok_pos(c, l, &lp))
+    if (!tok_pos(c, l, &lp, spell))
         return;
     if (np.line == bp.line) {
         if (gp.line == bp.line && !(c->u->toks[g].t.flags & TF_BOL))

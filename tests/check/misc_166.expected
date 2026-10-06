@@ -1,0 +1,12 @@
+misc_166.c:5:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+    5 |     if (flag)   \
+      |     ^
+misc_166.c:9:3: note: in expansion of macro 'bar'
+    9 |   bar();
+      |   ^
+misc_166.c:7:7: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+    7 |       num = 1;  \
+      |       ^
+misc_166.c:9:3: note: in expansion of macro 'bar'
+    9 |   bar();
+      |   ^

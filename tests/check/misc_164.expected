@@ -1,0 +1,21 @@
+misc_164.c:6:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with arguments 3, 4 [-Wrestrict]
+    6 |   foo (p, "%s", p, p);
+      |   ^
+misc_164.c:7:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 4 [-Wrestrict]
+    7 |   foo (p, "%s", 1, p);
+      |   ^
+misc_164.c:8:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 3 [-Wrestrict]
+    8 |   bar (p, q, p, q);
+      |   ^
+misc_164.c:8:3: warning: passing argument 2 to 'restrict'-qualified parameter aliases with argument 4 [-Wrestrict]
+    8 |   bar (p, q, p, q);
+      |   ^
+misc_164.c:9:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with arguments 2, 3 [-Wrestrict]
+    9 |   bar (p, p, p, q);
+      |   ^
+misc_164.c:10:3: warning: passing argument 1 to 'restrict'-qualified parameter aliases with argument 3 [-Wrestrict]
+   10 |   bar (q, p, q, p);
+      |   ^
+misc_164.c:10:3: warning: passing argument 2 to 'restrict'-qualified parameter aliases with argument 4 [-Wrestrict]
+   10 |   bar (q, p, q, p);
+      |   ^

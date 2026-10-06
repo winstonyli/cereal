@@ -5911,7 +5911,7 @@ static void e_has_attr(Checker *c, uint32_t i)
             !is_intcst(c, ak[0])) {
             cerror(c, cdecl_line_start_loc(c, c->nodes[i].tok), "requested "
                    "alignment is not an integer constant");
-            set_err(c, i);
+            set_ice(c, i, TYPE_B(INT), 0);     /* gcc goes on with 0 */
             return;
         }
     }
@@ -7296,15 +7296,25 @@ void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk,
                            bool builtin, bool is_bt)
 {
     uint32_t i, j;
+    uint64_t seen = 0;   /* arguments already named: gcc reports each once */
     /* each restrict parameter against every other argument (the variadic ones
-     * too); a pair of restrict ones once, the lower first */
-    for (i = 0; i < nparm && i + 1 < nk; i++) {
-        if (!cparm_restrict(c, parms, i))
+     * too); a pair of restrict ones once, the lower first; one warning per
+     * parameter lists all the arguments it aliases */
+    for (i = 0; i < nparm && i + 1 < nk && i < 64; i++) {
+        char list[160];
+        size_t len = 0;
+        unsigned cnt = 0;
+        SrcLoc l = line_start_loc(c, loc);
+        uint32_t a = kv[i + 1], first;
+        if (!cparm_restrict(c, parms, i) || (seen >> i & 1))
             continue;
-        for (j = 0; j + 1 < nk; j++) {
-            uint32_t a = kv[i + 1], first;
-            SrcLoc l = line_start_loc(c, loc);
-            if (j == i || (j < i && j < nparm && cparm_restrict(c, parms, j)))
+        first = restrict_base(c, a);
+        if (ntag(c, first) != N_IDENT || is_array(c, c->ty[first]))
+            l = expr_loc(c, a);
+        list[0] = 0;
+        for (j = 0; j + 1 < nk && j < 64; j++) {
+            if (j == i || (seen >> j & 1) ||
+                (j < i && j < nparm && cparm_restrict(c, parms, j)))
                 continue;
             if (is_bt && j >= nparm)   /* the middle end handles those */
                 continue;
@@ -7316,12 +7326,15 @@ void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk,
             if (builtin && nparm == 3 && nk > 3 && is_intcst(c, kv[3]) &&
                 c->cv[kv[3]] == 0)
                 continue;
-            first = restrict_base(c, a);
-            if (ntag(c, first) != N_IDENT || is_array(c, c->ty[first]))
-                l = expr_loc(c, a);
-            cwarn(c, l, "restrict", "passing argument %u to 'restrict'-qualified "
-                  "parameter aliases with argument %u", i + 1, j + 1);
+            len += (size_t)snprintf(list + len, sizeof list - len, "%s%u",
+                                    cnt ? ", " : "", j + 1);
+            cnt++;
+            seen |= (uint64_t)1 << j;
         }
+        if (cnt)
+            cwarn(c, l, "restrict", "passing argument %u to 'restrict'-"
+                  "qualified parameter aliases with argument%s %s", i + 1,
+                  cnt > 1 ? "s" : "", list);
     }
 }
 
