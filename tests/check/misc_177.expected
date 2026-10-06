@@ -1,0 +1,6 @@
+misc_177.c:2:18: error: ISO C does not permit named variadic macros [-Wvariadic-macros]
+    2 | #define A(x, args...) x
+      |                  ^
+misc_177.c:3:12: error: ISO C does not permit named variadic macros [-Wvariadic-macros]
+    3 | #define B(x...) x
+      |            ^

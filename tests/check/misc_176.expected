@@ -1,0 +1,30 @@
+misc_176.c:2:8: error: size of array element is not a multiple of its alignment
+    2 | struct B { int x; A d[4]; } b;
+      |        ^
+misc_176.c:3:8: error: size of array element is not a multiple of its alignment
+    3 | struct B2 {  A d[4]; } b2;
+      |        ^
+misc_176.c:4:8: error: size of array element is not a multiple of its alignment
+    4 | struct B3 { A d[4]; int y; int z; } b3;
+      |        ^
+misc_176.c:6:2: error: size of array element is not a multiple of its alignment
+    6 |  int y; A d[4]; int z; };
+      |  ^
+misc_176.c:7:8: error: redefinition of 'struct B'
+    7 | struct B { A d[4]; } b;
+      |        ^
+misc_176.c:2:8: note: originally defined here
+    2 | struct B { int x; A d[4]; } b;
+      |        ^
+misc_176.c:7:8: error: size of array element is not a multiple of its alignment
+    7 | struct B { A d[4]; } b;
+      |        ^
+misc_176.c:7:22: error: conflicting types for 'b'; have 'struct B'
+    7 | struct B { A d[4]; } b;
+      |                      ^
+misc_176.c:2:29: note: previous declaration of 'b' with type 'struct B'
+    2 | struct B { int x; A d[4]; } b;
+      |                             ^
+misc_176.c:9:3: error: size of array element is not a multiple of its alignment
+    9 |   A d[4];
+      |   ^

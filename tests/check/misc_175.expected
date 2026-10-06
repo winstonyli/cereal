@@ -1,0 +1,9 @@
+misc_175.c:2:1: warning: parameter names (without types) in function declaration
+    2 | t t6 (a,b);
+      | ^
+misc_175.c:3:9: error: expected identifier before ')' token
+    3 | t t7 (a,);
+      |         ^
+misc_175.c:3:9: warning: parameter names (without types) in function declaration
+    3 | t t7 (a,);
+      |         ^

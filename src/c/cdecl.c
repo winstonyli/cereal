@@ -357,7 +357,8 @@ static uint32_t check_user_alignment_(Checker *c, uint32_t e, SrcLoc loc,
 static void gnu_attr_argc(Checker *c, uint32_t attr)
 {
     static const struct { const char *n; uint32_t lo, hi; } t[] = {
-        {"access", 1, 3}, {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"copy", 1, 1},
+        {"access", 1, 3}, {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"constructor", 0, 1},
+        {"copy", 1, 1}, {"destructor", 0, 1},
         {"malloc", 0, 2}, {"section", 1, 1}, {"simd", 0, 1},
         {"strict_flex_array", 1, 1}, {"zero_call_used_regs", 1, 1}};
     Kids k;
@@ -897,7 +898,8 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                     a->aligned = rc->align;
             }
         } else if ((!strcmp(name, "constructor") ||
-                    !strcmp(name, "destructor")) && arg != NO_NODE) {
+                    !strcmp(name, "destructor")) && arg != NO_NODE &&
+                   c->ck[arg] != K_ERR && ak.n <= 1) {  /* else: wrong number */
             int64_t pv = 0;
             SrcLoc il = cinput_loc(c, c->nodes[item].tok);
             bool isc = name[0] == 'c';
@@ -4105,8 +4107,18 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
     if (pi->krlist) {
         if (!funcdef) {
             bool q = c->quiet;
+            uint32_t last = NO_NODE;
             DiagOrd o0 = diag_ord(c->diag, q ? ORD_LATE : ORD_NORMAL);
             c->quiet = false;     /* gcc issues this in the declarator parse */
+            kids_get(c, f, &k);
+            for (j = 0; j < k.n; j++)
+                if (ntag(c, k.p[j]) == N_KR_IDENT)
+                    last = cnode(c, k.p[j])->tok;
+            kids_free(&k);
+            /* `(a,)`: gcc has already asked for the identifier at the ) */
+            if (last != NO_NODE && tpunct(c, last + 1) == P_COMMA &&
+                tpunct(c, last + 2) == P_RPAREN)
+                il = ctok_loc(c, last + 2);
             cpedwarn(c, il, "", "parameter names (without types) in function "
                      "declaration");
             c->quiet = q;
@@ -4728,7 +4740,7 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                     if (ok && al && esz % al)
                         cerror(c, up != NO_NODE && ntag(c, up) == N_HAS_ATTR
                                   ? cdecl_line_start_loc(c, first_tok(c, sp->node))
-                                  : tloc(c, first_tok(c, sp->node)),
+                                  : iloc(c, ltok),
                                esz < al ? "alignment of array elements is "
                                "greater than element size" :
                                "size of array element is not a multiple of "

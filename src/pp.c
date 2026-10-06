@@ -1292,8 +1292,12 @@ static void do_define(PP *pp, const Tok *hash)
                 }
                 i++;
                 if (i < line.n && tok_is_punct(&line.t[i], P_ELLIPSIS)) {
-                    pedantic(pp, line.t[i].loc,
-                             "named variadic macros are a GNU extension");
+                    if (pp->opt->pedantic)
+                        diag_report(pp->diag, pp->diag->pedantic_errors
+                                    ? DL_ERROR : DL_WARNING,
+                                    "variadic-macros", line.t[i].loc,
+                                    "ISO C does not permit named variadic "
+                                    "macros");
                     m->variadic = true;
                     m->gnu_named_variadic = true;
                     i++;

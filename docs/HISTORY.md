@@ -2051,3 +2051,19 @@ diagnostics and builds on the strinit table.
   started with nohup/setsid from a one-shot `wsl -e` dies when that session
   exits; hold it with a foreground `wsl -e` run instead.
 - Gate: 1295 pass, san 472/0, gcc.dg 30 / c-c++-common 9, callgrind 3.732G.
+
+## Round 129: small c-c++-common clusters (c-c++-common 6)
+- K&R `t (a,);`: the "expected identifier" error no longer fails the
+  declarator; "parameter names (without types)" follows at the `)` (misc_175).
+- "size of array element is not a multiple of its alignment" is placed at
+  input_location (`iloc(ltok)`), not the member's first token (misc_176,
+  pr97164).
+- Named variadic macros under -pedantic: "ISO C does not permit named
+  variadic macros [-Wvariadic-macros]" (own option; -pedantic-errors makes it
+  an error) (misc_177, substring-location-PR-87721).
+- `constructor`/`destructor`: arguments are expressions (an undeclared name
+  is an error and silences the priority error), 0 or 1 arguments, and no
+  priority check after "wrong number of arguments" (misc_178, pr59280).
+- Open in c-c++-common: attr-opt-1, builtin-convertvector-1, dump-ada-spec-14,
+  pr68833-3 (-Wnormalized), unroll-5.
+- Gate: 1303 pass, san 476/0, gcc.dg 30 / c-c++-common 6, callgrind 3.732G.

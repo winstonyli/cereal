@@ -2400,7 +2400,7 @@ static void e_ident(Checker *c, uint32_t i)
             static const char *const ex[] = {
                 "nonnull", "aligned", "vector_size", "warn_if_not_aligned",
                 "alloc_size", "alloc_align", "assume_aligned", "malloc",
-                "fallthrough"};
+                "fallthrough", "constructor", "destructor"};
             size_t q;
             if (al > 4 && !strncmp(an, "__", 2) && !strncmp(an + al - 2, "__", 2)) {
                 an += 2;

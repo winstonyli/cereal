@@ -24,6 +24,7 @@ static const DiagOption options[] = {
     {"bidi-chars=", "pp", DL_WARNING, true, 0, "bidirectional control characters in comments, literals and identifiers"},
     {"directive-in-macro-args", "pp", DL_WARNING, true, 0, "directive inside macro arguments (C99 6.10.3p11 UB)"},
     {"extra-tokens", "pp", DL_WARNING, true, 0, "extra tokens at end of directive"},
+    {"variadic-macros", "pp", DL_WARNING, true, 0, "named variadic macros under -pedantic"},
     {"include-next-in-primary", "pp", DL_WARNING, true, 0, "#include_next in primary source file"},
     {"expansion-to-defined", "cond", DL_WARNING, true, 0, "macro expansion produced 'defined' in #if (UB)"},
     {"integer-overflow-in-if", "cond", DL_WARNING, true, 0, "signed overflow in #if expression"},

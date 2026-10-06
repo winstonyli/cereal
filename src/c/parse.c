@@ -1832,8 +1832,12 @@ static void params(Parser *p, unsigned *flags)
         for (;;) {
             PTok x = ct(p);
             if (!is_name(p, &x)) {
-                if (is_p(&x, P_RPAREN))     /* gcc asks for ) otherwise */
+                if (is_p(&x, P_RPAREN)) {   /* gcc asks for ) otherwise */
+                    uint64_t e0 = p->errors;
                     expected(p, "identifier");
+                    /* the declarator goes on (and warns about the names) */
+                    p->bound_errors += p->errors - e0;
+                }
                 break;
             }
             leaf(p, N_KR_IDENT, adv(p));
