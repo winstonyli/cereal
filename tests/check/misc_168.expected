@@ -1,0 +1,39 @@
+misc_168.c:12:14: warning: this 'for' clause does not guard... [-Wmisleading-indentation]
+   12 |   int x = ({ for (cnt = 0; cnt < n; ++cnt)
+      |              ^
+misc_168.c:15:5: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'for'
+   15 |     n = 1; n; });
+      |     ^
+misc_168.c:12:11: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   12 |   int x = ({ for (cnt = 0; cnt < n; ++cnt)
+      |           ^
+misc_168.c:19:14: warning: this 'for' clause does not guard... [-Wmisleading-indentation]
+   19 |   int x = ({ for (cnt = 0; cnt < n; ++cnt)
+      |              ^
+misc_168.c:22:15: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'for'
+   22 |               n = 1; n; });
+      |               ^
+misc_168.c:19:11: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   19 |   int x = ({ for (cnt = 0; cnt < n; ++cnt)
+      |           ^
+misc_168.c:26:14: warning: this 'for' clause does not guard... [-Wmisleading-indentation]
+   26 |   int x = ({ for (cnt = 0; cnt < n; ++cnt)
+      |              ^
+misc_168.c:28:15: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'for'
+   28 |               n = 1; n; });
+      |               ^
+misc_168.c:26:11: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   26 |   int x = ({ for (cnt = 0; cnt < n; ++cnt)
+      |           ^
+misc_168.c:32:14: warning: this 'for' clause does not guard... [-Wmisleading-indentation]
+   32 |   int x = ({ for (cnt = 0; cnt < n; ++cnt)
+      |              ^
+misc_168.c:34:15: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'for'
+   34 |               n; });
+      |               ^
+misc_168.c:32:11: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   32 |   int x = ({ for (cnt = 0; cnt < n; ++cnt)
+      |           ^
+misc_168.c:43:12: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+   43 |         && ({ for (cnt = 0; cnt < thousands_len; ++cnt)
+      |            ^

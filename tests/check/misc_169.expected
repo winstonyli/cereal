@@ -1,0 +1,24 @@
+misc_169.c:6:3: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+    6 |   if (b);
+      |   ^
+misc_169.c:7:3: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+    7 |   { foo (2); }
+      |   ^
+misc_169.c:11:3: warning: this 'while' clause does not guard... [-Wmisleading-indentation]
+   11 |   while (b);
+      |   ^
+misc_169.c:12:3: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'while'
+   12 |   { foo (2); }
+      |   ^
+misc_169.c:18:8: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   18 |   else if (b);
+      |        ^
+misc_169.c:19:3: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+   19 |   { foo (2); }
+      |   ^
+misc_169.c:31:3: warning: this 'for' clause does not guard... [-Wmisleading-indentation]
+   31 |   for (;;);
+      |   ^
+misc_169.c:32:3: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'for'
+   32 |   { foo (2); }
+      |   ^

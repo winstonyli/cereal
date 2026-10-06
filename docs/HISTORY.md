@@ -2017,3 +2017,17 @@ diagnostics and builds on the strinit table.
   Wmisleading-indentation.c.
 - Goldens misc_164 to misc_166. Gate: 1279 pass, san 464/0, gcc.dg 34 /
   c-c++-common 13, callgrind 3.732G (an eager line_start_loc in check_restrict cost +1.6% until made lazy).
+
+## Round 127: -Wmisleading-indentation rules (c-c++-common 11)
+- A guard whose body lines up with the guard token itself (`{ for (...)` with
+  the body under the `for`, or `else if` with the body under the `if`) does
+  not warn, except for `else` (gcc warns there).
+- An empty body followed by a `{` on a later line warns when the block is at
+  the guard line's own column (other statements need a deeper column).
+- Guard and next statement from one macro expansion where the next token is
+  spelled in a nested macro: the column is that of the nested macro's
+  invocation inside the outer body (the first text after the last body
+  token), the note stays at the nested spelling (Wmisleading-indentation-5).
+- Goldens misc_167 to misc_172. Gate: 1291 pass, san 470/0, gcc.dg 34 /
+  c-c++-common 11, callgrind 3.732G. All Wmisleading-indentation files now
+  match gcc.

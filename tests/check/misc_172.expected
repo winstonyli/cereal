@@ -1,0 +1,18 @@
+misc_172.c:2:1: error: expected identifier or '(' before '}' token
+    2 | }
+      | ^
+misc_172.c:8:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+    8 |     if (flag)   \
+      |     ^
+misc_172.c:13:3: note: in expansion of macro 'wrapper'
+   13 |   wrapper();
+      |   ^
+misc_172.c:5:15: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+    5 | #define baz() (num = 1)
+      |               ^
+misc_172.c:13:3: note: in expansion of macro 'wrapper'
+   13 |   wrapper();
+      |   ^
+misc_172.c:16:1: error: expected identifier or '(' before '}' token
+   16 | }
+      | ^

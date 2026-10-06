@@ -2149,6 +2149,42 @@ static int gap_scan(Checker *c, uint32_t last, uint32_t n, TokPos *at)
     return found ? 2 : 0;
 }
 
+/* The first token-like character after token last in its own file (the
+ * invocation of a nested macro inside a macro body, which expands away). */
+static void after_text(Checker *c, uint32_t last, TokPos *at)
+{
+    SrcLoc ll = ctok_loc(c, last);
+    SrcFile *f = srcmgr_file_of(c->sm, ll);
+    uint32_t l, col, len, i;
+    bool blk = false;
+    if (!f)
+        return;
+    srcmgr_linecol(f, ll, &l, &col);
+    i = col - 1 + c->u->toks[last].t.len;
+    for (;; l++, i = 0) {
+        const char *text = srcmgr_line_text(f, l, &len);
+        if (!text)
+            return;
+        for (; i < len; i++) {
+            char ch = text[i];
+            if (blk) {
+                if (ch == '*' && i + 1 < len && text[i + 1] == '/') {
+                    blk = false;
+                    i++;
+                }
+            } else if (ch == '/' && i + 1 < len && text[i + 1] == '*') {
+                blk = true;
+                i++;
+            } else if (ch != ' ' && ch != 9 && ch != 13 && ch != 92) {
+                at->f = f;
+                at->line = l;
+                at->vcol = line_vcol(text, len, i);
+                return;
+            }
+        }
+    }
+}
+
 /* warn_for_misleading_indentation: guard token g (if, else, while, for), the
  * body statement node, and the last token of the body. */
 static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
@@ -2173,6 +2209,8 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
     if (!tok_pos(c, g, &gp, spell) || !tok_pos(c, b, &bp, spell) ||
         !tok_pos(c, n, &np, spell) || np.f != bp.f)
         return;
+    if (spell && (np.f != bp.f || np.line < bp.line))
+        after_text(c, last, &np);   /* n is spelled in a nested macro: its invocation */
     switch (spell ? 0 : gap_scan(c, last, n, &np)) {
     case 1:
         return;
@@ -2190,7 +2228,8 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
             return;
     } else if (tok_is_p(c, b, P_SEMI)) {
         /* an empty body: the next statement indented past the guard line */
-        if (np.vcol <= lp.vcol)
+        /* a following block counts from the guard line's own column */
+        if (np.vcol < lp.vcol || (np.vcol == lp.vcol && !tok_is_p(c, n, P_LBRACE)))
             return;
         if (gp.line != bp.line) {
             /* a ';' alone on its line is the body, indented as one; text
@@ -2202,7 +2241,8 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
             if (!tx2 || line_vcol(tx2, tl2, k2) == bp.vcol)
                 return;
         }
-    } else if (!(bp.vcol == np.vcol && bp.vcol > lp.vcol))
+    } else if (!(bp.vcol == np.vcol && bp.vcol > lp.vcol) ||
+               (bp.vcol == gp.vcol && strcmp(kw, "else")))  /* body under the guard itself */
         return;
     d = cwarn_d(c, DL_WARNING, ctok_loc(c, g), "misleading-indentation",
                 "this '%s' clause does not guard...", kw);

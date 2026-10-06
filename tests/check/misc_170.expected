@@ -1,0 +1,12 @@
+misc_170.c:15:8: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   15 |   else if (b);
+      |        ^
+misc_170.c:16:5: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+   16 |     foo (2);
+      |     ^
+misc_170.c:23:8: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   23 |   else if (b);
+      |        ^
+misc_170.c:24:3: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+   24 |   { foo (2); }
+      |   ^
