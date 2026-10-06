@@ -1,0 +1,111 @@
+misc_144.c:2:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    2 | [[foo]] int f(int i){return i;}
+      | ^
+misc_144.c:2:1: warning: 'foo' attribute ignored [-Wattributes]
+    2 | [[foo]] int f(int i){return i;}
+      | ^
+misc_144.c:3:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    3 | [[__foo__]] int g(int i){return i;}
+      | ^
+misc_144.c:3:1: warning: 'foo' attribute ignored [-Wattributes]
+    3 | [[__foo__]] int g(int i){return i;}
+      | ^
+misc_144.c:4:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    4 | [[____noreturn____]] int h(int i){return i;}
+      | ^
+misc_144.c:4:1: warning: '__noreturn__' attribute ignored [-Wattributes]
+    4 | [[____noreturn____]] int h(int i){return i;}
+      | ^
+misc_144.c:5:12: warning: result of '2^64' is 66; did you mean exponentiation? [-Wxor-used-as-pow]
+    5 | long x1 = 2^64, x2 = 2^65, x3 = 10^30, x4 = 2^129;
+      |            ^
+misc_144.c:5:11: note: you can silence this warning by using a hexadecimal constant (0x2 rather than 2)
+    5 | long x1 = 2^64, x2 = 2^65, x3 = 10^30, x4 = 2^129;
+      |           ^
+misc_144.c:5:35: warning: result of '10^30' is 20; did you mean '1e30'? [-Wxor-used-as-pow]
+    5 | long x1 = 2^64, x2 = 2^65, x3 = 10^30, x4 = 2^129;
+      |                                   ^
+misc_144.c:5:33: note: you can silence this warning by using a hexadecimal constant (0xa rather than 10)
+    5 | long x1 = 2^64, x2 = 2^65, x3 = 10^30, x4 = 2^129;
+      |                                 ^
+misc_144.c:14:7: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   14 |   c = c >> d;
+      |       ^
+misc_144.c:15:7: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   15 |   c = c >> i;
+      |       ^
+misc_144.c:16:9: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   16 |   c >>= i;
+      |         ^
+misc_144.c:17:7: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   17 |   c = c << i;
+      |       ^
+misc_144.c:18:9: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   18 |   c <<= i;
+      |         ^
+misc_144.c:19:7: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   19 |   c = c << 1;
+      |       ^
+misc_144.c:20:7: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   20 |   c = c << d;
+      |       ^
+misc_144.c:21:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   21 |   c = i >> 1;
+      |       ^
+misc_144.c:22:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   22 |   c = i >> d;
+      |       ^
+misc_144.c:23:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   23 |   c = i << 1;
+      |       ^
+misc_144.c:24:7: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   24 |   c = c + 1;
+      |       ^
+misc_144.c:25:8: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   25 |   c += 1;
+      |        ^
+misc_144.c:26:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   26 |   c = c * i;
+      |       ^
+misc_144.c:27:7: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   27 |   c = c - d;
+      |       ^
+misc_144.c:28:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   28 |   c = c & i;
+      |       ^
+misc_144.c:29:8: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   29 |   c &= i;
+      |        ^
+misc_144.c:30:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   30 |   c = c | i;
+      |       ^
+misc_144.c:32:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   32 |   c = s >> 1;
+      |       ^
+misc_144.c:33:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   33 |   c = s >> 9;
+      |       ^
+misc_144.c:34:7: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   34 |   c = c >> 9;
+      |       ^
+misc_144.c:35:7: warning: conversion from 'int' to 'char' may change value [-Warith-conversion]
+   35 |   c = c / d;
+      |       ^
+misc_144.c:36:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   36 |   c = c % i;
+      |       ^
+misc_144.c:37:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   37 |   c = c / i;
+      |       ^
+misc_144.c:38:7: warning: conversion from 'int' to 'char' may change value [-Wconversion]
+   38 |   c = s / 2;
+      |       ^
+misc_144.c:49:8: warning: conversion from 'int' to 'unsigned char' changes the value of '256' [-Wconversion]
+   49 |   x |= 256;
+      |        ^
+misc_144.c:50:8: warning: conversion from 'int' to 'unsigned char' may change value [-Wconversion]
+   50 |   x &= f;
+      |        ^
+misc_144.c:51:8: warning: conversion from 'int' to 'unsigned char' may change value [-Wconversion]
+   51 |   x |= f;
+      |        ^

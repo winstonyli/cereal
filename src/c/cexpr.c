@@ -724,7 +724,7 @@ static const StdName std_names[] = {
     {"false", "<stdbool.h>"}
 };
 
-static const char *std_header(const char *name)
+const char *std_header(const char *name)
 {
     size_t k;
     for (k = 0; k < sizeof std_names / sizeof *std_names; k++)
@@ -735,12 +735,12 @@ static const char *std_header(const char *name)
 
 /* Where gcc suggests adding an #include: the line after the last #include
  * of the main file before loc, else its start. */
-static SrcLoc include_loc(Checker *c, SrcLoc loc)
+static SrcLoc include_loc(SrcMgr *sm, SrcLoc loc)
 {
-    uint32_t k, n = srcmgr_nfiles(c->sm), line, nl, lastinc = 0;
+    uint32_t k, n = srcmgr_nfiles(sm), line, nl, lastinc = 0;
     SrcFile *f = NULL;
     for (k = 0; k < n; k++) {
-        SrcFile *g = srcmgr_file(c->sm, k);
+        SrcFile *g = srcmgr_file(sm, k);
         if (g && g->kind == SF_USER && !g->system_header) {
             f = g;
             break;
@@ -749,7 +749,7 @@ static SrcLoc include_loc(Checker *c, SrcLoc loc)
     if (!f)
         return loc;
     srcmgr_linecol(f, f->base + f->size, &nl, &line);
-    if (srcmgr_file_of(c->sm, loc) == f)
+    if (srcmgr_file_of(sm, loc) == f)
         srcmgr_linecol(f, loc, &nl, &line);
     for (line = 1; line < nl; line++) {
         uint32_t len, j = 0;
@@ -770,7 +770,7 @@ static SrcLoc include_loc(Checker *c, SrcLoc loc)
 /* The location of a note suggesting header hdr: gcc puts the first one per
  * header where the #include would go (with a fix-it), later ones at the
  * use. */
-SrcLoc header_note_loc(Checker *c, SrcLoc loc, const char *hdr)
+SrcLoc diag_header_note_loc(DiagEngine *diag, SrcLoc loc, const char *hdr)
 {
     static const char *const known[] = {
         "<assert.h>", "<complex.h>", "<ctype.h>", "<inttypes.h>", "<math.h>",
@@ -782,11 +782,16 @@ SrcLoc header_note_loc(Checker *c, SrcLoc loc, const char *hdr)
     for (k = 0; k < sizeof known / sizeof *known; k++)
         if (!strcmp(known[k], hdr)) {
             uint64_t bit = UINT64_C(1) << k;
-            bool seen = (c->hdr_noted & bit) != 0;
-            c->hdr_noted |= bit;
-            return seen ? loc : include_loc(c, loc);
+            bool seen = (diag->hdr_noted & bit) != 0;
+            diag->hdr_noted |= bit;
+            return seen ? loc : include_loc(diag->sm, loc);
         }
-    return include_loc(c, loc);
+    return include_loc(diag->sm, loc);
+}
+
+SrcLoc header_note_loc(Checker *c, SrcLoc loc, const char *hdr)
+{
+    return diag_header_note_loc(c->diag, loc, hdr);
 }
 
 static void header_note(Checker *c, Diagnostic *d, SrcLoc loc,
@@ -1726,6 +1731,8 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
     switch (l->level) {
     case 2: {
         size_t k = c->diag->all.len, lim = k > 64 ? k - 64 : 0;
+        if (l->id && !strcmp(l->id, "inputloc"))
+            loc = cinput_loc(c, c->nodes[i].tok);
         for (; k-- > lim;)      /* the parser reported it when it skipped the token */
             if (c->diag->all.data[k]->loc == loc &&
                 !strcmp(c->diag->all.data[k]->msg, l->msg))
@@ -2420,7 +2427,8 @@ static void e_ident(Checker *c, uint32_t i)
     s = csym(c, ref);
     /* gcc marks a variable named in __builtin_has_attribute used; a function
      * stays unused ("declared static but never defined") */
-    if (s->kind != CS_FUNC || !in_has_attr(c, i)) {
+    if ((s->kind != CS_FUNC || !in_has_attr(c, i)) &&
+        !(s->kind == CS_OBJ && is_err(c, s->ty))) {   /* gcc: an erroneous type is no use */
         s->flags |= CSF_USED;
         if (s->kind == CS_FUNC && sizeof_outer(c, i) == NO_NODE)
             s->flags |= CSF_CUSED;
@@ -5060,6 +5068,76 @@ static int cast_class(Checker *c, TypeId t)
 
 /* gcc's handle_warn_cast_qual: a pointer cast that drops a qualifier of a
  * target type, or that is unsafe through an unqualified intermediate level. */
+/* gcc's build_c_cast -Wcast-align=strict: the target is more aligned than
+ * the source (-Wcast-align alone is a no-op on targets that allow unaligned
+ * access). */
+static void cast_align(Checker *c, SrcLoc loc, TypeId pt, TypeId po)
+{
+    bool ok;
+    if (is_void(c, po) || is_func(c, po) || is_void(c, pt) || is_func(c, pt) ||
+        !diag_enabled(c->diag, "cast-align=") ||
+        diag_option_level(c->diag, "cast-align=", 1) < 2)
+        return;
+    type_size(TT, po, &ok);
+    if (!ok)
+        return;                 /* an opaque type's alignment is unknown */
+    type_size(TT, pt, &ok);
+    if (ok && type_align(TT, pt) > type_align(TT, po))
+        cwarn(c, loc, "cast-align=", "cast increases required alignment of "
+              "target type");
+}
+
+/* gcc's c_safe_arg_type_equiv_p: two parameter or return types a call
+ * cannot tell apart (a void stands for the end of a prototype). */
+static bool safe_arg_equiv(Checker *c, TypeId a, TypeId b)
+{
+    if (!a || !b)
+        return !a && !b;
+    a = TYPE_UNQUAL(type_canon(TT, a));
+    b = TYPE_UNQUAL(type_canon(TT, b));
+    if (is_ptr(c, a) && is_ptr(c, b))
+        return true;
+    if (is_int(c, a) && is_int(c, b) &&
+        (tkind(c, a) == TY_BOOL) == (tkind(c, b) == TY_BOOL) &&
+        tkind(c, a) != TY_BOOL && int_bits(c, a) == int_bits(c, b) &&
+        (is_signed(c, a) == is_signed(c, b) ||
+         int_bits(c, a) >= 32))
+        return true;
+    return type_compatible(TT, a, b);
+}
+
+/* gcc's c_safe_function_type_cast_p; fa, fb: the function types. */
+static bool safe_function_cast(Checker *c, TypeId fa, TypeId fb)
+{
+    const TypeEnt *ea = type_ent(TT, fa), *eb = type_ent(TT, fb);
+    bool pa = !(ea->flags & TF_NOPROTO), pb = !(eb->flags & TF_NOPROTO);
+    uint32_t na = pa ? ea->n + !(ea->flags & TF_VARIADIC) : 0,
+             nb = pb ? eb->n + !(eb->flags & TF_VARIADIC) : 0, j;
+    const TypeId *qa = type_params(TT, fa), *qb = type_params(TT, fb);
+    TypeId ra = type_base(TT, fa), rb = type_base(TT, fb);
+    if ((is_void(c, ra) && pa && !ea->n && !(ea->flags & TF_VARIADIC)) ||
+        (is_void(c, rb) && pb && !eb->n && !(eb->flags & TF_VARIADIC)))
+        return true;
+    if (!safe_arg_equiv(c, ra, rb))
+        return false;
+    for (j = 0; j < na && j < nb; j++)
+        if (!safe_arg_equiv(c, j < ea->n ? qa[j] : 0, j < eb->n ? qb[j] : 0))
+            return false;
+    return true;
+}
+
+static void cast_function_type(Checker *c, SrcLoc loc, TypeId t, TypeId ot)
+{
+    TypeId pt = type_canon(TT, pointee(c, t)), po = type_canon(TT, pointee(c, ot));
+    if (!is_func(c, pt) || !is_func(c, po) ||
+        !diag_enabled(c->diag, "cast-function-type") ||
+        safe_function_cast(c, pt, po))
+        return;
+    cwarn(c, loc, "cast-function-type", "cast between incompatible function "
+          "types from %s to %s", type_q(TT, ot),
+          type_q(TT, type_canon(TT, t)));
+}
+
 static void cast_qual(Checker *c, SrcLoc loc, TypeId t, TypeId ot)
 {
     TypeId it = t, io = ot;
@@ -5294,6 +5372,8 @@ static void e_cast(Checker *c, uint32_t i)
     if (is_ptr(c, t) && is_ptr(c, ot)) {
         TypeId pt = pointee(c, t), po = pointee(c, ot);
         cast_qual(c, loc, t, ot);
+        cast_align(c, loc, pt, po);
+        cast_function_type(c, loc, t, ot);
         if (is_func(c, pt) && !is_func(c, po) && !(c->ef[a] & EF_NPC))
             ped(c, i, loc, "ISO C forbids conversion of object pointer to "
                            "function pointer type");
@@ -7556,11 +7636,9 @@ static bool addr_target(Checker *c, uint32_t n, AddrInfo *ai)
                                       tckw(c, c->nodes[e].tok) == CK_IMAG) &&
             nkids(c, e, k, 3) >= 1) {
             /* &__real__ x: never null; named '__real__ x' */
-            uint32_t in = strip_paren(c, k[0]), ik[3];
+            uint32_t in = strip_paren(c, k[0]);
             StrBuf sb = {0};
-            bool ptr_idx = ntag(c, in) == N_INDEX && nkids(c, in, ik, 3) >= 1 &&
-                           !is_array(c, c->ty[strip_paren(c, ik[0])]);
-            if (ptr_idx || ntag(c, in) == N_CALL ||
+            if (ntag(c, in) == N_CALL ||
                 (ntag(c, in) == N_UNARY && npunct(c, in) != P_STAR))
                 return false;
             sb_puts(&sb, tckw(c, c->nodes[e].tok) == CK_REAL ? "__real__ "
@@ -8867,8 +8945,10 @@ static void xor_pow(Checker *c, uint32_t i, uint32_t a, uint32_t b)
                      (unsigned long long)1 << r);
         else if (r <= 62)
             snprintf(sug, sizeof sug, "'1LL << %llu'", r);
-        else
+        else if (r <= 64)
             snprintf(sug, sizeof sug, "exponentiation");
+        else
+            return; /* gcc: the RHS is too large to suggest anything */
     } else if (l == 10) {
         snprintf(sug, sizeof sug, "'1e%llu'", r);
     } else {
@@ -9308,7 +9388,7 @@ static void e_cond(Checker *c, uint32_t i)
 
 /* ---- assignment ------------------------------------------------------------------------- */
 
-static int assign_binop(int op)
+int assign_binop(int op)
 {
     switch (op) {
     case P_MUL_ASSIGN: return P_STAR;

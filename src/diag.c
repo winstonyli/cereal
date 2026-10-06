@@ -179,7 +179,7 @@ static const DiagOption options[] = {
     {"absolute-value", "c", DL_WARNING, false, DO_EXTRA, "abs/fabs/cabs called with an argument of the wrong kind"},
     {"bad-function-cast", "c", DL_WARNING, false, 0, "cast of a call to a non-matching type"},
     {"cast-qual", "c", DL_WARNING, false, 0, "cast removes a qualifier from the target type"},
-    {"cast-align", "c", DL_WARNING, false, 0, "cast increases the required alignment"},
+    {"cast-align=", "c", DL_WARNING, false, 0, "cast increases the required alignment (strict only: a no-op where unaligned access works)"},
     {"conversion", "c", DL_WARNING, false, 0, "implicit conversion that may change a value"},
     {"sign-conversion", "c", DL_WARNING, false, 0, "implicit conversion that may change the sign"},
     {"arith-conversion", "c", DL_WARNING, false, 0, "conversion of an arithmetic result may change its value"},
@@ -279,7 +279,8 @@ static bool name_matches(const DiagOption *o, const char *flag, long *level)
             return true;
         if (flag[n - 1] != '=' || !flag[n])
             return false;
-        *level = strtol(flag + n, NULL, 10);
+        *level = !strcmp(o->name, "cast-align=") && !strcmp(flag + n, "strict")
+                     ? 2 : strtol(flag + n, NULL, 10);
         return true;
     }
     return false;
@@ -867,7 +868,8 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
         fputs("\033[0m", o);
     if (id && *id)
         fprintf(o, dg_promoted ? " [-Werror=%s]" : " [-W%s]",
-                strcmp(id, "strict-aliasing=") ? id : "strict-aliasing");
+                strcmp(id, "strict-aliasing=") && strcmp(id, "cast-align=")
+                    ? id : (id[0] == 99 ? "cast-align" : "strict-aliasing"));
     fputc('\n', o);
     /* gcc reads the snippet from the presumed file at the presumed line */
     if (f && f->kind != SF_VIRTUAL && !eof && pline &&

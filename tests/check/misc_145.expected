@@ -1,0 +1,48 @@
+misc_145.c:4:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    4 | [[a::b({t})]] void f3();
+      | ^
+misc_145.c:4:1: warning: 'a' attribute ignored [-Wattributes]
+    4 | [[a::b({t})]] void f3();
+      | ^
+misc_145.c:4:4: error: expected ']' before ':' token
+    4 | [[a::b({t})]] void f3();
+      |    ^
+misc_145.c:5:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    5 | [[a::b(;)]] int x;
+      | ^
+misc_145.c:5:1: warning: 'a' attribute ignored [-Wattributes]
+    5 | [[a::b(;)]] int x;
+      | ^
+misc_145.c:5:4: error: expected ']' before ':' token
+    5 | [[a::b(;)]] int x;
+      |    ^
+misc_145.c:6:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    6 | [[a::b(1;2)]] int x2; int y = ;
+      | ^
+misc_145.c:6:1: warning: 'a' attribute ignored [-Wattributes]
+    6 | [[a::b(1;2)]] int x2; int y = ;
+      | ^
+misc_145.c:6:4: error: expected ']' before ':' token
+    6 | [[a::b(1;2)]] int x2; int y = ;
+      |    ^
+misc_145.c:6:31: error: expected expression before ';' token
+    6 | [[a::b(1;2)]] int x2; int y = ;
+      |                               ^
+misc_145.c:7:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    7 | [[a::b {t} ]] int x3;
+      | ^
+misc_145.c:7:1: warning: 'a' attribute ignored [-Wattributes]
+    7 | [[a::b {t} ]] int x3;
+      | ^
+misc_145.c:8:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    8 | [[c::d[{]]] int x4;
+      | ^
+misc_145.c:8:1: warning: 'c' attribute ignored [-Wattributes]
+    8 | [[c::d[{]]] int x4;
+      | ^
+misc_145.c:8:4: error: expected ']' before ':' token
+    8 | [[c::d[{]]] int x4;
+      |    ^
+misc_145.c:8:12: error: expected ']' before 'int'
+    8 | [[c::d[{]]] int x4;
+      |            ^

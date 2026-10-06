@@ -1,0 +1,10 @@
+wchar_t wc;
+ptrdiff_t pd;
+size_t sz;
+wchar_t *wp;
+int x = sizeof(wchar_t);
+foo_t ft;
+uint_t u;
+longg l;
+chr c;
+wchar w;

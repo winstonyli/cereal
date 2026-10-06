@@ -1,0 +1,15 @@
+misc_149.c:2:1: warning: 'nonstring' attribute does not apply to functions [-Wattributes]
+    2 | extern __attribute__((nonstring)) void f1(void);
+      | ^
+misc_149.c:3:1: warning: 'nonstring' attribute does not apply to functions [-Wattributes]
+    3 | void f2(void) __attribute__((nonstring));
+      | ^
+misc_149.c:4:35: warning: 'nonstring' attribute does not apply to types [-Wattributes]
+    4 | struct __attribute__((nonstring)) S { int i; };
+      |                                   ^
+misc_149.c:5:1: warning: 'nonstring' attribute does not apply to types [-Wattributes]
+    5 | typedef char __attribute__((nonstring)) nschar_t;
+      | ^
+misc_149.c:7:1: warning: 'nonstring' attribute ignored on objects of type 'int' [-Wattributes]
+    7 | int __attribute__((nonstring)) bad;
+      | ^

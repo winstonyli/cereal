@@ -257,19 +257,36 @@ bool const_fits(Checker *c, uint32_t n, TypeId as, TypeId t)
            cexpr_fits(c, cexpr_trunc(c, as, c->cv[n]), as, t);
 }
 
+/* A binary operation, or a compound assignment: gcc builds the same
+ * operation tree for both. */
+static bool is_binop(Checker *c, uint32_t n)
+{
+    return ntag(c, n) == N_BINARY ||
+           (ntag(c, n) == N_ASSIGN && npunct(c, n) != P_ASSIGN);
+}
+
+/* The operator of a binary operation or compound assignment. */
+static int binop_p(Checker *c, uint32_t n)
+{
+    return assign_binop(npunct(c, n));
+}
+
+static bool bool_valued(Checker *c, uint32_t s);
+
 /* build_binary_op narrows a division, a modulus or a right shift to its
  * operands' narrower type: wt is that type when it did. */
-static bool shorten_divshift(Checker *c, uint32_t ws, TypeId *wt)
+static bool shorten_divshift(Checker *c, uint32_t ws, TypeId et, TypeId *wt)
 {
     uint32_t k[2], s1;
     TypeId t0, t1;
-    unsigned p = npunct(c, ws);
+    unsigned p = binop_p(c, ws);
     bool div = p == P_SLASH || p == P_PERCENT, cst;
     if ((!div && p != P_SHR) || nkids(c, ws, k, 2) != 2)
         return false;
     unwidened(c, k[0], &t0);
     s1 = strip_paren(c, unwidened(c, k[1], &t1));
-    if (int_bits(c, t0) >= int_bits(c, rvt(c, ws)))
+    /* a compound assignment has its target's type: the operation is in et */
+    if (int_bits(c, t0) >= int_bits(c, ntag(c, ws) == N_ASSIGN ? et : rvt(c, ws)))
         return false;
     cst = has_ival(c, s1);
     if (div) {
@@ -306,8 +323,14 @@ static bool shorten_bitwise(Checker *c, uint32_t ws, TypeId lt, TypeId et,
     c1 = has_ival(c, s1);
     if (!c0 && !c1) {
         unsigned b0 = int_bits(c, t0), b1 = int_bits(c, t1);
-        *wt = b0 > b1 ? t0 : b1 > b0 ? t1
-              : is_signed(c, t0) ? t0 : t1;
+        /* a truth value is a one-bit unsigned (fold: (int) (f != 0)) */
+        bool z0 = bool_valued(c, s0), z1 = bool_valued(c, s1);
+        if (z0 != z1) {
+            *wt = z0 ? t1 : t0;
+        } else {
+            *wt = b0 > b1 ? t0 : b1 > b0 ? t1
+                  : is_signed(c, t0) ? t0 : t1;
+        }
         if (int_bits(c, *wt) > int_bits(c, et))
             *wt = et;
     } else if (c0 != c1) {
@@ -320,14 +343,14 @@ static bool shorten_bitwise(Checker *c, uint32_t ws, TypeId lt, TypeId et,
         if (gcc_integer(c, lt) && tp < 64 && int_bits(c, vt) <= tp &&
             (int64_t)c->cv[ks] > 0 && c->cv[ks] >> tp &&
             ntag(c, c0 ? s1 : s0) != N_BINARY &&
-            !(npunct(c, ws) == P_AMP && (c->cv[ks] & m) == m)) {
+            !(binop_p(c, ws) == P_AMP && (c->cv[ks] & m) == m)) {
             *wt = et;
             return false;
         }
         if (int_bits(c, vt) < int_bits(c, *wt))
             *wt = vt;
     }
-    if (npunct(c, ws) == P_AMP) {
+    if (binop_p(c, ws) == P_AMP) {
         TypeId sg, us, d;
         sign_map(c, lt, &us, &d);
         sign_map(c, lt, &d, &sg);
@@ -407,12 +430,12 @@ static int unsafe_conv_t(Checker *c, TypeId lt, uint32_t e, TypeId et,
         uint32_t w = unwidened(c, s, &wt), ws = strip_paren(c, w);
         unsigned tp = tgt_bits(c, lt), wb;
         bool eu, tu = !is_signed(c, lt);
-        if (ws != NO_NODE && ntag(c, ws) == N_BINARY &&
-            bitwise_op(npunct(c, ws)) &&
+        if (ws != NO_NODE && is_binop(c, ws) &&
+            bitwise_op(binop_p(c, ws)) &&
             shorten_bitwise(c, ws, lt, et, &wt))
             return UC_SAFE;
-        if (ws != NO_NODE && ntag(c, ws) == N_BINARY)
-            shorten_divshift(c, ws, &wt);
+        if (ws != NO_NODE && is_binop(c, ws))
+            shorten_divshift(c, ws, et, &wt);
         unsigned bw = ws != NO_NODE ? bf_width(c, ws) : 0;
         wb = int_bits(c, wt);
         if (bw && bw < wb)
@@ -428,8 +451,8 @@ static int unsafe_conv_t(Checker *c, TypeId lt, uint32_t e, TypeId et,
         TypeId wt;
         unsigned fp;
         uint32_t w = unwidened(c, s, &wt), bw = bf_width(c, w);
-        if (w != NO_NODE && ntag(c, strip_paren(c, w)) == N_BINARY)
-            shorten_divshift(c, strip_paren(c, w), &wt);
+        if (w != NO_NODE && is_binop(c, strip_paren(c, w)))
+            shorten_divshift(c, strip_paren(c, w), et, &wt);
         fp = int_bits(c, wt);
         if (bw && bw < fp)
             fp = bw;
@@ -457,9 +480,11 @@ static int arith_operands(Checker *c, uint32_t s, uint32_t *k)
     case N_BINARY:
         p = npunct(c, s);
         if ((p == P_PLUS || p == P_MINUS || p == P_STAR || p == P_SLASH ||
-             p == P_PERCENT || p == P_SHL || p == P_SHR || bitwise_op(p)) &&
-            nkids(c, s, k, 2) == 2)
+             p == P_PERCENT || bitwise_op(p)) && nkids(c, s, k, 2) == 2)
             return 2;
+        /* a shift count does not take part in the conversion */
+        if ((p == P_SHL || p == P_SHR) && nkids(c, s, k, 2) == 2)
+            return 1;
         return 0;
     case N_UNARY:
         p = npunct(c, s);
@@ -468,9 +493,12 @@ static int arith_operands(Checker *c, uint32_t s, uint32_t *k)
         return 0;
     case N_ASSIGN:        /* a compound assignment converts a op b */
         p = npunct(c, s);
-        if (p != P_ASSIGN && nkids(c, s, k, 2) == 2)
-            return 2;
-        return 0;
+        if (p == P_ASSIGN)
+            return 0;
+        p = assign_binop(p);
+        if ((p == P_SHL || p == P_SHR) && nkids(c, s, k, 2) == 2)
+            return 1;
+        return nkids(c, s, k, 2) == 2 ? 2 : 0;
     default:
         return 0;
     }
@@ -676,7 +704,7 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
                   "expression", tgt_name(c, lt, tb));
         return;
     }
-    if (top && !cst && ntag(c, s) == N_BINARY && bitwise_op(npunct(c, s)) &&
+    if (top && !cst && is_binop(c, s) && bitwise_op(binop_p(c, s)) &&
         gcc_integer(c, lt) && gcc_integer(c, et) && int_bits(c, lt) < 64 &&
         nkids(c, s, k, 2) == 2) {
         /* a constant beyond lt's width: fold turns `x & K` into 0 when K has
@@ -691,7 +719,7 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
         if (ca != has_ival(c, b) && (int64_t)c->cv[ks] > 0 &&
             c->cv[ks] >> tp && ntag(c, strip_paren(c, ow)) != N_BINARY) {
             char sb[200];
-            if ((c->cv[ks] & m) == 0 && npunct(c, s) == P_AMP) {
+            if ((c->cv[ks] & m) == 0 && binop_p(c, s) == P_AMP) {
                 if (diag_enabled(c->diag, "overflow")) {
                     const char *tq = type_q(TT, rvt(c, s));
                     char pn[80] = "";
@@ -707,7 +735,7 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
                 return;
             }
             if (int_bits(c, ot) <= tp &&
-                !(npunct(c, s) == P_AMP && (c->cv[ks] & m) == m)) {
+                !(binop_p(c, s) == P_AMP && (c->cv[ks] & m) == m)) {
                 if (diag_enabled(c->diag, "conversion"))
                     cwarn(c, l, "conversion", "conversion from %s to %s "
                           "changes the value of '%s'", type_q(TT, et),

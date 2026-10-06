@@ -1,0 +1,24 @@
+misc_147.c:10:19: warning: cast increases required alignment of target type [-Wcast-align]
+   10 |   y = (c *)x; z = (d *)x;
+      |                   ^
+misc_147.c:11:8: warning: cast increases required alignment of target type [-Wcast-align]
+   11 |   ip = (int *)x; ip = (int *)sp; sp = (short *)ip; lp = (long long *)ip;
+      |        ^
+misc_147.c:11:23: warning: cast increases required alignment of target type [-Wcast-align]
+   11 |   ip = (int *)x; ip = (int *)sp; sp = (short *)ip; lp = (long long *)ip;
+      |                       ^
+misc_147.c:11:57: warning: cast increases required alignment of target type [-Wcast-align]
+   11 |   ip = (int *)x; ip = (int *)sp; sp = (short *)ip; lp = (long long *)ip;
+      |                                                         ^
+misc_147.c:12:24: warning: cast increases required alignment of target type [-Wcast-align]
+   12 |   ip = (int *)vp; ip = (int *)(char *)ip; dp = (double *)ip;
+      |                        ^
+misc_147.c:12:48: warning: cast increases required alignment of target type [-Wcast-align]
+   12 |   ip = (int *)vp; ip = (int *)(char *)ip; dp = (double *)ip;
+      |                                                ^
+misc_147.c:14:9: warning: ISO C forbids conversion of function pointer to object pointer type [-Wpedantic]
+   14 |   (void)(void *)f;
+      |         ^
+misc_147.c:17:67: warning: typedef 'u2' locally defined but not used [-Wunused-local-typedefs]
+   17 | void lt(void) { typedef int u1 __attribute__((used)); typedef int u2; }
+      |                                                                   ^

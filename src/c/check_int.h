@@ -186,7 +186,7 @@ typedef struct Attrs {
     bool weakref, ifunc, errattr, warnattr, desig;
     bool defn;               /* alias/ifunc/weakref naming a target */
     bool e_wi, e_iw;         /* weak then ifunc, ifunc then weak (both errors) */
-    bool noinline, used;     /* seen, for the 'attribute ignored' checks */
+    bool noinline, used, nonstring; /* seen, for the 'attribute ignored' checks */
     bool unavailable, gnu_inline;
     uint8_t zcur;            /* zero_call_used_regs: 1 ok, 2 not a string, 3 unrecognized */
     char zcur_arg[24];
@@ -408,7 +408,6 @@ struct Checker {
     uint32_t fold_pending;
     uint64_t fuzzy_work;     /* cexpr.c: spelling-suggestion effort spent */
     void *plocs;             /* cexpr.c: parameter locations of functions */
-    uint64_t hdr_noted;      /* cexpr.c: headers a note already suggested */
     void *stmt;              /* cstmt.c: statement-level state */
     struct CSum *cs;         /* csum.c: summaries and read sets, or NULL */
     const CSumFast *csf;     /* csum.c: cs's read stamps */
@@ -630,6 +629,7 @@ bool cexpr_bf_overflow(Checker *c, SrcLoc loc, uint32_t n, TypeId ft,
                        TypeId rt, unsigned w);
 const char *cexpr_str(Checker *c, uint32_t i);
 const char *cexpr_str_plain(Checker *c, uint32_t i);
+int assign_binop(int op);   /* the operator of a compound-assignment token */
 uint32_t stmt_expr_single(Checker *c, uint32_t s);
 void cexpr_builtin_decl(Checker *c, const CSym *s);
 void cexpr_builtin_nonfn(Checker *c, const CSym *s);

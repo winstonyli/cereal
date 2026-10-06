@@ -1057,21 +1057,26 @@ static void unknown_type_error(Parser *p, const PTok *t)
     static const char *const kw[] = {"struct", "union", "enum"};
     SymKind k = t->t.aux < p->tags.ntop ? scope_lookup(&p->tags, t->t.aux)
                                         : SYM_NONE;
-    const char *name = tok_text_raw(p->sm, p->in, &t->t), *sug;
+    const char *name = tok_text_raw(p->sm, p->in, &t->t), *sug, *hdr;
     int len = (int)t->t.len;
+    char buf[SC_MAXLEN + 1];
+    size_t bn = t->t.len < SC_MAXLEN ? t->t.len : SC_MAXLEN;
     if (k >= SYM_TAG_STRUCT) {
         perr(p, ci(p), "unknown type name '%.*s'; use '%s' keyword to refer "
              "to the type", len, name, kw[k - SYM_TAG_STRUCT]);
         return;
     }
-    {
-        char buf[SC_MAXLEN + 1];
-        size_t n = t->t.len < SC_MAXLEN ? t->t.len : SC_MAXLEN;
-        memcpy(buf, name, n);
-        buf[n] = 0;
-        sug = fuzzy_typename(p, buf);
-    }
-    if (sug)
+    memcpy(buf, name, bn);
+    buf[bn] = 0;
+    hdr = t->t.len < SC_MAXLEN ? std_header(buf) : NULL;
+    sug = hdr ? NULL : fuzzy_typename(p, buf);
+    if (hdr) {
+        Diagnostic *d = perr(p, ci(p), "unknown type name '%.*s'", len, name);
+        if (d)
+            diag_note(p->diag, d, diag_header_note_loc(p->diag, spell_loc(p, ci(p)), hdr),
+                      "'%.*s' is defined in header '%s'; did you forget to "
+                      "'#include %s'?", len, name, hdr, hdr);
+    } else if (sug)
         perr(p, ci(p), "unknown type name '%.*s'; did you mean '%s'?", len,
              name, sug);
     else
@@ -1225,20 +1230,21 @@ static void std_attribute(Parser *p)
         int depth = 0;
         bool hush = p->hush;
         expect(p, P_RBRACKET);
-        while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
-               !at(p, P_LBRACE)) {
-            if (at(p, P_LPAREN) || at(p, P_LBRACKET))
-                depth++;
-            else if (at(p, P_RPAREN))
-                depth--;
-            else if (at(p, P_RBRACKET) && depth-- <= 0) {
+        while (!at_eof(p)) {
+            if (at(p, P_RBRACKET) && depth == 0) {
                 adv(p);
                 break;
+            }
+            if (at(p, P_LPAREN) || at(p, P_LBRACKET) || at(p, P_LBRACE))
+                depth++;
+            else if (at(p, P_RPAREN) || at(p, P_RBRACKET) || at(p, P_RBRACE)) {
+                if (depth-- == 0)       /* an unmatched closer: stop */
+                    break;
             }
             adv(p);
         }
         p->err.live = false;            /* skip_until_found cleared it */
-        p->hush = true;                 /* parser->error is set */
+        p->hush = at_eof(p);
         expect(p, P_RBRACKET);
         p->hush = hush;
         emit(p, N_ATTRIBUTE, kw, start, 0);

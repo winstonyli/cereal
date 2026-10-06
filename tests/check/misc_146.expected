@@ -1,0 +1,126 @@
+misc_146.c:21:25: warning: anonymous enum declared inside parameter list will not be visible outside of this definition or declaration
+   21 | typedef int (*i_e)(enum {A,B});
+      |                         ^
+misc_146.c:22:27: warning: 'struct S' declared inside parameter list will not be visible outside of this definition or declaration
+   22 | typedef int (*i_s)(struct S *);
+      |                           ^
+misc_146.c:23:27: warning: 'struct T' declared inside parameter list will not be visible outside of this definition or declaration
+   23 | typedef int (*i_t)(struct T *);
+      |                           ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'int (*)(void *)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:31:14: note: in expansion of macro 'T'
+   31 |   T(f, i_ul) T(f, i_p) T(f, i_cp) T(f, i_i) T(f, l_l) T(f, i_ll) T(f, i_le) T(f, i_un) T(f, i_ii) T(f, v_l)
+      |              ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'int (*)(const char *)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:31:24: note: in expansion of macro 'T'
+   31 |   T(f, i_ul) T(f, i_p) T(f, i_cp) T(f, i_i) T(f, l_l) T(f, i_ll) T(f, i_le) T(f, i_un) T(f, i_ii) T(f, v_l)
+      |                        ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'int (*)(int)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:31:35: note: in expansion of macro 'T'
+   31 |   T(f, i_ul) T(f, i_p) T(f, i_cp) T(f, i_i) T(f, l_l) T(f, i_ll) T(f, i_le) T(f, i_un) T(f, i_ii) T(f, v_l)
+      |                                   ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'long int (*)(long int)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:31:45: note: in expansion of macro 'T'
+   31 |   T(f, i_ul) T(f, i_p) T(f, i_cp) T(f, i_i) T(f, l_l) T(f, i_ll) T(f, i_le) T(f, i_un) T(f, i_ii) T(f, v_l)
+      |                                             ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'int (*)(int,  int)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:31:88: note: in expansion of macro 'T'
+   31 |   T(f, i_ul) T(f, i_p) T(f, i_cp) T(f, i_i) T(f, l_l) T(f, i_ll) T(f, i_le) T(f, i_un) T(f, i_ii) T(f, v_l)
+      |                                                                                        ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'void (*)(long int)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:31:99: note: in expansion of macro 'T'
+   31 |   T(f, i_ul) T(f, i_p) T(f, i_cp) T(f, i_i) T(f, l_l) T(f, i_ll) T(f, i_le) T(f, i_un) T(f, i_ii) T(f, v_l)
+      |                                                                                                   ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(int)' to 'int (*)(long int)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:32:13: note: in expansion of macro 'T'
+   32 |   T(g, i_u) T(g, i_l) T(g, c_c) T(g, i_e) T(g, f_f)
+      |             ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(int)' to 'char (*)(char)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:32:23: note: in expansion of macro 'T'
+   32 |   T(g, i_u) T(g, i_l) T(g, c_c) T(g, i_e) T(g, f_f)
+      |                       ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(int)' to 'float (*)(float)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:32:43: note: in expansion of macro 'T'
+   32 |   T(g, i_u) T(g, i_l) T(g, c_c) T(g, i_e) T(g, f_f)
+      |                                           ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'void * (*)(void *)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:34:3: note: in expansion of macro 'T'
+   34 |   T(f, p_p) T(f, cp_p) T(f, b_b) T(f, s_s) T(f, i_d) T(f, v_un) T(f, void *) T(f, long)
+      |   ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'char * (*)(void *)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:34:13: note: in expansion of macro 'T'
+   34 |   T(f, p_p) T(f, cp_p) T(f, b_b) T(f, s_s) T(f, i_d) T(f, v_un) T(f, void *) T(f, long)
+      |             ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to '_Bool (*)(_Bool)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:34:24: note: in expansion of macro 'T'
+   34 |   T(f, p_p) T(f, cp_p) T(f, b_b) T(f, s_s) T(f, i_d) T(f, v_un) T(f, void *) T(f, long)
+      |                        ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'short int (*)(short int)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:34:34: note: in expansion of macro 'T'
+   34 |   T(f, p_p) T(f, cp_p) T(f, b_b) T(f, s_s) T(f, i_d) T(f, v_un) T(f, void *) T(f, long)
+      |                                  ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'int (*)(double)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:34:44: note: in expansion of macro 'T'
+   34 |   T(f, p_p) T(f, cp_p) T(f, b_b) T(f, s_s) T(f, i_d) T(f, v_un) T(f, void *) T(f, long)
+      |                                            ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'void (*)()' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:34:54: note: in expansion of macro 'T'
+   34 |   T(f, p_p) T(f, cp_p) T(f, b_b) T(f, s_s) T(f, i_d) T(f, v_un) T(f, void *) T(f, long)
+      |                                                      ^
+misc_146.c:30:24: warning: ISO C forbids conversion of function pointer to object pointer type [-Wpedantic]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:34:65: note: in expansion of macro 'T'
+   34 |   T(f, p_p) T(f, cp_p) T(f, b_b) T(f, s_s) T(f, i_d) T(f, v_un) T(f, void *) T(f, long)
+      |                                                                 ^
+misc_146.c:35:23: warning: 'struct S' declared inside parameter list will not be visible outside of this definition or declaration
+   35 |   T(f, int (*)(struct S *)) T(f, int (*)(struct T *))
+      |                       ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'int (*)(struct S *)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:35:3: note: in expansion of macro 'T'
+   35 |   T(f, int (*)(struct S *)) T(f, int (*)(struct T *))
+      |   ^
+misc_146.c:35:49: warning: 'struct T' declared inside parameter list will not be visible outside of this definition or declaration
+   35 |   T(f, int (*)(struct S *)) T(f, int (*)(struct T *))
+      |                                                 ^
+misc_146.c:30:24: warning: cast between incompatible function types from 'int (*)(long int)' to 'int (*)(struct T *)' [-Wcast-function-type]
+   30 | #define T(e, ty) (void)(ty)(e);
+      |                        ^
+misc_146.c:35:29: note: in expansion of macro 'T'
+   35 |   T(f, int (*)(struct S *)) T(f, int (*)(struct T *))
+      |                             ^
+misc_146.c:36:50: warning: cast between incompatible function types from 'i_s' {aka 'int (*)(struct S *)'} to 'void * (*)(void *)' [-Wcast-function-type]
+   36 |   { i_s a = 0; (void)(i_t)a; (void)(i_p)a; (void)(p_p)a; (void)(cp_p)(p_p)0; (void)(vv)a; (void)(vv)(v_l)0; (void)(v_l)(vv)0; }
+      |                                                  ^

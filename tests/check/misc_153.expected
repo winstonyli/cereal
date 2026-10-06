@@ -1,0 +1,3 @@
+misc_153.c:2:41: warning: defining type in 'typeof' expression is invalid in C++ [-Wc++-compat]
+    2 | int a = __builtin_has_attribute (struct A { int i; }, aligned);
+      |                                         ^

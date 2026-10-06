@@ -1942,3 +1942,19 @@ diagnostics and builds on the strinit table.
   valid in output operand`). Multi-digit numbers are decimal.
 - Golden misc_143. Gate: 1233 pass, san 441/0, gcc.dg 40 / c-c++-common 33,
   callgrind 3.718G.
+
+## Round 123: gcc.dg and c-c++-common leftovers
+
+- Over-warnings removed: `-Wxor-used-as-pow` past 64 bits, `-Wconversion`
+  for shifts (left operand only), `/`, `%` and bool-valued operands, unscoped
+  `[[name]]` dropped once, `-Wunused-local-typedefs` for attribute uses.
+- Added: `-Wcast-align=strict`, `-Wcast-function-type` (gcc's
+  c_safe_function_type_cast_p), `nonstring` misapplication warnings,
+  `__builtin_has_attribute` as a `typeof` for `-Wc++-compat`, `&__real__ p[i]`
+  in `-Waddress`, `1.0f128x` is an error at input_location (no `_Float128x` on
+  x86), and the missing-`#include` note on an unknown type name
+  (`size_t`, `wchar_t`, `ptrdiff_t`), with no spelling suggestion. The header
+  table and first-note state now live in the diag engine, shared by parser
+  and checker.
+- Goldens misc_144 to misc_153. Gate: 1253 pass, san 451/0, gcc.dg 36 /
+  c-c++-common 22, callgrind 3.728G.

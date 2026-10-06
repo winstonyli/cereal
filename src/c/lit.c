@@ -78,7 +78,7 @@ static bool fixed_lit(Lit *out, const char *s, size_t len, unsigned radix)
 
 /* libcpp's interpret_float_suffix: the type, or TY_ERROR if invalid. */
 static TypeKind float_suffix(const char *s, size_t len, bool *imag,
-                             bool *nonstd)
+                             bool *nonstd, bool *unsup)
 {
     size_t f = 0, d = 0, l = 0, w = 0, q = 0, i = 0, fn = 0, fnx = 0,
            bits = 0, bf16 = 0;
@@ -143,6 +143,7 @@ static TypeKind float_suffix(const char *s, size_t len, bool *imag,
     if (fn && ((bits != 16 && bits % 32 != 0) || bits == 96 || bits > 128))
         return TY_ERROR;
     *imag = i != 0;
+    *unsup = false;
     *nonstd = w || q || fn || fnx || bf16;
     if (f) return TY_FLOAT;
     if (d) return TY_DOUBLE;
@@ -151,7 +152,10 @@ static TypeKind float_suffix(const char *s, size_t len, bool *imag,
     if (q) return TY_FLOAT128;
     if (fn) return bits == 16 ? TY_FLOAT16 : bits == 32 ? TY_FLOAT32
                    : bits == 64 ? TY_FLOAT64 : TY_FLOAT128;
-    if (fnx) return bits == 32 ? TY_FLOAT32X : TY_FLOAT64X;
+    if (fnx) {
+        *unsup = bits == 128;   /* x86 has no _Float128x */
+        return bits == 32 ? TY_FLOAT32X : TY_FLOAT64X;
+    }
     if (bf16) return TY_BF16;
     return TY_VOID; /* none: double */
 }
@@ -244,7 +248,7 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
         return;
     }
     if (ff != NOT_FLOAT) {
-        bool imag, nonstd;
+        bool imag, nonstd, unsup;
         TypeKind t;
         char buf[128], *copy = buf;
         size_t m;
@@ -271,7 +275,7 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
         }
         if (fixed_lit(out, str, (size_t)(limit - str), radix))
             return;
-        t = float_suffix(str, (size_t)(limit - str), &imag, &nonstd);
+        t = float_suffix(str, (size_t)(limit - str), &imag, &nonstd, &unsup);
         if (t == TY_ERROR) {
             say(out, 2, "", "invalid suffix \"%.*s\" on floating constant",
                 str, (int)(limit - str));
@@ -288,8 +292,9 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
         }
         out->flags |= LIT_FLOAT | (imag ? LIT_IMAGINARY : 0);
         out->ty = t == TY_VOID ? TY_DOUBLE : t;
-        if (!tgt->size[out->ty]) {
+        if (unsup || !tgt->size[out->ty]) {
             bad(out, "unsupported non-standard suffix on floating constant");
+            out->id = "inputloc";   /* gcc reports it at input_location */
             out->ty = TY_DOUBLE;
             return;
         }

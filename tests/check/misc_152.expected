@@ -1,0 +1,6 @@
+misc_152.c:1:1: error: unsupported non-standard suffix on floating constant
+    1 | double a = 1.0f128x;
+      | ^
+misc_152.c:2:1: error: unsupported non-standard suffix on floating constant
+    2 | void f(void) { __typeof(1.0f128x) b; }
+      | ^

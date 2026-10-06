@@ -76,6 +76,7 @@ typedef struct DiagEngine {
     bool pedantic_errors;
     bool no_warnings;        /* -w */
     bool fatal_errors;       /* -Wfatal-errors: stop after the first error */
+    uint64_t hdr_noted;      /* headers a missing-#include note suggested */
     bool track0;             /* -ftrack-macro-expansion=0: report macro
                                 tokens at the expansion point */
     bool show_system;        /* report warnings located in system headers */
@@ -98,6 +99,10 @@ typedef struct DiagEngine {
     uint8_t memo[512];
     uint8_t ord;             /* DiagOrd of new diagnostics */
 } DiagEngine;
+
+/* cexpr.c: gcc's known-headers table and where its #include note goes */
+const char *std_header(const char *name);
+SrcLoc diag_header_note_loc(DiagEngine *diag, SrcLoc loc, const char *hdr);
 
 /* Set the order of new diagnostics, returning the previous one. */
 static inline DiagOrd diag_ord(DiagEngine *d, DiagOrd o)

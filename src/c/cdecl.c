@@ -428,10 +428,30 @@ static bool attr_scope_of(Checker *c, uint32_t tok)
  * of the standard attributes is pedwarned and dropped, at input_location
  * with the lookahead just past the name and its arguments.  (Before C2X
  * 'ns::name' is not parsed: 'ns' is such a name.) */
+static const char *const std_known[] = {"deprecated", "fallthrough",
+    "maybe_unused", "nodiscard", "noreturn", "_Noreturn"};
+
+/* An unscoped [[name]] outside the standard set: gcc drops it after the
+ * warning std_attr_unknown gives, so nothing else may see it. */
+static bool std_attr_dropped(Checker *c, uint32_t attr, uint32_t item)
+{
+    char name[48];
+    uint32_t at = c->nodes[item].tok;
+    size_t n;
+    if (tokp(c, cnode(c, attr)->tok)->kind != TK_PUNCT ||
+        (c->opt.gnu && at >= 2 && tpunct(c, at - 1) == P_COLON &&
+         tpunct(c, at - 2) == P_COLON) || attr_scope_of(c, at))
+        return false;
+    attr_norm(tstr(c, at), name, sizeof name);
+    for (n = 0; n < sizeof std_known / sizeof *std_known; n++)
+        if (!strcmp(name, std_known[n]))
+            return false;
+    return true;
+}
+
 static void std_attr_unknown(Checker *c, uint32_t attr)
 {
-    static const char *const known[] = {"deprecated", "fallthrough",
-        "maybe_unused", "nodiscard", "noreturn", "_Noreturn"};
+    const char *const *known = std_known;
     Kids k;
     uint32_t j;
     if (tokp(c, cnode(c, attr)->tok)->kind != TK_PUNCT)
@@ -449,10 +469,10 @@ static void std_attr_unknown(Checker *c, uint32_t attr)
         if (c->opt.gnu && at >= 2 && tpunct(c, at - 1) == P_COLON &&
             tpunct(c, at - 2) == P_COLON)
             continue;           /* gnu::name, taken as a GNU attribute */
-        for (n = 0; n < sizeof known / sizeof *known; n++)
+        for (n = 0; n < sizeof std_known / sizeof *std_known; n++)
             if (!strcmp(name, known[n]))
                 break;
-        if (n < sizeof known / sizeof *known)
+        if (n < sizeof std_known / sizeof *std_known)
             continue;
         if (attr_scope_of(c, at))
             cwarn(c, iloc(c, last_tok(c, k.p[j]) + 1), "attributes",
@@ -797,7 +817,7 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
         uint32_t item = k.p[j], arg;
         char name[48];
         Kids ak;
-        if (ntag(c, item) != N_ATTR_ITEM)
+        if (ntag(c, item) != N_ATTR_ITEM || std_attr_dropped(c, attr, item))
             continue;
         attr_norm(tstr(c, c->nodes[item].tok), name, sizeof name);
         if (cnode_tok(c, item)->kind == TK_IDENT &&
@@ -1052,6 +1072,8 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             a->noinline = true;
         } else if (!strcmp(name, "used")) {
             a->used = true;
+        } else if (!strcmp(name, "nonstring")) {
+            a->nonstring = true;
         } else if (!strcmp(name, "designated_init")) {
             a->desig = true;
         } else if (!strcmp(name, "alias")) {
@@ -1315,6 +1337,7 @@ static void attrs_merge(Attrs *to, const Attrs *from)
     if (from->cleanup_arg)
         to->cleanup_arg = from->cleanup_arg;
     to->used |= from->used;
+    to->nonstring |= from->nonstring;
     to->weak |= from->weak;
     to->noreturn |= from->noreturn;
     to->nonnull |= from->nonnull;
@@ -1348,6 +1371,9 @@ static void attrs_misapplied(Checker *c, const Attrs *a, char where, bool local,
         cwarn(c, loc, "attributes", "'noinline' attribute ignored");
     if (a->used && (where == 'a' || where == 'p' || where == 'm'))
         cwarn(c, loc, "attributes", "'used' attribute ignored");
+    if (a->nonstring && where == 'f')
+        cwarn(c, loc, "attributes", "'nonstring' attribute does not apply to "
+              "functions");
     if (a->weak && (where == 't' || where == 'p' || where == 'm'))
         cwarn(c, loc, "attributes", "'weak' attribute ignored");
     if (a->packed && where != 'm')
@@ -1896,9 +1922,10 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                 TypeId e = type_canon(TT, oty);
                 unsigned kd = type_ckind(TT, e);
                 bool ok = false;
-                if (ctx == AC_T) {
+                if (ctx == AC_T || fnty) {
                     cwarn(c, iloc(c, tok), "attributes", "'nonstring' "
-                          "attribute does not apply to types");
+                          "attribute does not apply to %s",
+                          ctx == AC_T ? "types" : "functions");
                     continue;
                 }
                 if (kd == TY_PTR || kd == TY_ARRAY || kd == TY_VLA) {
@@ -6788,6 +6815,8 @@ static void declared_visit(Checker *c, uint32_t i)
         s.align = a.aligned;
     if (a.unused)
         s.flags |= CSF_USED | CSF_ATTR_UNUSED;
+    if (a.used && g.what == GD_TYPEDEF)
+        s.flags |= CSF_USED;         /* TREE_USED: not an unused local typedef */
     if (a.deprecated || a.unavailable) {
         s.flags |= a.unavailable ? CSF_UNAVAILABLE : CSF_DEPRECATED;
         s.dep_msg = a.dep_msg;
@@ -7420,7 +7449,7 @@ static void open_visit(Checker *c, uint32_t i)
         for (a = c->par[st]; a != NO_NODE; a = c->par[a])
             switch (ntag(c, a)) {
             case N_SIZEOF_EXPR: case N_SIZEOF_TYPE: in_sz = true; break;
-            case N_TYPEOF: in_ty = true; break;
+            case N_TYPEOF: case N_HAS_ATTR: in_ty = true; break;
             case N_ALIGNOF_EXPR: case N_ALIGNOF_TYPE: in_al = true; break;
             default: break;
             }
@@ -7784,6 +7813,9 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     if (a.used)
         cwarn(c, iloc(c, close_tok), "attributes",
               "'used' attribute does not apply to types");
+    if (a.nonstring)
+        cwarn(c, iloc(c, close_tok), "attributes",
+              "'nonstring' attribute does not apply to types");
     if (a.desig && want == TY_UNION)
         cerror(c, iloc(c, close_tok), "'designated_init' attribute is only "
                "valid on 'struct' type");

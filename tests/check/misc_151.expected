@@ -1,0 +1,15 @@
+misc_151.c:5:8: warning: the comparison will always evaluate as 'false' for the address of '__real__ *(p + (sizetype)((long unsigned int)i * 8))' will never be NULL [-Waddress]
+    5 |   T (0 == &__real__ p[i]);
+      |        ^
+misc_151.c:6:8: warning: the comparison will always evaluate as 'false' for the address of '__imag__ *(p + 24)' will never be NULL [-Waddress]
+    6 |   T (0 == &__imag__ p[3]);
+      |        ^
+misc_151.c:7:8: warning: the comparison will always evaluate as 'false' for the address of '__real__ *p' will never be NULL [-Waddress]
+    7 |   T (0 == &__real__ *p);
+      |        ^
+misc_151.c:8:24: warning: the comparison will always evaluate as 'false' for the address of '__real__ (*(q + (sizetype)((long unsigned int)i * 16)))[i]' will never be NULL [-Waddress]
+    8 |   T (&__real__ q[i][i] == 0);
+      |                        ^
+misc_151.c:9:8: warning: the comparison will always evaluate as 'false' for the pointer operand in 'p + (sizetype)((long unsigned int)i * 8)' must not be NULL [-Waddress]
+    9 |   T (0 == &p[i]);
+      |        ^

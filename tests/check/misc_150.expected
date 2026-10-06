@@ -1,0 +1,45 @@
+misc_150.c:1:1: error: unknown type name 'wchar_t'
+    1 | wchar_t wc;
+      | ^
+misc_150.c:1:1: note: 'wchar_t' is defined in header '<stddef.h>'; did you forget to '#include <stddef.h>'?
+    1 | wchar_t wc;
+      | ^
+misc_150.c:2:1: error: unknown type name 'ptrdiff_t'
+    2 | ptrdiff_t pd;
+      | ^
+misc_150.c:2:1: note: 'ptrdiff_t' is defined in header '<stddef.h>'; did you forget to '#include <stddef.h>'?
+    2 | ptrdiff_t pd;
+      | ^
+misc_150.c:3:1: error: unknown type name 'size_t'
+    3 | size_t sz;
+      | ^
+misc_150.c:3:1: note: 'size_t' is defined in header '<stddef.h>'; did you forget to '#include <stddef.h>'?
+    3 | size_t sz;
+      | ^
+misc_150.c:4:1: error: unknown type name 'wchar_t'
+    4 | wchar_t *wp;
+      | ^
+misc_150.c:4:1: note: 'wchar_t' is defined in header '<stddef.h>'; did you forget to '#include <stddef.h>'?
+    4 | wchar_t *wp;
+      | ^
+misc_150.c:5:16: error: 'wchar_t' undeclared here (not in a function)
+    5 | int x = sizeof(wchar_t);
+      |                ^
+misc_150.c:5:16: note: 'wchar_t' is defined in header '<stddef.h>'; did you forget to '#include <stddef.h>'?
+    5 | int x = sizeof(wchar_t);
+      |                ^
+misc_150.c:6:1: error: unknown type name 'foo_t'
+    6 | foo_t ft;
+      | ^
+misc_150.c:7:1: error: unknown type name 'uint_t'
+    7 | uint_t u;
+      | ^
+misc_150.c:8:1: error: unknown type name 'longg'; did you mean 'long'?
+    8 | longg l;
+      | ^
+misc_150.c:9:1: error: unknown type name 'chr'; did you mean 'char'?
+    9 | chr c;
+      | ^
+misc_150.c:10:1: error: unknown type name 'wchar'; did you mean 'char'?
+   10 | wchar w;
+      | ^

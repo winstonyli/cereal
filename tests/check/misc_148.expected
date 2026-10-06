@@ -1,0 +1,84 @@
+misc_148.c:4:12: error: storage size of 'x' isn't known
+    4 |   struct T x;
+      |            ^
+misc_148.c:5:12: error: storage size of 'y' isn't known
+    5 |   struct T y; y.a = 1;
+      |            ^
+misc_148.c:6:8: error: variable or field 'z' declared void
+    6 |   void z;
+      |        ^
+misc_148.c:7:7: error: array size missing in 'w'
+    7 |   int w[];
+      |       ^
+misc_148.c:7:7: warning: unused variable 'w' [-Wunused-variable]
+    7 |   int w[];
+      |       ^
+misc_148.c:6:8: warning: unused variable 'z' [-Wunused-variable]
+    6 |   void z;
+      |        ^
+misc_148.c:5:12: warning: unused variable 'y' [-Wunused-variable]
+    5 |   struct T y; y.a = 1;
+      |            ^
+misc_148.c:4:12: warning: unused variable 'x' [-Wunused-variable]
+    4 |   struct T x;
+      |            ^
+misc_148.c:9:38: error: storage size of 'q' isn't known
+    9 | void g1(void){ struct T *p; struct T q; (void)p; }
+      |                                      ^
+misc_148.c:9:38: warning: unused variable 'q' [-Wunused-variable]
+    9 | void g1(void){ struct T *p; struct T q; (void)p; }
+      |                                      ^
+misc_148.c:10:23: error: variable 'x2' has initializer but incomplete type
+   10 | void h1(void){ struct T x2 = {0}; struct U u3; u3.x; }
+      |                       ^
+misc_148.c:10:31: warning: excess elements in struct initializer
+   10 | void h1(void){ struct T x2 = {0}; struct U u3; u3.x; }
+      |                               ^
+misc_148.c:10:31: note: (near initialization for 'x2')
+   10 | void h1(void){ struct T x2 = {0}; struct U u3; u3.x; }
+      |                               ^
+misc_148.c:10:25: error: storage size of 'x2' isn't known
+   10 | void h1(void){ struct T x2 = {0}; struct U u3; u3.x; }
+      |                         ^
+misc_148.c:10:44: error: storage size of 'u3' isn't known
+   10 | void h1(void){ struct T x2 = {0}; struct U u3; u3.x; }
+      |                                            ^
+misc_148.c:10:44: warning: unused variable 'u3' [-Wunused-variable]
+   10 | void h1(void){ struct T x2 = {0}; struct U u3; u3.x; }
+      |                                            ^
+misc_148.c:10:25: warning: unused variable 'x2' [-Wunused-variable]
+   10 | void h1(void){ struct T x2 = {0}; struct U u3; u3.x; }
+      |                         ^
+misc_148.c:13:12: error: storage size of 'x' isn't known
+   13 |   struct T x;
+      |            ^
+misc_148.c:14:12: error: storage size of 'y' isn't known
+   14 |   struct T y; y.a = 1;
+      |            ^
+misc_148.c:15:12: error: storage size of 'z' isn't known
+   15 |   struct T z; (void)z;
+      |            ^
+misc_148.c:16:12: error: storage size of 'w' isn't known
+   16 |   struct T w; w = w;
+      |            ^
+misc_148.c:17:12: error: storage size of 'v' isn't known
+   17 |   struct T v; int i = sizeof v;
+      |            ^
+misc_148.c:17:19: warning: unused variable 'i' [-Wunused-variable]
+   17 |   struct T v; int i = sizeof v;
+      |                   ^
+misc_148.c:17:12: warning: unused variable 'v' [-Wunused-variable]
+   17 |   struct T v; int i = sizeof v;
+      |            ^
+misc_148.c:16:12: warning: unused variable 'w' [-Wunused-variable]
+   16 |   struct T w; w = w;
+      |            ^
+misc_148.c:15:12: warning: unused variable 'z' [-Wunused-variable]
+   15 |   struct T z; (void)z;
+      |            ^
+misc_148.c:14:12: warning: unused variable 'y' [-Wunused-variable]
+   14 |   struct T y; y.a = 1;
+      |            ^
+misc_148.c:13:12: warning: unused variable 'x' [-Wunused-variable]
+   13 |   struct T x;
+      |            ^
