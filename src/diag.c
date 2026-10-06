@@ -651,7 +651,10 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     StrBuf sb = {0};
     DiagLevel req = lvl;
     bool promoted, nocol = d->nocol_next;
+    uint32_t vcol;
     d->nocol_next = false;
+    vcol = d->vcol_next;
+    d->vcol_next = 0;
     lvl = diag_level_for(d, id, lvl);
     if (lvl == DL_IGNORED || (lvl == DL_WARNING && d->no_warnings))
         return NULL;
@@ -667,6 +670,7 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     dg = NEW(d->arena, Diagnostic);
     dg->promoted = promoted;
     dg->nocol = nocol;
+    dg->vcol = vcol;
     dg->ord = d->ord;
     dg->level = lvl;
     dg->id = id ? id : "";
@@ -839,7 +843,7 @@ static uint32_t display_col(SrcFile *f, uint32_t line, uint32_t col)
 
 static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
                            const char *msg, const char *id, SrcRange range,
-                           bool dg_promoted, bool nocol)
+                           bool dg_promoted, bool nocol, uint32_t vcol)
 {
     FILE *o = d->out;
     SrcFile *f = srcmgr_file_of(d->sm, loc);
@@ -862,7 +866,7 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
             fprintf(o, "%s:%u: ", fname, pline);
         else
             fprintf(o, "%s:%u:%u: ", fname, pline,
-                    display_col(f, line, col));
+                    display_col(f, line, vcol ? vcol : col));
     } else {
         fputs("cereal: ", o);
     }
@@ -948,10 +952,10 @@ void diag_print(DiagEngine *d, Diagnostic *dg)
                 fname, line);
     }
     print_loc_line(d, dg->loc, dg->level, dg->msg, dg->id, dg->range,
-                   dg->promoted, dg->nocol);
+                   dg->promoted, dg->nocol, dg->vcol);
     for (k = 0; k < dg->notes.len; k++)
         print_loc_line(d, dg->notes.data[k].loc, DL_NOTE,
-                       dg->notes.data[k].msg, NULL, none, false, false);
+                       dg->notes.data[k].msg, NULL, none, false, false, 0);
 }
 
 void diag_flush(DiagEngine *d)

@@ -1824,16 +1824,16 @@ static void params(Parser *p, unsigned *flags)
     if (is_p(&t, P_RPAREN))
         return;
     /* an identifier list (gcc: a first identifier that is not a type name and
-     * is followed by something that cannot continue a declaration) */
+     * is followed by neither a name or keyword nor one of * [ ( ) */
     if (is_name(p, &t) && !is_typedef_name(p, &t) &&
-        (is_p(&n, P_COMMA) || is_p(&n, P_RPAREN) || is_p(&n, P_DOT) ||
-         is_p(&n, P_ASSIGN) || is_p(&n, P_ARROW) || is_p(&n, P_PLUS) ||
-         is_p(&n, P_MINUS) || is_p(&n, P_SLASH))) {
+        n.t.kind != TK_IDENT && !is_p(&n, P_STAR) && !is_p(&n, P_LBRACKET) &&
+        !is_p(&n, P_LPAREN)) {
         *flags |= NF_KR;
         for (;;) {
             PTok x = ct(p);
             if (!is_name(p, &x)) {
-                expected(p, "identifier");
+                if (is_p(&x, P_RPAREN))     /* gcc asks for ) otherwise */
+                    expected(p, "identifier");
                 break;
             }
             leaf(p, N_KR_IDENT, adv(p));

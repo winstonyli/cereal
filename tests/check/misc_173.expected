@@ -1,0 +1,24 @@
+misc_173.c:2:1: warning: parameter names (without types) in function declaration
+    2 | void f(a);
+      | ^
+misc_173.c:3:1: warning: parameter names (without types) in function declaration
+    3 | void g(a, b);
+      | ^
+misc_173.c:4:6: error: expected ')' before '!=' token
+    4 | t1 (a != 0) b;
+      |      ^
+misc_173.c:5:7: error: expected ')' before numeric constant
+    5 | t2 (a, 1);
+      |       ^
+misc_173.c:6:6: error: expected ')' before '+' token
+    6 | t3 (a +);
+      |      ^
+misc_173.c:7:5: error: expected declaration specifiers or '...' before 'a'
+    7 | t4 (a b);
+      |     ^
+misc_173.c:8:7: error: expected ')' before numeric constant
+    8 | t2 (a, 1);
+      |       ^
+misc_173.c:9:10: error: expected ')' before '+' token
+    9 | t5 (a, b, +);
+      |          ^

@@ -2031,3 +2031,23 @@ diagnostics and builds on the strinit table.
 - Goldens misc_167 to misc_172. Gate: 1291 pass, san 470/0, gcc.dg 34 /
   c-c++-common 11, callgrind 3.732G. All Wmisleading-indentation files now
   match gcc.
+
+## Round 128: K&R identifier lists, bidi location in spliced lines (gcc.dg 30, c-c++-common 9)
+- `params()`: a parameter list is an identifier list unless the second token
+  is a name, `*`, `[` or `(`; a non-name after a comma gives gcc's
+  "expected ')'" and only `)` gives "expected identifier" (misc_173). The
+  `t (a,);` recovery (gcc goes on with extra warnings) is still open.
+- -Wbidi-chars "unpaired" in a literal or identifier that continues across a
+  backslash-newline is placed like gcc: on the logical line's first physical
+  line, at the byte offset in the spliced text (`Diagnostic.vcol`, shown as a
+  display column). Wbidi-chars-6 now matches (misc_174).
+- Harness: the sparse checkout in `~/gccts` gained
+  `gcc/testsuite/gcc.c-torture/execute/builtins` (chk.h), so attr-alloc_size
+  and builtin-stringop-chk-2 are real tests and match. par.py's gcc cache is
+  keyed on the command, not on included headers: run with `CEREAL_PARCACHE=0`
+  after changing the checkout.
+- gate.sh now logs per-stage seconds to `/tmp/gate.time` (run 71, verify 80,
+  callgrind 83, san 172: san is the long pole, about 3 min total). A gate
+  started with nohup/setsid from a one-shot `wsl -e` dies when that session
+  exits; hold it with a foreground `wsl -e` run instead.
+- Gate: 1295 pass, san 472/0, gcc.dg 30 / c-c++-common 9, callgrind 3.732G.

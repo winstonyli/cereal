@@ -306,13 +306,39 @@ static void bidi_close(Lexer *L, const char *p)
 {
     unsigned f = L->opt.bidi;
     if (L->bd_n && (f & BIDI_UNPAIRED) &&
-        (!(L->bd[L->bd_n - 1] & 2) || (f & BIDI_UCN)))
+        (!(L->bd[L->bd_n - 1] & 2) || (f & BIDI_UCN))) {
+        const char *at = p - 1, *ls = at, *q;
+        uint32_t cut = 0;
+        /* gcc places it by the offset in the cleaned logical line: line
+         * splices before it are not counted */
+        while (ls > L->region + 1 && ls[-1] != '\n')
+            ls--;
+        while (ls > L->region + 1 && ls[-1] == '\n') {
+            const char *e = ls - 1, *b;
+            if (e > L->region && e[-1] == '\r')
+                e--;
+            if (e == L->region || e[-1] != '\\')
+                break;
+            for (b = e - 1; b > L->region + 1 && b[-1] != '\n';)
+                b--;
+            ls = b;
+        }
+        for (q = ls; q < at; q++)
+            if (*q == '\\' && (q[1] == '\n' || (q[1] == '\r' && q[2] == '\n'))) {
+                cut += q[1] == '\r' ? 3 : 2;
+                q += q[1] == '\r' ? 2 : 1;
+            }
+        if (cut) {
+            at = ls;
+            L->diag->vcol_next = (uint32_t)(p - 1 - ls) - cut + 1;
+        }
         diag_report(L->diag, DL_WARNING, "bidi-chars=",
-                    (SrcLoc)(p - 1 - L->region),
+                    (SrcLoc)(at - L->region),
                     L->bd_n > 1 ? "unpaired UTF-8 bidirectional control "
                                   "characters detected"
                                 : "unpaired UTF-8 bidirectional control "
                                   "character detected");
+    }
     L->bd_n = 0;
 }
 

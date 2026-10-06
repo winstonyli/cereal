@@ -1,0 +1,3 @@
+misc_174.c:4:27: warning: unpaired UTF-8 bidirectional control character detected [-Wbidi-chars=]
+    4 |   const char *s = "a ⁧ b\
+      | ^
