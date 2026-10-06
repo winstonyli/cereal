@@ -824,40 +824,50 @@ TypeId type_composite(TypeTable *tt, TypeId a, TypeId b)
 
 /* ---- layout ---------------------------------------------------------- */
 
-static uint64_t align_up(uint64_t v, uint64_t a)
+/* Layout arithmetic is in bits, wide enough for a record past 2^63 bytes. */
+__extension__ typedef unsigned __int128 lbits;
+
+/* A byte size as the record's 64-bit field (saturating). */
+static uint64_t bytes_sat(lbits bits)
+{
+    lbits b = bits / 8;
+    return b > UINT64_MAX ? UINT64_MAX : (uint64_t)b;
+}
+
+static lbits align_up(lbits v, lbits a)
 {
     return a ? (v + a - 1) / a * a : v;
 }
 
 typedef struct {
-    uint64_t size, align;    /* bits */
+    lbits size, align;    /* bits */
     bool is_union;
-    uint64_t pack;           /* bits; 0 none */
+    lbits pack;           /* bits; 0 none */
     bool packed;
     /* MS: the bit-field being filled */
     bool ongoing;
-    uint64_t ong_size, ong_unused;
+    lbits ong_size, ong_unused;
 } Layout;
 
 static void sysv_field(TypeTable *tt, Layout *L, const FieldIn *f,
-                       uint64_t tsize, uint64_t tyalign, Field *out)
+                       lbits tsize, lbits tyalign, Field *out)
 {
     const Target *tg = tt->tgt;
     bool packed = L->packed || f->packed;
     if (f->width < 0) {
-        uint64_t fa = packed ? 8 : tyalign;
+        lbits fa = packed ? 8 : tyalign;
         if (f->align)
-            fa = MAX(fa, (uint64_t)f->align * 8);
+            fa = MAX(fa, (lbits)f->align * 8);
         if (L->pack)
             fa = MIN(fa, L->pack);
-        uint64_t off = L->is_union ? 0 : align_up(L->size, fa);
+        lbits off = L->is_union ? 0 : align_up(L->size, fa);
         out->off_bits = off;
         L->size = MAX(L->size, off + tsize);
         L->align = MAX(L->align, fa);
         return;
     }
-    uint64_t w = (uint64_t)f->width;
-    uint64_t tfa = tyalign;
+    lbits w = (lbits)f->width;
+    lbits tfa = tyalign;
     if (w > 0) {
         if (tg->ignore_nonzero_bitfield_align)
             tfa = 1;
@@ -865,11 +875,11 @@ static void sysv_field(TypeTable *tt, Layout *L, const FieldIn *f,
         if (tg->ignore_zero_bitfield_align)
             tfa = 1;
         else if (tg->min_zero_bitfield_align)
-            tfa = MAX(tfa, (uint64_t)tg->min_zero_bitfield_align * 8);
+            tfa = MAX(tfa, (lbits)tg->min_zero_bitfield_align * 8);
     }
-    uint64_t anno = f->align ? (uint64_t)f->align * 8 : 1;
-    uint64_t first = L->is_union ? 0 : L->size;
-    uint64_t fa;
+    lbits anno = f->align ? (lbits)f->align * 8 : 1;
+    lbits first = L->is_union ? 0 : L->size;
+    lbits fa;
     if (w == 0) {
         fa = MAX(tfa, anno);
     } else {
@@ -877,17 +887,17 @@ static void sysv_field(TypeTable *tt, Layout *L, const FieldIn *f,
         if (L->pack)
             fa = MIN(fa, L->pack);
         if (!packed) {
-            uint64_t ta = L->pack ? MIN(tfa, L->pack) : tfa;
-            uint64_t start = align_up(first, fa);
+            lbits ta = L->pack ? MIN(tfa, L->pack) : tfa;
+            lbits start = align_up(first, fa);
             if (ta > tsize || start % ta + w > tsize)
                 fa = MAX(fa, ta);
         }
     }
-    uint64_t off = align_up(first, fa);
+    lbits off = align_up(first, fa);
     out->off_bits = off;
     L->size = MAX(L->size, off + w);
     if (f->name || tg->unnamed_field_affects_align) {
-        uint64_t ra;
+        lbits ra;
         if (w == 0)
             ra = MAX(tfa, anno);
         else if (L->pack)
@@ -900,23 +910,23 @@ static void sysv_field(TypeTable *tt, Layout *L, const FieldIn *f,
     }
 }
 
-static void ms_field(Layout *L, const FieldIn *f, uint64_t tsize,
-                     uint64_t tyalign, Field *out)
+static void ms_field(Layout *L, const FieldIn *f, lbits tsize,
+                     lbits tyalign, Field *out)
 {
     bool packed = L->packed || f->packed;
     bool bitf = f->width >= 0;
-    uint64_t w = bitf ? (uint64_t)f->width : 0;
-    uint64_t anno = f->align ? (uint64_t)f->align * 8 : 8;
+    lbits w = bitf ? (lbits)f->width : 0;
+    lbits anno = f->align ? (lbits)f->align * 8 : 8;
     bool ignore = packed ||
                   (bitf && L->ongoing && L->ong_size == tsize) ||
                   (bitf && w == 0 && !L->ongoing);
-    uint64_t fa = anno;
+    lbits fa = anno;
     if (!ignore)
         fa = MAX(fa, tyalign);
     if (L->pack)
         fa = MIN(fa, L->pack);
     if (!bitf || (w == 0 && L->ongoing) || (w != 0 && !packed)) {
-        uint64_t ta = packed && !(bitf && w == 0) ? 8 : tyalign;
+        lbits ta = packed && !(bitf && w == 0) ? 8 : tyalign;
         ta = MAX(ta, anno);
         if (L->pack)
             ta = MIN(ta, L->pack);
@@ -924,7 +934,7 @@ static void ms_field(Layout *L, const FieldIn *f, uint64_t tsize,
     }
     if (!bitf) {
         L->ongoing = false;
-        uint64_t off = L->is_union ? 0 : align_up(L->size, fa);
+        lbits off = L->is_union ? 0 : align_up(L->size, fa);
         out->off_bits = off;
         L->size = MAX(L->size, off + tsize);
         return;
@@ -946,7 +956,7 @@ static void ms_field(Layout *L, const FieldIn *f, uint64_t tsize,
         L->ong_size = tsize;
         L->ong_unused = tsize - w;
     }
-    uint64_t off = align_up(L->size, fa);
+    lbits off = align_up(L->size, fa);
     out->off_bits = off;
     L->size = w == 0 ? off : off + tsize;
 }
@@ -964,13 +974,13 @@ bool type_packed_unnecessary(TypeTable *tt, TypeId t, const FieldIn *f,
     uint32_t i;
     L.align = 8;
     L.is_union = r->flags & RF_UNION;
-    L.pack = (uint64_t)pack * 8;
+    L.pack = (lbits)pack * 8;
     for (i = 0; i < n; i++) {
         Field out = {0};
         FieldIn fi = f[i];
         bool ok;
-        uint64_t tsize = type_size(tt, f[i].ty, &ok) * 8;
-        uint64_t tyalign = (uint64_t)type_member_align(tt, f[i].ty) * 8;
+        lbits tsize = (lbits)type_size(tt, f[i].ty, &ok) * 8;
+        lbits tyalign = (lbits)type_member_align(tt, f[i].ty) * 8;
         if (!ok)
             tsize = 0;
         if (only >= 0)
@@ -986,8 +996,8 @@ bool type_packed_unnecessary(TypeTable *tt, TypeId t, const FieldIn *f,
             return true;
     }
     if (align)
-        L.align = MAX(L.align, (uint64_t)align * 8);
-    return align_up(L.size, L.align) / 8 == r->size;
+        L.align = MAX(L.align, (lbits)align * 8);
+    return bytes_sat(align_up(L.size, L.align)) == r->size;
 }
 
 void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
@@ -998,7 +1008,7 @@ void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
     Layout L = {0};
     L.align = 8;
     L.is_union = r->flags & RF_UNION;
-    L.pack = (uint64_t)pack * 8;
+    L.pack = (lbits)pack * 8;
     L.packed = packed;
     uint32_t first = (uint32_t)tt->fields.len;
     uint16_t flags = r->flags & (RF_UNION | RF_NOKEYWORD | RF_TRANSPARENT |
@@ -1025,7 +1035,7 @@ void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
         out.dmsg = f[i].dmsg;
         out.aset = f[i].aset;
         bool ok;
-        uint64_t tsize = type_size(tt, f[i].ty, &ok) * 8;
+        lbits tsize = (lbits)type_size(tt, f[i].ty, &ok) * 8;
         if (!ok) {
             tsize = 0;
             if (type_ckind(tt, f[i].ty) == TY_ARRAY)
@@ -1038,7 +1048,7 @@ void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
             flags |= RF_FLEXIBLE;   /* a union includes a flexible array */
         if (type_is_vm(tt, f[i].ty))
             flags |= RF_VMOD;
-        uint64_t tyalign = (uint64_t)type_member_align(tt, f[i].ty) * 8;
+        lbits tyalign = (lbits)type_member_align(tt, f[i].ty) * 8;
         if (ms > 0 || (!ms && tt->tgt->ms_bitfields))
             ms_field(&L, &f[i], tsize, tyalign, &out);
         else
@@ -1056,11 +1066,11 @@ void type_complete_record(TypeTable *tt, TypeId t, const FieldIn *f,
         vec_push(&tt->fields, out);
     }
     if (align)
-        L.align = MAX(L.align, (uint64_t)align * 8);
+        L.align = MAX(L.align, (lbits)align * 8);
     r = type_record(tt, t);
     r->fields = first;
     r->nfields = n;
-    r->size = align_up(L.size, L.align) / 8;
+    r->size = bytes_sat(align_up(L.size, L.align));
     r->align = (uint32_t)(L.align / 8);
     r->flags = (uint16_t)(flags | RF_COMPLETE);
 }

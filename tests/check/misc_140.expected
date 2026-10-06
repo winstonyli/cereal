@@ -1,0 +1,12 @@
+misc_140.c:1:8: error: type 'struct S' is too large
+    1 | struct S { int a; char b[__INTPTR_MAX__]; };
+      |        ^
+misc_140.c:3:8: error: type 'struct U' is too large
+    3 | struct U { char b[__INTPTR_MAX__]; char c; };
+      |        ^
+misc_140.c:5:27: warning: size of 's' 9223372036854775812 bytes exceeds maximum object size 9223372036854775807 [-Wlarger-than=]
+    5 | void foo(void) { struct S s; struct T t; char y[__INTPTR_MAX__]; struct U u; }
+      |                           ^
+misc_140.c:5:75: warning: size of 'u' 9223372036854775808 bytes exceeds maximum object size 9223372036854775807 [-Wlarger-than=]
+    5 | void foo(void) { struct S s; struct T t; char y[__INTPTR_MAX__]; struct U u; }
+      |                                                                           ^

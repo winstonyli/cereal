@@ -1903,7 +1903,16 @@ diagnostics and builds on the strinit table.
   log2 + 1 in its 16-bit slot. `__alignof__(function)` gives the declared
   alignment (1 if none) without the pedantic warning, as gcc does for a
   function designator (attr-aligned).
-- Not done: pr42611 (`struct S` over 2^63 bytes: layout works in bits in 64
-  bits, so it wraps; would need 128-bit or checked arithmetic in type.c).
 - Goldens misc_138, misc_139. Gate: 1225 pass, san 437/0, gcc.dg 41 /
   c-c++-common 35, callgrind 3.712G.
+
+## Round 120: records past 2^63 bytes
+
+- Record layout (type.c) computes in 128-bit bits (`lbits`) and stores the byte
+  size saturated at 2^64-1, so a record over `INT64_MAX` bytes is no longer a
+  wrapped small one. `type %s is too large` is reported at the tag (pr42611).
+- `-Wlarger-than=` is on by default with the largest valid object as the limit
+  (gcc warns for a local `struct S s;` of 2^63+4 bytes); `-Wno-larger-than` and
+  `-Wlarger-than=N` behave as before.
+- Golden misc_140. Gate: 1227 pass, san 438/0, gcc.dg 40 / c-c++-common 35,
+  callgrind 3.717G.

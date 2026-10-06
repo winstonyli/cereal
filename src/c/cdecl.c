@@ -4288,9 +4288,11 @@ static void larger_than(Checker *c, SrcLoc loc, uint32_t name, TypeId ty)
 {
     uint64_t lim, sz;
     bool ok;
-    if (!name || !diag_enabled(c->diag, "larger-than=") ||
-        !(lim = diag_option_size(c->diag, "larger-than=")))
+    if (!name || !diag_enabled(c->diag, "larger-than="))
         return;
+    /* gcc: by default, the largest valid object */
+    if (!(lim = diag_option_size(c->diag, "larger-than=")))
+        lim = INT64_MAX;
     sz = type_size(TT, ty, &ok);
     if (ok && sz > lim)
         cwarn(c, loc, "larger-than=", "size of '%s' %llu bytes exceeds "
@@ -7857,6 +7859,8 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     csum_read_pack(c);
     type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed,
                          a.ms);
+    if (type_record(TT, t)->size > (uint64_t)INT64_MAX)
+        cerror(c, loc, "type %s is too large", type_q(TT, t));
     /* gcc reports at the closing brace when it starts its line, else at the tag */
     wina_check(c, t, f, m, a.wina_al,
                cbol_tok(c, close_tok) == close_tok + 1 ? cinput_loc(c, close_tok)
