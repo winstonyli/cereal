@@ -1930,3 +1930,15 @@ diagnostics and builds on the strinit table.
   `ns::`, identifier characters only, not all underscores (Wno-attributes-3).
 - Goldens misc_141, misc_142. Gate: 1231 pass, san 440/0, gcc.dg 40 /
   c-c++-common 33, callgrind 3.718G.
+
+## Round 122: asm constraint rules
+
+- Checked against gcc-13 for every printable character in input, output and
+  matching positions: an input constraint rejects a space or tab
+  (`invalid punctuation`), an output one accepts any punctuation; a digit or
+  `[name]` in an input must name an output (`matching constraint references
+  invalid operand number`, `undefined named operand`, `missing close brace for
+  named operand`); both are errors in an output (`matching constraint not
+  valid in output operand`). Multi-digit numbers are decimal.
+- Golden misc_143. Gate: 1233 pass, san 441/0, gcc.dg 40 / c-c++-common 33,
+  callgrind 3.718G.

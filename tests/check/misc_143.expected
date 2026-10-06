@@ -1,0 +1,33 @@
+misc_143.c:3:5: error: invalid punctuation ' ' in constraint
+    3 |     __asm__("" : "=r"(x) : " r"(x));              /* space: input only */
+      |     ^
+misc_143.c:5:5: error: invalid punctuation '\x09' in constraint
+    5 |     __asm__("" : "=r"(x) : "\t"(x));
+      |     ^
+misc_143.c:7:5: error: matching constraint references invalid operand number
+    7 |     __asm__("" : : "0"(x));                       /* no such output */
+      |     ^
+misc_143.c:8:5: error: matching constraint references invalid operand number
+    8 |     __asm__("" : "=r"(x) : "1"(x));
+      |     ^
+misc_143.c:9:5: error: matching constraint references invalid operand number
+    9 |     __asm__("" : "=r"(x) : "10"(x));
+      |     ^
+misc_143.c:11:5: error: matching constraint not valid in output operand
+   11 |     __asm__("" : "=0"(x));
+      |     ^
+misc_143.c:12:5: error: matching constraint not valid in output operand
+   12 |     __asm__("" : "=[a]"(x));
+      |     ^
+misc_143.c:14:5: error: matching constraint references invalid operand number
+   14 |     __asm__("" : [a] "=r"(x) : [b] "[b]"(x));     /* an input name */
+      |     ^
+misc_143.c:16:5: error: undefined named operand 'y'
+   16 |     __asm__("" : "=r"(x) : "[y]"(x));
+      |     ^
+misc_143.c:17:5: error: missing close brace for named operand
+   17 |     __asm__("" : "=r"(x) : "r[x"(x));
+      |     ^
+misc_143.c:17:5: error: invalid punctuation '[' in constraint
+   17 |     __asm__("" : "=r"(x) : "r[x"(x));
+      |     ^

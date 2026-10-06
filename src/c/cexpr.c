@@ -9553,7 +9553,8 @@ static const char *asm_chr(char ch, char *buf)
 /* parse_output_constraint / parse_input_constraint, as far as they report
  * errors; false after one. */
 static bool asm_constraint(Checker *c, SrcLoc loc, const char *k, bool out,
-                           bool last, bool *reg, bool *mem)
+                           bool last, uint32_t nouts, char opn[][64],
+                           uint32_t nopn, bool *reg, bool *mem)
 {
     const char *p;
     char b[8];
@@ -9588,7 +9589,14 @@ static bool asm_constraint(Checker *c, SrcLoc loc, const char *k, bool out,
             }
             break;
         case '?': case '!': case '*': case '#': case '$': case '^': case ',':
-        case ' ': case '\t': case '<': case '>':
+        case '<': case '>':
+            break;
+        case ' ': case '\t':      /* only an output constraint takes them */
+            if (!out) {
+                cerror(c, loc, "invalid punctuation '%s' in constraint",
+                       asm_chr(*p, b));
+                return false;
+            }
             break;
         case 'V': case 'm': case 'o':
             *mem = true;
@@ -9605,13 +9613,40 @@ static bool asm_constraint(Checker *c, SrcLoc loc, const char *k, bool out,
         case 'I': case 'J': case 'K': case 'L': case 'M': case 'N': case 'O':
         case 'P': case 'e': case 'Z': case 'B': case 'C': case 'T': case 'W':
             break;
-        case '[':
-            while (p[1] && p[1] != ']')
-                p++;
+        case '[': {
+            /* resolve_asm_operand_names: [name] is an operand number */
+            const char *e = strchr(p, ']');
+            char nm[64];
+            uint32_t q, idx = nopn;
+            if (out) {
+                cerror(c, loc, "matching constraint not valid in output "
+                       "operand");
+                return false;
+            }
+            if (!e) {
+                cerror(c, loc, "missing close brace for named operand");
+                cerror(c, loc, "invalid punctuation '[' in constraint");
+                return false;
+            }
+            snprintf(nm, sizeof nm, "%.*s", (int)(e - p - 1), p + 1);
+            for (q = 0; q < nopn; q++)
+                if (!strcmp(opn[q], nm)) {
+                    idx = q;
+                    break;
+                }
+            if (idx == nopn) {
+                cerror(c, loc, "undefined named operand '%s'", nm);
+                return false;
+            }
+            if (idx >= nouts) {
+                cerror(c, loc, "matching constraint references invalid "
+                       "operand number");
+                return false;
+            }
             *reg = true;
-            if (p[1])
-                p++;
+            p = e;
             break;
+        }
         default:
             if (*p >= '0' && *p <= '9') {
                 if (out) {
@@ -9619,13 +9654,23 @@ static bool asm_constraint(Checker *c, SrcLoc loc, const char *k, bool out,
                            "operand");
                     return false;
                 }
+                if (strtoul(p, NULL, 10) >= nouts) {
+                    cerror(c, loc, "matching constraint references invalid "
+                           "operand number");
+                    return false;
+                }
+                while (p[1] >= '0' && p[1] <= '9')
+                    p++;
                 *reg = true;
-            } else if (!isalpha((unsigned char)*p)) {
-                cerror(c, loc, "invalid punctuation '%s' in constraint",
-                       asm_chr(*p, b));
-                return false;
-            } else {
+            } else if (!out) {
+                if (!isalpha((unsigned char)*p)) {
+                    cerror(c, loc, "invalid punctuation '%s' in constraint",
+                           asm_chr(*p, b));
+                    return false;
+                }
                 *reg = *mem = true;     /* unknown: treat like "g" */
+            } else {
+                *reg = *mem = true;     /* an output: any other character */
             }
             break;
         }
@@ -9746,6 +9791,7 @@ void cexpr_asm(Checker *c, uint32_t i)
     SrcLoc loc = cnode_loc(c, i);
     char tmpl[1024], names[64][64];
     uint32_t nname = 0, nops = 0, tn = NO_NODE, nouts = 0, nins = 0;
+    char opn[64][64];                   /* operand names by ordinal */
     bool extended = false, ok = true;
     AsmOp ops[64];
     if (nk > 64)
@@ -9760,6 +9806,24 @@ void cexpr_asm(Checker *c, uint32_t i)
             extended = true;
             for (j = 0; j < n2 && j < 64; j++)
                 if (ntag(c, oc[j]) == N_ASM_OPERAND) {
+                    uint32_t ch[8], pc, q, ord = nouts + nins;
+                    if (ord < 64) {
+                        opn[ord][0] = 0;
+                        pc = node_children(c->nodes, oc[j], ch, 8);
+                        for (q = 0; q < pc && q < 8; q++)
+                            if (ntag(c, ch[q]) == N_NAME) {
+                                size_t len;
+                                const char *s = ttext(c, c->nodes[ch[q]].tok,
+                                                      &len);
+                                const Tok *nt = cnode_tok(c, ch[q]);
+                                if (nt->kind == TK_IDENT)
+                                    snprintf(opn[ord], 64, "%s",
+                                             ident_by_id(c->in,
+                                                         nt->aux)->str);
+                                else
+                                    snprintf(opn[ord], 64, "%.*s", (int)len, s);
+                            }
+                    }
                     if (sec == 1)
                         nouts++;
                     else if (sec == 2)
@@ -9821,7 +9885,9 @@ void cexpr_asm(Checker *c, uint32_t i)
                 continue;
             asm_string(c, st, con, sizeof con);
             if (asm_constraint(c, loc, con, sec == 1,
-                               nops + 1 == nouts + nins, &reg, &mem) &&
+                               nops + 1 == nouts + nins, nouts, opn,
+                               nouts + nins < 64 ? nouts + nins : 64,
+                               &reg, &mem) &&
                 nops < 64) {
                 ops[nops].e = ex;
                 ops[nops].out = sec == 1;
