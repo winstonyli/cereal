@@ -4835,11 +4835,11 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                            "alignment of unnamed field");
                 g->s.align = 0;
             } else
-                g->s.align = (uint16_t)sp->align;
+                g->s.align = sp->align;
         }
     }
     if (!g->s.align && sp->align && !sp->alignas_seen)
-        g->s.align = (uint16_t)sp->align;
+        g->s.align = sp->align;
 
     if (sc == SC_TYPEDEF) {
         if ((type_quals & TQ_ATOMIC) && is_func(c, type)) {
@@ -5841,6 +5841,25 @@ static void cxx_typedef_in_struct(Checker *c, uint32_t ident, uint32_t tok)
         }
 }
 
+/* gcc's C_TYPE_FIELDS_VOLATILE: a struct or union with a volatile member,
+ * at any depth. */
+static bool fields_volatile(Checker *c, TypeId t)
+{
+    const Record *r;
+    uint32_t k;
+    while (type_ckind(TT, t) == TY_ARRAY)
+        t = type_base(TT, type_canon(TT, t));
+    if (type_ckind(TT, t) != TY_STRUCT && type_ckind(TT, t) != TY_UNION)
+        return false;
+    r = type_record(TT, type_canon(TT, t));
+    for (k = 0; k < r->nfields; k++) {
+        TypeId ft = c->tt.fields.data[r->fields + k].ty;
+        if ((TYPE_QUALS(type_canon(TT, ft)) & TQ_VOLATILE) || fields_volatile(c, ft))
+            return true;
+    }
+    return false;
+}
+
 /* pushdecl: enters x in the current scope, merging it with an earlier
  * declaration of the same entity.  Returns the symbol the name now denotes. */
 static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
@@ -5930,9 +5949,15 @@ static uint32_t pushdecl(Checker *c, const CSym *xin, bool implicit_int)
                                    visref != SYM_NONE, newty);
                 return e - 1;
             } else if (pub) {
+                if (visref != SYM_NONE && !e && !filescope &&
+                    !is_err(c, newty))
+                    outer_bindings(c, name, newty);
                 if (visref != SYM_NONE && !e &&
                     duplicate_decls(c, &x, nfile, visref, implicit_int)) {
                     cbind(c, NS_ORD, name, visref);
+                    if (!filescope && !is_err(c, newty))
+                        bind_this_type(c, (uint32_t)c->log.len, visref, vt,
+                                       true, newty);
                     return visref;
                 }
                 if (x.kind == CS_FUNC && !e)
@@ -6751,7 +6776,7 @@ static void declared_visit(Checker *c, uint32_t i)
             r->flags |= RF_TRANSPARENT;
     }
     if (a.aligned > s.align)
-        s.align = (uint16_t)a.aligned;
+        s.align = a.aligned;
     if (a.unused)
         s.flags |= CSF_USED | CSF_ATTR_UNUSED;
     if (a.deprecated || a.unavailable) {
@@ -6784,9 +6809,14 @@ static void declared_visit(Checker *c, uint32_t i)
         s.fmtarg = a.fmtarg;
     if (g.what == GD_FUNC && s.kind == CS_FUNC && !kr)
         s.parms = cparm_make(c, funcdef_fnode(c, top));
-    if (file && g.what == GD_VAR && s.sc == SC_REGISTER &&
-        find_child(c, idecl, N_ASM_LABEL) != NO_NODE)
-        s.flags |= CSF_REGISTER_NAMED;
+    if (g.what == GD_VAR && s.sc == SC_REGISTER &&
+        find_child(c, idecl, N_ASM_LABEL) != NO_NODE) {
+        if (file)
+            s.flags |= CSF_REGISTER_NAMED;
+        if (fields_volatile(c, s.ty))
+            cerror(c, tloc(c, sp.tok1 - 1), "cannot put object with volatile field into "
+                   "register");
+    }
     if (g.what == GD_VAR && g.name &&
         !strcmp(cident(c, g.name), "main") && sym_public(&s))
         cwarn(c, s.loc, "main", "'main' is usually a function");
@@ -6857,8 +6887,9 @@ static void declared_visit(Checker *c, uint32_t i)
         /* a redeclaration can only raise the alignment */
         if (s.align && type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
             TypeEnt *te = &TT->ents.data[TYPE_IDX(csym(c, ref)->ty)];
-            if (TT->ents.len > nents || s.align > te->align) {
-                te->align = s.align;
+            uint16_t enc = (uint16_t)(__builtin_ctz(s.align) + 1);
+            if (TT->ents.len > nents || enc > te->align) {
+                te->align = enc;
                 te->flags |= TF_ALIGNED;
             }
         }
@@ -8442,7 +8473,7 @@ static void member_visit(Checker *c, uint32_t i)
     fi.name = g.name;
     fi.ty = g.ty;
     fi.width = g.width;
-    fi.align = g.s.align > a.aligned ? g.s.align : (uint16_t)a.aligned;
+    fi.align = g.s.align > a.aligned ? g.s.align : a.aligned;
     fi.packed = a.packed;
     fi.loc = g.loc;
     fi.dep = (a.deprecated ? CSF_DEPRECATED : 0) |
@@ -8487,7 +8518,7 @@ static void member_decl_visit(Checker *c, uint32_t i)
                     fi.ty = g.ty;
                     fi.width = -1;
                     fi.align = g.s.align > sp.attrs.aligned
-                        ? g.s.align : (uint16_t)sp.attrs.aligned;
+                        ? g.s.align : sp.attrs.aligned;
                     fi.packed = sp.attrs.packed;
                     fi.loc = tloc(c, ltok);
                     {

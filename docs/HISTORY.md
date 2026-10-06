@@ -1884,5 +1884,26 @@ diagnostics and builds on the strinit table.
 - `opeq` (`-Wtautological-compare`) unwraps a statement expression that is a
   single expression statement (`stmt_expr_single` in cstmt.c):
   `({ i; }) == ({ i; })` warns as gcc does (pr68412-2).
-- Golden misc_137. Gate: 1220 pass, san 435/0, gcc.dg 45 / c-c++-common 35,
+- Golden misc_137. Gate: 1221 pass, san 435/0, gcc.dg 45 / c-c++-common 35,
   callgrind 3.710G.
+
+## Round 119: register arrays, block-scope extern of a static, large alignments
+
+- A `register` array decaying to a pointer is an error (`address of register
+  variable`) unless it is the operand of `sizeof`, `_Alignof`, `typeof`,
+  `&` or `[]`; `register struct S c __asm__(..)` with a volatile member
+  (at any depth) is an error (reg-vol-struct-1).
+- A block-scope `extern` of a file-scope *static* now saves the outer binding's
+  type and gives itself the composite, as the non-static path did: after the
+  block the outer type is the old one again (redecl-3).
+- `-Woverlength-strings` skips asm strings (template, constraints, clobbers,
+  label).
+- Alignments of 64 KiB and up were truncated to 16 bits (`CSym`, `Field`,
+  `FieldIn`); they are 32 bits now, and a typedef's `aligned` is stored as
+  log2 + 1 in its 16-bit slot. `__alignof__(function)` gives the declared
+  alignment (1 if none) without the pedantic warning, as gcc does for a
+  function designator (attr-aligned).
+- Not done: pr42611 (`struct S` over 2^63 bytes: layout works in bits in 64
+  bits, so it wraps; would need 128-bit or checked arithmetic in type.c).
+- Goldens misc_138, misc_139. Gate: 1225 pass, san 437/0, gcc.dg 41 /
+  c-c++-common 35, callgrind 3.712G.

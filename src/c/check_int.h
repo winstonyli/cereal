@@ -95,7 +95,7 @@ typedef struct CSym {
     uint8_t sc;              /* StorageClass as written */
     uint8_t linkage;
     uint32_t flags;
-    uint16_t align;          /* _Alignas / aligned (bytes), 0: none */
+    uint32_t align;          /* _Alignas / aligned (bytes), 0: none */
     TypeId ty;
     SrcLoc loc;
     SrcLoc def_loc;          /* the definition, if any */

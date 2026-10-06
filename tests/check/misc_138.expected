@@ -1,0 +1,48 @@
+misc_138.c:3:21: error: invalid application of 'sizeof' to incomplete type 'IA' {aka 'int[]'}
+    3 | void g(void){ sizeof(*b17); { extern A10 *b17; sizeof(*b17); } sizeof(*b17); }
+      |                     ^
+misc_138.c:3:70: error: invalid application of 'sizeof' to incomplete type 'IA' {aka 'int[]'}
+    3 | void g(void){ sizeof(*b17); { extern A10 *b17; sizeof(*b17); } sizeof(*b17); }
+      |                                                                      ^
+misc_138.c:5:21: error: invalid application of 'sizeof' to incomplete type 'IA' {aka 'int[]'}
+    5 | void h(void){ sizeof(*c17()); { extern A10 *c17(void); sizeof(*c17()); } sizeof(*c17()); }
+      |                     ^
+misc_138.c:5:80: error: invalid application of 'sizeof' to incomplete type 'IA' {aka 'int[]'}
+    5 | void h(void){ sizeof(*c17()); { extern A10 *c17(void); sizeof(*c17()); } sizeof(*c17()); }
+      |                                                                                ^
+misc_138.c:7:42: error: invalid application of 'sizeof' to incomplete type 'IA' {aka 'int[]'}
+    7 | void k1(void){ { extern A10 *c1; } sizeof(*c1); }
+      |                                          ^
+misc_138.c:9:42: error: invalid application of 'sizeof' to incomplete type 'IA' {aka 'int[]'}
+    9 | void k2(void){ { extern A10 *c2; } sizeof(*c2); }
+      |                                          ^
+misc_138.c:11:41: error: invalid application of 'sizeof' to incomplete type 'IA' {aka 'int[]'}
+   11 | void k3(void){ { extern IA *c3; } sizeof(*c3); }
+      |                                         ^
+misc_138.c:14:3: error: address of register variable 'a' requested
+   14 |   int *p = a;
+      |   ^
+misc_138.c:15:3: error: address of register variable 'a' requested
+   15 |   a;
+      |   ^
+misc_138.c:16:3: error: address of register variable 'a' requested
+   16 |   (void)a;
+      |   ^
+misc_138.c:17:3: error: address of register variable 'a' requested
+   17 |   a + 1;
+      |   ^
+misc_138.c:18:4: warning: ISO C forbids subscripting 'register' array [-Wpedantic]
+   18 |   a[0];
+      |    ^
+misc_138.c:19:3: error: address of register variable 'a' requested
+   19 |   *a;
+      |   ^
+misc_138.c:29:19: error: cannot put object with volatile field into register
+   29 |   register struct S c __asm__("nosuchreg"); /* { dg-error "object with volatile field" "explicit reg name" } */
+      |                   ^
+misc_138.c:30:3: error: address of register variable 'a' requested
+   30 |   &a; /* { dg-error "address of register" "explicit address" } */
+      |   ^
+misc_138.c:31:3: error: address of register variable 'b' requested
+   31 |   b; /* { dg-error "address of register" "implicit address" } */
+      |   ^

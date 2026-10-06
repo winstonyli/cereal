@@ -1,0 +1,33 @@
+misc_139.c:4:88: warning: ISO C does not permit '_Alignof' applied to a function type [-Wpedantic]
+    4 | int xa = __alignof__(af1), b = __alignof__(af2), c = __alignof__(af3), d = __alignof__(void(void));
+      |                                                                                        ^
+misc_139.c:5:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    5 | _Static_assert(__alignof__(af1)==1,"1");
+      | ^
+misc_139.c:6:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    6 | _Static_assert(__alignof__(af2)==64,"2");
+      | ^
+misc_139.c:7:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    7 | _Static_assert(__alignof__(af3)==32,"3");
+      | ^
+misc_139.c:9:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    9 | _Static_assert(__alignof__(asc) == 0x10000000, "a");
+      | ^
+misc_139.c:11:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   11 | _Static_assert(__alignof__(av) == 0x10000000, "b");
+      | ^
+misc_139.c:18:68: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   18 | void ovf(int x) { __asm__ (BIG); __asm__ goto (BIG : : : : l); l:; _Static_assert(1, BIG); const char *ovs = BIG; int ovw __attribute__((section(BIG))); }
+      |                                                                    ^
+misc_139.c:18:1: warning: string length '4096' is greater than the length '4095' ISO C99 compilers are required to support [-Woverlength-strings]
+   18 | void ovf(int x) { __asm__ (BIG); __asm__ goto (BIG : : : : l); l:; _Static_assert(1, BIG); const char *ovs = BIG; int ovw __attribute__((section(BIG))); }
+      | ^
+misc_139.c:18:1: warning: string length '4096' is greater than the length '4095' ISO C99 compilers are required to support [-Woverlength-strings]
+   18 | void ovf(int x) { __asm__ (BIG); __asm__ goto (BIG : : : : l); l:; _Static_assert(1, BIG); const char *ovs = BIG; int ovw __attribute__((section(BIG))); }
+      | ^
+misc_139.c:18:1: warning: string length '4096' is greater than the length '4095' ISO C99 compilers are required to support [-Woverlength-strings]
+   18 | void ovf(int x) { __asm__ (BIG); __asm__ goto (BIG : : : : l); l:; _Static_assert(1, BIG); const char *ovs = BIG; int ovw __attribute__((section(BIG))); }
+      | ^
+misc_139.c:18:119: error: section attribute cannot be specified for local variables
+   18 | void ovf(int x) { __asm__ (BIG); __asm__ goto (BIG : : : : l); l:; _Static_assert(1, BIG); const char *ovs = BIG; int ovw __attribute__((section(BIG))); }
+      |                                                                                                                       ^

@@ -2023,6 +2023,17 @@ static void e_char(Checker *c, uint32_t i)
     c->ef[i] = EF_INTOPS;
 }
 
+/* gcc parses the strings of an asm (template, constraints, clobbers, label)
+ * apart from expressions: no -Woverlength-strings. */
+static bool in_asm_string(Checker *c, uint32_t i)
+{
+    uint32_t p = c->par[i];
+    return p != NO_NODE &&
+           (ntag(c, p) == N_TOP_ASM || ntag(c, p) == N_ASM ||
+            ntag(c, p) == N_ASM_SECTION || ntag(c, p) == N_ASM_OPERAND ||
+            ntag(c, p) == N_ASM_LABEL);
+}
+
 static void e_string(Checker *c, uint32_t i)
 {
     uint32_t np = node_pieces(c, i), k;
@@ -2070,7 +2081,7 @@ static void e_string(Checker *c, uint32_t i)
         const char *s = ttext(c, c->nodes[i].tok + k, &len);
         lit_str_units(s, len, width, &units);
     }
-    if (units > 4095 && !cexpr_in_extension(c, i))
+    if (units > 4095 && !cexpr_in_extension(c, i) && !in_asm_string(c, i))
         cpedwarn(c, cinput_loc(c, c->nodes[i].tok + np), "overlength-strings",
                  "string length '%llu' is greater than the length '%d' ISO "
                  "C99 compilers are required to support",
@@ -2451,8 +2462,22 @@ static void e_ident(Checker *c, uint32_t i)
         return;
     }
     c->ef[i] = EF_LVALUE;
-    if (s->sc == SC_REGISTER)
+    if (s->sc == SC_REGISTER) {
         c->ef[i] |= EF_REGISTER;
+        if (type_ckind(TT, c->ty[i]) == TY_ARRAY) {
+            /* c_mark_addressable on the array-to-pointer conversion */
+            uint32_t p = c->par[i];
+            while (p != NO_NODE && ntag(c, p) == N_PAREN)
+                p = c->par[p];
+            if (p == NO_NODE ||
+                !(ntag(c, p) == N_SIZEOF_EXPR || ntag(c, p) == N_ALIGNOF_EXPR ||
+                  ntag(c, p) == N_TYPEOF || ntag(c, p) == N_INDEX ||
+                  (ntag(c, p) == N_UNARY && npunct(c, p) == P_AMP)))
+                cerror(c, cinput_loc(c, last_tok(c, i) + 1),
+                       "address of register variable '%s' requested",
+                       cident(c, id));
+        }
+    }
     if (tquals(c, s->ty) & TQ_VOLATILE)
         c->ef[i] |= EF_SIDE;
     if (!(s->flags & CSF_THREAD) &&
@@ -4944,7 +4969,18 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
             }
         }
     }
-    if (is_func(c, t)) {
+    uint32_t fref = SYM_NONE;
+    if (is_func(c, t) && align && !is_type) {
+        uint32_t fs = strip_paren(c, a);
+        if (fs != NO_NODE && ntag(c, fs) == N_IDENT)
+            fref = lookup_ord(c, cnode_ident(c, fs));
+        if (fref != SYM_NONE && csym(c, fref)->kind != CS_FUNC)
+            fref = SYM_NONE;
+    }
+    if (fref != SYM_NONE) {
+        /* c_alignof_expr: a function's DECL_ALIGN_UNIT (1 unless aligned) */
+        v = csym(c, fref)->ualign ? csym(c, fref)->ualign : 1;
+    } else if (is_func(c, t)) {
         if (!align)
             ped_arith(c, i, loc, "invalid application of 'sizeof' to a function "
                                  "type");

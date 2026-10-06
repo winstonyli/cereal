@@ -51,7 +51,7 @@ enum {
 typedef struct TypeEnt {
     uint8_t kind;            /* TypeKind */
     uint8_t flags;
-    uint16_t align;          /* typedef: aligned attribute (bytes) */
+    uint16_t align;          /* typedef: aligned attribute, log2 + 1 */
     uint32_t base;           /* TypeId (see TypeKind) */
     uint32_t extra;          /* params offset / record / enum / name */
     TypeId canon;            /* the type with typedefs stripped */
@@ -89,7 +89,7 @@ typedef struct Field {
     uint64_t off_bits;
     uint32_t width;          /* bit-fields */
     uint16_t flags;
-    uint16_t align;          /* aligned attribute (bytes), 0: none */
+    uint32_t align;          /* aligned attribute (bytes), 0: none */
     SrcLoc loc;
     uint32_t dep, dmsg;      /* CSF_DEPRECATED/UNAVAILABLE bits; message */
     uint32_t aset;           /* attribute names (Checker.anames set id), 0: none */
@@ -197,7 +197,7 @@ typedef struct FieldIn {
     uint32_t name;
     TypeId ty;
     int32_t width;           /* -1: not a bit-field */
-    uint16_t align;          /* aligned attribute, 0: none */
+    uint32_t align;          /* aligned attribute, 0: none */
     uint16_t wina;           /* warn_if_not_aligned attribute, 0: none */
     bool packed;
     SrcLoc loc;

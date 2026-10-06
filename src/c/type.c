@@ -525,7 +525,7 @@ static unsigned align_of(TypeTable *tt, TypeId t, bool member)
     const TypeEnt *e = type_ent(tt, t);
     while (e->kind == TY_TYPEDEF) {
         if (e->flags & TF_ALIGNED)
-            return e->align;
+            return 1u << (e->align - 1);
         e = type_ent(tt, e->base);
     }
     const Target *tg = tt->tgt;
