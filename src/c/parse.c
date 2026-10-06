@@ -2234,18 +2234,33 @@ static void postfix_tail(Parser *p, uint32_t start)
 }
 
 /* __builtin_offsetof ( type-name , member-designator ) */
+/* A type name; false (and no nodes left, so the checker stays quiet) when it
+ * had a syntax error. */
+static bool type_name_ok(Parser *p)
+{
+    uint32_t s = nmark(p);
+    uint64_t e0 = p->errors;
+    type_name(p);
+    if (p->errors == e0)
+        return true;
+    p->nodes.len = s;
+    return false;
+}
+
 static void offsetof_expr(Parser *p)
 {
     uint32_t start = nmark(p), kw = adv(p);
     PTok t;
-    expect(p, P_LPAREN);
-    type_name(p);
-    expect(p, P_COMMA);
+    if (!expect(p, P_LPAREN) || !type_name_ok(p) || !expect(p, P_COMMA)) {
+        skip_past_rparen(p);        /* gcc: c_parser_skip_until_found */
+        emit(p, N_OFFSETOF, kw, start, 0);
+        return;
+    }
     t = ct(p);
     if (t.t.kind == TK_IDENT)
         leaf(p, N_NAME, adv(p));
     else
-        expected(p, "field name");
+        expected(p, "identifier");
     for (;;) {
         if (at(p, P_DOT) || at(p, P_ARROW)) {
             bool arrow = at(p, P_ARROW);    /* gcc: 'a->b' is 'a[0].b' */
@@ -2253,7 +2268,7 @@ static void offsetof_expr(Parser *p)
             adv(p);
             t = ct(p);
             if (t.t.kind != TK_IDENT) {
-                expected(p, "field name");
+                expected(p, "identifier");
                 break;
             }
             emit(p, N_DESIG_FIELD, adv(p), d, arrow);
@@ -2270,35 +2285,53 @@ static void offsetof_expr(Parser *p)
     emit(p, N_OFFSETOF, kw, start, 0);
 }
 
+static void convertvector_expr(Parser *p, NodeTag tag);
+
 /* builtin ( expr , type-name ) / ( type-name , type-name ) */
 static void builtin2(Parser *p, NodeTag tag, bool first_type)
 {
-    uint32_t start = nmark(p), kw = adv(p);
-    expect(p, P_LPAREN);
-    if (first_type)
-        type_name(p);
-    else
-        parse_assign(p);
-    expect(p, P_COMMA);
-    type_name(p);
-    expect(p, P_RPAREN);
+    uint32_t start, kw;
+    if (!first_type) {      /* va_arg: skip to the ) after any failure */
+        convertvector_expr(p, tag);
+        return;
+    }
+    start = nmark(p);
+    kw = adv(p);
+    /* gcc leaves the ) of a failed type name behind (the statement parser
+     * then complains about it) and skips past it after any other failure */
+    if (expect(p, P_LPAREN) && type_name_ok(p)) {
+        if (!expect(p, P_COMMA))
+            skip_past_rparen(p);
+        else if (type_name_ok(p) && !expect(p, P_RPAREN))
+            skip_past_rparen(p);
+    } else {
+        int depth = 0;
+        while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
+               !at(p, P_LBRACE) && !(at(p, P_RPAREN) && depth <= 0)) {
+            if (at(p, P_LPAREN))
+                depth++;
+            else if (at(p, P_RPAREN))
+                depth--;
+            adv(p);
+        }
+    }
     emit(p, tag, kw, start, 0);
 }
 
 /* __builtin_convertvector ( assignment-expression , type-name ): gcc skips
  * to the closing parenthesis after any failure and builds an error. */
-static void convertvector_expr(Parser *p)
+static void convertvector_expr(Parser *p, NodeTag tag)
 {
     uint32_t start = nmark(p), kw = adv(p), s;
     uint64_t e0;
     if (!expect(p, P_LPAREN)) {
-        emit(p, N_CONVERTVECTOR, kw, start, 0);
+        emit(p, tag, kw, start, 0);
         return;
     }
     parse_assign(p);
     if (!expect(p, P_COMMA)) {
         skip_past_rparen(p);
-        emit(p, N_CONVERTVECTOR, kw, start, 0);
+        emit(p, tag, kw, start, 0);
         return;
     }
     s = nmark(p);
@@ -2308,7 +2341,7 @@ static void convertvector_expr(Parser *p)
         p->nodes.len = s;
     if (!expect(p, P_RPAREN))
         skip_past_rparen(p);
-    emit(p, N_CONVERTVECTOR, kw, start, 0);
+    emit(p, tag, kw, start, 0);
 }
 
 /* __builtin_has_attribute ( expr | type-name , attribute ) */
@@ -2386,7 +2419,7 @@ static void primary(Parser *p)
             builtin2(p, N_VA_ARG, false);
             return;
         case CK_CONVERTVECTOR:
-            convertvector_expr(p);
+            convertvector_expr(p, N_CONVERTVECTOR);
             return;
         case CK_HAS_ATTRIBUTE:
             has_attr_expr(p);

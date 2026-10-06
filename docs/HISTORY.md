@@ -2096,3 +2096,18 @@ diagnostics and builds on the strinit table.
   (-Wnormalized), unroll-5, and one file not yet identified (par lists the
   differing files; the gate counts 4).
 - Gate: 1307 pass, san 478/0, gcc.dg 30 / c-c++-common 4, callgrind 3.736G.
+
+## Round 132: builtin recovery, enumerator attributes (c-c++-common 3)
+- `__builtin_va_arg` recovers like convertvector (skip to the `)`);
+  `offsetof` skips to the `)` after a bad type name or missing comma and says
+  "expected identifier" for a bad member; `__builtin_types_compatible_p`
+  leaves the `)` of a failed type name behind, as gcc does (the statement
+  parser then reports it). A type name with a syntax error leaves no nodes,
+  so the checker adds no implicit-int warning (`type_name_ok`, misc_181).
+- An unknown attribute on an enumerator was reported twice (the deprecated
+  scan and enumerator_attrs both collected it): the scan is now quiet
+  (misc_182, attributes-enum-2).
+- Open in c-c++-common (3): dump-ada-spec-14 (`-fdump-ada-spec` warns
+  "packed layout" on a packed struct), pr68833-3 (-Wnormalized), unroll-5
+  (see Round 131).
+- Gate: 1311 pass, san 480/0, gcc.dg 30 / c-c++-common 3, callgrind 3.736G.

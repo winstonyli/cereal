@@ -8430,7 +8430,9 @@ static void enumerator_visit(Checker *c, uint32_t i)
     {
         Attrs ea;
         memset(&ea, 0, sizeof ea);
+        c->attr_quiet = true;       /* enumerator_attrs reports them */
         attrs_of_children(c, i, &ea);
+        c->attr_quiet = false;
         if (ea.deprecated || ea.unavailable) {
             s.flags |= ea.unavailable ? CSF_UNAVAILABLE : CSF_DEPRECATED;
             s.dep_msg = ea.dep_msg;

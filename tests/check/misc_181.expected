@@ -1,0 +1,39 @@
+misc_181.c:3:24: error: expected specifier-qualifier-list before '*' token
+    3 |   __builtin_va_arg(ap, *);
+      |                        ^
+misc_181.c:4:22: error: expected ',' before ')' token
+    4 |   __builtin_va_arg(ap);
+      |                      ^
+misc_181.c:5:27: error: expected ')' before ',' token
+    5 |   __builtin_va_arg(ap, int, 1);
+      |                           ^
+misc_181.c:6:20: error: expected expression before ')' token
+    6 |   __builtin_va_arg();
+      |                    ^
+misc_181.c:7:22: error: expected specifier-qualifier-list before '*' token
+    7 |   __builtin_offsetof(*, x);
+      |                      ^
+misc_181.c:8:30: error: expected ',' before ')' token
+    8 |   __builtin_offsetof(struct S);
+      |                              ^
+misc_181.c:9:32: error: expected identifier before ')' token
+    9 |   __builtin_offsetof(struct S, );
+      |                                ^
+misc_181.c:10:32: error: expected specifier-qualifier-list before '*' token
+   10 |   __builtin_types_compatible_p(*, int);
+      |                                ^
+misc_181.c:10:38: error: expected statement before ')' token
+   10 |   __builtin_types_compatible_p(*, int);
+      |                                      ^
+misc_181.c:11:35: error: expected ',' before ')' token
+   11 |   __builtin_types_compatible_p(int);
+      |                                   ^
+misc_181.c:12:37: error: expected specifier-qualifier-list before '*' token
+   12 |   __builtin_types_compatible_p(int, *);
+      |                                     ^
+misc_181.c:12:38: error: expected statement before ')' token
+   12 |   __builtin_types_compatible_p(int, *);
+      |                                      ^
+misc_181.c:13:40: error: expected ')' before ',' token
+   13 |   __builtin_types_compatible_p(int, int, 1);
+      |                                        ^
