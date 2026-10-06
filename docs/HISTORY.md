@@ -2016,4 +2016,4 @@ diagnostics and builds on the strinit table.
   keeps only the outermost expansion point), and 804:8, 924:15, 1154:10 in
   Wmisleading-indentation.c.
 - Goldens misc_164 to misc_166. Gate: 1279 pass, san 464/0, gcc.dg 34 /
-  c-c++-common 13, callgrind 3.793G (+1.6%).
+  c-c++-common 13, callgrind 3.732G (an eager line_start_loc in check_restrict cost +1.6% until made lazy).

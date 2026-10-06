@@ -7304,13 +7304,10 @@ void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk,
         char list[160];
         size_t len = 0;
         unsigned cnt = 0;
-        SrcLoc l = line_start_loc(c, loc);
+        SrcLoc l;
         uint32_t a = kv[i + 1], first;
         if (!cparm_restrict(c, parms, i) || (seen >> i & 1))
             continue;
-        first = restrict_base(c, a);
-        if (ntag(c, first) != N_IDENT || is_array(c, c->ty[first]))
-            l = expr_loc(c, a);
         list[0] = 0;
         for (j = 0; j + 1 < nk && j < 64; j++) {
             if (j == i || (seen >> j & 1) ||
@@ -7331,10 +7328,14 @@ void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk,
             cnt++;
             seen |= (uint64_t)1 << j;
         }
-        if (cnt)
-            cwarn(c, l, "restrict", "passing argument %u to 'restrict'-"
-                  "qualified parameter aliases with argument%s %s", i + 1,
-                  cnt > 1 ? "s" : "", list);
+        if (!cnt)
+            continue;
+        first = restrict_base(c, a);
+        l = ntag(c, first) != N_IDENT || is_array(c, c->ty[first])
+                ? expr_loc(c, a) : line_start_loc(c, loc);
+        cwarn(c, l, "restrict", "passing argument %u to 'restrict'-"
+              "qualified parameter aliases with argument%s %s", i + 1,
+              cnt > 1 ? "s" : "", list);
     }
 }
 
