@@ -2972,7 +2972,7 @@ static unsigned pk_align(Checker *c, TypeId t)
     TypeKind kk = tkind(c, k);
     if (kk == TY_VOID || kk == TY_FUNC || kk == TY_ERROR || !complete(c, k))
         return 1;
-    return type_align(TT, k);
+    return type_align(TT, t);     /* a typedef may carry aligned(N), even 1 */
 }
 
 static bool pk_packed_rec(Checker *c, TypeId t)
@@ -7028,6 +7028,10 @@ bool opeq(Checker *c, uint32_t x, uint32_t y)
     uint32_t kx[3], ky[3], nx, ny;
     x = strip_paren(c, x);
     y = strip_paren(c, y);
+    if (ntag(c, x) == N_STMT_EXPR && stmt_expr_single(c, x) != NO_NODE)
+        x = strip_paren(c, stmt_expr_single(c, x));
+    if (ntag(c, y) == N_STMT_EXPR && stmt_expr_single(c, y) != NO_NODE)
+        y = strip_paren(c, stmt_expr_single(c, y));
     if (ntag(c, x) != ntag(c, y) ||
         (ntag(c, x) != N_CALL && (c->ef[x] | c->ef[y]) & EF_SIDE))
         return false;

@@ -2365,6 +2365,18 @@ static bool dup_expr(Checker *c, uint32_t a, uint32_t b)
 
 /* The statements of a branch with nested blocks flattened and empty
  * statements dropped; false if one is of a kind not compared. */
+/* The expression of a statement expression that is a single expression
+ * statement (gcc then sees just the expression), or NO_NODE. */
+uint32_t stmt_expr_single(Checker *c, uint32_t s)
+{
+    uint32_t k[8], l[2], e[2], m = 0;
+    if (node_children(c->nodes, s, k, 8) != 1 ||
+        !dup_flatten(c, k[0], l, &m, 2) || m != 1 || tg(c, l[0]) != N_EXPR_STMT ||
+        node_children(c->nodes, l[0], e, 2) != 1)
+        return NO_NODE;
+    return e[0];
+}
+
 static bool dup_flatten(Checker *c, uint32_t s, uint32_t *out, uint32_t *n,
                         uint32_t max)
 {

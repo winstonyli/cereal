@@ -1875,3 +1875,14 @@ diagnostics and builds on the strinit table.
   spill table) is written up in docs/DESIGN-NOTES.md.
 - Golden misc_136. Gate: 1219 pass, san 434/0, gcc.dg 47 / c-c++-common 35,
   callgrind 3.711G.
+
+## Round 118: typedef aligned(1), statement-expression self-comparison
+
+- `-Waddress-of-packed-member` asked the canonical type for its alignment, so
+  a typedef with `aligned(1)` was ignored; `pk_align` now asks the typedef
+  (misaligned-expand-3).
+- `opeq` (`-Wtautological-compare`) unwraps a statement expression that is a
+  single expression statement (`stmt_expr_single` in cstmt.c):
+  `({ i; }) == ({ i; })` warns as gcc does (pr68412-2).
+- Golden misc_137. Gate: 1220 pass, san 435/0, gcc.dg 45 / c-c++-common 35,
+  callgrind 3.710G.

@@ -1,0 +1,45 @@
+misc_137.c:6:56: warning: taking address of packed member of 'struct b' may result in an unaligned pointer value [-Waddress-of-packed-member]
+    6 | void f(int k){ cm *p = &g.x[k]; ai *q = &g.y; int *r = &g.z; cm *p2 = &g.x[0]; _Static_assert(_Alignof(cm)==1,""); }
+      |                                                        ^
+misc_137.c:6:80: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+    6 | void f(int k){ cm *p = &g.x[k]; ai *q = &g.y; int *r = &g.z; cm *p2 = &g.x[0]; _Static_assert(_Alignof(cm)==1,""); }
+      |                                                                                ^
+misc_137.c:6:95: warning: ISO C99 does not support '_Alignof' [-Wpedantic]
+    6 | void f(int k){ cm *p = &g.x[k]; ai *q = &g.y; int *r = &g.z; cm *p2 = &g.x[0]; _Static_assert(_Alignof(cm)==1,""); }
+      |                                                                                               ^
+misc_137.c:6:66: warning: unused variable 'p2' [-Wunused-variable]
+    6 | void f(int k){ cm *p = &g.x[k]; ai *q = &g.y; int *r = &g.z; cm *p2 = &g.x[0]; _Static_assert(_Alignof(cm)==1,""); }
+      |                                                                  ^
+misc_137.c:6:52: warning: unused variable 'r' [-Wunused-variable]
+    6 | void f(int k){ cm *p = &g.x[k]; ai *q = &g.y; int *r = &g.z; cm *p2 = &g.x[0]; _Static_assert(_Alignof(cm)==1,""); }
+      |                                                    ^
+misc_137.c:6:37: warning: unused variable 'q' [-Wunused-variable]
+    6 | void f(int k){ cm *p = &g.x[k]; ai *q = &g.y; int *r = &g.z; cm *p2 = &g.x[0]; _Static_assert(_Alignof(cm)==1,""); }
+      |                                     ^
+misc_137.c:6:20: warning: unused variable 'p' [-Wunused-variable]
+    6 | void f(int k){ cm *p = &g.x[k]; ai *q = &g.y; int *r = &g.z; cm *p2 = &g.x[0]; _Static_assert(_Alignof(cm)==1,""); }
+      |                    ^
+misc_137.c:7:24: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    7 | int fn1(int i){ return ({ i; }) == ({ i; }); }
+      |                        ^
+misc_137.c:7:36: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    7 | int fn1(int i){ return ({ i; }) == ({ i; }); }
+      |                                    ^
+misc_137.c:7:33: warning: self-comparison always evaluates to true [-Wtautological-compare]
+    7 | int fn1(int i){ return ({ i; }) == ({ i; }); }
+      |                                 ^
+misc_137.c:8:24: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    8 | int fn2(int i){ return ({ i + 1; }) != ({ i + 1; }); }
+      |                        ^
+misc_137.c:8:40: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    8 | int fn2(int i){ return ({ i + 1; }) != ({ i + 1; }); }
+      |                                        ^
+misc_137.c:8:37: warning: self-comparison always evaluates to false [-Wtautological-compare]
+    8 | int fn2(int i){ return ({ i + 1; }) != ({ i + 1; }); }
+      |                                     ^
+misc_137.c:9:24: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    9 | int fn3(int i){ return ({ i; }) == ({ i + 1; }); }
+      |                        ^
+misc_137.c:9:36: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    9 | int fn3(int i){ return ({ i; }) == ({ i + 1; }); }
+      |                                    ^
