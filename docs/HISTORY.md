@@ -2011,18 +2011,6 @@ diagnostics and builds on the strinit table.
 - -Wmisleading-indentation: guard and next statement from one macro
   expansion compare their spelled (definition) positions, skipping the
   empty-expansion gap scan; argument tokens are left out (misc_166).
-- Open: nested macros (Wmisleading-indentation-5 test05 needs the inner
-  macros
-
-## Round 126: restrict grouping, has_attribute recovery, macro indentation
-- -Wrestrict: one warning per restrict parameter listing every argument it
-  aliases ("arguments 3, 4"); an argument already named is not reported
-  again (misc_164).
-- A non-constant `aligned (i)` in `__builtin_has_attribute` goes on as 0, as
-  gcc does, so a later typedef redefinition is still diagnosed (misc_165).
-- -Wmisleading-indentation: guard and next statement from one macro
-  expansion compare their spelled (definition) positions, skipping the
-  empty-expansion gap scan; argument tokens are left out (misc_166).
 - Open: nested macros (Wmisleading-indentation-5 test05 needs the position
   of the inner macro invocation inside the outer body; the preprocessor
   keeps only the outermost expansion point), and 804:8, 924:15, 1154:10 in
