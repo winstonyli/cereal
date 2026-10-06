@@ -15,8 +15,8 @@ TYPES.md, PARALLEL.md, LSP.md and SPECS.md.
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
 - gcc.dg: 3714 of 3744 files run give the same diagnostics as gcc (message,
   line and column); 30 differ.
-- c-c++-common: 631 of 636 identical; 5 differ.
-- 1305 golden tests pass; the sanitizer build is clean on 477 files.
+- c-c++-common: 632 of 636 identical; 4 differ.
+- 1307 golden tests pass; the sanitizer build is clean on 478 files.
 - uvloop's `loop.c` checks in about 3.73 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.

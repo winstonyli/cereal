@@ -2079,3 +2079,20 @@ diagnostics and builds on the strinit table.
 - Not done: va_arg, offsetof and __builtin_types_compatible_p have the same
   recovery gap (spurious implicit-int / "expected statement").
 - Gate: 1305 pass, san 477/0, gcc.dg 30 / c-c++-common 5, callgrind 3.731G.
+
+## Round 131: optimize attribute (c-c++-common 4)
+- `optimize("a,b")` strings may be comma or space separated; each option is
+  checked (was: a string with a space was skipped, a comma list was one bad
+  option).
+- "optimization attribute ... follows definition but the attribute doesn't
+  match" now also fires when the definition has a different set: the options
+  are compared as an unordered set, except that an -O level makes the order
+  significant (gcc applies -O only to flags not yet set). An emulation of
+  gcc's node comparison, checked on attr-opt-1 only (misc_180).
+- Parked: unroll-5 (`#pragma GCC unroll j`) needs the parser to tell a
+  variable from an enum constant (both are SYM_ORDINARY), or the check moved
+  into the checker.
+- Open in c-c++-common: dump-ada-spec-14 (packed layout), pr68833-3
+  (-Wnormalized), unroll-5, and one file not yet identified (par lists the
+  differing files; the gate counts 4).
+- Gate: 1307 pass, san 478/0, gcc.dg 30 / c-c++-common 4, callgrind 3.736G.

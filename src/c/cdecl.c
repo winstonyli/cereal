@@ -917,7 +917,19 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             uint32_t m = cdep_msg(c, arg);  /* pushes: read it, then drop */
             const char *o = c->dep_msgs.data[m - 1];
             char no[104];
-            if (!strchr(o, ' ') && *o && cpragma_optimize_bad(o, no, sizeof no))
+            char one[96];
+            const char *s = o;
+            bool bad = false;
+            while (*s && !bad) {
+                size_t l = strcspn(s, ", ");
+                if (l && l < sizeof one) {
+                    memcpy(one, s, l);
+                    one[l] = 0;
+                    bad = cpragma_optimize_bad(one, no, sizeof no);
+                }
+                s += l + (s[l] != 0);
+            }
+            if (bad)
                 cwarn(c, cinput_loc(c, c->nodes[item].tok), "attributes",
                       "bad option '%s' to attribute 'optimize'", no);
             free(c->dep_msgs.data[--c->dep_msgs.len]);
@@ -5705,6 +5717,110 @@ static void inline_given(Checker *c, const CSym *s, bool is_inline,
 
 /* diagnose_mismatched_decls: an inline declaration after one with
  * noinline, or noinline after an inline one. */
+/* Append the options of one optimize("...") argument string (quotes and all
+ * as cdecl_attr_args writes it) to acc, comma separated. */
+static void opt_acc(char *acc, size_t n, const char *arg)
+{
+    size_t l = strlen(acc);
+    for (; *arg && l + 2 < n; arg++) {
+        if (*arg == '"')
+            continue;
+        acc[l++] = *arg == ' ' ? ',' : *arg;
+    }
+    if (l + 2 < n)
+        acc[l++] = ',';
+    acc[l] = 0;
+}
+
+static int opt_cmp(const void *a, const void *b)
+{
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+/* The accumulated options in a form that is equal exactly when gcc's
+ * optimization nodes are: an -O level makes the order significant (it only
+ * defaults flags not set so far), otherwise the order does not matter. */
+static void opt_canon(char *acc)
+{
+    char *tok[64], *s, *e;
+    size_t nt = 0, k;
+    bool lvl = false;
+    for (s = acc; *s && nt < 64; s = e) {
+        e = strchr(s, ',');
+        if (!e)
+            break;
+        *e++ = 0;
+        if (*s) {
+            tok[nt++] = s;
+            lvl = lvl || *s == 'O' || (*s >= '0' && *s <= '9');
+        }
+    }
+    if (!lvl)
+        qsort(tok, nt, sizeof *tok, opt_cmp);
+    {
+        char out[512];
+        size_t l = 0;
+        for (k = 0; k < nt && l + 2 < sizeof out; k++)
+            l += (size_t)snprintf(out + l, sizeof out - l, "%s,", tok[k]);
+        out[l] = 0;
+        memcpy(acc, out, l + 1);
+    }
+}
+
+static void attrs_opt_args(Checker *c, uint32_t holder, char *acc, size_t n)
+{
+    Kids k;
+    uint32_t j;
+    kids_get(c, holder, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n; q++) {
+            char an[32], arg[256];
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+            if (strcmp(an, "optimize"))
+                continue;
+            cdecl_attr_args(c, it.p[q], arg, sizeof arg);
+            opt_acc(acc, n, arg);
+        }
+        kids_free(&it);
+    }
+    kids_free(&k);
+}
+
+static void aset_opt_args(const Checker *c, uint32_t set, char *acc, size_t n)
+{
+    size_t k, ord[32], m = 0;
+    if (!set)
+        return;
+    for (k = c->ahead.data[set - 1]; k && m < 32; k = c->anames.data[k - 1].prev)
+        if (!strcmp(c->anames.data[k - 1].name, "optimize"))
+            ord[m++] = k;
+    while (m--)
+        opt_acc(acc, n, c->anames.data[ord[m] - 1].arg);
+}
+
+/* Whether the optimize options written on the new declaration differ from
+ * the definition's (none at all counts as different). */
+static bool opt_mismatch(Checker *c, const CSym *o, uint32_t sn, uint32_t idecl)
+{
+    char a[512] = "", b[512] = "";
+    aset_opt_args(c, o->aset, a, sizeof a);
+    if (!*a)
+        return true;
+    if (sn != NO_NODE)
+        attrs_opt_args(c, sn, b, sizeof b);
+    attrs_opt_args(c, idecl, b, sizeof b);
+    opt_canon(a);
+    opt_canon(b);
+    return strcmp(a, b) != 0;
+}
+
 static void inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
                            uint32_t sn, uint32_t idecl)
 {
@@ -5725,9 +5841,10 @@ static void inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
         d = cwarn_d(c, DL_WARNING, nw->loc, "attributes", "declaration of "
                     "'%s' with attribute 'noinline' follows inline "
                     "declaration", sname(c, nw));
-    else if ((o->flags & CSF_DEFINED) && !cdecl_aset_has(c, o->aset, "optimize", NULL) &&
+    else if ((o->flags & CSF_DEFINED) &&
              ((sn != NO_NODE && attrs_item_named(c, sn, "optimize")) ||
-              attrs_item_named(c, idecl, "optimize")))
+              attrs_item_named(c, idecl, "optimize")) &&
+             opt_mismatch(c, o, sn, idecl))
         d = cwarn_d(c, DL_WARNING, iloc(c, ltok), "attributes", "optimization "
                     "attribute on '%s' follows definition but the attribute "
                     "doesn't match", sname(c, nw));

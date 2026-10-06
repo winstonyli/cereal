@@ -1,0 +1,18 @@
+misc_180.c:9:1: warning: optimization attribute on 'fn1' follows definition but the attribute doesn't match [-Wattributes]
+    9 | double fn1 (double, double) __attribute__ ((optimize ("no-associative-math"))); /* { dg-warning "optimization attribute" } */
+      | ^
+misc_180.c:5:1: note: previous definition of 'fn1' with type 'double(double,  double)'
+    5 | fn1 (double h, double l) /* { dg-message "previous definition" } */
+      | ^
+misc_180.c:23:1: warning: optimization attribute on 'fn3' follows definition but the attribute doesn't match [-Wattributes]
+   23 | double fn3 (double, double) __attribute__ ((optimize ("O2,no-associative-math"))); /* { dg-warning "optimization attribute" } */
+      | ^
+misc_180.c:19:1: note: previous definition of 'fn3' with type 'double(double,  double)'
+   19 | fn3 (double h, double l) /* { dg-message "previous definition" } */
+      | ^
+misc_180.c:30:1: warning: optimization attribute on 'fn4' follows definition but the attribute doesn't match [-Wattributes]
+   30 | double fn4 (double, double) __attribute__ ((optimize ("O2,no-associative-math"))); /* { dg-warning "optimization attribute" } */
+      | ^
+misc_180.c:26:1: note: previous definition of 'fn4' with type 'double(double,  double)'
+   26 | fn4 (double h, double l) /* { dg-message "previous definition" } */
+      | ^
