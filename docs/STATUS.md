@@ -14,7 +14,7 @@ TYPES.md, PARALLEL.md, LSP.md and SPECS.md.
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
 - gcc.dg: 3726 of 3744 files run give the same diagnostics as gcc (message,
-  line and column); 19 differ.
+  line and column); 18 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 144 of 266 identical; 122 differ. A baseline, not yet a target; see HISTORY Round 142.
 - 1351 golden tests pass; the sanitizer build is clean on 500 files.
