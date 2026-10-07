@@ -534,6 +534,7 @@ static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
     }
     if (include_loc)
         __atomic_store_n(&f->inc_loc, include_loc, __ATOMIC_RELAXED);
+    __atomic_store_n(&f->entered, true, __ATOMIC_RELAXED);
     fr->prev = pp->inc;
     fr->file = f;
     fr->saved_lex = pp->lex;
@@ -684,7 +685,7 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
         static const char *const dirs[] = {
             "", "if", "ifdef", "ifndef", "elif", "else", "endif", "define",
             "undef", "include", "include_next", "line", "error", "warning",
-            "pragma", "ident", "sccs", "assert", "unassert"};
+            "pragma", "ident", "sccs", "assert", "unassert", "import"};
         int k;
         for (k = 1; k < (int)ARRAY_LEN(dirs); k++)
             intern_cstr(in, dirs[k])->kw = (uint16_t)k;
@@ -948,6 +949,9 @@ static SrcLoc line_start_of(PP *pp, SrcLoc loc)
     return (SrcLoc)(p - pp->sm->region);
 }
 
+static void trad_directive(PP *pp, int k, const Tok *kw);
+static void trad_stringification(PP *pp, const Macro *m, SrcLoc at);
+
 /* Skip an inactive group; leaves the lexer at the '#' of the #elif/#else/
  * #endif that ends it (or at end of file). */
 static void skip_group(PP *pp)
@@ -978,6 +982,10 @@ static void skip_group(PP *pp)
             }
             if (kw.kind == TK_IDENT) {
                 int k = ident_by_id(pp->in, kw.aux)->kw;
+                if (!(depth == 0 && (k == KW_ELIF || k == KW_ELSE || k == KW_ENDIF))) {
+                    pp->dir_indented = (h.flags & TF_SPACE) != 0;
+                    trad_directive(pp, k, &kw);
+                }
                 if (k == KW_IF || k == KW_IFDEF || k == KW_IFNDEF) {
                     depth++;
                 } else if (k == KW_ENDIF) {
@@ -1207,7 +1215,8 @@ static bool macros_identical(PP *pp, const Macro *a, const Macro *b)
     int k;
     if (a->funclike != b->funclike || a->nparams != b->nparams ||
         a->variadic != b->variadic || a->builtin || b->builtin ||
-        a->body_len != b->body_len)
+        a->body_len != b->body_len || a->extra_paste != b->extra_paste ||
+        a->extra_hash != b->extra_hash)
         return false;
     for (k = 0; k < a->nparams; k++)
         if (a->params[k] != b->params[k])
@@ -1373,13 +1382,21 @@ static void do_define(PP *pp, const Tok *hash)
     m->body = NEW_ARRAY(pp->arena, Tok, m->body_len + 1);
     if (m->body_len)
         memcpy(m->body, line.t + i, sizeof(Tok) * m->body_len);
+    if (m->funclike && m->nparams > 0 && i > 0 &&
+        diag_enabled(pp->diag, "traditional"))
+        trad_stringification(pp, m, line.t[i - 1].loc);
     {
         /* GCC: `##` marks the token before it; a run of them is one */
         uint32_t w = 0;
         for (b = 0; b < m->body_len; b++) {
             if (w && tok_is_punct(&m->body[b], P_HASHHASH) &&
-                tok_is_punct(&m->body[w - 1], P_HASHHASH))
+                tok_is_punct(&m->body[w - 1], P_HASHHASH)) {
+                m->extra_hash = m->extra_hash * 1000003u + w * 2 +
+                                (*pp_text(pp, &m->body[b]) == 0x25) +
+                                4 * ((m->body[b].flags & TF_SPACE) != 0);
+                m->extra_paste++;
                 continue;
+            }
             m->body[w++] = m->body[b];
         }
         m->body_len = w;
@@ -1447,10 +1464,12 @@ static void do_define(PP *pp, const Tok *hash)
                             name->loc, "redefining builtin macro \"%s\"",
                             nid->str);
         } else if (!macros_identical(pp, old, m)) {
-            Diagnostic *d = diag_report(pp->diag, DL_WARNING, "macro-redefined",
-                                        name->loc, "\"%s\" redefined", nid->str);
-            diag_note(pp->diag, d, old->name_loc,
-                      "this is the location of the previous definition");
+            Diagnostic *d;
+            pp->diag->nocol_next = true;    /* gcc: a line-only location */
+            d = diag_report(pp->diag, DL_WARNING, "macro-redefined",
+                            name->loc, "\"%s\" redefined", nid->str);
+            diag_note_nocol(pp->diag, d, old->name_loc,
+                            "this is the location of the previous definition");
         }
         old->undef_loc = hash->loc;
         old->undef_seq = pp->seq;
@@ -1550,7 +1569,13 @@ static char *parse_header_name(PP *pp, TokSpan line, bool *angled,
 {
     TokSpan s = line;
     *expanded = false;
-    if (!(s.t[0].kind == TK_STRING) && !tok_is_punct(&s.t[0], P_LT)) {
+    bool has_gt = false;
+    if (tok_is_punct(&s.t[0], P_LT)) {
+        uint32_t u;
+        for (u = 1; u < s.n; u++)
+            has_gt |= tok_is_punct(&s.t[u], P_GT);
+    }
+    if (!(s.t[0].kind == TK_STRING) && !has_gt) {   /* `<h` + a macro giving `>` */
         pp_expand_into(pp, line, tmp);
         s.t = tmp->t;
         s.n = tmp->len;
@@ -1603,7 +1628,8 @@ static char *parse_header_name(PP *pp, TokSpan line, bool *angled,
     return NULL;
 }
 
-static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
+static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
+                       bool import)
 {
     TokSpan line = read_line(pp);
     bool angled = false, expanded = false;
@@ -1617,6 +1643,15 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
 
     if (next)
         pedantic(pp, kw->loc, "#include_next is a GCC extension");
+    if (import) {
+        if (pp->opt->pedantic)
+            pedantic(pp, kw->loc, "#import is a GCC extension");
+        else
+            diag_report(pp->diag, DL_WARNING, "deprecated", kw->loc,
+                        "#import is a deprecated GCC extension");
+    }
+    if (next || import)
+        trad_directive(pp, import ? KW_IMPORT : KW_INCLUDE_NEXT, kw);
     if (next && pp->inc->prev == NULL) {
         diag_report(pp->diag, DL_WARNING, "include-next-in-primary", kw->loc,
                     "#include_next in primary source file");
@@ -1633,7 +1668,7 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
         return;
     }
     if (!expanded)
-        check_eol(pp, span_from(line, rest), next ? "include_next" : "include");
+        check_eol(pp, span_from(line, rest), import ? "import" : next ? "include_next" : "include");
     tokbuf_release(pp, &tmp);
     if (!*name) {
         diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
@@ -1662,6 +1697,15 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
         PP_EMIT(pp, include, &ev);
         return;
     }
+    if (import) {       /* once-only; skipped if already included */
+        bool seen = f->pragma_once || __atomic_load_n(&f->entered, __ATOMIC_RELAXED);
+        if (seen) {
+            f->pragma_once = true;
+            ev.result = INC_SKIPPED_ONCE;
+            PP_EMIT(pp, include, &ev);
+            return;
+        }
+    }
     if (f->pragma_once) {
         ev.result = INC_SKIPPED_ONCE;
         PP_EMIT(pp, include, &ev);
@@ -1679,6 +1723,8 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next)
         return;
     }
     ev.result = INC_OK;
+    if (import)
+        f->pragma_once = true;
     PP_EMIT(pp, include, &ev);
     PP_EMIT(pp, checkpoint, ev.name_end, pp->seq);
     push_file(pp, f, hash->loc, dir_index, &ev);
@@ -1801,6 +1847,7 @@ static void do_message(PP *pp, const Tok *kw, bool is_error)
         diag_report(pp->diag, DL_ERROR, "", kw->loc, "#error %s", text);
     } else {
         pedantic(pp, kw->loc, "#warning before C2X is a GCC extension");
+        trad_directive(pp, KW_WARNING, kw);
         diag_report(pp->diag, DL_WARNING, "pp-warning-directive", kw->loc,
                     "#warning %s", text);
     }
@@ -1893,6 +1940,7 @@ static void do_assert(PP *pp, const Tok *kw, bool add)
         diag_report(pp->diag, DL_WARNING, "deprecated", kw->loc,
                     "#%s is a deprecated GCC extension",
                     add ? "assert" : "unassert");
+    trad_directive(pp, add ? KW_ASSERT : KW_UNASSERT, kw);
     if (!pp_parse_assertion(pp, line, &i, add, kw->loc + kw->len, &pred,
                             &answer))
         return;
@@ -1935,6 +1983,66 @@ static void do_ident(PP *pp, const Tok *hash, const Tok *kw)
     tokbuf_release(pp, &tmp);
 }
 
+/* libcpp's directive_diagnostics, -Wtraditional part: traditional C ignores
+ * a directive whose # is not in column 1, so those it knew (K&R) must have
+ * it indented and those added later must not.  Also in skipped groups. */
+static void trad_directive(PP *pp, int k, const Tok *kw)
+{
+    bool kandr, indented = pp->dir_indented;
+    if (k == KW_NONE || !diag_enabled(pp->diag, "traditional"))
+        return;
+    kandr = k == KW_IF || k == KW_IFDEF || k == KW_IFNDEF || k == KW_DEFINE ||
+            k == KW_UNDEF || k == KW_INCLUDE || k == KW_LINE ||
+            k == KW_ENDIF || k == KW_ELSE;
+    if (k == KW_ELIF)
+        diag_report(pp->diag, DL_WARNING, "traditional", kw->loc,
+                    "suggest not using #elif in traditional C");
+    else if (indented && kandr)
+        diag_report(pp->diag, DL_WARNING, "traditional", kw->loc,
+                    "traditional C ignores #%.*s with the # indented",
+                    (int)kw->len, pp_text(pp, kw));
+    else if (!indented && !kandr)
+        diag_report(pp->diag, DL_WARNING, "traditional", kw->loc,
+                    "suggest hiding #%.*s from traditional C with an indented #",
+                    (int)kw->len, pp_text(pp, kw));
+}
+
+/* libcpp's check_trad_stringification: a parameter named inside a narrow
+ * string or character constant of the body would be substituted by traditional
+ * C.  Reported at the ')' ending the parameter list (the last token the
+ * lexer had produced). */
+static void trad_stringification(PP *pp, const Macro *m, SrcLoc at)
+{
+    uint32_t b;
+    for (b = 0; b < m->body_len; b++) {
+        const Tok *t = &m->body[b];
+        const char *p, *q, *limit;
+        if ((t->kind != TK_STRING && t->kind != TK_CHAR) || t->len < 2)
+            continue;
+        p = pp_text(pp, t);
+        if (*p != '"' && *p != '\'')
+            continue;
+        limit = p + t->len - 1;
+        for (p++; p < limit; p = q) {
+            int k;
+            size_t len;
+            while (p < limit && !isalpha((unsigned char)*p) && *p != '_' && *p != '$')
+                p++;
+            q = p;
+            while (q < limit && (isalnum((unsigned char)*q) || *q == '_' || *q == '$'))
+                q++;
+            len = (size_t)(q - p);
+            for (k = 0; k < m->nparams; k++)
+                if (m->params[k]->len == len && !memcmp(p, m->params[k]->str, len)) {
+                    diag_report(pp->diag, DL_WARNING, "traditional", at,
+                                "macro argument \"%s\" would be stringified in "
+                                "traditional C", m->params[k]->str);
+                    break;
+                }
+        }
+    }
+}
+
 static void phase_a_finish_dir(PP *pp, size_t dir_item);
 
 void pp_directive(PP *pp, const Tok *hash)
@@ -1962,11 +2070,15 @@ void pp_directive(PP *pp, const Tok *hash)
     }
     pp->in_directive = true;
     k = kw.kind == TK_IDENT ? ident_by_id(pp->in, kw.aux)->kw : KW_NONE;
+    pp->dir_indented = (hash->flags & TF_SPACE) != 0;
+    if (k != KW_INCLUDE_NEXT && k != KW_IMPORT && k != KW_ASSERT &&
+        k != KW_UNASSERT && k != KW_IDENT && k != KW_SCCS && k != KW_WARNING)
+        trad_directive(pp, k, &kw);    /* the others follow their extension note */
     /* the lines GCC checks for poisoned names (not #elif) */
     pp->dir_poison = active && pp->mode != PPM_PLAN &&
                      (k == KW_IF || k == KW_IFDEF || k == KW_IFNDEF ||
                       k == KW_DEFINE || k == KW_UNDEF || k == KW_INCLUDE ||
-                      k == KW_INCLUDE_NEXT || k == KW_LINE);
+                      k == KW_INCLUDE_NEXT || k == KW_IMPORT || k == KW_LINE);
     switch (k) {
     case KW_IF: do_if(pp, hash, &kw, COND_IF); goto out;
     case KW_IFDEF: do_if(pp, hash, &kw, COND_IFDEF); goto out;
@@ -1984,13 +2096,14 @@ void pp_directive(PP *pp, const Tok *hash)
     switch (k) {
     case KW_DEFINE: do_define(pp, hash); goto out;
     case KW_UNDEF: do_undef(pp, hash); goto out;
-    case KW_INCLUDE: do_include(pp, hash, &kw, false); goto out;
+    case KW_INCLUDE: do_include(pp, hash, &kw, false, false); goto out;
+    case KW_IMPORT: do_include(pp, hash, &kw, false, true); goto out;
     case KW_LINE: do_line(pp, hash, &kw, false); goto out;
     case KW_ERROR: do_message(pp, &kw, true); goto out;
     case KW_PRAGMA: pp_do_pragma(pp, read_line(pp), hash->loc); goto out;
     case KW_INCLUDE_NEXT:
         if (pp->opt->gnu_extensions) {
-            do_include(pp, hash, &kw, true);
+            do_include(pp, hash, &kw, true, false);
             goto out;
         }
         break;
@@ -2012,6 +2125,7 @@ void pp_directive(PP *pp, const Tok *hash)
         if (pp->opt->gnu_extensions) {
             pedantic(pp, kw.loc, "#%s is a GCC extension",
                      ident_by_id(pp->in, kw.aux)->str);
+            trad_directive(pp, k, &kw);
             do_ident(pp, hash, &kw);
             goto out;
         }

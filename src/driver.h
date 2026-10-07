@@ -31,6 +31,7 @@ typedef struct Options {
     bool fatal_errors;          /* -Wfatal-errors */
     int bad_options;            /* command-line errors reported */
     bool track0;                /* -ftrack-macro-expansion=0 */
+    bool trigraphs_flag;        /* -trigraphs given (else only the ISO -std= has them) */
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */
     char strict_alias;  /* -fstrict-aliasing 1, -fno-strict-aliasing 2 */
     bool check_versions;

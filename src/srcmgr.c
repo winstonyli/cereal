@@ -222,6 +222,12 @@ static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
             got += (size_t)r;
         }
         size = got;
+        /* libcpp drops a UTF-8 byte order mark */
+        if (size >= 3 && !memcmp(sm->region + base, "\357\273\277", 3)) {
+            memmove(sm->region + base, sm->region + base + 3, size - 3);
+            memset(sm->region + base + size - 3, 0, 3);
+            size -= 3;
+        }
     }
     close(fd);
     f = new_file(sm, norm, base, (uint32_t)size,

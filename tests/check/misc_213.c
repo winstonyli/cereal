@@ -1,0 +1,9 @@
+// flags: -std=gnu99
+const char *s = "??= ??( ??) ??-";
+// a splice ??/
+int x;
+/* ??= ??/
+ */
+#define SPL 1  
+ + 1
+int y[SPL];

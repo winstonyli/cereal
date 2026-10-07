@@ -46,6 +46,8 @@ typedef struct Macro {
     bool funclike;
     bool variadic;           /* last param is __VA_ARGS__ (or GNU named) */
     bool gnu_named_variadic;
+    uint16_t extra_paste;       /* the ## of a run beyond the first (libcpp's extra tokens) */
+    uint64_t extra_hash;        /* where they sit, and how they are spelled */
     bool predefined;         /* from <built-in> or <command line> */
     bool has_ops;            /* body contains # or ## */
     BuiltinKind builtin;
@@ -251,7 +253,7 @@ typedef bool (*BoundaryFn)(void *ctx, size_t item, bool clean);
 enum {
     KW_NONE, KW_IF, KW_IFDEF, KW_IFNDEF, KW_ELIF, KW_ELSE, KW_ENDIF,
     KW_DEFINE, KW_UNDEF, KW_INCLUDE, KW_INCLUDE_NEXT, KW_LINE, KW_ERROR,
-    KW_WARNING, KW_PRAGMA, KW_IDENT, KW_SCCS, KW_ASSERT, KW_UNASSERT
+    KW_WARNING, KW_PRAGMA, KW_IDENT, KW_SCCS, KW_ASSERT, KW_UNASSERT, KW_IMPORT
 };
 typedef enum { SRC_LEXER, SRC_CONTEXT, SRC_BARRIER } TokSrc;
 
@@ -280,6 +282,7 @@ typedef struct PP {
     CondFrame *cond;
     bool in_directive;
     bool in_if_expr;
+    bool dir_indented;       /* the # of the current directive had white space before it */
     VEC(SrcLoc) if_exp;      /* -ftrack-macro-expansion=0, #if: (spelling,
                                 expansion point) of each macro number */
     bool collecting_args;    /* arg pre-expansion: defer _Pragma */

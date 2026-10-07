@@ -1,6 +1,7 @@
 /* lit.c - C literals (lit.h). */
 #include "c/lit.h"
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -588,6 +589,122 @@ int lit_str_prefix(const char *s, size_t n)
     if (n > 1 && (s[0] == 'L' || s[0] == 'u' || s[0] == 'U'))
         return s[0];
     return 0;
+}
+
+void lit_escape_diags(const char *s, size_t n, bool pedantic, LitEscFn fn,
+                      void *ctx)
+{
+    int prefix = lit_str_prefix(s, n);
+    const char *q = s + (prefix == '8' ? 2 : prefix ? 1 : 0), *end = s + n;
+    unsigned bits = prefix == 'u' ? 16 : (prefix == 'L' || prefix == 'U') ? 32 : 8;
+    uint32_t mask = bits == 32 ? 0xFFFFFFFFu : (1u << bits) - 1;
+    char quote = n ? *q : 0;
+    if (quote != '"' && quote != '\'')
+        return;
+    q++;
+    if (end > q && end[-1] == quote)
+        end--;
+    while (q < end) {
+        char msg[96];
+        int c;
+        if (*q++ != '\\' || q >= end)
+            continue;
+        c = (unsigned char)*q++;
+        if (c == 'x') {
+            uint32_t v = 0;
+            bool ov = false, delim = false;
+            int nd = 0;
+            const char *base = q - 2;
+            if (q < end && *q == '{') {
+                delim = true;
+                q++;
+            }
+            for (; q < end && isxdigit((unsigned char)*q); q++, nd++) {
+                ov |= (v ^ (v << 4 >> 4)) != 0;
+                v = (v << 4) + (uint32_t)(isdigit((unsigned char)*q)
+                                          ? *q - '0' : (*q | 32) - 'a' + 10);
+            }
+            if (delim && q < end && *q == '}') {
+                q++;
+                if (!nd) {
+                    fn(ctx, 2, "empty delimited escape sequence");
+                    continue;
+                }
+                if (pedantic)
+                    fn(ctx, 1, "delimited escape sequences are only valid "
+                       "in C++23");
+                delim = false;
+            }
+            if (!nd) {
+                fn(ctx, 2, "\\x used with no following hex digits");
+                continue;
+            }
+            if (delim) {
+                snprintf(msg, sizeof msg, "'\\x{' not terminated with '}' "
+                         "after %.*s", (int)(q - base), base);
+                fn(ctx, 2, msg);
+                continue;
+            }
+            if (ov || v != (v & mask))
+                fn(ctx, 1, "hex escape sequence out of range");
+        } else if ((c >= '0' && c <= '7') || c == 'o') {
+            uint32_t v = 0;
+            bool ov = false, delim = false;
+            int count = 0;
+            const char *base = q - 2;
+            q--;
+            if (*q == 'o') {
+                q++;
+                if (q >= end || *q != '{')
+                    fn(ctx, 2, "'\\o' not followed by '{'");
+                else {
+                    q++;
+                    delim = true;
+                }
+            }
+            while (q < end && count++ < 3 && *q >= '0' && *q <= '7') {
+                if (delim) {
+                    count = 2;
+                    ov |= (v ^ (v << 3 >> 3)) != 0;
+                }
+                v = (v << 3) + (uint32_t)(*q++ - '0');
+            }
+            if (delim) {
+                if (q < end && *q == '}') {
+                    q++;
+                    if (count == 1) {
+                        fn(ctx, 2, "empty delimited escape sequence");
+                        continue;
+                    }
+                    if (pedantic)
+                        fn(ctx, 1, "delimited escape sequences are only "
+                           "valid in C++23");
+                } else {
+                    snprintf(msg, sizeof msg, "'\\o{' not terminated with '}' "
+                             "after %.*s", (int)(q - base), base);
+                    fn(ctx, 2, msg);
+                    continue;
+                }
+            }
+            if (ov || v != (v & mask))
+                fn(ctx, 1, "octal escape sequence out of range");
+        } else if (strchr("\\'\"?abfnrtvuUN", c)) {
+            continue;
+        } else if (c == 'e' || c == 'E') {
+            if (pedantic) {
+                snprintf(msg, sizeof msg, "non-ISO-standard escape sequence, '\\%c'", c);
+                fn(ctx, 1, msg);
+            }
+        } else if (strchr("({[%", c) && !pedantic) {
+            continue;
+        } else {
+            if (isgraph(c))
+                snprintf(msg, sizeof msg, "unknown escape sequence: '\\%c'", c);
+            else
+                snprintf(msg, sizeof msg, "unknown escape sequence: '\\%03o'", c);
+            fn(ctx, 1, msg);
+        }
+    }
 }
 
 void lit_str_units(const char *s, size_t n, unsigned width, uint64_t *units)

@@ -1,0 +1,21 @@
+misc_213.c:2:18: warning: trigraph ??= ignored, use -trigraphs to enable [-Wtrigraphs]
+    2 | const char *s = "??= ??( ??) ??-";
+      |                  ^
+misc_213.c:2:22: warning: trigraph ??( ignored, use -trigraphs to enable [-Wtrigraphs]
+    2 | const char *s = "??= ??( ??) ??-";
+      |                      ^
+misc_213.c:2:26: warning: trigraph ??) ignored, use -trigraphs to enable [-Wtrigraphs]
+    2 | const char *s = "??= ??( ??) ??-";
+      |                          ^
+misc_213.c:2:30: warning: trigraph ??- ignored, use -trigraphs to enable [-Wtrigraphs]
+    2 | const char *s = "??= ??( ??) ??-";
+      |                              ^
+misc_213.c:3:13: warning: trigraph ??/ ignored, use -trigraphs to enable [-Wtrigraphs]
+    3 | // a splice ??/
+      |             ^
+misc_213.c:5:8: warning: trigraph ??/ ignored, use -trigraphs to enable [-Wtrigraphs]
+    5 | /* ??= ??/
+      |        ^
+misc_213.c:8:2: error: expected identifier or '(' before '+' token
+    8 |  + 1
+      |  ^

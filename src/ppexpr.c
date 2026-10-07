@@ -4,6 +4,7 @@
  * (6.10.1p3).  Subexpressions that are not evaluated (short-circuit, ?:)
  * are parsed but produce no diagnostics for division by zero/overflow. */
 #include "pp.h"
+#include "c/lit.h"
 
 #include <string.h>
 
@@ -111,10 +112,11 @@ static bool want_value_error(EP *p, const Tok *t)
 
 static void overflow(EP *p, const Tok *op, bool eval)
 {
+    (void)op;
+    /* libcpp: at the token that triggered the reduction */
     if (eval)
         pp_warn_at(p->pp, p->t, "integer-overflow-in-if",
-                   "integer overflow in preprocessor expression");   /* libcpp: the token that triggered the reduction */
-        (void)op;
+                   "integer overflow in preprocessor expression");
 }
 
 /* ---- literals ------------------------------------------------------- */
@@ -206,6 +208,16 @@ static Val parse_number(EP *p, const Tok *t)
         return mkval(0, false);
     }
     uns = nu > 0;
+    if (nu > 0 && p->ok && diag_enabled(p->pp->diag, "traditional") &&
+        !diag_hidden_in_system_header(p->pp->diag, t->loc)) {
+        Tok u = *t;
+        size_t k;
+        for (k = 0; k + 1 < p->pp->if_exp.len; k += 2)   /* track0: where used */
+            if (p->pp->if_exp.data[k] == t->loc)
+                u.loc = p->pp->if_exp.data[k + 1];
+        pp_warn_at(p->pp, &u, "traditional", "traditional C rejects the "
+                   "\"%.*s\" suffix", (int)(end - s), s);
+    }
     if (base == 2 && p->pp->opt->pedantic) {
         Tok u = *t;
         size_t k;
@@ -246,7 +258,32 @@ static int hexval(char c)
     return -1;
 }
 
+typedef struct PEsc {
+    PP *pp;
+    SrcLoc loc;
+} PEsc;
+
+static Val parse_char_(EP *p, const Tok *t);
+
+static void esc_emit(void *ctx, int level, const char *msg)
+{
+    PEsc *e = ctx;
+    if (level == 2)
+        diag_report(e->pp->diag, DL_ERROR, "", e->loc, "%s", msg);
+    else
+        pp_pedwarn(e->pp, e->loc, "%s", msg);
+}
+
 static Val parse_char(EP *p, const Tok *t)
+{
+    PEsc esc;
+    esc.pp = p->pp;
+    esc.loc = t->loc;
+    lit_escape_diags(TXT(p, t), t->len, p->pp->opt->pedantic, esc_emit, &esc);
+    return parse_char_(p, t);
+}
+
+static Val parse_char_(EP *p, const Tok *t)
 {
     const char *s = TXT(p, t), *end = s + t->len - 1;
     bool wide = false, uns = false;
@@ -395,7 +432,11 @@ static Val unary(EP *p, bool eval)
     Val v;
     if (is_punct(p, P_PLUS)) {
         advance(p);
-        return unary(p, eval);
+        v = unary(p, eval);
+        if (eval && p->ok && diag_enabled(p->pp->diag, "traditional"))   /* at the lookahead */
+            diag_report(p->pp->diag, DL_WARNING, "traditional", p->t->loc,
+                        "traditional C rejects the unary plus operator");
+        return v;
     }
     if (is_punct(p, P_MINUS)) {
         advance(p);

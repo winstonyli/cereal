@@ -31,6 +31,7 @@ typedef enum DiagOrd {
 typedef struct DiagNote {
     SrcLoc loc;
     const char *msg;
+    bool nocol;              /* a line-only location, as the warning's */
 } DiagNote;
 
 typedef struct Diagnostic {
@@ -157,6 +158,7 @@ bool diag_noerror(DiagEngine *d, const char *id);
 int diag_option_state(DiagEngine *d, const char *id);
 /* true when -Wid itself was given on the command line */
 bool diag_option_explicit(DiagEngine *d, const char *id);
+bool diag_option_requested(DiagEngine *d, const char *id);
 /* N of -Wid=N as given on the command line, else dflt */
 int diag_option_level(DiagEngine *d, const char *id, int dflt);
 uint64_t diag_option_size(DiagEngine *d, const char *id);
@@ -167,6 +169,7 @@ bool diag_hidden_in_system_header(DiagEngine *d, SrcLoc loc);
 Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
                          SrcLoc loc, const char *fmt, va_list ap);
 void diag_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...);
+void diag_note_nocol(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...);
 void diag_set_range(Diagnostic *dg, SrcLoc b, SrcLoc e);
 /* Print a diagnostic now (used when immediate is false, e.g. after sort). */
 void diag_print(DiagEngine *d, Diagnostic *dg);

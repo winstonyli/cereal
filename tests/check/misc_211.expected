@@ -1,0 +1,23 @@
+misc_211.c:3: warning: "A" redefined
+    3 | #define A 1
+      | 
+misc_211.c:2: note: this is the location of the previous definition
+    2 | #define A
+      | 
+misc_211.c:5: warning: "str" redefined
+    5 | #define str(x) %: x
+      | 
+misc_211.c:4: note: this is the location of the previous definition
+    4 | #define str(x) #x
+      | 
+misc_211.c:8: warning: "cat3" redefined
+    8 | #define cat3(x,y,z) x####y##z
+      | 
+misc_211.c:7: note: this is the location of the previous definition
+    7 | #define cat3(x,y,z) x##y####z
+      | 
+misc_211.c:12: warning: "D" redefined
+   12 | #define D 1 2
+      | 
+<command-line>: note: this is the location of the previous definition
+misc_211.c:13: warning: ISO C forbids an empty translation unit [-Wpedantic]

@@ -47,6 +47,7 @@ typedef struct SrcFile {
     uint32_t cr_state;     /* atomic: 0 unknown, 1 no '\r', 2 has '\r' */
     SrcFileKind kind;
     bool pragma_once;
+    bool entered;          /* pushed by an #include (#import skips it) */
     bool system_header;
     uint32_t *sysmarks;    /* line markers: (physical line, 1 = system flag) pairs */
     uint32_t nsysmarks;    /* entries in sysmarks (2 per marker) */

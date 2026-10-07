@@ -1807,7 +1807,9 @@ static void traditional_suffix(Checker *c, uint32_t i, const char *s,
     suf[len - k] = 0;
     if (!flt && !strpbrk(suf, "uUiIjJ"))
         return;
-    if (!cin_system(c, cnode_loc(c, i)))
+    /* cpp_sys_macro_p: a token of a system header's macro */
+    if (!cin_system(c, cnode_loc(c, i)) &&
+        !cin_system(c, c->u->toks[c->nodes[i].tok].t.loc))
         cwarn(c, cnode_loc(c, i), "traditional",
               "traditional C rejects the \"%s\" suffix", suf);
 }
@@ -1885,7 +1887,7 @@ static void e_number(Checker *c, uint32_t i)
         c->ef[i] |= EF_DECIMAL;   /* 0, 0u */
 }
 
-/* libcpp: \e is not ISO, and \a and \x mean something else in traditional C. */
+/* libcpp: \a and \x mean something else in traditional C. */
 static void traditional_escapes(Checker *c, uint32_t tok, const char *s,
                                 size_t len)
 {
@@ -1896,15 +1898,37 @@ static void traditional_escapes(Checker *c, uint32_t tok, const char *s,
         return;
     for (k = 0; k + 1 < len; k++)
         if (s[k] == '\\') {
-            if (s[k + 1] == 'e' || s[k + 1] == 'E')
-                cpedwarn(c, loc, "", "non-ISO-standard escape sequence, '\\%c'",
-                          s[k + 1]);
             if (diag_enabled(c->diag, "traditional") &&
                 (s[k + 1] == 'a' || s[k + 1] == 'x'))
                 cwarn(c, loc, "traditional", "the meaning of '\\%c' is "
                       "different in traditional C", s[k + 1]);
             k++;
         }
+}
+
+typedef struct EscCtx {
+    Checker *c;
+    SrcLoc loc;
+} EscCtx;
+
+static void esc_emit(void *ctx, int level, const char *msg)
+{
+    EscCtx *e = ctx;
+    if (level == 2)
+        cerror(e->c, e->loc, "%s", msg);
+    else
+        cpedwarn(e->c, e->loc, "", "%s", msg);
+}
+
+/* libcpp's convert_escape and friends: bad hex/octal/unknown escapes. */
+static void escape_literal(Checker *c, const char *s, size_t len, SrcLoc loc)
+{
+    EscCtx e;
+    if (cin_system(c, loc))
+        return;
+    e.c = c;
+    e.loc = loc;
+    lit_escape_diags(s, len, c->opt.pedantic, esc_emit, &e);
 }
 
 /* libcpp's _cpp_valid_ucn for the escapes of a literal token: the -pedantic
@@ -2028,6 +2052,7 @@ static void e_char(Checker *c, uint32_t i)
     const char *s = ttext(c, c->nodes[i].tok, &len);
     Lit l;
     ucn_literal(c, c->nodes[i].tok, s, len, ctok_loc(c, c->nodes[i].tok));
+    escape_literal(c, s, len, ctok_loc(c, c->nodes[i].tok));
     lit_char(c->tgt, s, len, &l);
     traditional_escapes(c, c->nodes[i].tok, s, len);
     lit_report(c, i, &l);
@@ -2072,6 +2097,7 @@ static void e_string(Checker *c, uint32_t i)
         traditional_escapes(c, c->nodes[i].tok + k, s, len);
         ucn_literal(c, c->nodes[i].tok + k, s, len,
                     tloc(c, c->nodes[i].tok + np));
+        escape_literal(c, s, len, tloc(c, c->nodes[i].tok + np));
         if (p && prefix && p != prefix) {
             /* gcc's lexer reports it twice, at the lookahead's line */
             SrcLoc il = cinput_loc(c, c->nodes[i].tok + np);

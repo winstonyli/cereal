@@ -24,6 +24,7 @@ static const DiagOption options[] = {
     {"bidi-chars=", "pp", DL_WARNING, true, 0, "bidirectional control characters in comments, literals and identifiers"},
     {"normalized=", "pp", DL_WARNING, true, 0, "identifier not in Unicode NFC (or NFKC)"},
     {"directive-in-macro-args", "pp", DL_WARNING, true, 0, "directive inside macro arguments (C99 6.10.3p11 UB)"},
+    {"trigraphs", "pp", DL_WARNING, true, DO_ALL, "trigraphs: ignored (GNU modes) or, when asked for, converted"},
     {"endif-labels", "pp", DL_WARNING, true, 0, "extra tokens after #else or #endif"},
     {"extra-tokens", "pp", DL_WARNING, true, 0, "extra tokens at end of directive"},
     {"variadic-macros", "pp", DL_WARNING, true, 0, "named variadic macros under -pedantic"},
@@ -641,6 +642,15 @@ bool diag_option_explicit(DiagEngine *d, const char *id)
            d->cfg->overrides[i] != DL_IGNORED;
 }
 
+/* Asked for: explicitly, or through -Wall/-Wextra (not by default). */
+bool diag_option_requested(DiagEngine *d, const char *id)
+{
+    long i = find_index_cached(d, id);
+    if (i < 0 || !d->cfg)
+        return false;
+    return diag_option_explicit(d, id) || umbrella_state(d->cfg, &options[i]) > 0;
+}
+
 static bool in_system_header(DiagEngine *d, SrcLoc loc)
 {
     SrcFile *f = srcmgr_file_of(d->sm, loc);
@@ -740,9 +750,23 @@ void diag_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...)
     sb_vprintf(&sb, fmt, ap);
     va_end(ap);
     n.loc = loc;
+    n.nocol = false;
     n.msg = arena_strndup(d->arena, sb_cstr(&sb), sb.len);
     sb_free(&sb);
     vec_push(&dg->notes, n);
+}
+
+void diag_note_nocol(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...)
+{
+    char buf[512];
+    va_list ap;
+    if (!dg)
+        return;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof buf, fmt, ap);
+    va_end(ap);
+    diag_note(d, dg, loc, "%s", buf);
+    dg->notes.data[dg->notes.len - 1].nocol = true;
 }
 
 void diag_set_range(Diagnostic *dg, SrcLoc b, SrcLoc e)
@@ -832,7 +856,8 @@ static bool diag_shown_id(const char **id)
     }
     return strcmp(*id, "include-next-in-primary") &&
            strcmp(*id, "directive-in-macro-args") &&
-           strcmp(*id, "extra-tokens") && strcmp(*id, "integer-overflow-in-if");
+           strcmp(*id, "extra-tokens") && strcmp(*id, "integer-overflow-in-if") &&
+           strcmp(*id, "macro-redefined");
 }
 
 /* gcc's default column unit is the display column (cpp_byte_column_to_
@@ -881,6 +906,9 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
         pline = srcmgr_presumed(f, line, &fname);
         if (f->kind == SF_VIRTUAL && !strcmp(f->name, "<built-in>"))
             fprintf(o, "%s: ", f->name);
+        else if (nocol && f->kind == SF_VIRTUAL &&
+                 !strcmp(f->name, "<command line>"))
+            fputs("<command-line>: ", o);
         else if (!pline)        /* gcc: line 0 prints no position */
             fprintf(o, "%s: ", fname);
         else if (eof)   /* gcc: the end-of-file token has no column */
@@ -976,7 +1004,8 @@ void diag_print(DiagEngine *d, Diagnostic *dg)
                    dg->promoted, dg->nocol, dg->vcol);
     for (k = 0; k < dg->notes.len; k++)
         print_loc_line(d, dg->notes.data[k].loc, DL_NOTE,
-                       dg->notes.data[k].msg, NULL, none, false, false, 0);
+                       dg->notes.data[k].msg, NULL, none, false,
+                       dg->notes.data[k].nocol, 0);
 }
 
 void diag_flush(DiagEngine *d)

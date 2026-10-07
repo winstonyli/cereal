@@ -1,0 +1,12 @@
+misc_217.c:3:25: error: expected expression before ';' token
+    3 | int g(void) { return f( ; }
+      |                         ^
+misc_217.c:3:22: error: too many arguments to function 'f'
+    3 | int g(void) { return f( ; }
+      |                      ^
+misc_217.c:2:5: note: declared here
+    2 | int f(void) { return 5; }
+      |     ^
+misc_217.c:3:26: error: expected ';' before '}' token
+    3 | int g(void) { return f( ; }
+      |                          ^

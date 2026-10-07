@@ -182,6 +182,11 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
         av_push(&a->count, 0);
         av_push(&a->present, 0);
     }
+    /* libcpp: F() of a macro whose only parameter is variadic counts as
+     * omitting it, except in the ISO (non-GNU) modes: , ## drops the comma */
+    if (m->variadic && m->nparams == 1 && a->start.len == 1 &&
+        a->count.data[0] == 0 && pp->opt->gnu_mode)
+        a->present.data[0] = 0;
     if ((int)a->start.len != m->nparams) {
         Tok rp;
         memset(&rp, 0, sizeof rp);
@@ -221,7 +226,7 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
 {
     Context c;
     size_t base = pp->ctx.len;
-    Tok lastlex;
+    Tok lastlex = {0};
     bool carry = pp->carry_space;
     memset(&c, 0, sizeof c);
     c.toks = in.t;
@@ -1387,6 +1392,11 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         int i;
         if (!tok_is_punct(&lp, P_LPAREN)) {
             pp_unread(pp, &lp, ls);
+            if (!pp->collecting_args && !(m->file && m->file->system_header) &&
+                diag_enabled(pp->diag, "traditional"))
+                diag_report(pp->diag, DL_WARNING, "traditional", name->loc,
+                            "function-like macro \"%s\" must be used with "
+                            "arguments in traditional C", id->str);
             return false;
         }
         vseq = pp->versioned ? pp->version : pp->seq; /* at the name */

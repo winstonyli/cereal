@@ -1,0 +1,3 @@
+misc_214.c:3:2: warning: #import is a GCC extension
+    3 | #import "misc_214.h"
+      |  ^

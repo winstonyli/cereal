@@ -1,0 +1,54 @@
+misc_215.c:2:5: error: \x used with no following hex digits
+    2 | #if '\x'
+      |     ^
+misc_215.c:4:5: warning: hex escape sequence out of range
+    4 | #if '\x400'
+      |     ^
+misc_215.c:6:5: warning: octal escape sequence out of range
+    6 | #if '\400'
+      |     ^
+misc_215.c:8:5: warning: unknown escape sequence: '\p'
+    8 | #if '\p'
+      |     ^
+misc_215.c:10:67: warning: unknown escape sequence: '\q'
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: warning: unknown escape sequence: '\('
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: warning: non-ISO-standard escape sequence, '\e'
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: error: \x used with no following hex digits
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: warning: octal escape sequence out of range
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: warning: delimited escape sequences are only valid in C++23
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: error: empty delimited escape sequence
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: error: '\x{' not terminated with '}' after \x{4
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: warning: delimited escape sequences are only valid in C++23
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: error: empty delimited escape sequence
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: error: '\o{' not terminated with '}' after \o{1
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: error: '\o' not followed by '{'
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:10:67: warning: hex escape sequence out of range
+   10 | const char *s = "\q\(\e\x\400\x{41}\x{}\x{4\o{101}\o{}\o{1\o\x100";
+      |                                                                   ^
+misc_215.c:11:9: warning: hex escape sequence out of range
+   11 | int c = L'\x100000000';
+      |         ^

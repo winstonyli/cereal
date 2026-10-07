@@ -47,6 +47,11 @@ void lit_char(const Target *tgt, const char *s, size_t n, Lit *out);
 int lit_str_prefix(const char *s, size_t n);
 /* Adds one piece's code units (without the terminator) to *units, as
  * the literal's element width (1, 2 or 4 bytes) counts them. */
+/* libcpp's diagnostics for the escapes of a character or string literal
+ * (prefix included): level 2 an error, 1 a pedwarn (no option tag). */
+typedef void (*LitEscFn)(void *ctx, int level, const char *msg);
+void lit_escape_diags(const char *s, size_t n, bool pedantic, LitEscFn fn,
+                      void *ctx);
 void lit_str_units(const char *s, size_t n, unsigned width, uint64_t *units);
 
 #endif

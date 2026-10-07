@@ -135,11 +135,12 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     } else if (!strcmp(a, "-undef")) {
         o->pp.no_predefs = true;
     } else if (!strcmp(a, "-std=c99") || !strcmp(a, "-std=iso9899:1999")) {
-        /* default */
+        o->pp.lex.trigraphs = true;     /* the ISO modes */
     } else if (!strcmp(a, "-std=gnu99")) {
         o->pp.gnu_extensions = true;
         o->pp.gnu_mode = true;
         o->pp.lex.uliterals = true;
+        o->pp.lex.trigraphs = o->trigraphs_flag;
     } else if (!strncmp(a, "-std=", 5)) {
         fatal("only C99 is supported (got '%s')", a);
     } else if (!strcmp(a, "-pedantic") || !strcmp(a, "-Wpedantic")) {
@@ -152,6 +153,7 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->pedantic_errors = true;
         vec_push(&o->wflags, "pedantic");
     } else if (!strcmp(a, "-trigraphs")) {
+        o->trigraphs_flag = true;
         o->pp.lex.trigraphs = true;
     } else if (!strcmp(a, "-Wfatal-errors")) {
         o->fatal_errors = true;

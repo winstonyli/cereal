@@ -2309,3 +2309,33 @@ diagnostics and builds on the strinit table.
 - Known gaps: `#if 1 #foo(bar)` evaluates the assertion (gcc: missing binary
   operator before "#"); gnu89 "empty macro arguments" pedantic warning.
 - Gate: 1367 pass, san 508/0, gcc.dg 15 / c-c++-common 2 / cpp 91, callgrind 3.746G.
+
+## Round 147
+
+gcc.dg/cpp rejects-valid and accepts-invalid are now 0 (cpp 197 identical, 69 differ; was 175 / 91).
+
+- Trigraphs: `-std=c99` enables them silently; `-Wtrigraphs` (or -Wall) warns
+  "converted"; gnu modes ignore them and warn "ignored, use -trigraphs".
+  `-trigraphs` sets a separate flag so a later `-std=gnu99` turns them off.
+  A pre-scan (`scan_line_notes`, run from `lexer_init`) emits trigraph and
+  "backslash and newline separated by space" warnings, tracking
+  code/comment/string state and gcc's per-trigraph column shift.
+  `\` + spaces + newline is a splice (tab/FF/VT are not, empirically).
+- `#import` (once-only, GCC extension messages), UTF-8 BOM skip,
+  `#include <x.h` with a macro `>` (include4), vararg2 (a macro whose only
+  parameter is variadic counts as omitted in GNU modes).
+- Escape diagnostics (`lit_escape_diags`, shared by #if char constants and the
+  C front end): `\x` without digits, hex/octal out of range, unknown escapes,
+  `\e` and `\(` etc. under -pedantic, delimited `\x{}` / `\o{}` forms.
+- `-Wtraditional` preprocessor warnings: directive indentation, `#elif`,
+  `U` suffix and unary plus in #if, function-like macro used without
+  arguments, stringified macro argument; skipped for system-header macros.
+- Goldens misc_211..218.
+- Known gaps: `#if 1 #foo(bar)`; gnu89 "empty macro arguments"; pp-vs-parser
+  message ordering (sysmac1/3); pre-scan diagnostics come up front in file
+  order, not interleaved; `'\x{'` adds an extra multichar warning; escape
+  warnings not issued for tokens the parser rejects (`u'\x10000'` in c99);
+  missing "in expansion of macro" note for stray `\` inside macros.
+- Perf: the pre-scan is SIMD-skipped (`next_note_byte`) and gated by
+  `has_line_note`; first cut cost +7% on uvloop, now +1.4%.
+- Gate: 1383 pass, san 516/0, gcc.dg 15 / c-c++-common 2 / cpp 69, callgrind 3.800G.

@@ -1,0 +1,27 @@
+misc_216.c:3:3: warning: traditional C ignores #define with the # indented [-Wtraditional]
+    3 |  #define foo bar
+      |   ^
+misc_216.c:4:2: warning: suggest hiding #pragma from traditional C with an indented # [-Wtraditional]
+    4 | #pragma once_not
+      |  ^
+misc_216.c:7:2: warning: suggest not using #elif in traditional C [-Wtraditional]
+    7 | #elif 1
+      |  ^
+misc_216.c:9:3: warning: traditional C ignores #if with the # indented [-Wtraditional]
+    9 |  #if 1U
+      |   ^
+misc_216.c:9:6: warning: traditional C rejects the "U" suffix [-Wtraditional]
+    9 |  #if 1U
+      |      ^~
+misc_216.c:10:3: warning: traditional C ignores #endif with the # indented [-Wtraditional]
+   10 |  #endif
+      |   ^
+misc_216.c:11:7: warning: traditional C rejects the unary plus operator [-Wtraditional]
+   11 | #if +1
+      |       ^
+misc_216.c:13:13: warning: macro argument "h" would be stringified in traditional C [-Wtraditional]
+   13 | #define s1(h) "h3" 'h'
+      |             ^
+misc_216.c:15:5: warning: function-like macro "fl" must be used with arguments in traditional C [-Wtraditional]
+   15 | int fl;
+      |     ^
