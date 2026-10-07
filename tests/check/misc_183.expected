@@ -1,0 +1,57 @@
+misc_183.c:17:19: error: ISO C forbids braced-groups within expressions [-Wpedantic]
+   17 |     E1 = (1 ? 0 : ({ 0; })), /* { dg-error "constant expression" } */
+      |                   ^
+misc_183.c:17:10: error: enumerator value for 'E1' is not an integer constant expression [-Wpedantic]
+   17 |     E1 = (1 ? 0 : ({ 0; })), /* { dg-error "constant expression" } */
+      |          ^
+misc_183.c:21:10: error: enumerator value for 'E2' is not an integer constant expression [-Wpedantic]
+   21 |     E2 = __real__ (1 ? 0 : i++), /* { dg-error "constant expression" } */
+      |          ^
+misc_183.c:23:5: error: enumerator value for 'E4' is not an integer constant
+   23 |     E4 = __imag__ (1 ? 0 : i++), /* { dg-error "constant" } */
+      |     ^
+misc_183.c:29:10: error: enumerator value for 'E8' is not an integer constant expression [-Wpedantic]
+   29 |     E8 = __extension__ (1 ? 0 : i++), /* { dg-error "constant expression" } */
+      |          ^
+misc_183.c:33:16: error: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+   33 |     E10 = (1 ? : i++), /* { dg-error "constant expression" } */
+      |                ^
+misc_183.c:33:11: error: enumerator value for 'E10' is not an integer constant expression [-Wpedantic]
+   33 |     E10 = (1 ? : i++), /* { dg-error "constant expression" } */
+      |           ^
+misc_183.c:35:16: error: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+   35 |     E11 = (1 ? : 0) /* { dg-error "ISO C forbids omitting" } */
+      |                ^
+misc_183.c:40:17: error: ISO C does not support complex integer types [-Wpedantic]
+   40 |     F1 = (int) (_Complex int) 2i, /* { dg-error "constant expression" } */
+      |                 ^
+misc_183.c:40:31: error: imaginary constants are a GCC extension
+   40 |     F1 = (int) (_Complex int) 2i, /* { dg-error "constant expression" } */
+      |                               ^
+misc_183.c:40:10: error: enumerator value for 'F1' is not an integer constant expression [-Wpedantic]
+   40 |     F1 = (int) (_Complex int) 2i, /* { dg-error "constant expression" } */
+      |          ^
+misc_183.c:43:17: error: imaginary constants are a GCC extension
+   43 |     F2 = (int) +2i, /* { dg-error "constant expression" } */
+      |                 ^
+misc_183.c:43:10: error: enumerator value for 'F2' is not an integer constant expression [-Wpedantic]
+   43 |     F2 = (int) +2i, /* { dg-error "constant expression" } */
+      |          ^
+misc_183.c:45:21: error: imaginary constants are a GCC extension
+   45 |     F3 = (int) (1 + 2i), /* { dg-error "constant expression" } */
+      |                     ^
+misc_183.c:45:10: error: enumerator value for 'F3' is not an integer constant expression [-Wpedantic]
+   45 |     F3 = (int) (1 + 2i), /* { dg-error "constant expression" } */
+      |          ^
+misc_183.c:47:16: error: imaginary constants are a GCC extension
+   47 |     F4 = (int) 2i /* { dg-error "imaginary" } */
+      |                ^
+misc_183.c:49:38: error: imaginary constants are a GCC extension
+   49 |   static double dr = __real__ (1.0 + 2.0i);
+      |                                      ^
+misc_183.c:51:38: error: imaginary constants are a GCC extension
+   51 |   static double di = __imag__ (1.0 + 2.0i);
+      |                                      ^
+misc_183.c:55:27: error: ISO C forbids braced-groups within expressions [-Wpedantic]
+   55 |   static int j = (1 ? 0 : ({ 0; }));
+      |                           ^

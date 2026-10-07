@@ -485,14 +485,15 @@ static void pwarn_opt(Parser *p, const char *opt, uint32_t i, const char *fmt,
     va_end(ap);
 }
 
-/* A parser warning that gcc reports before the checker's at its place. */
+/* A parser pedwarn that gcc reports before the checker's at its place. */
 static void pwarn(Parser *p, uint32_t i, const char *fmt, ...)
 {
     va_list ap;
     if (p->unwind)
         return;
     va_start(ap, fmt);
-    pvreport(p, DL_WARNING, "", tok_loc(p, i), fmt, ap);
+    pvreport(p, p->diag->pedantic_errors ? DL_ERROR : DL_WARNING, "",
+             tok_loc(p, i), fmt, ap);
     va_end(ap);
     diag_mark_last(p->diag, ORD_TIE);
 }

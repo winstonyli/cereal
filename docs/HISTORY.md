@@ -2111,3 +2111,11 @@ diagnostics and builds on the strinit table.
   "packed layout" on a packed struct), pr68833-3 (-Wnormalized), unroll-5
   (see Round 131).
 - Gate: 1311 pass, san 480/0, gcc.dg 30 / c-c++-common 3, callgrind 3.736G.
+
+## Round 133: gcc.dg triage (30 to 28)
+- `-pedantic-errors` makes the parser pedwarns errors (`pwarn`): the
+  struct-semicolon pedwarn (misc_184, struct-semi-3).
+- `__imag__` of a non-complex int whose operand has a side effect is not
+  constant (hard error, as gcc); an imaginary literal cast directly to an
+  integer is an ICE (misc_183, gnu99-const-expr-1).
+- Gate: 1315 pass, san 482/0, gcc.dg 28 / c-c++-common 3, callgrind 3.736G.

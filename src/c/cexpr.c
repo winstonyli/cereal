@@ -4632,8 +4632,12 @@ static void real_imag(Checker *c, uint32_t i, uint32_t a, bool real)
         c->ck[i] = K_FLOAT;
         c->cv[i] = fpush(c, 0);
     } else {
-        c->ck[i] = c->ck[a] == K_ICE ? K_ICE : K_FOLD;
         c->cv[i] = 0;
+        if (c->ef[a] & EF_SIDE) {   /* gcc: a discarded side effect is not constant */
+            c->ck[i] = K_NONE;
+            return;
+        }
+        c->ck[i] = c->ck[a] == K_ICE ? K_ICE : K_FOLD;
         c->ef[i] |= c->ck[a] == K_ICE ? EF_INTOPS : EF_NOPCST;
     }
 }
@@ -4761,9 +4765,11 @@ static void conv_const(Checker *c, uint32_t i, uint32_t a, TypeId to)
             c->ck[i] = K_FLOAT;
             c->cv[i] = fpush(c, o);
         } else {
-            c->ck[i] = K_FOLD;
+            /* an imaginary literal cast directly to an integer is an ICE */
+            bool lit = ntag(c, strip_paren(c, a)) == N_NUMBER;
+            c->ck[i] = lit ? K_ICE : K_FOLD;
             c->cv[i] = cexpr_trunc(c, to, cplx_u(o));
-            c->ef[i] |= EF_NOPCST;
+            c->ef[i] |= lit ? EF_INTOPS : EF_NOPCST;
         }
         return;
     }

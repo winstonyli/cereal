@@ -1,0 +1,18 @@
+misc_184.c:8:13: error: extra semicolon in struct or union specified [-Wpedantic]
+    8 | struct s0 { ; }; /* { dg-error "extra semicolon in struct or union specified" } */
+      |             ^
+misc_184.c:8:8: error: struct has no members [-Wpedantic]
+    8 | struct s0 { ; }; /* { dg-error "extra semicolon in struct or union specified" } */
+      |        ^
+misc_184.c:12:3: error: extra semicolon in struct or union specified [-Wpedantic]
+   12 |   ; /* { dg-error "extra semicolon in struct or union specified" } */
+      |   ^
+misc_184.c:16:3: error: extra semicolon in struct or union specified [-Wpedantic]
+   16 |   ; /* { dg-error "extra semicolon in struct or union specified" } */
+      |   ^
+misc_184.c:18:1: error: no semicolon at end of struct or union
+   18 | }; /* { dg-error "no semicolon at end of struct or union" } */
+      | ^
+misc_184.c:21:1: error: no semicolon at end of struct or union
+   21 | }; /* { dg-error "no semicolon at end of struct or union" } */
+      | ^
