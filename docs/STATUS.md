@@ -38,15 +38,28 @@ bench/tools/cmp.sh gcc.dg/FILE.c     # diff one file against gcc-13
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
 callgrind) in parallel; see its header for the expected numbers.
 
-## Open differences (representative)
-- With `-ftrack-macro-expansion=0` gcc locates `#if` diagnostics from a macro
-  body at the macro use (binary-constants-2/3).
-- `#line 4294967295` overflow numbering (pr89410-1).
-- Struct-size alignment error location (pr97164); `aligned(i)` errors in
-  builtin-has-attribute.
-- A tail of one- and two-diagnostic files with distinct causes: attribute
-  conflict wording, `-Wmisleading-indentation`, `-Wcast-align`, padding and
-  overflow notes.  HISTORY.md lists them per round.
+## Open differences (gcc.dg 21, c-c++-common 3)
+Needs gcc's optimizer or middle end (out of reach for a front end):
+Wstringop-overflow-22, Wstringop-overread-6 (`strlen` and friends on
+unterminated arrays), invalid-call-1, pr56355-1, pr62090 (`-O2` nonnull),
+large-size-array-6, pr88074-2, strlenopt-78, pr83844.
+
+Darwin / Objective-C targets: darwin-cfstring-format-1, warn-nsstring,
+pr105522.
+
+Front-end gaps, each a small separate cause:
+- array-10: gcc adds "empty declaration" after a file-scope struct whose member
+  has a variably modified type (rule not derived).
+- init-bad-4: only the order of a parse error against checker errors.
+- Warray-parameter-11, binary-constants-1, multiple-overflow-warn-3,
+  pr100547, pr100619 (VLA parameter type spelling), pr108375-2, pr69650
+  (linemarker nesting), sequence-pt-pr17880 (column), ucnid-15-utf8
+  (`-Wnormalized`).
+- A parameter of a function definition with `restrict` on a non-pointer is
+  reported twice by gcc (once by us).
+
+c-c++-common: dump-ada-spec-14, pr68833-3 (`-Wnormalized`), unroll-5 (needs an
+enum-constant symbol kind in the parser).  HISTORY.md has the per-round detail.
 
 ## Working conventions
 - Every fix leaves a golden in `tests/check` (`NAME.c` + `NAME.expected`,
