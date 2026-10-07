@@ -1,0 +1,15 @@
+misc_191.c:11:1: error: invalid use of 'restrict'
+   11 | int restrict bar; /* { dg-bogus "warning" "warning in place of error" } */
+      | ^
+misc_191.c:11:1: error: invalid use of 'restrict'
+   11 | int restrict bar; /* { dg-bogus "warning" "warning in place of error" } */
+      | ^
+misc_191.c:16:1: error: invalid use of 'restrict'
+   16 | fp restrict baz; /* { dg-bogus "warning" "warning in place of error" } */
+      | ^
+misc_191.c:16:1: error: invalid use of 'restrict'
+   16 | fp restrict baz; /* { dg-bogus "warning" "warning in place of error" } */
+      | ^
+misc_191.c:19:1: error: invalid use of 'restrict'
+   19 | void quux (int restrict a[3]); /* { dg-bogus "warning" "warning in place of error" } */
+      | ^

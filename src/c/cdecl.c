@@ -4563,7 +4563,11 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             array_ptr_quals = quals_of_warn(c, dn);
             array_ptr_attrs = has_child_attr(c, dn);
             array_parm_static = (an->flags & NF_STATIC) != 0;
-            unspec = (an->flags & NF_STAR) && !(c->cv[dn] & 1);
+            if ((an->flags & NF_STAR) && (c->cv[dn] & 1)) {
+                type = ERRT;        /* gcc drops the declaration */
+                continue;
+            }
+            unspec = (an->flags & NF_STAR);
             array_parm_vla_unspec = unspec;
             if (unspec)
                 cc90(c, cnode_loc(c, dn), NULL, "ISO C90 does not support "
@@ -5020,7 +5024,8 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             type = ERRT;
         }
         if (!is_err(c, type))
-            type = qualify(c, type, type_quals, ltok);
+            type = qualify(c, qualify(c, type, type_quals, ltok), type_quals,
+                           ltok);     /* gcc qualifies twice (a 2nd error) */
         g->what = GD_FIELD;
         g->ty = type;
         g->s.kind = CS_OBJ;
@@ -5087,7 +5092,8 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
     } else {
         bool extern_ref = !initialized && sc == SC_EXTERN;
         if (!is_err(c, type))
-            type = qualify(c, type, type_quals, ltok);
+            type = qualify(c, qualify(c, type, type_quals, ltok), type_quals,
+                           ltok);     /* gcc qualifies twice (a 2nd error) */
         if (extern_ref && !filescope) {
             uint32_t ge = name && name < c->nidents ? c->ext[name] : 0;
             uint32_t vis = lookup_ord(c, name);
@@ -9030,10 +9036,19 @@ static void array_visit(Checker *c, uint32_t i)
     switch (cscope_kind(c)) {
     case SCK_PROTO:
         break;
-    case SCK_FUNC:
-        if (c->cur_func_node != NO_NODE)
+    case SCK_FUNC: {
+        uint32_t a;
+        for (a = c->par[i]; a != NO_NODE && ntag(c, a) != N_FUNC_DEF &&
+                            ntag(c, a) != N_COMPOUND; a = c->par[a])
+            ;
+        if (a != NO_NODE && ntag(c, a) == N_COMPOUND) {   /* in the body */
+            cerror(c, tloc(c, cnode(c, i)->tok), "'[*]' not allowed in other "
+                   "than function prototype scope");
+            c->cv[i] |= 1;
+        } else if (c->cur_func_node != NO_NODE)
             c->ef[c->cur_func_node] |= 1;
         break;
+    }
     default:
         cerror(c, tloc(c, cnode(c, i)->tok), "'[*]' not allowed in other than "
                "function prototype scope");
@@ -9358,6 +9373,8 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         AttrState st = {0};
         attrs_copy_check(c, fp.specs, CS_FUNC, g.s.name, ltok, &st);
         g.s.flags |= (st.pure ? CSF_PURE : 0) | (st.cnst ? CSF_CONSTFN : 0);
+        if (st.calign > g.s.ualign)
+            g.s.ualign = st.calign;
         g.s.nonnull |= st.nonnull | sp.attrs.nonnull;
         if (sp.attrs.fmt)
             g.s.fmt = sp.attrs.fmt;

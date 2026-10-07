@@ -1,0 +1,6 @@
+misc_190.c:12:1: warning: requested alignment '0' is not a positive power of 2 [-Wattributes]
+   12 | ALIGN (0) void f0 (void) { }    /* { dg-warning "requested alignment .0. is not a positive power of 2" } */
+      | ^
+misc_190.c:15:1: error: requested alignment '3' is not a positive power of 2
+   15 | ALIGN (3) void f3 (void) { }    /* { dg-error "requested alignment '3' is not a positive power of 2" } */
+      | ^

@@ -2131,3 +2131,17 @@ diagnostics and builds on the strinit table.
   -pedantic-errors), and diagnostics print the presumed line as a signed int
   (`-1`; misc_188, pr89410-1).
 - Gate: 1323 pass, san 486/0, gcc.dg 24 / c-c++-common 3, callgrind 3.738G.
+
+## Round 135: gcc.dg triage (24 to 21)
+- `[*]` in a function body is an error at the array, and gcc drops the
+  declaration (no "array size missing" follow-up): misc_189, vla-6.
+- A function definition's own `aligned (N)` (in its specifiers) now sets the
+  symbol's alignment, so `__alignof__ (f)` sees it: misc_190, attr-aligned-2.
+- `restrict` on a non-pointer variable or field is reported twice, as gcc
+  qualifies the type twice: misc_191, c99-restrict-1. Known gap: a parameter
+  of a function *definition* is also reported twice by gcc (we say once).
+- Not fixable here: invalid-call-1 and pr56355-1 need `-O2` middle-end
+  warnings; init-bad-4 differs only in diagnostic order (a parse error
+  printed after checker errors); array-10 needs gcc's "empty declaration"
+  after a variably modified struct member at file scope (rule not derived).
+- Gate: 1329 pass, san 489/0, gcc.dg 21 / c-c++-common 3, callgrind 3.738G.

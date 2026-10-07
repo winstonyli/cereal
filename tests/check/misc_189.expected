@@ -1,0 +1,33 @@
+misc_189.c:4:6: error: '[*]' not allowed in other than function prototype scope
+    4 | int a[*];                       /* { dg-error "not allowed in other than function prototype scope" } */
+      |      ^
+misc_189.c:5:20: error: '[*]' not allowed in other than function prototype scope
+    5 | void foo1() { int a[*]; }       /* { dg-error "not allowed in other than function prototype scope" } */
+      |                    ^
+misc_189.c:6:20: error: '[*]' not allowed in other than function prototype scope
+    6 | void foo2() { int a[*]; }       /* { dg-error "not allowed in other than function prototype scope" } */
+      |                    ^
+misc_189.c:7:16: error: '[*]' not allowed in other than function prototype scope
+    7 | int foo3(int i)[*];             /* { dg-error "not allowed in other than function prototype scope" } */
+      |                ^
+misc_189.c:8:1: error: '[*]' not allowed in other than function prototype scope
+    8 | void foo4(int o[*][4]) { }      /* { dg-error "not allowed in other than function prototype scope" } */
+      | ^
+misc_189.c:9:1: error: '[*]' not allowed in other than function prototype scope
+    9 | void foo5(int o[4][*]) { }      /* { dg-error "not allowed in other than function prototype scope" } */
+      | ^
+misc_189.c:14:1: warning: '[*]' not in a declaration
+   14 | void foo11(int x[sizeof(int (*)[*])]);  /* { dg-warning "not in a declaration" } */
+      | ^
+misc_189.c:23:9: error: a member of a structure or union cannot have a variably modified type [-Wpedantic]
+   23 |     vla x;                      /* { dg-error "a member of a structure or union cannot have a variably modified type" } */
+      |         ^
+misc_189.c:25:11: error: a member of a structure or union cannot have a variably modified type [-Wpedantic]
+   25 |     int (*y)[n];                /* { dg-error "a member of a structure or union cannot have a variably modified type" } */
+      |           ^
+misc_189.c:26:9: error: a member of a structure or union cannot have a variably modified type [-Wpedantic]
+   26 |     int z[n];                   /* { dg-error "a member of a structure or union cannot have a variably modified type" } */
+      |         ^
+misc_189.c:29:16: error: object with variably modified type must have no linkage
+   29 |   extern int (*r)[m];           /* { dg-error "variably modified type must have no linkage" } */
+      |                ^
