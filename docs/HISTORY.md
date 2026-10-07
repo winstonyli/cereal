@@ -2175,3 +2175,22 @@ diagnostics and builds on the strinit table.
   column 1 of the current line); the goldens run under `-std=c99 -pedantic`,
   where Hangul jamo are invalid, so those paths are covered by the fuzz only.
 - Gate: 1341 pass, san 495/0, gcc.dg 20 / c-c++-common 2, callgrind 3.733G.
+
+## Round 138: identifier spelling in messages (gcc.dg 20 to 19)
+- A name written with UCNs is interned as its UTF-8 text (`ucn_canon` in
+  lex.c; the token length is that of the interned text), so `\u03C0`,
+  `\U000003c0` and `π` are one identifier. Before, UTF-8 and UCN spellings
+  were different names, and `\U` forms were interned under a text shorter
+  than the token length (a read past the end when the text was re-read).
+- `cident_ucn` no longer truncates at 240 bytes, and `fuzzy_name` no longer
+  uses its rotating buffers: the caller's `name` was overwritten by the
+  candidates (an undeclared long name was reported as another one). A
+  suggestion is printed as UTF-8, as gcc does (`did you mean 'π'?`).
+- "unknown type name" spells an extended name as `\U%08x` (misc_198;
+  ucnid-15-utf8).
+- Known gap: a token that is an identifier with a UCN has the length of its
+  interned UTF-8 text, so an end-of-token location (e.g. "expected ';' before")
+  after such a name is off by the difference. gcc's second "unknown type
+  name" after an "expected ... before X" when X is followed by another
+  identifier is not reproduced (`foo bar baz qux`; normalize-2).
+- Gate: 1343 pass, san 496/0, gcc.dg 19 / c-c++-common 2, callgrind 3.732G.

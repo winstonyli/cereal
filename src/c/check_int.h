@@ -472,6 +472,8 @@ static inline uint32_t cnode_ident(const Checker *c, uint32_t i)
 /* An identifier with extended characters as gcc prints it in the C locale:
  * each as \UXXXXXXXX (UCN or UTF-8 spelled alike). */
 const char *cident_ucn(const char *s);
+const char *cident_ucn_to(const char *s, char *out, size_t cap);
+const char *cident_utf8_to(const char *s, char *out, size_t cap);
 
 /* gcc reports a keyword extension at the keyword, before its operand is
  * parsed: moves the diagnostic added since n0 (if one was) in front of

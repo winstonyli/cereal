@@ -235,6 +235,7 @@ static SrcLoc eof_input_loc(Parser *p)
  * " at end of input".  Keywords read like identifiers, punctuators are
  * spelled canonically (digraphs included) and followed by "token". */
 const char *cident_ucn(const char *s);   /* c/check.c */
+const char *cident_ucn_to(const char *s, char *out, size_t cap);
 
 static const char *tok_desc(Parser *p, uint32_t i, char *buf, size_t n)
 {
@@ -1068,14 +1069,19 @@ static void unknown_type_error(Parser *p, const PTok *t)
                                         : SYM_NONE;
     const char *name = tok_text_raw(p->sm, p->in, &t->t), *sug, *hdr;
     int len = (int)t->t.len;
-    char buf[SC_MAXLEN + 1];
+    char buf[SC_MAXLEN + 1], shown[1024];
     size_t bn = t->t.len < SC_MAXLEN ? t->t.len : SC_MAXLEN;
+    const char *raw = name;
+    if (ident_by_id(p->in, t->t.aux)->ext) {    /* printed as the checker does */
+        name = cident_ucn_to(ident_by_id(p->in, t->t.aux)->str, shown, sizeof shown);
+        len = (int)strlen(name);
+    }
     if (k >= SYM_TAG_STRUCT) {
         perr(p, ci(p), "unknown type name '%.*s'; use '%s' keyword to refer "
              "to the type", len, name, kw[k - SYM_TAG_STRUCT]);
         return;
     }
-    memcpy(buf, name, bn);
+    memcpy(buf, raw, bn);
     buf[bn] = 0;
     hdr = t->t.len < SC_MAXLEN ? std_header(buf) : NULL;
     sug = hdr ? NULL : fuzzy_typename(p, buf);

@@ -1,0 +1,12 @@
+misc_198.c:3:22: error: '\U000003c0q' undeclared (first use in this function); did you mean 'π'?
+    3 | int g(void) { return πq; }
+      |                      ^
+misc_198.c:3:22: note: each undeclared identifier is reported only once for each function it appears in
+    3 | int g(void) { return πq; }
+      |                      ^
+misc_198.c:4:22: error: '\U000003c0r' undeclared (first use in this function); did you mean 'π'?
+    4 | int h(void) { return πr; }
+      |                      ^
+misc_198.c:5:2: error: expected ';' before 'int'
+    5 | ª
+      |  ^

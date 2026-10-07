@@ -942,7 +942,12 @@ static const char *fuzzy_name(Checker *c, const char *goal, bool functions)
 {
     Best b;
     size_t k;
-    bool res_ok = goal[0] == '_';
+    char cand[1024], gbuf[1024];
+    static __thread char sug[1024];
+    const Ident *ident;
+    bool res_ok;
+    goal = cident_utf8_to(goal, gbuf, sizeof gbuf);     /* gcc compares UTF-8 */
+    res_ok = goal[0] == '_';
     best_init(&b, goal, &c->fuzzy_work);
     for (k = c->log.len; k-- > 0;) {
         const Bind *bd = &c->log.data[k];
@@ -951,7 +956,9 @@ static const char *fuzzy_name(Checker *c, const char *goal, bool functions)
             continue;
         if (c->fuzzy_work > SC_BUDGET)
             return NULL;
-        s = cident(c, bd->ident);
+        /* not cident (): its rotating buffers hold the caller's goal */
+        ident = ident_by_id(c->in, bd->ident);
+        s = ident->ext ? cident_utf8_to(ident->str, cand, sizeof cand) : ident->str;
         if (!res_ok && reserved_name(s))
             continue;
         if (bd->ns == NS_ORD) {
@@ -972,7 +979,11 @@ static const char *fuzzy_name(Checker *c, const char *goal, bool functions)
         } else if (functions) {
             continue;
         }
-        best_consider_n(&b, s, ident_by_id(c->in, bd->ident)->len);
+        best_consider_n(&b, s, strlen(s));
+        if (b.str == s && ident->ext) {        /* keep it past this buffer */
+            snprintf(sug, sizeof sug, "%s", s);
+            b.str = sug;
+        }
     }
     if (!functions)
         for (k = sizeof builtin_type_names / sizeof *builtin_type_names;

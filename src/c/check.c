@@ -283,13 +283,13 @@ uint32_t cbol_tok(Checker *c, uint32_t tok)
     return bol;
 }
 
-const char *cident_ucn(const char *s)
+/* s with every UCN and UTF-8 character as \\U%08x (what gcc prints in the C
+ * locale), into out[cap]. */
+const char *cident_ucn_to(const char *s, char *out, size_t cap)
 {
-    static __thread char ring[4][256];
-    static __thread unsigned next;
-    char *out = ring[next++ & 3], *o = out;
+    char *o = out;
     const unsigned char *p = (const unsigned char *)s;
-    while (*p && o < out + 240) {
+    while (*p && o < out + cap - 12) {
         uint32_t cp = 0;
         unsigned n = 0, k;
         if (p[0] == '\\' && (p[1] == 'u' || p[1] == 'U')) {
@@ -319,6 +319,55 @@ const char *cident_ucn(const char *s)
     }
     *o = 0;
     return out;
+}
+
+/* s with every UCN as UTF-8 (what gcc prints in a suggestion), into out[cap]. */
+const char *cident_utf8_to(const char *s, char *out, size_t cap)
+{
+    char *o = out;
+    const unsigned char *p = (const unsigned char *)s;
+    while (*p && o < out + cap - 8) {
+        uint32_t cp = 0;
+        unsigned k = 0, digits = 0;
+        if (p[0] == '\\' && (p[1] == 'u' || p[1] == 'U')) {
+            digits = p[1] == 'u' ? 4 : 8;
+            for (k = 0; k < digits && isxdigit(p[2 + k]); k++)
+                cp = cp << 4 | (uint32_t)(isdigit(p[2 + k]) ? p[2 + k] - '0'
+                                          : (p[2 + k] | 32) - 'a' + 10);
+        }
+        if (digits && k == digits) {
+            if (cp < 0x80) {
+                *o++ = (char)cp;
+            } else if (cp < 0x800) {
+                *o++ = (char)(0xC0 | cp >> 6);
+                *o++ = (char)(0x80 | (cp & 0x3F));
+            } else if (cp < 0x10000) {
+                *o++ = (char)(0xE0 | cp >> 12);
+                *o++ = (char)(0x80 | (cp >> 6 & 0x3F));
+                *o++ = (char)(0x80 | (cp & 0x3F));
+            } else {
+                *o++ = (char)(0xF0 | cp >> 18);
+                *o++ = (char)(0x80 | (cp >> 12 & 0x3F));
+                *o++ = (char)(0x80 | (cp >> 6 & 0x3F));
+                *o++ = (char)(0x80 | (cp & 0x3F));
+            }
+            p += 2 + digits;
+        } else {
+            *o++ = (char)*p++;
+        }
+    }
+    *o = 0;
+    return out;
+}
+
+/* The same into one of a few rotating buffers: valid until the fourth call
+ * after this one, so a caller that makes more calls copies it first. */
+const char *cident_ucn(const char *s)
+{
+    enum { CAP = 4096 };
+    static __thread char ring[4][CAP];
+    static __thread unsigned next;
+    return cident_ucn_to(s, ring[next++ & 3], CAP);
 }
 
 SrcLoc cinput_loc(Checker *c, uint32_t tok)

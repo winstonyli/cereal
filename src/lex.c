@@ -537,8 +537,9 @@ static bool s_is_idstart(Slow *s, int c)
     return (s->L->opt.dollar_idents ? cls_dollar : cls)[c & 0xFF] & C_IDSTART;
 }
 
-/* The identifier text with every UCN spelled \uXXXX / \UXXXXXXXX (upper-case
- * hex, the shorter form when it fits); 0 if it does not fit in cap. */
+/* The identifier text with every UCN spelled as UTF-8, so that a name written
+ * with UCNs, with UTF-8 or with a mix is one identifier; 0 if it does not fit
+ * in cap. */
 static size_t ucn_canon(const char *p, size_t n, char *out, size_t cap)
 {
     size_t i = 0, o = 0;
@@ -546,7 +547,7 @@ static size_t ucn_canon(const char *p, size_t n, char *out, size_t cap)
         if (p[i] == '\\' && i + 1 < n && (p[i + 1] == 'u' || p[i + 1] == 'U')) {
             size_t want = p[i + 1] == 'u' ? 4 : 8, k;
             unsigned long v = 0;
-            char buf[16];
+            char buf[8];
             int w;
             if (i + 2 + want > n)
                 return 0;
@@ -554,8 +555,25 @@ static size_t ucn_canon(const char *p, size_t n, char *out, size_t cap)
                 char h = p[i + 2 + k];
                 v = v * 16 + (unsigned long)(h <= '9' ? h - '0' : (h | 32) - 'a' + 10);
             }
-            w = v <= 0xFFFF ? snprintf(buf, sizeof buf, "\\u%04lX", v)
-                            : snprintf(buf, sizeof buf, "\\U%08lX", v);
+            if (v < 0x80) {
+                buf[0] = (char)v;
+                w = 1;
+            } else if (v < 0x800) {
+                buf[0] = (char)(0xC0 | v >> 6);
+                buf[1] = (char)(0x80 | (v & 0x3F));
+                w = 2;
+            } else if (v < 0x10000) {
+                buf[0] = (char)(0xE0 | v >> 12);
+                buf[1] = (char)(0x80 | (v >> 6 & 0x3F));
+                buf[2] = (char)(0x80 | (v & 0x3F));
+                w = 3;
+            } else {
+                buf[0] = (char)(0xF0 | v >> 18);
+                buf[1] = (char)(0x80 | (v >> 12 & 0x3F));
+                buf[2] = (char)(0x80 | (v >> 6 & 0x3F));
+                buf[3] = (char)(0x80 | (v & 0x3F));
+                w = 4;
+            }
             if (o + (size_t)w >= cap)
                 return 0;
             memcpy(out + o, buf, (size_t)w);
@@ -1029,9 +1047,10 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
         char canon[512];
         size_t cn = (flags & TF_UCN) ? ucn_canon(L->clean.data, L->clean.len,
                                                  canon, sizeof canon) : 0;
-        if (cn)         /* \u00c1, \u00C1 and \U000000C1 name one identifier */
+        if (cn) {       /* \u00c1, \U000000C1 and UTF-8 name one identifier */
             t->aux = intern(L->in, canon, cn)->id;
-        else
+            t->len = (uint32_t)cn;      /* the length of the interned text */
+        } else
             t->aux = intern(L->in, L->clean.data, L->clean.len)->id;
     } else if ((flags & TF_SPLICED) && L->scratch) {
         t->aux = srcmgr_scratch(L->sm, L->scratch, L->clean.data, L->clean.len);

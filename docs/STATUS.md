@@ -13,10 +13,10 @@ TYPES.md, PARALLEL.md, LSP.md and SPECS.md.
 - An index and LSP server over the same engine (`cereal index|query|lsp`).
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
-- gcc.dg: 3724 of 3744 files run give the same diagnostics as gcc (message,
-  line and column); 20 differ.
+- gcc.dg: 3725 of 3744 files run give the same diagnostics as gcc (message,
+  line and column); 19 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
-- 1341 golden tests pass; the sanitizer build is clean on 495 files.
+- 1343 golden tests pass; the sanitizer build is clean on 496 files.
 - uvloop's `loop.c` checks in about 3.73 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -38,7 +38,7 @@ bench/tools/cmp.sh gcc.dg/FILE.c     # diff one file against gcc-13
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
 callgrind) in parallel; see its header for the expected numbers.
 
-## Open differences (gcc.dg 20, c-c++-common 2)
+## Open differences (gcc.dg 19, c-c++-common 2)
 Needs gcc's optimizer or middle end (out of reach for a front end):
 Wstringop-overflow-22, Wstringop-overread-6 (`strlen` and friends on
 unterminated arrays), invalid-call-1, pr56355-1, pr62090 (`-O2` nonnull),
@@ -52,7 +52,7 @@ Front-end gaps, each a small separate cause:
   has a variably modified type (rule not derived).
 - Warray-parameter-11, multiple-overflow-warn-3, pr100547, pr100619 (VLA
   parameter type spelling), pr108375-2,
-  sequence-pt-pr17880 (column), ucnid-15-utf8 (identifier spelling in messages, not `-Wnormalized`).
+  sequence-pt-pr17880 (column).
 - A parameter of a function definition with `restrict` on a non-pointer is
   reported twice by gcc (once by us).
 
