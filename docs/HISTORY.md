@@ -2214,3 +2214,21 @@ diagnostics and builds on the strinit table.
 - Known gap: after `void f(void) { int \u00c1x = 1 }` gcc leaves `f` open
   (nested-function warnings follow); cereal closes it.
 - Gate: 1349 pass, san 499/0, gcc.dg 19 / c-c++-common 2, callgrind 3.732G.
+
+## Round 142: gcc.dg/cpp in the parity run
+- `CEREAL_DGDIR=gcc.dg/cpp` already worked in par.py; verify.sh now runs it
+  (266 of 474 files; the rest need dg-options par.py skips). Baseline: 144
+  identical, 122 differ. This is the biggest open parity area.
+- Main clusters (gcc-only messages unless noted): `-pedantic-errors` does not
+  turn pp pedwarns into errors ("ISO C99 requires whitespace after the macro
+  name", also 1 column off: gcc 5:9, cereal 5:10); `assertions are a GCC
+  extension` / `#assert|#unassert is a GCC extension` (cereal prints
+  `[-Wpedantic]` and a different deprecated-assertions text); "this use of
+  defined may not be portable"; `-Wtraditional` pp warnings; "embedding a
+  directive within macro arguments"; "astr/cat redefined" (cereal-only,
+  56x, probably a shared header); rejects-valid: Wtrigraphs-2, backslash,
+  import1/2, include4, pr33415, vararg2; accepts-invalid: escape-1, macspace2.
+- The default par cache (`~/.cache/cereal-par`) gave 23 gcc.dg differences
+  where `CEREAL_PARCACHE=0` gives 19; run parity with the cache off (the gate
+  does).
+- gate.sh header corrected to dg 19 / c-c++-common 2 (it still said 30 / 3).
