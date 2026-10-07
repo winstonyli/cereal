@@ -308,6 +308,7 @@ typedef struct PP {
     SrcLoc tok_exp_loc;
     uint32_t tok_exp_id, tok_root;
     bool tok_root_obj;
+    SrcLoc paste_loc;        /* where the invocation ends, for ## warnings */
     bool subst_root_obj;     /* root_obj of the expansion being substituted */
     /* ... and of the last token returned by pp_next */
     SrcLoc out_exp_loc;

@@ -2171,8 +2171,8 @@ diagnostics and builds on the strinit table.
 - Check: `python3 -P bench/tools/fuzz_nfc.py ./cereal 25 < /dev/null`
   compares the warnings with gcc-13 on random identifiers at every level
   (0 mismatches); goldens misc_193..197 (pr68833-3 now matches).
-- Known gap (nfkc/rare): a token made by `##` is not checked (gcc warns at
-  column 1 of the current line); the goldens run under `-std=c99 -pedantic`,
+- (Closed in Round 139: a token made by `##` was not checked; gcc warns at
+  column 1 of the current line.) The goldens run under `-std=c99 -pedantic`,
   where Hangul jamo are invalid, so those paths are covered by the fuzz only.
 - Gate: 1341 pass, san 495/0, gcc.dg 20 / c-c++-common 2, callgrind 3.733G.
 
@@ -2194,3 +2194,10 @@ diagnostics and builds on the strinit table.
   name" after an "expected ... before X" when X is followed by another
   identifier is not reproduced (`foo bar baz qux`; normalize-2).
 - Gate: 1343 pass, san 496/0, gcc.dg 19 / c-c++-common 2, callgrind 3.732G.
+
+## Round 139: -Wnormalized for ## results
+- A token made by `##` that is an identifier or pp-number with an extended
+  character is checked too (`lex_norm_check`, called from `paste` in
+  ppexpand.c). libcpp reports it at column 1 of the line being read, i.e. the
+  line of the invocation's `)` (`PP.paste_loc`); misc_199, ucnid-3.
+- Gate: 1345 pass, san 497/0, gcc.dg 19 / c-c++-common 2, callgrind 3.732G.

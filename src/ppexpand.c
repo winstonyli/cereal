@@ -413,6 +413,24 @@ static bool paste(PP *pp, const Tok *lhs, const Tok *rhs, const Tok *op,
     lexer_init_range(&L, pp->sm, pp->in, &pp->scratch, pp->opt->lex, sl, (uint32_t)sb->len);
     lex_next(&L, &r);
     valid = r.kind != TK_EOF && !(r.flags & TF_UNTERMINATED) && L.p == L.lim;
+    if (valid && pp->opt->lex.norm < 3 && pp->diag &&
+        (r.kind == TK_IDENT || r.kind == TK_PPNUM) && sb->len) {
+        size_t k;
+        for (k = 0; k < sb->len; k++)
+            if ((unsigned char)sb->data[k] >= 0x80 || sb->data[k] == '\\') {
+                /* libcpp warns at column 1 of the line being read */
+                SrcFile *f = srcmgr_file_of(pp->sm, pp->paste_loc);
+                uint32_t line, col;
+                SrcLoc at = pp->paste_loc;
+                if (f) {
+                    srcmgr_linecol(f, pp->paste_loc, &line, &col);
+                    at = pp->paste_loc - (col - 1);
+                }
+                lex_norm_check(&L, pp->diag, at, sb->data, sb->data + sb->len,
+                               r.kind == TK_PPNUM);
+                break;
+            }
+    }
     lexer_free(&L);
     if (!valid) {
         Diagnostic *d = diag_report(pp->diag, DL_ERROR, "", site,
@@ -1326,6 +1344,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
             return true;
         }
         pp->subst_root_obj = root_obj;
+        pp->paste_loc = name->loc + name->len;
         subst(pp, m, NULL, lead, site, exp_loc, eid, root, &c.owned);
         pp->subst_root_obj = saved_root_obj;
     } else {
@@ -1370,6 +1389,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
             free(spans);
         }
         pp->subst_root_obj = root_obj;
+        pp->paste_loc = a.rparen_loc;
         subst(pp, m, &a, lead, site, exp_loc, eid, root, &c.owned);
         pp->subst_root_obj = saved_root_obj;
         args_free(pp, &a, m->nparams);

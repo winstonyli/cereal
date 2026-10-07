@@ -1,0 +1,18 @@
+misc_199.c:7:3: warning: `\U000000aa' is not in NFKC [-Wnormalized=]
+    7 |   ª
+      |   ^
+misc_199.c:8:1: warning: `\U000000c0\U000000aa' is not in NFKC [-Wnormalized=]
+    8 | )
+      | ^
+misc_199.c:9:7: warning: `\U000000aa' is not in NFKC [-Wnormalized=]
+    9 | int P(ª,
+      |       ^
+misc_199.c:10:1: warning: `\U000000aa\U00000531' is not in NFKC [-Wnormalized=]
+   10 |  Ա) = 1;
+      | ^
+misc_199.c:11:10: warning: `\U000000aa' is not in NFKC [-Wnormalized=]
+   11 | int P(x, ª) = 2;
+      |          ^
+misc_199.c:11:1: warning: `x\U000000aa' is not in NFKC [-Wnormalized=]
+   11 | int P(x, ª) = 2;
+      | ^

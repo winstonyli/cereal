@@ -641,7 +641,8 @@ static int utf8_id_class(const Lexer *L, uint32_t cp)
 
 /* -Wnormalized: libcpp's quick check (charset.cc ucn_valid_in_identifier) over
  * the identifier [start, end), run only for those with an extended character. */
-static void norm_check(Lexer *L, const char *start, const char *end, bool raw)
+void lex_norm_check(const Lexer *L, DiagEngine *dg, SrcLoc loc, const char *start,
+                    const char *end, bool raw)
 {
     uint32_t prev = 0;
     unsigned pc = 0;
@@ -758,7 +759,7 @@ static void norm_check(Lexer *L, const char *start, const char *end, bool raw)
         p += n;
     }
     *o = 0;
-    diag_report(L->diag, DL_WARNING, "normalized=", (SrcLoc)(start - L->region),
+    diag_report(dg, DL_WARNING, "normalized=", loc,
                 "`%s' is not in %s", sp, lvl == 1 ? "NFKC" : "NFC");
     free(sp);
 }
@@ -978,7 +979,7 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
         if (ext && L->bidi_live)
             bidi_close(L, s.p);
         if (ext && L->diag && L->opt.norm < 3)
-            norm_check(L, start, s.p, false);
+            lex_norm_check(L, L->diag, (SrcLoc)(start - L->region), start, s.p, false);
     } else if ((c >= '0' && c <= '9') ||
                (c == '.' && s_peek2(&s) >= '0' && s_peek2(&s) <= '9')) {
         bool xn = false;            /* has a UTF-8 character or a UCN */
@@ -1004,7 +1005,7 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
             }
         }
         if (xn && L->diag && L->opt.norm < 3)
-            norm_check(L, start, s.p, true);
+            lex_norm_check(L, L->diag, (SrcLoc)(start - L->region), start, s.p, true);
     } else if (c == '\'' || c == '"') {
         if (s_quoted(&s, c)) {
             t->kind = c == '"' ? TK_STRING : TK_CHAR;

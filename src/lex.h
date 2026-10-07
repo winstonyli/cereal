@@ -19,6 +19,11 @@ typedef struct LexOptions {
  * bidirectional controls written as UCNs. */
 enum { BIDI_UNPAIRED = 1, BIDI_ANY = 2, BIDI_UCN = 4 };
 
+typedef struct Lexer Lexer;
+/* -Wnormalized for the identifier or pp-number [start, end) at loc. */
+void lex_norm_check(const Lexer *L, DiagEngine *dg, SrcLoc loc, const char *start,
+                    const char *end, bool raw);
+
 typedef struct Lexer {
     const char *p;       /* cursor */
     const char *lim;     /* end of content (NUL + zero padding follow) */
@@ -38,7 +43,7 @@ typedef struct Lexer {
     uint32_t bd_n;          /* open bidirectional contexts (libcpp bidi::vec) */
     uint8_t bd[32];         /* bit 0: closed by PDF (else PDI), bit 1: a UCN */
     StrBuf clean;        /* slow-path spelling buffer */
-} Lexer;
+};
 
 void lex_global_init(void);
 
