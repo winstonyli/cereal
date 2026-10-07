@@ -1,0 +1,21 @@
+misc_200.c:1:1: error: unknown type name 'foo'
+    1 | foo bar baz qux zed;
+      | ^
+misc_200.c:1:9: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'baz'
+    1 | foo bar baz qux zed;
+      |         ^
+misc_200.c:1:9: error: unknown type name 'baz'
+    1 | foo bar baz qux zed;
+      |         ^
+misc_200.c:3:1: error: unknown type name 'foo'
+    3 | foo bar baz + 1;
+      | ^
+misc_200.c:3:9: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'baz'
+    3 | foo bar baz + 1;
+      |         ^
+misc_200.c:5:16: error: unknown type name 'foo'
+    5 | void f(void) { foo bar baz qux zed; }
+      |                ^
+misc_200.c:5:24: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'baz'
+    5 | void f(void) { foo bar baz qux zed; }
+      |                        ^

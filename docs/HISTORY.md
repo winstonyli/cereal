@@ -2190,9 +2190,7 @@ diagnostics and builds on the strinit table.
   ucnid-15-utf8).
 - Known gap: a token that is an identifier with a UCN has the length of its
   interned UTF-8 text, so an end-of-token location (e.g. "expected ';' before")
-  after such a name is off by the difference. gcc's second "unknown type
-  name" after an "expected ... before X" when X is followed by another
-  identifier is not reproduced (`foo bar baz qux`; normalize-2).
+  after such a name is off by the difference.
 - Gate: 1343 pass, san 496/0, gcc.dg 19 / c-c++-common 2, callgrind 3.732G.
 
 ## Round 139: -Wnormalized for ## results
@@ -2201,3 +2199,10 @@ diagnostics and builds on the strinit table.
   ppexpand.c). libcpp reports it at column 1 of the line being read, i.e. the
   line of the invocation's `)` (`PP.paste_loc`); misc_199, ucnid-3.
 - Gate: 1345 pass, san 497/0, gcc.dg 19 / c-c++-common 2, callgrind 3.732G.
+
+## Round 140: reparse after "expected ... before X" at file scope
+- At file scope gcc reparses the token after an "expected ... before X" error,
+  even following "unknown type name" (`foo bar baz qux;` gives a second
+  "unknown type name 'baz'"). Block scope still skips (unk_type_skip).
+  parse.c now syncs only when `!top` (`s.err && !top`); misc_200, normalize-2.
+- Gate: 1347 pass, san 498/0, gcc.dg 19 / c-c++-common 2, callgrind 3.732G.

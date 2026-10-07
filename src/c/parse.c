@@ -3170,7 +3170,7 @@ static void declaration(Parser *p, bool top)
                 expected(p, "'=', ',', ';', 'asm' or '__attribute__'");
                 /* gcc's c_parser_declaration_or_fndef just returns: in a
                  * block the statements go on from this very token */
-                if (p->kr_params || n > 0 || s.err)
+                if (p->kr_params || n > 0 || (s.err && !top))
                     sync_top(p); /* skip_to_end_of_block_or_statement */
                 else if (!top)
                     p->err.live = false; /* error = false after each item */
