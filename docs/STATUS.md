@@ -13,11 +13,11 @@ TYPES.md, PARALLEL.md, LSP.md and SPECS.md.
 - An index and LSP server over the same engine (`cereal index|query|lsp`).
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
-- gcc.dg: 3727 of 3744 files run give the same diagnostics as gcc (message,
-  line and column); 17 differ.
+- gcc.dg: 3728 of 3744 files run give the same diagnostics as gcc (message,
+  line and column); 16 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 144 of 266 identical; 122 differ. A baseline, not yet a target; see HISTORY Round 142.
-- 1355 golden tests pass; the sanitizer build is clean on 502 files.
+- 1361 golden tests pass; the sanitizer build is clean on 505 files.
 - uvloop's `loop.c` checks in about 3.73 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -39,21 +39,19 @@ bench/tools/cmp.sh gcc.dg/FILE.c     # diff one file against gcc-13
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
 callgrind) in parallel; see its header for the expected numbers.
 
-## Open differences (gcc.dg 17, c-c++-common 2)
+## Open differences (gcc.dg 16, c-c++-common 2)
 Needs gcc's optimizer or middle end (out of reach for a front end):
-Wstringop-overflow-22, Wstringop-overread-6 (`strlen` and friends on
-unterminated arrays), invalid-call-1, pr56355-1, pr62090 (`-O2` nonnull),
+Wstringop-overflow-22 (`strlen` and friends on
+unterminated arrays, partly done in R145), invalid-call-1, pr56355-1, pr62090 (`-O2` nonnull),
 large-size-array-6, pr88074-2, strlenopt-78, pr83844.
 
-Darwin / Objective-C targets: darwin-cfstring-format-1, warn-nsstring,
-pr105522.
+Darwin / Objective-C targets: darwin-cfstring-format-1, pr105522.
 
 Front-end gaps, each a small separate cause:
 - array-10: gcc adds "empty declaration" after a file-scope struct whose member
   has a variably modified type (rule not derived).
 - Warray-parameter-11, multiple-overflow-warn-3, pr100547, pr100619 (VLA
-  parameter type spelling), pr108375-2,
-  sequence-pt-pr17880 (column).
+  parameter type spelling), pr108375-2.
 - A parameter of a function definition with `restrict` on a non-pointer is
   reported twice by gcc (once by us).
 

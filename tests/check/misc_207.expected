@@ -1,0 +1,6 @@
+misc_207.c:6:23: warning: unterminated format string [-Wformat=]
+    6 | void f(void) { printf(unt); printf(ok); printf(pad); printf(unt + 1); }
+      |                       ^
+misc_207.c:6:61: warning: unterminated format string [-Wformat=]
+    6 | void f(void) { printf(unt); printf(ok); printf(pad); printf(unt + 1); }
+      |                                                             ^

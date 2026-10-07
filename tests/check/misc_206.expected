@@ -1,0 +1,6 @@
+misc_206.c:11:5: error: variably modified 'z5' at file scope
+   11 | int z5[strlen("hello")];
+      |     ^
+misc_206.c:14:5: error: variably modified 'z7' at file scope
+   14 | int z7[__builtin_strlen(nonconst)];
+      |     ^

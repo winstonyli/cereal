@@ -1,0 +1,39 @@
+misc_205.c:8:45: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+    8 | #define unterm (arr + __builtin_strlen(arr) + 1)
+      |                                             ^
+misc_205.c:9:33: note: in expansion of macro 'unterm'
+    9 | size_t b1(void) { return strlen(unterm); }
+      |                                 ^
+misc_205.c:6:12: note: referenced argument declared here
+    6 | const char arr[7] = "abc\0def";
+      |            ^
+misc_205.c:10:35: warning: 'strspn' argument missing terminating nul [-Wstringop-overread]
+   10 | size_t b2(const char *s) { return strspn(unterm, s); }
+      |                                   ^
+misc_205.c:6:12: note: referenced argument declared here
+    6 | const char arr[7] = "abc\0def";
+      |            ^
+misc_205.c:11:35: warning: 'strspn' argument missing terminating nul [-Wstringop-overread]
+   11 | size_t b3(const char *s) { return strspn(s, unt); }
+      |                                   ^
+misc_205.c:7:12: note: referenced argument declared here
+    7 | const char unt[3] = "abc";
+      |            ^
+misc_205.c:12:35: warning: 'strcspn' argument missing terminating nul [-Wstringop-overread]
+   12 | size_t b4(const char *s) { return strcspn(unt, s); }
+      |                                   ^
+misc_205.c:7:12: note: referenced argument declared here
+    7 | const char unt[3] = "abc";
+      |            ^
+misc_205.c:13:35: warning: 'strcspn' argument missing terminating nul [-Wstringop-overread]
+   13 | size_t b5(const char *s) { return strcspn(s, unt); }
+      |                                   ^
+misc_205.c:7:12: note: referenced argument declared here
+    7 | const char unt[3] = "abc";
+      |            ^
+misc_205.c:14:37: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   14 | size_t b6(void) { return strlen(arr + 4); }
+      |                                     ^
+misc_205.c:6:12: note: referenced argument declared here
+    6 | const char arr[7] = "abc\0def";
+      |            ^

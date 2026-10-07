@@ -1142,20 +1142,88 @@ static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
     }
 }
 
+static void check_strlen_arg(Checker *c, uint32_t a, const char *fn,
+                             SrcLoc at);
+
+/* gcc folds strlen of a string literal, or of a const char array with a
+ * string initializer (plus a constant offset), to an integer constant. */
+bool const_strlen(Checker *c, uint32_t a, uint64_t *out)
+{
+    SlRes r[2];
+    const CSym *sy;
+    a = strip_paren(c, a);
+    if (a == NO_NODE || node_err(c, a))
+        return false;
+    if (ntag(c, a) == N_STRING) {
+        char *f;
+        uint32_t *off;
+        size_t n, k;
+        bool exact, ok = fmt_decode(c, a, &f, &off, &n, &exact);
+        if (ok) {
+            for (k = 0; k < n && f[k]; k++)
+                ;
+            *out = k;
+        }
+        free(f);
+        free(off);
+        return ok;
+    }
+    if (sl_resolve(c, a, 0, true, r, 2, 0) != 1 || !r[0].known || r[0].mem ||
+        r[0].ref == SYM_NONE)
+        return false;
+    sy = csym(c, r[0].ref);
+    if (sy->strinit) {
+        const StrInit *si = &c->strinits.data[sy->strinit - 1];
+        int64_t end = r[0].base + r[0].size;
+        const char *z;
+        int64_t from = r[0].base + r[0].off, have;
+        if (r[0].off < 0 || r[0].off >= r[0].size)
+            return false;
+        have = (int64_t)si->n < end ? (int64_t)si->n : end;
+        z = from < have ? memchr(si->b + from, 0, (size_t)(have - from)) : NULL;
+        if (z)
+            *out = (uint64_t)(z - (si->b + from));
+        else if ((int64_t)si->n < end)      /* the rest is zero-filled */
+            *out = (uint64_t)(have > from ? have - from : 0);
+        else
+            return false;
+        return true;
+    }
+    return false;
+}
+
 void check_strlen(Checker *c, const uint32_t *kv, uint32_t nk)
 {
-    SlRes r[4];
-    int n, j;
-    uint32_t a, k3[3];
-    SrcLoc loc;
     if (nk != 2 || (!diag_enabled(c->diag, "array-bounds=") &&
                     !diag_enabled(c->diag, "stringop-overread")))
         return;
-    a = kv[1];
+    check_strlen_arg(c, kv[1], "strlen", 0);
+}
+
+/* strspn / strcspn read both strings up to their nul. */
+void check_spn(Checker *c, const uint32_t *kv, uint32_t nk, const char *name,
+               SrcLoc call)
+{
+    if (nk != 3 || !diag_enabled(c->diag, "stringop-overread"))
+        return;
+    check_strlen_arg(c, kv[1], name, call);
+    check_strlen_arg(c, kv[2], name, call);
+}
+
+static void check_strlen_arg(Checker *c, uint32_t a, const char *fn, SrcLoc at)
+{
+    SlRes r[4];
+    int n, j;
+    uint32_t k3[3];
+    SrcLoc loc;
     n = sl_resolve(c, a, 0, true, r, 4, 0);
     loc = ntag(c, a) == N_PAREN ? ctok_loc(c, c->nodes[a].tok) : expr_loc(c, a);
+    if (ntag(c, a) == N_PAREN && ntag(c, strip_paren(c, a)) == N_BINARY)
+        loc = expr_loc(c, strip_paren(c, a));
     if (ntag(c, a) == N_COND && nkids(c, a, k3, 3) == 3)     /* gcc: the ':' */
         loc = cexpr_colon_loc(c, a, k3[1], k3[2]);
+    if (at)
+        loc = at;       /* strspn: gcc reports at the call */
     for (j = 0; j < n; j++) {
         const CSym *sy = r[j].ref != SYM_NONE ? csym(c, r[j].ref) : NULL;
         if (r[j].mem && r[j].known && (r[j].off < 0 || r[j].off >= r[j].size))
@@ -1175,8 +1243,8 @@ void check_strlen(Checker *c, const uint32_t *kv, uint32_t nk)
             if ((int64_t)si->n >= r[j].base + r[j].size &&
                 (from >= end || !memchr(si->b + from, 0, end - from))) {
                 Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "stringop-overread",
-                                        "'strlen' argument missing "
-                                        "terminating nul");
+                                        "'%s' argument missing "
+                                        "terminating nul", fn);
                 if (d)
                     cnote(c, d, sy->loc, "referenced argument declared here");
                 break;      /* the call is then marked no-warning */
@@ -1266,6 +1334,8 @@ void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
             /* a const array is read through its initializer */
             uint32_t ref = lookup_ord(c, cnode_ident(c, u));
             const StrInit *si = NULL;
+            bool ok_sz;
+            uint64_t asz;
             if (ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ &&
                 csym(c, ref)->strinit &&
                 !c->strinits.data[csym(c, ref)->strinit - 1].agg)
@@ -1276,6 +1346,13 @@ void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
                 if (si->uns)
                     cwarn(c, expr_loc(c, u), "format=", "format string is not "
                           "an array of type 'char'");
+                else if (off >= 0 &&
+                         (bool)(ok_sz = true, asz = type_size(TT, c->ty[u], &ok_sz),
+                                ok_sz) && (uint64_t)off < asz &&
+                         (size_t)off < si->n && si->n >= asz &&
+                         !memchr(si->b + off, 0, (size_t)(asz - off)))
+                    cwarn(c, plus ? expr_loc(c, u) : expr_loc(c, a), "format=",
+                          "unterminated format string");
                 else if (off >= 0) {
                     fmt_mloc = plus ? expr_loc(c, strip_paren(c, a)) : 0;
                     fmt_check(c, kv, nk, first, scan, NO_NODE, w, loc,

@@ -560,9 +560,13 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
         if (csym(c, fref)->fmt || builtin_decl_ok(c, csym(c, fref)))
             check_format_literal(c, kv, nk, csym(c, fref),
                                  cident(c, csym(c, fref)->name), loc);
-        if (builtin_decl_ok(c, csym(c, fref)) &&
-            !strcmp(cident(c, csym(c, fref)->name), "strlen"))
-            check_strlen(c, kv, nk);
+        if (builtin_decl_ok(c, csym(c, fref))) {
+            const char *bn = cident(c, csym(c, fref)->name);
+            if (!strcmp(bn, "strlen"))
+                check_strlen(c, kv, nk);
+            else if (!strcmp(bn, "strspn") || !strcmp(bn, "strcspn"))
+                check_spn(c, kv, nk, bn, loc);
+        }
     }
     /* a call through a pointer declared with 'nonnull' */
     if (!too_many && !bad && !builtin_few && fref == SYM_NONE &&
@@ -1734,6 +1738,11 @@ void e_call(Checker *c, uint32_t i)
             uint32_t av[32], an = nkids(c, i, av, 32);
             if (an <= 32)
                 check_strlen(c, av, an);
+        } else if (!strcmp(name, "__builtin_strspn") ||
+                   !strcmp(name, "__builtin_strcspn")) {
+            uint32_t av[32], an = nkids(c, i, av, 32);
+            if (an <= 32)
+                check_spn(c, av, an, name, call_loc(c, k[0]));
         }
         {
             TypeId rt = atomic_result(c, i, name);
@@ -1901,6 +1910,16 @@ void e_call(Checker *c, uint32_t i)
     }
     c->ty[i] = unqual(c, type_base(TT, pointee(c, t)));
     c->ef[i] = call_pure(c, i, k[0]) ? 0 : EF_SIDE;
+    if (f != NO_NODE && ntag(c, f) == N_IDENT && n == 2) {
+        uint64_t len;
+        const char *fn = cident(c, cnode_ident(c, f));
+        if (!strcmp(fn, "__builtin_strlen") &&   /* not plain strlen */
+            const_strlen(c, k[1], &len)) {
+            c->ck[i] = K_FOLD;      /* fold_builtin_strlen */
+            c->cv[i] = len;
+            c->ef[i] = EF_CST;
+        }
+    }
 }
 
 void alias_deref(Checker *c, uint32_t p, bool use_loc, SrcLoc loc);

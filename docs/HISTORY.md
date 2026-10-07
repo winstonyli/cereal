@@ -2267,3 +2267,18 @@ diagnostics and builds on the strinit table.
   operands, '-2147483648 - 1', at the statement start); array-10 (empty
   declaration after an erroneous struct).
 - Gate: 1355 pass, san 502/0, gcc.dg 17 / c-c++-common 2, callgrind 3.732G.
+
+## Round 145: missing-nul string functions, format-type warnings
+- `strspn`/`strcspn` (both arguments) and `strlen` report "argument missing
+  terminating nul" with the call location; a parenthesised binary argument is
+  located at its operator. `__builtin_strlen` of a constant string or const
+  char array is folded (plain `strlen` is not an integer constant in gcc);
+  misc_205, misc_206.
+- `printf(unt)` with a const char array without a NUL: "unterminated format
+  string" (-Wformat=), also with a constant offset (misc_207).
+- `format` attribute: NSString and unknown function types warn at the
+  start of the attribute line; strftime/strfmon/gcc_* types are known
+  (misc_202).
+- Remaining: Wstringop-overflow-22 (`%s` with a non-nul-terminated array is
+  not diagnosed), array-10, multiple-overflow-warn-3 (see R144).
+- Gate: 1361 pass, san 505/0, gcc.dg 16 / c-c++-common 2, callgrind 3.736G.

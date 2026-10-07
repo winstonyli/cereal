@@ -307,6 +307,9 @@ uint32_t builtin_scanf_pos(const char *name);
 void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk, const
                           CSym *sy, const char *name, SrcLoc loc);
 void check_strlen(Checker *c, const uint32_t *kv, uint32_t nk);
+bool const_strlen(Checker *c, uint32_t a, uint64_t *out);
+void check_spn(Checker *c, const uint32_t *kv, uint32_t nk, const char *name,
+               SrcLoc call);
 
 void addr_rvalue(Checker *c, uint32_t i);
 void alias_deref(Checker *c, uint32_t p, bool use_loc, SrcLoc loc);
