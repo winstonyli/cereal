@@ -107,9 +107,17 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
         Tok t;
         TokSrc src = pp_read_raw(pp, &t);
         if (t.kind == TK_EOF) {
-            pp_error_at(pp, name,
+            Tok at = *name;     /* gcc: after the last token read */
+            if (src == SRC_LEXER) {
+                const Tok *last = &a->all.t[a->all.len - 1];
+                at.loc = last->loc + last->len;
+                at.len = 0;
+            }
+            Diagnostic *ud = pp_error_at(pp, &at,
                         "unterminated argument list invoking macro \"%s\"",
                         m->name->str);
+            if (ud)
+                diag_set_range(ud, name->loc, name->loc + name->len);
             if (src == SRC_LEXER)
                 pp_unread(pp, &t, src); /* let the caller see the EOF */
             args_free(pp, a, 0);
@@ -168,9 +176,8 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
         /* gcc: at the ')', and only where __VA_OPT__ is not available (the
          * GNU modes), with no option tag */
         if (pp->opt->pedantic && !pp->opt->gnu_mode && !m->gnu_named_variadic)
-            diag_report(pp->diag, DL_WARNING, "", a->rparen_loc,
-                        "ISO C99 requires at least one argument for the "
-                        "\"...\" in a variadic macro");
+            pp_pedwarn(pp, a->rparen_loc, "ISO C99 requires at least one "
+                       "argument for the \"...\" in a variadic macro");
         av_push(&a->start, a->all.len);
         av_push(&a->count, 0);
         av_push(&a->present, 0);

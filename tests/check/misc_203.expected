@@ -1,0 +1,30 @@
+misc_203.c:2:9: error: ISO C99 requires whitespace after the macro name
+    2 | #define a!
+      |         ^
+misc_203.c:3:42: error: expected ')' before end of line
+    3 | #define foo(X                   /* eol */
+      |                                          ^
+misc_203.c:4:16: error: expected parameter name, found ")"
+    4 | #define foo2(X,)
+      |                ^
+misc_203.c:5:14: error: expected parameter name, found ","
+    5 | #define foo3(, X)
+      |              ^
+misc_203.c:6:17: error: duplicate macro parameter "X"
+    6 | #define foo4(X, X)
+      |                 ^
+misc_203.c:7:16: error: expected ',' or ')', found "Y"
+    7 | #define foo5(X Y)
+      |                ^
+misc_203.c:8:17: error: expected ')' after "..."
+    8 | #define foo6(..., X)
+      |                 ^
+misc_203.c:9:16: error: ISO C does not permit named variadic macros [-Wvariadic-macros]
+    9 | #define foo7(X ...) X
+      |                ^
+misc_203.c:10:13: error: __VA_ARGS__ can only appear in the expansion of a C99 variadic macro
+   10 | #define goo(__VA_ARGS__) 1
+      |             ^
+misc_203.c:12:15: error: ISO C99 requires at least one argument for the "..." in a variadic macro
+   12 | int a1 = one(1);
+      |               ^

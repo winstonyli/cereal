@@ -1,0 +1,30 @@
+misc_204.c:2:4: error: expected ';' before 'int'
+    2 | foo
+      |    ^
+misc_204.c:3:9: error: 'a' undeclared here (not in a function)
+    3 | int x = a;
+      |         ^
+misc_204.c:4:9: error: 'b' undeclared here (not in a function)
+    4 | int y = b;
+      |         ^
+misc_204.c:6:24: warning: operation on 'a' may be undefined [-Wsequence-point]
+    6 | int f(void) { return (a++ - a--); }
+      |                        ^
+misc_204.c:7:23: warning: operation on 'a' may be undefined [-Wsequence-point]
+    7 | int g(void) { return a++ - a--; }
+      |                       ^
+misc_204.c:8:21: warning: operation on 'a' may be undefined [-Wsequence-point]
+    8 | int h(void) { b = (a++ - a--); return b; }
+      |                     ^
+misc_204.c:9:23: warning: operation on 'a' may be undefined [-Wsequence-point]
+    9 | int i(void) { (a++ - a--); return b; }
+      |                       ^
+misc_204.c:9:20: warning: value computed is not used [-Wunused-value]
+    9 | int i(void) { (a++ - a--); return b; }
+      |                    ^
+misc_204.c:10:23: warning: operation on 'a' may be undefined [-Wsequence-point]
+   10 | int k(void) { return a++ + a++; }
+      |                       ^
+misc_204.c:11:24: warning: operation on 'a' may be undefined [-Wsequence-point]
+   11 | int l(void) { return a = a++; }
+      |                        ^

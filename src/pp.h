@@ -456,6 +456,8 @@ void pp_directive(PP *pp, const Tok *hash);
 void pp_plan_apply_dir(PP *pp, uint32_t item);
 bool pp_cross_file_end(PP *pp);
 void pp_macro_ref(PP *pp, const Tok *name, RefKind kind);
+/* A libcpp pedwarn with no option: a warning, an error under -pedantic-errors. */
+void pp_pedwarn(PP *pp, SrcLoc loc, const char *fmt, ...);
 bool pp_try_expand(PP *pp, Tok *name, TokSrc src);
 void pp_expand_into(PP *pp, TokSpan in, TokBuf *out);
 bool pp_eval_if(PP *pp, TokSpan expr, bool *ok);

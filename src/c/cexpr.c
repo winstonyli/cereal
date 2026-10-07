@@ -10699,6 +10699,14 @@ static void sq_check(Checker *c, uint32_t e, bool cond)
     if (cond && sq_truth_wraps(c, e)) {
         /* gcc checks `e != 0`: one more level of operand merging */
         sq_ops(&s, &e, 1, &after);
+    } else if (c->par[e] != NO_NODE && ntag(c, c->par[e]) == N_RETURN) {
+        /* c_finish_return checks `<result> = e`: an assignment to a
+         * variable the check does not track */
+        TL *tb = NULL, *tn = NULL;
+        sq_verify(&s, e, &tb, &tn, NO_NODE);
+        sq_collide(&s, tb);
+        sq_merge(&s, &before, tb, false);
+        sq_add(&s, &after, tn, NO_NODE, true);
     } else {
         sq_verify(&s, e, &before, &after, NO_NODE);
     }

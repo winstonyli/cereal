@@ -3168,6 +3168,7 @@ static void declaration(Parser *p, bool top)
                 char buf[160];
                 perr_after_prev(p, ci(p), "expected ';'%s",
                                 tok_desc(p, ci(p), buf, sizeof buf));
+                p->err.live = false;    /* the next item starts at this token */
             } else {
                 expected(p, "'=', ',', ';', 'asm' or '__attribute__'");
                 /* gcc's c_parser_declaration_or_fndef just returns: in a

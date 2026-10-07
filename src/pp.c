@@ -384,9 +384,8 @@ static SrcLoc span_end(PP *pp, TokSpan s, SrcLoc fallback)
 
 /* Where gcc's end-of-directive token is: after the keyword, blanks and
  * comments. */
-static SrcLoc kw_eol(PP *pp, const Tok *kw)
+static SrcLoc eol_after(PP *pp, SrcLoc l)
 {
-    SrcLoc l = kw->loc + kw->len;
     for (;;) {
         const char *q = srcmgr_ptr(pp->sm, l);
         if (*q == ' ' || *q == '\t')
@@ -403,6 +402,22 @@ static SrcLoc kw_eol(PP *pp, const Tok *kw)
             break;
     }
     return l;
+}
+
+static SrcLoc kw_eol(PP *pp, const Tok *kw)
+{
+    return eol_after(pp, kw->loc + kw->len);
+}
+
+/* libcpp's CPP_DL_PEDWARN with no option: a warning, an error under
+ * -pedantic-errors. */
+void pp_pedwarn(PP *pp, SrcLoc loc, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    diag_vreport(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
+                 "", loc, fmt, ap);
+    va_end(ap);
 }
 
 static void check_eol(PP *pp, TokSpan rest, const char *dir)
@@ -1241,46 +1256,22 @@ static void do_define(PP *pp, const Tok *hash)
         !(line.t[i].flags & TF_SPACE)) {
         m->funclike = true;
         i++;
-        if (i < line.n && tok_is_punct(&line.t[i], P_RPAREN)) {
-            i++;
-        } else {
-            for (;;) {
-                const Tok *t = i < line.n ? &line.t[i] : NULL;
-                SrcLoc here = t ? t->loc : span_end(pp, line, hash->loc);
-                if (t && tok_is_punct(t, P_ELLIPSIS)) {
-                    m->variadic = true;
-                    vec_push(&params, pp->id_va_args);
-                    vec_push(&plocs, t->loc);
-                    if (diag_enabled(pp->diag, "c90-c99-compat"))
-                        diag_report(pp->diag, DL_WARNING, "", t->loc,
-                                    "anonymous variadic macros were introduced "
-                                    "in C99");
-                    i++;
-                    if (i >= line.n || !tok_is_punct(&line.t[i], P_RPAREN)) {
-                        diag_report(pp->diag, DL_ERROR, "", here,
-                                    "expected ')' after '...'");
-                        ok = false;
-                    }
-                    i++;
-                    break;
-                }
-                if (!t || t->kind != TK_IDENT) {
-                    diag_report(pp->diag, DL_ERROR, "", here,
-                                "expected parameter name, found \"%.*s\"",
-                                t ? (int)t->len : 0, t ? pp_text(pp, t) : "");
-                    ok = false;
-                    break;
-                }
-                {
-                    Ident *pid = ident_by_id(pp->in, t->aux);
-                    size_t k;
-                    if (pid == pp->id_va_args) {
-                        diag_report(pp->diag, DL_ERROR, "", t->loc,
-                                    "__VA_ARGS__ can only appear in the expansion "
-                                    "of a C99 variadic macro");
-                        ok = false;
-                        break;
-                    }
+        bool prev_ident = false;
+        for (;;) {      /* libcpp parse_params */
+            const Tok *t = i < line.n ? &line.t[i] : NULL;
+            SrcLoc here = t ? t->loc : eol_after(pp, span_end(pp, line, hash->loc));
+            bool bad = false;
+            if (!t)
+                bad = true;
+            else if (t->kind == TK_IDENT) {
+                Ident *pid = ident_by_id(pp->in, t->aux);
+                size_t k;
+                if (prev_ident || m->variadic) {
+                    bad = true;
+                } else {
+                    if (pid == pp->id_va_args)
+                        pp_pedwarn(pp, t->loc, "__VA_ARGS__ can only appear in "
+                                   "the expansion of a C99 variadic macro");
                     for (k = 0; k < params.len; k++)
                         if (params.data[k] == pid) {
                             diag_report(pp->diag, DL_ERROR, "", t->loc,
@@ -1288,45 +1279,70 @@ static void do_define(PP *pp, const Tok *hash)
                                         pid->str);
                             ok = false;
                         }
+                    if (!ok)
+                        break;
+                    prev_ident = true;
                     vec_push(&params, pid);
                     vec_push(&plocs, t->loc);
                 }
+            } else if (tok_is_punct(t, P_RPAREN) &&
+                       (prev_ident || !params.len || m->variadic)) {
                 i++;
-                if (i < line.n && tok_is_punct(&line.t[i], P_ELLIPSIS)) {
-                    if (pp->opt->pedantic)
-                        diag_report(pp->diag, pp->diag->pedantic_errors
-                                    ? DL_ERROR : DL_WARNING,
-                                    "variadic-macros", line.t[i].loc,
-                                    "ISO C does not permit named variadic "
-                                    "macros");
+                break;
+            } else if (tok_is_punct(t, P_RPAREN) || tok_is_punct(t, P_COMMA)) {
+                if (!prev_ident || m->variadic)
+                    bad = true;
+                else
+                    prev_ident = false;
+            } else if (tok_is_punct(t, P_ELLIPSIS)) {
+                if (m->variadic) {
+                    bad = true;
+                } else {
                     m->variadic = true;
-                    m->gnu_named_variadic = true;
-                    i++;
-                    if (i >= line.n || !tok_is_punct(&line.t[i], P_RPAREN)) {
-                        diag_report(pp->diag, DL_ERROR, "",
-                                    i < line.n ? line.t[i].loc : here,
-                                    "expected ')' after '...'");
-                        ok = false;
+                    if (!prev_ident) {
+                        vec_push(&params, pp->id_va_args);
+                        vec_push(&plocs, t->loc);
+                        if (diag_enabled(pp->diag, "c90-c99-compat"))
+                            diag_report(pp->diag, DL_WARNING, "", t->loc,
+                                        "anonymous variadic macros were "
+                                        "introduced in C99");
+                    } else {
+                        if (pp->opt->pedantic)
+                            diag_report(pp->diag, pp->diag->pedantic_errors
+                                        ? DL_ERROR : DL_WARNING,
+                                        "variadic-macros", t->loc,
+                                        "ISO C does not permit named variadic "
+                                        "macros");
+                        m->gnu_named_variadic = true;
                     }
-                    i++;
-                    break;
                 }
-                if (i < line.n && tok_is_punct(&line.t[i], P_RPAREN)) {
-                    i++;
-                    break;
-                }
-                if (i >= line.n || !tok_is_punct(&line.t[i], P_COMMA)) {
-                    diag_report(pp->diag, DL_ERROR, "",
-                                i < line.n ? line.t[i].loc : here,
-                                "expected ',' or ')' in macro parameter list");
-                    ok = false;
-                    break;
-                }
-                i++;
+            } else {
+                bad = true;
             }
+            if (bad) {
+                if (m->variadic)
+                    diag_report(pp->diag, DL_ERROR, "", here,
+                                "expected ')' after \"...\"");
+                else if (!t)
+                    diag_report(pp->diag, DL_ERROR, "", here, prev_ident
+                                ? "expected ')' before end of line"
+                                : "expected parameter name before end of line");
+                else
+                    diag_report(pp->diag, DL_ERROR, "", here, prev_ident
+                                ? "expected ',' or ')', found \"%.*s\""
+                                : "expected parameter name, found \"%.*s\"",
+                                (int)t->len, pp_text(pp, t));
+                ok = false;
+                break;
+            }
+            if (!ok)
+                break;
+            i++;
         }
+
     } else if (i < line.n && !(line.t[i].flags & TF_SPACE)) {
-        diag_report(pp->diag, DL_WARNING, "", line.t[i].loc,
+        diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
+                    "", name->loc,
                     "ISO C99 requires whitespace after the macro name");
     }
     if (!ok) {
@@ -1377,10 +1393,8 @@ static void do_define(PP *pp, const Tok *hash)
                 if (m->gnu_named_variadic)
                     pedantic(pp, t->loc, "__VA_ARGS__ in a named variadic macro");
                 else
-                    diag_report(pp->diag, pp->opt->pedantic ? DL_ERROR : DL_WARNING,
-                                "", t->loc,
-                                "__VA_ARGS__ can only appear in the expansion of "
-                                "a C99 variadic macro");
+                    pp_pedwarn(pp, t->loc, "__VA_ARGS__ can only appear in the "
+                               "expansion of a C99 variadic macro");
             }
         }
     }

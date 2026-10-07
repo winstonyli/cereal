@@ -2242,3 +2242,28 @@ diagnostics and builds on the strinit table.
 - Known gap: for a struct member gcc reports at the tag name, cereal at the
   line start.
 - Gate: 1351 pass, san 500/0, gcc.dg 18 / c-c++-common 2, callgrind 3.732G.
+
+## Round 144: preprocessor pedwarns, macro parameter lists, small recoveries
+- `pp_pedwarn` (libcpp CPP_DL_PEDWARN, no option): a warning, an error under
+  -pedantic-errors. Used for "ISO C99 requires whitespace after the macro
+  name" (now at the name, as gcc), "__VA_ARGS__ can only appear in the
+  expansion of a C99 variadic macro" (was an error under -pedantic) and
+  "ISO C99 requires at least one argument for the "..."" (misc_203).
+- `#define` parameter lists follow libcpp's parse_params: its five messages
+  (`expected parameter name, found "X"`, `expected ',' or ')', found "Y"`,
+  `... before end of line` at the end of the line including a trailing
+  comment, `expected ')' after "..."`), `__VA_ARGS__` as a parameter name is a
+  pedwarn, a duplicate stops the list.
+- "unterminated argument list" is reported after the last token read (gcc),
+  with the macro name kept as the range; lsp/basic.json updated.
+- A missing ';' before a declaration at file scope no longer skips the next
+  declaration (`foo` / `int x = a;` reports 'a'); misc_204.
+- -Wsequence-point on a `return` expression is checked like an assignment
+  (gcc reports the first operator, not the last); misc_204.
+- Known gaps: `__VA_ARGS__` in plain text or as a #define name does not
+  warn; a pp error that gcc prints before a later parse error comes out after
+  it (unterminated argument list at EOF); "missing terminating" quote inside a
+  #define line is silent; multiple-overflow-warn-3 (gcc spells folded
+  operands, '-2147483648 - 1', at the statement start); array-10 (empty
+  declaration after an erroneous struct).
+- Gate: 1355 pass, san 502/0, gcc.dg 17 / c-c++-common 2, callgrind 3.732G.

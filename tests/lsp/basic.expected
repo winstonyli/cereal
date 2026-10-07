@@ -738,11 +738,11 @@
    "message": "unterminated argument list invoking macro \"TWICE\"",
    "range": {
     "end": {
-     "character": 13,
+     "character": 17,
      "line": 12
     },
     "start": {
-     "character": 8,
+     "character": 16,
      "line": 12
     }
    },
