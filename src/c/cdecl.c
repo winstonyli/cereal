@@ -242,6 +242,20 @@ static bool in_extension(Checker *c, uint32_t node)
 
 static void pos_arg_str(Checker *c, uint32_t arg, char *buf, size_t n);
 
+/* The format types gcc's C front end knows (c-format.cc format_types, minus
+ * the ones for other targets), besides printf and scanf. */
+static bool format_type_known(const char *n)
+{
+    static const char *const ok[] = {"strftime", "gnu_strftime", "strfmon",
+        "gnu_strfmon", "gcc_diag", "gcc_cdiag", "gcc_cxxdiag", "gcc_tdiag",
+        "asm_fprintf"};
+    size_t k;
+    for (k = 0; k < sizeof ok / sizeof *ok; k++)
+        if (!strcmp(n, ok[k]))
+            return true;
+    return false;
+}
+
 /* gcc reports patchable_function_entry at the first token of the line of the
  * declarator (the attr_at override when the checker has one). */
 static SrcLoc patchable_loc(Checker *c, uint32_t item)
@@ -1051,13 +1065,19 @@ static void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                        "returning a pointer");
         } else if (!strcmp(name, "format") && ak.n == 3 &&
                    ntag(c, ak.p[0]) == N_IDENT) {
-            char ar[24];
+            char ar[128];
             int kind = 0;
             attr_norm(tstr(c, c->nodes[ak.p[0]].tok), ar, sizeof ar);
             if (!strcmp(ar, "printf") || !strcmp(ar, "gnu_printf"))
                 kind = 1;
             else if (!strcmp(ar, "scanf") || !strcmp(ar, "gnu_scanf"))
                 kind = 2;
+            else if (!strcmp(ar, "NSString"))
+                cwarn(c, cdecl_line_start_loc(c, c->nodes[item].tok), "format=", "'NSString' is "
+                      "only allowed in Objective-C dialects");
+            else if (!format_type_known(ar))
+                cwarn(c, cdecl_line_start_loc(c, c->nodes[item].tok), "format=", "'%s' is an "
+                      "unrecognized format function type", ar);
             if (kind) {
                 uint32_t xs = ak.p[1], xf = ak.p[2];
                 if ((c->ck[xs] == K_ICE || c->ck[xs] == K_FOLD) &&

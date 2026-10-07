@@ -1,0 +1,30 @@
+misc_202.c:2:1: warning: 'bogus' is an unrecognized format function type [-Wformat=]
+    2 | void a(const char *f, ...) __attribute__((format(__bogus__, 1, 2)));
+      | ^
+misc_202.c:7:1: warning: 'gnu_gcc_diag' is an unrecognized format function type [-Wformat=]
+    7 | void g(const char *f, ...) __attribute__((format(gnu_gcc_diag, 1, 2)));
+      | ^
+misc_202.c:8:1: warning: 'gnu_asm_fprintf' is an unrecognized format function type [-Wformat=]
+    8 | void h(const char *f, ...) __attribute__((format(gnu_asm_fprintf, 1, 2)));
+      | ^
+misc_202.c:9:1: warning: 'NSString' is only allowed in Objective-C dialects [-Wformat=]
+    9 | void i(const char *f, ...) __attribute__((format(NSString, 1, 2)));
+      | ^
+misc_202.c:10:1: warning: 'NSString' is only allowed in Objective-C dialects [-Wformat=]
+   10 | void j(const char *f, ...) __attribute__((format(__NSString__, 1, 2)));
+      | ^
+misc_202.c:11:1: warning: 'CFString' is an unrecognized format function type [-Wformat=]
+   11 | void k(const char *f, ...) __attribute__((format(CFString, 1, 2)));
+      | ^
+misc_202.c:12:1: warning: 'x' is an unrecognized format function type [-Wformat=]
+   12 | void l(const char *f, ...) __attribute__((format(x, 1, 2), format(printf, 1, 2)));
+      | ^
+misc_202.c:15:3: warning: 'bogus1' is an unrecognized format function type [-Wformat=]
+   15 |   __attribute__((format(bogus1, 1, 2)));
+      |   ^
+misc_202.c:17:3: warning: 'bogus2' is an unrecognized format function type [-Wformat=]
+   17 |   m2(const char *f, ...) __attribute__((format(bogus2, 1, 2)));
+      |   ^
+misc_202.c:18:1: warning: 'bogus4' is an unrecognized format function type [-Wformat=]
+   18 | void p(void) { int q; void m4(const char *f, ...) __attribute__((format(bogus4, 1, 2))); }
+      | ^

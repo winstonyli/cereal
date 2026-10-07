@@ -2232,3 +2232,13 @@ diagnostics and builds on the strinit table.
   where `CEREAL_PARCACHE=0` gives 19; run parity with the cache off (the gate
   does).
 - gate.sh header corrected to dg 19 / c-c++-common 2 (it still said 30 / 3).
+
+## Round 143: unrecognized format function types
+- `format(T, ...)` with T not printf/scanf/strftime/strfmon (and gnu_ forms),
+  gcc_diag/cdiag/cxxdiag/tdiag or asm_fprintf warns "'T' is an unrecognized
+  format function type"; NSString gives "is only allowed in Objective-C
+  dialects" (-Wformat=), at the first token of the attribute's line
+  (misc_202; warn-nsstring).
+- Known gap: for a struct member gcc reports at the tag name, cereal at the
+  line start.
+- Gate: 1351 pass, san 500/0, gcc.dg 18 / c-c++-common 2, callgrind 3.732G.
