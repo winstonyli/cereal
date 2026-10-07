@@ -1729,11 +1729,25 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
         check_eol(pp, span_from(s, k), "line");
     srcmgr_linecol(pp->inc->file, hash->loc, &phys, &col);
     if (gnu_marker) {           /* flags: 3 = the following text is a system header */
-        bool sys = false;
+        bool sys = false, enter = false, leave = false;
         for (; k < s.n; k++)
-            if (s.t[k].kind == TK_PPNUM && s.t[k].len == 1 &&
-                pp_text(pp, &s.t[k])[0] == '3')
-                sys = true;
+            if (s.t[k].kind == TK_PPNUM && s.t[k].len == 1) {
+                char fl = pp_text(pp, &s.t[k])[0];
+                sys |= fl == '3';
+                enter |= fl == '1';
+                leave |= fl == '2';
+            }
+        if (leave && !pp->inc->prev && pp->inc->marker_depth <= 0) {
+            /* do_linemarker: returning from a file never entered */
+            const char *nl = pp->sm->region + hash->loc;
+            while (*nl && *nl != 0x0a)
+                nl++;
+            diag_report(pp->diag, DL_WARNING, "", (SrcLoc)(nl - pp->sm->region),
+                        "file \"%.*s\" linemarker ignored due to incorrect "
+                        "nesting", (int)s.t[1].len - 2, pp_text(pp, &s.t[1]) + 1);
+            goto out;
+        }
+        pp->inc->marker_depth += enter ? 1 : leave ? -1 : 0;
         if (sys || pp->inc->file->nsysmarks)
             srcmgr_mark_system(pp->inc->file, phys + 1, sys);
     }

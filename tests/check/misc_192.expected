@@ -1,0 +1,9 @@
+misc_192.c:5:3: warning: style of line directive is a GCC extension
+    5 | # 9 "somefile" 2 /* { dg-warning "linemarker ignored due to incorrect nesting" } */
+      |   ^
+misc_192.c:5:84: warning: file "somefile" linemarker ignored due to incorrect nesting
+    5 | # 9 "somefile" 2 /* { dg-warning "linemarker ignored due to incorrect nesting" } */
+      |                                                                                    ^
+misc_192.c:6:1: error: unknown type name 'not_a_type'
+    6 | not_a_type a; /* { dg-error "unknown type" } */
+      | ^

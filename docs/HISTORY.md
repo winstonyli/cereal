@@ -2145,3 +2145,17 @@ diagnostics and builds on the strinit table.
   printed after checker errors); array-10 needs gcc's "empty declaration"
   after a variably modified struct member at file scope (rule not derived).
 - Gate: 1329 pass, san 489/0, gcc.dg 21 / c-c++-common 3, callgrind 3.738G.
+
+## Round 136: linemarker nesting (gcc.dg 21 to 20)
+- A GNU linemarker with flag 2 (return to the includer) in a file that no
+  marker entered is ignored with "file "X" linemarker ignored due to
+  incorrect nesting", located at the end of the line (`IncludeFrame.
+  marker_depth`; misc_192, pr69650).
+- STATUS.md: the open differences are now grouped (optimizer-only, Darwin,
+  front-end gaps) and the counts match diagstat (binary-constants-1 and
+  init-bad-4 differ only in exit code / order, so are not counted).
+- Looked at and left: Warray-parameter-11 (needs folding of `!copysign (...)`
+  and address differences in array bounds), multiple-overflow-warn-3 (gcc
+  prints the folded `-2147483648 - 1`), pr100547 (error location),
+  sequence-pt-pr17880 (`return a++ - a--` column).
+- Gate: 1331 pass, san 490/0, gcc.dg 20 / c-c++-common 3, callgrind 3.738G.

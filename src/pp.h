@@ -204,6 +204,7 @@ typedef struct IncludeFrame {
     const char *presumed_name;
     const LineAdj *adj;      /* #line history (NULL: none) */
     bool system;             /* system header (as of this point) */
+    int marker_depth;        /* files entered by linemarkers (flag 1) */
 } IncludeFrame;
 
 typedef struct PPOptions {
