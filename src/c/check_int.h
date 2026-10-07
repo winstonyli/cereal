@@ -247,6 +247,8 @@ typedef struct RecDef {
     TypeId next_ty;          /* enums: its type */
     bool next_overflow;
     bool has_neg;
+    bool cleared;            /* enums: a nested redefinition ended its
+                                being-defined state (gcc) */
 } RecDef;
 
 /* ---- the checker ------------------------------------------------------ */

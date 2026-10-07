@@ -1,0 +1,6 @@
+misc_187.c:13:5: error: binary constants are a C2X feature or GCC extension
+   13 | #if FOO /* { dg-error "binary constants are a C2X feature or GCC extension" } */
+      |     ^~~~~~
+misc_187.c:16:10: error: binary constants are a C2X feature or GCC extension
+   16 |   return 0b1101; /* { dg-error "binary constants are a C2X feature or GCC extension" } */
+      |          ^

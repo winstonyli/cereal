@@ -206,11 +206,16 @@ static Val parse_number(EP *p, const Tok *t)
     }
     uns = nu > 0;
     if (base == 2 && p->pp->opt->pedantic) {
+        Tok u = *t;
+        size_t k;
+        for (k = 0; k + 1 < p->pp->if_exp.len; k += 2)   /* track0: where used */
+            if (p->pp->if_exp.data[k] == t->loc)
+                u.loc = p->pp->if_exp.data[k + 1];
         if (p->pp->diag->pedantic_errors)
-            pp_error_at(p->pp, t, "binary constants are a C2X feature or GCC "
+            pp_error_at(p->pp, &u, "binary constants are a C2X feature or GCC "
                         "extension");
         else
-            pp_warn_at(p->pp, t, "", "binary constants are a C2X feature or "
+            pp_warn_at(p->pp, &u, "", "binary constants are a C2X feature or "
                        "GCC extension");
     }
     if (overflowed) {
@@ -705,6 +710,7 @@ bool pp_eval_if(PP *pp, TokSpan expr, bool *ok)
     TokBuf exp = {0}, res = {0};
     TokSpan es;
     pp->in_if_expr = true;
+    pp->if_exp.len = 0;
     tokbuf_init(pp, &exp, expr.n + 8);
     pp_expand_into(pp, expr, &exp);
     pp->in_if_expr = false;

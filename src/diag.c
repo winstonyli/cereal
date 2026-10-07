@@ -864,9 +864,9 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
         else if (!pline)        /* gcc: line 0 prints no position */
             fprintf(o, "%s: ", fname);
         else if (eof)   /* gcc: the end-of-file token has no column */
-            fprintf(o, "%s:%u: ", fname, pline);
+            fprintf(o, "%s:%d: ", fname, (int)pline);
         else
-            fprintf(o, "%s:%u:%u: ", fname, pline,
+            fprintf(o, "%s:%d:%u: ", fname, (int)pline,
                     display_col(f, line, vcol ? vcol : col));
     } else {
         fputs("cereal: ", o);

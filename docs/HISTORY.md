@@ -2119,3 +2119,15 @@ diagnostics and builds on the strinit table.
   constant (hard error, as gcc); an imaginary literal cast directly to an
   integer is an ICE (misc_183, gnu99-const-expr-1).
 - Gate: 1315 pass, san 482/0, gcc.dg 28 / c-c++-common 3, callgrind 3.736G.
+
+## Round 134: gcc.dg triage (28 to 24)
+- A nested enum redefinition is diagnosed even when a later syntax error
+  (an empty inner enum) mutes the unit, and ends the being-defined state, so
+  the next redefinition is a "redeclaration" (misc_185, enum-redef-1).
+- Under `-ftrack-macro-expansion=0` a binary constant that comes from a macro
+  in `#if` is reported at the expansion point (`PP.if_exp`; misc_186/187,
+  binary-constants-2/-3).
+- `#line` out of range: the plain gcc message (an error under
+  -pedantic-errors), and diagnostics print the presumed line as a signed int
+  (`-1`; misc_188, pr89410-1).
+- Gate: 1323 pass, san 486/0, gcc.dg 24 / c-c++-common 3, callgrind 3.738G.

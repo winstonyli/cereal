@@ -298,6 +298,11 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
             t.flags |= TF_SPACE;
             pp->carry_space = false;
         }
+        if (pp->in_if_expr && pp->diag->track0 && src == SRC_CONTEXT &&
+            t.kind == TK_PPNUM) {
+            vec_push(&pp->if_exp, t.loc);
+            vec_push(&pp->if_exp, pp->tok_exp_loc);
+        }
         tokbuf_push(pp, out, t);
     }
     /* everything above the barrier is exhausted and gone */

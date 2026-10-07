@@ -279,6 +279,8 @@ typedef struct PP {
     CondFrame *cond;
     bool in_directive;
     bool in_if_expr;
+    VEC(SrcLoc) if_exp;      /* -ftrack-macro-expansion=0, #if: (spelling,
+                                expansion point) of each macro number */
     bool collecting_args;    /* arg pre-expansion: defer _Pragma */
     bool carry_space;
     PPMode mode;

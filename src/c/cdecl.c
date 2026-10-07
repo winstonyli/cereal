@@ -7548,7 +7548,8 @@ static bool being_defined(Checker *c, TypeId t)
 {
     size_t k;
     for (k = 0; k < c->recs.len; k++)
-        if (type_canon(TT, c->recs.data[k].ty) == type_canon(TT, t))
+        if (!c->recs.data[k].cleared &&
+            type_canon(TT, c->recs.data[k].ty) == type_canon(TT, t))
             return true;
     return false;
 }
@@ -7622,9 +7623,19 @@ static void open_visit(Checker *c, uint32_t i)
         e = type_enum(TT, t);
         oldloc = e->loc;
         e->loc = loc;
-        if (being_defined(c, t))
+        if (being_defined(c, t)) {
+            /* gcc diagnoses it in start_enum, before any later syntax error
+             * in the unit (an empty inner enum), then clears the flag */
+            bool q = c->quiet;
+            size_t k;
+            c->quiet = false;
             cerror(c, loc, "nested redefinition of 'enum %s'",
                    name ? cident(c, name) : "");
+            c->quiet = q;
+            for (k = 0; k < c->recs.len; k++)
+                if (type_canon(TT, c->recs.data[k].ty) == type_canon(TT, t))
+                    c->recs.data[k].cleared = true;
+        }
         if (e->complete) {
             Diagnostic *d = cerror_d(c, loc, "redeclaration of 'enum %s'",
                                      name ? cident(c, name) : "");

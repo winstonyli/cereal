@@ -1,0 +1,5 @@
+misc_188.c:7:7: warning: line number out of range
+    7 | #line 4294967295
+      |       ^
+misc_188.c:-1:2: warning: #warning before C2X is a GCC extension [-Wpedantic]
+misc_188.c:-1:2: warning: #warning msg [-Wpp-warning-directive]

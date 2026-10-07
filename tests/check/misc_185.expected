@@ -1,0 +1,45 @@
+misc_185.c:3:6: error: redeclaration of 'enum a'
+    3 | enum a { B }; /* { dg-bogus "nested redefinition" } */
+      |      ^
+misc_185.c:2:6: note: originally defined here
+    2 | enum a { A };
+      |      ^
+misc_185.c:6:13: error: empty enum is invalid
+    6 | enum empty {}; /* { dg-error "empty enum is invalid" } */
+      |             ^
+misc_185.c:7:13: error: empty enum is invalid
+    7 | enum empty {}; /* { dg-bogus "nested redefinition" } */
+      |             ^
+misc_185.c:11:20: error: nested redefinition of 'enum nested_first'
+   11 |   C1 = sizeof(enum nested_first { C1a }), /* { dg-error "nested redefinition of 'enum nested_first" } */
+      |                    ^
+misc_185.c:12:20: error: redeclaration of 'enum nested_first'
+   12 |   C2 = sizeof(enum nested_first { C2a }) /* { dg-error "redeclaration of 'enum nested_first'" "" } */
+      |                    ^
+misc_185.c:11:20: note: originally defined here
+   11 |   C1 = sizeof(enum nested_first { C1a }), /* { dg-error "nested redefinition of 'enum nested_first" } */
+      |                    ^
+misc_185.c:17:20: error: nested redefinition of 'enum nested_second'
+   17 |   D2 = sizeof(enum nested_second { D2a }), /* { dg-error "nested redefinition of 'enum nested_second" } */
+      |                    ^
+misc_185.c:18:20: error: redeclaration of 'enum nested_second'
+   18 |   D3 = sizeof(enum nested_second { D3a }) /* { dg-error "redeclaration of 'enum nested_second'" "" } */
+      |                    ^
+misc_185.c:17:20: note: originally defined here
+   17 |   D2 = sizeof(enum nested_second { D2a }), /* { dg-error "nested redefinition of 'enum nested_second" } */
+      |                    ^
+misc_185.c:22:6: error: redeclaration of 'enum nested_repeat'
+   22 | enum nested_repeat { /* { dg-error "redeclaration of 'enum nested_repeat'" "" } */
+      |      ^
+misc_185.c:21:6: note: originally defined here
+   21 | enum nested_repeat { E };
+      |      ^
+misc_185.c:23:19: error: nested redefinition of 'enum nested_repeat'
+   23 |   F = sizeof(enum nested_repeat { Fa }) /* { dg-error "nested redefinition of 'enum nested_repeat" } */
+      |                   ^
+misc_185.c:27:20: error: nested redefinition of 'enum nested_empty'
+   27 |   G1 = sizeof(enum nested_empty {}), /* { dg-error "nested redefinition of 'enum nested_empty" } */
+      |                    ^
+misc_185.c:27:34: error: empty enum is invalid
+   27 |   G1 = sizeof(enum nested_empty {}), /* { dg-error "nested redefinition of 'enum nested_empty" } */
+      |                                  ^

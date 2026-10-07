@@ -745,6 +745,7 @@ void pp_free(PP *pp)
     tokbuf_release(pp, &pp->line);
     tokpool_free(&pp->pool);
     vec_free(&pp->ctx);
+    vec_free(&pp->if_exp);
     vec_free(&pp->macros);
     vec_free(&pp->expansions);
     vec_free(&pp->listeners);
@@ -1708,9 +1709,9 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
             break;
     }
     if (!gnu_marker && (n == 0 || n > 2147483647ull))
-        diag_report(pp->diag, pp->opt->pedantic ? DL_WARNING : DL_REMARK,
-                    "pedantic", s.t[0].loc,
-                    "line number out of range (C99 6.10.4p3)");
+        diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR
+                    : pp->opt->pedantic ? DL_WARNING : DL_REMARK,
+                    "", s.t[0].loc, "line number out of range");
     k = 1;
     if (k < s.n && (s.t[k].kind != TK_STRING || pp_text(pp, &s.t[k])[0] != '"')) {
         /* GCC rejects the whole directive */
