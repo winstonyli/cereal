@@ -1,0 +1,48 @@
+misc_210.c:2:9: error: '##' cannot appear at either end of a macro expansion
+    2 | #define bad1 ## owt
+      |         ^
+misc_210.c:3:9: error: '##' cannot appear at either end of a macro expansion
+    3 | #define bad2 owt ##
+      |         ^
+misc_210.c:4:15: error: '##' cannot appear at either end of a macro expansion
+    4 | #define bad3(x) ## x
+      |               ^
+misc_210.c:5:18: error: '##' cannot appear at either end of a macro expansion
+    5 | #define bad4(x, y) x ##
+      |                  ^
+misc_210.c:6:15: error: '#' is not followed by a macro parameter
+    6 | #define bad5(x) # y
+      |               ^
+misc_210.c:7:15: warning: ISO C does not permit named variadic macros [-Wvariadic-macros]
+    7 | #define a(x, y...) foo(x, ##y)
+      |               ^
+misc_210.c:9:27: warning: ISO C99 requires at least one argument for the "..." in a variadic macro
+    9 | void f(void) { int g = a(1); (void)g; }
+      |                           ^
+misc_210.c:10:10: warning: comma operator in operand of #if [-Wpedantic]
+   10 | #if (1, 2) != 2 || (2, 1) != 1
+      |          ^
+misc_210.c:10:25: warning: comma operator in operand of #if [-Wpedantic]
+   10 | #if (1, 2) != 2 || (2, 1) != 1
+      |                         ^
+misc_210.c:12:26: warning: comma operator in operand of #if [-Wpedantic]
+   12 | #if 1 ? 2 : 3 , 0 /* c */
+      |                          ^
+misc_210.c:14:8: error: operator ',' has no right operand
+   14 | #if 1 ,
+      |        ^
+misc_210.c:16:43: warning: integer overflow in preprocessor expression
+   16 | #if 0 - (-9223372036854775807 - 1) /* c */
+      |                                           ^
+misc_210.c:18:30: warning: integer overflow in preprocessor expression
+   18 | #if -1 << 1 != -2 || 3 << 62 != 0
+      |                              ^~
+misc_210.c:22:10: warning: extra tokens at end of #undef directive
+   22 | #undef X y
+      |          ^
+misc_210.c:23:10: warning: extra tokens at end of #ifdef directive
+   23 | #ifdef X z
+      |          ^
+misc_210.c:25:2: error: #endif without #if
+   25 | #endif x
+      |  ^

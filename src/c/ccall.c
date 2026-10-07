@@ -1729,7 +1729,8 @@ void e_call(Checker *c, uint32_t i)
                               true, call_loc(c, k[0]));
         }
         if (!strncmp(name, "__builtin_", 10) &&
-            (builtin_format_pos(name) || builtin_scanf_pos(name))) {
+            (builtin_format_pos(name) || builtin_scanf_pos(name) ||
+             !strcmp(name, "__builtin_strfmon"))) {
             uint32_t av[32], an = nkids(c, i, av, 32);
             if (an <= 32)
                 check_format_literal(c, av, an, NULL, name, call_loc(c, k[0]));

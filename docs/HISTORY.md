@@ -2282,3 +2282,30 @@ diagnostics and builds on the strinit table.
 - Remaining: Wstringop-overflow-22 (`%s` with a non-nul-terminated array is
   not diagnosed), array-10, multiple-overflow-warn-3 (see R144).
 - Gate: 1361 pass, san 505/0, gcc.dg 16 / c-c++-common 2, callgrind 3.736G.
+
+## Round 146: const char arrays from brace lists, libcpp message parity
+- A `const char t[] = { 'a', ... }` of constants is read like a string
+  initializer (-Wstringop-overread, "unterminated format string"); the format
+  is unterminated when its last byte is not a nul, whether or not an earlier
+  byte is (misc_208). `__builtin_strfmon` checks only for the missing nul
+  (its conversions are not parsed). Closes Wstringop-overflow-22.
+- Preprocessor diagnostics follow libcpp's option tags (misc_209, misc_210):
+  pedwarns of directive handling (#include_next, #assert, #warning before C2X,
+  extra tokens, "#include_next in primary source file", integer overflow in
+  #if) print no `[-W...]`; #warning is `-Wcpp`; extra tokens after
+  #else/#endif is `-Wendif-labels`; pp pedwarns are hidden in system headers.
+- "this use of "defined" may not be portable" replaces the old wording and is
+  reported at the last source token read (gcc's cur_token[-1]); `"defined"
+  cannot be used as a macro name` uses double quotes.
+- Assertions in #if: `assertions are a GCC extension` under -pedantic, the
+  -Wdeprecated warning otherwise.
+- #if: the comma pedwarn and integer-overflow warnings sit at the token that
+  ends the operand (the end of the line, comment included, for the last
+  one); the comma is an error under -pedantic-errors; left shift overflows
+  when shifting back loses the value (libcpp num_lshift).
+- `'##' cannot appear at either end` and `'#' is not followed by a macro
+  parameter` are at the last token before the body (name, or the ')').
+- "ISO C99 requires at least one argument" also covers named variadics.
+- Known gaps: `#if 1 #foo(bar)` evaluates the assertion (gcc: missing binary
+  operator before "#"); gnu89 "empty macro arguments" pedantic warning.
+- Gate: 1367 pass, san 508/0, gcc.dg 15 / c-c++-common 2 / cpp 91, callgrind 3.746G.

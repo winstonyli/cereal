@@ -1,0 +1,18 @@
+misc_208.c:11:32: warning: 'strlen' argument missing terminating nul [-Wstringop-overread]
+   11 | size_t f(void) { return strlen(a) + strlen(b) + strlen(c); }
+      |                                ^
+misc_208.c:6:12: note: referenced argument declared here
+    6 | const char a[] = { 97, 98, 99, 100 };
+      |            ^
+misc_208.c:12:23: warning: unterminated format string [-Wformat=]
+   12 | void g(void) { printf(a); printf(b); printf(c); printf(d); __builtin_strfmon(buf, 8, a); }
+      |                       ^
+misc_208.c:12:34: warning: unterminated format string [-Wformat=]
+   12 | void g(void) { printf(a); printf(b); printf(c); printf(d); __builtin_strfmon(buf, 8, a); }
+      |                                  ^
+misc_208.c:12:56: warning: unterminated format string [-Wformat=]
+   12 | void g(void) { printf(a); printf(b); printf(c); printf(d); __builtin_strfmon(buf, 8, a); }
+      |                                                        ^
+misc_208.c:12:86: warning: unterminated format string [-Wformat=]
+   12 | void g(void) { printf(a); printf(b); printf(c); printf(d); __builtin_strfmon(buf, 8, a); }
+      |                                                                                      ^

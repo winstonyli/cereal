@@ -366,11 +366,11 @@ Diagnostic *pp_warn_at(PP *pp, const Tok *t, const char *id,
 static void pedantic(PP *pp, SrcLoc loc, const char *fmt, ...)
 {
     va_list ap;
-    if (!pp->opt->pedantic)
+    if (!pp->opt->pedantic || diag_hidden_in_system_header(pp->diag, loc))
         return;
     va_start(ap, fmt);
     diag_vreport(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                 "pedantic", loc, fmt, ap);
+                 "", loc, fmt, ap);
     va_end(ap);
 }
 
@@ -384,7 +384,7 @@ static SrcLoc span_end(PP *pp, TokSpan s, SrcLoc fallback)
 
 /* Where gcc's end-of-directive token is: after the keyword, blanks and
  * comments. */
-static SrcLoc eol_after(PP *pp, SrcLoc l)
+SrcLoc eol_after(PP *pp, SrcLoc l)
 {
     for (;;) {
         const char *q = srcmgr_ptr(pp->sm, l);
@@ -414,6 +414,8 @@ static SrcLoc kw_eol(PP *pp, const Tok *kw)
 void pp_pedwarn(PP *pp, SrcLoc loc, const char *fmt, ...)
 {
     va_list ap;
+    if (diag_hidden_in_system_header(pp->diag, loc))
+        return;
     va_start(ap, fmt);
     diag_vreport(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
                  "", loc, fmt, ap);
@@ -423,7 +425,9 @@ void pp_pedwarn(PP *pp, SrcLoc loc, const char *fmt, ...)
 static void check_eol(PP *pp, TokSpan rest, const char *dir)
 {
     if (rest.n) {
-        Diagnostic *d = diag_report(pp->diag, DL_WARNING, "extra-tokens",
+        Diagnostic *d = diag_report(pp->diag, DL_WARNING,
+                                    !strcmp(dir, "else") || !strcmp(dir, "endif")
+                                        ? "endif-labels" : "extra-tokens",
                                     rest.t[0].loc,
                                     "extra tokens at end of #%s directive", dir);
         diag_set_range(d, rest.t[0].loc, span_end(pp, rest, rest.t[0].loc));
@@ -1228,6 +1232,7 @@ static void do_define(PP *pp, const Tok *hash)
     VEC(SrcLoc) plocs = {0};
     bool ok = true;
     uint32_t i, b;
+    SrcLoc hdr_loc;
     Ident *nid;
 
     if (line.n == 0 || line.t[0].kind != TK_IDENT) {
@@ -1240,7 +1245,7 @@ static void do_define(PP *pp, const Tok *hash)
     nid = ident_by_id(pp->in, name->aux);
     if (nid == pp->id_defined) {
         diag_report(pp->diag, DL_ERROR, "", name->loc,
-                    "'defined' cannot be used as a macro name");
+                    "\"defined\" cannot be used as a macro name");
         return;
     }
     m = NEW(pp->arena, Macro);
@@ -1363,6 +1368,7 @@ static void do_define(PP *pp, const Tok *hash)
     vec_free(&plocs);
 
     /* replacement list */
+    hdr_loc = 0;
     m->body_len = i < line.n ? line.n - i : 0;
     m->body = NEW_ARRAY(pp->arena, Tok, m->body_len + 1);
     if (m->body_len)
@@ -1398,11 +1404,13 @@ static void do_define(PP *pp, const Tok *hash)
             }
         }
     }
+    /* libcpp reports these at the last token before the body */
+    hdr_loc = m->funclike && i > 0 ? line.t[i - 1].loc : name->loc;
     for (b = 0; b < m->body_len; b++) {
         Tok *t = &m->body[b];
         if (m->funclike && tok_is_punct(t, P_HASH)) {
             if (b + 1 >= m->body_len || !(m->body[b + 1].flags & TF_PARAM)) {
-                diag_report(pp->diag, DL_ERROR, "", t->loc,
+                diag_report(pp->diag, DL_ERROR, "", hdr_loc,
                             "'#' is not followed by a macro parameter");
                 return;
             }
@@ -1410,7 +1418,7 @@ static void do_define(PP *pp, const Tok *hash)
         }
         if (tok_is_punct(t, P_HASHHASH)) {
             if (b == 0 || b + 1 == m->body_len) {
-                diag_report(pp->diag, DL_ERROR, "", t->loc,
+                diag_report(pp->diag, DL_ERROR, "", hdr_loc,
                             "'##' cannot appear at either end of a macro "
                             "expansion");
                 return;
@@ -1472,7 +1480,7 @@ static void do_undef(PP *pp, const Tok *hash)
     id = ident_by_id(pp->in, line.t[0].aux);
     if (id == pp->id_defined) {
         diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
-                    "'defined' cannot be used as a macro name");
+                    "\"defined\" cannot be used as a macro name");
         return;
     }
     check_eol(pp, span_from(line, 1), "undef");

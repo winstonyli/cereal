@@ -2,7 +2,7 @@
 # gate.sh: the pre-commit gate, stages overlapped (<= 12 busy threads):
 #   run.sh (3 golden shards) | verify.sh (4) | san.sh (make -j4, 3 shards, san.py 4) | callgrind (1)
 # Writes /tmp/gate.<stage> and prints them in order.  Expect run/san "N passed, 0 failed"
-# (N grows with the goldens), san "findings 0", verify dg 16 / c-c++-common 2 / cpp 122 differ (of 3744 / 636 / 266 files run; cpp is a baseline, not a target),
+# (N grows with the goldens), san "findings 0", verify dg 15 / c-c++-common 2 / cpp 91 differ (of 3744 / 636 / 266 files run; cpp is a baseline, not a target),
 # callgrind ~3.70G (instructions, deterministic).
 # Inner loop while iterating: `sh tests/run.sh` alone (GOLDEN_JOBS=n shards its golden loops).
 cd "$(dirname "$0")/../.." || exit 1

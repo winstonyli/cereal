@@ -13,11 +13,11 @@ TYPES.md, PARALLEL.md, LSP.md and SPECS.md.
 - An index and LSP server over the same engine (`cereal index|query|lsp`).
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
-- gcc.dg: 3728 of 3744 files run give the same diagnostics as gcc (message,
-  line and column); 16 differ.
+- gcc.dg: 3729 of 3744 files run give the same diagnostics as gcc (message,
+  line and column); 15 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
-- gcc.dg/cpp (preprocessor tests, now in verify.sh): 144 of 266 identical; 122 differ. A baseline, not yet a target; see HISTORY Round 142.
-- 1361 golden tests pass; the sanitizer build is clean on 505 files.
+- gcc.dg/cpp (preprocessor tests, now in verify.sh): 175 of 266 identical; 91 differ. A baseline, not yet a target; see HISTORY Rounds 142 and 146.
+- 1367 golden tests pass; the sanitizer build is clean on 508 files.
 - uvloop's `loop.c` checks in about 3.73 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -39,10 +39,9 @@ bench/tools/cmp.sh gcc.dg/FILE.c     # diff one file against gcc-13
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
 callgrind) in parallel; see its header for the expected numbers.
 
-## Open differences (gcc.dg 16, c-c++-common 2)
+## Open differences (gcc.dg 15, c-c++-common 2)
 Needs gcc's optimizer or middle end (out of reach for a front end):
-Wstringop-overflow-22 (`strlen` and friends on
-unterminated arrays, partly done in R145), invalid-call-1, pr56355-1, pr62090 (`-O2` nonnull),
+invalid-call-1, pr56355-1, pr62090 (`-O2` nonnull),
 large-size-array-6, pr88074-2, strlenopt-78, pr83844.
 
 Darwin / Objective-C targets: darwin-cfstring-format-1, pr105522.

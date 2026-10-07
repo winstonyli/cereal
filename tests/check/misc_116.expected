@@ -31,9 +31,6 @@ misc_116.c:21:5: error: operator '*' has no left operand
 misc_116.c:23:9: error: operator '+' has no right operand
    23 | #if 1 + * 2
       |         ^
-misc_116.c:25:7: warning: comma operator in operand of #if [-Wpedantic]
-   25 | #if 1 ,
-      |       ^
 misc_116.c:25:8: error: operator ',' has no right operand
    25 | #if 1 ,
       |        ^

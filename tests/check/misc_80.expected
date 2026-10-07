@@ -6,20 +6,20 @@ misc_80.h:1:10: error: invalid suffix "g" on integer constant
     1 | int ha = 0x1g;
       |          ^
 In file included from misc_80.c:2:
-misc_80.h:2:11: warning: extra tokens at end of #undef directive [-Wextra-tokens]
+misc_80.h:2:11: warning: extra tokens at end of #undef directive
     2 | #undef HX junk
       |           ^~~~
 In file included from misc_80.c:2:
 misc_80.h:4:10: error: invalid digit "8" in octal constant
     4 | int hc = 08;
       |          ^
-misc_80.c:3:10: warning: extra tokens at end of #undef directive [-Wextra-tokens]
+misc_80.c:3:10: warning: extra tokens at end of #undef directive
     3 | #undef Y junk
       |          ^~~~
 misc_80.c:4:24: error: expected ';' before '}' token
     4 | int m2(void) { return 2 }
       |                        ^
-misc_80.c:5:10: warning: extra tokens at end of #undef directive [-Wextra-tokens]
+misc_80.c:5:10: warning: extra tokens at end of #undef directive
     5 | #undef Z junk
       |          ^~~~
 misc_80.c:6:10: error: exponent has no digits

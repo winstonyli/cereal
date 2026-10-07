@@ -1,0 +1,30 @@
+misc_209.c:7:6: warning: this use of "defined" may not be portable [-Wexpansion-to-defined]
+    7 | #if !bad0
+      |      ^~~~
+misc_209.c:9:11: warning: this use of "defined" may not be portable [-Wexpansion-to-defined]
+    9 | #if !bad1 Z
+      |           ^
+misc_209.c:11:13: warning: this use of "defined" may not be portable [-Wexpansion-to-defined]
+   11 | #if !bad1 (Z)
+      |             ^
+misc_209.c:13:10: warning: this use of "defined" may not be portable [-Wexpansion-to-defined]
+   13 | #if !bad2)
+      |          ^
+misc_209.c:17:8: error: "defined" cannot be used as a macro name
+   17 | #undef defined
+      |        ^
+misc_209.c:18:9: error: "defined" cannot be used as a macro name
+   18 | #define defined 1
+      |         ^
+misc_209.c:19:2: warning: #assert is a GCC extension
+   19 | #assert a(b)
+      |  ^
+misc_209.c:20:2: warning: #include_next is a GCC extension
+   20 | #include_next <stddef.h>
+      |  ^
+misc_209.c:20:2: warning: #include_next in primary source file
+   20 | #include_next <stddef.h>
+      |  ^
+misc_209.c:21:2: error: #endif without #if
+   21 | #endif x
+      |  ^

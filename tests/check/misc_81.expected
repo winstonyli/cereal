@@ -1,5 +1,5 @@
 In file included from misc_81.c:2:
-misc_81.h:1:11: warning: extra tokens at end of #undef directive [-Wextra-tokens]
+misc_81.h:1:11: warning: extra tokens at end of #undef directive
     1 | #undef HY junk
       |           ^~~~
 In file included from misc_81.c:3:
@@ -7,7 +7,7 @@ misc_80.h:1:10: error: invalid suffix "g" on integer constant
     1 | int ha = 0x1g;
       |          ^
 In file included from misc_81.c:3:
-misc_80.h:2:11: warning: extra tokens at end of #undef directive [-Wextra-tokens]
+misc_80.h:2:11: warning: extra tokens at end of #undef directive
     2 | #undef HX junk
       |           ^~~~
 In file included from misc_81.c:3:

@@ -163,6 +163,7 @@ uint64_t diag_option_size(DiagEngine *d, const char *id);
 
 Diagnostic *diag_report(DiagEngine *d, DiagLevel lvl, const char *id,
                         SrcLoc loc, const char *fmt, ...);
+bool diag_hidden_in_system_header(DiagEngine *d, SrcLoc loc);
 Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
                          SrcLoc loc, const char *fmt, va_list ap);
 void diag_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...);

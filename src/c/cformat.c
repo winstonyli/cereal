@@ -208,6 +208,7 @@ static bool fmt_arg_ok(Checker *c, const FmtWant *w, TypeId t)
 /* where conversion warnings go in a format without exact columns, when
  * that differs from the format's location ("fmt + N" reports at the '+') */
 static SrcLoc fmt_mloc;
+static bool fmt_termonly;   /* strfmon: only a missing nul is diagnosed */
 
 typedef struct FmtCtx {
     Checker *c;
@@ -352,6 +353,8 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
                       uint32_t first, bool scan, uint32_t s, SrcLoc whole,
                       SrcLoc call, size_t skip, const StrInit *si)
 {
+    if (fmt_termonly)
+        return;
     static const struct { char conv; const char *flags; } ft[] = {
         {'d', "-+ 0'I"}, {'i', "-+ 0'I"}, {'o', "-0#"}, {'x', "-0#"},
         {'X', "-0#"}, {'u', "-0'I"}, {'f', "-0 +#'I"}, {'g', "-0 +#'I"},
@@ -886,6 +889,46 @@ static void note_strinit_agg(Checker *c, CSym *s, uint32_t list)
     s->strinit = (uint32_t)c->strinits.len;
 }
 
+/* const char t[] = { 'a', 'b', ... }: a flat list of constants, zero padded
+ * to the array's size. */
+static void note_strinit_chars(Checker *c, CSym *s, uint32_t list)
+{
+    TypeId et;
+    uint32_t kk[256], nk, j;
+    bool ok = false;
+    uint64_t total;
+    StrInit si;
+    if (type_ckind(TT, s->ty) != TY_ARRAY)
+        return;
+    et = type_base(TT, type_canon(TT, s->ty));
+    if ((TYPE_QUALS(et) & (TQ_CONST | TQ_VOLATILE)) != TQ_CONST ||
+        mainv(c, et) != TYPE_B(CHAR))
+        return;
+    nk = nkids(c, list, kk, 256);
+    if (!nk || nk >= 256)
+        return;
+    total = type_size(TT, s->ty, &ok);
+    if (!ok || !total)           /* a [] bound counts the initializers */
+        total = nk;
+    if (nk > total)
+        return;
+    for (j = 0; j < nk; j++) {
+        uint32_t e = kk[j];
+        if (e == NO_NODE || node_err(c, e) || ntag(c, e) == N_INIT_LIST ||
+            ntag(c, e) == N_DESIGNATED ||
+            !(c->ck[e] == K_ICE || c->ck[e] == K_FOLD))
+            return;
+    }
+    si.b = xcalloc(1, total);
+    for (j = 0; j < nk; j++)
+        si.b[j] = (char)cexpr_sval(c, kk[j]);
+    si.n = nk;
+    si.uns = false;
+    si.agg = false;
+    vec_push(&c->strinits, si);
+    s->strinit = (uint32_t)c->strinits.len;
+}
+
 void cexpr_note_strinit(Checker *c, CSym *s, uint32_t init)
 {
     uint32_t lit = strip_paren(c, init);
@@ -899,6 +942,8 @@ void cexpr_note_strinit(Checker *c, CSym *s, uint32_t init)
         note_strinit_rows(c, s, lit);
         if (!s->strinit)
             note_strinit_agg(c, s, lit);
+        if (!s->strinit)
+            note_strinit_chars(c, s, lit);
         return;
     }
     if (lit == NO_NODE || ntag(c, lit) != N_STRING || type_ckind(TT, s->ty) != TY_ARRAY)
@@ -1253,8 +1298,8 @@ static void check_strlen_arg(Checker *c, uint32_t a, const char *fn, SrcLoc at)
     }
 }
 
-void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
-                                 const CSym *sy, const char *name, SrcLoc loc)
+static void check_format_literal_(Checker *c, const uint32_t *kv, uint32_t nk,
+                                  const CSym *sy, const char *name, SrcLoc loc)
 {
     uint32_t pos = 0, first = 0, a, s;
     SrcLoc where = loc, input;
@@ -1268,6 +1313,8 @@ void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     } else if ((pos = builtin_scanf_pos(name))) {
         first = builtin_is_va(name) ? 0 : pos + 1;
         scan = true;
+    } else if (fmt_termonly) {
+        pos = 3;
     }
     if (!pos || nk - 1 < pos)
         return;
@@ -1350,7 +1397,7 @@ void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
                          (bool)(ok_sz = true, asz = type_size(TT, c->ty[u], &ok_sz),
                                 ok_sz) && (uint64_t)off < asz &&
                          (size_t)off < si->n && si->n >= asz &&
-                         !memchr(si->b + off, 0, (size_t)(asz - off)))
+                         si->b[asz - 1])
                     cwarn(c, plus ? expr_loc(c, u) : expr_loc(c, a), "format=",
                           "unterminated format string");
                 else if (off >= 0) {
@@ -1399,7 +1446,7 @@ void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     } else if (c->ck[s] == K_NONE) {
         nonlit = true;
     }
-    if (!nonlit)
+    if (!nonlit || fmt_termonly)
         return;
     if (!first)
         suggest_format(c, scan, input);
@@ -1414,3 +1461,12 @@ void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     }
 }
 
+
+void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
+                          const CSym *sy, const char *name, SrcLoc loc)
+{
+    fmt_termonly = !(sy && sy->fmt) && (!strcmp(name, "strfmon") ||
+                                        !strcmp(name, "__builtin_strfmon"));
+    check_format_literal_(c, kv, nk, sy, name, loc);
+    fmt_termonly = false;
+}

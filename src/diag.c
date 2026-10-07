@@ -24,6 +24,7 @@ static const DiagOption options[] = {
     {"bidi-chars=", "pp", DL_WARNING, true, 0, "bidirectional control characters in comments, literals and identifiers"},
     {"normalized=", "pp", DL_WARNING, true, 0, "identifier not in Unicode NFC (or NFKC)"},
     {"directive-in-macro-args", "pp", DL_WARNING, true, 0, "directive inside macro arguments (C99 6.10.3p11 UB)"},
+    {"endif-labels", "pp", DL_WARNING, true, 0, "extra tokens after #else or #endif"},
     {"extra-tokens", "pp", DL_WARNING, true, 0, "extra tokens at end of directive"},
     {"variadic-macros", "pp", DL_WARNING, true, 0, "named variadic macros under -pedantic"},
     {"include-next-in-primary", "pp", DL_WARNING, true, 0, "#include_next in primary source file"},
@@ -646,6 +647,11 @@ static bool in_system_header(DiagEngine *d, SrcLoc loc)
     return f && srcmgr_is_system(f, loc);    /* with '# N "f" 3' markers */
 }
 
+bool diag_hidden_in_system_header(DiagEngine *d, SrcLoc loc)
+{
+    return !d->show_system && in_system_header(d, loc);
+}
+
 Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
                          SrcLoc loc, const char *fmt, va_list ap)
 {
@@ -816,6 +822,19 @@ static uint32_t char_width(const char *text, uint32_t i, uint32_t n,
     return (uint32_t)wc_width(cp);
 }
 
+/* The option libcpp names in its diagnostics: gcc tags #warning -Wcpp and
+ * prints the pedwarns of libcpp's directive handling with no option. */
+static bool diag_shown_id(const char **id)
+{
+    if (!strcmp(*id, "pp-warning-directive")) {
+        *id = "cpp";
+        return true;
+    }
+    return strcmp(*id, "include-next-in-primary") &&
+           strcmp(*id, "directive-in-macro-args") &&
+           strcmp(*id, "extra-tokens") && strcmp(*id, "integer-overflow-in-if");
+}
+
 /* gcc's default column unit is the display column (cpp_byte_column_to_
  * display_column): the width of the first `col` bytes of the line, tabs
  * advancing to the next multiple of 8, characters by wcwidth, a sequence cut
@@ -880,7 +899,7 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
     fputs(msg, o);
     if (d->color)
         fputs("\033[0m", o);
-    if (id && *id)
+    if (id && *id && diag_shown_id(&id))
         fprintf(o, dg_promoted ? " [-Werror=%s]" : " [-W%s]",
                 strcmp(id, "strict-aliasing=") && strcmp(id, "cast-align=")
                     ? id : (id[0] == 99 ? "cast-align" : "strict-aliasing"));

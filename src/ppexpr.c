@@ -112,8 +112,9 @@ static bool want_value_error(EP *p, const Tok *t)
 static void overflow(EP *p, const Tok *op, bool eval)
 {
     if (eval)
-        pp_warn_at(p->pp, op, "integer-overflow-in-if",
-                   "integer overflow in preprocessor expression");
+        pp_warn_at(p->pp, p->t, "integer-overflow-in-if",
+                   "integer overflow in preprocessor expression");   /* libcpp: the token that triggered the reduction */
+        (void)op;
 }
 
 /* ---- literals ------------------------------------------------------- */
@@ -319,7 +320,7 @@ static Val parse_char(EP *p, const Tok *t)
     if (nchars == 0)
         fail(p, t, "empty character constant", NULL, 0);
     else if (nchars > 1)
-        diag_report(p->pp->diag, DL_WARNING, "", t->loc,
+        diag_report(p->pp->diag, DL_WARNING, "multichar", t->loc,
                     "multi-character character constant");
     return mkval((uintmax_t)v, uns);
 }
@@ -516,7 +517,8 @@ static Val shift(EP *p, bool eval)
                 overflow(p, op, eval);
             a.v = (n < 0 && !a.uns && sv(a) < 0) ? UINTMAX_MAX : 0;
         } else if (n >= 0) {
-            if (!a.uns && (sv(a) < 0 || (n > 0 && (a.v >> (63 - n)) != 0)))
+            /* libcpp num_lshift: overflow if shifting back loses the value */
+            if (!a.uns && (intmax_t)(a.v << n) >> n != sv(a))
                 overflow(p, op, eval);
             a.v <<= n;
         } else if (a.uns) {
@@ -632,11 +634,13 @@ static Val expr_comma(EP *p, bool eval)
 {
     Val v = cond(p, eval);
     while (is_punct(p, P_COMMA)) {
-        if (eval && p->pp->opt->pedantic)
-            diag_report(p->pp->diag, DL_WARNING, "pedantic", p->t->loc,
-                        "comma operator in operand of #if");
         advance(p);
         v = cond(p, eval);
+        if (eval && p->ok && p->pp->opt->pedantic)   /* at the token that ends the operand */
+            diag_report(p->pp->diag,
+                        p->pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
+                        "pedantic", p->t->loc,
+                        "comma operator in operand of #if");
     }
     return v;
 }
@@ -680,8 +684,11 @@ static bool resolve_defined(PP *pp, TokSpan in, TokBuf *out)
             Ident *pred;
             const char *answer;
             Tok r;
-            diag_report(pp->diag, DL_WARNING, "deprecated", t->loc,
-                        "assertions are a deprecated extension");
+            if (pp->opt->pedantic)
+                pp_pedwarn(pp, t->loc, "assertions are a GCC extension");
+            else
+                diag_report(pp->diag, DL_WARNING, "deprecated", t->loc,
+                            "assertions are a deprecated extension");
             i++;
             /* GCC: a malformed assertion is reported and tests false */
             bool ok = pp_parse_assertion(pp, in, &i, false, t->loc + t->len,
@@ -725,6 +732,9 @@ bool pp_eval_if(PP *pp, TokSpan expr, bool *ok)
         *ok = false;
         return false;
     }
+    if (expr.n && res.len)      /* the end of the directive line, comments included */
+        res.t[res.len - 1].loc =
+            eol_after(pp, expr.t[expr.n - 1].loc + expr.t[expr.n - 1].len);
     p.t = p.start = res.t;
     v = expr_comma(&p, true);
     if (p.ok && p.t->kind != TK_EOF) {

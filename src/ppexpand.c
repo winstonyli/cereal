@@ -175,7 +175,7 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
     if (m->variadic && (int)a->start.len == m->nparams - 1) {
         /* gcc: at the ')', and only where __VA_OPT__ is not available (the
          * GNU modes), with no option tag */
-        if (pp->opt->pedantic && !pp->opt->gnu_mode && !m->gnu_named_variadic)
+        if (pp->opt->pedantic && !pp->opt->gnu_mode)
             pp_pedwarn(pp, a->rparen_loc, "ISO C99 requires at least one "
                        "argument for the \"...\" in a variadic macro");
         av_push(&a->start, a->all.len);
@@ -221,6 +221,7 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
 {
     Context c;
     size_t base = pp->ctx.len;
+    Tok lastlex;
     bool carry = pp->carry_space;
     memset(&c, 0, sizeof c);
     c.toks = in.t;
@@ -238,6 +239,8 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
         TokSrc src = pp_read_raw(pp, &t);
         if (src == SRC_BARRIER)
             break;
+        if (src == SRC_CONTEXT && pp->ctx.len - 1 == base)
+            lastlex = t;        /* the last token of the source line read */
         if (pp->in_if_expr && tok_is_punct(&t, P_HASH)) {
             /* #pred(answer), a GCC assertion: kept unexpanded */
             Tok u;
@@ -270,20 +273,42 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
                 /* keep `defined X` / `defined ( X )` unexpanded */
                 Tok u;
                 TokSrc us;
-                if (src == SRC_CONTEXT && pp->ctx.len - 1 != base)
-                    pp_warn_at(pp, &t, "expansion-to-defined",
-                               "macro expansion producing 'defined' has "
-                               "undefined behavior");
+                bool viamacro = src == SRC_CONTEXT && pp->ctx.len - 1 != base;
+                bool paren = false;
                 tokbuf_push(pp, out, t);
                 us = pp_read_raw(pp, &u);
+                if (us == SRC_CONTEXT && pp->ctx.len - 1 == base)
+                    lastlex = u;
                 if (us != SRC_BARRIER && tok_is_punct(&u, P_LPAREN)) {
+                    paren = true;
                     tokbuf_push(pp, out, u);
                     us = pp_read_raw(pp, &u);
+                    if (us == SRC_CONTEXT && pp->ctx.len - 1 == base)
+                        lastlex = u;
                 }
-                if (us != SRC_BARRIER && u.kind == TK_IDENT)
+                if (us != SRC_BARRIER && u.kind == TK_IDENT) {
                     tokbuf_push(pp, out, u);
-                else
+                    if (paren) {        /* libcpp reads the ')' too */
+                        TokSrc vs = pp_read_raw(pp, &u);
+                        if (vs != SRC_BARRIER && tok_is_punct(&u, P_RPAREN)) {
+                            tokbuf_push(pp, out, u);
+                            if (vs == SRC_CONTEXT && pp->ctx.len - 1 == base)
+                                lastlex = u;
+                        } else {
+                            pp_unread(pp, &u, vs);
+                        }
+                    }
+                    if (viamacro) {
+                        Diagnostic *wd = diag_report(
+                            pp->diag, DL_WARNING, "expansion-to-defined",
+                            lastlex.loc, "this use of \"defined\" may not be "
+                            "portable");
+                        diag_set_range(wd, lastlex.loc,
+                                       lastlex.loc + lastlex.len);
+                    }
+                } else {
                     pp_unread(pp, &u, us);
+                }
                 continue;
             }
             Macro *im = pp_macro(pp, id);
