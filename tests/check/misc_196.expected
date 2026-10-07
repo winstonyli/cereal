@@ -1,0 +1,36 @@
+misc_196.c:2:5: error: `\U00000f43' is not in NFC [-Werror=normalized=]
+    2 | int \u0F43;
+      |     ^
+misc_196.c:3:5: error: `a\U000005bb\U000005b9\U000005b8\U000005b9b' is not in NFC [-Werror=normalized=]
+    3 | int a\u05bb\u05b9\u05b8\u05b9b;
+      |     ^
+misc_196.c:4:5: error: universal character \u1100 is not valid in an identifier
+    4 | int \u1100\u1161;
+      |     ^
+misc_196.c:4:5: error: universal character \u1161 is not valid in an identifier
+    4 | int \u1100\u1161;
+      |     ^
+misc_196.c:5:5: error: \u0041 is not a valid universal character
+    5 | int \u0041\u0300;
+      |     ^
+misc_196.c:5:5: error: universal character \u0300 is not valid in an identifier
+    5 | int \u0041\u0300;
+      |     ^
+misc_196.c:8:5: error: universal character \u0301 is not valid in an identifier
+    8 | int x\u0301y\u0300;
+      |     ^
+misc_196.c:8:5: error: universal character \u0300 is not valid in an identifier
+    8 | int x\u0301y\u0300;
+      |     ^
+misc_196.c:9:5: error: universal character \u11A8 is not valid in an identifier
+    9 | int \uAC00\u11A8;
+      |     ^
+misc_196.c:10:5: error: `\U00001f71' is not in NFC [-Werror=normalized=]
+   10 | int \u1F71;
+      |     ^
+misc_196.c:11:9: error: invalid suffix "\u00ba" on integer constant
+   11 | int n = 0\u00ba;
+      |         ^
+misc_196.c:12:9: error: invalid suffix "\u0300" on integer constant
+   12 | int m = 1\u0300;
+      |         ^

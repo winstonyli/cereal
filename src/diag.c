@@ -22,6 +22,7 @@ static const DiagOption options[] = {
     {"suggest-attribute=format", "c", DL_WARNING, false, 0, "a function calling a v*printf/v*scanf-like function with its own format might take the format attribute (-Wmissing-format-attribute)"},
     {"larger-than=", "c", DL_WARNING, true, 0, "object larger than N bytes (N: a size, kB/MB.. units)"},
     {"bidi-chars=", "pp", DL_WARNING, true, 0, "bidirectional control characters in comments, literals and identifiers"},
+    {"normalized=", "pp", DL_WARNING, true, 0, "identifier not in Unicode NFC (or NFKC)"},
     {"directive-in-macro-args", "pp", DL_WARNING, true, 0, "directive inside macro arguments (C99 6.10.3p11 UB)"},
     {"extra-tokens", "pp", DL_WARNING, true, 0, "extra tokens at end of directive"},
     {"variadic-macros", "pp", DL_WARNING, true, 0, "named variadic macros under -pedantic"},

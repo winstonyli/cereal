@@ -12,6 +12,7 @@ typedef struct LexOptions {
     bool uliterals;      /* u'' U'' u"" U"" u8"" (gnu99, C11) */
     bool ucn_c99;        /* -pedantic: only C99 Annex D UCNs in identifiers */
     uint8_t bidi;        /* -Wbidi-chars=: BIDI_* */
+    uint8_t norm;        /* -Wnormalized=: 0 nfkc, 1 nfc, 2 id, 3 none */
 } LexOptions;
 
 /* -Wbidi-chars= values: unpaired and any are exclusive; ucn extends either to

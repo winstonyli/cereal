@@ -619,6 +619,132 @@ static int utf8_id_class(const Lexer *L, uint32_t cp)
     return 0;
 }
 
+#include "ucnorm.h"
+
+/* -Wnormalized: libcpp's quick check (charset.cc ucn_valid_in_identifier) over
+ * the identifier [start, end), run only for those with an extended character. */
+static void norm_check(Lexer *L, const char *start, const char *end, bool raw)
+{
+    uint32_t prev = 0;
+    unsigned pc = 0;
+    int lvl = 0;
+    const char *p = start;
+    char *sp, *o;
+    while (p < end) {
+        uint32_t cp = (unsigned char)*p, c, q;
+        int n = 1;
+        size_t lo = 0, hi = sizeof ucnorm / sizeof *ucnorm;
+        bool safe;
+        if (cp < 0x80 && cp != '\\') {
+            if (isalnum((int)cp) || cp == '_' || cp == '$') {
+                prev = cp;
+                pc = 0;
+            }
+            p++;
+            continue;
+        }
+        if (cp == '\\') {
+            n = p + 1 < end && p[1] == 'u' ? 4 : p + 1 < end && p[1] == 'U' ? 8 : 0;
+            if (!n || p + 2 + n > end) {
+                p++;
+                continue;
+            }
+            cp = (uint32_t)ucn_value(p + 2, n);
+            n += 2;
+        } else if (!(n = utf8_dec((const unsigned char *)p, (size_t)(end - p), &cp))) {
+            p++;
+            continue;
+        }
+        p += n;
+        if (!utf8_id_class(L, cp))
+            continue;
+        while (lo < hi) {
+            size_t mid = (lo + hi) / 2;
+            if (cp < ucnorm[mid].lo)
+                hi = mid;
+            else if (cp > ucnorm[mid].hi)
+                lo = mid + 1;
+            else {
+                lo = hi = mid;
+                break;
+            }
+        }
+        if (lo >= sizeof ucnorm / sizeof *ucnorm)
+            continue;
+        q = prev;
+        c = cp;
+        if (ucnorm[lo].comb && ucnorm[lo].comb < pc) {
+            lvl = 3;
+        } else if (ucnorm[lo].kind == 4) {
+            if (c >= 0x1161 && c <= 0x1175)
+                safe = q < 0x1100 || q > 0x1112;
+            else if (c >= 0x11A8 && c <= 0x11C2)
+                safe = q < 0xAC00 || q > 0xD7A3 || (q - 0xAC00) % 28 != 0;
+            else {
+                size_t a = 0, b = sizeof nfc_bad / sizeof *nfc_bad;
+                while (a < b) {
+                    size_t mid = (a + b) / 2;
+                    if (nfc_bad[mid].c < c || (nfc_bad[mid].c == c && nfc_bad[mid].p < q))
+                        a = mid + 1;
+                    else
+                        b = mid;
+                }
+                safe = !(a < sizeof nfc_bad / sizeof *nfc_bad &&
+                         nfc_bad[a].c == c && nfc_bad[a].p == q);
+            }
+            if (!safe) {
+                if ((c >= 0x1161 && c <= 0x1175) || (c >= 0x11A8 && c <= 0x11C2))
+                    lvl = lvl > 2 ? lvl : 2;
+                else
+                    lvl = 3;
+            }
+        } else if (ucnorm[lo].kind == 2) {
+            lvl = lvl > 1 ? lvl : 1;
+        } else if (ucnorm[lo].kind == 3) {
+            lvl = lvl > 2 ? lvl : 2;
+        } else if (ucnorm[lo].kind == 0) {
+            lvl = 3;
+        }
+        if (!ucnorm[lo].comb)
+            prev = cp;
+        pc = ucnorm[lo].comb;
+    }
+    if (L->opt.norm >= lvl)
+        return;
+    /* an identifier, every extended character spelled \U%08x as cpp_spell_token */
+    o = sp = malloc((size_t)(end - start) * 10 + 1);
+    if (raw) {                  /* a number is spelled as written */
+        memcpy(sp, start, (size_t)(end - start));
+        o += end - start;
+        p = end;
+    }
+    for (p = raw ? end : start; p < end;) {
+        uint32_t cp = (unsigned char)*p;
+        int n = 1;
+        if (cp == '\\' && p + 1 < end && (p[1] == 'u' || p[1] == 'U')) {
+            n = p[1] == 'u' ? 4 : 8;
+            if (p + 2 + n <= end) {
+                cp = (uint32_t)ucn_value(p + 2, n);
+                n += 2;
+            } else {
+                n = 1;
+            }
+        } else if (cp >= 0x80 &&
+                   !(n = utf8_dec((const unsigned char *)p, (size_t)(end - p), &cp))) {
+            n = 1;
+        }
+        if (cp >= 0x80 || n > 1)
+            o += sprintf(o, "\\U%08x", (unsigned)cp);
+        else if (cp != '\\' && cp != 0x0a && cp != 0x0d)
+            *o++ = (char)cp;
+        p += n;
+    }
+    *o = 0;
+    diag_report(L->diag, DL_WARNING, "normalized=", (SrcLoc)(start - L->region),
+                "`%s' is not in %s", sp, lvl == 1 ? "NFKC" : "NFC");
+    free(sp);
+}
+
 /* The UTF-8 character at s->p as an identifier character: its class (see
  * ucn99_class) and byte length; 0 if it is not valid UTF-8 or no identifier
  * character, in which case it is a token of its own. */
@@ -833,8 +959,11 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
         }
         if (ext && L->bidi_live)
             bidi_close(L, s.p);
+        if (ext && L->diag && L->opt.norm < 3)
+            norm_check(L, start, s.p, false);
     } else if ((c >= '0' && c <= '9') ||
                (c == '.' && s_peek2(&s) >= '0' && s_peek2(&s) <= '9')) {
+        bool xn = false;            /* has a UTF-8 character or a UCN */
         t->kind = TK_PPNUM;
         s_take(&s);
         for (;;) {
@@ -847,13 +976,17 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
                        d == '.') {
                 s_take(&s);
             } else if ((u = s_ucn_len(&s)) != 0) {
+                xn = true;
                 s_take_n(&s, u);
             } else if (d >= 0x80 && s_utf8_id(&s, &u)) {
+                xn = true;
                 s_take_n(&s, u);
             } else {
                 break;
             }
         }
+        if (xn && L->diag && L->opt.norm < 3)
+            norm_check(L, start, s.p, true);
     } else if (c == '\'' || c == '"') {
         if (s_quoted(&s, c)) {
             t->kind = c == '"' ? TK_STRING : TK_CHAR;

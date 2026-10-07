@@ -20,6 +20,7 @@ void options_init(Options *o)
     o->pp.gnu_extensions = true;
     o->pp.lex.dollar_idents = true;
     o->pp.lex.bidi = BIDI_UNPAIRED;
+    o->pp.lex.norm = 1;
     o->linemarkers = true;
     o->parallel = 'a';
 }
@@ -28,6 +29,7 @@ void options_init(Options *o)
  * rejects an unknown name or a value out of range. */
 static void check_dump(Options *o, const char *a);
 static void bidi_option(Options *o, const char *a);
+static void norm_option(Options *o, const char *a);
 
 static void check_param(Options *o, const char *arg)
 {
@@ -163,6 +165,10 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         bidi_option(o, a);
     } else if (!strcmp(a, "-Wno-bidi-chars")) {
         o->pp.lex.bidi = 0;
+    } else if (!strncmp(a, "-Wnormalized", 12) && (!a[12] || a[12] == '=')) {
+        norm_option(o, a);
+    } else if (!strcmp(a, "-Wno-normalized")) {
+        o->pp.lex.norm = 3;
     } else if (!strncmp(a, "-W", 2) && a[2]) {
         vec_push(&o->wflags, a + 2);
     } else if (!strcmp(a, "-fdiagnostics-format=json")) {
@@ -339,6 +345,23 @@ static void bidi_option(Options *o, const char *a)
         p += n + 1;
     }
     o->pp.lex.bidi = (uint8_t)((base < 0 ? BIDI_UNPAIRED : base) | ucn);
+}
+
+/* -Wnormalized[=nfkc|nfc|id|none]: bare is nfc. */
+static void norm_option(Options *o, const char *a)
+{
+    static const char *const names[] = {"nfkc", "nfc", "id", "none"};
+    const char *v = a[12] ? a + 13 : "nfc";
+    int k;
+    for (k = 0; k < 4; k++)
+        if (!strcmp(v, names[k])) {
+            o->pp.lex.norm = (uint8_t)k;
+            return;
+        }
+    fprintf(stderr, "cereal: error: argument '%s' to '-Wnormalized' not "
+            "recognized\ncereal: note: valid arguments to '-Wnormalized=' "
+            "are: id nfc nfkc none\n", v);
+    o->bad_options++;
 }
 
 static void bad_wopt(Options *o, const char *flag)
