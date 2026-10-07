@@ -1,0 +1,16 @@
+misc_226.c:3:8: error: unexpected end of file after #line
+    3 | #line E
+      |        ^
+misc_226.c:4:7: error: "X" after #line is not a positive integer
+    4 | #line X
+      |       ^
+misc_226.c:5:7: error: ""s"" after #line is not a positive integer
+    5 | #line "s"
+      |       ^
+misc_226.c:6:9: error: "6" is not a valid filename
+    6 | #line 5 6
+      |         ^
+misc_226.c:7:13: error: extra tokens at end of #line directive
+    7 | #line 7 "f" x
+      |             ^
+f:7:6: error: unexpected end of file after #line

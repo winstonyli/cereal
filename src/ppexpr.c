@@ -174,8 +174,13 @@ static Val parse_number(EP *p, const Tok *t)
             sb_free(&sb);
             return mkval(0, false);
         }
-        if (d >= base) {
-            fail(p, t, "invalid digit in octal constant", NULL, 0);
+        if (d >= base) {        /* libcpp names the largest digit */
+            char mx[2] = {c, 0};
+            const char *qd;
+            for (qd = s; qd < end && *qd >= '0' && *qd <= '9'; qd++)
+                if (*qd > mx[0])
+                    mx[0] = *qd;
+            fail(p, t, "invalid digit \"%.*s\" in octal constant", mx, 1);
             return mkval(0, false);
         }
         if (v > (UINTMAX_MAX - (uintmax_t)d) / (uintmax_t)base)
@@ -356,6 +361,9 @@ static Val parse_char_(EP *p, const Tok *t)
     }
     if (nchars == 0)
         fail(p, t, "empty character constant", NULL, 0);
+    else if (nchars > (wide ? 1 : 4))   /* libcpp: more than fits its type */
+        diag_report(p->pp->diag, DL_WARNING, "", t->loc,
+                    "character constant too long for its type");
     else if (nchars > 1)
         diag_report(p->pp->diag, DL_WARNING, "multichar", t->loc,
                     "multi-character character constant");

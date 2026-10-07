@@ -7,6 +7,19 @@
 #include <sys/stat.h>
 #include <time.h>
 
+/* Conditionals nested in a skipped group still have an if stack in libcpp:
+ * "#else after #else" and "unterminated #if" are diagnosed there too. */
+typedef struct { SrcLoc loc; CondKind kind; bool seen_else; } SkipIf;
+enum { SKIP_IF_MAX = 64 };
+
+static const char *const cond_names[] = {"if", "ifdef", "ifndef", "elif", "else"};
+
+static void cond_began_here(PP *pp, SrcLoc loc)
+{
+    pp->diag->nocol_next = true;            /* gcc: a line-only location */
+    diag_report(pp->diag, DL_ERROR, "", loc, "the conditional began here");
+}
+
 #define MAX_INCLUDE_DEPTH 200
 
 /* ---- token buffers -------------------------------------------------- */
@@ -425,7 +438,8 @@ void pp_pedwarn(PP *pp, SrcLoc loc, const char *fmt, ...)
 static void check_eol(PP *pp, TokSpan rest, const char *dir)
 {
     if (rest.n) {
-        Diagnostic *d = diag_report(pp->diag, DL_WARNING,
+        Diagnostic *d = diag_report(pp->diag,
+                                    pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
                                     !strcmp(dir, "else") || !strcmp(dir, "endif")
                                         ? "endif-labels" : "extra-tokens",
                                     rest.t[0].loc,
@@ -562,8 +576,9 @@ static bool pop_file(PP *pp)
         pp->diag->key = (uint32_t)pp->plan->items.len - 1;
     }
     while (pp->cond != fr->cond_base) {
+        pp->diag->nocol_next = true;        /* gcc: a line-only location */
         diag_report(pp->diag, DL_ERROR, "", pp->cond->if_loc,
-                    "unterminated conditional directive");
+                    "unterminated #%s", cond_names[pp->cond->kind]);
         pp->cond = pp->cond->prev;
     }
     if (fr->guard_state == G_AFTER && !fr->file->guard_checked)
@@ -830,6 +845,11 @@ bool pp_enter_main(PP *pp, const char *path)
 
 static bool plan_exit(PP *pp);
 
+SrcLoc pp_last_line(void *ctx)
+{
+    return ((PP *)ctx)->last_bol;
+}
+
 bool pp_next(PP *pp, Tok *out)
 {
     for (;;) {
@@ -856,10 +876,15 @@ bool pp_next(PP *pp, Tok *out)
                 continue;
             }
             guard_note_activity(pp);
+            if (t.flags & TF_BOL)
+                pp->last_bol = t.loc;
         }
         if (t.kind == TK_IDENT) {
             Ident *id = ident_by_id(pp->in, t.aux);
             Macro *m = pp_macro(pp, id);
+            if (src == SRC_LEXER && id == pp->id_va_args)
+                pp_pedwarn(pp, t.loc, "__VA_ARGS__ can only appear in the "
+                           "expansion of a C99 variadic macro");
             if (m && !(t.flags & TF_NOEXPAND)) {
                 if (pp_macro_disabled(pp, m)) {
                     t.flags |= TF_NOEXPAND;
@@ -873,9 +898,14 @@ bool pp_next(PP *pp, Tok *out)
                 }
             }
         } else if (t.flags & TF_UNTERMINATED) {
-            pp_warn_at(pp, &t, "invalid-pp-token",
-                       "missing terminating %c character",
-                       pp_text(pp, &t)[pp_text(pp, &t)[0] == 'L' ? 1 : 0]);
+            /* libcpp: a pedwarn with no option; an error under -pedantic-errors */
+            Diagnostic *ud = diag_report(pp->diag,
+                        pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
+                        "invalid-pp-token", t.loc,
+                        "missing terminating %c character",
+                        pp_text(pp, &t)[pp_text(pp, &t)[0] == 'L' ? 1 : 0]);
+            diag_set_range(ud, t.loc, t.loc + t.len);
+            pp_add_expansion_notes(pp, ud);
         }
         if (pp->carry_space) {
             t.flags |= TF_SPACE;
@@ -954,10 +984,21 @@ static void trad_stringification(PP *pp, const Macro *m, SrcLoc at);
 
 /* Skip an inactive group; leaves the lexer at the '#' of the #elif/#else/
  * #endif that ends it (or at end of file). */
+static void skip_unterminated(PP *pp, const SkipIf *nest, int depth)
+{
+    int i = depth > SKIP_IF_MAX ? SKIP_IF_MAX : depth;
+    while (i-- > 0) {
+        pp->diag->nocol_next = true;
+        diag_report(pp->diag, DL_ERROR, "", nest[i].loc, "unterminated #%s",
+                    cond_names[nest[i].kind]);
+    }
+}
+
 static void skip_group(PP *pp)
 {
     Lexer *L = &pp->lex;
     int depth = 0;
+    SkipIf nest[SKIP_IF_MAX];
     SrcLoc begin, end;
     if (pp->has_pending) {
         if (pp->pending.kind == TK_EOF)
@@ -974,6 +1015,7 @@ static void skip_group(PP *pp)
             lex_next(L, &kw);
             if (kw.kind == TK_EOF) {
                 end = lexer_loc(L);
+                skip_unterminated(pp, nest, depth);
                 break;
             }
             if (kw.flags & TF_BOL) {
@@ -987,7 +1029,23 @@ static void skip_group(PP *pp)
                     trad_directive(pp, k, &kw);
                 }
                 if (k == KW_IF || k == KW_IFDEF || k == KW_IFNDEF) {
+                    if (depth < SKIP_IF_MAX) {
+                        nest[depth].loc = hash;
+                        nest[depth].kind = k == KW_IF ? COND_IF
+                                         : k == KW_IFDEF ? COND_IFDEF : COND_IFNDEF;
+                        nest[depth].seen_else = false;
+                    }
                     depth++;
+                } else if ((k == KW_ELIF || k == KW_ELSE) && depth > 0 &&
+                           depth <= SKIP_IF_MAX) {
+                    SkipIf *n = &nest[depth - 1];
+                    if (n->seen_else) {
+                        pp_error_at(pp, &kw, "#%s after #else",
+                                    k == KW_ELIF ? "elif" : "else");
+                        cond_began_here(pp, n->loc);
+                    }
+                    n->kind = k == KW_ELIF ? COND_ELIF : COND_ELSE;
+                    n->seen_else |= k == KW_ELSE;
                 } else if (k == KW_ENDIF) {
                     if (depth == 0) {
                         end = line_start_of(pp, hash);
@@ -1003,15 +1061,28 @@ static void skip_group(PP *pp)
             }
             if (!lex_next_line(L)) {
                 end = lexer_loc(L);
+                skip_unterminated(pp, nest, depth);
                 break;
             }
         } else if (!lex_next_line(L)) {
             end = lexer_loc(L);
+            skip_unterminated(pp, nest, depth);
             break;
         }
     }
     if (begin < end)
         PP_EMIT(pp, skipped, begin, end);
+}
+
+/* libcpp lex_macro_node's complaint about a missing or non-identifier name. */
+static void bad_macro_name(PP *pp, TokSpan line, const Tok *kw, const char *dir)
+{
+    if (line.n == 0)
+        diag_report(pp->diag, DL_ERROR, "", kw_eol(pp, kw),
+                    "no macro name given in #%s directive", dir);
+    else
+        diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
+                    "macro names must be identifiers");
 }
 
 /* ---- conditionals --------------------------------------------------- */
@@ -1110,9 +1181,7 @@ static void do_if(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
         }
     } else {
         if (line.n == 0 || line.t[0].kind != TK_IDENT) {
-            diag_report(pp->diag, DL_ERROR, "", line.n ? line.t[0].loc : kw->loc,
-                        "macro name missing in #%s directive",
-                        k == COND_IFDEF ? "ifdef" : "ifndef");
+            bad_macro_name(pp, line, kw, k == COND_IFDEF ? "ifdef" : "ifndef");
             ok = false;
         } else {
             pp_macro_ref(pp, &line.t[0], REF_IFDEF);
@@ -1146,7 +1215,8 @@ static void do_elif_else(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
     if (c->seen_else) {
         Diagnostic *d = diag_report(pp->diag, DL_ERROR, "", kw->loc,
                                     "#%s after #else", name);
-        diag_note(pp->diag, d, c->if_loc, "the conditional began here");
+        (void)d;
+        cond_began_here(pp, c->if_loc);
     }
     if (fr->guard_state == G_IN_GUARD && fr->guard_frame == c)
         fr->guard_state = G_INVALID;
@@ -1232,7 +1302,7 @@ static bool macros_identical(PP *pp, const Macro *a, const Macro *b)
     return true;
 }
 
-static void do_define(PP *pp, const Tok *hash)
+static void do_define(PP *pp, const Tok *hash, const Tok *kw)
 {
     TokSpan line = read_line(pp);
     const Tok *name;
@@ -1245,13 +1315,14 @@ static void do_define(PP *pp, const Tok *hash)
     Ident *nid;
 
     if (line.n == 0 || line.t[0].kind != TK_IDENT) {
-        diag_report(pp->diag, DL_ERROR, "", line.n ? line.t[0].loc : hash->loc,
-                    line.n ? "macro names must be identifiers"
-                           : "macro name missing");
+        bad_macro_name(pp, line, kw, "define");
         return;
     }
     name = &line.t[0];
     nid = ident_by_id(pp->in, name->aux);
+    if (nid == pp->id_va_args)
+        pp_pedwarn(pp, name->loc, "__VA_ARGS__ can only appear in the expansion "
+                   "of a C99 variadic macro");
     if (nid == pp->id_defined) {
         diag_report(pp->diag, DL_ERROR, "", name->loc,
                     "\"defined\" cannot be used as a macro name");
@@ -1486,14 +1557,13 @@ static void do_define(PP *pp, const Tok *hash)
     PP_EMIT(pp, checkpoint, m->end_loc, pp->seq);
 }
 
-static void do_undef(PP *pp, const Tok *hash)
+static void do_undef(PP *pp, const Tok *hash, const Tok *kw)
 {
     TokSpan line = read_line(pp);
     Macro *m;
     Ident *id;
     if (line.n == 0 || line.t[0].kind != TK_IDENT) {
-        diag_report(pp->diag, DL_ERROR, "", line.n ? line.t[0].loc : hash->loc,
-                    "macro name missing in #undef");
+        bad_macro_name(pp, line, kw, "undef");
         return;
     }
     id = ident_by_id(pp->in, line.t[0].aux);
@@ -1569,13 +1639,17 @@ static char *parse_header_name(PP *pp, TokSpan line, bool *angled,
 {
     TokSpan s = line;
     *expanded = false;
-    bool has_gt = false;
+    SrcLoc gt = 0;      /* position of the first raw '>' of a <header> */
     if (tok_is_punct(&s.t[0], P_LT)) {
-        uint32_t u;
-        for (u = 1; u < s.n; u++)
-            has_gt |= tok_is_punct(&s.t[u], P_GT);
+        const Tok *last = &s.t[s.n - 1];
+        SrcLoc p, e = last->loc + last->len;
+        for (p = s.t[0].loc + 1; p < e; p++)
+            if (pp->sm->region[p] == '>') {
+                gt = p;
+                break;
+            }
     }
-    if (!(s.t[0].kind == TK_STRING) && !has_gt) {   /* `<h` + a macro giving `>` */
+    if (!(s.t[0].kind == TK_STRING) && !gt) {   /* `<h` + a macro giving `>` */
         pp_expand_into(pp, line, tmp);
         s.t = tmp->t;
         s.n = tmp->len;
@@ -1595,6 +1669,21 @@ static char *parse_header_name(PP *pp, TokSpan line, bool *angled,
     if (tok_is_punct(&s.t[0], P_LT)) {
         uint32_t u = 1;
         *angled = true;
+        if (gt) {       /* libcpp lexes a header name raw, up to the first '>' */
+            Tok *g;
+            while (u < s.n && s.t[u].loc + s.t[u].len <= gt)
+                u++;
+            g = (Tok *)(void *)&s.t[u];
+            *name_end = gt + 1;
+            *rest = u + 1;
+            if (g->loc + g->len > gt + 1) {     /* `>>`, `>=`...: the tail is extra */
+                g->len = g->loc + g->len - (gt + 1);
+                g->loc = gt + 1;
+                *rest = u;
+            }
+            return arena_strndup(pp->arena, pp->sm->region + s.t[0].loc + 1,
+                                 gt - (s.t[0].loc + 1));
+        }
         while (u < s.n && !tok_is_punct(&s.t[u], P_GT))
             u++;
         if (u >= s.n) {
@@ -1667,8 +1756,17 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
         tokbuf_release(pp, &tmp);
         return;
     }
-    if (!expanded)
-        check_eol(pp, span_from(line, rest), import ? "import" : next ? "include_next" : "include");
+    if (!expanded) {
+        TokSpan extra = span_from(line, rest);
+        if (extra.n) {      /* libcpp expands them: macros giving nothing are fine */
+            TokBuf xb = {0};
+            pp_expand_into(pp, extra, &xb);
+            if (xb.len == 0)
+                extra.n = 0;
+            tokbuf_release(pp, &xb);
+        }
+        check_eol(pp, extra, import ? "import" : next ? "include_next" : "include");
+    }
     tokbuf_release(pp, &tmp);
     if (!*name) {
         diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
@@ -1759,6 +1857,17 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
     pp_expand_into(pp, line, &tmp);
     s.t = tmp.t;
     s.n = tmp.len;
+    if (!gnu_marker && s.n == 0) {
+        diag_report(pp->diag, DL_ERROR, "", eol_after(pp, span_end(pp, line, kw->loc + kw->len)),
+                    "unexpected end of file after #line");
+        goto out;
+    }
+    if (!gnu_marker && s.t[0].kind != TK_PPNUM) {
+        diag_report(pp->diag, DL_ERROR, "", s.t[0].loc,
+                    "\"%.*s\" after #line is not a positive integer",
+                    (int)s.t[0].len, pp_text(pp, &s.t[0]));
+        goto out;
+    }
     if (s.n == 0 || s.t[0].kind != TK_PPNUM) {
         diag_report(pp->diag, DL_ERROR, "", s.n ? s.t[0].loc : hash->loc,
                     "#line directive requires a positive integer argument");
@@ -2094,8 +2203,8 @@ void pp_directive(PP *pp, const Tok *hash)
     }
     guard_note_activity(pp);
     switch (k) {
-    case KW_DEFINE: do_define(pp, hash); goto out;
-    case KW_UNDEF: do_undef(pp, hash); goto out;
+    case KW_DEFINE: do_define(pp, hash, &kw); goto out;
+    case KW_UNDEF: do_undef(pp, hash, &kw); goto out;
     case KW_INCLUDE: do_include(pp, hash, &kw, false, false); goto out;
     case KW_IMPORT: do_include(pp, hash, &kw, false, true); goto out;
     case KW_LINE: do_line(pp, hash, &kw, false); goto out;

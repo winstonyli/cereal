@@ -1,0 +1,27 @@
+misc_224.c:1:13: error: pasting "-" and ">>" does not give a valid preprocessing token
+    1 | #define foo - ## >>
+      |             ^
+misc_224.c:4:1: note: in expansion of macro 'foo'
+    4 | foo
+      | ^
+misc_224.c:1:13: error: expected identifier or '(' before '-' token
+    1 | #define foo - ## >>
+      |             ^
+misc_224.c:4:1: note: in expansion of macro 'foo'
+    4 | foo
+      | ^
+misc_224.c:2:13: error: pasting "=" and "==" does not give a valid preprocessing token
+    2 | #define bar = ## ==
+      |             ^
+misc_224.c:5:1: note: in expansion of macro 'bar'
+    5 | bar
+      | ^
+misc_224.c:1:13: error: pasting "-" and ">>" does not give a valid preprocessing token
+    1 | #define foo - ## >>
+      |             ^
+misc_224.c:3:15: note: in expansion of macro 'foo'
+    3 | #define outer foo
+      |               ^
+misc_224.c:6:1: note: in expansion of macro 'outer'
+    6 | outer
+      | ^

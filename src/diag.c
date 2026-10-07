@@ -856,6 +856,7 @@ static bool diag_shown_id(const char **id)
     }
     return strcmp(*id, "include-next-in-primary") &&
            strcmp(*id, "directive-in-macro-args") &&
+           strcmp(*id, "invalid-pp-token") &&
            strcmp(*id, "extra-tokens") && strcmp(*id, "integer-overflow-in-if") &&
            strcmp(*id, "macro-redefined");
 }

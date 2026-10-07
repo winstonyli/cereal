@@ -1,0 +1,9 @@
+misc_221.c:5:21: warning: extra tokens at end of #include directive
+    5 | #include <stddef.h> junk
+      |                     ^~~~
+misc_221.c:6:20: warning: extra tokens at end of #include directive
+    6 | #include <stddef.h>>
+      |                    ^
+misc_221.c:7:20: warning: extra tokens at end of #include directive
+    7 | #include <stddef.h>>=
+      |                    ^~

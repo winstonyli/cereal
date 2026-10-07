@@ -2339,3 +2339,38 @@ gcc.dg/cpp rejects-valid and accepts-invalid are now 0 (cpp 197 identical, 69 di
 - Perf: the pre-scan is SIMD-skipped (`next_note_byte`) and gated by
   `has_line_note`; first cut cost +7% on uvloop, now +1.4%.
 - Gate: 1383 pass, san 516/0, gcc.dg 15 / c-c++-common 2 / cpp 69, callgrind 3.800G.
+
+## Round 148
+
+gcc.dg/cpp 197 -> 233 of 266 identical (33 differ); gcc.dg 15 and c-c++-common 2 unchanged.
+
+- Directive messages: `lex_macro_node` ("no macro name given", "macro names
+  must be identifiers"), `do_line` empty/non-number forms, `__VA_ARGS__`
+  pedwarns, `#include` header names lexed raw to the first `>` with extra
+  tokens macro-expanded before warning, `check_eol` as an error under
+  `-pedantic-errors`.
+- `paste` error at the lhs definition location with an "in expansion of
+  macro" note (expansion point under `-ftrack-macro-expansion=0`);
+  `stringify_arg` "invalid string literal, ignoring final '\'" at the rparen.
+- "unterminated #if/#ifdef/#ifndef/#elif/#else" as a nocol error with the
+  last directive's name; nested conditionals in skipped groups are tracked.
+- Charconst "too long for its type" vs multichar; octal "invalid digit" names
+  the max digit; splice blanks are space/tab/FF/VT (`splice_blank`).
+- "at end of input" location follows the last BOL token read even when its
+  macro vanishes (`pp->last_bol`, `CellSource.last_bol`, `p->last_line`).
+- Line notes (trigraph / backslash-blank) are now lazy: `scan_line_notes`
+  records them, `lexer_flush_notes` reports each once the lexer reaches its
+  position, interleaving with other diagnostics in file order like libcpp.
+  A NULL-diag lexer (parallel phase A) leaves them pending; the workers
+  report. Golden misc_232.
+- Goldens misc_219..232. Gate: 1411 pass, san 530/0, callgrind 3.810G.
+- Known gaps: escape/multichar warnings not issued for tokens the parser
+  rejects (`u'\x10000'`, `U'x41'` in c99); missing include is "error" not
+  "fatal error" outside -E; `__has_attribute`/`__has_builtin` error forms;
+  "backslash-newline at end of file" warning not implemented; file ending in
+  `#line N` empty-TU line; `#if 1 ??= 2`; one-token parser lookahead can
+  order a parser error after a following line's note; pp-vs-parser message
+  ordering; gnu89 "empty macro arguments".
+- verify.sh's gcc-side cache (`~/.cache/cereal-par`) can hold stale gcc
+  results if the testsuite was momentarily missing; delete entries matching
+  "No such file" and rerun.

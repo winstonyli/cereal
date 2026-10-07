@@ -1,0 +1,15 @@
+misc_232.c:2:6: warning: trigraph ??/ converted to \ [-Wtrigraphs]
+    2 | // a ??/
+      |      ^
+misc_232.c:4:9: error: expected expression before ';' token
+    4 | int b = ;
+      |         ^
+misc_232.c:6:16: warning: trigraph ??/ converted to \ [-Wtrigraphs]
+    6 | // space after ??/  
+      |                ^
+misc_232.c:9:7: warning: trigraph ??( converted to [ [-Wtrigraphs]
+    9 | int d ??( 1 ??);
+      |       ^
+misc_232.c:9:11: warning: trigraph ??) converted to ] [-Wtrigraphs]
+    9 | int d ??( 1 ??);
+      |           ^

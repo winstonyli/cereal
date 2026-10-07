@@ -1,0 +1,3 @@
+misc_219.c:4:1: warning: embedding a directive within macro arguments is not portable
+    4 | #if 1
+      | ^

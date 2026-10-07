@@ -1,0 +1,13 @@
+misc_225.c:1:5: warning: character constant too long for its type
+    1 | #if 'abcde' && L'ab' && 'abcd'
+      |     ^
+misc_225.c:1:16: warning: character constant too long for its type
+    1 | #if 'abcde' && L'ab' && 'abcd'
+      |                ^
+misc_225.c:1:25: warning: multi-character character constant [-Wmultichar]
+    1 | #if 'abcde' && L'ab' && 'abcd'
+      |                         ^
+misc_225.c:3:5: warning: multi-character character constant [-Wmultichar]
+    3 | #if 'ab'
+      |     ^
+misc_225.c:5: warning: ISO C forbids an empty translation unit [-Wpedantic]

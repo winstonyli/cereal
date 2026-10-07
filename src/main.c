@@ -178,7 +178,13 @@ typedef struct CellSource {
     size_t cell;
     TokCursor cur;
     bool open;
+    SrcLoc last_bol;            /* first token of the last line any cell read */
 } CellSource;
+
+static SrcLoc cell_last_line(void *ctx)
+{
+    return ((CellSource *)ctx)->last_bol;
+}
 
 static bool cell_source(void *ctx, Tok *t, SrcLoc *exp_loc)
 {
@@ -187,6 +193,8 @@ static bool cell_source(void *ctx, Tok *t, SrcLoc *exp_loc)
         if (cs->open) {
             if (tokcur_next(&cs->cur, t, exp_loc))
                 return true;
+            if (cs->cur.pp.last_bol)
+                cs->last_bol = cs->cur.pp.last_bol;
             tokcur_close(&cs->cur, true); /* the parser holds tokens */
             cs->open = false;
             cs->cell++;
@@ -273,6 +281,13 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
     parser_init(&p, &tu.sm, tu.in, &tu.diag, o->pp.gnu_mode, src, ctx);
     p.macro_chain = pp_macro_chain;
     p.macro_ctx = &tu.pp;
+    if (src == pp_source) {
+        p.last_line = pp_last_line;
+        p.last_ctx = &tu.pp;
+    } else {
+        p.last_line = cell_last_line;
+        p.last_ctx = &cs;
+    }
     if (parse_check) {
         CheckOptions co;
         memset(&co, 0, sizeof co);

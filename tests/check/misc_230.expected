@@ -1,0 +1,3 @@
+misc_230.c:7:3: error: expected '=', ',', ';', 'asm' or '__attribute__' at end of input
+    7 |   E
+      |   ^

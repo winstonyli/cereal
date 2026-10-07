@@ -1,0 +1,13 @@
+misc_220.c:5:2: error: #elif after #else
+    5 | #elif 0
+      |  ^
+misc_220.c:2: error: the conditional began here
+    2 | #if 1
+      | 
+misc_220.c:2: error: unterminated #elif
+    2 | #if 1
+      | 
+misc_220.c:1: error: unterminated #if
+    1 | #if 1
+      | 
+misc_220.c:6: warning: ISO C forbids an empty translation unit [-Wpedantic]

@@ -38,6 +38,8 @@ typedef struct Parser {
     size_t (*macro_chain)(void *ctx, SrcLoc spelled, SrcLoc exp,
                           MacroNote *out, size_t max);
     void *macro_ctx;
+    SrcLoc (*last_line)(void *ctx);   /* pp: first token of the last line read */
+    void *last_ctx;
     bool gnu;                   /* typeof and asm are keywords */
     /* toks[0] is the current unit's first token; lookahead follows */
     VEC(PTok) toks;

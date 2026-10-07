@@ -30,7 +30,7 @@ f(1,2,3) /* expect: error */
 #define X 1
 #define X 2 /* expect: macro-redefined */
 #undef __FILE__ /* expect: builtin-macro-redefined */
-#if 0
+#if 0 /* expect: error */
 #else
 #else /* expect: error */
 #endif

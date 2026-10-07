@@ -1,0 +1,13 @@
+misc_223.c:2:1: warning: __VA_ARGS__ can only appear in the expansion of a C99 variadic macro
+    2 | __VA_ARGS__
+      | ^
+misc_223.c:3:13: warning: __VA_ARGS__ can only appear in the expansion of a C99 variadic macro
+    3 | #define goo(__VA_ARGS__)
+      |             ^
+misc_223.c:5:9: warning: __VA_ARGS__ can only appear in the expansion of a C99 variadic macro
+    5 | #define __VA_ARGS__
+      |         ^
+misc_223.c:6:1: warning: __VA_ARGS__ can only appear in the expansion of a C99 variadic macro
+    6 | __VA_ARGS__
+      | ^
+misc_223.c:7: warning: ISO C forbids an empty translation unit [-Wpedantic]

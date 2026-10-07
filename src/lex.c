@@ -103,11 +103,17 @@ void lexer_set_diag(Lexer *L, DiagEngine *d)
     L->bidi_hi = L->p;
 }
 
+/* libcpp's is_nvspace: the blanks allowed between a backslash and its newline. */
+static inline bool splice_blank(char c)
+{
+    return c == 0x20 || c == 0x09 || c == 0x0b || c == 0x0c;
+}
+
 /* Blanks between a backslash and its newline, past p (NULL: no splice). */
 static const char *splice_end(const char *p, const char *lim, bool *blanks)
 {
     *blanks = false;
-    while (p < lim && *p == 0x20) {
+    while (p < lim && splice_blank(*p)) {
         p++;
         *blanks = true;
     }
@@ -120,24 +126,29 @@ static const char *splice_end(const char *p, const char *lim, bool *blanks)
 
 static int trigraph_char(char c);
 
-/* True if [p, lim) holds "??" or a backslash followed by a space. */
+/* True if [p, lim) holds "??" or a backslash followed by a blank. */
 static bool has_line_note(const char *p, const char *lim)
 {
 #ifdef CEREAL_SSE2
     const __m128i q = _mm_set1_epi8(0x3f), bs = _mm_set1_epi8(0x5c),
-                  sp = _mm_set1_epi8(0x20);
+                  sp = _mm_set1_epi8(0x20), ht = _mm_set1_epi8(0x09),
+                  vt = _mm_set1_epi8(0x0b), ff = _mm_set1_epi8(0x0c);
     for (; lim - p >= 17; p += 16) {
         __m128i x = _mm_loadu_si128((const __m128i *)(const void *)p);
         __m128i y = _mm_loadu_si128((const __m128i *)(const void *)(p + 1));
         __m128i m = _mm_or_si128(
             _mm_and_si128(_mm_cmpeq_epi8(x, q), _mm_cmpeq_epi8(y, q)),
-            _mm_and_si128(_mm_cmpeq_epi8(x, bs), _mm_cmpeq_epi8(y, sp)));
+            _mm_and_si128(_mm_cmpeq_epi8(x, bs),
+                          _mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(y, sp),
+                                                    _mm_cmpeq_epi8(y, ht)),
+                                       _mm_or_si128(_mm_cmpeq_epi8(y, vt),
+                                                    _mm_cmpeq_epi8(y, ff)))));
         if (_mm_movemask_epi8(m))
             return true;
     }
 #endif
     for (; p + 1 < lim; p++)
-        if ((p[0] == 0x3f && p[1] == 0x3f) || (p[0] == 0x5c && p[1] == 0x20))
+        if ((p[0] == 0x3f && p[1] == 0x3f) || (p[0] == 0x5c && splice_blank(p[1])))
             return true;
     return false;
 }
@@ -180,6 +191,20 @@ static void scan_line_notes(Lexer *L)
     const char *p = L->p, *lim = L->lim;
     bool tri_on;
     uint32_t shift = 0;     /* gcc reports columns of the cleaned line */
+    const char *ls = p;     /* start of the logical line */
+    uint32_t cap = 0;
+#define ADD_NOTE(k, xc, at) do { \
+        if (L->nnotes == cap) { \
+            cap = cap ? cap * 2 : 8; \
+            L->notes = xrealloc(L->notes, cap * sizeof *L->notes); \
+        } \
+        L->notes[L->nnotes].loc = (at); \
+        L->notes[L->nnotes].line_start = (SrcLoc)(ls - L->region); \
+        L->notes[L->nnotes].pos = (SrcLoc)(p - L->region); \
+        L->notes[L->nnotes].kind = (k); \
+        L->notes[L->nnotes].x = (xc); \
+        L->nnotes++; \
+    } while (0)
     if (!L->diag || !has_line_note(p, lim))
         return;
     if (L->opt.trigraphs)
@@ -191,20 +216,16 @@ static void scan_line_notes(Lexer *L)
         bool tri_slash = false;
         const char *e;
         bool blanks;
-        if (c == 0x0a)
+        if (c == 0x0a) {
             shift = 0;
+            ls = p + 1;
+        }
         if (c == '?' && p + 2 < lim && p[1] == '?' && trigraph_char(p[2])) {
             char x = p[2];
             bool splice = x == '/' && splice_end(p + 3, lim, &blanks);
             if (tri_on && ((st != LINE && st != BLOCK) || splice)) {
                 SrcLoc loc = (SrcLoc)(p - L->region) - shift;
-                if (L->opt.trigraphs)
-                    diag_report(L->diag, DL_WARNING, "trigraphs", loc,
-                                "trigraph ??%c converted to %c", x,
-                                trigraph_char(x));
-                else
-                    diag_report(L->diag, DL_WARNING, "trigraphs", loc,
-                                "trigraph ??%c ignored, use -trigraphs to enable", x);
+                ADD_NOTE(L->opt.trigraphs ? 'c' : 'i', x, loc);
             }
             if (L->opt.trigraphs)
                 shift += 2;
@@ -218,9 +239,7 @@ static void scan_line_notes(Lexer *L)
             const char *q = p + (tri_slash ? 3 : 1);
             if ((e = splice_end(q, lim, &blanks)) != NULL) {
                 if (blanks && !tri_slash && st != LINE && st != BLOCK)
-                    diag_report(L->diag, DL_WARNING, "",
-                                (SrcLoc)(p - L->region) - shift,
-                                "backslash and newline separated by space");
+                    ADD_NOTE('s', 0, (SrcLoc)(p - L->region) - shift);
                 p = e;
                 continue;
             }
@@ -301,11 +320,37 @@ void lexer_init_range(Lexer *L, SrcMgr *sm, Interner *in, ScratchCursor *sc,
 void lexer_free(Lexer *L)
 {
     sb_free(&L->clean);
+    free(L->notes);
+    L->notes = NULL;
+    L->nnotes = L->note_i = 0;
 }
+
+static void flush_notes_to(Lexer *L, const char *at)
+{
+    SrcLoc here = (SrcLoc)(at - L->region);
+    if (!L->diag) /* phase A: the workers report these */
+        return;
+    while (L->note_i < L->nnotes && L->notes[L->note_i].pos <= here) {
+        const LineNote *n = &L->notes[L->note_i++];
+        if (n->kind == 'c')
+            diag_report(L->diag, DL_WARNING, "trigraphs", n->loc,
+                        "trigraph ??%c converted to %c", n->x, trigraph_char(n->x));
+        else if (n->kind == 'i')
+            diag_report(L->diag, DL_WARNING, "trigraphs", n->loc,
+                        "trigraph ??%c ignored, use -trigraphs to enable", n->x);
+        else
+            diag_report(L->diag, DL_WARNING, "", n->loc,
+                        "backslash and newline separated by space");
+    }
+}
+
+void lexer_flush_notes(Lexer *L) { flush_notes_to(L, L->p); }
 
 void lexer_seek(Lexer *L, SrcLoc loc, bool bol)
 {
     L->p = L->region + loc;
+    if (L->note_i < L->nnotes)
+        lexer_flush_notes(L);
     L->bol = bol;
     if (bol)
         L->line_begin = L->p;
@@ -644,7 +689,7 @@ static int getc_at(const Lexer *L, const char *p, uint32_t *n)
         }
         if (c == '\\') {
             const char *q = p + len;
-            while (*q == 0x20)
+            while (splice_blank(*q))
                 q++;            /* libcpp: backslash, blanks, newline */
             if (q < L->lim && *q == '\n') {
                 p = q + 1;
@@ -1236,7 +1281,7 @@ static int splice_at(const Lexer *L, const char *p)
         n = 3;
     else
         return 0;
-    while (p[n] == 0x20)
+    while (splice_blank(p[n]))
         n++;
     if (p[n] == '\n')
         return n + 1;
@@ -1393,7 +1438,12 @@ static inline void finish_simple(Lexer *L, Tok *t, TokKind k, const char *p,
 
 void lex_next(Lexer *L, Tok *t)
 {
-    const char *p = skip_blank(L, L->p), *q;
+    const char *p, *q;
+    if (L->note_i < L->nnotes)
+        lexer_flush_notes(L);
+    p = skip_blank(L, L->p);
+    if (L->note_i < L->nnotes && p != L->p) /* comments read lines too */
+        flush_notes_to(L, p);
     const uint8_t *cl = L->opt.dollar_idents ? cls_dollar : cls;
     uint16_t flags = (uint16_t)((L->bol ? TF_BOL : 0) | (L->space ? TF_SPACE : 0));
     unsigned char c = (unsigned char)*p;
@@ -1632,7 +1682,7 @@ bool lex_line_is_directive(Lexer *L)
     return hash;
 }
 
-bool lex_next_line(Lexer *L)
+static bool lex_next_line_(Lexer *L)
 {
     const char *p = L->p;
     bool trig = L->opt.trigraphs;
@@ -1715,6 +1765,14 @@ bool lex_next_line(Lexer *L)
             p++;
         }
     }
+}
+
+bool lex_next_line(Lexer *L)
+{
+    bool r = lex_next_line_(L);
+    if (L->note_i < L->nnotes)
+        lexer_flush_notes(L);
+    return r;
 }
 
 uint32_t tok_raw_len(const SrcMgr *sm, const Interner *in, const Tok *t)

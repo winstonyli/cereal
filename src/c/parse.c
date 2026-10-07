@@ -210,14 +210,29 @@ static SrcLoc eof_loc(Parser *p)
  * the first token of the last line read (cb_line_change). */
 static SrcLoc eof_input_loc(Parser *p)
 {
-    SrcFile *f = eof_file(p);
+    SrcFile *f = p->last_line ? srcmgr_file_of(p->sm, p->last_line(p->last_ctx))
+                              : eof_file(p);
     uint32_t line, col = 1;
     if (!f)
         return tok_loc(p, p->toks.len);
-    srcmgr_linecol(f, p->toks.data[p->toks.len - 1].t.loc, &line, &col);
+    srcmgr_linecol(f, p->last_line ? p->last_line(p->last_ctx)
+                   : p->toks.data[p->toks.len - 1].exp ? p->toks.data[p->toks.len - 1].exp
+                                                       : p->toks.data[p->toks.len - 1].t.loc,
+                   &line, &col);
     {
         SrcLoc ls = srcmgr_loc_of(f, line, 1);
         const char *b = f->buf + (ls - f->base);
+        /* a spliced line is one logical line: it starts at the first physical */
+        while (line > 1) {
+            const char *e = b - 1;      /* the previous line's newline */
+            while (e > f->buf && (e[-1] == ' ' || e[-1] == '\t'))
+                e--;
+            if (e <= f->buf || e[-1] != 0x5c)
+                break;
+            line--;
+            ls = srcmgr_loc_of(f, line, 1);
+            b = f->buf + (ls - f->base);
+        }
         col = 1;
         while (b[col - 1] == ' ' || b[col - 1] == '	')
             col++;

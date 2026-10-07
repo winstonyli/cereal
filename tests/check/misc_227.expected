@@ -1,0 +1,6 @@
+misc_227.c:2:22: warning: invalid string literal, ignoring final '\'
+    2 | const char *a = str(\);
+      |                      ^
+misc_227.c:4:24: warning: invalid string literal, ignoring final '\'
+    4 | const char *c = str(\\\);
+      |                        ^

@@ -312,6 +312,8 @@ typedef struct PP {
     uint32_t tok_exp_id, tok_root;
     bool tok_root_obj;
     SrcLoc paste_loc;        /* where the invocation ends, for ## warnings */
+    SrcLoc last_bol;         /* first token of the last source line read (cb_line_change) */
+    SrcLoc paste_name_loc;   /* the macro name token being expanded, for ## errors */
     bool subst_root_obj;     /* root_obj of the expansion being substituted */
     /* ... and of the last token returned by pp_next */
     SrcLoc out_exp_loc;
@@ -361,6 +363,7 @@ void pp_init_worker(PP *w, const PP *main, Arena *a, DiagEngine *d);
 void pp_plan_start(PP *pp, Plan *plan, size_t item);
 /* Next fully macro-expanded token; false at the end of the TU. */
 bool pp_next(PP *pp, Tok *out);
+SrcLoc pp_last_line(void *ctx);   /* the first token of the last line read */
 
 /* The definition of id in effect at the current point. */
 static inline Macro *macro_at_version(const MacroTab *mt, const Ident *id,

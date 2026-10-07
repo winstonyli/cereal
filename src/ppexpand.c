@@ -128,9 +128,10 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
              ((t.flags & TF_BOL) && tok_is_punct(&t, P_HASH)))) {
             /* C99 6.10.3p11: undefined; GCC and Clang process it.  In phase
              * B the directive already ran in phase A: advance the version. */
-            diag_report(pp->diag, DL_WARNING, "directive-in-macro-args", t.loc,
-                        "preprocessing directive inside the arguments of "
-                        "macro \"%s\" is undefined behavior", m->name->str);
+            if (pp->diag->pedantic)
+                diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
+                            "directive-in-macro-args", t.loc,
+                            "embedding a directive within macro arguments is not portable");
             if (t.kind == TK_DIRMARK)
                 pp_plan_apply_dir(pp, t.aux);
             else
@@ -393,8 +394,6 @@ static Tok stringize(PP *pp, TokSpan arg, const Tok *hash, SrcLoc site,
     StrBuf *sb = &pp->sb;
     uint32_t i, k;
     Tok r;
-    Lexer L;
-    Tok chk;
     SrcLoc sl;
     sb->len = 0;
     sb_putc(sb, '"');
@@ -414,18 +413,17 @@ static Tok stringize(PP *pp, TokSpan arg, const Tok *hash, SrcLoc site,
             sb_putn(sb, s, t->len);
         }
     }
+    /* libcpp: an odd run of trailing stray backslashes is dropped */
+    for (i = arg.n; i > 0 && arg.t[i - 1].kind == TK_OTHER &&
+                    pp_text(pp, &arg.t[i - 1])[0] == 0x5c; i--)
+        ;
+    if ((arg.n - i) & 1) {
+        diag_report(pp->diag, DL_WARNING, "", pp->paste_loc,
+                    "invalid string literal, ignoring final '\\'");
+        sb->len--;
+    }
     sb_putc(sb, '"');
     sl = srcmgr_scratch(pp->sm, &pp->scratch, sb->data, sb->len);
-    lexer_init_range(&L, pp->sm, pp->in, &pp->scratch, pp->opt->lex, sl, (uint32_t)sb->len);
-    lex_next(&L, &chk);
-    if (chk.kind != TK_STRING || L.p != L.lim) {
-        Diagnostic *d = diag_report(pp->diag, DL_WARNING, "", site,
-            "invalid string literal produced by '#' (C99 6.10.3.2p2 "
-            "undefined behavior)");
-        diag_note(pp->diag, d, hash->loc, "'#' in the definition of '%s'",
-                  m->name->str);
-    }
-    lexer_free(&L);
     memset(&r, 0, sizeof r);
     r.kind = TK_STRING;
     r.loc = hash->loc;
@@ -470,12 +468,18 @@ static bool paste(PP *pp, const Tok *lhs, const Tok *rhs, const Tok *op,
     }
     lexer_free(&L);
     if (!valid) {
-        Diagnostic *d = diag_report(pp->diag, DL_ERROR, "", site,
+        /* libcpp: at the lhs token (in the definition) with an expansion
+         * note, or at the expansion point under -ftrack-macro-expansion=0 */
+        bool t0 = pp->diag->track0;
+        Diagnostic *d = diag_report(pp->diag, DL_ERROR, "", t0 ? site : lhs->loc,
             "pasting \"%.*s\" and \"%.*s\" does not give a valid preprocessing "
-            "token (C99 6.10.3.3p3 undefined behavior)", (int)lhs->len,
-            pp_text(pp, lhs), (int)rhs->len, pp_text(pp, rhs));
-        diag_note(pp->diag, d, op->loc, "'##' in the definition of '%s'",
-                  m->name->str);
+            "token", (int)lhs->len, pp_text(pp, lhs), (int)rhs->len,
+            pp_text(pp, rhs));
+        if (!t0) {
+            diag_note(pp->diag, d, pp->paste_name_loc, "in expansion of macro '%s'",
+                      m->name->str);
+            pp_add_expansion_notes(pp, d);
+        }
         return false;
     }
     if (r.kind != TK_IDENT) {
@@ -1382,6 +1386,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         }
         pp->subst_root_obj = root_obj;
         pp->paste_loc = name->loc + name->len;
+        pp->paste_name_loc = name->loc;
         subst(pp, m, NULL, lead, site, exp_loc, eid, root, &c.owned);
         pp->subst_root_obj = saved_root_obj;
     } else {
@@ -1432,6 +1437,7 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         }
         pp->subst_root_obj = root_obj;
         pp->paste_loc = a.rparen_loc;
+        pp->paste_name_loc = name->loc;
         subst(pp, m, &a, lead, site, exp_loc, eid, root, &c.owned);
         pp->subst_root_obj = saved_root_obj;
         args_free(pp, &a, m->nparams);

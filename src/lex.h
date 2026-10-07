@@ -24,6 +24,14 @@ typedef struct Lexer Lexer;
 void lex_norm_check(const Lexer *L, DiagEngine *dg, SrcLoc loc, const char *start,
                     const char *end, bool raw);
 
+typedef struct LineNote {
+    SrcLoc loc;          /* where gcc reports it (cleaned-line column) */
+    SrcLoc line_start;   /* its line */
+    SrcLoc pos;          /* raw offset: reported once the lexer reaches it */
+    char kind;           /* 'c' converted, 'i' ignored, 's' backslash + blank */
+    char x;              /* the trigraph's third character */
+} LineNote;
+
 struct Lexer {
     const char *p;       /* cursor */
     const char *lim;     /* end of content (NUL + zero padding follow) */
@@ -43,6 +51,8 @@ struct Lexer {
     uint32_t bd_n;          /* open bidirectional contexts (libcpp bidi::vec) */
     uint8_t bd[32];         /* bit 0: closed by PDF (else PDI), bit 1: a UCN */
     StrBuf clean;        /* slow-path spelling buffer */
+    struct LineNote *notes; /* trigraph / backslash-blank warnings, in file order */
+    uint32_t nnotes, note_i;    /* ... and how many are already reported */
 };
 
 void lex_global_init(void);
@@ -56,6 +66,9 @@ void lexer_set_diag(Lexer *L, DiagEngine *d);
 void lexer_free(Lexer *L);
 
 void lex_next(Lexer *L, Tok *t);
+/* Reports the line notes of the lines up to the cursor (libcpp does it as
+ * it cleans each line). */
+void lexer_flush_notes(Lexer *L);
 
 static inline SrcLoc lexer_loc(const Lexer *L)
 {

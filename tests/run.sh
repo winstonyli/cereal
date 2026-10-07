@@ -83,7 +83,8 @@ fi
 # error cases must be diagnosed (not crash)
 for f in "$ROOT"/tests/pp/err_*.c; do
     [ -f "$f" ] || continue
-    if python3 "$ROOT/tests/verify.py" "$CEREAL" -E "$f" >"$TMP/v" 2>&1; then
+    PEDX=; case "${f##*/}" in err_recovery.c) PEDX=-pedantic;; esac
+    if python3 "$ROOT/tests/verify.py" "$CEREAL" -E $PEDX "$f" >"$TMP/v" 2>&1; then
         ok
     else
         bad "pp/$(basename "$f")"

@@ -1,0 +1,9 @@
+misc_222.c:1:13: warning: backslash and newline separated by space
+    1 | #define A 1 \   
+      |             ^
+misc_222.c:4:13: warning: backslash and newline separated by space
+    4 | #define B 1 \
+      |             ^
+misc_222.c:6:13: warning: backslash and newline separated by space
+    6 | #define C 1 \   
+      |             ^

@@ -1,0 +1,28 @@
+misc_228.c:1:8: error: no macro name given in #define directive
+    1 | #define
+      |        ^
+misc_228.c:2:7: error: no macro name given in #undef directive
+    2 | #undef
+      |       ^
+misc_228.c:3:7: error: no macro name given in #ifdef directive
+    3 | #ifdef
+      |       ^
+misc_228.c:5:8: error: no macro name given in #ifndef directive
+    5 | #ifndef
+      |        ^
+misc_228.c:7:9: error: macro names must be identifiers
+    7 | #define 5
+      |         ^
+misc_228.c:8:8: error: macro names must be identifiers
+    8 | #undef 5
+      |        ^
+misc_228.c:9:8: error: macro names must be identifiers
+    9 | #ifdef 5
+      |        ^
+misc_228.c:11:8: error: macro names must be identifiers
+   11 | #undef "s"
+      |        ^
+misc_228.c:12:10: error: no macro name given in #define directive
+   12 | #define  
+      |          ^
+misc_228.c:13: warning: ISO C forbids an empty translation unit [-Wpedantic]

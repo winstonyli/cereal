@@ -1,0 +1,13 @@
+misc_229.c:1:5: error: invalid digit "9" in octal constant
+    1 | #if 0789
+      |     ^~~~
+misc_229.c:3:5: error: invalid digit "9" in octal constant
+    3 | #if 0129 + 1
+      |     ^~~~
+misc_229.c:5:5: error: invalid digit "2" in binary constant
+    5 | #if 0b12
+      |     ^~~~
+misc_229.c:7:5: error: invalid digit "8" in octal constant
+    7 | #if 08
+      |     ^~
+misc_229.c:9: warning: ISO C forbids an empty translation unit [-Wpedantic]
