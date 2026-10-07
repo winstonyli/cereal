@@ -24,7 +24,7 @@ typedef struct Lexer Lexer;
 void lex_norm_check(const Lexer *L, DiagEngine *dg, SrcLoc loc, const char *start,
                     const char *end, bool raw);
 
-typedef struct Lexer {
+struct Lexer {
     const char *p;       /* cursor */
     const char *lim;     /* end of content (NUL + zero padding follow) */
     const char *region;  /* location 0 */

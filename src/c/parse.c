@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <string.h>
 
+#include "lex.h"
 #include "c/ckw.h"
 #include "c/fuzzy.h"
 #include "c/lit.h"
@@ -437,7 +438,8 @@ static Diagnostic *perr_after_prev(Parser *p, uint32_t i, const char *fmt, ...)
     if (i > 0 && i - 1 < p->toks.len &&
         (!p->toks.data[i - 1].exp ||
          p->toks.data[i - 1].exp == p->toks.data[i - 1].t.loc))
-        loc = p->toks.data[i - 1].t.loc + p->toks.data[i - 1].t.len;
+        loc = p->toks.data[i - 1].t.loc +
+              tok_raw_len(p->sm, p->in, &p->toks.data[i - 1].t);
     va_start(ap, fmt);
     d = vperr(p, i, loc, fmt, ap);
     va_end(ap);

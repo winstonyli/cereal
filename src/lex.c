@@ -1557,7 +1557,7 @@ uint32_t tok_raw_len(const SrcMgr *sm, const Interner *in, const Tok *t)
     Lexer L;
     Tok u;
     SrcFile *f;
-    if (!(t->flags & TF_SPLICED))
+    if (!(t->flags & (TF_SPLICED | TF_UCN)))
         return t->len;
     f = srcmgr_file_of(sm, t->loc);
     if (!f)

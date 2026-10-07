@@ -2188,7 +2188,7 @@ diagnostics and builds on the strinit table.
   suggestion is printed as UTF-8, as gcc does (`did you mean 'π'?`).
 - "unknown type name" spells an extended name as `\U%08x` (misc_198;
   ucnid-15-utf8).
-- Known gap: a token that is an identifier with a UCN has the length of its
+- (Fixed in Round 141.) A token that is an identifier with a UCN has the length of its
   interned UTF-8 text, so an end-of-token location (e.g. "expected ';' before")
   after such a name is off by the difference.
 - Gate: 1343 pass, san 496/0, gcc.dg 19 / c-c++-common 2, callgrind 3.732G.
@@ -2206,3 +2206,11 @@ diagnostics and builds on the strinit table.
   "unknown type name 'baz'"). Block scope still skips (unk_type_skip).
   parse.c now syncs only when `!top` (`s.err && !top`); misc_200, normalize-2.
 - Gate: 1347 pass, san 498/0, gcc.dg 19 / c-c++-common 2, callgrind 3.732G.
+
+## Round 141: end of a UCN-written identifier
+- `tok_raw_len` now also re-lexes TF_UCN tokens, and `perr_after_prev` uses it,
+  so "expected ';' before" after `\u03c0` lands at the source column
+  (misc_201). Removed a stray `typedef` on `struct Lexer` in lex.h.
+- Known gap: after `void f(void) { int \u00c1x = 1 }` gcc leaves `f` open
+  (nested-function warnings follow); cereal closes it.
+- Gate: 1349 pass, san 499/0, gcc.dg 19 / c-c++-common 2, callgrind 3.732G.

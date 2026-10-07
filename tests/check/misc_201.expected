@@ -1,0 +1,9 @@
+misc_201.c:2:1: error: expected ',' or ';' before 'int'
+    2 | int y;
+      | ^
+misc_201.c:3:16: error: expected ';' before 'int'
+    3 | int \U000003c0b
+      |                ^
+misc_201.c:6:2: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'z'
+    6 |  z
+      |  ^
