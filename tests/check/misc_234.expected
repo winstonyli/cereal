@@ -1,0 +1,14 @@
+misc_234.c:1:2: error: invalid preprocessing directive #endfi; did you mean #endif?
+    1 | #endfi
+      |  ^
+misc_234.c:2:2: error: invalid preprocessing directive #deifne; did you mean #define?
+    2 | #deifne X
+      |  ^
+misc_234.c:3:7: warning: line number out of range
+    3 | #line 4294967296
+      |       ^
+misc_234.c: error: #error "BUG|"
+misc_234.c:1:10: fatal error: nonexistent-x.h: No such file or directory
+    1 | #endfi
+      |          ^
+compilation terminated.

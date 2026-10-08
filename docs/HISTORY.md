@@ -2374,3 +2374,27 @@ gcc.dg/cpp 197 -> 233 of 266 identical (33 differ); gcc.dg 15 and c-c++-common 2
 - verify.sh's gcc-side cache (`~/.cache/cereal-par`) can hold stale gcc
   results if the testsuite was momentarily missing; delete entries matching
   "No such file" and rerun.
+
+## Round 149
+
+gcc.dg/cpp 233 -> 240 of 266 identical (26 differ); gcc.dg 15, c-c++-common 2.
+
+- "backslash-newline at end of file" (pedwarn): a file ending in a splice is
+  noted once, at the first splice of the last logical line (`'e'` line note;
+  the prefilter in `scan_line_notes` also checks the file tail).
+- Line notes flush by raw position (`LineNote.pos`) and after comments, so
+  a note inside a line is reported only when the lexer reaches it. Golden misc_232/233.
+- Missing `#include` is a fatal error ("compilation terminated.") in
+  `-fsyntax-only`/`check` too (`parse` still continues, for the editor
+  features); `diag_flush` stops at the first DL_FATAL. Golden misc_234.
+- "invalid preprocessing directive #x; did you mean #y?" (`directive_hint`:
+  Damerau-Levenshtein, gcc's cutoff, dtable order).
+- `#line` number is 32-bit with wrap detection like libcpp; a wrapped value
+  always warns "line number out of range".
+- `#error`/`#warning` text is cleaned like libcpp (trigraphs under
+  -trigraphs, splices removed); token raw end skips splices/trigraphs.
+- Gate: 1415 pass, san 532/0, callgrind 3.812G.
+- Still open: escape/multichar warnings for tokens the parser rejects;
+  one-token parser lookahead ordering; `__has_attribute` error forms;
+  pragma diagnostic columns (system_header, dependency); undef2 builtin
+  names; poison; Wsignprom; remaining cpp list in verify output.

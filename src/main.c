@@ -1190,6 +1190,7 @@ int main(int argc, char **argv)
     else if (!strcmp(mode, "parse") || !strcmp(mode, "check") ||
              !strcmp(mode, "-fsyntax-only")) {
         parse_check = strcmp(mode, "parse") != 0;
+        o.pp.fatal_missing_include = parse_check; /* gcc stops at a missing include */
         rc = o.inputs.len ? run_inputs(&o, parse_one, stdout)
                           : (fprintf(stderr, "cereal: %s needs input files\n",
                                      mode),

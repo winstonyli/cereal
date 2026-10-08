@@ -193,6 +193,8 @@ static void scan_line_notes(Lexer *L)
     uint32_t shift = 0;     /* gcc reports columns of the cleaned line */
     const char *ls = p;     /* start of the logical line */
     uint32_t cap = 0;
+    SrcLoc first_splice = 0;  /* its note column, once the logical line has a splice */
+    bool have_splice = false;
 #define ADD_NOTE(k, xc, at) do { \
         if (L->nnotes == cap) { \
             cap = cap ? cap * 2 : 8; \
@@ -205,7 +207,11 @@ static void scan_line_notes(Lexer *L)
         L->notes[L->nnotes].x = (xc); \
         L->nnotes++; \
     } while (0)
-    if (!L->diag || !has_line_note(p, lim))
+    if (!L->diag)
+        return;
+    if (!has_line_note(p, lim) &&
+        !(lim - p >= 2 && lim[-1] == 0x0a &&
+          (lim[-2] == 0x5c || (lim[-2] == 0x0d && lim - p >= 3 && lim[-3] == 0x5c))))
         return;
     if (L->opt.trigraphs)
         tri_on = diag_option_requested(L->diag, "trigraphs");
@@ -218,6 +224,7 @@ static void scan_line_notes(Lexer *L)
         bool blanks;
         if (c == 0x0a) {
             shift = 0;
+            have_splice = false;
             ls = p + 1;
         }
         if (c == '?' && p + 2 < lim && p[1] == '?' && trigraph_char(p[2])) {
@@ -238,8 +245,13 @@ static void scan_line_notes(Lexer *L)
         if (c == '\\' || tri_slash) {
             const char *q = p + (tri_slash ? 3 : 1);
             if ((e = splice_end(q, lim, &blanks)) != NULL) {
+                SrcLoc sloc = (SrcLoc)(p - L->region) - shift;
+                if (!have_splice)
+                    first_splice = sloc, have_splice = true;
                 if (blanks && !tri_slash && st != LINE && st != BLOCK)
-                    ADD_NOTE('s', 0, (SrcLoc)(p - L->region) - shift);
+                    ADD_NOTE('s', 0, sloc);
+                if (e >= lim) /* libcpp: the file ends in a splice; reported once */
+                    ADD_NOTE('e', 0, first_splice);
                 p = e;
                 continue;
             }
@@ -338,6 +350,9 @@ static void flush_notes_to(Lexer *L, const char *at)
         else if (n->kind == 'i')
             diag_report(L->diag, DL_WARNING, "trigraphs", n->loc,
                         "trigraph ??%c ignored, use -trigraphs to enable", n->x);
+        else if (n->kind == 'e')
+            diag_report(L->diag, L->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
+                        "", n->loc, "backslash-newline at end of file");
         else
             diag_report(L->diag, DL_WARNING, "", n->loc,
                         "backslash and newline separated by space");

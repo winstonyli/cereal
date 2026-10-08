@@ -1014,6 +1014,10 @@ void diag_flush(DiagEngine *d)
     size_t i;
     for (i = 0; i < d->all.len; i++) {
         diag_print(d, d->all.data[i]);
+        if (d->all.data[i]->level == DL_FATAL) {
+            fprintf(d->out, "compilation terminated.\n");
+            break;
+        }
         if (d->fatal_errors && d->all.data[i]->level >= DL_ERROR) {
             fprintf(d->out, "compilation terminated due to -Wfatal-errors.\n");
             break;

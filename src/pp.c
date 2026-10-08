@@ -1074,6 +1074,47 @@ static void skip_group(PP *pp)
         PP_EMIT(pp, skipped, begin, end);
 }
 
+/* libcpp's directive spelling hint: the closest directive name by
+ * Damerau-Levenshtein (an adjacent transposition costs 1), within gcc's
+ * cutoff; the first of equals wins. */
+static const char *directive_hint(const char *name)
+{
+    static const char *const dirs[] = {
+        "define", "include", "endif", "ifdef", "if", "else", "ifndef", "undef",
+        "line", "elif", "error", "pragma", "warning", "include_next", "ident",
+        "import", "assert", "unassert", "sccs"};
+    size_t an = strlen(name), k;
+    const char *best = NULL;
+    unsigned bd = ~0u;
+    if (an > 30)
+        return NULL;
+    for (k = 0; k < sizeof dirs / sizeof *dirs; k++) {
+        const char *b = dirs[k];
+        size_t bn = strlen(b), i, j, mx = an > bn ? an : bn, mn = an < bn ? an : bn;
+        unsigned d[32][32], cut;
+        for (i = 0; i <= an; i++)
+            d[i][0] = (unsigned)i;
+        for (j = 0; j <= bn; j++)
+            d[0][j] = (unsigned)j;
+        for (i = 1; i <= an; i++)
+            for (j = 1; j <= bn; j++) {
+                unsigned v = d[i - 1][j - 1] + (name[i - 1] != b[j - 1]);
+                if (d[i - 1][j] + 1 < v)
+                    v = d[i - 1][j] + 1;
+                if (d[i][j - 1] + 1 < v)
+                    v = d[i][j - 1] + 1;
+                if (i > 1 && j > 1 && name[i - 1] == b[j - 2] &&
+                    name[i - 2] == b[j - 1] && d[i - 2][j - 2] + 1 < v)
+                    v = d[i - 2][j - 2] + 1;
+                d[i][j] = v;
+            }
+        cut = mx <= 1 ? 0 : (mx - mn <= 1 ? (unsigned)(mx / 3) : (unsigned)((mx + 2) / 3));
+        if (d[an][bn] <= cut && d[an][bn] < bd)
+            bd = d[an][bn], best = b;
+    }
+    return best;
+}
+
 /* libcpp lex_macro_node's complaint about a missing or non-identifier name. */
 static void bad_macro_name(PP *pp, TokSpan line, const Tok *kw, const char *dir)
 {
@@ -1835,7 +1876,8 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
     TokSpan line;
     TokBuf tmp = {0}, src = {0};
     TokSpan s;
-    unsigned long long n = 0;
+    uint32_t n = 0;
+    bool wrapped = false;
     uint32_t i, phys, col, k = 0;
     const char *text;
     if (gnu_marker) {
@@ -1881,13 +1923,18 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
                         (int)s.t[0].len, text);
             goto out;
         }
-        n = n * 10 + (unsigned)(text[i] - '0');
-        if (n > 2147483647ull)
-            break;
+        {   /* libcpp's strtolinenum: 32-bit, noting a wrap */
+            uint32_t prev = n;
+            n = n * 10;
+            wrapped |= n < prev;
+            prev = n;
+            n += (uint32_t)(text[i] - '0');
+            wrapped |= n < prev;
+        }
     }
-    if (!gnu_marker && (n == 0 || n > 2147483647ull))
+    if (!gnu_marker && (wrapped || n == 0 || n > 2147483647u))
         diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR
-                    : pp->opt->pedantic ? DL_WARNING : DL_REMARK,
+                    : (pp->opt->pedantic || wrapped) ? DL_WARNING : DL_REMARK,
                     "", s.t[0].loc, "line number out of range");
     k = 1;
     if (k < s.n && (s.t[k].kind != TK_STRING || pp_text(pp, &s.t[k])[0] != '"')) {
@@ -1944,13 +1991,76 @@ out:
 
 /* ---- #error / #warning / #pragma ----------------------------------- */
 
+/* End of a token in the raw text: Tok.len counts cleaned characters, so
+ * skip splices and (under -trigraphs) three-byte trigraphs while counting. */
+static SrcLoc raw_token_end(PP *pp, const Tok *t)
+{
+    const char *p = pp->sm->region + t->loc;
+    uint32_t left = t->len;
+    bool trig = pp->opt->lex.trigraphs;
+    while (left && *p) {
+        bool tri = trig && p[0] == '?' && p[1] == '?' && p[2] &&
+                   strchr("=/'()!<>-", p[2]);
+        if (*p == '\\' || (tri && p[2] == '/')) {
+            const char *q = p + (*p == '\\' ? 1 : 3);
+            while (*q == ' ' || *q == '\t' || *q == '\f' || *q == '\v')
+                q++;
+            if (*q == '\r' && q[1] == '\n')
+                q++;
+            if (*q == '\n') {
+                p = q + 1;
+                continue;
+            }
+        }
+        p += tri ? 3 : 1;
+        left--;
+    }
+    return (SrcLoc)(p - pp->sm->region);
+}
+
+/* The text as libcpp's line cleaning leaves it: trigraphs converted under
+ * -trigraphs, and backslash-(blanks)-newline splices removed. */
+static const char *clean_line_text(PP *pp, const char *s, size_t n)
+{
+    static const char from[] = "=/'()!<>-", to[] = "#\\^[]|{}~";
+    char *out = arena_alloc(pp->arena, n + 1);
+    size_t i = 0, o = 0;
+    bool trig = pp->opt->lex.trigraphs;
+    while (i < n) {
+        char c = s[i];
+        size_t j;
+        if (trig && c == '?' && i + 2 < n && s[i + 1] == '?') {
+            const char *m = strchr(from, s[i + 2]);
+            if (m && s[i + 2]) {
+                c = to[m - from];
+                i += 2;
+            }
+        }
+        if (c == '\\') {
+            j = i + 1;
+            while (j < n && (s[j] == ' ' || s[j] == '\t' || s[j] == '\f' || s[j] == '\v'))
+                j++;
+            if (j < n && s[j] == '\r' && j + 1 < n && s[j + 1] == '\n')
+                j++;
+            if (j < n && s[j] == '\n') {
+                i = j + 1;
+                continue;
+            }
+        }
+        out[o++] = c;
+        i++;
+    }
+    out[o] = 0;
+    return out;
+}
+
 static void do_message(PP *pp, const Tok *kw, bool is_error)
 {
     TokSpan line = read_line(pp);
     const char *text = "";
     if (line.n) {
-        SrcLoc b = line.t[0].loc, e = span_end(pp, line, b);
-        text = arena_strndup(pp->arena, pp->sm->region + b, e - b);
+        SrcLoc b = line.t[0].loc, e = raw_token_end(pp, &line.t[line.n - 1]);
+        text = clean_line_text(pp, pp->sm->region + b, e - b);
     }
     if (is_error) {
         diag_report(pp->diag, DL_ERROR, "", kw->loc, "#error %s", text);
@@ -2243,9 +2353,15 @@ void pp_directive(PP *pp, const Tok *hash)
         break;
     }
     if (kw.kind == TK_IDENT) {
-        diag_report(pp->diag, DL_ERROR, "", kw.loc,
-                    "invalid preprocessing directive #%s",
-                    ident_by_id(pp->in, kw.aux)->str);
+        const char *dn = ident_by_id(pp->in, kw.aux)->str;
+        const char *hint = directive_hint(dn);
+        if (hint)
+            diag_report(pp->diag, DL_ERROR, "", kw.loc,
+                        "invalid preprocessing directive #%s; did you mean #%s?",
+                        dn, hint);
+        else
+            diag_report(pp->diag, DL_ERROR, "", kw.loc,
+                        "invalid preprocessing directive #%s", dn);
         read_line(pp);
     } else if (kw.kind == TK_PPNUM && pp->opt->gnu_extensions) {
         do_line(pp, hash, &kw, true);
