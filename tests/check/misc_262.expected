@@ -7,3 +7,9 @@ misc_262.c:13:14: warning: initialization of 'int *' from 'int' makes pointer fr
 misc_262.c:14:14: warning: initialization of 'int *' from 'unsigned int' makes pointer from integer without a cast [-Wint-conversion]
    14 |     int *c = __builtin_bswap32 (j);
       |              ^
+misc_262.c:19:14: error: incompatible types when initializing type 'int *' using type '_Float64'
+   19 |     int *a = __builtin_huge_valf64 ();
+      |              ^
+misc_262.c:20:14: error: incompatible types when initializing type 'int *' using type '_Decimal32'
+   20 |     int *b = __builtin_infd32 ();
+      |              ^

@@ -853,6 +853,11 @@ static TypeId bt_type(Checker *c, const char *s, size_t n)
             {"unsigned int", TY_UINT}, {"short unsigned int", TY_USHORT},
             {"long long unsigned int", TY_ULLONG}, {"unsigned char", TY_UCHAR},
             {"__int128 unsigned", TY_UINT128}, {"_Bool", TY_BOOL},
+            {"_Float16", TY_FLOAT16}, {"_Float32", TY_FLOAT32},
+            {"_Float64", TY_FLOAT64}, {"_Float32x", TY_FLOAT32X},
+            {"_Float64x", TY_FLOAT64X}, {"_Float128", TY_FLOAT128},
+            {"__bf16", TY_BF16}, {"_Decimal32", TY_DEC32},
+            {"_Decimal64", TY_DEC64}, {"_Decimal128", TY_DEC128},
             {"float", TY_FLOAT}, {"long double", TY_LDOUBLE},
             {"__float128", TY_FLOAT128}
         };

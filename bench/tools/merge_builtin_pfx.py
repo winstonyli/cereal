@@ -7,7 +7,9 @@ import re, sys
 PARSED = {"void", "int", "char", "long int", "long long int",
           "long unsigned int", "double", "float", "long double", "__float128",
           "unsigned int", "short unsigned int", "long long unsigned int",
-          "unsigned char", "__int128 unsigned", "_Bool", "__va_list_tag"}
+          "unsigned char", "__int128 unsigned", "_Bool", "__va_list_tag",
+          "_Float16", "_Float32", "_Float64", "_Float32x", "_Float64x",
+          "_Float128", "__bf16", "_Decimal32", "_Decimal64", "_Decimal128"}
 
 
 def ok(t):

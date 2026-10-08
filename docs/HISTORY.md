@@ -2869,6 +2869,9 @@ for file; callgrind 3.8518 G (+0.3%, the larger table). Not covered: rows with
 Round 170: the two hand-built `exp ? exp : loc` sites in parse.c (`tok_loc`,
 `eof_input_loc`) call `ptok_loc`. The other `.exp` sites fall back to something else
 (`expr_loc`, `first_loc`, the unchanged location, system-header-only), so they stay.
-Typing the 27 remaining `gnu = 2` rows (`_Float*`, `_Decimal*`, `__bf16`, one function
-pointer) is parked: no corpus or testsuite file differs because of them. zstandard
-(18 files, `zstd.c` is the amalgamation) matches gcc-13 file for file.
+`bt_type` also parses `_Float16/32/64/32x/64x/128`, `__bf16` and `_Decimal32/64/128`,
+so 26 more `gnu = 2` rows are typed (152 in all; no testsuite file differed, but
+`int *p = __builtin_huge_valf64 ()` now gets gcc's error, in `misc_262`). Only
+`__builtin_apply`'s function-pointer parameter stays out. Callgrind 3.8630 G.
+Corpora matching gcc-13 file for file: zstandard (18 files; `zstd.c` is the
+amalgamation), jemalloc `src` (63), freetype `src/base` (39), zlib-ng (25).

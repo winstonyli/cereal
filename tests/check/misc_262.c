@@ -14,3 +14,9 @@ int *g(unsigned long k, unsigned j)
     int *c = __builtin_bswap32 (j);
     return a ? b : c;
 }
+int *h(void)
+{
+    int *a = __builtin_huge_valf64 ();
+    int *b = __builtin_infd32 ();
+    return a ? b : 0;
+}
