@@ -854,6 +854,18 @@ SrcLoc pp_last_line(void *ctx)
     return ((PP *)ctx)->last_bol;
 }
 
+/* libcpp: a pedwarn with no option; an error under -pedantic-errors */
+static Diagnostic *warn_unterminated(PP *pp, const Tok *t)
+{
+    Diagnostic *ud = diag_report(pp->diag,
+                pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
+                "invalid-pp-token", t->loc,
+                "missing terminating %c character",
+                pp_text(pp, t)[pp_text(pp, t)[0] == 'L' ? 1 : 0]);
+    diag_set_range(ud, t->loc, t->loc + t->len);
+    return ud;
+}
+
 bool pp_next(PP *pp, Tok *out)
 {
     for (;;) {
@@ -902,13 +914,7 @@ bool pp_next(PP *pp, Tok *out)
                 }
             }
         } else if (t.flags & TF_UNTERMINATED) {
-            /* libcpp: a pedwarn with no option; an error under -pedantic-errors */
-            Diagnostic *ud = diag_report(pp->diag,
-                        pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                        "invalid-pp-token", t.loc,
-                        "missing terminating %c character",
-                        pp_text(pp, &t)[pp_text(pp, &t)[0] == 'L' ? 1 : 0]);
-            diag_set_range(ud, t.loc, t.loc + t.len);
+            Diagnostic *ud = warn_unterminated(pp, &t);
             pp_add_expansion_notes(pp, ud);
         }
         if (pp->carry_space) {
@@ -953,8 +959,12 @@ static TokSpan read_line(PP *pp)
             pp->pending_unread = false;
             break;
         }
+        if ((t.flags & TF_UNTERMINATED) &&   /* gcc: where it lexes, in every directive */
+            !(pp->unterm_from && pp->line.len + 1 >= pp->unterm_from))
+            warn_unterminated(pp, &t);
         tokbuf_push(pp, &pp->line, t);
     }
+    pp->unterm_from = 0;
     s.t = pp->line.t;
     s.n = pp->line.len;
     if (pp->dir_poison)
@@ -1350,9 +1360,19 @@ static bool macros_identical(PP *pp, const Macro *a, const Macro *b)
     return true;
 }
 
+/* #define reports an unterminated quote past its second token after the
+ * "requires whitespace" check, as gcc lexes the rest of the line later. */
+static void flush_unterminated(PP *pp, TokSpan line, uint32_t from)
+{
+    uint32_t k;
+    for (k = from; k < line.n; k++)
+        if (line.t[k].flags & TF_UNTERMINATED)
+            warn_unterminated(pp, &line.t[k]);
+}
+
 static void do_define(PP *pp, const Tok *hash, const Tok *kw)
 {
-    TokSpan line = read_line(pp);
+    TokSpan line;
     const Tok *name;
     Macro *m, *old;
     VEC(Ident *) params = {0};
@@ -1362,7 +1382,10 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
     SrcLoc hdr_loc;
     Ident *nid;
 
+    pp->unterm_from = 3;
+    line = read_line(pp);
     if (line.n == 0 || line.t[0].kind != TK_IDENT) {
+        flush_unterminated(pp, line, 2);
         bad_macro_name(pp, line, kw, "define");
         return;
     }
@@ -1374,10 +1397,13 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
     if (nid == pp->id_defined) {
         diag_report(pp->diag, DL_ERROR, "", name->loc,
                     "\"defined\" cannot be used as a macro name");
+        flush_unterminated(pp, line, 2);
         return;
     }
-    if (pp_poisoned(pp, nid))   /* already reported; gcc defines nothing */
+    if (pp_poisoned(pp, nid)) {  /* already reported; gcc defines nothing */
+        flush_unterminated(pp, line, 2);
         return;
+    }
     m = NEW(pp->arena, Macro);
     m->name = nid;
     m->undef_seq = UINT32_MAX;
@@ -1391,6 +1417,7 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
         !(line.t[i].flags & TF_SPACE)) {
         m->funclike = true;
         i++;
+        flush_unterminated(pp, line, 2);
         bool prev_ident = false;
         for (;;) {      /* libcpp parse_params */
             const Tok *t = i < line.n ? &line.t[i] : NULL;
@@ -1479,6 +1506,9 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
         diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
                     "", name->loc,
                     "ISO C99 requires whitespace after the macro name");
+        flush_unterminated(pp, line, 2);
+    } else {
+        flush_unterminated(pp, line, 2);
     }
     if (!ok) {
         vec_free(&params);
@@ -1628,8 +1658,22 @@ static void do_undef(PP *pp, const Tok *hash, const Tok *kw)
     m = mt_cur(pp->mt, id);
     if (((m && m->builtin) || is_builtin_name(id)) &&
         pp->inc->file->kind != SF_VIRTUAL)
-        diag_report(pp->diag, DL_WARNING, "builtin-macro-redefined",
-                    line.t[0].loc, "undefining builtin macro \"%s\"", id->str);
+    {
+        /* libcpp do_undef: the always-warn builtins (NODE_WARN) are untagged
+         * at the name, the others -Wbuiltin-macro-redefined at the line */
+        bool always = !strcmp(id->str, "__LINE__") || !strcmp(id->str, "__STDC__") ||
+                      !strcmp(id->str, "__INCLUDE_LEVEL__") ||
+                      !strcmp(id->str, "__COUNTER__") ||
+                      (m && m->builtin >= BUILTIN_HAS_INCLUDE);
+        if (always) {
+            diag_report(pp->diag, DL_WARNING, "", line.t[0].loc,
+                        "undefining \"%s\"", id->str);
+        } else {
+            pp->diag->nocol_next = true;
+            diag_report(pp->diag, DL_WARNING, "builtin-macro-redefined",
+                        line.t[0].loc, "undefining \"%s\"", id->str);
+        }
+    }
     pp_macro_ref(pp, &line.t[0], REF_UNDEF);
     if (m) {
         m->undef_loc = hash->loc;
@@ -1773,9 +1817,9 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
                        bool import)
 {
     TokSpan line = read_line(pp);
-    bool angled = false, expanded = false;
+    bool angled = false, expanded = false, rawq = false;
     uint32_t rest = 0;
-    SrcLoc name_end = 0;
+    SrcLoc name_end = 0, nloc = line.n ? line.t[0].loc : 0;
     char *name;
     int dir_index = -1;
     IncludeEvent ev;
@@ -1803,7 +1847,24 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
                     "#include expects \"FILENAME\" or <FILENAME>");
         return;
     }
-    name = parse_header_name(pp, line, &angled, &expanded, &rest, &name_end, &tmp);
+    if (line.t[0].kind == TK_STRING && pp_text(pp, &line.t[0])[0] == '"') {
+        /* libcpp lexes a "header" raw: a backslash does not escape the quote,
+         * and what follows is lexed afresh as the extra tokens */
+        SrcLoc b = nloc + 1, e = nloc + line.t[0].len - 1, q = b;
+        while (q < e && pp->sm->region[q] != '"')
+            q++;
+        if (q < e) {
+            rawq = true;
+            name = arena_strndup(pp->arena, pp->sm->region + b, q - b);
+            name_end = q + 1;
+            lexer_seek(&pp->lex, q + 1, false);
+            pp->has_pending = false;
+            pp->unterm_from = 1;
+            line = read_line(pp);
+        }
+    }
+    if (!rawq)
+        name = parse_header_name(pp, line, &angled, &expanded, &rest, &name_end, &tmp);
     if (!name) {
         tokbuf_release(pp, &tmp);
         return;
@@ -1818,16 +1879,18 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
             tokbuf_release(pp, &xb);
         }
         check_eol(pp, extra, import ? "import" : next ? "include_next" : "include");
+        if (rawq)
+            flush_unterminated(pp, line, 0);
     }
     tokbuf_release(pp, &tmp);
     if (!*name) {
-        diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
+        diag_report(pp->diag, DL_ERROR, "", nloc,
                     "empty filename in #include");
         return;
     }
     memset(&ev, 0, sizeof ev);
     ev.hash_loc = hash->loc;
-    ev.name_loc = line.t[0].loc;
+    ev.name_loc = nloc;
     ev.name_end = expanded ? span_end(pp, line, line.t[0].loc) : name_end;
     ev.spelled = name;
     ev.angled = angled;
@@ -1841,7 +1904,7 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
         ev.result = INC_NOT_FOUND;
         diag_report(pp->diag, pp->opt->fatal_missing_include ? DL_FATAL
                                                               : DL_ERROR,
-                    "", line.t[0].loc, "%s: No such file or directory", name);
+                    "", nloc, "%s: No such file or directory", name);
         if (pp->opt->fatal_missing_include)
             pp->halted = true;
         PP_EMIT(pp, include, &ev);
@@ -1935,12 +1998,11 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
             goto out;
         }
         {   /* libcpp's strtolinenum: 32-bit, noting a wrap */
-            uint32_t prev = n;
-            n = n * 10;
-            wrapped |= n < prev;
-            prev = n;
-            n += (uint32_t)(text[i] - '0');
-            wrapped |= n < prev;
+            uint32_t dg = (uint32_t)(text[i] - '0');
+            wrapped |= n > UINT32_MAX / 10;
+            n *= 10;
+            wrapped |= n > UINT32_MAX - dg;
+            n += dg;
         }
     }
     if (!gnu_marker && (wrapped || n == 0 || n > 2147483647u))

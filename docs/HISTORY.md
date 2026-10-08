@@ -2537,3 +2537,34 @@ cpp parity, items 3 to 6 of the six (cpp 249/266):
 
 Gate: 1432 goldens, san 537/0, callgrind 3.812G. Still open: caret ranges
 (`^~~~`) differ on these pedwarns; parity compares headers only.
+
+## Round 160
+
+cpp parity, the remaining quick ones (cpp 255/266):
+
+- Unterminated `'`/`"` in a directive line are diagnosed by `read_line` as
+  gcc lexes them (pedwarn `invalid-pp-token`, error under `-pedantic-errors`),
+  token by token. `#define` and `#include` flush in gcc's order
+  (`unterm_from`, `flush_unterminated`); `#include "x\""` lexes the header
+  raw. `#pragma message` warns once on a directive line (the `_Pragma` path
+  still warns itself). Golden `misc_243`.
+- `#undef` of always-warn builtins (`__LINE__`, `__STDC__`, `__COUNTER__`,
+  `__has_*`, ...) is untagged at the name; other builtins keep
+  `-Wbuiltin-macro-redefined` at a line-only location.
+- `#if`: a leftover `:` is "':' without preceding '?'".
+- `#line` overflow uses libcpp's two-step wrap check ("line number out of
+  range"); an EOF diagnostic on the last line is placed on the next line.
+  Goldens `misc_241`, `misc_242`.
+- Number-literal errors are reported at the spelling location with "in
+  expansion of macro" notes (`classify_num`, shared `add_macro_notes`).
+  Golden `misc_240`.
+
+Gate: 1440 goldens, san 541/0, callgrind 3.811G, -O 3729/3744.
+
+Parked (open): `gnu99-scope-1` (the `::` token is CPP_SCOPE in gnu modes and
+c2x; too invasive); skipped `#if 0` groups do not lex directive lines, so
+`#define z '` there is not diagnosed; `#warning` ordering against the
+unterminated warning; the `<FILENAME>` form of `#pragma dependency`; caret
+ranges on pedwarns; parser-wording files (19990413-1, 20000419-1,
+20020927-1, spacing2, pr66415-2); `pragma_message.c` quote style in notes
+and two missing macro-expansion notes.

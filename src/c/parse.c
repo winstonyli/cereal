@@ -364,6 +364,51 @@ static void classify_char(Parser *p, const PTok *t, const char *s)
         pdiag_tag(p, DL_WARNING, l.id ? l.id : "", e.loc, "%s", l.msg);
 }
 
+static Diagnostic *pvreport_f(Parser *p, DiagLevel lvl, SrcLoc loc,
+                              const char *fmt, ...)
+{
+    Diagnostic *d;
+    va_list ap;
+    va_start(ap, fmt);
+    d = pvreport(p, lvl, "", loc, fmt, ap);
+    va_end(ap);
+    return d;
+}
+
+static void add_macro_notes(Parser *p, Diagnostic *d, uint32_t i)
+{
+    if (d && !p->diag->track0 && i < p->toks.len && p->toks.data[i].exp &&
+        p->toks.data[i].exp != p->toks.data[i].t.loc) {
+        /* a macro body token: gcc names each macro it was expanded
+         * through, innermost first; an argument or pasted name only the
+         * outermost one */
+        const PTok *tk = &p->toks.data[i];
+        MacroNote notes[10];
+        size_t k, cnt = 0;
+        if (tk->t.flags & TF_ORIGIN_BODY)
+            d->oloc = tk->exp;
+        if (p->macro_chain && (tk->t.flags & TF_ORIGIN_BODY) &&
+            !(tk->t.flags & TF_ORIGIN_ARG))
+            cnt = p->macro_chain(p->macro_ctx, tk->t.loc, tk->exp, notes, 10);
+        if (!cnt) {
+            const char *s = srcmgr_ptr(p->sm, tk->exp);
+            uint32_t n = 0;
+            while (isalnum((unsigned char)s[n]) || s[n] == '_')
+                n++;
+            if (n) {
+                notes[0].name = s;
+                notes[0].len = n;
+                notes[0].loc = tk->exp;
+                cnt = 1;
+            }
+        }
+        for (k = 0; k < cnt; k++)
+            diag_note(p->diag, d, notes[k].loc,
+                      "in expansion of macro '%.*s'", (int)notes[k].len,
+                      notes[k].name);
+    }
+}
+
 /* gcc classifies a number as it lexes it, so a malformed one is diagnosed
  * even when no expression ever reads it: when an error names it as the
  * current token, or recovery skips it.  (The checker reports the numbers
@@ -386,8 +431,10 @@ static void classify_num(Parser *p, uint32_t i)
         return;
     }
     lit_number(&target_x86_64, s, t.t.len, &l);
-    if (l.msg[0] && l.level == 2)
-        pdiag(p, DL_ERROR, t.exp ? t.exp : t.t.loc, "%s", l.msg);
+    if (l.msg[0] && l.level == 2) {   /* gcc: at the spelling, with the macro notes */
+        Diagnostic *d = pvreport_f(p, DL_ERROR, t.t.loc, "%s", l.msg);
+        add_macro_notes(p, d, i);
+    }
 }
 
 /* gcc's c_parser_error names a version control conflict marker (seven of
@@ -438,36 +485,7 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
                      "version control conflict marker in file", ap);
     else
         d = pvreport(p, DL_ERROR, "", loc, fmt, ap);
-    if (d && !p->diag->track0 && i < p->toks.len && p->toks.data[i].exp &&
-        p->toks.data[i].exp != p->toks.data[i].t.loc) {
-        /* a macro body token: gcc names each macro it was expanded
-         * through, innermost first; an argument or pasted name only the
-         * outermost one */
-        const PTok *tk = &p->toks.data[i];
-        MacroNote notes[10];
-        size_t k, cnt = 0;
-        if (tk->t.flags & TF_ORIGIN_BODY)
-            d->oloc = tk->exp;
-        if (p->macro_chain && (tk->t.flags & TF_ORIGIN_BODY) &&
-            !(tk->t.flags & TF_ORIGIN_ARG))
-            cnt = p->macro_chain(p->macro_ctx, tk->t.loc, tk->exp, notes, 10);
-        if (!cnt) {
-            const char *s = srcmgr_ptr(p->sm, tk->exp);
-            uint32_t n = 0;
-            while (isalnum((unsigned char)s[n]) || s[n] == '_')
-                n++;
-            if (n) {
-                notes[0].name = s;
-                notes[0].len = n;
-                notes[0].loc = tk->exp;
-                cnt = 1;
-            }
-        }
-        for (k = 0; k < cnt; k++)
-            diag_note(p->diag, d, notes[k].loc,
-                      "in expansion of macro '%.*s'", (int)notes[k].len,
-                      notes[k].name);
-    }
+    add_macro_notes(p, d, i);
     return d;
 }
 

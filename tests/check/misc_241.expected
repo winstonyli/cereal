@@ -1,0 +1,4 @@
+misc_241.c:2:7: warning: line number out of range
+    2 | #line 5000000000
+      |       ^
+misc_241.c:705032705: warning: ISO C forbids an empty translation unit [-Wpedantic]

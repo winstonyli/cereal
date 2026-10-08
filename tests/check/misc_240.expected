@@ -1,0 +1,66 @@
+misc_240.c:1: warning: undefining "__DATE__" [-Wbuiltin-macro-redefined]
+    1 | #undef __DATE__
+      | 
+misc_240.c:2:8: warning: undefining "__LINE__"
+    2 | #undef __LINE__
+      |        ^
+misc_240.c:3:8: warning: undefining "__STDC__"
+    3 | #undef __STDC__
+      |        ^
+misc_240.c:4:8: warning: undefining "__COUNTER__"
+    4 | #undef __COUNTER__
+      |        ^
+misc_240.c:5:6: error:  ':' without preceding '?'
+    5 | #if 2:
+      |      ^
+misc_240.c:7:8: error:  ':' without preceding '?'
+    7 | #if (1 : 2)
+      |        ^
+misc_240.c:9:11: warning: missing terminating ' character
+    9 | #error don't
+      |           ^~
+misc_240.c:9:2: error: #error don't
+    9 | #error don't
+      |  ^
+misc_240.c:10:13: warning: missing terminating ' character
+   10 | #pragma foo 'x
+      |             ^~
+misc_240.c:11:9: warning: ISO C99 requires whitespace after the macro name
+   11 | #define a!
+      |         ^
+misc_240.c:12:10: warning: missing terminating " character
+   12 | #define b"x
+      |          ^~
+misc_240.c:12:9: warning: ISO C99 requires whitespace after the macro name
+   12 | #define b"x
+      |         ^
+misc_240.c:13:11: warning: missing terminating ' character
+   13 | #define c '
+      |           ^
+misc_240.c:14:16: warning: missing terminating " character
+   14 | #define d(x) x "y
+      |                ^~
+misc_240.c:15:11: error: exponent has no digits
+   15 | #define e 1.0e ## -1
+      |           ^
+misc_240.c:16:9: note: in expansion of macro 'e'
+   16 | int z = e;
+      |         ^
+misc_240.c:15:20: error: expected ',' or ';' before numeric constant
+   15 | #define e 1.0e ## -1
+      |                    ^
+misc_240.c:16:9: note: in expansion of macro 'e'
+   16 | int z = e;
+      |         ^
+misc_240.c:15:11: error: exponent has no digits
+   15 | #define e 1.0e ## -1
+      |           ^
+misc_240.c:17:1: note: in expansion of macro 'e'
+   17 | e
+      | ^
+misc_240.c:15:11: error: expected identifier or '(' before numeric constant
+   15 | #define e 1.0e ## -1
+      |           ^
+misc_240.c:17:1: note: in expansion of macro 'e'
+   17 | e
+      | ^

@@ -329,6 +329,10 @@ static Val primary(EP *p, bool eval)
         Val v;
         advance(p);
         v = expr_comma(p, eval);
+        if (is_punct(p, P_COLON)) {
+            fail(p, p->t, " ':' without preceding '?'", NULL, 0);
+            return mkval(0, false);
+        }
         if (!is_punct(p, P_RPAREN)) {
             fail(p, p->t->kind == TK_EOF ? t : p->t,
                  "missing ')' in expression", NULL, 0);
@@ -781,6 +785,8 @@ bool pp_eval_if(PP *pp, TokSpan expr, bool *ok)
                           "expressions", TXT(&p, p.t), (int)p.t->len);
         else if (tok_is_punct(p.t, P_RPAREN))
             fail(&p, p.t, "missing '(' in expression", NULL, 0);
+        else if (tok_is_punct(p.t, P_COLON))
+            fail(&p, p.t, " ':' without preceding '?'", NULL, 0);
         else
             fail(&p, p.t, "missing binary operator before token \"%.*s\"",
                  TXT(&p, p.t), (int)p.t->len);

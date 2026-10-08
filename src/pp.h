@@ -271,6 +271,7 @@ typedef struct PP {
     Tok pending;             /* one-token pushback for the lexer stream */
     bool has_pending;
     bool pending_unread;     /* pending was returned once (pp_unread) */
+    uint32_t unterm_from;    /* read_line: tokens from this index (plus 1; 0 = off) are reported by the caller */
     bool dir_poison;         /* read_line: report poisoned identifiers */
     VEC(Context) ctx;
     TokPool pool;

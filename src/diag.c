@@ -907,6 +907,10 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
         if (eof && !nocol && col > 1)
             line++;     /* the implied final newline */
         pline = srcmgr_presumed(f, line, &fname);
+        /* gcc: a #line that is the last thing in the file has not started
+         * its line map when the end of file is reached, one line further on */
+        if (eof && !nocol && f->nlinemap && f->linemap[f->nlinemap - 1].from == line)
+            pline++;
         if (f->kind == SF_VIRTUAL && !strcmp(f->name, "<built-in>"))
             fprintf(o, "%s: ", f->name);
         else if (nocol && f->kind == SF_VIRTUAL &&

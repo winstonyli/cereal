@@ -1211,8 +1211,9 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
         for (k = 0; k < rest.n; k++) {
             const Tok *t = &rest.t[k];
             if (t->kind == TK_OTHER && (t->flags & TF_UNTERMINATED)) {
-                pp_warn_at(pp, t, "",
-                           "missing terminating \" character");
+                if (from_scratch)   /* directive lines warned in read_line */
+                    pp_warn_at(pp, t, "",
+                               "missing terminating \" character");
                 pp_error_at(pp, t, "missing terminating \" character");
             }
         }
