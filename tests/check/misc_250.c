@@ -1,0 +1,2 @@
+bar(a, );
+int ok;

@@ -2646,3 +2646,16 @@ checker's constant evaluator on the pragma operand, a larger change. The
 other lines already match (a caret range on 20000000000 is the parked caret
 work). dump-ada-spec-14 is gcc's "packed layout" warning under
 `-fdump-ada-spec`, a flag cereal does not implement.
+
+Round 164 (cpp 264/266):
+
+- "ISO C99 requires at least one argument for the ..." is not given for a
+  macro defined in a system header (libcpp: macro->syshdr). sysmac3.
+- An error inside a declarator's parameter list that parsed on (`bar(a, )`)
+  no longer silences the declaration's own diagnostics ("data definition has
+  no type", implicit int): gcc gives them after the error. The parser flags
+  the N_FUNC node NF_ERROR, `Checker.first_err_params` says the first error
+  was one, and N_DECLARED un-quiets in that case. Golden `misc_250`.
+
+Still open in cpp: gnu99-scope-1, pr66415-2 (both parked). Gate: 1454
+goldens, san 547/0.

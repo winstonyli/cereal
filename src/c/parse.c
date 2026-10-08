@@ -1934,6 +1934,7 @@ static void params(Parser *p, unsigned *flags)
                     expected(p, "identifier");
                     /* the declarator goes on (and warns about the names) */
                     p->bound_errors += p->errors - e0;
+                    *flags |= NF_ERROR;   /* so the checker knows where */
                 }
                 break;
             }

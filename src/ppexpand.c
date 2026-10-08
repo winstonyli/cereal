@@ -186,7 +186,8 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
     if (m->variadic && (int)a->start.len == m->nparams - 1) {
         /* gcc: at the ')', and only where __VA_OPT__ is not available (the
          * GNU modes), with no option tag */
-        if (pp->opt->pedantic && !pp->opt->gnu_mode)
+        if (pp->opt->pedantic && !pp->opt->gnu_mode &&
+            !(m->file && m->file->system_header)) /* libcpp: macro->syshdr */
             pp_pedwarn(pp, a->rparen_loc, "ISO C99 requires at least one "
                        "argument for the \"...\" in a variadic macro");
         av_push(&a->start, a->all.len);

@@ -333,6 +333,7 @@ struct Checker {
     uint32_t nn;
     bool quiet;              /* the unit has syntax errors */
     uint32_t first_err_tok;  /* quiet: token of the first parse error */
+    bool first_err_params;   /* ... in a parameter list that parsed on */
     size_t *dm;              /* per node: diagnostics so far when visited */
     TypeId *ty;              /* per node */
     uint64_t *cv;

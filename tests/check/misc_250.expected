@@ -1,0 +1,12 @@
+misc_250.c:1:8: error: expected identifier before ')' token
+    1 | bar(a, );
+      |        ^
+misc_250.c:1:1: warning: data definition has no type or storage class
+    1 | bar(a, );
+      | ^
+misc_250.c:1:1: warning: type defaults to 'int' in declaration of 'bar' [-Wimplicit-int]
+    1 | bar(a, );
+      | ^
+misc_250.c:1:8: warning: parameter names (without types) in function declaration
+    1 | bar(a, );
+      |        ^

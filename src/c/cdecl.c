@@ -6544,6 +6544,14 @@ void cdecl_node(Checker *c, uint32_t i)
         bool quiet = c->quiet;
         c->quiet = quiet && i + 1 < c->nn && ntag(c, i + 1) == N_INIT_DECL;
         DiagOrd o0 = diag_ord(c->diag, ORD_EARLY);
+        /* an error inside the declarator itself: gcc finishes the
+         * declaration (implicit int) after reporting it */
+        uint32_t nt = cnode(c, i)->tok;
+        if (quiet && c->first_err_params && nt < c->first_err_tok &&
+            c->first_err_tok <= scan_end(c, nt, true)) {
+            c->quiet = false;
+            diag_ord(c->diag, ORD_LATE);
+        }
         declared_visit(c, i);
         diag_ord(c->diag, o0);
         c->quiet = quiet;

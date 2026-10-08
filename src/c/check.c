@@ -667,8 +667,10 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
                 for (j = i + 1 - u->nodes[i].size; j < i; j++)
                     if (u->nodes[j].tok > last)
                         last = u->nodes[j].tok;
-                if (last < c->first_err_tok)
+                if (last < c->first_err_tok) {
                     c->first_err_tok = last;
+                    c->first_err_params = u->nodes[i].tag == N_FUNC;
+                }
             }
     c->fold_pending = 0;
     if (c->cs)
