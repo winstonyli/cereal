@@ -2414,3 +2414,22 @@ gcc.dg 15, c-c++-common 2; 1417 pass, san 532/0, callgrind 3.818G).
   the warning precedes "'u' undeclared", as in gcc. Golden misc_235.
 - Still open: the general one-token-lookahead ordering for other token
   pairs (only identifier + literal is handled); the rest of the cpp list.
+
+## Round 151
+
+Duplication cleanup from the clone scan (no behaviour change intended; 1417
+goldens, san 533/0, callgrind 3.816G, parity unchanged: cpp 240/266).
+
+- `tpunct`, `first_tok`, `last_tok`, `first_loc`, `after_tok` live once in
+  `check_int.h` (were copied in cdecl/cinit/cstmt/cparm/cexpr_int.h). The shared
+  `first_tok` handles `N_ADDR_LABEL`; the old static copies did not.
+- `cparm.c`: the loop in the parameter printer calls `put_arr`.
+- `ppexpr.c` decodes char escapes with `lit_char_one` (was `lit_one`, now
+  exported from `c/lit.h`); its own switch and `hexval` are gone. `#if` now
+  also accepts `\u{..}` and `\N{..}` like the lexer.
+- Looked at and left: `cdecl.c` repeats are attribute-walk skeletons and a
+  case dispatch with different bodies; `cexpr.c:683` is a data table;
+  `index.c` covering_refs/range span walks differ in clamping and the point
+  argument; `lsp/pos.c` only shares a 9-line `hexval`.
+- Found, parked: `Ux` / `ux` in `#if` is rejected ("missing binary
+  operator before token"), gcc accepts; unchanged by this round.
