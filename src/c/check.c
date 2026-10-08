@@ -1,6 +1,7 @@
 /* check.c - the checker's core: diagnostics, scopes and symbols, the walk
  * over each unit, the end of the translation unit (check.h,
- * docs/TYPES.md).  Declarations are in cdecl.c, expressions in cexpr.c. */
+ * docs/TYPES.md).  Declarations are in cdecl.c (with cattr.c, cspec.c),
+ * expressions in cexpr.c (with cwarn_expr.c, cprint.c, ...). */
 #include "c/check_int.h"
 
 #include <ctype.h>

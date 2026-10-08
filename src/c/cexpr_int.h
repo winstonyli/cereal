@@ -1,5 +1,6 @@
 /* cexpr_int.h - helpers shared by the expression checker's translation
- * units (cexpr.c, cformat.c, ...): node and type accessors, small enough to
+ * units (cexpr.c, cwarn_expr.c, cprint.c, cseqpt.c, casm.c, cformat.c, ...):
+ * node and type accessors, small enough to
  * inline. */
 #ifndef CEREAL_C_CEXPR_INT_H
 #define CEREAL_C_CEXPR_INT_H

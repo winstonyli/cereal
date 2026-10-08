@@ -1,5 +1,7 @@
-/* check_int.h - the checker's internals, shared by check.c (declarations)
- * and cexpr.c (expressions and constant evaluation). */
+/* check_int.h - the checker's internals, shared by check.c (the walk and
+ * scopes), the declaration units (cdecl.c, cattr.c, cspec.c), the expression
+ * units (cexpr.c, cwarn_expr.c, ...) and the statement units (cstmt.c,
+ * cstmt_warn.c). */
 #ifndef CEREAL_CHECK_INT_H
 #define CEREAL_CHECK_INT_H
 
@@ -590,7 +592,7 @@ Diagnostic *cerror_d(Checker *c, SrcLoc loc, const char *fmt, ...);
 Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, const char *id,
                     const char *fmt, ...);
 void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...);
-/* cstmt.c: emit_side_effect_warnings for an expression whose value is dropped */
+/* cstmt_warn.c: emit_side_effect_warnings for an expression whose value is dropped */
 void unused_value(Checker *c, uint32_t e, SrcLoc dloc);
 /* cpragma.c: interpret the #pragma at token tok (pack, GCC diagnostic, ...) */
 void cpragma_apply(Checker *c, uint32_t tok);
@@ -626,7 +628,7 @@ void cscope_pop(Checker *c, BindVec *save);
 bool cat_file_scope(Checker *c);
 ScopeKind cscope_kind(Checker *c);
 
-/* Declarations (cdecl.c). */
+/* Declarations (cdecl.c; the attribute entry points are cattr.c's). */
 void cdecl_node(Checker *c, uint32_t i);        /* every non-expression tag */
 /* SCOPE[NF_PARAMS]: the parameters of the function being defined again. */
 void cdecl_body_scope(Checker *c, uint32_t scope);

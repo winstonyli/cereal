@@ -2,7 +2,7 @@
 
 Source: `src/c/check.c` (walk, scopes, end of unit), `cdecl.c` (declarations; attributes are `cattr.c`, specifiers `cspec.c`;
 a port of gcc 13's `c-decl.cc` and the parts of `c-parser.cc` that decide
-where diagnostics point), `cexpr.c` (expressions, constant folding),
+where diagnostics point), `cexpr.c` (expressions, constant folding; its warnings are `cwarn_expr.c`, `%E` printing `cprint.c`, `-Wsequence-point` `cseqpt.c`, asm `casm.c`), `cstmt.c` / `cstmt_warn.c` (statements),
 `type.c` (hash-consed types, layout), `check_int.h` (internals).  Run it
 with `cereal -fsyntax-only` (or `cereal check`).  The oracle is gcc 13.3 at
 `-std=c99 -pedantic`; see `docs/PARSER.md` (Type checking) for the plan.
