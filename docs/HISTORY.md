@@ -2638,3 +2638,11 @@ Round 163 (cpp 263/266, gcc.dg 3732/3744):
   token (`array_parameter` golden regenerated: col 10, as gcc).
 
 Gate: 1452 goldens, san 547/0.
+
+Round 163 triage (parked): c-c++-common/unroll-5 needs `#pragma GCC unroll j`
+(a variable) rejected; the parser judges the argument textually and its scope
+cannot tell an enumerator from a variable (both SYM_ORDINARY), so it needs the
+checker's constant evaluator on the pragma operand, a larger change. The
+other lines already match (a caret range on 20000000000 is the parked caret
+work). dump-ada-spec-14 is gcc's "packed layout" warning under
+`-fdump-ada-spec`, a flag cereal does not implement.
