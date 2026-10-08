@@ -2591,3 +2591,13 @@ Round 161 (cpp 258/266):
 Gate: 1444 goldens, san 543/0, callgrind 3.818G, -O 3729/3744. Still open:
 pr66415-2 (format argument column), spacing2's undeclared `bar`, and the
 parked list in Round 160.
+
+Addendum (Round 161): an undeclared name that precedes the unit's first
+syntax error is reported even though the unit is otherwise quiet (gcc
+diagnoses it when it parses the name). `Checker.first_err_tok` is the last
+token of the first flagged subtree, computed in `checker_unit`. spacing2 now
+matches (cpp 259/266); golden `misc_246`. The one remaining header diff in
+pr66415-2: after a `#24` line directive gcc puts the format warning at the
+string's start (col 52), not at the `%d` (col 71); without the directive both
+agree, so it is a gcc line-map quirk, parked. Gate: 1446 goldens, san 544/0,
+callgrind 3.818G, -O 3729/3744.

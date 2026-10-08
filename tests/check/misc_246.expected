@@ -1,0 +1,6 @@
+misc_246.c:1:9: error: 'bar' undeclared here (not in a function)
+    1 | int a = bar . ;
+      |         ^
+misc_246.c:1:15: error: expected identifier before ';' token
+    1 | int a = bar . ;
+      |               ^

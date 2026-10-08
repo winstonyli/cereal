@@ -658,6 +658,18 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     c->nodes = u->nodes;
     c->nn = u->nnodes;
     c->quiet = had_errors && !(u->nnodes && u->nodes[u->nnodes - 1].tag == N_FUNC_DEF);
+    c->first_err_tok = UINT32_MAX;
+    if (c->quiet)
+        for (i = 0; i < u->nnodes; i++)
+            if (u->nodes[i].tag == N_ERROR || (u->nodes[i].flags & NF_ERROR)) {
+                /* the error sits at the last token of the flagged subtree */
+                uint32_t j, last = u->nodes[i].tok;
+                for (j = i + 1 - u->nodes[i].size; j < i; j++)
+                    if (u->nodes[j].tok > last)
+                        last = u->nodes[j].tok;
+                if (last < c->first_err_tok)
+                    c->first_err_tok = last;
+            }
     c->fold_pending = 0;
     if (c->cs)
         csum_unit_begin(c);

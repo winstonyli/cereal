@@ -332,6 +332,7 @@ struct Checker {
     const Node *nodes;
     uint32_t nn;
     bool quiet;              /* the unit has syntax errors */
+    uint32_t first_err_tok;  /* quiet: token of the first parse error */
     size_t *dm;              /* per node: diagnostics so far when visited */
     TypeId *ty;              /* per node */
     uint64_t *cv;
