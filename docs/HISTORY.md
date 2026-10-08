@@ -2865,3 +2865,10 @@ prototype first cost 5 gcc.dg and 2 c-c++-common files ("too many arguments").
 Golden `misc_262`; parity unchanged; luajit 20/21 and libuv match gcc-13 file
 for file; callgrind 3.8518 G (+0.3%, the larger table). Not covered: rows with
 `_Float*`, `_Decimal*`, `__bf16` and function-pointer types stay out.
+
+Round 170: the two hand-built `exp ? exp : loc` sites in parse.c (`tok_loc`,
+`eof_input_loc`) call `ptok_loc`. The other `.exp` sites fall back to something else
+(`expr_loc`, `first_loc`, the unchanged location, system-header-only), so they stay.
+Typing the 27 remaining `gnu = 2` rows (`_Float*`, `_Decimal*`, `__bf16`, one function
+pointer) is parked: no corpus or testsuite file differs because of them. zstandard
+(18 files, `zstd.c` is the amalgamation) matches gcc-13 file for file.

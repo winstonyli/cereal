@@ -185,8 +185,7 @@ static bool is_typedef_name(Parser *p, const PTok *t)
 static SrcLoc tok_loc(Parser *p, uint32_t i)
 {
     if (i < p->toks.len)
-        return p->toks.data[i].exp ? p->toks.data[i].exp
-                                   : p->toks.data[i].t.loc;
+        return ptok_loc(&p->toks.data[i]);
     return p->toks.len ? p->toks.data[p->toks.len - 1].exp : 0;
 }
 
@@ -223,8 +222,7 @@ static SrcLoc eof_input_loc(Parser *p)
     if (!f)
         return tok_loc(p, p->toks.len);
     srcmgr_linecol(f, p->last_line ? p->last_line(p->last_ctx)
-                   : p->toks.data[p->toks.len - 1].exp ? p->toks.data[p->toks.len - 1].exp
-                                                       : p->toks.data[p->toks.len - 1].t.loc,
+                   : ptok_loc(&p->toks.data[p->toks.len - 1]),
                    &line, &col);
     {
         SrcLoc ls = srcmgr_loc_of(f, line, 1);
