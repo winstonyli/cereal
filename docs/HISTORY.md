@@ -2433,3 +2433,18 @@ goldens, san 533/0, callgrind 3.816G, parity unchanged: cpp 240/266).
   argument; `lsp/pos.c` only shares a 9-line `hexval`.
 - Checked, not a bug: `u'x'` / `U'x'` in `#if` is rejected under -std=c99 and accepted
   under gnu99, same as gcc.
+
+## Round 152
+
+`cattr.c` split out of `cdecl.c` (pure move: attributes and attribute names,
+cdecl.c 10,3xx -> 7,341 lines, cattr.c 2,828). Gate: 1418 goldens, san 533/0,
+callgrind 3.812G, parity unchanged.
+
+- `c/cdecl_int.h` holds what both files read: the node/token readers
+  (`ntag`, `tokp`, `tstr`, `Kids`, ...), the `AC_*`/`AttrState` types,
+  prototypes of the attribute entry points, and the per-declaration globals
+  cdecl.c sets and cattr.c reads (`alloc_name`, `alloc_via_ptr`, `ctx_vname`,
+  `imp_l/imp_n/imp_name`).
+- `iloc`, `iloc_event`, `is_rec` and `find_child` are no longer static.
+- Next candidates (not started): cspec (cdecl.c add_scspec..specs_visit),
+  cwarn_expr (cexpr.c), cprint (cexpr.c), cstruct.
