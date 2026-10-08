@@ -2830,3 +2830,23 @@ shapes, checked against gcc-13). Parity unchanged; callgrind 3.8397 G
 `src/unix` still match gcc-13 file for file. Not tried: moving
 `-Wmisleading-indentation`'s macro handling onto `mloc` (it works from
 spelled positions, not macro identity).
+
+Round 168: three notions of "token from a macro" are now one. Audit of the
+macro-provenance helpers (about 60 sites): the parser flag behind
+`tfrom_macro`, `ptok_in_macro` (`exp != loc`) and cstmt_warn.c's
+`tok_from_macro` agreed on every gated case; they differed only for an
+argument substituted into a macro, which `exp != loc` called "not in a
+macro" when the argument was pre-expanded in place. All three are now
+`PTok.mloc != 0` (`ptok_in_macro`); `tok_from_macro` is deleted and its five
+uses call `tfrom_macro`. Parity, 1478 goldens, sanitizer files and libuv
+unchanged; callgrind 3.8396 G. Left alone: about ten sites that build a
+presentation location by hand (`exp ? exp : loc`: ast.c, ccall.c, cconv.c,
+cexpr.c, cformat.c, check.c, cinit.c, cstmt_warn.c); only some equal
+`ptok_loc` (others fall back to a different location), so folding them is a
+separate per-site step.
+Found by the lupa sweep, not fixed: luajit `lj_tab.c:294` (and `ljamalg.c`)
+get "parameter 'bins' set but not used" from Round 166's `err_index_mark`.
+In `bins[(k > 2 ? __builtin_clz (k - 1) : 0)]++` the `gnu = 2` built-ins
+(clz, ctz, bswap32, ...) are never typed as functions, so cereal sees an
+erroneous index and skips the base; gcc types the call `int`. The table also
+lacks the entries whose types `bt_type` cannot parse (`unsigned int`, ...).

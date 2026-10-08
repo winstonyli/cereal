@@ -183,10 +183,12 @@ static inline SrcLoc ptok_loc(const PTok *t)
     return t->exp ? t->exp : t->t.loc;
 }
 
-/* Is the token the result of a macro expansion? */
+/* Is the token the result of a macro expansion?  (An argument spelled in the
+ * source still is, once substituted; the old test, exp != loc, said no for
+ * arguments pre-expanded in place.) */
 static inline bool ptok_in_macro(const PTok *t)
 {
-    return t->exp && t->exp != t->t.loc;
+    return t->mloc != 0;
 }
 
 /* One external declaration. */

@@ -354,18 +354,12 @@ typedef struct {
     uint32_t line, vcol;
 } TokPos;
 
-static bool tok_from_macro(const Checker *c, uint32_t tok)
-{
-    return (c->u->toks[tok].t.flags &
-            (TF_ORIGIN_BODY | TF_ORIGIN_ARG | TF_PASTED | TF_SYNTH)) != 0;
-}
-
 /* The file, line and display column (tabs to multiples of 8) of a token. */
 static bool tok_pos(Checker *c, uint32_t tok, TokPos *p, bool spell)
 {
     SrcLoc loc = ctok_loc(c, tok);
     uint32_t col, len, i, dc = 0;
-    if (!spell && tok_from_macro(c, tok) && c->u->toks[tok].exp)
+    if (!spell && tfrom_macro(c, tok) && c->u->toks[tok].exp)
         loc = c->u->toks[tok].exp;      /* the expansion point */
     const char *text;
     p->f = srcmgr_file_of(c->sm, loc);
@@ -524,7 +518,7 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
         tok_is_p(c, n, P_SEMI) || tok_is_p(c, n, P_RBRACE) ||
         tok_is_kw(c, n, CK_ELSE))
         return;
-    spell = tok_from_macro(c, g) && tok_from_macro(c, n) &&
+    spell = tfrom_macro(c, g) && tfrom_macro(c, n) &&
             c->u->toks[g].exp && c->u->toks[g].exp == c->u->toks[n].exp;
     if (spell && ((c->u->toks[b].t.flags | c->u->toks[n].t.flags) & TF_ORIGIN_ARG))
         return;                 /* spelled at the use, not in the body */
@@ -1210,7 +1204,7 @@ static void multistatement(Checker *c, uint32_t g, uint32_t body,
     }
     if (b >= n || tok_is_p(c, b, P_LBRACE))
         return;
-    if (!tok_from_macro(c, b) || !tok_from_macro(c, n) ||
+    if (!tfrom_macro(c, b) || !tfrom_macro(c, n) ||
         tok_expansion(c, b) != tok_expansion(c, n))
         return;
     if (tok_is_p(c, n, P_SEMI))
@@ -1220,7 +1214,7 @@ static void multistatement(Checker *c, uint32_t g, uint32_t body,
     kb = tok_map(c, b);
     if (kb != tok_map(c, n))
         return;
-    if (tok_from_macro(c, g) && tok_expansion(c, g) == tok_expansion(c, b)) {
+    if (tfrom_macro(c, g) && tok_expansion(c, g) == tok_expansion(c, b)) {
         /* a guard from the same invocation: the body must not belong to a
          * macro that the guard's own macro was expanded inside */
         uint32_t k;
@@ -1228,7 +1222,7 @@ static void multistatement(Checker *c, uint32_t g, uint32_t body,
         if (kg == kb)
             return;
         for (k = g; k-- > 0;)
-            if (tok_from_macro(c, k) && tok_map(c, k) == kb &&
+            if (tfrom_macro(c, k) && tok_map(c, k) == kb &&
                 tok_expansion(c, k) == tok_expansion(c, b))
                 return;
     }
