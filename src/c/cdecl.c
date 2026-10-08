@@ -416,10 +416,10 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
               "prototype");
     if (pi->krlist) {
         if (!funcdef) {
-            bool q = c->quiet;
             uint32_t last = NO_NODE;
+            /* gcc issues this in the declarator parse */
+            bool q = quiet_lift(c);
             DiagOrd o0 = diag_ord(c->diag, q ? ORD_LATE : ORD_NORMAL);
-            c->quiet = false;     /* gcc issues this in the declarator parse */
             kids_get(c, f, &k);
             for (j = 0; j < k.n; j++)
                 if (ntag(c, k.p[j]) == N_KR_IDENT)
@@ -431,7 +431,7 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
                 il = ctok_loc(c, last + 2);
             cpedwarn(c, il, "", "parameter names (without types) in function "
                      "declaration");
-            c->quiet = q;
+            quiet_restore(c, q);
             diag_ord(c->diag, o0);
         }
         return;
@@ -3941,12 +3941,11 @@ static void open_visit(Checker *c, uint32_t i)
         if (being_defined(c, t)) {
             /* gcc diagnoses it in start_enum, before any later syntax error
              * in the unit (an empty inner enum), then clears the flag */
-            bool q = c->quiet;
             size_t k;
-            c->quiet = false;
+            bool q = quiet_lift(c);
             cerror(c, loc, "nested redefinition of 'enum %s'",
                    name ? cident(c, name) : "");
-            c->quiet = q;
+            quiet_restore(c, q);
             for (k = 0; k < c->recs.len; k++)
                 if (type_canon(TT, c->recs.data[k].ty) == type_canon(TT, t))
                     c->recs.data[k].cleared = true;
@@ -6566,8 +6565,7 @@ void cdecl_node(Checker *c, uint32_t i)
         break;
     case N_ATTRIBUTE: {
         /* parser diagnostics: gcc gives them in units with errors too */
-        bool quiet = c->quiet;
-        c->quiet = false;
+        bool quiet = quiet_lift(c);
         if (tokp(c, cnode(c, i)->tok)->kind == TK_PUNCT)
             cpedantic(c, tloc(c, cnode(c, i)->tok), "ISO C does not support "
                       "'[[]]' attributes before C2X");
@@ -6590,7 +6588,7 @@ void cdecl_node(Checker *c, uint32_t i)
             }
             kids_free(&ak);
         }
-        c->quiet = quiet;
+        quiet_restore(c, quiet);
         break;
     }
     case N_STRUCT:

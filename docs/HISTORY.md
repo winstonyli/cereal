@@ -2743,3 +2743,22 @@ statement still warns at the operator, even with a call on the right (the
 operand becomes `!= 0`). Golden `misc_259`. Parked: libuv's `posix-poll.c`
 (a file that does not compile on Linux) gets gcc's "parameter 'l' set but not
 used" at line 78, which cereal omits; not pursued.
+
+Round 165 refactors (no behaviour change; goldens, parity and the sanitizer
+build unchanged, callgrind 3.837 G to 3.842 G):
+- Macro provenance: `ptok_in_macro` / `ptok_loc` (ast.h) replace the copied
+  `from_macro` and six open-coded `exp ? exp : loc`; `diag_expansion_notes`
+  (diag.c) replaces the twin note builders in check.c and parse.c. The flag
+  based `tok_from_macro` (cstmt_warn.c) stays separate on purpose: it is true
+  for an argument token whose `exp` equals its location, the `exp` based one
+  is not.
+- One `strip_paren` (check_int.h; three copies before) and `cast_operand`
+  (cexpr_int.h) for the cast-peeling loops. Sites with their own conditions
+  (lg_strip, the `+ 0` folds) keep their loops.
+- `quiet_lift` / `quiet_lift_before` / `quiet_restore` (check_int.h) name the
+  "gcc reports this while parsing, so a unit with a syntax error still gets
+  it" pattern at four sites. The `N_DECLARED` site mixes in diagnostic order
+  and `first_err_params` and keeps its own code.
+Not done (surveyed): splitting `grok` (about 740 lines), `declared_visit`,
+`assign_check`, and moving the struct/enum and function-definition code out of
+`cdecl.c` into their own files. Low risk to move, no motive yet.

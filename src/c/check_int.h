@@ -533,6 +533,31 @@ static inline uint32_t last_tok(const Checker *c, uint32_t i)
     return m;
 }
 
+/* gcc issues some diagnostics while it parses, so a unit with a syntax error
+ * (c->quiet) still gets them: lift the mute around the report; the result
+ * goes to quiet_restore. */
+static inline bool quiet_lift(Checker *c)
+{
+    bool q = c->quiet;
+    c->quiet = false;
+    return q;
+}
+
+/* The same for a diagnostic at token tok: only one before the unit's first
+ * syntax error is given. */
+static inline bool quiet_lift_before(Checker *c, uint32_t tok)
+{
+    bool q = c->quiet;
+    if (q && tok < c->first_err_tok)
+        c->quiet = false;
+    return q;
+}
+
+static inline void quiet_restore(Checker *c, bool q)
+{
+    c->quiet = q;
+}
+
 /* Skips parentheses (NO_NODE for an empty one). */
 static inline uint32_t strip_paren(const Checker *c, uint32_t i)
 {

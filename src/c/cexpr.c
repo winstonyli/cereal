@@ -1689,11 +1689,9 @@ static void undeclared_(Checker *c, uint32_t i, uint32_t id);
  * unit's first syntax error is reported even though the unit is quiet. */
 static void undeclared(Checker *c, uint32_t i, uint32_t id)
 {
-    bool quiet = c->quiet;
-    if (quiet && c->nodes[i].tok < c->first_err_tok)
-        c->quiet = false;
+    bool quiet = quiet_lift_before(c, c->nodes[i].tok);
     undeclared_(c, i, id);
-    c->quiet = quiet;
+    quiet_restore(c, quiet);
 }
 
 static void undeclared_(Checker *c, uint32_t i, uint32_t id)
