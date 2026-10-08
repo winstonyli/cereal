@@ -1,5 +1,6 @@
-/* cdecl_int.h - what cdecl.c and cattr.c share: the node and token readers
- * and the Kids list. */
+/* cdecl_int.h - what cdecl.c, cattr.c, cmerge.c and crecord.c share: the
+ * node and token readers, the Kids list, the type and symbol predicates, the
+ * GDecl record, and the prototypes that cross between those files. */
 #ifndef CEREAL_CDECL_INT_H
 #define CEREAL_CDECL_INT_H
 

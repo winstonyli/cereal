@@ -1,4 +1,4 @@
-/* -Warray-parameter= and -Wvla-parameter: a function redeclared with an array
+/* cparm.c - -Warray-parameter= and -Wvla-parameter: a function redeclared with an array
  * parameter whose bound differs from the first declaration's (gcc's
  * warn_parm_array_mismatch and warn_parm_ptrarray_mismatch).
  *

@@ -1,5 +1,6 @@
 /* check_int.h - the checker's internals, shared by check.c (the walk and
- * scopes), the declaration units (cdecl.c, cattr.c, cspec.c), the expression
+ * scopes), the declaration units (cdecl.c, cattr.c, cspec.c, cmerge.c,
+ * crecord.c), the expression
  * units (cexpr.c, cwarn_expr.c, ...) and the statement units (cstmt.c,
  * cstmt_warn.c). */
 #ifndef CEREAL_CHECK_INT_H

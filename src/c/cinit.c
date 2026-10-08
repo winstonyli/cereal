@@ -1,4 +1,4 @@
-/* cinit.c - initializers (P2c).
+/* cinit.c - initializers.
  *
  * A port of gcc 13's initializer machinery: c-typeck.cc (digest_init,
  * process_init_element, push_init_level, pop_init_level, set_init_index,

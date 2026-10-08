@@ -1,4 +1,4 @@
-/* cstmt.c - statements and function-level checks (P2d).
+/* cstmt.c - statements and function-level checks.
  *
  * A port of the statement parts of gcc 13: c-typeck.cc (c_finish_return,
  * c_start_switch, do_case, c_finish_switch, c_finish_bc_stmt), c-decl.cc

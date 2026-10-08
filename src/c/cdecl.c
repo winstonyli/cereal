@@ -1,7 +1,9 @@
-/* cdecl.c - the checker's declarations: specifiers, declarators, structs,
- * unions, enums, functions (a port of gcc 13's c-decl.cc and the parts of
- * c-parser.cc that decide where its diagnostics point).  Expressions are
- * cexpr.c's; the walk and the scopes are check.c's (check_int.h).
+/* cdecl.c - the checker's declarations: the walk's dispatch, declarators,
+ * pushdecl, functions (a port of gcc 13's c-decl.cc and the parts of
+ * c-parser.cc that decide where its diagnostics point).  Structs, unions,
+ * enums and members are crecord.c's, duplicate-declaration merging cmerge.c's,
+ * attributes cattr.c's, specifiers cspec.c's.  Expressions are cexpr.c's; the
+ * walk and the scopes are check.c's (check_int.h).
  *
  * The walk visits the nodes of a unit in post-order.  What each visit does:
  *   SPECS        builds the declaration specifiers (gcc's c_declspecs) and
