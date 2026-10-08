@@ -2699,3 +2699,11 @@ Round 164 addendum 3 (gcc.dg 3736/3744):
   plain const-member path gives up (a false negative: gcc still reports
   `strlen(ay.a)` without a nul and `ax.a + 9`). strlenopt-78, golden
   `misc_254`.
+
+Round 164 addendum 4: `cparm_typedef` sizes its dimension list from the
+declarator's subtree (no 16-dimension cap), golden `misc_255`. Warray-parameter-11
+re-surveyed and stays parked: the pointer difference
+`(char*)&sp->a[1] - (char*)sp` needs a constant kind for "pointer variable
+plus offset" (K_ADDR's base is an object's address, so reusing it would make
+`int *p = sp;` look constant), and the test needs the built-in math fold
+too, so neither alone fixes it.

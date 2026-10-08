@@ -573,28 +573,33 @@ uint32_t cparm_make(Checker *c, uint32_t fnode)
  * parameters later declared with it. */
 void cparm_typedef(Checker *c, uint32_t top, TypeId ty)
 {
-    uint32_t l, d, dn[16], nd = 0, m;
+    uint32_t l, d, *dn, nd = 0, m;
     CParmDesc *pd;
     if (type_ckind(TT, ty) != TY_VLA || type_kind(TT, ty) != TY_TYPEDEF)
         return;
     l = top;
     if (l == NO_NODE || !is_declarator_tag(ntag(c, l)))
         return;
+    dn = xmalloc((c->nodes[l].size + 1) * sizeof *dn);   /* levels are nodes */
     for (d = l; d != NO_NODE; d = cdecl_inner_decl(c, d)) {
-        if (ntag(c, d) == N_ARRAY && nd < 16)
+        if (ntag(c, d) == N_ARRAY)
             dn[nd++] = d;
-        else if (ntag(c, d) == N_ARRAY || ntag(c, d) == N_PTR ||
-                 ntag(c, d) == N_FUNC)
+        else if (ntag(c, d) == N_PTR || ntag(c, d) == N_FUNC) {
+            free(dn);
             return;
+        }
     }
-    if (!nd)
+    if (!nd) {
+        free(dn);
         return;
+    }
     pd = xcalloc(1, sizeof *pd);
     pd->n = 1;
     pd->p[0].nd = nd;
     pd->p[0].d = xcalloc(nd, sizeof *pd->p[0].d);
     for (m = 0; m < nd; m++)
         dim_of(c, dn[nd - 1 - m], &pd->p[0].d[m], false, NULL, 0);
+    free(dn);
     vec_push(&c->pdescs, (struct CParmDesc *)pd);
     vec_push(&c->tdvla, ty);
     vec_push(&c->tdvla, (uint32_t)c->pdescs.len);

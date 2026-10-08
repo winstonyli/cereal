@@ -1,0 +1,126 @@
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:3:13: error: variably modified 'T' at file scope
+    3 | typedef int T[n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n];
+      |             ^
+misc_255.c:5:8: warning: argument 1 of type 'int[1][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n]' declared as a variable length array [-Wvla-parameter]
+    5 | void f(int [1][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n]);
+      |        ^
+misc_255.c:4:8: note: previously declared as an ordinary array 'int[1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1]'
+    4 | void f(T);
+      |        ^
