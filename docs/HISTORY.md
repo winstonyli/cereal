@@ -2682,8 +2682,8 @@ Round 164 addendum 2 (gcc.dg 3735/3744):
 - Parameter declarators no longer give up past 16 array dimensions / 32
   levels (`parm_of` sizes its buffers from the parameter's subtree), so
   -Warray-parameter / -Wvla-parameter work on pr100619's 1100-dimension
-  types. Golden `misc_253` (60 dimensions). `cparm_typedef` still caps a
-  VLA typedef at 16 dimensions.
+  types. Golden `misc_253` (60 dimensions). (`cparm_typedef` was
+  capped at 16 dimensions until addendum 4.)
 - Parked: Warray-parameter-11. gcc folds `!__builtin_copysign(~2, 3)`,
   `(int)__builtin_fabs(-4.0)` and `(intptr_t)((char*)&sp->a[1] - (char*)sp)`
   to constants in an array bound (so "ISO C forbids zero-size array" and a
