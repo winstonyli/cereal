@@ -1,0 +1,30 @@
+misc_235.c:1:10: warning: multi-character character constant [-Wmultichar]
+    1 | int a = u'ab';
+      |          ^
+misc_235.c:1:9: error: 'u' undeclared here (not in a function)
+    1 | int a = u'ab';
+      |         ^
+misc_235.c:1:10: error: expected ',' or ';' before '\x6162'
+    1 | int a = u'ab';
+      |          ^
+misc_235.c:2:10: warning: multi-character character constant [-Wmultichar]
+    2 | int b = U'x41';
+      |          ^
+misc_235.c:2:9: error: 'U' undeclared here (not in a function)
+    2 | int b = U'x41';
+      |         ^
+misc_235.c:2:10: error: expected ',' or ';' before '\x783431'
+    2 | int b = U'x41';
+      |          ^
+misc_235.c:3:11: error: too many decimal points in number
+    3 | int c = u 1.2.3;
+      |           ^
+misc_235.c:3:11: error: expected ',' or ';' before numeric constant
+    3 | int c = u 1.2.3;
+      |           ^
+misc_235.c:4:25: warning: multi-character character constant [-Wmultichar]
+    4 | void f(void) { int d = u'ab'; }
+      |                         ^
+misc_235.c:4:25: error: expected ',' or ';' before '\x6162'
+    4 | void f(void) { int d = u'ab'; }
+      |                         ^

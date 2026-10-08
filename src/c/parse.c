@@ -321,22 +321,70 @@ static void pdiag(Parser *p, DiagLevel lvl, SrcLoc loc, const char *fmt, ...)
     va_end(ap);
 }
 
+static void pdiag_tag(Parser *p, DiagLevel lvl, const char *tag, SrcLoc loc,
+                      const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    pvreport(p, lvl, tag, loc, fmt, ap);
+    va_end(ap);
+}
+
+typedef struct ParseEsc {
+    Parser *p;
+    SrcLoc loc;
+} ParseEsc;
+
+static void parse_esc_emit(void *ctx, int level, const char *msg)
+{
+    ParseEsc *e = ctx;
+    if (level == 2)
+        pdiag(e->p, DL_ERROR, e->loc, "%s", msg);
+    else
+        pdiag(e->p, e->p->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
+              e->loc, "%s", msg);
+}
+
+/* A character constant gcc interprets as it lexes it, so its escape and
+ * width diagnostics appear even when the parser rejects the token. */
+static void classify_char(Parser *p, const PTok *t, const char *s)
+{
+    ParseEsc e;
+    Lit l;
+    e.p = p;
+    e.loc = t->exp ? t->exp : t->t.loc;
+    lit_escape_diags(s, t->t.len, diag_option_state(p->diag, "pedantic") != 0,
+                     parse_esc_emit, &e);
+    lit_char(&target_x86_64, s, t->t.len, &l);
+    if (!l.msg[0])
+        return;
+    if (l.level == 2)
+        pdiag(p, DL_ERROR, e.loc, "%s", l.msg);
+    else if (l.level == 1)
+        pdiag_tag(p, DL_WARNING, l.id ? l.id : "", e.loc, "%s", l.msg);
+}
+
 /* gcc classifies a number as it lexes it, so a malformed one is diagnosed
  * even when no expression ever reads it: when an error names it as the
  * current token, or recovery skips it.  (The checker reports the numbers
- * that are read and drops a repeat of this report.) */
+ * that are read and drops a repeat of this report.)  A character constant
+ * likewise gets its lexing diagnostics. */
 static void classify_num(Parser *p, uint32_t i)
 {
     uint64_t ix = p->base + i + 1;
     Lit l;
     const char *s;
     PTok t;
-    if (i >= p->toks.len || p->toks.data[i].t.kind != TK_PPNUM ||
-        ix <= p->skipnum)
+    if (i >= p->toks.len || ix <= p->skipnum ||
+        (p->toks.data[i].t.kind != TK_PPNUM && p->toks.data[i].t.kind != TK_CHAR))
         return;
     t = p->toks.data[i];
     p->skipnum = ix;
     s = tok_text_raw(p->sm, p->in, &t.t);
+    if (t.t.kind == TK_CHAR) {
+        classify_char(p, &t, s);
+        return;
+    }
     lit_number(&target_x86_64, s, t.t.len, &l);
     if (l.msg[0] && l.level == 2)
         pdiag(p, DL_ERROR, t.exp ? t.exp : t.t.loc, "%s", l.msg);
@@ -2434,6 +2482,18 @@ static void primary(Parser *p)
         case CK_NONE:
             if (is_typedef_name(p, &t))
                 break;          /* c_parser_postfix_expression: a type name */
+            {   /* gcc lexes the next token to look for a postfix, so its
+                 * lexing diagnostics come before the identifier's own */
+                uint32_t ni = skip_prag(p, ci(p) + 1);
+                if (ni < p->toks.len && (p->toks.data[ni].t.kind == TK_CHAR ||
+                                         p->toks.data[ni].t.kind == TK_PPNUM)) {
+                    size_t n0 = p->diag->all.len, k;
+                    SrcLoc at = t.exp ? t.exp : t.t.loc;
+                    classify_num(p, ni);
+                    for (k = n0; k < p->diag->all.len && at; k++)
+                        p->diag->all.data[k]->oloc = at - 1;
+                }
+            }
             leaf(p, N_IDENT, adv(p));
             return;
         case CK_GENERIC:

@@ -2398,3 +2398,19 @@ gcc.dg/cpp 233 -> 240 of 266 identical (26 differ); gcc.dg 15, c-c++-common 2.
   one-token parser lookahead ordering; `__has_attribute` error forms;
   pragma diagnostic columns (system_header, dependency); undef2 builtin
   names; poison; Wsignprom; remaining cpp list in verify output.
+
+## Round 150
+
+Lexing diagnostics for tokens the parser rejects (gate: cpp still 240/266,
+gcc.dg 15, c-c++-common 2; 1417 pass, san 532/0, callgrind 3.818G).
+
+- `classify_num` also classifies character constants (`classify_char`): escape
+  diagnostics (`lit_escape_diags`), "multi-character character constant" and
+  "too long for its type", when an error names the token or recovery skips it
+  (`u'ab'`, `U'x41'` in c99, where `u`/`U` are plain identifiers).
+- gcc lexes the token after an identifier to look for a postfix operator, so
+  `parse_primary` classifies a following char constant or number right away
+  and sets the diagnostic's merge key (`oloc`) just before the identifier:
+  the warning precedes "'u' undeclared", as in gcc. Golden misc_235.
+- Still open: the general one-token-lookahead ordering for other token
+  pairs (only identifier + literal is handled); the rest of the cpp list.
