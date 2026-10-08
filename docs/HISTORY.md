@@ -2783,3 +2783,15 @@ exported through cdecl_int.h under the `cdecl_` prefix (`duplicate_decls`,
 `typedef_under`); no types moved. `cdecl.c` is 5754 lines. No behaviour
 change: parity unchanged, 1473 goldens (the self-check walks `src/c`, so a new
 file adds one), sanitizer 0 findings, callgrind 3.8415 G.
+
+`cdecl.c` split, step 3: the struct/union/enum/member code (tags,
+finish_struct, enumerators, members, `_Static_assert`, `#pragma pack`; 1476
+lines) moved to `crecord.c`; `cdecl.c` is now 4235 lines. Eleven
+functions leave through cdecl_int.h (the eight visitors, `flex_struct`,
+`struct_semis`, `typedef_tag_clash`) and eight come in (`grok`, `pushdecl`,
+`pending_xref`, `find_spec`, `pop_specs`, `shadow_tag`, `dep_spec_use`,
+`scan_end`), all `cdecl_`-prefixed. `GDecl`, `min_prec` and
+`is_incomplete_array` moved to cdecl_int.h. No behaviour change: parity
+unchanged, 1474 goldens, sanitizer 0 findings, callgrind 3.8422 G (+0.02%,
+the calls now cross a translation unit). The function-definition split stays
+parked: it would need about 28 imports for 13% of the file.

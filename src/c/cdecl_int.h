@@ -14,6 +14,52 @@
 
 enum { DC_NORMAL, DC_FIELD, DC_PARM, DC_TYPENAME };
 
+/* ---- declarator analysis -------------------------------------------------- */
+
+enum { GD_NONE, GD_VAR, GD_PARM, GD_FIELD, GD_FUNC, GD_TYPEDEF, GD_TYPENAME };
+
+typedef struct GDecl {
+    int what;
+    uint32_t name;           /* ident, 0: none */
+    uint32_t name_node;
+    SrcLoc loc;              /* the declaration's own location */
+    TypeId ty;
+    CSym s;
+    bool array_param;
+    TypeId pre;              /* DC_PARM: the array type before it decayed */
+    int width;               /* fields: bits, -1: not a bit-field */
+    bool default_int;
+    bool funcdef_ok;
+} GDecl;
+
+/* The minimum precision of v in a type of signedness uns (gcc's
+ * tree_int_cst_min_precision). */
+static inline unsigned min_prec(uint64_t v, bool neg, bool uns)
+{
+    unsigned n = 0;
+    if (neg) {
+        uint64_t m = ~v;
+        while (m) {
+            n++;
+            m >>= 1;
+        }
+        return n + 1;
+    }
+    if (v == 0)
+        return 1;
+    while (v) {
+        n++;
+        v >>= 1;
+    }
+    return n + (uns ? 0 : 1);
+}
+
+static inline bool is_incomplete_array(Checker *c, TypeId t)
+{
+    return tkind(c, t) == TY_ARRAY &&
+           (type_ent(TT, type_canon(TT, t))->flags & TF_INCOMPLETE);
+}
+
 /* ---- symbol predicates ---------------------------------------------------- */
 
 static inline bool sym_public(const CSym *s)
@@ -233,5 +279,30 @@ void cdecl_inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
 void cdecl_locate_old_decl(Checker *c, Diagnostic *d, const CSym *o);
 void cdecl_weak_apply(Checker *c, CSym *s, bool is_inline);
 TypeId cdecl_typedef_under(Checker *c, TypeId t);
+
+/* cdecl.c: the declaration core the tag and member code calls. */
+void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
+                bool funcdef, bool initialized, uint32_t width_node,
+                uint32_t ltok, uint32_t after, GDecl *g);
+uint32_t cdecl_pushdecl(Checker *c, const CSym *xin, bool implicit_int);
+int cdecl_find_spec(Checker *c, uint32_t specs_node);
+void cdecl_pop_specs(Checker *c, uint32_t consumer);
+void cdecl_pending_xref(Checker *c, Spec *sp);
+void cdecl_shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok);
+void cdecl_dep_spec_use(Checker *c, const Spec *sp);
+uint32_t cdecl_scan_end(Checker *c, uint32_t tok, bool eq);
+
+/* crecord.c: structs, unions, enums, members. */
+void cdecl_tag_visit(Checker *c, uint32_t i);
+void cdecl_open_visit(Checker *c, uint32_t i);
+void cdecl_struct_visit(Checker *c, uint32_t i);
+void cdecl_enumerator_visit(Checker *c, uint32_t i);
+void cdecl_member_visit(Checker *c, uint32_t i);
+void cdecl_member_decl_visit(Checker *c, uint32_t i);
+void cdecl_static_assert_visit(Checker *c, uint32_t i);
+void cdecl_pragma_visit(Checker *c, uint32_t i);
+bool cdecl_flex_struct(Checker *c, TypeId t);
+void cdecl_struct_semis(Checker *c, uint32_t upto);
+void cdecl_typedef_tag_clash(Checker *c, uint32_t name, SrcLoc at, SrcLoc old);
 
 #endif
