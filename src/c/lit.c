@@ -410,7 +410,7 @@ uint32_t lit_named_ucn(const char *s, const char *e)
 
 /* One character (or escape) of a char or string literal body; returns
  * its value and advances *p. */
-static uint32_t lit_one(const char **p, const char *end, bool wide,
+uint32_t lit_char_one(const char **p, const char *end, bool wide,
                         bool *ucn)
 {
     const char *s = *p;
@@ -523,7 +523,7 @@ void lit_char(const Target *tgt, const char *s, size_t n, Lit *out)
     while (q < end) {
         bool ucn;
         bool wide = prefix && prefix != '8';
-        uint32_t c = lit_one(&q, end, wide, &ucn);
+        uint32_t c = lit_char_one(&q, end, wide, &ucn);
         if (!wide && ucn) {
             /* a UCN in a narrow constant: its UTF-8 bytes */
             unsigned k, len = utf8_len(c);
@@ -724,11 +724,11 @@ void lit_str_units(const char *s, size_t n, unsigned width, uint64_t *units)
                 (*units)++;
                 continue;
             }
-            c = lit_one(&q, end, false, &ucn);
+            c = lit_char_one(&q, end, false, &ucn);
             *units += ucn ? utf8_len(c) : 1;
             continue;
         }
-        c = lit_one(&q, end, true, &ucn);
+        c = lit_char_one(&q, end, true, &ucn);
         if (width == 2 && c >= 0x10000 && (ucn || *at != '\\'))
             *units += 2; /* a surrogate pair */
         else

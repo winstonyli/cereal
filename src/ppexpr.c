@@ -252,16 +252,6 @@ static Val parse_number(EP *p, const Tok *t)
     return mkval(v, uns);
 }
 
-static int hexval(char c)
-{
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-    return -1;
-}
 
 typedef struct PEsc {
     PP *pp;
@@ -303,52 +293,8 @@ static Val parse_char_(EP *p, const Tok *t)
     }
     s++; /* opening quote */
     while (s < end) {
-        uintmax_t c;
-        if (*s == '\\') {
-            s++;
-            switch (*s) {
-            case 'n': c = '\n'; s++; break;
-            case 't': c = '\t'; s++; break;
-            case 'r': c = '\r'; s++; break;
-            case 'a': c = 7; s++; break;
-            case 'b': c = 8; s++; break;
-            case 'f': c = 12; s++; break;
-            case 'v': c = 11; s++; break;
-            case 'e': case 'E': c = 27; s++; break;
-            case 'x':
-                s++;
-                c = 0;
-                while (s < end && hexval(*s) >= 0)
-                    c = c * 16 + (uintmax_t)hexval(*s++);
-                break;
-            case 'u': case 'U': {
-                int n = *s == 'u' ? 4 : 8;
-                s++;
-                c = 0;
-                while (n-- > 0 && s < end && hexval(*s) >= 0)
-                    c = c * 16 + (uintmax_t)hexval(*s++);
-                break;
-            }
-            default:
-                if (*s >= '0' && *s <= '7') {
-                    int n = 0;
-                    c = 0;
-                    while (n++ < 3 && s < end && *s >= '0' && *s <= '7')
-                        c = c * 8 + (uintmax_t)(*s++ - '0');
-                } else {
-                    c = (unsigned char)*s++;
-                }
-            }
-        } else if (wide && ((unsigned char)*s) >= 0x80) {
-            /* decode UTF-8 */
-            unsigned char b = (unsigned char)*s++;
-            int extra = b >= 0xF0 ? 3 : b >= 0xE0 ? 2 : 1;
-            c = b & (0x3F >> extra);
-            while (extra-- > 0 && s < end)
-                c = (c << 6) | ((unsigned char)*s++ & 0x3F);
-        } else {
-            c = (unsigned char)*s++;
-        }
+        bool ucn;
+        uint32_t c = lit_char_one(&s, end, wide, &ucn);
         nchars++;
         if (wide && uns)
             v = (intmax_t)(ubits == 16 ? (uint16_t)c : (uint32_t)c);
