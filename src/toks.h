@@ -84,7 +84,7 @@ typedef struct TokCursor {
 void tokcur_open(TokCursor *c, TokRegen *src, size_t s, size_t e);
 /* The next token and its presentation location (the expansion point of a
  * token from a macro); false at the end. */
-bool tokcur_next(TokCursor *c, Tok *t, SrcLoc *exp_loc);
+bool tokcur_next(TokCursor *c, Tok *t, SrcLoc *exp_loc, SrcLoc *mloc);
 void tokcur_close(TokCursor *c, bool keep_spellings);
 
 #endif

@@ -2809,3 +2809,24 @@ gcc-13, so the parked item is closed; the whole libuv unix directory is again
 identical file for file. Also cleared the build's nine warnings (`bn` and
 `k` shadows, missing initializers in `SlRes` and the `FieldIn` va_list tables);
 callgrind is unchanged at 3.8422 G.
+
+Round 167: the parked `-Wmultistatement-macros` case is closed, and the
+guess behind it is gone. gcc compares macro maps (which expansion of which
+macro holds a token); an argument token belongs to the macro it was
+substituted into. cereal had no such identity and derived one from spelled
+locations, with argument tokens as wildcards, so `if (o) COL (o) = 1; t->c =
+2;` inside a macro V (body from the nested COL, next token an argument of V)
+warned where gcc is silent. The `!kn` guard could not tell this from the
+cases that must warn.
+General mechanism: the preprocessor already knows, when it hands a token out,
+which macro context it came from; `pp_next` now records that context's
+invocation location (`out_mloc`), the token sources pass it on, and `PTok`
+carries it as `mloc`. `multistatement` compares `mloc` (with the expansion
+point) instead of the spelled-location derivation and its "locations never go
+back" check, both deleted. `tok_macro` stays for `-Wduplicated-branches`,
+which needs the definition, not the expansion. Golden `misc_261` (six
+shapes, checked against gcc-13). Parity unchanged; callgrind 3.8397 G
+(-0.07%, the derivation was costlier than the field); libuv `src` and
+`src/unix` still match gcc-13 file for file. Not tried: moving
+`-Wmisleading-indentation`'s macro handling onto `mloc` (it works from
+spelled positions, not macro identity).

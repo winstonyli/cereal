@@ -1,0 +1,33 @@
+misc_261.c:13:14: warning: macro expands to multiple statements [-Wmultistatement-macros]
+   13 | #define M(x) foo (); x
+      |              ^
+misc_261.c:14:24: note: in expansion of macro 'M'
+   14 | void g1(void) { if (c) M(bar ()); }
+      |                        ^
+misc_261.c:14:17: note: some parts of macro expansion are not guarded by this 'if' clause
+   14 | void g1(void) { if (c) M(bar ()); }
+      |                 ^
+misc_261.c:15:14: warning: macro expands to multiple statements [-Wmultistatement-macros]
+   15 | #define N(x) foo (); x;
+      |              ^
+misc_261.c:16:24: note: in expansion of macro 'N'
+   16 | void g2(void) { if (c) N(a++) }
+      |                        ^
+misc_261.c:16:17: note: some parts of macro expansion are not guarded by this 'if' clause
+   16 | void g2(void) { if (c) N(a++) }
+      |                 ^
+misc_261.c:19:26: error: expected ';' before 'a'
+   19 | void g3(void) { if (c) P(a++); }
+      |                          ^
+misc_261.c:19:24: note: in expansion of macro 'P'
+   19 | void g3(void) { if (c) P(a++); }
+      |                        ^
+misc_261.c:21:31: error: expected ';' before '}' token
+   21 | void g4(void) { if (c) Q(a++) }
+      |                               ^
+misc_261.c:25:29: error: expected ';' before 'bar'
+   25 | void g6(void) { if (c) S(1, bar ()) }
+      |                             ^
+misc_261.c:25:24: note: in expansion of macro 'S'
+   25 | void g6(void) { if (c) S(1, bar ()) }
+      |                        ^

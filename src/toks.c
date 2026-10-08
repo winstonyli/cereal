@@ -53,13 +53,15 @@ void tokcur_open(TokCursor *c, TokRegen *src, size_t s, size_t e)
     pp_plan_start(&c->pp, &src->plan, s);
 }
 
-bool tokcur_next(TokCursor *c, Tok *t, SrcLoc *exp_loc)
+bool tokcur_next(TokCursor *c, Tok *t, SrcLoc *exp_loc, SrcLoc *mloc)
 {
     while (pp_next(&c->pp, t)) {
         if (!tok_in_stream(t))
             continue;
         if (exp_loc)
             *exp_loc = t->kind == TK_PRAGMA ? t->loc : c->pp.out_exp_loc;
+        if (mloc)
+            *mloc = t->kind == TK_PRAGMA ? 0 : c->pp.out_mloc;
         return true;
     }
     if (c->pp.plan_stop && !c->pp.plan_stop_clean)

@@ -13,7 +13,7 @@
 
 #define NO_TOK UINT32_MAX
 
-static const PTok eof_tok = {{TK_EOF, 0, TF_BOL, 0, 0, 0}, 0, 0};
+static const PTok eof_tok = {{TK_EOF, 0, TF_BOL, 0, 0, 0}, 0, 0, 0};
 
 static bool is_p(const PTok *t, Punct x);
 
@@ -57,7 +57,7 @@ __attribute__((noinline)) static bool fill_slow(Parser *p, size_t i)
         if (p->src_done)
             return false;
         memset(&pt, 0, sizeof pt);
-        if (!p->src(p->src_ctx, &pt.t, &pt.exp)) {
+        if (!p->src(p->src_ctx, &pt.t, &pt.exp, &pt.mloc)) {
             p->src_done = true;
             return false;
         }

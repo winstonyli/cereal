@@ -171,6 +171,8 @@ extern const char *const node_names[N_COUNT];
 typedef struct PTok {
     Tok t;
     SrcLoc exp;
+    SrcLoc mloc;        /* where the macro whose expansion holds the token was
+                         * invoked (gcc's macro map), 0 outside macros */
     uint8_t stdattr;    /* a '[' that starts '[[' (C2X attribute) */
 } PTok;
 

@@ -310,6 +310,7 @@ typedef struct PP {
 
     /* provenance of the last token read (see pp_read_raw) */
     SrcLoc tok_exp_loc;
+    SrcLoc tok_mloc;         /* name_loc of the context it came from: gcc's macro map */
     uint32_t tok_exp_id, tok_root;
     bool tok_root_obj;
     /* the last token the lexer produced (not EOF): gcc reports "unterminated
@@ -320,7 +321,7 @@ typedef struct PP {
     SrcLoc paste_name_loc;   /* the macro name token being expanded, for ## errors */
     bool subst_root_obj;     /* root_obj of the expansion being substituted */
     /* ... and of the last token returned by pp_next */
-    SrcLoc out_exp_loc;
+    SrcLoc out_exp_loc, out_mloc;
     uint32_t out_root;
 
     VEC(Macro *) macros;

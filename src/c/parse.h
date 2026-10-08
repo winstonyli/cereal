@@ -24,7 +24,7 @@
 #include "srcmgr.h"
 
 /* The next token and its presentation location; false at the end. */
-typedef bool (*ParseSource)(void *ctx, Tok *t, SrcLoc *exp_loc);
+typedef bool (*ParseSource)(void *ctx, Tok *t, SrcLoc *exp_loc, SrcLoc *mloc);
 
 typedef struct Parser {
     ParseSource src;

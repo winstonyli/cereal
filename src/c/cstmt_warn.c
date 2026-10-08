@@ -581,9 +581,16 @@ static SrcLoc tok_expansion(const Checker *c, uint32_t tok)
     return ptok_loc(&c->u->toks[tok]);
 }
 
+/* The macro expansion holding the token (gcc's macro map): where that macro
+ * was invoked; with tok_expansion it names one expansion. */
+static SrcLoc tok_map(const Checker *c, uint32_t tok)
+{
+    return c->u->toks[tok].mloc;
+}
+
 /* Which macro definition a body token was spelled in: the first line of
- * its logical #define line (the macro an argument token was substituted
- * into is not tracked: 0). */
+ * its logical #define line (0 for an argument token).  Identifies the
+ * definition, whatever the expansion; tok_map names one expansion. */
 static uint64_t tok_macro(const Checker *c, uint32_t tok)
 {
     const PTok *t = &c->u->toks[tok];
@@ -1183,7 +1190,7 @@ static void multistatement(Checker *c, uint32_t g, uint32_t body,
                            uint32_t last, const char *kw)
 {
     uint32_t b = first_tok(c, body), n = last + 1;
-    uint64_t kb, kn, kg;
+    SrcLoc kb, kg;
     Diagnostic *d;
     if (!diag_enabled(c->diag, "multistatement-macros") ||
         n >= c->u->ntoks || c->u->toks[n].t.kind == TK_EOF)
@@ -1208,29 +1215,20 @@ static void multistatement(Checker *c, uint32_t g, uint32_t body,
         return;
     if (tok_is_p(c, n, P_SEMI))
         return;
-    kb = tok_macro(c, b);
-    kn = tok_macro(c, n);
-    if (kb && kn) {
-        uint32_t k, prev = b;
-        if (kb != kn)
-            return;
-        /* one expansion: the spelled locations never go back */
-        for (k = b + 1; k <= n; k++)
-            if (tok_macro(c, k) == kb) {
-                if (c->u->toks[k].t.loc < c->u->toks[prev].t.loc)
-                    return;
-                prev = k;
-            }
-    }
+    /* gcc compares macro maps: body and next must be in one expansion of one
+     * macro (an argument token belongs to the macro it was substituted into) */
+    kb = tok_map(c, b);
+    if (kb != tok_map(c, n))
+        return;
     if (tok_from_macro(c, g) && tok_expansion(c, g) == tok_expansion(c, b)) {
         /* a guard from the same invocation: the body must not belong to a
          * macro that the guard's own macro was expanded inside */
         uint32_t k;
-        kg = tok_macro(c, g);
-        if (!kg || !kb || kg == kb)
+        kg = tok_map(c, g);
+        if (kg == kb)
             return;
         for (k = g; k-- > 0;)
-            if (tok_from_macro(c, k) && tok_macro(c, k) == kb &&
+            if (tok_from_macro(c, k) && tok_map(c, k) == kb &&
                 tok_expansion(c, k) == tok_expansion(c, b))
                 return;
     }

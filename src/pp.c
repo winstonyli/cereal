@@ -153,6 +153,7 @@ TokSrc pp_read_raw(PP *pp, Tok *t)
                                           !(t->flags & (TF_ORIGIN_BODY |
                                                         TF_PASTED | TF_SYNTH))
                                       ? t->loc : c->exp_loc;
+                pp->tok_mloc = c->macro ? c->name_loc : 0;
                 pp->tok_root_obj = c->root_obj;
                 pp->tok_exp_id = c->exp_id;
                 pp->tok_root = c->root_id;
@@ -200,6 +201,7 @@ TokSrc pp_read_raw(PP *pp, Tok *t)
             pp->last_lex_end = t->loc + t->len;
         }
         pp->tok_exp_loc = t->loc;
+        pp->tok_mloc = 0;
         pp->tok_root_obj = false;
         pp->tok_exp_id = NO_EXP;
         pp->tok_root = NO_EXP;
@@ -905,11 +907,12 @@ bool pp_next(PP *pp, Tok *out)
                 if (pp_macro_disabled(pp, m)) {
                     t.flags |= TF_NOEXPAND;
                 } else {
-                    SrcLoc el = pp->tok_exp_loc;
+                    SrcLoc el = pp->tok_exp_loc, ml = pp->tok_mloc;
                     uint32_t root = pp->tok_root;
                     if (pp_try_expand(pp, &t, src))
                         continue;
                     pp->tok_exp_loc = el;
+                    pp->tok_mloc = ml;
                     pp->tok_root = root;
                 }
             }
@@ -922,6 +925,7 @@ bool pp_next(PP *pp, Tok *out)
             pp->carry_space = false;
         }
         pp->out_exp_loc = pp->tok_exp_loc;
+        pp->out_mloc = pp->tok_mloc;
         pp->out_root = pp->tok_root;
         *out = t;
         return true;

@@ -161,12 +161,13 @@ static const char *validate_summaries;
 static bool keep_summaries;
 static const Target *check_target;
 
-static bool pp_source(void *ctx, Tok *t, SrcLoc *exp_loc)
+static bool pp_source(void *ctx, Tok *t, SrcLoc *exp_loc, SrcLoc *mloc)
 {
     PP *pp = ctx;
     while (pp_next(pp, t))
         if (tok_in_stream(t)) {
             *exp_loc = t->kind == TK_PRAGMA ? t->loc : pp->out_exp_loc;
+            *mloc = t->kind == TK_PRAGMA ? 0 : pp->out_mloc;
             return true;
         }
     return false;
@@ -193,12 +194,12 @@ static void cell_macro_names(void *ctx, void (*cb)(void *, const char *, size_t)
     pp_macro_names(&((CellSource *)ctx)->cur.pp, cb, arg);
 }
 
-static bool cell_source(void *ctx, Tok *t, SrcLoc *exp_loc)
+static bool cell_source(void *ctx, Tok *t, SrcLoc *exp_loc, SrcLoc *mloc)
 {
     CellSource *cs = ctx;
     for (;;) {
         if (cs->open) {
-            if (tokcur_next(&cs->cur, t, exp_loc))
+            if (tokcur_next(&cs->cur, t, exp_loc, mloc))
                 return true;
             if (cs->cur.pp.last_bol)
                 cs->last_bol = cs->cur.pp.last_bol;
@@ -738,7 +739,7 @@ static void cell_tokens(TokRegen *src, TokDump *d)
         SrcLoc el;
         uint64_t n0 = d->n, h = 0;
         tokcur_open(&cur, src, c->s, c->e);
-        while (tokcur_next(&cur, &t, &el)) {
+        while (tokcur_next(&cur, &t, &el, NULL)) {
             h = m61_push(h, tok_hash(&cur.pp, &t));
             dump_tok(d, src->tu, &cur.pp, &t, el);
         }
