@@ -2690,3 +2690,12 @@ Round 164 addendum 2 (gcc.dg 3735/3744):
   plain array mismatch), while cereal calls them non-constant (VLA). Needs a
   value evaluator for built-in math calls and same-object address
   differences, not just the K_FOLD classification.
+
+Round 164 addendum 3 (gcc.dg 3736/3744):
+
+- `strlen` of a flexible array member of a const object no longer warns
+  "offset 0 outside bounds of constant string" (its extent was taken as 0).
+  The aggregate-initializer path now sizes it to the object's end; the
+  plain const-member path gives up (a false negative: gcc still reports
+  `strlen(ay.a)` without a nul and `ax.a + 9`). strlenopt-78, golden
+  `misc_254`.

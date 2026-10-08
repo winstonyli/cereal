@@ -1,0 +1,6 @@
+misc_254.c:4:27: warning: initialization of a flexible array member [-Wpedantic]
+    4 | const struct Ax ax = { 3, { 3, 2, 1, 0 } };
+      |                           ^
+misc_254.c:4:27: note: (near initialization for 'ax.a')
+    4 | const struct Ax ax = { 3, { 3, 2, 1, 0 } };
+      |                           ^

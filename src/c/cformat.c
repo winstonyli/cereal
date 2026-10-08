@@ -1147,6 +1147,11 @@ static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
         uint64_t sz;
         if (type_ckind(TT, c->ty[e]) == TY_ARRAY && sl_obj(c, e, &ref, &bo, 0)) {
             sz = type_size(TT, c->ty[e], &ok);
+            if (!ok || !sz) {   /* a flexible array member: to the object's end */
+                int64_t n = (int64_t)c->strinits.data[csym(c, ref)->strinit - 1].n;
+                sz = n > bo ? (uint64_t)(n - bo) : 0;
+                ok = true;
+            }
             out[0] = (SlRes){ref, 0, ok ? (int64_t)sz : 0, off, known, bo, false};
             return 1;
         }
@@ -1162,7 +1167,9 @@ static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
             !(csym(c, ref)->flags & CSF_DEFINED))
             return 0;
         sz = type_size(TT, c->ty[e], &ok);
-        out[0] = (SlRes){ref, 0, ok ? (int64_t)sz : 0, off, known};
+        if (!ok || !sz)         /* a flexible array member: the extent is unknown */
+            return 0;
+        out[0] = (SlRes){ref, 0, (int64_t)sz, off, known};
         return 1;
     }
     case N_IDENT: {
