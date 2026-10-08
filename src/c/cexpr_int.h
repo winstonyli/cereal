@@ -384,4 +384,9 @@ void cst_parts(Checker *c, uint32_t n, bool *neg, uint64_t *mag);
 
 
 
+bool sq_for_cond(Checker *c, uint32_t p, uint32_t i);
+void sq_check(Checker *c, uint32_t e, bool cond);
+
+
+
 #endif

@@ -2464,3 +2464,12 @@ san 533/0, callgrind 3.814G, parity unchanged. 31 helpers are exported through
 `cexpr_int.h`, plus `no_int_bool`, `cst_parts` and the `PW` macro.
 Remaining candidates: cprint (cexpr.c 996-1610), sequence-point (cexpr.c
 tail), asm statements, cstruct/cstmt_warn/parse_diag.
+
+## Round 155
+
+Three more pure moves out of `cexpr.c` (now 6,705 lines): `cprint.c` (%E
+expression printing, 624 lines), `cseqpt.c` (-Wsequence-point, 609) and
+`casm.c` (asm statements, 477). Gate: 1423 goldens, san 533/0, callgrind
+3.819G (was 3.814G: code layout only), parity unchanged. Only
+`sq_for_cond` and `sq_check` needed exporting. Largest files now: cdecl.c
+6,620, cexpr.c 6,705, parse.c 3,393, cstmt.c 3,064, cwarn_expr.c 2,466.
