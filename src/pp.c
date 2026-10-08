@@ -1073,11 +1073,27 @@ static void skip_group(PP *pp)
                     break;
                 }
             }
+            /* gcc's skip_rest_of_line lexes the line, so quotes are diagnosed */
+            if (kw.flags & TF_UNTERMINATED)
+                warn_unterminated(pp, &kw);
+            for (;;) {
+                Tok r;
+                lex_next(L, &r);
+                if (r.kind == TK_EOF)
+                    break;
+                if (r.flags & TF_BOL) {
+                    lexer_seek(L, line_start_of(pp, r.loc), true);
+                    goto next_line;   /* already at the next line */
+                }
+                if (r.flags & TF_UNTERMINATED)
+                    warn_unterminated(pp, &r);
+            }
             if (!lex_next_line(L)) {
                 end = lexer_loc(L);
                 skip_unterminated(pp, nest, depth);
                 break;
             }
+        next_line:;
         } else if (!lex_next_line(L)) {
             end = lexer_loc(L);
             skip_unterminated(pp, nest, depth);

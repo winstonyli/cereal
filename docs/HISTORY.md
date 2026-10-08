@@ -2559,12 +2559,21 @@ cpp parity, the remaining quick ones (cpp 255/266):
   expansion of macro" notes (`classify_num`, shared `add_macro_notes`).
   Golden `misc_240`.
 
-Gate: 1440 goldens, san 541/0, callgrind 3.811G, -O 3729/3744.
+Gate: 1442 goldens, san 542/0, callgrind 3.818G, -O 3729/3744.
 
 Parked (open): `gnu99-scope-1` (the `::` token is CPP_SCOPE in gnu modes and
-c2x; too invasive); skipped `#if 0` groups do not lex directive lines, so
-`#define z '` there is not diagnosed; `#warning` ordering against the
+c2x; too invasive); `#warning` ordering against the
 unterminated warning; the `<FILENAME>` form of `#pragma dependency`; caret
 ranges on pedwarns; parser-wording files (19990413-1, 20000419-1,
 20020927-1, spacing2, pr66415-2); `pragma_message.c` quote style in notes
 and two missing macro-expansion notes.
+
+Addendum (same round): skipped `#if 0` groups now lex the rest of each
+directive line (gcc's `skip_rest_of_line`), so `#define z '` there warns.
+Golden `misc_244`; no parity file changes (callgrind +0.2%). Survey of the
+five parser-wording files, all still open: 19990413-1 (`else` with no `if`
+should say "'else' without a previous 'if'"); 20000419-1 and 20020927-1
+(one cause: a string made by `#x` is placed at the `#x` in the macro body,
+gcc places it at the end of the invocation); spacing2 ("expected identifier
+before '.' token", and `bar` undeclared at file scope is not reported);
+pr66415-2 (format argument column).

@@ -1,0 +1,10 @@
+misc_244.c:2:11: warning: missing terminating ' character
+    2 | #define z '
+      |           ^
+misc_244.c:3:10: warning: missing terminating " character
+    3 | #include "a
+      |          ^~
+misc_244.c:4:6: warning: missing terminating " character
+    4 | #foo "b
+      |      ^~
+misc_244.c:7: warning: ISO C forbids an empty translation unit [-Wpedantic]
