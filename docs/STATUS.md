@@ -17,7 +17,7 @@ TYPES.md, PARALLEL.md, LSP.md and SPECS.md.
   line and column); 8 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 264 of 266 identical; 2 differ. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1464 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 553 files.
+- 1468 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 554 files.
 - uvloop's `loop.c` checks in about 3.82 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -34,6 +34,7 @@ git -C ~/gccts checkout
 make -j6 && sh tests/run.sh          # goldens, fuzzers
 CEREAL_GCC=gcc-13 bench/tools/verify.sh   # parity vs gcc-13
 bench/tools/cmp.sh gcc.dg/FILE.c     # diff one file against gcc-13
+bench/tools/corp.sh DIR [-IDIR...]  # per-file cereal vs gcc-13 on any C sources
 ```
 
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,

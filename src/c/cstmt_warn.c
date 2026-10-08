@@ -515,6 +515,8 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
     if (!tok_pos(c, g, &gp, spell) || !tok_pos(c, b, &bp, spell) ||
         !tok_pos(c, n, &np, spell) || np.f != bp.f)
         return;
+    if (spell && bp.f == gp.f && bp.line < gp.line && np.line <= bp.line)
+        return;                 /* body and next in a nested macro defined above */
     if (spell && (np.f != bp.f || np.line < bp.line))
         after_text(c, last, &np);   /* n is spelled in a nested macro: its invocation */
     switch (spell ? 0 : gap_scan(c, last, n, &np)) {

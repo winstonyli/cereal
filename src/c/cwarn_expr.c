@@ -1811,6 +1811,11 @@ void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc)
     }
     if (node_err(c, n) || inhibited(c, n, false) || !is_ptr(c, rvt(c, n)))
         return;
+    /* gcc stays silent when the operand itself begins inside a macro
+     * expansion (if (ID (&p->b)), if (ADDR (p)); an outer parenthesis or an
+     * operator spelled by the caller brings the warning back) */
+    if (loc == first_loc(c, n) && from_macro(c, first_tok(c, n)))
+        return;
     if (ptr_plus_warn(c, loc, s, P_NE))
         return;
     if (!addr_target(c, s, &ai))

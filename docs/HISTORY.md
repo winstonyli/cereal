@@ -2707,3 +2707,20 @@ re-surveyed and stays parked: the pointer difference
 plus offset" (K_ADDR's base is an object's address, so reusing it would make
 `int *p = sp;` look constant), and the test needs the built-in math fold
 too, so neither alone fixes it.
+
+Round 165 (corpus spot-check, parity unchanged): `bench/tools/corp.sh DIR` compares
+cereal and gcc-13 diagnostics file by file under `-std=gnu99 -Wall -Wextra` on
+real code (lupa's Lua sources, libuv). It found two false positives, both
+fixed and pinned (goldens `misc_256`, `misc_257`):
+- `-Waddress` "will never be NULL" (`lgc.c` `markobject`): gcc stays silent
+  when the operand being tested begins inside a macro expansion
+  (`if (ID (&p->b))`, `if (ADDR (p))`), and warns again behind a caller's
+  parenthesis, `!`, `!=` or the right side of `&&`. Applied in
+  `cexpr_truth_warn` when the warning location is the operand's own start.
+- `-Wmisleading-indentation` (libuv `tree.h` `RB_*`): the guard, body and next
+  statement all inside one outer macro whose body and next statement come from
+  a nested macro defined above the guard are not reported (`misleading`).
+Parked: a guard inside macro V whose body is a nested macro and whose next
+statement is an argument token (`if (o) COL (o) = 1; t->c = 2;`) still gets
+cereal's `-Wmultistatement-macros`; gcc is silent, but the obvious guard
+(`!kn`) regresses `macro_chain` and `multistatement`, so the rule is unknown.

@@ -1,0 +1,24 @@
+misc_256.c:11:23: warning: the comparison will always evaluate as 'true' for the address of 'b' will never be NULL [-Waddress]
+   11 | void c2(void) { if (1 && ID(&p->b)) rm(); }
+      |                       ^
+misc_256.c:2:16: note: 'b' declared here
+    2 | union GC { int b; };
+      |                ^
+misc_256.c:16:21: warning: the comparison will always evaluate as 'true' for the address of 'b' will never be NULL [-Waddress]
+   16 | void c7(void) { if (!A2(&p->b)) rm(); }
+      |                     ^
+misc_256.c:2:16: note: 'b' declared here
+    2 | union GC { int b; };
+      |                ^
+misc_256.c:17:35: warning: the comparison will always evaluate as 'true' for the address of 'b' will never be NULL [-Waddress]
+   17 | void c8(void) { int x = ID(&p->b) ? 1 : 2; (void)x; }
+      |                                   ^
+misc_256.c:2:16: note: 'b' declared here
+    2 | union GC { int b; };
+      |                ^
+misc_256.c:18:23: warning: the comparison will always evaluate as 'true' for the address of 'b' will never be NULL [-Waddress]
+   18 | void c9(void) { if (1 && A2(&p->b)) rm(); }
+      |                       ^
+misc_256.c:2:16: note: 'b' declared here
+    2 | union GC { int b; };
+      |                ^
