@@ -2497,3 +2497,16 @@ the EOF surfaced. New golden `misc_236`. `macsyntx.c` and `macsyntx2.c` now
 match (cpp 242/266); `directiv.c` still differs on form feed and vertical tab
 (item 5). Gate: 1426 goldens, san 534/0, callgrind 3.829G (+0.3%, two stores
 on the token-read path).
+
+## Round 158
+
+cpp parity, item 2 of six: `-Wall` "the left/right operand of OP changes
+sign when promoted" in `#if` (libcpp `check_promotion`). It fires for
+`* / % + - < > <= >=` and the arms of `?:`, not `== !=`, shifts or bit
+operations; the negative operand of a signed/unsigned pair is reported, and
+skipped subexpressions warn too. `Val` now carries `loc`, where libcpp puts
+an operand: its token, the operator for a reduced result, the inner operand
+for parentheses. New untagged option `sign-promo-in-if` (`DO_ALL`; gcc prints
+no `[-W...]`, and `-Wno-sign-promo` does not touch it). Golden `misc_237`
+matches gcc-13 exactly. `Wsignprom.c` now matches (cpp 243/266). Gate: 1428
+goldens, san 535/0, callgrind 3.812G.

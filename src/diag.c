@@ -27,6 +27,7 @@ static const DiagOption options[] = {
     {"trigraphs", "pp", DL_WARNING, true, DO_ALL, "trigraphs: ignored (GNU modes) or, when asked for, converted"},
     {"endif-labels", "pp", DL_WARNING, true, 0, "extra tokens after #else or #endif"},
     {"extra-tokens", "pp", DL_WARNING, true, 0, "extra tokens at end of directive"},
+    {"sign-promo-in-if", "pp", DL_WARNING, false, DO_ALL, "#if operand that changes sign when promoted (untagged in gcc)"},
     {"variadic-macros", "pp", DL_WARNING, true, 0, "named variadic macros under -pedantic"},
     {"include-next-in-primary", "pp", DL_WARNING, true, 0, "#include_next in primary source file"},
     {"expansion-to-defined", "cond", DL_WARNING, true, 0, "macro expansion produced 'defined' in #if (UB)"},
@@ -858,6 +859,7 @@ static bool diag_shown_id(const char **id)
            strcmp(*id, "directive-in-macro-args") &&
            strcmp(*id, "invalid-pp-token") &&
            strcmp(*id, "extra-tokens") && strcmp(*id, "integer-overflow-in-if") &&
+           strcmp(*id, "sign-promo-in-if") &&
            strcmp(*id, "macro-redefined");
 }
 

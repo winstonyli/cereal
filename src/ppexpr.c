@@ -11,6 +11,7 @@
 typedef struct Val {
     uintmax_t v;
     bool uns;
+    SrcLoc loc;             /* where libcpp places the operand: its token or its operator */
 } Val;
 
 typedef struct EP {
@@ -29,6 +30,7 @@ static Val mkval(uintmax_t v, bool uns)
     Val r;
     r.v = v;
     r.uns = uns;
+    r.loc = 0;
     return r;
 }
 
@@ -387,6 +389,7 @@ static Val unary(EP *p, bool eval)
     if (is_punct(p, P_PLUS)) {
         advance(p);
         v = unary(p, eval);
+        v.loc = op->loc;
         if (eval && p->ok && diag_enabled(p->pp->diag, "traditional"))   /* at the lookahead */
             diag_report(p->pp->diag, DL_WARNING, "traditional", p->t->loc,
                         "traditional C rejects the unary plus operator");
@@ -398,23 +401,48 @@ static Val unary(EP *p, bool eval)
         if (!v.uns && sv(v) == INTMAX_MIN)
             overflow(p, op, eval);
         v.v = (uintmax_t)0 - v.v;
+        v.loc = op->loc;
         return v;
     }
     if (is_punct(p, P_TILDE)) {
         advance(p);
         v = unary(p, eval);
         v.v = ~v.v;
+        v.loc = op->loc;
         return v;
     }
     if (is_punct(p, P_BANG)) {
         advance(p);
         v = unary(p, eval);
-        return mkval(v.v == 0, false);
+        v = mkval(v.v == 0, false);
+        v.loc = op->loc;
+        return v;
     }
-    return primary(p, eval);
+    v = primary(p, eval);
+    if (!tok_is_punct(op, P_LPAREN))
+        v.loc = op->loc;
+    return v;
 }
 
-static void convert(Val *a, Val *b)
+/* libcpp's check_promotion, for the operators it flags (* / % + - < > <= >=
+ * and the arms of ?:; not == != or the bit operations): -Wall warns when the
+ * signed operand is negative.  Skipped subexpressions warn too. */
+static void convert(EP *p, const Tok *op, Val *a, Val *b)
+{
+    if (a->uns != b->uns && p->ok &&
+        diag_enabled(p->pp->diag, "sign-promo-in-if")) {
+        bool left = !a->uns;
+        Val *neg = left ? a : b;
+        if (sv(*neg) < 0)
+            diag_report(p->pp->diag, DL_WARNING, "sign-promo-in-if", neg->loc,
+                        "the %s operand of \"%.*s\" changes sign when promoted",
+                        left ? "left" : "right", (int)op->len, TXT(p, op));
+    }
+    if (a->uns || b->uns)
+        a->uns = b->uns = true;
+}
+
+static void convert_quiet(Val *a, Val *b)
 {
     if (a->uns || b->uns)
         a->uns = b->uns = true;
@@ -431,7 +459,8 @@ static Val mul(EP *p, bool eval)
             return a;
         advance(p);
         b = unary(p, eval);
-        convert(&a, &b);
+        convert(p, op, &a, &b);
+        a.loc = op->loc;
         if (op->punct == P_STAR) {
             if (!a.uns) {
                 intmax_t x = sv(a), y = sv(b);
@@ -477,7 +506,8 @@ static Val add(EP *p, bool eval)
             return a;
         advance(p);
         b = mul(p, eval);
-        convert(&a, &b);
+        convert(p, op, &a, &b);
+        a.loc = op->loc;
         if (op->punct == P_PLUS) {
             if (!a.uns && ((sv(b) > 0 && sv(a) > INTMAX_MAX - sv(b)) ||
                            (sv(b) < 0 && sv(a) < INTMAX_MIN - sv(b))))
@@ -503,6 +533,7 @@ static Val shift(EP *p, bool eval)
             return a;
         advance(p);
         b = add(p, eval);
+        a.loc = op->loc;
         /* result has the type of the (promoted) left operand */
         n = b.uns ? (b.v > 64 ? 64 : (intmax_t)b.v) : sv(b);
         if (op->punct == P_SHR)
@@ -536,7 +567,7 @@ static Val relational(EP *p, bool eval)
             return a;
         advance(p);
         b = shift(p, eval);
-        convert(&a, &b);
+        convert(p, op, &a, &b);
         switch (op->punct) {
         case P_LT: r = a.uns ? a.v < b.v : sv(a) < sv(b); break;
         case P_GT: r = a.uns ? a.v > b.v : sv(a) > sv(b); break;
@@ -544,6 +575,7 @@ static Val relational(EP *p, bool eval)
         default: r = a.uns ? a.v >= b.v : sv(a) >= sv(b); break;
         }
         a = mkval(r, false);
+        a.loc = op->loc;
     }
 }
 
@@ -557,8 +589,9 @@ static Val equality(EP *p, bool eval)
             return a;
         advance(p);
         b = relational(p, eval);
-        convert(&a, &b);
+        convert_quiet(&a, &b);
         a = mkval((a.v == b.v) == (op->punct == P_EQEQ), false);
+        a.loc = op->loc;
     }
 }
 
@@ -567,11 +600,13 @@ static Val equality(EP *p, bool eval)
     {                                                                        \
         Val a = next(p, eval);                                               \
         while (is_punct(p, P)) {                                             \
+            const Tok *op = p->t;                                            \
             Val b;                                                           \
             advance(p);                                                      \
             b = next(p, eval);                                               \
-            convert(&a, &b);                                                 \
+            convert_quiet(&a, &b);                                           \
             a.v = a.v OP b.v;                                                \
+            a.loc = op->loc;                                                 \
         }                                                                    \
         return a;                                                            \
     }
@@ -585,10 +620,12 @@ static Val land(EP *p, bool eval)
     Val a = bor(p, eval);
     while (is_punct(p, P_ANDAND)) {
         Val b;
+        const Tok *op = p->t;
         bool av = a.v != 0;
         advance(p);
         b = bor(p, eval && av);
         a = mkval(av && b.v != 0, false);
+        a.loc = op->loc;
     }
     return a;
 }
@@ -598,18 +635,20 @@ static Val lor(EP *p, bool eval)
     Val a = land(p, eval);
     while (is_punct(p, P_OROR)) {
         Val b;
+        const Tok *op = p->t;
         bool av = a.v != 0;
         advance(p);
         b = land(p, eval && !av);
         a = mkval(av || b.v != 0, false);
+        a.loc = op->loc;
     }
     return a;
 }
 
 static Val cond(EP *p, bool eval)
 {
-    Val c = lor(p, eval), x, y;
-    const Tok *q = p->t;
+    Val c = lor(p, eval), x, y, r;
+    const Tok *q = p->t, *colon;
     if (!is_punct(p, P_QUESTION))
         return c;
     advance(p);
@@ -619,10 +658,13 @@ static Val cond(EP *p, bool eval)
         fail(p, p->t, "'?' without following ':'", NULL, 0);
         return mkval(0, false);
     }
+    colon = p->t;
     advance(p);
     y = cond(p, eval && c.v == 0);
-    convert(&x, &y);
-    return c.v ? x : y;
+    convert(p, colon, &x, &y);
+    r = c.v ? x : y;
+    r.loc = q->loc;
+    return r;
 }
 
 static Val expr_comma(EP *p, bool eval)
