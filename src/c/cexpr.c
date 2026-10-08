@@ -936,6 +936,18 @@ static const char *const builtin_type_names[] = {
     "void", "_Bool", "__bf16"
 };
 
+typedef struct {
+    Best *b;
+    bool res_ok;
+} MacroCand;
+
+static void macro_cand(void *arg, const char *s, size_t n)
+{
+    MacroCand *mc = arg;
+    if (mc->res_ok || !reserved_name(s))
+        best_consider_n(mc->b, s, n);
+}
+
 /* lookup_name_fuzzy: a visible name close to goal.  functions: only
  * functions and pointers to functions (an implicit declaration). */
 static const char *fuzzy_name(Checker *c, const char *goal, bool functions)
@@ -984,6 +996,12 @@ static const char *fuzzy_name(Checker *c, const char *goal, bool functions)
             snprintf(sug, sizeof sug, "%s", s);
             b.str = sug;
         }
+    }
+    if (c->opt.macro_names) {
+        MacroCand mc;
+        mc.b = &b;
+        mc.res_ok = res_ok;
+        c->opt.macro_names(c->opt.macro_names_ctx, macro_cand, &mc);
     }
     if (!functions)
         for (k = sizeof builtin_type_names / sizeof *builtin_type_names;

@@ -1,0 +1,15 @@
+misc_258.c:2:9: error: 'EARLY_NAM' undeclared here (not in a function); did you mean 'EARLY_NAME'?
+    2 | int a = EARLY_NAM;
+      |         ^
+misc_258.c:5:9: error: 'LATE_NAM' undeclared here (not in a function)
+    5 | int c = LATE_NAM;
+      |         ^
+misc_258.c:10:9: error: 'MY_MACR' undeclared here (not in a function); did you mean 'MY_MACRO'?
+   10 | int e = MY_MACR;
+      |         ^
+misc_258.c:11:22: error: 'MY_MACRO_' undeclared (first use in this function); did you mean 'MY_MACRO'?
+   11 | int f(void) { return MY_MACRO_; }
+      |                      ^
+misc_258.c:11:22: note: each undeclared identifier is reported only once for each function it appears in
+   11 | int f(void) { return MY_MACRO_; }
+      |                      ^

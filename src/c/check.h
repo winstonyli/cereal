@@ -38,6 +38,11 @@ typedef struct CheckOptions {
     size_t (*macro_chain)(void *ctx, SrcLoc spelled, SrcLoc exp,
                           MacroNote *out, size_t max);
     void *macro_ctx;
+    /* Calls cb for each user macro defined at this point (spelling
+     * candidates); NULL if unknown. */
+    void (*macro_names)(void *ctx, void (*cb)(void *, const char *, size_t),
+                        void *arg);
+    void *macro_names_ctx;
 } CheckOptions;
 
 Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,

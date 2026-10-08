@@ -186,6 +186,13 @@ static SrcLoc cell_last_line(void *ctx)
     return ((CellSource *)ctx)->last_bol;
 }
 
+/* The macros at the cursor: the open cell reads them at its own version. */
+static void cell_macro_names(void *ctx, void (*cb)(void *, const char *, size_t),
+                             void *arg)
+{
+    pp_macro_names(&((CellSource *)ctx)->cur.pp, cb, arg);
+}
+
 static bool cell_source(void *ctx, Tok *t, SrcLoc *exp_loc)
 {
     CellSource *cs = ctx;
@@ -308,6 +315,8 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         co.summaries = keep_summaries;
         co.macro_chain = pp_macro_chain;
         co.macro_ctx = &tu.pp;
+        co.macro_names = src == pp_source ? pp_macro_names : cell_macro_names;
+        co.macro_names_ctx = src == pp_source ? (void *)&tu.pp : (void *)&cs;
         chk = checker_new(&tu.sm, tu.in, &tu.diag, &co);
     }
     /* From cells the whole file is lexed before the first unit, so its lexer

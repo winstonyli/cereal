@@ -2828,3 +2828,17 @@ static bool plan_exit(PP *pp)
     pp->plan_pos++;
     return pp->plan_pos < plan->items.len;
 }
+
+/* Calls cb for each user macro defined at the preprocessor's current point
+ * (the spelling candidates of lookup_name_fuzzy). */
+void pp_macro_names(void *ctx, void (*cb)(void *, const char *, size_t),
+                    void *arg)
+{
+    PP *pp = ctx;
+    INTERNER_FOREACH(pp->in, b, id) {
+        const Macro *m = pp->versioned ? macro_at_version(pp->mt, id, pp->version)
+                                       : mt_cur(pp->mt, id);
+        if (m && m->builtin == BUILTIN_NONE)
+            cb(arg, id->str, id->len);
+    }
+}

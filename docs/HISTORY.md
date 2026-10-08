@@ -2724,3 +2724,13 @@ Parked: a guard inside macro V whose body is a nested macro and whose next
 statement is an argument token (`if (o) COL (o) = 1; t->c = 2;`) still gets
 cereal's `-Wmultistatement-macros`; gcc is silent, but the obvious guard
 (`!kn`) regresses `macro_chain` and `multistatement`, so the rule is unknown.
+
+Round 165 addendum: macro names are spelling candidates (gcc's
+`lookup_name_fuzzy` includes user macros). `pp_macro_names` (pp.c) lists the
+non-builtin macros live at the preprocessor's current point, and `fuzzy_name`
+(cexpr.c) offers them through `CheckOptions.macro_names`. A sequential run
+reads `tu.pp`; a `--cells` run reads the open cell cursor's `PP`, which is at
+that cell's version. The end-of-file state would suggest macros defined later
+and miss ones `#undef`'d later. Golden `misc_258` pins both (the goldens run
+in both modes). uvloop's libuv `src/unix` now matches gcc-13 on all 50 files
+(`CPU_SETSIZE`, `IOV_MAX`, `CPU_ISSET`, `sched_getaffinity` suggestions).
