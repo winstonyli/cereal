@@ -92,6 +92,22 @@ Children end at i-1; node's first descendant cfirst(i) = i+1-size.
 ## Diagnostics infrastructure
 - cerror / cwarn / cpedwarn(c, loc, id, fmt,...) / cpedantic(c, loc,
   fmt,...) / cnote; suppressed when c->quiet (unit had syntax errors).
+- Quiet units (`checker_unit`): `c->quiet` is set when the parser reported an
+  error, except when the unit ends in an N_FUNC_DEF (gcc has typed the whole
+  definition then).  gcc has already diagnosed whatever it parsed before the
+  error, so a few checks run unquiet, each with the order gcc emits it in:
+  - `Checker.first_err_tok`: the last token of the first N_ERROR / NF_ERROR
+    subtree.  An undeclared name before it is reported (`undeclared()`).
+  - N_DECLARED (the name is declared before its initializer is parsed):
+    unquiet at `ORD_EARLY` when an initializer follows; and, when the first
+    error is inside the declarator's own parameter list that parsed on
+    (`first_err_params`, the parser flags that N_FUNC NF_ERROR; see
+    `Parser.bound_errors`), unquiet at `ORD_LATE`, so "data definition has
+    no type" and implicit int follow the parser's error.
+  - The K&R-list "parameter names (without types)" pedwarn and N_ATTRIBUTE
+    parser diagnostics, at `ORD_LATE` / unquiet respectively.
+  Anything else stays muted; add an exception only with a gcc probe showing
+  the diagnostic precedes or follows the error that way.
 - cinput_loc(c, node): gcc's input_location = first TF_BOL token of the line
   of the parser's lookahead.  Used by add_scspec errors, "file-scope
   declaration of 'fr' specifies 'register'", "data definition…", float
