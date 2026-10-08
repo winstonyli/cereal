@@ -2431,5 +2431,5 @@ goldens, san 533/0, callgrind 3.816G, parity unchanged: cpp 240/266).
   case dispatch with different bodies; `cexpr.c:683` is a data table;
   `index.c` covering_refs/range span walks differ in clamping and the point
   argument; `lsp/pos.c` only shares a 9-line `hexval`.
-- Found, parked: `Ux` / `ux` in `#if` is rejected ("missing binary
-  operator before token"), gcc accepts; unchanged by this round.
+- Checked, not a bug: `u'x'` / `U'x'` in `#if` is rejected under -std=c99 and accepted
+  under gnu99, same as gcc.
