@@ -252,7 +252,7 @@ static bool lg_atom(Checker *c, const LForm *f, uint32_t *e, IvSet *s,
 static bool lg_macro(Checker *c, uint32_t n)
 {
     return ntag(c, n) != N_IDENT && ntag(c, n) != N_NUMBER &&
-           ntag(c, n) != N_CHAR && from_macro(c, c->nodes[n].tok);
+           ntag(c, n) != N_CHAR && tfrom_macro(c, c->nodes[n].tok);
 }
 
 static void logical_op_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
@@ -800,7 +800,7 @@ static bool type_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
     }
     if (!is_intcst(c, y))
         return false;
-    warn = !inhibited(c, i, false) && !from_macro(c, c->nodes[i].tok);
+    warn = !inhibited(c, i, false) && !tfrom_macro(c, c->nodes[i].tok);
     rts = is_signed(c, rt);
     /* constant on the left of a narrower operand: only the range message */
     if (!rts && c->cv[y] == 0 && (code == P_GE || code == P_LT) &&
@@ -1091,7 +1091,7 @@ void tauto_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     SrcLoc loc = cnode_loc(c, i);
     uint32_t sa = strip_paren(c, a), sb = strip_paren(c, b), bit, cst, n;
     TypeId t;
-    if (!is_cmp_op(op) || from_macro(c, c->nodes[i].tok))
+    if (!is_cmp_op(op) || tfrom_macro(c, c->nodes[i].tok))
         return;
     if (op == P_EQEQ || op == P_NE) {
         bit = NO_NODE;
@@ -1689,7 +1689,7 @@ static bool null_addr_warn(Checker *c, SrcLoc loc, uint32_t x, int code,
         x = strip_paren(c, k[0]);
     /* judged by the comparison: G (*p, i) != 0 and 'malloc != 0' (malloc a
      * macro) are user code, F (p) with the comparison inside F is not */
-    if (inhibited(c, x, false) || from_macro(c, c->nodes[cmp].tok))
+    if (inhibited(c, x, false) || tfrom_macro(c, c->nodes[cmp].tok))
         return false;
     if (ptr_plus_warn(c, loc, x, code))
         return true;
@@ -1814,7 +1814,7 @@ void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc)
     /* gcc stays silent when the operand itself begins inside a macro
      * expansion (if (ID (&p->b)), if (ADDR (p)); an outer parenthesis or an
      * operator spelled by the caller brings the warning back) */
-    if (loc == first_loc(c, n) && from_macro(c, first_tok(c, n)))
+    if (loc == first_loc(c, n) && tfrom_macro(c, first_tok(c, n)))
         return;
     if (ptr_plus_warn(c, loc, s, P_NE))
         return;

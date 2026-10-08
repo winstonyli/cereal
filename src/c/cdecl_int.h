@@ -43,11 +43,6 @@ static inline const char *tstr(const Checker *c, uint32_t tok)
     return "";
 }
 
-static inline bool tfrom_macro(const Checker *c, uint32_t tok)
-{
-    return c->u->toks[tok].exp && c->u->toks[tok].exp != c->u->toks[tok].t.loc;
-}
-
 typedef struct Kids {
     uint32_t buf[24];
     uint32_t *p;

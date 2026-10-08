@@ -189,4 +189,14 @@ typedef struct MacroNote {
     SrcLoc loc;
 } MacroNote;
 
+/* Notes the macros a token spelled at loc (invoked at exp) was expanded
+ * through, innermost first.  body: a replacement-list token, for which chain
+ * (if any) gives the macros; else, or if it gives none, the name written at
+ * exp. */
+typedef size_t (*MacroChainFn)(void *ctx, SrcLoc spelled, SrcLoc exp,
+                               MacroNote *out, size_t max);
+void diag_expansion_notes(DiagEngine *d, Diagnostic *dg, const SrcMgr *sm,
+                          SrcLoc loc, SrcLoc exp, bool body,
+                          MacroChainFn chain, void *ctx);
+
 #endif

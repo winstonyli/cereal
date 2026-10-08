@@ -578,8 +578,7 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
  * outermost expansion point). */
 static SrcLoc tok_expansion(const Checker *c, uint32_t tok)
 {
-    const PTok *t = &c->u->toks[tok];
-    return t->exp ? t->exp : t->t.loc;
+    return ptok_loc(&c->u->toks[tok]);
 }
 
 /* Which macro definition a body token was spelled in: the first line of

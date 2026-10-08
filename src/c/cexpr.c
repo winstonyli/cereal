@@ -6002,13 +6002,6 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     }
 }
 
-/* Is token tok the result of a macro expansion? */
-bool from_macro(Checker *c, uint32_t tok)
-{
-    const PTok *t = &c->u->toks[tok];
-    return t->exp && t->exp != t->t.loc;
-}
-
 /* -Wxor-used-as-pow */
 static void xor_pow(Checker *c, uint32_t i, uint32_t a, uint32_t b)
 {
@@ -6018,8 +6011,8 @@ static void xor_pow(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     char sug[64];
     if (!(c->ef[a] & EF_DECIMAL) || !(c->ef[b] & EF_DECIMAL) ||
         !has_ival(c, a) || !has_ival(c, b) || ntag(c, sa) != N_NUMBER ||
-        ntag(c, sb) != N_NUMBER || from_macro(c, c->nodes[sa].tok) ||
-        from_macro(c, c->nodes[sb].tok))
+        ntag(c, sb) != N_NUMBER || tfrom_macro(c, c->nodes[sa].tok) ||
+        tfrom_macro(c, c->nodes[sb].tok))
         return;
     l = c->cv[a];
     r = c->cv[b];

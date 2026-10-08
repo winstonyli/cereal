@@ -1116,3 +1116,28 @@ void diag_merge_from(DiagEngine *d, size_t from, size_t mid)
     memcpy(d->all.data + from, out, n * sizeof *out);
     free(out);
 }
+
+void diag_expansion_notes(DiagEngine *d, Diagnostic *dg, const SrcMgr *sm,
+                          SrcLoc loc, SrcLoc exp, bool body,
+                          MacroChainFn chain, void *ctx)
+{
+    MacroNote notes[10];
+    size_t k, cnt = 0;
+    if (chain && body)
+        cnt = chain(ctx, loc, exp, notes, 10);
+    if (!cnt) {
+        const char *s = srcmgr_ptr(sm, exp);
+        uint32_t len = 0;
+        while (isalnum((unsigned char)s[len]) || s[len] == '_')
+            len++;
+        if (!len)
+            return;
+        notes[0].name = s;
+        notes[0].len = len;
+        notes[0].loc = exp;
+        cnt = 1;
+    }
+    for (k = 0; k < cnt; k++)
+        diag_note(d, dg, notes[k].loc, "in expansion of macro '%.*s'",
+                  (int)notes[k].len, notes[k].name);
+}

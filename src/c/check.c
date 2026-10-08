@@ -30,8 +30,6 @@ static void macro_notes(Checker *c, Diagnostic *d, SrcLoc loc, bool is_note)
     uint32_t n = c->u ? c->u->ntoks : 0, i, best = 0, from = 0, bd = 0;
     bool found = false;
     int pass;
-    MacroNote notes[10];
-    size_t k, cnt = 0;
     if (!tk || c->diag->track0 || !loc)
         return;
     if (c->cur_node != NO_NODE && c->cur_node < c->nn)
@@ -75,25 +73,10 @@ static void macro_notes(Checker *c, Diagnostic *d, SrcLoc loc, bool is_note)
         c->mn_exp = tk[best].exp, c->mn_idx = best, c->mn_loc = loc;
         d->oloc = tk[best].exp;     /* it follows what precedes the use */
     }
-    if (c->opt.macro_chain && (tk[best].t.flags & TF_ORIGIN_BODY) &&
-        !(tk[best].t.flags & TF_ORIGIN_ARG))
-        cnt = c->opt.macro_chain(c->opt.macro_ctx, loc, tk[best].exp, notes,
-                                 10);
-    if (!cnt) {
-        const char *s = srcmgr_ptr(c->sm, tk[best].exp);
-        uint32_t len = 0;
-        while (isalnum((unsigned char)s[len]) || s[len] == '_')
-            len++;
-        if (!len)
-            return;
-        notes[0].name = s;
-        notes[0].len = len;
-        notes[0].loc = tk[best].exp;
-        cnt = 1;
-    }
-    for (k = 0; k < cnt; k++)
-        diag_note(c->diag, d, notes[k].loc, "in expansion of macro '%.*s'",
-                  (int)notes[k].len, notes[k].name);
+    diag_expansion_notes(c->diag, d, c->sm, loc, tk[best].exp,
+                         (tk[best].t.flags & TF_ORIGIN_BODY) &&
+                             !(tk[best].t.flags & TF_ORIGIN_ARG),
+                         c->opt.macro_chain, c->opt.macro_ctx);
 }
 
 static Diagnostic *vrep(Checker *c, DiagLevel lvl, const char *id, SrcLoc loc,

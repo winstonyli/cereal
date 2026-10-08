@@ -359,7 +359,7 @@ static void classify_char(Parser *p, const PTok *t, const char *s)
     ParseEsc e;
     Lit l;
     e.p = p;
-    e.loc = t->exp ? t->exp : t->t.loc;
+    e.loc = ptok_loc(t);
     lit_escape_diags(s, t->t.len, diag_option_state(p->diag, "pedantic") != 0,
                      parse_esc_emit, &e);
     lit_char(&target_x86_64, s, t->t.len, &l);
@@ -390,29 +390,12 @@ static void add_macro_notes(Parser *p, Diagnostic *d, uint32_t i)
          * through, innermost first; an argument or pasted name only the
          * outermost one */
         const PTok *tk = &p->toks.data[i];
-        MacroNote notes[10];
-        size_t k, cnt = 0;
         if (tk->t.flags & TF_ORIGIN_BODY)
             d->oloc = tk->exp;
-        if (p->macro_chain && (tk->t.flags & TF_ORIGIN_BODY) &&
-            !(tk->t.flags & TF_ORIGIN_ARG))
-            cnt = p->macro_chain(p->macro_ctx, tk->t.loc, tk->exp, notes, 10);
-        if (!cnt) {
-            const char *s = srcmgr_ptr(p->sm, tk->exp);
-            uint32_t n = 0;
-            while (isalnum((unsigned char)s[n]) || s[n] == '_')
-                n++;
-            if (n) {
-                notes[0].name = s;
-                notes[0].len = n;
-                notes[0].loc = tk->exp;
-                cnt = 1;
-            }
-        }
-        for (k = 0; k < cnt; k++)
-            diag_note(p->diag, d, notes[k].loc,
-                      "in expansion of macro '%.*s'", (int)notes[k].len,
-                      notes[k].name);
+        diag_expansion_notes(p->diag, d, p->sm, tk->t.loc, tk->exp,
+                             (tk->t.flags & TF_ORIGIN_BODY) &&
+                                 !(tk->t.flags & TF_ORIGIN_ARG),
+                             p->macro_chain, p->macro_ctx);
     }
 }
 
@@ -1244,7 +1227,7 @@ static bool at_col0(Parser *p, uint32_t i)
     t = &p->toks.data[i];
     if (!(t->t.flags & TF_BOL))
         return false;
-    loc = t->exp ? t->exp : t->t.loc;
+    loc = ptok_loc(t);
     if (!loc)
         return false;
     c = *srcmgr_ptr(p->sm, loc - 1);
@@ -2514,7 +2497,7 @@ static void primary(Parser *p)
                 if (ni < p->toks.len && (p->toks.data[ni].t.kind == TK_CHAR ||
                                          p->toks.data[ni].t.kind == TK_PPNUM)) {
                     size_t n0 = p->diag->all.len, k;
-                    SrcLoc at = t.exp ? t.exp : t.t.loc;
+                    SrcLoc at = ptok_loc(&t);
                     classify_num(p, ni);
                     for (k = n0; k < p->diag->all.len && at; k++)
                         p->diag->all.data[k]->oloc = at - 1;

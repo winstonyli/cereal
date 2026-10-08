@@ -533,6 +533,12 @@ static inline uint32_t last_tok(const Checker *c, uint32_t i)
     return m;
 }
 
+/* Is token tok the result of a macro expansion? */
+static inline bool tfrom_macro(const Checker *c, uint32_t tok)
+{
+    return ptok_in_macro(&c->u->toks[tok]);
+}
+
 /* The first token of i's subtree. */
 static inline uint32_t first_tok(const Checker *c, uint32_t i)
 {

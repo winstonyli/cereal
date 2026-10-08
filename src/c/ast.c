@@ -43,7 +43,7 @@ static void dump_node(FILE *out, const ParseUnit *u, SrcMgr *sm,
     fprintf(out, "%*s%s", depth * 2, "", node_names[n->tag]);
     if (n->tok < u->ntoks) {
         const PTok *t = &u->toks[n->tok];
-        SrcLoc loc = t->exp ? t->exp : t->t.loc;
+        SrcLoc loc = ptok_loc(t);
         SrcFile *f = srcmgr_file_of(sm, loc);
         uint32_t line = 0, col = 0;
         fprintf(out, " '%.*s'", t->t.len > 32 ? 32 : (int)t->t.len,

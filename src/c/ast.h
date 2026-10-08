@@ -174,6 +174,19 @@ typedef struct PTok {
     uint8_t stdattr;    /* a '[' that starts '[[' (C2X attribute) */
 } PTok;
 
+/* Where the token is presented: its macro expansion point, else where it is
+ * spelled. */
+static inline SrcLoc ptok_loc(const PTok *t)
+{
+    return t->exp ? t->exp : t->t.loc;
+}
+
+/* Is the token the result of a macro expansion? */
+static inline bool ptok_in_macro(const PTok *t)
+{
+    return t->exp && t->exp != t->t.loc;
+}
+
 /* One external declaration. */
 typedef struct ParseUnit {
     const PTok *toks;
