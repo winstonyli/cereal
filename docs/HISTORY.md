@@ -2774,3 +2774,12 @@ each had a copy); `sym_public/external/defined`, `ref_file_scope`,
 `extern_inline`, `sname`, `in_extension` moved to cdecl_int.h. Next, if
 wanted: merge -> `cmerge.c` (about 8 exports), then records -> `crecord.c`
 (about 14). Function definitions stays parked.
+
+`cdecl.c` split, step 2: the duplicate-declaration code (`merge_decls`,
+`duplicate_decls`, `diagnose_mismatched`, the inline/weak/optimize attribute
+merging, `func_err_param`; 821 lines) moved to `cmerge.c`. Six functions are
+exported through cdecl_int.h under the `cdecl_` prefix (`duplicate_decls`,
+`inline_given`, `inline_follows`, `locate_old_decl`, `weak_apply`,
+`typedef_under`); no types moved. `cdecl.c` is 5754 lines. No behaviour
+change: parity unchanged, 1473 goldens (the self-check walks `src/c`, so a new
+file adds one), sanitizer 0 findings, callgrind 3.8415 G.

@@ -1,6 +1,6 @@
 # The checker (P2a): declarations, types, constant expressions
 
-Source: `src/c/check.c` (walk, scopes, end of unit), `cdecl.c` (declarations; attributes are `cattr.c`, specifiers `cspec.c`;
+Source: `src/c/check.c` (walk, scopes, end of unit), `cdecl.c` (declarations; duplicate-declaration merging is `cmerge.c`; attributes are `cattr.c`, specifiers `cspec.c`;
 a port of gcc 13's `c-decl.cc` and the parts of `c-parser.cc` that decide
 where diagnostics point), `cexpr.c` (expressions, constant folding; its warnings are `cwarn_expr.c`, `%E` printing `cprint.c`, `-Wsequence-point` `cseqpt.c`, asm `casm.c`), `cstmt.c` / `cstmt_warn.c` (statements),
 `type.c` (hash-consed types, layout), `check_int.h` (internals).  Run it

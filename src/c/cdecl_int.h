@@ -223,4 +223,15 @@ uint32_t find_child(Checker *c, uint32_t i, unsigned tag);
 SrcLoc iloc(Checker *c, uint32_t L);
 void iloc_event(Checker *c, uint32_t tok);
 
+/* cmerge.c: duplicate declarations. */
+bool cdecl_duplicate_decls(Checker *c, CSym *nw, bool nfile, uint32_t oldref,
+                           bool implicit_int);
+void cdecl_inline_given(Checker *c, const CSym *s, bool is_inline,
+                        uint32_t sn, uint32_t idecl);
+void cdecl_inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
+                          uint32_t sn, uint32_t idecl);
+void cdecl_locate_old_decl(Checker *c, Diagnostic *d, const CSym *o);
+void cdecl_weak_apply(Checker *c, CSym *s, bool is_inline);
+TypeId cdecl_typedef_under(Checker *c, TypeId t);
+
 #endif
