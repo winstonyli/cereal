@@ -2734,3 +2734,12 @@ that cell's version. The end-of-file state would suggest macros defined later
 and miss ones `#undef`'d later. Golden `misc_258` pins both (the goldens run
 in both modes). uvloop's libuv `src/unix` now matches gcc-13 on all 50 files
 (`CPU_SETSIZE`, `IOV_MAX`, `CPU_ISSET`, `sched_getaffinity` suggestions).
+
+Round 165 addendum 2 (corpus sweep: every lupa Lua/LuaJIT directory and libuv
+`src`, `src/unix` now match gcc-13 file for file): `-Wunused-value` for
+`c && (foo (), 0)` as a statement. gcc's `warn_if_unused_value` lets a comma
+whose last operand is constant pass (LuaJIT's `incr_top`); any other `&&`/`||`
+statement still warns at the operator, even with a call on the right (the
+operand becomes `!= 0`). Golden `misc_259`. Parked: libuv's `posix-poll.c`
+(a file that does not compile on Linux) gets gcc's "parameter 'l' set but not
+used" at line 78, which cereal omits; not pursued.

@@ -150,8 +150,24 @@ void unused_value(Checker *c, uint32_t e, SrcLoc dloc)
         case N_BINARY:
             if (is_comma(c, e)) {
                 node_children(c->nodes, e, kids, 4);
+                if (c->ck[strip_paren(c, kids[1])] != K_NONE)
+                    return;     /* let people do '(foo (), 0)' */
                 e = kids[1];
                 continue;
+            }
+            if (c->u->toks[c->nodes[e].tok].t.punct == P_ANDAND ||
+                c->u->toks[c->nodes[e].tok].t.punct == P_OROR) {
+                uint32_t r;
+                node_children(c->nodes, e, kids, 4);
+                r = strip_paren(c, kids[1]);
+                if (is_comma(c, r)) {   /* 'c && (foo (), 0)': no warning */
+                    while (is_comma(c, r)) {
+                        node_children(c->nodes, r, kids, 4);
+                        r = strip_paren(c, kids[1]);
+                    }
+                    if (c->ck[r] != K_NONE)
+                        return;
+                }
             }
             break;
         default:
