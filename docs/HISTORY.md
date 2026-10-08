@@ -2455,3 +2455,12 @@ callgrind 3.812G, parity unchanged.
 lines; cdecl.c now 6,6xx). Gate: 1419 goldens, san 533/0, callgrind 3.812G,
 parity unchanged. `specs_visit` and `cxx_typedef_in_struct` are exported via
 `cdecl_int.h`.
+
+## Round 154
+
+`cwarn_expr.c` split out of `cexpr.c` (pure move: -Wlogical-op through
+-Wsizeof-pointer-div, 2,464 lines; cexpr.c now 8,4xx). Gate: 1420 goldens,
+san 533/0, callgrind 3.814G, parity unchanged. 31 helpers are exported through
+`cexpr_int.h`, plus `no_int_bool`, `cst_parts` and the `PW` macro.
+Remaining candidates: cprint (cexpr.c 996-1610), sequence-point (cexpr.c
+tail), asm statements, cstruct/cstmt_warn/parse_diag.

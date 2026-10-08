@@ -340,4 +340,46 @@ TypeId orig_type(Checker *c, uint32_t e);
 unsigned uc_prec(Checker *c, TypeId t);
 bool vector_truth_node(Checker *c, uint32_t e);
 
+void e_logical(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op);
+bool is_npc(Checker *c, uint32_t n);
+bool is_boolish(Checker *c, uint32_t n);
+bool nonneg(Checker *c, uint32_t n);
+const char *bf_tstr(Checker *c, TypeId t, unsigned w);
+const char *cmp_tstr(Checker *c, uint32_t n);
+uint32_t narrower(Checker *c, uint32_t n, TypeId *ty, unsigned *prec);
+void tauto_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op);
+void parens_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op);
+void lognot_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op);
+void array_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op);
+void sizeof_div(Checker *c, uint32_t i, uint32_t a, uint32_t b);
+void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op);
+unsigned min_prec_signed(uint64_t v);
+TypeId common_type(Checker *c, TypeId a, TypeId b);
+bool fval(Checker *c, uint32_t i, long double *out);
+bool intops(Checker *c, uint32_t i);
+int truth(Checker *c, uint32_t i, bool fold);
+bool prints_value(Checker *c, uint32_t i);
+void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec);
+void sp(char *b, const char *fmt, ...);
+bool targets_compat(Checker *c, SrcLoc loc, TypeId pa, TypeId pb);
+void deref(Checker *c, uint32_t i, uint32_t a);
+uint32_t stmt_expr_value(Checker *c, uint32_t i);
+void bin_value(Checker *c, uint32_t i, uint32_t a, uint32_t b,
+    uint64_t v, bool ovf, bool int_const, SrcLoc loc);
+void invalid_operands(Checker *c, uint32_t i, uint32_t a, uint32_t b,
+    int op);
+bool truth_ok(Checker *c, uint32_t a);
+int vec_scalar(Checker *c, uint32_t i, uint32_t sn, TypeId st, TypeId vt,
+    bool strict_int);
+void vec_invalid(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
+    TypeId la, TypeId lb);
+bool from_macro(Checker *c, uint32_t tok);
+SrcLoc colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els);
+
+extern bool no_int_bool;   /* set by the ?: check while its condition is checked */
+void cst_parts(Checker *c, uint32_t n, bool *neg, uint64_t *mag);
+
+/* -Wparentheses */
+#define PW(l, ...) cwarn(c, (l), "parentheses", __VA_ARGS__)
+
 #endif
