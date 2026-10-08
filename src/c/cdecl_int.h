@@ -179,6 +179,10 @@ extern CImplied imp_l[16];
 extern unsigned imp_n;
 extern uint32_t imp_name;
 
+/* cspec.c */
+void specs_visit(Checker *c, uint32_t i);
+void cxx_typedef_in_struct(Checker *c, uint32_t ident, uint32_t tok);
+
 bool is_rec(Checker *c, TypeId t);
 uint32_t find_child(Checker *c, uint32_t i, unsigned tag);
 

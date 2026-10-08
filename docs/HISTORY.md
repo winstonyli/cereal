@@ -2448,3 +2448,10 @@ callgrind 3.812G, parity unchanged.
 - `iloc`, `iloc_event`, `is_rec` and `find_child` are no longer static.
 - Next candidates (not started): cspec (cdecl.c add_scspec..specs_visit),
   cwarn_expr (cexpr.c), cprint (cexpr.c), cstruct.
+
+## Round 153
+
+`cspec.c` split out of `cdecl.c` (pure move: `add_scspec` .. `specs_visit`, 719
+lines; cdecl.c now 6,6xx). Gate: 1419 goldens, san 533/0, callgrind 3.812G,
+parity unchanged. `specs_visit` and `cxx_typedef_in_struct` are exported via
+`cdecl_int.h`.

@@ -17,7 +17,7 @@ TYPES.md, PARALLEL.md, LSP.md and SPECS.md.
   line and column); 15 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 240 of 266 identical; 26 differ. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150.
-- 1418 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 533 files.
+- 1419 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 533 files.
 - uvloop's `loop.c` checks in about 3.82 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.

@@ -1,6 +1,6 @@
 # The checker (P2a): declarations, types, constant expressions
 
-Source: `src/c/check.c` (walk, scopes, end of unit), `cdecl.c` (declarations; attributes are `cattr.c`;
+Source: `src/c/check.c` (walk, scopes, end of unit), `cdecl.c` (declarations; attributes are `cattr.c`, specifiers `cspec.c`;
 a port of gcc 13's `c-decl.cc` and the parts of `c-parser.cc` that decide
 where diagnostics point), `cexpr.c` (expressions, constant folding),
 `type.c` (hash-consed types, layout), `check_int.h` (internals).  Run it
