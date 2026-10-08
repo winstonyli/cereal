@@ -1,0 +1,9 @@
+misc_262.c:12:14: warning: initialization of 'int *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+   12 |     int *a = __builtin_clzl (k);
+      |              ^
+misc_262.c:13:14: warning: initialization of 'int *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+   13 |     int *b = __builtin_clz (j);
+      |              ^
+misc_262.c:14:14: warning: initialization of 'int *' from 'unsigned int' makes pointer from integer without a cast [-Wint-conversion]
+   14 |     int *c = __builtin_bswap32 (j);
+      |              ^

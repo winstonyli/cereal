@@ -850,6 +850,9 @@ static TypeId bt_type(Checker *c, const char *s, size_t n)
             {"void", TY_VOID}, {"int", TY_INT}, {"char", TY_CHAR},
             {"long int", TY_LONG}, {"long long int", TY_LLONG},
             {"long unsigned int", TY_ULONG}, {"double", TY_DOUBLE},
+            {"unsigned int", TY_UINT}, {"short unsigned int", TY_USHORT},
+            {"long long unsigned int", TY_ULLONG}, {"unsigned char", TY_UCHAR},
+            {"__int128 unsigned", TY_UINT128}, {"_Bool", TY_BOOL},
             {"float", TY_FLOAT}, {"long double", TY_LDOUBLE},
             {"__float128", TY_FLOAT128}
         };
@@ -1886,10 +1889,18 @@ static void e_ident(Checker *c, uint32_t i)
                 }
         }
         if (!strncmp(name, "__builtin_", 10)) {
-            /* a built-in with a library counterpart has that function's type */
+            /* a built-in with a library counterpart has that function's type;
+             * one without (gnu = 2) only when called, since any other use is
+             * rejected below */
             const BTab *bt = bt_find(c, name + 10, true);
-            TypeId ft = bt && (bt->gnu != 2) ? bt_func_type(c, bt)
-                                           : overflow_func_type(c, name + 10);
+            TypeId ft = bt && (bt->gnu != 2 || is_callee(c, i))
+                            ? bt_func_type(c, bt)
+                            : overflow_func_type(c, name + 10);
+            /* the table lists no parameters for a built-in gcc checks by hand
+             * (__builtin_classify_type, __atomic_is_lock_free, ...) */
+            if (bt && bt->gnu == 2 && !is_err(c, ft) &&
+                !*(strchr(bt->sig, '|') + 1))
+                ft = type_func(TT, type_base(TT, ft), NULL, 0, TF_NOPROTO);
             if (!is_err(c, ft)) {
                 c->ty[i] = ft;
                 c->ck[i] = K_ADDR;
