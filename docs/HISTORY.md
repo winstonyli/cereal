@@ -2473,3 +2473,14 @@ expression printing, 624 lines), `cseqpt.c` (-Wsequence-point, 609) and
 3.819G (was 3.814G: code layout only), parity unchanged. Only
 `sq_for_cond` and `sq_check` needed exporting. Largest files now: cdecl.c
 6,620, cexpr.c 6,705, parse.c 3,393, cstmt.c 3,064, cwarn_expr.c 2,466.
+
+## Round 156
+
+`cstmt_warn.c` split out of `cstmt.c` (pure move: -Wunused-value,
+-Wmisleading-indentation, -Wduplicated-branches/-cond and the statement walk
+they share; 1,279 lines; cstmt.c now 1,6xx). New `cstmt_int.h` holds the
+`CStmt` state types and the exports. Gate: 1424 goldens, san 533/0, parity
+unchanged. Callgrind first read 3.828G: `tg`, `strip_paren` and
+`node_err` had become cross-file calls on a hot path; making them
+`static inline` in `cstmt_int.h` brought it back to 3.817G. Lesson for later
+splits: export tiny hot accessors as `static inline`, not as functions.
