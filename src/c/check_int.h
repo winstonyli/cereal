@@ -533,6 +533,14 @@ static inline uint32_t last_tok(const Checker *c, uint32_t i)
     return m;
 }
 
+/* Skips parentheses (NO_NODE for an empty one). */
+static inline uint32_t strip_paren(const Checker *c, uint32_t i)
+{
+    while (i != NO_NODE && c->nodes[i].tag == N_PAREN)
+        i = c->nodes[i].size > 1 ? i - 1 : NO_NODE;
+    return i;
+}
+
 /* Is token tok the result of a macro expansion? */
 static inline bool tfrom_macro(const Checker *c, uint32_t tok)
 {

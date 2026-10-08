@@ -127,12 +127,14 @@ static inline void copy_node(Checker *c, uint32_t to, uint32_t from)
     c->ef[to] = c->ef[from];
 }
 
-/* Skips parentheses. */
-static inline uint32_t strip_paren(const Checker *c, uint32_t i)
+/* The operand of cast e (parentheses skipped), NO_NODE if e is not a cast
+ * with one. */
+static inline uint32_t cast_operand(const Checker *c, uint32_t e)
 {
-    while (i != NO_NODE && c->nodes[i].tag == N_PAREN)
-        i = c->nodes[i].size > 1 ? i - 1 : NO_NODE;
-    return i;
+    uint32_t k[3], n;
+    if (ntag(c, e) != N_CAST || (n = nkids(c, e, k, 3)) < 1)
+        return NO_NODE;
+    return strip_paren(c, k[n - 1]);
 }
 
 static inline uint32_t fpush(Checker *c, long double v)

@@ -620,14 +620,6 @@ static unsigned dup_punct(const Checker *c, uint32_t i)
     return c->u->toks[c->nodes[i].tok].t.punct;
 }
 
-static uint32_t dup_strip(const Checker *c, uint32_t e)
-{
-    uint32_t k[2];
-    while (tg(c, e) == N_PAREN && node_children(c->nodes, e, k, 2) >= 1)
-        e = k[0];
-    return e;
-}
-
 static bool dup_same_tok(const Checker *c, uint32_t a, uint32_t b)
 {
     const Tok *x = &c->u->toks[a].t, *y = &c->u->toks[b].t;
@@ -655,8 +647,8 @@ static bool dup_stmt(Checker *c, uint32_t a, uint32_t b);
 static bool dup_expr(Checker *c, uint32_t a, uint32_t b)
 {
     uint32_t ka[8], kb[8], na, nb, j;
-    a = dup_strip(c, a);
-    b = dup_strip(c, b);
+    a = strip_paren(c, a);
+    b = strip_paren(c, b);
     if (c->ck[a] == K_ERR || c->ck[b] == K_ERR)
         return false;
     if (c->ck[a] == c->ck[b] &&
@@ -836,14 +828,14 @@ bool cstmt_cond_identical(Checker *c, uint32_t i, bool immediate)
     bool ok;
     if (node_children(c->nodes, i, k, 4) != 3)
         return false;
-    cd = dup_strip(c, k[0]);
+    cd = strip_paren(c, k[0]);
     if (tg(c, cd) == N_CALL && node_children(c->nodes, cd, f, 4) >= 1 &&
         tg(c, f[0]) == N_IDENT && c->u->toks[c->nodes[f[0]].tok].t.len == 20 &&
         !memcmp(tok_text_raw(c->sm, c->in, &c->u->toks[c->nodes[f[0]].tok].t),
                 "__builtin_constant_p", 20))
         return false;
-    x = dup_strip(c, k[1]);
-    y = dup_strip(c, k[2]);
+    x = strip_paren(c, k[1]);
+    y = strip_paren(c, k[2]);
     if (!immediate)
         return dup_expr(c, x, y);
     if (tg(c, x) == N_STMT_EXPR || tg(c, x) == N_COND ||
@@ -868,7 +860,7 @@ bool cstmt_cond_identical(Checker *c, uint32_t i, bool immediate)
 static bool dup_side(Checker *c, uint32_t e)
 {
     uint32_t k[8], l[2], m = 0;
-    e = dup_strip(c, e);
+    e = strip_paren(c, e);
     if (tg(c, e) != N_STMT_EXPR)
         return c->ef[e] & EF_SIDE;
     if (node_children(c->nodes, e, k, 8) != 1 || !dup_flatten(c, k[0], l, &m, 2) ||
@@ -977,10 +969,10 @@ static bool dup_cmp_of(Checker *c, uint32_t e, DupCmp *d)
     uint32_t k[3];
     unsigned n;
     bool neg = false;
-    e = dup_strip(c, e);
+    e = strip_paren(c, e);
     while (tg(c, e) == N_UNARY && dup_punct(c, e) == P_BANG &&
            node_children(c->nodes, e, k, 3) == 1) {
-        uint32_t in = dup_strip(c, k[0]);
+        uint32_t in = strip_paren(c, k[0]);
         neg = !neg;
         if (tg(c, in) == N_BINARY) {
             switch (dup_punct(c, in)) {
@@ -1032,8 +1024,8 @@ cmp:
     d->op = dup_punct(c, e);
     if (neg)
         d->op = dup_negate(d->op);
-    d->l = dup_strip(c, k[0]);
-    d->r = dup_strip(c, k[1]);
+    d->l = strip_paren(c, k[0]);
+    d->r = strip_paren(c, k[1]);
     d->rc = false;
     if (dup_const(c, d->l) && !dup_const(c, d->r)) {
         uint32_t t = d->l;
@@ -1051,7 +1043,7 @@ norm:
         bool sgn = type_is_signed(TT, c->ty[d->l]);
         for (;;) {
             uint32_t m[3], x;
-            d->l = dup_strip(c, d->l);
+            d->l = strip_paren(c, d->l);
             if (tg(c, d->l) == N_UNARY && dup_punct(c, d->l) == P_MINUS &&
                 node_children(c->nodes, d->l, m, 3) == 1 && sgn) {
                 d->l = m[0];
@@ -1152,7 +1144,7 @@ void cstmt_dup_cond(Checker *c, uint32_t scope, uint32_t end)
             n = node_children(c->nodes, cur, kids, 16);
             if (n < 6)
                 break;
-            cond = dup_strip(c, kids[1]);
+            cond = strip_paren(c, kids[1]);
             if (c->ef[cond] & EF_SIDE)
                 ns = 0;         /* the chain's earlier tests may not hold now */
             if (!node_err(c, cond) && !(c->ef[cond] & EF_SIDE) &&

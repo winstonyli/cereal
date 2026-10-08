@@ -1679,9 +1679,9 @@ static bool null_addr_warn(Checker *c, SrcLoc loc, uint32_t x, int code,
     uint32_t k[3];
     x = strip_paren(c, x);
     if (ntag(c, x) == N_CAST) {
-        if (is_int(c, mainv(c, c->ty[x])) || nkids(c, x, k, 3) < 1)
+        if (is_int(c, mainv(c, c->ty[x])) || cast_operand(c, x) == NO_NODE)
             return false;
-        x = strip_paren(c, k[nkids(c, x, k, 3) - 1]);
+        x = cast_operand(c, x);
     }
     if (ntag(c, x) == N_BINARY && npunct(c, x) == P_PLUS &&
         nkids(c, x, k, 3) == 2 && is_ptr(c, rvt(c, k[0])) &&
@@ -1899,11 +1899,10 @@ static bool array_known(Checker *c, TypeId t)
  * cast to another pointer type. */
 static bool null_valued(Checker *c, uint32_t n)
 {
-    uint32_t k[3];
     n = strip_paren(c, n);
-    while (is_npc(c, n) == false && ntag(c, n) == N_CAST &&
-           is_ptr(c, c->ty[n]) && nkids(c, n, k, 3) >= 1)
-        n = strip_paren(c, k[nkids(c, n, k, 3) - 1]);
+    while (!is_npc(c, n) && is_ptr(c, c->ty[n]) &&
+           cast_operand(c, n) != NO_NODE)
+        n = cast_operand(c, n);
     return is_npc(c, n);
 }
 
@@ -1941,8 +1940,8 @@ void memset_args(Checker *c, const uint32_t *kv, uint32_t nk, const char *name)
     if (!diag_enabled(c->diag, "memset-elt-size") || !is_intcst(c, kv[3]))
         return;
     a = strip_paren(c, kv[1]);
-    while (ntag(c, a) == N_CAST && nkids(c, a, ck, 3) >= 1)
-        a = strip_paren(c, ck[nkids(c, a, ck, 3) - 1]);
+    while (cast_operand(c, a) != NO_NODE)
+        a = cast_operand(c, a);
     if (ntag(c, a) == N_UNARY && npunct(c, a) == P_AMP &&
         nkids(c, a, ck, 3) == 1)
         a = strip_paren(c, ck[0]);
@@ -2024,13 +2023,12 @@ void sizeof_memaccess(Checker *c, const uint32_t *kv, uint32_t nk,
     for (role = 0; role < 2; role++) {
         int idx = role ? m->src : m->dst;
         uint32_t arg;
-        uint32_t ck[3];
         TypeId at;
         if (idx < 0)
             continue;
         arg = strip_paren(c, kv[1 + idx]);
-        while (ntag(c, arg) == N_CAST && nkids(c, arg, ck, 3) >= 1)
-            arg = strip_paren(c, ck[nkids(c, arg, ck, 3) - 1]);
+        while (cast_operand(c, arg) != NO_NODE)
+            arg = cast_operand(c, arg);
         if (node_err(c, arg))
             continue;
         at = rvt(c, arg);

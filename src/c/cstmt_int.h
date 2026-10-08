@@ -95,15 +95,6 @@ static inline unsigned tg(const Checker *c, uint32_t i)
     return c->nodes[i].tag;
 }
 
-/* gcc's EXPR_LOCATION of an expression, as far as it matters (cexpr.c's
- * expr_loc). */
-static inline uint32_t strip_paren(const Checker *c, uint32_t i)
-{
-    while (tg(c, i) == N_PAREN && c->nodes[i].size > 1)
-        i--;
-    return i;
-}
-
 static inline bool node_err(Checker *c, uint32_t i)
 {
     return i == NOB || c->ty[i] == ERRT || c->ck[i] == K_ERR;
