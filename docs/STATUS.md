@@ -13,8 +13,8 @@ TYPES.md, PARALLEL.md, LSP.md and SPECS.md.
 - An index and LSP server over the same engine (`cereal index|query|lsp`).
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
-- gcc.dg: 3731 of 3744 files run give the same diagnostics as gcc (message,
-  line and column); 13 differ.
+- gcc.dg: 3736 of 3744 files run give the same diagnostics as gcc (message,
+  line and column); 8 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 264 of 266 identical; 2 differ. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
 - 1462 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 552 files.
@@ -39,22 +39,23 @@ bench/tools/cmp.sh gcc.dg/FILE.c     # diff one file against gcc-13
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
 callgrind) in parallel; see its header for the expected numbers.
 
-## Open differences (gcc.dg 15, c-c++-common 2)
+## Open differences (gcc.dg 8, c-c++-common 2, cpp 2)
 Needs gcc's optimizer or middle end (out of reach for a front end):
-invalid-call-1, pr56355-1, pr62090 (`-O2` nonnull),
-large-size-array-6, pr88074-2, strlenopt-78, pr83844.
+pr56355-1, pr83844 (alignment of a VLA-offset member).
 
 Darwin / Objective-C targets: darwin-cfstring-format-1, pr105522.
 
-Front-end gaps, each a small separate cause:
-- array-10: gcc adds "empty declaration" after a file-scope struct whose member
-  has a variably modified type (rule not derived).
-- Warray-parameter-11, multiple-overflow-warn-3, pr100547, pr100619 (VLA
-  parameter type spelling), pr108375-2.
+Front-end gaps, each a small separate cause (details in HISTORY Rounds 163, 164):
+- Warray-parameter-11: gcc folds built-in math calls and same-object address
+  differences to constants in an array bound; cereal calls them VLA.
+- multiple-overflow-warn-3: the overflow text for a signed shift into the
+  sign bit is printed folded, at the statement start.
+- pr100547: the location of the vector_size error is gcc's input_location.
 - A parameter of a function definition with `restrict` on a non-pointer is
-  reported twice by gcc (once by us).
+  reported twice by gcc (once by us): pr108375-2.
+- cpp: gnu99-scope-1 (the pasting error), pr66415-2 (a line-map column).
 
-c-c++-common: dump-ada-spec-14, unroll-5 (needs an
+c-c++-common: dump-ada-spec-14 (needs -fdump-ada-spec), unroll-5 (needs an
 enum-constant symbol kind in the parser).
 
 Not counted as differences (same diagnostics, so the count ignores them):
