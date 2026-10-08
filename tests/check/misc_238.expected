@@ -1,0 +1,88 @@
+misc_238.c:1:21: error: macro "__has_attribute" requires an identifier
+    1 | #if __has_attribute(__has_attribute(unused))
+      |                     ^~~~~~~~~~~~~~~
+misc_238.c:1:44: error: missing '(' in expression
+    1 | #if __has_attribute(__has_attribute(unused))
+      |                                            ^
+misc_238.c:3:21: error: macro "__has_attribute" requires an identifier
+    3 | #if __has_attribute(1)
+      |                     ^
+misc_238.c:3:22: error: missing '(' in expression
+    3 | #if __has_attribute(1)
+      |                      ^
+misc_238.c:5:47: error: missing '(' after "__has_attribute"
+    5 | #if __has_attribute(unused) + __has_attribute x
+      |                                               ^
+misc_238.c:7:5: error: missing '(' after "__has_attribute"
+    7 | #if __has_attribute
+      |     ^~~~~~~~~~~~~~~
+misc_238.c:9:20: error: macro "__has_attribute" requires an identifier
+    9 | #if __has_attribute(
+      |                    ^
+misc_238.c:11:21: error: missing ')' after "__has_attribute"
+   11 | #if __has_attribute(unused
+      |                     ^~~~~~
+misc_238.c:13:27: error: missing ')' after "__has_attribute"
+   13 | #if __has_attribute(unused, unused)
+      |                           ^
+misc_238.c:13:29: error: missing binary operator before token "unused"
+   13 | #if __has_attribute(unused, unused)
+      |                             ^~~~~~
+misc_238.c:15:28: error: missing ')' after "__has_attribute"
+   15 | #if __has_attribute(unused foo)
+      |                            ^~~
+misc_238.c:15:31: error: missing '(' in expression
+   15 | #if __has_attribute(unused foo)
+      |                               ^
+misc_238.c:17:21: error: macro "__has_attribute" requires an identifier
+   17 | #if __has_attribute()
+      |                     ^
+misc_238.c:19:18: error: macro "__has_builtin" requires an identifier
+   19 | #if __has_builtin(
+      |                  ^
+misc_238.c:21:20: error: expected ')' after "x"
+   21 | #if __has_builtin(x,y)
+      |                    ^
+misc_238.c:23:7: error: missing binary operator before token "("
+   23 | #if 0 (unused))
+      |       ^
+misc_238.c:25:7: error: missing binary operator before token "("
+   25 | #if 0 (1)
+      |       ^
+misc_238.c:27:7: error: missing binary operator before token "1"
+   27 | #if 1 1)
+      |       ^
+misc_238.c:29:24: error: missing binary operator before token "("
+   29 | #if __has_attribute(x) (1))
+      |                        ^
+misc_238.c:31:21: error: macro "__has_attribute" requires an identifier
+   31 | #if __has_attribute(__has_attribute(unused) 5 )
+      |                     ^~~~~~~~~~~~~~~
+misc_238.c:31:45: error: missing binary operator before token "5"
+   31 | #if __has_attribute(__has_attribute(unused) 5 )
+      |                                             ^
+misc_238.c:33:20: error: expected ')' after "x"
+   33 | #if __has_builtin(x,y,z) + 5 ) 7
+      |                    ^
+misc_238.c:33:30: error: missing '(' in expression
+   33 | #if __has_builtin(x,y,z) + 5 ) 7
+      |                              ^
+misc_238.c:35:21: error: expected ')' after "x"
+   35 | #if __has_builtin(x y) 5
+      |                     ^
+misc_238.c:35:24: error: missing binary operator before token "5"
+   35 | #if __has_builtin(x y) 5
+      |                        ^
+misc_238.c:37:7: error: missing '(' in expression
+   37 | #if 1 )
+      |       ^
+misc_238.c:39:9: error: missing '(' in expression
+   39 | #if (1 ))
+      |         ^
+misc_238.c:41:23: error: missing ')' after "__has_attribute"
+   41 | #if __has_attribute(x y) 5
+      |                       ^
+misc_238.c:41:24: error: missing '(' in expression
+   41 | #if __has_attribute(x y) 5
+      |                        ^
+misc_238.c:43: warning: ISO C forbids an empty translation unit [-Wpedantic]

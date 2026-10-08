@@ -2510,3 +2510,30 @@ for parentheses. New untagged option `sign-promo-in-if` (`DO_ALL`; gcc prints
 no `[-W...]`, and `-Wno-sign-promo` does not touch it). Golden `misc_237`
 matches gcc-13 exactly. `Wsignprom.c` now matches (cpp 243/266). Gate: 1428
 goldens, san 535/0, callgrind 3.812G.
+
+## Round 159
+
+cpp parity, items 3 to 6 of the six (cpp 249/266):
+
+- `__has_attribute` / `__has_builtin` read their operand the way gcc's
+  `c_common_has_attribute` does (`query_ident`): a lone identifier, each error
+  at the last token read ("requires an identifier" at the `(` or the bad
+  token, "missing ')'" or, for `__has_builtin`, "expected ')' after" with a
+  skip to the `)`), a nested `__has_*()` counting as a number. "missing '('"
+  now lands on the offending token. A stray top-level `)` in `#if` is
+  "missing '(' in expression". Golden `misc_238`.
+- `#pragma GCC poison`: a non-identifier gives "invalid #pragma GCC poison
+  directive" and stops; `#define`/`#undef`/`#ifdef`/`#ifndef` of a poisoned
+  name do nothing (libcpp's `lex_macro_node` returns NULL), so `#define`
+  after the pragma no longer revives the macro.
+- `-pedantic` form feed / vertical tab in a directive line
+  (`warn_directive_ws`): scanned in code only, not strings, comments or a
+  splice's trailing blanks.
+- `_Pragma` diagnostics for `system_header` and `dependency` sit on the
+  `_Pragma` line at the token's column in the destringized text
+  (`scratch_col`); the `dependency` message now reads `expects "FILENAME" or
+  <FILENAME>` (the `<FILENAME>` form itself is still not accepted).
+  Golden `misc_239`.
+
+Gate: 1432 goldens, san 537/0, callgrind 3.812G. Still open: caret ranges
+(`^~~~`) differ on these pedwarns; parity compares headers only.

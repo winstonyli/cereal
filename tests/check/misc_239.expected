@@ -1,0 +1,60 @@
+misc_239.c:2:1: error: attempt to use poisoned "foo"
+    2 | foo
+      | ^~~
+misc_239.c:4:1: error: attempt to use poisoned "foo2"
+    4 | foo2
+      | ^~~~
+misc_239.c:2:1: error: unknown type name 'foo'
+    2 | foo
+      | ^
+misc_239.c:5:1: error: attempt to use poisoned "foo3"
+    5 | foo3
+      | ^~~~
+misc_239.c:5:1: error: expected '=', ',', ';', 'asm' or '__attribute__' before 'foo3'
+    5 | foo3
+      | ^
+misc_239.c:7:1: error: attempt to use poisoned "foo4"
+    7 | foo4
+      | ^~~~
+misc_239.c:5:1: error: unknown type name 'foo3'
+    5 | foo3
+      | ^
+misc_239.c:8:1: error: attempt to use poisoned "foo5"
+    8 | foo5
+      | ^~~~
+misc_239.c:9:20: error: invalid #pragma GCC poison directive
+    9 | #pragma GCC poison +++
+      |                    ^
+misc_239.c:11:20: warning: poisoning existing macro "foo6"
+   11 | #pragma GCC poison foo6
+      |                    ^
+misc_239.c:12:9: error: attempt to use poisoned "foo6"
+   12 | #define foo6 345
+      |         ^~~~
+misc_239.c:13:9: error: attempt to use poisoned "foo6"
+   13 | #define foo6 456
+      |         ^~~~
+misc_239.c:14:8: error: attempt to use poisoned "foo6"
+   14 | #ifdef foo6
+      |        ^~~~
+misc_239.c:17:13: error: attempt to use poisoned "foo6"
+   17 | #if defined(foo6)
+      |             ^~~~
+misc_239.c:20:1: error: attempt to use poisoned "foo6"
+   20 | foo6
+      | ^~~~
+misc_239.c:22:20: error: invalid #pragma GCC poison directive
+   22 | #pragma GCC poison +++
+      |                    ^
+misc_239.c:23:2: warning: form feed in preprocessing directive
+   23 | #define ff
+      |  ^
+misc_239.c:24:9: warning: vertical tab in preprocessing directive
+   24 | #define vt
+      |         ^
+misc_239.c:26:5: warning: #pragma system_header ignored outside include file
+   26 | _Pragma ("GCC system_header")
+      |     ^
+misc_239.c:27:15: error: #pragma dependency expects "FILENAME" or <FILENAME>
+   27 | _Pragma("GCC dependency")
+      |               ^

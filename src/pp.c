@@ -1230,9 +1230,12 @@ static void do_if(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
             ok = false;
         } else {
             pp_macro_ref(pp, &line.t[0], REF_IFDEF);
-            val = (pp_macro(pp, ident_by_id(pp->in, line.t[0].aux)) != NULL) ==
-                  (k == COND_IFDEF);
-            check_eol(pp, span_from(line, 1), k == COND_IFDEF ? "ifdef" : "ifndef");
+            /* a poisoned name is no macro node for gcc: either test is false */
+            if (!pp_poisoned(pp, ident_by_id(pp->in, line.t[0].aux))) {
+                val = (pp_macro(pp, ident_by_id(pp->in, line.t[0].aux)) != NULL) ==
+                      (k == COND_IFDEF);
+                check_eol(pp, span_from(line, 1), k == COND_IFDEF ? "ifdef" : "ifndef");
+            }
         }
     }
     if (!ok)
@@ -1373,6 +1376,8 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
                     "\"defined\" cannot be used as a macro name");
         return;
     }
+    if (pp_poisoned(pp, nid))   /* already reported; gcc defines nothing */
+        return;
     m = NEW(pp->arena, Macro);
     m->name = nid;
     m->undef_seq = UINT32_MAX;
@@ -1617,6 +1622,8 @@ static void do_undef(PP *pp, const Tok *hash, const Tok *kw)
                     "\"defined\" cannot be used as a macro name");
         return;
     }
+    if (pp_poisoned(pp, id))
+        return;
     check_eol(pp, span_from(line, 1), "undef");
     m = mt_cur(pp->mt, id);
     if (((m && m->builtin) || is_builtin_name(id)) &&
@@ -2268,6 +2275,41 @@ static void trad_stringification(PP *pp, const Macro *m, SrcLoc at)
 
 static void phase_a_finish_dir(PP *pp, size_t dir_item);
 
+/* gcc's skip_whitespace pedwarns on a form feed or vertical tab lexed in a
+ * directive line: scan the line's code (not strings, character constants or
+ * comments) for them. */
+static void warn_directive_ws(PP *pp, SrcLoc hash)
+{
+    const char *p = srcmgr_ptr(pp->sm, hash), *q = p;
+    while (*q && *q != '\n') {
+        if (*q == '"' || *q == '\'') {
+            char c = *q++;
+            while (*q && *q != '\n' && *q != c)
+                q += *q == '\\' && q[1] && q[1] != '\n' ? 2 : 1;
+            if (*q == c)
+                q++;
+        } else if (q[0] == '/' && q[1] == '*') {
+            const char *e = strstr(q + 2, "*/");
+            if (!e)
+                return;
+            q = e + 2;
+        } else if (q[0] == '/' && q[1] == '/') {
+            return;
+        } else if (*q == '\\') {        /* a splice may have blanks before its newline */
+            const char *e = q + 1;
+            while (*e == ' ' || *e == '\t' || *e == '\f' || *e == '\v' || *e == '\r')
+                e++;
+            q = *e == '\n' ? e + 1 : q + 1;
+        } else if (*q == '\f' || *q == '\v') {
+            pedantic(pp, hash + (SrcLoc)(q - p), "%s in preprocessing directive",
+                     *q == '\f' ? "form feed" : "vertical tab");
+            q++;
+        } else {
+            q++;
+        }
+    }
+}
+
 void pp_directive(PP *pp, const Tok *hash)
 {
     Tok kw;
@@ -2292,6 +2334,8 @@ void pp_directive(PP *pp, const Tok *hash)
         return;
     }
     pp->in_directive = true;
+    if (pp->opt->pedantic)
+        warn_directive_ws(pp, hash->loc);
     k = kw.kind == TK_IDENT ? ident_by_id(pp->in, kw.aux)->kw : KW_NONE;
     pp->dir_indented = (hash->flags & TF_SPACE) != 0;
     if (k != KW_INCLUDE_NEXT && k != KW_IMPORT && k != KW_ASSERT &&

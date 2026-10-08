@@ -704,6 +704,60 @@ static bool name_in_table(const char *const *table, const char *s, size_t n)
     return false;
 }
 
+static bool builtin_query(PP *pp, Macro *m, const Tok *name, bool *result);
+
+/* __has_attribute(id) and __has_builtin(id), as gcc's c_common_has_attribute
+ * reads them: a lone identifier, each failure reported at the last token
+ * read (an end of line is put back, so the token before it).  A nested
+ * __has_*() is a number once expanded, so it is not an identifier. */
+static void query_ident(PP *pp, Macro *m, const Tok *lp, bool *result)
+{
+    Tok t, nt;
+    TokSrc src = pp_read_raw(pp, &t);
+    Ident *id;
+    const char *nm = m->name->str;
+    if (t.kind == TK_EOF) {
+        pp_unread(pp, &t, src);
+        pp_error_at(pp, lp, "macro \"%s\" requires an identifier", nm);
+        return;
+    }
+    if (t.kind != TK_IDENT) {
+        pp_error_at(pp, &t, "macro \"%s\" requires an identifier", nm);
+        return;
+    }
+    id = ident_by_id(pp->in, t.aux);
+    {
+        Macro *im = pp_macro(pp, id);
+        if (im && im->builtin >= BUILTIN_HAS_INCLUDE &&
+            !(t.flags & TF_NOEXPAND)) {
+            bool dummy;
+            builtin_query(pp, im, &t, &dummy);
+            pp_error_at(pp, &t, "macro \"%s\" requires an identifier", nm);
+            return;
+        }
+    }
+    src = pp_read_raw(pp, &nt);
+    if (!tok_is_punct(&nt, P_RPAREN)) {
+        if (nt.kind == TK_EOF)
+            pp_unread(pp, &nt, src);
+        if (m->builtin == BUILTIN_HAS_BUILTIN) {
+            pp_error_at(pp, nt.kind == TK_EOF ? &t : &nt,
+                        "expected ')' after \"%s\"", id->str);
+            while (nt.kind != TK_EOF && !tok_is_punct(&nt, P_RPAREN)) {
+                src = pp_read_raw(pp, &nt);     /* gcc skips to the ')' */
+                if (nt.kind == TK_EOF)
+                    pp_unread(pp, &nt, src);
+            }
+        } else
+            pp_error_at(pp, nt.kind == TK_EOF ? &t : &nt,
+                        "missing ')' after \"%s\"", nm);
+        return;
+    }
+    *result = name_in_table(m->builtin == BUILTIN_HAS_BUILTIN ? pp->host_builtins
+                                                              : pp->host_attrs,
+                            id->str, id->len);
+}
+
 /* __has_include(...) and friends: the operand is read unexpanded. */
 static bool builtin_query(PP *pp, Macro *m, const Tok *name, bool *result)
 {
@@ -713,9 +767,17 @@ static bool builtin_query(PP *pp, Macro *m, const Tok *name, bool *result)
     int depth = 0;
     *result = false;
     if (!tok_is_punct(&t, P_LPAREN)) {
-        pp_unread(pp, &t, src);
-        pp_error_at(pp, name, "missing '(' after \"%s\"", m->name->str);
+        if (t.kind == TK_EOF) {
+            pp_unread(pp, &t, src);
+            pp_error_at(pp, name, "missing '(' after \"%s\"", m->name->str);
+        } else {
+            pp_error_at(pp, &t, "missing '(' after \"%s\"", m->name->str);
+        }
         return false;
+    }
+    if (m->builtin == BUILTIN_HAS_ATTRIBUTE || m->builtin == BUILTIN_HAS_BUILTIN) {
+        query_ident(pp, m, &t, result);
+        return true;
     }
     for (;;) {
         src = pp_read_raw(pp, &t);
@@ -933,6 +995,17 @@ static bool word(PP *pp, TokSpan s, uint32_t i, const char *w)
 /* Pragmas whose effect is on preprocessor state (not just output). */
 /* #pragma GCC dependency "file" [text]: warn if file is newer than the
  * current file. */
+/* gcc lexes a _Pragma operand from its own buffer, and a diagnostic that
+ * names a token there lands on the _Pragma's line at that token's column in
+ * the destringized text. */
+static SrcLoc scratch_col(PP *pp, SrcLoc at, SrcLoc base, SrcLoc where)
+{
+    SrcFile *f = srcmgr_file_of(pp->sm, at);
+    uint32_t line, col;
+    srcmgr_linecol(f, at, &line, &col);
+    return srcmgr_loc_of(f, line, where - base + 1);
+}
+
 static void pragma_dependency(PP *pp, TokSpan toks, SrcLoc at)
 {
     SrcFile *tf = srcmgr_file_of(pp->sm, toks.t[0].loc);
@@ -943,8 +1016,12 @@ static void pragma_dependency(PP *pp, TokSpan toks, SrcLoc at)
     int di;
     struct stat a, b;
     if (!nt || nt->kind != TK_STRING || pp_text(pp, nt)[0] != '"') {
-        diag_report(pp->diag, DL_ERROR, "", sc ? at : nt ? nt->loc : toks.t[1].loc,
-                    "#pragma dependency expects \"FILENAME\"");
+        const Tok *last = &toks.t[toks.n - 1];
+        diag_report(pp->diag, DL_ERROR, "",
+                    sc ? scratch_col(pp, at, toks.t[0].loc,
+                                     nt ? nt->loc : last->loc + last->len)
+                       : nt ? nt->loc : toks.t[1].loc,
+                    "#pragma dependency expects \"FILENAME\" or <FILENAME>");
         return;
     }
     name = arena_strndup(pp->arena, pp_text(pp, nt) + 1, nt->len - 2);
@@ -1005,7 +1082,10 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                 pp->inc->file->system_header = true;
                 pp->inc->system = true;
             } else {
-                diag_report(pp->diag, DL_WARNING, "", PLOC(&toks.t[1]),
+                diag_report(pp->diag, DL_WARNING, "",
+                            from_scratch ? scratch_col(pp, loc, toks.t[0].loc,
+                                                       toks.t[1].loc)
+                                         : toks.t[1].loc,
                             "#pragma system_header ignored outside include "
                             "file");
             }
@@ -1015,8 +1095,13 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             pragma_dependency(pp, toks, loc);
         } else if (word(pp, toks, 1, "poison")) {
             emit = false;
-            for (i = 2; i < toks.n; i++)
-                if (toks.t[i].kind == TK_IDENT) {
+            for (i = 2; i < toks.n; i++) {
+                if (toks.t[i].kind != TK_IDENT) {
+                    diag_report(pp->diag, DL_ERROR, "", PLOC(&toks.t[i]),
+                                "invalid #pragma GCC poison directive");
+                    break;
+                }
+                {
                     Ident *id = ident_by_id(pp->in, toks.t[i].aux);
                     MacroSlot *sl = mt_slot_w(pp->mt, id->id);
                     Macro *m = sl->cur;
@@ -1037,6 +1122,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                     sl->poison_seq = ++pp->seq;
                     pp->mt->npoison++;
                 }
+            }
             PP_EMIT(pp, checkpoint, PLOC(&toks.t[0]), pp->seq);
         } else if (word(pp, toks, 1, "warning") || word(pp, toks, 1, "error")) {
             bool err = word(pp, toks, 1, "error");

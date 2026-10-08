@@ -779,6 +779,8 @@ bool pp_eval_if(PP *pp, TokSpan expr, bool *ok)
             (p.t->kind == TK_PUNCT && p.t->punct >= P_ASSIGN))
             fail(&p, p.t, "token \"%.*s\" is not valid in preprocessor "
                           "expressions", TXT(&p, p.t), (int)p.t->len);
+        else if (tok_is_punct(p.t, P_RPAREN))
+            fail(&p, p.t, "missing '(' in expression", NULL, 0);
         else
             fail(&p, p.t, "missing binary operator before token \"%.*s\"",
                  TXT(&p, p.t), (int)p.t->len);
