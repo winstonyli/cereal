@@ -1,0 +1,12 @@
+misc_245.c:4:6: error: expected identifier or '(' before string constant
+    4 |     y);
+      |      ^
+misc_245.c:3:5: note: in expansion of macro 'W'
+    3 | int W(
+      |     ^
+misc_245.c:5:16: error: 'else' without a previous 'if'
+    5 | void f(void) { else; }
+      |                ^
+misc_245.c:6:29: error: expected identifier before numeric constant
+    6 | struct s { int m; } v = { . 1 };
+      |                             ^

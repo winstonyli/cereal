@@ -2149,7 +2149,7 @@ static void init_list(Parser *p)
                 adv(p);
                 t = ct(p);
                 if (t.t.kind != TK_IDENT) {
-                    expected(p, "field name");
+                    expected(p, "identifier");
                     break;
                 }
                 leaf(p, N_DESIG_FIELD, adv(p));
@@ -2306,7 +2306,7 @@ static void postfix_tail(Parser *p, uint32_t start)
             adv(p);
             f = ct(p);
             if (f.t.kind != TK_IDENT) {
-                expected(p, "field name");
+                expected(p, "identifier");
                 emit(p, N_MEMBER_EXPR, ci(p), start, NF_ERROR);
                 return;
             }
@@ -2800,6 +2800,10 @@ static void statement(Parser *p)
     switch (ckw_of(p, &t)) {
     case CK_NONE:
         break;
+    case CK_ELSE:
+        perr(p, i, "'else' without a previous 'if'");
+        emit(p, N_EMPTY, adv(p), start, NF_ERROR);
+        return;
     case CK_IF:
         adv(p);
         open_scope(p, i, 0);

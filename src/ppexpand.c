@@ -436,7 +436,7 @@ static Tok stringize(PP *pp, TokSpan arg, const Tok *hash, SrcLoc site,
     sl = srcmgr_scratch(pp->sm, &pp->scratch, sb->data, sb->len);
     memset(&r, 0, sizeof r);
     r.kind = TK_STRING;
-    r.loc = hash->loc;
+    r.loc = pp->last_lex_end ? pp->last_lex_loc : hash->loc; /* libcpp: cur_token[-1] */
     r.len = (uint32_t)sb->len;
     r.aux = sl;
     r.flags = TF_SPELL | TF_SYNTH | TF_ORIGIN_BODY;

@@ -2577,3 +2577,17 @@ should say "'else' without a previous 'if'"); 20000419-1 and 20020927-1
 gcc places it at the end of the invocation); spacing2 ("expected identifier
 before '.' token", and `bar` undeclared at file scope is not reported);
 pr66415-2 (format argument column).
+
+Round 161 (cpp 258/266):
+
+- A string made by `#x` takes the location of the last token the lexer
+  produced (libcpp's `cur_token[-1]`: the `)` ending the outermost
+  invocation), not the `#x` in the macro body. Fixes 20000419-1, 20020927-1.
+- `else` with no `if`: "'else' without a previous 'if'" (19990413-1).
+- A missing member or designator name reads "expected identifier before ..."
+  (spacing2's wording; its file-scope `'bar' undeclared` error is still not
+  reported). Golden `misc_245`.
+
+Gate: 1444 goldens, san 543/0, callgrind 3.818G, -O 3729/3744. Still open:
+pr66415-2 (format argument column), spacing2's undeclared `bar`, and the
+parked list in Round 160.
