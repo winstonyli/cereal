@@ -2484,3 +2484,16 @@ unchanged. Callgrind first read 3.828G: `tg`, `strip_paren` and
 `node_err` had become cross-file calls on a hot path; making them
 `static inline` in `cstmt_int.h` brought it back to 3.817G. Lesson for later
 splits: export tiny hot accessors as `static inline`, not as functions.
+
+## Round 157
+
+cpp parity, item 1 of six: "unterminated argument list invoking macro"
+location. gcc reports it at `pfile->cur_token[-1]`: the end-of-line EOF token
+(after a trailing comment) when the EOF ends a directive line, otherwise the
+start of the last token the lexer produced, never the macro name. `PP` now
+records `last_lex_loc/last_lex_end` in `pp_read_raw`; `collect_args` picks the
+lexer end, the directive end (`eol_after`), or that last lexed token by where
+the EOF surfaced. New golden `misc_236`. `macsyntx.c` and `macsyntx2.c` now
+match (cpp 242/266); `directiv.c` still differs on form feed and vertical tab
+(item 5). Gate: 1426 goldens, san 534/0, callgrind 3.829G (+0.3%, two stores
+on the token-read path).

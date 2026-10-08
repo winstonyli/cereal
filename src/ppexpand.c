@@ -112,6 +112,16 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
                 const Tok *last = &a->all.t[a->all.len - 1];
                 at.loc = last->loc + last->len;
                 at.len = 0;
+            } else if (pp->in_directive) {
+                /* the end of the directive line is gcc's EOF token */
+                const Tok *last = &a->all.t[a->all.len - 1];
+                at.loc = eol_after(pp, last->loc + last->len);
+                at.len = 0;
+            } else if (pp->last_lex_end) {
+                /* the EOF came from an argument: gcc's cur_token[-1] is the
+                 * last token the lexer produced */
+                at.loc = pp->last_lex_loc;
+                at.len = 0;
             }
             Diagnostic *ud = pp_error_at(pp, &at,
                         "unterminated argument list invoking macro \"%s\"",

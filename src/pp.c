@@ -195,6 +195,10 @@ TokSrc pp_read_raw(PP *pp, Tok *t)
             if (!reread)
                 check_cxx_opname(pp, t);
         }
+        if (t->kind != TK_EOF) {
+            pp->last_lex_loc = t->loc;
+            pp->last_lex_end = t->loc + t->len;
+        }
         pp->tok_exp_loc = t->loc;
         pp->tok_root_obj = false;
         pp->tok_exp_id = NO_EXP;

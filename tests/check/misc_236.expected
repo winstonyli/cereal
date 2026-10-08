@@ -1,0 +1,7 @@
+misc_236.c:2:24: error: unterminated argument list invoking macro "g"
+    2 | #if g (         /* c */
+      |                        ^
+misc_236.c:4:10: error: unterminated argument list invoking macro "g"
+    4 | #if g (1,
+      |          ^
+misc_236.c:6: warning: ISO C forbids an empty translation unit [-Wpedantic]
