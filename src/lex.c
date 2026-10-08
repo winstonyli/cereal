@@ -1077,6 +1077,7 @@ static const PunctEnt puncts[] = {
     {"+=", P_ADD_ASSIGN, false}, {"-=", P_SUB_ASSIGN, false},
     {"&=", P_AND_ASSIGN, false}, {"^=", P_XOR_ASSIGN, false},
     {"|=", P_OR_ASSIGN, false}, {"##", P_HASHHASH, false},
+    {"::", P_COLONCOLON, false},
     {"<:", P_LBRACKET, true}, {":>", P_RBRACKET, true}, {"<%", P_LBRACE, true},
     {"%>", P_RBRACE, true}, {"%:", P_HASH, true},
     {"[", P_LBRACKET, false}, {"]", P_RBRACKET, false}, {"(", P_LPAREN, false},
@@ -1105,7 +1106,7 @@ static const PunctEnt *s_match_punct(Slow *s)
         for (k = 0; q[k]; k++)
             if (ch[k] != (unsigned char)q[k])
                 break;
-        if (!q[k])
+        if (!q[k] && (puncts[i].p != P_COLONCOLON || s->L->opt.scope))
             return &puncts[i];
     }
     return NULL;
@@ -1630,6 +1631,7 @@ void lex_next(Lexer *L, Tok *t)
             break;
         case ':':
             if (p[1] == '>') k = P_RBRACKET, n = 2, flags |= TF_DIGRAPH;
+            else if (p[1] == ':' && L->opt.scope) k = P_COLONCOLON, n = 2;
             else k = P_COLON;
             break;
         case '%':

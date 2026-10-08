@@ -6071,6 +6071,73 @@ static void ptr_int(Checker *c, uint32_t i, uint32_t p, uint32_t n, bool minus)
     }
 }
 
+static bool sym_ptr(Checker *c, uint32_t n, uint32_t *var, int64_t *off);
+
+/* The address of an lvalue reached through a pointer variable (`p->m`,
+ * `p->a[2]`, `*p`): the variable and the byte offset from its value. */
+static bool lval_addr(Checker *c, uint32_t n, uint32_t *var, int64_t *off)
+{
+    uint32_t k[2];
+    n = strip_paren(c, n);
+    if (n == NO_NODE || node_err(c, n))
+        return false;
+    switch (ntag(c, n)) {
+    case N_UNARY:
+        return npunct(c, n) == P_STAR && sym_ptr(c, first_child(c, n), var, off);
+    case N_MEMBER_EXPR: {
+        uint32_t ch = first_child(c, n);
+        bool arrow = (c->nodes[n].flags & NF_ARROW) != 0;
+        uint64_t fo = 0;
+        unsigned q = 0;
+        if (ch == NO_NODE || node_err(c, ch) ||
+            !(arrow ? sym_ptr(c, ch, var, off) : lval_addr(c, ch, var, off)))
+            return false;
+        if (!find_field(c, type_canon(TT, arrow ? pointee(c, rvt(c, ch))
+                                                : c->ty[ch]),
+                        cnode_ident(c, n), &fo, &q))
+            return false;
+        *off += (int64_t)fo;
+        return true;
+    }
+    case N_INDEX:
+        if (nkids(c, n, k, 2) != 2 || !is_array(c, c->ty[k[0]]) ||
+            !has_ival(c, k[1]) || !lval_addr(c, k[0], var, off))
+            return false;
+        *off += (int64_t)c->cv[k[1]] *
+                (int64_t)elem_size(c, type_ptr(TT, elem_of(c, c->ty[k[0]])));
+        return true;
+    default:
+        return false;
+    }
+}
+
+/* A pointer value fold-const can compare: a plain (non-volatile) pointer
+ * variable plus a constant byte offset, through casts and `&`.  Two such
+ * values off the same variable subtract to a constant. */
+static bool sym_ptr(Checker *c, uint32_t n, uint32_t *var, int64_t *off)
+{
+    uint32_t k[2];
+    n = strip_paren(c, n);
+    if (n == NO_NODE || node_err(c, n))
+        return false;
+    if (is_array(c, c->ty[n]))
+        return lval_addr(c, n, var, off);
+    if (!is_ptr(c, c->ty[n]))
+        return false;
+    switch (ntag(c, n)) {
+    case N_IDENT:
+        *var = lookup_ord(c, cnode_ident(c, n));
+        *off = 0;
+        return *var != SYM_NONE && !(TYPE_QUALS(c->ty[n]) & TQ_VOLATILE);
+    case N_CAST:
+        return nkids(c, n, k, 2) == 2 && sym_ptr(c, k[1], var, off);
+    case N_UNARY:
+        return npunct(c, n) == P_AMP && lval_addr(c, first_child(c, n), var, off);
+    default:
+        return false;
+    }
+}
+
 static void ptr_diff(Checker *c, uint32_t i, uint32_t a, uint32_t b)
 {
     TypeId ta = rvt(c, a), tb = rvt(c, b);
@@ -6105,6 +6172,15 @@ static void ptr_diff(Checker *c, uint32_t i, uint32_t a, uint32_t b)
             ? cexpr_trunc(c, c->ty[i], (uint64_t)((int64_t)(c->cv[a] - c->cv[b]) /
                                                   (int64_t)sz))
             : 0;
+    } else if (sz > 0 && !var_size(c, pa)) {
+        uint32_t va, vb;
+        int64_t oa, ob;
+        if (sym_ptr(c, a, &va, &oa) && sym_ptr(c, b, &vb, &ob) && va == vb &&
+            (oa - ob) % (int64_t)sz == 0) {
+            c->ck[i] = K_FOLD;
+            c->cv[i] = cexpr_trunc(c, c->ty[i],
+                                   (uint64_t)((oa - ob) / (int64_t)sz));
+        }
     }
 }
 

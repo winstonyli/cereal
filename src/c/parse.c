@@ -1266,17 +1266,14 @@ static void std_attribute(Parser *p)
         PTok t = ct(p);
         if (t.t.kind == TK_IDENT) {
             uint32_t s = nmark(p), name = adv(p);
-            PTok c2 = pk(p, 1);
-            if (p->gnu && at(p, P_COLON) && is_p(&c2, P_COLON) &&
-                !(c2.t.flags & TF_SPACE)) {
-                /* scope::name (the lexer has no :: token); gnu:: is
-                 * dropped, any other scope keeps the attribute unknown */
-                PTok n2 = pk(p, 2);
+            if (p->gnu && at(p, P_COLONCOLON)) {
+                /* scope::name; gnu:: is dropped, any other scope keeps the
+                 * attribute unknown */
+                PTok n2 = pk(p, 1);
                 if (n2.t.kind == TK_IDENT) {
                     const Ident *sc = ident_by_id(p->in, p->toks.data[name].t.aux);
                     bool gnu_scope = !strcmp(sc->str, "gnu") ||
                                      !strcmp(sc->str, "__gnu__");
-                    adv(p);
                     adv(p);
                     if (gnu_scope)
                         name = adv(p);
@@ -1463,6 +1460,7 @@ static void asm_stmt(Parser *p, bool top)
 {
     uint32_t start = nmark(p), kw = adv(p);
     int section;
+    uint32_t half;      /* a '::' whose second colon opens the next section */
     uint32_t seen[3] = { 0, 0, 0 };     /* volatile, inline, goto: token + 1 */
     for (; !top;) {
         int k = ckw(p);
@@ -1496,11 +1494,20 @@ static void asm_stmt(Parser *p, bool top)
         return;
     }
     string_lit(p);
+    half = NO_TOK;
     for (section = 1; section <= 4; section++) {
-        uint32_t s = nmark(p), colon = ci(p);
-        if (!accept(p, P_COLON))
+        uint32_t s = nmark(p), colon = half != NO_TOK ? half : ci(p);
+        bool empty = false;
+        if (half != NO_TOK)
+            half = NO_TOK;          /* the second colon of a :: */
+        else if (at(p, P_COLONCOLON)) {
+            adv(p);                 /* an empty section, then the next one */
+            half = colon;
+            empty = true;
+        } else if (!accept(p, P_COLON))
             break;
-        while (!at(p, P_COLON) && !at(p, P_RPAREN) && !at_eof(p)) {
+        while (!empty && !at(p, P_COLON) && !at(p, P_COLONCOLON) &&
+               !at(p, P_RPAREN) && !at_eof(p)) {
             if (section <= 2) {
                 uint32_t o = nmark(p), c;
                 if (accept(p, P_LBRACKET)) {

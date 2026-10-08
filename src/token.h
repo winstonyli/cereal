@@ -40,7 +40,7 @@ typedef enum {
     X(DIV_ASSIGN, "/=") X(MOD_ASSIGN, "%=") X(ADD_ASSIGN, "+=")             \
     X(SUB_ASSIGN, "-=") X(SHL_ASSIGN, "<<=") X(SHR_ASSIGN, ">>=")           \
     X(AND_ASSIGN, "&=") X(XOR_ASSIGN, "^=") X(OR_ASSIGN, "|=")              \
-    X(COMMA, ",") X(HASH, "#") X(HASHHASH, "##")
+    X(COMMA, ",") X(HASH, "#") X(HASHHASH, "##")                            X(COLONCOLON, "::")
 
 typedef enum {
     P_NONE,

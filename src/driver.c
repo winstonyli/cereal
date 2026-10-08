@@ -140,6 +140,7 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->pp.gnu_extensions = true;
         o->pp.gnu_mode = true;
         o->pp.lex.uliterals = true;
+        o->pp.lex.scope = true;
         o->pp.lex.trigraphs = o->trigraphs_flag;
     } else if (!strncmp(a, "-std=", 5)) {
         fatal("only C99 is supported (got '%s')", a);

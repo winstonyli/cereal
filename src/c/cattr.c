@@ -201,8 +201,7 @@ void gnu_attr_argc(Checker *c, uint32_t attr)
 /* [[ns::name]]: the token of ns is followed by :: (two colons). */
 bool attr_scope_of(Checker *c, uint32_t tok)
 {
-    return c->opt.gnu && tpunct(c, tok + 1) == P_COLON &&
-           tpunct(c, tok + 2) == P_COLON;
+    return c->opt.gnu && tpunct(c, tok + 1) == P_COLONCOLON;
 }
 
 /* gcc's c_parser_std_attribute: a name without a namespace that is not one
@@ -220,8 +219,8 @@ static bool std_attr_dropped(Checker *c, uint32_t attr, uint32_t item)
     uint32_t at = c->nodes[item].tok;
     size_t n;
     if (tokp(c, cnode(c, attr)->tok)->kind != TK_PUNCT ||
-        (c->opt.gnu && at >= 2 && tpunct(c, at - 1) == P_COLON &&
-         tpunct(c, at - 2) == P_COLON) || attr_scope_of(c, at))
+        (c->opt.gnu && at >= 1 && tpunct(c, at - 1) == P_COLONCOLON) ||
+        attr_scope_of(c, at))
         return false;
     attr_norm(tstr(c, at), name, sizeof name);
     for (n = 0; n < sizeof std_known / sizeof *std_known; n++)
@@ -247,8 +246,7 @@ void std_attr_unknown(Checker *c, uint32_t attr)
             continue;
         uint32_t at = c->nodes[k.p[j]].tok;
         attr_norm(tstr(c, at), name, sizeof name);
-        if (c->opt.gnu && at >= 2 && tpunct(c, at - 1) == P_COLON &&
-            tpunct(c, at - 2) == P_COLON)
+        if (c->opt.gnu && at >= 1 && tpunct(c, at - 1) == P_COLONCOLON)
             continue;           /* gnu::name, taken as a GNU attribute */
         for (n = 0; n < sizeof std_known / sizeof *std_known; n++)
             if (!strcmp(name, known[n]))

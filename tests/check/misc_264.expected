@@ -1,0 +1,18 @@
+misc_264.c:6:18: error: expected expression before ':' token
+    6 | #define COLON2 : :
+      |                  ^
+misc_264.c:8:15: note: in expansion of macro 'COLON2'
+    8 | int y = 1 ? 2 COLON2 3;
+      |               ^
+misc_264.c:9:9: error: pasting "::" and ">" does not give a valid preprocessing token
+    9 | CONCAT (::, >)
+      |         ^
+misc_264.c:9:1: note: in expansion of macro 'CONCAT'
+    9 | CONCAT (::, >)
+      | ^
+misc_264.c:9:9: error: expected identifier or '(' before '::' token
+    9 | CONCAT (::, >)
+      |         ^
+misc_264.c:9:1: note: in expansion of macro 'CONCAT'
+    9 | CONCAT (::, >)
+      | ^

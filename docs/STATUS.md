@@ -13,12 +13,12 @@ TYPES.md, PARALLEL.md, LSP.md and SPECS.md.
 - An index and LSP server over the same engine (`cereal index|query|lsp`).
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
-- gcc.dg: 3736 of 3744 files run give the same diagnostics as gcc (message,
-  line and column); 8 differ.
+- gcc.dg: 3737 of 3744 files run give the same diagnostics as gcc (message,
+  line and column); 7 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
-- gcc.dg/cpp (preprocessor tests, now in verify.sh): 264 of 266 identical; 2 differ. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1480 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 560 files.
-- uvloop's `loop.c` checks in about 3.84 G instructions (callgrind).
+- gcc.dg/cpp (preprocessor tests, now in verify.sh): 265 of 266 identical; 1 differs. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
+- 1484 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 562 files.
+- uvloop's `loop.c` checks in about 3.87 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
 

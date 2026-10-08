@@ -7,7 +7,6 @@
 
 #include <ctype.h>
 #include <inttypes.h>
-#include <math.h>
 #include <string.h>
 
 /* gcc 13's built-in library functions that carry the nonnull attribute:
@@ -1708,6 +1707,56 @@ static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
     return pure;
 }
 
+/* A constant argument of a floating built-in as a long double (an integer
+ * must convert exactly). */
+static bool math_arg(Checker *c, uint32_t a, long double *v)
+{
+    if (c->ck[a] == K_FLOAT && is_flt(c, rvt(c, a))) {
+        *v = c->fv.data[c->cv[a]];
+        return true;
+    }
+    if (has_ival(c, a) && int_bits(c, rvt(c, a)) <= 53) {
+        *v = type_is_signed(TT, rvt(c, a)) ? (long double)(int64_t)c->cv[a]
+                                           : (long double)c->cv[a];
+        return true;
+    }
+    return false;
+}
+
+/* fold-const-call of __builtin_fabs and __builtin_copysign (also the f and l
+ * forms) on constant arguments; exact, so no libm. */
+static void fold_math_builtin(Checker *c, uint32_t i, uint32_t f,
+                              const uint32_t *k, uint32_t n)
+{
+    static const struct { const char *n; int args; } fns[] = {
+        {"fabs", 1}, {"copysign", 2}};
+    const char *nm;
+    size_t q, l;
+    long double x, y = 0, r = 0;
+    TypeKind rk = tkind(c, c->ty[i]);
+    if (f == NO_NODE || ntag(c, f) != N_IDENT || c->ef[i] & EF_SIDE)
+        return;
+    nm = cident(c, cnode_ident(c, f));
+    if (strncmp(nm, "__builtin_", 10))
+        return;
+    nm += 10;
+    l = strlen(nm);
+    if (l > 1 && (nm[l - 1] == 'f' || nm[l - 1] == 'l') &&
+        strcmp(nm, "ceil") && strcmp(nm, "floor"))
+        l--;
+    for (q = 0; q < sizeof fns / sizeof *fns; q++)
+        if (strlen(fns[q].n) == l && !strncmp(nm, fns[q].n, l))
+            break;
+    if (q == sizeof fns / sizeof *fns || n != (uint32_t)fns[q].args + 1 ||
+        (rk != TY_FLOAT && rk != TY_DOUBLE && rk != TY_LDOUBLE) ||
+        !math_arg(c, k[1], &x) || (fns[q].args == 2 && !math_arg(c, k[2], &y)))
+        return;
+    r = q == 0 ? __builtin_fabsl(x) : __builtin_copysignl(x, y);
+    c->ck[i] = K_FLOAT;
+    c->cv[i] = fpush(c, rk == TY_FLOAT ? (float)r : rk == TY_DOUBLE ? (double)r : r);
+    c->ef[i] = EF_CST;
+}
+
 void e_call(Checker *c, uint32_t i)
 {
     uint32_t k[3], n = nkids(c, i, k, 3), f;
@@ -1932,6 +1981,7 @@ void e_call(Checker *c, uint32_t i)
             c->ef[i] = EF_CST;
         }
     }
+    fold_math_builtin(c, i, f, k, n);
 }
 
 void alias_deref(Checker *c, uint32_t p, bool use_loc, SrcLoc loc);

@@ -2875,3 +2875,35 @@ so 26 more `gnu = 2` rows are typed (152 in all; no testsuite file differed, but
 `__builtin_apply`'s function-pointer parameter stays out. Callgrind 3.8630 G.
 Corpora matching gcc-13 file for file: zstandard (18 files; `zstd.c` is the
 amalgamation), jemalloc `src` (63), freetype `src/base` (39), zlib-ng (25).
+
+Round 171: two constant folds gcc does and cereal did not, both found by
+`Warray-parameter-11.c` (an array parameter's bound that gcc folds to a
+constant was a VLA bound to cereal: `-Wvla-parameter` instead of
+`-Warray-parameter`, and no zero-size `-Wpedantic` warning).
+* `ptr_diff` folds `A - B` when both are a plain non-volatile pointer variable
+  plus a constant offset (`sym_ptr`, through casts, `&`, `->`, `.`, constant
+  `[]`, array decay), same variable: `(char *) &sp->a[1] - (char *) sp` is 4.
+  The existing K_ADDR case (a symbol's address) is the other half of the same
+  idea; offsets from a pointer variable's value were the gap.
+* `fold_math_builtin` (ccall.c): `__builtin_fabs` and `__builtin_copysign`
+  (also f, l) of constants are K_FLOAT. Only these, because they are exact
+  and need no libm (the build links without it); floor, ceil, fmin, ... would
+  want a decision about -lm first.
+Golden `misc_263`. gcc.dg 3737/3744.
+
+Round 172: `::` is one token in the GNU modes. libcpp lexes CPP_SCOPE when the
+language allows it (gnu89 to gnu17, C2X; not the strict ISO modes), so
+`CONCAT (::, >)` pastes onto it and a stray one is named by its spelling.
+`LexOptions.scope` (set by `-std=gnu99`), `P_COLONCOLON`, the fast and slow
+lexer paths; the attribute-scope code (`[[ns::name]]`) tests the token
+instead of two adjacent colons (the TF_SPACE check goes with it), and the asm
+section loop treats `::` as an empty section followed by the next (libcpp
+users do the same: `asm ("" :: "r" (x))`). Golden `misc_264`. gcc.dg/cpp
+265/266. Known: cereal's note for a paste error inside a macro body says "in
+expansion of macro" at the use, gcc says "in definition of macro" at the
+body; the message and position of the error itself match.
+Parked: `#pragma GCC unroll j` with a non-constant `j` (c-c++-common/unroll-5.c)
+needs the argument judged with symbol information. The parser's judge
+(`unroll_arg_bad`) is textual and leaves names alone; making it right means
+checking the pragma in the checker, with the real expression evaluator, not
+adding a name case to the text scanner.
