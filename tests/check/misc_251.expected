@@ -1,0 +1,6 @@
+misc_251.c:3:3: error: size of array is too large
+    3 |   };
+      |   ^
+misc_251.c:6:3: error: size of array is too large
+    6 |   };
+      |   ^

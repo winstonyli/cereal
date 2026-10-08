@@ -110,6 +110,7 @@ typedef struct CCtx {
     uint8_t lam;
     uint32_t lav;
     int64_t rtop;            /* the element count the root ended with */
+    bool toolarge;           /* an index of an unsized array past the largest size */
     bool found_mb_unused;
     char *dwpath;            /* a positional-init warning waiting for the next element */
 } CCtx;
@@ -2079,6 +2080,16 @@ static void set_init_index(Checker *c, CCtx *x, uint32_t lt, uint32_t e1,
     first = cexpr_sval(c, e1);
     neg = type_is_signed(TT, c->ty[e1]) ? first < 0 : false;
     big = !type_is_signed(TT, c->ty[e1]) && first < 0;
+    if (!neg && !L->hasmax && L->kind == LV_ARR) {
+        /* an unsized array: gcc accepts the index and complains of the
+         * size when the array is completed, at the closing brace */
+        bool ok;
+        uint64_t es = type_size(TT, L->elem, &ok);
+        if (ok && es && (big || (uint64_t)first >= (UINT64_MAX >> 1) / es)) {
+            x->toolarge = true;
+            return;
+        }
+    }
     if (neg || big || (L->hasmax && L->maxidx < first)) {
         ierr(c, x, lt, "array index in initializer exceeds array bounds");
         return;
@@ -2300,6 +2311,7 @@ void cinit_declared(Checker *c, uint32_t declared)
         x->trad_loc = ctrad_decl_loc(c, declared, c->nodes[list].tok);
     x->varroot = !is_err(c, type) && is_varsize(c, type);
     x->rtop = 0;
+    x->toolarge = false;
     (void)type;
     /* the root level is created when the list's first node arrives */
     x->stk = NULL;
@@ -2387,6 +2399,8 @@ static void finalize_root(Checker *c, CCtx *x)
         rl = rl->up;
     rtype = rl ? rl->type : ERRT;
     r = pop_level(c, x, lbrace, 0);
+    if (x->toolarge && is_arr(c, rtype))
+        cerror(c, cinput_loc(c, last_tok(c, list) + 1), "size of array is too large");
     if (r.kind == V_ERR || r.kind == V_NONE)
         c->ck[list] = K_ERR;
     else if (r.kind == V_CTOR) {

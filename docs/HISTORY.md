@@ -2659,3 +2659,16 @@ Round 164 (cpp 264/266):
 
 Still open in cpp: gnu99-scope-1, pr66415-2 (both parked). Gate: 1454
 goldens, san 547/0.
+
+Round 164 addendum (gcc.dg 3733/3744):
+
+- An index in the initializer of an unsized array that makes the array larger
+  than the largest object (`[0x8000000000000000] = ...`) is "size of array is
+  too large" at the closing brace, not "exceeds array bounds" at the index
+  (`CCtx.toolarge`, reported in `finalize_root`). large-size-array-6, golden
+  `misc_251`.
+- Parked: multiple-overflow-warn-3. gcc prints the overflow in
+  `(1 << 31) - 1` as `-2147483648 - 1` at the start of the statement (the
+  signed shift into the sign bit yields an overflow-flagged constant that is
+  printed folded and loses its location); other nested constants print no
+  expression at all and already match. A one-off for sign-bit shifts.
