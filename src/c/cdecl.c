@@ -64,15 +64,6 @@ static const Tok *tokp(const Checker *c, uint32_t tok)
     return &c->u->toks[tok].t;
 }
 
-static int tpunct(const Checker *c, uint32_t tok)
-{
-    const Tok *t;
-    if (tok >= c->u->ntoks)
-        return P_NONE;
-    t = tokp(c, tok);
-    return t->kind == TK_PUNCT ? t->punct : P_NONE;
-}
-
 static int tckw(const Checker *c, uint32_t tok)
 {
     const Tok *t;
@@ -153,51 +144,6 @@ static uint32_t inner_decl(const Checker *c, uint32_t i)
     return r;
 }
 
-/* First / last token of a subtree. */
-static uint32_t first_tok(const Checker *c, uint32_t i)
-{
-    uint32_t k, m = c->nodes[i].tok;
-    for (k = cfirst(c, i); k < i; k++)
-        if (c->nodes[k].tok < m)
-            m = c->nodes[k].tok;
-    return m;
-}
-
-static uint32_t last_tok(const Checker *c, uint32_t i)
-{
-    uint32_t k, m = 0;
-    for (k = cfirst(c, i); k <= i; k++) {
-        uint32_t t = c->nodes[k].tok;
-        if (c->nodes[k].tag == N_STRING)
-            t += node_pieces(c, k) - 1u;
-        if (t > m)
-            m = t;
-    }
-    return m;
-}
-
-/* The token after subtree i, closing brackets included. */
-static uint32_t after_tok(const Checker *c, uint32_t i)
-{
-    uint32_t f = first_tok(c, i), l = last_tok(c, i), k;
-    int depth = 0;
-    for (k = f; k <= l && k < c->u->ntoks; k++)
-        switch (tpunct(c, k)) {
-        case P_LPAREN: case P_LBRACKET: case P_LBRACE: depth++; break;
-        case P_RPAREN: case P_RBRACKET: case P_RBRACE: depth--; break;
-        default: break;
-        }
-    k = l + 1;
-    while (depth > 0 && k < c->u->ntoks) {
-        switch (tpunct(c, k)) {
-        case P_LPAREN: case P_LBRACKET: case P_LBRACE: depth++; break;
-        case P_RPAREN: case P_RBRACKET: case P_RBRACE: depth--; break;
-        default: break;
-        }
-        k++;
-    }
-    return k;
-}
 
 /* ---- gcc's input_location ---------------------------------------------- */
 

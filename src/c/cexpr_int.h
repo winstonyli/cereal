@@ -53,16 +53,6 @@ static inline bool is_err(Checker *c, TypeId t)
     return tkind(c, t) == TY_ERROR;
 }
 
-/* The punctuator of token tok, P_NONE if it is not one. */
-static inline int tpunct(const Checker *c, uint32_t tok)
-{
-    const Tok *t;
-    if (tok >= c->u->ntoks)
-        return P_NONE;
-    t = &c->u->toks[tok].t;
-    return t->kind == TK_PUNCT ? t->punct : P_NONE;
-}
-
 static inline int npunct(const Checker *c, uint32_t i)
 {
     return tpunct(c, c->nodes[i].tok);
@@ -103,38 +93,6 @@ static inline uint32_t nkids(const Checker *c, uint32_t i, uint32_t *out,
                       uint32_t max)
 {
     return node_children(c->nodes, i, out, max);
-}
-
-/* The last token of i's subtree (approximately: the largest token any of
- * its nodes names). */
-static inline uint32_t last_tok(const Checker *c, uint32_t i)
-{
-    uint32_t k, m = 0;
-    for (k = cfirst(c, i); k <= i; k++) {
-        uint32_t t = c->nodes[k].tok;
-        if (c->nodes[k].tag == N_STRING)
-            t += node_pieces(c, k) - 1u;
-        if (t > m)
-            m = t;
-    }
-    return m;
-}
-
-/* The first token of i's subtree. */
-static inline uint32_t first_tok(const Checker *c, uint32_t i)
-{
-    uint32_t k, m = c->nodes[i].tok;
-    if (c->nodes[i].tag == N_ADDR_LABEL)
-        return m - 1;   /* the && before the label name */
-    for (k = cfirst(c, i); k < i; k++)
-        if (c->nodes[k].tok < m)
-            m = c->nodes[k].tok;
-    return m;
-}
-
-static inline SrcLoc first_loc(const Checker *c, uint32_t i)
-{
-    return ctok_loc(c, first_tok(c, i));
 }
 
 /* gcc's input_location once the parser is past expression i. */

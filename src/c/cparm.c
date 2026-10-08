@@ -15,15 +15,6 @@
 
 #define TT (&c->tt)
 
-static int tpunct(const Checker *c, uint32_t tok)
-{
-    const Tok *t;
-    if (tok >= c->u->ntoks)
-        return P_NONE;
-    t = &c->u->toks[tok].t;
-    return t->kind == TK_PUNCT ? t->punct : P_NONE;
-}
-
 static unsigned ntag(const Checker *c, uint32_t i)
 {
     return c->nodes[i].tag;

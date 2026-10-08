@@ -126,33 +126,6 @@ static FuncState *top(CStmt *s)
 
 /* ---- locations ---------------------------------------------------------- */
 
-static uint32_t last_tok(const Checker *c, uint32_t i)
-{
-    uint32_t k, m = 0;
-    for (k = cfirst(c, i); k <= i; k++) {
-        uint32_t t = c->nodes[k].tok;
-        if (c->nodes[k].tag == N_STRING)
-            t += node_pieces(c, k) - 1u;
-        if (t > m)
-            m = t;
-    }
-    return m;
-}
-
-static uint32_t first_tok(const Checker *c, uint32_t i)
-{
-    uint32_t k, m = c->nodes[i].tok;
-    for (k = cfirst(c, i); k < i; k++)
-        if (c->nodes[k].tok < m)
-            m = c->nodes[k].tok;
-    return m;
-}
-
-static SrcLoc first_loc(const Checker *c, uint32_t i)
-{
-    return ctok_loc(c, first_tok(c, i));
-}
-
 /* gcc's EXPR_LOCATION of an expression, as far as it matters (cexpr.c's
  * expr_loc). */
 static uint32_t strip_paren(const Checker *c, uint32_t i)
