@@ -2601,3 +2601,25 @@ pr66415-2: after a `#24` line directive gcc puts the format warning at the
 string's start (col 52), not at the `%d` (col 71); without the directive both
 agree, so it is a gcc line-map quirk, parked. Gate: 1446 goldens, san 544/0,
 callgrind 3.818G, -O 3729/3744.
+
+Round 162 (cpp 262/266, gcc.dg 3731/3744):
+
+- `_Float128` literals at the maximum no longer warn "exceeds range": the host
+  long double (x87) overflows slightly below _Float128's maximum
+  (`f128_decimal_fits`). pr88074-2.
+- Removed `-Wunbalanced-push-pop-macro` and its warning: gcc 13 has neither
+  (it is gcc 14). pragma-pop_macro-1.
+- `#pragma STDC FLOAT_CONST_DECIMAL64`: pedantic "ISO C does not support" and
+  "malformed ... ignored" [-Wpragmas].
+- `#if` character constants: `\u`/`\U` escapes get libcpp's "outside the UCS
+  codespace" pedwarn, "not a valid universal character" and "incomplete
+  universal character name" (`ucn_diags`). ucs.
+- "function called through a non-compatible type" also fires through nested
+  pointer casts of a function designator. invalid-call-1.
+- `vector_size`: "number of vector components N not a power of two" (was
+  silently accepted), checked before "exceeds". Golden `misc_247`.
+
+Still open: pr100547 (the location of the vector_size error is gcc's
+input_location, which for an operator expression is not simply the start of
+the last operand: 4:3, 8:3 and 10:4 in a probe, 34:5 in the test). Gate: 1448
+goldens, san 545/0, callgrind 3.823G.

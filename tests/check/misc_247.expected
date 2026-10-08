@@ -1,0 +1,21 @@
+misc_247.c:1:9: warning: ISO C does not support '#pragma STDC FLOAT_CONST_DECIMAL64' [-Wpedantic]
+    1 | #pragma STDC FLOAT_CONST_DECIMAL64 ON
+      |         ^
+misc_247.c:2:9: warning: ISO C does not support '#pragma STDC FLOAT_CONST_DECIMAL64' [-Wpedantic]
+    2 | #pragma STDC FLOAT_CONST_DECIMAL64 BAD
+      |         ^
+misc_247.c:2:9: warning: malformed '#pragma STDC FLOAT_CONST_DECIMAL64', ignored [-Wpragmas]
+    2 | #pragma STDC FLOAT_CONST_DECIMAL64 BAD
+      |         ^
+misc_247.c:3:5: warning: \U1234abcd is outside the UCS codespace
+    3 | #if L'\U1234abcd' != 1
+      |     ^
+misc_247.c:5:1: error: number of vector components 3 not a power of two
+    5 | typedef int __attribute__((vector_size(12))) V3;
+      | ^
+misc_247.c:10:4: warning: function called through a non-compatible type
+   10 |   ((char *(*)(void *, char **))((fp)bar))(0, 0);
+      |    ^
+misc_247.c:12:1: warning: floating constant exceeds range of 'long double' [-Woverflow]
+   12 | long double big = 1.18973149535723176508575932662800702e+4932L;
+      | ^

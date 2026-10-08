@@ -1886,9 +1886,13 @@ void e_call(Checker *c, uint32_t i)
         bool qv = is_void(c, ret) && tquals(c, ret) != 0;
         /* a function designator cast to an incompatible function type */
         if (cf != NO_NODE && ntag(c, cf) == N_CAST) {
-            uint32_t ck2[2], op;
-            if (nkids(c, cf, ck2, 2) == 2 &&
-                (op = strip_paren(c, ck2[1])) != NO_NODE &&
+            uint32_t ck2[2], op = NO_NODE;
+            bool chain = nkids(c, cf, ck2, 2) == 2;
+            /* gcc folds nested pointer casts away */
+            while (chain && (op = strip_paren(c, ck2[1])) != NO_NODE &&
+                   ntag(c, op) == N_CAST && is_ptr(c, c->ty[op]))
+                chain = nkids(c, op, ck2, 2) == 2;
+            if (chain && op != NO_NODE &&
                 ntag(c, op) == N_IDENT && is_func(c, c->ty[op]) &&
                 !type_compatible(TT, mvt(c, c->ty[op]),
                                  mvt(c, pointee(c, t)))) {

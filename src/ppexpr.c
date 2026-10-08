@@ -6,6 +6,7 @@
 #include "pp.h"
 #include "c/lit.h"
 
+#include <ctype.h>
 #include <string.h>
 
 typedef struct Val {
@@ -271,12 +272,49 @@ static void esc_emit(void *ctx, int level, const char *msg)
         pp_pedwarn(e->pp, e->loc, "%s", msg);
 }
 
+/* libcpp _cpp_valid_ucn for the \u / \U escapes of a character constant. */
+static void ucn_diags(EP *p, const Tok *t)
+{
+    const char *s = TXT(p, t), *end = s + t->len;
+    for (; s + 1 < end; s++) {
+        unsigned want;
+        uint64_t v = 0;
+        const char *b = s, *q;
+        if (*s != '\\')
+            continue;
+        if (s[1] != 'u' && s[1] != 'U') {
+            s++;
+            continue;
+        }
+        want = s[1] == 'u' ? 4 : 8;
+        for (q = s + 2; want && q < end && isxdigit((unsigned char)*q);
+             q++, want--)
+            v = v << 4 | (uint64_t)(isdigit((unsigned char)*q)
+                                    ? *q - '0' : (*q | 32) - 'a' + 10);
+        if (want) {
+            diag_report(p->pp->diag, DL_ERROR, "", t->loc,
+                        "incomplete universal character name %.*s",
+                        (int)(q - b), b);
+        } else if (v > 0x10FFFF && v < 0x80000000u) {
+            pp_pedwarn(p->pp, t->loc, "%.*s is outside the UCS codespace",
+                       (int)(q - b), b);
+        } else if ((v < 0xA0 && v != 0x24 && v != 0x40 && v != 0x60) ||
+                   v >= 0x80000000u || (v >= 0xD800 && v <= 0xDFFF)) {
+            diag_report(p->pp->diag, DL_ERROR, "", t->loc,
+                        "%.*s is not a valid universal character",
+                        (int)(q - b), b);
+        }
+        s = q - 1;
+    }
+}
+
 static Val parse_char(EP *p, const Tok *t)
 {
     PEsc esc;
     esc.pp = p->pp;
     esc.loc = t->loc;
     lit_escape_diags(TXT(p, t), t->len, p->pp->opt->pedantic, esc_emit, &esc);
+    ucn_diags(p, t);
     return parse_char_(p, t);
 }
 

@@ -1199,6 +1199,27 @@ static void traditional_suffix(Checker *c, uint32_t i, const char *s,
               "traditional C rejects the \"%s\" suffix", suf);
 }
 
+/* Whether a decimal literal that overflowed the host long double (x87,
+ * max ~1.18973149535723176502e4932) still fits _Float128, whose maximum is
+ * slightly larger: compare the value scaled by 1e-2 with the maximum. */
+static bool f128_decimal_fits(const char *s, size_t len)
+{
+    char buf[128];
+    size_t k = 0, e = 0;
+    long ex;
+    if (len >= sizeof buf - 8)
+        return false;
+    while (e < len && s[e] != 'e' && s[e] != 'E')
+        e++;
+    if (e == len || (len > 1 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')))
+        return false;
+    memcpy(buf, s, e);
+    ex = strtol(s + e + 1, NULL, 10);
+    k = e + (size_t)snprintf(buf + e, sizeof buf - e, "e%ld", ex - 2);
+    buf[k] = 0;
+    return strtold(buf, NULL) <= 1.18973149535723176508575932662800702e4930L;
+}
+
 static void e_number(Checker *c, uint32_t i)
 {
     size_t len;
@@ -1250,7 +1271,7 @@ static void e_number(Checker *c, uint32_t i)
                 (hex && ((ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F'))))
                 nonzero = true;
         }
-        if (isinf(v))
+        if (isinf(v) && !(tkind(c, t) == TY_FLOAT128 && f128_decimal_fits(s, len)))
             cwarn(c, cinput_loc(c, c->nodes[i].tok), "overflow",
                   "floating constant exceeds range of %s", type_q(TT, t));
         else if (v == 0 && nonzero)

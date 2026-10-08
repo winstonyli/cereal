@@ -595,7 +595,6 @@ static bool attr_on_object(Checker *c, uint32_t attr)
     return true;
 }
 
-
 void attr_collect(Checker *c, uint32_t attr, Attrs *a)
 {
     Kids k;
@@ -1060,6 +1059,9 @@ TypeId attr_apply_type(Checker *c, TypeId t, const Attrs *a)
         } else if ((esz = type_size(TT, el, &ok)) && a->vector_size % esz) {
             cerror(c, a->vs_loc, "vector size not an integral multiple of "
                    "component size");
+        } else if (((a->vector_size / esz) & (a->vector_size / esz - 1)) != 0) {
+            cerror(c, a->vs_loc, "number of vector components %llu not a "
+                   "power of two", (unsigned long long)(a->vector_size / esz));
         } else if (a->vector_size / esz > 2147483646u) {
             cerror(c, a->vs_loc, "number of vector components %llu exceeds "
                    "2147483646", (unsigned long long)(a->vector_size / esz));

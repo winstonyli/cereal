@@ -34,7 +34,6 @@ static const DiagOption options[] = {
     {"integer-overflow-in-if", "cond", DL_WARNING, true, 0, "signed overflow in #if expression"},
     {"pedantic", "pedantic", DL_WARNING, false, 0, "GNU extensions and non-portable constructs"},
     {"stdc-pragma", "pp", DL_WARNING, true, 0, "malformed STDC pragma"},
-    {"unbalanced-push-pop-macro", "pp", DL_WARNING, true, 0, "#pragma pop_macro without push"},
 
     /* hygiene */
     {"macro-unparenthesized-param", "hygiene", DL_WARNING, true, 0, "parameter used as an operand without parentheses"},

@@ -1068,6 +1068,17 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                         "#pragma once in main file");
         pp->inc->file->pragma_once = true;
         emit = false;
+    } else if (word(pp, toks, 0, "STDC") && word(pp, toks, 1, "FLOAT_CONST_DECIMAL64")) {
+        /* c-pragma.c handle_pragma_float_const_decimal64 */
+        if (pp->opt->pedantic)
+            diag_report(pp->diag,
+                        pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
+                        "pedantic", PLOC(&toks.t[0]),
+                        "ISO C does not support '#pragma STDC FLOAT_CONST_DECIMAL64'");
+        if (toks.n != 3 || !(word(pp, toks, 2, "ON") || word(pp, toks, 2, "OFF") ||
+                             word(pp, toks, 2, "DEFAULT")))
+            diag_report(pp->diag, DL_WARNING, "pragmas", PLOC(&toks.t[0]),
+                        "malformed '#pragma STDC FLOAT_CONST_DECIMAL64', ignored");
     } else if (word(pp, toks, 0, "STDC")) {
         if (!(word(pp, toks, 1, "FP_CONTRACT") || word(pp, toks, 1, "FENV_ACCESS") ||
               word(pp, toks, 1, "CX_LIMITED_RANGE")) ||
@@ -1165,11 +1176,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             MacroStackEnt **pe = &pp->pushed;
             while (*pe && (*pe)->name != id)
                 pe = &(*pe)->next;
-            if (!*pe) {
-                diag_report(pp->diag, DL_WARNING, "unbalanced-push-pop-macro",
-                            PLOC(&toks.t[0]), "pop_macro(\"%s\") without push_macro",
-                            id->str);
-            } else {
+            if (*pe) {
                 Macro *restored = (*pe)->macro, *cur = mt_cur(pp->mt, id);
                 uint32_t ev = pp->seq++;
                 if (cur) {
