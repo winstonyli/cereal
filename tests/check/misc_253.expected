@@ -1,0 +1,6 @@
+misc_253.c:4:8: warning: argument 1 of type 'int[1][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n]' with mismatched bound [-Warray-parameter=]
+    4 | void f(int [1][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n]);
+      |        ^
+misc_253.c:3:8: note: previously declared as 'int[][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n]'
+    3 | void f(int [ ][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n][n]);
+      |        ^

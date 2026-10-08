@@ -1,0 +1,84 @@
+misc_252.c:6:3: warning: argument 1 null where non-null expected [-Wnonnull]
+    6 |   __builtin___strcpy_chk(0, p, n); __builtin___strcpy_chk(p, 0, n);
+      |   ^
+misc_252.c:6:36: warning: argument 2 null where non-null expected [-Wnonnull]
+    6 |   __builtin___strcpy_chk(0, p, n); __builtin___strcpy_chk(p, 0, n);
+      |                                    ^
+misc_252.c:7:3: warning: argument 1 null where non-null expected [-Wnonnull]
+    7 |   __builtin___stpcpy_chk(0, p, n); __builtin___stpcpy_chk(p, 0, n);
+      |   ^
+misc_252.c:7:36: warning: argument 2 null where non-null expected [-Wnonnull]
+    7 |   __builtin___stpcpy_chk(0, p, n); __builtin___stpcpy_chk(p, 0, n);
+      |                                    ^
+misc_252.c:10:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   10 |   __builtin___strcat_chk(0, p, n); __builtin___strcat_chk(p, 0, n);
+      |   ^
+misc_252.c:10:36: warning: argument 2 null where non-null expected [-Wnonnull]
+   10 |   __builtin___strcat_chk(0, p, n); __builtin___strcat_chk(p, 0, n);
+      |                                    ^
+misc_252.c:11:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   11 |   __builtin___strncat_chk(0, p, n, n); __builtin___strncat_chk(p, 0, n, n);
+      |   ^
+misc_252.c:12:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   12 |   __builtin___sprintf_chk(0, 1, n, p); __builtin___sprintf_chk(p, 1, n, 0);
+      |   ^
+misc_252.c:12:40: warning: argument 4 null where non-null expected [-Wnonnull]
+   12 |   __builtin___sprintf_chk(0, 1, n, p); __builtin___sprintf_chk(p, 1, n, 0);
+      |                                        ^
+misc_252.c:13:44: warning: argument 5 null where non-null expected [-Wnonnull]
+   13 |   __builtin___snprintf_chk(0, n, 1, n, p); __builtin___snprintf_chk(p, n, 1, n, 0);
+      |                                            ^
+misc_252.c:14:3: warning: argument 2 null where non-null expected [-Wnonnull]
+   14 |   __builtin___printf_chk(1, 0); __builtin___fprintf_chk(0, 1, p); __builtin___fprintf_chk(p, 1, 0);
+      |   ^
+misc_252.c:14:33: warning: argument 1 null where non-null expected [-Wnonnull]
+   14 |   __builtin___printf_chk(1, 0); __builtin___fprintf_chk(0, 1, p); __builtin___fprintf_chk(p, 1, 0);
+      |                                 ^
+misc_252.c:14:67: warning: argument 3 null where non-null expected [-Wnonnull]
+   14 |   __builtin___printf_chk(1, 0); __builtin___fprintf_chk(0, 1, p); __builtin___fprintf_chk(p, 1, 0);
+      |                                                                   ^
+misc_252.c:17:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   17 |   __builtin___vsprintf_chk(0, 1, n, p, v); __builtin___vsprintf_chk(p, 1, n, 0, v);
+      |   ^
+misc_252.c:17:44: warning: argument 4 null where non-null expected [-Wnonnull]
+   17 |   __builtin___vsprintf_chk(0, 1, n, p, v); __builtin___vsprintf_chk(p, 1, n, 0, v);
+      |                                            ^
+misc_252.c:18:48: warning: argument 5 null where non-null expected [-Wnonnull]
+   18 |   __builtin___vsnprintf_chk(0, n, 1, n, p, v); __builtin___vsnprintf_chk(p, n, 1, n, 0, v);
+      |                                                ^
+misc_252.c:19:3: warning: argument 2 null where non-null expected [-Wnonnull]
+   19 |   __builtin___vprintf_chk(1, 0, v); __builtin___vfprintf_chk(0, 1, p, v); __builtin___vfprintf_chk(p, 1, 0, v);
+      |   ^
+misc_252.c:19:37: warning: argument 1 null where non-null expected [-Wnonnull]
+   19 |   __builtin___vprintf_chk(1, 0, v); __builtin___vfprintf_chk(0, 1, p, v); __builtin___vfprintf_chk(p, 1, 0, v);
+      |                                     ^
+misc_252.c:19:75: warning: argument 3 null where non-null expected [-Wnonnull]
+   19 |   __builtin___vprintf_chk(1, 0, v); __builtin___vfprintf_chk(0, 1, p, v); __builtin___vfprintf_chk(p, 1, 0, v);
+      |                                                                           ^
+misc_252.c:20:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   20 |   __builtin_vprintf(0, v); __builtin_vfprintf(0, p, v); __builtin_vfprintf(p, 0, v); __builtin_vsprintf(0,p,v); __builtin_vsprintf(p,0,v);
+      |   ^
+misc_252.c:20:28: warning: argument 1 null where non-null expected [-Wnonnull]
+   20 |   __builtin_vprintf(0, v); __builtin_vfprintf(0, p, v); __builtin_vfprintf(p, 0, v); __builtin_vsprintf(0,p,v); __builtin_vsprintf(p,0,v);
+      |                            ^
+misc_252.c:20:57: warning: argument 2 null where non-null expected [-Wnonnull]
+   20 |   __builtin_vprintf(0, v); __builtin_vfprintf(0, p, v); __builtin_vfprintf(p, 0, v); __builtin_vsprintf(0,p,v); __builtin_vsprintf(p,0,v);
+      |                                                         ^
+misc_252.c:20:86: warning: argument 1 null where non-null expected [-Wnonnull]
+   20 |   __builtin_vprintf(0, v); __builtin_vfprintf(0, p, v); __builtin_vfprintf(p, 0, v); __builtin_vsprintf(0,p,v); __builtin_vsprintf(p,0,v);
+      |                                                                                      ^
+misc_252.c:20:113: warning: argument 2 null where non-null expected [-Wnonnull]
+   20 |   __builtin_vprintf(0, v); __builtin_vfprintf(0, p, v); __builtin_vfprintf(p, 0, v); __builtin_vsprintf(0,p,v); __builtin_vsprintf(p,0,v);
+      |                                                                                                                 ^
+misc_252.c:21:3: warning: argument 3 null where non-null expected [-Wnonnull]
+   21 |   __builtin_vsnprintf(p, n, 0, v); __builtin_vscanf(0, v); __builtin_vsscanf(0, p, v); __builtin_vsscanf(p, 0, v); __builtin_vfscanf(0, p, v); __builtin_vfscanf(p, 0, v);
+      |   ^
+misc_252.c:21:36: warning: argument 1 null where non-null expected [-Wnonnull]
+   21 |   __builtin_vsnprintf(p, n, 0, v); __builtin_vscanf(0, v); __builtin_vsscanf(0, p, v); __builtin_vsscanf(p, 0, v); __builtin_vfscanf(0, p, v); __builtin_vfscanf(p, 0, v);
+      |                                    ^
+misc_252.c:21:88: warning: argument 2 null where non-null expected [-Wnonnull]
+   21 |   __builtin_vsnprintf(p, n, 0, v); __builtin_vscanf(0, v); __builtin_vsscanf(0, p, v); __builtin_vsscanf(p, 0, v); __builtin_vfscanf(0, p, v); __builtin_vfscanf(p, 0, v);
+      |                                                                                        ^
+misc_252.c:21:144: warning: argument 2 null where non-null expected [-Wnonnull]
+   21 |   __builtin_vsnprintf(p, n, 0, v); __builtin_vscanf(0, v); __builtin_vsscanf(0, p, v); __builtin_vsscanf(p, 0, v); __builtin_vfscanf(0, p, v); __builtin_vfscanf(p, 0, v);
+      |                                                                                                                                                ^

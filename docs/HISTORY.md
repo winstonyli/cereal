@@ -2672,3 +2672,21 @@ Round 164 addendum (gcc.dg 3733/3744):
   signed shift into the sign bit yields an overflow-flagged constant that is
   printed folded and loses its location); other nested constants print no
   expression at all and already match. A one-off for sign-bit shifts.
+
+Round 164 addendum 2 (gcc.dg 3735/3744):
+
+- More built-in library functions carry gcc's nonnull: the v*printf/v*scanf
+  family and the _chk variants of str{cpy,cat,ncat}, stpcpy, (v)sprintf,
+  (v)snprintf, (v)printf, (v)fprintf (probed from gcc; the mem*_chk ones do
+  not). pr62090. Golden `misc_252`.
+- Parameter declarators no longer give up past 16 array dimensions / 32
+  levels (`parm_of` sizes its buffers from the parameter's subtree), so
+  -Warray-parameter / -Wvla-parameter work on pr100619's 1100-dimension
+  types. Golden `misc_253` (60 dimensions). `cparm_typedef` still caps a
+  VLA typedef at 16 dimensions.
+- Parked: Warray-parameter-11. gcc folds `!__builtin_copysign(~2, 3)`,
+  `(int)__builtin_fabs(-4.0)` and `(intptr_t)((char*)&sp->a[1] - (char*)sp)`
+  to constants in an array bound (so "ISO C forbids zero-size array" and a
+  plain array mismatch), while cereal calls them non-constant (VLA). Needs a
+  value evaluator for built-in math calls and same-object address
+  differences, not just the K_FOLD classification.

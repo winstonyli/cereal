@@ -340,10 +340,10 @@ bad:
 }
 
 /* How parameter node p was declared. */
-static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
-                    uint32_t nnames)
+static void parm_of_(Checker *c, uint32_t p, PParm *o, char *const *names,
+                     uint32_t nnames, uint32_t *dn, uint32_t *w)
 {
-    uint32_t kids[32], nk, l = NO_NODE, d, dn[16], nd = 0, m, w[32], nw = 0;
+    uint32_t kids[32], nk, l = NO_NODE, d, nd = 0, m, nw = 0;
     bool ptr_after = false, other = false;
     TypeId t = c->ty[p], pt, e;
     memset(o, 0, sizeof *o);
@@ -373,12 +373,10 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
         return;
     for (d = l; d != NO_NODE; d = cdecl_inner_decl(c, d)) {
         unsigned tg = ntag(c, d);
-        if (nw < 32 && (tg == N_ARRAY || tg == N_PTR || tg == N_FUNC))
+        if (tg == N_ARRAY || tg == N_PTR || tg == N_FUNC)
             w[nw++] = d;
-        else if (nw == 32)
-            other = true;
         if (tg == N_ARRAY) {
-            if (nd == 16 || ptr_after)
+            if (ptr_after)
                 other = true;
             else
                 dn[nd++] = d;
@@ -392,8 +390,7 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
         }
     }
     if (other) {
-        if (nw < 32)
-            levels_of(c, p, o, w, nw, names, nnames);
+        levels_of(c, p, o, w, nw, names, nnames);
         return;
     }
     if (!nd) {
@@ -494,7 +491,7 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
         o->nd = 0;
         o->arr = false;
         o->unk = true;
-    } else if (nw < 32) {
+    } else {
         /* an array of pointers to an array typedef (IA3 *x[n]): the
          * typedef's bounds come last, int (*[n])[3] */
         TypeId z = pt;
@@ -518,6 +515,17 @@ static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
             levels_of(c, p, o, w, nw, names, nnames);
         }
     }
+}
+
+/* The declarator levels are nodes of the parameter's subtree, so its size
+ * bounds them. */
+static void parm_of(Checker *c, uint32_t p, PParm *o, char *const *names,
+                    uint32_t nnames)
+{
+    uint32_t cap = c->nodes[p].size + 1;
+    uint32_t *buf = xmalloc(2 * cap * sizeof *buf);
+    parm_of_(c, p, o, names, nnames, buf, buf + cap);
+    free(buf);
 }
 
 /* Is parameter j (0-based) of a function with record d declared as a restrict pointer? */

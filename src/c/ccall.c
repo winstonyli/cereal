@@ -33,7 +33,14 @@ static uint64_t builtin_nonnull(const char *name)
         {"strlen", "1"}, {"strncasecmp", "12"}, {"strncat", "12"},
         {"strncmp", "12"}, {"strncpy", "12"}, {"strndup", "1"},
         {"strpbrk", "12"}, {"strrchr", "1"}, {"strspn", "12"},
-        {"strstr", "12"}};
+        {"strstr", "12"}, {"vprintf", "1"}, {"vfprintf", "12"},
+        {"vsprintf", "12"}, {"vsnprintf", "3"}, {"vscanf", "1"},
+        {"vsscanf", "2"}, {"vfscanf", "2"}, {"__strcpy_chk", "12"},
+        {"__stpcpy_chk", "12"}, {"__strcat_chk", "12"}, {"__strncat_chk", "1"},
+        {"__sprintf_chk", "14"}, {"__snprintf_chk", "5"},
+        {"__vsprintf_chk", "14"}, {"__vsnprintf_chk", "5"},
+        {"__printf_chk", "2"}, {"__fprintf_chk", "13"},
+        {"__vprintf_chk", "2"}, {"__vfprintf_chk", "13"}};
     size_t k;
     uint64_t m = 0;
     const char *p;
