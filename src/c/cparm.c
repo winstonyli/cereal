@@ -792,36 +792,7 @@ static const char *pstr_raw(Checker *c, StrBuf *sb, const PParm *p)
         sb_putc(sb, 41);
     }
     for (i = 0; i < p->nd; i++) {
-        bool sp = false;
-        sb_putc(sb, '[');
-        if (i == 0 && p->arr) {
-            if (p->stat) {
-                sb_puts(sb, "static");
-                sp = true;
-            }
-            if (p->quals & TQ_CONST) {
-                sb_puts(sb, sp ? " const" : "const");
-                sp = true;
-            }
-            if (p->quals & TQ_VOLATILE) {
-                sb_puts(sb, sp ? " volatile" : "volatile");
-                sp = true;
-            }
-            if (p->quals & TQ_RESTRICT) {
-                sb_puts(sb, sp ? " restrict" : "restrict");
-                sp = true;
-            }
-            if (p->quals & TQ_ATOMIC) {
-                sb_puts(sb, sp ? " _Atomic" : "_Atomic");
-                sp = true;
-            }
-            if (sp && p->d[i].k != D_NONE)
-                sb_putc(sb, ' ');
-            if (sp && p->d[i].k == D_EXPR)
-                sb_putc(sb, ' ');
-        }
-        put_dim(sb, &p->d[i]);
-        sb_putc(sb, ']');
+        put_arr(sb, p, i);
     }
     return sb_cstr(sb);
 }
