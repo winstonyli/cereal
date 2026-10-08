@@ -1,0 +1,45 @@
+misc_260.c:7:32: error: 'struct S' has no member named 'nope'
+    7 | void f1(struct S *p, int i) { p->nope[i] = 1; }
+      |                                ^
+misc_260.c:7:26: warning: parameter 'i' set but not used [-Wunused-but-set-parameter]
+    7 | void f1(struct S *p, int i) { p->nope[i] = 1; }
+      |                          ^
+misc_260.c:8:38: error: 'struct S' has no member named 'nope'
+    8 | int f2(struct S *p, int i) { return p->nope + i; }
+      |                                      ^
+misc_260.c:9:45: error: 'struct S' has no member named 'nope'
+    9 | int f4(struct S *p, int i, int j) { return p->nope[i][j]; }
+      |                                             ^
+misc_260.c:9:25: warning: parameter 'i' set but not used [-Wunused-but-set-parameter]
+    9 | int f4(struct S *p, int i, int j) { return p->nope[i][j]; }
+      |                         ^
+misc_260.c:9:32: warning: parameter 'j' set but not used [-Wunused-but-set-parameter]
+    9 | int f4(struct S *p, int i, int j) { return p->nope[i][j]; }
+      |                                ^
+misc_260.c:10:40: error: 'struct S' has no member named 'nope'
+   10 | int f6(struct S *p, int i) { return i[p->nope]; }
+      |                                        ^
+misc_260.c:10:25: warning: parameter 'i' set but not used [-Wunused-but-set-parameter]
+   10 | int f6(struct S *p, int i) { return i[p->nope]; }
+      |                         ^
+misc_260.c:11:45: error: 'struct S' has no member named 'nope'
+   11 | int f7(struct S *p, int i, int k) { return p->nope[i + k]; }
+      |                                             ^
+misc_260.c:12:37: error: 'undefd' undeclared (first use in this function)
+   12 | int f8(struct S *p, int i) { return undefd[i]; }
+      |                                     ^
+misc_260.c:12:37: note: each undeclared identifier is reported only once for each function it appears in
+   12 | int f8(struct S *p, int i) { return undefd[i]; }
+      |                                     ^
+misc_260.c:12:25: warning: parameter 'i' set but not used [-Wunused-but-set-parameter]
+   12 | int f8(struct S *p, int i) { return undefd[i]; }
+      |                         ^
+misc_260.c:12:18: warning: unused parameter 'p' [-Wunused-parameter]
+   12 | int f8(struct S *p, int i) { return undefd[i]; }
+      |                  ^
+misc_260.c:13:39: error: 'struct S' has no member named 'nope'
+   13 | int f9(struct S *p, int i) { return -p->nope[(i)]; }
+      |                                       ^
+misc_260.c:13:25: warning: parameter 'i' set but not used [-Wunused-but-set-parameter]
+   13 | int f9(struct S *p, int i) { return -p->nope[(i)]; }
+      |                         ^

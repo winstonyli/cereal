@@ -568,11 +568,11 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
             check_format_literal(c, kv, nk, csym(c, fref),
                                  cident(c, csym(c, fref)->name), loc);
         if (builtin_decl_ok(c, csym(c, fref))) {
-            const char *bn = cident(c, csym(c, fref)->name);
-            if (!strcmp(bn, "strlen"))
+            const char *bname = cident(c, csym(c, fref)->name);
+            if (!strcmp(bname, "strlen"))
                 check_strlen(c, kv, nk);
-            else if (!strcmp(bn, "strspn") || !strcmp(bn, "strcspn"))
-                check_spn(c, kv, nk, bn, loc);
+            else if (!strcmp(bname, "strspn") || !strcmp(bname, "strcspn"))
+                check_spn(c, kv, nk, bname, loc);
         }
     }
     /* a call through a pointer declared with 'nonnull' */

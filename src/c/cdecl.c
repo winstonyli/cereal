@@ -3789,6 +3789,25 @@ static void st_mark_value(Checker *c, uint32_t e)
     }
 }
 
+/* gcc's build_array_ref returns at once when an operand is erroneous, so an
+ * operand that is a plain identifier is never marked read. */
+static void err_index_mark(Checker *c, uint32_t e)
+{
+    uint32_t op[2], j;
+    op[0] = first_child(c, e);
+    op[1] = last_child(c, e);
+    if (op[0] == NO_NODE || op[1] == NO_NODE ||
+        !(is_err(c, c->ty[op[0]]) || is_err(c, c->ty[op[1]])))
+        return;
+    for (j = 0; j < 2; j++) {
+        uint32_t x = op[j];
+        while (ntag(c, x) == N_PAREN)
+            x = first_child(c, x);
+        if (ntag(c, x) == N_IDENT)
+            vec_push(&c->stack, x);
+    }
+}
+
 static void read_scan(Checker *c, uint32_t first, uint32_t last,
                       const uint32_t *names, uint8_t *read, uint32_t n)
 {
@@ -3815,6 +3834,8 @@ static void read_scan(Checker *c, uint32_t first, uint32_t last,
                     st_mark(c, kk.p[3]);
             }
             kids_free(&kk);
+        } else if (ntag(c, k) == N_INDEX) {
+            err_index_mark(c, k);
         }
     }
     if (c->stack.len)

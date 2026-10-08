@@ -1136,7 +1136,7 @@ static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
             return 0;
         free(f);
         free(fo);
-        out[0] = (SlRes){SYM_NONE, n, (int64_t)n + 1, off, known};
+        out[0] = (SlRes){SYM_NONE, n, (int64_t)n + 1, off, known, 0, false};
         return 1;
     }
     case N_MEMBER_EXPR: {
@@ -1169,7 +1169,7 @@ static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
         sz = type_size(TT, c->ty[e], &ok);
         if (!ok || !sz)         /* a flexible array member: the extent is unknown */
             return 0;
-        out[0] = (SlRes){ref, 0, (int64_t)sz, off, known};
+        out[0] = (SlRes){ref, 0, (int64_t)sz, off, known, 0, false};
         return 1;
     }
     case N_IDENT: {
@@ -1186,7 +1186,7 @@ static int sl_resolve(Checker *c, uint32_t e, int64_t off, bool known,
         sz = type_size(TT, c->ty[e], &ok);
         if (!ok)
             return 0;
-        out[0] = (SlRes){ref, 0, (int64_t)sz, off, known};
+        out[0] = (SlRes){ref, 0, (int64_t)sz, off, known, 0, false};
         return 1;
     }
     default:

@@ -2795,3 +2795,17 @@ functions leave through cdecl_int.h (the eight visitors, `flex_struct`,
 unchanged, 1474 goldens, sanitizer 0 findings, callgrind 3.8422 G (+0.02%,
 the calls now cross a translation unit). The function-definition split stays
 parked: it would need about 28 imports for 13% of the file.
+
+Round 166: `-Wunused-but-set-parameter` with an erroneous subscript. libuv's
+`posix-poll.c` (written for a loop struct this Linux build lacks) gave gcc
+"parameter 'l' set but not used" where cereal gave nothing: gcc's
+`build_array_ref` returns at once when either operand is erroneous, before
+the index is marked read, so a plain-identifier operand (parentheses allowed)
+stays unread. `read_scan` now skips such operands (`err_index_mark`, cdecl.c);
+compound operands (`i + k`) and other operators still read as before. Checked
+against gcc-13 on `a.c`-style cases (assignment target, `i[err]`, nested
+subscripts, undeclared base). Golden `misc_260`. `posix-poll.c` now matches
+gcc-13, so the parked item is closed; the whole libuv unix directory is again
+identical file for file. Also cleared the build's nine warnings (`bn` and
+`k` shadows, missing initializers in `SlRes` and the `FieldIn` va_list tables);
+callgrind is unchanged at 3.8422 G.

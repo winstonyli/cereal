@@ -6317,11 +6317,11 @@ static void e_cond(Checker *c, uint32_t i)
         /* gcc's parser reports both before it reads the third operand */
         if (at < n0 && c->diag->all.len > n0) {
             Diagnostic **d = c->diag->all.data, *tmp[2];
-            size_t k = c->diag->all.len - n0;
-            if (k <= 2) {
-                memcpy(tmp, d + n0, k * sizeof *d);
-                memmove(d + at + k, d + at, (n0 - at) * sizeof *d);
-                memcpy(d + at, tmp, k * sizeof *d);
+            size_t nd = c->diag->all.len - n0;
+            if (nd <= 2) {
+                memcpy(tmp, d + n0, nd * sizeof *d);
+                memmove(d + at + nd, d + at, (n0 - at) * sizeof *d);
+                memcpy(d + at, tmp, nd * sizeof *d);
             }
         }
     }
