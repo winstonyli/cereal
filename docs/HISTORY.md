@@ -2762,3 +2762,15 @@ build unchanged, callgrind 3.837 G to 3.842 G):
 Not done (surveyed): splitting `grok` (about 740 lines), `declared_visit`,
 `assign_check`, and moving the struct/enum and function-definition code out of
 `cdecl.c` into their own files. Low risk to move, no motive yet.
+
+`cdecl.c` split survey, step 1 (no behaviour change; goldens, parity and the
+sanitizer unchanged, callgrind 3.8416 G). Counting what each candidate region
+needs from the rest of `cdecl.c` (static helpers defined outside, used
+inside): merge/redeclaration 5, records/enums 14, function definitions 28 (plus
+`GDecl`). So function definitions is the costliest split, not the cheapest.
+Done: the type predicates `tkind`, `is_err`, `is_arr`, `is_void`, `is_func`,
+`is_prototype` now live once in check_int.h (cexpr_int.h, cinit.c and cdecl.c
+each had a copy); `sym_public/external/defined`, `ref_file_scope`,
+`extern_inline`, `sname`, `in_extension` moved to cdecl_int.h. Next, if
+wanted: merge -> `cmerge.c` (about 8 exports), then records -> `crecord.c`
+(about 14). Function definitions stays parked.

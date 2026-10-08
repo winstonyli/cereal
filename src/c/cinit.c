@@ -154,17 +154,6 @@ static TypeKind ck_(Checker *c, TypeId t)
     return type_ckind(TT, t);
 }
 
-static bool is_err(Checker *c, TypeId t)
-{
-    return ck_(c, t) == TY_ERROR;
-}
-
-static bool is_arr(Checker *c, TypeId t)
-{
-    TypeKind k = ck_(c, t);
-    return k == TY_ARRAY || k == TY_VLA;
-}
-
 static bool is_aggr(Checker *c, TypeId t)
 {
     TypeKind k = ck_(c, t);

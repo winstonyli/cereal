@@ -492,6 +492,40 @@ static inline const char *cident(const Checker *c, uint32_t id)
     return i->ext ? cident_ucn(i->str) : i->str;
 }
 
+/* ---- type predicates ------------------------------------------------------ */
+
+static inline TypeKind tkind(Checker *c, TypeId t)
+{
+    return type_ckind(&c->tt, t);
+}
+
+static inline bool is_err(Checker *c, TypeId t)
+{
+    return tkind(c, t) == TY_ERROR;
+}
+
+static inline bool is_arr(Checker *c, TypeId t)
+{
+    TypeKind k = tkind(c, t);
+    return k == TY_ARRAY || k == TY_VLA;
+}
+
+static inline bool is_void(Checker *c, TypeId t)
+{
+    return tkind(c, t) == TY_VOID;
+}
+
+static inline bool is_func(Checker *c, TypeId t)
+{
+    return tkind(c, t) == TY_FUNC;
+}
+
+static inline bool is_prototype(Checker *c, TypeId t)
+{
+    return is_func(c, t) &&
+           !(type_ent(&c->tt, type_canon(&c->tt, t))->flags & TF_NOPROTO);
+}
+
 /* a parameter that is part of the function's type (not a GNU forward
  * declaration) */
 #define is_real_param(c, n) \

@@ -44,16 +44,6 @@ static inline unsigned ntag(const Checker *c, uint32_t i)
     return c->nodes[i].tag;
 }
 
-static inline TypeKind tkind(Checker *c, TypeId t)
-{
-    return type_ckind(TT, t);
-}
-
-static inline bool is_err(Checker *c, TypeId t)
-{
-    return tkind(c, t) == TY_ERROR;
-}
-
 static inline int npunct(const Checker *c, uint32_t i)
 {
     return tpunct(c, c->nodes[i].tok);
@@ -154,10 +144,6 @@ static inline bool is_arith(Checker *c, TypeId t) { return type_is_arith(TT, t);
 static inline bool is_ptr(Checker *c, TypeId t) { return tkind(c, t) == TY_PTR; }
 
 static inline bool is_scalar(Checker *c, TypeId t) { return type_is_scalar(TT, t); }
-
-static inline bool is_void(Checker *c, TypeId t) { return tkind(c, t) == TY_VOID; }
-
-static inline bool is_func(Checker *c, TypeId t) { return tkind(c, t) == TY_FUNC; }
 
 static inline bool is_record(Checker *c, TypeId t) { return type_is_record(TT, t); }
 

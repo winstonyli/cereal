@@ -14,6 +14,45 @@
 
 enum { DC_NORMAL, DC_FIELD, DC_PARM, DC_TYPENAME };
 
+/* ---- symbol predicates ---------------------------------------------------- */
+
+static inline bool sym_public(const CSym *s)
+{
+    return s->linkage == LK_EXTERNAL;
+}
+
+static inline bool sym_external(const CSym *s)
+{
+    return (s->flags & (CSF_DECL_EXTERNAL | CSF_IMPLICIT)) != 0;
+}
+
+static inline bool sym_defined(const CSym *s)
+{
+    return (s->flags & CSF_DEFINED) != 0;
+}
+
+/* DECL_FILE_SCOPE_P: the symbol is a persistent one. */
+static inline bool ref_file_scope(uint32_t ref)
+{
+    return !(ref & SYM_LOCAL);
+}
+
+static inline bool extern_inline(const CSym *s)
+{
+    return (s->flags & CSF_INLINE) && sym_external(s);
+}
+
+static inline const char *sname(Checker *c, const CSym *s)
+{
+    return cident(c, s->name);
+}
+
+/* A pedantic pedwarn about node/token tok, off under __extension__. */
+static inline bool in_extension(Checker *c, uint32_t node)
+{
+    return node != NO_NODE && cexpr_in_extension(c, node);
+}
+
 static inline unsigned ntag(const Checker *c, uint32_t i)
 {
     return c->nodes[i].tag;

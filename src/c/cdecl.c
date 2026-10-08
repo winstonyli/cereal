@@ -76,24 +76,8 @@ SrcLoc cdecl_iloc(Checker *c, uint32_t tok)
     return iloc(c, tok);
 }
 
-/* A pedantic pedwarn about node/token tok, off under __extension__. */
-static bool in_extension(Checker *c, uint32_t node)
-{
-    return node != NO_NODE && cexpr_in_extension(c, node);
-}
-
 
 /* ---- type helpers --------------------------------------------------------- */
-
-static TypeKind tkind(Checker *c, TypeId t)
-{
-    return type_ckind(TT, t);
-}
-
-static bool is_err(Checker *c, TypeId t)
-{
-    return tkind(c, t) == TY_ERROR;
-}
 
 /* Does function type t have a parameter of erroneous type? */
 static bool func_err_param(Checker *c, TypeId t)
@@ -108,28 +92,6 @@ static bool func_err_param(Checker *c, TypeId t)
         if (is_err(c, type_params(TT, t)[i]))
             return true;
     return false;
-}
-
-static bool is_arr(Checker *c, TypeId t)
-{
-    TypeKind k = tkind(c, t);
-    return k == TY_ARRAY || k == TY_VLA;
-}
-
-static bool is_func(Checker *c, TypeId t)
-{
-    return tkind(c, t) == TY_FUNC;
-}
-
-static bool is_void(Checker *c, TypeId t)
-{
-    return tkind(c, t) == TY_VOID;
-}
-
-static bool is_prototype(Checker *c, TypeId t)
-{
-    return is_func(c, t) &&
-           !(type_ent(TT, type_canon(TT, t))->flags & TF_NOPROTO);
 }
 
 static TypeId strip_arrays(Checker *c, TypeId t)
@@ -1438,41 +1400,10 @@ static void grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
 
 /* ---- symbols: duplicate declarations, pushdecl ---------------------------- */
 
-static bool sym_public(const CSym *s)
-{
-    return s->linkage == LK_EXTERNAL;
-}
-
-static bool sym_external(const CSym *s)
-{
-    return (s->flags & (CSF_DECL_EXTERNAL | CSF_IMPLICIT)) != 0;
-}
-
-static bool sym_defined(const CSym *s)
-{
-    return (s->flags & CSF_DEFINED) != 0;
-}
-
-/* DECL_FILE_SCOPE_P: the symbol is a persistent one. */
-static bool ref_file_scope(uint32_t ref)
-{
-    return !(ref & SYM_LOCAL);
-}
-
 /* gcc's tree code of a symbol. */
 static int dcode(const CSym *s)
 {
     return s->kind * 2 + (s->kind == CS_OBJ && (s->flags & CSF_PARAM) ? 1 : 0);
-}
-
-static bool extern_inline(const CSym *s)
-{
-    return (s->flags & CSF_INLINE) && sym_external(s);
-}
-
-static const char *sname(Checker *c, const CSym *s)
-{
-    return cident(c, s->name);
 }
 
 /* The type a typedef names (a typedef symbol's ty is its own entry). */
