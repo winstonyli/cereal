@@ -1,0 +1,18 @@
+misc_249.c:1:14: error: stray '#' in program
+    1 | #define HASH #
+      |              ^
+misc_249.c:2:1: note: in expansion of macro 'HASH'
+    2 | HASH include "x"
+      | ^
+misc_249.c:2:14: error: expected '=', ',', ';', 'asm' or '__attribute__' before string constant
+    2 | HASH include "x"
+      |              ^
+misc_249.c:4:38: error: 'a' undeclared here (not in a function)
+    4 | struct c3 { int x[(__UINTPTR_TYPE__)&a]; };
+      |                                      ^
+misc_249.c:5:8: warning: ISO C does not support omitting parameter names in function definitions before C2X [-Wpedantic]
+    5 | void f(int [3], long) {}
+      |        ^
+misc_249.c:5:17: warning: ISO C does not support omitting parameter names in function definitions before C2X [-Wpedantic]
+    5 | void f(int [3], long) {}
+      |                 ^

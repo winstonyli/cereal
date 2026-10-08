@@ -404,6 +404,7 @@ struct Checker {
     bool vis_old_ok;
     bool redecl_failed;      /* the last declaration conflicted with its predecessor */
     bool kr_decls;           /* between a K&R definition's declarator and its body */
+    bool in_head;            /* between a definition's declarator and its body */
     bool lax_noted;          /* the -flax-vector-conversions note was given */
     /* cexpr.c: identifiers already reported undeclared in the function
      * undecl_key names; whether the once-per-TU note was given; nodes

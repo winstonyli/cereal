@@ -1,0 +1,6 @@
+misc_248.c:3:1: error: stray '#' in program
+    3 | HASH include "x"
+      | ^
+misc_248.c:3:14: error: expected '=', ',', ';', 'asm' or '__attribute__' before string constant
+    3 | HASH include "x"
+      |              ^

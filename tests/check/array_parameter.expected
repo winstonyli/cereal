@@ -187,9 +187,9 @@ array_parameter.c:61:10: warning: argument 1 of type 'int[2]' with mismatched bo
 array_parameter.c:60:10: note: previously declared as 'int[]'
    60 | void h5 (int[0]);
       |          ^
-array_parameter.c:63:13: warning: ISO C does not support omitting parameter names in function definitions before C2X [-Wpedantic]
+array_parameter.c:63:10: warning: ISO C does not support omitting parameter names in function definitions before C2X [-Wpedantic]
    63 | void h6 (int[2]) {}
-      |             ^
+      |          ^
 array_parameter.c:65:14: warning: argument 1 of type 'int[3]' with mismatched bound [-Warray-parameter=]
    65 | void h7 (int a[3]) {}
       |              ^

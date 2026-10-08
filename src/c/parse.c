@@ -27,20 +27,22 @@ static bool fill_slow(Parser *p, size_t i);
 
 /* c_lex_one_token: a token of no C syntax is an error and is skipped; the
  * first byte names it. */
-static void stray_token(Parser *p, const Tok *t)
+static Diagnostic *stray_token(Parser *p, const Tok *t, SrcLoc loc)
 {
     unsigned c = (unsigned char)*tok_text_raw(p->sm, p->in, t);
     if (c == '"' || c == '\'')
-        diag_report(p->diag, DL_ERROR, "", t->loc,
-                    "missing terminating %c character", (int)c);
-    else if (c == '#' && tok_text_raw(p->sm, p->in, t)[1] == '#')
-        diag_report(p->diag, DL_ERROR, "", t->loc, "stray '##' in program");
-    else if (c > ' ' && c < 0x7f)
-        diag_report(p->diag, DL_ERROR, "", t->loc, "stray '%c' in program",
-                    (int)c);
-    else
-        diag_report(p->diag, DL_ERROR, "", t->loc, "stray '\\%o' in program", c);
+        return diag_report(p->diag, DL_ERROR, "", loc,
+                           "missing terminating %c character", (int)c);
+    if (c == '#' && tok_text_raw(p->sm, p->in, t)[1] == '#')
+        return diag_report(p->diag, DL_ERROR, "", loc, "stray '##' in program");
+    if (c > ' ' && c < 0x7f)
+        return diag_report(p->diag, DL_ERROR, "", loc, "stray '%c' in program",
+                           (int)c);
+    return diag_report(p->diag, DL_ERROR, "", loc, "stray '\\%o' in program", c);
 }
+
+static void add_macro_notes(Parser *p, Diagnostic *d, uint32_t i);
+static SrcLoc spell_loc(Parser *p, uint32_t i);
 
 /* The fast path is inline: the slow path's frame is costly per call. */
 static inline bool fill(Parser *p, size_t i)
@@ -60,7 +62,12 @@ __attribute__((noinline)) static bool fill_slow(Parser *p, size_t i)
             return false;
         }
         if (pt.t.kind == TK_OTHER || is_p(&pt, P_HASH) || is_p(&pt, P_HASHHASH)) {
-            stray_token(p, &pt.t);
+            /* gcc: at the spelling with the macro notes, or at the expansion
+             * point under -ftrack-macro-expansion=0 */
+            vec_push(&p->toks, pt);
+            add_macro_notes(p, stray_token(p, &pt.t, spell_loc(p, p->toks.len - 1)),
+                            (uint32_t)(p->toks.len - 1));
+            p->toks.len--;
             continue;
         }
         vec_push(&p->toks, pt);

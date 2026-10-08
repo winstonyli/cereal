@@ -2836,6 +2836,18 @@ static void shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok)
                 cerror(c, il, "invalid use of 'restrict'");
                 warned = 1;
             }
+            /* gcc: a struct whose member was a pedwarned variably modified
+             * type comes back as an error type, so nothing is declared */
+            if ((c->func_sym == SYM_NONE || c->in_head) && tagged && tk != TY_ENUM && !warned) {
+                const Record *r = type_record(TT, sp->ty);
+                uint32_t f;
+                for (f = 0; f < r->nfields; f++)
+                    if (type_is_vm(TT, TT->fields.data[r->fields + f].ty)) {
+                        cpedwarn(c, cdecl_line_start_loc(c, ltok), "", "empty declaration");
+                        warned = 1;
+                        break;
+                    }
+            }
             if (!name) {
                 if (warned != 1 && tk != TY_ENUM) {
                     cpedwarn(c, il, "", "unnamed struct/union that defines no "
@@ -2919,7 +2931,7 @@ static void shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok)
         warned = 2;
     }
     if (warned == 2 && sp->default_int)   /* no type specifier at all */
-        cpedwarn(c, il, "", "empty declaration");
+        cpedwarn(c, cdecl_line_start_loc(c, ltok), "", "empty declaration");
 
 }
 
@@ -5826,6 +5838,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     dump_decl(c, csym(c, ref));
     c->func_sym = ref;
     c->kr_decls = (csym(c, ref)->flags & CSF_KR_DEF) != 0;
+    c->in_head = true;
     c->cur_func_node = fd;
     c->ef[fd] = 0;
     c->func_node = fnode;
@@ -5862,6 +5875,7 @@ static void body_visit(Checker *c, uint32_t i)
     SrcLoc il, fnloc;
     Kids k;
     c->kr_decls = false;
+    c->in_head = false;
     if (comp == NO_NODE)
         return;
     if (ntag(c, comp) == N_FUNC_DEF)    /* no '{' followed the declarations */
@@ -5907,7 +5921,8 @@ static void body_visit(Checker *c, uint32_t i)
                 if (!(s->flags & CSF_USED))
                     warn_if_shadowing(c, s);
             } else
-                cpedantic(c, s->loc, "ISO C does not support omitting "
+                cpedantic(c, tloc(c, c->nodes[p + 1 - c->nodes[p].size].tok),
+                          "ISO C does not support omitting "
                           "parameter names in function definitions before "
                           "C2X");
         }

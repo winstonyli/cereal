@@ -2623,3 +2623,18 @@ Still open: pr100547 (the location of the vector_size error is gcc's
 input_location, which for an operator expression is not simply the start of
 the last operand: 4:3, 8:3 and 10:4 in a probe, 34:5 in the test). Gate: 1448
 goldens, san 545/0, callgrind 3.823G.
+
+Round 163 (cpp 263/266, gcc.dg 3732/3744):
+
+- `else` without a previous `if` is one error and an empty statement (no
+  cascade). direct2. Golden `misc_248`: under `-ftrack-macro-expansion=0`
+  a stray `#` from a macro is reported at the expansion point.
+- A struct whose member is variably modified, declared at file scope or in
+  the declaration list before a function body, gets gcc's "empty
+  declaration" pedwarn at column 1 (`Checker.in_head` marks the region
+  between a definition's declarator and its body; function bodies do not
+  warn). array-10. Golden `misc_249`.
+- The omitted-parameter-name pedantic is located at the parameter's first
+  token (`array_parameter` golden regenerated: col 10, as gcc).
+
+Gate: 1452 goldens, san 547/0.
