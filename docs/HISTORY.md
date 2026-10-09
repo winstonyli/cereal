@@ -3053,3 +3053,17 @@ single files. Tests: `tests/ppstd/std_macros.c` (token diff vs gcc-13 under
 nine spellings), goldens `std_c11` and `std_gnu17`, section 13 of `run.sh`.
 Found on the way: `std_year` first held 99/11/17 and `>= 11` was true for C99
 (every pedwarn vanished in C99 mode); the encoding is now the real year.
+
+Round 179: `#elifdef` / `#elifndef` in the GNU modes (first group of the Round 178
+triage). The directives exist only when `gnu_mode` (interned at start-up, so
+in the ISO modes they stay unknown directives, as in gcc-13); `do_elif_else`
+takes the directive id and evaluates the `#ifdef` / `#ifndef` form (bad or
+missing macro name, poisoned name, extra tokens) with the real directive name
+in "without #if" and "after #else". libcpp's pedwarn ("#elifdef before C2X is
+a GCC extension", only under -pedantic, an error under -pedantic-errors) is
+not emitted per directive but when the directive decides: at the end of the
+line (past a trailing comment, or at the first extra token) when the test is
+true, at the directive name when an earlier group was taken and this group was
+active, and never when the test is false or the group was already skipped.
+Tests: `tests/ppstd/elifdef.c` (token diff under gnu99/gnu11/gnu17) and the
+golden `check/elifdef_pedantic`; gnu11-elifdef-1..4 now match gcc-13.

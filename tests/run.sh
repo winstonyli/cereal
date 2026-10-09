@@ -66,6 +66,9 @@ if command -v "$REFCC" >/dev/null 2>&1; then
     for std in c99 gnu99 c11 gnu11 c17 gnu17 c18 iso9899:2011 gnu1x; do
         diff_pp "pp/std_macros.c (-std=$std)" std_macros.c -std=$std
     done
+    for std in gnu99 gnu11 gnu17; do
+        diff_pp "pp/elifdef.c (-std=$std)" elifdef.c -std=$std
+    done
     cd "$ROOT"
     for h in assert.h ctype.h errno.h float.h inttypes.h limits.h locale.h \
         math.h setjmp.h signal.h stdarg.h stdbool.h stddef.h stdint.h \

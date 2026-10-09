@@ -1,0 +1,22 @@
+elifdef_pedantic.c:4:54: warning: #elifdef before C2X is a GCC extension
+    4 | #elifdef A  /* taken: warns at the end of the line */
+      |                                                      ^
+elifdef_pedantic.c:5:2: warning: #elifndef before C2X is a GCC extension
+    5 | #elifndef A
+      |  ^
+elifdef_pedantic.c:8:2: warning: #elifdef before C2X is a GCC extension
+    8 | #elifdef A
+      |  ^
+elifdef_pedantic.c:10:2: error: #elifdef without #if
+   10 | #elifdef A
+      |  ^
+elifdef_pedantic.c:13:2: error: #elifndef after #else
+   13 | #elifndef A
+      |  ^
+elifdef_pedantic.c:11: error: the conditional began here
+   11 | #if 0
+      | 
+elifdef_pedantic.c:13:2: warning: #elifndef before C2X is a GCC extension
+   13 | #elifndef A
+      |  ^
+elifdef_pedantic.c:15: warning: ISO C forbids an empty translation unit [-Wpedantic]

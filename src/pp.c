@@ -730,9 +730,10 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
         static const char *const dirs[] = {
             "", "if", "ifdef", "ifndef", "elif", "else", "endif", "define",
             "undef", "include", "include_next", "line", "error", "warning",
-            "pragma", "ident", "sccs", "assert", "unassert", "import"};
+            "pragma", "ident", "sccs", "assert", "unassert", "import",
+            "elifdef", "elifndef"};
         int k;
-        for (k = 1; k < (int)ARRAY_LEN(dirs); k++)
+        for (k = 1; k < (int)ARRAY_LEN(dirs) - (opt->gnu_mode ? 0 : 2); k++)
             intern_cstr(in, dirs[k])->kw = (uint16_t)k;
     }
 
@@ -1027,6 +1028,11 @@ static SrcLoc line_start_of(PP *pp, SrcLoc loc)
 static void trad_directive(PP *pp, int k, const Tok *kw);
 static void trad_stringification(PP *pp, const Macro *m, SrcLoc at);
 
+static bool is_elif_kw(int k)
+{
+    return k == KW_ELIF || k == KW_ELIFDEF || k == KW_ELIFNDEF;
+}
+
 /* Skip an inactive group; leaves the lexer at the '#' of the #elif/#else/
  * #endif that ends it (or at end of file). */
 static void skip_unterminated(PP *pp, const SkipIf *nest, int depth)
@@ -1069,7 +1075,7 @@ static void skip_group(PP *pp)
             }
             if (kw.kind == TK_IDENT) {
                 int k = ident_by_id(pp->in, kw.aux)->kw;
-                if (!(depth == 0 && (k == KW_ELIF || k == KW_ELSE || k == KW_ENDIF))) {
+                if (!(depth == 0 && (is_elif_kw(k) || k == KW_ELSE || k == KW_ENDIF))) {
                     pp->dir_indented = (h.flags & TF_SPACE) != 0;
                     trad_directive(pp, k, &kw);
                 }
@@ -1081,15 +1087,15 @@ static void skip_group(PP *pp)
                         nest[depth].seen_else = false;
                     }
                     depth++;
-                } else if ((k == KW_ELIF || k == KW_ELSE) && depth > 0 &&
+                } else if ((is_elif_kw(k) || k == KW_ELSE) && depth > 0 &&
                            depth <= SKIP_IF_MAX) {
                     SkipIf *n = &nest[depth - 1];
                     if (n->seen_else) {
                         pp_error_at(pp, &kw, "#%s after #else",
-                                    k == KW_ELIF ? "elif" : "else");
+                                    k == KW_ELSE ? "else" : "elif");
                         cond_began_here(pp, n->loc);
                     }
-                    n->kind = k == KW_ELIF ? COND_ELIF : COND_ELSE;
+                    n->kind = k == KW_ELSE ? COND_ELSE : COND_ELIF;
                     n->seen_else |= k == KW_ELSE;
                 } else if (k == KW_ENDIF) {
                     if (depth == 0) {
@@ -1098,7 +1104,7 @@ static void skip_group(PP *pp)
                         break;
                     }
                     depth--;
-                } else if ((k == KW_ELIF || k == KW_ELSE) && depth == 0) {
+                } else if ((is_elif_kw(k) || k == KW_ELSE) && depth == 0) {
                     end = line_start_of(pp, hash);
                     lexer_seek(L, hash, true);
                     break;
@@ -1307,16 +1313,29 @@ static void do_if(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
         skip_group(pp);
 }
 
-static void do_elif_else(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
+/* libcpp warns (under -pedantic) only when #elifdef decides the group:
+ * at the end of the line if it is taken, at the directive name if an
+ * earlier group was.  Nothing when the test is false. */
+static void elifdef_pedwarn(PP *pp, SrcLoc at, const char *nm)
+{
+    if (pp->opt->pedantic)
+        pp_pedwarn(pp, at, "#%s before C2X is a GCC extension", nm);
+}
+
+static void do_elif_else(PP *pp, const Tok *hash, const Tok *kw, CondKind k,
+                         int kwid)
 {
     TokSpan line = read_line(pp);
     CondFrame *c = pp->cond;
-    const char *name = k == COND_ELIF ? "elif" : "else";
+    const char *name = kwid == KW_ELIFDEF ? "elifdef"
+                       : kwid == KW_ELIFNDEF ? "elifndef"
+                       : k == COND_ELIF ? "elif" : "else";
     IncludeFrame *fr = pp->inc;
     if (!c || c->include_depth != pp->include_depth) {
         diag_report(pp->diag, DL_ERROR, "", kw->loc, "#%s without #if", name);
         return;
     }
+    bool was_active = c->active;
     if (c->seen_else) {
         Diagnostic *d = diag_report(pp->diag, DL_ERROR, "", kw->loc,
                                     "#%s after #else", name);
@@ -1335,7 +1354,22 @@ static void do_elif_else(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
     } else {
         bool val = false, ok = true, evaluated = false;
         if (c->parent_active && !c->taken_any) {
-            if (line.n == 0) {
+            if (kwid != KW_ELIF) {
+                if (line.n == 0 || line.t[0].kind != TK_IDENT) {
+                    bad_macro_name(pp, line, kw, name);
+                    ok = false;
+                } else {
+                    Ident *id = ident_by_id(pp->in, line.t[0].aux);
+                    pp_macro_ref(pp, &line.t[0], REF_IFDEF);
+                    if (!pp_poisoned(pp, id)) {
+                        val = (pp_macro(pp, id) != NULL) == (kwid == KW_ELIFDEF);
+                        check_eol(pp, span_from(line, 1), name);
+                        if (val)
+                            elifdef_pedwarn(pp, line.n > 1 ? line.t[1].loc
+                                           : eol_after(pp, span_end(pp, line, kw->loc + kw->len)), name);
+                    }
+                }
+            } else if (line.n == 0) {
                 diag_report(pp->diag, DL_ERROR, "", kw_eol(pp, kw),
                             "#elif with no expression");
                 ok = false;
@@ -1343,6 +1377,8 @@ static void do_elif_else(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
                 val = pp_eval_if(pp, line, &ok) && ok;
             }
             evaluated = true;
+        } else if (c->parent_active && kwid != KW_ELIF && was_active) {
+            elifdef_pedwarn(pp, kw->loc, name);
         }
         c->active = val;
         c->taken_any |= val;
@@ -2507,8 +2543,10 @@ void pp_directive(PP *pp, const Tok *hash)
     case KW_IF: do_if(pp, hash, &kw, COND_IF); goto out;
     case KW_IFDEF: do_if(pp, hash, &kw, COND_IFDEF); goto out;
     case KW_IFNDEF: do_if(pp, hash, &kw, COND_IFNDEF); goto out;
-    case KW_ELIF: do_elif_else(pp, hash, &kw, COND_ELIF); goto out;
-    case KW_ELSE: do_elif_else(pp, hash, &kw, COND_ELSE); goto out;
+    case KW_ELIF:
+    case KW_ELIFDEF:
+    case KW_ELIFNDEF: do_elif_else(pp, hash, &kw, COND_ELIF, k); goto out;
+    case KW_ELSE: do_elif_else(pp, hash, &kw, COND_ELSE, k); goto out;
     case KW_ENDIF: do_endif(pp, hash, &kw); goto out;
     default: break;
     }
