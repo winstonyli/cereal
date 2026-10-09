@@ -632,6 +632,13 @@ TypeId type_param_adjust(TypeTable *tt, TypeId t)
 
 static bool is_array_kind(TypeKind k) { return k == TY_ARRAY || k == TY_VLA; }
 
+/* The type a K&R parameter has once promoted; _Atomic survives. */
+static TypeId kr_promote(TypeTable *tt, TypeId t)
+{
+    return type_default_promote(tt, t) |
+           (TYPE_QUALS(type_canon(tt, t)) & TQ_ATOMIC);
+}
+
 static bool proto_vs_noproto(TypeTable *tt, const TypeEnt *p, const TypeEnt *np)
 {
     const TypeId *pp = tt->params.data + p->extra;
@@ -640,14 +647,14 @@ static bool proto_vs_noproto(TypeTable *tt, const TypeEnt *p, const TypeEnt *np)
             return false;
         const TypeId *kp = tt->params.data + np->extra;
         for (uint64_t i = 0; i < p->n; i++)
-            if (!type_compatible(tt, pp[i], type_default_promote(tt, kp[i])))
+            if (!type_compatible(tt, pp[i], kr_promote(tt, kp[i])))
                 return false;
         return true;
     }
     if (p->flags & TF_VARIADIC)
         return false;
     for (uint64_t i = 0; i < p->n; i++)
-        if (!type_compatible(tt, pp[i], type_default_promote(tt, pp[i])))
+        if (!type_compatible(tt, pp[i], kr_promote(tt, pp[i])))
             return false;
     return true;
 }

@@ -1067,7 +1067,9 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
 
     if ((tk == TY_ARRAY || tk == TY_VLA) && v->str && !v->decayed) {
         TypeId cn = type_canon(TT, type);
-        TypeId typ1 = mainv(c, type_base(TT, cn));
+        TypeId typ1 = mainv(c, type_base(TT, cn)) |
+                      (TYPE_QUALS(type_canon(TT, type_base(TT, cn))) &
+                       TQ_ATOMIC);   /* an atomic element is no char */
         bool char_array = char_like(c, typ1);
         bool wide = wide_like(c, typ1);
         if (char_array || wide) {

@@ -1,0 +1,27 @@
+atomic_param_init.c:3:6: error: conflicting types for 'fc0'; have 'void(int)'
+    3 | void fc0 (int);
+      |      ^
+atomic_param_init.c:2:6: note: previous declaration of 'fc0' with type 'void(_Atomic int)'
+    2 | void fc0 (int _Atomic);
+      |      ^
+atomic_param_init.c:5:26: error: argument 'x' doesn't match prototype
+    5 | void fc1 (x) _Atomic int x; { }
+      |                          ^
+atomic_param_init.c:4:6: error: prototype declaration
+    4 | void fc1 (int);
+      |      ^
+atomic_param_init.c:7:6: error: prototype for 'fc2' declares argument 1 with incompatible type
+    7 | void fc2 (int);
+      |      ^
+atomic_param_init.c:6:6: note: previous definition of 'fc2' with type 'void()'
+    6 | void fc2 (x) _Atomic int x; { }
+      |      ^
+atomic_param_init.c:9:6: warning: prototype for 'fc3' follows non-prototype definition
+    9 | void fc3 (_Atomic int);
+      |      ^
+atomic_param_init.c:10:22: error: array of inappropriate type initialized from string constant
+   10 | _Atomic char si0[] = "";
+      |                      ^
+atomic_param_init.c:11:32: error: array of inappropriate type initialized from string constant
+   11 | _Atomic __WCHAR_TYPE__ si1[] = L"";
+      |                                ^

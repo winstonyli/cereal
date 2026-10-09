@@ -2162,6 +2162,13 @@ void e_member(Checker *c, uint32_t i)
         set_err(c, i);
         return;
     }
+    if ((tquals(c, rec) & TQ_ATOMIC) && !inhibited(c, i, false)) {
+        char dn[256];
+        snprintf(dn, sizeof dn, "%s%s", arrow ? "*" : "", estr(c, d));
+        cwarn(c, loc, "", "accessing a member '%s' of an atomic %s '%s'",
+              cident(c, name),
+              type_ckind(TT, rec) == TY_UNION ? "union" : "structure", dn);
+    }
     cdep_report(c, cinput_loc(c, c->nodes[i].tok), f->name, f->dep, f->dmsg,
                 &f->loc);
     ft = type_qual(f->ty, q | tquals(c, rec));

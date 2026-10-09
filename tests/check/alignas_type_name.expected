@@ -1,0 +1,27 @@
+alignas_type_name.c:4:24: error: expected specifier-qualifier-list before '_Alignas'
+    4 |   _Generic (1, int: 1, _Alignas (8) long: 2);
+      |                        ^
+alignas_type_name.c:5:11: error: alignment specified for type name in 'sizeof'
+    5 |   sizeof (_Alignas (8) long);
+      |           ^
+alignas_type_name.c:6:15: error: alignment specified for type name in 'sizeof'
+    6 |   sizeof (int _Alignas (int));
+      |               ^
+alignas_type_name.c:7:13: error: alignment specified for type name in '_Alignof'
+    7 |   _Alignof (_Alignas (8) long);
+      |             ^
+alignas_type_name.c:8:4: error: alignment specified for type name in cast
+    8 |   (_Alignas (8) long) 0;
+      |    ^
+alignas_type_name.c:9:12: error: expected specifier-qualifier-list before '_Alignas'
+    9 |   _Atomic (_Alignas (8) long) x;
+      |            ^
+alignas_type_name.c:10:13: error: expected specifier-qualifier-list before '_Alignas'
+   10 |   _Alignas (_Alignas (8) long) long y;
+      |             ^
+alignas_type_name.c:11:24: error: expected ')' before '_Alignas'
+   11 |   __typeof (long double _Alignas (0)) e;
+      |                        ^
+alignas_type_name.c:12:39: error: expected ',' before '_Alignas'
+   12 |   __builtin_types_compatible_p (signed _Alignas (0), unsigned);
+      |                                       ^

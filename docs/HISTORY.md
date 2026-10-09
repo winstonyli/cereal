@@ -3067,3 +3067,19 @@ true, at the directive name when an earlier group was taken and this group was
 active, and never when the test is false or the group was already skipped.
 Tests: `tests/ppstd/elifdef.c` (token diff under gnu99/gnu11/gnu17) and the
 golden `check/elifdef_pedantic`; gnu11-elifdef-1..4 now match gcc-13.
+
+Round 180: `_Alignas` and `_Atomic` parity (second group of the Round 178
+triage; c11-align-5/8, c11-atomic-1/3/4 now match gcc-13). `_Alignas` is
+accepted in a type name only where gcc parses it (sizeof, _Alignof, cast) and
+then reported ("alignment specified for type name in ..."); elsewhere
+`specs()` leaves it, giving gcc's "expected specifier-qualifier-list" and
+"expected ',' / ')'" errors, and the failed type name is skipped as an error
+node. Atomic: member access warns ("accessing a member 'x' of an atomic
+structure"), `++`/`--` on an atomic pointer reports the pointer-sum
+diagnostics, `_Atomic void *` is not `void *` in `?:`, compound-assignment
+operand messages drop `_Atomic`, parameters keep `_Atomic` in function types
+(K&R conflicts via `kr_promote`), and an atomic char array from a string
+literal is rejected. Goldens: alignas_type_name, atomic_member_access,
+atomic_ptr_arith, atomic_param_init. gcc.dg identical 3866 -> 3869.
+Not done: other `TYPE_UNQUAL` uses on element types may also need to keep
+`_Atomic`.

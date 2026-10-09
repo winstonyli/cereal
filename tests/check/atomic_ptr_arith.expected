@@ -1,0 +1,48 @@
+atomic_ptr_arith.c:11:6: error: wrong type argument to increment [-Wpointer-arith]
+   11 |   apv++; --apv; aps++; --aps;
+      |      ^
+atomic_ptr_arith.c:11:6: error: pointer of type 'void *' used in arithmetic [-Wpointer-arith]
+   11 |   apv++; --apv; aps++; --aps;
+      |      ^
+atomic_ptr_arith.c:11:10: error: wrong type argument to decrement [-Wpointer-arith]
+   11 |   apv++; --apv; aps++; --aps;
+      |          ^
+atomic_ptr_arith.c:11:10: error: pointer of type 'void *' used in arithmetic [-Wpointer-arith]
+   11 |   apv++; --apv; aps++; --aps;
+      |          ^
+atomic_ptr_arith.c:11:20: error: increment of pointer to an incomplete type 'struct s'
+   11 |   apv++; --apv; aps++; --aps;
+      |                    ^
+atomic_ptr_arith.c:11:20: error: invalid use of undefined type 'struct s'
+   11 |   apv++; --apv; aps++; --aps;
+      |                    ^
+atomic_ptr_arith.c:11:24: error: decrement of pointer to an incomplete type 'struct s'
+   11 |   apv++; --apv; aps++; --aps;
+      |                        ^
+atomic_ptr_arith.c:11:24: error: invalid use of undefined type 'struct s'
+   11 |   apv++; --apv; aps++; --aps;
+      |                        ^
+atomic_ptr_arith.c:12:7: error: pointer of type 'void *' used in arithmetic [-Wpointer-arith]
+   12 |   apv += 1; aps -= 1;
+      |       ^
+atomic_ptr_arith.c:12:17: error: invalid use of undefined type 'struct s'
+   12 |   apv += 1; aps -= 1;
+      |                 ^
+atomic_ptr_arith.c:13:6: error: invalid operands to binary + (have 'struct t' and 'int')
+   13 |   as += 1; apv *= 1; apv |= 1;
+      |      ^
+atomic_ptr_arith.c:13:16: error: invalid operands to binary * (have 'void *' and 'int')
+   13 |   as += 1; apv *= 1; apv |= 1;
+      |                ^
+atomic_ptr_arith.c:13:26: error: invalid operands to binary | (have 'void *' and 'int')
+   13 |   as += 1; apv *= 1; apv |= 1;
+      |                          ^
+atomic_ptr_arith.c:14:19: error: pointer type mismatch in conditional expression
+   14 |   (void) (r ? pai : pi);
+      |                   ^
+atomic_ptr_arith.c:15:19: error: pointer type mismatch in conditional expression
+   15 |   (void) (r ? pai : pav);
+      |                   ^
+atomic_ptr_arith.c:16:19: error: pointer type mismatch in conditional expression
+   16 |   (void) (r ? pav : pi);
+      |                   ^

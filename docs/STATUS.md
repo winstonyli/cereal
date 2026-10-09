@@ -14,11 +14,11 @@ in [ROADMAP.md](ROADMAP.md).
 - An index and LSP server over the same engine (`cereal index|query|lsp`).
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
-- gcc.dg: 3866 of 3910 files run give the same diagnostics as gcc (message,
-  line and column); 44 differ (5 old, 39 in the C11/C17 tests added by -std=c11).
+- gcc.dg: 3869 of 3910 files run give the same diagnostics as gcc (message,
+  line and column); 41 differ (5 old, 36 in the C11/C17 tests added by -std=c11).
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 285 of 285 identical. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1559 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 567 files.
+- 1567 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 567 files.
 - uvloop's `loop.c` checks in about 3.85 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -41,7 +41,7 @@ bench/tools/corp.sh DIR [-IDIR...]  # per-file cereal vs gcc-13 on any C sources
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
 callgrind) in parallel; see its header for the expected numbers.
 
-## Open differences (gcc.dg 44, c-c++-common 2)
+## Open differences (gcc.dg 41, c-c++-common 2)
 Needs gcc's optimizer or middle end (out of reach for a front end):
 pr56355-1 (-Wstrict-overflow), pr83844 (alignment of a VLA-offset member).
 

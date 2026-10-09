@@ -1015,7 +1015,8 @@ static void parse_expr(Parser *p);
 static void parse_assign(Parser *p);
 static void parse_cond(Parser *p);
 static void parse_cast(Parser *p);
-static void type_name(Parser *p);
+static void type_name(Parser *p, const char *align_in);
+static bool type_name_ok(Parser *p);
 static void initializer(Parser *p);
 static void compound(Parser *p, bool push);
 static void statement(Parser *p);
@@ -1551,6 +1552,8 @@ typedef struct Specs {
     bool gimple;                /* __GIMPLE: the body is not C */
     bool err;                   /* an unknown type name */
     bool auto_type;             /* __auto_type */
+    bool has_align;             /* _Alignas, at token align_tok */
+    uint32_t align_tok;
 } Specs;
 
 static void struct_spec(Parser *p);
@@ -1566,15 +1569,22 @@ static void paren_type_or_expr(Parser *p, NodeTag tag)
         return;
     }
     t = ct(p);
-    if (is_type_start(p, &t))
-        type_name(p);
-    else
+    if (is_type_start(p, &t)) {
+        if (!type_name_ok(p)) {
+            skip_past_rparen(p);
+            p->nodes.len = start;
+            emit(p, tag, kw, start, NF_ERROR);
+            return;
+        }
+    } else
         parse_expr(p);
     expect(p, P_RPAREN);
     emit(p, tag, kw, start, 0);
 }
 
-static void specs(Parser *p, Specs *s, Lookahead la)
+/* alignas_ok: gcc's alignas_ok, false in a type name unless sizeof, _Alignof
+ * or a cast, which reject the _Alignas afterwards. */
+static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok)
 {
     uint32_t start = nmark(p), first = ci(p);
     memset(s, 0, sizeof *s);
@@ -1597,9 +1607,14 @@ static void specs(Parser *p, Specs *s, Lookahead la)
             if (is_p(&n, P_LPAREN)) {
                 uint32_t s0 = nmark(p), kw = adv(p);
                 adv(p);
-                type_name(p);
-                expect(p, P_RPAREN);
-                emit(p, N_ATOMIC_TYPE, kw, s0, 0);
+                if (!type_name_ok(p)) { /* as gcc: skip to the close paren */
+                    skip_past_rparen(p);
+                    emit(p, N_TYPEDEF_NAME, kw, s0, NF_ERROR);
+                    s->err = true;
+                } else {
+                    expect(p, P_RPAREN);
+                    emit(p, N_ATOMIC_TYPE, kw, s0, 0);
+                }
                 s->type = true;
             } else {
                 leaf(p, N_QUAL, adv(p));
@@ -1651,6 +1666,10 @@ static void specs(Parser *p, Specs *s, Lookahead la)
             s->type = true;
             break;
         case CK_ALIGNAS:
+            if (!alignas_ok)
+                goto done;
+            s->has_align = true;
+            s->align_tok = ci(p);
             paren_type_or_expr(p, N_ALIGNAS);
             break;
         case CK_ATTRIBUTE:
@@ -1693,7 +1712,7 @@ static void member_decl(Parser *p)
 {
     uint32_t start = nmark(p), first = ci(p);
     Specs s;
-    specs(p, &s, LA_DECL);
+    specs(p, &s, LA_DECL, true);
     if (!s.any) {
         expected(p, "specifier-qualifier-list");
         sync_stmt(p);
@@ -1816,7 +1835,7 @@ static void enum_spec(Parser *p)
         PTok n1 = pk(p, 1);
         if (at(p, P_COLON) && is_type_start(p, &n1)) {
             adv(p);
-            type_name(p);
+            type_name(p, NULL);
         }
     }
     if (at(p, P_LBRACE)) {
@@ -1942,7 +1961,7 @@ static void params(Parser *p, unsigned *flags)
             *flags |= NF_VARIADIC;
             break;
         }
-        specs(p, &sp, LA_TYPE);
+        specs(p, &sp, LA_TYPE, true);
         if (!sp.any) {
             unsigned depth = 0;
             expected(p, "declaration specifiers or '...'");
@@ -2114,16 +2133,21 @@ static void member_declarator(Parser *p)
         expected(p, "identifier or '('");
 }
 
-static void type_name(Parser *p)
+/* align_in: where an _Alignas is diagnosed after the type name ("sizeof",
+ * "_Alignof", "cast"); NULL where it is not a specifier at all. */
+static void type_name(Parser *p, const char *align_in)
 {
     uint32_t start = nmark(p), first = ci(p);
     Specs s;
     DeclInfo d;
-    specs(p, &s, LA_TYPE);
+    specs(p, &s, LA_TYPE, align_in != NULL);
     if (!s.any)
         expected(p, "specifier-qualifier-list");
     declarator_init(&d);
     declarator(p, DCL_ABSTRACT, &d);
+    if (s.has_align)
+        perr(p, s.align_tok, "alignment specified for type name in %s",
+             align_in);
     emit(p, N_TYPE_NAME, first, start, 0);
 }
 
@@ -2326,7 +2350,7 @@ static bool type_name_ok(Parser *p)
 {
     uint32_t s = nmark(p);
     uint64_t e0 = p->errors;
-    type_name(p);
+    type_name(p, NULL);
     if (p->errors == e0)
         return true;
     p->nodes.len = s;
@@ -2422,7 +2446,7 @@ static void convertvector_expr(Parser *p, NodeTag tag)
     }
     s = nmark(p);
     e0 = p->errors;
-    type_name(p);
+    type_name(p, NULL);
     if (p->errors != e0)
         p->nodes.len = s;
     if (!expect(p, P_RPAREN))
@@ -2438,7 +2462,7 @@ static void has_attr_expr(Parser *p)
     expect(p, P_LPAREN);
     n = ct(p);
     if (is_typename_start(p, &n) || is_clit_storage(p, &n))
-        type_name(p);
+        type_name(p, NULL);
     else
         parse_assign(p);
     (void)n1;
@@ -2476,8 +2500,12 @@ static void generic_expr(Parser *p)
         uint32_t s = nmark(p), first = ci(p);
         if (ckw(p) == CK_DEFAULT)
             leaf(p, N_NONE, adv(p));
-        else
-            type_name(p);
+        else if (!type_name_ok(p)) {
+            skip_past_rparen(p);
+            p->nodes.len = start;
+            emit(p, N_GENERIC, kw, start, NF_ERROR);
+            return;
+        }
         expect(p, P_COLON);
         parse_assign(p);
         emit(p, N_GENERIC_ASSOC, first, s, 0);
@@ -2627,7 +2655,7 @@ static void unary(Parser *p)
         if (is_p(&n0, P_LPAREN) &&
             (is_typename_start(p, &n1) || is_clit_storage(p, &n1))) {
             uint32_t s2 = nmark(p), lp = adv(p);
-            type_name(p);
+            type_name(p, k == CK_SIZEOF ? "'sizeof'" : "'_Alignof'");
             expect_skip(p, P_RPAREN);
             if (at(p, P_LBRACE)) { /* sizeof (T){...}: a compound literal */
                 init_list(p);
@@ -2660,7 +2688,7 @@ static void parse_cast(Parser *p)
     PTok n = pk(p, 1);
     if (at(p, P_LPAREN) && (is_typename_start(p, &n) || is_clit_storage(p, &n))) {
         uint32_t start = nmark(p), lp = adv(p);
-        type_name(p);
+        type_name(p, "cast");
         expect_skip(p, P_RPAREN);
         if (at(p, P_LBRACE)) {
             init_list(p);
@@ -3152,7 +3180,7 @@ static void declaration(Parser *p, bool top)
         emit(p, N_EMPTY, adv(p), start, 0);
         return;
     }
-    specs(p, &s, top ? LA_DECL_TOP : LA_DECL);
+    specs(p, &s, top ? LA_DECL_TOP : LA_DECL, true);
     if (p->err.live && !p->unwind) {
         /* gcc's c_parser_declaration_or_fndef: an error still pending after
          * the declaration specifiers (an earlier item's, which file scope

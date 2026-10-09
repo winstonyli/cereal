@@ -3675,6 +3675,9 @@ static void incdec(Checker *c, uint32_t i, uint32_t a, bool inc)
                  !cexpr_in_extension(c, i))
             cpedwarn(c, loc, "pointer-arith", inc ? "wrong type argument to "
                      "increment" : "wrong type argument to decrement");
+        /* gcc lowers an atomic ++/-- to a pointer + 1 sum */
+        if (tquals(c, c->ty[a]) & TQ_ATOMIC)
+            ptr_arith_ok(c, i, loc, t);
     }
     if (readonly_check(c, a, loc, inc ? 1 : 2)) {
         set_err(c, i);
@@ -5686,8 +5689,9 @@ void invalid_operands(Checker *c, uint32_t i, uint32_t a, uint32_t b,
      * qualifiers unless the promotions change it */
     if (ntag(c, i) == N_ASSIGN && mainv(c, ta) == mainv(c, c->ty[a])) {
         ta = c->ty[a];
-        if (tquals(c, ta) & TQ_VOLATILE)
-            ta = type_qual(unqual(c, ta), tquals(c, ta) & ~TQ_VOLATILE);
+        if (tquals(c, ta) & (TQ_VOLATILE | TQ_ATOMIC))
+            ta = type_qual(unqual(c, ta),
+                           tquals(c, ta) & ~(TQ_VOLATILE | TQ_ATOMIC));
     }
     cerror(c, cnode_loc(c, i), "invalid operands to binary %s (have %s and %s)",
            sp, type_q(TT, ta), type_q(TT, tb));
@@ -6493,15 +6497,19 @@ static void e_cond(Checker *c, uint32_t i)
             rt = t2;
         } else if (is_npc(c, els)) {
             rt = t1;
-        } else if (is_void(c, p1) || is_void(c, p2)) {
-            TypeId vo = is_void(c, p1) ? p1 : p2, ot = vo == p1 ? p2 : p1;
+        } else if ((is_void(c, p1) && !(tquals(c, p1) & TQ_ATOMIC)) ||
+                   (is_void(c, p2) && !(tquals(c, p2) & TQ_ATOMIC))) {
+            /* a pointer to atomic void is no void * here */
+            TypeId vo = is_void(c, p1) && !(tquals(c, p1) & TQ_ATOMIC) ? p1 : p2,
+                   ot = vo == p1 ? p2 : p1;
             if (is_array(c, ot) && (gq(c, ot) & ~TYPE_QUALS(vo)))
                 cwarn(c, cl, "discarded-array-qualifiers", "pointer to array "
                       "loses qualifier in conditional expression");
             if (is_func(c, p1) || is_func(c, p2))
                 ped(c, i, cl, "ISO C forbids conditional expr between 'void *' "
                               "and function pointer");
-            rt = type_ptr(TT, type_qual(TYPE_B(VOID), tquals(c, p1) | tquals(c, p2)));
+            rt = type_ptr(TT, type_qual(TYPE_B(VOID), (tquals(c, p1) | tquals(c, p2)) &
+                                                   ~(unsigned)TQ_ATOMIC));
         } else {
             if (n1 && n2)
                 cpedwarn(c, cl, "incompatible-pointer-types", "pointer type "

@@ -508,7 +508,7 @@ static void fill_func_type(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
     func_params(c, f, &pi);
     grokparms(c, f, funcdef, ltok, &pi, &incomplete);
     for (j = 0; j < pi.n; j++)
-        pi.ps[j] = TYPE_UNQUAL(pi.ps[j]);
+        pi.ps[j] = TYPE_UNQUAL(pi.ps[j]) | (all_quals(c, pi.ps[j]) & TQ_ATOMIC);
     fl = pi.flags;
     if (!func_has_params(c, f) || pi.krlist || incomplete)
         fl |= TF_NOPROTO;
@@ -3654,10 +3654,10 @@ static void body_visit(Checker *c, uint32_t i)
                 at = type_default_promote(TT, s->ty);
                 if (!type_compatible(TT, plain_type(c, at),
                                      plain_type(c, vt)) ||
-                    ((TYPE_QUALS(type_canon(TT, at)) & TQ_ATOMIC) !=
-                     (TYPE_QUALS(type_canon(TT, vt)) & TQ_ATOMIC))) {
-                    if ((TYPE_QUALS(type_canon(TT, at)) & TQ_ATOMIC) ==
-                            (TYPE_QUALS(type_canon(TT, vt)) & TQ_ATOMIC) &&
+                    ((all_quals(c, s->ty) & TQ_ATOMIC) !=
+                     (all_quals(c, vt) & TQ_ATOMIC))) {
+                    if ((all_quals(c, s->ty) & TQ_ATOMIC) ==
+                            (all_quals(c, vt) & TQ_ATOMIC) &&
                         plain_type(c, s->ty) == plain_type(c, vt)) {
                         cpedantic(c, s->loc, "promoted argument '%s' doesn't "
                                   "match prototype", sname(c, s));
@@ -3681,7 +3681,8 @@ static void body_visit(Checker *c, uint32_t i)
                 TypeId *ps = xmalloc(np * sizeof *ps), nt;
                 for (j = 0; j < np; j++)
                     ps[j] = TYPE_UNQUAL(type_default_promote(
-                        TT, csym(c, pl[j])->ty));
+                                TT, csym(c, pl[j])->ty)) |
+                            (all_quals(c, csym(c, pl[j])->ty) & TQ_ATOMIC);
                 nt = type_func(TT, type_base(TT, fs->ty), ps, np, TF_NOPROTO);
                 free(ps);
                 fs = csym(c, c->func_sym);
