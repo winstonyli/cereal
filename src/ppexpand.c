@@ -536,10 +536,48 @@ static void push_arg(PP *pp, TokBuf *out, TokSpan s, uint16_t lead)
 }
 
 static void subst(PP *pp, Macro *m, Args *a, uint16_t lead, SrcLoc site,
+                  SrcLoc exp_loc, uint32_t exp_id, uint32_t root, TokBuf *out);
+
+static bool is_vaopt(PP *pp, const Macro *m, const Tok *t)
+{
+    return m->has_vaopt && t->kind == TK_IDENT &&
+           ident_by_id(pp->in, t->aux) == pp->id_va_opt;
+}
+
+/* __VA_OPT__ ( content ) at body[i]: substitute the content into *tmp when
+ * the variable arguments expand to something (libcpp, C++20 P1042R1), leave
+ * it empty otherwise.  Returns the index of the closing parenthesis. */
+static uint32_t vaopt_fill(PP *pp, Macro *m, Args *a, uint32_t i, SrcLoc site,
+                           SrcLoc exp_loc, uint32_t exp_id, uint32_t root,
+                           TokBuf *tmp)
+{
+    uint32_t j = i + 2, depth = 1;
+    Macro sub;
+    tokbuf_init(pp, tmp, 0);
+    for (; j < m->body_len; j++) {
+        if (tok_is_punct(&m->body[j], P_LPAREN))
+            depth++;
+        else if (tok_is_punct(&m->body[j], P_RPAREN) && --depth == 0)
+            break;
+    }
+    if (expanded_arg(pp, a, m->nparams - 1, exp_loc, exp_id, root).n == 0)
+        return j;
+    sub = *m;
+    sub.body = m->body + i + 2;
+    sub.body_len = j - i - 2;
+    sub.has_vaopt = false;
+    sub.has_ops = true;
+    tokbuf_release(pp, tmp);
+    subst(pp, &sub, a, 0, site, exp_loc, exp_id, root, tmp);
+    return j;
+}
+
+static void subst(PP *pp, Macro *m, Args *a, uint16_t lead, SrcLoc site,
                   SrcLoc exp_loc, uint32_t exp_id, uint32_t root, TokBuf *out)
 {
     uint32_t i, w, r;
     bool first = true;
+    bool skipped = false;
     uint16_t pending_space = 0;
     tokbuf_init(pp, out, m->body_len + 8);
 
@@ -556,6 +594,21 @@ static void subst(PP *pp, Macro *m, Args *a, uint16_t lead, SrcLoc site,
         }
 
         if (m->funclike && tok_is_punct(t, P_HASH) && i + 1 < m->body_len &&
+            is_vaopt(pp, m, &m->body[i + 1])) {
+            TokBuf vo;
+            Tok s;
+            TokSpan vs;
+            i = vaopt_fill(pp, m, a, i + 1, site, exp_loc, exp_id, root, &vo);
+            vs.t = vo.t;
+            vs.n = vo.len;
+            s = stringize(pp, vs, t, site, m);
+            s.flags |= fl;
+            tokbuf_push(pp, out, s);
+            tokbuf_release(pp, &vo);
+            continue;
+        }
+
+        if (m->funclike && tok_is_punct(t, P_HASH) && i + 1 < m->body_len &&
             (m->body[i + 1].flags & TF_PARAM)) {
             Tok s = stringize(pp, arg_span(a, m->body[i + 1].punct), t, site, m);
             s.flags |= fl;
@@ -568,6 +621,8 @@ static void subst(PP *pp, Macro *m, Args *a, uint16_t lead, SrcLoc site,
             const Tok *op = t, *rt = &m->body[i + 1];
             TokSpan rhs;
             Tok single;
+            TokBuf vo;
+            bool have_vo = false;
             int rp = (rt->flags & TF_PARAM) ? rt->punct : -1;
             i++;
             if (rp >= 0 && m->variadic && rp == m->nparams - 1 && out->len &&
@@ -593,14 +648,22 @@ static void subst(PP *pp, Macro *m, Args *a, uint16_t lead, SrcLoc site,
                 i++;
             } else if (rp >= 0) {
                 rhs = arg_span(a, rp);
+            } else if (is_vaopt(pp, m, rt)) {
+                i = vaopt_fill(pp, m, a, i, site, exp_loc, exp_id, root, &vo);
+                rhs.t = vo.t;
+                rhs.n = vo.len;
+                have_vo = true;
             } else {
                 single = *rt;
                 single.flags = (uint16_t)((single.flags & ~TF_BOL) | TF_ORIGIN_BODY);
                 rhs.t = &single;
                 rhs.n = 1;
             }
-            if (rhs.n == 0)
+            if (rhs.n == 0) {
+                if (have_vo)
+                    tokbuf_release(pp, &vo);
                 continue; /* x ## <empty>: lhs unchanged */
+            }
             {
                 Tok first_rhs = rhs.t[0];
                 uint32_t k;
@@ -630,6 +693,26 @@ static void subst(PP *pp, Macro *m, Args *a, uint16_t lead, SrcLoc site,
                     tokbuf_push(pp, out, c);
                 }
             }
+            if (have_vo)
+                tokbuf_release(pp, &vo);
+            continue;
+        }
+
+        if (is_vaopt(pp, m, t)) {
+            TokBuf vo;
+            i = vaopt_fill(pp, m, a, i, site, exp_loc, exp_id, root, &vo);
+            if (vo.len) {
+                vo.t[0].flags = (uint16_t)((vo.t[0].flags & ~(TF_SPACE | TF_BOL)) | fl);
+                for (w = 0; w < vo.len; w++)
+                    tokbuf_push(pp, out, vo.t[w]);
+            } else {
+                Tok pm;
+                memset(&pm, 0, sizeof pm);
+                pm.kind = TK_PLACEMARKER;
+                pm.flags = fl;
+                tokbuf_push(pp, out, pm);
+            }
+            tokbuf_release(pp, &vo);
             continue;
         }
 
@@ -656,13 +739,22 @@ static void subst(PP *pp, Macro *m, Args *a, uint16_t lead, SrcLoc site,
     for (r = w = 0; r < out->len; r++) {
         Tok t = out->t[r];
         if (t.kind == TK_PLACEMARKER) {
+            /* libcpp: an empty argument's padding passes the parameter's
+             * own spacing on to the next token */
             if (first)
-                pending_space |= t.flags & TF_SPACE;
+                skipped = true;
+            else if (t.flags & TF_SPACE)
+                pending_space = TF_SPACE;
             continue;
         }
+        t.flags |= pending_space;
+        pending_space = 0;
         if (first) {
-            t.flags = (uint16_t)((t.flags & ~(TF_SPACE | TF_BOL)) | lead |
-                                 pending_space);
+            /* libcpp: the first token takes the name's spacing, unless
+             * empty arguments or __VA_OPT__ came before it: it then keeps
+             * its own */
+            t.flags = skipped ? (uint16_t)(t.flags & ~TF_BOL)
+                              : (uint16_t)((t.flags & ~(TF_SPACE | TF_BOL)) | lead);
             first = false;
         }
         out->t[w++] = t;

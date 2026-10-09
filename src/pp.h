@@ -50,6 +50,7 @@ typedef struct Macro {
     uint64_t extra_hash;        /* where they sit, and how they are spelled */
     bool predefined;         /* from <built-in> or <command line> */
     bool has_ops;            /* body contains # or ## */
+    bool has_vaopt;          /* body contains __VA_OPT__ (variadic only) */
     BuiltinKind builtin;
     int nparams;
     struct Ident **params;
@@ -340,7 +341,7 @@ typedef struct PP {
     StrBuf sb;               /* scratch string building */
     StrBuf predef;           /* <command line>: predefines, -D, -U, -include */
 
-    struct Ident *id_defined, *id_va_args, *id_pragma;
+    struct Ident *id_defined, *id_va_args, *id_va_opt, *id_pragma;
     const char *const *host_attrs;
     const char *const *host_builtins;
 } PP;

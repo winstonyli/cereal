@@ -17,8 +17,8 @@ measurements. The gcc-13 parity work is at a plateau (STATUS.md).
 - In gnu99 mode the parser and checker already handle nearly all of C11
   (`_Generic`, `_Static_assert`, `_Alignas`, `_Atomic`, `_Noreturn`,
   `_Thread_local`, anonymous members, `u8`/`u`/`U` literals, host
-  `<stdatomic.h>`, `<threads.h>`, ...). Gaps found: `__VA_OPT__` is not
-  implemented (a `-E` fidelity bug in every mode, verified: output keeps the
+  `<stdatomic.h>`, `<threads.h>`, ...). Gaps found: (`__VA_OPT__` was missing
+  until Round 176, a `-E` fidelity bug in every mode: output kept the
   token); `__STDC_VERSION__` makes glibc hide C11 declarations
   (`timespec_get`); C2X keywords (`bool`, `nullptr`, `constexpr`, `u8'a'`).
 - LSP: macro-only navigation. It never parses or checks, so it publishes no
@@ -31,7 +31,7 @@ Scope, stated precisely: cereal as a **checker driven by compile_commands or
 a build line**, not a compiler replacement. It produces no objects, so a
 build that needs `.o` files still needs gcc. `-c`/`-S` mean "check only".
 
-A1. `__VA_OPT__` (est. half a day). gcc-13: available in gnu modes, a
+A1. `__VA_OPT__` (DONE, Round 176; was est. half a day). gcc-13: available in gnu modes, a
     pedwarn "not available until C2X" under `-pedantic` in strict ISO modes
     (probed with `-std=c99` and `-std=c11`). Do first: it breaks `-E` output
     today, independent of `-std`. Check `#__VA_OPT__` against gcc-13 before

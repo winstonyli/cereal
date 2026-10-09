@@ -393,6 +393,29 @@ static void pedantic(PP *pp, SrcLoc loc, const char *fmt, ...)
     va_end(ap);
 }
 
+/* libcpp maybe_va_opt_error: __VA_OPT__ outside a variadic macro body, or
+ * (-pedantic) in a mode that does not have it. */
+static void va_opt_pedwarn(PP *pp, const Tok *t, bool in_variadic_body)
+{
+    const char *msg;
+    if (pp->opt->pedantic && !pp->opt->gnu_mode)
+        msg = "__VA_OPT__ is not available until C2X";
+    else if (!in_variadic_body)
+        msg = "__VA_OPT__ can only appear in the expansion of a C++20 "
+              "variadic macro";
+    else
+        return;
+    if (diag_hidden_in_system_header(pp->diag, t->loc))
+        return;
+    diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
+                "", t->loc, "%s", msg);
+}
+
+static bool is_va_opt(PP *pp, const Tok *t)
+{
+    return t->kind == TK_IDENT && ident_by_id(pp->in, t->aux) == pp->id_va_opt;
+}
+
 static SrcLoc span_end(PP *pp, TokSpan s, SrcLoc fallback)
 {
     (void)pp;
@@ -700,6 +723,7 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
 
     pp->id_defined = intern_cstr(in, "defined");
     pp->id_va_args = intern_cstr(in, "__VA_ARGS__");
+    pp->id_va_opt = intern_cstr(in, "__VA_OPT__");
     pp->id_pragma = intern_cstr(in, "_Pragma");
     pp->dir_item = SIZE_MAX;
     {
@@ -759,6 +783,7 @@ void pp_init_worker(PP *w, const PP *main, Arena *a, DiagEngine *d)
     d->include_chain_ctx = w;
     w->id_defined = main->id_defined;
     w->id_va_args = main->id_va_args;
+    w->id_va_opt = main->id_va_opt;
     w->id_pragma = main->id_pragma;
     for (i = 0; i < main->search.len; i++)
         vec_push(&w->search, main->search.data[i]);
@@ -903,6 +928,8 @@ bool pp_next(PP *pp, Tok *out)
             if (src == SRC_LEXER && id == pp->id_va_args)
                 pp_pedwarn(pp, t.loc, "__VA_ARGS__ can only appear in the "
                            "expansion of a C99 variadic macro");
+            if (src == SRC_LEXER && id == pp->id_va_opt)
+                va_opt_pedwarn(pp, &t, false);
             if (m && !(t.flags & TF_NOEXPAND)) {
                 if (pp_macro_disabled(pp, m)) {
                     t.flags |= TF_NOEXPAND;
@@ -1590,6 +1617,8 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
                     pp_pedwarn(pp, t->loc, "__VA_ARGS__ can only appear in the "
                                "expansion of a C99 variadic macro");
             }
+            if (id == pp->id_va_opt)
+                va_opt_pedwarn(pp, t, m->variadic && !m->gnu_named_variadic);
         }
     }
     /* libcpp reports these at the last token before the body */
@@ -1597,7 +1626,8 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
     for (b = 0; b < m->body_len; b++) {
         Tok *t = &m->body[b];
         if (m->funclike && tok_is_punct(t, P_HASH)) {
-            if (b + 1 >= m->body_len || !(m->body[b + 1].flags & TF_PARAM)) {
+            if (b + 1 >= m->body_len || !((m->body[b + 1].flags & TF_PARAM) ||
+                (m->variadic && is_va_opt(pp, &m->body[b + 1])))) {
                 diag_report(pp->diag, DL_ERROR, "", hdr_loc,
                             "'#' is not followed by a macro parameter");
                 return;
@@ -1612,6 +1642,51 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
                 return;
             }
             m->has_ops = true;
+        }
+    }
+    /* libcpp vaopt_state: __VA_OPT__ ( ... ), not nested, no ## at either
+     * end of the parentheses; only a variadic macro (named GNU ones too
+     * are warned about above and keep the token) uses it */
+    if (m->variadic) {
+        for (b = 0; b < m->body_len; b++) {
+            uint32_t j, depth;
+            if (!is_va_opt(pp, &m->body[b]))
+                continue;
+            m->has_vaopt = m->has_ops = true;
+            if (b + 1 >= m->body_len || !tok_is_punct(&m->body[b + 1], P_LPAREN)) {
+                pp_error_at(pp, &m->body[b],
+                            b + 1 >= m->body_len
+                                ? "unterminated __VA_OPT__"
+                                : "__VA_OPT__ must be followed by an open "
+                                  "parenthesis");
+                return;
+            }
+            for (j = b + 2, depth = 1; j < m->body_len; j++) {
+                if (is_va_opt(pp, &m->body[j])) {
+                    pp_error_at(pp, &m->body[j],
+                                "__VA_OPT__ may not appear in a __VA_OPT__");
+                    return;
+                }
+                if (tok_is_punct(&m->body[j], P_LPAREN))
+                    depth++;
+                else if (tok_is_punct(&m->body[j], P_RPAREN) && --depth == 0)
+                    break;
+            }
+            if (depth) {
+                pp_error_at(pp, &m->body[b], "unterminated __VA_OPT__");
+                return;
+            }
+            if (j > b + 2 && tok_is_punct(&m->body[b + 2], P_HASHHASH)) {
+                pp_error_at(pp, &m->body[b + 2],
+                            "'##' cannot appear at either end of __VA_OPT__");
+                return;
+            }
+            if (j > b + 2 && tok_is_punct(&m->body[j - 1], P_HASHHASH)) {
+                pp_error_at(pp, &m->body[j],
+                            "'##' cannot appear at either end of __VA_OPT__");
+                return;
+            }
+            b = j;
         }
     }
     for (b = 0; b < m->body_len; b++) {

@@ -2974,3 +2974,26 @@ of recomputing it from locations. It would cost a field on `PTok` (callgrind
 and memory sensitive, since every token carries it) and touches only note
 lines, which verify.sh does not compare. Parked until a corpus or golden
 needs the notes; the Round 174 special case stays until then.
+
+Round 176: `__VA_OPT__` (ROADMAP A1). Before this, `-E` left the token in the
+output in every mode. Semantics probed against gcc-13 (libcpp, P1042R1):
+`__VA_OPT__ ( content )` in a variadic macro yields the content, with
+parameters substituted, when the variable arguments *expand* to at least one
+token (`F(p,EMPTY)` counts as absent), and a placemarker otherwise, so
+`x ## __VA_OPT__(..)`, `__VA_OPT__(..) ## y` and `#__VA_OPT__(..)` (string of
+the substituted content, `""` when absent) work through the existing `##`
+and `#` paths. `subst()` handles it inline (`vaopt_fill` substitutes the
+content through a recursive `subst` on a sub-macro view of the body). Define-time
+checks match libcpp: unterminated, not followed by `(`, nested, `##` at either
+end of the parentheses (errors with the token's range); outside a variadic
+body, or in a GNU named-variadic macro, a pedwarn "can only appear in the
+expansion of a C++20 variadic macro" (the named form still expands, as in
+gcc); under `-std=c99 -pedantic` every use warns "not available until C2X"
+(no range on the warnings, as in gcc). Found on the way and fixed at the root
+in the same place: an empty argument's spacing was dropped (`f(x y)` with
+empty `y` printed `f(1)`, gcc prints `f(1 )`), and a first token after empty
+arguments took the macro name's spacing instead of its own (`J()` with body
+`x z` gives ` z`). Tests: `tests/pp/va_opt.c` (token diff vs gcc-13, both
+modes) and `tests/pp/err_va_opt.c` (recovery). Left as is: after an empty
+expansion at the end of a line, the next line's first token gets a leading
+space in `-E` (also for `Q()` with `#define Q(x) x`; predates this round).
