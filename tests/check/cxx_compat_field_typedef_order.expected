@@ -1,0 +1,87 @@
+cxx_compat_field_typedef_order.c:7:23: error: duplicate member 'a'
+    7 | struct A { int a; int a; T x; int T; };
+      |                       ^
+cxx_compat_field_typedef_order.c:7:35: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
+    7 | struct A { int a; int a; T x; int T; };
+      |                                   ^
+cxx_compat_field_typedef_order.c:8:35: error: duplicate member 'b'
+    8 | struct B { T x; int T; int b; int b; };
+      |                                   ^
+cxx_compat_field_typedef_order.c:8:21: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
+    8 | struct B { T x; int T; int b; int b; };
+      |                     ^
+cxx_compat_field_typedef_order.c:9:42: warning: C++ lookup of 'T' would return a field, not a type [-Wc++-compat]
+    9 | struct C { int c; T y; struct D { int T; T z; int d; int d; } in; int c; };
+      |                                          ^
+cxx_compat_field_typedef_order.c:9:58: error: duplicate member 'd'
+    9 | struct C { int c; T y; struct D { int T; T z; int d; int d; } in; int c; };
+      |                                                          ^
+cxx_compat_field_typedef_order.c:9:39: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
+    9 | struct C { int c; T y; struct D { int T; T z; int d; int d; } in; int c; };
+      |                                       ^
+cxx_compat_field_typedef_order.c:9:71: error: duplicate member 'c'
+    9 | struct C { int c; T y; struct D { int T; T z; int d; int d; } in; int c; };
+      |                                                                       ^
+cxx_compat_field_typedef_order.c:10:30: error: duplicate member 'e'
+   10 | struct E { int T; int e; int e; };
+      |                              ^
+cxx_compat_field_typedef_order.c:11:28: error: duplicate member 'T'
+   11 | struct F { T x; int T; int T; };
+      |                            ^
+cxx_compat_field_typedef_order.c:11:21: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
+   11 | struct F { T x; int T; int T; };
+      |                     ^
+cxx_compat_field_typedef_order.c:12:37: warning: padding struct to align 'h' [-Wpadded]
+   12 | struct G { T f; int T; char g; long h; };
+      |                                     ^
+cxx_compat_field_typedef_order.c:12:21: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
+   12 | struct G { T f; int T; char g; long h; };
+      |                     ^
+cxx_compat_field_typedef_order.c:13:42: warning: padding struct size to alignment boundary with 7 bytes [-Wpadded]
+   13 | union __attribute__((transparent_union)) U { T T; long l; char cc[9]; };
+      |                                          ^
+cxx_compat_field_typedef_order.c:13:42: warning: union cannot be made transparent
+   13 | union __attribute__((transparent_union)) U { T T; long l; char cc[9]; };
+      |                                          ^
+cxx_compat_field_typedef_order.c:13:48: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
+   13 | union __attribute__((transparent_union)) U { T T; long l; char cc[9]; };
+      |                                                ^
+cxx_compat_field_typedef_order.c:14:21: error: flexible array member not at end of struct
+   14 | struct K { T x; int T[]; int y; };
+      |                     ^
+cxx_compat_field_typedef_order.c:14:21: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
+   14 | struct K { T x; int T[]; int y; };
+      |                     ^
+cxx_compat_field_typedef_order.c:15:20: error: flexible array member in union
+   15 | union L { T x; int T[]; };
+      |                    ^
+cxx_compat_field_typedef_order.c:15:20: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
+   15 | union L { T x; int T[]; };
+      |                    ^
+cxx_compat_field_typedef_order.c:16:21: error: zero width for bit-field 'T'
+   16 | struct N { T x; int T : 0; };
+      |                     ^
+cxx_compat_field_typedef_order.c:16:8: warning: padding struct size to alignment boundary with 3 bytes [-Wpadded]
+   16 | struct N { T x; int T : 0; };
+      |        ^
+cxx_compat_field_typedef_order.c:16:21: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
+   16 | struct N { T x; int T : 0; };
+      |                     ^
+cxx_compat_field_typedef_order.c:17:30: warning: C++ lookup of 'T' would return a field, not a type [-Wc++-compat]
+   17 | struct O { int T; struct P { T z; } p; int o; int o; };
+      |                              ^
+cxx_compat_field_typedef_order.c:17:51: error: duplicate member 'o'
+   17 | struct O { int T; struct P { T z; } p; int o; int o; };
+      |                                                   ^
+cxx_compat_field_typedef_order.c:18:44: error: duplicate member 'u'
+   18 | struct S { T a; struct { int T; int u; int u; }; int v; int v; };
+      |                                            ^
+cxx_compat_field_typedef_order.c:18:61: error: duplicate member 'v'
+   18 | struct S { T a; struct { int T; int u; int u; }; int v; int v; };
+      |                                                             ^
+cxx_compat_field_typedef_order.c:19:8: warning: struct has no members [-Wpedantic]
+   19 | struct M { };
+      |        ^
+cxx_compat_field_typedef_order.c:19:8: warning: empty struct has size 0 in C, size 1 in C++ [-Wc++-compat]
+   19 | struct M { };
+      |        ^

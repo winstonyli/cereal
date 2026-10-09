@@ -3548,3 +3548,44 @@ san.sh 1668 passed, 603 files, 0 findings; verify.sh gcc.dg 3908 of
 3910, c-c++-common 635 of 636, cpp 285 of 285; symcov 4716 files, 0
 unindexed (10 skipped); the LSP sessions (both modes) under TSan: 24
 passed, 0 warnings; uvloop loop.c 3.884 G instructions (HEAD 3.893 G).
+
+Round 196: the two gcc-13 differences Round 195 noted.
+(A) The read-only member wording. gcc's readonly_error says "member 'q'
+in read-only object" when the object holding the member (the
+COMPONENT_REF's operand) is const, else "read-only member 'q'". An
+anonymous member is its own COMPONENT_REF whose type takes the outer
+qualifiers, so `p->q` with `const struct { int q; };` in the record
+counts as a read-only object, as does a member of a non-const anonymous
+struct inside a const one; `struct { const int r; };` stays "read-only
+member". `readonly_check` (cexpr.c) only looked at the base's type; it
+now adds the anonymous members' qualifiers along the path (`find_field`
+already collects them). Same rule for =, compound assignment, ++, --,
+parenthesized and nested access (checked against gcc-13). asm outputs had
+their own copy of the wording (casm.c `asm_operand`), which never said
+"in read-only object" and missed a record with a const member (`*pc`
+where `struct C` holds a `const int`: gcc "read-only location '*pc' used
+as 'asm' output", cereal nothing); it now calls `readonly_check` with
+use 3 (a table of the two message shapes; no string-literal warning for
+asm, as in gcc), and its copy is gone.
+(B) `-Wc++-compat` "using 'T' as both field and typedef name" (and
+"empty struct has size 0") come from gcc's warn_cxx_compat_finish_struct,
+the last step of finish_struct: after the duplicate-member errors (which
+clear the duplicate's name, so `T x; int T; int T;` warns once), after
+-Wpadded and "union cannot be made transparent". struct_finish ran it
+before the flexible-array checks; it now runs last. It must still see
+the erroneous members gcc keeps in its field list (`int T[];` not at the
+end, `int T : 0`), which struct_finish compacted in place: when a member
+is dropped, the kept ones are now copied past the record's entries in
+`c->fields` (truncated at the end as before) and the originals stay for
+the check. Checked against gcc-13: duplicate before and after the field,
+nested record (its own duplicates and warning first), a duplicate named
+T, typedef not used in the body (no warning), anonymous member holding a
+field T (no warning), -Wpadded, transparent_union, erroneous members.
+Noticed, not fixed (STATUS): a record past 2^64 bytes, which gcc wraps
+silently. Tests: `tests/check/readonly_member_anon`,
+`tests/check/cxx_compat_field_typedef_order` (both identical to gcc-13's
+headers), `tests/check/member_index_many.expected` now gcc's order and
+wording. 57 lines added and 47 removed in src. Gates (gate.sh): run.sh
+1672 passed, 0 failed; san.sh 1672 passed, 605 files, 0 findings;
+verify.sh gcc.dg 3908 of 3910, c-c++-common 635 of 636, cpp 285 of 285
+(unchanged); uvloop loop.c 3.885 G instructions.

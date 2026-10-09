@@ -672,22 +672,6 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
             diag_ord(c->diag, o0);
         }
     }
-    if (c->tdseen.len > rd.first_td) {  /* typedef names used in the body */
-        size_t q;
-        mseen_next(c);
-        for (q = rd.first_td; q < c->tdseen.len; q++)
-            c->mseen[c->tdseen.data[q]] = c->mgen;
-        for (k = 0; k < n; k++)
-            if (f[k].name && c->mseen[f[k].name] == c->mgen &&
-                !cin_system(c, f[k].loc))
-                cwarn(c, f[k].loc, "c++-compat", "using '%s' as both field "
-                      "and typedef name is invalid in C++",
-                      cident(c, f[k].name));
-    }
-    c->tdseen.len = rd.first_td;
-    if (n == 0 && !cin_system(c, loc))
-        cwarn(c, loc, "c++-compat", "empty %s has size 0 in C, size 1 in C++",
-              want == TY_UNION ? "union" : "struct");
     for (k = 0; k < n; k++) {
         bool is_last = k == n - 1 || want == TY_UNION;
         if (is_err(c, f[k].ty))
@@ -730,7 +714,15 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     }
     for (k = 0; k < n; k++)
         if (!is_err(c, f[k].ty) || (int)k == keep_err)
-            f[m++] = f[k];
+            m++;
+    if (m < n) {    /* the kept members, copied past all n (read at the end) */
+        size_t at = c->fields.len;
+        for (k = 0; k < n; k++)
+            if (!is_err(c, c->fields.data[rd.first + k].ty) ||
+                (int)k == keep_err)
+                vec_push(&c->fields, c->fields.data[rd.first + k]);
+        f = c->fields.data + at;
+    }
     csum_read_pack(c);
     type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed,
                          a.ms);
@@ -796,6 +788,25 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
         else
             cwarn(c, loc, "", "union cannot be made transparent");
     }
+    /* warn_cxx_compat_finish_struct: last, over every member (the erroneous
+     * ones too; a duplicate's name is gone) */
+    f = c->fields.data + rd.first;
+    if (c->tdseen.len > rd.first_td) {  /* typedef names used in the body */
+        size_t q;
+        mseen_next(c);
+        for (q = rd.first_td; q < c->tdseen.len; q++)
+            c->mseen[c->tdseen.data[q]] = c->mgen;
+        for (k = 0; k < n; k++)
+            if (f[k].name && c->mseen[f[k].name] == c->mgen &&
+                !cin_system(c, f[k].loc))
+                cwarn(c, f[k].loc, "c++-compat", "using '%s' as both field "
+                      "and typedef name is invalid in C++",
+                      cident(c, f[k].name));
+    }
+    c->tdseen.len = rd.first_td;
+    if (n == 0 && !cin_system(c, loc))
+        cwarn(c, loc, "c++-compat", "empty %s has size 0 in C, size 1 in C++",
+              want == TY_UNION ? "union" : "struct");
     if (c->opt.dump && !c->quiet) {
         StrBuf sb;
         memset(&sb, 0, sizeof sb);

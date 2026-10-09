@@ -10,14 +10,14 @@ member_index_many.c:25:18: warning: C++ lookup of 'T' would return a field, not 
 member_index_many.c:26:3: warning: C++ lookup of 'T' would return a field, not a type [-Wc++-compat]
    26 |   T after;
       |   ^
-member_index_many.c:24:7: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
-   24 |   int T;
-      |       ^
 member_index_many.c:20:17: error: duplicate member 'a6'
    20 |   struct { long a6; int a7; };
       |                 ^
 member_index_many.c:22:7: error: duplicate member 'a8'
    22 |   int a8;
+      |       ^
+member_index_many.c:24:7: warning: using 'T' as both field and typedef name is invalid in C++ [-Wc++-compat]
+   24 |   int T;
       |       ^
 member_index_many.c:29:57: warning: initialization of 'long int' from 'void *' makes integer from pointer without a cast [-Wint-conversion]
    29 | struct Big b = { .f0000 = 1, .f3999 = 2, .a1 = 3, .a3 = (void *)0, .g2000 = 4,
@@ -28,7 +28,7 @@ member_index_many.c:29:57: note: (near initialization for 'b.<anonymous>.<anonym
 member_index_many.c:30:40: error: 'struct Big' has no member named 'zz'
    30 |                  .a7 = 5, .in.i2 = 6, .zz = 7 };
       |                                        ^
-member_index_many.c:39:10: error: assignment of read-only member 'q'
+member_index_many.c:39:10: error: assignment of member 'q' in read-only object
    39 |     p->q = 1;
       |          ^
 member_index_many.c:41:13: error: 'struct Big' has no member named 'nope'

@@ -3738,10 +3738,24 @@ static void unary_value(Checker *c, uint32_t i, uint32_t a, uint64_t v,
 }
 
 /* gcc's readonly_error for lvalue a: the diagnostic (use 0: assignment, 1:
- * increment, 2: decrement) when a is read-only; true if one was given. */
-static bool readonly_check(Checker *c, uint32_t a, SrcLoc loc, int use)
+ * increment, 2: decrement, 3: an asm output) when a is read-only; true if
+ * one was given. */
+bool readonly_check(Checker *c, uint32_t a, SrcLoc loc, int use)
 {
-    static const char *const verb[] = { "assignment", "increment", "decrement" };
+    static const char *const verb[] = { "assignment", "increment", "decrement",
+                                        "" };
+    /* member in a read-only object, read-only member, parameter, variable,
+     * location */
+    static const char *const fmt[2][5] = {
+        { "%s of member '%s' in read-only object", "%s of read-only member '%s'",
+          "%s of read-only parameter '%s'", "%s of read-only variable '%s'",
+          "%s of read-only location '%s'" },
+        { "%smember '%s' in read-only object used as 'asm' output",
+          "%sread-only member '%s' used as 'asm' output",
+          "%sread-only parameter '%s' use as 'asm' output",
+          "%sread-only variable '%s' used as 'asm' output",
+          "%sread-only location '%s' used as 'asm' output" } };
+    const char *const *f = fmt[use == 3];
     TypeId t = c->ty[a];
     uint32_t s = strip_paren(c, a);
     bool ro = (tquals(c, t) & TQ_CONST) != 0;
@@ -3749,7 +3763,7 @@ static bool readonly_check(Checker *c, uint32_t a, SrcLoc loc, int use)
         const Record *r = type_record(TT, t);
         ro = r && (r->flags & RF_CONST_MEMBER);
     }
-    if (!ro && s != NO_NODE && ntag(c, s) == N_INDEX) {
+    if (!ro && use < 3 && s != NO_NODE && ntag(c, s) == N_INDEX) {
         /* an element of a string literal: a warning, not an error (PR 27676) */
         uint32_t k[3], b;
         if (nkids(c, s, k, 3) >= 2 && (b = strip_paren(c, k[0])) != NO_NODE &&
@@ -3770,25 +3784,24 @@ static bool readonly_check(Checker *c, uint32_t a, SrcLoc loc, int use)
         if (base != NO_NODE && arrow && is_ptr(c, rvt(c, base)))
             bt = pointee(c, rvt(c, base));
         if (mid) {
-            const char *nm = cident(c, mid);
-            if (tquals(c, bt) & TQ_CONST)
-                cerror(c, loc, "%s of member '%s' in read-only object",
-                       verb[use], nm);
-            else
-                cerror(c, loc, "%s of read-only member '%s'", verb[use], nm);
+            /* the object holding the member: through anonymous members,
+             * their qualifiers count (gcc's nested COMPONENT_REFs) */
+            uint64_t off = 0;
+            unsigned q = tquals(c, bt);
+            find_field(c, bt, mid, &off, &q);
+            cerror(c, loc, f[q & TQ_CONST ? 0 : 1], verb[use], cident(c, mid));
             return true;
         }
     }
     if (s != NO_NODE && ntag(c, s) == N_IDENT) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, s));
         if (ref != SYM_NONE && csym(c, ref)->kind != CS_FUNC) {
-            cerror(c, loc, "%s of read-only %s '%s'", verb[use],
-                   csym(c, ref)->flags & CSF_PARAM ? "parameter" : "variable",
-                   cident(c, cnode_ident(c, s)));
+            cerror(c, loc, f[csym(c, ref)->flags & CSF_PARAM ? 2 : 3],
+                   verb[use], cident(c, cnode_ident(c, s)));
             return true;
         }
     }
-    cerror(c, loc, "%s of read-only location '%s'", verb[use], estr(c, a));
+    cerror(c, loc, f[4], verb[use], estr(c, a));
     return true;
 }
 

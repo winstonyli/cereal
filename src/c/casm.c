@@ -227,23 +227,8 @@ static void asm_operand(Checker *c, SrcLoc loc, uint32_t e, bool out, bool reg,
             cerror(c, loc, "lvalue required in 'asm' statement");
             return;
         }
-        if (tquals(c, t) & TQ_CONST) {
-            uint32_t v = strip_paren(c, e), ref = SYM_NONE;
-            if (ntag(c, v) == N_IDENT)
-                ref = lookup_ord(c, cnode_ident(c, v));
-            if (ntag(c, v) == N_MEMBER_EXPR && cnode_ident(c, v))
-                cerror(c, loc, "read-only member '%s' used as 'asm' output",
-                       cident(c, cnode_ident(c, v)));
-            else if (ref != SYM_NONE && csym(c, ref)->kind != CS_FUNC)
-                cerror(c, loc, csym(c, ref)->flags & CSF_PARAM
-                           ? "read-only parameter '%s' use as 'asm' output"
-                           : "read-only variable '%s' used as 'asm' output",
-                       cident(c, cnode_ident(c, v)));
-            else
-                cerror(c, loc, "read-only location '%s' used as 'asm' output",
-                       estr(c, e));
+        if (readonly_check(c, e, loc, 3))
             return;
-        }
     }
     if (reg && (is_void(c, t) || (!out && !is_func(c, t) && tkind(c, t) != TY_ARRAY &&
                                    !type_is_complete(TT, rvt(c, e))))) {

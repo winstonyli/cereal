@@ -1,0 +1,75 @@
+readonly_member_anon.c:19:10: error: assignment of member 'q' in read-only object
+   19 |     p->q = 1; p->q++; --p->q; p->q += 2;
+      |          ^
+readonly_member_anon.c:19:19: error: increment of member 'q' in read-only object
+   19 |     p->q = 1; p->q++; --p->q; p->q += 2;
+      |                   ^
+readonly_member_anon.c:19:23: error: decrement of member 'q' in read-only object
+   19 |     p->q = 1; p->q++; --p->q; p->q += 2;
+      |                       ^
+readonly_member_anon.c:19:36: error: assignment of member 'q' in read-only object
+   19 |     p->q = 1; p->q++; --p->q; p->q += 2;
+      |                                    ^
+readonly_member_anon.c:20:10: error: assignment of read-only member 'r'
+   20 |     p->r = 1; p->r++;
+      |          ^
+readonly_member_anon.c:20:19: error: increment of read-only member 'r'
+   20 |     p->r = 1; p->r++;
+      |                   ^
+readonly_member_anon.c:21:10: error: assignment of member 'n' in read-only object
+   21 |     p->n = 1; p->n--;
+      |          ^
+readonly_member_anon.c:21:19: error: decrement of member 'n' in read-only object
+   21 |     p->n = 1; p->n--;
+      |                   ^
+readonly_member_anon.c:22:12: error: assignment of member 'z' in read-only object
+   22 |     p->s.z = 1;
+      |            ^
+readonly_member_anon.c:23:11: error: assignment of member 'x' in read-only object
+   23 |     cp->x = 1; cp->q = 1; cp->r = 1; cp->n++;
+      |           ^
+readonly_member_anon.c:23:22: error: assignment of member 'q' in read-only object
+   23 |     cp->x = 1; cp->q = 1; cp->r = 1; cp->n++;
+      |                      ^
+readonly_member_anon.c:23:33: error: assignment of member 'r' in read-only object
+   23 |     cp->x = 1; cp->q = 1; cp->r = 1; cp->n++;
+      |                                 ^
+readonly_member_anon.c:23:43: error: increment of member 'n' in read-only object
+   23 |     cp->x = 1; cp->q = 1; cp->r = 1; cp->n++;
+      |                                           ^
+readonly_member_anon.c:24:13: error: assignment of read-only member 'k'
+   24 |     pc->b.k = 1; *pc = *pc;
+      |             ^
+readonly_member_anon.c:24:22: error: assignment of read-only location '*pc'
+   24 |     pc->b.k = 1; *pc = *pc;
+      |                      ^
+readonly_member_anon.c:25:12: error: assignment of member 'y' in read-only object
+   25 |     cpc->y = 1; cpc->b.k = 1;
+      |            ^
+readonly_member_anon.c:25:26: error: assignment of member 'k' in read-only object
+   25 |     cpc->y = 1; cpc->b.k = 1;
+      |                          ^
+readonly_member_anon.c:26:9: error: assignment of member 'q' in read-only object
+   26 |     a.q = 1; (a).q -= 1; (a.q) = 2;
+      |         ^
+readonly_member_anon.c:26:20: error: assignment of member 'q' in read-only object
+   26 |     a.q = 1; (a).q -= 1; (a.q) = 2;
+      |                    ^
+readonly_member_anon.c:26:32: error: assignment of member 'q' in read-only object
+   26 |     a.q = 1; (a).q -= 1; (a.q) = 2;
+      |                                ^
+readonly_member_anon.c:27:5: error: member 'q' in read-only object used as 'asm' output
+   27 |     __asm__ ("" : "=r"(a.q));
+      |     ^
+readonly_member_anon.c:28:5: error: read-only member 'r' used as 'asm' output
+   28 |     __asm__ ("" : "=r"(a.r));
+      |     ^
+readonly_member_anon.c:29:5: error: member 'x' in read-only object used as 'asm' output
+   29 |     __asm__ ("" : "=r"(cp->x));
+      |     ^
+readonly_member_anon.c:30:5: error: member 'q' in read-only object used as 'asm' output
+   30 |     __asm__ ("" : "=r"(cp->q));
+      |     ^
+readonly_member_anon.c:31:5: error: read-only location '*pc' used as 'asm' output
+   31 |     __asm__ ("" : "=r"(*pc));
+      |     ^
