@@ -2997,3 +2997,25 @@ arguments took the macro name's spacing instead of its own (`J()` with body
 modes) and `tests/pp/err_va_opt.c` (recovery). Left as is: after an empty
 expansion at the end of a line, the next line's first token gets a leading
 space in `-E` (also for `Q()` with `#define Q(x) x`; predates this round).
+
+Round 177: shared build-option handling (ROADMAP A2). The command line used to
+stop at the first option it did not model (`-c`, `-fPIC`, `-MD`, `-x`, `-lm`
+were all fatal), while the language server kept its own skip list in
+`config.c`. Both now call `option_ignored()` in `driver.c`, one table
+(`ignored_opts`): silent (link, codegen, `-g*`, `-W[la],`, `-march=`, value
+options such as `-Xlinker`), dependency output (`-MD -MMD -MP -MG -MF -MT -MQ`:
+consumed, with a note that no `.d` file is written), and options that may
+change diagnostics (`-ffreestanding -fno-builtin -funsigned-char -fwrapv
+-fno-common -fpack-struct -fms-extensions -fshort-wchar -m32 -mx32
+-idirafter -imacros -isysroot --sysroot`: consumed, one note each on stderr,
+never silent). `-m64` and `-fsigned-char` are silent because the host is
+x86-64 where `char` is signed. `-x c`/`none` pass; any other language is an
+error (exit 1). Not implemented, only reported: `-m32` (the predefined
+macros and headers are the host's, so selecting the i386 target alone would
+give a mixed state), `-idirafter`, `-imacros`, `-isysroot`. The language
+server sets `Options.lenient` (no notes, no `-x` error) and still skips `-o`
+and `-E` itself. Test: section 13 of `tests/run.sh` (each silent option
+leaves the diagnostics of an erroneous file unchanged, each reported one is
+reported, `-x c++`/`-x c-header` fail). Not done: a harness that runs the
+list through gcc-13 `-fsyntax-only` too (the gcc side only needs the options
+to be valid, which the build lines already are).

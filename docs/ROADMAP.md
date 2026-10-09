@@ -36,7 +36,7 @@ A1. `__VA_OPT__` (DONE, Round 176; was est. half a day). gcc-13: available in gn
     (probed with `-std=c99` and `-std=c11`). Do first: it breaks `-E` output
     today, independent of `-std`. Check `#__VA_OPT__` against gcc-13 before
     implementing it.
-A2. Shared flag handling (est. 2 days). Hoist the LSP `takes_value`/skip
+A2. Shared flag handling (DONE, Round 177; was est. 2 days). Hoist the LSP `takes_value`/skip
     logic into driver.c as one function used by the CLI and `config.c`.
     Policy, from the review below:
     - An explicit **allowlist** of ignored flags, not a wildcard. Benign:

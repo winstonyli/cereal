@@ -107,6 +107,111 @@ static const char *arg_value(int argc, char **argv, int *i, const char *flag)
     return argv[++*i];
 }
 
+/* Options of the other steps of a build (compile, link, dependency output)
+ * and code-generation switches that cereal skips, so a build line or a
+ * compile_commands entry can be replayed.  An explicit list, not a
+ * wildcard: a switch that changes what the front end accepts is reported
+ * (IGN_SEMANTIC) and never skipped silently.  `args` is the number of
+ * separate arguments the option takes; `joined` also accepts the value
+ * attached to the name (-lm, -MFfile, -Wl,x). */
+enum { IGN_SILENT, IGN_DEPS, IGN_SEMANTIC };
+
+static const struct IgnoredOpt {
+    const char *name;
+    unsigned char kind, args, joined;
+} ignored_opts[] = {
+    {"-c", IGN_SILENT, 0, 0}, {"-S", IGN_SILENT, 0, 0},
+    {"-pipe", IGN_SILENT, 0, 0}, {"-pthread", IGN_SILENT, 0, 0},
+    {"-shared", IGN_SILENT, 0, 0}, {"-static", IGN_SILENT, 0, 0},
+    {"-rdynamic", IGN_SILENT, 0, 0}, {"-pie", IGN_SILENT, 0, 0},
+    {"-no-pie", IGN_SILENT, 0, 0}, {"-fPIC", IGN_SILENT, 0, 0},
+    {"-fPIE", IGN_SILENT, 0, 0}, {"-fpic", IGN_SILENT, 0, 0},
+    {"-fpie", IGN_SILENT, 0, 0}, {"-fno-plt", IGN_SILENT, 0, 0},
+    {"-ffunction-sections", IGN_SILENT, 0, 0},
+    {"-fdata-sections", IGN_SILENT, 0, 0},
+    {"-fno-omit-frame-pointer", IGN_SILENT, 0, 0},
+    {"-fomit-frame-pointer", IGN_SILENT, 0, 0},
+    {"-fasynchronous-unwind-tables", IGN_SILENT, 0, 0},
+    {"-fno-asynchronous-unwind-tables", IGN_SILENT, 0, 0},
+    {"-fno-stack-protector", IGN_SILENT, 0, 0},
+    {"-fstack-clash-protection", IGN_SILENT, 0, 0},
+    {"-fno-semantic-interposition", IGN_SILENT, 0, 0},
+    {"-fno-ident", IGN_SILENT, 0, 0},
+    {"-m64", IGN_SILENT, 0, 0},            /* the host is x86-64 */
+    {"-fsigned-char", IGN_SILENT, 0, 0},   /* ... where char is signed */
+    {"-g", IGN_SILENT, 0, 1}, {"-fstack-protector", IGN_SILENT, 0, 1},
+    {"-fvisibility=", IGN_SILENT, 0, 1}, {"-Wl,", IGN_SILENT, 0, 1},
+    {"-Wa,", IGN_SILENT, 0, 1}, {"-march=", IGN_SILENT, 0, 1},
+    {"-mtune=", IGN_SILENT, 0, 1}, {"-mcpu=", IGN_SILENT, 0, 1},
+    {"-l", IGN_SILENT, 1, 1}, {"-L", IGN_SILENT, 1, 1},
+    {"-T", IGN_SILENT, 1, 1}, {"-u", IGN_SILENT, 1, 1},
+    {"-z", IGN_SILENT, 1, 1},
+    {"-Xclang", IGN_SILENT, 1, 0}, {"-Xpreprocessor", IGN_SILENT, 1, 0},
+    {"-Xlinker", IGN_SILENT, 1, 0}, {"-Xassembler", IGN_SILENT, 1, 0},
+    {"-arch", IGN_SILENT, 1, 0}, {"-target", IGN_SILENT, 1, 0},
+    {"-aux-info", IGN_SILENT, 1, 0}, {"-dumpdir", IGN_SILENT, 1, 0},
+    {"-dumpbase", IGN_SILENT, 1, 0}, {"-iprefix", IGN_SILENT, 1, 0},
+    {"-iwithprefix", IGN_SILENT, 1, 0},
+    {"-MD", IGN_DEPS, 0, 0}, {"-MMD", IGN_DEPS, 0, 0},
+    {"-MP", IGN_DEPS, 0, 0}, {"-MG", IGN_DEPS, 0, 0},
+    {"-MF", IGN_DEPS, 1, 1}, {"-MT", IGN_DEPS, 1, 1},
+    {"-MQ", IGN_DEPS, 1, 1},
+    {"-ffreestanding", IGN_SEMANTIC, 0, 0},
+    {"-fno-builtin", IGN_SEMANTIC, 0, 0},
+    {"-funsigned-char", IGN_SEMANTIC, 0, 0},
+    {"-fwrapv", IGN_SEMANTIC, 0, 0}, {"-fno-common", IGN_SEMANTIC, 0, 0},
+    {"-fpack-struct", IGN_SEMANTIC, 0, 1},
+    {"-fms-extensions", IGN_SEMANTIC, 0, 0},
+    {"-fshort-wchar", IGN_SEMANTIC, 0, 0},
+    {"-m32", IGN_SEMANTIC, 0, 0}, {"-mx32", IGN_SEMANTIC, 0, 0},
+    {"-idirafter", IGN_SEMANTIC, 1, 0}, {"-imacros", IGN_SEMANTIC, 1, 0},
+    {"-isysroot", IGN_SEMANTIC, 1, 0}, {"--sysroot", IGN_SEMANTIC, 1, 1},
+};
+
+/* -x LANG: C (or none) is the only language cereal reads. */
+static int language_option(Options *o, int argc, char **argv, int i)
+{
+    const char *a = argv[i], *lang;
+    int used = a[2] ? 1 : 2;
+    if (!a[2] && i + 1 >= argc)
+        fatal("missing argument to '-x'");
+    lang = a[2] ? a + 2 : argv[i + 1];
+    if (strcmp(lang, "c") && strcmp(lang, "none") && !o->lenient) {
+        fprintf(stderr, "cereal: error: language '%s' is not supported "
+                "(only C)\n", lang);
+        o->bad_options++;
+    }
+    return used;
+}
+
+/* An option cereal skips (see ignored_opts): the number of arguments it
+ * takes in all, or 0 when it is not one. */
+int option_ignored(Options *o, int argc, char **argv, int i)
+{
+    const char *a = argv[i];
+    size_t k, n;
+    if (!strncmp(a, "-x", 2))
+        return language_option(o, argc, argv, i);
+    for (k = 0; k < sizeof ignored_opts / sizeof *ignored_opts; k++) {
+        const struct IgnoredOpt *g = &ignored_opts[k];
+        int used = 1;
+        n = strlen(g->name);
+        if (strncmp(a, g->name, n) != 0 || (a[n] && !g->joined))
+            continue;
+        if (!a[n] && g->args) {
+            if (i + 1 >= argc)
+                fatal("missing argument to '%s'", a);
+            used = 2;
+        }
+        if (!o->lenient && g->kind == IGN_SEMANTIC)
+            vec_push(&o->ignored_semantic, a);
+        else if (!o->lenient && g->kind == IGN_DEPS)
+            vec_push(&o->ignored_deps, a);
+        return used;
+    }
+    return 0;
+}
+
 int options_parse_one(Options *o, int argc, char **argv, int i)
 {
     const char *a = argv[i];
@@ -172,7 +277,8 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         norm_option(o, a);
     } else if (!strcmp(a, "-Wno-normalized")) {
         o->pp.lex.norm = 3;
-    } else if (!strncmp(a, "-W", 2) && a[2]) {
+    } else if (!strncmp(a, "-W", 2) && a[2] && strncmp(a, "-Wl,", 4) &&
+               strncmp(a, "-Wa,", 4)) {
         vec_push(&o->wflags, a + 2);
     } else if (!strcmp(a, "-fdiagnostics-format=json")) {
         o->json = true;
@@ -242,7 +348,7 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     } else if (!strcmp(a, "-o")) {
         o->output = arg_value(argc, argv, &i, "-o");
     } else if (a[0] == '-' && a[1]) {
-        return 0;
+        return option_ignored(o, argc, argv, i);
     } else {
         vec_push(&o->inputs, a);
     }
@@ -492,6 +598,8 @@ void options_free(Options *o)
     vec_free(&o->pp.system_dirs);
     vec_free(&o->macros);
     vec_free(&o->wflags);
+    vec_free(&o->ignored_semantic);
+    vec_free(&o->ignored_deps);
     diag_config_free(o->diag);
     o->diag = NULL;
     vec_free(&o->inputs);

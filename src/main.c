@@ -1182,6 +1182,12 @@ int main(int argc, char **argv)
         }
         i += n - 1;
     }
+    for (i = 0; i < (int)o.ignored_semantic.len; i++)
+        fprintf(stderr, "cereal: note: '%s' is ignored and may change "
+                "diagnostics\n", o.ignored_semantic.data[i]);
+    for (i = 0; i < (int)o.ignored_deps.len; i++)
+        fprintf(stderr, "cereal: note: '%s' is accepted but no dependency "
+                "file is written\n", o.ignored_deps.data[i]);
     options_finish(&o);
     if (o.bad_options)
         return 1;

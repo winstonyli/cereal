@@ -18,8 +18,8 @@ in [ROADMAP.md](ROADMAP.md).
   line and column); 5 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 266 of 266 identical. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1502 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 565 files.
-- uvloop's `loop.c` checks in about 3.87 G instructions (callgrind).
+- 1541 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 565 files.
+- uvloop's `loop.c` checks in about 3.85 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
 

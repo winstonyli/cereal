@@ -30,6 +30,9 @@ typedef struct Options {
     bool no_warnings;           /* -w */
     bool fatal_errors;          /* -Wfatal-errors */
     int bad_options;            /* command-line errors reported */
+    bool lenient;               /* skip what is not understood without notes (language server) */
+    VEC(const char *) ignored_semantic; /* skipped, may change diagnostics */
+    VEC(const char *) ignored_deps;     /* -MD ...: no dependency file written */
     bool track0;                /* -ftrack-macro-expansion=0 */
     bool trigraphs_flag;        /* -trigraphs given (else only the ISO -std= has them) */
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */
@@ -56,6 +59,9 @@ typedef struct TU {
 /* Parse common options starting at argv[i]; returns number consumed (0 if
  * not a common option, -1 on error). */
 int options_parse_one(Options *o, int argc, char **argv, int i);
+/* A skipped build option (-c, -fPIC, -MD, -x c, ...): the arguments it
+ * takes in all, 0 if argv[i] is not one. */
+int option_ignored(Options *o, int argc, char **argv, int i);
 void options_init(Options *o);
 void options_finish(Options *o);   /* add host dirs etc. */
 void options_free(Options *o);

@@ -365,5 +365,26 @@ if [ -d "$ROOT/tests/summary" ]; then
     fi
 fi
 
+# 13. build options: the ones cereal skips (driver.c ignored_opts) leave the
+#     diagnostics of an erroneous file and the exit status exactly as without
+#     them, and so do they for $REFCC
+printf 'int x = ;
+int f(void) { return y; }
+' >"$TMP/bo.c"
+"$CEREAL" check -std=c99 "$TMP/bo.c" >"$TMP/bo.base" 2>&1
+for f in -c -S -pipe -pthread -shared -static -pie -fPIC -fPIE -fno-plt -g -ggdb3     -fvisibility=hidden -fstack-protector-strong -march=native -mtune=generic     -Wl,-z,now -Wa,--noexecstack -lm "-l m" -L. "-L ." "-x c" -xc "-MD" "-MMD -MP"     "-MF $TMP/x.d" -MFx.d "-MT a" "-MQ a" -Xlinker\ -v -m64 -fsigned-char; do
+    # shellcheck disable=SC2086
+    "$CEREAL" check -std=c99 $f "$TMP/bo.c" 2>&1 | grep -v '^cereal: note:' >"$TMP/bo.out"
+    if cmp -s "$TMP/bo.base" "$TMP/bo.out"; then ok; else bad "option $f changes the output"; fi
+done
+for f in -ffreestanding -fwrapv -fno-common -m32; do
+    "$CEREAL" check -std=c99 $f "$TMP/bo.c" 2>&1 | grep -q "note: '$f' is ignored" &&
+        ok || bad "option $f is not reported"
+done
+for f in "-x c++" "-x c-header"; do
+    # shellcheck disable=SC2086
+    "$CEREAL" check -std=c99 $f "$TMP/bo.c" >/dev/null 2>&1 && bad "option $f accepted" || ok
+done
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

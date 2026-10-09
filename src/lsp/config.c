@@ -173,22 +173,6 @@ static const CompileCmd *command_for(LspConfig *c, const char *path)
     return best;
 }
 
-/* GCC options that take their value as the next argument and that cereal
- * does not model (skipped with the value). */
-static bool takes_value(const char *a)
-{
-    static const char *const opts[] = {
-        "-o", "-MF", "-MT", "-MQ", "-x", "-arch", "-target", "-Xclang",
-        "-Xpreprocessor", "-Xassembler", "-Xlinker", "-aux-info", "-dumpdir",
-        "-dumpbase", "-idirafter", "-iprefix", "-iwithprefix", "-imacros",
-        "-isysroot", "--sysroot", "-L", "-l", "-T", "-u", "-z", NULL};
-    int i;
-    for (i = 0; opts[i]; i++)
-        if (!strcmp(a, opts[i]))
-            return true;
-    return false;
-}
-
 static const char *const path_opts[] = {"-I", "-iquote", "-isystem",
                                         "-include", NULL};
 
@@ -259,19 +243,25 @@ Options *config_options_for(LspConfig *c, const char *path)
     Options *o = xcalloc(1, sizeof *o);
     const CompileCmd *cmd = command_for(c, path);
     StrVec flags = {0};
-    int i, n;
+    int i, n, used;
     options_init(o);
+    o->lenient = true;
     if (cmd) {
         for (i = 1; i < cmd->argc; i++) { /* argv[0]: the compiler */
             const char *a = cmd->argv[i];
             if (a[0] != '-') /* the source file and other inputs */
                 continue;
-            if (takes_value(a)) {
+            if (!strcmp(a, "-E"))
+                continue;
+            if (!strcmp(a, "-o")) { /* output file: not an input */
                 i++;
                 continue;
             }
-            if (!strcmp(a, "-c") || !strcmp(a, "-E") || !strcmp(a, "-S"))
+            used = option_ignored(o, cmd->argc, (char **)cmd->argv, i);
+            if (used > 0) {
+                i += used - 1;
                 continue;
+            }
             /* cereal is C99-only and would stop on other standards; keep
              * the GNU flavour, which changes predefined macros */
             if (!strncmp(a, "-std=", 5)) {
@@ -285,7 +275,6 @@ Options *config_options_for(LspConfig *c, const char *path)
     add_cereal_files(&c->arena, &flags, c->root, path);
     n = (int)flags.len;
     for (i = 0; i < n; i++) {
-        int used;
         if (!strncmp(flags.data[i], "-std=", 5) &&
             strcmp(flags.data[i], "-std=c99") &&
             strcmp(flags.data[i], "-std=gnu99"))
