@@ -2907,3 +2907,16 @@ needs the argument judged with symbol information. The parser's judge
 (`unroll_arg_bad`) is textual and leaves names alone; making it right means
 checking the pragma in the checker, with the real expression evaluator, not
 adding a name case to the text scanner.
+
+Round 173: two diagnostic placements.
+* Overflow in a binary expression with a folded binary operand
+  (`(1 << 31) - 1`): gcc folds that operand to a bare constant without a
+  location, so it prints the value (`'-2147483648 - 1'`) and reports at the
+  start of the current line. `fold_flush` does the same when an operand is a
+  number or a folded binary, at least one the latter; a folded cast keeps its
+  location and stays as before (`misc_79`).
+* Format substring columns: gcc rereads the literal from its presumed line
+  (after `#line` or a linemarker). Where that text is missing (other presumed
+  file, line past EOF) or is not the literal, the warning sits at the
+  literal's start. `fmt_decode` clears `exact` the same way
+  (gcc.dg/cpp/pr66415-2.c). Golden `misc_265`. gcc.dg 3738/3744, cpp 266/266.

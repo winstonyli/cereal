@@ -6706,6 +6706,30 @@ static void fold_flush(Checker *c, uint32_t i)
                   "expression '%s' of type %s results in '%s'", estr(c, a),
                   type_q(TT, t), vstr(c, t, c->cv[k]));
         } else if (ntag(c, k) == N_BINARY) {
+            uint32_t kk[2], x, y;
+            size_t ol;
+            const char *op;
+            /* An operand folded from a binary expression is a bare constant
+             * without a location (unlike a folded cast), so gcc prints its
+             * value and reports at input_location. */
+            if (nkids(c, k, kk, 2) == 2 &&
+                (x = strip_paren(c, kk[0])) != NO_NODE &&
+                (y = strip_paren(c, kk[1])) != NO_NODE &&
+                has_ival(c, x) && has_ival(c, y) &&
+                (ntag(c, x) == N_NUMBER || ntag(c, x) == N_BINARY) &&
+                (ntag(c, y) == N_NUMBER || ntag(c, y) == N_BINARY) &&
+                (ntag(c, x) == N_BINARY || ntag(c, y) == N_BINARY) &&
+                (op = ttext(c, c->nodes[k].tok, &ol)) != NULL) {
+                cwarn(c, after_loc(c, k), "overflow", "integer overflow in "
+                      "expression '%s %.*s %s' of type %s results in '%s'",
+                      ntag(c, x) == N_NUMBER ? estr(c, x)
+                                             : vstr(c, c->ty[x], c->cv[x]),
+                      (int)ol, op,
+                      ntag(c, y) == N_NUMBER ? estr(c, y)
+                                             : vstr(c, c->ty[y], c->cv[y]),
+                      type_q(TT, t), vstr(c, t, c->cv[k]));
+                continue;
+            }
             cwarn(c, cnode_loc(c, k), "overflow", "integer overflow in "
                   "expression '%s' of type %s results in '%s'", estr(c, k),
                   type_q(TT, t), vstr(c, t, c->cv[k]));

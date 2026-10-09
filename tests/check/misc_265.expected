@@ -1,0 +1,28 @@
+misc_265.c:2:1: warning: integer overflow in expression '-2147483648 - 1' of type 'int' results in '2147483647' [-Woverflow]
+    2 | int a = (1 << 31) - 1;
+      | ^
+misc_265.c:2:9: warning: initializer element is not a constant expression [-Wpedantic]
+    2 | int a = (1 << 31) - 1;
+      |         ^
+misc_265.c:2:1: warning: overflow in constant expression [-Woverflow]
+    2 | int a = (1 << 31) - 1;
+      | ^
+misc_265.c:3:1: warning: integer overflow in expression '-2147483648 - 1' of type 'int' results in '2147483647' [-Woverflow]
+    3 | int b(void) { int x = (1 << 31) - 1; return x; }
+      | ^
+misc_265.c:4:1: warning: integer overflow in expression '-2147483648 - 1' of type 'int' results in '2147483647' [-Woverflow]
+    4 | int c(void) { int x; x = (1 << 31) - 1; return x; }
+      | ^
+misc_265.c:5:1: warning: integer overflow in expression '-2147483648 - 1' of type 'int' results in '2147483647' [-Woverflow]
+    5 | int d(void) { return (1 << 31) - 1; }
+      | ^
+misc_265.c:6:34: warning: integer overflow in expression of type 'int' results in '-2147483648' [-Woverflow]
+    6 | int e(void) { return (2147483647 + 1) - 1; }
+      |                                  ^
+misc_265.c:7:1: warning: integer overflow in expression '-2147483648 - 1' of type 'int' results in '2147483647' [-Woverflow]
+    7 | short f(void) { short w = ((short)1 << 31) - 1; return w; }
+      | ^
+misc_265.c:9:29: warning: format '%d' expects a matching 'int' argument [-Wformat=]
+    9 | void g(void) { printf("abc %d\n"); }
+      |                             ^
+misc_265.c:100:23: warning: format '%d' expects a matching 'int' argument [-Wformat=]

@@ -289,6 +289,23 @@ static bool fmt_decode(Checker *c, uint32_t s, char **buf, uint32_t **off,
     *exact = np == 1 && (!c->u->toks[c->nodes[s].tok].exp ||
                          c->u->toks[c->nodes[s].tok].exp ==
                              c->u->toks[c->nodes[s].tok].t.loc);
+    if (*exact) {
+        /* gcc re-reads the literal from its presumed line (#line, linemarker);
+         * where that line is not the literal's text it falls back to the
+         * literal's start */
+        SrcLoc l = tloc(c, c->nodes[s].tok);
+        SrcFile *f = srcmgr_file_of(c->sm, l);
+        const char *pn, *lt;
+        uint32_t ph, col, pl, ll;
+        srcmgr_linecol(f, l, &ph, &col);
+        pl = srcmgr_presumed(f, ph, &pn);
+        tx = ttext(c, c->nodes[s].tok, &len);
+        if (pl != ph || strcmp(pn, f->name) != 0) {
+            lt = strcmp(pn, f->name) == 0 ? srcmgr_line_text(f, pl, &ll) : NULL;
+            *exact = lt && ll >= col - 1 + len &&
+                     memcmp(lt + col - 1, tx, len) == 0;
+        }
+    }
     for (t = 0; t < np; t++) {
         tx = ttext(c, c->nodes[s].tok + t, &len);
         if (lit_str_prefix(tx, len) || len < 2)
