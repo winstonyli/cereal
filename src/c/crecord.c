@@ -354,26 +354,28 @@ bool cdecl_flex_struct(Checker *c, TypeId t)
     return r && (r->flags & RF_FLEXIBLE);
 }
 
-static void dup_add(Checker *c, uint32_t **seen, size_t *ns, size_t *cap,
-                    uint32_t name, SrcLoc loc, bool *dup)
+/* Whether member name was seen already in the record being finished (and
+ * reported if so), else marks it seen: c->mseen[name] == c->mgen, a new
+ * generation per record (struct_finish). */
+static bool dup_add(Checker *c, uint32_t name, SrcLoc loc)
 {
-    size_t k;
-    *dup = false;
-    for (k = 0; k < *ns; k++)
-        if ((*seen)[k] == name) {
-            cerror(c, loc, "duplicate member '%s'", cident(c, name));
-            *dup = true;
-            return;
-        }
-    if (*ns == *cap) {
-        *cap = *cap ? *cap * 2 : 16;
-        *seen = xrealloc(*seen, *cap * sizeof **seen);
+    if (name >= c->nmseen) {
+        uint32_t n = c->nmseen ? c->nmseen : 1024;
+        while (n <= name)
+            n *= 2;
+        c->mseen = xrealloc(c->mseen, n * sizeof *c->mseen);
+        memset(c->mseen + c->nmseen, 0, (n - c->nmseen) * sizeof *c->mseen);
+        c->nmseen = n;
     }
-    (*seen)[(*ns)++] = name;
+    if (c->mseen[name] == c->mgen) {
+        cerror(c, loc, "duplicate member '%s'", cident(c, name));
+        return true;
+    }
+    c->mseen[name] = c->mgen;
+    return false;
 }
 
-static void dup_nested(Checker *c, TypeId t, uint32_t **seen, size_t *ns,
-                       size_t *cap, int depth)
+static void dup_nested(Checker *c, TypeId t, int depth)
 {
     Record *r = type_record(TT, type_canon(TT, t));
     uint32_t k;
@@ -381,12 +383,11 @@ static void dup_nested(Checker *c, TypeId t, uint32_t **seen, size_t *ns,
         return;
     for (k = 0; k < r->nfields; k++) {
         const Field *fl = &TT->fields.data[r->fields + k];
-        bool dup;
         if (fl->name)
-            dup_add(c, seen, ns, cap, fl->name, fl->loc, &dup);
+            dup_add(c, fl->name, fl->loc);
         else if (tkind(c, fl->ty) == TY_STRUCT ||
                  tkind(c, fl->ty) == TY_UNION)
-            dup_nested(c, fl->ty, seen, ns, cap, depth + 1);
+            dup_nested(c, fl->ty, depth + 1);
     }
 }
 
@@ -587,8 +588,6 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     SrcLoc loc;
     bool named = false, saw_named = false;
     int keep_err = -1;
-    uint32_t *seen = NULL;
-    size_t ns = 0, cap = 0;
     Record *r;
     int depth = 0;
     if (!c->recs.len)
@@ -700,16 +699,17 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
         if (f[k].name || is_rec(c, f[k].ty))
             saw_named = true;
     }
+    if (!++c->mgen) {           /* wrapped: no stale marks may match */
+        memset(c->mseen, 0, c->nmseen * sizeof *c->mseen);
+        c->mgen = 1;
+    }
     for (k = 0; k < n; k++) {
-        bool dup;
         if (f[k].name) {
-            dup_add(c, &seen, &ns, &cap, f[k].name, f[k].loc, &dup);
-            if (dup)
+            if (dup_add(c, f[k].name, f[k].loc))
                 f[k].name = 0;
         } else if (is_rec(c, f[k].ty) && f[k].width < 0)
-            dup_nested(c, f[k].ty, &seen, &ns, &cap, 0);
+            dup_nested(c, f[k].ty, 0);
     }
-    free(seen);
     for (k = 0; k < n; k++)
         if (!is_err(c, f[k].ty) || (int)k == keep_err)
             f[m++] = f[k];

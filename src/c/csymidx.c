@@ -113,11 +113,17 @@ static uint32_t hash_str(const char *s, size_t n)
 }
 
 /* The offset of text s (cut to CIX_HOVER_MAX bytes) in b->hs, added if new;
- * 0 for an empty text. */
+ * 0 for an empty text.  The two spaces type_print puts after a parameter
+ * ending in a word (gcc's diagnostic text) read as one here. */
 static uint32_t hover_add(SymIdxB *b, StrBuf *s)
 {
     uint32_t i, off;
-    size_t n = s->len;
+    size_t n = 0, j;
+    for (j = 0; j < s->len; j++)
+        if (!(n >= 2 && s->data[j] == ' ' && s->data[n - 1] == ' ' &&
+              s->data[n - 2] == ','))
+            s->data[n++] = s->data[j];
+    s->len = n;
     while (n && s->data[n - 1] == '\n')
         n--;
     if (!n)

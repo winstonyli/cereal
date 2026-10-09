@@ -76,3 +76,5 @@ var get:local: int
 == hover csym.c:6:23
 2 C entities here
 var get:_t: int
+== hover csym.c:17:5
+func pair: int(int, long int, unsigned int)

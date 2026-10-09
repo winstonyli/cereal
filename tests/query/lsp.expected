@@ -45,6 +45,13 @@ expands to: ((100) * (100)) + ((100) * (100))
 expands to: 7
 == hover lsp.c:2:21
 parameter x of SQUARE(x)
+== hover lsp.c:9:19
+#define LIMIT 100
+  defined at lsp.h:3:9
+== hover lsp.c:19:12
+#define SQUARE(x) (x)
+  defined at lsp.c:15:9
+== hover lsp.c:23:12
 == visible lsp.c:14:1
 LSP_H
 LIMIT

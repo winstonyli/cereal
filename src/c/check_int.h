@@ -327,6 +327,9 @@ struct Checker {
     uint32_t *top[2];        /* by ident: innermost binding + 1 */
     uint32_t *ext;           /* by ident: external declaration + 1 */
     uint32_t nidents;        /* size of top[] and ext[] */
+    uint32_t *mseen;         /* by ident: mgen if a member of the record
+                              * being finished (crecord.c dup_add) */
+    uint32_t nmseen, mgen;
     VEC(ScopeMark) scopes;
 
     /* the unit */

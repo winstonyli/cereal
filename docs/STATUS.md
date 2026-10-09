@@ -18,7 +18,7 @@ in [ROADMAP.md](ROADMAP.md).
   line and column); 2 differ.
 - c-c++-common: 635 of 636 identical; 1 differs.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 285 of 285 identical. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1658 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 601 files.
+- 1660 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 602 files.
 - uvloop's `loop.c` checks in about 3.89 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -64,6 +64,11 @@ Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
   parameter) not probed.
 - _FloatN builtin rows only checked through the implicit-call harness
   (bench bt_gen); `-std=c2x` and constant-expression visibility unchecked.
+- Quadratic in huge records (HISTORY Round 193; a per-record name index
+  would cover both): each member access or designator scans the record's
+  fields (`find_field`, `lookup_path`), and under `-Wc++-compat` a struct
+  of typedef-typed members is checked in quadratic time
+  (`cxx_typedef_in_struct`, the `tdseen` scan in struct_finish).
 
 Parked front-end gaps (reasons in HISTORY Rounds 172 to 175 and 184):
 - `vector_size` errors are reported once per declaration; gcc reports once per

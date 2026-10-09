@@ -37,7 +37,7 @@ decls.c:19:5 DECL func many -> #18
 #2 obj e external :: var e: int extern
 #3 param a :: param a: int
 #4 param b :: param b: int
-#5 func f external :: func f: int(int,  int) defined
+#5 func f external :: func f: int(int, int) defined
 #6 param a :: param a: int
 #7 param b :: param b: int
 #8 func kr external :: func kr: int() defined
@@ -50,4 +50,4 @@ decls.c:19:5 DECL func many -> #18
 #15 func later external implicit :: func later: int(int) defined
 #16 param v :: param v: int
 #17 func nodef external :: func nodef: int()
-#18 func many external :: func many: int(long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int...
+#18 func many external :: func many: int(long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int, long int,...

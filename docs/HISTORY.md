@@ -3400,3 +3400,50 @@ symcov 4716 files, 0 unindexed; the LSP sessions (both modes) under TSan:
 quadratic in its member count, with or without the index (17.6 k members
 0.15 s, 34 k 0.48 s, the 330,869-member file 20 to 58 s; 4 MiB of `int
 vN;` takes 0.7 s).
+
+Round 193: three follow-ups to Round 192.
+(A) "Hover on `XXH_MIN` in zstd.c returns null" is not a bug: both its
+`#define` (zstd.c:15290) and its use (15324) lie inside `#ifndef
+XXH_NO_XXH3` (11943), and zstd.c defines `XXH_NO_XXH3` itself (8294), so
+the macro is never defined; `def` answers nothing there either. The
+suspected cause, a macro inside a nested macro's argument, answers
+correctly (`A(MIN(a, b))`, `A(K)`, `B(MIN(a, K))` all hover to their
+`#define`). `tests/query/lsp.cmd` pins both: LIMIT inside TWICE's argument
+(through SQUARE) hovers to its `#define`; in an `#if 0` region a macro
+visible there answers (SQUARE) and one whose `#define` is itself skipped
+(new GONE) answers nothing.
+(B) Hover texts read with one space after a parameter's comma: `hover_add`
+(csymidx.c, every text the index stores goes through it) collapses the
+two spaces `type_print` puts after a parameter ending in a word (gcc's
+diagnostic spelling, which `--dump-types` keeps). The stored text is what
+changes, so `tests/symidx/decls.expected` changes on its two prototypes
+(`f`, the 110-parameter `many`, still cut at 1024 bytes);
+`tests/query/csym.cmd` gains `int pair(int a, long b, unsigned c);`
+(`func pair: int(int, long int, unsigned int)`). csym_hover's texts had
+no such comma, so its golden is unchanged.
+(C) The quadratic struct check was the duplicate-member check
+(`dup_add`, crecord.c): every named member scanned the names seen so far
+(73% of the instructions at 10 k members). It is now a stamp array by
+ident (`Checker.mseen`, one generation `mgen` per record, cleared on
+wraparound), so the check is linear; diagnostics and their order are
+unchanged (byte-identical to the old binary on the new golden). callgrind:
+10 k members 343 M instructions before, 40 k 361 M and 160 k 1.43 G after
+(linear; with `--dump-symbols` 20 k 433 M, 40 k 868 M). Wall time (shared
+machine, noisy), before / after: 17.6 k 0.45 / 0.15 s, 34 k 1.55 / 0.50 s,
+80 k 9.4 / 0.78 s, 160 k 36.5 / 1.8 s, 330 k members 3.1 s after (8.3 s
+with `--dump-symbols`). Golden `tests/check/dup_members_many` (4,000
+generated members: a duplicate among them, one through an anonymous
+member, and a plain member repeating a name of that anonymous member; a
+record defined among the members and a later record reuse every name
+without a diagnostic), matching gcc-13 up to locale quotes and carets.
+Found, not fixed (same shape, an ident-set lookup per record, a per-record
+name index would cover all three): member access and designators scan the
+record's fields per use (`find_field` cexpr.c, `lookup_path` cinit.c):
+20 k members each accessed once and designated once, 4.77 G instructions,
+88% in these two; and under `-Wc++-compat` two loops are quadratic in a
+struct of typedef-typed members (`cxx_typedef_in_struct` cdecl.c scans the
+open fields per typedef use; struct_finish scans `tdseen` per member):
+10 k members 0.54 s, 20 k 3.3 s. Gates: run.sh 1660 passed, 0 failed;
+san.sh 1660 passed, 602 files, 0 findings; verify.sh gcc.dg 3908 of 3910,
+c-c++-common 635 of 636, cpp 285 of 285; symcov 4716 files, 0 unindexed;
+uvloop loop.c 3.89 G instructions (unchanged).

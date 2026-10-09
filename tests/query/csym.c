@@ -14,3 +14,4 @@ int get(struct s *p)
     int a = TMP(p->x) + TMP(local);
     return a + width + total + LIMIT;
 }
+int pair(int a, long b, unsigned c);

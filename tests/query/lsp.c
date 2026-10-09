@@ -18,3 +18,7 @@ int use(int v)
 #if 0
 int dead = SQUARE(3);
 #endif
+#if 0
+#define GONE(x) (x)
+int gone = GONE(1);
+#endif

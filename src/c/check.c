@@ -794,6 +794,7 @@ void checker_free(Checker *c)
     free(c->top[0]);
     free(c->top[1]);
     free(c->ext);
+    free(c->mseen);
     vec_free(&c->scopes);
     free(c->ty);
     free(c->cv);

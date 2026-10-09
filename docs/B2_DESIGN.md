@@ -770,8 +770,10 @@ it departs from or settles the text above:
    S, offset N[ bit B, width W])`, `label f:NAME`, a struct or union's
    `type_dump_record` layout and an enum's `enum E (underlying T)` with
    one `NAME = VALUE` line per enumerator. Types print as gcc's
-   diagnostics spell them (`int(int,  int)`: two spaces after a
-   parameter ending in a specifier word). `tentative` is now printed
+   diagnostics spell them, except that `hover_add` collapses the two
+   spaces gcc puts after a parameter ending in a specifier word
+   (`int(int,  int)` reads `int(int, int)`, Round 193; `--dump-types`
+   keeps gcc's spacing). `tentative` is now printed
    only for an object that no declaration initialized (the merged flags
    are ORed, so `int x; int x = 1;` printed it before; no golden
    changed).

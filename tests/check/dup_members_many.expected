@@ -1,0 +1,12 @@
+dup_members_many.c:11:31: warning: ISO C99 doesn't support unnamed structs/unions [-Wpedantic]
+   11 |   struct { int g; int f3999; };
+      |                               ^
+dup_members_many.c:10:7: error: duplicate member 'f1234'
+   10 |   int f1234;
+      |       ^
+dup_members_many.c:11:23: error: duplicate member 'f3999'
+   11 |   struct { int g; int f3999; };
+      |                       ^
+dup_members_many.c:13:7: error: duplicate member 'g'
+   13 |   int g;
+      |       ^
