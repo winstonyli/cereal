@@ -3,8 +3,9 @@
 `cereal lsp` speaks the Language Server Protocol over stdin/stdout. Its
 point is to give macros what variables and functions get from other
 tools: navigation, rename, call hierarchy, hover with the expansion,
-diagnostics from the macro analyses. It also runs fast on huge generated
-files.
+diagnostics from the macro analyses and, for files up to 4 MiB of
+sources, the compiler's (parse and check, as `-fsyntax-only` gives).
+It also runs fast on huge generated files.
 
 ## Decisions
 
@@ -23,7 +24,8 @@ files.
 | `pos.c` | `file://` URIs; positions in UTF-8 (when the client offers `positionEncodings: ["utf-8"]`) or UTF-16 |
 | `config.c` | compilation database, shell splitting, `.cereal`, per-file `Options` |
 | `server.c` | protocol loop, documents, units, the builder thread, snapshots |
-| `features.c` | requests, diagnostics, inactive regions |
+| `features.c` | requests, diagnostics (macro phase and compiler, merged), inactive regions |
+| `../c/frontend.c` | parse and check one TU (shared with `cereal check`); the second build phase |
 
 - **Units:** a unit is a translation unit the server keeps built: a
   source file, or a header opened on its own. When a built unit is seen
@@ -49,6 +51,64 @@ files.
 - **Diagnostics** are published after every build for the open documents
   the unit covers. Errors in headers that are not open appear on the
   `#include` that leads to them.
+- **Compiler diagnostics** (the same as `cereal -fsyntax-only` for the
+  file, with its compile command's flags including `-std`) come from a
+  second phase of the build, see below.
+
+## Compiler diagnostics (the second build phase)
+
+After the macro snapshot has been installed and its diagnostics
+published, the builder thread (still marked busy, so `waitIdle` waits)
+runs `frontend_run` (`src/c/frontend.c`, the function `cereal check`
+uses too) over a **fresh TU of its own**: a second, sequential
+preprocessor pass (a missing include is fatal, as in gcc and the command
+line), the parser, and the checker, reading the same frozen overlay and the
+unit's cancel flag. The snapshot's TU cannot be reused: for small files
+the preprocessor was consumed by the macro index, and large files keep
+cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
+`check`: main.c 0.04 s / 0.09 s, cexpr.c 0.07 s / 0.22 s, zstd.c 0.25 s /
+0.60 s).
+
+- **Merge:** the second publication replaces the first for each open
+  file with the macro phase's diagnostics followed by the compiler's,
+  minus any with the same range and message (a missing `#include` is
+  reported by both). Until the phase ends, or if it is skipped or
+  cancelled, only the macro phase's are shown, so compiler diagnostics
+  disappear for the length of a check after each edit.
+- **Cancellation:** an edit sets the unit's cancel flag; the preprocessor
+  sees it at the next token and the parse loop ends at the next unit, so a
+  running check stops within a declaration. A cancelled run is dropped
+  without publishing (a 4 MB table cancelled 0.46 s into a check stopped
+  at the edit). Shutdown cancels too.
+- **Stale results:** the result is published under the server lock only if
+  the unit's wanted generation is still the one the overlay was captured
+  at; an edit bumps it under the same lock, so diagnostics always match
+  the buffers they were computed from. Not published: a cancelled or
+  unopenable run.
+- **Size limit:** units whose sources (main file and every header read,
+  system headers included) total over 4 MiB are not checked
+  (`CEREAL_LSP_CHECK_MAX`, bytes, overrides; `CEREAL_LSP_STATS` logs
+  `no check`). Measured (nice, WSL2) with the check phase on against off:
+  peak RSS grows by 9 MB for zstd.c (2.2 MB: 21 to 30 MB), 16 and 21 MB
+  for sqlite3.c and uvloop's loop.c (9 MB: 79 to 95 and 150 to 171 MB), but by
+  194 MB for a dense 4 MB single-initializer table (48 bytes of parser
+  tokens per source byte) and 420 MB at 9 MB, which set the limit. The
+  macro phase peaks at 830 MB on the 35 MB file; a unit over the limit
+  never pays more than its macro phase.
+- **Nothing is retained:** the TU, the parser's tokens and the checker are
+  freed when the phase ends (the symbol index will keep data across the
+  phase, B2).
+- **Which units:** every unit except a header opened on its own (no
+  compile command, not yet included by a unit). Once a unit includes such
+  a header, its compiler errors show in the header's own buffer, through
+  the includer's check.
+- **Time** (phase only, after the macro snapshot): 33 KB main.c 0.05 s,
+  248 KB cexpr.c 0.06 s, zstd.c 0.34 s (2.2 MB), a dense 4 MB table
+  1.7 s. sqlite3.c (9 MB) took 1.1 s and loop.c 3.4 s before the limit.
+- **Test:** `tests/lsp/diag` (undeclared identifier and type error, two
+  quick edits whose final diagnostics must be the last text's, a missing
+  include shown once). Whether a quick edit really *cancelled* a check
+  is timing-dependent and not asserted; the stale-result rule is.
 
 ## Capabilities
 

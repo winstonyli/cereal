@@ -3213,3 +3213,29 @@ declared ordinary name (variable, function, `const int`) is not an integer
 constant expression and gets gcc's error, as in gcc-13. An undeclared name
 is still silent (gcc adds an "undeclared" error first). unroll-5 now matches;
 golden unroll_name.
+
+Round 186: ROADMAP B1, compiler diagnostics in the language server. `parse_one`
+moved out of main.c into `frontend_run` (`src/c/frontend.[ch]`, options in
+`FrontendOpts`; the CLI keeps a thin `parse_one` that prints and frees); it
+now also stops at a set `pp.cancel` flag (no `checker_finish`, no further
+units). The builder runs it as a second phase after the macro snapshot has
+published: a fresh sequential TU over the same overlay, options from
+`config_options_for` (so `-std` and the compile command's flags apply) with a
+fatal missing include as on the command line, the unit's cancel flag, then
+the TU is dropped. `u->building` stays set through the phase so `waitIdle`
+covers it. Publication is under the server lock and only if `u->want` is
+still the generation the overlay was captured at (stale and cancelled runs
+publish nothing). `lsp_publish_diagnostics` takes the check TU and writes
+the macro phase's diagnostics then the compiler's, dropping those with the
+same range and message. Units whose sources total over 4 MiB are skipped
+(`CEREAL_LSP_CHECK_MAX`): a dense single-initializer table costs 48 bytes of
+parser tokens per source byte (194 MB at 4 MB, 420 MB at 9 MB), real code
+about 4 bytes per byte. The second preprocessor pass is 30 to 45% of the
+phase; small files need it (their cells are not kept), large files keep
+cells but their tokens are not, so reuse is parked. Phase times: 33 KB 0.05 s,
+2.2 MB zstd.c 0.34 s. Shutdown now cancels running builds. Golden
+`tests/lsp/diag` (undeclared identifier, type error, two quick edits, a
+missing include reported once); `tests/lsp/basic.expected` gained the
+compiler errors of its broken edit. Parked: the check phase blocks the single
+builder thread for other units; compiler diagnostics vanish between an edit's
+macro publication and the check's; B2 (index) must keep the TU past the phase.

@@ -1,0 +1,127 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "definitionProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync"
+ ]
+}
+>> initialized
+## compiler diagnostics (parse and check) after the macro phase: an undeclared identifier and a type error
+>> didOpen diag/main.c
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/diag/main.c
+{
+ "diagnostics": [
+  {
+   "message": "'count' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 16,
+     "line": 2
+    },
+    "start": {
+     "character": 11,
+     "line": 2
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 11,
+        "line": 2
+       },
+       "start": {
+        "character": 11,
+        "line": 2
+       }
+      },
+      "uri": "file://$ROOT/diag/main.c"
+     },
+     "message": "each undeclared identifier is reported only once for each function it appears in"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  },
+  {
+   "message": "incompatible types when initializing type 'int *' using type 'double'",
+   "range": {
+    "end": {
+     "character": 14,
+     "line": 6
+    },
+    "start": {
+     "character": 13,
+     "line": 6
+    }
+   },
+   "severity": 1,
+   "source": "cereal"
+  }
+ ]
+}
+## two edits in quick succession: the first is cancelled or superseded, only the last text's diagnostics are the final ones (no 'nope' error)
+>> textDocument/didChange
+>> textDocument/didChange
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/diag/main.c
+{
+ "diagnostics": [
+  {
+   "message": "incompatible types when initializing type 'int *' using type 'double'",
+   "range": {
+    "end": {
+     "character": 14,
+     "line": 6
+    },
+    "start": {
+     "character": 13,
+     "line": 6
+    }
+   },
+   "severity": 1,
+   "source": "cereal"
+  }
+ ]
+}
+## a missing include is reported by both phases: shown once
+>> textDocument/didChange
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/diag/main.c
+{
+ "diagnostics": [
+  {
+   "message": "missing.h: No such file or directory",
+   "range": {
+    "end": {
+     "character": 10,
+     "line": 0
+    },
+    "start": {
+     "character": 9,
+     "line": 0
+    }
+   },
+   "severity": 1,
+   "source": "cereal"
+  }
+ ]
+}
+>> shutdown
+null
+>> exit
+exit 0

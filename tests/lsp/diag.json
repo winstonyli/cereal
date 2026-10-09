@@ -1,0 +1,19 @@
+[
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/diag", "capabilities": {"general": {"positionEncodings": ["utf-8", "utf-16"]}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"note": "compiler diagnostics (parse and check) after the macro phase: an undeclared identifier and a type error"},
+ {"open": "diag/main.c"},
+ {"idle": true},
+ {"wait": "textDocument/publishDiagnostics", "uri": "file://$ROOT/diag/main.c"},
+ {"note": "two edits in quick succession: the first is cancelled or superseded, only the last text's diagnostics are the final ones (no 'nope' error)"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/diag/main.c", "version": 2}, "contentChanges": [{"text": "int f(void)\n{\n    return count + 1;\n}\nint h(void)\n{\n    return nope;\n}\nint g(void)\n{\n    int *p = 1.5;\n    return *p;\n}\n"}]}}},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/diag/main.c", "version": 3}, "contentChanges": [{"text": "int f(void)\n{\n    return 1;\n}\nint g(void)\n{\n    int *p = 1.5;\n    return *p;\n}\n"}]}}},
+ {"idle": true},
+ {"wait": "textDocument/publishDiagnostics", "uri": "file://$ROOT/diag/main.c"},
+ {"note": "a missing include is reported by both phases: shown once"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/diag/main.c", "version": 4}, "contentChanges": [{"text": "#include \"missing.h\"\nint f(void)\n{\n    return 1;\n}\n"}]}}},
+ {"idle": true},
+ {"wait": "textDocument/publishDiagnostics", "uri": "file://$ROOT/diag/main.c"},
+ {"send": {"id": 2, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

@@ -114,7 +114,7 @@ void lsp_signature_help(Req *r, JsonWriter *w);
 void lsp_expand_macro(Req *r, JsonWriter *w);
 
 /* Diagnostics for the files of a snapshot (publishDiagnostics bodies). */
-void lsp_publish_diagnostics(Snapshot *s, PosEncoding enc,
+void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
                              bool (*wanted)(void *ctx, const char *path),
                              void *ctx);
 void lsp_publish_inactive(Snapshot *s, PosEncoding enc, const char *path);

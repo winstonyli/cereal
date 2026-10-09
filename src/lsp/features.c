@@ -943,86 +943,145 @@ static void begin_notification(JsonWriter *w, StrBuf *sb, const char *method)
     json_begin_object(w);
 }
 
-void lsp_publish_diagnostics(Snapshot *s, PosEncoding enc,
+/* Where diagnostic d shows in file f (a file of sm), and its message;
+ * false if it does not show there.  Errors in headers that are not open
+ * show on the #include that leads to them (outermost first). */
+static bool diag_place(SrcMgr *sm, SrcFile *f, const Diagnostic *d,
+                       bool (*wanted)(void *ctx, const char *path), void *ctx,
+                       Arena *a, SrcLoc *b, SrcLoc *e, const char **msg)
+{
+    *b = d->loc;
+    *msg = d->msg;
+    if (in_file(f, *b)) {
+        *e = diag_end(sm, d);
+        return true;
+    }
+    {
+        SrcFile *df = srcmgr_file_of(sm, *b);
+        int j;
+        if (d->level < DL_ERROR || !d->ninc || (df && wanted(ctx, df->path)))
+            return false;
+        for (j = d->ninc - 1; j >= 0 && !in_file(f, d->inc_chain[j]); j--)
+            ;
+        if (j < 0)
+            return false;
+        *b = d->inc_chain[j];
+        *msg = arena_printf(a, "in included file %s: %s",
+                            df ? df->name : "?", d->msg);
+        *e = *b;
+    }
+    return true;
+}
+
+static SrcFile *user_file_named(SrcMgr *sm, const char *path)
+{
+    uint32_t i, n = srcmgr_nfiles(sm);
+    for (i = 0; i < n; i++) {
+        SrcFile *f = srcmgr_file(sm, i);
+        if (f->kind == SF_USER && !strcmp(f->path, path))
+            return f;
+    }
+    return NULL;
+}
+
+static int cmp_keys(const void *a, const void *b)
+{
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+/* The diagnostics of each open file the snapshot covers: the macro phase's
+ * (s->tu), then the compiler's (chk, a TU of the same unit; may be NULL)
+ * minus those at the same range with the same message. */
+void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
                              bool (*wanted)(void *ctx, const char *path),
                              void *ctx)
 {
-    SrcMgr *sm = &s->tu.sm;
-    uint32_t fi, nf = srcmgr_nfiles(sm);
+    SrcMgr *sm0 = &s->tu.sm;
+    uint32_t fi, nf = srcmgr_nfiles(sm0);
     Arena a;
     arena_init(&a);
     for (fi = 0; fi < nf; fi++) {
-        SrcFile *f = srcmgr_file(sm, fi);
+        SrcFile *f0 = srcmgr_file(sm0, fi);
         StrBuf sb = {0};
         JsonWriter w;
-        size_t i;
-        if (f->kind != SF_USER || !wanted(ctx, f->path))
+        VEC(const char *) seen = {0}; /* keys of the first pass's */
+        int pass;
+        if (f0->kind != SF_USER || !wanted(ctx, f0->path))
             continue;
         begin_notification(&w, &sb, "textDocument/publishDiagnostics");
         json_key(&w, "uri");
-        json_str(&w, path_to_uri(&a, f->path));
+        json_str(&w, path_to_uri(&a, f0->path));
         json_key(&w, "diagnostics");
         json_begin_array(&w);
-        for (i = 0; i < s->tu.diag.all.len; i++) {
-            Diagnostic *d = s->tu.diag.all.data[i];
-            SrcLoc b = d->loc, e;
-            const char *msg = d->msg;
-            size_t k;
-            if (!in_file(f, b)) {
-                /* errors in headers that are not open show on the
-                 * #include that leads to them (outermost first) */
-                SrcFile *df = srcmgr_file_of(sm, b);
-                int j;
-                if (d->level < DL_ERROR || !d->ninc || (df && wanted(ctx, df->path)))
+        for (pass = 0; pass < 2; pass++) {
+            TU *tu = pass ? chk : &s->tu;
+            SrcMgr *sm = tu ? &tu->sm : NULL;
+            SrcFile *f = !tu ? NULL : pass ? user_file_named(sm, f0->path) : f0;
+            size_t i;
+            if (!f)
+                continue;
+            for (i = 0; i < tu->diag.all.len; i++) {
+                Diagnostic *d = tu->diag.all.data[i];
+                SrcLoc b, e;
+                const char *msg;
+                size_t k;
+                if (!diag_place(sm, f, d, wanted, ctx, &a, &b, &e, &msg))
                     continue;
-                for (j = d->ninc - 1; j >= 0 && !in_file(f, d->inc_chain[j]); j--)
-                    ;
-                if (j < 0)
-                    continue;
-                b = d->inc_chain[j];
-                msg = arena_printf(&a, "in included file %s: %s",
-                                   df ? df->name : "?", d->msg);
-                e = b;
-            } else {
-                e = diag_end(sm, d);
-            }
-            json_begin_object(&w);
-            json_key(&w, "range");
-            json_range(&w, sm, enc, b, e);
-            json_key(&w, "severity");
-            json_int(&w, severity(d->level));
-            if (d->id && *d->id) {
-                json_key(&w, "code");
-                json_str(&w, d->id);
-            }
-            json_key(&w, "source");
-            json_str(&w, "cereal");
-            json_key(&w, "message");
-            json_str(&w, msg);
-            if (d->notes.len) {
-                json_key(&w, "relatedInformation");
-                json_begin_array(&w);
-                for (k = 0; k < d->notes.len; k++) {
-                    SrcFile *nf2 = srcmgr_file_of(sm, d->notes.data[k].loc);
-                    if (!nf2 || (nf2->kind != SF_USER && nf2->kind != SF_SYSTEM))
+                if (chk) {
+                    uint32_t l0, c0, l1, c1;
+                    const char *key;
+                    loc_to_pos(sm, b, enc, &l0, &c0);
+                    loc_to_pos(sm, e < b ? b : e, enc, &l1, &c1);
+                    key = arena_printf(&a, "%u:%u-%u:%u|%s", l0, c0, l1, c1,
+                                       msg);
+                    if (pass == 0)
+                        vec_push(&seen, key);
+                    else if (seen.len && bsearch(&key, seen.data, seen.len,
+                                     sizeof *seen.data, cmp_keys))
                         continue;
-                    json_begin_object(&w);
-                    json_key(&w, "location");
-                    json_begin_object(&w);
-                    json_key(&w, "uri");
-                    json_str(&w, path_to_uri(&a, nf2->path));
-                    json_key(&w, "range");
-                    json_range(&w, sm, enc, d->notes.data[k].loc,
-                               d->notes.data[k].loc);
-                    json_end_object(&w);
-                    json_key(&w, "message");
-                    json_str(&w, d->notes.data[k].msg);
-                    json_end_object(&w);
                 }
-                json_end_array(&w);
+                json_begin_object(&w);
+                json_key(&w, "range");
+                json_range(&w, sm, enc, b, e);
+                json_key(&w, "severity");
+                json_int(&w, severity(d->level));
+                if (d->id && *d->id) {
+                    json_key(&w, "code");
+                    json_str(&w, d->id);
+                }
+                json_key(&w, "source");
+                json_str(&w, "cereal");
+                json_key(&w, "message");
+                json_str(&w, msg);
+                if (d->notes.len) {
+                    json_key(&w, "relatedInformation");
+                    json_begin_array(&w);
+                    for (k = 0; k < d->notes.len; k++) {
+                        SrcFile *nf2 = srcmgr_file_of(sm, d->notes.data[k].loc);
+                        if (!nf2 ||
+                            (nf2->kind != SF_USER && nf2->kind != SF_SYSTEM))
+                            continue;
+                        json_begin_object(&w);
+                        json_key(&w, "location");
+                        json_begin_object(&w);
+                        json_key(&w, "uri");
+                        json_str(&w, path_to_uri(&a, nf2->path));
+                        json_key(&w, "range");
+                        json_range(&w, sm, enc, d->notes.data[k].loc,
+                                   d->notes.data[k].loc);
+                        json_end_object(&w);
+                        json_key(&w, "message");
+                        json_str(&w, d->notes.data[k].msg);
+                        json_end_object(&w);
+                    }
+                    json_end_array(&w);
+                }
+                json_end_object(&w);
             }
-            json_end_object(&w);
+            if (pass == 0 && chk && seen.len)
+                qsort(seen.data, seen.len, sizeof *seen.data, cmp_keys);
         }
+        vec_free(&seen);
         json_end_array(&w);
         json_end_object(&w);
         json_end_object(&w);

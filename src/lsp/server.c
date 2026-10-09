@@ -10,6 +10,7 @@
 #include "lsp.h"
 
 #include "../analysis/analysis.h"
+#include "../c/frontend.h"
 #include "../mgraph.h"
 #include "../cell.h"
 #include "../par.h"
@@ -243,6 +244,75 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
     return s;
 }
 
+/* ---- compiler diagnostics: the second phase -------------------------------- */
+
+/* Parse and check run after the macro snapshot has published, over a fresh
+ * TU of their own that is dropped when the phase ends (nothing but its
+ * diagnostics is kept until the symbol index exists).  Units whose
+ * sources total more than this are skipped, which bounds the memory: the
+ * phase holds the file texts, the parser's tokens of one declaration and
+ * the checker's file scope (docs/LSP.md has the measurements).
+ * CEREAL_LSP_CHECK_MAX overrides it, in bytes. */
+#define CHECK_MAX_BYTES (4u << 20)
+
+typedef struct Check {
+    TU tu;
+    Options *opt;
+} Check;
+
+static size_t check_limit(void)
+{
+    const char *e = getenv("CEREAL_LSP_CHECK_MAX");
+    return e ? (size_t)strtoull(e, NULL, 10) : (size_t)CHECK_MAX_BYTES;
+}
+
+static bool check_eligible(const Unit *u, Snapshot *s)
+{
+    uint32_t i, n = srcmgr_nfiles(&s->tu.sm);
+    size_t total = 0;
+    if (u->standalone_header) /* a header alone is not a translation unit */
+        return false;
+    for (i = 0; i < n; i++) {
+        SrcFile *f = srcmgr_file(&s->tu.sm, i);
+        if (f->kind != SF_VIRTUAL)
+            total += f->size;
+    }
+    if (total > check_limit() && stats_on())
+        fprintf(stderr, "lsp: no check: %zu source bytes\n", total);
+    return total && total <= check_limit();
+}
+
+static void check_free(Check *c)
+{
+    if (!c)
+        return;
+    tu_free(&c->tu);
+    config_options_free(c->opt);
+    free(c);
+}
+
+/* NULL if the unit changed meanwhile (cancelled) or could not be opened. */
+static Check *check_run(Unit *u, Snapshot *s)
+{
+    Check *c = xcalloc(1, sizeof *c);
+    FrontendOpts fo;
+    bool ok;
+    c->opt = config_options_for(&S.cfg, s->main);
+    c->opt->pp.fatal_missing_include = true; /* gcc stops at one */
+    tu_init(&c->tu, c->opt);
+    c->tu.sm.overlay = overlay_lookup;
+    c->tu.sm.overlay_ctx = s->overlay;
+    c->tu.pp.cancel = &u->cancel;
+    memset(&fo, 0, sizeof fo);
+    fo.check = true;
+    ok = frontend_run(&c->tu, s->main, &fo);
+    if (!ok || atomic_load_u32(&u->cancel)) {
+        check_free(c);
+        return NULL;
+    }
+    return c;
+}
+
 /* ---- units --------------------------------------------------------------- */
 
 static bool has_command(const char *path)
@@ -346,7 +416,7 @@ static void *builder_main(void *arg)
         Unit *u;
         Overlay *ov;
         Options *opt;
-        Snapshot *snap, *old = NULL;
+        Snapshot *snap, *old = NULL, *checking = NULL;
         long long want;
         double t0, t1, t2;
         if (!S.queue.len) {
@@ -386,7 +456,6 @@ static void *builder_main(void *arg)
         }
 
         mutex_lock(&S.m);
-        u->building = false;
         if (snap && want > u->built) {
             snap->gen = want;
             old = u->snap;
@@ -394,7 +463,7 @@ static void *builder_main(void *arg)
             u->built = want;
             adopt_headers(u);
             t2 = stats_now();
-            lsp_publish_diagnostics(snap, S.enc, doc_open_in, u);
+            lsp_publish_diagnostics(snap, NULL, S.enc, doc_open_in, u);
             if (stats_on())
                 fprintf(stderr, "lsp: overlay %.3fs, build %.3fs, publish "
                         "%.3fs\n", t1 - t0, t2 - t1, stats_now() - t2);
@@ -405,12 +474,37 @@ static void *builder_main(void *arg)
                         lsp_publish_inactive(snap, S.enc,
                                              S.docs.data[i]->path);
             }
+            if (check_eligible(u, snap))
+                checking = snapshot_ref(snap);
         } else if (snap) {
             snapshot_release(snap);
         }
+        if (!checking) /* a barrier (waitIdle) also waits for the check */
+            u->building = false;
         cond_broadcast(&S.done);
         mutex_unlock(&S.m);
         snapshot_release(old);
+        if (checking) {
+            /* Phase 2, outside the lock; an edit sets u->cancel, which
+             * the preprocessor sees at the next token.  What it finds is
+             * published only if no edit came in since (u->want is bumped
+             * under the lock), so it always matches the buffers it read. */
+            Check *c;
+            double t3 = stats_now();
+            c = check_run(u, checking);
+            mutex_lock(&S.m);
+            if (stats_on())
+                fprintf(stderr, "lsp: check %.3fs%s\n", stats_now() - t3,
+                        c ? "" : " (cancelled)");
+            if (c && u->want == want && !atomic_load_u32(&u->cancel))
+                lsp_publish_diagnostics(checking, &c->tu, S.enc, doc_open_in,
+                                        u);
+            u->building = false;
+            cond_broadcast(&S.done);
+            mutex_unlock(&S.m);
+            check_free(c);
+            snapshot_release(checking);
+        }
         mutex_lock(&S.m);
     }
     mutex_unlock(&S.m);
@@ -955,6 +1049,11 @@ int lsp_main(FILE *in, FILE *out)
     }
     mutex_lock(&S.m);
     S.stop = true;
+    {
+        size_t i; /* a running build or check need not finish */
+        for (i = 0; i < S.units.len; i++)
+            atomic_store_u32(&S.units.data[i]->cancel, 1);
+    }
     cond_broadcast(&S.work);
     cond_broadcast(&S.done);
     mutex_unlock(&S.m);

@@ -96,12 +96,19 @@ Survey result: feasible, the planned P6 milestone in PARSER.md. The server
 does not parse or check today. The checker resolves every identifier and
 type but discards the result at the end of each unit.
 
-B1. Run parse and check in the builder as a second phase after the macro
-    snapshot publishes, with the existing cancel flag, and publish compiler
-    diagnostics (est. 150 to 250 lines; lift `parse_one` out of main.c into
-    a shared function). Cost spike above: about 60 ms on small files, about
-    1 s on the largest unit. Small files have no cell-regenerated tokens, so
-    this needs a second preprocessor pass for them (not yet measured).
+B1. (DONE, Round 186; was est. 150 to 250 lines.) Parse and check run in the
+    builder as a second phase after the macro snapshot publishes, with the
+    unit's cancel flag, and publish compiler diagnostics merged with the
+    macro phase's (same range and message shown once). `parse_one` is now
+    `frontend_run` in `src/c/frontend.c`, shared with `cereal check`. The
+    phase is a fresh sequential TU (a second preprocessor pass, 30 to 45%
+    of the phase), dropped at the end; units whose sources total over 4 MiB
+    are skipped. Details and numbers: LSP.md, "Compiler diagnostics".
+    Parked: reusing the cell build's tokens (`--cells` path) for large
+    files to skip the second pass (saves under half of a phase that is
+    cancelled by the next edit anyway); B2 will need to keep the TU alive
+    for its index, which changes the memory bound; the check phase delays
+    other units' builds (one builder thread).
 B2. A C symbol index recorded in the checker: uses and declarations with
     location, kind, a stable declaration id, hover text copied out as a
     string before the checker is freed (est. 400 to 600 lines, 6 to 8 hook

@@ -748,6 +748,36 @@
    },
    "severity": 1,
    "source": "cereal"
+  },
+  {
+   "message": "'TWICE' undeclared here (not in a function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 12
+    },
+    "start": {
+     "character": 8,
+     "line": 12
+    }
+   },
+   "severity": 1,
+   "source": "cereal"
+  },
+  {
+   "message": "expected ',' or ';' at end of input",
+   "range": {
+    "end": {
+     "character": 3,
+     "line": 12
+    },
+    "start": {
+     "character": 0,
+     "line": 12
+    }
+   },
+   "severity": 1,
+   "source": "cereal"
   }
  ]
 }
