@@ -62,6 +62,11 @@ if command -v "$REFCC" >/dev/null 2>&1; then
         esac
         cd "$ROOT"
     done
+    cd "$ROOT/tests/ppstd"
+    for std in c99 gnu99 c11 gnu11 c17 gnu17 c18 iso9899:2011 gnu1x; do
+        diff_pp "pp/std_macros.c (-std=$std)" std_macros.c -std=$std
+    done
+    cd "$ROOT"
     for h in assert.h ctype.h errno.h float.h inttypes.h limits.h locale.h \
         math.h setjmp.h signal.h stdarg.h stdbool.h stddef.h stdint.h \
         stdio.h stdlib.h string.h time.h wchar.h wctype.h complex.h fenv.h \

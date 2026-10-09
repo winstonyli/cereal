@@ -262,23 +262,12 @@ Options *config_options_for(LspConfig *c, const char *path)
                 i += used - 1;
                 continue;
             }
-            /* cereal is C99-only and would stop on other standards; keep
-             * the GNU flavour, which changes predefined macros */
-            if (!strncmp(a, "-std=", 5)) {
-                if (strstr(a, "gnu"))
-                    vec_push(&flags, "-std=gnu99");
-                continue;
-            }
             add_flag(&c->arena, &flags, cmd->dir, cmd->argv, cmd->argc, &i);
         }
     }
     add_cereal_files(&c->arena, &flags, c->root, path);
     n = (int)flags.len;
     for (i = 0; i < n; i++) {
-        if (!strncmp(flags.data[i], "-std=", 5) &&
-            strcmp(flags.data[i], "-std=c99") &&
-            strcmp(flags.data[i], "-std=gnu99"))
-            continue; /* would be fatal: C99 only */
         used = options_parse_one(o, n, (char **)flags.data, i);
         if (used > 0)
             i += used - 1;

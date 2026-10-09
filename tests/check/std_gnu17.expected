@@ -1,0 +1,6 @@
+std_gnu17.c:6:5: warning: ISO C forbids zero-size array 'a' [-Wpedantic]
+    6 | int a[0];
+      |     ^
+std_gnu17.c:7:13: warning: ISO C forbids omitting the middle term of a '?:' expression [-Wpedantic]
+    7 | int b = 1 ? : 2;
+      |             ^

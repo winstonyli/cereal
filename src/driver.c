@@ -23,6 +23,7 @@ void options_init(Options *o)
     o->pp.lex.norm = 1;
     o->linemarkers = true;
     o->parallel = 'a';
+    o->std_year = 1999;
 }
 
 /* --param NAME=VALUE: the parameter only matters to the middle end, but gcc
@@ -212,6 +213,43 @@ int option_ignored(Options *o, int argc, char **argv, int i)
     return 0;
 }
 
+/* -std= values: the standard's year and whether the GNU
+ * extensions are on.  Aliases as in gcc-13. */
+static const struct {
+    const char *name;
+    int year;
+    bool gnu;
+} std_names[] = {
+    {"c99", 1999, false}, {"c9x", 1999, false}, {"iso9899:1999", 1999, false},
+    {"iso9899:199x", 1999, false}, {"gnu99", 1999, true}, {"gnu9x", 1999, true},
+    {"c11", 2011, false}, {"c1x", 2011, false}, {"iso9899:2011", 2011, false},
+    {"gnu11", 2011, true}, {"gnu1x", 2011, true},
+    {"c17", 2017, false}, {"c18", 2017, false}, {"iso9899:2017", 2017, false},
+    {"iso9899:2018", 2017, false}, {"gnu17", 2017, true}, {"gnu18", 2017, true},
+};
+
+/* Apply -std=NAME; false if it is not one cereal reads. */
+static bool set_std(Options *o, const char *name)
+{
+    size_t k;
+    for (k = 0; k < sizeof std_names / sizeof *std_names; k++) {
+        if (strcmp(name, std_names[k].name) != 0)
+            continue;
+        o->std_year = std_names[k].year;
+        o->pp.gnu_mode = std_names[k].gnu;
+        o->pp.lex.uliterals = std_names[k].gnu || o->std_year >= 2011;
+        o->pp.lex.scope = std_names[k].gnu;
+        if (std_names[k].gnu) {
+            o->pp.gnu_extensions = true;
+            o->pp.lex.trigraphs = o->trigraphs_flag;
+        } else {
+            o->pp.lex.trigraphs = true;     /* the ISO modes */
+        }
+        return true;
+    }
+    return false;
+}
+
 int options_parse_one(Options *o, int argc, char **argv, int i)
 {
     const char *a = argv[i];
@@ -239,16 +277,9 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->pp.nostdinc = true;
     } else if (!strcmp(a, "-undef")) {
         o->pp.no_predefs = true;
-    } else if (!strcmp(a, "-std=c99") || !strcmp(a, "-std=iso9899:1999")) {
-        o->pp.lex.trigraphs = true;     /* the ISO modes */
-    } else if (!strcmp(a, "-std=gnu99")) {
-        o->pp.gnu_extensions = true;
-        o->pp.gnu_mode = true;
-        o->pp.lex.uliterals = true;
-        o->pp.lex.scope = true;
-        o->pp.lex.trigraphs = o->trigraphs_flag;
     } else if (!strncmp(a, "-std=", 5)) {
-        fatal("only C99 is supported (got '%s')", a);
+        if (!set_std(o, a + 5) && !o->lenient)
+            fatal("only C99, C11 and C17 are supported (got '%s')", a);
     } else if (!strcmp(a, "-pedantic") || !strcmp(a, "-Wpedantic")) {
         o->pp.pedantic = true;
         o->pp.lex.ucn_c99 = true;
@@ -641,7 +672,9 @@ bool tu_begin(TU *tu, const char *path)
     size_t i;
     PP *pp = &tu->pp;
     pp_define_builtin_text(pp, "__STDC__", "1");
-    pp_define_builtin_text(pp, "__STDC_VERSION__", "199901L");
+    pp_define_builtin_text(pp, "__STDC_VERSION__",
+                           tu->opt->std_year >= 2017 ? "201710L"
+                           : tu->opt->std_year >= 2011 ? "201112L" : "199901L");
     pp_define_builtin_text(pp, "__STDC_HOSTED__", "1");
     if (!tu->opt->pp.no_predefs) {
         /* host predefines, one #define per line */
@@ -670,10 +703,13 @@ bool tu_begin(TU *tu, const char *path)
     if (!tu->opt->pp.no_predefs && tu->opt->pp.gnu_mode) {
         /* host -std=gnu99 differs from -std=c99 only in these */
         pp_cmdline_undef(pp, "__STRICT_ANSI__");
-        pp_define_builtin_text(pp, "__STDC_UTF_16__", "1");
-        pp_define_builtin_text(pp, "__STDC_UTF_32__", "1");
         pp_define_builtin_text(pp, "linux", "1");
         pp_define_builtin_text(pp, "unix", "1");
+    }
+    if (!tu->opt->pp.no_predefs &&
+        (tu->opt->pp.gnu_mode || tu->opt->std_year >= 2011)) {
+        pp_define_builtin_text(pp, "__STDC_UTF_16__", "1");
+        pp_define_builtin_text(pp, "__STDC_UTF_32__", "1");
     }
     if (!tu->opt->pp.no_predefs && tu->opt->opt_level &&
         tu->opt->opt_level != '0') {

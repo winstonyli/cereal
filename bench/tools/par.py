@@ -59,6 +59,7 @@ def work(job):
     return dict(f=f,cwd=cwd,flags=flags,grc=grc,crc=c.returncode,
         g=hdrs(gerr),c=hdrs(c.stderr.decode(errors="replace")),
         cerr=c.stderr.decode(errors="replace")[-300:] if c.returncode not in (0,1) else "")
+STDS={"c99","c9x","iso9899:1999","iso9899:199x","gnu99","gnu9x","c11","c1x","iso9899:2011","gnu11","gnu1x","c17","c18","iso9899:2017","iso9899:2018","gnu17","gnu18"}
 def dgjobs(extra):
     root=os.environ.get("CEREAL_GCCTS",os.path.expanduser("~/gccts"))+"/gcc/testsuite/"+os.environ.get("CEREAL_DGDIR","gcc.dg")
     jobs=[]
@@ -75,8 +76,8 @@ def dgjobs(extra):
             if m and m.group(2): continue
             if m or adds:
                 o=[x for x in shlex.split(raw) if (keepO or not x.startswith("-O")) and x!="-g"]
-                if any(x.startswith("-std=") and x not in ("-std=c99","-std=gnu99","-std=iso9899:1999") for x in o) or "-ansi" in o:
-                    continue            # cereal is C99 only
+                if any(x.startswith("-std=") and x[5:] not in STDS for x in o) or "-ansi" in o:
+                    continue            # cereal reads C99, C11 and C17 only
                 o2=[]; k=0
                 while k<len(o):         # --param N=V is accepted and ignored
                     if o[k]=="--param": k+=2; o2.append("--param"); continue

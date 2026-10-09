@@ -30,6 +30,7 @@ typedef struct Options {
     bool no_warnings;           /* -w */
     bool fatal_errors;          /* -Wfatal-errors */
     int bad_options;            /* command-line errors reported */
+    int std_year;               /* -std=: 1999, 2011 or 2017 */
     bool lenient;               /* skip what is not understood without notes (language server) */
     VEC(const char *) ignored_semantic; /* skipped, may change diagnostics */
     VEC(const char *) ignored_deps;     /* -MD ...: no dependency file written */

@@ -3019,3 +3019,37 @@ leaves the diagnostics of an erroneous file unchanged, each reported one is
 reported, `-x c++`/`-x c-header` fail). Not done: a harness that runs the
 list through gcc-13 `-fsyntax-only` too (the gcc side only needs the options
 to be valid, which the build lines already are).
+
+Round 178: `-std=c11`, `c17` and their `gnu` and alias forms (ROADMAP A3).
+`Options.std_year` (1999, 2011, 2017) beside `gnu_mode`; one table
+(`std_names`) maps all gcc-13 spellings (`c1x`, `iso9899:2011`, `c18`, ...).
+`gcc-13 -dM -E` across the six standards differs from c99 only in
+`__STDC_VERSION__` (201112L, 201710L), `__STDC_UTF_16__`/`_32__` (every C11
+or later mode, and gnu99) and, for gnu modes, `__STRICT_ANSI__`, `linux`,
+`unix`; those are all it takes. Strict C11 and C17 have trigraphs, `u`/`U`/`u8`
+literals and no `::`. `cped11` (the "ISO C99 does not support ..." pedwarns)
+is silent from C11 on. The LSP's `-std` hack (map other values to gnu99) is
+gone: `Options.lenient` ignores an unknown `-std=` there, the CLI stays fatal
+(`c2x`/`gnu2x`/`c23`, `c++*`). The parity harness (`par.py`) now runs the gcc
+tests with any of these `-std=`.
+Parity, old and new together: the gcc.dg files run grew from 3744 to 3910
+(166 C11/C17 tests that were skipped), identical 3739 -> 3866, differ
+5 -> 44; c-c++-common 634/636 unchanged; gcc.dg/cpp 266/266 -> 281/285. No old
+file changed. The 39 + 4 new differences are the next work, grouped by cause
+(counts are diagnostics, not files): `#elifdef`/`#elifndef` in the GNU modes
+(gcc accepts them with "before C2X is a GCC extension" under -pedantic, 4
+files); the C11 atomic member and `_Atomic` initialisation checks
+(c11-atomic-1/3/4); `_Alignas` in specifier-qualifier lists and in `sizeof`
+(c11-align-5/8); the incomplete-pointer comparison (c11-compare-incomplete-1/2,
+it is a pedwarn only before C11 and under -Wc99-c11-compat); the empty
+initializer-braces warning option (`-Wc11-c2x-compat` in C11, not
+`-Wpedantic`); `_Static_assert` without a message in C11 (c11-static-assert-7/8:
+"ISO C11 does not support omitting the string"); qualified void/volatile
+return types (qual-return-5/6/8); enumerator range, `[[]]` attributes, compound
+literal storage class and `...` without a named argument before C2X
+(cereal says -Wpedantic; gcc is silent in C11 mode for some of them); typedef
+redefinition with a function type (c11-typedef-1); lvalue-9; and a handful of
+single files. Tests: `tests/ppstd/std_macros.c` (token diff vs gcc-13 under
+nine spellings), goldens `std_c11` and `std_gnu17`, section 13 of `run.sh`.
+Found on the way: `std_year` first held 99/11/17 and `>= 11` was true for C99
+(every pedwarn vanished in C99 mode); the encoding is now the real year.

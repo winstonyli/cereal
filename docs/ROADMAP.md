@@ -59,7 +59,7 @@ A2. Shared flag handling (DONE, Round 177; was est. 2 days). Hoist the LSP `take
     - `-MD -MMD -MP -MF -MT -MQ` consume their arguments. Writing the
       dependency file is track A4. Until then they are ignored with a note,
       because an absent `.d` file is a silent failure for ninja/make users.
-A3. `-std=c11 c1x gnu11 gnu1x c17 c18 gnu17 gnu18 iso9899:2011 iso9899:2017
+A3. (DONE, Round 178; was est. 1 to 2 days) `-std=c11 c1x gnu11 gnu1x c17 c18 gnu17 gnu18 iso9899:2011 iso9899:2017
     iso9899:2018` (est. 1 to 2 days).
     - New `Options.std_year` (99, 11, 17) beside the existing gnu flag.
     - `__STDC_VERSION__` 201112L or 201710L. Diff `gcc-13 -dM -E` across all

@@ -158,12 +158,14 @@ Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
     return d;
 }
 
-/* gcc's pedwarn_c11: -Wno-c99-c11-compat hides these in C99 mode. */
+/* gcc's pedwarn_c11: -Wno-c99-c11-compat hides these in C99 mode, and
+ * there is nothing to say in C11 and later. */
 Diagnostic *cped11(Checker *c, SrcLoc loc, const char *fmt, ...)
 {
     Diagnostic *d;
     va_list ap;
-    if (!c->opt.pedantic || !diag_enabled(c->diag, "c99-c11-compat"))
+    if (!c->opt.pedantic || c->opt.std_year >= 2011 ||
+        !diag_enabled(c->diag, "c99-c11-compat"))
         return NULL;
     va_start(ap, fmt);
     /* gcc tags the pedwarn with the option when it was given explicitly */

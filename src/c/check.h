@@ -18,7 +18,8 @@ typedef struct Checker Checker;
 
 typedef struct CheckOptions {
     const Target *target;
-    bool gnu;                   /* -std=gnu99 */
+    bool gnu;                   /* -std=gnu99 ... */
+    int std_year;               /* 1999, 2011 or 2017 */
     bool pedantic;
     bool pedantic_errors;
     bool short_enums;           /* -fshort-enums */

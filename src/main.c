@@ -301,6 +301,7 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         memset(&co, 0, sizeof co);
         co.target = check_target;
         co.gnu = o->pp.gnu_mode;
+        co.std_year = o->std_year;
         co.short_enums = o->short_enums;
         co.opt_level = o->opt_level;
         co.strict_alias = o->strict_alias;
