@@ -40,24 +40,22 @@ bench/tools/corp.sh DIR [-IDIR...]  # per-file cereal vs gcc-13 on any C sources
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
 callgrind) in parallel; see its header for the expected numbers.
 
-## Open differences (gcc.dg 8, c-c++-common 2, cpp 2)
+## Open differences (gcc.dg 5, c-c++-common 2, cpp 0)
 Needs gcc's optimizer or middle end (out of reach for a front end):
-pr56355-1, pr83844 (alignment of a VLA-offset member).
+pr56355-1 (-Wstrict-overflow), pr83844 (alignment of a VLA-offset member).
 
-Darwin / Objective-C targets: darwin-cfstring-format-1, pr105522.
+Darwin / Objective-C targets (the expected output comes from a target gcc
+does not model on Linux): darwin-cfstring-format-1, pr105522.
 
-Front-end gaps, each a small separate cause (details in HISTORY Rounds 163, 164):
-- Warray-parameter-11: gcc folds built-in math calls and same-object address
-  differences to constants in an array bound; cereal calls them VLA.
-- multiple-overflow-warn-3: the overflow text for a signed shift into the
-  sign bit is printed folded, at the statement start.
-- pr100547: the location of the vector_size error is gcc's input_location.
-- A parameter of a function definition with `restrict` on a non-pointer is
-  reported twice by gcc (once by us): pr108375-2.
-- cpp: gnu99-scope-1 (the pasting error), pr66415-2 (a line-map column).
+Parked front-end gaps (reasons in HISTORY Rounds 172 to 175):
+- pr100547: the position of the `vector_size` error; no single rule found.
+- unroll-5: `#pragma GCC unroll j` with a non-constant `j` needs the argument
+  judged by the checker, not the text scanner.
+- dump-ada-spec-14: needs `-fdump-ada-spec` (gcc's Ada dumper).
 
-c-c++-common: dump-ada-spec-14 (needs -fdump-ada-spec), unroll-5 (needs an
-enum-constant symbol kind in the parser).
+Not scored by verify.sh: the macro notes ("in definition of macro" for a token
+a parameter substituted, the full expansion chain). The design for fixing
+them with a per-token provenance is in HISTORY (Round 175 and after).
 
 Not counted as differences (same diagnostics, so the count ignores them):
 binary-constants-1 (exit code) and init-bad-4 (message order).  HISTORY.md has the per-round detail.
