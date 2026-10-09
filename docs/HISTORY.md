@@ -2946,3 +2946,12 @@ only when the VLA is written in that declarator (`int (*p)[a]`); through a
 typedef name (`A *p`, `B p`) the typedef's own declaration already counts, so
 no extra error. `cstmt.c` stops the nameless-declaration walk at a typedef
 (`pr108375-2.c` duplicate error). Golden `misc_267`. gcc.dg 3739/3744.
+Left as is, on purpose: `darwin-cfstring-format-1.c` and `pr105522.c` are
+`target *-*-darwin*` tests; gcc-13 on Linux has no CFString format kind or
+`__builtin___CFStringMakeConstantString`, so the "expected" diagnostics are
+that build's errors about a feature that does not exist for this target, and
+matching them means emulating missing target support. `dump-ada-spec-14.c`
+needs `-fdump-ada-spec` (gcc's Ada binding dumper warns "packed layout" while
+dumping); implementing the dumper to reproduce one warning is out of scope.
+`pr56355-1.c` (-Wstrict-overflow) and `pr83844.c` (-Wif-not-aligned with a
+symbolic offset) depend on the middle end's folding; parked.
