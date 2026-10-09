@@ -24,10 +24,17 @@ typedef struct BDecl {
     uint32_t name;           /* ident */
     uint32_t fn;             /* a block-scope symbol's function (ident), 0 */
     uint32_t hover;          /* offset in SymIdxB.hs, 0: none yet */
-    uint32_t unit;           /* scope: 1 + index in SymIdxB.units, 0: none */
+    uint32_t scope;          /* 1 + index in SymIdxB.scopes, 0: none */
+    uint32_t ty;             /* 1 + its TypeId (an enumerator: its enum's), 0 */
+    uint32_t type, parent;   /* CIdxDecl's, set at the end */
     uint8_t kind, linkage;
     uint16_t flags;
 } BDecl;
+
+typedef struct BScope {      /* presentation points */
+    SrcLoc begin, end;
+    uint32_t parent;         /* 1 + index, 0: a root */
+} BScope;
 
 typedef VEC(uint32_t) U32V;
 
@@ -35,15 +42,18 @@ struct SymIdxB {
     VEC(BEv) ev;
     VEC(BDecl) decls;
     /* key -> decl id (0: not seen): ordinary symbols (persistent and the
-     * unit's), records and enums (type table index), fields, label slots */
-    U32V gmap, lmap, recmap, enmap, fmap, labmap;
+     * unit's), records and enums (type table index), fields, label slots,
+     * typedefs (index of their TY_TYPEDEF entry) */
+    U32V gmap, lmap, recmap, enmap, fmap, labmap, tdmap;
+    U32V gec, lec;           /* enumerator symbol -> 1 + its enum's TypeId */
     U32V enhover;            /* enum index -> hover offset (csx_enum) */
+    VEC(BScope) scopes;      /* every unit's root and the checker's scopes */
+    U32V open;               /* the open scopes (ids), the unit's root first */
     StrBuf hs;               /* hover texts, deduplicated: the final string
                                 pool's start (offset 0 is "") */
     uint32_t *hset, hcap, hcount;   /* hash set of hs offsets + 1 */
     StrBuf tmp;
     size_t unit_ev0;         /* the unit's first event */
-    VEC(SrcRange) units;     /* each unit's extent (presentation points) */
     const SrcFile *cf;       /* the last file asked about */
     bool csys;               /* ... in a system header, if it has no markers */
     FILE *vout;              /* --verify-symbols */
@@ -70,8 +80,12 @@ void csx_free(SymIdxB *b)
     vec_free(&b->enmap);
     vec_free(&b->fmap);
     vec_free(&b->labmap);
+    vec_free(&b->tdmap);
+    vec_free(&b->gec);
+    vec_free(&b->lec);
     vec_free(&b->enhover);
-    vec_free(&b->units);
+    vec_free(&b->scopes);
+    vec_free(&b->open);
     vec_free(&b->seen);
     sb_free(&b->hs);
     sb_free(&b->tmp);
@@ -99,8 +113,8 @@ static uint32_t new_decl(SymIdxB *b, uint32_t name, int kind, int linkage,
                          unsigned flags)
 {
     BDecl d;
+    memset(&d, 0, sizeof d);
     d.name = name;
-    d.fn = d.hover = d.unit = 0;
     d.kind = (uint8_t)kind;
     d.linkage = (uint8_t)linkage;
     d.flags = (uint16_t)flags;
@@ -171,13 +185,41 @@ static uint32_t hover_add(SymIdxB *b, StrBuf *s)
     return off;
 }
 
-/* An ordinary symbol's text: its --dump-types line. */
+/* Whether type t is const, arrays stripped (`const int a[3]`, through
+ * typedefs). */
+static bool is_readonly(Checker *c, TypeId t)
+{
+    int n;
+    t = type_canon(&c->tt, t);
+    for (n = 0; n < 64 && (type_kind(&c->tt, t) == TY_ARRAY ||
+                           type_kind(&c->tt, t) == TY_VLA); n++)
+        t = type_canon(&c->tt, type_ent(&c->tt, t)->base);
+    return TYPE_QUALS(t) & TQ_CONST;
+}
+
+/* An ordinary symbol's text (its --dump-types line), type and flags, taken
+ * while the symbol lives. */
 static void sym_hover(Checker *c, uint32_t ref, uint32_t id)
 {
     SymIdxB *b = c->sx;
+    const CSym *s = csym(c, ref);
+    BDecl *d = &b->decls.data[id - 1];
     b->tmp.len = 0;
-    cdecl_decl_line(c, csym(c, ref), b->decls.data[id - 1].fn, &b->tmp);
-    b->decls.data[id - 1].hover = hover_add(b, &b->tmp);
+    cdecl_decl_line(c, csym(c, ref), d->fn, &b->tmp);
+    d->hover = hover_add(b, &b->tmp);
+    if (s->linkage == 1 || s->sc == SC_STATIC)
+        d->flags |= CIDF_STATIC;
+    if (d->kind == CIK_ENUMCONST) {
+        U32V *m = ref & SYM_LOCAL ? &b->lec : &b->gec;
+        d->ty = (ref & ~SYM_LOCAL) < m->len ? m->data[ref & ~SYM_LOCAL] : 0;
+        d->flags |= CIDF_READONLY;
+        return;
+    }
+    d->ty = s->ty + 1;
+    if ((d->kind == CIK_OBJ || d->kind == CIK_PARAM) && is_readonly(c, s->ty))
+        d->flags |= CIDF_READONLY;
+    if (d->kind == CIK_TYPEDEF && type_kind(&c->tt, s->ty) == TY_TYPEDEF)
+        *slot(&b->tdmap, TYPE_IDX(s->ty)) = id;
 }
 
 /* The lines of b->tmp (each ending in '\n') after a heading and
@@ -239,6 +281,7 @@ void csx_enum(Checker *c, uint32_t t, const uint32_t *ecs, uint32_t n)
     sb_puts(&b->tmp, ")\n");
     for (k = 0; k < n; k++) {
         const CSym *s = csym(c, ecs[k]);
+        *slot(ecs[k] & SYM_LOCAL ? &b->lec : &b->gec, ecs[k] & ~SYM_LOCAL) = t + 1;
         if (type_is_signed(&c->tt, s->vty))
             sb_printf(&b->tmp, "  %s = %" PRId64 "\n", cident(c, s->name),
                       (int64_t)s->val);
@@ -336,8 +379,8 @@ static uint32_t sym_id(Checker *c, uint32_t ref, bool lazy)
     if ((ref & SYM_LOCAL) && kind != CIK_PARAM && !cat_file_scope(c) &&
         c->func_sym != SYM_NONE)
         b->decls.data[*p - 1].fn = csym(c, c->func_sym)->name;  /* "f:x" */
-    if ((ref & SYM_LOCAL) && !s->linkage)
-        b->decls.data[*p - 1].unit = (uint32_t)b->units.len;
+    if ((ref & SYM_LOCAL) && !s->linkage && b->open.len)
+        b->decls.data[*p - 1].scope = vec_last(&b->open);
     if (lazy)
         lazy_event(c, *p, s->loc,
                    kind == CIK_TYPEDEF || kind == CIK_ENUMCONST ||
@@ -381,6 +424,8 @@ void csx_param_def(Checker *c, uint32_t ref)
     size_t k;
     if (!*p)
         return;
+    if (b->decls.data[*p - 1].scope && b->open.len)
+        b->decls.data[*p - 1].scope = vec_last(&b->open);   /* the body's */
     for (k = b->ev.len; k-- > b->unit_ev0;)
         if (b->ev.data[k].decl == *p - 1 &&
             (b->ev.data[k].flags & CIX_ROLE) == CIX_DECL) {
@@ -389,9 +434,9 @@ void csx_param_def(Checker *c, uint32_t ref)
         }
 }
 
-/* The decl id of a tag; lazy: create it for a use (with an event where a
- * system header declares it). */
-static uint32_t tag_id(Checker *c, uint32_t t, bool lazy)
+/* The decl id of a tag, created if new; lazy: for a use (with an event where
+ * a system header declares it); 2: tag_link's rule. */
+static uint32_t tag_id(Checker *c, uint32_t t, int lazy)
 {
     SymIdxB *b = c->sx;
     const TypeEnt *te = type_ent(&c->tt, type_ent(&c->tt, t)->canon);
@@ -415,12 +460,22 @@ static uint32_t tag_id(Checker *c, uint32_t t, bool lazy)
     } else {
         return 0;
     }
+    if (!*p && lazy == 2 && name && !is_sys(b, c->sm, loc))
+        return 0;            /* tag_link: a user tag with no events */
     if (!*p) {
         *p = new_decl(b, name, kind, 0, 0);
-        if (lazy)
+        if (lazy && name)
             lazy_event(c, *p, loc, role);
     }
     return *p;
+}
+
+/* A tag as the type or parent of another decl (B3_DESIGN.md 3.3): its decl;
+ * created for an anonymous tag (nameless, no events) or a system one (with
+ * its declaration event), else only looked up. */
+static uint32_t tag_link(Checker *c, uint32_t t)
+{
+    return tag_id(c, t, 2);
 }
 
 void csx_tag(Checker *c, uint32_t t, uint32_t tok, int role)
@@ -492,7 +547,7 @@ void csx_label(Checker *c, uint32_t slot_, uint32_t tok, int role)
         SymIdxB *b = c->sx;
         uint32_t name = c->u->toks[tok].t.aux;
         *id = new_decl(b, name, CIK_LABEL, 0, 0);
-        b->decls.data[*id - 1].unit = (uint32_t)b->units.len;
+        b->decls.data[*id - 1].scope = b->open.len ? b->open.data[0] : 0;
         b->tmp.len = 0;
         sb_puts(&b->tmp, "label ");
         if (c->func_sym != SYM_NONE)
@@ -505,22 +560,51 @@ void csx_label(Checker *c, uint32_t slot_, uint32_t tok, int role)
 
 /* ---- the unit ------------------------------------------------------------------ */
 
+/* A token's presentation point, and just past it. */
+static SrcLoc tok_begin(const PTok *p)
+{
+    return p->exp ? p->exp : p->t.loc;
+}
+
+static SrcLoc tok_end(const PTok *p)
+{
+    return p->exp ? p->exp + 1 : p->t.loc + (p->t.len ? p->t.len : 1);
+}
+
 void csx_unit_begin(Checker *c)
 {
     SymIdxB *b = c->sx;
-    SrcRange u = {0, 0};
-    b->lmap.len = 0;
+    BScope root = {0, 0, 0};
+    b->lmap.len = b->lec.len = 0;
     b->unit_ev0 = b->ev.len;
-    if (c->u->ntoks) {       /* the scope of the unit's block-scope names */
-        const PTok *f = &c->u->toks[0], *l = &c->u->toks[c->u->ntoks - 1];
-        u.begin = f->exp ? f->exp : f->t.loc;
-        u.end = (l->exp ? l->exp : l->t.loc) + 1;
+    if (c->u->ntoks) {       /* the external declaration: the scopes' root */
+        root.begin = tok_begin(&c->u->toks[0]);
+        root.end = tok_end(&c->u->toks[c->u->ntoks - 1]);
     }
-    vec_push(&b->units, u);
+    vec_push(&b->scopes, root);
+    b->open.len = 0;
+    vec_push(&b->open, (uint32_t)b->scopes.len);
     if (b->vout) {
         b->seen.len = 0;
         while (b->seen.len < c->u->ntoks)
             vec_push(&b->seen, 0);
+    }
+}
+
+void csx_scope(Checker *c, uint32_t tok, bool open)
+{
+    SymIdxB *b = c->sx;
+    if (tok >= c->u->ntoks || !b->open.len)
+        return;
+    if (open) {
+        BScope s;
+        s.begin = tok_begin(&c->u->toks[tok]);
+        s.end = 0;
+        s.parent = vec_last(&b->open);
+        vec_push(&b->scopes, s);
+        vec_push(&b->open, (uint32_t)b->scopes.len);
+    } else if (b->open.len > 1) {
+        b->scopes.data[vec_pop(&b->open) - 1].end = tok_end(&c->u->toks[tok]);
     }
 }
 
@@ -590,6 +674,10 @@ void csx_unit_end(Checker *c)
     for (i = 0; i < b->lmap.len; i++)
         if (b->lmap.data[i])
             sym_hover(c, i | SYM_LOCAL, b->lmap.data[i]);
+    while (b->open.len > 1)  /* left open by error recovery: to the unit's end */
+        b->scopes.data[vec_pop(&b->open) - 1].end =
+            b->scopes.data[b->open.data[0] - 1].end;
+    b->open.len = 0;
     if (!b->vout || c->quiet)
         return;
     for (i = 0; i < c->nn; i++) {
@@ -690,18 +778,218 @@ static uint32_t pool_add(Pool *p, const char *s)
     return off;
 }
 
+/* The decl of type t (B3_DESIGN.md 3.3): through pointers, arrays, function
+ * types (to the return type), vectors and complex to the first typedef with
+ * a decl, or a tag. */
+static uint32_t type_decl(Checker *c, TypeId t)
+{
+    SymIdxB *b = c->sx;
+    int n;
+    for (n = 0; n < 64; n++) {
+        const TypeEnt *te = type_ent(&c->tt, t);
+        switch (te->kind) {
+        case TY_TYPEDEF:
+            if (TYPE_IDX(t) < b->tdmap.len && b->tdmap.data[TYPE_IDX(t)])
+                return b->tdmap.data[TYPE_IDX(t)];
+            /* fall through */
+        case TY_PTR: case TY_ARRAY: case TY_VLA: case TY_FUNC:
+        case TY_VECTOR: case TY_COMPLEX:
+            t = te->base;
+            break;
+        case TY_STRUCT: case TY_UNION: case TY_ENUM:
+            return tag_link(c, t);
+        default:
+            return 0;
+        }
+    }
+    return 0;
+}
+
+/* Types, parents and the system declarations the unit never named, while
+ * the checker's tables live (B3_DESIGN.md 3.3, 3.4). */
+static void link_decls(Checker *c)
+{
+    SymIdxB *b = c->sx;
+    uint32_t i, *outer;
+    size_t k;
+    for (i = 1; i < c->nidents; i++) {   /* system declarations up front */
+        uint32_t bind = c->top[NS_ORD][i], ref;
+        const CSym *s;
+        if (!bind || ((ref = c->log.data[bind - 1].ref) & SYM_LOCAL) ||
+            (ref < b->gmap.len && b->gmap.data[ref]))
+            continue;
+        s = csym(c, ref);
+        if (!(s->flags & (CSF_ERROR | CSF_IMPLICIT)) && s->loc &&
+            is_sys(b, c->sm, s->loc))
+            sym_id(c, ref, true);
+    }
+    for (i = 0; i < b->gmap.len; i++)
+        if (b->gmap.data[i])
+            sym_hover(c, i, b->gmap.data[i]);
+    /* fields: the outermost record through anonymous members is the parent */
+    outer = xcalloc(c->tt.recs.len + 1, sizeof *outer);
+    for (k = 0; k < c->tt.recs.len; k++) {
+        const Record *r = &c->tt.recs.data[k];
+        for (i = r->fields; i < r->fields + r->nfields; i++) {
+            const Field *f = &c->tt.fields.data[i];
+            const TypeEnt *te = type_ent(&c->tt, type_canon(&c->tt, f->ty));
+            if (!f->name && (te->kind == TY_STRUCT || te->kind == TY_UNION))
+                outer[te->extra] = (uint32_t)k + 1;
+        }
+    }
+    for (k = 0; k < c->tt.recs.len; k++) {
+        const Record *r = &c->tt.recs.data[k];
+        size_t o = k;
+        uint32_t par = 0;
+        int n;
+        for (n = 0; n < 64 && !c->tt.recs.data[o].tag && outer[o]; n++)
+            o = outer[o] - 1;
+        for (i = r->fields; i < r->fields + r->nfields && i < b->fmap.len; i++) {
+            const Field *f = &c->tt.fields.data[i];
+            BDecl *d;
+            if (!b->fmap.data[i])
+                continue;
+            if (!par)
+                par = tag_link(c, c->tt.recs.data[o].ty);
+            d = &b->decls.data[b->fmap.data[i] - 1];
+            d->parent = par;
+            d->ty = f->ty + 1;
+            if (is_readonly(c, f->ty))
+                d->flags |= CIDF_READONLY;
+        }
+    }
+    free(outer);
+    for (i = 0; i < b->decls.len; i++) {  /* grows by tags tag_link makes */
+        BDecl *d = &b->decls.data[i];
+        TypeId t = d->ty - 1;
+        uint32_t ty = 0;
+        if (d->kind == CIK_STRUCT || d->kind == CIK_UNION || d->kind == CIK_ENUM) {
+            d->type = i + 1;
+            continue;
+        }
+        if (!d->ty || d->kind == CIK_LABEL)
+            continue;
+        if (d->kind == CIK_ENUMCONST) {
+            ty = type_ckind(&c->tt, t) == TY_ENUM ? tag_link(c, t) : 0;
+            b->decls.data[i].parent = ty;
+        } else if (d->kind == CIK_TYPEDEF && type_kind(&c->tt, t) == TY_TYPEDEF) {
+            ty = type_decl(c, type_ent(&c->tt, t)->base);   /* one step */
+        } else {
+            ty = type_decl(c, t);
+        }
+        b->decls.data[i].type = ty;
+    }
+}
+
+typedef struct SortScope {
+    CIdxScope s;
+    uint32_t ord;            /* creation order */
+} SortScope;
+
+/* (file, begin, end descending): enclosing scopes first */
+static int scope_cmp_ix(const CIdxScope *a, const CIdxScope *b)
+{
+    if (a->file != b->file)
+        return a->file < b->file ? -1 : 1;
+    if (a->begin != b->begin)
+        return a->begin < b->begin ? -1 : 1;
+    return a->end > b->end ? -1 : a->end < b->end;
+}
+
+static int scope_cmp(const void *pa, const void *pb)
+{
+    const SortScope *a = pa, *b = pb;
+    int r = scope_cmp_ix(&a->s, &b->s);
+    return r ? r : a->ord < b->ord ? -1 : a->ord > b->ord;
+}
+
+/* The builder's scopes into ix->scopes (B3_DESIGN.md 3.2): kept if in one
+ * user file with events (ix->files, paths in strings + path_off) and in the
+ * file of its nearest kept ancestor, overlapping it (then clamped to it); a
+ * dropped root drops its blocks.  Returns
+ * builder id - 1 -> 1 + final index, or the nearest kept ancestor's, or 0. */
+static uint32_t *freeze_scopes(Checker *c, CIndex *ix, const char *strings,
+                               const uint32_t *path_off)
+{
+    SymIdxB *b = c->sx;
+    size_t n = b->scopes.len, k, nk = 0;
+    uint32_t *map = xcalloc(n + 1, sizeof *map), *pos;
+    uint8_t *dead = xcalloc(n + 1, 1);
+    SortScope *v = xmalloc((n + 1) * sizeof *v);
+    const SrcFile *f = NULL;
+    uint32_t fi = 0;
+    for (k = 0; k < n; k++) {
+        const BScope *s = &b->scopes.data[k];
+        uint32_t pk = s->parent ? map[s->parent - 1] : 0;
+        SortScope *o = &v[nk];
+        if (s->parent && dead[s->parent - 1]) {
+            dead[k] = 1;
+            continue;
+        }
+        map[k] = pk;
+        if (!f || s->begin < f->base || s->begin >= f->base + f->span) {
+            f = srcmgr_file_of(c->sm, s->begin);
+            for (fi = 0; f && fi < ix->nfiles &&
+                         strcmp(strings + path_off[fi], f->path); fi++)
+                ;
+        }
+        /* a parent in another file, or in another inclusion of this one
+         * (a file including itself): no overlap */
+        if (!f || f->kind != SF_USER || fi >= ix->nfiles || s->end <= s->begin ||
+            s->begin - f->base > f->size || s->end - 1 - f->base > f->size ||
+            is_sys(b, c->sm, s->begin) ||
+            (pk && (v[pk - 1].s.file != fi ||
+                    s->begin - f->base >= v[pk - 1].s.end ||
+                    s->end - f->base <= v[pk - 1].s.begin))) {
+            dead[k] = !s->parent;
+            continue;
+        }
+        o->s.file = fi;
+        o->s.begin = s->begin - f->base;
+        o->s.end = s->end - f->base;
+        o->s.parent = pk;
+        o->ord = (uint32_t)nk;
+        if (pk) {            /* inside the parent, should recovery disagree */
+            const CIdxScope *p = &v[pk - 1].s;
+            o->s.begin = o->s.begin < p->begin ? p->begin : o->s.begin;
+            o->s.end = o->s.end > p->end ? p->end : o->s.end;
+            o->s.end = o->s.end < o->s.begin ? o->s.begin : o->s.end;
+        }
+        map[k] = (uint32_t)++nk;
+    }
+    free(dead);
+    qsort(v, nk, sizeof *v, scope_cmp);
+    pos = xmalloc((nk + 1) * sizeof *pos);   /* creation order -> 1 + final */
+    for (k = 0; k < nk; k++)
+        pos[v[k].ord] = (uint32_t)k + 1;
+    ix->nscopes = (uint32_t)nk;
+    ix->scopes = xmalloc((nk + 1) * sizeof *ix->scopes);
+    for (k = 0; k < nk; k++) {
+        ix->scopes[k] = v[k].s;
+        if (v[k].s.parent)
+            ix->scopes[k].parent = pos[v[k].s.parent - 1];
+    }
+    for (k = 0; k < n; k++)
+        if (map[k])
+            map[k] = pos[map[k] - 1];
+    free(pos);
+    free(v);
+    return map;
+}
+
 CIndex *csx_finish(Checker *c)
 {
     SymIdxB *b = c->sx;
     CIndex *ix;
     uint32_t *has_def, i, nd, ne = 0, nf = 0;
-    uint32_t *path_off = NULL;
+    uint32_t *path_off = NULL, *smap;
     size_t k, nr;
     Range *rg;
     Pool pool;
     const SrcFile *cur = NULL;
     if (!b)
         return NULL;
+    link_decls(c);
     nd = (uint32_t)b->decls.len;
     /* tentative definitions: the first defines, unless something else does */
     has_def = xcalloc(nd + 1, sizeof *has_def);
@@ -729,10 +1017,7 @@ CIndex *csx_finish(Checker *c)
     }
     free(rg);
     qsort(b->ev.data, b->ev.len, sizeof *b->ev.data, ev_cmp);
-    /* hover texts of what outlives a unit: persistent symbols, tags, fields */
-    for (i = 0; i < b->gmap.len; i++)
-        if (b->gmap.data[i])
-            sym_hover(c, i, b->gmap.data[i]);
+    /* hover texts of tags and fields (persistent symbols': link_decls) */
     for (i = 0; i < b->recmap.len && i < c->tt.recs.len; i++)
         if (b->recmap.data[i]) {
             const Record *r = &c->tt.recs.data[i];
@@ -813,6 +1098,7 @@ CIndex *csx_finish(Checker *c)
     }
     ix->nev = ne;
     ix->nfiles = nf;
+    smap = freeze_scopes(c, ix, pool.sb.data, path_off);
     /* decls and their names */
     ix->ndecls = nd;
     ix->decls = xcalloc(nd + 1, sizeof *ix->decls);
@@ -829,31 +1115,12 @@ CIndex *csx_finish(Checker *c)
         o->kind = d->kind;
         o->linkage = d->linkage;
         o->flags = d->flags;
-        if (d->unit && d->unit <= b->units.len) {
-            SrcRange *u = &b->units.data[d->unit - 1];
-            if (!u->begin) {         /* converted already: 1 + scope index */
-                o->scope = u->end;
-                continue;
-            }
-            cur = srcmgr_file_of(c->sm, u->begin);
-            if (cur && u->end - 1 >= cur->base && u->end - 1 <= cur->base + cur->size) {
-                uint32_t fi = 0;     /* its file entry, if the file has events */
-                while (fi < nf && strcmp(pool.sb.data + path_off[fi], cur->path))
-                    fi++;
-                if (fi < nf) {
-                    ix->scopes = xrealloc(ix->scopes, (ix->nscopes + 1) *
-                                                          sizeof *ix->scopes);
-                    ix->scopes[ix->nscopes].file = fi;
-                    ix->scopes[ix->nscopes].begin = u->begin - cur->base;
-                    ix->scopes[ix->nscopes].end = u->end - cur->base;
-                    o->scope = ++ix->nscopes;
-                }
-            }
-            u->begin = 0;
-            u->end = o->scope;
-        }
+        o->type = d->type;
+        o->parent = d->parent;
+        o->scope = d->scope ? smap[d->scope - 1] : 0;
     }
-    b->units.len = 0;
+    free(smap);
+    b->scopes.len = 0;
     free(pool.by_ident);
     ix->nstrings = pool.sb.len;
     ix->strings = pool.sb.data ? xrealloc(pool.sb.data, pool.sb.len) : NULL;
@@ -982,6 +1249,125 @@ size_t cindex_decls_at(const CIndex *ix, const char *path, uint32_t off,
             out[nd++] = ix->ev[k].decl;
     }
     return nd;
+}
+
+uint32_t cindex_lower(const CIndex *ix, uint32_t fi, uint32_t off)
+{
+    uint32_t lo = 0, hi = ix->nev;
+    while (lo < hi) {
+        uint32_t mid = lo + (hi - lo) / 2;
+        const CIdxEvent *e = &ix->ev[mid];
+        if (e->file < fi || (e->file == fi && e->off < off))
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+size_t cindex_types(const CIndex *ix, const uint32_t *decls, size_t nd,
+                    uint32_t *out)
+{
+    size_t i, j, n = 0;
+    for (i = 0; i < nd; i++) {
+        uint32_t t = ix->decls[decls[i]].type;
+        for (j = 0; j < n && out[j] != t - 1; j++)
+            ;
+        if (t && j == n)
+            out[n++] = t - 1;
+    }
+    return n;
+}
+
+uint32_t cindex_scope_at(const CIndex *ix, uint32_t fi, uint32_t off)
+{
+    uint32_t lo = 0, hi = ix->nscopes, s;
+    while (lo < hi) {               /* the first scope starting after off */
+        uint32_t mid = lo + (hi - lo) / 2;
+        const CIdxScope *x = &ix->scopes[mid];
+        if (x->file < fi || (x->file == fi && x->begin <= off))
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    /* every scope containing off is an ancestor of the last one starting at
+     * or before it (proper nesting) */
+    for (s = lo; s && ix->scopes[s - 1].file == fi; s = ix->scopes[s - 1].parent)
+        if (off < ix->scopes[s - 1].end)
+            return s;
+    return 0;
+}
+
+uint32_t cindex_scope_root(const CIndex *ix, uint32_t s)
+{
+    while (s && ix->scopes[s - 1].parent)
+        s = ix->scopes[s - 1].parent;
+    return s;
+}
+
+typedef struct Vis {
+    uint32_t decl, rank;     /* rank: the scope's index + 1, 0 file level */
+    const char *name;
+} Vis;
+
+static int vis_cmp(const void *pa, const void *pb)
+{
+    const Vis *a = pa, *b = pb;
+    int r = strcmp(a->name, b->name);
+    if (r)
+        return r;
+    if (a->rank != b->rank)
+        return a->rank > b->rank ? -1 : 1;
+    return a->decl < b->decl ? -1 : a->decl > b->decl;
+}
+
+size_t cindex_visible(const CIndex *ix, const char *path, uint32_t off,
+                      uint32_t **out)
+{
+    int fi = ix ? cindex_file(ix, path) : -1;
+    VEC(Vis) v = {0};
+    uint32_t d, j;
+    size_t k, n = 0;
+    *out = NULL;
+    if (fi < 0 || ix->files[fi].stale)
+        return 0;
+    for (d = 0; d < ix->ndecls; d++) {
+        const CIdxDecl *x = &ix->decls[d];
+        Vis best = {0, 0, NULL};
+        if (!x->name || (x->kind != CIK_FUNC && x->kind != CIK_OBJ &&
+                         x->kind != CIK_PARAM && x->kind != CIK_TYPEDEF &&
+                         x->kind != CIK_ENUMCONST))
+            continue;
+        for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++) {
+            const CIdxEvent *e = &ix->ev[ix->by_decl[j]];
+            uint32_t s;
+            if ((e->flags & CIX_ROLE) == CIX_REF || ix->files[e->file].stale ||
+                ((int)e->file == fi && e->off > off))
+                continue;    /* not a declaration, or not before off */
+            s = x->scope;
+            if (!s && (s = cindex_scope_at(ix, e->file, e->off)) &&
+                !ix->scopes[s - 1].parent)
+                s = 0;       /* an external declaration: file level */
+            if (s && ((int)ix->scopes[s - 1].file != fi ||
+                      off < ix->scopes[s - 1].begin || off >= ix->scopes[s - 1].end))
+                continue;    /* its scope does not contain off */
+            if (!best.name || s > best.rank) {
+                best.decl = d;
+                best.rank = s;
+                best.name = ix->strings + x->name;
+            }
+        }
+        if (best.name)
+            vec_push(&v, best);
+    }
+    if (v.len > 1)
+        qsort(v.data, v.len, sizeof *v.data, vis_cmp);
+    *out = xmalloc((v.len + 1) * sizeof **out);
+    for (k = 0; k < v.len; k++)     /* the innermost of each name */
+        if (!k || strcmp(v.data[k].name, v.data[k - 1].name))
+            (*out)[n++] = v.data[k].decl;
+    vec_free(&v);
+    return n;
 }
 
 void cindex_hover(const CIndex *ix, const uint32_t *decls, size_t nd, bool md,
@@ -1200,13 +1586,19 @@ void cindex_dump(const CIndex *ix, SrcMgr *sm, FILE *out)
     for (i = 0; i < ix->ndecls; i++) {
         const CIdxDecl *d = &ix->decls[i];
         const char *h;
-        fprintf(out, "#%u %s %s%s%s%s%s%s", i, kind_names[d->kind],
-                cindex_name(ix, i),
+        fprintf(out, "#%u %s %s%s%s%s%s%s%s%s", i, kind_names[d->kind],
+                d->name ? cindex_name(ix, i) : "<anonymous>",
                 d->linkage == 1 ? " internal" : d->linkage == 2 ? " external" : "",
                 d->flags & CIDF_BUILTIN ? " builtin" : "",
                 d->flags & CIDF_IMPLICIT ? " implicit" : "",
                 d->flags & CIDF_SYSTEM ? " system" : "",
-                d->flags & CIDF_TENTATIVE ? " tentative" : "");
+                d->flags & CIDF_TENTATIVE ? " tentative" : "",
+                d->flags & CIDF_READONLY ? " readonly" : "",
+                d->flags & CIDF_STATIC ? " static" : "");
+        if (d->type)
+            fprintf(out, " type #%u", d->type - 1);
+        if (d->parent)
+            fprintf(out, " parent #%u", d->parent - 1);
         if (d->scope) {          /* lines of the scope's file */
             const CIdxScope *s = &ix->scopes[d->scope - 1];
             uint32_t l0 = 0, l1 = 0, c0;
@@ -1257,10 +1649,37 @@ size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
             if ((e->flags & CIX_ROLE) != CIX_REF)
                 declared = true;
         }
-        if (!declared && !(ix->decls[i].flags & (CIDF_BUILTIN | CIDF_IMPLICIT |
-                                                 CIDF_SYSTEM))) {
+        if (!declared && ix->decls[i].name &&
+            !(ix->decls[i].flags & (CIDF_BUILTIN | CIDF_IMPLICIT | CIDF_SYSTEM))) {
             fprintf(out, "verify: #%u %s '%s' has no declaration event\n", i,
                     kind_names[ix->decls[i].kind], cindex_name(ix, i));
+            bad++;
+        }
+        if (ix->decls[i].type > ix->ndecls || ix->decls[i].parent > ix->ndecls ||
+            ix->decls[i].scope > ix->nscopes) {
+            fprintf(out, "verify: #%u: type, parent or scope out of range\n", i);
+            bad++;
+        }
+    }
+    /* scopes: sorted, each inside its parent (an earlier one in its file),
+     * none overlapping the scopes open before it only in part */
+    for (i = 0; i < ix->nscopes; i++) {
+        const CIdxScope *s = &ix->scopes[i], *p;
+        uint32_t o = i;
+        if (i && scope_cmp_ix(&ix->scopes[i - 1], s) > 0) {
+            fprintf(out, "verify: scopes %u and %u out of order\n", i - 1, i);
+            bad++;
+        }
+        if (s->parent && (s->parent > i || (p = &ix->scopes[s->parent - 1])->file !=
+                          s->file || p->begin > s->begin || p->end < s->end)) {
+            fprintf(out, "verify: scope %u is not inside its parent\n", i);
+            bad++;
+        }
+        while (o && ix->scopes[o - 1].file == s->file &&
+               ix->scopes[o - 1].end <= s->begin)
+            o = ix->scopes[o - 1].parent;   /* the open scopes before it */
+        if (o && ix->scopes[o - 1].file == s->file && ix->scopes[o - 1].end < s->end) {
+            fprintf(out, "verify: scope %u overlaps scope %u\n", i, o - 1);
             bad++;
         }
     }
@@ -1272,8 +1691,8 @@ size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
             bad++;
         }
     }
-    fprintf(out, "symbols: %u events, %u decls, %u files, %zu bytes, %u "
-            "unindexed, %u excused\n", ix->nev, ix->ndecls, ix->nfiles, cindex_bytes(ix),
-            ix->unindexed, ix->excused);
+    fprintf(out, "symbols: %u events, %u decls, %u scopes, %u files, %zu bytes, "
+            "%u unindexed, %u excused\n", ix->nev, ix->ndecls, ix->nscopes,
+            ix->nfiles, cindex_bytes(ix), ix->unindexed, ix->excused);
     return bad + ix->unindexed;
 }

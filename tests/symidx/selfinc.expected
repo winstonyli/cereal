@@ -1,0 +1,10 @@
+selfinc.c:6:5 DEF func main -> #0
+selfinc.c:8:9 DEF obj n -> #1
+selfinc.c:10:12 REF obj n -> #1
+selfinc.c:13:11 DEF obj k -> #2
+selfinc.c:13:15 REF obj n -> #1
+selfinc.c:13:18 REF obj n -> #1
+selfinc.c:13:23 REF obj k -> #2
+#0 func main external :: func main: int(void) defined
+#1 obj n scope 7-11 :: var main:n: int
+#2 obj k scope 7-11 :: var main:k: int

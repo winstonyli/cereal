@@ -684,37 +684,55 @@ static void print_exp_tree(TU *tu, Index *ix, IdxExp *root)
     printf("=> %s\n", sb_cstr(&root->text));
 }
 
-/* `cereal query def|decl|refs|uses|highlight|hover` on a C name (B2): the C
- * symbol index of a second, checking run over the unit, as the language
- * server's check phase builds it; one line per location (file:line:col,
- * role or for highlight write/read, kind, name, macro flags), or for hover
- * the texts (weak: the name has macro history, as the server says too).
- * False: no C entity at loc (the macro answer, if any, stands). */
-static bool query_c(Options *o, TU *tu, SrcFile *f, SrcLoc loc, const char *kind,
-                    bool weak)
+/* The C symbol index of a second, checking run over the unit, as the
+ * language server's check phase builds it, validated against tu; NULL if
+ * none. */
+static CIndex *c_index(Options *o, TU *tu)
 {
     TU ct;
     FrontendOpts fo;
     CIndex *cx = NULL;
-    uint32_t decls[16], *ev = NULL;
-    size_t nd = 0, n = 0, i;
-    bool hl = !strcmp(kind, "highlight");
-    CIdxQuery q = !strcmp(kind, "def")    ? CIQ_DEF
-                  : !strcmp(kind, "decl") ? CIQ_DECL
-                  : !strcmp(kind, "uses") ? CIQ_USES
-                                          : CIQ_REFS;
     memset(&fo, 0, sizeof fo);
     fo.check = true;
     fo.cidx = &cx;
     tu_init(&ct, o);
-    if (frontend_run(&ct, o->inputs.data[0], &fo) && cx) {
-        cindex_validate(cx, &tu->sm);
-        nd = cindex_decls_at(cx, f->path, loc - f->base, decls, 16);
+    if (!frontend_run(&ct, o->inputs.data[0], &fo) && cx) {
+        cindex_free(cx);
+        cx = NULL;
     }
     tu_free(&ct);
+    if (cx)
+        cindex_validate(cx, &tu->sm);
+    return cx;
+}
+
+/* `cereal query def|decl|type|refs|uses|highlight|hover` on a C name (B2,
+ * B3): one line per location (file:line:col, role or for highlight
+ * write/read, kind, name, macro flags), or for hover the texts (weak: the
+ * name has macro history, as the server says too); type: the definitions
+ * of the entity's type.  False: no C entity at loc (the macro answer, if
+ * any, stands). */
+static bool query_c(Options *o, TU *tu, SrcFile *f, SrcLoc loc, const char *kind,
+                    bool weak)
+{
+    CIndex *cx = c_index(o, tu);
+    uint32_t decls[16], types[16], *ev = NULL;
+    size_t nd = 0, n = 0, i;
+    bool hl = !strcmp(kind, "highlight");
+    CIdxQuery q = !strcmp(kind, "def") || !strcmp(kind, "type") ? CIQ_DEF
+                  : !strcmp(kind, "decl") ? CIQ_DECL
+                  : !strcmp(kind, "uses") ? CIQ_USES
+                                          : CIQ_REFS;
+    if (cx)
+        nd = cindex_decls_at(cx, f->path, loc - f->base, decls, 16);
     if (nd > 1) /* e.g. a #define body token, one entity per expansion */
         printf("%zu C entities here\n", nd);
-    if (nd && !strcmp(kind, "hover")) {
+    if (nd && !strcmp(kind, "type")) {
+        size_t nt = cindex_types(cx, decls, nd, types);
+        n = cindex_select(cx, types, nt, q, -1, &ev);
+        if (!n) /* a builtin or nameless type */
+            puts("no type definition");
+    } else if (nd && !strcmp(kind, "hover")) {
         StrBuf sb = {0};
         cindex_hover(cx, decls, nd, false, &sb);
         printf("%s\n%s", sb_cstr(&sb), weak ? "(also a macro name)\n" : "");
@@ -817,7 +835,8 @@ static int mode_query(Options *o, const char *kind, const char *at)
     /* the macro index's answer stands unless it has nothing or only knows
      * the name by its plain identifier (weak): then a C entity answers */
     if ((t.kind == TGT_NONE || t.weak) &&
-        (!strcmp(kind, "def") || !strcmp(kind, "decl") || !strcmp(kind, "refs") ||
+        (!strcmp(kind, "def") || !strcmp(kind, "decl") || !strcmp(kind, "type") ||
+         !strcmp(kind, "refs") ||
          !strcmp(kind, "uses") || !strcmp(kind, "highlight") ||
          !strcmp(kind, "hover")) &&
         query_c(o, &tu, f, loc, kind, t.kind != TGT_NONE))
@@ -881,11 +900,24 @@ static int mode_query(Options *o, const char *kind, const char *at)
             sb_free(&sb);
         }
     } else if (!strcmp(kind, "visible")) {
+        /* the macros, then the C names no visible macro hides (B3) */
         Macro **v;
-        size_t n = index_visible(&ix, loc, &v), i;
+        size_t n = index_visible(&ix, loc, &v), i, nc = 0;
+        CIndex *cx = c_index(o, &tu);
+        uint32_t *cv = NULL, seq = index_seq_at(&ix, loc);
         for (i = 0; i < n; i++)
             if (!v[i]->predefined)
                 printf("%s\n", macro_signature(&tu.arena, v[i]));
+        if (cx)
+            nc = cindex_visible(cx, f->path, loc - f->base, &cv);
+        for (i = 0; i < nc; i++) {
+            const char *name = cindex_name(cx, cv[i]);
+            Ident *id = intern_find(tu.pp.in, name, strlen(name));
+            if (!id || !macro_at_version(tu.pp.mt, id, seq))
+                printf("%s %s\n", cindex_kind_name(cx->decls[cv[i]].kind), name);
+        }
+        free(cv);
+        cindex_free(cx);
     } else if (!strcmp(kind, "callees") || !strcmp(kind, "callers")) {
         MacroGraph g;
         bool out_calls = !strcmp(kind, "callees");
@@ -938,6 +970,8 @@ static int mode_query(Options *o, const char *kind, const char *at)
             mclosure_free(&cl);
             mgraph_free(&g);
         }
+    } else if (!strcmp(kind, "type")) {
+        puts("no type definition"); /* a macro, or no C entity */
     } else if (!strcmp(kind, "expand")) {
         if (t.top)
             print_exp_tree(&tu, &ix, t.top);

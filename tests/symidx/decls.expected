@@ -45,7 +45,7 @@ decls.c:19:5 DECL func many -> #18
 #10 param y scope 11-11 :: param y: int
 #11 typedef T :: typedef T = int
 #12 func g external :: func g: int(void) defined
-#13 obj T scope 13-13 :: var g:T: T
+#13 obj T type #11 scope 13-13 :: var g:T: T
 #14 func h external :: func h: int(void) defined
 #15 func later external implicit :: func later: int(int) defined
 #16 param v scope 15-15 :: param v: int

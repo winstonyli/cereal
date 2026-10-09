@@ -69,12 +69,22 @@ SQUARE(x)
 CAT(a, b)
 TWICE(x)
 FOO_BAR
+obj a
+obj b
+obj c
+func use
+param v
 == visible lsp.c:15:1
 LSP_H
 LIMIT
 CAT(a, b)
 TWICE(x)
 FOO_BAR
+obj a
+obj b
+obj c
+func use
+param v
 == expand lsp.c:9:13
 TWICE(LIMIT)  [lsp.c:9:13]
   LIMIT  [lsp.c:9:19]

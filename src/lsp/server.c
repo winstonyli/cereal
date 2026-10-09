@@ -948,6 +948,8 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     json_bool(&w, true);
     json_key(&w, "declarationProvider");
     json_bool(&w, true);
+    json_key(&w, "typeDefinitionProvider");
+    json_bool(&w, true);
     json_key(&w, "referencesProvider");
     json_bool(&w, true);
     json_key(&w, "documentHighlightProvider");
@@ -967,13 +969,13 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     json_begin_object(&w);
     json_key(&w, "tokenTypes");
     json_begin_array(&w);
-    json_str(&w, "macro");
-    json_str(&w, "parameter");
+    for (i = 0; lsp_token_types[i]; i++)
+        json_str(&w, lsp_token_types[i]);
     json_end_array(&w);
     json_key(&w, "tokenModifiers");
     json_begin_array(&w);
-    json_str(&w, "declaration");
-    json_str(&w, "readonly");
+    for (i = 0; lsp_token_modifiers[i]; i++)
+        json_str(&w, lsp_token_modifiers[i]);
     json_end_array(&w);
     json_end_object(&w);
     json_key(&w, "range");
@@ -1019,8 +1021,8 @@ static void initialize(const JsonValue *id, const JsonValue *params)
 /* ---- requests ------------------------------------------------------------ */
 
 typedef enum {
-    R_DEF, R_DECL, R_REFS, R_HIGHLIGHT, R_HOVER, R_COMPLETION, R_SYMBOLS, R_SEMTOK,
-    R_SEMTOK_DELTA, R_SEMTOK_RANGE, R_FOLDING,
+    R_DEF, R_DECL, R_TYPEDEF, R_REFS, R_HIGHLIGHT, R_HOVER, R_COMPLETION,
+    R_SYMBOLS, R_SEMTOK, R_SEMTOK_DELTA, R_SEMTOK_RANGE, R_FOLDING,
     R_PREP_RENAME, R_RENAME, R_PREP_CALLS, R_IN_CALLS, R_OUT_CALLS,
     R_SIGHELP, R_EXPAND
 } ReqKind;
@@ -1028,26 +1030,28 @@ typedef enum {
 static const struct {
     const char *method;
     ReqKind kind;
+    bool cidx;               /* reads the C index: waits for it (D1) */
 } REQS[] = {
-    {"textDocument/definition", R_DEF},
-    {"textDocument/declaration", R_DECL},
-    {"textDocument/references", R_REFS},
-    {"textDocument/documentHighlight", R_HIGHLIGHT},
-    {"textDocument/hover", R_HOVER},
-    {"textDocument/completion", R_COMPLETION},
-    {"textDocument/documentSymbol", R_SYMBOLS},
-    {"textDocument/semanticTokens/full", R_SEMTOK},
-    {"textDocument/semanticTokens/full/delta", R_SEMTOK_DELTA},
-    {"textDocument/semanticTokens/range", R_SEMTOK_RANGE},
-    {"textDocument/foldingRange", R_FOLDING},
-    {"textDocument/prepareRename", R_PREP_RENAME},
-    {"textDocument/rename", R_RENAME},
-    {"textDocument/prepareCallHierarchy", R_PREP_CALLS},
-    {"callHierarchy/incomingCalls", R_IN_CALLS},
-    {"callHierarchy/outgoingCalls", R_OUT_CALLS},
-    {"textDocument/signatureHelp", R_SIGHELP},
-    {"cereal/expandMacro", R_EXPAND},
-    {NULL, R_DEF}};
+    {"textDocument/definition", R_DEF, true},
+    {"textDocument/declaration", R_DECL, true},
+    {"textDocument/typeDefinition", R_TYPEDEF, true},
+    {"textDocument/references", R_REFS, true},
+    {"textDocument/documentHighlight", R_HIGHLIGHT, true},
+    {"textDocument/hover", R_HOVER, true},
+    {"textDocument/completion", R_COMPLETION, true},
+    {"textDocument/documentSymbol", R_SYMBOLS, true},
+    {"textDocument/semanticTokens/full", R_SEMTOK, true},
+    {"textDocument/semanticTokens/full/delta", R_SEMTOK_DELTA, true},
+    {"textDocument/semanticTokens/range", R_SEMTOK_RANGE, true},
+    {"textDocument/foldingRange", R_FOLDING, false},
+    {"textDocument/prepareRename", R_PREP_RENAME, true},
+    {"textDocument/rename", R_RENAME, true},
+    {"textDocument/prepareCallHierarchy", R_PREP_CALLS, false},
+    {"callHierarchy/incomingCalls", R_IN_CALLS, false},
+    {"callHierarchy/outgoingCalls", R_OUT_CALLS, false},
+    {"textDocument/signatureHelp", R_SIGHELP, true},
+    {"cereal/expandMacro", R_EXPAND, false},
+    {NULL, R_DEF, false}};
 
 /* The document a request is about: textDocument.uri, or item.uri for
  * call hierarchy follow-ups. */
@@ -1057,7 +1061,7 @@ static const char *request_uri(const JsonValue *params)
     return u ? u : json_str_of(json_path(params, "item.uri"), NULL);
 }
 
-static void handle_request(const JsonValue *id, ReqKind k,
+static void handle_request(const JsonValue *id, ReqKind k, bool cidx,
                            const JsonValue *params)
 {
     Arena a;
@@ -1084,8 +1088,7 @@ static void handle_request(const JsonValue *id, ReqKind k,
     u = d->unit;
     while (!u->snap && !S.stop) /* first build of this unit */
         cond_wait(&S.done, &S.m);
-    if (k == R_DEF || k == R_DECL || k == R_REFS || k == R_HIGHLIGHT ||
-        k == R_HOVER || k == R_PREP_RENAME || k == R_RENAME) {
+    if (cidx) {
         /* the C index comes with the check of the newest edit's snapshot:
          * wait for it a little (B2 decision D1), then answer from what is
          * there (the macros alone if the check has not published) */
@@ -1121,6 +1124,7 @@ static void handle_request(const JsonValue *id, ReqKind k,
         switch (k) {
         case R_DEF: lsp_definition(&r, &w); break;
         case R_DECL: lsp_declaration(&r, &w); break;
+        case R_TYPEDEF: lsp_type_definition(&r, &w); break;
         case R_REFS: lsp_references(&r, &w); break;
         case R_HIGHLIGHT: lsp_document_highlight(&r, &w); break;
         case R_HOVER: lsp_hover(&r, &w); break;
@@ -1350,7 +1354,7 @@ int lsp_main(FILE *in, FILE *out)
                 if (!strcmp(method, REQS[i].method))
                     break;
             if (REQS[i].method)
-                handle_request(id, REQS[i].kind, params);
+                handle_request(id, REQS[i].kind, REQS[i].cidx, params);
             else
                 respond_error(id, -32601, "method not found");
         }

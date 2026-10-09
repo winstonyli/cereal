@@ -18,15 +18,17 @@ stmts.c:18:27 REF param n -> #2 arg
 stmts.c:18:32 REF obj pasted_name -> #1 expansion
 stmts.c:19:1 DEF label out -> #5
 stmts.c:20:12 REF obj p -> #4
+stmts.c:25:20 DEF func sysf -> #9 expansion system
 stmts.c:27:6 DEF func g -> #7
 stmts.c:27:16 DEF label after -> #8
 stmts.c:27:28 REF label after -> #8
 #0 obj counter external tentative :: var counter: int tentative
 #1 obj pasted_name external tentative :: var pasted_name: int tentative
-#2 param n scope 7-21 :: param n: int
+#2 param n scope 8-21 :: param n: int
 #3 func f external :: func f: int(int) defined
-#4 obj p scope 7-21 :: var f:p: void *
+#4 obj p scope 8-21 :: var f:p: void *
 #5 label out scope 7-21 :: label f:out
 #6 label inner scope 7-21 :: label f:inner
 #7 func g external :: func g: void(void) defined
 #8 label after scope 27-27 :: label g:after
+#9 func sysf internal system static :: func sysf: void(int) static inline defined

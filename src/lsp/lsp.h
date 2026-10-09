@@ -122,9 +122,13 @@ typedef struct Req {
     bool c_fresh;            /* snap has the newest edit and its check ended */
 } Req;
 
+/* The semantic token legend, NULL-terminated (features.c). */
+extern const char *const lsp_token_types[], *const lsp_token_modifiers[];
+
 /* Each writes the result value (not the envelope). */
 void lsp_definition(Req *r, JsonWriter *w);
 void lsp_declaration(Req *r, JsonWriter *w);
+void lsp_type_definition(Req *r, JsonWriter *w);
 void lsp_references(Req *r, JsonWriter *w);
 void lsp_document_highlight(Req *r, JsonWriter *w);
 void lsp_hover(Req *r, JsonWriter *w);

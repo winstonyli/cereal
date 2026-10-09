@@ -190,6 +190,20 @@ void lsp_declaration(Req *r, JsonWriter *w)
     goto_entity(r, w, CIQ_DECL);
 }
 
+/* typeDefinition: the definitions of the types of the C entities at the
+ * cursor (their typedef, struct, union or enum; B3_DESIGN.md 5.1). */
+void lsp_type_definition(Req *r, JsonWriter *w)
+{
+    SrcLoc at = cursor(r);
+    IdxTarget t = index_resolve(&r->snap->ix, at);
+    uint32_t decls[16], types[16];
+    size_t nd = c_decls_at(r, &t, at, decls, 16);
+    json_begin_array(w);
+    if (nd && (nd = cindex_types(r->cidx, decls, nd, types)))
+        c_events(r, w, types, nd, CIQ_DEF, false);
+    json_end_array(w);
+}
+
 /* references and documentHighlight (only the request's file): the macro
  * index's uses of a macro or macro parameter (its definitions are the
  * declarations, Write), else the C index's events of the entity. */
@@ -309,13 +323,62 @@ void lsp_hover(Req *r, JsonWriter *w)
 
 /* ---- completion, symbols ------------------------------------------------- */
 
-enum { CIK_FUNCTION = 3, CIK_CONSTANT = 21 };
-enum { SK_FUNCTION = 12, SK_CONSTANT = 14 };
+enum { CK_FUNCTION = 3, CK_CONSTANT = 21 };   /* CompletionItemKind */
+enum { SK_FUNCTION = 12, SK_CONSTANT = 14 };  /* SymbolKind */
 
+/* The semantic token legend: macro tokens first, then C names by kind. */
+enum {
+    ST_MACRO, ST_PARAM, ST_FUNCTION, ST_VARIABLE, ST_TYPE, ST_ENUMMEMBER,
+    ST_PROPERTY, ST_STRUCT, ST_ENUM
+};
+const char *const lsp_token_types[] = {
+    "macro", "parameter", "function", "variable", "type", "enumMember",
+    "property", "struct", "enum", NULL};
+enum { SM_DECLARATION = 1, SM_READONLY = 2, SM_STATIC = 4 };
+const char *const lsp_token_modifiers[] = {"declaration", "readonly", "static",
+                                           NULL};
+
+/* LSP kinds of a C entity by CIdxKind: completion item, symbol, semantic
+ * token type (-1: none; labels). */
+static const struct {
+    int8_t ck, sk, st;
+} C_KINDS[] = {
+    [CIK_FUNC] = {3, 12, ST_FUNCTION},
+    [CIK_OBJ] = {6, 13, ST_VARIABLE},
+    [CIK_PARAM] = {6, 13, ST_PARAM},
+    [CIK_TYPEDEF] = {7, 5, ST_TYPE},
+    [CIK_ENUMCONST] = {20, 22, ST_ENUMMEMBER},
+    [CIK_FIELD] = {5, 8, ST_PROPERTY},
+    [CIK_STRUCT] = {22, 23, ST_STRUCT},
+    [CIK_UNION] = {22, 23, ST_STRUCT},
+    [CIK_ENUM] = {13, 10, ST_ENUM},
+    [CIK_LABEL] = {0, 0, -1}};
+
+/* The index's file entry for the request's document, -1 if none or stale. */
+static int c_file(Req *r)
+{
+    int fi = r->cidx ? cindex_file(r->cidx, r->file->path) : -1;
+    return fi >= 0 && !r->cidx->files[fi].stale ? fi : -1;
+}
+
+/* The first line of a decl's hover text. */
+static const char *c_detail(Req *r, uint32_t d)
+{
+    const char *h = r->cidx->strings + r->cidx->decls[d].hover;
+    const char *nl = strchr(h, '\n');
+    return nl ? arena_strndup(r->arena, h, (size_t)(nl - h)) : h;
+}
+
+/* completion: the macros visible at the cursor, then the C names visible
+ * there that no visible macro hides (B3_DESIGN.md 5.5). */
 void lsp_completion(Req *r, JsonWriter *w)
 {
     Macro **v;
-    size_t n = index_visible(&r->snap->ix, cursor(r), &v), i;
+    SrcLoc at = cursor(r);
+    size_t n = index_visible(&r->snap->ix, at, &v), i, nc = 0;
+    uint32_t *cv = NULL, seq = index_seq_at(&r->snap->ix, at);
+    if (c_file(r) >= 0)
+        nc = cindex_visible(r->cidx, r->file->path, at - r->file->base, &cv);
     json_begin_object(w);
     json_key(w, "isIncomplete");
     json_bool(w, false);
@@ -327,14 +390,136 @@ void lsp_completion(Req *r, JsonWriter *w)
         json_key(w, "label");
         json_str(w, m->name->str);
         json_key(w, "kind");
-        json_int(w, m->funclike ? CIK_FUNCTION : CIK_CONSTANT);
+        json_int(w, m->funclike ? CK_FUNCTION : CK_CONSTANT);
         json_key(w, "detail");
         json_str(w, arena_printf(r->arena, "#define %s %s", signature(r, m),
                                  macro_body_str(&r->snap->tu.pp, m)));
         json_end_object(w);
     }
+    for (i = 0; i < nc; i++) {
+        const char *name = cindex_name(r->cidx, cv[i]);
+        Ident *id = intern_find(r->snap->tu.pp.in, name, strlen(name));
+        if (id && macro_at_version(r->snap->tu.pp.mt, id, seq))
+            continue;        /* a macro hides it */
+        json_begin_object(w);
+        json_key(w, "label");
+        json_str(w, name);
+        json_key(w, "kind");
+        json_int(w, C_KINDS[r->cidx->decls[cv[i]].kind].ck);
+        json_key(w, "detail");
+        json_str(w, r->cidx->strings + r->cidx->decls[cv[i]].hover);
+        json_end_object(w);
+    }
+    free(cv);
     json_end_array(w);
     json_end_object(w);
+}
+
+/* A document symbol of the C index: an entry (file-level declaration) or a
+ * member (field, enumerator) under the node that claims its parent. */
+typedef struct CSymNode {
+    uint32_t ev, decl;
+    uint32_t b, e;           /* range, offsets in the file */
+    int32_t up;              /* the claiming node, -1: top level */
+    int32_t kid, next;       /* its first child, its next sibling; -1 */
+} CSymNode;
+
+static void c_symbol(Req *r, JsonWriter *w, const CSymNode *nodes, int32_t k,
+                     int depth)
+{
+    const CIndex *ix = r->cidx;
+    const CIdxEvent *e = &ix->ev[nodes[k].ev];
+    SrcLoc base = r->file->base;
+    int32_t j;
+    json_begin_object(w);
+    json_key(w, "name");
+    json_str(w, cindex_name(ix, nodes[k].decl));
+    json_key(w, "detail");
+    json_str(w, c_detail(r, nodes[k].decl));
+    json_key(w, "kind");
+    json_int(w, C_KINDS[ix->decls[nodes[k].decl].kind].sk);
+    json_key(w, "range");
+    json_range(w, &r->snap->tu.sm, r->enc, base + nodes[k].b, base + nodes[k].e);
+    json_key(w, "selectionRange");
+    json_range(w, &r->snap->tu.sm, r->enc, base + e->off, base + e->off + e->len);
+    if (nodes[k].kid >= 0 && depth < 8) {
+        json_key(w, "children");
+        json_begin_array(w);
+        for (j = nodes[k].kid; j >= 0; j = nodes[j].next)
+            c_symbol(r, w, nodes, j, depth + 1);
+        json_end_array(w);
+    }
+    json_end_object(w);
+}
+
+/* The C part of documentSymbol (B3_DESIGN.md 5.2): file-level declarations
+ * with the external declaration as range, fields and enumerators under the
+ * node whose type is their record or enum (a definition of it first). */
+static void c_document_symbols(Req *r, JsonWriter *w)
+{
+    const CIndex *ix = r->cidx;
+    int fi = c_file(r);
+    VEC(CSymNode) v = {0};
+    uint32_t i, end, *claim;
+    size_t k;
+    if (fi < 0)
+        return;
+    end = cindex_lower(ix, (uint32_t)fi + 1, 0);
+    for (i = cindex_lower(ix, (uint32_t)fi, 0); i < end; i++) {
+        const CIdxEvent *e = &ix->ev[i];
+        const CIdxDecl *x = &ix->decls[e->decl];
+        uint32_t s = 0;
+        CSymNode n;
+        bool member = x->kind == CIK_FIELD || x->kind == CIK_ENUMCONST;
+        if ((e->flags & CIX_ROLE) == CIX_REF || (e->flags & CIX_MACRO_BODY) ||
+            x->kind == CIK_PARAM || x->kind == CIK_LABEL ||
+            (member ? (e->flags & CIX_ROLE) != CIX_DEF : x->scope))
+            continue;
+        n.ev = i;
+        n.decl = e->decl;
+        n.b = e->off;
+        n.e = e->off + e->len;
+        n.up = n.kid = n.next = -1;
+        if (x->kind != CIK_FIELD) {          /* at file level? */
+            s = cindex_scope_at(ix, (uint32_t)fi, e->off);
+            if (s && ix->scopes[s - 1].parent)
+                continue;
+        }
+        if (s && !member) {                  /* the external declaration */
+            n.b = ix->scopes[s - 1].begin < n.b ? ix->scopes[s - 1].begin : n.b;
+            n.e = ix->scopes[s - 1].end > n.e ? ix->scopes[s - 1].end : n.e;
+        }
+        vec_push(&v, n);
+    }
+    /* claim: decl -> 1 + the node holding its members */
+    claim = xcalloc(ix->ndecls + 1, sizeof *claim);
+    for (k = 0; k < v.len; k++) {            /* a definition of the type */
+        const CIdxDecl *x = &ix->decls[v.data[k].decl];
+        if (x->type == v.data[k].decl + 1 && !claim[v.data[k].decl] &&
+            (ix->ev[v.data[k].ev].flags & CIX_ROLE) == CIX_DEF)
+            claim[v.data[k].decl] = (uint32_t)k + 1;
+    }
+    for (k = 0; k < v.len; k++) {            /* else the first entry of it */
+        const CIdxDecl *x = &ix->decls[v.data[k].decl];
+        uint32_t t = x->type;
+        if (t && !claim[t - 1] && x->kind != CIK_FIELD &&
+            x->kind != CIK_ENUMCONST)
+            claim[t - 1] = (uint32_t)k + 1;
+    }
+    for (k = v.len; k-- > 0;) {              /* children lists, in order */
+        const CIdxDecl *x = &ix->decls[v.data[k].decl];
+        uint32_t c = x->parent ? claim[x->parent - 1] : 0;
+        if (c && c - 1 != k) {
+            v.data[k].up = (int32_t)(c - 1);
+            v.data[k].next = v.data[c - 1].kid;
+            v.data[c - 1].kid = (int32_t)k;
+        }
+    }
+    free(claim);
+    for (k = 0; k < v.len; k++)
+        if (v.data[k].up < 0 && ix->decls[v.data[k].decl].kind != CIK_FIELD)
+            c_symbol(r, w, v.data, (int32_t)k, 0);
+    vec_free(&v);
 }
 
 void lsp_document_symbols(Req *r, JsonWriter *w)
@@ -362,13 +547,11 @@ void lsp_document_symbols(Req *r, JsonWriter *w)
                    m->name_loc + m->name->len);
         json_end_object(w);
     }
+    c_document_symbols(r, w);
     json_end_array(w);
 }
 
 /* ---- semantic tokens -------------------------------------------------------- */
-
-enum { ST_MACRO = 0, ST_PARAM = 1 };
-enum { SM_DECLARATION = 1 };
 
 typedef struct STok {
     SrcLoc loc;
@@ -397,6 +580,7 @@ static void semantic_data(Req *r, SrcLoc b, SrcLoc e, U32Vec *out)
     SrcLoc prev_end = 0;
     uint32_t pl = 0, pc = 0;
     IdxRef *refs;
+    int fi;
 #define IN_R(l) ((l) >= b && (l) <= e)
     nrefs = index_range_refs(ix, b, e, &refs);
     for (i = 0; i < nrefs; i++) {
@@ -442,6 +626,29 @@ static void semantic_data(Req *r, SrcLoc b, SrcLoc e, U32Vec *out)
         }
     }
 #undef IN_R
+    if ((fi = c_file(r)) >= 0 && e >= r->file->base) {
+        /* the C names, but those spelled in a #define body (one token there
+         * names an entity per expansion) or formed by ## (B3_DESIGN.md 5.4) */
+        const CIndex *cx = r->cidx;
+        uint32_t k = cindex_lower(cx, (uint32_t)fi,
+                                  b > r->file->base ? b - r->file->base : 0);
+        for (; k < cx->nev && cx->ev[k].file == (uint32_t)fi &&
+               r->file->base + cx->ev[k].off <= e; k++) {
+            const CIdxEvent *ce = &cx->ev[k];
+            const CIdxDecl *x = &cx->decls[ce->decl];
+            STok s;
+            if ((ce->flags & (CIX_MACRO_BODY | CIX_AT_EXPANSION | CIX_SYSTEM)) ||
+                C_KINDS[x->kind].st < 0 || !ce->len)
+                continue;
+            s.loc = r->file->base + ce->off;
+            s.len = ce->len;
+            s.type = C_KINDS[x->kind].st;
+            s.mods = ((ce->flags & CIX_ROLE) != CIX_REF ? SM_DECLARATION : 0) |
+                     (x->flags & CIDF_READONLY ? SM_READONLY : 0) |
+                     (x->flags & CIDF_STATIC ? SM_STATIC : 0);
+            vec_push(&v, s);
+        }
+    }
     if (v.len)
         qsort(v.data, v.len, sizeof *v.data, stok_cmp);
     for (i = 0; i < v.len; i++) {
@@ -482,6 +689,7 @@ typedef struct TokCache {
     const void *snap;          /* identity only; may have been freed */
     long long gen;
     PosEncoding enc;
+    bool cidx;                 /* the snapshot had its C index (set once) */
     unsigned long id;          /* resultId */
     U32Vec data;
 } TokCache;
@@ -522,7 +730,7 @@ void lsp_semantic_tokens(Req *r, JsonWriter *w, const char *previous_id)
     U32Vec nd = {0};
     char id[32];
     bool fresh = c->snap == r->snap && c->gen == r->snap->gen &&
-                 c->enc == r->enc && c->id;
+                 c->enc == r->enc && c->cidx == (r->cidx != NULL) && c->id;
     unsigned long prev = previous_id ? strtoul(previous_id, NULL, 10) : 0;
     if (fresh) {
         if (prev == c->id) { /* nothing changed since */
@@ -584,6 +792,7 @@ void lsp_semantic_tokens(Req *r, JsonWriter *w, const char *previous_id)
     c->snap = r->snap;
     c->gen = r->snap->gen;
     c->enc = r->enc;
+    c->cidx = r->cidx != NULL;
 }
 
 void lsp_semantic_tokens_range(Req *r, JsonWriter *w)
@@ -971,7 +1180,206 @@ void lsp_calls(Req *r, JsonWriter *w, bool incoming)
 /* ---- signature help ---------------------------------------------------------- *
  * While an invocation is being typed it is usually incomplete, so this
  * reads the editor text: back from the cursor to the unmatched '(' and the
- * name before it, counting top-level commas on the way. */
+ * name before it, counting top-level commas on the way.  A function-like
+ * macro defined there answers, else the C entity (B3_DESIGN.md 5.3). */
+
+typedef struct Sig {
+    StrBuf label;            /* NAME(P1, P2) */
+    U32Vec offs;             /* each parameter's [begin, end) in label */
+    bool variadic;           /* the last parameter is ... */
+    const char *doc;
+} Sig;
+
+static void sig_free(Sig *s)
+{
+    sb_free(&s->label);
+    vec_free(&s->offs);
+}
+
+/* Appends parameter text p[0..n) to the label. */
+static void sig_param(Sig *s, const char *p, size_t n)
+{
+    if (s->offs.len)
+        sb_puts(&s->label, ", ");
+    vec_push(&s->offs, (uint32_t)s->label.len);
+    sb_putn(&s->label, p, n);
+    vec_push(&s->offs, (uint32_t)s->label.len);
+}
+
+static void macro_sig(Req *r, Macro *m, Sig *s)
+{
+    int k;
+    sb_printf(&s->label, "%s(", m->name->str);
+    for (k = 0; k < m->nparams; k++) {
+        const char *pn = m->variadic && k == m->nparams - 1 &&
+                                 !m->gnu_named_variadic
+                             ? "..." : m->params[k]->str;
+        sig_param(s, pn, strlen(pn));
+        if (m->gnu_named_variadic && k == m->nparams - 1) {
+            sb_puts(&s->label, "...");
+            s->offs.data[s->offs.len - 1] = (uint32_t)s->label.len;
+        }
+    }
+    sb_putc(&s->label, ')');
+    s->variadic = m->variadic;
+    s->doc = arena_printf(r->arena, "#define %s %s", signature(r, m),
+                          macro_body_str(&r->snap->tu.pp, m));
+}
+
+/* Past white space and comments from buf[i]. */
+static size_t skip_blank(const char *buf, size_t n, size_t i)
+{
+    for (;;) {
+        while (i < n && (buf[i] == ' ' || buf[i] == '\t' || buf[i] == '\n' ||
+                         buf[i] == '\r' || buf[i] == '\f' || buf[i] == '\v'))
+            i++;
+        if (i + 1 < n && buf[i] == '/' && buf[i + 1] == '*') {
+            for (i += 2; i + 1 < n && !(buf[i] == '*' && buf[i + 1] == '/'); i++)
+                ;
+            i = i + 2 < n ? i + 2 : n;
+        } else if (i + 1 < n && buf[i] == '/' && buf[i + 1] == '/') {
+            while (i < n && buf[i] != '\n')
+                i++;
+        } else {
+            return i;
+        }
+    }
+}
+
+/* The parameter list written after the name at buf[i] (a declaration's
+ * text): past balanced [..] and ')' a '(' must follow; its parameters, as
+ * written with white space and comments collapsed, go to s.  False if there
+ * is none, it holds a directive or it is over 4 KiB. */
+static bool text_params(const char *buf, size_t n, size_t i, Sig *s)
+{
+    StrBuf p = {0};
+    size_t start, j;
+    int depth = 0;
+    for (i = skip_blank(buf, n, i); i < n && (buf[i] == ')' || buf[i] == '[');
+         i = skip_blank(buf, n, i)) {
+        if (buf[i] == ')') {
+            i++;
+            continue;
+        }
+        for (depth = 0; i < n; i++)
+            if (buf[i] == '[')
+                depth++;
+            else if (buf[i] == ']' && --depth == 0)
+                break;
+        i++;
+    }
+    if (i >= n || buf[i] != '(')
+        return false;
+    start = s->label.len;
+    sb_putc(&s->label, '(');
+    for (i++, depth = 0, j = i; i < n && i - j < 4096; i++) {
+        size_t k = skip_blank(buf, n, i);
+        char c;
+        if (k > i) {         /* white space or a comment: one space */
+            if (p.len && p.data[p.len - 1] != ' ')
+                sb_putc(&p, ' ');
+            i = k - 1;
+            continue;
+        }
+        c = buf[i];
+        if (c == '#')
+            break;           /* a directive: not a list to show */
+        if ((c == ',' || c == ')') && depth == 0) {
+            size_t b0;
+            while (p.len && p.data[p.len - 1] == ' ')
+                p.len--;
+            for (b0 = 0; b0 < p.len && p.data[b0] == ' '; b0++)
+                ;
+            if (!(c == ')' && !s->offs.len && (p.len == b0 ||
+                                               (p.len - b0 == 4 &&
+                                                !memcmp(p.data + b0, "void", 4)))))
+                sig_param(s, p.data + b0, p.len - b0);
+            p.len = 0;
+            if (c == ')') {
+                sb_free(&p);
+                sb_putc(&s->label, ')');
+                s->variadic = s->offs.len &&
+                              s->offs.data[s->offs.len - 1] -
+                                      s->offs.data[s->offs.len - 2] == 3 &&
+                              !memcmp(s->label.data +
+                                          s->offs.data[s->offs.len - 2],
+                                      "...", 3);
+                return true;
+            }
+            continue;
+        }
+        depth += c == '(' || c == '[';
+        depth -= (c == ')' || c == ']') && depth > 0;
+        sb_putc(&p, c);
+    }
+    sb_free(&p);
+    s->label.len = start;    /* undo */
+    s->offs.len = 0;
+    return false;
+}
+
+/* The parameter list of decl d from its declarations' text: its definition,
+ * then its declarations, not spelled in a #define body nor pasted (but a
+ * system header's), then through its typedef type, at most 4 steps. */
+static bool decl_params(Req *r, uint32_t d, Sig *s)
+{
+    const CIndex *ix = r->cidx;
+    size_t base = s->label.len;
+    int step, pass;
+    uint32_t j;
+    for (step = 0; step < 4; step++) {
+        for (pass = 0; pass < 2; pass++)
+            for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++) {
+                const CIdxEvent *e = &ix->ev[ix->by_decl[j]];
+                SrcFile *f;
+                if ((e->flags & CIX_ROLE) != (pass ? CIX_DECL : CIX_DEF) ||
+                    (e->flags & CIX_MACRO_BODY) ||
+                    (e->flags & (CIX_AT_EXPANSION | CIX_SYSTEM)) ==
+                        CIX_AT_EXPANSION ||
+                    ix->files[e->file].stale ||
+                    !(f = cindex_srcfile(&r->snap->tu.sm,
+                                         ix->files[e->file].path)))
+                    continue;
+                s->label.len = base;
+                if (text_params(f->buf, f->size, e->off + e->len, s))
+                    return true;
+            }
+        if (!ix->decls[d].type || ix->decls[ix->decls[d].type - 1].kind != CIK_TYPEDEF)
+            break;
+        d = ix->decls[d].type - 1;
+    }
+    s->label.len = base;
+    return false;
+}
+
+/* The C entity called by the name text[0..n) at offset at: the decls there,
+ * else the one of that name visible there; its signature into s. */
+static bool c_sig(Req *r, const char *name, size_t n, size_t at, Sig *s)
+{
+    uint32_t decls[16], *vis = NULL;
+    size_t nd = 0, i;
+    bool ok = false;
+    if (c_file(r) < 0 || at > r->file->size)
+        return false;
+    nd = cindex_decls_at(r->cidx, r->file->path, (uint32_t)at, decls, 16);
+    if (!nd) {
+        size_t nv = cindex_visible(r->cidx, r->file->path, (uint32_t)at, &vis);
+        for (i = 0; i < nv && !nd; i++) {
+            const char *v = cindex_name(r->cidx, vis[i]);
+            if (strlen(v) == n && !memcmp(v, name, n))
+                decls[nd++] = vis[i];
+        }
+        free(vis);
+    }
+    for (i = 0; i < nd && !ok; i++) {
+        sb_putn(&s->label, name, n);
+        if ((ok = decl_params(r, decls[i], s)))
+            s->doc = r->cidx->strings + r->cidx->decls[decls[i]].hover;
+        else
+            s->label.len = 0;
+    }
+    return ok;
+}
 
 void lsp_signature_help(Req *r, JsonWriter *w)
 {
@@ -984,9 +1392,11 @@ void lsp_signature_help(Req *r, JsonWriter *w)
     int depth = 0, commas = 0;
     Ident *id;
     Macro *m;
-    StrBuf label = {0};
+    Sig sig;
+    size_t i;
     int k;
     const char *t = r->text;
+    memset(&sig, 0, sizeof sig);
     while (p > stop) {
         char c = t[--p];
         if (c == '"' || c == '\'') { /* skip back over a literal */
@@ -1024,63 +1434,54 @@ void lsp_signature_help(Req *r, JsonWriter *w)
         return;
     }
     id = intern_find(r->snap->tu.pp.in, t + p, ne - p);
-    if (!id) {
-        json_null(w);
-        return;
+    m = !id ? NULL
+            : macro_at_version(r->snap->tu.pp.mt, id,
+                               index_seq_at(&r->snap->ix,
+                                            r->file->base +
+                                                (SrcLoc)(p < r->file->size
+                                                             ? p : r->file->size)));
+    sig.offs.len = 0;
+    if (m && m->funclike) {
+        macro_sig(r, m, &sig);
+    } else if (!c_sig(r, t + p, ne - p, p, &sig)) {
+        /* not defined there (or the snapshot is behind): any version */
+        m = id ? mt_cur(r->snap->tu.pp.mt, id) : NULL;
+        if (!m || !m->funclike) {
+            json_null(w);
+            sig_free(&sig);
+            return;
+        }
+        macro_sig(r, m, &sig);
     }
-    m = macro_at_version(r->snap->tu.pp.mt, id, index_seq_at(&r->snap->ix,
-                                          r->file->base +
-                                              (SrcLoc)(p < r->file->size
-                                                           ? p : r->file->size)));
-    if (!m) /* not defined there (or the snapshot is behind): any version */
-        m = mt_cur(r->snap->tu.pp.mt, id);
-    if (!m || !m->funclike) {
-        json_null(w);
-        return;
-    }
-    sb_printf(&label, "%s(", m->name->str);
+    k = (int)(sig.offs.len / 2);
     json_begin_object(w);
     json_key(w, "signatures");
     json_begin_array(w);
     json_begin_object(w);
     json_key(w, "parameters");
     json_begin_array(w);
-    for (k = 0; k < m->nparams; k++) {
-        const char *pn = m->variadic && k == m->nparams - 1 &&
-                                 !m->gnu_named_variadic
-                             ? "..." : m->params[k]->str;
-        size_t b;
-        if (k)
-            sb_puts(&label, ", ");
-        b = label.len;
-        sb_puts(&label, pn);
-        if (m->gnu_named_variadic && k == m->nparams - 1)
-            sb_puts(&label, "...");
+    for (i = 0; i < sig.offs.len; i += 2) {
         json_begin_object(w);
         json_key(w, "label");
         json_begin_array(w);
-        json_int(w, (long long)b);
-        json_int(w, (long long)label.len);
+        json_int(w, (long long)sig.offs.data[i]);
+        json_int(w, (long long)sig.offs.data[i + 1]);
         json_end_array(w);
         json_end_object(w);
     }
-    sb_putc(&label, ')');
     json_end_array(w);
     json_key(w, "label");
-    json_str(w, sb_cstr(&label));
+    json_str(w, sb_cstr(&sig.label));
     json_key(w, "documentation");
-    json_str(w, arena_printf(r->arena, "#define %s %s", signature(r, m),
-                             macro_body_str(&r->snap->tu.pp, m)));
+    json_str(w, sig.doc);
     json_end_object(w);
     json_end_array(w);
     json_key(w, "activeSignature");
     json_int(w, 0);
     json_key(w, "activeParameter");
-    json_int(w, m->nparams == 0 ? 0
-                : commas < m->nparams ? commas
-                : m->variadic ? m->nparams - 1 : commas);
+    json_int(w, k == 0 ? 0 : commas < k ? commas : sig.variadic ? k - 1 : commas);
     json_end_object(w);
-    sb_free(&label);
+    sig_free(&sig);
 }
 
 /* ---- cereal/expandMacro --------------------------------------------------------- */

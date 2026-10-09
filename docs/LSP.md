@@ -298,15 +298,20 @@ is freed with it.
 
 ## Capabilities
 
-definition and declaration, references, document highlight, hover (definition, body, and
+definition, declaration and type definition, references, document highlight, hover (definition, body, and
 what the invocation under the cursor expands to), completion (the macros
-visible at the cursor), document symbols, semantic tokens (`macro`,
-`parameter`; `declaration`; whole file, a range, or a delta against the
-last whole-file result), folding (`#if` blocks, multi-line
+visible at the cursor, then the C names in scope there that no visible
+macro hides), document symbols (the macros, then the file-level C
+declarations with fields and enumerators nested under their record or
+enum), semantic tokens (`macro`, `parameter`, `function`, `variable`,
+`type`, `enumMember`, `property`, `struct`, `enum`; modifiers
+`declaration`, `readonly`, `static`; whole file, a range, or a delta
+against the last whole-file result), folding (`#if` blocks, multi-line
 `#define`s), rename with prepareRename, call hierarchy (incoming and
 outgoing; static edges plus observed expansions), and signature help for
-function-like macros (read from the editor text, so it works while the
-invocation is still being typed).
+function-like macros and for C functions and function pointers, also
+through a typedef (both read from the text, so they work while the call
+is still being typed). The C parts follow docs/B3_DESIGN.md.
 
 - **Rename of a macro is refused** when any use of the name is formed by
   `##` (renaming could not follow it), or when the macro is predefined or
@@ -317,8 +322,11 @@ invocation is still being typed).
   - `cereal/expandMacro` (position: the invocation's full expansion);
   - `cereal/waitIdle` (answers when no build is queued or running; a
     barrier for tests).
-- **C names:** definition, declaration, references, document highlight,
-  hover and rename (above).
+- **C names:** definition, declaration, type definition, references,
+  document highlight, hover, rename, document symbols, signature help,
+  semantic tokens and completion (above). Every request that reads the C
+  index waits for the newest edit's check (D1; a column of the request
+  table in server.c).
 
 ## Tests
 
@@ -347,7 +355,15 @@ in `#if 0`, a capture; a rename right after an edit, D1; the macro path
 and null on a keyword); `tests/query/csym.cmd` the same merge from the
 command line, and `tests/query/rename.cmd` 36 renames (accepted
 for every kind and namespace, refused by each blocker and by the second
-check). The sessions are also run under ThreadSanitizer and
+check). `tests/lsp/csym_b3` covers B3: type definition (typedefs, an
+enum, a struct, a header struct through a parameter; none for `int` or a
+function-pointer field), document symbols (nesting, an anonymous struct
+under its typedef, enumerators of a nameless enum standing alone),
+signature help (a function-pointer field, a typedef function pointer from
+a header, a variadic function, a macro, a static function), semantic
+tokens (whole file and a range) and completion (inside a function and in
+another); `tests/query/b3.cmd` `cereal query type` and `visible` on
+`tests/symidx/b3.c`. The sessions are also run under ThreadSanitizer and
 AddressSanitizer/UBSan (set `LSP_STDERR` to collect reports).
 
 ## Measurements (35 MB macro_heavy.c, 4 cores)

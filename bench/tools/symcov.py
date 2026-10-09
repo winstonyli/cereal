@@ -14,7 +14,7 @@ import sys, os, re, subprocess, multiprocessing
 S = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, S)
 import par
-SUM = re.compile(r'^symbols: (\d+) events, \d+ decls, \d+ files, \d+ bytes, (\d+) unindexed, (\d+) excused$')
+SUM = re.compile(r'^symbols: (\d+) events, \d+ decls, \d+ scopes, \d+ files, \d+ bytes, (\d+) unindexed, (\d+) excused$')
 UNI = re.compile(r"^(.*:\d+:\d+): unindexed '(.*)' \((.*)\)$")
 def work(job):
     cer, f, flags, cwd, std = job

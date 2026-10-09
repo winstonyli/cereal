@@ -1,0 +1,85 @@
+b3.c:3:22 DEF field x -> #0
+b3.c:3:27 DEF typedef Anon -> #1
+b3.c:4:9 REF typedef Anon -> #1
+b3.c:4:15 DEF typedef AnonP -> #2
+b3.c:5:19 DEF typedef CI -> #3
+b3.c:6:8 DEF enumconst RED -> #4
+b3.c:6:13 DEF enumconst GREEN -> #5
+b3.c:7:8 DEF struct Out -> #6
+b3.c:7:26 DEF field a -> #8
+b3.c:7:42 DEF field b -> #7
+b3.c:7:64 DEF field c -> #9
+b3.c:7:69 DEF field named -> #10
+b3.c:8:15 DEF typedef cmp_fn -> #11
+b3.c:9:18 DEF obj table -> #12
+b3.c:10:1 REF typedef CI -> #3
+b3.c:10:4 DEF obj limit -> #13
+b3.c:11:13 DEF obj msg -> #14
+b3.c:12:8 REF typedef Anon -> #1
+b3.c:12:13 DECL func make -> #16
+b3.c:12:18 REF typedef AnonP -> #2
+b3.c:12:24 DECL param p -> #15
+b3.c:13:1 REF typedef cmp_fn -> #11
+b3.c:13:8 DEF obj cmp -> #17
+b3.c:14:5 DEF func run -> #20
+b3.c:14:13 DEF param n -> #18
+b3.c:14:16 REF typedef cmp_fn -> #11
+b3.c:14:23 DEF param f -> #19
+b3.c:16:16 DEF obj calls -> #21
+b3.c:17:14 DEF obj i -> #22
+b3.c:17:21 REF obj i -> #22
+b3.c:17:25 REF param n -> #18
+b3.c:17:28 REF obj i -> #22
+b3.c:18:13 DEF obj sq -> #23
+b3.c:18:18 REF obj i -> #22
+b3.c:18:22 REF obj i -> #22
+b3.c:19:9 REF obj calls -> #21
+b3.c:19:18 REF obj sq -> #23
+b3.c:19:23 REF obj table -> #12
+b3.c:19:29 REF obj i -> #22
+b3.c:19:38 REF obj limit -> #13
+b3.c:19:46 REF enumconst RED -> #4
+b3.c:22:16 DEF enumconst BLUE -> #24
+b3.c:22:23 DEF obj shade -> #25
+b3.c:22:31 REF enumconst BLUE -> #24
+b3.c:23:16 REF obj calls -> #21
+b3.c:23:24 REF obj shade -> #25
+b3.c:23:32 REF param f -> #19
+b3.c:23:34 REF obj msg -> #14
+b3.c:23:39 REF obj msg -> #14
+b3.c:26:8 REF typedef Anon -> #1
+b3.c:26:13 DEF func make -> #16
+b3.c:26:18 REF typedef AnonP -> #2
+b3.c:26:24 DEF param p -> #26
+b3.c:26:37 REF param p -> #26
+#0 field x parent #27 :: field x: int (struct <anonymous>, offset 0)
+#1 typedef Anon type #27 :: typedef Anon = struct <anonymous>
+#2 typedef AnonP type #1 :: typedef AnonP = Anon *
+#3 typedef CI :: typedef CI = const int
+#4 enumconst RED readonly type #29 parent #29 :: enumconst RED = 0 (int)
+#5 enumconst GREEN readonly type #29 parent #29 :: enumconst GREEN = 1 (int)
+#6 struct Out type #6 :: struct Out size=8 align=4\n  0 <unnamed>: union <anonymous>\n  4 named: struct <anonymous>
+#7 field b parent #6 :: field b: int (struct <anonymous>, offset 0)
+#8 field a parent #6 :: field a: int (union <anonymous>, offset 0)
+#9 field c parent #28 :: field c: int (struct <anonymous>, offset 0)
+#10 field named type #28 parent #6 :: field named: struct <anonymous> (struct Out, offset 4)
+#11 typedef cmp_fn :: typedef cmp_fn = int (*)(const void *, const void *)
+#12 obj table internal readonly static :: var table: const int[3] static
+#13 obj limit external readonly type #3 :: var limit: const CI
+#14 obj msg external tentative :: var msg: const char * tentative
+#15 param p type #2 scope 12-12 :: param p: AnonP
+#16 func make internal static type #1 :: func make: Anon(AnonP) static defined
+#17 obj cmp external tentative type #11 :: var cmp: cmp_fn tentative
+#18 param n scope 15-25 :: param n: int
+#19 param f type #11 scope 15-25 :: param f: cmp_fn
+#20 func run external :: func run: int(int, cmp_fn) defined
+#21 obj calls static scope 15-25 :: var run:calls: int static
+#22 obj i scope 17-20 :: var run:i: int
+#23 obj sq scope 17-20 :: var run:sq: int
+#24 enumconst BLUE readonly type #30 parent #30 scope 21-24 :: enumconst BLUE = 0 (int)
+#25 obj shade type #30 scope 21-24 :: var run:shade: enum <anonymous>
+#26 param p type #2 scope 26-26 :: param p: AnonP
+#27 struct <anonymous> type #27 :: struct <anonymous> size=4 align=4\n  0 x: int
+#28 struct <anonymous> type #28 :: struct <anonymous> size=4 align=4\n  0 c: int
+#29 enum <anonymous> type #29 :: enum <anonymous> (underlying unsigned int)\n  RED = 0\n  GREEN = 1
+#30 enum <anonymous> type #30 :: enum <anonymous> (underlying unsigned int)\n  BLUE = 0

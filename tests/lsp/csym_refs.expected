@@ -16,7 +16,8 @@
   "renameProvider",
   "semanticTokensProvider",
   "signatureHelpProvider",
-  "textDocumentSync"
+  "textDocumentSync",
+  "typeDefinitionProvider"
  ]
 }
 >> initialized

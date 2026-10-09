@@ -129,7 +129,8 @@ static bool inactive_use(Run *a, uint32_t d, const char *old, const char *nw,
                          StrBuf *why)
 {
     const CIdxDecl *x = &a->ix->decls[d];
-    const CIdxScope *s = x->scope ? &a->ix->scopes[x->scope - 1] : NULL;
+    uint32_t root = cindex_scope_root(a->ix, x->scope);   /* its external declaration */
+    const CIdxScope *s = root ? &a->ix->scopes[root - 1] : NULL;
     size_t i;
     for (i = 0; i < a->skipped.len; i++) {
         SrcRange r = a->skipped.data[i];

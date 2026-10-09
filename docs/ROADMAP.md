@@ -131,7 +131,17 @@ B2. (Phase 1 DONE, Round 187: the index, `--dump-symbols`,
     typedefs, enumerators, fields, labels and tags. Macro lookup stays
     first. Rename refuses uses inside macro expansions and inactive `#if`
     branches.
-B3. Document symbols, in-scope completion, signature help for C functions,
+B3. (DONE, Round 197: typeDefinition, document symbols, signature help
+    for C functions and function pointers, semantic tokens for C names,
+    in-scope completion, and `cereal query type`/`visible` with C names;
+    the index gained types, parents, a scope tree and eager system
+    declarations. 1,056 lines added and 161 removed, against ~550
+    re-estimated in B3_DESIGN.md. Parked there (section 9): member, tag,
+    label and keyword completion, semantic-token refresh after a late
+    check, carrying the previous index across edits, signature help
+    through an expression callee, blocks written inside a macro argument.
+    See B3_DESIGN.md, section 11.)
+    Document symbols, in-scope completion, signature help for C functions,
     typeDefinition, richer semantic tokens (est. 350 lines).
 B4. Function call hierarchy, inlay hints (est. 400 lines).
 B5. Workspace-wide index over compile_commands, workspace/symbol,

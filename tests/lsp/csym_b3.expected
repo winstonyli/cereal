@@ -1,0 +1,1301 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider"
+ ]
+}
+>> initialized
+>> didOpen csym_b3/main.c
+>> (idle)
+## typeDefinition: a typedef (point_p, point_t), an enum, a struct, a header struct through a parameter; int and a function-pointer field have none
+>> textDocument/typeDefinition
+[
+ {
+  "range": {
+   "end": {
+    "character": 24,
+    "line": 4
+   },
+   "start": {
+    "character": 17,
+    "line": 4
+   }
+  },
+  "uri": "file://$ROOT/csym_b3/main.c"
+ }
+]
+>> textDocument/typeDefinition
+[
+ {
+  "range": {
+   "end": {
+    "character": 42,
+    "line": 3
+   },
+   "start": {
+    "character": 35,
+    "line": 3
+   }
+  },
+  "uri": "file://$ROOT/csym_b3/main.c"
+ }
+]
+>> textDocument/typeDefinition
+[
+ {
+  "range": {
+   "end": {
+    "character": 10,
+    "line": 5
+   },
+   "start": {
+    "character": 5,
+    "line": 5
+   }
+  },
+  "uri": "file://$ROOT/csym_b3/main.c"
+ }
+]
+>> textDocument/typeDefinition
+[
+ {
+  "range": {
+   "end": {
+    "character": 14,
+    "line": 7
+   },
+   "start": {
+    "character": 7,
+    "line": 7
+   }
+  },
+  "uri": "file://$ROOT/csym_b3/main.c"
+ }
+]
+>> textDocument/typeDefinition
+[
+ {
+  "range": {
+   "end": {
+    "character": 12,
+    "line": 0
+   },
+   "start": {
+    "character": 7,
+    "line": 0
+   }
+  },
+  "uri": "file://$ROOT/csym_b3/shapes.h"
+ }
+]
+>> textDocument/typeDefinition
+[]
+>> textDocument/typeDefinition
+[]
+## documentSymbol: macros, then C declarations, members nested under their record or enum (span_t holds its anonymous struct fields; OFF and ON, of no entry, stand alone)
+>> textDocument/documentSymbol
+[
+ {
+  "detail": "LIMIT",
+  "kind": 14,
+  "name": "LIMIT",
+  "range": {
+   "end": {
+    "character": 15,
+    "line": 1
+   },
+   "start": {
+    "character": 0,
+    "line": 1
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 13,
+    "line": 1
+   },
+   "start": {
+    "character": 8,
+    "line": 1
+   }
+  }
+ },
+ {
+  "detail": "SQUARE(x)",
+  "kind": 12,
+  "name": "SQUARE",
+  "range": {
+   "end": {
+    "character": 29,
+    "line": 2
+   },
+   "start": {
+    "character": 0,
+    "line": 2
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 14,
+    "line": 2
+   },
+   "start": {
+    "character": 8,
+    "line": 2
+   }
+  }
+ },
+ {
+  "children": [
+   {
+    "detail": "field x: int (struct point, offset 0)",
+    "kind": 8,
+    "name": "x",
+    "range": {
+     "end": {
+      "character": 28,
+      "line": 3
+     },
+     "start": {
+      "character": 27,
+      "line": 3
+     }
+    },
+    "selectionRange": {
+     "end": {
+      "character": 28,
+      "line": 3
+     },
+     "start": {
+      "character": 27,
+      "line": 3
+     }
+    }
+   },
+   {
+    "detail": "field y: int (struct point, offset 4)",
+    "kind": 8,
+    "name": "y",
+    "range": {
+     "end": {
+      "character": 31,
+      "line": 3
+     },
+     "start": {
+      "character": 30,
+      "line": 3
+     }
+    },
+    "selectionRange": {
+     "end": {
+      "character": 31,
+      "line": 3
+     },
+     "start": {
+      "character": 30,
+      "line": 3
+     }
+    }
+   }
+  ],
+  "detail": "struct point size=8 align=4",
+  "kind": 23,
+  "name": "point",
+  "range": {
+   "end": {
+    "character": 43,
+    "line": 3
+   },
+   "start": {
+    "character": 0,
+    "line": 3
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 20,
+    "line": 3
+   },
+   "start": {
+    "character": 15,
+    "line": 3
+   }
+  }
+ },
+ {
+  "detail": "typedef point_t = struct point",
+  "kind": 5,
+  "name": "point_t",
+  "range": {
+   "end": {
+    "character": 43,
+    "line": 3
+   },
+   "start": {
+    "character": 0,
+    "line": 3
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 42,
+    "line": 3
+   },
+   "start": {
+    "character": 35,
+    "line": 3
+   }
+  }
+ },
+ {
+  "detail": "typedef point_p = point_t *",
+  "kind": 5,
+  "name": "point_p",
+  "range": {
+   "end": {
+    "character": 25,
+    "line": 4
+   },
+   "start": {
+    "character": 0,
+    "line": 4
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 24,
+    "line": 4
+   },
+   "start": {
+    "character": 17,
+    "line": 4
+   }
+  }
+ },
+ {
+  "children": [
+   {
+    "detail": "enumconst RED = 0 (int)",
+    "kind": 22,
+    "name": "RED",
+    "range": {
+     "end": {
+      "character": 16,
+      "line": 5
+     },
+     "start": {
+      "character": 13,
+      "line": 5
+     }
+    },
+    "selectionRange": {
+     "end": {
+      "character": 16,
+      "line": 5
+     },
+     "start": {
+      "character": 13,
+      "line": 5
+     }
+    }
+   },
+   {
+    "detail": "enumconst GREEN = 1 (int)",
+    "kind": 22,
+    "name": "GREEN",
+    "range": {
+     "end": {
+      "character": 23,
+      "line": 5
+     },
+     "start": {
+      "character": 18,
+      "line": 5
+     }
+    },
+    "selectionRange": {
+     "end": {
+      "character": 23,
+      "line": 5
+     },
+     "start": {
+      "character": 18,
+      "line": 5
+     }
+    }
+   }
+  ],
+  "detail": "enum color (underlying unsigned int)",
+  "kind": 10,
+  "name": "color",
+  "range": {
+   "end": {
+    "character": 26,
+    "line": 5
+   },
+   "start": {
+    "character": 0,
+    "line": 5
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 10,
+    "line": 5
+   },
+   "start": {
+    "character": 5,
+    "line": 5
+   }
+  }
+ },
+ {
+  "detail": "var origin: const int[2] static",
+  "kind": 13,
+  "name": "origin",
+  "range": {
+   "end": {
+    "character": 36,
+    "line": 6
+   },
+   "start": {
+    "character": 0,
+    "line": 6
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 23,
+    "line": 6
+   },
+   "start": {
+    "character": 17,
+    "line": 6
+   }
+  }
+ },
+ {
+  "children": [
+   {
+    "detail": "field on_event: int (*)(int, const char *) (struct handler, offset 0)",
+    "kind": 8,
+    "name": "on_event",
+    "range": {
+     "end": {
+      "character": 31,
+      "line": 7
+     },
+     "start": {
+      "character": 23,
+      "line": 7
+     }
+    },
+    "selectionRange": {
+     "end": {
+      "character": 31,
+      "line": 7
+     },
+     "start": {
+      "character": 23,
+      "line": 7
+     }
+    }
+   }
+  ],
+  "detail": "struct handler size=8 align=8",
+  "kind": 23,
+  "name": "handler",
+  "range": {
+   "end": {
+    "character": 63,
+    "line": 7
+   },
+   "start": {
+    "character": 0,
+    "line": 7
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 14,
+    "line": 7
+   },
+   "start": {
+    "character": 7,
+    "line": 7
+   }
+  }
+ },
+ {
+  "detail": "func log_msg: int(const char *, ...)",
+  "kind": 12,
+  "name": "log_msg",
+  "range": {
+   "end": {
+    "character": 34,
+    "line": 8
+   },
+   "start": {
+    "character": 0,
+    "line": 8
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 11,
+    "line": 8
+   },
+   "start": {
+    "character": 4,
+    "line": 8
+   }
+  }
+ },
+ {
+  "detail": "func count_shapes: int(const struct shape *, int) static defined",
+  "kind": 12,
+  "name": "count_shapes",
+  "range": {
+   "end": {
+    "character": 1,
+    "line": 20
+   },
+   "start": {
+    "character": 0,
+    "line": 9
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 23,
+    "line": 9
+   },
+   "start": {
+    "character": 11,
+    "line": 9
+   }
+  }
+ },
+ {
+  "detail": "func main: int(void) defined",
+  "kind": 12,
+  "name": "main",
+  "range": {
+   "end": {
+    "character": 45,
+    "line": 21
+   },
+   "start": {
+    "character": 0,
+    "line": 21
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 8,
+    "line": 21
+   },
+   "start": {
+    "character": 4,
+    "line": 21
+   }
+  }
+ },
+ {
+  "detail": "enumconst OFF = 0 (int)",
+  "kind": 22,
+  "name": "OFF",
+  "range": {
+   "end": {
+    "character": 10,
+    "line": 22
+   },
+   "start": {
+    "character": 7,
+    "line": 22
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 10,
+    "line": 22
+   },
+   "start": {
+    "character": 7,
+    "line": 22
+   }
+  }
+ },
+ {
+  "detail": "enumconst ON = 1 (int)",
+  "kind": 22,
+  "name": "ON",
+  "range": {
+   "end": {
+    "character": 14,
+    "line": 22
+   },
+   "start": {
+    "character": 12,
+    "line": 22
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 14,
+    "line": 22
+   },
+   "start": {
+    "character": 12,
+    "line": 22
+   }
+  }
+ },
+ {
+  "children": [
+   {
+    "detail": "field lo: int (struct <anonymous>, offset 0)",
+    "kind": 8,
+    "name": "lo",
+    "range": {
+     "end": {
+      "character": 23,
+      "line": 23
+     },
+     "start": {
+      "character": 21,
+      "line": 23
+     }
+    },
+    "selectionRange": {
+     "end": {
+      "character": 23,
+      "line": 23
+     },
+     "start": {
+      "character": 21,
+      "line": 23
+     }
+    }
+   },
+   {
+    "detail": "field hi: int (struct <anonymous>, offset 4)",
+    "kind": 8,
+    "name": "hi",
+    "range": {
+     "end": {
+      "character": 27,
+      "line": 23
+     },
+     "start": {
+      "character": 25,
+      "line": 23
+     }
+    },
+    "selectionRange": {
+     "end": {
+      "character": 27,
+      "line": 23
+     },
+     "start": {
+      "character": 25,
+      "line": 23
+     }
+    }
+   }
+  ],
+  "detail": "typedef span_t = struct <anonymous>",
+  "kind": 5,
+  "name": "span_t",
+  "range": {
+   "end": {
+    "character": 38,
+    "line": 23
+   },
+   "start": {
+    "character": 0,
+    "line": 23
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 37,
+    "line": 23
+   },
+   "start": {
+    "character": 31,
+    "line": 23
+   }
+  }
+ }
+]
+## signatureHelp: a function-pointer field, a typedef function pointer (header), a variadic function, a macro, a static function (second argument)
+>> textDocument/signatureHelp
+{
+ "activeParameter": 1,
+ "activeSignature": 0,
+ "signatures": [
+  {
+   "documentation": "field on_event: int (*)(int, const char *) (struct handler, offset 0)",
+   "label": "on_event(int code, const char *msg)",
+   "parameters": [
+    {
+     "label": [
+      9,
+      17
+     ]
+    },
+    {
+     "label": [
+      19,
+      34
+     ]
+    }
+   ]
+  }
+ ]
+}
+>> textDocument/signatureHelp
+{
+ "activeParameter": 0,
+ "activeSignature": 0,
+ "signatures": [
+  {
+   "documentation": "var area: area_fn extern",
+   "label": "area(const struct shape *s, int scale)",
+   "parameters": [
+    {
+     "label": [
+      5,
+      26
+     ]
+    },
+    {
+     "label": [
+      28,
+      37
+     ]
+    }
+   ]
+  }
+ ]
+}
+>> textDocument/signatureHelp
+{
+ "activeParameter": 1,
+ "activeSignature": 0,
+ "signatures": [
+  {
+   "documentation": "func log_msg: int(const char *, ...)",
+   "label": "log_msg(const char *fmt, ...)",
+   "parameters": [
+    {
+     "label": [
+      8,
+      23
+     ]
+    },
+    {
+     "label": [
+      25,
+      28
+     ]
+    }
+   ]
+  }
+ ]
+}
+>> textDocument/signatureHelp
+{
+ "activeParameter": 0,
+ "activeSignature": 0,
+ "signatures": [
+  {
+   "documentation": "#define SQUARE(x) ((x) * (x))",
+   "label": "SQUARE(x)",
+   "parameters": [
+    {
+     "label": [
+      7,
+      8
+     ]
+    }
+   ]
+  }
+ ]
+}
+>> textDocument/signatureHelp
+{
+ "activeParameter": 1,
+ "activeSignature": 0,
+ "signatures": [
+  {
+   "documentation": "func count_shapes: int(const struct shape *, int) static defined",
+   "label": "count_shapes(const struct shape *s, int n)",
+   "parameters": [
+    {
+     "label": [
+      13,
+      34
+     ]
+    },
+    {
+     "label": [
+      36,
+      41
+     ]
+    }
+   ]
+  }
+ ]
+}
+## semantic tokens: macros and C names with readonly, static and declaration modifiers; then a range
+>> textDocument/semanticTokens/full
+{
+ "data": [
+  1,
+  8,
+  5,
+  0,
+  1,
+  1,
+  8,
+  6,
+  0,
+  1,
+  0,
+  7,
+  1,
+  1,
+  1,
+  0,
+  5,
+  1,
+  1,
+  0,
+  0,
+  6,
+  1,
+  1,
+  0,
+  1,
+  15,
+  5,
+  7,
+  1,
+  0,
+  12,
+  1,
+  6,
+  1,
+  0,
+  3,
+  1,
+  6,
+  1,
+  0,
+  5,
+  7,
+  4,
+  1,
+  1,
+  8,
+  7,
+  4,
+  0,
+  0,
+  9,
+  7,
+  4,
+  1,
+  1,
+  5,
+  5,
+  8,
+  1,
+  0,
+  8,
+  3,
+  5,
+  3,
+  0,
+  5,
+  5,
+  5,
+  3,
+  1,
+  17,
+  6,
+  3,
+  7,
+  1,
+  7,
+  7,
+  7,
+  1,
+  0,
+  16,
+  8,
+  6,
+  1,
+  0,
+  14,
+  4,
+  1,
+  1,
+  0,
+  18,
+  3,
+  1,
+  1,
+  1,
+  4,
+  7,
+  2,
+  1,
+  0,
+  20,
+  3,
+  1,
+  1,
+  1,
+  11,
+  12,
+  2,
+  5,
+  0,
+  26,
+  5,
+  7,
+  0,
+  0,
+  7,
+  1,
+  1,
+  1,
+  0,
+  7,
+  1,
+  1,
+  1,
+  2,
+  4,
+  7,
+  4,
+  0,
+  0,
+  8,
+  1,
+  3,
+  1,
+  1,
+  4,
+  7,
+  4,
+  0,
+  0,
+  8,
+  2,
+  3,
+  1,
+  0,
+  6,
+  1,
+  3,
+  0,
+  1,
+  9,
+  5,
+  8,
+  0,
+  0,
+  6,
+  1,
+  3,
+  1,
+  0,
+  4,
+  5,
+  5,
+  2,
+  1,
+  11,
+  7,
+  7,
+  0,
+  0,
+  8,
+  1,
+  3,
+  1,
+  1,
+  8,
+  5,
+  3,
+  1,
+  0,
+  8,
+  6,
+  0,
+  0,
+  0,
+  7,
+  1,
+  1,
+  0,
+  0,
+  5,
+  2,
+  3,
+  0,
+  0,
+  4,
+  1,
+  6,
+  0,
+  0,
+  4,
+  1,
+  3,
+  0,
+  0,
+  4,
+  6,
+  3,
+  6,
+  1,
+  4,
+  5,
+  3,
+  0,
+  0,
+  9,
+  1,
+  3,
+  0,
+  0,
+  2,
+  8,
+  6,
+  0,
+  0,
+  9,
+  5,
+  3,
+  0,
+  1,
+  4,
+  5,
+  3,
+  0,
+  0,
+  9,
+  4,
+  3,
+  0,
+  0,
+  5,
+  1,
+  1,
+  0,
+  0,
+  3,
+  5,
+  0,
+  0,
+  1,
+  4,
+  7,
+  2,
+  0,
+  0,
+  14,
+  5,
+  3,
+  0,
+  1,
+  11,
+  5,
+  3,
+  0,
+  2,
+  4,
+  4,
+  2,
+  1,
+  0,
+  20,
+  12,
+  2,
+  4,
+  1,
+  7,
+  3,
+  5,
+  3,
+  0,
+  5,
+  2,
+  5,
+  3,
+  1,
+  21,
+  2,
+  6,
+  1,
+  0,
+  4,
+  2,
+  6,
+  1,
+  0,
+  6,
+  6,
+  4,
+  1
+ ],
+ "resultId": "1"
+}
+>> textDocument/semanticTokens/range
+{
+ "data": [
+  15,
+  8,
+  5,
+  3,
+  1,
+  0,
+  8,
+  6,
+  0,
+  0,
+  0,
+  7,
+  1,
+  1,
+  0,
+  0,
+  5,
+  2,
+  3,
+  0,
+  0,
+  4,
+  1,
+  6,
+  0,
+  0,
+  4,
+  1,
+  3,
+  0,
+  0,
+  4,
+  6,
+  3,
+  6,
+  1,
+  4,
+  5,
+  3,
+  0,
+  0,
+  9,
+  1,
+  3,
+  0,
+  0,
+  2,
+  8,
+  6,
+  0,
+  0,
+  9,
+  5,
+  3,
+  0
+ ]
+}
+## completion: inside count_shapes (locals, parameters, file scope, macros), then in main (no locals of count_shapes)
+>> textDocument/completion
+{
+ "isIncomplete": false,
+ "items": [
+  {
+   "detail": "#define LIMIT 8",
+   "kind": 21,
+   "label": "LIMIT"
+  },
+  {
+   "detail": "#define SQUARE(x) ((x) * (x))",
+   "kind": 3,
+   "label": "SQUARE"
+  },
+  {
+   "detail": "enumconst GREEN = 1 (int)",
+   "kind": 20,
+   "label": "GREEN"
+  },
+  {
+   "detail": "enumconst RED = 0 (int)",
+   "kind": 20,
+   "label": "RED"
+  },
+  {
+   "detail": "var area: area_fn extern",
+   "kind": 6,
+   "label": "area"
+  },
+  {
+   "detail": "typedef area_fn = int (*)(const struct shape *, int)",
+   "kind": 7,
+   "label": "area_fn"
+  },
+  {
+   "detail": "var count_shapes:c: enum color",
+   "kind": 6,
+   "label": "c"
+  },
+  {
+   "detail": "func count_shapes: int(const struct shape *, int) static defined",
+   "kind": 3,
+   "label": "count_shapes"
+  },
+  {
+   "detail": "var count_shapes:h: struct handler",
+   "kind": 6,
+   "label": "h"
+  },
+  {
+   "detail": "func log_msg: int(const char *, ...)",
+   "kind": 3,
+   "label": "log_msg"
+  },
+  {
+   "detail": "param n: int",
+   "kind": 6,
+   "label": "n"
+  },
+  {
+   "detail": "var origin: const int[2] static",
+   "kind": 6,
+   "label": "origin"
+  },
+  {
+   "detail": "var count_shapes:p: point_t",
+   "kind": 6,
+   "label": "p"
+  },
+  {
+   "detail": "typedef point_p = point_t *",
+   "kind": 7,
+   "label": "point_p"
+  },
+  {
+   "detail": "typedef point_t = struct point",
+   "kind": 7,
+   "label": "point_t"
+  },
+  {
+   "detail": "var count_shapes:pp: point_p",
+   "kind": 6,
+   "label": "pp"
+  },
+  {
+   "detail": "param s: const struct shape *",
+   "kind": 6,
+   "label": "s"
+  },
+  {
+   "detail": "var count_shapes:total: int",
+   "kind": 6,
+   "label": "total"
+  }
+ ]
+}
+>> textDocument/completion
+{
+ "isIncomplete": false,
+ "items": [
+  {
+   "detail": "#define LIMIT 8",
+   "kind": 21,
+   "label": "LIMIT"
+  },
+  {
+   "detail": "#define SQUARE(x) ((x) * (x))",
+   "kind": 3,
+   "label": "SQUARE"
+  },
+  {
+   "detail": "enumconst GREEN = 1 (int)",
+   "kind": 20,
+   "label": "GREEN"
+  },
+  {
+   "detail": "enumconst RED = 0 (int)",
+   "kind": 20,
+   "label": "RED"
+  },
+  {
+   "detail": "var area: area_fn extern",
+   "kind": 6,
+   "label": "area"
+  },
+  {
+   "detail": "typedef area_fn = int (*)(const struct shape *, int)",
+   "kind": 7,
+   "label": "area_fn"
+  },
+  {
+   "detail": "func count_shapes: int(const struct shape *, int) static defined",
+   "kind": 3,
+   "label": "count_shapes"
+  },
+  {
+   "detail": "func log_msg: int(const char *, ...)",
+   "kind": 3,
+   "label": "log_msg"
+  },
+  {
+   "detail": "func main: int(void) defined",
+   "kind": 3,
+   "label": "main"
+  },
+  {
+   "detail": "var origin: const int[2] static",
+   "kind": 6,
+   "label": "origin"
+  },
+  {
+   "detail": "typedef point_p = point_t *",
+   "kind": 7,
+   "label": "point_p"
+  },
+  {
+   "detail": "typedef point_t = struct point",
+   "kind": 7,
+   "label": "point_t"
+  }
+ ]
+}
+>> shutdown
+null
+>> exit
+exit 0

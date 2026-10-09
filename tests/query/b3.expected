@@ -1,0 +1,62 @@
+== type ../symidx/b3.c:10:4
+../symidx/b3.c:5:19 DEF typedef CI
+== type ../symidx/b3.c:14:23
+../symidx/b3.c:8:15 DEF typedef cmp_fn
+== type ../symidx/b3.c:26:24
+../symidx/b3.c:4:15 DEF typedef AnonP
+== type ../symidx/b3.c:7:42
+no type definition
+== type ../symidx/b3.c:22:31
+no type definition
+== type ../symidx/b3.c:23:24
+no type definition
+== type ../symidx/b3.c:22:30
+no type definition
+== visible ../symidx/b3.c:14:1
+typedef Anon
+typedef AnonP
+typedef CI
+enumconst GREEN
+enumconst RED
+obj cmp
+typedef cmp_fn
+obj limit
+func make
+obj msg
+obj table
+== visible ../symidx/b3.c:19:9
+typedef Anon
+typedef AnonP
+typedef CI
+enumconst GREEN
+enumconst RED
+obj calls
+obj cmp
+typedef cmp_fn
+param f
+obj i
+obj limit
+func make
+obj msg
+param n
+func run
+obj sq
+obj table
+== visible ../symidx/b3.c:23:9
+typedef Anon
+typedef AnonP
+enumconst BLUE
+typedef CI
+enumconst GREEN
+enumconst RED
+obj calls
+obj cmp
+typedef cmp_fn
+param f
+obj limit
+func make
+obj msg
+param n
+func run
+obj shade
+obj table

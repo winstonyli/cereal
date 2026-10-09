@@ -16,7 +16,8 @@
   "renameProvider",
   "semanticTokensProvider",
   "signatureHelpProvider",
-  "textDocumentSync"
+  "textDocumentSync",
+  "typeDefinitionProvider"
  ]
 }
 >> initialized
@@ -319,6 +320,106 @@
     "line": 10
    }
   }
+ },
+ {
+  "detail": "var a: int",
+  "kind": 13,
+  "name": "a",
+  "range": {
+   "end": {
+    "character": 18,
+    "line": 3
+   },
+   "start": {
+    "character": 0,
+    "line": 3
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 5,
+    "line": 3
+   },
+   "start": {
+    "character": 4,
+    "line": 3
+   }
+  }
+ },
+ {
+  "detail": "var b: int",
+  "kind": 13,
+  "name": "b",
+  "range": {
+   "end": {
+    "character": 20,
+    "line": 4
+   },
+   "start": {
+    "character": 0,
+    "line": 4
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 5,
+    "line": 4
+   },
+   "start": {
+    "character": 4,
+    "line": 4
+   }
+  }
+ },
+ {
+  "detail": "var c: int",
+  "kind": 13,
+  "name": "c",
+  "range": {
+   "end": {
+    "character": 14,
+    "line": 6
+   },
+   "start": {
+    "character": 0,
+    "line": 6
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 5,
+    "line": 6
+   },
+   "start": {
+    "character": 4,
+    "line": 6
+   }
+  }
+ },
+ {
+  "detail": "var d: int",
+  "kind": 13,
+  "name": "d",
+  "range": {
+   "end": {
+    "character": 15,
+    "line": 11
+   },
+   "start": {
+    "character": 0,
+    "line": 11
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 5,
+    "line": 11
+   },
+   "start": {
+    "character": 4,
+    "line": 11
+   }
+  }
  }
 ]
 >> textDocument/semanticTokens/full
@@ -365,12 +466,22 @@
   1,
   0,
   1,
-  8,
+  4,
+  1,
+  3,
+  1,
+  0,
+  4,
   6,
   0,
   0,
   1,
-  8,
+  4,
+  1,
+  3,
+  1,
+  0,
+  4,
   5,
   0,
   0,
@@ -385,7 +496,12 @@
   0,
   0,
   1,
-  8,
+  4,
+  1,
+  3,
+  1,
+  0,
+  4,
   5,
   0,
   0,
@@ -410,7 +526,12 @@
   1,
   0,
   1,
-  8,
+  4,
+  1,
+  3,
+  1,
+  0,
+  4,
   3,
   0,
   0
@@ -442,7 +563,12 @@
   1,
   0,
   1,
-  8,
+  4,
+  1,
+  3,
+  1,
+  0,
+  4,
   6,
   0,
   0
@@ -796,7 +922,19 @@
 ## after the edit: tokens as one edit against the last result
 >> textDocument/semanticTokens/full/delta
 {
- "edits": [],
+ "edits": [
+  {
+   "data": [
+    1,
+    4,
+    1,
+    3,
+    1
+   ],
+   "deleteCount": 0,
+   "start": 110
+  }
+ ],
  "resultId": "2"
 }
 >> shutdown

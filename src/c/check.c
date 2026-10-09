@@ -580,6 +580,8 @@ static void scope_open(Checker *c, uint32_t i)
 {
     uint32_t p = c->par[i];
     const Node *n = cnode(c, i);
+    if (c->sx)
+        csx_scope(c, n->tok, true);
     if (n->flags & NF_PARAMS) {
         cscope_push(c, SCK_FUNC);
         cdecl_body_scope(c, i);
@@ -591,6 +593,8 @@ static void scope_open(Checker *c, uint32_t i)
 
 static void scope_close(Checker *c, uint32_t i)
 {
+    if (c->sx)
+        csx_scope(c, cnode(c, i)->tok, false);
     if (c->scopes.len <= 1)
         return;
     if (cscope_kind(c) == SCK_PROTO) {

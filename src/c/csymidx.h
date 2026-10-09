@@ -38,7 +38,10 @@ enum {
     CIDF_BUILTIN = 1,        /* predeclared, no location */
     CIDF_IMPLICIT = 2,       /* implicitly declared function */
     CIDF_SYSTEM = 4,         /* declared in a system header */
-    CIDF_TENTATIVE = 8       /* defined by a tentative definition */
+    CIDF_TENTATIVE = 8,      /* defined by a tentative definition */
+    CIDF_READONLY = 16,      /* a const object, parameter or field (arrays
+                                stripped), every enumerator */
+    CIDF_STATIC = 32         /* internal linkage, or static at block scope */
 };
 
 typedef struct CIdxFile {    /* the files that have events */
@@ -63,16 +66,22 @@ typedef struct CIdxDecl {
                                 equal texts share one offset */
     uint32_t scope;          /* where it can be named: 0 the whole unit, else
                                 1 + index in CIndex.scopes (a block-scope
-                                name without linkage: its external
-                                declaration) */
+                                name without linkage: its innermost scope;
+                                a label: its external declaration) */
+    uint32_t type;           /* 1 + the decl of its type (B3_DESIGN.md 3.3), 0 */
+    uint32_t parent;         /* 1 + a field's record, an enumerator's enum, 0 */
     uint8_t kind;            /* CIdxKind */
     uint8_t linkage;         /* 0 none, 1 internal, 2 external */
     uint16_t flags;          /* CIDF_* */
 } CIdxDecl;
 
-typedef struct CIdxScope {   /* [begin, end) of file */
+/* [begin, end) of file: the external declarations (roots) and the checker's
+ * scopes inside them (blocks, prototypes, function bodies); sorted by (file,
+ * begin, end descending), properly nested. */
+typedef struct CIdxScope {
     uint32_t begin, end;
     uint32_t file;
+    uint32_t parent;         /* 1 + the enclosing scope; 0: a root */
 } CIdxScope;
 
 typedef struct CIndex {
@@ -108,6 +117,23 @@ static inline const char *cindex_name(const CIndex *ix, uint32_t decl)
  * if the index lacks the file or it is stale), at most max into out. */
 size_t cindex_decls_at(const CIndex *ix, const char *path, uint32_t off,
                        uint32_t *out, size_t max);
+/* The first event at or after offset off of file fi (ix->nev if none). */
+uint32_t cindex_lower(const CIndex *ix, uint32_t fi, uint32_t off);
+/* The distinct type decls (CIdxDecl.type) of decls[0..nd) into out (room for
+ * nd); how many. */
+size_t cindex_types(const CIndex *ix, const uint32_t *decls, size_t nd,
+                    uint32_t *out);
+/* The innermost scope containing offset off of file fi: 1 + its index, 0 if
+ * none (file level outside every external declaration). */
+uint32_t cindex_scope_at(const CIndex *ix, uint32_t fi, uint32_t off);
+/* The root (external declaration) of scope s (1 + index): 1 + its index. */
+uint32_t cindex_scope_root(const CIndex *ix, uint32_t s);
+/* The decls of the ordinary namespace (functions, objects, parameters,
+ * typedefs, enumerators) visible at offset off of path, one per name (the
+ * innermost declaration), sorted by name; *out malloc'd.  None if the file is
+ * not in the index or stale.  B3_DESIGN.md section 4. */
+size_t cindex_visible(const CIndex *ix, const char *path, uint32_t off,
+                      uint32_t **out);
 
 /* What cindex_select takes from the events of a set of decls (requests of
  * B2_DESIGN.md section 6). */
@@ -180,6 +206,8 @@ SymIdxB *csx_new(FILE *verify);
 void csx_free(SymIdxB *b);
 void csx_unit_begin(struct Checker *c);
 void csx_unit_end(struct Checker *c);
+/* A checker scope opens at token tok (open), or closes at it. */
+void csx_scope(struct Checker *c, uint32_t tok, bool open);
 /* The frozen index; the builder is emptied.  NULL without one. */
 CIndex *csx_finish(struct Checker *c);
 

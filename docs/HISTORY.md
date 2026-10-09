@@ -3589,3 +3589,60 @@ wording. 57 lines added and 47 removed in src. Gates (gate.sh): run.sh
 1672 passed, 0 failed; san.sh 1672 passed, 605 files, 0 findings;
 verify.sh gcc.dg 3908 of 3910, c-c++-common 635 of 636, cpp 285 of 285
 (unchanged); uvloop loop.c 3.885 G instructions.
+
+Round 197: ROADMAP B3, typeDefinition, document symbols, signature help,
+semantic tokens and completion for C names (B3_DESIGN.md, written and
+stress-tested in four rounds before this one; results in its section 11).
+Index (csymidx.c/h): `CIdxDecl.type` (the typedef, struct, union or enum
+the decl's type names, peeled to the first typedef or tag; a typedef's
+is one step down) and `.parent` (a field's outermost record through
+anonymous members, an enumerator's enum), flags `readonly` (const after
+stripping arrays) and `static`; nameless decls for anonymous records and
+enums (no events, `<anonymous>` in `--dump-symbols`); a scope tree
+(`CIdxScope.parent`: roots are external declarations, children the
+checker's blocks via new `csx_scope` hooks in check.c's scope_open and
+scope_close), `decl.scope` the innermost scope (definition parameters
+move to the body; labels take the root); every file-scope system
+declaration gets its decl at finish, used or not, so completion and
+signature help by name reach `strlen` before its first use. New queries
+`cindex_lower`, `cindex_types`, `cindex_scope_at`, `cindex_scope_root`
+(crename.c's inactive-use test now uses it) and `cindex_visible` (the
+names in scope at a place, innermost first, sorted). `--verify-symbols`
+checks scope order, nesting and overlap and the new fields' ranges; its
+summary counts scopes (symcov.py's pattern follows). Server: the request
+table gained a `cidx` column, and every request reading the C index
+waits for the newest check (D1) through it; `typeDefinitionProvider`; the
+token legend is built from one list in features.c. Features:
+typeDefinition (DEF of the type decls, else DECL); documentSymbol (the
+macros, then file-level declarations with the external declaration as
+range, members under the entry of their record or enum: a definition of
+the type first, else the first entry of it; members never claim);
+signatureHelp (a function-like macro at that version, else the C entity
+at the callee or the visible one by name, its parameter list read from
+the declaration text, through a typedef for function pointers, `...`
+capping activeParameter); semantic tokens (function, variable,
+parameter, type, enumMember, property, struct, enum; declaration,
+readonly, static; not for `#define` body, pasted, system or label
+events; the kept whole-file result is keyed by the index being there);
+completion (macros, then `cindex_visible` minus names a visible macro
+hides, the hover text as detail). `cereal query type` and the C names in
+`cereal query visible`. Found while testing: an enumerator claimed its
+nameless enum's other enumerators in document symbols (members no longer
+claim), and a file including itself (gcc.dg/range-test-1.c) gave blocks
+outside their parent (now dropped when they do not overlap it). Tests:
+`tests/lsp/csym_b3` (both modes), `tests/query/b3.cmd`,
+`tests/symidx/b3.c` and `selfinc.c`; every LSP transcript gained
+`typeDefinitionProvider`, `basic` gained C document symbols and tokens,
+`tests/query/lsp` C names in `visible`. Memory: zstd.c's index 1.83 to
+2.52 MB, the dense 4 MiB files 29.97 to 32.6 MB and 23.3 to 31.2 MB
+(both over the ~30 MB budget, accepted); build time unchanged. 1,056
+lines added and 161 removed in src, against ~550 estimated. Parked
+(B3_DESIGN.md section 9): member, tag, label and keyword completion;
+semantic-token refresh after a check that ends past the wait; carrying
+the previous index across edits; signature help through an expression
+callee; blocks written inside a macro argument. Gates (gate.sh): run.sh
+1679 passed, 0 failed; san.sh 1679 passed, 605 files, 0 findings;
+verify.sh gcc.dg 3908 of 3910, c-c++-common 635 of 636, cpp 285 of 285
+(unchanged); symcov 4716 files, 0 unindexed (10 skipped); the LSP
+sessions (both modes) under TSan: 26 passed, 0 warnings; uvloop loop.c
+3.888 G instructions (HEAD 3.885 G).
