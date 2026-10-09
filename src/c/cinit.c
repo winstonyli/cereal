@@ -2096,31 +2096,20 @@ static void set_init_index(Checker *c, CCtx *x, uint32_t lt, uint32_t e1,
         push_range_stack(x, has_last, last);
 }
 
-/* The path of fields (anonymous members searched) to the named member. */
+/* The path of fields (anonymous members searched, as cfield_slot) to the
+ * named member. */
 static bool lookup_path(Checker *c, TypeId rec, uint32_t name, uint32_t *path,
                         int *n, int max)
 {
-    Record *r = type_record(TT, type_canon(TT, rec));
-    uint32_t k;
-    if (!r || *n >= max)
-        return false;
-    for (k = 0; k < r->nfields; k++) {
+    const Record *r;
+    int32_t k;
+    while ((r = type_record(TT, type_canon(TT, rec))) != NULL && *n < max &&
+           (k = cfield_slot(c, r, name)) >= 0) {
         const Field *f = &TT->fields.data[r->fields + k];
-        TypeKind fk;
-        if (!f->name) {
-            fk = ck_(c, f->ty);
-            if (fk == TY_STRUCT || fk == TY_UNION) {
-                path[(*n)++] = k;
-                if (lookup_path(c, f->ty, name, path, n, max))
-                    return true;
-                (*n)--;
-            }
-        }
-        f = &TT->fields.data[r->fields + k];
-        if (f->name == name) {
-            path[(*n)++] = k;
+        path[(*n)++] = (uint32_t)k;
+        if (f->name == name)
             return true;
-        }
+        rec = f->ty;
     }
     return false;
 }

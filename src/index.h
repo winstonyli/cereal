@@ -149,6 +149,10 @@ void index_run(Index *ix);
 ParClient index_par_client(Index *ix);
 
 IdxTarget index_resolve(Index *ix, SrcLoc loc);
+/* loc lies in a skipped #if group: a note naming the conditional that
+ * opens it, as spelled ("inactive code (skipped by #ifdef at f.c:12)"),
+ * goes to sb. */
+bool index_inactive_note(const Index *ix, SrcLoc loc, StrBuf *sb);
 /* The macro version in effect at loc (end of TU if never reached). */
 uint32_t index_seq_at(Index *ix, SrcLoc loc);
 /* Macros live at loc (for completion), in definition order. */

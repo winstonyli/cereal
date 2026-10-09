@@ -203,6 +203,14 @@
   }
  }
 }
+## hover in the skipped #else group: a note naming the conditional, not null
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "inactive code (skipped by #if at $ROOT/basic/main.c:6)"
+ }
+}
 ## completion
 >> textDocument/completion
 {

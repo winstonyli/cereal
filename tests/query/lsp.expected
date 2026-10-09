@@ -28,6 +28,7 @@ lsp.h:3:9 definition
 lsp.c:9:19 expansion
 lsp.c:11:8 ifdef
 lsp.c:12:10 expansion
+lsp.c:25:8 ifdef
 == refs lsp.c:5:9
 lsp.c:5:9 definition
 lsp.c:10:17 expansion pasted(not-renamable)
@@ -52,6 +53,15 @@ parameter x of SQUARE(x)
 #define SQUARE(x) (x)
   defined at lsp.c:15:9
 == hover lsp.c:23:12
+inactive code (skipped by #if at lsp.c:21)
+== hover lsp.c:19:2
+inactive code (skipped by #if at lsp.c:18)
+== hover lsp.c:26:2
+== hover lsp.c:27:2
+== hover lsp.c:28:6
+inactive code (skipped by #ifdef at lsp.c:25)
+== hover lsp.c:30:6
+inactive code (skipped by #ifdef at lsp.c:25)
 == visible lsp.c:14:1
 LSP_H
 LIMIT

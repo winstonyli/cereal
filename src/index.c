@@ -4,6 +4,7 @@
 #include "cell.h"
 #include "hash.h"
 
+#include <ctype.h>
 #include <string.h>
 
 /* ---- recording ------------------------------------------------------ */
@@ -1685,6 +1686,44 @@ IdxTarget index_resolve(Index *ix, SrcLoc loc)
         }
     }
     return t;
+}
+
+bool index_inactive_note(const Index *ix, SrcLoc loc, StrBuf *sb)
+{
+    size_t i, k;
+    SrcLoc cond = 0;
+    SrcFile *f;
+    const char *p;
+    int n;
+    uint32_t line = 0, col;
+    for (i = 0; i < ix->inactive.len; i++)
+        if (ix->inactive.data[i].begin <= loc && loc < ix->inactive.data[i].end)
+            break;
+    if (i == ix->inactive.len)
+        return false;
+    /* the innermost #if .. #endif around the group (none if unterminated) */
+    for (k = 0; k < ix->blocks.len; k++) {
+        const IdxBlock *b = &ix->blocks.data[k];
+        if (b->begin < loc && loc < b->end && b->begin > cond)
+            cond = b->begin;
+    }
+    if (!cond || (f = srcmgr_file_of(ix->sm, cond)) == NULL) {
+        sb_puts(sb, "inactive code (skipped by #if)");
+        return true;
+    }
+    /* its directive as spelled: '#' or "%:", blanks, if/ifdef/ifndef */
+    p = f->buf + (cond - f->base);
+    p += *p == '%' ? 2 : 1;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    for (n = 0; isalpha((unsigned char)p[n]); n++)
+        ;
+    if (!n) /* a comment before the name */
+        p = "if", n = 2;
+    srcmgr_linecol(f, cond, &line, &col);
+    sb_printf(sb, "inactive code (skipped by #%.*s at %s:%u)", n, p, f->name,
+              line);
+    return true;
 }
 
 /* Locations -> an index (open addressing; UINT32_MAX empty). */

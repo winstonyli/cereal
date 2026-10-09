@@ -22,3 +22,11 @@ int dead = SQUARE(3);
 #define GONE(x) (x)
 int gone = GONE(1);
 #endif
+#ifdef LIMIT
+int on;
+#else
+int off;
+#if 1
+int deep;
+#endif
+#endif

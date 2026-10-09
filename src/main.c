@@ -874,6 +874,12 @@ static int mode_query(Options *o, const char *kind, const char *at)
             if (t.top)
                 printf("expands to: %s\n", sb_cstr(&t.top->text));
         }
+        if (t.kind == TGT_NONE) {
+            StrBuf sb = {0};
+            if (index_inactive_note(&ix, loc, &sb))
+                printf("%s\n", sb_cstr(&sb));
+            sb_free(&sb);
+        }
     } else if (!strcmp(kind, "visible")) {
         Macro **v;
         size_t n = index_visible(&ix, loc, &v), i;

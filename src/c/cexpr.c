@@ -573,39 +573,152 @@ static void ped_arith(Checker *c, uint32_t i, SrcLoc loc, const char *msg)
 
 /* ---- members ------------------------------------------------------------- */
 
-/* The field name of record rec (anonymous members searched, depth first);
- * adds its offset to *off and the qualifiers of the anonymous members on
- * the way to *quals. */
+/* Records with more members than this get a name index (Checker.fkey) on
+ * their first lookup; smaller ones are searched in place. */
+#define FIDX_MIN 16
+
+/* rec's record if it is a struct or union whose members can be looked up
+ * (complete, or being defined).  read: a read of its contents, reported
+ * to the summary (type_record); else straight from the table. */
+static const Record *member_rec(Checker *c, TypeId rec, bool read)
+{
+    const Record *r;
+    if (!is_record(c, rec))
+        return NULL;
+    r = read ? type_record(TT, rec)
+             : &TT->recs.data[type_ent(TT, type_canon(TT, rec))->extra];
+    return (r->flags & (RF_COMPLETE | RF_DEFINING)) ? r : NULL;
+}
+
+/* The index entry for key: its slot, empty (fval UINT32_MAX) if absent. */
+static uint32_t fidx_probe(Checker *c, uint64_t key)
+{
+    uint32_t i = (uint32_t)((key * 0x9E3779B97F4A7C15ull) >> 32) & (c->fcap - 1);
+    while (c->fval[i] != UINT32_MAX && c->fkey[i] != key)
+        i = (i + 1) & (c->fcap - 1);
+    return i;
+}
+
+static uint32_t fidx_get(Checker *c, uint64_t key)
+{
+    return c->fcap ? c->fval[fidx_probe(c, key)] : UINT32_MAX;
+}
+
+/* Adds key -> val unless key is there (the first entry wins). */
+static void fidx_put(Checker *c, uint64_t key, uint32_t val)
+{
+    uint32_t i;
+    if (2 * (c->fn + 1) > c->fcap) {
+        uint64_t *ok = c->fkey;
+        uint32_t *ov = c->fval, oc = c->fcap;
+        c->fcap = oc ? 2 * oc : 1024;
+        c->fkey = xmalloc(c->fcap * sizeof *c->fkey);
+        c->fval = xmalloc(c->fcap * sizeof *c->fval);
+        memset(c->fval, 0xFF, c->fcap * sizeof *c->fval);
+        for (i = 0; i < oc; i++)
+            if (ov[i] != UINT32_MAX) {
+                uint32_t j = fidx_probe(c, ok[i]);
+                c->fkey[j] = ok[i];
+                c->fval[j] = ov[i];
+            }
+        free(ok);
+        free(ov);
+    }
+    i = fidx_probe(c, key);
+    if (c->fval[i] == UINT32_MAX) {
+        c->fkey[i] = key;
+        c->fval[i] = val;
+        c->fn++;
+    }
+}
+
+/* Indexes the names anonymous member a (member k) holds at any depth;
+ * *lo: the lowest record index among a and the anonymous members in it. */
+static void fidx_anon(Checker *c, uint64_t base, const Record *a, uint32_t k,
+                      uint32_t *lo)
+{
+    uint32_t j, ai = (uint32_t)(a - TT->recs.data);
+    if (ai < *lo)
+        *lo = ai;
+    for (j = 0; j < a->nfields; j++) {
+        const Field *f = &TT->fields.data[a->fields + j];
+        const Record *n;
+        if (f->name)
+            fidx_put(c, base | f->name, k);
+        else if ((n = member_rec(c, f->ty, false)) != NULL)
+            fidx_anon(c, base, n, k, lo);
+    }
+}
+
+/* The contents reads (summary) of a search for a name rec lacks. */
+static void read_miss(Checker *c, TypeId rec)
+{
+    const Record *a = member_rec(c, rec, true);
+    uint32_t j;
+    for (j = 0; a && j < a->nfields; j++)
+        if (!TT->fields.data[a->fields + j].name)
+            read_miss(c, TT->fields.data[a->fields + j].ty);
+}
+
+int32_t cfield_slot(Checker *c, const Record *r, uint32_t name)
+{
+    const Field *f = TT->fields.data + r->fields;
+    uint64_t base = (uint64_t)r->fields << 32;
+    uint32_t n = r->nfields, k, lo;
+    const Record *a;
+    if (n <= FIDX_MIN || !name) {
+        for (k = 0; k < n; k++)
+            if (f[k].name == name)
+                return (int32_t)k;
+        for (k = 0; k < n; k++)
+            if (!f[k].name && (a = member_rec(c, f[k].ty, true)) != NULL &&
+                cfield_slot(c, a, name) >= 0)
+                return (int32_t)k;
+        return -1;
+    }
+    /* the marker entry: the lowest record index of the anonymous members
+     * at any depth (UINT32_MAX - 1: none) */
+    lo = fidx_get(c, base);
+    if (lo == UINT32_MAX) {
+        lo = UINT32_MAX - 1;
+        for (k = 0; k < n; k++)
+            if (f[k].name)
+                fidx_put(c, base | f[k].name, k);
+        for (k = 0; k < n; k++)
+            if (!f[k].name && (a = member_rec(c, f[k].ty, false)) != NULL)
+                fidx_anon(c, base, a, k, &lo);
+        fidx_put(c, base, lo);
+    }
+    k = fidx_get(c, base | name);
+    /* anonymous members of older units: the reads a search in place makes
+     * of those before the one found (all if none) */
+    if (lo < TT->unit_rec0 && (k == UINT32_MAX || !f[k].name)) {
+        uint32_t j, end = k == UINT32_MAX ? n : k;
+        for (j = 0; j < end; j++)
+            if (!f[j].name)
+                read_miss(c, f[j].ty);
+    }
+    return k == UINT32_MAX ? -1 : (int32_t)k;
+}
+
+/* The field name of record rec (anonymous members searched, depth first,
+ * after the named ones); adds its offset to *off and the qualifiers of the
+ * anonymous members on the way to *quals. */
 const Field *find_field(Checker *c, TypeId rec, uint32_t name,
                                uint64_t *off, unsigned *quals)
 {
     const Record *r;
-    uint32_t k;
-    if (!is_record(c, rec))
-        return NULL;
-    r = type_record(TT, rec);
-    if (!(r->flags & RF_COMPLETE) && !(r->flags & RF_DEFINING))
-        return NULL;
-    for (k = 0; k < r->nfields; k++) {
-        const Field *f = &c->tt.fields.data[r->fields + k];
-        if (f->name == name) {
-            *off += f->off_bits;
+    while ((r = member_rec(c, rec, true)) != NULL) {
+        int32_t k = cfield_slot(c, r, name);
+        const Field *f;
+        if (k < 0)
+            return NULL;
+        f = &TT->fields.data[r->fields + k];
+        *off += f->off_bits;
+        if (f->name == name)
             return f;
-        }
-    }
-    for (k = 0; k < r->nfields; k++) {
-        const Field *f = &c->tt.fields.data[r->fields + k];
-        if (!f->name && is_record(c, f->ty)) {
-            uint64_t o = *off + f->off_bits;
-            unsigned q = *quals | tquals(c, f->ty);
-            const Field *g = find_field(c, f->ty, name, &o, &q);
-            if (g) {
-                *off = o;
-                *quals = q;
-                return g;
-            }
-            r = type_record(TT, rec);   /* the table may have moved */
-        }
+        *quals |= tquals(c, f->ty);
+        rec = f->ty;
     }
     return NULL;
 }

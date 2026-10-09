@@ -342,6 +342,25 @@ static void xref_visit(Checker *c, uint32_t i, int want)
     c->cv[i] = kind | ((uint64_t)xloc << 8);
 }
 
+/* c->fopen[name] - 1 is the first open member so named while that entry of
+ * c->fields still names it: struct bodies only push and truncate, so an
+ * entry past the end, or reused, means none (no clearing). */
+bool crecord_open_member(Checker *c, uint32_t name)
+{
+    uint32_t k;
+    cgrow_idents(c, name + 1);
+    k = c->fopen[name];
+    return k && k <= c->fields.len && c->fields.data[k - 1].name == name;
+}
+
+/* Adds a member to the struct body being checked. */
+static void push_member(Checker *c, const FieldIn *fi)
+{
+    if (fi->name && !crecord_open_member(c, fi->name))
+        c->fopen[fi->name] = (uint32_t)c->fields.len + 1;
+    vec_push(&c->fields, *fi);
+}
+
 /* ---- finish_struct ----------------------------------------------------------- */
 
 bool cdecl_flex_struct(Checker *c, TypeId t)
@@ -354,19 +373,20 @@ bool cdecl_flex_struct(Checker *c, TypeId t)
     return r && (r->flags & RF_FLEXIBLE);
 }
 
+/* A new generation of marks: c->mseen[ident] == c->mgen marks ident. */
+static void mseen_next(Checker *c)
+{
+    if (!++c->mgen) {           /* wrapped: no stale marks may match */
+        memset(c->mseen, 0, c->nidents * sizeof *c->mseen);
+        c->mgen = 1;
+    }
+}
+
 /* Whether member name was seen already in the record being finished (and
- * reported if so), else marks it seen: c->mseen[name] == c->mgen, a new
- * generation per record (struct_finish). */
+ * reported if so), else marks it seen (a generation per record). */
 static bool dup_add(Checker *c, uint32_t name, SrcLoc loc)
 {
-    if (name >= c->nmseen) {
-        uint32_t n = c->nmseen ? c->nmseen : 1024;
-        while (n <= name)
-            n *= 2;
-        c->mseen = xrealloc(c->mseen, n * sizeof *c->mseen);
-        memset(c->mseen + c->nmseen, 0, (n - c->nmseen) * sizeof *c->mseen);
-        c->nmseen = n;
-    }
+    cgrow_idents(c, name + 1);
     if (c->mseen[name] == c->mgen) {
         cerror(c, loc, "duplicate member '%s'", cident(c, name));
         return true;
@@ -652,16 +672,17 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
             diag_ord(c->diag, o0);
         }
     }
-    for (k = 0; k < n; k++) {
+    if (c->tdseen.len > rd.first_td) {  /* typedef names used in the body */
         size_t q;
-        for (q = rd.first_td; q < c->tdseen.len && f[k].name; q++)
-            if (c->tdseen.data[q] == f[k].name) {
-                if (!cin_system(c, f[k].loc))
-                    cwarn(c, f[k].loc, "c++-compat", "using '%s' as both "
-                          "field and typedef name is invalid in C++",
-                          cident(c, f[k].name));
-                break;
-            }
+        mseen_next(c);
+        for (q = rd.first_td; q < c->tdseen.len; q++)
+            c->mseen[c->tdseen.data[q]] = c->mgen;
+        for (k = 0; k < n; k++)
+            if (f[k].name && c->mseen[f[k].name] == c->mgen &&
+                !cin_system(c, f[k].loc))
+                cwarn(c, f[k].loc, "c++-compat", "using '%s' as both field "
+                      "and typedef name is invalid in C++",
+                      cident(c, f[k].name));
     }
     c->tdseen.len = rd.first_td;
     if (n == 0 && !cin_system(c, loc))
@@ -699,10 +720,7 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
         if (f[k].name || is_rec(c, f[k].ty))
             saw_named = true;
     }
-    if (!++c->mgen) {           /* wrapped: no stale marks may match */
-        memset(c->mseen, 0, c->nmseen * sizeof *c->mseen);
-        c->mgen = 1;
-    }
+    mseen_next(c);
     for (k = 0; k < n; k++) {
         if (f[k].name) {
             if (dup_add(c, f[k].name, f[k].loc))
@@ -1362,7 +1380,7 @@ void cdecl_member_visit(Checker *c, uint32_t i)
     attrs_names(c, i, &fi.aset);
     if (!fi.packed && cdecl_aset_has(c, fi.aset, "packed", NULL))
         fi.packed = true;       /* copied from another declaration */
-    vec_push(&c->fields, fi);
+    push_member(c, &fi);
 }
 
 void cdecl_member_decl_visit(Checker *c, uint32_t i)
@@ -1409,7 +1427,7 @@ void cdecl_member_decl_visit(Checker *c, uint32_t i)
                                 break;
                             }
                     }
-                    vec_push(&c->fields, fi);
+                    push_member(c, &fi);
                 }
             }
         }

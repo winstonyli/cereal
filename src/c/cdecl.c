@@ -1472,17 +1472,12 @@ static void bind_this_type(Checker *c, uint32_t bi, uint32_t ref, TypeId vt,
  * struct with that name would hide it in C++. */
 void cxx_typedef_in_struct(Checker *c, uint32_t ident, uint32_t tok)
 {
-    size_t k = c->fields.len;
     if (!diag_enabled(c->diag, "c++-compat"))
         return;
     vec_push(&c->tdseen, ident);
-    while (k-- > 0)
-        if (c->fields.data[k].name == ident) {
-            if (!cin_system(c, tloc(c, tok)))
-                cwarn(c, tloc(c, tok), "c++-compat", "C++ lookup of '%s' "
-                      "would return a field, not a type", cident(c, ident));
-            return;
-        }
+    if (crecord_open_member(c, ident) && !cin_system(c, tloc(c, tok)))
+        cwarn(c, tloc(c, tok), "c++-compat", "C++ lookup of '%s' would "
+              "return a field, not a type", cident(c, ident));
 }
 
 /* gcc's C_TYPE_FIELDS_VOLATILE: a struct or union with a volatile member,

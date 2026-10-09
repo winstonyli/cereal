@@ -400,20 +400,19 @@ uint32_t cfind_semi(Checker *c, uint32_t tok)
 
 /* ---- symbols and scopes ----------------------------------------------- */
 
-static void grow_idents(Checker *c, uint32_t n)
+void cgrow_idents(Checker *c, uint32_t n)
 {
-    uint32_t cap = c->nidents ? c->nidents : 1024, ns;
+    uint32_t **a[] = {&c->top[0], &c->top[1], &c->ext, &c->mseen, &c->fopen};
+    uint32_t cap = c->nidents ? c->nidents : 1024;
+    size_t k;
     if (n <= c->nidents)
         return;
     while (cap < n)
         cap *= 2;
-    for (ns = 0; ns < 2; ns++) {
-        c->top[ns] = xrealloc(c->top[ns], cap * sizeof *c->top[ns]);
-        memset(c->top[ns] + c->nidents, 0,
-               (cap - c->nidents) * sizeof *c->top[ns]);
+    for (k = 0; k < ARRAY_LEN(a); k++) {
+        *a[k] = xrealloc(*a[k], cap * sizeof **a[k]);
+        memset(*a[k] + c->nidents, 0, (cap - c->nidents) * sizeof **a[k]);
     }
-    c->ext = xrealloc(c->ext, cap * sizeof *c->ext);
-    memset(c->ext + c->nidents, 0, (cap - c->nidents) * sizeof *c->ext);
     c->nidents = cap;
 }
 
@@ -432,7 +431,7 @@ void cbind(Checker *c, int ns, uint32_t ident, uint32_t ref)
     Bind b;
     if (!ident)
         return;
-    grow_idents(c, ident + 1);
+    cgrow_idents(c, ident + 1);
     if (c->cs && c->scopes.len == 1)
         csum_touch(c, ns, ident);   /* a file-scope declaration */
     b.ident = ident;
@@ -668,7 +667,7 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     cstmt_unit_begin(c);
     cinit_reset(c);
     grow_nodes(c, c->nn + 1);
-    grow_idents(c, interner_count(c->in) + 1);
+    cgrow_idents(c, interner_count(c->in) + 1);
     compute_parents(c);
     c->lsyms.len = 0;
     if (c->sx)
@@ -727,7 +726,7 @@ Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
     c->tgt = opt->target ? opt->target : &target_x86_64;
     types_init(&c->tt, c->tgt, in);
     cscope_push(c, SCK_FILE);
-    grow_idents(c, interner_count(in) + 1);
+    cgrow_idents(c, interner_count(in) + 1);
     predeclare(c, "__builtin_va_list", c->tt.va_list);
     predeclare(c, "__int128_t",
                type_typedef(&c->tt, intern_cstr(in, "__int128_t")->id,
@@ -795,6 +794,9 @@ void checker_free(Checker *c)
     free(c->top[1]);
     free(c->ext);
     free(c->mseen);
+    free(c->fopen);
+    free(c->fkey);
+    free(c->fval);
     vec_free(&c->scopes);
     free(c->ty);
     free(c->cv);

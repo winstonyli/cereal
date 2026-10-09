@@ -3485,3 +3485,66 @@ passed, 602 files, 0 findings; verify.sh gcc.dg 3908 of 3910,
 c-c++-common 635 of 636, cpp 285 of 285; symcov 4716 files, 0 unindexed
 (10 skipped, as before); the LSP sessions (both modes) under TSan: 24
 passed, 0 warnings; uvloop loop.c 3.892 G instructions (HEAD 3.891 G).
+
+Round 195: inactive-code hover, and member lookup without quadratic scans.
+(A) Hover inside a skipped `#if` group answered null when nothing else
+applied, which reads as a bug. New `index_inactive_note` (index.c) finds
+the group in `Index.inactive` (the ranges inactiveRegions publishes) and
+the innermost `Index.blocks` entry around it, and spells its directive
+from the source ('#' or "%:", blanks, the keyword): `inactive code
+(skipped by #ifdef at lsp.c:25)` (no place for an unterminated
+conditional). No new tracking. Both `lsp_hover` (only where it used to
+answer null) and `cereal query hover` (only where the macro and C
+indexes gave nothing) use it, so a macro named in the group (SQUARE in
+`#if 0`) still answers with its `#define`. Definition and references
+stay empty there: they answer locations, and there are none. Tests:
+`tests/query/lsp.cmd` (lsp.c gains an `#ifdef`/`#else` with an `#if 1`
+nested in the skipped group: the note names the `#ifdef` for both; the
+active group and the `#else` line get none; GONE in `#if 0` now gets the
+note), `tests/lsp/basic` hovers the skipped `#else` group (both modes).
+(B) One per-record member-name index serves member access and
+designators. `cfield_slot` (cexpr.c) gives the member of a record that a
+name selects, the named member first, else the first anonymous struct or
+union member holding it at any depth (find_field's order), as an index.
+Records of at most 16 members are searched in place (no cost for small
+records); a larger one is indexed on its first lookup into one Checker
+hash keyed (first field << 32 | name), which a clone (`RF_SSO`, same
+fields) shares; a marker key per record holds the lowest record index
+of its anonymous members. `find_field` and `lookup_path` (cinit.c) are
+now loops over `cfield_slot`, one step per anonymous level, and their two
+recursive scans are gone. lookup_path used field order (an anonymous
+member before a direct one won); after struct_finish clears a duplicate's
+name the two orders agree except past dup_nested's depth of 16. The
+summary read sets (csum) are kept exactly: the index is built from the
+table without reads, and a lookup in a record whose anonymous members
+are older than the unit reports the reads a search in place makes (those
+searched before the hit, all for a miss), checked by turning that off
+(the new golden then loses two reads). The `-Wc++-compat` scans use the
+by-ident arrays instead: `grow_idents` became `cgrow_idents` and sizes
+`mseen` and new `fopen` with `top` and `ext` (`dup_add`'s own growth and
+`nmseen` are gone); struct_finish marks the body's typedef names in a
+new `mseen` generation and tests each member once (`mseen_next` shared
+with the duplicate check); `cxx_typedef_in_struct` asks
+`crecord_open_member`: `fopen[name]` is the first open member so named
+(fields index + 1), valid while that `c->fields` entry still names it;
+bodies only push (`push_member`) and truncate, so nothing is cleared.
+Diagnostics byte-identical to the old binary on the generated inputs and
+the new goldens. callgrind, 20 k members each accessed and designated
+once: 4.776 G before, 0.585 G after (40 k 1.165 G, linear);
+`-Wc++-compat` with 20 k `T mN;` members 3.81 G before, 0.213 G after
+(wall here 0.08 / 0.29 s before at 10 k / 20 k, 0.01 / 0.03 s after).
+Tests: `tests/check/member_index_many` (8,000+ generated typedef-typed
+members under `-std=c11 -Wc++-compat`: access, designators, nested and
+const anonymous members, a direct-then-anonymous and an
+anonymous-then-direct duplicate, misses with a hint, the field/typedef
+warnings in a small record, a large one and a record nested in it, and a
+later record reusing a stale `fopen` entry), matching gcc-13 except two
+differences noted in STATUS (the field/typedef warning's order against
+the duplicate errors; the read-only message for a const anonymous
+member); `tests/summary/member_reads` (read sets for direct, first and
+second anonymous, missing and designated members, both modes). 285 lines
+added and 99 removed in src. Gates: run.sh 1668 passed, 0 failed;
+san.sh 1668 passed, 603 files, 0 findings; verify.sh gcc.dg 3908 of
+3910, c-c++-common 635 of 636, cpp 285 of 285; symcov 4716 files, 0
+unindexed (10 skipped); the LSP sessions (both modes) under TSan: 24
+passed, 0 warnings; uvloop loop.c 3.884 G instructions (HEAD 3.893 G).

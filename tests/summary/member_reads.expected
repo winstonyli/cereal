@@ -1,0 +1,63 @@
+unit 0 key=4e85a93cee659ed1 digest=97e3bc531deb7b94 sig=97e3bc531deb7b94
+  tag struct Big flags=complete layout=19564ae6ff1c2510 digest=790146a7ebb0b4d5
+  read tag full 0000000000000000 0000000000000000 Big
+  read state name 0000000000000000 f362f64ac74c66ab pack
+unit 1 key=c7d746e41e6aff7a digest=102a69e3acc2ebe7 sig=102a69e3acc2ebe7
+  ord func direct type="int(struct Big *)" linkage=external storage=none flags=defined,proto_def type_dig=397ef900dd751835 digest=2db6ae16dc9c4d17
+  read ord full 0000000000000000 0000000000000000 direct
+  read tag name 0000000000000000 911cb6d556fcb037 Big
+  read ext full 0000000000000000 0000000000000000 direct
+  read layout layout 9d87ee7b42bd338b 19564ae6ff1c2510 Big
+unit 2 key=2df21e9de38d11ea digest=a863dfa36d8702a3 sig=a863dfa36d8702a3
+  ord func first type="int(struct Big *)" linkage=external storage=none flags=defined,proto_def type_dig=397ef900dd751835 digest=94e291b1506e60fb
+  read ord full 0000000000000000 0000000000000000 first
+  read tag name 0000000000000000 911cb6d556fcb037 Big
+  read ext full 0000000000000000 0000000000000000 first
+  read layout layout 5035c78d3cdedc2e 45c961786a3b3142 -
+  read layout layout ff8a9b8215c0af0b 8c4794385d4d90c0 -
+  read layout layout 9d87ee7b42bd338b 19564ae6ff1c2510 Big
+unit 3 key=cdc55c235d251263 digest=384f0bc122201947 sig=384f0bc122201947
+  ord func second type="int(struct Big *)" linkage=external storage=none flags=defined,proto_def type_dig=397ef900dd751835 digest=56432eea45cd79fd
+  read ord full 0000000000000000 0000000000000000 second
+  read tag name 0000000000000000 911cb6d556fcb037 Big
+  read ext full 0000000000000000 0000000000000000 second
+  read layout layout 5035c78d3cdedc2e 45c961786a3b3142 -
+  read layout layout c947c97f418fd54e c978f30c713e8dee -
+  read layout layout ff8a9b8215c0af0b 8c4794385d4d90c0 -
+  read layout layout 9d87ee7b42bd338b 19564ae6ff1c2510 Big
+unit 4 key=21372837b653a148 digest=82e6de6a6716c1bf sig=82e6de6a6716c1bf
+  ord func miss type="int(struct Big *)" linkage=external storage=none flags=defined,proto_def type_dig=397ef900dd751835 digest=ffaa17c8cde4f8d9
+  read ord full 0000000000000000 0000000000000000 miss
+  read tag name 0000000000000000 911cb6d556fcb037 Big
+  read ext full 0000000000000000 0000000000000000 miss
+  read layout layout 5035c78d3cdedc2e 45c961786a3b3142 -
+  read layout layout c947c97f418fd54e c978f30c713e8dee -
+  read layout layout ff8a9b8215c0af0b 8c4794385d4d90c0 -
+  read layout layout 9d87ee7b42bd338b 19564ae6ff1c2510 Big
+unit 5 key=e23577c5c021263f digest=f89e7e259d75494e sig=f89e7e259d75494e
+  ord obj d1 type="struct Big" linkage=external storage=none flags=defined type_dig=ecea7a74736fe846 digest=a37e9bb45afd3589
+  read ord full 0000000000000000 0000000000000000 d1
+  read tag name 0000000000000000 911cb6d556fcb037 Big
+  read ext full 0000000000000000 0000000000000000 d1
+  read layout layout 5035c78d3cdedc2e 45c961786a3b3142 -
+  read layout layout c947c97f418fd54e c978f30c713e8dee -
+  read layout layout ff8a9b8215c0af0b 8c4794385d4d90c0 -
+  read layout layout 9d87ee7b42bd338b 19564ae6ff1c2510 Big
+unit 6 key=b0d4236c05217d34 digest=6bf7113d38f3ec14 sig=6bf7113d38f3ec14
+  ord obj d2 type="struct Big" linkage=external storage=none flags=defined type_dig=ecea7a74736fe846 digest=00aa8c084f847d9e
+  read ord full 0000000000000000 0000000000000000 d2
+  read tag name 0000000000000000 911cb6d556fcb037 Big
+  read ext full 0000000000000000 0000000000000000 d2
+  read layout layout 5035c78d3cdedc2e 45c961786a3b3142 -
+  read layout layout c947c97f418fd54e c978f30c713e8dee -
+  read layout layout ff8a9b8215c0af0b 8c4794385d4d90c0 -
+  read layout layout 9d87ee7b42bd338b 19564ae6ff1c2510 Big
+unit 7 key=e73de780c50627da digest=ee56cc7d73d85aed sig=ee56cc7d73d85aed
+  ord obj d3 type="struct Big" linkage=external storage=none flags=defined type_dig=ecea7a74736fe846 digest=af4ffb1dd8f8aa17
+  read ord full 0000000000000000 0000000000000000 d3
+  read tag name 0000000000000000 911cb6d556fcb037 Big
+  read ext full 0000000000000000 0000000000000000 d3
+  read layout layout 5035c78d3cdedc2e 45c961786a3b3142 -
+  read layout layout c947c97f418fd54e c978f30c713e8dee -
+  read layout layout ff8a9b8215c0af0b 8c4794385d4d90c0 -
+  read layout layout 9d87ee7b42bd338b 19564ae6ff1c2510 Big

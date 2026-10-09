@@ -241,7 +241,8 @@ void lsp_document_highlight(Req *r, JsonWriter *w)
 
 /* hover: a macro expanded here answers as before; a C entity answers over a
  * name with only macro history (weak, which it then mentions) or none: the
- * checker's text for it (cindex_hover), over the name. */
+ * checker's text for it (cindex_hover), over the name.  Elsewhere in a
+ * skipped #if group, a note saying so (rather than nothing). */
 void lsp_hover(Req *r, JsonWriter *w)
 {
     SrcLoc at = cursor(r);
@@ -261,8 +262,10 @@ void lsp_hover(Req *r, JsonWriter *w)
         t.range.begin = r->file->base + e->off;
         t.range.end = t.range.begin + e->len;
     } else if (t.kind == TGT_NONE) {
-        json_null(w);
-        return;
+        if (!index_inactive_note(&r->snap->ix, at, &sb)) {
+            json_null(w);
+            return;
+        }
     } else if (t.kind == TGT_PARAM) {
         sb_printf(&sb, "parameter `%s` of `%s`", t.name->str,
                   signature(r, t.macros[0]));

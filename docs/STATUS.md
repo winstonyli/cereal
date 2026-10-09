@@ -51,8 +51,8 @@ VLA-offset member: stor-layout folds the byte offset `n * 4 + 8` to
 c-c++-common: dump-ada-spec-14 (gcc's Ada dumper).
 
 
-Round 194, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 635 of 636,
-cpp 285 of 285; `tests/run.sh` 1664 passed.  Remaining gcc.dg diffs: pr56355-1,
+Round 195, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 635 of 636,
+cpp 285 of 285; `tests/run.sh` 1668 passed.  Remaining gcc.dg diffs: pr56355-1,
 pr83844 (above).
 Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - `char * const _Atomic c` parameter of main prints as `char * _Atomic`
@@ -64,11 +64,12 @@ Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
   parameter) not probed.
 - _FloatN builtin rows only checked through the implicit-call harness
   (bench bt_gen); `-std=c2x` and constant-expression visibility unchecked.
-- Quadratic in huge records (HISTORY Round 193; a per-record name index
-  would cover both): each member access or designator scans the record's
-  fields (`find_field`, `lookup_path`), and under `-Wc++-compat` a struct
-  of typedef-typed members is checked in quadratic time
-  (`cxx_typedef_in_struct`, the `tdseen` scan in struct_finish).
+- `-Wc++-compat` "using 'T' as both field and typedef name" comes before
+  the record's "duplicate member" errors; gcc gives it after them
+  (tests/check/member_index_many, HISTORY Round 195).
+- Assigning to a member of a `const` anonymous struct member says
+  "assignment of read-only member 'q'"; gcc says "assignment of member 'q'
+  in read-only object" (same golden).
 
 Parked front-end gaps (reasons in HISTORY Rounds 172 to 175 and 184):
 - `vector_size` errors are reported once per declaration; gcc reports once per

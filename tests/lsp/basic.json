@@ -14,6 +14,8 @@
  {"send": {"id": 4, "method": "textDocument/references", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}, "position": {"line": 1, "character": 9}, "context": {"includeDeclaration": true}}}},
  {"note": "hover on TWICE"},
  {"send": {"id": 5, "method": "textDocument/hover", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}, "position": {"line": 4, "character": 9}}}},
+ {"note": "hover in the skipped #else group: a note naming the conditional, not null"},
+ {"send": {"id": 33, "method": "textDocument/hover", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}, "position": {"line": 8, "character": 4}}}},
  {"note": "completion"},
  {"send": {"id": 6, "method": "textDocument/completion", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}, "position": {"line": 6, "character": 8}}}, "labels": "^(SQUARE|TWICE|LIMIT|BAD|MODE|DEFS_H)$"},
  {"send": {"id": 7, "method": "textDocument/documentSymbol", "params": {"textDocument": {"uri": "file://$ROOT/basic/main.c"}}}},

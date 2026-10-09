@@ -326,10 +326,19 @@ struct Checker {
     BindVec log;
     uint32_t *top[2];        /* by ident: innermost binding + 1 */
     uint32_t *ext;           /* by ident: external declaration + 1 */
-    uint32_t nidents;        /* size of top[] and ext[] */
-    uint32_t *mseen;         /* by ident: mgen if a member of the record
-                              * being finished (crecord.c dup_add) */
-    uint32_t nmseen, mgen;
+    uint32_t *mseen;         /* by ident: mgen if marked for the record being
+                              * finished (crecord.c: a typedef name used in
+                              * it, then a member name, dup_add) */
+    uint32_t *fopen;         /* by ident: an open member of that name, the
+                              * first (fields index + 1), if it still names
+                              * it (crecord_open_member) */
+    uint32_t nidents;        /* size of the by-ident arrays (cgrow_idents) */
+    uint32_t mgen;
+    /* member-name index of the complete records over FIDX_MIN members
+     * (cexpr.c cfield_slot): key (first field << 32 | name), value the
+     * member's index; key (first field << 32) marks a record indexed */
+    uint64_t *fkey;
+    uint32_t *fval, fcap, fn;
     VEC(ScopeMark) scopes;
 
     /* the unit */
@@ -808,6 +817,14 @@ bool cexpr_fits(Checker *c, uint64_t v, TypeId from, TypeId to);
  * field's type and adds its offset in bits; false if there is none. */
 bool cexpr_find_member(Checker *c, TypeId rec, uint32_t name, TypeId *ty,
                        uint64_t *off_bits, bool *bitfield);
+/* The member of r that name selects: the one so named, else the first
+ * anonymous struct or union member holding it at any depth; its index
+ * among r's fields, or -1. */
+int32_t cfield_slot(Checker *c, const Record *r, uint32_t name);
+/* Size the by-ident arrays (top, ext, mseen, fopen) for idents below n. */
+void cgrow_idents(Checker *c, uint32_t n);
+/* Whether a member of the struct bodies being checked is named name. */
+bool crecord_open_member(Checker *c, uint32_t name);
 /* Is node i inside __extension__ (pedantic warnings off)? */
 bool cexpr_in_extension(Checker *c, uint32_t i);
 /* -Wc++-compat is on and node is not inside __extension__ */

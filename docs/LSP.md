@@ -209,6 +209,12 @@ is freed with it.
   definition and expansion; a name with only macro history answers with
   the C text plus "(also a macro name)"; several entities at one place
   list their distinct texts (at most 5). Doc comments are not shown.
+  Where neither index answers inside a skipped `#if` group, hover says so
+  instead of null: `inactive code (skipped by #ifdef at main.c:12)`, the
+  innermost `#if`/`#ifdef`/`#ifndef` around the group as spelled
+  (`index_inactive_note`, over `Index.inactive` and `Index.blocks`, the
+  ranges the inactiveRegions notification sends); definition and
+  references stay empty there.
 - **Rename** (phase 4; B2_DESIGN.md, "Phase 4 design addendum"):
   prepareRename and rename take a C name when the macro index does not
   answer for it (as above). The edits are the entity's events, one per
@@ -284,7 +290,8 @@ is freed with it.
   `file:line:col ROLE kind name` plus the macro flags (`arg`, `body`,
   `expansion`, `system`), write/read for highlight, and a count line when
   several entities share the place (a `#define` body token); hover prints
-  the texts, then "(also a macro name)" for a name with macro history.
+  the texts, then "(also a macro name)" for a name with macro history,
+  and the inactive-code note where nothing answers in a skipped group.
   `cereal query rename=NEW FILE:L:C main.c` prints `file:line:col NEW`
   per edit, or `cannot rename: REASON` (also for a macro at the place).
   `--dump-symbols` shows a block-scope decl's scope lines (`scope L-L`).
