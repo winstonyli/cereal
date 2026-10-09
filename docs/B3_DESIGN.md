@@ -470,3 +470,463 @@ check.c +4, lsp.h +4, crename.c +2/-1), against the ~550 estimated in
 section 8: documentSymbol, the signature parameter scan and the index
 verification of scopes took about twice their estimates.
 
+## 12. Carry-over design
+
+Status: designed 2026-10-09 for the parked item of section 9 ("carrying
+the previous index across edits"), not implemented. When implemented it
+replaces the "No carry-over" bullet of section 6 and both the carrying
+and the `workspace/semanticTokens/refresh` items of section 9; those
+bullets are left as they are until then. Line numbers are those of HEAD
+2c7e406.
+
+### 12.1 Problem, and what the old rejection missed
+
+After an edit the new macro snapshot is installed without a C index;
+the index arrives with that snapshot's check (0.05 s for main.c, 0.34 s
+for zstd.c, 1.7 s for a dense 4 MiB table; LSP.md). Meanwhile every
+request with the `cidx` column (server.c:1030) runs the D1 wait: up to
+1.5 s, then the macros alone. Two costs follow:
+- **Flicker and gaps.** Hover, definition, completion and highlight say
+  nothing about C names after a timeout; semantic tokens lose every C
+  token and are not asked for again (section 6).
+- **A blocked protocol loop.** Requests run synchronously on the one
+  protocol thread (`lsp_main` calls `handle_request`; there are no
+  handler threads). While a request waits, the next `didChange` is not
+  even read, so the check it would cancel runs on. Fast typing in a large
+  unit queues keystrokes behind token and highlight requests.
+
+Section 6 rejected carry-over because it "would retain a second snapshot
+per unit" and the newest index is good on broken code. The second point
+stands, but the gap is latency, not broken code. The first does not
+hold for this design: only the C index is kept, not the snapshot. The
+mapping is computed at install, when the builder already holds both
+snapshots.
+
+### 12.2 Decisions
+
+- **K1. A carried index is an ordinary CIndex in the new text's
+  coordinates.** At install, the builder makes a copy of the previous
+  index's per-text arrays (events, CSR, scopes, files), with offsets
+  shifted past the edit and the events that overlap the edit dropped.
+  It shares the decls and strings with the original. Every query in
+  csymidx.c and every feature in features.c then works unchanged, with
+  no special cases per request. Rejected: a view that maps positions at
+  query time. It would leave the shared index's `stale` flags wrong
+  for the new text (`cindex_validate` writes them into the index). It
+  would need a map at about 12 call sites in features.c and a filter
+  inside `cindex_visible` (a damaged inner declaration would otherwise
+  shadow a valid outer one). It would also answer nothing anywhere in
+  the edited span, including completion at the cursor.
+- **K2. The edit is the difference between the two snapshots' texts,
+  not a log of `didChange` ranges.** For each file of the index: the
+  common prefix and suffix of its text in the old and new snapshot
+  (12.3). That covers every way a text changes: range and whole-text
+  `didChange` (`tests/lsp/carry` sends whole texts and still gets the
+  minimal span), `didClose` back to the disk, a header edited on disk. It
+  needs no bookkeeping shared between threads, and chains compose by
+  construction, since each carry is relative to the snapshot before.
+  Cost: several separate edits between two installs (multi-cursor
+  edits, a formatter) merge into one damaged span. The same edit drives
+  the diagnostics carry-over (12.8), replacing `first_changed_line`.
+- **K3. Lifetime by reference count, freshness by serial.** `CIndex`
+  gets an atomic `refs` (and `cindex_free` drops one), a `serial` unique
+  per index, and `core`, the original that owns decls and strings (a
+  carried index holds one reference on it). A snapshot's `cidx` is no
+  longer set once: carried at install, replaced by its own at publish.
+  So a request takes a reference under `S.m` and drops it when it
+  answers.
+- **K4. A wait policy per request, replacing the `cidx` boolean
+  (12.6).** A request waits for the newest edit's *snapshot*, which it
+  needs so that positions match. It waits for the *check* only where the
+  carried index cannot answer: when there is nothing to carry, at a
+  position inside the damage (hover and the go-to requests), and where
+  only a fresh or complete answer will do (references, rename).
+- **K5. The client is told about stale answers where LSP has a way to
+  say so.** `workspace/semanticTokens/refresh` after a check publishes
+  if a token answer since the last refresh lacked the fresh index (only
+  for clients with `refreshSupport`; the others keep D1 for tokens).
+  Completion from a carried index is `isIncomplete: true`. Hover adds a
+  line when the entity's own declaration was edited (12.7).
+
+### 12.3 The text edit
+
+```c
+typedef struct CIdxEdit {   /* old [pre, old_end) became new [pre, new_end) */
+    uint32_t pre, old_end, new_end;
+    bool same;              /* identical texts */
+} CIdxEdit;
+void cindex_text_edit(const char *a, size_t na, const char *b, size_t nb,
+                      CIdxEdit *out);
+```
+- **Prefix and suffix.** `pre` is the common prefix length. The common
+  suffix length is capped so that `pre + suffix <= min(na, nb)`. This
+  is one `memcmp`-like pass from each end; for a unit under the 4 MiB
+  check limit, about a millisecond.
+- **Widening to whole identifiers.** If an identifier crosses a span
+  boundary in either text, the span grows to contain all of it in both
+  texts: the run of `cindex_ident_char` bytes ending at `pre` moves
+  `pre` back when the byte after the boundary is an identifier byte in
+  the old or new text, and the same holds forward at the suffix. So
+  `foo` changed to `foobar`, `x` typed before `foo` (`xfoo`), and an
+  insertion inside `foo` all damage `foo`. Typing `;` after `x` does not
+  damage `x`. Events are identifier spellings (argument, body,
+  invocation name), so after widening no event straddles a boundary.
+- **The map** `f` of an old position `x` (a point between bytes):
+  `x <= pre` gives `x`; `x >= old_end` gives `x - old_end + new_end`;
+  inside the span it gives `pre`. `f` is monotone. An event `[off,
+  off+len)` is **kept** if `off + len <= pre` or `off >= old_end`, else
+  **dropped**. The **damage** of the file is `[pre, new_end]` in the new
+  text, inclusive at both ends, so the cursor at either edge of the typed
+  text counts as inside.
+
+### 12.4 Carrying an index (csymidx.c)
+
+`CIndex *cindex_carry(CIndex *from, SrcMgr *old, SrcMgr *new)`. `from`
+is the old snapshot's index, own or itself carried, whose offsets are in
+the text of `old`.
+- **Files.** Each `from` file is looked up by path in both source
+  managers (`cindex_srcfile`) and its edit computed. If `from` already
+  marks it stale, or `new` lacks it, it stays or becomes **stale** (its
+  events are kept but never answered, as today). Otherwise it is
+  current: `size` and `hash` describe the new text, and the damage is
+  the hull of the new edit's damage and the previous damage mapped
+  through `f` (one span per file; it only grows along a chain of
+  cancelled checks). `CIdxFile` gains `edited`, `dmg_begin`, `dmg_end`.
+- **Events** in order: kept ones get `f(off)`, dropped ones are left
+  out. Order is preserved because `f` is monotone. The CSR (`by_decl`,
+  `by_decl_start`) is rebuilt by the code of `csx_finish`
+  (csymidx.c:1131-1143), moved into a function both use. Decl indices
+  do not change, so `decls` is shared.
+- **Scopes** keep their indices, so `CIdxDecl.scope` and `parent` stay
+  valid: `begin = f(begin)` and `end = f(end)`, with no re-sort. A
+  monotone map keeps the (begin ascending, end descending) order weakly
+  and keeps scopes nested or disjoint (a scope may become empty), so the
+  correctness argument of `cindex_scope_at` (3.2) still holds. A
+  function body that contains the edit grows over it. A scope whose
+  `}` was inside the span ends at `pre`: an approximation until the
+  check, used only by completion's scope test and documentSymbol
+  ranges.
+- **Identity.** When no file changed, `cindex_carry` returns `from` with
+  one more reference and no copy.
+- **Shared and copied.** Copied: files, events (12 B), `by_decl` (4 B
+  per kept event), `by_decl_start` (4 B per decl), scopes (16 B).
+  Shared: decls (24 B) and the string pool (names, paths, hover texts).
+  A decl whose events were all dropped stays without events. The queries
+  already skip such decls: `cindex_visible` needs a DECL/DEF event, and
+  documentSymbol walks events. `cindex_verify` therefore skips its
+  "every decl has a declaration event" rule for a carried index.
+- **Damage query.** `bool cindex_damaged(const CIndex *, int fi, uint32_t
+  off)`. **Touched query.** `bool cindex_touched(const CIndex *, uint32_t
+  d)` is true when a carried index has fewer DECL/DEF events for `d` than
+  its core (a scan of the decl's two CSR lists): the declared name
+  itself was edited. It misses edits next to an intact name: `int x`
+  changed to `long x` damages only `int`/`long`. features.c therefore
+  also counts a DECL/DEF event that lies on a line the damage touches
+  (12.7).
+
+### 12.5 Server: when to carry, publish, fail (server.c)
+
+- **Carry at install.** The builder is the only writer of `u->snap` and
+  of every `Snapshot.cidx`, so it may read `old = u->snap` and
+  `old->cidx` before taking `S.m`. After `build_unit`, it runs
+  `check_eligible` (moved before the lock; it touches only the
+  unpublished snapshot). If the new snapshot will be checked and
+  `old->cidx` exists, it runs `cindex_carry(old->cidx, &old->tu.sm,
+  &snap->tu.sm)`. Then, under the lock, at install (server.c:732-743),
+  it sets `snap->cidx` to the carried index and `snap->cidx_carried`. If
+  the snapshot is not installed (`want <= u->built`), the carried index
+  is dropped with it. No carry for a snapshot that will not be checked
+  (over the limit, a header alone): no fresh index would replace it.
+- **Chains.** If the check of S1 is cancelled by edit 2, S1 keeps its
+  carried index with `CHECK_DONE` (server.c:790 marks a cancelled check
+  done), and S2 carries from S1's carried index. The damage accumulates,
+  and the core stays the last index a check produced.
+- **Publish** (server.c:777-789): under the lock, `prev = checking->cidx;
+  checking->cidx = c->cidx; checking->cidx_carried = false`. After
+  unlocking, `cindex_free(prev)`. A request that still holds `prev`
+  keeps it alive through its reference.
+- **Failed check, not superseded** (`fatal()`, the `else if` at
+  server.c:783): the carried index is dropped too, like the carried
+  diagnostics. The snapshot then answers with macros only, as today.
+  Otherwise stale entities would stay on screen indefinitely.
+- **Rename** stays on fresh indexes only. `r.c_fresh` (server.c:1103)
+  also requires `!cidx_carried`. That is already implied, since a
+  carried index is never on a snapshot whose check ended uncancelled,
+  but it is stated here so that it does not depend on that.
+
+### 12.6 Request policy and waits (server.c)
+
+The `cidx` boolean of `REQS` becomes a policy:
+
+| Policy | Requests | Waits (D1 deadline, 1.5 s) for | Answers from |
+|---|---|---|---|
+| `CP_NONE` | foldingRange, call hierarchy, `cereal/expandMacro` | nothing | macros |
+| `CP_ANY` | completion, signatureHelp, documentHighlight, documentSymbol; the three semantic token requests when the client has `refreshSupport` | the newest edit's snapshot (`gen == want`); then the check too, but only if that snapshot has no index at all (first build, or nothing to carry) | own or carried index |
+| `CP_POS` | hover, definition, declaration, typeDefinition | as `CP_ANY`; then the check too if the request's position is in the carried index's damage | own or carried |
+| `CP_WAIT` | references, prepareRename, rename; semantic tokens without `refreshSupport` | the check, as D1 today | own; after a timeout carried (references and tokens); rename refuses ("retry") |
+
+- **Why these.** Completion, signature help and highlight run while
+  typing, with the cursor in the damage, and blocking them stalls the
+  loop. They answer well from a carried index: completion's scope test
+  works in the damage (12.4), and signature help falls back to the
+  callee's name through `cindex_visible` (5.3 step 3). Hover and the
+  go-to requests are deliberate, so a short wait beats a null for a name
+  just typed. References and rename are lists the user acts on, so
+  they must be complete. documentSymbol is `CP_ANY` because LSP has no
+  way to refresh it. The outline then lacks declarations typed in the
+  damage until the client asks again (open question 2).
+- **The position test** (`CP_POS`), under `S.m`: the request's offset
+  in the snapshot's file (`index_find_file`, `req_loc`) and
+  `cindex_damaged`. If it is damaged, wait on `S.done` with the same
+  deadline, then take `u->snap` again.
+- **References after a timeout** answer from the carried index instead
+  of the macros alone: positions are right, though uses typed in the
+  damage are missing. Behaviour change; open question 1.
+- **Lifetime.** `r.cidx = cindex_ref(snap->cidx)` under `S.m`; released
+  after the response (`Req.cidx` loses `const`). `Req` gains `c_carried`.
+
+### 12.7 What the client sees (features.c)
+
+- **Semantic tokens.** `TokCache.cidx` (a bool, features.c:692) becomes
+  the index's `serial` (0: none). A whole-file result made from a
+  carried index is then not reused after the own index publishes. This
+  also settles the reused-pointer worry of 5.4. When a token request is
+  answered without the fresh index (carried, or none after a timeout),
+  the server sets `Unit.tok_stale` under `S.m` while setting up the
+  request. At the next publish of a fresh index for that unit, the
+  builder clears it and, if the client declared
+  `workspace.semanticTokens.refreshSupport`, sends
+  `{"jsonrpc":"2.0","id":"cereal-refresh-N","method":"workspace/semanticTokens/refresh"}`.
+  It sends under `S.m`, as it already does for `publishDiagnostics`;
+  `rpc_write` has its own lock. The client's response has no `method`
+  and is already skipped (server.c:1311). This settles the section 9
+  item "refresh after a check that ended past the D1 wait". A client
+  without `refreshSupport` keeps D1 for tokens (`CP_WAIT`). Cost per
+  refresh: the client asks again for each visible document of the
+  server. The delta fast path (features.c:735-746) answers unchanged
+  documents with empty edits, so the 35 MB macro files (never checked,
+  so never a cause of a refresh) cost only that.
+- **Overlap of a macro token and a carried C token.** Fresh, they never
+  start at one place (5.4). A carried index can break that: `int foo;`
+  stays a C DEF event while a new `#define foo` above makes it a macro
+  use in the fresh macro index. `STok` gains its source, and
+  `stok_cmp` puts macro-index tokens first at a tie. Fresh output is
+  unchanged.
+- **Completion** from a carried index sets `isIncomplete: true`, so the
+  client asks again on the next keystroke and gets names declared in
+  the damage once the check has published.
+- **Hover** from a carried index adds "(rechecking: its declaration was
+  edited)" when the entity's declaration was edited. That means
+  `cindex_touched` is true, or one of its DECL/DEF events is on a line
+  the damage touches (lines from the snapshot's line table). So `int x`
+  changed to `long x` is marked wherever `x` is hovered; a type written
+  on the line above the name is not. The hover texts are the old
+  check's.
+- No other marker: documentSymbol, highlight and signature help have no
+  field for staleness. `CEREAL_LSP_STATS` logs `carried` per request
+  and `carry %.3fs, kept N of M events` per install.
+
+### 12.8 Diagnostics through the same edit
+
+`carry_cdiags` (server.c:367) keeps the previous compiler diagnostics
+that lie wholly before the first edited line (`first_changed_line`,
+server.c:338), and keeps one with a note in another file only if no
+file changed. With 12.3 the same edit can carry the ones after the edit
+too:
+- `CDiag` stores file offsets instead of the rendered JSON: range, notes
+  (path and offset), severity, code, message and note texts. Offsets are
+  kept only for files whose checked text equals the snapshot's (the
+  case `cindex_validate` checks); others are not carried.
+- `carry_cdiags` maps every offset of a diagnostic (range, notes in any
+  file) through that file's edit. It drops the diagnostic if any offset
+  is damaged or its file is gone. `lsp_publish_diagnostics` renders
+  carried ones against the new snapshot's line table and computes their
+  keys there. `first_changed_line` and the "no file changed" rule go:
+  an unchanged file has the identity edit.
+- **Effect:** errors below the edited line stay in place, moved, while
+  typing, instead of vanishing until the check ends. `tests/lsp/carry`
+  changes: the diagnostic below the edit is now kept and moved.
+
+### 12.9 Memory
+
+Index memory per unit (measured totals from section 11; the split
+between shared and copied parts is estimated from field sizes and is to
+be measured in step 1 of 12.11):
+
+| Unit | Index | Copied part | Shared part |
+|---|---|---|---|
+| zstd.c | 2.52 MB | ~1.5 MB (about 66k events, 27.4k scopes) | ~1.0 MB |
+| 4 MiB of `int vN;` | 31.2 MB | ~12 MB (330k events and roots) | ~19 MB |
+| 4 MiB of `int fN;` members | 32.6 MB | ~7 MB (one root) | ~26 MB |
+
+- **Steady state:** unchanged, one index per unit (the ~30 MB budget of
+  B2, already slightly exceeded by the dense files, section 11).
+- **During the check:** today the old index is freed when the old
+  snapshot goes. Now one index's worth stays (core plus copy). The worst
+  case at the 4 MiB limit is +31 MB. The only check-phase peak on record
+  is +194 MB over the macro phase, for a dense 4 MB single-initializer
+  table (LSP.md, "Size limit"), a different file from the index's worst
+  ones. Against that, +31 MB is about +16%. Step 1 of 12.11 measures
+  peak RSS with and without carry on the two dense index files. No new
+  limit is expected; if that measurement says otherwise, a cap on the
+  carried index's size is the fallback.
+- **Transients:** at install, the old own index plus the new copy until
+  the old snapshot is released (+12 MB worst). At publish, the new own
+  index plus the carried one until the unlock and the end of any request
+  holding it (+31 MB worst, for milliseconds).
+- **Time:** the copy plus diff plus hash at install is O(events +
+  scopes + text): about 1 ms for zstd.c and ~10 ms for the dense 4 MiB
+  files, against checks of 0.34 s and 1.7 s. It runs outside `S.m`.
+
+### 12.10 What it cannot cover
+
+- **Effects at a distance until the check publishes:** an edited
+  typedef, declaration type, `#define` used by C code, `#include` or
+  `#if` changes the meaning of unchanged text elsewhere. Those places
+  answer with the old meaning, correctly placed (hover marks only the
+  edited declaration itself). A new shadowing declaration is in the
+  damage, so it is not seen.
+- **The damage itself:** names written there have no hover, definition
+  or highlight (hover and definition wait), no C tokens, and are not
+  offered by completion until the check.
+- **Separate edits merge** into one span (multi-cursor, formatters): a
+  whole-file reformat damages nearly everything, which is today's
+  behaviour.
+- **An expansion with edited arguments** keeps its at-expansion events
+  when the invocation name lies outside the damage.
+- **Files newly included** have no events until the check.
+- **Units that are not checked** (over 4 MiB, a header alone) carry
+  nothing, as before.
+- **documentSymbol** cannot be refreshed by the server.
+
+### 12.11 Tests, order and estimate
+
+1. **Index.** `refs`, `serial`, `core`; the CSR moved out of
+   `csx_finish`; `cindex_text_edit`, `cindex_carry`, `cindex_damaged`,
+   `cindex_touched`; the verify exception. The runnable check is
+   `cereal check --verify-carry=OLD FILE`. It indexes FILE with OLD's
+   text as an overlay at FILE's path, then FILE itself, carries the
+   first to the second, and runs `cindex_verify` on the carried index:
+   sorted events, CSR, scopes sorted and nested, hashes against FILE.
+   Outside the damage, every carried event must match a fresh event at
+   the same offset with the same role, name and kind, and the reverse.
+   It prints `carry: kept K of N events, damage L:C-L:C, D differences`.
+   Goldens go in `tests/symidx`: a comment line inserted at the top (no
+   differences), an identifier extended (`foo` to `foobar`: damage
+   widened), a statement typed in a body, a `}` deleted (scopes clamped;
+   differences reported, not an error), a typedef changed to a variable
+   (differences at a distance, reported), and an edit in a header. The
+   cells' differential fuzzer (PARALLEL.md) could run it on random edits
+   (parked).
+   Measure the copied and shared parts and the time on zstd.c and the
+   two dense files (12.9).
+2. **Server and features.** Carry at install, publish swap, failure
+   drop, references in requests, the policy column, `TokCache.serial`,
+   the tie rule, `isIncomplete`, the hover line. A test extension,
+   `cereal/holdChecks {"hold": bool}`, makes a check wait at its start
+   (on `S.work`) while held; an edit's cancel, a release or shutdown
+   ends the wait. A request sent right after a `didChange` waits for the
+   new snapshot (`CP_ANY`), so with checks held it answers from the
+   carried index deterministically, with no new barrier.
+   `cereal/waitIdle` must not be used while held: it would wait for the
+   check. New session `tests/lsp/carry_cidx`: hold, then an edit that
+   inserts a line above and types a declaration and a call in a body.
+   Then hover and definition below the edit (moved), completion in the
+   body (`isIncomplete` true, without the typed local), whole-file
+   semantic tokens (none in the damage, the rest moved), documentSymbol
+   (ranges moved), and signature help on the typed call (by name). Then
+   hover on the typed name (`CP_POS`: waits out the 1.5 s while held,
+   then nothing) and rename ("retry" after the wait). Then a second edit
+   while held (a carry from a carried index; damage hull). Then release,
+   idle, the `workspace/semanticTokens/refresh` request recorded (the
+   session declares `refreshSupport`), a delta with the damage colored,
+   and completion `isIncomplete` false with the local. `fault_check`
+   gains a carried index dropped on a failed check.
+   `tests/lsp_session.py` must accept a server request without `params`
+   in its `wait` step (`dict(m.get("params") or {})`). In csym,
+   csym_hover and csym_refs, the D1 notes change wording: hover,
+   definition and highlight no longer wait for the check. Their answers
+   do not change, since a line inserted at the top moves every event
+   alike. The B2 claim "csym_hover fails without the wait" then no
+   longer applies; the wait is covered by `CP_POS` in `carry_cidx`.
+3. **Refresh.** The capability in `initialize`, `Unit.tok_stale`, the
+   send at publish, the token policy chosen by the capability. Tests:
+   `carry_cidx` (with the capability: the refresh is recorded) and
+   `csym_b3` (without it: no refresh is sent). `csym_b3` also gains a
+   token request right after an edit: it waits for the check and has
+   the new names, which makes the `CP_WAIT` choice for tokens visible.
+   The capability is per session, so it cannot go in `carry_cidx`.
+4. **Diagnostics through the edit (12.8).** `CDiag` by offsets,
+   `carry_cdiags` rewritten, `first_changed_line` deleted;
+   `tests/lsp/carry` updated.
+5. **Docs.** LSP.md ("Snapshots", carried diagnostics, D1, Tests),
+   sections 6 and 9 here, HISTORY.
+- **TSan and ASan.** Every session runs under ThreadSanitizer and
+  AddressSanitizer/UBSan as today. `carry_cidx` exercises the release of
+  a carried index by both threads. A non-golden stress run (200 edits
+  each followed at once by tokens, completion and hover on zstd.c,
+  checks not held) must leave the sanitizer logs empty. The interleaving
+  of a request holding the carried index while the builder publishes is
+  timing-dependent; this run is the check for it.
+- **Estimate:** about 400 lines for steps 1-3. csymidx.c/h ~170
+  (refcount and core ~25, text edit with widening ~35, carry ~75, damage
+  and touched ~20, verify ~5, CSR move ~10). main.c `--verify-carry`
+  ~50. server.c ~140 (carry, publish and failure ~45, policy and waits
+  ~40, references ~8, holdChecks ~25, refresh ~25). features.c ~35
+  (serial, tie rule, `isIncomplete`, the hover line with its line test).
+  lsp.h ~10. Step 4 adds ~80 lines and removes ~60 (server.c and
+  features.c). B3's own parts took up to twice their estimates (section
+  11), so allow up to ~800 in all.
+
+### 12.12 Review rounds
+
+Seven rounds were run on this section against the code at 2c7e406.
+
+1. **Claims against the code.** Found: the brief's "handler threads"
+   do not exist (one protocol thread answers synchronously, and the D1
+   wait blocks it, which 12.1 now states). `cindex_validate` writes
+   `stale` into the index itself, so a shared index cannot be valid for
+   two texts (this decided K1 against a view). `TokCache` keyed by a
+   bool would reuse a carried result after publish (keyed by serial).
+   `CHECK_DONE` is also set for a cancelled check, so a carried index
+   can sit on a "done" snapshot (`c_fresh` stated to exclude carried).
+   The `int vN;` copy estimate first left out `by_decl_start`.
+2. **Races and lifetime.** Found: `snap->cidx` changing after
+   publication needs references held by requests (K3). Before, it was
+   set once and the snapshot reference sufficed. A carry computed
+   before the lock may belong to a snapshot that is then not installed
+   (dropped with it). `waitIdle` deadlocks against held checks
+   (documented in the test plan). A failed check would leave the carried
+   index for good (now dropped, like the carried diagnostics).
+   Confirmed: the builder is the only writer of `u->snap` and `cidx`, so
+   it reads them without the lock. The refresh is sent under `S.m` as
+   `publishDiagnostics` is. Client responses are already ignored.
+3. **Mapping edge cases.** Found: an identifier extended at the edit
+   (`foo` to `foobar`), or a character typed before it, left an event on
+   a changed name (widening, 12.3). A cursor exactly at a span edge was
+   neither inside nor outside (damage made inclusive). Mapping scope
+   begins and ends to different points of the span can break nesting
+   (one monotone `f`; nesting argued). A macro token and a carried C
+   token can now start at one place (tie rule). A whole-text
+   `didChange` would defeat an edit log (one of the reasons for K2).
+   Walked: chains (each carry relative to the snapshot before), stale
+   source files, files missing from the new snapshot, identity carries,
+   decls left with no events, prototype and body scopes around the
+   edit.
+4. **Memory.** Found: the first draft counted only steady state. The
+   during-check and transient figures (12.9) were added, and set
+   against the check's own peak, which sets the 4 MiB limit.
+5. **Consistency.** Found: the estimate's parts summed to about 400,
+   not the 450 stated. The during-check memory set the index's worst
+   files against the check peak of a different file (now said, with a
+   measurement added to step 1). Checked: the policy table against the
+   D1 tests whose wording changes, and 12.10 against 12.6 (hover waits
+   in the damage, highlight does not).
+6. **Staleness markers and tests.** Found: `cindex_touched` alone misses
+   the most common stale hover (`int x` changed to `long x` keeps `x`'s
+   event), so a line test was added. A token test planned for
+   `carry_cidx` needed the client without `refreshSupport`, but the
+   capability is per session, so it moved to `csym_b3`.
+7. **Final pass** over the whole section: nothing material. Sections 6
+   and 9 are named as superseded but not edited.
+
