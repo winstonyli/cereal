@@ -44,7 +44,8 @@ static void usage(FILE *o)
         "                its entry\n"
         "  -fsyntax-only  the same as check\n"
         "  lsp           language server on stdin/stdout\n"
-        "  query KIND FILE:LINE:COL   KIND = def | refs | hover | visible | expand\n"
+        "  query KIND FILE:LINE:COL   KIND = def | decl | refs | uses | highlight |\n"
+        "                hover | visible | expand | callers | callees | deps\n"
         "  --list-warnings  list every -W option\n"
         "\n"
         "options:\n"
@@ -682,6 +683,54 @@ static void print_exp_tree(TU *tu, Index *ix, IdxExp *root)
     printf("=> %s\n", sb_cstr(&root->text));
 }
 
+/* `cereal query def|decl|refs|uses|highlight` on a C name (B2): the C
+ * symbol index of a second, checking run over the unit, as the language
+ * server's check phase builds it; one line per location (file:line:col,
+ * role or for highlight write/read, kind, name, macro flags).  False: no C
+ * entity at loc (the macro answer, if any, stands). */
+static bool query_c(Options *o, TU *tu, SrcFile *f, SrcLoc loc, const char *kind)
+{
+    TU ct;
+    FrontendOpts fo;
+    CIndex *cx = NULL;
+    uint32_t decls[16], *ev = NULL;
+    size_t nd = 0, n = 0, i;
+    bool hl = !strcmp(kind, "highlight");
+    CIdxQuery q = !strcmp(kind, "def")    ? CIQ_DEF
+                  : !strcmp(kind, "decl") ? CIQ_DECL
+                  : !strcmp(kind, "uses") ? CIQ_USES
+                                          : CIQ_REFS;
+    memset(&fo, 0, sizeof fo);
+    fo.check = true;
+    fo.cidx = &cx;
+    tu_init(&ct, o);
+    if (frontend_run(&ct, o->inputs.data[0], &fo) && cx) {
+        cindex_validate(cx, &tu->sm);
+        nd = cindex_decls_at(cx, f->path, loc - f->base, decls, 16);
+    }
+    tu_free(&ct);
+    if (nd > 1) /* e.g. a #define body token, one entity per expansion */
+        printf("%zu C entities here\n", nd);
+    if (nd)
+        n = cindex_select(cx, decls, nd, q, hl ? cindex_file(cx, f->path) : -1,
+                          &ev);
+    for (i = 0; i < n; i++) {
+        const CIdxEvent *e = &cx->ev[ev[i]];
+        SrcFile *ef = cindex_srcfile(&tu->sm, cx->files[e->file].path);
+        if (!ef)
+            continue;
+        printf("%s %s %s %s", loc_str(tu, ef->base + e->off),
+               !hl ? cindex_role_name(e->flags)
+               : (e->flags & CIX_ROLE) == CIX_REF ? "read" : "write",
+               cindex_kind_name(cx->decls[e->decl].kind), cindex_name(cx, e->decl));
+        cindex_print_flags(stdout, e->flags);
+        putchar('\n');
+    }
+    free(ev);
+    cindex_free(cx);
+    return nd != 0;
+}
+
 static int mode_query(Options *o, const char *kind, const char *at)
 {
     TU tu;
@@ -733,7 +782,14 @@ static int mode_query(Options *o, const char *kind, const char *at)
     loc = srcmgr_loc_of(f, line, col);
     t = index_resolve(&ix, loc);
 
-    if (!strcmp(kind, "def")) {
+    /* the macro index's answer stands unless it has nothing or only knows
+     * the name by its plain identifier (weak): then a C entity answers */
+    if ((t.kind == TGT_NONE || t.weak) &&
+        (!strcmp(kind, "def") || !strcmp(kind, "decl") || !strcmp(kind, "refs") ||
+         !strcmp(kind, "uses") || !strcmp(kind, "highlight")) &&
+        query_c(o, &tu, f, loc, kind))
+        goto out;
+    if (!strcmp(kind, "def") || !strcmp(kind, "decl")) {
         if (t.kind == TGT_INCLUDE)
             printf("%s:1:1\n", t.file->name);
         else if (t.kind == TGT_PARAM)
@@ -744,12 +800,18 @@ static int mode_query(Options *o, const char *kind, const char *at)
             for (k = 0; k < t.nmacros; k++)
                 printf("%s %s\n", loc_str(&tu, t.macros[k]->name_loc),
                        macro_signature(&tu.arena, t.macros[k]));
-    } else if (!strcmp(kind, "refs")) {
+    } else if (!strcmp(kind, "refs") || !strcmp(kind, "uses") ||
+               !strcmp(kind, "highlight")) {
+        /* uses: without the definitions; highlight: in the queried file */
         IdxRef *refs;
         size_t n = index_references(&ix, &t, &refs), i;
-        for (i = 0; i < n; i++)
+        size_t ndef = (size_t)(t.kind == TGT_PARAM ? 1 : t.nmacros);
+        for (i = 0; i < n; i++) {
+            if ((kind[0] == 'u' && i < ndef) ||
+                (kind[0] == 'h' && srcmgr_file_of(&tu.sm, refs[i].loc) != f))
+                continue;
             printf("%s %s%s\n", loc_str(&tu, refs[i].loc),
-                   i < (size_t)(t.kind == TGT_PARAM ? 1 : t.nmacros)
+                   i < ndef
                        ? "definition"
                        : refs[i].kind == REF_EXPANSION ? "expansion"
                        : refs[i].kind == REF_IFDEF ? "ifdef"
@@ -757,6 +819,7 @@ static int mode_query(Options *o, const char *kind, const char *at)
                        : refs[i].kind == REF_UNDEF ? "undef"
                        : refs[i].kind == REF_IF_VALUE ? "if-value" : "pragma",
                    ref_flags(&refs[i]));
+        }
     } else if (!strcmp(kind, "hover")) {
         if (t.kind == TGT_PARAM) {
             printf("parameter %s of %s\n", t.name->str,

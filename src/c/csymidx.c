@@ -718,7 +718,90 @@ static const char *const kind_names[] = {
     "union", "enum", "label"};
 static const char *const role_names[] = {"DECL", "DEF", "REF", "?"};
 
-static SrcFile *file_by_path(SrcMgr *sm, const char *path)
+const char *cindex_role_name(unsigned flags)
+{
+    return role_names[flags & CIX_ROLE];
+}
+
+const char *cindex_kind_name(unsigned kind)
+{
+    return kind < sizeof kind_names / sizeof *kind_names ? kind_names[kind] : "?";
+}
+
+size_t cindex_decls_at(const CIndex *ix, const char *path, uint32_t off,
+                       uint32_t *out, size_t max)
+{
+    int fi = ix ? cindex_file(ix, path) : -1;
+    uint32_t first, k;
+    size_t n, nd = 0, j;
+    if (fi < 0 || ix->files[fi].stale)
+        return 0;
+    n = cindex_at(ix, (uint32_t)fi, off, &first);
+    for (k = first; k < first + n && nd < max; k++) {
+        for (j = 0; j < nd && out[j] != ix->ev[k].decl; j++)
+            ;
+        if (j == nd)
+            out[nd++] = ix->ev[k].decl;
+    }
+    return nd;
+}
+
+static int u32_cmp(const void *pa, const void *pb)
+{
+    uint32_t a = *(const uint32_t *)pa, b = *(const uint32_t *)pb;
+    return a < b ? -1 : a > b;
+}
+
+size_t cindex_select(const CIndex *ix, const uint32_t *decls, size_t nd,
+                     CIdxQuery q, int fi, uint32_t **out)
+{
+    VEC(uint32_t) v = {0};
+    size_t i, k, n = 0;
+    for (i = 0; i < nd; i++) {
+        uint32_t b = ix->by_decl_start[decls[i]], e = ix->by_decl_start[decls[i] + 1];
+        uint32_t j;
+        int role = -1;       /* CIQ_DEF, CIQ_DECL: the one role taken */
+        if (q == CIQ_DEF || q == CIQ_DECL) {
+            int want = q == CIQ_DEF ? CIX_DEF : CIX_DECL;
+            role = want == CIX_DEF ? CIX_DECL : CIX_DEF;
+            for (j = b; j < e; j++)
+                if ((ix->ev[ix->by_decl[j]].flags & CIX_ROLE) == want) {
+                    role = want;
+                    break;
+                }
+        }
+        for (j = b; j < e; j++) {
+            const CIdxEvent *ev = &ix->ev[ix->by_decl[j]];
+            int r = ev->flags & CIX_ROLE;
+            if (ix->files[ev->file].stale || (fi >= 0 && ev->file != (uint32_t)fi))
+                continue;
+            if (role >= 0 ? r != role
+                          : (ev->flags & CIX_MACRO_BODY) ||
+                                (q == CIQ_USES && r != CIX_REF))
+                continue;
+            vec_push(&v, ix->by_decl[j]);
+        }
+    }
+    /* event order is (file, offset) order: one per location */
+    if (v.len > 1)
+        qsort(v.data, v.len, sizeof *v.data, u32_cmp);
+    for (k = 0; k < v.len; k++) {
+        const CIdxEvent *e = &ix->ev[v.data[k]];
+        if (n) {
+            const CIdxEvent *p = &ix->ev[v.data[n - 1]];
+            if (p->file == e->file && p->off == e->off) {
+                if ((p->flags & CIX_ROLE) == CIX_REF)
+                    v.data[n - 1] = v.data[k];
+                continue;
+            }
+        }
+        v.data[n++] = v.data[k];
+    }
+    *out = v.data;
+    return n;
+}
+
+SrcFile *cindex_srcfile(SrcMgr *sm, const char *path)
 {
     uint32_t i, n = srcmgr_nfiles(sm);
     for (i = 0; i < n; i++) {
@@ -729,7 +812,18 @@ static SrcFile *file_by_path(SrcMgr *sm, const char *path)
     return NULL;
 }
 
-static void print_flags(FILE *out, unsigned fl)
+void cindex_validate(CIndex *ix, SrcMgr *sm)
+{
+    uint32_t i;
+    for (i = 0; ix && i < ix->nfiles; i++) {
+        CIdxFile *cf = &ix->files[i];
+        SrcFile *f = cindex_srcfile(sm, cf->path);
+        cf->stale = !f || f->size != cf->size ||
+                    cindex_hash(f->buf, f->size) != cf->hash;
+    }
+}
+
+void cindex_print_flags(FILE *out, unsigned fl)
 {
     if (fl & CIX_MACRO_BODY)
         fputs(" body", out);
@@ -753,7 +847,7 @@ void cindex_dump(const CIndex *ix, SrcMgr *sm, FILE *out)
         uint32_t line = 0, col = 0;
         if (e->file != fi) {
             fi = e->file;
-            f = file_by_path(sm, ix->files[fi].path);
+            f = cindex_srcfile(sm, ix->files[fi].path);
         }
         if (f)
             srcmgr_linecol(f, f->base + e->off, &line, &col);
@@ -761,7 +855,7 @@ void cindex_dump(const CIndex *ix, SrcMgr *sm, FILE *out)
                 role_names[e->flags & CIX_ROLE],
                 kind_names[ix->decls[e->decl].kind], cindex_name(ix, e->decl),
                 e->decl);
-        print_flags(out, e->flags);
+        cindex_print_flags(out, e->flags);
         fputc('\n', out);
     }
     for (i = 0; i < ix->ndecls; i++) {
@@ -815,7 +909,7 @@ size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
         }
     }
     for (i = 0; i < ix->nfiles; i++) {
-        SrcFile *f = file_by_path(sm, ix->files[i].path);
+        SrcFile *f = cindex_srcfile(sm, ix->files[i].path);
         if (!f || f->size != ix->files[i].size ||
             cindex_hash(f->buf, f->size) != ix->files[i].hash) {
             fprintf(out, "verify: %s: hash mismatch\n", ix->files[i].path);

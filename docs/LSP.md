@@ -48,8 +48,9 @@ It also runs fast on huge generated files.
 - **Snapshots** are immutable and reference counted. Requests run on the
   protocol thread against the latest complete snapshot and never wait for
   a build; only the first build of a unit is waited for. The exception is
-  definition and declaration, which wait up to 1.5 s for the C symbol
-  index of the newest edit (see "C symbol index").
+  definition, declaration, references and documentHighlight, which wait
+  up to 1.5 s for the C symbol index of the newest edit (see "C symbol
+  index").
 - **Diagnostics** are published after every build for the open documents
   the unit covers. Errors in headers that are not open appear on the
   `#include` that leads to them.
@@ -159,7 +160,7 @@ cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
   paging on uvloop's loop.c). A halted stream now still returns
   `SRC_BARRIER` while a barrier context is open.
 
-## C symbol index (B2, phase 1)
+## C symbol index (B2, phases 1 and 2)
 
 The check phase also records a symbol index (`src/c/csymidx.c`; design
 in B2_DESIGN.md): every declaration, definition and use of a function,
@@ -179,14 +180,26 @@ is freed with it.
   stale and its events are not answered. Files absent from the snapshot
   are skipped (no line table to convert offsets).
 - **Queries:** definition answers DEF events, else DECL; declaration
-  answers DECL, else DEF (`declarationProvider`). The macro index is asked
-  first: an expanded macro at the cursor wins; a name the macro index only
-  knows by its plain identifier (a macro since `#undef`'d, `weak`), or
-  nothing, goes to the C index.
+  answers DECL, else DEF (`declarationProvider`). references answers every
+  event of the entity in this unit (its declarations too unless
+  `includeDeclaration` is false); documentHighlight the same events in the
+  requested file only, Write for a declaration or definition and Read for
+  a use. One location is given once (a declaration rather than a use
+  there). Redeclarations are one entity, each struct's fields are their
+  own, tags and ordinary names are apart, and shadowing follows C scoping.
+  A name written in a macro argument counts where it is written; a token
+  of a `#define` body is no use and is left out (its place is the body,
+  not the invocation). The macro index is asked first: an expanded macro
+  or macro parameter at the cursor wins (references and highlight then
+  answer as before; highlight gives the definitions Write and the uses
+  Read); a name the macro index only knows by its plain identifier (a
+  macro since `#undef`'d, `weak`), or nothing, goes to the C index. The
+  selection is shared with `cereal query` (`cindex_select`).
 - **Waiting (decision D1):** right after an edit the snapshot's index is
-  not ready yet. definition and declaration wait (`cond_timedwait`, at most
-  1.5 s) while the newest edit has no snapshot or its check is pending,
-  then answer from what is there: the macros alone if no index published.
+  not ready yet. definition, declaration, references and documentHighlight
+  wait (`cond_timedwait`, at most 1.5 s) while the newest edit has no
+  snapshot or its check is pending, then answer from what is there: the
+  macros alone if no index published.
 - **No index:** units over the check size limit, headers opened on their
   own, cancelled checks. C queries then return nothing; macros still work.
 - **Size (measured, x86_64):**
@@ -206,11 +219,17 @@ is freed with it.
   and the decl table; `--verify-symbols` checks that every identifier the
   checker resolved has its event and that the index is well formed
   (sorted, CSR consistent, every decl declared), excusing lines with a
-  diagnostic, and prints a `symbols:` summary line.
+  diagnostic, and prints a `symbols:` summary line. `cereal query
+  def|decl|refs|uses|highlight FILE:L:C main.c` answers a C name with the
+  same merge as the server (a second, checking run builds the index;
+  `uses` is references without declarations): one line per location,
+  `file:line:col ROLE kind name` plus the macro flags (`arg`, `body`,
+  `expansion`, `system`), write/read for highlight, and a count line when
+  several entities share the place (a `#define` body token).
 
 ## Capabilities
 
-definition and declaration, references, hover (definition, body, and
+definition and declaration, references, document highlight, hover (definition, body, and
 what the invocation under the cursor expands to), completion (the macros
 visible at the cursor), document symbols, semantic tokens (`macro`,
 `parameter`; `declaration`; whole file, a range, or a delta against the
@@ -229,8 +248,8 @@ invocation is still being typed).
   - `cereal/expandMacro` (position: the invocation's full expansion);
   - `cereal/waitIdle` (answers when no build is queued or running; a
     barrier for tests).
-- **C names:** definition and declaration (above). References, hover and
-  rename for C names are B2 phases 2 to 4.
+- **C names:** definition, declaration, references and document
+  highlight (above). Hover and rename for C names are B2 phases 3 and 4.
 
 ## Tests
 
@@ -242,7 +261,13 @@ recorded, e.g. both phases' publications of one edit), and use `waitIdle` barrie
 stay deterministic. An `{"env": {...}}` step sets the server's
 environment (`tests/lsp/csym_nocheck` uses it to turn the check off).
 `tests/lsp/csym` covers C definition and declaration for every kind,
-shadowing, macro-vs-C precedence, D1 and D2. The sessions are also run under ThreadSanitizer and
+shadowing, macro-vs-C precedence, D1 and D2; `tests/lsp/csym_refs`
+references and highlight (function, redeclarations, shadowing, parameter
+with a macro-argument use, typedef, enumerator, a field name in two
+structs, label, tags against an ordinary name, a redeclaration chain with
+a `#define` body use left out, `includeDeclaration` false, macros
+unchanged, D1); `tests/query/csym.cmd` the same merge from the command
+line. The sessions are also run under ThreadSanitizer and
 AddressSanitizer/UBSan (set `LSP_STDERR` to collect reports).
 
 ## Measurements (35 MB macro_heavy.c, 4 cores)

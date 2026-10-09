@@ -1,0 +1,55 @@
+== def csym.c:15:32
+csym.c:4:9 LIMIT
+== refs csym.c:15:32
+csym.c:4:9 definition
+csym.c:5:28 expansion in-body
+csym.c:15:32 expansion
+== highlight csym.c:4:9
+csym.c:4:9 definition
+csym.c:5:28 expansion in-body
+csym.c:15:32 expansion
+== uses csym.c:4:9
+csym.c:5:28 expansion in-body
+csym.c:15:32 expansion
+== def csym.c:15:16
+csym.c:7:12 DEF obj width
+== refs csym.c:15:16
+csym.c:7:12 DEF obj width
+csym.c:15:16 REF obj width
+== def csym.c:15:24
+csym.c:9:5 DEF obj total
+== decl csym.c:15:24
+csym.c:8:5 DECL obj total
+csym.h:2:12 DECL obj total
+== refs csym.c:15:24
+csym.c:8:5 DECL obj total
+csym.c:9:5 DEF obj total
+csym.c:15:24 REF obj total
+csym.h:2:12 DECL obj total
+== uses csym.c:15:24
+csym.c:15:24 REF obj total
+== highlight csym.c:15:24
+csym.c:8:5 write obj total
+csym.c:9:5 write obj total
+csym.c:15:24 read obj total
+== refs csym.c:11:5
+csym.c:11:5 DEF func get
+csym.h:3:5 DECL func get
+== decl csym.c:11:5
+csym.h:3:5 DECL func get
+== refs csym.c:13:13
+csym.c:13:13 DEF obj local arg
+csym.c:14:29 REF obj local arg
+== refs csym.c:10:16
+csym.c:10:16 DEF field x
+csym.c:14:20 REF field x arg
+== refs csym.c:10:8
+csym.c:10:8 DEF struct s
+csym.c:11:16 REF struct s
+csym.h:1:8 DECL struct s
+csym.h:3:16 REF struct s
+== def csym.c:6:23
+2 C entities here
+csym.c:6:23 DEF obj _t body
+== refs csym.c:6:33
+2 C entities here

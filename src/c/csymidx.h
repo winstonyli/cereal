@@ -92,6 +92,35 @@ static inline const char *cindex_name(const CIndex *ix, uint32_t decl)
 {
     return ix->strings + ix->decls[decl].name;
 }
+/* The distinct decls named at offset off of the file with this path (none
+ * if the index lacks the file or it is stale), at most max into out. */
+size_t cindex_decls_at(const CIndex *ix, const char *path, uint32_t off,
+                       uint32_t *out, size_t max);
+
+/* What cindex_select takes from the events of a set of decls (requests of
+ * B2_DESIGN.md section 6). */
+typedef enum {
+    CIQ_DEF,     /* each decl's DEF events, or its DECL events if none */
+    CIQ_DECL,    /* each decl's DECL events, or its DEF events if none */
+    CIQ_REFS,    /* every event but those spelled in a #define body (a
+                    body's tokens are not uses where they are written) */
+    CIQ_USES     /* CIQ_REFS without DECL and DEF (includeDeclaration off) */
+} CIdxQuery;
+/* The events of decls[0..nd) that q selects, as indices into ix->ev in
+ * (file, offset) order, one per location (a DECL or DEF event rather than a
+ * REF at the same place); events in stale files are left out, and so are
+ * those outside file fi unless fi < 0.  *out is malloc'd (free it). */
+size_t cindex_select(const CIndex *ix, const uint32_t *decls, size_t nd,
+                     CIdxQuery q, int fi, uint32_t **out);
+/* Marks the files whose text in sm (by path) differs from what the check
+ * read, or which sm lacks, stale. */
+void cindex_validate(CIndex *ix, SrcMgr *sm);
+/* sm's user or system file with exactly this (normalized) path, or NULL. */
+SrcFile *cindex_srcfile(SrcMgr *sm, const char *path);
+/* "DECL", "DEF", "REF"; "func", "obj", ...; " body expansion arg system" */
+const char *cindex_role_name(unsigned flags);
+const char *cindex_kind_name(unsigned kind);
+void cindex_print_flags(FILE *out, unsigned flags);
 /* --dump-symbols: every event (file:line:col ROLE kind name -> #decl), then
  * the decls.  sm: the check's, for line numbers. */
 void cindex_dump(const CIndex *ix, SrcMgr *sm, FILE *out);

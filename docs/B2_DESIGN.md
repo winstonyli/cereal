@@ -541,7 +541,7 @@ Each phase ships on its own, with its tests passing.
 | Phase | Content | Est. lines |
 |---|---|---|
 | 1 Declarations and definition (**DONE**, Round 187; ~1,320 lines: csymidx.c/h 950 including dump and verify, 370 in existing files) | csymidx core (builder, maps, finish, sort, CSR, strings); all hooks of sections 5.1-5.2; `--dump-symbols`, `--verify-symbols`; `tests/symidx`; server plumbing (`cidx`, publish, hash check, D1 wait); `IdxTarget.weak` and merge; definition and a separate `R_DECL` | ~500 |
-| 2 References and highlight | references with includeDeclaration; documentHighlight provider and capability (macros too); query `refs` | ~80 |
+| 2 References and highlight (**DONE**, Round 190; ~290 lines written, net +190, against ~250 re-estimated) | references with includeDeclaration; documentHighlight provider and capability (macros too); query `refs` | ~80 |
 | 3 Hover | `dump_decl` refactored to write a StrBuf; unit-end and finish formatting; record layout and labels; hover merge | ~120 |
 | 4 Rename | blockers 1-7, inactive scan, scope tree and conflict check, C path in prepareRename/rename | ~200 |
 | Total | | **~900** |
@@ -678,13 +678,72 @@ the implementation departs from or settles the text above:
    subtrees, quiet units and system presentation. Clean over
    `tests/check`, `tests/parse`, `tests/symidx`, cereal's sources, all of
    `bench/corpus.py` and 4716 gcc.dg and c-c++-common tests (Round 188);
-   run in `tests/run.sh` section 14.
+   run in `tests/run.sh` section 14. `bench/tools/symcov.sh` reruns the
+   Round 188 coverage (one summary line, unindexed names, exit 1 if any;
+   `--gnu11` for the second pass).
 4. **Kinds** print as `struct`, `union`, `enum` (not one `tag` kind).
 5. **Parameters:** a prototype's parameters are DECL; a body (or K&R
    declaration list) upgrades them to DEF (`csx_param_def`).
 6. **Line count:** about 1,320 lines against the ~500 estimated for
    phase 1; the four-phase total of ~900 is no longer realistic.
-7. **Deferred from phase 1:** `cereal query` C support
+7. **Re-estimate of phases 2 to 4** (made before phase 2 started, from
+   phase 1's 2.6x overrun: 1,320 lines against 500). Phase 1 overran
+   because the per-path hooks, the `--verify-symbols` tool and the server
+   plumbing were each larger than the table allowed, not because of one
+   surprise, so the same factor is applied across the board, and phase 2
+   also takes on the deferred `cereal query` C support (item 8):
+
+   | Phase | Old estimate | New estimate (source lines, tests and goldens excluded) |
+   |---|---|---|
+   | 2 References and highlight, plus query C support | ~80 | ~250 (features.c ~90, shared event selection in csymidx.c ~60, query ~90, server ~10) |
+   | 3 Hover | ~120 | ~300 (`dump_decl` to a StrBuf touches every caller; record layout) |
+   | 4 Rename | ~200 | ~500 (scope tree and conflict check were the least specified part) |
+   | Remaining total | ~400 | **~1,050**, so B2 overall about 2,400 lines |
+
+   Actuals are recorded per phase below.
+8. **Deferred from phase 1:** `cereal query` C support
    (`tests/query/csym.cmd`, test plan item 3) and `--verify-symbols`
    over `bench/corpus.py` (only zstd.c and cexpr.c were run). Hover
-   strings are not stored yet (phase 3).
+   strings are not stored yet (phase 3). Both items were done since:
+   the corpus run in Round 188, the query support in phase 2.
+
+## Phase 2 results and corrections (Round 190)
+
+Phase 2 is done (HISTORY.md Round 190; LSP.md "C symbol index"). Where
+it departs from or settles the text above:
+
+1. **Body tokens are not uses** (corrects section 6, which reported
+   MACRO_BODY events once at their spelling). references and
+   documentHighlight leave them out: the place is the `#define` body, not
+   an invocation, and every expansion of the body would point there.
+   Tokens written in a macro argument (ARG) count at their spelling, once
+   however often the parameter is expanded (the events are deduplicated
+   at finish). Pasted and synthesized names (AT_EXPANSION, placed at the
+   invocation) count. definition and declaration still answer body
+   events (a statement-expression macro's local is declared there).
+2. **One location per place.** `cindex_select` (csymidx.c, shared by the
+   server and `cereal query`) returns event indices in (file, offset)
+   order, one per location, preferring a DECL or DEF event to a REF
+   there (highlight shows Write). Several decls at one place (a body
+   token, one decl per expansion) therefore give one location; the query
+   prints a count line (`2 C entities here`). Results are no longer
+   grouped decl by decl as phase 1's definition was; for one decl the
+   order is the same.
+3. **D1** covers references and documentHighlight too (the same wait
+   condition as phase 1, item 1). `tests/lsp/csym_refs` fails without it.
+4. **Highlight for macros** (no C entity): the macro definitions are
+   Write, every other reference in the requested file Read.
+5. **`cereal query`** gains `decl`, `uses` (references without
+   declarations: the command-line form of `includeDeclaration: false`)
+   and `highlight`; `def`, `decl`, `refs`, `uses` and `highlight` answer
+   C names with the section 6 merge, from a second, checking run over the
+   unit (only when the macro answer is weak or empty). Hover and rename
+   on the command line stay macro-only until phases 3 and 4.
+6. **Shared helpers moved into csymidx.c:** `cindex_decls_at`,
+   `cindex_validate` (was server.c's) and `cindex_srcfile` (was the
+   server's `snap_file` and the dump's `file_by_path`).
+7. **Line count:** about 290 lines added and 100 removed (net +190):
+   csymidx.c/h 128, features.c 87 (68 replaced), main.c 68, server.c and
+   lsp.h 9 (24 removed). Against the re-estimate of ~250 written, about
+   15% over; against the original ~80, 3.6x. Phases 3 and 4 keep their
+   re-estimates (~300 and ~500).

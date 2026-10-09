@@ -3329,3 +3329,41 @@ with `pp-halt-in-if` under a 6 GB cap (fails on the old binary with the
 out-of-memory fatal). Gates: run.sh 1650 passed; san.sh 0 failed and 0
 findings over 600 files; verify.sh gcc.dg 3908, c-c++-common 635, cpp 285; the LSP
 sessions (both modes) under TSan: 18 passed, 0 warnings. src/c untouched.
+
+Round 190: ROADMAP B2 phase 2, references and documentHighlight for C names
+(B2_DESIGN.md "Phase 2 results and corrections"). Phases 2 to 4 were first
+re-estimated from phase 1's 2.6x overrun (~250, ~300, ~500 lines). New in
+csymidx.[ch]: `cindex_select` (a set of decls' events for definition,
+declaration, references or uses, in (file, offset) order, one per location,
+a declaration preferred to a use there; stale files and, for highlight,
+other files left out), `cindex_decls_at`, and `cindex_validate` and
+`cindex_srcfile` moved from the server. `textDocument/references` answers C
+names with the same merge as definition (a macro or macro parameter at the
+cursor wins; a weak or empty macro answer goes to C) and honours
+`includeDeclaration`; new `textDocument/documentHighlight`
+(`documentHighlightProvider`) gives the requested file's events, Write for
+declarations and definitions, Read for uses, and for macros the definitions
+Write and every other reference in the file Read. Both wait for the newest edit's index like
+definition (D1). Uses spelled in a `#define` body are left out (a correction
+to design section 6); a name in a macro argument counts once at its
+spelling. `cereal query` gains C support (`def`, `decl`, `refs`, new `uses`
+and `highlight`) from a second, checking run when the macro answer is weak
+or empty. Tests: `tests/lsp/csym_refs` (function, redeclarations, shadowing,
+parameter with a macro-argument use, typedef, enumerator, `key` in two
+structs, label, tag vs a variable of the same name, a redeclaration chain
+whose body use is left out, includeDeclaration false, macros unchanged, D1:
+fails if references do not wait), `tests/query/csym.cmd` (strong macro,
+weak macro, plain C, body token with two entities); the other transcripts
+gained `documentHighlightProvider`. About 290 lines added, 100 removed
+(net +190), against ~250 re-estimated. Gates: run.sh 1653 passed, 0
+failed; san.sh 1653 passed, 600 files, 0 findings; verify.sh gcc.dg 3908,
+c-c++-common 635, cpp 285; the LSP sessions (both modes) under TSan: 20
+passed, 0 warnings.
+
+Round 191: `bench/tools/symcov.py` (`symcov.sh`) makes the Round 188 coverage run
+durable: 4716 files, about 1.02 M events, 0 unindexed, also under `--gnu11`.
+Its first run found five segfaults in `--verify-symbols`: two rows of
+`cbuiltin_tab.h` had a signature without the `|` separator (`fegetround` was
+`"int"`, `signbit` `"int"`), and `strchr(sig, '|') + 1` dereferenced NULL in
+`cexpr_builtin_decl`. Rows now read `"int|"` and `"int|?"`; golden
+`builtin_noarg_row` (also run under `--verify-symbols` by section 14).

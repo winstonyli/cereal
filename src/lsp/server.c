@@ -449,26 +449,6 @@ static Check *check_run(Unit *u, Snapshot *s)
     return c;
 }
 
-/* Marks the index's files whose text differs from the snapshot's (changed
- * on disk between the two phases) stale. */
-static void cindex_validate(CIndex *ix, Snapshot *s)
-{
-    uint32_t i, k, n = srcmgr_nfiles(&s->tu.sm);
-    for (i = 0; i < ix->nfiles; i++) {
-        CIdxFile *cf = &ix->files[i];
-        cf->stale = true;
-        for (k = 0; k < n; k++) {
-            SrcFile *f = srcmgr_file(&s->tu.sm, k);
-            if ((f->kind == SF_USER || f->kind == SF_SYSTEM) &&
-                !strcmp(f->path, cf->path)) {
-                cf->stale = f->size != cf->size ||
-                            cindex_hash(f->buf, f->size) != cf->hash;
-                break;
-            }
-        }
-    }
-}
-
 /* ---- units --------------------------------------------------------------- */
 
 static bool has_command(const char *path)
@@ -633,8 +613,8 @@ static Check *check_unit(Unit *u, Snapshot *s)
         return NULL;
     }
     c = check_run(u, s);
-    if (c && c->cidx)
-        cindex_validate(c->cidx, s);
+    if (c && c->cidx) /* files changed on disk between the phases: stale */
+        cindex_validate(c->cidx, &s->tu.sm);
     fatal_trap_pop(&tr);
     return c;
 }
@@ -905,6 +885,8 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     json_bool(&w, true);
     json_key(&w, "referencesProvider");
     json_bool(&w, true);
+    json_key(&w, "documentHighlightProvider");
+    json_bool(&w, true);
     json_key(&w, "hoverProvider");
     json_bool(&w, true);
     json_key(&w, "completionProvider");
@@ -972,7 +954,7 @@ static void initialize(const JsonValue *id, const JsonValue *params)
 /* ---- requests ------------------------------------------------------------ */
 
 typedef enum {
-    R_DEF, R_DECL, R_REFS, R_HOVER, R_COMPLETION, R_SYMBOLS, R_SEMTOK,
+    R_DEF, R_DECL, R_REFS, R_HIGHLIGHT, R_HOVER, R_COMPLETION, R_SYMBOLS, R_SEMTOK,
     R_SEMTOK_DELTA, R_SEMTOK_RANGE, R_FOLDING,
     R_PREP_RENAME, R_RENAME, R_PREP_CALLS, R_IN_CALLS, R_OUT_CALLS,
     R_SIGHELP, R_EXPAND
@@ -985,6 +967,7 @@ static const struct {
     {"textDocument/definition", R_DEF},
     {"textDocument/declaration", R_DECL},
     {"textDocument/references", R_REFS},
+    {"textDocument/documentHighlight", R_HIGHLIGHT},
     {"textDocument/hover", R_HOVER},
     {"textDocument/completion", R_COMPLETION},
     {"textDocument/documentSymbol", R_SYMBOLS},
@@ -1036,7 +1019,7 @@ static void handle_request(const JsonValue *id, ReqKind k,
     u = d->unit;
     while (!u->snap && !S.stop) /* first build of this unit */
         cond_wait(&S.done, &S.m);
-    if (k == R_DEF || k == R_DECL) {
+    if (k == R_DEF || k == R_DECL || k == R_REFS || k == R_HIGHLIGHT) {
         /* the C index comes with the check of the newest edit's snapshot:
          * wait for it a little (B2 decision D1), then answer from what is
          * there (the macros alone if the check has not published) */
@@ -1071,6 +1054,7 @@ static void handle_request(const JsonValue *id, ReqKind k,
         case R_DEF: lsp_definition(&r, &w); break;
         case R_DECL: lsp_declaration(&r, &w); break;
         case R_REFS: lsp_references(&r, &w); break;
+        case R_HIGHLIGHT: lsp_document_highlight(&r, &w); break;
         case R_HOVER: lsp_hover(&r, &w); break;
         case R_COMPLETION: lsp_completion(&r, &w); break;
         case R_SYMBOLS: lsp_document_symbols(&r, &w); break;

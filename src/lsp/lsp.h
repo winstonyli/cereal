@@ -119,6 +119,7 @@ typedef struct Req {
 void lsp_definition(Req *r, JsonWriter *w);
 void lsp_declaration(Req *r, JsonWriter *w);
 void lsp_references(Req *r, JsonWriter *w);
+void lsp_document_highlight(Req *r, JsonWriter *w);
 void lsp_hover(Req *r, JsonWriter *w);
 void lsp_completion(Req *r, JsonWriter *w);
 void lsp_document_symbols(Req *r, JsonWriter *w);
