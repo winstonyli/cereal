@@ -9,6 +9,31 @@ static void pos_arg_str(Checker *c, uint32_t arg, char *buf, size_t n);
 
 /* The format types gcc's C front end knows (c-format.cc format_types, minus
  * the ones for other targets), besides printf and scanf. */
+/* The format attribute kinds cformat.c checks: 1 printf, 2 scanf, 3 strftime,
+ * 4 strfmon (0: any other). */
+static int format_kind(const char *ar)
+{
+    static const char *const nm[] = {"printf", "scanf", "strftime", "strfmon"};
+    int k;
+    for (k = 0; k < 4; k++)
+        if (!strcmp(ar, nm[k]) ||
+            (!strncmp(ar, "gnu_", 4) && !strcmp(ar + 4, nm[k])))
+            return k + 1;
+    return 0;
+}
+
+enum { PA_INT, PA_STR, PA_REST };   /* what positional_arg's parameter must be */
+
+/* A pointer to (any qualification of) plain char. */
+static bool is_char_ptr(Checker *c, TypeId t)
+{
+    TypeId b;
+    if (type_ckind(TT, t) != TY_PTR)
+        return false;
+    b = type_canon(TT, type_base(TT, type_canon(TT, t)));
+    return type_kind(TT, TYPE_UNQUAL(b)) == TY_CHAR;
+}
+
 static bool format_type_known(const char *n)
 {
     static const char *const ok[] = {"strftime", "gnu_strftime", "strfmon",
@@ -828,18 +853,11 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             char ar[128];
             int kind = 0;
             attr_norm(tstr(c, c->nodes[ak.p[0]].tok), ar, sizeof ar);
-            if (!strcmp(ar, "printf") || !strcmp(ar, "gnu_printf"))
-                kind = 1;
-            else if (!strcmp(ar, "scanf") || !strcmp(ar, "gnu_scanf"))
-                kind = 2;
-            else if (!strcmp(ar, "strftime") || !strcmp(ar, "gnu_strftime"))
-                kind = 3;
-            else if (!strcmp(ar, "strfmon") || !strcmp(ar, "gnu_strfmon"))
-                kind = 4;
-            else if (!strcmp(ar, "NSString"))
+            kind = format_kind(ar);
+            if (!kind && !strcmp(ar, "NSString"))
                 cwarn(c, cdecl_line_start_loc(c, c->nodes[item].tok), "format=", "'NSString' is "
                       "only allowed in Objective-C dialects");
-            else if (!format_type_known(ar))
+            else if (!kind && !format_type_known(ar))
                 cwarn(c, cdecl_line_start_loc(c, c->nodes[item].tok), "format=", "'%s' is an "
                       "unrecognized format function type", ar);
             if (kind) {
@@ -925,7 +943,6 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 } else {
                     a->vector_size = (uint64_t)v;
                     a->vs_seen = true;
-                    a->vs_loc = il;
                 }
             }            else if (type_ckind(TT, c->ty[arg]) != TY_ERROR) {
                 char val[96];
@@ -1026,7 +1043,7 @@ TypeId int_of_size(Checker *c, unsigned bytes, bool uns)
 }
 
 /* The mode and vector_size attributes applied to a base type. */
-TypeId attr_apply_type(Checker *c, TypeId t, const Attrs *a)
+TypeId attr_apply_type(Checker *c, TypeId t, const Attrs *a, SrcLoc at)
 {
     if (a->has_mode && !(type_ckind(TT, t) == TY_ERROR)) {
         unsigned q = TYPE_QUALS(t);
@@ -1054,18 +1071,18 @@ TypeId attr_apply_type(Checker *c, TypeId t, const Attrs *a)
             return t;
         if (!(type_is_integer(TT, el) || type_is_float(TT, el)) ||
             type_kind(TT, el) == TY_BOOL) {
-            cerror(c, a->vs_loc, "invalid vector type for attribute "
+            cerror(c, at, "invalid vector type for attribute "
                    "'vector_size'");
         } else if (a->vector_size == 0) {
-            cerror(c, a->vs_loc, "zero vector size");
+            cerror(c, at, "zero vector size");
         } else if ((esz = type_size(TT, el, &ok)) && a->vector_size % esz) {
-            cerror(c, a->vs_loc, "vector size not an integral multiple of "
+            cerror(c, at, "vector size not an integral multiple of "
                    "component size");
         } else if (((a->vector_size / esz) & (a->vector_size / esz - 1)) != 0) {
-            cerror(c, a->vs_loc, "number of vector components %llu not a "
+            cerror(c, at, "number of vector components %llu not a "
                    "power of two", (unsigned long long)(a->vector_size / esz));
         } else if (a->vector_size / esz > 2147483646u) {
-            cerror(c, a->vs_loc, "number of vector components %llu exceeds "
+            cerror(c, at, "number of vector components %llu exceeds "
                    "2147483646", (unsigned long long)(a->vector_size / esz));
         } else {
             t = type_vector(TT, TYPE_UNQUAL(el), a->vector_size) | q;
@@ -1097,7 +1114,6 @@ void attrs_merge(Attrs *to, const Attrs *from)
     if (from->vs_seen) {
         to->vector_size = from->vector_size;
         to->vs_seen = true;
-        to->vs_loc = from->vs_loc;
         to->vs_dup = from->vs_dup;
     }
     to->deprecated |= from->deprecated;
@@ -1396,7 +1412,7 @@ static bool access_check(Checker *c, const uint32_t *arg, uint32_t n, SrcLoc il,
 /* c-attribs.cc positional_argument for one argument of alloc_align or
  * alloc_size on a function of type fty; false when it warned. */
 static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno,
-                           TypeId fty, SrcLoc loc)
+                           TypeId fty, SrcLoc loc, int mode, int64_t *posout)
 {
     char pre[24] = "", val[96];
     TypeId t = c->ty[arg], pt;
@@ -1422,12 +1438,16 @@ static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno
         return false;
     }
     v = cexpr_sval(c, arg);
+    if (posout)
+        *posout = v;
+    if (!v && mode == PA_REST)      /* format's 0: no arguments to check */
+        return true;
     if (!v) {
         cwarn(c, loc, "attributes", "'%s' attribute argument %svalue '%s' does "
               "not refer to a function parameter", name, pre, val);
         return false;
     }
-    if (type_ent(TT, fty)->flags & TF_NOPROTO)
+    if ((type_ent(TT, fty)->flags & TF_NOPROTO) || mode == PA_REST)
         return true;
     n = type_ent(TT, fty)->n;
     pos = (uint64_t)v;
@@ -1437,13 +1457,64 @@ static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno
         return false;
     }
     pt = type_params(TT, fty)[pos - 1];
-    if (!type_is_integer(TT, pt) ||
+    if (mode == PA_STR) {           /* handle_format_attribute: a char pointer */
+        if (!is_char_ptr(c, pt)) {
+            cerror(c, loc, "'%s' attribute argument %svalue '%s' refers to "
+                   "parameter type %s", name, pre, val, type_q(TT, pt));
+            return false;
+        }
+    } else if (!type_is_integer(TT, pt) ||
         type_kind(TT, TYPE_UNQUAL(type_canon(TT, pt))) == TY_BOOL) {
         cwarn(c, loc, "attributes", "'%s' attribute argument %svalue '%s' "
               "refers to parameter type %s", name, pre, val, type_q(TT, pt));
         return false;
     }
     return true;
+}
+
+/* handle_format_attribute / handle_format_arg_attribute on a function of type
+ * fty: the format string position names a char pointer, the first argument
+ * position (0 or) the `...`, and format_arg returns a string. */
+static void format_attr_check(Checker *c, const char *name, const uint32_t *ak,
+                              uint32_t n, TypeId fty, SrcLoc loc)
+{
+    bool fa = !strcmp(name, "format_arg");
+    int64_t first = 0;
+    int kind = 0;
+    if (fa ? n != 1 : n != 3)
+        return;
+    if (!fa) {
+        char ar[128];
+        if (ntag(c, ak[0]) != N_IDENT)
+            return;
+        attr_norm(tstr(c, c->nodes[ak[0]].tok), ar, sizeof ar);
+        kind = format_kind(ar);
+        if (!kind && !format_type_known(ar))
+            return;                 /* warned about when the attribute is read */
+    }
+    if (!positional_arg(c, name, ak[fa ? 0 : 1], fa ? 0 : 2, fty, loc, PA_STR,
+                        NULL))
+        return;
+    if (fa) {
+        TypeId rt = type_base(TT, fty);
+        if (!is_char_ptr(c, rt))
+            cerror(c, loc, "function does not return string type");
+        return;
+    }
+    if (!positional_arg(c, name, ak[2], 3, fty, loc, PA_REST, &first) || !first ||
+        (type_ent(TT, fty)->flags & TF_NOPROTO))
+        return;
+    {
+        unsigned np = type_ent(TT, fty)->n;
+        bool var = type_ent(TT, fty)->flags & TF_VARIADIC;
+        if (!var || first <= (int64_t)np)
+            cerror(c, loc, "'format' attribute argument 3 value '%lld' does "
+                   "not refer to a variable argument list", (long long)first);
+        else if (first != (int64_t)np + 1)
+            cerror(c, loc, "argument to be formatted is not '...'");
+        else if (kind == 3)
+            cerror(c, loc, "strftime formats cannot format arguments");
+    }
 }
 
 /* handle_assume_aligned_attribute, for a function of type fty. */
@@ -2184,11 +2255,19 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                           "function returning 'void'", name);
                 continue;
             }
+            if ((!strcmp(name, "format") || !strcmp(name, "format_arg")) &&
+                type_ckind(TT, fty) == TY_FUNC) {
+                kids_get(c, it.p[q], &ak);
+                format_attr_check(c, name, ak.p, ak.n, fty, iloc(c, tok));
+                kids_free(&ak);
+                continue;
+            }
             if (!strncmp(name, "fd_arg", 6) && type_ckind(TT, fty) == TY_FUNC) {
                 /* handle_fd_arg_attribute: one integer parameter position */
                 kids_get(c, it.p[q], &ak);
                 if (ak.n == 1)
-                    (void)positional_arg(c, name, ak.p[0], 0, fty, iloc(c, tok));
+                    (void)positional_arg(c, name, ak.p[0], 0, fty, iloc(c, tok),
+                                         PA_INT, NULL);
                 kids_free(&ak);
                 continue;
             }
@@ -2288,7 +2367,8 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 } else {
                     for (i = 0; i < ak.n && ok; i++)
                         ok = positional_arg(c, name, ak.p[i],
-                                            ak.n > 1 ? (int)i + 1 : 0, fty, loc);
+                                            ak.n > 1 ? (int)i + 1 : 0, fty, loc,
+                                            PA_INT, NULL);
                     if (ok && alloc_name && !alloc_via_ptr)
                         alloc_redecl(c, it.p[q], name, loc);
                 }

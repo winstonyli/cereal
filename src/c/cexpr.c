@@ -835,6 +835,8 @@ static TypeId bt_type(Checker *c, const char *s, size_t n)
         n--;
     while (n && *s == ' ')
         s++, n--;
+    if (n > 6 && !strncmp(s + n - 6, " const", 6))   /* "char * const" */
+        return type_qual(bt_type(c, s, n - 6), TQ_CONST);
     if (n > 6 && !strncmp(s, "const ", 6)) {
         cst = true;
         s += 6;
@@ -1598,6 +1600,13 @@ static void e_string(Checker *c, uint32_t i)
 
 /* ---- identifiers ------------------------------------------------------------- */
 
+/* The __builtin___ names gcc defines: the fortify family and clear_cache. */
+static bool builtin3_known(const char *s)
+{
+    size_t n = strlen(s);
+    return !strcmp(s, "clear_cache") || (n > 4 && !strcmp(s + n - 4, "_chk"));
+}
+
 static bool builtin_name(const char *s)
 {
     return !strncmp(s, "__builtin_", 10) || !strncmp(s, "__sync_", 7) ||
@@ -1907,7 +1916,7 @@ static void e_ident(Checker *c, uint32_t i)
             static const char *const ex[] = {
                 "nonnull", "aligned", "vector_size", "warn_if_not_aligned",
                 "alloc_size", "alloc_align", "assume_aligned", "malloc",
-                "fallthrough", "constructor", "destructor"};
+                "fallthrough", "constructor", "destructor", "format_arg"};
             size_t q;
             if (al > 4 && !strncmp(an, "__", 2) && !strncmp(an + al - 2, "__", 2)) {
                 an += 2;
@@ -1939,6 +1948,11 @@ static void e_ident(Checker *c, uint32_t i)
                 c->ef[i] = EF_ADDRLV;
                 return;
             }
+        }
+        if (is_callee(c, i) && !strncmp(name, "__builtin___", 12) &&
+            !builtin3_known(name + 12)) {     /* any other is implicit */
+            implicit_decl(c, i, id);
+            return;
         }
         if (builtin_name(name) || (p != NO_NODE && ntag(c, p) == N_ATTR_ITEM)) {
             if (builtin_name(name))

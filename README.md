@@ -50,7 +50,7 @@ docs/PARALLEL.md.
 ## Parity with gcc
 
 The checker is tested against gcc-13's own testsuite: on the files it can run,
-3866 of 3910 in gcc.dg (C99, C11 and C17 tests) and 634 of 636 in c-c++-common report the same
+3908 of 3910 in gcc.dg (C99, C11 and C17 tests) and 634 of 636 in c-c++-common report the same
 diagnostics as gcc (message, line and column). The testsuite is not part of
 this repository (it is GPL); clone it yourself:
 

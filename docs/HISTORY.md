@@ -3165,3 +3165,43 @@ EF_SIDE; regenerated (564 lines), which also gives the missing "statement with
 no effect" for them. Golden: builtin_fold_ice (silent under gcc-13 at c11
 -pedantic-errors and c99 -pedantic). gcc.dg 3904, c-c++-common 634, cpp 285
 identical (unchanged); tests/run.sh 1613 passed.
+
+Round 184: the last gcc.dg parity diffs (gcc.dg identical 3904 -> 3908,
+c-c++-common 634, cpp 285; tests 1621). Four were front-end gaps, each fixed
+once in the shared place; two (Darwin-only tests that gcc-13 runs on Linux)
+fell out of the first two:
+- Built-in parameter types (`bt_type`, cexpr.c): a trailing ` const` after a
+  pointer ("char * const*" in execv/execve/execvp) was parsed as an error type
+  and every call got "passing argument 2 ... incompatible pointer type"
+  (Wstringop-overflow-22). Golden builtin_const_ptr_param.
+- The position of every `vector_size` diagnostic (pr100547): gcc applies the
+  specifiers' attributes when the declarator is done, so the error sits at
+  input_location with the parser's lookahead at the token after the
+  declarator, i.e. the first token of that token's line (`iloc`). It was the
+  attribute's own line. `attr_apply_type` now takes that location from its
+  three callers (`vs_loc` is gone); the specifier path finds the declarator end
+  with `declarator_end` in cspec.c. Probed against gcc-13 with `;`, `,`, `=`,
+  `)` as the lookahead and with the declaration split over lines. Golden
+  vector_size_loc.
+- `format` / `format_arg` against the function type (new `format_attr_check`
+  in cattr.c, through `positional_arg` which gained a mode): the format-string
+  parameter must be a pointer to plain char ("refers to parameter type", an
+  error; `unsigned char *`, `void *`, `CFStringRef`, `char * const*` all fail),
+  the first-argument position must be 0 or the `...` ("does not refer to a
+  variable argument list", "argument to be formatted is not '...'",
+  "strftime formats cannot format arguments"), and `format_arg` must return a
+  char pointer ("function does not return string type"). Position problems
+  warn (-Wattributes) like alloc_size's. `format_kind` is shared with the
+  attribute reader. `format_arg` arguments are now evaluated like the other
+  expression attributes ("undeclared here"). This closes
+  darwin-cfstring-format-1 (CFString is an unrecognized archetype on Linux, so
+  `CFStringRef` parameters are errors). Golden format_attr_params.
+- A call of an unknown `__builtin___X` name is an implicit declaration
+  (the fortify `_chk` family and `__builtin___clear_cache` are the known ones);
+  closes pr105522 (`__builtin___CFStringMakeConstantString`, with the
+  int-to-pointer cast warnings). Other unknown `__builtin_*` names are still
+  silent: the special built-ins are dispatched by name in `e_call` after the
+  callee is visited, so telling them apart from unknown ones needs that list
+  (parked; gcc also adds a "did you mean" hint). Golden builtin3_implicit.
+Not fixable in a front end (STATUS "Open differences"): pr56355-1 and
+pr83844 need fold-const.

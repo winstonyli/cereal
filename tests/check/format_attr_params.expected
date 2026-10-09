@@ -1,0 +1,57 @@
+format_attr_params.c:2:1: error: 'format' attribute argument 2 value '1' refers to parameter type 'unsigned char *'
+    2 | int a1 (unsigned char *f, ...) __attribute__((format(printf, 1, 2)));
+      | ^
+format_attr_params.c:3:1: error: 'format' attribute argument 2 value '1' refers to parameter type 'const char * const*'
+    3 | int a2 (const char *const *f, ...) __attribute__((format(printf, 1, 2)));
+      | ^
+format_attr_params.c:5:1: error: 'format' attribute argument 2 value '1' refers to parameter type 'SRef' {aka 'const struct S *'}
+    5 | int a4 (SRef f, ...) __attribute__((format(printf, 1, 2)));
+      | ^
+format_attr_params.c:6:1: error: 'format' attribute argument 2 value '1' refers to parameter type 'long int'
+    6 | int a5 (long f, ...) __attribute__((format(printf, 1, 2)));
+      | ^
+format_attr_params.c:7:1: error: 'format' attribute argument 3 value '3' does not refer to a variable argument list
+    7 | int a6 (const char *f, int d) __attribute__((format(printf, 1, 3)));
+      | ^
+format_attr_params.c:8:1: error: argument to be formatted is not '...'
+    8 | int a7 (const char *f, ...) __attribute__((format(printf, 1, 4)));
+      | ^
+format_attr_params.c:9:1: error: 'format' attribute argument 3 value '2' does not refer to a variable argument list
+    9 | int a8 (const char *f, int d, ...) __attribute__((format(printf, 1, 2)));
+      | ^
+format_attr_params.c:11:1: warning: 'format' attribute argument 2 value '3' exceeds the number of function parameters 2 [-Wattributes]
+   11 | int b1 (const char *f, int d) __attribute__((format(printf, 3, 4)));
+      | ^
+format_attr_params.c:12:1: error: strftime formats cannot format arguments
+   12 | int b2 (const char *f, ...) __attribute__((format(strftime, 1, 2)));
+      | ^
+format_attr_params.c:15:1: error: 'format' attribute argument 3 value '1' does not refer to a variable argument list
+   15 | int b5 (const char *f, ...) __attribute__((format(printf, 1, 1)));
+      | ^
+format_attr_params.c:16:1: warning: 'format' attribute argument 3 has type 'double' [-Wattributes]
+   16 | int b6 (const char *f, ...) __attribute__((format(printf, 1, 1.0)));
+      | ^
+format_attr_params.c:17:1: warning: 'NoSuchKind' is an unrecognized format function type [-Wformat=]
+   17 | int b7 (const char *f, ...) __attribute__((format(NoSuchKind, 1, 2)));
+      | ^
+format_attr_params.c:18:1: error: 'format_arg' attribute argument value '1' refers to parameter type 'int'
+   18 | int c1 (int f) __attribute__((format_arg(1)));
+      | ^
+format_attr_params.c:19:1: error: 'format_arg' attribute argument value '1' refers to parameter type 'SRef' {aka 'const struct S *'}
+   19 | char *c2 (SRef f) __attribute__((format_arg(1)));
+      | ^
+format_attr_params.c:21:1: error: function does not return string type
+   21 | unsigned char *c4 (const char *f) __attribute__((format_arg(1)));
+      | ^
+format_attr_params.c:22:1: error: function does not return string type
+   22 | int c5 (const char *f) __attribute__((format_arg(1)));
+      | ^
+format_attr_params.c:23:1: error: function does not return string type
+   23 | int c6 () __attribute__((format_arg(1)));
+      | ^
+format_attr_params.c:24:51: error: 'd' undeclared here (not in a function)
+   24 | int c7 (int d, char *f) __attribute__((format_arg(d)));
+      |                                                   ^
+format_attr_params.c:24:1: warning: 'format_arg' attribute argument is invalid [-Wattributes]
+   24 | int c7 (int d, char *f) __attribute__((format_arg(d)));
+      | ^

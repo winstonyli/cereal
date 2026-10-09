@@ -445,6 +445,33 @@ static void add_type_whole(Checker *c, Spec *s, TypeId t, unsigned kind,
 }
 
 /* finish_declspecs: the type the words and modifiers name. */
+/* The token after the first declarator that follows tok: where the parser's
+ * lookahead is when gcc applies the specifiers' attributes to the type. */
+static uint32_t declarator_end(Checker *c, uint32_t tok)
+{
+    int depth = 0;
+    uint32_t k;
+    for (k = tok; k < c->u->ntoks; k++) {
+        const Tok *t = &c->u->toks[k].t;
+        if (t->kind != TK_PUNCT)
+            continue;
+        switch (t->punct) {
+        case P_LPAREN: case P_LBRACKET: depth++; break;
+        case P_RBRACKET: depth--; break;
+        case P_RPAREN:
+            if (depth-- <= 0)
+                return k;
+            break;
+        case P_SEMI: case P_COMMA: case P_ASSIGN: case P_LBRACE:
+            if (depth <= 0)
+                return k;
+            break;
+        default: break;
+        }
+    }
+    return c->u->ntoks ? c->u->ntoks - 1 : 0;
+}
+
 static void finish_declspecs(Checker *c, Spec *s)
 {
     TypeId t = ERRT;
@@ -732,7 +759,8 @@ void specs_visit(Checker *c, uint32_t i)
     if (s.attrs.aligned > s.align)
         s.align = s.attrs.aligned;
     if (s.attrs.has_mode || s.attrs.vs_seen)
-        s.ty = attr_apply_type(c, s.ty, &s.attrs);
+        s.ty = attr_apply_type(c, s.ty, &s.attrs,
+                             iloc(c, declarator_end(c, s.tok1)));
     if (type_ckind(TT, s.ty) == TY_ERROR)
         s.error = true;
     c->ty[i] = s.ty;

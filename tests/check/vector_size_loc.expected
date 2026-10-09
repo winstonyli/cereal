@@ -1,0 +1,12 @@
+vector_size_loc.c:4:5: error: number of vector components 4294967296 exceeds 2147483646
+    4 |     ;
+      |     ^
+vector_size_loc.c:6:5: error: vector size not an integral multiple of component size
+    6 |     3))) F;
+      |     ^
+vector_size_loc.c:7:3: error: number of vector components 6 not a power of two
+    7 |   int __attribute__((vector_size(24))) q;
+      |   ^
+vector_size_loc.c:10:3: error: invalid vector type for attribute 'vector_size'
+   10 |   ))) B;
+      |   ^

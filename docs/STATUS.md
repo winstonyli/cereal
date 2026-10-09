@@ -14,11 +14,11 @@ in [ROADMAP.md](ROADMAP.md).
 - An index and LSP server over the same engine (`cereal index|query|lsp`).
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
-- gcc.dg: 3904 of 3910 files run give the same diagnostics as gcc (message,
-  line and column); 6 differ.
+- gcc.dg: 3908 of 3910 files run give the same diagnostics as gcc (message,
+  line and column); 2 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 285 of 285 identical. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1613 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 595 files.
+- 1621 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 595 files.
 - uvloop's `loop.c` checks in about 3.85 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -41,19 +41,18 @@ bench/tools/corp.sh DIR [-IDIR...]  # per-file cereal vs gcc-13 on any C sources
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
 callgrind) in parallel; see its header for the expected numbers.
 
-## Open differences (gcc.dg 6, c-c++-common 2)
+## Open differences (gcc.dg 2, c-c++-common 2)
 Needs gcc's optimizer or middle end (out of reach for a front end):
-pr56355-1 (-Wstrict-overflow), pr83844 (alignment of a VLA-offset member).
+pr56355-1 (-Wstrict-overflow=4 at -O2: the warning comes from fold-const's
+tree_expr_nonnegative_warnv_p on `abs (i * i)`), pr83844 (alignment of a
+VLA-offset member: stor-layout folds the byte offset `n * 4 + 8` to
+`((sizetype)(n) + 2) * 4` and prints that tree).
+c-c++-common: dump-ada-spec-14 (gcc's Ada dumper), unroll-5 (see below).
 
-Darwin / Objective-C targets (the expected output comes from a target gcc
-does not model on Linux): darwin-cfstring-format-1, pr105522.
 
-
-Round 182, latest verify (gcc-13): gcc.dg 3904 of 3910 identical, c-c++-common 634 of 636,
-cpp 285 of 285; `tests/run.sh` 1613 passed.  Remaining gcc.dg diffs: access
-attribute "refers to parameter type" (3 variants), vector components
-4294967296 limit (also in c-c++-common), implicit-declaration/int-to-pointer
-cast, signed-overflow, if-not-aligned, incompatible-pointer-types extras.
+Round 184, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 634 of 636,
+cpp 285 of 285; `tests/run.sh` 1621 passed.  Remaining gcc.dg diffs: pr56355-1,
+pr83844 (above).
 Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - `char * const _Atomic c` parameter of main prints as `char * _Atomic`
   (gcc `char * _Atomic const`): the parameter type loses const.
@@ -65,8 +64,15 @@ Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - _FloatN builtin rows only checked through the implicit-call harness
   (bench bt_gen); `-std=c2x` and constant-expression visibility unchecked.
 
-Parked front-end gaps (reasons in HISTORY Rounds 172 to 175):
-- pr100547: the position of the `vector_size` error; no single rule found.
+Parked front-end gaps (reasons in HISTORY Rounds 172 to 175 and 184):
+- `vector_size` errors are reported once per declaration; gcc reports once per
+  declarator (`typedef int __attribute__((vector_size(0))) V, W;` gives two),
+  and inside a one-line `struct { ... }` it uses the `{` as the position.
+- `format(printf, f, 2)` with an undeclared name in the attribute: gcc prints
+  `'f' undeclared here (not in a function)` (cereal does so for `format_arg`
+  and the other expression attributes, but not for `format`, whose first
+  argument is an identifier).
+- pr56355-1, pr83844: fold-const results, see Open differences.
 - unroll-5: `#pragma GCC unroll j` with a non-constant `j` needs the argument
   judged by the checker, not the text scanner.
 - dump-ada-spec-14: needs `-fdump-ada-spec` (gcc's Ada dumper).

@@ -1313,7 +1313,7 @@ void cdecl_member_visit(Checker *c, uint32_t i)
     memset(&a, 0, sizeof a);
     attrs_of_children(c, i, &a);
     if (a.has_mode || a.vs_seen)
-        g.ty = attr_apply_type(c, g.ty, &a);
+        g.ty = attr_apply_type(c, g.ty, &a, iloc(c, ltok));
     attrs_unknown_emit(c, &sp.attrs, ltok);
     if (top != NO_NODE)
         ptr_type_attrs(c, top, g.ty, ltok, &a);

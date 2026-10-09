@@ -1,0 +1,12 @@
+builtin3_implicit.c:2:48: warning: implicit declaration of function '__builtin___CFStringMakeConstantString' [-Wimplicit-function-declaration]
+    2 | const void *keys[] = { (void *) ((CFStringRef) __builtin___CFStringMakeConstantString ("a")) };
+      |                                                ^
+builtin3_implicit.c:2:34: warning: cast to pointer from integer of different size [-Wint-to-pointer-cast]
+    2 | const void *keys[] = { (void *) ((CFStringRef) __builtin___CFStringMakeConstantString ("a")) };
+      |                                  ^
+builtin3_implicit.c:2:24: error: initializer element is not constant
+    2 | const void *keys[] = { (void *) ((CFStringRef) __builtin___CFStringMakeConstantString ("a")) };
+      |                        ^
+builtin3_implicit.c:2:24: note: (near initialization for 'keys[0]')
+    2 | const void *keys[] = { (void *) ((CFStringRef) __builtin___CFStringMakeConstantString ("a")) };
+      |                        ^

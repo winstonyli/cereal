@@ -2271,7 +2271,7 @@ static void declared_visit(Checker *c, uint32_t i)
     decl_attrs(c, idecl, &a);
     c->attr_fty = 0;
     if (a.has_mode || a.vs_seen) {
-        s.ty = attr_apply_type(c, s.ty, &a);
+        s.ty = attr_apply_type(c, s.ty, &a, il);
         g.ty = s.ty;
     }
     /* noreturn on a pointer to function qualifies the function type
