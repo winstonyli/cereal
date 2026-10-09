@@ -2939,3 +2939,10 @@ definition of macro" for a *parse* error at a token that came from a
 parameter (`G(.)` -> "expected expression before '.'" at the argument, note
 at the body parameter); cereal prints "in expansion of macro" at the use.
 Notes are not compared by verify.sh; parked.
+
+Round 175: a goto into the scope of a pointer to a typedef'd VLA. gcc declares
+a nameless declaration for each pointer whose target is variably modified
+only when the VLA is written in that declarator (`int (*p)[a]`); through a
+typedef name (`A *p`, `B p`) the typedef's own declaration already counts, so
+no extra error. `cstmt.c` stops the nameless-declaration walk at a typedef
+(`pr108375-2.c` duplicate error). Golden `misc_267`. gcc.dg 3739/3744.

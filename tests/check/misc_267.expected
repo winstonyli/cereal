@@ -1,0 +1,153 @@
+misc_267.c:1:18: error: jump into scope of identifier with variably modified type
+    1 | void f1(int a) { goto x; typedef int A[a]; A *p[2]; x:; }
+      |                  ^
+misc_267.c:1:53: note: label 'x' defined here
+    1 | void f1(int a) { goto x; typedef int A[a]; A *p[2]; x:; }
+      |                                                     ^
+misc_267.c:1:47: note: 'p' declared here
+    1 | void f1(int a) { goto x; typedef int A[a]; A *p[2]; x:; }
+      |                                               ^
+misc_267.c:1:18: error: jump into scope of identifier with variably modified type
+    1 | void f1(int a) { goto x; typedef int A[a]; A *p[2]; x:; }
+      |                  ^
+misc_267.c:1:53: note: label 'x' defined here
+    1 | void f1(int a) { goto x; typedef int A[a]; A *p[2]; x:; }
+      |                                                     ^
+misc_267.c:1:38: note: 'A' declared here
+    1 | void f1(int a) { goto x; typedef int A[a]; A *p[2]; x:; }
+      |                                      ^
+misc_267.c:2:18: error: jump into scope of identifier with variably modified type
+    2 | void f2(int a) { goto x; typedef int A[a]; A **p; x:; }
+      |                  ^
+misc_267.c:2:51: note: label 'x' defined here
+    2 | void f2(int a) { goto x; typedef int A[a]; A **p; x:; }
+      |                                                   ^
+misc_267.c:2:48: note: 'p' declared here
+    2 | void f2(int a) { goto x; typedef int A[a]; A **p; x:; }
+      |                                                ^
+misc_267.c:2:18: error: jump into scope of identifier with variably modified type
+    2 | void f2(int a) { goto x; typedef int A[a]; A **p; x:; }
+      |                  ^
+misc_267.c:2:51: note: label 'x' defined here
+    2 | void f2(int a) { goto x; typedef int A[a]; A **p; x:; }
+      |                                                   ^
+misc_267.c:2:48: note: '({anonymous})' declared here
+    2 | void f2(int a) { goto x; typedef int A[a]; A **p; x:; }
+      |                                                ^
+misc_267.c:2:18: error: jump into scope of identifier with variably modified type
+    2 | void f2(int a) { goto x; typedef int A[a]; A **p; x:; }
+      |                  ^
+misc_267.c:2:51: note: label 'x' defined here
+    2 | void f2(int a) { goto x; typedef int A[a]; A **p; x:; }
+      |                                                   ^
+misc_267.c:2:38: note: 'A' declared here
+    2 | void f2(int a) { goto x; typedef int A[a]; A **p; x:; }
+      |                                      ^
+misc_267.c:3:18: error: jump into scope of identifier with variably modified type
+    3 | void f3(int a) { goto x; typedef int (*B)[a]; B p; x:; }
+      |                  ^
+misc_267.c:3:52: note: label 'x' defined here
+    3 | void f3(int a) { goto x; typedef int (*B)[a]; B p; x:; }
+      |                                                    ^
+misc_267.c:3:49: note: 'p' declared here
+    3 | void f3(int a) { goto x; typedef int (*B)[a]; B p; x:; }
+      |                                                 ^
+misc_267.c:3:18: error: jump into scope of identifier with variably modified type
+    3 | void f3(int a) { goto x; typedef int (*B)[a]; B p; x:; }
+      |                  ^
+misc_267.c:3:52: note: label 'x' defined here
+    3 | void f3(int a) { goto x; typedef int (*B)[a]; B p; x:; }
+      |                                                    ^
+misc_267.c:3:40: note: 'B' declared here
+    3 | void f3(int a) { goto x; typedef int (*B)[a]; B p; x:; }
+      |                                        ^
+misc_267.c:3:18: error: jump into scope of identifier with variably modified type
+    3 | void f3(int a) { goto x; typedef int (*B)[a]; B p; x:; }
+      |                  ^
+misc_267.c:3:52: note: label 'x' defined here
+    3 | void f3(int a) { goto x; typedef int (*B)[a]; B p; x:; }
+      |                                                    ^
+misc_267.c:3:40: note: '({anonymous})' declared here
+    3 | void f3(int a) { goto x; typedef int (*B)[a]; B p; x:; }
+      |                                        ^
+misc_267.c:4:18: error: jump into scope of identifier with variably modified type
+    4 | void f4(int a) { goto x; typedef int (*B)[a]; B *p; x:; }
+      |                  ^
+misc_267.c:4:53: note: label 'x' defined here
+    4 | void f4(int a) { goto x; typedef int (*B)[a]; B *p; x:; }
+      |                                                     ^
+misc_267.c:4:50: note: 'p' declared here
+    4 | void f4(int a) { goto x; typedef int (*B)[a]; B *p; x:; }
+      |                                                  ^
+misc_267.c:4:18: error: jump into scope of identifier with variably modified type
+    4 | void f4(int a) { goto x; typedef int (*B)[a]; B *p; x:; }
+      |                  ^
+misc_267.c:4:53: note: label 'x' defined here
+    4 | void f4(int a) { goto x; typedef int (*B)[a]; B *p; x:; }
+      |                                                     ^
+misc_267.c:4:40: note: 'B' declared here
+    4 | void f4(int a) { goto x; typedef int (*B)[a]; B *p; x:; }
+      |                                        ^
+misc_267.c:4:18: error: jump into scope of identifier with variably modified type
+    4 | void f4(int a) { goto x; typedef int (*B)[a]; B *p; x:; }
+      |                  ^
+misc_267.c:4:53: note: label 'x' defined here
+    4 | void f4(int a) { goto x; typedef int (*B)[a]; B *p; x:; }
+      |                                                     ^
+misc_267.c:4:40: note: '({anonymous})' declared here
+    4 | void f4(int a) { goto x; typedef int (*B)[a]; B *p; x:; }
+      |                                        ^
+misc_267.c:5:18: error: jump into scope of identifier with variably modified type
+    5 | void f5(int a) { goto x; typedef int A[a]; typedef A *C; C *p; x:; }
+      |                  ^
+misc_267.c:5:64: note: label 'x' defined here
+    5 | void f5(int a) { goto x; typedef int A[a]; typedef A *C; C *p; x:; }
+      |                                                                ^
+misc_267.c:5:61: note: 'p' declared here
+    5 | void f5(int a) { goto x; typedef int A[a]; typedef A *C; C *p; x:; }
+      |                                                             ^
+misc_267.c:5:18: error: jump into scope of identifier with variably modified type
+    5 | void f5(int a) { goto x; typedef int A[a]; typedef A *C; C *p; x:; }
+      |                  ^
+misc_267.c:5:64: note: label 'x' defined here
+    5 | void f5(int a) { goto x; typedef int A[a]; typedef A *C; C *p; x:; }
+      |                                                                ^
+misc_267.c:5:55: note: 'C' declared here
+    5 | void f5(int a) { goto x; typedef int A[a]; typedef A *C; C *p; x:; }
+      |                                                       ^
+misc_267.c:5:18: error: jump into scope of identifier with variably modified type
+    5 | void f5(int a) { goto x; typedef int A[a]; typedef A *C; C *p; x:; }
+      |                  ^
+misc_267.c:5:64: note: label 'x' defined here
+    5 | void f5(int a) { goto x; typedef int A[a]; typedef A *C; C *p; x:; }
+      |                                                                ^
+misc_267.c:5:38: note: 'A' declared here
+    5 | void f5(int a) { goto x; typedef int A[a]; typedef A *C; C *p; x:; }
+      |                                      ^
+misc_267.c:6:18: error: jump into scope of identifier with variably modified type
+    6 | void f6(int a) { goto x; int (**p)[a]; x:; }
+      |                  ^
+misc_267.c:6:40: note: label 'x' defined here
+    6 | void f6(int a) { goto x; int (**p)[a]; x:; }
+      |                                        ^
+misc_267.c:6:33: note: 'p' declared here
+    6 | void f6(int a) { goto x; int (**p)[a]; x:; }
+      |                                 ^
+misc_267.c:6:18: error: jump into scope of identifier with variably modified type
+    6 | void f6(int a) { goto x; int (**p)[a]; x:; }
+      |                  ^
+misc_267.c:6:40: note: label 'x' defined here
+    6 | void f6(int a) { goto x; int (**p)[a]; x:; }
+      |                                        ^
+misc_267.c:6:33: note: '({anonymous})' declared here
+    6 | void f6(int a) { goto x; int (**p)[a]; x:; }
+      |                                 ^
+misc_267.c:6:18: error: jump into scope of identifier with variably modified type
+    6 | void f6(int a) { goto x; int (**p)[a]; x:; }
+      |                  ^
+misc_267.c:6:40: note: label 'x' defined here
+    6 | void f6(int a) { goto x; int (**p)[a]; x:; }
+      |                                        ^
+misc_267.c:6:33: note: '({anonymous})' declared here
+    6 | void f6(int a) { goto x; int (**p)[a]; x:; }
+      |                                 ^

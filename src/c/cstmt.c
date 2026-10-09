@@ -1540,18 +1540,22 @@ void stmt_declared(Checker *c, CStmt *s, uint32_t i)
         for (;;) {
             TypeId b = type_canon(TT, t);
             TypeKind k = type_ckind(TT, b);
-            if (sy->kind == CS_FUNC)
+            if (sy->kind == CS_FUNC ||
+                (sy->kind != CS_TYPEDEF && type_ent(TT, t)->kind == TY_TYPEDEF))
                 break;
             if (k == TY_ARRAY || k == TY_VLA || k == TY_FUNC) {
-                t = type_base(TT, b);
+                t = type_base(TT, t);
             } else if (k == TY_PTR && type_is_vm(TT, type_base(TT, b)) &&
                        type_ckind(TT, type_base(TT, b)) != TY_STRUCT &&
                        type_ckind(TT, type_base(TT, b)) != TY_UNION) {
                 CUnsafe a = u;
+                /* a typedef name's own declaration covers its pointers */
+                if (type_ent(TT, type_base(TT, t))->kind == TY_TYPEDEF)
+                    break;
                 a.anon = true;
                 a.seq = ++top(s)->seq;
                 vec_push(&s->unsafe, a);
-                t = type_base(TT, b);
+                t = type_base(TT, t);
             } else
                 break;
         }
