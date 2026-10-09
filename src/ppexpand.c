@@ -1026,7 +1026,8 @@ static Tok builtin_token(PP *pp, Macro *m, const Tok *name, SrcLoc exp_loc)
     case BUILTIN_LINE:
         if (pp->reads) /* the result depends on absolute line numbers */
             cell_reads_line(pp->reads, pp->diag->key);
-        sprintf(buf, "%u", pp_presumed_line(pp, exp_loc));
+        /* -ftrack-macro-expansion=0: the line of the outermost call name */
+        sprintf(buf, "%u", pp_presumed_line(pp, pp->diag->track0 ? pp->inv_loc : exp_loc));
         break;
     case BUILTIN_FILE:
         s = quote_string(pp, pp->inc->presumed_name);
@@ -1544,6 +1545,9 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
     uint32_t vseq, vitem;
     bool root_obj = src == SRC_LEXER ? !m->funclike : pp->tok_root_obj;
     bool saved_root_obj = pp->subst_root_obj;
+
+    if (src == SRC_LEXER)
+        pp->inv_loc = name->loc;
 
     if (m->builtin) {
         if (m->builtin == BUILTIN_PRAGMA_OP)

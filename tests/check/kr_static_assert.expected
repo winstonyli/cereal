@@ -1,0 +1,6 @@
+kr_static_assert.c:4:6: error: expected declaration specifiers before '_Static_assert'
+    4 |      _Static_assert (1, "");
+      |      ^
+kr_static_assert.c:5:10: error: declaration for parameter 'j' but no such parameter
+    5 |      int j;
+      |          ^

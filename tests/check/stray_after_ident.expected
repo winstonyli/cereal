@@ -1,0 +1,18 @@
+stray_after_ident.c:2:6: error: stray '\302' in program
+    2 | int x² = 1;
+      |      ^
+stray_after_ident.c:2:5: error: redefinition of 'x'
+    2 | int x² = 1;
+      |     ^
+stray_after_ident.c:1:5: note: previous definition of 'x' with type 'int'
+    1 | int x = 0;
+      |     ^
+stray_after_ident.c:3:6: error: stray '\302' in program
+    3 | int y² = 2;
+      |      ^
+stray_after_ident.c:4:10: error: stray '\302' in program
+    4 | int z = x² + 1;
+      |          ^
+stray_after_ident.c:4:9: error: initializer element is not constant
+    4 | int z = x² + 1;
+      |         ^

@@ -1425,7 +1425,7 @@ void cdecl_static_assert_visit(Checker *c, uint32_t i)
         return;
     if (s == e)
         return;
-    vloc = cnode_loc(c, e);
+    vloc = value_loc(c, strip_paren(c, e), tloc(c, first_tok(c, e)));
     if (!type_is_integer(TT, c->ty[e])) {
         /* an erroneous value has no location of its own: the first token */
         cerror(c, is_err(c, c->ty[e]) ? tloc(c, first_tok(c, e)) : vloc,
@@ -1443,6 +1443,8 @@ void cdecl_static_assert_visit(Checker *c, uint32_t i)
             return;
         }
     }
+    if (c->ef[e] & EF_OVERFLOW)        /* constant_expression_warning */
+        cconst_overflow(c, aloc);
     if (cexpr_sval(c, e) == 0) {
         if (s != NO_NODE) {
             StrBuf sb;

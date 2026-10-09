@@ -39,8 +39,7 @@ void tokcur_open(TokCursor *c, TokRegen *src, size_t s, size_t e)
     c->src = src;
     c->end = e;
     arena_init(&c->arena);
-    diag_init(&c->diag, &c->arena, &tu->sm);
-    c->diag.cfg = tu->diag.cfg;
+    diag_init_worker(&c->diag, &c->arena, &tu->sm, &tu->diag);
     pp_init_worker(&c->pp, &tu->pp, &c->arena, &c->diag);
     c->pp.track = TRACK_NONE; /* no expansion records, no counts */
     c->pp.cancel = NULL;

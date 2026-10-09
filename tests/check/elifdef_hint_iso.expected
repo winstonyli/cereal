@@ -1,0 +1,15 @@
+elifdef_hint_iso.c:6:2: error: invalid preprocessing directive #elifdef
+    6 | #elifdef Z
+      |  ^
+elifdef_hint_iso.c:7:2: error: invalid preprocessing directive #elifdefx; did you mean #elifdef?
+    7 | #elifdefx
+      |  ^
+elifdef_hint_iso.c:8:2: error: invalid preprocessing directive #elifnde; did you mean #elifndef?
+    8 | #elifnde
+      |  ^
+elifdef_hint_iso.c:9:2: error: #else without #if
+    9 | #else
+      |  ^
+elifdef_hint_iso.c:10:2: error: #endif without #if
+   10 | #endif
+      |  ^

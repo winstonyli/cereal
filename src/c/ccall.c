@@ -108,21 +108,26 @@ static int bt_cmp(Checker *c, TypeId o, TypeId n, bool ret, int file)
     return 2;
 }
 
-/* Is parameter j (0-based) of the library built-in a FILE * or struct tm *
- * (a void * to gcc until the type is declared)? */
+/* Is parameter j (0-based) of the library built-in a FILE *, struct tm *,
+ * fenv_t * or fexcept_t * (a void * to gcc until the type is declared)? */
 bool extra_on(Checker *c);
 static int bt_file_param(const char *name, uint32_t j)
 {
-    static const struct { const char *n; unsigned char j; } t[] = {
-        {"fprintf", 0}, {"fscanf", 0}, {"vfprintf", 0}, {"vfscanf", 0},
-        {"fputc", 1}, {"fputs", 1}, {"putc", 1}, {"fwrite", 3},
-        {"fprintf_unlocked", 0}, {"fputc_unlocked", 1},
-        {"fputs_unlocked", 1}, {"fwrite_unlocked", 3},
-        {"putc_unlocked", 1}, {"strftime", 3}};
+    /* kind: 1 FILE *, 2 const struct tm *, 3 fenv_t *, 4 const fenv_t *,
+     * 5 fexcept_t *, 6 const fexcept_t * */
+    static const struct { const char *n; unsigned char j, kind; } t[] = {
+        {"fprintf", 0, 1}, {"fscanf", 0, 1}, {"vfprintf", 0, 1},
+        {"vfscanf", 0, 1}, {"fputc", 1, 1}, {"fputs", 1, 1}, {"putc", 1, 1},
+        {"fwrite", 3, 1}, {"fprintf_unlocked", 0, 1},
+        {"fputc_unlocked", 1, 1}, {"fputs_unlocked", 1, 1},
+        {"fwrite_unlocked", 3, 1}, {"putc_unlocked", 1, 1}, {"strftime", 3, 2},
+        {"fegetenv", 0, 3}, {"feholdexcept", 0, 3}, {"fesetenv", 0, 4},
+        {"feupdateenv", 0, 4}, {"fegetexceptflag", 0, 5},
+        {"fesetexceptflag", 0, 6}};
     size_t k;
     for (k = 0; k < sizeof t / sizeof *t; k++)
         if (t[k].j == j && !strcmp(t[k].n, name))
-            return !strcmp(name, "strftime") ? 2 : 1;
+            return t[k].kind;
     return 0;
 }
 
@@ -1366,6 +1371,14 @@ static TypeId atomic_result(Checker *c, uint32_t i, const char *name)
     const char *b = !strncmp(name, "__sync_", 7) ? name + 7 : name + 9;
     uint32_t all[16], n = nkids(c, i, all, 16);
     TypeId t;
+    if (!kind && !strncmp(name, "__atomic_", 9)) {
+        if (!strcmp(b, "is_lock_free") || !strcmp(b, "always_lock_free") ||
+            !strcmp(b, "test_and_set"))
+            return TYPE_B(BOOL);
+        if (!strcmp(b, "clear") || !strcmp(b, "thread_fence") ||
+            !strcmp(b, "signal_fence"))
+            return TYPE_B(VOID);
+    }
     if (!kind || n < 2 || n > 16 || node_err(c, all[1]))
         return ERRT;
     if (kind == 1)
@@ -1379,6 +1392,37 @@ static TypeId atomic_result(Checker *c, uint32_t i, const char *name)
     if (!strcmp(b, "lock_release") || !strcmp(b, "store_n"))
         return TYPE_B(VOID);
     return unqual(c, pointee(c, t));
+}
+
+/* fold_builtin_atomic_always_lock_free (x86-64 without -mcx16): 1 or 0 for
+ * the constant size and pointer of __atomic_always_lock_free, -1 when gcc
+ * leaves the call alone. */
+static int lock_free_fold(Checker *c, const uint32_t *all, uint32_t n)
+{
+    uint64_t size, mode_align, talign;
+    uint32_t a;
+    if (n != 3 || node_err(c, all[1]) || node_err(c, all[2]) ||
+        !has_ival(c, all[1]))
+        return -1;
+    size = c->cv[all[1]];
+    if (size != 1 && size != 2 && size != 4 && size != 8 && size != 16)
+        return 0;                       /* no integer mode of that size */
+    mode_align = size * 8;
+    a = all[2];
+    if (c->ef[a] & EF_NPC) {
+        talign = mode_align;
+    } else if (has_ival(c, a)) {        /* a fake pointer encoding the alignment */
+        uint64_t v = c->cv[a] & -c->cv[a];
+        talign = v == 0 || mode_align < v * 8 ? mode_align : v * 8;
+    } else {
+        TypeId pt = rvt(c, a), b;
+        if (!is_ptr(c, pt))
+            return -1;
+        b = pointee(c, pt);
+        talign = is_func(c, b) || tkind(c, b) == TY_VOID ||
+                             !complete(c, b) ? 8 : 8 * type_align(TT, b);
+    }
+    return size < 16 && talign >= mode_align;      /* no 16-byte cmpxchg */
 }
 
 /* -Wabsolute-value: warn_for_abs of c-parser.cc, for a call of a library
@@ -1414,17 +1458,12 @@ static void warn_for_abs(Checker *c, uint32_t i, const uint32_t *k, uint32_t n)
         fam = 1;
     else if (!strcmp(base, "cabs") || !strcmp(base, "cabsf") ||
              !strcmp(base, "cabsl")) {
-        fam = 2;   /* not in the built-in table: the parameter is a complex */
-        ft = !strcmp(base, "cabs") ? TYPE_B(DOUBLE)
-           : !strcmp(base, "cabsf") ? TYPE_B(FLOAT) : TYPE_B(LDOUBLE);
+        fam = 2;
     } else
         return;
-    if (fam != 2) {
-        bt = sy ? bt_for_decl(c, sy)
-                : bt_find(c, nm + 10, true);
-        if (!bt || (sy && !builtin_decl_ok(c, sy)))
-            return;
-    }
+    bt = sy ? bt_for_decl(c, sy) : bt_find(c, nm + 10, true);
+    if (!bt || (sy && !builtin_decl_ok(c, sy)))
+        return;
     at = unqual(c, rvt(c, a));
     if (is_err(c, at))
         return;
@@ -1454,16 +1493,13 @@ static void warn_for_abs(Checker *c, uint32_t i, const uint32_t *k, uint32_t n)
     if (fam == 0 && integ && !type_is_signed(TT, at) && tkind(c, at) != TY_BOOL)
         cwarn(c, call_loc(c, k[0]), "absolute-value", "taking the absolute "
               "value of unsigned type %s has no effect", type_q(TT, at));
-    if (fam != 2) {
-        bft = type_canon(TT, bt_func_type(c, bt));
-        if (!type_ent(TT, bft)->n)
-            return;
-        ft = type_params(TT, bft)[0];
-    }
+    bft = type_canon(TT, bt_func_type(c, bt));
+    if (!type_ent(TT, bft)->n)
+        return;
+    ft = type_params(TT, bft)[0];
     if (cpx) {
         at = type_canon(TT, type_base(TT, type_canon(TT, at)));
-        if (fam != 2)
-            ft = type_canon(TT, type_base(TT, type_canon(TT, ft)));
+        ft = type_canon(TT, type_base(TT, type_canon(TT, ft)));
     }
     {
         bool ok1, ok2;
@@ -1786,7 +1822,8 @@ void e_call(Checker *c, uint32_t i)
         }
         if (!strncmp(name, "__builtin_", 10) &&
             (builtin_format_pos(name) || builtin_scanf_pos(name) ||
-             !strcmp(name, "__builtin_strfmon"))) {
+             !strcmp(name, "__builtin_strfmon") ||
+             !strcmp(name, "__builtin_strftime"))) {
             uint32_t av[32], an = nkids(c, i, av, 32);
             if (an <= 32)
                 check_format_literal(c, av, an, NULL, name, call_loc(c, k[0]));
@@ -1806,6 +1843,16 @@ void e_call(Checker *c, uint32_t i)
             if (!is_err(c, rt)) {
                 c->ty[i] = rt;
                 c->ef[i] = EF_SIDE;
+                if (!strcmp(name, "__atomic_always_lock_free") ||
+                    !strcmp(name, "__atomic_is_lock_free")) {
+                    uint32_t av[4], an = nkids(c, i, av, 4);
+                    int v = an <= 4 ? lock_free_fold(c, av, an) : -1;
+                    c->ef[i] = 0;               /* a const function */
+                    if (v == 1 || (v == 0 && name[9] == 'a')) {
+                        c->ck[i] = K_FOLD;      /* a CALL_EXPR until c_fully_fold; */
+                        c->cv[i] = (uint64_t)v; /* is_lock_free folds only to true */
+                    }
+                }
                 return;
             }
         }

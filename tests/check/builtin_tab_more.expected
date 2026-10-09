@@ -1,0 +1,60 @@
+builtin_tab_more.c:6:3: warning: incompatible implicit declaration of built-in function 'lrint' [-Wbuiltin-declaration-mismatch]
+    6 |   lrint (d);
+      |   ^
+builtin_tab_more.c:3:1: note: include '<math.h>' or provide a declaration of 'lrint'
+    3 | struct tm;
+      | ^
+builtin_tab_more.c:7:3: warning: incompatible implicit declaration of built-in function 'llround' [-Wbuiltin-declaration-mismatch]
+    7 |   llround (d);
+      |   ^
+builtin_tab_more.c:7:3: note: include '<math.h>' or provide a declaration of 'llround'
+    7 |   llround (d);
+      |   ^
+builtin_tab_more.c:8:3: warning: incompatible implicit declaration of built-in function 'cabs' [-Wbuiltin-declaration-mismatch]
+    8 |   cabs (z);
+      |   ^
+builtin_tab_more.c:3:1: note: include '<complex.h>' or provide a declaration of 'cabs'
+    3 | struct tm;
+      | ^
+builtin_tab_more.c:9:3: warning: incompatible implicit declaration of built-in function 'cacos' [-Wbuiltin-declaration-mismatch]
+    9 |   cacos (z);
+      |   ^
+builtin_tab_more.c:9:3: note: include '<complex.h>' or provide a declaration of 'cacos'
+    9 |   cacos (z);
+      |   ^
+builtin_tab_more.c:10:3: warning: incompatible implicit declaration of built-in function 'sincos' [-Wbuiltin-declaration-mismatch]
+   10 |   sincos (d, dp, dp);
+      |   ^
+builtin_tab_more.c:10:3: note: include '<math.h>' or provide a declaration of 'sincos'
+   10 |   sincos (d, dp, dp);
+      |   ^
+builtin_tab_more.c:11:3: warning: incompatible implicit declaration of built-in function 'aligned_alloc' [-Wbuiltin-declaration-mismatch]
+   11 |   aligned_alloc (n, n);
+      |   ^
+builtin_tab_more.c:3:1: note: include '<stdlib.h>' or provide a declaration of 'aligned_alloc'
+    3 | struct tm;
+      | ^
+builtin_tab_more.c:12:3: warning: incompatible implicit declaration of built-in function 'towlower' [-Wbuiltin-declaration-mismatch]
+   12 |   towlower (1);
+      |   ^
+builtin_tab_more.c:3:1: note: include '<wctype.h>' or provide a declaration of 'towlower'
+    3 | struct tm;
+      | ^
+builtin_tab_more.c:13:3: warning: incompatible implicit declaration of built-in function 'ilogbf' [-Wbuiltin-declaration-mismatch]
+   13 |   ilogbf (1);
+      |   ^
+builtin_tab_more.c:13:3: note: include '<math.h>' or provide a declaration of 'ilogbf'
+   13 |   ilogbf (1);
+      |   ^
+builtin_tab_more.c:14:3: warning: incompatible implicit declaration of built-in function 'strftime' [-Wbuiltin-declaration-mismatch]
+   14 |   strftime (s, n, "", tm);
+      |   ^
+builtin_tab_more.c:3:1: note: include '<time.h>' or provide a declaration of 'strftime'
+    3 | struct tm;
+      | ^
+builtin_tab_more.c:14:19: warning: zero-length gnu_strftime format string [-Wformat-zero-length]
+   14 |   strftime (s, n, "", tm);
+      |                   ^
+builtin_tab_more.c:17:24: warning: zero-length gnu_strftime format string [-Wformat-zero-length]
+   17 | void h(char *s) { g(s, ""); }
+      |                        ^

@@ -1,0 +1,16 @@
+kr_proto_eof.c:2:1: warning: return type defaults to 'int' [-Wimplicit-int]
+    2 | typeof (int [a]) b5;
+      | ^
+kr_proto_eof.c:2:18: error: expected declaration specifiers before 'b5'
+    2 | typeof (int [a]) b5;
+      |                  ^
+kr_proto_eof.c:4:1: error: expected declaration specifiers before 'typeof'
+    4 | typeof (int [a]) d5;
+      | ^
+kr_proto_eof.c:2:1: error: old-style parameter declarations in prototyped function definition
+    2 | typeof (int [a]) b5;
+      | ^
+kr_proto_eof.c:2:9: warning: ISO C does not support omitting parameter names in function definitions before C2X [-Wpedantic]
+    2 | typeof (int [a]) b5;
+      |         ^
+kr_proto_eof.c:5: error: expected '{' at end of input

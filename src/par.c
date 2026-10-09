@@ -292,13 +292,7 @@ static void worker_init(Par *P, Worker *w, int idx, size_t start, size_t end,
     w->window = start ? window : 0; /* nothing stitches into item 0 */
     w->recs = w->window ? xmalloc(sizeof(BoundRec) * w->window) : NULL;
     arena_init(&w->arena);
-    diag_init(&w->diag, &w->arena, &tu->sm);
-    w->diag.cfg = tu->diag.cfg;
-    w->diag.werror = tu->diag.werror;
-    w->diag.pedantic = tu->diag.pedantic;
-    w->diag.pedantic_errors = tu->diag.pedantic_errors;
-    w->diag.show_system = tu->diag.show_system;
-    w->diag.max_errors = tu->diag.max_errors;
+    diag_init_worker(&w->diag, &w->arena, &tu->sm, &tu->diag);
     pp_init_worker(&w->pp, &tu->pp, &w->arena, &w->diag);
     if (P->cache) {
         TokMark m;
@@ -796,7 +790,7 @@ static void decode_hit(Par *P, Hit *h)
     w->start_item = h->s;
     w->end_item = h->e;
     arena_init(&w->arena);
-    diag_init(&w->diag, &w->arena, &tu->sm);
+    diag_init_worker(&w->diag, &w->arena, &tu->sm, &tu->diag);
     pp_init_worker(&w->pp, &tu->pp, &w->arena, &w->diag);
     memset(&d, 0, sizeof d);
     d.b = &P->cb;

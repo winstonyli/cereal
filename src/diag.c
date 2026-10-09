@@ -364,6 +364,18 @@ void diag_init(DiagEngine *d, Arena *a, SrcMgr *sm)
     d->max_errors = 50;
 }
 
+void diag_init_worker(DiagEngine *d, Arena *a, SrcMgr *sm, const DiagEngine *tu)
+{
+    diag_init(d, a, sm);
+    d->cfg = tu->cfg;
+    d->werror = tu->werror;
+    d->pedantic = tu->pedantic;
+    d->pedantic_errors = tu->pedantic_errors;
+    d->show_system = tu->show_system;
+    d->max_errors = tu->max_errors;
+    d->track0 = tu->track0;
+}
+
 void diag_free(DiagEngine *d)
 {
     size_t i;
@@ -1090,10 +1102,14 @@ static bool checker_first(const DiagEngine *d, size_t from, size_t i, size_t j)
     const Diagnostic *p = d->all.data[i], *c = d->all.data[j];
     if (c->ord == ORD_CUT)
         return i > from && d->all.data[i - 1]->oloc >= c->oloc;
-    if (c->ord == ORD_LATE || !p->oloc)
+    if (c->ord == ORD_LATE)
+        return false;
+    if (p->ord == ORD_EOF)
+        return true;
+    if (!p->oloc)
         return false;
     /* within one macro invocation, by spelled location */
-    return p->ord == ORD_EOF || c->oloc < p->oloc ||
+    return c->oloc < p->oloc ||
            (c->oloc == p->oloc &&
             (c->loc < p->loc ||
              (c->loc == p->loc &&

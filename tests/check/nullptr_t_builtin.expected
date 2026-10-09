@@ -1,0 +1,15 @@
+nullptr_t_builtin.c:3:22: error: 'nullptr' undeclared (first use in this function); did you mean 'nullptr_t'?
+    3 | int *f(int *p) { p = nullptr; p = nullptr_x; return p; }
+      |                      ^
+nullptr_t_builtin.c:3:22: note: each undeclared identifier is reported only once for each function it appears in
+    3 | int *f(int *p) { p = nullptr; p = nullptr_x; return p; }
+      |                      ^
+nullptr_t_builtin.c:3:35: error: 'nullptr_x' undeclared (first use in this function); did you mean 'nullptr_t'?
+    3 | int *f(int *p) { p = nullptr; p = nullptr_x; return p; }
+      |                                   ^
+nullptr_t_builtin.c:7:14: error: conflicting types for 'nullptr_t'; have 'long int'
+    7 | typedef long nullptr_t;
+      |              ^
+nullptr_t_builtin.c:5:13: note: previous declaration of 'nullptr_t' with type 'nullptr_t' {aka 'int'}
+    5 | typedef int nullptr_t;
+      |             ^

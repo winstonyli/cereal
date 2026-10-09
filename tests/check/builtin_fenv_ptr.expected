@@ -1,0 +1,12 @@
+builtin_fenv_ptr.c:4:5: warning: mismatch in argument 1 type of built-in function 'feholdexcept'; expected 'struct A *' [-Wbuiltin-declaration-mismatch]
+    4 | int feholdexcept (struct B *);
+      |     ^
+builtin_fenv_ptr.c:6:5: warning: mismatch in argument 1 type of built-in function 'feupdateenv'; expected 'const struct A *' [-Wbuiltin-declaration-mismatch]
+    6 | int feupdateenv (const struct B *);
+      |     ^
+builtin_fenv_ptr.c:9:5: error: conflicting types for 'fesetexceptflag'; have 'int(const struct B *, int)'
+    9 | int fesetexceptflag (const struct B *, int);
+      |     ^
+builtin_fenv_ptr.c:8:5: note: previous declaration of 'fesetexceptflag' with type 'int(struct B *, int)'
+    8 | int fesetexceptflag (struct B *, int);
+      |     ^

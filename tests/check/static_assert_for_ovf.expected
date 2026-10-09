@@ -1,0 +1,15 @@
+static_assert_for_ovf.c:2:29: warning: integer overflow in expression of type 'int' results in '-2' [-Woverflow]
+    2 | _Static_assert (__INT_MAX__ * 2, "overflow");
+      |                             ^
+static_assert_for_ovf.c:2:1: warning: overflow in constant expression [-Woverflow]
+    2 | _Static_assert (__INT_MAX__ * 2, "overflow");
+      | ^
+static_assert_for_ovf.c:4:3: error: 'struct s' declared in 'for' loop initial declaration
+    4 |   for (_Static_assert (sizeof (struct s { int k; }), ""); j < 10; j++) ;
+      |   ^
+static_assert_for_ovf.c:6:3: error: 'struct s2' declared in 'for' loop initial declaration
+    6 |   for (int z = sizeof (struct s2 { int k; }); j < 10; j++) ;
+      |   ^
+static_assert_for_ovf.c:7:3: error: 'struct s3' declared in 'for' loop initial declaration
+    7 |   for (int z = 0, w = sizeof (struct s3 { int k; }); j < 10; j++) ;
+      |   ^

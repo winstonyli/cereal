@@ -1543,14 +1543,18 @@ uint32_t cdecl_pushdecl(Checker *c, const CSym *xin, bool implicit_int)
         if (x.kind == CS_OBJ && type_ckind(TT, newty) == TY_ARRAY &&
             type_is_complete(TT, newty))
             csym(c, vis)->flags &= ~(unsigned)CSF_INNER_COMP;
-        if (cdecl_duplicate_decls(c, &x, nfile, use, implicit_int)) {
+        /* gcc's undeclared-builtin nullptr_t: a typedef simply replaces it */
+        if (x.kind == CS_TYPEDEF && csym(c, vis)->kind == CS_TYPEDEF &&
+            !csym(c, vis)->loc && !strcmp(cident(c, name), "nullptr_t"))
+            skip = true;
+        else if (cdecl_duplicate_decls(c, &x, nfile, use, implicit_int)) {
             if (split && !is_err(c, newty))
                 bind_this_type(c, b, use, vt, true, newty);
             return use;
-        }
-        if (x.kind == CS_TYPEDEF && csym(c, vis)->kind == CS_OBJ)
+        } else if (x.kind == CS_TYPEDEF && csym(c, vis)->kind == CS_OBJ)
             return vis;     /* gcc keeps the variable: the name stays bound to it */
-        skip = true;
+        else
+            skip = true;
     }
     ref = SYM_NONE;
     if (!skip) {
@@ -3212,6 +3216,16 @@ static void check_main_params(Checker *c, SrcLoc loc, TypeId ft)
         TypeId b;
         if (is_err(c, t))
             break;
+        {
+            TypeId q = t;       /* _Atomic anywhere along the pointer chain */
+            while (tkind(c, q) == TY_PTR &&
+                   !(TYPE_QUALS(type_canon(TT, q)) & TQ_ATOMIC))
+                q = type_base(TT, q);
+            if (TYPE_QUALS(type_canon(TT, q)) & TQ_ATOMIC)
+                cpedwarn(c, loc, "main", "'_Atomic'-qualified parameter "
+                         "type %s of 'main'",
+                         type_q(TT, tkind(c, t) == TY_PTR ? t : plain_type(c, t)));
+        }
         argct++;
         b = tkind(c, t) == TY_PTR ? type_base(TT, t) : ERRT;
         switch (argct) {
@@ -3511,6 +3525,7 @@ static void body_visit(Checker *c, uint32_t i)
     se = last_child(c, f);
     mark = vec_last(&c->scopes).log;
     if (proto) {
+        size_t n0 = c->diag->all.len, dn;
         if (c->log.len > mark) {
             cerror(c, fnloc, "old-style parameter declarations in prototyped "
                    "function definition");
@@ -3551,6 +3566,11 @@ static void body_visit(Checker *c, uint32_t i)
                 }
                 cbind(c, bd->ns, bd->ident, bd->ref);
             }
+        }
+        /* gcc reports these when the declarations end, after their errors */
+        for (dn = n0; dn < c->diag->all.len; dn++) {
+            c->diag->all.data[dn]->oloc =
+                ntag(c, comp) == N_FUNC_DEF ? (SrcLoc)-2 : il;  /* no body: end of input */
         }
         return;
     }
@@ -4103,6 +4123,7 @@ void cdecl_finish_object(Checker *c, uint32_t ref)
     for (k = c->gsyms.len; k-- > 0;) {
         const CSym *s = &c->gsyms.data[k];
         if (s->kind == CS_FUNC && (s->flags & CSF_INLINE) && sym_public(s) &&
+            !cdecl_aset_has(c, s->aset, "gnu_inline", NULL) &&
             !sym_defined(s) && s->name)
             cpedwarn(c, s->loc, "", "inline function '%s' declared but never "
                      "defined", sname(c, s));

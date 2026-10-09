@@ -832,6 +832,10 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 kind = 1;
             else if (!strcmp(ar, "scanf") || !strcmp(ar, "gnu_scanf"))
                 kind = 2;
+            else if (!strcmp(ar, "strftime") || !strcmp(ar, "gnu_strftime"))
+                kind = 3;
+            else if (!strcmp(ar, "strfmon") || !strcmp(ar, "gnu_strfmon"))
+                kind = 4;
             else if (!strcmp(ar, "NSString"))
                 cwarn(c, cdecl_line_start_loc(c, c->nodes[item].tok), "format=", "'NSString' is "
                       "only allowed in Objective-C dialects");

@@ -21,7 +21,7 @@ static bool void_ty(Checker *c, uint32_t e)
 
 /* The location gcc gives an expression that might have none: a bare
  * declaration has no location, the caller's is used. */
-static SrcLoc value_loc(Checker *c, uint32_t e, SrcLoc dloc)
+SrcLoc value_loc(Checker *c, uint32_t e, SrcLoc dloc)
 {
     uint32_t kids[4];
     if (c->ef[e] & EF_GCCFOLD)
@@ -97,6 +97,9 @@ void unused_value(Checker *c, uint32_t e, SrcLoc dloc)
         return;
     if (tg(c, e) == N_COND && node_children(c->nodes, e, kids, 4) == 2)
         return;     /* a ?: b is a SAVE_EXPR with side effects for gcc */
+    /* reading an _Atomic lvalue is an atomic load call for gcc */
+    if ((c->ef[e] & EF_LVALUE) && (TYPE_QUALS(c->ty[e]) & TQ_ATOMIC))
+        return;
     if (!(c->ef[e] & EF_SIDE)) {
         SrcLoc loc;
         if (is_comma(c, e)) {
@@ -279,6 +282,10 @@ void cstmt_node(Checker *c, uint32_t i)
             for_loop_decls(c, c->par[i]);
         }
         decl_after_stmt(c, i);
+        break;
+    case N_STATIC_ASSERT:       /* a declaration too: tags in its expression */
+        if (c->par[i] != NOB && tg(c, c->par[i]) == N_FOR)
+            for_loop_decls(c, c->par[i]);
         break;
     case N_GOTO: {
         uint32_t tok = c->nodes[i].tok;

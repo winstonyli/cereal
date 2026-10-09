@@ -1,0 +1,12 @@
+fspec_member.c:2:19: error: expected specifier-qualifier-list before 'inline'
+    2 | struct t { int a; inline void (*f)(void); };
+      |                   ^
+fspec_member.c:3:19: error: expected specifier-qualifier-list before '_Noreturn'
+    3 | struct u { int a; _Noreturn int b; };
+      |                   ^
+fspec_member.c:4:17: error: expected expression before 'inline'
+    4 | int s1 = sizeof(inline int);
+      |                 ^
+fspec_member.c:5:19: warning: parameter 'x' declared 'inline'
+    5 | void g(inline int x);
+      |                   ^

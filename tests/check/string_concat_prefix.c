@@ -1,0 +1,10 @@
+// flags: -std=c11
+const void *a1 = u"a" U"b";
+const void *a2 = U"a" u8"b" u8"c" u8"d";
+const void *a3 = u8"a" L"b" "c" L"d";
+const void *a4 = "a" "b" L"c" u"d";
+const void *a5 = u8"a" u8"b" L"c";
+const void *a6 = L"a" L"b" u"c" U"d";
+const void *a7 = L"a" u8"b" L"c" u"d";
+const void *a8 = L"a" u8"b" "c";
+const void *a9 = L"a" "b" u8"c";

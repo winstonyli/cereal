@@ -1,0 +1,24 @@
+static_assert_loc.c:3:17: error: expression in static assertion is not constant
+    3 | _Static_assert (f (), "");
+      |                 ^
+static_assert_loc.c:4:18: error: expression in static assertion is not constant
+    4 | _Static_assert ((f ()), "");
+      |                  ^
+static_assert_loc.c:5:23: error: expression in static assertion is not constant
+    5 | _Static_assert ((f () + 1), "");
+      |                       ^
+static_assert_loc.c:6:17: error: expression in static assertion is not constant
+    6 | _Static_assert ((x), "");
+      |                 ^
+static_assert_loc.c:7:17: error: expression in static assertion is not constant
+    7 | _Static_assert (((x)), "");
+      |                 ^
+static_assert_loc.c:8:24: error: expression in static assertion is not constant
+    8 | _Static_assert ((x ? 1 : 2), "");
+      |                        ^
+static_assert_loc.c:9:26: error: expression in static assertion is not constant
+    9 | _Static_assert (f () ? 1 : 2, "");
+      |                          ^
+static_assert_loc.c:10:24: error: expression in static assertion is not constant
+   10 | _Static_assert ((f ()) + 1, "");
+      |                        ^

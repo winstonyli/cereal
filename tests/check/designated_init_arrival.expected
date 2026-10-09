@@ -1,0 +1,234 @@
+designated_init_arrival.c:3:17: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+    3 | struct S s2 = { 0, 0 };
+      |                 ^
+designated_init_arrival.c:3:17: note: (near initialization for 's2')
+    3 | struct S s2 = { 0, 0 };
+      |                 ^
+designated_init_arrival.c:3:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+    3 | struct S s2 = { 0, 0 };
+      |                    ^
+designated_init_arrival.c:3:20: note: (near initialization for 's2')
+    3 | struct S s2 = { 0, 0 };
+      |                    ^
+designated_init_arrival.c:4:25: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+    4 | struct S s3 = { .a = 5, 0 };
+      |                         ^
+designated_init_arrival.c:4:25: note: (near initialization for 's3')
+    4 | struct S s3 = { .a = 5, 0 };
+      |                         ^
+designated_init_arrival.c:5:25: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+    5 | struct S s4 = { .a = 5, { 0 } };
+      |                         ^
+designated_init_arrival.c:5:25: note: (near initialization for 's4')
+    5 | struct S s4 = { .a = 5, { 0 } };
+      |                         ^
+designated_init_arrival.c:7:17: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+    7 | struct T t1 = { 0, 1, 2 };
+      |                 ^
+designated_init_arrival.c:7:17: note: (near initialization for 't1')
+    7 | struct T t1 = { 0, 1, 2 };
+      |                 ^
+designated_init_arrival.c:7:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+    7 | struct T t1 = { 0, 1, 2 };
+      |                    ^
+designated_init_arrival.c:7:20: note: (near initialization for 't1')
+    7 | struct T t1 = { 0, 1, 2 };
+      |                    ^
+designated_init_arrival.c:8:25: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+    8 | struct T t2 = { .a = 0, 1, 2 };
+      |                         ^
+designated_init_arrival.c:8:25: note: (near initialization for 't2')
+    8 | struct T t2 = { .a = 0, 1, 2 };
+      |                         ^
+designated_init_arrival.c:10:23: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   10 | struct U u1 = { 1, 2, 3, 4 };
+      |                       ^
+designated_init_arrival.c:10:23: note: (near initialization for 'u1.t')
+   10 | struct U u1 = { 1, 2, 3, 4 };
+      |                       ^
+designated_init_arrival.c:12:17: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   12 | struct D d1 = { 1, { 2, 3 }, { 4, 5 } };
+      |                 ^
+designated_init_arrival.c:12:17: note: (near initialization for 'd1')
+   12 | struct D d1 = { 1, { 2, 3 }, { 4, 5 } };
+      |                 ^
+designated_init_arrival.c:12:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   12 | struct D d1 = { 1, { 2, 3 }, { 4, 5 } };
+      |                    ^
+designated_init_arrival.c:12:20: note: (near initialization for 'd1')
+   12 | struct D d1 = { 1, { 2, 3 }, { 4, 5 } };
+      |                    ^
+designated_init_arrival.c:12:30: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   12 | struct D d1 = { 1, { 2, 3 }, { 4, 5 } };
+      |                              ^
+designated_init_arrival.c:12:30: note: (near initialization for 'd1')
+   12 | struct D d1 = { 1, { 2, 3 }, { 4, 5 } };
+      |                              ^
+designated_init_arrival.c:13:25: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   13 | struct D d2 = { .a = 1, 2, 3, 4, 5 };
+      |                         ^
+designated_init_arrival.c:13:25: note: (near initialization for 'd2')
+   13 | struct D d2 = { .a = 1, 2, 3, 4, 5 };
+      |                         ^
+designated_init_arrival.c:14:22: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   14 | struct D da[2] = { { 1, 2, 3, 4, 5 }, 1, 2, 3, 4, 5 };
+      |                      ^
+designated_init_arrival.c:14:22: note: (near initialization for 'da[0]')
+   14 | struct D da[2] = { { 1, 2, 3, 4, 5 }, 1, 2, 3, 4, 5 };
+      |                      ^
+designated_init_arrival.c:14:25: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   14 | struct D da[2] = { { 1, 2, 3, 4, 5 }, 1, 2, 3, 4, 5 };
+      |                         ^
+designated_init_arrival.c:14:25: note: (near initialization for 'da[0]')
+   14 | struct D da[2] = { { 1, 2, 3, 4, 5 }, 1, 2, 3, 4, 5 };
+      |                         ^
+designated_init_arrival.c:14:42: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   14 | struct D da[2] = { { 1, 2, 3, 4, 5 }, 1, 2, 3, 4, 5 };
+      |                                          ^
+designated_init_arrival.c:14:42: note: (near initialization for 'da[1]')
+   14 | struct D da[2] = { { 1, 2, 3, 4, 5 }, 1, 2, 3, 4, 5 };
+      |                                          ^
+designated_init_arrival.c:16:23: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   16 | struct W w1 = { 0, 1, 2, 3, 4, 5, 6 };
+      |                       ^
+designated_init_arrival.c:16:23: note: (near initialization for 'w1.dd')
+   16 | struct W w1 = { 0, 1, 2, 3, 4, 5, 6 };
+      |                       ^
+designated_init_arrival.c:16:35: warning: excess elements in struct initializer
+   16 | struct W w1 = { 0, 1, 2, 3, 4, 5, 6 };
+      |                                   ^
+designated_init_arrival.c:16:35: note: (near initialization for 'w1')
+   16 | struct W w1 = { 0, 1, 2, 3, 4, 5, 6 };
+      |                                   ^
+designated_init_arrival.c:17:22: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   17 | struct W w2 = { 0, { 1, 2, 3, 4, 5, 6 } };
+      |                      ^
+designated_init_arrival.c:17:22: note: (near initialization for 'w2.dd')
+   17 | struct W w2 = { 0, { 1, 2, 3, 4, 5, 6 } };
+      |                      ^
+designated_init_arrival.c:17:25: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   17 | struct W w2 = { 0, { 1, 2, 3, 4, 5, 6 } };
+      |                         ^
+designated_init_arrival.c:17:25: note: (near initialization for 'w2.dd')
+   17 | struct W w2 = { 0, { 1, 2, 3, 4, 5, 6 } };
+      |                         ^
+designated_init_arrival.c:17:37: warning: excess elements in struct initializer
+   17 | struct W w2 = { 0, { 1, 2, 3, 4, 5, 6 } };
+      |                                     ^
+designated_init_arrival.c:17:37: note: (near initialization for 'w2.dd')
+   17 | struct W w2 = { 0, { 1, 2, 3, 4, 5, 6 } };
+      |                                     ^
+designated_init_arrival.c:19:17: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   19 | struct E e1 = { 1, 2, 3, 4, 5, 6 };
+      |                 ^
+designated_init_arrival.c:19:17: note: (near initialization for 'e1')
+   19 | struct E e1 = { 1, 2, 3, 4, 5, 6 };
+      |                 ^
+designated_init_arrival.c:19:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   19 | struct E e1 = { 1, 2, 3, 4, 5, 6 };
+      |                    ^
+designated_init_arrival.c:19:20: note: (near initialization for 'e1.e')
+   19 | struct E e1 = { 1, 2, 3, 4, 5, 6 };
+      |                    ^
+designated_init_arrival.c:20:17: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   20 | struct D d3 = { 1, 2, 3, 4, 5 };
+      |                 ^
+designated_init_arrival.c:20:17: note: (near initialization for 'd3')
+   20 | struct D d3 = { 1, 2, 3, 4, 5 };
+      |                 ^
+designated_init_arrival.c:20:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   20 | struct D d3 = { 1, 2, 3, 4, 5 };
+      |                    ^
+designated_init_arrival.c:20:20: note: (near initialization for 'd3')
+   20 | struct D d3 = { 1, 2, 3, 4, 5 };
+      |                    ^
+designated_init_arrival.c:22:17: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   22 | struct F f1 = { 1, 2, 3, 4 };
+      |                 ^
+designated_init_arrival.c:22:17: note: (near initialization for 'f1')
+   22 | struct F f1 = { 1, 2, 3, 4 };
+      |                 ^
+designated_init_arrival.c:22:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   22 | struct F f1 = { 1, 2, 3, 4 };
+      |                    ^
+designated_init_arrival.c:22:20: note: (near initialization for 'f1')
+   22 | struct F f1 = { 1, 2, 3, 4 };
+      |                    ^
+designated_init_arrival.c:23:25: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   23 | struct F f2 = { .a = 1, 2, 3, 4 };
+      |                         ^
+designated_init_arrival.c:23:25: note: (near initialization for 'f2')
+   23 | struct F f2 = { .a = 1, 2, 3, 4 };
+      |                         ^
+designated_init_arrival.c:25:17: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   25 | struct G g1 = { 1, 2, 3 };
+      |                 ^
+designated_init_arrival.c:25:17: note: (near initialization for 'g1')
+   25 | struct G g1 = { 1, 2, 3 };
+      |                 ^
+designated_init_arrival.c:25:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   25 | struct G g1 = { 1, 2, 3 };
+      |                    ^
+designated_init_arrival.c:25:20: note: (near initialization for 'g1')
+   25 | struct G g1 = { 1, 2, 3 };
+      |                    ^
+designated_init_arrival.c:28:17: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   28 | struct H h1 = { 1, 2, 3 };
+      |                 ^
+designated_init_arrival.c:28:17: note: (near initialization for 'h1')
+   28 | struct H h1 = { 1, 2, 3 };
+      |                 ^
+designated_init_arrival.c:28:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   28 | struct H h1 = { 1, 2, 3 };
+      |                    ^
+designated_init_arrival.c:28:20: note: (near initialization for 'h1')
+   28 | struct H h1 = { 1, 2, 3 };
+      |                    ^
+designated_init_arrival.c:28:23: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   28 | struct H h1 = { 1, 2, 3 };
+      |                       ^
+designated_init_arrival.c:28:23: note: (near initialization for 'h1')
+   28 | struct H h1 = { 1, 2, 3 };
+      |                       ^
+designated_init_arrival.c:31:17: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   31 | struct I i1 = { 1, 2, 3, 4, 5 };
+      |                 ^
+designated_init_arrival.c:31:17: note: (near initialization for 'i1')
+   31 | struct I i1 = { 1, 2, 3, 4, 5 };
+      |                 ^
+designated_init_arrival.c:31:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   31 | struct I i1 = { 1, 2, 3, 4, 5 };
+      |                    ^
+designated_init_arrival.c:31:20: note: (near initialization for 'i1')
+   31 | struct I i1 = { 1, 2, 3, 4, 5 };
+      |                    ^
+designated_init_arrival.c:31:29: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   31 | struct I i1 = { 1, 2, 3, 4, 5 };
+      |                             ^
+designated_init_arrival.c:31:29: note: (near initialization for 'i1')
+   31 | struct I i1 = { 1, 2, 3, 4, 5 };
+      |                             ^
+designated_init_arrival.c:32:17: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   32 | struct I i2 = { 1, { 2, 3 }, 4, 5 };
+      |                 ^
+designated_init_arrival.c:32:17: note: (near initialization for 'i2')
+   32 | struct I i2 = { 1, { 2, 3 }, 4, 5 };
+      |                 ^
+designated_init_arrival.c:32:20: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   32 | struct I i2 = { 1, { 2, 3 }, 4, 5 };
+      |                    ^
+designated_init_arrival.c:32:20: note: (near initialization for 'i2')
+   32 | struct I i2 = { 1, { 2, 3 }, 4, 5 };
+      |                    ^
+designated_init_arrival.c:32:30: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   32 | struct I i2 = { 1, { 2, 3 }, 4, 5 };
+      |                              ^
+designated_init_arrival.c:32:30: note: (near initialization for 'i2')
+   32 | struct I i2 = { 1, { 2, 3 }, 4, 5 };
+      |                              ^
+designated_init_arrival.c:32:33: warning: positional initialization of field in 'struct' declared with 'designated_init' attribute [-Wdesignated-init]
+   32 | struct I i2 = { 1, { 2, 3 }, 4, 5 };
+      |                                 ^
+designated_init_arrival.c:32:33: note: (near initialization for 'i2')
+   32 | struct I i2 = { 1, { 2, 3 }, 4, 5 };
+      |                                 ^

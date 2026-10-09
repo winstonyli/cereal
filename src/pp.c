@@ -1148,7 +1148,8 @@ static const char *directive_hint(const char *name)
 {
     static const char *const dirs[] = {
         "define", "include", "endif", "ifdef", "if", "else", "ifndef", "undef",
-        "line", "elif", "error", "pragma", "warning", "include_next", "ident",
+        "line", "elif", "elifdef", "elifndef", "error", "pragma", "warning",
+        "include_next", "ident",
         "import", "assert", "unassert", "sccs"};
     size_t an = strlen(name), k;
     const char *best = NULL;
@@ -1176,6 +1177,8 @@ static const char *directive_hint(const char *name)
                 d[i][j] = v;
             }
         cut = mx <= 1 ? 0 : (mx - mn <= 1 ? (unsigned)(mx / 3) : (unsigned)((mx + 2) / 3));
+        if (!d[an][bn])
+            return NULL;    /* itself (a directive this mode lacks): no hint */
         if (d[an][bn] <= cut && d[an][bn] < bd)
             bd = d[an][bn], best = b;
     }

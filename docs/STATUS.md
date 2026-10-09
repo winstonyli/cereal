@@ -14,11 +14,11 @@ in [ROADMAP.md](ROADMAP.md).
 - An index and LSP server over the same engine (`cereal index|query|lsp`).
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
-- gcc.dg: 3893 of 3910 files run give the same diagnostics as gcc (message,
-  line and column); 17 differ (5 old, 12 in the C11/C17 tests added by -std=c11).
+- gcc.dg: 3904 of 3910 files run give the same diagnostics as gcc (message,
+  line and column); 6 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 285 of 285 identical. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1581 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 579 files.
+- 1611 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 594 files.
 - uvloop's `loop.c` checks in about 3.85 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -41,17 +41,34 @@ bench/tools/corp.sh DIR [-IDIR...]  # per-file cereal vs gcc-13 on any C sources
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
 callgrind) in parallel; see its header for the expected numbers.
 
-## Open differences (gcc.dg 17, c-c++-common 2)
+## Open differences (gcc.dg 6, c-c++-common 2)
 Needs gcc's optimizer or middle end (out of reach for a front end):
 pr56355-1 (-Wstrict-overflow), pr83844 (alignment of a VLA-offset member).
 
 Darwin / Objective-C targets (the expected output comes from a target gcc
 does not model on Linux): darwin-cfstring-format-1, pr105522.
 
-One-off C11/C17 diagnostics not yet matched (Round 181): c11-noreturn-5,
-c11-static-assert-3/4, c11-uni-string-2, c17-nullptr-2, array-10; plus
-Wdesignated-init-2, pr59717, pr60195, pr61077, pr61817-1, pr62024, pr63453 and
-ucnid-15-utf8 (not yet looked at).
+
+Round 182, latest verify (gcc-13): gcc.dg 3904 of 3910 identical, c-c++-common 634 of 636,
+cpp 285 of 285; `tests/run.sh` 1611 passed.  Remaining gcc.dg diffs: access
+attribute "refers to parameter type" (3 variants), vector components
+4294967296 limit (also in c-c++-common), implicit-declaration/int-to-pointer
+cast, signed-overflow, if-not-aligned, incompatible-pointer-types extras.
+Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
+- `__builtin_expect(1,1)` / `__builtin_strlen("a")` in `_Static_assert` get a
+  -Wpedantic "not an integer constant expression" (K_FOLD with EF_CST); gcc
+  folds them at parse time and stays silent.
+- `__builtin_popcount(3)`, `__builtin_clz(3)` are rejected as not constant in
+  `_Static_assert`; gcc accepts.
+- `char * const _Atomic c` parameter of main prints as `char * _Atomic`
+  (gcc `char * _Atomic const`): the parameter type loses const.
+- Redeclaration note for `double cabs(int)` after <complex.h> prints
+  `complex double` at 112:23 without the include chain; gcc `_Complex double`
+  at 112:1 with it.
+- Const fenv/fexcept pointer parameters (nonconst pointer for a const builtin
+  parameter) not probed.
+- _FloatN builtin rows only checked through the implicit-call harness
+  (bench bt_gen); `-std=c2x` and constant-expression visibility unchecked.
 
 Parked front-end gaps (reasons in HISTORY Rounds 172 to 175):
 - pr100547: the position of the `vector_size` error; no single rule found.

@@ -64,9 +64,16 @@ __attribute__((noinline)) static bool fill_slow(Parser *p, size_t i)
         if (pt.t.kind == TK_OTHER || is_p(&pt, P_HASH) || is_p(&pt, P_HASHHASH)) {
             /* gcc: at the spelling with the macro notes, or at the expansion
              * point under -ftrack-macro-expansion=0 */
+            Diagnostic *sd;
             vec_push(&p->toks, pt);
-            add_macro_notes(p, stray_token(p, &pt.t, spell_loc(p, p->toks.len - 1)),
-                            (uint32_t)(p->toks.len - 1));
+            sd = stray_token(p, &pt.t, spell_loc(p, p->toks.len - 1));
+            add_macro_notes(p, sd, (uint32_t)(p->toks.len - 1));
+            /* the token after an identifier is lexed as its lookahead, before
+             * the declaration or primary expression is processed */
+            if (sd && p->toks.len >= 2 &&
+                p->toks.data[p->toks.len - 2].t.kind == TK_IDENT &&
+                ptok_loc(&p->toks.data[p->toks.len - 2]) > 1)
+                sd->oloc = ptok_loc(&p->toks.data[p->toks.len - 2]) - 1;
             p->toks.len--;
             continue;
         }
@@ -1583,8 +1590,9 @@ static void paren_type_or_expr(Parser *p, NodeTag tag)
 }
 
 /* alignas_ok: gcc's alignas_ok, false in a type name unless sizeof, _Alignof
- * or a cast, which reject the _Alignas afterwards. */
-static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok)
+ * or a cast, which reject the _Alignas afterwards.  fspec_ok: gcc's fspec_ok, false
+ * in struct members and type names (inline, _Noreturn). */
+static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok, bool fspec_ok)
 {
     uint32_t start = nmark(p), first = ci(p);
     memset(s, 0, sizeof *s);
@@ -1622,6 +1630,8 @@ static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok)
             break;
         }
         case CK_INLINE: case CK_NORETURN:
+            if (!fspec_ok)      /* members and type names: gcc's fspec_ok */
+                goto done;
             leaf(p, N_FUNCSPEC, adv(p));
             break;
         case CK_GIMPLE:
@@ -1712,7 +1722,7 @@ static void member_decl(Parser *p)
 {
     uint32_t start = nmark(p), first = ci(p);
     Specs s;
-    specs(p, &s, LA_DECL, true);
+    specs(p, &s, LA_DECL, true, false);
     if (!s.any) {
         expected(p, "specifier-qualifier-list");
         sync_stmt(p);
@@ -1961,7 +1971,7 @@ static void params(Parser *p, unsigned *flags)
             *flags |= NF_VARIADIC;
             break;
         }
-        specs(p, &sp, LA_TYPE, true);
+        specs(p, &sp, LA_TYPE, true, true);
         if (!sp.any) {
             unsigned depth = 0;
             expected(p, "declaration specifiers or '...'");
@@ -2141,7 +2151,7 @@ static uint32_t type_name(Parser *p, bool alignas_ok)
     uint32_t start = nmark(p), first = ci(p);
     Specs s;
     DeclInfo d;
-    specs(p, &s, LA_TYPE, alignas_ok);
+    specs(p, &s, LA_TYPE, alignas_ok, false);
     if (!s.any)
         expected(p, "specifier-qualifier-list");
     declarator_init(&d);
@@ -3118,7 +3128,9 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
      * declaration of a parameter (K&R), diagnosed as such */
     while (!at(p, P_LBRACE) && !at_eof(p)) {
         PTok t = ct(p);
-        if (is_decl_start_la(p, &t) && ckw(p) != CK_ATTRIBUTE) {   /* start_attr_ok is false */
+        /* start_attr_ok and static_assert_ok are false */
+        if (is_decl_start_la(p, &t) && ckw(p) != CK_ATTRIBUTE &&
+            ckw(p) != CK_STATIC_ASSERT) {
             bool save = p->kr_params;
             p->kr_params = true;    /* no definition here (fndef_ok false) */
             declaration(p, false);
@@ -3145,6 +3157,7 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
         compound(p, false);
     } else {
         expected_req(p, "'{'");
+        diag_mark_last(p->diag, ORD_EOF);   /* only at end of input */
         leaf(p, N_BODY, p->pos ? p->pos - 1 : 0); /* store_parm_decls still runs */
         flags |= NF_ERROR;
     }
@@ -3184,7 +3197,7 @@ static void declaration(Parser *p, bool top)
         emit(p, N_EMPTY, adv(p), start, 0);
         return;
     }
-    specs(p, &s, top ? LA_DECL_TOP : LA_DECL, true);
+    specs(p, &s, top ? LA_DECL_TOP : LA_DECL, true, true);
     if (p->err.live && !p->unwind) {
         /* gcc's c_parser_declaration_or_fndef: an error still pending after
          * the declaration specifiers (an earlier item's, which file scope
@@ -3366,7 +3379,7 @@ void parser_init(Parser *p, SrcMgr *sm, Interner *in, DiagEngine *diag,
                  bool gnu, ParseSource src, void *ctx)
 {
     static const char *const builtin_types[] = {
-        "__builtin_va_list", "__int128_t", "__uint128_t", NULL};
+        "__builtin_va_list", "__int128_t", "__uint128_t", "nullptr_t", NULL};
     int i;
     memset(p, 0, sizeof *p);
     p->sm = sm;

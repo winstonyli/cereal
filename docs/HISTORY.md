@@ -3105,3 +3105,49 @@ c11_compat_opts_ped, qual_return_c11, typedef_redef_vm, comma_incomplete,
 complex_const_init, c11_anon_alignas. Not done: c11-noreturn-5,
 c11-static-assert-3/4, c11-uni-string-2, c17-nullptr-2, array-10 (each a
 one-off diagnostic, disproportionate).
+
+Round 182: the Round 181 tail plus the gcc.dg one-offs (gcc.dg identical 3893
+-> 3904, c-c++-common 634, cpp 285; tests 1611). Part A (each a shared
+mechanism rather than a per-file patch): function specifiers (`inline`,
+`_Noreturn`) are refused in struct members and type names like gcc's fspec_ok
+(`specs(..., fspec_ok)`); `_Static_assert` reports an overflowed constant
+(`cconst_overflow`) and is accepted as a for-init declaration and in K&R
+declaration lists; string concatenation reports one error per differing
+prefix piece (plus one when pieces 0 and 1 differ); `nullptr_t` is a builtin
+typedef in every C mode (parser `builtin_types` + `predeclare`, replaced by the
+first user typedef); `#elifdef`/`#elifndef` are in the directive "did you
+mean" list and an exact name gives no hint (ISO modes); a function definition
+missing its `{` merges its parse error at end of input (ORD_EOF) and the
+parameter diagnostics of a body-less declaration keep `oloc` = end of input;
+builtin-mismatch notes use `header_note_loc`.
+-Wdesignated-init now follows process_init_element: the warning fires when an
+element arrives at a designated_init struct level (before exhausted
+brace-elided levels are popped), replacing the per-path `dwpath` bookkeeping.
+Part B: pr59717: `cbuiltin_tab.h` regenerated against cc1 (+529 rows: lrint
+llrint lround llround cabs carg cimag creal ilogb* fe* isw* tow* and the gnu-only
+_FloatN families; sincos / aligned_alloc now name `<math.h>` / `<stdlib.h>`);
+fenv_t / fexcept_t built-in parameters are void * until declared (like FILE *,
+`bt_file_param` kinds 3-6); strftime / strfmon formats get the zero-length and
+nul checks (`fmt_termonly` now holds the kind name; `format(strftime|strfmon)`
+attributes are kinds 3/4); `cabs` no longer special-cased in warn_for_abs.
+pr60195: reading an `_Atomic` lvalue is an atomic load, so `y;` is not
+"statement with no effect". pr61077: -Wmain "'_Atomic'-qualified parameter
+type" (anywhere along the pointer chain). pr61817-1: under
+-ftrack-macro-expansion=0 `__LINE__` is the line of the outermost call's name
+(`pp->inv_loc`, gcc's invocation_location); the parallel/cell workers now
+inherit the unit's DiagEngine options through `diag_init_worker` (they had
+lost `track0`). pr62024:
+`__atomic_always_lock_free` / `__atomic_is_lock_free` have type _Bool, fold
+(fold_builtin_atomic_always_lock_free on x86-64: sizes 1/2/4/8, alignment of
+the pointee, no 16-byte cmpxchg) to K_FOLD, and are const calls; the
+_Static_assert diagnostics use `value_loc` (the call start, the `?:` colon,
+the first token for bare identifiers). pr63453: gnu_inline declarations
+(attribute anywhere) are not "inline function declared but never defined".
+ucnid-15-utf8: a stray-character error after an identifier is lexed as that
+identifier's lookahead and so precedes the declaration's own diagnostics.
+Goldens: kr_proto_eof, fspec_member, static_assert_for_ovf, kr_static_assert,
+string_concat_prefix, nullptr_t_builtin, elifdef_hint_iso,
+designated_init_arrival, builtin_tab_more, builtin_fenv_ptr, line_track0,
+atomic_lock_free_fold, static_assert_loc, gnu_inline_nodef,
+stray_after_ident. Not done (parked, docs/STATUS.md): see "Parked front-end
+gaps".

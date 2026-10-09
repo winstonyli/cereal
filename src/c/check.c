@@ -731,6 +731,11 @@ Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
     predeclare(c, "__uint128_t",
                type_typedef(&c->tt, intern_cstr(in, "__uint128_t")->id,
                             TYPE_B(UINT128)));
+    /* gcc 13 declares nullptr_t in every C mode (a distinct null pointer
+     * type; void * here, so its conversions are not modelled) */
+    predeclare(c, "nullptr_t",
+               type_typedef(&c->tt, intern_cstr(in, "nullptr_t")->id,
+                            type_ptr(&c->tt, TYPE_B(VOID))));
     c->func_sym = SYM_NONE;
     c->cur_node = NO_NODE;
     if (opt->summaries || opt->dump_summaries || opt->validate_summaries)

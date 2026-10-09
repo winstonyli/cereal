@@ -208,7 +208,14 @@ static bool fmt_arg_ok(Checker *c, const FmtWant *w, TypeId t)
 /* where conversion warnings go in a format without exact columns, when
  * that differs from the format's location ("fmt + N" reports at the '+') */
 static SrcLoc fmt_mloc;
-static bool fmt_termonly;   /* strfmon: only a missing nul is diagnosed */
+static const char *fmt_termonly; /* strfmon/strftime: the kind name; only the
+                                  * string itself is diagnosed */
+
+/* The format attribute kinds (CSym.fmt >> 24) that check only the string. */
+static const char *fmt_kind_name(uint32_t kind)
+{
+    return kind == 3 ? "gnu_strftime" : kind == 4 ? "gnu_strfmon" : NULL;
+}
 
 typedef struct FmtCtx {
     Checker *c;
@@ -370,15 +377,14 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
                       uint32_t first, bool scan, uint32_t s, SrcLoc whole,
                       SrcLoc call, size_t skip, const StrInit *si)
 {
-    if (fmt_termonly)
-        return;
     static const struct { char conv; const char *flags; } ft[] = {
         {'d', "-+ 0'I"}, {'i', "-+ 0'I"}, {'o', "-0#"}, {'x', "-0#"},
         {'X', "-0#"}, {'u', "-0'I"}, {'f', "-0 +#'I"}, {'g', "-0 +#'I"},
         {'G', "-0 +#'I"}, {'e', "-0 +#I"}, {'E', "-0 +#I"}, {'a', "-0 +#I"},
         {'A', "-0 +#I"}, {'F', "-0 +#I"}, {'c', "-"}, {'C', "-"}, {'s', "-"},
         {'S', "-"}, {'p', "-"}, {'n', ""}};
-    const char *kname = scan ? "gnu_scanf" : "gnu_printf";
+    const char *kname = fmt_termonly ? fmt_termonly
+                                     : scan ? "gnu_scanf" : "gnu_printf";
     const char *convs = scan ? "diouxXaAeEfFgGcspnCS[" : "diouxXfFeEgGaAcsCSpnm";
     FmtCtx x;
     char *f;
@@ -433,6 +439,8 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
               kname);
         goto out;
     }
+    if (fmt_termonly)
+        goto out;
     while (i < n && !dollar) {
         char seen[128] = {0}, conv, flags[16];
         unsigned nf = 0;
@@ -1332,6 +1340,7 @@ static void check_format_literal_(Checker *c, const uint32_t *kv, uint32_t nk,
         pos = (sy->fmt >> 12) & 0xfff;
         first = sy->fmt & 0xfff;
         scan = (sy->fmt >> 24) == 2;
+        fmt_termonly = fmt_kind_name(sy->fmt >> 24);
     } else if ((pos = builtin_format_pos(name))) {
         first = builtin_is_va(name) ? 0 : pos + 1;
     } else if ((pos = builtin_scanf_pos(name))) {
@@ -1489,8 +1498,13 @@ static void check_format_literal_(Checker *c, const uint32_t *kv, uint32_t nk,
 void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
                           const CSym *sy, const char *name, SrcLoc loc)
 {
-    fmt_termonly = !(sy && sy->fmt) && (!strcmp(name, "strfmon") ||
-                                        !strcmp(name, "__builtin_strfmon"));
+    fmt_termonly = NULL;
+    if (!(sy && sy->fmt)) {
+        if (!strncmp(name, "__builtin_", 10))
+            name += 10;
+        fmt_termonly = !strcmp(name, "strfmon") ? "gnu_strfmon"
+                       : !strcmp(name, "strftime") ? "gnu_strftime" : NULL;
+    }
     check_format_literal_(c, kv, nk, sy, name, loc);
-    fmt_termonly = false;
+    fmt_termonly = NULL;
 }

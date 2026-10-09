@@ -1,0 +1,6 @@
+gnu_inline_nodef.c:7:12: warning: inline function 'f5' declared but never defined
+    7 | inline int f5 (void) __attribute__ ((always_inline));
+      |            ^
+gnu_inline_nodef.c:2:12: warning: inline function 'f1' declared but never defined
+    2 | inline int f1 (void);
+      |            ^

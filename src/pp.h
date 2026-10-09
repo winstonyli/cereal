@@ -312,6 +312,7 @@ typedef struct PP {
 
     /* provenance of the last token read (see pp_read_raw) */
     SrcLoc tok_exp_loc;
+    SrcLoc inv_loc;          /* outermost macro call name (gcc invocation_location) */
     SrcLoc tok_mloc;         /* name_loc of the context it came from: gcc's macro map */
     uint32_t tok_exp_id, tok_root;
     bool tok_root_obj;

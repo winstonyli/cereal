@@ -1539,12 +1539,30 @@ static void e_string(Checker *c, uint32_t i)
                     tloc(c, c->nodes[i].tok + np));
         escape_literal(c, s, len, tloc(c, c->nodes[i].tok + np));
         if (p && prefix && p != prefix) {
-            /* gcc's lexer reports it twice, at the lookahead's line */
+            /* at the lookahead's line, once per piece whose prefix differs
+             * from the first prefixed one (gcc's lexer), and once more when
+             * the second piece differs from the first (the interpreter) */
             SrcLoc il = cinput_loc(c, c->nodes[i].tok + np);
-            cerror(c, il, "unsupported non-standard concatenation of string "
-                   "literals");
-            cerror(c, il, "unsupported non-standard concatenation of string "
-                   "literals");
+            unsigned e, errs = 0;
+            int first = 0, q0 = 0, q1 = 0;
+            for (e = 0; e < np; e++) {
+                size_t l2;
+                const char *s2 = ttext(c, c->nodes[i].tok + e, &l2);
+                int q = lit_str_prefix(s2, l2);
+                if (e == 0)
+                    q0 = q;
+                else if (e == 1)
+                    q1 = q;
+                if (q && !first)
+                    first = q;
+                else if (q && q != first)
+                    errs++;
+            }
+            if (q0 && q1 && q0 != q1)
+                errs++;
+            while (errs--)
+                cerror(c, il, "unsupported non-standard concatenation of "
+                       "string literals");
             set_err(c, i);
             return;
         }
@@ -1616,7 +1634,8 @@ static void builtin_mismatch(Checker *c, SrcLoc loc, const BTab *bt)
                             "incompatible implicit declaration of built-in "
                             "function '%s'", bt->name);
     if (d && bt->hdr[0])
-        cnote(c, d, loc, "include '%s' or provide a declaration of '%s'",
+        cnote(c, d, header_note_loc(c, loc, bt->hdr),
+              "include '%s' or provide a declaration of '%s'",
               bt->hdr, bt->name);
 }
 

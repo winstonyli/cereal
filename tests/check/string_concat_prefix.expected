@@ -1,0 +1,57 @@
+string_concat_prefix.c:2:1: error: unsupported non-standard concatenation of string literals
+    2 | const void *a1 = u"a" U"b";
+      | ^
+string_concat_prefix.c:2:1: error: unsupported non-standard concatenation of string literals
+    2 | const void *a1 = u"a" U"b";
+      | ^
+string_concat_prefix.c:3:1: error: unsupported non-standard concatenation of string literals
+    3 | const void *a2 = U"a" u8"b" u8"c" u8"d";
+      | ^
+string_concat_prefix.c:3:1: error: unsupported non-standard concatenation of string literals
+    3 | const void *a2 = U"a" u8"b" u8"c" u8"d";
+      | ^
+string_concat_prefix.c:3:1: error: unsupported non-standard concatenation of string literals
+    3 | const void *a2 = U"a" u8"b" u8"c" u8"d";
+      | ^
+string_concat_prefix.c:3:1: error: unsupported non-standard concatenation of string literals
+    3 | const void *a2 = U"a" u8"b" u8"c" u8"d";
+      | ^
+string_concat_prefix.c:4:1: error: unsupported non-standard concatenation of string literals
+    4 | const void *a3 = u8"a" L"b" "c" L"d";
+      | ^
+string_concat_prefix.c:4:1: error: unsupported non-standard concatenation of string literals
+    4 | const void *a3 = u8"a" L"b" "c" L"d";
+      | ^
+string_concat_prefix.c:4:1: error: unsupported non-standard concatenation of string literals
+    4 | const void *a3 = u8"a" L"b" "c" L"d";
+      | ^
+string_concat_prefix.c:5:1: error: unsupported non-standard concatenation of string literals
+    5 | const void *a4 = "a" "b" L"c" u"d";
+      | ^
+string_concat_prefix.c:6:1: error: unsupported non-standard concatenation of string literals
+    6 | const void *a5 = u8"a" u8"b" L"c";
+      | ^
+string_concat_prefix.c:7:1: error: unsupported non-standard concatenation of string literals
+    7 | const void *a6 = L"a" L"b" u"c" U"d";
+      | ^
+string_concat_prefix.c:7:1: error: unsupported non-standard concatenation of string literals
+    7 | const void *a6 = L"a" L"b" u"c" U"d";
+      | ^
+string_concat_prefix.c:8:1: error: unsupported non-standard concatenation of string literals
+    8 | const void *a7 = L"a" u8"b" L"c" u"d";
+      | ^
+string_concat_prefix.c:8:1: error: unsupported non-standard concatenation of string literals
+    8 | const void *a7 = L"a" u8"b" L"c" u"d";
+      | ^
+string_concat_prefix.c:8:1: error: unsupported non-standard concatenation of string literals
+    8 | const void *a7 = L"a" u8"b" L"c" u"d";
+      | ^
+string_concat_prefix.c:9:1: error: unsupported non-standard concatenation of string literals
+    9 | const void *a8 = L"a" u8"b" "c";
+      | ^
+string_concat_prefix.c:9:1: error: unsupported non-standard concatenation of string literals
+    9 | const void *a8 = L"a" u8"b" "c";
+      | ^
+string_concat_prefix.c:10:1: error: unsupported non-standard concatenation of string literals
+   10 | const void *a9 = L"a" "b" u8"c";
+      | ^

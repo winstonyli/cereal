@@ -401,7 +401,8 @@ struct Checker {
     TypeId cd_proto;
     SrcLoc cd_proto_loc;
     bool cd_have_proto;
-    TypeId bt_fileptr[2];    /* the first FILE *, struct tm * a built-in was declared with */
+    TypeId bt_fileptr[6];    /* the first FILE *, struct tm *, fenv_t *, const fenv_t *,
+                              * fexcept_t *, const fexcept_t * a built-in was declared with */
     bool cd_builtin;         /* ... the prototype is a library built-in's */
     CSym vis_old;            /* the symbol a redeclaration merged into, before the merge */
     bool vis_old_ok;
@@ -677,6 +678,7 @@ Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, const char *id,
 void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...);
 /* cstmt_warn.c: emit_side_effect_warnings for an expression whose value is dropped */
 void unused_value(Checker *c, uint32_t e, SrcLoc dloc);
+SrcLoc value_loc(Checker *c, uint32_t e, SrcLoc dloc);
 /* cpragma.c: interpret the #pragma at token tok (pack, GCC diagnostic, ...) */
 void cpragma_apply(Checker *c, uint32_t tok);
 void cxx_in_struct_use(Checker *c, SrcLoc at, const char *what,

@@ -145,6 +145,8 @@ typedef struct DiagOption {
 } DiagOption;
 
 void diag_init(DiagEngine *d, Arena *a, SrcMgr *sm);
+/* A worker engine with the unit engine's options. */
+void diag_init_worker(DiagEngine *d, Arena *a, SrcMgr *sm, const DiagEngine *tu);
 void diag_free(DiagEngine *d);
 
 DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested);

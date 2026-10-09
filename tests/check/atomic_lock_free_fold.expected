@@ -1,0 +1,69 @@
+atomic_lock_free_fold.c:4:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+    4 | _Static_assert (__atomic_always_lock_free (1, p), "1");
+      |                 ^
+atomic_lock_free_fold.c:5:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+    5 | _Static_assert (__atomic_always_lock_free (4, p), "2");
+      |                 ^
+atomic_lock_free_fold.c:6:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+    6 | _Static_assert (__atomic_always_lock_free (8, ll), "3");
+      |                 ^
+atomic_lock_free_fold.c:7:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+    7 | _Static_assert (!__atomic_always_lock_free (4, vp), "4");
+      |                 ^
+atomic_lock_free_fold.c:8:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+    8 | _Static_assert (!__atomic_always_lock_free (4, cp), "5");
+      |                 ^
+atomic_lock_free_fold.c:9:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+    9 | _Static_assert (__atomic_always_lock_free (1, vp), "6");
+      |                 ^
+atomic_lock_free_fold.c:10:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   10 | _Static_assert (__atomic_always_lock_free (4, 0), "7");
+      |                 ^
+atomic_lock_free_fold.c:11:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   11 | _Static_assert (!__atomic_always_lock_free (16, 0), "8");
+      |                 ^
+atomic_lock_free_fold.c:12:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   12 | _Static_assert (!__atomic_always_lock_free (3, 0), "9");
+      |                 ^
+atomic_lock_free_fold.c:13:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   13 | _Static_assert (!__atomic_always_lock_free (4, sp), "10");
+      |                 ^
+atomic_lock_free_fold.c:14:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   14 | _Static_assert (__atomic_always_lock_free (1, sp), "11");
+      |                 ^
+atomic_lock_free_fold.c:15:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   15 | _Static_assert (__atomic_is_lock_free (4, p), "12");
+      |                 ^
+atomic_lock_free_fold.c:16:17: error: expression in static assertion is not constant
+   16 | _Static_assert (__atomic_is_lock_free (16, p), "13");
+      |                 ^
+atomic_lock_free_fold.c:17:47: warning: passing argument 2 of '__atomic_always_lock_free' makes pointer from integer without a cast [-Wint-conversion]
+   17 | _Static_assert (__atomic_always_lock_free (4, 8), "14");
+      |                                               ^
+atomic_lock_free_fold.c:17:47: note: expected 'const volatile void *' but argument is of type 'int'
+   17 | _Static_assert (__atomic_always_lock_free (4, 8), "14");
+      |                                               ^
+atomic_lock_free_fold.c:17:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   17 | _Static_assert (__atomic_always_lock_free (4, 8), "14");
+      |                 ^
+atomic_lock_free_fold.c:18:48: warning: passing argument 2 of '__atomic_always_lock_free' makes pointer from integer without a cast [-Wint-conversion]
+   18 | _Static_assert (!__atomic_always_lock_free (4, 2), "15");
+      |                                                ^
+atomic_lock_free_fold.c:18:48: note: expected 'const volatile void *' but argument is of type 'int'
+   18 | _Static_assert (!__atomic_always_lock_free (4, 2), "15");
+      |                                                ^
+atomic_lock_free_fold.c:18:17: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   18 | _Static_assert (!__atomic_always_lock_free (4, 2), "15");
+      |                 ^
+atomic_lock_free_fold.c:19:19: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   19 | _Static_assert (1 + __atomic_always_lock_free (1, p), "");
+      |                   ^
+atomic_lock_free_fold.c:20:18: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   20 | _Static_assert ((__atomic_always_lock_free (1, p)), "");
+      |                  ^
+atomic_lock_free_fold.c:21:16: warning: statement with no effect [-Wunused-value]
+   21 | void g(void) { __atomic_always_lock_free (1, p); __atomic_is_lock_free (16, p); }
+      |                ^
+atomic_lock_free_fold.c:21:50: warning: statement with no effect [-Wunused-value]
+   21 | void g(void) { __atomic_always_lock_free (1, p); __atomic_is_lock_free (16, p); }
+      |                                                  ^
