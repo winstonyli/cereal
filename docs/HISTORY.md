@@ -3151,3 +3151,17 @@ designated_init_arrival, builtin_tab_more, builtin_fenv_ptr, line_track0,
 atomic_lock_free_fold, static_assert_loc, gnu_inline_nodef,
 stray_after_ident. Not done (parked, docs/STATUS.md): see "Parked front-end
 gaps".
+
+Round 183: constant folding of integer built-ins (the Round 182 "noticed but not
+fixed" pair). `fold_int_builtin` (ccall.c, after `fold_math_builtin`) folds
+ffs/clz/ctz/clrsb/popcount/parity (suffix "", l, ll, imax), bswap16/32/64 and
+abs/labs/llabs/imaxabs of a constant integer to K_ICE, as gcc's
+fold-const-call does (clz/ctz of 0 stay calls). `__builtin_expect` and
+`__builtin_strlen` of a constant are K_ICE too (they were K_FOLD/EF_CST and got
+the -Wpedantic "not an integer constant expression"). Root cause of the
+rejected popcount/clz/ctz/parity/bswap: `src/c/cbuiltin_pure.h` was a stale
+subset of `bench/tools/gen_pure_builtins.py` output, so those calls carried
+EF_SIDE; regenerated (564 lines), which also gives the missing "statement with
+no effect" for them. Golden: builtin_fold_ice (silent under gcc-13 at c11
+-pedantic-errors and c99 -pedantic). gcc.dg 3904, c-c++-common 634, cpp 285
+identical (unchanged); tests/run.sh 1613 passed.

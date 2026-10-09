@@ -18,7 +18,7 @@ in [ROADMAP.md](ROADMAP.md).
   line and column); 6 differ.
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 285 of 285 identical. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1611 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 594 files.
+- 1613 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 595 files.
 - uvloop's `loop.c` checks in about 3.85 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -50,16 +50,11 @@ does not model on Linux): darwin-cfstring-format-1, pr105522.
 
 
 Round 182, latest verify (gcc-13): gcc.dg 3904 of 3910 identical, c-c++-common 634 of 636,
-cpp 285 of 285; `tests/run.sh` 1611 passed.  Remaining gcc.dg diffs: access
+cpp 285 of 285; `tests/run.sh` 1613 passed.  Remaining gcc.dg diffs: access
 attribute "refers to parameter type" (3 variants), vector components
 4294967296 limit (also in c-c++-common), implicit-declaration/int-to-pointer
 cast, signed-overflow, if-not-aligned, incompatible-pointer-types extras.
 Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
-- `__builtin_expect(1,1)` / `__builtin_strlen("a")` in `_Static_assert` get a
-  -Wpedantic "not an integer constant expression" (K_FOLD with EF_CST); gcc
-  folds them at parse time and stays silent.
-- `__builtin_popcount(3)`, `__builtin_clz(3)` are rejected as not constant in
-  `_Static_assert`; gcc accepts.
 - `char * const _Atomic c` parameter of main prints as `char * _Atomic`
   (gcc `char * _Atomic const`): the parameter type loses const.
 - Redeclaration note for `double cabs(int)` after <complex.h> prints

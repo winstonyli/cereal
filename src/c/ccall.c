@@ -1743,6 +1743,78 @@ static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
     return pure;
 }
 
+/* fold_builtin_* of the bit-counting, byte-swap and absolute-value built-ins
+ * on a constant integer argument (the suffix gives the width): gcc replaces
+ * the call by an INTEGER_CST, so it is an integer constant expression.
+ * clz and ctz of 0 are undefined and stay calls. */
+static void fold_int_builtin(Checker *c, uint32_t i, uint32_t f,
+                             const uint32_t *k, uint32_t n)
+{
+    static const struct { const char *n; int op; } fns[] = {
+        {"ffs", 0}, {"clz", 1}, {"ctz", 2}, {"clrsb", 3}, {"popcount", 4},
+        {"parity", 5}, {"bswap", 6}, {"abs", 7}, {"labs", 7}, {"llabs", 7},
+        {"imaxabs", 7}};
+    const char *nm, *sfx;
+    size_t q, l = 0;
+    unsigned w;
+    uint64_t x, m, r = 0;
+    int64_t sx;
+    if (f == NO_NODE || ntag(c, f) != N_IDENT || (c->ef[i] & EF_SIDE) || n != 2)
+        return;
+    nm = cident(c, cnode_ident(c, f));
+    if (strncmp(nm, "__builtin_", 10))
+        return;
+    nm += 10;
+    for (q = 0; q < sizeof fns / sizeof *fns; q++) {
+        l = strlen(fns[q].n);
+        if (!strncmp(nm, fns[q].n, l))
+            break;
+    }
+    if (q == sizeof fns / sizeof *fns || node_err(c, k[1]) ||
+        !has_ival(c, k[1]) || !is_int(c, c->ty[i]))
+        return;
+    sfx = nm + l;
+    if (fns[q].op == 6) {
+        w = (unsigned)atoi(sfx);
+        if (w != 16 && w != 32 && w != 64)
+            return;
+    } else if (fns[q].op == 7) {
+        if (*sfx)
+            return;
+        w = l == 3 ? 32 : 64;
+    } else if (!*sfx)
+        w = 32;
+    else if (!strcmp(sfx, "l") || !strcmp(sfx, "ll") || !strcmp(sfx, "imax"))
+        w = 64;
+    else
+        return;
+    m = w == 64 ? ~(uint64_t)0 : ((uint64_t)1 << w) - 1;
+    x = c->cv[k[1]] & m;
+    sx = (int64_t)(x << (64 - w)) >> (64 - w);
+    switch (fns[q].op) {
+    case 0: r = x ? (uint64_t)__builtin_ctzll(x) + 1 : 0; break;
+    case 1: if (!x) return; r = (uint64_t)__builtin_clzll(x) - (64 - w); break;
+    case 2: if (!x) return; r = (uint64_t)__builtin_ctzll(x); break;
+    case 3: {
+        uint64_t y = (sx < 0 ? ~x : x) & m;
+        r = y ? (uint64_t)__builtin_clzll(y) - (64 - w) - 1 : w - 1;
+        break;
+    }
+    case 4: r = (uint64_t)__builtin_popcountll(x); break;
+    case 5: r = (uint64_t)__builtin_popcountll(x) & 1; break;
+    case 6: {
+        unsigned b;
+        for (b = 0; b < w; b += 8)
+            r |= ((x >> b) & 0xff) << (w - 8 - b);
+        break;
+    }
+    default: r = sx < 0 ? (uint64_t)0 - (uint64_t)sx : (uint64_t)sx; break;
+    }
+    c->ck[i] = K_ICE;
+    c->cv[i] = cexpr_trunc(c, c->ty[i], r);
+    c->ef[i] = EF_INTOPS;
+}
+
 /* A constant argument of a floating built-in as a long double (an integer
  * must convert exactly). */
 static bool math_arg(Checker *c, uint32_t a, long double *v)
@@ -1948,9 +2020,9 @@ void e_call(Checker *c, uint32_t i)
         if (!strcmp(name, "__builtin_expect") && n >= 2) {
             c->ty[i] = TYPE_B(LONG);
             if (has_ival(c, k[1])) {
-                c->ck[i] = K_FOLD;
+                c->ck[i] = K_ICE;
                 c->cv[i] = cexpr_trunc(c, c->ty[i], c->cv[k[1]]);
-                c->ef[i] = EF_CST;
+                c->ef[i] = EF_INTOPS;
             }
             return;
         }
@@ -2023,12 +2095,13 @@ void e_call(Checker *c, uint32_t i)
         const char *fn = cident(c, cnode_ident(c, f));
         if (!strcmp(fn, "__builtin_strlen") &&   /* not plain strlen */
             const_strlen(c, k[1], &len)) {
-            c->ck[i] = K_FOLD;      /* fold_builtin_strlen */
+            c->ck[i] = K_ICE;       /* fold_builtin_strlen */
             c->cv[i] = len;
-            c->ef[i] = EF_CST;
+            c->ef[i] = EF_INTOPS;
         }
     }
     fold_math_builtin(c, i, f, k, n);
+    fold_int_builtin(c, i, f, k, n);
 }
 
 void alias_deref(Checker *c, uint32_t p, bool use_loc, SrcLoc loc);
