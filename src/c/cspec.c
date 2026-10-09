@@ -617,6 +617,8 @@ void specs_visit(Checker *c, uint32_t i)
             if (ref != SYM_NONE && c->recs.len)
                 cxx_typedef_in_struct(c, cnode_ident(c, n), nd->tok);
             if (ref != SYM_NONE) {
+                if (c->sx)
+                    csx_sym(c, ref, nd->tok, CIX_REF);
                 csym(c, ref)->flags |= CSF_USED;
                 if (csym(c, ref)->kind == CS_TYPEDEF &&
                     (csym(c, ref)->flags & CSF_ATTR_UNUSED))

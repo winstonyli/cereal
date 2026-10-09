@@ -90,13 +90,85 @@ static const char *signature(Req *r, Macro *m)
 
 /* ---- definition, references, hover --------------------------------------- */
 
-void lsp_definition(Req *r, JsonWriter *w)
+/* ---- C symbols (docs/B2_DESIGN.md section 6) ------------------------------ */
+
+/* The C entities named at loc in the request's file, from the check's index
+ * (none if there is none yet, or the file's text differs). */
+static size_t c_decls_at(Req *r, SrcLoc loc, uint32_t *out, size_t max)
 {
-    IdxTarget t = index_resolve(&r->snap->ix, cursor(r));
+    const CIndex *ix = r->cidx;
+    int fi = ix ? cindex_file(ix, r->file->path) : -1;
+    uint32_t first, k;
+    size_t n, nd = 0, j;
+    if (fi < 0 || ix->files[fi].stale || loc < r->file->base)
+        return 0;
+    n = cindex_at(ix, (uint32_t)fi, loc - r->file->base, &first);
+    for (k = first; k < first + n && nd < max; k++) {
+        for (j = 0; j < nd && out[j] != ix->ev[k].decl; j++)
+            ;
+        if (j == nd)
+            out[nd++] = ix->ev[k].decl;
+    }
+    return nd;
+}
+
+/* The snapshot's file with exactly this path (the index's paths are the
+ * check's, normalized the same way). */
+static SrcFile *snap_file(Req *r, const char *path)
+{
     SrcMgr *sm = &r->snap->tu.sm;
+    uint32_t i, n = srcmgr_nfiles(sm);
+    for (i = 0; i < n; i++) {
+        SrcFile *f = srcmgr_file(sm, i);
+        if ((f->kind == SF_USER || f->kind == SF_SYSTEM) && !strcmp(f->path, path))
+            return f;
+    }
+    return NULL;
+}
+
+/* The locations of each decl's events in role want (CIX_DEF or CIX_DECL),
+ * or in the other of the two if it has none in that role. */
+static void c_locations(Req *r, JsonWriter *w, const uint32_t *decls, size_t nd,
+                        int want)
+{
+    const CIndex *ix = r->cidx;
+    size_t i;
+    for (i = 0; i < nd; i++) {
+        uint32_t b = ix->by_decl_start[decls[i]], e = ix->by_decl_start[decls[i] + 1];
+        uint32_t j;
+        int role = want;
+        for (j = b; j < e && (ix->ev[ix->by_decl[j]].flags & CIX_ROLE) != want; j++)
+            ;
+        if (j == e)
+            role = want == CIX_DEF ? CIX_DECL : CIX_DEF;
+        for (j = b; j < e; j++) {
+            const CIdxEvent *ev = &ix->ev[ix->by_decl[j]];
+            const CIdxFile *cf = &ix->files[ev->file];
+            SrcFile *f;
+            /* a file the snapshot lacks (the phases saw different include
+             * sets) has no line table here: left out */
+            if ((ev->flags & CIX_ROLE) != role || cf->stale ||
+                !(f = snap_file(r, cf->path)))
+                continue;
+            json_location(w, r, f->base + ev->off, f->base + ev->off + ev->len);
+        }
+    }
+}
+
+/* definition and declaration: a macro expanded here answers; a C entity
+ * answers over a name with only macro history (weak) or none. */
+static void goto_entity(Req *r, JsonWriter *w, int want)
+{
+    SrcLoc at = cursor(r);
+    IdxTarget t = index_resolve(&r->snap->ix, at);
+    SrcMgr *sm = &r->snap->tu.sm;
+    uint32_t decls[16];
+    size_t nd = t.kind == TGT_NONE || t.weak ? c_decls_at(r, at, decls, 16) : 0;
     int k;
     json_begin_array(w);
-    if (t.kind == TGT_MACRO) {
+    if (nd) {
+        c_locations(r, w, decls, nd, want);
+    } else if (t.kind == TGT_MACRO) {
         for (k = 0; k < t.nmacros; k++)
             if (real_loc(sm, t.macros[k]->name_loc))
                 json_location(w, r, t.macros[k]->name_loc,
@@ -114,6 +186,16 @@ void lsp_definition(Req *r, JsonWriter *w)
         json_end_object(w);
     }
     json_end_array(w);
+}
+
+void lsp_definition(Req *r, JsonWriter *w)
+{
+    goto_entity(r, w, CIX_DEF);
+}
+
+void lsp_declaration(Req *r, JsonWriter *w)
+{
+    goto_entity(r, w, CIX_DECL);
 }
 
 void lsp_references(Req *r, JsonWriter *w)

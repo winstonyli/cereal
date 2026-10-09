@@ -285,7 +285,13 @@ TypeId cdecl_typedef_under(Checker *c, TypeId t);
 void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 bool funcdef, bool initialized, uint32_t width_node,
                 uint32_t ltok, uint32_t after, GDecl *g);
-uint32_t cdecl_pushdecl(Checker *c, const CSym *xin, bool implicit_int);
+/* tok: the name token, CSX_NOTOK if none (the symbol index). */
+uint32_t cdecl_pushdecl(Checker *c, const CSym *xin, bool implicit_int,
+                        uint32_t tok);
+static inline uint32_t gname_tok(const Checker *c, const GDecl *g)
+{
+    return g->name ? cnode(c, g->name_node)->tok : CSX_NOTOK;
+}
 int cdecl_find_spec(Checker *c, uint32_t specs_node);
 void cdecl_pop_specs(Checker *c, uint32_t consumer);
 void cdecl_pending_xref(Checker *c, Spec *sp);

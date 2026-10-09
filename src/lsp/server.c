@@ -138,6 +138,7 @@ void snapshot_release(Snapshot *s)
     if (!s || atomic_add_u32(&s->refs, (uint32_t)-1) != 1)
         return;
     mgraph_free(&s->graph);
+    cindex_free(s->cidx);
     index_free(&s->ix);
     tu_free(&s->tu);
     config_options_free(s->opt);
@@ -258,6 +259,7 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
 typedef struct Check {
     TU tu;
     Options *opt;
+    CIndex *cidx;            /* until published to the snapshot */
 } Check;
 
 static size_t check_limit(void)
@@ -286,9 +288,30 @@ static void check_free(Check *c)
 {
     if (!c)
         return;
+    cindex_free(c->cidx);
     tu_free(&c->tu);
     config_options_free(c->opt);
     free(c);
+}
+
+/* gcc stops at a missing include; the check goes on so that the symbol
+ * index covers the whole file (B2 decision D2), and its diagnostics after
+ * the first missing include are dropped, as gcc never reports them. */
+static void drop_after_missing_include(DiagEngine *d)
+{
+    static const char tail[] = ": No such file or directory";
+    size_t i, k, n = sizeof tail - 1;
+    for (i = 0; i < d->all.len; i++) {
+        const Diagnostic *dg = d->all.data[i];
+        size_t m = strlen(dg->msg);
+        if (dg->level >= DL_ERROR && !*dg->id && m > n &&
+            !strcmp(dg->msg + m - n, tail)) {
+            for (k = i + 1; k < d->all.len; k++)
+                vec_free(&d->all.data[k]->notes);
+            d->all.len = i + 1;
+            return;
+        }
+    }
 }
 
 /* NULL if the unit changed meanwhile (cancelled) or could not be opened. */
@@ -298,19 +321,41 @@ static Check *check_run(Unit *u, Snapshot *s)
     FrontendOpts fo;
     bool ok;
     c->opt = config_options_for(&S.cfg, s->main);
-    c->opt->pp.fatal_missing_include = true; /* gcc stops at one */
+    c->opt->pp.fatal_missing_include = false; /* D2 */
     tu_init(&c->tu, c->opt);
     c->tu.sm.overlay = overlay_lookup;
     c->tu.sm.overlay_ctx = s->overlay;
     c->tu.pp.cancel = &u->cancel;
     memset(&fo, 0, sizeof fo);
     fo.check = true;
+    fo.cidx = &c->cidx;
     ok = frontend_run(&c->tu, s->main, &fo);
     if (!ok || atomic_load_u32(&u->cancel)) {
         check_free(c);
         return NULL;
     }
+    drop_after_missing_include(&c->tu.diag);
     return c;
+}
+
+/* Marks the index's files whose text differs from the snapshot's (changed
+ * on disk between the two phases) stale. */
+static void cindex_validate(CIndex *ix, Snapshot *s)
+{
+    uint32_t i, k, n = srcmgr_nfiles(&s->tu.sm);
+    for (i = 0; i < ix->nfiles; i++) {
+        CIdxFile *cf = &ix->files[i];
+        cf->stale = true;
+        for (k = 0; k < n; k++) {
+            SrcFile *f = srcmgr_file(&s->tu.sm, k);
+            if ((f->kind == SF_USER || f->kind == SF_SYSTEM) &&
+                !strcmp(f->path, cf->path)) {
+                cf->stale = f->size != cf->size ||
+                            cindex_hash(f->buf, f->size) != cf->hash;
+                break;
+            }
+        }
+    }
 }
 
 /* ---- units --------------------------------------------------------------- */
@@ -474,8 +519,10 @@ static void *builder_main(void *arg)
                         lsp_publish_inactive(snap, S.enc,
                                              S.docs.data[i]->path);
             }
-            if (check_eligible(u, snap))
+            if (check_eligible(u, snap)) {
+                snap->check_state = CHECK_PENDING;
                 checking = snapshot_ref(snap);
+            }
         } else if (snap) {
             snapshot_release(snap);
         }
@@ -492,13 +539,20 @@ static void *builder_main(void *arg)
             Check *c;
             double t3 = stats_now();
             c = check_run(u, checking);
+            if (c && c->cidx)
+                cindex_validate(c->cidx, checking);
             mutex_lock(&S.m);
             if (stats_on())
-                fprintf(stderr, "lsp: check %.3fs%s\n", stats_now() - t3,
-                        c ? "" : " (cancelled)");
-            if (c && u->want == want && !atomic_load_u32(&u->cancel))
+                fprintf(stderr, "lsp: check %.3fs%s, symbols %zu bytes\n",
+                        stats_now() - t3, c ? "" : " (cancelled)",
+                        c ? cindex_bytes(c->cidx) : 0);
+            if (c && u->want == want && !atomic_load_u32(&u->cancel)) {
                 lsp_publish_diagnostics(checking, &c->tu, S.enc, doc_open_in,
                                         u);
+                checking->cidx = c->cidx;
+                c->cidx = NULL;
+            }
+            checking->check_state = CHECK_DONE;
             u->building = false;
             cond_broadcast(&S.done);
             mutex_unlock(&S.m);
@@ -657,6 +711,8 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     json_end_object(&w);
     json_key(&w, "definitionProvider");
     json_bool(&w, true);
+    json_key(&w, "declarationProvider");
+    json_bool(&w, true);
     json_key(&w, "referencesProvider");
     json_bool(&w, true);
     json_key(&w, "hoverProvider");
@@ -726,7 +782,7 @@ static void initialize(const JsonValue *id, const JsonValue *params)
 /* ---- requests ------------------------------------------------------------ */
 
 typedef enum {
-    R_DEF, R_REFS, R_HOVER, R_COMPLETION, R_SYMBOLS, R_SEMTOK,
+    R_DEF, R_DECL, R_REFS, R_HOVER, R_COMPLETION, R_SYMBOLS, R_SEMTOK,
     R_SEMTOK_DELTA, R_SEMTOK_RANGE, R_FOLDING,
     R_PREP_RENAME, R_RENAME, R_PREP_CALLS, R_IN_CALLS, R_OUT_CALLS,
     R_SIGHELP, R_EXPAND
@@ -737,7 +793,7 @@ static const struct {
     ReqKind kind;
 } REQS[] = {
     {"textDocument/definition", R_DEF},
-    {"textDocument/declaration", R_DEF},
+    {"textDocument/declaration", R_DECL},
     {"textDocument/references", R_REFS},
     {"textDocument/hover", R_HOVER},
     {"textDocument/completion", R_COMPLETION},
@@ -790,7 +846,18 @@ static void handle_request(const JsonValue *id, ReqKind k,
     u = d->unit;
     while (!u->snap && !S.stop) /* first build of this unit */
         cond_wait(&S.done, &S.m);
+    if (k == R_DEF || k == R_DECL) {
+        /* the C index comes with the check of the newest edit's snapshot:
+         * wait for it a little (B2 decision D1), then answer from what is
+         * there (the macros alone if the check has not published) */
+        struct timespec dl = cond_deadline(1.5);
+        while (!S.stop && (u->snap->gen < u->want ||
+                           u->snap->check_state == CHECK_PENDING))
+            if (!cond_timedwait(&S.done, &S.m, &dl))
+                break;
+    }
     r.snap = snapshot_ref(u->snap);
+    r.cidx = r.snap ? r.snap->cidx : NULL;
     r.text = arena_strndup(&a, d->text, d->len);
     r.text_len = d->len;
     mutex_unlock(&S.m);
@@ -812,6 +879,7 @@ static void handle_request(const JsonValue *id, ReqKind k,
     } else {
         switch (k) {
         case R_DEF: lsp_definition(&r, &w); break;
+        case R_DECL: lsp_declaration(&r, &w); break;
         case R_REFS: lsp_references(&r, &w); break;
         case R_HOVER: lsp_hover(&r, &w); break;
         case R_COMPLETION: lsp_completion(&r, &w); break;

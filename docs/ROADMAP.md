@@ -109,7 +109,12 @@ B1. (DONE, Round 186; was est. 150 to 250 lines.) Parse and check run in the
     cancelled by the next edit anyway); B2 will need to keep the TU alive
     for its index, which changes the memory bound; the check phase delays
     other units' builds (one builder thread).
-B2. A C symbol index recorded in the checker: uses and declarations with
+B2. (Phase 1 DONE, Round 187: the index, `--dump-symbols`,
+    `--verify-symbols`, definition and declaration for C names; about
+    1,320 lines with ~20 hook points, against the ~500 estimated. Phases
+    2 to 4 remain: references and highlight, hover, rename. See
+    B2_DESIGN.md, "Phase 1 results and corrections".)
+    A C symbol index recorded in the checker: uses and declarations with
     location, kind, a stable declaration id, hover text copied out as a
     string before the checker is freed (est. about 900 lines in four phases, see B2_DESIGN.md; 6 to 8 hook
     sites in cexpr.c, cspec.c, cstmt.c, cdecl.c, crecord.c, check.c).

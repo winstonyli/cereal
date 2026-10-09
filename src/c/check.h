@@ -44,6 +44,8 @@ typedef struct CheckOptions {
     void (*macro_names)(void *ctx, void (*cb)(void *, const char *, size_t),
                         void *arg);
     void *macro_names_ctx;
+    bool symidx;                /* build the C symbol index (csymidx.h) */
+    FILE *symidx_verify;        /* --verify-symbols: report missed names */
 } CheckOptions;
 
 Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
@@ -54,6 +56,9 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors);
 /* The end of the translation unit (tentative definitions, unused static
  * functions, ...). */
 void checker_finish(Checker *c);
+/* The C symbol index (CheckOptions.symidx), after checker_finish; the
+ * caller frees it.  NULL without one. */
+struct CIndex *checker_take_index(Checker *c);
 void checker_free(Checker *c);
 
 #endif

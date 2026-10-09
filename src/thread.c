@@ -25,6 +25,23 @@ void cond_destroy(Cond *c) { pthread_cond_destroy(c); }
 void cond_wait(Cond *c, Mutex *m) { pthread_cond_wait(c, m); }
 void cond_broadcast(Cond *c) { pthread_cond_broadcast(c); }
 
+struct timespec cond_deadline(double seconds)
+{
+    struct timespec ts;     /* pthread_cond_timedwait's default clock */
+    long ns;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += (time_t)seconds;
+    ns = ts.tv_nsec + (long)((seconds - (double)(time_t)seconds) * 1e9);
+    ts.tv_sec += ns / 1000000000L;
+    ts.tv_nsec = ns % 1000000000L;
+    return ts;
+}
+
+bool cond_timedwait(Cond *c, Mutex *m, const struct timespec *deadline)
+{
+    return pthread_cond_timedwait(c, m, deadline) == 0;
+}
+
 #ifndef CEREAL_ATOMIC_BUILTINS
 /* Correct but slow: every atomic operation serializes on one lock. */
 static pthread_mutex_t atomic_lock = PTHREAD_MUTEX_INITIALIZER;

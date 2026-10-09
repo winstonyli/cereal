@@ -2149,6 +2149,15 @@ static void set_init_label(Checker *c, CCtx *x, uint32_t lt, uint32_t name,
                    type_q(TT, L->type), cident(c, name));
         return;
     }
+    if (c->sx) {
+        TypeId rt = L->type;
+        uint32_t fx = 0;
+        for (j = 0; j < n; j++) {
+            fx = type_record(TT, type_canon(TT, rt))->fields + path[j];
+            rt = TT->fields.data[fx].ty;
+        }
+        csx_field(c, fx, name_tok, CIX_REF);
+    }
     for (j = 0; j < n; j++) {
         x->stk->fi = path[j];
         x->dd++;

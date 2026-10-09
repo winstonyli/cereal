@@ -671,6 +671,8 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     grow_idents(c, interner_count(c->in) + 1);
     compute_parents(c);
     c->lsyms.len = 0;
+    if (c->sx)
+        csx_unit_begin(c);
     c->saved.len = 0;
     c->specs.len = 0;
     c->recs.len = 0;
@@ -695,6 +697,8 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
             c->last_bol = ctok_loc(c, i);
             break;
         }
+    if (c->sx)
+        csx_unit_end(c);
     c->quiet = false;
 }
 
@@ -740,7 +744,14 @@ Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
     c->cur_node = NO_NODE;
     if (opt->summaries || opt->dump_summaries || opt->validate_summaries)
         c->cs = csum_new(c);
+    if (opt->symidx)
+        c->sx = csx_new(opt->symidx_verify);
     return c;
+}
+
+struct CIndex *checker_take_index(Checker *c)
+{
+    return c->sx ? csx_finish(c) : NULL;
 }
 
 void checker_finish(Checker *c)
@@ -773,6 +784,7 @@ void checker_free(Checker *c)
     cexpr_free_params(c);
     cparm_free(c);
     csum_free(c);
+    csx_free(c->sx);
     sb_free(&c->esb[0]);
     sb_free(&c->esb[1]);
     types_free(&c->tt);

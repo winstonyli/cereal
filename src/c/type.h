@@ -203,6 +203,7 @@ typedef struct FieldIn {
     SrcLoc loc;
     uint32_t dep, dmsg;
     uint32_t aset;
+    uint32_t tok;            /* the name token + 1 (the symbol index), 0: none */
 } FieldIn;
 
 /* Lays out and completes a record.  pack: #pragma pack value in bytes (0:

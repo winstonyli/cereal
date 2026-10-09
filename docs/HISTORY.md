@@ -3239,3 +3239,34 @@ missing include reported once); `tests/lsp/basic.expected` gained the
 compiler errors of its broken edit. Parked: the check phase blocks the single
 builder thread for other units; compiler diagnostics vanish between an edit's
 macro publication and the check's; B2 (index) must keep the TU past the phase.
+
+Round 187: ROADMAP B2 phase 1, the C symbol index (B2_DESIGN.md). New
+`src/c/csymidx.[ch]`: a builder fed by about 20 hooks (`csx_*`: `cdecl_pushdecl`
+now takes the name token; parameters' DEF upgrade in bodies and K&R lists;
+tags in `cdecl_open_visit`, `xref_visit` and `cdecl_shadow_tag`; fields via a
+new `FieldIn.tok` after `type_complete_record`; uses in `e_ident` (skipping
+attribute arguments, `attr_takes_expr`), implicit declarations, typedef names,
+member access, designators, offsetof; labels at `new_label`, definition, use
+and `__label__`). The hooks are no-ops unless `CheckOptions.symidx` is set,
+so `cereal check` and parity are unchanged. `csx_finish` resolves tentative
+roles, classifies macro tokens against `#define` ranges, sorts, dedupes,
+hashes files and builds the CSR; the TU need not outlive the check. Measured:
+16 B per event as estimated, 25 B per decl before hover; zstd.c 1.37 MB,
+cexpr.c 0.52 MB, main.c 0.20 MB; check time within noise. `cereal check
+--dump-symbols` and `--verify-symbols` (every resolved identifier has an
+event unless its line has a diagnostic; sorted, CSR, declaration events,
+hashes). LSP: the check phase hands its `CIndex` to the snapshot (only if
+not cancelled and still current), files changed since the snapshot are
+marked stale; `definition` falls back from the macro index (now marking its
+plain-identifier fallback `weak`) to C DEF events, else DECL; new
+`declaration` (DECL, else DEF; `declarationProvider`). D1: both wait up to
+1.5 s (`cond_timedwait`, new in thread.[ch]) while the newest edit's snapshot
+or check is pending, then answer from what is there. D2: the LSP check no
+longer stops at a missing include; diagnostics after the first one are
+dropped. Tests: goldens `tests/symidx/` (plain and cells), `--verify-symbols`
+over tests/check, tests/parse and the sources (run.sh section 14), LSP
+sessions `tests/lsp/csym` (every kind, shadowing, forward declaration,
+macro-vs-C, D1, D2) and `csym_nocheck` (new `env` step in lsp_session.py);
+the other transcripts gained `declarationProvider`. The LSP sessions pass
+under TSan. Deferred: `cereal query` C support, verify over bench/corpus,
+hover strings (phase 3).

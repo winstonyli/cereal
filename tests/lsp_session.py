@@ -21,6 +21,8 @@ that directory's absolute path, and in the transcript it is put back.
   {"write": PATH, "text": TEXT}        create a workspace file (removed at
                                        the end), e.g. compile_commands.json
   {"note": TEXT}                       a heading in the transcript
+  {"env": {NAME: VALUE}}               the server's environment (applied
+                                       before it starts, wherever it stands)
 Opaque "data" members (call hierarchy items) are left out; lists (semantic
 tokens) are kept.
 Responses are printed with sorted keys; completion lists are cut to the
@@ -47,7 +49,10 @@ def subst(v, a, b):
 def main():
     steps = subst(json.load(open(SCEN)), "$ROOT", ROOT)
     err = os.environ.get("LSP_STDERR")  # e.g. to collect sanitizer reports
-    p = subprocess.Popen([BIN, "lsp"], cwd=ROOT, stdin=subprocess.PIPE,
+    env = dict(os.environ)
+    for st in steps:
+        env.update(st.get("env", {}))
+    p = subprocess.Popen([BIN, "lsp"], cwd=ROOT, env=env, stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE,
                          stderr=open(err, "a") if err else subprocess.DEVNULL)
     inbox = queue.Queue()
@@ -103,6 +108,8 @@ def main():
         return v
 
     for st in steps:
+        if "env" in st:
+            continue
         if "write" in st:
             path = os.path.join(ROOT, st["write"])
             with open(path, "w") as f:

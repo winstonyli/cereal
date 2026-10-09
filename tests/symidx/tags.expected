@@ -1,0 +1,65 @@
+tags.c:5:23 DEF typedef size_t -> #0
+tags.c:6:8 DECL struct S -> #1
+tags.c:7:8 DEF struct S -> #1
+tags.c:7:16 DEF field a -> #6
+tags.c:7:32 DEF field in -> #2
+tags.c:7:45 DEF union U -> #3
+tags.c:7:53 DEF field u1 -> #4
+tags.c:7:63 DEF field u2 -> #5
+tags.c:7:69 DEF field u -> #7
+tags.c:8:6 DEF func f -> #8
+tags.c:10:12 DECL struct S -> #9
+tags.c:11:12 DEF struct S -> #9
+tags.c:11:20 DEF field other -> #10
+tags.c:11:29 DEF obj s2 -> #11
+tags.c:11:37 REF field other -> #10
+tags.c:12:11 REF obj s2 -> #11
+tags.c:14:8 REF struct S -> #1
+tags.c:14:10 DEF obj s -> #12
+tags.c:14:17 REF field a -> #6
+tags.c:14:25 REF field in -> #2
+tags.c:14:34 REF field u -> #7
+tags.c:14:36 REF field u1 -> #4
+tags.c:15:1 REF typedef size_t -> #0
+tags.c:15:8 DEF obj off -> #13
+tags.c:15:30 REF struct S -> #1 arg
+tags.c:15:33 REF field u -> #7 arg
+tags.c:15:35 REF field u2 -> #5 arg
+tags.c:16:8 DEF struct E -> #14
+tags.c:16:17 DEF enum K -> #15
+tags.c:16:21 DEF enumconst K1 -> #16
+tags.c:16:25 DEF enumconst K2 -> #17
+tags.c:16:30 DEF field k -> #18
+tags.c:16:35 DEF obj e -> #19
+tags.c:16:41 REF enumconst K2 -> #17
+tags.c:17:5 DEF func g -> #21
+tags.c:17:14 REF struct S -> #1
+tags.c:17:17 DEF param p -> #20
+tags.c:17:29 REF param p -> #20
+tags.c:17:32 REF field in -> #2
+tags.c:17:37 REF param p -> #20
+tags.c:17:40 REF field u -> #7
+tags.c:17:42 REF field u1 -> #4
+tags.c:17:65 REF union U -> #3
+#0 typedef size_t
+#1 struct S
+#2 field in
+#3 union U
+#4 field u1
+#5 field u2
+#6 field a
+#7 field u
+#8 func f external
+#9 struct S
+#10 field other
+#11 obj s2
+#12 obj s external
+#13 obj off external
+#14 struct E
+#15 enum K
+#16 enumconst K1
+#17 enumconst K2
+#18 field k
+#19 obj e external
+#20 param p
+#21 func g external

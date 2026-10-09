@@ -135,6 +135,9 @@ typedef struct IdxTarget {
     SrcFile *file;            /* TGT_INCLUDE */
     SrcRange range;           /* extent of the symbol under the cursor */
     IdxExp *top;              /* file-level expansion at the cursor, if any */
+    bool weak;                /* a plain identifier that only has macro
+                                 history (not expanded here): a C answer
+                                 wins over it */
 } IdxTarget;
 
 void index_init(Index *ix, PP *pp);

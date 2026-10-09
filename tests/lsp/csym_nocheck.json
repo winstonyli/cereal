@@ -1,0 +1,12 @@
+[
+ {"env": {"CEREAL_LSP_CHECK_MAX": "1"}},
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/csym", "capabilities": {"general": {"positionEncodings": ["utf-8", "utf-16"]}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"note": "no check (the unit is over CEREAL_LSP_CHECK_MAX): no C index, so a C name has no definition, while a macro still has one"},
+ {"open": "csym/main.c"},
+ {"idle": true},
+ {"send": {"id": 2, "method": "textDocument/definition", "params": {"textDocument": {"uri": "file://$ROOT/csym/main.c"}, "position": {"line": 23, "character": 18}}}},
+ {"send": {"id": 3, "method": "textDocument/definition", "params": {"textDocument": {"uri": "file://$ROOT/csym/main.c"}, "position": {"line": 24, "character": 17}}}},
+ {"send": {"id": 4, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

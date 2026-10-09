@@ -10,6 +10,7 @@
 #include "common.h"
 
 #include <pthread.h>
+#include <time.h>
 
 typedef pthread_mutex_t Mutex;
 typedef pthread_cond_t Cond;
@@ -22,6 +23,10 @@ void cond_init(Cond *c);
 void cond_destroy(Cond *c);
 void cond_wait(Cond *c, Mutex *m);
 void cond_broadcast(Cond *c);
+/* The time `seconds` from now, for cond_timedwait. */
+struct timespec cond_deadline(double seconds);
+/* cond_wait, but at most until deadline; false once it has passed. */
+bool cond_timedwait(Cond *c, Mutex *m, const struct timespec *deadline);
 
 int cpu_count(void);
 

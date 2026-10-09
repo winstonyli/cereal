@@ -47,7 +47,9 @@ It also runs fast on huge generated files.
   empties it; a cancelled build leaves it as it was.
 - **Snapshots** are immutable and reference counted. Requests run on the
   protocol thread against the latest complete snapshot and never wait for
-  a build; only the first build of a unit is waited for.
+  a build; only the first build of a unit is waited for. The exception is
+  definition and declaration, which wait up to 1.5 s for the C symbol
+  index of the newest edit (see "C symbol index").
 - **Diagnostics** are published after every build for the open documents
   the unit covers. Errors in headers that are not open appear on the
   `#include` that leads to them.
@@ -61,8 +63,10 @@ After the macro snapshot has been installed and its diagnostics
 published, the builder thread (still marked busy, so `waitIdle` waits)
 runs `frontend_run` (`src/c/frontend.c`, the function `cereal check`
 uses too) over a **fresh TU of its own**: a second, sequential
-preprocessor pass (a missing include is fatal, as in gcc and the command
-line), the parser, and the checker, reading the same frozen overlay and the
+preprocessor pass (unlike gcc and the command line, a missing include is
+not fatal here, so that the symbol index covers the whole file; compiler
+diagnostics after the first missing include are dropped, as gcc never
+reports them), the parser, and the checker, reading the same frozen overlay and the
 unit's cancel flag. The snapshot's TU cannot be reused: for small files
 the preprocessor was consumed by the macro index, and large files keep
 cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
@@ -95,9 +99,9 @@ cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
   tokens per source byte) and 420 MB at 9 MB, which set the limit. The
   macro phase peaks at 830 MB on the 35 MB file; a unit over the limit
   never pays more than its macro phase.
-- **Nothing is retained:** the TU, the parser's tokens and the checker are
-  freed when the phase ends (the symbol index will keep data across the
-  phase, B2).
+- **What is retained:** the TU, the parser's tokens and the checker are
+  freed when the phase ends; only the C symbol index (below) is kept, on
+  the snapshot.
 - **Which units:** every unit except a header opened on its own (no
   compile command, not yet included by a unit). Once a unit includes such
   a header, its compiler errors show in the header's own buffer, through
@@ -109,6 +113,55 @@ cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
   quick edits whose final diagnostics must be the last text's, a missing
   include shown once). Whether a quick edit really *cancelled* a check
   is timing-dependent and not asserted; the stale-result rule is.
+
+## C symbol index (B2, phase 1)
+
+The check phase also records a symbol index (`src/c/csymidx.c`; design
+in B2_DESIGN.md): every declaration, definition and use of a function,
+variable, parameter, typedef, enumerator, field, label and tag, as
+events (file, offset, length, role DECL/DEF/REF, macro flags) pointing at
+decls (kind, name, linkage). The checker calls about 20 cheap hooks
+(`csx_*`) that do nothing unless the index was asked for
+(`CheckOptions.symidx`), so `cereal check` and gcc parity are unchanged.
+The frozen `CIndex` moves onto the snapshot when the check publishes and
+is freed with it.
+
+- **Locations:** an event inside a macro expansion is placed at its
+  spelling when the token came from an argument, else at the invocation
+  (`expansion`); one presented in a system header is dropped, and a system
+  decl used by user code gets one lazy event at its declaration. Each file
+  carries a hash: a file whose text differs from the snapshot's is marked
+  stale and its events are not answered. Files absent from the snapshot
+  are skipped (no line table to convert offsets).
+- **Queries:** definition answers DEF events, else DECL; declaration
+  answers DECL, else DEF (`declarationProvider`). The macro index is asked
+  first: an expanded macro at the cursor wins; a name the macro index only
+  knows by its plain identifier (a macro since `#undef`'d, `weak`), or
+  nothing, goes to the C index.
+- **Waiting (decision D1):** right after an edit the snapshot's index is
+  not ready yet. definition and declaration wait (`cond_timedwait`, at most
+  1.5 s) while the newest edit has no snapshot or its check is pending,
+  then answer from what is there: the macros alone if no index published.
+- **No index:** units over the check size limit, headers opened on their
+  own, cancelled checks. C queries then return nothing; macros still work.
+- **Size (measured, x86_64):**
+
+  | Unit | Events | Decls | Files | CIndex |
+  |---|---|---|---|---|
+  | src/main.c | 7,291 | 3,269 | 38 | 0.20 MB |
+  | src/c/cexpr.c | 24,828 | 5,153 | 30 | 0.52 MB |
+  | zstd.c (2.2 MB) | 65,898 | 12,717 | 15 | 1.37 MB |
+
+  16 bytes per event (as estimated) and about 25 per decl before hover
+  strings (phase 3; `--dump-types` lines average 58 bytes, so about 83 per
+  decl with hover, against the design's 60). `cereal check` peak RSS on
+  zstd.c grows from 12.2 to 14.4 MB; time is within noise (cexpr.c best of
+  7: 0.079 s off, 0.080 s with `--verify-symbols`).
+- **Command line:** `cereal check --dump-symbols FILE` prints the events
+  and the decl table; `--verify-symbols` checks that every identifier the
+  checker resolved has its event and that the index is well formed
+  (sorted, CSR consistent, every decl declared), excusing lines with a
+  diagnostic, and prints a `symbols:` summary line.
 
 ## Capabilities
 
@@ -131,6 +184,8 @@ invocation is still being typed).
   - `cereal/expandMacro` (position: the invocation's full expansion);
   - `cereal/waitIdle` (answers when no build is queued or running; a
     barrier for tests).
+- **C names:** definition and declaration (above). References, hover and
+  rename for C names are B2 phases 2 to 4.
 
 ## Tests
 
@@ -138,7 +193,10 @@ invocation is still being typed).
 compares transcripts with golden files. Scripts can create files (a
 compilation database with absolute paths), open workspace files, wait
 for notifications, and use `waitIdle` barriers so asynchronous builds
-stay deterministic. The sessions are also run under ThreadSanitizer and
+stay deterministic. An `{"env": {...}}` step sets the server's
+environment (`tests/lsp/csym_nocheck` uses it to turn the check off).
+`tests/lsp/csym` covers C definition and declaration for every kind,
+shadowing, macro-vs-C precedence, D1 and D2. The sessions are also run under ThreadSanitizer and
 AddressSanitizer/UBSan (set `LSP_STDERR` to collect reports).
 
 ## Measurements (35 MB macro_heavy.c, 4 cores)

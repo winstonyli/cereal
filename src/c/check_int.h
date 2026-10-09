@@ -9,6 +9,7 @@
 #include "c/check.h"
 #include "c/ckw.h"
 #include "c/csum.h"
+#include "c/csymidx.h"
 #include "c/lit.h"
 #include "c/type.h"
 
@@ -309,6 +310,7 @@ struct Checker {
     /* symbols */
     VEC(CSym) gsyms;         /* persistent */
     VEC(CSym) lsyms;         /* this unit's */
+    SymIdxB *sx;             /* the symbol index builder; NULL: off */
     VEC(StrInit) strinits;   /* string initializers of const char arrays (cexpr.c) */
     VEC(char *) dep_msgs;    /* deprecated/unavailable attribute messages */
     VEC(uint32_t) ucn_seen;           /* cexpr.c: literal tokens whose escapes were checked */

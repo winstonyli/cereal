@@ -1,0 +1,49 @@
+decls.c:4:5 DEF obj t -> #0
+decls.c:5:5 DECL obj t -> #0
+decls.c:6:5 DECL obj d -> #1
+decls.c:7:5 DEF obj d -> #1
+decls.c:8:12 DECL obj e -> #2
+decls.c:9:5 DECL func f -> #5
+decls.c:9:11 DECL param a -> #3
+decls.c:9:18 DECL param b -> #4
+decls.c:10:5 DEF func f -> #5
+decls.c:10:11 DEF param a -> #6
+decls.c:10:18 DEF param b -> #7
+decls.c:10:34 DECL obj e -> #2
+decls.c:10:44 REF param a -> #6
+decls.c:10:48 REF param b -> #7
+decls.c:10:52 REF obj e -> #2
+decls.c:10:56 REF obj t -> #0
+decls.c:11:5 DEF func kr -> #8
+decls.c:11:8 REF param x -> #9
+decls.c:11:11 DEF param y -> #10
+decls.c:11:18 DEF param x -> #9
+decls.c:11:30 REF param x -> #9
+decls.c:11:34 REF param y -> #10
+decls.c:12:13 DEF typedef T -> #11
+decls.c:13:5 DEF func g -> #12
+decls.c:13:15 REF typedef T -> #11
+decls.c:13:17 DEF obj T -> #13
+decls.c:13:31 REF obj T -> #13
+decls.c:14:5 DEF func h -> #14
+decls.c:14:22 REF func later -> #15
+decls.c:15:5 DEF func later -> #15
+decls.c:15:15 DEF param v -> #16
+decls.c:15:27 REF param v -> #16
+#0 obj t external tentative
+#1 obj d external
+#2 obj e external
+#3 param a
+#4 param b
+#5 func f external
+#6 param a
+#7 param b
+#8 func kr external
+#9 param x
+#10 param y
+#11 typedef T
+#12 func g external
+#13 obj T
+#14 func h external
+#15 func later external implicit
+#16 param v

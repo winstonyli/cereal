@@ -1501,9 +1501,21 @@ static bool fields_volatile(Checker *c, TypeId t)
     return false;
 }
 
+static uint32_t pushdecl_(Checker *c, const CSym *xin, bool implicit_int);
+
+uint32_t cdecl_pushdecl(Checker *c, const CSym *xin, bool implicit_int,
+                        uint32_t tok)
+{
+    bool file = c->sx && cat_file_scope(c);
+    uint32_t ref = pushdecl_(c, xin, implicit_int);
+    if (c->sx && xin->name)
+        csx_decl(c, ref, xin, file, tok);
+    return ref;
+}
+
 /* pushdecl: enters x in the current scope, merging it with an earlier
  * declaration of the same entity.  Returns the symbol the name now denotes. */
-uint32_t cdecl_pushdecl(Checker *c, const CSym *xin, bool implicit_int)
+static uint32_t pushdecl_(Checker *c, const CSym *xin, bool implicit_int)
 {
     CSym x = *xin;
     uint32_t name = x.name, b, ref;
@@ -1960,12 +1972,19 @@ void cdecl_shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok)
                     warned = 1;
                 cdecl_pending_xref(c, sp);
             } else {
+                TypeId t = sp->ty;
                 sp->xref_name = 0;
                 if (!cbound_here(c, NS_TAG, name)) {
-                    TypeId t = tk == TY_ENUM
+                    t = tk == TY_ENUM
                         ? type_new_enum(TT, name, il)
                         : type_new_record(TT, name, tk == TY_UNION, il);
                     cbind(c, NS_TAG, name, t);
+                }
+                /* `struct S;` declares S here */
+                if (c->sx && sp->kind != TSK_TAGDEF && sp->tag_node != NO_NODE) {
+                    uint32_t tn = find_child(c, sp->tag_node, N_TAG);
+                    if (tn != NO_NODE)
+                        csx_tag_redecl(c, t, cnode(c, tn)->tok);
                 }
             }
         } else if (warned != 1) {
@@ -2528,7 +2547,7 @@ static void declared_visit(Checker *c, uint32_t i)
         uint32_t nents = (uint32_t)TT->ents.len;
         if (a.sso == 1 && is_rec(c, type_canon(TT, s.ty)))
             s.ty = type_clone_record(TT, s.ty);   /* a distinct variant */
-        ref = cdecl_pushdecl(c, &s, false);
+        ref = cdecl_pushdecl(c, &s, false, gname_tok(c, &g));
         if (a.may_alias && type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF)
             TT->ents.data[TYPE_IDX(csym(c, ref)->ty)].flags |= TF_MAYALIAS;
         if ((a.wina_al || sp.attrs.wina_al) &&
@@ -2552,7 +2571,7 @@ static void declared_visit(Checker *c, uint32_t i)
             cdecl_inline_given(c, &s, sp.is_inline, sn, idecl);
             cdecl_inline_follows(c, &s, ltok, sn, idecl);
         }
-        ref = cdecl_pushdecl(c, &s, false);
+        ref = cdecl_pushdecl(c, &s, false, gname_tok(c, &g));
     }
     {
         CSym *t = csym(c, ref);
@@ -2935,7 +2954,7 @@ static void param_visit(Checker *c, uint32_t p)
         cpedantic(c, cdecl_line_start_loc(c, after),
                   "ISO C forbids forward parameter declarations");
     }
-    ref = cdecl_pushdecl(c, &s, false);
+    ref = cdecl_pushdecl(c, &s, false, gname_tok(c, &g));
     if (cnode(c, p)->flags & NF_FWD)
         csym(c, ref)->flags |= CSF_FWD;
     else
@@ -3445,7 +3464,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     }
     s.parms = cparm_make(c, funcdef_fnode(c, top));
     iso_def = !nested && (s.flags & CSF_PROTO_DEF);
-    ref = cdecl_pushdecl(c, &s, g.default_int);
+    ref = cdecl_pushdecl(c, &s, g.default_int, gname_tok(c, &g));
     if (iso_def && !cin_system(c, loc))
         cwarn(c, loc, "traditional", "traditional C rejects ISO C style "
               "function definitions");
@@ -3544,6 +3563,8 @@ static void body_visit(Checker *c, uint32_t i)
             larger_than(c, s->loc, s->name, s->ty);   /* declared again in the body */
             if (s->name) {
                 cbind(c, NS_ORD, s->name, c->cb[p] - 1);
+                if (c->sx)
+                    csx_param_def(c, c->cb[p] - 1);
                 if (!(s->flags & CSF_USED))
                     warn_if_shadowing(c, s);
             } else
@@ -3615,6 +3636,10 @@ static void body_visit(Checker *c, uint32_t i)
                            cident(c, name));
                     s->ty = TYPE_B(INT);
                 }
+                if (c->sx) {
+                    csx_param_def(c, ref);
+                    csx_sym(c, ref, cnode(c, kn)->tok, CIX_REF);
+                }
                 warn_if_shadowing(c, s);
             } else {
                 CSym n;
@@ -3624,7 +3649,9 @@ static void body_visit(Checker *c, uint32_t i)
                 n.flags = CSF_PARAM | CSF_DEFINED;
                 n.ty = TYPE_B(INT);
                 n.loc = fnloc;
-                ref = cdecl_pushdecl(c, &n, false);
+                ref = cdecl_pushdecl(c, &n, false, cnode(c, kn)->tok);
+                if (c->sx)
+                    csx_param_def(c, ref);
                 warn_if_shadowing(c, csym(c, ref));
                 DiagOrd o0 = diag_ord(c->diag, ORD_LATE);
                 if (!cexpr_undeclared_here(c, name))    /* gcc bound it to an error */

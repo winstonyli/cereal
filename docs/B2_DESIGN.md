@@ -263,7 +263,12 @@ the hooks would see:
   open unit keeps its CIndex, and older snapshots free theirs when their
   last request ends. This bounds the total.
 - **Verify after phase 1.** Record the measured CIndex bytes for the
-  three units above in LSP.md, replacing these estimates.
+  three units above in LSP.md, replacing these estimates. Done (Round
+  187): main.c 0.20 MB, cexpr.c 0.52 MB, zstd.c 1.37 MB (65,898 events:
+  fewer than the 80k nodes because system-presented events are dropped).
+  16 B per event as estimated; 25 B per decl without hover, about 83 B
+  with hover projected from `--dump-types` line lengths (1.4x the 60 B
+  allowance, within the 2x tolerance).
 
 ## 5. Hook sites
 
@@ -484,7 +489,7 @@ The edit lists every event's range, deduplicated, in the existing
 | Anonymous struct/union members | the intermediate anonymous field has no name, so no event; designators and `.x` through it reference the inner named field |
 | Attribute arguments | handled by `attr_takes_expr` (section 5.2) |
 | Bit-field widths, array sizes, `_Static_assert`, `alignas` | ordinary expressions, so indexed |
-| `_Generic` associations | type names via specs; whether unselected association expressions are visited is unverified: a phase 1 golden must settle it, and any unvisited one is a coverage gap that `--verify-symbols` reports |
+| `_Generic` associations | type names via specs; unselected association expressions are visited and indexed (settled by `tests/symidx/stmts.c`) |
 
 ## 11. Test plan
 
@@ -535,7 +540,7 @@ Each phase ships on its own, with its tests passing.
 
 | Phase | Content | Est. lines |
 |---|---|---|
-| 1 Declarations and definition | csymidx core (builder, maps, finish, sort, CSR, strings); all hooks of sections 5.1-5.2; `--dump-symbols`, `--verify-symbols`; `tests/symidx`; server plumbing (`cidx`, publish, hash check, D1 wait); `IdxTarget.weak` and merge; definition and a separate `R_DECL` | ~500 |
+| 1 Declarations and definition (**DONE**, Round 187; ~1,320 lines: csymidx.c/h 950 including dump and verify, 370 in existing files) | csymidx core (builder, maps, finish, sort, CSR, strings); all hooks of sections 5.1-5.2; `--dump-symbols`, `--verify-symbols`; `tests/symidx`; server plumbing (`cidx`, publish, hash check, D1 wait); `IdxTarget.weak` and merge; definition and a separate `R_DECL` | ~500 |
 | 2 References and highlight | references with includeDeclaration; documentHighlight provider and capability (macros too); query `refs` | ~80 |
 | 3 Hover | `dump_decl` refactored to write a StrBuf; unit-end and finish formatting; record layout and labels; hover merge | ~120 |
 | 4 Rename | blockers 1-7, inactive scan, scope tree and conflict check, C path in prepareRename/rename | ~200 |
@@ -652,3 +657,33 @@ D1: a C query during a running check waits up to about 1.5 s (`cond_timedwait`),
 D2: the LSP check is non-fatal on a missing include; compiler diagnostics after the first missing include are dropped so the index covers the whole file.
 D3: rename only names with no or internal linkage, or used only in the main file, until B5.
 D4: renaming a name written in a macro argument is allowed.
+
+## Phase 1 results and corrections (Round 187)
+
+Phase 1 is done (HISTORY.md Round 187; LSP.md "C symbol index"). Where
+the implementation departs from or settles the text above:
+
+1. **D1 wait condition.** The wait covers not only a PENDING check but
+   also a newer edit whose snapshot is queued or still building
+   (`snap->gen < want`); otherwise a request right after an edit would
+   answer at once from the previous snapshot.
+2. **Files absent from the snapshot** (read by the check but not by the
+   macro phase) are skipped rather than emitted from their path: without
+   the snapshot's line table there is no offset-to-position conversion.
+3. **`--verify-symbols` excuses** a resolved identifier with no event
+   when a warning or error was diagnosed on the same line (all misses
+   over `tests/check` were in erroneous code: dropped fields, duplicate
+   parameters, bad designators, labels outside functions), plus
+   `__builtin_*` and `__func__`-like names, error nodes, attribute
+   subtrees, quiet units and system presentation. Clean over
+   `tests/check`, `tests/parse`, cereal's sources, zstd.c and cexpr.c;
+   run in `tests/run.sh` section 14.
+4. **Kinds** print as `struct`, `union`, `enum` (not one `tag` kind).
+5. **Parameters:** a prototype's parameters are DECL; a body (or K&R
+   declaration list) upgrades them to DEF (`csx_param_def`).
+6. **Line count:** about 1,320 lines against the ~500 estimated for
+   phase 1; the four-phase total of ~900 is no longer realistic.
+7. **Deferred from phase 1:** `cereal query` C support
+   (`tests/query/csym.cmd`, test plan item 3) and `--verify-symbols`
+   over `bench/corpus.py` (only zstd.c and cexpr.c were run). Hover
+   strings are not stored yet (phase 3).

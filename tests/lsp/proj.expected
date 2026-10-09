@@ -4,6 +4,7 @@
  "providers": [
   "callHierarchyProvider",
   "completionProvider",
+  "declarationProvider",
   "definitionProvider",
   "documentSymbolProvider",
   "foldingRangeProvider",

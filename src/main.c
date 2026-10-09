@@ -6,6 +6,7 @@
 #include "index.h"
 #include "cell.h"
 #include "toks.h"
+#include "c/csymidx.h"
 #include "c/frontend.h"
 #include "lsp/lsp.h"
 
@@ -34,6 +35,8 @@ static void usage(FILE *o)
         "  check         parse and type-check (declarations, types,\n"
         "                constant expressions), gcc's diagnostics\n"
         "                --dump-types: print declarations and layouts\n"
+        "                --dump-symbols: print the C symbol index\n"
+        "                --verify-symbols: check it, report names it missed\n"
         "                --summaries: compute them only (timing)\n"
         "                --dump-summaries: print each unit's summary and read set\n"
         "                --validate-summaries=FILE: check each unit's read set in\n"
@@ -156,13 +159,14 @@ done:
 /* ---- parse, -fsyntax-only ------------------------------------------------ */
 
 static FrontendOpts fe_opts;
-static bool parse_cells;
+static bool parse_cells, dump_symbols, verify_symbols;
 
 static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
 {
     TU tu;
     FrontendOpts fo = fe_opts;
     ParOptions po;
+    CIndex *ix = NULL;
     int rc;
     tu_init(&tu, o);
     tu.diag.out = err;
@@ -171,8 +175,17 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
         po = par_options(o);
         fo.cells_par = &po;
     }
+    if (dump_symbols || verify_symbols) {
+        fo.cidx = &ix;
+        fo.symidx_verify = verify_symbols ? out : NULL;
+    }
     frontend_run(&tu, path, &fo);
     rc = finish(&tu, out);
+    if (ix && dump_symbols)
+        cindex_dump(ix, &tu.sm, out);
+    if (ix && verify_symbols && cindex_verify(ix, &tu.sm, out) && !rc)
+        rc = 1;
+    cindex_free(ix);
     tu_free(&tu);
     return rc;
 }
@@ -875,6 +888,14 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--dump-types")) {
             fe_opts.dump_types = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--dump-symbols")) {
+            dump_symbols = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--verify-symbols")) {
+            verify_symbols = true;
             continue;
         }
         if (!strcmp(argv[i], "--summaries")) {

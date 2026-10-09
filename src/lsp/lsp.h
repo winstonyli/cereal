@@ -8,6 +8,7 @@
 #ifndef CEREAL_LSP_H
 #define CEREAL_LSP_H
 
+#include "../c/csymidx.h"
 #include "../driver.h"
 #include "../index.h"
 #include "../json.h"
@@ -72,7 +73,13 @@ typedef struct Snapshot {
     Options *opt;
     struct Overlay *overlay; /* the editor buffers it was built from */
     MacroGraph graph;        /* built with the snapshot */
+    /* The C symbol index of the snapshot's check (phase 2), published under
+     * the server lock; NULL until then, or with no check (CHECK_NONE). */
+    struct CIndex *cidx;
+    int check_state;         /* CHECK_* */
 } Snapshot;
+
+enum { CHECK_NONE, CHECK_PENDING, CHECK_DONE };
 
 void snapshot_release(Snapshot *s);
 
@@ -91,10 +98,12 @@ typedef struct Req {
     size_t text_len;
     const SrcFile *uri_file;  /* the last file json_location named */
     const char *uri;
+    const struct CIndex *cidx; /* snap's, taken under the lock; NULL: none */
 } Req;
 
 /* Each writes the result value (not the envelope). */
 void lsp_definition(Req *r, JsonWriter *w);
+void lsp_declaration(Req *r, JsonWriter *w);
 void lsp_references(Req *r, JsonWriter *w);
 void lsp_hover(Req *r, JsonWriter *w);
 void lsp_completion(Req *r, JsonWriter *w);

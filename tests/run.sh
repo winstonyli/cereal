@@ -20,6 +20,9 @@
 #      line in a case adds flags (e.g. -Wall, --target=i386, --dump-types);
 #      layout parity: random records with $REFCC's sizeof/_Alignof/offsetof
 #      as _Static_asserts (tests/gen_layout.py) must check clean
+#  12. summaries  13. build options (see their sections)
+#  14. C symbol index: `--dump-symbols` goldens, `--verify-symbols` over the
+#      checker and parser cases and cereal's own sources
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -393,6 +396,47 @@ for f in "-x c++" "-x c-header"; do
     # shellcheck disable=SC2086
     "$CEREAL" check -std=c99 $f "$TMP/bo.c" >/dev/null 2>&1 && bad "option $f accepted" || ok
 done
+
+# 14. C symbol index: golden `--dump-symbols` (plain and from cells), and
+#     `--verify-symbols` (every resolved identifier has its event, the index
+#     is well formed) over the checker and parser cases and cereal's sources
+if [ -d "$ROOT/tests/symidx" ]; then
+    cd "$ROOT/tests/symidx"
+    for f in *.c; do
+        for extra in "" "--cells -fparallel-chunk=1 -fparallel-threads=2"; do
+            # shellcheck disable=SC2086
+            "$CEREAL" check --target=x86_64-linux-gnu --dump-symbols $extra \
+                "$f" >"$TMP/sym.out" 2>/dev/null
+            if cmp -s "$TMP/sym.out" "${f%.c}.expected"; then
+                ok
+            else
+                bad "symidx/$f $extra"
+                diff "${f%.c}.expected" "$TMP/sym.out" | head -10 | sed 's/^/    /'
+            fi
+        done
+    done
+    cd "$ROOT"
+fi
+sym_verify() { # sym_verify LABEL FILES...: one verdict for the lot
+    label=$1
+    shift
+    for f in "$@"; do
+        extra=$(sed -n 's|^// flags: *||p' "$f" | head -1)
+        # shellcheck disable=SC2086
+        "$CEREAL" -fsyntax-only -std=c99 -pedantic -I"$ROOT/src" \
+            -D_POSIX_C_SOURCE=200809L $extra --verify-symbols "$f" \
+            2>/dev/null </dev/null | grep -v '^symbols: ' | sed "s|^|$f: |"
+    done >"$TMP/sv"
+    if [ -s "$TMP/sv" ]; then
+        bad "verify-symbols $label"
+        head -10 "$TMP/sv" | sed 's/^/    /'
+    else
+        ok
+    fi
+}
+cd "$ROOT/tests/check" && sym_verify tests/check ./*.c
+cd "$ROOT/tests/parse" && sym_verify tests/parse ./*.c
+cd "$ROOT" && sym_verify sources src/*.c src/analysis/*.c src/lsp/*.c src/c/*.c
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

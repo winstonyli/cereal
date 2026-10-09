@@ -1670,6 +1670,7 @@ IdxTarget index_resolve(Index *ix, SrcLoc loc)
         if (!id || !mt_hist(ix->pp->mt, id))
             return t;
         t.kind = TGT_MACRO;
+        t.weak = true;
         t.name = id;
         t.range = r;
         n = index_visible(ix, loc, &vis);

@@ -103,10 +103,10 @@ static void init_va_list(TypeTable *tt)
         TypeId r = type_new_record(tt, intern_cstr(tt->in, "__va_list_tag")->id,
                                    false, 0);
         FieldIn f[4] = {
-            {intern_cstr(tt->in, "gp_offset")->id, TYPE_B(UINT), -1, 0, false, 0, 0, 0, 0, 0},
-            {intern_cstr(tt->in, "fp_offset")->id, TYPE_B(UINT), -1, 0, false, 0, 0, 0, 0, 0},
-            {intern_cstr(tt->in, "overflow_arg_area")->id, vp, -1, 0, false, 0, 0, 0, 0, 0},
-            {intern_cstr(tt->in, "reg_save_area")->id, vp, -1, 0, false, 0, 0, 0, 0, 0},
+            {intern_cstr(tt->in, "gp_offset")->id, TYPE_B(UINT), -1, 0, false, 0, 0, 0, 0, 0, 0},
+            {intern_cstr(tt->in, "fp_offset")->id, TYPE_B(UINT), -1, 0, false, 0, 0, 0, 0, 0, 0},
+            {intern_cstr(tt->in, "overflow_arg_area")->id, vp, -1, 0, false, 0, 0, 0, 0, 0, 0},
+            {intern_cstr(tt->in, "reg_save_area")->id, vp, -1, 0, false, 0, 0, 0, 0, 0, 0},
         };
         type_complete_record(tt, r, f, 4, 0, 0, false, 0);
         type_record(tt, r)->flags |= RF_NOKEYWORD;
@@ -117,11 +117,11 @@ static void init_va_list(TypeTable *tt)
         TypeId r = type_new_record(tt, intern_cstr(tt->in, "__va_list")->id,
                                    false, 0);
         FieldIn f[5] = {
-            {intern_cstr(tt->in, "__stack")->id, vp, -1, 0, false, 0, 0, 0, 0, 0},
-            {intern_cstr(tt->in, "__gr_top")->id, vp, -1, 0, false, 0, 0, 0, 0, 0},
-            {intern_cstr(tt->in, "__vr_top")->id, vp, -1, 0, false, 0, 0, 0, 0, 0},
-            {intern_cstr(tt->in, "__gr_offs")->id, TYPE_B(INT), -1, 0, false, 0, 0, 0, 0, 0},
-            {intern_cstr(tt->in, "__vr_offs")->id, TYPE_B(INT), -1, 0, false, 0, 0, 0, 0, 0},
+            {intern_cstr(tt->in, "__stack")->id, vp, -1, 0, false, 0, 0, 0, 0, 0, 0},
+            {intern_cstr(tt->in, "__gr_top")->id, vp, -1, 0, false, 0, 0, 0, 0, 0, 0},
+            {intern_cstr(tt->in, "__vr_top")->id, vp, -1, 0, false, 0, 0, 0, 0, 0, 0},
+            {intern_cstr(tt->in, "__gr_offs")->id, TYPE_B(INT), -1, 0, false, 0, 0, 0, 0, 0, 0},
+            {intern_cstr(tt->in, "__vr_offs")->id, TYPE_B(INT), -1, 0, false, 0, 0, 0, 0, 0, 0},
         };
         type_complete_record(tt, r, f, 5, 0, 0, false, 0);
         type_record(tt, r)->flags |= RF_NOKEYWORD;

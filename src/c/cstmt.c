@@ -244,6 +244,8 @@ static uint32_t new_label(Checker *c, CStmt *s, uint32_t name, SrcLoc loc,
         top(s)->ndeclared++;
     vec_push(&s->labels, l);
     lmap_set(c, s, name, (uint32_t)s->labels.len);
+    if (c->sx)
+        csx_label_new(c, (uint32_t)s->labels.len - 1, name, loc);
     return (uint32_t)s->labels.len - 1;
 }
 
@@ -262,6 +264,8 @@ static void define_label(Checker *c, CStmt *s, uint32_t node, uint32_t key)
               cident(c, name));
     if (idx) {
         CLabel *l = &s->labels.data[idx - 1];
+        if (c->sx && (l->fn == fn || l->declared))
+            csx_label(c, idx - 1, cnode(c, node)->tok, CIX_DEF);
         if ((l->fn == fn && l->defined) || (l->fn != fn && l->declared)) {
             Diagnostic *d = cerror_d(c, loc, "duplicate label '%s'",
                                      cident(c, name));
@@ -279,6 +283,8 @@ static void define_label(Checker *c, CStmt *s, uint32_t node, uint32_t key)
         }
     }
     idx = new_label(c, s, name, loc, key, true, false, f->fblock);
+    if (c->sx)
+        csx_label(c, idx, cnode(c, node)->tok, CIX_DEF);
     s->labels.data[idx].def_seq = ++f->seq;
     s->labels.data[idx].def_block = s->cur;
 }
@@ -300,6 +306,8 @@ void use_label(Checker *c, CStmt *s, uint32_t name, SrcLoc gloc,
         idx = new_label(c, s, name, uloc, key, false, false, f->fblock) + 1;
         l = &s->labels.data[idx - 1];
     }
+    if (c->sx)
+        csx_label(c, idx - 1, c->nodes[key].tok, CIX_REF);
     if (l->fn != fn) {
         l->used = true;
         return;
@@ -1451,7 +1459,9 @@ void local_labels(Checker *c, CStmt *s, uint32_t i)
                   l->defined ? "definition" : "declaration", cident(c, name));
             continue;
         }
-        new_label(c, s, name, loc, kids[k], false, true, s->cur);
+        idx = new_label(c, s, name, loc, kids[k], false, true, s->cur);
+        if (c->sx)
+            csx_label(c, idx, c->nodes[kids[k]].tok, CIX_DECL);
     }
 }
 

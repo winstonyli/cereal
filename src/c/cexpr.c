@@ -1672,6 +1672,8 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
         c->ty[i] = o->ty;
         c->ck[i] = K_ADDR;
         c->cb[i] = ref + 1;
+        if (c->sx)
+            csx_sym(c, ref, c->nodes[i].tok, CIX_REF);
         return;
     }
     if (bt) {
@@ -1711,6 +1713,8 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
     c->ty[i] = s.ty;
     c->ck[i] = K_ADDR;
     c->cb[i] = ref + 1;
+    if (c->sx)
+        csx_sym(c, ref, c->nodes[i].tok, CIX_REF);
 }
 
 /* Whether id was already reported undeclared in the current function. */
@@ -1885,6 +1889,28 @@ static bool in_has_attr(const Checker *c, uint32_t i)
     return false;
 }
 
+/* Whether the arguments of attribute item p are expressions (cleanup's
+ * function name too: a use for the symbol index). */
+static bool attr_takes_expr(Checker *c, uint32_t p, bool cleanup)
+{
+    size_t al, q;
+    const char *an = ttext(c, c->nodes[p].tok, &al);
+    static const char *const ex[] = {
+        "nonnull", "aligned", "vector_size", "warn_if_not_aligned",
+        "alloc_size", "alloc_align", "assume_aligned", "malloc",
+        "fallthrough", "constructor", "destructor", "format_arg"};
+    if (al > 4 && !strncmp(an, "__", 2) && !strncmp(an + al - 2, "__", 2)) {
+        an += 2;
+        al -= 4;
+    }
+    if (cleanup && al == 7 && !strncmp(an, "cleanup", 7))
+        return true;
+    for (q = 0; q < sizeof ex / sizeof *ex; q++)
+        if (strlen(ex[q]) == al && !strncmp(an, ex[q], al))
+            return true;
+    return false;
+}
+
 static void e_ident(Checker *c, uint32_t i)
 {
     uint32_t id = cnode_ident(c, i), ref = lookup_ord(c, id);
@@ -1910,24 +1936,10 @@ static void e_ident(Checker *c, uint32_t i)
             c->ck[i] = K_ADDR;
             return;
         }
-        if (p != NO_NODE && ntag(c, p) == N_ATTR_ITEM) {
-            size_t al;
-            const char *an = ttext(c, c->nodes[p].tok, &al);
-            static const char *const ex[] = {
-                "nonnull", "aligned", "vector_size", "warn_if_not_aligned",
-                "alloc_size", "alloc_align", "assume_aligned", "malloc",
-                "fallthrough", "constructor", "destructor", "format_arg"};
-            size_t q;
-            if (al > 4 && !strncmp(an, "__", 2) && !strncmp(an + al - 2, "__", 2)) {
-                an += 2;
-                al -= 4;
-            }
-            /* attributes whose arguments are expressions */
-            for (q = 0; q < sizeof ex / sizeof *ex && strncmp(name, "__builtin_", 10); q++)
-                if (strlen(ex[q]) == al && !strncmp(an, ex[q], al)) {
-                    undeclared(c, i, id);
-                    return;
-                }
+        if (p != NO_NODE && ntag(c, p) == N_ATTR_ITEM &&
+            strncmp(name, "__builtin_", 10) && attr_takes_expr(c, p, false)) {
+            undeclared(c, i, id);
+            return;
         }
         if (!strncmp(name, "__builtin_", 10)) {
             /* a built-in with a library counterpart has that function's type;
@@ -1968,6 +1980,9 @@ static void e_ident(Checker *c, uint32_t i)
         return;
     }
     s = csym(c, ref);
+    if (c->sx && (c->par[i] == NO_NODE || ntag(c, c->par[i]) != N_ATTR_ITEM ||
+                  attr_takes_expr(c, c->par[i], true)))
+        csx_sym(c, ref, c->nodes[i].tok, CIX_REF);
     /* gcc marks a variable named in __builtin_has_attribute used; a function
      * stays unused ("declared static but never defined") */
     if ((s->kind != CS_FUNC || !in_has_attr(c, i)) &&
@@ -5254,6 +5269,9 @@ static void e_offsetof(Checker *c, uint32_t i)
                 set_err(c, i);
                 return;
             }
+            if (c->sx)
+                csx_field(c, (uint32_t)(f - c->tt.fields.data),
+                          c->nodes[k[j]].tok, CIX_REF);
             if (f->flags & FF_BITFIELD) {
                 cerror(c, offsetof_bf_loc(c, k[0], first_tok(c, k[1]) - 1),
                        "attempt to take address of bit-field structure member "

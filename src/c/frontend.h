@@ -18,6 +18,10 @@ typedef struct FrontendOpts {
     /* Non-NULL: take the parser's tokens from a cell build made with
      * these options (--cells), as the language server has them. */
     const ParOptions *cells_par;
+    /* Non-NULL (with check): build the C symbol index into *cidx (NULL if
+     * the run was cancelled); verify: --verify-symbols reports there. */
+    struct CIndex **cidx;
+    FILE *symidx_verify;
 } FrontendOpts;
 
 /* Parses (and checks) `path` into tu->diag.  tu must be freshly

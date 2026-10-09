@@ -224,6 +224,8 @@ void cdecl_open_visit(Checker *c, uint32_t i)
         r->flags |= RF_DEFINING;
         rd.first_ec = open_tok + 1;
     }
+    if (c->sx && name)
+        csx_tag(c, t, cnode(c, tagn)->tok, CIX_DEF);
     if (cexpr_cxx_compat(c, st)) {
         /* in_sizeof / in_typeof / in_alignof: the parser is inside one */
         bool in_sz = false, in_ty = false, in_al = false;
@@ -334,6 +336,8 @@ static void xref_visit(Checker *c, uint32_t i, int want)
     } else if (want == TY_ENUM && c->opt.pedantic &&
                !type_enum(TT, t)->complete)
         cpedantic(c, loc, "ISO C forbids forward references to 'enum' types");
+    if (c->sx)
+        csx_tag(c, t, tt_tok, ref ? CIX_REF : CIX_DECL);
     c->ty[i] = t;
     c->cv[i] = kind | ((uint64_t)xloc << 8);
 }
@@ -712,6 +716,11 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     csum_read_pack(c);
     type_complete_record(TT, t, f, m, c->pack, a.aligned, a.packed,
                          a.ms);
+    if (c->sx)
+        for (k = 0; k < m; k++)
+            if (f[k].tok && f[k].name)
+                csx_field(c, type_record(TT, t)->fields + k, f[k].tok - 1,
+                          CIX_DEF);
     if (type_record(TT, t)->size > (uint64_t)INT64_MAX)
         cerror(c, loc, "type %s is too large", type_q(TT, t));
     /* gcc reports at the closing brace when it starts its line, else at the tag */
@@ -1002,7 +1011,7 @@ void cdecl_enumerator_visit(Checker *c, uint32_t i)
             s.dep_msg = ea.dep_msg;
         }
     }
-    ref = cdecl_pushdecl(c, &s, false);
+    ref = cdecl_pushdecl(c, &s, false, cnode(c, i)->tok);
     vec_push(&c->ecs, ref);
     enumerator_attrs(c, i, nloc, name, ref);
 }
@@ -1332,6 +1341,8 @@ void cdecl_member_visit(Checker *c, uint32_t i)
     memset(&fi, 0, sizeof fi);
     fi.wina = a.wina_al;
     fi.name = g.name;
+    if (g.name)
+        fi.tok = cnode(c, g.name_node)->tok + 1;
     fi.ty = g.ty;
     fi.width = g.width;
     fi.align = g.s.align > a.aligned ? g.s.align : a.aligned;
