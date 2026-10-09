@@ -3366,4 +3366,5 @@ Its first run found five segfaults in `--verify-symbols`: two rows of
 `cbuiltin_tab.h` had a signature without the `|` separator (`fegetround` was
 `"int"`, `signbit` `"int"`), and `strchr(sig, '|') + 1` dereferenced NULL in
 `cexpr_builtin_decl`. Rows now read `"int|"` and `"int|?"`; golden
-`builtin_noarg_row` (also run under `--verify-symbols` by section 14).
+`builtin_noarg_row` (also run under `--verify-symbols` by section 14). run.sh section 15 now
+checks that every table signature contains `|` (fails on the old row).

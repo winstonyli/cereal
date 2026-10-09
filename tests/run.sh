@@ -458,5 +458,14 @@ cd "$ROOT/tests/parse" && sym_verify tests/parse ./*.c
 cd "$ROOT/tests/symidx" && sym_verify tests/symidx ./*.c
 cd "$ROOT" && sym_verify sources src/*.c src/analysis/*.c src/lsp/*.c src/c/*.c
 
+# 15. builtin table: every row's signature is "ret|arg|..." (a missing '|'
+# made strchr(sig, '|') + 1 dereference NULL)
+if awk -F'"' '/^    \{"/ && $6 !~ /\|/ {print FILENAME ":" NR ": " $0; bad = 1} END {exit bad}'     "$ROOT/src/c/cbuiltin_tab.h" >"$TMP/bt" 2>&1; then
+    ok
+else
+    bad "cbuiltin_tab.h rows without '|' in the signature"
+    head -5 "$TMP/bt" | sed 's/^/    /'
+fi
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
