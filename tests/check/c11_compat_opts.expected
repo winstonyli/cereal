@@ -1,0 +1,54 @@
+c11_compat_opts.c:7:26: error: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wc11-c2x-compat]
+    7 | int f3(void) { return pa == pb; }
+      |                          ^
+c11_compat_opts.c:9:18: error: invalid use of pointers to arrays with different qualifiers in ISO C before C2X [-Wc11-c2x-compat]
+    9 | void h(void) { g(pa); }
+      |                  ^
+c11_compat_opts.c:10:25: error: ISO C forbids empty initializer braces before C2X [-Wc11-c2x-compat]
+   10 | struct T { int x; } t = {};
+      |                         ^
+c11_compat_opts.c:11:14: error: ISO C restricts enumerator values to range of 'int' before C2X [-Wc11-c2x-compat]
+   11 | enum E { A = 0x100000000LL };
+      |              ^
+c11_compat_opts.c:12:1: error: ISO C does not support '[[]]' attributes before C2X [-Wc11-c2x-compat]
+   12 | [[deprecated]] int dd;
+      | ^
+c11_compat_opts.c:13:24: error: ISO C forbids storage class specifiers in compound literals before C2X [-Wc11-c2x-compat]
+   13 | int *cl = &(static int){1};
+      |                        ^
+c11_compat_opts.c:14:8: error: ISO C requires a named argument before '...' before C2X [-Wc11-c2x-compat]
+   14 | void v(...);
+      |        ^
+c11_compat_opts.c:15:1: warning: ISO C99 does not support '_Static_assert' [-Wc99-c11-compat]
+   15 | _Static_assert(1);
+      | ^
+c11_compat_opts.c:15:1: error: ISO C11 does not support omitting the string in '_Static_assert' [-Wc11-c2x-compat]
+   15 | _Static_assert(1);
+      | ^
+c11_compat_opts.c:16:1: warning: ISO C99 does not support '_Static_assert' [-Wc99-c11-compat]
+   16 | _Static_assert(1, "msg");
+      | ^
+c11_compat_opts.c:17:6: error: ISO C does not support specifying 'enum' underlying types before C2X [-Wc11-c2x-compat]
+   17 | enum E2 : int { A2 };
+      |      ^
+c11_compat_opts.c:18:1: error: ISO C does not support decimal floating-point before C2X [-Wc11-c2x-compat]
+   18 | _Decimal32 d32;
+      | ^
+c11_compat_opts.c:19:14: error: decimal float constants are a C2X feature
+   19 | double dd2 = 1.0df;
+      |              ^
+c11_compat_opts.c:20:11: error: binary constants are a C2X feature or GCC extension
+   20 | int bin = 0b11;
+      |           ^
+c11_compat_opts.c:21:27: error: a label can only be part of a statement and a declaration is not a statement [-Wc11-c2x-compat]
+   21 | void k(void) { goto l; l: int y; (void)y; }
+      |                           ^
+c11_compat_opts.c:22:9: error: ISO C does not support omitting parameter names in function definitions before C2X [-Wc11-c2x-compat]
+   22 | void np(int) {}
+      |         ^
+c11_compat_opts.c:23:2: error: #warning before C2X is a GCC extension
+   23 | #warning hi
+      |  ^
+c11_compat_opts.c:23:2: warning: #warning hi [-Wcpp]
+   23 | #warning hi
+      |  ^

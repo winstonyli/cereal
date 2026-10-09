@@ -132,7 +132,7 @@ Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, const char *id,
     return d;
 }
 
-static Diagnostic *vped(Checker *c, SrcLoc loc, const char *id,
+static Diagnostic *vped(Checker *c, SrcLoc loc, const char *id, bool err,
                         const char *fmt, va_list ap)
 {
     if (id && *id && !diag_enabled(c->diag, id))
@@ -143,8 +143,7 @@ static Diagnostic *vped(Checker *c, SrcLoc loc, const char *id,
         return NULL;
     if (in_system(c, loc) && !c->diag->show_system)
         return NULL;
-    return vrep(c, c->opt.pedantic_errors ? DL_ERROR : DL_WARNING, id, loc,
-                fmt, ap);
+    return vrep(c, err ? DL_ERROR : DL_WARNING, id, loc, fmt, ap);
 }
 
 Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
@@ -153,24 +152,30 @@ Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
     Diagnostic *d;
     va_list ap;
     va_start(ap, fmt);
-    d = vped(c, loc, id, fmt, ap);
+    d = vped(c, loc, id, c->opt.pedantic_errors, fmt, ap);
     va_end(ap);
     return d;
 }
 
-/* gcc's pedwarn_c11: -Wno-c99-c11-compat hides these in C99 mode, and
- * there is nothing to say in C11 and later. */
-Diagnostic *cped11(Checker *c, SrcLoc loc, const char *fmt, ...)
+/* gcc's pedwarn_c11 / pedwarn_c2x: a feature of standard `year`, reported
+ * before it as a pedwarn under -pedantic (hidden by -Wno-OPT) and, from
+ * `year` on, only as a plain warning when the compat option OPT was given.
+ * An explicit option also becomes the diagnostic's tag; __extension__ hides
+ * all of it. */
+Diagnostic *cpedstd(Checker *c, SrcLoc loc, int year, const char *opt,
+                    const char *fmt, ...)
 {
     Diagnostic *d;
     va_list ap;
-    if (!c->opt.pedantic || c->opt.std_year >= 2011 ||
-        !diag_enabled(c->diag, "c99-c11-compat"))
+    bool below = c->opt.std_year < year;
+    bool expl = diag_option_explicit(c->diag, opt);
+    if (!(expl || (below && c->opt.pedantic && diag_enabled(c->diag, opt))))
+        return NULL;
+    if (c->cur_node != NO_NODE && cexpr_in_extension(c, c->cur_node))
         return NULL;
     va_start(ap, fmt);
-    /* gcc tags the pedwarn with the option when it was given explicitly */
-    d = vped(c, loc, diag_option_explicit(c->diag, "c99-c11-compat") ?
-             "c99-c11-compat" : "pedantic", fmt, ap);
+    d = vped(c, loc, expl ? opt : "pedantic", below && c->opt.pedantic_errors,
+             fmt, ap);
     va_end(ap);
     return d;
 }
@@ -225,7 +230,7 @@ Diagnostic *cpedantic(Checker *c, SrcLoc loc, const char *fmt, ...)
     if (!c->opt.pedantic)
         return NULL;
     va_start(ap, fmt);
-    d = vped(c, loc, "pedantic", fmt, ap);
+    d = vped(c, loc, "pedantic", c->opt.pedantic_errors, fmt, ap);
     va_end(ap);
     return d;
 }

@@ -1,0 +1,24 @@
+typedef_redef_vm.c:6:12: error: redefinition of typedef 'A2' with different type
+    6 | typedef IA A2;
+      |            ^
+typedef_redef_vm.c:5:13: note: previous declaration of 'A2' with type 'A2' {aka 'int[2]'}
+    5 | typedef int A2[2];
+      |             ^
+typedef_redef_vm.c:13:16: error: redefinition of typedef 'FN' with different type
+   13 |   typedef void FN(int (*p)[1]);
+      |                ^
+typedef_redef_vm.c:12:16: note: previous declaration of 'FN' with type 'FN' {aka 'void(int (*)[a])'}
+   12 |   typedef void FN(int (*p)[*]);
+      |                ^
+typedef_redef_vm.c:15:16: error: redefinition of typedef 'FN2' with different type
+   15 |   typedef void FN2(int (*p)[]);
+      |                ^
+typedef_redef_vm.c:14:16: note: previous declaration of 'FN2' with type 'FN2' {aka 'void(int (*)[a])'}
+   14 |   typedef void FN2(int (*p)[a]);
+      |                ^
+typedef_redef_vm.c:17:15: error: redefinition of typedef 'AV' with variably modified type
+   17 |   typedef int AV[b - 1];
+      |               ^
+typedef_redef_vm.c:16:15: note: previous declaration of 'AV' with type 'AV' {aka 'int[a]'}
+   16 |   typedef int AV[a];
+      |               ^

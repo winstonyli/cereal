@@ -635,7 +635,7 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     f = c->fields.data + rd.first;
     if (c->opt.pedantic) {
         for (k = 0; k < n; k++)
-            if (f[k].name)
+            if (f[k].name || (c->opt.std_year >= 2011 && type_is_record(TT, f[k].ty)))
                 named = true;
         if (!named) {
             DiagOrd o0 = diag_ord(c->diag, n > 0 ? ORD_LATE : ORD_NORMAL);
@@ -952,7 +952,7 @@ void cdecl_enumerator_visit(Checker *c, uint32_t i)
     if (wide) {
         /* wider than intmax_t: the value itself is not representable */
     } else if (!cexpr_fits(c, v, vt, TYPE_B(INT))) {
-        cpedantic(c, vloc, "ISO C restricts enumerator values to range of "
+        cped2x(c, vloc, "ISO C restricts enumerator values to range of "
                   "'int' before C2X");
     } else {
         vt = TYPE_B(INT);
@@ -1194,7 +1194,7 @@ void cdecl_struct_visit(Checker *c, uint32_t i)
     if (want == TY_ENUM && find_child(c, i, N_TYPE_NAME) != NO_NODE) {
         uint32_t tn = find_child(c, i, N_TYPE_NAME);
         uint32_t tg_ = find_child(c, i, N_TAG);
-        cpedantic(c, tloc(c, tg_ != NO_NODE ? cnode(c, tg_)->tok
+        cped2x(c, tloc(c, tg_ != NO_NODE ? cnode(c, tg_)->tok
                                               : first_tok(c, tn) - 1),
                   "ISO C does not support specifying 'enum' underlying types "
                   "before C2X");
@@ -1408,18 +1408,21 @@ void cdecl_static_assert_visit(Checker *c, uint32_t i)
     Kids kk;
     if (c->par[i] != NO_NODE && ntag(c, c->par[i]) == N_STRUCT)
         cdecl_struct_semis(c, cnode(c, i)->tok);
-    if (!in_extension(c, i)) {
-        size_t n0 = c->diag->all.len;
-        cped11(c, aloc, "ISO C99 does not support '_Static_assert'");
-        choist(c, i, n0);
-    }
-    if (e == NO_NODE)
-        return;
     kids_get(c, i, &kk);
     for (k = 0; k < kk.n; k++)
         if (ntag(c, kk.p[k]) == N_STRING)
             s = kk.p[k];
     kids_free(&kk);
+    if (!in_extension(c, i)) {
+        size_t n0 = c->diag->all.len;
+        cped11(c, aloc, "ISO C99 does not support '_Static_assert'");
+        if (c->opt.std_year >= 2011 && (s == NO_NODE || s == e))
+            cped2x(c, aloc, "ISO C11 does not support omitting the string in "
+                   "'_Static_assert'");
+        choist(c, i, n0);
+    }
+    if (e == NO_NODE)
+        return;
     if (s == e)
         return;
     vloc = cnode_loc(c, e);

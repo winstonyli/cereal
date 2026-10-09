@@ -300,7 +300,7 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
             return;
         }
         if (t == TY_DEC32 || t == TY_DEC64 || t == TY_DEC128)
-            note(out, 0, "pedantic", "decimal float constants are a C2X feature");
+            note(out, 0, "c2x", "decimal float constants are a C2X feature");
         else if (t == TY_DOUBLE && !imag && !nonstd &&
                  (memchr(str, 'd', (size_t)(limit - str)) ||
                   memchr(str, 'D', (size_t)(limit - str))))
@@ -342,7 +342,7 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
             note(out, 0, "pedantic", "imaginary constants are a GCC extension");
         }
         if (radix == 2)
-            note(out, 0, "pedantic", "binary constants are a C2X feature or GCC extension");
+            note(out, 0, "c2x", "binary constants are a C2X feature or GCC extension");
         for (q = digits; q < str; q++) {
             unsigned d = (unsigned)hexval((unsigned char)*q);
             if (v > (UINT64_MAX - d) / radix)

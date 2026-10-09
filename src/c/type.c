@@ -453,6 +453,42 @@ bool type_is_vm(TypeTable *tt, TypeId t)
     }
 }
 
+/* t with every variable-length bound forgotten: types that differ only in
+ * the spelling of their VLA bounds are the same type to gcc's typedef
+ * redeclaration check (a VLA differs from a constant or missing bound). */
+TypeId type_vla_blind(TypeTable *tt, TypeId t)
+{
+    TypeId c = type_canon(tt, t);
+    const TypeEnt e = *type_ent(tt, c);        /* ents may grow below */
+    unsigned q = TYPE_QUALS(c);
+    TypeId r = c;
+    switch (e.kind) {
+    case TY_VLA:
+        r = type_vla(tt, type_vla_blind(tt, e.base));
+        break;
+    case TY_ARRAY:
+        r = mk_array_x(tt, TY_ARRAY, e.flags, type_vla_blind(tt, e.base),
+                       e.n, e.extra);
+        break;
+    case TY_PTR:
+        r = type_ptr(tt, type_vla_blind(tt, e.base));
+        break;
+    case TY_FUNC: {
+        TypeId ret = type_vla_blind(tt, e.base);
+        TypeId *ps = xmalloc((e.n ? e.n : 1) * sizeof *ps);
+        uint32_t i;
+        for (i = 0; i < e.n; i++)
+            ps[i] = type_vla_blind(tt, tt->params.data[e.extra + i]);
+        r = type_func(tt, ret, ps, (uint32_t)e.n, e.flags);
+        free(ps);
+        break;
+    }
+    default:
+        break;
+    }
+    return TYPE_UNQUAL(r) | q;
+}
+
 TypeId type_base(TypeTable *tt, TypeId t)
 {
     TypeId c = type_canon(tt, t);

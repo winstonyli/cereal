@@ -14,11 +14,11 @@ in [ROADMAP.md](ROADMAP.md).
 - An index and LSP server over the same engine (`cereal index|query|lsp`).
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
-- gcc.dg: 3869 of 3910 files run give the same diagnostics as gcc (message,
-  line and column); 41 differ (5 old, 36 in the C11/C17 tests added by -std=c11).
+- gcc.dg: 3893 of 3910 files run give the same diagnostics as gcc (message,
+  line and column); 17 differ (5 old, 12 in the C11/C17 tests added by -std=c11).
 - c-c++-common: 634 of 636 identical; 2 differ.
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 285 of 285 identical. A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1567 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 567 files.
+- 1581 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 579 files.
 - uvloop's `loop.c` checks in about 3.85 G instructions (callgrind).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -41,12 +41,17 @@ bench/tools/corp.sh DIR [-IDIR...]  # per-file cereal vs gcc-13 on any C sources
 `bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
 callgrind) in parallel; see its header for the expected numbers.
 
-## Open differences (gcc.dg 41, c-c++-common 2)
+## Open differences (gcc.dg 17, c-c++-common 2)
 Needs gcc's optimizer or middle end (out of reach for a front end):
 pr56355-1 (-Wstrict-overflow), pr83844 (alignment of a VLA-offset member).
 
 Darwin / Objective-C targets (the expected output comes from a target gcc
 does not model on Linux): darwin-cfstring-format-1, pr105522.
+
+One-off C11/C17 diagnostics not yet matched (Round 181): c11-noreturn-5,
+c11-static-assert-3/4, c11-uni-string-2, c17-nullptr-2, array-10; plus
+Wdesignated-init-2, pr59717, pr60195, pr61077, pr61817-1, pr62024, pr63453 and
+ucnid-15-utf8 (not yet looked at).
 
 Parked front-end gaps (reasons in HISTORY Rounds 172 to 175):
 - pr100547: the position of the `vector_size` error; no single rule found.

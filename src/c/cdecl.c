@@ -711,7 +711,7 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                     cerror(c, loc, "storage class specified for unnamed "
                            "parameter");
             } else if (c->cd_clit)
-                cpedantic(c, tloc(c, c->cd_clit), "ISO C forbids storage "
+                cped2x(c, tloc(c, c->cd_clit), "ISO C forbids storage "
                           "class specifiers in compound literals before C2X");
             else
                 cerror(c, loc, "storage class specified for typename");
@@ -1040,12 +1040,21 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                     sl = sp->kind == TSK_TYPEDEF ? sp->type_loc : 0;
                 if (!sl)
                     sl = loc;
-                if (is_void(c, type) && really)
+                if (is_void(c, type) && really && c->opt.std_year < 2011)
                     cpedwarn(c, sl, "", "function definition has qualified "
                              "void return type");
                 else
                     cwarn(c, sl, "ignored-qualifiers", "type qualifiers "
                           "ignored on function return type");
+                /* DR#423 (C11): the qualifiers are dropped, _Atomic stays;
+                 * gcc still rejects a bad restrict */
+                if (c->opt.std_year >= 2011) {
+                    if ((type_quals & TQ_RESTRICT) &&
+                        (tkind(c, type) != TY_PTR ||
+                         !object_or_incomplete(c, type_base(TT, type))))
+                        cerror(c, loc, "invalid use of 'restrict'");
+                    type_quals &= TQ_ATOMIC;
+                }
                 type = qualify(c, type, type_quals, ltok);
             }
             type_quals = 0;
@@ -1111,9 +1120,11 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 if (name)
                     cerror(c, loc, "'_Alignas' specifiers cannot reduce "
                            "alignment of '%s'", cident(c, name));
-                else
+                else {
                     cerror(c, loc, "'_Alignas' specifiers cannot reduce "
                            "alignment of unnamed field");
+                    c->cd_clit_reduce = c->cd_clit != 0;
+                }
                 g->s.align = 0;
             } else
                 g->s.align = sp->align;
@@ -1826,7 +1837,7 @@ static void attr_stmt_visit(Checker *c, uint32_t i)
         return;                 /* attributes of the label (N_ATTRIBUTE case) */
     if (par != NO_NODE && (ntag(c, par) == N_CASE || ntag(c, par) == N_DEFAULT) &&
         par == i + 1)
-        cpedantic(c, tloc(c, c->nodes[i].tok), "a label can only be part of a "
+        cped2x(c, tloc(c, c->nodes[i].tok), "a label can only be part of a "
                   "statement and a declaration is not a statement");
     attr_only_check(c, i, c->nodes[i].tok, false);
 }
@@ -3002,7 +3013,7 @@ static void func_visit(Checker *c, uint32_t f)
     uint32_t k, first = cfirst(c, f), nparm = 0, ntags = 0, j;
     bool gave = false;
     if (var && !has)
-        cpedantic(c, tloc(c, cnode(c, f)->tok + 1), "ISO C requires a named "
+        cped2x(c, tloc(c, cnode(c, f)->tok + 1), "ISO C requires a named "
                   "argument before '...' before C2X");
     if (!has || (fl & NF_KR))
         return;
@@ -3101,6 +3112,11 @@ static void typename_visit(Checker *c, uint32_t i)
                      ? after + 1 : 0;
     cdecl_grok(c, &sp, top, DC_TYPENAME, false, false, NO_NODE, after, after, &g);
     c->cd_clit = 0;
+    if (c->cd_clit_reduce) {    /* build_compound_literal repeats it */
+        cerror(c, tloc(c, first_tok(c, i)), "'_Alignas' specifiers cannot "
+               "reduce alignment of compound literal");
+        c->cd_clit_reduce = false;
+    }
     c->ty[i] = g.what == GD_NONE || sp.error ? ERRT : g.ty;
     cdecl_pop_specs(c, i);
 }
@@ -3516,7 +3532,7 @@ static void body_visit(Checker *c, uint32_t i)
                 if (!(s->flags & CSF_USED))
                     warn_if_shadowing(c, s);
             } else
-                cpedantic(c, tloc(c, c->nodes[p + 1 - c->nodes[p].size].tok),
+                cped2x(c, tloc(c, c->nodes[p + 1 - c->nodes[p].size].tok),
                           "ISO C does not support omitting "
                           "parameter names in function definitions before "
                           "C2X");
@@ -4185,7 +4201,7 @@ void cdecl_node(Checker *c, uint32_t i)
         /* parser diagnostics: gcc gives them in units with errors too */
         bool quiet = quiet_lift(c);
         if (tokp(c, cnode(c, i)->tok)->kind == TK_PUNCT)
-            cpedantic(c, tloc(c, cnode(c, i)->tok), "ISO C does not support "
+            cped2x(c, tloc(c, cnode(c, i)->tok), "ISO C does not support "
                       "'[[]]' attributes before C2X");
         std_attr_unknown(c, i);
         gnu_attr_argc(c, i);

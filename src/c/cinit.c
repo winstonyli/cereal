@@ -828,8 +828,9 @@ static bool foldable_libcall(Checker *c, uint32_t n, int depth)
     snprintf(name, sizeof name, "%s", cident(c, id));
     if (!strncmp(name, "__builtin_", 10)) {
         /* gcc folds a __builtin_ call of constants to a true constant */
-        static const char *const bfns[] = {"inf", "huge_val", "abs", "labs",
-            "llabs", "strlen", "ffs", "clz", "ctz", "popcount", "parity"};
+        static const char *const bfns[] = {"inf", "huge_val", "complex", "abs",
+            "labs", "llabs", "strlen", "ffs", "clz", "ctz", "popcount",
+            "parity"};
         const char *b = name + 10;
         size_t q, bl = strlen(b);
         for (q = 0; q < sizeof fns / sizeof *fns; q++)
@@ -2320,8 +2321,8 @@ void cinit_declared(Checker *c, uint32_t declared)
 static void empty_braces(Checker *c, CCtx *x, uint32_t list)
 {
     if (c->nodes[list].size == 1)
-        ipdt(c, NULL, c->nodes[list].tok, "ISO C forbids empty initializer "
-             "braces before C2X");
+        cped2x(c, tloc(c, c->nodes[list].tok), "ISO C forbids empty "
+               "initializer braces before C2X");
     (void)x;
 }
 

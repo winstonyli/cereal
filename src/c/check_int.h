@@ -395,6 +395,7 @@ struct Checker {
     SrcLoc attr_at;
     TypeId attr_fty;         /* the function type attributes are being applied to (0: unknown) */
     uint32_t cd_clit;       /* '{' token of the compound literal being typed */
+    bool cd_clit_reduce;    /* its _Alignas reduced the alignment */
     /* cdecl.c: the prototype a K&R definition is checked against (gcc's
      * current_function_prototype_*) */
     TypeId cd_proto;
@@ -663,7 +664,12 @@ Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
 Diagnostic *cpedantic(Checker *c, SrcLoc loc, const char *fmt, ...);
 /* constant_expression_warning: only under -pedantic, tagged -Woverflow */
 void cconst_overflow(Checker *c, SrcLoc loc);
-Diagnostic *cped11(Checker *c, SrcLoc loc, const char *fmt, ...);
+Diagnostic *cpedstd(Checker *c, SrcLoc loc, int year, const char *opt,
+                    const char *fmt, ...);
+#define cped11(c, loc, ...) \
+    cpedstd(c, loc, 2011, "c99-c11-compat", __VA_ARGS__)
+#define cped2x(c, loc, ...) \
+    cpedstd(c, loc, 2023, "c11-c2x-compat", __VA_ARGS__)
 bool cin_system(Checker *c, SrcLoc loc);
 Diagnostic *cerror_d(Checker *c, SrcLoc loc, const char *fmt, ...);
 Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, const char *id,

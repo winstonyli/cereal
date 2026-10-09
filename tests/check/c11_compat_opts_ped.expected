@@ -1,0 +1,6 @@
+c11_compat_opts_ped.c:5:25: warning: ISO C forbids empty initializer braces before C2X [-Wpedantic]
+    5 | struct T { int x; } t = {};
+      |                         ^
+c11_compat_opts_ped.c:6:1: warning: ISO C11 does not support omitting the string in '_Static_assert' [-Wpedantic]
+    6 | _Static_assert(1);
+      | ^

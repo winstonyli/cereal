@@ -232,6 +232,7 @@ bool type_is_object(TypeTable *tt, TypeId t);    /* not function */
 bool type_is_void(TypeTable *tt, TypeId t);
 bool type_is_record(TypeTable *tt, TypeId t);
 bool type_is_vm(TypeTable *tt, TypeId t);        /* variably modified */
+TypeId type_vla_blind(TypeTable *tt, TypeId t);  /* VLA bounds forgotten */
 /* The pointed-to / element / return type, with qualifiers. */
 TypeId type_base(TypeTable *tt, TypeId t);
 /* sizeof in bytes; 0 with *ok false if incomplete or a VLA. */

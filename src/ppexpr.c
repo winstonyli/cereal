@@ -226,13 +226,17 @@ static Val parse_number(EP *p, const Tok *t)
         pp_warn_at(p->pp, &u, "traditional", "traditional C rejects the "
                    "\"%.*s\" suffix", (int)(end - s), s);
     }
-    if (base == 2 && p->pp->opt->pedantic) {
+    if (base == 2 && (p->pp->opt->pedantic ||
+                       diag_option_explicit(p->pp->diag, "c11-c2x-compat"))) {
         Tok u = *t;
         size_t k;
         for (k = 0; k + 1 < p->pp->if_exp.len; k += 2)   /* track0: where used */
             if (p->pp->if_exp.data[k] == t->loc)
                 u.loc = p->pp->if_exp.data[k + 1];
-        if (p->pp->diag->pedantic_errors)
+        if (!p->pp->opt->pedantic)
+            pp_warn_at(p->pp, &u, "c11-c2x-compat", "binary constants are a "
+                       "C2X feature");
+        else if (p->pp->diag->pedantic_errors)
             pp_error_at(p->pp, &u, "binary constants are a C2X feature or GCC "
                         "extension");
         else

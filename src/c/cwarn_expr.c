@@ -2329,10 +2329,11 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                 }
             }
         } else if (compat) {
-            if (complete(c, tta) != complete(c, ttb))
-                ped(c, i, loc, "comparison of complete and incomplete "
-                               "pointers");
-            else if (is_func(c, tta))
+            if (complete(c, tta) != complete(c, ttb)) {
+                if (!cexpr_in_extension(c, i))
+                    cped11(c, loc, "comparison of complete and incomplete "
+                                   "pointers");
+            } else if (is_func(c, tta))
                 ped(c, i, loc, "ISO C forbids ordered comparisons of pointers "
                                "to functions");
             else if (extra_on(c) && (is_npc(c, a) || is_npc(c, b)))

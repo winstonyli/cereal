@@ -322,7 +322,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
     (void)enum_and_int;
     if (nw->kind == CS_TYPEDEF) {
         TypeId a = cdecl_typedef_under(c, oldtype), b = cdecl_typedef_under(c, newtype);
-        if (type_canon(TT, a) != type_canon(TT, b)) {
+        if (type_vla_blind(TT, a) != type_vla_blind(TT, b)) {
             d = cerror_d(c, nw->loc, "redefinition of typedef '%s' with "
                          "different type", sname(c, nw));
             cdecl_locate_old_decl(c, d, o);

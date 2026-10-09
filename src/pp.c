@@ -2269,7 +2269,11 @@ static void do_message(PP *pp, const Tok *kw, bool is_error)
     if (is_error) {
         diag_report(pp->diag, DL_ERROR, "", kw->loc, "#error %s", text);
     } else {
-        pedantic(pp, kw->loc, "#warning before C2X is a GCC extension");
+        if (pp->opt->pedantic)
+            pedantic(pp, kw->loc, "#warning before C2X is a GCC extension");
+        else if (diag_option_explicit(pp->diag, "c11-c2x-compat"))
+            diag_report(pp->diag, DL_WARNING, "c11-c2x-compat", kw->loc,
+                        "#warning before C2X is a GCC extension");
         trad_directive(pp, KW_WARNING, kw);
         diag_report(pp->diag, DL_WARNING, "pp-warning-directive", kw->loc,
                     "#warning %s", text);

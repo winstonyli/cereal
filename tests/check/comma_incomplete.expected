@@ -1,0 +1,15 @@
+comma_incomplete.c:5:16: error: 'var' has an incomplete type 'struct S'
+    5 | void f(void) { var, (void)0; *vp, (void)0; (void)0, var; (void)(var, 1); var; }
+      |                ^
+comma_incomplete.c:5:30: error: invalid use of undefined type 'struct S'
+    5 | void f(void) { var, (void)0; *vp, (void)0; (void)0, var; (void)(var, 1); var; }
+      |                              ^
+comma_incomplete.c:5:53: error: 'var' has an incomplete type 'struct S'
+    5 | void f(void) { var, (void)0; *vp, (void)0; (void)0, var; (void)(var, 1); var; }
+      |                                                     ^
+comma_incomplete.c:5:65: error: 'var' has an incomplete type 'struct S'
+    5 | void f(void) { var, (void)0; *vp, (void)0; (void)0, var; (void)(var, 1); var; }
+      |                                                                 ^
+comma_incomplete.c:5:74: error: 'var' has an incomplete type 'struct S'
+    5 | void f(void) { var, (void)0; *vp, (void)0; (void)0, var; (void)(var, 1); var; }
+      |                                                                          ^

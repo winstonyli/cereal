@@ -3083,3 +3083,25 @@ literal is rejected. Goldens: alignas_type_name, atomic_member_access,
 atomic_ptr_arith, atomic_param_init. gcc.dg identical 3866 -> 3869.
 Not done: other `TYPE_UNQUAL` uses on element types may also need to keep
 `_Atomic`.
+
+Round 181: C11/C2X compat-option parity (the remaining Round 178 sibling
+groups plus the c11-* tail; gcc.dg identical 3869 -> 3893). One mechanism,
+`cpedstd` (`cped11`/`cped2x` in check_int.h), models gcc's pedwarn_c11/c2x:
+a pedwarn below the feature's standard year, an error under
+-pedantic-errors, hidden by -Wno-OPT, and an explicitly given
+-Wc99-c11-compat / -Wc11-c2x-compat fires in every mode (plain warning, tag
+= the option). Everything is suppressed under `__extension__`. Users:
+incomplete pointer comparison, `_Static_assert` (C11 form, omitted message),
+empty initialiser braces, enumerator range / enum underlying type,
+`[[]]`, compound-literal storage class, `...` without a named argument,
+array qualifiers, decimal float, labels before declarations, `#warning`
+and binary constants (libcpp variants). Also: DR#423 qualified function
+return types (dropped in C11 except `_Atomic`), typedef redefinition with
+VLA bounds (`type_vla_blind`), comma operands both converted to rvalues,
+`__builtin_complex` constant initialisers, DR#444 `_Alignas` in compound
+literal type names, `_Alignas(type)` validation, and an anonymous
+struct/union member counting as named in C11+. Goldens: c11_compat_opts,
+c11_compat_opts_ped, qual_return_c11, typedef_redef_vm, comma_incomplete,
+complex_const_init, c11_anon_alignas. Not done: c11-noreturn-5,
+c11-static-assert-3/4, c11-uni-string-2, c17-nullptr-2, array-10 (each a
+one-off diagnostic, disproportionate).

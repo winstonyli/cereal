@@ -1,0 +1,33 @@
+qual_return_c11.c:3:1: warning: type qualifiers ignored on function return type [-Wignored-qualifiers]
+    3 | const int f1(void);
+      | ^
+qual_return_c11.c:4:1: warning: type qualifiers ignored on function return type [-Wignored-qualifiers]
+    4 | volatile int f1(void) { return 0; }
+      | ^
+qual_return_c11.c:5:15: warning: type qualifiers ignored on function return type [-Wignored-qualifiers]
+    5 | int *restrict f2(void) { return 0; }
+      |               ^
+qual_return_c11.c:7:1: warning: type qualifiers ignored on function return type [-Wignored-qualifiers]
+    7 | const volatile void f4(void) {}
+      | ^
+qual_return_c11.c:9:1: warning: type qualifiers ignored on function return type [-Wignored-qualifiers]
+    9 | _Atomic int f5(void);
+      | ^
+qual_return_c11.c:10:5: error: conflicting types for 'f5'; have 'int(void)'
+   10 | int f5(void);
+      |     ^
+qual_return_c11.c:9:13: note: previous declaration of 'f5' with type '_Atomic int(void)'
+    9 | _Atomic int f5(void);
+      |             ^
+qual_return_c11.c:11:1: warning: type qualifiers ignored on function return type [-Wignored-qualifiers]
+   11 | restrict int f7(void);
+      | ^
+qual_return_c11.c:11:14: error: invalid use of 'restrict'
+   11 | restrict int f7(void);
+      |              ^
+qual_return_c11.c:13:1: warning: type qualifiers ignored on function return type [-Wignored-qualifiers]
+   13 | FT *restrict f8(void);
+      | ^
+qual_return_c11.c:13:14: error: invalid use of 'restrict'
+   13 | FT *restrict f8(void);
+      |              ^

@@ -541,7 +541,8 @@ bool cexpr_in_extension(Checker *c, uint32_t i)
         const Node *n = &c->nodes[p];
         if (n->tag == N_UNARY && tckw(c, n->tok) == CK_EXTENSION)
             return true;
-        if ((n->tag == N_DECL || n->tag == N_FUNC_DEF) &&
+        if ((n->tag == N_DECL || n->tag == N_FUNC_DEF ||
+             n->tag == N_STATIC_ASSERT) &&
             (n->flags & NF_EXTENSION))
             return true;
     }
@@ -1172,7 +1173,14 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
         /* libcpp's pedwarns carry no option tag; interpret_float's
          * non-standard suffix pedwarn is c-family's: [-Wpedantic] at
          * input_location */
-        if (c->opt.pedantic && !cexpr_in_extension(c, i)) {
+        if (l->id && !strcmp(l->id, "c2x") && !c->opt.pedantic) {
+            /* libcpp: the compat option's own, shorter wording */
+            const char *or_gcc = strstr(l->msg, " or GCC");
+            if (diag_option_explicit(c->diag, "c11-c2x-compat"))
+                cwarn(c, loc, "c11-c2x-compat", "%.*s",
+                      or_gcc ? (int)(or_gcc - l->msg) : (int)strlen(l->msg),
+                      l->msg);
+        } else if (c->opt.pedantic && !cexpr_in_extension(c, i)) {
             if (l->id && !strcmp(l->id, "inputloc"))
                 cpedwarn(c, cinput_loc(c, c->nodes[i].tok), "pedantic", "%s",
                          l->msg);
@@ -2349,7 +2357,7 @@ static int comp_target(Conv *x, TypeId lt, TypeId rt)
         cwarn(c, x->loc, "c++-compat", "pointer target types incompatible in "
               "C++");
     if (val && !val_ped)
-        cpedantic(c, x->loc, "invalid use of pointers to arrays with "
+        cped2x(c, x->loc, "invalid use of pointers to arrays with "
                   "different qualifiers in ISO C before C2X");
     return val;
 }
@@ -2362,7 +2370,7 @@ bool targets_compat(Checker *c, SrcLoc loc, TypeId pa, TypeId pb)
     bool ped = !(is_array(c, a) && is_array(c, b)) || type_compatible(TT, a, b);
     bool val = type_compatible(TT, mvt(c, a), mvt(c, b));
     if (val && !ped)
-        cpedantic(c, loc, "invalid use of pointers to arrays with different "
+        cped2x(c, loc, "invalid use of pointers to arrays with different "
                   "qualifiers in ISO C before C2X");
     return val;
 }
@@ -5738,6 +5746,11 @@ static void e_comma(Checker *c, uint32_t i, uint32_t a, uint32_t b)
 {
     TypeId t;
     if (node_err(c, a) || node_err(c, b)) {
+        set_err(c, i);
+        return;
+    }
+    /* c_parser_expression: both operands go through convert_lvalue_to_rvalue */
+    if (!rvalue_ok(c, a) | !rvalue_ok(c, b)) {
         set_err(c, i);
         return;
     }

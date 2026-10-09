@@ -13,6 +13,7 @@ static const DiagOption options[] = {
     /* preprocessor core */
     {"pp-warning-directive", "pp", DL_WARNING, true, 0, "#warning directive"},
     {"c99-c11-compat", "c", DL_WARNING, true, 0, "C11 features in C99 mode (pedantic pedwarns)"},
+    {"c11-c2x-compat", "c", DL_WARNING, true, 0, "C2X features in C11 and earlier modes (pedantic pedwarns)"},
     {"deprecated", "pp", DL_WARNING, true, 0, "GCC assertions (#assert, #unassert, #pred(answer) in #if)"},
     {"undef", "cond", DL_WARNING, false, 0, "undefined identifier evaluates to 0 in #if"},
     {"macro-redefined", "pp", DL_WARNING, true, 0, "non-identical macro redefinition (C99 6.10.3p2)"},

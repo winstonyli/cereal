@@ -1015,7 +1015,7 @@ static void parse_expr(Parser *p);
 static void parse_assign(Parser *p);
 static void parse_cond(Parser *p);
 static void parse_cast(Parser *p);
-static void type_name(Parser *p, const char *align_in);
+static uint32_t type_name(Parser *p, bool alignas_ok);
 static bool type_name_ok(Parser *p);
 static void initializer(Parser *p);
 static void compound(Parser *p, bool push);
@@ -1756,12 +1756,12 @@ static void member_decl(Parser *p)
     emit(p, N_MEMBER_DECL, first, start, 0);
 }
 
-static void static_assert_decl(Parser *p)
+static void static_assert_decl(Parser *p, unsigned flags)
 {
     uint32_t start = nmark(p), kw = adv(p);
     if (!expect(p, P_LPAREN)) {
         sync_stmt(p);
-        emit(p, N_STATIC_ASSERT, kw, start, NF_ERROR);
+        emit(p, N_STATIC_ASSERT, kw, start, flags | NF_ERROR);
         return;
     }
     parse_cond(p);
@@ -1770,7 +1770,7 @@ static void static_assert_decl(Parser *p)
     expect(p, P_RPAREN);
     if (!expect(p, P_SEMI))
         sync_stmt(p);
-    emit(p, N_STATIC_ASSERT, kw, start, 0);
+    emit(p, N_STATIC_ASSERT, kw, start, flags);
 }
 
 /* A tag is declared where first seen (a use declares it too); a visible
@@ -1805,7 +1805,7 @@ static void struct_spec(Parser *p)
             if (accept(p, P_SEMI))
                 continue; /* GNU: stray ';' */
             if (ckw(p) == CK_STATIC_ASSERT)
-                static_assert_decl(p);
+                static_assert_decl(p, 0);
             else
                 member_decl(p);
         }
@@ -1835,7 +1835,7 @@ static void enum_spec(Parser *p)
         PTok n1 = pk(p, 1);
         if (at(p, P_COLON) && is_type_start(p, &n1)) {
             adv(p);
-            type_name(p, NULL);
+            type_name(p, false);
         }
     }
     if (at(p, P_LBRACE)) {
@@ -2133,22 +2133,21 @@ static void member_declarator(Parser *p)
         expected(p, "identifier or '('");
 }
 
-/* align_in: where an _Alignas is diagnosed after the type name ("sizeof",
- * "_Alignof", "cast"); NULL where it is not a specifier at all. */
-static void type_name(Parser *p, const char *align_in)
+/* alignas_ok: an _Alignas is a specifier here; its token is returned (NO_TOK
+ * without one) for the caller to diagnose unless a compound literal follows
+ * the ')' (DR#444). */
+static uint32_t type_name(Parser *p, bool alignas_ok)
 {
     uint32_t start = nmark(p), first = ci(p);
     Specs s;
     DeclInfo d;
-    specs(p, &s, LA_TYPE, align_in != NULL);
+    specs(p, &s, LA_TYPE, alignas_ok);
     if (!s.any)
         expected(p, "specifier-qualifier-list");
     declarator_init(&d);
     declarator(p, DCL_ABSTRACT, &d);
-    if (s.has_align)
-        perr(p, s.align_tok, "alignment specified for type name in %s",
-             align_in);
     emit(p, N_TYPE_NAME, first, start, 0);
+    return s.has_align ? s.align_tok : NO_TOK;
 }
 
 /* ---- initializers ------------------------------------------------------ */
@@ -2350,7 +2349,7 @@ static bool type_name_ok(Parser *p)
 {
     uint32_t s = nmark(p);
     uint64_t e0 = p->errors;
-    type_name(p, NULL);
+    type_name(p, false);
     if (p->errors == e0)
         return true;
     p->nodes.len = s;
@@ -2446,7 +2445,7 @@ static void convertvector_expr(Parser *p, NodeTag tag)
     }
     s = nmark(p);
     e0 = p->errors;
-    type_name(p, NULL);
+    type_name(p, false);
     if (p->errors != e0)
         p->nodes.len = s;
     if (!expect(p, P_RPAREN))
@@ -2462,7 +2461,7 @@ static void has_attr_expr(Parser *p)
     expect(p, P_LPAREN);
     n = ct(p);
     if (is_typename_start(p, &n) || is_clit_storage(p, &n))
-        type_name(p, NULL);
+        type_name(p, false);
     else
         parse_assign(p);
     (void)n1;
@@ -2655,7 +2654,7 @@ static void unary(Parser *p)
         if (is_p(&n0, P_LPAREN) &&
             (is_typename_start(p, &n1) || is_clit_storage(p, &n1))) {
             uint32_t s2 = nmark(p), lp = adv(p);
-            type_name(p, k == CK_SIZEOF ? "'sizeof'" : "'_Alignof'");
+            uint32_t al = type_name(p, true);
             expect_skip(p, P_RPAREN);
             if (at(p, P_LBRACE)) { /* sizeof (T){...}: a compound literal */
                 init_list(p);
@@ -2665,6 +2664,9 @@ static void unary(Parser *p)
                      start, 0);
                 return;
             }
+            if (al != NO_TOK)
+                perr(p, al, "alignment specified for type name in %s",
+                     k == CK_SIZEOF ? "'sizeof'" : "'_Alignof'");
             emit(p, k == CK_SIZEOF ? N_SIZEOF_TYPE : N_ALIGNOF_TYPE, kw, start,
                  0);
             return;
@@ -2688,7 +2690,7 @@ static void parse_cast(Parser *p)
     PTok n = pk(p, 1);
     if (at(p, P_LPAREN) && (is_typename_start(p, &n) || is_clit_storage(p, &n))) {
         uint32_t start = nmark(p), lp = adv(p);
-        type_name(p, "cast");
+        uint32_t al = type_name(p, true);
         expect_skip(p, P_RPAREN);
         if (at(p, P_LBRACE)) {
             init_list(p);
@@ -2696,6 +2698,8 @@ static void parse_cast(Parser *p)
             postfix_tail(p, start);
             return;
         }
+        if (al != NO_TOK)
+            perr(p, al, "alignment specified for type name in cast");
         parse_cast(p);
         emit(p, N_CAST, lp, start, 0);
         return;
@@ -2996,7 +3000,7 @@ static void block_item(Parser *p)
     PTok t = ct(p), n;
     int k = ckw_of(p, &t);
     if (k == CK_STATIC_ASSERT) {
-        static_assert_decl(p);
+        static_assert_decl(p, 0);
         return;
     }
     if (k == CK_LABEL && p->lbl_ok) { /* GNU: __label__ a, b; */
@@ -3165,7 +3169,7 @@ static void declaration(Parser *p, bool top)
     t = ct(p);
     switch (ckw_of(p, &t)) {
     case CK_STATIC_ASSERT:
-        static_assert_decl(p);
+        static_assert_decl(p, flags);
         return;
     case CK_ASM:
         if (top) {

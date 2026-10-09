@@ -407,7 +407,7 @@ static void add_type_kw(Checker *c, Spec *s, uint32_t tok)
                        m, sp);
             else
                 s->word = TW_DECIMAL;
-            cpedantic(c, loc, "ISO C does not support decimal floating-point "
+            cped2x(c, loc, "ISO C does not support decimal floating-point "
                       "before C2X");
             if (!m)
                 s->type_loc = loc;
@@ -553,7 +553,7 @@ void specs_visit(Checker *c, uint32_t i)
              ntag(c, l) == N_DEFAULT))
         {
             DiagOrd o0 = diag_ord(c->diag, ORD_EARLY);
-            cpedantic(c, s.loc, "a label can only be part of a statement "
+            cped2x(c, s.loc, "a label can only be part of a statement "
                       "and a declaration is not a statement");
             diag_ord(c->diag, o0);
         }
@@ -690,8 +690,24 @@ void specs_visit(Checker *c, uint32_t i)
                       tstr(c, nd->tok));
             if (a != NO_NODE) {
                 if (ntag(c, a) == N_TYPE_NAME) {
-                    if (type_ckind(TT, c->ty[a]) != TY_ERROR)
-                        v = type_align(TT, c->ty[a]);
+                    /* c_sizeof_or_alignof_type (_Alignof) of the type */
+                    TypeId at = c->ty[a];
+                    TypeKind ak = type_ckind(TT, at);
+                    bool ext = cexpr_in_extension(c, n);
+                    if (ak == TY_FUNC) {
+                        if (!ext)
+                            cpedantic(c, loc, "ISO C does not permit "
+                                      "'_Alignof' applied to a function type");
+                    } else if (ak == TY_VOID) {
+                        if (!ext)
+                            cpedwarn(c, loc, "pointer-arith", "invalid "
+                                     "application of '__alignof__' to a void "
+                                     "type");
+                    } else if (ak != TY_ERROR && !type_is_complete(TT, at))
+                        cerror(c, loc, "invalid application of '__alignof__' "
+                               "to incomplete type %s", type_q(TT, at));
+                    else if (ak != TY_ERROR)
+                        v = type_align(TT, at);
                 } else
                     v = check_user_alignment(c, a, iloc(c, after_tok(c, n)),
                                          false);
