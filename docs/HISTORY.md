@@ -2920,3 +2920,22 @@ Round 173: two diagnostic placements.
   file, line past EOF) or is not the literal, the warning sits at the
   literal's start. `fmt_decode` clears `exact` the same way
   (gcc.dg/cpp/pr66415-2.c). Golden `misc_265`. gcc.dg 3738/3744, cpp 266/266.
+Parked: gcc.dg/pr100547.c (vector_size error position). cereal reports
+`number of vector components` at the attribute (`vs_loc`); gcc reports at the
+start of the right operand of the size expression's outer binary operator
+(`P * sizeof(short)` at 34:5), also across lines, for `big * 2`, `2 * big`,
+`big + 0`; but `(1 * big)` or `(((big)))` on one line report at the opening
+parenthesis and a bare literal at itself. No single rule found yet (probing
+with ~/ps/v1.c, v2.c shapes); needs gcc's folded-constant location rules.
+
+Round 174: the note after a paste error. libcpp names the macro by where the
+lhs came from: an lhs that is a parameter sits at the use, so the note is
+"in definition of macro" at the parameter in the body (it replaces the
+Round 172 "known" difference); an lhs written in the body keeps "in
+expansion of macro" at the macro name. `paste` (ppexpand.c) tests
+`op[-1].flags & TF_PARAM`. Golden `misc_266` (identical to gcc, valid
+follow-on tokens so no parse errors). Not done: gcc also prints "in
+definition of macro" for a *parse* error at a token that came from a
+parameter (`G(.)` -> "expected expression before '.'" at the argument, note
+at the body parameter); cereal prints "in expansion of macro" at the use.
+Notes are not compared by verify.sh; parked.

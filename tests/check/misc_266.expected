@@ -1,0 +1,21 @@
+misc_266.c:1:13: error: pasting "+" and "-" does not give a valid preprocessing token
+    1 | #define F 1 + ## -
+      |             ^
+misc_266.c:4:9: note: in expansion of macro 'F'
+    4 | int a = F 2;
+      |         ^
+misc_266.c:5:11: error: pasting "+" and "-" does not give a valid preprocessing token
+    5 | int b = G(+);
+      |           ^
+misc_266.c:2:16: note: in definition of macro 'G'
+    2 | #define G(x) 1 x ## - 2
+      |                ^
+misc_266.c:6:11: error: pasting "+" and "-" does not give a valid preprocessing token
+    6 | int c = W(+);
+      |           ^
+misc_266.c:2:16: note: in definition of macro 'G'
+    2 | #define G(x) 1 x ## - 2
+      |                ^
+misc_266.c:6:9: note: in expansion of macro 'W'
+    6 | int c = W(+);
+      |         ^

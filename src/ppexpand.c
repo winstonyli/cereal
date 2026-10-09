@@ -487,8 +487,14 @@ static bool paste(PP *pp, const Tok *lhs, const Tok *rhs, const Tok *op,
             "token", (int)lhs->len, pp_text(pp, lhs), (int)rhs->len,
             pp_text(pp, rhs));
         if (!t0) {
-            diag_note(pp->diag, d, pp->paste_name_loc, "in expansion of macro '%s'",
-                      m->name->str);
+            /* an lhs that is a parameter sits at the use: libcpp then points
+             * into the definition at the parameter */
+            if (op[-1].flags & TF_PARAM)
+                diag_note(pp->diag, d, op[-1].loc, "in definition of macro '%s'",
+                          m->name->str);
+            else
+                diag_note(pp->diag, d, pp->paste_name_loc,
+                          "in expansion of macro '%s'", m->name->str);
             pp_add_expansion_notes(pp, d);
         }
         return false;
