@@ -97,6 +97,12 @@ enum { CHECK_NONE, CHECK_PENDING, CHECK_DONE };
 
 void snapshot_release(Snapshot *s);
 
+struct CRename;
+/* c_rename (c/frontend.h) for a name of snap's unit, with the buffers snap
+ * was built from, on the builder thread (the checker keeps static state:
+ * two checks must not overlap); NULL or why it is refused (malloc'd). */
+char *lsp_check_rename(Snapshot *snap, struct CRename *q);
+
 int lsp_main(FILE *in, FILE *out);
 
 /* ---- requests (features.c) -------------------------------------------- */
@@ -113,6 +119,7 @@ typedef struct Req {
     const SrcFile *uri_file;  /* the last file json_location named */
     const char *uri;
     const struct CIndex *cidx; /* snap's, taken under the lock; NULL: none */
+    bool c_fresh;            /* snap has the newest edit and its check ended */
 } Req;
 
 /* Each writes the result value (not the envelope). */
@@ -129,8 +136,8 @@ void lsp_semantic_tokens_range(Req *r, JsonWriter *w);
 /* Drop the semantic tokens kept for deltas (path NULL: all). */
 void lsp_forget_tokens(const char *path);
 void lsp_folding(Req *r, JsonWriter *w);
-void lsp_prepare_rename(Req *r, JsonWriter *w);
 /* false: the rename is refused; *err set */
+bool lsp_prepare_rename(Req *r, JsonWriter *w, const char **err);
 bool lsp_rename(Req *r, JsonWriter *w, const char **err);
 void lsp_prepare_call_hierarchy(Req *r, JsonWriter *w);
 void lsp_calls(Req *r, JsonWriter *w, bool incoming);

@@ -1,0 +1,97 @@
+== rename=in2 rename.c:19:13
+rename.c:19:13 in2
+rename.c:20:15 in2
+== rename=first rename.c:15:23
+rename.c:15:23 first
+rename.c:17:15 first
+== rename=count rename.c:10:12
+rename.c:10:12 count
+rename.c:20:23 count
+== rename=grand rename.c:11:5
+rename.c:11:5 grand
+rename.c:48:9 grand
+rename.c:55:9 grand
+== rename=px rename.c:31:8
+rename.c:8:20 px
+rename.c:29:24 px
+rename.c:31:8 px
+rename.c:31:14 px
+== rename=total rename.c:8:8
+rename.c:8:8 total
+rename.c:27:27 total
+rename.c:29:12 total
+== rename=len_t rename.c:9:23
+rename.c:9:23 len_t
+rename.c:30:5 len_t
+== rename=done rename.c:36:14
+rename.c:36:14 done
+rename.c:38:1 done
+== rename=w rename.c:45:9
+rename.c:45:9 w
+rename.c:51:19 w
+rename.c:57:12 w
+== rename=loc2 rename.c:50:10
+rename.c:50:10 loc2
+rename.c:51:5 loc2
+rename.c:52:5 loc2
+rename.c:57:16 loc2
+== rename=counter rename.c:10:12
+rename.c:10:12 counter
+rename.c:20:23 counter
+== rename=x rename.c:3:24
+cannot rename: '_t' at rename.c:3:24 is spelled in a #define body; renaming would change the macro
+== rename=w rename.c:13:10
+cannot rename: 'val_n' at rename.c:52:14 is formed by ## or a macro; renaming would change the macro
+== rename=w rename.c:14:5
+cannot rename: 'api' is declared or used in rename.h:1:5, which other units may include; renaming it needs the project index
+== rename=w rename.c:61:5
+cannot rename: '__builtin_va_list' is predeclared or declared in a system header
+== rename=w rename.c:63:12
+cannot rename: 'undeclared_fn' is only declared implicitly
+== rename=w rename.c:50:5
+cannot rename: a macro or macro parameter is named here
+== rename=while rename.c:30:10
+cannot rename: 'while' is a keyword
+== rename=typeof rename.c:30:10
+cannot rename: 'typeof' is a keyword
+== rename=9a rename.c:30:10
+cannot rename: '9a' is not an identifier
+== rename=TWICE rename.c:30:10
+cannot rename: 'TWICE' is a macro name in this unit
+== rename=acc rename.c:17:9
+cannot rename: 'sum' occurs in an inactive #if group at rename.c:23:5, which cannot be checked
+== rename=later rename.c:19:13
+cannot rename: 'later' occurs in an inactive #if group at rename.c:23:11, which cannot be checked
+== rename=k2 rename.c:33:23
+rename.c:33:23 k2
+rename.c:35:9 k2
+rename.c:37:5 k2
+rename.c:39:12 k2
+== rename=k rename.c:38:1
+rename.c:36:14 k
+rename.c:38:1 k
+== rename=counter rename.c:8:20
+rename.c:8:20 counter
+rename.c:29:24 counter
+rename.c:31:8 counter
+rename.c:31:14 counter
+== rename=p rename.c:30:10
+cannot rename: renaming would cause a diagnostic at rename.c:30:10: conflicting types for 'p'; have 'size' {aka 'long unsigned int'}
+== rename=b rename.c:15:23
+cannot rename: renaming would cause a diagnostic at rename.c:15:30: redefinition of parameter 'b'
+== rename=total rename.c:47:13
+cannot rename: after renaming, the name at rename.c:48:9 would refer to the obj 'total' declared at rename.c:47:13 instead of the obj 'total' declared at rename.c:11:5
+== rename=zz rename.c:68:9
+cannot rename: a renamed name also names the obj 'z' declared at rename.c:69:13, which would be renamed too
+== rename=counter rename.c:19:13
+cannot rename: after renaming, the name at rename.c:20:23 would refer to the obj 'counter' declared at rename.c:19:13 instead of the obj 'counter' declared at rename.c:10:12
+== rename=y rename.c:8:20
+cannot rename: renaming would cause a diagnostic at rename.c:8:23: duplicate member 'y'
+== rename=again rename.c:38:1
+cannot rename: renaming would cause a diagnostic at rename.c:40:1: duplicate label 'again'
+== rename=p rename.c:9:23
+cannot rename: renaming would cause a diagnostic at rename.c:30:9: expected ';' before 'n'
+== rename=gy rename.c:54:13
+cannot rename: after renaming, the name at rename.c:6:16 would refer to the obj 'gy' declared at rename.c:54:13 instead of the obj 'gy' declared at rename.c:12:5
+== rename=w2 rename.c:13:5
+cannot rename: renaming would cause a diagnostic at rename.c:52:32: 'w2_n' undeclared (first use in this function); did you mean 'w2'?

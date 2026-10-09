@@ -51,8 +51,8 @@ VLA-offset member: stor-layout folds the byte offset `n * 4 + 8` to
 c-c++-common: dump-ada-spec-14 (gcc's Ada dumper).
 
 
-Round 185, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 635 of 636,
-cpp 285 of 285; `tests/run.sh` 1621 passed.  Remaining gcc.dg diffs: pr56355-1,
+Round 194, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 635 of 636,
+cpp 285 of 285; `tests/run.sh` 1664 passed.  Remaining gcc.dg diffs: pr56355-1,
 pr83844 (above).
 Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - `char * const _Atomic c` parameter of main prints as `char * _Atomic`

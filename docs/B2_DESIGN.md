@@ -1,8 +1,9 @@
 # B2 design: the C symbol index
 
-Status: designed 2026-10-09; phases 1 to 3 done (Rounds 187, 190 and
-192, see the results sections at the end, which correct the text where
-the implementation departs from it); phase 4 (rename) open. ROADMAP
+Status: designed 2026-10-09; all four phases done (Rounds 187, 190, 192
+and 194, see the results sections at the end, which correct the text
+where the implementation departs from it; phase 4 follows its design
+addendum rather than section 9). ROADMAP
 Track B, B2. Line numbers refer to the WSL tree
 `~/cereal-t`, which is the source of truth for code; the `src/c/` files
 cited are identical in both trees.
@@ -550,7 +551,7 @@ Each phase ships on its own, with its tests passing.
 | 1 Declarations and definition (**DONE**, Round 187; ~1,320 lines: csymidx.c/h 950 including dump and verify, 370 in existing files) | csymidx core (builder, maps, finish, sort, CSR, strings); all hooks of sections 5.1-5.2; `--dump-symbols`, `--verify-symbols`; `tests/symidx`; server plumbing (`cidx`, publish, hash check, D1 wait); `IdxTarget.weak` and merge; definition and a separate `R_DECL` | ~500 |
 | 2 References and highlight (**DONE**, Round 190; ~290 lines written, net +190, against ~250 re-estimated) | references with includeDeclaration; documentHighlight provider and capability (macros too); query `refs` | ~80 |
 | 3 Hover (**DONE**, Round 192; ~350 lines added, 66 removed, against ~300 re-estimated) | `dump_decl` refactored to write a StrBuf; unit-end and finish formatting; record layout and labels; hover merge | ~120 |
-| 4 Rename | blockers 1-7, inactive scan, scope tree and conflict check, C path in prepareRename/rename | ~200 |
+| 4 Rename (**DONE**, Round 194; see "Phase 4 results") | blockers, inactive scan, conflicts by a second check (addendum A1, replacing the scope tree), C path in prepareRename/rename, query `rename=` | ~200 (~350 re-estimated) |
 | Total | | **~900** |
 
 The ROADMAP estimate was 400-600 lines and 6-8 hook sites. This design
@@ -810,3 +811,265 @@ it departs from or settles the text above:
    csymidx.c/h 253, cdecl.c, cdecl_int.h and crecord.c 59 (48 replaced),
    features.c 19, main.c 16, server.c 2. Against the re-estimate of ~300, about 15%
    over (net slightly under); against the original ~120, 2.9x.
+
+## Phase 4 design addendum (rename)
+
+Written before phase 4 started. It pins down section 9, whose least
+specified part was blocker 5 (the scope tree and the conflict check),
+and replaces that blocker. Where this addendum and section 9 differ,
+the addendum holds.
+
+### A1. Conflicts: verify by checking again, not by a scope tree
+
+Section 9 planned a recorded scope tree with per-scope name lists that
+would imitate C name lookup. That would have to reproduce the point of
+declaration (a scope starts after the declarator), block, prototype,
+function (labels) and record (members) scopes, the four namespaces,
+`__label__`, nested functions, statement expressions, the
+typedef-or-variable reparse, implicit declarations and builtins. Any gap
+in it would be a silent wrong rename. Instead:
+
+1. The edits are applied to the main file's text in memory.
+2. The unit is checked twice with the same options and overlay: the
+   original text, then the edited text. Each check builds a symbol index
+   and keeps its diagnostics.
+3. The rename is accepted only if the two runs agree:
+   - the same files, the same number of events and decls, and the decls
+     have the same kinds and linkages;
+   - event k of the edited run is event k of the original, at the same
+     place (main-file offsets moved by the edits before them), with the
+     same role, flags and decl id; an edited event has the new name's
+     length;
+   - every decl has its old name, except the renamed one, which has the
+     new name (so a token that also names another entity is caught);
+   - the diagnostics are the same in number, and each has the same
+     level, option and place (moved like the events). Messages may
+     differ, since they quote names.
+
+Decl ids are assigned in first-seen order by a deterministic checker,
+so a rename that changes no meaning gives the same ids. A rename that
+changes meaning changes an event's decl, adds or drops an event, or adds
+a diagnostic. This one mechanism covers every case of section 9 item 5
+and more (A4). It costs two checks of the unit per rename request (0.1
+to 1.2 s for the units measured in section 4.3; about 3.5 s at the
+4 MiB limit). prepareRename does not verify, because it has no new name.
+
+What the comparison cannot see, which is accepted and documented in
+LSP.md:
+- a renamed macro argument that the macro also stringizes (`#a` then
+  spells the new name);
+- `__func__` inside a renamed function;
+- names in string literals (`alias("f")`, `asm` labels);
+- other translation units (A2);
+- inactive code (A3, item 8).
+
+### A2. The edit set and D3
+
+The edit set is the unit's main file. A rename is refused if any event
+of the decl lies outside it (in a user or system header), whatever the
+linkage: "declared or used in FILE, which other units may include;
+renaming needs the project index (B5)".
+
+This settles a contradiction in the text above. Section 9 item 6 (and
+D3 as worded) allows a decl with no or internal linkage even when it has
+events in headers, but section 10 refuses a static function defined in a
+header. A header is shared with units the server cannot check, so
+renaming a tag, field, typedef or static there could break them.
+Section 10 wins.
+
+A decl whose events all lie in the main file is renamed whatever its
+linkage, as D3 allows ("or used only in the main file"). Another unit
+may still declare an external one itself and lose the link. That is
+D3's accepted risk until B5. A header opened as a document of its
+includer's unit has its events outside that unit's main file, so its
+names are refused.
+
+### A3. Blockers, in the order they are tested
+
+From the index alone (prepareRename and rename):
+
+1. No index, or out of date: the snapshot is not the newest edit's, its
+   check has not published, or the file is stale. Message: "the C symbol
+   index is not ready; retry".
+2. Several decls at the position (section 5.3).
+3. The decl is BUILTIN or SYSTEM, or IMPLICIT with no DECL or DEF
+   event.
+4. An event is MACRO_BODY (spelled in a `#define` body) or AT_EXPANSION
+   (pasted or synthesized). The message names the place. ARG events are
+   allowed (D4): the argument token is edited where it is spelled.
+5. An event lies outside the main file (A2).
+
+From the two checks (rename only):
+
+6. The new name is not `[A-Za-z_][A-Za-z0-9_]*`, or it is a C keyword in
+   any mode (`Ident.ckw`, so `typeof`, `asm` and the `__x__` spellings
+   count).
+7. The new name has any macro history in the unit: defined, predefined
+   or `#undef`'d anywhere (`mt_hist`). This is conservative: such a name
+   could be expanded, or stop being expanded, depending on where it
+   stands.
+8. An `#include` was not found. Uses inside the missing file cannot be
+   seen.
+9. The old or the new name occurs as a whole word in a skipped `#if`
+   region of a user file, within the decl's scope extent. The scope
+   extent of a block-scope decl with no linkage (local, parameter,
+   block-scope typedef or enumerator, label) is the external declaration
+   that contains it, usually a function definition. For any other decl
+   it is every user file of the unit. The new name counts too, because
+   in a configuration where that code is active it could be declared or
+   used where the renamed name now stands. The scan is textual, so a
+   word inside a comment or string in the region also counts.
+10. The comparison of A1 fails. The diagnostics are compared first,
+    because a new diagnostic (duplicate member, redefinition, a parse
+    error) explains the failure best; then the structure, then the
+    events. The message names the first place that differs and how: a
+    diagnostic would appear or go, a renamed token would also name
+    another entity, or the name there would refer to another
+    declaration, would no longer be found, or would newly be found.
+
+If the new name is the old one, the edits are returned as usual (the
+comparison passes).
+
+### A4. Every case of section 9 item 5 and the task list, and what decides it
+
+| Case | Decided by |
+|---|---|
+| The new name is declared in the same scope and namespace | A1: a redeclaration diagnostic, or the two decls merge (the ids differ) |
+| An inner declaration of the new name would capture a renamed use | A1: that event's decl differs |
+| The renamed declaration would capture a use of an outer entity with the new name | A1: that event's decl differs |
+| The new name is in another namespace (tag against ordinary, a member of another record, a label against a variable) | no conflict; A1 passes |
+| The record already has a member with the new name | A1: duplicate member diagnostic |
+| The function already has a label with the new name | A1: duplicate label diagnostic |
+| A typedef renamed to a variable's name where it is used | A1: the declaration parses differently (diagnostics, events) |
+| A macro body mentions the new name and is expanded in scope | A1: the body event's decl changes, or an event appears; also A3.7 when the new name is a macro |
+| A renamed macro argument is pasted into another name | A1: the pasted name's event changes or disappears |
+| A name formed by `##` or spelled in a `#define` body | A3.4 |
+| Keywords and invalid names | A3.6 |
+| Macro names | A3.7 |
+| Builtins: an old name that is predeclared | A3.3 |
+| Builtins: a new name that is a builtin function | A1: a conflicting-types diagnostic, or a new lazy decl |
+| An implicitly declared function | A3.3 |
+| Prototype and K&R parameters, statement expressions, nested functions, `__label__` | A1 (the checker's own scoping) |
+| A use in inactive code | A3.9 |
+| Other units | A2 (D3) |
+
+### A5. Interfaces
+
+- **Index.** `CIdxDecl.scope` (reserved in section 4.2) becomes the
+  scope extent of A3.9: 0 for the whole unit, else 1 + an index into
+  `CIndex.scopes` (file, begin and end offsets). The builder takes the
+  extent of each unit at `csx_unit_begin`, from the presentation points
+  of its first and last tokens. If they lie in different files, the
+  scope is the whole unit.
+- **`cindex_rename_plan`** (csymidx.c) applies A3.2 to A3.5 to the decls
+  at a position and returns the events to edit, one per place in
+  offset order, or the reason it refuses.
+- **`c_rename`** (new `src/c/crename.c`) runs the two checks, plans on
+  the original run's fresh index, and applies A3.6 to A3.10. It returns
+  the main-file edits or a reason. A PP listener on each check's TU
+  collects skipped regions and missing includes.
+- **Server.** prepareRename and rename keep the macro path when the
+  macro index's answer stands; otherwise they take the C path. Both wait
+  for the newest check like the other C requests (D1). A refusal is a
+  RequestFailed error with the reason; prepareRename on a place that is
+  no entity answers null, as before. The two checks run on the builder
+  thread, because the checker keeps mutable static state (cattr.c,
+  cinit.c, cconv.c, ...) and two checks must never run at once. The
+  request queues a job and waits for it. The protocol thread is blocked
+  meanwhile, as it is for any request, so no edit can arrive between
+  the plan and the reply.
+- **Command line.** `cereal query rename=NEW FILE:L:C main.c` prints one
+  `file:line:col NEW` line per edit, or `cannot rename: REASON`.
+- **Shared.** The identifier test moves from features.c into csymidx.c
+  (`cindex_is_identifier`), and the macro rename uses it too.
+
+### A6. Estimate
+
+About 350 lines: crename.c ~200, csymidx.c ~70 (the plan and the scope
+extents), server.c ~50 (the job), features.c and main.c ~40. This is
+under the ~500 re-estimate, because the scope tree is not built.
+
+### A7. Review rounds
+
+Three adversarial rounds were run on this addendum before
+implementation.
+
+1. **Coverage.** Found that a missing `#include` hides uses (added
+   A3.8). Found that the old-name-only inactive scan of section 9 misses
+   a configuration that declares the new name (the new name added to
+   A3.9). Found that a whole-unit scan refuses most locals whose names
+   recur in any `#if 0` (scope extents added). Found that a token naming
+   two entities is caught only if names are compared (added to A1).
+2. **Consistency.** Found the D3 contradiction between section 9 item 6
+   and section 10 (settled in A2). Found that both checks cannot run on
+   the protocol thread while the builder may be checking, because of
+   mutable statics in the checker (moved to the builder, A5). Found that
+   diagnostics must be compared by place and level, not by message,
+   because messages quote names.
+3. **Edge cases.** Covered by the rules above:
+   - a no-op rename;
+   - a name longer than 255 bytes (the event length is capped, so the
+     comparison caps too);
+   - a unit with errors (allowed while the diagnostics stay the same);
+   - a body token of a statement-expression macro (A3.4);
+   - a block-scope `extern` (it has linkage, so its scope extent is the
+     whole unit);
+   - a function whose first token comes from a macro (presentation
+     points are used);
+   - headers that change on disk between the snapshot and the job (the
+     plan uses the fresh original run; edits are in the overlay's main
+     file, which the snapshot shares).
+
+   A final pass found nothing material.
+
+## Phase 4 results and corrections (Round 194)
+
+Built as the addendum says, with these details and corrections:
+
+- **Size.** 384 lines in the new `src/c/crename.c`, plus 390 added and
+  40 removed in existing files: csymidx.c +128/-11 (scope extents, the
+  plan, `cindex_place`, `cindex_is_identifier`), csymidx.h +31/-2,
+  frontend.h +23 (`CRename`, `c_rename`), features.c +104/-22, server.c
+  +71/-3 (the job), lsp.h +8/-1, main.c +25/-1. That is about 734 net,
+  against ~350 re-estimated in A6. crename.c is about twice its estimate,
+  because a refusal names the place and the entities involved (the offset
+  mapping back to the original text, `describe`, diagnostic places).
+  features.c is larger because prepareRename now reports errors and both
+  requests choose the macro or C path.
+- **Comparison order (A3.10).** Diagnostics are compared first, then
+  the files, decl kinds and linkages, then the decl names, then the
+  events. With the structure first, a duplicate member or label only
+  said "would change the declarations of the unit".
+- **Scope extents.** `--dump-symbols` prints a block-scope decl's
+  extent as `scope L-L` (tests/symidx goldens changed for parameters,
+  locals and labels). A prototype's parameters get the prototype's line.
+- **prepareRename** refusals are now RequestFailed errors with the reason
+  for macros too: `tests/lsp/proj` changed from null to the `##` message.
+  Null is kept where there is no entity (a keyword, white space).
+- **The builder job.** `lsp_check_rename` puts a `RenameJob` on the
+  server and waits on `S.done`; the builder takes it at the top of its
+  loop, before the next queued build, and runs `c_rename` under a fatal
+  trap with the unit's options (missing includes not fatal, as in the
+  check) and the snapshot's overlay. A rename is refused ("not ready;
+  retry") unless the snapshot is the newest edit's and its check ended
+  (`Req.c_fresh`), so the overlay the job reads is the editor text the
+  edits apply to.
+- **Messages** name entities by the index's kind words (`obj`, `param`,
+  `func`, ...), as `cereal query` prints them.
+- **Time.** `cereal query rename=` on a function of src/c/cexpr.c takes
+  0.10 s (`refs` 0.05 s): two checks plus the macro run. The LSP pays
+  the two checks, not the macro run.
+- **Tests.** `tests/query/rename.cmd` (36 renames on one file: 14
+  accepted, covering locals, parameters, static and external globals, a
+  field by member access and designator, a tag, a typedef, a label, the
+  outer of two shadowing locals, a macro-argument local, a no-op, and new
+  names that other namespaces already have (tag, label, field); 10 refused
+  by the index or the new name (body, paste, header, builtin, implicit,
+  macro at the cursor, two keywords, a non-identifier, a macro name); 2 by
+  inactive code; 10 by the second check: redeclarations, two captures, a
+  shared macro-argument token, a duplicate member and label, a typedef
+  reparse, a `#define` body capture and a paste). `tests/lsp/csym_rename`
+  covers the LSP path in both modes, including a rename right after an
+  edit (D1).
+- **Not done:** cross-unit rename (B5); the cases the comparison cannot
+  see (A1) are documented in LSP.md.

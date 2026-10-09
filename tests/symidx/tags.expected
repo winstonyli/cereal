@@ -52,7 +52,7 @@ tags.c:17:65 REF union U -> #3
 #8 func f external :: func f: void(void) defined
 #9 struct S :: struct S size=4 align=4\n  0 other: int
 #10 field other :: field other: int (struct S, offset 0)
-#11 obj s2 :: var f:s2: struct S
+#11 obj s2 scope 8-13 :: var f:s2: struct S
 #12 obj s external :: var s: struct S
 #13 obj off external :: var off: size_t
 #14 struct E :: struct E size=4 align=4\n  0 k: enum K
@@ -61,5 +61,5 @@ tags.c:17:65 REF union U -> #3
 #17 enumconst K2 :: enumconst K2 = 1 (int)
 #18 field k :: field k: enum K (struct E, offset 0)
 #19 obj e external :: var e: struct E
-#20 param p :: param p: struct S *
+#20 param p scope 17-17 :: param p: struct S *
 #21 func g external :: func g: int(struct S *) defined

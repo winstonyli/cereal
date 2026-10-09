@@ -24,6 +24,7 @@ typedef struct BDecl {
     uint32_t name;           /* ident */
     uint32_t fn;             /* a block-scope symbol's function (ident), 0 */
     uint32_t hover;          /* offset in SymIdxB.hs, 0: none yet */
+    uint32_t unit;           /* scope: 1 + index in SymIdxB.units, 0: none */
     uint8_t kind, linkage;
     uint16_t flags;
 } BDecl;
@@ -42,6 +43,7 @@ struct SymIdxB {
     uint32_t *hset, hcap, hcount;   /* hash set of hs offsets + 1 */
     StrBuf tmp;
     size_t unit_ev0;         /* the unit's first event */
+    VEC(SrcRange) units;     /* each unit's extent (presentation points) */
     const SrcFile *cf;       /* the last file asked about */
     bool csys;               /* ... in a system header, if it has no markers */
     FILE *vout;              /* --verify-symbols */
@@ -69,6 +71,7 @@ void csx_free(SymIdxB *b)
     vec_free(&b->fmap);
     vec_free(&b->labmap);
     vec_free(&b->enhover);
+    vec_free(&b->units);
     vec_free(&b->seen);
     sb_free(&b->hs);
     sb_free(&b->tmp);
@@ -97,7 +100,7 @@ static uint32_t new_decl(SymIdxB *b, uint32_t name, int kind, int linkage,
 {
     BDecl d;
     d.name = name;
-    d.fn = d.hover = 0;
+    d.fn = d.hover = d.unit = 0;
     d.kind = (uint8_t)kind;
     d.linkage = (uint8_t)linkage;
     d.flags = (uint16_t)flags;
@@ -333,6 +336,8 @@ static uint32_t sym_id(Checker *c, uint32_t ref, bool lazy)
     if ((ref & SYM_LOCAL) && kind != CIK_PARAM && !cat_file_scope(c) &&
         c->func_sym != SYM_NONE)
         b->decls.data[*p - 1].fn = csym(c, c->func_sym)->name;  /* "f:x" */
+    if ((ref & SYM_LOCAL) && !s->linkage)
+        b->decls.data[*p - 1].unit = (uint32_t)b->units.len;
     if (lazy)
         lazy_event(c, *p, s->loc,
                    kind == CIK_TYPEDEF || kind == CIK_ENUMCONST ||
@@ -487,6 +492,7 @@ void csx_label(Checker *c, uint32_t slot_, uint32_t tok, int role)
         SymIdxB *b = c->sx;
         uint32_t name = c->u->toks[tok].t.aux;
         *id = new_decl(b, name, CIK_LABEL, 0, 0);
+        b->decls.data[*id - 1].unit = (uint32_t)b->units.len;
         b->tmp.len = 0;
         sb_puts(&b->tmp, "label ");
         if (c->func_sym != SYM_NONE)
@@ -502,8 +508,15 @@ void csx_label(Checker *c, uint32_t slot_, uint32_t tok, int role)
 void csx_unit_begin(Checker *c)
 {
     SymIdxB *b = c->sx;
+    SrcRange u = {0, 0};
     b->lmap.len = 0;
     b->unit_ev0 = b->ev.len;
+    if (c->u->ntoks) {       /* the scope of the unit's block-scope names */
+        const PTok *f = &c->u->toks[0], *l = &c->u->toks[c->u->ntoks - 1];
+        u.begin = f->exp ? f->exp : f->t.loc;
+        u.end = (l->exp ? l->exp : l->t.loc) + 1;
+    }
+    vec_push(&b->units, u);
     if (b->vout) {
         b->seen.len = 0;
         while (b->seen.len < c->u->ntoks)
@@ -665,13 +678,6 @@ static bool in_ranges(const Range *r, size_t n, SrcLoc loc)
     return lo > 0 && loc <= r[lo - 1].e;
 }
 
-static bool ident_char(char ch)
-{
-    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-           (ch >= '0' && ch <= '9') || ch == '_' || ch == '$' ||
-           (unsigned char)ch >= 0x80;
-}
-
 typedef struct Pool {
     StrBuf sb;
     uint32_t *by_ident;      /* ident -> offset + 1 */
@@ -798,7 +804,7 @@ CIndex *csx_finish(Checker *c)
         if (!o->len) {       /* measure the name in the text */
             uint32_t n = 0;
             while (o->off + n < cur->size && n < 255 &&
-                   ident_char(cur->buf[o->off + n]))
+                   cindex_ident_char(cur->buf[o->off + n]))
                 n++;
             o->len = (uint8_t)n;
         }
@@ -823,7 +829,31 @@ CIndex *csx_finish(Checker *c)
         o->kind = d->kind;
         o->linkage = d->linkage;
         o->flags = d->flags;
+        if (d->unit && d->unit <= b->units.len) {
+            SrcRange *u = &b->units.data[d->unit - 1];
+            if (!u->begin) {         /* converted already: 1 + scope index */
+                o->scope = u->end;
+                continue;
+            }
+            cur = srcmgr_file_of(c->sm, u->begin);
+            if (cur && u->end - 1 >= cur->base && u->end - 1 <= cur->base + cur->size) {
+                uint32_t fi = 0;     /* its file entry, if the file has events */
+                while (fi < nf && strcmp(pool.sb.data + path_off[fi], cur->path))
+                    fi++;
+                if (fi < nf) {
+                    ix->scopes = xrealloc(ix->scopes, (ix->nscopes + 1) *
+                                                          sizeof *ix->scopes);
+                    ix->scopes[ix->nscopes].file = fi;
+                    ix->scopes[ix->nscopes].begin = u->begin - cur->base;
+                    ix->scopes[ix->nscopes].end = u->end - cur->base;
+                    o->scope = ++ix->nscopes;
+                }
+            }
+            u->begin = 0;
+            u->end = o->scope;
+        }
     }
+    b->units.len = 0;
     free(pool.by_ident);
     ix->nstrings = pool.sb.len;
     ix->strings = pool.sb.data ? xrealloc(pool.sb.data, pool.sb.len) : NULL;
@@ -860,6 +890,7 @@ void cindex_free(CIndex *ix)
     free(ix->by_decl);
     free(ix->by_decl_start);
     free(ix->decls);
+    free(ix->scopes);
     free(ix->strings);
     free(ix);
 }
@@ -876,7 +907,7 @@ size_t cindex_bytes(const CIndex *ix)
     return sizeof *ix + ix->nfiles * sizeof *ix->files +
            ix->nev * (sizeof *ix->ev + sizeof *ix->by_decl) +
            (ix->ndecls + 1) * (sizeof *ix->decls + sizeof *ix->by_decl_start) +
-           ix->nstrings;
+           ix->nscopes * sizeof *ix->scopes + ix->nstrings;
 }
 
 int cindex_file(const CIndex *ix, const char *path)
@@ -1033,6 +1064,82 @@ size_t cindex_select(const CIndex *ix, const uint32_t *decls, size_t nd,
     return n;
 }
 
+bool cindex_is_identifier(const char *s)
+{
+    if (!*s || (*s >= '0' && *s <= '9'))
+        return false;
+    for (; *s; s++)
+        if (!((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') ||
+              (*s >= '0' && *s <= '9') || *s == '_'))
+            return false;
+    return true;
+}
+
+const char *cindex_place(SrcMgr *sm, const char *path, uint32_t off, char *buf,
+                         size_t bufsz)
+{
+    SrcFile *f = cindex_srcfile(sm, path);
+    uint32_t l = 0, c = 0;
+    if (f)
+        srcmgr_linecol(f, f->base + off, &l, &c);
+    snprintf(buf, bufsz, "%s:%u:%u", f ? f->name : path, l, c);
+    return buf;
+}
+
+const char *cindex_rename_plan(const CIndex *ix, SrcMgr *sm, const char *path,
+                               uint32_t off, const char *main, uint32_t **ev,
+                               size_t *n, char *msg, size_t msgsz)
+{
+    uint32_t decls[2], d, j;
+    int mf = cindex_file(ix, main);
+    bool declared = false;
+    char at[512];
+    size_t nd = cindex_decls_at(ix, path, off, decls, 2);
+    const CIdxDecl *x;
+    *ev = NULL;
+    *n = 0;
+    if (!nd)
+        return "no C name here";
+    if (nd > 1)
+        return "several C entities are named here (a #define body, or a "
+               "header read twice); renaming one would rename the others";
+    d = decls[0];
+    x = &ix->decls[d];
+    if (x->flags & (CIDF_BUILTIN | CIDF_SYSTEM)) {
+        snprintf(msg, msgsz, "'%s' is predeclared or declared in a system header",
+                 cindex_name(ix, d));
+        return msg;
+    }
+    for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++) {
+        const CIdxEvent *e = &ix->ev[ix->by_decl[j]];
+        const char *p = ix->files[e->file].path;
+        if ((e->flags & CIX_ROLE) != CIX_REF)
+            declared = true;
+        if (ix->files[e->file].stale)
+            return "the C symbol index is not ready; retry";
+        if (e->flags & (CIX_MACRO_BODY | CIX_AT_EXPANSION)) {
+            snprintf(msg, msgsz, "'%s' at %s is %s; renaming would change the "
+                     "macro", cindex_name(ix, d),
+                     cindex_place(sm, p, e->off, at, sizeof at),
+                     e->flags & CIX_MACRO_BODY ? "spelled in a #define body"
+                                               : "formed by ## or a macro");
+            return msg;
+        }
+        if ((int)e->file != mf) {
+            snprintf(msg, msgsz, "'%s' is declared or used in %s, which other "
+                     "units may include; renaming it needs the project index",
+                     cindex_name(ix, d), cindex_place(sm, p, e->off, at, sizeof at));
+            return msg;
+        }
+    }
+    if ((x->flags & CIDF_IMPLICIT) && !declared) {
+        snprintf(msg, msgsz, "'%s' is only declared implicitly", cindex_name(ix, d));
+        return msg;
+    }
+    *n = cindex_select(ix, &d, 1, CIQ_REFS, mf, ev);
+    return NULL;
+}
+
 SrcFile *cindex_srcfile(SrcMgr *sm, const char *path)
 {
     uint32_t i, n = srcmgr_nfiles(sm);
@@ -1093,13 +1200,23 @@ void cindex_dump(const CIndex *ix, SrcMgr *sm, FILE *out)
     for (i = 0; i < ix->ndecls; i++) {
         const CIdxDecl *d = &ix->decls[i];
         const char *h;
-        fprintf(out, "#%u %s %s%s%s%s%s%s :: ", i, kind_names[d->kind],
+        fprintf(out, "#%u %s %s%s%s%s%s%s", i, kind_names[d->kind],
                 cindex_name(ix, i),
                 d->linkage == 1 ? " internal" : d->linkage == 2 ? " external" : "",
                 d->flags & CIDF_BUILTIN ? " builtin" : "",
                 d->flags & CIDF_IMPLICIT ? " implicit" : "",
                 d->flags & CIDF_SYSTEM ? " system" : "",
                 d->flags & CIDF_TENTATIVE ? " tentative" : "");
+        if (d->scope) {          /* lines of the scope's file */
+            const CIdxScope *s = &ix->scopes[d->scope - 1];
+            uint32_t l0 = 0, l1 = 0, c0;
+            if ((f = cindex_srcfile(sm, ix->files[s->file].path)) != NULL) {
+                srcmgr_linecol(f, f->base + s->begin, &l0, &c0);
+                srcmgr_linecol(f, f->base + s->end - 1, &l1, &c0);
+            }
+            fprintf(out, " scope %u-%u", l0, l1);
+        }
+        fputs(" :: ", out);
         for (h = ix->strings + d->hover; *h; h++)  /* the hover text, one line */
             if (*h == '\n')
                 fputs("\\n", out);

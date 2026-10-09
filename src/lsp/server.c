@@ -48,9 +48,18 @@ typedef struct Doc {
     Unit *unit;
 } Doc;
 
+/* A rename's checks, handed to the builder (lsp_check_rename). */
+typedef struct RenameJob {
+    Snapshot *snap;
+    CRename *q;
+    char *err;
+    bool done;
+} RenameJob;
+
 typedef struct Server {
     Mutex m;
     Cond work, done;
+    RenameJob *rjob;          /* waiting for the builder */
     VEC(Doc *) docs;
     VEC(Unit *) units;
     VEC(Unit *) queue;
@@ -619,6 +628,52 @@ static Check *check_unit(Unit *u, Snapshot *s)
     return c;
 }
 
+/* A rename job's checks under a fatal() trap, with the options and buffers
+ * of its snapshot. */
+static void rename_run(RenameJob *j)
+{
+    FatalTrap tr;
+    Options *opt = config_options_for(&S.cfg, j->snap->main);
+    opt->pp.fatal_missing_include = false; /* as the check's (D2) */
+    j->q->o = opt;
+    j->q->main = j->snap->main;
+    j->q->overlay = j->snap->overlay ? overlay_lookup : NULL;
+    j->q->overlay_ctx = j->snap->overlay;
+    fatal_trap_push(&tr);
+    if (setjmp(tr.jb)) {
+        StrBuf sb = {0};
+        sb_printf(&sb, "the rename check failed: %s", tr.msg);
+        sb_cstr(&sb);
+        j->err = sb.data;
+        config_options_free(opt);
+        return;
+    }
+    j->err = c_rename(j->q);
+    fatal_trap_pop(&tr);
+    config_options_free(opt);
+}
+
+char *lsp_check_rename(Snapshot *snap, CRename *q)
+{
+    RenameJob j;
+    memset(&j, 0, sizeof j);
+    j.snap = snap;
+    j.q = q;
+    mutex_lock(&S.m);
+    S.rjob = &j;
+    cond_broadcast(&S.work);
+    while (!j.done) {
+        if (S.stop && S.rjob == &j) { /* the builder has gone */
+            S.rjob = NULL;
+            mutex_unlock(&S.m);
+            return xstrdup("the server is stopping");
+        }
+        cond_wait(&S.done, &S.m);
+    }
+    mutex_unlock(&S.m);
+    return j.err;
+}
+
 static void *builder_main(void *arg)
 {
     (void)arg;
@@ -630,6 +685,16 @@ static void *builder_main(void *arg)
         bool failed;
         long long want;
         double t0, t1, t2;
+        if (S.rjob) {
+            RenameJob *j = S.rjob;
+            S.rjob = NULL;
+            mutex_unlock(&S.m);
+            rename_run(j);
+            mutex_lock(&S.m);
+            j->done = true;
+            cond_broadcast(&S.done);
+            continue;
+        }
         if (!S.queue.len) {
             cond_wait(&S.work, &S.m);
             continue;
@@ -1020,7 +1085,7 @@ static void handle_request(const JsonValue *id, ReqKind k,
     while (!u->snap && !S.stop) /* first build of this unit */
         cond_wait(&S.done, &S.m);
     if (k == R_DEF || k == R_DECL || k == R_REFS || k == R_HIGHLIGHT ||
-        k == R_HOVER) {
+        k == R_HOVER || k == R_PREP_RENAME || k == R_RENAME) {
         /* the C index comes with the check of the newest edit's snapshot:
          * wait for it a little (B2 decision D1), then answer from what is
          * there (the macros alone if the check has not published) */
@@ -1032,6 +1097,8 @@ static void handle_request(const JsonValue *id, ReqKind k,
     }
     r.snap = snapshot_ref(u->snap);
     r.cidx = r.snap ? r.snap->cidx : NULL;
+    r.c_fresh = r.cidx && u->snap->gen == u->want &&
+                u->snap->check_state == CHECK_DONE;
     r.text = arena_strndup(&a, d->text, d->len);
     r.text_len = d->len;
     mutex_unlock(&S.m);
@@ -1067,9 +1134,10 @@ static void handle_request(const JsonValue *id, ReqKind k,
             break;
         case R_SEMTOK_RANGE: lsp_semantic_tokens_range(&r, &w); break;
         case R_FOLDING: lsp_folding(&r, &w); break;
-        case R_PREP_RENAME: lsp_prepare_rename(&r, &w); break;
+        case R_PREP_RENAME:
         case R_RENAME:
-            if (!lsp_rename(&r, &w, &err)) {
+            if (!(k == R_RENAME ? lsp_rename : lsp_prepare_rename)(&r, &w,
+                                                                   &err)) {
                 sb.len = 0;
                 snapshot_release(r.snap);
                 respond_error(id, -32803 /* RequestFailed */, err);

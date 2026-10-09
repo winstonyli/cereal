@@ -31,4 +31,27 @@ typedef struct FrontendOpts {
  * opened. */
 bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo);
 
+/* Renaming a C name (crename.c; docs/B2_DESIGN.md, "Phase 4 design
+ * addendum"): the unit is checked as it is and with the edits applied, and
+ * the rename is accepted only if both runs resolve every name alike and
+ * give the same diagnostics.  Shared by `cereal query rename=` and the
+ * language server (which runs it on its builder thread: the checker keeps
+ * static state, so two checks must not run at once). */
+typedef struct CRename {
+    Options *o;                 /* the unit's */
+    const char *main;           /* its main file */
+    bool (*overlay)(void *ctx, const char *path, const char **buf,
+                    size_t *len);   /* editor buffers, or NULL */
+    void *overlay_ctx;
+    const char *path;           /* the name: at offset off of this file */
+    uint32_t off;
+    const char *name;           /* the new name */
+    uint32_t *offs;             /* out: the main file's offsets to edit, in
+                                   order (malloc'd) */
+    size_t n;
+    uint32_t len;               /* out: the old name's length */
+} CRename;
+/* NULL: q->offs; else why the rename is refused (malloc'd). */
+char *c_rename(CRename *q);
+
 #endif

@@ -23,10 +23,10 @@ stmts.c:27:16 DEF label after -> #8
 stmts.c:27:28 REF label after -> #8
 #0 obj counter external tentative :: var counter: int tentative
 #1 obj pasted_name external tentative :: var pasted_name: int tentative
-#2 param n :: param n: int
+#2 param n scope 7-21 :: param n: int
 #3 func f external :: func f: int(int) defined
-#4 obj p :: var f:p: void *
-#5 label out :: label f:out
-#6 label inner :: label f:inner
+#4 obj p scope 7-21 :: var f:p: void *
+#5 label out scope 7-21 :: label f:out
+#6 label inner scope 7-21 :: label f:inner
 #7 func g external :: func g: void(void) defined
-#8 label after :: label g:after
+#8 label after scope 27-27 :: label g:after

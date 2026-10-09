@@ -117,8 +117,11 @@ B2. (Phase 1 DONE, Round 187: the index, `--dump-symbols`,
     Phase 3 DONE, Round 192: hover for C names (the `--dump-types` line,
     record and enum members, field offsets, labels) and `cereal query
     hover`; about 350 lines added, 66 removed, against ~300. Phase 4
-    remains: rename (~500). See B2_DESIGN.md, "Phase 1/2/3 results and
-    corrections".)
+    DONE, Round 194: rename for C names (prepareRename, rename, `cereal
+    query rename=`), conflicts found by checking the unit again with the
+    edits applied; edits only in the unit's main file until B5; about
+    774 lines added, 40 removed, against ~350. B2 is complete. See
+    B2_DESIGN.md, "Phase 1/2/3/4 results and corrections".)
     A C symbol index recorded in the checker: uses and declarations with
     location, kind, a stable declaration id, hover text copied out as a
     string before the checker is freed (est. about 900 lines in four phases, see B2_DESIGN.md; 6 to 8 hook

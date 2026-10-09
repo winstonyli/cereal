@@ -6,6 +6,8 @@
  * diagnostics, inactive regions and a macro expansion view. */
 #include "lsp.h"
 
+#include "../c/frontend.h"
+
 #include <string.h>
 
 /* ---- helpers ------------------------------------------------------------ */
@@ -679,33 +681,68 @@ static const char *rename_blocker(Req *r, const IdxTarget *t, IdxRef *refs,
     return NULL;
 }
 
-void lsp_prepare_rename(Req *r, JsonWriter *w)
+/* The C name at the cursor (B2 phase 4) as the range a rename edits there,
+ * from the check's index (cindex_rename_plan), or why it cannot be renamed.
+ * The index must be the newest edit's: its offsets are the edits'. */
+static const char *c_rename_at(Req *r, SrcLoc at, SrcLoc *b, SrcLoc *e)
 {
-    IdxTarget t = index_resolve(&r->snap->ix, cursor(r));
+    const SrcFile *mf = index_find_file(&r->snap->ix, r->snap->main);
+    uint32_t *ev = NULL, first;
+    size_t n;
+    char msg[512];
+    const char *err;
+    const CIdxEvent *x;
+    if (!r->c_fresh || !mf)
+        return "the C symbol index is not ready; retry";
+    err = cindex_rename_plan(r->cidx, &r->snap->tu.sm, r->file->path,
+                             at - r->file->base, mf->path, &ev, &n, msg,
+                             sizeof msg);
+    free(ev);
+    if (err)
+        return arena_strdup(r->arena, err);
+    cindex_at(r->cidx, (uint32_t)cindex_file(r->cidx, r->file->path),
+              at - r->file->base, &first);
+    x = &r->cidx->ev[first];
+    *b = r->file->base + x->off;
+    *e = *b + x->len;
+    return NULL;
+}
+
+/* A macro or macro parameter is renamed when the macro index answers for
+ * the name (not weakly), else a C name; null where there is no entity. */
+bool lsp_prepare_rename(Req *r, JsonWriter *w, const char **err)
+{
+    SrcLoc at = cursor(r);
+    IdxTarget t = index_resolve(&r->snap->ix, at);
     IdxRef *refs = NULL;
     size_t n = 0;
-    if (t.kind == TGT_MACRO || t.kind == TGT_PARAM)
-        n = index_references(&r->snap->ix, &t, &refs);
-    if (rename_blocker(r, &t, refs, n) || !t.range.end) {
-        json_null(w);
-        return;
+    SrcLoc b = t.range.begin, e = t.range.end;
+    uint32_t d;
+    if (t.kind == TGT_NONE || t.weak) {
+        if (r->c_fresh && !cindex_decls_at(r->cidx, r->file->path,
+                                           at - r->file->base, &d, 1)) {
+            json_null(w); /* no entity here */
+            return true;
+        }
+        if ((*err = c_rename_at(r, at, &b, &e)) != NULL)
+            return false;
+    } else {
+        if (t.kind == TGT_MACRO || t.kind == TGT_PARAM)
+            n = index_references(&r->snap->ix, &t, &refs);
+        if ((*err = rename_blocker(r, &t, refs, n)) != NULL)
+            return false;
+        if (!e) {
+            *err = "no name here";
+            return false;
+        }
     }
     json_begin_object(w);
     json_key(w, "range");
-    json_range(w, &r->snap->tu.sm, r->enc, t.range.begin, t.range.end);
+    json_range(w, &r->snap->tu.sm, r->enc, b, e);
     json_key(w, "placeholder");
-    json_str(w, t.name->str);
+    json_str(w, arena_strndup(r->arena, r->file->buf + (b - r->file->base),
+                              e - b));
     json_end_object(w);
-}
-
-static bool is_identifier(const char *s)
-{
-    if (!*s || (*s >= '0' && *s <= '9'))
-        return false;
-    for (; *s; s++)
-        if (!((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') ||
-              (*s >= '0' && *s <= '9') || *s == '_'))
-            return false;
     return true;
 }
 
@@ -715,21 +752,66 @@ static int ref_file_cmp(const void *a, const void *b)
     return x->loc < y->loc ? -1 : x->loc > y->loc;
 }
 
+/* A C name: c_rename's edits, all in the unit's main file. */
+static bool c_rename_edits(Req *r, JsonWriter *w, SrcLoc at, const char *name,
+                           const char **err)
+{
+    SrcFile *mf = index_find_file(&r->snap->ix, r->snap->main);
+    CRename q;
+    char *why;
+    size_t i;
+    if (!r->c_fresh || !mf) {
+        *err = "the C symbol index is not ready; retry";
+        return false;
+    }
+    memset(&q, 0, sizeof q);
+    q.path = r->file->path;
+    q.off = at - r->file->base;
+    q.name = name;
+    if ((why = lsp_check_rename(r->snap, &q)) != NULL) {
+        *err = arena_strdup(r->arena, why);
+        free(why);
+        return false;
+    }
+    json_begin_object(w);
+    json_key(w, "changes");
+    json_begin_object(w);
+    json_key(w, path_to_uri(r->arena, mf->path));
+    json_begin_array(w);
+    for (i = 0; i < q.n; i++) {
+        json_begin_object(w);
+        json_key(w, "range");
+        json_range(w, &r->snap->tu.sm, r->enc, mf->base + q.offs[i],
+                   mf->base + q.offs[i] + q.len);
+        json_key(w, "newText");
+        json_str(w, name);
+        json_end_object(w);
+    }
+    json_end_array(w);
+    json_end_object(w);
+    json_end_object(w);
+    free(q.offs);
+    return true;
+}
+
 bool lsp_rename(Req *r, JsonWriter *w, const char **err)
 {
-    IdxTarget t = index_resolve(&r->snap->ix, cursor(r));
+    SrcLoc at = cursor(r);
+    IdxTarget t = index_resolve(&r->snap->ix, at);
     const char *name = json_str_of(json_get(r->params, "newName"), "");
     SrcMgr *sm = &r->snap->tu.sm;
     IdxRef *refs = NULL, *sorted;
     size_t n = 0, i;
     SrcFile *cur = NULL;
     SrcLoc last = 0;
+    if (t.kind == TGT_NONE || t.weak)
+        return c_rename_edits(r, w, at, name, err);
     if (t.kind == TGT_MACRO || t.kind == TGT_PARAM)
         n = index_references(&r->snap->ix, &t, &refs);
     if ((*err = rename_blocker(r, &t, refs, n)) != NULL)
         return false;
-    if (!is_identifier(name)) {
-        *err = "the new name is not an identifier";
+    if (!cindex_is_identifier(name)) {
+        *err = arena_printf(r->arena, "'%s' is not an identifier", name);
         return false;
     }
     sorted = NEW_ARRAY(r->arena, IdxRef, n + 1);

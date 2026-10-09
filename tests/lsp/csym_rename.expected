@@ -1,0 +1,187 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync"
+ ]
+}
+>> initialized
+>> didOpen csym_rename/main.c
+>> (idle)
+## a parameter: prepareRename, then rename (its use in ARG(factor) is the argument token)
+>> textDocument/prepareRename
+{
+ "placeholder": "factor",
+ "range": {
+  "end": {
+   "character": 27,
+   "line": 4
+  },
+  "start": {
+   "character": 21,
+   "line": 4
+  }
+ }
+}
+>> textDocument/rename
+{
+ "changes": {
+  "file://$ROOT/csym_rename/main.c": [
+   {
+    "newText": "f",
+    "range": {
+     "end": {
+      "character": 27,
+      "line": 4
+     },
+     "start": {
+      "character": 21,
+      "line": 4
+     }
+    }
+   },
+   {
+    "newText": "f",
+    "range": {
+     "end": {
+      "character": 22,
+      "line": 6
+     },
+     "start": {
+      "character": 16,
+      "line": 6
+     }
+    }
+   }
+  ]
+ }
+}
+## refused before the edit: spelled in a #define body; declared in a header
+>> textDocument/prepareRename
+{
+ "error": {
+  "code": -32803,
+  "message": "'level' at $ROOT/csym_rename/main.c:2:16 is spelled in a #define body; renaming would change the macro"
+ }
+}
+>> textDocument/prepareRename
+{
+ "error": {
+  "code": -32803,
+  "message": "'api_call' is declared or used in $ROOT/csym_rename/api.h:1:5, which other units may include; renaming it needs the project index"
+ }
+}
+## refused by the new name: a keyword, not an identifier, in an inactive #if group
+>> textDocument/rename
+{
+ "error": {
+  "code": -32803,
+  "message": "'while' is a keyword"
+ }
+}
+>> textDocument/rename
+{
+ "error": {
+  "code": -32803,
+  "message": "'2x' is not an identifier"
+ }
+}
+>> textDocument/rename
+{
+ "error": {
+  "code": -32803,
+  "message": "'gone' occurs in an inactive #if group at $ROOT/csym_rename/main.c:15:9, which cannot be checked"
+ }
+}
+## refused by the second check: the local r renamed to level would capture the use of the static level
+>> textDocument/rename
+{
+ "error": {
+  "code": -32803,
+  "message": "after renaming, the name at $ROOT/csym_rename/main.c:8:16 would refer to the obj 'level' declared at $ROOT/csym_rename/main.c:7:9 instead of the obj 'level' declared at $ROOT/csym_rename/main.c:4:12"
+ }
+}
+## an edit, then at once a rename: it waits for the new snapshot's check (everything moved down a line)
+>> textDocument/didChange
+>> textDocument/rename
+{
+ "changes": {
+  "file://$ROOT/csym_rename/main.c": [
+   {
+    "newText": "sum",
+    "range": {
+     "end": {
+      "character": 13,
+      "line": 12
+     },
+     "start": {
+      "character": 8,
+      "line": 12
+     }
+    }
+   },
+   {
+    "newText": "sum",
+    "range": {
+     "end": {
+      "character": 9,
+      "line": 13
+     },
+     "start": {
+      "character": 4,
+      "line": 13
+     }
+    }
+   },
+   {
+    "newText": "sum",
+    "range": {
+     "end": {
+      "character": 16,
+      "line": 17
+     },
+     "start": {
+      "character": 11,
+      "line": 17
+     }
+    }
+   }
+  ]
+ }
+}
+## macros unchanged: ARG is renamed by the macro index
+>> textDocument/prepareRename
+{
+ "placeholder": "ARG",
+ "range": {
+  "end": {
+   "character": 11,
+   "line": 3
+  },
+  "start": {
+   "character": 8,
+   "line": 3
+  }
+ }
+}
+## no entity (a keyword): null
+>> textDocument/prepareRename
+null
+>> shutdown
+null
+>> exit
+exit 0

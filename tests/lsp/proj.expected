@@ -113,7 +113,12 @@
 ]
 ## rename refused: API_VERSION is also formed by ## in GLUE
 >> textDocument/prepareRename
-null
+{
+ "error": {
+  "code": -32803,
+  "message": "the name is formed by ## at $ROOT/proj/include/api.h:5; renaming would not rename that use"
+ }
+}
 >> textDocument/rename
 {
  "error": {

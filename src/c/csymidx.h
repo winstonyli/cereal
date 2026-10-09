@@ -61,11 +61,19 @@ typedef struct CIdxDecl {
     uint32_t hover;          /* string pool offset: the --dump-types line, a
                                 record's or enum's members (CIX_HOVER_*);
                                 equal texts share one offset */
-    uint32_t scope;          /* scope id (phase 4; 0 for now) */
+    uint32_t scope;          /* where it can be named: 0 the whole unit, else
+                                1 + index in CIndex.scopes (a block-scope
+                                name without linkage: its external
+                                declaration) */
     uint8_t kind;            /* CIdxKind */
     uint8_t linkage;         /* 0 none, 1 internal, 2 external */
     uint16_t flags;          /* CIDF_* */
 } CIdxDecl;
+
+typedef struct CIdxScope {   /* [begin, end) of file */
+    uint32_t begin, end;
+    uint32_t file;
+} CIdxScope;
 
 typedef struct CIndex {
     CIdxFile *files;
@@ -75,6 +83,8 @@ typedef struct CIndex {
     uint32_t *by_decl, *by_decl_start;  /* CSR: event indices per decl */
     CIdxDecl *decls;
     uint32_t ndecls;
+    CIdxScope *scopes;
+    uint32_t nscopes;
     char *strings;           /* deduplicated pool; offset 0 is "" */
     size_t nstrings;
     uint32_t unindexed;      /* --verify-symbols: names that got no event */
@@ -114,7 +124,26 @@ typedef enum {
  * those outside file fi unless fi < 0.  *out is malloc'd (free it). */
 size_t cindex_select(const CIndex *ix, const uint32_t *decls, size_t nd,
                      CIdxQuery q, int fi, uint32_t **out);
-/* Hover text bounds: a string longer than CIX_HOVER_MAX bytes is cut there
+/* Rename (B2_DESIGN.md, phase 4 addendum A3.2-A3.5): the events to edit to
+ * rename the C entity named at offset off of path, one per place in offset
+ * order, all in the unit's main file (*ev malloc'd); NULL, or why not (a
+ * message in msg).  sm: for the places in messages. */
+const char *cindex_rename_plan(const CIndex *ix, SrcMgr *sm, const char *path,
+                               uint32_t off, const char *main, uint32_t **ev,
+                               size_t *n, char *msg, size_t msgsz);
+/* [A-Za-z_][A-Za-z0-9_]* */
+bool cindex_is_identifier(const char *s);
+/* A byte that can continue an identifier ($ and UTF-8 included). */
+static inline bool cindex_ident_char(char ch)
+{
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+           (ch >= '0' && ch <= '9') || ch == '_' || ch == '$' ||
+           (unsigned char)ch >= 0x80;
+}
+/* "FILE:LINE:COL" of offset off of the file with this path, into buf. */
+const char *cindex_place(SrcMgr *sm, const char *path, uint32_t off, char *buf,
+                         size_t bufsz);
+/* Hover text bounds:a string longer than CIX_HOVER_MAX bytes is cut there
  * ("..."), a record or enum lists at most CIX_HOVER_MEMBERS members. */
 #define CIX_HOVER_MAX 1024
 #define CIX_HOVER_MEMBERS 16

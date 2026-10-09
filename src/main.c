@@ -45,7 +45,8 @@ static void usage(FILE *o)
         "  -fsyntax-only  the same as check\n"
         "  lsp           language server on stdin/stdout\n"
         "  query KIND FILE:LINE:COL   KIND = def | decl | refs | uses | highlight |\n"
-        "                hover | visible | expand | callers | callees | deps\n"
+        "                hover | visible | expand | callers | callees | deps |\n"
+        "                rename=NEWNAME (a C name)\n"
         "  --list-warnings  list every -W option\n"
         "\n"
         "options:\n"
@@ -789,6 +790,29 @@ static int mode_query(Options *o, const char *kind, const char *at)
     }
     loc = srcmgr_loc_of(f, line, col);
     t = index_resolve(&ix, loc);
+
+    if (!strncmp(kind, "rename=", 7)) {   /* a C name (B2 phase 4) */
+        CRename q;
+        SrcFile *mf = index_find_file(&ix, o->inputs.data[0]);
+        char *err;
+        size_t i;
+        memset(&q, 0, sizeof q);
+        q.o = o;
+        q.main = o->inputs.data[0];
+        q.path = f->path;
+        q.off = loc - f->base;
+        q.name = kind + 7;
+        err = t.kind != TGT_NONE && !t.weak
+                  ? xstrdup("a macro or macro parameter is named here")
+                  : c_rename(&q);
+        if (err)
+            printf("cannot rename: %s\n", err);
+        for (i = 0; !err && mf && i < q.n; i++)
+            printf("%s %s\n", loc_str(&tu, mf->base + q.offs[i]), q.name);
+        free(err);
+        free(q.offs);
+        goto out;
+    }
 
     /* the macro index's answer stands unless it has nothing or only knows
      * the name by its plain identifier (weak): then a C entity answers */

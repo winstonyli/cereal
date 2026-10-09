@@ -160,7 +160,7 @@ cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
   paging on uvloop's loop.c). A halted stream now still returns
   `SRC_BARRIER` while a barrier context is open.
 
-## C symbol index (B2, phases 1 to 3)
+## C symbol index (B2)
 
 The check phase also records a symbol index (`src/c/csymidx.c`; design
 in B2_DESIGN.md): every declaration, definition and use of a function,
@@ -209,11 +209,49 @@ is freed with it.
   definition and expansion; a name with only macro history answers with
   the C text plus "(also a macro name)"; several entities at one place
   list their distinct texts (at most 5). Doc comments are not shown.
+- **Rename** (phase 4; B2_DESIGN.md, "Phase 4 design addendum"):
+  prepareRename and rename take a C name when the macro index does not
+  answer for it (as above). The edits are the entity's events, one per
+  place, and all lie in the unit's main file. A name written in a macro
+  argument is edited there (decision D4). The rename is then checked by
+  checking the unit again with the edits applied (`src/c/crename.c`): it
+  stands only if the two runs give the same events (each naming the same
+  entity), decls and diagnostics, up to the moved offsets and the new
+  name. That comparison is the conflict check, so it follows the
+  checker's own scoping: capture by an inner or outer declaration, a
+  redeclaration in the same scope, a duplicate member or label, a
+  typedef renamed to a variable used where it is, a `#define` body that
+  would now name another entity, and a renamed argument that `##` pastes
+  into another name are all refused with the first place that differs.
+  Names in other namespaces (a tag against a variable, a field against a
+  global, a label against a parameter) are accepted. Also refused,
+  before the second check:
+  - the index is not the newest edit's ("not ready; retry");
+  - several entities at the place, a predeclared or system name, an
+    implicitly declared function;
+  - a use spelled in a `#define` body or formed by `##`;
+  - a use in a header (other units may include it; cross-unit rename is
+    B5, decision D3);
+  - a new name that is not an identifier, is a keyword in any mode, or
+    has any macro history in the unit;
+  - an `#include` not found;
+  - the old or new name as a word in a skipped `#if` group within the
+    entity's scope (its function for a local, parameter or label, else
+    the whole unit).
+
+  A refusal is a RequestFailed error with the reason (prepareRename too,
+  and now also for macros); prepareRename answers null where there is no
+  entity. The two checks run on the builder thread, because the checker
+  keeps static state: the request hands a job to the builder and waits.
+  Not seen by the comparison: an argument the macro also stringizes
+  (`#x` spells the new name), `__func__` in a renamed function, names
+  in strings (`alias("f")`, `asm` labels) and other units.
 - **Waiting (decision D1):** right after an edit the snapshot's index is
-  not ready yet. definition, declaration, references, documentHighlight
-  and hover wait (`cond_timedwait`, at most 1.5 s) while the newest edit
-  has no snapshot or its check is pending, then answer from what is
-  there: the macros alone if no index published.
+  not ready yet. definition, declaration, references, documentHighlight,
+  hover, prepareRename and rename wait (`cond_timedwait`, at most 1.5 s)
+  while the newest edit has no snapshot or its check is pending, then
+  answer from what is there: the macros alone if no index published (a
+  C rename is then refused, "retry").
 - **No index:** units over the check size limit, headers opened on their
   own, cancelled checks. C queries then return nothing; macros still work.
 - **Size (measured, x86_64):**
@@ -247,6 +285,9 @@ is freed with it.
   `expansion`, `system`), write/read for highlight, and a count line when
   several entities share the place (a `#define` body token); hover prints
   the texts, then "(also a macro name)" for a name with macro history.
+  `cereal query rename=NEW FILE:L:C main.c` prints `file:line:col NEW`
+  per edit, or `cannot rename: REASON` (also for a macro at the place).
+  `--dump-symbols` shows a block-scope decl's scope lines (`scope L-L`).
 
 ## Capabilities
 
@@ -260,17 +301,17 @@ outgoing; static edges plus observed expansions), and signature help for
 function-like macros (read from the editor text, so it works while the
 invocation is still being typed).
 
-- **Rename is refused** when any use of the name is formed by `##`
-  (renaming could not follow it), or when the macro is predefined or lives
-  in a system header.
+- **Rename of a macro is refused** when any use of the name is formed by
+  `##` (renaming could not follow it), or when the macro is predefined or
+  lives in a system header.
 - **Extensions:**
   - `textDocument/inactiveRegions` (clangd's notification), sent when the
     client declares `inactiveRegionsCapabilities`;
   - `cereal/expandMacro` (position: the invocation's full expansion);
   - `cereal/waitIdle` (answers when no build is queued or running; a
     barrier for tests).
-- **C names:** definition, declaration, references, document highlight
-  and hover (above). Rename for C names is B2 phase 4.
+- **C names:** definition, declaration, references, document highlight,
+  hover and rename (above).
 
 ## Tests
 
@@ -292,8 +333,14 @@ static const, extern volatile and const-pointer variables, parameters one
 of them used in a macro argument, a typedef, an enumerator and its enum,
 fields with a bit-field and a designator, struct, union and a 20-member
 struct cut after 16, a label, shadowing, macro-vs-C with "(also a macro
-name)", D1: fails if hover does not wait); `tests/query/csym.cmd` the same
-merge from the command line. The sessions are also run under ThreadSanitizer and
+name)", D1: fails if hover does not wait); `tests/lsp/csym_rename`
+rename (a parameter used in a macro argument; refusals for a `#define`
+body use, a header declaration, a keyword, a non-identifier, a new name
+in `#if 0`, a capture; a rename right after an edit, D1; the macro path
+and null on a keyword); `tests/query/csym.cmd` the same merge from the
+command line, and `tests/query/rename.cmd` 36 renames (accepted
+for every kind and namespace, refused by each blocker and by the second
+check). The sessions are also run under ThreadSanitizer and
 AddressSanitizer/UBSan (set `LSP_STDERR` to collect reports).
 
 ## Measurements (35 MB macro_heavy.c, 4 cores)

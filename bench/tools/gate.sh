@@ -3,7 +3,7 @@
 #   run.sh (3 golden shards) | verify.sh (4) | san.sh (make -j4, 3 shards, san.py 4) | callgrind (1)
 # Writes /tmp/gate.<stage> and prints them in order.  Expect run/san "N passed, 0 failed"
 # (N grows with the goldens), san "findings 0", verify dg 2 / c-c++-common 1 / cpp 0 differ (of 3910 / 636 / 285 files run, the c11 tests included; cpp is a baseline, not a target),
-# callgrind ~3.82G (instructions, deterministic).
+# callgrind ~3.89G (instructions, deterministic).
 # Inner loop while iterating: `sh tests/run.sh` alone (GOLDEN_JOBS=n shards its golden loops).
 cd "$(dirname "$0")/../.." || exit 1
 O=/tmp/gate; rm -f $O.*

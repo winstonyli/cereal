@@ -3447,3 +3447,41 @@ open fields per typedef use; struct_finish scans `tdseen` per member):
 san.sh 1660 passed, 602 files, 0 findings; verify.sh gcc.dg 3908 of 3910,
 c-c++-common 635 of 636, cpp 285 of 285; symcov 4716 files, 0 unindexed;
 uvloop loop.c 3.89 G instructions (unchanged).
+
+Round 194: ROADMAP B2 phase 4, rename for C names (B2_DESIGN.md "Phase 4
+design addendum" and "Phase 4 results"); B2 is complete. The addendum,
+written first and stress-tested in three rounds plus a final pass (A7),
+replaces section 9's scope tree with verification by recomputation: new
+`src/c/crename.c` (`c_rename`) checks the unit, plans the edits on that
+run's index (`cindex_rename_plan` in csymidx.c: one event per place, all
+in the main file), checks the unit again with the edits applied, and
+accepts only if both runs give the same diagnostics (level, option,
+place), decl kinds, linkages and names (the target renamed) and events
+(same decl and flags at moved offsets). The refusal names the first
+difference: a new or lost diagnostic, a token that also names another
+entity, or a name that would refer to another declaration. Refused before
+that: several entities at the place, predeclared, system or implicit
+names, a use in a `#define` body or formed by `##` (a macro-argument use
+is edited, D4), any use outside the main file (D3, until B5), a new name
+that is not an identifier, is a keyword or has macro history, a missing
+`#include`, and the old or new name in a skipped `#if` group within the
+decl's scope extent (new `CIdxDecl.scope`/`CIndex.scopes`, the unit's
+extent for block-scope names, shown by `--dump-symbols` as `scope L-L`).
+The checker keeps static state, so the server runs the two checks on the
+builder thread (`lsp_check_rename`, a `RenameJob` taken before the next
+build) and refuses ("retry") unless the snapshot is the newest edit's
+with its check done; prepareRename and rename wait for it (D1).
+prepareRename refusals are now RequestFailed errors with the reason, for
+macros too (`tests/lsp/proj` changed); null stays for no entity. The
+identifier test moved to `cindex_is_identifier`. `cereal query
+rename=NEW FILE:L:C main.c` prints the edits or `cannot rename: REASON`.
+Tests: `tests/query/rename.cmd` (36 renames: 14 accepted, 22 refused,
+every blocker and every kind of second-check failure),
+`tests/lsp/csym_rename` (both modes, a rename right after an edit), the
+symidx goldens with scope lines. 384 lines in crename.c, 390 added and 40
+removed elsewhere, against ~350 re-estimated. cexpr.c rename by query
+0.10 s (refs 0.05 s). Gates: run.sh 1664 passed, 0 failed; san.sh 1664
+passed, 602 files, 0 findings; verify.sh gcc.dg 3908 of 3910,
+c-c++-common 635 of 636, cpp 285 of 285; symcov 4716 files, 0 unindexed
+(10 skipped, as before); the LSP sessions (both modes) under TSan: 24
+passed, 0 warnings; uvloop loop.c 3.892 G instructions (HEAD 3.891 G).
