@@ -2955,3 +2955,22 @@ needs `-fdump-ada-spec` (gcc's Ada binding dumper warns "packed layout" while
 dumping); implementing the dumper to reproduce one warning is out of scope.
 `pr56355-1.c` (-Wstrict-overflow) and `pr83844.c` (-Wif-not-aligned with a
 symbolic offset) depend on the middle end's folding; parked.
+
+Stepped back on macro notes (design, nothing built). Probe `n1.c` against
+gcc-13 gives one rule for the whole family: the notes for a token come from
+its chain of macro expansions, innermost first. A token written in the body
+of M gets "in expansion of macro M" at M's use. A token that M's parameter
+substituted (argument text, or text from an enclosing macro's body) gets
+"in definition of macro M" at the parameter's position in M's body instead,
+and the chain goes on with the enclosing expansions only (`K(.)` through
+`W` to `G`: definition of G, expansion of W at its place in K's body,
+expansion of K). cereal has three mechanisms for this: `pp_macro_chain`
+(searches definitions for the spelled location, fails for argument tokens,
+then falls back to the identifier at the use), `pp_add_expansion_notes`
+(live context stack, preprocessor errors only) and the Round 174 paste
+special case. One mechanism covers them all: a per-token provenance, as
+libcpp keeps (macro, parameter position or body position, parent), instead
+of recomputing it from locations. It would cost a field on `PTok` (callgrind
+and memory sensitive, since every token carries it) and touches only note
+lines, which verify.sh does not compare. Parked until a corpus or golden
+needs the notes; the Round 174 special case stays until then.
