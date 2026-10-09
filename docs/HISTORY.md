@@ -3205,3 +3205,11 @@ fell out of the first two:
   (parked; gcc also adds a "did you mean" hint). Golden builtin3_implicit.
 Not fixable in a front end (STATUS "Open differences"): pr56355-1 and
 pr83844 need fold-const.
+
+Round 185: `#pragma GCC unroll NAME`. The text scanner (`unroll_arg_bad`) now
+judges an identifier by the parser's scope: an enumerator (new `SYM_ENUMERATOR`
+kind, declared where enumerators were `SYM_ORDINARY`) stays valid, any other
+declared ordinary name (variable, function, `const int`) is not an integer
+constant expression and gets gcc's error, as in gcc-13. An undeclared name
+is still silent (gcc adds an "undeclared" error first). unroll-5 now matches;
+golden unroll_name.

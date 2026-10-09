@@ -12,7 +12,7 @@
 #include "common.h"
 
 typedef enum {
-    SYM_NONE, SYM_ORDINARY, SYM_TYPEDEF,
+    SYM_NONE, SYM_ORDINARY, SYM_TYPEDEF, SYM_ENUMERATOR,
     SYM_TAG_STRUCT, SYM_TAG_UNION, SYM_TAG_ENUM  /* in the parser's tag scope */
 } SymKind;
 

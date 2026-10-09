@@ -1,0 +1,12 @@
+unroll_name.c:7:20: error: '#pragma GCC unroll' requires an assignment-expression that evaluates to a non-negative integral constant less than 65535
+    7 | #pragma GCC unroll k
+      |                    ^
+unroll_name.c:11:20: error: '#pragma GCC unroll' requires an assignment-expression that evaluates to a non-negative integral constant less than 65535
+   11 | #pragma GCC unroll f
+      |                    ^
+unroll_name.c:15:20: error: '#pragma GCC unroll' requires an assignment-expression that evaluates to a non-negative integral constant less than 65535
+   15 | #pragma GCC unroll k + 1
+      |                    ^
+unroll_name.c:17:20: error: '#pragma GCC unroll' requires an assignment-expression that evaluates to a non-negative integral constant less than 65535
+   17 | #pragma GCC unroll j
+      |                    ^

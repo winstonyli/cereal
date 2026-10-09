@@ -809,9 +809,12 @@ static void sync_top(Parser *p)
 
 /* #pragma GCC unroll N: is the argument certainly not an integer constant
  * expression in 0..65534?  Only literals and arithmetic (+ - * / % ~ ! and
- * parentheses) are judged; names, sizeof and casts are left to be valid. */
+ * parentheses) are judged; a name is judged by the parser's scope (an
+ * enumerator is valid, any other declared name is not constant); sizeof and
+ * casts are left to be valid. */
 typedef struct {
     const char *q, *e;
+    Parser *p;
     bool bad, unknown;
 } UnrollArg;
 
@@ -876,6 +879,18 @@ static long double unroll_primary(UnrollArg *x)
         buf[n] = 0;
         return (long double)strtoull(buf, NULL, 0);
     }
+    if (isalpha((unsigned char)*x->q) || *x->q == '_') {
+        const char *b = x->q;
+        const Ident *id;
+        while (x->q < x->e && (isalnum((unsigned char)*x->q) || *x->q == '_'))
+            x->q++;
+        id = intern_find(x->p->in, b, (size_t)(x->q - b));
+        if (id && !id->ckw && scope_lookup(&x->p->scope, id->id) == SYM_ORDINARY)
+            x->bad = true;
+        else
+            x->unknown = true;
+        return 0;
+    }
     x->unknown = true;
     return 0;
 }
@@ -915,12 +930,13 @@ static long double unroll_expr(UnrollArg *x)
     }
 }
 
-static bool unroll_arg_bad(const char *s, const char *e)
+static bool unroll_arg_bad(Parser *p, const char *s, const char *e)
 {
     UnrollArg x;
     long double v;
     x.q = s;
     x.e = e;
+    x.p = p;
     x.bad = x.unknown = false;
     v = unroll_expr(&x);
     unroll_ws(&x);
@@ -984,7 +1000,7 @@ static void item_pragmas(Parser *p)
                 s += 6;
                 while (s < e && (*s == ' ' || *s == '\t'))
                     s++;
-                if (s < e && unroll_arg_bad(s, e)) {
+                if (s < e && unroll_arg_bad(p, s, e)) {
                     /* the argument's place in the source line, whose
                      * spacing the token text may have lost */
                     const char *r = srcmgr_ptr(p->sm, t->loc), *a = r;
@@ -1873,7 +1889,7 @@ static void enum_spec(Parser *p)
                 parse_cond(p);
             emit(p, N_ENUMERATOR, name, s, 0);
             /* in scope after its enumerator (value included) */
-            scope_declare(&p->scope, e.t.aux, SYM_ORDINARY);
+            scope_declare(&p->scope, e.t.aux, SYM_ENUMERATOR);
             if (!accept(p, P_COMMA))
                 break;
         }
