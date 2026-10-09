@@ -1746,7 +1746,7 @@ static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
 /* fold_builtin_* of the bit-counting, byte-swap and absolute-value built-ins
  * on a constant integer argument (the suffix gives the width): gcc replaces
  * the call by an INTEGER_CST, so it is an integer constant expression.
- * clz and ctz of 0 are undefined and stay calls. */
+ * clz and ctz of 0 are undefined; gcc folds them to the width. */
 static void fold_int_builtin(Checker *c, uint32_t i, uint32_t f,
                              const uint32_t *k, uint32_t n)
 {
@@ -1793,8 +1793,8 @@ static void fold_int_builtin(Checker *c, uint32_t i, uint32_t f,
     sx = (int64_t)(x << (64 - w)) >> (64 - w);
     switch (fns[q].op) {
     case 0: r = x ? (uint64_t)__builtin_ctzll(x) + 1 : 0; break;
-    case 1: if (!x) return; r = (uint64_t)__builtin_clzll(x) - (64 - w); break;
-    case 2: if (!x) return; r = (uint64_t)__builtin_ctzll(x); break;
+    case 1: r = x ? (uint64_t)__builtin_clzll(x) - (64 - w) : w; break;
+    case 2: r = x ? (uint64_t)__builtin_ctzll(x) : w; break;
     case 3: {
         uint64_t y = (sx < 0 ? ~x : x) & m;
         r = y ? (uint64_t)__builtin_clzll(y) - (64 - w) - 1 : w - 1;

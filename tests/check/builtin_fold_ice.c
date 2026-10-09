@@ -34,3 +34,7 @@ static long s3 = __builtin_expect(4,1);
 static int s4 = __builtin_bswap32(1);
 static int s5 = __builtin_clrsb(1);
 static int s6 = __builtin_parity(7);
+_Static_assert(__builtin_clz(0) == 32, "clz0");
+_Static_assert(__builtin_ctz(0) == 32, "ctz0");
+_Static_assert(__builtin_clzl(0) == 64, "clzl0");
+_Static_assert(__builtin_ctzll(0) == 64, "ctzll0");
