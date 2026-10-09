@@ -111,7 +111,7 @@ B1. (DONE, Round 186; was est. 150 to 250 lines.) Parse and check run in the
     other units' builds (one builder thread).
 B2. A C symbol index recorded in the checker: uses and declarations with
     location, kind, a stable declaration id, hover text copied out as a
-    string before the checker is freed (est. 400 to 600 lines, 6 to 8 hook
+    string before the checker is freed (est. about 900 lines in four phases, see B2_DESIGN.md; 6 to 8 hook
     sites in cexpr.c, cspec.c, cstmt.c, cdecl.c, crecord.c, check.c).
     Gives definition, declaration, references, hover with types,
     documentHighlight and rename for functions, variables, parameters,
