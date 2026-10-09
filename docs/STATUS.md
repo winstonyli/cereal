@@ -2,7 +2,8 @@
 
 A short summary of where the project stands.  The round-by-round log is in
 [HISTORY.md](HISTORY.md); design notes are in ARCHITECTURE.md, PARSER.md,
-TYPES.md, PARALLEL.md, LSP.md and SPECS.md.
+TYPES.md, PARALLEL.md, LSP.md and SPECS.md; the plan for what comes next is
+in [ROADMAP.md](ROADMAP.md).
 
 ## What exists
 - A C99 + GNU preprocessor (`-E`, byte-identical to `gcc -E` on the corpus,
