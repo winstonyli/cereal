@@ -280,6 +280,10 @@ void cdecl_inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
 void cdecl_locate_old_decl(Checker *c, Diagnostic *d, const CSym *o);
 void cdecl_weak_apply(Checker *c, CSym *s, bool is_inline);
 TypeId cdecl_typedef_under(Checker *c, TypeId t);
+/* The --dump-types line of s, appended (fn: the enclosing function's name
+ * ident for a block-scope entity, else 0); the symbol index's hover text. */
+void cdecl_decl_line(Checker *c, const CSym *s, uint32_t fn, StrBuf *sb);
+void crecord_enumconst_line(Checker *c, const CSym *s, StrBuf *sb);
 
 /* cdecl.c: the declaration core the tag and member code calls. */
 void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,

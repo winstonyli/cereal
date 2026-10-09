@@ -683,12 +683,14 @@ static void print_exp_tree(TU *tu, Index *ix, IdxExp *root)
     printf("=> %s\n", sb_cstr(&root->text));
 }
 
-/* `cereal query def|decl|refs|uses|highlight` on a C name (B2): the C
+/* `cereal query def|decl|refs|uses|highlight|hover` on a C name (B2): the C
  * symbol index of a second, checking run over the unit, as the language
  * server's check phase builds it; one line per location (file:line:col,
- * role or for highlight write/read, kind, name, macro flags).  False: no C
- * entity at loc (the macro answer, if any, stands). */
-static bool query_c(Options *o, TU *tu, SrcFile *f, SrcLoc loc, const char *kind)
+ * role or for highlight write/read, kind, name, macro flags), or for hover
+ * the texts (weak: the name has macro history, as the server says too).
+ * False: no C entity at loc (the macro answer, if any, stands). */
+static bool query_c(Options *o, TU *tu, SrcFile *f, SrcLoc loc, const char *kind,
+                    bool weak)
 {
     TU ct;
     FrontendOpts fo;
@@ -711,9 +713,15 @@ static bool query_c(Options *o, TU *tu, SrcFile *f, SrcLoc loc, const char *kind
     tu_free(&ct);
     if (nd > 1) /* e.g. a #define body token, one entity per expansion */
         printf("%zu C entities here\n", nd);
-    if (nd)
+    if (nd && !strcmp(kind, "hover")) {
+        StrBuf sb = {0};
+        cindex_hover(cx, decls, nd, false, &sb);
+        printf("%s\n%s", sb_cstr(&sb), weak ? "(also a macro name)\n" : "");
+        sb_free(&sb);
+    } else if (nd) {
         n = cindex_select(cx, decls, nd, q, hl ? cindex_file(cx, f->path) : -1,
                           &ev);
+    }
     for (i = 0; i < n; i++) {
         const CIdxEvent *e = &cx->ev[ev[i]];
         SrcFile *ef = cindex_srcfile(&tu->sm, cx->files[e->file].path);
@@ -786,8 +794,9 @@ static int mode_query(Options *o, const char *kind, const char *at)
      * the name by its plain identifier (weak): then a C entity answers */
     if ((t.kind == TGT_NONE || t.weak) &&
         (!strcmp(kind, "def") || !strcmp(kind, "decl") || !strcmp(kind, "refs") ||
-         !strcmp(kind, "uses") || !strcmp(kind, "highlight")) &&
-        query_c(o, &tu, f, loc, kind))
+         !strcmp(kind, "uses") || !strcmp(kind, "highlight") ||
+         !strcmp(kind, "hover")) &&
+        query_c(o, &tu, f, loc, kind, t.kind != TGT_NONE))
         goto out;
     if (!strcmp(kind, "def") || !strcmp(kind, "decl")) {
         if (t.kind == TGT_INCLUDE)

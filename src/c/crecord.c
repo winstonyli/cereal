@@ -800,6 +800,17 @@ static bool val_neg(Checker *c, uint64_t v, TypeId ty)
     return type_is_signed(TT, ty) && (int64_t)v < 0;
 }
 
+/* "enumconst NAME = VALUE (TYPE)": --dump-types and the hover text. */
+void crecord_enumconst_line(Checker *c, const CSym *s, StrBuf *sb)
+{
+    if (type_is_signed(TT, s->vty))
+        sb_printf(sb, "enumconst %s = %" PRId64 " (", sname(c, s), (int64_t)s->val);
+    else
+        sb_printf(sb, "enumconst %s = %" PRIu64 " (", sname(c, s), s->val);
+    type_print(TT, sb, s->vty);
+    sb_putc(sb, ')');
+}
+
 /* a < b, as mathematical values of types ta and tb. */
 static bool val_lt(Checker *c, uint64_t a, TypeId ta, uint64_t b, TypeId tb)
 {
@@ -1124,19 +1135,15 @@ static void enum_finish(Checker *c, uint32_t i, uint32_t open)
     }
     if (c->opt.dump && !c->quiet) {
         for (k = 0; k < ne; k++) {
-            const CSym *s = csym(c, c->ecs.data[rd.first_ec + k]);
             StrBuf sb;
             memset(&sb, 0, sizeof sb);
-            type_print(TT, &sb, s->vty);
-            if (val_neg(c, s->val, s->vty) || type_is_signed(TT, s->vty))
-                fprintf(c->opt.dump, "enumconst %s = %" PRId64 " (%s)\n",
-                        sname(c, s), (int64_t)s->val, sb_cstr(&sb));
-            else
-                fprintf(c->opt.dump, "enumconst %s = %" PRIu64 " (%s)\n",
-                        sname(c, s), s->val, sb_cstr(&sb));
+            crecord_enumconst_line(c, csym(c, c->ecs.data[rd.first_ec + k]), &sb);
+            fprintf(c->opt.dump, "%s\n", sb_cstr(&sb));
             sb_free(&sb);
         }
     }
+    if (c->sx)
+        csx_enum(c, t, c->ecs.data + rd.first_ec, ne);
     c->ecs.len = rd.first_ec;
     c->fields.len = rd.first;
     c->recs.len--;

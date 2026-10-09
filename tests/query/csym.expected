@@ -53,3 +53,26 @@ csym.h:3:16 REF struct s
 csym.c:6:23 DEF obj _t body
 == refs csym.c:6:33
 2 C entities here
+== hover csym.c:15:32
+#define LIMIT 10
+  defined at csym.c:4:9
+expands to: 10
+== hover csym.c:15:16
+var width: int static
+(also a macro name)
+== hover csym.c:11:5
+func get: int(struct s *) defined
+== hover csym.c:15:24
+var total: int
+== hover csym.c:11:19
+param p: struct s *
+== hover csym.c:14:20
+field x: int (struct s, offset 0)
+== hover csym.c:10:8
+struct s size=4 align=4
+  0 x: int
+== hover csym.c:14:29
+var get:local: int
+== hover csym.c:6:23
+2 C entities here
+var get:_t: int

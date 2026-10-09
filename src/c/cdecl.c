@@ -1715,54 +1715,54 @@ uint32_t cdecl_scan_end(Checker *c, uint32_t tok, bool eq)
     return c->u->ntoks ? c->u->ntoks - 1 : 0;
 }
 
+/* The --dump-types line of s (see the header), without the newline; fn: the
+ * enclosing function's name (ident) for a block-scope entity, else 0.  Also
+ * the symbol index's hover text, which has a line for parameters too. */
+void cdecl_decl_line(Checker *c, const CSym *s, uint32_t fn, StrBuf *sb)
+{
+    const char *pre = fn ? cident(c, fn) : "", *colon = fn ? ":" : "";
+    switch (s->kind) {
+    case CS_TYPEDEF:
+        sb_printf(sb, "typedef %s%s%s = ", pre, colon, sname(c, s));
+        type_print(TT, sb, cdecl_typedef_under(c, s->ty));
+        break;
+    case CS_OBJ:
+        sb_printf(sb, "%s %s%s%s: ", (s->flags & CSF_PARAM) ? "param" : "var",
+                  pre, colon, sname(c, s));
+        type_print(TT, sb, s->ty);
+        sb_printf(sb, "%s%s%s%s", s->sc == SC_STATIC ? " static" : "",
+                  s->sc == SC_REGISTER && (s->flags & CSF_PARAM) ? " register" : "",
+                  (s->flags & CSF_DECL_EXTERNAL) ? " extern" : "",
+                  (s->flags & (CSF_TENTATIVE | CSF_DEFINED)) == CSF_TENTATIVE
+                      ? " tentative" : "");
+        break;
+    case CS_FUNC:
+        sb_printf(sb, "func %s%s%s: ", pre, colon, sname(c, s));
+        type_print(TT, sb, s->ty);
+        sb_printf(sb, "%s%s%s%s", s->sc == SC_STATIC ? " static" : "",
+                  s->sc == SC_EXTERN ? " extern" : "",
+                  (s->flags & CSF_INLINE) ? " inline" : "",
+                  (s->flags & CSF_DEFINED) ? " defined" : "");
+        break;
+    case CS_ENUMCONST:
+        crecord_enumconst_line(c, s, sb);
+        break;
+    default:
+        break;
+    }
+}
+
 /* --dump-types: one line per declaration (see the header). */
 static void dump_decl(Checker *c, const CSym *s)
 {
     StrBuf sb;
-    FILE *f = c->opt.dump;
-    const char *pre = "";
-    if (!f || c->quiet || !s->name || (s->flags & CSF_PARAM))
+    if (!c->opt.dump || c->quiet || !s->name || (s->flags & CSF_PARAM) ||
+        s->kind == CS_ENUMCONST)
         return;
     memset(&sb, 0, sizeof sb);
-    if (!cat_file_scope(c) && c->func_sym != SYM_NONE) {
-        sb_printf(&sb, "%s:", cident(c, csym(c, c->func_sym)->name));
-        pre = sb_cstr(&sb);
-    }
-    switch (s->kind) {
-    case CS_TYPEDEF: {
-        StrBuf t;
-        memset(&t, 0, sizeof t);
-        type_print(TT, &t, cdecl_typedef_under(c, s->ty));
-        fprintf(f, "typedef %s%s = %s\n", pre, sname(c, s), sb_cstr(&t));
-        sb_free(&t);
-        break;
-    }
-    case CS_OBJ: {
-        StrBuf t;
-        memset(&t, 0, sizeof t);
-        type_print(TT, &t, s->ty);
-        fprintf(f, "var %s%s: %s%s%s%s\n", pre, sname(c, s), sb_cstr(&t),
-                s->sc == SC_STATIC ? " static" : "",
-                (s->flags & CSF_DECL_EXTERNAL) ? " extern" : "",
-                (s->flags & CSF_TENTATIVE) ? " tentative" : "");
-        sb_free(&t);
-        break;
-    }
-    case CS_FUNC: {
-        StrBuf t;
-        memset(&t, 0, sizeof t);
-        type_print(TT, &t, s->ty);
-        fprintf(f, "func %s%s: %s%s%s%s%s\n", pre, sname(c, s), sb_cstr(&t),
-                s->sc == SC_STATIC ? " static" : "",
-                s->sc == SC_EXTERN ? " extern" : "",
-                (s->flags & CSF_INLINE) ? " inline" : "",
-                (s->flags & CSF_DEFINED) ? " defined" : "");
-        sb_free(&t);
-        break;
-    }
-    default:
-        break;
-    }
+    cdecl_decl_line(c, s, !cat_file_scope(c) && c->func_sym != SYM_NONE
+                              ? csym(c, c->func_sym)->name : 0, &sb);
+    fprintf(c->opt.dump, "%s\n", sb_cstr(&sb));
     sb_free(&sb);
 }
 

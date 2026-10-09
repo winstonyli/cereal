@@ -15,3 +15,5 @@ int h(void) { return later(1); }
 int later(int v) { return v; }
 /* an identifier list outside a definition names nothing */
 int nodef(p, q);
+/* hover text cut at CIX_HOVER_MAX (1024) bytes */
+int many(long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, long);

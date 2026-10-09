@@ -1,7 +1,9 @@
 # B2 design: the C symbol index
 
-Status: design only (2026-10-09). Nothing in `src/` or `tests/` has
-changed yet. ROADMAP Track B, B2. Line numbers refer to the WSL tree
+Status: designed 2026-10-09; phases 1 to 3 done (Rounds 187, 190 and
+192, see the results sections at the end, which correct the text where
+the implementation departs from it); phase 4 (rename) open. ROADMAP
+Track B, B2. Line numbers refer to the WSL tree
 `~/cereal-t`, which is the source of truth for code; the `src/c/` files
 cited are identical in both trees.
 
@@ -268,7 +270,12 @@ the hooks would see:
   fewer than the 80k nodes because system-presented events are dropped).
   16 B per event as estimated; 25 B per decl without hover, about 83 B
   with hover projected from `--dump-types` line lengths (1.4x the 60 B
-  allowance, within the 2x tolerance).
+  allowance, within the 2x tolerance). Measured with hover (Round 192):
+  about 30-39 B per decl added, so 55-64 B in all, because equal texts
+  share one string (zstd.c 1.37 to 1.81 MB, cexpr.c 0.53 to 0.68 MB,
+  main.c 0.21 to 0.34 MB). The dense worst case (a 4 MiB struct of
+  330,869 `int fN;` members, one decl and one distinct text each) is
+  29.3 MB, up from 14.4 MB; see "Phase 3 results".
 
 ## 5. Hook sites
 
@@ -542,7 +549,7 @@ Each phase ships on its own, with its tests passing.
 |---|---|---|
 | 1 Declarations and definition (**DONE**, Round 187; ~1,320 lines: csymidx.c/h 950 including dump and verify, 370 in existing files) | csymidx core (builder, maps, finish, sort, CSR, strings); all hooks of sections 5.1-5.2; `--dump-symbols`, `--verify-symbols`; `tests/symidx`; server plumbing (`cidx`, publish, hash check, D1 wait); `IdxTarget.weak` and merge; definition and a separate `R_DECL` | ~500 |
 | 2 References and highlight (**DONE**, Round 190; ~290 lines written, net +190, against ~250 re-estimated) | references with includeDeclaration; documentHighlight provider and capability (macros too); query `refs` | ~80 |
-| 3 Hover | `dump_decl` refactored to write a StrBuf; unit-end and finish formatting; record layout and labels; hover merge | ~120 |
+| 3 Hover (**DONE**, Round 192; ~350 lines added, 66 removed, against ~300 re-estimated) | `dump_decl` refactored to write a StrBuf; unit-end and finish formatting; record layout and labels; hover merge | ~120 |
 | 4 Rename | blockers 1-7, inactive scan, scope tree and conflict check, C path in prepareRename/rename | ~200 |
 | Total | | **~900** |
 
@@ -747,3 +754,57 @@ it departs from or settles the text above:
    lsp.h 9 (24 removed). Against the re-estimate of ~250 written, about
    15% over; against the original ~80, 3.6x. Phases 3 and 4 keep their
    re-estimates (~300 and ~500).
+
+## Phase 3 results and corrections (Round 192)
+
+Phase 3 is done (HISTORY.md Round 192; LSP.md "C symbol index"). Where
+it departs from or settles the text above:
+
+1. **The text** is the `--dump-types` line, from one formatter
+   (`cdecl_decl_line`, which `dump_decl` now calls; enumerators through
+   `crecord_enumconst_line`): `func NAME: TYPE [static] [extern]
+   [inline] [defined]`, `var [f:]NAME: TYPE [static] [extern]
+   [tentative]`, `typedef NAME = TYPE`, `enumconst NAME = VALUE (TYPE)`.
+   Added for the index: `param NAME: TYPE [register]` (no function
+   prefix: a parameter's function is plain), `field NAME: TYPE (struct
+   S, offset N[ bit B, width W])`, `label f:NAME`, a struct or union's
+   `type_dump_record` layout and an enum's `enum E (underlying T)` with
+   one `NAME = VALUE` line per enumerator. Types print as gcc's
+   diagnostics spell them (`int(int,  int)`: two spaces after a
+   parameter ending in a specifier word). `tentative` is now printed
+   only for an object that no declaration initialized (the merged flags
+   are ORed, so `int x; int x = 1;` printed it before; no golden
+   changed).
+2. **When it is copied.** Block-scope symbols at unit end (before the
+   lsyms reset), labels at their first event, enums when completed (new
+   hook `csx_enum`, the enumerators are only in hand there), and
+   persistent symbols, records and fields in `csx_finish`. Doc comments
+   are not shown: the lexer drops comments, so they are not trivially
+   available.
+3. **Interning.** Every text goes through one hash set over the
+   builder's string buffer, which becomes the start of the CIndex pool
+   (names and paths follow), so equal texts share one offset; hover
+   deduplicates decls at one place by that offset.
+4. **Bounds.** A text is cut at `CIX_HOVER_MAX` = 1024 bytes (at a
+   character boundary, then `...`); a record or enum lists at most
+   `CIX_HOVER_MEMBERS` = 16 members, then `... N more`. The worst case
+   is many short distinct texts, not long ones: about 7 retained bytes
+   per source byte (a 4 MiB struct of `int fN;` members: 29.3 MB with
+   330,869 fields; 4 MiB of `int vN;`: 23.3 MB; 74k prototypes with four
+   parameters each: 25.4 MB), under the ~30 MB budget, so no shorter
+   cap was needed. Real units add 30-39 B per decl (zstd.c 12,717 decls:
+   583 KB of texts, 7,416 distinct, 429 KB kept). Time: zstd.c with
+   `--verify-symbols`, best of 9 in two alternating rounds, 0.166 and
+   0.154 s before against 0.168 and 0.167 s after (at most 8%, about the
+   noise between rounds); `cereal check` without the index is unchanged.
+5. **Merge** as section 6: a strong macro answer stands; a weak one
+   (a name with only macro history) gives the C text plus "(also a
+   macro name)". Several decls at one place show their distinct texts,
+   at most 5, then "and N more". Hover waits like the other requests
+   (D1); `tests/lsp/csym_hover` fails without the wait.
+6. **`--dump-symbols`** prints each decl's text after ` :: ` (newlines
+   as `\n`), so the `tests/symidx` goldens cover every kind.
+7. **Line count:** 349 lines added and 66 removed (net +283):
+   csymidx.c/h 253, cdecl.c, cdecl_int.h and crecord.c 59 (48 replaced),
+   features.c 19, main.c 16, server.c 2. Against the re-estimate of ~300, about 15%
+   over (net slightly under); against the original ~120, 2.9x.

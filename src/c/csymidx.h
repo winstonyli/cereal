@@ -58,7 +58,9 @@ typedef struct CIdxEvent {   /* sorted by (file, off) */
 
 typedef struct CIdxDecl {
     uint32_t name;           /* string pool offset */
-    uint32_t hover;          /* string pool offset (phase 3; 0: none yet) */
+    uint32_t hover;          /* string pool offset: the --dump-types line, a
+                                record's or enum's members (CIX_HOVER_*);
+                                equal texts share one offset */
     uint32_t scope;          /* scope id (phase 4; 0 for now) */
     uint8_t kind;            /* CIdxKind */
     uint8_t linkage;         /* 0 none, 1 internal, 2 external */
@@ -112,6 +114,15 @@ typedef enum {
  * those outside file fi unless fi < 0.  *out is malloc'd (free it). */
 size_t cindex_select(const CIndex *ix, const uint32_t *decls, size_t nd,
                      CIdxQuery q, int fi, uint32_t **out);
+/* Hover text bounds: a string longer than CIX_HOVER_MAX bytes is cut there
+ * ("..."), a record or enum lists at most CIX_HOVER_MEMBERS members. */
+#define CIX_HOVER_MAX 1024
+#define CIX_HOVER_MEMBERS 16
+/* The distinct hover texts of decls[0..nd), at most 5 then "and N more",
+ * appended to out: as ```c blocks separated by rules (md), else one after
+ * another on their own lines. */
+void cindex_hover(const CIndex *ix, const uint32_t *decls, size_t nd, bool md,
+                  StrBuf *out);
 /* Marks the files whose text in sm (by path) differs from what the check
  * read, or which sm lacks, stale. */
 void cindex_validate(CIndex *ix, SrcMgr *sm);
@@ -158,6 +169,9 @@ void csx_param_def(struct Checker *c, uint32_t ref);
  * of what an earlier hook recorded there (`struct S;` shadowing). */
 void csx_tag(struct Checker *c, uint32_t t, uint32_t tok, int role);
 void csx_tag_redecl(struct Checker *c, uint32_t t, uint32_t tok);
+/* An enum (TypeId t) was completed with the enumerators ecs[0..n) (symbol
+ * refs): its hover text. */
+void csx_enum(struct Checker *c, uint32_t t, const uint32_t *ecs, uint32_t n);
 /* A field (index in the type table's fields) at tok. */
 void csx_field(struct Checker *c, uint32_t field, uint32_t tok, int role);
 /* Labels by slot (cstmt.c): a new label in slot, then events. */

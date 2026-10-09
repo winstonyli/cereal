@@ -48,9 +48,9 @@ It also runs fast on huge generated files.
 - **Snapshots** are immutable and reference counted. Requests run on the
   protocol thread against the latest complete snapshot and never wait for
   a build; only the first build of a unit is waited for. The exception is
-  definition, declaration, references and documentHighlight, which wait
-  up to 1.5 s for the C symbol index of the newest edit (see "C symbol
-  index").
+  definition, declaration, references, documentHighlight and hover, which
+  wait up to 1.5 s for the C symbol index of the newest edit (see "C
+  symbol index").
 - **Diagnostics** are published after every build for the open documents
   the unit covers. Errors in headers that are not open appear on the
   `#include` that leads to them.
@@ -160,7 +160,7 @@ cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
   paging on uvloop's loop.c). A halted stream now still returns
   `SRC_BARRIER` while a barrier context is open.
 
-## C symbol index (B2, phases 1 and 2)
+## C symbol index (B2, phases 1 to 3)
 
 The check phase also records a symbol index (`src/c/csymidx.c`; design
 in B2_DESIGN.md): every declaration, definition and use of a function,
@@ -195,37 +195,58 @@ is freed with it.
   Read); a name the macro index only knows by its plain identifier (a
   macro since `#undef`'d, `weak`), or nothing, goes to the C index. The
   selection is shared with `cereal query` (`cindex_select`).
+- **Hover** (phase 3) shows, over the name, the checker's text for the
+  entity, copied out as a string while the checker's tables live: the
+  `--dump-types` line for functions (`func f: int(const char *, ...)
+  static inline defined`), variables (`var f:x: const int static`, a
+  block-scope name prefixed with its function), parameters, typedefs
+  (`typedef T = TYPE`, the aliased type) and enumerators (`enumconst A =
+  4 (int)`); a field's type, record and offset (`field kind: unsigned
+  int (struct rect, offset 8 bit 3, width 5)`); a struct or union's
+  layout and an enum's enumerators (at most 16, then `... N more`);
+  `label f:out`. Texts over 1024 bytes are cut (`...`). Equal texts are
+  stored once. A macro expanded at the cursor still answers with its
+  definition and expansion; a name with only macro history answers with
+  the C text plus "(also a macro name)"; several entities at one place
+  list their distinct texts (at most 5). Doc comments are not shown.
 - **Waiting (decision D1):** right after an edit the snapshot's index is
-  not ready yet. definition, declaration, references and documentHighlight
-  wait (`cond_timedwait`, at most 1.5 s) while the newest edit has no
-  snapshot or its check is pending, then answer from what is there: the
-  macros alone if no index published.
+  not ready yet. definition, declaration, references, documentHighlight
+  and hover wait (`cond_timedwait`, at most 1.5 s) while the newest edit
+  has no snapshot or its check is pending, then answer from what is
+  there: the macros alone if no index published.
 - **No index:** units over the check size limit, headers opened on their
   own, cancelled checks. C queries then return nothing; macros still work.
 - **Size (measured, x86_64):**
 
-  | Unit | Events | Decls | Files | CIndex |
-  |---|---|---|---|---|
-  | src/main.c | 7,291 | 3,269 | 38 | 0.20 MB |
-  | src/c/cexpr.c | 24,828 | 5,153 | 30 | 0.52 MB |
-  | zstd.c (2.2 MB) | 65,898 | 12,717 | 15 | 1.37 MB |
+  | Unit | Events | Decls | Files | CIndex without hover | with hover (Round 192) |
+  |---|---|---|---|---|---|
+  | src/main.c | 7,617 | 3,373 | 39 | 0.21 MB | 0.34 MB |
+  | src/c/cexpr.c | 24,921 | 5,215 | 31 | 0.53 MB | 0.68 MB |
+  | zstd.c (2.2 MB) | 65,898 | 12,717 | 15 | 1.37 MB | 1.81 MB |
 
-  16 bytes per event (as estimated) and about 25 per decl before hover
-  strings (phase 3; `--dump-types` lines average 58 bytes, so about 83 per
-  decl with hover, against the design's 60). `cereal check` peak RSS on
-  zstd.c grows from 12.2 to 14.4 MB; time is within noise (cexpr.c best of
-  7: 0.079 s off, 0.080 s with `--verify-symbols`).
+  16 bytes per event (as estimated), about 25 per decl without hover
+  texts and 30-39 more with them (not the 58 projected from `--dump-types`
+  line lengths: equal texts are stored once; zstd.c's 583 KB of texts are
+  7,416 distinct, 429 KB). The worst case is a dense file of short
+  distinct declarations: a 4 MiB struct of `int fN;` members (330,869
+  fields) retains 29.3 MB (14.4 MB without texts), about 7 bytes per
+  source byte. `cereal check` peak RSS on zstd.c grew from 12.2 to 14.4 MB
+  with phase 1; time is within noise (cexpr.c best of 7: 0.079 s off,
+  0.080 s with `--verify-symbols`; zstd.c with texts at most 8% slower,
+  about the noise between rounds).
 - **Command line:** `cereal check --dump-symbols FILE` prints the events
-  and the decl table; `--verify-symbols` checks that every identifier the
+  and the decl table (each decl's hover text after ` :: `, newlines as
+  `\n`); `--verify-symbols` checks that every identifier the
   checker resolved has its event and that the index is well formed
   (sorted, CSR consistent, every decl declared), excusing lines with a
   diagnostic, and prints a `symbols:` summary line. `cereal query
-  def|decl|refs|uses|highlight FILE:L:C main.c` answers a C name with the
+  def|decl|refs|uses|highlight|hover FILE:L:C main.c` answers a C name with the
   same merge as the server (a second, checking run builds the index;
   `uses` is references without declarations): one line per location,
   `file:line:col ROLE kind name` plus the macro flags (`arg`, `body`,
   `expansion`, `system`), write/read for highlight, and a count line when
-  several entities share the place (a `#define` body token).
+  several entities share the place (a `#define` body token); hover prints
+  the texts, then "(also a macro name)" for a name with macro history.
 
 ## Capabilities
 
@@ -248,8 +269,8 @@ invocation is still being typed).
   - `cereal/expandMacro` (position: the invocation's full expansion);
   - `cereal/waitIdle` (answers when no build is queued or running; a
     barrier for tests).
-- **C names:** definition, declaration, references and document
-  highlight (above). Hover and rename for C names are B2 phases 3 and 4.
+- **C names:** definition, declaration, references, document highlight
+  and hover (above). Rename for C names is B2 phase 4.
 
 ## Tests
 
@@ -266,8 +287,13 @@ references and highlight (function, redeclarations, shadowing, parameter
 with a macro-argument use, typedef, enumerator, a field name in two
 structs, label, tags against an ordinary name, a redeclaration chain with
 a `#define` body use left out, `includeDeclaration` false, macros
-unchanged, D1); `tests/query/csym.cmd` the same merge from the command
-line. The sessions are also run under ThreadSanitizer and
+unchanged, D1); `tests/lsp/csym_hover` hover (a variadic prototype,
+static const, extern volatile and const-pointer variables, parameters one
+of them used in a macro argument, a typedef, an enumerator and its enum,
+fields with a bit-field and a designator, struct, union and a 20-member
+struct cut after 16, a label, shadowing, macro-vs-C with "(also a macro
+name)", D1: fails if hover does not wait); `tests/query/csym.cmd` the same
+merge from the command line. The sessions are also run under ThreadSanitizer and
 AddressSanitizer/UBSan (set `LSP_STDERR` to collect reports).
 
 ## Measurements (35 MB macro_heavy.c, 4 cores)

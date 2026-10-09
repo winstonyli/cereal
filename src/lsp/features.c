@@ -237,16 +237,31 @@ void lsp_document_highlight(Req *r, JsonWriter *w)
     uses(r, w, true);
 }
 
+/* hover: a macro expanded here answers as before; a C entity answers over a
+ * name with only macro history (weak, which it then mentions) or none: the
+ * checker's text for it (cindex_hover), over the name. */
 void lsp_hover(Req *r, JsonWriter *w)
 {
-    IdxTarget t = index_resolve(&r->snap->ix, cursor(r));
+    SrcLoc at = cursor(r);
+    IdxTarget t = index_resolve(&r->snap->ix, at);
     StrBuf sb = {0};
+    uint32_t decls[16], first;
+    size_t nd = c_decls_at(r, &t, at, decls, 16);
     int k;
-    if (t.kind == TGT_NONE) {
+    if (nd) {
+        const CIdxEvent *e;
+        cindex_hover(r->cidx, decls, nd, true, &sb);
+        if (t.weak)
+            sb_puts(&sb, "\n\n(also a macro name)");
+        cindex_at(r->cidx, (uint32_t)cindex_file(r->cidx, r->file->path),
+                  at - r->file->base, &first);
+        e = &r->cidx->ev[first];
+        t.range.begin = r->file->base + e->off;
+        t.range.end = t.range.begin + e->len;
+    } else if (t.kind == TGT_NONE) {
         json_null(w);
         return;
-    }
-    if (t.kind == TGT_PARAM) {
+    } else if (t.kind == TGT_PARAM) {
         sb_printf(&sb, "parameter `%s` of `%s`", t.name->str,
                   signature(r, t.macros[0]));
     } else if (t.kind == TGT_INCLUDE) {

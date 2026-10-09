@@ -1019,7 +1019,8 @@ static void handle_request(const JsonValue *id, ReqKind k,
     u = d->unit;
     while (!u->snap && !S.stop) /* first build of this unit */
         cond_wait(&S.done, &S.m);
-    if (k == R_DEF || k == R_DECL || k == R_REFS || k == R_HIGHLIGHT) {
+    if (k == R_DEF || k == R_DECL || k == R_REFS || k == R_HIGHLIGHT ||
+        k == R_HOVER) {
         /* the C index comes with the check of the newest edit's snapshot:
          * wait for it a little (B2 decision D1), then answer from what is
          * there (the macros alone if the check has not published) */

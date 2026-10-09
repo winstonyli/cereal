@@ -31,21 +31,23 @@ decls.c:15:5 DEF func later -> #15
 decls.c:15:15 DEF param v -> #16
 decls.c:15:27 REF param v -> #16
 decls.c:17:5 DECL func nodef -> #17
-#0 obj t external tentative
-#1 obj d external
-#2 obj e external
-#3 param a
-#4 param b
-#5 func f external
-#6 param a
-#7 param b
-#8 func kr external
-#9 param x
-#10 param y
-#11 typedef T
-#12 func g external
-#13 obj T
-#14 func h external
-#15 func later external implicit
-#16 param v
-#17 func nodef external
+decls.c:19:5 DECL func many -> #18
+#0 obj t external tentative :: var t: int tentative
+#1 obj d external :: var d: int
+#2 obj e external :: var e: int extern
+#3 param a :: param a: int
+#4 param b :: param b: int
+#5 func f external :: func f: int(int,  int) defined
+#6 param a :: param a: int
+#7 param b :: param b: int
+#8 func kr external :: func kr: int() defined
+#9 param x :: param x: int
+#10 param y :: param y: int
+#11 typedef T :: typedef T = int
+#12 func g external :: func g: int(void) defined
+#13 obj T :: var g:T: T
+#14 func h external :: func h: int(void) defined
+#15 func later external implicit :: func later: int(int) defined
+#16 param v :: param v: int
+#17 func nodef external :: func nodef: int()
+#18 func many external :: func many: int(long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int,  long int...

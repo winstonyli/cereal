@@ -3368,3 +3368,35 @@ Its first run found five segfaults in `--verify-symbols`: two rows of
 `cexpr_builtin_decl`. Rows now read `"int|"` and `"int|?"`; golden
 `builtin_noarg_row` (also run under `--verify-symbols` by section 14). run.sh section 15 now
 checks that every table signature contains `|` (fails on the old row).
+
+Round 192: ROADMAP B2 phase 3, hover for C names (B2_DESIGN.md "Phase 3
+results and corrections"). `dump_decl` became `cdecl_decl_line` (a StrBuf,
+shared by `--dump-types` and the index; enumerators through
+`crecord_enumconst_line`), with lines for parameters too; `tentative` is
+printed only when no declaration initialized the object. The builder copies
+each decl's text out while the checker's tables live: block-scope symbols at
+unit end, labels (`label f:out`) at their first event, enums at completion
+(new hook `csx_enum`: `enum E (underlying T)` and its enumerators),
+persistent symbols, records (`type_dump_record`) and fields (`field x: T
+(struct S, offset N[ bit B, width W])`) at finish. Texts are interned in one
+hash set that becomes the CIndex string pool, cut at 1024 bytes and 16
+members. `textDocument/hover` answers a C name as definition does (a strong
+macro answer stands; a weak one adds "(also a macro name)"; distinct texts
+of several entities, at most 5) and waits for the newest check (D1);
+`cindex_hover` is shared with `cereal query hover`. `--dump-symbols` prints
+each decl's text. Memory: 30-39 B per decl added (zstd.c 1.37 to 1.81 MB,
+cexpr.c 0.53 to 0.68, main.c 0.21 to 0.34; equal texts shared: zstd.c's
+583 KB of texts keep 429 KB); the worst case, a 4 MiB struct of 330,869
+short members, 14.4 to 29.3 MB, within the ~30 MB budget, so no shorter
+cap. Tests: `tests/lsp/csym_hover` (every kind, qualifiers and storage,
+bit-field, designator, a 20-member struct cut, label, shadowing, macro
+precedence, D1: fails without the wait), `tests/query/csym.cmd` hover
+cases, `tests/symidx` goldens with the texts plus a 110-parameter
+prototype cut at 1024 bytes. 349 lines added, 66 removed (net +283),
+against ~300. Gates: run.sh 1658 passed, 0 failed; san.sh 1658 passed, 601
+files, 0 findings; verify.sh gcc.dg 3908, c-c++-common 635, cpp 285;
+symcov 4716 files, 0 unindexed; the LSP sessions (both modes) under TSan:
+22 passed, 0 warnings. Noticed, not investigated: checking one struct is
+quadratic in its member count, with or without the index (17.6 k members
+0.15 s, 34 k 0.48 s, the 330,869-member file 20 to 58 s; 4 MiB of `int
+vN;` takes 0.7 s).

@@ -1,0 +1,416 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync"
+ ]
+}
+>> initialized
+>> didOpen csym_hover/main.c
+>> (idle)
+## function: the full prototype (variadic, a const pointer parameter)
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nfunc measure: int(const struct rect *, int, ...) defined\n```"
+ },
+ "range": {
+  "end": {
+   "character": 11,
+   "line": 9
+  },
+  "start": {
+   "character": 4,
+   "line": 9
+  }
+ }
+}
+## variables: storage and qualifiers (static const, extern volatile, a const pointer to const)
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar limit: const int static\n```\n\n(also a macro name)"
+ },
+ "range": {
+  "end": {
+   "character": 22,
+   "line": 5
+  },
+  "start": {
+   "character": 17,
+   "line": 5
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar ticks: volatile long unsigned int extern\n```"
+ },
+ "range": {
+  "end": {
+   "character": 55,
+   "line": 18
+  },
+  "start": {
+   "character": 50,
+   "line": 18
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar measure:label_text: const char * const\n```"
+ },
+ "range": {
+  "end": {
+   "character": 32,
+   "line": 11
+  },
+  "start": {
+   "character": 22,
+   "line": 11
+  }
+ }
+}
+## parameters: one declared, one used through a macro argument (area_of(*r))
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nparam pad: int\n```"
+ },
+ "range": {
+  "end": {
+   "character": 41,
+   "line": 9
+  },
+  "start": {
+   "character": 38,
+   "line": 9
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nparam r: const struct rect *\n```"
+ },
+ "range": {
+  "end": {
+   "character": 23,
+   "line": 18
+  },
+  "start": {
+   "character": 22,
+   "line": 18
+  }
+ }
+}
+## typedef: the aliased type; enumerator: its value; the enum tag: its enumerators
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\ntypedef cmp_fn = int (*)(const void *, const void *)\n```"
+ },
+ "range": {
+  "end": {
+   "character": 20,
+   "line": 7
+  },
+  "start": {
+   "character": 14,
+   "line": 7
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nenumconst MODE_FAST = 4 (int)\n```"
+ },
+ "range": {
+  "end": {
+   "character": 27,
+   "line": 15
+  },
+  "start": {
+   "character": 18,
+   "line": 15
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nenum mode (underlying int)\n  MODE_SLOW = -1\n  MODE_FAST = 4\n```"
+ },
+ "range": {
+  "end": {
+   "character": 13,
+   "line": 15
+  },
+  "start": {
+   "character": 9,
+   "line": 15
+  }
+ }
+}
+## fields: a member access, a bit-field, a union member through a designator
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nfield w: int (struct rect, offset 0)\n```"
+ },
+ "range": {
+  "end": {
+   "character": 20,
+   "line": 12
+  },
+  "start": {
+   "character": 19,
+   "line": 12
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nfield kind: unsigned int (struct rect, offset 8 bit 3, width 5)\n```"
+ },
+ "range": {
+  "end": {
+   "character": 36,
+   "line": 12
+  },
+  "start": {
+   "character": 32,
+   "line": 12
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nfield i: int (union cell, offset 0)\n```"
+ },
+ "range": {
+  "end": {
+   "character": 23,
+   "line": 13
+  },
+  "start": {
+   "character": 22,
+   "line": 13
+  }
+ }
+}
+## tags: struct rect, union cell, and struct big (20 members, cut after 16)
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nstruct rect size=12 align=4\n  0 w: int\n  4 h: int\n  8.0:3 flags: unsigned int\n  8.3:5 kind: unsigned int\n```"
+ },
+ "range": {
+  "end": {
+   "character": 29,
+   "line": 9
+  },
+  "start": {
+   "character": 25,
+   "line": 9
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nunion cell size=8 align=4\n  0 i: int\n  0 f: float\n  0 c: char[8]\n```"
+ },
+ "range": {
+  "end": {
+   "character": 14,
+   "line": 13
+  },
+  "start": {
+   "character": 10,
+   "line": 13
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nstruct big size=80 align=4\n  0 f1: int\n  4 f2: int\n  8 f3: int\n  12 f4: int\n  16 f5: int\n  20 f6: int\n  24 f7: int\n  28 f8: int\n  32 f9: int\n  36 f10: int\n  40 f11: int\n  44 f12: int\n  48 f13: int\n  52 f14: int\n  56 f15: int\n  60 f16: int\n  ... 4 more\n```"
+ },
+ "range": {
+  "end": {
+   "character": 14,
+   "line": 14
+  },
+  "start": {
+   "character": 11,
+   "line": 14
+  }
+ }
+}
+## label
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nlabel measure:out\n```"
+ },
+ "range": {
+  "end": {
+   "character": 16,
+   "line": 17
+  },
+  "start": {
+   "character": 13,
+   "line": 17
+  }
+ }
+}
+## shadowing: measure's local count (declaration and use), then the file-scope count in total
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar measure:count: int\n```"
+ },
+ "range": {
+  "end": {
+   "character": 13,
+   "line": 12
+  },
+  "start": {
+   "character": 8,
+   "line": 12
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar measure:count: int\n```"
+ },
+ "range": {
+  "end": {
+   "character": 13,
+   "line": 16
+  },
+  "start": {
+   "character": 8,
+   "line": 16
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar count: int static tentative\n```"
+ },
+ "range": {
+  "end": {
+   "character": 30,
+   "line": 22
+  },
+  "start": {
+   "character": 25,
+   "line": 22
+  }
+ }
+}
+## macros and C: an expanded macro answers (area_of); a name with only macro history (limit, #undef'd) goes to C and says so
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\n#define area_of(s) ((s).w * (s).h * SCALE)\n```\ndefined at $ROOT/csym_hover/main.c:3\n\nexpands to:\n```c\n((*r).w * (*r).h * 2)\n```"
+ },
+ "range": {
+  "end": {
+   "character": 20,
+   "line": 18
+  },
+  "start": {
+   "character": 13,
+   "line": 18
+  }
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar limit: const int static\n```\n\n(also a macro name)"
+ },
+ "range": {
+  "end": {
+   "character": 21,
+   "line": 16
+  },
+  "start": {
+   "character": 16,
+   "line": 16
+  }
+ }
+}
+## no entity: whitespace
+>> textDocument/hover
+null
+## D1: an edit then at once a hover: it waits for the new snapshot's check (the local count moved down a line)
+>> textDocument/didChange
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar measure:count: int\n```"
+ },
+ "range": {
+  "end": {
+   "character": 13,
+   "line": 13
+  },
+  "start": {
+   "character": 8,
+   "line": 13
+  }
+ }
+}
+>> shutdown
+null
+>> exit
+exit 0

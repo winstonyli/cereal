@@ -1,7 +1,7 @@
 /* csymidx.c - the C symbol index: the builder the checker's hooks feed, and
  * the frozen CIndex (docs/B2_DESIGN.md). */
 #include "c/csymidx.h"
-#include "c/check_int.h"
+#include "c/cdecl_int.h"
 #include "hash.h"
 #include "pp.h"
 
@@ -22,6 +22,8 @@ typedef struct BEv {
 
 typedef struct BDecl {
     uint32_t name;           /* ident */
+    uint32_t fn;             /* a block-scope symbol's function (ident), 0 */
+    uint32_t hover;          /* offset in SymIdxB.hs, 0: none yet */
     uint8_t kind, linkage;
     uint16_t flags;
 } BDecl;
@@ -34,6 +36,11 @@ struct SymIdxB {
     /* key -> decl id (0: not seen): ordinary symbols (persistent and the
      * unit's), records and enums (type table index), fields, label slots */
     U32V gmap, lmap, recmap, enmap, fmap, labmap;
+    U32V enhover;            /* enum index -> hover offset (csx_enum) */
+    StrBuf hs;               /* hover texts, deduplicated: the final string
+                                pool's start (offset 0 is "") */
+    uint32_t *hset, hcap, hcount;   /* hash set of hs offsets + 1 */
+    StrBuf tmp;
     size_t unit_ev0;         /* the unit's first event */
     const SrcFile *cf;       /* the last file asked about */
     bool csys;               /* ... in a system header, if it has no markers */
@@ -61,7 +68,11 @@ void csx_free(SymIdxB *b)
     vec_free(&b->enmap);
     vec_free(&b->fmap);
     vec_free(&b->labmap);
+    vec_free(&b->enhover);
     vec_free(&b->seen);
+    sb_free(&b->hs);
+    sb_free(&b->tmp);
+    free(b->hset);
     free(b);
 }
 
@@ -86,11 +97,147 @@ static uint32_t new_decl(SymIdxB *b, uint32_t name, int kind, int linkage,
 {
     BDecl d;
     d.name = name;
+    d.fn = d.hover = 0;
     d.kind = (uint8_t)kind;
     d.linkage = (uint8_t)linkage;
     d.flags = (uint16_t)flags;
     vec_push(&b->decls, d);
     return (uint32_t)b->decls.len;
+}
+
+/* ---- hover texts (copied out of the checker while its tables live) ------- */
+
+static uint32_t hash_str(const char *s, size_t n)
+{
+    return (uint32_t)hash64(s, n, 0x686f76u);
+}
+
+/* The offset of text s (cut to CIX_HOVER_MAX bytes) in b->hs, added if new;
+ * 0 for an empty text. */
+static uint32_t hover_add(SymIdxB *b, StrBuf *s)
+{
+    uint32_t i, off;
+    size_t n = s->len;
+    while (n && s->data[n - 1] == '\n')
+        n--;
+    if (!n)
+        return 0;
+    if (n > CIX_HOVER_MAX) {     /* at a character boundary */
+        n = CIX_HOVER_MAX;
+        while (n && ((unsigned char)s->data[n] & 0xC0) == 0x80)
+            n--;
+        s->len = n;
+        sb_puts(s, "...");
+        n = s->len;
+    }
+    s->len = n;
+    if (!b->hs.len)
+        sb_putc(&b->hs, 0);
+    if (2 * (b->hcount + 1) > b->hcap) {        /* grow and rehash */
+        uint32_t cap = b->hcap ? 2 * b->hcap : 1024, k, *set;
+        set = xcalloc(cap, sizeof *set);
+        for (k = 0; k < b->hcap; k++)
+            if (b->hset[k]) {
+                const char *t = b->hs.data + b->hset[k] - 1;
+                for (i = hash_str(t, strlen(t)) & (cap - 1); set[i];
+                     i = (i + 1) & (cap - 1))
+                    ;
+                set[i] = b->hset[k];
+            }
+        free(b->hset);
+        b->hset = set;
+        b->hcap = cap;
+    }
+    for (i = hash_str(s->data, n) & (b->hcap - 1); b->hset[i];
+         i = (i + 1) & (b->hcap - 1)) {
+        off = b->hset[i] - 1;
+        if (!strncmp(b->hs.data + off, s->data, n) && !b->hs.data[off + n])
+            return off;
+    }
+    off = (uint32_t)b->hs.len;
+    sb_putn(&b->hs, s->data, n);
+    sb_putc(&b->hs, 0);
+    b->hset[i] = off + 1;
+    b->hcount++;
+    return off;
+}
+
+/* An ordinary symbol's text: its --dump-types line. */
+static void sym_hover(Checker *c, uint32_t ref, uint32_t id)
+{
+    SymIdxB *b = c->sx;
+    b->tmp.len = 0;
+    cdecl_decl_line(c, csym(c, ref), b->decls.data[id - 1].fn, &b->tmp);
+    b->decls.data[id - 1].hover = hover_add(b, &b->tmp);
+}
+
+/* The lines of b->tmp (each ending in '\n') after a heading and
+ * CIX_HOVER_MEMBERS members give way to a count. */
+static void cut_members(SymIdxB *b)
+{
+    size_t k, lines = 0, cut = 0, more = 0;
+    for (k = 0; k < b->tmp.len; k++)
+        if (b->tmp.data[k] == '\n' && ++lines == CIX_HOVER_MEMBERS + 1)
+            cut = k + 1;
+        else if (b->tmp.data[k] == '\n' && lines > CIX_HOVER_MEMBERS + 1)
+            more++;
+    if (more) {
+        b->tmp.len = cut;
+        sb_printf(&b->tmp, "  ... %zu more\n", more);
+    }
+}
+
+/* A struct or union: its layout (type_dump_record), members bounded. */
+static uint32_t record_hover(Checker *c, const Record *r)
+{
+    SymIdxB *b = c->sx;
+    b->tmp.len = 0;
+    type_dump_record(&c->tt, &b->tmp, r->ty);
+    cut_members(b);
+    return hover_add(b, &b->tmp);
+}
+
+/* A field: name and type, then its record and offset. */
+static uint32_t field_hover(Checker *c, const Record *r, const Field *f)
+{
+    SymIdxB *b = c->sx;
+    b->tmp.len = 0;
+    sb_printf(&b->tmp, "field %s: ", ident_by_id(c->in, f->name)->str);
+    type_print(&c->tt, &b->tmp, f->ty);
+    sb_puts(&b->tmp, " (");
+    type_print(&c->tt, &b->tmp, r->ty);
+    sb_printf(&b->tmp, ", offset %llu", (unsigned long long)(f->off_bits / 8));
+    if (f->flags & FF_BITFIELD)
+        sb_printf(&b->tmp, " bit %u, width %u", (unsigned)(f->off_bits % 8),
+                  f->width);
+    sb_putc(&b->tmp, ')');
+    return hover_add(b, &b->tmp);
+}
+
+void csx_enum(Checker *c, uint32_t t, const uint32_t *ecs, uint32_t n)
+{
+    SymIdxB *b = c->sx;
+    const TypeEnt *te = type_ent(&c->tt, type_ent(&c->tt, t)->canon);
+    const Enum *en;
+    uint32_t k;
+    if (te->kind != TY_ENUM)
+        return;
+    en = &c->tt.enums.data[te->extra];
+    b->tmp.len = 0;
+    type_print(&c->tt, &b->tmp, t);
+    sb_puts(&b->tmp, " (underlying ");
+    type_print(&c->tt, &b->tmp, en->underlying);
+    sb_puts(&b->tmp, ")\n");
+    for (k = 0; k < n; k++) {
+        const CSym *s = csym(c, ecs[k]);
+        if (type_is_signed(&c->tt, s->vty))
+            sb_printf(&b->tmp, "  %s = %" PRId64 "\n", cident(c, s->name),
+                      (int64_t)s->val);
+        else
+            sb_printf(&b->tmp, "  %s = %" PRIu64 "\n", cident(c, s->name), s->val);
+    }
+    cut_members(b);
+    *slot(&b->enhover, te->extra) = hover_add(b, &b->tmp);
 }
 
 static bool is_sys(SymIdxB *b, SrcMgr *sm, SrcLoc loc)
@@ -177,6 +324,9 @@ static uint32_t sym_id(Checker *c, uint32_t ref, bool lazy)
          : (s->flags & CSF_PARAM) ? CIK_PARAM : CIK_OBJ;
     *p = new_decl(b, s->name, kind, s->linkage,
                   (s->flags & CSF_IMPLICIT) ? CIDF_IMPLICIT : 0);
+    if ((ref & SYM_LOCAL) && kind != CIK_PARAM && !cat_file_scope(c) &&
+        c->func_sym != SYM_NONE)
+        b->decls.data[*p - 1].fn = csym(c, c->func_sym)->name;  /* "f:x" */
     if (lazy)
         lazy_event(c, *p, s->loc,
                    kind == CIK_TYPEDEF || kind == CIK_ENUMCONST ||
@@ -327,8 +477,17 @@ void csx_label(Checker *c, uint32_t slot_, uint32_t tok, int role)
     if (!where(c, tok, &e))
         return;              /* a system header's labels have no decl */
     id = slot(&c->sx->labmap, slot_);
-    if (!*id)
-        *id = new_decl(c->sx, c->u->toks[tok].t.aux, CIK_LABEL, 0, 0);
+    if (!*id) {
+        SymIdxB *b = c->sx;
+        uint32_t name = c->u->toks[tok].t.aux;
+        *id = new_decl(b, name, CIK_LABEL, 0, 0);
+        b->tmp.len = 0;
+        sb_puts(&b->tmp, "label ");
+        if (c->func_sym != SYM_NONE)
+            sb_printf(&b->tmp, "%s:", cident(c, csym(c, c->func_sym)->name));
+        sb_puts(&b->tmp, cident(c, name));
+        b->decls.data[*id - 1].hover = hover_add(b, &b->tmp);
+    }
     push_ev(c, tok, &e, *id, role);
 }
 
@@ -408,6 +567,10 @@ void csx_unit_end(Checker *c)
 {
     SymIdxB *b = c->sx;
     uint32_t i;
+    /* the unit's symbols are reset when the next unit starts */
+    for (i = 0; i < b->lmap.len; i++)
+        if (b->lmap.data[i])
+            sym_hover(c, i | SYM_LOCAL, b->lmap.data[i]);
     if (!b->vout || c->quiet)
         return;
     for (i = 0; i < c->nn; i++) {
@@ -554,13 +717,50 @@ CIndex *csx_finish(Checker *c)
     }
     free(rg);
     qsort(b->ev.data, b->ev.len, sizeof *b->ev.data, ev_cmp);
+    /* hover texts of what outlives a unit: persistent symbols, tags, fields */
+    for (i = 0; i < b->gmap.len; i++)
+        if (b->gmap.data[i])
+            sym_hover(c, i, b->gmap.data[i]);
+    for (i = 0; i < b->recmap.len && i < c->tt.recs.len; i++)
+        if (b->recmap.data[i]) {
+            const Record *r = &c->tt.recs.data[i];
+            b->decls.data[b->recmap.data[i] - 1].hover = record_hover(c, r);
+        }
+    for (i = 0; i < b->enmap.len; i++)
+        if (b->enmap.data[i])
+            b->decls.data[b->enmap.data[i] - 1].hover =
+                i < b->enhover.len ? b->enhover.data[i] : 0;
+    for (k = 0; k < c->tt.recs.len; k++) {
+        const Record *r = &c->tt.recs.data[k];
+        for (i = r->fields; i < r->fields + r->nfields && i < b->fmap.len; i++)
+            if (b->fmap.data[i])
+                b->decls.data[b->fmap.data[i] - 1].hover =
+                    field_hover(c, r, &c->tt.fields.data[i]);
+    }
+    for (i = 0; i < nd; i++) {   /* else "KIND NAME" (an incomplete enum) */
+        BDecl *d = &b->decls.data[i];
+        if (d->hover)
+            continue;
+        b->tmp.len = 0;
+        sb_printf(&b->tmp, "%s %s", cindex_kind_name(d->kind),
+                  d->name && d->name < interner_count(c->in)
+                      ? ident_by_id(c->in, d->name)->str : "<anonymous>");
+        d->hover = hover_add(b, &b->tmp);
+    }
 
     ix = xcalloc(1, sizeof *ix);
     ix->unindexed = b->unindexed;
     ix->excused = b->excused;
     memset(&pool, 0, sizeof pool);
     pool.by_ident = xcalloc(interner_count(c->in) + 1, sizeof *pool.by_ident);
-    sb_putc(&pool.sb, 0);
+    pool.sb = b->hs;         /* the hover texts start the pool */
+    memset(&b->hs, 0, sizeof b->hs);
+    free(b->hset);
+    b->hset = NULL;
+    b->hcap = b->hcount = 0;
+    b->enhover.len = 0;
+    if (!pool.sb.len)
+        sb_putc(&pool.sb, 0);
     ix->ev = xmalloc((b->ev.len + 1) * sizeof *ix->ev);
     ix->files = NULL;
     for (k = 0; k < b->ev.len; k++) {
@@ -613,6 +813,7 @@ CIndex *csx_finish(Checker *c)
                     pool_add(&pool, ident_by_id(c->in, d->name)->str) + 1;
             o->name = pool.by_ident[d->name] - 1;
         }
+        o->hover = d->hover;
         o->kind = d->kind;
         o->linkage = d->linkage;
         o->flags = d->flags;
@@ -746,6 +947,31 @@ size_t cindex_decls_at(const CIndex *ix, const char *path, uint32_t off,
     return nd;
 }
 
+void cindex_hover(const CIndex *ix, const uint32_t *decls, size_t nd, bool md,
+                  StrBuf *out)
+{
+    size_t i, j, shown = 0, more = 0;
+    for (i = 0; i < nd; i++) {
+        uint32_t h = ix->decls[decls[i]].hover;
+        for (j = 0; j < i && ix->decls[decls[j]].hover != h; j++)
+            ;
+        if (j < i)
+            continue;        /* equal texts share their offset */
+        if (shown == 5) {
+            more++;
+            continue;
+        }
+        if (md)
+            sb_printf(out, "%s```c\n%s\n```", shown ? "\n---\n" : "",
+                      ix->strings + h);
+        else
+            sb_printf(out, "%s%s", shown ? "\n" : "", ix->strings + h);
+        shown++;
+    }
+    if (more)
+        sb_printf(out, "\nand %zu more", more);
+}
+
 static int u32_cmp(const void *pa, const void *pb)
 {
     uint32_t a = *(const uint32_t *)pa, b = *(const uint32_t *)pb;
@@ -860,13 +1086,20 @@ void cindex_dump(const CIndex *ix, SrcMgr *sm, FILE *out)
     }
     for (i = 0; i < ix->ndecls; i++) {
         const CIdxDecl *d = &ix->decls[i];
-        fprintf(out, "#%u %s %s%s%s%s%s%s\n", i, kind_names[d->kind],
+        const char *h;
+        fprintf(out, "#%u %s %s%s%s%s%s%s :: ", i, kind_names[d->kind],
                 cindex_name(ix, i),
                 d->linkage == 1 ? " internal" : d->linkage == 2 ? " external" : "",
                 d->flags & CIDF_BUILTIN ? " builtin" : "",
                 d->flags & CIDF_IMPLICIT ? " implicit" : "",
                 d->flags & CIDF_SYSTEM ? " system" : "",
                 d->flags & CIDF_TENTATIVE ? " tentative" : "");
+        for (h = ix->strings + d->hover; *h; h++)  /* the hover text, one line */
+            if (*h == '\n')
+                fputs("\\n", out);
+            else
+                fputc(*h, out);
+        fputc('\n', out);
     }
 }
 
