@@ -225,6 +225,25 @@ else
     sed 's/^/    /' "$TMP/fz" | tail -5
 fi
 
+# A halt (an LSP cancel) inside an #if expression's expansion ends at the
+# expansion's barrier; it used to loop pushing EOFs until memory ran out
+# (Round 189).  CEREAL_FAULT halts at the first #if; the VM cap bounds a
+# regression (not under ASan, which reserves terabytes).
+printf '#define A 1\n#if A + 1\nx\n#endif\ny\n' >"$TMP/halt.c"
+if (if [ -z "${ASAN_OPTIONS:-}" ]; then ulimit -v 6000000; fi
+    CEREAL_FAULT=pp-halt-in-if timeout 60 "$CEREAL" -E "$TMP/halt.c") \
+    >"$TMP/halt.out" 2>&1 || [ $? = 1 ]; then
+    if grep -q "#if with no expression" "$TMP/halt.out"; then
+        ok
+    else
+        bad "halt inside #if: unexpected output"
+        head -5 "$TMP/halt.out" | sed 's/^/    /'
+    fi
+else
+    bad "halt inside #if: did not end cleanly"
+    head -5 "$TMP/halt.out" | sed 's/^/    /'
+fi
+
 for t in "$ROOT"/tests/lsp/*.json; do
     [ -f "$t" ] || continue
     # as is, then with the parallel path and cells forced: same transcript
@@ -436,6 +455,7 @@ sym_verify() { # sym_verify LABEL FILES...: one verdict for the lot
 }
 cd "$ROOT/tests/check" && sym_verify tests/check ./*.c
 cd "$ROOT/tests/parse" && sym_verify tests/parse ./*.c
+cd "$ROOT/tests/symidx" && sym_verify tests/symidx ./*.c
 cd "$ROOT" && sym_verify sources src/*.c src/analysis/*.c src/lsp/*.c src/c/*.c
 
 echo "$pass passed, $fail failed"

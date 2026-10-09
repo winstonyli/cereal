@@ -18,6 +18,9 @@ stmts.c:18:27 REF param n -> #2 arg
 stmts.c:18:32 REF obj pasted_name -> #1 expansion
 stmts.c:19:1 DEF label out -> #5
 stmts.c:20:12 REF obj p -> #4
+stmts.c:27:6 DEF func g -> #7
+stmts.c:27:16 DEF label after -> #8
+stmts.c:27:28 REF label after -> #8
 #0 obj counter external tentative
 #1 obj pasted_name external tentative
 #2 param n
@@ -25,3 +28,5 @@ stmts.c:20:12 REF obj p -> #4
 #4 obj p
 #5 label out
 #6 label inner
+#7 func g external
+#8 label after

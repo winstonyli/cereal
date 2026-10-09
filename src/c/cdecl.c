@@ -355,8 +355,11 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
             DiagOrd o0 = diag_ord(c->diag, q ? ORD_LATE : ORD_NORMAL);
             kids_get(c, f, &k);
             for (j = 0; j < k.n; j++)
-                if (ntag(c, k.p[j]) == N_KR_IDENT)
+                if (ntag(c, k.p[j]) == N_KR_IDENT) {
                     last = cnode(c, k.p[j])->tok;
+                    if (c->sx)       /* names nothing: no parameter scope */
+                        csx_skip(c, last);
+                }
             kids_free(&k);
             /* `(a,)`: gcc has already asked for the identifier at the ) */
             if (last != NO_NODE && tpunct(c, last + 1) == P_COMMA &&

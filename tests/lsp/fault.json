@@ -1,0 +1,16 @@
+[
+ {"env": {"CEREAL_FAULT": "par-worker:1"}},
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/fault", "capabilities": {"general": {"positionEncodings": ["utf-8", "utf-16"]}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"note": "fatal() in a preprocessor worker (a pool job) of the first build: the build is dropped, the server lives and logs it"},
+ {"open": "fault/main.c"},
+ {"idle": true},
+ {"wait": "window/logMessage", "uri": null},
+ {"note": "the next edit builds and checks normally"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/fault/main.c", "version": 2}, "contentChanges": [{"text": "#define TWICE(x) ((x) + (x))\nint f(void)\n{\n    return TWICE(a1);\n}\nint g;\n"}]}}},
+ {"idle": true},
+ {"waitall": "textDocument/publishDiagnostics", "uri": "file://$ROOT/fault/main.c"},
+ {"send": {"id": 2, "method": "textDocument/hover", "params": {"textDocument": {"uri": "file://$ROOT/fault/main.c"}, "position": {"line": 3, "character": 12}}}},
+ {"send": {"id": 3, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

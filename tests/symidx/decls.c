@@ -13,3 +13,5 @@ typedef int T;
 int g(void) { T T = 1; return T; }
 int h(void) { return later(1); }
 int later(int v) { return v; }
+/* an identifier list outside a definition names nothing */
+int nodef(p, q);

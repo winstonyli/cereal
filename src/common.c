@@ -4,10 +4,32 @@
 #include <stdlib.h>
 #include <string.h>
 
+static __thread FatalTrap *fatal_trap;
+__thread unsigned fatal_locks_held;
+
+void fatal_trap_push(FatalTrap *t)
+{
+    t->msg[0] = 0;
+    t->prev = fatal_trap;
+    fatal_trap = t;
+}
+
+void fatal_trap_pop(FatalTrap *t)
+{
+    fatal_trap = t->prev;
+}
+
 void fatal(const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
+    if (fatal_trap && !fatal_locks_held) {
+        FatalTrap *t = fatal_trap;
+        fatal_trap = t->prev;
+        vsnprintf(t->msg, sizeof t->msg, fmt, ap);
+        va_end(ap);
+        longjmp(t->jb, 1);
+    }
     fputs("cereal: fatal: ", stderr);
     vfprintf(stderr, fmt, ap);
     fputc('\n', stderr);

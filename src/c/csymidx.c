@@ -39,7 +39,7 @@ struct SymIdxB {
     bool csys;               /* ... in a system header, if it has no markers */
     FILE *vout;              /* --verify-symbols */
     VEC(uint8_t) seen;       /* verify: unit tokens that got an event */
-    uint32_t unindexed;
+    uint32_t unindexed, excused;
 };
 
 SymIdxB *csx_new(FILE *verify)
@@ -306,18 +306,30 @@ void csx_field(Checker *c, uint32_t field, uint32_t tok, int role)
     push_ev(c, tok, &e, *p, role);
 }
 
+void csx_skip(Checker *c, uint32_t tok)
+{
+    SymIdxB *b = c->sx;
+    if (b->vout && tok < b->seen.len)
+        b->seen.data[tok] = 1;
+}
+
 void csx_label_new(Checker *c, uint32_t slot_, uint32_t name, SrcLoc loc)
 {
     (void)loc;
-    *slot(&c->sx->labmap, slot_) = new_decl(c->sx, name, CIK_LABEL, 0, 0);
+    (void)name;
+    *slot(&c->sx->labmap, slot_) = 0;   /* the decl is made at its first event */
 }
 
 void csx_label(Checker *c, uint32_t slot_, uint32_t tok, int role)
 {
     BEv e;
-    uint32_t id = *slot(&c->sx->labmap, slot_);
-    if (id && where(c, tok, &e))
-        push_ev(c, tok, &e, id, role);
+    uint32_t *id;
+    if (!where(c, tok, &e))
+        return;              /* a system header's labels have no decl */
+    id = slot(&c->sx->labmap, slot_);
+    if (!*id)
+        *id = new_decl(c->sx, c->u->toks[tok].t.aux, CIK_LABEL, 0, 0);
+    push_ev(c, tok, &e, *id, role);
 }
 
 /* ---- the unit ------------------------------------------------------------------ */
@@ -409,8 +421,11 @@ void csx_unit_end(Checker *c)
         if (t->kind != TK_IDENT || !where(c, tok, &e))
             continue;
         name = ident_by_id(c->in, t->aux)->str;
-        if (excused(c, i, name, e.loc))
+        if (excused(c, i, name, e.loc)) {
+            b->seen.data[tok] = 1;
+            b->excused++;
             continue;
+        }
         b->seen.data[tok] = 1;   /* reported once */
         b->unindexed++;
         {
@@ -542,6 +557,7 @@ CIndex *csx_finish(Checker *c)
 
     ix = xcalloc(1, sizeof *ix);
     ix->unindexed = b->unindexed;
+    ix->excused = b->excused;
     memset(&pool, 0, sizeof pool);
     pool.by_ident = xcalloc(interner_count(c->in) + 1, sizeof *pool.by_ident);
     sb_putc(&pool.sb, 0);
@@ -807,7 +823,7 @@ size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
         }
     }
     fprintf(out, "symbols: %u events, %u decls, %u files, %zu bytes, %u "
-            "unindexed\n", ix->nev, ix->ndecls, ix->nfiles, cindex_bytes(ix),
-            ix->unindexed);
+            "unindexed, %u excused\n", ix->nev, ix->ndecls, ix->nfiles, cindex_bytes(ix),
+            ix->unindexed, ix->excused);
     return bad + ix->unindexed;
 }

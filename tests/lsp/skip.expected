@@ -1,0 +1,96 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync"
+ ]
+}
+>> initialized
+## a unit over the check limit: one publication (the macro phase's), with an Information notice at line 1 instead of compiler errors
+>> didOpen skip/main.c
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/skip/main.c
+{
+ "diagnostics": [
+  {
+   "message": "not checked for compiler errors: its sources total 167 bytes, over the limit of 100 bytes (CEREAL_LSP_CHECK_MAX)",
+   "range": {
+    "end": {
+     "character": 0,
+     "line": 0
+    },
+    "start": {
+     "character": 0,
+     "line": 0
+    }
+   },
+   "severity": 3,
+   "source": "cereal"
+  }
+ ],
+ "version": 1
+}
+## edited under the limit: no notice, and the check runs
+>> textDocument/didChange
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/skip/main.c
+{
+ "diagnostics": [],
+ "version": 2
+}
+<< textDocument/publishDiagnostics file://$ROOT/skip/main.c
+{
+ "diagnostics": [
+  {
+   "message": "'a1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 2
+    },
+    "start": {
+     "character": 11,
+     "line": 2
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 11,
+        "line": 2
+       },
+       "start": {
+        "character": 11,
+        "line": 2
+       }
+      },
+      "uri": "file://$ROOT/skip/main.c"
+     },
+     "message": "each undeclared identifier is reported only once for each function it appears in"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
+ "version": 2
+}
+>> shutdown
+null
+>> exit
+exit 0

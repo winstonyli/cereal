@@ -17,8 +17,13 @@ that directory's absolute path, and in the transcript it is put back.
                                        build queued or running
   {"wait": METHOD, "uri": URI}         record the latest notification METHOD
                                        received for URI (after an idle step:
-                                       the current one), else the next
-  {"write": PATH, "text": TEXT}        create a workspace file (removed at
+                                       the current one), else the next;
+                                       URI null: notifications without one
+  {"waitall": METHOD, "uri": URI}      record, in order, every notification
+                                       METHOD for URI not yet recorded (after
+                                       an idle step: e.g. both phases' diag-
+                                       nostics of one edit)
+  {"write": PATH, "text": TEXT}       create a workspace file (removed at
                                        the end), e.g. compile_commands.json
   {"note": TEXT}                       a heading in the transcript
   {"env": {NAME: VALUE}}               the server's environment (applied
@@ -156,17 +161,23 @@ def main():
                   "params": {"textDocument": {"uri": "file://" + path, "languageId": "c",
                                               "version": 1, "text": open(path).read()}}})
             out.append(">> didOpen " + st["open"])
-        elif "wait" in st:
+        elif "wait" in st or "waitall" in st:
             def uri_of(m):
                 pr = m.get("params") or {}
                 return pr.get("uri") or (pr.get("textDocument") or {}).get("uri")
-            m = next_msg(lambda m: m.get("method") == st["wait"] and uri_of(m) == st["uri"],
-                         latest=True)
-            out.append("<< %s %s" % (st["wait"], st["uri"]))
-            pr = dict(m["params"])
-            pr.pop("uri", None)
-            pr.pop("textDocument", None)
-            out.append(json.dumps(pr, sort_keys=True, indent=1))
+            meth = st.get("wait") or st["waitall"]
+            pred = lambda m: m.get("method") == meth and uri_of(m) == st["uri"]
+            if "wait" in st:
+                got = [next_msg(pred, latest=True)]
+            else:
+                got = [m for m in pending if pred(m)]
+                pending[:] = [m for m in pending if not pred(m)]
+            for m in got:
+                out.append("<< %s %s" % (meth, st["uri"] or "(no uri)"))
+                pr = dict(m["params"])
+                pr.pop("uri", None)
+                pr.pop("textDocument", None)
+                out.append(json.dumps(pr, sort_keys=True, indent=1))
     p.stdin.close()
     rc = p.wait(timeout=60)
     for path in written:

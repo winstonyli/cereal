@@ -76,9 +76,18 @@ cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
 - **Merge:** the second publication replaces the first for each open
   file with the macro phase's diagnostics followed by the compiler's,
   minus any with the same range and message (a missing `#include` is
-  reported by both). Until the phase ends, or if it is skipped or
-  cancelled, only the macro phase's are shown, so compiler diagnostics
-  disappear for the length of a check after each edit.
+  reported by both). Every publication carries the document's `version`
+  when the client sent one (didOpen, didChange).
+- **Carried diagnostics (no flicker):** until the check ends, the macro
+  phase's publication also shows the previous snapshot's compiler
+  diagnostics that lie wholly before the first edited line of their file
+  (range and same-file notes; their positions are unchanged there). Later
+  ones are dropped rather than kept, since an inserted or deleted line
+  would misplace them; one with a note in another file is carried only if
+  no user file changed. Carried diagnostics are stored on the new
+  snapshot, so a chain of cancelled checks keeps carrying them. If the
+  check fails (below) they are withdrawn with a republication; a
+  superseded check leaves them to the next snapshot.
 - **Cancellation:** an edit sets the unit's cancel flag; the preprocessor
   sees it at the next token and the parse loop ends at the next unit, so a
   running check stops within a declaration. A cancelled run is dropped
@@ -98,7 +107,27 @@ cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
   194 MB for a dense 4 MB single-initializer table (48 bytes of parser
   tokens per source byte) and 420 MB at 9 MB, which set the limit. The
   macro phase peaks at 830 MB on the 35 MB file; a unit over the limit
-  never pays more than its macro phase.
+  never pays more than its macro phase. Such a unit's main file shows
+  one Information diagnostic at line 1 ("not checked for compiler
+  errors: its sources total X, over the limit of 4.0 MiB
+  (CEREAL_LSP_CHECK_MAX)", sizes in MiB, KiB or bytes); `cereal check` and the command line have no
+  limit and no notice.
+- **fatal() in a phase:** `fatal()` normally exits. In the server the
+  builder thread runs each phase (build, check) under a thread-local trap
+  (`FatalTrap` in common.h, setjmp/longjmp), and pool jobs run under one
+  too (`ThreadPool.trap_fatal`, set only by `cereal lsp`): the first
+  failing job's message is re-raised by `group_wait` in the builder. The
+  phase is dropped, the message goes to stderr and to the client
+  (`window/logMessage`, type 1), a failed build also gives the unit a new
+  interner and cell cache, and the server lives on; the next edit builds
+  again. The partial state is leaked, not freed (it may be
+  inconsistent). A `fatal()` while a mutex is held (counted per thread
+  in `mutex_lock`) still exits, as the lock could not be released.
+- **Fault injection:** `CEREAL_FAULT=site[:N]` fires at the Nth pass of
+  a site (default 1), for tests: `par-worker` (`fatal()` at the start of
+  a phase-B worker job), `lsp-check` (`fatal()` at the start of a check),
+  `pp-halt-in-if` (a cancel landing just before an `#if` expression is
+  expanded).
 - **What is retained:** the TU, the parser's tokens and the checker are
   freed when the phase ends; only the C symbol index (below) is kept, on
   the snapshot.
@@ -113,6 +142,22 @@ cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
   quick edits whose final diagnostics must be the last text's, a missing
   include shown once). Whether a quick edit really *cancelled* a check
   is timing-dependent and not asserted; the stale-result rule is.
+  `tests/lsp/carry` (an edit keeps the diagnostic above it and drops the
+  one below until the check republishes both; a first-line edit carries
+  nothing; a didChange without a version publishes none), `skip` (the
+  notice with `CEREAL_LSP_CHECK_MAX=100`, gone once the file shrinks under
+  it), `fault` (a `fatal()` in a pool worker of the first build, then a
+  normal edit and hover) and `fault_check` (a failed check withdraws the
+  carried diagnostic and logs; the next check works). run.sh also runs
+  `cereal -E` with `pp-halt-in-if` under a 6 GB memory cap (the Round 189
+  crash, below).
+- **Cancel inside an expansion (Round 189):** a cancel sets
+  `PP.halted`, after which `pp_read_raw` ended the stream with a lexer EOF
+  and skipped barrier contexts. `expand_into` (an `#if` expression, a
+  macro argument) reads until its barrier, so it pushed EOF tokens until
+  the token buffer gave out ("token buffer too large" after about 90 s of
+  paging on uvloop's loop.c). A halted stream now still returns
+  `SRC_BARRIER` while a barrier context is open.
 
 ## C symbol index (B2, phase 1)
 
@@ -192,7 +237,8 @@ invocation is still being typed).
 `tests/lsp_session.py` runs scripted sessions (`tests/lsp/*.json`) and
 compares transcripts with golden files. Scripts can create files (a
 compilation database with absolute paths), open workspace files, wait
-for notifications, and use `waitIdle` barriers so asynchronous builds
+for notifications (`wait`: the latest one; `waitall`: every one not yet
+recorded, e.g. both phases' publications of one edit), and use `waitIdle` barriers so asynchronous builds
 stay deterministic. An `{"env": {...}}` step sets the server's
 environment (`tests/lsp/csym_nocheck` uses it to turn the check off).
 `tests/lsp/csym` covers C definition and declaration for every kind,

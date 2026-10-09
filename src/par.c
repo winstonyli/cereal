@@ -233,6 +233,8 @@ static void run_worker(void *arg)
     Tok t;
     int c;
     w->t_begin = now();
+    if (fault_hit("par-worker"))
+        fatal("injected fault (par-worker)");
     while (pp_next(&w->pp, &t)) {
         if (w->pp.diverged)
             break;

@@ -19,3 +19,9 @@ int f(int n)
 out:
     return p != 0;
 }
+/* labels declared in a system header have no declaration event; the ones
+ * after it are numbered as if they were not there */
+# 100 "sys.h" 3
+static inline void sysf(int n) { syslab: if (n) goto syslab; }
+# 26 "stmts.c"
+void g(void) { after: goto after; }

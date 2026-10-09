@@ -1071,9 +1071,93 @@ static int cmp_keys(const void *a, const void *b)
     return strcmp(*(const char *const *)a, *(const char *const *)b);
 }
 
+/* One diagnostic object, placed at b..e of file f with message msg; the
+ * last line of f it touches (range and notes) and whether a note points
+ * into another file are returned for carrying it over. */
+static void put_diag(JsonWriter *w, SrcMgr *sm, SrcFile *f, PosEncoding enc,
+                     Arena *a, const Diagnostic *d, SrcLoc b, SrcLoc e,
+                     const char *msg, uint32_t *last_line, bool *other_files)
+{
+    size_t k;
+    uint32_t c;
+    loc_to_pos(sm, e < b ? b : e, enc, last_line, &c);
+    *other_files = false;
+    json_begin_object(w);
+    json_key(w, "range");
+    json_range(w, sm, enc, b, e);
+    json_key(w, "severity");
+    json_int(w, severity(d->level));
+    if (d->id && *d->id) {
+        json_key(w, "code");
+        json_str(w, d->id);
+    }
+    json_key(w, "source");
+    json_str(w, "cereal");
+    json_key(w, "message");
+    json_str(w, msg);
+    if (d->notes.len) {
+        json_key(w, "relatedInformation");
+        json_begin_array(w);
+        for (k = 0; k < d->notes.len; k++) {
+            SrcLoc nl = d->notes.data[k].loc;
+            SrcFile *nf2 = srcmgr_file_of(sm, nl);
+            if (!nf2 || (nf2->kind != SF_USER && nf2->kind != SF_SYSTEM))
+                continue;
+            if (nf2 == f) {
+                uint32_t l;
+                loc_to_pos(sm, nl, enc, &l, &c);
+                if (l > *last_line)
+                    *last_line = l;
+            } else {
+                *other_files = true;
+            }
+            json_begin_object(w);
+            json_key(w, "location");
+            json_begin_object(w);
+            json_key(w, "uri");
+            json_str(w, path_to_uri(a, nf2->path));
+            json_key(w, "range");
+            json_range(w, sm, enc, nl, nl);
+            json_end_object(w);
+            json_key(w, "message");
+            json_str(w, d->notes.data[k].msg);
+            json_end_object(w);
+        }
+        json_end_array(w);
+    }
+    json_end_object(w);
+}
+
+static const char *diag_key(SrcMgr *sm, PosEncoding enc, Arena *a, SrcLoc b,
+                            SrcLoc e, const char *msg)
+{
+    uint32_t l0, c0, l1, c1;
+    loc_to_pos(sm, b, enc, &l0, &c0);
+    loc_to_pos(sm, e < b ? b : e, enc, &l1, &c1);
+    return arena_printf(a, "%u:%u-%u:%u|%s", l0, c0, l1, c1, msg);
+}
+
+static bool key_seen(const char *key, const char **keys, size_t n)
+{
+    return n && bsearch(&key, keys, n, sizeof *keys, cmp_keys);
+}
+
+void cdiags_free(Snapshot *s)
+{
+    size_t i;
+    for (i = 0; i < s->cdiags.len; i++) {
+        free(s->cdiags.data[i].path);
+        free(s->cdiags.data[i].key);
+        free(s->cdiags.data[i].json);
+    }
+    vec_free(&s->cdiags);
+}
+
 /* The diagnostics of each open file the snapshot covers: the macro phase's
- * (s->tu), then the compiler's (chk, a TU of the same unit; may be NULL)
- * minus those at the same range with the same message. */
+ * (s->tu), then the compiler's minus those at the same range with the same
+ * message: chk's (a TU of the same unit), which become s->cdiags, else the
+ * ones carried over in s->cdiags.  The document version is the overlay's
+ * (the text both phases read). */
 void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
                              bool (*wanted)(void *ctx, const char *path),
                              void *ctx)
@@ -1082,86 +1166,86 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
     uint32_t fi, nf = srcmgr_nfiles(sm0);
     Arena a;
     arena_init(&a);
+    if (chk)
+        cdiags_free(s);
     for (fi = 0; fi < nf; fi++) {
         SrcFile *f0 = srcmgr_file(sm0, fi);
         StrBuf sb = {0};
         JsonWriter w;
-        VEC(const char *) seen = {0}; /* keys of the first pass's */
-        int pass;
+        VEC(const char *) seen = {0}; /* keys of the macro phase's */
+        bool keyed = chk || s->cdiags.len;
+        long long version;
+        size_t i;
         if (f0->kind != SF_USER || !wanted(ctx, f0->path))
             continue;
         begin_notification(&w, &sb, "textDocument/publishDiagnostics");
         json_key(&w, "uri");
         json_str(&w, path_to_uri(&a, f0->path));
+        if (lsp_overlay_version(s->overlay, f0->path, &version)) {
+            json_key(&w, "version");
+            json_int(&w, version);
+        }
         json_key(&w, "diagnostics");
         json_begin_array(&w);
-        for (pass = 0; pass < 2; pass++) {
-            TU *tu = pass ? chk : &s->tu;
-            SrcMgr *sm = tu ? &tu->sm : NULL;
-            SrcFile *f = !tu ? NULL : pass ? user_file_named(sm, f0->path) : f0;
-            size_t i;
-            if (!f)
+        for (i = 0; i < s->tu.diag.all.len; i++) {
+            Diagnostic *d = s->tu.diag.all.data[i];
+            SrcLoc b, e;
+            const char *msg;
+            uint32_t last;
+            bool other;
+            if (!diag_place(sm0, f0, d, wanted, ctx, &a, &b, &e, &msg))
                 continue;
-            for (i = 0; i < tu->diag.all.len; i++) {
-                Diagnostic *d = tu->diag.all.data[i];
+            if (keyed)
+                vec_push(&seen, diag_key(sm0, enc, &a, b, e, msg));
+            put_diag(&w, sm0, f0, enc, &a, d, b, e, msg, &last, &other);
+        }
+        if (seen.len)
+            qsort(seen.data, seen.len, sizeof *seen.data, cmp_keys);
+        if (chk) {
+            SrcMgr *sm = &chk->sm;
+            SrcFile *f = user_file_named(sm, f0->path);
+            for (i = 0; f && i < chk->diag.all.len; i++) {
+                Diagnostic *d = chk->diag.all.data[i];
                 SrcLoc b, e;
-                const char *msg;
-                size_t k;
+                const char *msg, *key;
+                StrBuf one = {0};
+                JsonWriter w1;
+                CDiag cd;
                 if (!diag_place(sm, f, d, wanted, ctx, &a, &b, &e, &msg))
                     continue;
-                if (chk) {
-                    uint32_t l0, c0, l1, c1;
-                    const char *key;
-                    loc_to_pos(sm, b, enc, &l0, &c0);
-                    loc_to_pos(sm, e < b ? b : e, enc, &l1, &c1);
-                    key = arena_printf(&a, "%u:%u-%u:%u|%s", l0, c0, l1, c1,
-                                       msg);
-                    if (pass == 0)
-                        vec_push(&seen, key);
-                    else if (seen.len && bsearch(&key, seen.data, seen.len,
-                                     sizeof *seen.data, cmp_keys))
-                        continue;
-                }
-                json_begin_object(&w);
-                json_key(&w, "range");
-                json_range(&w, sm, enc, b, e);
-                json_key(&w, "severity");
-                json_int(&w, severity(d->level));
-                if (d->id && *d->id) {
-                    json_key(&w, "code");
-                    json_str(&w, d->id);
-                }
-                json_key(&w, "source");
-                json_str(&w, "cereal");
-                json_key(&w, "message");
-                json_str(&w, msg);
-                if (d->notes.len) {
-                    json_key(&w, "relatedInformation");
-                    json_begin_array(&w);
-                    for (k = 0; k < d->notes.len; k++) {
-                        SrcFile *nf2 = srcmgr_file_of(sm, d->notes.data[k].loc);
-                        if (!nf2 ||
-                            (nf2->kind != SF_USER && nf2->kind != SF_SYSTEM))
-                            continue;
-                        json_begin_object(&w);
-                        json_key(&w, "location");
-                        json_begin_object(&w);
-                        json_key(&w, "uri");
-                        json_str(&w, path_to_uri(&a, nf2->path));
-                        json_key(&w, "range");
-                        json_range(&w, sm, enc, d->notes.data[k].loc,
-                                   d->notes.data[k].loc);
-                        json_end_object(&w);
-                        json_key(&w, "message");
-                        json_str(&w, d->notes.data[k].msg);
-                        json_end_object(&w);
-                    }
-                    json_end_array(&w);
-                }
-                json_end_object(&w);
+                key = diag_key(sm, enc, &a, b, e, msg);
+                if (key_seen(key, seen.data, seen.len))
+                    continue;
+                json_init_buf(&w1, &one);
+                put_diag(&w1, sm, f, enc, &a, d, b, e, msg, &cd.last_line,
+                         &cd.other_files);
+                json_flush(&w1);
+                json_raw(&w, one.data, one.len);
+                cd.path = xstrdup(f0->path);
+                cd.key = xstrdup(key);
+                cd.json = xstrdup(sb_cstr(&one));
+                sb_free(&one);
+                vec_push(&s->cdiags, cd);
             }
-            if (pass == 0 && chk && seen.len)
-                qsort(seen.data, seen.len, sizeof *seen.data, cmp_keys);
+        } else {
+            for (i = 0; i < s->cdiags.len; i++) {
+                const CDiag *cd = &s->cdiags.data[i];
+                if (!strcmp(cd->path, f0->path) &&
+                    !key_seen(cd->key, seen.data, seen.len))
+                    json_raw(&w, cd->json, strlen(cd->json));
+            }
+        }
+        if (s->notice && !strcmp(f0->path, s->main)) {
+            json_begin_object(&w);
+            json_key(&w, "range");
+            json_range(&w, sm0, enc, f0->base, f0->base);
+            json_key(&w, "severity");
+            json_int(&w, 3);
+            json_key(&w, "source");
+            json_str(&w, "cereal");
+            json_key(&w, "message");
+            json_str(&w, s->notice);
+            json_end_object(&w);
         }
         vec_free(&seen);
         json_end_array(&w);

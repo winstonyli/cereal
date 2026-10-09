@@ -64,6 +64,15 @@ void loc_to_pos(SrcMgr *sm, SrcLoc loc, PosEncoding enc, uint32_t *line,
 
 /* ---- snapshots and the server (server.c) ------------------------------ */
 
+/* A compiler diagnostic as published, kept to be carried over. */
+typedef struct CDiag {
+    char *path;              /* the file it is published for */
+    uint32_t last_line;      /* its last line there (range and notes) */
+    bool other_files;        /* a note points into another file */
+    char *key;               /* range and message: duplicates are dropped */
+    char *json;              /* the publishDiagnostics array element */
+} CDiag;
+
 typedef struct Snapshot {
     uint32_t refs;           /* atomic */
     const char *main;        /* translation unit's main file */
@@ -77,6 +86,11 @@ typedef struct Snapshot {
      * the server lock; NULL until then, or with no check (CHECK_NONE). */
     struct CIndex *cidx;
     int check_state;         /* CHECK_* */
+    /* The compiler diagnostics published with the snapshot: its check's
+     * once that ends, before then those carried over from the previous
+     * snapshot (lines before the first edited one).  Builder only. */
+    VEC(CDiag) cdiags;
+    char *notice;            /* why the unit is not checked (Information) */
 } Snapshot;
 
 enum { CHECK_NONE, CHECK_PENDING, CHECK_DONE };
@@ -122,10 +136,16 @@ void lsp_calls(Req *r, JsonWriter *w, bool incoming);
 void lsp_signature_help(Req *r, JsonWriter *w);
 void lsp_expand_macro(Req *r, JsonWriter *w);
 
-/* Diagnostics for the files of a snapshot (publishDiagnostics bodies). */
+/* Diagnostics for the files of a snapshot (publishDiagnostics bodies):
+ * the macro phase's, then the compiler's (chk's, recorded in s->cdiags;
+ * else s->cdiags as carried over), then s->notice on the main file. */
 void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
                              bool (*wanted)(void *ctx, const char *path),
                              void *ctx);
+void cdiags_free(Snapshot *s);
+/* The editor's version of a file of the overlay; false: none was sent. */
+bool lsp_overlay_version(const struct Overlay *o, const char *path,
+                         long long *version);
 void lsp_publish_inactive(Snapshot *s, PosEncoding enc, const char *path);
 
 /* Helpers shared by server.c and features.c. */

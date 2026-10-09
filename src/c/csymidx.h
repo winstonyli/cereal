@@ -76,6 +76,7 @@ typedef struct CIndex {
     char *strings;           /* deduplicated pool; offset 0 is "" */
     size_t nstrings;
     uint32_t unindexed;      /* --verify-symbols: names that got no event */
+    uint32_t excused;        /* ... and names left out for a diagnosed line etc. */
 } CIndex;
 
 void cindex_free(CIndex *ix);
@@ -133,5 +134,8 @@ void csx_field(struct Checker *c, uint32_t field, uint32_t tok, int role);
 /* Labels by slot (cstmt.c): a new label in slot, then events. */
 void csx_label_new(struct Checker *c, uint32_t slot, uint32_t name, SrcLoc loc);
 void csx_label(struct Checker *c, uint32_t slot, uint32_t tok, int role);
+/* A name that is no entity (verify: not missed), e.g. an identifier list in a
+ * declaration that is not a definition. */
+void csx_skip(struct Checker *c, uint32_t tok);
 
 #endif

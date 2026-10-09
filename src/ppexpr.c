@@ -802,6 +802,8 @@ bool pp_eval_if(PP *pp, TokSpan expr, bool *ok)
     pp->in_if_expr = true;
     pp->if_exp.len = 0;
     tokbuf_init(pp, &exp, expr.n + 8);
+    if (fault_hit("pp-halt-in-if")) /* tests: a cancel landing right here */
+        pp->halted = true;
     pp_expand_into(pp, expr, &exp);
     pp->in_if_expr = false;
     p.pp = pp;

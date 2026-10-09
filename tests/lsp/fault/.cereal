@@ -1,0 +1,2 @@
+# the parallel path, so that the injected fault is in a pool job
+-fparallel=on

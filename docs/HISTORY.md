@@ -3270,3 +3270,62 @@ macro-vs-C, D1, D2) and `csym_nocheck` (new `env` step in lsp_session.py);
 the other transcripts gained `declarationProvider`. The LSP sessions pass
 under TSan. Deferred: `cereal query` C support, verify over bench/corpus,
 hover strings (phase 3).
+
+Round 188: `--verify-symbols` over the corpus (B2 phase 1 follow-up).
+Ran `cereal --verify-symbols` with each file's own flags over the 170 translation
+units of `bench/corpus.py` (Lua 5.1-5.5, lupa, libuv, uvloop incl. the Cython
+loop.c, zstd) and every gcc.dg and c-c++-common test that passes par.py's
+`dg-options` filter (4716 files with the corpus: 1.02 M events, 0 unindexed),
+plus a second pass at `-std=gnu11` and a sweep of 16 k files from
+gcc.c-torture and the gcc.dg subdirectories, with the diagnosed-line excuse
+turned off. Misses found, 2 (both in clean code), both fixed: (1) labels in
+a system header got a decl but no event (a `# n "f.h" 3` region): the label
+decl is now made at its first event (`csx_label`, so none for system-presented
+labels), case appended to `tests/symidx/stmts.c`; (2) the identifier list of a
+declaration that is not a definition (`int f(a, b);`, `foo (one_arg);` at file
+scope, `typeof(x);`) names nothing: new hook `csx_skip` at the "parameter names
+(without types)" site marks the tokens as no entity, case in
+`tests/symidx/decls.c`. Every other miss with the excuse off (about 40 names in
+32 files) is on a line gcc rejects (dropped or duplicate members, designators
+into them, labels outside functions, incomplete-type fields). The excuse is
+counted now: the `symbols:` line ends with `N excused` (names left out for a
+diagnosed line, a builtin or an error node; 18.6 k over the 4716 files).
+`tests/symidx` is also run through `--verify-symbols` in run.sh section 14.
+
+Round 189: an LSP crash on edits, fatal() per phase, and no diagnostics
+flicker. (1) A session on uvloop's loop.c (8.6 MB) with five back-to-back
+full-text edits died after 116 s (89 s system time) with "token buffer too
+large". gdb on the builder: `build → par_run → pp_run_phase_a → pp_directive
+→ do_if → pp_eval_if → expand_into → tokbuf_push → tokbuf_grow`. Root cause:
+a cancel sets `PP.halted`, after which `pp_read_raw` returned a lexer EOF and
+skipped barrier contexts, but `expand_into` (an `#if` expression, a macro
+argument; phase A and phase-B workers alike) reads until `SRC_BARRIER`, so it
+pushed EOFs, doubling the buffer to 2^29 tokens while paging. Only an edit
+landing during such an expansion of a long, macro-dense build hits it. Fix:
+a halted stream returns `SRC_BARRIER` while a barrier context is open
+(`src/pp.c`). Stress (5 edits per round, 8 rounds, random delays): the old
+binary died in 6 of 8 sessions (every delay of 150, 300 or 450 ms; back-to-back
+edits coalesce), the fixed one passed all 24, and the final binary 12 of 12
+on loop.c and 12 of 12 on zstd.c (which also has checks, up to 18 of them
+cancelled per session). (2) `fatal()` inside a server
+phase no longer exits: a thread-local `FatalTrap` (setjmp/longjmp, common.h)
+around the builder's build and check, and around pool jobs when
+`ThreadPool.trap_fatal` (only `cereal lsp` sets it; `group_wait` re-raises
+the first job's message). The phase is dropped and logged (stderr and
+`window/logMessage`), a failed build resets the unit's interner and cells,
+partial state is leaked. A `fatal()` with a mutex held (counted in
+`mutex_lock`) still exits. `CEREAL_FAULT=site[:N]` injects faults for tests
+(`par-worker`, `lsp-check`, `pp-halt-in-if`). (3) The macro phase's
+publication carries the previous compiler diagnostics that lie wholly before
+the first edited line of their file (not all: later ones may have moved);
+a failed check withdraws them. Chosen over keeping all for that reason.
+publishDiagnostics carries the document `version` when the client sent one
+(a didChange without one no longer invents version+1). (4) Units over the
+check limit show one Information diagnostic at line 1 (the size and the
+limit); the CLI is unchanged. Tests: `tests/lsp/carry`, `skip`, `fault`
+(`.cereal` forces the parallel path), `fault_check`; a `waitall` step in
+lsp_session.py; the other transcripts gained `version`; run.sh runs `-E`
+with `pp-halt-in-if` under a 6 GB cap (fails on the old binary with the
+out-of-memory fatal). Gates: run.sh 1650 passed; san.sh 0 failed and 0
+findings over 600 files; verify.sh gcc.dg 3908, c-c++-common 635, cpp 285; the LSP
+sessions (both modes) under TSan: 18 passed, 0 warnings. src/c untouched.

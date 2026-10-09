@@ -676,7 +676,8 @@ the implementation departs from or settles the text above:
    parameters, bad designators, labels outside functions), plus
    `__builtin_*` and `__func__`-like names, error nodes, attribute
    subtrees, quiet units and system presentation. Clean over
-   `tests/check`, `tests/parse`, cereal's sources, zstd.c and cexpr.c;
+   `tests/check`, `tests/parse`, `tests/symidx`, cereal's sources, all of
+   `bench/corpus.py` and 4716 gcc.dg and c-c++-common tests (Round 188);
    run in `tests/run.sh` section 14.
 4. **Kinds** print as `struct`, `union`, `enum` (not one `tag` kind).
 5. **Parameters:** a prototype's parameters are DECL; a body (or K&R

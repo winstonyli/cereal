@@ -140,8 +140,19 @@ TokSrc pp_read_raw(PP *pp, Tok *t)
         if (pp->cancel && atomic_load_u32(pp->cancel))
             pp->halted = true;
         if (pp->halted) {
+            /* the stream ends here, but a sub-stream still ends at its
+             * barrier: expand_into reads until SRC_BARRIER, and a lexer EOF
+             * there would loop pushing EOFs until the token pool gives out
+             * (a cancel landing inside an #if expression did that) */
+            size_t i = pp->ctx.len;
             memset(t, 0, sizeof *t);
             t->kind = TK_EOF;
+            while (i && !pp->ctx.data[i - 1].barrier)
+                i--;
+            if (i) {
+                t->loc = pp->ctx.data[i - 1].exp_loc;
+                return SRC_BARRIER;
+            }
             t->flags = TF_BOL;
             return SRC_LEXER;
         }

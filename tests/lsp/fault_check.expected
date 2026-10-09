@@ -1,0 +1,175 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync"
+ ]
+}
+>> initialized
+>> didOpen carry/main.c
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/carry/main.c
+{
+ "diagnostics": [
+  {
+   "message": "'a1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 2
+    },
+    "start": {
+     "character": 11,
+     "line": 2
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 11,
+        "line": 2
+       },
+       "start": {
+        "character": 11,
+        "line": 2
+       }
+      },
+      "uri": "file://$ROOT/carry/main.c"
+     },
+     "message": "each undeclared identifier is reported only once for each function it appears in"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  },
+  {
+   "message": "'b1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 7
+    },
+    "start": {
+     "character": 11,
+     "line": 7
+    }
+   },
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
+ "version": 1
+}
+## fatal() in the second check: the check is dropped and logged; the error carried into the macro phase's publication is withdrawn, as no check will confirm it
+>> textDocument/didChange
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/carry/main.c
+{
+ "diagnostics": [
+  {
+   "message": "'a1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 2
+    },
+    "start": {
+     "character": 11,
+     "line": 2
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 11,
+        "line": 2
+       },
+       "start": {
+        "character": 11,
+        "line": 2
+       }
+      },
+      "uri": "file://$ROOT/carry/main.c"
+     },
+     "message": "each undeclared identifier is reported only once for each function it appears in"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
+ "version": 2
+}
+<< textDocument/publishDiagnostics file://$ROOT/carry/main.c
+{
+ "diagnostics": [],
+ "version": 2
+}
+<< window/logMessage (no uri)
+{
+ "message": "cereal: the check of $ROOT/carry/main.c failed: injected fault (lsp-check)",
+ "type": 1
+}
+## the third check runs
+>> textDocument/didChange
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/carry/main.c
+{
+ "diagnostics": [
+  {
+   "message": "'a1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 2
+    },
+    "start": {
+     "character": 11,
+     "line": 2
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 11,
+        "line": 2
+       },
+       "start": {
+        "character": 11,
+        "line": 2
+       }
+      },
+      "uri": "file://$ROOT/carry/main.c"
+     },
+     "message": "each undeclared identifier is reported only once for each function it appears in"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
+ "version": 3
+}
+>> shutdown
+null
+>> exit
+exit 0

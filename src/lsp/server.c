@@ -25,6 +25,7 @@ typedef struct Overlay {
     char **paths;
     char **texts;
     size_t *lens;
+    long long *versions;      /* -1: the client sent none */
 } Overlay;
 
 typedef struct Unit {
@@ -43,7 +44,7 @@ typedef struct Doc {
     char *path, *uri;
     char *text;
     size_t len;
-    long long version;
+    long long version;        /* -1: the last didOpen/didChange had none */
     Unit *unit;
 } Doc;
 
@@ -91,6 +92,7 @@ static Overlay *overlay_capture(void) /* S.m held */
     o->paths = xcalloc(o->n + 1, sizeof(char *));
     o->texts = xcalloc(o->n + 1, sizeof(char *));
     o->lens = xcalloc(o->n + 1, sizeof(size_t));
+    o->versions = xcalloc(o->n + 1, sizeof(long long));
     for (i = 0; i < o->n; i++) {
         Doc *d = S.docs.data[i];
         o->paths[i] = xstrdup(d->path);
@@ -98,8 +100,21 @@ static Overlay *overlay_capture(void) /* S.m held */
         memcpy(o->texts[i], d->text, d->len);
         o->texts[i][d->len] = 0;
         o->lens[i] = d->len;
+        o->versions[i] = d->version;
     }
     return o;
+}
+
+bool lsp_overlay_version(const Overlay *o, const char *path,
+                         long long *version)
+{
+    size_t i;
+    for (i = 0; o && i < o->n; i++)
+        if (!strcmp(o->paths[i], path)) {
+            *version = o->versions[i];
+            return o->versions[i] >= 0;
+        }
+    return false;
 }
 
 static void overlay_release(Overlay *o)
@@ -114,6 +129,7 @@ static void overlay_release(Overlay *o)
     free(o->paths);
     free(o->texts);
     free(o->lens);
+    free(o->versions);
     free(o);
 }
 
@@ -143,6 +159,8 @@ void snapshot_release(Snapshot *s)
     tu_free(&s->tu);
     config_options_free(s->opt);
     overlay_release(s->overlay);
+    cdiags_free(s);
+    free(s->notice);
     free((char *)s->main);
     free(s);
 }
@@ -268,10 +286,22 @@ static size_t check_limit(void)
     return e ? (size_t)strtoull(e, NULL, 10) : (size_t)CHECK_MAX_BYTES;
 }
 
+static void put_size(StrBuf *sb, size_t n)
+{
+    if (n >= (1u << 20))
+        sb_printf(sb, "%.1f MiB", (double)n / (1u << 20));
+    else if (n >= (1u << 10))
+        sb_printf(sb, "%.1f KiB", (double)n / (1u << 10));
+    else
+        sb_printf(sb, "%zu bytes", n);
+}
+
+/* A unit over the size limit gets s->notice, which its publication shows
+ * as an Information line at the top of the main file. */
 static bool check_eligible(const Unit *u, Snapshot *s)
 {
     uint32_t i, n = srcmgr_nfiles(&s->tu.sm);
-    size_t total = 0;
+    size_t total = 0, limit = check_limit();
     if (u->standalone_header) /* a header alone is not a translation unit */
         return false;
     for (i = 0; i < n; i++) {
@@ -279,9 +309,88 @@ static bool check_eligible(const Unit *u, Snapshot *s)
         if (f->kind != SF_VIRTUAL)
             total += f->size;
     }
-    if (total > check_limit() && stats_on())
-        fprintf(stderr, "lsp: no check: %zu source bytes\n", total);
-    return total && total <= check_limit();
+    if (total > limit) {
+        StrBuf sb = {0};
+        if (stats_on())
+            fprintf(stderr, "lsp: no check: %zu source bytes\n", total);
+        sb_puts(&sb, "not checked for compiler errors: its sources total ");
+        put_size(&sb, total);
+        sb_puts(&sb, ", over the limit of ");
+        put_size(&sb, limit);
+        sb_puts(&sb, " (CEREAL_LSP_CHECK_MAX)");
+        s->notice = xstrdup(sb_cstr(&sb));
+        sb_free(&sb);
+    }
+    return total && total <= limit;
+}
+
+/* The line of the first byte where file `path` differs between snapshots
+ * a and b (UINT32_MAX: the same text; 0: absent from either). */
+static uint32_t first_changed_line(Snapshot *a, Snapshot *b, const char *path)
+{
+    SrcFile *fa = NULL, *fb = NULL;
+    uint32_t i, n = srcmgr_nfiles(&a->tu.sm), line = 0;
+    size_t k, m;
+    for (i = 0; i < n && !fa; i++) {
+        SrcFile *f = srcmgr_file(&a->tu.sm, i);
+        if (f->kind == SF_USER && !strcmp(f->path, path))
+            fa = f;
+    }
+    n = srcmgr_nfiles(&b->tu.sm);
+    for (i = 0; i < n && !fb; i++) {
+        SrcFile *f = srcmgr_file(&b->tu.sm, i);
+        if (f->kind == SF_USER && !strcmp(f->path, path))
+            fb = f;
+    }
+    if (!fa || !fb)
+        return 0;
+    m = MIN(fa->size, fb->size);
+    for (k = 0; k < m && fa->buf[k] == fb->buf[k]; k++)
+        line += fa->buf[k] == '\n';
+    return k == m && fa->size == fb->size ? UINT32_MAX : line;
+}
+
+/* Before its check ends, a snapshot shows the compiler diagnostics of the
+ * previous one that lie wholly before the first edited line of their file
+ * (their positions are the same there; the later ones may have moved or
+ * gone, and are dropped).  One with a note in another file is carried
+ * only if no file changed. */
+static void carry_cdiags(Snapshot *to, Snapshot *from)
+{
+    size_t i;
+    const char *path = NULL;
+    uint32_t line = 0;
+    int same = -1; /* every file unchanged; -1: not computed yet */
+    for (i = 0; i < from->cdiags.len; i++) {
+        const CDiag *c = &from->cdiags.data[i];
+        CDiag cd;
+        if (!path || strcmp(path, c->path)) {
+            path = c->path;
+            line = first_changed_line(from, to, path);
+        }
+        if (c->last_line >= line)
+            continue;
+        if (c->other_files) {
+            if (same < 0) {
+                uint32_t k, n = srcmgr_nfiles(&from->tu.sm);
+                same = 1;
+                for (k = 0; k < n && same; k++) {
+                    SrcFile *f = srcmgr_file(&from->tu.sm, k);
+                    if (f->kind == SF_USER &&
+                        first_changed_line(from, to, f->path) != UINT32_MAX)
+                        same = 0;
+                }
+            }
+            if (!same)
+                continue;
+        }
+        cd.path = xstrdup(c->path);
+        cd.last_line = c->last_line;
+        cd.other_files = c->other_files;
+        cd.key = xstrdup(c->key);
+        cd.json = xstrdup(c->json);
+        vec_push(&to->cdiags, cd);
+    }
 }
 
 static void check_free(Check *c)
@@ -320,6 +429,8 @@ static Check *check_run(Unit *u, Snapshot *s)
     Check *c = xcalloc(1, sizeof *c);
     FrontendOpts fo;
     bool ok;
+    if (fault_hit("lsp-check"))
+        fatal("injected fault (lsp-check)");
     c->opt = config_options_for(&S.cfg, s->main);
     c->opt->pp.fatal_missing_include = false; /* D2 */
     tu_init(&c->tu, c->opt);
@@ -453,6 +564,81 @@ static bool doc_open_in(void *ctx, const char *path)
     return false;
 }
 
+/* fatal() inside a build or a check drops that phase, not the server: the
+ * phase's partial state is leaked (it may be inconsistent), after a build
+ * the unit starts over with a new interner and cell cache (the check has
+ * its own), and the message goes to stderr and to the client's log
+ * (window/logMessage, an error). */
+static void phase_failed(Unit *u, const char *phase, const char *msg)
+{
+    StrBuf sb = {0}, text = {0};
+    JsonWriter w;
+    fprintf(stderr, "cereal: fatal: %s (the %s of %s is dropped)\n", msg,
+            phase, u->main);
+    if (!strcmp(phase, "build")) {
+        interner_release(u->in);
+        u->in = NULL;
+        cell_cache_free(&u->cells);
+    }
+    sb_printf(&text, "cereal: the %s of %s failed: %s", phase, u->main, msg);
+    json_init_buf(&w, &sb);
+    json_begin_object(&w);
+    json_key(&w, "jsonrpc");
+    json_str(&w, "2.0");
+    json_key(&w, "method");
+    json_str(&w, "window/logMessage");
+    json_key(&w, "params");
+    json_begin_object(&w);
+    json_key(&w, "type");
+    json_int(&w, 1);
+    json_key(&w, "message");
+    json_str(&w, sb_cstr(&text));
+    json_end_object(&w);
+    json_end_object(&w);
+    rpc_write(sb.data, sb.len);
+    sb_free(&sb);
+    sb_free(&text);
+}
+
+/* The macro phase of a unit under a fatal() trap; NULL if it was
+ * cancelled, could not be opened or failed (*failed). */
+static Snapshot *build_unit(Unit *u, Overlay *ov, bool *failed)
+{
+    FatalTrap tr;
+    Options *opt;
+    Snapshot *snap;
+    *failed = false;
+    fatal_trap_push(&tr);
+    if (setjmp(tr.jb)) {
+        phase_failed(u, "build", tr.msg);
+        *failed = true;
+        return NULL;
+    }
+    opt = config_options_for(&S.cfg, u->main);
+    snap = build(u->main, ov, opt, u->in, &u->cells, &u->cancel);
+    fatal_trap_pop(&tr);
+    if (!snap)
+        config_options_free(opt);
+    return snap;
+}
+
+/* The check phase under a fatal() trap (see check_run). */
+static Check *check_unit(Unit *u, Snapshot *s)
+{
+    FatalTrap tr;
+    Check *c;
+    fatal_trap_push(&tr);
+    if (setjmp(tr.jb)) {
+        phase_failed(u, "check", tr.msg);
+        return NULL;
+    }
+    c = check_run(u, s);
+    if (c && c->cidx)
+        cindex_validate(c->cidx, s);
+    fatal_trap_pop(&tr);
+    return c;
+}
+
 static void *builder_main(void *arg)
 {
     (void)arg;
@@ -460,8 +646,8 @@ static void *builder_main(void *arg)
     while (!S.stop) {
         Unit *u;
         Overlay *ov;
-        Options *opt;
         Snapshot *snap, *old = NULL, *checking = NULL;
+        bool failed;
         long long want;
         double t0, t1, t2;
         if (!S.queue.len) {
@@ -491,14 +677,11 @@ static void *builder_main(void *arg)
             u->in_fresh = 0;
             cell_cache_free(&u->cells); /* cells hold identifiers */
         }
-        opt = config_options_for(&S.cfg, u->main);
-        snap = build(u->main, ov, opt, u->in, &u->cells, &u->cancel);
+        snap = build_unit(u, ov, &failed);
         if (snap && !u->in_fresh)
             u->in_fresh = interner_count(u->in);
-        if (!snap) {
+        if (!snap)
             overlay_release(ov);
-            config_options_free(opt);
-        }
 
         mutex_lock(&S.m);
         if (snap && want > u->built) {
@@ -507,6 +690,12 @@ static void *builder_main(void *arg)
             u->snap = snap;
             u->built = want;
             adopt_headers(u);
+            if (check_eligible(u, snap)) {
+                snap->check_state = CHECK_PENDING;
+                checking = snapshot_ref(snap);
+                if (old) /* shown until the check ends: no flicker */
+                    carry_cdiags(snap, old);
+            }
             t2 = stats_now();
             lsp_publish_diagnostics(snap, NULL, S.enc, doc_open_in, u);
             if (stats_on())
@@ -518,10 +707,6 @@ static void *builder_main(void *arg)
                     if (S.docs.data[i]->unit == u)
                         lsp_publish_inactive(snap, S.enc,
                                              S.docs.data[i]->path);
-            }
-            if (check_eligible(u, snap)) {
-                snap->check_state = CHECK_PENDING;
-                checking = snapshot_ref(snap);
             }
         } else if (snap) {
             snapshot_release(snap);
@@ -538,19 +723,24 @@ static void *builder_main(void *arg)
              * under the lock), so it always matches the buffers it read. */
             Check *c;
             double t3 = stats_now();
-            c = check_run(u, checking);
-            if (c && c->cidx)
-                cindex_validate(c->cidx, checking);
+            c = check_unit(u, checking);
             mutex_lock(&S.m);
             if (stats_on())
                 fprintf(stderr, "lsp: check %.3fs%s, symbols %zu bytes\n",
                         stats_now() - t3, c ? "" : " (cancelled)",
                         c ? cindex_bytes(c->cidx) : 0);
-            if (c && u->want == want && !atomic_load_u32(&u->cancel)) {
-                lsp_publish_diagnostics(checking, &c->tu, S.enc, doc_open_in,
-                                        u);
-                checking->cidx = c->cidx;
-                c->cidx = NULL;
+            if (u->want == want && !atomic_load_u32(&u->cancel)) {
+                if (c) {
+                    lsp_publish_diagnostics(checking, &c->tu, S.enc,
+                                            doc_open_in, u);
+                    checking->cidx = c->cidx;
+                    c->cidx = NULL;
+                } else if (checking->cdiags.len) {
+                    /* failed, not superseded: the carried ones go */
+                    cdiags_free(checking);
+                    lsp_publish_diagnostics(checking, NULL, S.enc,
+                                            doc_open_in, u);
+                }
             }
             checking->check_state = CHECK_DONE;
             u->building = false;
@@ -944,7 +1134,7 @@ static void did_open(const JsonValue *params)
         free(d->text);
         d->text = xstrdup(text);
         d->len = strlen(text);
-        d->version = json_int_of(json_get(td, "version"), 0);
+        d->version = json_int_of(json_get(td, "version"), -1);
         d->unit = unit_for(path);
         schedule(d->unit);
         mutex_unlock(&S.m);
@@ -969,7 +1159,7 @@ static void did_change(const JsonValue *params)
         for (i = 0; changes && changes->kind == JV_ARR && i < changes->len; i++)
             apply_change(d, changes->items[i]);
         d->version = json_int_of(json_path(params, "textDocument.version"),
-                                 d->version + 1);
+                                 -1);
         schedule(d->unit);
     }
     mutex_unlock(&S.m);
@@ -1035,6 +1225,7 @@ int lsp_main(FILE *in, FILE *out)
     cond_init(&S.work);
     cond_init(&S.done);
     pool_init(&S.pool, 0);
+    S.pool.trap_fatal = true; /* a build's fatal() ends at its builder */
     rpc_set_output(out);
     if (pthread_create(&S.builder, NULL, builder_main, NULL) != 0)
         fatal("cannot start the builder thread");

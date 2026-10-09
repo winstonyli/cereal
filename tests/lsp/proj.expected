@@ -23,7 +23,8 @@
 >> didOpen proj/src/main.c
 << textDocument/publishDiagnostics file://$ROOT/proj/src/main.c
 {
- "diagnostics": []
+ "diagnostics": [],
+ "version": 1
 }
 >> textDocument/hover
 {
@@ -47,7 +48,8 @@
 >> (idle)
 << textDocument/publishDiagnostics file://$ROOT/proj/include/api.h
 {
- "diagnostics": []
+ "diagnostics": [],
+ "version": 1
 }
 ## UTF-16 columns: API_VERSION after a two-byte character
 >> textDocument/definition
@@ -123,7 +125,8 @@ null
 >> (idle)
 << textDocument/publishDiagnostics file://$ROOT/proj/src/main.c
 {
- "diagnostics": []
+ "diagnostics": [],
+ "version": 1
 }
 >> cereal/expandMacro
 {

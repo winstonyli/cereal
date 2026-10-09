@@ -12,8 +12,17 @@ void mutex_init(Mutex *m)
 }
 
 void mutex_destroy(Mutex *m) { pthread_mutex_destroy(m); }
-void mutex_lock(Mutex *m) { pthread_mutex_lock(m); }
-void mutex_unlock(Mutex *m) { pthread_mutex_unlock(m); }
+void mutex_lock(Mutex *m)
+{
+    pthread_mutex_lock(m);
+    fatal_locks_held++;
+}
+
+void mutex_unlock(Mutex *m)
+{
+    fatal_locks_held--;
+    pthread_mutex_unlock(m);
+}
 
 void cond_init(Cond *c)
 {
@@ -85,10 +94,28 @@ static bool take_job(ThreadPool *p, Job *out)
     return false;
 }
 
-static void finish_job(Job *j)
+/* Runs a job and marks it done; see ThreadPool.trap_fatal. */
+static void run_job(ThreadPool *p, Job *j)
 {
     JobGroup *g = j->group;
+    FatalTrap tr;
+    bool failed = false;
+    if (!p->trap_fatal) {
+        j->fn(j->arg);
+    } else {
+        fatal_trap_push(&tr);
+        if (setjmp(tr.jb) == 0) {
+            j->fn(j->arg);
+            fatal_trap_pop(&tr);
+        } else {
+            failed = true;
+        }
+    }
     mutex_lock(&g->m);
+    if (failed && !g->failed) {
+        g->failed = true;
+        memcpy(g->msg, tr.msg, sizeof g->msg);
+    }
     if (--g->pending == 0)
         cond_broadcast(&g->done);
     mutex_unlock(&g->m);
@@ -107,8 +134,7 @@ static void *worker_main(void *arg)
             return NULL;
         }
         mutex_unlock(&p->m);
-        j.fn(j.arg);
-        finish_job(&j);
+        run_job(p, &j);
     }
 }
 
@@ -149,6 +175,8 @@ void group_init(JobGroup *g)
     mutex_init(&g->m);
     cond_init(&g->done);
     g->pending = 0;
+    g->failed = false;
+    g->msg[0] = 0;
 }
 
 void group_free(JobGroup *g)
@@ -179,10 +207,8 @@ bool pool_run_one(ThreadPool *p)
     mutex_lock(&p->m);
     got = take_job(p, &j);
     mutex_unlock(&p->m);
-    if (got) {
-        j.fn(j.arg);
-        finish_job(&j);
-    }
+    if (got)
+        run_job(p, &j);
     return got;
 }
 
@@ -194,21 +220,49 @@ void group_wait(ThreadPool *p, JobGroup *g)
         mutex_lock(&g->m);
         if (g->pending == 0) {
             mutex_unlock(&g->m);
-            return;
+            break;
         }
         mutex_unlock(&g->m);
         mutex_lock(&p->m);
         got = take_job(p, &j);
         mutex_unlock(&p->m);
         if (got) {
-            j.fn(j.arg);
-            finish_job(&j);
+            run_job(p, &j);
             continue;
         }
         mutex_lock(&g->m);
         while (g->pending != 0)
             cond_wait(&g->done, &g->m);
         mutex_unlock(&g->m);
-        return;
+        break;
     }
+    if (g->failed) /* every job has ended: no one else writes it */
+        fatal("%s", g->msg);
+}
+
+/* ---- fault injection --------------------------------------------------- */
+
+static pthread_once_t fault_once = PTHREAD_ONCE_INIT;
+static char fault_site[64];
+static uint32_t fault_at, fault_count;
+
+static void fault_init(void)
+{
+    const char *e = getenv("CEREAL_FAULT"), *colon;
+    size_t n;
+    if (!e || !*e)
+        return;
+    colon = strchr(e, ':');
+    n = colon ? (size_t)(colon - e) : strlen(e);
+    if (n >= sizeof fault_site)
+        return;
+    memcpy(fault_site, e, n);
+    fault_at = colon ? (uint32_t)strtoul(colon + 1, NULL, 10) : 1;
+}
+
+bool fault_hit(const char *site)
+{
+    pthread_once(&fault_once, fault_init);
+    return fault_site[0] && !strcmp(fault_site, site) &&
+           atomic_add_u32(&fault_count, 1) + 1 == fault_at;
 }

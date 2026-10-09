@@ -1,0 +1,97 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync"
+ ]
+}
+>> initialized
+## fatal() in a preprocessor worker (a pool job) of the first build: the build is dropped, the server lives and logs it
+>> didOpen fault/main.c
+>> (idle)
+<< window/logMessage (no uri)
+{
+ "message": "cereal: the build of $ROOT/fault/main.c failed: injected fault (par-worker)",
+ "type": 1
+}
+## the next edit builds and checks normally
+>> textDocument/didChange
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/fault/main.c
+{
+ "diagnostics": [],
+ "version": 2
+}
+<< textDocument/publishDiagnostics file://$ROOT/fault/main.c
+{
+ "diagnostics": [
+  {
+   "message": "'a1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 19,
+     "line": 3
+    },
+    "start": {
+     "character": 17,
+     "line": 3
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 17,
+        "line": 3
+       },
+       "start": {
+        "character": 17,
+        "line": 3
+       }
+      },
+      "uri": "file://$ROOT/fault/main.c"
+     },
+     "message": "each undeclared identifier is reported only once for each function it appears in"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
+ "version": 2
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\n#define TWICE(x) ((x) + (x))\n```\ndefined at $ROOT/fault/main.c:1\n\nexpands to:\n```c\n((a1) + (a1))\n```"
+ },
+ "range": {
+  "end": {
+   "character": 16,
+   "line": 3
+  },
+  "start": {
+   "character": 11,
+   "line": 3
+  }
+ }
+}
+>> shutdown
+null
+>> exit
+exit 0

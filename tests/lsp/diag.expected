@@ -73,7 +73,8 @@
    "severity": 1,
    "source": "cereal"
   }
- ]
+ ],
+ "version": 1
 }
 ## two edits in quick succession: the first is cancelled or superseded, only the last text's diagnostics are the final ones (no 'nope' error)
 >> textDocument/didChange
@@ -97,7 +98,8 @@
    "severity": 1,
    "source": "cereal"
   }
- ]
+ ],
+ "version": 3
 }
 ## a missing include is reported by both phases: shown once
 >> textDocument/didChange
@@ -120,7 +122,8 @@
    "severity": 1,
    "source": "cereal"
   }
- ]
+ ],
+ "version": 4
 }
 >> shutdown
 null

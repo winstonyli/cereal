@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -14,6 +15,29 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 void fatal(const char *fmt, ...);
+
+/* A fatal() trap: on a thread that has pushed one, fatal() jumps back to
+ * it with the message instead of exiting (the language server's builder
+ * drops the one build).  It is popped before the jump; the code after a
+ * normal return pops it itself.  Not taken while the thread holds a lock
+ * (thread.c counts them: a jump would leave it held); fatal() exits then.
+ *     FatalTrap tr;
+ *     fatal_trap_push(&tr);
+ *     if (setjmp(tr.jb) == 0) { work(); fatal_trap_pop(&tr); }
+ *     else { failed: tr.msg }                                          */
+typedef struct FatalTrap {
+    jmp_buf jb;
+    char msg[256];
+    struct FatalTrap *prev;
+} FatalTrap;
+void fatal_trap_push(FatalTrap *t);
+void fatal_trap_pop(FatalTrap *t);
+extern __thread unsigned fatal_locks_held; /* thread.c's mutex_lock */
+
+/* Fault injection for tests: true at the Nth call naming `site` when
+ * CEREAL_FAULT is "site:N" (N defaults to 1), process-wide. */
+bool fault_hit(const char *site);
+
 void *xmalloc(size_t n);
 void *xcalloc(size_t n, size_t sz);
 void *xrealloc(void *p, size_t n);

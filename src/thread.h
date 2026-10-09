@@ -93,6 +93,8 @@ typedef struct JobGroup {
     Mutex m;
     Cond done;
     size_t pending;
+    bool failed;             /* a job called fatal() (trap_fatal pools) */
+    char msg[256];           /* its message, the first one */
 } JobGroup;
 
 typedef struct ThreadPool {
@@ -103,6 +105,10 @@ typedef struct ThreadPool {
     pthread_t *threads;
     int nthreads;
     bool stop;
+    /* fatal() in a job ends only that job; group_wait then calls fatal()
+     * with its message on the waiting thread (the language server, whose
+     * builder traps it).  Off: fatal() exits from any thread. */
+    bool trap_fatal;
 } ThreadPool;
 
 /* nthreads <= 0 means "cpu_count()". */

@@ -89,7 +89,8 @@
    "severity": 2,
    "source": "cereal"
   }
- ]
+ ],
+ "version": 1
 }
 << textDocument/inactiveRegions file://$ROOT/basic/main.c
 {
@@ -780,7 +781,8 @@
    "severity": 1,
    "source": "cereal"
   }
- ]
+ ],
+ "version": 2
 }
 ## after the edit: tokens as one edit against the last result
 >> textDocument/semanticTokens/full/delta

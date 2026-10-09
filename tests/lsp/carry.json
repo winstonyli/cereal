@@ -1,0 +1,22 @@
+[
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/carry", "capabilities": {"general": {"positionEncodings": ["utf-8", "utf-16"]}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"note": "two compiler errors, in f (line 2) and g (line 7)"},
+ {"open": "carry/main.c"},
+ {"idle": true},
+ {"wait": "textDocument/publishDiagnostics", "uri": "file://$ROOT/carry/main.c"},
+ {"note": "a line inserted between f and g: the macro phase's publication keeps f's error (before the first edited line) and drops g's until the check publishes both; each carries the document version"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/carry/main.c", "version": 2}, "contentChanges": [{"text": "int f(void)\n{\n    return a1;\n}\nint h;\n\nint g(void)\n{\n    return b1;\n}\n"}]}}},
+ {"idle": true},
+ {"waitall": "textDocument/publishDiagnostics", "uri": "file://$ROOT/carry/main.c"},
+ {"note": "an edit on the first line: nothing is carried"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/carry/main.c", "version": 3}, "contentChanges": [{"text": "int f2(void)\n{\n    return a1;\n}\nint h;\n\nint g(void)\n{\n    return b1;\n}\n"}]}}},
+ {"idle": true},
+ {"waitall": "textDocument/publishDiagnostics", "uri": "file://$ROOT/carry/main.c"},
+ {"note": "no version in didChange: none in the publication"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/carry/main.c"}, "contentChanges": [{"text": "int f2(void)\n{\n    return 0;\n}\n"}]}}},
+ {"idle": true},
+ {"wait": "textDocument/publishDiagnostics", "uri": "file://$ROOT/carry/main.c"},
+ {"send": {"id": 2, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

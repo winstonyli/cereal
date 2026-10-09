@@ -1,0 +1,15 @@
+[
+ {"env": {"CEREAL_LSP_CHECK_MAX": "100"}},
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/skip", "capabilities": {"general": {"positionEncodings": ["utf-8", "utf-16"]}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"note": "a unit over the check limit: one publication (the macro phase's), with an Information notice at line 1 instead of compiler errors"},
+ {"open": "skip/main.c"},
+ {"idle": true},
+ {"waitall": "textDocument/publishDiagnostics", "uri": "file://$ROOT/skip/main.c"},
+ {"note": "edited under the limit: no notice, and the check runs"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/skip/main.c", "version": 2}, "contentChanges": [{"text": "int f(void)\n{\n    return a1;\n}\n"}]}}},
+ {"idle": true},
+ {"waitall": "textDocument/publishDiagnostics", "uri": "file://$ROOT/skip/main.c"},
+ {"send": {"id": 2, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

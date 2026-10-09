@@ -30,6 +30,7 @@ decls.c:14:22 REF func later -> #15
 decls.c:15:5 DEF func later -> #15
 decls.c:15:15 DEF param v -> #16
 decls.c:15:27 REF param v -> #16
+decls.c:17:5 DECL func nodef -> #17
 #0 obj t external tentative
 #1 obj d external
 #2 obj e external
@@ -47,3 +48,4 @@ decls.c:15:27 REF param v -> #16
 #14 func h external
 #15 func later external implicit
 #16 param v
+#17 func nodef external

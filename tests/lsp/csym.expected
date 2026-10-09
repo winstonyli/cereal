@@ -402,7 +402,8 @@
    "severity": 1,
    "source": "cereal"
   }
- ]
+ ],
+ "version": 1
 }
 >> textDocument/definition
 [
