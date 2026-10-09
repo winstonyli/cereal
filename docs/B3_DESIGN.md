@@ -456,8 +456,10 @@ The decl counts grow by the eager system declarations (3.4) and the
 nameless decls; the file count by headers that now hold a kept scope.
 Both dense files end slightly over the ~30 MB budget, as section 7
 expected for the second; accepted. Putting `scope` and `parent` in one
-field (a member has no scope of its own) would save about 1.3 MB on the
-first; not done. Index build time: zstd.c `--verify-symbols` best of 7,
+field would save about 1.3 MB on the first; not done, and the premise
+was wrong: an enumerator of a block-scope enum needs both (`visible`
+reads its scope). Exact merging needs a side table for those; parked as
+not worth about 4 bytes per decl. Index build time: zstd.c `--verify-symbols` best of 7,
 two rounds, 0.161/0.149 s before and 0.161/0.134 s after: no measurable
 change (machine shared, about 56% CPU load; Defender real-time
 protection off).

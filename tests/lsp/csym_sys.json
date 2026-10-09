@@ -1,0 +1,12 @@
+[
+ {"write": "csym_sys/.cereal", "text": "-isystem $ROOT/csym_sys/sys\n"},
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/csym_sys", "capabilities": {"general": {"positionEncodings": ["utf-8", "utf-16"]}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"open": "csym_sys/main.c"},
+ {"idle": true},
+ {"note": "signatureHelp for functions declared in a system header (-isystem): a plain one, then a variadic one at its second argument"},
+ {"send": {"id": 2, "method": "textDocument/signatureHelp", "params": {"textDocument": {"uri": "file://$ROOT/csym_sys/main.c"}, "position": {"line": 3, "character": 31}}}},
+ {"send": {"id": 3, "method": "textDocument/signatureHelp", "params": {"textDocument": {"uri": "file://$ROOT/csym_sys/main.c"}, "position": {"line": 4, "character": 24}}}},
+ {"send": {"id": 4, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

@@ -1,0 +1,74 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider"
+ ]
+}
+>> initialized
+>> didOpen csym_sys/main.c
+>> (idle)
+## signatureHelp for functions declared in a system header (-isystem): a plain one, then a variadic one at its second argument
+>> textDocument/signatureHelp
+{
+ "activeParameter": 0,
+ "activeSignature": 0,
+ "signatures": [
+  {
+   "documentation": "func fake_len: long unsigned int(const char *)",
+   "label": "fake_len(const char *s)",
+   "parameters": [
+    {
+     "label": [
+      9,
+      22
+     ]
+    }
+   ]
+  }
+ ]
+}
+>> textDocument/signatureHelp
+{
+ "activeParameter": 1,
+ "activeSignature": 0,
+ "signatures": [
+  {
+   "documentation": "func fake_printf: int(const char *, ...)",
+   "label": "fake_printf(const char *restrict fmt, ...)",
+   "parameters": [
+    {
+     "label": [
+      12,
+      36
+     ]
+    },
+    {
+     "label": [
+      38,
+      41
+     ]
+    }
+   ]
+  }
+ ]
+}
+>> shutdown
+null
+>> exit
+exit 0
