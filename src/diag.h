@@ -124,6 +124,8 @@ typedef struct DiagEngine {
 
 /* cexpr.c: gcc's known-headers table */
 const char *std_header(const char *name);
+/* PRId64, SCNu8, ...: the format macros gcc offers after a string literal */
+bool inttypes_fmt_macro(const char *name);
 /* A note suggesting the #include of hdr ("<stdio.h>").  gcc puts the first
  * note per header where the #include would go, with the fix-it that adds it
  * (owned by the note), and later ones at loc. */

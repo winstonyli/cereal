@@ -1,0 +1,22 @@
+fixit-lognot.c:2:33: warning: logical not is only applied to the left hand side of comparison [-Wlogical-not-parentheses]
+    2 | int f(int a, int b) { return !a == b; }
+      |                                 ^
+fixit-lognot.c:2:30: note: add parentheses around left hand side expression to silence this warning
+    2 | int f(int a, int b) { return !a == b; }
+      |                              ^
+fix-it:"fixit-lognot.c":{2:30-2:30}:"("
+fix-it:"fixit-lognot.c":{2:32-2:32}:")"
+fixit-lognot.c:3:39: warning: logical not is only applied to the left hand side of comparison [-Wlogical-not-parentheses]
+    3 | int g(int a, int b) { return !(a + 1) < b; }
+      |                                       ^
+fixit-lognot.c:3:30: note: add parentheses around left hand side expression to silence this warning
+    3 | int g(int a, int b) { return !(a + 1) < b; }
+      |                              ^
+fix-it:"fixit-lognot.c":{3:30-3:30}:"("
+fix-it:"fixit-lognot.c":{3:38-3:38}:")"
+fixit-lognot.c:4:30: warning: suggest parentheses around operand of '!' or change '&' to '&&' or '!' to '~' [-Wparentheses]
+    4 | int h(int a, int b) { return !a & b; }
+      |                              ^
+fixit-lognot.c:5:26: warning: logical not is only applied to the left hand side of comparison [-Wlogical-not-parentheses]
+    5 | int k(int b) { return !5 == b; }
+      |                          ^

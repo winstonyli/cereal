@@ -1,0 +1,49 @@
+fixit-braces.c:3:16: warning: missing braces around initializer [-Wmissing-braces]
+    3 | int a1[2][2] = {1, 2, 3, 4};
+      |                ^
+fix-it:"fixit-braces.c":{3:17-3:17}:"{"
+fix-it:"fixit-braces.c":{3:21-3:21}:"}"
+fix-it:"fixit-braces.c":{3:23-3:23}:"{"
+fix-it:"fixit-braces.c":{3:27-3:27}:"}"
+fixit-braces.c:4:15: warning: missing braces around initializer [-Wmissing-braces]
+    4 | struct P p1 = {1, 2, 3};
+      |               ^
+fix-it:"fixit-braces.c":{4:16-4:16}:"{"
+fix-it:"fixit-braces.c":{4:20-4:20}:"}"
+fixit-braces.c:5:18: warning: missing braces around initializer [-Wmissing-braces]
+    5 | struct P p2[2] = {1, 2, 3, 4, 5, 6};
+      |                  ^
+fix-it:"fixit-braces.c":{5:19-5:19}:"{{"
+fix-it:"fixit-braces.c":{5:23-5:23}:"}"
+fix-it:"fixit-braces.c":{5:26-5:26}:"}"
+fix-it:"fixit-braces.c":{5:28-5:28}:"{{"
+fix-it:"fixit-braces.c":{5:32-5:32}:"}"
+fix-it:"fixit-braces.c":{5:35-5:35}:"}"
+fixit-braces.c:6:19: warning: missing braces around initializer [-Wmissing-braces]
+    6 | int a3[2][2][2] = {1, 2, 3, 4, 5, 6, 7, 8};
+      |                   ^
+fix-it:"fixit-braces.c":{6:20-6:20}:"{{"
+fix-it:"fixit-braces.c":{6:24-6:24}:"}"
+fix-it:"fixit-braces.c":{6:26-6:26}:"{"
+fix-it:"fixit-braces.c":{6:30-6:30}:"}}"
+fix-it:"fixit-braces.c":{6:32-6:32}:"{{"
+fix-it:"fixit-braces.c":{6:36-6:36}:"}"
+fix-it:"fixit-braces.c":{6:38-6:38}:"{"
+fix-it:"fixit-braces.c":{6:42-6:42}:"}}"
+fixit-braces.c:7:16: warning: missing braces around initializer [-Wmissing-braces]
+    7 | int a4[2][2] = {1 , 2 , 3 , 4 ,};
+      |                ^
+fix-it:"fixit-braces.c":{7:17-7:17}:"{"
+fix-it:"fixit-braces.c":{7:23-7:23}:"}"
+fix-it:"fixit-braces.c":{7:25-7:25}:"{"
+fix-it:"fixit-braces.c":{7:32-7:32}:"}"
+fixit-braces.c:8:16: warning: missing braces around initializer [-Wmissing-braces]
+    8 | int a5[2][2] = {{1, 2}, 3, 4};
+      |                ^
+fix-it:"fixit-braces.c":{8:25-8:25}:"{"
+fix-it:"fixit-braces.c":{8:29-8:29}:"}"
+fixit-braces.c:10:20: warning: missing braces around initializer [-Wmissing-braces]
+   10 | void g(void) { use((struct P){1, 2, 3}); }
+      |                    ^
+fix-it:"fixit-braces.c":{10:31-10:31}:"{"
+fix-it:"fixit-braces.c":{10:35-10:35}:"}"

@@ -332,6 +332,19 @@ static bool func_has_vla_unspec(Checker *c, uint32_t f)
 
 static void warn_if_shadowing(Checker *c, const CSym *x);
 
+/* -Wstrict-prototypes: `()` to `(void)` on the function declarator f (its
+ * node's token is the '('); nothing when the parentheses are not adjacent. */
+static void fix_void_params(Checker *c, Diagnostic *d, uint32_t f,
+                            FixApplic app)
+{
+    uint32_t t;
+    if (!d || f == NO_NODE)
+        return;
+    t = cnode(c, f)->tok;
+    if (tpunct(c, t) == P_LPAREN && tpunct(c, t + 1) == P_RPAREN)
+        cfix_ins(c, d, 0, t, true, "void", app);
+}
+
 /* grokparms: checks on the parameter list, at input_location. */
 static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
                       const PInfo *pi, bool *incomplete_def)
@@ -345,8 +358,10 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
         cerror(c, il, "'[*]' not allowed in other than function prototype "
                "scope");
     if (empty && !funcdef)
-        cwarn(c, il, "strict-prototypes", "function declaration isn't a "
-              "prototype");
+        /* callers elsewhere may pass arguments to a declared (): MAYBE */
+        fix_void_params(c, cwarn_d(c, DL_WARNING, il, "strict-prototypes",
+                                   "function declaration isn't a prototype"),
+                        f, FIX_MAYBE);
     if (pi->krlist) {
         if (!funcdef) {
             uint32_t last = NO_NODE;
@@ -3420,8 +3435,10 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     inl = (s.flags & CSF_INLINE) != 0;
     if (diag_enabled(c->diag, "strict-prototypes") && !is_prototype(c, s.ty) &&
         isnt_proto(c, have_old ? &oldc : NULL))
-        cwarn(c, loc, "strict-prototypes", "function declaration isn't a "
-              "prototype");
+        /* a definition's () already takes no arguments: (void) is SAFE */
+        fix_void_params(c, cwarn_d(c, DL_WARNING, loc, "strict-prototypes",
+                                   "function declaration isn't a prototype"),
+                        funcdef_fnode(c, top), FIX_SAFE);
     else if (diag_enabled(c->diag, "missing-prototypes") && pub && !is_main &&
              isnt_proto(c, have_old ? &oldc : NULL) && !inl)
         cwarn(c, loc, "missing-prototypes", "no previous prototype for '%s'",

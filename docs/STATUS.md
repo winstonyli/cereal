@@ -15,16 +15,19 @@ in [ROADMAP.md](ROADMAP.md).
 - Fix-its (ROADMAP C1): `-fdiagnostics-parseable-fixits`, a JSON `fixits` array,
   `-fdiagnostics-generate-patch` and `cereal fix --edits=FILE --diff` (the edit
   builder's testing input). Over the 7042 C files of gcc.dg and c-c++-common the
-  covered fix-its (header notes, did-you-mean, `->`, expected tokens) are
-  identical to gcc-13's: 0 differ, 31 files differ in the diagnostic itself
-  (`bench/tools/fixits.sh`). `cereal fix` proper is C3.
+  covered fix-its (header notes, did-you-mean, `->`, expected tokens, missing
+  braces, logical-not, xor, format, `struct`, PRI/SCN) match gcc-13's except
+  2 files (zero-size-array missing braces): 2 differ, 32 files differ in the
+  diagnostic itself (`bench/tools/fixits.sh`; Round 213, ROADMAP C2). Also
+  cereal-only: hygiene body, assignment and `(void)` fix-its.
+  `cereal fix` proper is C3.
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
 - gcc.dg: 3908 of 3910 files run give the same diagnostics as gcc (message,
   line and column); 2 differ.
 - c-c++-common: 637 of 638 identical; 1 differs (636 before pr57653 and pr57653-2 stopped being skipped, Round 210).
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 289 of 289 identical (285 before the four `missing-*` -MD tests, Round 209). A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1989 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 619 files.
+- 2014 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 628 files.
 - uvloop's `loop.c` checks in about 3.89 G instructions (callgrind).
 - The LSP server covers macros and C names: definition, declaration,
   type definition, references, highlight, hover, rename, document
@@ -69,7 +72,7 @@ c-c++-common: dump-ada-spec-14 (gcc's Ada dumper).
 
 
 Round 210, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 637 of 638,
-cpp 289 of 289; `tests/run.sh` 1989 passed (Round 212).  Remaining gcc.dg diffs: pr56355-1,
+cpp 289 of 289; `tests/run.sh` 2014 passed (Round 213).  Remaining gcc.dg diffs: pr56355-1,
 pr83844 (above).
 Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - `char * const _Atomic c` parameter of main prints as `char * _Atomic`

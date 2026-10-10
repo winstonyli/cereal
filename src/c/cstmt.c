@@ -908,27 +908,30 @@ static void finish_switch(Checker *c, CStmt *s)
 
 /* c_objc_common_truthvalue_conversion's errors and the -Wparentheses
  * warning of c_common_truthvalue_conversion. */
-/* Is there an unparenthesized assignment the truth-value conversion sees
- * (through the arms of ?:)? */
-static bool assign_truth(Checker *c, uint32_t e)
+/* The unparenthesized assignment the truth-value conversion sees (through
+ * the arms of ?:), NO_NODE if none. */
+static uint32_t assign_truth(Checker *c, uint32_t e)
 {
-    uint32_t kids[4], n;
+    uint32_t kids[4], n, r;
     switch (tg(c, e)) {
     case N_ASSIGN:
-        return c->u->toks[c->nodes[e].tok].t.punct == P_ASSIGN;
+        return c->u->toks[c->nodes[e].tok].t.punct == P_ASSIGN ? e : NO_NODE;
     case N_COND:
         n = node_children(c->nodes, e, kids, 4);
-        if (n == 3)
-            return assign_truth(c, kids[1]) || assign_truth(c, kids[2]);
-        return n == 2 && assign_truth(c, kids[1]);
+        if (n == 3) {
+            r = assign_truth(c, kids[1]);
+            return r != NO_NODE ? r : assign_truth(c, kids[2]);
+        }
+        return n == 2 ? assign_truth(c, kids[1]) : NO_NODE;
     default:
-        return false;
+        return NO_NODE;
     }
 }
 
 static void cond_check(Checker *c, uint32_t e)
 {
     TypeId t;
+    uint32_t a;
     if (node_err(c, e) || !cexpr_rvalue_ok(c, e))
         return;
     t = cexpr_rvalue_type(c, e);
@@ -952,9 +955,17 @@ static void cond_check(Checker *c, uint32_t e)
     default:
         break;
     }
-    if (assign_truth(c, e))
-        cwarn(c, first_loc(c, e), "parentheses", "suggest parentheses around "
-              "assignment used as truth value");    cexpr_truth_warn(c, e, first_loc(c, e));
+    a = assign_truth(c, e);
+    if (a != NO_NODE) {
+        /* cereal-only fix (gcc has none): the parentheses keep the meaning
+         * but silence a warning that is often a real = for == */
+        Diagnostic *d = cwarn_d(c, DL_WARNING, first_loc(c, e), "parentheses",
+                                "suggest parentheses around assignment used "
+                                "as truth value");
+        cfix_ins(c, d, 0, first_tok(c, a), false, "(", FIX_MAYBE);
+        cfix_ins(c, d, 0, after_tok(c, a) - 1, true, ")", FIX_MAYBE);
+    }
+    cexpr_truth_warn(c, e, first_loc(c, e));
 }
 
 static uint32_t child_index(Checker *c, uint32_t p, uint32_t i, uint32_t *n)

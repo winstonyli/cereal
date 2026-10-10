@@ -8,9 +8,10 @@ enum or const suggestions) are out of scope here and get their own designs
 Claims about the code cite `file:line` at that commit. Claims about gcc-13
 were probed with gcc 13.4.0 on WSL (section 13). Numbers marked "est." are
 estimates. **Status: C1 is implemented (HISTORY Round 212, section 8 "C1
-as built"); C2 to C4 are not.** Where the text below still describes C1 as
-future work, "C1 as built" and the probe table (section 13, P11 to P19)
-take precedence.
+as built"); C2 is implemented (Round 213, "C2 as built" below, minus the
+header-guard and cond-typo items); C3 and C4 are not.** Where the text below
+still describes C1 or C2 as future work, "C1 as built", "C2 as built" and the
+probe table (section 13, P11 to P19) take precedence.
 
 ## 1. Decisions in one place
 
@@ -318,11 +319,11 @@ There are 1438 fix-it lines in 201 files when gcc-13 is run with
 | did-you-mean, any kind (97 / 41): undeclared, implicit function, unknown type name, member, `#elsif` to `elif` | `cexpr.c:1805,1871,1903`, `parse.c:1186-1190`, member lookup, `pp.c:2640` | MAYBE | C1 |
 | expected `;` (336 / 30) | `parse.c:3323` via `perr_after_prev` | MAYBE (D6) | C1 |
 | expected `)` `]` `:` `(` `,` (265 / 50) | `parse.c:662` `"expected %s%s"` | INFO | C1 |
-| missing braces (452 / 23) | `cinit.c:1639` | SAFE | C2b |
-| logical-not parentheses note (126 / 10) | `cwarn_expr.c:1324` | MAYBE | C2b |
-| xor used as pow (26 / 2) | `cexpr.c:6243` | MAYBE | C2b |
-| format specifiers (41 / 10) | format checker | MAYBE | C2b |
-| "use 'struct' keyword" (~9) | parse unknown-type path | MAYBE | C2b |
+| missing braces (452 / 23) | `cinit.c:1639` | SAFE | C2b (done, Round 213) |
+| logical-not parentheses note (126 / 10) | `cwarn_expr.c:1324` | MAYBE | C2b (done, Round 213) |
+| xor used as pow (26 / 2) | `cexpr.c:6243` | MAYBE | C2b (done, Round 213) |
+| format specifiers (41 / 10) | format checker | MAYBE | C2b (done, Round 213) |
+| "use 'struct' keyword" (~9) | parse unknown-type path | MAYBE | C2b (done, Round 213) |
 
 Notes on the table:
 
@@ -852,21 +853,71 @@ tests +369, bench +135.
   5. `fixset_diff` supports single-line edits only.
   6. `#line N` without a file name: cereal marks the patch invalid, gcc
      prints a garbage name; not matched (not worth a rule).
-- **Known gaps (not fixed, reported).** Of the 31 diag files: the
+- **Known gaps (not fixed, reported).** Of the 31 diag files (Round 213
+  closed two: the `case` colon message and `PRI*`/`SCN*` macros): the
   `expected ')'`/`']'` fix-its inside attribute and asm operand parsing
-  (attr-assume-2, c2x-attr-*, declspec-18, asmgoto-2); the `case` colon
-  message (gcc: `expected ':' or '...'` at the next token, no fix-it;
-  missing-symbol-2); implicit declaration did-you-mean for functions
-  (20041213-1, redecl-*, pr59963-1, Wimplicit-function-declaration-c89*);
-  `__FILE_`, `__LINE_` and `__builtin_` did-you-mean; `PRI*` macros in
-  `std_names`; the `include <h> or provide a declaration` note in C89 mode
-  (c90-impl-decl-1, Werror-implicit-function-declaration). Separately,
-  the "'f' is declared in header" notes (`ccall.c:348`, builtin
-  mismatch) are at the use in the goldens while gcc puts the first one per
-  header at `include_loc` with a fix-it; converting them changes eight
-  existing goldens, so it is left for a decision.
+  (attr-assume-2, c2x-attr-*, declspec-18, asmgoto-2); implicit declaration
+  did-you-mean for functions (20041213-1, redecl-*, pr59963-1,
+  Wimplicit-function-declaration-c89*); `__FILE_`, `__LINE_` and
+  `__builtin_` did-you-mean; the `include <h> or provide a declaration`
+  note in C89 mode (c90-impl-decl-1, Werror-implicit-function-declaration).
+  (The "'f' is declared in header" notes were converted in Round 213: four
+  goldens changed, see C2 as built.)
+
+### C2 as built (Round 213)
+
+Implemented: the gcc-covered C2b producers and the cereal-only C2 fixes of
+the brief, through `diag_fixit` and the C1 helpers; nothing in C3 or C4.
+
+- **Header notes** (`ccall.c`, builtin mismatch) use `cheader_note`: first
+  note per header at `include_loc` with the `#include` fix-it. Goldens
+  changed (checked against gcc-13 note positions): `attr_fmt_noproto`,
+  `builtin_decl_mismatch`, `misc_122`, `misc_123`.
+- **Missing braces** (`cinit.c`, SAFE). Replicates gcc's model: `{` is
+  recorded when an implicit level is pushed (before its first element),
+  `}` when it is popped (before the following comma, or before the
+  enclosing `}` at the end of a list, so a trailing comma puts it at the
+  `}`); designator-pushed levels add a `}` only; hints keep insertion
+  order and touching ones merge; every explicit pop with the flag set warns
+  with the cumulative hints; range designators warn without fix-its; in a
+  compound literal the warning is at the `(`. Two root-cause fixes came
+  with it: `zeroinit` is now updated after conversion (`{0.5}` for an int
+  is zero) and float truncation in `post_zero`.
+- **Logical-not note**, **xor as pow**, **"use 'struct' keyword"**, **format
+  specifiers** (MAYBE). The format fix-it replaces the whole spec keeping
+  flags, width and precision; the written conversion character is tried
+  first with lengths none, hh, h, l, ll, L, z, t, j, then the first
+  character of each table row; signedness is ignored and an identical
+  replacement is still emitted (gcc does). The logical-not note is not
+  emitted when the operand folds to a constant (gcc does not either).
+- **Cereal-only**: body parens in hygiene (`nowrap` rule), assignment
+  parens (MAYBE), strict-prototypes `()` to `(void)` (SAFE on a
+  definition, MAYBE on a non-defining declaration).
+- `diag_fixit` refuses fix-its with a column above 4096 (gcc's
+  LINE_MAP_MAX_COLUMN_NUMBER).
+- **Tests**: nine `tests/check/fixit-*.c` goldens (assign, braces, case,
+  format, lognot, pri, proto, struct, xor), `tests/lint/hygiene_fixit.c`;
+  `verify.py` learns `// expect-fixit: L:C-L:C "text" APP` (when any are
+  present the set must match exactly). `fixits.sh`: `FIXIT_COVER` extended
+  to the new classes, `FIXIT_SKIP` removed.
+- **Differential**: 7042 files, before 0 differ and 31 diag; after 2 differ
+  and 32 diag (the covered set is wider).
+- **Remaining / deviations**:
+  - 2 differ: the zero-size-array missing-braces files
+    (Wmissing-braces-fixits.c, init-excess-1.c), where gcc pushes and pops
+    repeatedly.
+  - Format fix-its with `%1$d` positional arguments are not produced.
+  - Header-guard and cond-typo INFO items of 4.2 were not in this round.
+  - Diag files added by the wider coverage, all pre-existing gaps:
+    gnu2x-attrs-2 (cereal reports an error on a call through a
+    format-attribute typedef), pr65066 (no scanf signedness warning with a
+    null format target), store_merging_28 (cereal rejects the dg-option
+    `-fno-tree-vectorize`). Closed: missing-symbol-2, spellcheck-inttypes.
 
 ### C2: cereal-only fixes and C2b (est. 5 days, realistic 7 to 12)
+
+Status: done in Round 213 except the header-guard and cond-typo items (see
+"C2 as built").
 
 **Contents**
 

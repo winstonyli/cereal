@@ -40,6 +40,6 @@ misc_122.c:22:37: warning: comparison of integer expressions of different signed
 misc_122.c:25:5: warning: mismatch in argument 2 type of built-in function 'fputs'; expected 'struct FooFile *' [-Wbuiltin-declaration-mismatch]
    25 | int fputs (const char*, struct BarFile*);
       |     ^
-misc_122.c:25:5: note: 'fputs' is declared in header '<stdio.h>'
-   25 | int fputs (const char*, struct BarFile*);
-      |     ^
+misc_122.c:1:1: note: 'fputs' is declared in header '<stdio.h>'
+    1 | // flags: -std=gnu99 -Wall
+      | ^

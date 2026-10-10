@@ -22,9 +22,8 @@
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
 GCC=${FIXITCC:-gcc-13}
-FIXIT_COVER=${FIXIT_COVER:-"; did you mean .|include .<|is defined in header|is a pointer; did you mean|expected .[]),;:(]."}
-FIXIT_SKIP=${FIXIT_SKIP:-"xor-used-as-pow"}
-export ROOT CEREAL GCC FIXIT_COVER FIXIT_SKIP
+FIXIT_COVER=${FIXIT_COVER:-"; did you mean .|include .<|is defined in header|is a pointer; did you mean|expected .[]),;:(].|missing braces around initializer|add parentheses around left hand side|result of .[0-9]+.[0-9]+. is|by using a hexadecimal constant|keyword to refer to the type|expects argument of type"}
+export ROOT CEREAL GCC FIXIT_COVER
 
 if [ "${1:-}" = --one ]; then # --one DIR FILE FLAGS: "same" or "differ" + diff on stderr
     d=$2 f=$3 flags=$4
@@ -46,9 +45,9 @@ if [ "${1:-}" = --one ]; then # --one DIR FILE FLAGS: "same" or "differ" + diff 
     pick() { # the covered fix-its with their headers, then the patch (unless
         # gcc printed a fix-it of a class cereal does not produce, which the
         # patch would contain)
-        awk -v cover="$FIXIT_COVER" -v skip="$FIXIT_SKIP" -v nopatch="$nopatch" '
+        awk -v cover="$FIXIT_COVER" -v nopatch="$nopatch" '
             /^[^ ].*: (fatal error|error|warning|note): / { hdr = $0; next }
-            /^fix-it:/ { if (hdr ~ cover && hdr !~ skip) print hdr " => " $0; next }
+            /^fix-it:/ { if (hdr ~ cover) print hdr " => " $0; next }
             /^--- / { patch = 1 }
             patch && !nopatch { print }' "$1"
     }
@@ -58,9 +57,9 @@ if [ "${1:-}" = --one ]; then # --one DIR FILE FLAGS: "same" or "differ" + diff 
         LC_ALL=C timeout 60 "$p" -fsyntax-only -fdiagnostics-parseable-fixits \
             $pf $flags "$f" >/dev/null 2>"$w/$t.err" </dev/null
         if [ $t = g ]; then
-            nopatch=$(awk -v cover="$FIXIT_COVER" -v skip="$FIXIT_SKIP" '
+            nopatch=$(awk -v cover="$FIXIT_COVER" '
                 /^[^ ].*: (fatal error|error|warning|note): / { hdr = $0; next }
-                /^fix-it:/ { if (!(hdr ~ cover && hdr !~ skip)) n++ }
+                /^fix-it:/ { if (hdr !~ cover) n++ }
                 END { print (n > 0) }' "$w/g.err")
         fi
         pick "$w/$t.err" >"$w/$t.fix" || { echo differ; echo "== $f: awk failed" >&2; exit 0; }

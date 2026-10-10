@@ -4,9 +4,9 @@ misc_123.c:1:32: error: expected expression before ']' token
 misc_123.c:1:6: warning: conflicting types for built-in function '__builtin_exit'; expected 'void(int)' [-Wbuiltin-declaration-mismatch]
     1 | void __builtin_exit (int, int[+]);
       |      ^
-misc_123.c:1:6: note: '__builtin_exit' is declared in header '<stdlib.h>'
+misc_123.c:1:1: note: '__builtin_exit' is declared in header '<stdlib.h>'
     1 | void __builtin_exit (int, int[+]);
-      |      ^
+      | ^
 misc_123.c:3:27: error: expected expression before ']' token
     3 | void __builtin_trap (int[+]);
       |                           ^

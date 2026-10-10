@@ -815,6 +815,7 @@ static const StdName std_names[] = {
     {"PTRDIFF_MAX", "<stdint.h>"}, {"PTRDIFF_MIN", "<stdint.h>"},
     {"SIG_ATOMIC_MAX", "<stdint.h>"}, {"SIG_ATOMIC_MIN", "<stdint.h>"},
     {"SIZE_MAX", "<stdint.h>"}, {"WINT_MAX", "<stdint.h>"},
+    {"INTPTR_MAX", "<stdint.h>"}, {"UINTPTR_MAX", "<stdint.h>"},
     {"WINT_MIN", "<stdint.h>"},
     {"INT8_MAX", "<stdint.h>"}, {"INT16_MAX", "<stdint.h>"},
     {"INT32_MAX", "<stdint.h>"}, {"INT64_MAX", "<stdint.h>"},
@@ -838,9 +839,28 @@ static const StdName std_names[] = {
     {"false", "<stdbool.h>"}
 };
 
+/* <inttypes.h>: gcc-13 knows PRI{d,i,o,u,x,X}{8,16,32,64,PTR} and
+ * SCN{d,i,o,u,x}{8,16,32,64,PTR} (not the LEAST/FAST/MAX forms; probed). */
+bool inttypes_fmt_macro(const char *n)
+{
+    bool pri = !strncmp(n, "PRI", 3);
+    const char *conv = pri ? "dioxuX" : "dioxu", *sfx[] = {"8", "16", "32", "64", "PTR"};
+    size_t k;
+    if (!pri && strncmp(n, "SCN", 3))
+        return false;
+    if (!n[3] || !strchr(conv, n[3]))
+        return false;
+    for (k = 0; k < sizeof sfx / sizeof *sfx; k++)
+        if (!strcmp(n + 4, sfx[k]))
+            return true;
+    return false;
+}
+
 const char *std_header(const char *name)
 {
     size_t k;
+    if (inttypes_fmt_macro(name))
+        return "<inttypes.h>";
     for (k = 0; k < sizeof std_names / sizeof *std_names; k++)
         if (!strcmp(std_names[k].name, name))
             return std_names[k].header;
@@ -6159,6 +6179,7 @@ static void xor_pow(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     unsigned long long l, r;
     Diagnostic *d;
     char sug[64];
+    int own;
     if (!(c->ef[a] & EF_DECIMAL) || !(c->ef[b] & EF_DECIMAL) ||
         !has_ival(c, a) || !has_ival(c, b) || ntag(c, sa) != N_NUMBER ||
         ntag(c, sb) != N_NUMBER || tfrom_macro(c, c->nodes[sa].tok) ||
@@ -6184,9 +6205,20 @@ static void xor_pow(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), "xor-used-as-pow",
                 "result of '%llu^%llu' is %llu; did you mean %s?", l, r, l ^ r,
                 sug);
+    /* gcc: the base and the operator (a touching pair merges); no hint for
+     * 2^63 and up.  The note's hint is the hexadecimal base. */
+    if (l == 10 || r <= 62) {
+        cfix_range(c, d, 0, first_tok(c, a), after_tok(c, a) - 1,
+                   l == 10 || r <= 30 ? "1" : "1LL", FIX_MAYBE);
+        cfix_range(c, d, 0, c->nodes[i].tok, c->nodes[i].tok,
+                   l == 10 ? "e" : "<<", FIX_MAYBE);
+    }
+    own = d ? (int)d->notes.len + 1 : 0;
     cnote(c, d, first_loc(c, a), "you can silence this warning by using a "
           "hexadecimal constant (%s rather than %llu)", l == 2 ? "0x2" : "0xa",
           l);
+    cfix_range(c, d, own, first_tok(c, a), after_tok(c, a) - 1,
+               l == 2 ? "0x2" : "0xa", FIX_MAYBE);
 }
 
 /* pointer +/- integer */

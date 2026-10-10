@@ -1245,7 +1245,9 @@ bool diag_fixit(DiagEngine *d, Diagnostic *dg, int owner, SrcLoc b, SrcLoc e,
         srcmgr_linecol(f, b, &l1, &c1);
         srcmgr_linecol(f, e, &l2, &c2);
         /* libcpp: one line; a newline only last, in an insertion at col 1 */
-        ok = l1 == l2 && (!memchr(text, '\n', n) ||
+        /* past LINE_MAP_MAX_COLUMN_NUMBER libcpp has no column */
+        ok = l1 == l2 && c1 <= 4096 && c2 <= 4096 &&
+             (!memchr(text, '\n', n) ||
                           (b == e && c1 == 1 && text[n - 1] == '\n' &&
                            memchr(text, '\n', n) == text + n - 1));
     }

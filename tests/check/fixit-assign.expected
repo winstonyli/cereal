@@ -1,0 +1,10 @@
+fixit-assign.c:4:9: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+    4 |     if (a = b)
+      |         ^
+fix-it:"fixit-assign.c":{4:9-4:9}:"("
+fix-it:"fixit-assign.c":{4:14-4:14}:")"
+fixit-assign.c:6:12: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+    6 |     while (a = b)
+      |            ^
+fix-it:"fixit-assign.c":{6:12-6:12}:"("
+fix-it:"fixit-assign.c":{6:17-6:17}:")"

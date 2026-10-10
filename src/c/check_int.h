@@ -701,6 +701,16 @@ static inline void cfix_tok(Checker *c, Diagnostic *d, int owner, uint32_t tok,
                          &c->u->toks[tok],
                          arena_strdup(c->diag->arena, text), app);
 }
+/* Replaces tokens first..last with text. */
+static inline void cfix_range(Checker *c, Diagnostic *d, int owner,
+                              uint32_t first, uint32_t last, const char *text,
+                              FixApplic app)
+{
+    if (d && first <= last && last < c->u->ntoks)
+        fix_replace_toks(c->diag, d, owner, c->sm, c->in, &c->u->toks[first],
+                         &c->u->toks[last],
+                         arena_strdup(c->diag->arena, text), app);
+}
 /* Inserts text before token tok (or after it) in the fix-its of d. */
 static inline void cfix_ins(Checker *c, Diagnostic *d, int owner, uint32_t tok,
                             bool after, const char *text, FixApplic app)

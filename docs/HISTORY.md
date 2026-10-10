@@ -4128,3 +4128,37 @@ under TSan: 0 reports. Not done: the eight goldens that put "is declared in
 header" notes at the use (gcc: first per header at `include_loc`, with a
 fix-it) are unchanged; see C_DESIGN "Known gaps". Scratch lived in
 `~/c1cf`, not `/tmp` (the WSL tmpfs is wiped when the distro idles).
+
+## Round 213: ROADMAP C2, checker and cereal-only fix-its
+
+Part 1. The "'f' is declared in header" notes (`ccall.c`, builtin mismatch)
+now use `cheader_note`: first note per header at `include_loc` with the
+`#include` fix-it, as gcc. Four goldens changed (`attr_fmt_noproto`,
+`builtin_decl_mismatch`, `misc_122`, `misc_123`), each checked against
+gcc-13's note positions. Parity gaps closed: `INTPTR_MAX`/`UINTPTR_MAX` and
+the `PRI*`/`SCN*` macros after a string literal (the `<inttypes.h>` hint in
+`expected()`/`expect()`), and the `case` colon message (`expected ':' or
+'...'`). Skipped: attribute/asm operand `)`/`]` fix-its, function
+did-you-mean for implicit declarations, `__FILE_`/`__LINE_`/`__builtin_`
+did-you-mean, the C89 "include <h> or provide a declaration" note; each
+needs its own mechanism.
+
+Part 2. Slice C2 as scoped in C_DESIGN: missing braces (SAFE; gcc's push and
+pop model replicated, with two root-cause fixes in `cinit.c`: `zeroinit`
+after conversion, float truncation in `post_zero`), logical-not note, xor as
+pow, "use 'struct' keyword", format specifiers (MAYBE), hygiene body parens,
+assignment parens, strict-prototypes `(void)`. `diag_fixit` refuses columns
+above 4096 as gcc does; the logical-not note is skipped for constant
+operands as gcc does. `verify.py` learns `// expect-fixit: L:C-L:C "text"
+APP`. Tests: nine `tests/check/fixit-*.c` goldens, `tests/lint/hygiene_fixit.c`.
+`fixits.sh`: `FIXIT_COVER` widened, `FIXIT_SKIP` removed. Differential over
+7042 files: 0 differ and 31 diag before; 2 differ and 32 diag after (the
+two zero-size-array missing-braces files; added diag files gnu2x-attrs-2,
+pr65066, store_merging_28 are pre-existing gaps newly covered; closed:
+missing-symbol-2, spellcheck-inttypes). Source +346/-44 in 14 files, tests
++50/-17 plus 160 lines of new sources and 212 of expected output, bench
++6/-7. Gates: run.sh 2014 passed (was 1989); gate.sh: san 2014 passed, 628
+files, 0 findings; gcc.dg 3908 of 3910, c-c++-common 637 of 638, cpp 289 of
+289 (unchanged); callgrind 3.899 G (3.895 G). `fixits.sh` with no argument:
+17 cases, 0 differ. TSan LSP not run (lsp/ and config.c untouched). Not
+done: header-guard and cond-typo INFO fix-its, `%1$d` format fix-its.

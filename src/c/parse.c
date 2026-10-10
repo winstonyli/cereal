@@ -628,6 +628,25 @@ static void fallthrough_not_followed(Parser *p, uint32_t i)
               "by ';'");
 }
 
+/* c_parser_error: a PRI/SCN macro right after a string literal is a missing
+ * #include <inttypes.h> (d is the error just reported before token i). */
+static void inttypes_hint(Parser *p, Diagnostic *d, uint32_t i)
+{
+    char buf[SC_MAXLEN + 1];
+    const Tok *t;
+    if (!d || i == 0 || !fill(p, i) || p->toks.data[i - 1].t.kind != TK_STRING)
+        return;
+    t = &p->toks.data[i].t;
+    if (t->kind != TK_IDENT || t->len >= SC_MAXLEN)
+        return;
+    memcpy(buf, tok_text_raw(p->sm, p->in, t), t->len);
+    buf[t->len] = 0;
+    if (inttypes_fmt_macro(buf))
+        diag_header_note(p->diag, d, spell_loc(p, i), "<inttypes.h>",
+                         "'%s' is defined in header '<inttypes.h>'; did you "
+                         "forget to '#include <inttypes.h>'?", buf);
+}
+
 static void expected(Parser *p, const char *what)
 {
     char buf[160];
@@ -642,7 +661,8 @@ static void expected(Parser *p, const char *what)
                 tok_desc(p, i, buf, sizeof buf));
         return;
     }
-    perr(p, i, "expected %s%s", what, tok_desc(p, i, buf, sizeof buf));
+    inttypes_hint(p, perr(p, i, "expected %s%s", what,
+                          tok_desc(p, i, buf, sizeof buf)), i);
 }
 
 /* c_parser_require of a token that never moves "after the previous": at the
@@ -669,11 +689,13 @@ static bool expect(Parser *p, Punct x)
     /* gcc's c_parser_require puts a missing closing token, ';', ',' or
      * ':' after the previous token, unless an error is already pending */
     if (!p->err.live && (x == P_RPAREN || x == P_RBRACKET || x == P_SEMI ||
-                         x == P_COMMA || x == P_COLON))
-        fix_missing(p, perr_after_prev(p, ci(p), "expected %s%s", what,
-                                       tok_desc(p, ci(p), buf, sizeof buf)),
-                    ci(p), punct_spelling[x], x == P_SEMI ? FIX_MAYBE : FIX_INFO);
-    else if (!fill(p, ci(p)) && p->toks.len)
+                         x == P_COMMA || x == P_COLON)) {
+        Diagnostic *d = perr_after_prev(p, ci(p), "expected %s%s", what,
+                                        tok_desc(p, ci(p), buf, sizeof buf));
+        fix_missing(p, d, ci(p), punct_spelling[x],
+                    x == P_SEMI ? FIX_MAYBE : FIX_INFO);
+        inttypes_hint(p, d, ci(p));
+    } else if (!fill(p, ci(p)) && p->toks.len)
         perr_at(p, ci(p), eof_loc(p), "expected %s%s", what,
                 tok_desc(p, ci(p), buf, sizeof buf));
     else if (x == P_LPAREN) {
@@ -1191,8 +1213,13 @@ static void unknown_type_error(Parser *p, const PTok *t)
         len = (int)strlen(name);
     }
     if (k >= SYM_TAG_STRUCT) {
-        perr(p, ci(p), "unknown type name '%.*s'; use '%s' keyword to refer "
-             "to the type", len, name, kw[k - SYM_TAG_STRUCT]);
+        Diagnostic *d = perr(p, ci(p), "unknown type name '%.*s'; use '%s' "
+                             "keyword to refer to the type", len, name,
+                             kw[k - SYM_TAG_STRUCT]);
+        if (d)
+            fix_insert_before(p->diag, d, 0, t,
+                              arena_printf(p->diag->arena, "%s ",
+                                           kw[k - SYM_TAG_STRUCT]), FIX_MAYBE);
         return;
     }
     memcpy(buf, raw, bn);
@@ -2989,8 +3016,9 @@ static void statement(Parser *p)
         if (accept(p, P_ELLIPSIS)) {
             parse_cond(p);
             flags |= NF_RANGE;
-        }
-        expect(p, P_COLON);
+            expect(p, P_COLON);
+        } else if (!accept(p, P_COLON))
+            expected(p, "':' or '...'");   /* gcc: at the next token, no fix-it */
         label_body(p);
         emit(p, N_CASE, i, start, flags);
         return;

@@ -326,6 +326,7 @@ static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
     int depth = 0, i, top_semis = 0, last_semi = -1;
     bool decl = false, stmt_kw = false, top_brace = false, top_else = false;
     bool binop = false, unbalanced = false, self_ref = false;
+    bool nowrap = false;        /* # ## or a top-level comma: no parenthesis fix */
     const Tok *binop_tok = NULL;
     Diagnostic *d;
 
@@ -336,6 +337,8 @@ static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
         decl = true; /* T name ...: a declaration */
     for (i = 0; i < n; i++) {
         const Tok *t = v[i], *prev = i ? v[i - 1] : NULL;
+        if (tok_is_punct(t, P_HASH) || tok_is_punct(t, P_HASHHASH))
+            nowrap = true;
         if (t->kind == TK_IDENT && tok_ident(in, t) == m->name &&
             !(prev && (tok_is_punct(prev, P_DOT) || tok_is_punct(prev, P_ARROW))))
             self_ref = true;
@@ -361,6 +364,8 @@ static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
         }
         if (depth != 0)
             continue;
+        if (tok_is_punct(t, P_COMMA))
+            nowrap = true;
         if (tok_is_punct(t, P_SEMI)) {
             top_semis++;
             last_semi = i;
@@ -453,9 +458,17 @@ static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
                         "differently", m->name->str, spell(a, binop_tok),
                         m->name->str);
         diag_set_range(d, v[0]->loc, v[n - 1]->loc + v[n - 1]->len);
-        if (d)
+        if (d) {
             diag_note(a->diag, d, v[0]->loc, "wrap the replacement list in "
                                              "parentheses");
+            if (!nowrap) {      /* the fix is the note's own: owner = that note */
+                int own = (int)d->notes.len;
+                fix_tok_insert(a->diag, d, own, a->sm, in, v[0], false, "(",
+                               FIX_SAFE);
+                fix_tok_insert(a->diag, d, own, a->sm, in, v[n - 1], true, ")",
+                               FIX_SAFE);
+            }
+        }
     }
 }
 

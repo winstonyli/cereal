@@ -1,0 +1,12 @@
+fixit-struct.c:5:1: error: unknown type name 'S'; use 'struct' keyword to refer to the type
+    5 | S s;
+      | ^
+fix-it:"fixit-struct.c":{5:1-5:1}:"struct "
+fixit-struct.c:6:1: error: unknown type name 'U'; use 'union' keyword to refer to the type
+    6 | U u;
+      | ^
+fix-it:"fixit-struct.c":{6:1-6:1}:"union "
+fixit-struct.c:7:1: error: unknown type name 'E'; use 'enum' keyword to refer to the type
+    7 | E e;
+      | ^
+fix-it:"fixit-struct.c":{7:1-7:1}:"enum "

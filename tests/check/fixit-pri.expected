@@ -1,0 +1,21 @@
+fixit-pri.c:5:15: error: expected ')' before 'PRId64'
+    5 |     printf("%" PRId64 " %" PRIu32 "\n", x, y);
+      |               ^
+fix-it:"fixit-pri.c":{5:15-5:15}:")"
+fixit-pri.c:3:1: note: 'PRId64' is defined in header '<inttypes.h>'; did you forget to '#include <inttypes.h>'?
+    3 | void f(long long x, unsigned y)
+      | ^
+fix-it:"fixit-pri.c":{3:1-3:1}:"#include <inttypes.h>\n"
+fixit-pri.c:5:13: warning: spurious trailing '%' in format [-Wformat=]
+    5 |     printf("%" PRId64 " %" PRIu32 "\n", x, y);
+      |             ^
+fixit-pri.c:6:14: error: expected ')' before 'SCNd64'
+    6 |     scanf("%" SCNd64, &x);
+      |              ^
+fix-it:"fixit-pri.c":{6:14-6:14}:")"
+fixit-pri.c:6:15: note: 'SCNd64' is defined in header '<inttypes.h>'; did you forget to '#include <inttypes.h>'?
+    6 |     scanf("%" SCNd64, &x);
+      |               ^
+fixit-pri.c:6:12: warning: spurious trailing '%' in format [-Wformat=]
+    6 |     scanf("%" SCNd64, &x);
+      |            ^

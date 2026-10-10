@@ -13,4 +13,9 @@ bool fix_tok_replace(DiagEngine *d, Diagnostic *dg, int owner,
                      const SrcMgr *sm, const Interner *in, const Tok *t,
                      const char *text, FixApplic app);
 
+/* Inserts text before t (after: after it); the same token rules. */
+bool fix_tok_insert(DiagEngine *d, Diagnostic *dg, int owner,
+                    const SrcMgr *sm, const Interner *in, const Tok *t,
+                    bool after, const char *text, FixApplic app);
+
 #endif

@@ -1,0 +1,43 @@
+fixit-xor.c:2:12: warning: result of '2^8' is 10; did you mean '1 << 8' (256)? [-Wxor-used-as-pow]
+    2 | int x1 = 2 ^ 8;
+      |            ^
+fix-it:"fixit-xor.c":{2:10-2:11}:"1"
+fix-it:"fixit-xor.c":{2:12-2:13}:"<<"
+fixit-xor.c:2:10: note: you can silence this warning by using a hexadecimal constant (0x2 rather than 2)
+    2 | int x1 = 2 ^ 8;
+      |          ^
+fix-it:"fixit-xor.c":{2:10-2:11}:"0x2"
+fixit-xor.c:3:18: warning: result of '2^40' is 42; did you mean '1LL << 40'? [-Wxor-used-as-pow]
+    3 | long long x2 = 2 ^ 40;
+      |                  ^
+fix-it:"fixit-xor.c":{3:16-3:17}:"1LL"
+fix-it:"fixit-xor.c":{3:18-3:19}:"<<"
+fixit-xor.c:3:16: note: you can silence this warning by using a hexadecimal constant (0x2 rather than 2)
+    3 | long long x2 = 2 ^ 40;
+      |                ^
+fix-it:"fixit-xor.c":{3:16-3:17}:"0x2"
+fixit-xor.c:4:16: warning: result of '10^6' is 12; did you mean '1e6'? [-Wxor-used-as-pow]
+    4 | double x3 = 10 ^ 6;
+      |                ^
+fix-it:"fixit-xor.c":{4:13-4:15}:"1"
+fix-it:"fixit-xor.c":{4:16-4:17}:"e"
+fixit-xor.c:4:13: note: you can silence this warning by using a hexadecimal constant (0xa rather than 10)
+    4 | double x3 = 10 ^ 6;
+      |             ^
+fix-it:"fixit-xor.c":{4:13-4:15}:"0xa"
+fixit-xor.c:5:14: warning: result of '2^4' is 6; did you mean '1 << 4' (16)? [-Wxor-used-as-pow]
+    5 | int x4 = (2) ^ 4;
+      |              ^
+fix-it:"fixit-xor.c":{5:10-5:13}:"1"
+fix-it:"fixit-xor.c":{5:14-5:15}:"<<"
+fixit-xor.c:5:10: note: you can silence this warning by using a hexadecimal constant (0x2 rather than 2)
+    5 | int x4 = (2) ^ 4;
+      |          ^
+fix-it:"fixit-xor.c":{5:10-5:13}:"0x2"
+fixit-xor.c:6:18: warning: result of '2^63' is 61; did you mean exponentiation? [-Wxor-used-as-pow]
+    6 | long long x5 = 2 ^ 63;
+      |                  ^
+fixit-xor.c:6:16: note: you can silence this warning by using a hexadecimal constant (0x2 rather than 2)
+    6 | long long x5 = 2 ^ 63;
+      |                ^
+fix-it:"fixit-xor.c":{6:16-6:17}:"0x2"

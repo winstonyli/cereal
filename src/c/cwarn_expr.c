@@ -1296,6 +1296,7 @@ void lognot_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
 {
     uint32_t k[3], x, y;
     Diagnostic *d;
+    int own;
     if (!is_cmp_op(op) || ntag(c, a) != N_UNARY || npunct(c, a) != P_BANG ||
         (ntag(c, b) == N_UNARY && npunct(c, b) == P_BANG) ||
         nkids(c, a, k, 3) < 1)
@@ -1321,8 +1322,13 @@ void lognot_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), "logical-not-parentheses",
                 "logical not is only applied to the left hand side of "
                 "comparison");
+    if (is_intcst(c, a))        /* folded to a constant: no location, no note */
+        return;
+    own = d ? (int)d->notes.len + 1 : 0;        /* the note's fix-its */
     cnote(c, d, first_loc(c, a), "add parentheses around left hand side "
           "expression to silence this warning");
+    cfix_ins(c, d, own, first_tok(c, a), false, "(", FIX_MAYBE);
+    cfix_ins(c, d, own, after_tok(c, a) - 1, true, ")", FIX_MAYBE);
 }
 
 /* ---- -Warray-compare ---- */

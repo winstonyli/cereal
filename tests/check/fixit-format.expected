@@ -1,0 +1,44 @@
+fixit-format.c:5:14: warning: format '%d' expects argument of type 'int', but argument 2 has type 'long int' [-Wformat=]
+    5 |     printf("%d %ld %f %s\n", l, i, s, d);
+      |              ^
+fix-it:"fixit-format.c":{5:13-5:15}:"%ld"
+fixit-format.c:5:18: warning: format '%ld' expects argument of type 'long int', but argument 3 has type 'int' [-Wformat=]
+    5 |     printf("%d %ld %f %s\n", l, i, s, d);
+      |                  ^
+fix-it:"fixit-format.c":{5:16-5:19}:"%d"
+fixit-format.c:5:21: warning: format '%f' expects argument of type 'double', but argument 4 has type 'const char *' [-Wformat=]
+    5 |     printf("%d %ld %f %s\n", l, i, s, d);
+      |                     ^
+fix-it:"fixit-format.c":{5:20-5:22}:"%s"
+fixit-format.c:5:24: warning: format '%s' expects argument of type 'char *', but argument 5 has type 'double' [-Wformat=]
+    5 |     printf("%d %ld %f %s\n", l, i, s, d);
+      |                        ^
+fix-it:"fixit-format.c":{5:23-5:25}:"%f"
+fixit-format.c:6:18: warning: format '%ld' expects argument of type 'long int', but argument 2 has type 'int' [-Wformat=]
+    6 |     printf("%5.2ld|%-8d|%lu\n", i, l, i);
+      |                  ^
+fix-it:"fixit-format.c":{6:13-6:19}:"%5.2d"
+fixit-format.c:6:23: warning: format '%d' expects argument of type 'int', but argument 3 has type 'long int' [-Wformat=]
+    6 |     printf("%5.2ld|%-8d|%lu\n", i, l, i);
+      |                       ^
+fix-it:"fixit-format.c":{6:20-6:24}:"%-8ld"
+fixit-format.c:6:27: warning: format '%lu' expects argument of type 'long unsigned int', but argument 4 has type 'int' [-Wformat=]
+    6 |     printf("%5.2ld|%-8d|%lu\n", i, l, i);
+      |                           ^
+fix-it:"fixit-format.c":{6:25-6:28}:"%u"
+fixit-format.c:7:13: warning: format '%d' expects argument of type 'int *', but argument 2 has type 'long int *' [-Wformat=]
+    7 |     scanf("%d %f", &l, &d);
+      |             ^
+fix-it:"fixit-format.c":{7:12-7:14}:"%ld"
+fixit-format.c:7:16: warning: format '%f' expects argument of type 'float *', but argument 3 has type 'double *' [-Wformat=]
+    7 |     scanf("%d %f", &l, &d);
+      |                ^
+fix-it:"fixit-format.c":{7:15-7:17}:"%lf"
+fixit-format.c:9:46: warning: format '%d' expects argument of type 'int', but argument 2 has type 'unsigned int' [-Wformat=]
+    9 | void h(unsigned u, signed char c) { printf("%d %u\n", u, c); }
+      |                                              ^
+fix-it:"fixit-format.c":{9:45-9:47}:"%d"
+fixit-format.c:9:49: warning: format '%u' expects argument of type 'unsigned int', but argument 3 has type 'int' [-Wformat=]
+    9 | void h(unsigned u, signed char c) { printf("%d %u\n", u, c); }
+      |                                                 ^
+fix-it:"fixit-format.c":{9:48-9:50}:"%u"

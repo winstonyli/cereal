@@ -345,8 +345,8 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
                     "prototype; expected '%s'", dn, sb_cstr(&sb));
     }
     if (d && bt->hdr[0])
-        cnote(c, d, s->loc, "'%s' is declared in "
-              "header '%s'", dn, bt->hdr);
+        cheader_note(c, d, s->loc, bt->hdr, "'%s' is declared in "
+                     "header '%s'", dn, bt->hdr);
     c->quiet = quiet;
     diag_ord(c->diag, o0);
     sb_free(&sb);

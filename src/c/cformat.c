@@ -225,11 +225,88 @@ typedef struct FmtCtx {
     const uint32_t *off;        /* byte offsets in the spelling, if exact */
     bool exact;
     bool va;                    /* a va_list: arguments not checked */
+    bool scan;
+    /* the conversion being taken, when its text is in the file as written
+     * (a fix-it may replace it): [fix_b, fix_e), its "%flags width .prec"
+     * part, the conversion character */
+    bool fix;
+    SrcLoc fix_b, fix_e;
+    const char *fix_pre;
+    size_t fix_prelen;
+    char fix_conv;
 } FmtCtx;
+
+/* gcc's get_corrected_substring: the length modifier and conversion
+ * character that take an argument of type t.  The conversion written is
+ * tried first with each length modifier; then the first character of each
+ * conversion row of gcc's table, in table order.  Signedness is ignored.
+ * out gets the replacement for "length + conversion" (NULL: none found). */
+static const char *fmt_correction(Checker *c, bool scan, char conv, TypeId t,
+                                  char *out)
+{
+    typedef struct { const char *chars; int lens; } Row;
+    static const Row pf[] = {
+        {"di", 3}, {"oxX", 3}, {"u", 3}, {"fgG", 2}, {"eE", 2}, {"c", 1},
+        {"s", 1}, {"p", 0}, {"n", 3}, {"F", 2}, {"aA", 2}, {"C", 0},
+        {"S", 0}},
+    sc[] = {
+        {"di", 3}, {"u", 3}, {"oxX", 3}, {"efgEG", 2}, {"c", 1}, {"s", 1},
+        {"p", 0}, {"n", 3}, {"aA", 2}, {"C", 0}, {"S", 0}};
+    static const int len_all[] = {FL_NONE, FL_HH, FL_H, FL_L, FL_LL, FL_BIGL,
+                                  FL_Z, FL_T, FL_J},
+                     len_flt[] = {FL_NONE, FL_L, FL_BIGL},
+                     len_chr[] = {FL_NONE, FL_L}, len_one[] = {FL_NONE};
+    static const char *const lstr[] = {"", "hh", "h", "l", "ll", "L", "z", "t",
+                                       "j"};
+    const Row *rows = scan ? sc : pf;
+    size_t nr = scan ? sizeof sc / sizeof *sc : sizeof pf / sizeof *pf, r, k;
+    int pass;
+    if (conv == '[' || !strchr("diouxXfFeEgGaAcsCSpn", conv))
+        return NULL;
+    for (pass = 0; pass < 2; pass++)
+        for (r = 0; r < nr; r++) {
+            const int *ls;
+            size_t nl;
+            char cv;
+            if (pass == 0 ? !strchr(rows[r].chars, conv)
+                          : !!strchr(rows[r].chars, conv))
+                continue;
+            cv = pass == 0 ? conv : rows[r].chars[0];
+            ls = rows[r].lens == 3 ? len_all : rows[r].lens == 2 ? len_flt
+                 : rows[r].lens == 1 ? len_chr : len_one;
+            nl = rows[r].lens == 3 ? sizeof len_all / sizeof *len_all
+                 : rows[r].lens == 2 ? sizeof len_flt / sizeof *len_flt
+                 : rows[r].lens == 1 ? sizeof len_chr / sizeof *len_chr : 1;
+            for (k = 0; k < nl; k++) {
+                FmtWant w;
+                if (fmt_want(c, cv, ls[k], scan, false, &w) &&
+                    fmt_arg_ok(c, &w, t)) {
+                    snprintf(out, 8, "%s%c", lstr[ls[k]], cv);
+                    return out;
+                }
+            }
+        }
+    return NULL;
+}
 
 static SrcLoc fmt_loc(const FmtCtx *x, size_t i)
 {
     return x->exact ? x->base + x->off[i] : fmt_mloc ? fmt_mloc : x->whole;
+}
+
+/* The fix-it of an argument-type warning d: the conversion with its flags,
+ * width and precision kept.  gcc offers it even when the text is the spec as
+ * written (%u for a promoted signed char under -Wformat-signedness). */
+static void fmt_fixit(const FmtCtx *x, Diagnostic *d, TypeId t)
+{
+    Checker *c = x->c;
+    char out[8], *s;
+    if (!d || !x->fix || !fmt_correction(c, x->scan, x->fix_conv, t, out))
+        return;
+    s = arena_alloc(c->diag->arena, x->fix_prelen + 8);
+    memcpy(s, x->fix_pre, x->fix_prelen);
+    strcpy(s + x->fix_prelen, out);
+    diag_fixit(c->diag, d, 0, x->fix_b, x->fix_e, s, FIX_MAYBE);
 }
 
 /* Takes the next argument for `what` (a description such as "format '%d'"),
@@ -266,14 +343,17 @@ static void fmt_take(FmtCtx *x, const FmtWant *w, SrcLoc loc, const char *what)
         bool small_u = ok == TY_UCHAR || ok == TY_USHORT;
         bool uk = fmt_unsigned_kind(k);
         if (!small_u && k != TY_CHAR && (w->sgn == 2) != uk)
-            cwarn(c, loc, "format=", "%s expects argument of type '%s', but "
-                  "argument %u has type %s", what, w->name, x->ai,
-                  type_q(TT, t));
+            fmt_fixit(x, cwarn_d(c, DL_WARNING, loc, "format=",
+                                 "%s expects argument of type '%s', but "
+                                 "argument %u has type %s", what, w->name,
+                                 x->ai, type_q(TT, t)), t);
     }
     if ((fmt_cls(k) || k == TY_DOUBLE || k == TY_LDOUBLE || k == TY_PTR ||
          is_record(c, t)) && !fmt_arg_ok(c, w, t))
-        cwarn(c, loc, "format=", "%s expects argument of type '%s', but "
-              "argument %u has type %s", what, w->name, x->ai, type_q(TT, t));
+        fmt_fixit(x, cwarn_d(c, DL_WARNING, loc, "format=",
+                             "%s expects argument of type '%s', but "
+                             "argument %u has type %s", what, w->name,
+                             x->ai, type_q(TT, t)), t);
     x->ai++;
 }
 
@@ -389,7 +469,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
     FmtCtx x;
     char *f;
     uint32_t *off;
-    size_t n, i = 0, t, st;
+    size_t n, i = 0, t, st, sp0 = 0;
     bool exact, dollar = false;
     if (!diag_enabled(c->diag, "format="))
         return;
@@ -416,6 +496,8 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
     x.call = call;
     x.exact = false;
     x.base = 0;
+    x.scan = scan;
+    x.fix = false;
     if (exact) {
         size_t len;
         const char *tx = ttext(c, c->nodes[s].tok, &len);
@@ -448,13 +530,14 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
         int len = FL_NONE;
         bool badlen = false;
         char lsp[3] = {0, 0, 0};
+        size_t ls;
         FmtWant w;
         char what[48];
         if (f[i] != '%') {
             i++;
             continue;
         }
-        st = i++;
+        st = sp0 = i++;
         if (i >= n) {
             cwarn(c, fmt_loc(&x, st), "format=",
                   "spurious trailing '%%' in format");
@@ -532,6 +615,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
             break;
         }
         conv = f[i];
+        ls = i - (lsp[0] ? (lsp[1] ? 2 : 1) : 0);
         if (conv == '%') {
             if (i - 1 > st) {
                 cwarn(c, fmt_loc(&x, i - 1), "format=",
@@ -632,7 +716,20 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
         if (fmt_want(c, conv, len, scan, mflag, &w)) {
             if (badlen)
                 w.shape = FW_ANY;   /* gcc has no type for it */
+            /* gcc replaces the whole specification where the text is in the
+             * file as written (one piece, no escapes inside, no macro) */
+            x.fix = x.exact && !skip && !badlen && conv != '[' &&
+                    !tfrom_macro(c, c->nodes[s].tok) &&
+                    off[i] - off[sp0] == i - sp0;
+            if (x.fix) {
+                x.fix_b = x.base + off[sp0];
+                x.fix_e = x.base + off[i] + 1;
+                x.fix_pre = f + sp0;
+                x.fix_prelen = ls - sp0;
+                x.fix_conv = conv;
+            }
             fmt_take(&x, &w, fmt_loc(&x, i), what);
+            x.fix = false;
         }
         i++;
     }

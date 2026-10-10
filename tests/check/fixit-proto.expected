@@ -1,0 +1,8 @@
+fixit-proto.c:2:1: warning: function declaration isn't a prototype [-Wstrict-prototypes]
+    2 | int decl();
+      | ^
+fix-it:"fixit-proto.c":{2:10-2:10}:"void"
+fixit-proto.c:3:5: warning: function declaration isn't a prototype [-Wstrict-prototypes]
+    3 | int def() { return 0; }
+      |     ^
+fix-it:"fixit-proto.c":{3:9-3:9}:"void"

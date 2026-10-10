@@ -1,0 +1,3 @@
+fixit-case.c:6:9: error: expected ':' or '...' before 'return'
+    6 |         return 1;
+      |         ^

@@ -85,6 +85,8 @@ typedef struct Lvl {
     TypeId elem;
     int64_t maxidx, idx, ui, lagmax;
     uint32_t fbase, nf, fi, uf;
+    uint32_t ftok, ltok;     /* an implicit level: its first and last token */
+    bool des;                /* pushed by a designator (gcc closes it, too) */
     uint64_t nel;
     int depth, dd_saved;
     RS *rs_saved;
@@ -112,6 +114,12 @@ typedef struct CCtx {
     int64_t rtop;            /* the element count the root ended with */
     bool toolarge;           /* an index of an unsized array past the largest size */
     bool found_mb_unused;
+    uint32_t el_first, el_last; /* the tokens of the element being processed */
+    uint64_t *mb;            /* fix-it places so far: 2 * token + 1 for a "{"
+                              * before it, 2 * token for a "}" before it */
+    size_t nmb, mbcap;
+    bool endpop;             /* the implicit levels are closed by the list's end */
+    bool mbrange;            /* a range designator: gcc gives no brace fix-its */
 } CCtx;
 
 typedef struct CInit {
@@ -577,6 +585,7 @@ static void process_element(Checker *c, CCtx *x, uint32_t lt, IVal v,
                             bool implicit);
 static IVal pop_level(Checker *c, CCtx *x, uint32_t lt, int implicit);
 static void push_level(Checker *c, CCtx *x, uint32_t lt, int implicit);
+static void mb_add(CCtx *x, uint64_t key);
 
 /* ---- values ------------------------------------------------------------------------ */
 
@@ -1033,8 +1042,10 @@ static bool post_zero(Checker *c, const IVal *v, TypeId target)
         return false;
     if (node_int_zero(c, n))
         return true;
-    if (c->ck[n] == K_FLOAT)
-        return c->fv.data[c->cv[n]] == 0;
+    if (c->ck[n] == K_FLOAT) {      /* an integer takes the truncated value */
+        double f = c->fv.data[c->cv[n]];
+        return f > -1.0 && f < 1.0;
+    }
     return false;
 }
 
@@ -1399,6 +1410,9 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
         }
     } else
         zero = v.kind == V_ZERO ? true : (v.kind == V_EXPR ? v.izero : false);
+    /* gcc: constructor_zeroinit follows the converted value (0.5 for an int) */
+    if (!implicit && v.kind == V_EXPR && !zero)
+        c->ci->zeroinit = false;
 
     /* an empty field that is not the last one needs nothing stored */
     if ((k == LV_REC || k == LV_UNI) && !v.side && L->fi + 1 < L->nf) {
@@ -1556,8 +1570,13 @@ static void push_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
         if (N->ps && N->ps->n && (N->kind == LV_REC || N->kind == LV_ARR))
             nonincr(c, N);
     }
-    if (implicit == 1)
+    N->des = implicit == 2;
+    if (implicit == 1) {
         c->ci->found_mb = true;
+        N->ftok = x->el_first;
+        N->ltok = x->el_last;
+        mb_add(x, 2 * (uint64_t)x->el_first + 1);
+    }
     if (value && value->vk == PV_STR && N->kind == LV_ARR) {
         uint64_t n = value->strn, k;
         if (N->hasmax && (uint64_t)(N->maxidx + 1) < n)
@@ -1587,6 +1606,36 @@ static void push_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
     }
 }
 
+static void mb_add(CCtx *x, uint64_t key)
+{
+    if (x->nmb == x->mbcap) {
+        x->mbcap = x->mbcap ? x->mbcap * 2 : 8;
+        x->mb = xrealloc(x->mb, x->mbcap * sizeof *x->mb);
+    }
+    x->mb[x->nmb++] = key;
+}
+
+/* The warning, with gcc's fix-its: "{" before the first element and "}"
+ * after the last of each level that had no braces, in the order the levels
+ * were pushed and popped (hints in a row at one place merge, giving "{{"
+ * and "}}"). */
+static void missing_braces_warn(Checker *c, CCtx *x)
+{
+    /* in a compound literal gcc's input_location is the literal's '(' */
+    uint32_t cl = c->par[x->list], at = x->init_loc;
+    Diagnostic *d;
+    size_t i;
+    if (cl != NOB && cl < c->nn && ntag(c, cl) == N_COMPOUND_LIT)
+        at = c->nodes[cl].tok;
+    d = cwarn_d(c, DL_WARNING, wloc(c, NULL, at), "missing-braces",
+                "missing braces around initializer");
+    if (!d || x->mbrange)
+        return;
+    for (i = 0; i < x->nmb; i++)
+        cfix_ins(c, d, 0, (uint32_t)(x->mb[i] >> 1), false,
+                 (x->mb[i] & 1) ? "{" : "}", FIX_SAFE);
+}
+
 static IVal pop_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
 {
     CInit *ci = c->ci;
@@ -1597,10 +1646,12 @@ static IVal pop_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
     ret.node = NOB;
 
     if (implicit == 0) {
+        x->endpop = true;
         while (x->stk->implicit) {
             IVal r = pop_level(c, x, lt, 1);
             process_element(c, x, LT_IN, r, true);
         }
+        x->endpop = false;
     }
     L = x->stk;
     flush_all(c, x, L);
@@ -1636,8 +1687,7 @@ static IVal pop_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
         ci->zeroinit = false;
 
     if (!implicit && ci->found_mb && !ci->zeroinit)
-        iwarn(c, NULL, x->init_loc, "missing-braces",
-              "missing braces around initializer");
+        missing_braces_warn(c, x);
 
     if (L->kind == LV_REC) {
         while (L->uf < L->nf) {
@@ -1696,6 +1746,14 @@ static IVal pop_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
         }
     }
     x->rtop = L->ui;
+    if ((L->ftok || L->des) && L->up) {  /* a level pushed without braces */
+        /* gcc puts the "}" where the parser is: the closing brace when the
+         * enclosing list ends, else the comma after the last element */
+        mb_add(x, 2 * (uint64_t)(x->endpop && x->lam == LA_CLOSE
+                                     ? after_tok(c, x->lav) - 1
+                                     : L->ltok + 1));
+        L->up->ltok = L->ltok;
+    }
 
     x->dd = L->dd_saved;
     if (!implicit)
@@ -1751,6 +1809,7 @@ static void push_range_stack(CCtx *x, bool has_end, int64_t end)
 {
     Lvl *L = x->stk;
     RS *p = rs_new(x);
+    x->mbrange = true;
     p->prev = x->rs;
     p->fi = L->fi;
     p->start = p->index = L->idx;
@@ -1883,8 +1942,8 @@ static void process_element(Checker *c, CCtx *x, uint32_t lt, IVal v,
 
     x->dd = 0;
     x->derr = 0;
-    if (!implicit && v.kind != V_NONE && !v.izero)
-        ci->zeroinit = false;
+    if (!implicit && v.kind != V_NONE && v.kind != V_EXPR && !v.izero)
+        ci->zeroinit = false;       /* an expression: out_elem, once converted */
 
     L = x->stk;
     if (string_flag && L->kind == LV_ARR && !was_des &&
@@ -1927,6 +1986,8 @@ static void process_element(Checker *c, CCtx *x, uint32_t lt, IVal v,
             continue;
         if (st == ST_BREAK)
             break;
+        if (!implicit)
+            x->stk->ltok = x->el_last;
         /* range initializers, at this level or higher in the stack */
         if (x->rs) {
             RS *p, *range_stack = x->rs;
@@ -2213,6 +2274,7 @@ static void ctx_close(Checker *c, CCtx *x)
     }
     sb_free(&x->path);
     free(x->dl);
+    free(x->mb);
     ci->top = x->prev;
     free(x);
 }
@@ -2228,6 +2290,8 @@ static void start_root(Checker *c, CCtx *x, TypeId type)
     x->stk = L;
     ci->zeroinit = true;
     ci->found_mb = false;
+    x->nmb = 0;
+    x->mbrange = false;
     x->dd = x->derr = 0;
     x->rs = NULL;
 }
@@ -2527,6 +2591,8 @@ void cinit_post(Checker *c, uint32_t i)
             la_set(x, LA_CLOSE, i);
             r = pop_level(c, x, lb, 0);
             la_set(x, LA_CLOSE, i);
+            x->el_first = lb;
+            x->el_last = after_tok(c, i) - 1;
             process_element(c, x, lb, r, false);
         }
         return;
@@ -2551,6 +2617,8 @@ void cinit_post(Checker *c, uint32_t i)
             return;
         ival_from(c, i, &v);
         la_set(x, LA_AFTER, i);
+        x->el_first = first_tok(c, i);
+        x->el_last = after_tok(c, i) - 1;
         process_element(c, x, first_tok(c, i), v, false);
     }
 }
