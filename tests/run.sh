@@ -75,6 +75,14 @@ if command -v "$REFCC" >/dev/null 2>&1; then
     for std in gnu99 gnu11 gnu17; do
         diff_pp "pp/elifdef.c (-std=$std)" elifdef.c -std=$std
     done
+    # -imacros: macros stay, tokens (and __COUNTER__) do not; processed
+    # before -include whatever the order, -D/-U as written
+    diff_pp "pp/imacros.c (-imacros)" imacros.c -imacros imacros.h
+    diff_pp "pp/imacros.c (-imacros -DQ)" imacros.c -imacros imacros.h -DQ
+    diff_pp "pp/imacros.c (-DQ -imacros)" imacros.c -DQ -imacros imacros.h
+    diff_pp "pp/imacros.c (-include -imacros)" imacros.c -include imacros_inc.h -imacros imacros.h
+    diff_pp "pp/imacros.c (-imacros -include -DQ)" imacros.c -imacros imacros.h -include imacros_inc.h -DQ
+    diff_pp "pp/imacros.c (-include -DQ)" imacros.c -include imacros_inc.h -DQ -imacros imacros.h
     cd "$ROOT"
     for h in assert.h ctype.h errno.h float.h inttypes.h limits.h locale.h \
         math.h setjmp.h signal.h stdarg.h stdbool.h stddef.h stdint.h \

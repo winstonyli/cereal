@@ -7,13 +7,15 @@ CEREAL_DGDIR (default gcc.dg; e.g. c-c++-common) picks the testsuite directory.
 CEREAL_DGOPTS=1 (dg set): honour each test's first `dg-options` line (replacing
 the default -std=c99 -pedantic where it gives -std=/-pedantic*) and skip tests
 whose dg-options/dg-additional-options use a target selector a standard other than C99, or options
-cereal lacks (anything but -W*, -D, -U, -I, -std, -pedantic*).
+cereal lacks (anything but -W*, -D, -U, -I, -std, -pedantic*, -MD, -MMD; a test with
+-MD/-MMD runs in the scratch directory $TMPDIR/par-md, as a .d file goes to the working directory).
 CEREAL_DGO=1: also keep -O* options (cereal folds const variables at -O).
 CEREAL_PARCACHE=DIR (default ~/.cache/cereal-par; 0 disables) caches gcc's result per
 (gcc version, file content, flags); CEREAL_JOBS (default 12) sizes the pool.
 Compares gcc vs cereal -fsyntax-only verdicts and diagnostic headers."""
-import sys, os, re, json, subprocess, glob, multiprocessing, shlex, hashlib
-S = os.path.dirname(os.path.abspath(__file__))
+import sys, os, re, json, subprocess, glob, multiprocessing, shlex, hashlib, shutil, tempfile
+MDDIR = os.path.join(tempfile.gettempdir(), "par-md")
+S =os.path.dirname(os.path.abspath(__file__))
 sys.argv, ARGS = sys.argv[:3], sys.argv
 exec(open(os.path.join(S,"..","corpus.py")).read().split("\ndef run(")[0])
 sys.argv = ARGS
@@ -82,11 +84,13 @@ def dgjobs(extra):
                 while k<len(o):         # --param N=V is accepted and ignored
                     if o[k]=="--param": k+=2; o2.append("--param"); continue
                     o2.append(o[k]); k+=1
-                if any(x == "-W" or (x!="--param" and x!="-w" and not x.startswith(("-O","-W","-D","-U","-I","-std=","-pedantic","-fdump-","-fcf-protection","-fcompare-debug","-ftrack-macro-expansion=","--param="))) for x in o2):
+                if any(x == "-W" or (x!="--param" and x!="-w" and x not in ("-MD","-MMD") and not x.startswith(("-O","-W","-D","-U","-I","-std=","-pedantic","-fdump-","-fcf-protection","-fcompare-debug","-ftrack-macro-expansion=","--param="))) for x in o2):
                     continue            # options cereal does not take
                 std=o if any(x.startswith("-std=") for x in o) else ["-std=c99"]+o
                 if not any(x.startswith("-pedantic") for x in std): std=std+["-pedantic"]
-        jobs.append((f,["-I"+root]+["-I"+root+"/.."],root,std))
+        md=any(x in ("-MD","-MMD") for x in std)
+        if md: os.makedirs(MDDIR, exist_ok=True)
+        jobs.append((f,["-I"+root]+["-I"+root+"/.."],MDDIR if md else root,std))
     return jobs
 if __name__=="__main__":
     cer,st,out=sys.argv[1:4]; extra=ARGS[4:]
@@ -96,6 +100,7 @@ if __name__=="__main__":
     jobs=[(cer,f,fl,cw,extra,std) for f,fl,cw,std in jobs]
     with multiprocessing.Pool(int(os.environ.get("CEREAL_JOBS", "12"))) as p:
         res=list(p.imap(work,jobs,chunksize=1))
+    shutil.rmtree(MDDIR, ignore_errors=True)
     json.dump(res,open(out,"w"))
     n=len(res); rv=[r for r in res if not r.get("to") and r["grc"]==0 and r["crc"]!=0]
     ai=[r for r in res if not r.get("to") and r["grc"]!=0 and r["crc"]==0]

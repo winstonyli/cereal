@@ -137,6 +137,7 @@ typedef struct IncludeEvent {
     int dir_index;           /* search directory it was found in (-1: the
                               * includer's directory, an absolute name, or
                               * not found) */
+    bool macros_only;        /* the -imacros request (#__include_macros) */
     bool system;             /* gcc's "sysp": found in a system directory, or
                               * included from a system header (the command
                               * line is none), or written <...> and not found */
@@ -214,6 +215,7 @@ typedef struct IncludeFrame {
     const LineAdj *adj;      /* #line history (NULL: none) */
     bool system;             /* system header (as of this point) */
     int marker_depth;        /* files entered by linemarkers (flag 1) */
+    bool quiet;              /* -imacros: macros stay, tokens are dropped */
 } IncludeFrame;
 
 typedef struct PPOptions {
@@ -269,6 +271,7 @@ enum {
     KW_NONE, KW_IF, KW_IFDEF, KW_IFNDEF, KW_ELIF, KW_ELSE, KW_ENDIF,
     KW_DEFINE, KW_UNDEF, KW_INCLUDE, KW_INCLUDE_NEXT, KW_LINE, KW_ERROR,
     KW_WARNING, KW_PRAGMA, KW_IDENT, KW_SCCS, KW_ASSERT, KW_UNASSERT, KW_IMPORT,
+    KW_INCLUDE_MACROS,       /* the command-line file only: -imacros */
     KW_ELIFDEF, KW_ELIFNDEF   /* GNU modes: C2X's, as an extension */
 };
 typedef enum { SRC_LEXER, SRC_CONTEXT, SRC_BARRIER } TokSrc;
@@ -355,7 +358,7 @@ typedef struct PP {
     SrcFile *builtin_file;
     VEC(SrcLoc) chain_buf;
     StrBuf sb;               /* scratch string building */
-    StrBuf predef;           /* <command line>: predefines, -D, -U, -include */
+    StrBuf predef;           /* <command line>: predefines, -D, -U, -imacros, -include */
 
     struct Ident *id_defined, *id_va_args, *id_va_opt, *id_pragma;
     const char *const *host_attrs;
@@ -373,7 +376,7 @@ void pp_add_listener(PP *pp, PPListener l);
 void pp_define_builtin_text(PP *pp, const char *name, const char *text);
 void pp_cmdline_define(PP *pp, const char *def);
 void pp_cmdline_undef(PP *pp, const char *name);
-void pp_cmdline_include(PP *pp, const char *path);
+void pp_cmdline_include(PP *pp, const char *path, bool macros_only);
 
 bool pp_enter_main(PP *pp, const char *path);
 /* Phase A: run the whole TU in directives-only mode, filling `plan`. */

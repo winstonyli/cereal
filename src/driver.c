@@ -195,7 +195,7 @@ static const struct IgnoredOpt {
     {"-fms-extensions", IGN_SEMANTIC, 0, 0},
     {"-fshort-wchar", IGN_SEMANTIC, 0, 0},
     {"-m32", IGN_SEMANTIC, 0, 0}, {"-mx32", IGN_SEMANTIC, 0, 0},
-    {"-idirafter", IGN_SEMANTIC, 1, 0}, {"-imacros", IGN_SEMANTIC, 1, 0},
+    {"-idirafter", IGN_SEMANTIC, 1, 0},
     {"-isysroot", IGN_SEMANTIC, 1, 0}, {"--sysroot", IGN_SEMANTIC, 1, 1},
 };
 
@@ -347,9 +347,9 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         cm.kind = 'U';
         cm.text = arg_value(o, argc, argv, &i, "-U");
         vec_push(&o->macros, cm);
-    } else if (!strcmp(a, "-include")) {
-        cm.kind = 'i';
-        cm.text = arg_value(o, argc, argv, &i, "-include");
+    } else if (!strcmp(a, "-include") || !strcmp(a, "-imacros")) {
+        cm.kind = a[2] == 'n' ? 'i' : 'm';
+        cm.text = arg_value(o, argc, argv, &i, a);
         vec_push(&o->macros, cm);
     } else if (!strcmp(a, "-nostdinc")) {
         o->pp.nostdinc = true;
@@ -753,6 +753,7 @@ void tu_init_shared(TU *tu, Options *opt, Interner *in)
 bool tu_begin(TU *tu, const char *path)
 {
     size_t i;
+    int pass;
     PP *pp = &tu->pp;
     if (tu->opt->deps.style && pp->mode != PPM_PLAN) /* a replay has no via */
         deps_attach(tu, path);
@@ -804,15 +805,19 @@ bool tu_begin(TU *tu, const char *path)
         if (tu->opt->opt_level == 's' || tu->opt->opt_level == 'z')
             pp_define_builtin_text(pp, "__OPTIMIZE_SIZE__", "1");
     }
-    for (i = 0; i < tu->opt->macros.len; i++) {
-        CmdlineMacro *cm = &tu->opt->macros.data[i];
-        if (cm->kind == 'D')
-            pp_cmdline_define(pp, cm->text);
-        else if (cm->kind == 'U')
-            pp_cmdline_undef(pp, cm->text);
-        else
-            pp_cmdline_include(pp, cm->text);
-    }
+    /* gcc's order: -D, -U and -imacros as written, then every -include */
+    for (pass = 0; pass < 2; pass++)
+        for (i = 0; i < tu->opt->macros.len; i++) {
+            CmdlineMacro *cm = &tu->opt->macros.data[i];
+            if ((cm->kind == 'i') != pass)
+                continue;
+            if (cm->kind == 'D')
+                pp_cmdline_define(pp, cm->text);
+            else if (cm->kind == 'U')
+                pp_cmdline_undef(pp, cm->text);
+            else
+                pp_cmdline_include(pp, cm->text, cm->kind == 'm');
+        }
     return pp_enter_main(pp, path);
 }
 

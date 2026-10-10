@@ -8,7 +8,7 @@
 #include "srcmgr.h"
 
 typedef struct CmdlineMacro {
-    char kind;          /* 'D', 'U', 'i' (-include) */
+    char kind;          /* D, U, i (-include), m (-imacros) */
     const char *text;
 } CmdlineMacro;
 

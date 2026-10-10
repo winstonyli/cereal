@@ -573,6 +573,8 @@ static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
                       const IncludeEvent *via)
 {
     IncludeFrame *fr = NEW(pp->arena, IncludeFrame);
+    /* -imacros scans its file (and what that includes) for macros only */
+    bool quiet = (via && via->macros_only) || (pp->inc && pp->inc->quiet);
     if (pp->mode == PPM_PHASE_A) {
         PlanFrame *pf = NEW(pp->arena, PlanFrame);
         phase_a_fix_dir_frame(pp);
@@ -583,6 +585,7 @@ static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
         pf->dir_index = dir_index;
         pf->depth = pp->include_depth + 1;
         pf->system = f->system_header;
+        pf->quiet = quiet;
         pp->pframe = pf;
         plan_add(pp, PI_ENTER);
     }
@@ -599,6 +602,7 @@ static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
     fr->cond_base = pp->cond;
     fr->presumed_name = f->name;
     fr->system = f->system_header;
+    fr->quiet = quiet;
     pp->inc = fr;
     pp->include_depth++;
     pp->has_pending = false;
@@ -742,7 +746,7 @@ void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
             "", "if", "ifdef", "ifndef", "elif", "else", "endif", "define",
             "undef", "include", "include_next", "line", "error", "warning",
             "pragma", "ident", "sccs", "assert", "unassert", "import",
-            "elifdef", "elifndef"};
+            "__include_macros", "elifdef", "elifndef"};
         int k;
         for (k = 1; k < (int)ARRAY_LEN(dirs) - (opt->gnu_mode ? 0 : 2); k++)
             intern_cstr(in, dirs[k])->kw = (uint16_t)k;
@@ -856,9 +860,10 @@ void pp_cmdline_undef(PP *pp, const char *name)
     sb_printf(&pp->predef, "#undef %s\n", name);
 }
 
-void pp_cmdline_include(PP *pp, const char *path)
+void pp_cmdline_include(PP *pp, const char *path, bool macros_only)
 {
-    sb_printf(&pp->predef, "#include \"%s\"\n", path);
+    sb_printf(&pp->predef, "#%s \"%s\"\n",
+              macros_only ? "__include_macros" : "include", path);
 }
 
 bool pp_enter_main(PP *pp, const char *path)
@@ -934,6 +939,9 @@ bool pp_next(PP *pp, Tok *out)
             if (t.flags & TF_BOL)
                 pp->last_bol = t.loc;
         }
+        /* -imacros: gcc lexes the file without expanding and drops the tokens */
+        if (src == SRC_LEXER && pp->inc && pp->inc->quiet)
+            continue;
         if (t.kind == TK_IDENT) {
             Ident *id = ident_by_id(pp->in, t.aux);
             Macro *m = pp_macro(pp, id);
@@ -1959,7 +1967,7 @@ static char *parse_header_name(PP *pp, TokSpan line, bool *angled,
 }
 
 static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
-                       bool import)
+                       bool import, bool macros_only)
 {
     TokSpan line = read_line(pp);
     bool angled = false, expanded = false, rawq = false;
@@ -2041,6 +2049,7 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
     ev.angled = angled;
     ev.next = next;
     ev.macro_expanded = expanded;
+    ev.macros_only = macros_only;
     ev.from = pp->inc->file;
 
     f = pp_find_include(pp, name, angled, next, &dir_index);
@@ -2052,6 +2061,8 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
     if (!f) {
         ev.result = INC_NOT_FOUND;
         if (!pp_missing_ok(pp->opt, &ev)) {
+            if (pp->inc->file->kind == SF_VIRTUAL)
+                pp->diag->nocol_next = true;    /* gcc: <command-line>: */
             diag_report(pp->diag, pp->opt->fatal_missing_include ? DL_FATAL
                                                                   : DL_ERROR,
                         "", nloc, "%s: No such file or directory", name);
@@ -2554,15 +2565,19 @@ void pp_directive(PP *pp, const Tok *hash)
     if (pp->opt->pedantic)
         warn_directive_ws(pp, hash->loc);
     k = kw.kind == TK_IDENT ? ident_by_id(pp->in, kw.aux)->kw : KW_NONE;
+    if (k == KW_INCLUDE_MACROS && pp->inc->file->kind != SF_VIRTUAL)
+        k = KW_NONE;        /* gcc: only the command line scans for macros */
     pp->dir_indented = (hash->flags & TF_SPACE) != 0;
     if (k != KW_INCLUDE_NEXT && k != KW_IMPORT && k != KW_ASSERT &&
-        k != KW_UNASSERT && k != KW_IDENT && k != KW_SCCS && k != KW_WARNING)
+        k != KW_UNASSERT && k != KW_IDENT && k != KW_SCCS && k != KW_WARNING &&
+        k != KW_INCLUDE_MACROS)
         trad_directive(pp, k, &kw);    /* the others follow their extension note */
     /* the lines GCC checks for poisoned names (not #elif) */
     pp->dir_poison = active && pp->mode != PPM_PLAN &&
                      (k == KW_IF || k == KW_IFDEF || k == KW_IFNDEF ||
                       k == KW_DEFINE || k == KW_UNDEF || k == KW_INCLUDE ||
-                      k == KW_INCLUDE_NEXT || k == KW_IMPORT || k == KW_LINE);
+                      k == KW_INCLUDE_NEXT || k == KW_IMPORT || k == KW_LINE ||
+                      k == KW_INCLUDE_MACROS);
     switch (k) {
     case KW_IF: do_if(pp, hash, &kw, COND_IF); goto out;
     case KW_IFDEF: do_if(pp, hash, &kw, COND_IFDEF); goto out;
@@ -2582,14 +2597,15 @@ void pp_directive(PP *pp, const Tok *hash)
     switch (k) {
     case KW_DEFINE: do_define(pp, hash, &kw); goto out;
     case KW_UNDEF: do_undef(pp, hash, &kw); goto out;
-    case KW_INCLUDE: do_include(pp, hash, &kw, false, false); goto out;
-    case KW_IMPORT: do_include(pp, hash, &kw, false, true); goto out;
+    case KW_INCLUDE: do_include(pp, hash, &kw, false, false, false); goto out;
+    case KW_IMPORT: do_include(pp, hash, &kw, false, true, false); goto out;
+    case KW_INCLUDE_MACROS: do_include(pp, hash, &kw, false, false, true); goto out;
     case KW_LINE: do_line(pp, hash, &kw, false); goto out;
     case KW_ERROR: do_message(pp, &kw, true); goto out;
     case KW_PRAGMA: pp_do_pragma(pp, read_line(pp), hash->loc); goto out;
     case KW_INCLUDE_NEXT:
         if (pp->opt->gnu_extensions) {
-            do_include(pp, hash, &kw, true, false);
+            do_include(pp, hash, &kw, true, false, false);
             goto out;
         }
         break;
@@ -2827,6 +2843,7 @@ static IncludeFrame *frame_from_plan(PP *pp, const PlanFrame *pf)
     fr->include_loc = pf->include_loc;
     fr->dir_index = pf->dir_index;
     fr->system = pf->system;
+    fr->quiet = pf->quiet;
     return fr;
 }
 

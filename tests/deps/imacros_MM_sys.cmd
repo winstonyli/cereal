@@ -1,0 +1,1 @@
+-MM -isystem sys -imacros sysh.h -imacros mac.h m.c

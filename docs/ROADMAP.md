@@ -86,7 +86,7 @@ A4. (Design: A4_DESIGN.md.) Response files `@file`, `-M*` output (`query
     Slice 1, the replay (with per-TU working directory, option errors as
     counted messages, default `-std=gnu17`), is DONE, Round 204. Slice 2
     (`@file` response files, on the command line and in entries) is DONE,
-    Round 206. Slice 3 (`-M` family) is DONE, Round 208 (A4 is complete except the gaps listed in A4_DESIGN.md slice 3).
+    Round 206. Slice 3 (`-M` family) is DONE, Round 208; Round 209 added `-imacros` and the `missing-*` verify tests (A4 is complete except the gaps listed in A4_DESIGN.md slice 3).
 A5. SARIF output (`--format=sarif`) next to the existing JSON.
 
 Verification for A: goldens for each std and each flag class; a harness

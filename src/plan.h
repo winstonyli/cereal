@@ -19,6 +19,7 @@ typedef struct PlanFrame {
     int dir_index;
     int depth;                 /* include depth (main file = 1) */
     bool system;               /* system header as of this snapshot */
+    bool quiet;                /* inside an -imacros file: tokens are dropped */
 } PlanFrame;
 
 typedef enum {

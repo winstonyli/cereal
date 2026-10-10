@@ -29,7 +29,7 @@ cereal lsp                            # language server (stdio), docs/LSP.md
 cereal --list-warnings
 ```
 
-Options: `-I -iquote -isystem -D -U -include -nostdinc -undef -std=c99|gnu99
+Options: `-I -iquote -isystem -D -U -include -imacros -nostdinc -undef -std=c99|gnu99
 -O<n> -pedantic -pedantic-errors -trigraphs -W<name> -Wno-<name> -W<group>
 -Wall -Werror -Weverything -w -fdiagnostics-format=json -P -o`.
 

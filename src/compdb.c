@@ -245,7 +245,7 @@ bool entry_is_c(const CompileEntry *e)
 }
 
 static const char *const path_opts[] = {"-I", "-iquote", "-isystem",
-                                        "-include", NULL};
+                                        "-include", "-imacros", NULL};
 
 void add_flag(Arena *a, StrVec *v, const char *dir, const char **argv,
               int argc, int *i)

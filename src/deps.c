@@ -11,6 +11,7 @@ typedef struct DepEnt {
     const char *key;    /* directory + name as the lookup spelled them */
     const char *id;     /* the same with the split kept (the dedup key) */
     bool sys;           /* found in a system directory or from a system header */
+    bool pre;           /* first entered by -imacros: listed before the preinclude */
 } DepEnt;
 
 typedef struct Deps {
@@ -88,7 +89,7 @@ static void on_include(void *ctx, const IncludeEvent *ev)
     key = include_key(d, ev, &id);
     d->cur = key;
     if (deps_add_key(d, id)) {
-        DepEnt e = {key, id, ev->system};
+        DepEnt e = {key, id, ev->system, ev->macros_only || d->pp->inc->quiet};
         vec_push(&d->list, e);
     }
 }
@@ -263,13 +264,17 @@ void deps_write(TU *tu, FILE *out)
         vec_push(&tg, make_quote(a, dp->style <= 2 && o->output && o->stage != 'E'
                                         ? o->output
                                         : arena_printf(a, "%s.o", stem(a, path))));
-    /* prerequisites: the main file, the implicit preinclude (a system
-     * file), then the headers in order of first lookup */
+    /* prerequisites: the main file, what -imacros entered, the implicit
+     * preinclude (a system file), then the headers in order of first lookup */
     vec_push(&pre, make_quote(a, strip_dot(path)));
+    for (i = 0; i < d->list.len; i++)
+        if (d->list.data[i].pre && !(user_only && d->list.data[i].sys) &&
+            strcmp(d->list.data[i].key, host_preinclude))
+            vec_push(&pre, make_quote(a, strip_dot(d->list.data[i].key)));
     if (!user_only && !o->pp.nostdinc && !dp->freestanding && *host_preinclude)
         vec_push(&pre, make_quote(a, host_preinclude));
     for (i = 0; i < d->list.len; i++)
-        if (!(user_only && d->list.data[i].sys) &&
+        if (!d->list.data[i].pre && !(user_only && d->list.data[i].sys) &&
             strcmp(d->list.data[i].key, host_preinclude))
             vec_push(&pre, make_quote(a, strip_dot(d->list.data[i].key)));
     put_names(&sb, &col, tg.data, tg.len);

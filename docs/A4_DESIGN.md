@@ -526,8 +526,8 @@ turns them into `tests/deps` cases).
 None (D8). If a mode word is wanted later it is an alias that sets `-MM`.
 
 ### 6.8 What it cannot cover
-- `-imacros` files are not listed until `-imacros` is implemented; when
-  they are, they go before the preinclude (6.1).
+- `-imacros` is implemented (6.11); its files, and what they include, are
+  listed before the preinclude.
 - `-ffreestanding` is ignored (noted), but it does drop the preinclude from
   the list, as in gcc.
 - `SrcFile` is one per normalized path, so cereal's `-E` line markers and
@@ -591,6 +591,32 @@ Conclusions and what must be stated in 6.3:
 No assumption of section 6 or D7 changes; items 3 and 4 are added
 requirements, and 6.5 item 2 (`-E -fparallel=on -MD` vs `=off`) stays as
 the regression test.
+
+### 6.11 `-imacros` (Round 209)
+Same mechanism as `-include`: `tu_begin` writes one line per request into
+the `<command line>` virtual file, `#include "F"` for `-include` and
+`#__include_macros "F"` for `-imacros` (a directive only that file may use;
+elsewhere it is "invalid preprocessing directive", as in gcc). The
+`IncludeEvent`, the frame (`IncludeFrame.quiet`, `PlanFrame.quiet`, so
+plans and workers agree) and the deps listener all carry the one flag.
+A quiet frame, and every file it includes, is lexed and its directives run,
+but `pp_next` drops its tokens before any macro expansion (libcpp's
+`cpp_scan_nooutput` sets `prevent_expansion`: a `__COUNTER__` in an
+`-imacros` file is not consumed, probed on gcc-13).
+Order, as gcc's `c_finish_options`: `-D`, `-U` and `-imacros` in command-line
+order, then every `-include`. This also fixed `-include F -DQ`, where F saw
+no `Q` (it was written in command-line order before). A missing file is the
+fatal `<command-line>: fatal error: F: No such file or directory` (no
+position; also for `-include`). In the `-M` list the entries first entered
+inside a quiet frame (`DepEnt.pre`) go right after the main file, before
+the preinclude. Tests: 9 `tests/deps` cases (`imacros*`: order against
+`-include`, nested includes, `-MG`, `-MM` with a system `-imacros`, `-MD
+-MP`), run.sh section 1 differential cases on `tests/ppstd/imacros.c` (six
+flag orders, tokens compared with gcc; the dropped text and `__COUNTER__`
+must not leak). Not done: gcc prints the line-0 prefix of `-E` before the
+fatal error (`# 0 "a.c"` and so on), cereal prints nothing, for `-include`
+as for `-imacros`; warnings in `-include`/`-imacros` files are not shown
+(the `<command line>` file is marked system, see 6.3).
 
 ## 7. Staging, tests, gates, estimates
 
@@ -679,7 +705,7 @@ case with an `@file` in an entry, relative to its directory. Lines about
 75, realistic 110 to 150.
 
 ### Slice 3: `-M` family (DONE, Round 208; est. 5 days, realistic 7.5 to 10)
-Status: all nine options, 100 `tests/deps` cases against gcc-13, `bench/tools/deps.sh` on six trees (1548 runs, 0 differ). Corrections to this design found on the way: a missing system-ish header is silent (exit 0) under pure `-MM` (not `-MD`), so "missing header always fatal" holds only with `-M` or `-MD`; the dedup key is (directory object, name), so one path through a search directory and an includer is listed twice; `-M` truncates `-o`. Remaining: `-imacros` is not implemented; `deps.sh` has no compile-commands mode; the four `missing-*` verify.sh tests and the `par.py` change are not done.
+Status: all nine options, 100 `tests/deps` cases against gcc-13, `bench/tools/deps.sh` on six trees (1548 runs, 0 differ). Corrections to this design found on the way: a missing system-ish header is silent (exit 0) under pure `-MM` (not `-MD`), so "missing header always fatal" holds only with `-M` or `-MD`; the dedup key is (directory object, name), so one path through a search directory and an includer is listed twice; `-M` truncates `-o`. Round 209 closed three of the four gaps: `-imacros` (6.11) and the `par.py` change (it takes `-MD`/`-MMD` and runs those tests in a scratch directory, so verify.sh now runs the four `missing-*` tests: gcc.dg/cpp 285 files before, 289 after, all identical; the other three sets unchanged). Remaining: `deps.sh` has no compile-commands mode (judged over the ~40-line budget: it needs a JSON reader, per-entry flags with their quoting and a `--one` that takes them, about 50 lines, so it was skipped); `-E` does not print gcc's line-0 prefix before a fatal missing-file error; warnings in `-include`/`-imacros` files are not shown; the gcc.dg tests that use `-imacros ${srcdir}/...` (c-c++-common pr57653, pr57653-2) are still skipped by `par.py`.
 The 6.6 probes are done (2026-10-10). Start with Options and validation, `IncludeEvent`
 `dir_index`, the listener, the writer, `.d` naming, the deps-only mode,
 `-MG`, `host_preinclude`; then `tests/deps`, run.sh section 15 and the

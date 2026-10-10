@@ -1,0 +1,7 @@
+== ./a.d
+a.o: a.c mac.h /usr/include/stdc-predef.h pre.h h1.h
+mac.h:
+/usr/include/stdc-predef.h:
+pre.h:
+h1.h:
+exit 0

@@ -1,0 +1,2 @@
+a.o: a.c mac2.h h1.h sub/h3.h /usr/include/stdc-predef.h h1.h
+exit 0

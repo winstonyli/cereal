@@ -4016,3 +4016,30 @@ is untested); deps.sh has no compile-commands mode; the four `missing-*`
 verify.sh tests and the `par.py` change of the design are not done.
 Extensions: `-MD`/`-MMD` with index/query and `-M`/`-MM` with
 `--compile-commands` are usage errors (exit 2).
+
+Round 209: A4 follow-ups, `-imacros` and the `missing-*` tests (A4_DESIGN.md
+6.11). `-imacros FILE` shares the `-include` mechanism: `tu_begin` writes
+`#__include_macros "FILE"` (a directive only the `<command line>` file may
+use) next to `#include "FILE"`; the include frame (and the plan frame, for
+the parallel path) carries `quiet`, and `pp_next` drops the tokens of a
+quiet file and of what it includes before macro expansion, as libcpp's
+`cpp_scan_nooutput` does (a `__COUNTER__` there is not consumed). The
+driver now emits `-D`/`-U`/`-imacros` in command-line order and then every
+`-include`, gcc's order; this also repairs `-include F -DQ` (F saw no `Q`).
+A missing `-include`/`-imacros` file prints gcc's position-less
+`<command-line>: fatal error:`. The `-M` list puts what `-imacros` entered
+(`DepEnt.pre`, `IncludeEvent.macros_only`) before the preinclude, also for
+`-MG` misses. `bench/tools/par.py` accepts `-MD`/`-MMD` and runs those tests
+in `$TMPDIR/par-md`: gcc.dg/cpp is 289 files (was 285), 289 identical.
+Sources: src/pp.c, pp.h, plan.h, driver.c, driver.h, deps.c, compdb.c
+(`-imacros` is a path option in entries), main.c (usage), about +45 lines net.
+Tests: 9 tests/deps cases (`imacros*`, gcc-13 goldens via DEPS_UPDATE, none of
+the 100 old goldens changed), six differential run.sh cases on
+tests/ppstd/imacros.c against gcc. Gates: run.sh 1910 passed (was 1895);
+deps.sh 109 cases, 0 differ; gate.sh rc 0: san 1910 passed, 607 files, 0
+findings; gcc.dg 3908 of 3910, c-c++-common 635 of 636, cpp 289 of 289;
+callgrind 3.881 G (3.899 G in Round 208). Not done: deps.sh compile-commands
+mode (over the 40-line budget); `-E` prints no line-0 prefix before the
+fatal missing-file error; warnings inside `-include`/`-imacros` files are not
+shown (the `<command line>` file is system); `-imacros ${srcdir}/...` tests of
+c-c++-common stay skipped by par.py.

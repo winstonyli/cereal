@@ -1,0 +1,1 @@
+-fsyntax-only -MD -MP -imacros mac.h -include pre.h a.c

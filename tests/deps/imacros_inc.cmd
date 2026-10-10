@@ -1,0 +1,1 @@
+-M -include pre.h -imacros mac.h a.c
