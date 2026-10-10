@@ -1,0 +1,7 @@
+[
+ {"directory": "src", "file": "boot.S", "arguments": ["cc", "-c", "boot.S"]},
+ {"directory": "src", "file": "x.cpp", "arguments": ["c++", "-c", "x.cpp"]},
+ {"directory": "src", "file": "notes.h", "arguments": ["cc", "-c", "notes.h"]},
+ {"directory": "src", "file": "x.cpp", "arguments": ["cc", "-x", "c", "-c", "x.cpp"]},
+ {"directory": "src", "file": "ok.c", "arguments": ["cc", "-c", "ok.c"]}
+]

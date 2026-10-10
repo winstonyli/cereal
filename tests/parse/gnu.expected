@@ -503,10 +503,10 @@ FUNC_DEF 'void' 28:1
     ASM '__asm__' 48:5
       QUAL 'goto' 48:13
       STRING '""' 48:18 #1
-      ASM_SECTION ':' 48:21 #1
-      ASM_SECTION ':' 48:22 #2
-      ASM_SECTION ':' 48:23 #3
-      ASM_SECTION ':' 48:24 #4
+      ASM_SECTION '::' 48:21 #1
+      ASM_SECTION '::' 48:21 #2
+      ASM_SECTION '::' 48:23 #3
+      ASM_SECTION '::' 48:23 #4
         NAME 'done' 48:26
     EXPR_STMT 'x' 49:5
       ASSIGN '=' 49:7

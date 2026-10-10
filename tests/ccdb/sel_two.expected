@@ -1,0 +1,6 @@
+--- stderr
+cereal: Entering directory 'ROOT/tests/ccdb/src'
+cereal: Entering directory 'ROOT/tests/ccdb/src/sub'
+cereal: Entering directory 'ROOT/tests/ccdb/inc'
+cereal: 3 entries: 3 checked (0 with errors), 0 not C, 0 duplicate, 0 not checked
+exit 0

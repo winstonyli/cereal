@@ -1,0 +1,6 @@
+[
+ {"directory": "src", "file": "ok.c", "arguments": ["cc", "-c", "ok.c", "-o", "ok.o"]},
+ {"directory": ".", "file": "src/err.c", "command": "cc -Isrc -c src/err.c"},
+ {"directory": "src/sub", "file": "s.c", "arguments": ["cc", "-I../../inc", "-c", "s.c"]},
+ {"directory": "inc", "file": "../src/ok.c", "arguments": ["cc", "-I../src", "-DVALUE=3", "../src/ok.c"]}
+]

@@ -1,0 +1,4 @@
+--- stderr
+cereal: Entering directory 'ROOT/tests/ccdb/src/sub'
+cereal: 1 entries: 1 checked (0 with errors), 0 not C, 0 duplicate, 0 not checked
+exit 0

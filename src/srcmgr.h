@@ -36,8 +36,9 @@ typedef struct LineMapEnt {
 
 typedef struct SrcFile {
     int id;
-    const char *path;      /* as opened (normalized) */
-    const char *name;      /* presumed name for diagnostics/__FILE__ */
+    const char *path;      /* the key: normalized, absolute if the TU has a cwd */
+    const char *name;      /* presumed name for diagnostics/__FILE__: normalized,
+                            * as first spelled (relative stays relative) */
     const char *buf;       /* == region + base; NUL + zero padding after */
     uint32_t size;         /* bytes of content */
     uint32_t span;         /* location range reserved for this file */
@@ -82,6 +83,8 @@ typedef struct SrcMgr {
     uint32_t nfiles;       /* atomic */
     SrcFile **path_slots;  /* open-addressing map path -> file */
     size_t path_cap, path_count;
+    const char *cwd;       /* absolute directory relative paths are read from
+                            * (a compile_commands entry's); NULL: the process's */
     ScratchCursor scratch; /* the main thread's cursor */
     /* Editor buffers: consulted before the file system (normalized path);
      * returns false to fall through to the disk. */

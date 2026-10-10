@@ -14,7 +14,7 @@ It also runs fast on huge generated files.
 | Transport | stdio (what every editor spawns). The protocol layer is independent of it, so a socket or daemon can be added if measurements ever justify it. Shared warm state comes from the on-disk cache (PARALLEL.md step 8) instead. |
 | Edits | Memoized recomputation, staged. Stage 1: a full rebuild per edit with snapshots and cancellation. Stage 2 (here): phase-B results cached per *cell* (a run of text between clean, content-defined boundaries), stored relative to the cell and keyed by text, read set (misses included) and entering state; the index is kept in the cells and queries walk them (Roslyn's green/red split, clangd-style layers); checked against full rebuilds by a differential fuzzer (PARALLEL.md, "Cells"). Next: phase-A checkpoints. Patching data structures in place was rejected: it is fragile, and no production C/C++ engine does it (research notes below). |
 | Features | Full index parity, plus macro-specific extras. |
-| Configuration | `compile_commands.json` (root or `build/`), then `.cereal` files from the workspace root down to the file's directory. Headers and files without an entry take the flags of the entry with the nearest path. |
+| Configuration | `compile_commands.json` (root or `build/`), then `.cereal` files from the workspace root down to the file's directory. Headers and files without an entry take the flags of the entry with the nearest path. An entry's flags resolve against its `directory` (`Options.cwd`, shared with `check --compile-commands`: `compdb.c`); `.cereal` path flags are made absolute against the `.cereal` file. Unknown flags are skipped. |
 
 ## Architecture (src/lsp/)
 
@@ -22,7 +22,7 @@ It also runs fast on huge generated files.
 |---|---|
 | `rpc.c` | `Content-Length` framing; one output lock |
 | `pos.c` | `file://` URIs; positions in UTF-8 (when the client offers `positionEncodings: ["utf-8"]`) or UTF-16 |
-| `config.c` | compilation database, shell splitting, `.cereal`, per-file `Options` |
+| `config.c` | database lookup, `.cereal`, per-file `Options` (the database, shell splitting and `entry_options` are `../compdb.c`) |
 | `server.c` | protocol loop, documents, units, the builder thread, snapshots |
 | `features.c` | requests, diagnostics (macro phase and compiler, merged), inactive regions |
 | `../c/frontend.c` | parse and check one TU (shared with `cereal check`); the second build phase |

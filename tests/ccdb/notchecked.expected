@@ -1,0 +1,6 @@
+--- stderr
+cereal: error: unrecognized command-line option '-Qfoo' (2 entries, first ok.c)
+cereal: error: only C99, C11 and C17 are supported (got '-std=c2x') (2 entries, first err.c)
+cereal: Entering directory 'ROOT/tests/ccdb/src'
+cereal: 4 entries: 1 checked (0 with errors), 0 not C, 0 duplicate, 3 not checked
+exit 3

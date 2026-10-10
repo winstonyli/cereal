@@ -253,12 +253,12 @@ void strict_flex_check(Checker *c, uint32_t holder, bool field,
 
 /* Set around the attribute checks of one declaration (cdecl.c sets them,
  * cattr.c reads them). */
-extern bool alloc_via_ptr;
-extern uint32_t alloc_name;
-extern const char *ctx_vname;
-extern CImplied imp_l[16];
-extern unsigned imp_n;
-extern uint32_t imp_name;
+extern __thread bool alloc_via_ptr;
+extern __thread uint32_t alloc_name;
+extern __thread const char *ctx_vname;
+extern __thread CImplied imp_l[16];
+extern __thread unsigned imp_n;
+extern __thread uint32_t imp_name;
 
 /* cspec.c */
 void specs_visit(Checker *c, uint32_t i);

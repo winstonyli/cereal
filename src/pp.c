@@ -1850,7 +1850,7 @@ SrcFile *pp_find_include(PP *pp, const char *name, bool angled, bool next,
             if (pp->inc->file->kind == SF_VIRTUAL)
                 p = name;
             else
-                p = path_join(pp->arena, path_dirname(pp->arena, pp->inc->file->path),
+                p = path_join(pp->arena, path_dirname(pp->arena, pp->inc->file->name),
                               name);
             if ((f = srcmgr_load(pp->sm, p, pp->inc->file->system_header
                                                  ? SF_SYSTEM : SF_USER)) != NULL) {

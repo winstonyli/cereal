@@ -365,7 +365,7 @@ void vec_invalid(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
     TypeId la, TypeId lb);
 SrcLoc colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els);
 
-extern bool no_int_bool;   /* set by the ?: check while its condition is checked */
+extern __thread bool no_int_bool;   /* set by the ?: check while its condition is checked */
 void cst_parts(Checker *c, uint32_t n, bool *neg, uint64_t *mag);
 
 /* -Wparentheses */

@@ -1,0 +1,3 @@
+--- stderr
+cereal: notdb.json: not a compilation database (a JSON array)
+exit 2

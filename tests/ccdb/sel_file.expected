@@ -1,0 +1,9 @@
+--- stderr
+src/err.c:2:24: error: 'undeclared_name' undeclared (first use in this function)
+    2 | int bad(void) { return undeclared_name; }
+      |                        ^
+src/err.c:2:24: note: each undeclared identifier is reported only once for each function it appears in
+    2 | int bad(void) { return undeclared_name; }
+      |                        ^
+cereal: 1 entries: 1 checked (1 with errors), 0 not C, 0 duplicate, 0 not checked
+exit 1

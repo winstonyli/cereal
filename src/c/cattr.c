@@ -98,7 +98,7 @@ static bool is_pow2(uint64_t v)
  * gcc's error() points; objfile: the attribute form (gcc's caller passes
  * true), which words the upper bound as the object file maximum. */
 /* The aligned(0) attribute last warned about (a struct's are seen twice). */
-static uint32_t zero_warn_u, zero_warn_node;
+static __thread uint32_t zero_warn_u, zero_warn_node;
 
 static uint32_t check_user_alignment_(Checker *c, uint32_t e, SrcLoc loc,
                                       bool objfile);
@@ -1626,16 +1626,16 @@ void strict_flex_check(Checker *c, uint32_t holder, bool field,
 
 /* Set while the attributes of a pointer to function are checked: pure and
  * const are not diagnosed there. */
-bool alloc_via_ptr;
+__thread bool alloc_via_ptr;
 
 /* The function being declared (ident id), 0: none; set around the calls
  * for a function so that a redeclaration's alloc_size / alloc_align can be
  * compared with the previous declaration's. */
-uint32_t alloc_name;
-static SrcLoc alloc_loc;
+__thread uint32_t alloc_name;
+static __thread SrcLoc alloc_loc;
 
 /* Declaration contexts for attrs_ctx_check. */
-const char *ctx_vname;   /* the object attrs_ctx_check is looking at */
+__thread const char *ctx_vname;   /* the object attrs_ctx_check is looking at */
 
 /* Attributes whose handler returns "ignored" on a declaration that is not a
  * function, by context (typedef, file-scope variable, automatic local, static
@@ -1950,11 +1950,11 @@ typedef struct {
     bool bnamed;
     SrcLoc bloc;                /* ... and where that bound is declared */
 } AccSeen;
-static AccSeen acc_l[32];
-static unsigned acc_n;
-CImplied imp_l[16];      /* this declaration's VLA designations */
-unsigned imp_n;
-uint32_t imp_name;
+static __thread AccSeen acc_l[32];
+static __thread unsigned acc_n;
+__thread CImplied imp_l[16];      /* this declaration's VLA designations */
+__thread unsigned imp_n;
+__thread uint32_t imp_name;
 
 static bool acc_parse(const char *arg, AccSeen *o)
 {
@@ -2067,8 +2067,8 @@ static void acc_diag(Checker *c, const AccSeen *e, const AccSeen *x, int kind)
 
 /* VLA designations an earlier declaration lost to its attribute: a
  * redeclaration reports them again. */
-static struct { AccSeen e, x; } acc_redo[8];
-static unsigned acc_nredo;
+static __thread struct { AccSeen e, x; } acc_redo[8];
+static __thread unsigned acc_nredo;
 
 static void acc_add(Checker *c, const AccSeen *x, bool warn)
 {
@@ -2105,7 +2105,7 @@ static void acc_add(Checker *c, const AccSeen *x, bool warn)
     }
 }
 
-static bool acc_ready;
+static __thread bool acc_ready;
 
 /* Start a function declaration; the lookup that replays its earlier
  * declarations waits for the first access attribute (a lookup is recorded

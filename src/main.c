@@ -8,15 +8,19 @@
 #include "toks.h"
 #include "c/csymidx.h"
 #include "c/frontend.h"
+#include "compdb.h"
 #include "lsp/lsp.h"
 
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 static void usage(FILE *o)
 {
     fputs(
         "usage: cereal <mode> [options] <file.c>...\n"
+        "       cereal <mode> --compile-commands DB [options] [FILE-OR-DIR...]\n"
         "\n"
         "modes:\n"
         "  -E            preprocess to stdout (or -o FILE)\n"
@@ -55,13 +59,20 @@ static void usage(FILE *o)
         "options:\n"
         "  -I DIR  -iquote DIR  -isystem DIR  -nostdinc\n"
         "  -D NAME[=VAL]  -U NAME  -include FILE  -undef\n"
-        "  -std=c99  -pedantic  -pedantic-errors  -trigraphs\n"
+        "  -std=c99|c11|c17|gnu99|gnu11|gnu17 (default gnu17)\n"
+        "  -pedantic  -pedantic-errors  -trigraphs\n"
         "  -W<name>  -Wno-<name>  -W<group>  -Wall  -Wextra  -Werror\n"
         "  -Werror=<name>  -Weverything\n"
         "  --target=NAME  the ABI for check (default: the host's)\n"
         "  -fdiagnostics-format=json  -fcolor-diagnostics  -P  -o FILE\n"
         "  -fparallel=auto|on|off  -fparallel-threads=N  -fparallel-chunk=BYTES\n"
-        "  -j N          translation units at a time (default: all cores)\n",
+        "  -j N          translation units at a time (default: all cores)\n"
+        "\n"
+        "--compile-commands DB (with -E, lint, parse, check): run every C entry of\n"
+        "the compile_commands.json DB (or those under the FILEs and directories\n"
+        "given) in its directory with its own flags, then the options given here;\n"
+        "one summary line at the end.  Exit status: 0 clean, 1 errors in a checked\n"
+        "file, 2 usage, 3 no errors but some entries could not be checked.\n",
         o);
 }
 
@@ -306,14 +317,40 @@ typedef struct Batch {
 
 typedef struct TuJob {
     Batch *batch;
-    Options *o;
+    Options *o;                    /* the run's options */
     TuFn fn;
     const char *path;
+    /* a compile_commands entry: the job runs with the options of the entry
+     * and cereal's own (`extra`), in the entry's directory; else with `o` */
+    const CompileEntry *entry;
+    const char *const *extra;
+    int nextra;
     char *out, *err;               /* buffered, written in input order */
     size_t out_len, err_len;
     int rc;
     bool finished;                 /* guarded by batch->m */
 } TuJob;
+
+/* The job's TU function with its options.  An entry's are built here, on
+ * the thread that runs it, and freed with the TU (peak memory: one Options
+ * per running job). */
+static int run_fn(TuJob *j, FILE *out, FILE *err)
+{
+    Options eo;
+    int rc;
+    if (!j->entry)
+        return j->fn(j->o, j->path, out, err);
+    options_init(&eo);
+    eo.msg = NULL;                          /* reported before the run */
+    eo.jobs = j->o->jobs;
+    eo.pp.date_str = j->o->pp.date_str;     /* one timestamp per run */
+    eo.pp.time_str = j->o->pp.time_str;
+    eo.pp.fatal_missing_include = j->o->pp.fatal_missing_include;
+    entry_options(&eo, j->entry, j->extra, j->nextra);
+    rc = j->fn(&eo, j->path, out, err);
+    options_free(&eo);
+    return rc;
+}
 
 static void run_tu_job(void *arg)
 {
@@ -322,7 +359,7 @@ static void run_tu_job(void *arg)
     FILE *err = open_memstream(&j->err, &j->err_len);
     if (!out || !err)
         fatal("out of memory");
-    j->rc = j->fn(j->o, j->path, out, err);
+    j->rc = run_fn(j, out, err);
     fclose(out);
     fclose(err);
     mutex_lock(&j->batch->m);
@@ -331,35 +368,51 @@ static void run_tu_job(void *arg)
     mutex_unlock(&j->batch->m);
 }
 
-/* Every input through fn, up to -j at a time.  Output and diagnostics
- * appear in input order, exactly as a one-at-a-time run would print them. */
-static int run_inputs(Options *o, TuFn fn, FILE *out)
+/* A job of another directory than the last one printed: say so, as make
+ * does, for tools that resolve relative names (decided in commit order, so
+ * the same for any -j). */
+static void enter_dir(const TuJob *j, const char **last)
+{
+    if (j->entry && j->entry->dir && strcmp(j->entry->dir, *last)) {
+        fprintf(stderr, "cereal: Entering directory '%s'\n", j->entry->dir);
+        *last = j->entry->dir;
+    }
+}
+
+/* The jobs (path, fn, entry set by the caller), up to -j at a time.
+ * Output and diagnostics appear in job order, exactly as a one-at-a-time
+ * run would print them.  Returns the or of the jobs' statuses (left in
+ * jobs[i].rc). */
+static int run_jobs(Options *o, TuJob *jobs, size_t n, FILE *out)
 {
     ThreadPool *pool;
     JobGroup g;
     Batch b;
-    TuJob *jobs;
-    size_t i, n = o->inputs.len;
+    size_t i;
     int rc = 0;
+    char *cwd = getcwd(NULL, 0);
+    const char *last = cwd ? cwd : "";
+    for (i = 0; i < n; i++)
+        jobs[i].o = o;
     if (n == 1 || o->jobs == 1) {
-        for (i = 0; i < n; i++)
-            rc |= fn(o, o->inputs.data[i], out, stderr);
+        for (i = 0; i < n; i++) {
+            enter_dir(&jobs[i], &last);
+            jobs[i].rc = run_fn(&jobs[i], out, stderr);
+            rc |= jobs[i].rc;
+        }
+        free(cwd);
         return rc;
     }
     pool = shared_pool(o);
     mutex_init(&b.m);
     cond_init(&b.done);
     group_init(&g);
-    jobs = xcalloc(n, sizeof *jobs);
     for (i = 0; i < n; i++) {
         jobs[i].batch = &b;
-        jobs[i].o = o;
-        jobs[i].fn = fn;
-        jobs[i].path = o->inputs.data[i];
         pool_submit(pool, &g, run_tu_job, &jobs[i]);
     }
     for (i = 0; i < n; i++) {
-        /* help until input i is done, then commit it */
+        /* help until job i is done, then commit it */
         for (;;) {
             bool fin;
             mutex_lock(&b.m);
@@ -375,6 +428,7 @@ static int run_inputs(Options *o, TuFn fn, FILE *out)
             mutex_unlock(&b.m);
             break;
         }
+        enter_dir(&jobs[i], &last);
         fwrite(jobs[i].out, 1, jobs[i].out_len, out);
         fflush(out);
         fwrite(jobs[i].err, 1, jobs[i].err_len, stderr);
@@ -386,7 +440,248 @@ static int run_inputs(Options *o, TuFn fn, FILE *out)
     group_free(&g);
     cond_destroy(&b.done);
     mutex_destroy(&b.m);
+    free(cwd);
+    return rc;
+}
+
+/* Every input through fn, up to -j at a time. */
+static int run_inputs(Options *o, TuFn fn, FILE *out)
+{
+    size_t i, n = o->inputs.len;
+    TuJob *jobs = xcalloc(n, sizeof *jobs);
+    int rc;
+    for (i = 0; i < n; i++) {
+        jobs[i].fn = fn;
+        jobs[i].path = o->inputs.data[i];
+    }
+    rc = run_jobs(o, jobs, n, out);
     free(jobs);
+    return rc;
+}
+
+/* ---- --compile-commands: a build's compile commands, replayed ----------
+ * (docs/A4_DESIGN.md section 4) */
+
+typedef enum { ES_RUN, ES_NOT_C, ES_DUP, ES_NOT_CHECKED } EntryState;
+
+typedef struct EntryPlan {
+    EntryState state;
+    uint64_t fp;                   /* of the entry's options (entry_options) */
+} EntryPlan;
+
+/* An option message, with the number of entries it concerns and the first. */
+typedef struct OptMsg {
+    char *line;
+    const char *first;
+    size_t count, last;            /* last: 1 + the last entry counted */
+} OptMsg;
+typedef VEC(OptMsg) OptMsgList;
+
+static void msg_add(OptMsgList *l, const char *line, size_t len,
+                    const char *first, size_t entry)
+{
+    OptMsg m;
+    size_t k;
+    for (k = 0; k < l->len; k++)
+        if (!strncmp(l->data[k].line, line, len) && !l->data[k].line[len]) {
+            if (l->data[k].last != entry + 1) {
+                l->data[k].count++;
+                l->data[k].last = entry + 1;
+            }
+            return;
+        }
+    m.line = xmalloc(len + 1);
+    memcpy(m.line, line, len);
+    m.line[len] = 0;
+    m.first = first;
+    m.count = 1;
+    m.last = entry + 1;
+    vec_push(l, m);
+}
+
+/* Entries of one file with the same options are checked once. */
+typedef struct DupKey {
+    const char *file;
+    uint64_t fp;
+    size_t idx;
+} DupKey;
+
+static int dupkey_cmp(const void *pa, const void *pb)
+{
+    const DupKey *a = pa, *b = pb;
+    int c = strcmp(a->file, b->file);
+    if (c)
+        return c;
+    if (a->fp != b->fp)
+        return a->fp < b->fp ? -1 : 1;
+    return a->idx < b->idx ? -1 : a->idx > b->idx;
+}
+
+/* Is `file` the path `sel` or below it? (both absolute, normalized) */
+static bool under(const char *file, const char *sel)
+{
+    size_t n = strlen(sel);
+    return !strncmp(file, sel, n) &&
+           (!file[n] || file[n] == '/' || sel[n - 1] == '/');
+}
+
+/* fn over the C entries of the database at `dbpath` (those under the
+ * inputs, if any): each in its directory with its own options, then
+ * cereal's own (`own`).  Exit status: 1 if a checked file has errors, else
+ * 3 if an entry could not be checked, else 0; 2 for a usage error. */
+static int mode_compdb(Options *o, TuFn fn, const char *dbpath,
+                       const StrVec *own)
+{
+    Arena arena;
+    CompileDb db = {0};
+    StrVec extra = {0};
+    OptMsgList msgs = {0};
+    EntryPlan *plan = NULL;
+    bool *sel = NULL;
+    DupKey *keys;
+    TuJob *jobs;
+    char *cwd = getcwd(NULL, 0);
+    size_t i, k, nkeys = 0, nrun = 0, nsel = 0, n_notc = 0, n_dup = 0,
+           n_not = 0, n_err = 0;
+    int skipped = 0, rc, ia;
+    arena_init(&arena);
+    rc = compdb_load(&arena, dbpath, &db, stderr, &skipped);
+    if (rc) {
+        fprintf(stderr, "cereal: %s: %s\n", dbpath,
+                rc == -1 ? "cannot read it"
+                         : "not a compilation database (a JSON array)");
+        rc = 2;
+        goto out;
+    }
+    rc = 2;
+    if (!db.len) {
+        fprintf(stderr, "cereal: %s: no usable entries\n", dbpath);
+        goto out;
+    }
+    for (ia = 0; ia < (int)own->len; ia++)
+        add_flag(&arena, &extra, cwd, own->data, (int)own->len, &ia);
+    sel = xcalloc(db.len, sizeof *sel);
+    plan = xcalloc(db.len, sizeof *plan);
+    if (!o->inputs.len) {
+        for (i = 0; i < db.len; i++)
+            sel[i] = true;
+    } else {
+        bool bad_usage = false;
+        for (k = 0; k < o->inputs.len; k++) {
+            const char *want = compdb_abs(&arena, cwd, o->inputs.data[k]);
+            bool hit = false;
+            for (i = 0; i < db.len; i++)
+                if (under(db.data[i].abs_file, want))
+                    sel[i] = hit = true;
+            if (!hit) {
+                fprintf(stderr, "cereal: no entry for '%s' in %s\n",
+                        o->inputs.data[k], dbpath);
+                bad_usage = true;
+            }
+        }
+        if (bad_usage)
+            goto out;
+    }
+    /* phase 1: classify, parse each entry's options once (for their
+     * messages and fingerprint), find what is checked */
+    keys = xcalloc(db.len, sizeof *keys);
+    for (i = 0; i < db.len; i++) {
+        const CompileEntry *e = &db.data[i];
+        Options eo;
+        char *mbuf = NULL, *line, *save = NULL;
+        size_t mlen = 0, m;
+        struct stat st;
+        bool bad;
+        if (!sel[i])
+            continue;
+        nsel++;
+        if (!entry_is_c(e)) {
+            plan[i].state = ES_NOT_C;
+            n_notc++;
+            continue;
+        }
+        options_init(&eo);
+        eo.msg = open_memstream(&mbuf, &mlen);
+        eo.pp.date_str = o->pp.date_str;
+        eo.pp.time_str = o->pp.time_str;
+        entry_options(&eo, e, extra.data, (int)extra.len);
+        fclose(eo.msg);
+        for (line = strtok_r(mbuf, "\n", &save); line;
+             line = strtok_r(NULL, "\n", &save))
+            msg_add(&msgs, line, strlen(line), e->file, i);
+        for (m = 0; m < eo.ignored_semantic.len; m++) {
+            const char *t = arena_printf(&arena, "cereal: note: '%s' is ignored "
+                                         "and may change diagnostics",
+                                         eo.ignored_semantic.data[m]);
+            msg_add(&msgs, t, strlen(t), e->file, i);
+        }
+        bad = eo.bad_options > 0;
+        if (stat(e->abs_file, &st) != 0 || !S_ISREG(st.st_mode)) {
+            const char *t = arena_printf(&arena, "cereal: error: %s: No such "
+                                         "file or directory", e->file);
+            msg_add(&msgs, t, strlen(t), e->file, i);
+            bad = true;
+        }
+        plan[i].fp = eo.fingerprint;
+        options_free(&eo);
+        free(mbuf);
+        if (bad) {
+            plan[i].state = ES_NOT_CHECKED;
+            n_not++;
+            continue;
+        }
+        keys[nkeys].file = e->abs_file;
+        keys[nkeys].fp = plan[i].fp;
+        keys[nkeys++].idx = i;
+    }
+    qsort(keys, nkeys, sizeof *keys, dupkey_cmp);
+    for (k = 1; k < nkeys; k++)
+        if (!strcmp(keys[k].file, keys[k - 1].file) &&
+            keys[k].fp == keys[k - 1].fp) {
+            plan[keys[k].idx].state = ES_DUP;
+            n_dup++;
+        }
+    free(keys);
+    for (i = 0; i < msgs.len; i++) {
+        fprintf(stderr, "%s (%zu %s, first %s)\n", msgs.data[i].line,
+                msgs.data[i].count,
+                msgs.data[i].count == 1 ? "entry" : "entries",
+                msgs.data[i].first);
+        free(msgs.data[i].line);
+    }
+    vec_free(&msgs);
+    /* phase 2 */
+    for (i = 0; i < db.len; i++)
+        nrun += sel[i] && plan[i].state == ES_RUN;
+    jobs = xcalloc(nrun ? nrun : 1, sizeof *jobs);
+    for (i = 0, k = 0; i < db.len; i++)
+        if (sel[i] && plan[i].state == ES_RUN) {
+            jobs[k].fn = fn;
+            jobs[k].path = db.data[i].file;
+            jobs[k].entry = &db.data[i];
+            jobs[k].extra = (const char *const *)extra.data;
+            jobs[k++].nextra = (int)extra.len;
+        }
+    if (nrun)
+        run_jobs(o, jobs, nrun, stdout);
+    for (k = 0; k < nrun; k++)
+        n_err += jobs[k].rc != 0;
+    free(jobs);
+    if (!o->inputs.len) {
+        n_not += (size_t)skipped;       /* malformed entries, reported above */
+        nsel += (size_t)skipped;
+    }
+    fprintf(stderr, "cereal: %zu entries: %zu checked (%zu with errors), "
+            "%zu not C, %zu duplicate, %zu not checked\n", nsel, nrun, n_err,
+            n_notc, n_dup, n_not);
+    rc = n_err ? 1 : n_not ? 3 : 0;
+out:
+    free(sel);
+    free(plan);
+    vec_free(&extra);
+    vec_free(&db);
+    arena_free(&arena);
+    free(cwd);
     return rc;
 }
 
@@ -1099,16 +1394,39 @@ int main(int argc, char **argv)
     const char *mode = NULL, *qkind = NULL, *qat = NULL;
     bool all = false, check_graph = false, replay = false, no_cells = false,
          quiet = false, queries = false;
+    const char *ccdb = NULL;    /* --compile-commands DB */
+    StrVec own = {0};           /* cereal's own options, for each entry */
+    bool ccdb_given = false;
     int i, rc = 0, tokens = 0;
     options_init(&o);
     if (argc < 2) {
         usage(stderr);
         return 2;
     }
+    for (i = 1; i < argc; i++)
+        ccdb_given |= !strncmp(argv[i], "--compile-commands", 18);
     for (i = 1; i < argc; i++) {
         int n;
-        if (!mode && !strcmp(argv[i], "lsp"))
+        if (!mode && !strcmp(argv[i], "lsp")) {
+            if (ccdb_given) {
+                fputs("cereal: lsp does not take --compile-commands (it finds "
+                      "the database in the workspace)\n", stderr);
+                return 2;
+            }
             return lsp_main(stdin, stdout);
+        }
+        if (!strncmp(argv[i], "--compile-commands", 18) &&
+            (!argv[i][18] || argv[i][18] == '=')) {
+            if (argv[i][18])
+                ccdb = argv[i] + 19;
+            else if (i + 1 < argc)
+                ccdb = argv[++i];
+            else {
+                fputs("cereal: --compile-commands needs a database\n", stderr);
+                return 2;
+            }
+            continue;
+        }
         if (!mode && (!strcmp(argv[i], "-E") || !strcmp(argv[i], "lint") ||
                       !strcmp(argv[i], "index") ||
                       !strcmp(argv[i], "parse") ||
@@ -1218,27 +1536,57 @@ int main(int argc, char **argv)
             diag_list_options(stdout);
             return 0;
         }
-        n = options_parse_one(&o, argc, argv, i);
-        if (n <= 0) {
-            fprintf(stderr, "cereal: unknown option '%s'\n", argv[i]);
-            return 2;
+        {
+            size_t nin = o.inputs.len;
+            int k;
+            n = options_parse_one(&o, argc, argv, i);
+            if (n <= 0) {
+                fprintf(stderr, "cereal: unknown option '%s'\n", argv[i]);
+                return 2;
+            }
+            if (o.inputs.len == nin)
+                for (k = 0; k < n; k++)
+                    vec_push(&own, argv[i + k]);
         }
         i += n - 1;
     }
-    for (i = 0; i < (int)o.ignored_semantic.len; i++)
+    /* in a replay each entry reports them, with its own flags */
+    for (i = 0; !ccdb && i < (int)o.ignored_semantic.len; i++)
         fprintf(stderr, "cereal: note: '%s' is ignored and may change "
                 "diagnostics\n", o.ignored_semantic.data[i]);
-    for (i = 0; i < (int)o.ignored_deps.len; i++)
+    for (i = 0; !ccdb && i < (int)o.ignored_deps.len; i++)
         fprintf(stderr, "cereal: note: '%s' is accepted but no dependency "
                 "file is written\n", o.ignored_deps.data[i]);
     options_finish(&o);
     if (o.bad_options)
-        return 1;
+        return ccdb ? 2 : 1;
     if (!mode) {
         usage(stderr);
         return 2;
     }
-    if (!strcmp(mode, "-E"))
+    if (ccdb) {
+        TuFn fn = NULL;
+        if (!strcmp(mode, "-E")) {
+            o.pp.fatal_missing_include = true;
+            fn = preprocess_one;
+        } else if (!strcmp(mode, "lint")) {
+            fn = lint_one;
+        } else if (!strcmp(mode, "parse") || !strcmp(mode, "check") ||
+                   !strcmp(mode, "-fsyntax-only")) {
+            fe_opts.check = strcmp(mode, "parse") != 0;
+            o.pp.fatal_missing_include = fe_opts.check;
+            fn = parse_one;
+        }
+        if (!fn)
+            fputs("cereal: --compile-commands works with -E, lint, parse and "
+                  "check\n", stderr);
+        else if (o.output)
+            fputs("cereal: -o cannot be used with --compile-commands\n", stderr);
+        else
+            rc = mode_compdb(&o, fn, ccdb, &own);
+        if (!fn || o.output)
+            rc = 2;
+    } else if (!strcmp(mode, "-E"))
         rc = mode_preprocess(&o);
     else if (!strcmp(mode, "lint"))
         rc = mode_lint(&o);
@@ -1257,6 +1605,7 @@ int main(int argc, char **argv)
     }
     else if (!strcmp(mode, "query"))
         rc = mode_query(&o, qkind, qat);
+    vec_free(&own);
     options_free(&o);
     return rc;
 }

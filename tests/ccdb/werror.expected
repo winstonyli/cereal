@@ -1,0 +1,10 @@
+--- stderr
+cereal: Entering directory 'ROOT/tests/ccdb/src'
+warn.c:1:31: warning: unused variable 'y' [-Wunused-variable]
+    1 | int unused_param(int x) { int y; return 0; }
+      |                               ^
+warn.c:1:31: error: unused variable 'y' [-Werror=unused-variable]
+    1 | int unused_param(int x) { int y; return 0; }
+      |                               ^
+cereal: 3 entries: 3 checked (1 with errors), 0 not C, 0 duplicate, 0 not checked
+exit 1

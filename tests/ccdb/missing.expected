@@ -1,0 +1,5 @@
+--- stderr
+cereal: error: gone.c: No such file or directory (1 entry, first gone.c)
+cereal: Entering directory 'ROOT/tests/ccdb/src'
+cereal: 2 entries: 1 checked (0 with errors), 0 not C, 0 duplicate, 1 not checked
+exit 3

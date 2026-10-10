@@ -16,8 +16,8 @@ enum { UC_SAFE, UC_OTHER, UC_SIGN, UC_REAL, UC_IMAG };
 
 unsigned bf_width(Checker *c, uint32_t n);
 
-static unsigned uc_bw;    /* the width of the bit-field being assigned, or 0 */
-static const char *uc_whole;   /* a conditional that folds to this constant */
+static __thread unsigned uc_bw;    /* the width of the bit-field being assigned, or 0 */
+static __thread const char *uc_whole;   /* a conditional that folds to this constant */
 
 /* The target type as gcc prints it: a bit-field's own type is 'signed char:1'. */
 static const char *tgt_name(Checker *c, TypeId lt, char *buf)

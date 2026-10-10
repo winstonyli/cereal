@@ -1,0 +1,3 @@
+--- stderr
+cereal: nonexistent.json: cannot read it
+exit 2

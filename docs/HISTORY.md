@@ -3828,3 +3828,65 @@ events, CSR and scopes be freed at install (about 30 net lines in
 csymidx.[ch]; saves about 12 MB (dense), 6 MB (struct), 1.6 MB (zstd.c) of
 the carry cost, 3 to 8% of the 4 MiB-limit peak). The 19 to 23 MB of shared
 decls and strings is untouched. Parked as a cleanup, not a memory fix.
+
+Round 204: ROADMAP A4 slice 1, `cereal check --compile-commands DB [FILES]`
+(A4_DESIGN.md D1 to D5, D9). Foundations: `Options.cwd` becomes `SrcMgr.cwd`;
+`SrcFile.path` is the absolute key and `name` the normalized spelling as
+first written (diagnostics print `name`; quote includes join the includer's
+`name`; the LSP display sites use `path`); `par_worth_it` stats the
+cwd-resolved path. Option errors are counted messages: `Options.msg`
+(default stderr, NULL silent), `opt_error`, `bad_options`; the six
+`fatal()` sites in option parsing are gone. Default `-std=gnu17`
+(`options_init`); run.sh section 1 passes `-std=c99` to cereal as it
+already did to gcc, and `parse/gnu.expected` changed in four lines (gnu17
+lexes `::` as one token in `asm goto`, gcc-13 accepts the file); verify.sh,
+par.py, corp.sh, cmp.sh and the callgrind line already pass `-std`;
+perf_check.py now does. New `src/compdb.[ch]`: `shell_split`, `compdb_load`,
+`add_flag` (moved from config.c), `entry_is_c` and `entry_options`, shared
+by the replay and the LSP (`config.c` shrank by about 150 lines). The
+replay (`main.c`): phase 1 on the main thread picks entries (FILES by
+absolute path or directory; none matching is exit 2), classifies C by
+`-x`/suffix, parses options into a memory stream, fingerprints
+(directory plus every diagnostic-affecting word) and drops duplicates;
+phase 2 builds each entry's `Options` on the worker (`run_jobs`, shared
+with the other modes); output is committed in database order, with
+`Entering directory` lines on stderr and option messages aggregated
+(`(N entries, first F)`). Exit 1 for errors in a checked file, 3 for an
+entry not checked (unknown option, unsupported `-std`, unreadable file),
+else 0; 2 for usage; `-j` defaults to the core count; a replayed `-MD`
+writes no `.d` file. Unknown clang/other flags make an entry "not checked";
+`.h` entries are skipped as not C.
+Found by the TSan gate and fixed here: the checker's per-check mutable
+globals (cattr.c `alloc_*`, `acc_*`, `imp_*`, `ctx_vname`, `zero_warn_*`;
+cconv `uc_*`; cformat `fmt_*`; cinit `g_pedw`, `digest_bitfield`; cparm
+`aka_print`; cprint `pcond_plain`; cwarn_expr `no_int_bool`; three lazy
+caches in diag.c `option_state`) raced when several files were checked at
+once. That was already true of `cereal check a.c b.c` at `-j>1` before this
+round; they are `__thread` now (the LSP builder is one thread, so unchanged).
+`cfg_gen_next` is atomic; the replay stamps one `__DATE__`/`__TIME__` for
+all entries so workers never call `localtime`.
+Tests: `tests/ccdb` (17 cases: arguments/command forms, relative `file`
+and `directory`, `-I` against the entry directory, duplicates, `.S`/`.cpp`/
+`.h` not C, `-x c` on `.cpp`, unknown option and `-std=c2x`, missing file,
+FILES as file/directory/two/nothing, `-Werror`, cereal's `-Wall` after the
+entry's flags, `-MD -MF` writing nothing, `-o` and `lsp` refused, bad and
+missing database), run.sh section 16 at `-j1` and `-j12` byte-identical.
+`bench/tools/mkccdb.sh` (database without a build system) and `ccdb.sh`
+(`ccdb.py`: gcc-13 per entry in its directory vs the replay, normalized as
+corp.sh does, plus the verdict). Gates: run.sh 1715 passed (STATUS said 1693 at
+Round 200; this round adds 18 checks: the 17 cases and
+the `.d` check); san 1715 passed, 605 files, 0 findings; verify gcc.dg
+3908 of 3910, c-c++-common 635 of 636, cpp 285 of 285 (unchanged); symcov
+4716 files, 0 unindexed (10 skipped); uvloop loop.c 3.870 G instructions
+(3.886 G before, -0.4%); all 17 LSP sessions (both modes) under TSan: 34
+passed, 0 warnings; the 17 replay cases at `-j12` and replays of Lua 5.4
+(33 entries), libuv unix+common (41), cereal's own sources (62) and
+tests/check (597) at `-j8` under TSan: 0 warnings. Real replays against
+gcc-13 per entry: Lua 33/33 and libuv 41/41 identical (libuv: 2 files with
+errors, the same as gcc's), cereal's sources 62/62 identical; with
+`-Wall -Wextra` 11 of them differ, all cereal-only `statement with no
+effect` (37) and `suggest parentheses around assignment used as truth
+value` (21) lines, identical with the HEAD binary run directly (not a
+replay effect; noticed, not fixed). Lines: src +597/-336 in tracked files
+plus 259 new (compdb.[ch]) (main.c +399, driver.c +220/-; compare est.
+370, realistic 550 to 750. Not done: slice 2 (`@file`), slice 3 (`-M`).

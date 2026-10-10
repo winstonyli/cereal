@@ -331,7 +331,7 @@ void lsp_hover(Req *r, JsonWriter *w)
             sb_printf(&sb, "%s```c\n#define %s %s\n```\n", k ? "\n---\n" : "",
                       signature(r, m), macro_body_str(&r->snap->tu.pp, m));
             if (f)
-                sb_printf(&sb, "defined at %s:%u", f->name, l);
+                sb_printf(&sb, "defined at %s:%u", f->path, l);
             if (m->undef_loc)
                 sb_puts(&sb, " (later #undef)");
             sb_putc(&sb, '\n');
@@ -928,7 +928,7 @@ static const char *rename_blocker(Req *r, const IdxTarget *t, IdxRef *refs,
                 srcmgr_linecol(f, refs[i].loc, &l, &c);
             return arena_printf(r->arena, "the name is formed by ## at %s:%u; "
                                 "renaming would not rename that use",
-                                f ? f->name : "?", l);
+                                f ? f->path : "?", l);
         }
         if (!real_loc(sm, refs[i].loc))
             continue;
@@ -1614,7 +1614,7 @@ static bool diag_place(SrcMgr *sm, SrcFile *f, const Diagnostic *d,
             return false;
         *b = d->inc_chain[j];
         *msg = arena_printf(a, "in included file %s: %s",
-                            df ? df->name : "?", d->msg);
+                            df ? df->path : "?", d->msg);
         *e = *b;
     }
     return true;

@@ -237,7 +237,7 @@ DiagConfig *diag_config_new(void)
 {
     DiagConfig *c = xcalloc(1, sizeof(DiagConfig));
     memset(c->umbrella, -1, sizeof c->umbrella);
-    c->gen = ++cfg_gen_next;
+    c->gen = __atomic_add_fetch(&cfg_gen_next, 1, __ATOMIC_RELAXED);
     return c;
 }
 
@@ -253,7 +253,7 @@ DiagConfig *diag_config_clone(const DiagConfig *c)
         *n = *c;
     else
         memset(n->umbrella, -1, sizeof n->umbrella);
-    n->gen = ++cfg_gen_next;
+    n->gen = __atomic_add_fetch(&cfg_gen_next, 1, __ATOMIC_RELAXED);
     return n;
 }
 
@@ -391,7 +391,7 @@ bool diag_config_apply(DiagConfig *c, const char *flag)
     bool on = true, err = false;
     char joined[48];
     size_t i;
-    c->gen = ++cfg_gen_next;
+    c->gen = __atomic_add_fetch(&cfg_gen_next, 1, __ATOMIC_RELAXED);
     bool found = false;
     if (strcmp(flag, "shadow=global") == 0)
         flag = "shadow";                /* gcc: an alias of -Wshadow */
@@ -526,7 +526,7 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
     /* gcc: -Wformat=2 enables -Wformat-nonliteral and -Wformat-security */
     if (c && (!strcmp(o->name, "format-nonliteral") ||
               !strcmp(o->name, "format-security"))) {
-        static long f = -2;
+        static __thread long f = -2;
         if (f == -2)
             f = find_index("format=");
         if (f >= 0 && c->overridden[f] && c->overrides[f] != DL_IGNORED &&
@@ -546,7 +546,7 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
         !strcmp(o->name, "shadow=compatible-local"))
         return option_state(c, i - 1, lvl);
     if (c && !strcmp(o->name, "dangling-else")) {       /* gcc: enabled by -Wparentheses */
-        static long p = -2;
+        static __thread long p = -2;
         if (p == -2)
             p = find_index("parentheses");
         if (p >= 0 && c->overridden[p])
@@ -554,7 +554,7 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
     }
     /* gcc: -Wc90-c99-compat enables -Wlong-long */
     if (c && !strcmp(o->name, "long-long")) {
-        static long p = -2;
+        static __thread long p = -2;
         if (p == -2)
             p = find_index("c90-c99-compat");
         if (p >= 0 && c->overridden[p] && c->overrides[p] != DL_IGNORED) {

@@ -222,7 +222,7 @@ static bool const_through(Checker *c, uint32_t i)
 
 /* The condition of `?:` as gcc prints it after truth-value conversion:
  * `(c) != 0`, `(d) != (0.0)`, `(a) < (b)`, `(c) == 0` for `!c`. */
-static bool pcond_plain;   /* print a ?: test as written, not folded */
+static __thread bool pcond_plain;   /* print a ?: test as written, not folded */
 
 static void pcond_test(Checker *c, StrBuf *sb, uint32_t cond)
 {

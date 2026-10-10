@@ -1077,7 +1077,9 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
     int want, i;
     ParResult res = PAR_DONE;
 
-    if (!par_worth_it(path, po))
+    if (!par_worth_it(tu->sm.cwd && path[0] != '/'
+                          ? arena_printf(&tu->arena, "%s/%s", tu->sm.cwd, path)
+                          : path, po))
         return PAR_FALLBACK;
     memset(&P, 0, sizeof P);
     P.t0 = now();

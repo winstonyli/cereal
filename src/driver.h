@@ -30,6 +30,8 @@ typedef struct Options {
     bool no_warnings;           /* -w */
     bool fatal_errors;          /* -Wfatal-errors */
     int bad_options;            /* command-line errors reported */
+    FILE *msg;                  /* where option errors and notes go (stderr; NULL: nowhere) */
+    const char *cwd;            /* absolute working directory of the TU (NULL: the process's) */
     int std_year;               /* -std=: 1999, 2011 or 2017 */
     bool lenient;               /* skip what is not understood without notes (language server) */
     VEC(const char *) ignored_semantic; /* skipped, may change diagnostics */
@@ -60,9 +62,13 @@ typedef struct TU {
 /* Parse common options starting at argv[i]; returns number consumed (0 if
  * not a common option, -1 on error). */
 int options_parse_one(Options *o, int argc, char **argv, int i);
-/* A skipped build option (-c, -fPIC, -MD, -x c, ...): the arguments it
- * takes in all, 0 if argv[i] is not one. */
-int option_ignored(Options *o, int argc, char **argv, int i);
+/* Does argv[i] change what cereal reports?  False for the options it skips
+ * without effect (-c, -fPIC, -MD, ...: not -fno-common and the like, which
+ * are noted); for fingerprints of flags. */
+bool option_affects_diagnostics(const char *a);
+/* An option problem: "cereal: error: <text>\n" to o->msg, counted in
+ * bad_options.  Option parsing never exits and never writes elsewhere. */
+void opt_error(Options *o, const char *fmt, ...);
 void options_init(Options *o);
 void options_finish(Options *o);   /* add host dirs etc. */
 void options_free(Options *o);

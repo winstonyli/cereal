@@ -1,0 +1,3 @@
+--- stderr
+cereal: lsp does not take --compile-commands (it finds the database in the workspace)
+exit 2

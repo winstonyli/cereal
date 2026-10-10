@@ -1,0 +1,3 @@
+--- stderr
+cereal: no entry for 'err.c' in basic.json
+exit 2

@@ -1,0 +1,6 @@
+[
+ {"directory": "src", "file": "ok.c", "arguments": ["cc", "-Qfoo", "-c", "ok.c"]},
+ {"directory": "src", "file": "err.c", "arguments": ["cc", "-Qfoo", "-std=c2x", "-c", "err.c"]},
+ {"directory": "src", "file": "ok.c", "arguments": ["cc", "-std=c2x", "-c", "ok.c"]},
+ {"directory": "src", "file": "ok.c", "arguments": ["cc", "-c", "ok.c"]}
+]

@@ -207,8 +207,8 @@ static bool fmt_arg_ok(Checker *c, const FmtWant *w, TypeId t)
 
 /* where conversion warnings go in a format without exact columns, when
  * that differs from the format's location ("fmt + N" reports at the '+') */
-static SrcLoc fmt_mloc;
-static const char *fmt_termonly; /* strfmon/strftime: the kind name; only the
+static __thread SrcLoc fmt_mloc;
+static __thread const char *fmt_termonly; /* strfmon/strftime: the kind name; only the
                                   * string itself is diagnosed */
 
 /* The format attribute kinds (CSym.fmt >> 24) that check only the string. */

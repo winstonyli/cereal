@@ -627,7 +627,7 @@ static bool node_err(Checker *c, uint32_t n)
 /* gcc folds calls of the library functions it knows as builtins (atan,
  * nan, ...) when the arguments are constant; an initializer made of them
  * is accepted with a pedwarn. */
-static bool g_pedw;
+static __thread bool g_pedw;
 
 static bool foldable_libcall(Checker *c, uint32_t n, int depth);
 
@@ -1051,7 +1051,7 @@ static void maybe_warn_string(Checker *c, CCtx *x, uint32_t lt, TypeId type,
 /* Returns false after an error.  x is NULL for the top level of a
  * brace-less initializer (no spelling stack). */
 /* set by the caller of digest while the target is a bit-field member */
-static bool digest_bitfield;
+static __thread bool digest_bitfield;
 
 static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
                    TypeId type, IVal *v)

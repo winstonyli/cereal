@@ -84,6 +84,9 @@ A4. (Design: A4_DESIGN.md.) Response files `@file`, `-M*` output (`query
     week for the full -M family) and
     `cereal check --compile-commands DB [FILES]` that replays entries, with
     a non-zero exit when any file has errors (est. 3 days).
+    Slice 1, the replay (with per-TU working directory, option errors as
+    counted messages, default `-std=gnu17`), is DONE, Round 204. Slice 2
+    (`@file`) and slice 3 (`-M` family) are still to do.
 A5. SARIF output (`--format=sarif`) next to the existing JSON.
 
 Verification for A: goldens for each std and each flag class; a harness

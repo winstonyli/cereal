@@ -483,7 +483,18 @@ copying it. Revisit if `deps.sh` meets it.
 
 ## 7. Staging, tests, gates, estimates
 
-### Slice 1: replay (first shippable; est. 3 days, realistic 4.5 to 6)
+### Slice 1: replay (DONE, Round 204; first shippable; est. 3 days, realistic 4.5 to 6)
+Result: all six steps landed (HISTORY Round 204). Differences from the text
+below: the goldens are checked-in `NAME.json` databases with a relative
+`directory` (resolved against the database's own directory) and
+`NAME.cmd` / `NAME.expected` files (stdout, stderr and exit status, the
+checkout path printed as `ROOT`), not `.cmd` files that write their
+database; they are run.sh section 16, not section 7; the `-MD -MF` case
+checks that no `.d` file appears. `ccdb.sh` wraps `ccdb.py`. Added beyond
+the text: the checker's per-check mutable globals became `__thread`
+(cattr, cconv, cformat, cinit, cparm, cprint, cwarn_expr; three lazy
+caches in diag.c), because ThreadSanitizer showed any `check` of several
+files at `-j>1` racing on them, before this slice too.
 Steps, each with its check:
 1. `compdb.c`: move `split_args` (shell mode), `add_flag`, `CompileEntry`,
    `compdb_load`; `entry_options`; `config.c` calls it. Check: LSP

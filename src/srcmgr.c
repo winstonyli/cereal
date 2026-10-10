@@ -89,8 +89,9 @@ static SrcLoc reserve(SrcMgr *sm, size_t span)
 }
 
 /* Caller holds sm->m. */
-static SrcFile *new_file(SrcMgr *sm, const char *path, SrcLoc base,
-                         uint32_t size, uint32_t span, SrcFileKind kind)
+static SrcFile *new_file(SrcMgr *sm, const char *path, const char *name,
+                         SrcLoc base, uint32_t size, uint32_t span,
+                         SrcFileKind kind)
 {
     SrcFile *f = NEW(sm->arena, SrcFile);
     uint32_t n = sm->nfiles;
@@ -100,7 +101,7 @@ static SrcFile *new_file(SrcMgr *sm, const char *path, SrcLoc base,
         sm->fchunks[n / FILE_CHUNK] = xcalloc(FILE_CHUNK, sizeof(SrcFile *));
     f->id = (int)n;
     f->path = path;
-    f->name = path;
+    f->name = name;
     f->base = base;
     f->buf = sm->region + base;
     f->size = size;
@@ -176,7 +177,12 @@ SrcFile *srcmgr_load(SrcMgr *sm, const char *path, SrcFileKind kind)
 
 static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
 {
-    char *norm = path_normalize(sm->arena, path);
+    char *name = path_normalize(sm->arena, path);
+    /* the key: absolute when the TU has a working directory of its own */
+    char *norm = sm->cwd && name[0] != '/'
+                     ? path_normalize(sm->arena, arena_printf(sm->arena, "%s/%s",
+                                                              sm->cwd, name))
+                     : name;
     SrcFile *f = path_find(sm, norm);
     struct stat st;
     int fd;
@@ -190,7 +196,7 @@ static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
         if (sm->overlay(sm->overlay_ctx, norm, &ob, &ol) && ol <= 0xF0000000u) {
             base = reserve(sm, ol + SRC_PAD);
             memcpy(sm->region + base, ob, ol);
-            f = new_file(sm, norm, base, (uint32_t)ol,
+            f = new_file(sm, norm, name, base, (uint32_t)ol,
                          (uint32_t)round_up(ol + SRC_PAD, page_size()), kind);
             path_insert(sm, f);
             return f;
@@ -230,7 +236,7 @@ static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
         }
     }
     close(fd);
-    f = new_file(sm, norm, base, (uint32_t)size,
+    f = new_file(sm, norm, name, base, (uint32_t)size,
                  (uint32_t)round_up(size + SRC_PAD, page_size()), kind);
     path_insert(sm, f);
     return f;
@@ -241,10 +247,12 @@ SrcFile *srcmgr_add_virtual(SrcMgr *sm, const char *name, const char *buf,
 {
     SrcLoc base;
     SrcFile *f;
+    const char *copy;
     mutex_lock(&sm->m);
     base = reserve(sm, len + SRC_PAD);
     memcpy(sm->region + base, buf, len);
-    f = new_file(sm, arena_strdup(sm->arena, name), base, (uint32_t)len,
+    copy = arena_strdup(sm->arena, name);
+    f = new_file(sm, copy, copy, base, (uint32_t)len,
                  (uint32_t)round_up(len + SRC_PAD, page_size()), SF_VIRTUAL);
     mutex_unlock(&sm->m);
     return f;
@@ -260,7 +268,7 @@ SrcLoc srcmgr_scratch(SrcMgr *sm, ScratchCursor *c, const char *s, size_t n)
         SrcLoc base;
         mutex_lock(&sm->m);
         base = reserve(sm, span);
-        f = new_file(sm, "<scratch>", base, 0, (uint32_t)span, SF_SCRATCH);
+        f = new_file(sm, "<scratch>", "<scratch>", base, 0, (uint32_t)span, SF_SCRATCH);
         mutex_unlock(&sm->m);
         c->chunk = f;
     }

@@ -1720,7 +1720,7 @@ static bool label_warned(Checker *c, uint32_t id)
 
 /* c_common_truthvalue_conversion's -Wint-in-bool-context: the expression n
  * is used as a truth value. */
-bool no_int_bool;
+__thread bool no_int_bool;
 
 static void int_bool_warn(Checker *c, uint32_t n)
 {

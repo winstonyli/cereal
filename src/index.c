@@ -1721,7 +1721,7 @@ bool index_inactive_note(const Index *ix, SrcLoc loc, StrBuf *sb)
     if (!n) /* a comment before the name */
         p = "if", n = 2;
     srcmgr_linecol(f, cond, &line, &col);
-    sb_printf(sb, "inactive code (skipped by #%.*s at %s:%u)", n, p, f->name,
+    sb_printf(sb, "inactive code (skipped by #%.*s at %s:%u)", n, p, f->path,
               line);
     return true;
 }

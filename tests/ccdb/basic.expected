@@ -1,0 +1,13 @@
+--- stderr
+cereal: Entering directory 'ROOT/tests/ccdb/src'
+cereal: Entering directory 'ROOT/tests/ccdb'
+src/err.c:2:24: error: 'undeclared_name' undeclared (first use in this function)
+    2 | int bad(void) { return undeclared_name; }
+      |                        ^
+src/err.c:2:24: note: each undeclared identifier is reported only once for each function it appears in
+    2 | int bad(void) { return undeclared_name; }
+      |                        ^
+cereal: Entering directory 'ROOT/tests/ccdb/src/sub'
+cereal: Entering directory 'ROOT/tests/ccdb/inc'
+cereal: 4 entries: 4 checked (1 with errors), 0 not C, 0 duplicate, 0 not checked
+exit 1

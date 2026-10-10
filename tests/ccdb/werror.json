@@ -1,0 +1,5 @@
+[
+ {"directory": "src", "file": "warn.c", "arguments": ["cc", "-Wall", "-c", "warn.c"]},
+ {"directory": "src", "file": "warn.c", "arguments": ["cc", "-Wall", "-Werror", "-c", "warn.c"]},
+ {"directory": "src", "file": "ok.c", "arguments": ["cc", "-c", "ok.c"]}
+]

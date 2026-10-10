@@ -1,0 +1,3 @@
+--- stderr
+cereal: -o cannot be used with --compile-commands
+exit 2

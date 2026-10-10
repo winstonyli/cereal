@@ -14,6 +14,8 @@ extern const char *const host_builtins[];
 extern const char host_predefs[];
 extern const char *const host_assertions[];
 
+static bool set_std(Options *o, const char *name);
+
 void options_init(Options *o)
 {
     memset(o, 0, sizeof *o);
@@ -23,7 +25,33 @@ void options_init(Options *o)
     o->pp.lex.norm = 1;
     o->linemarkers = true;
     o->parallel = 'a';
-    o->std_year = 1999;
+    o->msg = stderr;
+    set_std(o, "gnu17");        /* gcc-13's default */
+}
+
+/* Text to o->msg exactly as given (callers add the "cereal: error: " or
+ * "<built-in>: error: " prefix), counted nowhere. */
+static void opt_msg(Options *o, const char *fmt, ...)
+{
+    va_list ap;
+    if (!o->msg)
+        return;
+    va_start(ap, fmt);
+    vfprintf(o->msg, fmt, ap);
+    va_end(ap);
+}
+
+void opt_error(Options *o, const char *fmt, ...)
+{
+    va_list ap;
+    if (o->msg) {
+        va_start(ap, fmt);
+        fputs("cereal: error: ", o->msg);
+        vfprintf(o->msg, fmt, ap);
+        fputc('\n', o->msg);
+        va_end(ap);
+    }
+    o->bad_options++;
 }
 
 /* --param NAME=VALUE: the parameter only matters to the middle end, but gcc
@@ -62,13 +90,12 @@ static void check_param(Options *o, const char *arg)
             dym = best_get(&b);
         }
         if (dym)
-            fprintf(stderr, "cereal: error: unrecognized command-line option "
-                    "'--param=%s'; did you mean '--param=%s'?\n", arg, dym);
+            opt_error(o, "unrecognized command-line option "
+                      "'--param=%s'; did you mean '--param=%s'?", arg, dym);
         else
-            fprintf(stderr, "cereal: error: unrecognized command-line option "
-                    "'--param=%s'\n", arg);
+            opt_error(o, "unrecognized command-line option '--param=%s'",
+                      arg);
         free(cand);
-        o->bad_options++;
         return;
     }
     if (hi < lo)
@@ -83,28 +110,29 @@ static void check_param(Options *o, const char *arg)
         if (v <= (1LL << 40))
             v = v * 10 + (*p - '0');
     }
-    if (!digits) {
-        fprintf(stderr, "cereal: error: argument to '--param=%.*s=' should be "
-                "a non-negative integer\n", (int)nlen, arg);
-        o->bad_options++;
-    } else if (v > hi && hi == 2147483647) {
-        fprintf(stderr, "cereal: error: argument to '--param=%.*s=' is bigger "
-                "than %lld\n", (int)nlen, arg, hi);
-        o->bad_options++;
-    } else if (v < lo || v > hi) {
-        fprintf(stderr, "cereal: error: argument to '--param=%.*s=' is not "
-                "between %lld and %lld\n", (int)nlen, arg, lo, hi);
-        o->bad_options++;
-    }
+    if (!digits)
+        opt_error(o, "argument to '--param=%.*s=' should be "
+                  "a non-negative integer", (int)nlen, arg);
+    else if (v > hi && hi == 2147483647)
+        opt_error(o, "argument to '--param=%.*s=' is bigger "
+                  "than %lld", (int)nlen, arg, hi);
+    else if (v < lo || v > hi)
+        opt_error(o, "argument to '--param=%.*s=' is not "
+                  "between %lld and %lld", (int)nlen, arg, lo, hi);
 }
 
-static const char *arg_value(int argc, char **argv, int *i, const char *flag)
+/* The value of an option written -Ivalue or -I value.  A missing one is
+ * reported and read as empty. */
+static const char *arg_value(Options *o, int argc, char **argv, int *i,
+                             const char *flag)
 {
     size_t n = strlen(flag);
     if (argv[*i][n])
         return argv[*i] + n;
-    if (*i + 1 >= argc)
-        fatal("missing argument to '%s'", flag);
+    if (*i + 1 >= argc) {
+        opt_error(o, "missing argument to '%s'", flag);
+        return "";
+    }
     return argv[++*i];
 }
 
@@ -174,43 +202,59 @@ static int language_option(Options *o, int argc, char **argv, int i)
 {
     const char *a = argv[i], *lang;
     int used = a[2] ? 1 : 2;
-    if (!a[2] && i + 1 >= argc)
-        fatal("missing argument to '-x'");
-    lang = a[2] ? a + 2 : argv[i + 1];
-    if (strcmp(lang, "c") && strcmp(lang, "none") && !o->lenient) {
-        fprintf(stderr, "cereal: error: language '%s' is not supported "
-                "(only C)\n", lang);
-        o->bad_options++;
+    if (!a[2] && i + 1 >= argc) {
+        opt_error(o, "missing argument to '-x'");
+        return 1;
     }
+    lang = a[2] ? a + 2 : argv[i + 1];
+    if (strcmp(lang, "c") && strcmp(lang, "none") && !o->lenient)
+        opt_error(o, "language '%s' is not supported (only C)", lang);
     return used;
+}
+
+/* The row of ignored_opts that skips `a`, or NULL. */
+static const struct IgnoredOpt *find_ignored(const char *a)
+{
+    size_t k, n;
+    for (k = 0; k < sizeof ignored_opts / sizeof *ignored_opts; k++) {
+        const struct IgnoredOpt *g = &ignored_opts[k];
+        n = strlen(g->name);
+        if (strncmp(a, g->name, n) == 0 && (!a[n] || g->joined))
+            return g;
+    }
+    return NULL;
+}
+
+bool option_affects_diagnostics(const char *a)
+{
+    const struct IgnoredOpt *g = find_ignored(a);
+    return !g || g->kind == IGN_SEMANTIC;
 }
 
 /* An option cereal skips (see ignored_opts): the number of arguments it
  * takes in all, or 0 when it is not one. */
-int option_ignored(Options *o, int argc, char **argv, int i)
+static int option_ignored(Options *o, int argc, char **argv, int i)
 {
     const char *a = argv[i];
-    size_t k, n;
+    const struct IgnoredOpt *g;
+    int used = 1;
     if (!strncmp(a, "-x", 2))
         return language_option(o, argc, argv, i);
-    for (k = 0; k < sizeof ignored_opts / sizeof *ignored_opts; k++) {
-        const struct IgnoredOpt *g = &ignored_opts[k];
-        int used = 1;
-        n = strlen(g->name);
-        if (strncmp(a, g->name, n) != 0 || (a[n] && !g->joined))
-            continue;
-        if (!a[n] && g->args) {
-            if (i + 1 >= argc)
-                fatal("missing argument to '%s'", a);
-            used = 2;
+    g = find_ignored(a);
+    if (!g)
+        return 0;
+    if (!a[strlen(g->name)] && g->args) {
+        if (i + 1 >= argc) {
+            opt_error(o, "missing argument to '%s'", a);
+            return 1;
         }
-        if (!o->lenient && g->kind == IGN_SEMANTIC)
-            vec_push(&o->ignored_semantic, a);
-        else if (!o->lenient && g->kind == IGN_DEPS)
-            vec_push(&o->ignored_deps, a);
-        return used;
+        used = 2;
     }
-    return 0;
+    if (!o->lenient && g->kind == IGN_SEMANTIC)
+        vec_push(&o->ignored_semantic, a);
+    else if (!o->lenient && g->kind == IGN_DEPS)
+        vec_push(&o->ignored_deps, a);
+    return used;
 }
 
 /* -std= values: the standard's year and whether the GNU
@@ -256,22 +300,22 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     int start = i;
     CmdlineMacro cm;
     if (!strncmp(a, "-I", 2)) {
-        vec_push(&o->pp.angle_dirs, arg_value(argc, argv, &i, "-I"));
+        vec_push(&o->pp.angle_dirs, arg_value(o, argc, argv, &i, "-I"));
     } else if (!strncmp(a, "-iquote", 7)) {
-        vec_push(&o->pp.quote_dirs, arg_value(argc, argv, &i, "-iquote"));
+        vec_push(&o->pp.quote_dirs, arg_value(o, argc, argv, &i, "-iquote"));
     } else if (!strncmp(a, "-isystem", 8)) {
-        vec_push(&o->pp.system_dirs, arg_value(argc, argv, &i, "-isystem"));
+        vec_push(&o->pp.system_dirs, arg_value(o, argc, argv, &i, "-isystem"));
     } else if (!strncmp(a, "-D", 2)) {
         cm.kind = 'D';
-        cm.text = arg_value(argc, argv, &i, "-D");
+        cm.text = arg_value(o, argc, argv, &i, "-D");
         vec_push(&o->macros, cm);
     } else if (!strncmp(a, "-U", 2)) {
         cm.kind = 'U';
-        cm.text = arg_value(argc, argv, &i, "-U");
+        cm.text = arg_value(o, argc, argv, &i, "-U");
         vec_push(&o->macros, cm);
     } else if (!strcmp(a, "-include")) {
         cm.kind = 'i';
-        cm.text = arg_value(argc, argv, &i, "-include");
+        cm.text = arg_value(o, argc, argv, &i, "-include");
         vec_push(&o->macros, cm);
     } else if (!strcmp(a, "-nostdinc")) {
         o->pp.nostdinc = true;
@@ -279,7 +323,7 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->pp.no_predefs = true;
     } else if (!strncmp(a, "-std=", 5)) {
         if (!set_std(o, a + 5) && !o->lenient)
-            fatal("only C99, C11 and C17 are supported (got '%s')", a);
+            opt_error(o, "only C99, C11 and C17 are supported (got '%s')", a);
     } else if (!strcmp(a, "-pedantic") || !strcmp(a, "-Wpedantic")) {
         o->pp.pedantic = true;
         o->pp.lex.ucn_c99 = true;
@@ -343,7 +387,7 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
          * checked */
         check_dump(o, a);
     } else if (!strcmp(a, "--param")) {
-        check_param(o, arg_value(argc, argv, &i, "--param"));
+        check_param(o, arg_value(o, argc, argv, &i, "--param"));
     } else if (!strncmp(a, "--param=", 8)) {
         check_param(o, a + 8);
     } else if (!strcmp(a, "-fsystem-warnings")) {
@@ -362,14 +406,15 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         else if (!strcmp(v, "auto"))
             o->parallel = 'a';
         else
-            fatal("-fparallel= expects on, off or auto (got '%s')", v);
+            opt_error(o, "-fparallel= expects on, off or auto (got '%s')", v);
     } else if (!strncmp(a, "-fparallel-threads=", 19)) {
         o->par_threads = atoi(a + 19);
     } else if (!strncmp(a, "-j", 2)) {
-        const char *v = arg_value(argc, argv, &i, "-j");
+        int before = o->bad_options;
+        const char *v = arg_value(o, argc, argv, &i, "-j");
         o->jobs = atoi(v);
-        if (o->jobs < 1)
-            fatal("-j expects a positive number (got '%s')", v);
+        if (o->jobs < 1 && o->bad_options == before)
+            opt_error(o, "-j expects a positive number (got '%s')", v);
     } else if (!strncmp(a, "-fparallel-window=", 18)) {
         o->par_window = (unsigned)strtoul(a + 18, NULL, 10);
     } else if (!strncmp(a, "-fparallel-chunk=", 17)) {
@@ -377,7 +422,7 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
     } else if (!strcmp(a, "-P")) {
         o->linemarkers = false;
     } else if (!strcmp(a, "-o")) {
-        o->output = arg_value(argc, argv, &i, "-o");
+        o->output = arg_value(o, argc, argv, &i, "-o");
     } else if (a[0] == '-' && a[1]) {
         return option_ignored(o, argc, argv, i);
     } else {
@@ -406,7 +451,7 @@ static bool ign_name_ok(const char *s, size_t n, bool may_empty)
 
 /* gcc's handle_ignored_attributes_option: a comma list of ns::attr / ns::;
  * reports and returns false on a bad one. */
-static bool ignored_attrs_ok(const char *v)
+static bool ignored_attrs_ok(Options *o, const char *v)
 {
     while (*v) {
         size_t n = strcspn(v, ",");
@@ -417,14 +462,14 @@ static bool ignored_attrs_ok(const char *v)
                 break;
             }
         if (n && !cc) {
-            fprintf(stderr, "<built-in>: error: wrong argument to ignored "
+            opt_msg(o, "<built-in>: error: wrong argument to ignored "
                     "attributes\n<built-in>: note: valid format is "
                     "'ns::attr' or 'ns::'\n");
             return false;
         }
         if (n && (!ign_name_ok(v, (size_t)(cc - v), false) ||
                   !ign_name_ok(cc + 2, (size_t)(v + n - cc - 2), true))) {
-            fprintf(stderr, "<built-in>: error: wrong argument to ignored "
+            opt_msg(o, "<built-in>: error: wrong argument to ignored "
                     "attributes\n");
             return false;
         }
@@ -464,16 +509,13 @@ static void bidi_option(Options *o, const char *a)
         else if (n == 3 && !strncmp(p, "any", 3))
             b = BIDI_ANY;
         else if (!(n == 3 && !strncmp(p, "ucn", 3))) {
-            fprintf(stderr, "cereal: error: argument '%.*s' to '-Wbidi-chars' "
-                    "not recognized\ncereal: note: valid arguments to "
-                    "'-Wbidi-chars=' are: any none ucn unpaired\n", (int)n, p);
-            o->bad_options++;
+            opt_error(o, "argument '%.*s' to '-Wbidi-chars' "
+                      "not recognized\ncereal: note: valid arguments to "
+                      "'-Wbidi-chars=' are: any none ucn unpaired", (int)n, p);
             return;
         }
         if (b >= 0 ? base >= 0 : ucn) {
-            fprintf(stderr, "cereal: error: invalid argument in option "
-                    "'-Wbidi-chars=%s'\n", v);
-            o->bad_options++;
+            opt_error(o, "invalid argument in option '-Wbidi-chars=%s'", v);
             return;
         }
         if (b >= 0)
@@ -498,10 +540,9 @@ static void norm_option(Options *o, const char *a)
             o->pp.lex.norm = (uint8_t)k;
             return;
         }
-    fprintf(stderr, "cereal: error: argument '%s' to '-Wnormalized' not "
-            "recognized\ncereal: note: valid arguments to '-Wnormalized=' "
-            "are: id nfc nfkc none\n", v);
-    o->bad_options++;
+    opt_error(o, "argument '%s' to '-Wnormalized' not "
+              "recognized\ncereal: note: valid arguments to '-Wnormalized=' "
+              "are: id nfc nfkc none", v);
 }
 
 static void bad_wopt(Options *o, const char *flag)
@@ -520,7 +561,7 @@ static void bad_wopt(Options *o, const char *flag)
     n = eq ? (size_t)(eq - p) : strlen(p);
     snprintf(name, sizeof name, "%.*s", (int)n, p);
     if (eq && !strcmp(name, "attributes") && p != flag &&
-        !strncmp(flag, "no-", 3) && !ignored_attrs_ok(eq + 1)) {
+        !strncmp(flag, "no-", 3) && !ignored_attrs_ok(o, eq + 1)) {
         o->bad_options++;
         return;
     }
@@ -531,16 +572,14 @@ static void bad_wopt(Options *o, const char *flag)
                      (m > 12 && !strcmp(name + m - 12, "-larger-than"));
         if (!eq && valued && !exact && strncmp(flag, "no-", 3) && sized) {
             /* a valued-only option written without its value */
-            fprintf(stderr, "cereal: error: unrecognized command-line option "
-                    "'-W%s'; did you mean '-W%s='?\n", flag, name);
-            o->bad_options++;
+            opt_error(o, "unrecognized command-line option "
+                      "'-W%s'; did you mean '-W%s='?", flag, name);
             return;
         }
         if (eq && valued && sized && !size_arg_ok(eq + 1)) {
-            fprintf(stderr, "cereal: error: argument to '-W%s=' should be a "
-                    "non-negative integer optionally followed by a size "
-                    "unit\n", name);
-            o->bad_options++;
+            opt_error(o, "argument to '-W%s=' should be a "
+                      "non-negative integer optionally followed by a size "
+                      "unit", name);
         }
         return;                 /* a real gcc option cereal does not model */
     }
@@ -548,12 +587,10 @@ static void bad_wopt(Options *o, const char *flag)
         return;                 /* gcc ignores an unknown -Wno-... */
     dym = gcc_wopt_suggest(flag);
     if (dym)
-        fprintf(stderr, "cereal: error: unrecognized command-line option "
-                "'-W%s'; did you mean '-W%s'?\n", flag, dym);
+        opt_error(o, "unrecognized command-line option "
+                  "'-W%s'; did you mean '-W%s'?", flag, dym);
     else
-        fprintf(stderr, "cereal: error: unrecognized command-line option "
-                "'-W%s'\n", flag);
-    o->bad_options++;
+        opt_error(o, "unrecognized command-line option '-W%s'", flag);
 }
 
 /* -fdump-{ipa,tree,rtl}-PASS[-flags][=file]: gcc rejects an unknown pass
@@ -597,13 +634,13 @@ static void check_dump(Options *o, const char *a)
             dym = best_get(&b);
         }
         if (dym)
-            fprintf(stderr, "cereal: error: unrecognized command-line option "
-                    "'%s'; did you mean '-fdump-%s'?\n", a, dym);
+            opt_error(o, "unrecognized command-line option "
+                      "'%s'; did you mean '-fdump-%s'?", a, dym);
         else
-            fprintf(stderr, "cereal: error: unrecognized command-line option "
-                    "'%s'\n", a);
+            opt_error(o, "unrecognized command-line option '%s'", a);
         free(nm);
         free(cand);
+        return;
     }
     o->bad_options++;
 }
@@ -650,6 +687,7 @@ void tu_init_shared(TU *tu, Options *opt, Interner *in)
     arena_init(&tu->arena);
     tu->in = interner_retain(in);
     srcmgr_init(&tu->sm, &tu->arena);
+    tu->sm.cwd = opt->cwd;
     diag_init(&tu->diag, &tu->arena, &tu->sm);
     tu->diag.cfg = opt->diag;
     tu->diag.werror = diag_config_werror(opt->diag);

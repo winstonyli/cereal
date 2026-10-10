@@ -1,0 +1,3 @@
+[
+ {"directory": "src", "file": "ok.c", "arguments": ["cc", "-MD", "-MF", "ok.d", "-MMD", "-c", "ok.c"]}
+]

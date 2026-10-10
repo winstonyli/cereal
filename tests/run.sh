@@ -23,6 +23,7 @@
 #  12. summaries  13. build options (see their sections)
 #  14. C symbol index: `--dump-symbols` goldens, `--verify-symbols` over the
 #      checker and parser cases and cereal's own sources
+#  16. compile-commands replay: tests/ccdb cases against goldens, -j1 = -j12
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -40,7 +41,7 @@ diff_pp() { # diff_pp NAME FILE FLAGS...  (ALLOW_ERRORS=1: erroneous input)
     name=$1 file=$2
     shift 2
     $REFCC -std=c99 "$@" -E "$file" >"$TMP/ref.i" 2>/dev/null
-    if ! "$CEREAL" -E -fcheck-macro-versions "$@" "$file" >"$TMP/out.i" 2>"$TMP/err" &&
+    if ! "$CEREAL" -E -std=c99 -fcheck-macro-versions "$@" "$file" >"$TMP/out.i" 2>"$TMP/err" &&
         [ "${ALLOW_ERRORS:-0}" = 0 ]; then
         bad "$name (cereal exited non-zero)"; sed 's/^/    /' "$TMP/err" | head -5; return
     fi
@@ -473,6 +474,44 @@ cd "$ROOT/tests/check" && sym_verify tests/check ./*.c
 cd "$ROOT/tests/parse" && sym_verify tests/parse ./*.c
 cd "$ROOT/tests/symidx" && sym_verify tests/symidx ./*.c
 cd "$ROOT" && sym_verify sources src/*.c src/analysis/*.c src/lsp/*.c src/c/*.c
+
+# 16. compile-commands replay: `check --compile-commands DB` per case
+# (tests/ccdb/NAME.cmd: the arguments), stdout, stderr and exit status against
+# NAME.expected with the checkout path as ROOT; -j1 and -j12 must print the
+# same; a replayed -MD writes no .d file
+ccdb_run() { # ccdb_run NAME JOBS
+    (
+        cd "$ROOT/tests/ccdb" || exit 9
+        set -- $(cat "$1.cmd") "-j$2"
+        mode=$1
+        shift
+        "$CEREAL" "$mode" "$@" >"$TMP/cc.o" 2>"$TMP/cc.e" </dev/null
+        rc=$?
+        { cat "$TMP/cc.o"; echo "--- stderr"; cat "$TMP/cc.e"; echo "exit $rc"; } |
+            sed "s|$ROOT|ROOT|g"
+    )
+}
+for f in "$ROOT"/tests/ccdb/*.cmd; do
+    n=$(basename "$f" .cmd)
+    ccdb_run "$n" 1 >"$TMP/cc.1"
+    ccdb_run "$n" 12 >"$TMP/cc.12"
+    if [ "${CCDB_UPDATE:-0}" = 1 ]; then
+        cp "$TMP/cc.1" "$ROOT/tests/ccdb/$n.expected"
+    fi
+    if cmp -s "$TMP/cc.1" "$ROOT/tests/ccdb/$n.expected" && cmp -s "$TMP/cc.1" "$TMP/cc.12"; then
+        ok
+    else
+        bad "ccdb/$n"
+        diff "$ROOT/tests/ccdb/$n.expected" "$TMP/cc.1" | head -10 | sed "s/^/    /"
+        cmp -s "$TMP/cc.1" "$TMP/cc.12" || echo "    -j1 and -j12 differ"
+    fi
+done
+if [ -e "$ROOT/tests/ccdb/src/ok.d" ]; then
+    rm -f "$ROOT/tests/ccdb/src/ok.d"
+    bad "ccdb: replayed -MD wrote ok.d"
+else
+    ok
+fi
 
 # 15. builtin table: every row's signature is "ret|arg|..." (a missing '|'
 # made strchr(sig, '|') + 1 dereference NULL)

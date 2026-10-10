@@ -1,0 +1,4 @@
+[
+ {"directory": "src", "file": "gone.c", "arguments": ["cc", "-c", "gone.c"]},
+ {"directory": "src", "file": "ok.c", "arguments": ["cc", "-c", "ok.c"]}
+]

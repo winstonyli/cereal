@@ -640,7 +640,7 @@ void cparm_release(Checker *c, uint32_t d)
 
 /* ---- printing ------------------------------------------------------------------ */
 
-static bool aka_print;      /* put_dim: the canonical spelling, [*] as [] */
+static __thread bool aka_print;      /* put_dim: the canonical spelling, [*] as [] */
 
 static void put_dim(StrBuf *sb, const PDim *d)
 {

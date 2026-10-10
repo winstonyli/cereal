@@ -9,6 +9,7 @@
 #define CEREAL_LSP_H
 
 #include "../c/csymidx.h"
+#include "../compdb.h"
 #include "../driver.h"
 #include "../index.h"
 #include "../json.h"
@@ -24,17 +25,10 @@ void rpc_set_output(FILE *out);
 
 /* ---- configuration (config.c) ---------------------------------------- */
 
-typedef struct CompileCmd {
-    const char *file;        /* absolute, normalized */
-    const char *dir;
-    const char **argv;
-    int argc;
-} CompileCmd;
-
 typedef struct LspConfig {
     Arena arena;
     const char *root;        /* workspace root (absolute) or NULL */
-    VEC(CompileCmd) cmds;
+    CompileDb cmds;
     const char *db_path;     /* compile_commands.json in use, if any */
 } LspConfig;
 
@@ -46,8 +40,6 @@ void config_free(LspConfig *c);
  * config_options_free. */
 Options *config_options_for(LspConfig *c, const char *path);
 void config_options_free(Options *o);
-/* Split a command line like a POSIX shell (quotes, backslashes). */
-int shell_split(Arena *a, const char *s, const char ***argv);
 
 /* ---- positions (pos.c) ----------------------------------------------- */
 

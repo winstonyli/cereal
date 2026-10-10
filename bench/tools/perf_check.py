@@ -20,7 +20,7 @@ with open(d + "/plain.c", "w") as f:
         f.write(f"int g{i}(int x, int y);\nint g{i}(int x, int y) {{ return x + y * {i}; }}\n")
 def run(exe, fn):
     t = time.perf_counter()
-    r = subprocess.run(["nice", exe, "-fsyntax-only", "-Wall", fn], capture_output=True)
+    r = subprocess.run(["nice", exe, "-fsyntax-only", "-std=c99", "-Wall", fn], capture_output=True)
     return time.perf_counter() - t, len(r.stderr.splitlines())
 for name in ["hdr.c", "protos.c", "plain.c"]:
     fn = d + "/" + name
