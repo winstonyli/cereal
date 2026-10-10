@@ -1,0 +1,1 @@
+-fsyntax-only -MF obj/x.d a.c

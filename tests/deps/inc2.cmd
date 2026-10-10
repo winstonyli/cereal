@@ -1,0 +1,1 @@
+-M -include pre.h -include sub/h2.h a.c

@@ -1,0 +1,1 @@
+-M -MQ q1 -MT t1 -MQ q2 -MQ q3 -MT t2 -MQ q4 a.c

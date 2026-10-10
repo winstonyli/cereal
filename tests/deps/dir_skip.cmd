@@ -1,0 +1,1 @@
+-M dirinc.c -Ip1 -Ip2

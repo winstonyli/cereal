@@ -1,0 +1,2 @@
+dirinc2.o: dirinc2.c /usr/include/stdc-predef.h sub
+exit 0

@@ -315,7 +315,9 @@ void entry_options(Options *o, const CompileEntry *e,
     parse_args(o, av, ac, 1, &fp, &seq);
     parse_args(o, extra, nextra, 0, &fp, &seq);
     vec_free(&o->inputs);               /* a stray "-" is not an input */
-    vec_free(&o->ignored_deps);         /* no dependency output, no note */
+    vec_free(&o->deps.mt);              /* no dependency output (D5) */
+    vec_free(&o->deps.mq);
+    memset(&o->deps, 0, sizeof o->deps);
     options_finish(o);
     o->fingerprint = fp;
 }

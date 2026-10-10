@@ -1,0 +1,2 @@
+a.o: sub/../a.c /usr/include/stdc-predef.h sub/../h1.h
+exit 0

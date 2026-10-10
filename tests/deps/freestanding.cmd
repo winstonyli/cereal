@@ -1,0 +1,1 @@
+-M -ffreestanding a.c

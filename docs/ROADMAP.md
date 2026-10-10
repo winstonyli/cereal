@@ -57,8 +57,7 @@ A2. Shared flag handling (DONE, Round 177; was est. 2 days). Hoist the LSP `take
       message. `-isysroot`/`--sysroot` change include search. Unknown flags
       that are not on any list stay "unknown option".
     - `-MD -MMD -MP -MF -MT -MQ` consume their arguments. Writing the
-      dependency file is track A4. Until then they are ignored with a note,
-      because an absent `.d` file is a silent failure for ninja/make users.
+      dependency file is track A4 (DONE, Round 208: they now write it).
 A3. (DONE, Round 178; was est. 1 to 2 days) `-std=c11 c1x gnu11 gnu1x c17 c18 gnu17 gnu18 iso9899:2011 iso9899:2017
     iso9899:2018` (est. 1 to 2 days).
     - New `Options.std_year` (99, 11, 17) beside the existing gnu flag.
@@ -87,7 +86,7 @@ A4. (Design: A4_DESIGN.md.) Response files `@file`, `-M*` output (`query
     Slice 1, the replay (with per-TU working directory, option errors as
     counted messages, default `-std=gnu17`), is DONE, Round 204. Slice 2
     (`@file` response files, on the command line and in entries) is DONE,
-    Round 206. Slice 3 (`-M` family) is still to do.
+    Round 206. Slice 3 (`-M` family) is DONE, Round 208 (A4 is complete except the gaps listed in A4_DESIGN.md slice 3).
 A5. SARIF output (`--format=sarif`) next to the existing JSON.
 
 Verification for A: goldens for each std and each flag class; a harness

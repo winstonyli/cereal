@@ -1,0 +1,1 @@
+-MM nx.c -Iinc -isystem sys

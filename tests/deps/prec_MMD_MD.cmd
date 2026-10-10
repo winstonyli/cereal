@@ -1,0 +1,1 @@
+-fsyntax-only -MMD -MD m.c -isystem sys

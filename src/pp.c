@@ -2045,13 +2045,19 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
 
     f = pp_find_include(pp, name, angled, next, &dir_index);
     ev.file = f;
+    ev.dir_index = dir_index;
+    ev.system = (pp->inc->system && pp->inc->file->kind != SF_VIRTUAL) ||
+                (f ? dir_index >= 0 && (size_t)dir_index >= pp->first_system
+                   : angled);
     if (!f) {
         ev.result = INC_NOT_FOUND;
-        diag_report(pp->diag, pp->opt->fatal_missing_include ? DL_FATAL
-                                                              : DL_ERROR,
-                    "", nloc, "%s: No such file or directory", name);
-        if (pp->opt->fatal_missing_include)
-            pp->halted = true;
+        if (!pp_missing_ok(pp->opt, &ev)) {
+            diag_report(pp->diag, pp->opt->fatal_missing_include ? DL_FATAL
+                                                                  : DL_ERROR,
+                        "", nloc, "%s: No such file or directory", name);
+            if (pp->opt->fatal_missing_include)
+                pp->halted = true;
+        }
         PP_EMIT(pp, include, &ev);
         return;
     }

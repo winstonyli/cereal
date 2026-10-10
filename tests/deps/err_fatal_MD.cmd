@@ -1,0 +1,1 @@
+-fsyntax-only -MD -Wfatal-errors err.c

@@ -65,6 +65,11 @@ static void usage(FILE *o)
         "  -Werror=<name>  -Weverything\n"
         "  --target=NAME  the ABI for check (default: the host's)\n"
         "  -fdiagnostics-format=json  -fcolor-diagnostics  -P  -o FILE\n"
+        "  -M  -MM       print the make rule (headers it includes; -MM without\n"
+        "                system headers) instead of running the mode; -MD  -MMD:\n"
+        "                write it to a .d file as well (gcc's naming and rules)\n"
+        "  -MF FILE  -MT TARGET  -MQ TARGET  -MP  -MG   as in gcc; not with\n"
+        "                --compile-commands (entries write no .d files)\n"
         "  -fparallel=auto|on|off  -fparallel-threads=N  -fparallel-chunk=BYTES\n"
         "  -j N          translation units at a time (default: all cores)\n"
         "  @FILE         the arguments in FILE (gcc's quoting; nests; an unreadable\n"
@@ -80,6 +85,7 @@ static void usage(FILE *o)
 
 static int finish(TU *tu, FILE *out)
 {
+    deps_write(tu, out);    /* before the flush: a failed write is an error */
     if (tu->opt->json)
         diag_print_json(&tu->diag, out);
     else
@@ -131,6 +137,20 @@ static int preprocess_one(Options *o, const char *path, FILE *out, FILE *err)
     if (tu_begin(&tu, path))
         pp_write_output(&tu.pp, out, o->linemarkers);
 done:
+    rc = finish(&tu, out);
+    tu_free(&tu);
+    return rc;
+}
+
+/* -M, -MM: the rule only (the directives are run, no text kept). */
+static int deps_one(Options *o, const char *path, FILE *out, FILE *err)
+{
+    TU tu;
+    int rc;
+    tu_init(&tu, o);
+    tu.diag.out = err;
+    if (tu_begin(&tu, path))
+        tu_drain(&tu);
     rc = finish(&tu, out);
     tu_free(&tu);
     return rc;
@@ -706,6 +726,24 @@ static int mode_preprocess(Options *o)
     if (out != stdout)
         fclose(out);
     return rc;
+}
+
+/* -M / -MM, whatever the mode word: gcc's -M implies -E and -w. */
+static int mode_deps(Options *o)
+{
+    FILE *out = NULL;
+    if (o->inputs.len == 0) {
+        fputs("cereal: -M needs an input file\n", stderr);
+        return 2;
+    }
+    o->no_warnings = true;
+    o->pp.fatal_missing_include = true;
+    /* gcc opens -o whatever the rule's destination (it holds no text) */
+    if (o->output && !(out = fopen(o->output, "w")))
+        fatal("cannot open '%s' for writing", o->output);
+    if (out)
+        fclose(out);
+    return run_inputs(o, deps_one, stdout);
 }
 
 static int mode_lint(Options *o)
@@ -1565,16 +1603,30 @@ int main(int argc, char **argv)
     for (i = 0; !ccdb && i < (int)o.ignored_semantic.len; i++)
         fprintf(stderr, "cereal: note: '%s' is ignored and may change "
                 "diagnostics\n", o.ignored_semantic.data[i]);
-    for (i = 0; !ccdb && i < (int)o.ignored_deps.len; i++)
-        fprintf(stderr, "cereal: note: '%s' is accepted but no dependency "
-                "file is written\n", o.ignored_deps.data[i]);
     options_finish(&o);
     if (o.bad_options)
         return ccdb ? 2 : 1;
-    if (!mode) {
+    if (o.deps.style && ((mode && (!strcmp(mode, "index") ||
+                                   !strcmp(mode, "query"))) ||
+                         (ccdb && o.deps.style >= 3))) {
+        fputs("cereal: -M and -MM take the place of the mode, -MD and -MMD "
+              "go with -E, lint, parse and check; neither works with index, "
+              "query or --compile-commands (replays write no .d files)\n",
+              stderr);
+        return 2;
+    }
+    if (o.deps.style && o.inputs.len > 1 &&
+        ((o.deps.file && strcmp(o.deps.file, "-")) || o.output)) {
+        fputs("cereal: cannot specify -MF or -o with dependency output and "
+              "multiple files\n", stderr);
+        return 2;
+    }
+    if (!mode && o.deps.style < 3) {
         usage(stderr);
         return 2;
     }
+    if (mode && !strcmp(mode, "-E"))
+        o.stage = 'E';
     if (ccdb) {
         TuFn fn = NULL;
         if (!strcmp(mode, "-E")) {
@@ -1597,7 +1649,9 @@ int main(int argc, char **argv)
             rc = mode_compdb(&o, fn, ccdb, &own);
         if (!fn || o.output)
             rc = 2;
-    } else if (!strcmp(mode, "-E"))
+    } else if (o.deps.style >= 3)
+        rc = mode_deps(&o);
+    else if (!strcmp(mode, "-E"))
         rc = mode_preprocess(&o);
     else if (!strcmp(mode, "lint"))
         rc = mode_lint(&o);

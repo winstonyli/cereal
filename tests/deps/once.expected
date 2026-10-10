@@ -1,0 +1,2 @@
+once.o: once.c /usr/include/stdc-predef.h once.h
+exit 0

@@ -1,0 +1,2 @@
+mmiss.o: mmiss.c h1.h inc/x.h
+exit 0

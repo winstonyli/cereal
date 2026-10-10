@@ -1,0 +1,3 @@
+--- stderr
+cereal: -M and -MM take the place of the mode, -MD and -MMD go with -E, lint, parse and check; neither works with index, query or --compile-commands (replays write no .d files)
+exit 2

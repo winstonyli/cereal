@@ -1,0 +1,1 @@
+-M -Wfatal-errors err.c

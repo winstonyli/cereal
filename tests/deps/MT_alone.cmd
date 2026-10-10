@@ -1,0 +1,1 @@
+-fsyntax-only -MT x a.c

@@ -1,0 +1,5 @@
+== ./obj/z.d
+m.o: m.c /usr/include/stdc-predef.h h1.h sub/h2.h sub/h3.h sys/sysh.h \
+ sys/sysq.h inc/x.h
+== ./obj/z.o
+exit 0

@@ -1,0 +1,3 @@
+== ./a.d
+foo: a.c /usr/include/stdc-predef.h h1.h
+exit 0

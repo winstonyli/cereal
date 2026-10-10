@@ -1,0 +1,1 @@
+-fsyntax-only -MD sub/../m.c -isystem sys

@@ -1,0 +1,1 @@
+-M -MF obj/1.d -MF obj/2.d m.c -isystem sys

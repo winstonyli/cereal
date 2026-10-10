@@ -1,0 +1,1 @@
+-M --compile-commands basic.json

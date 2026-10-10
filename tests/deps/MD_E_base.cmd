@@ -1,0 +1,1 @@
+-E -MD a.c -o obj/a.i

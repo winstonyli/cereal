@@ -1,0 +1,4 @@
+== ./a-m.d
+m.o: sub/../m.c /usr/include/stdc-predef.h sub/../h1.h sub/../sub/h2.h \
+ sub/../sub/h3.h sys/sysh.h sys/sysq.h sub/../inc/x.h
+exit 0

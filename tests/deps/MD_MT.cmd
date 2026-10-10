@@ -1,0 +1,1 @@
+-fsyntax-only -MD -MT foo a.c

@@ -1,0 +1,1 @@
+-M -I. -include ./h1.h -include sub/h2.h m.c -isystem sys

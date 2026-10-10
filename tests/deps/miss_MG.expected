@@ -1,0 +1,2 @@
+miss.o: miss.c /usr/include/stdc-predef.h h1.h nope.h sub/h2.h sub/h3.h
+exit 0

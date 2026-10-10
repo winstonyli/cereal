@@ -1,7 +1,7 @@
 # A4 design: compile-commands replay, response files, `-M*` output
 
-Written 2026-10-09 against `abc8183`. Design only: nothing here is
-implemented. ROADMAP track A4. Claims about the code cite `file:line` at
+Written 2026-10-09 against `abc8183`. Slices 1 to 3 are implemented (slice 3, the `-M` family, in Round 208: see
+HISTORY and section 9); this text is the design they were built from. ROADMAP track A4. Claims about the code cite `file:line` at
 that commit; claims about gcc-13 were probed with gcc 13.4.0 on WSL
 (section 10 lists the probes). Numbers marked "est." are estimates.
 
@@ -678,7 +678,8 @@ whitespace-only, empty argument) and compares `-E -P` output; error cases
 case with an `@file` in an entry, relative to its directory. Lines about
 75, realistic 110 to 150.
 
-### Slice 3: `-M` family (est. 5 days, realistic 7.5 to 10)
+### Slice 3: `-M` family (DONE, Round 208; est. 5 days, realistic 7.5 to 10)
+Status: all nine options, 100 `tests/deps` cases against gcc-13, `bench/tools/deps.sh` on six trees (1548 runs, 0 differ). Corrections to this design found on the way: a missing system-ish header is silent (exit 0) under pure `-MM` (not `-MD`), so "missing header always fatal" holds only with `-M` or `-MD`; the dedup key is (directory object, name), so one path through a search directory and an includer is listed twice; `-M` truncates `-o`. Remaining: `-imacros` is not implemented; `deps.sh` has no compile-commands mode; the four `missing-*` verify.sh tests and the `par.py` change are not done.
 The 6.6 probes are done (2026-10-10). Start with Options and validation, `IncludeEvent`
 `dir_index`, the listener, the writer, `.d` naming, the deps-only mode,
 `-MG`, `host_preinclude`; then `tests/deps`, run.sh section 15 and the

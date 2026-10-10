@@ -1,0 +1,1 @@
+-M -MQ a#b -MQ c$d -MT e$f a.c

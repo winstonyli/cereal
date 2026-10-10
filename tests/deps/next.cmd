@@ -1,0 +1,1 @@
+-M nx.c -Iinc -Isys

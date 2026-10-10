@@ -142,14 +142,15 @@ static const char *arg_value(Options *o, int argc, char **argv, int *i,
  * wildcard: a switch that changes what the front end accepts is reported
  * (IGN_SEMANTIC) and never skipped silently.  `args` is the number of
  * separate arguments the option takes; `joined` also accepts the value
- * attached to the name (-lm, -MFfile, -Wl,x). */
-enum { IGN_SILENT, IGN_DEPS, IGN_SEMANTIC };
+ * attached to the name (-lm, -MFfile, -Wl,x).  IGN_OUTPUT options change no
+ * diagnostics but the dependency output reads them (note_ignored). */
+enum { IGN_SILENT, IGN_OUTPUT, IGN_SEMANTIC };
 
 static const struct IgnoredOpt {
     const char *name;
     unsigned char kind, args, joined;
 } ignored_opts[] = {
-    {"-c", IGN_SILENT, 0, 0}, {"-S", IGN_SILENT, 0, 0},
+    {"-c", IGN_OUTPUT, 0, 0}, {"-S", IGN_OUTPUT, 0, 0},
     {"-pipe", IGN_SILENT, 0, 0}, {"-pthread", IGN_SILENT, 0, 0},
     {"-shared", IGN_SILENT, 0, 0}, {"-static", IGN_SILENT, 0, 0},
     {"-rdynamic", IGN_SILENT, 0, 0}, {"-pie", IGN_SILENT, 0, 0},
@@ -181,10 +182,11 @@ static const struct IgnoredOpt {
     {"-aux-info", IGN_SILENT, 1, 0}, {"-dumpdir", IGN_SILENT, 1, 0},
     {"-dumpbase", IGN_SILENT, 1, 0}, {"-iprefix", IGN_SILENT, 1, 0},
     {"-iwithprefix", IGN_SILENT, 1, 0},
-    {"-MD", IGN_DEPS, 0, 0}, {"-MMD", IGN_DEPS, 0, 0},
-    {"-MP", IGN_DEPS, 0, 0}, {"-MG", IGN_DEPS, 0, 0},
-    {"-MF", IGN_DEPS, 1, 1}, {"-MT", IGN_DEPS, 1, 1},
-    {"-MQ", IGN_DEPS, 1, 1},
+    {"-M", IGN_OUTPUT, 0, 0}, {"-MM", IGN_OUTPUT, 0, 0},
+    {"-MD", IGN_OUTPUT, 0, 0}, {"-MMD", IGN_OUTPUT, 0, 0},
+    {"-MP", IGN_OUTPUT, 0, 0}, {"-MG", IGN_OUTPUT, 0, 0},
+    {"-MF", IGN_OUTPUT, 1, 1}, {"-MT", IGN_OUTPUT, 1, 1},
+    {"-MQ", IGN_OUTPUT, 1, 1},
     {"-ffreestanding", IGN_SEMANTIC, 0, 0},
     {"-fno-builtin", IGN_SEMANTIC, 0, 0},
     {"-funsigned-char", IGN_SEMANTIC, 0, 0},
@@ -231,6 +233,39 @@ bool option_affects_diagnostics(const char *a)
     return !g || g->kind == IGN_SEMANTIC;
 }
 
+/* What the dependency output reads of a skipped option (`val`: its
+ * argument).  -MD < -MMD < -M < -MM: the strongest wins, whatever the order
+ * on the command line (probed on gcc-13). */
+static void note_ignored(Options *o, const char *name, const char *val)
+{
+    DepsOpts *d = &o->deps;
+    int style = !strcmp(name, "-MD") ? 1 : !strcmp(name, "-MMD") ? 2
+              : !strcmp(name, "-M") ? 3 : !strcmp(name, "-MM") ? 4 : 0;
+    if (style) {
+        d->md |= style <= 2;
+        if (style > d->style)
+            d->style = style;
+        return;
+    }
+    if (!strcmp(name, "-c") || !strcmp(name, "-S")) {
+        o->stage = name[1];
+    } else if (!strcmp(name, "-ffreestanding")) {
+        d->freestanding = true;
+    } else if (name[0] == '-' && name[1] == 'M') {
+        d->other = true;
+        if (!strcmp(name, "-MF"))
+            d->file = val;
+        else if (!strcmp(name, "-MT"))
+            vec_push(&d->mt, val);
+        else if (!strcmp(name, "-MQ"))
+            vec_push(&d->mq, val);
+        else if (!strcmp(name, "-MP"))
+            d->phony = true;
+        else if (!strcmp(name, "-MG"))
+            d->missing_ok = true;
+    }
+}
+
 /* An option cereal skips (see ignored_opts): the number of arguments it
  * takes in all, or 0 when it is not one. */
 static int option_ignored(Options *o, int argc, char **argv, int i)
@@ -252,8 +287,7 @@ static int option_ignored(Options *o, int argc, char **argv, int i)
     }
     if (!o->lenient && g->kind == IGN_SEMANTIC)
         vec_push(&o->ignored_semantic, a);
-    else if (!o->lenient && g->kind == IGN_DEPS)
-        vec_push(&o->ignored_deps, a);
+    note_ignored(o, g->name, used == 2 ? argv[i + 1] : a + strlen(g->name));
     return used;
 }
 
@@ -657,6 +691,15 @@ void options_finish(Options *o)
     if (!o->pp.nostdinc)
         for (i = 0; host_include_dirs[i]; i++)
             vec_push(&o->pp.system_dirs, host_include_dirs[i]);
+    if (!o->deps.style && o->deps.other)
+        opt_error(o, "to generate dependencies you must specify either "
+                  "'-M' or '-MM'");
+    if (o->deps.missing_ok && o->deps.style < 3)
+        opt_error(o, "'-MG' may only be used with '-M' or '-MM'");
+    /* gcc: next to -MD a missing header is fatal whatever -MG says; under
+     * -MM alone a missing system one is skipped (no output needs it) */
+    o->pp.missing_ok = o->deps.md || o->deps.style < 3 ? 0
+                       : o->deps.missing_ok ? 'a' : o->deps.style == 4 ? 's' : 0;
 }
 
 void options_free(Options *o)
@@ -667,7 +710,8 @@ void options_free(Options *o)
     vec_free(&o->macros);
     vec_free(&o->wflags);
     vec_free(&o->ignored_semantic);
-    vec_free(&o->ignored_deps);
+    vec_free(&o->deps.mt);
+    vec_free(&o->deps.mq);
     arena_free(&o->rsp);
     diag_config_free(o->diag);
     o->diag = NULL;
@@ -710,6 +754,8 @@ bool tu_begin(TU *tu, const char *path)
 {
     size_t i;
     PP *pp = &tu->pp;
+    if (tu->opt->deps.style && pp->mode != PPM_PLAN) /* a replay has no via */
+        deps_attach(tu, path);
     pp_define_builtin_text(pp, "__STDC__", "1");
     pp_define_builtin_text(pp, "__STDC_VERSION__",
                            tu->opt->std_year >= 2017 ? "201710L"
@@ -779,6 +825,7 @@ void tu_drain(TU *tu)
 
 void tu_free(TU *tu)
 {
+    deps_free(tu);
     pp_free(&tu->pp);
     diag_free(&tu->diag);
     srcmgr_free(&tu->sm);

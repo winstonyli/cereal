@@ -1,0 +1,4 @@
+== ./obj/noext.d
+obj/noext: m.c /usr/include/stdc-predef.h h1.h sub/h2.h sub/h3.h \
+ sys/sysh.h sys/sysq.h inc/x.h
+exit 0

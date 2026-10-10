@@ -1,0 +1,3 @@
+== ./a-perr.d
+perr.o: perr.c /usr/include/stdc-predef.h h1.h
+exit 1

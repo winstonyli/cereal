@@ -1,0 +1,1 @@
+-M -MD -o obj/z.o m.c -isystem sys

@@ -1,0 +1,2 @@
+sysmiss.o: sysmiss.c h1.h
+exit 0

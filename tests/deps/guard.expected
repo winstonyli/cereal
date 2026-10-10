@@ -1,0 +1,2 @@
+guard.o: guard.c /usr/include/stdc-predef.h h1.h h1.h sub/../h1.h
+exit 0

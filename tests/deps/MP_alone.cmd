@@ -1,0 +1,1 @@
+-fsyntax-only -MP a.c

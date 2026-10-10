@@ -1,0 +1,6 @@
+qt.o: qt.c /usr/include/stdc-predef.h sp\ ace.h d$$ol\#.h h1.h
+/usr/include/stdc-predef.h:
+sp\ ace.h:
+d$$ol\#.h:
+h1.h:
+exit 0

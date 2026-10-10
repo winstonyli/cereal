@@ -1,0 +1,1 @@
+-M -MD -MG mg.c

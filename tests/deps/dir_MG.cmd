@@ -1,0 +1,1 @@
+-M -MG dirinc2.c

@@ -1,0 +1,1 @@
+-M -nostdinc a.c

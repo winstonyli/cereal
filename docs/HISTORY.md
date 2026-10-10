@@ -3982,3 +3982,37 @@ TU that saw the whole stream), replayed `file_enter` events have no `via`.
 Gates: `GOLDEN_JOBS=4 sh tests/run.sh` 1745 passed, 0 failed (1744 + the new
 golden); san.sh 1745 passed, 607 files, 0 findings. Not run: verify.sh,
 callgrind, TSan (config.c untouched).
+
+Round 208: A4 slice 3, the `-M` family (A4_DESIGN.md sections 4, 6, 9). One
+preprocessor listener (new src/deps.c, 297 lines: records each `#include`
+by gcc's (directory object, name) key, so the same path reached through a
+search directory and through an includer's directory is listed twice, as
+gcc does) and one writer run from `finish()`; `-M -MM -MD -MMD -MF -MT -MQ
+-MP -MG` all work, including `-MD` naming, the `-MQ` rotation, 72-column
+wrapping, `-MF -`, the link-mode `a-STEM.d` name, and "no `.d` once a
+diagnostic ended the TU". The listener is attached in `tu_begin` unless the
+PP replays a plan; D5 holds (replay entries clear `deps`). New: `IncludeEvent`
+`dir_index` and `system`; `PPOptions.missing_ok`; `Options.deps`, `.stage`
+(src/driver.[ch], pp.[ch], main.c, compdb.c, tools/probe-host.sh writes
+`host_preinclude`). Option errors are gcc's ("to generate dependencies you
+must specify either '-M' or '-MM'", `-MG` needs `-M`/`-MM`). Found by
+differential testing, not in the probes: pure `-MM` (without `-MD`) skips a
+missing system-ish header silently with exit 0 (`-M` and `-MM -MD` fail);
+gcc creates an empty `-o` file for `-M -MD -o f`; `-M` truncates `-o`.
+Tests: tests/deps (100 cases, gcc-13 goldens, driven by tests/deps_case.sh),
+run.sh section 17 (goldens; `-fparallel=on` against `off` for `-M` on
+tests/pp, tests/lint, src and for the `-MD` file with a `__COUNTER__`
+divergence), section 13 no longer lists the -M options, one ccdb case
+(`-M --compile-commands` is a usage error). bench/tools/deps.sh: no
+argument runs the cases through gcc-13 and cereal (100 cases, 0 differ);
+with DIR it runs `-M`, `-MM` and `-E -MD -MP -MF` per C file: libuv 849 runs (375
+byte-identical, 474 same after normalising the compiler's include
+directory, 0 differ), lua51 105, lua54 120, luajit21 231, zstandard 54,
+cereal's src 189: 1548 runs, 0 differ. Gates: run.sh 1895 passed; gate.sh
+(run, verify, san, cg) rc 0, san 1895 passed, 607 files, 0 findings, gcc.dg
+3908 of 3910, c-c++-common 635 of 636, cpp 285 of 285 (unchanged), callgrind
+3.899 G. Not done: `-imacros` is not implemented (so its missing-file case
+is untested); deps.sh has no compile-commands mode; the four `missing-*`
+verify.sh tests and the `par.py` change of the design are not done.
+Extensions: `-MD`/`-MMD` with index/query and `-M`/`-MM` with
+`--compile-commands` are usage errors (exit 2).

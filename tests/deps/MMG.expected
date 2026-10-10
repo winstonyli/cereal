@@ -1,0 +1,2 @@
+mg.o: mg.c h1.h gen/conf.h inc/x.h
+exit 0

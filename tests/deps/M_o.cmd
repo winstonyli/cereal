@@ -1,0 +1,1 @@
+-M -o obj/out.mk m.c -isystem sys

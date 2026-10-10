@@ -134,6 +134,12 @@ typedef struct IncludeEvent {
     struct SrcFile *file;
     struct SrcFile *from;
     IncludeResult result;
+    int dir_index;           /* search directory it was found in (-1: the
+                              * includer's directory, an absolute name, or
+                              * not found) */
+    bool system;             /* gcc's "sysp": found in a system directory, or
+                              * included from a system header (the command
+                              * line is none), or written <...> and not found */
 } IncludeEvent;
 
 /* Views passed to listeners (TokSpan, Tok*) are valid only during the
@@ -220,10 +226,18 @@ typedef struct PPOptions {
     bool gnu_extensions;
     bool gnu_mode;
     bool fatal_missing_include; /* -E: stop the TU there, as GCC does */
+    char missing_ok;            /* -M family: 'a' no missing header is an error
+                                 * (-MG), 's' no system one is (-MM) */
     LexOptions lex;
     const char *date_str, *time_str;  /* set by pp_options_finish */
     char date_buf[32], time_buf[16];
 } PPOptions;
+
+/* Is a header that was not found no error (-MG, -MM)? */
+static inline bool pp_missing_ok(const PPOptions *o, const IncludeEvent *ev)
+{
+    return o->missing_ok == 'a' || (o->missing_ok == 's' && ev->system);
+}
 
 /* GCC assertions: #assert pred(answer).  Directive state only (phase A). */
 typedef struct Assertion {

@@ -1,0 +1,1 @@
+-fsyntax-only -MD -MG a.c

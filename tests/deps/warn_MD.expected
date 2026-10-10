@@ -1,0 +1,3 @@
+== ./a-warn.d
+warn.o: warn.c /usr/include/stdc-predef.h h1.h
+exit 0

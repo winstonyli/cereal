@@ -12,6 +12,18 @@ typedef struct CmdlineMacro {
     const char *text;
 } CmdlineMacro;
 
+/* The -M family (docs/A4_DESIGN.md section 6). */
+typedef struct DepsOpts {
+    int style;                  /* 0 none, 1 -MD, 2 -MMD, 3 -M, 4 -MM: the
+                                 * largest given wins, as in gcc's driver */
+    bool md;                    /* -MD or -MMD given: there is a .d file */
+    bool other;                 /* -MF, -MT, -MQ, -MP or -MG given */
+    bool phony, missing_ok;     /* -MP, -MG */
+    bool freestanding;          /* -ffreestanding: no implicit preinclude */
+    const char *file;           /* -MF (last) */
+    VEC(const char *) mt, mq;   /* -MT (verbatim), -MQ (quoted), in order */
+} DepsOpts;
+
 typedef struct Options {
     PPOptions pp;
     VEC(CmdlineMacro) macros;
@@ -36,8 +48,9 @@ typedef struct Options {
     int std_year;               /* -std=: 1999, 2011 or 2017 */
     bool lenient;               /* skip what is not understood without notes (language server) */
     VEC(const char *) ignored_semantic; /* skipped, may change diagnostics */
-    VEC(const char *) ignored_deps;     /* -MD ...: no dependency file written */
-    bool track0;                /* -ftrack-macro-expansion=0 */
+    DepsOpts deps;
+    char stage;                 /* 'c' (-c), 'S' (-S), 'E' (the mode word), else 0 */
+    bool track0;               /* -ftrack-macro-expansion=0 */
     bool trigraphs_flag;        /* -trigraphs given (else only the ISO -std= has them) */
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */
     char strict_alias;  /* -fstrict-aliasing 1, -fno-strict-aliasing 2 */
@@ -58,6 +71,7 @@ typedef struct TU {
     DiagEngine diag;
     PP pp;
     Options *opt;
+    struct Deps *deps;   /* the -M family's listener (deps.c), or NULL */
 } TU;
 
 /* Parse common options starting at argv[i]; returns number consumed (0 if
@@ -82,5 +96,14 @@ bool tu_begin(TU *tu, const char *path);
 void tu_free(TU *tu);
 /* Run the preprocessor to the end, discarding output. */
 void tu_drain(TU *tu);
+
+/* The -M family, one listener and one writer (deps.c).  deps_attach is
+ * called by tu_begin when o->deps.style is set; deps_write by the mode's
+ * finish step, for the TU whose result is used: it writes the rule unless a
+ * fatal diagnostic ended the TU (an error under -Wfatal-errors is one), to
+ * the file of -MF / -MD / -o, else to `out`. */
+void deps_attach(TU *tu, const char *path);
+void deps_write(TU *tu, FILE *out);
+void deps_free(TU *tu);
 
 #endif

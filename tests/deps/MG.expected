@@ -1,0 +1,2 @@
+mg.o: mg.c /usr/include/stdc-predef.h h1.h gen/conf.h gen/sys.h inc/x.h
+exit 0

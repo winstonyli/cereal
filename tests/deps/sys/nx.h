@@ -1,0 +1,1 @@
+int nx_sys;

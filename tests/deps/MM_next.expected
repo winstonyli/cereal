@@ -1,0 +1,2 @@
+nx.o: nx.c inc/nx.h
+exit 0

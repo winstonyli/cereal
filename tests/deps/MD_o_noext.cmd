@@ -1,0 +1,1 @@
+-fsyntax-only -MD -o obj/noext m.c -isystem sys

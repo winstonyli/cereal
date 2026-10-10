@@ -1,0 +1,1 @@
+-fsyntax-only -MMD mmiss.c

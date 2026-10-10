@@ -1,0 +1,5 @@
+long.o: long.c /usr/include/stdc-predef.h long_header_name_number_1.h \
+ long_header_name_number_2.h long_header_name_number_3.h \
+ long_header_name_number_4.h long_header_name_number_5.h sub/h2.h \
+ sub/h3.h
+exit 0

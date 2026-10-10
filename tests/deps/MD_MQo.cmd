@@ -1,0 +1,1 @@
+-fsyntax-only -MD -o obj/m.o -MQ foo a.c

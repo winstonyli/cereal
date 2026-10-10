@@ -1,0 +1,2 @@
+psys.o: psys.c inc/psys.h h1.h
+exit 0

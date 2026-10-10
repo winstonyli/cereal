@@ -1,0 +1,2 @@
+dup.o: dup.c /usr/include/stdc-predef.h dd/b.h dd/a.h dd/b.h
+exit 0

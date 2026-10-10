@@ -24,6 +24,8 @@
 #  14. C symbol index: `--dump-symbols` goldens, `--verify-symbols` over the
 #      checker and parser cases and cereal's own sources
 #  16. compile-commands replay: tests/ccdb cases against goldens, -j1 = -j12
+#  17. -M family: tests/deps cases against gcc-13 goldens; the
+#      .d files of -fparallel=on and off are byte-identical
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -154,10 +156,12 @@ for f in "$ROOT"/tests/pp/*.c "$ROOT"/tests/lint/*.c; do
     par_same "${f#$ROOT/tests/}" "$(basename "$f")"
     MODE=lint par_same "${f#$ROOT/tests/}" "$(basename "$f")" -Weverything
     MODE=index par_same "${f#$ROOT/tests/}" "$(basename "$f")" --all
+    MODE=-M par_same "${f#$ROOT/tests/}" "$(basename "$f")"
     cd "$ROOT"
 done
 for f in "$ROOT"/src/*.c; do
     par_same "dogfood ${f#$ROOT/}" "$f" -D_POSIX_C_SOURCE=200809L -I"$ROOT/src"
+    MODE=-M par_same "dogfood ${f#$ROOT/}" "$f" -D_POSIX_C_SOURCE=200809L -I"$ROOT/src"
 done
 for h in stdio.h stdlib.h pthread.h; do
     echo "#include <$h>" >"$TMP/h.c"
@@ -403,7 +407,7 @@ printf 'int x = ;
 int f(void) { return y; }
 ' >"$TMP/bo.c"
 "$CEREAL" check -std=c99 "$TMP/bo.c" >"$TMP/bo.base" 2>&1
-for f in -c -S -pipe -pthread -shared -static -pie -fPIC -fPIE -fno-plt -g -ggdb3     -fvisibility=hidden -fstack-protector-strong -march=native -mtune=generic     -Wl,-z,now -Wa,--noexecstack -lm "-l m" -L. "-L ." "-x c" -xc "-MD" "-MMD -MP"     "-MF $TMP/x.d" -MFx.d "-MT a" "-MQ a" -Xlinker\ -v -m64 -fsigned-char; do
+for f in -c -S -pipe -pthread -shared -static -pie -fPIC -fPIE -fno-plt -g -ggdb3     -fvisibility=hidden -fstack-protector-strong -march=native -mtune=generic     -Wl,-z,now -Wa,--noexecstack -lm "-l m" -L. "-L ." "-x c" -xc -Xlinker\ -v -m64 -fsigned-char; do
     # shellcheck disable=SC2086
     "$CEREAL" check -std=c99 $f "$TMP/bo.c" 2>&1 | grep -v '^cereal: note:' >"$TMP/bo.out"
     if cmp -s "$TMP/bo.base" "$TMP/bo.out"; then ok; else bad "option $f changes the output"; fi
@@ -563,6 +567,45 @@ if [ -e "$ROOT/tests/ccdb/src/ok.d" ]; then
 else
     ok
 fi
+
+# 17. -M family: every tests/deps/NAME.cmd (the arguments; run in a scratch
+# copy of tests/deps by deps_case.sh) prints the rule, every file it writes
+# and the exit status, against NAME.expected (gcc-13 output, regenerated with
+# DEPS_UPDATE=1); when $DEPSCC (default gcc-13)
+# exists it must print the same itself.  The .d file of -MD with -fparallel=on
+# and a __COUNTER__ divergence is byte-identical to the sequential one.
+DEPSCC=${DEPSCC:-gcc-13}
+if command -v "$DEPSCC" >/dev/null 2>&1; then have_depscc=1; else have_depscc=0; fi
+for f in "$ROOT"/tests/deps/*.cmd; do
+    n=$(basename "$f" .cmd)
+    sh "$ROOT/tests/deps_case.sh" "$CEREAL" "$n" >"$TMP/dp.1"
+    if [ "${DEPS_UPDATE:-0}" = 1 ]; then
+        sh "$ROOT/tests/deps_case.sh" "$DEPSCC" "$n" >"$ROOT/tests/deps/$n.expected"
+    fi
+    if cmp -s "$TMP/dp.1" "$ROOT/tests/deps/$n.expected"; then
+        ok
+    else
+        bad "deps/$n"
+        diff "$ROOT/tests/deps/$n.expected" "$TMP/dp.1" | head -10 | sed "s/^/    /"
+    fi
+    if [ $have_depscc = 1 ]; then
+        sh "$ROOT/tests/deps_case.sh" "$DEPSCC" "$n" >"$TMP/dp.g"
+        cmp -s "$TMP/dp.g" "$ROOT/tests/deps/$n.expected" ||
+            echo "note: deps/$n.expected differs from $DEPSCC (a different gcc?)"
+    fi
+done
+for f in "$ROOT/tests/check/misc_240.c" "$ROOT"/src/lex.c "$ROOT"/src/pp.c; do
+    for p in off on; do
+        rm -f "$TMP/dp.$p.d"
+        "$CEREAL" -E -MD -MP -MF "$TMP/dp.$p.d" -fparallel=$p -fparallel-threads=3 \
+            -fparallel-chunk=1 -D_POSIX_C_SOURCE=200809L -I"$ROOT/src" "$f" >/dev/null 2>&1
+    done
+    if cmp -s "$TMP/dp.off.d" "$TMP/dp.on.d" && [ -s "$TMP/dp.off.d" ]; then
+        ok
+    else
+        bad "deps parallel ${f#$ROOT/}: the .d files differ"
+    fi
+done
 
 # 15. builtin table: every row's signature is "ret|arg|..." (a missing '|'
 # made strchr(sig, '|') + 1 dereference NULL)
