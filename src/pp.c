@@ -880,11 +880,10 @@ bool pp_enter_main(PP *pp, const char *path)
     lexer_init(&pp->lex, pp->sm, pp->in, pp->diag, &pp->scratch, pp->opt->lex,
                pp->builtin_file);
     push_file(pp, f, 0, -1, NULL);
-    pre = srcmgr_add_virtual(pp->sm, "<command line>",
+    pre = srcmgr_add_virtual(pp->sm, "<command-line>",
                              pp->predef.data ? pp->predef.data : "",
                              pp->predef.len);
     sb_free(&pp->predef);
-    pre->system_header = true;
     push_file(pp, pre, 0, -1, NULL);
     return true;
 }
@@ -2061,8 +2060,6 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
     if (!f) {
         ev.result = INC_NOT_FOUND;
         if (!pp_missing_ok(pp->opt, &ev)) {
-            if (pp->inc->file->kind == SF_VIRTUAL)
-                pp->diag->nocol_next = true;    /* gcc: <command-line>: */
             diag_report(pp->diag, pp->opt->fatal_missing_include ? DL_FATAL
                                                                   : DL_ERROR,
                         "", nloc, "%s: No such file or directory", name);

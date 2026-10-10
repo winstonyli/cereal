@@ -923,11 +923,8 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
          * its line map when the end of file is reached, one line further on */
         if (eof && !nocol && f->nlinemap && f->linemap[f->nlinemap - 1].from == line)
             pline++;
-        if (f->kind == SF_VIRTUAL && !strcmp(f->name, "<built-in>"))
+        if (f->kind == SF_VIRTUAL)      /* <built-in>, <command-line>: no position */
             fprintf(o, "%s: ", f->name);
-        else if (nocol && f->kind == SF_VIRTUAL &&
-                 !strcmp(f->name, "<command line>"))
-            fputs("<command-line>: ", o);
         else if (!pline)        /* gcc: line 0 prints no position */
             fprintf(o, "%s: ", fname);
         else if (eof)   /* gcc: the end-of-file token has no column */
@@ -1015,9 +1012,13 @@ void diag_print(DiagEngine *d, Diagnostic *dg)
         const char *fname;
         srcmgr_linecol(f, dg->inc_chain[i], &line, &col);
         line = srcmgr_presumed(f, line, &fname);
-        fprintf(d->out, "%s %s:%u:\n",
+        fprintf(d->out, "%s %s:",
                 i == dg->ninc - 1 ? "In file included from" : "                 from",
-                fname, line);
+                fname);
+        if (f->kind == SF_VIRTUAL)      /* gcc: <command-line>: has no line */
+            fputc('\n', d->out);
+        else
+            fprintf(d->out, "%u:\n", line);
     }
     print_loc_line(d, dg->loc, dg->level, dg->msg, dg->id, dg->range,
                    dg->promoted, dg->nocol, dg->vcol);

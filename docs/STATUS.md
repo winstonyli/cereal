@@ -16,9 +16,9 @@ in [ROADMAP.md](ROADMAP.md).
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
 - gcc.dg: 3908 of 3910 files run give the same diagnostics as gcc (message,
   line and column); 2 differ.
-- c-c++-common: 635 of 636 identical; 1 differs.
+- c-c++-common: 637 of 638 identical; 1 differs (636 before pr57653 and pr57653-2 stopped being skipped, Round 210).
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 289 of 289 identical (285 before the four `missing-*` -MD tests, Round 209). A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 1910 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 607 files.
+- 1918 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 611 files.
 - uvloop's `loop.c` checks in about 3.88 G instructions (callgrind).
 - The LSP server covers macros and C names: definition, declaration,
   type definition, references, highlight, hover, rename, document
@@ -61,8 +61,8 @@ VLA-offset member: stor-layout folds the byte offset `n * 4 + 8` to
 c-c++-common: dump-ada-spec-14 (gcc's Ada dumper).
 
 
-Round 209, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 635 of 636,
-cpp 289 of 289; `tests/run.sh` 1910 passed (Round 209).  Remaining gcc.dg diffs: pr56355-1,
+Round 210, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 637 of 638,
+cpp 289 of 289; `tests/run.sh` 1918 passed (Round 210).  Remaining gcc.dg diffs: pr56355-1,
 pr83844 (above).
 Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - `char * const _Atomic c` parameter of main prints as `char * _Atomic`

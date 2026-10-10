@@ -4043,3 +4043,33 @@ mode (over the 40-line budget); `-E` prints no line-0 prefix before the
 fatal missing-file error; warnings inside `-include`/`-imacros` files are not
 shown (the `<command line>` file is system); `-imacros ${srcdir}/...` tests of
 c-c++-common stay skipped by par.py.
+
+Round 210: `<command-line>` is an ordinary virtual file (A4_DESIGN.md 6.3, 6.11).
+Cause: `pp_enter_main` set `system_header` on the command-line buffer, and
+`pp_find_include` loads a quote-include as `SF_SYSTEM` when the includer has
+that bit, so every `-include`/`-imacros` file was a system file: its warnings
+were suppressed and `-E` printed `# 1 "F" 3`. The mark had no other purpose
+(removing it changed no golden, no deps case, no verify file). One mechanism
+now: diagnostics in a virtual file print `FILE: ` with no position
+(`diag.c print_loc_line`, also the `nocol_next` the missing-include path set),
+the include trace through it prints `In file included from <command-line>:`
+with no line, and the file is named `<command-line>` (was `<command line>`,
+printed through a special case); `cbuiltin_loc_` tests `SF_VIRTUAL`. The
+redefinition warnings of the generated directive lines are real gcc warnings
+(`-DX=1 -DX=2`, `-D__GNUC__=4`); a sweep of 25 flag sets showed none
+spurious. Goldens: tests/check/cmdline_{include,error,missing,macro_error}
+(+3 headers in cmdline_inc/). `bench/tools/par.py` substitutes `${srcdir}`
+(the testsuite directory, as dejagnu; the brief said the test's directory,
+but `${srcdir}/c-c++-common/F.h` needs the parent) and takes `-imacros FILE`:
+pr57653 and pr57653-2 run, identical. Sources: src/pp.c, pp.h, srcmgr.h,
+diag.c, c/check.c (src +12/-15, par.py +6/-5). Gates: run.sh 1918 passed (was
+1910, +8 from the 4 new goldens and their cells runs); deps.sh 109 cases, 0
+differ; gate.sh rc 0: san 1918 passed, 611 files, 0 findings; gcc.dg 3908 of
+3910, c-c++-common 637 of 638 (was 635 of 636), cpp 289 of 289; callgrind
+3.882 G (3.881 G). Not done: gcc spells a file found through the command-line
+buffer `./F` (`././F` for `-include ./F`), cereal prints the normalised `F`
+as it does everywhere; no `FILE: In function` context lines (nowhere);
+the "previous definition" note for a redefined host predefine says
+`<command-line>`, gcc `<built-in>`; `-U__FILE__` gives no "undefining"
+warning; with `--cells` a malformed `-D` error is ordered after an error in
+an `-include` file.

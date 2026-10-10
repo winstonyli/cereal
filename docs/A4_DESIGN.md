@@ -67,8 +67,11 @@ that commit; claims about gcc-13 were probed with gcc 13.4.0 on WSL
   probe 2026-10-10, 6.10).
 - Each TU owns its `SrcMgr` (`driver.h:54`, initialised in
   `tu_init_shared`, `driver.c:652`); no file cache is shared between TUs.
-- The `<command line>` virtual file is marked `system_header`
-  (`pp.c:882`).
+- The `<command-line>` virtual file (`pp.c:883`, named as gcc prints it) is
+  an ordinary file, not `system_header` (Round 210). It was marked system
+  only to be quiet; the mark also made every quote-include from it load as
+  a system file (`pp_find_include` passes the includer's bit on), so
+  `-include` files were system files for diagnostics and `-E` markers.
 - `host_predefs` come from `gcc -std=c99 -dM -E /dev/null`
   (`tools/probe-host.sh`), so the macros of `/usr/include/stdc-predef.h`
   are baked in and that file is never opened.
@@ -420,9 +423,9 @@ recorded `Options.stage` ('c', 'S', or 'E' from the mode), which only the
   NOT_FOUND under `-MG` records the spelled name.
 - System flag (gcc's `MAX(buffer->sysp, dir->sysp)`): found in a system
   directory (`dir_index >= first_system`), or the includer frame's
-  `system` is set and the includer is a real file. The `<command line>`
-  file is marked system in cereal for diagnostics (`pp.c:882`); gcc's
-  command-line buffer is not, so `-include` files count as user files.
+  `system` is set and the includer is a real file. The `<command-line>`
+  file is not system (Round 210), as gcc's command-line buffer is not, so
+  `-include` files count as user files.
   For `-MG` misses: angled, or the includer is system.
 - `-MG` sets `PPOptions.missing_ok`: `do_include` (`pp.c:2048`) emits the
   NOT_FOUND event and returns without a diagnostic.
@@ -615,8 +618,24 @@ the preinclude. Tests: 9 `tests/deps` cases (`imacros*`: order against
 flag orders, tokens compared with gcc; the dropped text and `__COUNTER__`
 must not leak). Not done: gcc prints the line-0 prefix of `-E` before the
 fatal error (`# 0 "a.c"` and so on), cereal prints nothing, for `-include`
-as for `-imacros`; warnings in `-include`/`-imacros` files are not shown
-(the `<command line>` file is marked system, see 6.3).
+as for `-imacros`.
+
+Round 210: warnings and errors in `-include` files are shown (the
+`<command-line>` file is no longer system, 6.3). Diagnostics located in a
+virtual file (`<built-in>`, `<command-line>`) print `FILE: ` with no
+position, and an include trace through it prints `In file included from
+<command-line>:` with no line, as gcc-13 (one rule in `diag.c`, replacing
+the `nocol_next` set for a missing include). `cbuiltin_loc_` tests the
+virtual kind, not the name. Goldens `tests/check/cmdline_*.c` (warning in
+an `-include` file with `-imacros` and a `-D` redefinition; error in one;
+missing file; malformed `-D`). Remaining differences from gcc-13: a file
+found through the command-line buffer's directory is spelled `./F` by gcc
+(`././F` for `-include ./F`), cereal prints the normalised `F`, as for every
+other file; gcc prints `FILE: In function 'f':` context lines that cereal
+does not print anywhere; the note for a redefined host predefine says
+`<command-line>`, gcc says `<built-in>`; in the `--cells` run of the
+goldens a malformed-`-D` error came out after an error in an `-include`
+file (probe; not the order of the plain run), so no golden combines them.
 
 ## 7. Staging, tests, gates, estimates
 

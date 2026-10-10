@@ -7,7 +7,7 @@ CEREAL_DGDIR (default gcc.dg; e.g. c-c++-common) picks the testsuite directory.
 CEREAL_DGOPTS=1 (dg set): honour each test's first `dg-options` line (replacing
 the default -std=c99 -pedantic where it gives -std=/-pedantic*) and skip tests
 whose dg-options/dg-additional-options use a target selector a standard other than C99, or options
-cereal lacks (anything but -W*, -D, -U, -I, -std, -pedantic*, -MD, -MMD; a test with
+cereal lacks (anything but -W*, -D, -U, -I, -imacros, -std, -pedantic*, -MD, -MMD; ${srcdir} is the testsuite directory; a test with
 -MD/-MMD runs in the scratch directory $TMPDIR/par-md, as a .d file goes to the working directory).
 CEREAL_DGO=1: also keep -O* options (cereal folds const variables at -O).
 CEREAL_PARCACHE=DIR (default ~/.cache/cereal-par; 0 disables) caches gcc's result per
@@ -65,6 +65,7 @@ STDS={"c99","c9x","iso9899:1999","iso9899:199x","gnu99","gnu9x","c11","c1x","iso
 def dgjobs(extra):
     root=os.environ.get("CEREAL_GCCTS",os.path.expanduser("~/gccts"))+"/gcc/testsuite/"+os.environ.get("CEREAL_DGDIR","gcc.dg")
     jobs=[]
+    tsroot=os.path.dirname(root)    # dejagnu's ${srcdir}: the testsuite directory
     dgo=os.environ.get("CEREAL_DGOPTS")=="1"
     keepO=os.environ.get("CEREAL_DGO")=="1"   # keep -O (gcc then warns more than cereal does)
     for f in sorted(glob.glob(root+"/*.c")):
@@ -77,14 +78,14 @@ def dgjobs(extra):
             raw=(m.group(1) if m and not m.group(2) else "")+" "+" ".join(o for o,_ in adds)
             if m and m.group(2): continue
             if m or adds:
-                o=[x for x in shlex.split(raw) if (keepO or not x.startswith("-O")) and x!="-g"]
+                o=[x for x in shlex.split(raw.replace("${srcdir}",tsroot)) if (keepO or not x.startswith("-O")) and x!="-g"]
                 if any(x.startswith("-std=") and x[5:] not in STDS for x in o) or "-ansi" in o:
                     continue            # cereal reads C99, C11 and C17 only
                 o2=[]; k=0
-                while k<len(o):         # --param N=V is accepted and ignored
-                    if o[k]=="--param": k+=2; o2.append("--param"); continue
+                while k<len(o):         # --param N=V is accepted and ignored; -imacros FILE is taken
+                    if o[k] in ("--param","-imacros"): o2.append(o[k]); k+=2; continue
                     o2.append(o[k]); k+=1
-                if any(x == "-W" or (x!="--param" and x!="-w" and x not in ("-MD","-MMD") and not x.startswith(("-O","-W","-D","-U","-I","-std=","-pedantic","-fdump-","-fcf-protection","-fcompare-debug","-ftrack-macro-expansion=","--param="))) for x in o2):
+                if any(x == "-W" or (x not in ("--param","-imacros") and x!="-w" and x not in ("-MD","-MMD") and not x.startswith(("-O","-W","-D","-U","-I","-std=","-pedantic","-fdump-","-fcf-protection","-fcompare-debug","-ftrack-macro-expansion=","--param="))) for x in o2):
                     continue            # options cereal does not take
                 std=o if any(x.startswith("-std=") for x in o) else ["-std=c99"]+o
                 if not any(x.startswith("-pedantic") for x in std): std=std+["-pedantic"]

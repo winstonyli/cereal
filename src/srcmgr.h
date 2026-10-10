@@ -22,7 +22,7 @@ typedef struct SrcRange {
 typedef enum {
     SF_USER,
     SF_SYSTEM,
-    SF_VIRTUAL,            /* <built-in>, <command line> */
+    SF_VIRTUAL,            /* <built-in>, <command-line> */
     SF_SCRATCH             /* synthesized spellings (##, #, builtins) */
 } SrcFileKind;
 

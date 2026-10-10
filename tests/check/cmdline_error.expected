@@ -1,0 +1,4 @@
+In file included from <command-line>:
+cmdline_inc/bad.h:1:15: error: expected expression before ';' token
+    1 | int cl_h = 1 +;
+      |               ^

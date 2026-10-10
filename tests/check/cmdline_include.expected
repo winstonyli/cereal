@@ -1,0 +1,6 @@
+<command-line>: warning: "DUP" redefined
+<command-line>: note: this is the location of the previous definition
+In file included from <command-line>:
+cmdline_inc/warn.h:3:9: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+    3 |     if (a = 1)
+      |         ^

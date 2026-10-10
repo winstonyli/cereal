@@ -48,7 +48,7 @@ typedef struct Macro {
     bool gnu_named_variadic;
     uint16_t extra_paste;       /* the ## of a run beyond the first (libcpp's extra tokens) */
     uint64_t extra_hash;        /* where they sit, and how they are spelled */
-    bool predefined;         /* from <built-in> or <command line> */
+    bool predefined;         /* from <built-in> or <command-line> */
     bool has_ops;            /* body contains # or ## */
     bool has_vaopt;          /* body contains __VA_OPT__ (variadic only) */
     BuiltinKind builtin;
@@ -358,7 +358,7 @@ typedef struct PP {
     SrcFile *builtin_file;
     VEC(SrcLoc) chain_buf;
     StrBuf sb;               /* scratch string building */
-    StrBuf predef;           /* <command line>: predefines, -D, -U, -imacros, -include */
+    StrBuf predef;           /* <command-line>: predefines, -D, -U, -imacros, -include */
 
     struct Ident *id_defined, *id_va_args, *id_va_opt, *id_pragma;
     const char *const *host_attrs;

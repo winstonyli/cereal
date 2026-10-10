@@ -217,8 +217,7 @@ void cconst_overflow(Checker *c, SrcLoc loc)
 SrcLoc cbuiltin_loc_(const Checker *c, SrcLoc loc, SrcLoc exp)
 {
     SrcFile *f = srcmgr_file_of(c->sm, loc);
-    if (f && f->kind == SF_VIRTUAL && (!strcmp(f->name, "<built-in>") ||
-                       !strcmp(f->name, "<command line>")))
+    if (f && f->kind == SF_VIRTUAL)
         return exp;
     return loc;
 }
