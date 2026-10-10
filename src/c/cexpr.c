@@ -6810,9 +6810,11 @@ static void e_assign(Checker *c, uint32_t i)
             return;
         }
     }
-    /* _Bool = a = b: the inner assignment is a truth value */
+    /* _Bool = a = b: the inner assignment is a truth value, unless it is
+     * itself a _Bool (nothing is converted, `*r = *m = false`) */
     if (op == P_ASSIGN && tkind(c, unqual(c, c->ty[l])) == TY_BOOL &&
-        ntag(c, r) == N_ASSIGN && npunct(c, r) == P_ASSIGN)
+        ntag(c, r) == N_ASSIGN && npunct(c, r) == P_ASSIGN &&
+        tkind(c, unqual(c, c->ty[r])) != TY_BOOL)
         PW(first_loc(c, i), "suggest parentheses around assignment used as "
            "truth value");
     {

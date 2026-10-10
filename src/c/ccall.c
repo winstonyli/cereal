@@ -1723,6 +1723,10 @@ static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
     if (!pure) {
         if (ref == SYM_NONE && strncmp(name, "__builtin_", 10))
             return false;
+        /* the table lists __builtin_ spellings: a plain name only reaches
+         * an entry that is also a library built-in (not a user's `expect`) */
+        if (!ccall_is_builtin(c, name))
+            return false;
         if (!strncmp(name, "__builtin_", 10))
             name += 10;
         if (!pure_first_char(*name))

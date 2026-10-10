@@ -1,0 +1,9 @@
+bool_chain_assign.c:13:5: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+   13 |     b = i = j;                  /* int converted to _Bool: warns */
+      |     ^
+bool_chain_assign.c:14:5: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+   14 |     b = p = q;
+      |     ^
+bool_chain_assign.c:15:5: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+   15 |     b = s->x = k;
+      |     ^

@@ -1,0 +1,9 @@
+call_user_builtin_name.c:14:5: warning: statement with no effect [-Wunused-value]
+   14 |     abs(*p);                    /* library built-in, const: warns */
+      |     ^
+call_user_builtin_name.c:15:5: warning: statement with no effect [-Wunused-value]
+   15 |     __builtin_expect(*p, 1);    /* const: warns */
+      |     ^
+call_user_builtin_name.c:16:5: warning: statement with no effect [-Wunused-value]
+   16 |     __builtin_popcount(u);
+      |     ^
