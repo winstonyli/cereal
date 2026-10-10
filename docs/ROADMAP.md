@@ -80,7 +80,7 @@ A3. (DONE, Round 178; was est. 1 to 2 days) `-std=c11 c1x gnu11 gnu1x c17 c18 gn
       so parity will drop at first. That is test-suite growth, to be read as
       new work, not a regression. Report the old and new counts together.
 A4. Response files `@file`, `-M*` output with `cereal deps` (the include
-    graph and `query deps` exist; est. 1 week for the full -M family) and
+    dependency closure, not file dependencies; est. 1 week for the full -M family) and
     `cereal check --compile-commands DB [FILES]` that replays entries, with
     a non-zero exit when any file has errors (est. 3 days).
 A5. SARIF output (`--format=sarif`) next to the existing JSON.
