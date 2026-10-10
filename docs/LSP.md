@@ -463,6 +463,12 @@ the server's timings (and `CEREAL_PAR_STATS=1` the runner's).
 `-fparallel=on` in `.cereal` forces the parallel path and cells for
 files of any size (the tests use it).
 
+Server memory (HISTORY Rounds 201 and 202): after edits of a dense 4 MiB
+file the server holds about 300 MB resident (zstd.c: 48 MB), most of it
+free memory glibc keeps. Starting it with `MALLOC_TRIM_THRESHOLD_=0`
+cuts that by 29 to 62% but makes each check on such files 10 to 20%
+slower, so it is not the default; no other threshold avoids the slowdown.
+
 ## Research notes (why memoization, not patching)
 
 - clangd, Visual Studio (EDG) and CLion cache the header prefix

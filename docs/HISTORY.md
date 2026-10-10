@@ -3793,3 +3793,18 @@ True carry cost at the check peak, with vs without carry: +50 to 70 MB
 the 36 to 43 MB estimate of 12.9 was low because the carried index keeps
 the whole original alive. Parked: share only decls and strings so the old
 event arrays can be freed (`cindex_touched` reads `core->by_decl`).
+
+Round 202: malloc tuning for `cereal lsp`, measured, not adopted. Setting
+`MALLOC_TRIM_THRESHOLD_=0` (or any trim threshold, 16 to 128 MiB, which
+turns off glibc's dynamic mmap threshold; `MALLOC_MMAP_THRESHOLD_=1048576`
+alone does the same) cuts the server's steady RSS after edits by 45% (dense
+4 MiB `int vN;` file, 306 to 168 MB), 62% (307k-member struct, 402 to 154
+MB) and 29% (zstd.c, 48 to 34 MB), and the peak by 20 to 24%, but makes the
+per-edit check 10 to 20% slower on the two 4 MiB files (dense 0.85 to
+0.99 s, struct 0.69 to 0.90 s; run-to-run noise about 10%, 6 rotated runs
+per variant, 3 files, 8 variants). Nothing measurable on zstd.c, a small
+file, or the CLI (best of 7). The RSS gain and the slowdown come together:
+no threshold keeps the gain within 5% of the base check time. Decision:
+leave glibc defaults. A user who prefers memory over latency on huge
+generated files can start the server with `MALLOC_TRIM_THRESHOLD_=0`.
+Untested: explicit `malloc_trim()` after a check, `M_TOP_PAD`, arena tuning.
