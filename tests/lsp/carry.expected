@@ -78,7 +78,7 @@
  ],
  "version": 1
 }
-## a line inserted between f and g: the macro phase's publication keeps f's error (before the first edited line) and drops g's until the check publishes both; each carries the document version
+## a line inserted between f and g: the macro phase's publication keeps both errors, g's moved down a line, until the check publishes them; each carries the document version
 >> textDocument/didChange
 >> (idle)
 << textDocument/publishDiagnostics file://$ROOT/carry/main.c
@@ -114,6 +114,21 @@
      "message": "each undeclared identifier is reported only once for each function it appears in"
     }
    ],
+   "severity": 1,
+   "source": "cereal"
+  },
+  {
+   "message": "'b1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 8
+    },
+    "start": {
+     "character": 11,
+     "line": 8
+    }
+   },
    "severity": 1,
    "source": "cereal"
   }
@@ -174,12 +189,61 @@
  ],
  "version": 2
 }
-## an edit on the first line: nothing is carried
+## an edit on the first line, above both errors: both are kept in place until the check publishes them
 >> textDocument/didChange
 >> (idle)
 << textDocument/publishDiagnostics file://$ROOT/carry/main.c
 {
- "diagnostics": [],
+ "diagnostics": [
+  {
+   "message": "'a1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 2
+    },
+    "start": {
+     "character": 11,
+     "line": 2
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 11,
+        "line": 2
+       },
+       "start": {
+        "character": 11,
+        "line": 2
+       }
+      },
+      "uri": "file://$ROOT/carry/main.c"
+     },
+     "message": "each undeclared identifier is reported only once for each function it appears in"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  },
+  {
+   "message": "'b1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 8
+    },
+    "start": {
+     "character": 11,
+     "line": 8
+    }
+   },
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
  "version": 3
 }
 << textDocument/publishDiagnostics file://$ROOT/carry/main.c
@@ -235,6 +299,84 @@
   }
  ],
  "version": 3
+}
+## an edit of the identifier of f's error (a1 to a3): that error overlaps the edit and is dropped, g's is kept until the check publishes a3's
+>> textDocument/didChange
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/carry/main.c
+{
+ "diagnostics": [
+  {
+   "message": "'b1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 8
+    },
+    "start": {
+     "character": 11,
+     "line": 8
+    }
+   },
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
+ "version": 4
+}
+<< textDocument/publishDiagnostics file://$ROOT/carry/main.c
+{
+ "diagnostics": [
+  {
+   "message": "'a3' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 2
+    },
+    "start": {
+     "character": 11,
+     "line": 2
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 11,
+        "line": 2
+       },
+       "start": {
+        "character": 11,
+        "line": 2
+       }
+      },
+      "uri": "file://$ROOT/carry/main.c"
+     },
+     "message": "each undeclared identifier is reported only once for each function it appears in"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  },
+  {
+   "message": "'b1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 8
+    },
+    "start": {
+     "character": 11,
+     "line": 8
+    }
+   },
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
+ "version": 4
 }
 ## no version in didChange: none in the publication
 >> textDocument/didChange

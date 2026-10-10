@@ -339,75 +339,6 @@ static bool check_eligible(const Unit *u, Snapshot *s)
     return total && total <= limit;
 }
 
-/* The line of the first byte where file `path` differs between snapshots
- * a and b (UINT32_MAX: the same text; 0: absent from either). */
-static uint32_t first_changed_line(Snapshot *a, Snapshot *b, const char *path)
-{
-    SrcFile *fa = NULL, *fb = NULL;
-    uint32_t i, n = srcmgr_nfiles(&a->tu.sm), line = 0;
-    size_t k, m;
-    for (i = 0; i < n && !fa; i++) {
-        SrcFile *f = srcmgr_file(&a->tu.sm, i);
-        if (f->kind == SF_USER && !strcmp(f->path, path))
-            fa = f;
-    }
-    n = srcmgr_nfiles(&b->tu.sm);
-    for (i = 0; i < n && !fb; i++) {
-        SrcFile *f = srcmgr_file(&b->tu.sm, i);
-        if (f->kind == SF_USER && !strcmp(f->path, path))
-            fb = f;
-    }
-    if (!fa || !fb)
-        return 0;
-    m = MIN(fa->size, fb->size);
-    for (k = 0; k < m && fa->buf[k] == fb->buf[k]; k++)
-        line += fa->buf[k] == '\n';
-    return k == m && fa->size == fb->size ? UINT32_MAX : line;
-}
-
-/* Before its check ends, a snapshot shows the compiler diagnostics of the
- * previous one that lie wholly before the first edited line of their file
- * (their positions are the same there; the later ones may have moved or
- * gone, and are dropped).  One with a note in another file is carried
- * only if no file changed. */
-static void carry_cdiags(Snapshot *to, Snapshot *from)
-{
-    size_t i;
-    const char *path = NULL;
-    uint32_t line = 0;
-    int same = -1; /* every file unchanged; -1: not computed yet */
-    for (i = 0; i < from->cdiags.len; i++) {
-        const CDiag *c = &from->cdiags.data[i];
-        CDiag cd;
-        if (!path || strcmp(path, c->path)) {
-            path = c->path;
-            line = first_changed_line(from, to, path);
-        }
-        if (c->last_line >= line)
-            continue;
-        if (c->other_files) {
-            if (same < 0) {
-                uint32_t k, n = srcmgr_nfiles(&from->tu.sm);
-                same = 1;
-                for (k = 0; k < n && same; k++) {
-                    SrcFile *f = srcmgr_file(&from->tu.sm, k);
-                    if (f->kind == SF_USER &&
-                        first_changed_line(from, to, f->path) != UINT32_MAX)
-                        same = 0;
-                }
-            }
-            if (!same)
-                continue;
-        }
-        cd.path = xstrdup(c->path);
-        cd.last_line = c->last_line;
-        cd.other_files = c->other_files;
-        cd.key = xstrdup(c->key);
-        cd.json = xstrdup(c->json);
-        vec_push(&to->cdiags, cd);
-    }
-}
-
 static void check_free(Check *c)
 {
     if (!c)
@@ -787,7 +718,7 @@ static void *builder_main(void *arg)
                 snap->cidx_carried = carried != NULL;
                 checking = snapshot_ref(snap);
                 if (old) /* shown until the check ends: no flicker */
-                    carry_cdiags(snap, old);
+                    cdiags_carry(snap, old);
             }
             t2 = stats_now();
             lsp_publish_diagnostics(snap, NULL, S.enc, doc_open_in, u);

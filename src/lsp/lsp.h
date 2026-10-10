@@ -64,13 +64,25 @@ void loc_to_pos(SrcMgr *sm, SrcLoc loc, PosEncoding enc, uint32_t *line,
 
 /* ---- snapshots and the server (server.c) ------------------------------ */
 
-/* A compiler diagnostic as published, kept to be carried over. */
+/* A compiler diagnostic as published, kept to be carried over the next edit
+ * (B3_DESIGN.md 12.8): offsets in the text of the files, so that the same
+ * text edit that moves the index moves it. */
+typedef struct CNote {
+    char *path;              /* the file the note points into */
+    uint32_t off;
+    char *msg;
+} CNote;
+
 typedef struct CDiag {
     char *path;              /* the file it is published for */
-    uint32_t last_line;      /* its last line there (range and notes) */
-    bool other_files;        /* a note points into another file */
-    char *key;               /* range and message: duplicates are dropped */
-    char *json;              /* the publishDiagnostics array element */
+    uint32_t off_b, off_e;   /* its range there */
+    int severity;            /* LSP */
+    char *code;              /* NULL: none */
+    char *msg;
+    CNote *notes;
+    size_t nnotes;
+    bool carry;              /* the checked text of every file it names is
+                              * the snapshot's: the offsets are valid */
 } CDiag;
 
 typedef struct Snapshot {
@@ -91,8 +103,8 @@ typedef struct Snapshot {
     bool cidx_carried;
     int check_state;         /* CHECK_* */
     /* The compiler diagnostics published with the snapshot: its check's
-     * once that ends, before then those carried over from the previous
-     * snapshot (lines before the first edited one).  Builder only. */
+     * once that ends, before then those carried over the edit from the
+     * previous snapshot (cdiags_carry).  Builder only. */
     VEC(CDiag) cdiags;
     char *notice;            /* why the unit is not checked (Information) */
 } Snapshot;
@@ -160,6 +172,9 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
                              bool (*wanted)(void *ctx, const char *path),
                              void *ctx);
 void cdiags_free(Snapshot *s);
+/* to->cdiags: from's moved through the text edit from from's texts to to's;
+ * one that overlaps the edit, or names a file that is gone, is dropped. */
+void cdiags_carry(Snapshot *to, Snapshot *from);
 /* The editor's version of a file of the overlay; false: none was sent. */
 bool lsp_overlay_version(const struct Overlay *o, const char *path,
                          long long *version);

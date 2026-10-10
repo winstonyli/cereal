@@ -1,0 +1,18 @@
+[
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/carry_tie", "capabilities": {"general": {"positionEncodings": ["utf-8", "utf-16"]}, "workspace": {"semanticTokens": {"refreshSupport": true}}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"open": "carry_tie/main.c"},
+ {"idle": true},
+ {"note": "the tie rule of B3_DESIGN.md 12.7: a macro token and a carried C token at one place; token types here: 0 macro, 3 variable; modifier 1 is the declaration"},
+ {"send": {"id": 2, "method": "textDocument/semanticTokens/full", "params": {"textDocument": {"uri": "file://$ROOT/carry_tie/main.c"}}}},
+ {"note": "checks held, then a #define of foo typed above int foo;: the carried index still has the variable foo (a declaration) at the place where the new macro snapshot has a use of the macro foo; the macro token wins"},
+ {"send": {"id": 3, "method": "cereal/holdChecks", "params": {"hold": true}}},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/carry_tie/main.c", "version": 2}, "contentChanges": [{"text": "#define foo foo\nint foo;\nint other;\n"}]}}},
+ {"send": {"id": 4, "method": "textDocument/semanticTokens/full", "params": {"textDocument": {"uri": "file://$ROOT/carry_tie/main.c"}}}},
+ {"note": "released: the check publishes its own index; the tokens are fresh (no overlap by construction)"},
+ {"send": {"id": 5, "method": "cereal/holdChecks", "params": {"hold": false}}},
+ {"idle": true},
+ {"send": {"id": 6, "method": "textDocument/semanticTokens/full", "params": {"textDocument": {"uri": "file://$ROOT/carry_tie/main.c"}}}},
+ {"send": {"id": 7, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

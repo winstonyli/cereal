@@ -1,0 +1,106 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider"
+ ]
+}
+>> initialized
+>> didOpen carry_tie/main.c
+>> (idle)
+## the tie rule of B3_DESIGN.md 12.7: a macro token and a carried C token at one place; token types here: 0 macro, 3 variable; modifier 1 is the declaration
+>> textDocument/semanticTokens/full
+{
+ "data": [
+  0,
+  4,
+  3,
+  3,
+  1,
+  1,
+  4,
+  5,
+  3,
+  1
+ ],
+ "resultId": "1"
+}
+## checks held, then a #define of foo typed above int foo;: the carried index still has the variable foo (a declaration) at the place where the new macro snapshot has a use of the macro foo; the macro token wins
+>> cereal/holdChecks
+null
+>> textDocument/didChange
+>> textDocument/semanticTokens/full
+{
+ "data": [
+  0,
+  8,
+  3,
+  0,
+  1,
+  0,
+  4,
+  3,
+  0,
+  0,
+  1,
+  4,
+  3,
+  0,
+  0,
+  1,
+  4,
+  5,
+  3,
+  1
+ ],
+ "resultId": "2"
+}
+## released: the check publishes its own index; the tokens are fresh (no overlap by construction)
+>> cereal/holdChecks
+null
+>> (idle)
+>> textDocument/semanticTokens/full
+{
+ "data": [
+  0,
+  8,
+  3,
+  0,
+  1,
+  0,
+  4,
+  3,
+  0,
+  0,
+  1,
+  4,
+  3,
+  0,
+  0,
+  1,
+  4,
+  5,
+  3,
+  1
+ ],
+ "resultId": "3"
+}
+>> shutdown
+null
+>> exit
+exit 0

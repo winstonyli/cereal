@@ -1763,7 +1763,7 @@ void cindex_text_edit(const char *a, size_t na, const char *b, size_t nb,
 }
 
 /* The map of an old position (a point between bytes): monotone. */
-static uint32_t edit_map(const CIdxEdit *e, uint32_t x)
+uint32_t cindex_edit_map(const CIdxEdit *e, uint32_t x)
 {
     if (x <= e->pre)
         return x;
@@ -1823,8 +1823,8 @@ CIndex *cindex_carry(CIndex *from, SrcMgr *sm_old, SrcMgr *sm_new)
         if (!e->same) {
             uint32_t b = e->pre, en = e->new_end;
             if (cf->edited) {                     /* hull with the old damage */
-                uint32_t mb = edit_map(e, cf->dmg_begin);
-                uint32_t me = edit_map(e, cf->dmg_end);
+                uint32_t mb = cindex_edit_map(e, cf->dmg_begin);
+                uint32_t me = cindex_edit_map(e, cf->dmg_end);
                 b = mb < b ? mb : b;
                 en = me > en ? me : en;
             }
@@ -1851,8 +1851,8 @@ CIndex *cindex_carry(CIndex *from, SrcMgr *sm_old, SrcMgr *sm_new)
     for (i = 0; i < from->nscopes; i++) {
         const CIdxEdit *e = &ed[from->scopes[i].file];
         c->scopes[i] = from->scopes[i];
-        c->scopes[i].begin = edit_map(e, from->scopes[i].begin);
-        c->scopes[i].end = edit_map(e, from->scopes[i].end);
+        c->scopes[i].begin = cindex_edit_map(e, from->scopes[i].begin);
+        c->scopes[i].end = cindex_edit_map(e, from->scopes[i].end);
     }
     build_csr(c);
     free(ed);

@@ -1,0 +1,208 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider"
+ ]
+}
+>> initialized
+>> didOpen carry_hdr/main.c
+>> didOpen carry_hdr/lib.h
+>> (idle)
+## one compiler error in main.c, with a note in lib.h (line 0)
+<< textDocument/publishDiagnostics file://$ROOT/carry_hdr/main.c
+{
+ "diagnostics": [
+  {
+   "message": "too many arguments to function 'lib_fn'",
+   "range": {
+    "end": {
+     "character": 18,
+     "line": 4
+    },
+    "start": {
+     "character": 12,
+     "line": 4
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 4,
+        "line": 0
+       },
+       "start": {
+        "character": 4,
+        "line": 0
+       }
+      },
+      "uri": "file://$ROOT/carry_hdr/lib.h"
+     },
+     "message": "declared here"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
+ "version": 1
+}
+## checks held, then an edit of the header only: a comment line typed above the declarations (B3_DESIGN.md 12.8, 12.14); main.c is not edited
+>> cereal/holdChecks
+null
+>> textDocument/didChange
+## definition of lib_fn from main.c (answered from the carried index): the declaration in lib.h, moved to line 1
+>> textDocument/definition
+[
+ {
+  "range": {
+   "end": {
+    "character": 10,
+    "line": 1
+   },
+   "start": {
+    "character": 4,
+    "line": 1
+   }
+  },
+  "uri": "file://$ROOT/carry_hdr/lib.h"
+ }
+]
+## hover on lib_val in main.c: its declaration is untouched, so no rechecking marker
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar lib_val: int extern\n```"
+ },
+ "range": {
+  "end": {
+   "character": 22,
+   "line": 5
+  },
+  "start": {
+   "character": 15,
+   "line": 5
+  }
+ }
+}
+## the publication of the macro phase carries the error: still in main.c, its note moved to lib.h line 1
+<< textDocument/publishDiagnostics file://$ROOT/carry_hdr/main.c
+{
+ "diagnostics": [
+  {
+   "message": "too many arguments to function 'lib_fn'",
+   "range": {
+    "end": {
+     "character": 18,
+     "line": 4
+    },
+    "start": {
+     "character": 12,
+     "line": 4
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 4,
+        "line": 1
+       },
+       "start": {
+        "character": 4,
+        "line": 1
+       }
+      },
+      "uri": "file://$ROOT/carry_hdr/lib.h"
+     },
+     "message": "declared here"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
+ "version": 1
+}
+## released: the check publishes the same error from its own index
+>> cereal/holdChecks
+null
+>> (idle)
+<< textDocument/publishDiagnostics file://$ROOT/carry_hdr/main.c
+{
+ "diagnostics": [
+  {
+   "message": "too many arguments to function 'lib_fn'",
+   "range": {
+    "end": {
+     "character": 18,
+     "line": 4
+    },
+    "start": {
+     "character": 12,
+     "line": 4
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 4,
+        "line": 1
+       },
+       "start": {
+        "character": 4,
+        "line": 1
+       }
+      },
+      "uri": "file://$ROOT/carry_hdr/lib.h"
+     },
+     "message": "declared here"
+    }
+   ],
+   "severity": 1,
+   "source": "cereal"
+  }
+ ],
+ "version": 1
+}
+>> textDocument/definition
+[
+ {
+  "range": {
+   "end": {
+    "character": 10,
+    "line": 1
+   },
+   "start": {
+    "character": 4,
+    "line": 1
+   }
+  },
+  "uri": "file://$ROOT/carry_hdr/lib.h"
+ }
+]
+>> shutdown
+null
+>> exit
+exit 0

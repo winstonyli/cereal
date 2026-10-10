@@ -204,6 +204,9 @@ typedef struct CIdxEdit {    /* old [pre, old_end) became new [pre, new_end) */
  * whole identifiers. */
 void cindex_text_edit(const char *a, size_t na, const char *b, size_t nb,
                       CIdxEdit *out);
+/* The map of an old position (a point between bytes) through the edit:
+ * monotone; a position inside the span maps to its start. */
+uint32_t cindex_edit_map(const CIdxEdit *e, uint32_t x);
 /* An index in the coordinates of sm_new's texts, made from `from` (whose
  * offsets are in sm_old's): the per-text arrays copied, offsets shifted past
  * each file's edit, events overlapping it dropped; decls and strings shared

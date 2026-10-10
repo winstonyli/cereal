@@ -83,12 +83,18 @@ cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
   when the client sent one (didOpen, didChange).
 - **Carried diagnostics (no flicker):** until the check ends, the macro
   phase's publication also shows the previous snapshot's compiler
-  diagnostics that lie wholly before the first edited line of their file
-  (range and same-file notes; their positions are unchanged there). Later
-  ones are dropped rather than kept, since an inserted or deleted line
-  would misplace them; one with a note in another file is carried only if
-  no user file changed. Carried diagnostics are stored on the new
-  snapshot, so a chain of cancelled checks keeps carrying them. If the
+  diagnostics, moved through the same text edit as the carried index
+  (B3_DESIGN.md 12.8). A diagnostic is stored as file offsets (range, and
+  the path and offset of each note) and the edit of each file is the
+  difference of its two texts, widened to whole identifiers. One whose
+  range or any note meets the edit's span (inclusive at both ends), or
+  whose file is gone, is dropped; the others are shifted, so errors below
+  the edit stay visible, at their new lines, while typing, and an edit of
+  an included header moves the notes pointing into it. A diagnostic is
+  carried only if the check read the same text of every file it names as
+  the snapshot (otherwise its offsets mean nothing). They are rendered
+  against the new snapshot's line table, and stored on it, so a chain of
+  cancelled checks keeps carrying them. If the
   check fails (below) they are withdrawn with a republication; a
   superseded check leaves them to the next snapshot.
 - **Cancellation:** an edit sets the unit's cancel flag; the preprocessor
@@ -145,9 +151,12 @@ cells, not tokens. The second pass is 30 to 45% of the phase (`-E` against
   quick edits whose final diagnostics must be the last text's, a missing
   include shown once). Whether a quick edit really *cancelled* a check
   is timing-dependent and not asserted; the stale-result rule is.
-  `tests/lsp/carry` (an edit keeps the diagnostic above it and drops the
-  one below until the check republishes both; a first-line edit carries
-  nothing; a didChange without a version publishes none), `skip` (the
+  `tests/lsp/carry` (an insertion between two errors keeps both, the
+  lower one moved; an edit above both keeps both; an edit of the
+  identifier of one drops that one and keeps the other; a didChange without
+  a version publishes none), `carry_hdr` (checks held; an edit of an
+  included header only: the error in the includer is kept and its note into
+  the header moved, definition and hover through the carried index), `skip` (the
   notice with `CEREAL_LSP_CHECK_MAX=100`, gone once the file shrinks under
   it), `fault` (a `fatal()` in a pool worker of the first build, then a
   normal edit and hover) and `fault_check` (a failed check withdraws the
@@ -416,7 +425,10 @@ tokens, document symbols (ranges moved), hover on the typed name and
 prepareRename (each waits out 1.5 s: nothing, "retry"), a second edit
 while held (a carry from a carried index), then the release: the refresh
 request is recorded, a token delta colors the damage, and hover and
-completion are fresh. `fault_check` also shows the carried index going with
+completion are fresh. `tests/lsp/carry_tie` (checks held): a `#define foo`
+typed above `int foo;` makes a macro token and a carried C token start at
+one place; the semantic tokens show the macro's (fails without the tie
+rule). `fault_check` also shows the carried index going with
 a failed check. The `wait` step records server requests without params.
 `tests/lsp_stress.py BIN FILE [EDITS]` (not a golden) sends edits each
 followed at once by token, completion and hover requests; run on zstd.c

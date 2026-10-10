@@ -357,8 +357,6 @@ the client (`isIncomplete` false), as for macros.
   request context (the expression's type, not the scope); not B3.
 - **Tag completion** after `struct`/`union`/`enum`, label completion
   after `goto`, keywords: the cursor context, not scope data.
-- **Compiler diagnostics through the carry-over edit** (12.8, step 4):
-  not done; the diagnostics still use `first_changed_line`.
 - **Signature help through an expression** callee (`(*fp)(`, `a[i](`).
 - **Blocks written inside a macro argument** (`WITH_LOCK(m, { int x;
   ... })`): scope extents are presentation points, so such a block is
@@ -479,8 +477,8 @@ Status: designed 2026-10-09 for the parked item of section 9 ("carrying
 the previous index across edits"). Step 1 of 12.11 (the index side) is
 implemented (Round 198, results in 12.13); steps 2 and 3 (server,
 features, refresh) are implemented (Round 199, results in 12.14); step 4
-(diagnostics through the edit, 12.8) and the docs part of step 5 beyond
-sections 6 and 9 are not. Sections 6 and 9 and LSP.md describe the
+(diagnostics through the edit, 12.8) is implemented (Round 200, results
+in 12.15), and so is step 5 (docs). Sections 6 and 9 and LSP.md describe the
 implemented behaviour. Line numbers in 12.1 to 12.12 are those of HEAD
 2c7e406.
 
@@ -861,7 +859,7 @@ be measured in step 1 of 12.11):
    token request right after an edit: it waits for the check and has
    the new names, which makes the `CP_WAIT` choice for tokens visible.
    The capability is per session, so it cannot go in `carry_cidx`.
-4. **Diagnostics through the edit (12.8).** `CDiag` by offsets,
+4. **Diagnostics through the edit (12.8) (done, Round 200; see 12.15).** `CDiag` by offsets,
    `carry_cdiags` rewritten, `first_changed_line` deleted;
    `tests/lsp/carry` updated.
 5. **Docs.** LSP.md ("Snapshots", carried diagnostics, D1, Tests),
@@ -1033,9 +1031,9 @@ accepted with no size cap. Differences from the text above:
   csym, csym_hover and csym_refs changed, and none of their answers.
   `tests/lsp_stress.py BIN FILE [EDITS]` is the 200-edit stress run of
   the plan (inserts, then at once tokens, completion and hover; not held).
-- Not tested by a golden: the tie rule (a macro token and a carried C
-  token at one place), `TokCache` reuse across the publish (the delta in
-  `carry_cidx` goes through it), and a header-only edit.
+- Not tested by a golden: `TokCache` reuse across the publish (the delta
+  in `carry_cidx` goes through it). The tie rule and a header-only edit
+  were added in Round 200 (12.15).
 
 **Measurements** (zstd.c, 2.2 MB, the server, `VmHWM` reset when the macro
 snapshot of an inserted line was published and read after the check; 3
@@ -1055,3 +1053,44 @@ measured in the server; 12.13 has its `--verify-carry` figures.
 declaration of the entity itself; a use of an entity whose type changed
 elsewhere shows the old text unmarked (12.10).
 
+### 12.15 Step 4 results (Round 200)
+
+Implemented as designed (12.8), in features.c rather than server.c:
+`cdiags_carry` replaces `carry_cdiags`, `first_changed_line` and its
+"no file changed" rule are deleted (nothing else used them). Differences
+from the text above:
+- `CDiag` holds `path`, `off_b`, `off_e`, `severity`, `code`, `msg`,
+  `notes` (path, offset, message) and `carry`. The dedupe key is no
+  longer stored: it is computed from the new snapshot's line table when
+  the carried diagnostic is published. One renderer, `put_diag`, takes a
+  `CDiag` for macro-phase, check and carried diagnostics alike
+  (`cdiag_make` builds one from a `Diagnostic` in the arena).
+- `carry` is set at the check's publish: false unless the check's text of
+  the file and of every file a note names equals the snapshot's (a
+  memcmp, once per file). A diagnostic without it is never carried.
+- A diagnostic is dropped when its range, or any note offset, lies in
+  `[pre, old_end]` of its file's edit (inclusive; a pure insertion at the
+  edge of the range drops it), or when a file is gone from either
+  snapshot. Others are mapped with `cindex_edit_map` (now exported).
+  Edits are computed once per path per carry.
+- A note whose file the new snapshot lacks is left out when rendering a
+  fresh diagnostic, as before (notes only into user or system files).
+  One difference: a diagnostic whose notes all fall outside user/system
+  files used to emit an empty `relatedInformation`; now it omits it.
+- Tests: `tests/lsp/carry` (changed lines, all in `carry.expected`): the
+  heading of step 2 and its macro-phase publication now also holds g's
+  error (line 8, moved down by the inserted line) as it was dropped
+  before; step 3 (an edit on the first line) now publishes both errors
+  in the macro phase (a1 at line 2 with its note, b1 at line 8) where it
+  published none; a new step 4 edits `a1` to `a3`: the macro phase keeps
+  only b1 (the a1 diagnostic and its note overlap the edit), the check
+  publishes a3 and b1; the last step is unchanged (everything is removed
+  by its edit). `fault_check` shares the workspace: its first
+  publication after the edit also holds b1, then the withdrawal as
+  before. New: `carry_tie` and `carry_hdr` (Round 199's missing goldens).
+  `carry_tie` was checked to fail with the tie rule disabled. (`carry_hdr`
+  was not run against the old code; by the old rule its diagnostic, with a
+  note in a changed file, would have been dropped.)
+- A bug found by ASan on the first version, in 12.15's own code: the
+  path cache of the edits pointed into a copy that was freed when its
+  diagnostic was dropped.

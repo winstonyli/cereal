@@ -5,7 +5,7 @@
  {"open": "carry/main.c"},
  {"idle": true},
  {"wait": "textDocument/publishDiagnostics", "uri": "file://$ROOT/carry/main.c"},
- {"note": "fatal() in the second check: the check is dropped and logged; the error carried into the macro phase's publication is withdrawn, as no check will confirm it"},
+ {"note": "fatal() in the second check: the check is dropped and logged; the two errors carried into the macro phase's publication (g's moved down a line) are withdrawn, as no check will confirm them"},
  {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/carry/main.c", "version": 2}, "contentChanges": [{"text": "int f(void)\n{\n    return a1;\n}\nint h;\n\nint g(void)\n{\n    return b1;\n}\n"}]}}},
  {"idle": true},
  {"waitall": "textDocument/publishDiagnostics", "uri": "file://$ROOT/carry/main.c"},

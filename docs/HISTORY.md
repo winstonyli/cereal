@@ -3743,3 +3743,35 @@ but the sessions exercises); symcov 4716 files, 0 unindexed (10
 skipped); uvloop loop.c 3.886 G instructions; the LSP sessions (both
 modes) under TSan: 30 passed, 0 warnings. Not done: step 4 (diagnostics
 through the same edit, 12.8).
+
+Round 200: ROADMAP B3 carry-over, step 4 of B3_DESIGN.md 12.11 (compiler
+diagnostics through the same text edit; results in 12.15). `CDiag` stores
+file offsets (range, severity, code, message, notes with path and offset,
+and `carry`: the check read the snapshot's text of every file it names)
+instead of rendered JSON. `cdiags_carry` (features.c; `carry_cdiags` and
+`first_changed_line` are deleted from server.c, with the "no file changed"
+rule for notes in other files) computes each file's edit with
+`cindex_text_edit` (now with `cindex_edit_map` exported), drops a
+diagnostic whose range or any note meets the edit's span (inclusive) or
+whose file is gone, and shifts the others; `lsp_publish_diagnostics`
+renders carried ones against the new snapshot's line table and keys them
+there (one renderer, `put_diag`, for macro, fresh and carried diagnostics,
+built from `cdiag_make`). Effect: errors below an edit stay visible,
+moved, while typing. Tests: `tests/lsp/carry` changed (see 12.15 for every
+line), `fault_check` (same workspace; the macro-phase publication now also
+shows the lower error, still withdrawn at the failed check), and two new
+sessions: `carry_tie` (the tie rule: a `#define foo` typed above `int foo;`
+with checks held; fails with the rule disabled) and `carry_hdr` (an edit of
+an included header only, checks held: definition and hover through the
+carried index, the error in the includer kept and its note into the header
+moved). ASan found a use-after-free in the first version of `cdiags_carry`
+(the edit cache kept the path of a diagnostic copy that was then freed);
+fixed by keying the cache on the source diagnostic's strings. Gates:
+run.sh 1693 passed, 0 failed (1689 + 2 sessions x 2 modes); san.sh 1693
+passed, 605 files, 0 findings; verify.sh (gcc-13) gcc.dg 3908 of 3910,
+c-c++-common 635 of 636, cpp 285 of 285; symcov 4716 files, 0 unindexed
+(10 skipped); uvloop loop.c 3.886 G instructions; all 17 LSP sessions (both
+modes) under TSan: 34 passed, 0 warnings; `lsp_stress.py` on features.c
+(200 edits, 66 refreshes) clean under TSan (74 s) and ASan/UBSan. About
++228/-134 lines in src (features.c +197/-52, server.c +1/-70, lsp.h
++22/-7, csymidx.c/h +8/-5), against ~80 added and ~60 removed estimated.

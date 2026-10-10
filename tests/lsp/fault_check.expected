@@ -77,7 +77,7 @@
  ],
  "version": 1
 }
-## fatal() in the second check: the check is dropped and logged; the error carried into the macro phase's publication is withdrawn, as no check will confirm it
+## fatal() in the second check: the check is dropped and logged; the two errors carried into the macro phase's publication (g's moved down a line) are withdrawn, as no check will confirm them
 >> textDocument/didChange
 >> (idle)
 << textDocument/publishDiagnostics file://$ROOT/carry/main.c
@@ -113,6 +113,21 @@
      "message": "each undeclared identifier is reported only once for each function it appears in"
     }
    ],
+   "severity": 1,
+   "source": "cereal"
+  },
+  {
+   "message": "'b1' undeclared (first use in this function)",
+   "range": {
+    "end": {
+     "character": 13,
+     "line": 8
+    },
+    "start": {
+     "character": 11,
+     "line": 8
+    }
+   },
    "severity": 1,
    "source": "cereal"
   }

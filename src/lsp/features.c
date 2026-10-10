@@ -1636,61 +1636,134 @@ static int cmp_keys(const void *a, const void *b)
     return strcmp(*(const char *const *)a, *(const char *const *)b);
 }
 
-/* One diagnostic object, placed at b..e of file f with message msg; the
- * last line of f it touches (range and notes) and whether a note points
- * into another file are returned for carrying it over. */
+/* Diagnostic d placed at b..e of file f (of sm) with message msg, as offsets
+ * in the files' texts; the strings and notes are the arena's.  carry is
+ * left false. */
+static CDiag cdiag_make(SrcMgr *sm, SrcFile *f, Arena *a, const Diagnostic *d,
+                        SrcLoc b, SrcLoc e, const char *msg)
+{
+    CDiag cd = {0};
+    size_t k;
+    cd.path = (char *)f->path;
+    cd.off_b = b - f->base;
+    cd.off_e = (e < b ? b : e) - f->base;
+    cd.severity = severity(d->level);
+    cd.code = d->id && *d->id ? (char *)d->id : NULL;
+    cd.msg = (char *)msg;
+    cd.notes = NEW_ARRAY(a, CNote, d->notes.len);
+    for (k = 0; k < d->notes.len; k++) {
+        SrcLoc nl = d->notes.data[k].loc;
+        SrcFile *nf = srcmgr_file_of(sm, nl);
+        if (!nf || (nf->kind != SF_USER && nf->kind != SF_SYSTEM))
+            continue;
+        cd.notes[cd.nnotes].path = (char *)nf->path;
+        cd.notes[cd.nnotes].off = nl - nf->base;
+        cd.notes[cd.nnotes++].msg = (char *)d->notes.data[k].msg;
+    }
+    return cd;
+}
+
+/* One diagnostic object for file f of sm, whose files hold the offsets of
+ * cd (a note into a file sm lacks is left out). */
 static void put_diag(JsonWriter *w, SrcMgr *sm, SrcFile *f, PosEncoding enc,
-                     Arena *a, const Diagnostic *d, SrcLoc b, SrcLoc e,
-                     const char *msg, uint32_t *last_line, bool *other_files)
+                     Arena *a, const CDiag *cd)
 {
     size_t k;
-    uint32_t c;
-    loc_to_pos(sm, e < b ? b : e, enc, last_line, &c);
-    *other_files = false;
     json_begin_object(w);
     json_key(w, "range");
-    json_range(w, sm, enc, b, e);
+    json_range(w, sm, enc, f->base + cd->off_b, f->base + cd->off_e);
     json_key(w, "severity");
-    json_int(w, severity(d->level));
-    if (d->id && *d->id) {
+    json_int(w, cd->severity);
+    if (cd->code) {
         json_key(w, "code");
-        json_str(w, d->id);
+        json_str(w, cd->code);
     }
     json_key(w, "source");
     json_str(w, "cereal");
     json_key(w, "message");
-    json_str(w, msg);
-    if (d->notes.len) {
+    json_str(w, cd->msg);
+    if (cd->nnotes) {
         json_key(w, "relatedInformation");
         json_begin_array(w);
-        for (k = 0; k < d->notes.len; k++) {
-            SrcLoc nl = d->notes.data[k].loc;
-            SrcFile *nf2 = srcmgr_file_of(sm, nl);
-            if (!nf2 || (nf2->kind != SF_USER && nf2->kind != SF_SYSTEM))
+        for (k = 0; k < cd->nnotes; k++) {
+            const CNote *n = &cd->notes[k];
+            SrcFile *nf = !strcmp(n->path, f->path) ? f
+                                                    : cindex_srcfile(sm, n->path);
+            SrcLoc nl;
+            if (!nf)
                 continue;
-            if (nf2 == f) {
-                uint32_t l;
-                loc_to_pos(sm, nl, enc, &l, &c);
-                if (l > *last_line)
-                    *last_line = l;
-            } else {
-                *other_files = true;
-            }
+            nl = nf->base + n->off;
             json_begin_object(w);
             json_key(w, "location");
             json_begin_object(w);
             json_key(w, "uri");
-            json_str(w, path_to_uri(a, nf2->path));
+            json_str(w, path_to_uri(a, nf->path));
             json_key(w, "range");
             json_range(w, sm, enc, nl, nl);
             json_end_object(w);
             json_key(w, "message");
-            json_str(w, d->notes.data[k].msg);
+            json_str(w, n->msg);
             json_end_object(w);
         }
         json_end_array(w);
     }
     json_end_object(w);
+}
+
+/* cd, to keep: its strings copied. */
+static CDiag cdiag_dup(const CDiag *cd)
+{
+    CDiag r = *cd;
+    size_t k;
+    r.path = xstrdup(cd->path);
+    r.code = cd->code ? xstrdup(cd->code) : NULL;
+    r.msg = xstrdup(cd->msg);
+    r.notes = xcalloc(cd->nnotes + 1, sizeof *r.notes);
+    for (k = 0; k < cd->nnotes; k++) {
+        r.notes[k].path = xstrdup(cd->notes[k].path);
+        r.notes[k].off = cd->notes[k].off;
+        r.notes[k].msg = xstrdup(cd->notes[k].msg);
+    }
+    return r;
+}
+
+static void cdiag_free(CDiag *cd)
+{
+    size_t k;
+    for (k = 0; k < cd->nnotes; k++) {
+        free(cd->notes[k].path);
+        free(cd->notes[k].msg);
+    }
+    free(cd->notes);
+    free(cd->path);
+    free(cd->code);
+    free(cd->msg);
+}
+
+/* Whether files of the check have the text of the same path in the
+ * snapshot (what it was built from), so that offsets in them are valid
+ * there; each file is compared once. */
+typedef struct SameText {
+    VEC(SrcFile *) yes, no;
+} SameText;
+
+static bool file_same(SameText *st, SrcFile *f, SrcMgr *other)
+{
+    SrcFile *g;
+    size_t i;
+    for (i = 0; i < st->yes.len; i++)
+        if (st->yes.data[i] == f)
+            return true;
+    for (i = 0; i < st->no.len; i++)
+        if (st->no.data[i] == f)
+            return false;
+    g = cindex_srcfile(other, f->path);
+    if (g && g->size == f->size && !memcmp(g->buf, f->buf, f->size)) {
+        vec_push(&st->yes, f);
+        return true;
+    }
+    vec_push(&st->no, f);
+    return false;
 }
 
 static const char *diag_key(SrcMgr *sm, PosEncoding enc, Arena *a, SrcLoc b,
@@ -1710,12 +1783,80 @@ static bool key_seen(const char *key, const char **keys, size_t n)
 void cdiags_free(Snapshot *s)
 {
     size_t i;
-    for (i = 0; i < s->cdiags.len; i++) {
-        free(s->cdiags.data[i].path);
-        free(s->cdiags.data[i].key);
-        free(s->cdiags.data[i].json);
-    }
+    for (i = 0; i < s->cdiags.len; i++)
+        cdiag_free(&s->cdiags.data[i]);
     vec_free(&s->cdiags);
+}
+
+/* The edit of file `path` from a's text to b's, cached by path in ed. */
+typedef struct PathEdit {
+    const char *path;
+    bool present;            /* in both snapshots */
+    CIdxEdit e;
+} PathEdit;
+typedef VEC(PathEdit) PathEdits;
+
+static const PathEdit *path_edit(PathEdits *ed, Snapshot *a, Snapshot *b,
+                                 const char *path)
+{
+    size_t i;
+    PathEdit pe = {0};
+    SrcFile *fa, *fb;
+    for (i = 0; i < ed->len; i++)
+        if (!strcmp(ed->data[i].path, path))
+            return &ed->data[i];
+    pe.path = path;
+    fa = cindex_srcfile(&a->tu.sm, path);
+    fb = cindex_srcfile(&b->tu.sm, path);
+    if (fa && fb) {
+        pe.present = true;
+        cindex_text_edit(fa->buf, fa->size, fb->buf, fb->size, &pe.e);
+    }
+    vec_push(ed, pe);
+    return &ed->data[ed->len - 1];
+}
+
+/* An offset range of file `path` that the edit leaves alone, mapped: false
+ * if the file is gone or the range meets the edit's span (inclusive: a
+ * cursor at its edge is inside). */
+static bool carry_range(PathEdits *ed, Snapshot *a, Snapshot *b,
+                        const char *path, uint32_t *lo, uint32_t *hi)
+{
+    const PathEdit *pe = path_edit(ed, a, b, path);
+    if (!pe->present)
+        return false;
+    if (pe->e.same)
+        return true;
+    if (*lo <= pe->e.old_end && *hi >= pe->e.pre)
+        return false;
+    *lo = cindex_edit_map(&pe->e, *lo);
+    *hi = cindex_edit_map(&pe->e, *hi);
+    return true;
+}
+
+void cdiags_carry(Snapshot *to, Snapshot *from)
+{
+    PathEdits ed = {0};
+    size_t i, k;
+    for (i = 0; i < from->cdiags.len; i++) {
+        const CDiag *c = &from->cdiags.data[i];
+        CDiag cd;
+        bool ok;
+        if (!c->carry)
+            continue;
+        cd = cdiag_dup(c);
+        ok = carry_range(&ed, from, to, c->path, &cd.off_b, &cd.off_e);
+        for (k = 0; ok && k < cd.nnotes; k++) {
+            uint32_t hi = cd.notes[k].off;
+            ok = carry_range(&ed, from, to, c->notes[k].path,
+                             &cd.notes[k].off, &hi);
+        }
+        if (ok)
+            vec_push(&to->cdiags, cd);
+        else
+            cdiag_free(&cd);
+    }
+    vec_free(&ed);
 }
 
 /* The diagnostics of each open file the snapshot covers: the macro phase's
@@ -1729,6 +1870,7 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
 {
     SrcMgr *sm0 = &s->tu.sm;
     uint32_t fi, nf = srcmgr_nfiles(sm0);
+    SameText same = {{0}, {0}};
     Arena a;
     arena_init(&a);
     if (chk)
@@ -1756,13 +1898,13 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
             Diagnostic *d = s->tu.diag.all.data[i];
             SrcLoc b, e;
             const char *msg;
-            uint32_t last;
-            bool other;
+            CDiag cd;
             if (!diag_place(sm0, f0, d, wanted, ctx, &a, &b, &e, &msg))
                 continue;
             if (keyed)
                 vec_push(&seen, diag_key(sm0, enc, &a, b, e, msg));
-            put_diag(&w, sm0, f0, enc, &a, d, b, e, msg, &last, &other);
+            cd = cdiag_make(sm0, f0, &a, d, b, e, msg);
+            put_diag(&w, sm0, f0, enc, &a, &cd);
         }
         if (seen.len)
             qsort(seen.data, seen.len, sizeof *seen.data, cmp_keys);
@@ -1773,31 +1915,32 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
                 Diagnostic *d = chk->diag.all.data[i];
                 SrcLoc b, e;
                 const char *msg, *key;
-                StrBuf one = {0};
-                JsonWriter w1;
-                CDiag cd;
+                CDiag cd, own;
+                size_t k;
                 if (!diag_place(sm, f, d, wanted, ctx, &a, &b, &e, &msg))
                     continue;
                 key = diag_key(sm, enc, &a, b, e, msg);
                 if (key_seen(key, seen.data, seen.len))
                     continue;
-                json_init_buf(&w1, &one);
-                put_diag(&w1, sm, f, enc, &a, d, b, e, msg, &cd.last_line,
-                         &cd.other_files);
-                json_flush(&w1);
-                json_raw(&w, one.data, one.len);
-                cd.path = xstrdup(f0->path);
-                cd.key = xstrdup(key);
-                cd.json = xstrdup(sb_cstr(&one));
-                sb_free(&one);
-                vec_push(&s->cdiags, cd);
+                cd = cdiag_make(sm, f, &a, d, b, e, msg);
+                put_diag(&w, sm, f, enc, &a, &cd);
+                cd.carry = file_same(&same, f, sm0);
+                for (k = 0; cd.carry && k < cd.nnotes; k++) {
+                    SrcFile *nfile = cindex_srcfile(sm, cd.notes[k].path);
+                    cd.carry = nfile && file_same(&same, nfile, sm0);
+                }
+                own = cdiag_dup(&cd);
+                vec_push(&s->cdiags, own);
             }
         } else {
             for (i = 0; i < s->cdiags.len; i++) {
                 const CDiag *cd = &s->cdiags.data[i];
-                if (!strcmp(cd->path, f0->path) &&
-                    !key_seen(cd->key, seen.data, seen.len))
-                    json_raw(&w, cd->json, strlen(cd->json));
+                if (strcmp(cd->path, f0->path))
+                    continue;
+                if (!key_seen(diag_key(sm0, enc, &a, f0->base + cd->off_b,
+                                       f0->base + cd->off_e, cd->msg),
+                              seen.data, seen.len))
+                    put_diag(&w, sm0, f0, enc, &a, cd);
             }
         }
         if (s->notice && !strcmp(f0->path, s->main)) {
@@ -1819,6 +1962,8 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
         rpc_write(sb.data, sb.len);
         sb_free(&sb);
     }
+    vec_free(&same.yes);
+    vec_free(&same.no);
     arena_free(&a);
 }
 
