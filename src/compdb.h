@@ -49,7 +49,7 @@ int compdb_load(Arena *a, const char *path, CompileDb *out, FILE *msg,
                 int *skipped);
 
 /* Is the entry C?  gcc's rule: the last -x LANG before the source, else
- * the suffix of the file. */
+ * the suffix of the file; @files are expanded first (a -x in one counts). */
 bool entry_is_c(const CompileEntry *e);
 
 /* A path option (-I -iquote -isystem -include) of argv[*i] pushed with its

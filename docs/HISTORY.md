@@ -3944,3 +3944,41 @@ passed, 607 files, 0 findings; verify gcc.dg 3908 of 3910, c-c++-common 635
 of 636, cpp 285 of 285 (unchanged); symcov 4716 files, 0 unindexed; uvloop
 loop.c 3.881 G (3.870 G before, +0.28%); all 17 LSP sessions (both modes)
 under TSan: 34 passed, 0 warnings.
+
+Round 207: A4 slice 2 gap closed, and the A4 section 6.6 probes (A4_DESIGN.md
+sections 4.3, 6.1, 6.6, 6.9, 6.10). Task 1: `entry_is_c` read the entry's
+own words, so `-x c++` inside an `@file` left the entry checked as C. The
+expansion now has one place, `entry_expand` (compdb.c: `argv_expand` of the
+entry's arguments against its directory, the unexpanded arguments on
+failure); `entry_options` and `entry_is_c` both read its result (the latter
+expands into a scratch arena, because the classification runs before the
+entry's `Options` exist). A failed expansion classifies on the words as
+written and the error is still reported only for entries that are C, as
+before. The LSP never called `entry_is_c`. Golden `tests/ccdb/rsp_lang`
+(`-x c++` from a file makes a `.c` entry "not C"; `-x c` from a file makes a
+`.cpp` entry checked) with `src/xcxx.rsp`, `src/xc.rsp`. Files: src/compdb.c
+(+37/-18), src/compdb.h (comment), the golden (3 files, 9 lines) and the two
+rsp files. Task 2 (docs only, no cereal code kept): the probes of 6.6 and the
+phase A question, against gcc 13.4.0. Findings: the `-M`/`-MM`/`-MD`/`-MMD`
+style is the strongest present in the order MD < MMD < M < MM whatever the
+command-line order (so `-MD -MMD` is `-MMD`); the `-MQ` "last first" is a
+rotation, `-MQ` targets rotated left by #`-MT` mod #`-MQ` after the `-MT`
+ones (in order when there is no `-MT`), so the accepted divergence of 6.9 is
+dropped and slice 3 copies the rule; `-imacros` files come before the
+preinclude, not after `-include` (6.1 had it wrong); `-Wfatal-errors`
+suppresses the `.d` (and `-M`'s rule on `#error`); a missing `-include` or
+`-imacros` is a fatal `<command-line>` error, listed as spelled under `-MG`
+(also under `-MM -MG`); `#include` of a directory is "No such file" (the
+search goes on past directories), listed as spelled under `-MG`; `#line`
+changes no include directory. Phase A, by an instrumented copy
+(`~/cereal-mp`, deleted): the include/enter/exit event streams of
+`-fparallel=on` and `off` are identical on uvloop `loop.c`, lupa, zstd,
+four cereal files and a guard/once/include_next/computed/`#if` test, and the
+first-entry file order equals gcc-13 `-M` on 8 files up to 352 headers; no
+assumption of section 6 or D7 changes. Added requirements: `dir_index` is
+required (paths arrive normalized), the writer must belong to the TU whose
+result is used (a divergence or `PAR_FALLBACK` leaves an abandoned phase A
+TU that saw the whole stream), replayed `file_enter` events have no `via`.
+Gates: `GOLDEN_JOBS=4 sh tests/run.sh` 1745 passed, 0 failed (1744 + the new
+golden); san.sh 1745 passed, 607 files, 0 findings. Not run: verify.sh,
+callgrind, TSan (config.c untouched).

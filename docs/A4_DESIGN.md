@@ -63,7 +63,8 @@ that commit; claims about gcc-13 were probed with gcc 13.4.0 on WSL
   ("as of this point", `pp.h:202,209`). The parallel preprocessor's phase A
   runs on the TU's own `PP` after `tu_begin` (`par.c:1097-1101`,
   `pp_run_phase_a` drives `pp_next`), so a listener on `tu->pp` should see
-  every include once and in order (to be confirmed by a test, 6.5 item 2).
+  every include once and in order (confirmed by an instrumented run,
+  probe 2026-10-10, 6.10).
 - Each TU owns its `SrcMgr` (`driver.h:54`, initialised in
   `tu_init_shared`, `driver.c:652`); no file cache is shared between TUs.
 - The `<command line>` virtual file is marked `system_header`
@@ -211,7 +212,10 @@ errors (exit 2, nothing runs).
 
 ### 4.3 Language
 gcc's rule: the last `-x LANG` before the source decides, else the suffix
-of `file`. Only C (`.c`, or `-x c`) is checked; anything else (`.cc .cpp
+of `file`, read on the arguments after `@file` expansion (Round 207: the
+list is expanded once, by `entry_expand`, and both `entry_is_c` and
+`entry_options` read that list, so a `-x` inside a response file counts).
+Only C (`.c`, or `-x c`) is checked; anything else (`.cc .cpp
 .cxx .C .m .S .s .i .h`, `-x c++`, `-x c-header`) is skipped and counted
 as "not C", which does not affect the exit status. `.h` is gcc's
 `c-header`, which A2 rejects; checking headers is Q8. `argv[0]` is not
@@ -328,9 +332,15 @@ parked). `g++`-compiled `.c` files. `-imacros`, `-idirafter`, `--sysroot`,
   A missing header is fatal and nothing is printed.
 - `-MD`/`-MMD`: the same rule as a side output of the normal run; the
   `.d` file is written although the TU has errors, and not written after
-  a fatal missing include. Style precedence follows the driver's argument
-  order to cc1 (`-MD -MMD -M -MM`, last wins): `-MM -MD` and `-MD -MM`
-  both give the `-MM` rule, written to `a.d`.
+  a fatal missing include. Style precedence (probe 2026-10-10, 20
+  combinations of 2 to 4 of the four options, both orders of each pair): the command
+  line order does not matter; the strongest present wins in the order
+  `-MD` < `-MMD` < `-M` < `-MM` (the order the driver hands them to cc1,
+  last wins). So `-MD -MMD` and `-MMD -MD` both give the user-headers-only
+  rule, `-M -MMD` and `-MMD -M` the full rule, `-M -MM` and `-MM -M` the
+  `-MM` rule. With `-M`/`-MM` and `-MD`/`-MMD` together the rule goes to
+  the `-MD` destination (`a-c.d` in link mode, else per 6.1 naming) and
+  nothing to stdout.
 - Destination: last `-MF` (`-` is stdout), else the `-MD` file name, else
   (for `-M`/`-MM`) `-o`, else stdout. `-MD` file name: from `-o` with its
   last suffix replaced by `.d` (`obj/x.o` gives `obj/x.d`, `obj/noext`
@@ -343,12 +353,20 @@ parked). `g++`-compiled `.c` files. `-imacros`, `-idirafter`, `--sysroot`,
   `-o` and without `-E` use `-o` (quoted), else the input's base name with
   `.o` (quoted; `sub/../a.c` gives `a.o`). `-E -MD -o obj/a.i` gives target
   `a.o` and file `obj/a.d`. `-MT ''` gives an empty target. Order: `-MT`
-  targets in order, then `-MQ` ones; with two or more `-MQ` gcc printed
-  the last first (`t1 t2 q3 q1 q2`), see 6.9.
+  targets in order, then the `-MQ` ones rotated left by (number of `-MT`
+  mod number of `-MQ`): with no `-MT` they stay in order (1 to 8 probed);
+  with one `-MT`, `t1 q2 q3 q1`; with two, `t1 t2 q3 q1 q2`; with five
+  `-MT` and three `-MQ`, `q3 q1 q2` (rule fitted to and checked on more than 20
+  combinations of 1 to 7 of each, any interleaving, `-M` and `-MD`;
+  probe 2026-10-10; the cause in gcc was not found). See 6.9.
 - Prerequisites: the main file first, as written minus leading `./`; then
-  under `-M` the implicit preinclude `/usr/include/stdc-predef.h` (absent
-  with `-nostdinc` or `-ffreestanding`, present with `-undef`); then
-  `-include` and `-imacros` files; then headers in order of first entry.
+  the `-imacros` files (probe 2026-10-10: they come before the preinclude;
+  this line said otherwise); then under `-M` the implicit preinclude
+  `/usr/include/stdc-predef.h` (absent with `-nostdinc` or
+  `-ffreestanding`, present with `-undef`); then the `-include` files in
+  order (relative order of `-include` and `-imacros` on the command line
+  is irrelevant: `-include i1 -imacros m1` and the reverse both give
+  `a.c m1 stdc-predef i1`); then headers in order of first entry.
   A header's name is the directory it was found through joined with the
   spelled name, unnormalized: `sub/../inc/x.h`, `sub/../sub/y.h` for a
   main file `sub/../a.c`, `s/z.h` for `-Is/` (one trailing slash dropped;
@@ -408,7 +426,8 @@ recorded `Options.stage` ('c', 'S', or 'E' from the mode), which only the
   For `-MG` misses: angled, or the includer is system.
 - `-MG` sets `PPOptions.missing_ok`: `do_include` (`pp.c:2048`) emits the
   NOT_FOUND event and returns without a diagnostic.
-- The writer runs from `finish()`: unless the TU halted on a fatal
+- The writer runs from `finish()` (only of the TU whose result is used, not
+  of a phase A TU abandoned for a rerun, 6.10): unless the TU halted on a fatal
   diagnostic, it writes the rule (targets, quoting, wrapping, `-MP`) to the
   destination: the job's `out` stream for stdout (so `-j` keeps order),
   else the file. `-MF FILE` with more than one input is a usage error
@@ -441,8 +460,8 @@ recorded `Options.stage` ('c', 'S', or 'E' from the mode), which only the
    run.sh section 15 also runs the same commands through `$REFCC` and
    requires byte-identical output and exit status.
 2. Parallel: section 5 gains `-E -fparallel=on -MD` against `=off`: the
-   `.d` files must be byte-identical (this confirms section 2's phase A
-   claim).
+   `.d` files must be byte-identical (section 2's phase A claim was
+   confirmed by an event-stream diff, 6.10; this is its regression test).
 3. `bench/tools/deps.sh DIR|DB`: for each C file of a corpus (libuv from
    uvloop, Lua from lupa, zstd from zstandard under `~/corpus`, cereal's
    own `src/`) runs `-M`, `-MM`, `-MD -MP -MF` through gcc-13 and cereal in
@@ -459,16 +478,56 @@ recorded `Options.stage` ('c', 'S', or 'E' from the mode), which only the
    `tests/deps` cases. The four `cmdlne-d?-M.c` need `-dD`/`-dI`/`-dM`/
    `-dN`, which cereal does not take; they stay skipped.
 
-### 6.6 Probes still to run before slice 3
-`-MD -MMD` together; `-Wfatal-errors` with `-MD` (is the `.d` written?);
-`-M` with a missing `-include` file; `#include` of a directory; the `-MQ`
-order with four or more; a `#line` inside a header before an include.
+### 6.6 Probe results (gcc 13.4.0, 2026-10-10; were: probes still to run)
+Run on WSL in throwaway directories, scratch scripts not kept (slice 3
+turns them into `tests/deps` cases).
+- `-MD -MMD` together: `-MMD` wins in both orders (user headers only); the
+  general rule is in 6.1 (`-MD` < `-MMD` < `-M` < `-MM`, command-line order
+  irrelevant). Was unverified; the 6.1 sentence "last wins" held only for
+  the driver's internal order, not the command line.
+- `-MQ` order with 1 to 8 targets: command-line order when there is no
+  `-MT`; with `-MT` present the rotation rule of 6.1 (`t1 q2 q3 q1`). The
+  earlier "last first" was this rule seen at 2 `-MT` and 3 `-MQ`. `-MT ''`
+  with `-MQ q1 -MQ q2` gave `q2 q1` after the empty target.
+- `-Wfatal-errors` with `-MD`: the `.d` is not written once a diagnostic
+  terminated the TU (`error: expected expression` then "compilation
+  terminated due to -Wfatal-errors"; same for a `#error`, even when the
+  `#error` is after the includes). Without the option both TUs write the
+  `.d` with every header, parse errors or `#error` notwithstanding (exit 1).
+  With `-M`: a parse error is not seen (exit 0, rule printed); `#error`
+  prints the rule and exit 1, and with `-Wfatal-errors` prints only the
+  error (no rule), exit 1. So the writer's "halted" test is "the TU ended by
+  a fatal diagnostic", and `-Wfatal-errors` makes every error fatal: needs
+  checking that cereal's `-Wfatal-errors` sets `halted` before `finish()`.
+- `-M`/`-MD` with a missing `-include FILE` (or `-imacros`): fatal
+  `<command-line>: fatal error: FILE: No such file or directory`, exit 1,
+  nothing printed, no `.d`. With `-MG` the name is listed as spelled and
+  the run continues: an `-include` miss at its place (`a.c stdc-predef.h
+  nope.h ...`), an `-imacros` miss before the preinclude (`a.c nope.h
+  stdc-predef.h ...`); under `-MM -MG` it is still listed (command-line
+  files count as user files). `-include DIR` is the same fatal error.
+- `#include "dir"`, `<dir>`, `"dir/"` where `dir` is a directory: fatal
+  `dir: No such file or directory` (exit 1, nothing printed, no `.d`, `-E`
+  prints the error and the prefix). A directory is skipped in the search:
+  `-Ip1 -Ip2` with `p1/x.h` a directory and `p2/x.h` a file lists
+  `p2/x.h`. With `-MG` the name is listed as spelled (`dir`), exit 0.
+- `#line N "other/dir/name.h"` inside a header before a quote `#include`:
+  no effect; the include is searched in the real directory of the file
+  (`ln/outer.h` with `#line 50 "fake/dir/name.h"` then `#include
+  "inner.h"` listed `ln/inner.h`, also when `fake/dir/inner.h` exists).
+  A `#line` in the main file changes nothing either (a quote include from
+  the main file still starts at the main file's real directory). This
+  confirms "`#line` changes nothing" of 6.1 for headers, and means the
+  listener's includer directory must come from the file's path, never the
+  presumed name.
+- Phase A, see 6.10.
 
 ### 6.7 Relation to `cereal deps` and `query deps`
 None (D8). If a mode word is wanted later it is an alias that sets `-MM`.
 
 ### 6.8 What it cannot cover
-- `-imacros` files are not listed until `-imacros` is implemented.
+- `-imacros` files are not listed until `-imacros` is implemented; when
+  they are, they go before the preinclude (6.1).
 - `-ffreestanding` is ignored (noted), but it does drop the preinclude from
   the list, as in gcc.
 - `SrcFile` is one per normalized path, so cereal's `-E` line markers and
@@ -476,10 +535,62 @@ None (D8). If a mode word is wanted later it is an alias that sets `-MM`.
   per lookup.
 
 ### 6.9 Known divergences accepted
-Two or more `-MQ` targets are written in command-line order; gcc-13
-printed the last first (`q3 q1 q2`). Target order has no meaning to make
-or ninja; the cause was not found and two data points do not justify
-copying it. Revisit if `deps.sh` meets it.
+None from the `-MQ` order any more: the 2026-10-10 probes found the rule
+(6.1: `-MQ` targets rotated left by #`-MT` mod #`-MQ`), about three lines
+in the writer, so slice 3 copies it and the "accepted divergence" is
+dropped. Target order has no meaning to make or ninja, so if the rule
+fails on a later gcc version, falling back to command-line order is
+harmless.
+
+### 6.10 Parallel preprocessor: one listener, gcc's order (probe 2026-10-10)
+Question: does phase A (`par.c:1103`, `pp_run_phase_a` on `tu->pp`) see
+every `#include` once and in source order, so that one listener recording
+(directory, name) at include time gives gcc's order and de-duplication?
+Method: a throwaway copy of the tree (`cp -r`, since deleted) with a
+listener attached in `tu_begin` that printed `include` (spelled name,
+angled, result, includer path, found path), `file_enter` and `file_exit`
+events; each file run with `-E -fparallel=off` and `-fparallel=on
+-fparallel-threads=4 -fparallel-chunk=2000` and the two event streams
+diffed; the listener also printed `pp->mode` at `tu_begin` (1 = phase A in
+the `on` runs, 0 in `off`).
+Result: the two streams are identical (all event kinds, including the
+skipped-by-guard, skipped-once and not-found results) on uvloop `loop.c`
+(632 include events, 433 entries, 8.6 MB), lupa `lua51.c` (444) and
+`luajit21.c` (443), zstd `zstd.c` (224), cereal `src/pp.c`, `par.c`,
+`main.c`, `lsp/server.c` (203 to 264), and a hand-made file with guards,
+`#pragma once`, `#include_next`, macro-computed includes, `__has_include`
+and `#if` branches (11 events); a missing include is the same fatal in
+both modes (the `not found` event comes before the halt). Each run had one
+`tu_begin`. Against gcc-13: the list of distinct files in first-entry
+order (from the `file_enter` events, after `realpath -m`) equals gcc-13
+`-M`'s list on uvloop (352 headers), lua51, luajit21, zstd and the four
+cereal files, after two host differences unrelated to the listener:
+`stdc-predef.h` (gcc lists it first as the preinclude; cereal enters it
+where a header includes it, so it was removed from both lists) and the
+system include directory (cereal reads the host gcc 15's
+`gcc/x86_64-linux-gnu/15/include`, gcc-13 its `13`; mapped).
+Conclusions and what must be stated in 6.3:
+1. Phase A is the full directive pass, so the listener sees what the
+   sequential engine sees; no change to the D7 mechanism.
+2. The events alone do not give the key: the found file's path is
+   normalized (`./inc/guard.h` and `inc/guard.h` arrive as the same
+   `SrcFile`), so (directory, name) needs `dir_index` on `IncludeEvent`,
+   as 6.3 already says; this probe confirms it is required.
+3. With a divergence (`__COUNTER__` under `-fparallel=on`) there are two
+   TUs: the phase A one, whose listener saw the whole stream, then a fresh
+   sequential one (`mode=0`). The same holds for `PAR_FALLBACK` after
+   phase A (by the code, not run). The writer must run only for the TU
+   whose result is used (the abandoned TU must never reach its `finish()`
+   writer); 6.3 said "a fresh TU, a fresh listener", and this is the
+   missing half. `-fparallel=auto` runs a small file with no phase A (one
+   TU, mode 0).
+4. In phase B the replayed `file_enter` events carry `via = NULL`
+   (`pp.c:2928`); a listener that keeps a stack of spelled paths must not
+   be attached to a PP that replays a plan. Today only `tu->pp` carries
+   the listener, in phase A, which is what the probe saw.
+No assumption of section 6 or D7 changes; items 3 and 4 are added
+requirements, and 6.5 item 2 (`-E -fparallel=on -MD` vs `=off`) stays as
+the regression test.
 
 ## 7. Staging, tests, gates, estimates
 
@@ -553,9 +664,10 @@ empty argument; the limit is 1999 expansions (the 2000th, counting the
 top-level one, is `too many @-files encountered`); any argument starting
 with `@` is expanded wherever it stands (`-D @f` expands `@f`). gcc 15
 changed libiberty's quoting (a backslash inside quotes is literal), so the
-differential pins `gcc-13` (`RSPCC`). The LSP and `entry_is_c` do not see
-`-x` inside a response file (the language check reads the entry's own
-words). Tests: `tests/rsp/*.rsp` (18 files, run.sh 13b), `tests/ccdb/rsp*`.
+differential pins `gcc-13` (`RSPCC`). Gap, closed in Round 207:
+`entry_is_c` did not see `-x` inside a response file (the language check
+read the entry's own words, before expansion); it now expands first
+(`tests/ccdb/rsp_lang`). The LSP never used `entry_is_c`. Tests: `tests/rsp/*.rsp` (18 files, run.sh 13b), `tests/ccdb/rsp*`.
 Plan as designed:
 `SPLIT_GCC`, `argv_expand` (read, split, splice, nested, limit,
 directory and missing errors), hooks in `main` and `entry_options`.
@@ -567,7 +679,7 @@ case with an `@file` in an entry, relative to its directory. Lines about
 75, realistic 110 to 150.
 
 ### Slice 3: `-M` family (est. 5 days, realistic 7.5 to 10)
-Run the 6.6 probes first. Then Options and validation, `IncludeEvent`
+The 6.6 probes are done (2026-10-10). Start with Options and validation, `IncludeEvent`
 `dir_index`, the listener, the writer, `.d` naming, the deps-only mode,
 `-MG`, `host_preinclude`; then `tests/deps`, run.sh section 15 and the
 section 5 parallel case; then `deps.sh` on the corpora and the `par.py`
@@ -642,8 +754,10 @@ the code at `abc8183` and the probe output.
   match D4, D9, D8. Only finding: slice 1 step 1 did not list moving
   `add_flag`. A full pass after that found nothing material.
 
-Unverified and flagged in place: phase A event order (6.5 item 2); the
-`-MD -MMD` precedence, `-MQ` order beyond three, and the 6.6 list.
+Unverified items of this log (phase A event order, the `-MD -MMD`
+precedence, `-MQ` order beyond three, the old 6.6 list) were probed on
+2026-10-10 against gcc-13 and the instrumented tree: 6.1, 6.6, 6.10. They
+corrected two statements (the `-imacros` position, the `-MQ` order).
 
 ## 10. Probes behind sections 5 and 6.1
 Run on WSL with gcc 13.4.0 in throwaway directories under `/tmp`; the

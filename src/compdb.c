@@ -200,14 +200,33 @@ int compdb_load(Arena *a, const char *path, CompileDb *out, FILE *msg,
     return 0;
 }
 
+/* The entry's arguments with @files expanded (relative to its directory);
+ * strings and array in `a`.  On failure the arguments as written, with *err
+ * set. */
+static const char *const *entry_expand(Arena *a, const CompileEntry *e,
+                                       int *ac, const char **err)
+{
+    const char *const *av = argv_expand(a, e->dir, ac, 1,
+                                        (const char *const *)e->argv, err);
+    if (av)
+        return av;
+    *ac = e->argc;
+    return (const char *const *)e->argv;
+}
+
 bool entry_is_c(const CompileEntry *e)
 {
-    const char *lang = NULL, *dot;
-    int i;
-    for (i = 1; i < e->argc; i++) {
-        const char *a = e->argv[i];
-        if (!strcmp(a, "-x") && i + 1 < e->argc)
-            lang = e->argv[++i];
+    Arena scratch;
+    const char *lang = NULL, *dot, *err = NULL;
+    const char *const *argv;
+    int i, argc = e->argc;
+    bool is_c = false;
+    arena_init(&scratch);
+    argv = entry_expand(&scratch, e, &argc, &err);
+    for (i = 1; i < argc; i++) {
+        const char *a = argv[i];
+        if (!strcmp(a, "-x") && i + 1 < argc)
+            lang = argv[++i];
         else if (!strncmp(a, "-x", 2) && a[2])
             lang = a + 2;
         else if (!strcmp(a, "-o"))
@@ -215,10 +234,14 @@ bool entry_is_c(const CompileEntry *e)
         else if (a[0] != '-' && !strcmp(a, e->file))
             break;                      /* -x only counts before the source */
     }
-    if (lang && strcmp(lang, "none"))
-        return !strcmp(lang, "c");
-    dot = strrchr(e->file, '.');
-    return dot && !strcmp(dot, ".c");
+    if (lang && strcmp(lang, "none")) {
+        is_c = !strcmp(lang, "c");
+    } else {
+        dot = strrchr(e->file, '.');
+        is_c = dot && !strcmp(dot, ".c");
+    }
+    arena_free(&scratch);
+    return is_c;
 }
 
 static const char *const path_opts[] = {"-I", "-iquote", "-isystem",
@@ -281,18 +304,14 @@ void entry_options(Options *o, const CompileEntry *e,
                    const char *const *extra, int nextra)
 {
     uint64_t fp = hash64_str(e->dir ? e->dir : "", 0), seq = 1;
-    const char *const *av = (const char *const *)e->argv;
+    const char *const *av;
     const char *err = NULL;
     int ac = e->argc;
     o->cwd = e->dir;
-    /* @file arguments, relative to the entry's directory; the strings live
-     * as long as o, which keeps pointers into them */
-    av = argv_expand(&o->rsp, e->dir, &ac, 1, av, &err);
-    if (!av) {                          /* the entry is not checked */
+    /* the strings live as long as o, which keeps pointers into them */
+    av = entry_expand(&o->rsp, e, &ac, &err);
+    if (err)                            /* the entry is not checked */
         opt_error(o, "%s", err);
-        av = (const char *const *)e->argv;
-        ac = e->argc;
-    }
     parse_args(o, av, ac, 1, &fp, &seq);
     parse_args(o, extra, nextra, 0, &fp, &seq);
     vec_free(&o->inputs);               /* a stray "-" is not an input */

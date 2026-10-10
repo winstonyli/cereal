@@ -1,0 +1,4 @@
+[
+ {"directory": "src", "file": "warn.c", "arguments": ["cc", "@xcxx.rsp", "-c", "warn.c"]},
+ {"directory": "src", "file": "x.cpp", "command": "cc @xc.rsp -c x.cpp"}
+]
