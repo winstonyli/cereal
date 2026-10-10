@@ -32,6 +32,7 @@ typedef struct Options {
     int bad_options;            /* command-line errors reported */
     FILE *msg;                  /* where option errors and notes go (stderr; NULL: nowhere) */
     const char *cwd;            /* absolute working directory of the TU (NULL: the process's) */
+    Arena rsp;                  /* strings from @files that the options point into */
     int std_year;               /* -std=: 1999, 2011 or 2017 */
     bool lenient;               /* skip what is not understood without notes (language server) */
     VEC(const char *) ignored_semantic; /* skipped, may change diagnostics */

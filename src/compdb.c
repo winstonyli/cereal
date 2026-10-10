@@ -2,27 +2,52 @@
 #include "compdb.h"
 
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "hash.h"
 #include "json.h"
 
-int shell_split(Arena *a, const char *s, const char ***argv)
+static bool split_space(char c, bool gcc)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' ||
+           (gcc && (c == '\v' || c == '\f'));
+}
+
+int split_args(Arena *a, const char *s, SplitMode mode, const char ***argv)
 {
     VEC(const char *) v = {0};
     StrBuf sb = {0};
+    bool gcc = mode == SPLIT_GCC;
     int n;
     for (;;) {
         char q = 0;
-        bool any = false;
-        while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r')
+        bool any = gcc, esc = false;   /* every gcc token is an argument */
+        while (split_space(*s, gcc))
             s++;
         if (!*s)
             break;
         sb.len = 0;
-        while (*s && (q || !(*s == ' ' || *s == '\t' || *s == '\n' ||
-                             *s == '\r'))) {
-            if (q) {
+        while (*s && (q || esc || !split_space(*s, gcc))) {
+            if (gcc) {
+                /* libiberty buildargv: a backslash escapes the next
+                 * character even inside quotes; quotes only group */
+                if (esc) {
+                    sb_putc(&sb, *s);
+                    esc = false;
+                } else if (*s == '\\') {
+                    esc = true;
+                } else if (q) {
+                    if (*s == q)
+                        q = 0;
+                    else
+                        sb_putc(&sb, *s);
+                } else if (*s == '"' || *s == '\'') {
+                    q = *s;
+                } else {
+                    sb_putc(&sb, *s);
+                }
+            } else if (q) {
                 if (*s == q) {
                     q = 0;
                 } else if (q == '"' && *s == '\\' && s[1] &&
@@ -51,6 +76,69 @@ int shell_split(Arena *a, const char *s, const char ***argv)
     vec_free(&v);
     sb_free(&sb);
     return n;
+}
+
+/* Append argv[0..argc) to out, each `@file` replaced by the arguments in
+ * the file, which are scanned again (nested @files).  `iter` counts the
+ * expansions of the whole call, as libiberty's expandargv does. */
+static bool expand_into(Arena *a, const char *dir, StrVec *out,
+                        const char *const *argv, int argc, int *iter,
+                        const char **err)
+{
+    int i;
+    for (i = 0; i < argc; i++) {
+        const char *p = argv[i], *path, **sub;
+        char *text;
+        size_t len;
+        struct stat st;
+        int n;
+        if (p[0] != '@') {
+            vec_push(out, p);
+            continue;
+        }
+        if (++*iter >= 2000) {
+            *err = "too many @-files encountered";
+            return false;
+        }
+        path = p[1] == '/' || !dir ? p + 1 : arena_printf(a, "%s/%s", dir, p + 1);
+        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+            *err = "@-file refers to a directory";
+            return false;
+        }
+        text = p[1] ? read_file(path, &len) : NULL;
+        if (!text) {
+            *err = arena_printf(a, "cannot read response file '%s'", p + 1);
+            return false;
+        }
+        n = split_args(a, text, SPLIT_GCC, &sub);
+        free(text);
+        if (!expand_into(a, dir, out, sub, n, iter, err))
+            return false;
+    }
+    return true;
+}
+
+const char *const *argv_expand(Arena *a, const char *dir, int *argc, int from,
+                               const char *const *argv, const char **err)
+{
+    StrVec v = {0};
+    const char **res;
+    int iter = 0, i;
+    for (i = from; i < *argc && argv[i][0] != '@'; i++)
+        ;
+    if (i >= *argc)
+        return argv;                    /* nothing to expand */
+    for (i = 0; i < from; i++)
+        vec_push(&v, argv[i]);
+    if (!expand_into(a, dir, &v, argv + from, *argc - from, &iter, err)) {
+        vec_free(&v);
+        return NULL;
+    }
+    res = NEW_ARRAY(a, const char *, v.len + 1);
+    memcpy(res, v.data, sizeof(char *) * v.len);
+    *argc = (int)v.len;
+    vec_free(&v);
+    return res;
 }
 
 const char *compdb_abs(Arena *a, const char *dir, const char *p)
@@ -105,7 +193,7 @@ int compdb_load(Arena *a, const char *path, CompileDb *out, FILE *msg,
             for (k = 0; k < args->len; k++)
                 ce.argv[ce.argc++] = json_str_of(args->items[k], "");
         } else {
-            ce.argc = shell_split(a, cmd->str, &ce.argv);
+            ce.argc = split_args(a, cmd->str, SPLIT_SHELL, &ce.argv);
         }
         vec_push(out, ce);
     }
@@ -193,8 +281,19 @@ void entry_options(Options *o, const CompileEntry *e,
                    const char *const *extra, int nextra)
 {
     uint64_t fp = hash64_str(e->dir ? e->dir : "", 0), seq = 1;
+    const char *const *av = (const char *const *)e->argv;
+    const char *err = NULL;
+    int ac = e->argc;
     o->cwd = e->dir;
-    parse_args(o, (const char *const *)e->argv, e->argc, 1, &fp, &seq);
+    /* @file arguments, relative to the entry's directory; the strings live
+     * as long as o, which keeps pointers into them */
+    av = argv_expand(&o->rsp, e->dir, &ac, 1, av, &err);
+    if (!av) {                          /* the entry is not checked */
+        opt_error(o, "%s", err);
+        av = (const char *const *)e->argv;
+        ac = e->argc;
+    }
+    parse_args(o, av, ac, 1, &fp, &seq);
     parse_args(o, extra, nextra, 0, &fp, &seq);
     vec_free(&o->inputs);               /* a stray "-" is not an input */
     vec_free(&o->ignored_deps);         /* no dependency output, no note */

@@ -119,7 +119,7 @@ static void add_cereal_files(Arena *a, StrVec *v, const char *root,
             int n, k;
             if (hash)
                 *hash = 0;
-            n = shell_split(a, line, &args);
+            n = split_args(a, line, SPLIT_SHELL, &args);
             for (k = 0; k < n; k++)
                 add_flag(a, v, dirs.data[i], args, n, &k);
         }

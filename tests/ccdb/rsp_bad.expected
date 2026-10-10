@@ -1,0 +1,8 @@
+--- stderr
+cereal: error: cannot read response file 'nope.rsp' (1 entry, first ok.c)
+cereal: error: @-file refers to a directory (1 entry, first warn.c)
+cereal: error: too many @-files encountered (1 entry, first err.c)
+cereal: error: cannot read response file 'quoted.rsp' (1 entry, first src/ok.c)
+cereal: Entering directory 'ROOT/tests/ccdb/src'
+cereal: 5 entries: 1 checked (0 with errors), 0 not C, 0 duplicate, 4 not checked
+exit 3

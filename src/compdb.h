@@ -18,8 +18,24 @@ typedef struct CompileEntry {
 
 typedef VEC(CompileEntry) CompileDb;
 
-/* Split a command line like a POSIX shell (quotes, backslashes). */
-int shell_split(Arena *a, const char *s, const char ***argv);
+/* SPLIT_SHELL: a POSIX shell's quotes and backslashes (a backslash inside
+ * single quotes is literal, in double quotes it escapes only " \ $ ` and
+ * newline).  SPLIT_GCC: libiberty's buildargv, used for response files (a
+ * backslash escapes the next character everywhere, quotes only group). */
+typedef enum { SPLIT_SHELL, SPLIT_GCC } SplitMode;
+int split_args(Arena *a, const char *s, SplitMode mode, const char ***argv);
+
+/* Response files: argv[from..*argc) with every argument that starts with
+ * `@` replaced by the arguments in that file (gcc's rules; the expansion is
+ * rescanned, so @files nest; a relative name is relative to `dir`, else the
+ * process directory, also when the naming file is elsewhere; a file with
+ * only white space adds nothing, a `''` adds an empty argument).  Returns the new
+ * argument array (strings and array in `a`; `argv` itself when there is no
+ * @file) and sets *argc.  On failure returns NULL with *err set: the file
+ * cannot be read (gcc would keep the argument as written; here that would
+ * drop the flags silently), it is a directory, or 2000 files were read. */
+const char *const *argv_expand(Arena *a, const char *dir, int *argc, int from,
+                               const char *const *argv, const char **err);
 
 /* `p` against `dir` (when relative and dir is given), normalized. */
 const char *compdb_abs(Arena *a, const char *dir, const char *p);

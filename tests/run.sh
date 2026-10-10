@@ -417,6 +417,57 @@ for f in "-x c++" "-x c-header"; do
     "$CEREAL" check -std=c99 $f "$TMP/bo.c" >/dev/null 2>&1 && bad "option $f accepted" || ok
 done
 
+# 13b. response files: every tests/rsp/*.rsp passed as `@file` (gcc's quoting,
+#     nesting relative to the working directory, empty and blank files)
+#     preprocesses q.c to what gcc-13 makes of it ($RSPCC: libiberty's
+#     quoting changed since, gcc 15 keeps a backslash inside quotes); the
+#     failures gcc papers over with a literal argument are errors here
+#     (A4_DESIGN section 5)
+RSPCC=${RSPCC:-gcc-13}
+rsp_run() { # rsp_run PROG ARGS...: stdout without blank lines, exit class
+    (
+        cd "$ROOT/tests/rsp" || exit 9
+        "$@" >"$TMP/rs.o" 2>/dev/null </dev/null
+        rc=$?
+        grep -v '^$' "$TMP/rs.o"
+        if [ $rc -eq 0 ]; then echo "exit 0"; else echo "exit nonzero"; fi
+    )
+}
+for f in "$ROOT"/tests/rsp/*.rsp; do
+    n=$(basename "$f")
+    rsp_run "$CEREAL" -E -P -undef -nostdinc "@$n" q.c >"$TMP/rs.c"
+    rsp_run "$RSPCC" -E -P -undef -nostdinc "@$n" q.c >"$TMP/rs.g"
+    if cmp -s "$TMP/rs.c" "$TMP/rs.g"; then
+        ok
+    else
+        bad "response file $n differs from $RSPCC"
+        diff "$TMP/rs.g" "$TMP/rs.c" | head -6 | sed 's/^/    /'
+    fi
+done
+rsp_err() { # rsp_err WANT ARGS...: exit 1, WANT in the message
+    want=$1
+    shift
+    (cd "$TMP" && "$CEREAL" "$@" >/dev/null 2>"$TMP/rs.e" </dev/null)
+    rc=$?
+    if [ $rc -eq 1 ] && grep -q "$want" "$TMP/rs.e"; then
+        ok
+    else
+        bad "response file error: $* (exit $rc)"
+        head -3 "$TMP/rs.e" | sed 's/^/    /'
+    fi
+}
+mkdir -p "$TMP/rsd"
+printf '@self.rsp\n' >"$TMP/self.rsp"
+rsp_err "cannot read response file 'nope.rsp'" -E -P @nope.rsp
+rsp_err "@-file refers to a directory" -E -P @rsd
+rsp_err "too many @-files encountered" -E -P @self.rsp
+rsp_err "cannot read response file ''" -E -P @
+# the mode word may come from a response file
+printf 'check -Wall\n' >"$TMP/mode.rsp"
+printf 'int f(void) { int y; return 0; }\n' >"$TMP/m.c"
+(cd "$TMP" && "$CEREAL" @mode.rsp m.c 2>&1 </dev/null) | grep -q "unused variable 'y'" &&
+    ok || bad "mode word from a response file"
+
 # 14. C symbol index: golden `--dump-symbols` (plain and from cells), and
 #     `--verify-symbols` (every resolved identifier has its event, the index
 #     is well formed) over the checker and parser cases and cereal's sources

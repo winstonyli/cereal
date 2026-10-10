@@ -1,0 +1,13 @@
+--- stderr
+cereal: Entering directory 'ROOT/tests/ccdb/src'
+warn.c:1:31: error: unused variable 'y' [-Werror=unused-variable]
+    1 | int unused_param(int x) { int y; return 0; }
+      |                               ^
+ok.c:2:23: error: 'bad_name' undeclared (first use in this function)
+    2 | int ok(void) { return VALUE; }
+      |                       ^
+ok.c:2:23: note: each undeclared identifier is reported only once for each function it appears in
+    2 | int ok(void) { return VALUE; }
+      |                       ^
+cereal: 2 entries: 2 checked (2 with errors), 0 not C, 0 duplicate, 0 not checked
+exit 1

@@ -541,7 +541,22 @@ Lines (src, new or changed, moved code not counted): compdb.c ~80,
 driver.c ~40, srcmgr/pp/par ~20, diag ~7, main.c ~210, config.c and LSP
 display ~15: about 370, realistic 550 to 750.
 
-### Slice 2: response files (est. half a day, realistic 1)
+### Slice 2: response files (DONE, Round 206; est. half a day, realistic 1)
+Result: as designed, with these differences. `shell_split` became
+`split_args(Arena *, s, SplitMode, &argv)` (the design's name); the entry
+hook expands into `Options.rsp`, an arena that `options_free` releases,
+because options keep pointers into their argument strings (`-D`, `-I`) and a
+worker's `Options` dies with its job. Probes against gcc-13 corrected
+section 5: a file holding only `''` gives one empty argument (only an empty
+or white-space-only file gives none); a trailing backslash also gives an
+empty argument; the limit is 1999 expansions (the 2000th, counting the
+top-level one, is `too many @-files encountered`); any argument starting
+with `@` is expanded wherever it stands (`-D @f` expands `@f`). gcc 15
+changed libiberty's quoting (a backslash inside quotes is literal), so the
+differential pins `gcc-13` (`RSPCC`). The LSP and `entry_is_c` do not see
+`-x` inside a response file (the language check reads the entry's own
+words). Tests: `tests/rsp/*.rsp` (18 files, run.sh 13b), `tests/ccdb/rsp*`.
+Plan as designed:
 `SPLIT_GCC`, `argv_expand` (read, split, splice, nested, limit,
 directory and missing errors), hooks in `main` and `entry_options`.
 Tests: run.sh section 13: a differential against `$REFCC` that passes

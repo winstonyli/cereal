@@ -1,0 +1,4 @@
+[
+ {"directory": "src", "file": "warn.c", "arguments": ["cc", "@rsp/outer.rsp", "-c", "warn.c"]},
+ {"directory": "src", "file": "ok.c", "command": "cc @quoted.rsp ok.c"}
+]

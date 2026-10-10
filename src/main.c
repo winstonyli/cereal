@@ -67,6 +67,8 @@ static void usage(FILE *o)
         "  -fdiagnostics-format=json  -fcolor-diagnostics  -P  -o FILE\n"
         "  -fparallel=auto|on|off  -fparallel-threads=N  -fparallel-chunk=BYTES\n"
         "  -j N          translation units at a time (default: all cores)\n"
+        "  @FILE         the arguments in FILE (gcc's quoting; nests; an unreadable\n"
+        "                FILE is an error, not a literal argument as in gcc)\n"
         "\n"
         "--compile-commands DB (with -E, lint, parse, check): run every C entry of\n"
         "the compile_commands.json DB (or those under the FILEs and directories\n"
@@ -1398,7 +1400,16 @@ int main(int argc, char **argv)
     StrVec own = {0};           /* cereal's own options, for each entry */
     bool ccdb_given = false;
     int i, rc = 0, tokens = 0;
+    static Arena rsp;           /* @file arguments: live for the whole run */
+    const char *rsp_err;
     options_init(&o);
+    /* the strings are writable arena copies or the process's own */
+    argv = (char **)argv_expand(&rsp, NULL, &argc, 1, (const char *const *)argv,
+                                &rsp_err);
+    if (!argv) {
+        fprintf(stderr, "cereal: error: %s\n", rsp_err);
+        return 1;
+    }
     if (argc < 2) {
         usage(stderr);
         return 2;

@@ -668,6 +668,7 @@ void options_free(Options *o)
     vec_free(&o->wflags);
     vec_free(&o->ignored_semantic);
     vec_free(&o->ignored_deps);
+    arena_free(&o->rsp);
     diag_config_free(o->diag);
     o->diag = NULL;
     vec_free(&o->inputs);

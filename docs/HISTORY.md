@@ -3890,3 +3890,57 @@ value` (21) lines, identical with the HEAD binary run directly (not a
 replay effect; noticed, not fixed). Lines: src +597/-336 in tracked files
 plus 259 new (compdb.[ch]) (main.c +399, driver.c +220/-; compare est.
 370, realistic 550 to 750. Not done: slice 2 (`@file`), slice 3 (`-M`).
+
+Round 205: the cereal-only warnings of Round 204, two classes, both fixed
+at their shared source. Reproduced all 11 files (`mkccdb.sh` over cereal's
+62 sources with `-std=gnu17 -Wall -Wextra -I.`, `ccdb.sh`): 21 `suggest
+parentheses around assignment used as truth value` and 37 `statement with
+no effect` lines, and nothing else.
+(1) `e_assign` (cexpr.c) warned for every `_Bool = a = b`. gcc warns where
+the inner assignment is converted to a truth value, i.e. when its type is
+not `_Bool` (`b = i = j`, `b = p = q`, `b = d = 1.0` warn; `*r = *m = false`,
+`c = b = i`, a `_Bool` bit-field target do not; probed on small reductions).
+The condition now also requires the inner assignment's type not to be
+`_Bool`. (2) `call_pure` (ccall.c) matched a call to any declared function
+against `cbuiltin_pure`, a table of `__builtin_NAME` suffixes, by plain
+name, so cereal's own `static bool expect(Parser *, Punct)` was the pure
+`__builtin_expect` and every unused call was `statement with no effect`.
+A plain name now has to be a library built-in (`ccall_is_builtin`: the same
+rule `bt_find` applies everywhere else); the prefixed spelling is as before.
+Goldens `tests/check/bool_chain_assign` and `call_user_builtin_name` (warning
+lines checked against gcc-13 first; cereal prints no "In function" lines and
+shorter carets, as for all goldens). The replay over cereal's sources with
+`-Wall -Wextra`: 62 of 62 identical to gcc-13.
+Files: src/c/cexpr.c (+3/-1), src/c/ccall.c (+5), the two goldens.
+
+Round 206: ROADMAP A4 slice 2, `@file` response files (A4_DESIGN.md section
+5, results under "Slice 2"). `shell_split` became `split_args(a, s, mode,
+&argv)` with `SPLIT_SHELL` and `SPLIT_GCC` (libiberty buildargv: a
+backslash escapes the next character everywhere, quotes only group, an
+unterminated quote runs to the end, every token is an argument); new
+`argv_expand(a, dir, &argc, from, argv, &err)` reads, splits and splices,
+rescanning for nested files, names relative to `dir` (the entry's directory)
+or the process directory, never to the naming file; the 2000th expansion is
+`too many @-files encountered`, a directory is `@-file refers to a
+directory`, and a missing or unreadable file is `cannot read response file
+'F'`: an error (documented divergence from gcc's literal fallback, Q4).
+Hooks: `main` expands its argv first (so a file may hold the mode word;
+exit 1 on error) and `entry_options` expands an entry's arguments into the
+new `Options.rsp` arena (freed by `options_free`; options point into the
+strings), the error counting as a bad option, so a replayed entry is "not
+checked". Bug caught by the LSP sessions: an entry without arguments
+(`none`) must not be expanded. Probes (gcc-13): a `''`-only file is one
+empty argument, a trailing `\` too, 1999 expansions pass, `-D @f` expands
+`@f`; gcc 15 keeps backslashes inside quotes, so the differential uses
+`$RSPCC` (default gcc-13). Tests: run.sh 13b (18 `tests/rsp/*.rsp` against
+gcc-13 on stdout and exit class, four error cases, the mode word from a
+file), `tests/ccdb/rsp` (nested file in `src/rsp`, quoted flag, relative to
+the entry directory) and `rsp_bad` (missing, directory, self-recursive,
+wrong directory; exit 3). Lines: src about +125/-45 (compdb.c +95,
+compdb.h +20, main.c +14, driver 2), est. 75, realistic 110 to 150.
+Not done: `-x` inside a response file is not seen by the entry's language
+check. Gates for rounds 205 and 206 together: run.sh 1744 passed; san 1744
+passed, 607 files, 0 findings; verify gcc.dg 3908 of 3910, c-c++-common 635
+of 636, cpp 285 of 285 (unchanged); symcov 4716 files, 0 unindexed; uvloop
+loop.c 3.881 G (3.870 G before, +0.28%); all 17 LSP sessions (both modes)
+under TSan: 34 passed, 0 warnings.

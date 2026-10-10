@@ -1,0 +1,7 @@
+[
+ {"directory": "src", "file": "ok.c", "arguments": ["cc", "@nope.rsp", "-c", "ok.c"]},
+ {"directory": "src", "file": "warn.c", "arguments": ["cc", "@rspdir", "-c", "warn.c"]},
+ {"directory": "src", "file": "err.c", "arguments": ["cc", "@self.rsp", "-c", "err.c"]},
+ {"directory": ".", "file": "src/ok.c", "arguments": ["cc", "@quoted.rsp", "-c", "src/ok.c"]},
+ {"directory": "src", "file": "ok.c", "arguments": ["cc", "-c", "ok.c"]}
+]
