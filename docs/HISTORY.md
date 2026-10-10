@@ -3808,3 +3808,23 @@ no threshold keeps the gain within 5% of the base check time. Decision:
 leave glibc defaults. A user who prefers memory over latency on huge
 generated files can start the server with `MALLOC_TRIM_THRESHOLD_=0`.
 Untested: explicit `malloc_trim()` after a check, `M_TOP_PAD`, arena tuning.
+
+Round 203: explicit `malloc_trim(0)` for `cereal lsp`, measured on a copy,
+not adopted. Called in the builder after the check frees (variant 1) or
+after 300 ms of quiet (variant 2, trim only if no work is queued), it cuts
+steady RSS 1 s after idle by 70% (dense 4 MiB file, 290 to 86 MB), 75%
+(307k-member struct, 366 to 90 MB) and 39% (zstd.c, 46 to 28 MB), more than
+the trim-threshold settings of Round 202, and lowers the peak a little.
+Each call takes 2 to 90 ms. But the pages must be faulted back in, so the
+next check is 5 to 15% slower (paired ratios, 6 to 8 rotated runs per
+variant, noise floor 5 to 8%); variant 1 also delays the next build by up
+to 90 ms. Variant 2 costs nothing during a typing burst (the 300 ms of
+quiet never occurs) and pays the re-fault once on the first check after a
+pause: the only candidate left, a latency-versus-memory call. Not adopted.
+Survey (no code): slimming the carried index. Only `cindex_touched` reads
+data from `core`; a separate refcounted block for decls and strings plus a
+1-bit-per-decl "lost a DECL/DEF event" bitmap would let the old index's
+events, CSR and scopes be freed at install (about 30 net lines in
+csymidx.[ch]; saves about 12 MB (dense), 6 MB (struct), 1.6 MB (zstd.c) of
+the carry cost, 3 to 8% of the 4 MiB-limit peak). The 19 to 23 MB of shared
+decls and strings is untouched. Parked as a cleanup, not a memory fix.
