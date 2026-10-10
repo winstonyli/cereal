@@ -48,9 +48,11 @@ It also runs fast on huge generated files.
 - **Snapshots** are immutable and reference counted. Requests run on the
   protocol thread against the latest complete snapshot and never wait for
   a build; only the first build of a unit is waited for. The exception is
-  definition, declaration, references, documentHighlight and hover, which
-  wait up to 1.5 s for the C symbol index of the newest edit (see "C
-  symbol index").
+  the requests that read the C symbol index, which wait up to 1.5 s for
+  the newest edit's snapshot and, depending on the request, its check
+  (see "C symbol index", Waiting). The snapshot's C index is not
+  immutable: it is the previous one carried over the edit until the
+  check publishes its own, so requests hold a reference while they answer.
 - **Diagnostics** are published after every build for the open documents
   the unit covers. Errors in headers that are not open appear on the
   `#include` that leads to them.
@@ -170,7 +172,7 @@ decls (kind, name, linkage). The checker calls about 20 cheap hooks
 (`csx_*`) that do nothing unless the index was asked for
 (`CheckOptions.symidx`), so `cereal check` and gcc parity are unchanged.
 The frozen `CIndex` moves onto the snapshot when the check publishes and
-is freed with it.
+is freed with it (replacing the carried index, below).
 
 - **Locations:** an event inside a macro expansion is placed at its
   spelling when the token came from an argument, else at the invocation
@@ -252,12 +254,43 @@ is freed with it.
   Not seen by the comparison: an argument the macro also stringizes
   (`#x` spells the new name), `__func__` in a renamed function, names
   in strings (`alias("f")`, `asm` labels) and other units.
-- **Waiting (decision D1):** right after an edit the snapshot's index is
-  not ready yet. definition, declaration, references, documentHighlight,
-  hover, prepareRename and rename wait (`cond_timedwait`, at most 1.5 s)
-  while the newest edit has no snapshot or its check is pending, then
-  answer from what is there: the macros alone if no index published (a
-  C rename is then refused, "retry").
+- **Carried index (B3_DESIGN.md 12):** when the builder installs a
+  snapshot that will be checked, it carries the previous snapshot's index
+  over the edit (`cindex_carry`): events and scopes copied with offsets
+  shifted past the edit (the difference of the two texts, widened to whole
+  identifiers), events overlapping the edit dropped, decls and strings
+  shared. It sits on the new snapshot (`cidx_carried`) until the check
+  publishes its own index (`Snapshot.cidx` is replaced under the server
+  lock; requests take a reference). A chain of cancelled checks carries
+  from the carried index (the damage is the hull). A failed check drops the
+  carried index (the snapshot then answers with macros only). While it is
+  in use the extra index stays alive during the check: index plus copy,
+  measured 4.1 MB on zstd.c and 43 MB at worst (B3_DESIGN.md 12.14).
+- **Waiting (decision D1, narrowed by carry-over):** right after an edit
+  the snapshot's own index is not ready. Every request first waits
+  (`cond_timedwait`, at most 1.5 s) for the newest edit's snapshot so that
+  positions match; the policy column of the request table in server.c then
+  says whether it also waits for the check: `CP_ANY` (completion,
+  signatureHelp, documentHighlight, documentSymbol, and semantic tokens for
+  a client with `workspace.semanticTokens.refreshSupport`) only when the
+  snapshot has no index at all; `CP_POS` (hover, definition, declaration,
+  typeDefinition) also when the request's position is inside the carried
+  index's damage; `CP_WAIT` (references, prepareRename, rename, and semantic
+  tokens for a client without `refreshSupport`) always. After the timeout
+  a request answers from what is there: the carried index, or the macros
+  alone if there is none. Rename uses only a fresh index: with a carried
+  one it is refused ("retry").
+- **What the client sees of a carried answer:** completion is
+  `isIncomplete: true`; hover adds "(rechecking: its declaration was
+  edited)" when the entity's declaration was edited (a lost DECL/DEF event,
+  or one on a line the damage touches); a semantic token answer made
+  without the snapshot's own index sets the unit's `tok_stale`, and when a
+  check then publishes, the server sends the client
+  `workspace/semanticTokens/refresh` (a request with id
+  `cereal-refresh-N`; the client's response is ignored). The whole-file
+  token result is keyed by the index's serial, so a result made from a
+  carried index is not reused after the own one publishes. A macro token
+  and a carried C token starting at one place: the macro's wins.
 - **No index:** units over the check size limit, headers opened on their
   own, cancelled checks. C queries then return nothing; macros still work.
 - **Size (measured, x86_64):**
@@ -321,12 +354,20 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
     client declares `inactiveRegionsCapabilities`;
   - `cereal/expandMacro` (position: the invocation's full expansion);
   - `cereal/waitIdle` (answers when no build is queued or running; a
-    barrier for tests).
+    barrier for tests);
+  - `cereal/holdChecks` `{"hold": bool}` (test only): while held, a check
+    waits at its start (an edit, the release or shutdown ends the wait),
+    so a request after an edit is answered from the carried index
+    deterministically. Do not use `waitIdle` while held: it waits for the
+    check.
+  - `workspace/semanticTokens/refresh`, sent by the server (the only
+    request it sends) after a check publishes, if a token answer lacked
+    the fresh index and the client declared `refreshSupport`.
 - **C names:** definition, declaration, type definition, references,
   document highlight, hover, rename, document symbols, signature help,
   semantic tokens and completion (above). Every request that reads the C
-  index waits for the newest edit's check (D1; a column of the request
-  table in server.c).
+  index has a wait policy (a column of the request table in server.c; D1
+  above).
 
 ## Tests
 
@@ -348,7 +389,7 @@ static const, extern volatile and const-pointer variables, parameters one
 of them used in a macro argument, a typedef, an enumerator and its enum,
 fields with a bit-field and a designator, struct, union and a 20-member
 struct cut after 16, a label, shadowing, macro-vs-C with "(also a macro
-name)", D1: fails if hover does not wait); `tests/lsp/csym_rename`
+name)", D1: an edit then at once a hover, answered from the carried index); `tests/lsp/csym_rename`
 rename (a parameter used in a macro argument; refusals for a `#define`
 body use, a header declaration, a keyword, a non-identifier, a new name
 in `#if 0`, a capture; a rename right after an edit, D1; the macro path
@@ -362,9 +403,27 @@ under its typedef, enumerators of a nameless enum standing alone),
 signature help (a function-pointer field, a typedef function pointer from
 a header, a variadic function, a macro, a static function), semantic
 tokens (whole file and a range) and completion (inside a function and in
-another); `tests/query/b3.cmd` `cereal query type` and `visible` on
-`tests/symidx/b3.c`. The sessions are also run under ThreadSanitizer and
-AddressSanitizer/UBSan (set `LSP_STDERR` to collect reports).
+another), and, for a client without `refreshSupport`, a token request
+right after an edit (it waits for the check; no refresh is sent, the
+`absent` step of lsp_session.py); `tests/query/b3.cmd` `cereal query type`
+and `visible` on `tests/symidx/b3.c`. `tests/lsp/carry_cidx` (checks held
+with `cereal/holdChecks`; the client declares `refreshSupport`): after an
+edit that makes a variable `long` and types a declaration and a call,
+hover and definition below it (moved), hover above it (no marker), hover
+on the edited variable (the marker), completion (`isIncomplete`, without
+the edited and typed locals), signature help on the typed call, semantic
+tokens, document symbols (ranges moved), hover on the typed name and
+prepareRename (each waits out 1.5 s: nothing, "retry"), a second edit
+while held (a carry from a carried index), then the release: the refresh
+request is recorded, a token delta colors the damage, and hover and
+completion are fresh. `fault_check` also shows the carried index going with
+a failed check. The `wait` step records server requests without params.
+`tests/lsp_stress.py BIN FILE [EDITS]` (not a golden) sends edits each
+followed at once by token, completion and hover requests; run on zstd.c
+under TSan (also on a smaller file, where more checks publish between
+edits) and ASan with the sanitizer logs empty. The sessions are also
+run under ThreadSanitizer and AddressSanitizer/UBSan (set `LSP_STDERR` to
+collect reports).
 
 ## Measurements (35 MB macro_heavy.c, 4 cores)
 

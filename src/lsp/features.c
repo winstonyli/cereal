@@ -253,6 +253,40 @@ void lsp_document_highlight(Req *r, JsonWriter *w)
     uses(r, w, true);
 }
 
+/* A decl of a carried index whose declaration was edited (B3_DESIGN.md 12.7):
+ * a DECL or DEF event lost to the edit (cindex_touched), or kept on a line the
+ * damage touches (`int x` changed to `long x` keeps x's event). */
+static bool c_edited(Req *r, const uint32_t *decls, size_t nd)
+{
+    const CIndex *ix = r->cidx;
+    size_t i;
+    uint32_t j;
+    for (i = 0; i < nd; i++) {
+        if (cindex_touched(ix, decls[i]))
+            return true;
+        for (j = ix->by_decl_start[decls[i]];
+             j < ix->by_decl_start[decls[i] + 1]; j++) {
+            const CIdxEvent *e = &ix->ev[ix->by_decl[j]];
+            const CIdxFile *cf = &ix->files[e->file];
+            SrcFile *f;
+            uint32_t l, l1, l2, c;
+            if ((e->flags & CIX_ROLE) == CIX_REF || !cf->edited ||
+                !(f = cindex_srcfile(&r->snap->tu.sm, cf->path)))
+                continue;
+            srcmgr_linecol(f, f->base + e->off, &l, &c);
+            srcmgr_linecol(f, f->base + cf->dmg_begin, &l1, &c);
+            /* the damage is inclusive: its end at a line start touches
+             * nothing of that line */
+            srcmgr_linecol(f, f->base + (cf->dmg_end > cf->dmg_begin
+                                             ? cf->dmg_end - 1 : cf->dmg_end),
+                           &l2, &c);
+            if (l >= l1 && l <= l2)
+                return true;
+        }
+    }
+    return false;
+}
+
 /* hover: a macro expanded here answers as before; a C entity answers over a
  * name with only macro history (weak, which it then mentions) or none: the
  * checker's text for it (cindex_hover), over the name.  Elsewhere in a
@@ -270,6 +304,8 @@ void lsp_hover(Req *r, JsonWriter *w)
         cindex_hover(r->cidx, decls, nd, true, &sb);
         if (t.weak)
             sb_puts(&sb, "\n\n(also a macro name)");
+        if (r->c_carried && c_edited(r, decls, nd))
+            sb_puts(&sb, "\n\n(rechecking: its declaration was edited)");
         cindex_at(r->cidx, (uint32_t)cindex_file(r->cidx, r->file->path),
                   at - r->file->base, &first);
         e = &r->cidx->ev[first];
@@ -381,7 +417,7 @@ void lsp_completion(Req *r, JsonWriter *w)
         nc = cindex_visible(r->cidx, r->file->path, at - r->file->base, &cv);
     json_begin_object(w);
     json_key(w, "isIncomplete");
-    json_bool(w, false);
+    json_bool(w, r->c_carried); /* ask again: the check will add the damage */
     json_key(w, "items");
     json_begin_array(w);
     for (i = 0; i < n; i++) {
@@ -557,6 +593,7 @@ typedef struct STok {
     SrcLoc loc;
     uint32_t len;
     int type, mods;
+    bool from_c;             /* from the C index, else the macro index */
 } STok;
 
 static int stok_cmp(const void *a, const void *b)
@@ -564,6 +601,11 @@ static int stok_cmp(const void *a, const void *b)
     const STok *x = a, *y = b;
     if (x->loc != y->loc)
         return x->loc < y->loc ? -1 : 1;
+    /* fresh, the two indexes never start a token at one place; a carried C
+     * token can meet a macro token (a new #define of its name): the macro's
+     * wins */
+    if (x->from_c != y->from_c)
+        return x->from_c - y->from_c;
     return y->mods - x->mods; /* the declaration first at a tie */
 }
 
@@ -585,7 +627,7 @@ static void semantic_data(Req *r, SrcLoc b, SrcLoc e, U32Vec *out)
     nrefs = index_range_refs(ix, b, e, &refs);
     for (i = 0; i < nrefs; i++) {
         IdxRef *ref = &refs[i];
-        STok s;
+        STok s = {0};
         if (!ref->len)
             continue;
         s.loc = ref->loc;
@@ -596,7 +638,7 @@ static void semantic_data(Req *r, SrcLoc b, SrcLoc e, U32Vec *out)
     }
     for (i = 0; i < ix->params.len; i++) {
         IdxParamRef *p = &ix->params.data[i];
-        STok s;
+        STok s = {0};
         if (!IN_R(p->loc))
             continue;
         s.loc = p->loc;
@@ -607,7 +649,7 @@ static void semantic_data(Req *r, SrcLoc b, SrcLoc e, U32Vec *out)
     }
     for (i = 0; i < pp->macros.len; i++) {
         Macro *m = pp->macros.data[i];
-        STok s;
+        STok s = {0};
         int k;
         if (m->alias_of || !m->name_loc || !IN_R(m->name_loc))
             continue;
@@ -636,10 +678,11 @@ static void semantic_data(Req *r, SrcLoc b, SrcLoc e, U32Vec *out)
                r->file->base + cx->ev[k].off <= e; k++) {
             const CIdxEvent *ce = &cx->ev[k];
             const CIdxDecl *x = &cx->decls[ce->decl];
-            STok s;
+            STok s = {0};
             if ((ce->flags & (CIX_MACRO_BODY | CIX_AT_EXPANSION | CIX_SYSTEM)) ||
                 C_KINDS[x->kind].st < 0 || !ce->len)
                 continue;
+            s.from_c = true;
             s.loc = r->file->base + ce->off;
             s.len = ce->len;
             s.type = C_KINDS[x->kind].st;
@@ -689,7 +732,9 @@ typedef struct TokCache {
     const void *snap;          /* identity only; may have been freed */
     long long gen;
     PosEncoding enc;
-    bool cidx;                 /* the snapshot had its C index (set once) */
+    uint32_t cserial;          /* serial of the C index used (0: none): a
+                                  carried one is not reused after the
+                                  snapshot's own publishes */
     unsigned long id;          /* resultId */
     U32Vec data;
 } TokCache;
@@ -730,7 +775,7 @@ void lsp_semantic_tokens(Req *r, JsonWriter *w, const char *previous_id)
     U32Vec nd = {0};
     char id[32];
     bool fresh = c->snap == r->snap && c->gen == r->snap->gen &&
-                 c->enc == r->enc && c->cidx == (r->cidx != NULL) && c->id;
+                 c->enc == r->enc && c->cserial == (r->cidx ? r->cidx->serial : 0) && c->id;
     unsigned long prev = previous_id ? strtoul(previous_id, NULL, 10) : 0;
     if (fresh) {
         if (prev == c->id) { /* nothing changed since */
@@ -792,7 +837,7 @@ void lsp_semantic_tokens(Req *r, JsonWriter *w, const char *previous_id)
     c->snap = r->snap;
     c->gen = r->snap->gen;
     c->enc = r->enc;
-    c->cidx = r->cidx != NULL;
+    c->cserial = r->cidx ? r->cidx->serial : 0;
 }
 
 void lsp_semantic_tokens_range(Req *r, JsonWriter *w)

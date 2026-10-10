@@ -819,7 +819,7 @@
 ## nothing here (a keyword)
 >> textDocument/references
 []
-## D1: an edit then at once references and a highlight: both wait for the new snapshot's check (everything moved down a line)
+## D1: an edit then at once references and a highlight: references waits for the new snapshot and its check, the highlight for the snapshot only and answers from the carried index (everything moved down a line)
 >> textDocument/didChange
 >> textDocument/references
 [

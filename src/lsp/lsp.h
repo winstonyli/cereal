@@ -82,9 +82,13 @@ typedef struct Snapshot {
     Options *opt;
     struct Overlay *overlay; /* the editor buffers it was built from */
     MacroGraph graph;        /* built with the snapshot */
-    /* The C symbol index of the snapshot's check (phase 2), published under
-     * the server lock; NULL until then, or with no check (CHECK_NONE). */
+    /* The C symbol index (phase 2), set under the server lock.  At install
+     * it is the previous snapshot's index carried over the edit (B3_DESIGN.md
+     * 12; cidx_carried), replaced at publish by the snapshot's own check's;
+     * NULL with no check (CHECK_NONE), or when a check failed.  Requests
+     * hold a reference (cindex_ref) while they answer from it. */
     struct CIndex *cidx;
+    bool cidx_carried;
     int check_state;         /* CHECK_* */
     /* The compiler diagnostics published with the snapshot: its check's
      * once that ends, before then those carried over from the previous
@@ -118,8 +122,9 @@ typedef struct Req {
     size_t text_len;
     const SrcFile *uri_file;  /* the last file json_location named */
     const char *uri;
-    const struct CIndex *cidx; /* snap's, taken under the lock; NULL: none */
-    bool c_fresh;            /* snap has the newest edit and its check ended */
+    const struct CIndex *cidx; /* snap's, referenced under the lock; NULL: none */
+    bool c_carried;          /* cidx is carried over an edit (may be stale) */
+    bool c_fresh;            /* snap has the newest edit and its own index */
 } Req;
 
 /* The semantic token legend, NULL-terminated (features.c). */

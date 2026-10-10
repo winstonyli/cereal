@@ -10,10 +10,14 @@
  {"idle": true},
  {"waitall": "textDocument/publishDiagnostics", "uri": "file://$ROOT/carry/main.c"},
  {"wait": "window/logMessage", "uri": null},
+ {"note": "the carried index went with the failed check: a hover on f has nothing to say"},
+ {"send": {"id": 3, "method": "textDocument/hover", "params": {"textDocument": {"uri": "file://$ROOT/carry/main.c"}, "position": {"line": 0, "character": 4}}}},
  {"note": "the third check runs"},
  {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/carry/main.c", "version": 3}, "contentChanges": [{"text": "int f(void)\n{\n    return a1;\n}\n"}]}}},
  {"idle": true},
  {"wait": "textDocument/publishDiagnostics", "uri": "file://$ROOT/carry/main.c"},
+ {"note": "the third check published its own index"},
+ {"send": {"id": 4, "method": "textDocument/hover", "params": {"textDocument": {"uri": "file://$ROOT/carry/main.c"}, "position": {"line": 0, "character": 4}}}},
  {"send": {"id": 2, "method": "shutdown"}},
  {"send": {"method": "exit"}}
 ]

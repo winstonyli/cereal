@@ -38,6 +38,9 @@ typedef struct Unit {
     long long want, built;
     uint32_t cancel;          /* atomic */
     bool queued, building;
+    /* a semantic token answer lacked the unit's own index: tell the client
+     * to ask again when a check publishes one (S.m) */
+    bool tok_stale;
 } Unit;
 
 typedef struct Doc {
@@ -66,6 +69,9 @@ typedef struct Server {
     bool stop, initialized, shutdown;
     PosEncoding enc;
     bool inactive_regions;    /* client takes clangd's inactiveRegions */
+    bool refresh;             /* client: workspace.semanticTokens.refreshSupport */
+    unsigned refresh_n;       /* ids of the refresh requests sent */
+    bool hold;                /* test only: cereal/holdChecks (B3_DESIGN.md 12.11) */
     LspConfig cfg;
     ThreadPool pool;
     long long gen;
@@ -589,6 +595,29 @@ static void phase_failed(Unit *u, const char *phase, const char *msg)
     sb_free(&text);
 }
 
+/* workspace/semanticTokens/refresh, a request of the server: the client's
+ * response has no method and is skipped by the main loop.  S.m held. */
+static void send_refresh(void)
+{
+    StrBuf sb = {0};
+    JsonWriter w;
+    char id[40];
+    if (!S.refresh)
+        return;
+    snprintf(id, sizeof id, "cereal-refresh-%u", ++S.refresh_n);
+    json_init_buf(&w, &sb);
+    json_begin_object(&w);
+    json_key(&w, "jsonrpc");
+    json_str(&w, "2.0");
+    json_key(&w, "id");
+    json_str(&w, id);
+    json_key(&w, "method");
+    json_str(&w, "workspace/semanticTokens/refresh");
+    json_end_object(&w);
+    rpc_write(sb.data, sb.len);
+    sb_free(&sb);
+}
+
 /* The macro phase of a unit under a fatal() trap; NULL if it was
  * cancelled, could not be opened or failed (*failed). */
 static Snapshot *build_unit(Unit *u, Overlay *ov, bool *failed)
@@ -682,7 +711,8 @@ static void *builder_main(void *arg)
         Unit *u;
         Overlay *ov;
         Snapshot *snap, *old = NULL, *checking = NULL;
-        bool failed;
+        CIndex *carried = NULL;
+        bool failed, eligible = false;
         long long want;
         double t0, t1, t2;
         if (S.rjob) {
@@ -727,6 +757,22 @@ static void *builder_main(void *arg)
             u->in_fresh = interner_count(u->in);
         if (!snap)
             overlay_release(ov);
+        if (snap && want > u->built) {
+            /* the builder is the only writer of u->snap, u->built and every
+             * Snapshot.cidx: it reads them without the lock.  A snapshot
+             * that will be checked carries the previous index over the edit
+             * (B3_DESIGN.md 12.5) until its own check publishes. */
+            eligible = check_eligible(u, snap);
+            if (eligible && u->snap && u->snap->cidx) {
+                double tc = stats_now();
+                carried = cindex_carry(u->snap->cidx, &u->snap->tu.sm,
+                                       &snap->tu.sm);
+                if (stats_on())
+                    fprintf(stderr, "lsp: carry %.3fs, kept %u of %u events\n",
+                            stats_now() - tc, carried->nev,
+                            u->snap->cidx->nev);
+            }
+        }
 
         mutex_lock(&S.m);
         if (snap && want > u->built) {
@@ -735,8 +781,10 @@ static void *builder_main(void *arg)
             u->snap = snap;
             u->built = want;
             adopt_headers(u);
-            if (check_eligible(u, snap)) {
+            if (eligible) {
                 snap->check_state = CHECK_PENDING;
+                snap->cidx = carried;
+                snap->cidx_carried = carried != NULL;
                 checking = snapshot_ref(snap);
                 if (old) /* shown until the check ends: no flicker */
                     carry_cdiags(snap, old);
@@ -767,7 +815,15 @@ static void *builder_main(void *arg)
              * published only if no edit came in since (u->want is bumped
              * under the lock), so it always matches the buffers it read. */
             Check *c;
-            double t3 = stats_now();
+            CIndex *prev = NULL;
+            double t3;
+            mutex_lock(&S.m);
+            /* test only (cereal/holdChecks): wait until released, edited
+             * again, or stopping */
+            while (S.hold && !S.stop && u->want == want)
+                cond_wait(&S.work, &S.m);
+            mutex_unlock(&S.m);
+            t3 = stats_now();
             c = check_unit(u, checking);
             mutex_lock(&S.m);
             if (stats_on())
@@ -778,19 +834,32 @@ static void *builder_main(void *arg)
                 if (c) {
                     lsp_publish_diagnostics(checking, &c->tu, S.enc,
                                             doc_open_in, u);
+                    prev = checking->cidx; /* the carried one, if any */
                     checking->cidx = c->cidx;
+                    checking->cidx_carried = false;
                     c->cidx = NULL;
-                } else if (checking->cdiags.len) {
-                    /* failed, not superseded: the carried ones go */
-                    cdiags_free(checking);
-                    lsp_publish_diagnostics(checking, NULL, S.enc,
-                                            doc_open_in, u);
+                    if (checking->cidx && u->tok_stale) {
+                        u->tok_stale = false;
+                        send_refresh();
+                    }
+                } else {
+                    /* failed, not superseded: the carried index and
+                     * diagnostics go, or stale entities would stay */
+                    prev = checking->cidx;
+                    checking->cidx = NULL;
+                    checking->cidx_carried = false;
+                    if (checking->cdiags.len) {
+                        cdiags_free(checking);
+                        lsp_publish_diagnostics(checking, NULL, S.enc,
+                                                doc_open_in, u);
+                    }
                 }
             }
             checking->check_state = CHECK_DONE;
             u->building = false;
             cond_broadcast(&S.done);
             mutex_unlock(&S.m);
+            cindex_free(prev); /* a request may still hold it */
             check_free(c);
             snapshot_release(checking);
         }
@@ -923,6 +992,9 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     S.inactive_regions = json_bool_of(
         json_path(params, "capabilities.textDocument.inactiveRegionsCapabilities"
                           ".inactiveRegions"), false);
+    S.refresh = json_bool_of(
+        json_path(params, "capabilities.workspace.semanticTokens.refreshSupport"),
+        false);
     if (root_uri)
         root = uri_to_path(&a, root_uri);
     if (!root)
@@ -1027,31 +1099,76 @@ typedef enum {
     R_SIGHELP, R_EXPAND
 } ReqKind;
 
+/* What a request waits for before it reads the C index (B3_DESIGN.md 12.6).
+ * Every policy but CP_NONE first waits (D1, up to 1.5 s) for the snapshot of
+ * the newest edit, so that positions match; the policies differ in when they
+ * also wait for its check. */
+typedef enum {
+    CP_NONE,    /* reads no C index */
+    CP_ANY,     /* only if the snapshot has no index at all; else answers from
+                   its own or the carried index */
+    CP_POS,     /* CP_ANY, and when the position is in a carried index's damage */
+    CP_WAIT,    /* always: lists the user acts on (references, rename) */
+    CP_TOK      /* semantic tokens: CP_ANY if the client takes a refresh
+                   (the server asks again after the check), else CP_WAIT */
+} CPolicy;
+
 static const struct {
     const char *method;
     ReqKind kind;
-    bool cidx;               /* reads the C index: waits for it (D1) */
+    CPolicy policy;
 } REQS[] = {
-    {"textDocument/definition", R_DEF, true},
-    {"textDocument/declaration", R_DECL, true},
-    {"textDocument/typeDefinition", R_TYPEDEF, true},
-    {"textDocument/references", R_REFS, true},
-    {"textDocument/documentHighlight", R_HIGHLIGHT, true},
-    {"textDocument/hover", R_HOVER, true},
-    {"textDocument/completion", R_COMPLETION, true},
-    {"textDocument/documentSymbol", R_SYMBOLS, true},
-    {"textDocument/semanticTokens/full", R_SEMTOK, true},
-    {"textDocument/semanticTokens/full/delta", R_SEMTOK_DELTA, true},
-    {"textDocument/semanticTokens/range", R_SEMTOK_RANGE, true},
-    {"textDocument/foldingRange", R_FOLDING, false},
-    {"textDocument/prepareRename", R_PREP_RENAME, true},
-    {"textDocument/rename", R_RENAME, true},
-    {"textDocument/prepareCallHierarchy", R_PREP_CALLS, false},
-    {"callHierarchy/incomingCalls", R_IN_CALLS, false},
-    {"callHierarchy/outgoingCalls", R_OUT_CALLS, false},
-    {"textDocument/signatureHelp", R_SIGHELP, true},
-    {"cereal/expandMacro", R_EXPAND, false},
-    {NULL, R_DEF, false}};
+    {"textDocument/definition", R_DEF, CP_POS},
+    {"textDocument/declaration", R_DECL, CP_POS},
+    {"textDocument/typeDefinition", R_TYPEDEF, CP_POS},
+    {"textDocument/references", R_REFS, CP_WAIT},
+    {"textDocument/documentHighlight", R_HIGHLIGHT, CP_ANY},
+    {"textDocument/hover", R_HOVER, CP_POS},
+    {"textDocument/completion", R_COMPLETION, CP_ANY},
+    {"textDocument/documentSymbol", R_SYMBOLS, CP_ANY},
+    {"textDocument/semanticTokens/full", R_SEMTOK, CP_TOK},
+    {"textDocument/semanticTokens/full/delta", R_SEMTOK_DELTA, CP_TOK},
+    {"textDocument/semanticTokens/range", R_SEMTOK_RANGE, CP_TOK},
+    {"textDocument/foldingRange", R_FOLDING, CP_NONE},
+    {"textDocument/prepareRename", R_PREP_RENAME, CP_WAIT},
+    {"textDocument/rename", R_RENAME, CP_WAIT},
+    {"textDocument/prepareCallHierarchy", R_PREP_CALLS, CP_NONE},
+    {"callHierarchy/incomingCalls", R_IN_CALLS, CP_NONE},
+    {"callHierarchy/outgoingCalls", R_OUT_CALLS, CP_NONE},
+    {"textDocument/signatureHelp", R_SIGHELP, CP_ANY},
+    {"cereal/expandMacro", R_EXPAND, CP_NONE},
+    {NULL, R_DEF, CP_NONE}};
+
+/* The request's position lies in the damage of the carried index (S.m held). */
+static bool pos_damaged(Snapshot *s, const char *path,
+                        const JsonValue *params)
+{
+    Req t;
+    int fi;
+    memset(&t, 0, sizeof t);
+    t.file = index_find_file(&s->ix, path);
+    fi = s->cidx ? cindex_file(s->cidx, path) : -1;
+    if (!t.file || fi < 0 || !json_get(params, "position"))
+        return false;
+    t.enc = S.enc;
+    return cindex_damaged(s->cidx, fi,
+                          req_loc(&t, json_get(params, "position")) -
+                              t.file->base);
+}
+
+/* Whether a request of this policy must still wait (S.m held). */
+static bool must_wait(Unit *u, CPolicy p, const char *path,
+                      const JsonValue *params)
+{
+    Snapshot *s = u->snap;
+    if (s->gen < u->want)
+        return true;
+    if (s->check_state != CHECK_PENDING)
+        return false;
+    if (p == CP_WAIT || !s->cidx)
+        return true;
+    return p == CP_POS && pos_damaged(s, path, params);
+}
 
 /* The document a request is about: textDocument.uri, or item.uri for
  * call hierarchy follow-ups. */
@@ -1061,11 +1178,12 @@ static const char *request_uri(const JsonValue *params)
     return u ? u : json_str_of(json_path(params, "item.uri"), NULL);
 }
 
-static void handle_request(const JsonValue *id, ReqKind k, bool cidx,
+static void handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
                            const JsonValue *params)
 {
     Arena a;
     Req r;
+    CIndex *cx = NULL;       /* the reference r.cidx holds */
     const char *uri = request_uri(params);
     char *path;
     Doc *d;
@@ -1088,20 +1206,30 @@ static void handle_request(const JsonValue *id, ReqKind k, bool cidx,
     u = d->unit;
     while (!u->snap && !S.stop) /* first build of this unit */
         cond_wait(&S.done, &S.m);
-    if (cidx) {
-        /* the C index comes with the check of the newest edit's snapshot:
-         * wait for it a little (B2 decision D1), then answer from what is
-         * there (the macros alone if the check has not published) */
+    if (pol == CP_TOK)
+        pol = S.refresh ? CP_ANY : CP_WAIT;
+    if (pol != CP_NONE) {
+        /* wait a little (B2 decision D1, B3_DESIGN.md 12.6) for the newest
+         * edit's snapshot, and for its check where the policy says so; then
+         * answer from what is there (the carried index, or the macros
+         * alone if there is none) */
         struct timespec dl = cond_deadline(1.5);
-        while (!S.stop && (u->snap->gen < u->want ||
-                           u->snap->check_state == CHECK_PENDING))
+        while (!S.stop && must_wait(u, pol, path, params))
             if (!cond_timedwait(&S.done, &S.m, &dl))
                 break;
     }
     r.snap = snapshot_ref(u->snap);
-    r.cidx = r.snap ? r.snap->cidx : NULL;
-    r.c_fresh = r.cidx && u->snap->gen == u->want &&
-                u->snap->check_state == CHECK_DONE;
+    if (r.snap) {
+        cx = cindex_ref(r.snap->cidx);
+        r.cidx = cx;
+        r.c_carried = cx && r.snap->cidx_carried;
+        r.c_fresh = cx && !r.c_carried && r.snap->gen == u->want &&
+                    r.snap->check_state == CHECK_DONE;
+        if ((k == R_SEMTOK || k == R_SEMTOK_DELTA || k == R_SEMTOK_RANGE) &&
+            !(cx && !r.c_carried && r.snap->gen == u->want) &&
+            (r.snap->check_state == CHECK_PENDING || r.snap->gen < u->want))
+            u->tok_stale = true;  /* a check will publish: refresh then */
+    }
     r.text = arena_strndup(&a, d->text, d->len);
     r.text_len = d->len;
     mutex_unlock(&S.m);
@@ -1144,6 +1272,7 @@ static void handle_request(const JsonValue *id, ReqKind k, bool cidx,
                                                                    &err)) {
                 sb.len = 0;
                 snapshot_release(r.snap);
+                cindex_free(cx);
                 respond_error(id, -32803 /* RequestFailed */, err);
                 arena_free(&a);
                 sb_free(&sb);
@@ -1161,10 +1290,12 @@ static void handle_request(const JsonValue *id, ReqKind k, bool cidx,
     t1 = stats_now();
     send_json(&sb);
     if (stats_on())
-        fprintf(stderr, "lsp: request %d: %.3fs, sent %zu bytes in %.3fs\n",
-                (int)k, t1 - t0, sb.len, stats_now() - t1);
+        fprintf(stderr, "lsp: request %d: %.3fs, sent %zu bytes in %.3fs, "
+                "carried %d\n", (int)k, t1 - t0, sb.len, stats_now() - t1,
+                (int)r.c_carried);
     sb_free(&sb);
     snapshot_release(r.snap);
+    cindex_free(cx);
     arena_free(&a);
 }
 
@@ -1348,13 +1479,22 @@ int lsp_main(FILE *in, FILE *out)
             } while (busy && !S.stop);
             mutex_unlock(&S.m);
             respond_null(id);
+        } else if (!strcmp(method, "cereal/holdChecks") && id) {
+            /* test only: while held, a check waits at its start (an edit,
+             * the release or shutdown ends the wait).  Do not combine with
+             * cereal/waitIdle, which waits for the check. */
+            mutex_lock(&S.m);
+            S.hold = json_bool_of(json_get(params, "hold"), false);
+            cond_broadcast(&S.work);
+            mutex_unlock(&S.m);
+            respond_null(id);
         } else if (id) {
             int i;
             for (i = 0; REQS[i].method; i++)
                 if (!strcmp(method, REQS[i].method))
                     break;
             if (REQS[i].method)
-                handle_request(id, REQS[i].kind, REQS[i].cidx, params);
+                handle_request(id, REQS[i].kind, REQS[i].policy, params);
             else
                 respond_error(id, -32601, "method not found");
         }

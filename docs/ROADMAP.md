@@ -137,9 +137,11 @@ B3. (DONE, Round 197: typeDefinition, document symbols, signature help
     the index gained types, parents, a scope tree and eager system
     declarations. 1,056 lines added and 161 removed, against ~550
     re-estimated in B3_DESIGN.md. Parked there (section 9): member, tag,
-    label and keyword completion, semantic-token refresh after a late
-    check, carrying the previous index across edits, signature help
-    through an expression callee, blocks written inside a macro argument.
+    label and keyword completion, signature help through an expression
+    callee, blocks written inside a macro argument; the semantic-token
+    refresh and carrying the previous index across edits were done in
+    Rounds 198 and 199, B3_DESIGN.md section 12, whose step 4 (carrying
+    the compiler diagnostics through the same edit) is still open.
     See B3_DESIGN.md, section 11.)
     Document symbols, in-scope completion, signature help for C functions,
     typeDefinition, richer semantic tokens (est. 350 lines).

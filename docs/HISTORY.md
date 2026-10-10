@@ -3685,3 +3685,61 @@ estimated for the step, which put the comparison tool in. Gates
 285 of 285 (unchanged); symcov 4716 files, 0 unindexed (10 skipped);
 uvloop loop.c 3.889 G instructions. Not run: the LSP sessions under TSan
 beyond what san.sh runs (no server code changed).
+
+Round 199: ROADMAP B3 carry-over, steps 2 and 3 of B3_DESIGN.md 12.11
+(server, features, refresh; results in 12.14). server.c: the builder
+carries the previous snapshot's index over the edit at install
+(`cindex_carry`, only for a snapshot that will be checked; it reads
+`u->snap` and its index without the lock, being their only writer) into
+`Snapshot.cidx` with `cidx_carried`; a check's publish replaces it under
+the lock and frees the carried one after the unlock (requests hold their
+own reference); a failed check, not superseded, drops it; a superseded one
+leaves it for the next carry. The request table's `cidx` boolean became a
+wait policy: `CP_NONE`, `CP_ANY` (completion, signatureHelp, highlight,
+documentSymbol: wait for the newest edit's snapshot, for the check only
+when the snapshot has no index), `CP_POS` (hover, definition, declaration,
+typeDefinition: also when the position is in the carried index's damage),
+`CP_WAIT` (references, prepareRename, rename: always), `CP_TOK` (tokens:
+`CP_ANY` for a client with `workspace.semanticTokens.refreshSupport`, else
+`CP_WAIT`). After the 1.5 s deadline every request answers from the
+carried index (references included; rename refuses, "retry", since
+`c_fresh` excludes a carried index). `Unit.tok_stale` is set by a token
+answer without the snapshot's own index; the publish of a check's index
+sends `workspace/semanticTokens/refresh` (id `cereal-refresh-N`, under
+`S.m` like `publishDiagnostics`; the client's response is already skipped).
+Test-only `cereal/holdChecks {"hold": bool}` makes the builder wait before
+a check. features.c: the whole-file token cache is keyed by the index
+serial; `STok.from_c` and a macro token wins a tie with a carried C token;
+completion from a carried index is `isIncomplete: true`; hover adds
+"(rechecking: its declaration was edited)" (a lost DECL/DEF event, or one
+on a line the damage touches, the damage's end taken as exclusive).
+`CEREAL_LSP_STATS` logs the carry per install and `carried` per request.
+Tests: new `tests/lsp/carry_cidx` (held checks; edit 1 makes a variable
+`long` and types a declaration and a call; hover/definition below it
+moved, hover above it unmarked, the marker on the edited variable,
+completion incomplete, signature help by name, tokens, outline, hover on
+the typed name and prepareRename each waiting out 1.5 s, a second edit
+while held, then the release: the refresh recorded, a token delta, fresh
+answers); `csym_b3` gained a token request after an edit with no
+`refreshSupport` and the new `absent` step of lsp_session.py (no refresh
+is sent); `fault_check` shows the carried index going with a failed
+check (disabling the drop fails it); the D1 notes of csym, csym_hover and
+csym_refs changed, their answers did not; lsp_session.py's `wait` accepts
+a server request without params. `tests/lsp_stress.py` (200 edits each
+followed at once by tokens, completion and hover on zstd.c, checks not
+held) ran with empty logs under TSan (9.7 min; only 1 refresh, since few
+checks end between edits at TSan speed, so also on features.c, 1,850
+lines: 62 refreshes, 20 s) and ASan/UBSan (2.6 min, 64 refreshes).
+Measured on zstd.c in the server: peak RSS during the check 42.8 MB
+without carry, 45.8 MB with (+3.0 MB, +7%; 3 runs each). Noticed, not
+caused: `tests/lsp/csym_sys` with `--flags` leaves its `.cereal` behind
+(the harness restores the file its own write step created); removed by
+hand. About +240/-54 lines in src (server.c +182/-42, features.c +49/-8,
+lsp.h +9/-4), against ~185 estimated for the steps. Gates: run.sh 1689
+passed, 0 failed; san.sh 1689 passed, 605 files, 0 findings; verify.sh
+gcc.dg 3908 of 3910, c-c++-common 635 of 636, cpp 285 of 285 (unchanged;
+run before the last features.c edit, the hover line test, which no gate
+but the sessions exercises); symcov 4716 files, 0 unindexed (10
+skipped); uvloop loop.c 3.886 G instructions; the LSP sessions (both
+modes) under TSan: 30 passed, 0 warnings. Not done: step 4 (diagnostics
+through the same edit, 12.8).

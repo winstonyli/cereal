@@ -155,6 +155,9 @@ def main():
             send({"jsonrpc": "2.0", "id": idle_id, "method": "cereal/waitIdle"})
             next_msg(lambda m: m.get("id") == idle_id)
             out.append(">> (idle)")
+        elif "absent" in st:
+            seen = any(m.get("method") == st["absent"] for m in pending)
+            out.append("!! received " + st["absent"] if seen else ">> (no " + st["absent"] + ")")
         elif "open" in st:
             path = os.path.join(ROOT, st["open"])
             send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
@@ -174,7 +177,7 @@ def main():
                 pending[:] = [m for m in pending if not pred(m)]
             for m in got:
                 out.append("<< %s %s" % (meth, st["uri"] or "(no uri)"))
-                pr = dict(m["params"])
+                pr = dict(m.get("params") or {})
                 pr.pop("uri", None)
                 pr.pop("textDocument", None)
                 out.append(json.dumps(pr, sort_keys=True, indent=1))

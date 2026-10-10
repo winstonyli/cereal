@@ -129,6 +129,9 @@
  "message": "cereal: the check of $ROOT/carry/main.c failed: injected fault (lsp-check)",
  "type": 1
 }
+## the carried index went with the failed check: a hover on f has nothing to say
+>> textDocument/hover
+null
 ## the third check runs
 >> textDocument/didChange
 >> (idle)
@@ -170,6 +173,24 @@
   }
  ],
  "version": 3
+}
+## the third check published its own index
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nfunc f: int(void) defined\n```"
+ },
+ "range": {
+  "end": {
+   "character": 5,
+   "line": 0
+  },
+  "start": {
+   "character": 4,
+   "line": 0
+  }
+ }
 }
 >> shutdown
 null

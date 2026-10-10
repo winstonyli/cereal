@@ -32,7 +32,7 @@
  {"send": {"id": 20, "method": "textDocument/definition", "params": {"textDocument": {"uri": "file://$ROOT/csym/main.c"}, "position": {"line": 12, "character": 23}}}},
  {"note": "a C name inside a macro argument: twice(total)"},
  {"send": {"id": 21, "method": "textDocument/definition", "params": {"textDocument": {"uri": "file://$ROOT/csym/main.c"}, "position": {"line": 26, "character": 19}}}},
- {"note": "D1: an edit then at once a request: it waits for the new snapshot's check (the definition moved down a line)"},
+ {"note": "D1: an edit then at once a request: it waits for the new snapshot only and answers from the index carried over the edit (the definition moved down a line)"},
  {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/csym/main.c", "version": 2}, "contentChanges": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "text": "/* moved */\n"}]}}},
  {"send": {"id": 22, "method": "textDocument/definition", "params": {"textDocument": {"uri": "file://$ROOT/csym/main.c"}, "position": {"line": 24, "character": 18}}}},
  {"note": "D2: a missing include: only it is reported, and the index still covers the rest of the file"},

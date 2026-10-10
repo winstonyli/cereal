@@ -365,7 +365,7 @@
   "uri": "file://$ROOT/csym/main.c"
  }
 ]
-## D1: an edit then at once a request: it waits for the new snapshot's check (the definition moved down a line)
+## D1: an edit then at once a request: it waits for the new snapshot only and answers from the index carried over the edit (the definition moved down a line)
 >> textDocument/didChange
 >> textDocument/definition
 [

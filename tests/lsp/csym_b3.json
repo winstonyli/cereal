@@ -25,6 +25,11 @@
  {"note": "completion: inside count_shapes (locals, parameters, file scope, macros), then in main (no locals of count_shapes)"},
  {"send": {"id": 17, "method": "textDocument/completion", "params": {"textDocument": {"uri": "file://$ROOT/csym_b3/main.c"}, "position": {"line": 19, "character": 11}}}, "labels": "^(?!__|unix|linux|i386)[A-Za-z]"},
  {"send": {"id": 18, "method": "textDocument/completion", "params": {"textDocument": {"uri": "file://$ROOT/csym_b3/main.c"}, "position": {"line": 21, "character": 24}}}, "labels": "^(?!__|unix|linux|i386)[A-Za-z]"},
- {"send": {"id": 19, "method": "shutdown"}},
+ {"note": "an edit then at once a token request: this client has no refreshSupport, so the request waits for the new snapshot's check (CP_WAIT) and has the new name; no refresh is ever sent"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/csym_b3/main.c", "version": 2}, "contentChanges": [{"range": {"start": {"line": 24, "character": 0}, "end": {"line": 24, "character": 0}}, "text": "int added_name = 7;\n"}]}}},
+ {"send": {"id": 19, "method": "textDocument/semanticTokens/range", "params": {"textDocument": {"uri": "file://$ROOT/csym_b3/main.c"}, "range": {"start": {"line": 24, "character": 0}, "end": {"line": 25, "character": 0}}}}},
+ {"idle": true},
+ {"absent": "workspace/semanticTokens/refresh"},
+ {"send": {"id": 20, "method": "shutdown"}},
  {"send": {"method": "exit"}}
 ]

@@ -279,22 +279,26 @@ the client (`isIncomplete` false), as for macros.
 ## 6. Code that does not parse, and waiting
 
 - **Which text.** Every B3 request answers from the newest snapshot's
-  own index, not from an older one carried forward. The measurements in
-  section 2 show why that is enough: an index built from half-typed text
-  still has every declaration of the unit and even the call being typed.
-  Positions in the request are the snapshot's, like every other request;
-  signature help reads the editor text, which is the snapshot's once the
-  wait below has succeeded.
-- **D1 extended.** The wait of B2 decision D1 (up to 1.5 s while the
-  newest edit has no snapshot or its check is pending) applies to every
-  request that reads the C index: now also typeDefinition,
-  documentSymbol, signatureHelp, completion and the three semantic token
-  requests. One rule in the server: a column in the request table.
+  index: its own once its check has published, until then the previous
+  index carried over the edit (section 12, implemented in Round 199). The
+  measurements in section 2 show why an index built from half-typed text
+  is good: it still has every declaration of the unit and even the call
+  being typed. Positions in the request are the snapshot's, like every
+  other request; signature help reads the editor text, which is the
+  snapshot's once the wait below has succeeded.
+- **D1 extended, then narrowed by carry-over.** The wait of B2 decision
+  D1 (up to 1.5 s) applies to every request that reads the C index. What
+  it waits for is a policy in a column of the request table (12.6): the
+  newest edit's snapshot always, its check only where the carried index
+  cannot answer (nothing to carry; hover and the go-to requests at a
+  position inside the edit's damage; references, rename and, for clients
+  without `refreshSupport`, semantic tokens).
 - **After a timeout** (a check over 1.5 s: units near the 4 MiB limit),
-  the request answers from what is there: the macros alone if the newest
-  snapshot has no index yet, as for the B2 requests. Semantic tokens then
-  lack the C names until the next request: the client is not told to ask
-  again (parked, section 9).
+  the request answers from what is there: the carried index, or the
+  macros alone if the newest snapshot has none (first build, a failed
+  check). A semantic token answer that lacked the snapshot's own index
+  is followed by `workspace/semanticTokens/refresh` once the check
+  publishes (clients with `refreshSupport`).
 - **Header documents.** In a header that is a document of its
   includer's unit, every declaration in another file counts as before
   the position (4), so completion there also offers the main file's
@@ -303,10 +307,11 @@ the client (`isIncomplete` false), as for macros.
 - **Stale snapshot.** If the newest edit's snapshot is still being built
   when the wait ends, the previous snapshot answers with its index;
   positions are then off by the edit, as for every other request.
-- **No carry-over.** Keeping the previous index alive across edits (and
-  mapping positions through the edit) was considered and rejected: it
-  would retain a second snapshot per unit, and the newest index is
-  already good on broken code.
+- **Carry-over.** Keeping the previous index across edits was first
+  rejected (a second snapshot per unit; the newest index is already good
+  on broken code). It is done in section 12 by keeping only the index,
+  not the snapshot: at install the builder makes a copy of the index's
+  per-text arrays in the new text's coordinates.
 
 ## 7. Limits: the 4 MiB check limit and memory
 
@@ -352,10 +357,8 @@ the client (`isIncomplete` false), as for macros.
   request context (the expression's type, not the scope); not B3.
 - **Tag completion** after `struct`/`union`/`enum`, label completion
   after `goto`, keywords: the cursor context, not scope data.
-- **`workspace/semanticTokens/refresh`** after a check that ended past
-  the D1 wait: needs server-to-client requests, which the server does
-  not send today.
-- **Carrying the previous index** across edits (section 6).
+- **Compiler diagnostics through the carry-over edit** (12.8, step 4):
+  not done; the diagnostics still use `first_changed_line`.
 - **Signature help through an expression** callee (`(*fp)(`, `a[i](`).
 - **Blocks written inside a macro argument** (`WITH_LOCK(m, { int x;
   ... })`): scope extents are presentation points, so such a block is
@@ -474,11 +477,11 @@ verification of scopes took about twice their estimates.
 
 Status: designed 2026-10-09 for the parked item of section 9 ("carrying
 the previous index across edits"). Step 1 of 12.11 (the index side) is
-implemented (Round 198, results in 12.13); steps 2 to 5 are not. When all
-of it is implemented it
-replaces the "No carry-over" bullet of section 6 and both the carrying
-and the `workspace/semanticTokens/refresh` items of section 9; those
-bullets are left as they are until then. Line numbers are those of HEAD
+implemented (Round 198, results in 12.13); steps 2 and 3 (server,
+features, refresh) are implemented (Round 199, results in 12.14); step 4
+(diagnostics through the edit, 12.8) and the docs part of step 5 beyond
+sections 6 and 9 are not. Sections 6 and 9 and LSP.md describe the
+implemented behaviour. Line numbers in 12.1 to 12.12 are those of HEAD
 2c7e406.
 
 ### 12.1 Problem, and what the old rejection missed
@@ -822,7 +825,7 @@ be measured in step 1 of 12.11):
    (parked).
    Measure the copied and shared parts and the time on zstd.c and the
    two dense files (12.9).
-2. **Server and features.** Carry at install, publish swap, failure
+2. **Server and features (done, Round 199; see 12.14).** Carry at install, publish swap, failure
    drop, references in requests, the policy column, `TokCache.serial`,
    the tie rule, `isIncomplete`, the hover line. A test extension,
    `cereal/holdChecks {"hold": bool}`, makes a check wait at its start
@@ -851,7 +854,7 @@ be measured in step 1 of 12.11):
    do not change, since a line inserted at the top moves every event
    alike. The B2 claim "csym_hover fails without the wait" then no
    longer applies; the wait is covered by `CP_POS` in `carry_cidx`.
-3. **Refresh.** The capability in `initialize`, `Unit.tok_stale`, the
+3. **Refresh (done, Round 199; see 12.14).** The capability in `initialize`, `Unit.tok_stale`, the
    send at publish, the token policy chosen by the capability. Tests:
    `carry_cidx` (with the capability: the refresh is recorded) and
    `csym_b3` (without it: no refresh is sent). `csym_b3` also gains a
@@ -991,4 +994,64 @@ inserted line and `--verify-carry` reports one scope difference. It is
 the same approximation as an edit inside a declaration, but it fires for
 line insertions that share a prefix with the following line; completion's
 scope test is the only user. `static int inserted_decl;` has none.
+
+### 12.14 Steps 2 and 3 results (Round 199)
+
+Implemented as designed (server.c, features.c, lsp.h; the tests below),
+with the user's decisions on the seven open questions: references use the
+carried index after the D1 timeout; the outline answers at once; the
+diagnostics step (4) comes later and is not done; `cereal/holdChecks` is
+test only; the hover line is kept; an extra index alive during a check is
+accepted with no size cap. Differences from the text above:
+- `Req.cidx` stays `const`; `handle_request` holds the reference in a
+  local (`cx`) and releases it on every exit (the rename refusal path
+  included). `Req` gained `c_carried`; `c_fresh` also requires it false.
+- The policy column is `CPolicy` (`CP_NONE`, `CP_ANY`, `CP_POS`,
+  `CP_WAIT`, plus `CP_TOK`, resolved per request to `CP_ANY` or `CP_WAIT`
+  by the client's `refreshSupport`). `pos_damaged` builds a scratch `Req`
+  to call `req_loc` under `S.m`.
+- `Unit.tok_stale` is set when a token answer lacked the newest
+  snapshot's own index and a check is pending or a newer snapshot is
+  coming (so not for units that are never checked); it is cleared, and the
+  refresh sent, when a check publishes a non-null index. It is set
+  whether or not the client takes refreshes; `send_refresh` checks.
+- `cereal/holdChecks` waits in the builder at the start of the check
+  (`S.work`; ended by an edit of that unit, the release or shutdown).
+- The hover line test takes the damage's end as exclusive when the damage
+  is not empty (a damage ending at a line start touches nothing of that
+  line); the inclusive end of 12.3 stays for `cindex_damaged`.
+- `CEREAL_LSP_STATS` logs `carry %.3fs, kept N of M events` per install and
+  `carried 0|1` per request.
+- Tests: `tests/lsp/carry_cidx` as planned (the held checks, both edits,
+  the three D1-policy cases, release and refresh, delta, fresh answers);
+  `tests/lsp/csym_b3` gained a token range request after an edit and a new
+  `absent` step in lsp_session.py (a method must not have been received:
+  the "no refresh without the capability" check, which needed a step the
+  plan did not list); `fault_check` gained a hover before and after the
+  third check (with the carried index dropped by the failed one it is null;
+  checked by disabling the drop, which fails the session); the D1 notes of
+  csym, csym_hover and csym_refs changed, and none of their answers.
+  `tests/lsp_stress.py BIN FILE [EDITS]` is the 200-edit stress run of
+  the plan (inserts, then at once tokens, completion and hover; not held).
+- Not tested by a golden: the tie rule (a macro token and a carried C
+  token at one place), `TokCache` reuse across the publish (the delta in
+  `carry_cidx` goes through it), and a header-only edit.
+
+**Measurements** (zstd.c, 2.2 MB, the server, `VmHWM` reset when the macro
+snapshot of an inserted line was published and read after the check; 3
+runs each, machine shared):
+
+| | Peak RSS during the check | RSS after |
+|---|---|---|
+| without carry (HEAD) | 42.8 MB | 40.0 MB |
+| with carry | 45.8 MB | 42.9 MB |
+
++3.0 MB (+7%), against the 4.1 MB of index plus copy of 12.13. The
+residue after the check is malloc keeping pages, not the carried index
+(it is freed at publish). The 43 MB worst case of the `vN` file was not
+measured in the server; 12.13 has its `--verify-carry` figures.
+
+**Known imprecision.** Hover marks "rechecking" only for an edited
+declaration of the entity itself; a use of an entity whose type changed
+elsewhere shows the old text unmarked (12.10).
 

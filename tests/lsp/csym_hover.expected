@@ -392,7 +392,7 @@
 ## no entity: whitespace
 >> textDocument/hover
 null
-## D1: an edit then at once a hover: it waits for the new snapshot's check (the local count moved down a line)
+## D1: an edit then at once a hover: it waits for the new snapshot only and answers from the index carried over the edit (the local count moved down a line; its declaration was not edited, so no marker)
 >> textDocument/didChange
 >> textDocument/hover
 {

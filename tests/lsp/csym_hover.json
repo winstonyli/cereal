@@ -35,7 +35,7 @@
  {"send": {"id": 22, "method": "textDocument/hover", "params": {"textDocument": {"uri": "file://$ROOT/csym_hover/main.c"}, "position": {"line": 16, "character": 16}}}},
  {"note": "no entity: whitespace"},
  {"send": {"id": 23, "method": "textDocument/hover", "params": {"textDocument": {"uri": "file://$ROOT/csym_hover/main.c"}, "position": {"line": 10, "character": 0}}}},
- {"note": "D1: an edit then at once a hover: it waits for the new snapshot's check (the local count moved down a line)"},
+ {"note": "D1: an edit then at once a hover: it waits for the new snapshot only and answers from the index carried over the edit (the local count moved down a line; its declaration was not edited, so no marker)"},
  {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/csym_hover/main.c", "version": 2}, "contentChanges": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "text": "/* moved */\n"}]}}},
  {"send": {"id": 24, "method": "textDocument/hover", "params": {"textDocument": {"uri": "file://$ROOT/csym_hover/main.c"}, "position": {"line": 13, "character": 8}}}},
  {"send": {"id": 25, "method": "shutdown"}},

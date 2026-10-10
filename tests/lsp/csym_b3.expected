@@ -1295,6 +1295,20 @@
   }
  ]
 }
+## an edit then at once a token request: this client has no refreshSupport, so the request waits for the new snapshot's check (CP_WAIT) and has the new name; no refresh is ever sent
+>> textDocument/didChange
+>> textDocument/semanticTokens/range
+{
+ "data": [
+  24,
+  4,
+  10,
+  3,
+  1
+ ]
+}
+>> (idle)
+>> (no workspace/semanticTokens/refresh)
 >> shutdown
 null
 >> exit
