@@ -473,7 +473,9 @@ verification of scopes took about twice their estimates.
 ## 12. Carry-over design
 
 Status: designed 2026-10-09 for the parked item of section 9 ("carrying
-the previous index across edits"), not implemented. When implemented it
+the previous index across edits"). Step 1 of 12.11 (the index side) is
+implemented (Round 198, results in 12.13); steps 2 to 5 are not. When all
+of it is implemented it
 replaces the "No carry-over" bullet of section 6 and both the carrying
 and the `workspace/semanticTokens/refresh` items of section 9; those
 bullets are left as they are until then. Line numbers are those of HEAD
@@ -801,7 +803,7 @@ be measured in step 1 of 12.11):
 
 ### 12.11 Tests, order and estimate
 
-1. **Index.** `refs`, `serial`, `core`; the CSR moved out of
+1. **Index (done, Round 198; see 12.13).** `refs`, `serial`, `core`; the CSR moved out of
    `csx_finish`; `cindex_text_edit`, `cindex_carry`, `cindex_damaged`,
    `cindex_touched`; the verify exception. The runnable check is
    `cereal check --verify-carry=OLD FILE`. It indexes FILE with OLD's
@@ -929,4 +931,64 @@ Seven rounds were run on this section against the code at 2c7e406.
    capability is per session, so it moved to `csym_b3`.
 7. **Final pass** over the whole section: nothing material. Sections 6
    and 9 are named as superseded but not edited.
+
+### 12.13 Step 1 results (Round 198)
+
+Implemented as designed (csymidx.c/h, main.c, `tests/symidx/carry`);
+`refs` is a `uint32_t` updated with the `thread.h` atomics. Differences
+from the text above:
+- `cindex_verify_carry(ix1, c, fresh, sm2, out)` lives in csymidx.c (it
+  needs the file-local helpers) and takes the carried index, which
+  main.c makes and times; `--verify-carry=OLD[@PATH]` lets OLD stand in
+  for PATH instead of the input (the header golden). Its output is the
+  `carry:` line, up to 20 `diff:` lines (events, then scopes outside the
+  damage; a scope is outside when neither end is in it) and any
+  `verify:` problem; only structural problems set the exit status. It
+  also checks `cindex_damaged` at and next to both damage ends and
+  `cindex_touched` against the event counts.
+  `CEREAL_CARRY_STATS=1` prints sizes and the carry time on stderr.
+- `cindex_bytes` of a carried index counts only what it owns.
+- Goldens: `tests/symidx/carry/NAME.{old,c,expected}` (`NAME.at`: the
+  `@PATH`), run by a loop of its own in tests/run.sh: `top_comment`,
+  `ident_extend`, `stmt_typed`, `brace_deleted` (3 scope differences),
+  `typedef_var` (16 differences at a distance) and `hdr` (an edit in a
+  header). The tool does detect a bug: shifting kept offsets by one
+  byte fails `top_comment` at once.
+
+**Measurements** (`cereal check --verify-carry`, one inserted line in the
+middle; the dense files regenerated as in section 11; machine shared;
+bytes):
+
+| Unit | Index | Copied | Shared | Index + copy | Copy time |
+|---|---|---|---|---|---|
+| src/main.c | 476,413 | 187,480 | 288,933 | 0.66 MB | 0.6 ms |
+| zstd.c | 2,523,151 | 1,572,920 | 950,231 | 4.10 MB | 1.1 ms |
+| 4 MiB `int vN;` | 31,209,205 | 11,910,944 | 19,298,261 | 43.1 MB | 4.4 ms |
+| 4 MiB `int fN;` | 29,608,277 | 6,144,640 | 23,463,641 | 35.8 MB | 2.6 ms |
+
+The copied and shared parts agree with the estimates of 12.9 (1.5, 12 and
+7 MB copied). The time includes the text diff and the hash. RSS growth
+over the carry (+5.4 MB for `vN`, +1 MB for `fN` and less elsewhere) says
+little, since malloc reuses freed pages.
+
+**The memory claim is too low.** 12.9 says one extra index alive during
+the check costs +31 MB (`vN`, +16% of the 194 MB check peak on record).
+As built (K3), the copy holds a reference on the whole original, so its
+events, CSR and scopes live on with the decls and strings: the extra is
+index plus copy, 43.1 MB for `vN` and 35.8 MB for `fN`. Against peak RSS
+of `cereal check --verify-symbols` on the same file (154 MB and 230 MB)
+that is +28% and +16%; for zstd.c, +4.1 MB on 17 MB. The server's own
+check peak (macro phase included) was not measured, since the server
+side is step 2. To get back to +31 MB the carried index would keep what
+`cindex_touched` needs (a DECL/DEF count per decl, 4 bytes) and the core
+would shrink to decls and strings, a separate refcounted object. Not
+done; the choice (that, or accept +43 MB, or a size cap) is open.
+
+**A limit found.** An inserted line that begins like the next
+declaration (`int inserted_decl;` before `int v165428;`) makes the text
+diff start inside that declaration, so its root scope grows over the
+inserted line and `--verify-carry` reports one scope difference. It is
+the same approximation as an edit inside a declaration, but it fires for
+line insertions that share a prefix with the following line; completion's
+scope test is the only user. `static int inserted_decl;` has none.
 

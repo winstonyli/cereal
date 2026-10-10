@@ -49,6 +49,10 @@ typedef struct CIdxFile {    /* the files that have events */
     uint32_t size;
     uint64_t hash;           /* cindex_hash of the text the check read */
     bool stale;              /* the language server's text differs */
+    /* carried index (B3_DESIGN.md 12): the text was edited since the check;
+     * the damage [dmg_begin, dmg_end] (inclusive) is in the current text */
+    bool edited;
+    uint32_t dmg_begin, dmg_end;
 } CIdxFile;
 
 typedef struct CIdxEvent {   /* sorted by (file, off) */
@@ -98,11 +102,20 @@ typedef struct CIndex {
     size_t nstrings;
     uint32_t unindexed;      /* --verify-symbols: names that got no event */
     uint32_t excused;        /* ... and names left out for a diagnosed line etc. */
+    /* Lifetime and identity (B3_DESIGN.md 12.2 K3).  refs: atomic, one on
+     * creation; serial: unique per index; core: for a carried index, the
+     * index that owns decls and strings (it holds a reference on it). */
+    uint32_t refs;
+    uint32_t serial;
+    struct CIndex *core;
 } CIndex;
 
+/* Drops a reference; the last one frees the index. */
 void cindex_free(CIndex *ix);
+/* Takes a reference (NULL ok); returns ix. */
+CIndex *cindex_ref(CIndex *ix);
 uint64_t cindex_hash(const char *text, size_t n);
-/* Retained bytes. */
+/* Retained bytes of this index (a carried one: not those it shares). */
 size_t cindex_bytes(const CIndex *ix);
 /* The file entry for a normalized path, -1 if none. */
 int cindex_file(const CIndex *ix, const char *path);
@@ -181,6 +194,35 @@ void cindex_hover(const CIndex *ix, const uint32_t *decls, size_t nd, bool md,
 /* Marks the files whose text in sm (by path) differs from what the check
  * read, or which sm lacks, stale. */
 void cindex_validate(CIndex *ix, SrcMgr *sm);
+/* ---- carrying an index across an edit (B3_DESIGN.md 12) ----------------- */
+
+typedef struct CIdxEdit {    /* old [pre, old_end) became new [pre, new_end) */
+    uint32_t pre, old_end, new_end;
+    bool same;               /* identical texts */
+} CIdxEdit;
+/* The edit from text a to text b: their common prefix and suffix, widened to
+ * whole identifiers. */
+void cindex_text_edit(const char *a, size_t na, const char *b, size_t nb,
+                      CIdxEdit *out);
+/* An index in the coordinates of sm_new's texts, made from `from` (whose
+ * offsets are in sm_old's): the per-text arrays copied, offsets shifted past
+ * each file's edit, events overlapping it dropped; decls and strings shared
+ * with from's core.  Files `from` marks stale, or sm_new lacks, stay or
+ * become stale.  With no change, from itself with one more reference. */
+CIndex *cindex_carry(CIndex *from, SrcMgr *sm_old, SrcMgr *sm_new);
+/* Offset off of file fi lies in the file's damage (inclusive at both ends). */
+bool cindex_damaged(const CIndex *ix, int fi, uint32_t off);
+/* A carried index has fewer DECL/DEF events for decl d than its core: the
+ * declared name itself was edited. */
+bool cindex_touched(const CIndex *ix, uint32_t d);
+/* --verify-carry: c, ix1 carried to the text in sm2, against fresh (the index
+ * of sm2's text): the structure of c, then the events and scopes outside the
+ * damage compared; prints the problems and "carry: kept K of N events,
+ * damage L:C-L:C, D differences".  Returns the structural problems
+ * (differences are reported, not counted). */
+size_t cindex_verify_carry(const CIndex *ix1, const CIndex *c,
+                           const CIndex *fresh, SrcMgr *sm2, FILE *out);
+
 /* sm's user or system file with exactly this (normalized) path, or NULL. */
 SrcFile *cindex_srcfile(SrcMgr *sm, const char *path);
 /* "DECL", "DEF", "REF"; "func", "obj", ...; " body expansion arg system" */

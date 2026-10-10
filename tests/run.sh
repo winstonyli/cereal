@@ -434,6 +434,22 @@ if [ -d "$ROOT/tests/symidx" ]; then
             fi
         done
     done
+    # carried index (B3_DESIGN.md 12): NAME.old's index carried to NAME.c
+    # against a fresh one; NAME.at: NAME.old stands in for that file instead
+    cd "$ROOT/tests/symidx/carry"
+    for f in *.c; do
+        n=${f%.c}
+        at=
+        [ -f "$n.at" ] && at=@$(cat "$n.at")
+        "$CEREAL" check -std=c99 --target=x86_64-linux-gnu \
+            "--verify-carry=$n.old$at" "$f" >"$TMP/sym.out" 2>&1 </dev/null
+        if cmp -s "$TMP/sym.out" "$n.expected"; then
+            ok
+        else
+            bad "symidx/carry/$f"
+            diff "$n.expected" "$TMP/sym.out" | head -10 | sed 's/^/    /'
+        fi
+    done
     cd "$ROOT"
 fi
 sym_verify() { # sym_verify LABEL FILES...: one verdict for the lot

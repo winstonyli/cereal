@@ -4,7 +4,9 @@
 #include "c/cdecl_int.h"
 #include "hash.h"
 #include "pp.h"
+#include "thread.h"
 
+#include <stdio.h>
 #include <string.h>
 
 /* ---- the builder ---------------------------------------------------------- */
@@ -977,6 +979,31 @@ static uint32_t *freeze_scopes(Checker *c, CIndex *ix, const char *strings,
     return map;
 }
 
+static uint32_t serial_counter;
+
+static uint32_t next_serial(void)
+{
+    return atomic_add_u32(&serial_counter, 1) + 1;
+}
+
+/* The events by decl (CSR: by_decl_start, by_decl) from ev, nev, ndecls. */
+static void build_csr(CIndex *ix)
+{
+    uint32_t i, nd = ix->ndecls, ne = ix->nev;
+    uint32_t *fill;
+    ix->by_decl_start = xcalloc(nd + 1, sizeof *ix->by_decl_start);
+    ix->by_decl = xmalloc((ne + 1) * sizeof *ix->by_decl);
+    for (i = 0; i < ne; i++)
+        ix->by_decl_start[ix->ev[i].decl + 1]++;
+    for (i = 0; i < nd; i++)
+        ix->by_decl_start[i + 1] += ix->by_decl_start[i];
+    fill = xmalloc((nd + 1) * sizeof *fill);
+    memcpy(fill, ix->by_decl_start, (nd + 1) * sizeof *fill);
+    for (i = 0; i < ne; i++)
+        ix->by_decl[fill[ix->ev[i].decl]++] = i;
+    free(fill);
+}
+
 CIndex *csx_finish(Checker *c)
 {
     SymIdxB *b = c->sx;
@@ -1074,6 +1101,8 @@ CIndex *csx_finish(Checker *c)
                 ix->files[nf].size = cur->size;
                 ix->files[nf].hash = cindex_hash(cur->buf, cur->size);
                 ix->files[nf].stale = false;
+                ix->files[nf].edited = false;
+                ix->files[nf].dmg_begin = ix->files[nf].dmg_end = 0;
                 nf++;
             }
         }
@@ -1127,22 +1156,11 @@ CIndex *csx_finish(Checker *c)
     for (i = 0; i < nf; i++)
         ix->files[i].path = ix->strings + path_off[i];
     free(path_off);
-    /* events by decl */
-    ix->by_decl_start = xcalloc(nd + 1, sizeof *ix->by_decl_start);
-    ix->by_decl = xmalloc((ne + 1) * sizeof *ix->by_decl);
-    for (i = 0; i < ne; i++)
-        ix->by_decl_start[ix->ev[i].decl + 1]++;
-    for (i = 0; i < nd; i++)
-        ix->by_decl_start[i + 1] += ix->by_decl_start[i];
-    {
-        uint32_t *fill = xmalloc((nd + 1) * sizeof *fill);
-        memcpy(fill, ix->by_decl_start, (nd + 1) * sizeof *fill);
-        for (i = 0; i < ne; i++)
-            ix->by_decl[fill[ix->ev[i].decl]++] = i;
-        free(fill);
-    }
+    build_csr(ix);
     ix->ev = xrealloc(ix->ev, (ne + 1) * sizeof *ix->ev);
     b->ev.len = b->decls.len = 0;
+    ix->refs = 1;
+    ix->serial = next_serial();
     return ix;
 }
 
@@ -1150,16 +1168,27 @@ CIndex *csx_finish(Checker *c)
 
 void cindex_free(CIndex *ix)
 {
-    if (!ix)
+    if (!ix || atomic_add_u32(&ix->refs, (uint32_t)-1) != 1)
         return;
     free(ix->files);
     free(ix->ev);
     free(ix->by_decl);
     free(ix->by_decl_start);
-    free(ix->decls);
     free(ix->scopes);
-    free(ix->strings);
+    if (ix->core) {          /* decls and strings are the core's */
+        cindex_free(ix->core);
+    } else {
+        free(ix->decls);
+        free(ix->strings);
+    }
     free(ix);
+}
+
+CIndex *cindex_ref(CIndex *ix)
+{
+    if (ix)
+        atomic_add_u32(&ix->refs, 1);
+    return ix;
 }
 
 uint64_t cindex_hash(const char *text, size_t n)
@@ -1173,8 +1202,9 @@ size_t cindex_bytes(const CIndex *ix)
         return 0;
     return sizeof *ix + ix->nfiles * sizeof *ix->files +
            ix->nev * (sizeof *ix->ev + sizeof *ix->by_decl) +
-           (ix->ndecls + 1) * (sizeof *ix->decls + sizeof *ix->by_decl_start) +
-           ix->nscopes * sizeof *ix->scopes + ix->nstrings;
+           (ix->ndecls + 1) * sizeof *ix->by_decl_start +
+           ix->nscopes * sizeof *ix->scopes +
+           (ix->core ? 0 : (ix->ndecls + 1) * sizeof *ix->decls + ix->nstrings);
 }
 
 int cindex_file(const CIndex *ix, const char *path)
@@ -1649,7 +1679,7 @@ size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
             if ((e->flags & CIX_ROLE) != CIX_REF)
                 declared = true;
         }
-        if (!declared && ix->decls[i].name &&
+        if (!declared && !ix->core && ix->decls[i].name &&
             !(ix->decls[i].flags & (CIDF_BUILTIN | CIDF_IMPLICIT | CIDF_SYSTEM))) {
             fprintf(out, "verify: #%u %s '%s' has no declaration event\n", i,
                     kind_names[ix->decls[i].kind], cindex_name(ix, i));
@@ -1695,4 +1725,363 @@ size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
             "%u unindexed, %u excused\n", ix->nev, ix->ndecls, ix->nscopes,
             ix->nfiles, cindex_bytes(ix), ix->unindexed, ix->excused);
     return bad + ix->unindexed;
+}
+
+/* ---- carrying an index across an edit (B3_DESIGN.md 12) --------------------- */
+
+void cindex_text_edit(const char *a, size_t na, const char *b, size_t nb,
+                      CIdxEdit *out)
+{
+    size_t m = na < nb ? na : nb, pre = 0, suf = 0, oe, ne;
+    while (pre < m && a[pre] == b[pre])
+        pre++;
+    if (pre == na && na == nb) {
+        out->pre = out->old_end = out->new_end = (uint32_t)na;
+        out->same = true;
+        return;
+    }
+    while (suf < m - pre && a[na - 1 - suf] == b[nb - 1 - suf])
+        suf++;
+    oe = na - suf;
+    ne = nb - suf;
+    /* whole identifiers: one that continues across a boundary, in either
+     * text, is inside the span (a[oe..] and b[ne..] are the same bytes) */
+    if ((pre < na && cindex_ident_char(a[pre])) ||
+        (pre < nb && cindex_ident_char(b[pre])))
+        while (pre > 0 && cindex_ident_char(a[pre - 1]))
+            pre--;
+    if ((oe > 0 && cindex_ident_char(a[oe - 1])) ||
+        (ne > 0 && cindex_ident_char(b[ne - 1])))
+        while (oe < na && cindex_ident_char(a[oe])) {
+            oe++;
+            ne++;
+        }
+    out->pre = (uint32_t)pre;
+    out->old_end = (uint32_t)oe;
+    out->new_end = (uint32_t)ne;
+    out->same = false;
+}
+
+/* The map of an old position (a point between bytes): monotone. */
+static uint32_t edit_map(const CIdxEdit *e, uint32_t x)
+{
+    if (x <= e->pre)
+        return x;
+    return x >= e->old_end ? x - e->old_end + e->new_end : e->pre;
+}
+
+CIndex *cindex_carry(CIndex *from, SrcMgr *sm_old, SrcMgr *sm_new)
+{
+    uint32_t nf = from->nfiles, i, k, ne = 0;
+    CIdxEdit *ed = xcalloc(nf + 1, sizeof *ed);   /* zeros: the identity */
+    SrcFile **nt = xcalloc(nf + 1, sizeof *nt);   /* the new text, or NULL */
+    bool changed = false;
+    CIndex *c;
+    for (i = 0; i < nf; i++) {
+        const CIdxFile *cf = &from->files[i];
+        SrcFile *fo, *fn;
+        ed[i].same = true;
+        if (cf->stale)
+            continue;
+        fo = cindex_srcfile(sm_old, cf->path);
+        fn = cindex_srcfile(sm_new, cf->path);
+        if (!fo || !fn) {
+            changed = true;                       /* becomes stale */
+            continue;
+        }
+        cindex_text_edit(fo->buf, fo->size, fn->buf, fn->size, &ed[i]);
+        nt[i] = fn;
+        changed |= !ed[i].same;
+    }
+    if (!changed) {
+        free(ed);
+        free(nt);
+        return cindex_ref(from);
+    }
+    c = xcalloc(1, sizeof *c);
+    c->refs = 1;
+    c->serial = next_serial();
+    c->core = cindex_ref(from->core ? from->core : from);
+    c->decls = from->decls;
+    c->ndecls = from->ndecls;
+    c->strings = from->strings;
+    c->nstrings = from->nstrings;
+    c->unindexed = from->unindexed;
+    c->excused = from->excused;
+    c->nfiles = nf;
+    c->files = xmalloc((nf + 1) * sizeof *c->files);
+    memcpy(c->files, from->files, nf * sizeof *c->files);
+    for (i = 0; i < nf; i++) {
+        CIdxFile *cf = &c->files[i];
+        const CIdxEdit *e = &ed[i];
+        if (cf->stale)
+            continue;
+        if (!nt[i]) {
+            cf->stale = true;
+            continue;
+        }
+        if (!e->same) {
+            uint32_t b = e->pre, en = e->new_end;
+            if (cf->edited) {                     /* hull with the old damage */
+                uint32_t mb = edit_map(e, cf->dmg_begin);
+                uint32_t me = edit_map(e, cf->dmg_end);
+                b = mb < b ? mb : b;
+                en = me > en ? me : en;
+            }
+            cf->size = nt[i]->size;
+            cf->hash = cindex_hash(nt[i]->buf, nt[i]->size);
+            cf->edited = true;
+            cf->dmg_begin = b;
+            cf->dmg_end = en;
+        }
+    }
+    c->ev = xmalloc((from->nev + 1) * sizeof *c->ev);
+    for (k = 0; k < from->nev; k++) {
+        CIdxEvent o = from->ev[k];
+        const CIdxEdit *e = &ed[o.file];
+        if (o.off >= e->old_end)
+            o.off = o.off - e->old_end + e->new_end;
+        else if (o.off + o.len > e->pre)
+            continue;                             /* overlaps the edit */
+        c->ev[ne++] = o;
+    }
+    c->nev = ne;
+    c->nscopes = from->nscopes;
+    c->scopes = xmalloc((from->nscopes + 1) * sizeof *c->scopes);
+    for (i = 0; i < from->nscopes; i++) {
+        const CIdxEdit *e = &ed[from->scopes[i].file];
+        c->scopes[i] = from->scopes[i];
+        c->scopes[i].begin = edit_map(e, from->scopes[i].begin);
+        c->scopes[i].end = edit_map(e, from->scopes[i].end);
+    }
+    build_csr(c);
+    free(ed);
+    free(nt);
+    return c;
+}
+
+bool cindex_damaged(const CIndex *ix, int fi, uint32_t off)
+{
+    const CIdxFile *cf;
+    if (!ix || fi < 0 || (uint32_t)fi >= ix->nfiles)
+        return false;
+    cf = &ix->files[fi];
+    return cf->edited && off >= cf->dmg_begin && off <= cf->dmg_end;
+}
+
+/* How many DECL and DEF events decl d has in ix. */
+static uint32_t decl_events(const CIndex *ix, uint32_t d)
+{
+    uint32_t j, n = 0;
+    for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++)
+        if ((ix->ev[ix->by_decl[j]].flags & CIX_ROLE) != CIX_REF)
+            n++;
+    return n;
+}
+
+bool cindex_touched(const CIndex *ix, uint32_t d)
+{
+    return ix->core && d < ix->ndecls &&
+           decl_events(ix, d) < decl_events(ix->core, d);
+}
+
+/* ---- --verify-carry ---------------------------------------------------------- */
+
+typedef struct VEv {
+    uint32_t off;
+    uint32_t role;
+    uint32_t kind;
+    const char *name;
+} VEv;
+
+static int vev_cmp(const VEv *a, const VEv *b)
+{
+    if (a->off != b->off)
+        return a->off < b->off ? -1 : 1;
+    if (a->role != b->role)
+        return a->role < b->role ? -1 : 1;
+    if (a->kind != b->kind)
+        return a->kind < b->kind ? -1 : 1;
+    return strcmp(a->name, b->name);
+}
+
+static int vev_qcmp(const void *a, const void *b)
+{
+    return vev_cmp(a, b);
+}
+
+/* The events of file fi of ix that lie outside [db, de] (the damage; none
+ * excluded if !edited), sorted by (off, role, kind, name). */
+static VEv *vev_gather(const CIndex *ix, int fi, bool edited, uint32_t db,
+                       uint32_t de, size_t *n)
+{
+    VEv *v;
+    size_t cnt = 0;
+    uint32_t k;
+    v = xmalloc((ix->nev + 1) * sizeof *v);
+    for (k = fi < 0 ? ix->nev : cindex_lower(ix, (uint32_t)fi, 0);
+         k < ix->nev && ix->ev[k].file == fi; k++) {
+        const CIdxEvent *e = &ix->ev[k];
+        if (edited && !(e->off + e->len <= db || e->off >= de))
+            continue;
+        v[cnt].off = e->off;
+        v[cnt].role = e->flags & CIX_ROLE;
+        v[cnt].kind = ix->decls[e->decl].kind;
+        v[cnt].name = cindex_name(ix, e->decl);
+        cnt++;
+    }
+    qsort(v, cnt, sizeof *v, vev_qcmp);
+    *n = cnt;
+    return v;
+}
+
+typedef struct VSc {
+    uint32_t b, e;
+} VSc;
+
+/* (begin ascending, end descending), as the index sorts scopes */
+static int vsc_cmp(const VSc *x, const VSc *y)
+{
+    if (x->b != y->b)
+        return x->b < y->b ? -1 : 1;
+    return x->e > y->e ? -1 : x->e < y->e;
+}
+
+/* The scopes of file fi, in index order, with neither end in the damage. */
+static VSc *vsc_gather(const CIndex *ix, int fi, bool edited, uint32_t db,
+                       uint32_t de, size_t *n)
+{
+    VSc *v = xmalloc((ix->nscopes + 1) * sizeof *v);
+    size_t cnt = 0;
+    uint32_t k;
+    for (k = 0; fi >= 0 && k < ix->nscopes; k++) {
+        const CIdxScope *s = &ix->scopes[k];
+        if (s->file != (uint32_t)fi ||
+            (edited && ((s->begin >= db && s->begin <= de) ||
+                        (s->end >= db && s->end <= de))))
+            continue;
+        v[cnt].b = s->begin;
+        v[cnt].e = s->end;
+        cnt++;
+    }
+    *n = cnt;
+    return v;
+}
+
+/* The "L:C" of offset off, without the file name. */
+static const char *place_lc(SrcMgr *sm, const char *path, uint32_t off, char *buf,
+                            size_t bufsz)
+{
+    char *p;
+    int colons = 0;
+    cindex_place(sm, path, off, buf, bufsz);
+    for (p = buf + strlen(buf); p > buf; p--)
+        if (p[-1] == ':' && ++colons == 2)
+            return p;
+    return buf;
+}
+
+size_t cindex_verify_carry(const CIndex *ix1, const CIndex *c,
+                           const CIndex *fresh, SrcMgr *sm2, FILE *out)
+{
+    char *vb = NULL, *line;
+    size_t vl = 0, bad, ndiff = 0, nedited = 0;
+    FILE *m = open_memstream(&vb, &vl);
+    char dmg[1200] = "";
+    uint32_t i, d;
+    if (!m)
+        fatal("out of memory");
+    bad = cindex_verify(c, sm2, m);
+    fclose(m);
+    for (line = vb; line && *line;) {      /* the problems, not the summary */
+        char *nl = strchr(line, '\n');
+        if (strncmp(line, "symbols: ", 9))
+            fwrite(line, 1, nl ? (size_t)(nl - line) + 1 : strlen(line), out);
+        line = nl ? nl + 1 : NULL;
+    }
+    free(vb);
+    for (d = 0; d < c->ndecls; d++)        /* touched: fewer DECL/DEF events */
+        if (cindex_touched(c, d) != (decl_events(c, d) < decl_events(ix1, d))) {
+            fprintf(out, "verify: #%u: touched disagrees with the events\n", d);
+            bad++;
+        }
+    for (i = 0; i < c->nfiles + fresh->nfiles; i++) {
+        /* the files of the carried index, then those only fresh has */
+        const char *path;
+        int ci, fi;
+        bool ed;
+        uint32_t db = 1, de = 0;
+        size_t nc, nf, a, b;
+        VEv *vc, *vf;
+        VSc *sc, *sf;
+        char p1[512], p2[512];
+        if (i < c->nfiles) {
+            ci = (int)i;
+            path = c->files[i].path;
+            fi = cindex_file(fresh, path);
+            if (c->files[i].stale)
+                continue;
+        } else {
+            path = fresh->files[i - c->nfiles].path;
+            if (cindex_file(c, path) >= 0)
+                continue;
+            ci = -1;
+            fi = (int)(i - c->nfiles);
+        }
+        ed = ci >= 0 && c->files[ci].edited;
+        if (ed) {
+            db = c->files[ci].dmg_begin;
+            de = c->files[ci].dmg_end;
+            if (!cindex_damaged(c, ci, db) || !cindex_damaged(c, ci, de) ||
+                (db && cindex_damaged(c, ci, db - 1)) ||
+                cindex_damaged(c, ci, de + 1)) {
+                fprintf(out, "verify: %s: damage query disagrees\n", path);
+                bad++;
+            }
+            snprintf(dmg + strlen(dmg), sizeof dmg - strlen(dmg), "%s%s-%s",
+                     nedited ? " " : "", place_lc(sm2, path, db, p1, sizeof p1),
+                     place_lc(sm2, path, de, p2, sizeof p2));
+            nedited++;
+        }
+        vc = vev_gather(c, ci, ed, db, de, &nc);
+        vf = vev_gather(fresh, fi, ed, db, de, &nf);
+        for (a = b = 0; a < nc || b < nf;) {
+            int r = a == nc ? 1 : b == nf ? -1 : vev_cmp(&vc[a], &vf[b]);
+            const VEv *e = r <= 0 ? &vc[a] : &vf[b];
+            if (!r) {
+                a++, b++;
+                continue;
+            }
+            if (ndiff++ < 20)
+                fprintf(out, "diff: %s %s %s %s at %s\n", r < 0 ? "carried" : "fresh",
+                        cindex_role_name(e->role), cindex_kind_name(e->kind),
+                        e->name, cindex_place(sm2, path, e->off, p1, sizeof p1));
+            r < 0 ? a++ : b++;
+        }
+        free(vc);
+        free(vf);
+        /* scopes outside the damage: the same (begin, end) in the same order */
+        sc = vsc_gather(c, ci, ed, db, de, &nc);
+        sf = vsc_gather(fresh, fi, ed, db, de, &nf);
+        for (a = b = 0; a < nc || b < nf;) {
+            int r = a == nc ? 1 : b == nf ? -1 : vsc_cmp(&sc[a], &sf[b]);
+            const VSc *s = r <= 0 ? &sc[a] : &sf[b];
+            if (!r) {
+                a++, b++;
+                continue;
+            }
+            if (ndiff++ < 20)
+                fprintf(out, "diff: %s scope %s-%s\n", r < 0 ? "carried" : "fresh",
+                        place_lc(sm2, path, s->b, p1, sizeof p1),
+                        place_lc(sm2, path, s->e, p2, sizeof p2));
+            r < 0 ? a++ : b++;
+        }
+        free(sc);
+        free(sf);
+    }
+    if (ndiff > 20)
+        fprintf(out, "diff: ... and %zu more\n", ndiff - 20);
+    fprintf(out, "carry: kept %u of %u events, damage %s, %zu differences\n",
+            c->nev, ix1->nev, nedited ? dmg : "none", ndiff);
+    return bad;
 }

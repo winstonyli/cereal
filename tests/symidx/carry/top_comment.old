@@ -1,0 +1,10 @@
+typedef int T;
+static int sq(T v) { return v * v; }
+int run(int n)
+{
+    T acc = 0;
+    int i;
+    for (i = 0; i < n; i++)
+        acc += sq(i);
+    return acc;
+}

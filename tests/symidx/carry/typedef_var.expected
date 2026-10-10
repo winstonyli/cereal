@@ -1,0 +1,17 @@
+diff: fresh DEF obj W at typedef_var.c:1:5
+diff: carried DEF typedef W at typedef_var.c:1:5
+diff: carried REF typedef W at typedef_var.c:2:1
+diff: carried DEF func make at typedef_var.c:2:3
+diff: carried REF typedef W at typedef_var.c:2:8
+diff: carried DEF param a at typedef_var.c:2:10
+diff: carried REF typedef W at typedef_var.c:2:15
+diff: carried DEF obj b at typedef_var.c:2:17
+diff: carried REF param a at typedef_var.c:2:21
+diff: carried REF obj b at typedef_var.c:2:31
+diff: fresh REF obj W at typedef_var.c:3:17
+diff: carried REF typedef W at typedef_var.c:3:17
+diff: carried DEF obj q at typedef_var.c:3:19
+diff: carried REF func make at typedef_var.c:3:23
+diff: carried REF obj q at typedef_var.c:3:39
+diff: carried scope 2:13-2:35
+carry: kept 14 of 14 events, damage 1:1-1:1, 16 differences

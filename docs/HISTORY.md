@@ -3646,3 +3646,42 @@ verify.sh gcc.dg 3908 of 3910, c-c++-common 635 of 636, cpp 285 of 285
 (unchanged); symcov 4716 files, 0 unindexed (10 skipped); the LSP
 sessions (both modes) under TSan: 26 passed, 0 warnings; uvloop loop.c
 3.888 G instructions (HEAD 3.885 G).
+
+Round 198: ROADMAP B3 carry-over, step 1 of B3_DESIGN.md 12.11 (the index
+side only; server, features and diagnostics are steps 2 to 4). csymidx.c/h:
+`CIndex` gained an atomic `refs` (`cindex_free` drops one, `cindex_ref`
+takes one), a unique `serial` and `core`, the original that owns decls
+and strings; `CIdxFile` gained `edited`, `dmg_begin`, `dmg_end`; the CSR
+code of `csx_finish` moved into `build_csr`. `cindex_text_edit` (common
+prefix and suffix of two texts, widened to whole identifiers),
+`cindex_carry(from, sm_old, sm_new)` (copies files, events, CSR and
+scopes; shifts offsets past each file's edit, drops events overlapping
+it, maps scopes through the one monotone map, shares decls and strings
+with the core; a stale or missing file stays or becomes stale; no change
+returns `from` with a reference; the damage is the hull along a chain),
+`cindex_damaged`, `cindex_touched`; `cindex_verify` skips its "every decl
+has a declaration event" rule for a carried index; `cindex_bytes` counts
+only what an index owns. main.c: `cereal check --verify-carry=OLD[@PATH]`
+indexes the input with OLD's text standing in for it (or for PATH),
+indexes it again, carries the first to the second and compares events
+and scopes outside the damage (`cindex_verify_carry`); the exit status
+reflects only structural problems, differences are printed.
+`CEREAL_CARRY_STATS=1` prints sizes and the carry time. Tests:
+`tests/symidx/carry` (six goldens: comment inserted at the top, an
+identifier extended, a statement typed, a `}` deleted, a typedef changed
+to a variable, an edit in a header) with a loop in tests/run.sh.
+Measured (B3_DESIGN.md 12.13): the copy is 62%, 38% and 21% of the
+index of zstd.c, the `vN` file and the `fN` file, in 1.1, 4.4 and 2.6 ms;
+the claim that carrying costs +31 MB at the 4 MiB limit is too low as
+built: the copy keeps the whole original alive, so index plus copy is
+43.1 MB (`vN`) and 35.8 MB (`fN`), +28% and +16% of the peak RSS of a
+check of the same file; a lighter core is an open choice. A line
+inserted that begins like the next declaration widens that declaration's
+root scope (a limit, documented). About 570 lines added and 20 removed in
+src (csymidx.c +409/-20, main.c +114, csymidx.h +43), against ~220
+estimated for the step, which put the comparison tool in. Gates
+(gate.sh): run.sh 1687 passed, 0 failed; san.sh 1687 passed, 605 files,
+0 findings; verify.sh gcc.dg 3908 of 3910, c-c++-common 635 of 636, cpp
+285 of 285 (unchanged); symcov 4716 files, 0 unindexed (10 skipped);
+uvloop loop.c 3.889 G instructions. Not run: the LSP sessions under TSan
+beyond what san.sh runs (no server code changed).

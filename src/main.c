@@ -37,6 +37,9 @@ static void usage(FILE *o)
         "                --dump-types: print declarations and layouts\n"
         "                --dump-symbols: print the C symbol index\n"
         "                --verify-symbols: check it, report names it missed\n"
+        "                --verify-carry=OLD[@PATH]: carry OLD's index (OLD's text\n"
+        "                standing in for the input or PATH) to the input's text\n"
+        "                and compare it with a fresh one\n"
         "                --summaries: compute them only (timing)\n"
         "                --dump-summaries: print each unit's summary and read set\n"
         "                --validate-summaries=FILE: check each unit's read set in\n"
@@ -162,6 +165,106 @@ done:
 
 static FrontendOpts fe_opts;
 static bool parse_cells, dump_symbols, verify_symbols;
+static const char *carry_old, *carry_at;  /* --verify-carry=OLD[@PATH] */
+
+/* The text of OLD stands in for the file PATH (default: the input). */
+typedef struct CarryOv {
+    const char *path, *text;
+    size_t len;
+} CarryOv;
+
+static bool carry_overlay(void *ctx, const char *path, const char **buf,
+                          size_t *len)
+{
+    const CarryOv *c = ctx;
+    if (strcmp(path, c->path))
+        return false;
+    *buf = c->text;
+    *len = c->len;
+    return true;
+}
+
+static double carry_now(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+
+static long carry_rss_kb(void)   /* VmRSS; stats only */
+{
+    char line[128];
+    long kb = -1;
+    FILE *f = fopen("/proc/self/status", "r");
+    while (f && fgets(line, sizeof line, f))
+        if (sscanf(line, "VmRSS: %ld", &kb) == 1)
+            break;
+    if (f)
+        fclose(f);
+    return kb;
+}
+
+/* --verify-carry=OLD: the index of FILE with OLD's text, carried to FILE's
+ * text, against the index of FILE (cindex_verify_carry).
+ * CEREAL_CARRY_STATS=1: sizes and times on stderr. */
+static int verify_carry_one(Options *o, const char *path, FILE *out, FILE *err)
+{
+    TU tu1, tu2;
+    FrontendOpts fo = fe_opts;
+    CIndex *ix1 = NULL, *ix2 = NULL, *c;
+    CarryOv ov;
+    char *text;
+    long n;
+    FILE *f = fopen(carry_old, "rb");
+    int rc = 0;
+    double t0, t1;
+    long rss0, rss1;
+    if (!f || fseek(f, 0, SEEK_END) || (n = ftell(f)) < 0 || fseek(f, 0, SEEK_SET)) {
+        fprintf(err, "cereal: cannot read '%s'\n", carry_old);
+        return 2;
+    }
+    text = xmalloc((size_t)n + 1);
+    if (fread(text, 1, (size_t)n, f) != (size_t)n)
+        fatal("cannot read '%s'", carry_old);
+    fclose(f);
+    ov.text = text;
+    ov.len = (size_t)n;
+    fo.out = out;
+    fo.cidx = &ix1;
+    tu_init(&tu1, o);
+    tu1.diag.out = err;
+    ov.path = path_normalize(tu1.sm.arena, carry_at ? carry_at : path);
+    tu1.sm.overlay = carry_overlay;
+    tu1.sm.overlay_ctx = &ov;
+    frontend_run(&tu1, path, &fo);
+    fo.cidx = &ix2;
+    tu_init(&tu2, o);
+    tu2.diag.out = err;
+    frontend_run(&tu2, path, &fo);
+    if (!ix1 || !ix2) {
+        fprintf(err, "cereal: no index for '%s'\n", path);
+        rc = 2;
+    } else {
+        rss0 = carry_rss_kb();
+        t0 = carry_now();
+        c = cindex_carry(ix1, &tu1.sm, &tu2.sm);
+        t1 = carry_now();
+        rss1 = carry_rss_kb();
+        if (getenv("CEREAL_CARRY_STATS"))
+            fprintf(err, "carry: index %zu bytes, carried %zu bytes (shared %zu), "
+                    "%.4f s, RSS +%ld KB\n", cindex_bytes(ix1), cindex_bytes(c),
+                    cindex_bytes(ix1) - cindex_bytes(c), t1 - t0, rss1 - rss0);
+        if (cindex_verify_carry(ix1, c, ix2, &tu2.sm, out))
+            rc = 1;
+        cindex_free(c);
+    }
+    cindex_free(ix1);
+    cindex_free(ix2);
+    tu_free(&tu1);
+    tu_free(&tu2);
+    free(text);
+    return rc;
+}
 
 static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
 {
@@ -170,6 +273,8 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
     ParOptions po;
     CIndex *ix = NULL;
     int rc;
+    if (carry_old)
+        return verify_carry_one(o, path, out, err);
     tu_init(&tu, o);
     tu.diag.out = err;
     fo.out = out;
@@ -1032,6 +1137,15 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--verify-symbols")) {
             verify_symbols = true;
+            continue;
+        }
+        if (!strncmp(argv[i], "--verify-carry=", 15)) {
+            char *at = strchr(argv[i] + 15, '@');
+            carry_old = argv[i] + 15;
+            if (at) {
+                *at = 0;
+                carry_at = at + 1;
+            }
             continue;
         }
         if (!strcmp(argv[i], "--summaries")) {

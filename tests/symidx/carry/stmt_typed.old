@@ -1,0 +1,7 @@
+int helper(int v) { return v + 1; }
+int work(int n)
+{
+    int total = 0;
+    return total;
+}
+int after(void) { return helper(2) + work(3); }
