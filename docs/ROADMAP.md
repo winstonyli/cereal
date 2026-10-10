@@ -165,6 +165,8 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
 ## Track C: macro tooling (the selling point)
 - `cereal fix` applying the diagnostics' fix-its, macro-to-inline/enum/const
   suggestions, a baseline file for CI (est. 3 to 5 weeks).
+  Status: C1 done (Round 212: fix-its in the diagnostic engine, `-fdiagnostics-parseable-fixits`,
+  `-fdiagnostics-generate-patch`, JSON `fixits`, the edit builder and `fix --edits --diff`); C2 to C4 not started.
   Design for fix-its, `cereal fix` and LSP quick fixes (slices C1 to C4; 6 to 10 weeks realistic): [C_DESIGN.md](C_DESIGN.md).
 - Macro notes that match gcc ("in definition of macro" for tokens a
   parameter substituted): needs per-token provenance; design in HISTORY

@@ -361,8 +361,10 @@ static void drop_after_missing_include(DiagEngine *d)
         size_t m = strlen(dg->msg);
         if (dg->level >= DL_ERROR && !*dg->id && m > n &&
             !strcmp(dg->msg + m - n, tail)) {
-            for (k = i + 1; k < d->all.len; k++)
+            for (k = i + 1; k < d->all.len; k++) {
                 vec_free(&d->all.data[k]->notes);
+                vec_free(&d->all.data[k]->fixits);
+            }
             d->all.len = i + 1;
             return;
         }

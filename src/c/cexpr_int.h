@@ -280,7 +280,6 @@ const Field *find_field(Checker *c, TypeId rec, uint32_t name, uint64_t *off,
 void fuzzy_fields(Checker *c, Best *b, TypeId rec);
 bool gcc_integer(Checker *c, TypeId t);
 bool has_ival(Checker *c, uint32_t i);
-SrcLoc header_note_loc(Checker *c, SrcLoc loc, const char *hdr);
 void incomplete_error(Checker *c, SrcLoc loc, uint32_t value, TypeId t);
 bool inhibited(Checker *c, uint32_t i, bool fold);
 bool is_const(Checker *c, uint32_t i);

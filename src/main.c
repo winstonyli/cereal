@@ -1,4 +1,5 @@
 /* main.c - the `cereal` command. */
+#include "fixset.h"
 #include "driver.h"
 #include "par.h"
 #include "ppout.h"
@@ -51,7 +52,8 @@ static void usage(FILE *o)
         "                its entry\n"
         "  -fsyntax-only  the same as check\n"
         "  lsp           language server on stdin/stdout\n"
-        "  query KIND FILE:LINE:COL   KIND = def | decl | refs | uses | highlight |\n"
+        "  fix --edits=FILE --diff   print the unified diff of the edit groups in FILE\n"
+        "                (PATH BEGIN END \"TEXT\" per line, blank line between groups)\n"        "  query KIND FILE:LINE:COL   KIND = def | decl | refs | uses | highlight |\n"
         "                hover | visible | expand | callers | callees | deps |\n"
         "                rename=NEWNAME (a C name)\n"
         "  --list-warnings  list every -W option\n"
@@ -65,6 +67,7 @@ static void usage(FILE *o)
         "  -Werror=<name>  -Weverything\n"
         "  --target=NAME  the ABI for check (default: the host's)\n"
         "  -fdiagnostics-format=json  -fcolor-diagnostics  -P  -o FILE\n"
+        "  -fdiagnostics-parseable-fixits  -fdiagnostics-generate-patch\n"
         "  -M  -MM       print the make rule (headers it includes; -MM without\n"
         "                system headers) instead of running the mode; -MD  -MMD:\n"
         "                write it to a .d file as well (gcc's naming and rules)\n"
@@ -86,10 +89,13 @@ static void usage(FILE *o)
 static int finish(TU *tu, FILE *out)
 {
     deps_write(tu, out);    /* before the flush: a failed write is an error */
-    if (tu->opt->json)
+    if (tu->opt->json) {
         diag_print_json(&tu->diag, out);
-    else
+        if (tu->diag.gen_patch)
+            diag_generate_patch(&tu->diag);
+    } else {
         diag_flush(&tu->diag);
+    }
     return tu->diag.nerrors ? 1 : 0;
 }
 
@@ -1452,6 +1458,8 @@ int main(int argc, char **argv)
         usage(stderr);
         return 2;
     }
+    if (!strcmp(argv[1], "fix"))
+        return fix_main(argc - 2, argv + 2);
     for (i = 1; i < argc; i++)
         ccdb_given |= !strncmp(argv[i], "--compile-commands", 18);
     for (i = 1; i < argc; i++) {

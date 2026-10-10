@@ -84,16 +84,32 @@ typedef struct CellRead {
 typedef struct CellNote {
     CLoc loc;
     const char *msg;
+    uint8_t flags;              /* CN_* */
 } CellNote;
+#define CN_NOCOL 1
+#define CN_NOFIX 2
+#define CN_EXPN  4
+
+/* A fix-it: the end is the begin plus len (it never crosses a file). */
+typedef struct CellFix {
+    uint16_t owner;
+    uint8_t app;
+    CLoc at;
+    uint32_t len;
+    const char *text;
+} CellFix;
 
 typedef struct CellDiag {
     uint8_t level, once;
     const char *id;             /* static option name */
     uint32_t key;               /* relative item */
     CLoc loc, range_b, range_e;
-    const char *msg, *fixit;
+    const char *msg;
+    bool nofix;
     CellNote *notes;
     uint32_t nnotes;
+    CellFix *fixes;
+    uint32_t nfixes;
     CLoc *inc;
     uint32_t ninc;
 } CellDiag;

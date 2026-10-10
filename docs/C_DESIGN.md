@@ -7,7 +7,10 @@ enum or const suggestions) are out of scope here and get their own designs
 
 Claims about the code cite `file:line` at that commit. Claims about gcc-13
 were probed with gcc 13.4.0 on WSL (section 13). Numbers marked "est." are
-estimates. Nothing in this design is implemented.
+estimates. **Status: C1 is implemented (HISTORY Round 212, section 8 "C1
+as built"); C2 to C4 are not.** Where the text below still describes C1 as
+future work, "C1 as built" and the probe table (section 13, P11 to P19)
+take precedence.
 
 ## 1. Decisions in one place
 
@@ -181,9 +184,10 @@ fix-its already added, unless all of these hold:
    `SF_VIRTUAL` (`-D`, built-ins), `SF_SCRATCH` (pasted and `_Pragma`
    text), `SF_SYSTEM` and missing files.
 3. `text` has a newline only as its last character, and only when the fix
-   is an insertion at column 1. This is libcpp's `rich_location` rule, and
-   is checked in C1 by probe P11. The include insertion is the only
-   producer that needs a newline.
+   is an insertion at column 1. This is libcpp's `rich_location` rule. No
+   gcc-13 front-end diagnostic can produce any other newline (P11), so the
+   rule is a guard, not a probed behaviour. The include insertion is the
+   only producer that needs a newline.
 4. Neither end is strictly inside a token whose spelling differs from its
    bytes. A line splice inside the replaced token is allowed, because the
    bytes are replaced whole; an end that cuts through a splice is refused.
@@ -213,9 +217,13 @@ from the helpers, which are the only way producers add fix-its:
   - Callers are converted in C1: `header_note`, `builtin_mismatch`,
     `implicit_decl`'s include note and `parse.c:1186`. The old function and
     `header_note_loc` are deleted.
-  - Edge: a header not in the 20-entry `known[]` table goes to
-    `include_loc` every time (`cexpr.c:903`), so it gets a fix-it each
-    time. The builder dedupes these (5.2); P12 checks what gcc does.
+  - Edge (changed by P12): gcc gives the fix-it to the first note per
+    header, for any header, not only the 20 in `known[]`. C1 therefore keeps
+    a generic per-engine list of headers already noted (`hdr_seen`) and
+    ignores `known[]` for this. `include_loc` is also the line after the
+    last `#include` before the use *in the file that holds the use* (P18:
+    a header with no includes gets `1:1` in the header), not only the main
+    file.
 
 A fix-it on a token that came from a macro expansion is never written into
 the macro's definition. The only fixes that edit a definition are the lint
@@ -236,8 +244,9 @@ as in gcc. Without the flag the 1918 goldens are unchanged.
     `srcmgr_linecol`. Columns are never display columns (P1: tab case).
   - `F` and `T` are escaped by one function, `fixit_escape`: `\\`, `\"`,
     `\n`, and other bytes below 0x20 or of 0x7f and above as three-digit
-    octal (P2: `\303\251`). Whether gcc writes a tab as `\t` or `\011` is
-    probe P11.
+    octal (P2: `\303\251`). A tab is written `\t`, as gcc's
+    `print_escaped_string` does; no gcc-13 diagnostic emits a tab, so P11
+    cannot observe it.
 - A BOM is not counted (P9: columns match gcc). This is automatic once the
   mmap path strips the BOM too (C1 fixes the 64 KiB bug, section 2).
 
@@ -264,11 +273,15 @@ gcc-identical today, so there is nothing to match.
 - The builder's unified diff goes to stderr after the TU's diagnostics,
   with gcc's shape (P6): `--- NAME` / `+++ NAME`, 3 context lines,
   `@@ -a,b +c,d @@`, and `SrcFile.name` as written.
-- If the builder reports any overlap, the TU prints no patch at all.
-  - This follows gcc's edit_context, which goes invalid on a conflict (P8
-    shows the same for a `#line`d file). Checked by P13.
-  - A fix-it whose presumed file differs from its physical file (`#line`)
-    also invalidates the patch, matching P8.
+- **Changed in C1 (P13).** The patch is not dropped on overlap: the C1
+  producers never make two fix-its cover the same bytes (P13: duplicates and
+  same-point insertions are all applied, in order, and the patch is
+  identical to gcc's). The builder still skips an overlapping later group
+  whole, as in section 5. What invalidates the patch (no patch printed) is:
+  - a refused fix-it anywhere in the TU (`nofix`: a fix-it that gcc's
+    `rich_location` would refuse, such as one in a macro expansion), or
+  - a fix-it whose presumed file or line differs from the physical one
+    (`#line`), matching P8.
 
 ### 3.5 Cells and the parallel PP
 
@@ -313,8 +326,15 @@ There are 1438 fix-it lines in 201 files when gcc-13 is run with
 
 Notes on the table:
 
-- **`.` to `->`.** gcc gives no fix-it for a pointer to pointer (P15).
-  cereal matches.
+- **`.` to `->`.** For a pointer to pointer gcc gives no fix-it for the
+  `.` form (P15), but for `->` on a pointer to pointer it does give two
+  MAYBE insertions, `(*` before the operand and `)` after it (P19: gcc.dg
+  pr91134, spellcheck-fields-3). C1 produces both.
+- **Same-line rule.** A fix-it whose two ends are on different lines is
+  refused, and so is any text with a newline except a column-1 insertion
+  ending in `\n`. A hint that begins where the previous hint of the same
+  owner ends is merged into it (touching merge), unless the previous text
+  ends in a newline. This replaces the earlier "splice" wording.
 - **did-you-mean is MAYBE, not SAFE.** It is an edit-distance guess. The
   closest name may be wrong even when the code then compiles.
 - **missing braces is SAFE.** Braces that follow the existing aggregate
@@ -776,6 +796,76 @@ Est. 900 to 1300 lines.
     include 80, did-you-mean 97, `;` 336, other expected tokens 265.
     Others are reported, not failed.
 
+**C1 as built (HISTORY Round 212, 2026-10-10)**
+
+Done: everything under Contents and Tests above. Size: src +1284/-128 lines
+(new: `fixset.c/h` 462, `fixmode.c` 199, `fixtok.c/h` 28, `c/fixptok.c/h` 60),
+tests +369, bench +135.
+
+- **Model.** `Diagnostic.fixits` is a `VEC(FixIt)` with `owner` (0 the
+  diagnostic, k the note k-1) and a per-owner poison flag `nofix`; the old
+  `fixit` string is gone. Cells carry `CellFix` plus `CN_NOCOL|CN_NOFIX|
+  CN_EXPN` note flags; `par.c diag_copy` deep-copies.
+- **Where the guard lives.** `diag_fixit(d, dg, owner, b, e, text, app)`
+  holds all of 3.2. Passing `b = 0` forces a poison, which the token helpers
+  (`fixtok.c` for lint `Tok`, `c/fixptok.c` for parser `PTok`, wrapped for
+  the checker by `cfix_tok`/`cfix_ins` in `check_int.h` and `fix_missing` in
+  `parse.c`) use for macro-origin tokens.
+- **Producers.** Header notes (`cheader_note` in `check.c`: builtin
+  mismatch, implicit declaration, "defined in header", unknown type name);
+  did-you-mean for identifiers, implicit functions, members (`ccall.c`,
+  `cinit.c`), unknown type names and `#elsif`; `.` to `->` and the
+  pointer-to-pointer `(*`/`)` pair; expected `) ] ; , :` (after the
+  previous token) and `(` (before the token found); lint: cond-typo (INFO),
+  hygiene parameter parentheses (SAFE), header-guard (SAFE).
+- **Output.** `-fdiagnostics-parseable-fixits`, the JSON `fixits` array
+  (diagnostics and notes), `-fdiagnostics-generate-patch` (printed to the
+  diagnostic stream after the TU's diagnostics; JSON mode prints it after
+  the array). `fix --edits=FILE --diff` (`fixmode.c`): `PATH BEGIN END
+  "TEXT"` per line, a blank line between groups; the diff goes to stdout and
+  `group N skipped: overlaps group M` to stderr. Any other `fix` use is a
+  usage error, exit 2. The builder's diff handles single-line edits only
+  (everything the producers make); a multi-line edit prints an error and
+  exit 1.
+- **Tests.** `tests/check/fixit-{typo,tabs,include,include-bare,line,macro,
+  json,patch}.c`, `tests/fix/*.edits` (sort, dedupe, same-point order,
+  touching, overlap, group atomicity; run.sh section 19), run.sh section 20
+  (BOM x 64 KiB x CRLF against gcc-13), fix-its on in the run.sh section 5
+  and 7 parallel/`-j` comparisons.
+- **Differential.** `bench/tools/fixits.sh` statuses: `same`; `diag` (a
+  covered diagnostic is missing on one side: a difference of diagnostics,
+  other parity work, not failed); `differ` (fails). Over all 7042 C files
+  of gcc.dg and c-c++-common (3.5 minutes at 8 jobs): 0 differ, 31 diag.
+  With `FIXIT_PATCH=1` (patches compared where every gcc fix-it is of a
+  covered class): 0 differ over the 198-file survey. `par.py
+  CEREAL_FIXITS=1` through `verify.sh`: identical in 102 of 103 files; the
+  one is spellcheck-inttypes (`PRIx8` is not in `std_names`).
+- **Design changes forced by the probes** (also marked in the text above):
+  1. 3.4: the patch is not invalidated by an overlap, only by a refused
+     fix-it or a `#line` presumed-file/line difference (P13, P8).
+  2. 3.2: the splice rule is replaced by a same-line rule; touching hints
+     of one owner merge unless the earlier text ends in a newline.
+  3. 3.2: the once-per-header rule is generic (`hdr_seen`), not tied to
+     `known[]` (P12); `include_loc` is per file of the use (P18).
+  4. 4.1: `->` on a pointer to pointer does get fix-its (P19); a missing
+     `(` is inserted before the next token, not after the previous one.
+  5. `fixset_diff` supports single-line edits only.
+  6. `#line N` without a file name: cereal marks the patch invalid, gcc
+     prints a garbage name; not matched (not worth a rule).
+- **Known gaps (not fixed, reported).** Of the 31 diag files: the
+  `expected ')'`/`']'` fix-its inside attribute and asm operand parsing
+  (attr-assume-2, c2x-attr-*, declspec-18, asmgoto-2); the `case` colon
+  message (gcc: `expected ':' or '...'` at the next token, no fix-it;
+  missing-symbol-2); implicit declaration did-you-mean for functions
+  (20041213-1, redecl-*, pr59963-1, Wimplicit-function-declaration-c89*);
+  `__FILE_`, `__LINE_` and `__builtin_` did-you-mean; `PRI*` macros in
+  `std_names`; the `include <h> or provide a declaration` note in C89 mode
+  (c90-impl-decl-1, Werror-implicit-function-declaration). Separately,
+  the "'f' is declared in header" notes (`ccall.c:348`, builtin
+  mismatch) are at the use in the goldens while gcc puts the first one per
+  header at `include_loc` with a fix-it; converting them changes eight
+  existing goldens, so it is left for a decision.
+
 ### C2: cereal-only fixes and C2b (est. 5 days, realistic 7 to 12)
 
 **Contents**
@@ -991,10 +1081,9 @@ format fix-its (C2b) carry most of the uncertainty.
   subexpression, for example. The digest therefore hashes each
   expression node's type too.
   - `fixgate.sh`'s object-code identity is the backstop check.
-- **gcc rules recalled, not probed** (to probe in C1): the newline rule
-  (3.2.3), consolidation of adjacent fix-its into one, whether `\t` is
-  escaped, the patch on conflict, and include notes for headers outside
-  `known[]`. These are P11 to P13.
+- **gcc rules recalled, now probed in C1** (section 13, P11 to P13, P18,
+  P19): the newline and tab rules are not observable in gcc-13's front end;
+  the other three matched or changed the design as recorded in 3.2 and 3.4.
 - **Format fix-its (C2b)** depend on the format checker's spelling of
   conversions. Their size is uncertain.
 
@@ -1028,8 +1117,16 @@ format fix-its (C2b) carry most of the uncertainty.
 | P16 | cereal today with both `-f` flags and `fix` | "unknown option", exit 2; `fix` prints usage, exit 2 |
 | P17 | `.` to `->`, `expected ';'` across lines, `expected ')'`, `#elsif`, union member did-you-mean | All give fix-its, as in 4.1. No fix-it for: assignment parens, strict prototypes, unused variable, `expected '}' before numeric constant`, `expected ',' or ';'` |
 
-To probe in C1: P11 (the newline rule and `\t` escape), P12 (include notes
-for a header outside `known[]`), P13 (the patch when two fix-its overlap).
+Probed in C1 (2026-10-10, gcc 13.4.0 on WSL; `gcc-13` is the oracle, plain
+`gcc` is 15.2):
+
+| # | Probe | Result |
+|---|---|---|
+| P11 | The newline rule and the `\t` escape | No gcc-13 front-end diagnostic emits a tab or a newline except the include insertion (`"#include <h>\n"`), so neither can be observed. cereal follows `print_escaped_string` (`\\ \" \t \n`, octal for other non-printables) and keeps the newline rule as a guard |
+| P12 | `isalpha`, `isdigit`, `toupper` used without `<ctype.h>` (not in `known[]`) | Only the first note carries the fix-it; the other two notes are at their use. Same for any header, so the rule is generic (3.2) |
+| P13 | `printf`, `strlen`, `isalpha` twice, after a prior `#include`, with `-fdiagnostics-generate-patch` | Three insertions at one point, in diagnostic order; the patch is byte-identical to cereal's. The C1 producers cannot make two fix-its overlap, so the invalidate-on-overlap rule is not observable and was dropped from 3.4 |
+| P18 | `printf` used in a header with no `#include`, itself included from a `.c` (gcc.dg missing-header-fixit-2) | The note and fix-it are at `1:1` of the header, not in the main file. `include_loc` uses the file of the use |
+| P19 | Differential over 7042 gcc.dg and c-c++-common files (`fixits.sh`) | `->` on a pointer to pointer does get fix-its: `(*` before the operand and `)` after (MAYBE). A missing `(` is offered before the token found (`asm const (`, `if foo ()`), while `)` `]` `;` `,` `:` go after the previous token. Touching hints of one diagnostic are merged into one |
 
 ## 14. Review log
 
@@ -1116,11 +1213,9 @@ identity would fail on every include insertion in a file that uses
 separates line-moving fixes (8, C3). A further pass found nothing
 material.
 
-**Still unverified, to probe in C1** (12.2):
-
-- the newline rule and the tab escape (P11);
-- include notes for headers outside `known[]` (P12);
-- gcc's patch on overlapping fix-its (P13);
-- gcc's consolidation of adjacent fix-its.
+**Probed in C1** (section 13, P11 to P13, P18, P19): the newline and tab
+rules (not observable), include notes for headers outside `known[]`
+(generic once-per-header), the patch on overlapping fix-its (not
+producible; dropped), adjacent fix-its (touching hints merge).
 
 The gate's cost on a large database is estimated, not measured.

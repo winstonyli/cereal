@@ -299,7 +299,9 @@ static void check_params(Analysis *a, Macro *m, const Tok **v, int n, MacroInfo 
                         "meaning", tok_ident(in, t)->str, spell(a, bad));
         diag_set_range(d, t->loc, t->loc + t->len);
         if (d)
-            d->fixit = arena_printf(a->arena, "(%s)", tok_ident(in, t)->str);
+            fix_tok_replace(a->diag, d, 0, a->sm, in, t,
+                            arena_printf(a->arena, "(%s)", tok_ident(in, t)->str),
+                            FIX_SAFE);
     }
 }
 

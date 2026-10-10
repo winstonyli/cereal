@@ -2251,13 +2251,17 @@ void e_member(Checker *c, uint32_t i)
     if (!is_record(c, rec)) {
         TypeId r = rec;
         if (is_ptr(c, r) && is_record(c, pointee(c, r))) {
-            if (arrow)
-                cerror(c, loc, "'%s' is a pointer to pointer; did you mean to "
-                       "dereference it before applying '->' to it?",
-                       estr(c, d));
-            else
-                cerror(c, loc, "'%s' is a pointer; did you mean to use '->'?",
-                       estr(c, d));
+            if (arrow) {
+                Diagnostic *dg = cerror_d(c, loc, "'%s' is a pointer to "
+                    "pointer; did you mean to dereference it before applying "
+                    "'->' to it?", estr(c, d));
+                /* gcc: (*operand)-> */
+                cfix_ins(c, dg, 0, first_tok(c, d), false, "(*", FIX_MAYBE);
+                cfix_ins(c, dg, 0, c->nodes[i].tok - 2, true, ")", FIX_MAYBE);
+            } else
+                cfix_tok(c, cerror_d(c, loc, "'%s' is a pointer; did you mean to use '->'?",
+                                     estr(c, d)),
+                         0, c->nodes[i].tok - 1, "->", FIX_SAFE);
         } else if (!is_err(c, r)) {
             cerror(c, loc, "request for member '%s' in something not a "
                    "structure or union", cident(c, name));
@@ -2278,8 +2282,9 @@ void e_member(Checker *c, uint32_t i)
         fuzzy_fields(c, &b, rec);
         sug = best_get(&b);
         if (sug)
-            cerror(c, cnode_loc(c, i), "%s has no member named '%s'; did you "
-                   "mean '%s'?", type_q(TT, rec), cident(c, name), sug);
+            cfix_tok(c, cerror_d(c, cnode_loc(c, i), "%s has no member named '%s'; did you "
+                                 "mean '%s'?", type_q(TT, rec), cident(c, name), sug),
+                     0, c->nodes[i].tok, sug, FIX_MAYBE);
         else
             cerror(c, loc, "%s has no member named '%s'", type_q(TT, rec),
                    cident(c, name));

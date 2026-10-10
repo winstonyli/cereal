@@ -236,7 +236,7 @@ Diagnostic *cpedantic(Checker *c, SrcLoc loc, const char *fmt, ...)
 
 void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...)
 {
-    DiagNote n;
+    DiagNote n = {0};
     va_list ap;
     if (!d)
         return;
@@ -248,6 +248,22 @@ void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...)
     n.msg = arena_strndup(c->diag->arena, c->sb.data, c->sb.len);
     vec_push(&d->notes, n);
     macro_notes(c, d, loc, true);   /* a note inside a macro has its chain too */
+}
+
+/* A note suggesting the #include of hdr, with gcc's fix-it (diag_header_note). */
+void cheader_note(Checker *c, Diagnostic *d, SrcLoc loc, const char *hdr,
+                  const char *fmt, ...)
+{
+    va_list ap;
+    SrcLoc at;
+    if (!d)
+        return;
+    c->sb.len = 0;
+    va_start(ap, fmt);
+    sb_vprintf(&c->sb, fmt, ap);
+    va_end(ap);
+    at = diag_header_note(c->diag, d, loc, hdr, "%s", sb_cstr(&c->sb));
+    macro_notes(c, d, at, true);
 }
 
 /* gcc's input_location while the parser looks at token tok: the first

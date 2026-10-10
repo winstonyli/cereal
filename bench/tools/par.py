@@ -10,6 +10,9 @@ whose dg-options/dg-additional-options use a target selector a standard other th
 cereal lacks (anything but -W*, -D, -U, -I, -imacros, -std, -pedantic*, -MD, -MMD; ${srcdir} is the testsuite directory; a test with
 -MD/-MMD runs in the scratch directory $TMPDIR/par-md, as a .d file goes to the working directory).
 CEREAL_DGO=1: also keep -O* options (cereal folds const variables at -O).
+CEREAL_FIXITS=1 also asks both compilers for -fdiagnostics-parseable-fixits and compares the
+fix-it lines of the diagnostics cereal produces fix-its for (FIXIT_COVER and FIXIT_SKIP as in
+fixits.sh), printing "gcc fix-its identical in F of G files" (G: files where either has one).
 CEREAL_PARCACHE=DIR (default ~/.cache/cereal-par; 0 disables) caches gcc's result per
 (gcc version, file content, flags); CEREAL_JOBS (default 12) sizes the pool.
 Compares gcc vs cereal -fsyntax-only verdicts and diagnostic headers."""
@@ -27,6 +30,17 @@ def hdrs(txt, kinds=("error","warning","fatal error")):
         if m and m.group(3) in kinds: out.append((int(m.group(1)),int(m.group(2)),m.group(3),m.group(4)))
     return out
 GCC = os.environ.get("CEREAL_GCC", "gcc")
+FIXITS = os.environ.get("CEREAL_FIXITS") == "1"
+COVER = re.compile(os.environ.get("FIXIT_COVER", r"; did you mean .|include .<|is defined in header|is a pointer; did you mean|expected .[]),;:(]."))
+SKIP = re.compile(os.environ.get("FIXIT_SKIP", "xor-used-as-pow"))
+HEAD = re.compile(r"^[^ ].*: (fatal error|error|warning|note): ")
+def fixits(txt):
+    """The covered fix-it lines, each with the header of the diagnostic it follows."""
+    out=[]; hdr=""
+    for l in txt.splitlines():
+        if HEAD.match(l): hdr=l
+        elif l.startswith("fix-it:") and COVER.search(hdr) and not SKIP.search(hdr): out.append(hdr+" => "+l)
+    return out
 CACHE = os.environ.get("CEREAL_PARCACHE", os.path.expanduser("~/.cache/cereal-par"))
 def gcc_run(base, f, cwd, env):
     """(returncode, stderr text) of gcc, cached: gcc's side never depends on cereal."""
@@ -51,14 +65,15 @@ def gcc_run(base, f, cwd, env):
     return r
 def work(job):
     cer, f, flags, cwd, extra, std = job
-    base=["-fsyntax-only"]+std+extra+flags
+    base=["-fsyntax-only"]+std+extra+flags+(["-fdiagnostics-parseable-fixits"] if FIXITS else [])
     env=dict(os.environ,LC_ALL="C")
     try:
         grc,gerr=gcc_run(base,f,cwd,env)
         c=subprocess.run([cer]+base+[f],cwd=cwd,capture_output=True,timeout=10,env=env)
     except subprocess.TimeoutExpired:
         return dict(f=f,to=1)
-    return dict(f=f,cwd=cwd,flags=flags,grc=grc,crc=c.returncode,
+    fx=dict(fg=fixits(gerr),fc=fixits(c.stderr.decode(errors="replace"))) if FIXITS else {}
+    return dict(**fx,f=f,cwd=cwd,flags=flags,grc=grc,crc=c.returncode,
         g=hdrs(gerr),c=hdrs(c.stderr.decode(errors="replace")),
         cerr=c.stderr.decode(errors="replace")[-300:] if c.returncode not in (0,1) else "")
 STDS={"c99","c9x","iso9899:1999","iso9899:199x","gnu99","gnu9x","c11","c1x","iso9899:2011","gnu11","gnu1x","c17","c18","iso9899:2017","iso9899:2018","gnu17","gnu18"}
@@ -112,3 +127,6 @@ if __name__=="__main__":
     ge=sum(len([x for x in r["g"] if x[2]!="warning"]) for r in both)
     gm=sum(sum(1 for x in r["g"] if x[2]!="warning" and x in r["c"]) for r in both)
     print(f"both-reject files: gcc errors {ge}, reproduced exactly (line:col:text) {gm}")
+    if FIXITS:
+        fxs=[r for r in res if not r.get("to") and (r["fg"] or r["fc"])]
+        print(f"gcc fix-its identical in {sum(1 for r in fxs if r['fg']==r['fc'])} of {len(fxs)} files")

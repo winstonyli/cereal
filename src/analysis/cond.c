@@ -911,7 +911,8 @@ void cond_finish(Analysis *a)
                 diag_note(a->diag, d, mt_hist(a->pp->mt, best)->name_loc,
                           "'%s' is defined here", best->str);
             if (d)
-                d->fixit = best->str;
+                fix_tok_replace(a->diag, d, 0, a->sm, a->in, t, best->str,
+                                FIX_INFO);
         } else {
             diag_report(a->diag, DL_REMARK, "cond-never-defined", t->loc,
                         "'%s' is never defined in this translation unit",

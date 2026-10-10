@@ -2131,8 +2131,10 @@ static void set_init_label(Checker *c, CCtx *x, uint32_t lt, uint32_t name,
     if (!lookup_path(c, L->type, name, path, &n, 32)) {
         const char *g = cexpr_fuzzy_field(c, L->type, name);
         if (g)
-            cerror(c, tloc(c, name_tok), "%s has no member named '%s'; did "
-                   "you mean '%s'?", type_q(TT, L->type), cident(c, name), g);
+            cfix_tok(c, cerror_d(c, tloc(c, name_tok), "%s has no member "
+                                 "named '%s'; did you mean '%s'?",
+                                 type_q(TT, L->type), cident(c, name), g),
+                     0, name_tok, g, FIX_MAYBE);
         else
             cerror(c, tloc(c, name_tok), "%s has no member named '%s'",
                    type_q(TT, L->type), cident(c, name));

@@ -51,6 +51,8 @@ typedef struct Options {
     DepsOpts deps;
     char stage;                 /* 'c' (-c), 'S' (-S), 'E' (the mode word), else 0 */
     bool track0;               /* -ftrack-macro-expansion=0 */
+    bool fixit_lines;          /* -fdiagnostics-parseable-fixits */
+    bool gen_patch;            /* -fdiagnostics-generate-patch */
     bool trigraphs_flag;        /* -trigraphs given (else only the ISO -std= has them) */
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */
     char strict_alias;  /* -fstrict-aliasing 1, -fno-strict-aliasing 2 */

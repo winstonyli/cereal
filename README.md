@@ -26,12 +26,14 @@ cereal index [--all] file.c           # LSP model as JSON
 cereal parse [--dump] file.c...       # C99 + GNU parser (also -fsyntax-only)
 cereal query def|refs|hover|visible|expand|callers|callees|deps FILE:LINE:COL file.c
 cereal lsp                            # language server (stdio), docs/LSP.md
+cereal fix --edits=FILE --diff         # unified diff of edit groups (the edit builder; docs/C_DESIGN.md)
 cereal --list-warnings
 ```
 
 Options: `-I -iquote -isystem -D -U -include -imacros -nostdinc -undef -std=c99|gnu99
 -O<n> -pedantic -pedantic-errors -trigraphs -W<name> -Wno-<name> -W<group>
--Wall -Werror -Weverything -w -fdiagnostics-format=json -P -o`.
+-Wall -Werror -Weverything -w -fdiagnostics-format=json
+-fdiagnostics-parseable-fixits -fdiagnostics-generate-patch -P -o`.
 
 For the C front end (`cereal parse`, `-fsyntax-only`), `-W<name>` takes gcc's
 warning names (about 180 are known; `--list-warnings` prints them), plus

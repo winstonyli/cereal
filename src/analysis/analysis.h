@@ -3,6 +3,7 @@
 #define CEREAL_ANALYSIS_H
 
 #include "../parclient.h"
+#include "../fixtok.h"
 #include "../pp.h"
 #include "../skel.h"
 

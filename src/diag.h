@@ -28,10 +28,24 @@ typedef enum DiagOrd {
     ORD_EOF     /* parser: after every checker diagnostic (unclosed body) */
 } DiagOrd;
 
+/* docs/C_DESIGN.md section 3.  A fix-it is a real source range [begin, end)
+ * of one line of one user file (begin == end: an insertion); diag_fixit is
+ * the only way to add one. */
+typedef enum { FIX_SAFE, FIX_MAYBE, FIX_INFO } FixApplic;
+
+typedef struct FixIt {
+    SrcLoc begin, end;
+    const char *text;        /* arena; "" deletes */
+    uint16_t owner;          /* 0: the diagnostic itself; k: notes.data[k-1] */
+    uint8_t app;             /* FixApplic */
+} FixIt;
+
 typedef struct DiagNote {
     SrcLoc loc;
     const char *msg;
     bool nocol;              /* a line-only location, as the warning's */
+    bool nofix;              /* a fix-it for this note was refused: no more */
+    bool expn;               /* an "in expansion of macro" note */
 } DiagNote;
 
 typedef struct Diagnostic {
@@ -51,8 +65,9 @@ typedef struct Diagnostic {
     uint32_t vcol;           /* nonzero: the header column, byte-based */
     bool promoted;           /* a warning made an error by -Werror[=X]:
                                 shown as [-Werror=X] like gcc */
-    const char *fixit;       /* optional suggested replacement text */
-    uint32_t key;            /* plan item at the time (parallel ordering) */
+    VEC(FixIt) fixits;       /* in the order added, notes' included */
+    bool nofix;              /* a fix-it of the diagnostic itself was refused */
+    uint32_t key;           /* plan item at the time (parallel ordering) */
     uint8_t once;            /* nonzero: report at most once per (once, loc);
                                 a parallel merge drops later duplicates */
 } Diagnostic;
@@ -81,7 +96,9 @@ typedef struct DiagEngine {
     bool fatal_errors;       /* -Wfatal-errors: stop after the first error */
     uint32_t vcol_next;      /* the next report's column is this (a spliced line's cleaned offset), 0 = its own */
     bool nocol_next;         /* the next report prints no column (gcc: a line-only location) */
-    uint64_t hdr_noted;      /* headers a missing-#include note suggested */
+    VEC(const char *) hdr_seen; /* headers a missing-#include note suggested */
+    bool fixit_lines;        /* -fdiagnostics-parseable-fixits */
+    bool gen_patch;          /* -fdiagnostics-generate-patch */
     bool track0;             /* -ftrack-macro-expansion=0: report macro
                                 tokens at the expansion point */
     bool show_system;        /* report warnings located in system headers */
@@ -105,9 +122,26 @@ typedef struct DiagEngine {
     uint8_t ord;             /* DiagOrd of new diagnostics */
 } DiagEngine;
 
-/* cexpr.c: gcc's known-headers table and where its #include note goes */
+/* cexpr.c: gcc's known-headers table */
 const char *std_header(const char *name);
-SrcLoc diag_header_note_loc(DiagEngine *diag, SrcLoc loc, const char *hdr);
+/* A note suggesting the #include of hdr ("<stdio.h>").  gcc puts the first
+ * note per header where the #include would go, with the fix-it that adds it
+ * (owned by the note), and later ones at loc. */
+SrcLoc diag_header_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc,
+                        const char *hdr, const char *fmt, ...);
+/* -fdiagnostics-generate-patch: the TU's fix-its as one patch on d->out */
+void diag_generate_patch(DiagEngine *d);
+
+/* The one way to add a fix-it (owner 0: dg itself; k: notes.data[k-1]).
+ * False, with the owner's fix-its dropped and no more accepted, unless
+ * [b, e) lies on one line of one user file and text has a newline only as
+ * its last character, in an insertion at column 1 (libcpp's rich_location).
+ * A fix-it that starts where the owner's last ended is merged into it. */
+bool diag_fixit(DiagEngine *d, Diagnostic *dg, int owner, SrcLoc b, SrcLoc e,
+                const char *text, FixApplic app);
+/* Writes text as gcc escapes it in a fix-it line: \\ \" \t \n, the other
+ * bytes below 0x20 and from 0x7f as \ooo. */
+void fixit_escape(FILE *o, const char *s, size_t n);
 
 /* Set the order of new diagnostics, returning the previous one. */
 static inline DiagOrd diag_ord(DiagEngine *d, DiagOrd o)

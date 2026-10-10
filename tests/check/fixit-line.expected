@@ -1,0 +1,3 @@
+renamed.c:40:12: error: 'valeu' undeclared (first use in this function); did you mean 'value'?
+fix-it:"renamed.c":{40:12-40:17}:"value"
+renamed.c:40:12: note: each undeclared identifier is reported only once for each function it appears in

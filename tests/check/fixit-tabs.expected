@@ -1,0 +1,15 @@
+fixit-tabs.c:5:16: error: 'tabbd' undeclared (first use in this function); did you mean 'tabbed'?
+    5 |         return tabbd;
+      |                ^
+fix-it:"fixit-tabs.c":{5:9-5:14}:"tabbed"
+fixit-tabs.c:5:16: note: each undeclared identifier is reported only once for each function it appears in
+    5 |         return tabbd;
+      |                ^
+fixit-tabs.c:9:22: error: expected ')' before ';' token
+    9 |         return (a + b;
+      |                      ^
+fix-it:"fixit-tabs.c":{9:15-9:15}:")"
+fixit-tabs.c:9:23: error: expected ';' before '}' token
+    9 |         return (a + b;
+      |                       ^
+fix-it:"fixit-tabs.c":{9:16-9:16}:";"

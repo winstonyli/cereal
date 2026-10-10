@@ -662,12 +662,25 @@ void cenc_diag(CellEnc *e, const Diagnostic *d)
         cd->range_e = cenc_loc(e, d->range.end);
     }
     cd->msg = cenc_str(e, d->msg);
-    cd->fixit = cenc_str(e, d->fixit);
+    cd->nofix = d->nofix;
     cd->nnotes = (uint32_t)d->notes.len;
     cd->notes = NEW_ARRAY(a, CellNote, d->notes.len + 1);
     for (i = 0; i < d->notes.len; i++) {
         cd->notes[i].loc = cenc_loc(e, d->notes.data[i].loc);
         cd->notes[i].msg = cenc_str(e, d->notes.data[i].msg);
+        cd->notes[i].flags = (uint8_t)((d->notes.data[i].nocol ? CN_NOCOL : 0) |
+                                      (d->notes.data[i].nofix ? CN_NOFIX : 0) |
+                                      (d->notes.data[i].expn ? CN_EXPN : 0));
+    }
+    cd->nfixes = (uint32_t)d->fixits.len;
+    cd->fixes = NEW_ARRAY(a, CellFix, d->fixits.len + 1);
+    for (i = 0; i < d->fixits.len; i++) {
+        const FixIt *x = &d->fixits.data[i];
+        cd->fixes[i].owner = x->owner;
+        cd->fixes[i].app = x->app;
+        cd->fixes[i].at = cenc_loc(e, x->begin);
+        cd->fixes[i].len = x->end - x->begin;
+        cd->fixes[i].text = cenc_str(e, x->text);
     }
     cd->ninc = (uint32_t)d->ninc;
     cd->inc = NEW_ARRAY(a, CLoc, (size_t)d->ninc + 1);
@@ -795,12 +808,24 @@ Diagnostic *cdec_diag(const CellDec *d, const CellDiag *cd)
     }
     /* copied: the cell may be dropped while this build lives on */
     g->msg = arena_strdup(d->arena, cd->msg);
-    g->fixit = cd->fixit ? arena_strdup(d->arena, cd->fixit) : NULL;
+    g->nofix = cd->nofix;
     for (i = 0; i < cd->nnotes; i++) {
-        DiagNote n;
+        DiagNote n = {0};
         n.loc = cdec_loc(d, cd->notes[i].loc);
         n.msg = arena_strdup(d->arena, cd->notes[i].msg);
+        n.nocol = (cd->notes[i].flags & CN_NOCOL) != 0;
+        n.nofix = (cd->notes[i].flags & CN_NOFIX) != 0;
+        n.expn = (cd->notes[i].flags & CN_EXPN) != 0;
         vec_push(&g->notes, n);
+    }
+    for (i = 0; i < cd->nfixes; i++) {
+        FixIt x;
+        x.begin = cdec_loc(d, cd->fixes[i].at);
+        x.end = x.begin + cd->fixes[i].len;
+        x.text = arena_strdup(d->arena, cd->fixes[i].text);
+        x.owner = cd->fixes[i].owner;
+        x.app = cd->fixes[i].app;
+        vec_push(&g->fixits, x);
     }
     g->ninc = (int)cd->ninc;
     if (cd->ninc) {

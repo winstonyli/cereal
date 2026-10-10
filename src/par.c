@@ -399,9 +399,13 @@ static Diagnostic *diag_copy(Arena *a, const Diagnostic *s)
     size_t i;
     *d = *s;
     memset(&d->notes, 0, sizeof d->notes);
+    memset(&d->fixits, 0, sizeof d->fixits);
     d->msg = arena_strdup(a, s->msg);
-    if (s->fixit)
-        d->fixit = arena_strdup(a, s->fixit);
+    for (i = 0; i < s->fixits.len; i++) {
+        FixIt x = s->fixits.data[i];
+        x.text = arena_strdup(a, x.text);
+        vec_push(&d->fixits, x);
+    }
     if (s->ninc) {
         d->inc_chain = NEW_ARRAY(a, SrcLoc, s->ninc);
         memcpy(d->inc_chain, s->inc_chain, sizeof(SrcLoc) * (size_t)s->ninc);

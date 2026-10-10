@@ -1,0 +1,31 @@
+fixit-patch.c:8:5: warning: implicit declaration of function 'puts' [-Wimplicit-function-declaration]
+    8 |     puts(s);
+      |     ^
+fixit-patch.c:3:1: note: include '<stdio.h>' or provide a declaration of 'puts'
+    3 | struct point { int xcoord; };
+      | ^
+fixit-patch.c:9:12: error: 'countr' undeclared (first use in this function); did you mean 'counter'?
+    9 |     return countr + pp.xcoord;
+      |            ^
+fixit-patch.c:9:12: note: each undeclared identifier is reported only once for each function it appears in
+    9 |     return countr + pp.xcoord;
+      |            ^
+fixit-patch.c:9:23: error: 'pp' is a pointer; did you mean to use '->'?
+    9 |     return countr + pp.xcoord;
+      |                       ^
+--- fixit-patch.c
++++ fixit-patch.c
+@@ -1,5 +1,6 @@
+ // flags: -fdiagnostics-generate-patch
+ #include <stddef.h>
++#include <stdio.h>
+ struct point { int xcoord; };
+ struct point *pp;
+ int counter;
+@@ -6,5 +7,5 @@
+ int f(const char *s)
+ {
+     puts(s);
+-    return countr + pp.xcoord;
++    return counter + pp->xcoord;
+ }

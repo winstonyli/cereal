@@ -1,0 +1,26 @@
+fixit-include.c:7:16: warning: implicit declaration of function 'strlen' [-Wimplicit-function-declaration]
+    7 |     size_t n = strlen(s);
+      |                ^
+fixit-include.c:3:1: note: include '<string.h>' or provide a declaration of 'strlen'
+    3 | #define PAD 1
+      | ^
+fix-it:"fixit-include.c":{3:1-3:1}:"#include <string.h>\n"
+fixit-include.c:7:16: warning: incompatible implicit declaration of built-in function 'strlen' [-Wbuiltin-declaration-mismatch]
+    7 |     size_t n = strlen(s);
+      |                ^
+fixit-include.c:7:16: note: include '<string.h>' or provide a declaration of 'strlen'
+    7 |     size_t n = strlen(s);
+      |                ^
+fixit-include.c:8:5: warning: implicit declaration of function 'printf' [-Wimplicit-function-declaration]
+    8 |     printf("%zu\n", n);
+      |     ^
+fixit-include.c:3:1: note: include '<stdio.h>' or provide a declaration of 'printf'
+    3 | #define PAD 1
+      | ^
+fix-it:"fixit-include.c":{3:1-3:1}:"#include <stdio.h>\n"
+fixit-include.c:8:5: warning: incompatible implicit declaration of built-in function 'printf' [-Wbuiltin-declaration-mismatch]
+    8 |     printf("%zu\n", n);
+      |     ^
+fixit-include.c:8:5: note: include '<stdio.h>' or provide a declaration of 'printf'
+    8 |     printf("%zu\n", n);
+      |     ^

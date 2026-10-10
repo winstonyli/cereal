@@ -1,0 +1,5 @@
+t.c 0 0 "first;\n"
+
+t.c 0 0 "second;\n"
+
+t.c 0 0 "third "

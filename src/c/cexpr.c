@@ -847,73 +847,12 @@ const char *std_header(const char *name)
     return NULL;
 }
 
-/* Where gcc suggests adding an #include: the line after the last #include
- * of the main file before loc, else its start. */
-static SrcLoc include_loc(SrcMgr *sm, SrcLoc loc)
-{
-    uint32_t k, n = srcmgr_nfiles(sm), line, nl, lastinc = 0;
-    SrcFile *f = NULL;
-    for (k = 0; k < n; k++) {
-        SrcFile *g = srcmgr_file(sm, k);
-        if (g && g->kind == SF_USER && !g->system_header) {
-            f = g;
-            break;
-        }
-    }
-    if (!f)
-        return loc;
-    srcmgr_linecol(f, f->base + f->size, &nl, &line);
-    if (srcmgr_file_of(sm, loc) == f)
-        srcmgr_linecol(f, loc, &nl, &line);
-    for (line = 1; line < nl; line++) {
-        uint32_t len, j = 0;
-        const char *s = srcmgr_line_text(f, line, &len);
-        while (j < len && (s[j] == ' ' || s[j] == '\t'))
-            j++;
-        if (j >= len || s[j] != '#')
-            continue;
-        j++;
-        while (j < len && (s[j] == ' ' || s[j] == '\t'))
-            j++;
-        if (len - j >= 7 && !memcmp(s + j, "include", 7))
-            lastinc = line;
-    }
-    return srcmgr_loc_of(f, lastinc + 1, 1);
-}
-
-/* The location of a note suggesting header hdr: gcc puts the first one per
- * header where the #include would go (with a fix-it), later ones at the
- * use. */
-SrcLoc diag_header_note_loc(DiagEngine *diag, SrcLoc loc, const char *hdr)
-{
-    static const char *const known[] = {
-        "<assert.h>", "<complex.h>", "<ctype.h>", "<inttypes.h>", "<math.h>",
-        "<stdarg.h>", "<stdbool.h>", "<stddef.h>", "<stdint.h>", "<stdio.h>",
-        "<stdlib.h>", "<string.h>", "<time.h>", "<wchar.h>", "<errno.h>",
-        "<limits.h>", "<float.h>", "<setjmp.h>", "<signal.h>", "<locale.h>"
-    };
-    size_t k;
-    for (k = 0; k < sizeof known / sizeof *known; k++)
-        if (!strcmp(known[k], hdr)) {
-            uint64_t bit = UINT64_C(1) << k;
-            bool seen = (diag->hdr_noted & bit) != 0;
-            diag->hdr_noted |= bit;
-            return seen ? loc : include_loc(diag->sm, loc);
-        }
-    return include_loc(diag->sm, loc);
-}
-
-SrcLoc header_note_loc(Checker *c, SrcLoc loc, const char *hdr)
-{
-    return diag_header_note_loc(c->diag, loc, hdr);
-}
-
 static void header_note(Checker *c, Diagnostic *d, SrcLoc loc,
                         const char *name, const char *hdr)
 {
-    cnote(c, d, header_note_loc(c, loc, hdr),
-          "'%s' is defined in header '%s'; did you forget to '#include %s'?",
-          name, hdr, hdr);
+    cheader_note(c, d, loc, hdr,
+                 "'%s' is defined in header '%s'; did you forget to '#include %s'?",
+                 name, hdr, hdr);
 }
 
 #include "cbuiltin_tab.h"
@@ -1756,9 +1695,9 @@ static void builtin_mismatch(Checker *c, SrcLoc loc, const BTab *bt)
                             "incompatible implicit declaration of built-in "
                             "function '%s'", bt->name);
     if (d && bt->hdr[0])
-        cnote(c, d, header_note_loc(c, loc, bt->hdr),
-              "include '%s' or provide a declaration of '%s'",
-              bt->hdr, bt->name);
+        cheader_note(c, d, loc, bt->hdr,
+                     "include '%s' or provide a declaration of '%s'",
+                     bt->hdr, bt->name);
 }
 
 /* An implicit function declaration (C90; a C99 pedwarn). */
@@ -1793,18 +1732,19 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
         d = cpedwarn(c, loc, "implicit-function-declaration",
                      "implicit declaration of function '%s'", name);
         if (d && bt->hdr[0])
-            cnote(c, d, header_note_loc(c, loc, bt->hdr), "include '%s' or "
-                  "provide a declaration of '%s'", bt->hdr, name);
+            cheader_note(c, d, loc, bt->hdr, "include '%s' or provide a "
+                         "declaration of '%s'", bt->hdr, name);
         if (bt->mismatch)
             builtin_mismatch(c, loc, bt);
     } else {
         const char *hdr = std_header(name);
         const char *sug = hdr ? NULL : fuzzy_name(c, name, true);
-        if (sug)
+        if (sug) {
             d = cpedwarn(c, loc, "implicit-function-declaration",
                          "implicit declaration of function '%s'; did you mean "
                          "'%s'?", name, sug);
-        else
+            cfix_tok(c, d, 0, c->nodes[i].tok, sug, FIX_MAYBE);
+        } else
             d = cpedwarn(c, loc, "implicit-function-declaration",
                          "implicit declaration of function '%s'", name);
         if (hdr)
@@ -1866,10 +1806,11 @@ static void undeclared_(Checker *c, uint32_t i, uint32_t id)
         CSym s;
         hdr = std_header(name);
         sug = hdr ? NULL : fuzzy_name(c, name, false);
-        if (sug)
+        if (sug) {
             d = cerror_d(c, loc, "'%s' undeclared here (not in a function); "
                          "did you mean '%s'?", name, sug);
-        else
+            cfix_tok(c, d, 0, c->nodes[i].tok, sug, FIX_MAYBE);
+        } else
             d = cerror_d(c, loc, "'%s' undeclared here (not in a function)",
                          name);
         if (hdr)
@@ -1898,10 +1839,11 @@ static void undeclared_(Checker *c, uint32_t i, uint32_t id)
     }
     hdr = std_header(name);
     sug = hdr ? NULL : fuzzy_name(c, name, false);
-    if (sug)
+    if (sug) {
         d = cerror_d(c, loc, "'%s' undeclared (first use in this function); "
                      "did you mean '%s'?", name, sug);
-    else
+        cfix_tok(c, d, 0, c->nodes[i].tok, sug, FIX_MAYBE);
+    } else
         d = cerror_d(c, loc, "'%s' undeclared (first use in this function)",
                      name);
     if (hdr)

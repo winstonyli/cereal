@@ -7,6 +7,7 @@
 
 #include "lex.h"
 #include "c/ckw.h"
+#include "c/fixptok.h"
 #include "c/fuzzy.h"
 #include "c/lit.h"
 #include "c/target.h"
@@ -522,6 +523,16 @@ static Diagnostic *perr_after_prev(Parser *p, uint32_t i, const char *fmt, ...)
     return d;
 }
 
+/* gcc offers a missing token with a fixed spelling right after the token
+ * before i (c_parser_require); the fix-it is refused after a macro token. */
+static void fix_missing(Parser *p, Diagnostic *d, uint32_t i, const char *text,
+                        FixApplic app)
+{
+    if (d && i > 0 && i - 1 < p->toks.len)
+        fix_insert_after(p->diag, d, 0, p->sm, p->in, &p->toks.data[i - 1],
+                         text, app);
+}
+
 static void pwarn_opt(Parser *p, const char *opt, uint32_t i, const char *fmt,
                       ...);
 
@@ -659,12 +670,20 @@ static bool expect(Parser *p, Punct x)
      * ':' after the previous token, unless an error is already pending */
     if (!p->err.live && (x == P_RPAREN || x == P_RBRACKET || x == P_SEMI ||
                          x == P_COMMA || x == P_COLON))
-        perr_after_prev(p, ci(p), "expected %s%s", what,
-                        tok_desc(p, ci(p), buf, sizeof buf));
+        fix_missing(p, perr_after_prev(p, ci(p), "expected %s%s", what,
+                                       tok_desc(p, ci(p), buf, sizeof buf)),
+                    ci(p), punct_spelling[x], x == P_SEMI ? FIX_MAYBE : FIX_INFO);
     else if (!fill(p, ci(p)) && p->toks.len)
         perr_at(p, ci(p), eof_loc(p), "expected %s%s", what,
                 tok_desc(p, ci(p), buf, sizeof buf));
-    else
+    else if (x == P_LPAREN) {
+        /* a missing '(' is offered before the token found instead */
+        Diagnostic *d = perr(p, ci(p), "expected %s%s", what,
+                             tok_desc(p, ci(p), buf, sizeof buf));
+        if (d)
+            fix_insert_before(p->diag, d, 0, &p->toks.data[ci(p)], "(",
+                              FIX_INFO);
+    } else
         expected(p, what);
     return false;
 }
@@ -1183,13 +1202,16 @@ static void unknown_type_error(Parser *p, const PTok *t)
     if (hdr) {
         Diagnostic *d = perr(p, ci(p), "unknown type name '%.*s'", len, name);
         if (d)
-            diag_note(p->diag, d, diag_header_note_loc(p->diag, spell_loc(p, ci(p)), hdr),
-                      "'%.*s' is defined in header '%s'; did you forget to "
-                      "'#include %s'?", len, name, hdr, hdr);
-    } else if (sug)
-        perr(p, ci(p), "unknown type name '%.*s'; did you mean '%s'?", len,
-             name, sug);
-    else
+            diag_header_note(p->diag, d, spell_loc(p, ci(p)), hdr,
+                             "'%.*s' is defined in header '%s'; did you forget to "
+                             "'#include %s'?", len, name, hdr, hdr);
+    } else if (sug) {
+        Diagnostic *d = perr(p, ci(p), "unknown type name '%.*s'; did you "
+                             "mean '%s'?", len, name, sug);
+        if (d)
+            fix_replace_toks(p->diag, d, 0, p->sm, p->in, t, t,
+                             arena_strdup(p->diag->arena, sug), FIX_MAYBE);
+    } else
         perr(p, ci(p), "unknown type name '%.*s'", len, name);
 }
 
@@ -3320,8 +3342,10 @@ static void declaration(Parser *p, bool top)
             } else if (n == 0 && !p->kr_params &&
                 is_decl_start(p, &t)) { /* a missing ';' */
                 char buf[160];
-                perr_after_prev(p, ci(p), "expected ';'%s",
-                                tok_desc(p, ci(p), buf, sizeof buf));
+                fix_missing(p, perr_after_prev(p, ci(p), "expected ';'%s",
+                                               tok_desc(p, ci(p), buf,
+                                                        sizeof buf)),
+                            ci(p), ";", FIX_MAYBE);
                 p->err.live = false;    /* the next item starts at this token */
             } else {
                 expected(p, "'=', ',', ';', 'asm' or '__attribute__'");

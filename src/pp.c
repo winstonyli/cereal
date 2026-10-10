@@ -1,6 +1,7 @@
 /* pp.c - preprocessor core: token stream, contexts, directives, includes,
  * conditional compilation (C99 6.10.1-6.10.8). */
 #include "pp.h"
+#include "fixtok.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -2635,11 +2636,14 @@ void pp_directive(PP *pp, const Tok *hash)
     if (kw.kind == TK_IDENT) {
         const char *dn = ident_by_id(pp->in, kw.aux)->str;
         const char *hint = directive_hint(dn);
-        if (hint)
-            diag_report(pp->diag, DL_ERROR, "", kw.loc,
+        if (hint) {
+            Diagnostic *d = diag_report(pp->diag, DL_ERROR, "", kw.loc,
                         "invalid preprocessing directive #%s; did you mean #%s?",
                         dn, hint);
-        else
+            if (d)
+                fix_tok_replace(pp->diag, d, 0, pp->sm, pp->in, &kw,
+                                hint, FIX_MAYBE);
+        } else
             diag_report(pp->diag, DL_ERROR, "", kw.loc,
                         "invalid preprocessing directive #%s", dn);
         read_line(pp);

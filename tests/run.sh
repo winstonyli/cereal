@@ -163,6 +163,8 @@ for f in "$ROOT"/tests/pp/*.c "$ROOT"/tests/lint/*.c; do
     cd "$(dirname "$f")"
     par_same "${f#$ROOT/tests/}" "$(basename "$f")"
     MODE=lint par_same "${f#$ROOT/tests/}" "$(basename "$f")" -Weverything
+    MODE=lint par_same "${f#$ROOT/tests/} fix-its" "$(basename "$f")" \
+        -Weverything -fdiagnostics-parseable-fixits
     MODE=index par_same "${f#$ROOT/tests/}" "$(basename "$f")" --all
     MODE=-M par_same "${f#$ROOT/tests/}" "$(basename "$f")"
     cd "$ROOT"
@@ -210,6 +212,11 @@ jobs_same() { # jobs_same NAME DIR ARGS...
     fi
 }
 jobs_same "lint tests/lint" "$ROOT/tests/lint" lint ./*.c
+jobs_same "lint fix-its tests/lint" "$ROOT/tests/lint" lint \
+    -fdiagnostics-parseable-fixits ./*.c
+jobs_same "check fix-its tests/check" "$ROOT/tests/check" -fsyntax-only \
+    -std=c99 -pedantic -fdiagnostics-parseable-fixits -fdiagnostics-generate-patch \
+    ./fixit-*.c
 jobs_same "-E tests/pp" "$ROOT/tests/pp" -E -fparallel=on -fparallel-chunk=64 ./*.c
 jobs_same "-E dogfood" "$ROOT" -E -Isrc -D_POSIX_C_SOURCE=200809L src/*.c src/analysis/*.c src/lsp/*.c
 
@@ -521,6 +528,7 @@ sym_verify() { # sym_verify LABEL FILES...: one verdict for the lot
     shift
     for f in "$@"; do
         extra=$(sed -n 's|^// flags: *||p' "$f" | head -1)
+        case $extra in *-fdiagnostics-format*) continue ;; esac # JSON on stdout
         # shellcheck disable=SC2086
         "$CEREAL" -fsyntax-only -std=c99 -pedantic -I"$ROOT/src" \
             -D_POSIX_C_SOURCE=200809L $extra --verify-symbols "$f" \
@@ -638,6 +646,54 @@ for pad in 0 70000; do
         head -3 "$TMP/bom.out" | sed 's/^/    /'
     fi
 done
+
+# 19. the edit builder: tests/fix/NAME.edits (`cereal fix --edits=F --diff`
+# in that directory); stdout, stderr and exit status against NAME.expected
+for f in "$ROOT"/tests/fix/*.edits; do
+    [ -f "$f" ] || continue
+    n=$(basename "$f" .edits)
+    (
+        cd "$ROOT/tests/fix" || exit 9
+        "$CEREAL" fix "--edits=$n.edits" --diff >"$TMP/fx.o" 2>"$TMP/fx.e" </dev/null
+        rc=$?
+        { cat "$TMP/fx.o"; echo "--- stderr"; cat "$TMP/fx.e"; echo "exit $rc"; }
+    ) >"$TMP/fx.all"
+    if cmp -s "$TMP/fx.all" "$ROOT/tests/fix/$n.expected"; then
+        ok
+    else
+        bad "fix/$n"
+        diff "$ROOT/tests/fix/$n.expected" "$TMP/fx.all" | head -10 | sed 's/^/    /'
+    fi
+done
+
+# 20. fix-it columns are physical bytes: a byte order mark, CRLF line ends and
+# a file past 64 KiB (mmap'd) leave cereal's fix-its identical to gcc-13's
+FIXITCC=${FIXITCC:-gcc-13}
+if command -v "$FIXITCC" >/dev/null 2>&1; then
+    for pad in 0 70000; do
+        for eol in '\n' '\r\n'; do
+            {
+                printf '\357\273\277int value;'"$eol"
+                [ "$pad" -gt 0 ] && head -c "$pad" /dev/zero | tr '\0' ' ' &&
+                    printf "$eol"
+                printf 'int f(void)'"$eol"'{'"$eol"'\treturn valeu + 1'"$eol"'}'"$eol"
+            } >"$TMP/fxbom.c"
+            for t in g c; do
+                [ $t = g ] && p=$FIXITCC || p=$CEREAL
+                "$p" -fsyntax-only -fdiagnostics-parseable-fixits \
+                    "$TMP/fxbom.c" 2>&1 >/dev/null </dev/null |
+                    grep '^fix-it:' >"$TMP/fxbom.$t.fix"
+            done
+            if [ -s "$TMP/fxbom.g.fix" ] &&
+                cmp -s "$TMP/fxbom.g.fix" "$TMP/fxbom.c.fix"; then
+                ok
+            else
+                bad "fix-it columns (BOM, pad $pad, eol $eol) differ from $FIXITCC"
+                diff "$TMP/fxbom.g.fix" "$TMP/fxbom.c.fix" | head -4 | sed 's/^/    /'
+            fi
+        done
+    done
+fi
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

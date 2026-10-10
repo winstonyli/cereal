@@ -1,5 +1,6 @@
 /* diag.c - diagnostics engine. */
 #include "diag.h"
+#include "fixset.h"
 #include "json.h"
 #include "utf8.h"
 #include "wcwidth.h"
@@ -379,8 +380,11 @@ void diag_init_worker(DiagEngine *d, Arena *a, SrcMgr *sm, const DiagEngine *tu)
 void diag_free(DiagEngine *d)
 {
     size_t i;
-    for (i = 0; i < d->all.len; i++)
+    for (i = 0; i < d->all.len; i++) {
         vec_free(&d->all.data[i]->notes);
+        vec_free(&d->all.data[i]->fixits);
+    }
+    vec_free(&d->hdr_seen);
     vec_free(&d->all);
 }
 
@@ -754,7 +758,7 @@ Diagnostic *diag_report(DiagEngine *d, DiagLevel lvl, const char *id,
 
 void diag_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...)
 {
-    DiagNote n;
+    DiagNote n = {0};
     StrBuf sb = {0};
     va_list ap;
     if (!dg)
@@ -763,7 +767,6 @@ void diag_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...)
     sb_vprintf(&sb, fmt, ap);
     va_end(ap);
     n.loc = loc;
-    n.nocol = false;
     n.msg = arena_strndup(d->arena, sb_cstr(&sb), sb.len);
     sb_free(&sb);
     vec_push(&dg->notes, n);
@@ -999,9 +1002,11 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
     }
 }
 
+static void print_fixits(DiagEngine *d, const Diagnostic *dg, int owner);
+
 void diag_print(DiagEngine *d, Diagnostic *dg)
 {
-    int i;
+    int i, own = 0;
     size_t k;
     SrcRange none = {0, 0};
     for (i = dg->ninc - 1; i >= 0; i--) {
@@ -1022,10 +1027,26 @@ void diag_print(DiagEngine *d, Diagnostic *dg)
     }
     print_loc_line(d, dg->loc, dg->level, dg->msg, dg->id, dg->range,
                    dg->promoted, dg->nocol, dg->vcol);
-    for (k = 0; k < dg->notes.len; k++)
+    /* an owner's fix-it lines follow it and its "in expansion of" notes */
+    for (k = 0; k < dg->notes.len; k++) {
+        if (!dg->notes.data[k].expn)
+            break;
         print_loc_line(d, dg->notes.data[k].loc, DL_NOTE,
                        dg->notes.data[k].msg, NULL, none, false,
                        dg->notes.data[k].nocol, 0);
+    }
+    if (d->fixit_lines)
+        print_fixits(d, dg, 0);
+    for (; k < dg->notes.len; k++) {
+        if (!dg->notes.data[k].expn)
+            own = (int)k + 1;
+        print_loc_line(d, dg->notes.data[k].loc, DL_NOTE,
+                       dg->notes.data[k].msg, NULL, none, false,
+                       dg->notes.data[k].nocol, 0);
+        if (d->fixit_lines && (k + 1 == dg->notes.len ||
+                               !dg->notes.data[k + 1].expn))
+            print_fixits(d, dg, own);
+    }
 }
 
 void diag_flush(DiagEngine *d)
@@ -1042,6 +1063,8 @@ void diag_flush(DiagEngine *d)
             break;
         }
     }
+    if (d->gen_patch)
+        diag_generate_patch(d);
 }
 
 static void json_loc(JsonWriter *w, SrcMgr *sm, SrcLoc loc)
@@ -1061,6 +1084,42 @@ static void json_loc(JsonWriter *w, SrcMgr *sm, SrcLoc loc)
     json_int(w, col);
 }
 
+static const char *const app_name[] = {"safe", "maybe", "info"};
+
+/* "fixits": [...] of one owner, omitted when it has none */
+static void json_fixits(JsonWriter *w, DiagEngine *d, const Diagnostic *dg,
+                        int owner)
+{
+    size_t k;
+    bool open = false;
+    for (k = 0; k < dg->fixits.len; k++) {
+        const FixIt *x = &dg->fixits.data[k];
+        if (x->owner != owner)
+            continue;
+        if (!open) {
+            json_key(w, "fixits");
+            json_begin_array(w);
+            open = true;
+        }
+        json_begin_object(w);
+        json_key(w, "start");
+        json_begin_object(w);
+        json_loc(w, d->sm, x->begin);
+        json_end_object(w);
+        json_key(w, "next");
+        json_begin_object(w);
+        json_loc(w, d->sm, x->end);
+        json_end_object(w);
+        json_key(w, "string");
+        json_str(w, x->text);
+        json_key(w, "applicability");
+        json_str(w, app_name[x->app]);
+        json_end_object(w);
+    }
+    if (open)
+        json_end_array(w);
+}
+
 void diag_print_json(DiagEngine *d, FILE *out)
 {
     JsonWriter w;
@@ -1077,6 +1136,7 @@ void diag_print_json(DiagEngine *d, FILE *out)
         json_loc(&w, d->sm, dg->loc);
         json_key(&w, "message");
         json_str(&w, dg->msg);
+        json_fixits(&w, d, dg, 0);
         json_key(&w, "notes");
         json_begin_array(&w);
         for (k = 0; k < dg->notes.len; k++) {
@@ -1084,6 +1144,7 @@ void diag_print_json(DiagEngine *d, FILE *out)
             json_loc(&w, d->sm, dg->notes.data[k].loc);
             json_key(&w, "message");
             json_str(&w, dg->notes.data[k].msg);
+            json_fixits(&w, d, dg, (int)k + 1);
             json_end_object(&w);
         }
         json_end_array(&w);
@@ -1155,7 +1216,234 @@ void diag_expansion_notes(DiagEngine *d, Diagnostic *dg, const SrcMgr *sm,
         notes[0].loc = exp;
         cnt = 1;
     }
-    for (k = 0; k < cnt; k++)
+    for (k = 0; k < cnt; k++) {
         diag_note(d, dg, notes[k].loc, "in expansion of macro '%.*s'",
                   (int)notes[k].len, notes[k].name);
+        dg->notes.data[dg->notes.len - 1].expn = true;
+    }
+}
+
+/* ---- fix-its (docs/C_DESIGN.md section 3) ------------------------------- */
+
+bool diag_fixit(DiagEngine *d, Diagnostic *dg, int owner, SrcLoc b, SrcLoc e,
+                const char *text, FixApplic app)
+{
+    bool *nofix, ok;
+    SrcFile *f;
+    uint32_t l1 = 0, c1 = 0, l2 = 0, c2 = 0;
+    size_t n = strlen(text), k;
+    FixIt fx;
+    if (!dg)
+        return false;
+    nofix = owner ? &dg->notes.data[owner - 1].nofix : &dg->nofix;
+    if (*nofix)
+        return false;
+    f = b ? srcmgr_file_of(d->sm, b) : NULL;
+    ok = f && f->kind == SF_USER && b <= e && e <= f->base + f->size &&
+         !srcmgr_is_system(f, b);
+    if (ok) {
+        srcmgr_linecol(f, b, &l1, &c1);
+        srcmgr_linecol(f, e, &l2, &c2);
+        /* libcpp: one line; a newline only last, in an insertion at col 1 */
+        ok = l1 == l2 && (!memchr(text, '\n', n) ||
+                          (b == e && c1 == 1 && text[n - 1] == '\n' &&
+                           memchr(text, '\n', n) == text + n - 1));
+    }
+    if (!ok) {
+        size_t w = 0;
+        *nofix = true;
+        for (k = 0; k < dg->fixits.len; k++)
+            if (dg->fixits.data[k].owner != owner)
+                dg->fixits.data[w++] = dg->fixits.data[k];
+        dg->fixits.len = w;
+        return false;
+    }
+    for (k = dg->fixits.len; k-- > 0;)
+        if (dg->fixits.data[k].owner == owner) {
+            FixIt *last = &dg->fixits.data[k];
+            size_t ln = strlen(last->text);
+            /* libcpp consolidates a hint that starts where the last ends */
+            if (last->end == b && !(ln && last->text[ln - 1] == '\n')) {
+                char *s = arena_alloc(d->arena, ln + n + 1);
+                memcpy(s, last->text, ln);
+                memcpy(s + ln, text, n);
+                last->text = s;
+                last->end = e;
+                return true;
+            }
+            break;
+        }
+    fx.begin = b;
+    fx.end = e;
+    fx.text = text;
+    fx.owner = (uint16_t)owner;
+    fx.app = (uint8_t)app;
+    vec_push(&dg->fixits, fx);
+    return true;
+}
+
+/* Where gcc suggests adding an #include: the line after the last #include
+ * before loc in loc's file (the first user file when loc is not in one),
+ * else its start. */
+static SrcLoc include_loc(SrcMgr *sm, SrcLoc loc)
+{
+    uint32_t k, n = srcmgr_nfiles(sm), line, nl, lastinc = 0;
+    SrcFile *f = srcmgr_file_of(sm, loc);
+    if (!f || f->kind != SF_USER || f->system_header) {
+        f = NULL;
+        for (k = 0; k < n; k++) {
+            SrcFile *g = srcmgr_file(sm, k);
+            if (g && g->kind == SF_USER && !g->system_header) {
+                f = g;
+                break;
+            }
+        }
+    }
+    if (!f)
+        return loc;
+    srcmgr_linecol(f, f->base + f->size, &nl, &line);
+    if (srcmgr_file_of(sm, loc) == f)
+        srcmgr_linecol(f, loc, &nl, &line);
+    for (line = 1; line < nl; line++) {
+        uint32_t len, j = 0;
+        const char *s = srcmgr_line_text(f, line, &len);
+        while (j < len && (s[j] == ' ' || s[j] == '\t'))
+            j++;
+        if (j >= len || s[j] != '#')
+            continue;
+        j++;
+        while (j < len && (s[j] == ' ' || s[j] == '\t'))
+            j++;
+        if (len - j >= 7 && !memcmp(s + j, "include", 7))
+            lastinc = line;
+    }
+    return srcmgr_loc_of(f, lastinc + 1, 1);
+}
+
+SrcLoc diag_header_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc,
+                        const char *hdr, const char *fmt, ...)
+{
+    StrBuf sb = {0};
+    va_list ap;
+    SrcLoc at;
+    size_t k;
+    bool seen = false;
+    if (!dg)
+        return loc;
+    for (k = 0; k < d->hdr_seen.len && !seen; k++)
+        seen = !strcmp(d->hdr_seen.data[k], hdr);
+    if (!seen)
+        vec_push(&d->hdr_seen, arena_strdup(d->arena, hdr));
+    at = seen ? loc : include_loc(d->sm, loc);
+    va_start(ap, fmt);
+    sb_vprintf(&sb, fmt, ap);
+    va_end(ap);
+    diag_note(d, dg, at, "%s", sb_cstr(&sb));
+    sb_free(&sb);
+    if (!seen)
+        diag_fixit(d, dg, (int)dg->notes.len, at, at,
+                   arena_printf(d->arena, "#include %s\n", hdr), FIX_SAFE);
+    return at;
+}
+
+void fixit_escape(FILE *o, const char *s, size_t n)
+{
+    size_t i;
+    for (i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == '\\' || c == '"')
+            fprintf(o, "\\%c", c);
+        else if (c == '\t')
+            fputs("\\t", o);
+        else if (c == '\n')
+            fputs("\\n", o);
+        else if (c < 0x20 || c >= 0x7f)
+            fprintf(o, "\\%03o", c);
+        else
+            fputc(c, o);
+    }
+}
+
+/* The parseable fix-it lines of one owner. */
+static void print_fixits(DiagEngine *d, const Diagnostic *dg, int owner)
+{
+    size_t k;
+    for (k = 0; k < dg->fixits.len; k++) {
+        const FixIt *x = &dg->fixits.data[k];
+        SrcFile *f;
+        uint32_t l1, c1, l2, c2;
+        const char *name;
+        if (x->owner != owner)
+            continue;
+        f = srcmgr_file_of(d->sm, x->begin);
+        srcmgr_linecol(f, x->begin, &l1, &c1);
+        srcmgr_linecol(f, x->end, &l2, &c2);
+        l1 = srcmgr_presumed(f, l1, &name);
+        l2 = srcmgr_presumed(f, l2, &name);
+        fputs("fix-it:\"", d->out);
+        fixit_escape(d->out, name, strlen(name));
+        fprintf(d->out, "\":{%u:%u-%u:%u}:\"", l1, c1, l2, c2);
+        fixit_escape(d->out, x->text, strlen(x->text));
+        fputs("\"\n", d->out);
+    }
+}
+
+/* gcc's -fdiagnostics-generate-patch: all the TU's fix-its as one patch,
+ * on d->out after its diagnostics.  gcc prints none once a fix-it was
+ * refused, or when a fix-it's file is a #line name (edit-context.cc). */
+void diag_generate_patch(DiagEngine *d)
+{
+    FixSet fs;
+    VEC(SrcFile *) files = {0};
+    size_t i, k, j;
+    bool valid = true;
+    fixset_init(&fs);
+    for (i = 0; i < d->all.len && valid; i++) {
+        const Diagnostic *dg = d->all.data[i];
+        bool any = false;
+        if (dg->nofix)
+            valid = false;
+        for (k = 0; k < dg->notes.len; k++)
+            if (dg->notes.data[k].nofix)
+                valid = false;
+        for (k = 0; k < dg->fixits.len && valid; k++) {
+            const FixIt *x = &dg->fixits.data[k];
+            SrcFile *f = srcmgr_file_of(d->sm, x->begin);
+            uint32_t l, c, pl;
+            const char *pname;
+            uint32_t fi;
+            srcmgr_linecol(f, x->begin, &l, &c);
+            pl = srcmgr_presumed(f, l, &pname);
+            if (pl != l || strcmp(pname, f->name)) {
+                valid = false;
+                break;
+            }
+            fi = fixset_file(&fs, f->name);
+            if (fi == files.len)
+                vec_push(&files, f);
+            if (!any)
+                fixset_group(&fs);
+            any = true;
+            fixset_add(&fs, fi, srcmgr_offset(f, x->begin),
+                       srcmgr_offset(f, x->end), x->text);
+        }
+    }
+    if (valid && fs.edits.len) {
+        fixset_resolve(&fs);
+        /* files by name, as gcc's hash_map-ordered by strcmp tree */
+        for (i = 0; i < files.len; i++)
+            for (j = i + 1; j < files.len; j++)
+                if (strcmp(files.data[j]->name, files.data[i]->name) < 0) {
+                    SrcFile *t = files.data[i];
+                    files.data[i] = files.data[j];
+                    files.data[j] = t;
+                }
+        for (i = 0; i < files.len; i++) {
+            SrcFile *f = files.data[i];
+            fixset_diff(&fs, fixset_file(&fs, f->name), f->name, f->buf,
+                        f->size, d->out);
+        }
+    }
+    vec_free(&files);
+    fixset_free(&fs);
 }

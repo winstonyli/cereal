@@ -1,0 +1,22 @@
+fixit-typo.c:8:17: error: 'countr' undeclared (first use in this function); did you mean 'counter'?
+    8 |     int total = countr + 1;
+      |                 ^
+fix-it:"fixit-typo.c":{8:17-8:23}:"counter"
+fixit-typo.c:8:17: note: each undeclared identifier is reported only once for each function it appears in
+    8 |     int total = countr + 1;
+      |                 ^
+fixit-typo.c:9:7: error: invalid type argument of '->' (have 'struct point')
+    9 |     pv->xcoord = 1;
+      |       ^
+fixit-typo.c:10:7: error: 'pp' is a pointer; did you mean to use '->'?
+   10 |     pp.ycoord = 2;
+      |       ^
+fix-it:"fixit-typo.c":{10:7-10:8}:"->"
+fixit-typo.c:11:15: error: 'struct point' has no member named 'xcoorf'; did you mean 'xcoord'?
+   11 |     return pv.xcoorf + total
+      |               ^
+fix-it:"fixit-typo.c":{11:15-11:21}:"xcoord"
+fixit-typo.c:11:29: error: expected ';' before '}' token
+   11 |     return pv.xcoorf + total
+      |                             ^
+fix-it:"fixit-typo.c":{11:29-11:29}:";"

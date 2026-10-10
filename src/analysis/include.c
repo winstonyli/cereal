@@ -273,8 +273,9 @@ static void check_header(Analysis *a, SrcFile *f)
                 "a different macro '%s'", g->str, d->str);
             diag_note(a->diag, dg, sk->dirs.data[0].kw_loc,
                       "'%s' is tested here; did you mean to define it?", g->str);
-            if (dg)
-                dg->fixit = g->str;
+            if (dg && sk->dirs.data[1].toks.n)
+                fix_tok_replace(a->diag, dg, 0, a->sm, a->in,
+                                &sk->dirs.data[1].toks.t[0], g->str, FIX_SAFE);
         }
     }
 

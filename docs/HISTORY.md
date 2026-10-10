@@ -4086,3 +4086,45 @@ Gates: run.sh 1920 passed; gate.sh rc 0: san 1920 passed, 611 files, 0
 findings; gcc.dg 3908 of 3910, c-c++-common 637 of 638, cpp 289 of 289;
 callgrind 3.882 G. C_DESIGN decisions Q1-Q10 taken as recommended (user:
 "all yes"); Q7 resolved by this round, not bundled into C1.
+
+## Round 212: ROADMAP C1, fix-its in the diagnostic engine
+
+C_DESIGN.md slice C1. A `Diagnostic` now carries `VEC(FixIt) fixits`
+({begin, end, text, owner, applicability SAFE|MAYBE|INFO}; owner 0 is the
+diagnostic, k a note) and a per-owner `nofix` poison; the old `fixit` string
+is deleted and its three lint producers (cond-typo INFO, hygiene parameter
+parentheses SAFE, header-guard SAFE) moved to `fix_tok_replace`. All fix-its
+enter through `diag_fixit` (user file, one line, newline only as the last
+character of a column-1 insertion, touching hints merged, a refused hint
+poisons its owner), with token helpers that refuse macro-origin tokens
+(`fixtok.c` for `Tok`, `c/fixptok.c` for `PTok`). Producers in the checker
+and parser: header notes (`cheader_note`, once per header, at the line after
+the last `#include` before the use in the file of the use), did-you-mean for
+identifiers, implicit functions, members, designated members, unknown type
+names and `#elsif`, `.` to `->` and the pointer-to-pointer `(*` `)` pair,
+and expected `) ] ; , :` (after the previous token, `;` MAYBE, the rest
+INFO) and `(` (before the token found). Cells carry the fix-its in memory
+(`CellFix`, `CN_*` note flags; no format, so no version); `par.c diag_copy`
+deep-copies them. Output: `-fdiagnostics-parseable-fixits`, a JSON `fixits`
+array on diagnostics and notes, `-fdiagnostics-generate-patch` and the edit
+builder `fixset.c` (sort, dedupe, same-point order, touching is not overlap,
+an overlapping later group skipped whole), shared with `cereal fix
+--edits=FILE --diff` (`fixmode.c`; the rest of `fix` is C3). Probes P11 to
+P13, P18, P19 (C_DESIGN section 13) changed four design points, listed in
+section 8 "C1 as built". Tests: eight `tests/check/fixit-*.c` goldens, six
+`tests/fix` builder cases (run.sh section 19), BOM/CRLF/64 KiB columns
+against gcc-13 (section 20), fix-its on in the parallel and `-j` comparisons;
+`bench/tools/fixits.sh` (differential) and `par.py CEREAL_FIXITS=1` with a
+`verify.sh` line. Differential over 7042 gcc.dg and c-c++-common files: 0
+differ, 31 differ in the diagnostic itself (listed in C_DESIGN); patches
+over the 198-file survey: 0 differ. `verify.sh`: gcc fix-its identical in
+102 of 103 files (spellcheck-inttypes: `PRIx8` not in `std_names`). Source
++1284/-128, tests +369, bench +135 lines. Gates: run.sh 1989 passed (was
+1920 + 69 new); gate.sh: san 1989 passed, 619 files, 0 findings; gcc.dg 3908
+of 3910, c-c++-common 637 of 638, cpp 289 of 289 (unchanged); callgrind
+3.895 G (3.882 G); the LSP sessions (both modes) under TSan: 34 passed, 0
+reports (`server.c` only frees the new vector), and the new goldens at `-j8`
+under TSan: 0 reports. Not done: the eight goldens that put "is declared in
+header" notes at the use (gcc: first per header at `include_loc`, with a
+fix-it) are unchanged; see C_DESIGN "Known gaps". Scratch lived in
+`~/c1cf`, not `/tmp` (the WSL tmpfs is wiped when the distro idles).

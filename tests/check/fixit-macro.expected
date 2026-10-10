@@ -1,0 +1,23 @@
+fixit-macro.c:8:18: error: 'amountx' undeclared (first use in this function); did you mean 'amountt'?
+    8 |     return TWICE(amountx);
+      |                  ^
+fixit-macro.c:8:18: note: each undeclared identifier is reported only once for each function it appears in
+    8 |     return TWICE(amountx);
+      |                  ^
+fixit-macro.c:12:9: error: 'amountx' undeclared (first use in this function); did you mean 'amountt'?
+   12 |     RET(amountx);
+      |         ^
+fixit-macro.c:4:21: error: 'amount' undeclared (first use in this function); did you mean 'amountt'?
+    4 | #define BODY return amount
+      |                     ^
+fixit-macro.c:16:5: note: in expansion of macro 'BODY'
+   16 |     BODY;
+      |     ^
+fixit-macro.c:21:13: error: expected ')' before '}' token
+   21 |         + (b
+      |             ^
+fix-it:"fixit-macro.c":{21:13-21:13}:")"
+fixit-macro.c:21:13: error: expected ';' before '}' token
+   21 |         + (b
+      |             ^
+fix-it:"fixit-macro.c":{21:13-21:13}:";"

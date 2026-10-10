@@ -1,0 +1,20 @@
+fixit-include-bare.c:4:5: warning: implicit declaration of function 'puts' [-Wimplicit-function-declaration]
+    4 |     puts(s);
+      |     ^
+fixit-include-bare.c:1:1: note: include '<stdio.h>' or provide a declaration of 'puts'
+    1 | // flags: -fdiagnostics-parseable-fixits
+      | ^
+fix-it:"fixit-include-bare.c":{1:1-1:1}:"#include <stdio.h>\n"
+fixit-include-bare.c:5:17: warning: implicit declaration of function 'strlen' [-Wimplicit-function-declaration]
+    5 |     return (int)strlen(s);
+      |                 ^
+fixit-include-bare.c:1:1: note: include '<string.h>' or provide a declaration of 'strlen'
+    1 | // flags: -fdiagnostics-parseable-fixits
+      | ^
+fix-it:"fixit-include-bare.c":{1:1-1:1}:"#include <string.h>\n"
+fixit-include-bare.c:5:17: warning: incompatible implicit declaration of built-in function 'strlen' [-Wbuiltin-declaration-mismatch]
+    5 |     return (int)strlen(s);
+      |                 ^
+fixit-include-bare.c:5:17: note: include '<string.h>' or provide a declaration of 'strlen'
+    5 |     return (int)strlen(s);
+      |                 ^

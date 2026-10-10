@@ -10,6 +10,7 @@
 #include "c/ckw.h"
 #include "c/csum.h"
 #include "c/csymidx.h"
+#include "c/fixptok.h"
 #include "c/lit.h"
 #include "c/type.h"
 
@@ -689,6 +690,30 @@ Diagnostic *cerror_d(Checker *c, SrcLoc loc, const char *fmt, ...);
 Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, const char *id,
                     const char *fmt, ...);
 void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...);
+void cheader_note(Checker *c, Diagnostic *d, SrcLoc loc, const char *hdr,
+                  const char *fmt, ...);
+/* Replaces token tok with text in the fix-its of d (docs/C_DESIGN.md 3.2). */
+static inline void cfix_tok(Checker *c, Diagnostic *d, int owner, uint32_t tok,
+                            const char *text, FixApplic app)
+{
+    if (d && tok < c->u->ntoks)
+        fix_replace_toks(c->diag, d, owner, c->sm, c->in, &c->u->toks[tok],
+                         &c->u->toks[tok],
+                         arena_strdup(c->diag->arena, text), app);
+}
+/* Inserts text before token tok (or after it) in the fix-its of d. */
+static inline void cfix_ins(Checker *c, Diagnostic *d, int owner, uint32_t tok,
+                            bool after, const char *text, FixApplic app)
+{
+    if (!d || tok >= c->u->ntoks)
+        return;
+    text = arena_strdup(c->diag->arena, text);
+    if (after)
+        fix_insert_after(c->diag, d, owner, c->sm, c->in, &c->u->toks[tok],
+                         text, app);
+    else
+        fix_insert_before(c->diag, d, owner, &c->u->toks[tok], text, app);
+}
 /* cstmt_warn.c: emit_side_effect_warnings for an expression whose value is dropped */
 void unused_value(Checker *c, uint32_t e, SrcLoc dloc);
 SrcLoc value_loc(Checker *c, uint32_t e, SrcLoc dloc);

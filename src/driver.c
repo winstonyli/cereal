@@ -391,6 +391,10 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         vec_push(&o->wflags, a + 2);
     } else if (!strcmp(a, "-fdiagnostics-format=json")) {
         o->json = true;
+    } else if (!strcmp(a, "-fdiagnostics-parseable-fixits")) {
+        o->fixit_lines = true;
+    } else if (!strcmp(a, "-fdiagnostics-generate-patch")) {
+        o->gen_patch = true;
     } else if (!strcmp(a, "-fcolor-diagnostics") ||
                !strcmp(a, "-fdiagnostics-color")) {
         o->color = true;
@@ -744,6 +748,8 @@ void tu_init_shared(TU *tu, Options *opt, Interner *in)
     tu->diag.no_warnings = opt->no_warnings;
     tu->diag.fatal_errors = opt->fatal_errors;
     tu->diag.track0 = opt->track0;
+    tu->diag.fixit_lines = opt->fixit_lines;
+    tu->diag.gen_patch = opt->gen_patch;
     pp_init(&tu->pp, &tu->arena, tu->in, &tu->sm, &tu->diag, &opt->pp);
     tu->pp.host_attrs = host_attrs;
     tu->pp.check_versions = opt->check_versions;
