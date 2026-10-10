@@ -624,5 +624,20 @@ else
     head -5 "$TMP/bt" | sed 's/^/    /'
 fi
 
+# 18. a UTF-8 byte order mark is dropped for small (read) and large (mmap'd,
+# >= 64 KiB) files alike
+for pad in 0 70000; do
+    {
+        printf '\357\273\277int x = 1;\n'
+        [ "$pad" -gt 0 ] && head -c "$pad" /dev/zero | tr '\0' ' ' && printf '\n'
+    } >"$TMP/bom$pad.c"
+    if "$CEREAL" check "$TMP/bom$pad.c" >"$TMP/bom.out" 2>&1 && [ ! -s "$TMP/bom.out" ]; then
+        ok
+    else
+        bad "BOM file (pad $pad) is not accepted"
+        head -3 "$TMP/bom.out" | sed 's/^/    /'
+    fi
+done
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

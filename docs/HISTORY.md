@@ -4073,3 +4073,16 @@ the "previous definition" note for a redefined host predefine says
 `<command-line>`, gcc `<built-in>`; `-U__FILE__` gives no "undefining"
 warning; with `--cells` a malformed `-D` error is ordered after an error in
 an `-include` file.
+
+## Round 211: BOM on the mmap path
+
+A file of 64 KiB or more that starts with a UTF-8 BOM failed with
+`unknown type name '\U0000feffint'` (gcc accepts it): only the `read` path in
+`srcmgr_load` stripped the BOM. The strip now runs after both paths (the
+mmap mapping is MAP_PRIVATE and writable, so the `memmove` is a private copy).
+The overlay path (LSP buffers) still keeps a BOM; C_DESIGN section 2 covers
+it. Test: tests/run.sh section 18 (small and 70000-byte-padded BOM files).
+Gates: run.sh 1920 passed; gate.sh rc 0: san 1920 passed, 611 files, 0
+findings; gcc.dg 3908 of 3910, c-c++-common 637 of 638, cpp 289 of 289;
+callgrind 3.882 G. C_DESIGN decisions Q1-Q10 taken as recommended (user:
+"all yes"); Q7 resolved by this round, not bundled into C1.

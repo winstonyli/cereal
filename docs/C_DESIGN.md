@@ -1,0 +1,1126 @@
+# C design: fix-its, `cereal fix`, LSP quick fixes
+
+Written 2026-10-10 against `cea7869` (v0.14.0). ROADMAP track C. Section 8
+covers slices C1 to C4. C5 (a baseline file for CI) and C6 (macro to inline,
+enum or const suggestions) are out of scope here and get their own designs
+(section 10).
+
+Claims about the code cite `file:line` at that commit. Claims about gcc-13
+were probed with gcc 13.4.0 on WSL (section 13). Numbers marked "est." are
+estimates. Nothing in this design is implemented.
+
+## 1. Decisions in one place
+
+D1 to D6 are the user's and are not reopened here. The brief said "D1..D7"
+but listed six; D7 records the brief's scope rule. D8 onward are this
+design's.
+
+| # | Decision | Why |
+|---|----------|-----|
+| D1 | A `Diagnostic` carries a vector of `FixIt {begin, end, text, applicability SAFE \| MAYBE \| INFO}`. The old `const char *fixit` is deleted. Its three producers, the cell cache and the parallel-PP merge are converted. | (user) |
+| D2 | `cereal fix` applies SAFE fixes only by default. `--unsafe` adds MAYBE. INFO is never applied. | (user) |
+| D3 | CLI text output uses gcc's `-fdiagnostics-parseable-fixits` lines: `fix-it:"file":{l:c-l:c}:"text"`, byte columns, C-escaped, with gcc-13 as the oracle. JSON gets a gcc-shaped `fixits` array (start, next, string) plus an `applicability` key. `-fdiagnostics-generate-patch` and `cereal fix --diff` share one edit builder. gcc-13 has no fix-it for parentheses around an assignment or for an unused variable, so cereal-only fixes need the re-check gate. | (user) |
+| D4 | Order: the C1 to C4 plumbing and the high-value fixes come first; the macro analyses (C6) come later. | (user) |
+| D5 | A header edit made from several TUs needs every TU that reports the same (file, range, text) to agree. Otherwise it is skipped and reported. | (user) |
+| D6 | The missing-`;` fix runs only behind `--unsafe`, and a pass applies at most one error-fixing edit. | (user) |
+| D7 | C5 (CI baseline) and C6 (macro to inline/enum/const) are out of scope; section 10 only places them. | (brief) |
+| D8 | Every fix-it enters through one validating function, `diag_fixit` (section 3.2). It rejects locations outside a user file and inside a macro expansion, so a fix-it is always a real source range. Token-level helpers sit on top of it. | One place enforces the "real location" guarantee. gcc does the same in `rich_location`: it refuses fix-its on macro-expanded tokens, including macro arguments (probe P5). |
+| D9 | One edit builder, `fixset.c`, does sort, dedupe, overlap and same-point order. It serves `-fdiagnostics-generate-patch`, `cereal fix`, `cereal fix --diff` and the LSP fix-all. | D3 requires generate-patch and `--diff` to share it. With one builder, the LSP cannot drift from the CLI. |
+| D10 | `cereal fix` writes only what a re-check accepted. Every TU that read an edited file is re-run with all edits applied through the `SrcMgr.overlay` hook (the `crename.c` method). SAFE must pass the semantic gate (section 6.4). A failure is demoted or dropped, never written. | gcc offers no oracle for cereal-only fixes (D3). The rename verifier already proves the overlay re-check works. |
+| D11 | The LSP offers each fix-it as a `quickfix` code action tied to its diagnostic, plus `source.fixAll.cereal` (SAFE, this document only). Fix-all runs the D10 gate on the builder thread. | Same semantics as the CLI (D9, D10). The builder thread is where rename already runs its checks. |
+| D12 | Exit status of `cereal fix`: 0 fixed point, 1 something selected was not applied (or `--diff` is non-empty), 2 usage, 3 some TU not checked, 4 a file could not be read back or written. The worst one wins, in the order 2, 4, 3, 1, 0. | Extends the replay statuses of A4 D9 (0/1/2/3) without changing them. A write failure must be told apart from "work left". Open question Q2. |
+
+## 2. What exists (verified at cea7869)
+
+- **The `Diagnostic` struct** (`diag.h`) has a `const char *fixit`
+  ("optional suggested replacement text", `diag.h:54`). Nothing prints it.
+  The LSP does not read it.
+  - Its three producers:
+    - `cond-typo`: `cond.c:914`, `d->fixit = best->str`, range on the token.
+    - `macro-unparenthesized-param`: `hygiene.c:302`, `"(%s)"`, range on
+      the body token.
+    - `header-guard`: `include.c:277`, `dg->fixit = g->str`. The location
+      is the `#define` keyword (`sk->dirs.data[1].kw_loc`), not the macro
+      name.
+  - `macro-unparenthesized-body` (`hygiene.c:447-456`) has a note "wrap the
+    replacement list in parentheses" but no fix-it.
+  - The cell cache copies it: `CellDiag.fixit` (`cell.h:94`), encoded at
+    `cell.c:665` and decoded at `cell.c:798`.
+  - The parallel-PP merge copies it: `par.c:403-404`.
+- **The cell cache is in memory only.** `cell.c` has no `fwrite` and no
+  on-disk format. Cells are reused within one process, keyed by
+  `CellCache.config`.
+  - So the brief's "bump format" needs no version bump. The change is only
+    to the in-memory `CellDiag`. This corrects the brief.
+- **Printing.**
+  - `diag_print` (`diag.c:1002`) prints the include chain, the header line,
+    then `print_loc_line` (`diag.c:905`: display columns, tabs expanded to
+    8, presumed line), then the notes.
+  - `diag_expansion_notes` (`diag.c:1138`) appends "in expansion of macro"
+    notes as ordinary notes.
+  - JSON: `diag_print_json` (`diag.c:1064`) with `json_loc` (`diag.c:1047`).
+- **Header notes.**
+  - `diag_header_note_loc` (`cexpr.c:887-904`) puts the first note for each
+    known header at `include_loc` (`cexpr.c:852-882`): the line after the
+    main file's last `#include`, else line 1. Later notes for the same
+    header go at the use.
+  - The `hdr_noted` bitmask is in `diag.h:84`.
+  - Callers:
+    - `header_note` (`cexpr.c:911`), used at 1811, 1876, 1908;
+    - `builtin_mismatch` (`cexpr.c:1759`);
+    - `implicit_decl`'s "include '%s' or provide a declaration" (`cexpr.c:1796`);
+    - `parse.c:1186`.
+- **Missing-token errors.** `perr_after_prev` (`parse.c:509-523`) places a
+  missing-token error at the end of the previous token, but only when that
+  token is plain source (`!exp || exp == t.loc`). Its end is computed with
+  `tok_raw_len` (`lex.h:87`).
+- **Macro provenance.**
+  - `PTok.mloc != 0` marks a token from a macro expansion, including macro
+    arguments (`ptok_in_macro`).
+  - The checker asks `tfrom_macro` (`check_int.h:620`).
+  - Preprocessor tokens carry `TF_ORIGIN_BODY`, `TF_ORIGIN_ARG`,
+    `TF_PASTED` and `TF_SYNTH` (`token.h`).
+- **SrcMgr.**
+  - The `overlay` hook (`srcmgr.c:193-203`) serves a buffer instead of the
+    disk.
+  - A UTF-8 BOM is stripped on the `read` and mmap paths alike (Round 211;
+    before it, a file of 64 KiB or more that started with a BOM gave
+    `unknown type name '\U0000feffint'`, P10).
+  - The overlay path keeps it.
+- **Rename verifier.** `crename.c` checks a unit as it is and again with
+  the edits served by an overlay (`run_check`, `crename.c:55`), then
+  compares:
+  - diagnostics, by level, id and mapped place (`map_off`/`unmap_off`,
+    `crename.c:89,105`);
+  - declarations and events;
+  - inactive groups, through a `skipped` listener (`crename.c:38`).
+
+  `differs` (`crename.c:235`) is the comparison. Section 6.4 reuses this
+  method.
+- **TU jobs** (`main.c`).
+  - `TuFn(Options*, path, out, err)` (`main.c:120`).
+  - `TuJob` (`main.c:340`).
+  - `run_jobs` (`main.c:408`) buffers each job's output in `open_memstream`
+    and commits jobs in input order, so output is identical for any `-j`.
+  - `mode_compdb` (`main.c:554`) dedupes entries by (absolute file, options
+    fingerprint) and returns `n_err ? 1 : n_not ? 3 : 0` (`main.c:699`).
+  - `finish` (`main.c:86`) is the shared end of each TU.
+  - Lint analyses are attached as PP listeners in `lint_one` (`main.c:159`).
+    `check`/`parse` do not attach them.
+  - `-Wfatal-errors` exists (`driver.c:373`). The error limit is
+    `max_errors` (`diag.c:364,375`).
+- **Command-line flags.**
+  - `-fdiagnostics-parseable-fixits` and `-fdiagnostics-generate-patch`
+    are rejected today as "unknown option" (exit 2, probed).
+  - `cereal fix` prints the usage text (exit 2).
+- **LSP.**
+  - There is no `codeActionProvider` in `initialize` (`server.c:908-1022`).
+    Text sync is incremental.
+  - Requests carry a `CPolicy` (`server.c:1037-1045`). `must_wait`
+    (`server.c:1091`) and `handle_request` wait up to 1.5 s for the newest
+    edit's snapshot.
+  - Rename checks run on the builder thread: `RenameJob`
+    (`server.c:55-60`), `rename_run` (`server.c:593`), `lsp_check_rename`
+    (`server.c:616`).
+  - The analyses run on the snapshot's macro-phase TU (`server.c:197`).
+  - Published diagnostics (`lsp_publish_diagnostics`,
+    `features.c:1867`) are the macro phase's (`s->tu.diag.all`) plus the
+    check's. Check diagnostics are deduped by `diag_key` (range and message,
+    `features.c:1769`) and kept as `CDiag` offsets (`lsp.h:68-78`).
+  - `cdiags_carry` (`features.c:1837`) moves `CDiag` offsets across an edit
+    and drops a diagnostic whose range or any note meets the edit.
+  - Rename emits a `WorkspaceEdit` with `changes` keyed by URI
+    (`c_rename_edits`, `features.c:1013`).
+- **`deps.c` writes `.d` files with a plain `fopen("w")`** (`deps.c:288-296`).
+  The tree has no atomic-write helper.
+
+## 3. Fix-its in the diagnostic engine (C1)
+
+### 3.1 Data
+
+```c
+typedef enum { FIX_SAFE, FIX_MAYBE, FIX_INFO } FixApplic;
+
+typedef struct FixIt {
+    SrcLoc begin, end;      /* [begin, end) in one user file; begin == end: insertion */
+    const char *text;       /* arena; may be "" (deletion) */
+    uint16_t owner;         /* 0: the diagnostic itself; k: notes.data[k-1] */
+    uint8_t app;            /* FixApplic */
+} FixIt;
+```
+
+`Diagnostic` gains `fixits` and `nofix`; `DiagNote` gains `nofix` and
+`expn`:
+
+- `VEC(FixIt) fixits`, ordered by addition;
+- `bool nofix` on `Diagnostic` and on `DiagNote`: that owner is poisoned.
+  gcc drops all of an owner's fix-its once one of them is refused. Each
+  note is its own rich location there, so a refused note does not affect
+  the diagnostic's fix-its. cereal copies this per-owner rule, so the
+  differential matches;
+- `bool expn` on `DiagNote`, set by `diag_expansion_notes`, so the printer
+  can place fix-it lines after an owner's expansion notes (P4).
+
+A diagnostic's fix-its, across the diagnostic and its notes, form one
+atomic group in the builder (5.2). gcc treats a note's fix-its as part of
+the same edit, for example the `(` and `)` of the logical-not note (P3).
+
+### 3.2 The one entry point (D8)
+
+```c
+bool diag_fixit(DiagEngine *d, Diagnostic *dg, int owner,
+                SrcLoc b, SrcLoc e, const char *text, FixApplic app);
+```
+
+It returns false, poisons the owner (`nofix`) and removes that owner's
+fix-its already added, unless all of these hold:
+
+1. `dg` is not NULL and not suppressed.
+2. `b` and `e` are in the same `SrcFile` of kind `SF_USER`, not
+   `system_header`, with `b <= e <= base + size`. This excludes
+   `SF_VIRTUAL` (`-D`, built-ins), `SF_SCRATCH` (pasted and `_Pragma`
+   text), `SF_SYSTEM` and missing files.
+3. `text` has a newline only as its last character, and only when the fix
+   is an insertion at column 1. This is libcpp's `rich_location` rule, and
+   is checked in C1 by probe P11. The include insertion is the only
+   producer that needs a newline.
+4. Neither end is strictly inside a token whose spelling differs from its
+   bytes. A line splice inside the replaced token is allowed, because the
+   bytes are replaced whole; an end that cuts through a splice is refused.
+
+The SrcLoc-level function knows nothing about macros. The guarantee comes
+from the helpers, which are the only way producers add fix-its:
+
+- **Parser and checker (`PTok`):**
+  - `fix_replace_toks(p, i, j, text)` covers tokens `i..j`, from
+    `toks[i].t.loc` to the end of `toks[j]` computed with `tok_raw_len`.
+  - `fix_insert_before(i, text)` and `fix_insert_after(i, text)` insert at
+    a token's start or end.
+  - Each refuses (poisons) when any token touched or anchored has
+    `mloc != 0`, or `exp != 0 && exp != t.loc`. This is the same test
+    `perr_after_prev` makes (`parse.c:512-514`), and it covers macro
+    arguments, as gcc does (P5).
+- **Lint (`Tok`):** `fix_tok_replace(a, in, t, text)`. It refuses tokens
+  with `TF_ORIGIN_BODY`, `TF_ORIGIN_ARG`, `TF_PASTED` or `TF_SYNTH`. Tokens
+  of a `#define` body as written are directive tokens, not expansion
+  output, so they are allowed: the hygiene fixes edit the definition.
+- **Header notes:** `diag_header_note(d, dg, loc, hdr, fmt, ...)` replaces
+  `diag_header_note_loc`.
+  - It adds the note at the place gcc uses (first per header at
+    `include_loc`, later at the use).
+  - When the note is the first for its header, it also adds the fix-it
+    `#include <h>\n` at `include_loc`, attached to that note.
+  - Callers are converted in C1: `header_note`, `builtin_mismatch`,
+    `implicit_decl`'s include note and `parse.c:1186`. The old function and
+    `header_note_loc` are deleted.
+  - Edge: a header not in the 20-entry `known[]` table goes to
+    `include_loc` every time (`cexpr.c:903`), so it gets a fix-it each
+    time. The builder dedupes these (5.2); P12 checks what gcc does.
+
+A fix-it on a token that came from a macro expansion is never written into
+the macro's definition. The only fixes that edit a definition are the lint
+hygiene and guard fixes, and they name definition tokens directly.
+
+### 3.3 Printing (D3)
+
+**Text.** Fix-it lines are printed only under `-fdiagnostics-parseable-fixits`,
+as in gcc. Without the flag the 1918 goldens are unchanged.
+
+- Each owner's lines are printed immediately after that owner: after the
+  diagnostic and its caret block, or after a note. They follow the owner's
+  expansion notes (`expn`, P4).
+- Line shape: `fix-it:"F":{L1:C1-L2:C2}:"T"`.
+  - `F` is the presumed file name, `L` the presumed line (P8: under `#line`
+    gcc prints the `#line` file and line).
+  - `C` is the physical 1-based byte column, with `C2` exclusive, from
+    `srcmgr_linecol`. Columns are never display columns (P1: tab case).
+  - `F` and `T` are escaped by one function, `fixit_escape`: `\\`, `\"`,
+    `\n`, and other bytes below 0x20 or of 0x7f and above as three-digit
+    octal (P2: `\303\251`). Whether gcc writes a tab as `\t` or `\011` is
+    probe P11.
+- A BOM is not counted (P9: columns match gcc). This is automatic once the
+  mmap path strips the BOM too (C1 fixes the 64 KiB bug, section 2).
+
+**JSON.** Diagnostics and notes get `"fixits": [...]`, omitted when empty.
+Each entry is
+`{"start": LOC, "next": LOC, "string": T, "applicability": "safe"|"maybe"|"info"}`.
+`LOC` is cereal's existing `json_loc` shape (`file`, `line`, `col`,
+physical byte column), not gcc's `display-column`/`byte-column` triple.
+
+- Same shape as gcc: the key names (`fixits`, `start`, `next`, `string`)
+  and their placement on both diagnostics and children (P7).
+- Different from gcc: the inner location object, so cereal's JSON stays
+  internally consistent. Open question Q6.
+
+**Caret block.** No fix-it line is drawn under the caret block (gcc's
+`+++` / suggested-text line). It is parked: cereal's caret block is not
+gcc-identical today, so there is nothing to match.
+
+### 3.4 `-fdiagnostics-generate-patch` (D3, D9)
+
+- Accepted in every TU mode. At the end of each TU (`finish`), all of its
+  fix-its are fed to the builder (5): every applicability, notes included
+  (P6: gcc applies note fix-its and every `;` insertion).
+- The builder's unified diff goes to stderr after the TU's diagnostics,
+  with gcc's shape (P6): `--- NAME` / `+++ NAME`, 3 context lines,
+  `@@ -a,b +c,d @@`, and `SrcFile.name` as written.
+- If the builder reports any overlap, the TU prints no patch at all.
+  - This follows gcc's edit_context, which goes invalid on a conflict (P8
+    shows the same for a `#line`d file). Checked by P13.
+  - A fix-it whose presumed file differs from its physical file (`#line`)
+    also invalidates the patch, matching P8.
+
+### 3.5 Cells and the parallel PP
+
+- `CellDiag` replaces `const char *fixit` with `CellFix *fixes;
+  uint32_t nfixes`, where `CellFix = {uint16_t owner; uint8_t app;
+  CLoc at; uint32_t len; const char *text}`.
+  - The end is stored as begin plus length: a fix-it never crosses a file,
+    and a relative `CLoc` keeps it reusable when the cell moves.
+  - `cenc_diag` and `cdec_diag` (`cell.c:646-675`, `782-811`) encode and
+    decode it.
+  - There is no on-disk format, so there is nothing to version (section 2).
+- `par.c` `diag_copy` deep-copies `fixits` and `nofix`.
+- The run.sh parallel-identity sections (5 and 7) gain one run with
+  `-fdiagnostics-parseable-fixits`, so fix-its are compared too.
+
+### 3.6 What C1 converts
+
+The three existing producers move to the helpers. `header-guard` changes
+its fix range: from the `#define` keyword (which the old code implied) to
+the macro *name* token of the `#define`, the first token of
+`sk->dirs.data[1].toks`. Their applicabilities come from section 4.
+
+## 4. Fix-its offered (C1, C2)
+
+There are 1438 fix-it lines in 201 files when gcc-13 is run with
+`-Wall -Wextra -std=gnu17` over gcc.dg and c-c++-common (survey P14).
+
+### 4.1 Classes gcc emits (oracle: gcc-13; differential in section 8, C1)
+
+| Class (survey lines / files) | Producer in cereal | Applic. | Slice |
+|---|---|---|---|
+| include insertion on header notes (80 / 61) | `diag_header_note` | SAFE | C1 |
+| `.` to `->` on a pointer (in did-you-mean family) | `ccall.c:2259` (not the pointer-to-pointer message at 2255) | SAFE | C1 |
+| did-you-mean, any kind (97 / 41): undeclared, implicit function, unknown type name, member, `#elsif` to `elif` | `cexpr.c:1805,1871,1903`, `parse.c:1186-1190`, member lookup, `pp.c:2640` | MAYBE | C1 |
+| expected `;` (336 / 30) | `parse.c:3323` via `perr_after_prev` | MAYBE (D6) | C1 |
+| expected `)` `]` `:` `(` `,` (265 / 50) | `parse.c:662` `"expected %s%s"` | INFO | C1 |
+| missing braces (452 / 23) | `cinit.c:1639` | SAFE | C2b |
+| logical-not parentheses note (126 / 10) | `cwarn_expr.c:1324` | MAYBE | C2b |
+| xor used as pow (26 / 2) | `cexpr.c:6243` | MAYBE | C2b |
+| format specifiers (41 / 10) | format checker | MAYBE | C2b |
+| "use 'struct' keyword" (~9) | parse unknown-type path | MAYBE | C2b |
+
+Notes on the table:
+
+- **`.` to `->`.** gcc gives no fix-it for a pointer to pointer (P15).
+  cereal matches.
+- **did-you-mean is MAYBE, not SAFE.** It is an edit-distance guess. The
+  closest name may be wrong even when the code then compiles.
+- **missing braces is SAFE.** Braces that follow the existing aggregate
+  structure do not change the initialised values. This is true by
+  construction (6.4), and `fixgate.sh` checks it.
+- **Expected-token insertions other than `;` are INFO.** They are printed
+  and offered in the LSP, never applied by `fix`. After a syntax error the
+  insertion point is a guess about intent (Q8).
+- **Logical-not is MAYBE.** The parentheses change the meaning to the
+  likely intent, which is not the current meaning.
+
+### 4.2 Cereal-only fixes (no gcc oracle; gated)
+
+| Fix | Edit | Applic. | Reason |
+|---|---|---|---|
+| `macro-unparenthesized-param` | param token to `(param)` in the `#define` body | SAFE | Gate: every expansion's AST modulo parens is unchanged. If any use would parse differently, it is demoted to MAYBE: the fix then changes meaning, though for the better. |
+| `macro-unparenthesized-body` | insert `(` and `)` around the replacement list | SAFE | Same gate. Offered only for a body that is one expression: not for statements, an empty body, or a body that uses `#` or `##`. |
+| `header-guard` | `#define` name to the `#ifndef` name | SAFE | Gate: inactive groups and diagnostics unchanged in every TU reading the header. Demoted to MAYBE when the misspelt name is tested anywhere else in the TU (another `#if` reads it). |
+| `cond-typo` | identifier in `#if` to the close name | INFO | The "never defined" name may come from `-D` in another configuration. One TU cannot know that. Q1. |
+| parentheses around assignment in a condition (`cstmt.c:956`) | insert `(` `)` around the assignment | MAYBE | It keeps the meaning, but it silences a warning that is often a real `=`/`==` bug. Applying it unasked would hide bugs. `==` is not offered. |
+| `-Wstrict-prototypes` `()` to `(void)` (`cdecl.c:348,3421-3423`) | insert `void` | SAFE on a definition; MAYBE on a non-defining declaration | A definition's `()` already takes no arguments. A declaration's `()` may have callers, in other TUs, that pass arguments; then `(void)` makes those calls errors. |
+
+**Parked**, with reasons in 12.3:
+
+- macro trailing semicolon;
+- multi-statement macro / dangling else (the do-while wrap);
+- missing header guard;
+- unused variable (gcc has none; deleting a declaration is not local).
+
+### 4.3 What each slice changes in the diagnostic text
+
+- **No message changes.** Fix-its are an attachment.
+- **No new notes.**
+- **One location change:** the `header-guard` fix range (3.6). The
+  diagnostic's own location stays at the keyword.
+
+## 5. The edit builder (C1; D9)
+
+### 5.1 Input
+
+One `FixSet`, filled with each diagnostic's fix-its as a group. Each group
+carries:
+
+- the selected applicabilities;
+- a sequence key: `(job index, diagnostic index in TU order, fix-it
+  index)`.
+
+Positions are `(FileKey, offset)`.
+
+- `FileKey` is the realpath plus `st_dev`/`st_ino`. Different spellings of
+  one file and symlinks become one file.
+- `offset` is into the text cereal read: BOM stripped, line splices and
+  CRLF left as they are.
+
+### 5.2 Rules
+
+1. **Sort** by `(file, begin, end, kind, seq)`. At equal `begin`, an
+   insertion sorts before a replacement, so text inserted at a point lands
+   before the replacement that starts there.
+2. **Exact duplicates collapse.** Same file, range and text, from any TU or
+   group. The survivor keeps the lowest `seq`, and every group that
+   contained a copy refers to it. The same include insertion from two TUs
+   of one header becomes one edit.
+3. **Several different insertions at one point** are kept, in `seq` order.
+   This matches P3: `size_t` and `uint8_t` inserted at 1:1 come out in
+   diagnostic order.
+4. **Touching is not overlap.** An insertion at a replacement's begin or
+   end is not a conflict. Neither are two adjacent replacements
+   (`[a,b)` and `[b,c)`).
+5. **Overlap** (non-empty intersection, or an insertion strictly inside a
+   replaced range) is a conflict.
+   - The group with the lower `seq` wins, and the whole later group is
+     skipped. A group is atomic: the `(` of a pair is never applied without
+     its `)`.
+   - A skipped group is reported once, and is offered again on the next
+     pass (6.3), when its diagnostic is recomputed against the new text.
+6. **Output:** per file, the edits in order. The result is the edited text
+   (for the overlay and the writer), a unified diff, or LSP `TextEdit`s
+   (C4).
+
+The builder knows nothing about TUs or applicability. Section 6 decides
+which groups go in.
+
+### 5.3 Check
+
+The tree has no C unit-test harness (the Makefile builds only `cereal`),
+and real diagnostics rarely produce overlapping fix-its. So the builder
+gets a testing input, in the spirit of `index --replay`:
+`cereal fix --edits=FILE --diff`. FILE lists groups, one edit per line
+(`PATH BEGIN END "TEXT"`, with a blank line between groups), and they
+replace the collected ones.
+
+This combination of options lands in C1, as the first piece of the `fix`
+mode. The rest of `fix` comes in C3, and until then any other `fix`
+command is a usage error.
+
+Cases in `tests/fix/` cover sort, dedupe, same-point order, touching
+versus overlap, and group atomicity. This is the one small runnable check
+for this logic. Real-diagnostic coverage comes from the generate-patch
+goldens (8, C1).
+
+## 6. `cereal fix` (C3)
+
+### 6.1 Interface
+
+```
+cereal fix [options] FILE...
+cereal fix --compile-commands DB [options] [FILE-OR-DIR...]
+  --unsafe          also apply MAYBE fixes (D2)
+  --diff            print the unified diff of what would change; write nothing
+  --max-passes=N    default 8
+  --only=ID[,ID]    apply only fix-its of these diagnostic ids
+  --root=DIR        write only files under DIR (default: the current directory)
+  -j N, every check option (-I, -D, -std=, -W...)
+```
+
+- Which fixes exist follows the warning options. A diagnostic disabled by
+  `-Wno-x` has no fix-its.
+- `fix` runs the check-mode diagnostics and the lint analyses in one TU:
+  the analysis listener is attached to `tu.pp` before `frontend_run`, as
+  crename adds its listeners.
+  - The PP runs sequentially (`-fparallel` is ignored). Parallelism comes
+    from `-j` over TUs.
+  - `-Wfatal-errors` is forced off.
+
+### 6.2 One pass
+
+1. **Collect** (parallel, `-j`).
+   - Each TU job runs the check plus analyses with its own options. With a
+     compile database this is the entry's options, deduped as in
+     `mode_compdb`, in database order.
+   - `TuJob` gains `void *res`. The new TU function fills a `FixResult`:
+     - every fix-it group, with its applicability, owner's level and id,
+       as `(FileKey, offset)`. Selection happens in the merge;
+     - the TU's error count and its error-diagnostic ids;
+     - the list of files it read, with a hash of each one's text.
+   - Nothing is printed per TU, except option problems, as `mode_compdb`
+     does.
+2. **Merge** (main thread, in job order, so the result is the same for any
+   `-j`).
+   - Group selection:
+     - SAFE groups, or SAFE and MAYBE under `--unsafe`;
+     - in a TU with errors, only groups belonging to error diagnostics;
+       warning fixes wait for an error-free pass (Q3). So in a TU whose
+       errors have no fix, no warning fix is applied, and the exit status
+       is 1;
+     - at most one error group per pass (D6), whatever its
+       applicability. It is the lowest `seq` among the selected error
+       groups.
+   - Why D6 covers every error group, not only `;`: the error fix-its
+     after the first error come from the parser's recovery state, which a
+     first fix changes. With SAFE fixes the cost is small. The SAFE error
+     fix is the include insertion for an unknown type name, and only the
+     first note per header carries it, so one header is one group. This
+     reading of D6 is open question Q10.
+   - **Same text everywhere.** All TUs read the file from the same disk,
+     so their hashes of it agree. If they do not, the file changed during
+     collection, and all of its edits are skipped ("changed during the
+     run").
+   - **D5 agreement.** For an edit in a file that several TUs read, see
+     whether every TU that read the file reported the same
+     `(file, range, text)` edit.
+     - If all of them did, the edit stands.
+     - If any did not (for example a header fix that only one
+       configuration reports), the group is skipped and reported "not
+       reported by N of M translation units that include FILE".
+     - A TU whose options disable that diagnostic does not count as
+       disagreeing. It is left out of M, so `-Wno-x` in one entry does not
+       block a fix the others want. `FixResult` keeps a reference to the
+       TU's options for this question; they live until the merge ends.
+   - Feed the builder. Conflicts are handled as in 5.2.
+3. **Gate** (6.4), parallel over the affected TUs.
+4. **Write** (6.5) the edits that passed.
+5. **Next pass**, while something was written and `pass < max-passes`.
+   Each pass re-reads from disk, so the offsets of pass k+1 refer to the
+   text of pass k.
+
+**Idempotence.** At the fixed point a second run applies nothing, prints
+nothing and exits 0. Tests run every `fix` case twice and require this.
+
+### 6.3 Output
+
+- **stderr, sorted by (path, line, column)** so it is deterministic for any
+  `-j`:
+  - one line per skipped group, with its reason: conflict with an earlier
+    fix, D5 disagreement, failed gate, error-limit pass, unwritable or
+    changed file;
+  - one summary line: `cereal fix: N edits in M files in P passes; K
+    skipped`. Under `--compile-commands`, the `mode_compdb` entry summary
+    comes first.
+- **`--diff`** prints, to stdout, the builder's diff of the first pass's
+  gated edits, then stops. Files are sorted by path, with paths relative to
+  the current directory, so it works with `patch -p0`.
+  - It runs one pass only. Later passes depend on written text; simulating
+    them through overlays is possible but parked.
+  - With `--diff`, exit 1 means "would change".
+- Fix-it lines in gcc format are not printed by `fix`. For that, use
+  `cereal check -fdiagnostics-parseable-fixits`.
+
+### 6.4 The gate (D10)
+
+- **Which TUs.** Every TU whose read set contains an edited file is re-run.
+  - A TU of the same database that did not read the file needs no re-run.
+  - A TU *outside* the run (another configuration, a file not in the
+    database) cannot be checked. This is a stated limitation (12.1).
+- **How.** The re-run uses `SrcMgr.overlay` to serve each edited file's new
+  text (BOM-stripped, LF/CRLF as in the file). It collects:
+  - the multiset of diagnostics `(level, id, message, place)`, where the
+    place maps through the edit as `crename.c`'s `map_off` does;
+  - the inactive `#if` ranges (the `skipped` listener, mapped);
+  - for SAFE paren groups, a new `ast_digest`: a hash of the unit's tree in
+    pre-order, of each node's tag, child count and token spelling. It
+    skips `N_PAREN` nodes (their child takes their place) and ignores
+    locations. With child counts in the hash, `a-(b-c)` and `a-b-c` differ,
+    because their trees have different shapes.
+- **SAFE passes** when all of these hold:
+  1. every diagnostic that owned an applied fix-it is gone;
+  2. no other diagnostic was added, removed or changed;
+  3. the inactive ranges are unchanged;
+  4. for paren groups, `ast_digest` is unchanged.
+- **Missing braces** are SAFE by construction: the braces follow the
+  aggregate structure the initialiser walker already computed. They get
+  tests 1 to 3, and `fixgate.sh`'s object-code identity (8, C3) checks
+  this claim. No initialiser comparison is built.
+- **The overlay serves a file to each TU under that TU's own spelling.**
+  The overlay hook is called with the normalized path. Each `FixResult`
+  records the `(FileKey, path)` of every file it read, so a re-run serves
+  the edited text for exactly those paths. The place mapping generalizes
+  `crename.c`'s main-file-only `map_off` to every edited file.
+- **MAYBE passes** when (1) holds and the TU's error count drops by at
+  least the number of fixed errors. MAYBE may add warnings: a
+  did-you-mean can surface an unused-variable warning.
+- **Failure.** A failing SAFE group that passes the MAYBE test is demoted
+  to MAYBE. It is applied only under `--unsafe`, otherwise skipped with
+  "fails the semantic check".
+  - If the pass fails, the failing groups are found by deterministic
+    bisection over the pass's groups, in `seq` order. Then the TU is
+    re-gated with the rest. The cost is about log2(groups) extra checks per
+    failing group.
+  - A group must pass in every TU that re-ran. The minimum applicability
+    across those TUs is used.
+- **Paren groups are digested separately.** The `ast_digest` comparison
+  needs a run in which only paren groups changed the file. So paren groups
+  are gated in their own re-run when a pass mixes them with other groups:
+  at most two re-runs per TU per pass, plus bisection.
+
+### 6.5 Writing (and files on disk)
+
+For each edited file, in path order:
+
+1. **Re-read and compare.** Read the file again, strip a BOM as `SrcMgr`
+   does, and compare the result with the hash the collect phase took. If
+   it differs (an editor saved it meanwhile), skip all its edits: "changed
+   during the run".
+2. **Map to bytes on disk.**
+   - With a BOM on disk, offsets shift by 3 and the BOM is kept.
+   - Fix text `\n` becomes the file's line ending, taken from its first
+     line ending (CRLF if that is `\r\n`, else LF). Text in a CRLF file
+     stays CRLF. gcc's patch keeps `^M` (P9).
+   - Encodings: cereal reads bytes, and the fix-it texts are ASCII, plus
+     identifiers copied from the same file. So no transcoding happens. A
+     UTF-16 file is not C that cereal reads, and never gets here.
+3. **Skip what cannot be safely written.** Skip with a report when:
+   - `access(path, W_OK)` fails;
+   - the file is not regular;
+   - it has `st_nlink > 1`: a hard link would be split by rename;
+   - its real path is outside the root: `--root=DIR`, default the current
+     directory. A header reached through `-I` from a vendored or installed
+     tree is otherwise a user file (`SF_USER`) and would be edited. Its
+     groups are skipped with "outside the root", and they do not raise the
+     exit status to 1.
+   - Symlinks are resolved, and the target is written.
+4. **Write atomically.**
+   - `mkstemp` in the same directory, write the whole text, `fsync`,
+     `fchmod` to the original mode (and `fchown` if possible, ignoring
+     failure), then `rename` over the original.
+   - On any failure: unlink the temporary file, report, set exit status 4,
+     and continue with other files.
+   - A new helper `file_write_atomic` in `common.c` does this. `deps.c` is
+     not changed: replacing a `.d` file needs no atomicity.
+
+Every group this design offers edits one file. The include insertion's
+owner may be in a header, but its edit is in the main file. A future group
+that spans files stays atomic: skipping one of its files skips the whole
+group.
+
+### 6.6 Exit status (D12)
+
+| Code | When |
+|---|---|
+| 0 | Fixed point: no selected group remains to be applied, every TU was checked, every write succeeded |
+| 1 | A selected group was skipped (conflict left at max passes, D5, failed gate, D6 limit reached at max passes), or `--diff` printed something |
+| 2 | Usage error |
+| 3 | Some TU or database entry was not checked |
+| 4 | A file could not be re-read or written |
+
+The worst code wins, in the order 2 > 4 > 3 > 1 > 0. Diagnostics left in
+the code do not affect the status: `fix` is not a checker (Q2).
+
+### 6.7 Parallelism and determinism
+
+- **Collect and gate run in parallel. Merge and write do not.**
+  - Collect and gate are TU jobs through `run_jobs`, with results committed
+    in job order.
+  - Merge and write run on the main thread, in `seq` and path order.
+- Checker per-check state is `__thread`, and each job runs one check at a
+  time on its thread. So the gate's re-runs are separate jobs, never nested
+  inside a collect job.
+- Tests:
+  - `-j1` and `-j12` give byte-identical stdout, stderr and files;
+  - run.sh section 7 adds a `fix --diff` case.
+
+## 7. LSP code actions (C4; D11)
+
+### 7.1 Capabilities
+
+`initialize` advertises
+`"codeActionProvider": {"codeActionKinds": ["quickfix", "source.fixAll.cereal"], "resolveProvider": false}`,
+but only when the client sends
+`textDocument.codeAction.codeActionLiteralSupport`. Without it, clients
+expect `Command`s, and cereal has no commands, so the provider is left out.
+
+The client's `workspace.workspaceEdit.documentChanges` decides the edit
+shape (7.4).
+
+### 7.2 Where the fix-its live
+
+There are two sources:
+
+- **The macro phase**, `s->tu.diag.all`. Fix-its come directly from each
+  `Diagnostic` (sm0 locations). They are rebuilt with every snapshot, so
+  they never need carrying.
+- **The check**, `s->cdiags`.
+  - `CDiag` gains `CFix *fixes; size_t nfixes`, where
+    `CFix = {char *path; uint32_t off_b, off_e; char *text; uint8_t app}`.
+  - `cdiag_make` fills them, keeping a fix only if its file passes
+    `file_same` (its offsets are valid in the snapshot), exactly as
+    `carry` is computed for notes.
+  - `cdiag_dup` and `cdiag_free` handle the new field.
+
+**Carrying** (`cdiags_carry`): each `CFix` goes through `carry_range`
+like the diagnostic's range.
+
+- If any fix of the diagnostic meets the edit, all of the diagnostic's
+  fixes are dropped. The group is atomic.
+- The diagnostic itself is kept, if its range and notes survive.
+- So a carried diagnostic never offers a fix that was computed for text
+  that has since changed.
+
+### 7.3 `textDocument/codeAction`
+
+- **Policy.** A new policy `CP_SNAP`: wait (the same 1.5 s deadline) only
+  for `snap->gen == u->want`, not for the check.
+  - If the deadline passes with the snapshot still older than the
+    document, answer `[]`, because positions would not match.
+  - Carried fixes are valid, so waiting for the check buys nothing.
+  - Lightbulb requests are frequent and must not stall.
+- **Selection.** Pick diagnostics (both sources) whose range intersects
+  the request range and that have fixes.
+  - With `context.only`, honour it: only `quickfix`, or only
+    `source.fixAll`.
+  - The diagnostic object put in the action is the client's own from
+    `context.diagnostics` when one has the same `diag_key` (range and
+    message). Otherwise cereal renders its own, as `put_diag` does.
+- **One action per group.**
+  - `kind: "quickfix"`.
+  - `diagnostics: [d]`.
+  - `isPreferred: true` iff SAFE.
+  - `title` is generated from the edit:
+    - `Insert 'X'` for a single insertion;
+    - `Replace with 'X'` for a single replacement;
+    - `Remove 'X'` for a deletion;
+    - `Add #include <h>` for the include note's group;
+    - `Apply fix-it` otherwise.
+  - INFO and MAYBE fixes are offered too. Here the user, not cereal,
+    decides.
+- **`source.fixAll.cereal`** is offered when the request names that kind,
+  or when the request has no `only` and the document has at least one
+  SAFE group.
+  - Its edit is computed on the builder thread. `RenameJob` is generalized
+    into `BuilderJob {fn, ctx, result}`, and rename becomes one user of it.
+  - The job runs the D10 gate on the unit with the snapshot's overlay plus
+    the edits, restricted to this document's file. The edits come from the
+    builder (5.2) over the SAFE groups of the document, selected as one CLI
+    pass selects them (6.2: errors first, D6), without D5: the editor has
+    one unit.
+  - Edits that fail the gate are left out.
+  - If the gate run is fatal (`FatalTrap`) or the document changed
+    meanwhile (the version check below), it answers `[]`.
+
+### 7.4 Edits and versions
+
+- With `documentChanges` support, the edit is
+  `{"documentChanges": [{"textDocument": {"uri", "version"}, "edits": [...]}]}`.
+  - The version is the snapshot overlay's version for that path
+    (`lsp_overlay_version`).
+  - A client applying it to a newer text rejects it. That is the safe
+    outcome.
+- Without `documentChanges` support, the edit is `{"changes": {uri:
+  [...]}}`, as rename emits.
+- An include fix-it in the main file that comes from a header's
+  diagnostic is a cross-file edit. It is shown only on the file the
+  diagnostic is published for, and its edit names the main file's URI.
+- Ranges use `json_range` with the negotiated position encoding. Insertion
+  text is sent as is: LSP clients keep the document's line endings, and
+  cereal's `\n` is what the editor inserts.
+
+### 7.5 Incremental edits
+
+No new carrying code is needed. Text changes already produce a new
+snapshot whose macro-phase diagnostics (and their fix-its) are fresh, and
+`cdiags_carry` now carries or drops the check's fixes (7.2).
+
+## 8. Staging, tests, gates, estimates
+
+### C1: plumbing, output, gcc-covered fix-its (est. 6 days, realistic 8 to 12)
+
+**Contents**
+
+- 3.1 to 3.5.
+- (The BOM fix on the mmap path landed separately in Round 211.)
+- The edit builder (5), with its testing input `fix --edits=FILE --diff`
+  (5.3).
+- `-fdiagnostics-generate-patch`.
+- Converting the three existing producers and the header notes.
+- The gcc-covered rows of 4.1 marked C1.
+- `diag_fixit` and the helpers.
+
+Est. 900 to 1300 lines.
+
+**Tests**
+
+- `tests/check/fixit-*.c` goldens with
+  `// flags: -fdiagnostics-parseable-fixits`, each verified against gcc-13
+  first: tab columns, octal escapes, `#line`, BOM above and below 64 KiB,
+  CRLF, macro argument refusal, `perr_after_prev` across lines, include
+  insertion with and without prior `#include`s, two headers at one point.
+- JSON goldens (`-fdiagnostics-format=json`) with fixits on notes.
+- Generate-patch goldens (patch on stderr).
+- Builder cases through `fix --edits` (5.3).
+- run.sh sections 5 and 7 compare with fix-it lines on.
+
+**Differential:** `bench/tools/fixits.sh`, modeled on `deps.sh`.
+
+- With no argument, it runs the `tests/check/fixit-*.c` goldens' sources
+  against gcc-13, which keeps the goldens honest. With `DIR`, it runs
+  every C file under DIR.
+- It runs gcc-13 and cereal with `-fsyntax-only
+  -fdiagnostics-parseable-fixits $FIXIT_FLAGS`, keeps the `fix-it:` lines
+  with the header line that precedes each, and compares.
+- Output: `N cases, M differ`.
+- Also: `par.py` gains `CEREAL_FIXITS=1`, which adds the flag on both
+  sides and compares fix-it lines (owner header plus line). `verify.sh`
+  then prints "gcc fix-its identical in F of G files".
+  - This needs the cache key to include the flag. It already does, since
+    flags are part of `base`.
+  - Gate number for C1: every survey file whose fix-its come from C1 rows
+    matches. The C1 classes are about 780 lines in at most 180 files:
+    include 80, did-you-mean 97, `;` 336, other expected tokens 265.
+    Others are reported, not failed.
+
+### C2: cereal-only fixes and C2b (est. 5 days, realistic 7 to 12)
+
+**Contents**
+
+- 4.2: hygiene param and body, header-guard, cond-typo INFO, parentheses
+  around an assignment, strict-prototypes.
+- The C2b rows of 4.1: missing braces, logical-not, xor, format, `struct`
+  keyword.
+
+Est. 500 to 900 lines (format fix-its are the largest unknown).
+
+**Tests**
+
+- Goldens: `tests/check` for the checker fixes, and `tests/lint` with
+  `// expect:` lines for the lint fixes. `verify.py` learns a
+  `// expect-fixit: L:C-L:C "text" APP` form.
+- The gcc-covered C2b rows join the differential.
+
+### C3: `cereal fix` (est. 8 days, realistic 11 to 17)
+
+**Contents:** section 6, `file_write_atomic`, `ast_digest`, the gate, and
+compdb integration. Est. 1000 to 1500 lines.
+
+**Tests:** `tests/fix/NAME.cmd` cases run by a new `tests/fix_case.sh`. It
+copies the case's directory to scratch, as `deps_case.sh` does, runs the
+command twice, and prints stdout, stderr, exit status, and `diff -r`
+against the original tree after each run, so idempotence is visible.
+
+Cases:
+
+- each SAFE fix applied;
+- each MAYBE fix skipped without, and applied with, `--unsafe`;
+- D6 one-error-per-pass;
+- a conflict;
+- a D5 disagreement through a compdb with `-DA` in one entry;
+- a header fixed once from two TUs;
+- a gate demotion (a hygiene fix that changes a use);
+- CRLF, BOM, read-only file, symlink, hard link, file changed mid-run (a
+  hook env var makes the writer pause, test only);
+- `--diff`;
+- max passes;
+- `-j1` against `-j12` identity.
+
+**Semantic gate check:** `bench/tools/fixgate.sh DIR` runs `cereal fix`
+on a scratch copy of a corpus with gcc-13. For every file changed, it
+compares `gcc-13 -fsyntax-only` diagnostics before and after (SAFE: the
+fixed warnings gone, nothing new) and the object code of `gcc-13 -O0 -c`
+before and after, built without `-g`. For SAFE, the objects must be
+identical. Reported per id.
+
+A fix that adds lines (the include insertion) moves every later
+`__LINE__`, for example in `assert`. For those fixes the objects are
+compared only when the file uses neither `__LINE__` nor `assert`. Other
+files are checked by diagnostics alone, and the report says so. Every
+other SAFE fix keeps line numbers: parens, braces, `void`, the guard
+name.
+
+### C4: LSP code actions (est. 4 days, realistic 5 to 9)
+
+**Contents:** section 7. Est. 450 to 700 lines.
+
+**Tests:** `tests/lsp/fixit-*.json` sessions with `.expected` (run plain
+and with forced parallel flags, as section 9 does):
+
+- a quick fix on a check diagnostic;
+- one on a lint diagnostic;
+- a carried diagnostic after an edit far away (fix kept);
+- one after an edit inside the fix's range (fix dropped, diagnostic
+  kept);
+- a stale request answered `[]` under a held check;
+- fix-all with one demoted fix;
+- a client without `codeActionLiteralSupport` (no provider).
+
+### Totals
+
+| Slice | est. | realistic | lines est. |
+|---|---|---|---|
+| C1 | 6 d | 8 to 12 d | 900 to 1300 |
+| C2 | 5 d | 7 to 12 d | 500 to 900 |
+| C3 | 8 d | 11 to 17 d | 1000 to 1500 |
+| C4 | 4 d | 5 to 9 d | 450 to 700 |
+| Total | 23 d | 31 to 50 d (6 to 10 weeks) | 2850 to 4400 |
+
+ROADMAP's 3 to 5 weeks for all of track C (with C5 and C6) is too low.
+This design alone is 6 to 10 weeks. The gate and its bisection (C3) and the
+format fix-its (C2b) carry most of the uncertainty.
+
+### Docs to update when each slice lands
+
+- **ROADMAP Track C:** C-slice status.
+- **STATUS:**
+  - "What exists": `cereal fix`, fix-its;
+  - "How to check it": `fixits.sh`, `fixgate.sh`;
+  - the numbers section: the fix-it parity count.
+- **LSP.md:** code actions, capabilities.
+- **HISTORY:** a round entry per slice.
+- **This file:** mark slices done.
+- **`cereal` usage text** (`main.c:19-84`): `fix` mode, the two `-f` flags.
+
+## 9. Verification against gcc-13 (detail)
+
+- **What gcc covers.** The 4.1 rows are compared line for line by
+  `fixits.sh` and `par.py CEREAL_FIXITS=1` (section 8, C1), which covers the owner header, file, range and text.
+  Applicability is cereal's own and has no oracle.
+- **What gcc does not cover.** 4.2 rows rely on the gate (6.4) plus
+  `fixgate.sh`'s object-code identity for SAFE.
+- **Known gcc behaviours copied** (all probed, section 13):
+  - byte columns;
+  - presumed file and line under `#line`;
+  - octal escapes;
+  - fix-it lines after expansion notes;
+  - only the first include note per header carries a fix-it;
+  - no fix-it on macro-expanded tokens, including arguments;
+  - none for a pointer to pointer;
+  - the patch includes note fix-its.
+- **Where `#line` matters:** gcc prints no patch for a TU with a `#line`d
+  fix-it (P8). `-fdiagnostics-generate-patch` copies this (3.4).
+  `cereal fix` and the LSP work on physical file offsets, so `#line` does
+  not affect them.
+
+## 10. Out of scope: C5 and C6 (D7)
+
+- **C5, a baseline file for CI:** record the current diagnostics so CI
+  fails only on new ones.
+  - Needs a stable diagnostic identity across edits: id, file, enclosing
+    function or macro, message without line numbers. It also needs a file
+    format and an `--update-baseline` workflow.
+  - It touches `mode_compdb` and the summary, not fix-its.
+  - Its own design. It depends only on A4's replay.
+- **C6, macro to inline function, enum or const suggestions:** analyses
+  over macro definitions and their uses (the type of each use, side
+  effects, `#`/`##`, uses in `#if`, uses as lvalues).
+  - Their edits span the definition and possibly every use, across TUs.
+  - They can use this design's builder and gate, with group atomicity and
+    D5 agreement. The gate would need a whole-database run, not just
+    "TUs that read the file".
+  - Its own design (D4: later).
+
+## 11. Open questions for the user
+
+- **Q1. `cond-typo`: INFO or MAYBE?**
+  1. INFO (recommended): a name never defined in this configuration may be
+     defined in another; only the user knows. Con: `fix --unsafe` will not
+     touch it.
+  2. MAYBE: applied with `--unsafe`. Con: it can break another
+     configuration silently, and the gate cannot see that.
+- **Q2. Exit codes of `fix`.** The proposal is 0/1/2/3 plus a new 4 for
+  read or write failure, and remaining diagnostics are ignored.
+  1. As proposed (recommended).
+  2. Fold 4 into 1. Simpler, but CI cannot tell "work left" from "could
+     not write".
+  3. Also return 1 when errors remain after fixing. Con: it duplicates
+     `check`.
+- **Q3. Warning fixes in a TU with errors:** defer them to an error-free
+  pass (proposed), or apply them anyway?
+  1. Defer (recommended): diagnostics after an error are less reliable,
+     and the gate's "no new diagnostics" is weaker there.
+  2. Apply: more progress per run on broken code.
+- **Q4. LSP fix-all:** gate it on the builder (proposed), or apply the
+  SAFE edits without a gate?
+  1. Gate (recommended): the same guarantee as the CLI. Con: up to one
+     check's latency.
+  2. No gate: instant. Con: SAFE then means less in the editor than in
+     the CLI.
+- **Q5. Max passes default 8, and `--diff` limited to one pass.**
+  Recommended as is: cycles are bugs, and 8 bounds them.
+- **Q6. JSON location shape.**
+  1. Keep cereal's `json_loc` (recommended): consistent with the rest of
+     cereal's JSON.
+  2. gcc's `display-column`/`byte-column`/`column` triple: closer to gcc.
+     Con: inconsistent inside one document.
+- **Q7. The BOM-over-64-KiB fix.** Bundle it in C1 (recommended: fix-it
+  columns depend on it, and the fix is three lines), or fix it right away
+  as its own round?
+- **Q8. Expected `)` and the other non-`;` insertions as INFO.** The
+  proposal is INFO. The alternative is MAYBE behind `--unsafe` with the D6
+  limit. Recommended: INFO until the C1 differential shows how often
+  gcc's guess compiles.
+- **Q9. Header-guard demotion rule.** "MAYBE if the misspelt name is
+  tested anywhere else." Is that right, or should header-guard always be
+  MAYBE?
+- **Q10. D6's reach.** Does the one-error-fix-per-pass limit cover every
+  error group (proposed, 6.2), or only the missing `;`?
+  1. Every error group (recommended): later error fix-its are computed
+     from recovery state.
+  2. Only `;`: faster on files with many independent errors, such as
+     several unknown-type headers.
+
+## 12. Risks and limits
+
+### 12.1 Limits stated, not solved
+
+- **The gate only sees the TUs in the run.** A header edit can break a TU
+  that is not in the database, or one in another configuration. D5 helps
+  only within the run.
+- **`-Wno-x` in an entry removes it from D5's count** (6.2). A TU that
+  disables the diagnostic is not checked for agreement, but it is still
+  re-gated.
+- **The LSP sees one configuration.** Its fix-all gate is per unit.
+
+### 12.2 Risks
+
+- **Attaching analyses to a check TU is new** (6.1). Today they run only
+  in lint mode and on the LSP's macro-phase TU.
+  - If it breaks an invariant, the fallback is two runs per TU, lint and
+    check, which roughly doubles the collect cost.
+  - Probe it first in C3.
+- **Bisection cost** on a large database with many failing groups. It is
+  bounded by groups × log2(groups) re-runs, and the max-passes cap limits
+  it further.
+- **`ast_digest` blind spots.** Some meaning is not in the tree: an
+  implicit conversion decided by the type of a parenthesized
+  subexpression, for example. The digest therefore hashes each
+  expression node's type too.
+  - `fixgate.sh`'s object-code identity is the backstop check.
+- **gcc rules recalled, not probed** (to probe in C1): the newline rule
+  (3.2.3), consolidation of adjacent fix-its into one, whether `\t` is
+  escaped, the patch on conflict, and include notes for headers outside
+  `known[]`. These are P11 to P13.
+- **Format fix-its (C2b)** depend on the format checker's spelling of
+  conversions. Their size is uncertain.
+
+### 12.3 Parked
+
+| Item | Why |
+|---|---|
+| Caret-block fix-it line | The caret block is not gcc-identical yet |
+| Unused-variable deletion | gcc has none; removing a declaration can remove side effects, and a gate cannot see intent |
+| Macro trailing `;` and do-while wrap | Rewrites macro bodies; belongs with C6's macro edits |
+| Missing header guard | Must invent a name; style-dependent |
+| Multi-pass `--diff` | Needs simulated passes through overlays; one pass is enough to review |
+| Fix-its on `-D` (virtual) or system files | Never: no source to edit |
+
+## 13. Probes (gcc 13.4.0, WSL, 2026-10-10)
+
+| # | Probe | Result |
+|---|---|---|
+| P1 | did-you-mean on tab-indented `countr` | `{12:2-12:8}:"counter"`: byte columns, exclusive end. The header uses display columns |
+| P2 | `é` in text; file named `e "x".c` | `\303\251`; `"e \"x\".c"` |
+| P3 | `printf` without `<stdio.h>`; `size_t` and `uint8_t` unknown | Fix-it on the note `include '<stdio.h>' or provide a declaration`: `{2:1-2:1}:"#include <stdio.h>\n"`. Only the first note per header has it. Two insertions at 1:1 in diagnostic order. Logical-not note: separate `(` and `)` insertions |
+| P4 | pr89520-1.c | Fix-it lines come after the owner's "in expansion of macro" notes |
+| P5 | `ID(p.m)`, `ID(countr)`, `return ONE }`, `return ID(2) }`, `ID(p).m` | No fix-it on any macro-expanded token, arguments included. `ID(p).m` gets `->` (the `.` is outside) |
+| P6 | `-fdiagnostics-generate-patch` | Unified diff on stderr after the TU's diagnostics. `--- a.c`/`+++ a.c`, 3 context lines. All fix-its applied, notes and every `;` included |
+| P7 | `-fdiagnostics-format=json` | `fixits` on diagnostics and children. Entries `{start, next, string}`; locations with `file`, `line`, `display-column`, `byte-column`, `column` |
+| P8 | `#line 100 "other.c"` before a typo | `fix-it:"other.c":{100:39-100:45}:"counter"`. Generate-patch printed nothing for the whole TU |
+| P9 | BOM file; CRLF file | Columns do not count the BOM. CRLF columns unaffected. The patch keeps `^M` |
+| P10 | BOM file of 64 KiB or more | gcc rc 0. cereal: `unknown type name '\U0000feffint'` (bug, section 2) |
+| P14 | Survey: gcc-13 `-Wall -Wextra -std=gnu17` over gcc.dg + c-c++-common | 1438 fix-it lines in 201 files; classes in 4.1 |
+| P15 | `pp.m` with `struct s **pp`; `int a[2][2] = {1,2,3,4}` | No fix-it for a pointer to pointer. Missing braces: four insertions, `{` at 3:17, `}` at 3:21, `{` at 3:23, `}` at 3:28 |
+| P16 | cereal today with both `-f` flags and `fix` | "unknown option", exit 2; `fix` prints usage, exit 2 |
+| P17 | `.` to `->`, `expected ';'` across lines, `expected ')'`, `#elsif`, union member did-you-mean | All give fix-its, as in 4.1. No fix-it for: assignment parens, strict prototypes, unused variable, `expected '}' before numeric constant`, `expected ',' or ';'` |
+
+To probe in C1: P11 (the newline rule and `\t` escape), P12 (include notes
+for a header outside `known[]`), P13 (the patch when two fix-its overlap).
+
+## 14. Review log
+
+There were five adversarial passes over the draft. Each one re-checked
+claims against the code at `cea7869` and against the probe output.
+
+**Round 1: claims against the code.** Every `file:line` was re-read.
+
+- Corrected line numbers:
+  - `mode_compdb`'s status line is `main.c:699` (not 700);
+  - `lint_one` is at `main.c:159`;
+  - `cdec_diag` is at `cell.c:782`.
+- `ccall.c:2255` is the *pointer-to-pointer* message. gcc gives no fix-it
+  there (P15, probed for this round), so the table now names only `2259`.
+- There is no `util.c` (the helper goes in `common.c`). There is no C
+  unit-test harness: the Makefile builds only `cereal`. The builder's
+  "unit test" became a testing input, `fix --edits` (5.3).
+- Confirmed:
+  - `crename.c` compares diagnostics pairwise by level, id and place, and
+    maps only main-file offsets. The gate's generalization to every
+    edited file is now stated (6.4).
+  - `par.py`'s gcc cache key already includes the flags.
+  - The LSP's macro-phase TU runs the analyses (`server.c:197`), so lint
+    fix-its reach the LSP without the check.
+  - Both `-f` flags are "unknown option" today.
+
+**Round 2: internal consistency.**
+
+- Fixed stale cross-references: the builder is section 5, not 6.2, and the
+  nonexistent "9.2".
+- The missing-braces row claimed a gate on folded initialiser values that
+  6.4 did not define. Missing braces are now SAFE by construction, with
+  `fixgate.sh` as the check.
+- The `ast_digest` description, a flat tag sequence, contradicted the
+  risk it was meant to answer. It now hashes tree shape (child counts) and
+  types.
+- The 3.1 field list was miscounted.
+- Whole-diagnostic poisoning would have broken the gcc differential for a
+  note refused while its diagnostic's fix-it is valid. Poisoning is now
+  per owner, as gcc's separate rich locations are.
+
+**Round 3: the brief, item by item.** Every listed topic has a section:
+
+- data and producers: 3, 4;
+- real-location guarantee: 3.2;
+- builder semantics: 5.2;
+- LSP kind, association, fix-all, capabilities, builder thread, carrying,
+  incremental edits: 7;
+- replay, `-j`, determinism: 6.2, 6.7;
+- idempotence and gate: 6.2, 6.4;
+- CRLF, encoding, BOM, unwritable, atomic: 6.5;
+- exit codes: 6.6;
+- C2 list with the assignment-parens decision: 4.2;
+- tests per slice, golden layout, gcc differential, semantic gate: 8;
+- sizes: 8.
+
+Findings:
+
+- `fix --edits` was placed in C1 while `fix` itself is C3. It is now
+  explicitly the first piece of the mode.
+- The brief's "bump format" is moot (no on-disk cell format, section 2).
+- The brief labels the user's decisions "D1..D7" but lists six. D7 records
+  its scope rule.
+- D6's wording could be read as applying to `;` only. The broader reading
+  is now Q10.
+
+**Round 4: edge cases.**
+
+- Headers reached through `-I` into vendored or installed trees are
+  `SF_USER` and would have been rewritten. Added `--root` (6.5).
+- A file read under different spellings by different TUs needs the
+  overlay keyed per TU's path (6.4).
+- The D5 "same text hash" condition was redundant within one disk read.
+  It was reworded as a changed-during-run check.
+- Warning fixes deferred in a TU whose errors have no fix leave exit
+  status 1. Now stated.
+- The LSP fix-all selection was undefined in a TU with errors. It now
+  uses one CLI pass's selection, without D5.
+- The cross-file wording in 6.5 was garbled and has been rewritten.
+
+**Round 5: a full pass.** One material finding: `fixgate.sh`'s object
+identity would fail on every include insertion in a file that uses
+`__LINE__`/`assert`, because later lines move. Its comparison now
+separates line-moving fixes (8, C3). A further pass found nothing
+material.
+
+**Still unverified, to probe in C1** (12.2):
+
+- the newline rule and the tab escape (P11);
+- include notes for headers outside `known[]` (P12);
+- gcc's patch on overlapping fix-its (P13);
+- gcc's consolidation of adjacent fix-its.
+
+The gate's cost on a large database is estimated, not measured.
