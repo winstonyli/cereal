@@ -3775,3 +3775,21 @@ modes) under TSan: 34 passed, 0 warnings; `lsp_stress.py` on features.c
 (200 edits, 66 refreshes) clean under TSan (74 s) and ASan/UBSan. About
 +228/-134 lines in src (features.c +197/-52, server.c +1/-70, lsp.h
 +22/-7, csymidx.c/h +8/-5), against ~80 added and ~60 removed estimated.
+
+Round 201: server memory. Measuring the carry (B3_DESIGN 12.9) showed
+`cereal lsp` RSS climbing over successive edits of a dense 4 MiB file.
+Two causes, found on a throwaway copy with ASan/LeakSanitizer and
+mallinfo2: (1) a real leak, `Checker.dm` (`grow_nodes`, one size_t per
+node) was never freed in `check.c`; a unit with one huge declaration
+(a 307k-member struct, about 1.5 M nodes) leaked about 12 MB per check;
+fixed with `free(c->dm)` (flat in-use heap afterwards, clean LSan);
+(2) glibc retention: in-use heap stays flat while the arena keeps
+227 MB of free memory; bounded (plateau after 4 to 7 edits), and
+`MALLOC_TRIM_THRESHOLD_=0` cut steady RSS 55% (dense), 77% (fixed
+struct), 40% (zstd.c); its speed cost is not measured, not adopted. The
+carried index is not chained (`core` always points to the original).
+True carry cost at the check peak, with vs without carry: +50 to 70 MB
+(dense `int vN;`), +35 to 45 MB (307k-member struct), +4 MB (zstd.c);
+the 36 to 43 MB estimate of 12.9 was low because the carried index keeps
+the whole original alive. Parked: share only decls and strings so the old
+event arrays can be freed (`cindex_touched` reads `core->by_decl`).

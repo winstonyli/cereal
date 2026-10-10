@@ -808,6 +808,7 @@ void checker_free(Checker *c)
     free(c->ck);
     free(c->ef);
     free(c->par);
+    free(c->dm);
     vec_free(&c->fv);
     vec_free(&c->specs);
     vec_free(&c->recs);
