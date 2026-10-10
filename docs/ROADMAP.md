@@ -140,8 +140,12 @@ B3. (DONE, Round 197: typeDefinition, document symbols, signature help
     label and keyword completion, signature help through an expression
     callee, blocks written inside a macro argument; the semantic-token
     refresh and carrying the previous index across edits were done in
-    Rounds 198 and 199, B3_DESIGN.md section 12, whose step 4 (carrying
-    the compiler diagnostics through the same edit) is still open.
+    Rounds 198 to 200, B3_DESIGN.md section 12, including step 4 (the
+    compiler diagnostics carried through the same edit). Parked memory
+    work (HISTORY Rounds 201 to 203): trimming freed memory after 300 ms
+    of quiet (RSS -39 to -75% but the first check after a pause 5 to 15%
+    slower) and slimming the carried index (3 to 8% of the peak); both
+    are choices for huge generated files only.
     See B3_DESIGN.md, section 11.)
     Document symbols, in-scope completion, signature help for C functions,
     typeDefinition, richer semantic tokens (est. 350 lines).
