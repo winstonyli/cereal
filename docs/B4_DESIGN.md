@@ -3,7 +3,8 @@
 Status: designed 2026-10-10 (ROADMAP Track B, B4). **B4a (C call hierarchy)
 is implemented** (Round 218; section 17 lists what differs from this text),
 and so is **B4b (parameter-name inlay hints)**, with `bench/tools/clangd_diff.py`
-(Round 219; section 18). B4c is not started.
+(Round 219; section 18), and **B4c (workspace/symbol over open units)**
+(Round 220; section 19). **B4 is complete**; the parked items are in 15.
 It builds on the C symbol index of B2 and B3 (B2_DESIGN.md, B3_DESIGN.md;
 LSP.md, "C symbol index"). Line numbers refer to the Windows checkout at
 809a6c8 (drafted at 82c44b2; every cited line was rechecked after
@@ -855,7 +856,8 @@ the units' user files, so the selection is shared rather than restated:
 - Dedupe across units by (path, offset, name): a header seen by two units
   is listed once.
 
-**Matching** (clangd's class of fuzzy match, simplified):
+**Matching** (clangd's class of fuzzy match, simplified; the implemented
+rule is refined in section 19):
 
 - Case-insensitive.
 - The query's characters must appear in order in the name. Each one after
@@ -1559,3 +1561,104 @@ with `--calls --hints`) and `--calls --hints` on `tests/lsp/ccalls/main.c`:
 0 reports, 0 error responses. Source +745/-169, hand-written tests ~170
 lines (goldens 513), clangd_diff 318 plus the 130-line corpus. Estimate in
 12: 360 - 700 src and 120 - 250 tests; the src is at the top.
+
+## 19. B4c as implemented (Round 220)
+
+Implemented as written (Q2 and Q6 as recommended: open units only, system
+headers left out; E6: its own handler, no wait, no check started), with these
+differences and findings.
+
+- **Matcher: two rules added, one tightened (found by clangd_diff).** The
+  segment starts of section 7 were lower-to-upper, after `_`, at a
+  letter-digit change and at index 0. Against clangd the sets of matches
+  disagreed in three ways, all fixed in `ws_match`:
+  - `str` did not match `TString`: clangd treats the capital before a
+    lower-case letter that follows a capital as a segment start (the `S`).
+    Added.
+  - `lf` matched `luaC_fix`, `LUA_INTEGER_FMT`, `lua_CFunction`: clangd
+    skips no word, so a character that is neither right after the previous
+    match nor at the *next* segment start after it does not match. Section 7
+    said "at a segment start"; it is now "at the next segment start". The DP in
+    `ws_match` resets its running minimum at each segment start.
+  - `lea` matched `luaK_exp2anyreg` (`a` after the `2`, a letter-digit
+    segment start); the next-segment rule removes it too (the `e` of `exp2`
+    is not the next segment start after `l`). Whether clangd starts a
+    segment at a letter-digit change was not established; that rule stays as
+    written.
+  `tests/lsp/wsym` pins `lc` (matches `luaC_fix`), `str` (`TString`) and `lf`
+  (nothing).
+- **One entry per decl per unit, not per decl.** A function defined in a.c
+  and declared in a shared header, with b.c open too, is listed twice: at its
+  definition (unit a.c) and at its prototype (unit b.c, which has no
+  definition). The dedupe is by (path, offset, name) as written, so it
+  collapses the copies of one place, not the two places. This is what 7 says
+  and clangd does the same with a declaration it has no definition for; it is
+  noted because the golden shows it.
+- **`c_symbol_event` also rejects `CIX_SYSTEM` events** (7 says "not
+  `body`/`system`"; the old document-symbol filter only had the body bit,
+  since it saw user files only). Document symbols are unchanged.
+- **Shape.** `lsp_workspace_symbols` (features.c) takes the referenced
+  snapshots and indexes (`WsUnit`) and sorts all matches with `ws_cmp`
+  (rank, macros last, length, name, path, offset, unit) before cutting at
+  100, so the dedupe is a pass over neighbours. Declarations are found per
+  decl through the `by_decl` CSR, matching the name first, so the event scan
+  only runs for names that match. No allocation beyond the candidate list,
+  a file map and the output.
+- **Test harness.** The held-check case needs a barrier for "the snapshot
+  exists": a `foldingRange` request (CP_NONE still waits for the first
+  snapshot) because `waitIdle` waits for the check and the diagnostics of a
+  held unit are not published. A closed document reschedules its unit, whose
+  held check would block the builder, so the scenario has an `idle` after the
+  close.
+- **`clangd_diff.py` (workspace/symbol).** 13 queries per file. The
+  main file's symbols must agree exactly. New and widened ids:
+  - **W1** system symbols only in clangd (as designed).
+  - **W2 (widened)** a user header's symbol only cereal lists. clangd's
+    dynamic index gives it partly: forward declarations (`struct CallInfo;`),
+    include guards, and for libuv's core.c no header symbol at all.
+  - **W3 (widened)** kinds: macros 15 for clangd; also struct 5 (Class) and
+    enumerator 10 (Enum) where cereal says 23 and 22.
+  - **W4** differences where either answer hit the 100 limit.
+  clangd's answers vary from run to run until its index settles: the script
+  now waits for the file's diagnostics, then repeats each query until the
+  answer stops changing. The earlier count of C3 (29) came from a clangd
+  that had not settled; it is 8 now.
+  Result: 6 files, ~1,700 differences (varies with clangd's system-header
+  answers), **0 unexpected** over three runs.
+- **`tests/lsp_stress.py --symbols`** sends a workspace/symbol request with a
+  random short query in each round.
+
+Gates and sizes: run.sh 2076 passed (+2); gate.sh: san 2076 passed, 628
+files, 0 findings; verify unchanged (gcc.dg 3908 of 3910, c-c++-common 637 of
+638, cpp 289 of 289); callgrind 3.8814 G (3.8832 G before, -0.05%); symcov
+unchanged (`unindexed 0, param misses 0`, 4718 files, 1,146,276 events).
+TSan (`~/cereal-tsan`, removed): 56 session runs clean (28 sessions, plain and
+parallel+cells); `lsp_stress.py --symbols` 200 edits on zstd.c (239 edits sent),
+and with `--calls --hints` on zstd.c and on `tests/lsp/ccalls/main.c`: 0 reports,
+0 error responses. Source +276/-9 (features.c +227, server.c +41, lsp.h +8);
+hand-written tests ~87 lines (53 of session JSON, 25 of C, 9 net in the stress
+script) plus 2,773 lines of goldens (wsym.expected; 27 goldens gained the
+capability line); clangd_diff +52/-4. Estimate in 12: 220 - 450 src and 80 - 160
+tests: the src and the tests are below it.
+
+G1 and C6 (the B4b open questions):
+
+- **G1, root cause.** `csx_unit_begin` gives the root scope of an external
+  declaration the range from `tok_begin` of its first token to `tok_end` of its
+  last (csymidx.c:593). A token produced by a macro expansion is placed at its
+  presentation point, the invocation's first character, and `tok_end` is
+  `exp + 1`. So `DEFINE_FN(made)` has the root `[3:1, 3:2)`, one byte wide.
+  The xcall of `leaf` at 3:1 is inside it (so it is attributed to a root),
+  but `made`'s DEF is the argument token at 3:11, outside it: rule 1 of
+  `caller_of` finds no DEF in the range, rules 2 and 3 find no caller event,
+  and the site is "file scope". Outgoing from `made` finds no events in its
+  body for the same reason. Rough fix, about 10 lines plus one golden:
+  at `csx_unit_end`, widen the root's end to the largest `off + len` of the
+  unit's events in the root's file (the events from `unit_ev0`), so the
+  invocation's arguments are inside; or keep the invocation's closing
+  position in the token. The first is local to csymidx.c.
+- **C6, decision.** Keep as an intended difference. A call spelled in a system
+  header's macro body (`assert` to `__assert_fail`, `errno` to
+  `__errno_location`) is a real call at the invocation; clangd's hierarchy
+  omits them, and a filter that hid them would cost one `CIX_SYSTEM` test on
+  the xcall's callee. Not done; say so if clangd's behaviour is preferred.

@@ -381,7 +381,8 @@ enum), semantic tokens (`macro`, `parameter`, `function`, `variable`,
 `type`, `enumMember`, `property`, `struct`, `enum`; modifiers
 `declaration`, `readonly`, `static`; whole file, a range, or a delta
 against the last whole-file result), folding (`#if` blocks, multi-line
-`#define`s), parameter-name inlay hints for C calls (below), rename with
+`#define`s), parameter-name inlay hints for C calls (below), workspace/symbol
+over the open units (below), rename with
 prepareRename, call hierarchy (incoming and
 outgoing; for macros static edges plus observed expansions, for C
 functions and file-level variables the call index), and signature help for
@@ -427,6 +428,32 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
   server asks for a refresh when the check publishes). The same lexer
   rules as signature help; both read parameters through `csig_params`
   (src/c/csymidx.c).
+- **workspace/symbol** (B4c; B4_DESIGN.md section 7). `workspaceSymbolProvider`
+  is always advertised. The answer is `SymbolInformation[]` (`name`, `kind`,
+  `location`, `containerName`: the record or enum of a field or enumerator,
+  else `""`), at most 100. It has its own handler: no wait, no check is
+  started, and it reads whatever index each unit has now. Partial by design
+  until B5's project index:
+  - only units with an open document are searched (a closed document's unit
+    drops out), and a header counts when a searched unit includes it, listed
+    once however many units do;
+  - a unit still checking contributes its last or carried index; one with a
+    snapshot but no index yet contributes its macros only; one with no
+    snapshot yet contributes nothing;
+  - system headers are left out (user macros and the document symbols'
+    selection of C declarations are listed, one entry per decl per unit, at
+    its definition if any).
+
+  Matching is clangd's class, simplified: case-insensitive, the query's
+  characters in order, the first at a segment start (the start, after `_`, a
+  lower-to-upper change, the capital before a lower-case letter after a
+  capital, a letter-digit change), each other right after the previous one or
+  at the next segment start after it (no word is skipped: `lea` matches
+  `leaf`, `CALL_LEAF`, `__LEAF`; `lf` matches none of them nor `luaC_fix`).
+  Ranking: exact, exact ignoring case, prefix, other matches by fewer
+  jumps; then C declarations before macros, shorter, name, path, offset.
+  Kinds: `SymbolKind` of the document symbols (macros Function or Constant;
+  clangd answers 15 for macros, 5 for structs and 10 for enumerators).
 - **Code actions** (C4; C_DESIGN.md section 7). `codeActionProvider`
   (`quickfix`, `source.fixAll.cereal`, no resolve) is advertised only when
   the client sends `textDocument.codeAction.codeActionLiteralSupport`; cereal
@@ -549,14 +576,21 @@ index, hints moved down a line; after the release one refresh of each view
 is recorded, and no second pair);
 `hints_nocap` (no `textDocument.inlayHint`: no provider, no refresh) and
 `hints_off` (`initializationOptions.inlayHints` false: no provider).
-`bench/tools/clangd_diff.sh` (not in run.sh: needs clangd) compares hints
-and call hierarchy with clangd on `bench/clangd_diff/` and three corpus
+`tests/lsp/wsym` (B4c): two units sharing a header (the shared symbols
+once), queries `""`, exact, prefix, segment, acronym, a skipped word (no
+match), a field and an enumerator with their `containerName`, system
+symbols absent, a closed document, a unit whose first check is held (its
+macros only, answered while it is held) and the 100 limit (150
+declarations).
+`bench/tools/clangd_diff.sh` (not in run.sh: needs clangd) compares hints,
+call hierarchy and workspace/symbol (13 queries) with clangd on `bench/clangd_diff/` and three corpus
 files; every difference is either a named intended one or `UNEXPECTED`.
-`tests/lsp_stress.py [--calls] [--hints] BIN FILE [EDITS] [SEED]` (not a
+`tests/lsp_stress.py [--calls] [--hints] [--symbols] BIN FILE [EDITS] [SEED]` (not a
 golden) sends edits each
 followed at once by token, completion and hover requests (`--calls` adds
 prepareCallHierarchy with incoming and outgoing calls on hand-built items,
-`--hints` an inlayHint request over a random range); run on zstd.c
+`--hints` an inlayHint request over a random range, `--symbols` a
+workspace/symbol request with a short query); run on zstd.c
 under TSan (also on a smaller file, where more checks publish between
 edits) and ASan with the sanitizer logs empty. The sessions are also
 run under ThreadSanitizer and AddressSanitizer/UBSan (set `LSP_STDERR` to

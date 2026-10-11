@@ -153,11 +153,11 @@ B3. (DONE, Round 197: typeDefinition, document symbols, signature help
     See B3_DESIGN.md, section 11.)
     Document symbols, in-scope completion, signature help for C functions,
     typeDefinition, richer semantic tokens (est. 350 lines).
-B4. Function call hierarchy, inlay hints (est. 400 lines).
+B4. Function call hierarchy, inlay hints, workspace/symbol (est. 400 lines). DONE.
     Designed in B4_DESIGN.md (2026-10-10; re-estimated 1,620 to 3,110 lines).
-    B4a (C call hierarchy) done, Round 218. B4b (parameter-name inlay hints,
-    with bench/tools/clangd_diff.sh) done, Round 219. B4c (workspace/symbol
-    over open units) not started.
+    B4a (C call hierarchy) Round 218. B4b (parameter-name inlay hints,
+    with bench/tools/clangd_diff.sh) Round 219. B4c (workspace/symbol
+    over open units) Round 220. Open: G1 (B4_DESIGN 15).
 B5. Workspace-wide index over compile_commands, workspace/symbol,
     cross-file references, on-disk cache. Large; needs its own design.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stress `cereal lsp` with edits, each followed at once by requests.
 
-usage: lsp_stress.py [--calls] [--hints] BIN FILE [EDITS] [SEED]
+usage: lsp_stress.py [--calls] [--hints] [--symbols] BIN FILE [EDITS] [SEED]
 
 Opens FILE (its directory is the workspace), then EDITS times (default 200):
 inserts a line at a random line start (sometimes two edits back to back),
@@ -17,7 +17,9 @@ request was answered and the server exited cleanly.
          as the client sees the text now, data {name, doc}, no `c`), so
          CP_WAIT and data.doc resolution race the edits (try a file with
          real calls, e.g. tests/lsp/ccalls/main.c or zstd.c).
---hints  also sends textDocument/inlayHint over a random line range."""
+--hints  also sends textDocument/inlayHint over a random line range.
+--symbols also sends workspace/symbol with a random short query (it never
+         waits for a check, so it races the publishes)."""
 import json, os, queue, random, re, subprocess, sys, threading
 
 FLAGS = {a for a in sys.argv[1:] if a.startswith("--")}
@@ -137,6 +139,9 @@ for i in range(N):
         reqs.append(send("textDocument/inlayHint", {"textDocument": td, "range": {
             "start": {"line": a, "character": 0},
             "end": {"line": b, "character": len(lines[b])}}}))
+    if "--symbols" in FLAGS:
+        reqs.append(send("workspace/symbol", {"query": rnd.choice(
+            ["", "s", "st", "stress", "v1", "main", "_", "lea"])}))
     wait(reqs)
 wait([send("cereal/waitIdle", {})])
 wait([send("shutdown", None)])

@@ -1,0 +1,2773 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider",
+  "workspaceSymbolProvider"
+ ]
+}
+>> initialized
+## nothing open: no units
+>> workspace/symbol
+[]
+>> didOpen wsym/a.c
+>> didOpen wsym/b.c
+>> (idle)
+## empty query: everything of the two units; shared.h once (dedupe), no system header symbols
+>> workspace/symbol
+[
+ {
+  "containerName": "point",
+  "kind": 8,
+  "location": {
+   "range": {
+    "end": {
+     "character": 20,
+     "line": 5
+    },
+    "start": {
+     "character": 19,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "x"
+ },
+ {
+  "containerName": "point",
+  "kind": 8,
+  "location": {
+   "range": {
+    "end": {
+     "character": 27,
+     "line": 5
+    },
+    "start": {
+     "character": 26,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "y"
+ },
+ {
+  "containerName": "TString",
+  "kind": 8,
+  "location": {
+   "range": {
+    "end": {
+     "character": 24,
+     "line": 10
+    },
+    "start": {
+     "character": 21,
+     "line": 10
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "len"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 8,
+     "line": 3
+    },
+    "start": {
+     "character": 4,
+     "line": 3
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "leaf"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 8,
+     "line": 8
+    },
+    "start": {
+     "character": 4,
+     "line": 8
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "leaf"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 9,
+     "line": 1
+    },
+    "start": {
+     "character": 4,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/wsym/b.c"
+  },
+  "name": "other"
+ },
+ {
+  "containerName": "",
+  "kind": 23,
+  "location": {
+   "range": {
+    "end": {
+     "character": 12,
+     "line": 5
+    },
+    "start": {
+     "character": 7,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "point"
+ },
+ {
+  "containerName": "",
+  "kind": 10,
+  "location": {
+   "range": {
+    "end": {
+     "character": 10,
+     "line": 6
+    },
+    "start": {
+     "character": 5,
+     "line": 6
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "shade"
+ },
+ {
+  "containerName": "",
+  "kind": 8,
+  "location": {
+   "range": {
+    "end": {
+     "character": 19,
+     "line": 5
+    },
+    "start": {
+     "character": 13,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "hidden"
+ },
+ {
+  "containerName": "",
+  "kind": 23,
+  "location": {
+   "range": {
+    "end": {
+     "character": 14,
+     "line": 10
+    },
+    "start": {
+     "character": 7,
+     "line": 10
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "TString"
+ },
+ {
+  "containerName": "",
+  "kind": 5,
+  "location": {
+   "range": {
+    "end": {
+     "character": 28,
+     "line": 7
+    },
+    "start": {
+     "character": 21,
+     "line": 7
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "point_t"
+ },
+ {
+  "containerName": "",
+  "kind": 13,
+  "location": {
+   "range": {
+    "end": {
+     "character": 31,
+     "line": 5
+    },
+    "start": {
+     "character": 23,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "anon_obj"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 12,
+     "line": 11
+    },
+    "start": {
+     "character": 4,
+     "line": 11
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "luaC_fix"
+ },
+ {
+  "containerName": "shade",
+  "kind": 22,
+  "location": {
+   "range": {
+    "end": {
+     "character": 23,
+     "line": 6
+    },
+    "start": {
+     "character": 13,
+     "line": 6
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "SHADE_DARK"
+ },
+ {
+  "containerName": "shade",
+  "kind": 22,
+  "location": {
+   "range": {
+    "end": {
+     "character": 36,
+     "line": 6
+    },
+    "start": {
+     "character": 25,
+     "line": 6
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "SHADE_LIGHT"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 22,
+     "line": 2
+    },
+    "start": {
+     "character": 11,
+     "line": 2
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "helper_leaf"
+ },
+ {
+  "containerName": "",
+  "kind": 13,
+  "location": {
+   "range": {
+    "end": {
+     "character": 18,
+     "line": 4
+    },
+    "start": {
+     "character": 4,
+     "line": 4
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "shared_counter"
+ },
+ {
+  "containerName": "",
+  "kind": 13,
+  "location": {
+   "range": {
+    "end": {
+     "character": 25,
+     "line": 9
+    },
+    "start": {
+     "character": 11,
+     "line": 9
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "shared_counter"
+ },
+ {
+  "containerName": "",
+  "kind": 14,
+  "location": {
+   "range": {
+    "end": {
+     "character": 16,
+     "line": 1
+    },
+    "start": {
+     "character": 8,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "SHARED_H"
+ },
+ {
+  "containerName": "",
+  "kind": 14,
+  "location": {
+   "range": {
+    "end": {
+     "character": 18,
+     "line": 3
+    },
+    "start": {
+     "character": 8,
+     "line": 3
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "SHARED_MAX"
+ },
+ {
+  "containerName": "",
+  "kind": 14,
+  "location": {
+   "range": {
+    "end": {
+     "character": 19,
+     "line": 1
+    },
+    "start": {
+     "character": 8,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "A_LEAF_ATTR"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 19,
+     "line": 4
+    },
+    "start": {
+     "character": 8,
+     "line": 4
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "SHARED_CALL"
+ }
+]
+## exact, then prefix and segment matches (leaf, helper_leaf, A_LEAF_ATTR); not sys_leaf (system)
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 8,
+     "line": 3
+    },
+    "start": {
+     "character": 4,
+     "line": 3
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "leaf"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 8,
+     "line": 8
+    },
+    "start": {
+     "character": 4,
+     "line": 8
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "leaf"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 22,
+     "line": 2
+    },
+    "start": {
+     "character": 11,
+     "line": 2
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "helper_leaf"
+ },
+ {
+  "containerName": "",
+  "kind": 14,
+  "location": {
+   "range": {
+    "end": {
+     "character": 19,
+     "line": 1
+    },
+    "start": {
+     "character": 8,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "A_LEAF_ATTR"
+ }
+]
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 8,
+     "line": 3
+    },
+    "start": {
+     "character": 4,
+     "line": 3
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "leaf"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 8,
+     "line": 8
+    },
+    "start": {
+     "character": 4,
+     "line": 8
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "leaf"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 22,
+     "line": 2
+    },
+    "start": {
+     "character": 11,
+     "line": 2
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "helper_leaf"
+ },
+ {
+  "containerName": "",
+  "kind": 14,
+  "location": {
+   "range": {
+    "end": {
+     "character": 19,
+     "line": 1
+    },
+    "start": {
+     "character": 8,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "A_LEAF_ATTR"
+ }
+]
+## lf is no match: f is neither next to l nor at a segment start
+>> workspace/symbol
+[]
+## a word is not skipped (lf: no luaC_fix), an acronym ends at the capital before a lower-case letter (str: TString)
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 12,
+     "line": 11
+    },
+    "start": {
+     "character": 4,
+     "line": 11
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "luaC_fix"
+ }
+]
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 23,
+  "location": {
+   "range": {
+    "end": {
+     "character": 14,
+     "line": 10
+    },
+    "start": {
+     "character": 7,
+     "line": 10
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "TString"
+ }
+]
+>> workspace/symbol
+[]
+## case-insensitive prefix; a field and its record; an enumerator; a field of an anonymous record
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 13,
+  "location": {
+   "range": {
+    "end": {
+     "character": 18,
+     "line": 4
+    },
+    "start": {
+     "character": 4,
+     "line": 4
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "shared_counter"
+ },
+ {
+  "containerName": "",
+  "kind": 13,
+  "location": {
+   "range": {
+    "end": {
+     "character": 25,
+     "line": 9
+    },
+    "start": {
+     "character": 11,
+     "line": 9
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "shared_counter"
+ },
+ {
+  "containerName": "",
+  "kind": 14,
+  "location": {
+   "range": {
+    "end": {
+     "character": 16,
+     "line": 1
+    },
+    "start": {
+     "character": 8,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "SHARED_H"
+ },
+ {
+  "containerName": "",
+  "kind": 14,
+  "location": {
+   "range": {
+    "end": {
+     "character": 18,
+     "line": 3
+    },
+    "start": {
+     "character": 8,
+     "line": 3
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "SHARED_MAX"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 19,
+     "line": 4
+    },
+    "start": {
+     "character": 8,
+     "line": 4
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "SHARED_CALL"
+ }
+]
+>> workspace/symbol
+[
+ {
+  "containerName": "point",
+  "kind": 8,
+  "location": {
+   "range": {
+    "end": {
+     "character": 20,
+     "line": 5
+    },
+    "start": {
+     "character": 19,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "x"
+ }
+]
+>> workspace/symbol
+[
+ {
+  "containerName": "shade",
+  "kind": 22,
+  "location": {
+   "range": {
+    "end": {
+     "character": 36,
+     "line": 6
+    },
+    "start": {
+     "character": 25,
+     "line": 6
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "SHADE_LIGHT"
+ }
+]
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 8,
+  "location": {
+   "range": {
+    "end": {
+     "character": 19,
+     "line": 5
+    },
+    "start": {
+     "character": 13,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "hidden"
+ }
+]
+## system macros and functions are left out
+>> workspace/symbol
+[]
+## b.c closed: other is gone, the shared header's symbols stay (a.c includes it)
+>> textDocument/didClose
+>> (idle)
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 13,
+  "location": {
+   "range": {
+    "end": {
+     "character": 31,
+     "line": 5
+    },
+    "start": {
+     "character": 23,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "anon_obj"
+ }
+]
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 13,
+  "location": {
+   "range": {
+    "end": {
+     "character": 18,
+     "line": 4
+    },
+    "start": {
+     "character": 4,
+     "line": 4
+    }
+   },
+   "uri": "file://$ROOT/wsym/a.c"
+  },
+  "name": "shared_counter"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 19,
+     "line": 4
+    },
+    "start": {
+     "character": 8,
+     "line": 4
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "SHARED_CALL"
+ }
+]
+## checks held, c.c opened (foldingRange waits for its first snapshot only): its macros only (no index yet), answered while the check is held
+>> cereal/holdChecks
+null
+>> didOpen wsym/c.c
+>> textDocument/foldingRange
+[]
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 14,
+  "location": {
+   "range": {
+    "end": {
+     "character": 14,
+     "line": 0
+    },
+    "start": {
+     "character": 8,
+     "line": 0
+    }
+   },
+   "uri": "file://$ROOT/wsym/c.c"
+  },
+  "name": "C_ONLY"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 12,
+     "line": 11
+    },
+    "start": {
+     "character": 4,
+     "line": 11
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "luaC_fix"
+ }
+]
+>> cereal/holdChecks
+null
+>> (idle)
+## released: its declarations too
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 10,
+     "line": 1
+    },
+    "start": {
+     "character": 4,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/wsym/c.c"
+  },
+  "name": "c_func"
+ },
+ {
+  "containerName": "",
+  "kind": 14,
+  "location": {
+   "range": {
+    "end": {
+     "character": 14,
+     "line": 0
+    },
+    "start": {
+     "character": 8,
+     "line": 0
+    }
+   },
+   "uri": "file://$ROOT/wsym/c.c"
+  },
+  "name": "C_ONLY"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 12,
+     "line": 11
+    },
+    "start": {
+     "character": 4,
+     "line": 11
+    }
+   },
+   "uri": "file://$ROOT/wsym/shared.h"
+  },
+  "name": "luaC_fix"
+ }
+]
+## all documents closed: the units are no longer searched
+>> textDocument/didClose
+>> textDocument/didClose
+>> workspace/symbol
+[]
+## the limit: 150 declarations, 100 answered
+>> didOpen wsym/many.c
+>> (idle)
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 0
+    },
+    "start": {
+     "character": 4,
+     "line": 0
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_000"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 1
+    },
+    "start": {
+     "character": 4,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_001"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 2
+    },
+    "start": {
+     "character": 4,
+     "line": 2
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_002"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 3
+    },
+    "start": {
+     "character": 4,
+     "line": 3
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_003"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 4
+    },
+    "start": {
+     "character": 4,
+     "line": 4
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_004"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 5
+    },
+    "start": {
+     "character": 4,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_005"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 6
+    },
+    "start": {
+     "character": 4,
+     "line": 6
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_006"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 7
+    },
+    "start": {
+     "character": 4,
+     "line": 7
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_007"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 8
+    },
+    "start": {
+     "character": 4,
+     "line": 8
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_008"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 9
+    },
+    "start": {
+     "character": 4,
+     "line": 9
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_009"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 10
+    },
+    "start": {
+     "character": 4,
+     "line": 10
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_010"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 11
+    },
+    "start": {
+     "character": 4,
+     "line": 11
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_011"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 12
+    },
+    "start": {
+     "character": 4,
+     "line": 12
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_012"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 13
+    },
+    "start": {
+     "character": 4,
+     "line": 13
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_013"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 14
+    },
+    "start": {
+     "character": 4,
+     "line": 14
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_014"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 15
+    },
+    "start": {
+     "character": 4,
+     "line": 15
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_015"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 16
+    },
+    "start": {
+     "character": 4,
+     "line": 16
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_016"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 17
+    },
+    "start": {
+     "character": 4,
+     "line": 17
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_017"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 18
+    },
+    "start": {
+     "character": 4,
+     "line": 18
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_018"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 19
+    },
+    "start": {
+     "character": 4,
+     "line": 19
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_019"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 20
+    },
+    "start": {
+     "character": 4,
+     "line": 20
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_020"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 21
+    },
+    "start": {
+     "character": 4,
+     "line": 21
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_021"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 22
+    },
+    "start": {
+     "character": 4,
+     "line": 22
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_022"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 23
+    },
+    "start": {
+     "character": 4,
+     "line": 23
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_023"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 24
+    },
+    "start": {
+     "character": 4,
+     "line": 24
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_024"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 25
+    },
+    "start": {
+     "character": 4,
+     "line": 25
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_025"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 26
+    },
+    "start": {
+     "character": 4,
+     "line": 26
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_026"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 27
+    },
+    "start": {
+     "character": 4,
+     "line": 27
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_027"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 28
+    },
+    "start": {
+     "character": 4,
+     "line": 28
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_028"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 29
+    },
+    "start": {
+     "character": 4,
+     "line": 29
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_029"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 30
+    },
+    "start": {
+     "character": 4,
+     "line": 30
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_030"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 31
+    },
+    "start": {
+     "character": 4,
+     "line": 31
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_031"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 32
+    },
+    "start": {
+     "character": 4,
+     "line": 32
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_032"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 33
+    },
+    "start": {
+     "character": 4,
+     "line": 33
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_033"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 34
+    },
+    "start": {
+     "character": 4,
+     "line": 34
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_034"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 35
+    },
+    "start": {
+     "character": 4,
+     "line": 35
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_035"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 36
+    },
+    "start": {
+     "character": 4,
+     "line": 36
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_036"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 37
+    },
+    "start": {
+     "character": 4,
+     "line": 37
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_037"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 38
+    },
+    "start": {
+     "character": 4,
+     "line": 38
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_038"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 39
+    },
+    "start": {
+     "character": 4,
+     "line": 39
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_039"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 40
+    },
+    "start": {
+     "character": 4,
+     "line": 40
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_040"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 41
+    },
+    "start": {
+     "character": 4,
+     "line": 41
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_041"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 42
+    },
+    "start": {
+     "character": 4,
+     "line": 42
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_042"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 43
+    },
+    "start": {
+     "character": 4,
+     "line": 43
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_043"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 44
+    },
+    "start": {
+     "character": 4,
+     "line": 44
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_044"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 45
+    },
+    "start": {
+     "character": 4,
+     "line": 45
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_045"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 46
+    },
+    "start": {
+     "character": 4,
+     "line": 46
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_046"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 47
+    },
+    "start": {
+     "character": 4,
+     "line": 47
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_047"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 48
+    },
+    "start": {
+     "character": 4,
+     "line": 48
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_048"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 49
+    },
+    "start": {
+     "character": 4,
+     "line": 49
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_049"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 50
+    },
+    "start": {
+     "character": 4,
+     "line": 50
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_050"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 51
+    },
+    "start": {
+     "character": 4,
+     "line": 51
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_051"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 52
+    },
+    "start": {
+     "character": 4,
+     "line": 52
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_052"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 53
+    },
+    "start": {
+     "character": 4,
+     "line": 53
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_053"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 54
+    },
+    "start": {
+     "character": 4,
+     "line": 54
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_054"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 55
+    },
+    "start": {
+     "character": 4,
+     "line": 55
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_055"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 56
+    },
+    "start": {
+     "character": 4,
+     "line": 56
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_056"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 57
+    },
+    "start": {
+     "character": 4,
+     "line": 57
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_057"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 58
+    },
+    "start": {
+     "character": 4,
+     "line": 58
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_058"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 59
+    },
+    "start": {
+     "character": 4,
+     "line": 59
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_059"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 60
+    },
+    "start": {
+     "character": 4,
+     "line": 60
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_060"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 61
+    },
+    "start": {
+     "character": 4,
+     "line": 61
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_061"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 62
+    },
+    "start": {
+     "character": 4,
+     "line": 62
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_062"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 63
+    },
+    "start": {
+     "character": 4,
+     "line": 63
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_063"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 64
+    },
+    "start": {
+     "character": 4,
+     "line": 64
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_064"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 65
+    },
+    "start": {
+     "character": 4,
+     "line": 65
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_065"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 66
+    },
+    "start": {
+     "character": 4,
+     "line": 66
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_066"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 67
+    },
+    "start": {
+     "character": 4,
+     "line": 67
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_067"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 68
+    },
+    "start": {
+     "character": 4,
+     "line": 68
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_068"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 69
+    },
+    "start": {
+     "character": 4,
+     "line": 69
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_069"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 70
+    },
+    "start": {
+     "character": 4,
+     "line": 70
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_070"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 71
+    },
+    "start": {
+     "character": 4,
+     "line": 71
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_071"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 72
+    },
+    "start": {
+     "character": 4,
+     "line": 72
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_072"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 73
+    },
+    "start": {
+     "character": 4,
+     "line": 73
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_073"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 74
+    },
+    "start": {
+     "character": 4,
+     "line": 74
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_074"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 75
+    },
+    "start": {
+     "character": 4,
+     "line": 75
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_075"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 76
+    },
+    "start": {
+     "character": 4,
+     "line": 76
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_076"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 77
+    },
+    "start": {
+     "character": 4,
+     "line": 77
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_077"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 78
+    },
+    "start": {
+     "character": 4,
+     "line": 78
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_078"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 79
+    },
+    "start": {
+     "character": 4,
+     "line": 79
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_079"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 80
+    },
+    "start": {
+     "character": 4,
+     "line": 80
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_080"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 81
+    },
+    "start": {
+     "character": 4,
+     "line": 81
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_081"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 82
+    },
+    "start": {
+     "character": 4,
+     "line": 82
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_082"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 83
+    },
+    "start": {
+     "character": 4,
+     "line": 83
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_083"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 84
+    },
+    "start": {
+     "character": 4,
+     "line": 84
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_084"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 85
+    },
+    "start": {
+     "character": 4,
+     "line": 85
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_085"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 86
+    },
+    "start": {
+     "character": 4,
+     "line": 86
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_086"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 87
+    },
+    "start": {
+     "character": 4,
+     "line": 87
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_087"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 88
+    },
+    "start": {
+     "character": 4,
+     "line": 88
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_088"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 89
+    },
+    "start": {
+     "character": 4,
+     "line": 89
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_089"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 90
+    },
+    "start": {
+     "character": 4,
+     "line": 90
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_090"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 91
+    },
+    "start": {
+     "character": 4,
+     "line": 91
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_091"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 92
+    },
+    "start": {
+     "character": 4,
+     "line": 92
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_092"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 93
+    },
+    "start": {
+     "character": 4,
+     "line": 93
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_093"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 94
+    },
+    "start": {
+     "character": 4,
+     "line": 94
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_094"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 95
+    },
+    "start": {
+     "character": 4,
+     "line": 95
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_095"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 96
+    },
+    "start": {
+     "character": 4,
+     "line": 96
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_096"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 97
+    },
+    "start": {
+     "character": 4,
+     "line": 97
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_097"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 98
+    },
+    "start": {
+     "character": 4,
+     "line": 98
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_098"
+ },
+ {
+  "containerName": "",
+  "kind": 12,
+  "location": {
+   "range": {
+    "end": {
+     "character": 11,
+     "line": 99
+    },
+    "start": {
+     "character": 4,
+     "line": 99
+    }
+   },
+   "uri": "file://$ROOT/wsym/many.c"
+  },
+  "name": "gen_099"
+ }
+]
+>> shutdown
+null
+>> exit
+exit 0

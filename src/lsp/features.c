@@ -494,6 +494,30 @@ static void c_symbol(Req *r, JsonWriter *w, const CSymNode *nodes, int32_t k,
     json_end_object(w);
 }
 
+/* Whether event i is the declaration or definition of a symbol (document
+ * symbols and workspace/symbol): a file-level declaration, field or
+ * enumerator, not a use, a macro body's, a system header's, a parameter or a
+ * label.  *s: the external declaration's scope (1 + index) for a
+ * non-member, else 0. */
+static bool c_symbol_event(const CIndex *ix, uint32_t i, uint32_t *s)
+{
+    const CIdxEvent *e = &ix->ev[i];
+    const CIdxDecl *x = &ix->decls[e->decl];
+    bool member = x->kind == CIK_FIELD || x->kind == CIK_ENUMCONST;
+    *s = 0;
+    if ((e->flags & CIX_ROLE) == CIX_REF ||
+        (e->flags & (CIX_MACRO_BODY | CIX_SYSTEM)) || x->kind == CIK_PARAM ||
+        x->kind == CIK_LABEL ||
+        (member ? (e->flags & CIX_ROLE) != CIX_DEF : x->scope))
+        return false;
+    if (x->kind != CIK_FIELD) {              /* at file level? */
+        *s = cindex_scope_at(ix, e->file, e->off);
+        if (*s && ix->scopes[*s - 1].parent)
+            return false;
+    }
+    return true;
+}
+
 /* The C part of documentSymbol (B3_DESIGN.md 5.2): file-level declarations
  * with the external declaration as range, fields and enumerators under the
  * node whose type is their record or enum (a definition of it first). */
@@ -510,23 +534,16 @@ static void c_document_symbols(Req *r, JsonWriter *w)
     for (i = cindex_lower(ix, (uint32_t)fi, 0); i < end; i++) {
         const CIdxEvent *e = &ix->ev[i];
         const CIdxDecl *x = &ix->decls[e->decl];
-        uint32_t s = 0;
+        uint32_t s;
         CSymNode n;
         bool member = x->kind == CIK_FIELD || x->kind == CIK_ENUMCONST;
-        if ((e->flags & CIX_ROLE) == CIX_REF || (e->flags & CIX_MACRO_BODY) ||
-            x->kind == CIK_PARAM || x->kind == CIK_LABEL ||
-            (member ? (e->flags & CIX_ROLE) != CIX_DEF : x->scope))
+        if (!c_symbol_event(ix, i, &s))
             continue;
         n.ev = i;
         n.decl = e->decl;
         n.b = e->off;
         n.e = e->off + e->len;
         n.up = n.kid = n.next = -1;
-        if (x->kind != CIK_FIELD) {          /* at file level? */
-            s = cindex_scope_at(ix, (uint32_t)fi, e->off);
-            if (s && ix->scopes[s - 1].parent)
-                continue;
-        }
         if (s && !member) {                  /* the external declaration */
             n.b = ix->scopes[s - 1].begin < n.b ? ix->scopes[s - 1].begin : n.b;
             n.e = ix->scopes[s - 1].end > n.e ? ix->scopes[s - 1].end : n.e;
@@ -591,6 +608,207 @@ void lsp_document_symbols(Req *r, JsonWriter *w)
     }
     c_document_symbols(r, w);
     json_end_array(w);
+}
+
+/* ---- workspace/symbol (B4_DESIGN.md 7) --------------------------------------- */
+
+enum { WS_LIMIT = 100, WS_NAME_MAX = 255, WS_NO = 1 << 20 };
+
+typedef struct WsCand {
+    const char *name, *container, *path;
+    Snapshot *snap;          /* whose line tables place it */
+    SrcLoc b;
+    uint32_t off, len;       /* of the name in its file */
+    size_t seq;              /* the unit, in the order searched */
+    int rank, kind;          /* ws_match; SymbolKind */
+    bool macro;
+} WsCand;
+typedef VEC(WsCand) WsVec;
+
+static bool ws_seg_start(const char *s, size_t i)
+{
+    unsigned char c = (unsigned char)s[i], p;
+    if (!i)
+        return true;
+    p = (unsigned char)s[i - 1];
+    return p == '_' || (islower(p) && isupper(c)) ||
+           (isupper(p) && isupper(c) && islower((unsigned char)s[i + 1])) ||
+           (isalpha(p) && isdigit(c)) || (isdigit(p) && isalpha(c));
+}
+
+static bool ws_ieq(const char *a, const char *b, size_t n)
+{
+    for (; n; n--, a++, b++)
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+            return false;
+    return true;
+}
+
+/* How well q matches name: -1 not at all, else lower is better: 0 exact, 1
+ * exact ignoring case, 2 a prefix (or an empty query), else 3 + the segment
+ * jumps of the best match.  A match takes the query's characters in order,
+ * ignoring case; the first at a segment start, each other right after the
+ * previous one or at the next segment start after it (clangd skips no word:
+ * `lea` matches CALL_LEAF, `lf` neither leaf nor luaC_fix).
+ * Names over WS_NAME_MAX bytes only match as a prefix. */
+static int ws_match(const char *q, const char *name)
+{
+    size_t nq = strlen(q), nn = strlen(name), i, j;
+    int prev[WS_NAME_MAX], cur[WS_NAME_MAX], best, m;
+    if (!nq)
+        return 2;
+    if (nq > nn)
+        return -1;
+    if (nq == nn && ws_ieq(q, name, nn))
+        return memcmp(q, name, nn) ? 1 : 0;
+    if (ws_ieq(q, name, nq))
+        return 2;
+    if (nn > WS_NAME_MAX)
+        return -1;
+    for (j = 0; j < nn; j++)           /* jumps so far, q[0..i] ending at j */
+        prev[j] = tolower((unsigned char)name[j]) ==
+                          tolower((unsigned char)q[0]) &&
+                          ws_seg_start(name, j) ? 0 : WS_NO;
+    for (i = 1; i < nq; i++) {
+        best = WS_NO;           /* the least of prev[k], k from the last segment start */
+        for (j = 0; j < nn; j++) {
+            bool head = ws_seg_start(name, j);
+            int from = best;
+            if (head)
+                best = WS_NO;
+            cur[j] = WS_NO;
+            if (tolower((unsigned char)name[j]) == tolower((unsigned char)q[i])) {
+                cur[j] = j ? prev[j - 1] : WS_NO;
+                if (head && from + 1 < cur[j])
+                    cur[j] = from + 1;
+            }
+            if (prev[j] < best)
+                best = prev[j];
+        }
+        memcpy(prev, cur, nn * sizeof *prev);
+    }
+    for (m = WS_NO, j = 0; j < nn; j++)
+        if (prev[j] < m)
+            m = prev[j];
+    return m >= WS_NO ? -1 : 3 + m;
+}
+
+/* Ranking: match quality, C declarations before macros, a shorter name, the
+ * name, then the place, so that the copies of one symbol are adjacent. */
+static int ws_cmp(const void *a, const void *b)
+{
+    const WsCand *x = a, *y = b;
+    int c;
+    if (x->rank != y->rank)
+        return x->rank < y->rank ? -1 : 1;
+    if (x->macro != y->macro)
+        return x->macro ? 1 : -1;
+    if (strlen(x->name) != strlen(y->name))
+        return strlen(x->name) < strlen(y->name) ? -1 : 1;
+    if ((c = strcmp(x->name, y->name)) || (c = strcmp(x->path, y->path)))
+        return c;
+    if (x->off != y->off)
+        return x->off < y->off ? -1 : 1;
+    return x->seq == y->seq ? 0 : x->seq < y->seq ? -1 : 1;
+}
+
+/* Appends to out the symbols of one unit that match q: its user macros, and
+ * its C declarations if it has an index (the document symbols' selection,
+ * c_symbol_event; one per decl, at its definition if any). */
+static void ws_unit(const WsUnit *u, size_t seq, const char *q,
+                    WsVec *out)
+{
+    Snapshot *s = u->snap;
+    SrcMgr *sm = &s->tu.sm;
+    const CIndex *ix = u->cx;
+    SrcFile **fmap = NULL;
+    size_t i, nf;
+    uint32_t d, j;
+    for (i = 0; i < s->tu.pp.macros.len; i++) {
+        Macro *m = s->tu.pp.macros.data[i];
+        SrcFile *f = m->name_loc && !m->alias_of ? srcmgr_file_of(sm, m->name_loc)
+                                                 : NULL;
+        int rank;
+        if (!f || f->kind != SF_USER || (rank = ws_match(q, m->name->str)) < 0)
+            continue;
+        vec_push(out, ((WsCand){m->name->str, "", f->path, s, m->name_loc,
+                                (uint32_t)(m->name_loc - f->base), m->name->len,
+                                seq, rank, m->funclike ? SK_FUNCTION : SK_CONSTANT,
+                                true}));
+    }
+    if (!ix)
+        return;
+    fmap = xcalloc(ix->nfiles + 1, sizeof *fmap);   /* the files placed here */
+    for (i = 0, nf = srcmgr_nfiles(sm); i < nf; i++) {
+        SrcFile *f = srcmgr_file(sm, (uint32_t)i);
+        int fi = f->kind == SF_USER ? cindex_file(ix, f->path) : -1;
+        if (fi >= 0 && !ix->files[fi].stale)
+            fmap[fi] = f;
+    }
+    for (d = 0; d < ix->ndecls; d++) {
+        const CIdxDecl *x = &ix->decls[d];
+        const char *name = cindex_name(ix, d);
+        uint32_t pick = CIX_NONE;
+        int rank;
+        if (!x->name || x->kind == CIK_PARAM || x->kind == CIK_LABEL ||
+            (rank = ws_match(q, name)) < 0)
+            continue;
+        for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++) {
+            uint32_t k = ix->by_decl[j], sc;
+            bool def = (ix->ev[k].flags & CIX_ROLE) == CIX_DEF;
+            if (!fmap[ix->ev[k].file] || !c_symbol_event(ix, k, &sc))
+                continue;
+            if (pick == CIX_NONE || def)
+                pick = k;
+            if (def)
+                break;
+        }
+        if (pick != CIX_NONE) {
+            const CIdxEvent *e = &ix->ev[pick];
+            SrcFile *f = fmap[e->file];
+            vec_push(out, ((WsCand){name, x->parent ? cindex_name(ix, x->parent - 1)
+                                                    : "",
+                                    f->path, s, f->base + e->off, e->off, e->len,
+                                    seq, rank, C_KINDS[x->kind].sk, false}));
+        }
+    }
+    free(fmap);
+}
+
+void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *query,
+                           PosEncoding enc, Arena *a, JsonWriter *w)
+{
+    WsVec v = {0};
+    Req r;
+    size_t i, shown = 0;
+    for (i = 0; i < n; i++)
+        ws_unit(&us[i], i, query, &v);
+    if (v.len)
+        qsort(v.data, v.len, sizeof *v.data, ws_cmp);
+    memset(&r, 0, sizeof r);
+    r.arena = a;
+    r.enc = enc;
+    json_begin_array(w);
+    for (i = 0; i < v.len && shown < WS_LIMIT; i++) {
+        const WsCand *c = &v.data[i], *p = i ? c - 1 : NULL;
+        if (p && p->off == c->off && !strcmp(p->path, c->path) &&
+            !strcmp(p->name, c->name))
+            continue;                  /* a header the units share */
+        r.snap = c->snap;
+        json_begin_object(w);
+        json_key(w, "name");
+        json_str(w, c->name);
+        json_key(w, "kind");
+        json_int(w, c->kind);
+        json_key(w, "location");
+        json_location(w, &r, c->b, c->b + c->len);
+        json_key(w, "containerName");
+        json_str(w, c->container);
+        json_end_object(w);
+        shown++;
+    }
+    json_end_array(w);
+    vec_free(&v);
 }
 
 /* ---- semantic tokens -------------------------------------------------------- */

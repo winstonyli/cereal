@@ -18,7 +18,8 @@
   "semanticTokensProvider",
   "signatureHelpProvider",
   "textDocumentSync",
-  "typeDefinitionProvider"
+  "typeDefinitionProvider",
+  "workspaceSymbolProvider"
  ]
 }
 >> initialized

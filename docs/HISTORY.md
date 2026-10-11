@@ -4464,3 +4464,42 @@ Source +745/-169 in 6 files; hand-written tests ~170 lines (47 session JSON,
 clangd_diff 318 lines plus a 130-line corpus.
 
 Not done: B4c (workspace/symbol). The G1 gap above.
+
+## Round 220: B4c, workspace/symbol over open units; B4 complete
+
+Slice B4c of B4_DESIGN.md, as designed (Q2 open units only, Q6 no system
+headers, E6 its own handler that never waits and never starts a check).
+`workspaceSymbolProvider` is always advertised. `workspace/symbol` takes a
+reference on the snapshot and index of every unit with an open document (under
+the lock, each unit once), then builds the candidates outside it:
+`SymbolInformation[]` of the document symbols' selection (now
+`c_symbol_event`, shared) plus user macros, one entry per decl per unit at its
+definition, `containerName` the record or enum of a field or enumerator,
+deduplicated by (path, offset, name), ranked (exact, exact ignoring case,
+prefix, fewer segment jumps; C before macros; shorter; name; place), the first
+100. The matcher is a small DP over the name.
+
+clangd_diff.py gained workspace/symbol (13 queries) and found that the matcher
+as designed disagreed with clangd's sets: it now treats the capital before a
+lower-case letter after a capital as a segment start (`str` finds `TString`)
+and lets a character skip no word (`lf` no longer finds `luaC_fix`); B4_DESIGN
+19. New and widened intended differences W2 (header symbols clangd's index
+lacks), W3 (struct 5 and enumerator 10 kinds as well as macro 15), W1, W4.
+Result: 6 files, ~1,700 differences, 0 unexpected over three runs (clangd's
+answers vary until its index settles; the script now waits for the
+diagnostics and repeats each query until it is stable).
+
+`tests/lsp/wsym` (one session): two units sharing a header, the matcher cases,
+containerName, system symbols absent, a closed document, a held first check
+(macros only, no wait) and the 100 limit. `tests/lsp_stress.py --symbols`.
+Answered in the design doc, not implemented: G1 (the root scope of a function
+defined by a macro invocation is one byte wide, so its name token lies outside
+it; widen the root at `csx_unit_end`, ~10 lines) and C6 (kept as intended).
+
+Gates: run.sh 2076 passed (was 2074: +2); gate.sh: san 2076 passed, 628 files,
+0 findings; verify unchanged; callgrind 3.8814 G (3.8832 G); symcov unchanged.
+TSan: 56 session runs clean, `lsp_stress.py --symbols` (also with `--calls
+--hints`) 0 reports, 0 error responses. Source +276/-9; hand-written tests ~87
+lines plus 2,773 of goldens.
+
+Not done: G1; B5.

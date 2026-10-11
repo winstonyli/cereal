@@ -12,9 +12,11 @@ items each server returned.
 Differences are normalized (names and call sites; details, ranges of items,
 positions of items are dropped) and each is printed with the id of the
 intended difference of docs/B4_DESIGN.md 10.2 it matches (C1, C3, C5, H1-H4,
-H6; found by this script: C6, G1, P1, see section 18), or UNEXPECTED.
+H6, W1-W4; found by this script: C6, G1, P1, see section 18), or UNEXPECTED.
+workspace/symbol (B4c) is asked the QUERIES below of each server, with one
+document open; a result is (name, kind, file, position of the name).
 Exit 1 on any unexpected difference or a failure to run.  Not in run.sh:
-clangd may be absent.  The workspace/symbol requests (B4c) are not made.
+clangd may be absent.
 No fixed sleeps: it waits for each server's index of the file by polling."""
 import json, os, queue, re, shutil, subprocess, sys, tempfile, threading, time
 
@@ -27,6 +29,7 @@ REAL = [("lupa-2.8/third-party/lua54/lstrlib.c", "lupa-2.8/third-party/lua54", [
         ("uvloop-0.22.1/vendor/libuv/src/unix/core.c", "uvloop-0.22.1/vendor/libuv",
          ["include", "src", "src/unix"], ["-D_GNU_SOURCE"])]
 FLAGS = ["-std=gnu11"]
+QUERIES = ["", "a", "lea", "leaf", "lf", "call", "CALL", "str", "luaL", "uv_", "init", "Point", "x"]
 
 
 class Srv:
@@ -127,7 +130,9 @@ def top_symbols(s, uri, text):
 
 
 def wait_indexed(s, uri, name):
-    end = time.time() + 120               # clangd: the dynamic index has the file
+    # clangd: the file's diagnostics come after its preamble (the headers' symbols) is indexed
+    s.get(lambda m: m.get("method") == "textDocument/publishDiagnostics" and m["params"]["uri"] == uri)
+    end = time.time() + 120               # and the dynamic index has the file
     while time.time() < end:
         if any(x["name"] == name for x in s.req("workspace/symbol", {"query": name}) or []):
             return
@@ -153,6 +158,17 @@ def collect(kind, cer, root, path, text, syms):
         h = s.req("textDocument/inlayHint", {"textDocument": {"uri": uri}, "range": {
             "start": {"line": 0, "character": 0}, "end": {"line": end, "character": 0}}})
         res["hints"] = {((x["position"]["line"], x["position"]["character"]), hint_label(x)) for x in h or [] if x.get("kind") == 2}
+        res["syms"] = {}
+        for q in QUERIES:
+            r = s.req("workspace/symbol", {"query": q}) or []
+            for _ in range(200):              # clangd: until its answer stops changing
+                r2 = s.req("workspace/symbol", {"query": q}) or []
+                if r2 == r:
+                    break
+                r = r2
+            res["syms"][q] = {(x["name"], x["kind"], x["location"]["uri"][7:], lines_of(x["location"]["range"]))
+                              for x in r}
+            res["syms"][q, "n"] = len(r)
         for name, pos in syms:
             its = s.req("textDocument/prepareCallHierarchy",
                         {"textDocument": {"uri": uri}, "position": {"line": pos[0], "character": pos[1]}})
@@ -228,6 +244,38 @@ def classify_call(side, kind, caller, name, sites, other_sites, lines, text, mac
     return None
 
 
+def is_system(path):
+    return path.startswith("/usr/") or "/sys/" in path or "/include/sys/" in path
+
+
+def compare_syms(rel, ours, theirs):
+    """workspace/symbol: the symbols of the main file must agree exactly.  W1 system symbols
+    (clangd only); W2 symbols of a user header only cereal lists (clangd's index has them partly:
+    forward declarations, include guards, nothing at all when its preamble does not build); W3 kinds
+    (macro 15, struct 5, enumerator 10 for clangd); W4 where a server's answer was cut at the limit
+    (the sets then differ by ranking)."""
+    out = []
+    for q in QUERIES:
+        o, t = ours["syms"][q], theirs["syms"][q]
+        cut = ours["syms"][q, "n"] >= 100 or theirs["syms"][q, "n"] >= 100
+        tpos = {(n, p, f): k for n, k, f, p in t}
+        opos = {(n, p, f): k for n, k, f, p in o}
+        for side, a, b, bpos in (("cereal", o, t, tpos), ("clangd", t, o, opos)):
+            for n, k, f, p in sorted(a):
+                key = (n, p, f)
+                where = "%s:%d:%d" % (os.path.basename(f), p[0] + 1, p[1] + 1)
+                if key in bpos:
+                    if side == "cereal" and bpos[key] != k:
+                        cls = "W3" if (bpos[key], k) in ((15, 12), (15, 14), (5, 23), (10, 22)) else None
+                        out.append("%s query %r: %s %s kind %d vs clangd %d [%s]" % (rel, q, n, where, k, bpos[key], cls or "UNEXPECTED"))
+                    continue
+                cls = ("W1" if side == "clangd" and is_system(f) else
+                       "W2" if side == "cereal" and os.path.basename(f) != rel and not is_system(f) else
+                       "W4" if cut else None)
+                out.append("%s query %r: %s %s (kind %d) only in %s [%s]" % (rel, q, n, where, k, side, cls or "UNEXPECTED"))
+    return out
+
+
 def hdrs(d):
     """The text of the headers next to the file (their #defines are macros too)."""
     return "\n".join(open(os.path.join(d, f)).read() for f in sorted(os.listdir(d)) if f.endswith(".h"))
@@ -268,7 +316,7 @@ def compare(rel, ours, theirs, text, headers=""):
                         "incoming" if k == "in" else "outgoing", key[0], name, side,
                         sorted((p[0] + 1, p[1] + 1) for p in x[name] - (other or set())),
                         "" if not other else " (also in the other)"), cls)
-    return out
+    return out + compare_syms(rel, ours, theirs)
 
 
 def main():

@@ -1141,6 +1141,8 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     }
     json_key(&w, "callHierarchyProvider");
     json_bool(&w, true);
+    json_key(&w, "workspaceSymbolProvider");
+    json_bool(&w, true);
     if (S.hints) {
         json_key(&w, "inlayHintProvider");
         json_bool(&w, true);
@@ -1263,6 +1265,43 @@ static const char *request_uri(const JsonValue *params)
     if (!u)
         u = json_str_of(json_path(params, "item.data.doc"), NULL);
     return u ? u : json_str_of(json_path(params, "item.uri"), NULL);
+}
+
+/* workspace/symbol (B4_DESIGN.md 7): the symbols of the units that have an
+ * open document, from what each has now.  It has no document and never waits
+ * for a build or a check, nor starts one (E6). */
+static void workspace_symbol(const JsonValue *id, const JsonValue *params)
+{
+    VEC(WsUnit) us = {0};
+    Arena a;
+    StrBuf sb = {0};
+    JsonWriter w;
+    size_t i, j;
+    arena_init(&a);
+    mutex_lock(&S.m);
+    for (i = 0; i < S.docs.len; i++) {
+        Snapshot *s = S.docs.data[i]->unit->snap;
+        for (j = 0; s && j < us.len; j++)
+            if (us.data[j].snap == s)
+                s = NULL;                /* the unit is in already */
+        if (s)
+            vec_push(&us, ((WsUnit){snapshot_ref(s), cindex_ref(s->cidx)}));
+    }
+    mutex_unlock(&S.m);
+    begin_response(&w, &sb, id);
+    json_key(&w, "result");
+    lsp_workspace_symbols(us.data, us.len,
+                          json_str_of(json_get(params, "query"), ""), S.enc, &a,
+                          &w);
+    json_end_object(&w);
+    send_json(&sb);
+    sb_free(&sb);
+    for (i = 0; i < us.len; i++) {
+        snapshot_release(us.data[i].snap);
+        cindex_free((CIndex *)us.data[i].cx);
+    }
+    vec_free(&us);
+    arena_free(&a);
 }
 
 /* Answers a request.  True: the builder thread has taken it over (it owns
@@ -1675,6 +1714,8 @@ int lsp_main(FILE *in, FILE *out)
             cond_broadcast(&S.work);
             mutex_unlock(&S.m);
             respond_null(id);
+        } else if (id && !strcmp(method, "workspace/symbol")) {
+            workspace_symbol(id, params);
         } else if (id) {
             int i;
             for (i = 0; REQS[i].method; i++)
