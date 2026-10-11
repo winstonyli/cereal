@@ -20,7 +20,7 @@ static bool ov_serve(void *ctx, const char *path, const char **buf, size_t *len)
             *len = r->ov[i].len;
             return true;
         }
-    return false;
+    return r->base && r->base(r->base_ctx, path, buf, len);
 }
 
 typedef VEC(SrcRange) RangeVec;
@@ -80,6 +80,7 @@ static void collect(FixResult *r, TU *tu, const RangeVec *skipped)
     uint32_t nf = srcmgr_nfiles(sm), k;
     int32_t *by_id = xmalloc((nf ? nf : 1) * sizeof *by_id);
     size_t i;
+    DiagEditVec ge = {0};
     for (k = 0; k < nf; k++)
         by_id[k] = -1;
     for (k = 0; k < nf; k++) {
@@ -100,7 +101,6 @@ static void collect(FixResult *r, TU *tu, const RangeVec *skipped)
         FDiag fd;
         FGroup g;
         SrcFile *f;
-        bool nofix;
         size_t j;
         if (!d || d->level == DL_IGNORED)
             continue;
@@ -118,12 +118,8 @@ static void collect(FixResult *r, TU *tu, const RangeVec *skipped)
         if (d->level >= DL_ERROR)
             r->nerrors++;
         vec_push(&r->diags, fd);
-        if (!d->fixits.len)
-            continue;
-        nofix = d->nofix;
-        for (j = 0; j < d->notes.len; j++)
-            nofix |= d->notes.data[j].nofix;
-        if (nofix)
+        ge.len = 0;
+        if (!diag_fix_group(sm, d, &ge))
             continue;
         memset(&g, 0, sizeof g);
         g.id = fd.id;
@@ -133,28 +129,12 @@ static void collect(FixResult *r, TU *tu, const RangeVec *skipped)
         g.diag = (uint32_t)(r->diags.len - 1);
         g.e0 = (uint32_t)r->edits.len;
         g.pfile = -1;
-        for (j = 0; j < d->fixits.len; j++) {
-            const FixIt *x = &d->fixits.data[j];
+        for (j = 0; j < ge.len; j++) {
+            const DiagEdit *x = &ge.data[j];
             FEdit e;
-            SrcFile *bf;
-            int32_t fi = user_index(by_id, sm, x->begin, &bf);
-            if (fi < 0)
-                break;
-            if (x->owner) {         /* a note's fix-it on the diagnostic's own
-                                       text is another way to the same end
-                                       (xor: "0x2" for "1 <<"): not both */
-                size_t m;
-                for (m = 0; m < d->fixits.len; m++) {
-                    const FixIt *y = &d->fixits.data[m];
-                    if (!y->owner && x->begin <= y->end && y->begin <= x->end)
-                        break;
-                }
-                if (m < d->fixits.len)
-                    continue;
-            }
-            e.file = (uint32_t)fi;
-            e.begin = srcmgr_offset(bf, x->begin);
-            e.end = srcmgr_offset(bf, x->end);
+            e.file = (uint32_t)by_id[x->file->id];
+            e.begin = x->begin;
+            e.end = x->end;
             e.text = arena_strdup(&r->arena, x->text);
             if (x->owner && !g.hdr && d->notes.data[x->owner - 1].hdr)
                 g.hdr = arena_strdup(&r->arena, d->notes.data[x->owner - 1].hdr);
@@ -162,23 +142,17 @@ static void collect(FixResult *r, TU *tu, const RangeVec *skipped)
                 g.app = x->app;
             if (e.begin != e.end || !only_parens(e.text))
                 g.paren = false;
-            if (e.end - e.begin != strlen(e.text) ||
-                memcmp(bf->buf + e.begin, e.text, e.end - e.begin))
-                g.change = true;    /* gcc offers "%u" for a "%u" */
-            if (!g.ne) {
-                g.pfile = fi;
-                srcmgr_linecol(bf, x->begin, &g.pline, &g.pcol);
+            if (!j) {
+                g.pfile = (int32_t)e.file;
+                srcmgr_linecol(x->file, x->file->base + x->begin, &g.pline,
+                               &g.pcol);
             }
             vec_push(&r->edits, e);
             g.ne++;
         }
-        if (j < d->fixits.len || !g.change) {   /* outside the user files, or
-                                                   a no-op */
-            r->edits.len = g.e0;
-            continue;
-        }
         vec_push(&r->groups, g);
     }
+    vec_free(&ge);
     for (i = 0; i < skipped->len; i++) {
         SrcFile *f;
         int32_t fi = user_index(by_id, sm, skipped->data[i].begin, &f);
@@ -209,7 +183,7 @@ int fix_tu(Options *o, const char *path, FILE *out TU_UNUSED, FILE *err,
     tu_init(&tu, o);
     tu.diag.out = err;
     tu.diag.fatal_errors = false;           /* -Wfatal-errors is off for fix */
-    if (r->nov) {
+    if (r->nov || r->base) {
         tu.sm.overlay = ov_serve;
         tu.sm.overlay_ctx = r;
     }

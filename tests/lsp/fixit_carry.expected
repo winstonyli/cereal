@@ -1,0 +1,1066 @@
+>> initialize
+{
+ "codeActionProvider": {
+  "codeActionKinds": [
+   "quickfix",
+   "source.fixAll.cereal"
+  ],
+  "resolveProvider": false
+ },
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "codeActionProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider"
+ ]
+}
+>> initialized
+>> didOpen fixit/main.c
+>> (idle)
+## the check's fixes (changes shape: the client does not take documentChanges), as the check made them
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "macro-unparenthesized-param",
+    "message": "macro parameter 'x' is an operand of '-' but is not parenthesized; an argument like 'a + b' changes the meaning",
+    "range": {
+     "end": {
+      "character": 17,
+      "line": 0
+     },
+     "start": {
+      "character": 16,
+      "line": 0
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "(x)",
+      "range": {
+       "end": {
+        "character": 17,
+        "line": 0
+       },
+       "start": {
+        "character": 16,
+        "line": 0
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Replace with '(x)'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "parentheses",
+    "message": "suggest parentheses around assignment used as truth value",
+    "range": {
+     "end": {
+      "character": 9,
+      "line": 3
+     },
+     "start": {
+      "character": 8,
+      "line": 3
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "(",
+      "range": {
+       "end": {
+        "character": 8,
+        "line": 3
+       },
+       "start": {
+        "character": 8,
+        "line": 3
+       }
+      }
+     },
+     {
+      "newText": ")",
+      "range": {
+       "end": {
+        "character": 13,
+        "line": 3
+       },
+       "start": {
+        "character": 13,
+        "line": 3
+       }
+      }
+     }
+    ]
+   }
+  },
+  "kind": "quickfix",
+  "title": "Apply fix-it"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "implicit-function-declaration",
+    "message": "implicit declaration of function 'puts'",
+    "range": {
+     "end": {
+      "character": 15,
+      "line": 5
+     },
+     "start": {
+      "character": 11,
+      "line": 5
+     }
+    },
+    "relatedInformation": [
+     {
+      "location": {
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       },
+       "uri": "file://$ROOT/fixit/main.c"
+      },
+      "message": "include '<stdio.h>' or provide a declaration of 'puts'"
+     }
+    ],
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "#include <stdio.h>\n",
+      "range": {
+       "end": {
+        "character": 0,
+        "line": 0
+       },
+       "start": {
+        "character": 0,
+        "line": 0
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Add #include <stdio.h>"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 3,
+      "line": 7
+     },
+     "start": {
+      "character": 0,
+      "line": 7
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "void",
+      "range": {
+       "end": {
+        "character": 6,
+        "line": 7
+       },
+       "start": {
+        "character": 6,
+        "line": 7
+       }
+      }
+     }
+    ]
+   }
+  },
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 5,
+      "line": 8
+     },
+     "start": {
+      "character": 4,
+      "line": 8
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "void",
+      "range": {
+       "end": {
+        "character": 6,
+        "line": 8
+       },
+       "start": {
+        "character": 6,
+        "line": 8
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ }
+]
+>> cereal/holdChecks
+null
+## a line inserted after the brace, the check held: the fixes below it move down a line, the include at the top stays; they are the previous check's
+>> textDocument/didChange
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "macro-unparenthesized-param",
+    "message": "macro parameter 'x' is an operand of '-' but is not parenthesized; an argument like 'a + b' changes the meaning",
+    "range": {
+     "end": {
+      "character": 17,
+      "line": 0
+     },
+     "start": {
+      "character": 16,
+      "line": 0
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "(x)",
+      "range": {
+       "end": {
+        "character": 17,
+        "line": 0
+       },
+       "start": {
+        "character": 16,
+        "line": 0
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Replace with '(x)'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "parentheses",
+    "message": "suggest parentheses around assignment used as truth value",
+    "range": {
+     "end": {
+      "character": 9,
+      "line": 4
+     },
+     "start": {
+      "character": 8,
+      "line": 4
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "(",
+      "range": {
+       "end": {
+        "character": 8,
+        "line": 4
+       },
+       "start": {
+        "character": 8,
+        "line": 4
+       }
+      }
+     },
+     {
+      "newText": ")",
+      "range": {
+       "end": {
+        "character": 13,
+        "line": 4
+       },
+       "start": {
+        "character": 13,
+        "line": 4
+       }
+      }
+     }
+    ]
+   }
+  },
+  "kind": "quickfix",
+  "title": "Apply fix-it"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "implicit-function-declaration",
+    "message": "implicit declaration of function 'puts'",
+    "range": {
+     "end": {
+      "character": 15,
+      "line": 6
+     },
+     "start": {
+      "character": 11,
+      "line": 6
+     }
+    },
+    "relatedInformation": [
+     {
+      "location": {
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       },
+       "uri": "file://$ROOT/fixit/main.c"
+      },
+      "message": "include '<stdio.h>' or provide a declaration of 'puts'"
+     }
+    ],
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "#include <stdio.h>\n",
+      "range": {
+       "end": {
+        "character": 0,
+        "line": 0
+       },
+       "start": {
+        "character": 0,
+        "line": 0
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Add #include <stdio.h>"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 3,
+      "line": 8
+     },
+     "start": {
+      "character": 0,
+      "line": 8
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "void",
+      "range": {
+       "end": {
+        "character": 6,
+        "line": 8
+       },
+       "start": {
+        "character": 6,
+        "line": 8
+       }
+      }
+     }
+    ]
+   }
+  },
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 5,
+      "line": 9
+     },
+     "start": {
+      "character": 4,
+      "line": 9
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "void",
+      "range": {
+       "end": {
+        "character": 6,
+        "line": 9
+       },
+       "start": {
+        "character": 6,
+        "line": 9
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ }
+]
+## an edit at the end of the condition, where the parentheses fix inserts its closing parenthesis: the whole group is dropped; the diagnostic stays (the last publication below)
+>> textDocument/didChange
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "macro-unparenthesized-param",
+    "message": "macro parameter 'x' is an operand of '-' but is not parenthesized; an argument like 'a + b' changes the meaning",
+    "range": {
+     "end": {
+      "character": 17,
+      "line": 0
+     },
+     "start": {
+      "character": 16,
+      "line": 0
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "(x)",
+      "range": {
+       "end": {
+        "character": 17,
+        "line": 0
+       },
+       "start": {
+        "character": 16,
+        "line": 0
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Replace with '(x)'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "implicit-function-declaration",
+    "message": "implicit declaration of function 'puts'",
+    "range": {
+     "end": {
+      "character": 15,
+      "line": 6
+     },
+     "start": {
+      "character": 11,
+      "line": 6
+     }
+    },
+    "relatedInformation": [
+     {
+      "location": {
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       },
+       "uri": "file://$ROOT/fixit/main.c"
+      },
+      "message": "include '<stdio.h>' or provide a declaration of 'puts'"
+     }
+    ],
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "#include <stdio.h>\n",
+      "range": {
+       "end": {
+        "character": 0,
+        "line": 0
+       },
+       "start": {
+        "character": 0,
+        "line": 0
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Add #include <stdio.h>"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 3,
+      "line": 8
+     },
+     "start": {
+      "character": 0,
+      "line": 8
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "void",
+      "range": {
+       "end": {
+        "character": 6,
+        "line": 8
+       },
+       "start": {
+        "character": 6,
+        "line": 8
+       }
+      }
+     }
+    ]
+   }
+  },
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 5,
+      "line": 9
+     },
+     "start": {
+      "character": 4,
+      "line": 9
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "void",
+      "range": {
+       "end": {
+        "character": 6,
+        "line": 9
+       },
+       "start": {
+        "character": 6,
+        "line": 9
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ }
+]
+<< textDocument/publishDiagnostics file://$ROOT/fixit/main.c
+{
+ "diagnostics": [
+  {
+   "code": "macro-unparenthesized-param",
+   "message": "macro parameter 'x' is an operand of '-' but is not parenthesized; an argument like 'a + b' changes the meaning",
+   "range": {
+    "end": {
+     "character": 17,
+     "line": 0
+    },
+    "start": {
+     "character": 16,
+     "line": 0
+    }
+   },
+   "severity": 2,
+   "source": "cereal"
+  },
+  {
+   "code": "parentheses",
+   "message": "suggest parentheses around assignment used as truth value",
+   "range": {
+    "end": {
+     "character": 9,
+     "line": 4
+    },
+    "start": {
+     "character": 8,
+     "line": 4
+    }
+   },
+   "severity": 2,
+   "source": "cereal"
+  },
+  {
+   "code": "implicit-function-declaration",
+   "message": "implicit declaration of function 'puts'",
+   "range": {
+    "end": {
+     "character": 15,
+     "line": 6
+    },
+    "start": {
+     "character": 11,
+     "line": 6
+    }
+   },
+   "relatedInformation": [
+    {
+     "location": {
+      "range": {
+       "end": {
+        "character": 0,
+        "line": 0
+       },
+       "start": {
+        "character": 0,
+        "line": 0
+       }
+      },
+      "uri": "file://$ROOT/fixit/main.c"
+     },
+     "message": "include '<stdio.h>' or provide a declaration of 'puts'"
+    }
+   ],
+   "severity": 2,
+   "source": "cereal"
+  },
+  {
+   "code": "strict-prototypes",
+   "message": "function declaration isn't a prototype",
+   "range": {
+    "end": {
+     "character": 3,
+     "line": 8
+    },
+    "start": {
+     "character": 0,
+     "line": 8
+    }
+   },
+   "severity": 2,
+   "source": "cereal"
+  },
+  {
+   "code": "strict-prototypes",
+   "message": "function declaration isn't a prototype",
+   "range": {
+    "end": {
+     "character": 5,
+     "line": 9
+    },
+    "start": {
+     "character": 4,
+     "line": 9
+    }
+   },
+   "severity": 2,
+   "source": "cereal"
+  }
+ ],
+ "version": 3
+}
+## the check released: its own fixes again
+>> cereal/holdChecks
+null
+>> (idle)
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "macro-unparenthesized-param",
+    "message": "macro parameter 'x' is an operand of '-' but is not parenthesized; an argument like 'a + b' changes the meaning",
+    "range": {
+     "end": {
+      "character": 17,
+      "line": 0
+     },
+     "start": {
+      "character": 16,
+      "line": 0
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "(x)",
+      "range": {
+       "end": {
+        "character": 17,
+        "line": 0
+       },
+       "start": {
+        "character": 16,
+        "line": 0
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Replace with '(x)'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "parentheses",
+    "message": "suggest parentheses around assignment used as truth value",
+    "range": {
+     "end": {
+      "character": 9,
+      "line": 4
+     },
+     "start": {
+      "character": 8,
+      "line": 4
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "(",
+      "range": {
+       "end": {
+        "character": 8,
+        "line": 4
+       },
+       "start": {
+        "character": 8,
+        "line": 4
+       }
+      }
+     },
+     {
+      "newText": ")",
+      "range": {
+       "end": {
+        "character": 17,
+        "line": 4
+       },
+       "start": {
+        "character": 17,
+        "line": 4
+       }
+      }
+     }
+    ]
+   }
+  },
+  "kind": "quickfix",
+  "title": "Apply fix-it"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "implicit-function-declaration",
+    "message": "implicit declaration of function 'puts'",
+    "range": {
+     "end": {
+      "character": 15,
+      "line": 6
+     },
+     "start": {
+      "character": 11,
+      "line": 6
+     }
+    },
+    "relatedInformation": [
+     {
+      "location": {
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       },
+       "uri": "file://$ROOT/fixit/main.c"
+      },
+      "message": "include '<stdio.h>' or provide a declaration of 'puts'"
+     }
+    ],
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "#include <stdio.h>\n",
+      "range": {
+       "end": {
+        "character": 0,
+        "line": 0
+       },
+       "start": {
+        "character": 0,
+        "line": 0
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Add #include <stdio.h>"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 3,
+      "line": 8
+     },
+     "start": {
+      "character": 0,
+      "line": 8
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "void",
+      "range": {
+       "end": {
+        "character": 6,
+        "line": 8
+       },
+       "start": {
+        "character": 6,
+        "line": 8
+       }
+      }
+     }
+    ]
+   }
+  },
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 5,
+      "line": 9
+     },
+     "start": {
+      "character": 4,
+      "line": 9
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "changes": {
+    "file://$ROOT/fixit/main.c": [
+     {
+      "newText": "void",
+      "range": {
+       "end": {
+        "character": 6,
+        "line": 9
+       },
+       "start": {
+        "character": 6,
+        "line": 9
+       }
+      }
+     }
+    ]
+   }
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ }
+]
+>> shutdown
+null
+>> exit
+exit 0

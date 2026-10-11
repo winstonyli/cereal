@@ -37,8 +37,6 @@ typedef struct FGroup {
     uint8_t level;           /* of its diagnostic */
     uint8_t app;             /* FixApplic: the weakest of its fix-its */
     bool paren;              /* only inserts parentheses */
-    bool change;             /* some edit changes the text (collect drops the
-                                group otherwise) */
     uint32_t diag;           /* index into diags */
     const char *hdr;         /* it adds the #include of this header, or NULL */
     uint32_t e0, ne;         /* its edits: edits[e0 .. e0 + ne) */
@@ -57,10 +55,17 @@ typedef struct FOv {
     size_t len;
 } FOv;
 
+/* Editor buffers (SrcMgr.overlay): false falls through to the disk. */
+typedef bool (*FixBaseFn)(void *ctx, const char *path, const char **buf,
+                          size_t *len);
+
 typedef struct FixResult {
     Arena arena;
     const FOv *ov;           /* in: files served from memory */
     size_t nov;
+    FixBaseFn base;          /* in: the texts under ov (the language server's
+                                buffers); NULL: the disk */
+    void *base_ctx;
     bool quiet;              /* in: do not report an unreadable input */
     bool opened;             /* the main file could be read */
     uint32_t nerrors;

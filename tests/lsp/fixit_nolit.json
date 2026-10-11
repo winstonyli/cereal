@@ -1,0 +1,7 @@
+[
+ {"note": "a client that sends codeAction capabilities without codeActionLiteralSupport expects Commands, which cereal has none of: no codeActionProvider"},
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/fixit", "capabilities": {"general": {"positionEncodings": ["utf-8"]}, "textDocument": {"codeAction": {"dynamicRegistration": true}}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"send": {"id": 2, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

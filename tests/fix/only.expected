@@ -45,4 +45,16 @@ diff -ruN snap/hygiene_fixit.c t/hygiene_fixit.c
  #define OK ((1) + (2))
  int use(void) { return SUM + NEG(1) + SQ(2) + OK; }
 $ cereal fix -Wall --only=nothing hygiene_fixit.c fixit-braces.c
+exit 2
+-- stderr
+cereal: --only: 'nothing' is not the id of a diagnostic with a fix-it
+$ cereal fix -Wall --only=missing-braces,bogus-id hygiene_fixit.c fixit-braces.c
+exit 2
+-- stderr
+cereal: --only: 'bogus-id' is not the id of a diagnostic with a fix-it
+$ cereal fix -Wall --only= hygiene_fixit.c
+exit 2
+-- stderr
+cereal: --only: '' is not the id of a diagnostic with a fix-it
+$ cereal fix -Wall --only=error,builtin-declaration-mismatch,cond-typo,format=,header-guard,implicit-function-declaration,logical-not-parentheses,macro-unparenthesized-body,macro-unparenthesized-param,missing-braces,parentheses,strict-prototypes,xor-used-as-pow hygiene_fixit.c
 exit 0

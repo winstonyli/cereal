@@ -236,7 +236,8 @@ int fix_flag(FixOpts *fx, const char *a)
 /* A file read by some unit, by real path. */
 typedef struct GFile {
     const char *key;
-    char *text;              /* as the units read it (BOM dropped); malloc'd */
+    const char *path;        /* how the first unit that read it spells it */
+    char *text;             /* as the units read it (BOM dropped); malloc'd */
     size_t len;
     uint64_t hash;
     bool loaded, bom, crlf;
@@ -291,6 +292,11 @@ typedef struct Pass {
     const char *cwd, *root;
     bool io_error;
     bool probe;              /* only look: write nothing, count nothing */
+    /* the language server's pass (fix_unit_edits): the texts are its buffers,
+     * and only the edits of the file only_path are wanted */
+    FixBaseFn base;
+    void *base_ctx;
+    const char *only_path;
 } Pass;
 
 static const char *disp(const Pass *P, const char *key)
@@ -346,6 +352,19 @@ static void gload(Pass *P, GFile *g)
     if (g->loaded)
         return;
     g->loaded = true;
+    if (P->base) {                      /* the buffers: no file to check */
+        const char *b;
+        size_t bl;
+        if (!P->base(P->base_ctx, g->path, &b, &bl)) {
+            g->skip = "is not an open document";
+            return;
+        }
+        raw = xmalloc(bl + 1);
+        memcpy(raw, b, bl);
+        raw[bl] = 0;
+        n = bl;
+        goto have;
+    }
     {
         size_t rl = strlen(P->root);
         bool in = !strncmp(g->key, P->root, rl) &&
@@ -389,12 +408,14 @@ static void gload(Pass *P, GFile *g)
         n -= 3;
         raw[n] = 0;
     }
+have:
     g->text = raw;
     g->len = n;
     g->hash = fnv(raw, n);
     for (k = 0; k < n && raw[k] != '\n'; k++)
         ;
-    g->crlf = k < n && k > 0 && raw[k - 1] == '\r';
+    /* an editor keeps the line ends of its text itself */
+    g->crlf = !P->base && k < n && k > 0 && raw[k - 1] == '\r';
     for (k = 0; k < g->rd.len; k++) {
         const FixResult *r = &P->R[g->rd.data[k]];
         size_t f;
@@ -446,6 +467,7 @@ static void build_table(Pass *P)
             GFile n;
             memset(&n, 0, sizeof n);
             n.key = t.data[i].key;
+            n.path = P->R[t.data[i].tu].files.data[t.data[i].lf].path;
             vec_push(&P->gf, n);
         }
         g = &P->gf.data[P->gf.len - 1];
@@ -511,6 +533,34 @@ static char *line_ending(Pass *P, const GFile *g, const char *text)
     r = arena_strndup(&P->arena, sb.data, sb.len);
     sb_free(&sb);
     return r;
+}
+
+/* The diagnostic ids that can carry a fix-it ("" is spelled "error"): the
+ * producers are listed in docs/C_DESIGN.md 4; tests/fix/only.sh runs each. */
+static const char *const FIXABLE_IDS[] = {
+    "error", "builtin-declaration-mismatch", "cond-typo", "format=",
+    "header-guard", "implicit-function-declaration", "logical-not-parentheses",
+    "macro-unparenthesized-body", "macro-unparenthesized-param",
+    "missing-braces", "parentheses", "strict-prototypes", "xor-used-as-pow",
+    NULL};
+
+/* The first id of the --only list that no fix-it can carry, as a copy in
+ * buf, or NULL if all are known. */
+static const char *unknown_only_id(const char *only, char *buf, size_t cap)
+{
+    while (only) {
+        const char *c = strchr(only, ',');
+        size_t l = c ? (size_t)(c - only) : strlen(only), i;
+        for (i = 0; FIXABLE_IDS[i]; i++)
+            if (strlen(FIXABLE_IDS[i]) == l && !strncmp(FIXABLE_IDS[i], only, l))
+                break;
+        if (!FIXABLE_IDS[i]) {
+            snprintf(buf, cap, "%.*s", (int)l, only);
+            return buf;
+        }
+        only = c ? c + 1 : NULL;
+    }
+    return NULL;
 }
 
 static bool id_wanted(const char *only, const char *id)
@@ -580,6 +630,14 @@ static void select_cands(Pass *P)
             if (fg->app == FIX_INFO || (fg->app == FIX_MAYBE && !P->fx->unsafe) ||
                 !id_wanted(P->fx->only, fg->id))
                 continue;
+            if (P->only_path) {          /* a fix touching another file: not ours */
+                bool other = false;
+                for (e = 0; e < fg->ne; e++)
+                    other |= strcmp(r->files.data[r->edits.data[fg->e0 + e].file].path,
+                                    P->only_path) != 0;
+                if (other)
+                    continue;
+            }
             memset(&c, 0, sizeof c);
             c.tu = (uint32_t)t;
             c.grp = (uint32_t)g;
@@ -1045,12 +1103,25 @@ static bool gate_ok(Pass *P, int mode, const uint32_t *ids, size_t n, char *deta
         R1[k].ov = mine;
         R1[k].nov = m;
         R1[k].quiet = true;
+        R1[k].base = P->base;
+        R1[k].base_ctx = P->base_ctx;
         jobs[k] = P->jobs[i];
         jobs[k].res = &R1[k];
         jobs[k].fn = fix_tu;
         k++;
     }
-    if (nj)
+    if (nj && P->base) {            /* the language server: stdout is its protocol */
+        for (k = 0; k < nj; k++) {
+            char *b = NULL;
+            size_t bl = 0;
+            FILE *e = open_memstream(&b, &bl);
+            if (!e)
+                fatal("out of memory");
+            jobs[k].rc = jobs[k].fn(P->o, jobs[k].path, e, e, jobs[k].res);
+            fclose(e);
+            free(b);
+        }
+    } else if (nj)
         run_jobs(P->o, jobs, nj, stdout, false);
     for (i = 0, k = 0; i < P->n && ok; i++) {
         if (!aff[i])
@@ -1175,6 +1246,7 @@ static void gate_all(Pass *P, U32Vec *out)
 typedef struct Totals {
     size_t edits, files;     /* written (or, with --diff, to be written) */
     VEC(char *) seen;        /* the files counted, by real path */
+    VEC(char *) failed;      /* the files whose write error was printed */
     bool io_error;
     bool left;               /* something selected is still to be applied */
 } Totals;
@@ -1297,7 +1369,14 @@ static bool merge_pass(Pass *P, Totals *tot)
             sb_putn(&sb, s.etext[f], s.elen[f]);
             if (!file_write_atomic(g->key, sb.data ? sb.data : "", sb.len, err,
                                    sizeof err)) {
-                fprintf(stderr, "cereal: error: %s\n", err);
+                size_t k;       /* each later pass retries the file: say it once */
+                for (k = 0; k < tot->failed.len; k++)
+                    if (!strcmp(tot->failed.data[k], g->key))
+                        break;
+                if (k == tot->failed.len) {
+                    fprintf(stderr, "cereal: error: %s\n", err);
+                    vec_push(&tot->failed, xstrdup(g->key));
+                }
                 tot->io_error = true;
                 sb_free(&sb);
                 continue;
@@ -1369,6 +1448,14 @@ int fix_run(Options *o, const char *ccdb, const StrVec *own, const FixOpts *fxin
     if ((fx.apply && (fx.diff || fx.dry)) || (fx.diff && fx.dry)) {
         fputs("cereal: --apply, --diff and --dry-run exclude each other\n", stderr);
         return 2;
+    }
+    if (fx.only) {
+        char id[128];
+        if (unknown_only_id(fx.only, id, sizeof id)) {
+            fprintf(stderr, "cereal: --only: '%s' is not the id of a diagnostic "
+                    "with a fix-it\n", id);
+            return 2;
+        }
     }
     if (!fx.max_passes)
         fx.max_passes = 8;
@@ -1471,6 +1558,9 @@ int fix_run(Options *o, const char *ccdb, const StrVec *own, const FixOpts *fxin
     for (i = 0; i < tot.seen.len; i++)
         free(tot.seen.data[i]);
     vec_free(&tot.seen);
+    for (i = 0; i < tot.failed.len; i++)
+        free(tot.failed.data[i]);
+    vec_free(&tot.failed);
     for (i = 0; i < n; i++)
         fixres_free(&R[i]);
     free(R);
@@ -1479,4 +1569,94 @@ int fix_run(Options *o, const char *ccdb, const StrVec *own, const FixOpts *fxin
     else
         free(jobs);
     return rc;
+}
+
+/* ---- the language server's fix-all (docs/C_DESIGN.md 7) ------------------------------ */
+
+void fix_edits_free(FixTextEdits *e)
+{
+    size_t i;
+    for (i = 0; i < e->len; i++)
+        free(e->data[i].text);
+    vec_free(e);
+    memset(e, 0, sizeof *e);
+}
+
+bool fix_unit_edits(Options *o, const char *main, const char *file,
+                    FixBaseFn base, void *base_ctx, FixTextEdits *out)
+{
+    FixOpts fx;
+    FixResult R;
+    TuJob job;
+    Pass P;
+    U32Vec ids = {0};
+    char cwd[PATH_MAX];
+    size_t i, f;
+    bool opened;
+    memset(&fx, 0, sizeof fx);
+    memset(&R, 0, sizeof R);
+    memset(&P, 0, sizeof P);
+    memset(&job, 0, sizeof job);
+    if (!getcwd(cwd, sizeof cwd))
+        strcpy(cwd, ".");
+    R.quiet = true;
+    R.base = base;
+    R.base_ctx = base_ctx;
+    job.o = o;
+    job.fn = fix_tu;
+    job.path = main;
+    job.res = &R;
+    {
+        char *b = NULL;
+        size_t bl = 0;
+        FILE *e = open_memstream(&b, &bl);
+        if (!e)
+            fatal("out of memory");
+        fix_tu(o, main, e, e, &R);
+        fclose(e);
+        free(b);
+    }
+    opened = R.opened;
+    if (!opened) {
+        fixres_free(&R);
+        return false;
+    }
+    P.o = o;
+    P.fx = &fx;
+    P.jobs = &job;
+    P.n = 1;
+    P.R = &R;
+    P.cwd = cwd;
+    P.root = "/";
+    P.base = base;
+    P.base_ctx = base_ctx;
+    P.only_path = file;
+    arena_init(&P.arena);
+    P.gmap = xcalloc(2, sizeof *P.gmap);
+    P.eidx = xcalloc(2, sizeof *P.eidx);
+    P.neidx = xcalloc(2, sizeof *P.neidx);
+    build_table(&P);
+    select_cands(&P);
+    gate_all(&P, &ids);
+    if (ids.len) {
+        Sub s;
+        sub_build(&P, &s, ids.data, ids.len);
+        for (f = 0; f < P.gf.len; f++)
+            if (P.gf.data[f].path && !strcmp(P.gf.data[f].path, file))
+                for (i = 0; i < s.cnt[f]; i++) {
+                    const FixEdit *x = &s.fs.acc.data[s.lo[f] + i];
+                    FixTextEdit t;
+                    t.begin = x->begin;
+                    t.end = x->end;
+                    t.text = xstrdup(x->text);
+                    vec_push(out, t);
+                }
+        sub_free(&s);
+    }
+    vec_free(&ids);
+    drop_skips(&P);
+    vec_free(&P.skips);
+    pass_free(&P);
+    fixres_free(&R);
+    return true;
 }

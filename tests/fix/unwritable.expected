@@ -2,7 +2,6 @@ $ cereal fix d/u.c ok.c
 exit 4
 -- stderr
 cereal: error: cannot create a temporary file next to '<W>/t/d/u.c': Permission denied
-cereal: error: cannot create a temporary file next to '<W>/t/d/u.c': Permission denied
 cereal fix: 2 edits in 1 file in 1 pass; 0 skipped
 -- changes
 diff -ruN snap/ok.c t/ok.c

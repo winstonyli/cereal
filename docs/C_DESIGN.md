@@ -1088,9 +1088,13 @@ third file): 0 failed. Under TSan the fix mode ran at `-j2/4/8/12` on 150
 gcc.dg files and the compdb, maybe, safe and files cases: 0 reports.
 
 Remaining: the final combined re-verification above; the
-`CEREAL_FIX_HOOK` is a test hook, not an interface; unwritable-directory
-errors are printed once per pass that retries the file; `--only` ignores
-unknown ids silently.
+`CEREAL_FIX_HOOK` is a test hook, not an interface. Two nits of this slice
+were closed in Round 215: an unwritable file's error is printed once per
+file per run (`Totals.failed`), and `--only` with an id no diagnostic can
+carry a fix-it for is a usage error (exit 2, `--only: 'ID' is not the id of
+a diagnostic with a fix-it`; the ids are the static table `FIXABLE_IDS` in
+`fixmode.c`, and `tests/fix/only.sh` runs each of them, so a new producer
+that is missing from the table fails there).
 
 ### C4: LSP code actions (est. 4 days, realistic 5 to 9)
 
@@ -1107,6 +1111,70 @@ and with forced parallel flags, as section 9 does):
 - a stale request answered `[]` under a held check;
 - fix-all with one demoted fix;
 - a client without `codeActionLiteralSupport` (no provider).
+
+### C4 as built (Round 215)
+
+Implemented: section 7 as scoped. Where the code is:
+
+- `src/diag.c`: `diag_fix_group`, the validated, atomic fix group of one
+  diagnostic (`diag_fixit`'s refusals, files outside the user files, no-op
+  edits, a note's fix-it overlapping the diagnostic's own). `fix_tu`'s
+  `collect` (so `FGroup.change` is gone), the LSP check and the macro-phase
+  actions all call it: one definition of "the fix of a diagnostic".
+- `src/fixmode.c`: `fix_unit_edits(o, main, file, base, ctx, out)` runs
+  `fix_tu` on the unit `main` with the editor buffers as the overlay
+  (`FixResult.base`, served by `fixtu.c` after the per-run `ov` files), builds
+  a one-unit `Pass` (`Pass.base`: `gload` copies the buffer, no BOM strip,
+  no file checks; `Pass.only_path`: groups that touch another file are not
+  candidates) and runs `select_cands`, `gate_all` and `sub_build`, exactly
+  the CLI's code. Gate re-runs layer their per-trial files over `base` and
+  run serially with their diagnostics discarded, because stdout belongs to
+  the protocol.
+- `src/lsp/features.c`: `CFix`/`CDiag.fixes`, `cdiag_set_fixes` (only if
+  `file_same` holds for every file the group edits), `cdiags_carry`,
+  `lsp_code_action`, `put_fix_edit` (`documentChanges` or `changes`).
+- `src/lsp/server.c`: capability, `CP_SNAP`, `BuilderJob` (rename now one
+  user), `lsp_fix_all` (cache in `Snapshot.fixall`, freed with the
+  snapshot), the `holdChecks` `builds` hook.
+
+Deviations and choices:
+
+- Fix-all is one pass of the merge, not the CLI's loop of up to 8 passes
+  with writes: the edit is relative to the buffer the client has. It equals
+  `cereal fix` whenever the CLI needs one pass (the case in the tests); a
+  chain that needs two (`p.x + q.x`) is offered again after the first edit,
+  as the diagnostics change.
+- The fix-all run uses `fatal_missing_include=false` (the check's D2 setting)
+  where `cereal fix` sets it; an include that cannot be found is a
+  diagnostic, not an abort.
+- The fix-all edit is computed once per snapshot and document and cached
+  (lightbulb requests arrive on every cursor move). The first request after
+  an edit waits for the builder (Q4: up to one check latency, as rename).
+  The cache entry is stored only if the live document still equals the
+  snapshot's buffer.
+- No `only` and no SAFE group: no fix-all offered (as 7.3 says). With
+  `only: source.fixAll` but no SAFE edit, nothing is offered. A fix-all is
+  offered also when the cursor is on a line without diagnostics.
+- The test for a stale request needs a hook the design did not name: a held
+  check does not make the snapshot stale (the builder waits in the hold
+  loop, an edit ends it). `cereal/holdChecks` gained `"builds": true`, which
+  holds the builder before each build.
+- A diagnostic of an unopened header shows on the `#include` line as in the
+  publication; `diag_place` is asked with "no header is open", so for an
+  open header whose diagnostic is not shown there the action is offered
+  anyway (harmless; its edit is in the header).
+- `cdiag_make` does not fill the fixes (7.2 says it does): the file test
+  needs the `SameText` state of the publication, so `cdiag_set_fixes` runs
+  right after `carry` is computed.
+- The carry test edits above the fixes (they move) and at the closing
+  parenthesis of the parentheses fix (the group drops, the diagnostic stays),
+  not "far away" versus "inside the range" literally.
+
+Tests: `tests/lsp/fixit_actions`, `fixit_carry`, `fixit_stale`,
+`fixit_nolit` (+ `.expected`, workspace `tests/lsp/fixit/`), each also with
+the parallel flags forced by `run.sh`; the `fixall` step of
+`tests/lsp_session.py` applies the fix-all and compares with `cereal fix` on
+a copy of the text. See LSP.md, Tests, for what each covers.
 
 ### Totals
 

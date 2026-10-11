@@ -51,18 +51,28 @@ typedef struct Doc {
     Unit *unit;
 } Doc;
 
-/* A rename's checks, handed to the builder (lsp_check_rename). */
+/* Work for the builder thread that the checker's static state makes it the
+ * only one to do (run_on_builder): a rename's checks (lsp_check_rename), a
+ * document's fix-all (lsp_fix_all). */
+typedef struct BuilderJob {
+    void (*fn)(void *ctx);
+    void *ctx;
+    bool done;
+} BuilderJob;
+
 typedef struct RenameJob {
     Snapshot *snap;
     CRename *q;
     char *err;
-    bool done;
 } RenameJob;
 
 typedef struct Server {
     Mutex m;
     Cond work, done;
-    RenameJob *rjob;          /* waiting for the builder */
+    BuilderJob *bjob;         /* waiting for the builder */
+    bool code_actions;        /* client: codeAction literals (advertised) */
+    bool doc_changes;         /* client: workspaceEdit.documentChanges */
+    bool hold_builds;         /* test only: cereal/holdChecks "builds" */
     VEC(Doc *) docs;
     VEC(Unit *) units;
     VEC(Unit *) queue;
@@ -79,6 +89,8 @@ typedef struct Server {
 } Server;
 
 static Server S;
+
+static Doc *doc_find(const char *path);
 
 /* CEREAL_LSP_STATS: timings of builds on stderr */
 static double stats_now(void)
@@ -166,6 +178,7 @@ static bool overlay_lookup(void *ctx, const char *path, const char **buf,
 
 void snapshot_release(Snapshot *s)
 {
+    size_t i;
     if (!s || atomic_add_u32(&s->refs, (uint32_t)-1) != 1)
         return;
     mgraph_free(&s->graph);
@@ -175,6 +188,12 @@ void snapshot_release(Snapshot *s)
     config_options_free(s->opt);
     overlay_release(s->overlay);
     cdiags_free(s);
+    for (i = 0; i < s->fixall.len; i++) {
+        free(s->fixall.data[i]->path);
+        fix_edits_free(&s->fixall.data[i]->edits);
+        free(s->fixall.data[i]);
+    }
+    vec_free(&s->fixall);
     free(s->notice);
     free((char *)s->main);
     free(s);
@@ -592,8 +611,9 @@ static Check *check_unit(Unit *u, Snapshot *s)
 
 /* A rename job's checks under a fatal() trap, with the options and buffers
  * of its snapshot. */
-static void rename_run(RenameJob *j)
+static void rename_run(void *ctx)
 {
+    RenameJob *j = ctx;
     FatalTrap tr;
     Options *opt = config_options_for(&S.cfg, j->snap->main);
     opt->pp.fatal_missing_include = false; /* as the check's (D2) */
@@ -615,25 +635,111 @@ static void rename_run(RenameJob *j)
     config_options_free(opt);
 }
 
+/* Runs fn(ctx) on the builder thread between builds and waits for it; false
+ * if the server stops first. */
+static bool run_on_builder(void (*fn)(void *ctx), void *ctx)
+{
+    BuilderJob j;
+    j.fn = fn;
+    j.ctx = ctx;
+    j.done = false;
+    mutex_lock(&S.m);
+    S.bjob = &j;
+    cond_broadcast(&S.work);
+    while (!j.done) {
+        if (S.stop && S.bjob == &j) { /* the builder has gone */
+            S.bjob = NULL;
+            mutex_unlock(&S.m);
+            return false;
+        }
+        cond_wait(&S.done, &S.m);
+    }
+    mutex_unlock(&S.m);
+    return true;
+}
+
 char *lsp_check_rename(Snapshot *snap, CRename *q)
 {
     RenameJob j;
     memset(&j, 0, sizeof j);
     j.snap = snap;
     j.q = q;
+    if (!run_on_builder(rename_run, &j))
+        return xstrdup("the server is stopping");
+    return j.err;
+}
+
+/* A document's fix-all (lsp_fix_all) on the builder. */
+typedef struct FixAllJob {
+    Snapshot *snap;
+    const char *path;
+    FixTextEdits edits;
+    bool ok;
+} FixAllJob;
+
+/* The edits `cereal fix` makes to the document in one pass, over the buffers
+ * the snapshot was built from, under a fatal() trap.  The check's options
+ * (D2): a missing include is not fatal. */
+static void fixall_run(void *ctx)
+{
+    FixAllJob *j = ctx;
+    FatalTrap tr;
+    Options *opt = config_options_for(&S.cfg, j->snap->main);
+    opt->pp.fatal_missing_include = false;
+    fatal_trap_push(&tr);
+    if (setjmp(tr.jb)) {
+        fix_edits_free(&j->edits);
+        j->ok = false;
+        config_options_free(opt);
+        return;
+    }
+    j->ok = fix_unit_edits(opt, j->snap->main, j->path, overlay_lookup,
+                           j->snap->overlay, &j->edits);
+    fatal_trap_pop(&tr);
+    config_options_free(opt);
+}
+
+const FixTextEdits *lsp_fix_all(Req *r)
+{
+    Snapshot *s = r->snap;
+    FixAllJob j;
+    FixAllEntry *e = NULL;
+    Doc *d;
+    size_t i;
+    bool same;
+    const char *buf;
+    size_t len;
     mutex_lock(&S.m);
-    S.rjob = &j;
-    cond_broadcast(&S.work);
-    while (!j.done) {
-        if (S.stop && S.rjob == &j) { /* the builder has gone */
-            S.rjob = NULL;
-            mutex_unlock(&S.m);
-            return xstrdup("the server is stopping");
-        }
-        cond_wait(&S.done, &S.m);
+    for (i = 0; i < s->fixall.len; i++)
+        if (!strcmp(s->fixall.data[i]->path, r->path))
+            e = s->fixall.data[i];
+    mutex_unlock(&S.m);
+    if (e)
+        return &e->edits;
+    memset(&j, 0, sizeof j);
+    j.snap = s;
+    j.path = r->path;
+    if (!run_on_builder(fixall_run, &j) || !j.ok) {
+        fix_edits_free(&j.edits);
+        return NULL;
+    }
+    /* the document must still be the text the edits are for */
+    mutex_lock(&S.m);
+    d = doc_find(r->path);
+    same = d && overlay_lookup(s->overlay, r->path, &buf, &len) &&
+           d->len == len && !memcmp(d->text, buf, len);
+    if (same) {
+        e = xcalloc(1, sizeof *e);
+        e->path = xstrdup(r->path);
+        e->edits = j.edits;
+        vec_push(&s->fixall, e);
     }
     mutex_unlock(&S.m);
-    return j.err;
+    if (!same) {
+        fix_edits_free(&j.edits);
+        return NULL;
+    }
+    return &e->edits;
 }
 
 static void *builder_main(void *arg)
@@ -648,17 +754,17 @@ static void *builder_main(void *arg)
         bool failed, eligible = false;
         long long want;
         double t0, t1, t2;
-        if (S.rjob) {
-            RenameJob *j = S.rjob;
-            S.rjob = NULL;
+        if (S.bjob) {
+            BuilderJob *j = S.bjob;
+            S.bjob = NULL;
             mutex_unlock(&S.m);
-            rename_run(j);
+            j->fn(j->ctx);
             mutex_lock(&S.m);
             j->done = true;
             cond_broadcast(&S.done);
             continue;
         }
-        if (!S.queue.len) {
+        if (!S.queue.len || S.hold_builds) {
             cond_wait(&S.work, &S.m);
             continue;
         }
@@ -928,6 +1034,11 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     S.refresh = json_bool_of(
         json_path(params, "capabilities.workspace.semanticTokens.refreshSupport"),
         false);
+    S.code_actions = json_path(params, "capabilities.textDocument.codeAction."
+                                       "codeActionLiteralSupport") != NULL;
+    S.doc_changes = json_bool_of(
+        json_path(params, "capabilities.workspace.workspaceEdit.documentChanges"),
+        false);
     if (root_uri)
         root = uri_to_path(&a, root_uri);
     if (!root)
@@ -998,6 +1109,18 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     json_key(&w, "prepareProvider");
     json_bool(&w, true);
     json_end_object(&w);
+    if (S.code_actions) {
+        json_key(&w, "codeActionProvider");
+        json_begin_object(&w);
+        json_key(&w, "codeActionKinds");
+        json_begin_array(&w);
+        json_str(&w, "quickfix");
+        json_str(&w, "source.fixAll.cereal");
+        json_end_array(&w);
+        json_key(&w, "resolveProvider");
+        json_bool(&w, false);
+        json_end_object(&w);
+    }
     json_key(&w, "callHierarchyProvider");
     json_bool(&w, true);
     json_key(&w, "signatureHelpProvider");
@@ -1029,7 +1152,7 @@ typedef enum {
     R_DEF, R_DECL, R_TYPEDEF, R_REFS, R_HIGHLIGHT, R_HOVER, R_COMPLETION,
     R_SYMBOLS, R_SEMTOK, R_SEMTOK_DELTA, R_SEMTOK_RANGE, R_FOLDING,
     R_PREP_RENAME, R_RENAME, R_PREP_CALLS, R_IN_CALLS, R_OUT_CALLS,
-    R_SIGHELP, R_EXPAND
+    R_SIGHELP, R_EXPAND, R_CODE_ACTION
 } ReqKind;
 
 /* What a request waits for before it reads the C index (B3_DESIGN.md 12.6).
@@ -1042,8 +1165,11 @@ typedef enum {
                    its own or the carried index */
     CP_POS,     /* CP_ANY, and when the position is in a carried index's damage */
     CP_WAIT,    /* always: lists the user acts on (references, rename) */
-    CP_TOK      /* semantic tokens: CP_ANY if the client takes a refresh
+    CP_TOK,     /* semantic tokens: CP_ANY if the client takes a refresh
                    (the server asks again after the check), else CP_WAIT */
+    CP_SNAP     /* the newest edit's snapshot only, never its check (code
+                   actions: carried fix-its are valid); a snapshot still
+                   older after the wait answers [] */
 } CPolicy;
 
 static const struct {
@@ -1070,6 +1196,7 @@ static const struct {
     {"callHierarchy/outgoingCalls", R_OUT_CALLS, CP_NONE},
     {"textDocument/signatureHelp", R_SIGHELP, CP_ANY},
     {"cereal/expandMacro", R_EXPAND, CP_NONE},
+    {"textDocument/codeAction", R_CODE_ACTION, CP_SNAP},
     {NULL, R_DEF, CP_NONE}};
 
 /* The request's position lies in the damage of the carried index (S.m held). */
@@ -1096,7 +1223,7 @@ static bool must_wait(Unit *u, CPolicy p, const char *path,
     Snapshot *s = u->snap;
     if (s->gen < u->want)
         return true;
-    if (s->check_state != CHECK_PENDING)
+    if (p == CP_SNAP || s->check_state != CHECK_PENDING)
         return false;
     if (p == CP_WAIT || !s->cidx)
         return true;
@@ -1158,6 +1285,10 @@ static void handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         r.c_carried = cx && r.snap->cidx_carried;
         r.c_fresh = cx && !r.c_carried && r.snap->gen == u->want &&
                     r.snap->check_state == CHECK_DONE;
+        r.stale = r.snap->gen < u->want;
+        r.doc_changes = S.doc_changes;
+        if (k == R_CODE_ACTION && !r.stale)
+            lsp_cdiags_copy(r.snap, &r);
         if ((k == R_SEMTOK || k == R_SEMTOK_DELTA || k == R_SEMTOK_RANGE) &&
             !(cx && !r.c_carried && r.snap->gen == u->want) &&
             (r.snap->check_state == CHECK_PENDING || r.snap->gen < u->want))
@@ -1217,6 +1348,7 @@ static void handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         case R_OUT_CALLS: lsp_calls(&r, &w, false); break;
         case R_SIGHELP: lsp_signature_help(&r, &w); break;
         case R_EXPAND: lsp_expand_macro(&r, &w); break;
+        case R_CODE_ACTION: lsp_code_action(&r, &w); break;
         }
     }
     json_end_object(&w);
@@ -1227,6 +1359,7 @@ static void handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
                 "carried %d\n", (int)k, t1 - t0, sb.len, stats_now() - t1,
                 (int)r.c_carried);
     sb_free(&sb);
+    lsp_cdiags_release(&r);
     snapshot_release(r.snap);
     cindex_free(cx);
     arena_free(&a);
@@ -1418,6 +1551,10 @@ int lsp_main(FILE *in, FILE *out)
              * cereal/waitIdle, which waits for the check. */
             mutex_lock(&S.m);
             S.hold = json_bool_of(json_get(params, "hold"), false);
+            /* "builds": the builder also waits before each build, so that
+             * a snapshot goes stale (code action tests) */
+            S.hold_builds = S.hold && json_bool_of(json_get(params, "builds"),
+                                                   false);
             cond_broadcast(&S.work);
             mutex_unlock(&S.m);
             respond_null(id);

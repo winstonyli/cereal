@@ -1,0 +1,1216 @@
+>> initialize
+{
+ "codeActionProvider": {
+  "codeActionKinds": [
+   "quickfix",
+   "source.fixAll.cereal"
+  ],
+  "resolveProvider": false
+ },
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "codeActionProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider"
+ ]
+}
+>> initialized
+>> didOpen fixit/main.c
+>> didOpen fixit/typo.c
+>> didOpen fixit/gate.c
+>> (idle)
+## a lint (macro phase) diagnostic: the macro parameter; SAFE, so the action is preferred
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "macro-unparenthesized-param",
+    "message": "macro parameter 'x' is an operand of '-' but is not parenthesized; an argument like 'a + b' changes the meaning",
+    "range": {
+     "end": {
+      "character": 17,
+      "line": 0
+     },
+     "start": {
+      "character": 16,
+      "line": 0
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Replace with '(x)'"
+ },
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "source.fixAll.cereal",
+  "title": "Fix all auto-fixable problems"
+ }
+]
+## a check diagnostic with a MAYBE fix (not preferred): parentheses around an assignment, two insertions in one action; the client's own diagnostic object is echoed
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "message": "suggest parentheses around assignment used as truth value",
+    "range": {
+     "end": {
+      "character": 9,
+      "line": 3
+     },
+     "start": {
+      "character": 8,
+      "line": 3
+     }
+    },
+    "severity": 2,
+    "source": "client-owned"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "(",
+       "range": {
+        "end": {
+         "character": 8,
+         "line": 3
+        },
+        "start": {
+         "character": 8,
+         "line": 3
+        }
+       }
+      },
+      {
+       "newText": ")",
+       "range": {
+        "end": {
+         "character": 13,
+         "line": 3
+        },
+        "start": {
+         "character": 13,
+         "line": 3
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "quickfix",
+  "title": "Apply fix-it"
+ },
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "source.fixAll.cereal",
+  "title": "Fix all auto-fixable problems"
+ }
+]
+## an include fix-it (the include note's group)
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "implicit-function-declaration",
+    "message": "implicit declaration of function 'puts'",
+    "range": {
+     "end": {
+      "character": 15,
+      "line": 5
+     },
+     "start": {
+      "character": 11,
+      "line": 5
+     }
+    },
+    "relatedInformation": [
+     {
+      "location": {
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       },
+       "uri": "file://$ROOT/fixit/main.c"
+      },
+      "message": "include '<stdio.h>' or provide a declaration of 'puts'"
+     }
+    ],
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Add #include <stdio.h>"
+ },
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "source.fixAll.cereal",
+  "title": "Fix all auto-fixable problems"
+ }
+]
+## a definition's (void), and the declaration before it: one request over both lines
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 3,
+      "line": 7
+     },
+     "start": {
+      "character": 0,
+      "line": 7
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 7
+        },
+        "start": {
+         "character": 6,
+         "line": 7
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 5,
+      "line": 8
+     },
+     "start": {
+      "character": 4,
+      "line": 8
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ },
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "source.fixAll.cereal",
+  "title": "Fix all auto-fixable problems"
+ }
+]
+## a line with no diagnostic: no quick fix, but the fix-all (the document has SAFE fixes)
+>> textDocument/codeAction
+[
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "source.fixAll.cereal",
+  "title": "Fix all auto-fixable problems"
+ }
+]
+## only quickfix over the whole file: every fix, no fix-all
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "macro-unparenthesized-param",
+    "message": "macro parameter 'x' is an operand of '-' but is not parenthesized; an argument like 'a + b' changes the meaning",
+    "range": {
+     "end": {
+      "character": 17,
+      "line": 0
+     },
+     "start": {
+      "character": 16,
+      "line": 0
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Replace with '(x)'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "parentheses",
+    "message": "suggest parentheses around assignment used as truth value",
+    "range": {
+     "end": {
+      "character": 9,
+      "line": 3
+     },
+     "start": {
+      "character": 8,
+      "line": 3
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "(",
+       "range": {
+        "end": {
+         "character": 8,
+         "line": 3
+        },
+        "start": {
+         "character": 8,
+         "line": 3
+        }
+       }
+      },
+      {
+       "newText": ")",
+       "range": {
+        "end": {
+         "character": 13,
+         "line": 3
+        },
+        "start": {
+         "character": 13,
+         "line": 3
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "quickfix",
+  "title": "Apply fix-it"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "implicit-function-declaration",
+    "message": "implicit declaration of function 'puts'",
+    "range": {
+     "end": {
+      "character": 15,
+      "line": 5
+     },
+     "start": {
+      "character": 11,
+      "line": 5
+     }
+    },
+    "relatedInformation": [
+     {
+      "location": {
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       },
+       "uri": "file://$ROOT/fixit/main.c"
+      },
+      "message": "include '<stdio.h>' or provide a declaration of 'puts'"
+     }
+    ],
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Add #include <stdio.h>"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 3,
+      "line": 7
+     },
+     "start": {
+      "character": 0,
+      "line": 7
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 7
+        },
+        "start": {
+         "character": 6,
+         "line": 7
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 5,
+      "line": 8
+     },
+     "start": {
+      "character": 4,
+      "line": 8
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ }
+]
+## only source.fixAll.cereal: the document's SAFE fixes in one edit
+>> textDocument/codeAction
+[
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "source.fixAll.cereal",
+  "title": "Fix all auto-fixable problems"
+ }
+]
+## no only: the fix at the cursor and the fix-all (the document has SAFE fixes)
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 3,
+      "line": 7
+     },
+     "start": {
+      "character": 0,
+      "line": 7
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 7
+        },
+        "start": {
+         "character": 6,
+         "line": 7
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ },
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "source.fixAll.cereal",
+  "title": "Fix all auto-fixable problems"
+ }
+]
+>> fix-all of fixit/main.c: 3 edits, equal to cereal fix
+#include <stdio.h>
+#define NEG(x) -(x)
+int f(int a, int b)
+{
+    if (a = b)
+        return 1;
+    return puts("x") + NEG(b);
+}
+int g();
+int g(void) { return 0; }
+## a MAYBE fix (a did-you-mean on an error): offered, not preferred; no fix-all (it has no SAFE fix)
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "message": "'countr' undeclared (first use in this function); did you mean 'counter'?",
+    "range": {
+     "end": {
+      "character": 27,
+      "line": 1
+     },
+     "start": {
+      "character": 21,
+      "line": 1
+     }
+    },
+    "relatedInformation": [
+     {
+      "location": {
+       "range": {
+        "end": {
+         "character": 21,
+         "line": 1
+        },
+        "start": {
+         "character": 21,
+         "line": 1
+        }
+       },
+       "uri": "file://$ROOT/fixit/typo.c"
+      },
+      "message": "each undeclared identifier is reported only once for each function it appears in"
+     }
+    ],
+    "severity": 1,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "counter",
+       "range": {
+        "end": {
+         "character": 27,
+         "line": 1
+        },
+        "start": {
+         "character": 21,
+         "line": 1
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/typo.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "quickfix",
+  "title": "Replace with 'counter'"
+ }
+]
+## a fix the gate refuses: the quickfix is still offered; fix-all leaves it out, as cereal fix does
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "macro-unparenthesized-param",
+    "message": "macro parameter 'x' is an operand of '||' but is not parenthesized; an argument like 'a + b' changes the meaning",
+    "range": {
+     "end": {
+      "character": 15,
+      "line": 0
+     },
+     "start": {
+      "character": 14,
+      "line": 0
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 15,
+         "line": 0
+        },
+        "start": {
+         "character": 14,
+         "line": 0
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/gate.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Replace with '(x)'"
+ },
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "(",
+       "range": {
+        "end": {
+         "character": 14,
+         "line": 0
+        },
+        "start": {
+         "character": 14,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": ")",
+       "range": {
+        "end": {
+         "character": 20,
+         "line": 0
+        },
+        "start": {
+         "character": 20,
+         "line": 0
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/gate.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "source.fixAll.cereal",
+  "title": "Fix all auto-fixable problems"
+ }
+]
+>> fix-all of fixit/gate.c: 2 edits, equal to cereal fix
+#define OR(x) (x || 0)
+int f(int a, int b) { return OR(a && b); }
+>> shutdown
+null
+>> exit
+exit 0

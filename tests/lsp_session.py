@@ -25,6 +25,9 @@ that directory's absolute path, and in the transcript it is put back.
                                        nostics of one edit)
   {"write": PATH, "text": TEXT}       create a workspace file (removed at
                                        the end), e.g. compile_commands.json
+  {"fixall": PATH, "flags": FLAGS}     the source.fixAll.cereal action for the
+                                       document applied to its text, compared
+                                       with `cereal fix FLAGS` on a copy
   {"note": TEXT}                       a heading in the transcript
   {"env": {NAME: VALUE}}               the server's environment (applied
                                        before it starts, wherever it stands)
@@ -33,7 +36,7 @@ tokens) are kept.
 Responses are printed with sorted keys; completion lists are cut to the
 labels matching the step's "labels" regex (default: no leading '_').
 Without --update the transcript is compared with SCENARIO.expected."""
-import json, os, re, subprocess, sys, threading, queue
+import json, os, re, shutil, subprocess, sys, tempfile, threading, queue
 
 BIN, SCEN = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
 UPDATE = "--update" in sys.argv
@@ -101,6 +104,7 @@ def main():
             pending.append(m)
 
     out = []
+    texts = {}  # path -> the document's text (open, and full-text changes)
     written = []
     restore = []  # (path, text) of files --flags appended to
 
@@ -135,6 +139,10 @@ def main():
                     written.append(path)
                 else:
                     restore.append((path, old))
+            if msg.get("method") == "textDocument/didChange":  # full texts only
+                for ch in msg["params"]["contentChanges"]:
+                    if "range" not in ch:
+                        texts[msg["params"]["textDocument"]["uri"][len("file://"):]] = ch["text"]
             send(msg)
             out.append(">> " + msg.get("method", ""))
             if "id" in msg and msg.get("method") != "exit":
@@ -145,11 +153,56 @@ def main():
                     res = dict(res, items=[i for i in res["items"]
                                            if pat.search(i["label"])])
                 if msg.get("method") == "initialize":
-                    res = {"positionEncoding": res["capabilities"]["positionEncoding"],
-                           "providers": sorted(k for k in res["capabilities"])}
+                    caps = res["capabilities"]
+                    res = {"positionEncoding": caps["positionEncoding"],
+                           "providers": sorted(k for k in caps)}
+                    if "codeActionProvider" in caps:
+                        res["codeActionProvider"] = caps["codeActionProvider"]
                 res = strip_data(res)
                 out.append(json.dumps(res if "result" in r else {"error": res},
                                       sort_keys=True, indent=1))
+        elif "fixall" in st:
+            # source.fixAll.cereal applied to the document's text must equal
+            # what `cereal fix` makes of a copy of that text
+            path = os.path.join(ROOT, st["fixall"])
+            text = texts[path]
+            fid = "fixall%d" % len(out)
+            send({"jsonrpc": "2.0", "id": fid, "method": "textDocument/codeAction",
+                  "params": {"textDocument": {"uri": "file://" + path},
+                             "range": {"start": {"line": 0, "character": 0},
+                                       "end": {"line": text.count("\n") + 1, "character": 0}},
+                             "context": {"diagnostics": [], "only": ["source.fixAll.cereal"]}}})
+            res = next_msg(lambda m: m.get("id") == fid)["result"]
+            edits = []
+            for act in res:
+                ed = act["edit"]
+                for ch in ed.get("documentChanges", []):
+                    edits += ch["edits"]
+                for es in ed.get("changes", {}).values():
+                    edits += es
+            lines = text.split("\n")
+            starts = [0]
+            for ln in lines[:-1]:
+                starts.append(starts[-1] + len(ln) + 1)
+
+            def off(pos):
+                return starts[min(pos["line"], len(starts) - 1)] + pos["character"]
+            parts, at = [], 0
+            for i, e in sorted(enumerate(edits), key=lambda ie: (off(ie[1]["range"]["start"]), off(ie[1]["range"]["end"]), ie[0])):
+                parts += [text[at:off(e["range"]["start"])], e["newText"]]
+                at = off(e["range"]["end"])
+            lsp_text = "".join(parts) + text[at:]
+            tmp = tempfile.mkdtemp()
+            with open(os.path.join(tmp, "doc.c"), "w") as f:
+                f.write(text)
+            subprocess.run([BIN, "fix"] + st.get("flags", "").split() + ["doc.c"], cwd=tmp,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            cli_text = open(os.path.join(tmp, "doc.c")).read()
+            shutil.rmtree(tmp)
+            out.append(">> fix-all of %s: %d edits, %s cereal fix" %
+                       (st["fixall"], len(edits),
+                        "equal to" if lsp_text == cli_text else "DIFFERENT FROM"))
+            out.append(lsp_text.rstrip("\n"))
         elif "idle" in st:
             idle_id = "idle%d" % len(out)
             send({"jsonrpc": "2.0", "id": idle_id, "method": "cereal/waitIdle"})
@@ -160,9 +213,10 @@ def main():
             out.append("!! received " + st["absent"] if seen else ">> (no " + st["absent"] + ")")
         elif "open" in st:
             path = os.path.join(ROOT, st["open"])
+            texts[path] = open(path).read()
             send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
                   "params": {"textDocument": {"uri": "file://" + path, "languageId": "c",
-                                              "version": 1, "text": open(path).read()}}})
+                                              "version": 1, "text": texts[path]}}})
             out.append(">> didOpen " + st["open"])
         elif "wait" in st or "waitall" in st:
             def uri_of(m):

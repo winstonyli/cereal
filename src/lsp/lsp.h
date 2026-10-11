@@ -11,6 +11,7 @@
 #include "../c/csymidx.h"
 #include "../compdb.h"
 #include "../driver.h"
+#include "../fixmode.h"
 #include "../index.h"
 #include "../json.h"
 #include "../thread.h"
@@ -65,7 +66,18 @@ typedef struct CNote {
     char *msg;
 } CNote;
 
+/* One edit of a diagnostic's fix group (C_DESIGN.md 7.2), offsets in the
+ * text of path. */
+typedef struct CFix {
+    char *path;
+    uint32_t off_b, off_e;
+    char *text;
+    uint8_t app;             /* FixApplic */
+} CFix;
+
 typedef struct CDiag {
+    CFix *fixes;             /* its fix-its as one atomic group; NULL: none */
+    size_t nfixes;
     char *path;              /* the file it is published for */
     uint32_t off_b, off_e;   /* its range there */
     int severity;            /* LSP */
@@ -76,6 +88,11 @@ typedef struct CDiag {
     bool carry;              /* the checked text of every file it names is
                               * the snapshot's: the offsets are valid */
 } CDiag;
+
+typedef struct FixAllEntry {
+    char *path;              /* the document */
+    FixTextEdits edits;
+} FixAllEntry;
 
 typedef struct Snapshot {
     uint32_t refs;           /* atomic */
@@ -99,6 +116,9 @@ typedef struct Snapshot {
      * previous snapshot (cdiags_carry).  Builder only. */
     VEC(CDiag) cdiags;
     char *notice;            /* why the unit is not checked (Information) */
+    /* fix-all edits of this snapshot's text, per document (lsp_fix_all);
+     * S.m.  Entries live as long as the snapshot. */
+    VEC(FixAllEntry *) fixall;
 } Snapshot;
 
 enum { CHECK_NONE, CHECK_PENDING, CHECK_DONE };
@@ -129,7 +149,22 @@ typedef struct Req {
     const struct CIndex *cidx; /* snap's, referenced under the lock; NULL: none */
     bool c_carried;          /* cidx is carried over an edit (may be stale) */
     bool c_fresh;            /* snap has the newest edit and its own index */
+    bool stale;              /* the document has an edit snap lacks */
+    bool doc_changes;        /* the client takes documentChanges */
+    /* codeAction: snap's check diagnostics, copied under the lock */
+    VEC(CDiag) cdiags;
 } Req;
+
+/* The fix-all edits of the document of r (C_DESIGN.md 7.3), computed on the
+ * builder thread and kept with the snapshot; NULL: none could be computed,
+ * or the document changed meanwhile.  Defined in server.c; the answer is
+ * valid as long as r->snap is. */
+const FixTextEdits *lsp_fix_all(Req *r);
+/* r->cdiags: snap's, copied (caller holds the lock); free with
+ * lsp_cdiags_release. */
+void lsp_cdiags_copy(const Snapshot *s, Req *r);
+void lsp_cdiags_release(Req *r);
+void lsp_code_action(Req *r, JsonWriter *w);
 
 /* The semantic token legend, NULL-terminated (features.c). */
 extern const char *const lsp_token_types[], *const lsp_token_modifiers[];

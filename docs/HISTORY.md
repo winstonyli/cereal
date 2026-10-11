@@ -4210,3 +4210,58 @@ in 13 files plus 505 lines in 5 new ones, tests +252 lines of cases and 530
 of goldens, bench +159. Not done: a final combined re-verification of the
 gated phases, a conflict case from real diagnostics, C4. Scratch lived in
 `~/c3s` (removed).
+
+## Round 215: ROADMAP C4, LSP code actions; C3 nits
+
+Two C3 nits. `cereal fix --only=ID` with an id that is not the id of a
+diagnostic with a fix-it (`--only=nothing` included) is a usage error, exit 2,
+naming the id (`FIXABLE_IDS` in `fixmode.c`; `tests/fix/only.sh` catches
+drift). An unwritable file prints its error once per file per run, not once
+per pass (`Totals.failed`); goldens in `tests/fix`.
+
+C4 (C_DESIGN section 7, "C4 as built"). `codeActionProvider` (`quickfix`,
+`source.fixAll.cereal`) is advertised only when the client sends
+`codeActionLiteralSupport`; `documentChanges` (with the document version) or
+`changes` follows the client's `workspaceEdit` capability. The request has the
+new policy `CP_SNAP`: it answers from the snapshot only if `snap->gen` is the
+wanted generation, else `[]`. Check-phase fix-its are stored on `CDiag`
+(`CFix`), set from the checker's `Diagnostic` after the diagnostic is placed;
+`cdiags_carry` maps each fix through `carry_range`, and a group that cannot be
+carried is dropped while its diagnostic stays. Lint-phase actions come from
+the same groups, validated by the new shared `diag_fix_group` (also used by
+`fixtu.c` collect, so the CLI and the server agree on what a group is).
+SAFE groups are preferred; MAYBE and INFO are offered without preference.
+Fix-all runs on the builder thread through the generalized `BuilderJob`
+(rename became one), calling `fix_unit_edits`, which is `cereal fix`'s
+collect, select, gate and sub-build for one TU over the editor buffers
+(`FixResult.base`, `Pass.base`: an overlay lookup instead of disk), one pass,
+with the same gate. Results are cached per snapshot and document.
+`tests/lsp_session.py` got a `fixall` step: it applies the returned edit and
+checks the text against `cereal fix` run on a copy.
+
+Deviations (also in C_DESIGN): fix-all is one pass, not the CLI's loop;
+`fatal_missing_include=false` in the server run; the first fix-all request
+blocks the protocol thread for about one builder latency; a hook
+`cereal/holdChecks "builds"` was needed (a held check does not make a
+snapshot stale); a fix-all is offered when the document has a SAFE group even
+on lines without a diagnostic; the gate's re-runs in the server are serial
+with their diagnostics discarded (stdout is the protocol).
+
+Tests: four sessions, `fixit_actions`, `fixit_carry`, `fixit_stale`,
+`fixit_nolit` (plain and with forced parallel flags; 8 goldens). Gates:
+run.sh 2055 passed (was 2047); gate.sh: san 2055 passed, 628 files, 0
+findings; gcc.dg 3908 of 3910, c-c++-common 637 of 638, cpp 289 of 289
+(unchanged); `fixits.sh` 17 cases, 0 differ; `fixgate.sh` 24 cases, 0 failed.
+TSan: all 21 LSP sessions, plain and `-fparallel=on -fparallel-chunk=1
+-fparallel-threads=3`: 42 passed, 0 reports; `lsp_stress.py` 200 edits on
+zstd.c, and a scratch variant adding codeAction and fix-all requests under
+edits on `fixit/main.c`: 0 reports (`~/cereal-tsan`, removed). Source
++843/-68 in 9 files; tests about 2500 lines (sessions, goldens, sources) plus
+75 changed.
+
+Noticed, not explained: callgrind on uvloop `loop.c` is 3.916 G against 3.898
+G for a build of the previous commit with the same flags (+0.5%; round 214
+had 3.895 G). The difference is stable across copies of the binary; the
+`diag.c` change is only an added function and the check path calls none of
+the new code. `__strcmp_avx2` accounts for 9 M of it (350 k more calls through
+the PLT). Not chased further. Scratch lived in `~/c4s` (removed).

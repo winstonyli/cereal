@@ -1304,6 +1304,47 @@ bool diag_fixit(DiagEngine *d, Diagnostic *dg, int owner, SrcLoc b, SrcLoc e,
     return true;
 }
 
+bool diag_fix_group(SrcMgr *sm, const Diagnostic *d, DiagEditVec *out)
+{
+    size_t base = out->len, j, m;
+    bool change = false, ok = d->fixits.len && !d->nofix;
+    for (j = 0; j < d->notes.len && ok; j++)
+        ok = !d->notes.data[j].nofix;
+    for (j = 0; j < d->fixits.len && ok; j++) {
+        const FixIt *x = &d->fixits.data[j];
+        SrcFile *f = x->begin ? srcmgr_file_of(sm, x->begin) : NULL;
+        DiagEdit e;
+        if (!f || f->kind != SF_USER || f->id < 0) {
+            ok = false;
+            break;
+        }
+        if (x->owner) {
+            for (m = 0; m < d->fixits.len; m++) {
+                const FixIt *y = &d->fixits.data[m];
+                if (!y->owner && x->begin <= y->end && y->begin <= x->end)
+                    break;
+            }
+            if (m < d->fixits.len)
+                continue;
+        }
+        e.file = f;
+        e.begin = srcmgr_offset(f, x->begin);
+        e.end = srcmgr_offset(f, x->end);
+        e.text = x->text;
+        e.owner = x->owner;
+        e.app = x->app;
+        if (e.end - e.begin != strlen(e.text) ||
+            memcmp(f->buf + e.begin, e.text, e.end - e.begin))
+            change = true;
+        vec_push(out, e);
+    }
+    if (!ok || !change) {
+        out->len = base;
+        return false;
+    }
+    return true;
+}
+
 /* Where gcc suggests adding an #include: the line after the last #include
  * before loc in loc's file (the first user file when loc is not in one),
  * else its start. */

@@ -24,15 +24,18 @@ in [ROADMAP.md](ROADMAP.md).
   over one or many TUs, each pass gated by re-running the checker on the
   edited text; `bench/tools/fixgate.sh` checks it against gcc-13 (0 failed on
   24 test cases, 620 `tests/check` files and a 1469-file gcc.dg sample).
-  LSP quick fixes are C4.
+  The language server offers them as code actions (C4, Round 215): a
+  `quickfix` per diagnostic's fix group (SAFE ones preferred) and
+  `source.fixAll.cereal`, which runs `cereal fix`'s pass and gate on the
+  editor buffers.
 
 ## Numbers (gcc-13, `-std=c99 -pedantic -fsyntax-only`, last gate)
 - gcc.dg: 3908 of 3910 files run give the same diagnostics as gcc (message,
   line and column); 2 differ.
 - c-c++-common: 637 of 638 identical; 1 differs (636 before pr57653 and pr57653-2 stopped being skipped, Round 210).
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 289 of 289 identical (285 before the four `missing-*` -MD tests, Round 209). A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 2047 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 628 files.
-- uvloop's `loop.c` checks in about 3.89 G instructions (callgrind).
+- 2055 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/); the sanitizer build is clean on 628 files.
+- uvloop's `loop.c` checks in about 3.92 G instructions (callgrind).
 - The LSP server covers macros and C names: definition, declaration,
   type definition, references, highlight, hover, rename, document
   symbols, signature help, semantic tokens and completion (ROADMAP B1 to
@@ -77,7 +80,7 @@ c-c++-common: dump-ada-spec-14 (gcc's Ada dumper).
 
 
 Round 210, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 637 of 638,
-cpp 289 of 289; `tests/run.sh` 2047 passed (Round 214).  Remaining gcc.dg diffs: pr56355-1,
+cpp 289 of 289; `tests/run.sh` 2055 passed (Round 215).  Remaining gcc.dg diffs: pr56355-1,
 pr83844 (above).
 Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - `char * const _Atomic c` parameter of main prints as `char * _Atomic`

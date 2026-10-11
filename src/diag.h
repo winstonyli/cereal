@@ -142,6 +142,23 @@ void diag_generate_patch(DiagEngine *d);
  * A fix-it that starts where the owner's last ended is merged into it. */
 bool diag_fixit(DiagEngine *d, Diagnostic *dg, int owner, SrcLoc b, SrcLoc e,
                 const char *text, FixApplic app);
+/* One edit of a fix-it group, in the offsets of its file. */
+typedef struct DiagEdit {
+    SrcFile *file;
+    uint32_t begin, end;
+    const char *text;
+    uint16_t owner;          /* as FixIt.owner */
+    uint8_t app;             /* FixApplic */
+} DiagEdit;
+typedef VEC(DiagEdit) DiagEditVec;
+
+/* The fix-its of d as one atomic group, appended to out: what `cereal fix`
+ * and the language server offer for d.  False, with out unchanged, if d
+ * offers none: a fix-it was refused (nofix), one lies outside the user
+ * files, or the edits change nothing (gcc offers "%u" for a "%u").  A note's
+ * fix-it that overlaps one of d's own is left out, being another way to the
+ * same end (xor: "0x2" for "1 <<"). */
+bool diag_fix_group(SrcMgr *sm, const Diagnostic *d, DiagEditVec *out);
 /* Writes text as gcc escapes it in a fix-it line: \\ \" \t \n, the other
  * bytes below 0x20 and from 0x7f as \ooo. */
 void fixit_escape(FILE *o, const char *s, size_t n);

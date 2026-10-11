@@ -1,0 +1,17 @@
+[
+ {"write": "fixit/.cereal", "text": "-Wall -Wstrict-prototypes\n"},
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/fixit", "capabilities": {"general": {"positionEncodings": ["utf-8"]}, "textDocument": {"codeAction": {"codeActionLiteralSupport": {"codeActionKind": {"valueSet": ["quickfix"]}}}}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"open": "fixit/typo.c"},
+ {"idle": true},
+ {"note": "builds held (test hook), then an edit: the snapshot is older than the document for the whole wait, so positions would not match: []"},
+ {"send": {"id": 2, "method": "cereal/holdChecks", "params": {"hold": true, "builds": true}}},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/fixit/typo.c", "version": 2}, "contentChanges": [{"text": "int counter;\n\nint h(void) { return countr; }\n"}]}}},
+ {"send": {"id": 3, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/typo.c"}, "range": {"start": {"line": 2, "character": 21}, "end": {"line": 2, "character": 21}}, "context": {"diagnostics": []}}}},
+ {"note": "released: the snapshot of the edit is built and the fix is at its new line"},
+ {"send": {"id": 4, "method": "cereal/holdChecks", "params": {"hold": false}}},
+ {"idle": true},
+ {"send": {"id": 5, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/typo.c"}, "range": {"start": {"line": 2, "character": 21}, "end": {"line": 2, "character": 21}}, "context": {"diagnostics": []}}}},
+ {"send": {"id": 6, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

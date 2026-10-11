@@ -364,14 +364,46 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
   - `cereal/expandMacro` (position: the invocation's full expansion);
   - `cereal/waitIdle` (answers when no build is queued or running; a
     barrier for tests);
-  - `cereal/holdChecks` `{"hold": bool}` (test only): while held, a check
-    waits at its start (an edit, the release or shutdown ends the wait),
-    so a request after an edit is answered from the carried index
-    deterministically. Do not use `waitIdle` while held: it waits for the
-    check.
+  - `cereal/holdChecks` `{"hold": bool, "builds": bool}` (test only): while
+    held, a check waits at its start (an edit, the release or shutdown ends
+    the wait), so a request after an edit is answered from the carried index
+    deterministically; with `builds` the builder also waits before each
+    build, so that the snapshot stays older than the document. Do not use
+    `waitIdle` while held: it waits for the check.
   - `workspace/semanticTokens/refresh`, sent by the server (the only
     request it sends) after a check publishes, if a token answer lacked
     the fresh index and the client declared `refreshSupport`.
+- **Code actions** (C4; C_DESIGN.md section 7). `codeActionProvider`
+  (`quickfix`, `source.fixAll.cereal`, no resolve) is advertised only when
+  the client sends `textDocument.codeAction.codeActionLiteralSupport`; cereal
+  has no commands.
+  - *Sources of fix-its:* the macro phase's diagnostics of the snapshot, and
+    the check's, kept on `CDiag` (`CFix`: path, offsets, text, applicability)
+    only if every file they edit has the snapshot's text. `cdiags_carry`
+    moves them through an edit like the range; an edit that meets any of a
+    diagnostic's fixes drops the whole group and keeps the diagnostic.
+  - *Request policy `CP_SNAP`:* waits (1.5 s) only for the snapshot of the
+    newest edit, never for its check; a snapshot still older than the
+    document answers `[]`.
+  - *One action per diagnostic* that meets the request range and has a fix
+    group: `quickfix`, `isPreferred` only if every edit is SAFE, MAYBE and
+    INFO groups offered without it. The title is `Insert 'X'`, `Replace
+    with 'X'`, `Remove 'X'`, `Add #include <h>` or `Apply fix-it`. The
+    diagnostic in the action is the client's own from `context.diagnostics`
+    when it has the same range and message, else cereal's.
+  - *`source.fixAll.cereal`:* offered when the request asks for it, or when
+    it has no `only` and the document has a SAFE group. Its edit is what
+    `cereal fix` would do to the document in one pass (`fix_unit_edits`: the
+    same merge, `--only`-free, SAFE only, same three-phase gate with
+    bisection), over the buffers of the snapshot, run on the builder thread
+    (`BuilderJob`, shared with rename) and kept with the snapshot. If the
+    run is fatal or the document changed meanwhile, the fix-all action is
+    left out. A request may wait for the builder, as rename does.
+  - *Edits:* `documentChanges` with the overlay's document version when the
+    client declared `workspace.workspaceEdit.documentChanges`, else
+    `changes` as rename; positions in the negotiated encoding.
+  - *Test hook:* `cereal/holdChecks` takes `"builds": true` to hold the
+    builder before each build as well, so that a snapshot goes stale.
 - **C names:** definition, declaration, type definition, references,
   document highlight, hover, rename, document symbols, signature help,
   semantic tokens and completion (above). Every request that reads the C
@@ -430,6 +462,14 @@ typed above `int foo;` makes a macro token and a carried C token start at
 one place; the semantic tokens show the macro's (fails without the tie
 rule). `fault_check` also shows the carried index going with
 a failed check. The `wait` step records server requests without params.
+The code action sessions (workspace `tests/lsp/fixit/`): `fixit_actions`
+(a lint and a check fix, SAFE and not, an include fix, the client's own
+diagnostic echoed, `only` filters, the fix-all with a `fixall` step that
+applies it and compares the text with `cereal fix` on a copy, a MAYBE fix,
+a fix the gate refuses), `fixit_carry` (checks held: fixes moved by an edit
+above them, one dropped with its group by an edit at its edge, the
+diagnostic kept), `fixit_stale` (builds held: `[]`) and `fixit_nolit` (no
+`codeActionProvider` without literal support).
 `tests/lsp_stress.py BIN FILE [EDITS]` (not a golden) sends edits each
 followed at once by token, completion and hover requests; run on zstd.c
 under TSan (also on a smaller file, where more checks publish between

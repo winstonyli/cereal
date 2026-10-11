@@ -1710,6 +1710,18 @@ static void put_diag(JsonWriter *w, SrcMgr *sm, SrcFile *f, PosEncoding enc,
     json_end_object(w);
 }
 
+static void cdiag_free_fixes(CDiag *cd)
+{
+    size_t k;
+    for (k = 0; k < cd->nfixes; k++) {
+        free(cd->fixes[k].path);
+        free(cd->fixes[k].text);
+    }
+    free(cd->fixes);
+    cd->fixes = NULL;
+    cd->nfixes = 0;
+}
+
 /* cd, to keep: its strings copied. */
 static CDiag cdiag_dup(const CDiag *cd)
 {
@@ -1724,6 +1736,12 @@ static CDiag cdiag_dup(const CDiag *cd)
         r.notes[k].off = cd->notes[k].off;
         r.notes[k].msg = xstrdup(cd->notes[k].msg);
     }
+    r.fixes = cd->nfixes ? xcalloc(cd->nfixes, sizeof *r.fixes) : NULL;
+    for (k = 0; k < cd->nfixes; k++) {
+        r.fixes[k] = cd->fixes[k];
+        r.fixes[k].path = xstrdup(cd->fixes[k].path);
+        r.fixes[k].text = xstrdup(cd->fixes[k].text);
+    }
     return r;
 }
 
@@ -1735,6 +1753,7 @@ static void cdiag_free(CDiag *cd)
         free(cd->notes[k].msg);
     }
     free(cd->notes);
+    cdiag_free_fixes(cd);
     free(cd->path);
     free(cd->code);
     free(cd->msg);
@@ -1764,6 +1783,33 @@ static bool file_same(SameText *st, SrcFile *f, SrcMgr *other)
     }
     vec_push(&st->no, f);
     return false;
+}
+
+/* The fix-its of d (a diagnostic of the check, sm) on cd, if every file they
+ * edit has the snapshot's text (sm0): the group is atomic (C_DESIGN.md 7.2). */
+static void cdiag_set_fixes(CDiag *cd, SrcMgr *sm, SrcMgr *sm0, SameText *st,
+                            Arena *a, const Diagnostic *d)
+{
+    DiagEditVec ge = {0};
+    size_t k;
+    (void)sm0;
+    if (!diag_fix_group(sm, d, &ge))
+        return;
+    for (k = 0; k < ge.len; k++)
+        if (!file_same(st, ge.data[k].file, sm0)) {
+            vec_free(&ge);
+            return;
+        }
+    cd->fixes = NEW_ARRAY(a, CFix, ge.len);
+    for (k = 0; k < ge.len; k++) {
+        cd->fixes[k].path = (char *)ge.data[k].file->path;
+        cd->fixes[k].off_b = ge.data[k].begin;
+        cd->fixes[k].off_e = ge.data[k].end;
+        cd->fixes[k].text = (char *)ge.data[k].text;
+        cd->fixes[k].app = ge.data[k].app;
+    }
+    cd->nfixes = ge.len;
+    vec_free(&ge);
 }
 
 static const char *diag_key(SrcMgr *sm, PosEncoding enc, Arena *a, SrcLoc b,
@@ -1851,6 +1897,17 @@ void cdiags_carry(Snapshot *to, Snapshot *from)
             ok = carry_range(&ed, from, to, c->notes[k].path,
                              &cd.notes[k].off, &hi);
         }
+        /* the fixes move like the range; one that meets the edit takes the
+         * whole group with it, the diagnostic stays (C_DESIGN.md 7.2) */
+        for (k = 0; ok && k < cd.nfixes; k++) {
+            uint32_t lo = cd.fixes[k].off_b, hi = cd.fixes[k].off_e;
+            if (!carry_range(&ed, from, to, cd.fixes[k].path, &lo, &hi)) {
+                cdiag_free_fixes(&cd);
+                break;
+            }
+            cd.fixes[k].off_b = lo;
+            cd.fixes[k].off_e = hi;
+        }
         if (ok)
             vec_push(&to->cdiags, cd);
         else
@@ -1929,6 +1986,7 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
                     SrcFile *nfile = cindex_srcfile(sm, cd.notes[k].path);
                     cd.carry = nfile && file_same(&same, nfile, sm0);
                 }
+                cdiag_set_fixes(&cd, sm, sm0, &same, &a, d);
                 own = cdiag_dup(&cd);
                 vec_push(&s->cdiags, own);
             }
@@ -1965,6 +2023,320 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
     vec_free(&same.yes);
     vec_free(&same.no);
     arena_free(&a);
+}
+
+/* ---- code actions (C_DESIGN.md 7.3, 7.4) ------------------------------------------- */
+
+void lsp_cdiags_copy(const Snapshot *s, Req *r)
+{
+    size_t i;
+    for (i = 0; i < s->cdiags.len; i++)
+        if (s->cdiags.data[i].nfixes) {
+            CDiag c = cdiag_dup(&s->cdiags.data[i]);
+            vec_push(&r->cdiags, c);
+        }
+}
+
+void lsp_cdiags_release(Req *r)
+{
+    size_t i;
+    for (i = 0; i < r->cdiags.len; i++)
+        cdiag_free(&r->cdiags.data[i]);
+    vec_free(&r->cdiags);
+}
+
+typedef struct AFix {
+    const char *path;
+    uint32_t b, e;
+    const char *text;
+    uint8_t app;
+} AFix;
+
+/* A diagnostic that has a fix group, as shown in the document. */
+typedef struct AItem {
+    CDiag cd;                /* for put_diag, offsets in the document */
+    const char *key;         /* diag_key */
+    AFix *fx;
+    size_t nfx;
+    bool hit;                /* meets the request range */
+    bool safe;               /* every fix of the group is SAFE */
+} AItem;
+
+static bool never_wanted(void *ctx, const char *path)
+{
+    (void)ctx;
+    (void)path;
+    return false;
+}
+
+/* Is kind asked for by the request's only list (kinds are hierarchical)? */
+static bool kind_wanted(const JsonValue *only, const char *kind)
+{
+    size_t i, n = strlen(kind);
+    if (!only || only->kind != JV_ARR)
+        return true;
+    for (i = 0; i < only->len; i++) {
+        const char *o = json_str_of(only->items[i], "");
+        size_t l = strlen(o);
+        if (l <= n && !strncmp(kind, o, l) && (l == n || kind[l] == '.' || !l))
+            return true;
+    }
+    return false;
+}
+
+/* s cut for a title: one line, at most 32 bytes. */
+static const char *brief(Arena *a, const char *s, size_t n)
+{
+    size_t k = 0;
+    while (k < n && s[k] != '\n' && k < 32)
+        k++;
+    return arena_printf(a, "%.*s%s", (int)k, s, k < n ? "..." : "");
+}
+
+static const char *fix_title(Req *r, SrcMgr *sm0, Arena *a, const AFix *fx,
+                             size_t n)
+{
+    size_t tl;
+    if (n != 1)
+        return "Apply fix-it";
+    tl = strlen(fx->text);
+    if (fx->b == fx->e) {
+        if (!strncmp(fx->text, "#include ", 9)) {
+            while (tl && (fx->text[tl - 1] == '\n' || fx->text[tl - 1] == '\r'))
+                tl--;
+            return arena_printf(a, "Add %.*s", (int)tl, fx->text);
+        }
+        return arena_printf(a, "Insert '%s'", brief(a, fx->text, tl));
+    }
+    if (!tl) {
+        SrcFile *f = !strcmp(fx->path, r->file->path) ? r->file
+                                                      : cindex_srcfile(sm0, fx->path);
+        if (f && fx->e <= f->size)
+            return arena_printf(a, "Remove '%s'",
+                                brief(a, f->buf + fx->b, fx->e - fx->b));
+        return "Apply fix-it";
+    }
+    return arena_printf(a, "Replace with '%s'", brief(a, fx->text, tl));
+}
+
+/* A WorkspaceEdit of the fixes: documentChanges with the snapshot's version of
+ * each document if the client takes them, else changes (as rename). */
+static void put_fix_edit(JsonWriter *w, Req *r, const AFix *fx, size_t n)
+{
+    SrcMgr *sm0 = &r->snap->tu.sm;
+    const char **paths = NEW_ARRAY(r->arena, const char *, n + 1);
+    size_t np = 0, i, p;
+    for (i = 0; i < n; i++) {
+        for (p = 0; p < np && strcmp(paths[p], fx[i].path); p++)
+            ;
+        if (p == np)
+            paths[np++] = fx[i].path;
+    }
+    json_begin_object(w);
+    json_key(w, r->doc_changes ? "documentChanges" : "changes");
+    if (r->doc_changes)
+        json_begin_array(w);
+    else
+        json_begin_object(w);
+    for (p = 0; p < np; p++) {
+        SrcFile *f = !strcmp(paths[p], r->file->path) ? r->file
+                                                      : cindex_srcfile(sm0, paths[p]);
+        long long ver;
+        if (!f)
+            continue;
+        if (r->doc_changes) {
+            json_begin_object(w);
+            json_key(w, "textDocument");
+            json_begin_object(w);
+            json_key(w, "uri");
+            json_str(w, path_to_uri(r->arena, f->path));
+            json_key(w, "version");
+            if (lsp_overlay_version(r->snap->overlay, f->path, &ver))
+                json_int(w, ver);
+            else
+                json_null(w);
+            json_end_object(w);
+            json_key(w, "edits");
+        } else {
+            json_key(w, path_to_uri(r->arena, f->path));
+        }
+        json_begin_array(w);
+        for (i = 0; i < n; i++) {
+            if (strcmp(fx[i].path, paths[p]))
+                continue;
+            json_begin_object(w);
+            json_key(w, "range");
+            json_range(w, sm0, r->enc, f->base + fx[i].b, f->base + fx[i].e);
+            json_key(w, "newText");
+            json_str(w, fx[i].text);
+            json_end_object(w);
+        }
+        json_end_array(w);
+        if (r->doc_changes)
+            json_end_object(w);
+    }
+    if (r->doc_changes)
+        json_end_array(w);
+    else
+        json_end_object(w);
+    json_end_object(w);
+}
+
+/* The client's own diagnostic with this key (range and message), or NULL. */
+static const JsonValue *client_diag(Req *r, const char *key)
+{
+    const JsonValue *ds = json_path(r->params, "context.diagnostics");
+    size_t i;
+    for (i = 0; ds && ds->kind == JV_ARR && i < ds->len; i++) {
+        const JsonValue *d = ds->items[i], *s = json_path(d, "range.start"),
+                        *e = json_path(d, "range.end");
+        const char *k = arena_printf(
+            r->arena, "%u:%u-%u:%u|%s",
+            (unsigned)json_int_of(json_get(s, "line"), 0),
+            (unsigned)json_int_of(json_get(s, "character"), 0),
+            (unsigned)json_int_of(json_get(e, "line"), 0),
+            (unsigned)json_int_of(json_get(e, "character"), 0),
+            json_str_of(json_get(d, "message"), ""));
+        if (!strcmp(k, key))
+            return d;
+    }
+    return NULL;
+}
+
+void lsp_code_action(Req *r, JsonWriter *w)
+{
+    SrcMgr *sm0 = &r->snap->tu.sm;
+    SrcFile *f0 = r->file;
+    Arena *a = r->arena;
+    const JsonValue *only = json_path(r->params, "context.only");
+    const JsonValue *rg = json_get(r->params, "range");
+    SrcLoc rb, re;
+    VEC(AItem) items = {0};
+    VEC(const char *) seen = {0};   /* keys of the macro phase's diagnostics */
+    DiagEditVec ge = {0};
+    bool any_safe = false;
+    size_t i, k;
+    json_begin_array(w);
+    if (r->stale || !rg) {
+        json_end_array(w);
+        return;
+    }
+    rb = req_loc(r, json_get(rg, "start"));
+    re = req_loc(r, json_get(rg, "end"));
+    if (re < rb)
+        re = rb;
+    for (i = 0; i < r->snap->tu.diag.all.len; i++) {
+        Diagnostic *d = r->snap->tu.diag.all.data[i];
+        SrcLoc b, e;
+        const char *msg;
+        AItem it;
+        if (!d || d->level == DL_IGNORED ||
+            !diag_place(sm0, f0, d, never_wanted, NULL, a, &b, &e, &msg))
+            continue;
+        vec_push(&seen, diag_key(sm0, r->enc, a, b, e, msg));
+        ge.len = 0;
+        if (!diag_fix_group(sm0, d, &ge))
+            continue;
+        memset(&it, 0, sizeof it);
+        it.cd = cdiag_make(sm0, f0, a, d, b, e, msg);
+        it.key = seen.data[seen.len - 1];
+        it.fx = NEW_ARRAY(a, AFix, ge.len);
+        it.safe = true;
+        for (k = 0; k < ge.len; k++) {
+            it.fx[k].path = ge.data[k].file->path;
+            it.fx[k].b = ge.data[k].begin;
+            it.fx[k].e = ge.data[k].end;
+            it.fx[k].text = arena_strdup(a, ge.data[k].text);
+            it.fx[k].app = ge.data[k].app;
+            it.safe &= ge.data[k].app == FIX_SAFE;
+        }
+        it.nfx = ge.len;
+        it.hit = b <= re && (e < b ? b : e) >= rb;
+        vec_push(&items, it);
+    }
+    vec_free(&ge);
+    for (i = 0; i < r->cdiags.len; i++) {
+        const CDiag *c = &r->cdiags.data[i];
+        AItem it;
+        size_t j;
+        bool dup = false;
+        if (strcmp(c->path, f0->path) || !c->nfixes)
+            continue;
+        memset(&it, 0, sizeof it);
+        it.cd = *c;
+        it.key = diag_key(sm0, r->enc, a, f0->base + c->off_b, f0->base + c->off_e,
+                          c->msg);
+        for (j = 0; j < seen.len && !dup; j++)
+            dup = !strcmp(seen.data[j], it.key);
+        if (dup)
+            continue;
+        it.fx = NEW_ARRAY(a, AFix, c->nfixes);
+        it.safe = true;
+        for (k = 0; k < c->nfixes; k++) {
+            it.fx[k].path = c->fixes[k].path;
+            it.fx[k].b = c->fixes[k].off_b;
+            it.fx[k].e = c->fixes[k].off_e;
+            it.fx[k].text = c->fixes[k].text;
+            it.fx[k].app = c->fixes[k].app;
+            it.safe &= c->fixes[k].app == FIX_SAFE;
+        }
+        it.nfx = c->nfixes;
+        it.hit = f0->base + c->off_b <= re && f0->base + c->off_e >= rb;
+        vec_push(&items, it);
+    }
+    for (i = 0; i < items.len; i++)
+        any_safe |= items.data[i].safe;
+    if (kind_wanted(only, "quickfix"))
+        for (i = 0; i < items.len; i++) {
+            const AItem *it = &items.data[i];
+            const JsonValue *cl;
+            if (!it->hit)
+                continue;
+            json_begin_object(w);
+            json_key(w, "title");
+            json_str(w, fix_title(r, sm0, a, it->fx, it->nfx));
+            json_key(w, "kind");
+            json_str(w, "quickfix");
+            json_key(w, "diagnostics");
+            json_begin_array(w);
+            if ((cl = client_diag(r, it->key)) != NULL)
+                json_raw(w, cl->text, cl->text_len);
+            else
+                put_diag(w, sm0, f0, r->enc, a, &it->cd);
+            json_end_array(w);
+            if (it->safe) {
+                json_key(w, "isPreferred");
+                json_bool(w, true);
+            }
+            json_key(w, "edit");
+            put_fix_edit(w, r, it->fx, it->nfx);
+            json_end_object(w);
+        }
+    if (kind_wanted(only, "source.fixAll.cereal") &&
+        ((only && only->kind == JV_ARR) || any_safe)) {
+        const FixTextEdits *fe = lsp_fix_all(r);
+        if (fe && fe->len) {
+            AFix *fx = NEW_ARRAY(a, AFix, fe->len);
+            for (k = 0; k < fe->len; k++) {
+                fx[k].path = f0->path;
+                fx[k].b = fe->data[k].begin;
+                fx[k].e = fe->data[k].end;
+                fx[k].text = fe->data[k].text;
+                fx[k].app = FIX_SAFE;
+            }
+            json_begin_object(w);
+            json_key(w, "title");
+            json_str(w, "Fix all auto-fixable problems");
+            json_key(w, "kind");
+            json_str(w, "source.fixAll.cereal");
+            json_key(w, "edit");
+            put_fix_edit(w, r, fx, fe->len);
+            json_end_object(w);
+        }
+    }
+    vec_free(&items);
+    vec_free(&seen);
+    json_end_array(w);
 }
 
 void lsp_publish_inactive(Snapshot *s, PosEncoding enc, const char *path)

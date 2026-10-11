@@ -1,0 +1,23 @@
+[
+ {"write": "fixit/.cereal", "text": "-Wall -Wstrict-prototypes\n"},
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/fixit", "capabilities": {"general": {"positionEncodings": ["utf-8"]}, "textDocument": {"codeAction": {"codeActionLiteralSupport": {"codeActionKind": {"valueSet": ["quickfix"]}}}}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"open": "fixit/main.c"},
+ {"idle": true},
+ {"note": "the check's fixes (changes shape: the client does not take documentChanges), as the check made them"},
+ {"send": {"id": 2, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c"}, "range": {"start": {"line": 0, "character": 0}, "end": {"line": 9, "character": 0}}, "context": {"diagnostics": [], "only": ["quickfix"]}}}},
+ {"send": {"id": 3, "method": "cereal/holdChecks", "params": {"hold": true}}},
+ {"note": "a line inserted after the brace, the check held: the fixes below it move down a line, the include at the top stays; they are the previous check's"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c", "version": 2}, "contentChanges": [{"text": "#define NEG(x) -x\nint f(int a, int b)\n{\n    int pad = 0;\n    if (a = b)\n        return 1;\n    return puts(\"x\") + NEG(b);\n}\nint g();\nint g() { return 0; }\n"}]}}},
+ {"send": {"id": 4, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c"}, "range": {"start": {"line": 0, "character": 0}, "end": {"line": 10, "character": 0}}, "context": {"diagnostics": [], "only": ["quickfix"]}}}},
+ {"note": "an edit at the end of the condition, where the parentheses fix inserts its closing parenthesis: the whole group is dropped; the diagnostic stays (the last publication below)"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c", "version": 3}, "contentChanges": [{"text": "#define NEG(x) -x\nint f(int a, int b)\n{\n    int pad = 0;\n    if (a = b + 1)\n        return 1;\n    return puts(\"x\") + NEG(b);\n}\nint g();\nint g() { return 0; }\n"}]}}},
+ {"send": {"id": 5, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c"}, "range": {"start": {"line": 0, "character": 0}, "end": {"line": 10, "character": 0}}, "context": {"diagnostics": [], "only": ["quickfix"]}}}},
+ {"wait": "textDocument/publishDiagnostics", "uri": "file://$ROOT/fixit/main.c"},
+ {"note": "the check released: its own fixes again"},
+ {"send": {"id": 6, "method": "cereal/holdChecks", "params": {"hold": false}}},
+ {"idle": true},
+ {"send": {"id": 7, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c"}, "range": {"start": {"line": 0, "character": 0}, "end": {"line": 10, "character": 0}}, "context": {"diagnostics": [], "only": ["quickfix"]}}}},
+ {"send": {"id": 8, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

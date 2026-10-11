@@ -4,6 +4,7 @@
 
 #include "compdb.h"
 #include "driver.h"
+#include "fixres.h"
 
 typedef struct FixOpts {
     bool unsafe;             /* --unsafe: MAYBE fixes too */
@@ -21,5 +22,18 @@ int fix_flag(FixOpts *fx, const char *arg);
 /* `cereal fix` over the inputs of o, or the entries of the database ccdb
  * (own: cereal's options for each entry).  The exit status. */
 int fix_run(Options *o, const char *ccdb, const StrVec *own, const FixOpts *fx);
+
+/* The language server's fix-all: the edits `cereal fix` would make to file,
+ * a file of the unit main, in one pass, with the texts from base, the editor
+ * buffers.  Only edits of file; the same gate.  False: main could not be
+ * read.  Free with fix_edits_free. */
+typedef struct FixTextEdit {
+    uint32_t begin, end;     /* byte offsets in the buffer */
+    char *text;
+} FixTextEdit;
+typedef VEC(FixTextEdit) FixTextEdits;
+void fix_edits_free(FixTextEdits *e);
+bool fix_unit_edits(Options *o, const char *main, const char *file,
+                    FixBaseFn base, void *base_ctx, FixTextEdits *out);
 
 #endif
