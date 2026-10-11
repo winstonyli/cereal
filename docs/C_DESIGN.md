@@ -124,9 +124,8 @@ design's.
   - Requests carry a `CPolicy` (`server.c:1037-1045`). `must_wait`
     (`server.c:1091`) and `handle_request` wait up to 1.5 s for the newest
     edit's snapshot.
-  - Rename checks run on the builder thread: `RenameJob`
-    (`server.c:55-60`), `rename_run` (`server.c:593`), `lsp_check_rename`
-    (`server.c:616`).
+  - Rename checks run on the builder thread (a `DeferredReq` since Round
+    217): `RenameJob`, `rename_run`, `lsp_check_rename` in `server.c`.
   - The analyses run on the snapshot's macro-phase TU (`server.c:197`).
   - Published diagnostics (`lsp_publish_diagnostics`,
     `features.c:1867`) are the macro phase's (`s->tu.diag.all`) plus the
@@ -716,10 +715,11 @@ like the diagnostic's range.
 - **`source.fixAll.cereal`** is offered when the request names that kind,
   or when the request has no `only` and the document has at least one
   SAFE group.
-  - Its edit is computed on the builder thread. `RenameJob` is generalized
-    into `BuilderJob {fn, ctx, result}`, and rename becomes one user of it.
-    (As built: the first fix-all request is deferred to the builder and
-    answered from there; "C4 follow-ups".)
+  - Its edit is computed on the builder thread. (As planned: `RenameJob`
+    generalized into `BuilderJob {fn, ctx, result}`. As built: the first
+    fix-all request is deferred to the builder and answered from there,
+    "C4 follow-ups"; the `BuilderJob` was deleted in Round 217 when rename
+    went the same way.)
   - The job runs the D10 gate on the unit with the snapshot's overlay plus
     the edits, restricted to this document's file. The edits come from the
     builder (5.2) over the SAFE groups of the document, selected as one CLI
@@ -1192,16 +1192,16 @@ a copy of the text. See LSP.md, Tests, for what each covers.
   not reported (the CLI's "fixes remain" message has no place in a code
   action); the next request, after the edit, continues.
 - **The first fix-all does not block the protocol thread.** Rename, which
-  design Q4 compared this to, is not asynchronous: it waits on the protocol
-  thread (`run_on_builder`). So this is a new mechanism, narrower than a
-  general one: `handle_request` runs the code action as before; if
+  design Q4 compared this to, was not asynchronous then: it waited on the
+  protocol thread (`run_on_builder`; Round 217 below moved it to this
+  mechanism). So this was a new mechanism: `handle_request` runs the code action as before; if
   `lsp_fix_all` has no cached edit and the request is not on the builder
   (`Req.on_builder`), it only sets `Req.need_builder`. The request is then
   handed to the builder as a `DeferredReq` (it takes over the message body and
   its arena, the request's arena and the snapshot and index references; the
   main loop does not free them: `handle_request` returns true), and the
   protocol thread reads the next message. The builder takes deferred
-  requests after a `BuilderJob` and before the next build, runs the code
+  requests before the next build (before Round 217: after a `BuilderJob`), runs the code
   action again with `on_builder` (this time `lsp_fix_all` computes and
   caches) and writes the response, `rpc_write` being locked. The action is
   recomputed rather than resumed (the quick fixes are cheap); if the
@@ -1212,6 +1212,25 @@ a copy of the text. See LSP.md, Tests, for what each covers.
   and a quick fix are answered while a fix-all is held; the fix-all arrives
   after the release, and a second one is answered at once from the cache).
   The `lsp_session.py` steps `defer`, `await` and `unanswered` express it.
+- **Rename uses it too (Round 217).** `lsp_rename`'s C path
+  (`c_rename_edits`) sets `Req.need_builder` and writes nothing when it is
+  not on the builder, after the existing "index not ready; retry" check (a
+  stale or unchecked snapshot is still refused at once, RequestFailed
+  -32803). `handle_request` defers it as the fix-all (`DeferredReq.kind`
+  tells `deferred_run` which request it is). On the builder, `lsp_rename`
+  runs `lsp_check_rename` (now a plain call of `rename_run`) and the reply
+  is the edit of before. New: the protocol thread no longer holds edits
+  back while the checks run, so the document can change meanwhile; then the
+  reply is a ContentModified (-32801) error, not edits for the old text (a
+  fix-all answers `[]`; a rename error is what LSP clients expect for a
+  stale document). The hold of `cereal/holdChecks` moved from `lsp_fix_all`
+  to the start of `deferred_run`, so it holds both. `run_on_builder`,
+  `BuilderJob` and `Server.bjob` are deleted: nothing else used them.
+  prepareRename never needed the builder (`cindex_rename_plan` reads the
+  index) and still answers on the protocol thread. Test:
+  `tests/lsp/csym_rename_async` (a rename held while a hover and a
+  prepareRename are answered; the edit after the release; a second one held
+  across an edit gives -32801; then a rename on the new snapshot).
 
 ### Totals
 

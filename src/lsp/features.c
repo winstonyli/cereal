@@ -1021,6 +1021,10 @@ static bool c_rename_edits(Req *r, JsonWriter *w, SrcLoc at, const char *name,
         *err = "the C symbol index is not ready; retry";
         return false;
     }
+    if (!r->on_builder) { /* the checks are the builder's: defer (no output) */
+        r->need_builder = true;
+        return true;
+    }
     memset(&q, 0, sizeof q);
     q.path = r->file->path;
     q.off = at - r->file->base;

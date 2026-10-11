@@ -51,15 +51,9 @@ typedef struct Doc {
     Unit *unit;
 } Doc;
 
-/* Work for the builder thread that the checker's static state makes it the
- * only one to do (run_on_builder): a rename's checks (lsp_check_rename), a
- * document's fix-all (lsp_fix_all). */
-typedef struct BuilderJob {
-    void (*fn)(void *ctx);
-    void *ctx;
-    bool done;
-} BuilderJob;
-
+/* Work only the builder thread can do, the checker keeping static state: a
+ * rename's checks (lsp_check_rename), a document's fix-all (lsp_fix_all).
+ * Requests that need it are deferred (DeferredReq). */
 typedef struct RenameJob {
     Snapshot *snap;
     CRename *q;
@@ -67,10 +61,11 @@ typedef struct RenameJob {
 } RenameJob;
 
 /* A request the builder thread answers because it needs work only the builder
- * can do (a code action that needs the fix-all; handle_request).  It owns what
- * the protocol thread had: the message (the id and params point into body) and
- * the request's state. */
+ * can do (a code action that needs the fix-all, a C rename's checks;
+ * handle_request).  It owns what the protocol thread had: the message (the id
+ * and params point into body) and the request's state. */
 typedef struct DeferredReq {
+    int kind;                 /* the ReqKind: R_CODE_ACTION or R_RENAME */
     const JsonValue *id;
     Arena msg;
     char *body;
@@ -82,7 +77,6 @@ typedef struct DeferredReq {
 typedef struct Server {
     Mutex m;
     Cond work, done;
-    BuilderJob *bjob;         /* waiting for the builder */
     VEC(DeferredReq *) deferred; /* requests for the builder to answer */
     bool code_actions;        /* client: codeAction literals (advertised) */
     bool doc_changes;         /* client: workspaceEdit.documentChanges */
@@ -651,37 +645,14 @@ static void rename_run(void *ctx)
     config_options_free(opt);
 }
 
-/* Runs fn(ctx) on the builder thread between builds and waits for it; false
- * if the server stops first. */
-static bool run_on_builder(void (*fn)(void *ctx), void *ctx)
-{
-    BuilderJob j;
-    j.fn = fn;
-    j.ctx = ctx;
-    j.done = false;
-    mutex_lock(&S.m);
-    S.bjob = &j;
-    cond_broadcast(&S.work);
-    while (!j.done) {
-        if (S.stop && S.bjob == &j) { /* the builder has gone */
-            S.bjob = NULL;
-            mutex_unlock(&S.m);
-            return false;
-        }
-        cond_wait(&S.done, &S.m);
-    }
-    mutex_unlock(&S.m);
-    return true;
-}
-
+/* Called on the builder thread (a deferred request, see deferred_run). */
 char *lsp_check_rename(Snapshot *snap, CRename *q)
 {
     RenameJob j;
     memset(&j, 0, sizeof j);
     j.snap = snap;
     j.q = q;
-    if (!run_on_builder(rename_run, &j))
-        return xstrdup("the server is stopping");
+    rename_run(&j);
     return j.err;
 }
 
@@ -736,11 +707,6 @@ const FixTextEdits *lsp_fix_all(Req *r)
         r->need_builder = true;
         return NULL;
     }
-    /* test only (cereal/holdChecks): wait until released or stopping */
-    mutex_lock(&S.m);
-    while (S.hold && !S.stop)
-        cond_wait(&S.work, &S.m);
-    mutex_unlock(&S.m);
     memset(&j, 0, sizeof j);
     j.snap = s;
     j.path = r->path;
@@ -780,16 +746,6 @@ static void *builder_main(void *arg)
         bool failed, eligible = false;
         long long want;
         double t0, t1, t2;
-        if (S.bjob) {
-            BuilderJob *j = S.bjob;
-            S.bjob = NULL;
-            mutex_unlock(&S.m);
-            j->fn(j->ctx);
-            mutex_lock(&S.m);
-            j->done = true;
-            cond_broadcast(&S.done);
-            continue;
-        }
         if (S.deferred.len) {
             DeferredReq *d = S.deferred.data[0];
             memmove(S.deferred.data, S.deferred.data + 1,
@@ -1389,9 +1345,11 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         }
     }
     if (r.need_builder) {
-        /* the fix-all is for the builder to compute, which may be busy for
-         * a build: it answers the request, the protocol thread goes on */
+        /* the fix-all or the rename's checks are for the builder to compute,
+         * which may be busy for a build: it answers the request, the
+         * protocol thread goes on */
         DeferredReq *q = xcalloc(1, sizeof *q);
+        q->kind = k;
         q->id = id;
         q->msg = *msg;
         q->body = body;
@@ -1421,27 +1379,55 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
     return false;
 }
 
+/* Whether the document still has the text the request was made for. */
+static bool doc_unchanged(const Req *r)
+{
+    Doc *doc;
+    bool same;
+    mutex_lock(&S.m);
+    doc = doc_find(r->path);
+    same = doc && doc->len == r->text_len &&
+           !memcmp(doc->text, r->text, r->text_len);
+    mutex_unlock(&S.m);
+    return same;
+}
+
 /* A deferred request, answered on the builder thread (r.on_builder): the
- * code action again, now with the fix-all computed.  If the document has
- * changed since the request, the answer is [] (as for a stale snapshot). */
+ * request again, now with the fix-all computed or the rename checked.  If
+ * the document has changed since the request, a code action answers [] (as
+ * for a stale snapshot) and a rename fails with ContentModified: its edits
+ * are for the old text. */
 static void deferred_run(DeferredReq *d)
 {
     Req *r = &d->r;
     StrBuf sb = {0};
     JsonWriter w;
-    Doc *doc;
+    const char *err = NULL;
+    /* test only (cereal/holdChecks): wait until released or stopping */
     mutex_lock(&S.m);
-    doc = doc_find(r->path);
-    r->stale = !doc || doc->len != r->text_len ||
-               memcmp(doc->text, r->text, r->text_len) != 0;
+    while (S.hold && !S.stop)
+        cond_wait(&S.work, &S.m);
     mutex_unlock(&S.m);
     r->on_builder = true;
     r->need_builder = false;
     begin_response(&w, &sb, d->id);
     json_key(&w, "result");
-    lsp_code_action(r, &w);
-    json_end_object(&w);
-    send_json(&sb);
+    if (d->kind == R_RENAME) {
+        if (!lsp_rename(r, &w, &err))
+            respond_error(d->id, -32803 /* RequestFailed */, err);
+        else if (!doc_unchanged(r))
+            respond_error(d->id, -32801 /* ContentModified */,
+                          "the document changed during the rename");
+        else {
+            json_end_object(&w);
+            send_json(&sb);
+        }
+    } else {
+        r->stale = !doc_unchanged(r);
+        lsp_code_action(r, &w);
+        json_end_object(&w);
+        send_json(&sb);
+    }
     sb_free(&sb);
     deferred_free(d);
 }

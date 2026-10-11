@@ -127,8 +127,9 @@ void snapshot_release(Snapshot *s);
 
 struct CRename;
 /* c_rename (c/frontend.h) for a name of snap's unit, with the buffers snap
- * was built from, on the builder thread (the checker keeps static state:
- * two checks must not overlap); NULL or why it is refused (malloc'd). */
+ * was built from.  Call on the builder thread only (the checker keeps static
+ * state: two checks must not overlap), i.e. from a deferred request (Req
+ * on_builder); NULL or why it is refused (malloc'd). */
 char *lsp_check_rename(Snapshot *snap, struct CRename *q);
 
 int lsp_main(FILE *in, FILE *out);
@@ -152,9 +153,11 @@ typedef struct Req {
     bool stale;              /* the document has an edit snap lacks */
     bool doc_changes;        /* the client takes documentChanges */
     bool on_builder;         /* running on the builder thread (a deferred
-                                request): lsp_fix_all computes at once */
-    bool need_builder;       /* out: lsp_fix_all needs the builder; run the
-                                request there instead */
+                                request): lsp_fix_all and lsp_rename compute
+                                at once */
+    bool need_builder;       /* out: lsp_fix_all or lsp_rename needs the
+                                builder (nothing is written); run the request
+                                there instead */
     /* codeAction: snap's check diagnostics, copied under the lock */
     VEC(CDiag) cdiags;
 } Req;

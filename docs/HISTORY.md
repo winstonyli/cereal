@@ -4327,3 +4327,47 @@ Not done: composing a multi-pass fix-all into granular edits (`map_off`
 could); the pass limit is not reported to the client; rename still blocks
 the protocol thread (the same deferral would serve it). Scratch lived in
 `~/c5s` (removed).
+
+## Round 217: rename uses the deferral
+
+The C rename's checks (`lsp_check_rename`) no longer wait on the protocol
+thread. `c_rename_edits` sets `Req.need_builder` and writes nothing when it is
+not on the builder (after the existing "index not ready; retry" refusal, so a
+stale or unchecked snapshot is still refused at once, RequestFailed -32803);
+`handle_request` defers it as a `DeferredReq` (new field `kind`), and
+`deferred_run` runs `lsp_rename` on the builder and answers. `lsp_check_rename`
+is now a plain call of `rename_run`. The `cereal/holdChecks` hold moved from
+`lsp_fix_all` to the start of `deferred_run`, so it holds a deferred rename and
+a fix-all alike (for a code action the stale test now comes after the hold).
+Deleted: `run_on_builder`, `BuilderJob`, `Server.bjob` and the builder loop's
+`bjob` branch; no other caller existed (grep over src/ and tests/). prepareRename
+never used the builder (`cindex_rename_plan` reads the index) and is unchanged;
+macro renames are unchanged (index only).
+
+Semantics. The reply is the same edit as before. Stale input at arrival gives
+what it gave before (the "retry" error). New, a consequence of the protocol
+thread being free: a document change while the rename waits or runs gives a
+ContentModified (-32801) error, "the document changed during the rename", not
+edits for the old text (a fix-all answers `[]`; for a rename the error is the
+LSP convention and a client can retry). Before, no edit could arrive during
+the wait, so the case did not exist. Out-of-order replies; a deferred request
+pending at exit is dropped (existing `deferred_free` at exit).
+
+Tests: new session `csym_rename_async` (a C rename held by `holdChecks` while a
+hover and a prepareRename are answered; the edit after the release; a second
+rename held across a `didChange` gives -32801; a rename on the new snapshot).
+The existing rename sessions (`csym_rename`, `csym_b3`, ...) are unchanged and
+pass. Gates: run.sh 2059 passed (was 2057: +1 session x 2 modes); gate.sh:
+run 2059, san 2059 passed, 628 files, 0 findings; verify gcc.dg 3908 of 3910,
+c-c++-common 637 of 638, cpp 289 of 289 (unchanged); callgrind 3.8833 G
+(3.8852 G). TSan (`~/cereal-tsan`, removed): all 23 LSP sessions, plain and with
+`-fparallel=on -fparallel-chunk=1 -fparallel-threads=3`: 46 passed, 0 reports;
+`lsp_stress.py` 200 edits on zstd.c: 0 reports; a scratch variant (a rename of
+a static function, then an edit at once, per iteration; 40 edits on zstd.c): 164
+ok, 35 ContentModified, 5 refusals, 0 reports. Source +62/-69 in 3 files
+(server.c, features.c, lsp.h); tests +178 lines (28 + 150).
+
+Not done: the rename's -32801 can be hit often by an editor that types while
+the rename check runs (35 of 40 in the stress, which edits at once; a person
+would rarely); the client retries. A cancel (`$/cancelRequest`) of a deferred
+request is not handled (as for the fix-all). Scratch lived in `~/c6s` (removed).

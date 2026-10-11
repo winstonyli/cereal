@@ -974,10 +974,13 @@ comparison passes).
   RequestFailed error with the reason; prepareRename on a place that is
   no entity answers null, as before. The two checks run on the builder
   thread, because the checker keeps mutable static state (cattr.c,
-  cinit.c, cconv.c, ...) and two checks must never run at once. The
-  request queues a job and waits for it. The protocol thread is blocked
-  meanwhile, as it is for any request, so no edit can arrive between
-  the plan and the reply.
+  cinit.c, cconv.c, ...) and two checks must never run at once. As built
+  in phase 4 the request queued a job and waited for it, the protocol
+  thread being blocked, so no edit could arrive between the plan and the
+  reply. Since Round 217 the request is deferred to the builder
+  (`DeferredReq`, C_DESIGN "C4 follow-ups (Round 216)") and the protocol
+  thread keeps serving; an edit that arrives meanwhile makes the reply a
+  ContentModified (-32801) error instead.
 - **Command line.** `cereal query rename=NEW FILE:L:C main.c` prints one
   `file:line:col NEW` line per edit, or `cannot rename: REASON`.
 - **Shared.** The identifier test moves from features.c into csymidx.c

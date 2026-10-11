@@ -259,7 +259,12 @@ is freed with it (replacing the carried index, below).
   A refusal is a RequestFailed error with the reason (prepareRename too,
   and now also for macros); prepareRename answers null where there is no
   entity. The two checks run on the builder thread, because the checker
-  keeps static state: the request hands a job to the builder and waits.
+  keeps static state: the request is handed to the builder as a
+  `DeferredReq` (as the first fix-all is) and the protocol thread goes on
+  serving; the builder answers it. If the document changed meanwhile, the
+  answer is a ContentModified (-32801) error, the edits being for the old
+  text. A request for a stale or unchecked snapshot is refused at once
+  ("retry"), as before.
   Not seen by the comparison: an argument the macro also stringizes
   (`#x` spells the new name), `__func__` in a renamed function, names
   in strings (`alias("f")`, `asm` labels) and other units.
@@ -402,14 +407,15 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
     changed meanwhile, the fix-all action is left out. The first request for
     a snapshot is answered by the builder thread (`DeferredReq`) when it has
     done the work, so the protocol thread keeps serving other requests
-    meanwhile (rename, by contrast, still waits on it); responses can come
-    out of order.
+    meanwhile (as for a C rename's checks); responses can come out of
+    order.
   - *Edits:* `documentChanges` with the overlay's document version when the
     client declared `workspace.workspaceEdit.documentChanges`, else
     `changes` as rename; positions in the negotiated encoding.
   - *Test hook:* `cereal/holdChecks` takes `"builds": true` to hold the
     builder before each build as well, so that a snapshot goes stale. A held
-    fix-all waits at its start, like a check.
+    fix-all or C rename (any deferred request) waits at its start, like a
+    check.
 - **C names:** definition, declaration, type definition, references,
   document highlight, hover, rename, document symbols, signature help,
   semantic tokens and completion (above). Every request that reads the C

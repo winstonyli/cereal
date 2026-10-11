@@ -1,0 +1,150 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider"
+ ]
+}
+>> initialized
+>> didOpen csym_rename/main.c
+>> (idle)
+## held (cereal/holdChecks): a C rename's checks wait at their start, as a check does
+>> cereal/holdChecks
+null
+## the rename of the local r is not answered (the builder checks it) ...
+>> textDocument/rename
+## ... but the protocol thread serves other requests: a hover and a prepareRename
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar run:total: int\n```"
+ },
+ "range": {
+  "end": {
+   "character": 13,
+   "line": 11
+  },
+  "start": {
+   "character": 8,
+   "line": 11
+  }
+ }
+}
+>> textDocument/prepareRename
+{
+ "placeholder": "r",
+ "range": {
+  "end": {
+   "character": 9,
+   "line": 6
+  },
+  "start": {
+   "character": 8,
+   "line": 6
+  }
+ }
+}
+>> request 3 not answered yet
+## released: the builder answers the rename, the edit it has today
+>> cereal/holdChecks
+null
+{
+ "changes": {
+  "file://$ROOT/csym_rename/main.c": [
+   {
+    "newText": "res",
+    "range": {
+     "end": {
+      "character": 9,
+      "line": 6
+     },
+     "start": {
+      "character": 8,
+      "line": 6
+     }
+    }
+   },
+   {
+    "newText": "res",
+    "range": {
+     "end": {
+      "character": 12,
+      "line": 7
+     },
+     "start": {
+      "character": 11,
+      "line": 7
+     }
+    }
+   }
+  ]
+ }
+}
+## held again, a rename, then an edit before the release: ContentModified, the edits being for the old text
+>> cereal/holdChecks
+null
+>> textDocument/rename
+>> textDocument/didChange
+>> cereal/holdChecks
+null
+{
+ "error": {
+  "code": -32801,
+  "message": "the document changed during the rename"
+ }
+}
+## asked again once the new snapshot is checked: answered
+>> (idle)
+>> textDocument/rename
+{
+ "changes": {
+  "file://$ROOT/csym_rename/main.c": [
+   {
+    "newText": "res",
+    "range": {
+     "end": {
+      "character": 9,
+      "line": 7
+     },
+     "start": {
+      "character": 8,
+      "line": 7
+     }
+    }
+   },
+   {
+    "newText": "res",
+    "range": {
+     "end": {
+      "character": 12,
+      "line": 8
+     },
+     "start": {
+      "character": 11,
+      "line": 8
+     }
+    }
+   }
+  ]
+ }
+}
+>> shutdown
+null
+>> exit
+exit 0
