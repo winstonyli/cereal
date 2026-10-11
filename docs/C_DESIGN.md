@@ -718,6 +718,8 @@ like the diagnostic's range.
   SAFE group.
   - Its edit is computed on the builder thread. `RenameJob` is generalized
     into `BuilderJob {fn, ctx, result}`, and rename becomes one user of it.
+    (As built: the first fix-all request is deferred to the builder and
+    answered from there; "C4 follow-ups".)
   - The job runs the D10 gate on the unit with the snapshot's overlay plus
     the edits, restricted to this document's file. The edits come from the
     builder (5.2) over the SAFE groups of the document, selected as one CLI
@@ -1139,19 +1141,16 @@ Implemented: section 7 as scoped. Where the code is:
 
 Deviations and choices:
 
-- Fix-all is one pass of the merge, not the CLI's loop of up to 8 passes
-  with writes: the edit is relative to the buffer the client has. It equals
-  `cereal fix` whenever the CLI needs one pass (the case in the tests); a
-  chain that needs two (`p.x + q.x`) is offered again after the first edit,
-  as the diagnostics change.
+- Fix-all was one pass of the merge in Round 215, not the CLI's loop of up
+  to 8 passes with writes; it loops until stable since Round 216 (below).
 - The fix-all run uses `fatal_missing_include=false` (the check's D2 setting)
   where `cereal fix` sets it; an include that cannot be found is a
   diagnostic, not an abort.
 - The fix-all edit is computed once per snapshot and document and cached
   (lightbulb requests arrive on every cursor move). The first request after
-  an edit waits for the builder (Q4: up to one check latency, as rename).
-  The cache entry is stored only if the live document still equals the
-  snapshot's buffer.
+  an edit needs the builder (Q4: up to one build or check latency); since
+  Round 216 it does not hold up the protocol thread (below). The cache entry
+  is stored only if the live document still equals the snapshot's buffer.
 - No `only` and no SAFE group: no fix-all offered (as 7.3 says). With
   `only: source.fixAll` but no SAFE edit, nothing is offered. A fix-all is
   offered also when the cursor is on a line without diagnostics.
@@ -1175,6 +1174,44 @@ Tests: `tests/lsp/fixit_actions`, `fixit_carry`, `fixit_stale`,
 the parallel flags forced by `run.sh`; the `fixall` step of
 `tests/lsp_session.py` applies the fix-all and compares with `cereal fix` on
 a copy of the text. See LSP.md, Tests, for what each covers.
+
+### C4 follow-ups (Round 216)
+
+- **Fix-all loops until stable.** `fix_unit_edits` runs the one-unit pass
+  (`unit_pass`, the former body) up to `FIX_MAX_PASSES` (8, also the CLI's
+  `--max-passes` default) times, each over the buffers with the document's
+  text replaced by the previous pass's result (`Layer`, over `base`): the
+  CLI's loop, minus the writes. Other files keep the editor's text, so an
+  edit of a header the fix-all does not return is not seen by the next pass.
+  After one pass the edits are returned as they are. After more, each pass's
+  edits are relative to the text before it, so they are replaced by one edit
+  from the first changed byte to the last (common prefix and suffix of the
+  buffer and the final text trimmed); applying it gives what `cereal fix`
+  gives. The coarser edit is the price of not composing the passes' edits;
+  `map_off` could do it if an editor shows the difference. The pass limit is
+  not reported (the CLI's "fixes remain" message has no place in a code
+  action); the next request, after the edit, continues.
+- **The first fix-all does not block the protocol thread.** Rename, which
+  design Q4 compared this to, is not asynchronous: it waits on the protocol
+  thread (`run_on_builder`). So this is a new mechanism, narrower than a
+  general one: `handle_request` runs the code action as before; if
+  `lsp_fix_all` has no cached edit and the request is not on the builder
+  (`Req.on_builder`), it only sets `Req.need_builder`. The request is then
+  handed to the builder as a `DeferredReq` (it takes over the message body and
+  its arena, the request's arena and the snapshot and index references; the
+  main loop does not free them: `handle_request` returns true), and the
+  protocol thread reads the next message. The builder takes deferred
+  requests after a `BuilderJob` and before the next build, runs the code
+  action again with `on_builder` (this time `lsp_fix_all` computes and
+  caches) and writes the response, `rpc_write` being locked. The action is
+  recomputed rather than resumed (the quick fixes are cheap); if the
+  document changed since the request the answer is `[]` (`stale`). Answers
+  can then arrive out of order, as LSP allows. A deferred request still
+  waiting when the client exits is dropped. Test hook: `cereal/holdChecks`
+  now also holds a fix-all at its start (`tests/lsp/fixall_async`: a hover
+  and a quick fix are answered while a fix-all is held; the fix-all arrives
+  after the release, and a second one is answered at once from the cache).
+  The `lsp_session.py` steps `defer`, `await` and `unanswered` express it.
 
 ### Totals
 

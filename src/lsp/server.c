@@ -66,10 +66,24 @@ typedef struct RenameJob {
     char *err;
 } RenameJob;
 
+/* A request the builder thread answers because it needs work only the builder
+ * can do (a code action that needs the fix-all; handle_request).  It owns what
+ * the protocol thread had: the message (the id and params point into body) and
+ * the request's state. */
+typedef struct DeferredReq {
+    const JsonValue *id;
+    Arena msg;
+    char *body;
+    Arena a;                  /* r's scratch */
+    Req r;
+    CIndex *cx;               /* the reference r.cidx holds */
+} DeferredReq;
+
 typedef struct Server {
     Mutex m;
     Cond work, done;
     BuilderJob *bjob;         /* waiting for the builder */
+    VEC(DeferredReq *) deferred; /* requests for the builder to answer */
     bool code_actions;        /* client: codeAction literals (advertised) */
     bool doc_changes;         /* client: workspaceEdit.documentChanges */
     bool hold_builds;         /* test only: cereal/holdChecks "builds" */
@@ -91,6 +105,8 @@ typedef struct Server {
 static Server S;
 
 static Doc *doc_find(const char *path);
+static void deferred_run(DeferredReq *d);
+static void deferred_free(DeferredReq *d);
 
 /* CEREAL_LSP_STATS: timings of builds on stderr */
 static double stats_now(void)
@@ -716,10 +732,20 @@ const FixTextEdits *lsp_fix_all(Req *r)
     mutex_unlock(&S.m);
     if (e)
         return &e->edits;
+    if (!r->on_builder) {     /* the protocol thread: not to wait for it */
+        r->need_builder = true;
+        return NULL;
+    }
+    /* test only (cereal/holdChecks): wait until released or stopping */
+    mutex_lock(&S.m);
+    while (S.hold && !S.stop)
+        cond_wait(&S.work, &S.m);
+    mutex_unlock(&S.m);
     memset(&j, 0, sizeof j);
     j.snap = s;
     j.path = r->path;
-    if (!run_on_builder(fixall_run, &j) || !j.ok) {
+    fixall_run(&j);
+    if (!j.ok) {
         fix_edits_free(&j.edits);
         return NULL;
     }
@@ -762,6 +788,15 @@ static void *builder_main(void *arg)
             mutex_lock(&S.m);
             j->done = true;
             cond_broadcast(&S.done);
+            continue;
+        }
+        if (S.deferred.len) {
+            DeferredReq *d = S.deferred.data[0];
+            memmove(S.deferred.data, S.deferred.data + 1,
+                    sizeof(DeferredReq *) * --S.deferred.len);
+            mutex_unlock(&S.m);
+            deferred_run(d);
+            mutex_lock(&S.m);
             continue;
         }
         if (!S.queue.len || S.hold_builds) {
@@ -1238,8 +1273,10 @@ static const char *request_uri(const JsonValue *params)
     return u ? u : json_str_of(json_path(params, "item.uri"), NULL);
 }
 
-static void handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
-                           const JsonValue *params)
+/* Answers a request.  True: the builder thread has taken it over (it owns
+ * body and msg, the message's arena, now); else they are the caller's. */
+static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
+                           const JsonValue *params, char *body, Arena *msg)
 {
     Arena a;
     Req r;
@@ -1261,7 +1298,7 @@ static void handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         mutex_unlock(&S.m);
         arena_free(&a);
         respond_null(id);
-        return;
+        return false;
     }
     u = d->unit;
     while (!u->snap && !S.stop) /* first build of this unit */
@@ -1300,7 +1337,7 @@ static void handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
     if (!r.snap) {
         arena_free(&a);
         respond_null(id);
-        return;
+        return false;
     }
     r.path = path;
     r.enc = S.enc;
@@ -1340,7 +1377,7 @@ static void handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
                 respond_error(id, -32803 /* RequestFailed */, err);
                 arena_free(&a);
                 sb_free(&sb);
-                return;
+                return false;
             }
             break;
         case R_PREP_CALLS: lsp_prepare_call_hierarchy(&r, &w); break;
@@ -1350,6 +1387,24 @@ static void handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         case R_EXPAND: lsp_expand_macro(&r, &w); break;
         case R_CODE_ACTION: lsp_code_action(&r, &w); break;
         }
+    }
+    if (r.need_builder) {
+        /* the fix-all is for the builder to compute, which may be busy for
+         * a build: it answers the request, the protocol thread goes on */
+        DeferredReq *q = xcalloc(1, sizeof *q);
+        q->id = id;
+        q->msg = *msg;
+        q->body = body;
+        q->a = a;
+        q->r = r;
+        q->r.arena = &q->a;
+        q->cx = cx;
+        sb_free(&sb);
+        mutex_lock(&S.m);
+        vec_push(&S.deferred, q);
+        cond_broadcast(&S.work);
+        mutex_unlock(&S.m);
+        return true;
     }
     json_end_object(&w);
     t1 = stats_now();
@@ -1363,6 +1418,43 @@ static void handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
     snapshot_release(r.snap);
     cindex_free(cx);
     arena_free(&a);
+    return false;
+}
+
+/* A deferred request, answered on the builder thread (r.on_builder): the
+ * code action again, now with the fix-all computed.  If the document has
+ * changed since the request, the answer is [] (as for a stale snapshot). */
+static void deferred_run(DeferredReq *d)
+{
+    Req *r = &d->r;
+    StrBuf sb = {0};
+    JsonWriter w;
+    Doc *doc;
+    mutex_lock(&S.m);
+    doc = doc_find(r->path);
+    r->stale = !doc || doc->len != r->text_len ||
+               memcmp(doc->text, r->text, r->text_len) != 0;
+    mutex_unlock(&S.m);
+    r->on_builder = true;
+    r->need_builder = false;
+    begin_response(&w, &sb, d->id);
+    json_key(&w, "result");
+    lsp_code_action(r, &w);
+    json_end_object(&w);
+    send_json(&sb);
+    sb_free(&sb);
+    deferred_free(d);
+}
+
+static void deferred_free(DeferredReq *d)
+{
+    lsp_cdiags_release(&d->r);
+    snapshot_release(d->r.snap);
+    cindex_free(d->cx);
+    arena_free(&d->a);
+    arena_free(&d->msg);
+    free(d->body);
+    free(d);
 }
 
 static void did_open(const JsonValue *params)
@@ -1488,6 +1580,7 @@ int lsp_main(FILE *in, FILE *out)
         JsonValue *msg, *id, *params;
         const char *method;
         double t0 = stats_now(), t1;
+        bool taken = false;         /* body and a are the builder's now */
         if (!(body = rpc_read(in, &len)))
             break;
         t1 = stats_now();
@@ -1564,14 +1657,18 @@ int lsp_main(FILE *in, FILE *out)
                 if (!strcmp(method, REQS[i].method))
                     break;
             if (REQS[i].method)
-                handle_request(id, REQS[i].kind, REQS[i].policy, params);
+                taken = handle_request(id, REQS[i].kind, REQS[i].policy,
+                                       params, body, &a);
             else
                 respond_error(id, -32601, "method not found");
         }
         /* other notifications ($/cancelRequest, didSave, initialized, ...)
-         * need nothing: requests are answered synchronously */
-        free(body);
-        arena_free(&a);
+         * need nothing: requests are answered synchronously, a code action
+         * that needs the fix-all by the builder thread (handle_request) */
+        if (!taken) {
+            free(body);
+            arena_free(&a);
+        }
     }
     mutex_lock(&S.m);
     S.stop = true;
@@ -1595,6 +1692,9 @@ int lsp_main(FILE *in, FILE *out)
         }
         for (i = 0; i < S.docs.len; i++)
             doc_free(S.docs.data[i]);
+        for (i = 0; i < S.deferred.len; i++) /* unanswered at exit */
+            deferred_free(S.deferred.data[i]);
+        vec_free(&S.deferred);
         vec_free(&S.units);
         vec_free(&S.docs);
         vec_free(&S.queue);

@@ -151,14 +151,21 @@ typedef struct Req {
     bool c_fresh;            /* snap has the newest edit and its own index */
     bool stale;              /* the document has an edit snap lacks */
     bool doc_changes;        /* the client takes documentChanges */
+    bool on_builder;         /* running on the builder thread (a deferred
+                                request): lsp_fix_all computes at once */
+    bool need_builder;       /* out: lsp_fix_all needs the builder; run the
+                                request there instead */
     /* codeAction: snap's check diagnostics, copied under the lock */
     VEC(CDiag) cdiags;
 } Req;
 
 /* The fix-all edits of the document of r (C_DESIGN.md 7.3), computed on the
  * builder thread and kept with the snapshot; NULL: none could be computed,
- * or the document changed meanwhile.  Defined in server.c; the answer is
- * valid as long as r->snap is. */
+ * or the document changed meanwhile, or (r->need_builder is then set) they
+ * are not kept yet and r is not running on the builder: the protocol thread
+ * does not wait for it, the request is deferred (handle_request) and run
+ * again there.  Defined in server.c; the answer is valid as long as r->snap
+ * is. */
 const FixTextEdits *lsp_fix_all(Req *r);
 /* r->cdiags: snap's, copied (caller holds the lock); free with
  * lsp_cdiags_release. */

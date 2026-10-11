@@ -393,17 +393,23 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
     when it has the same range and message, else cereal's.
   - *`source.fixAll.cereal`:* offered when the request asks for it, or when
     it has no `only` and the document has a SAFE group. Its edit is what
-    `cereal fix` would do to the document in one pass (`fix_unit_edits`: the
-    same merge, `--only`-free, SAFE only, same three-phase gate with
-    bisection), over the buffers of the snapshot, run on the builder thread
-    (`BuilderJob`, shared with rename) and kept with the snapshot. If the
-    run is fatal or the document changed meanwhile, the fix-all action is
-    left out. A request may wait for the builder, as rename does.
+    `cereal fix` would do to the document (`fix_unit_edits`: the same merge,
+    `--only`-free, SAFE only, same three-phase gate with bisection; passes
+    until nothing is left to fix or `FIX_MAX_PASSES`, 8, as the CLI), over
+    the buffers of the snapshot, run on the builder thread and kept with the
+    snapshot. After more than one pass the edit is one replacement from the
+    first changed byte to the last. If the run is fatal or the document
+    changed meanwhile, the fix-all action is left out. The first request for
+    a snapshot is answered by the builder thread (`DeferredReq`) when it has
+    done the work, so the protocol thread keeps serving other requests
+    meanwhile (rename, by contrast, still waits on it); responses can come
+    out of order.
   - *Edits:* `documentChanges` with the overlay's document version when the
     client declared `workspace.workspaceEdit.documentChanges`, else
     `changes` as rename; positions in the negotiated encoding.
   - *Test hook:* `cereal/holdChecks` takes `"builds": true` to hold the
-    builder before each build as well, so that a snapshot goes stale.
+    builder before each build as well, so that a snapshot goes stale. A held
+    fix-all waits at its start, like a check.
 - **C names:** definition, declaration, type definition, references,
   document highlight, hover, rename, document symbols, signature help,
   semantic tokens and completion (above). Every request that reads the C
@@ -468,8 +474,11 @@ diagnostic echoed, `only` filters, the fix-all with a `fixall` step that
 applies it and compares the text with `cereal fix` on a copy, a MAYBE fix,
 a fix the gate refuses), `fixit_carry` (checks held: fixes moved by an edit
 above them, one dropped with its group by an edit at its edge, the
-diagnostic kept), `fixit_stale` (builds held: `[]`) and `fixit_nolit` (no
-`codeActionProvider` without literal support).
+diagnostic kept; a document that needs two passes), `fixit_stale` (builds
+held: `[]`), `fixit_nolit` (no `codeActionProvider` without literal support)
+and `fixall_async` (checks held: a fix-all is not answered, a hover and a
+quick fix are, the fix-all follows the release; steps `defer`, `await`,
+`unanswered`).
 `tests/lsp_stress.py BIN FILE [EDITS]` (not a golden) sends edits each
 followed at once by token, completion and hover requests; run on zstd.c
 under TSan (also on a smaller file, where more checks publish between

@@ -1,0 +1,279 @@
+>> initialize
+{
+ "codeActionProvider": {
+  "codeActionKinds": [
+   "quickfix",
+   "source.fixAll.cereal"
+  ],
+  "resolveProvider": false
+ },
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "codeActionProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider"
+ ]
+}
+>> initialized
+>> didOpen fixit/main.c
+>> didOpen fixit/typo.c
+>> (idle)
+## held (cereal/holdChecks): a fix-all waits at its start, as a check does
+>> cereal/holdChecks
+null
+## the first fix-all of main.c is not answered (the builder computes it) ...
+>> textDocument/codeAction
+## ... but the protocol thread serves other requests: a hover and a quick fix
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nfunc f: int(int, int) defined\n```"
+ },
+ "range": {
+  "end": {
+   "character": 5,
+   "line": 1
+  },
+  "start": {
+   "character": 4,
+   "line": 1
+  }
+ }
+}
+>> textDocument/codeAction
+[
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 3,
+      "line": 7
+     },
+     "start": {
+      "character": 0,
+      "line": 7
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 7
+        },
+        "start": {
+         "character": 6,
+         "line": 7
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ },
+ {
+  "diagnostics": [
+   {
+    "code": "strict-prototypes",
+    "message": "function declaration isn't a prototype",
+    "range": {
+     "end": {
+      "character": 5,
+      "line": 8
+     },
+     "start": {
+      "character": 4,
+      "line": 8
+     }
+    },
+    "severity": 2,
+    "source": "cereal"
+   }
+  ],
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "isPreferred": true,
+  "kind": "quickfix",
+  "title": "Insert 'void'"
+ }
+]
+>> request 3 not answered yet
+## released: the builder answers the fix-all
+>> cereal/holdChecks
+null
+[
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "source.fixAll.cereal",
+  "title": "Fix all auto-fixable problems"
+ }
+]
+## asked again: kept with the snapshot, answered at once
+>> textDocument/codeAction
+[
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#include <stdio.h>\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 0
+        },
+        "start": {
+         "character": 0,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "(x)",
+       "range": {
+        "end": {
+         "character": 17,
+         "line": 0
+        },
+        "start": {
+         "character": 16,
+         "line": 0
+        }
+       }
+      },
+      {
+       "newText": "void",
+       "range": {
+        "end": {
+         "character": 6,
+         "line": 8
+        },
+        "start": {
+         "character": 6,
+         "line": 8
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/fixit/main.c",
+      "version": 1
+     }
+    }
+   ]
+  },
+  "kind": "source.fixAll.cereal",
+  "title": "Fix all auto-fixable problems"
+ }
+]
+>> shutdown
+null
+>> exit
+exit 0

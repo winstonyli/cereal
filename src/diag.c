@@ -577,8 +577,14 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
 
 static long find_index_cached(DiagEngine *d, const char *id)
 {
-    size_t h = ((uintptr_t)id >> 3) * 0x9E3779B1u >> 7 & 511;
+    /* the high bits of a 64-bit multiplicative hash: the low bits of a
+     * product depend only on the low bits of the address, and the slot
+     * (hence the hit rate) then varied with where the linker put the ids */
+    size_t h = (size_t)(((uint64_t)((uintptr_t)id >> 3) *
+                         0x9E3779B97F4A7C15ull) >> 55);
     long i;
+    _Static_assert(sizeof d->idc_key / sizeof *d->idc_key == 512,
+                   "the hash takes 9 bits");
     if (d->idc_key[h] == id && !strcmp(options[d->idc_val[h]].name, id))
         return d->idc_val[h];
     i = find_index(id);

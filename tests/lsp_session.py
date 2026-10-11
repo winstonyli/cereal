@@ -25,6 +25,11 @@ that directory's absolute path, and in the transcript it is put back.
                                        nostics of one edit)
   {"write": PATH, "text": TEXT}       create a workspace file (removed at
                                        the end), e.g. compile_commands.json
+  {"send": REQUEST, "defer": true}     a request whose response is not awaited
+                                       until {"await": ID}; the requests sent
+                                       meanwhile are answered first
+  {"await": ID}                        record the response of a deferred request
+  {"unanswered": ID}                   record whether it has been answered yet
   {"fixall": PATH, "flags": FLAGS}     the source.fixAll.cereal action for the
                                        document applied to its text, compared
                                        with `cereal fix FLAGS` on a copy
@@ -107,6 +112,7 @@ def main():
     texts = {}  # path -> the document's text (open, and full-text changes)
     written = []
     restore = []  # (path, text) of files --flags appended to
+    deferred = {}  # id -> (request, step) not awaited yet
 
     def strip_data(v):
         if isinstance(v, list):
@@ -115,6 +121,23 @@ def main():
             return {k: strip_data(x) for k, x in v.items()
                     if k != "data" or isinstance(x, list)}
         return v
+
+    def respond(msg, st):  # the response of a request, into the transcript
+        r = next_msg(lambda m: m.get("id") == msg["id"] and "method" not in m)
+        res = r.get("result", r.get("error"))
+        if isinstance(res, dict) and "items" in res:  # completion
+            pat = re.compile(st.get("labels", r"^[^_]"))
+            res = dict(res, items=[i for i in res["items"]
+                                   if pat.search(i["label"])])
+        if msg.get("method") == "initialize":
+            caps = res["capabilities"]
+            res = {"positionEncoding": caps["positionEncoding"],
+                   "providers": sorted(k for k in caps)}
+            if "codeActionProvider" in caps:
+                res["codeActionProvider"] = caps["codeActionProvider"]
+        res = strip_data(res)
+        out.append(json.dumps(res if "result" in r else {"error": res},
+                              sort_keys=True, indent=1))
 
     for st in steps:
         if "env" in st:
@@ -145,22 +168,20 @@ def main():
                         texts[msg["params"]["textDocument"]["uri"][len("file://"):]] = ch["text"]
             send(msg)
             out.append(">> " + msg.get("method", ""))
-            if "id" in msg and msg.get("method") != "exit":
-                r = next_msg(lambda m: m.get("id") == msg["id"] and "method" not in m)
-                res = r.get("result", r.get("error"))
-                if isinstance(res, dict) and "items" in res:  # completion
-                    pat = re.compile(st.get("labels", r"^[^_]"))
-                    res = dict(res, items=[i for i in res["items"]
-                                           if pat.search(i["label"])])
-                if msg.get("method") == "initialize":
-                    caps = res["capabilities"]
-                    res = {"positionEncoding": caps["positionEncoding"],
-                           "providers": sorted(k for k in caps)}
-                    if "codeActionProvider" in caps:
-                        res["codeActionProvider"] = caps["codeActionProvider"]
-                res = strip_data(res)
-                out.append(json.dumps(res if "result" in r else {"error": res},
-                                      sort_keys=True, indent=1))
+            if "id" in msg and st.get("defer"):
+                deferred[msg["id"]] = (msg, st)
+            elif "id" in msg and msg.get("method") != "exit":
+                respond(msg, st)
+        elif "unanswered" in st:
+            while not inbox.empty():
+                m = inbox.get()
+                if m is None:
+                    raise SystemExit("server exited")
+                pending.append(m)
+            got = any(m.get("id") == st["unanswered"] and "method" not in m for m in pending)
+            out.append(">> request %s %s" % (st["unanswered"], "ANSWERED" if got else "not answered yet"))
+        elif "await" in st:
+            respond(*deferred.pop(st["await"]))
         elif "fixall" in st:
             # source.fixAll.cereal applied to the document's text must equal
             # what `cereal fix` makes of a copy of that text

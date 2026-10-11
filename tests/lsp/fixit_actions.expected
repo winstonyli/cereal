@@ -32,6 +32,7 @@
 >> didOpen fixit/main.c
 >> didOpen fixit/typo.c
 >> didOpen fixit/gate.c
+>> didOpen fixit/passes.c
 >> (idle)
 ## a lint (macro phase) diagnostic: the macro parameter; SAFE, so the action is preferred
 >> textDocument/codeAction
@@ -1210,6 +1211,10 @@ int g(void) { return 0; }
 >> fix-all of fixit/gate.c: 2 edits, equal to cereal fix
 #define OR(x) (x || 0)
 int f(int a, int b) { return OR(a && b); }
+## two errors that need a pass each (p.x, q.x): the fix-all runs the passes until stable, as cereal fix does, in one edit
+>> fix-all of fixit/passes.c: 1 edits, equal to cereal fix
+struct S { int x; };
+int f(struct S *p, struct S *q) { return p->x + q->x; }
 >> shutdown
 null
 >> exit

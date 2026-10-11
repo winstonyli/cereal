@@ -1458,7 +1458,7 @@ int fix_run(Options *o, const char *ccdb, const StrVec *own, const FixOpts *fxin
         }
     }
     if (!fx.max_passes)
-        fx.max_passes = 8;
+        fx.max_passes = FIX_MAX_PASSES;
     if (!getcwd(cwd, sizeof cwd))
         strcpy(cwd, ".");
     if (!realpath(fx.root ? fx.root : cwd, root)) {
@@ -1582,8 +1582,11 @@ void fix_edits_free(FixTextEdits *e)
     memset(e, 0, sizeof *e);
 }
 
-bool fix_unit_edits(Options *o, const char *main, const char *file,
-                    FixBaseFn base, void *base_ctx, FixTextEdits *out)
+/* One pass of fix_unit_edits.  *newtext (malloc'd, *newlen bytes and a NUL)
+ * is the text of file with the edits applied; NULL if there are none. */
+static bool unit_pass(Options *o, const char *main, const char *file,
+                      FixBaseFn base, void *base_ctx, FixTextEdits *out,
+                      char **newtext, size_t *newlen)
 {
     FixOpts fx;
     FixResult R;
@@ -1597,6 +1600,8 @@ bool fix_unit_edits(Options *o, const char *main, const char *file,
     memset(&R, 0, sizeof R);
     memset(&P, 0, sizeof P);
     memset(&job, 0, sizeof job);
+    *newtext = NULL;
+    *newlen = 0;
     if (!getcwd(cwd, sizeof cwd))
         strcpy(cwd, ".");
     R.quiet = true;
@@ -1642,7 +1647,8 @@ bool fix_unit_edits(Options *o, const char *main, const char *file,
         Sub s;
         sub_build(&P, &s, ids.data, ids.len);
         for (f = 0; f < P.gf.len; f++)
-            if (P.gf.data[f].path && !strcmp(P.gf.data[f].path, file))
+            if (P.gf.data[f].path && !strcmp(P.gf.data[f].path, file) &&
+                s.cnt[f]) {
                 for (i = 0; i < s.cnt[f]; i++) {
                     const FixEdit *x = &s.fs.acc.data[s.lo[f] + i];
                     FixTextEdit t;
@@ -1651,6 +1657,11 @@ bool fix_unit_edits(Options *o, const char *main, const char *file,
                     t.text = xstrdup(x->text);
                     vec_push(out, t);
                 }
+                *newtext = xmalloc(s.elen[f] + 1);
+                memcpy(*newtext, s.etext[f], s.elen[f]);
+                (*newtext)[s.elen[f]] = 0;
+                *newlen = s.elen[f];
+            }
         sub_free(&s);
     }
     vec_free(&ids);
@@ -1658,5 +1669,94 @@ bool fix_unit_edits(Options *o, const char *main, const char *file,
     vec_free(&P.skips);
     pass_free(&P);
     fixres_free(&R);
+    return true;
+}
+
+/* The buffers of the language server with the text of one file replaced. */
+typedef struct Layer {
+    FixBaseFn base;
+    void *ctx;
+    const char *file;
+    const char *text;        /* NULL: not replaced yet */
+    size_t len;
+} Layer;
+
+static bool layer_base(void *ctx, const char *path, const char **buf,
+                       size_t *len)
+{
+    const Layer *l = ctx;
+    if (l->text && !strcmp(path, l->file)) {
+        *buf = l->text;
+        *len = l->len;
+        return true;
+    }
+    return l->base(l->ctx, path, buf, len);
+}
+
+/* As `cereal fix`: passes until a pass has nothing to fix, or FIX_MAX_PASSES.
+ * One pass leaves its edits as they are; after more, the edits are of the
+ * text each pass saw, so the result is the one edit from the first changed
+ * byte to the last. */
+bool fix_unit_edits(Options *o, const char *main, const char *file,
+                    FixBaseFn base, void *base_ctx, FixTextEdits *out)
+{
+    Layer L;
+    FixTextEdits first = {0};
+    char *cur = NULL;
+    size_t curlen = 0;
+    int pass, done = 0;
+    L.base = base;
+    L.ctx = base_ctx;
+    L.file = file;
+    L.text = NULL;
+    L.len = 0;
+    for (pass = 1; pass <= FIX_MAX_PASSES; pass++) {
+        FixTextEdits e = {0};
+        char *nt;
+        size_t nl;
+        if (!unit_pass(o, main, file, layer_base, &L, &e, &nt, &nl)) {
+            if (pass == 1)
+                return false;
+            break;
+        }
+        if (!e.len) {
+            fix_edits_free(&e);
+            break;
+        }
+        if (pass == 1)
+            first = e;
+        else
+            fix_edits_free(&e);
+        free(cur);
+        cur = nt;
+        curlen = nl;
+        L.text = cur;
+        L.len = curlen;
+        done++;
+    }
+    if (done == 1) {
+        *out = first;
+    } else if (done > 1) {
+        const char *ob;
+        size_t ol, p = 0, s = 0;
+        fix_edits_free(&first);
+        if (base(base_ctx, file, &ob, &ol)) {
+            FixTextEdit t;
+            while (p < ol && p < curlen && ob[p] == cur[p])
+                p++;
+            while (s < ol - p && s < curlen - p &&
+                   ob[ol - 1 - s] == cur[curlen - 1 - s])
+                s++;
+            if (ol - s > p || curlen - s > p) {
+                t.begin = (uint32_t)p;
+                t.end = (uint32_t)(ol - s);
+                t.text = xmalloc(curlen - s - p + 1);
+                memcpy(t.text, cur + p, curlen - s - p);
+                t.text[curlen - s - p] = 0;
+                vec_push(out, t);
+            }
+        }
+    }
+    free(cur);
     return true;
 }

@@ -4265,3 +4265,65 @@ had 3.895 G). The difference is stable across copies of the binary; the
 `diag.c` change is only an added function and the check path calls none of
 the new code. `__strcmp_avx2` accounts for 9 M of it (350 k more calls through
 the PLT). Not chased further. Scratch lived in `~/c4s` (removed).
+
+## Round 216: the Round 215 callgrind rise; C4 follow-ups
+
+Callgrind (found, fixed). The +0.5% on uvloop `loop.c` was not the new code:
+callgrind of 943a38e (3.8949 G) and d5a587f (3.9157 G), built the same way,
+differ by 20.8 M, all of it in four functions of `diag.c`/libc: `__strcmp_avx2`
++10.1 M, `name_matches` +6.0 M, `__strlen_avx2` +2.4 M, `find_index_cached`
++1.7 M. `find_index_cached` (the option lookup of `diag_level_for`, 1,155,595
+calls in both builds) keys a 512-entry direct-mapped cache on the address of
+the id string, hashed as `(addr >> 3) * 0x9E3779B1u >> 7 & 511`: the low bits
+of a product depend only on the low bits of the address, and which of the
+~190 literals collide depends on where the linker puts them. The new code
+moved the literals; misses went from 105 k to 279 k, and each miss scans the
+option table with `name_matches` (strcmp, strlen). The call sites were
+identical. Fix: the high bits of a 64-bit multiplicative hash (one line, plus
+a static assert that the table has the 512 entries it takes 9 bits for).
+uvloop `loop.c`: 3.9157 G -> 3.8852 G (-0.78%), 0.25% below 943a38e's 3.8949 G.
+A 2048-entry table with the same hash measured 3.8867 G, so it was not kept.
+The cache remains layout-dependent in principle (any new literal can still
+collide); the high-bit hash makes that a random draw of a small effect
+rather than a systematic one.
+
+C4 follow-ups (C_DESIGN "C4 follow-ups (Round 216)"). (a) The LSP fix-all
+now loops until stable like `cereal fix`: `fix_unit_edits` repeats the
+one-unit pass (now `unit_pass`) up to the new `FIX_MAX_PASSES` (8, also the
+CLI's `--max-passes` default), each pass over the buffers with the
+document's text replaced by the previous result (`Layer`). After one pass
+the edits are returned as they are; after more they become one edit from the
+first changed byte to the last, since later passes' edits are relative to
+text the client does not have. (b) The first fix-all request no longer holds
+up the protocol thread. Finding: the brief said to do it the way rename is
+answered, but rename waits on the protocol thread too (`run_on_builder`);
+nothing was asynchronous. New mechanism: `lsp_fix_all` on the protocol
+thread only sets `Req.need_builder` when nothing is cached; `handle_request`
+then hands the request (message body and arenas, snapshot and index
+references) to the builder as a `DeferredReq` and returns true so the main
+loop does not free it; the builder runs it after a `BuilderJob`, before the
+next build, runs the code action again with `Req.on_builder` (fix-all now
+computed and cached) and writes the response. The document having changed
+since the request answers `[]`. Responses may come out of order. A deferred
+request pending at exit is dropped. `cereal/holdChecks` also holds a fix-all
+at its start.
+
+Tests: `fixit_actions` got `fixit/passes.c` (`p.x + q.x`, two passes) and a
+`fixall` step (equal to `cereal fix`; fails on d5a587f); new session
+`fixall_async` (a fix-all held, a hover and a quick fix answered, the fix-all
+after the release, the second one from the cache; fails on d5a587f);
+`lsp_session.py` steps `defer`, `await`, `unanswered`. Gates: run.sh 2057
+passed (was 2055); gate.sh: run 2057, san 2057 passed, 628 files, 0
+findings; gcc.dg 3908 of 3910, c-c++-common 637 of 638, cpp 289 of 289
+(unchanged); callgrind 3.8852 G. TSan: all 22 LSP sessions, plain and with
+`-fparallel=on -fparallel-chunk=1 -fparallel-threads=3`: 44 passed, 0
+reports; `lsp_stress.py` 200 edits on zstd.c (12 min), and the scratch
+variant adding `codeAction` and fix-all requests after each edit on
+`fixit/main.c`: 0 reports (`~/cereal-tsan`, removed). Source +237/-20 in 5
+files (diag.c, fixmode.c, fixmode.h, lsp.h, server.c); tests about +45
+lines changed, `fixall_async` 23 + 279 lines.
+
+Not done: composing a multi-pass fix-all into granular edits (`map_off`
+could); the pass limit is not reported to the client; rename still blocks
+the protocol thread (the same deferral would serve it). Scratch lived in
+`~/c5s` (removed).

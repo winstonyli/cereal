@@ -5,6 +5,7 @@
  {"open": "fixit/main.c"},
  {"open": "fixit/typo.c"},
  {"open": "fixit/gate.c"},
+ {"open": "fixit/passes.c"},
  {"idle": true},
  {"note": "a lint (macro phase) diagnostic: the macro parameter; SAFE, so the action is preferred"},
  {"send": {"id": 2, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c"}, "range": {"start": {"line": 0, "character": 16}, "end": {"line": 0, "character": 16}}, "context": {"diagnostics": []}}}},
@@ -28,6 +29,8 @@
  {"note": "a fix the gate refuses: the quickfix is still offered; fix-all leaves it out, as cereal fix does"},
  {"send": {"id": 11, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/gate.c"}, "range": {"start": {"line": 0, "character": 14}, "end": {"line": 0, "character": 14}}, "context": {"diagnostics": []}}}},
  {"fixall": "fixit/gate.c", "flags": "-Wall"},
+ {"note": "two errors that need a pass each (p.x, q.x): the fix-all runs the passes until stable, as cereal fix does, in one edit"},
+ {"fixall": "fixit/passes.c", "flags": "-Wall -Wstrict-prototypes"},
  {"send": {"id": 12, "method": "shutdown"}},
  {"send": {"method": "exit"}}
 ]

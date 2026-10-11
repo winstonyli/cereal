@@ -6,6 +6,9 @@
 #include "driver.h"
 #include "fixres.h"
 
+/* --max-passes default; also the language server's fix-all. */
+enum { FIX_MAX_PASSES = 8 };
+
 typedef struct FixOpts {
     bool unsafe;             /* --unsafe: MAYBE fixes too */
     bool diff;               /* --diff: print the patch, change nothing */
@@ -24,9 +27,10 @@ int fix_flag(FixOpts *fx, const char *arg);
 int fix_run(Options *o, const char *ccdb, const StrVec *own, const FixOpts *fx);
 
 /* The language server's fix-all: the edits `cereal fix` would make to file,
- * a file of the unit main, in one pass, with the texts from base, the editor
- * buffers.  Only edits of file; the same gate.  False: main could not be
- * read.  Free with fix_edits_free. */
+ * a file of the unit main, with the texts from base, the editor buffers:
+ * passes until stable (at most FIX_MAX_PASSES), the same gate.  Only edits
+ * of file, as of the text in base (one edit if it took more than one pass).
+ * False: main could not be read.  Free with fix_edits_free. */
 typedef struct FixTextEdit {
     uint32_t begin, end;     /* byte offsets in the buffer */
     char *text;

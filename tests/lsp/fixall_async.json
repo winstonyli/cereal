@@ -1,0 +1,23 @@
+[
+ {"write": "fixit/.cereal", "text": "-Wall -Wstrict-prototypes\n"},
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/fixit", "capabilities": {"general": {"positionEncodings": ["utf-8"]}, "textDocument": {"codeAction": {"codeActionLiteralSupport": {"codeActionKind": {"valueSet": ["quickfix", "source.fixAll"]}}}}, "workspace": {"workspaceEdit": {"documentChanges": true}}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"open": "fixit/main.c"},
+ {"open": "fixit/typo.c"},
+ {"idle": true},
+ {"note": "held (cereal/holdChecks): a fix-all waits at its start, as a check does"},
+ {"send": {"id": 2, "method": "cereal/holdChecks", "params": {"hold": true}}},
+ {"note": "the first fix-all of main.c is not answered (the builder computes it) ..."},
+ {"send": {"id": 3, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c"}, "range": {"start": {"line": 2, "character": 0}, "end": {"line": 2, "character": 0}}, "context": {"diagnostics": [], "only": ["source.fixAll.cereal"]}}}, "defer": true},
+ {"note": "... but the protocol thread serves other requests: a hover and a quick fix"},
+ {"send": {"id": 4, "method": "textDocument/hover", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c"}, "position": {"line": 1, "character": 4}}}},
+ {"send": {"id": 5, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c"}, "range": {"start": {"line": 7, "character": 0}, "end": {"line": 8, "character": 8}}, "context": {"diagnostics": [], "only": ["quickfix"]}}}},
+ {"unanswered": 3},
+ {"note": "released: the builder answers the fix-all"},
+ {"send": {"id": 6, "method": "cereal/holdChecks", "params": {"hold": false}}},
+ {"await": 3},
+ {"note": "asked again: kept with the snapshot, answered at once"},
+ {"send": {"id": 7, "method": "textDocument/codeAction", "params": {"textDocument": {"uri": "file://$ROOT/fixit/main.c"}, "range": {"start": {"line": 2, "character": 0}, "end": {"line": 2, "character": 0}}, "context": {"diagnostics": [], "only": ["source.fixAll.cereal"]}}}},
+ {"send": {"id": 8, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]
