@@ -26,9 +26,24 @@ cereal index [--all] file.c           # LSP model as JSON
 cereal parse [--dump] file.c...       # C99 + GNU parser (also -fsyntax-only)
 cereal query def|refs|hover|visible|expand|callers|callees|deps FILE:LINE:COL file.c
 cereal lsp                            # language server (stdio), docs/LSP.md
-cereal fix --edits=FILE --diff         # unified diff of edit groups (the edit builder; docs/C_DESIGN.md)
+cereal fix [opts] file.c...           # apply the diagnostics' fix-its, gated (docs/C_DESIGN.md)
+cereal fix --compile-commands DB      # the same over a compile database
 cereal --list-warnings
 ```
+
+`cereal fix` checks every unit and applies the fixes marked safe (hygiene
+parentheses, missing braces, `.` to `->`, `#include` insertions, ...) in up to
+8 passes. A fix is kept only if re-checking the edited text leaves the
+diagnostics and the inactive `#if` regions as they were (and, for
+parentheses, the syntax tree). Options: `--unsafe` (also the maybe fixes:
+did-you-mean, format specifiers, assignment parentheses), `--diff`,
+`--dry-run`, `--apply` (the default), `--only=ID[,ID]`, `--max-passes=N`,
+`--root=DIR` (edit only below DIR; the default is the working directory).
+Files keep their BOM and line ends and are replaced atomically; read-only
+files, files with other hard links and files outside the root are skipped.
+Exit status: 0 nothing left to fix, 1 something skipped or remaining (or
+`--diff`/`--dry-run` found edits), 2 usage, 3 a unit could not be checked,
+4 a file could not be read or written. `-j N` applies as for the other modes.
 
 Options: `-I -iquote -isystem -D -U -include -imacros -nostdinc -undef -std=c99|gnu99
 -O<n> -pedantic -pedantic-errors -trigraphs -W<name> -Wno-<name> -W<group>

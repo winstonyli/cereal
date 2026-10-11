@@ -46,6 +46,7 @@ typedef struct DiagNote {
     bool nocol;              /* a line-only location, as the warning's */
     bool nofix;              /* a fix-it for this note was refused: no more */
     bool expn;               /* an "in expansion of macro" note */
+    const char *hdr;         /* a note suggesting the #include of this header */
 } DiagNote;
 
 typedef struct Diagnostic {
@@ -187,6 +188,11 @@ void diag_free(DiagEngine *d);
 
 DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested);
 bool diag_enabled(DiagEngine *d, const char *id);
+/* Which options d reports (a byte per registry entry, malloc'd), and the
+ * question for one id against such a map (hard errors, ids outside the
+ * registry: yes).  For comparing translation units with different flags. */
+uint8_t *diag_enabled_map(DiagEngine *d);
+bool diag_map_enabled(const uint8_t *map, const char *id);
 /* -Wno-error=id (or #pragma GCC diagnostic warning): -Werror leaves it a warning */
 bool diag_noerror(DiagEngine *d, const char *id);
 /* 1: enabled; 0: disabled by a flag (-Wno-X, or -Wno-all for an option

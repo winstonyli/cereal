@@ -1,0 +1,20 @@
+check/fixit-assign.c [-Wall]: exit 0 4 edits in 1 file in 1 pass; 0 skipped; again: noop
+check/fixit-braces.c [-Wall]: exit 0 28 edits in 1 file in 1 pass; 0 skipped; again: noop
+check/fixit-case.c []: exit 0 no edits; again: noop
+check/fixit-format.c [-Wall -Wformat-signedness]: exit 0 9 edits in 1 file in 1 pass; 0 skipped; again: noop
+check/fixit-include-bare.c []: exit 0 2 edits in 1 file in 1 pass; 0 skipped; again: noop
+check/fixit-include.c []: exit 0 2 edits in 1 file in 1 pass; 0 skipped; again: noop
+check/fixit-json.c []: exit 0 4 edits in 1 file in 4 passes; 0 skipped; again: noop
+check/fixit-line.c []: exit 0 1 edit in 1 file in 1 pass; 0 skipped; again: noop
+check/fixit-lognot.c [-Wall]: exit 0 4 edits in 1 file in 1 pass; 0 skipped; again: noop
+check/fixit-macro.c []: exit 1 0 edits in 0 files in 0 passes; 1 skipped; again: exit 1: cereal fix: fixit-macro.c:21:13: skipped [error]: fails the semantic check: leaves the error: expected ';' before '}' token [error] at fixit-macro.c:21:13|cereal fix: 0 edits in 0 files in 0 passes; 1 skipped|
+check/fixit-patch.c []: exit 0 3 edits in 1 file in 3 passes; 0 skipped; again: noop
+check/fixit-pri.c []: exit 0 no edits; again: noop
+check/fixit-proto.c [-Wstrict-prototypes]: exit 0 2 edits in 1 file in 1 pass; 0 skipped; again: noop
+check/fixit-struct.c []: exit 0 3 edits in 1 file in 3 passes; 0 skipped; again: noop
+check/fixit-tabs.c []: exit 1 1 edit in 1 file in 1 pass; 1 skipped; again: exit 1: cereal fix: fixit-tabs.c:9:16: skipped [error]: fails the semantic check: leaves the error: expected ';' before '}' token [error] at fixit-tabs.c:9:16|cereal fix: 0 edits in 0 files in 0 passes; 1 skipped|
+check/fixit-typo.c []: exit 0 4 edits in 1 file in 4 passes; 0 skipped; again: noop
+check/fixit-xor.c []: exit 1 7 edits in 1 file in 1 pass; 1 skipped; again: exit 1: cereal fix: fixit-xor.c:4:13: skipped [xor-used-as-pow]: fails the semantic check: adds 1 error|cereal fix: 0 edits in 0 files in 0 passes; 1 skipped|
+lint/cond_fixit.c []: exit 0 no edits; again: noop
+lint/guard_fixit.c []: exit 0 2 edits in 2 files in 1 pass; 0 skipped; again: noop
+lint/hygiene_fixit.c [-Wmacro-unused-param]: exit 0 7 edits in 1 file in 1 pass; 0 skipped; again: noop

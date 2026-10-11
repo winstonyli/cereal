@@ -166,7 +166,7 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
 - `cereal fix` applying the diagnostics' fix-its, macro-to-inline/enum/const
   suggestions, a baseline file for CI (est. 3 to 5 weeks).
   Status: C1 done (Round 212: fix-its in the diagnostic engine, `-fdiagnostics-parseable-fixits`,
-  `-fdiagnostics-generate-patch`, JSON `fixits`, the edit builder and `fix --edits --diff`); C2 done in Round 213 (checker fix-its, gcc-covered C2b rows, hygiene body, assignment and prototype parens; header-guard and cond-typo INFO remain); C3 and C4 not started.
+  `-fdiagnostics-generate-patch`, JSON `fixits`, the edit builder and `fix --edits --diff`); C2 done in Round 213 (checker fix-its, gcc-covered C2b rows, hygiene body, assignment and prototype parens); header-guard and cond-typo fix-its and C3 (`cereal fix`: multi-TU merge, semantic gate with bisection, atomic writes, `--diff`/`--dry-run`/`--unsafe`/`--only`/`--root`, compile databases) done in Round 214; C4 not started.
   Design for fix-its, `cereal fix` and LSP quick fixes (slices C1 to C4; 6 to 10 weeks realistic): [C_DESIGN.md](C_DESIGN.md).
 - Macro notes that match gcc ("in definition of macro" for tokens a
   parameter substituted): needs per-token provenance; design in HISTORY

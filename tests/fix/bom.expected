@@ -1,0 +1,27 @@
+$ cereal fix b.c bc.c
+exit 0
+-- stderr
+cereal fix: 4 edits in 2 files in 1 pass; 0 skipped
+-- changes
+diff -ruN snap/b.c t/b.c
+--- snap/b.c
++++ t/b.c
+@@ -1,4 +1,5 @@
+-<BOM>int f(const char *s)
++<BOM>#include <stdio.h>
++int f(const char *s)
+ {
+     puts(s);
+     return 0;
+diff -ruN snap/bc.c t/bc.c
+--- snap/bc.c
++++ t/bc.c
+@@ -1,4 +1,5 @@
+-<BOM>#define SUM 1 + 2<CR>
++<BOM>#include <stdio.h><CR>
++#define SUM (1 + 2)<CR>
+ int v = SUM;<CR>
+ int f(const char *s)<CR>
+ {<CR>
+$ cereal fix b.c bc.c
+exit 0

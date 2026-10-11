@@ -8,10 +8,11 @@ enum or const suggestions) are out of scope here and get their own designs
 Claims about the code cite `file:line` at that commit. Claims about gcc-13
 were probed with gcc 13.4.0 on WSL (section 13). Numbers marked "est." are
 estimates. **Status: C1 is implemented (HISTORY Round 212, section 8 "C1
-as built"); C2 is implemented (Round 213, "C2 as built" below, minus the
-header-guard and cond-typo items); C3 and C4 are not.** Where the text below
-still describes C1 or C2 as future work, "C1 as built", "C2 as built" and the
-probe table (section 13, P11 to P19) take precedence.
+as built"); C2 is implemented (Round 213, "C2 as built" below; its
+header-guard and cond-typo items in Round 214); C3 is implemented (Round
+214, "C3 as built" below); C4 is not.** Where the text below still describes
+C1, C2 or C3 as future work, "C1 as built", "C2 as built", "C3 as built" and
+the probe table (section 13, P11 to P19) take precedence.
 
 ## 1. Decisions in one place
 
@@ -429,8 +430,8 @@ gets a testing input, in the spirit of `index --replay`:
 replace the collected ones.
 
 This combination of options lands in C1, as the first piece of the `fix`
-mode. The rest of `fix` comes in C3, and until then any other `fix`
-command is a usage error.
+mode. The rest of `fix` came in C3 (Round 214); `--edits=FILE` stays as
+the builder's testing input.
 
 Cases in `tests/fix/` cover sort, dedupe, same-point order, touching
 versus overlap, and group atomicity. This is the one small runnable check
@@ -917,7 +918,7 @@ the brief, through `diag_fixit` and the C1 helpers; nothing in C3 or C4.
 ### C2: cereal-only fixes and C2b (est. 5 days, realistic 7 to 12)
 
 Status: done in Round 213 except the header-guard and cond-typo items (see
-"C2 as built").
+"C2 as built"), which were done in Round 214 ("C3 as built").
 
 **Contents**
 
@@ -973,6 +974,123 @@ compared only when the file uses neither `__LINE__` nor `assert`. Other
 files are checked by diagnostics alone, and the report says so. Every
 other SAFE fix keeps line numbers: parens, braces, `void`, the guard
 name.
+
+### C3 as built (Round 214)
+
+Implemented: `cereal fix` as scoped above (6.1 to 6.7), nothing of C4. The
+C2 leftovers (header-guard, cond-typo) landed in Round 214 part 1:
+`cond-typo` is INFO; `header-guard` is SAFE, or MAYBE when the misspelt name
+is tested anywhere else in the unit (`tested_anywhere`, `include.c`; Q9 as
+proposed).
+
+Where the code is:
+
+- `src/fixtu.c` (`fix_tu`, a `TuFn`): one TU's check plus lint analyses, the
+  `skipped` listener, and `collect` into a `FixResult` (`fixres.h`: files by
+  real path and text hash, diagnostics, edit groups with their applicability,
+  inactive ranges, the enabled-option map, the AST digest). An overlay set in
+  `FixResult.ov` makes it a gate re-run.
+- `src/fixmode.c` (merge, gate, write): the global file table, candidate
+  selection, `merge_pass`, `fix_run` (the pass loop), the old `--edits`
+  path. `src/fixmode.h` holds `FixOpts`, `fix_flag`, `fix_run`.
+- `src/jobs.h`: `TuFn`/`TuJob` (now with `res`), `run_jobs`, `CdbPlan`;
+  `mode_compdb` was split so `fix` reuses its plan (`compdb_plan`).
+- `src/c/cdigest.c`: `checker_digest_unit`, the AST digest, mixed into
+  `*CheckOptions.digest` after the visit loop. `DiagNote.hdr` records which
+  header a "declared in header" note suggests (see the correlation rule).
+- `common.c`: `file_write_atomic`. `diag.c`: `diag_enabled_map`.
+
+How a pass runs (6.2 in practice):
+
+1. Collect in parallel (`run_jobs`, results in job order). Groups with
+   `nofix` owners, edits outside user files, and no-op edits (gcc offers
+   `%u` for `%u`) are dropped. A note's fix-it that overlaps one of its own
+   diagnostic's (xor: `0x2` against `1 <<`) is dropped, it being the other
+   way to the same end.
+2. The global table merges files by real path. Candidates: SAFE groups
+   (class 0 strict, class 1 paren), MAYBE groups with `--unsafe` and error
+   groups (class 2 lenient), gate-demoted groups. Candidates are deduped,
+   D5-checked (a group each TU that read its file reports), cut by `--only`,
+   `--root`, read-only, hard link, and non-regular tests, and put through
+   the builder. D6: one error group per pass, the lowest `seq`; with errors
+   in a TU, its warning groups wait (Q3).
+3. The gate (6.4) runs three phases, each with bisection of failures: 1a
+   strict on the non-paren SAFE set, 1b the paren groups alone (digest),
+   2 lenient groups on top of the accepted set. A TU that read an edited
+   file is re-run with the overlay; the others are not. Strict means every
+   diagnostic that owned an applied fix-it is gone, none added or changed
+   (places mapped through the edits), inactive ranges and, for paren groups,
+   the digest unchanged. Lenient means no new errors, and the fixed errors
+   gone. A strict failure demotes the group to class 2; it is skipped
+   without `--unsafe` with "fails the semantic check: why".
+4. Write: re-read and hash-compare each file (`CEREAL_FIX_HOOK`, a shell
+   command run just before, lets a test play editor), keep BOM and line
+   ends, `file_write_atomic`, report. Then the next pass, up to
+   `--max-passes` (default 8); after the last a probe pass reports whether
+   fixes remain ("fixes remain after N passes", exit 1).
+5. Report: skip lines come from the final pass only
+   (`cereal fix: FILE:L:C: skipped [ID]: REASON`, sorted); the summary
+   `cereal fix: N edits in M files in P passes; K skipped` (distinct files,
+   passes that wrote; "would apply " for `--diff` and `--dry-run`) prints
+   when N or K is not 0. Exit 4 > 3 > 1 > 0, 2 for usage; outside-root skips
+   do not raise it.
+
+Deviations from the text above, and additions:
+
+- `--dry-run` (summary only, no diff) exists beside `--diff`; `--apply` is
+  the default and is an error together with `--diff`/`--dry-run`. The design
+  names only `--diff`. `--edits=FILE` is kept for the builder goldens.
+- `fix` is a mode word like `lint`, not a pre-parse dispatch; it rejects
+  `-M`/`-o` and sets `fatal_missing_include` (an input that cannot be read or
+  an include that cannot be found is exit 3).
+- The file key is the real path only (not a `(FileKey, path)` pair); the
+  overlay is served per TU under that TU's own spelling of the path
+  (`FFile.path`).
+- Lenient test for error groups: the fixed error must disappear and no error
+  may appear; warnings may change. Several unknown-type fixes need one pass
+  each (D6), which is why `p.x + q.x` takes two passes.
+- Correlation rule: a diagnostic whose "declared in header" note matches the
+  header note of an applied include insertion counts as fixed (inserting
+  `<stdio.h>` also removes the builtin-declaration-mismatch warning).
+- `-Wno-x` handling relies on the enabled map: a diagnostic disabled in one
+  TU but not another is compared option by option, not by presence.
+- D6 held-back error groups are reported as skipped ("held back: one error
+  fix per pass") when a pass can make no more progress; at the pass limit
+  they are the "fixes remain" case.
+- After phase 2 no combined re-verification of the three phases is run: each
+  phase was gated on top of the accepted set, so the result is the last
+  gated state, but the final file text itself is only checked by the next
+  pass (and the probe). Parked: a final whole-set re-run if a case shows a
+  combination the last pass misses.
+- `fixgate.sh` compares the `.text` section (not the whole object) for SAFE
+  runs and skips the comparison when the fix inserted an `#include`: a header
+  can redirect a call (`scanf` to `__isoc99_scanf`, gcc.dg/format/attr-6),
+  and `assert` strings change when a stringized macro argument gains
+  parentheses (tree-ssa/ldist-strlen-1). The design's `__LINE__`/`assert`
+  rule is therefore not needed. For `--unsafe` runs it counts only new
+  errors (more warnings may appear when broken code starts to parse, or when
+  a printf call's second bad conversion is no longer hidden).
+
+Tests: `tests/fix/NAME.sh` cases through `tests/fix_case.sh PROG NAME JOBS`
+and `tests/fix/lib.sh`, each with `NAME.expected`, run by `run.sh` section
+21 at `-j1` and `-j12` (which must agree): `safe`, `maybe` (each MAYBE
+skipped and applied), `gate` (demotion), `passes` (D6, `--max-passes`),
+`crlf`, `bom`, `files` (read-only, hard link, symlink, outside `--root`),
+`unwritable` (exit 4, skipped as root), `changed` (file saved mid-run),
+`diff` (`--diff`, `--dry-run`, `--apply`), `only`, `compdb` (a shared
+header fixed once; a D5 disagreement from `-DA` in one entry), `corpus`
+(every `tests/check/fixit-*.c` and fix-it input of `tests/lint` with
+`--unsafe`, then again: a no-op). No synthetic conflict case exists; real
+fix-its from one diagnostic rarely overlap, and `overlap.edits` covers the
+builder. `bench/tools/fixgate.sh [DIR]` as in 8, C3: 24 cases of the
+tests, 620 files of `tests/check`, a 1469-file sample of gcc.dg (every
+third file): 0 failed. Under TSan the fix mode ran at `-j2/4/8/12` on 150
+gcc.dg files and the compdb, maybe, safe and files cases: 0 reports.
+
+Remaining: the final combined re-verification above; the
+`CEREAL_FIX_HOOK` is a test hook, not an interface; unwritable-directory
+errors are printed once per pass that retries the file; `--only` ignores
+unknown ids silently.
 
 ### C4: LSP code actions (est. 4 days, realistic 5 to 9)
 

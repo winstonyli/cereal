@@ -1,5 +1,5 @@
 /* main.c - the `cereal` command. */
-#include "fixset.h"
+#include "fixmode.h"
 #include "driver.h"
 #include "par.h"
 #include "ppout.h"
@@ -10,6 +10,7 @@
 #include "c/csymidx.h"
 #include "c/frontend.h"
 #include "compdb.h"
+#include "jobs.h"
 #include "lsp/lsp.h"
 
 #include <string.h>
@@ -52,8 +53,9 @@ static void usage(FILE *o)
         "                its entry\n"
         "  -fsyntax-only  the same as check\n"
         "  lsp           language server on stdin/stdout\n"
-        "  fix --edits=FILE --diff   print the unified diff of the edit groups in FILE\n"
-        "                (PATH BEGIN END \"TEXT\" per line, blank line between groups)\n"        "  query KIND FILE:LINE:COL   KIND = def | decl | refs | uses | highlight |\n"
+        "  fix           apply the fix-its of the check and lint diagnostics to the\n"
+        "                files (see \"fix options\" below)\n"
+        "  query KIND FILE:LINE:COL   KIND = def | decl | refs | uses | highlight |\n"
         "                hover | visible | expand | callers | callees | deps |\n"
         "                rename=NEWNAME (a C name)\n"
         "  --list-warnings  list every -W option\n"
@@ -82,7 +84,25 @@ static void usage(FILE *o)
         "the compile_commands.json DB (or those under the FILEs and directories\n"
         "given) in its directory with its own flags, then the options given here;\n"
         "one summary line at the end.  Exit status: 0 clean, 1 errors in a checked\n"
-        "file, 2 usage, 3 no errors but some entries could not be checked.\n",
+        "file, 2 usage, 3 no errors but some entries could not be checked.\n"
+        "\n",
+        o);
+    fputs(
+        "fix options (cereal fix [options] FILE... | --compile-commands DB):\n"
+        "  the fixes marked safe are applied, over up to 8 passes; every unit is\n"
+        "  checked, a fix is kept only if the diagnostics, the inactive #if\n"
+        "  regions (and for parentheses the syntax tree) stay as they were.\n"
+        "  --unsafe        also the fixes marked maybe\n"
+        "  --diff          print the unified diff of one pass, change nothing\n"
+        "  --dry-run       one pass, change nothing, say what would be done\n"
+        "  --apply         write the files (the default)\n"
+        "  --only=ID[,ID]  only the diagnostics with these option names\n"
+        "  --max-passes=N  passes at most (default 8)\n"
+        "  --root=DIR      edit only files under DIR (default: the working\n"
+        "                  directory); others are skipped, and said so\n"
+        "  Exit status: 0 nothing left to fix, 1 something was skipped or\n"
+        "  remains (or --diff/--dry-run found edits), 2 usage, 3 a unit could not\n"
+        "  be checked, 4 a file could not be read or written.\n",
         o);
 }
 
@@ -123,9 +143,10 @@ static ParOptions par_options(Options *o)
 }
 
 /* One translation unit of a mode: text to out, diagnostics to err. */
-typedef int (*TuFn)(Options *o, const char *path, FILE *out, FILE *err);
 
-static int preprocess_one(Options *o, const char *path, FILE *out, FILE *err)
+
+static int preprocess_one(Options *o, const char *path, FILE *out, FILE *err,
+                       void *res TU_UNUSED)
 {
     TU tu;
     int rc;
@@ -149,7 +170,8 @@ done:
 }
 
 /* -M, -MM: the rule only (the directives are run, no text kept). */
-static int deps_one(Options *o, const char *path, FILE *out, FILE *err)
+static int deps_one(Options *o, const char *path, FILE *out, FILE *err,
+                       void *res TU_UNUSED)
 {
     TU tu;
     int rc;
@@ -162,7 +184,8 @@ static int deps_one(Options *o, const char *path, FILE *out, FILE *err)
     return rc;
 }
 
-static int lint_one(Options *o, const char *path, FILE *out, FILE *err)
+static int lint_one(Options *o, const char *path, FILE *out, FILE *err,
+                       void *res TU_UNUSED)
 {
     TU tu;
     Analysis an;
@@ -305,7 +328,8 @@ static int verify_carry_one(Options *o, const char *path, FILE *out, FILE *err)
     return rc;
 }
 
-static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
+static int parse_one(Options *o, const char *path, FILE *out, FILE *err,
+                       void *res TU_UNUSED)
 {
     TU tu;
     FrontendOpts fo = fe_opts;
@@ -338,26 +362,11 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err)
 
 /* ---- the TU pool: -j ------------------------------------------------ */
 
-typedef struct Batch {
+struct Batch {
     Mutex m;
     Cond done;
-} Batch;
-
-typedef struct TuJob {
-    Batch *batch;
-    Options *o;                    /* the run's options */
-    TuFn fn;
-    const char *path;
-    /* a compile_commands entry: the job runs with the options of the entry
-     * and cereal's own (`extra`), in the entry's directory; else with `o` */
-    const CompileEntry *entry;
-    const char *const *extra;
-    int nextra;
-    char *out, *err;               /* buffered, written in input order */
-    size_t out_len, err_len;
-    int rc;
-    bool finished;                 /* guarded by batch->m */
-} TuJob;
+};
+typedef struct Batch Batch;
 
 /* The job's TU function with its options.  An entry's are built here, on
  * the thread that runs it, and freed with the TU (peak memory: one Options
@@ -367,7 +376,7 @@ static int run_fn(TuJob *j, FILE *out, FILE *err)
     Options eo;
     int rc;
     if (!j->entry)
-        return j->fn(j->o, j->path, out, err);
+        return j->fn(j->o, j->path, out, err, j->res);
     options_init(&eo);
     eo.msg = NULL;                          /* reported before the run */
     eo.jobs = j->o->jobs;
@@ -375,7 +384,7 @@ static int run_fn(TuJob *j, FILE *out, FILE *err)
     eo.pp.time_str = j->o->pp.time_str;
     eo.pp.fatal_missing_include = j->o->pp.fatal_missing_include;
     entry_options(&eo, j->entry, j->extra, j->nextra);
-    rc = j->fn(&eo, j->path, out, err);
+    rc = j->fn(&eo, j->path, out, err, j->res);
     options_free(&eo);
     return rc;
 }
@@ -399,9 +408,9 @@ static void run_tu_job(void *arg)
 /* A job of another directory than the last one printed: say so, as make
  * does, for tools that resolve relative names (decided in commit order, so
  * the same for any -j). */
-static void enter_dir(const TuJob *j, const char **last)
+static void enter_dir(const TuJob *j, const char **last, bool dirs)
 {
-    if (j->entry && j->entry->dir && strcmp(j->entry->dir, *last)) {
+    if (dirs && j->entry && j->entry->dir && strcmp(j->entry->dir, *last)) {
         fprintf(stderr, "cereal: Entering directory '%s'\n", j->entry->dir);
         *last = j->entry->dir;
     }
@@ -411,7 +420,7 @@ static void enter_dir(const TuJob *j, const char **last)
  * Output and diagnostics appear in job order, exactly as a one-at-a-time
  * run would print them.  Returns the or of the jobs' statuses (left in
  * jobs[i].rc). */
-static int run_jobs(Options *o, TuJob *jobs, size_t n, FILE *out)
+int run_jobs(Options *o, TuJob *jobs, size_t n, FILE *out, bool dirs)
 {
     ThreadPool *pool;
     JobGroup g;
@@ -421,10 +430,10 @@ static int run_jobs(Options *o, TuJob *jobs, size_t n, FILE *out)
     char *cwd = getcwd(NULL, 0);
     const char *last = cwd ? cwd : "";
     for (i = 0; i < n; i++)
-        jobs[i].o = o;
+        jobs[i].o = o, jobs[i].finished = false;
     if (n == 1 || o->jobs == 1) {
         for (i = 0; i < n; i++) {
-            enter_dir(&jobs[i], &last);
+            enter_dir(&jobs[i], &last, dirs);
             jobs[i].rc = run_fn(&jobs[i], out, stderr);
             rc |= jobs[i].rc;
         }
@@ -456,7 +465,7 @@ static int run_jobs(Options *o, TuJob *jobs, size_t n, FILE *out)
             mutex_unlock(&b.m);
             break;
         }
-        enter_dir(&jobs[i], &last);
+        enter_dir(&jobs[i], &last, dirs);
         fwrite(jobs[i].out, 1, jobs[i].out_len, out);
         fflush(out);
         fwrite(jobs[i].err, 1, jobs[i].err_len, stderr);
@@ -482,7 +491,7 @@ static int run_inputs(Options *o, TuFn fn, FILE *out)
         jobs[i].fn = fn;
         jobs[i].path = o->inputs.data[i];
     }
-    rc = run_jobs(o, jobs, n, out);
+    rc = run_jobs(o, jobs, n, out, true);
     free(jobs);
     return rc;
 }
@@ -553,12 +562,12 @@ static bool under(const char *file, const char *sel)
            (!file[n] || file[n] == '/' || sel[n - 1] == '/');
 }
 
-/* fn over the C entries of the database at `dbpath` (those under the
+/* Plans fn over the C entries of the database at `dbpath` (those under the
  * inputs, if any): each in its directory with its own options, then
- * cereal's own (`own`).  Exit status: 1 if a checked file has errors, else
- * 3 if an entry could not be checked, else 0; 2 for a usage error. */
-static int mode_compdb(Options *o, TuFn fn, const char *dbpath,
-                       const StrVec *own)
+ * cereal's own (`own`).  Option messages and problems are reported here.
+ * 0, or 2 for a usage error (p is then empty). */
+int compdb_plan(Options *o, TuFn fn, const char *dbpath, const StrVec *own,
+                CdbPlan *p)
 {
     Arena arena;
     CompileDb db = {0};
@@ -570,8 +579,9 @@ static int mode_compdb(Options *o, TuFn fn, const char *dbpath,
     TuJob *jobs;
     char *cwd = getcwd(NULL, 0);
     size_t i, k, nkeys = 0, nrun = 0, nsel = 0, n_notc = 0, n_dup = 0,
-           n_not = 0, n_err = 0;
+           n_not = 0;
     int skipped = 0, rc, ia;
+    memset(p, 0, sizeof *p);
     arena_init(&arena);
     rc = compdb_load(&arena, dbpath, &db, stderr, &skipped);
     if (rc) {
@@ -690,19 +700,23 @@ static int mode_compdb(Options *o, TuFn fn, const char *dbpath,
             jobs[k].extra = (const char *const *)extra.data;
             jobs[k++].nextra = (int)extra.len;
         }
-    if (nrun)
-        run_jobs(o, jobs, nrun, stdout);
-    for (k = 0; k < nrun; k++)
-        n_err += jobs[k].rc != 0;
-    free(jobs);
     if (!o->inputs.len) {
         n_not += (size_t)skipped;       /* malformed entries, reported above */
         nsel += (size_t)skipped;
     }
-    fprintf(stderr, "cereal: %zu entries: %zu checked (%zu with errors), "
-            "%zu not C, %zu duplicate, %zu not checked\n", nsel, nrun, n_err,
-            n_notc, n_dup, n_not);
-    rc = n_err ? 1 : n_not ? 3 : 0;
+    p->arena = arena;
+    p->db = db;
+    p->extra = extra;
+    p->jobs = jobs;
+    p->njobs = nrun;
+    p->nsel = nsel;
+    p->n_notc = n_notc;
+    p->n_dup = n_dup;
+    p->n_not = n_not;
+    free(sel);
+    free(plan);
+    free(cwd);
+    return 0;
 out:
     free(sel);
     free(plan);
@@ -710,6 +724,38 @@ out:
     vec_free(&db);
     arena_free(&arena);
     free(cwd);
+    return rc;
+}
+
+void compdb_plan_free(CdbPlan *p)
+{
+    free(p->jobs);
+    vec_free(&p->extra);
+    vec_free(&p->db);
+    arena_free(&p->arena);
+    memset(p, 0, sizeof *p);
+}
+
+/* fn over the C entries of the database at `dbpath` (compdb_plan).  Exit
+ * status: 1 if a checked file has errors, else 3 if an entry could not be
+ * checked, else 0; 2 for a usage error. */
+static int mode_compdb(Options *o, TuFn fn, const char *dbpath,
+                       const StrVec *own)
+{
+    CdbPlan p;
+    size_t k, n_err = 0;
+    int rc = compdb_plan(o, fn, dbpath, own, &p);
+    if (rc)
+        return rc;
+    if (p.njobs)
+        run_jobs(o, p.jobs, p.njobs, stdout, true);
+    for (k = 0; k < p.njobs; k++)
+        n_err += p.jobs[k].rc != 0;
+    fprintf(stderr, "cereal: %zu entries: %zu checked (%zu with errors), "
+            "%zu not C, %zu duplicate, %zu not checked\n", p.nsel, p.njobs,
+            n_err, p.n_notc, p.n_dup, p.n_not);
+    rc = n_err ? 1 : p.n_not ? 3 : 0;
+    compdb_plan_free(&p);
     return rc;
 }
 
@@ -1442,6 +1488,7 @@ int main(int argc, char **argv)
          quiet = false, queries = false;
     const char *ccdb = NULL;    /* --compile-commands DB */
     StrVec own = {0};           /* cereal's own options, for each entry */
+    FixOpts fx = {0};
     bool ccdb_given = false;
     int i, rc = 0, tokens = 0;
     static Arena rsp;           /* @file arguments: live for the whole run */
@@ -1458,8 +1505,6 @@ int main(int argc, char **argv)
         usage(stderr);
         return 2;
     }
-    if (!strcmp(argv[1], "fix"))
-        return fix_main(argc - 2, argv + 2);
     for (i = 1; i < argc; i++)
         ccdb_given |= !strncmp(argv[i], "--compile-commands", 18);
     for (i = 1; i < argc; i++) {
@@ -1487,7 +1532,7 @@ int main(int argc, char **argv)
         if (!mode && (!strcmp(argv[i], "-E") || !strcmp(argv[i], "lint") ||
                       !strcmp(argv[i], "index") ||
                       !strcmp(argv[i], "parse") ||
-                      !strcmp(argv[i], "check") ||
+                      !strcmp(argv[i], "check") || !strcmp(argv[i], "fix") ||
                       !strcmp(argv[i], "-fsyntax-only"))) {
             mode = argv[i];
             continue;
@@ -1593,6 +1638,13 @@ int main(int argc, char **argv)
             diag_list_options(stdout);
             return 0;
         }
+        if (mode && !strcmp(mode, "fix")) {
+            int r = fix_flag(&fx, argv[i]);
+            if (r < 0)
+                return 2;
+            if (r > 0)
+                continue;
+        }
         {
             size_t nin = o.inputs.len;
             int k;
@@ -1635,7 +1687,15 @@ int main(int argc, char **argv)
     }
     if (mode && !strcmp(mode, "-E"))
         o.stage = 'E';
-    if (ccdb) {
+    if (mode && !strcmp(mode, "fix")) {
+        if (o.deps.style || o.output) {
+            fputs("cereal: fix does not take -M... or -o\n", stderr);
+            rc = 2;
+        } else {
+            o.pp.fatal_missing_include = true;  /* as check */
+            rc = fix_run(&o, ccdb, &own, &fx);
+        }
+    } else if (ccdb) {
         TuFn fn = NULL;
         if (!strcmp(mode, "-E")) {
             o.pp.fatal_missing_include = true;

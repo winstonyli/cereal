@@ -821,6 +821,8 @@ void cdep_report(Checker *c, SrcLoc loc, uint32_t nameid, uint32_t flags,
 void cdep_named(Checker *c, SrcLoc loc, const char *name, uint32_t flags,
                 uint32_t dep_msg, const SrcLoc *note);   /* an asm statement's operands */
 bool cexpr_is_expr(unsigned tag);
+/* cdigest.c: mixes the unit just checked into *opt.digest */
+void checker_digest_unit(Checker *c);
 /* The type of an expression after lvalue conversion (arrays and functions
  * decay, qualifiers dropped). */
 TypeId cexpr_rvalue_type(Checker *c, uint32_t i);

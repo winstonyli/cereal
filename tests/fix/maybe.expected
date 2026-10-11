@@ -1,0 +1,70 @@
+$ cereal fix -Wall fixit-assign.c fixit-typo.c guard_fixit.c -Iinc
+exit 0
+-- stderr
+cereal fix: 2 edits in 2 files in 1 pass; 0 skipped
+-- changes
+diff -ruN snap/fixit-typo.c t/fixit-typo.c
+--- snap/fixit-typo.c
++++ t/fixit-typo.c
+@@ -7,6 +7,6 @@
+ {
+     int total = countr + 1;
+     pv->xcoord = 1;
+-    pp.ycoord = 2;
++    pp->ycoord = 2;
+     return pv.xcoorf + total
+ }
+diff -ruN snap/inc/guard_safe.h t/inc/guard_safe.h
+--- snap/inc/guard_safe.h
++++ t/inc/guard_safe.h
+@@ -1,4 +1,4 @@
+ #ifndef GUARD_SAFE_H
+-#define GUARD_SAFE_HH
++#define GUARD_SAFE_H
+ int guard_safe;
+ #endif
+$ cereal fix -Wall --unsafe fixit-assign.c fixit-typo.c guard_fixit.c -Iinc
+exit 0
+-- stderr
+cereal fix: 8 edits in 3 files in 3 passes; 0 skipped
+-- changes
+diff -ruN snap/fixit-assign.c t/fixit-assign.c
+--- snap/fixit-assign.c
++++ t/fixit-assign.c
+@@ -1,9 +1,9 @@
+ // flags: -Wall -fdiagnostics-parseable-fixits
+ int f(int a, int b)
+ {
+-    if (a = b)
++    if ((a = b))
+         return 1;
+-    while (a = b)
++    while ((a = b))
+         b--;
+     return a ? a = 1 : 0;
+ }
+diff -ruN snap/fixit-typo.c t/fixit-typo.c
+--- snap/fixit-typo.c
++++ t/fixit-typo.c
+@@ -5,8 +5,8 @@
+ int counter;
+ int main(void)
+ {
+-    int total = countr + 1;
++    int total = counter + 1;
+     pv->xcoord = 1;
+     pp->ycoord = 2;
+-    return pv.xcoorf + total
++    return pv.xcoord + total;
+ }
+diff -ruN snap/inc/guard_maybe.h t/inc/guard_maybe.h
+--- snap/inc/guard_maybe.h
++++ t/inc/guard_maybe.h
+@@ -1,4 +1,4 @@
+ #ifndef GUARD_MAYBE_H
+-#define GUARD_MAYBE_HH
++#define GUARD_MAYBE_H
+ int guard_maybe;
+ #endif
+$ cereal fix -Wall --unsafe fixit-assign.c fixit-typo.c guard_fixit.c -Iinc
+exit 0

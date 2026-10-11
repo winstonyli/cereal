@@ -46,6 +46,7 @@ typedef struct CheckOptions {
     void *macro_names_ctx;
     bool symidx;                /* build the C symbol index (csymidx.h) */
     FILE *symidx_verify;        /* --verify-symbols: report missed names */
+    uint64_t *digest;           /* non-NULL: mix each unit's AST digest in (cdigest.c) */
 } CheckOptions;
 
 Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,

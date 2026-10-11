@@ -1,0 +1,22 @@
+$ cereal fix e.c f.c
+exit 0
+-- stderr
+cereal fix: 4 edits in 2 files in 2 passes; 0 skipped
+-- changes
+diff -ruN snap/e.c t/e.c
+--- snap/e.c
++++ t/e.c
+@@ -1,2 +1,3 @@
+-#define SUM 1 + 2
++#define SUM (1 + 2)
+ int v = SUM;
++int saved;
+diff -ruN snap/f.c t/f.c
+--- snap/f.c
++++ t/f.c
+@@ -1,2 +1,2 @@
+-#define SUM 1 + 2
++#define SUM (1 + 2)
+ int v = SUM;
+$ cereal fix e.c f.c
+exit 0

@@ -1,0 +1,39 @@
+$ cereal fix -Wall --diff g.c
+exit 1
+-- stdout
+--- g.c
++++ g.c
+@@ -1,2 +1,2 @@
+-#define OR(x) x || 0
++#define OR(x) (x || 0)
+ int f(int a, int b) { return OR(a && b); }
+-- stderr
+cereal fix: g.c:1:15: skipped [macro-unparenthesized-param]: fails the semantic check: removes or changes the warning: suggest parentheses around '&&' within '||' [parentheses] at g.c:2:35
+cereal fix: would apply 2 edits in 1 file in 1 pass; 1 skipped
+$ cereal fix -Wall g.c
+exit 1
+-- stderr
+cereal fix: g.c:1:16: skipped [macro-unparenthesized-param]: fails the semantic check: removes or changes the warning: suggest parentheses around '&&' within '||' [parentheses] at g.c:2:35
+cereal fix: 2 edits in 1 file in 1 pass; 1 skipped
+-- changes
+diff -ruN snap/g.c t/g.c
+--- snap/g.c
++++ t/g.c
+@@ -1,2 +1,2 @@
+-#define OR(x) x || 0
++#define OR(x) (x || 0)
+ int f(int a, int b) { return OR(a && b); }
+$ cereal fix -Wall --unsafe g.c
+exit 0
+-- stderr
+cereal fix: 1 edit in 1 file in 1 pass; 0 skipped
+-- changes
+diff -ruN snap/g.c t/g.c
+--- snap/g.c
++++ t/g.c
+@@ -1,2 +1,2 @@
+-#define OR(x) (x || 0)
++#define OR(x) ((x) || 0)
+ int f(int a, int b) { return OR(a && b); }
+$ cereal fix -Wall --unsafe g.c
+exit 0

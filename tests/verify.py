@@ -6,30 +6,33 @@ report a diagnostic with that option id (or `error` for hard errors) on that
 line.  `expect+N: ID` targets N lines below.  Any diagnostic in the main file
 that is not expected is a failure, except notes.
 
-`expect-fixit: L:C-L:C "text" APP` (several per line are fine) names a fix-it:
-the range from L:C up to L:C (the same pair for an insertion), the replacement
-as a JSON string, and its applicability (safe, maybe or info).  When a file has
-any, the fix-its cereal gives for the main file (on diagnostics and on notes)
-must be exactly these."""
+`expect-fixit: [FILE] L:C-L:C "text" APP` (several per line are fine) names a
+fix-it: the range from L:C up to L:C (the same pair for an insertion), the
+replacement as a JSON string, and its applicability (safe, maybe or info).
+FILE (default: the main file) is the file the edit is in, as the diagnostic
+names it.  When a file has any, the fix-its cereal gives for the main file and
+for each FILE named (on diagnostics and on notes) must be exactly these."""
 import json
 import re
 import subprocess
 import sys
 
 EXPECT = re.compile(r'expect(?:([+-]\d+))?:\s*([\w\-, ]+)')
-FIXIT = re.compile(r'expect-fixit:\s*(\d+):(\d+)-(\d+):(\d+)\s+("(?:[^"\\]|\\.)*")'
-                   r'\s+(safe|maybe|info)\b', re.I)
+FIXIT = re.compile(r'expect-fixit:\s*(?:([\w./-]+)\s+)?(\d+):(\d+)-(\d+):(\d+)\s+'
+                   r'("(?:[^"\\]|\\.)*")\s+(safe|maybe|info)\b', re.I)
 
 
-def fixits_of(d, path):
-    """Every fix-it of a diagnostic and its notes in the file `path`."""
+def fixits_of(d, paths):
+    """Every fix-it of a diagnostic and its notes in one of the files `paths`
+    (as (file, line, col, line, col, text, applicability))."""
     out = []
     for x in [d, *d.get('notes', [])]:
         for f in x.get('fixits', []):
             s, e = f['start'], f['next']
-            if s['file'] == path or s['file'].endswith('/' + path):
-                out.append((s['line'], s['col'], e['line'], e['col'],
-                            f['string'], f['applicability'].lower()))
+            for path in paths:
+                if s['file'] == path or s['file'].endswith('/' + path):
+                    out.append((path, s['line'], s['col'], e['line'], e['col'],
+                                f['string'], f['applicability'].lower()))
     return out
 
 
@@ -44,8 +47,8 @@ def main():
             if fm:
                 flags += fm.group(1).split()
             for m in FIXIT.finditer(line):
-                wantfix.append((*map(int, m.group(1, 2, 3, 4)),
-                                json.loads(m.group(5)), m.group(6).lower()))
+                wantfix.append((m.group(1) or path, *map(int, m.group(2, 3, 4, 5)),
+                                json.loads(m.group(6)), m.group(7).lower()))
             for m in EXPECT.finditer(line):
                 off = int(m.group(1) or 0)
                 for i in m.group(2).split(','):
@@ -66,8 +69,9 @@ def main():
         return 1
     got = {}
     gotfix = []
+    fixfiles = {path} | {fx[0] for fx in wantfix}
     for d in diags:
-        gotfix += fixits_of(d, path)
+        gotfix += fixits_of(d, fixfiles)
         if d['file'] != path and not d['file'].endswith('/' + path):
             continue
         key = (d['line'], d['id'] or 'error')
@@ -83,10 +87,10 @@ def main():
             rc = 1
     if wantfix:
         for fx in sorted(set(wantfix) - set(gotfix)):
-            print(f'{path}:{fx[0]}: expected fix-it {fx[:4]} {fx[4]!r} {fx[5]} not reported')
+            print(f'{fx[0]}:{fx[1]}: expected fix-it {fx[1:5]} {fx[5]!r} {fx[6]} not reported')
             rc = 1
         for fx in sorted(set(gotfix) - set(wantfix)):
-            print(f'{path}:{fx[0]}: unexpected fix-it {fx[:4]} {fx[4]!r} {fx[5]}')
+            print(f'{fx[0]}:{fx[1]}: unexpected fix-it {fx[1:5]} {fx[5]!r} {fx[6]}')
             rc = 1
     if p.returncode not in (0, 1):
         print(f'cereal exited with {p.returncode}\n{p.stderr[-2000:]}')

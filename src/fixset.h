@@ -42,7 +42,5 @@ char *fixset_apply(const FixSet *s, uint32_t file, const char *src, size_t n,
 bool fixset_diff(const FixSet *s, uint32_t file, const char *name,
                  const char *src, size_t n, FILE *out);
 
-/* `cereal fix ARGS` (fixmode.c); the exit status. */
-int fix_main(int argc, char **argv);
 
 #endif

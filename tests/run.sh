@@ -26,6 +26,8 @@
 #  16. compile-commands replay: tests/ccdb cases against goldens, -j1 = -j12
 #  17. -M family: tests/deps cases against gcc-13 goldens; the
 #      .d files of -fparallel=on and off are byte-identical
+#  19-21. cereal fix: the edit builder, fix-it columns, fix runs on files
+#  19-21. cereal fix: the edit builder, fix-it columns, fix runs on files
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -694,6 +696,24 @@ if command -v "$FIXITCC" >/dev/null 2>&1; then
         done
     done
 fi
+
+# 21. cereal fix on files: tests/fix/NAME.sh (run by tests/fix_case.sh in a
+# scratch directory) against NAME.expected, at -j1 and -j12 (the same output)
+for f in "$ROOT"/tests/fix/*.sh; do
+    n=$(basename "$f" .sh)
+    [ "$n" = lib ] && continue
+    [ "$n" = unwritable ] && [ "$(id -u)" = 0 ] && continue   # root can write
+    sh "$ROOT/tests/fix_case.sh" "$CEREAL" "$n" 1 >"$TMP/fc1" 2>&1
+    sh "$ROOT/tests/fix_case.sh" "$CEREAL" "$n" 12 >"$TMP/fc12" 2>&1
+    if cmp -s "$TMP/fc1" "$ROOT/tests/fix/$n.expected" &&
+        cmp -s "$TMP/fc1" "$TMP/fc12"; then
+        ok
+    else
+        bad "fix/$n (-j1 against golden, then -j1 against -j12)"
+        diff "$ROOT/tests/fix/$n.expected" "$TMP/fc1" | head -10 | sed 's/^/    /'
+        diff "$TMP/fc1" "$TMP/fc12" | head -6 | sed 's/^/    /'
+    fi
+done
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

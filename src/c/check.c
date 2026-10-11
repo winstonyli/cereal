@@ -704,6 +704,8 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
         c->dm[i] = c->diag->all.len;
         visit(c, i);
     }
+    if (c->opt.digest)
+        checker_digest_unit(c);
     c->cur_node = NO_NODE;
     while (c->scopes.len > 1)
         cscope_pop(c, NULL);

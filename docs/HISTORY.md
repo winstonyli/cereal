@@ -4162,3 +4162,51 @@ files, 0 findings; gcc.dg 3908 of 3910, c-c++-common 637 of 638, cpp 289 of
 289 (unchanged); callgrind 3.899 G (3.895 G). `fixits.sh` with no argument:
 17 cases, 0 differ. TSan LSP not run (lsp/ and config.c untouched). Not
 done: header-guard and cond-typo INFO fix-its, `%1$d` format fix-its.
+
+## Round 214: ROADMAP C3, `cereal fix`; C2 leftovers
+
+Part 1. `cond-typo` and `header-guard` fix-its (`include.c`): cond-typo is
+INFO; header-guard is SAFE, MAYBE when the misspelt name is tested anywhere
+else in the unit (`tested_anywhere`). Goldens `tests/lint/guard_fixit.c`
+(with `inc/guard_safe.h`, `inc/guard_maybe.h`) and `cond_fixit.c`;
+`verify.py` takes an optional `FILE` prefix in `expect-fixit` for a fix-it in
+a header.
+
+Part 2. Slice C3 as scoped in C_DESIGN (section 8 "C3 as built" has the
+structure and the deviations). `cereal fix` is a mode: a `TuFn` per unit
+(`fixtu.c`: check, lint analyses, `skipped` listener, `FixResult`), a merge
+over all units by real path (D5, D6/Q10, Q3), a three-phase gate with
+bisection and demotion (strict, parentheses with the AST digest of the new
+`c/cdigest.c`, lenient), re-runs with the overlay (crename's method), atomic
+write keeping BOM and line ends (`file_write_atomic`), up to 8 passes and a
+probe pass, exit 0/1/2/3/4. Shared plumbing moved to `jobs.h` (`TuFn` and
+`TuJob` gained `res`, `run_jobs` a `dirs` flag, `mode_compdb` split into
+`compdb_plan`). `DiagNote.hdr` lets the gate see that an include insertion
+also removes the builtin-declaration-mismatch warning that names the same
+header. Root-cause fixes found by the new gates: gcc's no-op format fix-its
+(`%u` for `%u`) made `fix` loop to the pass limit, so collect drops groups
+that change nothing; a note's fix-it overlapping its own diagnostic's (xor:
+`0x2` against `1 <<`) was reported as a conflict, so it is dropped as the
+alternative it is; `qsort` on an empty vector's NULL tripped UBSan, so the
+file uses `sortn`; the summary counted a file once per pass, now once.
+
+Tests: thirteen `tests/fix/NAME.sh` cases with goldens (run.sh section 21,
+each at `-j1` and `-j12`, which must agree): safe, maybe, gate, passes,
+crlf, bom, files (read-only, hard link, symlink, outside root), unwritable,
+changed (a file saved mid-run), diff, only, compdb (shared header fixed once,
+D5 disagreement), corpus (every fix-it input, `--unsafe`, twice).
+`bench/tools/fixgate.sh [DIR]`: second run a no-op, no new diagnostics, gcc-13
+still accepts, same `.text` for SAFE (not compared when an `#include` was
+inserted: `scanf` becomes `__isoc99_scanf`; a stringized macro argument
+changes data only): 24 cases of the tests, 620 files of `tests/check`, 1469
+files (every third) of gcc.dg, 0 failed, 111 of them with edits. A 400-file
+gcc.dg run gives identical files and output at `-j1` and `-j12`; the fix mode
+under TSan at `-j2/4/8/12` (150 gcc.dg files) and the compdb, maybe, safe and
+files cases at `-j4/12`: 0 reports (`~/cereal-tsan`, removed). Gates: run.sh
+2047 passed (was 2014); gate.sh: san 2047 passed, 628 files, 0 findings;
+gcc.dg 3908 of 3910, c-c++-common 637 of 638, cpp 289 of 289 (unchanged);
+callgrind 3.895 G (3.899 G); `fixits.sh`: 17 cases, 0 differ. Source +1564/-83
+in 13 files plus 505 lines in 5 new ones, tests +252 lines of cases and 530
+of goldens, bench +159. Not done: a final combined re-verification of the
+gated phases, a conflict case from real diagnostics, C4. Scratch lived in
+`~/c3s` (removed).

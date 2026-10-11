@@ -170,6 +170,7 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo)
         co.macro_names_ctx = src == pp_source ? (void *)&tu->pp : (void *)&cs;
         co.symidx = fo->cidx != NULL;
         co.symidx_verify = fo->symidx_verify;
+        co.digest = fo->digest;
         chk = checker_new(&tu->sm, tu->in, &tu->diag, &co);
     }
     /* From cells the whole file is lexed before the first unit, so its lexer

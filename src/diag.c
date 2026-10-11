@@ -628,6 +628,26 @@ bool diag_enabled(DiagEngine *d, const char *id)
     return diag_level_for(d, id, DL_WARNING) != DL_IGNORED;
 }
 
+uint8_t *diag_enabled_map(DiagEngine *d)
+{
+    uint8_t *m = xmalloc(NOPTIONS);
+    size_t i;
+    for (i = 0; i < NOPTIONS; i++) {
+        DiagLevel l = diag_level_for(d, options[i].name, DL_WARNING);
+        m[i] = l != DL_IGNORED && !(l == DL_WARNING && d->no_warnings);
+    }
+    return m;
+}
+
+bool diag_map_enabled(const uint8_t *map, const char *id)
+{
+    long i;
+    if (!id || !*id)
+        return true;
+    i = find_index(id);
+    return i < 0 || map[i];
+}
+
 int diag_option_level(DiagEngine *d, const char *id, int dflt)
 {
     long i = find_index_cached(d, id);
@@ -1341,6 +1361,7 @@ SrcLoc diag_header_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc,
     sb_vprintf(&sb, fmt, ap);
     va_end(ap);
     diag_note(d, dg, at, "%s", sb_cstr(&sb));
+    dg->notes.data[dg->notes.len - 1].hdr = arena_strdup(d->arena, hdr);
     sb_free(&sb);
     if (!seen)
         diag_fixit(d, dg, (int)dg->notes.len, at, at,

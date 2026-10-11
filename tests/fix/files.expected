@@ -1,0 +1,43 @@
+$ cereal fix ro.c
+exit 1
+-- stderr
+cereal fix: ro.c:1:13: skipped [macro-unparenthesized-body]: ro.c is read-only
+cereal fix: 0 edits in 0 files in 0 passes; 1 skipped
+$ cereal fix hl.c
+exit 1
+-- stderr
+cereal fix: hl.c:1:13: skipped [macro-unparenthesized-body]: hl.c has more than one hard link
+cereal fix: 0 edits in 0 files in 0 passes; 1 skipped
+$ cereal fix link.c
+exit 0
+-- stderr
+cereal fix: 2 edits in 1 file in 1 pass; 0 skipped
+-- changes
+diff -ruN snap/link.c t/link.c
+--- snap/link.c
++++ t/link.c
+@@ -1,2 +1,2 @@
+-#define SUM 1 + 2
++#define SUM (1 + 2)
+ int v = SUM;
+diff -ruN snap/real/target.c t/real/target.c
+--- snap/real/target.c
++++ t/real/target.c
+@@ -1,2 +1,2 @@
+-#define SUM 1 + 2
++#define SUM (1 + 2)
+ int v = SUM;
+link.c -> real/target.c
+$ cereal fix --root=real other/out.c real/in.c
+exit 0
+-- stderr
+cereal fix: other/out.c:1:13: skipped [macro-unparenthesized-body]: other/out.c outside the root
+cereal fix: 2 edits in 1 file in 1 pass; 1 skipped
+-- changes
+diff -ruN snap/real/in.c t/real/in.c
+--- snap/real/in.c
++++ t/real/in.c
+@@ -1,2 +1,2 @@
+-#define SUM 1 + 2
++#define SUM (1 + 2)
+ int v = SUM;

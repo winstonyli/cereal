@@ -1,0 +1,96 @@
+$ cereal fix -Wall --diff fixit-braces.c hygiene_fixit.c
+exit 1
+-- stdout
+--- fixit-braces.c
++++ fixit-braces.c
+@@ -1,10 +1,10 @@
+ // flags: -Wall -fdiagnostics-parseable-fixits
+ struct P { int a[2]; int b; };
+-int a1[2][2] = {1, 2, 3, 4};
+-struct P p1 = {1, 2, 3};
+-struct P p2[2] = {1, 2, 3, 4, 5, 6};
+-int a3[2][2][2] = {1, 2, 3, 4, 5, 6, 7, 8};
+-int a4[2][2] = {1 , 2 , 3 , 4 ,};
+-int a5[2][2] = {{1, 2}, 3, 4};
++int a1[2][2] = {{1, 2}, {3, 4}};
++struct P p1 = {{1, 2}, 3};
++struct P p2[2] = {{{1, 2}, 3}, {{4, 5}, 6}};
++int a3[2][2][2] = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}};
++int a4[2][2] = {{1 , 2 }, {3 , 4 ,}};
++int a5[2][2] = {{1, 2}, {3, 4}};
+ void use(struct P);
+-void g(void) { use((struct P){1, 2, 3}); }
++void g(void) { use((struct P){{1, 2}, 3}); }
+--- hygiene_fixit.c
++++ hygiene_fixit.c
+@@ -2,8 +2,8 @@
+    the body of an expression macro; the body gets no fix when it holds a
+    top-level comma.
+    cereal-flags: -Wmacro-unused-param */
+-#define SUM 1 + 2 /* expect: macro-unparenthesized-body */ /* expect-fixit: 5:13-5:13 "(" safe */ /* expect-fixit: 5:18-5:18 ")" safe */
+-#define NEG(x) -x /* expect: macro-unparenthesized-param */ /* expect-fixit: 6:17-6:18 "(x)" safe */
+-#define SQ(x) x * x /* expect: macro-unparenthesized-param, macro-unparenthesized-body */ /* expect-fixit: 7:15-7:16 "(x)" safe */ /* expect-fixit: 7:19-7:20 "(x)" safe */ /* expect-fixit: 7:15-7:15 "(" safe */ /* expect-fixit: 7:20-7:20 ")" safe */
++#define SUM (1 + 2) /* expect: macro-unparenthesized-body */ /* expect-fixit: 5:13-5:13 "(" safe */ /* expect-fixit: 5:18-5:18 ")" safe */
++#define NEG(x) -(x) /* expect: macro-unparenthesized-param */ /* expect-fixit: 6:17-6:18 "(x)" safe */
++#define SQ(x) ((x) * (x)) /* expect: macro-unparenthesized-param, macro-unparenthesized-body */ /* expect-fixit: 7:15-7:16 "(x)" safe */ /* expect-fixit: 7:19-7:20 "(x)" safe */ /* expect-fixit: 7:15-7:15 "(" safe */ /* expect-fixit: 7:20-7:20 ")" safe */
+ #define OK ((1) + (2))
+ int use(void) { return SUM + NEG(1) + SQ(2) + OK; }
+-- stderr
+cereal fix: would apply 35 edits in 2 files in 1 pass; 0 skipped
+$ cereal fix -Wall --dry-run fixit-braces.c hygiene_fixit.c
+exit 1
+-- stderr
+cereal fix: would apply 35 edits in 2 files in 1 pass; 0 skipped
+$ cereal fix -Wall --diff --dry-run fixit-braces.c
+exit 2
+-- stderr
+cereal: --apply, --diff and --dry-run exclude each other
+$ cereal fix -Wall --apply --diff fixit-braces.c
+exit 2
+-- stderr
+cereal: --apply, --diff and --dry-run exclude each other
+$ cereal fix -Wall --apply fixit-braces.c hygiene_fixit.c
+exit 0
+-- stderr
+cereal fix: 35 edits in 2 files in 1 pass; 0 skipped
+-- changes
+diff -ruN snap/fixit-braces.c t/fixit-braces.c
+--- snap/fixit-braces.c
++++ t/fixit-braces.c
+@@ -1,10 +1,10 @@
+ // flags: -Wall -fdiagnostics-parseable-fixits
+ struct P { int a[2]; int b; };
+-int a1[2][2] = {1, 2, 3, 4};
+-struct P p1 = {1, 2, 3};
+-struct P p2[2] = {1, 2, 3, 4, 5, 6};
+-int a3[2][2][2] = {1, 2, 3, 4, 5, 6, 7, 8};
+-int a4[2][2] = {1 , 2 , 3 , 4 ,};
+-int a5[2][2] = {{1, 2}, 3, 4};
++int a1[2][2] = {{1, 2}, {3, 4}};
++struct P p1 = {{1, 2}, 3};
++struct P p2[2] = {{{1, 2}, 3}, {{4, 5}, 6}};
++int a3[2][2][2] = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}};
++int a4[2][2] = {{1 , 2 }, {3 , 4 ,}};
++int a5[2][2] = {{1, 2}, {3, 4}};
+ void use(struct P);
+-void g(void) { use((struct P){1, 2, 3}); }
++void g(void) { use((struct P){{1, 2}, 3}); }
+diff -ruN snap/hygiene_fixit.c t/hygiene_fixit.c
+--- snap/hygiene_fixit.c
++++ t/hygiene_fixit.c
+@@ -2,8 +2,8 @@
+    the body of an expression macro; the body gets no fix when it holds a
+    top-level comma.
+    cereal-flags: -Wmacro-unused-param */
+-#define SUM 1 + 2 /* expect: macro-unparenthesized-body */ /* expect-fixit: 5:13-5:13 "(" safe */ /* expect-fixit: 5:18-5:18 ")" safe */
+-#define NEG(x) -x /* expect: macro-unparenthesized-param */ /* expect-fixit: 6:17-6:18 "(x)" safe */
+-#define SQ(x) x * x /* expect: macro-unparenthesized-param, macro-unparenthesized-body */ /* expect-fixit: 7:15-7:16 "(x)" safe */ /* expect-fixit: 7:19-7:20 "(x)" safe */ /* expect-fixit: 7:15-7:15 "(" safe */ /* expect-fixit: 7:20-7:20 ")" safe */
++#define SUM (1 + 2) /* expect: macro-unparenthesized-body */ /* expect-fixit: 5:13-5:13 "(" safe */ /* expect-fixit: 5:18-5:18 ")" safe */
++#define NEG(x) -(x) /* expect: macro-unparenthesized-param */ /* expect-fixit: 6:17-6:18 "(x)" safe */
++#define SQ(x) ((x) * (x)) /* expect: macro-unparenthesized-param, macro-unparenthesized-body */ /* expect-fixit: 7:15-7:16 "(x)" safe */ /* expect-fixit: 7:19-7:20 "(x)" safe */ /* expect-fixit: 7:15-7:15 "(" safe */ /* expect-fixit: 7:20-7:20 ")" safe */
+ #define OK ((1) + (2))
+ int use(void) { return SUM + NEG(1) + SQ(2) + OK; }
+$ cereal fix -Wall --diff fixit-braces.c hygiene_fixit.c
+exit 0
+$ cereal fix -Wall --dry-run fixit-braces.c hygiene_fixit.c
+exit 0

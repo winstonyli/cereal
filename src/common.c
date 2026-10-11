@@ -1,8 +1,12 @@
 /* common.c - shared utilities. */
 #include "common.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static __thread FatalTrap *fatal_trap;
 __thread unsigned fatal_locks_held;
@@ -315,4 +319,72 @@ char *read_file(const char *path, size_t *len_out)
     sb_cstr(&sb);
     *len_out = sb.len;
     return sb.data;
+}
+
+/* ---- atomic file replacement (docs/C_DESIGN.md 6.5) ---------------------- */
+
+static void werr(char *err, size_t errn, const char *what, const char *path)
+{
+    snprintf(err, errn, "%s '%s': %s", what, path, strerror(errno));
+}
+
+bool file_write_atomic(const char *path, const char *buf, size_t n, char *err,
+                       size_t errn)
+{
+    struct stat st;
+    const char *slash = strrchr(path, '/');
+    size_t dl = slash ? (size_t)(slash - path) + 1 : 0;
+    char *tmp = xmalloc(strlen(path) + 32);
+    int fd;
+    size_t put = 0;
+    if (stat(path, &st) != 0) {
+        werr(err, errn, "cannot stat", path);
+        free(tmp);
+        return false;
+    }
+    memcpy(tmp, path, dl);
+    strcpy(tmp + dl, ".cereal-fix-XXXXXX");
+    fd = mkstemp(tmp);
+    if (fd < 0) {
+        werr(err, errn, "cannot create a temporary file next to", path);
+        free(tmp);
+        return false;
+    }
+    while (put < n) {
+        ssize_t w = write(fd, buf + put, n - put);
+        if (w <= 0) {
+            werr(err, errn, "cannot write", tmp);
+            goto fail;
+        }
+        put += (size_t)w;
+    }
+    if (fsync(fd) != 0) {
+        werr(err, errn, "cannot sync", tmp);
+        goto fail;
+    }
+    if (fchmod(fd, st.st_mode & 07777) != 0) {
+        werr(err, errn, "cannot set the mode of", tmp);
+        goto fail;
+    }
+    if (fchown(fd, st.st_uid, st.st_gid) != 0) {
+        /* best effort: only root may give a file away */
+    }
+    if (close(fd) != 0) {
+        fd = -1;
+        werr(err, errn, "cannot close", tmp);
+        goto fail;
+    }
+    fd = -1;
+    if (rename(tmp, path) != 0) {
+        werr(err, errn, "cannot replace", path);
+        goto fail;
+    }
+    free(tmp);
+    return true;
+fail:
+    if (fd >= 0)
+        close(fd);
+    unlink(tmp);
+    free(tmp);
+    return false;
 }

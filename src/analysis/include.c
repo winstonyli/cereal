@@ -256,6 +256,33 @@ static bool name_has_suffix(const char *s, const char *suf)
     return n >= m && !strcmp(s + n - m, suf);
 }
 
+/* Is the macro d tested by an #if, #ifdef, #ifndef or #elif of any user
+ * file of the unit (inactive groups included)?  Renaming a definition of d
+ * would then change what that test sees. */
+static bool tested_anywhere(Analysis *a, const Ident *d)
+{
+    uint32_t i, n = srcmgr_nfiles(a->sm);
+    for (i = 0; i < n; i++) {
+        SrcFile *f = srcmgr_file(a->sm, i);
+        Skeleton *sk;
+        size_t k;
+        if (!an_user_file(f))
+            continue;
+        sk = an_skeleton(a, f);
+        for (k = 0; k < sk->dirs.len; k++) {
+            const SkDirective *x = &sk->dirs.data[k];
+            uint32_t j;
+            if (x->kind != SK_IF && x->kind != SK_IFDEF &&
+                x->kind != SK_IFNDEF && x->kind != SK_ELIF)
+                continue;
+            for (j = 0; j < x->toks.n; j++)
+                if (tok_ident(a->in, &x->toks.t[j]) == d)
+                    return true;
+        }
+    }
+    return false;
+}
+
 static void check_header(Analysis *a, SrcFile *f)
 {
     Skeleton *sk = an_skeleton(a, f);
@@ -275,7 +302,8 @@ static void check_header(Analysis *a, SrcFile *f)
                       "'%s' is tested here; did you mean to define it?", g->str);
             if (dg && sk->dirs.data[1].toks.n)
                 fix_tok_replace(a->diag, dg, 0, a->sm, a->in,
-                                &sk->dirs.data[1].toks.t[0], g->str, FIX_SAFE);
+                                &sk->dirs.data[1].toks.t[0], g->str,
+                                tested_anywhere(a, d) ? FIX_MAYBE : FIX_SAFE);
         }
     }
 

@@ -22,6 +22,7 @@ typedef struct FrontendOpts {
      * the run was cancelled); verify: --verify-symbols reports there. */
     struct CIndex **cidx;
     FILE *symidx_verify;
+    uint64_t *digest;           /* non-NULL (with check): mixed with each unit's AST digest */
 } FrontendOpts;
 
 /* Parses (and checks) `path` into tu->diag.  tu must be freshly

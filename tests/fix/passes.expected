@@ -1,0 +1,39 @@
+$ cereal fix --max-passes=1 p.c
+exit 1
+-- stderr
+cereal fix: fixes remain after 1 passes
+cereal fix: 1 edit in 1 file in 1 pass; 0 skipped
+-- changes
+diff -ruN snap/p.c t/p.c
+--- snap/p.c
++++ t/p.c
+@@ -1,2 +1,2 @@
+ struct S { int x; };
+-int f(struct S *p, struct S *q) { return p.x + q.x; }
++int f(struct S *p, struct S *q) { return p->x + q.x; }
+$ cereal fix p.c
+exit 0
+-- stderr
+cereal fix: 1 edit in 1 file in 1 pass; 0 skipped
+-- changes
+diff -ruN snap/p.c t/p.c
+--- snap/p.c
++++ t/p.c
+@@ -1,2 +1,2 @@
+ struct S { int x; };
+-int f(struct S *p, struct S *q) { return p->x + q.x; }
++int f(struct S *p, struct S *q) { return p->x + q->x; }
+$ cereal fix p2.c --max-passes=3
+exit 0
+-- stderr
+cereal fix: 2 edits in 1 file in 2 passes; 0 skipped
+-- changes
+diff -ruN snap/p2.c t/p2.c
+--- snap/p2.c
++++ t/p2.c
+@@ -1,2 +1,2 @@
+ struct S { int x; };
+-int f(struct S *p, struct S *q) { return p.x + q.x; }
++int f(struct S *p, struct S *q) { return p->x + q->x; }
+$ cereal fix p2.c
+exit 0
