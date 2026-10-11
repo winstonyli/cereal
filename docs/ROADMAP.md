@@ -154,6 +154,7 @@ B3. (DONE, Round 197: typeDefinition, document symbols, signature help
     Document symbols, in-scope completion, signature help for C functions,
     typeDefinition, richer semantic tokens (est. 350 lines).
 B4. Function call hierarchy, inlay hints (est. 400 lines).
+    Designed in B4_DESIGN.md (2026-10-10; re-estimated 1,620 to 3,110 lines).
 B5. Workspace-wide index over compile_commands, workspace/symbol,
     cross-file references, on-disk cache. Large; needs its own design.
 
