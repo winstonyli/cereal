@@ -8,6 +8,7 @@
 
 #include "../c/frontend.h"
 
+#include <ctype.h>
 #include <string.h>
 
 /* ---- helpers ------------------------------------------------------------ */
@@ -614,7 +615,6 @@ static int stok_cmp(const void *a, const void *b)
     return y->mods - x->mods; /* the declaration first at a tie */
 }
 
-typedef VEC(uint32_t) U32Vec;
 
 /* The encoded tokens (LSP's 5 integers each, relative to the previous
  * token) of the refs, parameters and definitions in [b, e]. */
@@ -1435,144 +1435,41 @@ void lsp_calls(Req *r, JsonWriter *w, bool incoming)
  * macro defined there answers, else the C entity (B3_DESIGN.md 5.3). */
 
 typedef struct Sig {
-    StrBuf label;            /* NAME(P1, P2) */
-    U32Vec offs;             /* each parameter's [begin, end) in label */
-    bool variadic;           /* the last parameter is ... */
+    CSig c;
     const char *doc;
 } Sig;
 
 static void sig_free(Sig *s)
 {
-    sb_free(&s->label);
-    vec_free(&s->offs);
-}
-
-/* Appends parameter text p[0..n) to the label. */
-static void sig_param(Sig *s, const char *p, size_t n)
-{
-    if (s->offs.len)
-        sb_puts(&s->label, ", ");
-    vec_push(&s->offs, (uint32_t)s->label.len);
-    sb_putn(&s->label, p, n);
-    vec_push(&s->offs, (uint32_t)s->label.len);
+    csig_free(&s->c);
 }
 
 static void macro_sig(Req *r, Macro *m, Sig *s)
 {
     int k;
-    sb_printf(&s->label, "%s(", m->name->str);
+    sb_printf(&s->c.label, "%s(", m->name->str);
     for (k = 0; k < m->nparams; k++) {
         const char *pn = m->variadic && k == m->nparams - 1 &&
                                  !m->gnu_named_variadic
                              ? "..." : m->params[k]->str;
-        sig_param(s, pn, strlen(pn));
+        csig_param(&s->c, pn, strlen(pn));
         if (m->gnu_named_variadic && k == m->nparams - 1) {
-            sb_puts(&s->label, "...");
-            s->offs.data[s->offs.len - 1] = (uint32_t)s->label.len;
+            sb_puts(&s->c.label, "...");
+            s->c.offs.data[s->c.offs.len - 1] = (uint32_t)s->c.label.len;
         }
     }
-    sb_putc(&s->label, ')');
-    s->variadic = m->variadic;
+    sb_putc(&s->c.label, ')');
+    s->c.variadic = m->variadic;
     s->doc = arena_printf(r->arena, "#define %s %s", signature(r, m),
                           macro_body_str(&r->snap->tu.pp, m));
 }
 
-/* Past white space and comments from buf[i]. */
-static size_t skip_blank(const char *buf, size_t n, size_t i)
-{
-    for (;;) {
-        while (i < n && (buf[i] == ' ' || buf[i] == '\t' || buf[i] == '\n' ||
-                         buf[i] == '\r' || buf[i] == '\f' || buf[i] == '\v'))
-            i++;
-        if (i + 1 < n && buf[i] == '/' && buf[i + 1] == '*') {
-            for (i += 2; i + 1 < n && !(buf[i] == '*' && buf[i + 1] == '/'); i++)
-                ;
-            i = i + 2 < n ? i + 2 : n;
-        } else if (i + 1 < n && buf[i] == '/' && buf[i + 1] == '/') {
-            while (i < n && buf[i] != '\n')
-                i++;
-        } else {
-            return i;
-        }
-    }
-}
-
-/* The parameter list written after the name at buf[i] (a declaration's
- * text): past balanced [..] and ')' a '(' must follow; its parameters, as
- * written with white space and comments collapsed, go to s.  False if there
- * is none, it holds a directive or it is over 4 KiB. */
-static bool text_params(const char *buf, size_t n, size_t i, Sig *s)
-{
-    StrBuf p = {0};
-    size_t start, j;
-    int depth = 0;
-    for (i = skip_blank(buf, n, i); i < n && (buf[i] == ')' || buf[i] == '[');
-         i = skip_blank(buf, n, i)) {
-        if (buf[i] == ')') {
-            i++;
-            continue;
-        }
-        for (depth = 0; i < n; i++)
-            if (buf[i] == '[')
-                depth++;
-            else if (buf[i] == ']' && --depth == 0)
-                break;
-        i++;
-    }
-    if (i >= n || buf[i] != '(')
-        return false;
-    start = s->label.len;
-    sb_putc(&s->label, '(');
-    for (i++, depth = 0, j = i; i < n && i - j < 4096; i++) {
-        size_t k = skip_blank(buf, n, i);
-        char c;
-        if (k > i) {         /* white space or a comment: one space */
-            if (p.len && p.data[p.len - 1] != ' ')
-                sb_putc(&p, ' ');
-            i = k - 1;
-            continue;
-        }
-        c = buf[i];
-        if (c == '#')
-            break;           /* a directive: not a list to show */
-        if ((c == ',' || c == ')') && depth == 0) {
-            size_t b0;
-            while (p.len && p.data[p.len - 1] == ' ')
-                p.len--;
-            for (b0 = 0; b0 < p.len && p.data[b0] == ' '; b0++)
-                ;
-            if (!(c == ')' && !s->offs.len && (p.len == b0 ||
-                                               (p.len - b0 == 4 &&
-                                                !memcmp(p.data + b0, "void", 4)))))
-                sig_param(s, p.data + b0, p.len - b0);
-            p.len = 0;
-            if (c == ')') {
-                sb_free(&p);
-                sb_putc(&s->label, ')');
-                s->variadic = s->offs.len &&
-                              s->offs.data[s->offs.len - 1] -
-                                      s->offs.data[s->offs.len - 2] == 3 &&
-                              !memcmp(s->label.data +
-                                          s->offs.data[s->offs.len - 2],
-                                      "...", 3);
-                return true;
-            }
-            continue;
-        }
-        depth += c == '(' || c == '[';
-        depth -= (c == ')' || c == ']') && depth > 0;
-        sb_putc(&p, c);
-    }
-    sb_free(&p);
-    s->label.len = start;    /* undo */
-    s->offs.len = 0;
-    return false;
-}
-
 /* The parameter list of decl d from its declarations' text: its definition,
  * then its declarations, not spelled in a #define body nor pasted (but a
- * system header's), then through its typedef type, at most 4 steps. */
-static bool decl_params(Req *r, uint32_t d, Sig *s)
+ * system header's), then through its typedef type, at most 4 steps.  *src,
+ * *sf (optional): the event and file whose text gave the list. */
+static bool decl_params(Req *r, uint32_t d, CSig *s, const CIdxEvent **src,
+                        SrcFile **sf)
 {
     const CIndex *ix = r->cidx;
     size_t base = s->label.len;
@@ -1592,8 +1489,13 @@ static bool decl_params(Req *r, uint32_t d, Sig *s)
                                          ix->files[e->file].path)))
                     continue;
                 s->label.len = base;
-                if (text_params(f->buf, f->size, e->off + e->len, s))
+                if (csig_params(f->buf, f->size, e->off + e->len, s)) {
+                    if (src)
+                        *src = e;
+                    if (sf)
+                        *sf = f;
                     return true;
+                }
             }
         if (!ix->decls[d].type || ix->decls[ix->decls[d].type - 1].kind != CIK_TYPEDEF)
             break;
@@ -1623,11 +1525,11 @@ static bool c_sig(Req *r, const char *name, size_t n, size_t at, Sig *s)
         free(vis);
     }
     for (i = 0; i < nd && !ok; i++) {
-        sb_putn(&s->label, name, n);
-        if ((ok = decl_params(r, decls[i], s)))
+        sb_putn(&s->c.label, name, n);
+        if ((ok = decl_params(r, decls[i], &s->c, NULL, NULL)))
             s->doc = r->cidx->strings + r->cidx->decls[decls[i]].hover;
         else
-            s->label.len = 0;
+            s->c.label.len = 0;
     }
     return ok;
 }
@@ -1691,7 +1593,7 @@ void lsp_signature_help(Req *r, JsonWriter *w)
                                             r->file->base +
                                                 (SrcLoc)(p < r->file->size
                                                              ? p : r->file->size)));
-    sig.offs.len = 0;
+    sig.c.offs.len = 0;
     if (m && m->funclike) {
         macro_sig(r, m, &sig);
     } else if (!c_sig(r, t + p, ne - p, p, &sig)) {
@@ -1704,25 +1606,25 @@ void lsp_signature_help(Req *r, JsonWriter *w)
         }
         macro_sig(r, m, &sig);
     }
-    k = (int)(sig.offs.len / 2);
+    k = (int)(sig.c.offs.len / 2);
     json_begin_object(w);
     json_key(w, "signatures");
     json_begin_array(w);
     json_begin_object(w);
     json_key(w, "parameters");
     json_begin_array(w);
-    for (i = 0; i < sig.offs.len; i += 2) {
+    for (i = 0; i < sig.c.offs.len; i += 2) {
         json_begin_object(w);
         json_key(w, "label");
         json_begin_array(w);
-        json_int(w, (long long)sig.offs.data[i]);
-        json_int(w, (long long)sig.offs.data[i + 1]);
+        json_int(w, (long long)sig.c.offs.data[i]);
+        json_int(w, (long long)sig.c.offs.data[i + 1]);
         json_end_array(w);
         json_end_object(w);
     }
     json_end_array(w);
     json_key(w, "label");
-    json_str(w, sb_cstr(&sig.label));
+    json_str(w, sb_cstr(&sig.c.label));
     json_key(w, "documentation");
     json_str(w, sig.doc);
     json_end_object(w);
@@ -1730,9 +1632,280 @@ void lsp_signature_help(Req *r, JsonWriter *w)
     json_key(w, "activeSignature");
     json_int(w, 0);
     json_key(w, "activeParameter");
-    json_int(w, k == 0 ? 0 : commas < k ? commas : sig.variadic ? k - 1 : commas);
+    json_int(w, k == 0 ? 0 : commas < k ? commas : sig.c.variadic ? k - 1 : commas);
     json_end_object(w);
     sig_free(&sig);
+}
+
+/* ---- parameter-name inlay hints (docs/B4_DESIGN.md 6) ------------------------- *
+ * Each CIX_CALL event spelled in this file's text gets `NAME:` before every
+ * argument, the names from the callee's declaration (decl_params) and the
+ * arguments re-lexed from the snapshot's text after the callee's name. */
+
+typedef struct HintName {
+    const char *p;
+    size_t n;                /* 0: unnamed */
+} HintName;
+
+typedef struct HintFn {      /* a callee's parameters, per request */
+    uint32_t decl;
+    size_t np;               /* 0: no prototype */
+    HintName *names;
+    bool variadic;
+} HintFn;
+
+typedef struct HintArg {
+    size_t b, e;             /* the argument's text */
+    size_t cb, ce;           /* the comment right before it (cb == ce: none) */
+} HintArg;
+
+typedef VEC(HintFn) HintFns;
+typedef VEC(HintArg) HintArgs;
+
+/* The names of the parameters of decl d; index into *cache. */
+static size_t hint_fn(Req *r, HintFns *cache, uint32_t d)
+{
+    HintFn f = {0};
+    CSig sig = {0};
+    const CIdxEvent *src = NULL;
+    SrcFile *sf = NULL;
+    size_t i;
+    for (i = 0; i < cache->len; i++)
+        if (cache->data[i].decl == d)
+            return i;
+    f.decl = d;
+    if (decl_params(r, d, &sig, &src, &sf)) {
+        f.np = sig.offs.len / 2;
+        f.variadic = sig.variadic;
+        f.names = NEW_ARRAY(r->arena, HintName, f.np);
+        for (i = 0; i < f.np; i++)
+            f.names[i].n = cindex_param_name(
+                r->cidx, src->file, sf->buf, sig.spans.data[2 * i],
+                sig.spans.data[2 * i + 1], (src->flags & CIX_SYSTEM) != 0,
+                &f.names[i].p);
+    }
+    csig_free(&sig);
+    vec_push(cache, f);
+    return cache->len - 1;
+}
+
+static bool blank_ch(char c)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
+}
+
+/* buf[i] is a '#' that starts a line. */
+static bool line_hash(const char *buf, size_t i)
+{
+    if (buf[i] != '#')
+        return false;
+    while (i > 0 && buf[i - 1] != '\n' && blank_ch(buf[i - 1]))
+        i--;
+    return i == 0 || buf[i - 1] == '\n';
+}
+
+/* The arguments of the call whose callee's name ends at buf[i]: past blanks,
+ * comments and ')' a '(' must follow.  False: no hints for this call (no '(',
+ * a directive in the list, no end within 64 KiB). */
+static bool call_args(const char *buf, size_t n, size_t i, HintArgs *out)
+{
+    size_t lim;
+    int depth = 0;
+    for (;;) {
+        while (i < n && (blank_ch(buf[i]) || buf[i] == '/')) {
+            if (buf[i] == '/' && i + 1 < n && buf[i + 1] == '*') {
+                for (i += 2; i + 1 < n && !(buf[i] == '*' && buf[i + 1] == '/'); i++)
+                    ;
+                i += 2;
+            } else if (buf[i] == '/' && i + 1 < n && buf[i + 1] == '/') {
+                while (i < n && buf[i] != '\n')
+                    i++;
+            } else if (buf[i] == '/') {
+                return false;
+            } else {
+                i++;
+            }
+        }
+        if (i < n && buf[i] == ')')
+            i++;
+        else
+            break;
+    }
+    if (i >= n || buf[i] != '(')
+        return false;
+    out->len = 0;
+    lim = n - i > 65536 ? i + 65536 : n;
+    for (i++; i < lim;) {
+        HintArg a = {0};
+        char c;
+        for (;;) {           /* blanks and comments; the last comment is kept */
+            while (i < lim && blank_ch(buf[i]))
+                i++;
+            if (i + 1 < lim && buf[i] == '/' && buf[i + 1] == '*') {
+                a.cb = i + 2;
+                for (i += 2; i + 1 < lim && !(buf[i] == '*' && buf[i + 1] == '/'); i++)
+                    ;
+                a.ce = i;
+                i += 2;
+            } else if (i + 1 < lim && buf[i] == '/' && buf[i + 1] == '/') {
+                while (i < lim && buf[i] != '\n')
+                    i++;
+                a.cb = a.ce = 0;
+            } else {
+                break;
+            }
+        }
+        if (i >= lim)
+            return false;
+        a.b = a.e = i;
+        if (line_hash(buf, i))
+            return false;
+        for (depth = 0; i < lim; i++) {
+            c = buf[i];
+            if (c == '"' || c == '\'') {
+                for (i++; i < lim && buf[i] != c && buf[i] != '\n'; i++)
+                    if (buf[i] == '\\')
+                        i++;
+            } else if (c == '/' && i + 1 < lim && buf[i + 1] == '*') {
+                for (i += 2; i + 1 < lim && !(buf[i] == '*' && buf[i + 1] == '/'); i++)
+                    ;
+                i++;
+                continue;
+            } else if (c == '/' && i + 1 < lim && buf[i + 1] == '/') {
+                while (i < lim && buf[i] != '\n')
+                    i++;
+                continue;
+            } else if (c == '#' && line_hash(buf, i)) {
+                return false;
+            } else if (c == '(' || c == '[' || c == '{') {
+                depth++;
+            } else if (depth && (c == ')' || c == ']' || c == '}')) {
+                depth--;
+            } else if (!depth && (c == ',' || c == ')')) {
+                break;
+            }
+            if (i < lim && !blank_ch(buf[i]))
+                a.e = i + 1;
+        }
+        if (i >= lim)
+            return false;
+        if (a.b < a.e || buf[i] == ',' || out->len)
+            vec_push(out, a);
+        if (buf[i++] == ')')
+            return true;
+    }
+    return false;
+}
+
+static bool eq_nocase(const char *a, const char *b, size_t n)
+{
+    for (; n; n--)
+        if (tolower((unsigned char)*a++) != tolower((unsigned char)*b++))
+            return false;
+    return true;
+}
+
+/* A single parameter that the function's name says: set_limit(int limit). */
+static bool setter_of(const char *fn, const HintName *p)
+{
+    size_t n;
+    if (!eq_nocase(fn, "set", 3))
+        return false;
+    fn += 3;
+    fn += *fn == '_';
+    n = strlen(fn);
+    return n == p->n && eq_nocase(fn, p->p, n);
+}
+
+/* No hint: the argument is the parameter's name (outer parentheses aside), or
+ * a comment right before it names the parameter. */
+static bool arg_says_name(const char *buf, const HintArg *a, const HintName *p)
+{
+    size_t b = a->b, e = a->e, c0 = a->cb, c1 = a->ce;
+    while (c0 < c1 && blank_ch(buf[c0]))
+        c0++;
+    while (c1 > c0 && blank_ch(buf[c1 - 1]))
+        c1--;
+    if (c1 > c0 && buf[c1 - 1] == '=') {
+        c1--;
+        while (c1 > c0 && blank_ch(buf[c1 - 1]))
+            c1--;
+    }
+    if (c1 - c0 == p->n && !memcmp(buf + c0, p->p, p->n))
+        return true;
+    while (e - b >= 2 && buf[b] == '(' && buf[e - 1] == ')') {
+        size_t k;
+        int depth = 0;
+        for (k = b; k < e; k++) {
+            depth += buf[k] == '(';
+            depth -= buf[k] == ')';
+            if (!depth)
+                break;
+        }
+        if (k != e - 1)
+            break;
+        for (b++, e--; b < e && blank_ch(buf[b]); b++)
+            ;
+        while (e > b && blank_ch(buf[e - 1]))
+            e--;
+    }
+    while (e - b > 1 && buf[b] == '_') /* clangd 20 strips both sides (10.2 P1) */
+        b++;
+    return e - b == p->n && !memcmp(buf + b, p->p, p->n);
+}
+
+void lsp_inlay_hints(Req *r, JsonWriter *w)
+{
+    const JsonValue *rg = json_get(r->params, "range");
+    SrcLoc lo = req_loc(r, json_get(rg, "start")), hi = req_loc(r, json_get(rg, "end"));
+    const CIndex *cx = r->cidx;
+    const char *buf = r->file->buf;
+    HintFns cache = {0};
+    HintArgs args = {0};
+    int fi = c_file(r);
+    uint32_t k, s;
+    json_begin_array(w);
+    if (fi < 0 || hi < lo) {
+        json_end_array(w);
+        return;
+    }
+    lo -= r->file->base;
+    hi -= r->file->base;
+    s = cindex_scope_at(cx, (uint32_t)fi, (uint32_t)lo);
+    s = s ? cindex_scope_root(cx, s) : 0;
+    for (k = cindex_lower(cx, (uint32_t)fi, s ? cx->scopes[s - 1].begin : (uint32_t)lo);
+         k < cx->nev && cx->ev[k].file == (uint32_t)fi && cx->ev[k].off <= hi; k++) {
+        const CIdxEvent *ce = &cx->ev[k];
+        const HintFn *f;
+        size_t i;
+        if (!(ce->flags & CIX_CALL) ||
+            (ce->flags & (CIX_MACRO_BODY | CIX_AT_EXPANSION | CIX_SYSTEM)) ||
+            !call_args(buf, r->file->size, ce->off + ce->len, &args))
+            continue;
+        i = hint_fn(r, &cache, ce->decl);
+        f = &cache.data[i];
+        for (i = 0; i < args.len && i < f->np && !(f->variadic && i == f->np - 1); i++) {
+            const HintName *p = &f->names[i];
+            if (!p->n || args.data[i].b < lo || args.data[i].b > hi ||
+                args.data[i].b == args.data[i].e ||
+                arg_says_name(buf, &args.data[i], p) ||
+                (f->np == 1 && setter_of(cindex_name(cx, ce->decl), p)))
+                continue;
+            json_begin_object(w);
+            json_key(w, "position");
+            json_pos(w, &r->snap->tu.sm, r->enc, r->file->base + (SrcLoc)args.data[i].b);
+            json_key(w, "label");
+            json_str(w, arena_printf(r->arena, "%.*s:", (int)p->n, p->p));
+            json_key(w, "kind");
+            json_int(w, 2);
+            json_key(w, "paddingRight");
+            json_bool(w, true);
+            json_end_object(w);
+        }
+    }
+    json_end_array(w);
+    vec_free(&cache);
+    vec_free(&args);
 }
 
 /* ---- cereal/expandMacro --------------------------------------------------------- */

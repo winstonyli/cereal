@@ -1,0 +1,6 @@
+[
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/hints", "initializationOptions": {"inlayHints": false}, "capabilities": {"textDocument": {"inlayHint": {}}, "workspace": {"inlayHint": {"refreshSupport": true}}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"send": {"id": 2, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

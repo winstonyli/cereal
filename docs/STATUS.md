@@ -34,14 +34,15 @@ in [ROADMAP.md](ROADMAP.md).
   line and column); 2 differ.
 - c-c++-common: 637 of 638 identical; 1 differs (636 before pr57653 and pr57653-2 stopped being skipped, Round 210).
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 289 of 289 identical (285 before the four `missing-*` -MD tests, Round 209). A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 2068 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/; a new LSP session adds two); the sanitizer build is clean on 628 files.
+- 2074 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/; a new LSP session adds two); the sanitizer build is clean on 628 files.
 - uvloop's `loop.c` checks in about 3.89 G instructions (callgrind).
 - The LSP server covers macros and C names: definition, declaration,
   type definition, references, highlight, hover, rename, document
   symbols, signature help, semantic tokens and completion (ROADMAP B1 to
-  B3 done). After an edit, requests answer from the previous index
+  B3 done), call hierarchy (B4a) and parameter-name inlay hints (B4b).
+  After an edit, requests answer from the previous index
   carried over the edit until the check publishes its own, and the server
-  asks the client to refresh semantic tokens then (B3_DESIGN.md 12;
+  asks the client to refresh semantic tokens and inlay hints then (B3_DESIGN.md 12;
   the diagnostics part of it is not done).
 "Files run" are the files whose `dg-options` and selectors cereal models;
 the rest are skipped, not counted as passes.
@@ -57,7 +58,7 @@ git -C ~/gccts sparse-checkout set gcc/testsuite/gcc.dg gcc/testsuite/c-c++-comm
 git -C ~/gccts checkout
 make -j6 && sh tests/run.sh          # goldens, fuzzers
 CEREAL_GCC=gcc-13 bench/tools/verify.sh   # parity vs gcc-13
-bench/tools/symcov.sh [--gnu11]      # --verify-symbols over corpus + dg tests: 0 unindexed
+bench/tools/symcov.sh [--gnu11]      # --verify-symbols over corpus + dg tests: 0 unindexed, 0 param misses
 bench/tools/cmp.sh gcc.dg/FILE.c     # diff one file against gcc-13
 bench/tools/corp.sh DIR [-IDIR...]  # per-file cereal vs gcc-13 on any C sources
 bench/tools/mkccdb.sh OUT DIR [FLAGS] -- FILES   # a compile_commands.json without a build system
@@ -80,7 +81,7 @@ c-c++-common: dump-ada-spec-14 (gcc's Ada dumper).
 
 
 Round 210, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 637 of 638,
-cpp 289 of 289; `tests/run.sh` 2068 passed (Round 218).  Remaining gcc.dg diffs: pr56355-1,
+cpp 289 of 289; `tests/run.sh` 2074 passed (Round 219).  Remaining gcc.dg diffs: pr56355-1,
 pr83844 (above).
 Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - `char * const _Atomic c` parameter of main prints as `char * _Atomic`

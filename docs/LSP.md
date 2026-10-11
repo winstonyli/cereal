@@ -309,23 +309,26 @@ is freed with it (replacing the carried index, below).
   (`cond_timedwait`, at most 1.5 s) for the newest edit's snapshot so that
   positions match; the policy column of the request table in server.c then
   says whether it also waits for the check: `CP_ANY` (completion,
-  signatureHelp, documentHighlight, documentSymbol, and semantic tokens for
-  a client with `workspace.semanticTokens.refreshSupport`) only when the
+  signatureHelp, documentHighlight, documentSymbol, and semantic tokens
+  or inlay hints for a client with the matching `refreshSupport`, the
+  policy `CP_VIEW`) only when the
   snapshot has no index at all; `CP_POS` (hover, definition, declaration,
   typeDefinition) also when the request's position is inside the carried
-  index's damage; `CP_WAIT` (references, prepareRename, rename, and semantic
-  tokens for a client without `refreshSupport`) always. After the timeout
+  index's damage; `CP_WAIT` (references, prepareRename, rename, call
+  hierarchy follow-ups, and semantic tokens or inlay hints for a client
+  without the matching `refreshSupport`) always. After the timeout
   a request answers from what is there: the carried index, or the macros
   alone if there is none. Rename uses only a fresh index: with a carried
   one it is refused ("retry").
 - **What the client sees of a carried answer:** completion is
   `isIncomplete: true`; hover adds "(rechecking: its declaration was
   edited)" when the entity's declaration was edited (a lost DECL/DEF event,
-  or one on a line the damage touches); a semantic token answer made
-  without the snapshot's own index sets the unit's `tok_stale`, and when a
-  check then publishes, the server sends the client
-  `workspace/semanticTokens/refresh` (a request with id
-  `cereal-refresh-N`; the client's response is ignored). The whole-file
+  or one on a line the damage touches); a semantic token or inlay hint
+  answer made without the snapshot's own index sets that view's bit in the
+  unit's `views_stale` (`VIEW_TOKENS`, `VIEW_HINTS`), and when a check then
+  publishes, the server sends the client `workspace/semanticTokens/refresh`
+  and/or `workspace/inlayHint/refresh` (requests with id `cereal-refresh-N`;
+  the client's responses are ignored). The whole-file
   token result is keyed by the index's serial, so a result made from a
   carried index is not reused after the own one publishes. A macro token
   and a carried C token starting at one place: the macro's wins.
@@ -378,7 +381,8 @@ enum), semantic tokens (`macro`, `parameter`, `function`, `variable`,
 `type`, `enumMember`, `property`, `struct`, `enum`; modifiers
 `declaration`, `readonly`, `static`; whole file, a range, or a delta
 against the last whole-file result), folding (`#if` blocks, multi-line
-`#define`s), rename with prepareRename, call hierarchy (incoming and
+`#define`s), parameter-name inlay hints for C calls (below), rename with
+prepareRename, call hierarchy (incoming and
 outgoing; for macros static edges plus observed expansions, for C
 functions and file-level variables the call index), and signature help for
 function-like macros and for C functions and function pointers, also
@@ -400,9 +404,29 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
     deterministically; with `builds` the builder also waits before each
     build, so that the snapshot stays older than the document. Do not use
     `waitIdle` while held: it waits for the check.
-  - `workspace/semanticTokens/refresh`, sent by the server (the only
-    request it sends) after a check publishes, if a token answer lacked
-    the fresh index and the client declared `refreshSupport`.
+  - `workspace/semanticTokens/refresh` and `workspace/inlayHint/refresh`,
+    sent by the server (the only requests it sends) after a check
+    publishes, if a token or hint answer lacked the fresh index and the
+    client declared the matching `refreshSupport`.
+- **Inlay hints** (B4b; B4_DESIGN.md section 6). `inlayHintProvider` is
+  advertised only when the client sends `textDocument.inlayHint` and
+  `initializationOptions.inlayHints` is not `false` (off switches: the
+  client's own toggle, which stops the requests, and that option, which
+  leaves the capability out). Only parameter hints (`kind` 2, label
+  `name:`, `paddingRight`), for the `CIX_CALL` events spelled in the file's
+  own text (not in a `#define` body, not from an expansion, not in a system
+  header). Parameter names come from the index (definition, then
+  declarations, then a typedef), and from the text only for declarations in
+  system headers (leading underscores stripped). The arguments are re-lexed
+  from the snapshot's text. No hint when the argument, outer parentheses and
+  leading underscores stripped, is the parameter's name; when a
+  `/*name*/` or `/*name=*/` comment precedes it; for a one-parameter setter
+  (`setLimit(limit)`); for unnamed parameters, `...` and its arguments, and
+  functions without a prototype. Only hints inside the request range are
+  returned. Policy `CP_VIEW` (a carried index answers at once and the
+  server asks for a refresh when the check publishes). The same lexer
+  rules as signature help; both read parameters through `csig_params`
+  (src/c/csymidx.c).
 - **Code actions** (C4; C_DESIGN.md section 7). `codeActionProvider`
   (`quickfix`, `source.fixAll.cereal`, no resolve) is advertised only when
   the client sends `textDocument.codeAction.codeActionLiteralSupport`; cereal
@@ -518,8 +542,21 @@ held: `[]`), `fixit_nolit` (no `codeActionProvider` without literal support)
 and `fixall_async` (checks held: a fix-all is not answered, a hover and a
 quick fix are, the fix-all follows the release; steps `defer`, `await`,
 `unanswered`).
-`tests/lsp_stress.py BIN FILE [EDITS]` (not a golden) sends edits each
-followed at once by token, completion and hover requests; run on zstd.c
+`tests/lsp/hints` (B4b): every row of B4_DESIGN 6.5 in one function
+(`hints.json`; a first-line range and a second-line range; checks held: a
+hint request after an insert at the top is answered at once from the carried
+index, hints moved down a line; after the release one refresh of each view
+is recorded, and no second pair);
+`hints_nocap` (no `textDocument.inlayHint`: no provider, no refresh) and
+`hints_off` (`initializationOptions.inlayHints` false: no provider).
+`bench/tools/clangd_diff.sh` (not in run.sh: needs clangd) compares hints
+and call hierarchy with clangd on `bench/clangd_diff/` and three corpus
+files; every difference is either a named intended one or `UNEXPECTED`.
+`tests/lsp_stress.py [--calls] [--hints] BIN FILE [EDITS] [SEED]` (not a
+golden) sends edits each
+followed at once by token, completion and hover requests (`--calls` adds
+prepareCallHierarchy with incoming and outgoing calls on hand-built items,
+`--hints` an inlayHint request over a random range); run on zstd.c
 under TSan (also on a smaller file, where more checks publish between
 edits) and ASan with the sanitizer logs empty. The sessions are also
 run under ThreadSanitizer and AddressSanitizer/UBSan (set `LSP_STDERR` to

@@ -1,0 +1,12 @@
+[
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/hints", "capabilities": {"workspace": {"semanticTokens": {"refreshSupport": true}}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"open": "hints/main.c"},
+ {"idle": true},
+ {"note": "a client that did not declare textDocument.inlayHint: no inlayHintProvider; an edit and its check ask for no inlay hint refresh"},
+ {"send": {"method": "textDocument/didChange", "params": {"textDocument": {"uri": "file://$ROOT/hints/main.c", "version": 2}, "contentChanges": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "text": "/* edited */\n"}]}}},
+ {"idle": true},
+ {"absent": "workspace/inlayHint/refresh"},
+ {"send": {"id": 2, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

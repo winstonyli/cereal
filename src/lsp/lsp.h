@@ -200,6 +200,7 @@ bool lsp_rename(Req *r, JsonWriter *w, const char **err);
 void lsp_prepare_call_hierarchy(Req *r, JsonWriter *w);
 void lsp_calls(Req *r, JsonWriter *w, bool incoming);
 void lsp_signature_help(Req *r, JsonWriter *w);
+void lsp_inlay_hints(Req *r, JsonWriter *w);
 void lsp_expand_macro(Req *r, JsonWriter *w);
 
 /* Diagnostics for the files of a snapshot (publishDiagnostics bodies):

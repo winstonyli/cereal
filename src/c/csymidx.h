@@ -257,6 +257,32 @@ size_t cindex_calls_to(const CIndex *ix, uint32_t d, CIdxCall **out);
  * cindex_site), sorted by (callee name, callee, site).  *out is malloc'd. */
 size_t cindex_calls_in(const CIndex *ix, uint32_t ev, CIdxCall **out);
 
+/* ---- parameter lists and names (docs/B4_DESIGN.md 6.3) ------------------ */
+
+typedef VEC(uint32_t) U32Vec;
+typedef struct CSig {
+    StrBuf label;            /* NAME(P1, P2) */
+    U32Vec offs;             /* each parameter's [begin, end) in label */
+    U32Vec spans;            /* ... and in the declaration's text (text_params) */
+    bool variadic;           /* the last parameter is ... */
+} CSig;
+void csig_free(CSig *s);
+/* Appends parameter text p[0..n) to the label. */
+void csig_param(CSig *s, const char *p, size_t n);
+/* The parameter list written after the name at buf[i] (a declaration's
+ * text): past balanced [..] and ')' a '(' must follow; its parameters, as
+ * written with white space and comments collapsed, go to s, their source
+ * spans too.  False if there is none, it holds a directive or it is over
+ * 4 KiB. */
+bool csig_params(const char *buf, size_t n, size_t i, CSig *s);
+/* The name of the parameter written at [b, e) of file fi (buf: the text of
+ * that file): its declaration event in the index, else (text_ok: the
+ * declaration is in a system header, which has none) the text rule; leading
+ * underscores dropped.  *name is not NUL-terminated; the length, 0: none. */
+size_t cindex_param_name(const CIndex *ix, uint32_t fi, const char *buf,
+                         uint32_t b, uint32_t e, bool text_ok,
+                         const char **name);
+
 /* sm's user or system file with exactly this (normalized) path, or NULL. */
 SrcFile *cindex_srcfile(SrcMgr *sm, const char *path);
 /* "DECL", "DEF", "REF"; "func", "obj", ...; " body expansion arg system" */

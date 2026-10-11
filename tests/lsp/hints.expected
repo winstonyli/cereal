@@ -1,0 +1,453 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "inlayHintProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider"
+ ]
+}
+>> initialized
+>> didOpen hints/main.c
+>> (idle)
+## the whole file: every row of B4_DESIGN 6.5 (user() is lines 22-59, 1-based)
+>> textDocument/inlayHint
+[
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 8,
+   "line": 25
+  }
+ },
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 8,
+   "line": 26
+  }
+ },
+ {
+  "kind": 2,
+  "label": "flag:",
+  "paddingRight": true,
+  "position": {
+   "character": 15,
+   "line": 26
+  }
+ },
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 10,
+   "line": 28
+  }
+ },
+ {
+  "kind": 2,
+  "label": "count_:",
+  "paddingRight": true,
+  "position": {
+   "character": 10,
+   "line": 29
+  }
+ },
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 8,
+   "line": 31
+  }
+ },
+ {
+  "kind": 2,
+  "label": "flag:",
+  "paddingRight": true,
+  "position": {
+   "character": 18,
+   "line": 31
+  }
+ },
+ {
+  "kind": 2,
+  "label": "value:",
+  "paddingRight": true,
+  "position": {
+   "character": 8,
+   "line": 32
+  }
+ },
+ {
+  "kind": 2,
+  "label": "mode:",
+  "paddingRight": true,
+  "position": {
+   "character": 10,
+   "line": 36
+  }
+ },
+ {
+  "kind": 2,
+  "label": "x:",
+  "paddingRight": true,
+  "position": {
+   "character": 9,
+   "line": 37
+  }
+ },
+ {
+  "kind": 2,
+  "label": "fmt:",
+  "paddingRight": true,
+  "position": {
+   "character": 9,
+   "line": 39
+  }
+ },
+ {
+  "kind": 2,
+  "label": "a:",
+  "paddingRight": true,
+  "position": {
+   "character": 11,
+   "line": 41
+  }
+ },
+ {
+  "kind": 2,
+  "label": "b:",
+  "paddingRight": true,
+  "position": {
+   "character": 15,
+   "line": 41
+  }
+ },
+ {
+  "kind": 2,
+  "label": "a:",
+  "paddingRight": true,
+  "position": {
+   "character": 9,
+   "line": 42
+  }
+ },
+ {
+  "kind": 2,
+  "label": "b:",
+  "paddingRight": true,
+  "position": {
+   "character": 12,
+   "line": 42
+  }
+ },
+ {
+  "kind": 2,
+  "label": "width:",
+  "paddingRight": true,
+  "position": {
+   "character": 7,
+   "line": 43
+  }
+ },
+ {
+  "kind": 2,
+  "label": "height:",
+  "paddingRight": true,
+  "position": {
+   "character": 11,
+   "line": 43
+  }
+ },
+ {
+  "kind": 2,
+  "label": "depth:",
+  "paddingRight": true,
+  "position": {
+   "character": 10,
+   "line": 44
+  }
+ },
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 10,
+   "line": 45
+  }
+ },
+ {
+  "kind": 2,
+  "label": "flag:",
+  "paddingRight": true,
+  "position": {
+   "character": 13,
+   "line": 45
+  }
+ },
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 8,
+   "line": 48
+  }
+ },
+ {
+  "kind": 2,
+  "label": "flag:",
+  "paddingRight": true,
+  "position": {
+   "character": 13,
+   "line": 48
+  }
+ },
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 8,
+   "line": 53
+  }
+ },
+ {
+  "kind": 2,
+  "label": "flag:",
+  "paddingRight": true,
+  "position": {
+   "character": 19,
+   "line": 53
+  }
+ },
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 12,
+   "line": 53
+  }
+ },
+ {
+  "kind": 2,
+  "label": "flag:",
+  "paddingRight": true,
+  "position": {
+   "character": 15,
+   "line": 53
+  }
+ },
+ {
+  "kind": 2,
+  "label": "dest:",
+  "paddingRight": true,
+  "position": {
+   "character": 14,
+   "line": 54
+  }
+ },
+ {
+  "kind": 2,
+  "label": "src:",
+  "paddingRight": true,
+  "position": {
+   "character": 17,
+   "line": 54
+  }
+ },
+ {
+  "kind": 2,
+  "label": "n:",
+  "paddingRight": true,
+  "position": {
+   "character": 20,
+   "line": 54
+  }
+ },
+ {
+  "kind": 2,
+  "label": "s:",
+  "paddingRight": true,
+  "position": {
+   "character": 13,
+   "line": 55
+  }
+ },
+ {
+  "kind": 2,
+  "label": "fn:",
+  "paddingRight": true,
+  "position": {
+   "character": 12,
+   "line": 57
+  }
+ },
+ {
+  "kind": 2,
+  "label": "st:",
+  "paddingRight": true,
+  "position": {
+   "character": 15,
+   "line": 57
+  }
+ },
+ {
+  "kind": 2,
+  "label": "buf:",
+  "paddingRight": true,
+  "position": {
+   "character": 18,
+   "line": 57
+  }
+ }
+]
+## a range holding only the first line of a multi-line call (two( ): no hints, the arguments are on the next line (the filter is by hint position)
+>> textDocument/inlayHint
+[]
+## the range of the second line: the hints of both calls whose arguments are there
+>> textDocument/inlayHint
+[
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 8,
+   "line": 53
+  }
+ },
+ {
+  "kind": 2,
+  "label": "flag:",
+  "paddingRight": true,
+  "position": {
+   "character": 19,
+   "line": 53
+  }
+ },
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 12,
+   "line": 53
+  }
+ },
+ {
+  "kind": 2,
+  "label": "flag:",
+  "paddingRight": true,
+  "position": {
+   "character": 15,
+   "line": 53
+  }
+ }
+]
+## checks held, a line inserted at the top: the hints come from the carried index at once, moved down a line
+>> cereal/holdChecks
+null
+>> textDocument/didChange
+>> textDocument/inlayHint
+[
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 8,
+   "line": 26
+  }
+ }
+]
+>> textDocument/semanticTokens/range
+{
+ "data": [
+  22,
+  5,
+  4,
+  2,
+  1,
+  0,
+  9,
+  5,
+  1,
+  1,
+  0,
+  11,
+  4,
+  1,
+  1,
+  0,
+  13,
+  3,
+  7,
+  0,
+  0,
+  5,
+  1,
+  1,
+  1,
+  0,
+  3,
+  3,
+  4,
+  0,
+  0,
+  4,
+  2,
+  1,
+  1
+ ]
+}
+## released: the check publishes, one refresh for each view
+>> cereal/holdChecks
+null
+>> (idle)
+<< workspace/inlayHint/refresh (no uri)
+{}
+<< workspace/semanticTokens/refresh (no uri)
+{}
+## no second pair of refreshes
+>> (no workspace/inlayHint/refresh)
+>> (no workspace/semanticTokens/refresh)
+>> textDocument/inlayHint
+[
+ {
+  "kind": 2,
+  "label": "count:",
+  "paddingRight": true,
+  "position": {
+   "character": 8,
+   "line": 26
+  }
+ }
+]
+>> shutdown
+null
+>> exit
+exit 0

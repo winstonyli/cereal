@@ -1,8 +1,9 @@
 # B4 design: C call hierarchy, parameter-name inlay hints, workspace/symbol over open units
 
 Status: designed 2026-10-10 (ROADMAP Track B, B4). **B4a (C call hierarchy)
-is implemented** (Round 218; section 17 lists what differs from this text).
-B4b and B4c are not started.
+is implemented** (Round 218; section 17 lists what differs from this text),
+and so is **B4b (parameter-name inlay hints)**, with `bench/tools/clangd_diff.py`
+(Round 219; section 18). B4c is not started.
 It builds on the C symbol index of B2 and B3 (B2_DESIGN.md, B3_DESIGN.md;
 LSP.md, "C symbol index"). Line numbers refer to the Windows checkout at
 809a6c8 (drafted at 82c44b2; every cited line was rechecked after
@@ -783,7 +784,7 @@ Checked against clangd 20 by probe (10.1). "Same" means the probe agreed.
 
 | Rule | Ours | clangd 20 |
 |---|---|---|
-| Argument, outer parentheses stripped, is a single identifier equal to the name: the argument verbatim, the parameter name after its leading underscores are stripped, case-sensitive | no hint | same: `two(count, flag)`, `two(count + 1, (flag))` hint only the first. Second probe: `two(Count, FLAG)` hints both (case-sensitive); `under(count, flag)` for `(int __count, int _flag)` hints none, `under(count, _flag)` hints `flag:`; `trail(count, flag)` for `(int count_, int flag)` hints `count_:` (trailing underscores kept) |
+| Argument, outer parentheses stripped, is a single identifier equal to the name: the argument and the parameter name each with leading underscores stripped (section 18), case-sensitive | no hint | same: `two(count, flag)`, `two(count + 1, (flag))` hint only the first. Second probe: `two(Count, FLAG)` hints both (case-sensitive); `under(count, flag)` for `(int __count, int _flag)` hints none, `under(count, _flag)` hints `flag:` (**wrong**, section 18: the argument's leading underscores are stripped too, so `_flag` for `_flag` is suppressed); `trail(count, flag)` for `(int count_, int flag)` hints `count_:` (trailing underscores kept) |
 | `/*name*/` or `/*name=*/` (blanks allowed) right before the argument | no hint | same: `two(/*count=*/1, /*flag*/2)` |
 | Member access equal to the name (`o->count`) | hint | same: hinted |
 | Single parameter, setter: the function name minus `set` (case-insensitive) and leading `_` equals the parameter name, ignoring case | no hint | same: `setLimit(4)`, `set_limit(1)`, `setCount(1)` and `set_Count(2)` for `(int COUNT)` suppressed; `setup(2)` gets `mode:`, `set_(1)` gets `x:` |
@@ -1206,6 +1207,9 @@ mask (4.1) with it.
 - Cross-TU callers and callees, and the workspace beyond open units (B5).
 - Call hierarchy items for sites with no caller (`_Static_assert` at file
   level).
+- The caller of a body call in a function defined by a macro invocation
+  (`DEFINE_FN(made)`): no edge, caller shown as file scope (18, G1; found by
+  clangd_diff on `bench/clangd_diff/symcalls.c`). A B4a fix, not started.
 
 ## 16. Review log
 
@@ -1480,3 +1484,78 @@ differences and findings.
   hierarchy is macro to macro, as before).
 - **Parked still:** a call in a file-level `_Static_assert` has no caller
   item (section 15).
+
+## 18. B4b as implemented (Round 219)
+
+Implemented as written (D1-D6 and Q1-Q7 as recommended), with these
+differences and findings. The `bench/tools/clangd_diff.py` script is here too.
+
+- **Underscores on both sides (corrects the first row of 6.5).** clangd
+  20.1.8 suppresses `under(Count, _flag)` for `(int __count, int _flag)`:
+  it strips the leading underscores of the argument as well as of the
+  parameter name. 6.5 had recorded `flag:` for `under(count, _flag)`; the
+  script found the difference on the golden's own case, and `arg_says_name`
+  now strips both. `hints.expected` lost that one hint.
+- **`text_params` moved with its struct.** `CSig` (label, offsets and the
+  new source spans, `variadic`) and `csig_params` live in csymidx.c;
+  features.c's `Sig` is `{CSig c; doc}`. The signatureHelp goldens
+  (`csym_b3`, `ccalls`, `carry_cidx`) did not change.
+- **Param-name check.** `--verify-symbols` compares the text rule with the
+  index for every function declarator whose parameters it can read (K&R,
+  spans with macro events, `;`, `{` or `\` in the span, and spans whose
+  identifiers have no event are skipped). The count is printed as `N param
+  misses` and symcov carries it (`--misses` lists them); it adds to the
+  exit status of `--verify-symbols` but not to symcov's failure. Three false
+  positives in gcc.dg (`typeof`, `__typeof__`, a `\u` universal character
+  name) were fixed in the rule.
+- **The view of a request is derived, not a table column.** `CP_VIEW`
+  needs to know which view's refresh the client takes; a `view` field in the
+  request table triggered `-Wmissing-field-initializers` on every other
+  row, so `handle_request` derives it from the kind (`R_HINTS` is
+  `VIEW_HINTS`, the semantic token kinds `VIEW_TOKENS`).
+- **Call-hierarchy stress.** `tests/lsp_stress.py --calls` (and `--hints`)
+  race prepareCallHierarchy, incomingCalls and outgoingCalls on hand-built
+  `data` {name, doc} items against edits. The final line now also counts
+  error responses.
+- **`clangd_diff.py`.** Compares inlay hints and call hierarchy (B4c's
+  workspace/symbol requests are not made) on `bench/clangd_diff/` (the
+  probe cases: hints.c is the unit test's file, calls.c, symcalls.c, with a
+  user and a system header) and three corpus files (lstrlib.c, lparser.c,
+  libuv core.c; missing ones are skipped). It takes a few seconds.
+  Result: 6 files, 294 differences, **0 unexpected**: C1 62, C3 29, C5 5,
+  H1 146, H2 1, H3 1, H6 1, and two new ones below (C6 47, G1 2). H4 and H5
+  show no difference on this corpus (clangd also takes the definition's
+  names for `pdef`; the fake glibc header agrees).
+  - **C1 widened:** clangd also lists non-call references in the outgoing
+    direction (`int (*fp)(int, int) = leaf;` gives `fp` an outgoing `leaf`).
+  - **H1 widened:** a callee spelled in a system header's macro
+    (`CPU_COUNT(&set)` expands to `__sched_cpucount(...)`) gets hints from
+    clangd and none from cereal.
+  - **C6 (new):** a callee spelled in a system header's macro body
+    (`assert` gives `__assert_fail`, `errno` gives `__errno_location`):
+    cereal has the edge (xcall), clangd does not. Expected from 4.4; 4.4's
+    option 2 text assumed clangd had them.
+  - **G1 (new, a B4a gap, parked):** a function defined by a macro
+    invocation (`DEFINE_FN(made)` in symcalls.c, whose body calls `leaf`)
+    has no outgoing edge in cereal, and the xcall's caller is reported as
+    file scope (`cereal query callers` prints it under `(file scope)`).
+    Rule 1 of 5.1 says the function the root defines is the caller; the
+    macro invocation's root evidently does not hold it as a DEF in the
+    range the lookup scans. clangd reports `made` calling `leaf` sited at
+    the invocation. Not fixed in B4b (a B4a change); recorded in 15.
+  - **H3** here is the `int (*cb)(int depth)` field (`hints.c:45`).
+- **Used `cereal/waitIdle`** to wait for cereal; clangd is polled with
+  `workspace/symbol` until it knows the file's first symbol (no fixed
+  sleeps).
+- **Fix to the test script order.** `hints.json` writes its `.cereal`
+  before `initialize`, like `csym_sys.json`; written after, `--flags` and
+  the step both owned the file and the second removal failed.
+
+Gates and sizes: run.sh 2074 passed (+6); gate.sh: san 2074 passed, 628
+files, 0 findings; verify unchanged; callgrind 3.8832 G (3.8856 G before);
+symcov `unindexed 0, param misses 0` over 4718 files, 1,146,276 events;
+TSan: 54 session runs clean, `lsp_stress.py` 200 edits on zstd.c (plain, and
+with `--calls --hints`) and `--calls --hints` on `tests/lsp/ccalls/main.c`:
+0 reports, 0 error responses. Source +745/-169, hand-written tests ~170
+lines (goldens 513), clangd_diff 318 plus the 130-line corpus. Estimate in
+12: 360 - 700 src and 120 - 250 tests; the src is at the top.

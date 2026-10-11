@@ -46,7 +46,7 @@ typedef struct BScope {      /* presentation points */
     uint32_t parent;         /* 1 + index, 0: a root */
 } BScope;
 
-typedef VEC(uint32_t) U32V;
+typedef U32Vec U32V;
 
 struct SymIdxB {
     VEC(BEv) ev;
@@ -1729,9 +1729,348 @@ void cindex_dump(const CIndex *ix, SrcMgr *sm, FILE *out)
     }
 }
 
+/* ---- parameter lists and names (docs/B4_DESIGN.md 6.3) ---------------------- */
+
+void csig_free(CSig *s)
+{
+    sb_free(&s->label);
+    vec_free(&s->offs);
+    vec_free(&s->spans);
+}
+
+void csig_param(CSig *s, const char *p, size_t n)
+{
+    if (s->offs.len)
+        sb_puts(&s->label, ", ");
+    vec_push(&s->offs, (uint32_t)s->label.len);
+    sb_putn(&s->label, p, n);
+    vec_push(&s->offs, (uint32_t)s->label.len);
+}
+
+/* Past white space and comments from buf[i]. */
+static size_t skip_blank(const char *buf, size_t n, size_t i)
+{
+    for (;;) {
+        while (i < n && (buf[i] == ' ' || buf[i] == '\t' || buf[i] == '\n' ||
+                         buf[i] == '\r' || buf[i] == '\f' || buf[i] == '\v'))
+            i++;
+        if (i + 1 < n && buf[i] == '/' && buf[i + 1] == '*') {
+            for (i += 2; i + 1 < n && !(buf[i] == '*' && buf[i + 1] == '/'); i++)
+                ;
+            i = i + 2 < n ? i + 2 : n;
+        } else if (i + 1 < n && buf[i] == '/' && buf[i + 1] == '/') {
+            while (i < n && buf[i] != '\n')
+                i++;
+        } else {
+            return i;
+        }
+    }
+}
+
+bool csig_params(const char *buf, size_t n, size_t i, CSig *s)
+{
+    StrBuf p = {0};
+    size_t start, j, pb = 0, pe = 0;
+    int depth = 0;
+    for (i = skip_blank(buf, n, i); i < n && (buf[i] == ')' || buf[i] == '[');
+         i = skip_blank(buf, n, i)) {
+        if (buf[i] == ')') {
+            i++;
+            continue;
+        }
+        for (depth = 0; i < n; i++)
+            if (buf[i] == '[')
+                depth++;
+            else if (buf[i] == ']' && --depth == 0)
+                break;
+        i++;
+    }
+    if (i >= n || buf[i] != '(')
+        return false;
+    start = s->label.len;
+    sb_putc(&s->label, '(');
+    for (i++, depth = 0, j = i; i < n && i - j < 4096; i++) {
+        size_t k = skip_blank(buf, n, i);
+        char c;
+        if (k > i) {         /* white space or a comment: one space */
+            if (p.len && p.data[p.len - 1] != ' ')
+                sb_putc(&p, ' ');
+            i = k - 1;
+            continue;
+        }
+        c = buf[i];
+        if (c == '#')
+            break;           /* a directive: not a list to show */
+        if ((c == ',' || c == ')') && depth == 0) {
+            size_t b0;
+            while (p.len && p.data[p.len - 1] == ' ')
+                p.len--;
+            for (b0 = 0; b0 < p.len && p.data[b0] == ' '; b0++)
+                ;
+            if (!(c == ')' && !s->offs.len && (p.len == b0 ||
+                                               (p.len - b0 == 4 &&
+                                                !memcmp(p.data + b0, "void", 4))))) {
+                csig_param(s, p.data + b0, p.len - b0);
+                vec_push(&s->spans, (uint32_t)pb);
+                vec_push(&s->spans, (uint32_t)pe);
+            }
+            p.len = 0;
+            if (c == ')') {
+                sb_free(&p);
+                sb_putc(&s->label, ')');
+                s->variadic = s->offs.len &&
+                              s->offs.data[s->offs.len - 1] -
+                                      s->offs.data[s->offs.len - 2] == 3 &&
+                              !memcmp(s->label.data +
+                                          s->offs.data[s->offs.len - 2],
+                                      "...", 3);
+                return true;
+            }
+            continue;
+        }
+        depth += c == '(' || c == '[';
+        depth -= (c == ')' || c == ']') && depth > 0;
+        if (!p.len)
+            pb = i;
+        pe = i + 1;
+        sb_putc(&p, c);
+    }
+    sb_free(&p);
+    s->label.len = start;    /* undo */
+    s->offs.len = 0;
+    s->spans.len = 0;
+    return false;
+}
+
+/* Keywords that are not a parameter's name: the types, the tags' introducers
+ * and the qualifiers and GNU spellings (0: none, 1: names a type, 2: a tag
+ * keyword, 3: neither). */
+static int param_kw(const char *s, size_t n)
+{
+    static const char *const types[] = {
+        "void", "char", "short", "int", "long", "float", "double", "signed",
+        "unsigned", "_Bool", "_Complex", "__int128", "__signed__", "__signed",
+        "_Float128", "typeof", "__typeof__", "__typeof", NULL};
+    static const char *const others[] = {
+        "const", "volatile", "restrict", "static", "register", "inline",
+        "auto", "extern", "typedef", "_Atomic", "_Noreturn", "__const",
+        "__const__", "__volatile", "__volatile__", "__restrict", "__restrict__",
+        "__extension__", "__inline", "__inline__", "_Nonnull", "_Nullable",
+        "_Null_unspecified", "_Thread_local", "__thread", "_Alignas", "alignas",
+        "sizeof", "_Alignof", "alignof", "__alignof__", NULL};
+    int i;
+    if ((n == 6 && !memcmp(s, "struct", 6)) || (n == 5 && !memcmp(s, "union", 5)) ||
+        (n == 4 && !memcmp(s, "enum", 4)))
+        return 2;
+    for (i = 0; types[i]; i++)
+        if (strlen(types[i]) == n && !memcmp(types[i], s, n))
+            return 1;
+    for (i = 0; others[i]; i++)
+        if (strlen(others[i]) == n && !memcmp(others[i], s, n))
+            return 3;
+    return 0;
+}
+
+/* Past the balanced parentheses at buf[i] (a '('), or e. */
+static size_t skip_parens(const char *buf, size_t e, size_t i)
+{
+    int depth = 0;
+    for (; i < e; i++)
+        if (buf[i] == '(')
+            depth++;
+        else if (buf[i] == ')' && --depth == 0)
+            return i + 1;
+    return e;
+}
+
+/* The text rule (6.3) for the parameter written at buf[b..e): the name of a
+ * parenthesized declarator, else the last identifier at depth 0 that follows
+ * a type specifier.  Length, 0: none. */
+static size_t text_name(const char *buf, size_t b, size_t e, const char **name)
+{
+    size_t i = b, nlen = 0, j;
+    int depth = 0, kw;
+    bool have_type = false, tag = false;
+    *name = NULL;
+    while ((i = skip_blank(buf, e, i)) < e) {
+        char c = buf[i];
+        if (cindex_ident_char(c)) {
+            for (j = i; j < e && cindex_ident_char(buf[j]); j++)
+                ;
+            kw = c >= '0' && c <= '9' ? 3 : param_kw(buf + i, j - i);
+            if (depth == 0 && j - i >= 11 && !memcmp(buf + i, "__attribute", 11)) {
+                j = skip_blank(buf, e, j);
+                j = j < e && buf[j] == '(' ? skip_parens(buf, e, j) : j;
+            } else if (depth == 0 && kw == 2) {
+                tag = true;
+            } else if (depth == 0 && kw == 1) {
+                have_type = true;
+            } else if (depth == 0 && kw == 0) {
+                if (tag || !have_type)
+                    have_type = true, tag = false;
+                else
+                    *name = buf + i, nlen = j - i;
+            }
+            i = j;
+            continue;
+        }
+        if (c == '(' && depth == 0) {     /* ( * NAME ) */
+            size_t k = skip_blank(buf, e, i + 1);
+            if (k < e && (buf[k] == '*' || buf[k] == '^')) {
+                for (; (k = skip_blank(buf, e, k)) < e; ) {
+                    if (buf[k] == '*' || buf[k] == '^') {
+                        k++;
+                    } else if (cindex_ident_char(buf[k])) {
+                        for (j = k; j < e && cindex_ident_char(buf[j]); j++)
+                            ;
+                        if (param_kw(buf + k, j - k) != 3) {
+                            *name = buf + k;
+                            return j - k;
+                        }
+                        k = j;
+                    } else {
+                        break;
+                    }
+                }
+                return 0;
+            }
+        }
+        depth += c == '(' || c == '[';
+        depth -= (c == ')' || c == ']') && depth > 0;
+        i++;
+    }
+    return *name ? nlen : 0;
+}
+
+/* The span [b, e) is plain C: no `;` or `{` (GNU forward parameter
+ * declarations, a struct defined in it) and every identifier but the keywords
+ * has an event, which a name from a macro does not (docs/B4_DESIGN.md 6.3:
+ * the check leaves macro-expanded spans out). */
+static bool span_plain(const CIndex *ix, uint32_t fi, const char *buf,
+                       size_t b, size_t e)
+{
+    size_t i = b, j;
+    uint32_t first;
+    while ((i = skip_blank(buf, e, i)) < e) {
+        if (!cindex_ident_char(buf[i])) {
+            if (buf[i] == ';' || buf[i] == '{' || buf[i] == '\\')
+                return false;      /* ... or a UCN */
+            i++;
+            continue;
+        }
+        for (j = i; j < e && cindex_ident_char(buf[j]); j++)
+            ;
+        if (j - i >= 11 && !memcmp(buf + i, "__attribute", 11)) {
+            j = skip_blank(buf, e, j);
+            j = j < e && buf[j] == '(' ? skip_parens(buf, e, j) : j;
+        } else if (!(buf[i] >= '0' && buf[i] <= '9') && !param_kw(buf + i, j - i) &&
+                   !(j - i >= 9 && !memcmp(buf + i, "__builtin", 9)) &&
+                   !cindex_at(ix, fi, (uint32_t)i, &first)) {
+            return false;
+        }
+        i = j;
+    }
+    return true;
+}
+
+/* The CIK_PARAM decl declared in [b, e) of file fi, whose innermost scope
+ * begins at or before b (a nested prototype's parameter does not count); else,
+ * *ref set, the first one used there (a K&R identifier list).  CIX_NONE:
+ * none.  *macro: some event there comes from a macro. */
+static uint32_t param_decl_in(const CIndex *ix, uint32_t fi, uint32_t b,
+                              uint32_t e, bool *ref, bool *macro)
+{
+    uint32_t k, used = CIX_NONE;
+    *macro = false;
+    *ref = false;
+    for (k = cindex_lower(ix, fi, b);
+         k < ix->nev && ix->ev[k].file == fi && ix->ev[k].off < e; k++) {
+        const CIdxEvent *v = &ix->ev[k];
+        uint32_t s;
+        if (v->flags & (CIX_MACRO_BODY | CIX_AT_EXPANSION | CIX_ARG))
+            *macro = true;
+        if (ix->decls[v->decl].kind != CIK_PARAM ||
+            (v->flags & (CIX_MACRO_BODY | CIX_AT_EXPANSION)))
+            continue;
+        s = cindex_scope_at(ix, fi, v->off);
+        if (s && ix->scopes[s - 1].begin > b)
+            continue;
+        if ((v->flags & CIX_ROLE) != CIX_REF)
+            return v->decl;
+        if (used == CIX_NONE)
+            used = v->decl;
+    }
+    *ref = used != CIX_NONE;
+    return used;
+}
+
+size_t cindex_param_name(const CIndex *ix, uint32_t fi, const char *buf,
+                         uint32_t b, uint32_t e, bool text_ok,
+                         const char **name)
+{
+    bool ref, macro;
+    uint32_t d = param_decl_in(ix, fi, b, e, &ref, &macro);
+    size_t n = 0;
+    *name = NULL;
+    if (d != CIX_NONE)
+        n = strlen(*name = cindex_name(ix, d));
+    else if (text_ok)
+        n = text_name(buf, b, e, name);
+    for (; n && **name == '_'; n--)
+        (*name)++;
+    return n;
+}
+
+/* --verify-symbols: the text rule against the index's names on every user
+ * function declaration whose list text_params reads (6.3); K&R lists and
+ * spans with macro tokens are left out.  Prints the differences. */
+static size_t verify_param_names(const CIndex *ix, SrcMgr *sm, FILE *out)
+{
+    size_t misses = 0, q;
+    uint32_t j;
+    for (j = 0; j < ix->nev; j++) {
+        const CIdxEvent *e = &ix->ev[j];
+        CSig sig = {0};
+        SrcFile *f;
+        if (ix->decls[e->decl].kind != CIK_FUNC || (e->flags & CIX_ROLE) == CIX_REF ||
+            (e->flags & (CIX_MACRO_BODY | CIX_AT_EXPANSION | CIX_SYSTEM)) ||
+            !(f = cindex_srcfile(sm, ix->files[e->file].path)))
+            continue;
+        if (csig_params(f->buf, f->size, e->off + e->len, &sig))
+            for (q = 0; q + 1 < sig.spans.len; q += 2) {
+                uint32_t b = sig.spans.data[q], en = sig.spans.data[q + 1], d;
+                bool ref, macro;
+                const char *in = "", *tn;
+                size_t ni = 0, nt;
+                d = param_decl_in(ix, e->file, b, en, &ref, &macro);
+                if (macro || ref || !span_plain(ix, e->file, f->buf, b, en))
+                    continue;
+                if (d != CIX_NONE)
+                    ni = strlen(in = cindex_name(ix, d));
+                if (ni && en - b == ni)
+                    continue;       /* K&R: the identifier list of a definition */
+                for (; ni && *in == '_'; ni--)
+                    in++;
+                nt = text_name(f->buf, b, en, &tn);
+                for (; nt && *tn == '_'; nt--)
+                    tn++;
+                if (ni != nt || (nt && memcmp(in, tn, nt))) {
+                    char loc[512];
+                    fprintf(out, "%s: param name '%.*s' vs '%.*s'\n",
+                            cindex_place(sm, ix->files[e->file].path, b, loc,
+                                         sizeof loc),
+                            (int)nt, nt ? tn : "", (int)ni, in);
+                    misses++;
+                }
+            }
+        csig_free(&sig);
+    }
+    return misses;
+}
+
 size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
 {
-    size_t bad = 0;
+    size_t bad = 0, misses;
     uint32_t i, j;
     if (!ix)
         return 0;
@@ -1814,10 +2153,12 @@ size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
             bad++;
         }
     }
+    misses = verify_param_names(ix, sm, out);
     fprintf(out, "symbols: %u events, %u decls, %u scopes, %u files, %zu bytes, "
-            "%u unindexed, %u excused\n", ix->nev, ix->ndecls, ix->nscopes,
-            ix->nfiles, cindex_bytes(ix), ix->unindexed, ix->excused);
-    return bad + ix->unindexed;
+            "%u unindexed, %u excused, %zu param misses\n", ix->nev,
+            ix->ndecls, ix->nscopes, ix->nfiles, cindex_bytes(ix),
+            ix->unindexed, ix->excused, misses);
+    return bad + ix->unindexed + misses;
 }
 
 /* ---- call hierarchy queries (docs/B4_DESIGN.md 5) ---------------------------- */

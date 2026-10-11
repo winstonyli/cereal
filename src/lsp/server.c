@@ -28,6 +28,9 @@ typedef struct Overlay {
     long long *versions;      /* -1: the client sent none */
 } Overlay;
 
+/* The views the server can ask the client to refresh (CP_VIEW) */
+enum { VIEW_TOKENS = 1, VIEW_HINTS = 2 };
+
 typedef struct Unit {
     char *main;
     bool standalone_header;   /* no compile command: may be adopted */
@@ -38,9 +41,9 @@ typedef struct Unit {
     long long want, built;
     uint32_t cancel;          /* atomic */
     bool queued, building;
-    /* a semantic token answer lacked the unit's own index: tell the client
-     * to ask again when a check publishes one (S.m) */
-    bool tok_stale;
+    /* VIEW_* bits: a semantic token or inlay hint answer lacked the unit's own
+     * index: tell the client to ask again when a check publishes one (S.m) */
+    unsigned views_stale;
 } Unit;
 
 typedef struct Doc {
@@ -88,6 +91,8 @@ typedef struct Server {
     PosEncoding enc;
     bool inactive_regions;    /* client takes clangd's inactiveRegions */
     bool refresh;             /* client: workspace.semanticTokens.refreshSupport */
+    bool hints;               /* inlay hints are offered (advertised) */
+    bool hint_refresh;        /* client: workspace.inlayHint.refreshSupport */
     unsigned refresh_n;       /* ids of the refresh requests sent */
     bool hold;                /* test only: cereal/holdChecks (B3_DESIGN.md 12.11) */
     LspConfig cfg;
@@ -557,27 +562,42 @@ static void phase_failed(Unit *u, const char *phase, const char *msg)
     sb_free(&text);
 }
 
-/* workspace/semanticTokens/refresh, a request of the server: the client's
- * response has no method and is skipped by the main loop.  S.m held. */
-static void send_refresh(void)
+/* Whether the client takes a refresh of this view. */
+static bool view_refreshes(unsigned view)
 {
-    StrBuf sb = {0};
-    JsonWriter w;
-    char id[40];
-    if (!S.refresh)
-        return;
-    snprintf(id, sizeof id, "cereal-refresh-%u", ++S.refresh_n);
-    json_init_buf(&w, &sb);
-    json_begin_object(&w);
-    json_key(&w, "jsonrpc");
-    json_str(&w, "2.0");
-    json_key(&w, "id");
-    json_str(&w, id);
-    json_key(&w, "method");
-    json_str(&w, "workspace/semanticTokens/refresh");
-    json_end_object(&w);
-    rpc_write(sb.data, sb.len);
-    sb_free(&sb);
+    return view == VIEW_TOKENS ? S.refresh : S.hint_refresh;
+}
+
+/* workspace/semanticTokens/refresh and/or workspace/inlayHint/refresh, the
+ * requests of the server for the views in bits that the client refreshes: its
+ * responses have no method and are skipped by the main loop.  S.m held. */
+static void send_refresh(unsigned bits)
+{
+    static const struct {
+        unsigned view;
+        const char *method;
+    } V[] = {{VIEW_TOKENS, "workspace/semanticTokens/refresh"},
+             {VIEW_HINTS, "workspace/inlayHint/refresh"}};
+    size_t i;
+    for (i = 0; i < sizeof V / sizeof *V; i++) {
+        StrBuf sb = {0};
+        JsonWriter w;
+        char id[40];
+        if (!(bits & V[i].view) || !view_refreshes(V[i].view))
+            continue;
+        snprintf(id, sizeof id, "cereal-refresh-%u", ++S.refresh_n);
+        json_init_buf(&w, &sb);
+        json_begin_object(&w);
+        json_key(&w, "jsonrpc");
+        json_str(&w, "2.0");
+        json_key(&w, "id");
+        json_str(&w, id);
+        json_key(&w, "method");
+        json_str(&w, V[i].method);
+        json_end_object(&w);
+        rpc_write(sb.data, sb.len);
+        sb_free(&sb);
+    }
 }
 
 /* The macro phase of a unit under a fatal() trap; NULL if it was
@@ -868,9 +888,10 @@ static void *builder_main(void *arg)
                     checking->cidx = c->cidx;
                     checking->cidx_carried = false;
                     c->cidx = NULL;
-                    if (checking->cidx && u->tok_stale) {
-                        u->tok_stale = false;
-                        send_refresh();
+                    if (checking->cidx && u->views_stale) {
+                        unsigned bits = u->views_stale;
+                        u->views_stale = 0;
+                        send_refresh(bits);
                     }
                 } else {
                     /* failed, not superseded: the carried index and
@@ -1025,6 +1046,12 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     S.refresh = json_bool_of(
         json_path(params, "capabilities.workspace.semanticTokens.refreshSupport"),
         false);
+    S.hint_refresh = json_bool_of(
+        json_path(params, "capabilities.workspace.inlayHint.refreshSupport"),
+        false);
+    S.hints = json_path(params, "capabilities.textDocument.inlayHint") &&
+              json_bool_of(json_path(params, "initializationOptions.inlayHints"),
+                           true);
     S.code_actions = json_path(params, "capabilities.textDocument.codeAction."
                                        "codeActionLiteralSupport") != NULL;
     S.doc_changes = json_bool_of(
@@ -1114,6 +1141,10 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     }
     json_key(&w, "callHierarchyProvider");
     json_bool(&w, true);
+    if (S.hints) {
+        json_key(&w, "inlayHintProvider");
+        json_bool(&w, true);
+    }
     json_key(&w, "signatureHelpProvider");
     json_begin_object(&w);
     json_key(&w, "triggerCharacters");
@@ -1143,7 +1174,7 @@ typedef enum {
     R_DEF, R_DECL, R_TYPEDEF, R_REFS, R_HIGHLIGHT, R_HOVER, R_COMPLETION,
     R_SYMBOLS, R_SEMTOK, R_SEMTOK_DELTA, R_SEMTOK_RANGE, R_FOLDING,
     R_PREP_RENAME, R_RENAME, R_PREP_CALLS, R_IN_CALLS, R_OUT_CALLS,
-    R_SIGHELP, R_EXPAND, R_CODE_ACTION
+    R_SIGHELP, R_EXPAND, R_CODE_ACTION, R_HINTS
 } ReqKind;
 
 /* What a request waits for before it reads the C index (B3_DESIGN.md 12.6).
@@ -1156,8 +1187,9 @@ typedef enum {
                    its own or the carried index */
     CP_POS,     /* CP_ANY, and when the position is in a carried index's damage */
     CP_WAIT,    /* always: lists the user acts on (references, rename) */
-    CP_TOK,     /* semantic tokens: CP_ANY if the client takes a refresh
-                   (the server asks again after the check), else CP_WAIT */
+    CP_VIEW,    /* semantic tokens and inlay hints: CP_ANY if the client takes
+                   a refresh of the view (the server asks again after the
+                   check), else CP_WAIT */
     CP_SNAP     /* the newest edit's snapshot only, never its check (code
                    actions: carried fix-its are valid); a snapshot still
                    older after the wait answers [] */
@@ -1176,9 +1208,10 @@ static const struct {
     {"textDocument/hover", R_HOVER, CP_POS},
     {"textDocument/completion", R_COMPLETION, CP_ANY},
     {"textDocument/documentSymbol", R_SYMBOLS, CP_ANY},
-    {"textDocument/semanticTokens/full", R_SEMTOK, CP_TOK},
-    {"textDocument/semanticTokens/full/delta", R_SEMTOK_DELTA, CP_TOK},
-    {"textDocument/semanticTokens/range", R_SEMTOK_RANGE, CP_TOK},
+    {"textDocument/semanticTokens/full", R_SEMTOK, CP_VIEW},
+    {"textDocument/semanticTokens/full/delta", R_SEMTOK_DELTA, CP_VIEW},
+    {"textDocument/semanticTokens/range", R_SEMTOK_RANGE, CP_VIEW},
+    {"textDocument/inlayHint", R_HINTS, CP_VIEW},
     {"textDocument/foldingRange", R_FOLDING, CP_NONE},
     {"textDocument/prepareRename", R_PREP_RENAME, CP_WAIT},
     {"textDocument/rename", R_RENAME, CP_WAIT},
@@ -1237,6 +1270,8 @@ static const char *request_uri(const JsonValue *params)
 static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
                            const JsonValue *params, char *body, Arena *msg)
 {
+    /* CP_VIEW requests: the view whose refresh the client may take */
+    unsigned view = pol != CP_VIEW ? 0 : k == R_HINTS ? VIEW_HINTS : VIEW_TOKENS;
     Arena a;
     Req r;
     CIndex *cx = NULL;       /* the reference r.cidx holds */
@@ -1262,8 +1297,8 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
     u = d->unit;
     while (!u->snap && !S.stop) /* first build of this unit */
         cond_wait(&S.done, &S.m);
-    if (pol == CP_TOK)
-        pol = S.refresh ? CP_ANY : CP_WAIT;
+    if (pol == CP_VIEW)
+        pol = view_refreshes(view) ? CP_ANY : CP_WAIT;
     if (pol != CP_NONE) {
         /* wait a little (B2 decision D1, B3_DESIGN.md 12.6) for the newest
          * edit's snapshot, and for its check where the policy says so; then
@@ -1285,10 +1320,9 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         r.doc_changes = S.doc_changes;
         if (k == R_CODE_ACTION && !r.stale)
             lsp_cdiags_copy(r.snap, &r);
-        if ((k == R_SEMTOK || k == R_SEMTOK_DELTA || k == R_SEMTOK_RANGE) &&
-            !(cx && !r.c_carried && r.snap->gen == u->want) &&
+        if (view && !(cx && !r.c_carried && r.snap->gen == u->want) &&
             (r.snap->check_state == CHECK_PENDING || r.snap->gen < u->want))
-            u->tok_stale = true;  /* a check will publish: refresh then */
+            u->views_stale |= view;  /* a check will publish: refresh then */
     }
     r.text = arena_strndup(&a, d->text, d->len);
     r.text_len = d->len;
@@ -1345,6 +1379,7 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         case R_SIGHELP: lsp_signature_help(&r, &w); break;
         case R_EXPAND: lsp_expand_macro(&r, &w); break;
         case R_CODE_ACTION: lsp_code_action(&r, &w); break;
+        case R_HINTS: lsp_inlay_hints(&r, &w); break;
         }
     }
     if (r.need_builder) {

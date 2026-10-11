@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""symcov.py [CEREAL] [--gnu11] [--no-dg] [--no-corpus]   symbol-index coverage
+"""symcov.py [CEREAL] [--gnu11] [--no-dg] [--no-corpus] [--misses]   symbol-index coverage
 
 Runs `cereal --verify-symbols` over the units of bench/corpus.py (CEREAL_CORPUS,
 default ~/corpus) and the gcc.dg and c-c++-common tests that pass par.py's
 dg-options filter (CEREAL_GCCTS, default ~/gccts), each with its own flags
 (file selection is par.py's: units() and dgjobs(), imported, not copied).
-Prints one line (files, events, unindexed, excused), then every unindexed name
-as file:line:col.  Exit 1 if any unindexed name, a failed index check or a crash.
+Prints one line (files, events, unindexed, excused, param misses), then every
+unindexed name as file:line:col.  Exit 1 if any unindexed name, a failed index
+check or a crash.  Param misses (the text rule for parameter names against the
+index's, docs/B4_DESIGN.md 6.3) are a measurement: counted, listed with
+--misses, never a failure.
 --gnu11 replaces each file's -std= with gnu11 (the second pass of Round 188).
 CEREAL_JOBS sizes the pool (at most 8); workers run at nice 10; no network.
 Expect (Round 188): 4716 files, about 1.02 M events, 0 unindexed."""
@@ -14,7 +17,7 @@ import sys, os, re, subprocess, multiprocessing
 S = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, S)
 import par
-SUM = re.compile(r'^symbols: (\d+) events, \d+ decls, \d+ scopes, \d+ files, \d+ bytes, (\d+) unindexed, (\d+) excused$')
+SUM = re.compile(r'^symbols: (\d+) events, \d+ decls, \d+ scopes, \d+ files, \d+ bytes, (\d+) unindexed, (\d+) excused, (\d+) param misses$')
 UNI = re.compile(r"^(.*:\d+:\d+): unindexed '(.*)' \((.*)\)$")
 def work(job):
     cer, f, flags, cwd, std = job
@@ -24,13 +27,14 @@ def work(job):
                            stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return dict(f=f, bad=["timeout"])
-    r = dict(f=f, ev=0, un=0, ex=0, names=[], bad=[])
+    r = dict(f=f, ev=0, un=0, ex=0, pm=0, names=[], pnames=[], bad=[])
     out = p.stdout.decode(errors="replace") + p.stderr.decode(errors="replace")
     seen = False
     for l in out.splitlines():
         m = SUM.match(l)
-        if m: seen = True; r["ev"], r["un"], r["ex"] = map(int, m.groups())
+        if m: seen = True; r["ev"], r["un"], r["ex"], r["pm"] = map(int, m.groups())
         elif UNI.match(l): r["names"].append(l)
+        elif ": param name '" in l: r["pnames"].append(l)
         elif l.startswith("verify:"): r["bad"].append(l)
     if not seen:
         if p.returncode == 1: r["skip"] = 1   # cereal rejected the command line (an option it lacks)
@@ -58,13 +62,16 @@ def main():
     with multiprocessing.Pool(n) as p:
         res = list(p.imap(work, jobs, chunksize=4))
     ev = sum(r.get("ev", 0) for r in res); un = sum(r.get("un", 0) for r in res)
-    ex = sum(r.get("ex", 0) for r in res)
+    ex = sum(r.get("ex", 0) for r in res); pm = sum(r.get("pm", 0) for r in res)
     sk = sum(r.get("skip", 0) for r in res)
     bad = [(r["f"], b) for r in res for b in r["bad"]]
-    print("files %d, events %d, unindexed %d, excused %d%s%s" % (len(res), ev, un, ex,
+    print("files %d, events %d, unindexed %d, excused %d, param misses %d%s%s" % (len(res), ev, un, ex, pm,
           ", %d skipped (rc 1, no index)" % sk if sk else "", ", %d FAILED" % len(bad) if bad else ""))
     for r in res:
         for l in r.get("names", []): print("unindexed:", l)
+    if "--misses" in a:
+        for r in res:
+            for l in r.get("pnames", []): print("param:", l)
     for f, b in bad: print("failed: %s: %s" % (f, b))
     return 1 if un or bad else 0
 if __name__ == "__main__":

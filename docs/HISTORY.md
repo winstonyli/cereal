@@ -4414,3 +4414,53 @@ Not done: B4b and B4c. The stress script sends no call hierarchy requests
 (none of the TSan sessions race one with an edit); a call in a file-level
 `_Static_assert` has no caller item (parked in B4_DESIGN 15).
 
+
+## Round 219: B4b, parameter-name inlay hints; clangd_diff; call-hierarchy stress
+
+Slice B4b of B4_DESIGN.md, as designed (D1-D6, Q1-Q7 as recommended).
+`textDocument/inlayHint` answers parameter hints (`NAME:`, kind 2,
+`paddingRight`) for the `CIX_CALL` events spelled in the file's own text.
+Parameter names come from the index (definition, then declarations, then a
+typedef); the text rule applies to `CIX_SYSTEM` declarations only. Arguments
+are re-lexed from the snapshot's text (`call_args`). `text_params` moved to
+csymidx.c as `csig_params` with its struct `CSig` (spans added), and
+signature help reads it from there (goldens unchanged). Suppression: the
+argument equals the name (outer parentheses and leading underscores stripped
+on both sides), `/*name*/` or `/*name=*/`, the one-parameter setter,
+unnamed parameters, `...`, no prototype. Refresh generalised from
+`tok_stale` to the per-unit bits `views_stale` (`VIEW_TOKENS`, `VIEW_HINTS`)
+and `send_refresh(bits)`; policy `CP_VIEW`. The capability is advertised
+only for a client that sends `textDocument.inlayHint` and without
+`initializationOptions.inlayHints: false`. `--verify-symbols` compares the
+text rule with the index and prints `N param misses` (symcov carries it;
+`--misses` lists them). The first version of the rule had 21 misses on the
+run.sh trees and 3 on gcc.dg (`typeof` family, a UCN in a span); 0 now.
+
+`bench/tools/clangd_diff.py` (+ `.sh`) with `bench/clangd_diff/` and three
+corpus files compares hints and call hierarchy with clangd 20.1.8: 6 files,
+294 differences, 0 unexpected. Found: clangd strips the leading underscores
+of the argument too (B4_DESIGN 6.5 had it wrong; fixed in the code and the
+golden); cereal lists callee edges for system-header macros (`assert`,
+`errno`: C6) that clangd omits; a function defined by a macro invocation has
+no outgoing edge and its body xcalls are attributed to file scope (G1, a
+B4a gap, parked in B4_DESIGN 15).
+
+`tests/lsp_stress.py --calls --hints` races call hierarchy and hint requests
+against edits.
+
+Tests: `tests/lsp/hints` (three sessions: with the capability, without it,
+with `inlayHints` false; the whole-file hints cover every row of 6.5; a
+carried answer and its two refreshes). Gates: run.sh 2074 passed (was
+2068: +6); gate.sh: run 2074, san 2074 passed, 628 files, 0 findings; verify
+unchanged (gcc.dg 3908 of 3910, c-c++-common 637 of 638, cpp 289 of 289);
+callgrind 3.8832 G (3.8856 G, -0.06%); symcov `unindexed 0, param misses 0`
+over 4718 files (1,146,276 events). TSan (`~/cereal-tsan`, removed): all 27
+LSP sessions, plain and with `-fparallel=on -fparallel-chunk=1
+-fparallel-threads=3`: 54 clean; `lsp_stress.py` 200 edits on zstd.c: 0
+reports (238 edits sent, 0 error responses); with `--calls --hints` on zstd.c
+and on `tests/lsp/ccalls/main.c`: 0 reports, 0 error responses.
+Source +745/-169 in 6 files; hand-written tests ~170 lines (47 session JSON,
+59 + 7 of C, 46 net in the stress script) plus 513 lines of goldens;
+clangd_diff 318 lines plus a 130-line corpus.
+
+Not done: B4c (workspace/symbol). The G1 gap above.
