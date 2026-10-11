@@ -1198,6 +1198,58 @@ static CIndex *c_index(Options *o, TU *tu)
     return cx;
 }
 
+/* `cereal query callers|callees` on a C function or file-level variable
+ * (docs/B4_DESIGN.md 5.7): one line per calling function / callee, `LOC KIND
+ * NAME[ marks]: SITES`; sites are L:C in the site's file. */
+static void query_c_calls(TU *tu, const CIndex *cx, uint32_t d, bool callees)
+{
+    CIdxCall *c = NULL;
+    size_t n = 0, i, j, k;
+    if (callees && (cx->decls[d].kind == CIK_FUNC ||
+                     (cx->decls[d].kind == CIK_OBJ && !cx->decls[d].scope)))
+        n = cindex_calls_in(cx, cindex_site(cx, d), &c);
+    else if (!callees && cx->decls[d].kind == CIK_FUNC)
+        n = cindex_calls_to(cx, d, &c);
+    for (i = 0; i < n; i = j) {
+        const CIdxEvent *e = c[i].other_ev < cx->nev ? &cx->ev[c[i].other_ev] : NULL;
+        const CIdxDecl *od = c[i].other == CIX_NONE ? NULL : &cx->decls[c[i].other];
+        SrcFile *sf = cindex_srcfile(&tu->sm, cx->files[c[i].file].path);
+        SrcFile *ef = e ? cindex_srcfile(&tu->sm, cx->files[e->file].path) : NULL;
+        uint32_t l, col, b;
+        for (j = i + 1; j < n && c[j].other == c[i].other &&
+                        c[j].other_ev == c[i].other_ev; j++)
+            ;
+        if (!sf)
+            continue;
+        if (!od) {
+            printf("%s (file scope)", sf->name);
+        } else if (ef) {
+            const char *mark = "";
+            if (callees) {
+                mark = od->flags & CIDF_IMPLICIT ? " [implicit]"
+                                                 : " [declaration only]";
+                for (b = cx->by_decl_start[c[i].other];
+                     b < cx->by_decl_start[c[i].other + 1]; b++)
+                    if ((cx->ev[cx->by_decl[b]].flags & CIX_ROLE) == CIX_DEF)
+                        mark = "";
+            }
+            printf("%s %s %s%s", loc_str(tu, ef->base + e->off),
+                   cindex_kind_name(od->kind), cindex_name(cx, c[i].other), mark);
+        } else {
+            continue;
+        }
+        putchar(':');
+        for (k = i; k < j; k++) {
+            srcmgr_linecol(sf, sf->base + c[k].off, &l, &col);
+            printf(" %u:%u", l, col);
+        }
+        putchar('\n');
+    }
+    if (!n)
+        printf("no %s\n", callees ? "callees" : "callers");
+    free(c);
+}
+
 /* `cereal query def|decl|type|refs|uses|highlight|hover` on a C name (B2,
  * B3): one line per location (file:line:col, role or for highlight
  * write/read, kind, name, macro flags), or for hover the texts (weak: the
@@ -1219,6 +1271,12 @@ static bool query_c(Options *o, TU *tu, SrcFile *f, SrcLoc loc, const char *kind
         nd = cindex_decls_at(cx, f->path, loc - f->base, decls, 16);
     if (nd > 1) /* e.g. a #define body token, one entity per expansion */
         printf("%zu C entities here\n", nd);
+    if (nd && (!strcmp(kind, "callers") || !strcmp(kind, "callees"))) {
+        for (i = 0; i < nd; i++)
+            query_c_calls(tu, cx, decls[i], kind[5] == 'e');
+        cindex_free(cx);
+        return true;
+    }
     if (nd && !strcmp(kind, "type")) {
         size_t nt = cindex_types(cx, decls, nd, types);
         n = cindex_select(cx, types, nt, q, -1, &ev);
@@ -1328,7 +1386,8 @@ static int mode_query(Options *o, const char *kind, const char *at)
      * the name by its plain identifier (weak): then a C entity answers */
     if ((t.kind == TGT_NONE || t.weak) &&
         (!strcmp(kind, "def") || !strcmp(kind, "decl") || !strcmp(kind, "type") ||
-         !strcmp(kind, "refs") ||
+         !strcmp(kind, "refs") || !strcmp(kind, "callers") ||
+         !strcmp(kind, "callees") ||
          !strcmp(kind, "uses") || !strcmp(kind, "highlight") ||
          !strcmp(kind, "hover")) &&
         query_c(o, &tu, f, loc, kind, t.kind != TGT_NONE))

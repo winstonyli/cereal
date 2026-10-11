@@ -29,4 +29,4 @@ calls.c:1:9 LEAF
 D (not a macro here: defining it would change the result)
 open: ## may form further names
 == callers calls.c:7:5
-no macro definition here
+no callers

@@ -1,0 +1,112 @@
+calls.c:2:22 REF func leaf -> #2 body call
+calls.c:6:20 REF func g_impl -> #4 body call
+calls.c:7:49 REF func leaf -> #2 body call
+calls.c:9:5 DECL func leaf -> #2
+calls.c:9:14 DECL param a -> #0
+calls.c:9:21 DECL param b -> #1
+calls.c:10:5 DECL func g_impl -> #4
+calls.c:10:16 DECL param x -> #3
+calls.c:11:5 DECL func knr -> #5
+calls.c:12:5 DEF func plain -> #7
+calls.c:12:15 DEF param n -> #6
+calls.c:12:27 REF param n -> #6
+calls.c:13:8 DEF struct ops -> #8
+calls.c:13:20 DEF field cb -> #9
+calls.c:14:7 DEF obj fp -> #10
+calls.c:14:23 REF func leaf -> #2
+calls.c:15:5 DEF obj init -> #11
+calls.c:15:19 REF func leaf -> #2 call
+calls.c:16:5 DEF obj a1 -> #12
+calls.c:16:17 REF func leaf -> #2 call
+calls.c:16:30 DEF obj b1 -> #13
+calls.c:16:42 REF func g_impl -> #4 call
+calls.c:16:62 REF func leaf -> #2 call
+calls.c:17:23 REF func leaf -> #2 call
+calls.c:18:11 DEF func made -> #14 arg
+calls.c:20:5 DEF func knrdef -> #15
+calls.c:20:12 REF param a -> #16
+calls.c:20:15 REF param b -> #17
+calls.c:20:22 DEF param a -> #16
+calls.c:20:25 DEF param b -> #17
+calls.c:20:37 REF param a -> #16
+calls.c:20:41 REF param b -> #17
+calls.c:22:5 DEF func user -> #20
+calls.c:22:17 REF struct ops -> #8
+calls.c:22:22 DEF param o -> #18
+calls.c:22:31 DEF param param -> #19
+calls.c:24:9 DEF obj t -> #21
+calls.c:24:13 REF func leaf -> #2 call
+calls.c:25:5 REF obj t -> #21
+calls.c:25:11 REF func leaf -> #2 call
+calls.c:26:5 REF obj t -> #21
+calls.c:26:12 REF obj fp -> #10
+calls.c:27:5 REF obj t -> #21
+calls.c:27:12 REF func plain -> #7
+calls.c:28:5 REF obj t -> #21
+calls.c:28:10 REF obj fp -> #10 call
+calls.c:29:5 REF obj t -> #21
+calls.c:29:10 REF param param -> #19 call
+calls.c:30:5 REF obj t -> #21
+calls.c:30:10 REF param o -> #18
+calls.c:30:13 REF field cb -> #9 call
+calls.c:31:5 REF obj t -> #21
+calls.c:31:13 REF func plain -> #7 arg call
+calls.c:32:5 REF obj t -> #21
+calls.c:32:10 REF func g_impl -> #4 expansion call
+calls.c:33:5 REF obj t -> #21
+calls.c:34:5 REF obj t -> #21
+calls.c:35:5 REF obj t -> #21
+calls.c:36:5 REF obj t -> #21
+calls.c:36:24 REF obj t -> #21
+calls.c:37:5 REF obj t -> #21
+calls.c:37:10 REF func undeclared_fn -> #22 call
+calls.c:38:5 REF obj t -> #21
+calls.c:38:17 DEF obj u -> #23
+calls.c:38:21 REF func plain -> #7 call
+calls.c:38:31 REF obj u -> #23
+calls.c:39:5 REF obj t -> #21
+calls.c:39:10 REF func knr -> #5 call
+calls.c:39:19 REF func knrdef -> #15 call
+calls.c:40:5 REF obj t -> #21
+calls.c:40:10 REF func user -> #20 call
+calls.c:40:15 REF param o -> #18
+calls.c:40:18 REF param param -> #19
+calls.c:41:7 REF func plain -> #7 arg call
+calls.c:42:12 REF obj t -> #21
+calls.c:45:5 DEF func local_define -> #24
+calls.c:47:19 REF func leaf -> #2 body call
+calls.c:51:5 DEF obj init2 -> #25
+calls.c:51:20 REF func made -> #14 call
+calls.c:18:1 xcall func leaf -> #2
+calls.c:33:10 xcall func leaf -> #2
+calls.c:34:10 xcall func leaf -> #2
+calls.c:35:10 xcall func leaf -> #2
+calls.c:41:5 xcall func g_impl -> #4
+calls.c:48:12 xcall func leaf -> #2
+calls.c:48:24 xcall func leaf -> #2
+#0 param a scope 9-9 :: param a: int
+#1 param b scope 9-9 :: param b: int
+#2 func leaf external :: func leaf: int(int, int)
+#3 param x scope 10-10 :: param x: int
+#4 func g_impl external :: func g_impl: int(int)
+#5 func knr external :: func knr: int()
+#6 param n scope 12-12 :: param n: int
+#7 func plain external :: func plain: int(int) defined
+#8 struct ops type #8 :: struct ops size=8 align=8\n  0 cb: int (*)(int)
+#9 field cb parent #8 :: field cb: int (*)(int) (struct ops, offset 0)
+#10 obj fp external :: var fp: int (*)(int, int)
+#11 obj init external :: var init: int
+#12 obj a1 external :: var a1: int
+#13 obj b1 external :: var b1: int
+#14 func made external :: func made: int(void) defined
+#15 func knrdef external :: func knrdef: int() defined
+#16 param a scope 20-20 :: param a: int
+#17 param b scope 20-20 :: param b: int
+#18 param o type #8 scope 23-43 :: param o: struct ops *
+#19 param param scope 23-43 :: param param: int (*)(int)
+#20 func user external :: func user: int(struct ops *, int (*)(int)) defined
+#21 obj t scope 23-43 :: var user:t: int
+#22 func undeclared_fn external implicit :: func undeclared_fn: int() extern
+#23 obj u scope 38-38 :: var user:u: int
+#24 func local_define external :: func local_define: int(void) defined
+#25 obj init2 external :: var init2: int

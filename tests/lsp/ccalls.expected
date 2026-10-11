@@ -1,0 +1,1013 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider"
+ ]
+}
+>> initialized
+>> didOpen ccalls/main.c
+>> (idle)
+## prepare on a C function definition
+>> textDocument/prepareCallHierarchy
+[
+ {
+  "detail": "func mid: int(int) defined",
+  "kind": 12,
+  "name": "mid",
+  "range": {
+   "end": {
+    "character": 43,
+    "line": 6
+   },
+   "start": {
+    "character": 0,
+    "line": 6
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 7,
+    "line": 6
+   },
+   "start": {
+    "character": 4,
+    "line": 6
+   }
+  },
+  "uri": "file://$ROOT/ccalls/main.c"
+ }
+]
+## prepare on a function declaration only
+>> textDocument/prepareCallHierarchy
+[
+ {
+  "detail": "func leaf: int(int)",
+  "kind": 12,
+  "name": "leaf",
+  "range": {
+   "end": {
+    "character": 16,
+    "line": 3
+   },
+   "start": {
+    "character": 0,
+    "line": 3
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 8,
+    "line": 3
+   },
+   "start": {
+    "character": 4,
+    "line": 3
+   }
+  },
+  "uri": "file://$ROOT/ccalls/main.c"
+ }
+]
+## prepare on a macro
+>> textDocument/prepareCallHierarchy
+[
+ {
+  "detail": "MAC(x)",
+  "kind": 12,
+  "name": "MAC",
+  "range": {
+   "end": {
+    "character": 24,
+    "line": 1
+   },
+   "start": {
+    "character": 0,
+    "line": 1
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 11,
+    "line": 1
+   },
+   "start": {
+    "character": 8,
+    "line": 1
+   }
+  },
+  "uri": "file://$ROOT/ccalls/main.c"
+ }
+]
+## prepare on a file-level variable (an item)
+>> textDocument/prepareCallHierarchy
+[
+ {
+  "detail": "var counter: int tentative",
+  "kind": 13,
+  "name": "counter",
+  "range": {
+   "end": {
+    "character": 12,
+    "line": 2
+   },
+   "start": {
+    "character": 0,
+    "line": 2
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 11,
+    "line": 2
+   },
+   "start": {
+    "character": 4,
+    "line": 2
+   }
+  },
+  "uri": "file://$ROOT/ccalls/main.c"
+ }
+]
+## prepare on a local variable: null
+>> textDocument/prepareCallHierarchy
+null
+## prepare off any name: null
+>> textDocument/prepareCallHierarchy
+null
+## prepare on a call to a function in an unopened header
+>> textDocument/prepareCallHierarchy
+[
+ {
+  "detail": "func hdr_fn: int(int) defined",
+  "kind": 12,
+  "name": "hdr_fn",
+  "range": {
+   "end": {
+    "character": 39,
+    "line": 1
+   },
+   "start": {
+    "character": 0,
+    "line": 1
+   }
+  },
+  "selectionRange": {
+   "end": {
+    "character": 10,
+    "line": 1
+   },
+   "start": {
+    "character": 4,
+    "line": 1
+   }
+  },
+  "uri": "file://$ROOT/ccalls/util.h"
+ }
+]
+## outgoing of top: mid (two sites) and hdr_fn
+>> callHierarchy/outgoingCalls
+[
+ {
+  "fromRanges": [
+   {
+    "end": {
+     "character": 67,
+     "line": 7
+    },
+    "start": {
+     "character": 61,
+     "line": 7
+    }
+   }
+  ],
+  "to": {
+   "detail": "func hdr_fn: int(int) defined",
+   "kind": 12,
+   "name": "hdr_fn",
+   "range": {
+    "end": {
+     "character": 39,
+     "line": 1
+    },
+    "start": {
+     "character": 0,
+     "line": 1
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 10,
+     "line": 1
+    },
+    "start": {
+     "character": 4,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/ccalls/util.h"
+  }
+ },
+ {
+  "fromRanges": [
+   {
+    "end": {
+     "character": 32,
+     "line": 7
+    },
+    "start": {
+     "character": 29,
+     "line": 7
+    }
+   },
+   {
+    "end": {
+     "character": 55,
+     "line": 7
+    },
+    "start": {
+     "character": 52,
+     "line": 7
+    }
+   }
+  ],
+  "to": {
+   "detail": "func mid: int(int) defined",
+   "kind": 12,
+   "name": "mid",
+   "range": {
+    "end": {
+     "character": 43,
+     "line": 6
+    },
+    "start": {
+     "character": 0,
+     "line": 6
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 7,
+     "line": 6
+    },
+    "start": {
+     "character": 4,
+     "line": 6
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  }
+ }
+]
+## outgoing of mid: leaf, and helper through MAC
+>> callHierarchy/outgoingCalls
+[
+ {
+  "fromRanges": [
+   {
+    "end": {
+     "character": 37,
+     "line": 6
+    },
+    "start": {
+     "character": 34,
+     "line": 6
+    }
+   }
+  ],
+  "to": {
+   "detail": "func helper: int(int) defined",
+   "kind": 12,
+   "name": "helper",
+   "range": {
+    "end": {
+     "character": 31,
+     "line": 0
+    },
+    "start": {
+     "character": 0,
+     "line": 0
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 10,
+     "line": 0
+    },
+    "start": {
+     "character": 4,
+     "line": 0
+    }
+   },
+   "uri": "file://$ROOT/ccalls/util.h"
+  }
+ },
+ {
+  "fromRanges": [
+   {
+    "end": {
+     "character": 28,
+     "line": 6
+    },
+    "start": {
+     "character": 24,
+     "line": 6
+    }
+   }
+  ],
+  "to": {
+   "detail": "func leaf: int(int)",
+   "kind": 12,
+   "name": "leaf",
+   "range": {
+    "end": {
+     "character": 16,
+     "line": 3
+    },
+    "start": {
+     "character": 0,
+     "line": 3
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 8,
+     "line": 3
+    },
+    "start": {
+     "character": 4,
+     "line": 3
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  }
+ }
+]
+## incoming of mid: top, one group with two ranges
+>> callHierarchy/incomingCalls
+[
+ {
+  "from": {
+   "detail": "func top: int(int) defined",
+   "kind": 12,
+   "name": "top",
+   "range": {
+    "end": {
+     "character": 73,
+     "line": 7
+    },
+    "start": {
+     "character": 0,
+     "line": 7
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 7,
+     "line": 7
+    },
+    "start": {
+     "character": 4,
+     "line": 7
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  },
+  "fromRanges": [
+   {
+    "end": {
+     "character": 32,
+     "line": 7
+    },
+    "start": {
+     "character": 29,
+     "line": 7
+    }
+   },
+   {
+    "end": {
+     "character": 55,
+     "line": 7
+    },
+    "start": {
+     "character": 52,
+     "line": 7
+    }
+   }
+  ]
+ }
+]
+## incoming of leaf: a (file-level variable), mid
+>> callHierarchy/incomingCalls
+[
+ {
+  "from": {
+   "detail": "var a: int",
+   "kind": 13,
+   "name": "a",
+   "range": {
+    "end": {
+     "character": 28,
+     "line": 5
+    },
+    "start": {
+     "character": 0,
+     "line": 5
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 5,
+     "line": 5
+    },
+    "start": {
+     "character": 4,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  },
+  "fromRanges": [
+   {
+    "end": {
+     "character": 12,
+     "line": 5
+    },
+    "start": {
+     "character": 8,
+     "line": 5
+    }
+   }
+  ]
+ },
+ {
+  "from": {
+   "detail": "func mid: int(int) defined",
+   "kind": 12,
+   "name": "mid",
+   "range": {
+    "end": {
+     "character": 43,
+     "line": 6
+    },
+    "start": {
+     "character": 0,
+     "line": 6
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 7,
+     "line": 6
+    },
+    "start": {
+     "character": 4,
+     "line": 6
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  },
+  "fromRanges": [
+   {
+    "end": {
+     "character": 28,
+     "line": 6
+    },
+    "start": {
+     "character": 24,
+     "line": 6
+    }
+   }
+  ]
+ }
+]
+## incoming of pair: b only (declarator split)
+>> callHierarchy/incomingCalls
+[
+ {
+  "from": {
+   "detail": "var b: int",
+   "kind": 13,
+   "name": "b",
+   "range": {
+    "end": {
+     "character": 28,
+     "line": 5
+    },
+    "start": {
+     "character": 0,
+     "line": 5
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 18,
+     "line": 5
+    },
+    "start": {
+     "character": 17,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  },
+  "fromRanges": [
+   {
+    "end": {
+     "character": 25,
+     "line": 5
+    },
+    "start": {
+     "character": 21,
+     "line": 5
+    }
+   }
+  ]
+ }
+]
+## outgoing of the variable a: leaf only
+>> callHierarchy/outgoingCalls
+[
+ {
+  "fromRanges": [
+   {
+    "end": {
+     "character": 12,
+     "line": 5
+    },
+    "start": {
+     "character": 8,
+     "line": 5
+    }
+   }
+  ],
+  "to": {
+   "detail": "func leaf: int(int)",
+   "kind": 12,
+   "name": "leaf",
+   "range": {
+    "end": {
+     "character": 16,
+     "line": 3
+    },
+    "start": {
+     "character": 0,
+     "line": 3
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 8,
+     "line": 3
+    },
+    "start": {
+     "character": 4,
+     "line": 3
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  }
+ }
+]
+## outgoing of the variable b: pair only
+>> callHierarchy/outgoingCalls
+[
+ {
+  "fromRanges": [
+   {
+    "end": {
+     "character": 25,
+     "line": 5
+    },
+    "start": {
+     "character": 21,
+     "line": 5
+    }
+   }
+  ],
+  "to": {
+   "detail": "func pair: int(void) defined",
+   "kind": 12,
+   "name": "pair",
+   "range": {
+    "end": {
+     "character": 28,
+     "line": 4
+    },
+    "start": {
+     "character": 0,
+     "line": 4
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 8,
+     "line": 4
+    },
+    "start": {
+     "character": 4,
+     "line": 4
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  }
+ }
+]
+## incoming of helper (item in an unopened header, data.doc names the request doc)
+>> callHierarchy/incomingCalls
+[
+ {
+  "from": {
+   "detail": "func hdr_fn: int(int) defined",
+   "kind": 12,
+   "name": "hdr_fn",
+   "range": {
+    "end": {
+     "character": 39,
+     "line": 1
+    },
+    "start": {
+     "character": 0,
+     "line": 1
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 10,
+     "line": 1
+    },
+    "start": {
+     "character": 4,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/ccalls/util.h"
+  },
+  "fromRanges": [
+   {
+    "end": {
+     "character": 33,
+     "line": 1
+    },
+    "start": {
+     "character": 27,
+     "line": 1
+    }
+   }
+  ]
+ },
+ {
+  "from": {
+   "detail": "func mid: int(int) defined",
+   "kind": 12,
+   "name": "mid",
+   "range": {
+    "end": {
+     "character": 43,
+     "line": 6
+    },
+    "start": {
+     "character": 0,
+     "line": 6
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 7,
+     "line": 6
+    },
+    "start": {
+     "character": 4,
+     "line": 6
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  },
+  "fromRanges": [
+   {
+    "end": {
+     "character": 37,
+     "line": 6
+    },
+    "start": {
+     "character": 34,
+     "line": 6
+    }
+   }
+  ]
+ }
+]
+## outgoing of hdr_fn in the unopened header
+>> callHierarchy/outgoingCalls
+[
+ {
+  "fromRanges": [
+   {
+    "end": {
+     "character": 33,
+     "line": 1
+    },
+    "start": {
+     "character": 27,
+     "line": 1
+    }
+   }
+  ],
+  "to": {
+   "detail": "func helper: int(int) defined",
+   "kind": 12,
+   "name": "helper",
+   "range": {
+    "end": {
+     "character": 31,
+     "line": 0
+    },
+    "start": {
+     "character": 0,
+     "line": 0
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 10,
+     "line": 0
+    },
+    "start": {
+     "character": 4,
+     "line": 0
+    }
+   },
+   "uri": "file://$ROOT/ccalls/util.h"
+  }
+ }
+]
+## macro item in the unopened header (data {name,doc})
+>> callHierarchy/incomingCalls
+[
+ {
+  "from": {
+   "detail": "HM2(x)",
+   "kind": 12,
+   "name": "HM2",
+   "range": {
+    "end": {
+     "character": 20,
+     "line": 3
+    },
+    "start": {
+     "character": 0,
+     "line": 3
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 11,
+     "line": 3
+    },
+    "start": {
+     "character": 8,
+     "line": 3
+    }
+   },
+   "uri": "file://$ROOT/ccalls/util.h"
+  },
+  "fromRanges": [
+   {
+    "end": {
+     "character": 17,
+     "line": 3
+    },
+    "start": {
+     "character": 15,
+     "line": 3
+    }
+   }
+  ]
+ }
+]
+## macro item outgoing
+>> callHierarchy/outgoingCalls
+[]
+## item with data stripped: resolved by position
+>> callHierarchy/incomingCalls
+[
+ {
+  "from": {
+   "detail": "func top: int(int) defined",
+   "kind": 12,
+   "name": "top",
+   "range": {
+    "end": {
+     "character": 73,
+     "line": 7
+    },
+    "start": {
+     "character": 0,
+     "line": 7
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 7,
+     "line": 7
+    },
+    "start": {
+     "character": 4,
+     "line": 7
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  },
+  "fromRanges": [
+   {
+    "end": {
+     "character": 32,
+     "line": 7
+    },
+    "start": {
+     "character": 29,
+     "line": 7
+    }
+   },
+   {
+    "end": {
+     "character": 55,
+     "line": 7
+    },
+    "start": {
+     "character": 52,
+     "line": 7
+    }
+   }
+  ]
+ }
+]
+## insert two lines above everything
+>> textDocument/didChange
+>> (idle)
+## stale item (old positions): the name step finds mid
+>> callHierarchy/incomingCalls
+[
+ {
+  "from": {
+   "detail": "func top: int(int) defined",
+   "kind": 12,
+   "name": "top",
+   "range": {
+    "end": {
+     "character": 73,
+     "line": 9
+    },
+    "start": {
+     "character": 0,
+     "line": 9
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 7,
+     "line": 9
+    },
+    "start": {
+     "character": 4,
+     "line": 9
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  },
+  "fromRanges": [
+   {
+    "end": {
+     "character": 32,
+     "line": 9
+    },
+    "start": {
+     "character": 29,
+     "line": 9
+    }
+   },
+   {
+    "end": {
+     "character": 55,
+     "line": 9
+    },
+    "start": {
+     "character": 52,
+     "line": 9
+    }
+   }
+  ]
+ }
+]
+## stale item for top
+>> callHierarchy/outgoingCalls
+[
+ {
+  "fromRanges": [
+   {
+    "end": {
+     "character": 67,
+     "line": 9
+    },
+    "start": {
+     "character": 61,
+     "line": 9
+    }
+   }
+  ],
+  "to": {
+   "detail": "func hdr_fn: int(int) defined",
+   "kind": 12,
+   "name": "hdr_fn",
+   "range": {
+    "end": {
+     "character": 39,
+     "line": 1
+    },
+    "start": {
+     "character": 0,
+     "line": 1
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 10,
+     "line": 1
+    },
+    "start": {
+     "character": 4,
+     "line": 1
+    }
+   },
+   "uri": "file://$ROOT/ccalls/util.h"
+  }
+ },
+ {
+  "fromRanges": [
+   {
+    "end": {
+     "character": 32,
+     "line": 9
+    },
+    "start": {
+     "character": 29,
+     "line": 9
+    }
+   },
+   {
+    "end": {
+     "character": 55,
+     "line": 9
+    },
+    "start": {
+     "character": 52,
+     "line": 9
+    }
+   }
+  ],
+  "to": {
+   "detail": "func mid: int(int) defined",
+   "kind": 12,
+   "name": "mid",
+   "range": {
+    "end": {
+     "character": 43,
+     "line": 8
+    },
+    "start": {
+     "character": 0,
+     "line": 8
+    }
+   },
+   "selectionRange": {
+    "end": {
+     "character": 7,
+     "line": 8
+    },
+    "start": {
+     "character": 4,
+     "line": 8
+    }
+   },
+   "uri": "file://$ROOT/ccalls/main.c"
+  }
+ }
+]
+>> shutdown
+null
+>> exit
+exit 0

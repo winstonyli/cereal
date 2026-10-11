@@ -24,7 +24,9 @@ enum {
     CIX_MACRO_BODY = 4,      /* spelled in a #define body */
     CIX_AT_EXPANSION = 8,    /* pasted or synthesized: at the expansion point */
     CIX_ARG = 16,            /* spelled in source as a macro argument */
-    CIX_SYSTEM = 32          /* in a system header */
+    CIX_SYSTEM = 32,         /* in a system header */
+    CIX_CALL = 64            /* a REF that is the callee of a call, parentheses
+                                aside (docs/B4_DESIGN.md 4) */
 };
 
 /* CIdxDecl.kind */
@@ -98,6 +100,11 @@ typedef struct CIndex {
     uint32_t ndecls;
     CIdxScope *scopes;
     uint32_t nscopes;
+    /* calls whose callee is spelled in a #define body, at the invocation
+     * (REF | CALL | AT_EXPANSION, CIK_FUNC decls only), sorted by (file,
+     * off); read by call hierarchy alone (B4_DESIGN.md 4.4) */
+    CIdxEvent *xcalls;
+    uint32_t nxcalls;
     char *strings;           /* deduplicated pool; offset 0 is "" */
     size_t nstrings;
     uint32_t unindexed;      /* --verify-symbols: names that got no event */
@@ -225,6 +232,30 @@ bool cindex_touched(const CIndex *ix, uint32_t d);
  * (differences are reported, not counted). */
 size_t cindex_verify_carry(const CIndex *ix1, const CIndex *c,
                            const CIndex *fresh, SrcMgr *sm2, FILE *out);
+
+/* ---- call hierarchy queries (docs/B4_DESIGN.md 5.1) ---------------------- */
+
+#define CIX_NONE UINT32_MAX
+typedef struct CIdxCall {
+    uint32_t other;          /* the caller (incoming) or callee (outgoing)
+                                decl; CIX_NONE: file scope (incoming only) */
+    uint32_t other_ev;       /* the event that stands for other: the caller's
+                                event the rule picked, or cindex_site(callee);
+                                CIX_NONE with other */
+    uint16_t file;           /* the site */
+    uint8_t len;
+    uint32_t off;
+} CIdxCall;
+/* The event that stands for decl d: its DEF not in a #define body, else its
+ * first such DECL, else its first DEF/DECL, else its first event. */
+uint32_t cindex_site(const CIndex *ix, uint32_t d);
+/* The calls of decl d (flagged events not in a #define body, and xcalls),
+ * each with its calling function or file-level variable (the root-scope
+ * rule); sorted by (caller name, caller event, site).  *out is malloc'd. */
+size_t cindex_calls_to(const CIndex *ix, uint32_t d, CIdxCall **out);
+/* The calls of functions made by the declaration whose event is ev (see
+ * cindex_site), sorted by (callee name, callee, site).  *out is malloc'd. */
+size_t cindex_calls_in(const CIndex *ix, uint32_t ev, CIdxCall **out);
 
 /* sm's user or system file with exactly this (normalized) path, or NULL. */
 SrcFile *cindex_srcfile(SrcMgr *sm, const char *path);

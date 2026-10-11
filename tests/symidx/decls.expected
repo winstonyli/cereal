@@ -26,7 +26,7 @@ decls.c:13:15 REF typedef T -> #11
 decls.c:13:17 DEF obj T -> #13
 decls.c:13:31 REF obj T -> #13
 decls.c:14:5 DEF func h -> #14
-decls.c:14:22 REF func later -> #15
+decls.c:14:22 REF func later -> #15 call
 decls.c:15:5 DEF func later -> #15
 decls.c:15:15 DEF param v -> #16
 decls.c:15:27 REF param v -> #16

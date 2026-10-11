@@ -12,17 +12,22 @@
 
 /* ---- helpers ------------------------------------------------------------ */
 
-SrcLoc req_loc(Req *r, const JsonValue *pos)
+SrcLoc req_loc_in(Req *r, SrcFile *file, const JsonValue *pos)
 {
     uint32_t line = (uint32_t)json_int_of(json_get(pos, "line"), 0);
-    SrcLoc ls = line ? srcmgr_loc_of(r->file, line + 1, 1) : 0;
-    size_t base = !line ? 0 : ls ? ls - r->file->base : r->file->size;
-    size_t off = base + pos_to_offset(r->file->buf + base, r->file->size - base, 0,
+    SrcLoc ls = line ? srcmgr_loc_of(file, line + 1, 1) : 0;
+    size_t base = !line ? 0 : ls ? ls - file->base : file->size;
+    size_t off = base + pos_to_offset(file->buf + base, file->size - base, 0,
                                       (uint32_t)json_int_of(json_get(pos,
                                                                      "character"),
                                                             0),
                                       r->enc);
-    return r->file->base + (SrcLoc)off;
+    return file->base + (SrcLoc)off;
+}
+
+SrcLoc req_loc(Req *r, const JsonValue *pos)
+{
+    return req_loc_in(r, r->file, pos);
 }
 
 static SrcLoc cursor(Req *r)
@@ -1110,7 +1115,20 @@ bool lsp_rename(Req *r, JsonWriter *w, const char **err)
     return true;
 }
 
-/* ---- call hierarchy --------------------------------------------------------- */
+/* ---- call hierarchy --------------------------------------------------------- *
+ * Macro items from the macro graph; C items (functions, and file-level
+ * variables whose initializers call) from the C index's CIX_CALL events
+ * (docs/B4_DESIGN.md 5).  An item's data names the document that answered, so
+ * a follow-up runs in the same unit even when the item lies in a header. */
+
+/* The document the request is about, as the client wrote its uri. */
+static const char *doc_uri(Req *r)
+{
+    const char *u = json_str_of(json_path(r->params, "textDocument.uri"), NULL);
+    if (!u)
+        u = json_str_of(json_path(r->params, "item.data.doc"), NULL);
+    return u ? u : path_to_uri(r->arena, r->path);
+}
 
 static void call_item(Req *r, JsonWriter *w, Macro *m)
 {
@@ -1135,23 +1153,117 @@ static void call_item(Req *r, JsonWriter *w, Macro *m)
     json_int(w, m->id);
     json_key(w, "name");
     json_str(w, m->name->str);
+    json_key(w, "doc");
+    json_str(w, doc_uri(r));
     json_end_object(w);
     json_end_object(w);
 }
 
+/* The snapshot's file of the index's file fi, NULL if it has no line table
+ * here or its text differs. */
+static SrcFile *c_item_file(Req *r, uint32_t fi)
+{
+    const CIdxFile *cf = &r->cidx->files[fi];
+    return cf->stale ? NULL : index_find_file(&r->snap->ix, cf->path);
+}
+
+/* A C entity that can be a call hierarchy item: a function, or a file-level
+ * variable (its initializer's calls are its outgoing calls). */
+static bool c_item_decl(const CIndex *ix, uint32_t d)
+{
+    return ix->decls[d].kind == CIK_FUNC ||
+           (ix->decls[d].kind == CIK_OBJ && !ix->decls[d].scope);
+}
+
+/* The item of decl d at its event ev; false (nothing written) if the event's
+ * file cannot be shown. */
+static bool c_call_item(Req *r, JsonWriter *w, uint32_t d, uint32_t ev)
+{
+    const CIndex *ix = r->cidx;
+    const CIdxEvent *e = ev < ix->nev ? &ix->ev[ev] : NULL;
+    SrcFile *f = e ? c_item_file(r, e->file) : NULL;
+    SrcMgr *sm = &r->snap->tu.sm;
+    uint32_t rb, re, s;
+    if (!f)
+        return false;
+    rb = e->off;
+    re = e->off + e->len;
+    if ((s = cindex_scope_at(ix, e->file, e->off)) != 0) {  /* widened root */
+        const CIdxScope *root = &ix->scopes[cindex_scope_root(ix, s) - 1];
+        rb = root->begin < rb ? root->begin : rb;
+        re = root->end > re ? root->end : re;
+    }
+    json_begin_object(w);
+    json_key(w, "name");
+    json_str(w, cindex_name(ix, d));
+    json_key(w, "kind");
+    json_int(w, C_KINDS[ix->decls[d].kind].sk);
+    json_key(w, "detail");
+    json_str(w, c_detail(r, d));
+    json_key(w, "uri");
+    json_str(w, path_to_uri(r->arena, f->path));
+    json_key(w, "range");
+    json_range(w, sm, r->enc, f->base + rb, f->base + re);
+    json_key(w, "selectionRange");
+    json_range(w, sm, r->enc, f->base + e->off, f->base + e->off + e->len);
+    json_key(w, "data");
+    json_begin_object(w);
+    json_key(w, "c");
+    json_int(w, d);
+    json_key(w, "name");
+    json_str(w, cindex_name(ix, d));
+    json_key(w, "doc");
+    json_str(w, doc_uri(r));
+    json_end_object(w);
+    json_end_object(w);
+    return true;
+}
+
 void lsp_prepare_call_hierarchy(Req *r, JsonWriter *w)
 {
-    IdxTarget t = index_resolve(&r->snap->ix, cursor(r));
-    int k;
-    if (t.kind != TGT_MACRO || !t.nmacros) {
+    SrcLoc at = cursor(r);
+    IdxTarget t = index_resolve(&r->snap->ix, at);
+    uint32_t ds[8];
+    size_t nd = 0, k;
+    int m;
+    if (t.kind == TGT_MACRO && t.nmacros && !t.weak) {
+        json_begin_array(w);
+        for (m = 0; m < t.nmacros; m++)
+            if (real_loc(&r->snap->tu.sm, t.macros[m]->name_loc))
+                call_item(r, w, t.macros[m]);
+        json_end_array(w);
+        return;
+    }
+    if (c_file(r) >= 0)
+        nd = cindex_decls_at(r->cidx, r->file->path, at - r->file->base, ds, 8);
+    for (k = 0; k < nd; k++)        /* a macro with only history: its answer */
+        if (c_item_decl(r->cidx, ds[k]))
+            break;
+    if (k == nd && t.kind == TGT_MACRO && t.nmacros) {
+        json_begin_array(w);
+        for (m = 0; m < t.nmacros; m++)
+            if (real_loc(&r->snap->tu.sm, t.macros[m]->name_loc))
+                call_item(r, w, t.macros[m]);
+        json_end_array(w);
+        return;
+    }
+    if (k == nd) {
         json_null(w);
         return;
     }
     json_begin_array(w);
-    for (k = 0; k < t.nmacros; k++)
-        if (real_loc(&r->snap->tu.sm, t.macros[k]->name_loc))
-            call_item(r, w, t.macros[k]);
+    for (k = 0; k < nd; k++)
+        if (c_item_decl(r->cidx, ds[k]))
+            c_call_item(r, w, ds[k], cindex_site(r->cidx, ds[k]));
     json_end_array(w);
+}
+
+/* The item's file in this snapshot, NULL if it is not there. */
+static SrcFile *item_file(Req *r, const JsonValue *item)
+{
+    const char *uri = json_str_of(json_get(item, "uri"), NULL);
+    const char *path = uri ? uri_to_path(r->arena, uri) : NULL;
+    return path ? index_find_file(&r->snap->ix, path) : r->file;
 }
 
 /* The item's macro in this snapshot: by id, checked by name; else the
@@ -1163,11 +1275,12 @@ static Macro *item_macro(Req *r)
     long long id = json_int_of(json_path(item, "data.macro"), -1);
     const char *name = json_str_of(json_path(item, "data.name"), "");
     const JsonValue *sel = json_path(item, "selectionRange.start");
+    SrcFile *f = item_file(r, item);
     if (id >= 0 && (size_t)id < pp->macros.len &&
         !strcmp(pp->macros.data[id]->name->str, name))
         return pp->macros.data[id];
-    if (sel) {
-        SrcLoc loc = req_loc(r, sel);
+    if (sel && f) {
+        SrcLoc loc = req_loc_in(r, f, sel);
         size_t i;
         for (i = 0; i < pp->macros.len; i++)
             if (pp->macros.data[i]->name_loc == loc)
@@ -1197,13 +1310,102 @@ static void spelled_ranges(Req *r, JsonWriter *w, Macro *m, const Ident *name)
     json_end_array(w);
 }
 
+/* The C item of a follow-up request (B4_DESIGN.md 5.5): the decl at the
+ * item's position with its name, else data.c if it still has that name, else
+ * the file-level function or variable of that name (one with a definition
+ * first); false if none. */
+static bool c_item_resolve(Req *r, uint32_t *out)
+{
+    const CIndex *ix = r->cidx;
+    const JsonValue *item = json_get(r->params, "item");
+    const JsonValue *sel = json_path(item, "selectionRange.start");
+    const char *name = json_str_of(json_path(item, "data.name"),
+                                   json_str_of(json_get(item, "name"), ""));
+    long long dc = json_int_of(json_path(item, "data.c"), -1);
+    SrcFile *f = item_file(r, item);
+    uint32_t ds[8], d, j, any = UINT32_MAX;
+    size_t nd, k;
+    if (!ix)
+        return false;
+    if (f && sel && cindex_file(ix, f->path) >= 0) {
+        SrcLoc loc = req_loc_in(r, f, sel);
+        nd = loc >= f->base ? cindex_decls_at(ix, f->path, loc - f->base, ds, 8) : 0;
+        for (k = 0; k < nd; k++)
+            if (c_item_decl(ix, ds[k]) && !strcmp(cindex_name(ix, ds[k]), name)) {
+                *out = ds[k];
+                return true;
+            }
+    }
+    if (dc >= 0 && (uint64_t)dc < ix->ndecls && c_item_decl(ix, (uint32_t)dc) &&
+        !strcmp(cindex_name(ix, (uint32_t)dc), name)) {
+        *out = (uint32_t)dc;
+        return true;
+    }
+    for (d = 0; d < ix->ndecls; d++) {
+        if (!c_item_decl(ix, d) || strcmp(cindex_name(ix, d), name))
+            continue;
+        if (any == UINT32_MAX)
+            any = d;
+        for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++)
+            if ((ix->ev[ix->by_decl[j]].flags & CIX_ROLE) == CIX_DEF) {
+                *out = d;
+                return true;
+            }
+    }
+    *out = any;
+    return any != UINT32_MAX;
+}
+
+/* incomingCalls / outgoingCalls of the C decl d (B4_DESIGN.md 5.4): one entry
+ * per calling function (or variable) / callee, with the call sites. */
+static void c_calls(Req *r, JsonWriter *w, bool incoming, uint32_t d)
+{
+    const CIndex *ix = r->cidx;
+    SrcMgr *sm = &r->snap->tu.sm;
+    CIdxCall *calls = NULL;
+    size_t n = 0, i, j, k;
+    if (incoming && ix->decls[d].kind == CIK_FUNC)
+        n = cindex_calls_to(ix, d, &calls);
+    else if (!incoming)
+        n = cindex_calls_in(ix, cindex_site(ix, d), &calls);
+    json_begin_array(w);
+    for (i = 0; i < n; i = j) {
+        SrcFile *sf = calls[i].other == CIX_NONE ? NULL
+                                                 : c_item_file(r, calls[i].file);
+        for (j = i + 1; j < n && calls[j].other == calls[i].other &&
+                        calls[j].other_ev == calls[i].other_ev; j++)
+            ;
+        if (!sf || calls[i].other_ev >= ix->nev ||
+            !c_item_file(r, ix->ev[calls[i].other_ev].file))
+            continue;
+        json_begin_object(w);
+        json_key(w, incoming ? "from" : "to");
+        c_call_item(r, w, calls[i].other, calls[i].other_ev);
+        json_key(w, "fromRanges");
+        json_begin_array(w);
+        for (k = i; k < j; k++) {
+            json_range(w, sm, r->enc, sf->base + calls[k].off,
+                       sf->base + calls[k].off + calls[k].len);
+        }
+        json_end_array(w);
+        json_end_object(w);
+    }
+    json_end_array(w);
+    free(calls);
+}
+
 void lsp_calls(Req *r, JsonWriter *w, bool incoming)
 {
-    Macro *m = item_macro(r);
+    const JsonValue *item = json_get(r->params, "item");
+    Macro *m = json_path(item, "data.c") ? NULL : item_macro(r);
     IdxCall *calls;
     size_t n, i;
+    uint32_t d;
     if (!m) {
-        json_null(w);
+        if (c_item_resolve(r, &d))
+            c_calls(r, w, incoming, d);
+        else
+            json_null(w);
         return;
     }
     n = incoming ? index_callers(&r->snap->ix, &r->snap->graph, m, &calls)

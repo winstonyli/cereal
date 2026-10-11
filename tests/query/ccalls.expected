@@ -1,0 +1,48 @@
+== callers ccalls.c:12:5
+ccalls.c:10:5 obj a1: 10:17
+ccalls.c:9:5 obj init: 9:19
+ccalls.c:13:5 func user: 15:10 16:10
+ccalls.c (file scope): 11:23
+== callees ccalls.c:13:5
+ccalls.c:7:5 func extern_only [declaration only]: 18:10
+ccalls_sys/fakelib.h:1:15 func fake_len [declaration only]: 17:10
+ccalls.c:8:5 func helper: 15:23
+ccalls.h:2:19 func in_header: 15:35
+ccalls.c:12:5 func leaf: 15:10 16:10
+ccalls.c:17:28 func undeclared_fn [implicit]: 17:28
+ccalls.c:13:5 func user: 19:16
+== callers ccalls.c:8:5
+ccalls.h:2:19 func in_header: 2:45
+ccalls.c:13:5 func user: 15:23
+== callers ccalls.c:13:5
+ccalls.c:13:5 func user: 19:16
+== callees ccalls.c:9:5
+ccalls.c:12:5 func leaf: 9:19
+== callees ccalls.c:10:5
+ccalls.c:12:5 func leaf: 10:17
+== callees ccalls.c:10:30
+ccalls.c:7:5 func extern_only [declaration only]: 10:42
+== callers ccalls.c:7:5
+ccalls.c:10:30 obj b1: 10:42
+ccalls.c:13:5 func user: 18:10
+== callees ccalls.c:8:5
+ccalls.c:6:5 func g_impl [declaration only]: 8:32
+== callees ccalls.h:2:19
+ccalls.c:8:5 func helper: 2:45
+== callers ccalls.c:6:5
+ccalls.c:8:5 func helper: 8:32
+== callers ccalls.c:17:28
+ccalls.c:13:5 func user: 17:28
+== callers ccalls_sys/fakelib.h:1:15
+ccalls.c:13:5 func user: 17:10
+== callees ccalls.c:5:5
+no callees
+== callers ccalls.c:9:5
+no callers
+== callees ccalls.c:3:9
+leaf (never a macro while CALL_LEAF is defined)
+== callers ccalls.c:4:9
+no callers
+== field cb
+ccalls.c:17:50 REF field cb -> #23 call
+ccalls_sys/fakelib.h:2:25 DEF field cb -> #23 expansion system

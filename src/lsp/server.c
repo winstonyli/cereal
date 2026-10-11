@@ -1182,9 +1182,9 @@ static const struct {
     {"textDocument/foldingRange", R_FOLDING, CP_NONE},
     {"textDocument/prepareRename", R_PREP_RENAME, CP_WAIT},
     {"textDocument/rename", R_RENAME, CP_WAIT},
-    {"textDocument/prepareCallHierarchy", R_PREP_CALLS, CP_NONE},
-    {"callHierarchy/incomingCalls", R_IN_CALLS, CP_NONE},
-    {"callHierarchy/outgoingCalls", R_OUT_CALLS, CP_NONE},
+    {"textDocument/prepareCallHierarchy", R_PREP_CALLS, CP_POS},
+    {"callHierarchy/incomingCalls", R_IN_CALLS, CP_WAIT},
+    {"callHierarchy/outgoingCalls", R_OUT_CALLS, CP_WAIT},
     {"textDocument/signatureHelp", R_SIGHELP, CP_ANY},
     {"cereal/expandMacro", R_EXPAND, CP_NONE},
     {"textDocument/codeAction", R_CODE_ACTION, CP_SNAP},
@@ -1221,11 +1221,14 @@ static bool must_wait(Unit *u, CPolicy p, const char *path,
     return p == CP_POS && pos_damaged(s, path, params);
 }
 
-/* The document a request is about: textDocument.uri, or item.uri for
- * call hierarchy follow-ups. */
+/* The document a request is about: textDocument.uri; for a call hierarchy
+ * follow-up the document that answered prepare (item.data.doc), so that an
+ * item in an unopened header runs in its unit, else item.uri. */
 static const char *request_uri(const JsonValue *params)
 {
     const char *u = json_str_of(json_path(params, "textDocument.uri"), NULL);
+    if (!u)
+        u = json_str_of(json_path(params, "item.data.doc"), NULL);
     return u ? u : json_str_of(json_path(params, "item.uri"), NULL);
 }
 

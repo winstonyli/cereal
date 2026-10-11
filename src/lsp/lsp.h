@@ -219,6 +219,8 @@ void lsp_publish_inactive(Snapshot *s, PosEncoding enc, const char *path);
 
 /* Helpers shared by server.c and features.c. */
 SrcLoc req_loc(Req *r, const JsonValue *pos);
+/* ... in another file of the snapshot (a call hierarchy item's). */
+SrcLoc req_loc_in(Req *r, SrcFile *file, const JsonValue *pos);
 void json_location(JsonWriter *w, Req *r, SrcLoc b, SrcLoc e);
 void json_range(JsonWriter *w, SrcMgr *sm, PosEncoding enc, SrcLoc b,
                 SrcLoc e);

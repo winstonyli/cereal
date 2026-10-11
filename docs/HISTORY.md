@@ -4371,3 +4371,46 @@ Not done: the rename's -32801 can be hit often by an editor that types while
 the rename check runs (35 of 40 in the stress, which edits at once; a person
 would rarely); the client retries. A cancel (`$/cancelRequest`) of a deferred
 request is not handled (as for the fix-all). Scratch lived in `~/c6s` (removed).
+
+## Round 218: B4a, C call hierarchy
+
+Slice B4a of B4_DESIGN.md, as designed (all D and Q decisions as recommended).
+`CIX_CALL` (64) marks a REF of a function that is the callee of a call
+(`call_callee` in cexpr_int.h; the identifier and implicit-declaration hooks in
+cexpr.c; the member hook in ccall.c); dedupe ORs it, the dump prints ` call`,
+`--verify-carry` compares it, and `--verify-symbols` reports
+`unindexed 'NAME' (call)` for an identifier callee without a flagged event
+(a scratch run with the flag removed from the identifier hook gave 25 reports).
+A callee spelled in a `#define` body gets an `xcall` (functions only, a side
+array, carried and verified) at the invocation. `csymidx.c` gained `cindex_site`,
+`cindex_calls_to`, `cindex_calls_in` (caller by root scope, 5.1). features.c:
+prepare/incoming/outgoing for C functions and file-level variables (a strong
+macro first), grouped by the other function; items carry `data` {c,name,doc};
+follow-ups resolve by position and name, then `data.c`, then name (5.5);
+`request_uri` prefers `data.doc` (E4); `req_loc_in`. Policies: prepare `CP_POS`,
+incoming/outgoing `CP_WAIT`. `cereal query callers|callees` answers C names.
+
+Found: the xcall for `ID(CALL_LEAF(2))` is at `ID` (confirmed by the dump); the
+call bit of the name just before an inserted `(` differs between a carry and a
+fresh index (`carry/calls_adj`, 2 differences; 4.2 expected none);
+`tests/query/calls.expected` last line changed (`no callers` for a C variable).
+UBSan found `qsort(NULL, 0, ...)` in `cindex_calls_in`/`call_rows_out` (empty
+result); guarded.
+
+Tests: `tests/symidx/calls.c` (dump; plain and cells identical; 0 unindexed),
+`carry/calls_{in,adj,out,mac}`, `tests/query/ccalls.cmd` (17 queries and the
+field-role check), scripted session `tests/lsp/ccalls` (incl. unopened-header
+items with hand-written `data`, a stripped item, stale items after an edit).
+Gates: run.sh 2068 passed (was 2059: +9); gate.sh: run 2068, san 2068 passed,
+628 files, 0 findings; verify unchanged (gcc.dg 3908 of 3910, c-c++-common
+637 of 638, cpp 289 of 289); callgrind 3.8856 G (3.8833 G, +0.06%); symcov
+`unindexed 0` over 4718 files (1,146,276 events); TSan (`~/cereal-tsan`,
+removed) all 24 LSP sessions, plain and with `-fparallel=on -fparallel-chunk=1
+-fparallel-threads=3`: 48 clean; `lsp_stress.py` 200 edits on zstd.c: 0 reports.
+Source +690/-62 in 9 files; tests ~300 hand-written lines plus goldens (1,013-line
+LSP transcript).
+
+Not done: B4b and B4c. The stress script sends no call hierarchy requests
+(none of the TSan sessions race one with an edit); a call in a file-level
+`_Static_assert` has no caller item (parked in B4_DESIGN 15).
+

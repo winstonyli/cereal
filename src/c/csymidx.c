@@ -15,12 +15,20 @@
 #define ROLE_TENT 3
 /* Build-only flag: from a macro, spelled in source (body or argument). */
 #define FROM_MACRO CIX_ARG
+/* Build-only flag: an xcall (B4_DESIGN.md 4.4), moved to CIndex.xcalls. */
+#define XCALL 128
 
 typedef struct BEv {
     SrcLoc loc;
     uint32_t decl;           /* id - 1 */
     uint8_t len, flags;
 } BEv;
+
+typedef struct XCand {       /* a call spelled by a macro token: if the token
+                                is in a #define body, an xcall at pres */
+    SrcLoc loc, pres;
+    uint32_t decl;
+} XCand;
 
 typedef struct BDecl {
     uint32_t name;           /* ident */
@@ -42,6 +50,8 @@ typedef VEC(uint32_t) U32V;
 
 struct SymIdxB {
     VEC(BEv) ev;
+    VEC(XCand) xc;
+    SrcLoc pres;             /* the last where()'s presentation point */
     VEC(BDecl) decls;
     /* key -> decl id (0: not seen): ordinary symbols (persistent and the
      * unit's), records and enums (type table index), fields, label slots,
@@ -75,6 +85,7 @@ void csx_free(SymIdxB *b)
     if (!b)
         return;
     vec_free(&b->ev);
+    vec_free(&b->xc);
     vec_free(&b->decls);
     vec_free(&b->gmap);
     vec_free(&b->lmap);
@@ -318,6 +329,7 @@ static bool where(Checker *c, uint32_t tok, BEv *e)
     pres = p->exp ? p->exp : p->t.loc;
     if (is_sys(c->sx, c->sm, pres))
         return false;
+    c->sx->pres = pres;
     e->flags = 0;
     e->len = (uint8_t)(p->t.len > 255 ? 255 : p->t.len);
     if (!p->mloc) {
@@ -339,8 +351,13 @@ static void push_ev(Checker *c, uint32_t tok, BEv *e, uint32_t id, int role)
     e->decl = id - 1;
     e->flags |= (uint8_t)role;
     vec_push(&b->ev, *e);
+    if ((role & CIX_CALL) && (e->flags & FROM_MACRO) &&
+        b->decls.data[id - 1].kind == CIK_FUNC) {
+        XCand x = {e->loc, b->pres, id - 1};
+        vec_push(&b->xc, x);
+    }
     if (b->vout && tok < b->seen.len)
-        b->seen.data[tok] = 1;
+        b->seen.data[tok] |= (role & CIX_CALL) ? 3 : 1;
 }
 
 /* A system declaration first seen in use: one event where it is declared. */
@@ -518,7 +535,7 @@ void csx_field(Checker *c, uint32_t field, uint32_t tok, int role)
     if (!*p) {
         const Field *f = &c->tt.fields.data[field];
         *p = new_decl(b, f->name, CIK_FIELD, 0, 0);
-        if (role == CIX_REF)
+        if ((role & CIX_ROLE) == CIX_REF)
             lazy_event(c, *p, f->loc, CIX_DEF);
     }
     push_ev(c, tok, &e, *p, role);
@@ -528,7 +545,7 @@ void csx_skip(Checker *c, uint32_t tok)
 {
     SymIdxB *b = c->sx;
     if (b->vout && tok < b->seen.len)
-        b->seen.data[tok] = 1;
+        b->seen.data[tok] = 3;
 }
 
 void csx_label_new(Checker *c, uint32_t slot_, uint32_t name, SrcLoc loc)
@@ -668,6 +685,19 @@ static bool excused(Checker *c, uint32_t i, const char *name, SrcLoc loc)
     return diagnosed_line(c, loc);
 }
 
+static void unindexed_report(Checker *c, SrcLoc loc, const char *name,
+                             const char *what)
+{
+    SymIdxB *b = c->sx;
+    SrcFile *f = srcmgr_file_of(c->sm, loc);
+    uint32_t line = 0, col = 0;
+    b->unindexed++;
+    if (f)
+        srcmgr_linecol(f, loc, &line, &col);
+    fprintf(b->vout, "%s:%u:%u: unindexed '%s' (%s)\n", f ? f->name : "?", line,
+            col, name, what);
+}
+
 void csx_unit_end(Checker *c)
 {
     SymIdxB *b = c->sx;
@@ -694,20 +724,30 @@ void csx_unit_end(Checker *c)
             continue;
         name = ident_by_id(c->in, t->aux)->str;
         if (excused(c, i, name, e.loc)) {
-            b->seen.data[tok] = 1;
+            b->seen.data[tok] = 3;
             b->excused++;
             continue;
         }
-        b->seen.data[tok] = 1;   /* reported once */
-        b->unindexed++;
-        {
-            SrcFile *f = srcmgr_file_of(c->sm, e.loc);
-            uint32_t line = 0, col = 0;
-            if (f)
-                srcmgr_linecol(f, e.loc, &line, &col);
-            fprintf(b->vout, "%s:%u:%u: unindexed '%s' (%s)\n",
-                    f ? f->name : "?", line, col, name,
-                    node_names[c->nodes[i].tag]);
+        b->seen.data[tok] = 3;   /* reported once */
+        unindexed_report(c, e.loc, name, node_names[c->nodes[i].tag]);
+    }
+    /* a callee that names an entity must carry CIX_CALL (seen: 1 an event,
+     * 2 a call event or no event wanted) */
+    for (i = 0; i < c->nn; i++) {
+        uint32_t cal, tok;
+        const Tok *t;
+        BEv e;
+        if (c->nodes[i].tag != N_CALL || (cal = first_child(c, i)) == NO_NODE ||
+            (cal = strip_paren(c, cal)) == NO_NODE ||
+            (c->nodes[cal].tag != N_IDENT && c->nodes[cal].tag != N_MEMBER_EXPR))
+            continue;
+        tok = c->nodes[cal].tok;
+        if (tok >= c->u->ntoks || b->seen.data[tok] != 1)
+            continue;
+        t = &c->u->toks[tok].t;
+        if (t->kind == TK_IDENT && where(c, tok, &e)) {
+            b->seen.data[tok] = 3;
+            unindexed_report(c, e.loc, ident_by_id(c->in, t->aux)->str, "call");
         }
     }
 }
@@ -721,7 +761,7 @@ static int ev_cmp(const void *pa, const void *pb)
         return a->loc < b->loc ? -1 : 1;
     if (a->decl != b->decl)
         return a->decl < b->decl ? -1 : 1;
-    return (int)(a->flags & CIX_ROLE) - (int)(b->flags & CIX_ROLE);
+    return (int)(a->flags & (CIX_ROLE | XCALL)) - (int)(b->flags & (CIX_ROLE | XCALL));
 }
 
 typedef struct Range { SrcLoc b, e; } Range;
@@ -1008,7 +1048,9 @@ CIndex *csx_finish(Checker *c)
 {
     SymIdxB *b = c->sx;
     CIndex *ix;
-    uint32_t *has_def, i, nd, ne = 0, nf = 0;
+    uint32_t *has_def, i, nd, ne = 0, nx = 0, nf = 0;
+    CIdxEvent *last;
+    size_t nxc = 0;
     uint32_t *path_off = NULL, *smap;
     size_t k, nr;
     Range *rg;
@@ -1042,6 +1084,19 @@ CIndex *csx_finish(Checker *c)
         if ((e->flags & FROM_MACRO) && in_ranges(rg, nr, e->loc))
             e->flags = (uint8_t)((e->flags & ~FROM_MACRO) | CIX_MACRO_BODY);
     }
+    for (k = 0; k < b->xc.len; k++) {   /* calls spelled in a body: at the invocation */
+        const XCand *x = &b->xc.data[k];
+        BEv e;
+        if (!in_ranges(rg, nr, x->loc))
+            continue;
+        e.loc = x->pres;
+        e.decl = x->decl;
+        e.len = 0;           /* measured at the end */
+        e.flags = CIX_REF | CIX_CALL | CIX_AT_EXPANSION | XCALL;
+        vec_push(&b->ev, e);
+        nxc++;
+    }
+    b->xc.len = 0;
     free(rg);
     qsort(b->ev.data, b->ev.len, sizeof *b->ev.data, ev_cmp);
     /* hover texts of tags and fields (persistent symbols': link_decls) */
@@ -1086,12 +1141,18 @@ CIndex *csx_finish(Checker *c)
     if (!pool.sb.len)
         sb_putc(&pool.sb, 0);
     ix->ev = xmalloc((b->ev.len + 1) * sizeof *ix->ev);
+    ix->xcalls = xmalloc((nxc + 1) * sizeof *ix->xcalls);
     ix->files = NULL;
+    last = NULL;
     for (k = 0; k < b->ev.len; k++) {
         const BEv *e = &b->ev.data[k];
         CIdxEvent *o;
-        if (k && !ev_cmp(e, e - 1))
-            continue;        /* the same event again */
+        if (k && !ev_cmp(e, e - 1)) {   /* the same event again: a call if any was */
+            if (last)
+                last->flags |= e->flags & CIX_CALL;
+            continue;
+        }
+        last = NULL;
         if (!cur || e->loc < cur->base || e->loc >= cur->base + cur->span) {
             cur = srcmgr_file_of(c->sm, e->loc);
             if (cur && (cur->kind == SF_USER || cur->kind == SF_SYSTEM)) {
@@ -1109,11 +1170,12 @@ CIndex *csx_finish(Checker *c)
         if (!cur || (cur->kind != SF_USER && cur->kind != SF_SYSTEM) ||
             e->loc - cur->base > cur->size || nf > UINT16_MAX)
             continue;
-        o = &ix->ev[ne++];
+        o = e->flags & XCALL ? &ix->xcalls[nx++] : &ix->ev[ne++];
+        last = o;
         o->off = e->loc - cur->base;
         o->decl = e->decl;
         o->file = (uint16_t)(nf - 1);
-        o->flags = e->flags;
+        o->flags = e->flags & (uint8_t)~XCALL;
         o->len = e->len;
         if (!o->len) {       /* measure the name in the text */
             uint32_t n = 0;
@@ -1126,6 +1188,8 @@ CIndex *csx_finish(Checker *c)
             o->flags |= CIX_SYSTEM;
     }
     ix->nev = ne;
+    ix->nxcalls = nx;
+    ix->xcalls = xrealloc(ix->xcalls, (nx + 1) * sizeof *ix->xcalls);
     ix->nfiles = nf;
     smap = freeze_scopes(c, ix, pool.sb.data, path_off);
     /* decls and their names */
@@ -1172,6 +1236,7 @@ void cindex_free(CIndex *ix)
         return;
     free(ix->files);
     free(ix->ev);
+    free(ix->xcalls);
     free(ix->by_decl);
     free(ix->by_decl_start);
     free(ix->scopes);
@@ -1202,6 +1267,7 @@ size_t cindex_bytes(const CIndex *ix)
         return 0;
     return sizeof *ix + ix->nfiles * sizeof *ix->files +
            ix->nev * (sizeof *ix->ev + sizeof *ix->by_decl) +
+           ix->nxcalls * sizeof *ix->xcalls +
            (ix->ndecls + 1) * sizeof *ix->by_decl_start +
            ix->nscopes * sizeof *ix->scopes +
            (ix->core ? 0 : (ix->ndecls + 1) * sizeof *ix->decls + ix->nstrings);
@@ -1588,6 +1654,8 @@ void cindex_print_flags(FILE *out, unsigned fl)
         fputs(" arg", out);
     if (fl & CIX_SYSTEM)
         fputs(" system", out);
+    if (fl & CIX_CALL)
+        fputs(" call", out);
 }
 
 void cindex_dump(const CIndex *ix, SrcMgr *sm, FILE *out)
@@ -1612,6 +1680,19 @@ void cindex_dump(const CIndex *ix, SrcMgr *sm, FILE *out)
                 e->decl);
         cindex_print_flags(out, e->flags);
         fputc('\n', out);
+    }
+    for (i = 0; i < ix->nxcalls; i++) {
+        const CIdxEvent *e = &ix->xcalls[i];
+        uint32_t line = 0, col = 0;
+        if (e->file != fi) {
+            fi = e->file;
+            f = cindex_srcfile(sm, ix->files[fi].path);
+        }
+        if (f)
+            srcmgr_linecol(f, f->base + e->off, &line, &col);
+        fprintf(out, "%s:%u:%u xcall %s %s -> #%u\n", f ? f->name : "?", line, col,
+                kind_names[ix->decls[e->decl].kind], cindex_name(ix, e->decl),
+                e->decl);
     }
     for (i = 0; i < ix->ndecls; i++) {
         const CIdxDecl *d = &ix->decls[i];
@@ -1660,6 +1741,18 @@ size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
             (a->file == b->file && a->off == b->off && a->decl == b->decl &&
              (a->flags & CIX_ROLE) == (b->flags & CIX_ROLE))) {
             fprintf(out, "verify: events %u and %u out of order\n", i - 1, i);
+            bad++;
+        }
+    }
+    for (i = 0; i < ix->nxcalls; i++) {      /* B4_DESIGN.md 4.5, invariant 4 */
+        const CIdxEvent *x = &ix->xcalls[i];
+        if (x->flags != (CIX_REF | CIX_CALL | CIX_AT_EXPANSION) ||
+            x->decl >= ix->ndecls || ix->decls[x->decl].kind != CIK_FUNC ||
+            x->file >= ix->nfiles ||
+            (i && (ix->xcalls[i - 1].file > x->file ||
+                   (ix->xcalls[i - 1].file == x->file &&
+                    ix->xcalls[i - 1].off > x->off)))) {
+            fprintf(out, "verify: xcall %u is malformed or out of order\n", i);
             bad++;
         }
     }
@@ -1727,6 +1820,206 @@ size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
     return bad + ix->unindexed;
 }
 
+/* ---- call hierarchy queries (docs/B4_DESIGN.md 5) ---------------------------- */
+
+uint32_t cindex_site(const CIndex *ix, uint32_t d)
+{
+    uint32_t j, best = CIX_NONE;
+    int rank = 5;
+    for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++) {
+        const CIdxEvent *e = &ix->ev[ix->by_decl[j]];
+        int role = e->flags & CIX_ROLE, body = (e->flags & CIX_MACRO_BODY) != 0;
+        int r = role == CIX_DEF && !body ? 0 : role == CIX_DECL && !body ? 1
+              : role != CIX_REF ? 2 : !body ? 3 : 4;
+        if (r < rank) {
+            rank = r;
+            best = ix->by_decl[j];
+            if (!r)
+                break;
+        }
+    }
+    return best;
+}
+
+/* The caller of a site is decided by its root scope; the rule-1 answer is
+ * cached for the last root (sites cluster). */
+typedef struct CallerCtx {
+    const CIndex *ix;
+    uint32_t root;           /* the cached root, 1 + its index; 0 none */
+    uint32_t r1ev;           /* its rule-1 event, CIX_NONE if none */
+} CallerCtx;
+
+static bool caller_event(const CIndex *ix, const CIdxEvent *e)
+{
+    const CIdxDecl *d = &ix->decls[e->decl];
+    return (e->flags & CIX_ROLE) != CIX_REF && !(e->flags & CIX_MACRO_BODY) &&
+           (d->kind == CIK_FUNC || d->kind == CIK_OBJ) && !d->scope;
+}
+
+/* The caller's event for a site at (fi, off), by the rule of B4_DESIGN.md 5.1
+ * (CIX_NONE: none); its decl is ix->ev[result].decl. */
+static uint32_t caller_of(CallerCtx *cx, uint32_t fi, uint32_t off)
+{
+    const CIndex *ix = cx->ix;
+    uint32_t s = cindex_scope_at(ix, fi, off), root, k, first = CIX_NONE,
+             last = CIX_NONE;
+    const CIdxScope *r;
+    if (!s)
+        return CIX_NONE;
+    root = cindex_scope_root(ix, s);
+    r = &ix->scopes[root - 1];
+    if (cx->root != root) {
+        cx->root = root;
+        cx->r1ev = CIX_NONE;
+        for (k = cindex_lower(ix, r->file, r->begin);
+             k < ix->nev && ix->ev[k].file == r->file && ix->ev[k].off < r->end; k++)
+            if ((ix->ev[k].flags & CIX_ROLE) == CIX_DEF &&
+                caller_event(ix, &ix->ev[k]) &&
+                ix->decls[ix->ev[k].decl].kind == CIK_FUNC) {
+                cx->r1ev = k;    /* rule 1: the function the root defines */
+                break;
+            }
+    }
+    if (cx->r1ev != CIX_NONE)
+        return cx->r1ev;
+    for (k = cindex_lower(ix, r->file, r->begin);
+         k < ix->nev && ix->ev[k].file == r->file && ix->ev[k].off < r->end; k++) {
+        if (!caller_event(ix, &ix->ev[k]))
+            continue;
+        if (first == CIX_NONE)
+            first = k;
+        if (ix->ev[k].off > off)
+            break;
+        last = k;            /* rule 2: the last one at or before the site */
+    }
+    return last != CIX_NONE ? last : first;      /* rule 3, else none */
+}
+
+typedef struct CallRow {
+    CIdxCall c;
+    const char *name;        /* NULL sorts last */
+    uint32_t key;
+} CallRow;
+
+typedef VEC(CallRow) CallRows;
+
+static int call_row_cmp(const void *pa, const void *pb)
+{
+    const CallRow *a = pa, *b = pb;
+    int r;
+    if (!a->name != !b->name)
+        return a->name ? -1 : 1;
+    if (a->name && (r = strcmp(a->name, b->name)))
+        return r;
+    if (a->key != b->key)
+        return a->key < b->key ? -1 : 1;
+    if (a->c.file != b->c.file)
+        return a->c.file < b->c.file ? -1 : 1;
+    return a->c.off < b->c.off ? -1 : a->c.off > b->c.off;
+}
+
+static void call_row(CallRows *v, const CIdxEvent *e, uint32_t other,
+                     uint32_t other_ev, const char *name)
+{
+    CallRow row;
+    row.c.other = other;
+    row.c.other_ev = other_ev;
+    row.c.file = e->file;
+    row.c.len = e->len;
+    row.c.off = e->off;
+    row.name = name;
+    row.key = other_ev;
+    vec_push(v, row);
+}
+
+static size_t call_rows_out(CallRows *v, CIdxCall **out)
+{
+    size_t k, n = v->len;
+    if (n > 1)
+        qsort(v->data, n, sizeof *v->data, call_row_cmp);
+    *out = xmalloc((n + 1) * sizeof **out);
+    for (k = 0; k < n; k++)
+        (*out)[k] = v->data[k].c;
+    vec_free(v);
+    return n;
+}
+
+size_t cindex_calls_to(const CIndex *ix, uint32_t d, CIdxCall **out)
+{
+    CallRows v = {0};
+    CallerCtx cx = {ix, 0, CIX_NONE};
+    uint32_t j, ne = ix->by_decl_start[d + 1];
+    for (j = ix->by_decl_start[d]; j < ne + ix->nxcalls; j++) {
+        const CIdxEvent *e;
+        uint32_t cev;
+        if (j < ne) {
+            e = &ix->ev[ix->by_decl[j]];
+            if (!(e->flags & CIX_CALL) || (e->flags & CIX_MACRO_BODY))
+                continue;
+        } else {
+            e = &ix->xcalls[j - ne];
+            if (e->decl != d)
+                continue;
+        }
+        if (ix->files[e->file].stale)
+            continue;
+        cev = caller_of(&cx, e->file, e->off);
+        if (cev == CIX_NONE)
+            call_row(&v, e, CIX_NONE, CIX_NONE, NULL);
+        else
+            call_row(&v, e, ix->ev[cev].decl, cev, cindex_name(ix, ix->ev[cev].decl));
+    }
+    return call_rows_out(&v, out);
+}
+
+size_t cindex_calls_in(const CIndex *ix, uint32_t ev, CIdxCall **out)
+{
+    CallRows v = {0};
+    CallerCtx cx = {ix, 0, CIX_NONE};
+    const CIdxScope *r;
+    uint32_t s, k, lo, hi, lastd = CIX_NONE, lasts = CIX_NONE;
+    size_t i;
+    if (ev >= ix->nev || ix->files[ix->ev[ev].file].stale ||
+        !(s = cindex_scope_at(ix, ix->ev[ev].file, ix->ev[ev].off))) {
+        *out = NULL;
+        return 0;
+    }
+    r = &ix->scopes[cindex_scope_root(ix, s) - 1];
+    for (k = cindex_lower(ix, r->file, r->begin);
+         k < ix->nev && ix->ev[k].file == r->file && ix->ev[k].off < r->end; k++) {
+        const CIdxEvent *e = &ix->ev[k];
+        if ((e->flags & (CIX_ROLE | CIX_CALL | CIX_MACRO_BODY)) !=
+                (CIX_REF | CIX_CALL) || ix->decls[e->decl].kind != CIK_FUNC)
+            continue;
+        if (caller_of(&cx, e->file, e->off) == ev)
+            call_row(&v, e, e->decl, e->decl, cindex_name(ix, e->decl));
+    }
+    for (lo = 0, hi = ix->nxcalls; lo < hi;) {   /* the root's xcalls */
+        uint32_t mid = lo + (hi - lo) / 2;
+        const CIdxEvent *x = &ix->xcalls[mid];
+        if (x->file < r->file || (x->file == r->file && x->off < r->begin))
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    for (k = lo; k < ix->nxcalls && ix->xcalls[k].file == r->file &&
+                 ix->xcalls[k].off < r->end; k++) {
+        const CIdxEvent *e = &ix->xcalls[k];
+        if (caller_of(&cx, e->file, e->off) == ev)
+            call_row(&v, e, e->decl, e->decl, cindex_name(ix, e->decl));
+    }
+    if (v.len > 1)
+        qsort(v.data, v.len, sizeof *v.data, call_row_cmp);
+    for (i = 0; i < v.len; i++) {        /* each callee's event, once */
+        if (v.data[i].c.other != lastd) {
+            lastd = v.data[i].c.other;
+            lasts = cindex_site(ix, lastd);
+        }
+        v.data[i].c.other_ev = lasts;
+    }
+    return call_rows_out(&v, out);
+}
+
 /* ---- carrying an index across an edit (B3_DESIGN.md 12) --------------------- */
 
 void cindex_text_edit(const char *a, size_t na, const char *b, size_t nb,
@@ -1770,9 +2063,27 @@ uint32_t cindex_edit_map(const CIdxEdit *e, uint32_t x)
     return x >= e->old_end ? x - e->old_end + e->new_end : e->pre;
 }
 
+/* The events src[0..n) shifted past each file's edit, those overlapping it
+ * dropped, into dst; how many. */
+static uint32_t carry_events(const CIdxEvent *src, uint32_t n, CIdxEvent *dst,
+                             const CIdxEdit *ed)
+{
+    uint32_t k, ne = 0;
+    for (k = 0; k < n; k++) {
+        CIdxEvent o = src[k];
+        const CIdxEdit *e = &ed[o.file];
+        if (o.off >= e->old_end)
+            o.off = o.off - e->old_end + e->new_end;
+        else if (o.off + o.len > e->pre)
+            continue;                             /* overlaps the edit */
+        dst[ne++] = o;
+    }
+    return ne;
+}
+
 CIndex *cindex_carry(CIndex *from, SrcMgr *sm_old, SrcMgr *sm_new)
 {
-    uint32_t nf = from->nfiles, i, k, ne = 0;
+    uint32_t nf = from->nfiles, i;
     CIdxEdit *ed = xcalloc(nf + 1, sizeof *ed);   /* zeros: the identity */
     SrcFile **nt = xcalloc(nf + 1, sizeof *nt);   /* the new text, or NULL */
     bool changed = false;
@@ -1836,16 +2147,9 @@ CIndex *cindex_carry(CIndex *from, SrcMgr *sm_old, SrcMgr *sm_new)
         }
     }
     c->ev = xmalloc((from->nev + 1) * sizeof *c->ev);
-    for (k = 0; k < from->nev; k++) {
-        CIdxEvent o = from->ev[k];
-        const CIdxEdit *e = &ed[o.file];
-        if (o.off >= e->old_end)
-            o.off = o.off - e->old_end + e->new_end;
-        else if (o.off + o.len > e->pre)
-            continue;                             /* overlaps the edit */
-        c->ev[ne++] = o;
-    }
-    c->nev = ne;
+    c->nev = carry_events(from->ev, from->nev, c->ev, ed);
+    c->xcalls = xmalloc((from->nxcalls + 1) * sizeof *c->xcalls);
+    c->nxcalls = carry_events(from->xcalls, from->nxcalls, c->xcalls, ed);
     c->nscopes = from->nscopes;
     c->scopes = xmalloc((from->nscopes + 1) * sizeof *c->scopes);
     for (i = 0; i < from->nscopes; i++) {
@@ -1891,6 +2195,7 @@ typedef struct VEv {
     uint32_t off;
     uint32_t role;
     uint32_t kind;
+    uint32_t call;           /* 1 a call event, 2 an xcall */
     const char *name;
 } VEv;
 
@@ -1900,6 +2205,8 @@ static int vev_cmp(const VEv *a, const VEv *b)
         return a->off < b->off ? -1 : 1;
     if (a->role != b->role)
         return a->role < b->role ? -1 : 1;
+    if (a->call != b->call)
+        return a->call < b->call ? -1 : 1;
     if (a->kind != b->kind)
         return a->kind < b->kind ? -1 : 1;
     return strcmp(a->name, b->name);
@@ -1918,7 +2225,7 @@ static VEv *vev_gather(const CIndex *ix, int fi, bool edited, uint32_t db,
     VEv *v;
     size_t cnt = 0;
     uint32_t k;
-    v = xmalloc((ix->nev + 1) * sizeof *v);
+    v = xmalloc((ix->nev + ix->nxcalls + 1) * sizeof *v);
     for (k = fi < 0 ? ix->nev : cindex_lower(ix, (uint32_t)fi, 0);
          k < ix->nev && ix->ev[k].file == fi; k++) {
         const CIdxEvent *e = &ix->ev[k];
@@ -1927,6 +2234,18 @@ static VEv *vev_gather(const CIndex *ix, int fi, bool edited, uint32_t db,
         v[cnt].off = e->off;
         v[cnt].role = e->flags & CIX_ROLE;
         v[cnt].kind = ix->decls[e->decl].kind;
+        v[cnt].call = (e->flags & CIX_CALL) != 0;
+        v[cnt].name = cindex_name(ix, e->decl);
+        cnt++;
+    }
+    for (k = 0; k < ix->nxcalls; k++) {
+        const CIdxEvent *e = &ix->xcalls[k];
+        if (e->file != fi || (edited && !(e->off + e->len <= db || e->off >= de)))
+            continue;
+        v[cnt].off = e->off;
+        v[cnt].role = e->flags & CIX_ROLE;
+        v[cnt].kind = ix->decls[e->decl].kind;
+        v[cnt].call = 2;
         v[cnt].name = cindex_name(ix, e->decl);
         cnt++;
     }
@@ -2053,9 +2372,10 @@ size_t cindex_verify_carry(const CIndex *ix1, const CIndex *c,
                 continue;
             }
             if (ndiff++ < 20)
-                fprintf(out, "diff: %s %s %s %s at %s\n", r < 0 ? "carried" : "fresh",
+                fprintf(out, "diff: %s %s %s %s%s at %s\n", r < 0 ? "carried" : "fresh",
                         cindex_role_name(e->role), cindex_kind_name(e->kind),
-                        e->name, cindex_place(sm2, path, e->off, p1, sizeof p1));
+                        e->name, e->call == 2 ? " xcall" : e->call ? " call" : "",
+                        cindex_place(sm2, path, e->off, p1, sizeof p1));
             r < 0 ? a++ : b++;
         }
         free(vc);

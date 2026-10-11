@@ -2292,7 +2292,8 @@ void e_member(Checker *c, uint32_t i)
         return;
     }
     if (c->sx)
-        csx_field(c, (uint32_t)(f - c->tt.fields.data), c->nodes[i].tok, CIX_REF);
+        csx_field(c, (uint32_t)(f - c->tt.fields.data), c->nodes[i].tok,
+                  CIX_REF | (call_callee(c, i) ? CIX_CALL : 0));
     if ((tquals(c, rec) & TQ_ATOMIC) && !inhibited(c, i, false)) {
         char dn[256];
         snprintf(dn, sizeof dn, "%s%s", arrow ? "*" : "", estr(c, d));

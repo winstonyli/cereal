@@ -1745,7 +1745,7 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
         c->ck[i] = K_ADDR;
         c->cb[i] = ref + 1;
         if (c->sx)
-            csx_sym(c, ref, c->nodes[i].tok, CIX_REF);
+            csx_sym(c, ref, c->nodes[i].tok, CIX_REF | CIX_CALL);
         return;
     }
     if (bt) {
@@ -1787,7 +1787,7 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
     c->ck[i] = K_ADDR;
     c->cb[i] = ref + 1;
     if (c->sx)
-        csx_sym(c, ref, c->nodes[i].tok, CIX_REF);
+        csx_sym(c, ref, c->nodes[i].tok, CIX_REF | CIX_CALL);
 }
 
 /* Whether id was already reported undeclared in the current function. */
@@ -2057,7 +2057,8 @@ static void e_ident(Checker *c, uint32_t i)
     s = csym(c, ref);
     if (c->sx && (c->par[i] == NO_NODE || ntag(c, c->par[i]) != N_ATTR_ITEM ||
                   attr_takes_expr(c, c->par[i], true)))
-        csx_sym(c, ref, c->nodes[i].tok, CIX_REF);
+        csx_sym(c, ref, c->nodes[i].tok,
+                CIX_REF | (call_callee(c, i) ? CIX_CALL : 0));
     /* gcc marks a variable named in __builtin_has_attribute used; a function
      * stays unused ("declared static but never defined") */
     if ((s->kind != CS_FUNC || !in_has_attr(c, i)) &&

@@ -184,8 +184,9 @@ The frozen `CIndex` moves onto the snapshot when the check publishes and
 is freed with it (replacing the carried index, below).
 
 - **Locations:** an event inside a macro expansion is placed at its
-  spelling when the token came from an argument, else at the invocation
-  (`expansion`); one presented in a system header is dropped, and a system
+  spelling when the token came from an argument, at the invocation
+  (`expansion`) when the name was formed by `##`, else (a name written in
+  a `#define` body) at the `#define`; one presented in a system header is dropped, and a system
   decl used by user code gets one lazy event at its declaration. Each file
   carries a hash: a file whose text differs from the snapshot's is marked
   stale and its events are not answered. Files absent from the snapshot
@@ -226,6 +227,29 @@ is freed with it (replacing the carried index, below).
   (`index_inactive_note`, over `Index.inactive` and `Index.blocks`, the
   ranges the inactiveRegions notification sends); definition and
   references stay empty there.
+- **Call hierarchy** (B4a; B4_DESIGN.md 4 and 5): a REF event of a function
+  is flagged `CIX_CALL` (flag 64) when it is the callee of a call
+  expression (`call_callee`, set by the identifier hook and for an
+  implicit declaration; a called field by the field hook). Dedupe ORs the
+  flag, the dump prints ` call`, `--verify-carry` compares it, and
+  `--verify-symbols` reports `unindexed 'NAME' (call)` for an identifier
+  callee with no flagged event. A callee spelled in a `#define` body has
+  its event at the `#define`, so the builder also queues an `xcall` (a side
+  array, functions only, carried and verified) at the invocation; the
+  hierarchy reads both. The caller of a call is the function whose root
+  scope holds the site (a file-level variable, per declarator, when it is in
+  an initializer; none for a call in a `_Static_assert`). prepare answers a
+  strong macro first, else the C function or file-level variable at the
+  place (`cindex_site`); a local variable or an unnamed place is null.
+  Items carry `data` {c, name, doc}; a follow-up is resolved by position and
+  name, then `data.c`, then a scan by name (`c_item_resolve`), against the
+  request's document (the E4 fix: `request_uri` prefers `data.doc`, so an
+  item in an unopened header resolves against the open unit). Incoming and
+  outgoing group the calls by the other function and report the sites in
+  the item's file as `fromRanges`. Policies: prepare `CP_POS`, incoming and
+  outgoing `CP_WAIT`. `cereal query callers|callees FILE:L:C main.c` prints
+  the same groups for a C name (`LOC KIND NAME: SITES`; `no callers`,
+  `no callees`, `[declaration only]`, `[implicit]`).
 - **Rename** (phase 4; B2_DESIGN.md, "Phase 4 design addendum"):
   prepareRename and rename take a C name when the macro index does not
   answer for it (as above). The edits are the entity's events, one per
@@ -355,7 +379,8 @@ enum), semantic tokens (`macro`, `parameter`, `function`, `variable`,
 `declaration`, `readonly`, `static`; whole file, a range, or a delta
 against the last whole-file result), folding (`#if` blocks, multi-line
 `#define`s), rename with prepareRename, call hierarchy (incoming and
-outgoing; static edges plus observed expansions), and signature help for
+outgoing; for macros static edges plus observed expansions, for C
+functions and file-level variables the call index), and signature help for
 function-like macros and for C functions and function pointers, also
 through a typedef (both read from the text, so they work while the call
 is still being typed). The C parts follow docs/B3_DESIGN.md.
@@ -459,7 +484,15 @@ tokens (whole file and a range) and completion (inside a function and in
 another), and, for a client without `refreshSupport`, a token request
 right after an edit (it waits for the check; no refresh is sent, the
 `absent` step of lsp_session.py); `tests/query/b3.cmd` `cereal query type`
-and `visible` on `tests/symidx/b3.c`. `tests/lsp/carry_cidx` (checks held
+and `visible` on `tests/symidx/b3.c`. `tests/lsp/ccalls` covers C call hierarchy
+(prepare on a function, a declaration, a macro, a file-level variable, a
+local and a blank place; incoming and outgoing with grouping and
+`fromRanges`; the declarator split in `int a = f(), b = g();`; a call through a macro body; items
+in an unopened header, function and macro, carrying `data` {name, doc};
+an item with its data stripped; stale items after an edit above);
+`tests/query/ccalls.cmd` the same from the command line (system, implicit
+and declaration-only callees, recursion, `_Static_assert`); `tests/symidx/calls.c`
+the dump with ` call` and `xcall` lines and `tests/symidx/carry/calls_*` their carry. `tests/lsp/carry_cidx` (checks held
 with `cereal/holdChecks`; the client declares `refreshSupport`): after an
 edit that makes a variable `long` and types a declaration and a call,
 hover and definition below it (moved), hover above it (no marker), hover

@@ -1,6 +1,8 @@
 # B4 design: C call hierarchy, parameter-name inlay hints, workspace/symbol over open units
 
-Status: designed 2026-10-10, before implementation (ROADMAP Track B, B4).
+Status: designed 2026-10-10 (ROADMAP Track B, B4). **B4a (C call hierarchy)
+is implemented** (Round 218; section 17 lists what differs from this text).
+B4b and B4c are not started.
 It builds on the C symbol index of B2 and B3 (B2_DESIGN.md, B3_DESIGN.md;
 LSP.md, "C symbol index"). Line numbers refer to the Windows checkout at
 809a6c8 (drafted at 82c44b2; every cited line was rechecked after
@@ -100,7 +102,7 @@ Decisions this design makes, each argued in its section:
     invocation with `CIX_AT_EXPANSION` holds only for names formed by
     `##`.
   - LSP.md's "else at the invocation (`expansion`)" (lines 186-188) is imprecise
-    for the same reason. To be corrected when B4a lands.
+    for the same reason. Corrected in LSP.md with B4a.
 - **Dedupe.** `csx_finish` sorts the events with `ev_cmp` (loc, decl,
   role; csymidx.c:717). `qsort` is unstable. It then drops an event equal
   to its predecessor (csymidx.c:1093-1094). Flags other than the role do not
@@ -1445,6 +1447,36 @@ win over the name step; a broken line in 4.3 was reflowed. Round 12's
 edits read consistently with 4.1, 4.5, 5.1, 9, 11 and 13 (risk 8 names
 the name fallback).
 
-**Still unverified:** the estimates. The xcall placement for
-`ID(CALL_LEAF(2))` is inferred from the pasted-name case, because
-`--dump-symbols` does not show a body event's `p->exp`.
+**Still unverified:** the estimates. (The xcall placement for
+`ID(CALL_LEAF(2))` was confirmed by the B4a dump: section 17.)
+
+## 17. B4a as implemented (Round 218)
+
+Implemented as written (all D and Q decisions as recommended), with these
+differences and findings.
+
+- **xcall placement confirmed.** `--dump-symbols` now prints xcalls
+  (`FILE:L:C xcall func NAME -> #N`). For `ID(CALL_LEAF(2))`
+  (tests/symidx/calls.c line 35) the xcall is at `ID`, col 10, the outermost
+  invocation, as inferred in round 13. 4.4 stands.
+- **Carry and a name adjacent to the damage.** 4.2 expected no difference
+  in the `call` bit for names beside an edit. `carry/calls_adj` (`f;` to
+  `f(9);`) shows the adjacent name's bit differs (2 differences between the
+  carried and the fresh index): the name just before the inserted `(9)` is
+  kept untouched by the carry (it lies outside the damage) but is a call
+  only in the fresh run, because the call-ness of a name depends on the
+  next token. The golden records the 2 differences; the carried index is replaced
+  by the fresh one when the check publishes.
+- **Weak-macro prepare.** prepare tries a strong macro, then C items, and
+  keeps a weak-macro (macro with history only) fallback when no C item
+  exists, as before B4a.
+- **`cereal query` mode test.** `query_c` distinguishes callers from
+  callees by `kind[5]` (`callers`/`callees` differ at index 5, not 4).
+- **Changed golden.** `tests/query/calls.expected` last line: a C variable
+  at `calls.c:7:5` now prints `no callers` instead of `no macro definition
+  here` (the C path answers).
+- **Macro items in an unopened header** resolve through `data.doc` and the
+  macro index; a macro with no macro-level callers answers `[]` (macro
+  hierarchy is macro to macro, as before).
+- **Parked still:** a call in a file-level `_Static_assert` has no caller
+  item (section 15).

@@ -80,6 +80,17 @@ static inline uint32_t first_child(const Checker *c, uint32_t i)
     return k;
 }
 
+/* Is node i (an identifier or member access) the callee of a call,
+ * parentheses aside?  The symbol index flags its event CIX_CALL. */
+static inline bool call_callee(const Checker *c, uint32_t i)
+{
+    uint32_t p = c->par[i];
+    while (p != NO_NODE && ntag(c, p) == N_PAREN)
+        p = c->par[p];
+    return p != NO_NODE && ntag(c, p) == N_CALL &&
+           strip_paren(c, first_child(c, p)) == i;
+}
+
 static inline uint32_t nkids(const Checker *c, uint32_t i, uint32_t *out,
                       uint32_t max)
 {
