@@ -7,6 +7,8 @@
 #include "pp.h"
 #include "srcmgr.h"
 
+typedef VEC(const char *) StrVec;
+
 typedef struct CmdlineMacro {
     char kind;          /* D, U, i (-include), m (-imacros) */
     const char *text;
@@ -45,6 +47,7 @@ typedef struct Options {
     FILE *msg;                  /* where option errors and notes go (stderr; NULL: nowhere) */
     const char *cwd;            /* absolute working directory of the TU (NULL: the process's) */
     Arena rsp;                  /* strings from @files that the options point into */
+    StrVec rsp_files;           /* the @files read (entry_options; in rsp) */
     int std_year;               /* -std=: 1999, 2011 or 2017 */
     bool lenient;               /* skip what is not understood without notes (language server) */
     VEC(const char *) ignored_semantic; /* skipped, may change diagnostics */

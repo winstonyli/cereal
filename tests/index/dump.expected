@@ -1,0 +1,72 @@
+== ok.c
+unit ok.c status OK errors 0 bytes 603
+  file .cereal size 19 hash 3b51a3b8ab2f9bc4 config
+  file api.h size 322 hash 23fb8ef7363816e8 user record
+  file ok.c size 281 hash 1d161444e581ca92 user record
+record api.h size 322 hash 23fb8ef7363816e8
+  decl 6:8 +125 len 2 DEF struct pt @api.h:6:8 range +118-142 flags 0
+  decl 6:17 +134 len 1 DEF field x @api.h:6:17 in pt range +134-135 flags 0
+  decl 6:20 +137 len 1 DEF field y @api.h:6:20 in pt range +137-138 flags 0
+  decl 7:19 +161 len 4 DEF typedef pt_t @api.h:7:19 range +143-166 flags 0
+  decl 8:6 +172 len 5 DEF enum color @api.h:8:6 range +167-197 flags 0
+  decl 8:14 +180 len 3 DEF enumconst RED @api.h:8:14 in color range +180-183 flags 16
+  decl 8:19 +185 len 5 DEF enumconst GREEN @api.h:8:19 in color range +185-190 flags 16
+  decl 9:12 +209 len 14 DECL obj shared_counter ext range +198-224 flags 0
+  decl 10:5 +229 len 6 DECL func helper ext range +225-241 flags 0
+  decl 11:5 +246 len 13 DECL func declared_only ext range +242-265 flags 0
+  decl 12:19 +284 len 5 DEF func twice @api.h:12:19 range +266-314 flags 32
+  ref 5:24 +95 len 6 func helper ext body call
+  ref 5:36 +107 len 6 func helper ext body call
+  ref 7:16 +158 len 2 struct pt @api.h:6:8
+  macro 2:9 +22 len 5 API_H
+  macro 3:9 +36 len 7 VERSION
+  macro 4:9 +54 len 2 SQ()
+  macro 5:9 +80 len 10 CALL_TWICE()
+record ok.c size 281 hash 1d161444e581ca92
+  decl 2:5 +21 len 14 DEF obj shared_counter ext range +17-46 flags 0
+  decl 3:12 +58 len 11 DEF obj local_state @ok.c:3:12 range +47-70 flags 40
+  decl 4:5 +75 len 6 DEF func helper ext range +71-116 flags 0
+  decl 5:5 +121 len 3 DEF func run ext range +117-280 flags 0
+  ref 4:32 +102 len 11 obj local_state @ok.c:3:12
+  ref 5:9 +125 len 4 typedef pt_t @api.h:7:19
+  ref 7:23 +158 len 1 field x @api.h:6:17 arg
+  ref 7:42 +177 len 1 field y @api.h:6:20 arg
+  ref 7:47 +182 len 13 func declared_only ext call
+  ref 7:61 +196 len 3 enumconst RED @api.h:8:14
+  ref 7:68 +203 len 5 func twice @api.h:12:19 call
+  ref 7:74 +209 len 5 enumconst GREEN @api.h:8:19
+  ref 8:5 +221 len 11 obj local_state @ok.c:3:12
+  ref 9:20 +255 len 6 func helper ext call
+  ref 9:27 +262 len 14 obj shared_counter ext
+  call 7:28 +163 len 10 from func run ext to func helper ext expansion
+  call 7:47 +182 len 13 from func run ext to func declared_only ext
+  call 7:68 +203 len 5 from func run ext to func twice @api.h:12:19
+  call 9:20 +255 len 6 from func run ext to func helper ext
+== miss.c
+unit miss.c status PARTIAL errors 2 bytes 432
+  file .cereal size 19 hash 3b51a3b8ab2f9bc4 config
+  file api.h size 322 hash 23fb8ef7363816e8 user record
+  file miss.c size 110 hash c5b8f569ce0cc075 user record
+  miss "generated.h" from miss.c
+  miss <vendor/missing.h> from miss.c
+record api.h size 322 hash 23fb8ef7363816e8
+  decl 6:8 +125 len 2 DEF struct pt @api.h:6:8 range +118-142 flags 0
+  decl 6:17 +134 len 1 DEF field x @api.h:6:17 in pt range +134-135 flags 0
+  decl 6:20 +137 len 1 DEF field y @api.h:6:20 in pt range +137-138 flags 0
+  decl 7:19 +161 len 4 DEF typedef pt_t @api.h:7:19 range +143-166 flags 0
+  decl 8:6 +172 len 5 DEF enum color @api.h:8:6 range +167-197 flags 0
+  decl 8:14 +180 len 3 DEF enumconst RED @api.h:8:14 in color range +180-183 flags 16
+  decl 8:19 +185 len 5 DEF enumconst GREEN @api.h:8:19 in color range +185-190 flags 16
+  decl 9:12 +209 len 14 DECL obj shared_counter ext range +198-224 flags 0
+  decl 10:5 +229 len 6 DECL func helper ext range +225-241 flags 0
+  decl 11:5 +246 len 13 DECL func declared_only ext range +242-265 flags 0
+  decl 12:19 +284 len 5 DEF func twice @api.h:12:19 range +266-314 flags 32
+  ref 7:16 +158 len 2 struct pt @api.h:6:8
+  macro 2:9 +22 len 5 API_H
+  macro 3:9 +36 len 7 VERSION
+  macro 4:9 +54 len 2 SQ()
+  macro 5:9 +80 len 10 CALL_TWICE()
+record miss.c size 110 hash c5b8f569ce0cc075
+  decl 4:5 +72 len 3 DEF func use ext range +68-109 flags 0
+  ref 4:24 +91 len 6 func helper ext call
+  call 4:24 +91 len 6 from func use ext to func helper ext

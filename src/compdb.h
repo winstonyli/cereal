@@ -6,8 +6,6 @@
 
 #include "driver.h"
 
-typedef VEC(const char *) StrVec;
-
 typedef struct CompileEntry {
     const char *dir;         /* working directory: absolute, normalized (NULL: none) */
     const char *file;        /* as written */
@@ -31,11 +29,13 @@ int split_args(Arena *a, const char *s, SplitMode mode, const char ***argv);
  * process directory, also when the naming file is elsewhere; a file with
  * only white space adds nothing, a `''` adds an empty argument).  Returns the new
  * argument array (strings and array in `a`; `argv` itself when there is no
- * @file) and sets *argc.  On failure returns NULL with *err set: the file
+ * @file) and sets *argc.  files (or NULL): the paths of the files read are
+ * appended (in `a`).  On failure returns NULL with *err set: the file
  * cannot be read (gcc would keep the argument as written; here that would
  * drop the flags silently), it is a directory, or 2000 files were read. */
 const char *const *argv_expand(Arena *a, const char *dir, int *argc, int from,
-                               const char *const *argv, const char **err);
+                               const char *const *argv, const char **err,
+                               StrVec *files);
 
 /* `p` against `dir` (when relative and dir is given), normalized. */
 const char *compdb_abs(Arena *a, const char *dir, const char *p);
@@ -63,7 +63,9 @@ void add_flag(Arena *a, StrVec *v, const char *dir, const char **argv,
  * options_finish.  `o->cwd` is the entry's directory, so relative paths in
  * all of them resolve there.  Never writes dependency output.  Problems go
  * to o->msg and count in o->bad_options (unknown options too, unless
- * o->lenient).  Allocates nothing from shared arenas: safe on any thread.
+ * o->lenient).  Allocates nothing from shared arenas: safe on any thread
+ * (pp_options_finish uses localtime_r).  The response files read are listed
+ * in o->rsp_files.
  * o->fingerprint covers the directory and every argument that can change a
  * diagnostic. */
 void entry_options(Options *o, const CompileEntry *e,

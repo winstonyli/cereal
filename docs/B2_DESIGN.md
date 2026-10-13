@@ -973,8 +973,9 @@ comparison passes).
   for the newest check like the other C requests (D1). A refusal is a
   RequestFailed error with the reason; prepareRename on a place that is
   no entity answers null, as before. The two checks run on the builder
-  thread, because the checker keeps mutable static state (cattr.c,
-  cinit.c, cconv.c, ...) and two checks must never run at once. As built
+  thread, which then kept the checks in order beside the edits (it was first
+  thought necessary because of mutable statics in the checker, cattr.c,
+  cinit.c, cconv.c, ...; they are `__thread` since Round 204). As built
   in phase 4 the request queued a job and waited for it, the protocol
   thread being blocked, so no edit could arrive between the plan and the
   reply. Since Round 217 the request is deferred to the builder

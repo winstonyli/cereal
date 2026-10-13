@@ -41,6 +41,8 @@ typedef struct SrcFile {
                             * as first spelled (relative stays relative) */
     const char *buf;       /* == region + base; NUL + zero padding after */
     uint32_t size;         /* bytes of content */
+    uint64_t mtime_ns;     /* st_mtime of the fstat taken before the read, in ns;
+                            * 0: not from disk (docs/B5_DESIGN.md 7.2) */
     uint32_t span;         /* location range reserved for this file */
     SrcLoc base;
     uint32_t *lines;       /* lazily computed line starts (atomic publish) */

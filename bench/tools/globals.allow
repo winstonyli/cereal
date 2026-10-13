@@ -1,0 +1,36 @@
+# OBJECT SYMBOL reason   (docs/B5_DESIGN.md 4.1; checked by globals.sh)
+# Checker and frontend: nothing a check writes except through once-init or atomics.
+c/ccall ready  pure_first_char's lazy table, behind an atomic acquire/release flag
+c/ccall seen   the table that flag publishes
+c/csymidx serial_counter  atomic
+diag cfg_gen_next  atomic
+lex cls  once-init (tables_once)
+lex cls_dollar  once-init (tables_once)
+lex tables_once  once-init flag
+srcmgr ps  once-init (ps_once): the page size
+srcmgr ps_once  once-init flag
+srcmgr lines_lock  a lock
+# Fault injection (CEREAL_FAULT), tests only.
+thread fault_site  fault injection
+thread fault_at  fault injection
+thread fault_once  fault injection
+thread fault_count  fault injection
+# CLI state, set before any thread starts.
+fixmode sort_pass  qsort comparator state of cereal fix, single-threaded
+main made  CLI state set before threads
+main pool  CLI state set before threads
+main buf  CLI state set before threads
+main fe_opts  CLI options, read-only once units run
+main carry_old  CLI state set before threads
+main carry_at  CLI state set before threads
+main parse_cells  CLI option
+main dump_symbols  CLI option
+main verify_symbols  CLI option
+main rsp  CLI state set before threads (@file arguments)
+# Language server: state outside the checker; B5 does not change its thread discipline.
+lsp/features tok_cache  server (semantic token cache)
+lsp/features tok_next_id  server
+lsp/rpc out_fp  server (protocol output)
+lsp/rpc out_m  server (its lock)
+lsp/server S  the server
+lsp/server on  server (once flag)

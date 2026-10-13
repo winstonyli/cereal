@@ -707,16 +707,19 @@ void pp_options_finish(PPOptions *opt)
 {
     time_t now = time(NULL);
     const char *sde = getenv("SOURCE_DATE_EPOCH");
-    struct tm *tm;
+    struct tm tm;
     if (opt->date_str)
         return;
-    if (sde && *sde)
+    if (sde && *sde) {
         now = (time_t)strtoll(sde, NULL, 10);
-    tm = sde && *sde ? gmtime(&now) : localtime(&now);
-    sprintf(opt->date_buf, "\"%s %2d %d\"", month_names[tm->tm_mon],
-            tm->tm_mday, tm->tm_year + 1900);
-    sprintf(opt->time_buf, "\"%02d:%02d:%02d\"", tm->tm_hour, tm->tm_min,
-            tm->tm_sec);
+        gmtime_r(&now, &tm);
+    } else {
+        localtime_r(&now, &tm);
+    }
+    sprintf(opt->date_buf, "\"%s %2d %d\"", month_names[tm.tm_mon],
+            tm.tm_mday, tm.tm_year + 1900);
+    sprintf(opt->time_buf, "\"%02d:%02d:%02d\"", tm.tm_hour, tm.tm_min,
+            tm.tm_sec);
     opt->date_str = opt->date_buf;
     opt->time_str = opt->time_buf;
 }

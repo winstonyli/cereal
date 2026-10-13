@@ -1,6 +1,7 @@
 #!/bin/sh
 # gate.sh: the pre-commit gate, stages overlapped (<= 12 busy threads):
 #   run.sh (3 golden shards) | verify.sh (4) | san.sh (make -j4, 3 shards, san.py 4) | callgrind (1)
+# plus globals.sh (mutable-global allowlist, instant) as stage 0
 # Writes /tmp/gate.<stage> and prints them in order.  Expect run/san "N passed, 0 failed"
 # (N grows with the goldens), san "findings 0", verify dg 2 / c-c++-common 1 / cpp 0 differ (of 3910 / 636 / 285 files run, the c11 tests included; cpp is a baseline, not a target),
 # callgrind ~3.89G (instructions, deterministic).
@@ -8,6 +9,7 @@
 cd "$(dirname "$0")/../.." || exit 1
 O=/tmp/gate; rm -f $O.*
 t() { n=$1; shift; s=$(date +%s); "$@"; echo "$n $(( $(date +%s) - s ))s" >>$O.time; }
+t globals sh bench/tools/globals.sh 2>&1 | tail -3 >$O.0globals
 t run env GOLDEN_JOBS=2 nice -n 10 sh tests/run.sh 2>&1 | tail -1 >$O.1run &
 t verify env CEREAL_JOBS=4 nice -n 10 bench/tools/verify.sh 2>&1 | tail -3 >$O.2verify &
 t san env SAN_JOBS=4 GOLDEN_JOBS=5 SAN_PY_JOBS=5 nice -n 10 bench/tools/san.sh 2>&1 | tail -2 >$O.3san &

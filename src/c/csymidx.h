@@ -257,6 +257,35 @@ size_t cindex_calls_to(const CIndex *ix, uint32_t d, CIdxCall **out);
  * cindex_site), sorted by (callee name, callee, site).  *out is malloc'd. */
 size_t cindex_calls_in(const CIndex *ix, uint32_t ev, CIdxCall **out);
 
+/* Every call site (flagged events not in a #define body, and xcalls) that
+ * has a calling function or file-level variable, in index order (the sites
+ * of one file by offset, then the xcalls): fn(ctx, site, caller decl, xcall). */
+typedef void (*CIdxCallFn)(void *ctx, const CIdxEvent *site, uint32_t caller,
+                           bool xcall);
+void cindex_each_call(const CIndex *ix, CIdxCallFn fn, void *ctx);
+
+/* ---- identity keys across units (docs/B5_DESIGN.md 5.3, D8) -------------- */
+
+/* Whether event i is the declaration or definition of a symbol (document
+ * symbols, workspace/symbol and the project index's DECL entries): a
+ * file-level declaration, field or enumerator, not a use, a macro body's, a
+ * system header's, a parameter or a label.  *s: the external declaration's
+ * scope (1 + index) for a non-member, else 0. */
+bool cindex_symbol_event(const CIndex *ix, uint32_t i, uint32_t *s);
+
+/* What names a decl in every unit: a function or object of external linkage
+ * by (name, kind, linkage) alone (path "", off 0); anything else by (name,
+ * kind, linkage) and its anchor event, the file path and offset of its DEF,
+ * else its first DECL (least path, then offset; a #define body's only if
+ * there is nothing else).  Strings point into ix. */
+typedef struct CIdxKey {
+    const char *name;
+    const char *path;
+    uint32_t off;
+    uint8_t kind, linkage;
+} CIdxKey;
+void cindex_key(const CIndex *ix, uint32_t d, CIdxKey *out);
+
 /* ---- parameter lists and names (docs/B4_DESIGN.md 6.3) ------------------ */
 
 typedef VEC(uint32_t) U32Vec;

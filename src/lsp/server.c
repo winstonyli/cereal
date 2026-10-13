@@ -54,7 +54,7 @@ typedef struct Doc {
     Unit *unit;
 } Doc;
 
-/* Work only the builder thread can do, the checker keeping static state: a
+/* Work the builder thread does, to keep checks in order beside the edits: a
  * rename's checks (lsp_check_rename), a document's fix-all (lsp_fix_all).
  * Requests that need it are deferred (DeferredReq). */
 typedef struct RenameJob {
@@ -1061,7 +1061,7 @@ static void initialize(const JsonValue *id, const JsonValue *params)
         root = uri_to_path(&a, root_uri);
     if (!root)
         root = json_str_of(json_get(params, "rootPath"), NULL);
-    config_init(&S.cfg, root);
+    config_init(&S.cfg, root, NULL);
     arena_free(&a);
 
     begin_response(&w, &sb, id);

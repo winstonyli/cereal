@@ -101,9 +101,9 @@ bool str_eq_n(const char *a, size_t an, const char *b);
 unsigned edit_distance(const char *a, size_t an, const char *b, size_t bn,
                        unsigned limit);
 char *read_file(const char *path, size_t *len_out);
-/* Replaces the file at path (which must exist) with buf: written to a
+/* Replaces the file at path (or creates it, mode 0600) with buf: written to a
  * temporary file in the same directory, fsync'd, given the original's mode
- * (and owner, if it can), then renamed over it.  Nothing is changed on
+ * (and owner, if it can; a new file keeps mkstemp's), then renamed over it.  Nothing is changed on
  * failure; err gets the reason. */
 bool file_write_atomic(const char *path, const char *buf, size_t n, char *err,
                        size_t errn);

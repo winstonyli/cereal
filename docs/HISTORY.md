@@ -4546,3 +4546,26 @@ of 638, cpp 289 of 289); callgrind 3.8810 G (3.8814 G); symcov unchanged
 parallel+cells); `lsp_stress.py --symbols --calls --hints` 200 edits on zstd.c
 (239 edits sent) and on `tests/lsp/ccalls/main.c` (242): 0 reports, 0 error
 responses.
+
+Round 222: B5a, the index record format (B5_DESIGN.md sections 4, 5, 14.2,
+15). User decisions recorded: A1 and Q1-Q6 accepted as recommended. New:
+`cereal index-summary [--root D] [--compdb P] (--cache DIR | --dump) FILE` and
+`--check FILE...` (`src/lsp/indexsum.c`); `src/c/cidxrec.{h,c}` (records and
+manifests: sorted self-contained native-endian sections, a content-addressed
+record per user file, one manifest per TU, a validating reader, atomic 0600
+writes under `<cache>/index/<projid>/{rec,tu}`); `cindex_key` and
+`cindex_each_call` in `csymidx.c`; `config_options_in` (arena variant, also
+returns the `.cereal` and response files); `SrcFile.mtime_ns`;
+`Options.rsp_files`. D5 prerequisites: `localtime_r` in `pp_options_finish`,
+the stale "static state" comments, `bench/tools/globals.sh` with a 31-symbol
+allowlist as gate stage 0. Tests: `tests/index` (dump goldens), a determinism
+check and a corruption check (truncated, flipped, version, build id) in
+run.sh section 22. Measured 5.5: 30-53 MB per 1000 TUs of bytes (46 MB on
+cereal's own src), under the 80 MB stop rule; records byte-identical across
+runs on lua54, libuv and cereal src. Deviations are listed in B5_DESIGN 15.
+
+Gates: run.sh 2103 passed (2079 before); gate.sh: san 2103 passed, 628 files, 0
+findings; verify unchanged (gcc.dg 3908 of 3910, c-c++-common 637 of 638,
+cpp 289 of 289); callgrind 3.8797 G (3.8810 G); symcov unchanged (4718 files,
+1,146,276 events, unindexed 0, param misses 0). TSan not run (no threading
+touched).

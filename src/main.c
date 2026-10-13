@@ -53,6 +53,10 @@ static void usage(FILE *o)
         "                its entry\n"
         "  -fsyntax-only  the same as check\n"
         "  lsp           language server on stdin/stdout\n"
+        "  index-summary [--root DIR] [--compdb DB] (--cache DIR | --dump) FILE\n"
+        "                check FILE as the language server would and write its\n"
+        "                project-index records (docs/B5_DESIGN.md);\n"
+        "                index-summary --check FILE... validates written files\n"
         "  fix           apply the fix-its of the check and lint diagnostics to the\n"
         "                files (see \"fix options\" below)\n"
         "  query KIND FILE:LINE:COL   KIND = def | decl | refs | uses | highlight |\n"
@@ -1555,7 +1559,7 @@ int main(int argc, char **argv)
     options_init(&o);
     /* the strings are writable arena copies or the process's own */
     argv = (char **)argv_expand(&rsp, NULL, &argc, 1, (const char *const *)argv,
-                                &rsp_err);
+                                &rsp_err, NULL);
     if (!argv) {
         fprintf(stderr, "cereal: error: %s\n", rsp_err);
         return 1;
@@ -1564,6 +1568,8 @@ int main(int argc, char **argv)
         usage(stderr);
         return 2;
     }
+    if (!strcmp(argv[1], "index-summary"))
+        return indexsum_main(argc - 2, argv + 2);
     for (i = 1; i < argc; i++)
         ccdb_given |= !strncmp(argv[i], "--compile-commands", 18);
     for (i = 1; i < argc; i++) {

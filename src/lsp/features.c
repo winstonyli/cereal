@@ -494,30 +494,6 @@ static void c_symbol(Req *r, JsonWriter *w, const CSymNode *nodes, int32_t k,
     json_end_object(w);
 }
 
-/* Whether event i is the declaration or definition of a symbol (document
- * symbols and workspace/symbol): a file-level declaration, field or
- * enumerator, not a use, a macro body's, a system header's, a parameter or a
- * label.  *s: the external declaration's scope (1 + index) for a
- * non-member, else 0. */
-static bool c_symbol_event(const CIndex *ix, uint32_t i, uint32_t *s)
-{
-    const CIdxEvent *e = &ix->ev[i];
-    const CIdxDecl *x = &ix->decls[e->decl];
-    bool member = x->kind == CIK_FIELD || x->kind == CIK_ENUMCONST;
-    *s = 0;
-    if ((e->flags & CIX_ROLE) == CIX_REF ||
-        (e->flags & (CIX_MACRO_BODY | CIX_SYSTEM)) || x->kind == CIK_PARAM ||
-        x->kind == CIK_LABEL ||
-        (member ? (e->flags & CIX_ROLE) != CIX_DEF : x->scope))
-        return false;
-    if (x->kind != CIK_FIELD) {              /* at file level? */
-        *s = cindex_scope_at(ix, e->file, e->off);
-        if (*s && ix->scopes[*s - 1].parent)
-            return false;
-    }
-    return true;
-}
-
 /* The C part of documentSymbol (B3_DESIGN.md 5.2): file-level declarations
  * with the external declaration as range, fields and enumerators under the
  * node whose type is their record or enum (a definition of it first). */
@@ -537,7 +513,7 @@ static void c_document_symbols(Req *r, JsonWriter *w)
         uint32_t s;
         CSymNode n;
         bool member = x->kind == CIK_FIELD || x->kind == CIK_ENUMCONST;
-        if (!c_symbol_event(ix, i, &s))
+        if (!cindex_symbol_event(ix, i, &s))
             continue;
         n.ev = i;
         n.decl = e->decl;
@@ -828,7 +804,7 @@ static bool ws_is_open(const WsOpen *o, const char *path)
 
 /* Appends to out the symbols of one unit that match q: its user macros, and
  * its C declarations if it has an index (the document symbols' selection,
- * c_symbol_event; one per decl, at its definition if any). */
+ * cindex_symbol_event; one per decl, at its definition if any). */
 static void ws_unit(const WsUnit *u, size_t seq, const char *q,
                     const WsOpen *open, WsVec *out)
 {
@@ -871,7 +847,7 @@ static void ws_unit(const WsUnit *u, size_t seq, const char *q,
         for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++) {
             uint32_t k = ix->by_decl[j], sc;
             bool def = (ix->ev[k].flags & CIX_ROLE) == CIX_DEF;
-            if (!fmap[ix->ev[k].file] || !c_symbol_event(ix, k, &sc))
+            if (!fmap[ix->ev[k].file] || !cindex_symbol_event(ix, k, &sc))
                 continue;
             if (pick == CIX_NONE || def)
                 pick = k;

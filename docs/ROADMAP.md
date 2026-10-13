@@ -162,7 +162,8 @@ B4. Function call hierarchy, inlay hints, workspace/symbol (est. 400 lines). DON
 B5. Workspace-wide index over compile_commands, workspace/symbol,
     cross-file references, on-disk cache. Large; needs its own design.
     Designed in B5_DESIGN.md (2026-10-12; est. 5,500-12,500 lines in four
-    slices B5a-B5d, D5 first).
+    slices B5a-B5d, D5 first). B5a (record format, `index-summary`,
+    globals gate) done in Round 222.
 
 Risks: partial or erroneous code still yields partial symbol data; the
 snapshot sees one `#if` branch; the checker's tables are private (index code

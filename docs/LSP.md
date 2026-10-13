@@ -282,10 +282,10 @@ is freed with it (replacing the carried index, below).
 
   A refusal is a RequestFailed error with the reason (prepareRename too,
   and now also for macros); prepareRename answers null where there is no
-  entity. The two checks run on the builder thread, because the checker
-  keeps static state: the request is handed to the builder as a
-  `DeferredReq` (as the first fix-all is) and the protocol thread goes on
-  serving; the builder answers it. If the document changed meanwhile, the
+  entity. The two checks run on the builder thread, to keep checks ordered
+  beside the edits (the checker's state is per thread): the request is
+  handed to the builder as a `DeferredReq` (as the first fix-all is) and
+  the protocol thread goes on serving; the builder answers it. If the document changed meanwhile, the
   answer is a ContentModified (-32801) error, the edits being for the old
   text. A request for a stale or unchecked snapshot is refused at once
   ("retry"), as before.

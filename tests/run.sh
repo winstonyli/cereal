@@ -27,7 +27,9 @@
 #  17. -M family: tests/deps cases against gcc-13 goldens; the
 #      .d files of -fparallel=on and off are byte-identical
 #  19-21. cereal fix: the edit builder, fix-it columns, fix runs on files
+#  22. project index records: `index-summary` goldens, determinism, corruption
 #  19-21. cereal fix: the edit builder, fix-it columns, fix runs on files
+#  22. project index records: `index-summary` goldens, determinism, corruption
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}
@@ -713,6 +715,55 @@ for f in "$ROOT"/tests/fix/*.sh; do
         diff "$ROOT/tests/fix/$n.expected" "$TMP/fc1" | head -10 | sed 's/^/    /'
         diff "$TMP/fc1" "$TMP/fc12" | head -6 | sed 's/^/    /'
     fi
+done
+
+# 22. project index records (docs/B5_DESIGN.md 14.2, 14.4): `index-summary
+# --dump` goldens (tests/index/*.cmd); two --cache runs write the same bytes
+# (the records and the manifest name; the manifest holds timings); --check accepts them and rejects a truncated,
+# bit-flipped, version-changed or foreign-build copy of each file
+for t in "$ROOT"/tests/index/*.cmd; do
+    exp=${t%.cmd}.expected
+    (cd "$ROOT/tests/index" && sh "$t" "$CEREAL") >"$TMP/q" 2>&1
+    if diff -u "$exp" "$TMP/q" >"$TMP/qd"; then
+        ok
+    else
+        bad "index/$(basename "$t")"
+        sed 's/^/    /' "$TMP/qd" | head -40
+    fi
+done
+rm -rf "$TMP/ic1" "$TMP/ic2" "$TMP/ix"
+(cd "$ROOT/tests/index" && "$CEREAL" index-summary --cache "$TMP/ic1" ok.c &&
+    "$CEREAL" index-summary --cache "$TMP/ic2" ok.c) >"$TMP/ixo" 2>&1
+if [ "$(grep -c '^ok ' "$TMP/ixo")" = 2 ] && diff -r "$TMP/ic1"/index/*/rec "$TMP/ic2"/index/*/rec >/dev/null; then
+    ok
+else
+    bad "index/determinism (two cache writes: records differ)"; head -3 "$TMP/ixo"
+fi
+mkdir -p "$TMP/ix"
+for f in $(find "$TMP/ic1" -type f); do
+    n=$(basename "$f")
+    if "$CEREAL" index-summary --check "$f" >/dev/null 2>&1; then ok; else bad "index/check accepts $n"; fi
+    sz=$(wc -c <"$f")
+    head -c $((sz / 2)) "$f" >"$TMP/ix/trunc"
+    head -c 20 "$f" >"$TMP/ix/short"
+    for v in trunc short flip ver bid; do
+        [ -f "$TMP/ix/$v" ] || cp "$f" "$TMP/ix/$v"
+    done
+    # flip a payload byte, a version byte, a build-id byte
+    for spec in flip:$((sz - 3)) ver:12 bid:17; do
+        v=${spec%%:*} off=${spec##*:}
+        b=$(od -An -tu1 -j "$off" -N1 "$f" | tr -d ' ')
+        printf "$(printf '\%03o' $(( (b ^ 85) & 255 )))" |
+            dd of="$TMP/ix/$v" bs=1 seek="$off" conv=notrunc 2>/dev/null
+    done
+    for v in trunc short flip ver bid; do
+        if "$CEREAL" index-summary --check "$TMP/ix/$v" >/dev/null 2>&1; then
+            bad "index/corrupt ($v) of $n accepted"
+        else
+            ok
+        fi
+    done
+    rm -f "$TMP"/ix/*
 done
 
 echo "$pass passed, $fail failed"

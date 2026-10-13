@@ -83,7 +83,7 @@ int split_args(Arena *a, const char *s, SplitMode mode, const char ***argv)
  * expansions of the whole call, as libiberty's expandargv does. */
 static bool expand_into(Arena *a, const char *dir, StrVec *out,
                         const char *const *argv, int argc, int *iter,
-                        const char **err)
+                        const char **err, StrVec *files)
 {
     int i;
     for (i = 0; i < argc; i++) {
@@ -112,14 +112,17 @@ static bool expand_into(Arena *a, const char *dir, StrVec *out,
         }
         n = split_args(a, text, SPLIT_GCC, &sub);
         free(text);
-        if (!expand_into(a, dir, out, sub, n, iter, err))
+        if (files)
+            vec_push(files, path);
+        if (!expand_into(a, dir, out, sub, n, iter, err, files))
             return false;
     }
     return true;
 }
 
 const char *const *argv_expand(Arena *a, const char *dir, int *argc, int from,
-                               const char *const *argv, const char **err)
+                               const char *const *argv, const char **err,
+                               StrVec *files)
 {
     StrVec v = {0};
     const char **res;
@@ -130,7 +133,8 @@ const char *const *argv_expand(Arena *a, const char *dir, int *argc, int from,
         return argv;                    /* nothing to expand */
     for (i = 0; i < from; i++)
         vec_push(&v, argv[i]);
-    if (!expand_into(a, dir, &v, argv + from, *argc - from, &iter, err)) {
+    if (!expand_into(a, dir, &v, argv + from, *argc - from, &iter, err,
+                     files)) {
         vec_free(&v);
         return NULL;
     }
@@ -204,10 +208,10 @@ int compdb_load(Arena *a, const char *path, CompileDb *out, FILE *msg,
  * strings and array in `a`.  On failure the arguments as written, with *err
  * set. */
 static const char *const *entry_expand(Arena *a, const CompileEntry *e,
-                                       int *ac, const char **err)
+                                       int *ac, const char **err, StrVec *files)
 {
     const char *const *av = argv_expand(a, e->dir, ac, 1,
-                                        (const char *const *)e->argv, err);
+                                        (const char *const *)e->argv, err, files);
     if (av)
         return av;
     *ac = e->argc;
@@ -222,7 +226,7 @@ bool entry_is_c(const CompileEntry *e)
     int i, argc = e->argc;
     bool is_c = false;
     arena_init(&scratch);
-    argv = entry_expand(&scratch, e, &argc, &err);
+    argv = entry_expand(&scratch, e, &argc, &err, NULL);
     for (i = 1; i < argc; i++) {
         const char *a = argv[i];
         if (!strcmp(a, "-x") && i + 1 < argc)
@@ -309,7 +313,7 @@ void entry_options(Options *o, const CompileEntry *e,
     int ac = e->argc;
     o->cwd = e->dir;
     /* the strings live as long as o, which keeps pointers into them */
-    av = entry_expand(&o->rsp, e, &ac, &err);
+    av = entry_expand(&o->rsp, e, &ac, &err, &o->rsp_files);
     if (err)                            /* the entry is not checked */
         opt_error(o, "%s", err);
     parse_args(o, av, ac, 1, &fp, &seq);

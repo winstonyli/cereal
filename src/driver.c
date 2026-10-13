@@ -716,6 +716,7 @@ void options_free(Options *o)
     vec_free(&o->ignored_semantic);
     vec_free(&o->deps.mt);
     vec_free(&o->deps.mq);
+    vec_free(&o->rsp_files);
     arena_free(&o->rsp);
     diag_config_free(o->diag);
     o->diag = NULL;

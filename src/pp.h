@@ -365,8 +365,9 @@ typedef struct PP {
     const char *const *host_builtins;
 } PP;
 
-/* Once per process, before any TU: fixes __DATE__ / __TIME__ (honouring
- * SOURCE_DATE_EPOCH) so concurrent TUs agree and nothing is shared. */
+/* Fixes __DATE__ / __TIME__ (honouring SOURCE_DATE_EPOCH) unless already
+ * set; thread-safe (localtime_r).  Call it once and copy the stamp when
+ * concurrent TUs must agree on the time (compdb replay does). */
 void pp_options_finish(PPOptions *opt);
 void pp_init(PP *pp, Arena *a, Interner *in, SrcMgr *sm, DiagEngine *d,
              PPOptions *opt);

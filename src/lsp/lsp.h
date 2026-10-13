@@ -33,13 +33,21 @@ typedef struct LspConfig {
     const char *db_path;     /* compile_commands.json in use, if any */
 } LspConfig;
 
-void config_init(LspConfig *c, const char *root);
+/* db: the compile database to use (NULL: compile_commands.json or
+ * build/compile_commands.json under root). */
+void config_init(LspConfig *c, const char *root, const char *db);
 void config_free(LspConfig *c);
 /* Options for a file: its compile command (or a nearby file's, for
  * headers and files without one), then any .cereal files from the root
  * down to the file's directory.  Heap-allocated; free with
  * config_options_free. */
 Options *config_options_for(LspConfig *c, const char *path);
+/* The same into the caller's o (options_init'ed), with the .cereal arguments allocated in `a`
+ * (which must outlive o; o->rsp will do) and nothing in the config's arena:
+ * c is only read, so any thread may call it.  files (or NULL): the .cereal
+ * layers and response files read are appended (paths in `a`). */
+void config_options_in(LspConfig *c, const char *path, Arena *a, Options *o,
+                       StrVec *files);
 void config_options_free(Options *o);
 
 /* ---- positions (pos.c) ----------------------------------------------- */
@@ -127,12 +135,15 @@ void snapshot_release(Snapshot *s);
 
 struct CRename;
 /* c_rename (c/frontend.h) for a name of snap's unit, with the buffers snap
- * was built from.  Call on the builder thread only (the checker keeps static
- * state: two checks must not overlap), i.e. from a deferred request (Req
- * on_builder); NULL or why it is refused (malloc'd). */
+ * was built from.  Call on the builder thread (checks stay ordered beside
+ * the edits), i.e. from a deferred request (Req on_builder); NULL or why
+ * it is refused (malloc'd). */
 char *lsp_check_rename(Snapshot *snap, struct CRename *q);
 
 int lsp_main(FILE *in, FILE *out);
+
+/* `cereal index-summary ARGS` (indexsum.c): argv without the mode word. */
+int indexsum_main(int argc, char **argv);
 
 /* ---- requests (features.c) -------------------------------------------- */
 

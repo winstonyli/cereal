@@ -337,7 +337,8 @@ bool file_write_atomic(const char *path, const char *buf, size_t n, char *err,
     char *tmp = xmalloc(strlen(path) + 32);
     int fd;
     size_t put = 0;
-    if (stat(path, &st) != 0) {
+    bool had = stat(path, &st) == 0;
+    if (!had && errno != ENOENT) {
         werr(err, errn, "cannot stat", path);
         free(tmp);
         return false;
@@ -362,11 +363,11 @@ bool file_write_atomic(const char *path, const char *buf, size_t n, char *err,
         werr(err, errn, "cannot sync", tmp);
         goto fail;
     }
-    if (fchmod(fd, st.st_mode & 07777) != 0) {
+    if (had && fchmod(fd, st.st_mode & 07777) != 0) {
         werr(err, errn, "cannot set the mode of", tmp);
         goto fail;
     }
-    if (fchown(fd, st.st_uid, st.st_gid) != 0) {
+    if (had && fchown(fd, st.st_uid, st.st_gid) != 0) {
         /* best effort: only root may give a file away */
     }
     if (close(fd) != 0) {

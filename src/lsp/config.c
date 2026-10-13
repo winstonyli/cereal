@@ -38,7 +38,7 @@ static void load_db(LspConfig *c, const char *path)
         c->db_path = arena_strdup(&c->arena, path);
 }
 
-void config_init(LspConfig *c, const char *root)
+void config_init(LspConfig *c, const char *root, const char *db)
 {
     static const char *const where[] = {"compile_commands.json",
                                         "build/compile_commands.json", NULL};
@@ -46,6 +46,8 @@ void config_init(LspConfig *c, const char *root)
     memset(c, 0, sizeof *c);
     arena_init(&c->arena);
     c->root = root ? path_normalize(&c->arena, root) : NULL;
+    if (db && *db)
+        load_db(c, db);
     for (i = 0; c->root && where[i] && !c->db_path; i++) {
         const char *p = arena_printf(&c->arena, "%s/%s", c->root, where[i]);
         FILE *f = fopen(p, "rb");
@@ -91,7 +93,7 @@ static const CompileEntry *command_for(LspConfig *c, const char *path)
 }
 
 static void add_cereal_files(Arena *a, StrVec *v, const char *root,
-                             const char *path)
+                             const char *path, StrVec *files)
 {
     /* directories from the root (or /) down to the file's */
     char *d = arena_strdup(a, path), *slash;
@@ -112,6 +114,8 @@ static void add_cereal_files(Arena *a, StrVec *v, const char *root,
         char *text = slurp(cf, &len), *line, *save = NULL;
         if (!text)
             continue;
+        if (files)
+            vec_push(files, cf);
         for (line = strtok_r(text, "\n", &save); line;
              line = strtok_r(NULL, "\n", &save)) {
             const char **args;
@@ -128,25 +132,31 @@ static void add_cereal_files(Arena *a, StrVec *v, const char *root,
     vec_free(&dirs);
 }
 
-Options *config_options_for(LspConfig *c, const char *path)
+void config_options_in(LspConfig *c, const char *path, Arena *a, Options *o,
+                       StrVec *files)
 {
-    Options *o = xcalloc(1, sizeof *o);
     const CompileEntry *cmd = command_for(c, path);
     CompileEntry none;
     StrVec flags = {0};
     memset(&none, 0, sizeof none);
-    options_init(o);
     o->lenient = true;      /* a compile command is written for some compiler,
                              * not for cereal: what is not understood is skipped */
-    add_cereal_files(&c->arena, &flags, c->root, path);
+    add_cereal_files(a, &flags, c->root, path, files);
     entry_options(o, cmd ? cmd : &none, (const char *const *)flags.data,
                   (int)flags.len);
-    /* the arguments must outlive o: keep them in the config arena */
-    if (flags.len) {
-        const char **keep = NEW_ARRAY(&c->arena, const char *, flags.len);
-        memcpy(keep, flags.data, sizeof(char *) * flags.len);
+    if (files) {
+        size_t k;
+        for (k = 0; k < o->rsp_files.len; k++)
+            vec_push(files, o->rsp_files.data[k]);
     }
     vec_free(&flags);
+}
+
+Options *config_options_for(LspConfig *c, const char *path)
+{
+    Options *o = xcalloc(1, sizeof *o);
+    options_init(o);
+    config_options_in(c, path, &o->rsp, o, NULL);
     return o;
 }
 

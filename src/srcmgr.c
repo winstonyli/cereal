@@ -238,6 +238,8 @@ static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
     close(fd);
     f = new_file(sm, norm, name, base, (uint32_t)size,
                  (uint32_t)round_up(size + SRC_PAD, page_size()), kind);
+    f->mtime_ns = (uint64_t)st.st_mtim.tv_sec * 1000000000u +
+                  (uint64_t)st.st_mtim.tv_nsec;
     path_insert(sm, f);
     return f;
 }

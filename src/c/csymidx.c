@@ -2388,6 +2388,87 @@ size_t cindex_calls_in(const CIndex *ix, uint32_t ev, CIdxCall **out)
     return call_rows_out(&v, out);
 }
 
+void cindex_each_call(const CIndex *ix, CIdxCallFn fn, void *ctx)
+{
+    CallerCtx cx = {ix, 0, CIX_NONE};
+    uint32_t k;
+    for (k = 0; k < ix->nev + ix->nxcalls; k++) {
+        bool xc = k >= ix->nev;
+        const CIdxEvent *e = xc ? &ix->xcalls[k - ix->nev] : &ix->ev[k];
+        uint32_t cev;
+        if (!xc && (e->flags & (CIX_ROLE | CIX_CALL | CIX_MACRO_BODY)) !=
+                       (CIX_REF | CIX_CALL))
+            continue;
+        if (ix->files[e->file].stale)
+            continue;
+        cev = caller_of(&cx, e->file, e->off);
+        if (cev != CIX_NONE)
+            fn(ctx, e, ix->ev[cev].decl, xc);
+    }
+}
+
+/* ---- identity keys (docs/B5_DESIGN.md 5.3) ------------------------------ */
+
+bool cindex_symbol_event(const CIndex *ix, uint32_t i, uint32_t *s)
+{
+    const CIdxEvent *e = &ix->ev[i];
+    const CIdxDecl *x = &ix->decls[e->decl];
+    bool member = x->kind == CIK_FIELD || x->kind == CIK_ENUMCONST;
+    *s = 0;
+    if ((e->flags & CIX_ROLE) == CIX_REF ||
+        (e->flags & (CIX_MACRO_BODY | CIX_SYSTEM)) || x->kind == CIK_PARAM ||
+        x->kind == CIK_LABEL ||
+        (member ? (e->flags & CIX_ROLE) != CIX_DEF : x->scope))
+        return false;
+    if (x->kind != CIK_FIELD) {              /* at file level? */
+        *s = cindex_scope_at(ix, e->file, e->off);
+        if (*s && ix->scopes[*s - 1].parent)
+            return false;
+    }
+    return true;
+}
+
+/* Anchor preference: a DEF, then a DECL, neither spelled in a #define body;
+ * then any DEF or DECL; then any event.  Ties: least (path, off), never the
+ * file index, which differs between units. */
+static int anchor_rank(const CIdxEvent *e)
+{
+    int body = (e->flags & CIX_MACRO_BODY) != 0, role = e->flags & CIX_ROLE;
+    return role == CIX_REF ? 3 + body : body ? 2 : role == CIX_DEF ? 0 : 1;
+}
+
+void cindex_key(const CIndex *ix, uint32_t d, CIdxKey *out)
+{
+    const CIdxDecl *x = &ix->decls[d];
+    uint32_t j, best = CIX_NONE;
+    int rank = 99;
+    out->name = cindex_name(ix, d);
+    out->kind = x->kind;
+    out->linkage = x->linkage;
+    out->path = "";
+    out->off = 0;
+    if ((x->kind == CIK_FUNC || x->kind == CIK_OBJ) && x->linkage == 2)
+        return;
+    for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++) {
+        const CIdxEvent *e = &ix->ev[ix->by_decl[j]], *b;
+        int r = anchor_rank(e), c;
+        if (r > rank)
+            continue;
+        if (r == rank) {
+            b = &ix->ev[best];
+            c = strcmp(ix->files[e->file].path, ix->files[b->file].path);
+            if (c > 0 || (!c && e->off >= b->off))
+                continue;
+        }
+        rank = r;
+        best = ix->by_decl[j];
+    }
+    if (best != CIX_NONE) {
+        out->path = ix->files[ix->ev[best].file].path;
+        out->off = ix->ev[best].off;
+    }
+}
+
 /* ---- carrying an index across an edit (B3_DESIGN.md 12) --------------------- */
 
 void cindex_text_edit(const char *a, size_t na, const char *b, size_t nb,

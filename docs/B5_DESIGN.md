@@ -1,6 +1,8 @@
 # B5: workspace-wide index over compile_commands
 
-Status: design, 2026-10-12. Not started. ROADMAP B5 points here.
+Status: design, 2026-10-12. B5a done 2026-10-13 (record and manifest
+format, writer, validating reader, `cereal index-summary`, D5 prerequisites,
+goldens, sizes in 5.5); B5b onward not started. ROADMAP B5 points here.
 
 Scope (ROADMAP B5): a background index of every C entry in
 `compile_commands.json`, persisted on disk, answering:
@@ -577,7 +579,25 @@ without looking up the anchor.
   Expected 25-50 MB per 1,000 TUs on disk, after sharing headers.
 - **Sharing gain.** Header duplication measured 2.5× for Lua and 5.9× for
   libuv; sharing removes it only where TUs see the header alike.
-- **B5a measures the real number** on lua54, libuv and cereal's own src.
+- **Measured in B5a** (2026-10-13, WSL, `index-summary --cache` once per TU
+  into one cache; lua54 34 TUs with `-DLUA_USE_LINUX`, libuv 37 Linux TUs,
+  cereal `src` 71 .c; every unit indexed with 0 errors):
+
+  | corpus | TUs | records (shared) | records (one cache per TU) | sharing | manifests | bytes / 1000 TUs | 4 KiB blocks / 1000 TUs |
+  |---|---|---|---|---|---|---|---|
+  | lua54 | 34 | 1.56 MB, 237 files | 2.20 MB, 448 | 1.4x | 0.25 MB | 53 MB | 89 MB |
+  | libuv | 37 | 0.49 MB, 71 files | 3.33 MB, 420 | 6.8x | 0.64 MB | 30 MB | 48 MB |
+  | cereal src | 71 | 2.64 MB, 180 files | 7.91 MB, 1065 | 3.0x | 0.64 MB | 46 MB | 64 MB |
+
+  Stop rule (exports-only bytes above 80 MB per 1000 TUs): not hit; the
+  largest is 53 MB. Block rounding on the 34-TU corpus puts lua54 at 89 MB,
+  so a 1000-TU cache needs the file-count effect re-measured (B5c's
+  generated project). Manifests are as large as the shared records for
+  libuv (one FILS entry per file read, system headers included): a
+  manifest is 7-17 KB per TU. Two runs wrote byte-identical records on all
+  three corpora; manifests differ only by their timings.
+  Time: 0.09 s to index libuv `core.c` (13 MB RSS) against 0.03 s to
+  check it; 34-71 TUs in 0.4-0.7 s at 8 processes.
 
 ## 6. The store
 
@@ -1582,6 +1602,30 @@ bound.
     upper estimate);
   - or a corpus TU's records are not byte-identical across two runs
     (determinism, which E5 depends on).
+- **Done 2026-10-13** (about 1,750 new lines; `src/c/cidxrec.{h,c}`,
+  `src/lsp/indexsum.c`, `bench/tools/globals.{sh,allow}`, `tests/index`).
+  Neither stop rule fired. Deviations from sections 4-5, for B5b to build on:
+  - `CRecDecl.sk` is dropped (derivable from the kind); a pad byte is left.
+    `CRecTu` fields are reordered; the target name is not mixed into the
+    flag hash (it is in the options already).
+  - A record has no KEYS section when it has no keys. `.cereal` files that
+    do not exist are not tracked in `FILS` (7.1 still needs them: B5b).
+  - A callee is recorded when it is a function or an exported declaration.
+  - Missing includes are collected by a `PPListener` include callback
+    (`INC_NOT_FOUND`), installed after `tu_init`.
+  - `config_init` takes the compile DB path (needed by the child, 9).
+    `config_options_for` is now a wrapper over `config_options_in` using
+    `o->rsp` as the arena; this also stopped the config arena growing per
+    call. `Options` gained `rsp_files` (response files read).
+  - `file_write_atomic` now creates a missing file (mode 0600).
+  - `cindex_symbol_event` moved from `features.c` into `csymidx.c`.
+  - `index-summary --check FILE...` validates files (used by the
+    corruption test); the cache layout is `<cache>/index/<projid>/{rec,tu}`
+    as in 6.1.
+  - Records are byte-identical across runs; manifests carry timings and
+    are not.
+  - The globals gate lists 31 symbols, each justified in
+    `bench/tools/globals.allow`; it runs as stage `0globals` of `gate.sh`.
 
 **B5b: the store and the scheduler.** 2,200-4,800 lines.
 
@@ -1659,43 +1703,46 @@ slice whose size is fairly certain.
 
 ## 17. Open questions (with recommendations)
 
-**Assumption A1.** D2's "one per file keyed by (path, content hash, flag
+**Resolved 2026-10-13: the user accepted every recommendation below (A1,
+Q1-Q6).** The options stay as the record of what was weighed.
+
+**Assumption A1 (accepted).** D2's "one per file keyed by (path, content hash, flag
 hash)" is read as "one manifest per TU keyed by (main path, flag hash,
 build id), with content hashes per listed file, and content-addressed
 per-file records". This is the reading that also satisfies "shared
 headers stored once".
 
-**Q1. Macro references across TUs (12.2).**
+**Q1. Macro references across TUs (12.2). Resolved: recommendation.**
 
 1. Definitions only. Recommended.
 2. Definitions and references with a macro key. Pros: full navigation.
    Cons: bytes, and a new D8 key kind.
 3. Nothing. Pros: smallest. Cons: regresses workspace/symbol for macros.
 
-**Q2. Cache location default (6.1).**
+**Q2. Cache location default (6.1). Resolved: recommendation.**
 
 1. XDG cache directory, per user. Recommended. Pros: survives `git
    clean`, invisible to the repo. Cons: per-machine only.
 2. `<root>/.cache/cereal`, clangd's choice. Pros: discoverable, easy to
    delete. Cons: shows in `git status` unless ignored.
 
-**Q3. Build id (E14).**
+**Q3. Build id (E14). Resolved: recommendation.**
 
 1. A hash of the executable. Recommended. Pros: never serves stale
    checker output. Cons: a full re-index after every cereal rebuild.
 2. `INDEX_FORMAT` alone. Pros: survives rebuilds. Cons: stale answers
    after checker fixes until the files change.
 
-**Q4. Rename TU cap (R5).** Default 100, with `documentChanges` and
+**Q4. Rename TU cap (R5). Resolved: recommendation.** Default 100, with `documentChanges` and
 progress. Recommended: keep 100, and measure the gate's time per TU in
 B5d before raising it.
 
-**Q5. Settings transport.** `initializationOptions` plus environment
+**Q5. Settings transport. Resolved: recommendation.** `initializationOptions` plus environment
 variables (recommended, today's pattern). The other option is
 `workspace/didChangeConfiguration`, which needs a new handler; parked
 unless asked.
 
-**Q6. Rename requires a complete index (R2).**
+**Q6. Rename requires a complete index (R2). Resolved: recommendation.**
 
 1. Refuse until every TU is indexed and none failed, unless excluded by
    `paths`. Recommended. Pros: never misses an edit in an unindexed TU.

@@ -36,8 +36,9 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo);
  * addendum"): the unit is checked as it is and with the edits applied, and
  * the rename is accepted only if both runs resolve every name alike and
  * give the same diagnostics.  Shared by `cereal query rename=` and the
- * language server (which runs it on its builder thread: the checker keeps
- * static state, so two checks must not run at once). */
+ * language server (which runs it on its builder thread, to keep the checks
+ * in order beside the edits; checks may run concurrently, D5 of
+ * docs/B5_DESIGN.md). */
 typedef struct CRename {
     Options *o;                 /* the unit's */
     const char *main;           /* its main file */
