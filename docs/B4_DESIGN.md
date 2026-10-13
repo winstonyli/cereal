@@ -1088,6 +1088,11 @@ B4 must not preclude the following.
   processes. Its answer shapes the B5 design, so nothing in B4 depends on
   it.
 
+**Resolved by B5_DESIGN.md (2026-10-12).** The spike answered (B5 D1:
+hybrid, in-process first). Item `data` gains `"key"` (D8's identity key,
+statics by file and offset) rather than `usr`. Project data is unioned
+with open units, not overridden by them (B5 E11).
+
 ## 12. Slices, order and estimates
 
 The ROADMAP says 400 lines for B4. Past rounds ran 2 to 3 times over
