@@ -598,6 +598,46 @@ without looking up the anchor.
   three corpora; manifests differ only by their timings.
   Time: 0.09 s to index libuv `core.c` (13 MB RSS) against 0.03 s to
   check it; 34-71 TUs in 0.4-0.7 s at 8 processes.
+- **Generated project** (2026-10-13, WSL ext4, `bench/tools/genproj.py
+  OUT 1000 1`: 1,000 .c of 120-254 lines, avg 191; 50 shared headers with
+  fan-in, 5-15 included per TU (avg 10) and transitive includes; 4 `-D`
+  sets; 4-8 system headers per TU directly, about 113 system files read per
+  TU). One `index-summary --cache` per TU, 8 processes at `nice -n 10`, one
+  cache, 0 errors on all 1,000:
+
+  | what | value |
+  |---|---|
+  | wall time, cold cache / second run / fresh cache | 10.5 s / 7.6 s / 8.2 s (warm page cache) |
+  | files | 2,200: 1,200 records (1,000 .c + 50 headers x 4 `-D` sets) + 1,000 manifests; 507 directories |
+  | bytes | 17.25 MB (records 5.85 MB, manifests 11.40 MB) |
+  | 4 KiB blocks (`du`) | 23.8 MB (1.38x the bytes; 10.8 KB per file on average, so file-count overhead is mild) |
+  | manifests / cache | 66% bytes (11.40 / 17.25 MB), 11.4 KB per TU (8.0-13.7 KB) |
+  | FILS entries | 133 per TU (113 system, 20 user); 40 bytes each = 5.33 MB; their path strings 5.93 MB, which is all of the STR sections |
+  | system-header FILS entries | 112,685 x 40 B = 4.51 MB + 5.03 MB of path strings = 9.53 MB: 84% of manifest bytes, 55% of the cache |
+  | idempotence | second run on the same cache: record bytes and file count identical; manifest sizes identical, contents differ (timings) |
+  | determinism | fresh cache: all 1,200 records byte-identical; all 1,000 manifests identical in size, differ in contents (timings) |
+
+  Stop rule (80 MB per 1,000 TUs): not hit (17.25 MB, 23.8 MB in blocks).
+  Manifests are 66% of the cache, above the 25% trigger for
+  directory-prefix interning, because a generated TU reads about 113 system
+  files while owning one user record of its own. For comparison the
+  corpora in the table above had manifests of 14% (lua54), 57% (libuv) and
+  20% (cereal src) of their shared cache.
+- **Directory-prefix interning estimate** (computed over the 1,000
+  generated manifests, not implemented): store each manifest's distinct
+  directories once (11 per manifest on average, 0.35 MB in all) and for each
+  FILS entry the basename plus a 4-byte directory index.
+  - FILS path strings 5.93 MB become 2.38 MB (dirs 0.35, basenames 1.50,
+    indexes 0.53): saves 3.55 MB, 31% of the manifests and 20.6% of the
+    cache. Without the 4-byte index cost (if it packed into existing
+    padding) it saves 4.08 MB.
+  - After it the manifests are 7.85 MB of a 13.7 MB cache: still 57%. The
+    40-byte entries (5.33 MB) and the basenames now dominate, and 84% of
+    the entries are system headers.
+  - So interning alone does not bring manifests under 25%. What would is
+    not writing system FILS entries per TU at all (for example one shared
+    system-header table per `-D`/flag hash, with the manifest holding its
+    digest). That is a different design change and is not estimated here.
 
 ## 6. The store
 

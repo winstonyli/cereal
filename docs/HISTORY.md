@@ -4569,3 +4569,12 @@ findings; verify unchanged (gcc.dg 3908 of 3910, c-c++-common 637 of 638,
 cpp 289 of 289); callgrind 3.8797 G (3.8810 G); symcov unchanged (4718 files,
 1,146,276 events, unindexed 0, param misses 0). TSan not run (no threading
 touched).
+
+Round 223: B5 sizes at scale (measure only, no src change).
+`bench/tools/genproj.py OUT [TUS] [SEED]` generates a 1,000-TU C project
+(50 shared headers, 4 `-D` sets). `index-summary --cache` over all of it,
+8 processes: 10.5 s, 2,200 files, 17.25 MB (23.8 MB in 4 KiB blocks), under
+the 80 MB stop rule; records and the second run are byte-identical.
+Manifests are 66% of the cache (84% of that is system-header FILS entries),
+over the 25% interning trigger; directory-prefix interning would save 3.55
+MB (20.6% of the cache) and leave manifests at 57%. Numbers in B5_DESIGN 5.5.
