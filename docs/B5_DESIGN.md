@@ -638,6 +638,173 @@ without looking up the anchor.
     not writing system FILS entries per TU at all (for example one shared
     system-header table per `-D`/flag hash, with the manifest holding its
     digest). That is a different design change and is not estimated here.
+- **System-header sharing spike** (Round 224, 2026-10-13; throwaway
+  prototype in a copy of the WSL tree, nothing merged; the estimate above
+  is superseded for the cache layout, see the recommendation).
+  - **Method.** The estimates parse the real manifests of the four caches
+    (the generated project and three corpora) and model each layout's file
+    sizes with the 5.2 rules (header, section directory, 8-byte alignment).
+    The model reproduces the current manifest sizes to the byte on all 1,168
+    manifests. `index-summary --dump` was not used because it omits
+    `mtime_ns`. "4K bytes" is each file rounded up to 4 KiB, directories
+    excluded (so it reads about 2 MB under `du`'s 23.8 MB baseline).
+    A system entry costs 24 B in shared files: `{path, size, mtime_ns,
+    hash}`.
+  - **Generated project, 1,000 TUs** (baseline 17,251,600 B, 21.74 MB in
+    4K blocks, 2,200 files):
+
+    | option | bytes | saved | 4K bytes saved | files | soundness vs 7.1/7.2 |
+    |---|---|---|---|---|---|
+    | g: per-TU system entry slimmed to 24 B (no digest/flags/pad) | 15.46 MB | 10.4% | 6.9% | 2,200 | unchanged |
+    | f: per-TU entry of 16 B, no content hash | 14.56 MB | 15.6% | 11.2% | 2,200 | weaker (below) |
+    | d: directory-prefix interning only | 13.70 MB | 20.6% | 16.3% | 2,200 | unchanged |
+    | a: exact-set sharing (manifest holds one 8 B set digest) | 7.97 MB | 53.8% | 41.6% | 2,231 | sound; hit rate is luck |
+    | b: per-header stat pool (a file per distinct entry, 8 B digest each) | 8.65 MB | 49.8% | 40.5% | 2,325 | sound |
+    | c: chunked sets, cut when hash(path) % 4 = 0 | 7.98 MB | 53.8% | 41.8% | 2,254 | sound |
+    | c: chunked, % 8 | 7.86 MB | 54.5% | 42.2% | 2,235 | sound |
+    | c: chunked, % 16 (**measured in the prototype: 7.86 MB, 2,242 files**) | 7.83 MB model | 54.6% | 42.2% | 2,236 | sound |
+    | c: chunked, % 64 | 7.88 MB | 54.3% | 41.9% | 2,232 | sound |
+    | e: one append-only cache-wide table, u32 index per entry | 8.20 MB | 52.5% | 42.8% | 2,201 | needs a mutable shared file |
+    | e2: the same with varint-delta indexes | 7.86 MB | 54.4% | 42.8% | 2,201 | same |
+
+    - The generated project has 125 distinct system files in 9
+      directories, and no path ever has two stat/hash tuples.
+    - Sharing leaves records at 5.85 MB and the manifests at about 2 MB
+      (user `FILS` and the `TU` section), so records dominate the cache
+      again.
+    - (a) hits 96.9% here (31 distinct sets in 1,000 TUs) only because the
+      generator draws every TU's headers from 17 names. On the corpora
+      below it is 26% (lua), 44% (libuv) and 72% (cereal src). A miss
+      stores a whole new set of ~8 KB.
+    - (c) at `% 16` and `% 32` coincide in the model (same 36 chunks): its
+      boundary hash is crc32, whose low bits on 125 similar paths are
+      correlated. The prototype uses `hash64`.
+  - **Other corpora** (35 lua54 TUs with `-DLUA_USE_LINUX`; 62 libuv TUs,
+    `src/*.c` and `src/unix/*.c` with the include paths and
+    `-D_GNU_SOURCE`, some with errors; 71 cereal TUs from `src`, `src/c`,
+    `src/lsp` and `src/analysis`; every one wrote its manifest. These TU
+    sets differ from the table at the top of this section). Saved share,
+    bytes / 4K bytes:
+
+    | corpus | system share of cache | a | b | c (% 16) | e |
+    |---|---|---|---|---|---|
+    | lua54 | 11% | 4.1 / -1.2 | 9.4 / -13.7 | 6.0 / -4.6 | 10.3 / 6.7 |
+    | libuv | 59% | 32.0 / 20.9 | 51.3 / -6.5 | 48.6 / 29.6 | 55.3 / 46.9 |
+    | cereal src | 15% | 11.3 / 7.4 | 12.9 / -2.1 | 12.7 / 7.5 | 13.8 / 11.4 |
+
+    A negative 4K figure means more blocks than today: each shared file
+    costs a block. Chunk reuse (the share of a manifest's chunk references
+    that name an already stored chunk) at `% 16` is 50% for lua54, 82% for
+    libuv, 87% for cereal src and 99% for the generated project. How much
+    sharing pays depends on the system share: it is large only when TUs own
+    little (generated project, libuv). Chunking (c) loses at most 4.6% of
+    the blocks, on the smallest corpus (lua54).
+  - **Does a system header need the content hash?** Under 7.2 the hash is
+    consulted only after the stat data differs (a `touch`, or a real
+    change), and for racy stat data. A header whose size and `mtime_ns`
+    match is already trusted unchanged without reading it, so dropping the
+    hash adds no trust assumption for a header that looks unchanged. What
+    dropping it costs:
+    1. turn every `touch` or mtime reset (a package reinstall, a docker
+       layer, `cp -p` onto a new tree) into "stale", re-indexing every TU
+       that includes the header, which for libc is all of them;
+    2. lose content identity in a shared file: two TUs that read different
+       bytes under equal `size` and `mtime_ns` (the racy case) would share
+       a chunk or a pool entry. With the hash their chunks differ.
+    - It saves 8 B per entry: 0.9 MB (5.2% of the cache) when entries are
+      per TU, and about 1 KB when they are shared. So: keep the hash in
+      shared entries; the saving that matters is the sharing.
+  - **(e), the mutable table.** Manifests would hold indexes into a shared
+    file, which must be appended to by every writer.
+    - It does not fit the design: jobs in the subprocess fallback (9) also
+      write files, so appends need a cross-process lock, torn-tail
+      detection and an fsync before the manifest rename, none of which
+      the content-addressed store needs.
+    - An index is only valid for one version of the table: the table can
+      never shrink without renumbering, and rewriting, every manifest.
+      Entries for old package versions would leak until then.
+    - A damaged table stales every manifest at once.
+    - Against (c) it saves nothing in bytes (e2 is 0.3% larger) and 0.6
+      points of blocks. Rejected.
+  - **(b) and (a).** (b) is sound but costs a file per distinct entry (125
+    here, 276 for libuv, a block each) and the per-entry digest list. (a)
+    is sound and the simplest, but its saving is the hit rate: every TU
+    with an unusual set stores a full copy, and one new libc include in one
+    TU does the same.
+  - **Recommendation: (c), chunked sets at about 16 files per chunk.**
+    Content-addressed and immutable like records, so it reuses the store's
+    write order, idempotent writes, corruption path and GC mark-and-sweep
+    unchanged. A change to one header alters the one or two chunks that hold
+    it. The chunk cut rule is not part of the file contract: a reader only
+    follows digests, so changing the rule later costs sharing and nothing
+    else.
+  - **Prototype** (throwaway copy `~/cereal-spike`; 120 lines in
+    `cidxrec.{c,h}` of which about 35 are the dump merge, plus 63 in
+    `indexsum.c` for the test mode `--stale DIR MANIFEST`; about 85 lines
+    are the format itself). It adds a file kind `CHUNK` with section `SYST`
+    (24 B entries) and a manifest section `SYSC` (u64 digests), splits the
+    sorted system rows of each unit into chunks, and `crec_write` writes
+    chunks before the manifest into `sys/<hh>/<digest>.sys`.
+    - **Size.** 17,251,600 B to 7,864,064 B (-54.4%; records 5,853,576
+      unchanged, manifests 11,398,024 to 1,972,344, 42 chunk files of
+      38,144 B). `du` 23.81 MB to 14.86 MB (-37.6%). Files 2,200 to 2,242.
+      Manifests are now 25% of the cache and average 2.0 KB (0.8-3.2 KB),
+      so each is one 4 KiB block; further interning would save bytes but no blocks,
+      and is not needed.
+    - **Time.** 1,000 TUs at 8 processes, 7.3-7.5 s for a fresh cache,
+      against the 8.2 s recorded above for the unmodified tree (not re-run
+      side by side; indexing dominates, so a difference is not claimed).
+    - **Same content.** `index-summary --dump` of 4 generated TUs and one
+      TU per corpus is byte-identical to the unmodified build (the dump
+      merges chunk entries back in `FILS` order).
+    - **Determinism.** Two fresh caches: all 1,242 non-manifest files (1,200
+      records, 42 chunks) are byte-identical; manifest bytes total the same.
+    - **Changed system header.** A tiny project with two headers behind
+      `-isystem` (mtimes set to 2020). `--stale` checks each `FILS` entry
+      and each chunk entry as 7.2 step 1 does, then reads and hashes on a
+      stat mismatch:
+
+      | change | result |
+      |---|---|
+      | none | `fresh` |
+      | `touch` of a system header | `touched`, not stale |
+      | system header edited, size changed | `stale` (names the path) |
+      | system header edited, same size, new mtime | `stale` |
+      | reindex after an edit | a new chunk is written, the old one stays until GC, `fresh` |
+      | referenced chunk deleted / one byte flipped | `stale chunk ...: cannot read` / `checksum mismatch` |
+
+      A same-size edit that restores the old mtime is not seen, which is
+      the existing step-1 limit, not new.
+    - A pass over all 1,000 generated manifests with `--stale` (one process
+      per manifest, 8 at a time) reported `fresh` for each, in 1.3 s.
+  - **Soundness notes for the proposal.**
+    - A chunk is named by a digest of its entries, including `mtime_ns`
+      and the hash, so a manifest can only see the stat data it recorded.
+    - The racy rule (7.2) stays per manifest: a chunk entry is racy for a
+      manifest when its `mtime_ns` is within 2 s of that manifest's
+      `started_ns`. The manifest keeps `started_ns`; chunks have no job time
+      because they are shared.
+    - One damaged or deleted chunk re-queues every TU that references it.
+      The libc chunk is shared by nearly all of them, so this is a whole
+      project's re-index (about 10 s per 1,000 TUs on the generated
+      project). Rare, and recoverable, as for a widely shared header record.
+    - Chunks are per project, under the project directory, so the whole-
+      project eviction of 6.4 stays correct. Sharing across projects would
+      need reference counting and is parked.
+  - **Design edits this would need** (a proposal; 5.2, 6 and 7 are not
+    rewritten here):
+
+    | section | edit |
+    |---|---|
+    | 5.1 | a third file kind, the system chunk, and `sys/<hh>/<digest>.sys` in the directory layout |
+    | 5.2 | header `kind` 3 = chunk. New `SYST` (24 B: `{u32 path, u32 size, u64 mtime_ns, u64 content_hash}`, sorted by path) and manifest `SYSC` (`u64` digests). `FILS` no longer lists system files. A chunk needs at least one entry. The reader validates chunks as it does records |
+    | 5.4 | the chunk digest is seeded like a record's |
+    | 6.2 | write chunks with the records, then the manifest. Idempotent skip as for records |
+    | 6.3 | a rejected chunk: every manifest naming it is stale and re-queued, and the file is deleted |
+    | 6.4 | the mark phase also marks `SYSC` digests; the sweep covers `sys/`, with the same 10-minute grace |
+    | 7.1, 7.2 | "every `FILS` entry" becomes "every `FILS` entry and every entry of its chunks"; a manifest is stale when a chunk it names is unreadable. The per-path state is seeded and compared exactly as before; the loader expands chunks into the same structure, so the sweep needs no other change. The startup scan also reads fewer bytes (about 2 MB of manifests and 38 KB of chunks instead of 11.4 MB) |
+    | 14.2, 14.4 | goldens need no change (the dump is identical); the corruption test adds a flipped and a deleted chunk |
+    | 15, 16 | the shared-chunk re-index in the risks; slice estimate about 100 lines plus tests |
 
 ## 6. The store
 

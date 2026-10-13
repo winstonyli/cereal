@@ -4578,3 +4578,17 @@ the 80 MB stop rule; records and the second run are byte-identical.
 Manifests are 66% of the cache (84% of that is system-header FILS entries),
 over the 25% interning trigger; directory-prefix interning would save 3.55
 MB (20.6% of the cache) and leave manifests at 57%. Numbers in B5_DESIGN 5.5.
+
+Round 224: B5 system-header sharing spike (measure and throwaway prototype, no
+src change in this repo). Analytic pass over the real manifests of the
+generated project and lua54/libuv/cereal-src corpora: sharing the system-header
+part of the manifests saves 50-55% of the generated cache (exact-set 53.8%,
+per-header pool 49.8%, chunked sets 54.6%, cache-wide table 52.5-54.4%,
+directory interning only 20.6%). Chosen: content-defined chunks of the sorted
+system list (about 16 files, cut where hash(path) % 16 = 0), one immutable
+content-addressed file each, manifest holding digests. Prototype (WSL copy,
+about 85 lines of format and 35 of dump): 17.25 MB to 7.86 MB (-54.4%), 23.8 MB
+to 14.9 MB in blocks, +42 files, dump output unchanged, records and chunks
+byte-identical across fresh caches, a changed or touched system header seen by
+a stat check. Hash-less system entries save 0.9 MB unshared and nothing shared;
+rejected. Numbers and the proposed 5.2/6/7 edits in B5_DESIGN 5.5; not adopted.
