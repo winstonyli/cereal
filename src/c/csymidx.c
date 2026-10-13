@@ -698,10 +698,37 @@ static void unindexed_report(Checker *c, SrcLoc loc, const char *name,
             col, name, what);
 }
 
+/* A unit whose tokens come from one macro invocation (`DEFINE_FN(made)`) has a
+ * root one byte wide at the invocation, yet its argument tokens carry events
+ * (made's DEF) further on: widen the root over every event of the unit in the
+ * root's file, so the lookups that scan a root (caller_of rule 1, outgoing
+ * calls) see them.  Body tokens of the macro are spelled before the
+ * invocation, so they do not widen it. */
+static void widen_root(Checker *c)
+{
+    SymIdxB *b = c->sx;
+    BScope *root;
+    const SrcFile *f;
+    size_t k;
+    if (!b->open.len || !c->u->ntoks)
+        return;
+    root = &b->scopes.data[b->open.data[0] - 1];
+    f = srcmgr_file_of(c->sm, root->begin);
+    if (!f)
+        return;
+    for (k = b->unit_ev0; k < b->ev.len; k++) {
+        const BEv *e = &b->ev.data[k];
+        if (e->loc >= root->begin && e->loc < f->base + f->span &&
+            e->loc + e->len > root->end)
+            root->end = e->loc + e->len;
+    }
+}
+
 void csx_unit_end(Checker *c)
 {
     SymIdxB *b = c->sx;
     uint32_t i;
+    widen_root(c);
     /* the unit's symbols are reset when the next unit starts */
     for (i = 0; i < b->lmap.len; i++)
         if (b->lmap.data[i])

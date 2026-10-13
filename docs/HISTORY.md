@@ -4503,3 +4503,46 @@ TSan: 56 session runs clean, `lsp_stress.py --symbols` (also with `--calls
 lines plus 2,773 of goldens.
 
 Not done: G1; B5.
+
+## Round 221: G1 closed, workspace/symbol matcher probed against clangd
+
+**G1.** The root scope of an external declaration spanned `tok_begin` of its
+first token to `tok_end` of its last; a macro-expanded token sits at the
+invocation's first character with end `exp + 1`, so `DEFINE_FN(made)` had a
+one-byte root and `made`'s DEF (the argument token) lay outside it. `caller_of`
+rule 1 and `cindex_calls_in` both scan events inside the root, so `made` had no
+outgoing edge and its body calls were attributed to file scope. Fixed once, in
+the shared place: `widen_root` (csymidx.c, ~25 lines) at the start of
+`csx_unit_end` extends the root's end over every event of the unit that starts
+inside it. Golden `tests/query/gmacro` (`made` and `other` call `leaf`;
+`leaf`'s callers list both). clangd_diff: the two G1 lines are gone and
+`classify_call` lost its G1 class.
+
+**Digit rule probed.** Against clangd 20.1.8 (`-nostdinc`) over 95,758
+query/name pairs: digits are lower case for clangd, so there is no segment
+start at a letter-digit change (`u8` finds nothing in `utf8_decode`). clangd
+has two matchers, FuzzyMatcher for the open file's symbols and Dex trigram
+tokens plus FuzzyMatcher for included headers. `ws_match` (features.c) is
+rewritten as a port of both (the old DP is deleted); `lsp_workspace_symbols`
+takes the open documents' paths to choose. Open-file symbols and macros agree
+exactly; header symbols differ in 3 pairs (queries with two underscores:
+`L__`, `l__`, `_ct`), left as a residual. The rank 3 + jumps now counts
+non-adjacent matches over the new matcher (a few results change order). New:
+`tests/lsp/wsdigits` (+2 goldens), `bench/clangd_diff/wsdigits.{c,h}` with
+`EXTRA` queries in clangd_diff.py. B4_DESIGN 7/15/18/19, LSP.md updated.
+
+**C3 26 to 10 (investigated):** clangd variance, not the fix. The runs before
+the fix and the final run after it print 26; two runs in between printed 10.
+The 16 entries that come and go are all in libuv core.c (`uv_close`'s 14
+calls through `uv__*_close` and the two `*sockopt` calls) and all "cereal
+only": clangd's answer for core.c varies with how far its index has settled,
+the same effect as the 29 to 8 of Round 220.
+
+Gates: run.sh 2079 passed (+3: gmacro, wsdigits x2); gate.sh: san 2079 passed,
+628 files, 0 findings; verify unchanged (gcc.dg 3908 of 3910, c-c++-common 637
+of 638, cpp 289 of 289); callgrind 3.8810 G (3.8814 G); symcov unchanged
+(`unindexed 0, param misses 0`, 4718 files, 1,146,276 events); clangd_diff
+7 files, 1958 differences, 0 unexpected. TSan (`~/cereal-tsan`, removed): 58 session runs clean (29 sessions, plain and
+parallel+cells); `lsp_stress.py --symbols --calls --hints` 200 edits on zstd.c
+(239 edits sent) and on `tests/lsp/ccalls/main.c` (242): 0 reports, 0 error
+responses.

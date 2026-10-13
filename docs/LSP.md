@@ -444,14 +444,19 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
     selection of C declarations are listed, one entry per decl per unit, at
     its definition if any).
 
-  Matching is clangd's class, simplified: case-insensitive, the query's
-  characters in order, the first at a segment start (the start, after `_`, a
-  lower-to-upper change, the capital before a lower-case letter after a
-  capital, a letter-digit change), each other right after the previous one or
-  at the next segment start after it (no word is skipped: `lea` matches
-  `leaf`, `CALL_LEAF`, `__LEAF`; `lf` matches none of them nor `luaC_fix`).
+  Matching is a port of clangd 20.1.8's, as probed: case-insensitive, the
+  query's characters in order, the first at a segment start (the start, after
+  a non-alphanumeric, a lower-to-upper change, the capital before a lower-case
+  letter after a capital; a digit is lower case, so a letter-digit change is
+  not one), each other right after the previous one or at the next segment
+  start after it (no word is skipped: `lea` matches `leaf`, `CALL_LEAF`,
+  `__LEAF`; `lf` matches none of them nor `luaC_fix`; `u8` matches nothing in
+  `utf8_decode`). Symbols of open documents use that match alone; symbols of
+  included headers must also pass clangd's trigram (Dex) test, so a few
+  header names match fewer queries. Known residual: queries with two
+  underscores on a few header names (B4_DESIGN 19).
   Ranking: exact, exact ignoring case, prefix, other matches by fewer
-  jumps; then C declarations before macros, shorter, name, path, offset.
+  jumps (non-adjacent matches, the first free); then C declarations before macros, shorter, name, path, offset.
   Kinds: `SymbolKind` of the document symbols (macros Function or Constant;
   clangd answers 15 for macros, 5 for structs and 10 for enumerators).
 - **Code actions** (C4; C_DESIGN.md section 7). `codeActionProvider`
@@ -581,7 +586,9 @@ once), queries `""`, exact, prefix, segment, acronym, a skipped word (no
 match), a field and an enumerator with their `containerName`, system
 symbols absent, a closed document, a unit whose first check is held (its
 macros only, answered while it is held) and the 100 limit (150
-declarations).
+declarations). `tests/lsp/wsdigits` (Round 221): digit-heavy names in an open
+file and a header (`utf8_decode`, `IPv4addr`, `sha256sum`, `a2b`, `aB3cD`),
+queries probed against clangd; a digit starts no segment.
 `bench/tools/clangd_diff.sh` (not in run.sh: needs clangd) compares hints,
 call hierarchy and workspace/symbol (13 queries) with clangd on `bench/clangd_diff/` and three corpus
 files; every difference is either a named intended one or `UNEXPECTED`.

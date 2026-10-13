@@ -625,15 +625,29 @@ typedef struct WsCand {
 } WsCand;
 typedef VEC(WsCand) WsVec;
 
-static bool ws_seg_start(const char *s, size_t i)
+/* clangd's FuzzyMatch (see B4_DESIGN.md 7): a character's type is lower (a
+ * letter or a digit), upper, or other; its role is a segment's head (the
+ * first character, one after other, a lower-to-upper change, the last capital
+ * of a run of capitals before a lower one), a separator (other), or a tail. */
+enum { WR_TAIL, WR_HEAD, WR_SEP };
+
+static int ws_type(unsigned char c)
 {
-    unsigned char c = (unsigned char)s[i], p;
-    if (!i)
-        return true;
-    p = (unsigned char)s[i - 1];
-    return p == '_' || (islower(p) && isupper(c)) ||
-           (isupper(p) && isupper(c) && islower((unsigned char)s[i + 1])) ||
-           (isalpha(p) && isdigit(c)) || (isdigit(p) && isalpha(c));
+    return c >= 'A' && c <= 'Z' ? 2
+         : (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c >= 0x80 ? 1 : 3;
+}
+
+static void ws_roles(const char *s, size_t n, unsigned char *role)
+{
+    size_t i;
+    for (i = 0; i < n; i++) {
+        int t = ws_type((unsigned char)s[i]),
+            p = i ? ws_type((unsigned char)s[i - 1]) : 0,
+            nx = i + 1 < n ? ws_type((unsigned char)s[i + 1]) : 0;
+        role[i] = t == 3 ? WR_SEP
+                : !p || p == 3 || (t == 2 && (p == 1 || (p == 2 && nx == 1)))
+                  ? WR_HEAD : WR_TAIL;
+    }
 }
 
 static bool ws_ieq(const char *a, const char *b, size_t n)
@@ -644,17 +658,101 @@ static bool ws_ieq(const char *a, const char *b, size_t n)
     return true;
 }
 
+/* Dex, which serves the symbols of included files (not of a file open as a
+ * document): a query is cut into trigrams (its characters in windows of
+ * three) and each must be one that the name's walk generates: from a start,
+ * the next character, the next head, and from a non-separator the next
+ * separator.  Starts: the name's first character and first two heads for
+ * unigrams and bigrams; every character but a separator (and the first) for
+ * trigrams. */
+static size_t ws_next(size_t nn, const unsigned char *role, size_t i,
+                      size_t out[3])
+{
+    size_t j, n = 0;
+    if (i + 1 < nn)
+        out[n++] = i + 1;
+    for (j = i + 1; j < nn; j++)
+        if (role[j] == WR_HEAD) {
+            if (j != i + 1)
+                out[n++] = j;
+            break;
+        }
+    if (role[i] != WR_SEP)
+        for (j = i + 1; j < nn; j++)
+            if (role[j] == WR_SEP) {
+                if (j != i + 1)
+                    out[n++] = j;
+                break;
+            }
+    return n;
+}
+
+static bool ws_dex(const char *q, size_t nq, const char *name, size_t nn,
+                   const unsigned char *role)
+{
+    size_t i, w, heads = 0;
+    if (nq < 3) {
+        for (i = 0; i < nn; i++) {
+            size_t nx[3], n, k;
+            if (role[i] == WR_HEAD)
+                heads++;
+            if (i && !(role[i] == WR_HEAD && heads <= 2))
+                continue;
+            if (tolower((unsigned char)name[i]) != tolower((unsigned char)q[0]))
+                continue;
+            if (nq == 1)
+                return true;
+            n = ws_next(nn, role, i, nx);
+            for (k = 0; k < n; k++)
+                if (tolower((unsigned char)name[nx[k]]) ==
+                        tolower((unsigned char)q[1]))
+                    return true;
+        }
+        return false;
+    }
+    for (w = 0; w + 3 <= nq; w++) {
+        bool found = false;
+        for (i = 0; i < nn && !found; i++) {
+            size_t n1[3], n2[3], a, b, c, m1, m2;
+            if ((role[i] == WR_SEP && i) ||
+                tolower((unsigned char)name[i]) != tolower((unsigned char)q[w]))
+                continue;
+            m1 = ws_next(nn, role, i, n1);
+            for (a = 0; a < m1 && !found; a++) {
+                if (tolower((unsigned char)name[n1[a]]) !=
+                        tolower((unsigned char)q[w + 1]))
+                    continue;
+                m2 = ws_next(nn, role, n1[a], n2);
+                for (b = 0, c = 0; b < m2; b++)
+                    c |= tolower((unsigned char)name[n2[b]]) ==
+                         tolower((unsigned char)q[w + 2]);
+                found = c;
+            }
+        }
+        if (!found)
+            return false;
+    }
+    return true;
+}
+
 /* How well q matches name: -1 not at all, else lower is better: 0 exact, 1
- * exact ignoring case, 2 a prefix (or an empty query), else 3 + the segment
- * jumps of the best match.  A match takes the query's characters in order,
- * ignoring case; the first at a segment start, each other right after the
- * previous one or at the next segment start after it (clangd skips no word:
- * `lea` matches CALL_LEAF, `lf` neither leaf nor luaC_fix).
- * Names over WS_NAME_MAX bytes only match as a prefix. */
-static int ws_match(const char *q, const char *name)
+ * exact ignoring case, 2 a prefix (or an empty query), else 3 + the jumps of
+ * the best match.  A match takes the query's characters in order, ignoring
+ * case; one that does not follow the previous directly (a jump; the first
+ * too) must be at a head, or be a capital of a name that has a lower-case
+ * character or digit (clangd's allowMatch).  plain: the name is of a file
+ * open as a document, which clangd matches with that rule alone; else (an
+ * included file's symbol) the query's trigrams must also be ones clangd's
+ * index generates (ws_dex): `lf` matches `luaC_fix` in the open file but not
+ * in a header.  Digits are lower-case: no segment starts at a letter-digit
+ * change (`a` does not match IPv4addr).  Names over WS_NAME_MAX bytes only
+ * match as a prefix. */
+static int ws_match(const char *q, const char *name, bool plain)
 {
     size_t nq = strlen(q), nn = strlen(name), i, j;
+    unsigned char role[WS_NAME_MAX];
     int prev[WS_NAME_MAX], cur[WS_NAME_MAX], best, m;
+    bool lowers = false;
     if (!nq)
         return 2;
     if (nq > nn)
@@ -665,25 +763,26 @@ static int ws_match(const char *q, const char *name)
         return 2;
     if (nn > WS_NAME_MAX)
         return -1;
-    for (j = 0; j < nn; j++)           /* jumps so far, q[0..i] ending at j */
-        prev[j] = tolower((unsigned char)name[j]) ==
-                          tolower((unsigned char)q[0]) &&
-                          ws_seg_start(name, j) ? 0 : WS_NO;
-    for (i = 1; i < nq; i++) {
-        best = WS_NO;           /* the least of prev[k], k from the last segment start */
+    ws_roles(name, nn, role);
+    if (!plain && !ws_dex(q, nq, name, nn, role))
+        return -1;
+    for (j = 0; j < nn; j++)
+        lowers |= ws_type((unsigned char)name[j]) == 1;
+    for (i = 0; i < nq; i++) {          /* jumps so far, q[0..i] ending at j */
+        best = WS_NO;           /* the least of prev[k], k <= j - 2 */
         for (j = 0; j < nn; j++) {
-            bool head = ws_seg_start(name, j);
-            int from = best;
-            if (head)
-                best = WS_NO;
-            cur[j] = WS_NO;
+            int c = WS_NO;
             if (tolower((unsigned char)name[j]) == tolower((unsigned char)q[i])) {
-                cur[j] = j ? prev[j - 1] : WS_NO;
-                if (head && from + 1 < cur[j])
-                    cur[j] = from + 1;
+                if (i && j && prev[j - 1] < WS_NO)
+                    c = prev[j - 1];                 /* right after the previous */
+                if ((role[j] != WR_TAIL || (ws_type((unsigned char)name[j]) == 2 &&
+                                            lowers)) && (!i || best < WS_NO) &&
+                        (!i ? 0 : best + 1) < c)
+                    c = i ? best + 1 : 0;
             }
-            if (prev[j] < best)
-                best = prev[j];
+            cur[j] = c;
+            if (i && j && prev[j - 1] < best)
+                best = prev[j - 1];
         }
         memcpy(prev, cur, nn * sizeof *prev);
     }
@@ -712,11 +811,26 @@ static int ws_cmp(const void *a, const void *b)
     return x->seq == y->seq ? 0 : x->seq < y->seq ? -1 : 1;
 }
 
+/* Whether path is a document the editor has open (WsOpen). */
+typedef struct WsOpen {
+    const char *const *paths;
+    size_t n;
+} WsOpen;
+
+static bool ws_is_open(const WsOpen *o, const char *path)
+{
+    size_t i;
+    for (i = 0; i < o->n; i++)
+        if (!strcmp(o->paths[i], path))
+            return true;
+    return false;
+}
+
 /* Appends to out the symbols of one unit that match q: its user macros, and
  * its C declarations if it has an index (the document symbols' selection,
  * c_symbol_event; one per decl, at its definition if any). */
 static void ws_unit(const WsUnit *u, size_t seq, const char *q,
-                    WsVec *out)
+                    const WsOpen *open, WsVec *out)
 {
     Snapshot *s = u->snap;
     SrcMgr *sm = &s->tu.sm;
@@ -729,7 +843,8 @@ static void ws_unit(const WsUnit *u, size_t seq, const char *q,
         SrcFile *f = m->name_loc && !m->alias_of ? srcmgr_file_of(sm, m->name_loc)
                                                  : NULL;
         int rank;
-        if (!f || f->kind != SF_USER || (rank = ws_match(q, m->name->str)) < 0)
+        if (!f || f->kind != SF_USER ||
+            (rank = ws_match(q, m->name->str, ws_is_open(open, f->path))) < 0)
             continue;
         vec_push(out, ((WsCand){m->name->str, "", f->path, s, m->name_loc,
                                 (uint32_t)(m->name_loc - f->base), m->name->len,
@@ -751,7 +866,7 @@ static void ws_unit(const WsUnit *u, size_t seq, const char *q,
         uint32_t pick = CIX_NONE;
         int rank;
         if (!x->name || x->kind == CIK_PARAM || x->kind == CIK_LABEL ||
-            (rank = ws_match(q, name)) < 0)
+            ws_match(q, name, true) < 0)     /* the looser rule: a first cut */
             continue;
         for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++) {
             uint32_t k = ix->by_decl[j], sc;
@@ -766,6 +881,8 @@ static void ws_unit(const WsUnit *u, size_t seq, const char *q,
         if (pick != CIX_NONE) {
             const CIdxEvent *e = &ix->ev[pick];
             SrcFile *f = fmap[e->file];
+            if ((rank = ws_match(q, name, ws_is_open(open, f->path))) < 0)
+                continue;
             vec_push(out, ((WsCand){name, x->parent ? cindex_name(ix, x->parent - 1)
                                                     : "",
                                     f->path, s, f->base + e->off, e->off, e->len,
@@ -775,14 +892,16 @@ static void ws_unit(const WsUnit *u, size_t seq, const char *q,
     free(fmap);
 }
 
-void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *query,
-                           PosEncoding enc, Arena *a, JsonWriter *w)
+void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
+                           size_t ndocs, const char *query, PosEncoding enc,
+                           Arena *a, JsonWriter *w)
 {
     WsVec v = {0};
+    WsOpen open = {docs, ndocs};
     Req r;
     size_t i, shown = 0;
     for (i = 0; i < n; i++)
-        ws_unit(&us[i], i, query, &v);
+        ws_unit(&us[i], i, query, &open, &v);
     if (v.len)
         qsort(v.data, v.len, sizeof *v.data, ws_cmp);
     memset(&r, 0, sizeof r);

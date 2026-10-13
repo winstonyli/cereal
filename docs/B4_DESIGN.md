@@ -856,25 +856,36 @@ the units' user files, so the selection is shared rather than restated:
 - Dedupe across units by (path, offset, name): a header seen by two units
   is listed once.
 
-**Matching** (clangd's class of fuzzy match, simplified; the implemented
-rule is refined in section 19):
+**Matching** (a port of clangd 20.1.8's behavior, as probed; the history of
+the rule is in section 19):
 
-- Case-insensitive.
-- The query's characters must appear in order in the name. Each one after
-  the first matches either right after the previous match or at a segment
-  start. A segment starts at index 0, after `_`, at a lower-to-upper
-  change, or at a letter-digit change.
-- The first character must match at a segment start.
-- So `lea` matches `leaf`, `CALL_LEAF` and `__LEAF`, and `lf` matches
-  none of them. That is exactly the probe's result for clangd.
-- An empty query matches everything.
+- Case-insensitive; an empty query matches everything.
+- Character types: lower (`a-z`, digits, bytes >= 0x80), upper, other. A
+  digit is lower case, so **no segment starts at a letter-digit change**
+  (`a` does not match `IPv4addr`, `u8` matches nothing in `utf8_decode`).
+- A head is index 0, a character after an "other", a lower-to-upper change,
+  or the last capital of a capital run that is followed by a lower-case
+  letter (`TString`: the `S`).
+- The query's characters must appear in order; the first must match at a
+  head; each later one matches right after the previous match or at the
+  next head after it (no word is skipped).
+- clangd has two matchers. Symbols of the open documents (its in-memory
+  index) use this fuzzy match alone. Symbols of included headers (its
+  Dex index) must also pass a trigram test: the query's tokens (the query
+  itself when it has under 3 characters, else every window of 3 raw
+  characters) must each be among the name's tokens, which are built from
+  index 0, the first two heads and every non-separator. `ws_match(q, name,
+  plain)` takes `plain` for the first kind; `lsp_workspace_symbols` gets the
+  open documents' paths to choose.
+- Probed with 95,758 query/name pairs (open-file symbols and macros: 0
+  differences; header symbols: 3, the residual in section 19).
 
 **Ranking:**
 
 1. exact (case-sensitive);
 2. exact ignoring case;
 3. prefix;
-4. other matches by fewer segment jumps;
+4. other matches by fewer jumps (a non-adjacent match; the first is free);
 
 then C declarations before macros, a shorter name, the name, the path and
 the offset.
@@ -1214,9 +1225,6 @@ mask (4.1) with it.
 - Cross-TU callers and callees, and the workspace beyond open units (B5).
 - Call hierarchy items for sites with no caller (`_Static_assert` at file
   level).
-- The caller of a body call in a function defined by a macro invocation
-  (`DEFINE_FN(made)`): no edge, caller shown as file scope (18, G1; found by
-  clangd_diff on `bench/clangd_diff/symcalls.c`). A B4a fix, not started.
 
 ## 16. Review log
 
@@ -1542,14 +1550,14 @@ differences and findings. The `bench/tools/clangd_diff.py` script is here too.
     (`assert` gives `__assert_fail`, `errno` gives `__errno_location`):
     cereal has the edge (xcall), clangd does not. Expected from 4.4; 4.4's
     option 2 text assumed clangd had them.
-  - **G1 (new, a B4a gap, parked):** a function defined by a macro
+  - **G1 (new; closed in Round 221, section 19):** a function defined by a macro
     invocation (`DEFINE_FN(made)` in symcalls.c, whose body calls `leaf`)
     has no outgoing edge in cereal, and the xcall's caller is reported as
     file scope (`cereal query callers` prints it under `(file scope)`).
     Rule 1 of 5.1 says the function the root defines is the caller; the
     macro invocation's root evidently does not hold it as a DEF in the
     range the lookup scans. clangd reports `made` calling `leaf` sited at
-    the invocation. Not fixed in B4b (a B4a change); recorded in 15.
+    the invocation. Not fixed in B4b (a B4a change); fixed in Round 221.
   - **H3** here is the `int (*cb)(int depth)` field (`hints.c:45`).
 - **Used `cereal/waitIdle`** to wait for cereal; clangd is polled with
   `workspace/symbol` until it knows the file's first symbol (no fixed
@@ -1586,10 +1594,9 @@ differences and findings.
     said "at a segment start"; it is now "at the next segment start". The DP in
     `ws_match` resets its running minimum at each segment start.
   - `lea` matched `luaK_exp2anyreg` (`a` after the `2`, a letter-digit
-    segment start); the next-segment rule removes it too (the `e` of `exp2`
-    is not the next segment start after `l`). Whether clangd starts a
-    segment at a letter-digit change was not established; that rule stays as
-    written.
+    segment start); the next-segment rule removes it too. Whether clangd
+    starts a segment at a letter-digit change was left open here and probed in
+    Round 221 (below): it does not.
   `tests/lsp/wsym` pins `lc` (matches `luaC_fix`), `str` (`TString`) and `lf`
   (nothing).
 - **One entry per decl per unit, not per decl.** A function defined in a.c
@@ -1657,11 +1664,35 @@ G1 and C6 (the B4b open questions):
   but `made`'s DEF is the argument token at 3:11, outside it: rule 1 of
   `caller_of` finds no DEF in the range, rules 2 and 3 find no caller event,
   and the site is "file scope". Outgoing from `made` finds no events in its
-  body for the same reason. Rough fix, about 10 lines plus one golden:
-  at `csx_unit_end`, widen the root's end to the largest `off + len` of the
-  unit's events in the root's file (the events from `unit_ev0`), so the
-  invocation's arguments are inside; or keep the invocation's closing
-  position in the token. The first is local to csymidx.c.
+  body for the same reason.
+  **Fixed (Round 221)** in the one place both lookups share: `widen_root`
+  (csymidx.c, about 25 lines, first statement of `csx_unit_end`) extends the
+  root's end to the largest `off + len` of the unit's events (from `unit_ev0`)
+  that start inside the root in the same file, so the invocation's arguments
+  are inside. Golden `tests/query/gmacro`: `made` and `other` have `leaf` as
+  an outgoing callee and `leaf`'s callers list both. clangd_diff: the two G1
+  lines are gone and the G1 class was removed from `classify_call`.
+
+Gates (Round 221): run.sh 2079 passed (+3); gate.sh san 2079 passed, 628
+files, 0 findings; verify unchanged; callgrind 3.8810 G (3.8814 G); symcov
+unchanged; clangd_diff 7 files, 1958 differences, 0 unexpected; TSan 58
+session runs and two 200-edit `--symbols --calls --hints` stress runs clean.
+
+**Round 221: the digit rule probed.** `bench/tools/clangd_diff.py` machinery
+against clangd 20.1.8 (`-nostdinc`, so the 100-result limit is not filled by
+system headers): digits are lower case for clangd, so a letter-digit change is
+not a segment start, and the section 7 rule is replaced by the probed one.
+clangd matches the open file's symbols with its FuzzyMatcher alone and header
+symbols with Dex (trigram tokens) plus the same matcher. `ws_match` is now a
+port of both; its former dynamic program is gone. Over 95,758 pairs: open-file
+symbols and macros agree exactly; header symbols differ in 3 pairs, all
+queries with two underscores (`L__`, `l__` on `LUA_INTEGER_FMT`; `_ct` on
+`SSL_CTX_new`), which depend on Dex's token details not reproduced. Residual,
+not fixed. Pinned by `tests/lsp/wsdigits` (a, ud, u8, 2b, ip4, s256, sha, 256,
+x64, xs, ad, cd, aB, a1, SZ, bu16, i4; header-resident lf, lc, gf, gc, hdr_i,
+hi4, hu8) and the `wsdigits.{c,h}` clangd_diff corpus (`EXTRA` queries).
+Rank semantics: rank 3 + jumps now counts jumps over the new matcher (the
+first match is free), so a few results change order against Round 220.
 - **C6, decision.** Keep as an intended difference. A call spelled in a system
   header's macro body (`assert` to `__assert_fail`, `errno` to
   `__errno_location`) is a real call at the invocation; clangd's hierarchy

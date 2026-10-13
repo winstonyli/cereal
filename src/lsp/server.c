@@ -1273,6 +1273,7 @@ static const char *request_uri(const JsonValue *params)
 static void workspace_symbol(const JsonValue *id, const JsonValue *params)
 {
     VEC(WsUnit) us = {0};
+    VEC(char *) docs = {0};
     Arena a;
     StrBuf sb = {0};
     JsonWriter w;
@@ -1281,6 +1282,7 @@ static void workspace_symbol(const JsonValue *id, const JsonValue *params)
     mutex_lock(&S.m);
     for (i = 0; i < S.docs.len; i++) {
         Snapshot *s = S.docs.data[i]->unit->snap;
+        vec_push(&docs, xstrdup(S.docs.data[i]->path));
         for (j = 0; s && j < us.len; j++)
             if (us.data[j].snap == s)
                 s = NULL;                /* the unit is in already */
@@ -1290,9 +1292,9 @@ static void workspace_symbol(const JsonValue *id, const JsonValue *params)
     mutex_unlock(&S.m);
     begin_response(&w, &sb, id);
     json_key(&w, "result");
-    lsp_workspace_symbols(us.data, us.len,
-                          json_str_of(json_get(params, "query"), ""), S.enc, &a,
-                          &w);
+    lsp_workspace_symbols(us.data, us.len, (const char *const *)docs.data,
+                          docs.len, json_str_of(json_get(params, "query"), ""),
+                          S.enc, &a, &w);
     json_end_object(&w);
     send_json(&sb);
     sb_free(&sb);
@@ -1301,6 +1303,9 @@ static void workspace_symbol(const JsonValue *id, const JsonValue *params)
         cindex_free((CIndex *)us.data[i].cx);
     }
     vec_free(&us);
+    for (i = 0; i < docs.len; i++)
+        free(docs.data[i]);
+    vec_free(&docs);
     arena_free(&a);
 }
 

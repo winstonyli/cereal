@@ -12,7 +12,7 @@ items each server returned.
 Differences are normalized (names and call sites; details, ranges of items,
 positions of items are dropped) and each is printed with the id of the
 intended difference of docs/B4_DESIGN.md 10.2 it matches (C1, C3, C5, H1-H4,
-H6, W1-W4; found by this script: C6, G1, P1, see section 18), or UNEXPECTED.
+H6, W1-W4; found by this script: C6, P1, see section 18), or UNEXPECTED.
 workspace/symbol (B4c) is asked the QUERIES below of each server, with one
 document open; a result is (name, kind, file, position of the name).
 Exit 1 on any unexpected difference or a failure to run.  Not in run.sh:
@@ -30,6 +30,8 @@ REAL = [("lupa-2.8/third-party/lua54/lstrlib.c", "lupa-2.8/third-party/lua54", [
          ["include", "src", "src/unix"], ["-D_GNU_SOURCE"])]
 FLAGS = ["-std=gnu11"]
 QUERIES = ["", "a", "lea", "leaf", "lf", "call", "CALL", "str", "luaL", "uv_", "init", "Point", "x"]
+# more, for one file: the letter-digit segment rule (B4_DESIGN 7, 18)
+EXTRA = {"wsdigits.c": "2 6 16 256 lua2 li2 i2s int2 2str 2s utf8 u8 ud u8d dec sha s256 sh2 256s sum a2 2b a2b ab b16 bu16 b1 buf1 x509 x5 xs x509s store ipv4 ip4 i4 ipv v4 v4a gai2 ga2 get2 getaddr m4 m44 mat4 m4x vec3 v3 v3f h264 h2 264 hd ab1 ab12 a1 1b b3 a3 a1b ab3c aB A1 A1B a1b2 abcd ad cd md5 m5 md u x86 x8 86 64 x64 b64 b6 e ip i2i ip46 9 l9 tcp4 t4 t46 s6 tcp46 SHA1 S1 SIZE 1 BIT B64 U8 UM4 max4 M4 lf lc gf gc gaucf hdr hi4 hu8 hs2 hga2 hx8 hab hl LI LIF".split()}
 
 
 class Srv:
@@ -159,7 +161,8 @@ def collect(kind, cer, root, path, text, syms):
             "start": {"line": 0, "character": 0}, "end": {"line": end, "character": 0}}})
         res["hints"] = {((x["position"]["line"], x["position"]["character"]), hint_label(x)) for x in h or [] if x.get("kind") == 2}
         res["syms"] = {}
-        for q in QUERIES:
+        res["queries"] = QUERIES + EXTRA.get(os.path.basename(path), [])
+        for q in res["queries"]:
             r = s.req("workspace/symbol", {"query": q}) or []
             for _ in range(200):              # clangd: until its answer stops changing
                 r2 = s.req("workspace/symbol", {"query": q}) or []
@@ -229,11 +232,6 @@ def classify_call(side, kind, caller, name, sites, other_sites, lines, text, mac
             m = re.match(r"\w+\s*(.?)", lines[p[0]][p[1]:])
             if not m or m.group(1) != "(":
                 return "C1"
-    for p in sorted(sites):
-        line = lines[p[0]]
-        if mac and mac.match(line[p[1]:]) and re.search(r"\b(%s|%s)\b" % (re.escape(name), re.escape(caller)),
-                                                       line[p[1]:]) and not other_sites:
-            return "G1"        # a function defined by a macro invocation
     if side == "cereal" and name.startswith("_"):
         return "C6"            # callee spelled in a system header's macro (assert, errno)
     if side == "cereal" and not re.search(r"^[A-Za-z_][\w \t\*]*\b%s\s*\([^;{]*\)\s*[;{]" % re.escape(name),
@@ -255,7 +253,7 @@ def compare_syms(rel, ours, theirs):
     (macro 15, struct 5, enumerator 10 for clangd); W4 where a server's answer was cut at the limit
     (the sets then differ by ranking)."""
     out = []
-    for q in QUERIES:
+    for q in ours["queries"]:
         o, t = ours["syms"][q], theirs["syms"][q]
         cut = ours["syms"][q, "n"] >= 100 or theirs["syms"][q, "n"] >= 100
         tpos = {(n, p, f): k for n, k, f, p in t}

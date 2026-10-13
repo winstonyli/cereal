@@ -189,13 +189,15 @@ void lsp_hover(Req *r, JsonWriter *w);
 void lsp_completion(Req *r, JsonWriter *w);
 void lsp_document_symbols(Req *r, JsonWriter *w);
 /* workspace/symbol over the units that have an open document: each one's
- * snapshot and C index (NULL: none yet), referenced by the caller. */
+ * snapshot and C index (NULL: none yet), referenced by the caller; docs: the
+ * paths of the open documents (B4_DESIGN.md 7, clangd's two matchers). */
 typedef struct WsUnit {
     Snapshot *snap;
     const struct CIndex *cx;
 } WsUnit;
-void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *query,
-                           PosEncoding enc, Arena *a, JsonWriter *w);
+void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
+                           size_t ndocs, const char *query, PosEncoding enc,
+                           Arena *a, JsonWriter *w);
 /* full (previous_id NULL) or full/delta */
 void lsp_semantic_tokens(Req *r, JsonWriter *w, const char *previous_id);
 void lsp_semantic_tokens_range(Req *r, JsonWriter *w);

@@ -1,0 +1,12 @@
+== callees gmacro.c:3:11
+gmacro.c:1:5 func leaf: 3:1
+== callees gmacro.c:4:11
+gmacro.c:1:5 func leaf: 4:1
+== callers gmacro.c:1:5
+gmacro.c:3:11 func made: 3:1
+gmacro.c:4:11 func other: 4:1
+== callers gmacro.c:3:11
+gmacro.c:5:5 func user: 5:25
+== callees gmacro.c:5:5
+gmacro.c:3:11 func made: 5:25
+gmacro.c:4:11 func other: 5:34
