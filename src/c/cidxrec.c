@@ -4,7 +4,9 @@
 #include "cidxrec.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -20,7 +22,8 @@ enum {
     T_KEYS = TAG('K', 'E', 'Y', 'S'), T_DECL = TAG('D', 'E', 'C', 'L'),
     T_REFS = TAG('R', 'E', 'F', 'S'), T_CALL = TAG('C', 'A', 'L', 'L'),
     T_MACR = TAG('M', 'A', 'C', 'R'), T_TU = TAG('T', 'U', ' ', ' '),
-    T_FILS = TAG('F', 'I', 'L', 'S'), T_MISS = TAG('M', 'I', 'S', 'S')
+    T_FILS = TAG('F', 'I', 'L', 'S'), T_MISS = TAG('M', 'I', 'S', 'S'),
+    T_SYST = TAG('S', 'Y', 'S', 'T'), T_SYSC = TAG('S', 'Y', 'S', 'C')
 };
 #define BOM 0x01020304u
 #define SEED(build_id) ((build_id) ^ CREC_FORMAT)
@@ -30,7 +33,7 @@ _Static_assert(sizeof(CRecFile) == 16 && sizeof(CRecKey) == 16 &&
                sizeof(CRecDecl) == 28 && sizeof(CRecRef) == 12 &&
                sizeof(CRecCall) == 16 && sizeof(CRecMacro) == 12 &&
                sizeof(CRecTu) == 48 && sizeof(CRecFil) == 40 &&
-               sizeof(CRecMiss) == 12, "entries");
+               sizeof(CRecMiss) == 12 && sizeof(CRecSys) == 24, "entries");
 
 /* ---- the reader ------------------------------------------------------------ */
 
@@ -123,6 +126,8 @@ const char *crec_parse(const void *p, size_t n, int kind, uint64_t build_id,
         SEC(T_TU, CRecTu, tu, ntu)
         SEC(T_FILS, CRecFil, fils, v->nfils)
         SEC(T_MISS, CRecMiss, miss, v->nmiss)
+        SEC(T_SYST, CRecSys, syst, v->nsyst)
+        SEC(T_SYSC, uint64_t, sysc, v->nsysc)
 #undef SEC
         default:
             break;               /* unknown: skipped */
@@ -130,10 +135,11 @@ const char *crec_parse(const void *p, size_t n, int kind, uint64_t build_id,
     }
     if (!v->strs)
         return "no string section";
-    if (kind == CREC_RECORD ? nfile != 1 : ntu != 1)
+    if (kind == CREC_RECORD ? nfile != 1 : kind == CREC_MANIFEST ? ntu != 1
+                                                                  : v->nsyst < 1)
         return "bad entry count";
-    if ((kind == CREC_RECORD) == (v->tu != NULL) ||
-        (kind == CREC_MANIFEST && v->file))
+    if ((kind != CREC_MANIFEST && (v->tu || v->nfils || v->nsysc)) ||
+        (kind != CREC_RECORD && v->file) || (kind != CREC_CHUNK && v->nsyst))
         return "section of the other kind";
     /* every string offset and key index, once */
 #define STR_OK(o) ((o) < v->nstrs)
@@ -166,8 +172,55 @@ const char *crec_parse(const void *p, size_t n, int kind, uint64_t build_id,
     for (k = 0; k < v->nmiss; k++)
         if (!STR_OK(v->miss[k].spelled) || !STR_OK(v->miss[k].from_path))
             return "string offset out of range";
+    for (k = 0; k < v->nsyst; k++)
+        if (!STR_OK(v->syst[k].path))
+            return "string offset out of range";
 #undef STR_OK
     return NULL;
+}
+
+const char *crec_map(const char *file, int kind, uint64_t build_id, CRecMap *m)
+{
+    struct stat st;
+    const char *why;
+    void *p;
+    int fd = open(file, O_RDONLY);
+    memset(m, 0, sizeof *m);
+    if (fd < 0)
+        return "cannot open";
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size < 8) {
+        close(fd);
+        return "short or not a file";
+    }
+    p = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (p == MAP_FAILED)
+        return "cannot map";
+    why = crec_parse(p, (size_t)st.st_size, kind, build_id, &m->v);
+    if (why) {
+        munmap(p, (size_t)st.st_size);
+        return why;
+    }
+    m->p = p;
+    m->n = (size_t)st.st_size;
+    return NULL;
+}
+
+void crec_unmap(CRecMap *m)
+{
+    if (m->p)
+        munmap((void *)m->p, m->n);
+    memset(m, 0, sizeof *m);
+}
+
+uint64_t crec_flag_hash(const Options *o)
+{
+    return hash64_mix(o->fingerprint, CREC_FORMAT);
+}
+
+uint64_t crec_tukey(const char *main_path, uint64_t flag_hash, uint64_t build_id)
+{
+    return hash64(main_path, strlen(main_path), hash64_mix(flag_hash, build_id));
 }
 
 /* ---- the writer ------------------------------------------------------------ */
@@ -628,15 +681,13 @@ typedef struct MissList {
     Arena *a;
 } MissList;
 
-static void on_include(void *ctx, const IncludeEvent *ev)
+static void on_miss(void *ctx, const char *spelled, bool angled, SrcFile *from)
 {
     MissList *l = ctx;
     Miss m;
-    if (ev->result != INC_NOT_FOUND || !ev->from)
-        return;
-    m.spelled = arena_strdup(l->a, ev->spelled);
-    m.from = ev->from->path;
-    m.angled = ev->angled;
+    m.spelled = arena_strdup(l->a, spelled);
+    m.from = from->path;
+    m.angled = angled;
     vec_push(&l->v, m);
 }
 
@@ -647,8 +698,85 @@ static uint64_t now_ns(clockid_t id)
     return (uint64_t)ts.tv_sec * 1000000000u + (uint64_t)ts.tv_nsec;
 }
 
-bool crec_index(Options *o, const char *path, const StrVec *cfg,
-                uint64_t build_id, CRecSet *out)
+/* Stat data and content hash of `path` as the index sees a file (7.2). */
+bool crec_stat_hash(const char *path, uint32_t *size, uint64_t *mtime_ns,
+                    uint64_t *hash)
+{
+    struct stat st;
+    char *text;
+    size_t n, got = 0, bom = 0;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0)
+        return false;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {  /* before the read */
+        close(fd);
+        return false;
+    }
+    n = (size_t)st.st_size;
+    text = xmalloc(n + 1);
+    while (got < n) {
+        ssize_t r = read(fd, text + got, n - got);
+        if (r <= 0)
+            break;
+        got += (size_t)r;
+    }
+    close(fd);
+    if (got >= 3 && !memcmp(text, "\357\273\277", 3))   /* as srcmgr_load */
+        bom = 3;
+    *size = (uint32_t)n;
+    *mtime_ns = (uint64_t)st.st_mtim.tv_sec * 1000000000u + (uint64_t)st.st_mtim.tv_nsec;
+    *hash = cindex_hash(text + bom, got - bom);
+    free(text);
+    return true;
+}
+
+/* A file the manifest lists without the SrcMgr having read it: a .cereal or
+ * response file, or the file that overran the budget; absent if unreadable. */
+static void stat_row(FilRow *r, const char *path, uint32_t flags)
+{
+    memset(r, 0, sizeof *r);
+    r->path = path;
+    r->flags = flags;
+    if (!crec_stat_hash(path, &r->size, &r->mtime_ns, &r->hash))
+        r->flags |= CFIL_ABSENT;
+}
+
+typedef VEC(CRecBlob) BlobVec;
+
+/* The sorted system files as chunks: one ends after a path whose hash is 0
+ * mod 16, so about 16 files and a changed header alters one or two chunks. */
+static void build_chunks(const FilRow *rows, size_t n, uint64_t build_id,
+                         BlobVec *chunks)
+{
+    size_t i, start = 0;
+    for (i = 0; i < n; i++) {
+        if (i + 1 == n || hash64(rows[i].path, strlen(rows[i].path), 0) % 16 == 0) {
+            Wr w;
+            Sec *sec;
+            CRecBlob blob;
+            size_t k;
+            memset(&w, 0, sizeof w);
+            sec = wr_sec(&w, T_SYST, sizeof(CRecSys));
+            for (k = start; k <= i; k++) {
+                CRecSys e;
+                memset(&e, 0, sizeof e);
+                e.path = st_add(&w.st, rows[k].path);
+                e.size = rows[k].size;
+                e.mtime_ns = rows[k].mtime_ns;
+                e.content_hash = rows[k].hash;
+                sec_put(sec, &e);
+            }
+            wr_finish(&w, CREC_CHUNK, build_id, &blob);
+            blob.path = NULL;
+            wr_free(&w);
+            vec_push(chunks, blob);
+            start = i + 1;
+        }
+    }
+}
+
+CRecResult crec_index(Options *o, const char *path, const StrVec *cfg,
+                      uint64_t build_id, const CRecLimits *lim, CRecSet *out)
 {
     TU tu;
     FrontendOpts fo;
@@ -658,13 +786,13 @@ bool crec_index(Options *o, const char *path, const StrVec *cfg,
     PPListener l;
     Build b;
     Wr w;
-    VEC(FilRow) fils = {0};
-    VEC(CRecBlob) recs = {0};
+    VEC(FilRow) fils = {0}, sys = {0};
+    BlobVec recs = {0}, chunks = {0};
     uint64_t t0 = now_ns(CLOCK_MONOTONIC), started = now_ns(CLOCK_REALTIME),
-             bytes = 0, flag_hash = hash64_mix(o->fingerprint, CREC_FORMAT);
-    uint32_t i, nsm, *rec_of;
+             bytes = 0, flag_hash = crec_flag_hash(o);
+    uint32_t i, nsm, *rec_of = NULL;
     size_t k, nmiss;
-    bool ok;
+    bool ok, over;
     Sec *sec;
     CRecTu t;
     arena_init(&ar);
@@ -672,39 +800,50 @@ bool crec_index(Options *o, const char *path, const StrVec *cfg,
     ml.a = &ar;
     o->pp.fatal_missing_include = false;     /* the check goes on (B2 D2) */
     tu_init(&tu, o);
+    if (lim) {
+        tu.sm.max_bytes = lim->max_bytes;
+        tu.sm.limit_cancel = lim->cancel;
+        tu.pp.cancel = lim->cancel;
+    }
     memset(&l, 0, sizeof l);
     l.ctx = &ml;
-    l.include = on_include;
+    l.include_miss = on_miss;
     pp_add_listener(&tu.pp, l);
     memset(&fo, 0, sizeof fo);
     fo.check = true;
     fo.cidx = &ix;
+    if (fault_hit("index-crec"))
+        fatal("fault injected at index-crec");
     ok = frontend_run(&tu, path, &fo);
-    if (!ok || !ix) {
+    over = tu.sm.over_limit;
+    if (!over && (!ok || !ix)) {
+        bool cancelled = ok && lim && lim->cancel && atomic_load_u32(lim->cancel);
         cindex_free(ix);
         tu_free(&tu);
         vec_free(&ml.v);
         arena_free(&ar);
-        return false;
+        return cancelled ? CREC_CANCELLED : CREC_UNOPENED;
     }
     memset(&b, 0, sizeof b);
-    nsm = srcmgr_nfiles(&tu.sm);
-    b.ix = ix;
-    b.acc = xcalloc(nsm + 1, sizeof *b.acc);
-    b.to_sm = xmalloc((ix->nfiles + 1) * sizeof *b.to_sm);
-    b.exported = xcalloc(ix->ndecls + 1, 1);
-    b.kc = xcalloc(ix->ndecls + 1, sizeof *b.kc);
-    b.kc_ok = xcalloc(ix->ndecls + 1, 1);
-    b.kidx = xcalloc(ix->ndecls + 1, sizeof *b.kidx);
-    b.kstamp = xcalloc(ix->ndecls + 1, sizeof *b.kstamp);
-    for (i = 0; i < ix->nfiles; i++) {
-        SrcFile *f = cindex_srcfile(&tu.sm, ix->files[i].path);
-        b.to_sm[i] = f && f->kind == SF_USER ? f->id : -1;
-    }
-    collect(&b, &tu);
-    rec_of = xcalloc(nsm + 1, sizeof *rec_of);   /* 1 + the record of a file */
     memset(out, 0, sizeof *out);
-    for (i = 0; i < nsm; i++) {
+    nsm = srcmgr_nfiles(&tu.sm);
+    if (!over) {                             /* records: none for a unit over its budget */
+        b.ix = ix;
+        b.acc = xcalloc(nsm + 1, sizeof *b.acc);
+        b.to_sm = xmalloc((ix->nfiles + 1) * sizeof *b.to_sm);
+        b.exported = xcalloc(ix->ndecls + 1, 1);
+        b.kc = xcalloc(ix->ndecls + 1, sizeof *b.kc);
+        b.kc_ok = xcalloc(ix->ndecls + 1, 1);
+        b.kidx = xcalloc(ix->ndecls + 1, sizeof *b.kidx);
+        b.kstamp = xcalloc(ix->ndecls + 1, sizeof *b.kstamp);
+        for (i = 0; i < ix->nfiles; i++) {
+            SrcFile *f = cindex_srcfile(&tu.sm, ix->files[i].path);
+            b.to_sm[i] = f && f->kind == SF_USER ? f->id : -1;
+        }
+        collect(&b, &tu);
+    }
+    rec_of = xcalloc(nsm + 1, sizeof *rec_of);   /* 1 + the record of a file */
+    for (i = 0; !over && i < nsm; i++) {
         SrcFile *f = srcmgr_file(&tu.sm, i);
         FileAcc *a = &b.acc[i];
         CRecBlob blob;
@@ -718,40 +857,36 @@ bool crec_index(Options *o, const char *path, const StrVec *cfg,
         vec_free(&a->c);
         vec_free(&a->m);
     }
-    for (i = 0; i < nsm; i++) {              /* FILS: every file the unit read */
+    for (i = 0; i < nsm; i++) {              /* every file the unit read */
         SrcFile *f = srcmgr_file(&tu.sm, i);
         FilRow r;
         if (f->kind != SF_USER && f->kind != SF_SYSTEM)
             continue;
         r.path = f->path;
         r.size = f->size;
-        r.flags = f->kind == SF_USER ? CFIL_USER : CFIL_SYSTEM;
+        r.flags = CFIL_USER;
         r.mtime_ns = f->mtime_ns;
         r.hash = cindex_hash(f->buf, f->size);
         r.digest = rec_of[i] ? recs.data[rec_of[i] - 1].digest : 0;
         bytes += f->size;
-        vec_push(&fils, r);
+        vec_push(f->kind == SF_USER ? &fils : &sys, r);
     }
     for (k = 0; cfg && k < cfg->len; k++) {  /* ... and to build its options */
-        struct stat st;
-        size_t n;
-        char *text;
         FilRow r;
-        if (stat(cfg->data[k], &st) != 0 || !(text = read_file(cfg->data[k], &n)))
-            continue;
-        r.path = cfg->data[k];
-        r.size = (uint32_t)n;
-        r.flags = CFIL_CONFIG;
-        r.mtime_ns = (uint64_t)st.st_mtim.tv_sec * 1000000000u +
-                     (uint64_t)st.st_mtim.tv_nsec;
-        r.hash = cindex_hash(text, n);
-        r.digest = 0;
-        free(text);
+        stat_row(&r, cfg->data[k], CFIL_CONFIG);
+        vec_push(&fils, r);
+    }
+    if (over && tu.sm.over_path) {           /* so that changing it retries the unit */
+        FilRow r;
+        stat_row(&r, tu.sm.over_path, CFIL_USER);
         vec_push(&fils, r);
     }
     if (fils.len > 1)
         qsort(fils.data, fils.len, sizeof *fils.data, filrow_cmp);
-    nmiss = ml.v.len;
+    if (sys.len > 1)
+        qsort(sys.data, sys.len, sizeof *sys.data, filrow_cmp);
+    build_chunks(sys.data, sys.len, build_id, &chunks);
+    nmiss = over ? 0 : ml.v.len;             /* the file that overran is no miss */
     if (nmiss > 1)
         qsort(ml.v.data, nmiss, sizeof *ml.v.data, miss_cmp);
     memset(&w, 0, sizeof w);
@@ -760,8 +895,8 @@ bool crec_index(Options *o, const char *path, const StrVec *cfg,
     t.started_ns = started;
     t.written_ns = now_ns(CLOCK_REALTIME);
     t.main_path = st_add(&w.st, path);
-    t.errors = (uint32_t)tu.diag.nerrors;
-    t.status = t.errors ? CTU_PARTIAL : CTU_OK;
+    t.errors = over ? 0 : (uint32_t)tu.diag.nerrors;
+    t.status = over ? CTU_OVER_LIMIT : t.errors ? CTU_PARTIAL : CTU_OK;
     t.bytes_read = (uint32_t)bytes;
     t.index_ms = (uint32_t)((now_ns(CLOCK_MONOTONIC) - t0) / 1000000u);
     sec = wr_sec(&w, T_TU, sizeof t);
@@ -778,6 +913,11 @@ bool crec_index(Options *o, const char *path, const StrVec *cfg,
         e.flags = fils.data[k].flags;
         sec_put(sec, &e);
     }
+    if (chunks.len) {
+        sec = wr_sec(&w, T_SYSC, sizeof(uint64_t));
+        for (k = 0; k < chunks.len; k++)
+            sec_put(sec, &chunks.data[k].digest);
+    }
     if (nmiss) {
         sec = wr_sec(&w, T_MISS, sizeof(CRecMiss));
         for (k = 0; k < nmiss; k++) {
@@ -792,10 +932,13 @@ bool crec_index(Options *o, const char *path, const StrVec *cfg,
     wr_free(&w);
     out->recs = recs.data;
     out->nrecs = recs.len;
+    out->chunks = chunks.data;
+    out->nchunks = chunks.len;
     out->main = xstrdup(path);
     out->status = (int)t.status;
-    out->tukey = hash64(path, strlen(path), hash64_mix(flag_hash, build_id));
+    out->tukey = crec_tukey(path, flag_hash, build_id);
     vec_free(&fils);
+    vec_free(&sys);
     free(rec_of);
     free(b.acc);
     free(b.to_sm);
@@ -808,7 +951,7 @@ bool crec_index(Options *o, const char *path, const StrVec *cfg,
     arena_free(&ar);
     cindex_free(ix);
     tu_free(&tu);
-    return true;
+    return CREC_DONE;
 }
 
 void crec_free(CRecSet *s)
@@ -819,6 +962,9 @@ void crec_free(CRecSet *s)
         free(s->recs[i].path);
     }
     free(s->recs);
+    for (i = 0; i < s->nchunks; i++)
+        free(s->chunks[i].data);
+    free(s->chunks);
     free(s->manifest.data);
     free(s->main);
     memset(s, 0, sizeof *s);
@@ -826,45 +972,27 @@ void crec_free(CRecSet *s)
 
 /* ---- the store ------------------------------------------------------------- */
 
-static bool mkdirs(const char *path, char *err, size_t errn)
+char *crec_path(const char *dir, const char *sub, uint64_t name, const char *ext)
 {
-    char *p = xstrdup(path), *s;
-    bool ok = true;
-    for (s = p + 1; ok; s++) {
-        char c = *s;
-        if (c == '/' || !c) {
-            *s = 0;
-            if (mkdir(p, 0700) != 0 && errno != EEXIST) {
-                snprintf(err, errn, "cannot create '%s': %s", p, strerror(errno));
-                ok = false;
-            }
-            *s = c;
-        }
-        if (!c)
-            break;
-    }
-    free(p);
-    return ok;
+    char *p = xmalloc(strlen(dir) + strlen(sub) + strlen(ext) + 32);
+    sprintf(p, "%s/%s/%02x/%016llx.%s", dir, sub, (unsigned)(name >> 56),
+            (unsigned long long)name, ext);
+    return p;
 }
 
 static bool put_file(const char *dir, const char *sub, uint64_t name, const char *ext,
                      const CRecBlob *b, char *err, size_t errn)
 {
-    char hex[17], *d, *path;
-    bool ok;
+    char *path = crec_path(dir, sub, name, ext), *slash;
+    bool ok = true;
     struct stat st;
-    snprintf(hex, sizeof hex, "%016llx", (unsigned long long)name);
-    d = xmalloc(strlen(dir) + strlen(sub) + 32);
-    path = xmalloc(strlen(dir) + strlen(sub) + 64);
-    sprintf(d, "%s/%s/%.2s", dir, sub, hex);
-    sprintf(path, "%s/%s.%s", d, hex, ext);
-    ok = true;
-    if (stat(path, &st) != 0)       /* a record's name is its content */
-        ok = mkdirs(d, err, errn) &&
-             file_write_atomic(path, b->data, b->len, err, errn);
-    else if (!strcmp(ext, "tu"))
-        ok = file_write_atomic(path, b->data, b->len, err, errn);
-    free(d);
+    if (stat(path, &st) != 0 || !strcmp(ext, "tu")) {   /* a record's name is its content */
+        slash = strrchr(path, '/');
+        *slash = 0;
+        ok = dir_create_all(path, err, errn);
+        *slash = '/';
+        ok = ok && file_write_atomic(path, b->data, b->len, err, errn);
+    }
     free(path);
     return ok;
 }
@@ -874,6 +1002,9 @@ bool crec_write(const char *dir, const CRecSet *s, char *err, size_t errn)
     size_t i;
     for (i = 0; i < s->nrecs; i++)
         if (!put_file(dir, "rec", s->recs[i].digest, "rec", &s->recs[i], err, errn))
+            return false;
+    for (i = 0; i < s->nchunks; i++)
+        if (!put_file(dir, "sys", s->chunks[i].digest, "sys", &s->chunks[i], err, errn))
             return false;
     return put_file(dir, "tu", s->tukey, "tu", &s->manifest, err, errn);
 }
@@ -993,6 +1124,19 @@ static void dump_record(Dump *d, const CRecBlob *b)
     }
 }
 
+typedef struct DumpRow {         /* one "file" line */
+    const char *path;
+    uint32_t size;
+    uint64_t hash;
+    const char *kind;
+    bool record;
+} DumpRow;
+
+static int row_cmp(const void *pa, const void *pb)
+{
+    return strcmp(((const DumpRow *)pa)->path, ((const DumpRow *)pb)->path);
+}
+
 static int blob_path_cmp(const void *pa, const void *pb)
 {
     return strcmp(((const CRecBlob *)pa)->path, ((const CRecBlob *)pb)->path);
@@ -1021,12 +1165,42 @@ void crec_dump(const CRecSet *s, const char *root, FILE *out)
     fprintf(out, "unit %s status %s errors %u bytes %u\n", rel(&d, S(&d, v.tu->main_path)),
             status[v.tu->status < 5 ? v.tu->status : 0], v.tu->errors,
             v.tu->bytes_read);
-    for (i = 0; i < v.nfils; i++) {
-        const CRecFil *e = &v.fils[i];
-        fprintf(out, "  file %s size %u hash %016llx %s%s\n", rel(&d, S(&d, e->path)),
-                e->size, (unsigned long long)e->content_hash,
-                e->flags & CFIL_CONFIG ? "config" : e->flags & CFIL_SYSTEM ? "system" : "user",
-                e->record_digest ? " record" : "");
+    /* the files in path order, the chunks' system files merged back in */
+    {
+        VEC(DumpRow) rows = {0};
+        VEC(CRecView) cvs = {0};
+        size_t nrow;
+        for (i = 0; i < v.nfils; i++) {
+            const CRecFil *e = &v.fils[i];
+            DumpRow r = {S(&d, e->path), e->size, e->content_hash,
+                         e->flags & CFIL_ABSENT ? "absent"
+                         : e->flags & CFIL_CONFIG ? "config" : "user",
+                         e->record_digest != 0};
+            vec_push(&rows, r);
+        }
+        for (k = 0; k < s->nchunks; k++) {
+            CRecView cv;
+            if (crec_parse(s->chunks[k].data, s->chunks[k].len, CREC_CHUNK,
+                           ((CRecHeader *)s->chunks[k].data)->build_id, &cv)) {
+                fprintf(out, "  chunk %zu: INVALID\n", k);
+                continue;
+            }
+            vec_push(&cvs, cv);
+            for (i = 0; i < cv.nsyst; i++) {
+                DumpRow r = {cv.strs + cv.syst[i].path, cv.syst[i].size,
+                             cv.syst[i].content_hash, "system", false};
+                vec_push(&rows, r);
+            }
+        }
+        nrow = rows.len;
+        if (nrow > 1)
+            qsort(rows.data, nrow, sizeof *rows.data, row_cmp);
+        for (k = 0; k < nrow; k++)
+            fprintf(out, "  file %s size %u hash %016llx %s%s\n", rel(&d, rows.data[k].path),
+                    rows.data[k].size, (unsigned long long)rows.data[k].hash,
+                    rows.data[k].kind, rows.data[k].record ? " record" : "");
+        vec_free(&rows);
+        vec_free(&cvs);
     }
     for (i = 0; i < v.nmiss; i++)
         fprintf(out, "  miss %c%s%c from %s\n", v.miss[i].angled ? '<' : '"',

@@ -107,5 +107,7 @@ char *read_file(const char *path, size_t *len_out);
  * failure; err gets the reason. */
 bool file_write_atomic(const char *path, const char *buf, size_t n, char *err,
                        size_t errn);
+/* mkdir -p, directories mode 0700 (the index cache holds source-derived names). */
+bool dir_create_all(const char *path, char *err, size_t errn);
 
 #endif

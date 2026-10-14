@@ -389,3 +389,24 @@ fail:
     free(tmp);
     return false;
 }
+
+bool dir_create_all(const char *path, char *err, size_t errn)
+{
+    char *p = xstrdup(path), *s;
+    bool ok = true;
+    for (s = p + 1; ok; s++) {
+        char c = *s;
+        if (c == '/' || !c) {
+            *s = 0;
+            if (mkdir(p, 0700) != 0 && errno != EEXIST) {
+                snprintf(err, errn, "cannot create '%s': %s", p, strerror(errno));
+                ok = false;
+            }
+            *s = c;
+        }
+        if (!c)
+            break;
+    }
+    free(p);
+    return ok;
+}

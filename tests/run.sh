@@ -740,7 +740,7 @@ else
     bad "index/determinism (two cache writes: records differ)"; head -3 "$TMP/ixo"
 fi
 mkdir -p "$TMP/ix"
-for f in $(find "$TMP/ic1" -type f); do
+for f in $(find "$TMP/ic1" -type f \( -name '*.tu' -o -name '*.rec' -o -name '*.sys' \)); do
     n=$(basename "$f")
     if "$CEREAL" index-summary --check "$f" >/dev/null 2>&1; then ok; else bad "index/check accepts $n"; fi
     sz=$(wc -c <"$f")
@@ -766,5 +766,76 @@ for f in $(find "$TMP/ic1" -type f); do
     rm -f "$TMP"/ix/*
 done
 
+# 22b. invalidation (B5_DESIGN 7, 8.2): `index-summary --stale` over a small
+# generated project.  Each step edits the tree and lists what the cache has
+# fresh; unit lines are `<why> <main file> [file]`.
+IP="$TMP/ip"
+rm -rf "$IP"
+mkdir -p "$IP/src" "$IP/inc" "$IP/sysinc"
+its=0
+iput() { # iput FILE TEXT: write it with a distinct old mtime (nothing racy)
+    its=$((its + 1))
+    printf "$2" >"$IP/$1"
+    touch -d "2020-01-01 00:00:$(printf %02d $its)" "$IP/$1"
+}
+iput src/a.c '#include "h.h"\n#include "cfg.h"\nint a(void) { return H + CFG; }\n'
+iput src/b.c '#include "h.h"\n#if __has_include("gen.h")\n#include "gen.h"\n#endif\n#include <s.h>\nint b(void) { return H + S; }\n'
+iput sysinc/s.h '#define S 1\n'
+iput inc/h.h '#define H 1\n'
+iput inc/cfg.h '#define CFG 1\n'
+cat >"$IP/compile_commands.json" <<EOF
+[{"directory":"$IP","file":"src/a.c","command":"cc -Iinc -DX=1 -c src/a.c"},
+ {"directory":"$IP","file":"src/b.c","command":"cc -Iinc -isystem sysinc -c src/b.c"},
+ {"directory":"$IP","file":"src/a.c","command":"cc -Iinc -DX=2 -c src/a.c"}]
+EOF
+istale() { (cd "$IP" && "$CEREAL" index-summary --root "$IP" --compdb compile_commands.json \
+    --cache "$IP/cache" --stale "$@" 2>&1 | sed "s,$IP/,,g" | sort | tr '\n' ';'); }
+iwrite() { for e in "$@"; do (cd "$IP" && "$CEREAL" index-summary --root "$IP" \
+    --compdb compile_commands.json --cache "$IP/cache" --entry "$e" >/dev/null 2>&1); done; }
+icheck() { # icheck NAME EXPECTED [--records]
+    got=$(istale ${3:+"$3"})
+    if [ "$got" = "$2" ]; then ok; else bad "index/stale $1: got '$got' want '$2'"; fi
+}
+icheck new "new src/a.c;new src/a.c;new src/b.c;"
+iwrite 0 1 2
+icheck fresh "fresh src/a.c;fresh src/a.c;fresh src/b.c;"
+touch -d 2021-01-01 "$IP/inc/h.h"
+icheck touched "fresh src/a.c;fresh src/a.c;fresh src/b.c;"
+iput inc/h.h '#define H 2\n'
+icheck header "file src/a.c inc/h.h;file src/a.c inc/h.h;file src/b.c inc/h.h;"
+iput inc/h.h '#define H 1\n'
+icheck restored "fresh src/a.c;fresh src/a.c;fresh src/b.c;"
+iput inc/cfg.h '#define CFG 2\n'
+icheck cfg "file src/a.c inc/cfg.h;file src/a.c inc/cfg.h;fresh src/b.c;"
+iput inc/cfg.h '#define CFG 1\n'
+iput inc/gen.h '#define G 1\n'
+icheck miss "fresh src/a.c;fresh src/a.c;miss src/b.c gen.h;"
+rm "$IP/inc/gen.h"
+iput .cereal 'lint = off\n'
+icheck cereal-new "file src/a.c .cereal;file src/a.c .cereal;file src/b.c .cereal;"
+rm -f "$IP/.cereal"
+icheck cereal-gone "fresh src/a.c;fresh src/a.c;fresh src/b.c;"
+# a flag change is a new unit; the old manifest is no longer listed
+sed -i 's/-DX=2/-DX=3/' "$IP/compile_commands.json"
+icheck flags "fresh src/a.c;fresh src/b.c;new src/a.c;"
+iwrite 2
+iput sysinc/s.h '#define S 2\n'
+icheck sysheader "file src/b.c sysinc/s.h;fresh src/a.c;fresh src/a.c;"
+iwrite 1
+icheck rewritten "fresh src/a.c;fresh src/a.c;fresh src/b.c;"
+# corruption: a chunk, a manifest and a record, each removed or damaged
+find "$IP/cache" -name '*.sys' -exec rm {} +
+icheck chunk-gone "fresh src/a.c;fresh src/a.c;lost src/b.c;"
+iwrite 1
+rm "$(find "$IP/cache" -name '*.tu' | head -1)"
+got=$(istale)
+case $got in *new*) ok;; *) bad "index/stale manifest removal: '$got'";; esac
+iwrite 0 1 2
+rec=$(find "$IP/cache" -name '*.rec' | head -1)
+printf 'x' >>"$rec"
+icheck rec-ok "fresh src/a.c;fresh src/a.c;fresh src/b.c;"
+got=$(istale --records | grep -c 'lost ')
+if [ "$got" -ge 1 ]; then ok; else bad "index/stale damaged record not found lost"; fi
+rm -rf "$IP/cache"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

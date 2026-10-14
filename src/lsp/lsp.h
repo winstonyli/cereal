@@ -48,6 +48,10 @@ Options *config_options_for(LspConfig *c, const char *path);
  * layers and response files read are appended (paths in `a`). */
 void config_options_in(LspConfig *c, const char *path, Arena *a, Options *o,
                        StrVec *files);
+/* The same for compile database entry `entry` itself (not the first entry of
+ * its file): a file compiled under two flag sets has two. */
+void config_options_entry(LspConfig *c, size_t entry, Arena *a, Options *o,
+                          StrVec *files);
 void config_options_free(Options *o);
 
 /* ---- positions (pos.c) ----------------------------------------------- */

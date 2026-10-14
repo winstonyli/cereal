@@ -93,6 +93,13 @@ typedef struct SrcMgr {
     bool (*overlay)(void *ctx, const char *path, const char **buf,
                     size_t *len);
     void *overlay_ctx;
+    /* A byte budget for the files read from disk (docs/B5_DESIGN.md 8.5): one
+     * that would take the total past max_bytes (0: none) is not read, over_limit
+     * is set and *limit_cancel (the job's pp.cancel) is raised.  Guarded by m. */
+    size_t max_bytes, loaded_bytes;
+    uint32_t *limit_cancel;
+    bool over_limit;
+    const char *over_path;  /* the file that did not fit */
 } SrcMgr;
 
 static inline uint32_t srcmgr_nfiles(const SrcMgr *sm)

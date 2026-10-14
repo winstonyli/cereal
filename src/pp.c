@@ -1844,8 +1844,8 @@ static void do_undef(PP *pp, const Tok *hash, const Tok *kw)
 
 /* Resolve and load an included file; the source manager caches both hits
  * and misses, so repeated searches cost no system calls. */
-SrcFile *pp_find_include(PP *pp, const char *name, bool angled, bool next,
-                         int *dir_index)
+static SrcFile *find_include(PP *pp, const char *name, bool angled, bool next,
+                             int *dir_index)
 {
     size_t i, start;
     SrcFile *f;
@@ -1883,6 +1883,17 @@ SrcFile *pp_find_include(PP *pp, const char *name, bool angled, bool next,
         }
     }
     return NULL;
+}
+
+/* Every search for a header, by #include, __has_include or #pragma
+ * dependency; a failed one is reported to the listeners (include_miss). */
+SrcFile *pp_find_include(PP *pp, const char *name, bool angled, bool next,
+                         int *dir_index)
+{
+    SrcFile *f = find_include(pp, name, angled, next, dir_index);
+    if (!f && pp->inc)
+        PP_EMIT(pp, include_miss, name, angled, pp->inc->file);
+    return f;
 }
 
 static char *parse_header_name(PP *pp, TokSpan line, bool *angled,

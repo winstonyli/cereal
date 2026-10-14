@@ -1638,7 +1638,7 @@ int lsp_main(FILE *in, FILE *out)
     mutex_init(&S.m);
     cond_init(&S.work);
     cond_init(&S.done);
-    pool_init(&S.pool, 0);
+    pool_init(&S.pool, 0, 0);
     S.pool.trap_fatal = true; /* a build's fatal() ends at its builder */
     rpc_set_output(out);
     if (pthread_create(&S.builder, NULL, builder_main, NULL) != 0)

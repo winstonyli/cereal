@@ -28,6 +28,14 @@ struct timespec cond_deadline(double seconds);
 /* cond_wait, but at most until deadline; false once it has passed. */
 bool cond_timedwait(Cond *c, Mutex *m, const struct timespec *deadline);
 
+/* A reader-writer lock: readers share, a writer is alone. */
+typedef pthread_rwlock_t RwLock;
+void rwlock_init(RwLock *l);
+void rwlock_destroy(RwLock *l);
+void rwlock_rdlock(RwLock *l);
+void rwlock_wrlock(RwLock *l);
+void rwlock_unlock(RwLock *l);
+
 int cpu_count(void);
 
 /* ---- atomics (typed; acquire loads, release stores) ------------------ */
@@ -95,6 +103,12 @@ typedef struct JobGroup {
     size_t pending;
     bool failed;             /* a job called fatal() (trap_fatal pools) */
     char msg[256];           /* its message, the first one */
+    /* Called by the thread that ends the group's last job, after failed and
+     * msg are set and outside the group's lock; the group may be freed by
+     * then, so it must not be touched afterwards.  group_wait is not needed
+     * (and would re-raise a trapped fatal()). */
+    void (*on_done)(void *ctx);
+    void *on_done_ctx;
 } JobGroup;
 
 typedef struct ThreadPool {
@@ -109,10 +123,13 @@ typedef struct ThreadPool {
      * with its message on the waiting thread (the language server, whose
      * builder traps it).  Off: fatal() exits from any thread. */
     bool trap_fatal;
+    int nice;                /* each worker's nice value (Linux: per thread) */
 } ThreadPool;
 
-/* nthreads <= 0 means "cpu_count()". */
-void pool_init(ThreadPool *p, int nthreads);
+/* nthreads <= 0 means "cpu_count()".  nice: the workers' niceness (0: as the
+ * process).  The submitting thread is expected to help in group_wait, so
+ * n - 1 workers are spawned. */
+void pool_init(ThreadPool *p, int nthreads, int nice);
 void pool_free(ThreadPool *p);
 
 void group_init(JobGroup *g);

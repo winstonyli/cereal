@@ -56,7 +56,8 @@ static void usage(FILE *o)
         "  index-summary [--root DIR] [--compdb DB] (--cache DIR | --dump) FILE\n"
         "                check FILE as the language server would and write its\n"
         "                project-index records (docs/B5_DESIGN.md);\n"
-        "                index-summary --check FILE... validates written files\n"
+        "                also: --entry N [--budget-mb N] (a database unit), --stale\n"
+        "                [--records] (which units are fresh), --check FILE...\n"
         "  fix           apply the fix-its of the check and lint diagnostics to the\n"
         "                files (see \"fix options\" below)\n"
         "  query KIND FILE:LINE:COL   KIND = def | decl | refs | uses | highlight |\n"
@@ -128,7 +129,7 @@ static ThreadPool *shared_pool(Options *o)
     static ThreadPool pool;
     static bool made;
     if (!made) {
-        pool_init(&pool, o->jobs); /* the main thread helps too */
+        pool_init(&pool, o->jobs, 0); /* the main thread helps too */
         made = true;
     }
     return &pool;

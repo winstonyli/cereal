@@ -150,6 +150,10 @@ typedef struct PPListener {
     void (*file_enter)(void *ctx, SrcFile *f, const IncludeEvent *via);
     void (*file_exit)(void *ctx, SrcFile *f);
     void (*include)(void *ctx, const IncludeEvent *ev);
+    /* a header search that found nothing, whoever asked (#include,
+     * __has_include, #pragma dependency) */
+    void (*include_miss)(void *ctx, const char *spelled, bool angled,
+                         struct SrcFile *from);
     void (*define)(void *ctx, Macro *m, Macro *replaced);
     void (*undef)(void *ctx, struct Ident *id, Macro *m, SrcLoc hash_loc,
                   SrcLoc name_loc);

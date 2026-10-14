@@ -17,11 +17,12 @@
 
 #include "driver.h"
 
-#define CREC_FORMAT 1u           /* bumped on any change of a section's layout */
-enum { CREC_MANIFEST = 1, CREC_RECORD = 2 };
+#define CREC_FORMAT 2u           /* bumped on any change of a section's layout */
+enum { CREC_MANIFEST = 1, CREC_RECORD = 2, CREC_CHUNK = 3 };
 enum { CTU_OK = 1, CTU_PARTIAL, CTU_OVER_LIMIT, CTU_FAILED };
-/* CRecFil.flags */
-enum { CFIL_SYSTEM = 1, CFIL_USER = 2, CFIL_CONFIG = 4 };
+/* CRecFil.flags: a source or user header, or a file read to build the
+ * options; ABSENT marks a .cereal that did not exist (size, mtime, hash 0) */
+enum { CFIL_USER = 2, CFIL_CONFIG = 4, CFIL_ABSENT = 8 };
 
 typedef struct CRecHeader {      /* 32 bytes */
     char magic[8];               /* "CRLIDX\0\0" */
@@ -86,6 +87,10 @@ typedef struct CRecFil {         /* FILS: every file the unit read */
 typedef struct CRecMiss {        /* MISS: includes that were not found */
     uint32_t spelled, from_path, angled;
 } CRecMiss;
+typedef struct CRecSys {         /* SYST: a system header, in a chunk */
+    uint32_t path, size;
+    uint64_t mtime_ns, content_hash;
+} CRecSys;
 
 /* A validated file.  Sections the file lacks are empty. */
 typedef struct CRecView {
@@ -102,7 +107,9 @@ typedef struct CRecView {
     const CRecTu *tu;            /* manifest: one */
     const CRecFil *fils;
     const CRecMiss *miss;
-    uint32_t nkeys, ndecls, nrefs, ncalls, nmacros, nfils, nmiss;
+    const CRecSys *syst;         /* chunk: its files, sorted by path */
+    const uint64_t *sysc;        /* manifest: its chunks' digests, in path order */
+    uint32_t nkeys, ndecls, nrefs, ncalls, nmacros, nfils, nmiss, nsyst, nsysc;
 } CRecView;
 
 /* The bytes of one record or manifest and the digest that names them. */
@@ -118,10 +125,27 @@ typedef struct CRecSet {
     CRecBlob manifest;
     CRecBlob *recs;
     size_t nrecs;
+    CRecBlob *chunks;            /* the system files, in path order */
+    size_t nchunks;
     uint64_t tukey;              /* names the manifest */
     char *main;                  /* the unit's main file */
     int status;                  /* CTU_* */
 } CRecSet;
+
+/* The flag hash of a unit's options, and the name of its manifest
+ * (docs/B5_DESIGN.md 5.1, 5.4). */
+uint64_t crec_flag_hash(const Options *o);
+uint64_t crec_tukey(const char *main_path, uint64_t flag_hash, uint64_t build_id);
+
+/* A file mapped read-only and validated once (6.3). */
+typedef struct CRecMap {
+    const void *p;
+    size_t n;
+    CRecView v;
+} CRecMap;
+/* NULL if good (*m is then to be released with crec_unmap), else why not. */
+const char *crec_map(const char *file, int kind, uint64_t build_id, CRecMap *m);
+void crec_unmap(CRecMap *m);
 
 /* hash64 of the running executable (docs/B5_DESIGN.md 5.4; Q3); 0 if it
  * cannot be read.  A few ms: call once. */
@@ -134,18 +158,40 @@ const char *crec_parse(const void *p, size_t n, int kind, uint64_t build_id,
 /* The kind a header claims, 0 if it is no such file. */
 int crec_kind(const void *p, size_t n);
 
+/* What stops a run (8.5): a byte budget for the files read from disk (0: none)
+ * and the job's cancel flag (NULL: none; a budget overrun raises it too). */
+typedef struct CRecLimits {
+    size_t max_bytes;
+    uint32_t *cancel;
+} CRecLimits;
+typedef enum { CREC_DONE, CREC_CANCELLED, CREC_UNOPENED } CRecResult;
+
 /* Checks the unit `path` with o (as the language server does: a missing
  * include is an error, the check goes on), builds its symbol index and turns
- * it into a manifest and records.  cfg: the files read to build o (.cereal
- * layers, response files).  False: the file could not be opened.  Free with
- * crec_free. */
-bool crec_index(Options *o, const char *path, const StrVec *cfg,
-                uint64_t build_id, CRecSet *out);
+ * it into a manifest, records and system chunks.  cfg: the files read to
+ * build o (.cereal layers, response files; a .cereal that does not exist is
+ * listed as absent).  lim may be NULL.  CREC_DONE: *out is filled (status
+ * OVER_LIMIT: a manifest of the files read so far, with no records);
+ * CREC_CANCELLED: nothing is produced; CREC_UNOPENED: the file could not be
+ * opened.  Free *out with crec_free after CREC_DONE.  The fault site
+ * `index-crec` fires here (thread.h). */
+CRecResult crec_index(Options *o, const char *path, const StrVec *cfg,
+                      uint64_t build_id, const CRecLimits *lim, CRecSet *out);
 void crec_free(CRecSet *s);
 
-/* Writes the set under dir (a project directory, 5.1): records not there
- * yet, then the manifest; atomic per file, directories 0700.  Err gets the
- * reason on false. */
+/* Stat data (taken before the read, 7.2) and content hash of `path` as the
+ * index sees a file: a UTF-8 byte order mark is not part of it (srcmgr_load).
+ * size is the file's size on disk.  False: no such regular file. */
+bool crec_stat_hash(const char *path, uint32_t *size, uint64_t *mtime_ns,
+                    uint64_t *hash);
+
+/* `<dir>/<sub>/<hh>/<hex name>.<ext>` (malloc'd): where a file of the store
+ * lives; sub is "tu", "rec" or "sys". */
+char *crec_path(const char *dir, const char *sub, uint64_t name, const char *ext);
+
+/* Writes the set under dir (a project directory, 5.1): records and system
+ * chunks not there yet, then the manifest; atomic per file, directories
+ * 0700.  Err gets the reason on false. */
 bool crec_write(const char *dir, const CRecSet *s, char *err, size_t errn);
 
 /* The text form of 14.2: the manifest and each record, paths relative to

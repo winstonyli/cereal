@@ -211,6 +211,15 @@ static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
         return missing_file(sm, norm);
     }
     size = (size_t)st.st_size;
+    if (sm->max_bytes && (sm->loaded_bytes += size) > sm->max_bytes) {
+        if (!sm->over_limit)
+            sm->over_path = norm;
+        sm->over_limit = true;
+        if (sm->limit_cancel)
+            atomic_store_u32(sm->limit_cancel, 1);
+        close(fd);
+        return missing_file(sm, norm);
+    }
     base = reserve(sm, size + SRC_PAD);
     if (size >= MMAP_THRESHOLD) {
         void *p = mmap(sm->region + base, size, PROT_READ | PROT_WRITE,

@@ -404,14 +404,24 @@ Design:
 
 ## 5. Summary schema and file layout
 
-### 5.1 Two kinds of file (E5)
+### 5.1 Three kinds of file (E5)
 
 - **TU manifest:**
   - one per (main file absolute path, flag hash, build id);
-  - it lists every file the TU read, with its stat data, content hash and
-    record digest;
+  - it lists every non-system file the TU read, with its stat data, content
+    hash and record digest, and the digests of its system chunks (below);
   - plus status and statistics.
   - The manifest is small, and is what the freshness check (7) reads.
+- **System chunk** (adopted from the Round 224 spike, 5.5):
+  - the stat data of a run of system header files as one TU saw them:
+    `{path, size, mtime_ns, content_hash}` per file, sorted by path;
+  - content-addressed and immutable like a record, so TUs that read the
+    same system headers share the same chunk files;
+  - a TU's sorted system files are cut into chunks of about 16 files: a
+    chunk ends after a path with `hash64(path) % 16 == 0` (content-defined,
+    so one changed header alters one or two chunks, not all). The cut rule
+    is not part of the file contract: a reader only follows digests;
+  - a chunk has at least one entry. System files have no records.
 - **File record:**
   - the exports located in one file as one TU saw them;
   - the file is content-addressed by the digest of its own bytes;
@@ -432,6 +442,7 @@ Directory layout under the cache root (6.1):
     meta                         format version, root, compdb path, written once
     tu/<hh>/<tukey>.tu           manifests; tukey = hex64(hash(abs path, flag hash, build id))
     rec/<hh>/<digest>.rec        records; digest = hex64(seeded hash64 of the record bytes, 5.4)
+    sys/<hh>/<digest>.sys        system chunks; digest as for records
 ```
 
 - `<hh>` is the first two hex digits. Each level then holds at most a few
@@ -447,7 +458,7 @@ Header (32 bytes):
   u8  magic[8]     "CRLIDX\0\0"
   u32 bom          0x01020304 as written by the host (other byte order -> miss)
   u16 version      INDEX_FORMAT (starts at 1; bumped on any layout change)
-  u16 kind         1 manifest, 2 record
+  u16 kind         1 manifest, 2 record, 3 system chunk
   u64 build_id     E14
   u32 nsections
   u32 payload_hash hash64 of everything after the header, low 32 bits
@@ -481,8 +492,18 @@ section does.
 | Tag | Entry |
 |---|---|
 | `TU  ` | `{u32 main_path, u64 flag_hash, u32 status, u32 errors, u32 bytes_read, u32 index_ms, u64 started_ns, u64 written_ns}` |
-| `FILS` | `{u32 path, u32 size, u64 mtime_ns, u64 content_hash, u64 record_digest, u32 flags}`: every file the TU read. That covers the sources and headers the SrcMgr loaded (virtual ones excluded) and the files read to build its options: response files and `.cereal` layers. Flags: system, user, config. `record_digest` is 0 when the file has no exports (system headers and config files always). |
+| `FILS` | `{u32 path, u32 size, u64 mtime_ns, u64 content_hash, u64 record_digest, u32 flags}`: every file the TU read except system headers (those are in the chunks). That covers the sources and user headers the SrcMgr loaded (virtual ones excluded) and the files read to build its options: response files and `.cereal` layers. Flags: user, config, absent. `record_digest` is 0 when the file has no exports (config files always). A `.cereal` file that does not exist in a directory searched is listed with flag absent, size 0, `mtime_ns` 0 and hash 0, which is what a missing file's state is (7.2): creating it later makes the TU stale. |
+| `SYSC` | `u64` chunk digests, in path order: the TU's system files, as chunks |
 | `MISS` | `{u32 spelled, u32 from_path, u32 angled}`: `#include`s that were not found (7.2) |
+
+**Chunk section:**
+
+| Tag | Entry |
+|---|---|
+| `SYST` | `{u32 path, u32 size, u64 mtime_ns, u64 content_hash}` (24 bytes), sorted by path |
+
+The reader validates a chunk as it does a record (6.3): a chunk with no
+entry is invalid.
 
 The manifest's `status` takes one of these values:
 
@@ -553,7 +574,7 @@ without looking up the anchor.
 | What | How |
 |---|---|
 | Content hash | `cindex_hash` (hash64, seeded), as `CIdxFile.hash` already has it |
-| Record digest | `hash64` of the record's bytes after the header, seeded with `build_id ^ INDEX_FORMAT`. The seed matters: a record from another build must not share a name with this build's record, or the idempotent write (6.2) would keep a file the reader rejects, and re-index forever. |
+| Record and chunk digest | `hash64` of the file's bytes after the header, seeded with `build_id ^ INDEX_FORMAT`. The seed matters: a record or chunk from another build must not share a name with this build's, or the idempotent write (6.2) would keep a file the reader rejects, and re-index forever. |
 | Flag hash | `Options.fingerprint` mixed with `INDEX_FORMAT` and the target name. Covers `-D`, `-I`, `-std`, `--target`, response files and `.cereal` layers (3) |
 | Build id | `hash64` of `/proc/self/exe`'s bytes, computed once on first use (a few ms for a few MB) |
 
@@ -791,8 +812,9 @@ without looking up the anchor.
     - Chunks are per project, under the project directory, so the whole-
       project eviction of 6.4 stays correct. Sharing across projects would
       need reference counting and is parked.
-  - **Design edits this would need** (a proposal; 5.2, 6 and 7 are not
-    rewritten here):
+  - **Design edits this needed** (adopted 2026-10-13 by the user, applied
+    to 5.1, 5.2, 5.4, 6.2-6.4, 7.1-7.2, 14.2, 14.4, 15 and 16 at the start
+    of B5b):
 
     | section | edit |
     |---|---|
@@ -832,11 +854,11 @@ The project directory sits under `index/<project id>/` (5.1).
 
 ### 6.2 Writes
 
-- **Records first, then the manifest.** Every file is written with
-  `file_write_atomic` (common.c:331: temp file in the same directory,
-  fsync, rename).
-- **Record writes are idempotent.** If the digest's file already exists,
-  the write is skipped, because a record's name is its content.
+- **Records and system chunks first, then the manifest.** Every file is
+  written with `file_write_atomic` (common.c:331: temp file in the same
+  directory, fsync, rename).
+- **Record and chunk writes are idempotent.** If the digest's file already
+  exists, the write is skipped, because the name is the content.
 - **Write order makes crashes harmless.** A crash before the manifest
   rename leaves only unreferenced records; GC removes them (6.4).
 - **Fsync cost.** One fsync per new file. At 1,000 TUs that is a few
@@ -857,8 +879,8 @@ A reader rejects a file on any of these:
 
 On rejection:
 
-- **A record:** every manifest that references it is treated as stale and
-  re-queued, and the file is deleted.
+- **A record or a system chunk:** every manifest that references it is
+  treated as stale and re-queued, and the file is deleted.
 - **A manifest:** deleted and re-queued.
 
 Corruption is logged once per file (`window/logMessage`, level Log).
@@ -875,8 +897,10 @@ not the heap.
 ### 6.4 Eviction and the size cap
 
 - **Within a project:**
-  - mark the records referenced by live manifests;
-  - sweep the rest, except files modified in the last 10 minutes.
+  - mark the records and system chunks (`SYSC` digests) referenced by live
+    manifests;
+  - sweep the rest of `rec/` and `sys/`, except files modified in the last
+    10 minutes.
   - The grace period protects a job (in-process or subprocess) that has
     written its records but not yet its manifest.
   - This runs once after the startup scan and then every 100 manifest
@@ -928,7 +952,8 @@ A TU manifest is fresh when all of these hold:
 - its build id and format version match;
 - its flag hash equals the flag hash recomputed from the current compile
   DB entry and `.cereal` layers (7.4);
-- every `FILS` entry is unchanged (7.2);
+- every `FILS` entry and every entry of its system chunks is unchanged
+  (7.2); a chunk it names that cannot be read makes it stale;
 - no `MISS` entry now resolves (7.2).
 
 Otherwise the TU is stale and re-queued.
@@ -939,7 +964,11 @@ through E4 where possible, until the new manifest replaces them.
 ### 7.2 Checking files without rebuilding (E6)
 
 **Per-path state.** The scheduler keeps one current state per distinct
-path in all `FILS` entries: `{size, mtime_ns, hash}`.
+path in all `FILS` entries and chunk entries: `{size, mtime_ns, hash}`. The
+loader expands a manifest's chunks into the same structure as its `FILS`
+entries, so everything below applies to both. A chunk entry is racy for a
+manifest when its `mtime_ns` is within 2 s of that manifest's `started_ns`
+(chunks have no job time because they are shared).
 
 - The startup sweep seeds it. A path whose stat data equals a
   manifest's `FILS` stat data, and is not racy (below), takes that
@@ -949,7 +978,9 @@ path in all `FILS` entries: `{size, mtime_ns, hash}`.
   1. `stat`. If size and `mtime_ns` equal the state's, the path is
      unchanged and is not read.
   2. Otherwise read and hash it, and store the new stat data and hash.
-- A deleted file gets hash 0, which never matches.
+- A deleted file gets hash 0, which never matches a real file's hash. An
+  absent entry (a `.cereal` that did not exist) records hash 0, so it
+  matches until the file appears.
 
 **Staleness.** A manifest is stale when any `FILS` hash differs from its
 path's current hash.
@@ -1699,7 +1730,8 @@ variable the test runner fills in. It contains:
 `cereal index-summary --dump`:
 
 - prints the manifest and records as stable text: sorted, offsets as
-  line:col and byte, keys spelled out;
+  line:col and byte, keys spelled out; the system files of the chunks are
+  merged back into the file list in path order, so chunking does not show;
 - has goldens under `tests/index/*.expected`, using the existing
   `tests/query` style of runner.
 
@@ -1729,7 +1761,8 @@ The goldens cover:
 ### 14.4 Corruption
 
 A test tool truncates, bit-flips, and changes the version or build id of
-cache files between sessions. It asserts that the server re-indexes those
+cache files between sessions (records, manifests and system chunks; a
+deleted chunk is included). It asserts that the server re-indexes those
 TUs, logs once, and never crashes.
 
 ### 14.5 TSan
@@ -1834,8 +1867,11 @@ bound.
   - The globals gate lists 31 symbols, each justified in
     `bench/tools/globals.allow`; it runs as stage `0globals` of `gate.sh`.
 
-**B5b: the store and the scheduler.** 2,200-4,800 lines.
+**B5b: the store and the scheduler.** 2,200-4,800 lines (system chunks, 5.5
+spike: about 100 more, with their tests).
 
+- System chunks (5.1, 5.2, 6.2-6.4, 7.1-7.2), and the missing `.cereal`
+  files in `FILS`.
 - The store: location, writes, GC, eviction and the lock (6).
 - Invalidation and sweeps (7), with compile DB reload.
 - The index pool with nice and `on_done`, the scheduler, cancellation,
@@ -1907,6 +1943,13 @@ slice whose size is fairly certain.
 9. **A compile DB reload while units are open** changes their flags
    mid-session. Reference counting (7.4) keeps old options alive; units
    pick up the new config at their next build.
+
+10. **One damaged or deleted system chunk re-indexes a whole project.** The
+    libc chunk is shared by nearly every TU (about 10 s per 1,000 TUs on the
+    generated project). Rare and recoverable, as for a widely shared header
+    record. Chunks are per project (under the project directory), so the
+    whole-project eviction of 6.4 stays correct; sharing across projects would
+    need reference counting and is parked.
 
 ## 17. Open questions (with recommendations)
 

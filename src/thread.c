@@ -1,8 +1,10 @@
 /* thread.c - threads, locks and a job pool. */
+#define _DEFAULT_SOURCE 1       /* setpriority, syscall */
 #include "thread.h"
 
 #include <string.h>
-
+#include <sys/resource.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 void mutex_init(Mutex *m)
@@ -22,6 +24,31 @@ void mutex_unlock(Mutex *m)
 {
     fatal_locks_held--;
     pthread_mutex_unlock(m);
+}
+
+void rwlock_init(RwLock *l)
+{
+    if (pthread_rwlock_init(l, NULL) != 0)
+        fatal("pthread_rwlock_init failed");
+}
+
+void rwlock_destroy(RwLock *l) { pthread_rwlock_destroy(l); }
+void rwlock_rdlock(RwLock *l)
+{
+    pthread_rwlock_rdlock(l);
+    fatal_locks_held++;
+}
+
+void rwlock_wrlock(RwLock *l)
+{
+    pthread_rwlock_wrlock(l);
+    fatal_locks_held++;
+}
+
+void rwlock_unlock(RwLock *l)
+{
+    fatal_locks_held--;
+    pthread_rwlock_unlock(l);
 }
 
 void cond_init(Cond *c)
@@ -94,10 +121,30 @@ static bool take_job(ThreadPool *p, Job *out)
     return false;
 }
 
+/* Marks a job of g ended (failed: with tr's message), then runs the group's
+ * on_done if it was the last. */
+static void job_ended(JobGroup *g, bool failed, const FatalTrap *tr)
+{
+    void (*done)(void *) = NULL;
+    void *done_ctx = NULL;
+    mutex_lock(&g->m);
+    if (failed && !g->failed) {
+        g->failed = true;
+        memcpy(g->msg, tr->msg, sizeof g->msg);
+    }
+    if (--g->pending == 0) {
+        cond_broadcast(&g->done);
+        done = g->on_done;
+        done_ctx = g->on_done_ctx;
+    }
+    mutex_unlock(&g->m);
+    if (done)
+        done(done_ctx);
+}
+
 /* Runs a job and marks it done; see ThreadPool.trap_fatal. */
 static void run_job(ThreadPool *p, Job *j)
 {
-    JobGroup *g = j->group;
     FatalTrap tr;
     bool failed = false;
     if (!p->trap_fatal) {
@@ -111,19 +158,14 @@ static void run_job(ThreadPool *p, Job *j)
             failed = true;
         }
     }
-    mutex_lock(&g->m);
-    if (failed && !g->failed) {
-        g->failed = true;
-        memcpy(g->msg, tr.msg, sizeof g->msg);
-    }
-    if (--g->pending == 0)
-        cond_broadcast(&g->done);
-    mutex_unlock(&g->m);
+    job_ended(j->group, failed, &tr);
 }
 
 static void *worker_main(void *arg)
 {
     ThreadPool *p = arg;
+    if (p->nice)
+        (void)setpriority(PRIO_PROCESS, (id_t)syscall(SYS_gettid), p->nice);
     for (;;) {
         Job j;
         mutex_lock(&p->m);
@@ -138,10 +180,11 @@ static void *worker_main(void *arg)
     }
 }
 
-void pool_init(ThreadPool *p, int nthreads)
+void pool_init(ThreadPool *p, int nthreads, int nice)
 {
     int i;
     memset(p, 0, sizeof *p);
+    p->nice = nice;
     if (nthreads <= 0)
         nthreads = cpu_count();
     mutex_init(&p->m);
@@ -177,6 +220,8 @@ void group_init(JobGroup *g)
     g->pending = 0;
     g->failed = false;
     g->msg[0] = 0;
+    g->on_done = NULL;
+    g->on_done_ctx = NULL;
 }
 
 void group_free(JobGroup *g)

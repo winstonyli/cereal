@@ -112,10 +112,10 @@ static void add_cereal_files(Arena *a, StrVec *v, const char *root,
                                                           ? dirs.data[i] : "");
         size_t len;
         char *text = slurp(cf, &len), *line, *save = NULL;
+        if (files)                       /* an absent one too: creating it matters */
+            vec_push(files, cf);
         if (!text)
             continue;
-        if (files)
-            vec_push(files, cf);
         for (line = strtok_r(text, "\n", &save); line;
              line = strtok_r(NULL, "\n", &save)) {
             const char **args;
@@ -132,10 +132,9 @@ static void add_cereal_files(Arena *a, StrVec *v, const char *root,
     vec_free(&dirs);
 }
 
-void config_options_in(LspConfig *c, const char *path, Arena *a, Options *o,
-                       StrVec *files)
+static void options_with(LspConfig *c, const char *path, const CompileEntry *cmd,
+                         Arena *a, Options *o, StrVec *files)
 {
-    const CompileEntry *cmd = command_for(c, path);
     CompileEntry none;
     StrVec flags = {0};
     memset(&none, 0, sizeof none);
@@ -150,6 +149,18 @@ void config_options_in(LspConfig *c, const char *path, Arena *a, Options *o,
             vec_push(files, o->rsp_files.data[k]);
     }
     vec_free(&flags);
+}
+
+void config_options_in(LspConfig *c, const char *path, Arena *a, Options *o,
+                       StrVec *files)
+{
+    options_with(c, path, command_for(c, path), a, o, files);
+}
+
+void config_options_entry(LspConfig *c, size_t entry, Arena *a, Options *o,
+                          StrVec *files)
+{
+    options_with(c, c->cmds.data[entry].abs_file, &c->cmds.data[entry], a, o, files);
 }
 
 Options *config_options_for(LspConfig *c, const char *path)

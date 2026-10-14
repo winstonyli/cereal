@@ -1147,7 +1147,7 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
     } else {
         ThreadPool *tp = po->pool;
         if (!tp) {
-            pool_init(&pool, P.nw > 1 ? P.nw : cpu_count()); /* counts this
+            pool_init(&pool, P.nw > 1 ? P.nw : cpu_count(), 0); /* counts this
                                                                  thread */
             tp = &pool;
         }
