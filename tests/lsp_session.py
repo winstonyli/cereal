@@ -63,6 +63,7 @@ def main():
     steps = subst(json.load(open(SCEN)), "$ROOT", ROOT)
     err = os.environ.get("LSP_STDERR")  # e.g. to collect sanitizer reports
     env = dict(os.environ)
+    env.setdefault("CEREAL_INDEX_ENABLE", "0")   # the project index has its own tests (proj_test.py)
     for st in steps:
         env.update(st.get("env", {}))
     p = subprocess.Popen([BIN, "lsp"], cwd=ROOT, env=env, stdin=subprocess.PIPE,

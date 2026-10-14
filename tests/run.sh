@@ -837,5 +837,11 @@ icheck rec-ok "fresh src/a.c;fresh src/a.c;fresh src/b.c;"
 got=$(istale --records | grep -c 'lost ')
 if [ "$got" -ge 1 ]; then ok; else bad "index/stale damaged record not found lost"; fi
 rm -rf "$IP/cache"
+# 22c. the scheduler (B5_DESIGN 8, 9, 13): proj_test.py drives `cereal lsp` over a
+# generated project; one line per scenario.
+got=$(python3 -P tests/proj_test.py "$CEREAL" </dev/null 2>&1)
+for sc in restart invalidate cancel fault memory readers progress paths; do
+    case $got in *"ok $sc"*) ok;; *) bad "proj_test $sc: $(echo "$got" | grep "$sc" | head -1)";; esac
+done
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

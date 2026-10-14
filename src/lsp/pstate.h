@@ -64,6 +64,16 @@ typedef enum {
     PS_LOST                      /* a chunk or record of it is unreadable */
 } PStale;
 
+typedef struct PSched {          /* the scheduler's (project.c); pstate does not look */
+    int cls;                     /* priority class 0..2 (8.2) */
+    bool pending;                /* stale and not yet seen as such by the scheduler */
+    bool recent;                 /* became stale after the startup load: class 1 */
+    bool sticky_sub;             /* indexed in a child only from now on (8.5) */
+    bool running;                /* a job for it is in the pool */
+    uint8_t fails;               /* consecutive failures (8.6) */
+    uint64_t retry_ns;           /* after a failure: not before (monotonic); ~0: never */
+} PSched;
+
 typedef struct PTu {
     size_t entry;                /* its compile database entry */
     const char *main;            /* absolute */
@@ -75,7 +85,7 @@ typedef struct PTu {
     char **dirs;                 /* search path for MISS entries (lazily): the -iquote
                                   * dirs, then from first_angle the -I ones, then the system ones */
     uint32_t ndirs, first_angle;
-    void *sched;                 /* the scheduler's (project.c) */
+    PSched sched;
 } PTu;
 
 typedef VEC(PTu *) PTuVec;

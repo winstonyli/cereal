@@ -14,6 +14,7 @@
 #include "../mgraph.h"
 #include "../cell.h"
 #include "../par.h"
+#include "project.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -95,13 +96,46 @@ typedef struct Server {
     bool hint_refresh;        /* client: workspace.inlayHint.refreshSupport */
     unsigned refresh_n;       /* ids of the refresh requests sent */
     bool hold;                /* test only: cereal/holdChecks (B3_DESIGN.md 12.11) */
-    LspConfig cfg;
+    LspConfig *cfg;           /* atomic pointer: a reload swaps it (7.4) */
+    VEC(LspConfig *) retired; /* replaced ones: a build may still read them, so
+                               * they live until exit (S.m) */
     ThreadPool pool;
     long long gen;
     pthread_t builder;
 } Server;
 
 static Server S;
+
+static LspConfig *cfg_now(void)
+{
+    return atomic_load_ptr((void *const *)&S.cfg);
+}
+
+LspConfig *lsp_config(void)
+{
+    return cfg_now();
+}
+
+void lsp_config_swap(LspConfig *n)
+{
+    mutex_lock(&S.m);
+    vec_push(&S.retired, S.cfg);
+    mutex_unlock(&S.m);
+    atomic_store_ptr((void **)&S.cfg, n);
+}
+
+/* The builder has nothing queued or running (the index scheduler's gate). */
+bool lsp_builder_idle(void)
+{
+    size_t i;
+    bool idle;
+    mutex_lock(&S.m);
+    idle = !S.queue.len && !S.deferred.len;
+    for (i = 0; i < S.units.len && idle; i++)
+        idle = !S.units.data[i]->building;
+    mutex_unlock(&S.m);
+    return idle;
+}
 
 static Doc *doc_find(const char *path);
 static void deferred_run(DeferredReq *d);
@@ -329,7 +363,7 @@ typedef struct Check {
     CIndex *cidx;            /* until published to the snapshot */
 } Check;
 
-static size_t check_limit(void)
+size_t lsp_check_limit(void)
 {
     const char *e = getenv("CEREAL_LSP_CHECK_MAX");
     return e ? (size_t)strtoull(e, NULL, 10) : (size_t)CHECK_MAX_BYTES;
@@ -350,7 +384,7 @@ static void put_size(StrBuf *sb, size_t n)
 static bool check_eligible(const Unit *u, Snapshot *s)
 {
     uint32_t i, n = srcmgr_nfiles(&s->tu.sm);
-    size_t total = 0, limit = check_limit();
+    size_t total = 0, limit = lsp_check_limit();
     if (u->standalone_header) /* a header alone is not a translation unit */
         return false;
     for (i = 0; i < n; i++) {
@@ -413,7 +447,7 @@ static Check *check_run(Unit *u, Snapshot *s)
     bool ok;
     if (fault_hit("lsp-check"))
         fatal("injected fault (lsp-check)");
-    c->opt = config_options_for(&S.cfg, s->main);
+    c->opt = config_options_for(cfg_now(), s->main);
     c->opt->pp.fatal_missing_include = false; /* D2 */
     tu_init(&c->tu, c->opt);
     c->tu.sm.overlay = overlay_lookup;
@@ -435,9 +469,10 @@ static Check *check_run(Unit *u, Snapshot *s)
 
 static bool has_command(const char *path)
 {
+    const LspConfig *c = cfg_now();
     size_t i;
-    for (i = 0; i < S.cfg.cmds.len; i++)
-        if (!strcmp(S.cfg.cmds.data[i].file, path))
+    for (i = 0; i < c->cmds.len; i++)
+        if (!strcmp(c->cmds.data[i].file, path))
             return true;
     return false;
 }
@@ -614,7 +649,7 @@ static Snapshot *build_unit(Unit *u, Overlay *ov, bool *failed)
         *failed = true;
         return NULL;
     }
-    opt = config_options_for(&S.cfg, u->main);
+    opt = config_options_for(cfg_now(), u->main);
     snap = build(u->main, ov, opt, u->in, &u->cells, &u->cancel);
     fatal_trap_pop(&tr);
     if (!snap)
@@ -645,7 +680,7 @@ static void rename_run(void *ctx)
 {
     RenameJob *j = ctx;
     FatalTrap tr;
-    Options *opt = config_options_for(&S.cfg, j->snap->main);
+    Options *opt = config_options_for(cfg_now(), j->snap->main);
     opt->pp.fatal_missing_include = false; /* as the check's (D2) */
     j->q->o = opt;
     j->q->main = j->snap->main;
@@ -691,7 +726,7 @@ static void fixall_run(void *ctx)
 {
     FixAllJob *j = ctx;
     FatalTrap tr;
-    Options *opt = config_options_for(&S.cfg, j->snap->main);
+    Options *opt = config_options_for(cfg_now(), j->snap->main);
     opt->pp.fatal_missing_include = false;
     fatal_trap_push(&tr);
     if (setjmp(tr.jb)) {
@@ -1061,8 +1096,10 @@ static void initialize(const JsonValue *id, const JsonValue *params)
         root = uri_to_path(&a, root_uri);
     if (!root)
         root = json_str_of(json_get(params, "rootPath"), NULL);
-    config_init(&S.cfg, root, NULL);
+    S.cfg = xcalloc(1, sizeof *S.cfg);
+    config_init(S.cfg, root, NULL);
     arena_free(&a);
+    project_start(params, S.cfg);
 
     begin_response(&w, &sb, id);
     json_key(&w, "result");
@@ -1552,7 +1589,22 @@ static void did_open(const JsonValue *params)
         d->unit = unit_for(path);
         schedule(d->unit);
         mutex_unlock(&S.m);
+        project_doc(path, true);
     }
+    arena_free(&a);
+}
+
+static void did_save(const JsonValue *params)
+{
+    const char *uri = json_str_of(json_path(params, "textDocument.uri"), NULL);
+    Arena a;
+    char *path;
+    if (!uri)
+        return;
+    arena_init(&a);
+    path = uri_to_path(&a, uri);
+    if (path)
+        project_save(path);
     arena_free(&a);
 }
 
@@ -1577,6 +1629,7 @@ static void did_change(const JsonValue *params)
         schedule(d->unit);
     }
     mutex_unlock(&S.m);
+    project_edit();
     arena_free(&a);
 }
 
@@ -1601,8 +1654,10 @@ static void did_close(const JsonValue *params)
             break;
         }
     mutex_unlock(&S.m);
-    if (path)
+    if (path) {
+        project_doc(path, false);
         lsp_forget_tokens(path);
+    }
     if (uri) { /* clear its diagnostics */
         StrBuf sb = {0};
         JsonWriter w;
@@ -1666,7 +1721,10 @@ int lsp_main(FILE *in, FILE *out)
         method = json_str_of(json_get(msg, "method"), NULL);
         id = json_get(msg, "id");
         params = json_get(msg, "params");
-        if (!method) { /* a response to something we never send */
+        if (!method) { /* a response: to the project's progress request, or
+                        * to a refresh, which needs nothing */
+            if (id)
+                (void)project_response(id);
             free(body);
             arena_free(&a);
             continue;
@@ -1685,6 +1743,10 @@ int lsp_main(FILE *in, FILE *out)
         } else if (!strcmp(method, "shutdown")) {
             S.shutdown = true;
             respond_null(id);
+        } else if (!strcmp(method, "initialized")) {
+            project_go();
+        } else if (!strcmp(method, "textDocument/didSave")) {
+            did_save(params);
         } else if (!strcmp(method, "textDocument/didOpen")) {
             did_open(params);
         } else if (!strcmp(method, "textDocument/didChange")) {
@@ -1705,6 +1767,22 @@ int lsp_main(FILE *in, FILE *out)
                     cond_wait(&S.done, &S.m);
             } while (busy && !S.stop);
             mutex_unlock(&S.m);
+            respond_null(id);
+        } else if (!strcmp(method, "cereal/indexStats") && id) {
+            /* test only: the project index's counters */
+            StrBuf sb = {0};
+            JsonWriter w;
+            begin_response(&w, &sb, id);
+            json_key(&w, "result");
+            project_stats(&w);
+            json_end_object(&w);
+            send_json(&sb);
+            sb_free(&sb);
+        } else if (!strcmp(method, "cereal/indexWait") && id) {
+            project_wait();     /* test only: a barrier for the scheduler */
+            respond_null(id);
+        } else if (!strcmp(method, "cereal/indexHold") && id) {
+            project_hold(json_bool_of(json_get(params, "hold"), false));
             respond_null(id);
         } else if (!strcmp(method, "cereal/holdChecks") && id) {
             /* test only: while held, a check waits at its start (an edit,
@@ -1751,6 +1829,7 @@ int lsp_main(FILE *in, FILE *out)
     cond_broadcast(&S.done);
     mutex_unlock(&S.m);
     pthread_join(S.builder, NULL);
+    project_stop();             /* before the units: it reads no unit, but ends first (4.4) */
     {
         size_t i;
         for (i = 0; i < S.units.len; i++) {
@@ -1770,8 +1849,16 @@ int lsp_main(FILE *in, FILE *out)
         vec_free(&S.queue);
     }
     lsp_forget_tokens(NULL);
-    if (S.initialized)
-        config_free(&S.cfg);
+    if (S.cfg) {
+        size_t i;
+        for (i = 0; i < S.retired.len; i++) {
+            config_free(S.retired.data[i]);
+            free(S.retired.data[i]);
+        }
+        vec_free(&S.retired);
+        config_free(S.cfg);
+        free(S.cfg);
+    }
     pool_free(&S.pool);
     return rc;
 }

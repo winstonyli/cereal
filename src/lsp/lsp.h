@@ -146,6 +146,13 @@ char *lsp_check_rename(Snapshot *snap, struct CRename *q);
 
 int lsp_main(FILE *in, FILE *out);
 
+/* For the project index (project.c); server.c. */
+size_t lsp_check_limit(void);        /* the in-process check byte limit */
+LspConfig *lsp_config(void);         /* the current one (a reload replaces it) */
+void lsp_config_swap(LspConfig *n);  /* n (heap) becomes current; the old one is
+                                      * kept until exit: builds may read it */
+bool lsp_builder_idle(void);         /* no build queued or running */
+
 /* `cereal index-summary ARGS` (indexsum.c): argv without the mode word. */
 int indexsum_main(int argc, char **argv);
 

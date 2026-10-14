@@ -34,7 +34,9 @@ URI = "file://" + FILE
 text = open(FILE).read()
 lines = text.split("\n")
 
-p = subprocess.Popen([BIN, "lsp"], cwd=ROOT, stdin=subprocess.PIPE,
+ENV = dict(os.environ)
+ENV.setdefault("CEREAL_INDEX_ENABLE", "0")    # CEREAL_INDEX_ENABLE=1 to stress with indexing
+p = subprocess.Popen([BIN, "lsp"], cwd=ROOT, env=ENV, stdin=subprocess.PIPE,
                      stdout=subprocess.PIPE)
 inbox = queue.Queue()
 

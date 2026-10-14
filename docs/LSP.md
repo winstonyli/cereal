@@ -503,6 +503,41 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
   index has a wait policy (a column of the request table in server.c; D1
   above).
 
+## Project index (B5b; docs/B5_DESIGN.md)
+
+With a compile database, the server keeps a persistent index of every C entry
+in the background (`src/lsp/project.c`). One scheduler thread owns the state;
+the protocol thread only posts events (didOpen/didClose, didSave, didChange
+as "an edit happened", responses to its progress request). Jobs run on an
+ipool at nice 10: `index_unit` in a pool thread, or `cereal index-summary
+--entry N` as a child process for units that blew a budget or crashed a
+thread. Both write the store (`<cache>/index/<projid>/`); the scheduler
+publishes a result by reloading the unit's manifest and bumping `GEN`.
+
+- Order: units whose main file or a listed file is an open document, then
+  units that became stale since startup (newest first), then the rest in
+  compile database order.
+- Edits come first: a didChange cancels in-process jobs (they stay
+  pending); no job starts until `quietMs` after the last edit and the
+  builder is idle.
+- Failures: a unit that fails backs off 60 s, 600 s, then until a file
+  changes. Failures are logged (`window/logMessage`), never shown as
+  diagnostics.
+- Several servers on one project: one wins the lock and writes; the others
+  read, following `GEN` once a second, and take over if the writer exits.
+- Progress: with `window.workDoneProgress`, a "Indexing" progress
+  (`n/N TUs`, at most 2 reports a second); otherwise two log messages.
+- Settings (`initializationOptions.index`, or env `CEREAL_INDEX_<KEY>`):
+  `enable` (default: a compile database was found), `threads` (min(cores/4,
+  4), at least 1), `memoryMB` 1536 (above it, units go to a child),
+  `maxInProcessKB`, `maxFileMB` 64, `cacheDir` ("" = memory only; default
+  under the user cache dir), `cacheMaxMB` 2048, `sweepSeconds` 30,
+  `quietMs` 500, `subprocessSeconds` 120, `paths` (fnmatch globs on the
+  root-relative path, `!` excludes).
+- Test-only requests: `cereal/indexStats`, `cereal/indexWait` (a barrier),
+  `cereal/indexHold`. `tests/proj_test.py` drives them; the other LSP tests
+  run with `CEREAL_INDEX_ENABLE=0`.
+
 ## Tests
 
 `tests/lsp_session.py` runs scripted sessions (`tests/lsp/*.json`) and

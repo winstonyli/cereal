@@ -2,7 +2,9 @@
 
 Status: design, 2026-10-12. B5a done 2026-10-13 (record and manifest
 format, writer, validating reader, `cereal index-summary`, D5 prerequisites,
-goldens, sizes in 5.5); B5b onward not started. ROADMAP B5 points here.
+goldens, sizes in 5.5); B5b-1 (store, invalidation) and B5b-2 (scheduler,
+subprocess, progress, settings) done 2026-10-14; B5b-3 (ProjIndex,
+workspace/symbol) onward not started. ROADMAP B5 points here.
 
 Scope (ROADMAP B5): a background index of every C entry in
 `compile_commands.json`, persisted on disk, answering:
@@ -660,8 +662,9 @@ without looking up the anchor.
     system-header table per `-D`/flag hash, with the manifest holding its
     digest). That is a different design change and is not estimated here.
 - **System-header sharing spike** (Round 224, 2026-10-13; throwaway
-  prototype in a copy of the WSL tree, nothing merged; the estimate above
-  is superseded for the cache layout, see the recommendation).
+  prototype in a copy of the WSL tree; the estimate above is superseded for
+  the cache layout by the recommendation, which B5b-1 implemented as
+  chunked system headers).
   - **Method.** The estimates parse the real manifests of the four caches
     (the generated project and three corpora) and model each layout's file
     sizes with the 5.2 rules (header, section directory, 8-byte alignment).
@@ -1866,6 +1869,80 @@ bound.
     are not.
   - The globals gate lists 31 symbols, each justified in
     `bench/tools/globals.allow`; it runs as stage `0globals` of `gate.sh`.
+
+**B5b-1 and B5b-2 done 2026-10-14** (about 2,970 and 1,900 lines;
+`cidxstore`, `pstate`, `indexjob`, `project`). Deviations from sections 5-13,
+for B5b-3 and later:
+
+- Store and invalidation (B5b-1):
+  - The per-project size cap (6.4) is deferred: only `cacheMaxMB` eviction.
+  - Files with a BOM are always re-hashed at startup (the racy-stat rule
+    cannot cover them).
+  - A retry of an OVER_LIMIT unit is keyed to a listed or overflow file.
+  - The child gets `--cache` and recomputes the project directory with
+    `store_project_dir`.
+  - `include_miss` is a new preprocessor listener hook (a `__has_include`
+    miss is a dependency too); `pp_find_include` wraps the static finder.
+  - `index-crec` is the only fault site (no `index-job`): the scheduler
+    strips `CEREAL_FAULT` from a child's environment and passes
+    `CEREAL_FAULT_CHILD` as the child's `CEREAL_FAULT`.
+- Measured (B5b-2, WSL, 300-TU generated project, 100 edits 0.5 s apart on
+  one open file, `quietMs` 100 so jobs overlap the edits, 3 runs each):
+  builder edit-to-refresh p50 29.1/31.1/30.8 ms with indexing off and
+  29.1/30.9/30.9 ms on (0%; p90 34-40 vs 35-38 ms). The 10% stop rule did not
+  fire. Not measured: a heavier single-file project, indexing on all cores.
+- TSan (B5b-2): all 29 LSP sessions, plain and `-fparallel`, with
+  `CEREAL_INDEX_ENABLE=1`: 58 runs, 0 reports; `lsp_stress.py --symbols
+  --calls --hints` 200 edits (236 sent) on a 40-TU project with the file in
+  its compile database and indexing active: 0 reports; `proj_test.py`: 0
+  reports. The first run found one race (the scheduler read `P.stop` unlocked
+  at startup); fixed.
+- Scheduler (B5b-2):
+  1. Retired `LspConfig`s are kept until exit; `S.cfg` is an atomically
+     swapped pointer (`cfg_now()`), so a compile DB reload never frees a
+     config a build still reads.
+  2. Memory-only mode (`cacheDir` ""): a private `mkdtemp` cache root.
+  3. The subprocess is an ipool job: `posix_spawn`, a poll loop with the
+     `subprocessSeconds` deadline, `waitpid`. No completion thread.
+  4. A reader polls `GEN` once a second from the scheduler thread, and
+     retries `store_lock` every 30 s (taking over as writer and running GC).
+  5. Failure state (`fails`, `retry_ns`) is in memory only. Backoff 60 s,
+     600 s, then never; any content change (a sweep or save that changed a
+     hash) resets all of it. This is coarser than 7.1's per-file idea,
+     because a failed unit has no file list.
+  6. `index-summary` gained `--entry N` and `--budget-mb M`. The child
+     sets nice 10, `max_bytes`, and `RLIMIT_AS`. The limit is 4 GiB + 257 MiB
+     + 4 x budget, not 4 x budget: every `SrcMgr` reserves 4 GiB + 1 MiB of
+     address space, so a smaller limit cannot start (found by the first
+     `memory` run). Skipped under sanitizers.
+  7. An over-limit unit gets a stub OVER_LIMIT manifest (final), except in
+     process: the in-process job runs with `retry_over` (no stub is written),
+     so a crash cannot leave a false final stub; the unit is rerouted to a
+     child with the hard cap (`maxFileMB`).
+  8. Query-time mapping of project candidates (B5b-3) verifies the file
+     hash and drops on mismatch; for open documents it maps through
+     `cindex_text_edit`/`cindex_edit_map`.
+  9. For ext-linkage keys a DECL candidate is dropped when a DEF with the
+     same name and kind exists.
+  10. Tests are a Python driver, `tests/proj_test.py`, which generates its
+      fixture with `bench/tools/genproj.py` (12 units) instead of a static
+      `tests/lsp/proj/`, and uses test-only requests `cereal/indexStats`,
+      `cereal/indexWait` (a barrier) and `cereal/indexHold`. Existing LSP
+      tests run with `CEREAL_INDEX_ENABLE=0`. B5b-3 may add a static
+      fixture for `proj_wsym`.
+  11. `cacheMaxMB` is parsed as a double.
+  12. `paths` is a list of fnmatch globs (flags 0) on the root-relative
+      path; a leading `!` excludes. Env form: comma separated.
+  13. Selection is a linear min-scan over the units (key: class, recency,
+      entry), not a heap: the set is a few thousand and the scan runs only
+      when a slot is free. `PTu` embeds a `PSched` (class, pending, recent,
+      sticky_sub, fails, retry_ns) instead of `void *sched`.
+  14. The one job path (`index_unit`) serves both executors; a trapped
+      fatal in a pool thread (`trap_fatal`) sets `sticky_sub` for the unit
+      and the unit reruns in a child. A flag change through `.cereal` (the
+      job's tukey differs from the unit's) triggers one `pstate_set_config`.
+  15. Settings are read from `initializationOptions.index` and overridden by
+      `CEREAL_INDEX_<KEY>` (13.2).
 
 **B5b: the store and the scheduler.** 2,200-4,800 lines (system chunks, 5.5
 spike: about 100 more, with their tests).

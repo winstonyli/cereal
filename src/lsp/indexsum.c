@@ -43,9 +43,9 @@ static void limit_self(unsigned mb)
     (void)setpriority(PRIO_PROCESS, 0, 10);
 #if !defined(__SANITIZE_ADDRESS__) && !defined(__SANITIZE_THREAD__)
     {                           /* sanitizers reserve terabytes of address space */
-        struct rlimit rl;
-        unsigned long long as = 4ull * mb + 256;
-        rl.rlim_cur = rl.rlim_max = (rlim_t)(as < 2048 ? as : 2048) << 20;
+        struct rlimit rl;          /* every SrcMgr reserves 4 GiB + 1 MiB of address space */
+        unsigned long long as = (4096ull + 1 + 256 + 4ull * mb) << 20;
+        rl.rlim_cur = rl.rlim_max = (rlim_t)as;
         (void)setrlimit(RLIMIT_AS, &rl);
     }
 #endif
@@ -151,7 +151,6 @@ int indexsum_main(int argc, char **argv)
         LspConfig cfg;
         IdxJob job;
         IdxOut out;
-        static const char *const names[] = {"?", "OK", "PARTIAL", "OVER_LIMIT", "FAILED"};
         char *dir = NULL;
         uint32_t cancel = 0;
         int rc = 0;
@@ -177,7 +176,8 @@ int indexsum_main(int argc, char **argv)
         index_unit(&job, &out);
         if (out.result == IDX_DONE) {
             if (cache)
-                printf("ok %016llx %s\n", (unsigned long long)out.tukey, names[out.tu_status]);
+                printf("ok %016llx %s\n", (unsigned long long)out.tukey,
+                       idx_status_name(out.tu_status));
         } else {
             printf("error %s\n", out.result == IDX_CANCELLED ? "cancelled" : out.msg);
             rc = 1;

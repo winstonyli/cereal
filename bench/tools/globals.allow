@@ -34,3 +34,4 @@ lsp/rpc out_fp  server (protocol output)
 lsp/rpc out_m  server (its lock)
 lsp/server S  the server
 lsp/server on  server (once flag)
+lsp/project P  the project index scheduler (one per server; the scheduler thread owns it, the mailbox fields are under P.m)

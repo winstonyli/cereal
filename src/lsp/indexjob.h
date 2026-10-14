@@ -17,6 +17,8 @@ typedef struct IdxJob {
     uint64_t build_id;
     size_t max_bytes;        /* byte budget for the files read (0: none) */
     uint32_t *cancel;        /* raised to cancel; also by the budget */
+    bool retry_over;         /* a unit over max_bytes is the caller's to run
+                              * again with more: its stub manifest is not written */
 } IdxJob;
 
 typedef enum { IDX_DONE, IDX_CANCELLED, IDX_ERROR } IdxResult;
@@ -30,5 +32,9 @@ typedef struct IdxOut {
 
 /* Runs the job; may call fatal() (the pool traps it, a child exits). */
 void index_unit(const IdxJob *j, IdxOut *out);
+
+/* A manifest status (CTU_*) as the child prints it and back; 0: unknown. */
+const char *idx_status_name(int status);
+int idx_status_parse(const char *name);
 
 #endif

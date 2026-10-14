@@ -4592,3 +4592,23 @@ to 14.9 MB in blocks, +42 files, dump output unchanged, records and chunks
 byte-identical across fresh caches, a changed or touched system header seen by
 a stat check. Hash-less system entries save 0.9 MB unshared and nothing shared;
 rejected. Numbers and the proposed 5.2/6/7 edits in B5_DESIGN 5.5; not adopted.
+
+Round 225: B5b-1 and B5b-2, the project index store and scheduler
+(B5_DESIGN.md sections 6-9, 13). B5b-1: format 2 with chunked system headers,
+the store (flock writer, GEN, GC, eviction, memory-only root), `PState`
+(staleness NEW/FILE/MISS/LOST, racy-stat rule), the single job function
+`index_unit`, `index-summary --stale/--entry/--budget-mb/--check`. B5b-2
+(`src/lsp/project.[ch]`): one scheduler thread owns the state and takes events
+from a mailbox; jobs run on an ipool in process or as a child
+(`index-summary --entry`, posix_spawn, deadline, SIGKILL); order by open
+document, then recently stale, then compile database order; edits cancel jobs
+and hold new ones for `quietMs`; failure backoff in memory; GEN-polling
+readers with lock takeover; compile DB reload with retired configs kept;
+workDoneProgress; settings from `initializationOptions.index` and
+`CEREAL_INDEX_*`. Test-only requests `cereal/indexStats|indexWait|indexHold`;
+`tests/proj_test.py` (8 scenarios, run.sh 22c). The child's `RLIMIT_AS` had to
+include the 4 GiB `SrcMgr` reservation. Deviations in B5_DESIGN 15.
+Gates: run.sh 2137 passed; gate.sh: san 2137 passed, 628 files, 0 findings;
+verify unchanged; callgrind 3.8857 G (3.8797 G); globals 32 allowed (+1
+`lsp/project P`); symcov unchanged (4718 files, 1,146,276 events); clangd_diff 7
+files, 2264 differences, 0 unexpected. TSan and builder latency: B5_DESIGN 15.

@@ -5,6 +5,23 @@
 
 #include "c/cidxrec.h"
 
+static const char *const STATUS[] = {"?", "OK", "PARTIAL", "OVER_LIMIT", "FAILED"};
+
+const char *idx_status_name(int status)
+{
+    return status > 0 && status < (int)(sizeof STATUS / sizeof *STATUS) ? STATUS[status]
+                                                                        : STATUS[0];
+}
+
+int idx_status_parse(const char *name)
+{
+    size_t i;
+    for (i = 1; i < sizeof STATUS / sizeof *STATUS; i++)
+        if (!strcmp(name, STATUS[i]))
+            return (int)i;
+    return 0;
+}
+
 void index_unit(const IdxJob *j, IdxOut *out)
 {
     Options o;
@@ -30,7 +47,8 @@ void index_unit(const IdxJob *j, IdxOut *out)
         out->tu_status = set.status;
         if (j->dump)
             crec_dump(&set, j->cfg->root, j->dump);
-        if (j->dir && !crec_write(j->dir, &set, out->msg, sizeof out->msg))
+        if (j->dir && !(j->retry_over && set.status == CTU_OVER_LIMIT) &&
+            !crec_write(j->dir, &set, out->msg, sizeof out->msg))
             out->result = IDX_ERROR;
         crec_free(&set);
     }
