@@ -147,14 +147,20 @@ def main():
             v = [x[0] for x in per[q]]
             print("  %-16s %3d results  p50 %6.1f ms  max %6.1f ms" %
                   (q, per[q][0][1], pct(v, 0.5), max(v)))
+        p95 = pct(allv, 0.95)
         print("all %d queries: p50 %.1f ms, p95 %.1f ms, max %.1f ms" %
-              (len(allv), pct(allv, 0.5), pct(allv, 0.95), max(allv)))
+              (len(allv), pct(allv, 0.5), p95, max(allv)))
+        limit = float(os.environ.get("WSYM_P95_MS", "100"))
+        verdict = p95 <= limit
+        print("%s: p95 %.1f ms against the %.0f ms limit (WSYM_P95_MS)" %
+              ("ok" if verdict else "FAIL", p95, limit))
     finally:
         s.stop()
         if keep:
             print("kept", work)
         else:
             shutil.rmtree(work, ignore_errors=True)
+    return 0 if verdict else 1
 
 
-main()
+sys.exit(main())

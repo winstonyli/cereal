@@ -66,6 +66,7 @@ bench/tools/mkccdb.sh OUT DIR [FLAGS] -- FILES   # a compile_commands.json witho
 bench/tools/ccdb.sh DB               # replay DB (check --compile-commands) vs gcc-13 per entry
 bench/tools/deps.sh [DIR]              # -M family vs gcc-13: the tests/deps cases, or -M/-MM/-MD per C file under DIR (DEPS_FLAGS)
 bench/tools/fixits.sh [DIR]            # fix-its vs gcc-13: the tests/check/fixit-*.c sources, or every C file under DIR (FIXIT_PATCH=1: patches too)
+python3 -P bench/tools/wsym_bench.py ./cereal CORPUS [N]   # workspace/symbol p95 on a ~1,800-TU project (needs bench/fetch_corpus.sh; exit 1 above WSYM_P95_MS, default 100); run when touching features.c, projidx.c or the store
 bench/tools/fixgate.sh [DIR]           # cereal fix on scratch copies: second run a no-op, no new diagnostics, gcc-13 still accepts, same .text (SAFE); tests, or a sample of DIR (FIXGATE_MAX, FIXGATE_FLAGS)
 ```
 
