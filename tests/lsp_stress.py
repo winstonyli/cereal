@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stress `cereal lsp` with edits, each followed at once by requests.
 
-usage: lsp_stress.py [--calls] [--hints] [--symbols] BIN FILE [EDITS] [SEED]
+usage: lsp_stress.py [--calls] [--hints] [--symbols] [--refs] BIN FILE [EDITS] [SEED]
 
 Opens FILE (its directory is the workspace), then EDITS times (default 200):
 inserts a line at a random line start (sometimes two edits back to back),
@@ -19,7 +19,9 @@ request was answered and the server exited cleanly.
          real calls, e.g. tests/lsp/ccalls/main.c or zstd.c).
 --hints  also sends textDocument/inlayHint over a random line range.
 --symbols also sends workspace/symbol with a random short query (it never
-         waits for a check, so it races the publishes)."""
+         waits for a check, so it races the publishes).
+--refs   also sends references, definition and declaration at a random
+         identifier (with indexing on, they read the project's records)."""
 import json, os, queue, random, re, subprocess, sys, threading
 
 FLAGS = {a for a in sys.argv[1:] if a.startswith("--")}
@@ -135,6 +137,17 @@ for i in range(N):
                      send("callHierarchy/incomingCalls", {"item": item}),
                      send("callHierarchy/outgoingCalls", {"item": item})]
             break
+    if "--refs" in FLAGS:
+        for m_ in ("textDocument/references", "textDocument/definition",
+                   "textDocument/declaration"):
+            ln = rnd.randrange(len(lines))
+            ms = list(re.finditer(r"[A-Za-z_]\w*", lines[ln]))
+            if ms:
+                m = rnd.choice(ms)
+                params = {"textDocument": td, "position": {"line": ln, "character": m.start()}}
+                if m_.endswith("references"):
+                    params["context"] = {"includeDeclaration": rnd.random() < 0.5}
+                reqs.append(send(m_, params))
     if "--hints" in FLAGS:
         a = rnd.randrange(len(lines))
         b = min(len(lines) - 1, a + rnd.randrange(60))

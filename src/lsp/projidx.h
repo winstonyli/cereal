@@ -22,6 +22,7 @@ typedef struct PiSym {           /* 24 bytes */
     uint8_t kind, flags;         /* CIK_*, PIF_* */
 } PiSym;
 
+struct PiKeyNode;
 typedef struct PiRec {
     void *next;                  /* PiMap's chain; must stay first */
     uint64_t digest;             /* the key; must stay second */
@@ -30,6 +31,7 @@ typedef struct PiRec {
     PiSym *syms;
     uint32_t nsyms, refs;        /* refs: the units that list it */
     size_t slot;                 /* in the dense list */
+    struct PiKeyNode *kn;        /* one per key of the record, in the key map */
     CRecMap map;
 } PiRec;
 
@@ -51,6 +53,15 @@ void pi_rdlock(ProjIndex *pi);
 void pi_unlock(ProjIndex *pi);
 size_t pi_nrecs(const ProjIndex *pi);            /* under the lock */
 const PiRec *pi_rec(const ProjIndex *pi, size_t i);
+
+/* The records that have key k (5.3, 10.1), under the lock: each with the index of
+ * k in the record's KEYS, so its DECL, REFS and CALL entries name it.  Sorted by
+ * (path, digest); *out is malloc'd. */
+typedef struct PiHit {
+    const PiRec *rec;
+    uint32_t ki;
+} PiHit;
+size_t pi_find(const ProjIndex *pi, const CIdxKey *k, PiHit **out);
 
 /* Heap bytes the index holds (its arrays, not the mappings), the names it
  * lists, and the records it has. */

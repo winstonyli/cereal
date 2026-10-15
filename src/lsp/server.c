@@ -1468,6 +1468,8 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
     r.enc = S.enc;
     r.arena = &a;
     r.params = params;
+    r.pi = project_index();
+    r.doc_text = ws_doc_text;
     r.file = index_find_file(&r.snap->ix, path);
 
     begin_response(&w, &sb, id);

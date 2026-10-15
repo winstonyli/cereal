@@ -15,6 +15,18 @@ intended difference of docs/B4_DESIGN.md 10.2 it matches (C1, C3, C5, H1-H4,
 H6, W1-W4; found by this script: C6, P1, see section 18), or UNEXPECTED.
 workspace/symbol (B4c) is asked the QUERIES below of each server, with one
 document open; a result is (name, kind, file, position of the name).
+Project mode (docs/B5_DESIGN.md 14.6; --project=NAME for one project, --no-project to skip):
+the units of PROJECTS (lua54, libuv's Linux units) get a compile_commands.json and both servers'
+project indexes are completed first (cereal/indexWait; clangd's background index, its answers
+the union of CLANGD_RUNS runs because one run's index is not deterministic).  Per file in
+PROJECTS: references (includeDeclaration) of every top-level name clangd lists, definition and
+declaration at up to 80 distinct calls.  Intended differences: P2 clangd lists the
+invocation of a macro whose body uses the name (lua_call for lua_callk), cereal none; P3 the
+place a definition or declaration request answers (clangd: the header declaration, or the
+declaration at a definition) when both answer; P4 cereal lists a use spelled in a macro
+argument that clangd omits; P5 the request is in an inactive preprocessor region (cereal has
+nothing there).  A miss is a clangd result in none of those classes (and, for definition and
+declaration, a clangd answer where cereal has none); the stop rule is 2% of clangd's results.
 Exit 1 on any unexpected difference or a failure to run.  Not in run.sh:
 clangd may be absent.
 No fixed sleeps: it waits for each server's index of the file by polling."""
@@ -35,9 +47,9 @@ EXTRA = {"wsdigits.c": "2 6 16 256 lua2 li2 i2s int2 2str 2s utf8 u8 ud u8d dec 
 
 
 class Srv:
-    def __init__(self, cmd, root):
+    def __init__(self, cmd, root, env=None):
         self.p = subprocess.Popen(cmd, cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL)
+                                  stderr=subprocess.DEVNULL, env=env)
         self.q, self.n, self.pending = queue.Queue(), 0, []
         threading.Thread(target=self.read, daemon=True).start()
 
@@ -317,6 +329,234 @@ def compare(rel, ours, theirs, text, headers=""):
     return out + compare_syms(rel, ours, theirs)
 
 
+# Project mode (docs/B5_DESIGN.md 14.6): references, definition and declaration over a
+# whole corpus project, each server with a compile_commands.json and its project index
+# complete (cereal: cereal/indexWait; clangd: its background index's progress ends and
+# the answer stops changing).  (root, flags, unit globs, files to ask about)
+UV_UNIX = "async core dl fs getaddrinfo getnameinfo linux loop-watcher loop pipe poll posix-hrtime " \
+          "posix-poll process procfs-exepath proctitle random-devurandom random-getrandom signal " \
+          "stream sysinfo-loadavg sysinfo-memory tcp thread tty udp".split()
+# clangd's background index of a project is not deterministic (whole units' references are
+# sometimes missing from a run, and stay missing for it), so its answers are the union of
+# CLANGD_RUNS runs, each indexing a fresh copy.
+CLANGD_RUNS = 3
+PROJECTS = [("lupa-2.8/third-party/lua54", ["-std=gnu11", "-I."], ["*.c"],
+             ["lapi.c", "lstring.c", "ltable.c", "lauxlib.c"]),
+            ("uvloop-0.22.1/vendor/libuv", ["-std=gnu11", "-D_GNU_SOURCE", "-Iinclude", "-Isrc", "-Isrc/unix"],
+             ["src/*.c"] + ["src/unix/%s.c" % n for n in UV_UNIX],
+             ["src/uv-common.c", "src/unix/stream.c", "src/unix/loop.c"])]
+CALLISH = re.compile(r"\b([A-Za-z_]\w*)\s*\(")
+NOT_CALLS = {"if", "while", "for", "switch", "return", "sizeof", "defined", "int", "char", "void",
+             "static", "unsigned", "long", "const", "struct"}
+
+
+def proj_units(root, globs):
+    import glob
+    return sorted(f for g in globs for f in glob.glob(os.path.join(root, g)))
+
+
+def proj_server(kind, cer, root):
+    if kind == "cereal":
+        env = dict(os.environ, CEREAL_INDEX_ENABLE="1", CEREAL_INDEX_CACHEDIR=os.path.join(root, ".cache-cereal"))
+        s = Srv([cer, "lsp"], root, env)
+    else:
+        s = Srv(["clangd", "--log=error", "--background-index", "-j=1"], root)
+    s.req("initialize", {"rootUri": "file://" + root, "capabilities": {
+        "window": {"workDoneProgress": True}, "textDocument": {"documentSymbol": {"hierarchicalDocumentSymbolSupport": False}}}})
+    s.note("initialized", {})
+    return s
+
+
+def proj_wait(kind, s, root, units, uri, text):
+    """Both servers' project indexes complete."""
+    if kind == "cereal":
+        s.req("cereal/indexWait", {})
+        return
+    s.note("textDocument/didOpen", {"textDocument": {"uri": uri, "languageId": "c", "version": 1, "text": text}})
+    s.get(lambda m: m.get("method") == "textDocument/publishDiagnostics" and m["params"]["uri"] == uri)
+    # clangd's progress ends in batches: wait until every unit has a shard in its index directory
+    idx = os.path.join(root, ".cache", "clangd", "index")
+    want = {os.path.basename(u) for u in units}
+    end, begun = time.time() + 900, set()
+    while time.time() < end:
+        while True:                                # the progress messages seen so far
+            try:
+                m = s.get(lambda m: m.get("method") == "$/progress", timeout=0.1)
+            except Exception:
+                break
+            v = m["params"]["value"]
+            if v.get("kind") == "begin":
+                begun.add(m["params"]["token"])
+            elif v.get("kind") == "end":
+                begun.discard(m["params"]["token"])
+        have = {f.rsplit(".", 2)[0] for f in (os.listdir(idx) if os.path.isdir(idx) else [])}
+        if want <= have and not begun:             # every shard written, the queue idle (the merged index rebuilt)
+            break
+    else:
+        raise RuntimeError("clangd's background index did not finish")
+    s.note("textDocument/didClose", {"textDocument": {"uri": uri}})
+
+
+def proj_collect(kind, cer, root, units, queries, syms):
+    """One server over the project; the answers for the open files in `queries`.  syms: the
+    (name, pos) list per file (from clangd's documentSymbol), None to take them from this server."""
+    s = proj_server(kind, cer, root)
+    mysyms = {}
+    try:
+        first = os.path.join(root, queries[0])
+        proj_wait(kind, s, root, units, "file://" + first, open(first).read())
+        prev, agree = None, 0
+        for _ in range(40):          # clangd: sweeps repeat until three agree (its merged index lags its shards)
+            res = proj_sweep(kind, s, root, queries, syms, mysyms)
+            agree = agree + 1 if res == prev else 0
+            if kind == "cereal" or agree >= 2:
+                break
+            prev, syms = res, syms or mysyms
+            time.sleep(1)
+        return res, mysyms
+    finally:
+        s.close()
+
+
+def proj_sweep(kind, s, root, queries, syms, mysyms):
+    res = {}
+    for rel in queries:
+        path = os.path.join(root, rel)
+        text, uri = open(path).read(), "file://" + path
+        lines = text.split("\n")
+        s.note("textDocument/didOpen", {"textDocument": {"uri": uri, "languageId": "c", "version": 1, "text": text}})
+        if kind == "cereal":
+            s.req("cereal/waitIdle", {})
+        else:
+            s.get(lambda m: m.get("method") == "textDocument/publishDiagnostics" and m["params"]["uri"] == uri)
+        if syms is None:
+            mysyms[rel] = top_symbols(s, uri, text)
+        todo = [("references", n, p) for n, p in (syms or mysyms)[rel]]
+        seen = set()
+        for i, ln in enumerate(lines):
+            for m in CALLISH.finditer(ln):
+                if m.group(1) not in NOT_CALLS and m.group(1) not in seen and len(seen) < 80 and \
+                        not ln.lstrip().startswith(("#", "/*", "*")):
+                    seen.add(m.group(1))
+                    todo += [("definition", m.group(1), (i, m.start(1))), ("declaration", m.group(1), (i, m.start(1)))]
+        for what, name, pos in todo:
+            par = {"textDocument": {"uri": uri}, "position": {"line": pos[0], "character": pos[1]}}
+            if what == "references":
+                par["context"] = {"includeDeclaration": True}
+            r = s.req("textDocument/" + what, par) or []
+            for _ in range(600 if kind == "clangd" else 0):   # until clangd's answer stops growing
+                r2 = s.req("textDocument/" + what, par) or []
+                if r2 == r:
+                    break
+                r = r2
+                time.sleep(0.05)
+            if isinstance(r, dict):
+                r = [r]
+            res[rel, what, name, pos] = {(x.get("uri") or x["targetUri"])[7:].replace(root, ".") + ":%d:%d" % lines_of(
+                x.get("range") or x["targetSelectionRange"]) for x in r}
+        s.note("textDocument/didClose", {"textDocument": {"uri": uri}})
+    return res
+
+
+def active_lines(root, flags, rel):
+    """0-based lines of the file that survive the preprocessor with the unit's flags (the
+    non-blank lines of `cc -E` after its line markers for the file)."""
+    txt = subprocess.run(["cc", "-E"] + flags + [rel], cwd=root, capture_output=True, text=True,
+                         stdin=subprocess.DEVNULL).stdout
+    res, cur, n = set(), False, 0
+    for ln in txt.split("\n"):
+        m = re.match(r'# (\d+) "([^"]*)"', ln)
+        if m:
+            cur, n = os.path.normpath(m.group(2)) == os.path.normpath(rel), int(m.group(1))
+        else:
+            if cur and ln.strip():
+                res.add(n - 1)
+            n += 1
+    return res
+
+
+def project_mode(cer, cdir, only):
+    """The cross-file differential.  Returns (lines, clangd results, unexplained misses)."""
+    out, total, miss = [], 0, 0
+    for rel, flags, globs, queries in PROJECTS:
+        if only and only not in rel:
+            continue
+        src = os.path.join(cdir, rel)
+        if not os.path.isdir(src):
+            continue
+        d = tempfile.mkdtemp(prefix="clangd_proj")
+        try:
+            roots = []
+            for i in range(CLANGD_RUNS):     # clangd indexes a fresh copy each time; see CLANGD_RUNS
+                roots.append(os.path.join(d, "p%d" % i))
+                shutil.copytree(src, roots[i], symlinks=True)
+                units = proj_units(roots[i], globs)
+                json.dump([{"directory": roots[i], "file": u, "arguments": ["cc"] + flags + ["-c", u]} for u in units],
+                          open(os.path.join(roots[i], "compile_commands.json"), "w"))
+            root, theirs, syms = roots[0], {}, None
+            for r in roots:
+                got, mine = proj_collect("clangd", cer, r, units, queries, syms)
+                syms = syms or mine
+                for k, v in got.items():
+                    theirs.setdefault(k, set()).update(v)
+            ours, _s = proj_collect("cereal", cer, root, units, queries, syms)
+            texts, macros = {}, set()
+            for dp, _d, fs in os.walk(root):
+                for fn in fs:
+                    if fn.endswith((".c", ".h")):
+                        macros |= set(re.findall(r"^\s*#\s*define\s+(\w+)", open(os.path.join(dp, fn), errors="replace").read(), re.M))
+
+            def line_at(loc):
+                p, ln, ch = loc.rsplit(":", 2)
+                p = os.path.join(root, p) if p.startswith("./") else p
+                if p not in texts:
+                    try:
+                        texts[p] = open(p).read().split("\n")
+                    except OSError:
+                        texts[p] = []
+                t = texts[p]
+                return (t[int(ln)], int(ch)) if int(ln) < len(t) else ("", 0)
+
+            def where(x):
+                return x.rsplit(":", 2)[0] + ":%d:%d" % tuple(int(v) + 1 for v in x.rsplit(":", 2)[1:])
+            active = {q: active_lines(root, flags, q) for q in queries}
+            for key in sorted(set(theirs) | set(ours)):
+                f, what, name, pos = key
+                a, b = {x for x in ours.get(key, set()) if not is_system(x)}, {x for x in theirs.get(key, set()) if not is_system(x)}
+                head = "%s %s %s@%d:%d:" % (f, what, name, pos[0] + 1, pos[1] + 1)
+                if pos[0] not in active[f]:
+                    # P5: the position is in an inactive preprocessor region: cereal analyses the
+                    # unit as compiled and has nothing there; clangd answers lexically.  Not counted.
+                    if a != b:
+                        out.append("%s clangd %d, cereal %d results in an inactive region [P5]" % (head, len(b), len(a)))
+                    continue
+                total += len(b)
+                if what != "references":
+                    # an answer is a miss only when cereal has none; a different place is P3
+                    # (clangd answers the declaration at a call and at the definition itself)
+                    if b and not a:
+                        miss += 1
+                        out.append("%s clangd %s, cereal none [UNEXPECTED]" % (head, sorted(map(where, b))))
+                    elif a != b:
+                        out.append("%s clangd %s, cereal %s [P3]" % (head, sorted(map(where, b)), sorted(map(where, a))))
+                    continue
+                for x in sorted(b - a):
+                    ln, ch = line_at(x)
+                    m = re.match(r"\w+", ln[ch:])
+                    cls = "P2" if m and m.group(0) in macros and m.group(0) != name else None
+                    miss += cls is None
+                    out.append("%s clangd only %s [%s]" % (head, where(x), cls or "UNEXPECTED"))
+                for x in sorted(a - b):
+                    ln, ch = line_at(x)
+                    cls = "P4" if any(re.search(r"\b%s\b" % re.escape(m), ln[:ch]) for m in macros) else None
+                    out.append("%s cereal only %s [%s]" % (head, where(x), cls or "UNEXPECTED"))
+        except Exception as e:
+            out.append("%s: FAILED %r [UNEXPECTED]" % (rel, e))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+    return out, total, miss
+
+
 def main():
     a = sys.argv[1:]
     pos = [x for x in a if not x.startswith("--")]
@@ -324,9 +564,10 @@ def main():
     if not shutil.which("clangd"):
         print("clangd not found")
         return 1
+    only_proj = any(x.startswith("--project=") for x in a)       # --project=NAME: that project only
     jobs = [(os.path.join(CORP, f), ["-I" + CORP, "-isystem", os.path.join(CORP, "sys")])
-            for f in sorted(os.listdir(CORP)) if f.endswith(".c")]
-    if "--no-real" not in a:
+            for f in sorted(os.listdir(CORP)) if f.endswith(".c") and not only_proj]
+    if "--no-real" not in a and not only_proj:
         cdir = os.environ.get("CEREAL_CORPUS", os.path.expanduser("~/corpus"))
         for f, root, incs, other in REAL:
             if os.path.exists(os.path.join(cdir, f)):
@@ -352,6 +593,14 @@ def main():
         total += len(diffs)
         bad += sum(1 for l in diffs if l.endswith("[UNEXPECTED]"))
         print("\n".join(diffs))
+    if "--no-project" not in a:
+        cdir = os.environ.get("CEREAL_CORPUS", os.path.expanduser("~/corpus"))
+        diffs, results, miss = project_mode(cer, cdir, next((x[10:] for x in a if x.startswith("--project=")), ""))
+        total += len(diffs)
+        bad += sum(1 for l in diffs if l.endswith("[UNEXPECTED]"))
+        print("\n".join(diffs))
+        print("clangd_diff project mode: %d clangd results, %d unexplained misses (%.2f%%; stop above 2%%)"
+              % (results, miss, 100.0 * miss / max(1, results)))
     print("clangd_diff: %d files, %d differences, %d unexpected" % (len(jobs), total, bad))
     return 1 if bad else 0
 

@@ -2154,7 +2154,10 @@ spike: about 100 more, with their tests).
   - or the builder's p50 latency regresses more than 10% while indexing
     runs.
 
-**B5c: references, calls and definition.** 1,000-2,500 lines.
+**B5c: references, calls and definition.** 1,000-2,500 lines. Done in Round
+229 (15.2); about 730 net new lines of `src` (`projq` 532, `features.c` 3,300
+to 3,383 after deleting the B5b copies, `projidx` about 100) and about 430 of
+tests and tools.
 
 - The position source and `TextCache` (10.4).
 - The mapping and union (10.3).
@@ -2236,6 +2239,113 @@ callgrind 3.8863 G (+0.04% against 3.8848 G, from the extra `include_miss`
 parameters in `pp.c`); globals 32 allowed (no change to `globals.allow`);
 symcov unchanged (4718 files, 1,146,276 events, unindexed 0); clangd_diff 7
 files, 1988 differences, 0 unexpected; TSan (58 session runs, 236-edit stress with indexing, all 16 proj_test scenarios): 0 reports.
+
+### 15.2 B5c: references, calls and definition (Round 229)
+
+**What was built.** One query module, `src/lsp/projq.[ch]`, and the features
+rewritten over it; no parallel code.
+
+- **Position source (10.4).** `PqFiles` is one position source for every
+  feature that places a result: per query, one `PqFile` per path with its text
+  and a lazily built `LineTable` (B5b's). A file's text comes from the open
+  unit's snapshot `SrcFile`, else the open document (`ws_doc_text`), else the
+  disk. `workspace/symbol`'s private `WsFiles` is gone: it uses `PqFiles` too.
+- **Mapping and union (10.3).** `pq_place` is B5b's query-time mapping (record
+  hash equal: direct; open document whose disk text hashes to the record:
+  `cindex_text_edit` plus `cindex_edit_map`; otherwise dropped, with a sweep
+  hint at `pq_free`). Results are `PqLoc`s (file, offset, length, source rank),
+  sorted by (path, offset, length, rank) and deduplicated, so a place the open
+  unit and a record both give is written once, the open unit's.
+- **Keys.** `pq_key` converts the open unit's decl with `cindex_key` and maps
+  the anchor of a non-external key to disk coordinates; an anchor inside the
+  damage has no project counterpart. `projidx` gained a key map (`pi_find`:
+  key to (record, key index) hits, under the read lock) maintained where
+  records are added and released, so a query is a hash lookup, not a scan.
+- **References (11.2).** The open unit's events plus the project's REFS (and
+  DECL and DEF with `includeDeclaration`) under the key. `documentHighlight`,
+  `typeDefinition` and the macro branch use the same collector.
+- **Call hierarchy (11.3).** `c_calls` unions the open unit's calls with the
+  project's CALL entries under the key, grouped by the other end's key. The
+  other end's item is the open unit's if it has the decl, else the project's
+  definition or declaration (`pq_sym`). Item data gained `key` (hex); an item
+  the open unit cannot resolve is answered from the key alone, and a resolved
+  item is accepted only if it has the item's key (two statics of one name are
+  two keys).
+- **Definition and declaration (11.4).** For an external function or object
+  the open unit lacks the role of, the project's DEF (DECL) entries replace the
+  unit's fallback to the other role.
+
+**Deleted** (B5b copies and their helpers): `WsFile`, `WsFiles`, `ws_file`,
+`ws_place`, `ws_files_free`, `json_pos_at`, `c_events`, `uses`, `c_call_item`.
+
+**Deviations from the design.**
+1. No persistent 64-entry `TextCache` with stat checks. Files are read at most
+   once per query (the snapshot's text when the unit has the file) and the
+   operating system caches the rest. Records are validated by content hash, as
+   in 10.3, which makes the stat check redundant. Cost: a references query
+   over files that are not in the snapshot re-reads them each time; measured
+   p95 is 3 ms on the 1,770-TU project, so nothing is gained by a cache.
+2. The key map in `projidx` replaces the "postings" of the text (one
+   mechanism for 11.2, 11.3 and 11.4, and the name list stays as it was).
+3. The open unit's own results are now sorted by (path, offset), like the
+   project's, instead of by index event order. `tests/lsp/csym.expected` was
+   regenerated: only the order of reference results changed (api.h before
+   main.c).
+4. Call items are ordered by key (name, kind, linkage, path, offset), not by
+   (path, offset): the groups are keyed by the other end, whose place may be
+   in a file the call sites are not in. The call sites inside a group are in
+   (path, offset) order.
+5. Open-unit results for a name defined in another unit now name the
+   project's definition for `definition` where the unit used to answer with
+   its declaration (the 11.4 replacement), so `definition` of `h01_f2` from a
+   caller in another unit jumps to the defining .c, not the header (`xref`).
+
+**Stop rules (neither fired).**
+
+| Rule | Measured |
+|---|---|
+| references p95 on a 1,000-TU project over 300 ms | 3.1 ms on the 1,770-TU project of `wsym_bench.py` (libuv, Lua 5.1-5.5, LuaJIT, zstd, cereal; three flag sets each; 24 functions of libuv's core.c, 1 to 438 results each). p50 0.3 ms. `definition` p95 0.3 ms; `incomingCalls` p95 4.6 ms (up to 354 callers). workspace/symbol p95 17.6 ms (limit 100). |
+| clangd differential: unexplained misses above 2% of clangd's results | 0 of 3,425 (lua54: 2,652 results; libuv's Linux units: 773), see below. |
+
+**The differential (14.6).** `clangd_diff.py` has a project mode: the units of
+lua54 and libuv's Linux build get a `compile_commands.json`; cereal is asked
+after `cereal/indexWait`; clangd after its background index has written a
+shard for every unit and its progress has ended. clangd's index is not
+deterministic (a run can lack whole units' references and keeps lacking them),
+so its answers are the union of three runs on fresh copies. Asked of each of
+four open files of lua54 and three of libuv: references (with declarations)
+of every top-level name clangd lists, and definition and declaration at up to 80 distinct calls.
+Intended differences (P1 is B4's):
+
+- P2: clangd lists the invocation of a macro whose body uses the name
+  (`lua_call(...)` for `lua_callk`); cereal lists no place for it (a `#define`
+  body token is no use, LSP.md, and the records follow the open unit).
+  459 results, 13% of clangd's. This is the one large difference; whether to
+  list the invocations is an open question (Q7 below).
+- P3: where a definition or declaration request answers when both answer
+  (clangd: the header declaration, or the declaration at a definition; cereal:
+  the definition). 120 requests.
+- P4: cereal lists a use spelled in a macro argument that clangd omits. 0 in
+  the final runs.
+- P5: the request is in an inactive preprocessor region (`cc -E` line markers
+  give the active lines): cereal analyses the unit as compiled and has nothing
+  there. 29 requests, not counted in the total.
+A miss is a clangd result in none of these classes, or a clangd definition or
+declaration answer where cereal has none. The single-file part is unchanged in
+kind (7 files, 0 unexpected); its difference count moves between runs with
+clangd's own nondeterminism (2078 and 2230 on two runs in one session; the
+old binary and this one give identical outgoingCalls for the sampled item).
+
+**Gates (Round 229).** run.sh 2157 passed (new `xref` scenario in
+`tests/proj_test.py`, run by 22c); san 2157, 628 files, 0 findings; verify
+unchanged (gcc.dg 3908/3910, c-c++-common 637/638, cpp 289/289); callgrind
+3.8886 G (+0.06% against 3.8863 G); globals 32 allowed (no change to
+`globals.allow`); symcov unchanged (4718 files, 1,146,276 events, unindexed 0);
+TSan: 58 session runs (plain and `-fparallel`) with indexing on,
+`lsp_stress.py --symbols --calls --hints --refs` 200 edits (239 sent) on a
+40-TU project with indexing active, all 17 `proj_test` scenarios: 0 reports.
+`wsym_bench.py` (now also timing references, definition and incomingCalls):
+workspace/symbol p95 17.6 ms, index 9.8 s for 1,770 units.
 
 ## 16. Risks
 
@@ -2322,6 +2432,23 @@ unless asked.
 2. Allow, and warn which TUs were not covered. Pros: usable during
    indexing and with failures. Cons: can leave a broken build behind,
    against D6's intent.
+
+**Q7. Function references through macro expansions (found by the 14.6
+differential, Round 229). Open.** `lua_call(L, 0, 0)` expands to
+`lua_callk(...)`. For `lua_callk` clangd lists each invocation (the
+spelling `lua_call`); cereal lists none of them and not the body token either
+(checked in one unit: only the definition and the declaration), in the open
+unit as in records. Of clangd's 3,425 results on lua54 and libuv, 459 (13%)
+are such sites.
+
+1. Keep it as is. Recommended for now. Pros: nothing new in the records;
+   rename never edits a macro body or invocation by accident. Cons:
+   find-references of a function called through a macro does not show those
+   call sites.
+2. List the invocations of macros whose body uses the name. Pros: matches
+   clangd. Cons: needs the invocation's spelling per event in the record (new
+   bytes, a format bump; not investigated), and rename would have to refuse
+   or handle them.
 
 ## 18. Parked
 

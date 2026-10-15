@@ -172,6 +172,10 @@ int indexsum_main(int argc, char **argv);
 
 /* ---- requests (features.c) -------------------------------------------- */
 
+struct ProjIndex;
+/* The text of an open document (malloc'd copy), NULL if it is not open. */
+typedef char *(*WsDocText)(const char *path, size_t *len);
+
 typedef struct Req {
     Snapshot *snap;          /* covering the document */
     SrcFile *file;           /* the document in the snapshot */
@@ -184,6 +188,8 @@ typedef struct Req {
     const SrcFile *uri_file;  /* the last file json_location named */
     const char *uri;
     const struct CIndex *cidx; /* snap's, referenced under the lock; NULL: none */
+    struct ProjIndex *pi;    /* the project's index (NULL: indexing is off) ... */
+    WsDocText doc_text;      /* ... and the text of an open document, to place its entries */
     bool c_carried;          /* cidx is carried over an edit (may be stale) */
     bool c_fresh;            /* snap has the newest edit and its own index */
     bool stale;              /* the document has an edit snap lacks */
@@ -231,9 +237,6 @@ typedef struct WsUnit {
     Snapshot *snap;
     const struct CIndex *cx;
 } WsUnit;
-struct ProjIndex;
-/* The text of an open document (malloc'd copy), NULL if it is not open. */
-typedef char *(*WsDocText)(const char *path, size_t *len);
 /* pi (or NULL): the project's names are searched too, and placed in the text of
  * the documents, open ones through doc_text. */
 void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,

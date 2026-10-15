@@ -561,6 +561,25 @@ publishes a result by reloading the unit's manifest and bumping `GEN`.
   dropped, and the scheduler is asked to look at the files again (at most one
   such sweep in 5 s). Memory: about 24 bytes a name plus the record's mapping
   (file-backed).
+- Cross-file answers (B5c, `src/lsp/projq.c`): for an entity with a project key
+  (a function or object with external linkage by name, anything else
+  declared at file scope by its place; parameters, labels and locals have
+  none), the project's records add to the open unit's answer. references: the records'
+  uses of the same entity, and its declarations and definitions with
+  `includeDeclaration`; definition and declaration: for a function declared in
+  a header and defined in another unit, the other unit's definition replaces
+  the open unit's fallback to the declaration (and the converse); call
+  hierarchy: callers and callees in other units, an item keeping the entity's
+  key (`data.key`) so that following it works from a unit that does not
+  define it. Results are in (path, offset) order, a place both sources give is
+  listed once, and a place is mapped into the text the client has, exactly as
+  names are. Staleness: a file that is not open answers as of its last
+  indexed saved text; a file changed on disk since is left out until it is
+  re-indexed (so is a header that is open and dirty, for the units that
+  include it but are not open); the index may still be growing after startup,
+  and nothing waits for it. A call or use written in a macro body, or an
+  invocation of a macro whose body uses the name, is listed by neither
+  source (clangd lists the invocations: B5_DESIGN.md Q7).
 - Test-only requests: `cereal/indexStats`, `cereal/indexWait` (a barrier),
   `cereal/indexHold`. `tests/proj_test.py` drives them; the other LSP tests
   run with `CEREAL_INDEX_ENABLE=0`.

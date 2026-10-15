@@ -4661,3 +4661,26 @@ applied: collapsing "edits first" to one timer (cannot keep the guarantee).
 Gates: run.sh 2153 passed; san 2153, 628 files, 0 findings; verify unchanged;
 callgrind 3.8863 G; globals 32; symcov unchanged; clangd_diff 0 unexpected;
 TSan (58 LSP session runs plain and -fparallel with indexing on, lsp_stress --symbols --calls --hints 200 edits (236 sent) with indexing active, 16 proj_test scenarios): 0 reports.
+
+Round 229: B5c, references, call hierarchy and definition across TUs
+(B5_DESIGN.md 10.3-10.4, 11.2-11.4, 14.6, 15.2). New `src/lsp/projq.[ch]`: one
+position source per query (`PqFiles`: snapshot text, else the open document,
+else disk, with B5b's per-file `LineTable`), the query-time mapping of a record
+place into the client's text, a place type with sort and dedupe (the open unit
+wins), and the project's entries by key; `projidx` gained a key map (`pi_find`).
+references, documentHighlight, typeDefinition, definition, declaration,
+prepareCallHierarchy and incoming/outgoingCalls use it (item data has `key`);
+workspace/symbol's private copy of the placement code is deleted. Open-unit
+reference results are now sorted by (path, offset) (csym golden regenerated).
+Not built: the 64-file `TextCache` (files are read once per query; p95 3 ms
+without it). `clangd_diff.py` has a project mode (lua54, libuv; clangd's own
+index is not deterministic, so the union of three runs): 0 unexplained misses in
+3,425 clangd results; the one large difference is that clangd lists invocations
+of macros whose body uses a function (13%; B5_DESIGN Q7). `wsym_bench.py` times
+references, definition and incomingCalls: on the 1,770-TU project references p95
+3.1 ms (stop rule 300 ms), workspace/symbol p95 17.6 ms. Stop rules did not
+fire. `lsp_stress.py --refs`; `proj_test.py` scenario `xref`.
+Gates: run.sh 2157 passed; san 2157, 628 files, 0 findings; callgrind 3.8886 G
+(3.8863 G); globals 32 allowed; symcov unchanged; clangd_diff 7 files, 0
+unexpected; TSan (58 session runs, `lsp_stress --symbols --calls --hints --refs`
+200 edits (239 sent) with indexing active, 17 proj_test scenarios): 0 reports.

@@ -24,6 +24,8 @@ cereal/indexHold.  Prints `ok NAME` or `FAIL NAME: why`; exit 1 on any failure.
                keeps a definition and not its declaration, drops what the disk
                no longer matches until the index catches up, and maps a name of
                an open document through the edit
+  xref         references, definition, declaration and call hierarchy answer from the
+               other units' records, mapped through an open document's edit
   takeover     a reader becomes the writer when the writer exits
   wpos         workspace/symbol positions in a CR LF file with a character outside the BMP
   spin         with the sweep deadline passed and jobs running, the server uses no CPU
@@ -313,6 +315,68 @@ def sc_wsym(root, cache):
     line, ch = where(c, "tu0_count")
     got = s.ws("tu0_count")
     expect(spots(got, c) == [(line + 2, ch)], "mapped through the edit, once", got)
+    s.stop()
+
+
+def sc_xref(root, cache):
+    # references, definition and call hierarchy across units (B5_DESIGN.md 11.2-11.4):
+    # h01_f2 is declared in h01.h, defined in t0008.c, called in t0000, t0003, t0005
+    t0, t3, t5, t8 = [os.path.join(root, "src", "t%04d.c" % i) for i in (0, 3, 5, 8)]
+    h = os.path.join(root, "include", "h01.h")
+    s = Server(root, cache)
+    s.wait()
+
+    def open_doc(path, text, version=1):
+        s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + path, "languageId": "c",
+                                                          "version": version, "text": text}})
+
+    def at(path, line, ch):
+        return {"textDocument": {"uri": "file://" + path}, "position": {"line": line, "character": ch}}
+
+    def locs(res):
+        return sorted((r["uri"], r["range"]["start"]["line"], r["range"]["start"]["character"])
+                      for r in res)
+    text = open(t0, newline="").read()
+    open_doc(t0, text)
+    line, ch = where(t0, "h01_f2(")
+    ctx = dict(at(t0, line, ch), context={"includeDeclaration": True})
+    got = locs(s.req("textDocument/references", ctx)["result"])
+    dl, dc = where(t8, "int h01_f2(")
+    want = sorted([("file://" + p,) + where(p, "h01_f2(") for p in (t0, h, t3, t5)] +
+                  [("file://" + t8, dl, dc + 4)])
+    expect(got == want, "references: the open unit, the header, the definition and other units",
+           {"got": got, "want": want})
+    ctx["context"]["includeDeclaration"] = False
+    got = locs(s.req("textDocument/references", ctx)["result"])
+    expect(len(got) == len(want) - 2 and all(g[0] != "file://" + h for g in got),
+           "without includeDeclaration: uses only", got)
+    # the definition of a function the open unit only declares is in the other unit
+    got = s.req("textDocument/definition", at(t0, line, ch))["result"]
+    expect(locs(got) == [("file://" + t8, dl, dc + 4)], "definition: the defining unit", got)
+    got = s.req("textDocument/declaration", at(t0, line, ch))["result"]
+    expect(locs(got) == [("file://" + h,) + where(h, "h01_f2(")], "declaration: the header", got)
+    # an edit above the use: the open unit's places move, the others' do not
+    s.note("textDocument/didChange", {"textDocument": {"uri": "file://" + t0, "version": 2},
+                                       "contentChanges": [{"text": "/* one\n two */\n" + text}]})
+    ctx = dict(at(t0, line + 2, ch), context={"includeDeclaration": False})
+    got = locs(s.req("textDocument/references", ctx)["result"])
+    mine = [g for g in got if g[0] == "file://" + t0]
+    expect(mine == [("file://" + t0, line + 2, ch)] and len(got) == len(want) - 2,
+           "references: the open document's places are mapped through the edit, once", got)
+    # call hierarchy: h00_f2 is defined in t0008 and called from t0003, t0004 and t0008
+    open_doc(t3, open(t3, newline="").read())
+    l3, c3 = where(t3, "h00_f2(")
+    item = s.req("textDocument/prepareCallHierarchy", at(t3, l3, c3))["result"]
+    expect(item and item[0]["name"] == "h00_f2", "prepare", item)
+    inc = s.req("callHierarchy/incomingCalls", {"item": item[0]})["result"]
+    files = sorted({os.path.basename(c["from"]["uri"]) for c in inc})
+    expect({"t0003.c", "t0004.c", "t0008.c"} <= set(files), "incoming calls across units", files)
+    sites = sum(len(c["fromRanges"]) for c in inc)
+    expect(sites >= 4, "with their sites", sites)
+    out = s.req("callHierarchy/outgoingCalls", {"item": item[0]})["result"]
+    expect(out and all(c["to"]["name"] != "h00_f2" for c in out) and
+           any(c["fromRanges"] for c in out),
+           "outgoing calls of a function the open unit only declares: its definition's callees", out)
     s.stop()
 
 

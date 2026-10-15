@@ -7,7 +7,7 @@
 #include "lsp.h"
 
 #include "../c/frontend.h"
-#include "projidx.h"
+#include "projq.h"
 #include "project.h"
 
 #include <ctype.h>
@@ -116,21 +116,66 @@ static size_t c_decls_at(Req *r, const IdxTarget *t, SrcLoc loc, uint32_t *out,
     return cindex_decls_at(r->cidx, r->file->path, loc - r->file->base, out, max);
 }
 
-/* The events q selects for the decls, as locations, or with highlight as
- * DocumentHighlights (Write for a declaration or definition, Read for a
- * use) in the request's file only.  A file the snapshot lacks (the phases
- * saw different include sets) has no line table here: left out. */
-static void c_events(Req *r, JsonWriter *w, const uint32_t *decls, size_t nd,
-                     CIdxQuery q, bool highlight)
+/* The open unit's events q selects for the decls, as places in the snapshot's
+ * text.  A file the snapshot lacks (the phases saw different include sets) has
+ * no text here: left out. */
+static void c_collect(Req *r, PqFiles *fs, const uint32_t *decls, size_t nd, CIdxQuery q,
+                      PqLocs *v)
 {
     const CIndex *ix = r->cidx;
-    int fi = highlight ? cindex_file(ix, r->file->path) : -1;
+    uint32_t *ev = NULL, last = UINT32_MAX;
+    PqFile *f = NULL;
+    size_t n = nd ? cindex_select(ix, decls, nd, q, -1, &ev) : 0, i;
+    for (i = 0; i < n; i++) {
+        const CIdxEvent *e = &ix->ev[ev[i]];
+        if (e->file != last) {
+            last = e->file;
+            f = cindex_srcfile(&r->snap->tu.sm, ix->files[e->file].path)
+                    ? pq_file(fs, ix->files[e->file].path) : NULL;
+        }
+        if (f)
+            vec_push(v, ((PqLoc){f, e->off, e->len == 255
+                                 ? (uint32_t)strlen(cindex_name(ix, e->decl)) : e->len, 0}));
+    }
+    free(ev);
+}
+
+/* A function or object with external linkage: what the project can answer for
+ * beyond the open unit (the key has no anchor). */
+static bool c_external(const CIndex *ix, uint32_t d)
+{
+    return ix->decls[d].linkage == 2 && (ix->decls[d].kind == CIK_FUNC ||
+                                         ix->decls[d].kind == CIK_OBJ);
+}
+
+/* The project's entries (PQ_*) for the keys of the decls, placed in the client's
+ * text (10.3, 11.2).  Names the open unit has no key for (parameters, labels,
+ * locals) are not asked. */
+static void c_project(Req *r, PqFiles *fs, const uint32_t *decls, size_t nd, unsigned what,
+                      PqLocs *v)
+{
+    size_t i;
+    for (i = 0; r->pi && i < nd; i++) {
+        CIdxKey key;
+        if (r->cidx->decls[decls[i]].kind != CIK_PARAM &&
+            r->cidx->decls[decls[i]].kind != CIK_LABEL &&
+            pq_key(fs, r->cidx, decls[i], &key))
+            pq_entries(fs, r->pi, &key, what, v);
+    }
+}
+
+/* documentHighlight: the events of the decls in the request's file only, as
+ * DocumentHighlights (Write for a declaration or definition, Read for a use). */
+static void c_highlights(Req *r, JsonWriter *w, const uint32_t *decls, size_t nd)
+{
+    const CIndex *ix = r->cidx;
+    int fi = cindex_file(ix, r->file->path);
     uint32_t *ev, last = UINT32_MAX;
     SrcFile *f = NULL;
     size_t n, i;
-    if (highlight && fi < 0)
+    if (fi < 0)
         return;
-    n = cindex_select(ix, decls, nd, q, fi, &ev);
+    n = cindex_select(ix, decls, nd, CIQ_REFS, fi, &ev);
     for (i = 0; i < n; i++) {
         const CIdxEvent *e = &ix->ev[ev[i]];
         SrcLoc b;
@@ -141,10 +186,6 @@ static void c_events(Req *r, JsonWriter *w, const uint32_t *decls, size_t nd,
         if (!f)
             continue;
         b = f->base + e->off;
-        if (!highlight) {
-            json_location(w, r, b, b + e->len);
-            continue;
-        }
         json_begin_object(w);
         json_key(w, "range");
         json_range(w, &r->snap->tu.sm, r->enc, b, b + e->len);
@@ -155,19 +196,51 @@ static void c_events(Req *r, JsonWriter *w, const uint32_t *decls, size_t nd,
     free(ev);
 }
 
+/* Whether the open unit has an event of role `role` (CIX_DEF or CIX_DECL) for d. */
+static bool c_has_role(const CIndex *ix, uint32_t d, int role)
+{
+    uint32_t j;
+    for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++) {
+        const CIdxEvent *e = &ix->ev[ix->by_decl[j]];
+        if ((e->flags & CIX_ROLE) == (uint8_t)role && !ix->files[e->file].stale)
+            return true;
+    }
+    return false;
+}
+
 /* definition and declaration: a macro expanded here answers; a C entity
- * answers over a name with only macro history (weak) or none. */
+ * answers over a name with only macro history (weak) or none.  A function or
+ * object with external linkage that the open unit lacks the role of (a
+ * function declared in a header and defined in another unit) answers from the
+ * project's entries (11.4), which replace the unit's fallback to the other role. */
 static void goto_entity(Req *r, JsonWriter *w, CIdxQuery q)
 {
     SrcLoc at = cursor(r);
     IdxTarget t = index_resolve(&r->snap->ix, at);
     SrcMgr *sm = &r->snap->tu.sm;
-    uint32_t decls[16];
-    size_t nd = c_decls_at(r, &t, at, decls, 16);
+    uint32_t decls[16], keep[16];
+    size_t nd = c_decls_at(r, &t, at, decls, 16), nk = 0, i;
     int k;
     json_begin_array(w);
     if (nd) {
-        c_events(r, w, decls, nd, q, false);
+        PqFiles fs;
+        PqLocs v = {0};
+        int role = q == CIQ_DEF ? CIX_DEF : CIX_DECL;
+        pq_init(&fs, sm, r->doc_text, r->enc);
+        for (i = 0; i < nd; i++) {
+            size_t before = v.len;
+            CIdxKey key;
+            if (r->pi && c_external(r->cidx, decls[i]) && !c_has_role(r->cidx, decls[i], role) &&
+                pq_key(&fs, r->cidx, decls[i], &key))
+                pq_entries(&fs, r->pi, &key, role == CIX_DEF ? PQ_DEF : PQ_DECL, &v);
+            if (v.len == before)
+                keep[nk++] = decls[i];
+        }
+        c_collect(r, &fs, keep, nk, q, &v);
+        pq_locs_sort(&v);
+        pq_locs_write(w, &fs, &v);
+        vec_free(&v);
+        pq_free(&fs);
     } else if (t.kind == TGT_MACRO) {
         for (k = 0; k < t.nmacros; k++)
             if (real_loc(sm, t.macros[k]->name_loc))
@@ -206,40 +279,39 @@ void lsp_type_definition(Req *r, JsonWriter *w)
     IdxTarget t = index_resolve(&r->snap->ix, at);
     uint32_t decls[16], types[16];
     size_t nd = c_decls_at(r, &t, at, decls, 16);
+    PqFiles fs;
+    PqLocs v = {0};
+    pq_init(&fs, &r->snap->tu.sm, r->doc_text, r->enc);
     json_begin_array(w);
-    if (nd && (nd = cindex_types(r->cidx, decls, nd, types)))
-        c_events(r, w, types, nd, CIQ_DEF, false);
+    if (nd && (nd = cindex_types(r->cidx, decls, nd, types))) {
+        c_collect(r, &fs, types, nd, CIQ_DEF, &v);
+        pq_locs_write(w, &fs, &v);
+    }
     json_end_array(w);
+    vec_free(&v);
+    pq_free(&fs);
 }
 
-/* references and documentHighlight (only the request's file): the macro
- * index's uses of a macro or macro parameter (its definitions are the
- * declarations, Write), else the C index's events of the entity. */
-static void uses(Req *r, JsonWriter *w, bool highlight)
+/* documentHighlight (only the request's file): the macro index's uses of a
+ * macro or macro parameter (its definitions are the declarations, Write), else
+ * the C index's events of the entity. */
+void lsp_document_highlight(Req *r, JsonWriter *w)
 {
     SrcLoc at = cursor(r);
     IdxTarget t = index_resolve(&r->snap->ix, at);
     uint32_t decls[16];
     size_t nd = c_decls_at(r, &t, at, decls, 16);
-    bool decl = highlight ||
-                json_bool_of(json_path(r->params, "context.includeDeclaration"),
-                             true);
     json_begin_array(w);
     if (nd) {
-        c_events(r, w, decls, nd, decl ? CIQ_REFS : CIQ_USES, highlight);
+        c_highlights(r, w, decls, nd);
     } else if (t.kind == TGT_MACRO || t.kind == TGT_PARAM) {
         IdxRef *refs;
         size_t n = index_references(&r->snap->ix, &t, &refs), i;
         size_t ndef = t.kind == TGT_PARAM ? 1 : (size_t)t.nmacros;
         for (i = 0; i < n; i++) {
             SrcLoc b = refs[i].loc;
-            if ((i < ndef && !decl) || !real_loc(&r->snap->tu.sm, b) ||
-                (highlight && !in_file(r->file, b)))
+            if (!real_loc(&r->snap->tu.sm, b) || !in_file(r->file, b))
                 continue;
-            if (!highlight) {
-                json_location(w, r, b, b + refs[i].len);
-                continue;
-            }
             json_begin_object(w);
             json_key(w, "range");
             json_range(w, &r->snap->tu.sm, r->enc, b, b + refs[i].len);
@@ -251,14 +323,43 @@ static void uses(Req *r, JsonWriter *w, bool highlight)
     json_end_array(w);
 }
 
+/* references (11.2): the open unit's events of the entity (or the macro index's
+ * uses of a macro or macro parameter, its definitions being the declarations),
+ * and for a C entity the project's REFS (and DECL and DEF with
+ * includeDeclaration) under its key, mapped to the client's text; one list in
+ * (path, offset) order, a place found twice once. */
 void lsp_references(Req *r, JsonWriter *w)
 {
-    uses(r, w, false);
-}
-
-void lsp_document_highlight(Req *r, JsonWriter *w)
-{
-    uses(r, w, true);
+    SrcLoc at = cursor(r);
+    IdxTarget t = index_resolve(&r->snap->ix, at);
+    uint32_t decls[16];
+    size_t nd = c_decls_at(r, &t, at, decls, 16);
+    bool decl = json_bool_of(json_path(r->params, "context.includeDeclaration"), true);
+    PqFiles fs;
+    PqLocs v = {0};
+    pq_init(&fs, &r->snap->tu.sm, r->doc_text, r->enc);
+    if (nd) {
+        c_collect(r, &fs, decls, nd, decl ? CIQ_REFS : CIQ_USES, &v);
+        c_project(r, &fs, decls, nd, decl ? PQ_REF | PQ_DECL | PQ_DEF : PQ_REF, &v);
+        pq_locs_sort(&v);
+    } else if (t.kind == TGT_MACRO || t.kind == TGT_PARAM) {
+        IdxRef *refs;
+        size_t n = index_references(&r->snap->ix, &t, &refs), i;
+        size_t ndef = t.kind == TGT_PARAM ? 1 : (size_t)t.nmacros;
+        for (i = 0; i < n; i++) {
+            SrcLoc b = refs[i].loc;
+            SrcFile *f = real_loc(&r->snap->tu.sm, b) ? srcmgr_file_of(&r->snap->tu.sm, b)
+                                                       : NULL;
+            if (f && !(i < ndef && !decl))
+                vec_push(&v, ((PqLoc){pq_file(&fs, f->path), (uint32_t)(b - f->base),
+                                      refs[i].len, 0}));
+        }
+    }
+    json_begin_array(w);
+    pq_locs_write(w, &fs, &v);
+    json_end_array(w);
+    vec_free(&v);
+    pq_free(&fs);
 }
 
 /* A decl of a carried index whose declaration was edited (B3_DESIGN.md 12.7):
@@ -945,110 +1046,6 @@ static void ws_drop_decls(WsVec *v, size_t from)
     v->len = keep;
 }
 
-/* The text of a file a project candidate is in, for placing it (10.3). */
-typedef struct WsFile {
-    const char *path;
-    char *cur;                   /* the client's text if open, else the disk's */
-    size_t curlen;
-    uint64_t curhash;
-    bool open, disk_loaded, edit_done;
-    char *disk;                  /* open: the disk's text, when it is needed */
-    size_t disklen;
-    uint64_t diskhash;
-    CIdxEdit edit;               /* disk to cur */
-    LineTable lines;             /* of cur, built for the first position asked */
-    bool lines_built;
-} WsFile;
-typedef struct WsFiles {
-    VEC(WsFile *) v;
-    WsDocText doc_text;
-    bool hint;                   /* a file changed behind the index's back */
-} WsFiles;
-
-static WsFile *ws_file(WsFiles *fs, const char *path)
-{
-    WsFile *f;
-    size_t i;
-    for (i = 0; i < fs->v.len; i++)
-        if (!strcmp(fs->v.data[i]->path, path))
-            return fs->v.data[i];
-    f = xcalloc(1, sizeof *f);
-    f->path = path;
-    if (fs->doc_text && (f->cur = fs->doc_text(path, &f->curlen)) != NULL)
-        f->open = true;
-    else
-        f->cur = read_file_nobom(path, &f->curlen, NULL);
-    if (f->cur)
-        f->curhash = cindex_hash(f->cur, f->curlen);
-    vec_push(&fs->v, f);
-    return f;
-}
-
-/* Where candidate c is in the text the client has (10.3, decision 8): as it
- * is if that text is what the record was built from; for an open document
- * whose disk text is, mapped through the edit between them, unless the edit
- * touches it; else nowhere. */
-static bool ws_place(WsFiles *fs, const WsCand *c, uint32_t *off)
-{
-    WsFile *f = ws_file(fs, c->path);
-    if (!f->cur)
-        return false;
-    if (f->curhash == c->fhash) {
-        *off = c->off;
-        return true;
-    }
-    if (!f->open) {
-        fs->hint = true;
-        return false;
-    }
-    if (!f->disk_loaded) {
-        f->disk_loaded = true;
-        f->disk = read_file_nobom(f->path, &f->disklen, NULL);
-        if (f->disk)
-            f->diskhash = cindex_hash(f->disk, f->disklen);
-    }
-    if (!f->disk || f->diskhash != c->fhash) {
-        fs->hint = true;
-        return false;
-    }
-    if (!f->edit_done) {
-        f->edit_done = true;
-        cindex_text_edit(f->disk, f->disklen, f->cur, f->curlen, &f->edit);
-    }
-    if (!f->edit.same && c->off < f->edit.old_end && c->off + c->len > f->edit.pre)
-        return false;
-    *off = cindex_edit_map(&f->edit, c->off);
-    return true;
-}
-
-static void ws_files_free(WsFiles *fs)
-{
-    size_t i;
-    for (i = 0; i < fs->v.len; i++) {
-        free(fs->v.data[i]->cur);
-        free(fs->v.data[i]->disk);
-        vec_free(&fs->v.data[i]->lines);
-        free(fs->v.data[i]);
-    }
-    vec_free(&fs->v);
-}
-
-static void json_pos_at(JsonWriter *w, WsFile *f, PosEncoding enc, size_t off)
-{
-    uint32_t line, ch;
-    if (!f->lines_built) {
-        line_table_build(&f->lines, f->cur, f->curlen);
-        f->lines_built = true;
-    }
-    line_table_pos(&f->lines, f->cur, f->curlen, off, enc, &line, &ch);
-    json_begin_object(w);
-    json_key(w, "line");
-    json_int(w, line);
-    json_key(w, "character");
-    json_int(w, ch);
-    json_end_object(w);
-}
-
 /* The results sent so far, by (path, offset as placed, name): the one symbol seen
  * through several units, configurations, or an open file and its edit is sent
  * once.  Inserts c unless it is there; true if it was. */
@@ -1081,10 +1078,11 @@ void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
 {
     WsVec v = {0};
     WsOpen open = {docs, ndocs};
-    WsFiles files = {{0}, doc_text, false};
+    PqFiles files;
     WsSent sent[WS_SENT_SLOTS] = {{0}};
     Req r;
     size_t i, shown = 0;
+    pq_init(&files, NULL, doc_text, enc);
     for (i = 0; i < n; i++)
         ws_unit(&us[i], i, query, &open, &v);
     if (pi) {                    /* held to the end: the names are in its mappings */
@@ -1102,7 +1100,7 @@ void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
     for (i = 0; i < v.len && shown < WS_LIMIT; i++) {
         const WsCand *c = &v.data[i];
         uint32_t off = c->off;
-        if (!c->snap && !ws_place(&files, c, &off))
+        if (!c->snap && !pq_place(&files, pq_file(&files, c->path), c->fhash, c->off, c->len, &off))
             continue;                  /* the project's text is not the file's */
         if (ws_seen(sent, c, off))
             continue;
@@ -1116,18 +1114,7 @@ void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
         if (c->snap) {
             json_location(w, &r, c->b, c->b + c->len);
         } else {
-            WsFile *f = ws_file(&files, c->path);
-            json_begin_object(w);
-            json_key(w, "uri");
-            json_str(w, path_to_uri(a, c->path));
-            json_key(w, "range");
-            json_begin_object(w);
-            json_key(w, "start");
-            json_pos_at(w, f, enc, off);
-            json_key(w, "end");
-            json_pos_at(w, f, enc, (size_t)off + c->len);
-            json_end_object(w);
-            json_end_object(w);
+            pq_location(w, &files, pq_file(&files, c->path), off, c->len);
         }
         json_key(w, "containerName");
         json_str(w, c->container);
@@ -1137,9 +1124,7 @@ void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
     json_end_array(w);
     if (pi)
         pi_unlock(pi);
-    if (files.hint)
-        project_hint_sweep();
-    ws_files_free(&files);
+    pq_free(&files);
     vec_free(&v);
 }
 
@@ -1725,48 +1710,68 @@ static bool c_item_decl(const CIndex *ix, uint32_t d)
            (ix->decls[d].kind == CIK_OBJ && !ix->decls[d].scope);
 }
 
-/* The item of decl d at its event ev; false (nothing written) if the event's
- * file cannot be shown. */
-static bool c_call_item(Req *r, JsonWriter *w, uint32_t d, uint32_t ev)
+/* The open unit's decl d at its event ev as a place for an item; false if the
+ * event's file cannot be shown.  The range is widened to the root of the
+ * event's scope. */
+static bool c_sym(Req *r, PqFiles *fs, uint32_t d, uint32_t ev, PqSym *s)
 {
     const CIndex *ix = r->cidx;
     const CIdxEvent *e = ev < ix->nev ? &ix->ev[ev] : NULL;
     SrcFile *f = e ? c_item_file(r, e->file) : NULL;
-    SrcMgr *sm = &r->snap->tu.sm;
-    uint32_t rb, re, s;
+    uint32_t sc;
     if (!f)
         return false;
-    rb = e->off;
-    re = e->off + e->len;
-    if ((s = cindex_scope_at(ix, e->file, e->off)) != 0) {  /* widened root */
-        const CIdxScope *root = &ix->scopes[cindex_scope_root(ix, s) - 1];
-        rb = root->begin < rb ? root->begin : rb;
-        re = root->end > re ? root->end : re;
+    memset(s, 0, sizeof *s);
+    s->d = d;
+    s->ev = ev;
+    s->f = pq_file(fs, f->path);
+    s->off = e->off;
+    s->len = e->len == 255 ? (uint32_t)strlen(cindex_name(ix, d)) : e->len;
+    s->ext_b = e->off;
+    s->ext_e = e->off + s->len;
+    if ((sc = cindex_scope_at(ix, e->file, e->off)) != 0) {
+        const CIdxScope *root = &ix->scopes[cindex_scope_root(ix, sc) - 1];
+        s->ext_b = root->begin < s->ext_b ? root->begin : s->ext_b;
+        s->ext_e = root->end > s->ext_e ? root->end : s->ext_e;
     }
+    pq_key(fs, ix, d, &s->key);      /* an anchor in the edit stays as it is */
+    return true;
+}
+
+/* A call hierarchy item: the open unit's decl, or the project's declaration.  Its
+ * data names the document that answered and the decl's key, for a follow-up
+ * that the open unit cannot resolve (11.3). */
+static void sym_item(Req *r, PqFiles *fs, JsonWriter *w, const PqSym *s)
+{
     json_begin_object(w);
     json_key(w, "name");
-    json_str(w, cindex_name(ix, d));
+    json_str(w, s->key.name);
     json_key(w, "kind");
-    json_int(w, C_KINDS[ix->decls[d].kind].sk);
-    json_key(w, "detail");
-    json_str(w, c_detail(r, d));
+    json_int(w, C_KINDS[s->key.kind].sk);
+    if (s->d >= 0) {
+        json_key(w, "detail");
+        json_str(w, c_detail(r, (uint32_t)s->d));
+    }
     json_key(w, "uri");
-    json_str(w, path_to_uri(r->arena, f->path));
+    json_str(w, s->f->uri);
     json_key(w, "range");
-    json_range(w, sm, r->enc, f->base + rb, f->base + re);
+    pq_range(w, fs, s->f, s->ext_b, s->ext_e - s->ext_b);
     json_key(w, "selectionRange");
-    json_range(w, sm, r->enc, f->base + e->off, f->base + e->off + e->len);
+    pq_range(w, fs, s->f, s->off, s->len);
     json_key(w, "data");
     json_begin_object(w);
-    json_key(w, "c");
-    json_int(w, d);
+    if (s->d >= 0) {
+        json_key(w, "c");
+        json_int(w, s->d);
+    }
     json_key(w, "name");
-    json_str(w, cindex_name(ix, d));
+    json_str(w, s->key.name);
     json_key(w, "doc");
     json_str(w, doc_uri(r));
+    json_key(w, "key");
+    json_str(w, pq_key_hex(fs, &s->key));
     json_end_object(w);
     json_end_object(w);
-    return true;
 }
 
 void lsp_prepare_call_hierarchy(Req *r, JsonWriter *w)
@@ -1776,6 +1781,7 @@ void lsp_prepare_call_hierarchy(Req *r, JsonWriter *w)
     uint32_t ds[8];
     size_t nd = 0, k;
     int m;
+    PqFiles fs;
     if (t.kind == TGT_MACRO && t.nmacros && !t.weak) {
         json_begin_array(w);
         for (m = 0; m < t.nmacros; m++)
@@ -1801,11 +1807,16 @@ void lsp_prepare_call_hierarchy(Req *r, JsonWriter *w)
         json_null(w);
         return;
     }
+    pq_init(&fs, &r->snap->tu.sm, r->doc_text, r->enc);
     json_begin_array(w);
-    for (k = 0; k < nd; k++)
-        if (c_item_decl(r->cidx, ds[k]))
-            c_call_item(r, w, ds[k], cindex_site(r->cidx, ds[k]));
+    for (k = 0; k < nd; k++) {
+        PqSym sym;
+        if (c_item_decl(r->cidx, ds[k]) &&
+            c_sym(r, &fs, ds[k], cindex_site(r->cidx, ds[k]), &sym))
+            sym_item(r, &fs, w, &sym);
+    }
     json_end_array(w);
+    pq_free(&fs);
 }
 
 /* The item's file in this snapshot, NULL if it is not there. */
@@ -1860,11 +1871,22 @@ static void spelled_ranges(Req *r, JsonWriter *w, Macro *m, const Ident *name)
     json_end_array(w);
 }
 
+/* d is the decl the item names: its key is the item's (data.key), when it has
+ * one; two statics of one name are two keys. */
+static bool item_is(Req *r, PqFiles *fs, uint32_t d, const CIdxKey *want)
+{
+    CIdxKey k;
+    if (!want)
+        return true;
+    pq_key(fs, r->cidx, d, &k);
+    return !pq_key_cmp(&k, want);
+}
+
 /* The C item of a follow-up request (B4_DESIGN.md 5.5): the decl at the
  * item's position with its name, else data.c if it still has that name, else
  * the file-level function or variable of that name (one with a definition
- * first); false if none. */
-static bool c_item_resolve(Req *r, uint32_t *out)
+ * first); each must have the item's key.  False if none. */
+static bool c_item_resolve(Req *r, PqFiles *fs, const CIdxKey *want, uint32_t *out)
 {
     const CIndex *ix = r->cidx;
     const JsonValue *item = json_get(r->params, "item");
@@ -1881,18 +1903,19 @@ static bool c_item_resolve(Req *r, uint32_t *out)
         SrcLoc loc = req_loc_in(r, f, sel);
         nd = loc >= f->base ? cindex_decls_at(ix, f->path, loc - f->base, ds, 8) : 0;
         for (k = 0; k < nd; k++)
-            if (c_item_decl(ix, ds[k]) && !strcmp(cindex_name(ix, ds[k]), name)) {
+            if (c_item_decl(ix, ds[k]) && !strcmp(cindex_name(ix, ds[k]), name) &&
+                item_is(r, fs, ds[k], want)) {
                 *out = ds[k];
                 return true;
             }
     }
     if (dc >= 0 && (uint64_t)dc < ix->ndecls && c_item_decl(ix, (uint32_t)dc) &&
-        !strcmp(cindex_name(ix, (uint32_t)dc), name)) {
+        !strcmp(cindex_name(ix, (uint32_t)dc), name) && item_is(r, fs, (uint32_t)dc, want)) {
         *out = (uint32_t)dc;
         return true;
     }
     for (d = 0; d < ix->ndecls; d++) {
-        if (!c_item_decl(ix, d) || strcmp(cindex_name(ix, d), name))
+        if (!c_item_decl(ix, d) || strcmp(cindex_name(ix, d), name) || !item_is(r, fs, d, want))
             continue;
         if (any == UINT32_MAX)
             any = d;
@@ -1906,42 +1929,93 @@ static bool c_item_resolve(Req *r, uint32_t *out)
     return any != UINT32_MAX;
 }
 
-/* incomingCalls / outgoingCalls of the C decl d (B4_DESIGN.md 5.4): one entry
- * per calling function (or variable) / callee, with the call sites. */
-static void c_calls(Req *r, JsonWriter *w, bool incoming, uint32_t d)
+/* Which place stands for a callee or caller: the open unit's, else a definition. */
+static int sym_score(const PqSym *s)
+{
+    return s->d >= 0 ? 3 : s->f ? 1 + s->def : 0;
+}
+
+static int pqcall_cmp(const void *pa, const void *pb)
+{
+    const PqCall *a = pa, *b = pb;
+    int c = pq_key_cmp(&a->other.key, &b->other.key);
+    if (c)
+        return c;
+    c = a->site.f == b->site.f ? 0 : strcmp(a->site.f->path, b->site.f->path);
+    if (c)
+        return c;
+    if (a->site.off != b->site.off)
+        return a->site.off < b->site.off ? -1 : 1;
+    if (a->site.len != b->site.len)
+        return a->site.len < b->site.len ? -1 : 1;
+    return a->site.seq < b->site.seq ? -1 : a->site.seq > b->site.seq;
+}
+
+/* incomingCalls / outgoingCalls (B4_DESIGN.md 5.4, B5_DESIGN.md 11.3): one entry
+ * per calling function (or variable) / callee, with the call sites.  The open
+ * unit's calls of its decl d (NULL: the item is not in it) and the project's CALL
+ * entries under the key (NULL: none) form one list, grouped by the other end's
+ * key, whose item is the open unit's if it has the decl, else the project's
+ * definition or declaration; sites in (path, offset) order. */
+static void c_calls(Req *r, PqFiles *fs, JsonWriter *w, bool incoming, const uint32_t *d,
+                    const CIdxKey *key)
 {
     const CIndex *ix = r->cidx;
-    SrcMgr *sm = &r->snap->tu.sm;
+    PqCalls v = {0};
+    CIdxKey own;
     CIdxCall *calls = NULL;
     size_t n = 0, i, j, k;
-    if (incoming && ix->decls[d].kind == CIK_FUNC)
-        n = cindex_calls_to(ix, d, &calls);
-    else if (!incoming)
-        n = cindex_calls_in(ix, cindex_site(ix, d), &calls);
+    if (d) {
+        if (incoming && ix->decls[*d].kind == CIK_FUNC)
+            n = cindex_calls_to(ix, *d, &calls);
+        else if (!incoming)
+            n = cindex_calls_in(ix, cindex_site(ix, *d), &calls);
+        for (i = 0; i < n; i++) {
+            PqCall c;
+            if (calls[i].other == CIX_NONE || !c_item_file(r, calls[i].file) ||
+                !c_sym(r, fs, calls[i].other, calls[i].other_ev, &c.other))
+                continue;
+            c.site = (PqLoc){pq_file(fs, ix->files[calls[i].file].path), calls[i].off,
+                             calls[i].len, 0};
+            vec_push(&v, c);
+        }
+        free(calls);
+        if (r->pi && (!incoming || ix->decls[*d].kind == CIK_FUNC) && pq_key(fs, ix, *d, &own))
+            key = &own;
+        else
+            key = NULL;
+    }
+    if (r->pi && key)
+        pq_calls(fs, r->pi, key, incoming, &v);
+    if (v.len > 1)
+        qsort(v.data, v.len, sizeof *v.data, pqcall_cmp);
     json_begin_array(w);
-    for (i = 0; i < n; i = j) {
-        SrcFile *sf = calls[i].other == CIX_NONE ? NULL
-                                                 : c_item_file(r, calls[i].file);
-        for (j = i + 1; j < n && calls[j].other == calls[i].other &&
-                        calls[j].other_ev == calls[i].other_ev; j++)
-            ;
-        if (!sf || calls[i].other_ev >= ix->nev ||
-            !c_item_file(r, ix->ev[calls[i].other_ev].file))
-            continue;
+    for (i = 0; i < v.len; i = j) {
+        PqSym *s = &v.data[i].other;
+        for (j = i + 1; j < v.len && !pq_key_cmp(&v.data[j].other.key, &s->key); j++)
+            if (sym_score(&v.data[j].other) > sym_score(s))
+                s = &v.data[j].other;
+        if (!s->f && r->pi)
+            pq_sym(fs, r->pi, s);
+        if (!s->f) {                                 /* no declaration at hand: the site */
+            s->f = v.data[i].site.f;
+            s->off = s->ext_b = v.data[i].site.off;
+            s->len = v.data[i].site.len;
+            s->ext_e = s->off + s->len;
+        }
         json_begin_object(w);
         json_key(w, incoming ? "from" : "to");
-        c_call_item(r, w, calls[i].other, calls[i].other_ev);
+        sym_item(r, fs, w, s);
         json_key(w, "fromRanges");
         json_begin_array(w);
-        for (k = i; k < j; k++) {
-            json_range(w, sm, r->enc, sf->base + calls[k].off,
-                       sf->base + calls[k].off + calls[k].len);
-        }
+        for (k = i; k < j; k++)
+            if (!k || pqcall_cmp(&v.data[k - 1], &v.data[k]))
+                pq_range(w, fs, v.data[k].site.f, v.data[k].site.off, v.data[k].site.len);
         json_end_array(w);
         json_end_object(w);
     }
     json_end_array(w);
-    free(calls);
+    vec_free(&v);
 }
 
 void lsp_calls(Req *r, JsonWriter *w, bool incoming)
@@ -1952,10 +2026,19 @@ void lsp_calls(Req *r, JsonWriter *w, bool incoming)
     size_t n, i;
     uint32_t d;
     if (!m) {
-        if (c_item_resolve(r, &d))
-            c_calls(r, w, incoming, d);
+        PqFiles fs;
+        CIdxKey want;
+        const char *hex = json_str_of(json_path(item, "data.key"), NULL);
+        bool has;
+        pq_init(&fs, &r->snap->tu.sm, r->doc_text, r->enc);
+        has = hex && pq_key_parse(&fs, hex, &want);
+        if (c_item_resolve(r, &fs, has ? &want : NULL, &d))
+            c_calls(r, &fs, w, incoming, &d, NULL);
+        else if (has && r->pi)
+            c_calls(r, &fs, w, incoming, NULL, &want);
         else
             json_null(w);
+        pq_free(&fs);
         return;
     }
     n = incoming ? index_callers(&r->snap->ix, &r->snap->graph, m, &calls)

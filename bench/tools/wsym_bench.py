@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""workspace/symbol latency on a large project (docs/B5_DESIGN.md 15, stop rule 3).
+"""workspace/symbol and references latency on a large project (docs/B5_DESIGN.md 15, stop rules).
 
 usage: wsym_bench.py BIN CORPUS_DIR [REPEAT] [--keep]
 
@@ -9,10 +9,14 @@ amalgamation and cereal's own src, each unit under three flag sets (about 1,800
 translation units), starts `cereal lsp` with indexing on and a private cache,
 opens libuv's core.c, waits for the index, and times a mix of 22 queries
 (REPEAT times each, default 15).  Prints the index time, the name count and the
-per-query p50, then the overall p50, p95 and max.  --keep leaves the project
+per-query p50, then the overall p50, p95 and max.  Then asks references (with
+declarations), definition and callHierarchy/incomingCalls at the functions defined in
+core.c (the project's records answer: units under three flag sets), REPEAT times each,
+and prints p50, p95 and max per request (limit WSYM_REFS_P95_MS, default 300).
+--keep leaves the project
 and cache in place (the directory is printed).  Python never reads stdin here.
 """
-import glob, json, os, queue, shutil, subprocess, sys, tempfile, threading, time
+import glob, json, os, queue, re, shutil, subprocess, sys, tempfile, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.normpath(os.path.join(HERE, "..", "..", "src"))
@@ -109,6 +113,49 @@ def pct(v, p):
     return v[min(len(v) - 1, int(p * len(v)))]
 
 
+def refs_phase(s, path, repeat):
+    """references, definition and incomingCalls at the functions core.c defines."""
+    text = open(path).read()
+    lines = text.split("\n")
+    uri = "file://" + path
+    at = []
+    for i, ln in enumerate(lines):
+        m = re.match(r"^(?:[A-Za-z_][\w \t*]*[ \t*])?(uv\w+)\s*\(", ln)
+        if m and not ln.rstrip().endswith(";") and len(at) < 24:
+            at.append((m.group(1), {"line": i, "character": m.start(1)}))
+    lat = {"references": [], "definition": [], "incomingCalls": []}
+    counts = {}
+    for name, pos in at:                              # warm the pages, and the item for the calls
+        s.req("textDocument/references", {"textDocument": {"uri": uri}, "position": pos,
+                                          "context": {"includeDeclaration": True}})
+    for _ in range(repeat):
+        for name, pos in at:
+            td = {"textDocument": {"uri": uri}, "position": pos}
+            for what, par in (("references", dict(td, context={"includeDeclaration": True})),
+                              ("definition", td)):
+                t = time.perf_counter()
+                r = s.req("textDocument/" + what, par)
+                lat[what].append((time.perf_counter() - t) * 1000)
+                counts.setdefault((what, name), len(r or []))
+            item = s.req("textDocument/prepareCallHierarchy", td)
+            if item:
+                t = time.perf_counter()
+                r = s.req("callHierarchy/incomingCalls", {"item": item[0]})
+                lat["incomingCalls"].append((time.perf_counter() - t) * 1000)
+                counts.setdefault(("incomingCalls", name), len(r or []))
+    for what, v in lat.items():
+        if v:
+            n = sorted(c for (w, _), c in counts.items() if w == what)
+            print("%-14s %4d requests over %d names: p50 %6.1f ms, p95 %6.1f ms, max %6.1f ms; results per name "
+                  "min %d median %d max %d" % (what, len(v), len(at), pct(v, 0.5), pct(v, 0.95), max(v),
+                                               n[0], n[len(n) // 2], n[-1]))
+    limit = float(os.environ.get("WSYM_REFS_P95_MS", "300"))
+    p95 = pct(lat["references"], 0.95) if lat["references"] else 0
+    print("%s: references p95 %.1f ms against the %.0f ms limit (WSYM_REFS_P95_MS)" %
+          ("ok" if p95 <= limit else "FAIL", p95, limit))
+    return p95 <= limit
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     keep = "--keep" in sys.argv
@@ -154,6 +201,7 @@ def main():
         verdict = p95 <= limit
         print("%s: p95 %.1f ms against the %.0f ms limit (WSYM_P95_MS)" %
               ("ok" if verdict else "FAIL", p95, limit))
+        verdict = refs_phase(s, open_file, repeat) and verdict
     finally:
         s.stop()
         if keep:

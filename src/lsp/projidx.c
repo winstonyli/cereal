@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "c/csymidx.h"
+#include "hash.h"
 
 /* A chained hash map of nodes that start with {next, key}. */
 typedef struct PiNode {
@@ -57,6 +58,23 @@ static void map_del(PiMap *m, PiNode *x)
     m->n--;
 }
 
+/* One per key of a record: a node of the key map (10.1), a chained hash map
+ * keyed by the hash of the key's bytes; pi_find verifies a node's key. */
+typedef struct PiKeyNode {
+    struct PiKeyNode *next;
+    uint64_t hash;
+    PiRec *rec;
+    uint32_t ki;
+} PiKeyNode;
+
+static uint64_t key_hash(const char *name, uint8_t kind, uint8_t linkage, const char *path,
+                         uint32_t off)
+{
+    uint64_t h = hash64_str(name, 0x6b657931);
+    h = hash64_mix(h, (uint64_t)kind << 8 | linkage);
+    return hash64_mix(hash64_str(path, h), off);
+}
+
 typedef struct PiTu {            /* the records one unit holds */
     PiNode *next;
     uint64_t tukey;
@@ -71,7 +89,9 @@ typedef VEC(PiRec *) PiRecVec;
 struct ProjIndex {
     RwLock l;
     PiMap recs, tus;
-    PiRec **list;                /* dense, for the scan */
+    PiKeyNode **kb;              /* the key map's buckets */
+    size_t nkb, nkn;
+    PiRec **list;               /* dense, for the scan */
     size_t nlist, caplist;
     size_t bytes, names;
 };
@@ -85,12 +105,14 @@ ProjIndex *pi_new(void)
 
 static size_t rec_bytes(const PiRec *r)
 {
-    return sizeof *r + (size_t)r->nsyms * sizeof *r->syms;
+    return sizeof *r + (size_t)r->nsyms * sizeof *r->syms +
+           (size_t)r->map.v.nkeys * sizeof *r->kn;
 }
 
 static void rec_free(PiRec *r)
 {
     crec_unmap(&r->map);
+    free(r->kn);
     free(r->syms);
     free(r);
 }
@@ -116,6 +138,7 @@ void pi_free(ProjIndex *pi)
         rec_free(pi->list[i]);
     free(pi->tus.b);
     free(pi->recs.b);
+    free(pi->kb);
     free(pi->list);
     rwlock_destroy(&pi->l);
     free(pi);
@@ -179,8 +202,58 @@ static PiRec *rec_load(PState *ps, uint64_t digest)
         s->flags = (uint8_t)(PIF_MACRO | (mc->funclike ? PIF_FUNC : 0));
     }
     r->nsyms = n;
+    r->kn = xcalloc((size_t)v->nkeys + 1, sizeof *r->kn);
+    for (i = 0; i < v->nkeys; i++) {
+        const CRecKey *k = &v->keys[i];
+        r->kn[i].hash = key_hash(v->strs + k->name, k->kind, k->linkage, v->strs + k->path,
+                                 k->off);
+        r->kn[i].rec = r;
+        r->kn[i].ki = i;
+    }
     free(pick);
     return r;
+}
+
+/* Under the write lock: the record's keys into, or out of, the key map. */
+static void keys_add(ProjIndex *pi, PiRec *r)
+{
+    uint32_t i;
+    if (pi->nkn + r->map.v.nkeys >= pi->nkb) {
+        size_t nb = pi->nkb ? pi->nkb : 1024, j;
+        PiKeyNode **b;
+        while (nb <= pi->nkn + r->map.v.nkeys)
+            nb *= 2;
+        b = xcalloc(nb, sizeof *b);
+        for (j = 0; j < pi->nkb; j++) {
+            PiKeyNode *x = pi->kb[j], *nx;
+            for (; x; x = nx) {
+                nx = x->next;
+                x->next = b[x->hash % nb];
+                b[x->hash % nb] = x;
+            }
+        }
+        free(pi->kb);
+        pi->kb = b;
+        pi->nkb = nb;
+    }
+    for (i = 0; i < r->map.v.nkeys; i++) {
+        PiKeyNode *x = &r->kn[i];
+        x->next = pi->kb[x->hash % pi->nkb];
+        pi->kb[x->hash % pi->nkb] = x;
+    }
+    pi->nkn += r->map.v.nkeys;
+}
+
+static void keys_del(ProjIndex *pi, PiRec *r)
+{
+    uint32_t i;
+    for (i = 0; i < r->map.v.nkeys; i++) {
+        PiKeyNode **p = &pi->kb[r->kn[i].hash % pi->nkb];
+        while (*p != &r->kn[i])
+            p = &(*p)->next;
+        *p = r->kn[i].next;
+    }
+    pi->nkn -= r->map.v.nkeys;
 }
 
 /* Under the write lock: tu no longer holds its records. */
@@ -192,6 +265,7 @@ static void tu_release(ProjIndex *pi, PiTu *t, PiRecVec *dead)
         if (--r->refs)
             continue;
         map_del(&pi->recs, (PiNode *)r);
+        keys_del(pi, r);
         pi->list[r->slot] = pi->list[--pi->nlist];
         pi->list[r->slot]->slot = r->slot;
         pi->bytes -= rec_bytes(r);
@@ -236,6 +310,7 @@ void pi_set_tu(ProjIndex *pi, PState *ps, const PTu *tu)
         x->slot = pi->nlist;
         pi->list[pi->nlist++] = x;
         map_put(&pi->recs, (PiNode *)x);
+        keys_add(pi, x);
         pi->bytes += rec_bytes(x);
         pi->names += x->nsyms;
     }
@@ -292,6 +367,32 @@ void pi_prune(ProjIndex *pi, const PState *ps)
     vec_free(&gone);
 }
 
+static int hit_cmp(const void *pa, const void *pb)
+{
+    const PiHit *a = pa, *b = pb;
+    int c = strcmp(a->rec->path, b->rec->path);
+    return c ? c : a->rec->digest < b->rec->digest ? -1 : a->rec->digest > b->rec->digest;
+}
+
+size_t pi_find(const ProjIndex *pi, const CIdxKey *k, PiHit **out)
+{
+    VEC(PiHit) v = {0};
+    uint64_t h = key_hash(k->name, k->kind, k->linkage, k->path, k->off);
+    const PiKeyNode *x;
+    for (x = pi->nkb ? pi->kb[h % pi->nkb] : NULL; x; x = x->next) {
+        const CRecView *rv = &x->rec->map.v;
+        const CRecKey *rk = &rv->keys[x->ki];
+        if (x->hash == h && rk->kind == k->kind && rk->linkage == k->linkage &&
+            rk->off == k->off && !strcmp(rv->strs + rk->name, k->name) &&
+            !strcmp(rv->strs + rk->path, k->path))
+            vec_push(&v, ((PiHit){x->rec, x->ki}));
+    }
+    if (v.len > 1)
+        qsort(v.data, v.len, sizeof *v.data, hit_cmp);
+    *out = v.data;
+    return v.len;
+}
+
 void pi_rdlock(ProjIndex *pi) { rwlock_rdlock(&pi->l); }
 void pi_unlock(ProjIndex *pi) { rwlock_unlock(&pi->l); }
 size_t pi_nrecs(const ProjIndex *pi) { return pi->nlist; }
@@ -301,8 +402,7 @@ PiStats pi_stats(ProjIndex *pi)
 {
     PiStats s;
     rwlock_rdlock(&pi->l);
-    s.bytes = pi->bytes + pi->recs.nb * sizeof(void *) + pi->tus.nb * sizeof(void *) +
-              pi->caplist * sizeof(void *);
+    s.bytes = pi->bytes + (pi->recs.nb + pi->tus.nb + pi->nkb + pi->caplist) * sizeof(void *);
     s.names = pi->names;
     s.recs = pi->nlist;
     s.tus = pi->tus.n;
