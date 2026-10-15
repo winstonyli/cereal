@@ -27,6 +27,7 @@
 #include "c/cidxstore.h"
 #include "indexjob.h"
 #include "pstate.h"
+#include "projidx.h"
 
 extern char **environ;
 
@@ -35,14 +36,14 @@ extern char **environ;
 #define PROGRESS_MS 500                      /* at most 2 reports a second */
 #define BUILDER_POLL_MS 25
 #define GEN_POLL_MS 1000
-#define LOCK_RETRY_MS 30000
+#define HINT_SWEEP_MIN_MS 5000          /* between two sweeps a query asks for */
 
 /* ---- settings (13.2) ----------------------------------------------------------- */
 
 typedef struct Settings {
     bool enable;
     int threads;
-    double memory_mb, max_file_mb, cache_max_mb, sweep_s;
+    double memory_mb, max_file_mb, cache_max_mb, sweep_s, lock_retry_s;
     size_t inproc_bytes;
     unsigned quiet_ms, sub_s;
     char *cache_dir;                /* NULL: the default (6.1) */
@@ -99,6 +100,7 @@ static void load_settings(Settings *s, const JsonValue *params, const LspConfig 
         s->max_file_mb = 1;
     s->cache_max_mb = num_setting(o, "cacheMaxMB", 2048);
     s->sweep_s = num_setting(o, "sweepSeconds", 30);
+    s->lock_retry_s = num_setting(o, "lockRetrySeconds", 30);
     s->quiet_ms = (unsigned)num_setting(o, "quietMs", 500);
     s->sub_s = (unsigned)num_setting(o, "subprocessSeconds", 120);
     if ((e = env_setting("cacheDir")) != NULL)
@@ -142,7 +144,7 @@ typedef struct IJob {
     IdxOut out;
 } IJob;
 
-enum { EV_SAVE, EV_OPEN, EV_CLOSE, EV_SYNC, EV_CREATED };
+enum { EV_SAVE, EV_OPEN, EV_CLOSE, EV_SYNC, EV_CREATED, EV_SWEEP };
 typedef struct Event {
     int kind;
     char *path;
@@ -161,6 +163,7 @@ typedef struct Stats {
     uint64_t jobs_inproc, jobs_sub, cancelled, rerouted, fatal, failed, published,
         gen_reloads, sweeps, config_reloads, gc_files, evicted, creates, progress_msgs;
     double rss_anon_mb;
+    size_t pi_bytes, pi_names, pi_recs;
 } Stats;
 
 static struct Project {
@@ -182,6 +185,8 @@ static struct Project {
     LspConfig *cfg;
     Store store;
     PState ps;
+    ProjIndex *pi;                  /* the name list (projidx.h); readers: any thread */
+    uint64_t last_hint_ns;
     ThreadPool pool;
     bool have_store, writer;
     VEC(char *) open;
@@ -655,10 +660,20 @@ static void fail(PTu *tu, const char *what)
     send_log(2, msg);
 }
 
+/* The name list follows the manifests (10.2). */
+static void pi_all(void)
+{
+    size_t i;
+    for (i = 0; i < P.ps.tus.len; i++)
+        pi_set_tu(P.pi, &P.ps, P.ps.tus.data[i]);
+    pi_prune(P.pi, &P.ps);
+}
+
 static void reconfigure(void)
 {
     pstate_set_config(&P.ps, P.cfg, excluded, &P.set);
     after_eval(false);
+    pi_all();
 }
 
 /* A finished job (8.3, 9): publish it by reloading the manifest it wrote. */
@@ -693,6 +708,7 @@ static void finish(IJob *j)
             reconfigure();
         } else {
             pstate_reload(&P.ps, tu);
+            pi_set_tu(P.pi, &P.ps, tu);
             tu->sched.cls = classify(tu);
         }
         P.cnt.published++;
@@ -860,6 +876,7 @@ static void startup(void)
     pstate_set_config(&P.ps, P.cfg, excluded, s);
     report_rejected();
     after_eval(true);
+    pi_all();
     db_stat(&P.db_size, &P.db_mtime);
     P.gen_seen = store_gen(&P.store);
     pool_init(&P.pool, s->threads + 1, 10);
@@ -906,6 +923,12 @@ static void do_event(const Event *e, unsigned *sync_seen)
         break;
     case EV_CREATED:
         P.create_ok = true;
+        break;
+    case EV_SWEEP:                      /* a query met a file the index did not expect */
+        if (P.have_store && mono_ns() - P.last_hint_ns >= (uint64_t)HINT_SWEEP_MIN_MS * 1000000u) {
+            P.last_hint_ns = mono_ns();
+            sweep_all();
+        }
         break;
     }
 }
@@ -993,7 +1016,7 @@ static void *sched_main(void *arg)
     startup();
     P.next_sweep = mono_ns() + (uint64_t)(P.set.sweep_s * 1e9);
     P.next_gen = mono_ns() + (uint64_t)GEN_POLL_MS * 1000000u;
-    P.next_lock = mono_ns() + (uint64_t)LOCK_RETRY_MS * 1000000u;
+    P.next_lock = mono_ns() + (uint64_t)(P.set.lock_retry_s * 1e9);
     for (;;) {
         EventVec evs = {0};
         IJobVec dn = {0};
@@ -1060,16 +1083,18 @@ static void *sched_main(void *arg)
                     P.gen_seen = g;
                     for (i = 0; i < P.ps.tus.len; i++)
                         pstate_reload(&P.ps, P.ps.tus.data[i]);
+                    pi_all();
                     P.cnt.gen_reloads++;
                     after_eval(false);
                 }
             }
             if (!P.writer && now >= P.next_lock) {  /* ... and take over from a writer that left */
-                P.next_lock = now + (uint64_t)LOCK_RETRY_MS * 1000000u;
+                P.next_lock = now + (uint64_t)(P.set.lock_retry_s * 1e9);
                 if (store_lock(&P.store)) {
                     P.writer = true;
                     for (i = 0; i < P.ps.tus.len; i++)
                         pstate_reload(&P.ps, P.ps.tus.data[i]);
+                    pi_all();
                     after_eval(false);
                     gc();
                 }
@@ -1107,6 +1132,7 @@ bool project_start(const JsonValue *params, LspConfig *cfg)
         return false;
     }
     P.set = s;
+    P.pi = pi_new();
     P.cfg = cfg;
     P.progress_cap = json_bool_of(json_path(params, "capabilities.window.workDoneProgress"),
                                   false);
@@ -1212,6 +1238,10 @@ void project_stats(JsonWriter *w)
         mutex_lock(&P.m);
         s = P.st;
         mutex_unlock(&P.m);
+        PiStats ps = pi_stats(P.pi);
+        s.pi_bytes = ps.bytes;
+        s.pi_names = ps.names;
+        s.pi_recs = ps.recs;
     } else {
         memset(&s, 0, sizeof s);
     }
@@ -1247,8 +1277,22 @@ void project_stats(JsonWriter *w)
     N("progressCreates", s.creates);
     N("progressMessages", s.progress_msgs);
     N("rssAnonMB", s.rss_anon_mb);
+    N("nameListBytes", s.pi_bytes);
+    N("names", s.pi_names);
+    N("records", s.pi_recs);
     json_end_object(w);
 #undef N
+}
+
+struct ProjIndex *project_index(void)
+{
+    return P.started ? P.pi : NULL;
+}
+
+void project_hint_sweep(void)
+{
+    if (P.started)
+        post(EV_SWEEP, NULL, 0);
 }
 
 void project_stop(void)
@@ -1283,6 +1327,8 @@ void project_stop(void)
         pstate_free(&P.ps);
         store_close(&P.store);
     }
+    pi_free(P.pi);
+    P.pi = NULL;
     settings_free(&P.set);
     P.started = false;
 }

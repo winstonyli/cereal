@@ -7,6 +7,8 @@
 #include "lsp.h"
 
 #include "../c/frontend.h"
+#include "projidx.h"
+#include "project.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -598,6 +600,10 @@ typedef struct WsCand {
     size_t seq;              /* the unit, in the order searched */
     int rank, kind;          /* ws_match; SymbolKind */
     bool macro;
+    /* a project candidate (snap NULL): the hash of the text the record was
+     * built from, and its PiSym flags and kind (decision 9) */
+    uint64_t fhash;
+    uint8_t pflags, pkind;
 } WsCand;
 typedef VEC(WsCand) WsVec;
 
@@ -825,7 +831,7 @@ static void ws_unit(const WsUnit *u, size_t seq, const char *q,
         vec_push(out, ((WsCand){m->name->str, "", f->path, s, m->name_loc,
                                 (uint32_t)(m->name_loc - f->base), m->name->len,
                                 seq, rank, m->funclike ? SK_FUNCTION : SK_CONSTANT,
-                                true}));
+                                true, 0, 0, 0}));
     }
     if (!ix)
         return;
@@ -862,22 +868,207 @@ static void ws_unit(const WsUnit *u, size_t seq, const char *q,
             vec_push(out, ((WsCand){name, x->parent ? cindex_name(ix, x->parent - 1)
                                                     : "",
                                     f->path, s, f->base + e->off, e->off, e->len,
-                                    seq, rank, C_KINDS[x->kind].sk, false}));
+                                    seq, rank, C_KINDS[x->kind].sk, false, 0, 0, 0}));
         }
     }
     free(fmap);
 }
 
+/* Appends the project's names that match q (10.1): the same matcher, over
+ * the name list of every record; a record of an open document's file is
+ * matched as the open units' symbols are (plain). */
+static void ws_proj(ProjIndex *pi, size_t seq, const char *q, const WsOpen *open,
+                    WsVec *out)
+{
+    size_t i, n = pi_nrecs(pi);
+    for (i = 0; i < n; i++) {
+        const PiRec *r = pi_rec(pi, i);
+        bool plain = ws_is_open(open, r->path);
+        uint32_t j;
+        for (j = 0; j < r->nsyms; j++) {
+            const PiSym *s = &r->syms[j];
+            int rank = ws_match(q, s->name, plain);
+            bool macro = (s->flags & PIF_MACRO) != 0;
+            if (rank < 0)
+                continue;
+            vec_push(out, ((WsCand){s->name, s->container, r->path, NULL, 0, s->off,
+                                    s->len, seq, rank,
+                                    macro ? (s->flags & PIF_FUNC ? SK_FUNCTION : SK_CONSTANT)
+                                          : C_KINDS[s->kind].sk,
+                                    macro, r->fhash, s->flags, s->kind}));
+        }
+    }
+}
+
+static uint64_t ws_key(const WsCand *c)
+{
+    uint64_t h = 1469598103934665603ull ^ c->pkind;
+    const char *p;
+    for (p = c->name; *p; p++)
+        h = (h ^ (unsigned char)*p) * 1099511628211ull;
+    return h;
+}
+
+/* Decision 9: a declaration of a function or object with external linkage is
+ * dropped when the candidates hold its definition (same name and kind): the
+ * definition is the symbol. Only project candidates, v[from..), are looked at. */
+static void ws_drop_decls(WsVec *v, size_t from)
+{
+    size_t i, nb = 16, keep = from;
+    const WsCand **tab;
+    while (nb < 2 * (v->len - from + 1))
+        nb *= 2;
+    tab = xcalloc(nb, sizeof *tab);
+    for (i = from; i < v->len; i++) {
+        const WsCand *c = &v->data[i];
+        size_t h;
+        if (!(c->pflags & PIF_EXT) || !(c->pflags & PIF_DEF))
+            continue;
+        for (h = ws_key(c) & (nb - 1); tab[h]; h = (h + 1) & (nb - 1))
+            if (tab[h]->pkind == c->pkind && !strcmp(tab[h]->name, c->name))
+                break;
+        tab[h] = c;
+    }
+    for (i = from; i < v->len; i++) {
+        const WsCand *c = &v->data[i];
+        size_t h;
+        bool dup = false;
+        if ((c->pflags & PIF_EXT) && !(c->pflags & PIF_DEF))
+            for (h = ws_key(c) & (nb - 1); tab[h] && !dup; h = (h + 1) & (nb - 1))
+                dup = tab[h]->pkind == c->pkind && !strcmp(tab[h]->name, c->name);
+        if (!dup)
+            v->data[keep++] = *c;
+    }
+    free(tab);
+    v->len = keep;
+}
+
+/* The text of a file a project candidate is in, for placing it (10.3). */
+typedef struct WsFile {
+    const char *path;
+    char *cur;                   /* the client's text if open, else the disk's */
+    size_t curlen;
+    uint64_t curhash;
+    bool open, disk_loaded, edit_done;
+    char *disk;                  /* open: the disk's text, when it is needed */
+    size_t disklen;
+    uint64_t diskhash;
+    CIdxEdit edit;               /* disk to cur */
+} WsFile;
+typedef struct WsFiles {
+    VEC(WsFile *) v;
+    WsDocText doc_text;
+    bool hint;                   /* a file changed behind the index's back */
+} WsFiles;
+
+/* Reads a file as the index sees it: no byte order mark. */
+static char *ws_read(const char *path, size_t *len)
+{
+    char *t = read_file(path, len);
+    if (t && *len >= 3 && !memcmp(t, "\xEF\xBB\xBF", 3)) {
+        *len -= 3;
+        memmove(t, t + 3, *len);
+    }
+    return t;
+}
+
+static WsFile *ws_file(WsFiles *fs, const char *path)
+{
+    WsFile *f;
+    size_t i;
+    for (i = 0; i < fs->v.len; i++)
+        if (!strcmp(fs->v.data[i]->path, path))
+            return fs->v.data[i];
+    f = xcalloc(1, sizeof *f);
+    f->path = path;
+    if (fs->doc_text && (f->cur = fs->doc_text(path, &f->curlen)) != NULL)
+        f->open = true;
+    else
+        f->cur = ws_read(path, &f->curlen);
+    if (f->cur)
+        f->curhash = cindex_hash(f->cur, f->curlen);
+    vec_push(&fs->v, f);
+    return f;
+}
+
+/* Where candidate c is in the text the client has (10.3, decision 8): as it
+ * is if that text is what the record was built from; for an open document
+ * whose disk text is, mapped through the edit between them, unless the edit
+ * touches it; else nowhere. */
+static bool ws_place(WsFiles *fs, const WsCand *c, uint32_t *off)
+{
+    WsFile *f = ws_file(fs, c->path);
+    if (!f->cur)
+        return false;
+    if (f->curhash == c->fhash) {
+        *off = c->off;
+        return true;
+    }
+    if (!f->open) {
+        fs->hint = true;
+        return false;
+    }
+    if (!f->disk_loaded) {
+        f->disk_loaded = true;
+        f->disk = ws_read(f->path, &f->disklen);
+        if (f->disk)
+            f->diskhash = cindex_hash(f->disk, f->disklen);
+    }
+    if (!f->disk || f->diskhash != c->fhash) {
+        fs->hint = true;
+        return false;
+    }
+    if (!f->edit_done) {
+        f->edit_done = true;
+        cindex_text_edit(f->disk, f->disklen, f->cur, f->curlen, &f->edit);
+    }
+    if (!f->edit.same && c->off < f->edit.old_end && c->off + c->len > f->edit.pre)
+        return false;
+    *off = cindex_edit_map(&f->edit, c->off);
+    return true;
+}
+
+static void ws_files_free(WsFiles *fs)
+{
+    size_t i;
+    for (i = 0; i < fs->v.len; i++) {
+        free(fs->v.data[i]->cur);
+        free(fs->v.data[i]->disk);
+        free(fs->v.data[i]);
+    }
+    vec_free(&fs->v);
+}
+
+static void json_pos_at(JsonWriter *w, const WsFile *f, PosEncoding enc, size_t off)
+{
+    uint32_t line, ch;
+    off_to_pos(f->cur, f->curlen, off, enc, &line, &ch);
+    json_begin_object(w);
+    json_key(w, "line");
+    json_int(w, line);
+    json_key(w, "character");
+    json_int(w, ch);
+    json_end_object(w);
+}
+
 void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
-                           size_t ndocs, const char *query, PosEncoding enc,
-                           Arena *a, JsonWriter *w)
+                           size_t ndocs, ProjIndex *pi, WsDocText doc_text,
+                           const char *query, PosEncoding enc, Arena *a, JsonWriter *w)
 {
     WsVec v = {0};
     WsOpen open = {docs, ndocs};
+    WsFiles files = {{0}, doc_text, false};
+    const WsCand *last = NULL;
     Req r;
     size_t i, shown = 0;
     for (i = 0; i < n; i++)
         ws_unit(&us[i], i, query, &open, &v);
+    if (pi) {                    /* held to the end: the names are in its mappings */
+        size_t from = v.len;
+        pi_rdlock(pi);
+        ws_proj(pi, n, query, &open, &v);
+        ws_drop_decls(&v, from);
+    }
     if (v.len)
         qsort(v.data, v.len, sizeof *v.data, ws_cmp);
     memset(&r, 0, sizeof r);
@@ -885,10 +1076,14 @@ void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
     r.enc = enc;
     json_begin_array(w);
     for (i = 0; i < v.len && shown < WS_LIMIT; i++) {
-        const WsCand *c = &v.data[i], *p = i ? c - 1 : NULL;
-        if (p && p->off == c->off && !strcmp(p->path, c->path) &&
-            !strcmp(p->name, c->name))
+        const WsCand *c = &v.data[i];
+        uint32_t off = c->off;
+        if (last && last->off == c->off && !strcmp(last->path, c->path) &&
+            !strcmp(last->name, c->name))
             continue;                  /* a header the units share */
+        if (!c->snap && !ws_place(&files, c, &off))
+            continue;                  /* the project's text is not the file's */
+        last = c;
         r.snap = c->snap;
         json_begin_object(w);
         json_key(w, "name");
@@ -896,13 +1091,33 @@ void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
         json_key(w, "kind");
         json_int(w, c->kind);
         json_key(w, "location");
-        json_location(w, &r, c->b, c->b + c->len);
+        if (c->snap) {
+            json_location(w, &r, c->b, c->b + c->len);
+        } else {
+            const WsFile *f = ws_file(&files, c->path);
+            json_begin_object(w);
+            json_key(w, "uri");
+            json_str(w, path_to_uri(a, c->path));
+            json_key(w, "range");
+            json_begin_object(w);
+            json_key(w, "start");
+            json_pos_at(w, f, enc, off);
+            json_key(w, "end");
+            json_pos_at(w, f, enc, (size_t)off + c->len);
+            json_end_object(w);
+            json_end_object(w);
+        }
         json_key(w, "containerName");
         json_str(w, c->container);
         json_end_object(w);
         shown++;
     }
     json_end_array(w);
+    if (pi)
+        pi_unlock(pi);
+    if (files.hint)
+        project_hint_sweep();
+    ws_files_free(&files);
     vec_free(&v);
 }
 

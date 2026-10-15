@@ -20,6 +20,11 @@ cereal/indexHold.  Prints `ok NAME` or `FAIL NAME: why`; exit 1 on any failure.
   readers      a second server on the same cache is a reader and follows GEN
   progress     workDoneProgress: create request, begin, report, end
   paths        the paths setting restricts the units
+  wsym         workspace/symbol finds names of unopened files (a static, a macro),
+               keeps a definition and not its declaration, drops what the disk
+               no longer matches until the index catches up, and maps a name of
+               an open document through the edit
+  takeover     a reader becomes the writer when the writer exits
 """
 import json, os, queue, shutil, subprocess, sys, tempfile, threading
 
@@ -97,6 +102,9 @@ class Server:
     def wait(self):
         self.req("cereal/indexWait")
         return self.stats()
+
+    def ws(self, query):
+        return self.req("workspace/symbol", {"query": query})["result"]
 
     def stats(self):
         return self.req("cereal/indexStats")["result"]
@@ -242,6 +250,76 @@ def sc_paths(root, cache):
     st = s.wait()
     expect(st["tus"] == 10 and st["fresh"] == 10, "only t0000-t0009", st)
     s.stop()
+
+
+def where(path, name):
+    """(line, character) of the first occurrence of name in the file."""
+    text = open(path, newline="").read()
+    i = text.index(name)
+    return text.count("\n", 0, i), i - (text.rfind("\n", 0, i) + 1)
+
+
+def spots(res, path):
+    return [(r["location"]["range"]["start"]["line"], r["location"]["range"]["start"]["character"])
+            for r in res if r["location"]["uri"] == "file://" + path]
+
+
+def poll(what, f, tries=200):
+    for _ in range(tries):
+        v = f()
+        if v:
+            return v
+        threading.Event().wait(0.05)
+    raise AssertionError(what)
+
+
+def sc_wsym(root, cache):
+    c = os.path.join(root, "src", "t0000.c")
+    h = os.path.join(root, "include", "h00.h")
+    s = Server(root, cache)
+    s.wait()
+    expect(spots(s.ws("tu0_count"), c) == [where(c, "tu0_count")], "a static of an unopened unit", s.ws("tu0_count"))
+    expect(spots(s.ws("M00_MAX"), h) == [where(h, "M00_MAX")], "a macro of an unopened header")
+    r = s.ws("h24_f4")
+    expect(len(r) == 1 and spots(r, c) == [where(c, "h24_f4")], "the definition, not the declaration", r)
+    # the file changes behind the index's back: its names are dropped, then come back
+    text = open(c, newline="").read()
+    s.req("cereal/indexHold", {"hold": True})
+    with open(c, "w", newline="") as f:
+        f.write("/* moved */\n" + text)
+    expect(not s.ws("tu0_count"), "a file the index did not read is not trusted")
+    s.req("cereal/indexHold", {"hold": False})
+    s.note("textDocument/didSave", {"textDocument": {"uri": "file://" + c}})
+    expect(poll("back", lambda: spots(s.ws("tu0_count"), c) == [where(c, "tu0_count")], 600),
+           "and the index catches up", s.ws("tu0_count"))
+    s.wait()
+    # an open document that differs from its disk: the name is mapped through the edit
+    uri = "file://" + c
+    text = open(c, newline="").read()
+    s.note("textDocument/didOpen", {"textDocument": {"uri": uri, "languageId": "c", "version": 1,
+                                                      "text": text}})
+    s.note("textDocument/didChange", {"textDocument": {"uri": uri, "version": 2},
+                                       "contentChanges": [{"text": "/* one\n two */\n" + text}]})
+    line, ch = where(c, "tu0_count")
+    got = s.ws("tu0_count")
+    expect(spots(got, c) == [(line + 2, ch)], "mapped through the edit, once", got)
+    s.stop()
+
+
+def sc_takeover(root, cache):
+    w = Server(root, cache)
+    w.wait()
+    r = Server(root, cache, env={"CEREAL_INDEX_LOCKRETRYSECONDS": "1"})
+    expect(r.wait()["role"] == "reader", "the second server reads")
+    w.stop()
+    st = poll("takeover", lambda: (lambda x: x if x["role"] == "writer" else None)(r.stats()), 400)
+    h = os.path.join(root, "include", "h02.h")
+    with open(h, "a") as f:
+        f.write("\n#define PROJ_TEST_TAKEOVER 1\n")
+    r.note("textDocument/didSave", {"textDocument": {"uri": "file://" + h}})
+    st = r.wait()
+    expect(st["published"] >= 1 and st["fresh"] == NTU, "the new writer indexes", st)
+    r.stop()
 
 
 SCEN = {k[3:]: v for k, v in globals().items() if k.startswith("sc_")}

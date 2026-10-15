@@ -119,3 +119,28 @@ void loc_to_pos(SrcMgr *sm, SrcLoc loc, PosEncoding enc, uint32_t *line,
     }
     *character = units;
 }
+
+void off_to_pos(const char *text, size_t len, size_t off, PosEncoding enc,
+                uint32_t *line, uint32_t *character)
+{
+    size_t i = 0, ls = 0;
+    uint32_t l = 0, units = 0;
+    if (off > len)
+        off = len;
+    while (i < off) {                        /* \n, \r\n and \r end lines */
+        char c = text[i++];
+        if (c == '\n' || (c == '\r' && (i >= len || text[i] != '\n'))) {
+            l++;
+            ls = i;
+        }
+    }
+    for (i = ls; i < off;) {
+        size_t n = u8len((unsigned char)text[i]);
+        if (i + n > off)
+            n = off - i;
+        units += enc == ENC_UTF8 ? (uint32_t)n : n == 4 ? 2 : 1;
+        i += n;
+    }
+    *line = l;
+    *character = units;
+}

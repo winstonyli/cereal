@@ -432,17 +432,19 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
   is always advertised. The answer is `SymbolInformation[]` (`name`, `kind`,
   `location`, `containerName`: the record or enum of a field or enumerator,
   else `""`), at most 100. It has its own handler: no wait, no check is
-  started, and it reads whatever index each unit has now. Partial by design
-  until B5's project index:
-  - only units with an open document are searched (a closed document's unit
-    drops out), and a header counts when a searched unit includes it, listed
-    once however many units do;
-  - a unit still checking contributes its last or carried index; one with a
-    snapshot but no index yet contributes its macros only; one with no
-    snapshot yet contributes nothing;
-  - system headers are left out (user macros and the document symbols'
-    selection of C declarations are listed, one entry per decl per unit, at
-    its definition if any).
+  started, and it reads whatever index each unit has now. Two sources, one
+  matcher:
+  - the units with an open document (a closed document's unit drops out); a
+    header counts when a searched unit includes it, listed once however many
+    units do; a unit still checking contributes its last or carried index; one
+    with a snapshot but no index yet contributes its macros only; one with no
+    snapshot yet contributes nothing; system headers are left out (user macros
+    and the document symbols' selection of C declarations are listed, one entry
+    per decl per unit, at its definition if any);
+  - the project index (B5b-3, "Project index" below): the names of every
+    record the manifests name, so unopened files are searched too. A function
+    or object with external linkage found both as a declaration and as a
+    definition is listed at the definition only.
 
   Matching is a port of clangd 20.1.8's, as probed: case-insensitive, the
   query's characters in order, the first at a segment start (the start, after
@@ -532,8 +534,19 @@ publishes a result by reloading the unit's manifest and bumping `GEN`.
   4), at least 1), `memoryMB` 1536 (above it, units go to a child),
   `maxInProcessKB`, `maxFileMB` 64, `cacheDir` ("" = memory only; default
   under the user cache dir), `cacheMaxMB` 2048, `sweepSeconds` 30,
-  `quietMs` 500, `subprocessSeconds` 120, `paths` (fnmatch globs on the
+  `quietMs` 500, `subprocessSeconds` 120, `lockRetrySeconds` 30 (how often a reader tries to take over the lock), `paths` (fnmatch globs on the
   root-relative path, `!` excludes).
+- Names (workspace/symbol): the scheduler loads, for every record a manifest
+  names, its list of names (one per declared key: the definition if any, else
+  the first declaration; parameters and labels left out; macros) into a
+  `ProjIndex` (`src/lsp/projidx.c`) behind a read/write lock; a query reads it
+  under the shared lock, so it never waits for the scheduler or a job. A name
+  is placed in the text the client has: as recorded if that text is the one
+  the record was built from; for an open document whose disk text is, mapped
+  through the edit between them (dropped if the edit overlaps it); otherwise
+  dropped, and the scheduler is asked to look at the files again (at most one
+  such sweep in 5 s). Memory: about 24 bytes a name plus the record's mapping
+  (file-backed).
 - Test-only requests: `cereal/indexStats`, `cereal/indexWait` (a barrier),
   `cereal/indexHold`. `tests/proj_test.py` drives them; the other LSP tests
   run with `CEREAL_INDEX_ENABLE=0`.

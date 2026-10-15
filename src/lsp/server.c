@@ -1304,9 +1304,26 @@ static const char *request_uri(const JsonValue *params)
     return u ? u : json_str_of(json_path(params, "item.uri"), NULL);
 }
 
-/* workspace/symbol (B4_DESIGN.md 7): the symbols of the units that have an
- * open document, from what each has now.  It has no document and never waits
- * for a build or a check, nor starts one (E6). */
+/* A copy of an open document's text, for placing the project's names. */
+static char *ws_doc_text(const char *path, size_t *len)
+{
+    char *t = NULL;
+    Doc *d;
+    mutex_lock(&S.m);
+    if ((d = doc_find(path)) != NULL) {
+        t = xmalloc(d->len + 1);
+        memcpy(t, d->text, d->len);
+        t[d->len] = 0;
+        *len = d->len;
+    }
+    mutex_unlock(&S.m);
+    return t;
+}
+
+/* workspace/symbol (B4_DESIGN.md 7, B5_DESIGN.md 11.1): the symbols of the
+ * units that have an open document, from what each has now, and the project's
+ * other names from the index.  It has no document and never waits for a
+ * build or a check, nor starts one (E6). */
 static void workspace_symbol(const JsonValue *id, const JsonValue *params)
 {
     VEC(WsUnit) us = {0};
@@ -1330,8 +1347,8 @@ static void workspace_symbol(const JsonValue *id, const JsonValue *params)
     begin_response(&w, &sb, id);
     json_key(&w, "result");
     lsp_workspace_symbols(us.data, us.len, (const char *const *)docs.data,
-                          docs.len, json_str_of(json_get(params, "query"), ""),
-                          S.enc, &a, &w);
+                          docs.len, project_index(), ws_doc_text,
+                          json_str_of(json_get(params, "query"), ""), S.enc, &a, &w);
     json_end_object(&w);
     send_json(&sb);
     sb_free(&sb);

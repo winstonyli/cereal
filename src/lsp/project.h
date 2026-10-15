@@ -37,4 +37,11 @@ void project_stats(JsonWriter *w);
 void project_wait(void);
 void project_hold(bool hold);
 
+/* The project's names for workspace/symbol (projidx.h); NULL when indexing is
+ * off.  Valid until project_stop. */
+struct ProjIndex *project_index(void);
+/* A query found a file that is not what the index read: look at the files
+ * again soon (7.3).  Any thread; cheap, and rate limited. */
+void project_hint_sweep(void);
+
 #endif

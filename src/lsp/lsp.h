@@ -63,6 +63,9 @@ char *path_to_uri(Arena *a, const char *path);
 /* Byte offset of an LSP position in text (clamped to the line). */
 size_t pos_to_offset(const char *text, size_t len, uint32_t line,
                      uint32_t character, PosEncoding enc);
+/* LSP position of a byte offset in text (clamped). */
+void off_to_pos(const char *text, size_t len, size_t off, PosEncoding enc,
+                uint32_t *line, uint32_t *character);
 /* LSP position of a location. */
 void loc_to_pos(SrcMgr *sm, SrcLoc loc, PosEncoding enc, uint32_t *line,
                 uint32_t *character);
@@ -217,9 +220,14 @@ typedef struct WsUnit {
     Snapshot *snap;
     const struct CIndex *cx;
 } WsUnit;
+struct ProjIndex;
+/* The text of an open document (malloc'd copy), NULL if it is not open. */
+typedef char *(*WsDocText)(const char *path, size_t *len);
+/* pi (or NULL): the project's names are searched too, and placed in the text of
+ * the documents, open ones through doc_text. */
 void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
-                           size_t ndocs, const char *query, PosEncoding enc,
-                           Arena *a, JsonWriter *w);
+                           size_t ndocs, struct ProjIndex *pi, WsDocText doc_text,
+                           const char *query, PosEncoding enc, Arena *a, JsonWriter *w);
 /* full (previous_id NULL) or full/delta */
 void lsp_semantic_tokens(Req *r, JsonWriter *w, const char *previous_id);
 void lsp_semantic_tokens_range(Req *r, JsonWriter *w);

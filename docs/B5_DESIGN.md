@@ -2,9 +2,9 @@
 
 Status: design, 2026-10-12. B5a done 2026-10-13 (record and manifest
 format, writer, validating reader, `cereal index-summary`, D5 prerequisites,
-goldens, sizes in 5.5); B5b-1 (store, invalidation) and B5b-2 (scheduler,
-subprocess, progress, settings) done 2026-10-14; B5b-3 (ProjIndex,
-workspace/symbol) onward not started. ROADMAP B5 points here.
+goldens, sizes in 5.5); B5b-1 (store, invalidation), B5b-2 (scheduler,
+subprocess, progress, settings) and B5b-3 (name list, project-wide
+workspace/symbol) done 2026-10-14; B5c onward not started. ROADMAP B5 points here.
 
 Scope (ROADMAP B5): a background index of every C entry in
 `compile_commands.json`, persisted on disk, answering:
@@ -1870,8 +1870,8 @@ bound.
   - The globals gate lists 31 symbols, each justified in
     `bench/tools/globals.allow`; it runs as stage `0globals` of `gate.sh`.
 
-**B5b-1 and B5b-2 done 2026-10-14** (about 2,970 and 1,900 lines;
-`cidxstore`, `pstate`, `indexjob`, `project`). Deviations from sections 5-13,
+**B5b-1, B5b-2 and B5b-3 done 2026-10-14** (about 2,970, 1,900 and 790 lines,
+5,660 in all; `cidxstore`, `pstate`, `indexjob`, `project`, `projidx`). Deviations from sections 5-13,
 for B5b-3 and later:
 
 - Store and invalidation (B5b-1):
@@ -1905,7 +1905,8 @@ for B5b-3 and later:
   3. The subprocess is an ipool job: `posix_spawn`, a poll loop with the
      `subprocessSeconds` deadline, `waitpid`. No completion thread.
   4. A reader polls `GEN` once a second from the scheduler thread, and
-     retries `store_lock` every 30 s (taking over as writer and running GC).
+     retries `store_lock` every `lockRetrySeconds` (default 30; taking over as
+     writer and running GC).
   5. Failure state (`fails`, `retry_ns`) is in memory only. Backoff 60 s,
      600 s, then never; any content change (a sweep or save that changed a
      hash) resets all of it. This is coarser than 7.1's per-file idea,
@@ -1943,6 +1944,73 @@ for B5b-3 and later:
       job's tukey differs from the unit's) triggers one `pstate_set_config`.
   15. Settings are read from `initializationOptions.index` and overridden by
       `CEREAL_INDEX_<KEY>` (13.2).
+  16. (B5b-3) `ProjIndex` (`src/lsp/projidx.[ch]`) holds, per distinct record
+      digest, a `PiRec`: the mapped record plus an array of 24-byte `PiSym`
+      (name, container, offset, length, kind, flags) built when the record
+      loads: per key its definition if any, else its first declaration;
+      parameters and labels left out; macros added. Units and records are
+      ref-counted (`pi_set_tu`, `pi_prune`), so a header shared by 1,000
+      units is loaded once. One `RwLock`: the scheduler takes the write lock
+      only to swap pointers (records load outside it); a query holds the read
+      lock for the whole of one answer, because names point into the record
+      mappings. Lock order: pi lock, then `S.m` (the doc-text callback);
+      the scheduler never takes `S.m` or `P.m` while holding the write lock.
+      It is refreshed wherever a manifest is reloaded: after a job
+      (`finish`), GEN follow, takeover, startup and compile DB reload.
+  17. (B5b-3) One matcher: `lsp_workspace_symbols` appends the project's
+      names to the open units' candidates and sorts them together
+      (`ws_match`, `ws_cmp`, `WS_LIMIT`, trigram filter for records of
+      unopened files). A project candidate sorts after the open units'
+      (`seq` = number of units) and the dedupe by (path, offset, name) now
+      compares with the last candidate shown, not the previous raw one, so a
+      name dropped by mapping does not break it.
+  18. (B5b-3) Mapping at query time (decision 8) uses the hash of the file
+      text: the client's text if the document is open, else the disk's (BOM
+      stripped). Equal to the record's hash: offsets as recorded. Open
+      document, disk hash equal to the record's: `cindex_text_edit(disk,
+      text)` and `cindex_edit_map`, dropped if the edit overlaps the name.
+      Anything else: dropped, and the scheduler is asked for a sweep
+      (`EV_SWEEP`, at most one in 5 s) so the next query is right. Positions
+      are made from offsets with the new `off_to_pos` (inverse of
+      `pos_to_offset`; UTF-8/16/32).
+  19. (B5b-3) Decision 9 is applied to the candidates after the matcher: an
+      external-linkage function or object declaration is dropped when a
+      definition with the same name and kind is among them.
+  20. (B5b-3) `lockRetrySeconds` (env `CEREAL_INDEX_LOCKRETRYSECONDS`,
+      default 30) replaces the constant; `proj_test.py` has `wsym` and
+      `takeover` scenarios (no static `tests/lsp/proj_wsym`: the generated
+      project is enough). `cereal/indexStats` gained `nameListBytes`,
+      `names`, `records`.
+- Measured (B5b-3, WSL, 1,001-TU generated project from `genproj.py`, 1,201
+  records, 23,495 names; host 70% busy with other sessions' jobs):
+  - indexing from scratch 8.5 s (4 threads); `ProjIndex` heap 1.2 MB;
+    server RssAnon 38 MB at the end of indexing and 5.8 MB after a restart
+    (2.3 MB with indexing off), 7.4 MB after 300 queries. Stop rule 1 (100
+    MB) did not fire. Caveat: genproj headers are few and shared, so the
+    name count is small; a real project at 1M names would hold about 24 MB
+    of `PiSym` plus the file-backed mappings.
+  - restart re-validation (spawn to all 1,001 units fresh, no job): 0.08-0.09
+    s (limit 2 s).
+  - workspace/symbol, 20 queries (3 to 100 results each) x 15: p50 1.7-2.1
+    ms, p95 3.5-4.0 ms, max 6.5 ms (limit 100 ms). The scan is linear, about
+    80 ns a name; extrapolated, p95 reaches 100 ms at roughly 1M names.
+  - builder edit-to-refresh, 100 edits 0.15 s apart on `stress.c`,
+    `quietMs` 50, indexing on a fresh cache and confirmed running during
+    the edits (`cereal/indexStats` before and after: published 90-276 to
+    480-1,001, 4 jobs running): quiet runs p50 31.4-35.3 ms on against
+    31.7-32.4 ms off (0-5%). The host was busy, so single runs ranged 31-93
+    ms in both modes (medians of 9 runs: 36.1 off, 44.7 on); best of N
+    differs by -1%. The 10% stop rule did not fire on the quiet runs; it
+    cannot be judged tighter on a shared host.
+- TSan (B5b-3): 58 LSP session runs (plain and `-fparallel`, indexing on), 0
+  reports; `lsp_stress.py --symbols --calls --hints` 200 edits (236 sent) on
+  a 40-TU project with indexing active (workspace/symbol queries against
+  the project index while jobs publish): 0 reports; all 10 `proj_test.py`
+  scenarios: 0 reports.
+- Gates (B5b-3): run.sh 2142 passed; san 2142, 628 files, 0 findings; callgrind
+  3.8848 G; globals 32 allowed (no new global); symcov unchanged; clangd_diff
+  7 files, 2186 differences (2264 before; the project names now answer some
+  queries clangd answers), 0 unexpected.
 
 **B5b: the store and the scheduler.** 2,200-4,800 lines (system chunks, 5.5
 spike: about 100 more, with their tests).

@@ -164,7 +164,8 @@ B5. Workspace-wide index over compile_commands, workspace/symbol,
     Designed in B5_DESIGN.md (2026-10-12; est. 5,500-12,500 lines in four
     slices B5a-B5d, D5 first). B5a (record format, `index-summary`,
     globals gate) done in Round 222; B5b-1 (store, invalidation) and B5b-2
-    (scheduler, subprocess, settings, progress) in Round 225.
+    (scheduler, subprocess, settings, progress) in Round 225; B5b-3 (name list,
+    project-wide workspace/symbol) in Round 226.
 
 Risks: partial or erroneous code still yields partial symbol data; the
 snapshot sees one `#if` branch; the checker's tables are private (index code

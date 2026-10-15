@@ -4612,3 +4612,20 @@ Gates: run.sh 2137 passed; gate.sh: san 2137 passed, 628 files, 0 findings;
 verify unchanged; callgrind 3.8857 G (3.8797 G); globals 32 allowed (+1
 `lsp/project P`); symcov unchanged (4718 files, 1,146,276 events); clangd_diff 7
 files, 2264 differences, 0 unexpected. TSan and builder latency: B5_DESIGN 15.
+
+Round 226: B5b-3, the name list and project-wide workspace/symbol
+(B5_DESIGN.md 10.1-10.2, 11.1). `src/lsp/projidx.[ch]`: a ref-counted,
+RwLock-guarded `ProjIndex` of per-record name lists, refreshed by the
+scheduler wherever a manifest is reloaded. `lsp_workspace_symbols` now
+searches the open units and the project through one candidate path and one
+matcher; project names are placed at query time by file hash (as recorded,
+mapped through the edit for an open document, else dropped with a sweep hint),
+and a declaration is dropped for its definition. New `off_to_pos`,
+`lockRetrySeconds`, `proj_test.py` scenarios `wsym` and `takeover`. 1,001-TU
+project: index 8.5 s, restart check 0.09 s, workspace/symbol p95 4 ms,
+`ProjIndex` 1.2 MB, builder p50 within 5% with indexing running (noisy host).
+Stop rules did not fire. B5b total about 5,660 lines (4,800 waived).
+Gates: run.sh 2142 passed; san 2142, 628 files, 0 findings; callgrind 3.8848
+G; globals 32 allowed; symcov unchanged; clangd_diff 7 files, 2186
+differences, 0 unexpected; TSan 0 reports. Numbers and deviations 16-20 in
+B5_DESIGN 15.
