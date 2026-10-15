@@ -4629,3 +4629,11 @@ Gates: run.sh 2142 passed; san 2142, 628 files, 0 findings; callgrind 3.8848
 G; globals 32 allowed; symcov unchanged; clangd_diff 7 files, 2186
 differences, 0 unexpected; TSan 0 reports. Numbers and deviations 16-20 in
 B5_DESIGN 15.
+
+Round 227: B5b stop rules re-measured (no src change) on a quieter host and a
+real 1,804-TU project (libuv, Lua 5.1-5.5, LuaJIT, zstd, cereal; 213,903
+names): index 23 s, `ProjIndex` 6.1 MB, RssAnon 68 MB, restart check 0.15 s,
+builder p50 within 5% with indexing on; workspace/symbol p95 112 ms on a 22-query
+mix (rule 3 fires on `ZSTD_*` queries with thousands of candidates, p50 19 ms);
+the scheduler spins a core once `sweepSeconds` expires during a long run
+(confirmed, no visible latency effect). B5_DESIGN 15.

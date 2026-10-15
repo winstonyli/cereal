@@ -2002,6 +2002,87 @@ for B5b-3 and later:
     ms in both modes (medians of 9 runs: 36.1 off, 44.7 on); best of N
     differs by -1%. The 10% stop rule did not fire on the quiet runs; it
     cannot be judged tighter on a shared host.
+- Re-measured (Round 227, WSL, quiet(er) host, real project; measurement only,
+  no src change; `./cereal` as built at 22:55 from the Round 226 tree). Host
+  load: Windows `\Processor(_Total)` 17.6% before the first run (limit 20%),
+  then 10-35% during runs (that includes the server and its 4 index threads;
+  other sessions were intermittently active, so it was quieter than the 70% of
+  the 1,001-TU run but not idle), WSL loadavg 0.3-1.7 per run; Defender
+  RealTimeProtectionEnabled False. Project: a compile DB over 602 real units
+  (libuv src 34 + libuv test 196, Lua 5.1-5.5 165, LuaJIT 2.0/2.1 130, zstd
+  amalgamation 1, cereal's own `src` 76) with shared system headers, each unit
+  also under two more flag sets (`-DCFG_A=1`; `-DNDEBUG -DCFG_B=2`), except the
+  open file `libuv/src/unix/core.c`: 1,804 TUs, 2,117 distinct records, 213,903
+  names (distinct name strings not counted; `index-summary --dump` takes a
+  unit, not a record file). Harness: an ad hoc script (deleted with its
+  scratch; it speaks `cereal/indexStats`/`indexWait` like `proj_test.py`),
+  not in the repo.
+  - Indexing from scratch (4 threads, default priority, `quietMs` 500 default):
+    23 s (about 13 ms per TU wall); cache 32.7 MB; `ProjIndex` 6.1 MB
+    (`nameListBytes`; 28.7 bytes a name); server RssAnon 68 MB at the end of
+    indexing, 13 MB after a restart, 20.7 MB after 330 queries, 3.5 MB with
+    indexing off. Stop rule 1 (100 MB on the 1,000-TU project): not fired
+    (68 MB total is the server, of which the index is 6 MB; the builder runs in
+    the latency runs below put the whole server at 83-92 MB with an open file
+    being edited).
+  - Restart re-validation (spawn to `indexWait` returns, 1,804 units all fresh,
+    0 jobs): 0.15, 0.15, 0.18 s (limit 2 s). Not fired.
+  - workspace/symbol, 22 queries (0 to 100 results) x 15, mixed prefixes,
+    exact names, one-letter and no-match queries: p50 18.9 ms, p95 111.9 ms,
+    max 171 ms over 330 queries (the first mix, run in the same session as the
+    index build: p50 22.3, p95 145.8). Per query p50 (ms): 8.5 to 34 for 20
+    of the 22 (`uv_` 17.7, `a` 26.1, `buf` 34.4, `qqq` 13.7), but `ZSTD_`
+    101.5 and `ZSTD_compress` 147.8, repeatably (min over 15 runs 99.4 and
+    143.5). So the scan is not the cost for these: the linear scan is about 60
+    ns a name (13.7 ms for no match over 213,903 names), and the two slow
+    queries are the ones with thousands of candidates (zstd.c declares about
+    1,360 `ZSTD_*` names, each present in 3 configurations); cost per candidate
+    after the matcher (ranking, mapping, dedupe, `ws_cmp`) looks like 20-25 us,
+    not profiled. Stop rule 3 (p95 100 ms): **fires on this mix** (111.9 ms,
+    two of 22 queries); without those two queries p95 is about 35 ms. The
+    "p95 reaches 100 ms at about 1M names" extrapolation (linear scan) holds
+    for ordinary queries (about 60-100 ns a name, 213,903 names: 14-22 ms) and
+    understates candidate-heavy queries. The mix is not a user distribution;
+    the zstd amalgamation is a heavy case (one file, 1,360 related names).
+  - Builder edit-to-second-publication latency (the C check's
+    publishDiagnostics; this client sends no semantic-token request, so no
+    refresh is issued; first publication = the builder phase), 100 edits on
+    `core.c` (unsaved overlay), interleaved off/on pairs, 9 pairs, fresh cache
+    per on-run, `quietMs` 50, indexing confirmed active by
+    `cereal/indexStats` before and after (published 0 -> 127-999 of 1,804, 4
+    jobs running at the end, 221-307 jobs cancelled by edits):
+    - edits 0.15 s apart: median of 9 run-p50s 65.1 ms off, 64.0 on (-1.7%);
+      median p95 74.5 off, 77.0 on (+3.5%); paired per-pair p50 change: median
+      +2.4%, mean +10.4%, range -19% to +57% (one pair, off 58.7 vs on 92.0,
+      with the loadavg highest, drives the mean); best of N 46.5 off vs 57.3
+      on (the best off was a single 46.5 ms outlier run and is not a fair
+      statistic). First publication p50: 27.2 vs 27.5 ms.
+    - edits 0.5 s apart (indexing runs between edits; it finishes at 25-35 s
+      of the 50 s run: published 0 -> 1,804, 71-104 cancelled): median run-p50
+      64.5 off, 62.2 on (-3.6%); median p95 79.4 off, 86.0 on (+8.2%); paired
+      p50: median -3.1%, mean -1.7%, range -16% to +13%; paired p95 median
+      -9.5%.
+    - Stop rule 4 (10% p50 regression): not fired in either cadence on the
+      median or the paired median; individual runs vary 55-92 ms on both arms
+      (host intermittently busy), so a single-digit-percent effect cannot be
+      excluded or confirmed; the data say the regression is below about 5%.
+  - Sweep timer spin (checked on the reviewer's report, `project.c` about
+    1039-1077): confirmed. Per-thread CPU from `/proc/PID/task/*/stat` during
+    a 1-thread indexing run: one thread at 0.5-1.0 cores (the job) up to 31 s;
+    from 33 s, with the default `sweepSeconds` 30 and jobs still pending, a
+    second thread (the scheduler) at 0.88-1.02 cores until the work was done
+    (43 s); with `sweepSeconds` 3600 that thread stays at 0.01. The 4-thread
+    run finished in 20 s, before the timer, so it was not hit. Effect on
+    numbers: the 0.5 s-cadence latency runs ran over 30 s of indexing, in
+    arm `on` (default sweep) and a third arm `onS` (`sweepSeconds` 3600):
+    median run-p50 62.2 (on) vs 69.9 (onS) vs 64.5 (off), median p95 86.0 /
+    91.7 / 79.4: no visible inflation from the spin (the differences are noise,
+    onS is not lower), RssAnon 88-92 MB in both arms. It costs a core of CPU
+    (on a 16-core host not visible in latency; on a 4-core machine it would
+    be) for the duration of any indexing longer than `sweepSeconds`.
+  - Scratch: `~/rp` (project, scripts, caches) removed; `~/.cache/cereal`
+    unchanged (21 entries, none from these runs: all runs used an explicit
+    `cacheDir`); no leftover cereal/python/valgrind/clangd processes.
 - TSan (B5b-3): 58 LSP session runs (plain and `-fparallel`, indexing on), 0
   reports; `lsp_stress.py --symbols --calls --hints` 200 edits (236 sent) on
   a 40-TU project with indexing active (workspace/symbol queries against
