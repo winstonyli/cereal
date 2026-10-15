@@ -628,12 +628,6 @@ static int cref_cmp(const void *a, const void *b)
     return x->name < y->name ? -1 : x->name > y->name;
 }
 
-static int u64cmp(const void *a, const void *b)
-{
-    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
-    return x < y ? -1 : x > y;
-}
-
 /* The tables queries use, made once per cell. */
 static void blob_tables(IxBlob *b, Arena *a)
 {
@@ -650,7 +644,7 @@ static void blob_tables(IxBlob *b, Arena *a)
             b->max_len = b->refs[i].len;
     }
     if (b->nrefs > 1)
-        qsort(keys, b->nrefs, sizeof *keys, u64cmp);
+        qsort(keys, b->nrefs, sizeof *keys, u64_cmp);
     for (i = 0; i < b->nrefs; i++)
         b->by_name[i] = (uint32_t)keys[i];
     free(keys);

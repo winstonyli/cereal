@@ -1845,10 +1845,12 @@ static void do_undef(PP *pp, const Tok *hash, const Tok *kw)
 /* Resolve and load an included file; the source manager caches both hits
  * and misses, so repeated searches cost no system calls. */
 static SrcFile *find_include(PP *pp, const char *name, bool angled, bool next,
-                             int *dir_index)
+                             int *dir_index, size_t *first_dir, bool *tried_cur)
 {
     size_t i, start;
     SrcFile *f;
+    *first_dir = 0;
+    *tried_cur = false;
     if (name[0] == '/') {
         *dir_index = -1;
         return srcmgr_load(pp->sm, name, SF_USER);
@@ -1857,6 +1859,7 @@ static SrcFile *find_include(PP *pp, const char *name, bool angled, bool next,
         start = (size_t)pp->inc->dir_index + 1;
     } else {
         if (!angled && !next && pp->inc) {
+            *tried_cur = true;
             const char *p;
             if (pp->inc->file->kind == SF_VIRTUAL)
                 p = name;
@@ -1871,6 +1874,7 @@ static SrcFile *find_include(PP *pp, const char *name, bool angled, bool next,
         }
         start = angled ? pp->first_angle : 0;
     }
+    *first_dir = start;
     for (i = start; i < pp->search.len; i++) {
         bool sys = i >= pp->first_system;
         f = srcmgr_load(pp->sm, path_join(pp->arena, pp->search.data[i], name),
@@ -1886,13 +1890,16 @@ static SrcFile *find_include(PP *pp, const char *name, bool angled, bool next,
 }
 
 /* Every search for a header, by #include, __has_include or #pragma
- * dependency; a failed one is reported to the listeners (include_miss). */
+ * dependency; a failed one is reported to the listeners (include_miss) with
+ * where the search began, so that it can be repeated. */
 SrcFile *pp_find_include(PP *pp, const char *name, bool angled, bool next,
                          int *dir_index)
 {
-    SrcFile *f = find_include(pp, name, angled, next, dir_index);
+    size_t first_dir;
+    bool tried_cur;
+    SrcFile *f = find_include(pp, name, angled, next, dir_index, &first_dir, &tried_cur);
     if (!f && pp->inc)
-        PP_EMIT(pp, include_miss, name, angled, pp->inc->file);
+        PP_EMIT(pp, include_miss, name, angled, first_dir, tried_cur, pp->inc->file);
     return f;
 }
 

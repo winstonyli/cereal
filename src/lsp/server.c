@@ -80,6 +80,8 @@ typedef struct DeferredReq {
 
 typedef struct Server {
     Mutex m;
+    Mutex cfg_m;              /* the configuration slot and its reference counts; a leaf
+                               * lock: taken under S.m too */
     Cond work, done;
     VEC(DeferredReq *) deferred; /* requests for the builder to answer */
     bool code_actions;        /* client: codeAction literals (advertised) */
@@ -96,9 +98,7 @@ typedef struct Server {
     bool hint_refresh;        /* client: workspace.inlayHint.refreshSupport */
     unsigned refresh_n;       /* ids of the refresh requests sent */
     bool hold;                /* test only: cereal/holdChecks (B3_DESIGN.md 12.11) */
-    LspConfig *cfg;           /* atomic pointer: a reload swaps it (7.4) */
-    VEC(LspConfig *) retired; /* replaced ones: a build may still read them, so
-                               * they live until exit (S.m) */
+    LspConfig *cfg;           /* a reload swaps it (7.4); referenced (S.m) */
     ThreadPool pool;
     long long gen;
     pthread_t builder;
@@ -106,22 +106,54 @@ typedef struct Server {
 
 static Server S;
 
-static LspConfig *cfg_now(void)
+/* The current configuration, referenced; release it with lsp_config_unref. */
+static LspConfig *cfg_acquire(void)
 {
-    return atomic_load_ptr((void *const *)&S.cfg);
+    LspConfig *c;
+    mutex_lock(&S.cfg_m);
+    c = S.cfg;
+    c->refs++;
+    mutex_unlock(&S.cfg_m);
+    return c;
 }
 
-LspConfig *lsp_config(void)
+void lsp_config_ref(LspConfig *c)
 {
-    return cfg_now();
+    mutex_lock(&S.cfg_m);
+    c->refs++;
+    mutex_unlock(&S.cfg_m);
+}
+
+void lsp_config_unref(LspConfig *c)
+{
+    bool last;
+    mutex_lock(&S.cfg_m);
+    last = --c->refs == 0;
+    mutex_unlock(&S.cfg_m);
+    if (last) {
+        config_free(c);
+        free(c);
+    }
 }
 
 void lsp_config_swap(LspConfig *n)
 {
-    mutex_lock(&S.m);
-    vec_push(&S.retired, S.cfg);
-    mutex_unlock(&S.m);
-    atomic_store_ptr((void **)&S.cfg, n);
+    LspConfig *old;
+    n->refs = 1;
+    mutex_lock(&S.cfg_m);
+    old = S.cfg;
+    S.cfg = n;
+    mutex_unlock(&S.cfg_m);
+    lsp_config_unref(old);
+}
+
+/* Options for a file under the current configuration. */
+static Options *options_for(const char *path)
+{
+    LspConfig *c = cfg_acquire();
+    Options *o = config_options_for(c, path);
+    lsp_config_unref(c);
+    return o;
 }
 
 /* The builder has nothing queued or running (the index scheduler's gate). */
@@ -447,7 +479,7 @@ static Check *check_run(Unit *u, Snapshot *s)
     bool ok;
     if (fault_hit("lsp-check"))
         fatal("injected fault (lsp-check)");
-    c->opt = config_options_for(cfg_now(), s->main);
+    c->opt = options_for(s->main);
     c->opt->pp.fatal_missing_include = false; /* D2 */
     tu_init(&c->tu, c->opt);
     c->tu.sm.overlay = overlay_lookup;
@@ -469,12 +501,13 @@ static Check *check_run(Unit *u, Snapshot *s)
 
 static bool has_command(const char *path)
 {
-    const LspConfig *c = cfg_now();
+    LspConfig *c = cfg_acquire();
     size_t i;
-    for (i = 0; i < c->cmds.len; i++)
-        if (!strcmp(c->cmds.data[i].file, path))
-            return true;
-    return false;
+    bool has = false;
+    for (i = 0; i < c->cmds.len && !has; i++)
+        has = !strcmp(c->cmds.data[i].file, path);
+    lsp_config_unref(c);
+    return has;
 }
 
 static bool is_header(const char *path)
@@ -649,7 +682,7 @@ static Snapshot *build_unit(Unit *u, Overlay *ov, bool *failed)
         *failed = true;
         return NULL;
     }
-    opt = config_options_for(cfg_now(), u->main);
+    opt = options_for(u->main);
     snap = build(u->main, ov, opt, u->in, &u->cells, &u->cancel);
     fatal_trap_pop(&tr);
     if (!snap)
@@ -680,7 +713,7 @@ static void rename_run(void *ctx)
 {
     RenameJob *j = ctx;
     FatalTrap tr;
-    Options *opt = config_options_for(cfg_now(), j->snap->main);
+    Options *opt = options_for(j->snap->main);
     opt->pp.fatal_missing_include = false; /* as the check's (D2) */
     j->q->o = opt;
     j->q->main = j->snap->main;
@@ -726,7 +759,7 @@ static void fixall_run(void *ctx)
 {
     FixAllJob *j = ctx;
     FatalTrap tr;
-    Options *opt = config_options_for(cfg_now(), j->snap->main);
+    Options *opt = options_for(j->snap->main);
     opt->pp.fatal_missing_include = false;
     fatal_trap_push(&tr);
     if (setjmp(tr.jb)) {
@@ -1098,6 +1131,7 @@ static void initialize(const JsonValue *id, const JsonValue *params)
         root = json_str_of(json_get(params, "rootPath"), NULL);
     S.cfg = xcalloc(1, sizeof *S.cfg);
     config_init(S.cfg, root, NULL);
+    S.cfg->refs = 1;
     arena_free(&a);
     project_start(params, S.cfg);
 
@@ -1708,6 +1742,7 @@ int lsp_main(FILE *in, FILE *out)
     int rc = 1;
     memset(&S, 0, sizeof S);
     mutex_init(&S.m);
+    mutex_init(&S.cfg_m);
     cond_init(&S.work);
     cond_init(&S.done);
     pool_init(&S.pool, 0, 0);
@@ -1866,16 +1901,8 @@ int lsp_main(FILE *in, FILE *out)
         vec_free(&S.queue);
     }
     lsp_forget_tokens(NULL);
-    if (S.cfg) {
-        size_t i;
-        for (i = 0; i < S.retired.len; i++) {
-            config_free(S.retired.data[i]);
-            free(S.retired.data[i]);
-        }
-        vec_free(&S.retired);
-        config_free(S.cfg);
-        free(S.cfg);
-    }
+    if (S.cfg)                          /* the jobs are gone: only its own reference is left */
+        lsp_config_unref(S.cfg);
     pool_free(&S.pool);
     return rc;
 }

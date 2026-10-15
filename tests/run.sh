@@ -837,10 +837,40 @@ icheck rec-ok "fresh src/a.c;fresh src/a.c;fresh src/b.c;"
 got=$(istale --records | grep -c 'lost ')
 if [ "$got" -ge 1 ]; then ok; else bad "index/stale damaged record not found lost"; fi
 rm -rf "$IP/cache"
+# a #include_next that finds nothing is a miss searched from the directory after
+# the wrapper's, not from the first (else the wrapper resolves it: stale for ever)
+IP="$TMP/ip2"
+rm -rf "$IP"
+mkdir -p "$IP/src" "$IP/w"
+iput src/c.c '#include <w.h>\nint c;\n'
+iput w/w.h '#include_next <w.h>\n'
+iput .cereal 'lint = off\n'
+cat >"$IP/compile_commands.json" <<EOF
+[{"directory":"$IP","file":"src/c.c","command":"cc -Iw -c src/c.c"}]
+EOF
+iwrite 0
+icheck include_next "fresh src/c.c;"
+# and a miss that really does resolve later is still found
+mkdir -p "$IP/v"
+sed -i 's/-Iw -c/-Iw -Iv -c/' "$IP/compile_commands.json"
+icheck flags-changed "new src/c.c;"
+iwrite 0
+icheck still-fresh "fresh src/c.c;"
+iput v/w.h '#define V 1\n'
+icheck later "miss src/c.c w.h;"
+rm -rf "$IP/cache"
+# a config file written between its snapshot and the options built from it (the
+# fault site index-cfg-race) is not what the manifest recorded: the unit is stale
+CEREAL_FAULT=index-cfg-race
+export CEREAL_FAULT
+iwrite 0
+unset CEREAL_FAULT
+icheck cfg-race "file src/c.c .cereal;"
+rm -rf "$IP/cache"
 # 22c. the scheduler (B5_DESIGN 8, 9, 13): proj_test.py drives `cereal lsp` over a
 # generated project; one line per scenario.
 got=$(python3 -P tests/proj_test.py "$CEREAL" </dev/null 2>&1)
-for sc in restart invalidate cancel fault memory readers progress paths wsym takeover; do
+for sc in restart invalidate cancel fault memory readers progress paths wsym takeover spin corrupt config evict private wpos; do
     case $got in *"ok $sc"*) ok;; *) bad "proj_test $sc: $(echo "$got" | grep "$sc" | head -1)";; esac
 done
 echo "$pass passed, $fail failed"

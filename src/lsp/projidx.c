@@ -124,7 +124,7 @@ void pi_free(ProjIndex *pi)
 /* The names of a record: per declared key, its defining declaration if it has
  * one, else its first declaration (one per decl, as the open units list them);
  * then the macros. */
-static PiRec *rec_load(const PState *ps, uint64_t digest)
+static PiRec *rec_load(PState *ps, uint64_t digest)
 {
     char *path = crec_path(ps->store->dir, "rec", digest, "rec");
     CRecMap m;
@@ -134,8 +134,10 @@ static PiRec *rec_load(const PState *ps, uint64_t digest)
     int32_t *pick;
     uint32_t i, n = 0;
     free(path);
-    if (why)
+    if (why) {                                   /* the one corruption path (6.3) */
+        pstate_reject_rec(ps, digest, why);
         return NULL;
+    }
     r = xcalloc(1, sizeof *r);
     r->digest = digest;
     r->map = m;
@@ -207,15 +209,15 @@ static void free_dead(PiRecVec *dead)
     vec_free(dead);
 }
 
-void pi_set_tu(ProjIndex *pi, const PState *ps, const PTu *tu)
+void pi_set_tu(ProjIndex *pi, PState *ps, const PTu *tu)
 {
     PiTu *t = (PiTu *)map_get(&pi->tus, tu->tukey);
     const uint64_t *d = tu->man ? tu->man->recs : NULL;
     uint32_t nd = tu->man ? tu->man->nrecs : 0, nr = 0, i;
     PiRecVec fresh = {0}, dead = {0};
     PiRec **r;
-    if (t ? t->nd == nd && (!nd || !memcmp(t->d, d, nd * sizeof *d)) : !nd)
-        return;                                  /* nothing changed */
+    if (t ? t->nd == nd && t->nr == nd && (!nd || !memcmp(t->d, d, nd * sizeof *d)) : !nd)
+        return;                      /* nothing changed, and every record is in */
     r = xmalloc(((size_t)nd + 1) * sizeof *r);
     for (i = 0; i < nd; i++) {                   /* outside the lock */
         PiRec *x = (PiRec *)map_get(&pi->recs, d[i]);
@@ -258,12 +260,6 @@ void pi_set_tu(ProjIndex *pi, const PState *ps, const PTu *tu)
     rwlock_unlock(&pi->l);
     vec_free(&fresh);
     free_dead(&dead);
-}
-
-static int u64_cmp(const void *a, const void *b)
-{
-    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
-    return x < y ? -1 : x > y;
 }
 
 void pi_prune(ProjIndex *pi, const PState *ps)

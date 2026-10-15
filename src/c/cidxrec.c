@@ -33,7 +33,7 @@ _Static_assert(sizeof(CRecFile) == 16 && sizeof(CRecKey) == 16 &&
                sizeof(CRecDecl) == 28 && sizeof(CRecRef) == 12 &&
                sizeof(CRecCall) == 16 && sizeof(CRecMacro) == 12 &&
                sizeof(CRecTu) == 48 && sizeof(CRecFil) == 40 &&
-               sizeof(CRecMiss) == 12 && sizeof(CRecSys) == 24, "entries");
+               sizeof(CRecMiss) == 16 && sizeof(CRecSys) == 24, "entries");
 
 /* ---- the reader ------------------------------------------------------------ */
 
@@ -145,9 +145,12 @@ const char *crec_parse(const void *p, size_t n, int kind, uint64_t build_id,
 #define STR_OK(o) ((o) < v->nstrs)
     if (v->file && (!STR_OK(v->file->path)))
         return "string offset out of range";
-    for (k = 0; k < v->nkeys; k++)
+    for (k = 0; k < v->nkeys; k++) {
         if (!STR_OK(v->keys[k].name) || !STR_OK(v->keys[k].path))
             return "string offset out of range";
+        if (v->keys[k].kind > CIK_LABEL || v->keys[k].linkage > 2)
+            return "bad key entry";      /* kind indexes tables in the readers */
+    }
     for (k = 0; k < v->ndecls; k++) {
         const CRecDecl *e = &v->decls[k];
         if (e->key >= v->nkeys)
@@ -169,9 +172,12 @@ const char *crec_parse(const void *p, size_t n, int kind, uint64_t build_id,
     for (k = 0; k < v->nfils; k++)
         if (!STR_OK(v->fils[k].path))
             return "string offset out of range";
-    for (k = 0; k < v->nmiss; k++)
+    for (k = 0; k < v->nmiss; k++) {
         if (!STR_OK(v->miss[k].spelled) || !STR_OK(v->miss[k].from_path))
             return "string offset out of range";
+        if (v->miss[k].how & ~(CMISS_ANGLED | CMISS_CUR))
+            return "bad include entry";
+    }
     for (k = 0; k < v->nsyst; k++)
         if (!STR_OK(v->syst[k].path))
             return "string offset out of range";
@@ -664,7 +670,7 @@ static int filrow_cmp(const void *pa, const void *pb)
 
 typedef struct Miss {
     const char *spelled, *from;
-    bool angled;
+    uint32_t first_dir, how;
 } Miss;
 
 static int miss_cmp(const void *pa, const void *pb)
@@ -673,7 +679,9 @@ static int miss_cmp(const void *pa, const void *pb)
     int c = strcmp(a->from, b->from);
     if (!c)
         c = strcmp(a->spelled, b->spelled);
-    return c ? c : CMP3(a->angled, b->angled);
+    if (!c)
+        c = CMP3(a->first_dir, b->first_dir);
+    return c ? c : CMP3(a->how, b->how);
 }
 
 typedef struct MissList {
@@ -681,13 +689,15 @@ typedef struct MissList {
     Arena *a;
 } MissList;
 
-static void on_miss(void *ctx, const char *spelled, bool angled, SrcFile *from)
+static void on_miss(void *ctx, const char *spelled, bool angled, size_t first_dir, bool cur,
+                    SrcFile *from)
 {
     MissList *l = ctx;
     Miss m;
     m.spelled = arena_strdup(l->a, spelled);
     m.from = from->path;
-    m.angled = angled;
+    m.first_dir = (uint32_t)first_dir;
+    m.how = (angled ? CMISS_ANGLED : 0) | (cur ? CMISS_CUR : 0);
     vec_push(&l->v, m);
 }
 
@@ -703,42 +713,27 @@ bool crec_stat_hash(const char *path, uint32_t *size, uint64_t *mtime_ns,
                     uint64_t *hash)
 {
     struct stat st;
-    char *text;
-    size_t n, got = 0, bom = 0;
-    int fd = open(path, O_RDONLY);
-    if (fd < 0)
+    size_t len;
+    char *text = read_file_nobom(path, &len, &st);
+    if (!text)
         return false;
-    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {  /* before the read */
-        close(fd);
-        return false;
-    }
-    n = (size_t)st.st_size;
-    text = xmalloc(n + 1);
-    while (got < n) {
-        ssize_t r = read(fd, text + got, n - got);
-        if (r <= 0)
-            break;
-        got += (size_t)r;
-    }
-    close(fd);
-    if (got >= 3 && !memcmp(text, "\357\273\277", 3))   /* as srcmgr_load */
-        bom = 3;
-    *size = (uint32_t)n;
+    *size = (uint32_t)st.st_size;
     *mtime_ns = (uint64_t)st.st_mtim.tv_sec * 1000000000u + (uint64_t)st.st_mtim.tv_nsec;
-    *hash = cindex_hash(text + bom, got - bom);
+    *hash = cindex_hash(text, len);
     free(text);
     return true;
 }
 
-/* A file the manifest lists without the SrcMgr having read it: a .cereal or
- * response file, or the file that overran the budget; absent if unreadable. */
-static void stat_row(FilRow *r, const char *path, uint32_t flags)
+void crec_stat_files(const StrVec *paths, CRecStatVec *out)
 {
-    memset(r, 0, sizeof *r);
-    r->path = path;
-    r->flags = flags;
-    if (!crec_stat_hash(path, &r->size, &r->mtime_ns, &r->hash))
-        r->flags |= CFIL_ABSENT;
+    size_t i;
+    for (i = 0; i < paths->len; i++) {
+        CRecStat s;
+        memset(&s, 0, sizeof s);
+        s.path = paths->data[i];
+        s.absent = !crec_stat_hash(s.path, &s.size, &s.mtime_ns, &s.hash);
+        vec_push(out, s);
+    }
 }
 
 typedef VEC(CRecBlob) BlobVec;
@@ -775,7 +770,7 @@ static void build_chunks(const FilRow *rows, size_t n, uint64_t build_id,
     }
 }
 
-CRecResult crec_index(Options *o, const char *path, const StrVec *cfg,
+CRecResult crec_index(Options *o, const char *path, const CRecStatVec *cfg,
                       uint64_t build_id, const CRecLimits *lim, CRecSet *out)
 {
     TU tu;
@@ -873,12 +868,21 @@ CRecResult crec_index(Options *o, const char *path, const StrVec *cfg,
     }
     for (k = 0; cfg && k < cfg->len; k++) {  /* ... and to build its options */
         FilRow r;
-        stat_row(&r, cfg->data[k], CFIL_CONFIG);
+        memset(&r, 0, sizeof r);
+        r.path = cfg->data[k].path;
+        r.size = cfg->data[k].size;
+        r.mtime_ns = cfg->data[k].mtime_ns;
+        r.hash = cfg->data[k].hash;
+        r.flags = CFIL_CONFIG | (cfg->data[k].absent ? CFIL_ABSENT : 0);
         vec_push(&fils, r);
     }
     if (over && tu.sm.over_path) {           /* so that changing it retries the unit */
         FilRow r;
-        stat_row(&r, tu.sm.over_path, CFIL_USER);
+        memset(&r, 0, sizeof r);
+        r.path = tu.sm.over_path;
+        r.flags = CFIL_USER;
+        if (!crec_stat_hash(r.path, &r.size, &r.mtime_ns, &r.hash))
+            r.flags |= CFIL_ABSENT;
         vec_push(&fils, r);
     }
     if (fils.len > 1)
@@ -921,10 +925,13 @@ CRecResult crec_index(Options *o, const char *path, const StrVec *cfg,
     if (nmiss) {
         sec = wr_sec(&w, T_MISS, sizeof(CRecMiss));
         for (k = 0; k < nmiss; k++) {
-            CRecMiss e = {st_add(&w.st, ml.v.data[k].spelled),
-                          st_add(&w.st, ml.v.data[k].from), ml.v.data[k].angled};
+            CRecMiss e;
             if (k && !miss_cmp(&ml.v.data[k - 1], &ml.v.data[k]))
                 continue;
+            e.spelled = st_add(&w.st, ml.v.data[k].spelled);
+            e.from_path = st_add(&w.st, ml.v.data[k].from);
+            e.first_dir = ml.v.data[k].first_dir;
+            e.how = ml.v.data[k].how;
             sec_put(sec, &e);
         }
     }
@@ -991,7 +998,7 @@ static bool put_file(const char *dir, const char *sub, uint64_t name, const char
         *slash = 0;
         ok = dir_create_all(path, err, errn);
         *slash = '/';
-        ok = ok && file_write_atomic(path, b->data, b->len, err, errn);
+        ok = ok && file_write_atomic(path, b->data, b->len, false, err, errn);
     }
     free(path);
     return ok;
@@ -1017,7 +1024,7 @@ typedef struct Dump {
     size_t rootn;
     const CRecView *v;           /* the record or manifest being printed */
     char *path, *text;           /* the last file read, for lines */
-    size_t len, bom;
+    size_t len;
 } Dump;
 
 static const char *rel(const Dump *d, const char *p)
@@ -1039,16 +1046,15 @@ static void line_col(Dump *d, const char *path, uint32_t off, uint32_t *l, uint3
         free(d->path);
         free(d->text);
         d->path = xstrdup(path);
-        d->text = read_file(path, &d->len);
-        d->bom = d->text && d->len >= 3 && !memcmp(d->text, "\357\273\277", 3) ? 3 : 0;
+        d->text = read_file_nobom(path, &d->len, NULL);
     }
     *l = *c = 0;
     if (!d->text)
         return;
-    for (i = d->bom, *l = 1; i < d->len && i < d->bom + off; i++)
+    for (i = 0, *l = 1; i < d->len && i < off; i++)
         if (d->text[i] == '\n') {
             (*l)++;
-            ls = i + 1 - d->bom;
+            ls = i + 1;
         }
     *c = off - (uint32_t)ls + 1;
 }
@@ -1203,8 +1209,8 @@ void crec_dump(const CRecSet *s, const char *root, FILE *out)
         vec_free(&cvs);
     }
     for (i = 0; i < v.nmiss; i++)
-        fprintf(out, "  miss %c%s%c from %s\n", v.miss[i].angled ? '<' : '"',
-                S(&d, v.miss[i].spelled), v.miss[i].angled ? '>' : '"',
+        fprintf(out, "  miss %c%s%c from %s\n", v.miss[i].how & CMISS_ANGLED ? '<' : '"',
+                S(&d, v.miss[i].spelled), v.miss[i].how & CMISS_ANGLED ? '>' : '"',
                 rel(&d, S(&d, v.miss[i].from_path)));
     memcpy(sorted, s->recs, s->nrecs * sizeof *sorted);
     if (s->nrecs > 1)

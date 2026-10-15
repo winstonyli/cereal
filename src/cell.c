@@ -69,12 +69,6 @@ void cell_reads_line(CellReads *r, uint32_t item)
         vec_push(&r->line_items, item);
 }
 
-static int u64_cmp(const void *a, const void *b)
-{
-    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
-    return x < y ? -1 : x > y;
-}
-
 static int u32_cmp(const void *a, const void *b)
 {
     uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;

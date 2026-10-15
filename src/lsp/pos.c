@@ -120,27 +120,39 @@ void loc_to_pos(SrcMgr *sm, SrcLoc loc, PosEncoding enc, uint32_t *line,
     *character = units;
 }
 
-void off_to_pos(const char *text, size_t len, size_t off, PosEncoding enc,
-                uint32_t *line, uint32_t *character)
+void line_table_build(LineTable *t, const char *text, size_t len)
 {
-    size_t i = 0, ls = 0;
-    uint32_t l = 0, units = 0;
+    size_t i;
+    memset(t, 0, sizeof *t);
+    vec_push(t, (size_t)0);
+    for (i = 0; i < len; i++) {              /* LF, CR LF and CR end lines */
+        char c = text[i];
+        if (c == '\n' || (c == '\r' && (i + 1 >= len || text[i + 1] != '\n')))
+            vec_push(t, i + 1);
+    }
+}
+
+void line_table_pos(const LineTable *t, const char *text, size_t len, size_t off,
+                    PosEncoding enc, uint32_t *line, uint32_t *character)
+{
+    size_t lo = 0, hi = t->len, i;      /* the last line that starts at or before off */
+    uint32_t units = 0;
     if (off > len)
         off = len;
-    while (i < off) {                        /* \n, \r\n and \r end lines */
-        char c = text[i++];
-        if (c == '\n' || (c == '\r' && (i >= len || text[i] != '\n'))) {
-            l++;
-            ls = i;
-        }
+    while (hi - lo > 1) {
+        size_t mid = (lo + hi) / 2;
+        if (t->data[mid] <= off)
+            lo = mid;
+        else
+            hi = mid;
     }
-    for (i = ls; i < off;) {
+    for (i = t->data[lo]; i < off;) {
         size_t n = u8len((unsigned char)text[i]);
         if (i + n > off)
             n = off - i;
         units += enc == ENC_UTF8 ? (uint32_t)n : n == 4 ? 2 : 1;
         i += n;
     }
-    *line = l;
+    *line = (uint32_t)lo;
     *character = units;
 }

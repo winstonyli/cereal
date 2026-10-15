@@ -151,9 +151,12 @@ typedef struct PPListener {
     void (*file_exit)(void *ctx, SrcFile *f);
     void (*include)(void *ctx, const IncludeEvent *ev);
     /* a header search that found nothing, whoever asked (#include,
-     * __has_include, #pragma dependency) */
+     * __has_include, #pragma dependency).  first_dir: the index in the search
+     * path (quote dirs, -I dirs, system dirs) the search began at (after the
+     * directory of the includer for #include_next); cur: the includer's own
+     * directory was tried first. */
     void (*include_miss)(void *ctx, const char *spelled, bool angled,
-                         struct SrcFile *from);
+                         size_t first_dir, bool cur, struct SrcFile *from);
     void (*define)(void *ctx, Macro *m, Macro *replaced);
     void (*undef)(void *ctx, struct Ident *id, Macro *m, SrcLoc hash_loc,
                   SrcLoc name_loc);

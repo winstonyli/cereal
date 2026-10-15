@@ -17,7 +17,7 @@
 
 #include "driver.h"
 
-#define CREC_FORMAT 2u           /* bumped on any change of a section's layout */
+#define CREC_FORMAT 3u           /* bumped on any change of a section's layout */
 enum { CREC_MANIFEST = 1, CREC_RECORD = 2, CREC_CHUNK = 3 };
 enum { CTU_OK = 1, CTU_PARTIAL, CTU_OVER_LIMIT, CTU_FAILED };
 /* CRecFil.flags: a source or user header, or a file read to build the
@@ -85,8 +85,12 @@ typedef struct CRecFil {         /* FILS: every file the unit read */
     uint32_t flags, pad;
 } CRecFil;
 typedef struct CRecMiss {        /* MISS: includes that were not found */
-    uint32_t spelled, from_path, angled;
+    uint32_t spelled, from_path;
+    uint32_t first_dir;          /* where the search began in the unit's directory list */
+    uint32_t how;                /* CMISS_* */
 } CRecMiss;
+#define CMISS_ANGLED 1u          /* written <name> */
+#define CMISS_CUR 2u             /* the includer's own directory was tried first */
 typedef struct CRecSys {         /* SYST: a system header, in a chunk */
     uint32_t path, size;
     uint64_t mtime_ns, content_hash;
@@ -166,16 +170,27 @@ typedef struct CRecLimits {
 } CRecLimits;
 typedef enum { CREC_DONE, CREC_CANCELLED, CREC_UNOPENED } CRecResult;
 
+/* The stat data and hash of a file read to build the options (.cereal layers,
+ * response files), as of a time before it was read (7.2). */
+typedef struct CRecStat {
+    const char *path;
+    uint32_t size;
+    uint64_t mtime_ns, hash;
+    bool absent;                 /* a .cereal that did not exist (size, mtime, hash 0) */
+} CRecStat;
+typedef VEC(CRecStat) CRecStatVec;
+/* Takes the snapshot of paths; call it BEFORE the options are built from them. */
+void crec_stat_files(const StrVec *paths, CRecStatVec *out);
+
 /* Checks the unit `path` with o (as the language server does: a missing
  * include is an error, the check goes on), builds its symbol index and turns
- * it into a manifest, records and system chunks.  cfg: the files read to
- * build o (.cereal layers, response files; a .cereal that does not exist is
- * listed as absent).  lim may be NULL.  CREC_DONE: *out is filled (status
+ * it into a manifest, records and system chunks.  cfg: the snapshot of the
+ * files read to build o (crec_stat_files).  lim may be NULL.  CREC_DONE: *out is filled (status
  * OVER_LIMIT: a manifest of the files read so far, with no records);
  * CREC_CANCELLED: nothing is produced; CREC_UNOPENED: the file could not be
  * opened.  Free *out with crec_free after CREC_DONE.  The fault site
  * `index-crec` fires here (thread.h). */
-CRecResult crec_index(Options *o, const char *path, const StrVec *cfg,
+CRecResult crec_index(Options *o, const char *path, const CRecStatVec *cfg,
                       uint64_t build_id, const CRecLimits *lim, CRecSet *out);
 void crec_free(CRecSet *s);
 

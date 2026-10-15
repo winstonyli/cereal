@@ -7,7 +7,9 @@
 #define _DEFAULT_SOURCE 1       /* setpriority */
 #include "lsp.h"
 
+#include <signal.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/resource.h>
 #include <unistd.h>
 
@@ -15,6 +17,7 @@
 #include "c/cidxstore.h"
 #include "hash.h"
 #include "indexjob.h"
+#include "projidx.h"
 #include "pstate.h"
 
 static int check_files(int n, char **files, uint64_t build_id)
@@ -35,6 +38,17 @@ static int check_files(int n, char **files, uint64_t build_id)
         free(p);
     }
     return bad ? 1 : 0;
+}
+
+/* Section 9: a child must not outlive its server: it dies with the parent and at
+ * its deadline (the server kills it at `timeout`; this is for a server that
+ * cannot). */
+static void bind_to_parent(pid_t parent, unsigned timeout)
+{
+    (void)prctl(PR_SET_PDEATHSIG, SIGKILL);
+    if (getppid() != parent)            /* it left before the prctl took effect */
+        _exit(1);
+    alarm(timeout + 10);
 }
 
 /* Section 9: the child's own limits, first thing. */
@@ -58,7 +72,8 @@ static const char *rel(const char *root, const char *p)
 }
 
 /* The units of the compile database and whether the cache has them fresh. */
-static int stale_main(const char *root, const char *db, const char *cache, bool records)
+static int stale_main(const char *root, const char *db, const char *cache, bool records,
+                      uint64_t bid)
 {
     LspConfig cfg;
     Store st;
@@ -67,16 +82,20 @@ static int stale_main(const char *root, const char *db, const char *cache, bool 
     size_t i;
     int rc = 0;
     config_init(&cfg, root, db);
-    if (!store_open(&st, cache, cfg.root, cfg.db_path, warn, sizeof warn)) {
+    if (!store_open(&st, cache, cfg.root, cfg.db_path, bid, warn, sizeof warn)) {
         fprintf(stderr, "error: %s\n", warn);
         config_free(&cfg);
         return 1;
     }
     store_lock(&st);            /* as the scheduler would: rejected files are removed */
-    pstate_init(&ps, &st, crec_build_id());
+    pstate_init(&ps, &st, bid);
     pstate_set_config(&ps, &cfg, NULL, NULL);
-    if (records)
-        pstate_check_records(&ps);
+    if (records) {              /* load every record, as the scheduler does (6.3) */
+        ProjIndex *pi = pi_new();
+        for (i = 0; i < ps.tus.len; i++)
+            pi_set_tu(pi, &ps, ps.tus.data[i]);
+        pi_free(pi);
+    }
     for (i = 0; i < ps.log.len; i++) {
         const char *s = strrchr(ps.log.data[i], '/');
         printf("%s\n", s ? s + 1 : ps.log.data[i]);
@@ -103,6 +122,9 @@ int indexsum_main(int argc, char **argv)
     long entry = -1;
     unsigned budget_mb = 0;
     char cwd[4096], dbabs[8192];
+    long parent = 0;
+    unsigned timeout_s = 0;
+    uint64_t bid;
     int i;
     if (argc && !strcmp(argv[0], "--check"))
         return check_files(argc - 1, argv + 1, crec_build_id());
@@ -117,6 +139,10 @@ int indexsum_main(int argc, char **argv)
             entry = strtol(argv[++i], NULL, 10);
         else if (!strcmp(argv[i], "--budget-mb") && i + 1 < argc)
             budget_mb = (unsigned)strtoul(argv[++i], NULL, 10);
+        else if (!strcmp(argv[i], "--parent") && i + 1 < argc)
+            parent = strtol(argv[++i], NULL, 10);
+        else if (!strcmp(argv[i], "--timeout-s") && i + 1 < argc)
+            timeout_s = (unsigned)strtoul(argv[++i], NULL, 10);
         else if (!strcmp(argv[i], "--dump"))
             dump = true;
         else if (!strcmp(argv[i], "--stale"))
@@ -141,12 +167,15 @@ int indexsum_main(int argc, char **argv)
               "       cereal index-summary --check FILE...\n", stderr);
         return 2;
     }
+    if (parent > 0)
+        bind_to_parent((pid_t)parent, timeout_s);
     if (db && db[0] != '/') {
         snprintf(dbabs, sizeof dbabs, "%s/%s", cwd, db);
         db = dbabs;
     }
+    bid = crec_build_id();
     if (stale)
-        return stale_main(root ? root : cwd, db, cache, records);
+        return stale_main(root ? root : cwd, db, cache, records, bid);
     {
         LspConfig cfg;
         IdxJob job;
@@ -163,14 +192,14 @@ int indexsum_main(int argc, char **argv)
             return 1;
         }
         if (cache)              /* a delegate of the server: no lock, no meta */
-            dir = store_project_dir(cache, cfg.root, cfg.db_path);
+            dir = store_project_dir(cache, cfg.root, cfg.db_path, bid);
         memset(&job, 0, sizeof job);
         job.cfg = &cfg;
         job.entry = entry;
         job.path = file ? compdb_abs(&cfg.arena, cwd, file) : NULL;
         job.dir = dir;
         job.dump = dump ? stdout : NULL;
-        job.build_id = crec_build_id();
+        job.build_id = bid;
         job.max_bytes = (size_t)budget_mb << 20;
         job.cancel = &cancel;
         index_unit(&job, &out);

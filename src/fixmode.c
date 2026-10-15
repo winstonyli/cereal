@@ -1367,7 +1367,7 @@ static bool merge_pass(Pass *P, Totals *tot)
             if (g->bom)
                 sb_putn(&sb, "\357\273\277", 3);
             sb_putn(&sb, s.etext[f], s.elen[f]);
-            if (!file_write_atomic(g->key, sb.data ? sb.data : "", sb.len, err,
+            if (!file_write_atomic(g->key, sb.data ? sb.data : "", sb.len, true, err,
                                    sizeof err)) {
                 size_t k;       /* each later pass retries the file: say it once */
                 for (k = 0; k < tot->failed.len; k++)

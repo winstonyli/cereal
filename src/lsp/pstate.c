@@ -80,7 +80,7 @@ static void look(PPath *p, uint64_t now)
     struct stat st;
     p->seen = true;
     p->taken_ns = now;
-    if (stat(p->path, &st) != 0 || !S_ISREG(st.st_mode)) {
+    if (stat(p->path, &st) != 0 || !file_loadable(&st)) {
         p->size = 0;
         p->mtime_ns = 0;
         p->hash = 0;
@@ -131,7 +131,7 @@ static bool refresh(PPath *p, uint64_t now)
     uint64_t old = p->hash;
     struct stat st;
     if (p->known && !p->racy) {
-        bool exists = stat(p->path, &st) == 0 && S_ISREG(st.st_mode);
+        bool exists = stat(p->path, &st) == 0 && file_loadable(&st);
         if (exists ? (p->size == (uint32_t)st.st_size && p->mtime_ns == mtime_of(&st))
                    : p->mtime_ns == 0)
             return false;
@@ -236,23 +236,6 @@ static PChunk *chunk_get(PState *ps, uint64_t digest)
     return c;
 }
 
-static int u64_cmp(const void *pa, const void *pb)
-{
-    uint64_t a = *(const uint64_t *)pa, b = *(const uint64_t *)pb;
-    return a < b ? -1 : a > b;
-}
-
-static size_t sort_unique_u64(uint64_t *v, size_t n)
-{
-    size_t i, k = 0;
-    if (n > 1)
-        qsort(v, n, sizeof *v, u64_cmp);
-    for (i = 0; i < n; i++)
-        if (!k || v[k - 1] != v[i])
-            v[k++] = v[i];
-    return k;
-}
-
 static void man_free(PState *ps, PMan *m)
 {
     uint32_t i;
@@ -280,10 +263,14 @@ static PMan *man_load(PState *ps, const PTu *tu, uint64_t now)
 {
     char *path = crec_path(ps->store->dir, "tu", tu->tukey, "tu");
     CRecMap m;
-    const char *why = crec_map(path, CREC_MANIFEST, ps->build_id, &m);
+    struct stat st;
+    const char *why;
     PMan *man;
     uint32_t i;
     size_t nrec = 0;
+    if (stat(path, &st) != 0)           /* before the read: a newer file is then seen again */
+        st.st_ino = 0, st.st_mtim.tv_sec = st.st_mtim.tv_nsec = 0;
+    why = crec_map(path, CREC_MANIFEST, ps->build_id, &m);
     if (why) {
         if (strcmp(why, "cannot open")) {
             report(ps, "rejected", path, why);
@@ -304,6 +291,8 @@ static PMan *man_load(PState *ps, const PTu *tu, uint64_t now)
     free(path);
     man = xcalloc(1, sizeof *man);
     man->tukey = tu->tukey;
+    man->ino = st.st_ino;
+    man->mtime_ns = (uint64_t)st.st_mtim.tv_sec * 1000000000u + (uint64_t)st.st_mtim.tv_nsec;
     man->started_ns = m.v.tu->started_ns;
     man->written_ns = m.v.tu->written_ns;
     man->status = m.v.tu->status;
@@ -331,7 +320,8 @@ static PMan *man_load(PState *ps, const PTu *tu, uint64_t now)
     for (i = 0; i < man->nmiss; i++) {
         man->miss[i].spelled = arena_strdup(&ps->a, m.v.strs + m.v.miss[i].spelled);
         man->miss[i].from = arena_strdup(&ps->a, m.v.strs + m.v.miss[i].from_path);
-        man->miss[i].angled = m.v.miss[i].angled != 0;
+        man->miss[i].first_dir = m.v.miss[i].first_dir;
+        man->miss[i].how = m.v.miss[i].how;
     }
     man->nsysc = m.v.nsysc;
     man->sysc = xcalloc(man->nsysc + 1, sizeof *man->sysc);
@@ -378,36 +368,32 @@ static void tu_dirs(PState *ps, PTu *tu)
     options_free(&o);
 }
 
-static bool is_file(const char *path)
-{
-    struct stat st;
-    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
-}
-
-/* Does an include a unit missed resolve now (pp_find_include's search)? */
+/* Does an include a unit missed resolve now?  The search pp_find_include made,
+ * repeated from where it began (CRecMiss): the includer's own directory if it
+ * was tried first, then the unit's directories from first_dir on, each by the
+ * test the loader applies.  (A #include_next of a wrapper header must not find
+ * the wrapper again, or the unit would be stale for ever.) */
 static bool miss_resolves(PState *ps, PTu *tu, const PMiss *m)
 {
     uint32_t i;
-    char *p;
     if (m->spelled[0] == '/')
-        return is_file(m->spelled);
-    if (!m->angled) {
+        return file_openable(m->spelled);
+    if (m->how & CMISS_CUR) {
         Arena tmp;
         bool hit;
         arena_init(&tmp);
-        p = path_join(&tmp, path_dirname(&tmp, m->from), m->spelled);
-        hit = is_file(p);
+        hit = file_openable(path_join(&tmp, path_dirname(&tmp, m->from), m->spelled));
         arena_free(&tmp);
         if (hit)
             return true;
     }
     if (!tu->dirs)
         tu_dirs(ps, tu);
-    for (i = m->angled ? tu->first_angle : 0; i < tu->ndirs; i++) {
+    for (i = m->first_dir; i < tu->ndirs; i++) {
+        char *p = xmalloc(strlen(tu->dirs[i]) + strlen(m->spelled) + 2);
         bool hit;
-        p = xmalloc(strlen(tu->dirs[i]) + strlen(m->spelled) + 2);
         sprintf(p, "%s/%s", tu->dirs[i], m->spelled);
-        hit = is_file(p);
+        hit = file_openable(p);
         free(p);
         if (hit)
             return true;
@@ -526,17 +512,6 @@ void pstate_free(PState *ps)
     memset(ps, 0, sizeof *ps);
 }
 
-void pstate_drop_manifest(PState *ps, PTu *tu, bool remove_file)
-{
-    man_free(ps, tu->man);
-    tu->man = NULL;
-    if (remove_file) {
-        char *path = crec_path(ps->store->dir, "tu", tu->tukey, "tu");
-        unlink(path);
-        free(path);
-    }
-}
-
 typedef struct Cand {            /* an entry of the new unit set */
     size_t entry;
     uint64_t flag_hash, tukey;
@@ -623,11 +598,11 @@ void pstate_set_config(PState *ps, LspConfig *cfg,
             tu->entry = cands.data[i].entry;
             vec_push(&keep, tu);
         }
-        for (i = 0; i < old.len; i++)
-            if (!used.data[i]) {
-                pstate_drop_manifest(ps, old.data[i], ps->store->writer);
+        for (i = 0; i < old.len; i++)     /* a unit that left the config keeps its file: the
+                                             compdb may be half written; GC takes it after
+                                             the grace period (6.4) */
+            if (!used.data[i])
                 ptu_free(ps, old.data[i]);
-            }
         vec_free(&used);
     }
     if (keep.len > 1)
@@ -638,6 +613,21 @@ void pstate_set_config(PState *ps, LspConfig *cfg,
     vec_free(&cands);
     settle(ps, now);
     pstate_eval(ps);
+}
+
+bool pstate_refresh(PState *ps, PTu *tu)
+{
+    char *path = crec_path(ps->store->dir, "tu", tu->tukey, "tu");
+    struct stat st;
+    bool same = stat(path, &st) != 0 ? !tu->man :
+                tu->man && tu->man->ino == st.st_ino &&
+                tu->man->mtime_ns == (uint64_t)st.st_mtim.tv_sec * 1000000000u +
+                                         (uint64_t)st.st_mtim.tv_nsec;
+    free(path);
+    if (same)
+        return false;
+    pstate_reload(ps, tu);
+    return true;
 }
 
 bool pstate_reload(PState *ps, PTu *tu)
@@ -651,10 +641,11 @@ bool pstate_reload(PState *ps, PTu *tu)
     return m != NULL;
 }
 
-void pstate_reject_rec(PState *ps, uint64_t digest)
+void pstate_reject_rec(PState *ps, uint64_t digest, const char *why)
 {
     size_t i;
     char *path = crec_path(ps->store->dir, "rec", digest, "rec");
+    report(ps, "rejected", path, why);
     if (ps->store->writer)
         unlink(path);
     free(path);
@@ -667,28 +658,6 @@ void pstate_reject_rec(PState *ps, uint64_t digest)
             ps->tus.data[i]->stale = PS_LOST;
         }
     }
-}
-
-void pstate_check_records(PState *ps)
-{
-    StoreLive live;
-    size_t i;
-    pstate_live(ps, &live);
-    for (i = 0; i < live.nrecs; i++) {
-        CRecMap m;
-        char *path = crec_path(ps->store->dir, "rec", live.recs[i], "rec");
-        const char *why = crec_map(path, CREC_RECORD, ps->build_id, &m);
-        if (!why)
-            crec_unmap(&m);
-        else {
-            report(ps, "rejected", path, why);
-            pstate_reject_rec(ps, live.recs[i]);
-        }
-        free(path);
-    }
-    free((void *)live.tus);
-    free((void *)live.recs);
-    free((void *)live.chunks);
 }
 
 void pstate_live(PState *ps, StoreLive *live)

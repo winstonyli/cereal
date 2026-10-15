@@ -37,6 +37,8 @@ extern char **environ;
 #define BUILDER_POLL_MS 25
 #define GEN_POLL_MS 1000
 #define HINT_SWEEP_MIN_MS 5000          /* between two sweeps a query asks for */
+#define GC_EVERY 100                    /* manifest writes between two GCs (6.4) */
+#define EVICT_MS 600000                 /* the cache is trimmed at most this often */
 
 /* ---- settings (13.2) ----------------------------------------------------------- */
 
@@ -138,7 +140,6 @@ typedef struct IJob {
     char *path;
     bool sub;                       /* runs in a child */
     size_t max_bytes;
-    bool retry_over;
     uint32_t cancel;                /* atomic: raised by didChange, shutdown, the budget */
     JobGroup g;
     IdxOut out;
@@ -161,7 +162,7 @@ typedef struct Stats {
     size_t tus, fresh, new_, file, miss, lost, backoff;
     size_t running, running_sub;
     uint64_t jobs_inproc, jobs_sub, cancelled, rerouted, fatal, failed, published,
-        gen_reloads, sweeps, config_reloads, gc_files, evicted, creates, progress_msgs;
+        gen_reloads, man_reloads, sweeps, config_reloads, gc_files, evicted, creates, progress_msgs;
     double rss_anon_mb;
     size_t pi_bytes, pi_names, pi_recs;
 } Stats;
@@ -192,9 +193,12 @@ static struct Project {
     VEC(char *) open;
     size_t running_n;
     bool sub_busy;
+    bool quiescent;                 /* nothing pending or running after the last pass (7.3) */
     uint64_t db_size, db_mtime;
     uint64_t gen_seen;
     uint64_t next_sweep, next_gen, next_lock, next_report, retry_at;
+    uint64_t next_evict;
+    unsigned writes;                /* manifests written since the last GC */
     size_t burst_total, burst_done, burst_failed;
     Stats cnt;                      /* counters; copied to st each pass */
 } P;
@@ -364,11 +368,11 @@ static char **child_env(void)
 
 static void run_child(IJob *j)
 {
-    char nbuf[24], mbuf[24], buf[4096];
-    char *argv[16], **env = child_env();
+    char nbuf[24], mbuf[24], parbuf[24], tbuf[24], buf[4096];
+    char *argv[24], **env = child_env();
     size_t k = 0, have = 0;
     int pfd[2], status = 0;
-    bool timed_out = false, owned_fault = getenv("CEREAL_FAULT_CHILD") != NULL &&
+    bool timed_out = false, stopping, owned_fault = getenv("CEREAL_FAULT_CHILD") != NULL &&
                                           *getenv("CEREAL_FAULT_CHILD");
     posix_spawn_file_actions_t fa;
     pid_t pid;
@@ -376,6 +380,8 @@ static void run_child(IJob *j)
     const LspConfig *cfg = j->cfg;
     snprintf(nbuf, sizeof nbuf, "%ld", j->entry);
     snprintf(mbuf, sizeof mbuf, "%u", (unsigned)(j->max_bytes >> 20));
+    snprintf(parbuf, sizeof parbuf, "%ld", (long)getpid());
+    snprintf(tbuf, sizeof tbuf, "%u", (unsigned)P.set.sub_s);
     argv[k++] = (char *)"cereal";
     argv[k++] = (char *)"index-summary";
     argv[k++] = (char *)"--root";
@@ -390,8 +396,19 @@ static void run_child(IJob *j)
     argv[k++] = nbuf;
     argv[k++] = (char *)"--budget-mb";
     argv[k++] = mbuf;
+    argv[k++] = (char *)"--parent";        /* the child ends with us or at its deadline */
+    argv[k++] = parbuf;
+    argv[k++] = (char *)"--timeout-s";
+    argv[k++] = tbuf;
     argv[k] = NULL;
     memset(&j->out, 0, sizeof j->out);
+    mutex_lock(&P.m);
+    stopping = P.stop;                      /* no child once the server is stopping */
+    mutex_unlock(&P.m);
+    if (stopping) {
+        j->out.result = IDX_CANCELLED;
+        goto out;
+    }
     if (pipe(pfd) != 0) {
         j->out.result = IDX_ERROR;
         snprintf(j->out.msg, sizeof j->out.msg, "pipe: %s", strerror(errno));
@@ -470,6 +487,13 @@ static void job_done(void *ctx)
     mutex_unlock(&P.m);
 }
 
+/* An in-process job has a smaller budget than a child (8.5): a unit that overruns
+ * it is not written but run again in a child. */
+static bool retry_over(const IJob *j)
+{
+    return !j->sub && (size_t)P.set.max_file_mb * 1048576u > j->max_bytes;
+}
+
 /* On a pool thread. */
 static void ijob_run(void *arg)
 {
@@ -492,7 +516,7 @@ static void ijob_run(void *arg)
         ij.build_id = P.ps.build_id;
         ij.max_bytes = j->max_bytes;
         ij.cancel = &j->cancel;
-        ij.retry_over = j->retry_over;
+        ij.retry_over = retry_over(j);
         index_unit(&ij, &j->out);
     }
 }
@@ -556,8 +580,8 @@ static void after_eval(bool startup)
             s->cls = classify(tu);
         } else {
             s->pending = s->recent = false;
-            s->fails = 0;
-            s->retry_ns = 0;
+            s->next.fails = 0;
+            s->next.at = 0;
         }
     }
 }
@@ -583,7 +607,7 @@ static bool tu_before(const PTu *a, const PTu *b)
 static bool route_sub(const PTu *tu, double rss)
 {
     double est;
-    if (tu->sched.sticky_sub)
+    if (tu->sched.next.sub)
         return true;
     est = 9.0 * (double)P.running_n + 3.0 * (double)(tu->man ? tu->man->bytes_read : 0) / 1048576.0;
     if (!tu->man)
@@ -607,10 +631,10 @@ static size_t count_pending(uint64_t now)
         const PTu *tu = P.ps.tus.data[i];
         if (tu->stale == PS_FRESH)
             continue;
-        if (tu->sched.retry_ns > now) {
-            if (tu->sched.retry_ns != ~(uint64_t)0 &&
-                (!P.retry_at || tu->sched.retry_ns < P.retry_at))
-                P.retry_at = tu->sched.retry_ns;
+        if (tu->sched.next.at > now) {
+            if (tu->sched.next.at != ~(uint64_t)0 &&
+                (!P.retry_at || tu->sched.next.at < P.retry_at))
+                P.retry_at = tu->sched.next.at;
             continue;
         }
         n++;
@@ -623,16 +647,16 @@ static void submit(PTu *tu, bool sub)
     IJob *j = xcalloc(1, sizeof *j);
     size_t hard = (size_t)P.set.max_file_mb * 1048576u;
     j->cfg = P.cfg;
+    lsp_config_ref(j->cfg);             /* the job reads it while a reload may replace it */
     j->entry = (long)tu->entry;
     j->tukey = tu->tukey;
     j->path = xstrdup(tu->main);
     j->sub = sub;
     j->max_bytes = sub ? hard : P.set.inproc_bytes;
-    j->retry_over = !sub && hard > P.set.inproc_bytes;
     group_init(&j->g);
     j->g.on_done = job_done;
     j->g.on_done_ctx = j;
-    tu->sched.running = true;
+    tu->sched.job = j;
     P.running_n++;
     if (sub)
         P.sub_busy = true;
@@ -651,30 +675,41 @@ static void fail(PTu *tu, const char *what)
     PSched *s = &tu->sched;
     char msg[700];
     uint64_t now = mono_ns();
-    s->fails++;
-    s->retry_ns = s->fails == 1 ? now + 60ull * 1000000000u
-                : s->fails == 2 ? now + 600ull * 1000000000u : ~(uint64_t)0;
+    s->next.fails++;
+    s->next.at = s->next.fails == 1 ? now + 60ull * 1000000000u
+               : s->next.fails == 2 ? now + 600ull * 1000000000u : ~(uint64_t)0;
     P.cnt.failed++;
     P.burst_failed++;
     snprintf(msg, sizeof msg, "index: %s: %s", rel(tu->main), what);
     send_log(2, msg);
 }
 
-/* The name list follows the manifests (10.2). */
-static void pi_all(void)
+/* The manifest of tu (every unit's, for NULL) was (re)loaded: the name list and
+ * the scheduler's view follow it (10.2).  Loading the records may find one
+ * unreadable and make units PS_LOST (pstate_reject_rec), so the stale pass
+ * comes last.  The one path by which a job's result, a reader's GEN change, a
+ * takeover and a new compile database reach the rest of the server. */
+static void publish(PTu *tu, bool startup)
 {
     size_t i;
-    for (i = 0; i < P.ps.tus.len; i++)
-        pi_set_tu(P.pi, &P.ps, P.ps.tus.data[i]);
-    pi_prune(P.pi, &P.ps);
+    if (tu) {
+        pstate_reload(&P.ps, tu);
+        pi_set_tu(P.pi, &P.ps, tu);
+    } else {
+        for (i = 0; i < P.ps.tus.len; i++)
+            pi_set_tu(P.pi, &P.ps, P.ps.tus.data[i]);
+        pi_prune(P.pi, &P.ps);
+    }
+    after_eval(startup);
 }
 
 static void reconfigure(void)
 {
     pstate_set_config(&P.ps, P.cfg, excluded, &P.set);
-    after_eval(false);
-    pi_all();
+    publish(NULL, false);
 }
+
+static void after_write(void);
 
 /* A finished job (8.3, 9): publish it by reloading the manifest it wrote. */
 static void finish(IJob *j)
@@ -684,12 +719,12 @@ static void finish(IJob *j)
     P.running_n--;
     if (j->sub)
         P.sub_busy = false;
-    if (tu)
-        tu->sched.running = false;
+    if (tu && tu->sched.job == j)       /* a reconfigure may have made it another unit's */
+        tu->sched.job = NULL;
     if (j->g.failed) {                  /* a fatal() in the pool: its partial state leaked (8.5) */
         P.cnt.fatal++;
         if (tu && !j->sub)
-            tu->sched.sticky_sub = true;
+            tu->sched.next.sub = true;
         else if (tu)
             fail(tu, j->g.msg);
         else
@@ -699,23 +734,29 @@ static void finish(IJob *j)
     } else if (o->result == IDX_ERROR) {
         if (tu)
             fail(tu, o->msg);
-    } else if (!j->sub && o->tu_status == CTU_OVER_LIMIT && j->retry_over) {
+    } else if (o->tu_status == CTU_OVER_LIMIT && retry_over(j)) {
         if (tu)
-            tu->sched.sticky_sub = true;
+            tu->sched.next.sub = true;
         P.cnt.rerouted++;
     } else if (tu) {
         if (o->tukey != j->tukey) {     /* its flags changed: the unit is another one now */
             reconfigure();
         } else {
-            pstate_reload(&P.ps, tu);
-            pi_set_tu(P.pi, &P.ps, tu);
-            tu->sched.cls = classify(tu);
+            publish(tu, false);
+            /* The job recorded what it saw, so an include it missed cannot
+             * resolve and a record it wrote cannot be unreadable now: if the
+             * unit is stale for that, running it again would only repeat it. */
+            if (tu->stale == PS_MISS || tu->stale == PS_LOST)
+                fail(tu, tu->stale == PS_MISS ? "an include it recorded as missing resolves"
+                                              : "a record it wrote cannot be read");
         }
         P.cnt.published++;
         P.burst_done++;
         store_gen_bump(&P.store);
+        after_write();
     }
     group_free(&j->g);
+    lsp_config_unref(j->cfg);
     free(j->path);
     free(j);
 }
@@ -732,7 +773,24 @@ static void gc(void)
     free((void *)live.tus);
     free((void *)live.recs);
     free((void *)live.chunks);
+}
+
+/* 6.4: GC after the startup scan and every GC_EVERY manifest writes; the cache is
+ * trimmed to its cap at startup, on taking over and at most every EVICT_MS after. */
+static void evict(void)
+{
     P.cnt.evicted += store_evict(&P.store, P.set.cache_max_mb);
+    P.next_evict = mono_ns() + (uint64_t)EVICT_MS * 1000000u;
+}
+
+static void after_write(void)
+{
+    if (++P.writes < GC_EVERY)
+        return;
+    P.writes = 0;
+    gc();
+    if (mono_ns() >= P.next_evict)
+        evict();
 }
 
 static void report_rejected(void)
@@ -772,10 +830,15 @@ static void check_compdb(void)
         free(n);
         return;
     }
-    lsp_config_swap(n);
-    P.cfg = n;
     P.db_size = size;
     P.db_mtime = mtime;
+    if (config_same(n, P.cfg)) {                /* touched, not changed */
+        config_free(n);
+        free(n);
+        return;
+    }
+    lsp_config_swap(n);
+    P.cfg = n;
     P.cnt.config_reloads++;
     reconfigure();
 }
@@ -784,8 +847,8 @@ static void reset_backoff(void)
 {
     size_t i;
     for (i = 0; i < P.ps.tus.len; i++) {
-        P.ps.tus.data[i]->sched.fails = 0;
-        P.ps.tus.data[i]->sched.retry_ns = 0;
+        P.ps.tus.data[i]->sched.next.fails = 0;
+        P.ps.tus.data[i]->sched.next.at = 0;
     }
 }
 
@@ -841,8 +904,6 @@ static void progress_tick(uint64_t now, size_t pending)
         else if (!P.progress_cap)
             send_log(3, msg);
         P.begun = false;
-        if (P.writer)
-            gc();
     }
     if (!P.writer && !P.reader_noted && P.have_store) {        /* 6.5: one begin/end */
         static const char note[] = "index maintained by another cereal";
@@ -865,24 +926,27 @@ static void startup(void)
 {
     char warn[512];
     Settings *s = &P.set;
-    bool ok = store_open(&P.store, s->cache_dir, P.cfg->root, P.cfg->db_path, warn, sizeof warn);
+    uint64_t bid = crec_build_id();
+    bool ok = store_open(&P.store, s->cache_dir, P.cfg->root, P.cfg->db_path, bid, warn,
+                         sizeof warn);
     if (warn[0])
         send_log(2, warn);
     if (!ok)
         return;
     P.have_store = true;
     P.writer = store_lock(&P.store);
-    pstate_init(&P.ps, &P.store, crec_build_id());
+    pstate_init(&P.ps, &P.store, bid);
     pstate_set_config(&P.ps, P.cfg, excluded, s);
+    publish(NULL, true);
     report_rejected();
-    after_eval(true);
-    pi_all();
     db_stat(&P.db_size, &P.db_mtime);
     P.gen_seen = store_gen(&P.store);
     pool_init(&P.pool, s->threads + 1, 10);
     P.pool.trap_fatal = true;
-    if (P.writer)
+    if (P.writer) {
         gc();
+        evict();
+    }
 }
 
 static void do_event(const Event *e, unsigned *sync_seen)
@@ -957,7 +1021,7 @@ static void submit_pass(uint64_t now, size_t pending, uint64_t last_edit)
         size_t i;
         for (i = 0; i < P.ps.tus.len; i++) {
             PTu *tu = P.ps.tus.data[i];
-            if (tu->stale == PS_FRESH || tu->sched.running || tu->sched.retry_ns > now)
+            if (tu->stale == PS_FRESH || tu->sched.job || tu->sched.next.at > now)
                 continue;
             if (P.sub_busy && route_sub(tu, rss))
                 continue;               /* one child at a time */
@@ -986,7 +1050,7 @@ static void publish_stats(bool idle, unsigned sync_seen)
         case PS_MISS: s.miss++; break;
         case PS_LOST: s.lost++; break;
         }
-        if (tu->sched.fails)
+        if (tu->sched.next.fails)
             s.backoff++;
     }
     s.running = P.running_n;
@@ -1036,8 +1100,8 @@ static void *sched_main(void *arg)
                     wake = P.next_gen;
                 if (!P.writer && P.next_lock < wake)
                     wake = P.next_lock;
-                if (P.writer && P.next_sweep < wake)
-                    wake = P.next_sweep;
+                if (P.writer && P.quiescent && P.next_sweep < wake)
+                    wake = P.next_sweep;    /* only a quiescent writer sweeps: else it would spin */
             }
             if (wake <= now)
                 break;
@@ -1082,10 +1146,9 @@ static void *sched_main(void *arg)
                 if (g != P.gen_seen) {
                     P.gen_seen = g;
                     for (i = 0; i < P.ps.tus.len; i++)
-                        pstate_reload(&P.ps, P.ps.tus.data[i]);
-                    pi_all();
+                        P.cnt.man_reloads += pstate_refresh(&P.ps, P.ps.tus.data[i]);
+                    publish(NULL, false);
                     P.cnt.gen_reloads++;
-                    after_eval(false);
                 }
             }
             if (!P.writer && now >= P.next_lock) {  /* ... and take over from a writer that left */
@@ -1093,17 +1156,19 @@ static void *sched_main(void *arg)
                 if (store_lock(&P.store)) {
                     P.writer = true;
                     for (i = 0; i < P.ps.tus.len; i++)
-                        pstate_reload(&P.ps, P.ps.tus.data[i]);
-                    pi_all();
-                    after_eval(false);
+                        P.cnt.man_reloads += pstate_refresh(&P.ps, P.ps.tus.data[i]);
+                    publish(NULL, false);
                     gc();
+                    evict();
                 }
             }
             pending = count_pending(now);
             submit_pass(now, pending, last_edit);
             pending = count_pending(now);
+            report_rejected();      /* what the loads found unreadable since the last pass (6.3) */
             progress_tick(now, pending);
-            idle = P.running_n == 0 && pending == 0;
+            P.quiescent = P.running_n == 0 && pending == 0;
+            idle = !P.writer || P.quiescent;    /* a reader indexes nothing: nothing to wait for */
         } else {
             idle = true;
         }
@@ -1272,6 +1337,7 @@ void project_stats(JsonWriter *w)
     N("genReloads", s.gen_reloads);
     N("sweeps", s.sweeps);
     N("configReloads", s.config_reloads);
+    N("manReloads", s.man_reloads);
     N("gcFiles", s.gc_files);
     N("evicted", s.evicted);
     N("progressCreates", s.creates);
@@ -1312,6 +1378,7 @@ void project_stop(void)
     for (i = 0; i < P.done.len; i++) {
         IJob *j = P.done.data[i];
         group_free(&j->g);
+        lsp_config_unref(j->cfg);
         free(j->path);
         free(j);
     }

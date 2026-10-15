@@ -4637,3 +4637,27 @@ builder p50 within 5% with indexing on; workspace/symbol p95 112 ms on a 22-quer
 mix (rule 3 fires on `ZSTD_*` queries with thousands of candidates, p50 19 ms);
 the scheduler spins a core once `sweepSeconds` expires during a long run
 (confirmed, no visible latency effect). B5_DESIGN 15.
+
+Round 228: the B5b review, "fix all" (B5_DESIGN.md 15.1). All 15 findings were
+real. Scheduler: the sweep deadline no longer spins a core; one per-unit
+route and next-attempt record; `finish()` keyed by job identity; a miss right
+after a successful job backs off; `indexWait` is quiescent for the reader or
+writer role. Records: `#include_next` misses carry the start directory; one
+loadable-file predicate; a corrupt or missing record is rejected online and
+the unit re-indexed (one path); config files are snapshotted before the
+options are built. Store: GC every 100 manifest writes and eviction every 10
+minutes, not per burst; one `walk()`; the `USE` file is held shared by every
+opener and exclusive by the evictor; project id includes the build id; index
+writes skip fsync. Readers reload only changed manifests. `LspConfig` is
+ref-counted (no retired list; an equal reload is dropped; a partial compdb
+keeps manifests). Children die with their parent (PDEATHSIG, alarm); private
+roots are pid-named and swept. workspace/symbol: dedupe once, after
+placement; `ws_drop_decls` over a table; rule 3 fixed at its root (the
+position lookup rescanned the file for each result; now a per-file line
+table): 1,770-TU harness (`bench/tools/wsym_bench.py`) p95 85.5 to 17.2 ms.
+Deleted `lsp_config`, `pstate_drop_manifest`, `store_bytes`, `is_file`,
+`pstate_check_records`, `off_to_pos`, three `u64_cmp` copies and more. Not
+applied: collapsing "edits first" to one timer (cannot keep the guarantee).
+Gates: run.sh 2153 passed; san 2153, 628 files, 0 findings; verify unchanged;
+callgrind 3.8863 G; globals 32; symcov unchanged; clangd_diff 0 unexpected;
+TSan (58 LSP session runs plain and -fparallel with indexing on, lsp_stress --symbols --calls --hints 200 edits (236 sent) with indexing active, 16 proj_test scenarios): 0 reports.

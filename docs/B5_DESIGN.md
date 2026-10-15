@@ -496,7 +496,7 @@ section does.
 | `TU  ` | `{u32 main_path, u64 flag_hash, u32 status, u32 errors, u32 bytes_read, u32 index_ms, u64 started_ns, u64 written_ns}` |
 | `FILS` | `{u32 path, u32 size, u64 mtime_ns, u64 content_hash, u64 record_digest, u32 flags}`: every file the TU read except system headers (those are in the chunks). That covers the sources and user headers the SrcMgr loaded (virtual ones excluded) and the files read to build its options: response files and `.cereal` layers. Flags: user, config, absent. `record_digest` is 0 when the file has no exports (config files always). A `.cereal` file that does not exist in a directory searched is listed with flag absent, size 0, `mtime_ns` 0 and hash 0, which is what a missing file's state is (7.2): creating it later makes the TU stale. |
 | `SYSC` | `u64` chunk digests, in path order: the TU's system files, as chunks |
-| `MISS` | `{u32 spelled, u32 from_path, u32 angled}`: `#include`s that were not found (7.2) |
+| `MISS` | `{u32 spelled, u32 from_path, u32 first_dir, u32 how}`: `#include`s that were not found (7.2); `first_dir` is where the search began in the unit's directory list, `how` has `angled` and `cur` (the includer's own directory was tried first) |
 
 **Chunk section:**
 
@@ -845,29 +845,35 @@ If none of these is writable, indexing runs memory-only:
 
 - records are kept in memory and nothing persists;
 - the subprocess path (9) writes into a private temporary directory
-  (`mkdtemp` under `$TMPDIR`), which the parent reads and removes;
+  (`mkdtemp` under `$TMPDIR`, named `cereal-index-<pid>-XXXXXX`), which the
+  parent reads and removes; the next server to need one removes those of
+  dead processes (same user, pid gone), so a crash does not leak;
+- the same happens when the directory is writable but `USE`, `LOCK` or
+  `GEN` cannot be opened;
 - a `window/logMessage` warning says so.
 
 Directories are created with mode 0700. The cache holds source-derived
 names, so other users must not read it.
 
-The project directory sits under `index/<project id>/` (5.1).
+The project directory sits under `index/<project id>/` (5.1). The id
+hashes the root, the compile DB path and the build id, so two builds never
+share (or delete) each other's manifests.
 
 `~/.cache/cereal-par` is only par.py's test cache; it is unrelated.
 
 ### 6.2 Writes
 
 - **Records and system chunks first, then the manifest.** Every file is
-  written with `file_write_atomic` (common.c:331: temp file in the same
-  directory, fsync, rename).
+  written with `file_write_atomic` (temp file in the same directory, rename).
+  The index files are not fsync'd: they carry a checksum, and a file a power
+  loss leaves damaged is found by the online corruption path (6.3) and
+  re-indexed.
 - **Record and chunk writes are idempotent.** If the digest's file already
   exists, the write is skipped, because the name is the content.
 - **Write order makes crashes harmless.** A crash before the manifest
   rename leaves only unreferenced records; GC removes them (6.4).
-- **Fsync cost.** One fsync per new file. At 1,000 TUs that is a few
-  thousand fsyncs on a first index, spread over minutes. If it measures
-  above 10% of indexing time, records batch the directory fsync (B5b
-  measures).
+- **No fsync cost.** One fsync per new file would be a few thousand on a
+  first index; only `cereal fix`'s writes of the user's files sync.
 
 ### 6.3 Reads and corruption
 
@@ -883,7 +889,12 @@ A reader rejects a file on any of these:
 On rejection:
 
 - **A record or a system chunk:** every manifest that references it is
-  treated as stale and re-queued, and the file is deleted.
+  treated as stale and re-queued, and the file is deleted (by the writer).
+  This is one path (`pstate_reject_rec`) for the startup scan and for every
+  later load, including a record that is missing: the name list loads the
+  records of each manifest it publishes, so a damaged or vanished file is
+  found online, not only at startup. A reader only skips and tries again
+  at the next GEN change.
 - **A manifest:** deleted and re-queued.
 
 Corruption is logged once per file (`window/logMessage`, level Log).
@@ -903,7 +914,8 @@ not the heap.
   - mark the records and system chunks (`SYSC` digests) referenced by live
     manifests;
   - sweep the rest of `rec/` and `sys/`, except files modified in the last
-    10 minutes.
+    10 minutes. Manifests too: a unit that left the compile DB keeps its
+    manifest for that long (7.4).
   - The grace period protects a job (in-process or subprocess) that has
     written its records but not yet its manifest.
   - This runs once after the startup scan and then every 100 manifest
@@ -913,9 +925,13 @@ not the heap.
   - when over, whole project directories are removed, least recently used
     first;
   - recency is the mtime of `meta`, touched once per server start;
-  - a directory whose `LOCK` is held by a live server is never evicted.
-    It is probed with a non-blocking `flock`, so the current project is
-    covered too.
+  - every server holds a shared `flock` on `USE` in its project directory;
+    the evictor takes it exclusive, without blocking, and keeps it while the
+    tree is removed, so a directory in use is never evicted and a server that
+    opens a directory being removed waits, finds its `USE` gone and makes the
+    directory again (`LOCK` stays the writer election of 6.5);
+  - the cap is checked at startup, when taking over as writer, and at most
+    every 10 minutes at a GC.
 - **Within the cap, per project:** if one project alone exceeds the cap,
   the oldest manifests by `written_ns` are dropped until it fits, and
   their TUs are not re-queued. This is visible in progress as "index
@@ -1013,11 +1029,22 @@ hashed, or be older than them:
 - A write after the `fstat` gives a newer mtime on disk, which the next
   sweep sees.
 - Stat data taken after the read would hide such a write forever.
+- This holds for the configuration files too (`.cereal` layers, response
+  files): their stat data and hashes are taken before the options are built
+  from them, and the options are built again if the set of files changed in
+  between (`index-cfg-race` fault site; `run.sh` 22b).
 
 **Unresolved includes (`MISS`).**
 
-- A sweep resolves each spelled name against the TU's search path again.
+- A sweep resolves each spelled name against the TU's search path again,
+  from the directory the original search began at (`first_dir`, and the
+  includer's directory if `cur`): so a `#include_next` that missed is not
+  searched from the start, where a wrapper header would find itself. A name
+  resolves if the loader could open it (a regular file, not over the size
+  limit; one predicate, `file_openable`, shared with `srcmgr`).
   That path is computed lazily, only for TUs with `MISS` entries.
+- A unit that is still `MISS` right after a job that recorded it is a failure
+  (backoff), not a reason to run it again at once.
 - If a name now resolves, the TU is stale.
 - Generated headers that appear after a build are the common case.
 
@@ -1054,7 +1081,11 @@ sweep faster to notice changes, so it is parked (18).
     a reference count: index jobs and the builder each take one.
 - **Then for each entry:**
   - a new entry, or an entry whose flag hash changed, is queued;
-  - a removed entry's manifest is deleted, and GC follows.
+  - a removed entry's manifest is not deleted: the compile DB may be half
+    written, and GC takes the manifest after its grace period (6.4);
+  - a reload that gives the same commands (a touched file) is dropped
+    without swapping; the old config of a real change is released when
+    its last holder lets go (`lsp_config_ref`, `lsp_config_unref`).
 - **Open units.** Each build already calls `config_options_for(&S.cfg,
   ...)`, so open units pick up the reloaded config at their next build.
   - The reload itself is new in B5b; today `config_init` runs once.
@@ -1246,6 +1277,10 @@ cereal index-summary --dump [--root DIR] [--compdb PATH] FILE     (tests, 14.2)
 - **Reporting.** It prints exactly one line on stdout and exits:
   - `ok <tukey>` with exit code 0;
   - or `error <message>` with exit code 1.
+- **The child cannot outlive its server.** It gets `--parent PID` and
+  `--timeout-s N`: it sets `PR_SET_PDEATHSIG` (SIGKILL), exits if the parent
+  is already gone, and arms `alarm(N + 10)`; the parent also starts no child
+  once it is stopping.
 - **The child takes no lock.** It writes as the parent's delegate, and
   writes are atomic and content-addressed (6.2).
 - **The child reads no stdin.** The parent connects stdin to /dev/null.
@@ -1961,9 +1996,9 @@ for B5b-3 and later:
       names to the open units' candidates and sorts them together
       (`ws_match`, `ws_cmp`, `WS_LIMIT`, trigram filter for records of
       unopened files). A project candidate sorts after the open units'
-      (`seq` = number of units) and the dedupe by (path, offset, name) now
-      compares with the last candidate shown, not the previous raw one, so a
-      name dropped by mapping does not break it.
+      (`seq` = number of units). The dedupe by (path, offset, name) is a keyed
+      set of what has been sent, keyed on the offset as placed (round 228;
+      it compared the unplaced offset with the last candidate before).
   18. (B5b-3) Mapping at query time (decision 8) uses the hash of the file
       text: the client's text if the document is open, else the disk's (BOM
       stripped). Equal to the record's hash: offsets as recorded. Open
@@ -1971,8 +2006,10 @@ for B5b-3 and later:
       text)` and `cindex_edit_map`, dropped if the edit overlaps the name.
       Anything else: dropped, and the scheduler is asked for a sweep
       (`EV_SWEEP`, at most one in 5 s) so the next query is right. Positions
-      are made from offsets with the new `off_to_pos` (inverse of
-      `pos_to_offset`; UTF-8/16/32).
+      are made from offsets with a per-file line table (`line_table_build`,
+      `line_table_pos` in pos.c, built once per file per query; the first
+      `off_to_pos` scanned from the start of the file for every result,
+      which was the whole cost of the slow queries, round 228).
   19. (B5b-3) Decision 9 is applied to the candidates after the matcher: an
       external-linkage function or object declaration is dropped when a
       definition with the same name and kind is among them.
@@ -2140,6 +2177,65 @@ spike: about 100 more, with their tests).
 
 **Total:** 5,500-12,500 lines over four rounds or more. B5a is the only
 slice whose size is fairly certain.
+
+### 15.1 Review fixes (Round 228)
+
+All 15 findings of the B5b review were real and are fixed; each real defect
+has a check in `tests/proj_test.py` (scenarios `spin`, `corrupt`, `config`,
+`evict`, `private`, `wpos`, extended `readers`) or `tests/run.sh` 22b.
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Scheduler busy-spin once `sweepSeconds` expired mid-run | One `PSched` "route + next attempt" record per unit; the sweep deadline advances when the sweep is taken, not when quiescent. `spin` asserts the scheduler thread's CPU time stays near zero. |
+| 2 | `#include_next` / `__has_include_next` misses | The MISS entry records the spelling, the including file, the start directory and how it was spelled; `miss_resolves` and the loader share one predicate (`file_loadable`). A PS_MISS straight after a successful job is a failure and backs off. |
+| 3 | Corrupt or missing record not detected online | Single path: `pi_set_tu` reports, `pstate_reject_rec` runs, the unit is LOST and re-indexed (`corrupt`). `pstate_check_records` deleted. |
+| 4 | Config files hashed after being read | `options_snapshot` stats the files before the options are built and retries (`index-cfg-race` fault, 22b). |
+| 5 | `gc()` + `store_evict` after every burst | GC after the startup scan and every 100 manifest writes; eviction at startup and every 10 minutes (`evict`). |
+| 6 | Reader reloaded every manifest per GEN change | `pstate_refresh` compares ino and mtime of each manifest; `readers` asserts `manReloads == changed`. |
+| 7 | Retired `LspConfig`s unbounded; mtime-only compdb change swapped; partial compdb unlinked manifests | `LspConfig` is ref-counted (`cfg_m` leaf mutex); Options deep-copy their entry; `config_same` drops equal reloads; units that leave the config keep their manifest until GC (`config`). |
+| 8 | Orphan children; private `/tmp` roots leaked; spawn after stop | `--parent PID --timeout-s N`: `PR_SET_PDEATHSIG`, `getppid` check, `alarm(N+10)`; private roots are `cereal-index-<pid>-XXXXXX`, dead pids swept (`private`); `run_child` checks `P.stop`. |
+| 9 | Eviction races | Every opener holds `USE` shared; the evictor takes `USE` exclusive non-blocking and holds it while removing; `store_open` re-verifies the inode and retries. |
+| 10 | `ws_drop_decls` pointers into compacting vector | A (name, kind) table. |
+| 11 | `crec_parse` key kind/role | Validated. |
+| 12 | workspace/symbol dedupe before placement | One keyed set `WsSent` (path, placed offset, name) after placement. |
+| 13 | `finish()` keyed by tukey | Keyed by job identity. |
+| 14 | `indexWait` hang with a blocked reader or writer | The barrier is "quiescent for the role" (`idle = !writer || quiescent`). |
+| 15 | `store_open` failure; build id; fsync; `report_rejected` | LOCK/GEN failure falls back to memory-only; the project id includes the build id; index writes do not fsync (fix mode still does); rejects are reported at every refresh. |
+
+Deleted: `lsp_config()`, `S.retired`, `pstate_drop_manifest` (unexported then
+removed), `store_bytes` and `store_remove_tree` (now static, over one
+`walk(dir, cb)` with `sweep_sub`), `is_file`, `pstate_check_records`,
+`ws_read`, `stat_row`, `off_to_pos`, the three copies of `u64_cmp` /
+`sort_unique_u64` (now in common.c), the `retry_over` field, `pi_all`, and
+the duplicate BOM readers (one `read_file_nobom`).
+
+Not applied, and why:
+- "Edits first" is not collapsed to cancel plus one quiet timer: a timer
+  cannot keep "no index job starts while the builder is mid-build longer than
+  `quietMs`". `lsp_builder_idle` and `last_edit` stay.
+- `join()` (malloc, cidxstore) and `path_join` (arena) are not duplicates: one
+  is for code without an arena. Kept.
+- Deviations: the over-limit path stat is still taken after the run; a header
+  appearing during a job (PS_MISS) backs the unit off 60 s; eviction sizes are
+  walked, not cached.
+
+**Rule 3 (workspace/symbol p95), root cause.** `off_to_pos` scanned the file from
+its start for every result position, so queries with thousands of matches in
+big files cost O(results x file size) (perf: about 60% of samples). Fix: a
+per-file `LineTable` (line starts, binary search, then a column scan of one
+line), built lazily per file per query. Repro harness `bench/tools/wsym_bench.py`
+(1,770 TUs, 219,087 names, 22 queries, index 9.3 s): before p50 -, p95 85.5 ms,
+max 125.2 ms (`ZSTD_` 84.5, `ZSTD_compress` 121.9); after p50 13.1 ms, p95
+17.2 ms, max 20.9 ms (`ZSTD_` 12.4, `ZSTD_compress` 8.3). The stop rule (100 ms)
+no longer fires. Top-k, a placement cache and cross-config pre-collapse were
+not needed.
+
+Gates (Round 228): run.sh 2153 passed; san 2153, 628 files, 0 findings;
+verify unchanged (gcc.dg 3908/3910, c-c++-common 637/638, cpp 289/289);
+callgrind 3.8863 G (+0.04% against 3.8848 G, from the extra `include_miss`
+parameters in `pp.c`); globals 32 allowed (no change to `globals.allow`);
+symcov unchanged (4718 files, 1,146,276 events, unindexed 0); clangd_diff 7
+files, 1988 differences, 0 unexpected; TSan (58 session runs, 236-edit stress with indexing, all 16 proj_test scenarios): 0 reports.
 
 ## 16. Risks
 

@@ -25,8 +25,15 @@ cereal/indexHold.  Prints `ok NAME` or `FAIL NAME: why`; exit 1 on any failure.
                no longer matches until the index catches up, and maps a name of
                an open document through the edit
   takeover     a reader becomes the writer when the writer exits
+  wpos         workspace/symbol positions in a CR LF file with a character outside the BMP
+  spin         with the sweep deadline passed and jobs running, the server uses no CPU
+  evict        an idle project directory is evicted, one in use is kept
+  private      memory-only indexing uses a private root named for the process; a dead one's is removed
+  config       a touched compdb is dropped, a changed command reindexes its unit, a
+               half-written one is not taken and no manifest is removed for it
+  corrupt      a damaged record is rejected online and its units are re-indexed
 """
-import json, os, queue, shutil, subprocess, sys, tempfile, threading
+import json, os, queue, shutil, subprocess, sys, tempfile, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BIN = os.path.abspath(sys.argv[1])
@@ -221,14 +228,17 @@ def sc_readers(root, cache):
     h = os.path.join(root, "include", "h01.h")
     with open(h, "a") as f:
         f.write("\n#define PROJ_TEST_READER 1\n")
+    p0 = w.stats()["published"]
     w.note("textDocument/didSave", {"textDocument": {"uri": "file://" + h}})
-    w.wait()
+    changed = w.wait()["published"] - p0
+    expect(0 < changed, "the save reindexed its dependents", w.stats())
     for _ in range(100):                     # GEN is polled once a second
         st = r.stats()
-        if st["genReloads"] >= 1:
+        if st["genReloads"] >= 1 and st["manReloads"] >= changed:
             break
         threading.Event().wait(0.1)
     expect(st["genReloads"] >= 1, "the reader saw the writer's GEN change", st)
+    expect(st["manReloads"] == changed, "and reloaded only the manifests that changed", st)
     r.stop()
     w.stop()
 
@@ -304,6 +314,129 @@ def sc_wsym(root, cache):
     got = s.ws("tu0_count")
     expect(spots(got, c) == [(line + 2, ch)], "mapped through the edit, once", got)
     s.stop()
+
+
+def sc_wpos(root, cache):
+    # a result's position in a file with CR LF line ends and a character outside the
+    # BMP before it (two UTF-16 units), asked of a file big enough to need a line table
+    c = os.path.join(root, "src", "t0000.c")
+    text = open(c, newline="").read()
+    text = "/* \U0001F600 */\r\n" + text.replace("static int tu0_count;", "/*\U0001F600*/ static int tu0_count;")
+    text = text.replace("\r\n", "\n").replace("\n", "\r\n")
+    open(c, "w", newline="", encoding="utf-8").write(text)
+    s = Server(root, cache)
+    s.wait()
+    line = text.split("\r\n").index("/*\U0001F600*/ static int tu0_count;")
+    want = (line, len("/*\U0001F600*/ static int ".encode("utf-16-le")) // 2)
+    got = spots(s.ws("tu0_count"), c)
+    expect(got == [want], "line and UTF-16 column in a CR LF file", {"got": got, "want": want})
+    s.stop()
+
+
+def cpu_seconds(pid):
+    """utime + stime of a process, all its threads (/proc/PID/stat fields 14, 15)."""
+    f = open("/proc/%d/stat" % pid).read().rsplit(")", 1)[1].split()
+    return (int(f[11]) + int(f[12])) / os.sysconf("SC_CLK_TCK")
+
+
+def sc_spin(root, cache):
+    # with sweepSeconds expired and jobs running, the scheduler must sleep, not spin
+    s = Server(root, cache, env={"CEREAL_INDEX_SWEEPSECONDS": "1", "CEREAL_INDEX_THREADS": "2"})
+    s.req("cereal/indexHold", {"hold": True})
+    poll("jobs parked", lambda: s.stats()["running"] >= 1)
+    threading.Event().wait(1.5)                       # past the first sweep deadline
+    t0, w0 = cpu_seconds(s.p.pid), time.time()
+    threading.Event().wait(2.0)
+    used = cpu_seconds(s.p.pid) - t0
+    expect(used < 0.5, "the scheduler idles while jobs run (%.2f cpu-s in %.1f s)" %
+           (used, time.time() - w0))
+    s.req("cereal/indexHold", {"hold": False})
+    s.wait()
+    s.stop()
+
+
+def sc_corrupt(root, cache):
+    s = Server(root, cache)
+    s.wait()
+    s.stop()
+    recs = [os.path.join(d, f) for d, _, fs in os.walk(cache) for f in fs if f.endswith(".rec")]
+    expect(recs, "the first run wrote records")
+    with open(recs[0], "ab") as f:                    # damaged on disk, manifests intact
+        f.write(b"x")
+    s = Server(root, cache)
+    st = s.wait()
+    expect(st["published"] >= 1 and st["fresh"] == NTU and st["lost"] == 0,
+           "a damaged record is found online and its units re-indexed", st)
+    s.stop()
+    s = Server(root, cache)
+    st = s.wait()
+    expect(st["published"] == 0 and st["fresh"] == NTU, "and the store is whole again", st)
+    s.stop()
+
+
+def sc_config(root, cache):
+    db = os.path.join(root, "compile_commands.json")
+    s = Server(root, cache)
+    st = s.wait()
+    p0 = st["published"]
+
+    def saved():
+        s.note("textDocument/didSave", {"textDocument": {"uri": "file://" + db}})
+        return s.wait()
+    now = time.time() + 5
+    os.utime(db, (now, now))                          # touched, not changed
+    st = saved()
+    expect(st["configReloads"] == 0 and st["published"] == p0, "a touched compdb is dropped", st)
+    cc = json.load(open(db))
+    cc[0]["arguments"].insert(1, "-DPROJ_TEST_NEW=1")
+    json.dump(cc, open(db, "w"))
+    st = saved()
+    expect(st["configReloads"] == 1 and st["fresh"] == NTU and st["published"] == p0 + 1,
+           "a changed command reindexes that unit only", st)
+    open(db, "w").write("[]")                         # half written: the units stay
+    st = saved()
+    expect(st["configReloads"] == 1 and st["tus"] == NTU, "an empty compdb is not taken", st)
+    tus = [f for d, _, fs in os.walk(cache) for f in fs if f.endswith(".tu")]
+    expect(len(tus) == NTU + 1, "the replaced unit's manifest is left to the GC", {"tus": len(tus)})
+    s.stop()
+
+
+def sc_evict(root, cache):
+    # eviction never takes a directory another server has open, and takes an idle one
+    b = Server(root, cache)
+    b.wait()
+    root2 = root + "2"                                # another project, another directory
+    shutil.copytree(root, root2)
+    idle = os.path.join(cache, "index", "00000000deadbeef")
+    os.makedirs(os.path.join(idle, "rec", "00"))
+    for n in ("meta", "USE", "rec/00/x.rec"):
+        open(os.path.join(idle, n), "w").write("x" * 4096)
+        os.utime(os.path.join(idle, n), (1, 1))
+    a = Server(root2, cache, init={"index": {"cacheMaxMB": 0.0001}})
+    st = a.wait()
+    expect(not os.path.exists(idle), "the idle directory was evicted", st)
+    expect(st["evicted"] >= 1, "and counted", st)
+    live = [d for d in os.listdir(os.path.join(cache, "index")) if d != "00000000deadbeef"]
+    expect(len(live) == 2, "the directories in use were kept (two projects)", live)
+    a.stop()
+    b.stop()
+
+
+def sc_private(root, cache):
+    # no usable cache: a private root named for the process, and a dead one's is removed
+    tmp = os.path.join(os.path.dirname(cache), "tmp")
+    os.makedirs(tmp)
+    stale = os.path.join(tmp, "cereal-index-999999-AbCdEf")
+    os.makedirs(os.path.join(stale, "index"))
+    s = Server(root, cache, env={"TMPDIR": tmp, "CEREAL_INDEX_CACHEDIR": ""},
+               init={"index": {"cacheDir": ""}})
+    st = s.wait()
+    mine = [d for d in os.listdir(tmp) if d.startswith("cereal-index-%d-" % s.p.pid)]
+    expect(len(mine) == 1 and not os.path.exists(stale), "own root made, dead one's removed",
+           {"left": os.listdir(tmp)})
+    expect(st["fresh"] == NTU, "memory-only indexing works", st)
+    s.stop()
+    expect(os.listdir(tmp) == [], "and removed on exit", {"left": os.listdir(tmp)})
 
 
 def sc_takeover(root, cache):

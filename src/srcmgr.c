@@ -186,7 +186,7 @@ static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
     SrcFile *f = path_find(sm, norm);
     struct stat st;
     int fd;
-    size_t size;
+    size_t size, bom;
     SrcLoc base;
     if (f)
         return f->id < 0 ? NULL : f;
@@ -205,8 +205,7 @@ static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
     fd = open(norm, O_RDONLY);
     if (fd < 0)
         return missing_file(sm, norm);
-    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
-        (uint64_t)st.st_size > 0xF0000000u) {
+    if (fstat(fd, &st) != 0 || !file_loadable(&st)) {
         close(fd);
         return missing_file(sm, norm);
     }
@@ -239,10 +238,10 @@ static SrcFile *load_locked(SrcMgr *sm, const char *path, SrcFileKind kind)
         size = got;
     }
     /* libcpp drops a UTF-8 byte order mark */
-    if (size >= 3 && !memcmp(sm->region + base, "\357\273\277", 3)) {
-        memmove(sm->region + base, sm->region + base + 3, size - 3);
-        memset(sm->region + base + size - 3, 0, 3);
-        size -= 3;
+    if ((bom = bom_len(sm->region + base, size)) != 0) {
+        memmove(sm->region + base, sm->region + base + bom, size - bom);
+        memset(sm->region + base + size - bom, 0, bom);
+        size -= bom;
     }
     close(fd);
     f = new_file(sm, norm, name, base, (uint32_t)size,

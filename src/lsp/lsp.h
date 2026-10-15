@@ -31,12 +31,15 @@ typedef struct LspConfig {
     const char *root;        /* workspace root (absolute) or NULL */
     CompileDb cmds;
     const char *db_path;     /* compile_commands.json in use, if any */
+    unsigned refs;           /* the server's current slot and what reads it (server.c) */
 } LspConfig;
 
 /* db: the compile database to use (NULL: compile_commands.json or
  * build/compile_commands.json under root). */
 void config_init(LspConfig *c, const char *root, const char *db);
 void config_free(LspConfig *c);
+/* The same commands (the same files, directories and arguments) in the same order. */
+bool config_same(const LspConfig *x, const LspConfig *y);
 /* Options for a file: its compile command (or a nearby file's, for
  * headers and files without one), then any .cereal files from the root
  * down to the file's directory.  Heap-allocated; free with
@@ -63,9 +66,13 @@ char *path_to_uri(Arena *a, const char *path);
 /* Byte offset of an LSP position in text (clamped to the line). */
 size_t pos_to_offset(const char *text, size_t len, uint32_t line,
                      uint32_t character, PosEncoding enc);
-/* LSP position of a byte offset in text (clamped). */
-void off_to_pos(const char *text, size_t len, size_t off, PosEncoding enc,
-                uint32_t *line, uint32_t *character);
+/* The start offsets of the lines of a text (built once, then any number of
+ * offsets are placed by a binary search; free with vec_free). */
+typedef VEC(size_t) LineTable;
+void line_table_build(LineTable *t, const char *text, size_t len);
+/* LSP position of a byte offset in the text the table was built from (clamped). */
+void line_table_pos(const LineTable *t, const char *text, size_t len, size_t off,
+                    PosEncoding enc, uint32_t *line, uint32_t *character);
 /* LSP position of a location. */
 void loc_to_pos(SrcMgr *sm, SrcLoc loc, PosEncoding enc, uint32_t *line,
                 uint32_t *character);
@@ -151,9 +158,13 @@ int lsp_main(FILE *in, FILE *out);
 
 /* For the project index (project.c); server.c. */
 size_t lsp_check_limit(void);        /* the in-process check byte limit */
-LspConfig *lsp_config(void);         /* the current one (a reload replaces it) */
+/* A configuration is reference counted: the server's current slot holds one, and
+ * so does whatever reads it beyond a call (an index job).  Replaced, it is freed
+ * when the last reference goes.  Options built from it own their strings. */
 void lsp_config_swap(LspConfig *n);  /* n (heap) becomes current; the old one is
-                                      * kept until exit: builds may read it */
+                                      * released */
+void lsp_config_ref(LspConfig *c);   /* c is current, or already referenced */
+void lsp_config_unref(LspConfig *c);
 bool lsp_builder_idle(void);         /* no build queued or running */
 
 /* `cereal index-summary ARGS` (indexsum.c): argv without the mode word. */

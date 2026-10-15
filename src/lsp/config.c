@@ -132,17 +132,51 @@ static void add_cereal_files(Arena *a, StrVec *v, const char *root,
     vec_free(&dirs);
 }
 
+/* The entry with its strings in a: options keep pointers into them, and a
+ * snapshot built from them may outlive the configuration (a reload replaces it). */
+static CompileEntry own_entry(Arena *a, const CompileEntry *e)
+{
+    CompileEntry c = *e;
+    int i;
+    c.dir = e->dir ? arena_strdup(a, e->dir) : NULL;
+    c.argv = NEW_ARRAY(a, const char *, e->argc + 1);
+    for (i = 0; i < e->argc; i++)
+        c.argv[i] = arena_strdup(a, e->argv[i]);
+    return c;
+}
+
+bool config_same(const LspConfig *x, const LspConfig *y)
+{
+    size_t i;
+    int k;
+    if (x->cmds.len != y->cmds.len || !!x->db_path != !!y->db_path ||
+        (x->db_path && strcmp(x->db_path, y->db_path)))
+        return false;
+    for (i = 0; i < x->cmds.len; i++) {
+        const CompileEntry *a = &x->cmds.data[i], *b = &y->cmds.data[i];
+        if (a->argc != b->argc || strcmp(a->abs_file, b->abs_file) ||
+            !!a->dir != !!b->dir || (a->dir && strcmp(a->dir, b->dir)))
+            return false;
+        for (k = 0; k < a->argc; k++)
+            if (strcmp(a->argv[k], b->argv[k]))
+                return false;
+    }
+    return true;
+}
+
 static void options_with(LspConfig *c, const char *path, const CompileEntry *cmd,
                          Arena *a, Options *o, StrVec *files)
 {
-    CompileEntry none;
+    CompileEntry own;
     StrVec flags = {0};
-    memset(&none, 0, sizeof none);
     o->lenient = true;      /* a compile command is written for some compiler,
                              * not for cereal: what is not understood is skipped */
     add_cereal_files(a, &flags, c->root, path, files);
-    entry_options(o, cmd ? cmd : &none, (const char *const *)flags.data,
-                  (int)flags.len);
+    if (cmd)
+        own = own_entry(a, cmd);
+    else
+        memset(&own, 0, sizeof own);
+    entry_options(o, &own, (const char *const *)flags.data, (int)flags.len);
     if (files) {
         size_t k;
         for (k = 0; k < o->rsp_files.len; k++)

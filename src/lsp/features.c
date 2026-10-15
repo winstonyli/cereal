@@ -914,8 +914,9 @@ static uint64_t ws_key(const WsCand *c)
  * definition is the symbol. Only project candidates, v[from..), are looked at. */
 static void ws_drop_decls(WsVec *v, size_t from)
 {
+    typedef struct { const char *name; uint8_t kind; } Def;    /* what the compaction below cannot move */
     size_t i, nb = 16, keep = from;
-    const WsCand **tab;
+    Def *tab;
     while (nb < 2 * (v->len - from + 1))
         nb *= 2;
     tab = xcalloc(nb, sizeof *tab);
@@ -924,18 +925,19 @@ static void ws_drop_decls(WsVec *v, size_t from)
         size_t h;
         if (!(c->pflags & PIF_EXT) || !(c->pflags & PIF_DEF))
             continue;
-        for (h = ws_key(c) & (nb - 1); tab[h]; h = (h + 1) & (nb - 1))
-            if (tab[h]->pkind == c->pkind && !strcmp(tab[h]->name, c->name))
+        for (h = ws_key(c) & (nb - 1); tab[h].name; h = (h + 1) & (nb - 1))
+            if (tab[h].kind == c->pkind && !strcmp(tab[h].name, c->name))
                 break;
-        tab[h] = c;
+        tab[h].name = c->name;
+        tab[h].kind = c->pkind;
     }
     for (i = from; i < v->len; i++) {
         const WsCand *c = &v->data[i];
         size_t h;
         bool dup = false;
         if ((c->pflags & PIF_EXT) && !(c->pflags & PIF_DEF))
-            for (h = ws_key(c) & (nb - 1); tab[h] && !dup; h = (h + 1) & (nb - 1))
-                dup = tab[h]->pkind == c->pkind && !strcmp(tab[h]->name, c->name);
+            for (h = ws_key(c) & (nb - 1); tab[h].name && !dup; h = (h + 1) & (nb - 1))
+                dup = tab[h].kind == c->pkind && !strcmp(tab[h].name, c->name);
         if (!dup)
             v->data[keep++] = *c;
     }
@@ -954,23 +956,14 @@ typedef struct WsFile {
     size_t disklen;
     uint64_t diskhash;
     CIdxEdit edit;               /* disk to cur */
+    LineTable lines;             /* of cur, built for the first position asked */
+    bool lines_built;
 } WsFile;
 typedef struct WsFiles {
     VEC(WsFile *) v;
     WsDocText doc_text;
     bool hint;                   /* a file changed behind the index's back */
 } WsFiles;
-
-/* Reads a file as the index sees it: no byte order mark. */
-static char *ws_read(const char *path, size_t *len)
-{
-    char *t = read_file(path, len);
-    if (t && *len >= 3 && !memcmp(t, "\xEF\xBB\xBF", 3)) {
-        *len -= 3;
-        memmove(t, t + 3, *len);
-    }
-    return t;
-}
 
 static WsFile *ws_file(WsFiles *fs, const char *path)
 {
@@ -984,7 +977,7 @@ static WsFile *ws_file(WsFiles *fs, const char *path)
     if (fs->doc_text && (f->cur = fs->doc_text(path, &f->curlen)) != NULL)
         f->open = true;
     else
-        f->cur = ws_read(path, &f->curlen);
+        f->cur = read_file_nobom(path, &f->curlen, NULL);
     if (f->cur)
         f->curhash = cindex_hash(f->cur, f->curlen);
     vec_push(&fs->v, f);
@@ -1010,7 +1003,7 @@ static bool ws_place(WsFiles *fs, const WsCand *c, uint32_t *off)
     }
     if (!f->disk_loaded) {
         f->disk_loaded = true;
-        f->disk = ws_read(f->path, &f->disklen);
+        f->disk = read_file_nobom(f->path, &f->disklen, NULL);
         if (f->disk)
             f->diskhash = cindex_hash(f->disk, f->disklen);
     }
@@ -1034,21 +1027,52 @@ static void ws_files_free(WsFiles *fs)
     for (i = 0; i < fs->v.len; i++) {
         free(fs->v.data[i]->cur);
         free(fs->v.data[i]->disk);
+        vec_free(&fs->v.data[i]->lines);
         free(fs->v.data[i]);
     }
     vec_free(&fs->v);
 }
 
-static void json_pos_at(JsonWriter *w, const WsFile *f, PosEncoding enc, size_t off)
+static void json_pos_at(JsonWriter *w, WsFile *f, PosEncoding enc, size_t off)
 {
     uint32_t line, ch;
-    off_to_pos(f->cur, f->curlen, off, enc, &line, &ch);
+    if (!f->lines_built) {
+        line_table_build(&f->lines, f->cur, f->curlen);
+        f->lines_built = true;
+    }
+    line_table_pos(&f->lines, f->cur, f->curlen, off, enc, &line, &ch);
     json_begin_object(w);
     json_key(w, "line");
     json_int(w, line);
     json_key(w, "character");
     json_int(w, ch);
     json_end_object(w);
+}
+
+/* The results sent so far, by (path, offset as placed, name): the one symbol seen
+ * through several units, configurations, or an open file and its edit is sent
+ * once.  Inserts c unless it is there; true if it was. */
+typedef struct WsSent {
+    const WsCand *c;
+    uint32_t off;
+} WsSent;
+enum { WS_SENT_SLOTS = 256 };            /* a power of 2 over WS_LIMIT */
+
+static bool ws_seen(WsSent *tab, const WsCand *c, uint32_t off)
+{
+    uint64_t h = 1469598103934665603ull ^ off;
+    const char *p;
+    for (p = c->name; *p; p++)
+        h = (h ^ (unsigned char)*p) * 1099511628211ull;
+    for (p = c->path; *p; p++)
+        h = (h ^ (unsigned char)*p) * 1099511628211ull;
+    for (h &= WS_SENT_SLOTS - 1; tab[h].c; h = (h + 1) & (WS_SENT_SLOTS - 1))
+        if (tab[h].off == off && !strcmp(tab[h].c->name, c->name) &&
+            !strcmp(tab[h].c->path, c->path))
+            return true;
+    tab[h].c = c;
+    tab[h].off = off;
+    return false;
 }
 
 void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
@@ -1058,7 +1082,7 @@ void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
     WsVec v = {0};
     WsOpen open = {docs, ndocs};
     WsFiles files = {{0}, doc_text, false};
-    const WsCand *last = NULL;
+    WsSent sent[WS_SENT_SLOTS] = {{0}};
     Req r;
     size_t i, shown = 0;
     for (i = 0; i < n; i++)
@@ -1078,12 +1102,10 @@ void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
     for (i = 0; i < v.len && shown < WS_LIMIT; i++) {
         const WsCand *c = &v.data[i];
         uint32_t off = c->off;
-        if (last && last->off == c->off && !strcmp(last->path, c->path) &&
-            !strcmp(last->name, c->name))
-            continue;                  /* a header the units share */
         if (!c->snap && !ws_place(&files, c, &off))
             continue;                  /* the project's text is not the file's */
-        last = c;
+        if (ws_seen(sent, c, off))
+            continue;
         r.snap = c->snap;
         json_begin_object(w);
         json_key(w, "name");
@@ -1094,7 +1116,7 @@ void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
         if (c->snap) {
             json_location(w, &r, c->b, c->b + c->len);
         } else {
-            const WsFile *f = ws_file(&files, c->path);
+            WsFile *f = ws_file(&files, c->path);
             json_begin_object(w);
             json_key(w, "uri");
             json_str(w, path_to_uri(a, c->path));

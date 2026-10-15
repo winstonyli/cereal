@@ -101,12 +101,29 @@ bool str_eq_n(const char *a, size_t an, const char *b);
 unsigned edit_distance(const char *a, size_t an, const char *b, size_t bn,
                        unsigned limit);
 char *read_file(const char *path, size_t *len_out);
+/* What the source manager can load (srcmgr_load): a regular file of at most
+ * 0xF0000000 bytes.  file_loadable takes its stat data; file_openable also
+ * needs the file to open. */
+struct stat;
+bool file_loadable(const struct stat *st);
+bool file_openable(const char *path);
+/* The length of the UTF-8 byte order mark at the start of buf (libcpp drops
+ * it), else 0. */
+size_t bom_len(const void *buf, size_t n);
+/* qsort order of u64s, and sorting with the duplicates removed (returns the new length). */
+int u64_cmp(const void *a, const void *b);
+size_t sort_unique_u64(uint64_t *v, size_t n);
+/* A loadable file whole, as the index sees it (no byte order mark, NUL
+ * terminated); NULL if it is not.  *st gets the fstat from before the read (7.2:
+ * stat data must not be newer than the bytes it describes). */
+char *read_file_nobom(const char *path, size_t *len_out, struct stat *st);
 /* Replaces the file at path (or creates it, mode 0600) with buf: written to a
- * temporary file in the same directory, fsync'd, given the original's mode
+ * temporary file in the same directory, fsync'd if sync (the user's files; the
+ * index's are checksummed and heal on a bad read), given the original's mode
  * (and owner, if it can; a new file keeps mkstemp's), then renamed over it.  Nothing is changed on
  * failure; err gets the reason. */
-bool file_write_atomic(const char *path, const char *buf, size_t n, char *err,
-                       size_t errn);
+bool file_write_atomic(const char *path, const char *buf, size_t n, bool sync,
+                       char *err, size_t errn);
 /* mkdir -p, directories mode 0700 (the index cache holds source-derived names). */
 bool dir_create_all(const char *path, char *err, size_t errn);
 

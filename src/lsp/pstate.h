@@ -38,7 +38,7 @@ typedef struct PChunk {          /* a system chunk, shared by units (5.1) */
 
 typedef struct PMiss {
     const char *spelled, *from;
-    bool angled;
+    uint32_t first_dir, how;     /* CRecMiss: where the search began; CMISS_* */
 } PMiss;
 
 typedef struct PMan {            /* a loaded manifest */
@@ -54,6 +54,7 @@ typedef struct PMan {            /* a loaded manifest */
     uint32_t nmiss;
     uint64_t *recs;              /* distinct record digests, sorted */
     uint32_t nrecs;
+    uint64_t ino, mtime_ns;      /* of the file it was read from (pstate_refresh) */
 } PMan;
 
 typedef enum {
@@ -68,10 +69,12 @@ typedef struct PSched {          /* the scheduler's (project.c); pstate does not
     int cls;                     /* priority class 0..2 (8.2) */
     bool pending;                /* stale and not yet seen as such by the scheduler */
     bool recent;                 /* became stale after the startup load: class 1 */
-    bool sticky_sub;             /* indexed in a child only from now on (8.5) */
-    bool running;                /* a job for it is in the pool */
-    uint8_t fails;               /* consecutive failures (8.6) */
-    uint64_t retry_ns;           /* after a failure: not before (monotonic); ~0: never */
+    struct IJob *job;            /* the job in the pool for it (finish clears only its own) */
+    struct {                     /* how and when the next attempt runs (8.5, 8.6) */
+        bool sub;                /* in a child only from now on */
+        uint8_t fails;           /* consecutive failures */
+        uint64_t at;             /* after a failure: not before (monotonic); ~0: never */
+    } next;
 } PSched;
 
 typedef struct PTu {
@@ -124,18 +127,17 @@ size_t pstate_eval(PState *ps);
 /* (Re)loads tu's manifest from the store, e.g. after a job wrote it, then
  * evaluates tu.  False: there is none usable. */
 bool pstate_reload(PState *ps, PTu *tu);
-/* Forgets tu's manifest and deletes it and (chunks) what it listed is left to
- * the GC. */
-void pstate_drop_manifest(PState *ps, PTu *tu, bool remove_file);
-/* A record file the manifests name could not be read: removes it and makes
- * the units that list it stale. */
-void pstate_reject_rec(PState *ps, uint64_t digest);
+/* The same if the file is not the one loaded (another inode or mtime); false:
+ * unchanged, nothing was done.  A reader follows the writer's GEN with it. */
+bool pstate_refresh(PState *ps, PTu *tu);
+/* A record file the manifests name is missing or unreadable (why): it is
+ * reported (ps->log), removed if this process is the writer, and the units
+ * that list it become PS_LOST.  The one corruption path: pi_set_tu calls it
+ * when it loads the records (6.3). */
+void pstate_reject_rec(PState *ps, uint64_t digest, const char *why);
 
 /* The digests in use, sorted (6.4); free the three arrays. */
 void pstate_live(PState *ps, StoreLive *live);
-/* Maps every record the manifests name, rejecting (pstate_reject_rec) those
- * that are missing or unreadable.  Costs reading the cache. */
-void pstate_check_records(PState *ps);
 
 PPath *pstate_path(PState *ps, const char *path);   /* NULL: unknown */
 const char *pstate_why(PStale s);

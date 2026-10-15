@@ -321,6 +321,57 @@ char *read_file(const char *path, size_t *len_out)
     return sb.data;
 }
 
+bool file_loadable(const struct stat *st)
+{
+    return S_ISREG(st->st_mode) && (uint64_t)st->st_size <= 0xF0000000u;
+}
+
+bool file_openable(const char *path)
+{
+    struct stat st;
+    int fd = open(path, O_RDONLY);
+    bool ok = fd >= 0 && fstat(fd, &st) == 0 && file_loadable(&st);
+    if (fd >= 0)
+        close(fd);
+    return ok;
+}
+
+size_t bom_len(const void *buf, size_t n)
+{
+    return n >= 3 && !memcmp(buf, "\357\273\277", 3) ? 3 : 0;
+}
+
+char *read_file_nobom(const char *path, size_t *len_out, struct stat *st)
+{
+    struct stat local;
+    size_t n, got = 0, bom;
+    char *text;
+    int fd = open(path, O_RDONLY);
+    if (!st)
+        st = &local;
+    if (fd < 0)
+        return NULL;
+    if (fstat(fd, st) != 0 || !file_loadable(st)) {     /* before the read */
+        close(fd);
+        return NULL;
+    }
+    n = (size_t)st->st_size;
+    text = xmalloc(n + 1);
+    while (got < n) {
+        ssize_t r = read(fd, text + got, n - got);
+        if (r <= 0)
+            break;
+        got += (size_t)r;
+    }
+    close(fd);
+    bom = bom_len(text, got);
+    got -= bom;
+    memmove(text, text + bom, got);
+    text[got] = 0;
+    *len_out = got;
+    return text;
+}
+
 /* ---- atomic file replacement (docs/C_DESIGN.md 6.5) ---------------------- */
 
 static void werr(char *err, size_t errn, const char *what, const char *path)
@@ -328,8 +379,8 @@ static void werr(char *err, size_t errn, const char *what, const char *path)
     snprintf(err, errn, "%s '%s': %s", what, path, strerror(errno));
 }
 
-bool file_write_atomic(const char *path, const char *buf, size_t n, char *err,
-                       size_t errn)
+bool file_write_atomic(const char *path, const char *buf, size_t n, bool sync,
+                       char *err, size_t errn)
 {
     struct stat st;
     const char *slash = strrchr(path, '/');
@@ -359,7 +410,7 @@ bool file_write_atomic(const char *path, const char *buf, size_t n, char *err,
         }
         put += (size_t)w;
     }
-    if (fsync(fd) != 0) {
+    if (sync && fsync(fd) != 0) {
         werr(err, errn, "cannot sync", tmp);
         goto fail;
     }
@@ -409,4 +460,21 @@ bool dir_create_all(const char *path, char *err, size_t errn)
     }
     free(p);
     return ok;
+}
+
+int u64_cmp(const void *pa, const void *pb)
+{
+    uint64_t a = *(const uint64_t *)pa, b = *(const uint64_t *)pb;
+    return a < b ? -1 : a > b;
+}
+
+size_t sort_unique_u64(uint64_t *v, size_t n)
+{
+    size_t i, k = 0;
+    if (n > 1)
+        qsort(v, n, sizeof *v, u64_cmp);
+    for (i = 0; i < n; i++)
+        if (!k || v[k - 1] != v[i])
+            v[k++] = v[i];
+    return k;
 }

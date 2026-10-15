@@ -523,10 +523,24 @@ publishes a result by reloading the unit's manifest and bumping `GEN`.
   pending); no job starts until `quietMs` after the last edit and the
   builder is idle.
 - Failures: a unit that fails backs off 60 s, 600 s, then until a file
-  changes. Failures are logged (`window/logMessage`), never shown as
+  changes (so does a unit that is still stale for a missing include or an
+  unreadable record right after its job). Failures are logged (`window/logMessage`), never shown as
   diagnostics.
 - Several servers on one project: one wins the lock and writes; the others
-  read, following `GEN` once a second, and take over if the writer exits.
+  read, following `GEN` once a second (reloading only the manifests whose
+  file changed), and take over if the writer exits. `cereal/indexWait` is a
+  barrier for the role: the writer's is nothing running and nothing eligible,
+  a reader's returns at once.
+- The store: the project directory is keyed by root, compile database and
+  build, so two builds never share files. Every server holds a shared lock on
+  `USE` there; eviction (over `cacheMaxMB`, at startup, on taking over and at
+  most every 10 minutes) takes it exclusive and skips directories in use. GC
+  runs after the startup scan and every 100 manifest writes. A record that is
+  damaged or missing is found when its manifest is loaded (not only at
+  startup): the writer removes it, logs it, and re-indexes the units that
+  name it. If the cache directory cannot be used (or its lock files cannot
+  be opened) the index is memory-only, in a private temporary directory named
+  for the process; those of dead processes are removed.
 - Progress: with `window.workDoneProgress`, a "Indexing" progress
   (`n/N TUs`, at most 2 reports a second); otherwise two log messages.
 - Settings (`initializationOptions.index`, or env `CEREAL_INDEX_<KEY>`):

@@ -38,10 +38,11 @@ typedef struct ProjIndex ProjIndex;
 ProjIndex *pi_new(void);
 void pi_free(ProjIndex *pi);
 
-/* Scheduler thread only.  Makes tu's records the ones its manifest names
- * (none if it has no manifest), loading those not yet in.  Records that
- * cannot be read are left out. */
-void pi_set_tu(ProjIndex *pi, const PState *ps, const PTu *tu);
+/* Scheduler thread only.  Makes tu.s records the ones its manifest names
+ * (none if it has no manifest), loading those not yet in.  A record that
+ * cannot be read is left out and reported to ps (pstate_reject_rec: every unit
+ * that lists it becomes PS_LOST), and tried again at the next call. */
+void pi_set_tu(ProjIndex *pi, PState *ps, const PTu *tu);
 /* Forgets the units ps no longer has. */
 void pi_prune(ProjIndex *pi, const PState *ps);
 
