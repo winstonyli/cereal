@@ -584,3 +584,23 @@ Round 1 nits:
 - N1 `ENV` atom: dropped; `VERIFAST` is an ordinary `I(VERIFAST)` (7.4). N2
   virtual entries do not edit the compile database (3.7). N3 relative proof
   (3.5). N4 decision 1 provisional (4, 10).
+
+## 13. Spike results
+
+S0a (Round 240; `rename_libuv.py --verbose` on libuv, 441 functions, 54 refused
+for A3.9; each refusal names only the first inactive use, so groups per function
+is not measured). Each refusal classified by the atoms of the `#if` chain around
+that use: 20 OS only, 26 OS plus a guard or derived macro (include guards
+`UV_UNIX_INTERNAL_H_`, `UV_H`, `PTHREAD_BARRIER_SERIAL_THREAD`), 8 with no OS
+atom (`uv__accept4`, `UV_USE_SIGCHLD`, `O_CLOEXEC`, `UV__CPU_AFFINITY_SUPPORTED`,
+and `UV_H`/`__cplusplus`, the dead `extern "C"` guard). Reading: at least 46 of
+54 (85%) are OS-axis; the 8 "feature" ones are themselves derived from OS macros
+by `#define`s in headers (so only the fold of 3.4 can make them satisfiable),
+or dead. **Consequence: S4's feature-axis subset is about 4 functions, so S4's
+80% rule is not meaningful as written; rename through inactive groups on this
+corpus is almost entirely the OS axis, which is `PARTIAL`/`UNREALIZED` on a
+Linux host (6).** The value of the mechanism on this corpus is therefore the
+explanation (7.1: "needs `__APPLE__`") and group-aware refusal text, not
+rename edits; S4 should be re-scoped to measure the explanation (every refusal
+names the atoms it needs) unless a sysroot-carrying cross configuration is
+added. Not run yet: S0b (BDD size), S0c (fold exactness and cost), S0d.
