@@ -1,4 +1,4 @@
-# S1 implementation plan (draft 3)
+# S1 implementation plan (draft 4)
 
 Scope: stage S1 of `docs/CONFIG_DESIGN.md` (section 8): BDD solver, presence
 conditions and queries for the open unit, family table, hover and
@@ -9,7 +9,10 @@ the C code (node counts depend on the manager and the order).
 Review log: round 1 (Sonnet) found 5 false or unverified tree claims, 6 design
 contradictions, 4 ordering gaps and 2 untestable gates; round 2 found 4 more
 (skeleton must stay entry-independent, arithmetic lost by the BDD, rule (a)
-already exists, harness precedent); this draft folds both in.
+already exists, harness precedent); round 3 found 4 small ones (include.c consumers of skeleton kinds, no lint
+timing tool, corpus gates, truncation cases only guard against crashes); this
+draft folds all three in. Stopped after round 3 by judgment: the remaining risk is
+in execution, which the slice gates exercise.
 
 ## Facts about the tree (verified)
 
@@ -43,15 +46,18 @@ already exists, harness precedent); this draft folds both in.
    first user.
 2. **Lint cases for every cond.c limit** (more than 16 variables, 2^18, `dom[24]`,
    64 conjuncts, 32 priors, 64 frames, unmodeled condition, `#elifdef`) added to
-   `tests/lint/` with their **current** expectations (silent truncation recorded
-   as it is), so S1a's changes are a reviewed diff of expectations.
+   `tests/lint/` with their **current** expectations. The truncation cases (silent
+   today, `unknown` with no diagnostic after S1a) only guard against crashes and
+   wrong answers; the cases whose answers S1a changes (arithmetic, variables
+   beyond 16, `#elifdef`) are the reviewed diffs.
 3. **Fixtures:** small in-repo fixtures that exercise the fold (guards, `pragma
    once`, thresholds, families, system-header macros, a computed include); the
    libuv, Lua and zstd corpora stay a documented, optional gate (`bench/` fetch
    plus unit lists recorded in `docs/`).
-4. **Timing gate:** a named lint-only command on named files (best of 5, 10%
-   noise margin), baseline recorded in `bench/BASELINE.md` with the CPU load and Defender
-   state (LONG_RUNS.md).
+4. **Timing gate:** a new `bench/bench.py --lint FILES` mode (it times only `-E`
+   today) on in-repo fixtures plus the Lua sources from `corpus.py` (best of 5, 10%
+   noise margin), baseline recorded in `bench/BASELINE.md` **before S1a lands**,
+   with the CPU load and Defender state (LONG_RUNS.md).
 
 ## Slices (each leaves the tree green; commit per slice)
 
@@ -78,12 +84,15 @@ the margin; byte-identical output under `-fparallel=on`.
 
 **S1b, skeleton kinds and include resolution (prerequisite for the fold).**
 `Skeleton` stays **entry-independent** (cached per file, re-derived from content,
-section 5): `skel.h` gains kinds for `#elifdef/#elifndef`, `include_next` and
-`#pragma once`, and `cond.c` treats `#elifdef/#elifndef` as chain branches.
+section 5): `skel.h` gains kinds for `#elifdef/#elifndef` and `#pragma once`, and
+`include_next` becomes a **flag on `SK_INCLUDE`** (not a kind), because
+`src/analysis/include.c:350` tests `kind == SK_INCLUDE` and `:275` lists the chain
+kinds (`SK_IF/IFDEF/IFNDEF/ELIF`), which gain the two new elif kinds; `cond.c` treats `#elifdef/#elifndef` as chain branches.
 Resolved include edges go in a separate per-unit structure keyed by (file,
-entry), filled by a resolver using the entry's search paths. Gate: a reviewed
-`// expect:` diff for the `#elifdef` lint change; `tests/ppstd/elifdef.c` chains
-modeled; resolved edges for the fixtures match the preprocessor's include events.
+entry), filled by a resolver using the entry's search paths. Gate: `include.c` behavior and its tests unchanged;
+a reviewed `// expect:` diff for the `#elifdef` lint change; `tests/ppstd/elifdef.c` chains
+modeled; resolved edges for the fixtures match the preprocessor's include events
+(compared by a `--selftest` that dumps both).
 
 **S1c, symbolic fold, host valuation and the oracle.** `src/analysis/pc.[ch]`:
 the fold over the include closure (quoted includes symbolic, system includes
@@ -99,7 +108,10 @@ groups, with coverage and the excluded share reported, plus solver-guided
 overlay draws re-preprocessed with `-D`. Gates (section 8 bounds, not the
 prototype figures): under 20,000 nodes per group; exactness at least 90% with A
 listed; fold per entry under 1 s on average with p95 and max reported; the fixtures
-pass; corpora optional.
+pass. The numeric gates are stated against libuv, Lua and zstd, so they run
+only with the corpora fetched (`bench/fetch_corpus.sh`, network) and their unit
+lists and results are recorded in `docs/`; a slice commit may land on the
+fixtures alone, with the corpus gate marked pending in the status line.
 
 **S1d, queries and the family table.** `sat`, `why_off` (phases 1, 2a, 2b, typed
 `Requirement{clause,kind,status,source,via}` per 3.8), `diff`, ranks to K=3. The
