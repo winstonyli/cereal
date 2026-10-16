@@ -4684,3 +4684,26 @@ Gates: run.sh 2157 passed; san 2157, 628 files, 0 findings; callgrind 3.8886 G
 (3.8863 G); globals 32 allowed; symcov unchanged; clangd_diff 7 files, 0
 unexpected; TSan (58 session runs, `lsp_stress --symbols --calls --hints --refs`
 200 edits (239 sent) with indexing active, 17 proj_test scenarios): 0 reports.
+
+Round 230: B5d, rename across TUs (B5_DESIGN.md 11.5, 15.3; Q7 resolved: keep,
+parked). `crename` takes one edit list per file (given by the project or planned
+from the unit) and checks a unit over an overlay of every edited file it reads;
+`cereal query rename=` and the LSP share `c_rename`. One predicate,
+`cindex_rename_blocker`, refuses a use in a `#define` body or at a macro
+invocation (R4/R7), for the open unit's events and every project record event,
+because macro invocation sites stay unlisted (Q7, an intended difference from
+clangd, P2). R1 (`pq_ambiguous`), R3 (unplaced entries), R2/R5 (`project_scope`
+on the scheduler) and R6 (the per-unit gate on the index pool, submissions
+paused) complete the refusals; a project rename runs on a worker thread and
+replies `documentChanges` or `changes`; a file that changes meanwhile gives
+ContentModified. `bench/tools/rename_libuv.py` renames 441 external libuv
+functions: 382 edits, 54 refused for a use in an inactive `#if` group (A3.9), 5
+for a macro body, 0 other (12.2% if A3.9 is counted as false; stop rule not
+fired on the design reading, reported). Renamed decls: only the asked decl is
+renamed, a second decl at an edit is refused (golden `rename.expected` kept).
+`proj_test.py` scenario `rename`; `lsp_stress.py --rename`.
+Gates: run.sh 2158 passed; san 2158, 628 files, 0 findings; callgrind 3.8845 G;
+globals 32 allowed; symcov unchanged; wsym_bench workspace/symbol p95 21.9 ms;
+clangd_diff project mode 0 unexplained misses in 3,400 clangd results; TSan (58
+session runs, `lsp_stress --symbols --calls --refs --rename` 200 edits on a
+40-TU project, 18 proj_test scenarios): 0 reports.

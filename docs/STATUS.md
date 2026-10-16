@@ -40,7 +40,10 @@ in [ROADMAP.md](ROADMAP.md).
   type definition, references, highlight, hover, rename, document
   symbols, signature help, semantic tokens and completion (ROADMAP B1 to
   B3 done), call hierarchy (B4a), parameter-name inlay hints (B4b) and workspace/symbol over the
-  open units (B4c; B4 is complete).
+  open units (B4c; B4 is complete). With the project index (B5), references,
+  call hierarchy, definition and rename of names with external linkage span
+  the whole compile database (B5c, B5d; rename refuses an incomplete index and
+  macro-body uses, LSP.md).
   After an edit, requests answer from the previous index
   carried over the edit until the check publishes its own, and the server
   asks the client to refresh semantic tokens and inlay hints then (B3_DESIGN.md 12;
@@ -83,7 +86,7 @@ c-c++-common: dump-ada-spec-14 (gcc's Ada dumper).
 
 
 Round 210, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 637 of 638,
-cpp 289 of 289; `tests/run.sh` 2157 passed (Round 229).  Remaining gcc.dg diffs: pr56355-1,
+cpp 289 of 289; `tests/run.sh` 2158 passed (Round 230).  Remaining gcc.dg diffs: pr56355-1,
 pr83844 (above).
 Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - `char * const _Atomic c` parameter of main prints as `char * _Atomic`

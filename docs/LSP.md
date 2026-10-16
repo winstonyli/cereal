@@ -271,8 +271,8 @@ is freed with it (replacing the carried index, below).
   - several entities at the place, a predeclared or system name, an
     implicitly declared function;
   - a use spelled in a `#define` body or formed by `##`;
-  - a use in a header (other units may include it; cross-unit rename is
-    B5, decision D3);
+  - a use in a header (other units may include it) without the project
+    index; with it, the rename runs over the project (B5d, below);
   - a new name that is not an identifier, is a keyword in any mode, or
     has any macro history in the unit;
   - an `#include` not found;
@@ -579,7 +579,34 @@ publishes a result by reloading the unit's manifest and bumping `GEN`.
   include it but are not open); the index may still be growing after startup,
   and nothing waits for it. A call or use written in a macro body, or an
   invocation of a macro whose body uses the name, is listed by neither
-  source (clangd lists the invocations: B5_DESIGN.md Q7).
+  source. clangd lists the invocations (13% of its results on lua54 and
+  libuv); this is an intended difference (P2 in `clangd_diff.py`, B5_DESIGN.md
+  Q7, resolved: keep). Listing them is parked: it needs a record format bump
+  and a rename policy for macro sites. Rename refuses instead of missing them
+  (below).
+- Rename of an entity with a project key (B5d; B5_DESIGN.md 11.5, 15.3): a
+  function or object with external linkage, or a file-scope name declared in a
+  header, is renamed in every unit of the project, from the project index's
+  uses plus the open unit's. The reply is `documentChanges` when the client
+  supports them (an open document carries its version, an unopened file
+  `null`), else `changes`. It is a worker-thread request, so the builder stays
+  free. Refused (RequestFailed, with the first offending place): a use in a
+  `#define` body or at a macro invocation (R4/R7: one rule, applied to the
+  records and the open unit), the same place with another entity in another
+  header variant (R1), a record that no longer matches the file or an edit it
+  cannot place (R3), a project index that is not complete (R2: any unit queued,
+  running, stale, `FAILED` or `OVER_LIMIT`, or an affected unit only partly
+  indexed; an erroneous unit blocks every rename of the names its headers
+  declare), more than `cereal.index.renameMaxTUs` (100) affected units (R5), and
+  anything the per-unit check refuses (R6: a collision or capture, or a use in
+  an inactive `#if` group), run for every affected unit, in parallel, on the
+  index pool, with the scheduler's submissions paused. A file that changes
+  while the rename runs answers ContentModified (-32801). prepareRename runs the
+  cheap refusals only (its scope check waits 300 ms for the scheduler). A
+  macro that names the function but is never invoked leaves no record, so it
+  is not seen (a documented limitation). A macro rename still replies with
+  `changes`. With the project index off, a name used in a file other than the
+  unit's main file is refused as before ("renaming it needs the project index").
 - Test-only requests: `cereal/indexStats`, `cereal/indexWait` (a barrier),
   `cereal/indexHold`. `tests/proj_test.py` drives them; the other LSP tests
   run with `CEREAL_INDEX_ENABLE=0`.

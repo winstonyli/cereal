@@ -48,6 +48,7 @@ typedef struct Settings {
     double memory_mb, max_file_mb, cache_max_mb, sweep_s, lock_retry_s;
     size_t inproc_bytes;
     unsigned quiet_ms, sub_s;
+    size_t rename_max;              /* R5: the most units a rename may check */
     char *cache_dir;                /* NULL: the default (6.1) */
     VEC(char *) paths;              /* fnmatch globs, `!` excludes */
 } Settings;
@@ -105,6 +106,7 @@ static void load_settings(Settings *s, const JsonValue *params, const LspConfig 
     s->lock_retry_s = num_setting(o, "lockRetrySeconds", 30);
     s->quiet_ms = (unsigned)num_setting(o, "quietMs", 500);
     s->sub_s = (unsigned)num_setting(o, "subprocessSeconds", 120);
+    s->rename_max = (size_t)num_setting(o, "renameMaxTUs", 100);
     if ((e = env_setting("cacheDir")) != NULL)
         s->cache_dir = xstrdup(e);
     else if ((v = o ? json_get(o, "cacheDir") : NULL) != NULL && v->kind == JV_STR)
@@ -145,11 +147,12 @@ typedef struct IJob {
     IdxOut out;
 } IJob;
 
-enum { EV_SAVE, EV_OPEN, EV_CLOSE, EV_SYNC, EV_CREATED, EV_SWEEP };
+enum { EV_SAVE, EV_OPEN, EV_CLOSE, EV_SYNC, EV_CREATED, EV_SWEEP, EV_SCOPE };
 typedef struct Event {
     int kind;
     char *path;
     unsigned seq;
+    struct ScopeReq *req;           /* EV_SCOPE */
 } Event;
 
 typedef VEC(Event) EventVec;
@@ -173,7 +176,8 @@ static struct Project {
     Cond wake;                      /* the scheduler */
     Cond park;                      /* jobs held (project_hold), until released or cancelled */
     Cond idle_cv;                   /* project_wait */
-    bool started, go, stop, ready, hold, idle;
+    bool started, go, stop, ready, hold, idle, pool_ready;
+    unsigned paused;                /* project_pause: no job is submitted */
     unsigned sync_req, sync_done;
     uint64_t last_edit_ns;
     EventVec events;
@@ -943,11 +947,16 @@ static void startup(void)
     P.gen_seen = store_gen(&P.store);
     pool_init(&P.pool, s->threads + 1, 10);
     P.pool.trap_fatal = true;
+    mutex_lock(&P.m);
+    P.pool_ready = true;
+    mutex_unlock(&P.m);
     if (P.writer) {
         gc();
         evict();
     }
 }
+
+static void scope_run(struct ScopeReq *r);
 
 static void do_event(const Event *e, unsigned *sync_seen)
 {
@@ -988,6 +997,9 @@ static void do_event(const Event *e, unsigned *sync_seen)
     case EV_CREATED:
         P.create_ok = true;
         break;
+    case EV_SCOPE:
+        scope_run(e->req);
+        break;
     case EV_SWEEP:                      /* a query met a file the index did not expect */
         if (P.have_store && mono_ns() - P.last_hint_ns >= (uint64_t)HINT_SWEEP_MIN_MS * 1000000u) {
             P.last_hint_ns = mono_ns();
@@ -1003,6 +1015,11 @@ static void submit_pass(uint64_t now, size_t pending, uint64_t last_edit)
     bool quiet;
     double rss;
     if (!P.writer || !pending || P.running_n >= (size_t)P.set.threads)
+        return;
+    mutex_lock(&P.m);
+    quiet = P.paused != 0;
+    mutex_unlock(&P.m);
+    if (quiet)                          /* a rename checks on the pool */
         return;
     quiet = now - last_edit >= (uint64_t)P.set.quiet_ms * 1000000u;
     if (quiet && !lsp_builder_idle())
@@ -1174,6 +1191,9 @@ static void *sched_main(void *arg)
         }
         publish_stats(idle, sync_seen);
     }
+    mutex_lock(&P.m);
+    P.pool_ready = false;
+    mutex_unlock(&P.m);
     pool_free(&P.pool);                 /* the jobs end at once: cancelled or killed */
     {
         size_t i;
@@ -1183,6 +1203,207 @@ static void *sched_main(void *arg)
         mutex_unlock(&P.m);
     }
     return NULL;
+}
+
+/* ---- rename support (B5d, 11.5) ---------------------------------------------------------------- */
+
+static void post(int kind, const char *path, unsigned seq);
+
+typedef struct ScopeReq {
+    char **files;                   /* sorted */
+    size_t nfiles;
+    ProjScope out;
+    bool done;
+    int refs;                       /* the caller and the scheduler's event; P.m */
+} ScopeReq;
+
+static int str_cmp(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+static void scope_unref(ScopeReq *r)    /* P.m held */
+{
+    size_t i;
+    if (--r->refs)
+        return;
+    for (i = 0; i < r->nfiles; i++)
+        free(r->files[i]);
+    free(r->files);
+    project_scope_free(&r->out);
+    free(r);
+}
+
+static bool lists_file(const PMan *m, char *const *files, size_t n)
+{
+    uint32_t i;
+    for (i = 0; i < m->nfils; i++) {
+        const char *p = m->fils[i].p->path;
+        if (bsearch(&p, files, n, sizeof *files, str_cmp))
+            return true;
+    }
+    return false;
+}
+
+/* The units a rename of the files' names must check, and whether it may go
+ * ahead: R2 (the index is complete: a unit that is not indexed could use any
+ * external name) and R5.  Scheduler thread. */
+static void do_scope(ScopeReq *r)
+{
+    ProjScope *o = &r->out;
+    StrBuf why = {0}, m = {0};
+    size_t i, bad = 0;
+    if (!P.have_store) {
+        o->refuse = xstrdup("the project index has no store (indexing is not running)");
+        return;
+    }
+    for (i = 0; i < P.ps.tus.len; i++) {
+        const PTu *tu = P.ps.tus.data[i];
+        const char *state = tu->stale != PS_FRESH ? pstate_why(tu->stale)
+                          : !tu->man ? "not indexed"
+                          : tu->sched.job ? "being indexed"
+                          : tu->man->status == CTU_FAILED ? "its index failed"
+                          : tu->man->status == CTU_OVER_LIMIT ? "over the size limit"
+                          : NULL;
+        bool listed = !state && lists_file(tu->man, r->files, r->nfiles);
+        if (listed && tu->man->status == CTU_PARTIAL)
+            state = "only partly indexed";
+        if (state) {
+            if (bad++ < 3)
+                sb_printf(&why, "%s%s (%s)", bad > 1 ? ", " : "", rel(tu->main), state);
+        } else if (listed) {
+            o->mains = xrealloc(o->mains, (o->nmains + 1) * sizeof *o->mains);
+            o->entries = xrealloc(o->entries, (o->nmains + 1) * sizeof *o->entries);
+            o->entries[o->nmains] = tu->entry;
+            o->mains[o->nmains++] = xstrdup(tu->main);
+        }
+    }
+    if (bad)
+        sb_printf(&m, "the project index is incomplete: %zu of %zu translation units "
+                  "are not fully indexed (%s%s); renaming needs all of them",
+                  bad, P.ps.tus.len, sb_cstr(&why), bad > 3 ? ", ..." : "");
+    else if (o->nmains > P.set.rename_max)
+        sb_printf(&m, "%zu translation units are affected, more than "
+                  "cereal.index.renameMaxTUs (%zu)", o->nmains, P.set.rename_max);
+    if (m.len)
+        o->refuse = (char *)sb_cstr(&m);
+    sb_free(&why);
+}
+
+static void scope_run(ScopeReq *r)
+{
+    do_scope(r);
+    mutex_lock(&P.m);
+    r->done = true;
+    cond_broadcast(&P.idle_cv);
+    scope_unref(r);
+    mutex_unlock(&P.m);
+}
+
+void project_scope_free(ProjScope *s)
+{
+    size_t i;
+    for (i = 0; i < s->nmains; i++)
+        free(s->mains[i]);
+    free(s->mains);
+    free(s->entries);
+    free(s->refuse);
+    memset(s, 0, sizeof *s);
+}
+
+bool project_scope(const char *const *files, size_t nfiles, unsigned timeout_ms,
+                   ProjScope *out)
+{
+    ScopeReq *r;
+    Event e;
+    size_t i;
+    bool ok = false;
+    memset(out, 0, sizeof *out);
+    if (!P.started)
+        return false;
+    r = xcalloc(1, sizeof *r);
+    r->files = xmalloc((nfiles + 1) * sizeof *r->files);
+    for (i = 0; i < nfiles; i++)
+        r->files[i] = xstrdup(files[i]);
+    r->nfiles = nfiles;
+    qsort(r->files, nfiles, sizeof *r->files, str_cmp);
+    r->refs = 2;
+    e.kind = EV_SCOPE;
+    e.path = NULL;
+    e.seq = 0;
+    e.req = r;
+    mutex_lock(&P.m);
+    P.go = true;
+    vec_push(&P.events, e);
+    cond_broadcast(&P.wake);
+    {
+        struct timespec dl = cond_deadline(timeout_ms / 1000.0);
+        while (!r->done && !P.stop) {
+            if (!timeout_ms)
+                cond_wait(&P.idle_cv, &P.m);
+            else if (!cond_timedwait(&P.idle_cv, &P.m, &dl))
+                break;
+        }
+    }
+    if (r->done) {
+        *out = r->out;                  /* the caller owns what it holds now */
+        memset(&r->out, 0, sizeof r->out);
+        ok = true;
+    }
+    scope_unref(r);
+    mutex_unlock(&P.m);
+    return ok;
+}
+
+void project_pause(bool on)
+{
+    if (!P.started)
+        return;
+    mutex_lock(&P.m);
+    P.paused += on ? 1 : -1;
+    mutex_unlock(&P.m);
+    if (!on)
+        post(EV_SYNC, NULL, 0);         /* wakes the scheduler to submit again */
+}
+
+typedef struct GateTask {
+    void (*fn)(void *arg, size_t i);
+    void *arg;
+    size_t i;
+} GateTask;
+
+static void gate_task(void *p)
+{
+    GateTask *t = p;
+    t->fn(t->arg, t->i);
+}
+
+void project_gate(void (*fn)(void *arg, size_t i), void *arg, size_t n)
+{
+    GateTask *t = xmalloc((n + 1) * sizeof *t);
+    JobGroup g;
+    size_t i;
+    bool pool;
+    mutex_lock(&P.m);
+    pool = P.pool_ready && !P.stop;
+    mutex_unlock(&P.m);
+    for (i = 0; i < n; i++) {
+        t[i].fn = fn;
+        t[i].arg = arg;
+        t[i].i = i;
+    }
+    if (!pool) {                        /* no pool (indexing off): in turn, here */
+        for (i = 0; i < n; i++)
+            fn(arg, i);
+        free(t);
+        return;
+    }
+    group_init(&g);
+    for (i = 0; i < n; i++)
+        pool_submit(&P.pool, &g, gate_task, &t[i]);
+    group_wait(&P.pool, &g);
+    group_free(&g);
+    free(t);
 }
 
 /* ---- the API --------------------------------------------------------------------------------- */
@@ -1217,6 +1438,7 @@ static void post(int kind, const char *path, unsigned seq)
     e.kind = kind;
     e.path = path ? xstrdup(path) : NULL;
     e.seq = seq;
+    e.req = NULL;
     mutex_lock(&P.m);
     vec_push(&P.events, e);
     cond_broadcast(&P.wake);
@@ -1289,6 +1511,7 @@ void project_wait(void)
     e.kind = EV_SYNC;
     e.path = NULL;
     e.seq = n;
+    e.req = NULL;
     vec_push(&P.events, e);
     cond_broadcast(&P.wake);
     while (!P.stop && !(P.ready && P.sync_done >= n && P.idle))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stress `cereal lsp` with edits, each followed at once by requests.
 
-usage: lsp_stress.py [--calls] [--hints] [--symbols] [--refs] BIN FILE [EDITS] [SEED]
+usage: lsp_stress.py [--calls] [--hints] [--symbols] [--refs] [--rename] BIN FILE [EDITS] [SEED]
 
 Opens FILE (its directory is the workspace), then EDITS times (default 200):
 inserts a line at a random line start (sometimes two edits back to back),
@@ -21,7 +21,10 @@ request was answered and the server exited cleanly.
 --symbols also sends workspace/symbol with a random short query (it never
          waits for a check, so it races the publishes).
 --refs   also sends references, definition and declaration at a random
-         identifier (with indexing on, they read the project's records)."""
+         identifier (with indexing on, they read the project's records).
+--rename also sends prepareRename and rename at a random name followed by `(`,
+         racing the edits and the indexing (refusals and ContentModified
+         come back as error responses; nothing is written)."""
 import json, os, queue, random, re, subprocess, sys, threading
 
 FLAGS = {a for a in sys.argv[1:] if a.startswith("--")}
@@ -148,6 +151,14 @@ for i in range(N):
                 if m_.endswith("references"):
                     params["context"] = {"includeDeclaration": rnd.random() < 0.5}
                 reqs.append(send(m_, params))
+    if "--rename" in FLAGS:
+        ln = rnd.randrange(len(lines))
+        ms = [m for m in CALLISH.finditer(lines[ln]) if m.group(1) not in NOT_CALLS]
+        if ms:
+            at = {"line": ln, "character": rnd.choice(ms).start(1)}
+            reqs += [send("textDocument/prepareRename", {"textDocument": td, "position": at}),
+                     send("textDocument/rename", {"textDocument": td, "position": at,
+                                                  "newName": "stress_r%d" % i})]
     if "--hints" in FLAGS:
         a = rnd.randrange(len(lines))
         b = min(len(lines) - 1, a + rnd.randrange(60))

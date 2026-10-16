@@ -87,10 +87,31 @@ int pq_key_cmp(const CIdxKey *a, const CIdxKey *b);
 /* ---- what the records say about a key --------------------------------------- */
 
 enum { PQ_REF = 1, PQ_DECL = 2, PQ_DEF = 4 };
+/* What a rename needs to know about the entries it does not list (R3, R4, R7). */
+typedef struct PqBlock {
+    const char *why;             /* the first use that cannot be renamed
+                                  * (cindex_rename_blocker), at f, off */
+    PqFile *f;                   /* where, for why and for the first unplaced entry */
+    uint32_t off;
+    unsigned ndropped;           /* entries whose text is gone or edited ... */
+    PqFile *df;                  /* ... the first, in the record's text */
+    uint32_t doff;
+} PqBlock;
 /* Appends the project's entries for k: the uses (PQ_REF; not those spelled in a
  * #define body) and the declarations or definitions (the others), placed in
  * the client's text.  Takes the index's read lock. */
-void pq_entries(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, unsigned what, PqLocs *out);
+void pq_entries(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, unsigned what, PqLocs *out,
+                PqBlock *blk);
+/* R1: some record has an entry of another key at a place the key has one, in
+ * the same text of the file (the same header under other macros, 12.1).  The
+ * place goes to blk->f, off. */
+bool pq_ambiguous(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, PqBlock *blk);
+/* Whether f's text is still the one the answers were made from (a rename's
+ * last check): the live document's, else the disk's.  *version: the open
+ * document's (-1: none given), -2: it is not open. */
+bool pq_current(PqFiles *fs, PqFile *f, long long *version);
+/* "path:line:column" of off in the client's text of f. */
+void pq_where(PqFiles *fs, PqFile *f, uint32_t off, char *buf, size_t bufsz);
 
 /* A function or variable as a call hierarchy item: where it is declared (its
  * definition if the project has one). */

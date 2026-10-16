@@ -1596,15 +1596,19 @@ const char *cindex_place(SrcMgr *sm, const char *path, uint32_t off, char *buf,
 }
 
 const char *cindex_rename_plan(const CIndex *ix, SrcMgr *sm, const char *path,
-                               uint32_t off, const char *main, uint32_t **ev,
-                               size_t *n, char *msg, size_t msgsz)
+                               uint32_t off, const char *main, bool project,
+                               uint32_t **ev, size_t *n, bool *wide, char *msg,
+                               size_t msgsz)
 {
     uint32_t decls[2], d, j;
     int mf = cindex_file(ix, main);
-    bool declared = false;
+    bool declared = false, unused;
     char at[512];
     size_t nd = cindex_decls_at(ix, path, off, decls, 2);
     const CIdxDecl *x;
+    if (!wide)
+        wide = &unused;
+    *wide = false;
     *ev = NULL;
     *n = 0;
     if (!nd)
@@ -1626,15 +1630,16 @@ const char *cindex_rename_plan(const CIndex *ix, SrcMgr *sm, const char *path,
             declared = true;
         if (ix->files[e->file].stale)
             return "the C symbol index is not ready; retry";
-        if (e->flags & (CIX_MACRO_BODY | CIX_AT_EXPANSION)) {
+        if (cindex_rename_blocker(e->flags)) {
             snprintf(msg, msgsz, "'%s' at %s is %s; renaming would change the "
                      "macro", cindex_name(ix, d),
                      cindex_place(sm, p, e->off, at, sizeof at),
-                     e->flags & CIX_MACRO_BODY ? "spelled in a #define body"
-                                               : "formed by ## or a macro");
+                     cindex_rename_blocker(e->flags));
             return msg;
         }
-        if ((int)e->file != mf) {
+        if ((int)e->file != mf && project) {
+            *wide = true;
+        } else if ((int)e->file != mf) {
             snprintf(msg, msgsz, "'%s' is declared or used in %s, which other "
                      "units may include; renaming it needs the project index",
                      cindex_name(ix, d), cindex_place(sm, p, e->off, at, sizeof at));
@@ -1645,7 +1650,7 @@ const char *cindex_rename_plan(const CIndex *ix, SrcMgr *sm, const char *path,
         snprintf(msg, msgsz, "'%s' is only declared implicitly", cindex_name(ix, d));
         return msg;
     }
-    *n = cindex_select(ix, &d, 1, CIQ_REFS, mf, ev);
+    *n = cindex_select(ix, &d, 1, CIQ_REFS, project ? -1 : mf, ev);
     return NULL;
 }
 

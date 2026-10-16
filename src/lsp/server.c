@@ -91,6 +91,8 @@ typedef struct Server {
     VEC(Unit *) units;
     VEC(Unit *) queue;
     bool stop, initialized, shutdown;
+    uint32_t stopping;        /* atomic: stop, for the pool threads */
+    unsigned workers;         /* project renames' threads (S.m) */
     PosEncoding enc;
     bool inactive_regions;    /* client takes clangd's inactiveRegions */
     bool refresh;             /* client: workspace.semanticTokens.refreshSupport */
@@ -171,6 +173,7 @@ bool lsp_builder_idle(void)
 
 static Doc *doc_find(const char *path);
 static void deferred_run(DeferredReq *d);
+static void *rename_worker(void *arg);
 static void deferred_free(DeferredReq *d);
 
 /* CEREAL_LSP_STATS: timings of builds on stderr */
@@ -742,6 +745,218 @@ char *lsp_check_rename(Snapshot *snap, CRename *q)
     j.q = q;
     rename_run(&j);
     return j.err;
+}
+
+/* ---- rename across units (B5d, 11.5) ------------------------------------------- */
+
+typedef struct OpenDoc {
+    char *path, *text;
+    size_t len;
+} OpenDoc;
+
+struct DocSet {
+    VEC(OpenDoc) v;
+};
+
+DocSet *lsp_docs_copy(void)
+{
+    DocSet *d = xcalloc(1, sizeof *d);
+    size_t i;
+    mutex_lock(&S.m);
+    for (i = 0; i < S.docs.len; i++) {
+        const Doc *s = S.docs.data[i];
+        OpenDoc o;
+        o.path = xstrdup(s->path);
+        o.text = xmalloc(s->len + 1);
+        memcpy(o.text, s->text, s->len);
+        o.text[s->len] = 0;
+        o.len = s->len;
+        vec_push(&d->v, o);
+    }
+    mutex_unlock(&S.m);
+    return d;
+}
+
+void lsp_docs_free(DocSet *d)
+{
+    size_t i;
+    for (i = 0; d && i < d->v.len; i++) {
+        free(d->v.data[i].path);
+        free(d->v.data[i].text);
+    }
+    if (d)
+        vec_free(&d->v);
+    free(d);
+}
+
+bool lsp_docs_lookup(void *ctx, const char *path, const char **buf, size_t *len)
+{
+    const DocSet *d = ctx;
+    size_t i;
+    for (i = 0; d && i < d->v.len; i++)
+        if (!strcmp(d->v.data[i].path, path)) {
+            *buf = d->v.data[i].text;
+            *len = d->v.data[i].len;
+            return true;
+        }
+    return false;
+}
+
+bool lsp_doc_state(const char *path, long long *version, uint64_t *hash)
+{
+    const Doc *d;
+    bool open;
+    mutex_lock(&S.m);
+    d = doc_find(path);
+    open = d != NULL;
+    if (open) {
+        *version = d->version;
+        *hash = cindex_hash(d->text, d->len);
+    }
+    mutex_unlock(&S.m);
+    return open;
+}
+
+/* A $/progress notification for the client's own workDoneToken. */
+static void rename_progress(const JsonValue *token, const char *kind, const char *msg,
+                            int pct)
+{
+    StrBuf sb = {0};
+    JsonWriter w;
+    if (!token)
+        return;
+    json_init_buf(&w, &sb);
+    json_begin_object(&w);
+    json_key(&w, "jsonrpc");
+    json_str(&w, "2.0");
+    json_key(&w, "method");
+    json_str(&w, "$/progress");
+    json_key(&w, "params");
+    json_begin_object(&w);
+    json_key(&w, "token");
+    json_raw(&w, token->text, token->text_len);
+    json_key(&w, "value");
+    json_begin_object(&w);
+    json_key(&w, "kind");
+    json_str(&w, kind);
+    if (!strcmp(kind, "begin")) {
+        json_key(&w, "title");
+        json_str(&w, "Renaming");
+    }
+    if (msg) {
+        json_key(&w, "message");
+        json_str(&w, msg);
+    }
+    if (pct >= 0) {
+        json_key(&w, "percentage");
+        json_int(&w, pct);
+    }
+    json_end_object(&w);
+    json_end_object(&w);
+    json_end_object(&w);
+    rpc_write(sb.data, sb.len);
+    sb_free(&sb);
+}
+
+typedef struct GateCtx {
+    const CRename *tmpl;
+    char *const *mains;
+    const size_t *entries;
+    size_t n;
+    DocSet *docs;
+    LspConfig *cfg;
+    const JsonValue *token;
+    char **err;               /* per unit */
+    uint32_t done, failed;    /* atomic */
+} GateCtx;
+
+/* One unit's check, on a pool thread: the options of its compile database
+ * entry (as the index job's), the open documents' texts. */
+static void gate_job(void *arg, size_t i)
+{
+    GateCtx *g = arg;
+    CRename q = *g->tmpl;
+    Options o;
+    FatalTrap tr;
+    char msg[160];
+    uint32_t d;
+    if (atomic_load_u32(&g->failed) || atomic_load_u32(&S.stopping))
+        return;
+    if (g->entries[i] != (size_t)-1 &&
+        (g->entries[i] >= g->cfg->cmds.len ||
+         strcmp(g->cfg->cmds.data[g->entries[i]].abs_file, g->mains[i]))) {
+        g->err[i] = xstrdup("the compile database changed during the rename");
+        atomic_store_u32(&g->failed, 1);
+        return;
+    }
+    options_init(&o);
+    if (g->entries[i] == (size_t)-1)         /* the open unit, not in the project */
+        config_options_in(g->cfg, g->mains[i], &o.rsp, &o, NULL);
+    else
+        config_options_entry(g->cfg, g->entries[i], &o.rsp, &o, NULL);
+    o.pp.fatal_missing_include = false;      /* as the check's (D2) */
+    q.o = &o;
+    q.main = g->mains[i];
+    q.overlay = lsp_docs_lookup;
+    q.overlay_ctx = g->docs;
+    fatal_trap_push(&tr);
+    if (setjmp(tr.jb)) {
+        StrBuf sb = {0};
+        sb_printf(&sb, "the rename check failed: %s", tr.msg);
+        g->err[i] = (char *)sb_cstr(&sb);
+    } else {
+        g->err[i] = c_rename(&q);
+        fatal_trap_pop(&tr);
+    }
+    options_free(&o);
+    if (g->err[i])
+        atomic_store_u32(&g->failed, 1);
+    d = atomic_add_u32(&g->done, 1) + 1;
+    snprintf(msg, sizeof msg, "checked %u of %zu translation units", d, g->n);
+    rename_progress(g->token, "report", msg, (int)(100 * d / g->n));
+}
+
+char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *entries,
+                      size_t n, DocSet *docs, const JsonValue *token)
+{
+    GateCtx g;
+    char *out = NULL;
+    size_t i;
+    memset(&g, 0, sizeof g);
+    g.tmpl = tmpl;
+    g.mains = mains;
+    g.entries = entries;
+    g.n = n;
+    g.docs = docs;
+    g.token = token;
+    g.cfg = cfg_acquire();
+    g.err = xcalloc(n + 1, sizeof *g.err);
+    rename_progress(token, "begin", "checking the translation units", 0);
+    project_pause(true);
+    project_gate(gate_job, &g, n);
+    project_pause(false);
+    rename_progress(token, "end", NULL, -1);
+    if (tmpl->nfiles && fault_hit("rename-modify")) {  /* tests: a file changes meanwhile */
+        FILE *f = fopen(tmpl->files[0].path, "a");
+        if (f) {
+            fputc('\n', f);
+            fclose(f);
+        }
+    }
+    for (i = 0; i < n; i++) {
+        if (g.err[i] && !out) {
+            StrBuf sb = {0};
+            const char *base = strrchr(mains[i], '/');
+            sb_printf(&sb, "checking %s: %s", base ? base + 1 : mains[i], g.err[i]);
+            out = (char *)sb_cstr(&sb);
+        }
+        free(g.err[i]);
+    }
+    if (!out && atomic_load_u32(&S.stopping))
+        out = xstrdup("the server is shutting down");
+    free(g.err);
+    lsp_config_unref(g.cfg);
+    return out;
 }
 
 /* A document's fix-all (lsp_fix_all) on the builder. */
@@ -1516,10 +1731,11 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         case R_HINTS: lsp_inlay_hints(&r, &w); break;
         }
     }
-    if (r.need_builder) {
+    if (r.need_builder || r.need_worker) {
         /* the fix-all or the rename's checks are for the builder to compute,
          * which may be busy for a build: it answers the request, the
-         * protocol thread goes on */
+         * protocol thread goes on.  A rename across units checks on the index
+         * pool and keeps the builder free: a thread of its own answers it. */
         DeferredReq *q = xcalloc(1, sizeof *q);
         q->kind = k;
         q->id = id;
@@ -1531,8 +1747,16 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         q->cx = cx;
         sb_free(&sb);
         mutex_lock(&S.m);
-        vec_push(&S.deferred, q);
-        cond_broadcast(&S.work);
+        if (r.need_worker) {
+            pthread_t th;
+            S.workers++;
+            if (pthread_create(&th, NULL, rename_worker, q) != 0)
+                fatal("cannot start the rename thread");
+            pthread_detach(th);
+        } else {
+            vec_push(&S.deferred, q);
+            cond_broadcast(&S.work);
+        }
         mutex_unlock(&S.m);
         return true;
     }
@@ -1582,11 +1806,13 @@ static void deferred_run(DeferredReq *d)
     mutex_unlock(&S.m);
     r->on_builder = true;
     r->need_builder = false;
+    r->need_worker = false;
     begin_response(&w, &sb, d->id);
     json_key(&w, "result");
     if (d->kind == R_RENAME) {
         if (!lsp_rename(r, &w, &err))
-            respond_error(d->id, -32803 /* RequestFailed */, err);
+            respond_error(d->id, r->modified ? -32801 /* ContentModified */
+                                             : -32803 /* RequestFailed */, err);
         else if (!doc_unchanged(r))
             respond_error(d->id, -32801 /* ContentModified */,
                           "the document changed during the rename");
@@ -1602,6 +1828,18 @@ static void deferred_run(DeferredReq *d)
     }
     sb_free(&sb);
     deferred_free(d);
+}
+
+/* A rename across units on its own thread (S.workers is counted for the
+ * shutdown to wait on). */
+static void *rename_worker(void *arg)
+{
+    deferred_run(arg);
+    mutex_lock(&S.m);
+    S.workers--;
+    cond_broadcast(&S.done);
+    mutex_unlock(&S.m);
+    return NULL;
 }
 
 static void deferred_free(DeferredReq *d)
@@ -1874,6 +2112,7 @@ int lsp_main(FILE *in, FILE *out)
     }
     mutex_lock(&S.m);
     S.stop = true;
+    atomic_store_u32(&S.stopping, 1);
     {
         size_t i; /* a running build or check need not finish */
         for (i = 0; i < S.units.len; i++)
@@ -1881,6 +2120,8 @@ int lsp_main(FILE *in, FILE *out)
     }
     cond_broadcast(&S.work);
     cond_broadcast(&S.done);
+    while (S.workers)                   /* the renames' checks end first */
+        cond_wait(&S.done, &S.m);
     mutex_unlock(&S.m);
     pthread_join(S.builder, NULL);
     project_stop();             /* before the units: it reads no unit, but ends first (4.4) */

@@ -154,6 +154,26 @@ struct CRename;
  * it is refused (malloc'd). */
 char *lsp_check_rename(Snapshot *snap, struct CRename *q);
 
+/* ---- rename across units (B5d; docs/B5_DESIGN.md 11.5) ---- */
+
+/* The open documents, copied (server.c): the checks of other units run on
+ * other threads and read these instead of the live ones. */
+typedef struct DocSet DocSet;
+DocSet *lsp_docs_copy(void);
+void lsp_docs_free(DocSet *d);
+/* A CRename overlay over d. */
+bool lsp_docs_lookup(void *ctx, const char *path, const char **buf, size_t *len);
+/* The open document's version (-1: the client gave none) and the hash of its
+ * text now; false: it is not open. */
+bool lsp_doc_state(const char *path, long long *version, uint64_t *hash);
+/* tmpl's edits checked in each of the units mains[i] (compile database
+ * entries[i]) on the index pool, the scheduler's jobs paused; progress goes
+ * to the client's token (NULL: none).  NULL: every unit accepts, else why not
+ * (malloc'd). */
+char *lsp_rename_gate(const struct CRename *tmpl, char *const *mains,
+                      const size_t *entries, size_t n, DocSet *docs,
+                      const JsonValue *token);
+
 int lsp_main(FILE *in, FILE *out);
 
 /* For the project index (project.c); server.c. */
@@ -194,12 +214,15 @@ typedef struct Req {
     bool c_fresh;            /* snap has the newest edit and its own index */
     bool stale;              /* the document has an edit snap lacks */
     bool doc_changes;        /* the client takes documentChanges */
-    bool on_builder;         /* running on the builder thread (a deferred
-                                request): lsp_fix_all and lsp_rename compute
-                                at once */
+    bool on_builder;         /* running on the builder thread or a worker (a
+                                deferred request): lsp_fix_all and lsp_rename
+                                compute at once */
     bool need_builder;       /* out: lsp_fix_all or lsp_rename needs the
                                 builder (nothing is written); run the request
                                 there instead */
+    bool need_worker;        /* out: lsp_rename across units: run the request
+                                on a thread of its own, not the builder */
+    bool modified;           /* out: lsp_rename refused for ContentModified */
     /* codeAction: snap's check diagnostics, copied under the lock */
     VEC(CDiag) cdiags;
 } Req;

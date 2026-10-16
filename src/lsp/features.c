@@ -160,7 +160,7 @@ static void c_project(Req *r, PqFiles *fs, const uint32_t *decls, size_t nd, uns
         if (r->cidx->decls[decls[i]].kind != CIK_PARAM &&
             r->cidx->decls[decls[i]].kind != CIK_LABEL &&
             pq_key(fs, r->cidx, decls[i], &key))
-            pq_entries(fs, r->pi, &key, what, v);
+            pq_entries(fs, r->pi, &key, what, v, NULL);
     }
 }
 
@@ -232,7 +232,7 @@ static void goto_entity(Req *r, JsonWriter *w, CIdxQuery q)
             CIdxKey key;
             if (r->pi && c_external(r->cidx, decls[i]) && !c_has_role(r->cidx, decls[i], role) &&
                 pq_key(&fs, r->cidx, decls[i], &key))
-                pq_entries(&fs, r->pi, &key, role == CIX_DEF ? PQ_DEF : PQ_DECL, &v);
+                pq_entries(&fs, r->pi, &key, role == CIX_DEF ? PQ_DEF : PQ_DECL, &v, NULL);
             if (v.len == before)
                 keep[nk++] = decls[i];
         }
@@ -1480,8 +1480,11 @@ static const char *rename_blocker(Req *r, const IdxTarget *t, IdxRef *refs,
 
 /* The C name at the cursor (B2 phase 4) as the range a rename edits there,
  * from the check's index (cindex_rename_plan), or why it cannot be renamed.
- * The index must be the newest edit's: its offsets are the edits'. */
-static const char *c_rename_at(Req *r, SrcLoc at, SrcLoc *b, SrcLoc *e)
+ * The index must be the newest edit's: its offsets are the edits'.  *d: the
+ * entity; *project: its uses may lie beyond the unit (in other files, or it
+ * has external linkage), so the project's records plan the rename. */
+static const char *c_rename_at(Req *r, SrcLoc at, SrcLoc *b, SrcLoc *e, uint32_t *d,
+                               bool *project)
 {
     const SrcFile *mf = index_find_file(&r->snap->ix, r->snap->main);
     uint32_t *ev = NULL, first;
@@ -1489,20 +1492,226 @@ static const char *c_rename_at(Req *r, SrcLoc at, SrcLoc *b, SrcLoc *e)
     char msg[512];
     const char *err;
     const CIdxEvent *x;
+    bool wide;
     if (!r->c_fresh || !mf)
         return "the C symbol index is not ready; retry";
     err = cindex_rename_plan(r->cidx, &r->snap->tu.sm, r->file->path,
-                             at - r->file->base, mf->path, &ev, &n, msg,
-                             sizeof msg);
+                             at - r->file->base, mf->path, r->pi != NULL, &ev, &n,
+                             &wide, msg, sizeof msg);
     free(ev);
     if (err)
         return arena_strdup(r->arena, err);
     cindex_at(r->cidx, (uint32_t)cindex_file(r->cidx, r->file->path),
               at - r->file->base, &first);
     x = &r->cidx->ev[first];
+    *d = x->decl;
+    *project = r->pi && (wide || c_external(r->cidx, x->decl));
     *b = r->file->base + x->off;
     *e = *b + x->len;
     return NULL;
+}
+
+/* ---- the edits of a rename across units (B5d, 11.5) ---- */
+
+typedef struct RenPlan {
+    PqFiles fs;
+    PqLocs locs;                 /* sorted: the places to edit */
+    VEC(CRenFile) files;         /* one per file, in path order */
+    VEC(PqFile *) pf;
+    uint32_t len;                /* the old name's length */
+    ProjScope sc;
+} RenPlan;
+
+static void ren_plan_free(RenPlan *p)
+{
+    size_t i;
+    for (i = 0; i < p->files.len; i++)
+        free(p->files.data[i].offs);
+    vec_free(&p->files);
+    vec_free(&p->pf);
+    vec_free(&p->locs);
+    project_scope_free(&p->sc);
+    pq_free(&p->fs);
+}
+
+/* Groups the sorted places by file. */
+static void ren_plan_group(RenPlan *p)
+{
+    size_t i;
+    for (i = 0; i < p->locs.len; i++) {
+        PqLoc *l = &p->locs.data[i];
+        CRenFile *cf;
+        if (!p->pf.len || p->pf.data[p->pf.len - 1] != l->f) {
+            CRenFile n = {l->f->path, NULL, 0};
+            vec_push(&p->pf, l->f);
+            vec_push(&p->files, n);
+        }
+        cf = &p->files.data[p->files.len - 1];
+        cf->offs = xrealloc(cf->offs, (cf->n + 1) * sizeof *cf->offs);
+        cf->offs[cf->n++] = l->off;
+    }
+}
+
+/* The places of the entity d: the open unit's events and the project's records
+ * under its key, and why the project cannot rename it (R1, R3, R4, R7, then
+ * R2 and R5 from the scheduler).  prepare: no wait for the scheduler beyond
+ * a moment.  NULL: p has the places and the units to check. */
+static const char *rename_plan(Req *r, RenPlan *p, uint32_t d, bool prepare)
+{
+    const CIndex *ix = r->cidx;
+    const char *old = cindex_name(ix, d);
+    CIdxKey key;
+    PqBlock blk;
+    char at[600];
+    size_t i;
+    const char **paths;
+    bool found;
+    memset(p, 0, sizeof *p);
+    pq_init(&p->fs, &r->snap->tu.sm, r->doc_text, r->enc);
+    p->len = (uint32_t)strlen(old);
+    if (!pq_key(&p->fs, ix, d, &key))
+        return arena_printf(r->arena, "the declaration of '%s' has unsaved edits that the "
+                            "project index cannot place; save the file and retry", old);
+    memset(&blk, 0, sizeof blk);
+    c_collect(r, &p->fs, &d, 1, CIQ_REFS, &p->locs);
+    pq_entries(&p->fs, r->pi, &key, PQ_REF | PQ_DECL | PQ_DEF, &p->locs, &blk);
+    if (blk.why) {                         /* R4, R7: one rule for every record */
+        pq_where(&p->fs, blk.f, blk.off, at, sizeof at);
+        return arena_printf(r->arena, "'%s' at %s is %s; renaming would change the macro",
+                            old, at, blk.why);
+    }
+    if (pq_ambiguous(&p->fs, r->pi, &key, &blk)) {     /* R1 */
+        pq_where(&p->fs, blk.f, blk.off, at, sizeof at);
+        return arena_printf(r->arena, "the name at %s is another entity where the file is "
+                            "read with other macros; renaming one would rename the other",
+                            at);
+    }
+    if (blk.ndropped) {                    /* R3 */
+        pq_where(&p->fs, blk.df, blk.doff, at, sizeof at);
+        return arena_printf(r->arena, "the index has a use of '%s' at %s that the edits to "
+                            "that file moved or changed; save it and wait for the index", old, at);
+    }
+    pq_locs_sort(&p->locs);
+    ren_plan_group(p);
+    paths = NEW_ARRAY(r->arena, const char *, p->files.len + 1);
+    for (i = 0; i < p->files.len; i++)
+        paths[i] = p->files.data[i].path;
+    found = project_scope(paths, p->files.len, prepare ? 300 : 0, &p->sc);
+    if (found && p->sc.refuse)
+        return arena_strdup(r->arena, p->sc.refuse);
+    if (!found && !prepare)
+        return "the project index did not answer";
+    return NULL;
+}
+
+/* The WorkspaceEdit: one TextDocumentEdit per file (documentChanges, the file's
+ * version for an open document: the client refuses an edit made for another
+ * text), else the plain map. */
+static void rename_write(Req *r, JsonWriter *w, PqFiles *fs, const CRenFile *files,
+                         PqFile *const *pf, const long long *ver, size_t nfiles,
+                         uint32_t len, const char *name)
+{
+    size_t i, k;
+    json_begin_object(w);
+    json_key(w, r->doc_changes ? "documentChanges" : "changes");
+    if (r->doc_changes)
+        json_begin_array(w);
+    else
+        json_begin_object(w);
+    for (i = 0; i < nfiles; i++) {
+        if (r->doc_changes) {
+            json_begin_object(w);
+            json_key(w, "textDocument");
+            json_begin_object(w);
+            json_key(w, "uri");
+            json_str(w, pf[i]->uri);
+            json_key(w, "version");
+            if (ver[i] >= 0)
+                json_int(w, ver[i]);
+            else
+                json_null(w);
+            json_end_object(w);
+            json_key(w, "edits");
+        } else {
+            json_key(w, pf[i]->uri);
+        }
+        json_begin_array(w);
+        for (k = 0; k < files[i].n; k++) {
+            json_begin_object(w);
+            json_key(w, "range");
+            pq_range(w, fs, pf[i], files[i].offs[k], len);
+            json_key(w, "newText");
+            json_str(w, name);
+            json_end_object(w);
+        }
+        json_end_array(w);
+        if (r->doc_changes)
+            json_end_object(w);
+    }
+    if (r->doc_changes)
+        json_end_array(w);
+    else
+        json_end_object(w);
+    json_end_object(w);
+}
+
+/* A rename across units: the plan, then each unit that reads an edited file
+ * checks it (the gate), then the edits.  On a worker thread (r->on_builder). */
+static bool project_rename(Req *r, JsonWriter *w, uint32_t d, const char *name,
+                           const char **err)
+{
+    RenPlan p;
+    CRename t;
+    char **mains, *why;
+    size_t *entries, n, i;
+    long long *ver;
+    bool ok = false;
+    DocSet *docs;
+    if (!cindex_is_identifier(name)) {
+        *err = arena_printf(r->arena, "'%s' is not an identifier", name);
+        return false;
+    }
+    if ((*err = rename_plan(r, &p, d, false)) != NULL)
+        goto out;
+    n = p.sc.nmains;
+    mains = NEW_ARRAY(r->arena, char *, n + 1);
+    entries = NEW_ARRAY(r->arena, size_t, n + 1);
+    for (i = 0; i < n; i++) {
+        mains[i] = p.sc.mains[i];
+        entries[i] = p.sc.entries[i];
+    }
+    for (i = 0; i < n && strcmp(mains[i], r->snap->main); i++)
+        ;
+    if (i == n) {                          /* the open unit, if the project lacks it */
+        mains[n] = (char *)r->snap->main;
+        entries[n++] = (size_t)-1;
+    }
+    memset(&t, 0, sizeof t);
+    t.name = name;
+    t.old = cindex_name(r->cidx, d);
+    t.files = p.files.data;
+    t.nfiles = p.files.len;
+    docs = lsp_docs_copy();
+    why = lsp_rename_gate(&t, mains, entries, n, docs,
+                          json_get(r->params, "workDoneToken"));
+    lsp_docs_free(docs);
+    if (why) {
+        *err = arena_strdup(r->arena, why);
+        free(why);
+        goto out;
+    }
+    ver = NEW_ARRAY(r->arena, long long, p.files.len + 1);
+    for (i = 0; i < p.files.len; i++)
+        if (!pq_current(&p.fs, p.pf.data[i], &ver[i])) {
+            *err = "a file changed during the rename";
+            r->modified = true;
+            goto out;
+        }
+    rename_write(r, w, &p.fs, p.files.data, p.pf.data, ver, p.files.len, p.len, name);
+    ok = true;
+out:
+    ren_plan_free(&p);
+    return ok;
 }
 
 /* A macro or macro parameter is renamed when the macro index answers for
@@ -1515,14 +1724,22 @@ bool lsp_prepare_rename(Req *r, JsonWriter *w, const char **err)
     size_t n = 0;
     SrcLoc b = t.range.begin, e = t.range.end;
     uint32_t d;
+    bool project;
     if (t.kind == TGT_NONE || t.weak) {
         if (r->c_fresh && !cindex_decls_at(r->cidx, r->file->path,
                                            at - r->file->base, &d, 1)) {
             json_null(w); /* no entity here */
             return true;
         }
-        if ((*err = c_rename_at(r, at, &b, &e)) != NULL)
+        if ((*err = c_rename_at(r, at, &b, &e, &d, &project)) != NULL)
             return false;
+        if (project) {                     /* the project's refusals, early */
+            RenPlan p;
+            *err = rename_plan(r, &p, d, true);
+            ren_plan_free(&p);
+            if (*err)
+                return false;
+        }
     } else {
         if (t.kind == TGT_MACRO || t.kind == TGT_PARAM)
             n = index_references(&r->snap->ix, &t, &refs);
@@ -1549,22 +1766,31 @@ static int ref_file_cmp(const void *a, const void *b)
     return x->loc < y->loc ? -1 : x->loc > y->loc;
 }
 
-/* A C name: c_rename's edits, all in the unit's main file. */
+/* A C name: the edits within the unit (c_rename plans them from the unit's own
+ * check), or across units (project_rename). */
 static bool c_rename_edits(Req *r, JsonWriter *w, SrcLoc at, const char *name,
                            const char **err)
 {
     SrcFile *mf = index_find_file(&r->snap->ix, r->snap->main);
+    SrcLoc b, e;
+    uint32_t d;
+    bool project;
     CRename q;
     char *why;
-    size_t i;
-    if (!r->c_fresh || !mf) {
-        *err = "the C symbol index is not ready; retry";
+    PqFiles fs;
+    PqFile *pf;
+    long long ver = -2;
+    if ((*err = c_rename_at(r, at, &b, &e, &d, &project)) != NULL)
         return false;
-    }
-    if (!r->on_builder) { /* the checks are the builder's: defer (no output) */
-        r->need_builder = true;
+    if (!r->on_builder) { /* the checks are not the protocol thread's: defer (no output) */
+        if (project)
+            r->need_worker = true;
+        else
+            r->need_builder = true;
         return true;
     }
+    if (project)
+        return project_rename(r, w, d, name, err);
     memset(&q, 0, sizeof q);
     q.path = r->file->path;
     q.off = at - r->file->base;
@@ -1572,26 +1798,19 @@ static bool c_rename_edits(Req *r, JsonWriter *w, SrcLoc at, const char *name,
     if ((why = lsp_check_rename(r->snap, &q)) != NULL) {
         *err = arena_strdup(r->arena, why);
         free(why);
+        c_rename_free(&q);
         return false;
     }
-    json_begin_object(w);
-    json_key(w, "changes");
-    json_begin_object(w);
-    json_key(w, path_to_uri(r->arena, mf->path));
-    json_begin_array(w);
-    for (i = 0; i < q.n; i++) {
-        json_begin_object(w);
-        json_key(w, "range");
-        json_range(w, &r->snap->tu.sm, r->enc, mf->base + q.offs[i],
-                   mf->base + q.offs[i] + q.len);
-        json_key(w, "newText");
-        json_str(w, name);
-        json_end_object(w);
+    pq_init(&fs, &r->snap->tu.sm, r->doc_text, r->enc);
+    pf = pq_file(&fs, mf->path);
+    if (r->doc_changes) {
+        uint64_t h;
+        if (!lsp_doc_state(mf->path, &ver, &h))
+            ver = -2;
     }
-    json_end_array(w);
-    json_end_object(w);
-    json_end_object(w);
-    free(q.offs);
+    rename_write(r, w, &fs, q.files, &pf, &ver, q.nfiles, q.len, name);
+    pq_free(&fs);
+    c_rename_free(&q);
     return true;
 }
 

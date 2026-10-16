@@ -26,6 +26,11 @@ cereal/indexHold.  Prints `ok NAME` or `FAIL NAME: why`; exit 1 on any failure.
                an open document through the edit
   xref         references, definition, declaration and call hierarchy answer from the
                other units' records, mapped through an open document's edit
+  rename       rename across units (B5_DESIGN.md 11.5): one edit per use in every file,
+               as documentChanges (the open document's version, null for the others) or
+               changes; refused for a name used in a macro body (R4, R7), for an incomplete
+               index (R2), for too many units (R5), for a new name that collides (R6); and
+               ContentModified when an edited file changes during the checks
   takeover     a reader becomes the writer when the writer exits
   wpos         workspace/symbol positions in a CR LF file with a character outside the BMP
   spin         with the sweep deadline passed and jobs running, the server uses no CPU
@@ -377,6 +382,101 @@ def sc_xref(root, cache):
     expect(out and all(c["to"]["name"] != "h00_f2" for c in out) and
            any(c["fromRanges"] for c in out),
            "outgoing calls of a function the open unit only declares: its definition's callees", out)
+    s.stop()
+
+
+def sc_rename(root, cache):
+    # h01_f2 is declared in h01.h, defined in t0008.c, called in t0000, t0003, t0005;
+    # h03_f4 is also spelled in the body of a macro (mb.h), invoked in t0000.c
+    t0, t3, t5, t8 = [os.path.join(root, "src", "t%04d.c" % i) for i in (0, 3, 5, 8)]
+    h = os.path.join(root, "include", "h01.h")
+    with open(os.path.join(root, "include", "mb.h"), "w") as f:
+        f.write("#define MB_CALL(p, i, s) h03_f4((p), (i), (s))\n")
+    with open(t0, newline="") as f:
+        text = f.read()
+    text = text.replace('#include "h01.h"', '#include "h01.h"\n#include "mb.h"', 1)
+    text += "\nint mb_use(s03_0_t *p, const char *s)\n{\n    return MB_CALL(p, 0, s);\n}\n"
+    with open(t0, "w", newline="") as f:
+        f.write(text)
+    caps = {"workspace": {"workspaceEdit": {"documentChanges": True}}}
+    s = Server(root, cache, caps=caps)
+    s.wait()
+
+    def at(path, line, ch):
+        return {"textDocument": {"uri": "file://" + path}, "position": {"line": line, "character": ch}}
+
+    def rename(path, name, new):
+        line, ch = where(path, name)
+        return s.req("textDocument/rename", dict(at(path, line, ch), newName=new))
+
+    def places(res):
+        return sorted((r["uri"], r["range"]["start"]["line"], r["range"]["start"]["character"])
+                      for r in res)
+    s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",
+                                                      "version": 7, "text": text}})
+    line, ch = where(t0, "h01_f2(")
+    refs = places(s.req("textDocument/references", dict(at(t0, line, ch),
+                        context={"includeDeclaration": True}))["result"])
+    r = s.req("textDocument/prepareRename", at(t0, line, ch))
+    expect(r.get("result") and r["result"]["placeholder"] == "h01_f2", "prepareRename", r)
+    r = rename(t0, "h01_f2(", "h01_renamed")
+    expect("result" in r and r["result"], "the rename goes through", r)
+    dc = r["result"]["documentChanges"]
+    got = places([dict(uri=d["textDocument"]["uri"], range=e["range"]) for d in dc for e in d["edits"]])
+    expect(got == refs and len(got) >= 5, "one edit for every use, in every file", {"got": got, "refs": refs})
+    vers = {os.path.basename(d["textDocument"]["uri"]): d["textDocument"]["version"] for d in dc}
+    expect(vers.get("t0000.c") == 7 and vers.get("h01.h") is None and vers.get("t0008.c") is None,
+           "the open document's version, null for the others", vers)
+    expect(all(e["newText"] == "h01_renamed" for d in dc for e in d["edits"]), "the new name")
+    # the same for a client without documentChanges
+    s2 = Server(root, cache + "2", env={"CEREAL_INDEX_CACHEDIR": cache + "2"})
+    s2.wait()
+    s2.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",
+                                                       "version": 1, "text": text}})
+    r = s2.req("textDocument/rename", dict(at(t0, line, ch), newName="h01_renamed"))
+    ch2 = r["result"]["changes"]
+    expect(places([dict(uri=u, range=e["range"]) for u, es in ch2.items() for e in es]) == refs,
+           "changes: the same places", r)
+    s2.stop()
+    # a name that collides (R6) is refused by the gate
+    r = rename(t0, "h01_f2(", "h01_f3")
+    expect("error" in r and r["error"]["code"] == -32803, "a colliding name", r)
+    # R4, R7: h03_f4 is spelled in a macro body
+    line3, ch3 = where(t0, "h03_f4(")
+    r = s.req("textDocument/prepareRename", at(t0, line3, ch3))
+    expect("error" in r and "#define body" in r["error"]["message"], "prepareRename: macro body", r)
+    r = rename(t0, "h03_f4(", "h03_renamed")
+    expect("error" in r and "#define body" in r["error"]["message"] and "mb.h" in r["error"]["message"],
+           "rename: macro body", r)
+    # R2: a unit that is not indexed could use the name
+    s.req("cereal/indexHold", {"hold": True})
+    h7 = os.path.join(root, "include", "h07.h")
+    with open(h7, "a") as f:
+        f.write("/* touched */\n")
+    s.note("textDocument/didSave", {"textDocument": {"uri": "file://" + h7}})
+    poll("stale", lambda: s.stats()["file"] > 0)
+    r = rename(t0, "h01_f2(", "h01_renamed")
+    expect("error" in r and "incomplete" in r["error"]["message"], "R2: the index is incomplete", r)
+    s.req("cereal/indexHold", {"hold": False})
+    s.wait()
+    r = rename(t0, "h01_f2(", "h01_renamed")
+    expect("result" in r and r["result"], "and complete again", r)
+    s.stop()
+    # R5: at most renameMaxTUs units
+    s = Server(root, cache, init={"index": {"renameMaxTUs": 1}})
+    s.wait()
+    s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",
+                                                      "version": 1, "text": text}})
+    r = rename(t0, "h01_f2(", "h01_renamed")
+    expect("error" in r and "renameMaxTUs" in r["error"]["message"], "R5: too many units", r)
+    s.stop()
+    # ContentModified: an edited file changes while the units are checked
+    s = Server(root, cache, env={"CEREAL_FAULT": "rename-modify"})
+    s.wait()
+    s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",
+                                                      "version": 1, "text": text}})
+    r = rename(t0, "h01_f2(", "h01_renamed")
+    expect("error" in r and r["error"]["code"] == -32801, "ContentModified", r)
     s.stop()
 
 

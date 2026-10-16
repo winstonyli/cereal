@@ -1380,10 +1380,10 @@ static int mode_query(Options *o, const char *kind, const char *at)
                   : c_rename(&q);
         if (err)
             printf("cannot rename: %s\n", err);
-        for (i = 0; !err && mf && i < q.n; i++)
-            printf("%s %s\n", loc_str(&tu, mf->base + q.offs[i]), q.name);
+        for (i = 0; !err && mf && q.nfiles && i < q.files[0].n; i++)
+            printf("%s %s\n", loc_str(&tu, mf->base + q.files[0].offs[i]), q.name);
         free(err);
-        free(q.offs);
+        c_rename_free(&q);
         goto out;
     }
 

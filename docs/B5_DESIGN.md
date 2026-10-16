@@ -4,7 +4,9 @@ Status: design, 2026-10-12. B5a done 2026-10-13 (record and manifest
 format, writer, validating reader, `cereal index-summary`, D5 prerequisites,
 goldens, sizes in 5.5); B5b-1 (store, invalidation), B5b-2 (scheduler,
 subprocess, progress, settings) and B5b-3 (name list, project-wide
-workspace/symbol) done 2026-10-14; B5c onward not started. ROADMAP B5 points here.
+workspace/symbol) done 2026-10-14; B5c (references, calls, definition) done
+in Round 229 and B5d (rename across TUs) done 2026-10-15 (15.2, 15.3). ROADMAP B5
+points here.
 
 Scope (ROADMAP B5): a background index of every C entry in
 `compile_commands.json`, persisted on disk, answering:
@@ -1560,6 +1562,7 @@ only open-unit results, as today.
 | R2 | The index is incomplete: some TU of the project is queued, running, stale, `FAILED` or `OVER_LIMIT`; or an affected TU is `PARTIAL`. A TU not yet indexed could reference any external name, and which TUs include a header is known only from indexed ones, so nothing weaker is sound. The message names the TUs; the `paths` setting can exclude ones that never index. (Q6) |
 | R3 | A holding file's current text does not match its record and cannot be mapped (10.3 "otherwise"), or an edit position falls in a mapped file's damage. |
 | R4 | Any reference to the key is in a macro body (B2's existing rule, now across TUs). |
+| R7 | Any reference to the key is at a macro expansion (`AT_EXPANSION`): the name is spelled by a macro invocation whose body uses it. B5 does not list those sites (Q7), so the edit list would silently miss them. R4 and R7 are one mechanism, `cindex_rename_blocker(flags)` (csymidx.h), applied to the open unit's events and to every project record event (`pq_entries` with `PqBlock`). A macro that is defined with the name but never invoked leaves no event, so neither rule sees it; the gate's re-check of the affected TUs does not either (the macro body is not compiled). This limitation is documented, not closed. |
 | R5 | More than `cereal.index.renameMaxTUs` TUs are affected (default 100). |
 | R6 | The new name collides, as today, in any affected TU. This is checked by the gate below. |
 
@@ -2168,7 +2171,8 @@ tests and tools.
 - **Stop if** references p95 on the 1,000-TU project exceeds 300 ms, or
   the differential shows unexplained misses above 2% of clangd's results.
 
-**B5d: rename across TUs.** 900-2,200 lines.
+**B5d: rename across TUs.** 900-2,200 lines. Done in Round 230 (15.3); about
+1,430 lines.
 
 - Per-file edit lists in crename.
 - The plan and refusals R1-R6, the gate on the pool,
@@ -2320,8 +2324,9 @@ Intended differences (P1 is B4's):
 - P2: clangd lists the invocation of a macro whose body uses the name
   (`lua_call(...)` for `lua_callk`); cereal lists no place for it (a `#define`
   body token is no use, LSP.md, and the records follow the open unit).
-  459 results, 13% of clangd's. This is the one large difference; whether to
-  list the invocations is an open question (Q7 below).
+  459 results, 13% of clangd's. This is the one large difference; it is
+  intended (Q7, resolved 2026-10-15: keep, parked in 18). Rename refuses
+  instead of missing these sites (R7, 11.5).
 - P3: where a definition or declaration request answers when both answer
   (clangd: the header declaration, or the declaration at a definition; cereal:
   the definition). 120 requests.
@@ -2346,6 +2351,85 @@ TSan: 58 session runs (plain and `-fparallel`) with indexing on,
 40-TU project with indexing active, all 17 `proj_test` scenarios: 0 reports.
 `wsym_bench.py` (now also timing references, definition and incomingCalls):
 workspace/symbol p95 17.6 ms, index 9.8 s for 1,770 units.
+
+### 15.3 B5d: rename across TUs (Round 230)
+
+**What was built.** About 1,180 lines added to `src` (1,030 net after
+deleting 147), 115 of tests and 132 of `bench/tools/rename_libuv.py`.
+
+- **Per-file edit lists in crename.** `CRename` carries `CRenFile {path, offs,
+  n}` per file; `map_off`/`unmap_off` take one list; a unit is checked twice
+  over an overlay of every edited file it reads. `files` is given (project)
+  or planned from the unit (`plan_unit`, the old single-file path), so
+  `cereal query rename=` and the LSP use one `c_rename`. The renamed decl is
+  the one at the asked place; any other decl with an event at an edit (a
+  macro argument that is also a declaration) is refused as before ("also
+  names").
+- **One refusal mechanism for macros (R4 and R7).** `cindex_rename_blocker
+  (flags)` returns the reason for `MACRO_BODY` or `AT_EXPANSION`; the unit's
+  events (`cindex_rename_plan`) and every project record event (`pq_entries`
+  with `PqBlock`) use it. Q7 keeps macro invocation sites unlisted, so this
+  is what stops a silent miss. R1 is `pq_ambiguous` (the same place under
+  another key in a record variant of the same text), R3 the `PqBlock` count
+  of entries that could not be placed.
+- **Scope and gate.** R2 and R5 are `project_scope` on the scheduler thread
+  (every unit fresh, indexed, not running, not `FAILED`/`OVER_LIMIT`; an
+  affected unit not `PARTIAL`; at most `renameMaxTUs`). R6 and the per-unit
+  blockers are `c_rename` per affected unit on `P.pool` via `project_gate`,
+  with `project_pause` holding the scheduler's submissions. Without a pool
+  it runs serially.
+- **Request path.** A project rename is a worker-thread request
+  (`need_worker`, `Server.workers`, joined at shutdown), so the builder
+  stays free; a unit-only rename keeps the builder. The reply is
+  `documentChanges` (version for an open document, `null` otherwise) or
+  `changes`. `pq_current` rechecks every edited file's version or hash
+  against the text the edits were made on; a mismatch is ContentModified.
+- **Tests.** `proj_test.py` scenario `rename`: edits equal the references;
+  versions in `documentChanges`; the `changes` form; R6 (collision with an
+  existing name); R4/R7 for prepareRename and rename; R2 (an unindexed unit,
+  jobs held); R5 (`renameMaxTUs` 1); ContentModified (`CEREAL_FAULT=
+  rename-modify`). `lsp_stress.py --rename`.
+
+**Stop rule.** `bench/tools/rename_libuv.py` renames each of 441 external
+functions of the libuv Linux units (38 units that compile; `posix-poll.c`
+does not on Linux and is left out, as `paths` would) to a fresh name:
+
+| Outcome | Count |
+|---|---|
+| edits returned | 382 |
+| refused, a use in an inactive `#if` group (A3.9) | 54 |
+| refused, a use in a `#define` body (R4/R7) | 5 |
+| other refusals | 0 |
+
+False refusals: 0 of 441 (0%) with A3.9 and the macro refusals counted as
+correct refusals, 12.2% if the A3.9 ones are counted as false. They are
+correct: each is a use in another platform's branch (`uv_barrier_*`, the
+`uv_sem_*` of the macOS select path, `uv__iou_fs_*`), which a rename would
+leave stale. The first run, with `posix-poll.c` in the project, refused
+413 of 441 under R2 (an erroneous unit is `PARTIAL`, and every external name
+is declared in `uv.h`, which it reads): by design, but it shows that one
+non-compiling entry blocks all renames until `paths` excludes it. Duration
+about 4 min (0.57 s a rename on 4 cores).
+
+**Deviations and limits.**
+
+- prepareRename waits 300 ms for the scheduler's scope check and skips R2/R5
+  if it does not answer.
+- Macro renames still reply with `changes`.
+- A macro that names the function but is never invoked leaves no record
+  event, so R4/R7 cannot see it (a test had to invoke it).
+- A decl whose events at the edits include a second decl is refused (before,
+  the plan listed only the asked decl's events).
+
+**Gates.** run.sh 2158 passed; san 2158, 628 files, 0 findings; callgrind
+3.8845 G; globals 32 allowed; symcov 4,718 files, 1,146,276 events;
+wsym_bench workspace/symbol p95 21.9 ms (limit 100), references p95 3.3 ms;
+clangd_diff project mode 3,400 clangd results, 0 unexplained misses (the
+single-file part reported 6 and then 15 `cereal only` lines in lua54 that
+clangd's nondeterministic index omits; they are real references, and
+clangd varies between runs). TSan: 58 session runs, `lsp_stress.py
+--symbols --calls --refs --rename` 200 edits on a 40-TU project with
+indexing active (two files), all 18 `proj_test` scenarios: 0 reports.
 
 ## 16. Risks
 
@@ -2434,21 +2518,16 @@ unless asked.
    against D6's intent.
 
 **Q7. Function references through macro expansions (found by the 14.6
-differential, Round 229). Open.** `lua_call(L, 0, 0)` expands to
-`lua_callk(...)`. For `lua_callk` clangd lists each invocation (the
+differential, Round 229). Resolved 2026-10-15: keep as is.** `lua_call(L, 0, 0)`
+expands to `lua_callk(...)`. For `lua_callk` clangd lists each invocation (the
 spelling `lua_call`); cereal lists none of them and not the body token either
-(checked in one unit: only the definition and the declaration), in the open
-unit as in records. Of clangd's 3,425 results on lua54 and libuv, 459 (13%)
-are such sites.
-
-1. Keep it as is. Recommended for now. Pros: nothing new in the records;
-   rename never edits a macro body or invocation by accident. Cons:
-   find-references of a function called through a macro does not show those
-   call sites.
-2. List the invocations of macros whose body uses the name. Pros: matches
-   clangd. Cons: needs the invocation's spelling per event in the record (new
-   bytes, a format bump; not investigated), and rename would have to refuse
-   or handle them.
+(in the open unit as in records). Of clangd's 3,425 results on lua54 and libuv,
+459 (13%) are such sites. Decision: cereal does not list the invocation sites
+of macros whose body uses a function. This is an intended difference from
+clangd (P2 in `clangd_diff.py`). Listing them is parked (18): it needs the
+invocation's spelling per event in the record (a format bump) and a rename
+policy for macro sites. Rename must therefore refuse, not miss, when a record
+shows the name used in a macro body (R7, 11.5).
 
 ## 18. Parked
 
@@ -2464,6 +2543,7 @@ are such sites.
 | Remote or shared caches between machines | Host-endian keys (5.4). |
 | `$/cancelRequest` | Still ignored. The one long new request, a cross-TU rename, is bounded by R5 (at most `renameMaxTUs` gate checks). |
 | Type hierarchy | D7. |
+| Listing the invocation sites of macros whose body uses a function (Q7) | Needs a record format bump (the invocation's spelling per event) and a rename policy for macro sites. Rename refuses instead (R7). |
 
 ## 19. Review log
 

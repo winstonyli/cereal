@@ -1,7 +1,9 @@
 /* crename.c - renaming a C name (B2 phase 4; docs/B2_DESIGN.md, "Phase 4
- * design addendum").  The edits are planned on a check of the unit as it
- * is (cindex_rename_plan), then the unit is checked again with them
- * applied.  The rename stands only if the two runs give the same events,
+ * design addendum"; B5_DESIGN.md 11.5).  The edits are one list per file:
+ * given by the caller (the project's, for a name used in several units) or
+ * planned on a check of the unit as it is (cindex_rename_plan).  The unit is
+ * then checked again with them applied, over an overlay of every file it
+ * reads that has edits.  The rename stands only if the two runs give the same events,
  * decls and diagnostics, up to the moved offsets and the new name.  That
  * comparison is the conflict check: the checker's own name lookup, for
  * every scope and namespace, rather than an imitation of it. */
@@ -11,6 +13,12 @@
 
 #include <string.h>
 
+typedef struct EdText {      /* a file with the edits applied */
+    const CRenFile *f;
+    char *text;
+    size_t len;
+} EdText;
+
 typedef struct Run {
     TU tu;
     CIndex *ix;
@@ -18,20 +26,21 @@ typedef struct Run {
     char *missing;           /* the first #include not found */
     const CRename *q;
     bool live;
-    const char *mpath;       /* the second run: the main file's path ... */
-    const char *text;        /* ... and its edited text */
-    size_t len;
+    const EdText *ed;        /* the second run: the files' edited texts */
+    size_t ned;
 } Run;
 
 static bool run_overlay(void *ctx, const char *path, const char **buf,
                         size_t *len)
 {
     Run *r = ctx;
-    if (r->text && !strcmp(path, r->mpath)) {
-        *buf = r->text;
-        *len = r->len;
-        return true;
-    }
+    size_t i;
+    for (i = 0; i < r->ned; i++)
+        if (!strcmp(path, r->ed[i].f->path)) {
+            *buf = r->ed[i].text;
+            *len = r->ed[i].len;
+            return true;
+        }
     return r->q->overlay && r->q->overlay(r->q->overlay_ctx, path, buf, len);
 }
 
@@ -84,33 +93,50 @@ static void run_free(Run *r)
 
 /* ---- the mapping between the two texts of the main file ------------------- */
 
-/* Where offset off of the main file is after the edits; *edited: an edit
- * starts there. */
-static uint32_t map_off(const CRename *q, uint32_t nl, uint32_t off, bool *edited)
+/* The edit list of a file (NULL: the file has none). */
+static const CRenFile *file_edits(const CRename *q, const char *path)
 {
-    size_t lo = 0, hi = q->n;
+    size_t i;
+    for (i = 0; i < q->nfiles; i++)
+        if (!strcmp(q->files[i].path, path))
+            return &q->files[i];
+    return NULL;
+}
+
+/* Where offset off of a file is after its edits f (NULL: none); *edited: an
+ * edit starts there. */
+static uint32_t map_off(const CRenFile *f, const CRename *q, uint32_t nl,
+                        uint32_t off, bool *edited)
+{
+    size_t lo = 0, hi = f ? f->n : 0;
+    *edited = false;
+    if (!f)
+        return off;
     while (lo < hi) {        /* the edits before off */
         size_t mid = (lo + hi) / 2;
-        if (q->offs[mid] < off)
+        if (f->offs[mid] < off)
             lo = mid + 1;
         else
             hi = mid;
     }
-    *edited = lo < q->n && q->offs[lo] == off;
+    *edited = lo < f->n && f->offs[lo] == off;
     return off + (uint32_t)lo * nl - (uint32_t)lo * q->len;
 }
 
-/* The original offset of offset y of the edited text (an edit's start for a
- * place inside the new name). */
-static uint32_t unmap_off(const CRename *q, uint32_t nl, uint32_t y)
+/* The original offset of offset y of the edited text of a file (an edit's
+ * start for a place inside the new name). */
+static uint32_t unmap_off(const CRenFile *f, const CRename *q, uint32_t nl,
+                          uint32_t y)
 {
     uint32_t k;
-    for (k = 0; k < q->n; k++) {
-        uint32_t p = q->offs[k] + k * nl - k * q->len;
+    if (!f)
+        return y;
+    for (k = 0; k < f->n; k++) {
+        uint32_t p = f->offs[k] + k * nl - k * q->len;
         if (y < p)
             break;
         if (y < p + nl)
-            return q->offs[k];
+            return f->offs[k];
     }
     return y - k * nl + k * q->len;
 }
@@ -128,8 +154,9 @@ static bool word_at(const char *p, size_t n, const char *w)
 static bool inactive_use(Run *a, uint32_t d, const char *old, const char *nw,
                          StrBuf *why)
 {
-    const CIdxDecl *x = &a->ix->decls[d];
-    uint32_t root = cindex_scope_root(a->ix, x->scope);   /* its external declaration */
+    /* d: UINT32_MAX when the unit has no event at an edit: the whole unit */
+    const CIdxDecl *x = d == UINT32_MAX ? NULL : &a->ix->decls[d];
+    uint32_t root = x ? cindex_scope_root(a->ix, x->scope) : 0;   /* its external declaration */
     const CIdxScope *s = root ? &a->ix->scopes[root - 1] : NULL;
     size_t i;
     for (i = 0; i < a->skipped.len; i++) {
@@ -168,7 +195,9 @@ typedef struct Cmp {
     Run *a, *b;              /* the original run, the edited one */
     const CRename *q;
     uint32_t nl;             /* the new name's length */
-    int mf;                  /* the main file's entry (the same in both) */
+    const CRenFile **fe;     /* the edits of each file of a's index (the same
+                                entries in b's, once checked) */
+    bool *ren;               /* the decls of a's index with an event at an edit */
     char p1[512], p2[512];
 } Cmp;
 
@@ -176,8 +205,7 @@ typedef struct Cmp {
  * b's. */
 static const char *ev_place(Cmp *c, const CIdxEvent *e, bool second, char *buf)
 {
-    uint32_t off = second && (int)e->file == c->mf ? unmap_off(c->q, c->nl, e->off)
-                                                   : e->off;
+    uint32_t off = second ? unmap_off(c->fe[e->file], c->q, c->nl, e->off) : e->off;
     return cindex_place(&c->a->tu.sm, c->a->ix->files[e->file].path, off, buf,
                         sizeof c->p1);
 }
@@ -211,9 +239,7 @@ static bool same_diag_place(Cmp *c, SrcLoc la, SrcLoc lb)
         return false;
     if (fa->kind != SF_USER && fa->kind != SF_SYSTEM)
         return true;
-    off = la - fa->base;
-    if (!strcmp(fa->path, c->b->mpath))
-        off = map_off(c->q, c->nl, off, &ed);
+    off = map_off(file_edits(c->q, fa->path), c->q, c->nl, la - fa->base, &ed);
     return off == lb - fb->base;
 }
 
@@ -224,15 +250,15 @@ static const char *diag_place(Cmp *c, Run *r, SrcLoc loc)
     if (!f)
         return "?";
     off = loc - f->base;
-    if (r == c->b && !strcmp(f->path, c->b->mpath))
-        off = unmap_off(c->q, c->nl, off);
+    if (r == c->b)
+        off = unmap_off(file_edits(c->q, f->path), c->q, c->nl, off);
     return cindex_place(&c->a->tu.sm, f->path, off, c->p1, sizeof c->p1);
 }
 
 /* Appends to why how the edited run differs from the original; false if it
- * does not.  d: the renamed decl.  Diagnostics first: they say best what
+ * does not (c->ren: the renamed decls).  Diagnostics first: they say best what
  * went wrong (a redeclaration, a duplicate member); a capture has none. */
-static bool differs(Cmp *c, uint32_t d, StrBuf *why)
+static bool differs(Cmp *c, StrBuf *why)
 {
     const CIndex *x = c->a->ix, *y = c->b->ix;
     const DiagEngine *ga = &c->a->tu.diag, *gb = &c->b->tu.diag;
@@ -262,7 +288,7 @@ static bool differs(Cmp *c, uint32_t d, StrBuf *why)
         return true;
     }
     for (i = 0; i < x->ndecls; i++) {
-        const char *want = i == d ? c->q->name : cindex_name(x, i);
+        const char *want = c->ren[i] ? c->q->name : cindex_name(x, i);
         if (!strcmp(cindex_name(y, i), want))
             continue;
         sb_puts(why, "a renamed name also names the ");
@@ -276,7 +302,7 @@ static bool differs(Cmp *c, uint32_t d, StrBuf *why)
         uint32_t off = 0;
         bool ed = false;
         if (e)
-            off = (int)e->file == c->mf ? map_off(c->q, c->nl, e->off, &ed) : e->off;
+            off = map_off(c->fe[e->file], c->q, c->nl, e->off, &ed);
         if (e && f && e->file == f->file && off == f->off) {
             if (e->decl == f->decl && e->flags == f->flags &&
                 f->len == (ed ? nlen : e->len))
@@ -301,36 +327,94 @@ static bool differs(Cmp *c, uint32_t d, StrBuf *why)
     return false;
 }
 
+/* Plans the edits from the unit's own index: every use of the name at
+ * q->path, q->off, in the main file (the others need the project). */
+static bool plan_unit(CRename *q, Run *a, StrBuf *why)
+{
+    char msg[1024];
+    SrcFile *mf = cindex_srcfile(&a->tu.sm, path_normalize(&a->tu.arena, q->main));
+    uint32_t *ev = NULL;
+    size_t n = 0, k;
+    const char *err;
+    CRenFile *f;
+    if (!mf) {
+        sb_puts(why, "the unit could not be checked");
+        return false;
+    }
+    if ((err = cindex_rename_plan(a->ix, &a->tu.sm, q->path, q->off, mf->path,
+                                  false, &ev, &n, NULL, msg, sizeof msg)) != NULL) {
+        sb_puts(why, err);
+        return false;
+    }
+    f = xcalloc(1, sizeof *f);
+    f->path = xstrdup(mf->path);
+    f->offs = xmalloc((n + 1) * sizeof *f->offs);
+    f->n = n;
+    for (k = 0; k < n; k++)
+        f->offs[k] = a->ix->ev[ev[k]].off;
+    q->old = xstrdup(cindex_name(a->ix, a->ix->ev[ev[0]].decl));
+    q->files = f;
+    q->nfiles = 1;
+    q->own = true;
+    free(ev);
+    return true;
+}
+
+static bool has_off(const CRenFile *f, uint32_t off)
+{
+    size_t lo = 0, hi = f->n;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (f->offs[mid] < off)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo < f->n && f->offs[lo] == off;
+}
+
 char *c_rename(CRename *q)
 {
     Run a, b;
-    Cmp *c = NULL;
-    StrBuf why = {0}, text = {0};
-    char msg[1024];
-    const char *err, *old;
-    uint32_t *ev = NULL, d, last = 0;
-    size_t n = 0, k;
-    SrcFile *mf = NULL;
+    Cmp c;
+    StrBuf why = {0};
+    EdText *ed = NULL;
+    const CRenFile **fe = NULL;
+    bool *ren = NULL;
+    uint32_t first = UINT32_MAX;
+    size_t ned = 0, i, k;
     Ident *id;
     memset(&a, 0, sizeof a);
     memset(&b, 0, sizeof b);
-    q->offs = NULL;
-    q->n = 0;
+    memset(&c, 0, sizeof c);
     q->len = 0;
-    if (run_check(&a, q))
-        mf = cindex_srcfile(&a.tu.sm, path_normalize(&a.tu.arena, q->main));
-    if (!mf) {
+    if (!run_check(&a, q)) {
         sb_puts(&why, "the unit could not be checked");
         goto out;
     }
-    if ((err = cindex_rename_plan(a.ix, &a.tu.sm, q->path, q->off, mf->path,
-                                  &ev, &n, msg, sizeof msg)) != NULL) {
-        sb_puts(&why, err);
+    if (!q->files && !plan_unit(q, &a, &why))
         goto out;
+    q->len = (uint32_t)strlen(q->old);
+    fe = xcalloc(a.ix->nfiles + 1, sizeof *fe);
+    ren = xcalloc(a.ix->ndecls + 1, sizeof *ren);
+    for (i = 0; i < a.ix->nfiles; i++)
+        fe[i] = file_edits(q, a.ix->files[i].path);
+    /* The renamed decl is the one at the asked place, else the first an edit names;
+     * another decl with an event at an edit (a macro argument that is also a
+     * declaration) is renamed by accident, which differs() refuses. */
+    for (k = 0; k < a.ix->nev; k++) {
+        const CIdxEvent *e = &a.ix->ev[k];
+        if (!fe[e->file] || !has_off(fe[e->file], e->off))
+            continue;
+        if (first == UINT32_MAX)
+            first = e->decl;
+        if (q->path && e->off == q->off && !strcmp(a.ix->files[e->file].path, q->path)) {
+            first = e->decl;
+            break;
+        }
     }
-    d = a.ix->ev[ev[0]].decl;
-    old = cindex_name(a.ix, d);
-    q->len = (uint32_t)strlen(old);
+    if (first != UINT32_MAX)
+        ren[first] = true;
     id = intern_find(a.tu.in, q->name, strlen(q->name));
     if (!cindex_is_identifier(q->name))
         sb_printf(&why, "'%s' is not an identifier", q->name);
@@ -340,46 +424,80 @@ char *c_rename(CRename *q)
         sb_printf(&why, "'%s' is a macro name in this unit", q->name);
     else if (a.missing)
         sb_printf(&why, "#include %s was not found: uses of '%s' there cannot "
-                  "be seen", a.missing, old);
+                  "be seen", a.missing, q->old);
     else
-        inactive_use(&a, d, old, q->name, &why);
+        inactive_use(&a, first, q->old, q->name, &why);
     if (why.len)
         goto out;
-    /* the edited main file, then the comparison */
-    q->offs = xmalloc((n + 1) * sizeof *q->offs);
-    q->n = n;
-    for (k = 0; k < n; k++) {
-        q->offs[k] = a.ix->ev[ev[k]].off;
-        sb_putn(&text, mf->buf + last, q->offs[k] - last);
-        sb_puts(&text, q->name);
-        last = q->offs[k] + q->len;
+    /* the edited files the unit reads, then the comparison */
+    ed = xcalloc(q->nfiles + 1, sizeof *ed);
+    for (i = 0; i < q->nfiles; i++) {
+        const CRenFile *f = &q->files[i];
+        SrcFile *sf = cindex_srcfile(&a.tu.sm, f->path);
+        StrBuf t = {0};
+        uint32_t last = 0;
+        if (!sf)
+            continue;
+        for (k = 0; k < f->n; k++) {
+            uint32_t o = f->offs[k];
+            char at[512];
+            if (o < last || (size_t)o + q->len > sf->size ||
+                memcmp(sf->buf + o, q->old, q->len)) {
+                sb_printf(&why, "the text at %s is not '%s': the file changed",
+                          cindex_place(&a.tu.sm, f->path, o < sf->size ? o : 0, at,
+                                       sizeof at), q->old);
+                sb_free(&t);
+                goto out;
+            }
+            sb_putn(&t, sf->buf + last, o - last);
+            sb_puts(&t, q->name);
+            last = o + q->len;
+        }
+        sb_putn(&t, sf->buf + last, sf->size - last);
+        ed[ned].f = f;
+        ed[ned].len = t.len;
+        ed[ned++].text = (char *)sb_cstr(&t);
     }
-    sb_putn(&text, mf->buf + last, mf->size - last);
-    b.mpath = mf->path;
-    b.text = sb_cstr(&text);
-    b.len = text.len;
+    b.ed = ed;
+    b.ned = ned;
     if (!run_check(&b, q)) {
         sb_puts(&why, "the renamed unit could not be checked");
         goto out;
     }
-    c = xcalloc(1, sizeof *c);
-    c->a = &a;
-    c->b = &b;
-    c->q = q;
-    c->nl = (uint32_t)strlen(q->name);
-    c->mf = cindex_file(a.ix, mf->path);
-    differs(c, d, &why);
+    c.a = &a;
+    c.b = &b;
+    c.q = q;
+    c.nl = (uint32_t)strlen(q->name);
+    c.fe = fe;
+    c.ren = ren;
+    differs(&c, &why);
 out:
-    free(c);
     run_free(&b);
     run_free(&a);
-    free(ev);
-    sb_free(&text);
+    for (i = 0; i < ned; i++)
+        free(ed[i].text);
+    free(ed);
+    free(fe);
+    free(ren);
     if (!why.len)
         return NULL;
-    free(q->offs);
-    q->offs = NULL;
-    q->n = 0;
     sb_cstr(&why);
     return why.data;
+}
+
+void c_rename_free(CRename *q)
+{
+    size_t i;
+    if (!q->own)
+        return;
+    for (i = 0; i < q->nfiles; i++) {
+        free((char *)q->files[i].path);
+        free(q->files[i].offs);
+    }
+    free(q->files);
+    free((char *)q->old);
+    q->files = NULL;
+    q->old = NULL;
+    q->nfiles = 0;
+    q->own = false;
 }

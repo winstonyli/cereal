@@ -310,7 +310,28 @@ static uint32_t ref_len(const CRecRef *r, const CIdxKey *k)
     return r->len == 255 ? (uint32_t)strlen(k->name) : r->len;
 }
 
-void pq_entries(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, unsigned what, PqLocs *out)
+static void block_note(PqFiles *fs, PqBlock *blk, const PiRec *rec, uint32_t off,
+                       uint32_t len, const char *why, bool dropped)
+{
+    uint32_t at = off;
+    PqFile *f = pq_file(fs, rec->path);
+    if (dropped) {
+        if (!blk->ndropped++) {
+            blk->df = f;
+            blk->doff = off;
+        }
+        return;
+    }
+    if (blk->why)
+        return;
+    pq_place(fs, f, rec->fhash, off, len, &at);
+    blk->f = f;
+    blk->off = at;
+    blk->why = why;
+}
+
+void pq_entries(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, unsigned what, PqLocs *out,
+                PqBlock *blk)
 {
     PiHit *h;
     size_t n, i;
@@ -324,15 +345,27 @@ void pq_entries(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, unsigned what, PqL
         for (j = 0; (what & PQ_REF) && j < v->nrefs; j++) {
             const CRecRef *r = &v->refs[j];
             uint32_t len = ref_len(r, k);
-            if (r->key == h[i].ki && !(r->flags & CIX_MACRO_BODY) &&
-                pq_place(fs, f, rec->fhash, r->off, len, &off))
+            if (r->key != h[i].ki)
+                continue;
+            if (blk && cindex_rename_blocker(r->flags)) {
+                block_note(fs, blk, rec, r->off, len, cindex_rename_blocker(r->flags), false);
+                continue;
+            }
+            if (r->flags & CIX_MACRO_BODY)
+                continue;
+            if (pq_place(fs, f, rec->fhash, r->off, len, &off))
                 vec_push(out, ((PqLoc){f, off, len, 1}));
+            else if (blk)
+                block_note(fs, blk, rec, r->off, len, NULL, true);
         }
         for (j = 0; (what & (PQ_DECL | PQ_DEF)) && j < v->ndecls; j++) {
             const CRecDecl *d = &v->decls[j];
-            if (d->key == h[i].ki && (what & (d->role == CIX_DEF ? PQ_DEF : PQ_DECL)) &&
-                pq_place(fs, f, rec->fhash, d->off, d->len, &off))
+            if (d->key != h[i].ki || !(what & (d->role == CIX_DEF ? PQ_DEF : PQ_DECL)))
+                continue;
+            if (pq_place(fs, f, rec->fhash, d->off, d->len, &off))
                 vec_push(out, ((PqLoc){f, off, d->len, 1}));
+            else if (blk)
+                block_note(fs, blk, rec, d->off, d->len, NULL, true);
         }
     }
     pi_unlock(pi);
@@ -411,4 +444,106 @@ void pq_sym(PqFiles *fs, ProjIndex *pi, PqSym *sym)
         sym_from_rec(fs, h[i].rec, h[i].ki, sym);
     pi_unlock(pi);
     free(h);
+}
+
+/* ---- rename: what the records say against it ------------------------------------ */
+
+typedef struct Mine {
+    const char *path;
+    uint64_t fhash;
+    uint32_t off;
+} Mine;
+
+static int mine_cmp(const void *pa, const void *pb)
+{
+    const Mine *a = pa, *b = pb;
+    int c = strcmp(a->path, b->path);
+    if (c)
+        return c;
+    if (a->fhash != b->fhash)
+        return a->fhash < b->fhash ? -1 : 1;
+    return a->off < b->off ? -1 : a->off > b->off;
+}
+
+bool pq_ambiguous(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, PqBlock *blk)
+{
+    PiHit *h;
+    VEC(Mine) mine = {0};
+    size_t n, i, r, nr;
+    bool amb = false;
+    pi_rdlock(pi);
+    n = pi_find(pi, k, &h);
+    for (i = 0; i < n; i++) {
+        const CRecView *v = &h[i].rec->map.v;
+        uint32_t j;
+        for (j = 0; j < v->nrefs; j++)
+            if (v->refs[j].key == h[i].ki)
+                vec_push(&mine, ((Mine){h[i].rec->path, h[i].rec->fhash, v->refs[j].off}));
+        for (j = 0; j < v->ndecls; j++)
+            if (v->decls[j].key == h[i].ki)
+                vec_push(&mine, ((Mine){h[i].rec->path, h[i].rec->fhash, v->decls[j].off}));
+    }
+    if (mine.len > 1)
+        qsort(mine.data, mine.len, sizeof *mine.data, mine_cmp);
+    nr = pi_nrecs(pi);
+    for (r = 0; r < nr && !amb && mine.len; r++) {
+        const PiRec *rec = pi_rec(pi, r);
+        const CRecView *v = &rec->map.v;
+        uint32_t j;
+        for (j = 0; j < v->nrefs + v->ndecls && !amb; j++) {
+            bool isref = j < v->nrefs;
+            uint32_t key = isref ? v->refs[j].key : v->decls[j - v->nrefs].key;
+            Mine m = {rec->path, rec->fhash, isref ? v->refs[j].off : v->decls[j - v->nrefs].off};
+            size_t q;
+            for (q = 0; q < n; q++)         /* our own key in a record that has it */
+                if (h[q].rec == rec && h[q].ki == key)
+                    break;
+            if (q < n || !bsearch(&m, mine.data, mine.len, sizeof *mine.data, mine_cmp))
+                continue;
+            amb = true;
+            if (blk) {
+                PqFile *f = pq_file(fs, rec->path);
+                uint32_t at = m.off;
+                pq_place(fs, f, rec->fhash, m.off, 1, &at);
+                blk->f = f;
+                blk->off = at;
+            }
+        }
+    }
+    pi_unlock(pi);
+    vec_free(&mine);
+    free(h);
+    return amb;
+}
+
+void pq_where(PqFiles *fs, PqFile *f, uint32_t off, char *buf, size_t bufsz)
+{
+    uint32_t line = 1, col = 1, i;
+    if (load(fs, f))
+        for (i = 0; i < off && i < f->curlen; i++) {
+            if (f->cur[i] == '\n') {
+                line++;
+                col = 1;
+            } else {
+                col++;
+            }
+        }
+    snprintf(buf, bufsz, "%s:%u:%u", f->path, line, col);
+}
+
+bool pq_current(PqFiles *fs, PqFile *f, long long *version)
+{
+    uint64_t live;
+    char *disk;
+    size_t n;
+    bool same;
+    if (!load(fs, f))
+        return false;
+    if (lsp_doc_state(f->path, version, &live))
+        return live == cur_hash(f);
+    *version = -2;                      /* not open: the disk's */
+    disk = read_file_nobom(f->path, &n, NULL);
+    same = disk && cindex_hash(disk, n) == cur_hash(f);
+    free(disk);
+    return same;
 }

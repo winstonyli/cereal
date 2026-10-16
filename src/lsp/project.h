@@ -44,4 +44,26 @@ struct ProjIndex *project_index(void);
  * again soon (7.3).  Any thread; cheap, and rate limited. */
 void project_hint_sweep(void);
 
+/* ---- rename (B5d; docs/B5_DESIGN.md 11.5) ---- */
+
+typedef struct ProjScope {
+    char *refuse;            /* R2 or R5: why the rename is refused (malloc'd), else NULL */
+    char **mains;            /* the units that list any of the files, to check (malloc'd) */
+    size_t *entries;         /* their compile database entries */
+    size_t nmains;
+} ProjScope;
+/* Asks the scheduler which units a rename of names in `files` must check, and
+ * whether the index is complete enough to rename (R2, R5).  timeout_ms 0:
+ * wait.  False: no answer (indexing off, shutdown, or the time ran out).
+ * Free the answer with project_scope_free. */
+bool project_scope(const char *const *files, size_t nfiles, unsigned timeout_ms,
+                   ProjScope *out);
+void project_scope_free(ProjScope *s);
+/* While paused (calls nest) the scheduler submits no job: the rename's checks
+ * have the pool. */
+void project_pause(bool on);
+/* Runs fn(arg, i) for i in [0, n) on the index pool and returns when all are
+ * done; the caller helps.  Without a pool they run here, in turn. */
+void project_gate(void (*fn)(void *arg, size_t i), void *arg, size_t n);
+
 #endif

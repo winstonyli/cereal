@@ -170,13 +170,26 @@ typedef enum {
  * those outside file fi unless fi < 0.  *out is malloc'd (free it). */
 size_t cindex_select(const CIndex *ix, const uint32_t *decls, size_t nd,
                      CIdxQuery q, int fi, uint32_t **out);
+/* Why a use with these event flags cannot be renamed (R4, R7): it is spelled
+ * in a #define body, or formed by ## or a macro, so the edit would change the
+ * macro or miss the sites that expand it.  NULL: it can.  The one rule for a
+ * unit's events and for the project's records alike. */
+static inline const char *cindex_rename_blocker(unsigned flags)
+{
+    return flags & CIX_MACRO_BODY    ? "spelled in a #define body"
+           : flags & CIX_AT_EXPANSION ? "formed by ## or a macro"
+                                      : NULL;
+}
 /* Rename (B2_DESIGN.md, phase 4 addendum A3.2-A3.5): the events to edit to
  * rename the C entity named at offset off of path, one per place in offset
- * order, all in the unit's main file (*ev malloc'd); NULL, or why not (a
- * message in msg).  sm: for the places in messages. */
+ * order (*ev malloc'd); NULL, or why not (a message in msg).  sm: for the
+ * places in messages.  Without project they lie in the unit's main file
+ * (a use elsewhere is refused: other units may include it); with it they may
+ * lie in any file, and *wide (if not NULL) tells whether some do. */
 const char *cindex_rename_plan(const CIndex *ix, SrcMgr *sm, const char *path,
-                               uint32_t off, const char *main, uint32_t **ev,
-                               size_t *n, char *msg, size_t msgsz);
+                               uint32_t off, const char *main, bool project,
+                               uint32_t **ev, size_t *n, bool *wide, char *msg,
+                               size_t msgsz);
 /* [A-Za-z_][A-Za-z0-9_]* */
 bool cindex_is_identifier(const char *s);
 /* A byte that can continue an identifier ($ and UTF-8 included). */

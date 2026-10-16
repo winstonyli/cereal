@@ -39,21 +39,34 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo);
  * language server (which runs it on its builder thread, to keep the checks
  * in order beside the edits; checks may run concurrently, D5 of
  * docs/B5_DESIGN.md). */
+typedef struct CRenFile {
+    const char *path;
+    uint32_t *offs;             /* ascending offsets of the old name in the
+                                   file's current text */
+    size_t n;
+} CRenFile;
 typedef struct CRename {
     Options *o;                 /* the unit's */
     const char *main;           /* its main file */
     bool (*overlay)(void *ctx, const char *path, const char **buf,
                     size_t *len);   /* editor buffers, or NULL */
     void *overlay_ctx;
-    const char *path;           /* the name: at offset off of this file */
-    uint32_t off;
     const char *name;           /* the new name */
-    uint32_t *offs;             /* out: the main file's offsets to edit, in
-                                   order (malloc'd) */
-    size_t n;
+    /* The edits, one list per file, either given (files and old set: the
+     * project's plan, B5d; the files the unit does not read are ignored) or
+     * planned from the unit (files NULL): the name at offset off of path,
+     * limited to the main file.  c_rename then sets files (one entry) and
+     * own; c_rename_free releases it. */
+    CRenFile *files;
+    size_t nfiles;
+    const char *old;            /* in, with files: the old name */
+    const char *path;           /* planning: the name is at offset off of this file */
+    uint32_t off;
     uint32_t len;               /* out: the old name's length */
+    bool own;                   /* out: files was planned here */
 } CRename;
-/* NULL: q->offs; else why the rename is refused (malloc'd). */
+/* NULL: the edits stand; else why the rename is refused (malloc'd). */
 char *c_rename(CRename *q);
+void c_rename_free(CRename *q);
 
 #endif
