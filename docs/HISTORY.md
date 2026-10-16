@@ -4919,3 +4919,12 @@ Round 251: S1b skeleton kinds (`docs/S1_PLAN.md`): `#elifdef`/`#elifndef` are ch
 branches in the skeleton and lint (they were `SK_OTHER`, so ignored), `#pragma once` has
 its own kind, `include_next` is a flag on `SK_INCLUDE`. Resolved include edges parked
 to S1c (no consumer yet). Suite 2169 passed.
+
+Round 252: S1c step 0 (`docs/S1_PLAN.md`): the condition evaluator moves out of `cond.c` into
+`src/analysis/pcexpr.[ch]` with an environment interface (is X defined now; which values can it
+hold under which conditions), so the S1c fold and lint share one evaluator; the default environment
+is the start of the unit and lint is unchanged. Value comparison is now over the environment's
+entries plus the undefined-is-0 case (the prototype's model), so only the monotonic threshold
+clause remains in `pc_sat`. `pp_resolve_include` (the include search from an explicit includer)
+shares `find_include` with the preprocessor, and `PP.seq_main` records the macro version at which
+the main file starts (the initial valuation). Suite 2172 passed.

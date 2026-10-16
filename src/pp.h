@@ -360,6 +360,8 @@ typedef struct PP {
     MacroStackEnt *pushed;
     Assertion *asserts;
     uint32_t seq;
+    uint32_t seq_main;       /* macro version when the main file starts: the
+                              * predefines, -D/-U and -include files are done */
     uint32_t counter;
     SrcFile *main_file;
     SrcFile *builtin_file;
@@ -514,6 +516,9 @@ bool pp_assertion_holds(PP *pp, struct Ident *pred, const char *answer);
 void pp_emit_line(PP *pp, const char *text, size_t len, SrcLoc loc);
 SrcFile *pp_find_include(PP *pp, const char *name, bool angled, bool next,
                          int *dir_index);
+SrcFile *pp_resolve_include(PP *pp, SrcFile *from, int from_dir,
+                            const char *name, bool angled, bool next,
+                            int *dir_index);
 Tok pp_make_token(PP *pp, TokKind k, const char *text, size_t n, SrcLoc loc,
                   uint16_t flags);
 

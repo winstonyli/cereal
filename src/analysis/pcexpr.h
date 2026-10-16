@@ -1,0 +1,67 @@
+/* pcexpr.h - presence conditions of #if expressions, as BDDs.
+ *
+ * An expression becomes a BDD over atoms, created in order of first use:
+ *   PA_DEF   defined(X) at the start of the unit (I(X))
+ *   PA_GE    the initial value of X, when defined, is >= c
+ *   PA_TEXT  an opaque condition (a function-like call, arithmetic on a
+ *            macro, a comparison of two macros), keyed by canonical text
+ * The environment says what the macros mean at the point being evaluated:
+ * whether X is defined now and which values it can hold under which
+ * conditions.  The default environment is the start of the unit (nothing
+ * defined or redefined yet), which is what the lint checks use.  An undefined
+ * X is 0 (C99).  GE(hi) implies GE(lo); that clause is added per query over
+ * the atoms of its support (pc_sat). */
+#ifndef CEREAL_PCEXPR_H
+#define CEREAL_PCEXPR_H
+
+#include "analysis.h"
+#include "bdd.h"
+
+typedef struct PcNode PcNode;
+
+typedef enum { PA_DEF, PA_GE, PA_TEXT } PcAKind;
+
+typedef struct PcAtom {
+    PcAKind kind;
+    Ident *id;              /* PA_DEF, PA_GE */
+    intmax_t c;             /* PA_GE */
+    const char *text;       /* PA_TEXT */
+} PcAtom;
+
+/* One possible value of a defined macro: it holds under `cond`; `known` is
+ * false for the value the macro had at the start of the unit. */
+typedef struct PcEntry {
+    Bdd cond;
+    bool known;
+    intmax_t n;
+} PcEntry;
+
+typedef VEC(PcEntry) PcEntries;
+
+struct PcCtx;
+typedef struct PcEnv {
+    void *ctx;
+    Bdd (*defined)(void *ctx, struct PcCtx *cx, Ident *id);
+    void (*values)(void *ctx, struct PcCtx *cx, Ident *id, PcEntries *out);
+} PcEnv;
+
+typedef struct PcCtx {
+    Analysis *an;
+    BddMgr m;
+    VEC(PcAtom) atoms;
+    PcEnv env;              /* {0}: the start of the unit */
+} PcCtx;
+
+void pc_init(PcCtx *cx, Analysis *an, size_t node_cap);
+void pc_free(PcCtx *cx);
+Bdd pc_atom(PcCtx *cx, PcAKind kind, Ident *id, intmax_t c, const char *text);
+/* NULL when the tokens are not an expression this module models */
+PcNode *pc_parse(PcCtx *cx, TokSpan toks);
+PcNode *pc_defined_node(PcCtx *cx, Ident *id, bool negate);
+bool pc_has_vars(const PcNode *n);
+/* The condition under which n is nonzero. */
+Bdd pc_truth(PcCtx *cx, PcNode *n);
+/* 1 satisfiable, 0 not, -1 unknown (the BDD outgrew its cap). */
+int pc_sat(PcCtx *cx, Bdd f);
+
+#endif

@@ -632,6 +632,9 @@ static bool pop_file(PP *pp)
     PP_EMIT(pp, file_exit, fr->file);
     if (!fr->prev)
         return false;
+    if (fr->file->kind == SF_VIRTUAL && fr->prev &&
+        fr->prev->file == pp->main_file)
+        pp->seq_main = pp->seq;
     lexer_free(&pp->lex);
     pp->lex = fr->saved_lex;
     pp->pending = fr->saved_pending;
@@ -1844,7 +1847,8 @@ static void do_undef(PP *pp, const Tok *hash, const Tok *kw)
 
 /* Resolve and load an included file; the source manager caches both hits
  * and misses, so repeated searches cost no system calls. */
-static SrcFile *find_include(PP *pp, const char *name, bool angled, bool next,
+static SrcFile *find_include(PP *pp, SrcFile *from, int from_dir,
+                             const char *name, bool angled, bool next,
                              int *dir_index, size_t *first_dir, bool *tried_cur)
 {
     size_t i, start;
@@ -1855,18 +1859,18 @@ static SrcFile *find_include(PP *pp, const char *name, bool angled, bool next,
         *dir_index = -1;
         return srcmgr_load(pp->sm, name, SF_USER);
     }
-    if (next && pp->inc && pp->inc->dir_index >= 0) {
-        start = (size_t)pp->inc->dir_index + 1;
+    if (next && from && from_dir >= 0) {
+        start = (size_t)from_dir + 1;
     } else {
-        if (!angled && !next && pp->inc) {
+        if (!angled && !next && from) {
             *tried_cur = true;
             const char *p;
-            if (pp->inc->file->kind == SF_VIRTUAL)
+            if (from->kind == SF_VIRTUAL)
                 p = name;
             else
-                p = path_join(pp->arena, path_dirname(pp->arena, pp->inc->file->name),
+                p = path_join(pp->arena, path_dirname(pp->arena, from->name),
                               name);
-            if ((f = srcmgr_load(pp->sm, p, pp->inc->file->system_header
+            if ((f = srcmgr_load(pp->sm, p, from->system_header
                                                  ? SF_SYSTEM : SF_USER)) != NULL) {
                 *dir_index = -1;
                 return f;
@@ -1889,6 +1893,19 @@ static SrcFile *find_include(PP *pp, const char *name, bool angled, bool next,
     return NULL;
 }
 
+/* The same search as seen from `from` (found in search directory from_dir, -1
+ * for the current directory), without reporting a miss: the include analyses
+ * resolve the includes of inactive groups too. */
+SrcFile *pp_resolve_include(PP *pp, SrcFile *from, int from_dir,
+                            const char *name, bool angled, bool next,
+                            int *dir_index)
+{
+    size_t first_dir;
+    bool tried_cur;
+    return find_include(pp, from, from_dir, name, angled, next, dir_index,
+                        &first_dir, &tried_cur);
+}
+
 /* Every search for a header, by #include, __has_include or #pragma
  * dependency; a failed one is reported to the listeners (include_miss) with
  * where the search began, so that it can be repeated. */
@@ -1897,7 +1914,9 @@ SrcFile *pp_find_include(PP *pp, const char *name, bool angled, bool next,
 {
     size_t first_dir;
     bool tried_cur;
-    SrcFile *f = find_include(pp, name, angled, next, dir_index, &first_dir, &tried_cur);
+    SrcFile *f = find_include(pp, pp->inc ? pp->inc->file : NULL,
+                              pp->inc ? pp->inc->dir_index : -1, name, angled,
+                              next, dir_index, &first_dir, &tried_cur);
     if (!f && pp->inc)
         PP_EMIT(pp, include_miss, name, angled, first_dir, tried_cur, pp->inc->file);
     return f;
