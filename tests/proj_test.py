@@ -48,7 +48,7 @@ NTU = 12
 
 
 class Server:
-    def __init__(self, root, cache, env=None, init=None, caps=None):
+    def __init__(self, root, cache, env=None, init=None, caps=None, settle=True):
         e = dict(os.environ, CEREAL_INDEX_ENABLE="1", CEREAL_INDEX_QUIETMS="20",
                  CEREAL_INDEX_CACHEDIR=cache, CEREAL_INDEX_SWEEPSECONDS="3600")
         e.pop("CEREAL_FAULT", None)
@@ -57,6 +57,7 @@ class Server:
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         self.inbox, self.seen, self.nid = queue.Queue(), [], 0
         self.root = root
+        self.settle = settle    # a didOpen waits for its check (a request waits only 1.5 s for it)
         threading.Thread(target=self._read, daemon=True).start()
         r = self.req("initialize", {"rootUri": "file://" + root, "capabilities": caps or {},
                                     "initializationOptions": init or {}})
@@ -83,6 +84,8 @@ class Server:
 
     def note(self, method, params):
         self.send({"method": method, "params": params})
+        if method == "textDocument/didOpen" and self.settle:
+            self.req("cereal/waitIdle")
 
     def pump(self, until, timeout=60):
         """Consume messages until until(m) is true (earlier ones are kept in seen)."""
@@ -181,7 +184,7 @@ def sc_invalidate(root, cache):
 
 
 def sc_cancel(root, cache):
-    s = Server(root, cache, env={"CEREAL_INDEX_THREADS": "2"})
+    s = Server(root, cache, env={"CEREAL_INDEX_THREADS": "2"}, settle=False)
     s.req("cereal/indexHold", {"hold": True})
     main = os.path.join(root, "src", "t0000.c")
     text = open(main).read()
@@ -293,7 +296,7 @@ def poll(what, f, tries=200):
 def sc_wsym(root, cache):
     c = os.path.join(root, "src", "t0000.c")
     h = os.path.join(root, "include", "h00.h")
-    s = Server(root, cache)
+    s = Server(root, cache, settle=False)    # the edit is mapped before the check finishes
     s.wait()
     expect(spots(s.ws("tu0_count"), c) == [where(c, "tu0_count")], "a static of an unopened unit", s.ws("tu0_count"))
     expect(spots(s.ws("M00_MAX"), h) == [where(h, "M00_MAX")], "a macro of an unopened header")
@@ -360,11 +363,16 @@ def sc_xref(root, cache):
     expect(locs(got) == [("file://" + t8, dl, dc + 4)], "definition: the defining unit", got)
     got = s.req("textDocument/declaration", at(t0, line, ch))["result"]
     expect(locs(got) == [("file://" + h,) + where(h, "h01_f2(")], "declaration: the header", got)
-    # an edit above the use: the open unit's places move, the others' do not
+    # an edit above the use: the open unit's places move, the others' do not.  The check of the
+    # edit is held, so the request is answered from the carried index (a request waits only 1.5 s
+    # for a check, and a slow one, under TSan and load, made this test race it)
+    s.req("cereal/holdChecks", {"hold": True})
     s.note("textDocument/didChange", {"textDocument": {"uri": "file://" + t0, "version": 2},
                                        "contentChanges": [{"text": "/* one\n two */\n" + text}]})
     ctx = dict(at(t0, line + 2, ch), context={"includeDeclaration": False})
     got = locs(s.req("textDocument/references", ctx)["result"])
+    s.req("cereal/holdChecks", {})
+    s.req("cereal/waitIdle")
     mine = [g for g in got if g[0] == "file://" + t0]
     expect(mine == [("file://" + t0, line + 2, ch)] and len(got) == len(want) - 2,
            "references: the open document's places are mapped through the edit, once", got)
@@ -498,6 +506,24 @@ def sc_rename(root, cache):
     s.req("cereal/holdChecks", {})
     r = s.pump(lambda m: m.get("id") == rid and "method" not in m)
     expect("error" in r and r["error"]["code"] == -32801, "ContentModified", r)
+    s.stop()
+    # a request waits 1.5 s for the open unit's check, then answers with what there is: a rename
+    # is refused ("not ready; retry"), never run on a missing check (Round 233: a slow check under
+    # TSan and load made proj_test see this; didOpen now settles, and this pins the bound)
+    s = Server(root, cache, caps=caps)
+    s.wait()
+    s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",
+                                                      "version": 1, "text": text}})
+    s.req("cereal/holdChecks", {"hold": True})
+    s.note("textDocument/didChange", {"textDocument": {"uri": "file://" + t0, "version": 2},
+                                       "contentChanges": [{"text": text + "\n"}]})
+    r = rename(t0, "h01_f2(", "h01_renamed")
+    expect("error" in r and r["error"]["code"] == -32803 and "retry" in r["error"]["message"],
+           "a rename meeting a pending check is refused, not run", r)
+    s.req("cereal/holdChecks", {})
+    s.req("cereal/waitIdle")
+    r = rename(t0, "h01_f2(", "h01_renamed")
+    expect("result" in r and r["result"], "the same rename goes through once the check is done", r)
     s.stop()
     db = os.path.join(root, "compile_commands.json")
 

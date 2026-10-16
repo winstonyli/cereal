@@ -1683,17 +1683,21 @@ static void e_builtin_complex(Checker *c, uint32_t i, SrcLoc bl)
 #include "c/cbuiltin_pure.h"
 
 /* Whether some entry of cbuiltin_pure starts with ch: most calls are to
- * names that do not, and skip the search. */
+ * names that do not, and skip the full search.  The table is sorted, so this
+ * is a lower bound on the first character; no state is shared between the
+ * threads that check units at once (a lazily filled table was a data race). */
 static bool pure_first_char(char ch)
 {
-    static unsigned char seen[256], ready;
-    if (!__atomic_load_n(&ready, __ATOMIC_ACQUIRE)) {
-        size_t k;
-        for (k = 0; k < sizeof cbuiltin_pure / sizeof *cbuiltin_pure; k++)
-            seen[(unsigned char)cbuiltin_pure[k][0]] = 1;
-        __atomic_store_n(&ready, 1, __ATOMIC_RELEASE);
+    size_t lo = 0, hi = sizeof cbuiltin_pure / sizeof *cbuiltin_pure;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if ((unsigned char)cbuiltin_pure[mid][0] < (unsigned char)ch)
+            lo = mid + 1;
+        else
+            hi = mid;
     }
-    return seen[(unsigned char)ch];
+    return lo < sizeof cbuiltin_pure / sizeof *cbuiltin_pure &&
+           cbuiltin_pure[lo][0] == ch;
 }
 
 /* A call gcc builds without TREE_SIDE_EFFECTS: a const or pure function (or a

@@ -332,7 +332,6 @@ one of:
 | main | `made.3`, `pool.2`, `buf.0`, `fe_opts`, `carry_old`, `carry_at`, `parse_cells`, `dump_symbols`, `verify_symbols`, `rsp.1` | CLI state set before threads |
 | srcmgr | `ps`, `ps_once`, `lines_lock` | once-init and a lock |
 | thread | `fault_site`, `fault_at`, `fault_once`, `fault_count` | fault injection |
-| c/ccall | `ready.3`, `seen.2` | `pure_first_char`'s lazy table under an atomic acquire/release flag (ccall.c:1687-1697) |
 | c/csymidx | `serial_counter` | atomic |
 | lsp/features | `tok_cache`, `tok_next_id` | server |
 | lsp/rpc | `out_fp`, `out_m` | server |

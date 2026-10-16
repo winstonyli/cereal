@@ -1,7 +1,5 @@
 # OBJECT SYMBOL reason   (docs/B5_DESIGN.md 4.1; checked by globals.sh)
 # Checker and frontend: nothing a check writes except through once-init or atomics.
-c/ccall ready  pure_first_char's lazy table, behind an atomic acquire/release flag
-c/ccall seen   the table that flag publishes
 c/csymidx serial_counter  atomic
 diag cfg_gen_next  atomic
 lex cls  once-init (tables_once)

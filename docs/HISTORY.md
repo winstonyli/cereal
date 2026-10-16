@@ -4659,7 +4659,7 @@ Deleted `lsp_config`, `pstate_drop_manifest`, `store_bytes`, `is_file`,
 `pstate_check_records`, `off_to_pos`, three `u64_cmp` copies and more. Not
 applied: collapsing "edits first" to one timer (cannot keep the guarantee).
 Gates: run.sh 2153 passed; san 2153, 628 files, 0 findings; verify unchanged;
-callgrind 3.8863 G; globals 32; symcov unchanged; clangd_diff 0 unexpected;
+callgrind 3.8863 G; globals 32 (30 after Round 233); symcov unchanged; clangd_diff 0 unexpected;
 TSan (58 LSP session runs plain and -fparallel with indexing on, lsp_stress --symbols --calls --hints 200 edits (236 sent) with indexing active, 16 proj_test scenarios): 0 reports.
 
 Round 229: B5c, references, call hierarchy and definition across TUs
@@ -4739,3 +4739,18 @@ Gates: run.sh 2158 passed; san 2158, 0 findings; callgrind 3.8830 G; globals
 rename_libuv 441 renames, 0.0% false (design), 3m59s; TSan 0 reports (stress:
 6 project renames with edits). One unreproduced `proj_test` rename failure in
 the first TSan pass (0 of 11 reruns).
+
+Round 233: the unreproduced `proj_test` rename failure. Found under TSan with
+load (a slow check): a request waits 1.5 s for the open unit's check, so
+`proj_test` raced it (`rename` refused as "not ready; retry", `xref` saw an
+unmapped edit); under load 3 of 8 TSan batches failed, plain runs never. Test
+fix, not a server change: `didOpen` waits (`cereal/waitIdle`), the `xref` edit
+holds the check (`cereal/holdChecks`), and a new `rename` case pins the bounded
+wait (refused with "retry", then goes through). A real data race fell out of the
+same runs: `pure_first_char` (ccall.c) filled a lazy table from several checking
+threads; now a stateless binary search over the sorted `cbuiltin_pure`, and the
+two `c/ccall` globals.allow rows are gone (32 -> 30 allowed globals).
+Gates: run.sh 2158 passed; globals 30; proj_test 18/18 plain. The TSan
+re-run is pending. The hunt itself ran about 5 hours at about 12 busy threads
+and starved other sessions; stopped by the user. Long loaded runs: bound the
+time and threads up front.
