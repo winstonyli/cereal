@@ -213,7 +213,8 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
   so that every group is indexed and checked under a configuration that
   activates it; it must also carry compilation (a target) and VeriFast-style
   proving (an annotation channel and a `VERIFAST`-like view) later.
-  Survey numbers: HISTORY Round 238.
+  Survey numbers: HISTORY Round 238.  Design: `docs/CONFIG_DESIGN.md`
+  (Round 239); first step is its S0 spikes, before any code.
   Shared prerequisite: a record format bump (each event gains the macro
   invocation's spelling and its body-token provenance). Design first, with
   the stop rule of B5d's `rename_libuv.py` as the measure (12.2% of libuv's

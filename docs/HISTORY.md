@@ -4825,3 +4825,18 @@ includes tolerated (lenient mode) or with a supplied sysroot; (3) architecture
 and ABI atoms imply type sizes, and the checker's layout model is x86-64 SysV
 only, so a target is more than macros; (4) a verification view needs an
 annotation channel (comments lexed) as well as a macro.
+
+Round 239: design doc `docs/CONFIG_DESIGN.md` (no code): presence conditions
+over initial atoms (I, threshold, HAS, OPAQUE), family DAG with cross-axis
+constraints, macro definitions as a fold per inclusion instance (concrete and
+symbolic modes, exactness flags), ROBDD solver with block-contiguous order and
+a deviated-flag cost DP, per-unit PC families, Local PCs as a query-independent
+predicate DAG in `CREC_FORMAT` 5, virtual compile entries from a pure `cover`,
+realizability classes, rename through inactive groups only when every
+occurrence is exact, satisfiable and active in a passing `REALIZED` unit.
+Seven adversarial Sonnet review rounds (section 12): round 1 six blocking
+(Reach in stored PCs, circular fold, initial state, false exclusive families,
+unreachable stop rule, guard rule), round 2 three (position of evaluation,
+concrete versus symbolic, rename on uncovered groups), rounds 3 to 7 no
+blocking except one identity omission (round 6). Next: the S0 spikes (OS versus
+feature axis of the 54 refusals, BDD size and fold cost), before any code.
