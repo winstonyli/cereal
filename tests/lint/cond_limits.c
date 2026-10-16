@@ -1,7 +1,7 @@
 /* cond.c limits: current behavior recorded before the BDD rewrite (S1 plan, Slice 0).
-   Lines marked "gap" are answers the enumeration cannot give today.
+   Lines marked "gap" are answers neither solver gives yet (S1b: #elifdef).
    cereal-flags: -Wcond-constant */
-/* arithmetic on an integer variable: decided today; S1a makes it opaque (known loss) */
+/* arithmetic on an integer variable: an opaque atom keyed by its text (S1a), still decided when the text repeats */
 #if VERSION % 2 == 0
 #elif VERSION % 2 == 0 /* expect: cond-dead-branch */
 #endif
@@ -27,12 +27,12 @@
 #if __has_include(<stdio.h>)
 #elif __has_include(<stdio.h>)
 #endif
-/* 17 variables: gap (limit 16), the inner #if is dead */
+/* 17 variables (the enumeration stopped at 16): the inner #if is dead */
 #if defined(W1) && defined(W2) && defined(W3) && defined(W4) && defined(W5) && defined(W6) && defined(W7) && defined(W8) && defined(W9) && defined(W10) && defined(W11) && defined(W12) && defined(W13) && defined(W14) && defined(W15) && defined(W16) && defined(W17)
-#  if !defined(W1)
+#  if !defined(W1) /* expect: cond-dead-branch */
 #  endif
 #endif
-/* 70 nested: gap (limit 64 frames), the innermost #ifndef is dead */
+/* 70 nested (the enumeration stopped at 64 frames): the innermost #ifndef is dead */
 #ifdef N0
 #ifdef N1
 #ifdef N2
@@ -103,7 +103,7 @@
 #ifdef N67
 #ifdef N68
 #ifdef N69
-#ifndef N0
+#ifndef N0 /* expect: cond-dead-branch */
 #endif
 #endif
 #endif
@@ -175,7 +175,7 @@
 #endif
 #endif
 #endif
-/* 34 branches: gap (limit 32 priors), the last #elif is dead */
+/* 34 branches (the enumeration stopped at 32 priors): the last #elif is dead */
 #if defined(P0)
 #elif defined(P1)
 #elif defined(P2)
@@ -210,14 +210,14 @@
 #elif defined(P31)
 #elif defined(P32)
 #elif defined(P33)
-#elif defined(P0)
+#elif defined(P0) /* expect: cond-dead-branch */
 #endif
-/* large assignment space: gap (limit 2^18), the inner #if is dead */
+/* large assignment space (the enumeration stopped at 2^18): the inner #if is dead */
 #if (A1 == 3 || A1 == 7 || A1 == 11) && (A2 == 3 || A2 == 7 || A2 == 11) && (A3 == 3 || A3 == 7 || A3 == 11) && (A4 == 3 || A4 == 7 || A4 == 11) && (A5 == 3 || A5 == 7 || A5 == 11) && (A6 == 3 || A6 == 7 || A6 == 11) && (A7 == 3 || A7 == 7 || A7 == 11) && (A8 == 3 || A8 == 7 || A8 == 11) && (A9 == 3 || A9 == 7 || A9 == 11)
-#  if A1 == 4
+#  if A1 == 4 /* expect: cond-dead-branch */
 #  endif
 #endif
-/* wide domain: gap (dom[24]), the last #elif is dead */
+/* wide domain (the enumeration stopped at 24 values): the last #elif is dead */
 #if X == 10
 #elif X == 20
 #elif X == 30
@@ -228,5 +228,5 @@
 #elif X == 80
 #elif X == 90
 #elif X == 100
-#elif X == 10
+#elif X == 10 /* expect: cond-dead-branch */
 #endif

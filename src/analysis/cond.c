@@ -1,18 +1,20 @@
 /* cond.c - conditional-compilation analysis.
  *
  * Configuration space: every #if/#elif/#ifdef/#ifndef/#else in a user file
- * (active or not) is turned into a condition over
- *   - boolean variables  defined(X)
- *   - integer variables  X  (with a small domain: 0, 1 and c-1, c, c+1 for
- *                            every constant c that X is compared with)
- *   - opaque {0,1} variables for calls such as __GNUC_PREREQ(4, 1)
- * with the C99 rule that an undefined X evaluates to 0.  Each branch is
- * checked by enumeration: dead if it can never be selected, redundant if
- * it is always selected once reached.
+ * (active or not) is turned into a presence condition, a BDD over
+ *   - defined(X)
+ *   - threshold atoms "the value of X is >= c" for every constant c that X
+ *     is compared with, with the C99 rule that an undefined X is 0
+ *   - opaque atoms for calls such as __GNUC_PREREQ(4, 1) and for arithmetic
+ *     or two-macro comparisons, keyed by canonical text
+ * Each branch is checked by satisfiability: dead if it can never be
+ * selected, redundant if it is always selected once reached.
  *
  * Dynamic checks use preprocessor events: tested-but-never-defined macros
  * with a similar defined name (typos). */
 #include "analysis.h"
+
+#include "bdd.h"
 
 #include <string.h>
 
@@ -25,7 +27,6 @@ typedef struct Node {
     int op;                 /* Punct for N_UN/N_BIN */
     intmax_t num;
     Ident *id;              /* N_VAR/N_DEFINED */
-    int var;                /* variable index after binding */
     const char *text;       /* N_CALL: canonical text */
     struct Node *a, *b, *c;
 } Node;
@@ -45,7 +46,6 @@ static Node *mk(PX *p, NKind k)
 {
     Node *n = NEW(p->arena, Node);
     n->kind = k;
-    n->var = -1;
     return n;
 }
 
@@ -255,176 +255,332 @@ static Node *make_defined(Arena *a, Ident *id, bool negate)
     Node *d = NEW(a, Node), *n;
     d->kind = N_DEFINED;
     d->id = id;
-    d->var = -1;
     if (!negate)
         return d;
     n = NEW(a, Node);
     n->kind = N_UN;
     n->op = P_BANG;
     n->a = d;
-    n->var = -1;
     return n;
 }
 
-/* ---- variables and enumeration -------------------------------------- */
+/* ---- conditions as BDDs ---------------------------------------------- */
 
-typedef struct Var {
-    int kind;             /* 0 defined(X), 1 value X, 2 opaque call */
-    Ident *id;
-    const char *text;
-    intmax_t dom[24];
-    int ndom;
-    int defined_var;      /* for value vars: index of defined(X) or -1 */
-} Var;
+/* The variables of one file's BDD manager, created in order of first use:
+ *   A_DEF   defined(X)
+ *   A_GE    the effective value of X is >= c  (X undefined counts as 0)
+ *   A_TEXT  an opaque condition (a function-like call, arithmetic on a
+ *           macro, a comparison of two macros), keyed by canonical text
+ * The links between atoms (GE(hi) implies GE(lo); an undefined X is 0) are
+ * clauses added per query over the atoms in its support. */
+typedef enum { A_DEF, A_GE, A_TEXT } AKind;
 
-typedef struct Problem {
-    Var vars[16];
-    int nvars;
-    bool too_big;
-    Node *f[64];          /* conjunction, each possibly negated */
-    bool neg[64];
-    int nf;
-} Problem;
+typedef struct Atom {
+    AKind kind;
+    Ident *id;              /* A_DEF, A_GE */
+    intmax_t c;             /* A_GE */
+    const char *text;       /* A_TEXT */
+} Atom;
 
-static int find_var(Problem *pb, int kind, Ident *id, const char *text)
+typedef struct Ctx {
+    Analysis *an;
+    BddMgr m;
+    VEC(Atom) atoms;
+} Ctx;
+
+#define COND_BDD_CAP ((size_t)1 << 20)
+
+static Bdd atom_bdd(Ctx *cx, AKind kind, Ident *id, intmax_t c,
+                    const char *text)
 {
-    int i;
-    for (i = 0; i < pb->nvars; i++)
-        if (pb->vars[i].kind == kind &&
-            (kind == 2 ? !strcmp(pb->vars[i].text, text) : pb->vars[i].id == id))
-            return i;
-    if (pb->nvars == (int)ARRAY_LEN(pb->vars)) {
-        pb->too_big = true;
-        return 0;
+    size_t i;
+    Atom at;
+    for (i = 0; i < cx->atoms.len; i++) {
+        const Atom *x = &cx->atoms.data[i];
+        if (x->kind == kind && x->id == id && x->c == c &&
+            (kind != A_TEXT || !strcmp(x->text, text)))
+            return bdd_var(&cx->m, (uint32_t)i);
     }
-    memset(&pb->vars[pb->nvars], 0, sizeof pb->vars[0]);
-    pb->vars[pb->nvars].kind = kind;
-    pb->vars[pb->nvars].id = id;
-    pb->vars[pb->nvars].text = text;
-    pb->vars[pb->nvars].defined_var = -1;
-    return pb->nvars++;
+    at.kind = kind;
+    at.id = id;
+    at.c = c;
+    at.text = text;
+    vec_push(&cx->atoms, at);
+    return bdd_var(&cx->m, (uint32_t)(cx->atoms.len - 1));
 }
 
-static void dom_add(Var *v, intmax_t x)
+static void node_key(const Node *n, StrBuf *sb)
 {
-    int i;
-    for (i = 0; i < v->ndom; i++)
-        if (v->dom[i] == x)
-            return;
-    if (v->ndom < (int)ARRAY_LEN(v->dom))
-        v->dom[v->ndom++] = x;
-}
-
-static void bind(Problem *pb, Node *n)
-{
-    if (!n)
-        return;
     switch (n->kind) {
-    case N_DEFINED:
-        n->var = find_var(pb, 0, n->id, NULL);
+    case N_NUM: sb_printf(sb, "%jd", (intmax_t)n->num); break;
+    case N_VAR: sb_printf(sb, "v:%s", n->id->str); break;
+    case N_DEFINED: sb_printf(sb, "d:%s", n->id->str); break;
+    case N_CALL: sb_printf(sb, "c:%s", n->text); break;
+    case N_UN:
+        sb_printf(sb, "(u%d ", n->op);
+        node_key(n->a, sb);
+        sb_putc(sb, ')');
         break;
-    case N_VAR:
-        n->var = find_var(pb, 1, n->id, NULL);
+    case N_BIN:
+        sb_printf(sb, "(b%d ", n->op);
+        node_key(n->a, sb);
+        sb_putc(sb, ' ');
+        node_key(n->b, sb);
+        sb_putc(sb, ')');
         break;
-    case N_CALL:
-        n->var = find_var(pb, 2, NULL, n->text);
+    case N_TERN:
+        sb_puts(sb, "(? ");
+        node_key(n->a, sb);
+        sb_putc(sb, ' ');
+        node_key(n->b, sb);
+        sb_putc(sb, ' ');
+        node_key(n->c, sb);
+        sb_putc(sb, ')');
         break;
-    default:
-        bind(pb, n->a);
-        bind(pb, n->b);
-        bind(pb, n->c);
     }
 }
 
-/* collect comparison constants into the domains of value variables */
-static void collect_consts(Problem *pb, Node *n)
+/* "n is nonzero" as an opaque atom keyed by n's canonical text */
+static Bdd text_atom(Ctx *cx, const Node *n)
 {
-    if (!n)
-        return;
-    if (n->kind == N_BIN && n->a && n->b) {
-        Node *v = NULL, *c = NULL;
-        if (n->a->kind == N_VAR && n->b->kind == N_NUM)
-            v = n->a, c = n->b;
-        else if (n->b->kind == N_VAR && n->a->kind == N_NUM)
-            v = n->b, c = n->a;
-        if (v && v->var >= 0) {
-            dom_add(&pb->vars[v->var], c->num - 1);
-            dom_add(&pb->vars[v->var], c->num);
-            dom_add(&pb->vars[v->var], c->num + 1);
+    StrBuf sb = {0};
+    const char *key;
+    Bdd b;
+    node_key(n, &sb);
+    key = arena_strndup(cx->an->arena, sb_cstr(&sb), sb.len);
+    sb_free(&sb);
+    b = atom_bdd(cx, A_TEXT, NULL, 0, key);
+    return b;
+}
+
+/* What a subexpression is worth:
+ *   V_CONST  the integer n
+ *   V_BOOL   0 or 1 according to b
+ *   V_VAL    the effective value of macro id
+ *   V_OPQ    an integer nothing is known about except the text of node */
+typedef enum { V_CONST, V_BOOL, V_VAL, V_OPQ } VKind;
+
+typedef struct Val {
+    VKind k;
+    intmax_t n;
+    Bdd b;
+    Ident *id;
+    Node *node;
+} Val;
+
+static Val v_const(intmax_t n)
+{
+    Val v = {V_CONST, n, 0, NULL, NULL};
+    return v;
+}
+
+static Val v_bool(Bdd b)
+{
+    Val v = {V_BOOL, 0, b, NULL, NULL};
+    if (b == BDD_TRUE || b == BDD_FALSE)
+        return v_const(b == BDD_TRUE);
+    return v;
+}
+
+static Val v_opq(Node *n)
+{
+    Val v = {V_OPQ, 0, 0, NULL, n};
+    return v;
+}
+
+static Val ev(Ctx *cx, Node *n);
+
+static Bdd ge_bdd(Ctx *cx, Ident *id, intmax_t c)
+{
+    return atom_bdd(cx, A_GE, id, c, NULL);
+}
+
+/* the effective value of id is >= c + 1 */
+static Bdd gt_bdd(Ctx *cx, Ident *id, intmax_t c)
+{
+    return c == INTMAX_MAX ? BDD_FALSE : ge_bdd(cx, id, c + 1);
+}
+
+static Bdd truth(Ctx *cx, Val v)
+{
+    BddMgr *m = &cx->m;
+    switch (v.k) {
+    case V_CONST:
+        return v.n ? BDD_TRUE : BDD_FALSE;
+    case V_BOOL:
+        return v.b;
+    case V_VAL:
+        /* nonzero: not (>= 0 and not >= 1) */
+        return bdd_not(m, bdd_and(m, ge_bdd(cx, v.id, 0),
+                                  bdd_not(m, ge_bdd(cx, v.id, 1))));
+    case V_OPQ:
+        if (v.node->kind == N_TERN) {
+            Bdd c = truth(cx, ev(cx, v.node->a));
+            Bdd t = truth(cx, ev(cx, v.node->b));
+            return bdd_ite(m, c, t, truth(cx, ev(cx, v.node->c)));
+        }
+        return text_atom(cx, v.node);
+    }
+    return BDD_FALSE;
+}
+
+static bool is_cmp(int op)
+{
+    return op == P_EQEQ || op == P_NE || op == P_LT || op == P_GT ||
+           op == P_LE || op == P_GE;
+}
+
+static int swap_cmp(int op)
+{
+    switch (op) {
+    case P_LT: return P_GT;
+    case P_GT: return P_LT;
+    case P_LE: return P_GE;
+    case P_GE: return P_LE;
+    default: return op;
+    }
+}
+
+/* x op y on constants; false when undefined (division by zero) */
+static bool fold(int op, intmax_t x, intmax_t y, intmax_t *out)
+{
+    uintmax_t ux = (uintmax_t)x, uy = (uintmax_t)y;
+    switch (op) {
+    case P_STAR: *out = (intmax_t)(ux * uy); break;
+    case P_SLASH:
+        if (!y) return false;
+        *out = y == -1 ? (intmax_t)(0 - ux) : x / y;
+        break;
+    case P_PERCENT:
+        if (!y) return false;
+        *out = y == -1 ? 0 : x % y;
+        break;
+    case P_PLUS: *out = (intmax_t)(ux + uy); break;
+    case P_MINUS: *out = (intmax_t)(ux - uy); break;
+    case P_SHL: *out = (y < 0 || y > 62) ? 0 : (intmax_t)(ux << y); break;
+    case P_SHR: *out = (y < 0 || y > 62) ? 0 : x >> y; break;
+    case P_LT: *out = x < y; break;
+    case P_GT: *out = x > y; break;
+    case P_LE: *out = x <= y; break;
+    case P_GE: *out = x >= y; break;
+    case P_EQEQ: *out = x == y; break;
+    case P_NE: *out = x != y; break;
+    case P_AMP: *out = x & y; break;
+    case P_CARET: *out = x ^ y; break;
+    case P_PIPE: *out = x | y; break;
+    default: return false;
+    }
+    return true;
+}
+
+/* (effective value of id) op c, as thresholds */
+static Bdd cmp_val(Ctx *cx, int op, Ident *id, intmax_t c)
+{
+    BddMgr *m = &cx->m;
+    switch (op) {
+    case P_GE: return ge_bdd(cx, id, c);
+    case P_GT: return gt_bdd(cx, id, c);
+    case P_LT: return bdd_not(m, ge_bdd(cx, id, c));
+    case P_LE: return bdd_not(m, gt_bdd(cx, id, c));
+    case P_EQEQ: return bdd_and(m, ge_bdd(cx, id, c),
+                                bdd_not(m, gt_bdd(cx, id, c)));
+    default: return bdd_not(m, bdd_and(m, ge_bdd(cx, id, c),
+                                       bdd_not(m, gt_bdd(cx, id, c))));
+    }
+}
+
+/* b (0 or 1) op c, or c op b when flipped */
+static Bdd cmp_bool(Ctx *cx, int op, Bdd b, intmax_t c, bool flipped)
+{
+    intmax_t r0 = 0, r1 = 0;
+    fold(op, flipped ? c : 0, flipped ? 0 : c, &r0);
+    fold(op, flipped ? c : 1, flipped ? 1 : c, &r1);
+    return bdd_ite(&cx->m, b, r1 ? BDD_TRUE : BDD_FALSE,
+                   r0 ? BDD_TRUE : BDD_FALSE);
+}
+
+static Val binop(Ctx *cx, Node *n, Val x, Val y)
+{
+    int op = n->op;
+    intmax_t r;
+    if (x.k == V_CONST && y.k == V_CONST)
+        return fold(op, x.n, y.n, &r) ? v_const(r) : v_opq(n);
+    if (is_cmp(op)) {
+        if (x.k == V_VAL && y.k == V_CONST)
+            return v_bool(cmp_val(cx, op, x.id, y.n));
+        if (x.k == V_CONST && y.k == V_VAL)
+            return v_bool(cmp_val(cx, swap_cmp(op), y.id, x.n));
+        if (x.k == V_BOOL && y.k == V_CONST)
+            return v_bool(cmp_bool(cx, op, x.b, y.n, false));
+        if (x.k == V_CONST && y.k == V_BOOL)
+            return v_bool(cmp_bool(cx, op, y.b, x.n, true));
+        if (x.k == V_BOOL && y.k == V_BOOL &&
+            (op == P_EQEQ || op == P_NE)) {
+            Bdd same = bdd_ite(&cx->m, x.b, y.b, bdd_not(&cx->m, y.b));
+            return v_bool(op == P_EQEQ ? same : bdd_not(&cx->m, same));
         }
     }
-    collect_consts(pb, n->a);
-    collect_consts(pb, n->b);
-    collect_consts(pb, n->c);
+    return v_opq(n);
 }
 
-static bool eval(Problem *pb, const int *asg, Node *n, intmax_t *out)
+static Val ev(Ctx *cx, Node *n)
 {
-    intmax_t x, y;
+    Val x, y;
     switch (n->kind) {
     case N_NUM:
-        *out = n->num;
-        return true;
+        return v_const(n->num);
     case N_DEFINED:
+        return v_bool(atom_bdd(cx, A_DEF, n->id, 0, NULL));
     case N_CALL:
-        *out = asg[n->var];
-        return true;
-    case N_VAR: {
-        Var *v = &pb->vars[n->var];
-        *out = v->dom[asg[n->var]];
-        return true;
-    }
+        return v_bool(text_atom(cx, n));
+    case N_VAR:
+        x.k = V_VAL;
+        x.n = 0;
+        x.b = 0;
+        x.id = n->id;
+        x.node = NULL;
+        return x;
     case N_UN:
-        if (!eval(pb, asg, n->a, &x))
-            return false;
+        x = ev(cx, n->a);
         switch (n->op) {
-        case P_BANG: *out = !x; break;
-        case P_MINUS: *out = -x; break;
-        case P_TILDE: *out = ~x; break;
-        default: *out = x;
+        case P_BANG:
+            return v_bool(bdd_not(&cx->m, truth(cx, x)));
+        case P_PLUS:
+            return x;
+        case P_MINUS:
+            if (x.k == V_CONST)
+                return v_const((intmax_t)(0 - (uintmax_t)x.n));
+            break;
+        case P_TILDE:
+            if (x.k == V_CONST)
+                return v_const(~x.n);
+            break;
         }
-        return true;
+        return v_opq(n);
     case N_TERN:
-        if (!eval(pb, asg, n->a, &x))
-            return false;
-        return eval(pb, asg, x ? n->b : n->c, out);
+        x = ev(cx, n->a);
+        if (x.k == V_CONST)
+            return ev(cx, x.n ? n->b : n->c);
+        return v_opq(n);        /* its truth is the ite, see truth() */
     case N_BIN:
-        if (!eval(pb, asg, n->a, &x))
-            return false;
-        if (n->op == P_ANDAND && !x) {
-            *out = 0;
-            return true;
+        x = ev(cx, n->a);
+        if (n->op == P_ANDAND || n->op == P_OROR) {
+            bool is_and = n->op == P_ANDAND;
+            Bdd tx, ty;
+            if (x.k == V_CONST && (x.n != 0) != is_and)
+                return v_const(!is_and);    /* 0 && .. is 0, 1 || .. is 1 */
+            y = ev(cx, n->b);
+            ty = truth(cx, y);
+            if (x.k == V_CONST)
+                return v_bool(ty);
+            tx = truth(cx, x);
+            return v_bool(is_and ? bdd_and(&cx->m, tx, ty)
+                                 : bdd_or(&cx->m, tx, ty));
         }
-        if (n->op == P_OROR && x) {
-            *out = 1;
-            return true;
-        }
-        if (!eval(pb, asg, n->b, &y))
-            return false;
-        switch (n->op) {
-        case P_STAR: *out = x * y; break;
-        case P_SLASH: if (!y) return false; *out = x / y; break;
-        case P_PERCENT: if (!y) return false; *out = x % y; break;
-        case P_PLUS: *out = x + y; break;
-        case P_MINUS: *out = x - y; break;
-        case P_SHL: *out = (y < 0 || y > 62) ? 0 : x << y; break;
-        case P_SHR: *out = (y < 0 || y > 62) ? 0 : x >> y; break;
-        case P_LT: *out = x < y; break;
-        case P_GT: *out = x > y; break;
-        case P_LE: *out = x <= y; break;
-        case P_GE: *out = x >= y; break;
-        case P_EQEQ: *out = x == y; break;
-        case P_NE: *out = x != y; break;
-        case P_AMP: *out = x & y; break;
-        case P_CARET: *out = x ^ y; break;
-        case P_PIPE: *out = x | y; break;
-        case P_ANDAND: *out = y != 0; break;
-        case P_OROR: *out = y != 0; break;
-        default: return false;
-        }
-        return true;
+        y = ev(cx, n->b);
+        return binop(cx, n, x, y);
     }
-    return false;
+    return v_opq(n);
 }
 
 static bool has_vars(Node *n)
@@ -436,69 +592,49 @@ static bool has_vars(Node *n)
     return has_vars(n->a) || has_vars(n->b) || has_vars(n->c);
 }
 
-/* Is the conjunction of pb->f (with pb->neg) satisfiable?
- * Returns 1 yes, 0 no, -1 unknown (too large). */
-static int satisfiable(Problem *pb)
+/* Is f satisfiable?  1 yes, 0 no, -1 unknown (the BDD outgrew its cap).
+ * The links between the atoms of f's support are conjoined first. */
+static int sat(Ctx *cx, Bdd f)
 {
-    int asg[16], radix[16], i;
-    uint64_t total = 1, k;
-    for (i = 0; i < pb->nvars; i++) {
-        Var *v = &pb->vars[i];
-        if (v->kind == 1) {
-            dom_add(v, 0);
-            dom_add(v, 1);
-            radix[i] = v->ndom;
-        } else {
-            radix[i] = 2;
+    BddMgr *m = &cx->m;
+    size_t i, j, n = cx->atoms.len;
+    bool *seen;
+    Bdd g = f;
+    if (m->over)
+        return -1;
+    seen = xcalloc(n ? n : 1, 1);
+    bdd_support(m, f, seen, (uint32_t)n);
+    for (i = 0; i < n; i++) {
+        const Atom *a = &cx->atoms.data[i];
+        if (!seen[i] || a->kind != A_GE)
+            continue;
+        for (j = 0; j < n; j++) {
+            const Atom *b = &cx->atoms.data[j];
+            Bdd vi, vj;
+            if (!seen[j] || b->id != a->id)
+                continue;
+            vi = bdd_var(m, (uint32_t)i);
+            vj = bdd_var(m, (uint32_t)j);
+            if (b->kind == A_GE && b->c < a->c)         /* >= hi means >= lo */
+                g = bdd_and(m, g, bdd_or(m, bdd_not(m, vi), vj));
+            else if (b->kind == A_DEF)                  /* undefined is 0 */
+                g = bdd_and(m, g, bdd_or(m, vj, a->c > 0 ? bdd_not(m, vi) : vi));
         }
-        total *= (uint64_t)radix[i];
-        if (total > (1u << 18))
-            return -1;
     }
-    /* link value vars to their defined() vars */
-    for (i = 0; i < pb->nvars; i++) {
-        int j;
-        pb->vars[i].defined_var = -1;
-        if (pb->vars[i].kind == 1)
-            for (j = 0; j < pb->nvars; j++)
-                if (pb->vars[j].kind == 0 && pb->vars[j].id == pb->vars[i].id)
-                    pb->vars[i].defined_var = j;
-    }
-    for (k = 0; k < total; k++) {
-        uint64_t r = k;
-        bool okay = true;
-        for (i = 0; i < pb->nvars; i++) {
-            asg[i] = (int)(r % (uint64_t)radix[i]);
-            r /= (uint64_t)radix[i];
-        }
-        /* undefined X evaluates to 0 */
-        for (i = 0; i < pb->nvars && okay; i++) {
-            Var *v = &pb->vars[i];
-            if (v->kind == 1 && v->defined_var >= 0 && !asg[v->defined_var] &&
-                v->dom[asg[i]] != 0)
-                okay = false;
-        }
-        for (i = 0; i < pb->nf && okay; i++) {
-            intmax_t val;
-            if (!eval(pb, asg, pb->f[i], &val))
-                okay = false;
-            else if ((val != 0) == pb->neg[i])
-                okay = false;
-        }
-        if (okay)
-            return 1;
-    }
-    return 0;
+    free(seen);
+    return m->over ? -1 : g != BDD_FALSE;
 }
 
 /* ---- per-file walk -------------------------------------------------- */
 
 typedef struct Frame {
     int opener;             /* skeleton index of the #if */
-    Node *prior[32];        /* conditions of earlier branches */
-    int nprior;
-    Node *cur;              /* condition of the current branch (NULL: #else) */
-    bool cur_is_else;
+    Bdd outer;              /* the enclosing branches are taken */
+    Bdd negprior;           /* no earlier branch of this chain was taken */
+    Bdd reach;              /* outer and negprior: this position is reached */
+    Bdd cur;                /* the current branch's condition holds */
+    bool has_cur;           /* false for #else and for an unmodeled condition */
+    bool cur_novars;        /* the condition mentions no macro (#if 0) */
     bool dead;              /* current branch already known dead */
     bool unknown;           /* a condition could not be modeled */
 } Frame;
@@ -530,34 +666,19 @@ static Node *branch_cond(Analysis *an, SkDirective *d)
     }
 }
 
-/* Build the problem: enclosing path + earlier branches (negated) + extra. */
-static bool build(Problem *pb, Frame *stack, int depth, Node *extra,
-                  bool extra_neg)
+/* Evaluate the branch condition c into fr (c is NULL when it did not parse). */
+static void set_cond(Ctx *cx, Frame *fr, Node *c)
 {
-    int i, j;
-    memset(pb, 0, sizeof *pb);
-    for (i = 0; i < depth; i++) {
-        Frame *fr = &stack[i];
-        if (fr->unknown)
-            return false;
-        for (j = 0; j < fr->nprior && pb->nf < 63; j++) {
-            pb->f[pb->nf] = fr->prior[j];
-            pb->neg[pb->nf++] = true;
-        }
-        if (i < depth - 1 && fr->cur && pb->nf < 63) {
-            pb->f[pb->nf] = fr->cur;
-            pb->neg[pb->nf++] = false;
-        }
-    }
-    if (extra && pb->nf < 63) {
-        pb->f[pb->nf] = extra;
-        pb->neg[pb->nf++] = extra_neg;
-    }
-    for (i = 0; i < pb->nf; i++)
-        bind(pb, pb->f[i]);
-    for (i = 0; i < pb->nf; i++)
-        collect_consts(pb, pb->f[i]);
-    return !pb->too_big;
+    fr->has_cur = c != NULL;
+    fr->unknown |= c == NULL;
+    fr->cur_novars = c && !has_vars(c);
+    if (c)
+        fr->cur = truth(cx, ev(cx, c));
+}
+
+static void set_reach(Ctx *cx, Frame *fr)
+{
+    fr->reach = bdd_and(&cx->m, fr->outer, fr->negprior);
 }
 
 static bool path_dead(Frame *stack, int depth)
@@ -565,6 +686,15 @@ static bool path_dead(Frame *stack, int depth)
     int i;
     for (i = 0; i < depth; i++)
         if (stack[i].dead)
+            return true;
+    return false;
+}
+
+static bool path_unknown(Frame *stack, int depth)
+{
+    int i;
+    for (i = 0; i < depth; i++)
+        if (stack[i].unknown)
             return true;
     return false;
 }
@@ -581,34 +711,28 @@ static const char *dir_name(SkKind k)
     }
 }
 
-static void check_branch(Analysis *a, Skeleton *sk, Frame *stack, int depth,
-                         SkDirective *d)
+static void check_branch(Analysis *a, Skeleton *sk, Ctx *cx, Frame *stack,
+                         int depth, SkDirective *d)
 {
+    BddMgr *m = &cx->m;
     Frame *fr = &stack[depth - 1];
-    Problem pb;
-    Node *c = fr->cur;
     int reach, sat_c, sat_notc;
 
-    if (fr->unknown || path_dead(stack, depth - 1)) {
+    if (m->over || path_unknown(stack, depth) || path_dead(stack, depth - 1))
         return;
-    }
-    if (c && !has_vars(c)) {
+    if (fr->has_cur && fr->cur_novars) {
         /* constant condition: #if 0 / #if 1 */
-        Problem k;
-        memset(&k, 0, sizeof k);
-        k.f[0] = c;
-        k.nf = 1;
+        if (fr->cur != BDD_TRUE && fr->cur != BDD_FALSE)
+            return;             /* 1 / 0 by zero, say: nothing to claim */
         if (d->kind != SK_IFNDEF && d->kind != SK_IFDEF)
             diag_report(a->diag, DL_REMARK, "cond-constant", d->kw_loc,
                         "%s condition is constant (%s)", dir_name(d->kind),
-                        satisfiable(&k) == 1 ? "always true" : "always false");
-        fr->dead = satisfiable(&k) == 0;
+                        fr->cur == BDD_TRUE ? "always true" : "always false");
+        fr->dead = fr->cur == BDD_FALSE;
         return;
     }
     /* reachability of this branch position */
-    if (!build(&pb, stack, depth, NULL, false))
-        return;
-    reach = satisfiable(&pb);
+    reach = sat(cx, fr->reach);
     if (reach == 0) {
         Diagnostic *dg = diag_report(a->diag, DL_WARNING, "cond-dead-branch",
             d->kw_loc, "%s branch can never be taken: the enclosing and "
@@ -620,20 +744,11 @@ static void check_branch(Analysis *a, Skeleton *sk, Frame *stack, int depth,
         fr->dead = true;
         return;
     }
-    if (!c || reach < 0)
+    if (!fr->has_cur || reach < 0)
         return;
-    if (!build(&pb, stack, depth, c, false))
-        return;
-    sat_c = satisfiable(&pb);
+    sat_c = sat(cx, bdd_and(m, fr->reach, fr->cur));
     if (sat_c == 0) {
-        Problem alone;
-        int self;
-        memset(&alone, 0, sizeof alone);
-        alone.f[0] = c;
-        alone.nf = 1;
-        bind(&alone, c);
-        collect_consts(&alone, c);
-        self = satisfiable(&alone);
+        int self = sat(cx, fr->cur);
         diag_report(a->diag, DL_WARNING, "cond-dead-branch", d->kw_loc,
                     self == 0 ? "%s condition can never be true"
                               : "%s condition contradicts the enclosing or "
@@ -643,9 +758,7 @@ static void check_branch(Analysis *a, Skeleton *sk, Frame *stack, int depth,
         fr->dead = true;
         return;
     }
-    if (!build(&pb, stack, depth, c, true))
-        return;
-    sat_notc = satisfiable(&pb);
+    sat_notc = sat(cx, bdd_and(m, fr->reach, bdd_not(m, fr->cur)));
     if (sat_notc == 0 && d->kind != SK_IFNDEF) {
         diag_report(a->diag, DL_WARNING, "cond-redundant", d->kw_loc,
                     "%s condition is always true here (implied by the "
@@ -736,53 +849,68 @@ static void check_label(Analysis *a, Skeleton *sk, int idx)
 static void analyze_file(Analysis *a, SrcFile *f)
 {
     Skeleton *sk = an_skeleton(a, f);
-    Frame stack[64];
-    int depth = 0;
+    Ctx cx = {0};
+    VEC(Frame) st = {0};
     size_t i;
-    for (i = 0; i < sk->dirs.len; i++) {
+    if (!sk->dirs.len)
+        return;
+    cx.an = a;
+    bdd_init(&cx.m, COND_BDD_CAP);
+    /* past the BDD cap (cx.m.over) the rest of the file is left unchecked */
+    for (i = 0; i < sk->dirs.len && !cx.m.over; i++) {
         SkDirective *d = &sk->dirs.data[i];
         switch (d->kind) {
-        case SK_IF: case SK_IFDEF: case SK_IFNDEF:
-            if (depth == (int)ARRAY_LEN(stack))
-                return;
-            memset(&stack[depth], 0, sizeof stack[depth]);
-            stack[depth].opener = (int)i;
-            stack[depth].cur = branch_cond(a, d);
-            stack[depth].unknown = stack[depth].cur == NULL;
-            depth++;
-            check_branch(a, sk, stack, depth, d);
+        case SK_IF: case SK_IFDEF: case SK_IFNDEF: {
+            Frame fr;
+            memset(&fr, 0, sizeof fr);
+            fr.opener = (int)i;
+            fr.outer = BDD_TRUE;
+            if (st.len) {
+                const Frame *up = &vec_last(&st);
+                fr.outer = up->has_cur ? bdd_and(&cx.m, up->reach, up->cur)
+                                       : up->reach;
+            }
+            fr.negprior = BDD_TRUE;
+            set_reach(&cx, &fr);
+            set_cond(&cx, &fr, branch_cond(a, d));
+            vec_push(&st, fr);
+            check_branch(a, sk, &cx, st.data, (int)st.len, d);
             break;
+        }
         case SK_ELIF: case SK_ELSE: {
             Frame *fr;
-            if (depth == 0)
+            if (!st.len)
                 break;
-            fr = &stack[depth - 1];
-            if (fr->cur && fr->nprior < (int)ARRAY_LEN(fr->prior))
-                fr->prior[fr->nprior++] = fr->cur;
-            else if (!fr->cur)
+            fr = &vec_last(&st);
+            if (fr->has_cur)
+                fr->negprior = bdd_and(&cx.m, fr->negprior,
+                                       bdd_not(&cx.m, fr->cur));
+            else
                 fr->unknown = true;
             fr->dead = false;
+            set_reach(&cx, fr);
             if (d->kind == SK_ELSE) {
-                fr->cur = NULL;
-                fr->cur_is_else = true;
+                fr->has_cur = false;
+                fr->cur_novars = false;
                 check_label(a, sk, (int)i);
             } else {
-                fr->cur = branch_cond(a, d);
-                if (!fr->cur)
-                    fr->unknown = true;
+                set_cond(&cx, fr, branch_cond(a, d));
             }
-            check_branch(a, sk, stack, depth, d);
+            check_branch(a, sk, &cx, st.data, (int)st.len, d);
             break;
         }
         case SK_ENDIF:
             check_label(a, sk, (int)i);
-            if (depth > 0)
-                depth--;
+            if (st.len)
+                st.len--;
             break;
         default:
             break;
         }
     }
+    vec_free(&st);
+    vec_free(&cx.atoms);
+    bdd_free(&cx.m);
 }
 
 /* FOO_A vs FOO_B, V1 vs V2: distinct names by design, not typos. */

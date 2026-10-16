@@ -106,3 +106,5 @@ Compare a run only against one with similar load, with a 10% margin on the total
 | tests/lint/includes.c | 4.0 |
 | tests/lint/recursion.c | 3.6 |
 | **total** | **100.7** |
+
+After the BDD rewrite (S1a, 2026-10-16, load 1.3): lint total 87.5 ms (was 100.7); `tests/lint/cond_limits.c` 14.7 ms (was 24.6).

@@ -4904,3 +4904,13 @@ pins today's behavior at every `cond.c` limit (arithmetic, variable-free, ternar
 `#elifdef`, `__has_include`, 17 variables, 70 nesting, 34 branches, 2^18, wide
 domain); `bench/bench.py --lint` times lint (baseline 100.7 ms total in
 `bench/BASELINE.md`). Full suite 2165 passed. No library code changed.
+
+Round 250: S1a (`docs/S1_PLAN.md`): `src/analysis/bdd.[ch]` (ROBDD, node cap, `cereal selftest bdd`)
+and `cond.c` rewritten on it; the enumeration solver and its limits (16 variables, 63
+conjuncts, 64 frames, 2^18, `dom[24]`, 32 priors) are deleted. Value atoms are
+thresholds `GE(X,c)` with monotonic and undefined-is-0 clauses added per query;
+arithmetic and two-macro comparisons are opaque atoms keyed by text. Differential
+lint against the old binary on tests, cereal sources and 400 corpus files: only
+`cond_limits.c` (five dead branches the limits hid, now expected) and six corpus
+diagnostics removed, all false positives from arithmetic over unknown macros.
+Suite 2169 passed; lint timing 87.5 ms (baseline 100.7).

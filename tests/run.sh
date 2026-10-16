@@ -873,5 +873,7 @@ got=$(python3 -P tests/proj_test.py "$CEREAL" </dev/null 2>&1)
 for sc in restart invalidate cancel fault memory readers progress paths wsym takeover spin corrupt config evict private wpos xref rename; do
     case $got in *"ok $sc"*) ok;; *) bad "proj_test $sc: $(echo "$got" | grep "$sc" | head -1)";; esac
 done
+# 23. unit self-tests (hidden `selftest` subcommand)
+if "$CEREAL" selftest bdd </dev/null; then ok; else bad "selftest bdd"; fi
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

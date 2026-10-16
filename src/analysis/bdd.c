@@ -1,0 +1,279 @@
+/* bdd.c - reduced ordered binary decision diagrams. */
+#include "bdd.h"
+
+#include <string.h>
+
+#define TERM_VAR UINT32_MAX
+
+static uint32_t mix(uint32_t a, uint32_t b, uint32_t c)
+{
+    uint64_t h = a * 0x9E3779B97F4A7C15ull;
+    h = (h ^ (h >> 29)) + b * 0xBF58476D1CE4E5B9ull;
+    h = (h ^ (h >> 32)) + c * 0x94D049BB133111EBull;
+    return (uint32_t)(h ^ (h >> 31));
+}
+
+void bdd_init(BddMgr *m, size_t cap)
+{
+    BddNode t = {TERM_VAR, 0, 0};
+    memset(m, 0, sizeof *m);
+    m->cap = cap;
+    vec_push(&m->nodes, t);     /* BDD_FALSE */
+    vec_push(&m->nodes, t);     /* BDD_TRUE */
+    m->tcap = 1024;
+    m->table = xcalloc(m->tcap, sizeof *m->table);
+    m->ccap = (size_t)1 << 14;
+    m->cache = xcalloc(m->ccap, sizeof *m->cache);
+}
+
+void bdd_free(BddMgr *m)
+{
+    vec_free(&m->nodes);
+    free(m->table);
+    free(m->cache);
+    memset(m, 0, sizeof *m);
+}
+
+size_t bdd_size(const BddMgr *m)
+{
+    return m->nodes.len;
+}
+
+static void rehash(BddMgr *m)
+{
+    size_t i, ncap = m->tcap * 2;
+    Bdd *nt = xcalloc(ncap, sizeof *nt);
+    for (i = 2; i < m->nodes.len; i++) {
+        const BddNode *n = &m->nodes.data[i];
+        size_t k = mix(n->var, n->lo, n->hi) & (ncap - 1);
+        while (nt[k])
+            k = (k + 1) & (ncap - 1);
+        nt[k] = (Bdd)i;
+    }
+    free(m->table);
+    m->table = nt;
+    m->tcap = ncap;
+}
+
+static Bdd mk(BddMgr *m, uint32_t v, Bdd lo, Bdd hi)
+{
+    size_t k;
+    Bdd id;
+    BddNode n;
+    if (lo == hi)
+        return lo;
+    k = mix(v, lo, hi) & (m->tcap - 1);
+    while (m->table[k]) {
+        const BddNode *e = &m->nodes.data[m->table[k]];
+        if (e->var == v && e->lo == lo && e->hi == hi)
+            return m->table[k];
+        k = (k + 1) & (m->tcap - 1);
+    }
+    if (m->nodes.len >= m->cap) {
+        m->over = true;
+        return BDD_FALSE;
+    }
+    n.var = v;
+    n.lo = lo;
+    n.hi = hi;
+    vec_push(&m->nodes, n);
+    id = (Bdd)(m->nodes.len - 1);
+    m->table[k] = id;
+    if (m->nodes.len * 2 > m->tcap)
+        rehash(m);
+    return id;
+}
+
+Bdd bdd_var(BddMgr *m, uint32_t v)
+{
+    return mk(m, v, BDD_FALSE, BDD_TRUE);
+}
+
+static uint32_t top(const BddMgr *m, Bdd f)
+{
+    return m->nodes.data[f].var;
+}
+
+Bdd bdd_ite(BddMgr *m, Bdd f, Bdd g, Bdd h)
+{
+    uint32_t v;
+    Bdd lo, hi, r;
+    BddCache *c;
+    if (m->over)
+        return BDD_FALSE;
+    if (f == BDD_TRUE)
+        return g;
+    if (f == BDD_FALSE)
+        return h;
+    if (g == h)
+        return g;
+    if (g == BDD_TRUE && h == BDD_FALSE)
+        return f;
+    c = &m->cache[mix(f, g, h) & (m->ccap - 1)];
+    if (c->f == f && c->g == g && c->h == h)
+        return c->r;
+    v = MIN(top(m, f), MIN(top(m, g), top(m, h)));
+#define COF(x, b) (top(m, x) == v ? m->nodes.data[x].b : (x))
+    lo = bdd_ite(m, COF(f, lo), COF(g, lo), COF(h, lo));
+    hi = bdd_ite(m, COF(f, hi), COF(g, hi), COF(h, hi));
+#undef COF
+    r = mk(m, v, lo, hi);
+    if (!m->over) {
+        c = &m->cache[mix(f, g, h) & (m->ccap - 1)];
+        c->f = f;
+        c->g = g;
+        c->h = h;
+        c->r = r;
+    }
+    return r;
+}
+
+Bdd bdd_not(BddMgr *m, Bdd f)
+{
+    return bdd_ite(m, f, BDD_FALSE, BDD_TRUE);
+}
+
+Bdd bdd_and(BddMgr *m, Bdd f, Bdd g)
+{
+    return bdd_ite(m, f, g, BDD_FALSE);
+}
+
+Bdd bdd_or(BddMgr *m, Bdd f, Bdd g)
+{
+    return bdd_ite(m, f, BDD_TRUE, g);
+}
+
+void bdd_support(const BddMgr *m, Bdd f, bool *seen, uint32_t nvars)
+{
+    VEC(Bdd) st = {0};
+    bool *vis;
+    if (f < 2)
+        return;
+    vis = xcalloc(m->nodes.len, 1);
+    vec_push(&st, f);
+    while (st.len) {
+        Bdd x = vec_pop(&st);
+        const BddNode *n;
+        if (x < 2 || vis[x])
+            continue;
+        vis[x] = true;
+        n = &m->nodes.data[x];
+        if (n->var < nvars)
+            seen[n->var] = true;
+        vec_push(&st, n->lo);
+        vec_push(&st, n->hi);
+    }
+    vec_free(&st);
+    free(vis);
+}
+
+bool bdd_eval(const BddMgr *m, Bdd f, const bool *assign)
+{
+    while (f >= 2) {
+        const BddNode *n = &m->nodes.data[f];
+        f = assign[n->var] ? n->hi : n->lo;
+    }
+    return f == BDD_TRUE;
+}
+
+/* ---- self-test ------------------------------------------------------ */
+
+#define NV 8
+
+static unsigned rng_state = 12345;
+static unsigned rnd(void)
+{
+    rng_state = rng_state * 1664525u + 1013904223u;
+    return rng_state >> 8;
+}
+
+/* a random expression over NV variables, built as a BDD and as a 256-bit
+ * truth table */
+typedef struct TT { uint64_t w[4]; } TT;
+
+static bool tt_get(const TT *t, unsigned a)
+{
+    return t->w[a / 64] >> (a % 64) & 1;
+}
+
+static void expr(BddMgr *m, int depth, Bdd *f, TT *t)
+{
+    unsigned op = depth <= 0 ? 0 : rnd() % 5;
+    Bdd f1 = 0, f2 = 0, f3 = 0;
+    TT t1 = {{0}}, t2 = {{0}}, t3 = {{0}};
+    int i;
+    if (op == 0) {
+        unsigned v = rnd() % NV, a;
+        *f = bdd_var(m, v);
+        memset(t, 0, sizeof *t);
+        for (a = 0; a < 256; a++)
+            if (a >> v & 1)
+                t->w[a / 64] |= 1ull << (a % 64);
+        return;
+    }
+    expr(m, depth - 1, &f1, &t1);
+    if (op != 1)
+        expr(m, depth - 1, &f2, &t2);
+    if (op == 4)
+        expr(m, depth - 1, &f3, &t3);
+    for (i = 0; i < 4; i++)
+        t->w[i] = op == 1   ? ~t1.w[i]
+                  : op == 2 ? t1.w[i] & t2.w[i]
+                  : op == 3 ? t1.w[i] | t2.w[i]
+                            : (t1.w[i] & t2.w[i]) | (~t1.w[i] & t3.w[i]);
+    *f = op == 1   ? bdd_not(m, f1)
+         : op == 2 ? bdd_and(m, f1, f2)
+         : op == 3 ? bdd_or(m, f1, f2)
+                   : bdd_ite(m, f1, f2, f3);
+}
+
+int bdd_selftest(void)
+{
+    BddMgr m;
+    int round, bad = 0;
+    bdd_init(&m, (size_t)1 << 20);
+    for (round = 0; round < 300 && !bad; round++) {
+        Bdd f;
+        TT t;
+        unsigned a;
+        bool seen[NV] = {0}, as[NV];
+        expr(&m, 6, &f, &t);
+        for (a = 0; a < 256; a++) {
+            unsigned v;
+            for (v = 0; v < NV; v++)
+                as[v] = a >> v & 1;
+            if (bdd_eval(&m, f, as) != tt_get(&t, a))
+                bad = 1;
+        }
+        /* canonical: the same function built again is the same node */
+        if (bdd_not(&m, bdd_not(&m, f)) != f)
+            bad = 1;
+        /* the support is exactly the variables the table depends on */
+        bdd_support(&m, f, seen, NV);
+        for (a = 0; a < NV; a++) {
+            unsigned x;
+            bool dep = false;
+            for (x = 0; x < 256; x++)
+                dep |= tt_get(&t, x) != tt_get(&t, x ^ (1u << a));
+            if (dep != seen[a])
+                bad = 1;
+        }
+    }
+    if (m.over)
+        bad = 1;
+    bdd_free(&m);
+    /* the node cap: past it the result is FALSE and `over` is set */
+    bdd_init(&m, 8);
+    {
+        Bdd f = BDD_TRUE;
+        uint32_t v;
+        for (v = 0; v < 20; v++)
+            f = bdd_and(&m, f, bdd_var(&m, v));
+        if (!m.over || f != BDD_FALSE || bdd_size(&m) > 8)
+            bad = 1;
+    }
+    bdd_free(&m);
+    if (bad)
+        fputs("selftest bdd: FAIL\n", stderr);
+    return bad;
+}
