@@ -568,7 +568,7 @@ field and that PCs of annotation-guarded code work.
 | S1 | BDD solver; PCs and queries for the open unit; family table; hover and `cereal/configExplain`; cond.c rewritten on top | none | `lint` goldens unchanged except the reviewed `unknown` ones (every cond.c unknown source: variables, 2^18, `dom[24]`, 64 conjuncts, 32 priors, 64 frames, unmodeled conditions); the oracle agrees on at least 98% of the *decidable* groups (below) |
 | S2 | virtual entries, `cover`, realizability classes, `cereal.index.configs` | none | exact groups of phase-1 (`config`/`language`) kind holding an `inactive_use` hit are covered by a `REALIZED` virtual unit at a rate set from S0a's groups-per-refused-function distribution so that S4's function-level 80% is reachable (criterion per function: all its groups covered by a `REALIZED` unit and gate-passing; 80% of the S4 denominator functions must satisfy it, using S0a's actual groups-per-function distribution, with the gate measured on a synthetic rename of those functions since S4 itself comes later); wsym p95 and builder p50 not regressed, **measured with `cereal.index.configs` at the on-value** |
 | S3 | `CREC_FORMAT` 5: Local PC ids on events, edge PCs in manifests | yes | symcov unchanged; store size +10% or less, counting PC ids, instance trees and untaken edges |
-| S4 | precondition lists wherever a group is refused or shown (rename refusal text, hover, code action); rename through inactive groups via `REALIZED` units where the lists allow | no | (a) every one of the 54 libuv A3.9 refusals carries a precondition list; the report counts the `opaque`-typed and undecidable ones, and the oracle confirms, where only phase-1 requirements are unmet, that satisfying exactly them activates the group; (b) a falsifier for `target`-typed atoms: run the real preprocessor with the atom flipped, ignoring the family table, and confirm the refusal is family-forced, not mis-typed; (c) rename edits: the denominator is the refused functions whose every inactive group is phase-1 (from the re-run S0a, S0e); if that is under 10 functions, the rule is the absolute count of them that now succeed, with no new false edit |
+| S4 | precondition lists wherever a group is refused or shown (rename refusal text, hover, code action); rename through inactive groups via `REALIZED` units where the lists allow | no | (a) every one of the 54 libuv A3.9 refusals carries a precondition list; the report counts the `opaque`-typed and undecidable ones, and the oracle confirms, where only phase-1 requirements are unmet, that satisfying exactly them activates the group; (b) a falsifier for `target`-typed atoms: run the real preprocessor with the atom flipped, ignoring the family table, and confirm the refusal is family-forced, not mis-typed; (c) rename edits, a small bonus on this corpus (S0e: at most 9 of 54, probably fewer) and not a goal: the denominator is the refused functions whose every inactive group is phase-1 (from the re-run S0a, S0e); if that is under 10 functions, the rule is the absolute count of them that now succeed, with no new false edit |
 | S5 | target and annotation fields wired to a back end / proof tool | per consumer | out of scope here |
 
 **The oracle.** For a decidable group, `why_off`/`enable` yields an overlay; run
@@ -795,3 +795,28 @@ min 0, median 1, max 7. Reading: S4(c)'s denominator (every inactive group
 10-function threshold, so rename-edit gains are small on this corpus and S4(a)
 (typed lists for all refusals) is the deliverable. The 8 unresolved functions
 are the first real test of the symbolic fold (S0c).
+
+S0b/S0c prototype (Round 243; throwaway Python, ROBDD plus a symbolic fold over
+the quoted-include closure with no depth cap, one variable per macro in
+first-occurrence order, every comparison literal `X op c` an independent
+variable, no family constraints, no system headers). Per unit, node cap 200,000:
+
+| Corpus | Units | Groups | Max nodes, one group | Max node table, one unit | Time (all units) | Slowest unit |
+|---|---|---|---|---|---|---|
+| libuv (src, src/unix) | 62 | 30,839 | 44 | 22,965 | 2.7 s | 0.14 s |
+| Lua 5.4 | 35 | 19,279 | 79 | 38,966 | 4.6 s | 0.45 s |
+| zstd amalgamation | 1 | 1,145 | 126 | 13,259 | 0.1 s | 0.09 s |
+
+No unit came near the cap. Size and time are therefore not the risk for
+decision 1: a BDD is affordable (the stop rule of S0b, under 20,000 nodes per
+group and under 10 s total, holds with a wide margin on these inputs).
+**Not measured, and where the real risk lies:** (1) exactness is overstated: the
+prototype counts a group exact when no OPAQUE variable is in its support
+(libuv 99%, Lua and zstd 89%), but macros that system headers define are free
+initial atoms here, which the design counts as inexact; the honest figure needs
+system-header handling. (2) The threshold encoding of 3.2 and the family
+constraints would add relations between variables and could change sizes; not
+modelled. (3) The cost DP and the phased cheapest-cube query (3.8) were not
+built. (4) 25% of libuv groups are constant (true/false), mostly include
+guards and unreachable include branches. Decision 1 stays "BDD" with size and
+time confirmed; the open items move to the first implementation stage.
