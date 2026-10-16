@@ -67,6 +67,7 @@ typedef struct DeferredReq {
     Arena a;                  /* r's scratch */
     Req r;
     CIndex *cx;               /* the reference r.cidx holds */
+    uint32_t cancel;          /* atomic: $/cancelRequest arrived (r.cancel points here) */
 } DeferredReq;
 
 typedef struct Server {
@@ -75,6 +76,7 @@ typedef struct Server {
                                * lock: taken under S.m too */
     Cond work, done;
     VEC(DeferredReq *) deferred; /* requests for the builder to answer */
+    VEC(DeferredReq *) active;   /* the renames running on their threads (S.m) */
     bool code_actions;        /* client: codeAction literals (advertised) */
     bool doc_changes;         /* client: workspaceEdit.documentChanges */
     bool hold_builds;         /* test only: cereal/holdChecks "builds" */
@@ -774,6 +776,7 @@ typedef struct GateCtx {
     DocSet *docs;
     LspConfig *cfg;
     const JsonValue *token;
+    const uint32_t *cancel;   /* atomic, or NULL: the request is cancelled */
     char **err;               /* per unit */
     uint32_t done, failed;    /* atomic */
 } GateCtx;
@@ -788,7 +791,8 @@ static void gate_job(void *arg, size_t i)
     FatalTrap tr;
     char msg[160];
     uint32_t d;
-    if (atomic_load_u32(&g->failed) || atomic_load_u32(&S.stopping))
+    if (atomic_load_u32(&g->failed) || atomic_load_u32(&S.stopping) ||
+        (g->cancel && atomic_load_u32(g->cancel)))
         return;
     if (g->entries[i] != (size_t)-1 &&
         (g->entries[i] >= g->cfg->cmds.len ||
@@ -825,7 +829,8 @@ static void gate_job(void *arg, size_t i)
 }
 
 char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *entries,
-                      size_t n, DocSet *docs, const JsonValue *token)
+                      size_t n, DocSet *docs, const JsonValue *token,
+                      const uint32_t *cancel)
 {
     GateCtx g;
     char *out = NULL;
@@ -837,6 +842,7 @@ char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *ent
     g.n = n;
     g.docs = docs;
     g.token = token;
+    g.cancel = cancel;
     g.cfg = cfg_acquire();
     g.err = xcalloc(n + 1, sizeof *g.err);
     rename_progress(token, "begin", "checking the translation units", 0);
@@ -1651,12 +1657,14 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         q->a = a;
         q->r = r;
         q->r.arena = &q->a;
+        q->r.cancel = &q->cancel;
         q->cx = cx;
         sb_free(&sb);
         mutex_lock(&S.m);
         if (r.need_worker) {
             pthread_t th;
             S.workers++;
+            vec_push(&S.active, q);
             if (pthread_create(&th, NULL, rename_worker, q) != 0)
                 fatal("cannot start the rename thread");
             pthread_detach(th);
@@ -1711,6 +1719,10 @@ static void deferred_run(DeferredReq *d)
     while (S.hold && !S.stop)
         cond_wait(&S.work, &S.m);
     mutex_unlock(&S.m);
+    if (atomic_load_u32(&d->cancel)) {     /* cancelled before it began */
+        respond_error(d->id, -32800 /* RequestCancelled */, "cancelled");
+        goto done;
+    }
     r->on_builder = true;
     r->need_builder = false;
     r->need_worker = false;
@@ -1718,8 +1730,9 @@ static void deferred_run(DeferredReq *d)
     json_key(&w, "result");
     if (d->kind == R_RENAME) {
         if (!lsp_rename(r, &w, &err))      /* (the rename itself finds a changed text) */
-            respond_error(d->id, r->modified ? -32801 /* ContentModified */
-                                             : -32803 /* RequestFailed */, err);
+            respond_error(d->id, r->cancelled ? -32800 /* RequestCancelled */
+                                  : r->modified ? -32801 /* ContentModified */
+                                                : -32803 /* RequestFailed */, err);
         else {
             json_end_object(&w);
             send_json(&sb);
@@ -1731,6 +1744,17 @@ static void deferred_run(DeferredReq *d)
         send_json(&sb);
     }
     sb_free(&sb);
+done:
+    mutex_lock(&S.m);                      /* no cancel finds it from here on */
+    {
+        size_t i;
+        for (i = 0; i < S.active.len; i++)
+            if (S.active.data[i] == d) {
+                S.active.data[i] = S.active.data[--S.active.len];
+                break;
+            }
+    }
+    mutex_unlock(&S.m);
     deferred_free(d);
 }
 
@@ -1755,6 +1779,28 @@ static void deferred_free(DeferredReq *d)
     arena_free(&d->msg);
     free(d->body);
     free(d);
+}
+
+/* $/cancelRequest: a deferred request (a rename on its thread, or a code action
+ * the builder has not begun) answers RequestCancelled; any other request is
+ * answered before the next message is read, so there is nothing to cancel. */
+static void cancel_request(const JsonValue *params)
+{
+    const JsonValue *id = json_get(params, "id");
+    DeferredReq *const *v[2];
+    size_t len[2], k, i;
+    if (!id)
+        return;
+    mutex_lock(&S.m);
+    v[0] = S.deferred.data; len[0] = S.deferred.len;
+    v[1] = S.active.data;   len[1] = S.active.len;
+    for (k = 0; k < 2; k++)
+        for (i = 0; i < len[k]; i++) {
+            const JsonValue *x = v[k][i]->id;
+            if (x->text_len == id->text_len && !memcmp(x->text, id->text, x->text_len))
+                atomic_store_u32(&v[k][i]->cancel, 1);
+        }
+    mutex_unlock(&S.m);
 }
 
 static void did_open(const JsonValue *params)
@@ -1996,6 +2042,8 @@ int lsp_main(FILE *in, FILE *out)
             cond_broadcast(&S.work);
             mutex_unlock(&S.m);
             respond_null(id);
+        } else if (!id && !strcmp(method, "$/cancelRequest")) {
+            cancel_request(params);
         } else if (id && !strcmp(method, "workspace/symbol")) {
             workspace_symbol(id, params);
         } else if (id) {
@@ -2009,7 +2057,7 @@ int lsp_main(FILE *in, FILE *out)
             else
                 respond_error(id, -32601, "method not found");
         }
-        /* other notifications ($/cancelRequest, didSave, initialized, ...)
+        /* other notifications (didSave, initialized, ...)
          * need nothing: requests are answered synchronously, a code action
          * that needs the fix-all by the builder thread (handle_request) */
         if (!taken) {
@@ -2046,6 +2094,7 @@ int lsp_main(FILE *in, FILE *out)
         for (i = 0; i < S.deferred.len; i++) /* unanswered at exit */
             deferred_free(S.deferred.data[i]);
         vec_free(&S.deferred);
+        vec_free(&S.active);
         vec_free(&S.units);
         vec_free(&S.docs);
         vec_free(&S.queue);

@@ -238,7 +238,7 @@ builder or the protocol threads.
   - the 4 MiB check limit, `CHECK_MAX_BYTES` (324), overridable with
     `CEREAL_LSP_CHECK_MAX`.
 - **Not handled today:**
-  - didSave and `$/cancelRequest` are ignored (1730);
+  - didSave is ignored (1730); `$/cancelRequest` was too, until Round 234;
   - responses to server requests are dropped (1664-1667);
   - there is no workDoneProgress and no `didChangeWatchedFiles`;
   - the server does send requests (`send_refresh`, around 571-593).
@@ -2651,7 +2651,7 @@ shows the name used in a macro body (R7, 11.5).
 | An n-gram index for workspace/symbol | Only if the B5b stop rule fires. |
 | Indexing unsaved buffers of open files into the store | Open units already overlay. |
 | Remote or shared caches between machines | Host-endian keys (5.4). |
-| `$/cancelRequest` | Still ignored. The one long new request, a cross-TU rename, is bounded by R5 (at most `renameMaxTUs` gate checks). |
+| `$/cancelRequest` for requests answered at once | Nothing to cancel: the protocol thread answers each before reading the next message. Deferred renames and queued code actions are cancellable (Round 234); a running fix-all is not. |
 | Type hierarchy | D7. |
 | Listing the invocation sites of macros whose body uses a function (Q7) | Needs a record format bump (the invocation's spelling per event) and a rename policy for macro sites. Rename refuses instead (R7). ROADMAP Track D, "macro-aware project index and refactoring". |
 | A macro that names a function but is never invoked (R4/R7 gap) | No record event exists for it; needs the macro-body identifier spellings in the record (the same format bump as Q7). Documented limitation. |

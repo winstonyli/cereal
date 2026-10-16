@@ -173,11 +173,11 @@ bool lsp_docs_lookup(void *ctx, const char *path, const char **buf, size_t *len)
 bool lsp_doc_state(const char *path, long long *version, uint64_t *hash);
 /* tmpl's edits checked in each of the units mains[i] (compile database
  * entries[i]) on the index pool, the scheduler's jobs paused; progress goes
- * to the client's token (NULL: none).  NULL: every unit accepts, else why not
+ * to the client's token (NULL: none); a raised *cancel skips the units not begun.  NULL: every unit accepts, else why not
  * (malloc'd). */
 char *lsp_rename_gate(const struct CRename *tmpl, char *const *mains,
                       const size_t *entries, size_t n, DocSet *docs,
-                      const JsonValue *token);
+                      const JsonValue *token, const uint32_t *cancel);
 
 int lsp_main(FILE *in, FILE *out);
 
@@ -227,6 +227,8 @@ typedef struct Req {
     bool need_worker;        /* out: lsp_rename's checks: run the request on a
                                 thread of its own, not the builder */
     bool modified;           /* out: lsp_rename refused for ContentModified */
+    const uint32_t *cancel;  /* in, atomic, or NULL: $/cancelRequest arrived (a deferred request) */
+    bool cancelled;          /* out: lsp_rename stopped for it */
     /* codeAction: snap's check diagnostics, copied under the lock */
     VEC(CDiag) cdiags;
 } Req;

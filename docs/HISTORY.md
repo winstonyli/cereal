@@ -4754,3 +4754,16 @@ Gates: run.sh 2158 passed; globals 30; proj_test 18/18 plain. The TSan
 re-run: 8 of 8 plain-load `proj_test` runs under TSan passed (20 min, one run at a time), 0 reports. The hunt itself ran about 5 hours at about 12 busy threads
 and starved other sessions; stopped by the user. Long loaded runs: bound the
 time and threads up front.
+
+Round 234: `$/cancelRequest`. The protocol thread answers every request before it
+reads the next message, so only deferred requests can be cancelled: a
+cross-TU rename (its own thread, now listed in `S.active`) and a queued code
+action. Each `DeferredReq` has an atomic `cancel`; the notification matches the
+id's source text under `S.m`. A cancelled request answers -32800: a queued one
+before it starts, a rename by skipping the gate's units not yet begun and by
+checking the flag before the edits are written (nothing is written). Not
+cancellable: a fix-all already running on the builder, and one unit's check once
+started. Removal from `S.active` happens before the free, under the same lock.
+`proj_test.py rename` has the case (cancel after the checks, a stale id, the
+same rename succeeds). Gates: run.sh 2158 passed; globals 30; proj_test 18/18
+plain. TSan not re-run for this round.

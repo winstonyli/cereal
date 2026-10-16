@@ -1729,8 +1729,14 @@ static bool project_rename(Req *r, JsonWriter *w, uint32_t d, bool keyed, const 
     t.nfiles = p.files.len;
     docs = lsp_docs_copy();
     why = lsp_rename_gate(&t, mains, entries, n, docs,
-                          json_get(r->params, "workDoneToken"));
+                          json_get(r->params, "workDoneToken"), r->cancel);
     lsp_docs_free(docs);
+    if (r->cancel && atomic_load_u32(r->cancel)) {
+        *err = "cancelled";
+        r->cancelled = true;
+        free(why);
+        goto out;
+    }
     /* a text that changed since the plan answers first: the refusal (or the edits)
      * would be for the old one */
     ver = NEW_ARRAY(r->arena, long long, p.files.len + 1);

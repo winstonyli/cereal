@@ -507,6 +507,27 @@ def sc_rename(root, cache):
     r = s.pump(lambda m: m.get("id") == rid and "method" not in m)
     expect("error" in r and r["error"]["code"] == -32801, "ContentModified", r)
     s.stop()
+    # $/cancelRequest: a rename cancelled after its checks answers RequestCancelled and writes
+    # nothing; an id that is not pending is ignored; the same rename then goes through
+    s = Server(root, cache)
+    s.wait()
+    s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",
+                                                      "version": 1, "text": text}})
+    s.req("cereal/holdChecks", {"gate": True})
+    s.nid += 1
+    rid = s.nid
+    s.send({"id": rid, "method": "textDocument/rename",
+            "params": dict(at(t0, line, ch), newName="h01_renamed", workDoneToken="rn")})
+    s.pump(lambda m: m.get("method") == "$/progress" and m["params"]["value"]["kind"] == "end")
+    s.note("$/cancelRequest", {"id": rid + 1000})
+    s.note("$/cancelRequest", {"id": rid})
+    s.req("cereal/holdChecks", {})
+    r = s.pump(lambda m: m.get("id") == rid and "method" not in m)
+    expect("error" in r and r["error"]["code"] == -32800, "RequestCancelled", r)
+    s.note("$/cancelRequest", {"id": rid})        # already answered: nothing happens
+    r = rename(t0, "h01_f2(", "h01_renamed")
+    expect("result" in r and r["result"], "the same rename goes through after a cancel", r)
+    s.stop()
     # a request waits 1.5 s for the open unit's check, then answers with what there is: a rename
     # is refused ("not ready; retry"), never run on a missing check (Round 233: a slow check under
     # TSan and load made proj_test see this; didOpen now settles, and this pins the bound)

@@ -607,7 +607,7 @@ publishes a result by reloading the unit's manifest and bumping `GEN`.
   of the project (R8: the clash is at link time, in no unit's check), an
   external with no definition in the project (R9: a library's), and a name
   with more than 20000 uses and declarations (R10). A file that changes
-  while the rename runs answers ContentModified (-32801). prepareRename runs the
+  while the rename runs answers ContentModified (-32801); a `$/cancelRequest` for it answers RequestCancelled (-32800) and writes nothing. prepareRename runs the
   cheap refusals only (its scope check waits 300 ms for the scheduler). A
   macro that names the function but is never invoked leaves no record, so it
   is not seen (a documented limitation). A macro rename still replies with
