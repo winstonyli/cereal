@@ -4766,4 +4766,4 @@ cancellable: a fix-all already running on the builder, and one unit's check once
 started. Removal from `S.active` happens before the free, under the same lock.
 `proj_test.py rename` has the case (cancel after the checks, a stale id, the
 same rename succeeds). Gates: run.sh 2158 passed; globals 30; proj_test 18/18
-plain. TSan not re-run for this round.
+plain; TSan: 9 of 9 `proj_test` runs (20 min, one at a time), 0 reports.
