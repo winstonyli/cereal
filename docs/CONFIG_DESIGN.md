@@ -413,7 +413,7 @@ are new diagnostics, off by default in `lint` and reported separately.
 | `why_off(PC, V)` | `preconditions` restricted to the unmet requirements, rendered | a list |
 | `enable(PC)` | the phase-1 cube (3.8) as an overlay plus language fields | overlay; "not achievable by overlay" with the phase-2 list attached; "impossible" only per 3.8; `unknown` for an inexact PC |
 | `diff(PC, V1, V2)` | the atoms that differ and decide it | list |
-| `cover(PCs)` | a small set of valuations such that every satisfiable PC holds in one | list, greedy but a **pure function of its inputs**: groups in a fixed order (`main_path`, then group key), "uncovered" defined globally and updated in that order, each overlay chosen largest-cover-first with ties by key, at most 4 kept per entry (the first 4 chosen). Stability comes from keeping an already-built unit that is still in the output, never from letting built units steer the choice |
+| `cover(PCs)` | a small set of valuations such that every satisfiable PC holds in one | list, greedy but a **pure function of its inputs**: groups in a fixed order (`main_path`, then group key), "uncovered" defined globally and updated in that order, each overlay chosen largest-cover-first with ties by key, at most B kept per entry (the first B chosen; B = `cereal.index.maxOverlays`, default 8, section 13). Stability comes from keeping an already-built unit that is still in the output, never from letting built units steer the choice |
 
 **Cost** is counted per **block**, not per threshold atom: a block is a macro
 (raising X from 1 to 5 is one change, `-DX=5`) or a family group (setting a
@@ -493,7 +493,7 @@ overlay-flippable, and free atoms) and `language` fields, produces overlays; eac
 real entry's flags plus the overlay. Budget (one rule, replacing two): total
 virtual units at most `cereal.index.configs` times the number of real entries
 (default 0 = off; proposed on-value 0.5, to be set from S0a's count of overlays
-`cover` needs on libuv); per entry at most 4; only for groups that are exact
+`cover` needs on libuv, 364 for 62 units at B=8, section 13); per entry at most B (default 8); only for groups that are exact
 and satisfiable with a **phase-1 cube** (`maybe`, `unknown` and groups that need
 `environment` or `target` changes are excluded from the budget and from S2's
 numerator; they get explanations only), not true under the entry's own configuration, in
@@ -977,4 +977,39 @@ the order rule. The path cap (64) was never reached.
 - Not covered: `unknown` versus `impossible` for phase-2 groups and ranks beyond
   the path cap; the prototype's `cover` timings (1.7 s libuv, 170 s Lua) include
   a regex per host-valuation lookup that a real implementation would precompute.
+
+**Decisions from the v2c data (Round 246).**
+
+- *Overlay budget.* Coverage of phase-1 groups by the first k greedy overlays
+  (host-concrete system headers):
+
+  | k | 1 | 2 | 4 | 8 | 16 | 32 | 64 |
+  |---|---|---|---|---|---|---|---|
+  | libuv (1,306) | 71% | 81% | 91% | 100% | 100% | 100% | 100% |
+  | Lua (8,861) | 18% | 29% | 46% | 69% | 90% | 98% | 100% |
+  | zstd (280) | 67% | 90% | 99% | 100% | 100% | 100% | 100% |
+
+  The default per-entry budget B becomes **8** (libuv and zstd fully covered,
+  Lua 69%), configurable as `cereal.index.maxOverlays` up to 64. `cover` always
+  reports the uncovered share per entry, and an uncovered group gets an
+  explanation but no virtual unit (the same path as a `target` group). The global
+  `cereal.index.configs` ratio still bounds the total (libuv at B=8 needs about
+  6 virtual units per real one, so the proposed on-value 0.5 would serve only
+  the largest-gain overlays; on-value to be set in S2 from a measured build cost).
+- *Exactness is conditional on skipped includes.* Exactness (no OPAQUE atom in
+  the group's support) is 99% (libuv), 86% (Lua) and 85% (zstd), but a computed
+  or unresolved quoted include that the fold cannot follow means every later
+  group is exact only **in worlds where that include is not taken**: libuv 1,703
+  and Lua 8,683 of the exact groups follow one (35 active computed includes in
+  Lua, 1,025 unresolved in libuv, mostly missing platform headers); only 14% of
+  Lua's exact groups precede all of them. The right model is not per-group
+  inexactness but an **assumption set** A per unit: each skipped include
+  contributes `not cur` (its edge PC), PCs and queries are exact under A, and
+  `enable`/`why_off` print A ("assuming `LUA_USER_H` is undefined"). A group whose
+  PC implies `cur` is inexact. S1 stores A with the unit; the S0c rule "90% exact
+  on the user-file closure" is restated as "90% of groups exact, and A listed".
+  Causes of true inexactness (no OPAQUE-free PC): libuv 286 groups (176 other, 110
+  `__has_*`), Lua 1,757 (1,681 other, 72 function-like calls, 4 shifts), zstd
+  121 (72 `__has_*`); "other" is mostly arithmetic and macros defined by
+  non-numeric bodies and is the first thing S1 should break down.
 

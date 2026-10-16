@@ -4887,3 +4887,10 @@ host-concretely at any depth removes the depth cap and the size problem
 `cover`'s 4-overlay budget covers 91% of libuv's phase-1 groups but 46% of Lua's.
 Design 3.4 and decision 1 updated.
 
+Round 246: decisions from the v2c data (`docs/CONFIG_DESIGN.md` section 13):
+`cover` overlay budget per entry 4 to 8 (configurable, uncovered share
+reported; coverage curve libuv 100% / Lua 69% / zstd 100% at 8), and exactness
+restated as an assumption set per unit (skipped computed or unresolved includes
+contribute `not cur`) instead of per-group inexactness, since 83% of Lua's
+exact groups follow a computed include.
+
