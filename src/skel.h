@@ -16,11 +16,14 @@ typedef enum {
     SK_IFDEF,
     SK_IFNDEF,
     SK_ELIF,
+    SK_ELIFDEF,
+    SK_ELIFNDEF,
     SK_ELSE,
     SK_ENDIF,
     SK_DEFINE,
     SK_UNDEF,
-    SK_INCLUDE,
+    SK_INCLUDE,             /* #include and #include_next (see `next`) */
+    SK_PRAGMA_ONCE,
     SK_OTHER
 } SkKind;
 
@@ -30,7 +33,8 @@ typedef struct SkDirective {
     SrcLoc kw_loc;
     SrcLoc end_loc;
     TokSpan toks;           /* tokens after the keyword (arena copy) */
-    struct Ident *name;     /* ifdef/ifndef/define/undef operand */
+    struct Ident *name;     /* ifdef/ifndef/elifdef/elifndef/define/undef operand */
+    bool next;              /* SK_INCLUDE: #include_next */
     const char *comment;    /* trailing comment text (for #else/#endif) */
     int depth;              /* conditional nesting depth (0 = top level) */
     int opener;             /* for elif/else/endif: index of the #if */

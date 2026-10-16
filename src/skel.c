@@ -12,6 +12,7 @@ static SkKind classify(Interner *in, const Tok *kw)
                {"ifndef", SK_IFNDEF}, {"elif", SK_ELIF},
                {"else", SK_ELSE},     {"endif", SK_ENDIF},
                {"define", SK_DEFINE}, {"undef", SK_UNDEF},
+               {"elifdef", SK_ELIFDEF}, {"elifndef", SK_ELIFNDEF},
                {"include", SK_INCLUDE}, {"include_next", SK_INCLUDE}};
     size_t i;
     for (i = 0; i < ARRAY_LEN(tab); i++)
@@ -75,6 +76,7 @@ Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
                 continue; /* null directive */
             }
             d.kind = classify(in, &kw);
+            d.next = tok_is_word(in, &kw, "include_next");
             d.kw_loc = kw.loc;
             d.end_loc = kw.loc + kw.len;
             line.len = 0;
@@ -89,7 +91,11 @@ Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
             d.toks.t = NEW_ARRAY(a, Tok, line.len + 1);
             if (line.len)
                 memcpy((Tok *)d.toks.t, line.data, sizeof(Tok) * line.len);
+            if (tok_is_word(in, &kw, "pragma") && d.toks.n &&
+                tok_is_word(in, &d.toks.t[0], "once"))
+                d.kind = SK_PRAGMA_ONCE;
             if ((d.kind == SK_IFDEF || d.kind == SK_IFNDEF ||
+                 d.kind == SK_ELIFDEF || d.kind == SK_ELIFNDEF ||
                  d.kind == SK_DEFINE || d.kind == SK_UNDEF) &&
                 d.toks.n && d.toks.t[0].kind == TK_IDENT)
                 d.name = tok_ident(in, &d.toks.t[0]);
@@ -100,7 +106,7 @@ Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
                 d.depth = (int)stack.len;
                 vec_push(&stack, (int)sk->dirs.len);
                 break;
-            case SK_ELIF: case SK_ELSE:
+            case SK_ELIF: case SK_ELIFDEF: case SK_ELIFNDEF: case SK_ELSE:
                 d.depth = stack.len ? (int)stack.len - 1 : 0;
                 d.opener = stack.len ? vec_last(&stack) : -1;
                 break;

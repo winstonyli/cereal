@@ -655,8 +655,10 @@ static Node *branch_cond(Analysis *an, SkDirective *d)
 {
     switch (d->kind) {
     case SK_IFDEF:
+    case SK_ELIFDEF:
         return d->name ? make_defined(an->arena, d->name, false) : NULL;
     case SK_IFNDEF:
+    case SK_ELIFNDEF:
         return d->name ? make_defined(an->arena, d->name, true) : NULL;
     case SK_IF:
     case SK_ELIF:
@@ -706,6 +708,8 @@ static const char *dir_name(SkKind k)
     case SK_IFDEF: return "#ifdef";
     case SK_IFNDEF: return "#ifndef";
     case SK_ELIF: return "#elif";
+    case SK_ELIFDEF: return "#elifdef";
+    case SK_ELIFNDEF: return "#elifndef";
     case SK_ELSE: return "#else";
     default: return "#endif";
     }
@@ -724,7 +728,8 @@ static void check_branch(Analysis *a, Skeleton *sk, Ctx *cx, Frame *stack,
         /* constant condition: #if 0 / #if 1 */
         if (fr->cur != BDD_TRUE && fr->cur != BDD_FALSE)
             return;             /* 1 / 0 by zero, say: nothing to claim */
-        if (d->kind != SK_IFNDEF && d->kind != SK_IFDEF)
+        if (d->kind != SK_IFNDEF && d->kind != SK_IFDEF &&
+            d->kind != SK_ELIFNDEF && d->kind != SK_ELIFDEF)
             diag_report(a->diag, DL_REMARK, "cond-constant", d->kw_loc,
                         "%s condition is constant (%s)", dir_name(d->kind),
                         fr->cur == BDD_TRUE ? "always true" : "always false");
@@ -759,7 +764,7 @@ static void check_branch(Analysis *a, Skeleton *sk, Ctx *cx, Frame *stack,
         return;
     }
     sat_notc = sat(cx, bdd_and(m, fr->reach, bdd_not(m, fr->cur)));
-    if (sat_notc == 0 && d->kind != SK_IFNDEF) {
+    if (sat_notc == 0 && d->kind != SK_IFNDEF && d->kind != SK_ELIFNDEF) {
         diag_report(a->diag, DL_WARNING, "cond-redundant", d->kw_loc,
                     "%s condition is always true here (implied by the "
                     "enclosing and earlier conditions)%s", dir_name(d->kind),
@@ -877,7 +882,7 @@ static void analyze_file(Analysis *a, SrcFile *f)
             check_branch(a, sk, &cx, st.data, (int)st.len, d);
             break;
         }
-        case SK_ELIF: case SK_ELSE: {
+        case SK_ELIF: case SK_ELIFDEF: case SK_ELIFNDEF: case SK_ELSE: {
             Frame *fr;
             if (!st.len)
                 break;

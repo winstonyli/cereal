@@ -1,5 +1,5 @@
 /* cond.c limits: current behavior recorded before the BDD rewrite (S1 plan, Slice 0).
-   Lines marked "gap" are answers neither solver gives yet (S1b: #elifdef).
+   Lines marked "gap" are answers neither solver gives yet.
    cereal-flags: -Wcond-constant */
 /* arithmetic on an integer variable: an opaque atom keyed by its text (S1a), still decided when the text repeats */
 #if VERSION % 2 == 0
@@ -16,12 +16,12 @@
 #if defined(T1) ? 1 : 0
 #elif defined(T1) /* expect: cond-dead-branch */
 #endif
-/* #elifdef / #elifndef: ignored as chain branches today; gap, S1b should report both as dead */
+/* #elifdef / #elifndef are chain branches (S1b): both are dead */
 #ifdef E1
-#elifdef E1
+#elifdef E1 /* expect: cond-dead-branch */
 #endif
 #ifndef E2
-#elifndef E2
+#elifndef E2 /* expect: cond-dead-branch */
 #endif
 /* a call is an unmodeled condition: unknown today */
 #if __has_include(<stdio.h>)

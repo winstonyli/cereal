@@ -4914,3 +4914,8 @@ lint against the old binary on tests, cereal sources and 400 corpus files: only
 `cond_limits.c` (five dead branches the limits hid, now expected) and six corpus
 diagnostics removed, all false positives from arithmetic over unknown macros.
 Suite 2169 passed; lint timing 87.5 ms (baseline 100.7).
+
+Round 251: S1b skeleton kinds (`docs/S1_PLAN.md`): `#elifdef`/`#elifndef` are chain
+branches in the skeleton and lint (they were `SK_OTHER`, so ignored), `#pragma once` has
+its own kind, `include_next` is a flag on `SK_INCLUDE`. Resolved include edges parked
+to S1c (no consumer yet). Suite 2169 passed.

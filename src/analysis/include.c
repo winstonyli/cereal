@@ -273,7 +273,8 @@ static bool tested_anywhere(Analysis *a, const Ident *d)
             const SkDirective *x = &sk->dirs.data[k];
             uint32_t j;
             if (x->kind != SK_IF && x->kind != SK_IFDEF &&
-                x->kind != SK_IFNDEF && x->kind != SK_ELIF)
+                x->kind != SK_IFNDEF && x->kind != SK_ELIF &&
+                x->kind != SK_ELIFDEF && x->kind != SK_ELIFNDEF)
                 continue;
             for (j = 0; j < x->toks.n; j++)
                 if (tok_ident(a->in, &x->toks.t[j]) == d)

@@ -90,6 +90,8 @@ in Slice 0 item 2, including the arithmetic known diff, are the only diffs and e
 the margin; byte-identical output under `-fparallel=on`.
 
 **S1b, skeleton kinds and include resolution (prerequisite for the fold).**
+*Status: skeleton kinds done (Round 251: `SK_ELIFDEF`, `SK_ELIFNDEF`, `SK_PRAGMA_ONCE`, `SkDirective.next`; `cond.c` and `include.c` updated, `cond_limits.c` expectations reviewed). The per-unit resolved include edges and their `--selftest` are **parked to S1c**: nothing consumes them before the fold, and their shape is best fixed by it.*
+
 `Skeleton` stays **entry-independent** (cached per file, re-derived from content,
 section 5): `skel.h` gains kinds for `#elifdef/#elifndef` and `#pragma once`, and
 `include_next` becomes a **flag on `SK_INCLUDE`** (not a kind), because
