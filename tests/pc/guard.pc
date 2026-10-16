@@ -1,0 +1,6 @@
+pc: guard.h:2 ifndef sat=1 host=1 exact=1 taint=0 :: !defined(G_H)
+pc: guard.h:4 if sat=1 host=0 exact=1 taint=0 :: !defined(G_H) & defined(A) & defined(V) & V>=3
+pc: guard.h:6 elif sat=1 host=0 exact=1 taint=0 :: !defined(G_H) & defined(V) & !V>=3 & V>=2
+pc: guard.h:8 else sat=1 host=1 exact=1 taint=0 :: !defined(G_H) & !defined(A) & !defined(V) | !defined(G_H) & !defined(A) & defined(V) & !V>=3 & !V>=2 | !defined(G_H) & !defined(A) & defined(V) & V>=3 | !defined(G_H) & defined(A) & !defined(V) | !defined(G_H) & defined(A) & defined(V) & !V>=3 & !V>=2
+pc: guard.c:3 if sat=1 host=1 exact=1 taint=0 :: !defined(Q)
+pc: total groups=5 files=2 sys=0 unresolved=0 computed=0 over=0

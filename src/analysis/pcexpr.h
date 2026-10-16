@@ -68,6 +68,9 @@ const PcAtom *pc_atom_at(const PcCtx *cx, uint32_t var);
 bool pc_ppnum(Analysis *an, const Tok *t, intmax_t *out);
 /* NULL when the tokens are not an expression this module models */
 PcNode *pc_parse(PcCtx *cx, TokSpan toks);
+/* The condition of an #if/#elif/#ifdef/#ifndef/#elifdef/#elifndef (NULL: none
+ * or not modeled). */
+PcNode *pc_branch_cond(PcCtx *cx, const SkDirective *d);
 PcNode *pc_defined_node(PcCtx *cx, Ident *id, bool negate);
 bool pc_has_vars(const PcNode *n);
 /* The condition under which n is nonzero. */

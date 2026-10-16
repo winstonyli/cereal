@@ -1,6 +1,7 @@
 /* bdd.c - reduced ordered binary decision diagrams. */
 #include "bdd.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #define TERM_VAR UINT32_MAX
@@ -143,10 +144,18 @@ Bdd bdd_or(BddMgr *m, Bdd f, Bdd g)
     return bdd_ite(m, f, BDD_TRUE, g);
 }
 
+static int cmp_u32(const void *a, const void *b)
+{
+    uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
+    return x < y ? -1 : x > y;
+}
+
 void bdd_vars(const BddMgr *m, Bdd f, BddVars *out)
 {
     VEC(Bdd) st = {0};
+    BddVars all = {0};
     bool *vis;
+    size_t i;
     if (f < 2)
         return;
     vis = xcalloc(m->nodes.len, 1);
@@ -158,12 +167,17 @@ void bdd_vars(const BddMgr *m, Bdd f, BddVars *out)
             continue;
         vis[x] = true;
         n = &m->nodes.data[x];
-        vec_push(out, n->var);
+        vec_push(&all, n->var);
         vec_push(&st, n->lo);
         vec_push(&st, n->hi);
     }
     vec_free(&st);
     free(vis);
+    qsort(all.data, all.len, sizeof *all.data, cmp_u32);
+    for (i = 0; i < all.len; i++)
+        if (!i || all.data[i] != all.data[i - 1])
+            vec_push(out, all.data[i]);
+    vec_free(&all);
 }
 
 bool bdd_eval(const BddMgr *m, Bdd f, const bool *assign)
@@ -173,6 +187,29 @@ bool bdd_eval(const BddMgr *m, Bdd f, const bool *assign)
         f = assign[n->var] ? n->hi : n->lo;
     }
     return f == BDD_TRUE;
+}
+
+size_t bdd_count(const BddMgr *m, Bdd f)
+{
+    VEC(Bdd) st = {0};
+    bool *vis;
+    size_t n = 0;
+    if (f < 2)
+        return 0;
+    vis = xcalloc(m->nodes.len, 1);
+    vec_push(&st, f);
+    while (st.len) {
+        Bdd x = vec_pop(&st);
+        if (x < 2 || vis[x])
+            continue;
+        vis[x] = true;
+        n++;
+        vec_push(&st, m->nodes.data[x].lo);
+        vec_push(&st, m->nodes.data[x].hi);
+    }
+    vec_free(&st);
+    free(vis);
+    return n;
 }
 
 bool bdd_eval_fn(const BddMgr *m, Bdd f, bool (*val)(void *ctx, uint32_t v),

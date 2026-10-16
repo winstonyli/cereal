@@ -1,7 +1,9 @@
 /* analysis.c - wiring for the preprocessor analyses. */
 #include "analysis.h"
 #include "../cell.h"
+#include "pc.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 bool an_user_file(const SrcFile *f)
@@ -47,11 +49,25 @@ void analysis_attach(Analysis *a, PP *pp)
     include_attach(a);
 }
 
+/* CEREAL_PCDUMP=1|2: the presence conditions of the unit on stderr (2 adds
+ * BDD sizes); a hidden hook for tests and the S1 oracle. */
+static void pc_dump_hook(Analysis *a)
+{
+    const char *e = getenv("CEREAL_PCDUMP");
+    PcUnit u;
+    if (!e || !*e || !a->pp->main_file)
+        return;
+    pc_fold(&u, a, a->pp->main_file);
+    pc_dump(&u, stderr, e[0] == '2');
+    pc_unit_free(&u);
+}
+
 void analysis_finish(Analysis *a)
 {
     hygiene_finish(a);
     cond_finish(a);
     include_finish(a);
+    pc_dump_hook(a);
 }
 
 void analysis_discard(Analysis *a)

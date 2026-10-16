@@ -679,6 +679,23 @@ static Val ev(PcCtx *cx, PcNode *n)
     return v_opq(n);
 }
 
+PcNode *pc_branch_cond(PcCtx *cx, const SkDirective *d)
+{
+    switch (d->kind) {
+    case SK_IFDEF:
+    case SK_ELIFDEF:
+        return d->name ? pc_defined_node(cx, d->name, false) : NULL;
+    case SK_IFNDEF:
+    case SK_ELIFNDEF:
+        return d->name ? pc_defined_node(cx, d->name, true) : NULL;
+    case SK_IF:
+    case SK_ELIF:
+        return pc_parse(cx, d->toks);
+    default:
+        return NULL;
+    }
+}
+
 bool pc_has_vars(const PcNode *n)
 {
     if (!n)

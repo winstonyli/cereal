@@ -1,0 +1,6 @@
+pc: thresholds.c:1 if sat=1 host=0 exact=1 taint=0 :: defined(V) & V>=3
+pc: thresholds.c:2 elif sat=1 host=0 exact=1 taint=0 :: defined(V) & !V>=3 & V>=2
+pc: thresholds.c:3 else sat=1 host=1 exact=1 taint=0 :: !defined(V) | defined(V) & !V>=3 & !V>=2
+pc: thresholds.c:5 if sat=1 host=1 exact=1 taint=0 :: !defined(V) | defined(V) & !V>=1 | defined(V) & V>=1 & defined(W)
+pc: thresholds.c:7 if sat=1 host=1 exact=1 taint=0 :: !defined(W)
+pc: total groups=5 files=1 sys=0 unresolved=0 computed=0 over=0

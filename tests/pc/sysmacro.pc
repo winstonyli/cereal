@@ -1,0 +1,5 @@
+pc: sysmacro.c:2 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: sysmacro.c:4 if sat=0 host=0 exact=1 taint=0 :: 0
+pc: sysmacro.c:6 ifdef sat=1 host=0 exact=1 taint=0 :: defined(SYSW)
+pc: sysmacro.c:8 if sat=1 host=0 exact=1 taint=0 :: defined(MINE)
+pc: total groups=4 files=2 sys=1 unresolved=0 computed=0 over=0

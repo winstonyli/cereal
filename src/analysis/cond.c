@@ -46,23 +46,6 @@ void cond_discard(Analysis *a)
     vec_free(&a->cond->undefined_refs);
 }
 
-static PcNode *branch_cond(PcCtx *cx, SkDirective *d)
-{
-    switch (d->kind) {
-    case SK_IFDEF:
-    case SK_ELIFDEF:
-        return d->name ? pc_defined_node(cx, d->name, false) : NULL;
-    case SK_IFNDEF:
-    case SK_ELIFNDEF:
-        return d->name ? pc_defined_node(cx, d->name, true) : NULL;
-    case SK_IF:
-    case SK_ELIF:
-        return pc_parse(cx, d->toks);
-    default:
-        return NULL;
-    }
-}
-
 /* Evaluate the branch condition c into fr (c is NULL when it did not parse). */
 static void set_cond(PcCtx *cx, Frame *fr, PcNode *c)
 {
@@ -271,7 +254,7 @@ static void analyze_file(Analysis *a, SrcFile *f)
             }
             fr.negprior = BDD_TRUE;
             set_reach(&cx, &fr);
-            set_cond(&cx, &fr, branch_cond(&cx, d));
+            set_cond(&cx, &fr, pc_branch_cond(&cx, d));
             vec_push(&st, fr);
             check_branch(a, sk, &cx, st.data, (int)st.len, d);
             break;
@@ -293,7 +276,7 @@ static void analyze_file(Analysis *a, SrcFile *f)
                 fr->cur_novars = false;
                 check_label(a, sk, (int)i);
             } else {
-                set_cond(&cx, fr, branch_cond(&cx, d));
+                set_cond(&cx, fr, pc_branch_cond(&cx, d));
             }
             check_branch(a, sk, &cx, st.data, (int)st.len, d);
             break;

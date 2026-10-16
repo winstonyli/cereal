@@ -45,7 +45,8 @@ bool bdd_eval(const BddMgr *m, Bdd f, const bool *assign);
 /* The same, with the value of variable v given by val(ctx, v). */
 bool bdd_eval_fn(const BddMgr *m, Bdd f, bool (*val)(void *ctx, uint32_t v),
                  void *ctx);
-size_t bdd_size(const BddMgr *m);
+size_t bdd_size(const BddMgr *m);              /* nodes in the manager */
+size_t bdd_count(const BddMgr *m, Bdd f);       /* nodes reachable from f */
 
 /* `cereal selftest bdd`: ite/and/or/not against truth tables, the node cap.
  * Returns 0 when everything holds. */

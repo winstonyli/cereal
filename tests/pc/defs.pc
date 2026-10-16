@@ -1,0 +1,8 @@
+pc: defs.c:2 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: defs.c:4 ifdef sat=1 host=0 exact=1 taint=0 :: defined(A)
+pc: defs.c:7 ifdef sat=0 host=0 exact=1 taint=0 :: 0
+pc: defs.c:9 ifdef sat=1 host=0 exact=1 taint=0 :: defined(B)
+pc: defs.c:11 else sat=1 host=1 exact=1 taint=0 :: !defined(B)
+pc: defs.c:14 if sat=1 host=0 exact=1 taint=0 :: defined(B)
+pc: defs.c:16 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: total groups=7 files=1 sys=0 unresolved=0 computed=0 over=0
