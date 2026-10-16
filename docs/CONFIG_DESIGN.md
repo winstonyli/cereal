@@ -779,3 +779,19 @@ names the atoms it needs) unless a sysroot-carrying cross configuration is
 added. Not run yet: S0b (BDD size), S0c (fold exactness and cost), S0d, S0e.
 After the user asked to generalize to "this group needs these preconditions to
 be active", S4 was re-scoped to the typed precondition list (3.8, 8).
+
+S0e (Round 242; throwaway script, a textual three-valued evaluator under the
+host gcc's predefines, not the design's fold; 55 names in the list, one more
+than the 54 refusals, so counts are approximate). For each refused function,
+every textual occurrence in an `#if` chain that evaluates false under Linux/gcc,
+grouped by chain and typed by atom kind (include guards ignored): **46 functions
+have at least one inactive group of `target` kind** (an OS or compiler
+predefine), 1 only a `config`/derived-looking group (`uv_tty_set_mode`, the
+C++ `extern "C"` guard, effectively dead), and 8 show no group that evaluates
+false (their atoms are macros libuv defines itself, unknown to a textual
+evaluator: the cases only the fold of 3.4 can resolve). Groups per function:
+min 0, median 1, max 7. Reading: S4(c)'s denominator (every inactive group
+`config`/`language`) is **at most 9 of 54 and probably fewer**, below the
+10-function threshold, so rename-edit gains are small on this corpus and S4(a)
+(typed lists for all refusals) is the deliverable. The 8 unresolved functions
+are the first real test of the symbolic fold (S0c).
