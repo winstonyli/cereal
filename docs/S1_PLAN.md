@@ -122,6 +122,14 @@ only with the corpora fetched (`bench/fetch_corpus.sh`, network) and their unit
 lists and results are recorded in `docs/`; a slice commit may land on the
 fixtures alone, with the corpus gate marked pending in the status line.
 
+*Status: done (Round 253), except the exactness gate. Fold, host valuation, trace-following
+system headers, oracle and the `CEREAL_PCDUMP` hook (`bench/pc_oracle.py` aggregates) are in.
+Oracle: 100% agreement on exact groups on every corpus; nodes, time and cap gates met;
+exactness 87-100%, under 90% on lua53 (89), lua55 (88), zstd (87). **Parked:** modeling
+`__has_include`/`__has_attribute` and arithmetic on macros to lift exactness, and the
+solver-guided overlay draws (need S1d's solver). The trace needs `-fparallel=off`, so the
+fold is not yet reachable outside the hook (S1d/S1e wire it).*
+
 **S1d, queries and the family table.** `sat`, `why_off` (phases 1, 2a, 2b, typed
 `Requirement{clause,kind,status,source,via}` per 3.8), `diff`, ranks to K=3. The
 family table with OS and compiler leaves, the overlay-flippable bit, cross-axis

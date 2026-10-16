@@ -5,6 +5,9 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+static int pc_hook_flags(void);
 
 bool an_user_file(const SrcFile *f)
 {
@@ -47,18 +50,43 @@ void analysis_attach(Analysis *a, PP *pp)
     hygiene_attach(a);
     cond_attach(a);
     include_attach(a);
+    if (pc_hook_flags() >= 0)
+        pc_trace_attach(a);
 }
 
-/* CEREAL_PCDUMP=1|2: the presence conditions of the unit on stderr (2 adds
- * BDD sizes); a hidden hook for tests and the S1 oracle. */
-static void pc_dump_hook(Analysis *a)
+/* CEREAL_PCDUMP=<words>: the presence conditions of the unit on stderr; a
+ * hidden hook for tests and the S1 oracle.  "size" adds BDD sizes, "oracle"
+ * compares the host valuation with the preprocessor's choices (run with
+ * -fparallel=off), "time" the fold time. */
+static int pc_hook_flags(void)
 {
     const char *e = getenv("CEREAL_PCDUMP");
+    if (!e || !*e)
+        return -1;
+    return (strstr(e, "size") ? PCD_SIZE : 0) |
+           (strstr(e, "oracle") ? PCD_ORACLE : 0) |
+           (strstr(e, "skipped") ? PCD_SKIPPED : 0);
+}
+
+static double now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1e3 + (double)ts.tv_nsec / 1e6;
+}
+
+static void pc_dump_hook(Analysis *a)
+{
+    int flags = pc_hook_flags();
     PcUnit u;
-    if (!e || !*e || !a->pp->main_file)
+    double t0;
+    if (flags < 0 || !a->pp->main_file)
         return;
+    t0 = now_ms();
     pc_fold(&u, a, a->pp->main_file);
-    pc_dump(&u, stderr, e[0] == '2');
+    if (strstr(getenv("CEREAL_PCDUMP"), "time"))
+        fprintf(stderr, "pc: fold_ms=%.1f\n", now_ms() - t0);
+    pc_dump(&u, stderr, flags);
     pc_unit_free(&u);
 }
 

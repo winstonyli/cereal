@@ -552,6 +552,36 @@ static Bdd init_cmp(PcCtx *cx, int op, Ident *id, intmax_t c)
     }
 }
 
+static Bdd cmp_bool(PcCtx *cx, int op, Bdd b, intmax_t c, bool flipped);
+
+/* (the body of a #define) op c, the body evaluated here, now */
+static Bdd body_cmp(PcCtx *cx, int op, const PcEntry *e, intmax_t c)
+{
+    Val v;
+    intmax_t t = 0;
+    if (e->expr && cx->depth < 8) {
+        cx->depth++;
+        v = ev(cx, e->expr);
+        cx->depth--;
+        switch (v.k) {
+        case V_CONST:
+            fold(op, v.n, c, &t);
+            return t ? BDD_TRUE : BDD_FALSE;
+        case V_BOOL:
+            return cmp_bool(cx, op, v.b, c, false);
+        case V_VAL:
+            cx->depth++;
+            t = (intmax_t)num_cmp(cx, op, v.id, c);
+            cx->depth--;
+            return (Bdd)t;
+        case V_OPQ:
+            break;
+        }
+    }
+    return pc_atom(cx, PA_TEXT, NULL, 0,
+                   arena_printf(cx->an->arena, "%s %d %jd", e->opq, op, c));
+}
+
 /* (value of id now) op c: every value it can hold under its condition, and
  * 0 when it is undefined */
 static Bdd num_cmp(PcCtx *cx, int op, Ident *id, intmax_t c)
@@ -564,7 +594,7 @@ static Bdd num_cmp(PcCtx *cx, int op, Ident *id, intmax_t c)
     if (cx->env.values) {
         cx->env.values(cx->env.ctx, cx, id, &es);
     } else {
-        PcEntry e = {pc_atom(cx, PA_DEF, id, 0, NULL), false, 0};
+        PcEntry e = {pc_atom(cx, PA_DEF, id, 0, NULL), false, 0, NULL, NULL};
         vec_push(&es, e);
     }
     for (i = 0; i < es.len; i++) {
@@ -574,6 +604,8 @@ static Bdd num_cmp(PcCtx *cx, int op, Ident *id, intmax_t c)
         if (e->known) {
             fold(op, e->n, c, &t);
             tb = t ? BDD_TRUE : BDD_FALSE;
+        } else if (e->opq) {
+            tb = body_cmp(cx, op, e, c);
         } else {
             tb = init_cmp(cx, op, id, c);
         }
@@ -694,6 +726,17 @@ PcNode *pc_branch_cond(PcCtx *cx, const SkDirective *d)
     default:
         return NULL;
     }
+}
+
+bool pc_const_value(PcCtx *cx, TokSpan toks, intmax_t *out)
+{
+    PcNode *n;
+    Val v;
+    if (!toks.n || !(n = pc_parse(cx, toks)) || pc_has_vars(n))
+        return false;
+    v = ev(cx, n);
+    *out = v.n;
+    return v.k == V_CONST;
 }
 
 bool pc_has_vars(const PcNode *n)

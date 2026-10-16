@@ -207,6 +207,9 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
     verified by checking the unit under the other branches);
   - a macro-aware rename policy (what to do at a macro site: edit the
     argument, the body, or refuse).
+  Status: the configuration design is staged in `docs/S1_PLAN.md`; S1a-S1c are
+  done (BDD, skeleton kinds, symbolic fold and oracle; Round 253), S1d (queries,
+  family table) is next.
   Direction (user, Round 238): one mechanism, the *configuration* (a virtual
   compile entry: the real flags plus an overlay of standard, extensions,
   predefined macros and target), derived from the guards of each `#if` group,

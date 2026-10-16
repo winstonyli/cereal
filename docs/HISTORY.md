@@ -4928,3 +4928,23 @@ entries plus the undefined-is-0 case (the prototype's model), so only the monoto
 clause remains in `pc_sat`. `pp_resolve_include` (the include search from an explicit includer)
 shares `find_include` with the preprocessor, and `PP.seq_main` records the macro version at which
 the main file starts (the initial valuation). Suite 2172 passed.
+
+Round 253: S1c (`docs/S1_PLAN.md`): `src/analysis/pc.[ch]`, the symbolic fold of the include
+closure: one BDD per `#if`/`#elif`/`#else` group over the initial state of the macros, with
+define/undef tracked per macro (`PcMacro`), `#pragma once` per file, and computed/unresolved
+includes skipped, recorded and marked as taint on later groups. Atoms of one macro (or opaque
+text) share a block of 32 consecutive BDD levels, blocks in order of first use, so no first pass
+is needed. Macro values are entries (`known` number, or `expr` evaluated at the use point, depth
+cap 8, or an opaque keyed atom). System headers follow the real run: a PP listener
+(`pc_trace_attach`) records the taken group instances (key: hash of the include chain mixed with
+the group's `kw_loc`), so `-fparallel=off` is required for the hook. Oracle: a group's value
+under the host valuation (`pc_host_atom`, macros live at `seq_main`) against whether the real
+preprocessor took it, counted by [exact][tainted]. Hidden hook `CEREAL_PCDUMP=<words>`
+(`size`, `oracle`, `skipped`, `time`) prints `pc:` lines on stderr; `bench/pc_oracle.py`
+aggregates per corpus family. Fixtures `tests/pc/*.c` with `.pc` goldens (run.sh section 24).
+Corpus results: exact groups agree 100% (libuv 18426 groups; lua52-55, lupa, uvloop, zstd);
+exactness 87-100% (libuv 99, lua52 97, lua53 89, lua54 92, lua55 88, lupa 98, uvloop 100, zstd
+87), so the S0 bound of 90% is narrowly missed on lua53, lua55 and zstd (opaque: `__has_*`,
+function-like macro calls, arithmetic on macros; opaque atoms are host-false, 45-100% agree).
+Fold time 8-24 ms mean, 41 ms max (bound 1 s); largest group BDD 160 nodes (bound 20,000); no
+unit over the cap. Suite 2184 passed.

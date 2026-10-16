@@ -1,6 +1,7 @@
 /* pc.c - the symbolic fold: presence conditions of every group of a unit. */
 #include "pc.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #define PC_BDD_CAP ((size_t)1 << 22)
@@ -21,6 +22,68 @@ struct PcOnce {
 typedef struct PFrame {
     Bdd outer, prior, br;
 } PFrame;
+
+/* ---- the real run ------------------------------------------------------ */
+
+/* Inside a system header a condition is whatever the preprocessor decided:
+ * its own evaluator expands the function-like macros (__GLIBC_PREREQ) and
+ * does the arithmetic the fold cannot.  The run is traced as the set of
+ * groups it took, each named by the chain of #include directives entered
+ * and the group's directive (PcGroup.inst); the fold looks its instances up.
+ * Single-threaded runs only. */
+static VEC(uint64_t) taken;
+static VEC(uint64_t) chains;        /* the chain at each open file */
+
+static uint64_t mixh(uint64_t h, uint32_t x)
+{
+    h = (h ^ x) * 0x9E3779B97F4A7C15ull;
+    return h ^ (h >> 29);
+}
+
+static void trace_enter(void *ctx, SrcFile *f, const IncludeEvent *via)
+{
+    uint64_t c = chains.len ? vec_last(&chains) : 0;
+    (void)ctx;
+    (void)f;
+    vec_push(&chains, via && via->hash_loc ? mixh(c, via->hash_loc) : c);
+}
+
+static void trace_exit(void *ctx, SrcFile *f)
+{
+    (void)ctx;
+    (void)f;
+    if (chains.len)
+        chains.len--;
+}
+
+static void trace_cond(void *ctx, const CondEvent *ev)
+{
+    (void)ctx;
+    if (ev->taken && ev->kind != COND_ENDIF && chains.len)
+        vec_push(&taken, mixh(vec_last(&chains), ev->kw_loc));
+}
+
+void pc_trace_attach(Analysis *a)
+{
+    PPListener l;
+    memset(&l, 0, sizeof l);
+    l.file_enter = trace_enter;
+    l.file_exit = trace_exit;
+    l.cond = trace_cond;
+    pp_add_listener(a->pp, l);
+}
+
+static int cmp_u64(const void *a, const void *b)
+{
+    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
+    return x < y ? -1 : x > y;
+}
+
+static bool was_taken(uint64_t inst)
+{
+    return bsearch(&inst, taken.data, taken.len, sizeof *taken.data,
+                   cmp_u64) != NULL;
+}
 
 /* ---- host valuation --------------------------------------------------- */
 
@@ -53,13 +116,6 @@ static bool host_var(void *ctx, uint32_t v)
 {
     PcUnit *u = ctx;
     return pc_host_atom(u, pc_atom_at(&u->cx, v));
-}
-
-static Bdd collapse(PcUnit *u, Bdd f)
-{
-    if (f < 2)
-        return f;
-    return bdd_eval_fn(&u->cx.m, f, host_var, u) ? BDD_TRUE : BDD_FALSE;
 }
 
 /* ---- macro state ------------------------------------------------------ */
@@ -102,6 +158,8 @@ static PcMacro *macro_state(PcUnit *u, Ident *id)
     e.cond = s->def;
     e.known = false;
     e.n = 0;
+    e.opq = NULL;
+    e.expr = NULL;
     vec_push(&s->vals, e);
     vec_push(&u->macros, s);
     if (u->macros.len * 2 > u->hcap)
@@ -118,9 +176,8 @@ static PcMacro *macro_state(PcUnit *u, Ident *id)
 static Bdd env_defined(void *ctx, PcCtx *cx, Ident *id)
 {
     PcUnit *u = ctx;
-    Bdd d = macro_state(u, id)->def;
     (void)cx;
-    return u->conc ? collapse(u, d) : d;
+    return macro_state(u, id)->def;
 }
 
 static void env_values(void *ctx, PcCtx *cx, Ident *id, PcEntries *out)
@@ -133,8 +190,10 @@ static void env_values(void *ctx, PcCtx *cx, Ident *id, PcEntries *out)
         vec_push(out, s->vals.data[i]);
 }
 
-/* the macro now holds (known ? n : its initial value) under cur */
-static void do_define(PcUnit *u, Ident *id, bool known, intmax_t n, Bdd cur)
+/* the macro now holds the number n (known) or the unmodeled value opq under
+ * cur */
+static void do_define(PcUnit *u, Ident *id, bool known, intmax_t n,
+                      const char *opq, PcNode *expr, Bdd cur)
 {
     BddMgr *m = &u->cx.m;
     PcMacro *s = macro_state(u, id);
@@ -151,6 +210,8 @@ static void do_define(PcUnit *u, Ident *id, bool known, intmax_t n, Bdd cur)
     e.cond = cur;
     e.known = known;
     e.n = n;
+    e.opq = opq;
+    e.expr = expr;
     if (cur != BDD_FALSE)
         vec_push(&keep, e);
     vec_free(&s->vals);
@@ -176,11 +237,16 @@ static void do_undef(PcUnit *u, Ident *id, Bdd cur)
 
 /* ---- the fold --------------------------------------------------------- */
 
+/* the condition of a group: symbolic, or in a system header what the
+ * preprocessor decided */
 static Bdd group_cond(PcUnit *u, const SkDirective *d)
 {
     PcCtx *cx = &u->cx;
-    PcNode *n = pc_branch_cond(cx, d);
+    PcNode *n;
     Bdd c;
+    if (u->conc)
+        return was_taken(mixh(u->chain, d->kw_loc)) ? BDD_TRUE : BDD_FALSE;
+    n = pc_branch_cond(cx, d);
     if (n) {
         c = pc_truth(cx, n);
     } else {
@@ -195,10 +261,11 @@ static Bdd group_cond(PcUnit *u, const SkDirective *d)
                     arena_strndup(u->an->arena, sb_cstr(&sb), sb.len));
         sb_free(&sb);
     }
-    return u->conc ? collapse(u, c) : c;
+    return c;
 }
 
-static void record(PcUnit *u, SrcFile *f, size_t dir, Bdd br)
+static void record(PcUnit *u, SrcFile *f, size_t dir, const SkDirective *d,
+                   Bdd br)
 {
     PcGroup g;
     if (u->conc)
@@ -207,6 +274,7 @@ static void record(PcUnit *u, SrcFile *f, size_t dir, Bdd br)
     g.dir = (uint32_t)dir;
     g.pc = br;
     g.taint = u->taint;
+    g.inst = mixh(u->chain, d->kw_loc);
     vec_push(&u->groups, g);
 }
 
@@ -262,24 +330,30 @@ static void do_include(PcUnit *u, SrcFile *f, int from_dir,
     char *name;
     bool angled = false, was;
     int di = -1;
+    uint64_t chain;
     SrcFile *g;
     if (!include_name(u, d, &name, &angled)) {
         u->computed++;
         u->taint |= PC_T_COMPUTED;
+        vec_push(&u->skipped, "computed");
         return;
     }
     g = pp_resolve_include(u->an->pp, f, from_dir, name, angled, d->next, &di);
     if (!g) {
         u->unres++;
         u->taint |= angled ? PC_T_ANGLED : PC_T_QUOTED;
+        vec_push(&u->skipped, arena_printf(u->an->arena, angled ? "<%s>" : "\"%s\"", name));
         return;
     }
     was = u->conc;
+    chain = u->chain;
     if (g->kind == SF_SYSTEM || g->system_header) {
         u->conc = true;
         u->sys++;
     }
+    u->chain = mixh(chain, d->hash_loc);
     fold_file(u, g, di, cur, depth + 1);
+    u->chain = chain;
     u->conc = was;
 }
 
@@ -311,7 +385,7 @@ static void fold_file(PcUnit *u, SrcFile *f, int from_dir, Bdd pc, int depth)
             fr.prior = c;
             fr.br = bdd_and(m, cur, c);
             vec_push(&st, fr);
-            record(u, f, i, fr.br);
+            record(u, f, i, d, fr.br);
             break;
         }
         case SK_ELIF: case SK_ELIFDEF: case SK_ELIFNDEF: {
@@ -323,7 +397,7 @@ static void fold_file(PcUnit *u, SrcFile *f, int from_dir, Bdd pc, int depth)
             c = group_cond(u, d);
             t->br = bdd_and(m, t->outer, bdd_and(m, bdd_not(m, t->prior), c));
             t->prior = bdd_or(m, t->prior, c);
-            record(u, f, i, t->br);
+            record(u, f, i, d, t->br);
             break;
         }
         case SK_ELSE: {
@@ -333,7 +407,7 @@ static void fold_file(PcUnit *u, SrcFile *f, int from_dir, Bdd pc, int depth)
             t = &vec_last(&st);
             t->br = bdd_and(m, t->outer, bdd_not(m, t->prior));
             t->prior = BDD_TRUE;
-            record(u, f, i, t->br);
+            record(u, f, i, d, t->br);
             break;
         }
         case SK_ENDIF:
@@ -343,9 +417,21 @@ static void fold_file(PcUnit *u, SrcFile *f, int from_dir, Bdd pc, int depth)
         case SK_DEFINE:
             if (d->name) {
                 intmax_t n = 0;
-                bool known = d->toks.n == 2 && d->toks.t[1].kind == TK_PPNUM &&
-                             pc_ppnum(u->an, &d->toks.t[1], &n);
-                do_define(u, d->name, known, n, cur);
+                const Tok *t = d->toks.t;
+                bool known = false;
+                PcNode *expr = NULL;
+                if (d->toks.n > 1 && !(tok_is_punct(&t[1], P_LPAREN) &&
+                                       !(t[1].flags & TF_SPACE))) {
+                    TokSpan body = {t + 1, d->toks.n - 1};
+                    known = pc_const_value(&u->cx, body, &n);
+                    if (!known)
+                        expr = pc_parse(&u->cx, body);
+                }
+                do_define(u, d->name, known, n,
+                          known ? NULL
+                                : arena_printf(u->an->arena, "%s@%u",
+                                               d->name->str, d->kw_loc),
+                          expr, cur);
             }
             break;
         case SK_UNDEF:
@@ -377,6 +463,7 @@ bool pc_fold(PcUnit *u, Analysis *a, SrcFile *main)
     u->cx.env.ctx = u;
     u->cx.env.defined = env_defined;
     u->cx.env.values = env_values;
+    qsort(taken.data, taken.len, sizeof *taken.data, cmp_u64);
     fold_file(u, main, -1, BDD_TRUE, 0);
     return !u->over;
 }
@@ -393,6 +480,9 @@ void pc_unit_free(PcUnit *u)
     vec_free(&u->macros);
     vec_free(&u->once);
     vec_free(&u->groups);
+    vec_free(&u->skipped);
+    vec_free(&taken);
+    vec_free(&chains);
     free(u->htab);
     pc_free(&u->cx);
 }
@@ -487,9 +577,10 @@ static void put_formula(const PcCtx *cx, StrBuf *sb, Bdd f)
     vec_free(&x.path);
 }
 
-void pc_dump(PcUnit *u, FILE *out, bool verbose)
+void pc_dump(PcUnit *u, FILE *out, int flags)
 {
-    size_t i, j;
+    size_t i, j, maxsize = 0;
+    size_t tot[2][2][2] = {{{0}}};      /* [exact][tainted][oracle agrees] */
     for (i = 0; i < u->groups.len; i++) {
         const PcGroup *g = &u->groups.data[i];
         const SkDirective *d =
@@ -509,21 +600,37 @@ void pc_dump(PcUnit *u, FILE *out, bool verbose)
         }
         vec_free(&vs);
         put_formula(&u->cx, &sb, g->pc);
+        int host = g->pc < 2 ? (int)g->pc
+                             : bdd_eval_fn(&u->cx.m, g->pc, host_var, u);
         fprintf(out, "pc: %s:%u %s sat=%c host=%d exact=%d taint=%u",
                 base ? base + 1 : g->file->name, line, kind_name(d->kind),
-                sat < 0 ? '?' : '0' + sat,
-                g->pc < 2 ? (int)g->pc
-                          : bdd_eval_fn(&u->cx.m, g->pc, host_var, u),
-                exact, g->taint);
-        if (verbose)
-            fprintf(out, " size=%zu", bdd_count(&u->cx.m, g->pc));
+                sat < 0 ? '?' : '0' + sat, host, exact, g->taint);
+        if (flags & PCD_SIZE) {
+            size_t sz = bdd_count(&u->cx.m, g->pc);
+            fprintf(out, " size=%zu", sz);
+            maxsize = MAX(maxsize, sz);
+        }
+        if (flags & PCD_ORACLE) {
+            bool active = was_taken(g->inst);
+            fprintf(out, " oracle=%s", active == (host != 0) ? "ok" : "BAD");
+            tot[exact][g->taint != 0][active == (host != 0)]++;
+        }
         fprintf(out, " :: %s\n", sb_cstr(&sb));
         sb_free(&sb);
     }
     fprintf(out, "pc: total groups=%zu files=%zu sys=%zu unresolved=%zu "
             "computed=%zu over=%d", u->groups.len, u->files, u->sys,
             u->unres, u->computed, u->over);
-    if (verbose)
-        fprintf(out, " table=%zu", bdd_size(&u->cx.m));
+    if (flags & PCD_SIZE)
+        fprintf(out, " table=%zu maxsize=%zu", bdd_size(&u->cx.m), maxsize);
     fputc('\n', out);
+    if (flags & PCD_SKIPPED)
+        for (i = 0; i < u->skipped.len; i++)
+            fprintf(out, "pc: skipped %s\n", u->skipped.data[i]);
+    if (flags & PCD_ORACLE)
+        fprintf(out, "pc: oracle exact-untainted ok=%zu bad=%zu, "
+                "exact-tainted ok=%zu bad=%zu, opaque-untainted ok=%zu bad=%zu, "
+                "opaque-tainted ok=%zu bad=%zu\n", tot[1][0][1], tot[1][0][0],
+                tot[1][1][1], tot[1][1][0], tot[0][0][1], tot[0][0][0],
+                tot[0][1][1], tot[0][1][0]);
 }
