@@ -207,6 +207,13 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
     verified by checking the unit under the other branches);
   - a macro-aware rename policy (what to do at a macro site: edit the
     argument, the body, or refuse).
+  Direction (user, Round 238): one mechanism, the *configuration* (a virtual
+  compile entry: the real flags plus an overlay of standard, extensions,
+  predefined macros and target), derived from the guards of each `#if` group,
+  so that every group is indexed and checked under a configuration that
+  activates it; it must also carry compilation (a target) and VeriFast-style
+  proving (an annotation channel and a `VERIFAST`-like view) later.
+  Survey numbers: HISTORY Round 238.
   Shared prerequisite: a record format bump (each event gains the macro
   invocation's spelling and its body-token provenance). Design first, with
   the stop rule of B5d's `rename_libuv.py` as the measure (12.2% of libuv's

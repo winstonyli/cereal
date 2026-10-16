@@ -4804,3 +4804,24 @@ answers `__builtin_x` only, cereal adds `Foo_Bar_Baz` and `a_b_c` (a superset;
 the index apparently keys that query on the separator too). `tests/lsp/wsdigits`
 pins `L__` and `_ct`. Gates: run.sh 2158; clangd_diff 0 unexpected; wsym_bench
 p95 23.2 ms (was 21.2); the open-file matcher agreed on all probed queries.
+
+Round 238: survey (no code), configurations per `#if` group (ROADMAP Track D).
+Existing pieces: the skeleton pass (every directive of a file, active or not),
+`cond.c` (each condition as a formula over `defined(X)`, integer and opaque
+atoms, decided by enumeration; no model of mutually exclusive atoms), `Options`
+(std year, -D/-U, fingerprint; one per compile-database entry), the B5 manifests
+(E5: differing header records are kept as variants). Counted over libuv, Lua
+(7 trees), zstd and cereal's src (7,231 `#if`-family directives): 1,208 (17%)
+test a predefined or platform atom, 834 of them only such atoms. By axis: OS
+(`_WIN32` 391, `__APPLE__` 122, `__linux__` 97, the BSDs, `_AIX`, `__sun`) is
+the biggest, then compiler family (`__GNUC__` 206, `_MSC_VER` 111, `__clang__`
+67), `__cplusplus` 101, the C standard only 46 (`__STDC_VERSION__`) and 4
+(`__STRICT_ANSI__`), architecture/ABI about 80. So the axis that matters here is
+OS and compiler, not the standard. Limits found: (1) atoms of one family are
+mutually exclusive (one OS, one compiler) and `cond.c` treats them as
+independent; (2) a non-host OS or compiler needs its own system headers and
+predefines, which a Linux host lacks, so such a group parses only with missing
+includes tolerated (lenient mode) or with a supplied sysroot; (3) architecture
+and ABI atoms imply type sizes, and the checker's layout model is x86-64 SysV
+only, so a target is more than macros; (4) a verification view needs an
+annotation channel (comments lexed) as well as a macro.
