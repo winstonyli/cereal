@@ -4840,3 +4840,12 @@ unreachable stop rule, guard rule), round 2 three (position of evaluation,
 concrete versus symbolic, rename on uncovered groups), rounds 3 to 7 no
 blocking except one identity omission (round 6). Next: the S0 spikes (OS versus
 feature axis of the 54 refusals, BDD size and fold cost), before any code.
+
+Round 241: `docs/CONFIG_DESIGN.md` 3.8, preconditions as the general explanation
+(user: "this group needs these preconditions to be active"). Requirements typed
+by the Configuration field that changes them (config, language, target,
+environment, opaque), two-plus phases (overlay, then environment, then target
+relaxation), the language field a one-hot block of std rows, realizability
+derived from the unmet kinds, S4 re-scoped from rename edits to typed lists.
+Three more Sonnet review rounds (8 to 10; 2, 1 and 1 blocking), stopped by
+judgment; S0b must exercise every phase.

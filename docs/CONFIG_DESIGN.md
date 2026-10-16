@@ -125,8 +125,9 @@ setting a leaf is one change. **Integer-valued** members (`__GNUC__`,
 `_MSC_VER`) keep their own threshold blocks (3.2); their family constraints are
 implications over those thresholds, per leaf (the gnu-mode clang leaf implies
 `__GNUC__ >= 4`; the clang-cl leaf does not).
-`__STDC_VERSION__` is encoded once, as integer thresholds; it is not also a
-family member.
+`__STDC_VERSION__` is not a family member and not a variable of its own: it is
+derived from the language group's row (3.8), which is the single encoding of
+everything the std field determines.
 
 ### 3.4 Macro definitions: what a name means at a point
 
@@ -176,9 +177,10 @@ Every PC carries a flag **exact** or **inexact** (an OPAQUE atom, a depth or siz
 cap, or a skipped include). Queries report it. An inexact PC is never used to
 refuse or accept silently: "not satisfiable" on an inexact PC is `unknown`, and
 "satisfiable" is `maybe` (an OPAQUE atom is free in the solver but may be forced
-in reality). The cost query pins an OPAQUE or environment `HAS` atom at the
-concrete run's value for that occurrence (or answers `unknown` if there is
-none) and never flips it; any result touching one is inexact. An
+in reality). The cost query pins an OPAQUE atom at the concrete run's value for
+that occurrence and never flips it (with no pin value it is free and reported
+`unknown`); any result touching one is inexact. Environment `HAS` atoms are
+pinned in the overlay phase and relaxed in the relaxation phases (3.8). An
 exact unsatisfiable PC is a proof only relative to the family table (3.3).
 
 ### 3.6 Presence condition of a point, and what is stored
@@ -261,13 +263,134 @@ The scheduler addresses a unit by that triple; a compile-database reload
 that changes or removes the entry drops its virtual units, and GC removes
 manifests no live unit owns.
 
+### 3.8 Preconditions: the general explanation
+
+The primary answer to "why is this group (or declaration, or symbol) not
+present here" is its **precondition list**: the cheapest set of requirements
+that must additionally hold for its PC to be true under the configuration's
+valuation V. Every other explanation is derived from it.
+
+    Requirement { clause, kind, status, source, via }
+
+`status` is met, unmet or unknown in V; `source` is the directive (file, line)
+that imposes it; `via`, when the atom's value is set by a define or include
+event in another file, names that event (a label for the explanation, not a
+kind: the solver never reorders includes).
+
+**Kind of an atom** = the lowest-precedence Configuration field (3.7) that can
+change its value, in this order:
+
+| Kind | Changed by | Atoms |
+|---|---|---|
+| `config` | the overlay | free `I`/`CMP` atoms, and leaves the family table marks **overlay-flippable** |
+| `language` | the language field (std, mode, extensions) | atoms the language field determines (`__STDC_VERSION__`, `__STRICT_ANSI__`, `linux` under `-std=c99`) |
+| `target` | the target or compiler leaf | OS, architecture, data model, compiler identity and version leaves; **not** overlay-flippable by default |
+| `environment` | the sysroot | `HAS` atoms (host-measured ones too: a missing header on this host is `environment`) |
+| `opaque` | nothing known | OPAQUE atoms |
+
+An atom that both the language field and the target determine (`linux`) has
+kind `language` if some std value in the table changes it, else `target`. The
+family table carries one **overlay-flippable** bit per leaf (default false for
+OS and compiler leaves); section 6's "atoms an overlay can flip" and this table
+use that bit and nothing else.
+
+**The language group is a fourth block kind** (beside macro, family group and
+one-atom `HAS` blocks). It is a one-hot group over the rows of the std table
+(std year x GNU/ISO mode x extension set; the host probe supplies only the
+default row, 3.7). The std-sensitive atoms are **derived functions of the row**,
+not BDD variables of their own: `__STDC_VERSION__` thresholds, `__STRICT_ANSI__`,
+and `I(linux)` = `leaf_linux AND row_defines_linux` (likewise for every
+std-sensitive macro; 3.2 and 3.3 do not encode them separately). Choosing a row
+costs one change; its first-occurrence position in the variable order is the
+earliest occurrence of any macro it determines. S0b tests a PC that needs
+`linux` under `-std=c99`. If V's actual flags match no table row (an arbitrary
+extension bitset), the language block is not pinned and not costed: `language`
+requirements are then `unknown` and the answer is inexact.
+
+**Pinning** restricts each family group to V's leaf plus the leaves the table
+marks overlay-flippable, with cross-axis constraints (3.3) checked against the
+pinned compiler leaf; it never frees a non-flippable leaf.
+
+**Computation**, in phases, all the DP of section 4 with its per-block
+"deviated" flag:
+
+Blocks: a one-atom `HAS` atom is its own block for the deviated flag. The
+phase costs are folded into one scalar for the DP (class weights larger than the
+maximum count of lower-class changes), so section 4's single-cost DP is reused.
+A **requirement is typed by the highest-class block that deviates in the cube
+for its clause** (an atom needing `linux` while V is windows deviates on the OS
+block and the language row: that is a `target` requirement, not `language`);
+the atom-level kind of the table only renders met/unmet.
+
+1. *Overlay phase.* Pin every `target` and `environment` block (as above) and
+   every OPAQUE atom that has a pin value (its value in the concrete run for
+   that occurrence, 3.5); an OPAQUE atom with no pin value is free here and
+   reported `unknown`. Find the cheapest cube over `config` blocks and the
+   language block (tie-break config before language applies only here). If one
+   exists, `REALIZED` is reachable and `enable` uses it.
+2. *Relaxation phases, in class order.* If phase 1 has no cube, 2a relaxes only
+   `environment` blocks (cost: environment changes, then overlay changes); if
+   that has none, 2b also relaxes `target` blocks (cost lexicographic: target
+   changes, then environment changes, then overlay changes). So `PARTIAL` is
+   decided by an actual query (2a), not inferred from a cheaper `UNREALIZED`
+   cube. Each requirement of the returned cube is typed.
+   In 2b the compiler leaf is free and cross-axis constraints are just the
+   always-conjoined family constraints; they are checked against the pinned
+   compiler leaf only in phases 1 and 2a.
+3. *No cube.* Phase 1 empty means "not achievable by overlay" (`enable`
+   returns that with the phase-2 list attached). "Impossible" is answered only
+   when no phase has a cube, the PC is exact and has no OPAQUE atom; with a
+   pinned OPAQUE atom or an inexact PC, no cube means `unknown` (3.5).
+
+**Alternatives.** Rank 1 is the guaranteed cheapest cube. Further ranks come
+from enumerating BDD paths in cost order, expanding each to a **prime cube**
+(dropping literals in a fixed variable order, since BDD paths are disjoint but
+not prime), deduplicating, and continuing until K=3 distinct primes or a path
+cap (default 64); the list may therefore be shorter than K, and ranks 2 and 3
+are "next cheapest found", not guaranteed. The cost is computed after
+expansion. `cover`'s candidate overlays are the per-group phase-1 cubes (up to
+K) and merges of them; a merged valuation (V plus two cubes) is **evaluated
+against every group's PC**, and coverage is counted from that evaluation, not
+from cube membership, since a merge can falsify a group that V or an earlier
+cube satisfied. The coverage guarantee holds only for groups with a phase-1
+cube (section 6 eligibility says so). S0b exercises all phases.
+
+What it subsumes (one mechanism instead of several):
+
+- `why_off` is the unmet requirements of the cheapest cube, rendered (met ones
+  shown only on request); `enable` is the phase-1 cube as an overlay, and if
+  phase 1 has no cube it answers "impossible" and attaches the phase-2 list.
+- **Realizability** (section 6) is the worst of (the class of the best
+  alternative cube) and (the unit's actual build result): a phase-1 cube gives
+  `REALIZED`; unmet `environment` gives at best `PARTIAL`; unmet `target`
+  gives `UNREALIZED` on this host; `unknown` gives no unit. A missing include
+  at build time downgrades `REALIZED` to `PARTIAL` whatever the cube says.
+- The OS-versus-feature distinction of S0a (13) is not a special case: an
+  OS-axis refusal is "unmet: target = apple", a feature-axis one is
+  "unmet: config USE_FOO".
+- Hover text (7.1), code-action text, rename refusal text (7.2) and the
+  `cereal/configExplain` reply are renderings of the list.
+- A back end or prover (7.3, 7.4) asks the same question with its own
+  configuration: its fields change which atoms are `config`, `language` or
+  `target`, not the computation.
+
+`language` requirements are not macro overlays: `flag_hash'` of a virtual entry
+(3.7) is recomputed over the std argv words as well as the overlay, so the
+identity triple is unchanged, and a `language`-only unit is as exact
+as the std table or a re-probe for that std (the host probe covers only the
+default std); without one it is `inexact`.
+
+What it cannot cover: requirements that are not about presence (a type error in
+an active group), and anything that depends on an inexact PC beyond `unknown`.
+
 ## 4. Solver
 
 Reduced ordered BDDs over the initial atoms (3.1), one shared node table per
 query, with the family constraints conjoined. **Provisional** (decision 1): the
 choice rests on the spike S0 (section 8). Node cap per query (default 200,000);
-past it the answer is `unknown`. The variable order is by **block** (a macro, or a family
-group whose leaves encode several macros), first occurrence of the block in
+past it the answer is `unknown`. The variable order is by **block** (a macro, a family
+group whose leaves encode several macros, a one-atom `HAS` block, or the
+language group of 3.8, whose row determines several macros), first occurrence of the block in
 file order, **with all atoms of one block contiguous** (needed for the per-macro
 cost below); S0 measures it against a size-sorted alternative.
 
@@ -282,22 +405,25 @@ are new diagnostics, off by default in `lint` and reported separately.
 |---|---|---|
 | `sat(PC)` | some valuation keeps it | yes / no / maybe / unknown (3.5) |
 | `holds(PC, V)` | under valuation V | bool |
-| `why_off(PC, V)` | the cheapest change to V that makes PC true, with each part's reason (fixed by target, set by the overlay, free, environment) | a list |
-| `enable(PC)` | the cheapest overlay of free atoms | overlay, or "impossible: needs X, fixed false by the target" |
+| `preconditions(PC, V)` | the cheapest cubes (up to 3) that make PC true, each requirement typed by kind and status (3.8) | list of Requirement lists |
+| `why_off(PC, V)` | `preconditions` restricted to the unmet requirements, rendered | a list |
+| `enable(PC)` | the phase-1 cube (3.8) as an overlay plus language fields | overlay; "not achievable by overlay" with the phase-2 list attached; "impossible" only per 3.8; `unknown` for an inexact PC |
 | `diff(PC, V1, V2)` | the atoms that differ and decide it | list |
 | `cover(PCs)` | a small set of valuations such that every satisfiable PC holds in one | list, greedy but a **pure function of its inputs**: groups in a fixed order (`main_path`, then group key), "uncovered" defined globally and updated in that order, each overlay chosen largest-cover-first with ties by key, at most 4 kept per entry (the first 4 chosen). Stability comes from keeping an already-built unit that is still in the output, never from letting built units steer the choice |
 
 **Cost** is counted per **block**, not per threshold atom: a block is a macro
 (raising X from 1 to 5 is one change, `-DX=5`) or a family group (setting a
-leaf is one change; its overlay may need several words, `-U__linux__ -D_WIN32`,
-and the tie-break counts overlay words).
+leaf is one change; its overlay may need several words, e.g. `-U__unix__
+-D__MVS__` for an overlay-flippable leaf pair, and the tie-break counts overlay
+words; non-flippable leaves are changed only in the relaxation phases, 3.8).
 The cost of a path is the number of macros whose assignment differs from V
 (a skipped block is a don't-care and costs nothing; a block entered with V's
 own assignment costs nothing). Because a macro's atoms are contiguous in the
 order (above), this is a DP over the BDD with a per-block "deviated from V yet"
 flag, not a plain edge-weighted shortest path. S0b implements exactly that
-query, not only the diagram. Ties: free before fixed, then fewer macros, then
-alphabetical.
+query, not only the diagram. Among cubes of equal cost (phase-lexicographic, 3.8): lower kind first (config,
+language, target, environment; `opaque` never costs), then fewer overlay words,
+then alphabetical.
 
 `why_off` may report a change that is **blocked** (the target fixes it or a
 family forbids it): "needs `_WIN32`; this configuration's OS is linux".
@@ -358,37 +484,48 @@ textual word hit, no resolved symbol needed) or a parsed event of a symbol in
 scope. Their Local PCs come from the skeleton (in memory until S3), so a group
 no unit ever activated is included. A use inside a function body guards a
 statement, not a declaration, and is covered the same way. Overlays are
-restricted to atoms the target lets an
-overlay flip, produces overlays; each becomes a **virtual compile entry**: the
+restricted to `config`-kind atoms (3.8: those the family table marks
+overlay-flippable, and free atoms) and `language` fields, produces overlays; each becomes a **virtual compile entry**: the
 real entry's flags plus the overlay. Budget (one rule, replacing two): total
 virtual units at most `cereal.index.configs` times the number of real entries
 (default 0 = off; proposed on-value 0.5, to be set from S0a's count of overlays
 `cover` needs on libuv); per entry at most 4; only for groups that are exact
-and satisfiable (`maybe` and `unknown` groups are excluded from the budget and
-from S2's numerator), not true under the entry's own configuration, in
+and satisfiable with a **phase-1 cube** (`maybe`, `unknown` and groups that need
+`environment` or `target` changes are excluded from the budget and from S2's
+numerator; they get explanations only), not true under the entry's own configuration, in
 `cereal.index.paths` scope. Allocation: entries are served in the fixed `main_path` order (so a header edit
 does not change which entries get units), until the global cap is reached.
 
-Realizability of a virtual unit:
+Realizability of a virtual unit is determined by the kinds of the unmet
+requirements of the group it is meant to activate (3.8):
 
 | Class | Meaning | Used for |
 |---|---|---|
-| `REALIZED` | preprocesses and checks without missing includes | indexing, rename, diagnostics |
-| `PARTIAL` | missing system includes tolerated (lenient mode); user code parsed, types from the missing headers unknown | indexing of declarations whose type does not depend on them; no diagnostics; rename never (the rename gate cannot hold with unknown types) |
-| `UNREALIZED` | not run: needs a sysroot or target model we do not have | explanations only |
+| `REALIZED` | only `config`/`language` unmet; preprocesses and checks without missing includes | indexing, rename, diagnostics |
+| `PARTIAL` | an `environment` requirement unmet: missing system includes tolerated (lenient mode); user code parsed, types from the missing headers unknown | indexing of declarations whose type does not depend on them; no diagnostics; rename never (the rename gate cannot hold with unknown types) |
+| `UNREALIZED` | a `target` requirement unmet: not run, needs a target model we do not have | explanations only |
 
-Consequence for the OS axis (the largest in the survey): on a Linux host, a
-Windows-only or macOS-only group is `PARTIAL` at best, so rename through it
-stays refused and the explanation ("needs `_WIN32`") is the deliverable. S4's
-stop rule is therefore set on the feature axis only (8).
+(An `opaque` requirement makes the class `unknown`: no unit is built. A
+`REALIZED` unit reached through a `language` change is `inexact` unless the std
+table or a re-probe covers that std, 3.8.)
+
+Consequence for the OS axis (the largest in the survey, 13): on a Linux host, a
+Windows-only or macOS-only group has an unmet `target` requirement, hence
+`UNREALIZED`, so rename through it stays refused and the precondition list
+("unmet: target = apple") is the deliverable. S4's rule is set on the
+explanation, not on rename edits (8).
 
 ## 7. Consumers
 
 ### 7.1 Language server
 
-- Hover and code action on an inactive region: "inactive: needs `X >= 3`;
-  currently X is 2 (set by `-DX=2` in compile_commands.json)".
-- Symbol hover: "defined if A, B and C; A and B are defined here, C is not".
+- Hover and code action on an inactive region render the precondition list
+  (3.8), one line per requirement with its kind: "inactive: unmet (config)
+  `X >= 3`, currently X is 2 (set by `-DX=2` in compile_commands.json)" or
+  "unmet (target) `__APPLE__`"; met requirements are shown on request. The code action offers the
+  overlay only when every unmet requirement is `config` or `language`.
+- Symbol hover: "defined if A, B and C; A and B are defined here, C is not",
+  with the kind of C.
 - Definition and references across configurations carry the PC; the default
   shows the union, tagged.
 - `cereal/configExplain` for tests and tools.
@@ -427,11 +564,11 @@ field and that PCs of annotation-guarded code work.
 
 | Stage | Content | Format | Stop rule |
 |---|---|---|---|
-| S0 | **Spikes before any commitment.** (a) classify libuv's 54 A3.9 refusals by atom axis (OS / compiler / feature / other); (b) build BDDs for all groups of libuv, Lua and zstd with both variable orders: max nodes, total time; (c) count how many groups' conditions stay exact under 3.4 (user-file closure and full closure separately), and time the symbolic fold per entry; (d) how many overlays `cover` needs on libuv | none | (a) reports the feature-axis count; (b) max nodes < 20,000 per group **after substitution** of derived formulas, total under 10 s including the cost query, else revisit decision 1; (c) at least 90% exact on the user-file closure, fold under 1 s per entry |
+| S0 | **Spikes before any commitment.** (a) classify libuv's 54 A3.9 refusals by atom axis (OS / compiler / feature / other); (b) build BDDs for all groups of libuv, Lua and zstd with both variable orders: max nodes, total time; (c) count how many groups' conditions stay exact under 3.4 (user-file closure and full closure separately), and time the symbolic fold per entry; (d) how many overlays `cover` needs on libuv; (e) re-run (a) enumerating **every** inactive group per refused function, typed by 3.8 kind and phase | none | (a) reports the feature-axis count; (b) max nodes < 20,000 per group **after substitution** of derived formulas, total under 10 s including the cost query, else revisit decision 1; (c) at least 90% exact on the user-file closure, fold under 1 s per entry |
 | S1 | BDD solver; PCs and queries for the open unit; family table; hover and `cereal/configExplain`; cond.c rewritten on top | none | `lint` goldens unchanged except the reviewed `unknown` ones (every cond.c unknown source: variables, 2^18, `dom[24]`, 64 conjuncts, 32 priors, 64 frames, unmodeled conditions); the oracle agrees on at least 98% of the *decidable* groups (below) |
-| S2 | virtual entries, `cover`, realizability classes, `cereal.index.configs` | none | exact feature-axis groups holding an `inactive_use` hit are covered by a `REALIZED` virtual unit at a rate set from S0a's groups-per-refused-function distribution so that S4's function-level 80% is reachable (criterion per function: all its groups covered by a `REALIZED` unit and gate-passing; 80% of the S4 denominator functions must satisfy it, using S0a's actual groups-per-function distribution, with the gate measured on a synthetic rename of those functions since S4 itself comes later); wsym p95 and builder p50 not regressed, **measured with `cereal.index.configs` at the on-value** |
+| S2 | virtual entries, `cover`, realizability classes, `cereal.index.configs` | none | exact groups of phase-1 (`config`/`language`) kind holding an `inactive_use` hit are covered by a `REALIZED` virtual unit at a rate set from S0a's groups-per-refused-function distribution so that S4's function-level 80% is reachable (criterion per function: all its groups covered by a `REALIZED` unit and gate-passing; 80% of the S4 denominator functions must satisfy it, using S0a's actual groups-per-function distribution, with the gate measured on a synthetic rename of those functions since S4 itself comes later); wsym p95 and builder p50 not regressed, **measured with `cereal.index.configs` at the on-value** |
 | S3 | `CREC_FORMAT` 5: Local PC ids on events, edge PCs in manifests | yes | symcov unchanged; store size +10% or less, counting PC ids, instance trees and untaken edges |
-| S4 | rename through inactive groups via `REALIZED` virtual units | no | on the functions among the 54 whose every inactive group is exact, satisfiable and feature-axis (S0a reports that count, the mixed-axis count and the inexact count): refusals fall by at least 80% with no new false edit |
+| S4 | precondition lists wherever a group is refused or shown (rename refusal text, hover, code action); rename through inactive groups via `REALIZED` units where the lists allow | no | (a) every one of the 54 libuv A3.9 refusals carries a precondition list; the report counts the `opaque`-typed and undecidable ones, and the oracle confirms, where only phase-1 requirements are unmet, that satisfying exactly them activates the group; (b) a falsifier for `target`-typed atoms: run the real preprocessor with the atom flipped, ignoring the family table, and confirm the refusal is family-forced, not mis-typed; (c) rename edits: the denominator is the refused functions whose every inactive group is phase-1 (from the re-run S0a, S0e); if that is under 10 functions, the rule is the absolute count of them that now succeed, with no new false edit |
 | S5 | target and annotation fields wired to a back end / proof tool | per consumer | out of scope here |
 
 **The oracle.** For a decidable group, `why_off`/`enable` yields an overlay; run
@@ -575,6 +712,38 @@ edges, stale-hash rule (5); `#pragma once` identity as a per-unit class number
 function, gate measured synthetically (8). Nits: blocks are macro or family
 group (4); real or virtual units in 7.2.
 
+Round 8 (Sonnet, on section 3.8 only; 2 blocking). Blocking: `reach` cannot be a
+cube kind because the solver never reorders includes (now a `via` label, kinds
+are defined by the Configuration field that changes an atom); the two-phase
+computation was under-specified (phase 1 pins non-overlay blocks, phase 2
+relaxes lexicographically, K irredundant cubes, `enable` is the phase-1 cube).
+Should-fix: kind as a function of the atom, overlay-flippable bit in the family
+table (3.8, 6); OPAQUE pinned versus unknown (3.8); language fields are not
+macro overlays and enter the unit hash (3.8); S4 vacuity and unmeasured
+denominator, falsifier for target-typed atoms, S0e re-run (8, 13); realizability
+as worst of cube class and build result (3.8). Nits: tie-break order, "cheapest"
+not "minimal", met items on request, UV_H partition.
+
+Round 9 (Sonnet, on 3.8; 1 blocking). Blocking: the language field is one
+block of std-table rows costed as one change, side-effected atoms "determined
+by the row" (3.8). Should-fix: 3.5 versus 3.8 on environment atoms; OPAQUE with
+no pin and "impossible" only for exact PCs (3.8, 3.5); pinning per leaf with the
+flippable bit and a flippable example in 4; phases 2a (environment) and 2b
+(target) so PARTIAL is a real query; k-best then prime-cube expansion; stale
+`reach` in 6 and `cover` candidates; tie-break wording; `flag_hash'` over std
+words.
+
+Round 10 (Sonnet, on 3.8; 1 blocking). Blocking: the language row is a fourth
+block kind, std-sensitive atoms are derived from it, not variables (3.3, 3.8, 4).
+Should-fix: requirement typed by the highest-class deviating block (3.8); V's
+row not in the table leaves language unpinned and unknown (3.8); K alternatives
+only rank 1 guaranteed, fixed prime expansion, path cap (3.8); cover counted by
+evaluating merged valuations, eligibility needs a phase-1 cube (3.8, 6);
+"not achievable by overlay" versus "impossible" (3.8, 4). Nits: scalar class
+weights, `HAS` one-atom blocks, 2b cross-axis, language-only exactness (3.8, 6).
+Review of 3.8 stopped here by judgment: remaining risk is implementation
+detail that S0b exercises (all phases) better than another read.
+
 Stopping rule applied: seven rounds; findings went from 6 blocking (round 1) to
 none material to the model in rounds 5 to 7, only implementation-level gaps.
 Further review has lower yield than the S0 spikes (8), which test the claims the
@@ -591,16 +760,22 @@ S0a (Round 240; `rename_libuv.py --verbose` on libuv, 441 functions, 54 refused
 for A3.9; each refusal names only the first inactive use, so groups per function
 is not measured). Each refusal classified by the atoms of the `#if` chain around
 that use: 20 OS only, 26 OS plus a guard or derived macro (include guards
-`UV_UNIX_INTERNAL_H_`, `UV_H`, `PTHREAD_BARRIER_SERIAL_THREAD`), 8 with no OS
+`UV_UNIX_INTERNAL_H_`, `PTHREAD_BARRIER_SERIAL_THREAD`), 8 with no OS
 atom (`uv__accept4`, `UV_USE_SIGCHLD`, `O_CLOEXEC`, `UV__CPU_AFFINITY_SUPPORTED`,
 and `UV_H`/`__cplusplus`, the dead `extern "C"` guard). Reading: at least 46 of
 54 (85%) are OS-axis; the 8 "feature" ones are themselves derived from OS macros
 by `#define`s in headers (so only the fold of 3.4 can make them satisfiable),
-or dead. **Consequence: S4's feature-axis subset is about 4 functions, so S4's
-80% rule is not meaningful as written; rename through inactive groups on this
-corpus is almost entirely the OS axis, which is `PARTIAL`/`UNREALIZED` on a
-Linux host (6).** The value of the mechanism on this corpus is therefore the
+or dead. **Consequence: the number of refusals needing only `config`/`language`
+is somewhere from 0 to 8 of 54 (unmeasured: the 8 may be `target` kind once the
+fold resolves them), so an 80% rule on that subset is not meaningful as
+written; rename through inactive groups on this corpus is almost entirely the
+OS axis, which is `target` kind and `UNREALIZED` on a Linux host (6).** These
+S0a axes (OS/compiler/feature) are not the 3.8 kinds; S0a must be re-run
+enumerating every inactive group of each refused function, classified by kind
+with both phases. The value of the mechanism on this corpus is therefore the
 explanation (7.1: "needs `__APPLE__`") and group-aware refusal text, not
 rename edits; S4 should be re-scoped to measure the explanation (every refusal
 names the atoms it needs) unless a sysroot-carrying cross configuration is
-added. Not run yet: S0b (BDD size), S0c (fold exactness and cost), S0d.
+added. Not run yet: S0b (BDD size), S0c (fold exactness and cost), S0d, S0e.
+After the user asked to generalize to "this group needs these preconditions to
+be active", S4 was re-scoped to the typed precondition list (3.8, 8).
