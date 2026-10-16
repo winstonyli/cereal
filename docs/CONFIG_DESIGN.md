@@ -1013,3 +1013,19 @@ the order rule. The path cap (64) was never reached.
   121 (72 `__has_*`); "other" is mostly arithmetic and macros defined by
   non-numeric bodies and is the first thing S1 should break down.
 
+**The "other" inexact bucket, broken down (Round 247).** Lua's 1,681 "other" groups
+(1,406 of them depend on one shared opaque atom) come from two conditions that
+the prototype's evaluator cannot read: `__FLT_EVAL_METHOD__ == -1` (unary
+minus) and `'A' == 65 && '0' == 48` (character constants), each 17 times; about
+250 more compare macros that alias another macro (`LUA_INT_TYPE == LUA_INT_INT`);
+a handful are arithmetic on shift results (`(b) >= 3`). libuv's 176 are
+`NSIG <= SIGWINCH` (122) and `O_NDELAY != O_NONBLOCK` (53), comparisons between two
+macros whose values the host knows. None needs new theory. S1's condition
+evaluator gets three rules: (a) integer literals include unary minus and
+character constants; (b) an object-like macro whose body is a single identifier
+or integer is chased to its value; (c) a comparison of two integer atoms is a
+case split over their value tables (the same table `numcmp` already walks). With
+them the remaining true inexactness is `__has_*` and function-like macro calls.
+The prototype also named opaque atoms by text, so one unreadable condition made
+every dependent group look inexact; S1 names an opaque atom per directive.
+

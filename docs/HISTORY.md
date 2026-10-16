@@ -4894,3 +4894,8 @@ restated as an assumption set per unit (skipped computed or unresolved includes
 contribute `not cur`) instead of per-group inexactness, since 83% of Lua's
 exact groups follow a computed include.
 
+Round 247: the "other" inexact bucket broken down (`docs/CONFIG_DESIGN.md`
+section 13): unary minus, character constants, macro-alias comparisons and
+two-atom comparisons, all fixable by three evaluator rules; opaque atoms are
+named per directive.
+
