@@ -154,10 +154,14 @@ Rules and limits:
   the include closure that resolves with the entry's search paths. An include
   whose edge PC is not true under the entry's valuation (not reached in the
   concrete run) is followed symbolically only to depth 2; beyond that the macros
-  it would define are `OPAQUE` (inexact). System headers (glibc `features.h`
-  and its arithmetic on `__USE_*`, `__GLIBC_PREREQ`) are expected to be mostly
-  inexact; S0c reports exactness for the user-file closure and the full closure
-  separately.
+  it would define are `OPAQUE` (inexact). **System headers** (found through the
+  system search path, not a quoted include of the project) are folded in
+  **host-concrete mode** at any depth: their conditions are evaluated under the
+  entry's host valuation, their groups are not recorded as presence conditions,
+  and their definitions are guarded only by the PC of the including point. The
+  macros they define are therefore `environment`-kind (3.8) and cost no BDD
+  size (S0b v2c, section 13). S0c reports exactness for the user-file closure
+  and the full closure separately.
 - **Constant-valued defines** (`#define X`, `#define X 3`, `#define X Y` with Y
   an atom) update both `D` and the value. A define whose body is anything else
   (an expression with arithmetic, a function-like macro) makes `D(X, p)` still
@@ -608,9 +612,10 @@ list, and for other compilers by review.
 
 1. Solver: BDD (recommended), with family and threshold constraints applied
    per group at query time (only the clauses that share a variable with the
-   group) and the symbolic fold following system headers to depth 1 (S0b v2,
-   section 13), or SAT plus MaxSAT for cost (smaller, but exact minimal change
-   needs a cost optimizer).
+   group), system headers folded host-concretely (3.4), and the variable order
+   completed by a first fold pass before the final one (S0b v2, section 13), or
+   SAT plus MaxSAT for cost (smaller, but exact minimal change needs a cost
+   optimizer).
 2. First stage: S0 spikes, then S1 in process with no format change
    (recommended).
 3. Families: small built-in hierarchy, extensible in settings (recommended).
@@ -905,3 +910,71 @@ identical to the global-conjunction run at SD=1, so nothing was lost there).
 - Phase counts (inactive groups needing an overlay versus a target change) at
   SD=1 are unchanged: libuv 19,341 and 9,465, Lua 14,124 and 2,813; zstd 1,685
   and 862 of 2,547.
+
+S0b/S0c v2c (Round 245, same prototype): ranks 2 to 3, `cover`, the fold profile,
+and system headers folded **host-concretely** (conditions inside a system
+header evaluated under the host valuation, its groups not recorded, definitions
+guarded by the including point's PC) at unlimited depth. Depth-1 symbolic runs
+of v2b are the comparison.
+
+Fold profile (zstd, depth 1, symbolic): per pass the table holds 2.3M nodes, but
+only 38% are live at the end (libuv units 21% to 25%): a manager without garbage
+collection wastes most of its table. The cost is concentrated: `stddef.h`
+alone is included 10 times per pass and each inclusion adds 0.45M to 0.54M
+nodes (`__need_*` multi-inclusion macros); in Lua's `onelua.c`, 834 of 1,110
+inclusions add 0 nodes because the guard makes the re-inclusion empty. So
+sharing PCs per inclusion instance would help little (re-inclusions are already
+cheap where a guard exists); the cost is symbolic folding of compiler and libc
+headers.
+
+| Corpus (host-concrete system headers, unlimited depth) | Units over cap | Fold (two passes) | Max nodes, one group | Max table, one unit | Exact | Groups |
+|---|---|---|---|---|---|---|
+| libuv | 0 of 62 | 50.5 s (slowest unit 1.3 s) | 119 | 183,410 | 99% | 30,839 |
+| Lua 5.4 | 0 of 35 | 20.4 s (slowest unit 2.1 s) | 127 | 71,866 | 86% | 19,279 |
+| zstd | 0 of 1 | 1.6 s | 124 | 40,660 | 85% | 1,145 |
+
+(For zstd symbolic at depth 1 the fold was 14.6 s with 2.86M nodes and 76%
+exact; the group counts now equal v1's because system-header groups are no longer
+recorded.) Fold time is now dominated by the number of folded files (libuv 31,281
+inclusions, 29,836 of system headers), not by BDD size. S0b's stop rule
+(under 20,000 nodes per group) holds with a 100x margin; S0c's "under 1 s per
+entry" holds on average for Lua (0.6 s) and libuv (0.8 s) but not for their
+slowest units (2.1 s, 1.3 s) or zstd (1.6 s), all two-pass Python figures;
+exactness is above 90% only for libuv (the user-file closure was
+not separated, so Lua's 86% includes its 665 computed includes). The depth cap
+is no longer needed.
+
+**Ranks and `cover`.** Rank-1 cost from the path enumeration equals the DP cost
+for every phase-1 group (0 mismatches in 19,341 + 14,124 + 1,685 groups) **once
+the variable order is complete before the final fold**: with variables created
+lazily during the fold the blocks are not contiguous and the DP overcounted
+(cost 2 for a cost-1 cube); the two-pass fold fixes it and is a requirement of
+the order rule. The path cap (64) was never reached.
+
+| Corpus | Phase-1 groups | With at least 2 primes | With at least 3 | `cover`: overlays per unit (mean, max) | Units needing 4 or fewer | Groups covered by the first 4 |
+|---|---|---|---|---|---|---|
+| libuv, host-concrete | 1,306 | 73 (6%) | 8 (0.6%) | 5.9, 6 | 1 of 62 | 1,185 of 1,306 (91%) |
+| Lua, host-concrete | 8,861 | 5,724 (65%) | 3,829 (43%) | 17.3, 51 | 3 of 35 | 4,090 of 8,861 (46%) |
+| zstd, host-concrete | 280 | 100 (36%) | 57 (20%) | 5.0, 5 | 0 of 1 | 278 of 280 (99%) |
+| libuv, depth-1 symbolic | 19,341 | 4,122 (21%) | 695 (3.6%) | 6.5, 15 | 1 of 62 | 18,927 of 19,341 (98%) |
+| Lua, depth-1 symbolic | 14,124 | 7,637 (54%) | 4,636 (33%) | 18.0, 51 | 3 of 35 | 9,193 of 14,124 (65%) |
+
+- The number of phase-1 groups drops 15-fold on libuv once system headers are
+  concrete (19,341 to 1,306), and the phase split becomes what S0a predicted:
+  10,782 of 12,088 inactive libuv groups (89%) need a target change (phase 2).
+  The depth-1 symbolic figure counted system-header groups, which are noise for a
+  user-facing question.
+- **The "at most 4 overlays per entry" budget of section 4 is too small for
+  Lua** (46% of its phase-1 groups covered by 4) and is just enough for libuv
+  (91%). Lua's groups are mostly independent language-feature switches
+  (`LUA_COMPAT_*`, `LUA_USE_*`), each needing its own overlay. Either raise the
+  budget per entry (cost: more virtual entries) or accept that `cover` is a
+  best-effort tool and report the uncovered share.
+- `cover` as measured is greedy over the 1,000 most frequent group cubes with
+  merging of non-conflicting cubes; it covered every phase-1 group eventually (0
+  uncoverable) except 58 of 1,685 in zstd at depth 1, which disappear under
+  host-concrete headers.
+- Not covered: `unknown` versus `impossible` for phase-2 groups and ranks beyond
+  the path cap; the prototype's `cover` timings (1.7 s libuv, 170 s Lua) include
+  a regex per host-valuation lookup that a real implementation would precompute.
+

@@ -4878,3 +4878,12 @@ per group at query time). Honest exactness 92% libuv, 78% Lua, 76% zstd;
 inactive groups have an overlay cube. Decision 1 (BDD) stands with depth-1
 system headers and per-group constraints; ranks 2 to 3 and `cover` untested.
 
+Round 245: S0b/S0c v2c (throwaway Python; `docs/CONFIG_DESIGN.md` section 13):
+ranks 2 to 3 and `cover` prototyped (rank-1 equals the DP cost once the variable
+order is complete before the final fold); fold profile (38% of the table is
+live; `stddef.h` re-inclusions dominate zstd); system headers folded
+host-concretely at any depth removes the depth cap and the size problem
+(libuv max 119 nodes per group, exact 99%; Lua 86%; zstd 85%, fold 1.6 s).
+`cover`'s 4-overlay budget covers 91% of libuv's phase-1 groups but 46% of Lua's.
+Design 3.4 and decision 1 updated.
+
