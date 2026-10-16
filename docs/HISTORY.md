@@ -4779,3 +4779,14 @@ the fix 2 seeds ran with 0 reports; run.sh 2158 passed, proj_test 18/18. Noted:
 the stress logged 0 cancelled renames (most of its renames are refused before
 the worker starts, or finish first), so the cancel path is covered by
 `proj_test` only.
+
+Round 236: gate at dbcffcc (Rounds 233 to 235): globals 30, run.sh 2158 passed,
+san 2158 and 0 findings (628 files), verify gcc.dg 3908/3910, c-c++-common
+637/638, cpp 289/289, callgrind 3.8830 G. Idle memory with the project index
+(the parked idle-trim item, Round 203): a generated 1,000-TU project, 4 index
+threads, all jobs in process: after the index is built the server holds RSS 52 MB
+(anon 40, file 11), peak 54 MB, unchanged after 2 s idle and after
+`workspace/symbol` queries; `MALLOC_TRIM_THRESHOLD_=0` gives 47 MB (-10%). The
+in-process jobs free their memory, so the index adds no idle cost worth a trim;
+the Round 203 finding (only huge generated files) stands. Not measured: the
+1,804-TU real corpus (ProjIndex 6.1 MB there), peak under `renameMaxTUs` checks.
