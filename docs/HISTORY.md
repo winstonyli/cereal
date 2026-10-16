@@ -4841,6 +4841,11 @@ concrete versus symbolic, rename on uncovered groups), rounds 3 to 7 no
 blocking except one identity omission (round 6). Next: the S0 spikes (OS versus
 feature axis of the 54 refusals, BDD size and fold cost), before any code.
 
+Round 240: S0a (no code in `src/`): classified libuv's 54 A3.9 refusals by
+atom axis, 20 OS only, 26 OS plus guard or derived, 8 with no OS atom, so at
+least 46 of 54 (85%) sit on the OS axis; recorded in `docs/CONFIG_DESIGN.md`
+section 13.
+
 Round 241: `docs/CONFIG_DESIGN.md` 3.8, preconditions as the general explanation
 (user: "this group needs these preconditions to be active"). Requirements typed
 by the Configuration field that changes them (config, language, target,
@@ -4849,3 +4854,27 @@ relaxation), the language field a one-hot block of std rows, realizability
 derived from the unmet kinds, S4 re-scoped from rename edits to typed lists.
 Three more Sonnet review rounds (8 to 10; 2, 1 and 1 blocking), stopped by
 judgment; S0b must exercise every phase.
+
+Round 242: S0e (throwaway script): every inactive `#if` group per refused libuv
+function, typed by atom kind: 46 of 54 target-kind, 1 config-like, 8 unresolved
+by a textual evaluator; groups per function median 1, max 7. The S4(c)
+denominator is therefore at most 9 of 54, so rename-edit gains are small on
+this corpus and typed precondition lists are the S4 deliverable.
+
+Round 243: S0b/S0c v1 (throwaway Python ROBDD plus symbolic fold over the quoted
+include closure): libuv 62 units, 30,839 groups, max 44 nodes per group, 2.7 s;
+Lua 5.4 max 79 nodes, 4.6 s; zstd max 126. Size and time are not the risk;
+caveats were overstated exactness (system-header macros were free atoms), no
+threshold encoding, families or cost DP. S4 wording changed to typed lists.
+
+Round 244: S0b/S0c v2 (throwaway Python; results in `docs/CONFIG_DESIGN.md`
+section 13): system headers followed, threshold atoms, OS and compiler family
+constraints, block-contiguous order, phased cost DP. Two blow-ups found and
+mitigated: following system headers deeper than 1 level (unlimited overflowed
+3M nodes after about 1,000 files) and conjoining the constraints into every
+group (max nodes per group 504 to 166 on libuv, 10,113 to 179 on Lua once applied
+per group at query time). Honest exactness 92% libuv, 78% Lua, 76% zstd;
+17% to 26% of groups are unsatisfiable under the constraints; 67% to 83% of
+inactive groups have an overlay cube. Decision 1 (BDD) stands with depth-1
+system headers and per-group constraints; ranks 2 to 3 and `cover` untested.
+

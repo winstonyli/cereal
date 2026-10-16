@@ -606,11 +606,11 @@ list, and for other compilers by review.
 
 ## 10. Decisions needed (recommendations first)
 
-1. Solver: BDD (recommended), with the symbolic fold following system headers
-   to depth 1 only (S0b v2, section 13: unlimited depth overflows 3M nodes;
-   zstd's amalgamation still does at depth 1, so constraints may need to be
-   applied at query time), or SAT plus MaxSAT for cost (smaller, but exact
-   minimal change needs a cost optimizer).
+1. Solver: BDD (recommended), with family and threshold constraints applied
+   per group at query time (only the clauses that share a variable with the
+   group) and the symbolic fold following system headers to depth 1 (S0b v2,
+   section 13), or SAT plus MaxSAT for cost (smaller, but exact minimal change
+   needs a cost optimizer).
 2. First stage: S0 spikes, then S1 in process with no format change
    (recommended).
 3. Families: small built-in hierarchy, extensible in settings (recommended).
@@ -876,3 +876,32 @@ Findings:
 - Not covered: rank 2 and 3 cubes, `cover`, the `unknown` versus `impossible`
   split, and any measurement of the cost query's guarantee (only the
   rank-1 DP was built).
+
+S0b/S0c v2b (Round 244, same prototype): the constraint BDD is no longer conjoined
+into every group. The constraints are kept as a list of small clauses and each
+group is conjoined only with the clauses that share a variable with its support
+(direct sharing only, no transitive closure; the unsatisfiable-group counts are
+identical to the global-conjunction run at SD=1, so nothing was lost there).
+
+| Corpus, SD | Units over cap | Fold | Cost queries | Max nodes, one group | Max table, one unit | Exact |
+|---|---|---|---|---|---|---|
+| libuv, 1 | 0 of 62 | 3.9 s | 1.0 s | 166 | 186,651 | 92% |
+| Lua 5.4, 1 | 0 of 35 | 4.2 s | 0.6 s | 179 | 70,825 | 78% |
+| zstd, 1 | 0 of 1 | 14.6 s | 0.8 s | 5,362 | 2,863,026 | 76% |
+| libuv, 2 | 0 of 62 | 48.6 s | 10.9 s | 10,996 | 2,485,252 | 82% |
+| Lua 5.4, 2 | 0 of 35 | 32.0 s | 7.4 s | 3,586 | 1,901,347 | 72% |
+
+- **The constraints, not the BDD, caused the second blow-up.** Max nodes per
+  group fell 3x (libuv, 504 to 166) and 56x (Lua, 10,113 to 179), the cost
+  queries 5x to 14x, and zstd and every depth-2 unit now fit under the cap.
+- S0b's stop rule (under 20,000 nodes per group, under 10 s with the cost query)
+  now passes at SD=1 for libuv (4.9 s) and Lua (4.8 s); zstd takes 15.4 s and
+  its table is close to the cap, so it fails the time limit. At SD=2 groups
+  stay under 20,000 nodes but the **fold** (up to 12 s for one unit) exceeds the
+  budget; depth 1 stays the recommendation.
+- zstd's cost is the fold of its 67 folded files (1,576 conditions, 76% exact),
+  not the queries; the fold is what a stage-S1 implementation must make cheap
+  (hash-consed shared PCs per inclusion instance).
+- Phase counts (inactive groups needing an overlay versus a target change) at
+  SD=1 are unchanged: libuv 19,341 and 9,465, Lua 14,124 and 2,813; zstd 1,685
+  and 862 of 2,547.
