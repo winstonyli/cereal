@@ -81,3 +81,28 @@ headers ask about, so zstd's `no_sanitize` read as unsupported.
 tools/probe-host.sh now probes every identifier-like name in the
 compiler proper (about 170k candidates, one `-E` pass, ~14 s once per
 build directory).
+
+# Lint timing before the BDD rewrite (S1 plan, Slice 0)
+
+`python3 bench/bench.py --lint` (best of 5, `-Weverything`, WSL2 Ubuntu on the
+Ryzen 7 7840U, 2026-10-16, system load average 0.9, Windows CPU about 31%,
+Defender real-time protection off). Process start-up dominates the small files;
+`tests/lint/cond_limits.c` is the one case that exercises the enumeration.
+Compare a run only against one with similar load, with a 10% margin on the total.
+
+| file | ms |
+|---|---|
+| src/analysis/cond.c | 8.8 |
+| src/analysis/include.c | 9.2 |
+| src/pp.c | 9.7 |
+| src/ppexpand.c | 9.1 |
+| src/c/parse.c | 10.5 |
+| tests/lint/cond.c | 4.3 |
+| tests/lint/cond_fixit.c | 3.8 |
+| tests/lint/cond_limits.c | 24.6 |
+| tests/lint/guard_fixit.c | 3.6 |
+| tests/lint/hygiene.c | 5.4 |
+| tests/lint/hygiene_fixit.c | 4.1 |
+| tests/lint/includes.c | 4.0 |
+| tests/lint/recursion.c | 3.6 |
+| **total** | **100.7** |

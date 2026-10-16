@@ -1,4 +1,4 @@
-# S1 implementation plan (draft 4)
+# S1 implementation plan (draft 5)
 
 Scope: stage S1 of `docs/CONFIG_DESIGN.md` (section 8): BDD solver, presence
 conditions and queries for the open unit, family table, hover and
@@ -40,6 +40,12 @@ in execution, which the slice gates exercise.
 
 ## Slice 0 (before any code): test scaffolding
 
+**Status: done (Round 249).** Delivered: item 2 as `tests/lint/cond_limits.c` (current
+expectations; the gap cases are the reviewed diffs of S1a) and item 4 as
+`bench/bench.py --lint` with the baseline in `bench/BASELINE.md` (100.7 ms
+total). Items 1 and 3 move: the `--selftest` hook lands with the BDD test in S1a,
+the fold fixtures with S1c (nothing exists to test earlier).
+
 1. **Harness:** a hidden `cereal --selftest <name>` subcommand (`main.c` already dispatches
    `index-summary` on `argv[1]`), with `tests/run.sh` calling it; the BDD test
    (ite/and/or/not against brute force on 8 variables, node-cap behavior) is the
@@ -70,8 +76,9 @@ atoms `GE(X,c)` with monotonic implication clauses applied per group (decision
 1). Lint mode keeps its contract (section 4: defines not followed, no
 predefines): of the Round 247 rules only (c) applies (rule (a) already exists in the
 parser); (b) alias chase needs macro bodies and moves to S1c. Rule (c), a
-two-atom comparison, is a case split over a **common threshold set** (the union
-of both atoms' constants plus 0 and 1, each with neighbours); outside it, OPAQUE.
+comparison of two values (VAL vs VAL), becomes an OPAQUE atom keyed by canonical
+text in S1a (the case split over a common threshold set is S1c's evaluator work,
+with the alias chase).
 Arithmetic on atoms (`X & 4`, `X % 2`, `A + B`) becomes an OPAQUE atom per
 directive (section 3.2), a **known loss** of dead/redundant detection the old
 enumeration had; variable-free subtrees keep a constant folder (`#if 1+1==2`,

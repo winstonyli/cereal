@@ -4899,3 +4899,8 @@ section 13): unary minus, character constants, macro-alias comparisons and
 two-atom comparisons, all fixable by three evaluator rules; opaque atoms are
 named per directive.
 
+Round 249: S1 Slice 0 (`docs/S1_PLAN.md`, draft 5): `tests/lint/cond_limits.c`
+pins today's behavior at every `cond.c` limit (arithmetic, variable-free, ternary,
+`#elifdef`, `__has_include`, 17 variables, 70 nesting, 34 branches, 2^18, wide
+domain); `bench/bench.py --lint` times lint (baseline 100.7 ms total in
+`bench/BASELINE.md`). Full suite 2165 passed. No library code changed.

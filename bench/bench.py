@@ -122,8 +122,40 @@ def rss_of(cmd):
     return int(out) // 1024 if out else 0
 
 
+LINT_DEFAULT = ['src/analysis/cond.c', 'src/analysis/include.c', 'src/pp.c',
+                'src/ppexpand.c', 'src/c/parse.c']
+
+
+def lint_main(args):
+    """bench.py --lint [--runs N] [CEREAL] [FILE...]: best-of-N lint time per
+    file and in total (default: cereal's own sources plus every tests/lint
+    case).  Quote the load average with the result (LONG_RUNS.md)."""
+    runs = int(args[args.index('--runs') + 1]) if '--runs' in args else 5
+    pos = [a for i, a in enumerate(args)
+           if not a.startswith('--') and (i == 0 or args[i - 1] != '--runs')]
+    cereal = os.path.abspath(pos[0]) if pos and os.access(pos[0], os.X_OK)         else os.path.join(ROOT, 'cereal')
+    files = [a for a in pos if not (os.path.abspath(a) == cereal)]
+    if not files:
+        import glob
+        files = [os.path.join(ROOT, f) for f in LINT_DEFAULT] +             sorted(glob.glob(os.path.join(ROOT, 'tests', 'lint', '*.c')))
+    flags = ['lint', '-Weverything', '-Isrc', '-D_POSIX_C_SOURCE=200809L']
+    total = 0.0
+    print(f'load {os.getloadavg()[0]:.2f}  runs {runs}')
+    for f in files:
+        t, _ = measure([cereal, *flags, f], runs)
+        if t is None:
+            print(f'{os.path.relpath(f, ROOT):<40} fail')
+            continue
+        total += t
+        print(f'{os.path.relpath(f, ROOT):<40} {t * 1000:8.1f} ms')
+    print(f'{"total":<40} {total * 1000:8.1f} ms')
+
+
 def main():
     args = sys.argv[1:]
+    if '--lint' in args:
+        args.remove('--lint')
+        return lint_main(args)
     quick = '--quick' in args
     only = None
     if '--only' in args:
