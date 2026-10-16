@@ -4959,3 +4959,22 @@ as opaque. What is left (zstd: 146 opaque groups, 94 with feature tests, 36 two-
 comparisons, 15 arithmetic) is feature tests and compiler-version arithmetic
 (`__GNUC__*100+__GNUC_MINOR__ >= 403`): functions of the compiler, i.e. the family table of
 S1d, not of the initial macro thresholds. Suite 2182 passed.
+
+Round 255: S1c function-like macro calls (`docs/S1_PLAN.md`). A `#define NAME(a, b) body`
+without `#`, `##` or variadics is kept as `PcFn` (parameters, body tokens); a call in an `#if` is
+instantiated by textual argument substitution (C's own order, no added parentheses), re-parsed and
+evaluated where it is used (depth cap 8). One definition: its value; several (or an outside
+definition): whether it is nonzero; otherwise one opaque atom keyed by the call text. A call whose
+macro the fold never saw defined is now `V_OPQ` (its truth is the same atom; a comparison with it
+is opaque instead of treating the call as 0/1); only `__has_*` other than the dated
+`c_attribute`/`cpp_attribute` stay boolean. Fixture `tests/pc/fnmacro.c`. Corpus exactness is
+unchanged (the survey below says why); lint output on 400 corpus files is identical. Two lua54
+groups (`FIGS`, via `l_floatatt(n) (DBL_##n)`) turned from accidentally exact to opaque. Suite
+2183 passed.
+Survey (no change made): counting feature tests and compiler/limits arithmetic (`__has_*`,
+`__GNUC__*100+__GNUC_MINOR__`, `INT_MAX`, ...) as family atoms would give exactness lua53 96.8,
+lua54 92.3, lua55 90.8, zstd 95.8, all others above 97 (from 88.8, 91.7, 88.5, 87.2). The
+remaining opaque atoms are mostly enumerations of the unit's own constants, e.g.
+`LUA_INT_TYPE == LUA_INT_LONG` (about 3000 atoms) and `LUAI_ISNINT(x)@..` bodies (3542): both
+sides are macros whose values the fold knows, so a macro-vs-macro comparison can be expanded over
+the entries of the known side. That, not a gate change, is the next lever.

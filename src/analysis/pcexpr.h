@@ -32,12 +32,21 @@ typedef struct PcAtom {
  * the number n.  Otherwise the value the macro had at the start of the unit
  * (opq NULL), or the value a #define gave it: the expression expr (if the
  * body is one), named by opq where nothing more can be said. */
+/* A function-like macro: parameters and replacement tokens, instantiated at
+ * each call (pcexpr.c). */
+typedef struct PcFn {
+    Ident **params;
+    uint32_t np;
+    TokSpan body;
+} PcFn;
+
 typedef struct PcEntry {
     Bdd cond;
     bool known;
     intmax_t n;
     const char *opq;
     PcNode *expr;           /* its body, evaluated where the macro is used */
+    const PcFn *fn;         /* function-like: instantiated at each call */
 } PcEntry;
 
 typedef VEC(PcEntry) PcEntries;

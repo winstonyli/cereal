@@ -13,6 +13,7 @@ struct PcNode {
     intmax_t num;
     Ident *id;              /* PN_VAR/PN_DEFINED */
     const char *text;       /* PN_CALL: canonical text */
+    TokSpan args;           /* PN_CALL: the tokens between the parentheses */
     struct PcNode *a, *b, *c;
 };
 
@@ -123,6 +124,12 @@ static PcNode *px_primary(PX *p)
         } while (u->kind != TK_EOF && depth > 0);
         n->text = arena_strndup(p->arena, sb_cstr(&sb), sb.len);
         sb_free(&sb);
+        if (depth == 0 && u - t >= 3) {
+            n->args.t = t + 2;
+            n->args.n = (uint32_t)(u - t - 3);
+        } else {
+            n->args.t = NULL;   /* unbalanced */
+        }
         p->t = u;
         return n;
     }
@@ -596,7 +603,7 @@ static Bdd num_cmp(PcCtx *cx, int op, Ident *id, intmax_t c)
     if (cx->env.values) {
         cx->env.values(cx->env.ctx, cx, id, &es);
     } else {
-        PcEntry e = {pc_atom(cx, PA_DEF, id, 0, NULL), false, 0, NULL, NULL};
+        PcEntry e = {pc_atom(cx, PA_DEF, id, 0, NULL), false, 0, NULL, NULL, NULL};
         vec_push(&es, e);
     }
     for (i = 0; i < es.len; i++) {
@@ -653,6 +660,138 @@ static Val binop(PcCtx *cx, PcNode *n, Val x, Val y)
     return v_opq(n);
 }
 
+/* feature tests are 0/1 (the dated __has_c_attribute and __has_cpp_attribute
+ * are not) */
+static bool is_feature_test(const PcNode *n)
+{
+    const char *s = n->id->str;
+    return !strncmp(s, "__has_", 6) && !strstr(s, "c_attribute") &&
+           !strstr(s, "cpp_attribute");
+}
+
+/* The call with the macro's replacement tokens, arguments substituted
+ * textually, parsed again (C's own order: no parentheses added). */
+static PcNode *call_inst(PcCtx *cx, const PcFn *f, const PcNode *call)
+{
+    Analysis *an = cx->an;
+    TokSpan *av;
+    uint32_t na = 1, i, j, depth = 0, start = 0, total = 0, k = 0;
+    const Tok *at = call->args.t;
+    Tok *arr;
+    PX p;
+    PcNode *r;
+    if (!at)
+        return NULL;
+    for (i = 0; i < call->args.n; i++) {
+        if (tok_is_punct(&at[i], P_LPAREN))
+            depth++;
+        else if (tok_is_punct(&at[i], P_RPAREN))
+            depth--;
+        else if (!depth && tok_is_punct(&at[i], P_COMMA))
+            na++;
+    }
+    if (na != f->np && !(f->np == 0 && na == 1 && !call->args.n))
+        return NULL;
+    av = NEW_ARRAY(an->arena, TokSpan, na);
+    for (i = j = 0; i <= call->args.n; i++) {
+        if (i == call->args.n ||
+            (!depth && tok_is_punct(&at[i], P_COMMA))) {
+            av[j].t = at + start;
+            av[j].n = i - start;
+            j++;
+            start = i + 1;
+        } else if (tok_is_punct(&at[i], P_LPAREN)) {
+            depth++;
+        } else if (tok_is_punct(&at[i], P_RPAREN)) {
+            depth--;
+        }
+    }
+    for (i = 0; i < f->body.n; i++) {
+        uint32_t pi = f->np;
+        if (f->body.t[i].kind == TK_IDENT)
+            for (j = 0; j < f->np; j++)
+                if (tok_ident(an->in, &f->body.t[i]) == f->params[j])
+                    pi = j;
+        total += pi < f->np ? av[pi].n : 1;
+    }
+    arr = NEW_ARRAY(an->arena, Tok, total + 1);
+    for (i = 0; i < f->body.n; i++) {
+        uint32_t pi = f->np;
+        if (f->body.t[i].kind == TK_IDENT)
+            for (j = 0; j < f->np; j++)
+                if (tok_ident(an->in, &f->body.t[i]) == f->params[j])
+                    pi = j;
+        if (pi < f->np) {
+            if (av[pi].n)
+                memcpy(arr + k, av[pi].t, sizeof(Tok) * av[pi].n);
+            k += av[pi].n;
+        } else {
+            arr[k++] = f->body.t[i];
+        }
+    }
+    arr[k].kind = TK_EOF;
+    p.arena = an->arena;
+    p.an = an;
+    p.t = arr;
+    p.ok = true;
+    r = px_cond(&p);
+    return p.ok && p.t->kind == TK_EOF ? r : NULL;
+}
+
+/* A call NAME(args): the macro's replacement evaluated with the arguments
+ * where it is defined (one definition: its value; several: whether it is
+ * nonzero), else one opaque atom keyed by the call's text. */
+static Val ev_call(PcCtx *cx, PcNode *n)
+{
+    BddMgr *m = &cx->m;
+    PcEntries es = {0};
+    Val vals[8], r;
+    size_t i, live = 0;
+    bool any_fn = false, ok = cx->env.values && cx->depth < 8;
+    Bdd acc = BDD_FALSE;
+    if (ok)
+        cx->env.values(cx->env.ctx, cx, n->id, &es);
+    for (i = 0; ok && i < es.len; i++) {
+        const PcEntry *e = &es.data[i];
+        PcNode *inst;
+        if (e->cond == BDD_FALSE)
+            continue;
+        if (live == 8) {
+            ok = false;
+        } else if (e->fn && (inst = call_inst(cx, e->fn, n))) {
+            any_fn = true;
+            cx->depth++;
+            vals[live++] = ev(cx, inst);
+            cx->depth--;
+        } else if (!e->fn && !e->known && !e->opq && !e->expr) {
+            vals[live++] = v_bool(text_atom(cx, n)); /* from outside */
+        } else {
+            ok = false;
+        }
+    }
+    if (!any_fn)
+        ok = false;
+    if (ok && live == 1 && es.len == 1) {
+        r = vals[0];
+        vec_free(&es);
+        return r;
+    }
+    for (i = 0, live = 0; ok && i < es.len; i++) {
+        const Val *v;
+        if (es.data[i].cond == BDD_FALSE)
+            continue;
+        v = &vals[live++];
+        if (!(v->k == V_BOOL || (v->k == V_CONST && (v->n == 0 || v->n == 1))))
+            ok = false;
+        else
+            acc = bdd_or(m, acc, bdd_and(m, es.data[i].cond, truth(cx, *v)));
+    }
+    vec_free(&es);
+    if (ok && live)
+        return v_bool(acc);
+    return is_feature_test(n) ? v_bool(text_atom(cx, n)) : v_opq(n);
+}
+
 static Val ev(PcCtx *cx, PcNode *n)
 {
     Val x, y;
@@ -662,7 +801,7 @@ static Val ev(PcCtx *cx, PcNode *n)
     case PN_DEFINED:
         return v_bool(env_defined(cx, n->id));
     case PN_CALL:
-        return v_bool(text_atom(cx, n));
+        return ev_call(cx, n);
     case PN_VAR:
         x.k = V_VAL;
         x.n = 0;

@@ -160,6 +160,7 @@ static PcMacro *macro_state(PcUnit *u, Ident *id)
     e.n = 0;
     e.opq = NULL;
     e.expr = NULL;
+    e.fn = NULL;
     vec_push(&s->vals, e);
     vec_push(&u->macros, s);
     if (u->macros.len * 2 > u->hcap)
@@ -193,7 +194,7 @@ static void env_values(void *ctx, PcCtx *cx, Ident *id, PcEntries *out)
 /* the macro now holds the number n (known) or the unmodeled value opq under
  * cur */
 static void do_define(PcUnit *u, Ident *id, bool known, intmax_t n,
-                      const char *opq, PcNode *expr, Bdd cur)
+                      const char *opq, PcNode *expr, const PcFn *fn, Bdd cur)
 {
     BddMgr *m = &u->cx.m;
     PcMacro *s = macro_state(u, id);
@@ -212,6 +213,7 @@ static void do_define(PcUnit *u, Ident *id, bool known, intmax_t n,
     e.n = n;
     e.opq = opq;
     e.expr = expr;
+    e.fn = fn;
     if (cur != BDD_FALSE)
         vec_push(&keep, e);
     vec_free(&s->vals);
@@ -236,6 +238,43 @@ static void do_undef(PcUnit *u, Ident *id, Bdd cur)
 }
 
 /* ---- the fold --------------------------------------------------------- */
+
+/* NAME(a, b) body: the parameters and the body, or NULL when the macro uses
+ * variadics, # or ## (the call stays opaque).  t is the #define's tokens. */
+static const PcFn *fn_macro(PcUnit *u, const Tok *t, uint32_t n)
+{
+    Analysis *an = u->an;
+    Ident **ps = NULL;
+    PcFn *f;
+    uint32_t np = 0, i = 2;
+    if (n < 3)
+        return NULL;
+    ps = NEW_ARRAY(an->arena, Ident *, n);
+    if (!tok_is_punct(&t[i], P_RPAREN)) {
+        for (;; i++) {
+            if (t[i].kind != TK_IDENT || i + 1 >= n)
+                return NULL;
+            ps[np++] = tok_ident(an->in, &t[i]);
+            i++;
+            if (tok_is_punct(&t[i], P_RPAREN))
+                break;
+            if (!tok_is_punct(&t[i], P_COMMA) || i + 1 >= n)
+                return NULL;
+        }
+    }
+    i++;
+    for (uint32_t k = i; k < n; k++)
+        if (tok_is_punct(&t[k], P_HASH) || tok_is_punct(&t[k], P_HASHHASH) ||
+            tok_is_punct(&t[k], P_ELLIPSIS))
+            return NULL;
+    f = NEW(an->arena, PcFn);
+    f->params = ps;
+    f->np = np;
+    f->body.t = t + i;
+    f->body.n = n - i;
+    return f;
+}
+
 
 /* the condition of a group: symbolic, or in a system header what the
  * preprocessor decided */
@@ -420,18 +459,21 @@ static void fold_file(PcUnit *u, SrcFile *f, int from_dir, Bdd pc, int depth)
                 const Tok *t = d->toks.t;
                 bool known = false;
                 PcNode *expr = NULL;
+                const PcFn *fn = NULL;
                 if (d->toks.n > 1 && !(tok_is_punct(&t[1], P_LPAREN) &&
                                        !(t[1].flags & TF_SPACE))) {
                     TokSpan body = {t + 1, d->toks.n - 1};
                     known = pc_const_value(&u->cx, body, &n);
                     if (!known)
                         expr = pc_parse(&u->cx, body);
+                } else if (d->toks.n > 1 && tok_is_punct(&t[1], P_LPAREN)) {
+                    fn = fn_macro(u, t, d->toks.n);
                 }
                 do_define(u, d->name, known, n,
                           known ? NULL
                                 : arena_printf(u->an->arena, "%s@%u",
                                                d->name->str, d->kw_loc),
-                          expr, cur);
+                          expr, fn, cur);
             }
             break;
         case SK_UNDEF:
