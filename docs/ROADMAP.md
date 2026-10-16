@@ -167,7 +167,7 @@ B5. Workspace-wide index over compile_commands, workspace/symbol,
     (scheduler, subprocess, settings, progress) in Round 225; B5b-3 (name list,
     project-wide workspace/symbol) in Round 226; review fixes in Round 228; B5c
     (cross-file references, call hierarchy, definition and declaration; clangd
-    project differential) in Round 229; B5d (rename across TUs) in Round 230.
+    project differential) in Round 229; B5d (rename across TUs) in Round 230; review fixes in Round 232.
     B5 is complete; parked: listing macro invocation sites (B5_DESIGN Q7, 18).
 
 Risks: partial or erroneous code still yields partial symbol data; the

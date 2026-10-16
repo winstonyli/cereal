@@ -124,8 +124,9 @@ design's.
   - Requests carry a `CPolicy` (`server.c:1037-1045`). `must_wait`
     (`server.c:1091`) and `handle_request` wait up to 1.5 s for the newest
     edit's snapshot.
-  - Rename checks run on the builder thread (a `DeferredReq` since Round
-    217): `RenameJob`, `rename_run`, `lsp_check_rename` in `server.c`.
+  - Rename checks run on a worker thread (`project_rename`, `lsp_rename_gate`;
+    B5_DESIGN 15.4). Round 217 to 231 ran a unit-only rename on the builder
+    (`RenameJob`, `lsp_check_rename`); Round 232 deleted that path.
   - The analyses run on the snapshot's macro-phase TU (`server.c:197`).
   - Published diagnostics (`lsp_publish_diagnostics`,
     `features.c:1867`) are the macro phase's (`s->tu.diag.all`) plus the
@@ -1212,12 +1213,13 @@ a copy of the text. See LSP.md, Tests, for what each covers.
   and a quick fix are answered while a fix-all is held; the fix-all arrives
   after the release, and a second one is answered at once from the cache).
   The `lsp_session.py` steps `defer`, `await` and `unanswered` express it.
-- **Rename uses it too (Round 217).** `lsp_rename`'s C path
+- **Rename used it too (Round 217; replaced in Round 232 by the worker path,
+  B5_DESIGN 15.4).** `lsp_rename`'s C path
   (`c_rename_edits`) sets `Req.need_builder` and writes nothing when it is
   not on the builder, after the existing "index not ready; retry" check (a
   stale or unchecked snapshot is still refused at once, RequestFailed
   -32803). `handle_request` defers it as the fix-all (`DeferredReq.kind`
-  tells `deferred_run` which request it is). On the builder, `lsp_rename`
+  tells `deferred_run` which request it is). (Superseded in Round 232: renames run on a worker, B5_DESIGN 15.4.) On the builder, `lsp_rename`
   runs `lsp_check_rename` (now a plain call of `rename_run`) and the reply
   is the edit of before. New: the protocol thread no longer holds edits
   back while the checks run, so the document can change meanwhile; then the

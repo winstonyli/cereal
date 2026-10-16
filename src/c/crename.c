@@ -26,7 +26,8 @@ typedef struct Run {
     char *missing;           /* the first #include not found */
     const CRename *q;
     bool live;
-    const EdText *ed;        /* the second run: the files' edited texts */
+    char fatal[256];         /* run_check: the fatal error that ended it, else "" */
+    const EdText *ed;       /* the second run: the files' edited texts */
     size_t ned;
 } Run;
 
@@ -60,12 +61,21 @@ static void on_include(void *ctx, const IncludeEvent *ev)
         r->missing = xstrdup(ev->spelled ? ev->spelled : "?");
 }
 
-/* Checks the unit into r, with its symbol index; false if it could not. */
+/* Checks the unit into r, with its symbol index; false if it could not (a fatal
+ * error in the check is that too, its text in r->fatal; r is then freed by run_free
+ * like any other, not lost with the abandoned frames). */
 static bool run_check(Run *r, const CRename *q)
 {
     PPListener l;
     FrontendOpts fo;
+    FatalTrap tr;
+    bool ok;
     r->q = q;
+    fatal_trap_push(&tr);
+    if (setjmp(tr.jb)) {
+        snprintf(r->fatal, sizeof r->fatal, "%s", tr.msg);
+        return false;
+    }
     r->live = true;
     tu_init(&r->tu, q->o);
     r->tu.sm.overlay = run_overlay;
@@ -78,7 +88,9 @@ static bool run_check(Run *r, const CRename *q)
     memset(&fo, 0, sizeof fo);
     fo.check = true;
     fo.cidx = &r->ix;
-    return frontend_run(&r->tu, q->main, &fo) && r->ix;
+    ok = frontend_run(&r->tu, q->main, &fo) && r->ix;
+    fatal_trap_pop(&tr);
+    return ok;
 }
 
 static void run_free(Run *r)
@@ -342,7 +354,7 @@ static bool plan_unit(CRename *q, Run *a, StrBuf *why)
         return false;
     }
     if ((err = cindex_rename_plan(a->ix, &a->tu.sm, q->path, q->off, mf->path,
-                                  false, &ev, &n, NULL, msg, sizeof msg)) != NULL) {
+                                  false, &ev, &n, msg, sizeof msg)) != NULL) {
         sb_puts(why, err);
         return false;
     }
@@ -389,7 +401,7 @@ char *c_rename(CRename *q)
     memset(&c, 0, sizeof c);
     q->len = 0;
     if (!run_check(&a, q)) {
-        sb_puts(&why, "the unit could not be checked");
+        sb_printf(&why, "the unit could not be checked%s%s", a.fatal[0] ? ": " : "", a.fatal);
         goto out;
     }
     if (!q->files && !plan_unit(q, &a, &why))
@@ -461,7 +473,8 @@ char *c_rename(CRename *q)
     b.ed = ed;
     b.ned = ned;
     if (!run_check(&b, q)) {
-        sb_puts(&why, "the renamed unit could not be checked");
+        sb_printf(&why, "the renamed unit could not be checked%s%s", b.fatal[0] ? ": " : "",
+                  b.fatal);
         goto out;
     }
     c.a = &a;

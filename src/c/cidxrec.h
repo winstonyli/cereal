@@ -17,7 +17,7 @@
 
 #include "driver.h"
 
-#define CREC_FORMAT 3u           /* bumped on any change of a section's layout */
+#define CREC_FORMAT 4u           /* bumped on any change of a section's layout */
 enum { CREC_MANIFEST = 1, CREC_RECORD = 2, CREC_CHUNK = 3 };
 enum { CTU_OK = 1, CTU_PARTIAL, CTU_OVER_LIMIT, CTU_FAILED };
 /* CRecFil.flags: a source or user header, or a file read to build the

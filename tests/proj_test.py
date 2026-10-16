@@ -377,7 +377,18 @@ def sc_xref(root, cache):
     files = sorted({os.path.basename(c["from"]["uri"]) for c in inc})
     expect({"t0003.c", "t0004.c", "t0008.c"} <= set(files), "incoming calls across units", files)
     sites = sum(len(c["fromRanges"]) for c in inc)
-    expect(sites >= 4, "with their sites", sites)
+    ranges = [(c["from"]["uri"], r["start"]["line"], r["start"]["character"])
+              for c in inc for r in c["fromRanges"]]
+    expect(len(ranges) == len(set(ranges)), "each call site once (the open unit and its record)", ranges)
+    uses = s.req("textDocument/references", dict(at(t3, l3, c3), context={"includeDeclaration": False}))["result"]
+    expect(sites == len(uses) and sites >= 4, "the sites are the uses", {"sites": sites, "uses": len(uses)})
+    # the open unit's caller, and its outgoing call to h00_f2: shown at the definition (t0008),
+    # not at the header's declaration
+    mine3 = [c["from"] for c in inc if c["from"]["uri"] == "file://" + t3]
+    expect(mine3, "an incoming caller in the open unit", inc)
+    o3 = s.req("callHierarchy/outgoingCalls", {"item": mine3[0]})["result"]
+    callee = [c["to"] for c in o3 if c["to"]["name"] == "h00_f2"]
+    expect(callee and callee[0]["uri"] == "file://" + t8, "outgoing: the callee at its definition", o3)
     out = s.req("callHierarchy/outgoingCalls", {"item": item[0]})["result"]
     expect(out and all(c["to"]["name"] != "h00_f2" for c in out) and
            any(c["fromRanges"] for c in out),
@@ -471,22 +482,115 @@ def sc_rename(root, cache):
     expect("error" in r and "renameMaxTUs" in r["error"]["message"], "R5: too many units", r)
     s.stop()
     # ContentModified: an edited file changes while the units are checked
-    s = Server(root, cache, env={"CEREAL_FAULT": "rename-modify"})
+    s = Server(root, cache)
     s.wait()
     s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",
                                                       "version": 1, "text": text}})
-    r = rename(t0, "h01_f2(", "h01_renamed")
+    s.req("cereal/holdChecks", {"gate": True})     # the rename waits after its checks
+    line, ch = where(t0, "h01_f2(")
+    s.nid += 1
+    rid = s.nid
+    s.send({"id": rid, "method": "textDocument/rename",
+            "params": dict(at(t0, line, ch), newName="h01_renamed", workDoneToken="rn")})
+    s.pump(lambda m: m.get("method") == "$/progress" and m["params"]["value"]["kind"] == "end")
+    with open(h, "a") as f:
+        f.write("\n")
+    s.req("cereal/holdChecks", {})
+    r = s.pump(lambda m: m.get("id") == rid and "method" not in m)
     expect("error" in r and r["error"]["code"] == -32801, "ContentModified", r)
+    s.stop()
+    db = os.path.join(root, "compile_commands.json")
+
+    def add_unit(name, body):
+        path = os.path.join(root, "src", name)
+        open(path, "w").write(body)
+        cc = json.load(open(db))
+        e = dict(cc[0], file=path)
+        e["arguments"] = [a if a != cc[0]["file"] else path for a in cc[0]["arguments"]]
+        json.dump(cc + [e], open(db, "w"))
+        return path
+    # R7 on a declaration: another unit defines the function through a macro (the name is
+    # formed by ##), so the edit list would miss it
+    open(os.path.join(root, "include", "zm.h"), "w").write("int zm_fn(void);\n")
+    add_unit("zm.c", '#include "../include/zm.h"\n#define PROTO(n) int n##_fn(void);\nPROTO(zm)\n'
+                     'int zm_fn(void) { return 1; }\n')
+    zu = add_unit("zu.c", '#include "../include/zm.h"\nint zu_use(void) { return zm_fn(); }\n')
+    # F5: an opaque tag (forward declaration in a header) is one entity with its definition
+    # in another unit
+    open(os.path.join(root, "include", "zt.h"), "w").write("struct zt_opq;\nstruct zt_opq *zt_new(void);\n")
+    add_unit("zt1.c", '#include "../include/zt.h"\nstruct zt_opq { int v; };\n'
+                      'struct zt_opq *zt_new(void) { static struct zt_opq o; return &o; }\n')
+    zt2 = add_unit("zt2.c", '#include "../include/zt.h"\nstruct zt_opq *zt_get(void) { return zt_new(); }\n')
+    s = Server(root, cache)
+    s.wait()
+    ztext = open(zu).read()
+    s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + zu, "languageId": "c",
+                                                      "version": 1, "text": ztext}})
+    r = rename(zu, "zm_fn()", "zm_renamed")
+    # (the macro-formed declaration has no record entry today, so the gate's re-check of
+    # zm.c is what refuses; F7 in B5_DESIGN)
+    expect("error" in r and "zm.c" in r["error"]["message"],
+           "a declaration formed by a macro in another unit is refused", r)
+    zt2_text = open(zt2).read()
+    s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + zt2, "languageId": "c",
+                                                      "version": 1, "text": zt2_text}})
+    zl, zc = where(zt2, "zt_opq")
+    refs = s.req("textDocument/references", {"textDocument": {"uri": "file://" + zt2},
+                 "position": {"line": zl, "character": zc}, "context": {"includeDeclaration": True}})["result"]
+    got = sorted({os.path.basename(x["uri"]) for x in refs})
+    expect(got == ["zt.h", "zt1.c", "zt2.c"], "F5: an opaque tag and its definition are one entity", got)
+    s.stop()
+    # F2: the new name is another external function of the project (defined in a unit that
+    # does not read the edited files); an external with no definition cannot be renamed
+    open(os.path.join(root, "include", "ex.h"), "w").write("int ex_f(void);\nint ex_lib(void);\n")
+    add_unit("ex1.c", '#include "../include/ex.h"\nint ex_f(void) { return 1; }\n')
+    ex2 = add_unit("ex2.c", '#include "../include/ex.h"\nint ex_use(void) { return ex_f() + ex_lib(); }\n')
+    add_unit("ex3.c", 'int ex_g(void) { return 2; }\n')
+    caps = {"workspace": {"workspaceEdit": {"documentChanges": True}}}
+    # F3: a unit that #includes another unit's main file sees its static
+    uni_a = add_unit("uni_a.c", 'static int uni_s(void) { return 1; }\nint uni_use(void) { return uni_s(); }\n')
+    uni = add_unit("unity.c", '#include "uni_a.c"\nint uni_more(void) { return uni_s(); }\n')
+    s = Server(root, cache, caps=caps)
+    s.wait()
+    for p in (ex2, uni_a):
+        s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + p, "languageId": "c",
+                                                          "version": 1, "text": open(p).read()}})
+    r = rename(ex2, "ex_f()", "ex_g")
+    m = r["error"]["message"] if "error" in r else ""
+    expect("ex_g" in m and "link time" in m, "F2: a clash with another external function", r)
+    r = rename(ex2, "ex_lib()", "ex_lib2")
+    m = r["error"]["message"] if "error" in r else ""
+    expect("no definition" in m, "F2: an external with no definition in the project", r)
+    r = rename(ex2, "ex_f()", "ex_fine")
+    expect("result" in r and r["result"], "F2: a fresh name is renamed", r)
+    r = rename(uni_a, "uni_s(void)", "uni_t")
+    got = sorted({os.path.basename(d["textDocument"]["uri"]): 0 for d in r["result"]["documentChanges"]}) \
+        if "result" in r and r["result"] else r
+    expect(got == ["uni_a.c", "unity.c"], "F3: a static is renamed in the unit that includes its file", got)
+    n = sum(len(d["edits"]) for d in r["result"]["documentChanges"])
+    expect(n == 3, "F3: the declaration and both uses, no more", n)
+    s.stop()
+    # F8: a name with more uses than the cap: references are cut and the log says so, a
+    # rename is refused
+    open(os.path.join(root, "include", "big.h"), "w").write("int bigf(void);\n")
+    add_unit("big.c", '#include "../include/big.h"\nint bigf(void) { return 0; }\nvoid big_calls(void)\n{\n'
+                      + "    bigf();\n" * 20100 + "}\n")
+    bigu = add_unit("bigu.c", '#include "../include/big.h"\nint bigu(void) { return bigf(); }\n')
+    s = Server(root, cache, caps=caps)
+    s.wait()
+    s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + bigu, "languageId": "c",
+                                                      "version": 1, "text": open(bigu).read()}})
+    bl, bc = where(bigu, "bigf()")
+    refs = s.req("textDocument/references", dict(at(bigu, bl, bc), context={"includeDeclaration": True}))
+    expect(len(refs["result"]) >= 20000 and len(refs["result"]) < 20010, "F8: references are cut at the cap",
+           len(refs["result"]))
+    s.pump(lambda m: m.get("method") == "window/logMessage" and "cut at" in m["params"]["message"])
+    r = rename(bigu, "bigf()", "bigf_renamed")
+    expect("error" in r and "more than" in r["error"]["message"], "F8: a rename of that size is refused", r)
     s.stop()
     # R2: an erroneous unit that reads the header blocks the rename; the message names it
     # and says how to exclude it
-    bad = os.path.join(root, "src", "zbad.c")
-    open(bad, "w").write('#include "../include/h01.h"\nint zbad(void) { return zbad_undeclared; }\n')
-    db = os.path.join(root, "compile_commands.json")
-    cc = json.load(open(db))
-    e = dict(cc[0], file=bad)
-    e["arguments"] = [a if a != cc[0]["file"] else bad for a in cc[0]["arguments"]]
-    json.dump(cc + [e], open(db, "w"))
+    add_unit("zbad.c", '#include "../include/h01.h"\nint zbad(void) { return zbad_undeclared; }\n')
     s = Server(root, cache)
     s.wait()
     s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",

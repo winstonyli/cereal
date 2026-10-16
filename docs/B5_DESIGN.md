@@ -557,17 +557,25 @@ today.
 | `kind ∈ {STRUCT, UNION, ENUM, TYPEDEF, FIELD, ENUMCONST}` | (name, kind, path, off) of the *anchor event* |
 | everything else exported (internal linkage, statics, inline-in-header) | (name, kind, path, off) of the anchor event |
 
-The anchor event:
+The anchor event (`anchor_rank`, csymidx.c), the least (path, off) among the
+events of the best rank:
 
-- the decl's DEF event if there is one;
-- else its first DECL event in (path, off) order;
-- macro-body events are skipped;
+- for functions, objects, typedefs, fields and enumerators: the DEF event,
+  else a DECL event, else any other;
+- for `struct`, `union` and `enum` tags the order of DEF and DECL is
+  swapped (Round 232, F5): the first declaration, which is the same
+  forward declaration in a header for every unit that includes it, so an
+  opaque tag defined in one unit and used through its header in another is
+  one entity;
+- events in a macro body are skipped;
 - an event at an expansion point (`CIX_AT_EXPANSION`) is allowed: its
   offset is the expansion site.
 
-A tag that is never defined anywhere has a TU-local anchor (its first
-declaration). Two TUs that forward-declare it in different files get
-different keys. This is accepted: there is nothing to navigate to.
+A tag that is never declared before its definition, and a unit that sees
+only the definition (not the header's forward declaration), still anchor at
+the definition; two units that see different parts differ. This is
+accepted: the tag is then not the same entity to any reader of those units.
+`CREC_FORMAT` is 4 since this change (keys changed meaning).
 
 D8 lists "tag name" for types. The key also keeps `kind`. It comes free
 from the decl, and it lets a reader tell `struct S` from a typedef `S`
@@ -1565,6 +1573,9 @@ only open-unit results, as today.
 | R7 | Any reference to the key is at a macro expansion (`AT_EXPANSION`): the name is spelled by a macro invocation whose body uses it. B5 does not list those sites (Q7), so the edit list would silently miss them. R4 and R7 are one mechanism, `cindex_rename_blocker(flags)` (csymidx.h), applied to the open unit's events and to every project record event (`pq_entries` with `PqBlock`). A macro that is defined with the name but never invoked leaves no event, so neither rule sees it; the gate's re-check of the affected TUs does not either (the macro body is not compiled). This limitation is documented, not closed. |
 | R5 | More than `cereal.index.renameMaxTUs` TUs are affected (default 100). |
 | R6 | The new name collides, as today, in any affected TU. This is checked by the gate below. |
+| R8 | An external function or object is renamed to the name of another external function or object of the project (`pq_has` on the records, whatever units read the edited files). Two definitions would clash at link time, and no unit's check sees both. (Round 232, F2) |
+| R9 | An external function or object has no definition anywhere in the project (a library's): renaming its uses would break linking. (Round 232, F2) |
+| R10 | The key has more than `PQ_MAX_ENTRIES` (20000) uses and declarations: the list must be whole, so a rename of that size is not attempted. (Round 232, F8) |
 
 The refusal message names the cause and the first offending file, as B2
 messages do.
@@ -1613,7 +1624,16 @@ mapped to current text.
 - After the edit, the client saves, and the sweep re-indexes.
 
 **prepareRename** runs the plan steps only, without the gate. It refuses
-early on R1-R5.
+early on R1-R5 and R8-R10 (R8 needs the new name, so it is checked by the rename).
+
+**One path (Round 232).** Every C rename, a local or a parameter as well as an
+external or a static, is `project_rename`: `rename_plan` collects the places
+(a local's are the unit's own events; a keyed entity's add the records'), the
+gate checks the affected units (the open unit alone for a local), and the
+edits are written. A name declared in a header or a file another unit
+`#include`s is always planned from the records, so a unit that includes the
+open unit's main file (a unity build) is an affected unit too (F3). There is
+no separate unit-only check on the builder.
 
 ## 12. Edge cases
 
@@ -2380,15 +2400,16 @@ deleting 147), 115 of tests and 132 of `bench/tools/rename_libuv.py`.
   it runs serially.
 - **Request path.** A project rename is a worker-thread request
   (`need_worker`, `Server.workers`, joined at shutdown), so the builder
-  stays free; a unit-only rename keeps the builder. The reply is
+  stays free (since Round 232 every C rename, a local too). The reply is
   `documentChanges` (version for an open document, `null` otherwise) or
   `changes`. `pq_current` rechecks every edited file's version or hash
   against the text the edits were made on; a mismatch is ContentModified.
 - **Tests.** `proj_test.py` scenario `rename`: edits equal the references;
   versions in `documentChanges`; the `changes` form; R6 (collision with an
   existing name); R4/R7 for prepareRename and rename; R2 (an unindexed unit,
-  jobs held); R5 (`renameMaxTUs` 1); ContentModified (`CEREAL_FAULT=
-  rename-modify`). `lsp_stress.py --rename`.
+  jobs held); R5 (`renameMaxTUs` 1); ContentModified (a file changes after
+  the checks: `cereal/holdChecks` with `gate`; before Round 232 a fault hook
+  appended to the file). `lsp_stress.py --rename`.
 
 **Stop rule.** `bench/tools/rename_libuv.py` renames each of 441 external
 functions of the libuv Linux units (38 units that compile; `posix-poll.c`
@@ -2414,7 +2435,7 @@ non-compiling entry blocks all renames until `paths` excludes it (kept, user
 decision; since Round 231 the R2 message names the blocking units with their
 error counts and points at `cereal.index.paths`; the manifest stores the count,
 not the first error's text, so that is not shown). Duration
-about 4 min (0.57 s a rename on 4 cores).
+about 4 min (0.57 s a rename on 4 cores; 0.54 s after Round 232's R1 rewrite).
 
 **Deviations and limits.**
 
@@ -2436,6 +2457,91 @@ clangd varies between runs). TSan: 58 session runs, `lsp_stress.py
 --symbols --calls --refs --rename` 200 edits on a 40-TU project with
 indexing active (two files), all 18 `proj_test` scenarios: 0 reports.
 
+### 15.4 Review of B5c and B5d (Round 232)
+
+A Sonnet review of `git diff 9327eb6..ab72ecc` gave nine findings and six
+unifications; each was checked in the code before it was fixed. Eight of the
+nine findings were real; F7 was not reachable and is discarded (below). The
+fixes follow the end-state rule: one rename path first (U1), and what it
+subsumed is deleted.
+
+| # | Finding | Status |
+|---|---|---|
+| F1 | Call hierarchy `fromRanges` doubled: `pqcall_cmp` ended with `site.seq`, and the loop used it as the duplicate test | Real. The loop dedupes on (key, place) with `pqcall_same`; the sort is `pq_key_cmp` then `pq_loc_order`. `proj_test` `xref` asserts unique ranges and an exact site count, with the unit open and saved. |
+| F2 | A rename of an external to the name of another external of a unit that does not read the edited files was not seen | Real. R8 (`pq_has` on both kinds, whole project) and R9 (no definition in the project). Tests: a clash and a no-definition refusal, and a fresh name that goes through. |
+| F3 | A unit-only rename ignored a unit that `#include`s the main file (unity build) | Real. U1: a name with a project key is always planned from the records (`rename_plan`), so every unit that reads an edited file is checked. Test: `unity.c` including `uni_a.c`; three edits in two files. |
+| F4 | `prepareRename` ran `pq_ambiguous` (R1) on the protocol thread, O(entries x hits) under the read lock | Real. Per record: a bsearch of (path, text hash) in the sorted own places first, the own-key loop only for records that pass it, the file-less scan under the lock only; the one place found is mapped after the lock. `rename_libuv.py`: 0.54 s a rename (was 0.57 s). No path-to-records index in projidx was needed. |
+| F5 | An opaque `struct`/`union`/`enum` tag got a different key per unit | Real. The anchor of a tag prefers its first declaration (5.3); `CREC_FORMAT` 4. Test: a forward declaration in a header, the definition in one unit, a use in another: one entity in the references. Not closed: a unit that sees only the definition anchors there. |
+| F6 | The outgoing call item pointed at the caller's local prototype | Real. `sym_define` asks the project (`pq_sym`) when the open unit's symbol is a declaration and not a definition. `xref` checks the callee item is at the definition. |
+| F7 | R7 not applied to DECL/DEF entries from records (`CRecDecl` has no `AT_EXPANSION`) | Discarded: not reachable. A declaration formed by a macro never gets a record entry (`cindex_symbol_event` rejects it), so there is nothing to flag; the rename of such a name is refused by the gate's re-check of that unit (the unit's declarations would change). The gap is that such a declaration is absent from the project index (18). A test (`zm.c`) pins the refusal. |
+| F8 | Unbounded work: no caps, a linear `pq_file`, file reads and `S.m` under `pi_rdlock` | Real. Caps: `PQ_MAX_ENTRIES` 20000 entries a query, a cut answer is logged (`window/logMessage`), a rename of that size is refused (R10). `pq_file` is a hash table. Entries, declarations and calls are copied out under the lock and placed after it. Parked: a stat-validated hash cache, releasing texts early (18). |
+| F9 | Smalls | See below. |
+
+**F9.**
+
+- The R2 snapshot versus `project_pause` gap: the pause now starts before the
+  plan (`project_rename`) and ends after the edits are written.
+- The `rename-modify` fault hook, which appended to a user file inside
+  production code, is deleted. The ContentModified test uses the test-only
+  `cereal/holdChecks` with `gate` (the rename waits after its checks, the test
+  edits a file, then releases).
+- `gate_job` leaked the `Run` structs of `c_rename` on a fatal: `run_check`
+  now traps the fatal itself, so `run_free` frees them and the message
+  reaches the refusal.
+- `pq_where` counted bytes and scanned from the start: it uses the client's
+  line table and encoding now (`pos_of`, shared with `pq_pos`).
+- The ignored `pq_key` return in `c_sym` and `item_is`: not a bug (the key is
+  filled either way; false only means the project has nothing under an anchor
+  inside an edit). Made explicit with a comment and `(void)`.
+- `c_rename` in project mode had no asked place, so the renamed decl was
+  the first event at an edit: `project_rename` passes the cursor
+  (`CRename.path`, `off`).
+- The shared compile database case (several Lua versions in one database)
+  is documented in LSP.md.
+
+**Unifications.**
+
+- **U1, one rename path.** `project_rename` serves every C rename; a local or
+  a parameter is planned from the unit's events and checked as the open unit
+  alone. Deleted: the `wide` parameter of `cindex_rename_plan` and its "needs
+  the project index" refusal for the project case (`project` flag instead),
+  `lsp_check_rename`, `RenameJob`, `rename_run`, the rename use of
+  `need_builder`, and the unit-only write path of `c_rename_edits`.
+  `plan_unit` stays for `cereal query rename=`.
+- **U2, staleness.** `pq_current` answers every "the text changed" question for
+  a rename (the request's document included, now that the plan uses the
+  snapshot's text); `doc_unchanged` is no longer asked for a rename, only for
+  code actions. `lsp_doc_state` hashes without the BOM, as the checks' text.
+  R3's `ndropped` stays: it is the plan-time check on the records, a
+  different question (can this entry be placed) from the end-time one.
+- **U3, places.** `loc_cmp`, `pqcall_cmp` and the call dedupe are one pair,
+  `pq_loc_cmp` (place) and `pq_loc_order` (place, then source). `mine_cmp`
+  and `pq_key_cmp` stay: they order records' coordinates and keys, not places.
+- **U4, `DocSet` and `WsDocText`: kept.** `DocSet` is a consistent copy of all
+  open documents for the pool threads of the gate, which borrow buffers;
+  `WsDocText` copies one document on demand for a query. Merging them would copy every
+  open document for each references request.
+- **U5, scheduler events.** `EV_SYNC`, `EV_CREATED` and `EV_SCOPE` are one
+  `EV_CALL` (a function and argument run on the scheduler thread); `Event.req`
+  is gone. `EV_SAVE`/`OPEN`/`CLOSE`/`SWEEP` stay: they carry a path and have no
+  caller-specific function.
+- **U6, messages to the client.** `rpc_begin`/`rpc_end`/`rpc_log`/
+  `rpc_progress` (rpc.c) replace four copies of the JSON-RPC envelope
+  (`begin_notification`, `begin_msg`/`end_msg`/`send_log`/`send_progress`,
+  `phase_failed`'s and `rename_progress`'s hand-written ones). `pq_where` and
+  `pq_pos` share one position function; `cindex_place` (the checker's
+  messages, from a `SrcMgr`) stays: it has no `PqFiles`.
+
+**Deviations from the review.**
+
+- F5: the tag anchor is "the first declaration (DECL before DEF)", not "first
+  event in (path, off) order whatever its role": the second would make the key
+  depend on the sort order of the two paths.
+- F4: no path-to-records index in `projidx`; the bsearch over the sorted own
+  places is enough, and the lock is held for memory scans only.
+- F8: the cap is a count, 20000, not a byte or time bound.
+
+**Gates.** `tests/run.sh` 2158 passed; `gate.sh` globals 32, san 2158 passed with 0 findings, callgrind 3.8830 G (baseline 3.8840 G), verify unchanged (gcc.dg 3908/3910, c-c++-common 637/638, cpp 289/289); `symcov` 4718 files, 1,146,276 events, 0 unindexed, 0 param misses; `clangd_diff` project mode 3424 results, 0 unexplained; `wsym_bench` workspace/symbol p95 21.2 ms; `rename_libuv.py` 441 renames in 3m59s, 0 false refusals (0.0%, design reading); TSan (Round 192 recipe): no reports in the sessions, the stress run (`--symbols --calls --refs --rename`, indexing on, 6 project renames answered with edits; the stress now roots at the compile database and waits for the index) or `proj_test.py`. Caveats: `csym_rename.json` differs under TSan only because the recipe sets `CEREAL_INDEX_ENABLE=1` (R9 message instead of the index-off one); one `proj_test` rename failure in the first TSan pass did not reproduce in 11 later runs (alone, full, 4 in parallel).
 ## 16. Risks
 
 1. **Header variants explode on projects with many `-D` sets.** Records
@@ -2552,6 +2658,9 @@ shows the name used in a macro body (R7, 11.5).
 | A macro that names a function but is never invoked (R4/R7 gap) | No record event exists for it; needs the macro-body identifier spellings in the record (the same format bump as Q7). Documented limitation. |
 | Renaming through inactive `#if` groups (A3.9) | Rename refuses a use in a group the unit does not compile (user decision, Round 231). Editing it needs per-branch preprocessing or a textual mode verified under the other branches. |
 | A macro-aware rename policy | What to edit at a macro site (argument, body, or neither) is undecided; rename refuses rather than guesses. |
+| Declarations formed by a macro in the project index | `cindex_symbol_event` rejects a pasted or synthesised declaration (`PROTO(zm)` making `int zm_fn(void);`), so no record has it: references and call hierarchy do not list it and R7 cannot see it. A rename is still safe, because the gate's re-check of that unit changes its declarations and refuses (`tests/proj_test.py` rename, `zm.c`). Needs the declaration kept in the index with its expansion-site spelling. (Round 232 F7: the R7 bit on declarations was not reachable; discarded.) |
+| A stat-validated hash cache for `PqFiles` | A query reads and hashes each file it places entries in; `PQ_MAX_ENTRIES` bounds the files, the page cache makes a repeat cheap. A cache would need the record's own stat. Not needed at the measured 3.3 ms references p95. (Round 232 F8) |
+| Releasing a file's text after its last edit is written | The peak is the sum of the files a result lies in, bounded by the entry cap. (Round 232 F8) |
 
 ## 19. Review log
 

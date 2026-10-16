@@ -1050,7 +1050,8 @@ Built as the addendum says, with these details and corrections:
 - **prepareRename** refusals are now RequestFailed errors with the reason
   for macros too: `tests/lsp/proj` changed from null to the `##` message.
   Null is kept where there is no entity (a keyword, white space).
-- **The builder job.** `lsp_check_rename` puts a `RenameJob` on the
+- **The builder job (deleted in Round 232: every C rename is planned and checked
+  by `project_rename` on a worker, B5_DESIGN 15.4).** `lsp_check_rename` put a `RenameJob` on the
   server and waits on `S.done`; the builder takes it at the top of its
   loop, before the next queued build, and runs `c_rename` under a fatal
   trap with the unit's options (missing includes not fatal, as in the

@@ -185,11 +185,10 @@ static inline const char *cindex_rename_blocker(unsigned flags)
  * order (*ev malloc'd); NULL, or why not (a message in msg).  sm: for the
  * places in messages.  Without project they lie in the unit's main file
  * (a use elsewhere is refused: other units may include it); with it they may
- * lie in any file, and *wide (if not NULL) tells whether some do. */
+ * lie in any file. */
 const char *cindex_rename_plan(const CIndex *ix, SrcMgr *sm, const char *path,
                                uint32_t off, const char *main, bool project,
-                               uint32_t **ev, size_t *n, bool *wide, char *msg,
-                               size_t msgsz);
+                               uint32_t **ev, size_t *n, char *msg, size_t msgsz);
 /* [A-Za-z_][A-Za-z0-9_]* */
 bool cindex_is_identifier(const char *s);
 /* A byte that can continue an identifier ($ and UTF-8 included). */

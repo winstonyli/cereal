@@ -86,7 +86,7 @@ c-c++-common: dump-ada-spec-14 (gcc's Ada dumper).
 
 
 Round 210, latest verify (gcc-13): gcc.dg 3908 of 3910 identical, c-c++-common 637 of 638,
-cpp 289 of 289; `tests/run.sh` 2158 passed (Round 230).  Remaining gcc.dg diffs: pr56355-1,
+cpp 289 of 289; `tests/run.sh` 2158 passed (Round 232).  Remaining gcc.dg diffs: pr56355-1,
 pr83844 (above).
 Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - `char * const _Atomic c` parameter of main prints as `char * _Atomic`

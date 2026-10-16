@@ -29,9 +29,18 @@ typedef struct PqFile {
     LineTable lines;             /* of cur */
 } PqFile;
 
+/* The most project entries (uses, declarations, calls) one query takes from the
+ * records; past it the answer is cut (fs->truncated) and the client is told in
+ * the log.  A rename needing more refuses. */
+#define PQ_MAX_ENTRIES 20000u
+
 typedef struct PqFiles {
     VEC(PqFile *) v;
+    PqFile **tab;                /* v's files by path: open addressing, a power of two */
+    size_t tabcap;
     PqFile *last;
+    size_t budget;               /* entries left of PQ_MAX_ENTRIES */
+    bool truncated;              /* an answer was cut at the budget */
     SrcMgr *sm;                  /* the request's snapshot: its files' texts first (or NULL) */
     WsDocText doc_text;          /* then an open document's (or NULL) */
     PosEncoding enc;
@@ -40,7 +49,7 @@ typedef struct PqFiles {
 } PqFiles;
 
 void pq_init(PqFiles *fs, SrcMgr *sm, WsDocText doc_text, PosEncoding enc);
-void pq_free(PqFiles *fs);          /* also asks for a sweep if fs->hint */
+void pq_free(PqFiles *fs);          /* also asks for a sweep if fs->hint, and logs a cut answer */
 PqFile *pq_file(PqFiles *fs, const char *path);
 
 /* Where something the records say about f is in the client's text.  off, len
@@ -66,8 +75,12 @@ typedef struct PqLoc {
 } PqLoc;
 typedef VEC(PqLoc) PqLocs;
 
-/* Sorted by (path, offset, length), a repeated one dropped (an open unit's wins
- * over the project's). */
+/* The place alone: (path, offset, length).  pq_loc_order adds seq, so that of two
+ * equal places the open unit's comes first. */
+int pq_loc_cmp(const PqLoc *a, const PqLoc *b);
+int pq_loc_order(const PqLoc *a, const PqLoc *b);
+/* Sorted by pq_loc_order, a repeated place dropped (an open unit's wins over the
+ * project's). */
 void pq_locs_sort(PqLocs *v);
 /* The array body: one Location each, in order (call pq_locs_sort first). */
 void pq_locs_write(JsonWriter *w, PqFiles *fs, const PqLocs *v);
@@ -106,6 +119,8 @@ void pq_entries(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, unsigned what, PqL
  * the same text of the file (the same header under other macros, 12.1).  The
  * place goes to blk->f, off. */
 bool pq_ambiguous(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, PqBlock *blk);
+/* Whether some record has the key k, with def: a defining declaration of it. */
+bool pq_has(ProjIndex *pi, const CIdxKey *k, bool def);
 /* Whether f's text is still the one the answers were made from (a rename's
  * last check): the live document's, else the disk's.  *version: the open
  * document's (-1: none given), -2: it is not open. */

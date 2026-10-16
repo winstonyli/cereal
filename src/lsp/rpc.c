@@ -54,3 +54,73 @@ void rpc_write(const char *body, size_t len)
     fflush(out_fp);
     mutex_unlock(&out_m);
 }
+
+/* ---- messages to the client ---------------------------------------------------- */
+
+void rpc_begin(JsonWriter *w, StrBuf *sb, const char *method, const char *id)
+{
+    json_init_buf(w, sb);
+    json_begin_object(w);
+    json_key(w, "jsonrpc");
+    json_str(w, "2.0");
+    if (id) {
+        json_key(w, "id");
+        json_str(w, id);
+    }
+    json_key(w, "method");
+    json_str(w, method);
+    json_key(w, "params");
+    json_begin_object(w);
+}
+
+void rpc_end(JsonWriter *w, StrBuf *sb)
+{
+    json_end_object(w);
+    json_end_object(w);
+    rpc_write(sb->data, sb->len);
+    sb_free(sb);
+}
+
+void rpc_log(int type, const char *text)
+{
+    StrBuf sb = {0};
+    JsonWriter w;
+    rpc_begin(&w, &sb, "window/logMessage", NULL);
+    json_key(&w, "type");
+    json_int(&w, type);
+    json_key(&w, "message");
+    json_str(&w, text);
+    rpc_end(&w, &sb);
+}
+
+void rpc_progress(const char *token, size_t token_len, const char *kind, const char *title,
+                  const char *message, int pct)
+{
+    StrBuf sb = {0};
+    JsonWriter w;
+    if (!token)
+        return;
+    rpc_begin(&w, &sb, "$/progress", NULL);
+    json_key(&w, "token");
+    json_raw(&w, token, token_len);
+    json_key(&w, "value");
+    json_begin_object(&w);
+    json_key(&w, "kind");
+    json_str(&w, kind);
+    if (title) {
+        json_key(&w, "title");
+        json_str(&w, title);
+        json_key(&w, "cancellable");
+        json_bool(&w, false);
+    }
+    if (message) {
+        json_key(&w, "message");
+        json_str(&w, message);
+    }
+    if (pct >= 0) {
+        json_key(&w, "percentage");
+        json_int(&w, pct);
+    }
+    json_end_object(&w);
+    rpc_end(&w, &sb);
+}

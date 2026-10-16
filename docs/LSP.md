@@ -272,7 +272,9 @@ is freed with it (replacing the carried index, below).
     implicitly declared function;
   - a use spelled in a `#define` body or formed by `##`;
   - a use in a header (other units may include it) without the project
-    index; with it, the rename runs over the project (B5d, below);
+    index; with it, the rename runs over the project (B5d, below; since
+    Round 232 every C rename, a local too, is checked on a worker thread by
+    that path);
   - a new name that is not an identifier, is a keyword in any mode, or
     has any macro history in the unit;
   - an `#include` not found;
@@ -600,15 +602,37 @@ publishes a result by reloading the unit's manifest and bumping `GEN`.
   declare), more than `cereal.index.renameMaxTUs` (100) affected units (R5), and
   anything the per-unit check refuses (R6: a collision or capture, or a use in
   an inactive `#if` group), run for every affected unit, in parallel, on the
-  index pool, with the scheduler's submissions paused. A file that changes
+  index pool, with the scheduler's submissions paused from the plan to the
+  end. Also refused: a new name that is another external function or object
+  of the project (R8: the clash is at link time, in no unit's check), an
+  external with no definition in the project (R9: a library's), and a name
+  with more than 20000 uses and declarations (R10). A file that changes
   while the rename runs answers ContentModified (-32801). prepareRename runs the
   cheap refusals only (its scope check waits 300 ms for the scheduler). A
   macro that names the function but is never invoked leaves no record, so it
   is not seen (a documented limitation). A macro rename still replies with
   `changes`. With the project index off, a name used in a file other than the
   unit's main file is refused as before ("renaming it needs the project index").
+  A local, a parameter or a label is renamed by the same path with the open unit
+  alone (its own events are all its uses). A name declared in the open unit's
+  main file but also read through an `#include` by another unit (a unity build)
+  is an affected unit like any other.
+- Answers are capped: one query takes at most 20000 entries (uses,
+  declarations, calls) from the records; a references or call hierarchy answer
+  that hits it is cut and the client's log gets a warning
+  (`window/logMessage`). The records are copied out under the index's read
+  lock and placed in the client's text after it (no file reads, and no
+  server lock, under the index lock).
+- A project that compiles one source with several configurations in one
+  compile database (several Lua versions, one `luac.c` per version) has a
+  unit per entry, each indexed with its own flags; the merged answer is the
+  union, deduplicated by place. Where two entries read the same header
+  differently, the same place can belong to two entities (R1 refuses the
+  rename), and a static of one configuration is not the other's. Entries that
+  never compile are best excluded with `cereal.index.paths`.
 - Test-only requests: `cereal/indexStats`, `cereal/indexWait` (a barrier),
-  `cereal/indexHold`. `tests/proj_test.py` drives them; the other LSP tests
+  `cereal/indexHold`, and `cereal/holdChecks` with `gate` (a rename waits after
+  its units' checks). `tests/proj_test.py` drives them; the other LSP tests
   run with `CEREAL_INDEX_ENABLE=0`.
 
 ## Tests

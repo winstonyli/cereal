@@ -60,7 +60,9 @@ typedef struct CRename {
     CRenFile *files;
     size_t nfiles;
     const char *old;            /* in, with files: the old name */
-    const char *path;           /* planning: the name is at offset off of this file */
+    const char *path;           /* the asked name is at offset off of this file (planning;
+                                   with files, the entity to rename when the unit has
+                                   it there, else the first an edit names) */
     uint32_t off;
     uint32_t len;               /* out: the old name's length */
     bool own;                   /* out: files was planned here */

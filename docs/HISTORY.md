@@ -4717,3 +4717,25 @@ case. ROADMAP Track D has a new item, "macro-aware project index and
 refactoring", collecting the parked pieces (macro invocation sites, the
 uninvoked-macro gap, inactive groups, macro rename policy; shared prerequisite a
 record format bump); B5_DESIGN 18 lists them.
+
+Round 232: review fixes for B5c/B5d (B5_DESIGN 15.4). One rename path: every
+C rename runs in `project_rename` (locals planned from the unit's events and
+gated on the open unit alone); deleted `lsp_check_rename`, `RenameJob`,
+`rename_run`, the `wide` parameter of `cindex_rename_plan` and the unit-only
+write path. Fixed: doubled call `fromRanges` (F1), external link-time clashes
+and externals without a definition (R8, R9; F2), unity builds (F3), the R1
+cost of prepareRename (F4), opaque tag keys across units (tag anchor is the
+first declaration; `CREC_FORMAT` 4; F5), the outgoing call item at the
+prototype (F6), caps (20000 entries, R10), a hash table for `pq_file`, and
+copy-out-then-place under the read lock (F8), the pause now spanning plan to
+write, the fault hook replaced by `cereal/holdChecks` `gate`, the `Run` leak
+on a fatal in the gate, `pq_where` on the line table (F9). F7 discarded:
+macro-formed declarations never reach the records (parked, B5_DESIGN 18).
+Unifications: `EV_CALL` scheduler events, `rpc_begin/end/log/progress`,
+`pq_loc_cmp/order`; `DocSet`/`WsDocText` kept. `lsp_stress.py` now roots at the
+compile database, waits for the index and counts renames answered with edits.
+Gates: run.sh 2158 passed; san 2158, 0 findings; callgrind 3.8830 G; globals
+32; symcov unchanged; clangd_diff 0 unexplained; wsym_bench p95 21.2 ms;
+rename_libuv 441 renames, 0.0% false (design), 3m59s; TSan 0 reports (stress:
+6 project renames with edits). One unreproduced `proj_test` rename failure in
+the first TSan pass (0 of 11 reruns).

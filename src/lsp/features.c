@@ -148,6 +148,14 @@ static bool c_external(const CIndex *ix, uint32_t d)
                                          ix->decls[d].kind == CIK_OBJ);
 }
 
+/* Whether the decl has a key in the project's records: anything declared at file
+ * scope (a member by its definition's place); not a parameter, label or local. */
+static bool c_keyed(const CIndex *ix, uint32_t d)
+{
+    const CIdxDecl *x = &ix->decls[d];
+    return x->kind != CIK_PARAM && x->kind != CIK_LABEL && !x->scope;
+}
+
 /* The project's entries (PQ_*) for the keys of the decls, placed in the client's
  * text (10.3, 11.2).  Names the open unit has no key for (parameters, labels,
  * locals) are not asked. */
@@ -157,9 +165,7 @@ static void c_project(Req *r, PqFiles *fs, const uint32_t *decls, size_t nd, uns
     size_t i;
     for (i = 0; r->pi && i < nd; i++) {
         CIdxKey key;
-        if (r->cidx->decls[decls[i]].kind != CIK_PARAM &&
-            r->cidx->decls[decls[i]].kind != CIK_LABEL &&
-            pq_key(fs, r->cidx, decls[i], &key))
+        if (c_keyed(r->cidx, decls[i]) && pq_key(fs, r->cidx, decls[i], &key))
             pq_entries(fs, r->pi, &key, what, v, NULL);
     }
 }
@@ -1481,10 +1487,11 @@ static const char *rename_blocker(Req *r, const IdxTarget *t, IdxRef *refs,
 /* The C name at the cursor (B2 phase 4) as the range a rename edits there,
  * from the check's index (cindex_rename_plan), or why it cannot be renamed.
  * The index must be the newest edit's: its offsets are the edits'.  *d: the
- * entity; *project: its uses may lie beyond the unit (in other files, or it
- * has external linkage), so the project's records plan the rename. */
+ * entity; *keyed: it has a key in the project's records (c_keyed), whose uses
+ * may lie in other units and which the project's records plan; else (a local,
+ * a parameter, a label) the unit's own events are all of it. */
 static const char *c_rename_at(Req *r, SrcLoc at, SrcLoc *b, SrcLoc *e, uint32_t *d,
-                               bool *project)
+                               bool *keyed)
 {
     const SrcFile *mf = index_find_file(&r->snap->ix, r->snap->main);
     uint32_t *ev = NULL, first;
@@ -1492,12 +1499,11 @@ static const char *c_rename_at(Req *r, SrcLoc at, SrcLoc *b, SrcLoc *e, uint32_t
     char msg[512];
     const char *err;
     const CIdxEvent *x;
-    bool wide;
     if (!r->c_fresh || !mf)
         return "the C symbol index is not ready; retry";
     err = cindex_rename_plan(r->cidx, &r->snap->tu.sm, r->file->path,
                              at - r->file->base, mf->path, r->pi != NULL, &ev, &n,
-                             &wide, msg, sizeof msg);
+                             msg, sizeof msg);
     free(ev);
     if (err)
         return arena_strdup(r->arena, err);
@@ -1505,7 +1511,7 @@ static const char *c_rename_at(Req *r, SrcLoc at, SrcLoc *b, SrcLoc *e, uint32_t
               at - r->file->base, &first);
     x = &r->cidx->ev[first];
     *d = x->decl;
-    *project = r->pi && (wide || c_external(r->cidx, x->decl));
+    *keyed = r->pi && c_keyed(r->cidx, x->decl);
     *b = r->file->base + x->off;
     *e = *b + x->len;
     return NULL;
@@ -1556,7 +1562,8 @@ static void ren_plan_group(RenPlan *p)
  * under its key, and why the project cannot rename it (R1, R3, R4, R7, then
  * R2 and R5 from the scheduler).  prepare: no wait for the scheduler beyond
  * a moment.  NULL: p has the places and the units to check. */
-static const char *rename_plan(Req *r, RenPlan *p, uint32_t d, bool prepare)
+static const char *rename_plan(Req *r, RenPlan *p, uint32_t d, bool keyed, const char *name,
+                               bool prepare)
 {
     const CIndex *ix = r->cidx;
     const char *old = cindex_name(ix, d);
@@ -1569,12 +1576,21 @@ static const char *rename_plan(Req *r, RenPlan *p, uint32_t d, bool prepare)
     memset(p, 0, sizeof *p);
     pq_init(&p->fs, &r->snap->tu.sm, r->doc_text, r->enc);
     p->len = (uint32_t)strlen(old);
+    c_collect(r, &p->fs, &d, 1, CIQ_REFS, &p->locs);
+    if (!keyed) {                          /* a local: the unit's own events are all of it */
+        pq_locs_sort(&p->locs);
+        ren_plan_group(p);
+        return NULL;
+    }
     if (!pq_key(&p->fs, ix, d, &key))
         return arena_printf(r->arena, "the declaration of '%s' has unsaved edits that the "
                             "project index cannot place; save the file and retry", old);
     memset(&blk, 0, sizeof blk);
-    c_collect(r, &p->fs, &d, 1, CIQ_REFS, &p->locs);
     pq_entries(&p->fs, r->pi, &key, PQ_REF | PQ_DECL | PQ_DEF, &p->locs, &blk);
+    if (p->fs.truncated)                   /* the list must be whole */
+        return arena_printf(r->arena, "'%s' has more than %u uses and declarations in the "
+                            "project; a rename of that size is not attempted", old,
+                            PQ_MAX_ENTRIES);
     if (blk.why) {                         /* R4, R7: one rule for every record */
         pq_where(&p->fs, blk.f, blk.off, at, sizeof at);
         return arena_printf(r->arena, "'%s' at %s is %s; renaming would change the macro",
@@ -1590,6 +1606,20 @@ static const char *rename_plan(Req *r, RenPlan *p, uint32_t d, bool prepare)
         pq_where(&p->fs, blk.df, blk.doff, at, sizeof at);
         return arena_printf(r->arena, "the index has a use of '%s' at %s that the edits to "
                             "that file moved or changed; save it and wait for the index", old, at);
+    }
+    if (c_external(ix, d)) {               /* a link-time entity: the whole project is its scope */
+        CIdxKey nk = key;
+        if (!c_has_role(ix, d, CIX_DEF) && !pq_has(r->pi, &key, true))
+            return arena_printf(r->arena, "'%s' has no definition in the project (a library's?): "
+                                "renaming its uses would break linking", old);
+        for (i = 0; name && i < 2; i++) {  /* F2: another external entity of the new name */
+            nk.name = name;
+            nk.kind = i ? CIK_OBJ : CIK_FUNC;
+            if (pq_has(r->pi, &nk, false))
+                return arena_printf(r->arena, "'%s' is already an external %s of the project; "
+                                    "the renamed one would clash with it at link time", name,
+                                    i ? "object" : "function");
+        }
     }
     pq_locs_sort(&p->locs);
     ren_plan_group(p);
@@ -1657,7 +1687,7 @@ static void rename_write(Req *r, JsonWriter *w, PqFiles *fs, const CRenFile *fil
 
 /* A rename across units: the plan, then each unit that reads an edited file
  * checks it (the gate), then the edits.  On a worker thread (r->on_builder). */
-static bool project_rename(Req *r, JsonWriter *w, uint32_t d, const char *name,
+static bool project_rename(Req *r, JsonWriter *w, uint32_t d, bool keyed, const char *name,
                            const char **err)
 {
     RenPlan p;
@@ -1665,13 +1695,17 @@ static bool project_rename(Req *r, JsonWriter *w, uint32_t d, const char *name,
     char **mains, *why;
     size_t *entries, n, i;
     long long *ver;
-    bool ok = false;
+    bool ok = false, paused = false;
     DocSet *docs;
     if (!cindex_is_identifier(name)) {
         *err = arena_printf(r->arena, "'%s' is not an identifier", name);
         return false;
     }
-    if ((*err = rename_plan(r, &p, d, false)) != NULL)
+    /* no index job starts from the plan (R2) to the end: what the plan found complete
+     * stays so while the units are checked */
+    project_pause(true);
+    paused = true;
+    if ((*err = rename_plan(r, &p, d, keyed, name, false)) != NULL)
         goto out;
     n = p.sc.nmains;
     mains = NEW_ARRAY(r->arena, char *, n + 1);
@@ -1689,27 +1723,34 @@ static bool project_rename(Req *r, JsonWriter *w, uint32_t d, const char *name,
     memset(&t, 0, sizeof t);
     t.name = name;
     t.old = cindex_name(r->cidx, d);
+    t.path = r->file->path;                /* the asked name: the entity every unit renames */
+    t.off = cursor(r) - r->file->base;
     t.files = p.files.data;
     t.nfiles = p.files.len;
     docs = lsp_docs_copy();
     why = lsp_rename_gate(&t, mains, entries, n, docs,
                           json_get(r->params, "workDoneToken"));
     lsp_docs_free(docs);
+    /* a text that changed since the plan answers first: the refusal (or the edits)
+     * would be for the old one */
+    ver = NEW_ARRAY(r->arena, long long, p.files.len + 1);
+    for (i = 0; i < p.files.len; i++)
+        if (!pq_current(&p.fs, p.pf.data[i], &ver[i])) {
+            *err = "the document changed during the rename";
+            r->modified = true;
+            free(why);
+            goto out;
+        }
     if (why) {
         *err = arena_strdup(r->arena, why);
         free(why);
         goto out;
     }
-    ver = NEW_ARRAY(r->arena, long long, p.files.len + 1);
-    for (i = 0; i < p.files.len; i++)
-        if (!pq_current(&p.fs, p.pf.data[i], &ver[i])) {
-            *err = "a file changed during the rename";
-            r->modified = true;
-            goto out;
-        }
     rename_write(r, w, &p.fs, p.files.data, p.pf.data, ver, p.files.len, p.len, name);
     ok = true;
 out:
+    if (paused)
+        project_pause(false);
     ren_plan_free(&p);
     return ok;
 }
@@ -1735,7 +1776,7 @@ bool lsp_prepare_rename(Req *r, JsonWriter *w, const char **err)
             return false;
         if (project) {                     /* the project's refusals, early */
             RenPlan p;
-            *err = rename_plan(r, &p, d, true);
+            *err = rename_plan(r, &p, d, true, NULL, true);
             ren_plan_free(&p);
             if (*err)
                 return false;
@@ -1766,52 +1807,22 @@ static int ref_file_cmp(const void *a, const void *b)
     return x->loc < y->loc ? -1 : x->loc > y->loc;
 }
 
-/* A C name: the edits within the unit (c_rename plans them from the unit's own
- * check), or across units (project_rename). */
+/* A C name: planned (rename_plan: a local's own events, or the project's records),
+ * checked by the gate, written.  One path for both; the checks are not the
+ * protocol thread's, so it is deferred to a worker. */
 static bool c_rename_edits(Req *r, JsonWriter *w, SrcLoc at, const char *name,
                            const char **err)
 {
-    SrcFile *mf = index_find_file(&r->snap->ix, r->snap->main);
     SrcLoc b, e;
     uint32_t d;
-    bool project;
-    CRename q;
-    char *why;
-    PqFiles fs;
-    PqFile *pf;
-    long long ver = -2;
-    if ((*err = c_rename_at(r, at, &b, &e, &d, &project)) != NULL)
+    bool keyed;
+    if ((*err = c_rename_at(r, at, &b, &e, &d, &keyed)) != NULL)
         return false;
-    if (!r->on_builder) { /* the checks are not the protocol thread's: defer (no output) */
-        if (project)
-            r->need_worker = true;
-        else
-            r->need_builder = true;
+    if (!r->on_builder) {
+        r->need_worker = true;
         return true;
     }
-    if (project)
-        return project_rename(r, w, d, name, err);
-    memset(&q, 0, sizeof q);
-    q.path = r->file->path;
-    q.off = at - r->file->base;
-    q.name = name;
-    if ((why = lsp_check_rename(r->snap, &q)) != NULL) {
-        *err = arena_strdup(r->arena, why);
-        free(why);
-        c_rename_free(&q);
-        return false;
-    }
-    pq_init(&fs, &r->snap->tu.sm, r->doc_text, r->enc);
-    pf = pq_file(&fs, mf->path);
-    if (r->doc_changes) {
-        uint64_t h;
-        if (!lsp_doc_state(mf->path, &ver, &h))
-            ver = -2;
-    }
-    rename_write(r, w, &fs, q.files, &pf, &ver, q.nfiles, q.len, name);
-    pq_free(&fs);
-    c_rename_free(&q);
-    return true;
+    return project_rename(r, w, d, keyed, name, err);
 }
 
 bool lsp_rename(Req *r, JsonWriter *w, const char **err)
@@ -1953,8 +1964,31 @@ static bool c_sym(Req *r, PqFiles *fs, uint32_t d, uint32_t ev, PqSym *s)
         s->ext_b = root->begin < s->ext_b ? root->begin : s->ext_b;
         s->ext_e = root->end > s->ext_e ? root->end : s->ext_e;
     }
-    pq_key(fs, ix, d, &s->key);      /* an anchor in the edit stays as it is */
+    s->def = c_has_role(ix, d, CIX_DEF);
+    (void)pq_key(fs, ix, d, &s->key); /* false: an anchor in an edit stays as the unit has it
+                                       * (the key is filled either way, and groups the unit's
+                                       * own items; the project has nothing under it) */
     return true;
+}
+
+/* A symbol known only by a declaration (the unit's prototype, or a project
+ * record's) is shown at the project's definition when there is one (F6). */
+static void sym_define(Req *r, PqFiles *fs, PqSym *s)
+{
+    PqSym t;
+    if (!r->pi || s->def)
+        return;
+    t = *s;
+    t.f = NULL;
+    pq_sym(fs, r->pi, &t);
+    if (!t.f || (s->f && !t.def))
+        return;
+    s->f = t.f;
+    s->off = t.off;
+    s->len = t.len;
+    s->ext_b = t.ext_b;
+    s->ext_e = t.ext_e;
+    s->def = t.def;
 }
 
 /* A call hierarchy item: the open unit's decl, or the project's declaration.  Its
@@ -2097,7 +2131,7 @@ static bool item_is(Req *r, PqFiles *fs, uint32_t d, const CIdxKey *want)
     CIdxKey k;
     if (!want)
         return true;
-    pq_key(fs, r->cidx, d, &k);
+    (void)pq_key(fs, r->cidx, d, &k);        /* filled either way */
     return !pq_key_cmp(&k, want);
 }
 
@@ -2158,16 +2192,14 @@ static int pqcall_cmp(const void *pa, const void *pb)
 {
     const PqCall *a = pa, *b = pb;
     int c = pq_key_cmp(&a->other.key, &b->other.key);
-    if (c)
-        return c;
-    c = a->site.f == b->site.f ? 0 : strcmp(a->site.f->path, b->site.f->path);
-    if (c)
-        return c;
-    if (a->site.off != b->site.off)
-        return a->site.off < b->site.off ? -1 : 1;
-    if (a->site.len != b->site.len)
-        return a->site.len < b->site.len ? -1 : 1;
-    return a->site.seq < b->site.seq ? -1 : a->site.seq > b->site.seq;
+    return c ? c : pq_loc_order(&a->site, &b->site);
+}
+
+/* The same call: the same other end at the same place (the open unit's and its
+ * own record's both have it). */
+static bool pqcall_same(const PqCall *a, const PqCall *b)
+{
+    return !pq_key_cmp(&a->other.key, &b->other.key) && !pq_loc_cmp(&a->site, &b->site);
 }
 
 /* incomingCalls / outgoingCalls (B4_DESIGN.md 5.4, B5_DESIGN.md 11.3): one entry
@@ -2214,8 +2246,7 @@ static void c_calls(Req *r, PqFiles *fs, JsonWriter *w, bool incoming, const uin
         for (j = i + 1; j < v.len && !pq_key_cmp(&v.data[j].other.key, &s->key); j++)
             if (sym_score(&v.data[j].other) > sym_score(s))
                 s = &v.data[j].other;
-        if (!s->f && r->pi)
-            pq_sym(fs, r->pi, s);
+        sym_define(r, fs, s);
         if (!s->f) {                                 /* no declaration at hand: the site */
             s->f = v.data[i].site.f;
             s->off = s->ext_b = v.data[i].site.off;
@@ -2228,7 +2259,7 @@ static void c_calls(Req *r, PqFiles *fs, JsonWriter *w, bool incoming, const uin
         json_key(w, "fromRanges");
         json_begin_array(w);
         for (k = i; k < j; k++)
-            if (!k || pqcall_cmp(&v.data[k - 1], &v.data[k]))
+            if (!k || !pqcall_same(&v.data[k - 1], &v.data[k]))
                 pq_range(w, fs, v.data[k].site.f, v.data[k].site.off, v.data[k].site.len);
         json_end_array(w);
         json_end_object(w);
@@ -2809,18 +2840,6 @@ static SrcLoc diag_end(SrcMgr *sm, const Diagnostic *d)
     return f->base + (SrcLoc)(p - f->buf);
 }
 
-static void begin_notification(JsonWriter *w, StrBuf *sb, const char *method)
-{
-    json_init_buf(w, sb);
-    json_begin_object(w);
-    json_key(w, "jsonrpc");
-    json_str(w, "2.0");
-    json_key(w, "method");
-    json_str(w, method);
-    json_key(w, "params");
-    json_begin_object(w);
-}
-
 /* Where diagnostic d shows in file f (a file of sm), and its message;
  * false if it does not show there.  Errors in headers that are not open
  * show on the #include that leads to them (outermost first). */
@@ -3173,7 +3192,7 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
         size_t i;
         if (f0->kind != SF_USER || !wanted(ctx, f0->path))
             continue;
-        begin_notification(&w, &sb, "textDocument/publishDiagnostics");
+        rpc_begin(&w, &sb, "textDocument/publishDiagnostics", NULL);
         json_key(&w, "uri");
         json_str(&w, path_to_uri(&a, f0->path));
         if (lsp_overlay_version(s->overlay, f0->path, &version)) {
@@ -3581,7 +3600,7 @@ void lsp_publish_inactive(Snapshot *s, PosEncoding enc, const char *path)
     if (!f)
         return;
     arena_init(&a);
-    begin_notification(&w, &sb, "textDocument/inactiveRegions");
+    rpc_begin(&w, &sb, "textDocument/inactiveRegions", NULL);
     json_key(&w, "textDocument");
     json_begin_object(&w);
     json_key(&w, "uri");

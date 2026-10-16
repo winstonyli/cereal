@@ -55,15 +55,6 @@ typedef struct Doc {
     Unit *unit;
 } Doc;
 
-/* Work the builder thread does, to keep checks in order beside the edits: a
- * rename's checks (lsp_check_rename), a document's fix-all (lsp_fix_all).
- * Requests that need it are deferred (DeferredReq). */
-typedef struct RenameJob {
-    Snapshot *snap;
-    CRename *q;
-    char *err;
-} RenameJob;
-
 /* A request the builder thread answers because it needs work only the builder
  * can do (a code action that needs the fix-all, a C rename's checks;
  * handle_request).  It owns what the protocol thread had: the message (the id
@@ -87,6 +78,7 @@ typedef struct Server {
     bool code_actions;        /* client: codeAction literals (advertised) */
     bool doc_changes;         /* client: workspaceEdit.documentChanges */
     bool hold_builds;         /* test only: cereal/holdChecks "builds" */
+    bool hold_gate;           /* test only: cereal/holdChecks "gate" */
     VEC(Doc *) docs;
     VEC(Unit *) units;
     VEC(Unit *) queue;
@@ -604,8 +596,7 @@ static bool doc_open_in(void *ctx, const char *path)
  * (window/logMessage, an error). */
 static void phase_failed(Unit *u, const char *phase, const char *msg)
 {
-    StrBuf sb = {0}, text = {0};
-    JsonWriter w;
+    StrBuf text = {0};
     fprintf(stderr, "cereal: fatal: %s (the %s of %s is dropped)\n", msg,
             phase, u->main);
     if (!strcmp(phase, "build")) {
@@ -614,22 +605,7 @@ static void phase_failed(Unit *u, const char *phase, const char *msg)
         cell_cache_free(&u->cells);
     }
     sb_printf(&text, "cereal: the %s of %s failed: %s", phase, u->main, msg);
-    json_init_buf(&w, &sb);
-    json_begin_object(&w);
-    json_key(&w, "jsonrpc");
-    json_str(&w, "2.0");
-    json_key(&w, "method");
-    json_str(&w, "window/logMessage");
-    json_key(&w, "params");
-    json_begin_object(&w);
-    json_key(&w, "type");
-    json_int(&w, 1);
-    json_key(&w, "message");
-    json_str(&w, sb_cstr(&text));
-    json_end_object(&w);
-    json_end_object(&w);
-    rpc_write(sb.data, sb.len);
-    sb_free(&sb);
+    rpc_log(1, sb_cstr(&text));
     sb_free(&text);
 }
 
@@ -710,43 +686,6 @@ static Check *check_unit(Unit *u, Snapshot *s)
     return c;
 }
 
-/* A rename job's checks under a fatal() trap, with the options and buffers
- * of its snapshot. */
-static void rename_run(void *ctx)
-{
-    RenameJob *j = ctx;
-    FatalTrap tr;
-    Options *opt = options_for(j->snap->main);
-    opt->pp.fatal_missing_include = false; /* as the check's (D2) */
-    j->q->o = opt;
-    j->q->main = j->snap->main;
-    j->q->overlay = j->snap->overlay ? overlay_lookup : NULL;
-    j->q->overlay_ctx = j->snap->overlay;
-    fatal_trap_push(&tr);
-    if (setjmp(tr.jb)) {
-        StrBuf sb = {0};
-        sb_printf(&sb, "the rename check failed: %s", tr.msg);
-        sb_cstr(&sb);
-        j->err = sb.data;
-        config_options_free(opt);
-        return;
-    }
-    j->err = c_rename(j->q);
-    fatal_trap_pop(&tr);
-    config_options_free(opt);
-}
-
-/* Called on the builder thread (a deferred request, see deferred_run). */
-char *lsp_check_rename(Snapshot *snap, CRename *q)
-{
-    RenameJob j;
-    memset(&j, 0, sizeof j);
-    j.snap = snap;
-    j.q = q;
-    rename_run(&j);
-    return j.err;
-}
-
 /* ---- rename across units (B5d, 11.5) ------------------------------------------- */
 
 typedef struct OpenDoc {
@@ -806,12 +745,14 @@ bool lsp_doc_state(const char *path, long long *version, uint64_t *hash)
 {
     const Doc *d;
     bool open;
+    size_t bom;
     mutex_lock(&S.m);
     d = doc_find(path);
     open = d != NULL;
     if (open) {
         *version = d->version;
-        *hash = cindex_hash(d->text, d->len);
+        bom = bom_len(d->text, d->len);            /* the checks' text has none */
+        *hash = cindex_hash(d->text + bom, d->len - bom);
     }
     mutex_unlock(&S.m);
     return open;
@@ -821,41 +762,8 @@ bool lsp_doc_state(const char *path, long long *version, uint64_t *hash)
 static void rename_progress(const JsonValue *token, const char *kind, const char *msg,
                             int pct)
 {
-    StrBuf sb = {0};
-    JsonWriter w;
-    if (!token)
-        return;
-    json_init_buf(&w, &sb);
-    json_begin_object(&w);
-    json_key(&w, "jsonrpc");
-    json_str(&w, "2.0");
-    json_key(&w, "method");
-    json_str(&w, "$/progress");
-    json_key(&w, "params");
-    json_begin_object(&w);
-    json_key(&w, "token");
-    json_raw(&w, token->text, token->text_len);
-    json_key(&w, "value");
-    json_begin_object(&w);
-    json_key(&w, "kind");
-    json_str(&w, kind);
-    if (!strcmp(kind, "begin")) {
-        json_key(&w, "title");
-        json_str(&w, "Renaming");
-    }
-    if (msg) {
-        json_key(&w, "message");
-        json_str(&w, msg);
-    }
-    if (pct >= 0) {
-        json_key(&w, "percentage");
-        json_int(&w, pct);
-    }
-    json_end_object(&w);
-    json_end_object(&w);
-    json_end_object(&w);
-    rpc_write(sb.data, sb.len);
-    sb_free(&sb);
+    rpc_progress(token ? token->text : NULL, token ? token->text_len : 0, kind,
+                 strcmp(kind, "begin") ? NULL : "Renaming", msg, pct);
 }
 
 typedef struct GateCtx {
@@ -932,22 +840,21 @@ char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *ent
     g.cfg = cfg_acquire();
     g.err = xcalloc(n + 1, sizeof *g.err);
     rename_progress(token, "begin", "checking the translation units", 0);
-    project_pause(true);
     project_gate(gate_job, &g, n);
-    project_pause(false);
     rename_progress(token, "end", NULL, -1);
-    if (tmpl->nfiles && fault_hit("rename-modify")) {  /* tests: a file changes meanwhile */
-        FILE *f = fopen(tmpl->files[0].path, "a");
-        if (f) {
-            fputc('\n', f);
-            fclose(f);
-        }
-    }
+    /* test only (cereal/holdChecks "gate"): wait here, so that a test can change a file
+     * after the checks */
+    mutex_lock(&S.m);
+    while (S.hold_gate && !S.stop)
+        cond_wait(&S.work, &S.m);
+    mutex_unlock(&S.m);
     for (i = 0; i < n; i++) {
         if (g.err[i] && !out) {
             StrBuf sb = {0};
             const char *base = strrchr(mains[i], '/');
-            sb_printf(&sb, "checking %s: %s", base ? base + 1 : mains[i], g.err[i]);
+            if (n > 1)                     /* which unit, when it could be any */
+                sb_printf(&sb, "checking %s: ", base ? base + 1 : mains[i]);
+            sb_printf(&sb, "%s", g.err[i]);
             out = (char *)sb_cstr(&sb);
         }
         free(g.err[i]);
@@ -1810,12 +1717,9 @@ static void deferred_run(DeferredReq *d)
     begin_response(&w, &sb, d->id);
     json_key(&w, "result");
     if (d->kind == R_RENAME) {
-        if (!lsp_rename(r, &w, &err))
+        if (!lsp_rename(r, &w, &err))      /* (the rename itself finds a changed text) */
             respond_error(d->id, r->modified ? -32801 /* ContentModified */
                                              : -32803 /* RequestFailed */, err);
-        else if (!doc_unchanged(r))
-            respond_error(d->id, -32801 /* ContentModified */,
-                          "the document changed during the rename");
         else {
             json_end_object(&w);
             send_json(&sb);
@@ -2086,6 +1990,9 @@ int lsp_main(FILE *in, FILE *out)
              * a snapshot goes stale (code action tests) */
             S.hold_builds = S.hold && json_bool_of(json_get(params, "builds"),
                                                    false);
+            /* "gate": a rename waits after its units' checks (not the same
+             * hold: it applies on its own) */
+            S.hold_gate = json_bool_of(json_get(params, "gate"), false);
             cond_broadcast(&S.work);
             mutex_unlock(&S.m);
             respond_null(id);

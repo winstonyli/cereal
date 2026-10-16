@@ -1597,18 +1597,14 @@ const char *cindex_place(SrcMgr *sm, const char *path, uint32_t off, char *buf,
 
 const char *cindex_rename_plan(const CIndex *ix, SrcMgr *sm, const char *path,
                                uint32_t off, const char *main, bool project,
-                               uint32_t **ev, size_t *n, bool *wide, char *msg,
-                               size_t msgsz)
+                               uint32_t **ev, size_t *n, char *msg, size_t msgsz)
 {
     uint32_t decls[2], d, j;
     int mf = cindex_file(ix, main);
-    bool declared = false, unused;
+    bool declared = false;
     char at[512];
     size_t nd = cindex_decls_at(ix, path, off, decls, 2);
     const CIdxDecl *x;
-    if (!wide)
-        wide = &unused;
-    *wide = false;
     *ev = NULL;
     *n = 0;
     if (!nd)
@@ -1637,9 +1633,7 @@ const char *cindex_rename_plan(const CIndex *ix, SrcMgr *sm, const char *path,
                      cindex_rename_blocker(e->flags));
             return msg;
         }
-        if ((int)e->file != mf && project) {
-            *wide = true;
-        } else if ((int)e->file != mf) {
+        if ((int)e->file != mf && !project) {
             snprintf(msg, msgsz, "'%s' is declared or used in %s, which other "
                      "units may include; renaming it needs the project index",
                      cindex_name(ix, d), cindex_place(sm, p, e->off, at, sizeof at));
@@ -2435,11 +2429,13 @@ bool cindex_symbol_event(const CIndex *ix, uint32_t i, uint32_t *s)
 
 /* Anchor preference: a DEF, then a DECL, neither spelled in a #define body;
  * then any DEF or DECL; then any event.  Ties: least (path, off), never the
- * file index, which differs between units. */
-static int anchor_rank(const CIdxEvent *e)
+ * file index, which differs between units.  A struct, union or enum tag
+ * prefers a DECL (a forward declaration in a header) to a DEF: the units that
+ * see only the opaque tag and those that also see its definition then agree. */
+static int anchor_rank(const CIdxEvent *e, bool tag)
 {
     int body = (e->flags & CIX_MACRO_BODY) != 0, role = e->flags & CIX_ROLE;
-    return role == CIX_REF ? 3 + body : body ? 2 : role == CIX_DEF ? 0 : 1;
+    return role == CIX_REF ? 3 + body : body ? 2 : (role == CIX_DEF) != tag ? 0 : 1;
 }
 
 void cindex_key(const CIndex *ix, uint32_t d, CIdxKey *out)
@@ -2456,7 +2452,8 @@ void cindex_key(const CIndex *ix, uint32_t d, CIdxKey *out)
         return;
     for (j = ix->by_decl_start[d]; j < ix->by_decl_start[d + 1]; j++) {
         const CIdxEvent *e = &ix->ev[ix->by_decl[j]], *b;
-        int r = anchor_rank(e), c;
+        int r = anchor_rank(e, x->kind == CIK_STRUCT || x->kind == CIK_UNION ||
+                                   x->kind == CIK_ENUM), c;
         if (r > rank)
             continue;
         if (r == rank) {

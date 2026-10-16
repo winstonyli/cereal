@@ -3,7 +3,9 @@
 
 usage: lsp_stress.py [--calls] [--hints] [--symbols] [--refs] [--rename] BIN FILE [EDITS] [SEED]
 
-Opens FILE (its directory is the workspace), then EDITS times (default 200):
+Opens FILE (the workspace is the nearest directory above it with a
+compile_commands.json, else its own directory; with CEREAL_INDEX_ENABLE=1 the
+stress waits for the index first), then EDITS times (default 200):
 inserts a line at a random line start (sometimes two edits back to back),
 and straight away asks for semantic tokens, completion and hover at random
 places, so requests meet carried indexes while checks run, are cancelled and
@@ -35,6 +37,10 @@ rnd = random.Random(int(ARGS[3]) if len(ARGS) > 3 else 1)
 CALLISH = re.compile(r"\b([A-Za-z_]\w*)\s*\(")
 NOT_CALLS = {"if", "while", "for", "switch", "return", "sizeof", "defined"}
 ROOT = os.path.dirname(FILE)
+while not os.path.exists(os.path.join(ROOT, "compile_commands.json")) and ROOT != os.path.dirname(ROOT):
+    ROOT = os.path.dirname(ROOT)           # the workspace is the project that holds FILE
+if not os.path.exists(os.path.join(ROOT, "compile_commands.json")):
+    ROOT = os.path.dirname(FILE)
 URI = "file://" + FILE
 text = open(FILE).read()
 lines = text.split("\n")
@@ -65,6 +71,7 @@ threading.Thread(target=reader, daemon=True).start()
 nid = [0]
 refreshes = [0]
 errors = [0]
+rename_ids, renamed = set(), [0]   # rename requests, and those answered with edits
 
 
 def send(method, params, req=True):
@@ -89,6 +96,8 @@ def wait(ids):
             refreshes[0] += 1
         elif "method" not in m and m.get("id") in ids:
             ids.discard(m["id"])
+            if m["id"] in rename_ids and m.get("result"):
+                renamed[0] += 1
             if "error" in m:
                 errors[0] += 1
                 print("error response:", m["error"], file=sys.stderr)
@@ -103,6 +112,8 @@ send("initialized", {}, False)
 send("textDocument/didOpen", {"textDocument": {
     "uri": URI, "languageId": "c", "version": 1, "text": text}}, False)
 wait([send("cereal/waitIdle", {})])
+if ENV["CEREAL_INDEX_ENABLE"] == "1":
+    wait([send("cereal/indexWait", {})])       # the project index is built before the race starts
 version = 1
 for i in range(N):
     for _ in range(2 if rnd.random() < 0.2 else 1):
@@ -152,13 +163,19 @@ for i in range(N):
                     params["context"] = {"includeDeclaration": rnd.random() < 0.5}
                 reqs.append(send(m_, params))
     if "--rename" in FLAGS:
+        if i % 10 == 9:       # let the check finish now and then: a rename needs the unit's events
+            wait(reqs)
+            reqs = []
+            wait([send("cereal/waitIdle", {})])
         ln = rnd.randrange(len(lines))
         ms = [m for m in CALLISH.finditer(lines[ln]) if m.group(1) not in NOT_CALLS]
         if ms:
             at = {"line": ln, "character": rnd.choice(ms).start(1)}
-            reqs += [send("textDocument/prepareRename", {"textDocument": td, "position": at}),
-                     send("textDocument/rename", {"textDocument": td, "position": at,
-                                                  "newName": "stress_r%d" % i})]
+            reqs.append(send("textDocument/prepareRename", {"textDocument": td, "position": at}))
+            rid = send("textDocument/rename", {"textDocument": td, "position": at,
+                                               "newName": "stress_r%d" % i})
+            rename_ids.add(rid)
+            reqs.append(rid)
     if "--hints" in FLAGS:
         a = rnd.randrange(len(lines))
         b = min(len(lines) - 1, a + rnd.randrange(60))
@@ -174,6 +191,6 @@ wait([send("shutdown", None)])
 send("exit", None, False)
 p.stdin.close()
 rc = p.wait(timeout=60)
-print("%d edits, %d refresh requests, %d error responses, server exit %d"
-      % (version - 1, refreshes[0], errors[0], rc))
+print("%d edits, %d refresh requests, %d error responses, %d renames answered with edits, "
+      "server exit %d" % (version - 1, refreshes[0], errors[0], renamed[0], rc))
 sys.exit(rc)

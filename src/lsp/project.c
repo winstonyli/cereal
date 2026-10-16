@@ -147,12 +147,13 @@ typedef struct IJob {
     IdxOut out;
 } IJob;
 
-enum { EV_SAVE, EV_OPEN, EV_CLOSE, EV_SYNC, EV_CREATED, EV_SWEEP, EV_SCOPE };
+enum { EV_SAVE, EV_OPEN, EV_CLOSE, EV_SWEEP, EV_CALL };
 typedef struct Event {
     int kind;
     char *path;
     unsigned seq;
-    struct ScopeReq *req;           /* EV_SCOPE */
+    void (*fn)(void *arg, unsigned seq);   /* EV_CALL: run on the scheduler thread */
+    void *arg;
 } Event;
 
 typedef VEC(Event) EventVec;
@@ -178,7 +179,7 @@ static struct Project {
     Cond idle_cv;                   /* project_wait */
     bool started, go, stop, ready, hold, idle, pool_ready;
     unsigned paused;                /* project_pause: no job is submitted */
-    unsigned sync_req, sync_done;
+    unsigned sync_req, sync_done, sync_seen;   /* sync_seen: the scheduler's own */
     uint64_t last_edit_ns;
     EventVec events;
     IJobVec done, running;
@@ -232,55 +233,14 @@ static double rss_anon_mb(void)
 
 /* ---- messages to the client ------------------------------------------------------- */
 
-static void send_sb(StrBuf *sb)
-{
-    rpc_write(sb->data, sb->len);
-    sb_free(sb);
-}
-
-static void begin_msg(JsonWriter *w, StrBuf *sb, const char *method, const char *id)
-{
-    json_init_buf(w, sb);
-    json_begin_object(w);
-    json_key(w, "jsonrpc");
-    json_str(w, "2.0");
-    if (id) {
-        json_key(w, "id");
-        json_str(w, id);
-    }
-    json_key(w, "method");
-    json_str(w, method);
-    json_key(w, "params");
-    json_begin_object(w);
-}
-
-static void end_msg(JsonWriter *w, StrBuf *sb)
-{
-    json_end_object(w);
-    json_end_object(w);
-    send_sb(sb);
-}
-
-static void send_log(int type, const char *text)    /* 1 error, 2 warning, 3 info */
-{
-    StrBuf sb = {0};
-    JsonWriter w;
-    begin_msg(&w, &sb, "window/logMessage", NULL);
-    json_key(&w, "type");
-    json_int(&w, type);
-    json_key(&w, "message");
-    json_str(&w, text);
-    end_msg(&w, &sb);
-}
-
 static void send_create(void)
 {
     StrBuf sb = {0};
     JsonWriter w;
-    begin_msg(&w, &sb, "window/workDoneProgress/create", CREATE_ID);
+    rpc_begin(&w, &sb, "window/workDoneProgress/create", CREATE_ID);
     json_key(&w, "token");
     json_str(&w, TOKEN);
-    end_msg(&w, &sb);
+    rpc_end(&w, &sb);
     P.create_sent = true;
     P.cnt.creates++;
 }
@@ -288,31 +248,7 @@ static void send_create(void)
 /* kind "begin" (title), "report" or "end"; pct < 0: none. */
 static void send_progress(const char *kind, const char *title, const char *message, int pct)
 {
-    StrBuf sb = {0};
-    JsonWriter w;
-    begin_msg(&w, &sb, "$/progress", NULL);
-    json_key(&w, "token");
-    json_str(&w, TOKEN);
-    json_key(&w, "value");
-    json_begin_object(&w);
-    json_key(&w, "kind");
-    json_str(&w, kind);
-    if (title) {
-        json_key(&w, "title");
-        json_str(&w, title);
-        json_key(&w, "cancellable");
-        json_bool(&w, false);
-    }
-    if (message) {
-        json_key(&w, "message");
-        json_str(&w, message);
-    }
-    if (pct >= 0) {
-        json_key(&w, "percentage");
-        json_int(&w, pct);
-    }
-    json_end_object(&w);
-    end_msg(&w, &sb);
+    rpc_progress("\"" TOKEN "\"", sizeof TOKEN + 1, kind, title, message, pct);
     P.cnt.progress_msgs++;
 }
 
@@ -685,7 +621,7 @@ static void fail(PTu *tu, const char *what)
     P.cnt.failed++;
     P.burst_failed++;
     snprintf(msg, sizeof msg, "index: %s: %s", rel(tu->main), what);
-    send_log(2, msg);
+    rpc_log(2, msg);
 }
 
 /* The manifest of tu (every unit's, for NULL) was (re)loaded: the name list and
@@ -801,7 +737,7 @@ static void report_rejected(void)
 {
     size_t i;
     for (i = 0; i < P.ps.log.len; i++) {
-        send_log(2, P.ps.log.data[i]);
+        rpc_log(2, P.ps.log.data[i]);
         free(P.ps.log.data[i]);
     }
     P.ps.log.len = 0;
@@ -884,7 +820,7 @@ static void progress_tick(uint64_t now, size_t pending)
                 send_create();
         } else {
             snprintf(msg, sizeof msg, "indexing %zu translation units", P.burst_total);
-            send_log(3, msg);
+            rpc_log(3, msg);
         }
     }
     if (P.burst && work && pending + P.running_n + P.burst_done > P.burst_total)
@@ -906,13 +842,13 @@ static void progress_tick(uint64_t now, size_t pending)
         if (P.begun)
             send_progress("end", NULL, msg, -1);
         else if (!P.progress_cap)
-            send_log(3, msg);
+            rpc_log(3, msg);
         P.begun = false;
     }
     if (!P.writer && !P.reader_noted && P.have_store) {        /* 6.5: one begin/end */
         static const char note[] = "index maintained by another cereal";
         if (!P.progress_cap) {
-            send_log(3, note);
+            rpc_log(3, note);
             P.reader_noted = true;
         } else if (!P.create_sent) {
             send_create();
@@ -934,7 +870,7 @@ static void startup(void)
     bool ok = store_open(&P.store, s->cache_dir, P.cfg->root, P.cfg->db_path, bid, warn,
                          sizeof warn);
     if (warn[0])
-        send_log(2, warn);
+        rpc_log(2, warn);
     if (!ok)
         return;
     P.have_store = true;
@@ -956,9 +892,10 @@ static void startup(void)
     }
 }
 
+struct ScopeReq;
 static void scope_run(struct ScopeReq *r);
 
-static void do_event(const Event *e, unsigned *sync_seen)
+static void do_event(const Event *e)
 {
     size_t i;
     switch (e->kind) {
@@ -990,15 +927,8 @@ static void do_event(const Event *e, unsigned *sync_seen)
         if (P.have_store)
             reclassify();
         break;
-    case EV_SYNC:
-        if (e->seq > *sync_seen)
-            *sync_seen = e->seq;
-        break;
-    case EV_CREATED:
-        P.create_ok = true;
-        break;
-    case EV_SCOPE:
-        scope_run(e->req);
+    case EV_CALL:
+        e->fn(e->arg, e->seq);
         break;
     case EV_SWEEP:                      /* a query met a file the index did not expect */
         if (P.have_store && mono_ns() - P.last_hint_ns >= (uint64_t)HINT_SWEEP_MIN_MS * 1000000u) {
@@ -1051,7 +981,7 @@ static void submit_pass(uint64_t now, size_t pending, uint64_t last_edit)
     }
 }
 
-static void publish_stats(bool idle, unsigned sync_seen)
+static void publish_stats(bool idle)
 {
     size_t i;
     Stats s = P.cnt;
@@ -1075,8 +1005,8 @@ static void publish_stats(bool idle, unsigned sync_seen)
     mutex_lock(&P.m);
     P.st = s;
     P.idle = idle;
-    if (sync_seen > P.sync_done)
-        P.sync_done = sync_seen;
+    if (P.sync_seen > P.sync_done)
+        P.sync_done = P.sync_seen;
     P.ready = true;
     cond_broadcast(&P.idle_cv);
     mutex_unlock(&P.m);
@@ -1084,7 +1014,6 @@ static void publish_stats(bool idle, unsigned sync_seen)
 
 static void *sched_main(void *arg)
 {
-    unsigned sync_seen = 0;
     bool first = true, stopped;              /* one pass at once: publish the first stats, find work */
     (void)arg;
     mutex_lock(&P.m);
@@ -1143,7 +1072,7 @@ static void *sched_main(void *arg)
             finish(dn.data[i]);
         vec_free(&dn);
         for (i = 0; i < evs.len; i++) {
-            do_event(&evs.data[i], &sync_seen);
+            do_event(&evs.data[i]);
             free(evs.data[i].path);
         }
         vec_free(&evs);
@@ -1189,7 +1118,7 @@ static void *sched_main(void *arg)
         } else {
             idle = true;
         }
-        publish_stats(idle, sync_seen);
+        publish_stats(idle);
     }
     mutex_lock(&P.m);
     P.pool_ready = false;
@@ -1208,6 +1137,10 @@ static void *sched_main(void *arg)
 /* ---- rename support (B5d, 11.5) ---------------------------------------------------------------- */
 
 static void post(int kind, const char *path, unsigned seq);
+static void post_call(void (*fn)(void *arg, unsigned seq), void *arg, unsigned seq);
+static void on_sync(void *arg, unsigned seq);
+static void on_created(void *arg, unsigned seq);
+static void on_scope(void *arg, unsigned seq);
 
 typedef struct ScopeReq {
     char **files;                   /* sorted */
@@ -1334,10 +1267,11 @@ bool project_scope(const char *const *files, size_t nfiles, unsigned timeout_ms,
     r->nfiles = nfiles;
     qsort(r->files, nfiles, sizeof *r->files, str_cmp);
     r->refs = 2;
-    e.kind = EV_SCOPE;
+    e.kind = EV_CALL;
     e.path = NULL;
     e.seq = 0;
-    e.req = r;
+    e.fn = on_scope;
+    e.arg = r;
     mutex_lock(&P.m);
     P.go = true;
     vec_push(&P.events, e);
@@ -1369,7 +1303,7 @@ void project_pause(bool on)
     P.paused += on ? 1 : -1;
     mutex_unlock(&P.m);
     if (!on)
-        post(EV_SYNC, NULL, 0);         /* wakes the scheduler to submit again */
+        post_call(on_sync, NULL, 0);    /* wakes the scheduler to submit again */
 }
 
 typedef struct GateTask {
@@ -1444,11 +1378,47 @@ static void post(int kind, const char *path, unsigned seq)
     e.kind = kind;
     e.path = path ? xstrdup(path) : NULL;
     e.seq = seq;
-    e.req = NULL;
+    e.fn = NULL;
+    e.arg = NULL;
     mutex_lock(&P.m);
     vec_push(&P.events, e);
     cond_broadcast(&P.wake);
     mutex_unlock(&P.m);
+}
+
+/* Run fn on the scheduler thread, in order with the other events. */
+static void post_call(void (*fn)(void *arg, unsigned seq), void *arg, unsigned seq)
+{
+    Event e;
+    e.kind = EV_CALL;
+    e.path = NULL;
+    e.seq = seq;
+    e.fn = fn;
+    e.arg = arg;
+    mutex_lock(&P.m);
+    vec_push(&P.events, e);
+    cond_broadcast(&P.wake);
+    mutex_unlock(&P.m);
+}
+
+static void on_sync(void *arg, unsigned seq)       /* a barrier: seen once the pass publishes */
+{
+    (void)arg;
+    if (seq > P.sync_seen)
+        P.sync_seen = seq;
+}
+
+static void on_created(void *arg, unsigned seq)    /* the client took the progress token */
+{
+    (void)arg;
+    (void)seq;
+    P.create_ok = true;
+}
+
+static void on_scope(void *arg, unsigned seq)
+{
+    (void)seq;
+    scope_run(arg);
 }
 
 void project_go(void)
@@ -1491,7 +1461,7 @@ bool project_response(const JsonValue *id)
 {
     if (!P.started || id->kind != JV_STR || strcmp(id->str, CREATE_ID))
         return false;
-    post(EV_CREATED, NULL, 0);
+    post_call(on_created, NULL, 0);
     return true;
 }
 
@@ -1514,10 +1484,11 @@ void project_wait(void)
     mutex_lock(&P.m);
     P.go = true;
     n = ++P.sync_req;
-    e.kind = EV_SYNC;
+    e.kind = EV_CALL;
     e.path = NULL;
     e.seq = n;
-    e.req = NULL;
+    e.fn = on_sync;
+    e.arg = NULL;
     vec_push(&P.events, e);
     cond_broadcast(&P.wake);
     while (!P.stop && !(P.ready && P.sync_done >= n && P.idle))
