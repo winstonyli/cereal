@@ -2403,12 +2403,17 @@ does not on Linux and is left out, as `paths` would) to a fresh name:
 
 False refusals: 0 of 441 (0%) with A3.9 and the macro refusals counted as
 correct refusals, 12.2% if the A3.9 ones are counted as false. They are
-correct: each is a use in another platform's branch (`uv_barrier_*`, the
+correct (user decision, Round 231: keep refusing renames that touch inactive
+`#if` groups, so the design reading, 0%, is the stop-rule measure): each is a
+use in another platform's branch (`uv_barrier_*`, the
 `uv_sem_*` of the macOS select path, `uv__iou_fs_*`), which a rename would
 leave stale. The first run, with `posix-poll.c` in the project, refused
 413 of 441 under R2 (an erroneous unit is `PARTIAL`, and every external name
 is declared in `uv.h`, which it reads): by design, but it shows that one
-non-compiling entry blocks all renames until `paths` excludes it. Duration
+non-compiling entry blocks all renames until `paths` excludes it (kept, user
+decision; since Round 231 the R2 message names the blocking units with their
+error counts and points at `cereal.index.paths`; the manifest stores the count,
+not the first error's text, so that is not shown). Duration
 about 4 min (0.57 s a rename on 4 cores).
 
 **Deviations and limits.**
@@ -2543,7 +2548,10 @@ shows the name used in a macro body (R7, 11.5).
 | Remote or shared caches between machines | Host-endian keys (5.4). |
 | `$/cancelRequest` | Still ignored. The one long new request, a cross-TU rename, is bounded by R5 (at most `renameMaxTUs` gate checks). |
 | Type hierarchy | D7. |
-| Listing the invocation sites of macros whose body uses a function (Q7) | Needs a record format bump (the invocation's spelling per event) and a rename policy for macro sites. Rename refuses instead (R7). |
+| Listing the invocation sites of macros whose body uses a function (Q7) | Needs a record format bump (the invocation's spelling per event) and a rename policy for macro sites. Rename refuses instead (R7). ROADMAP Track D, "macro-aware project index and refactoring". |
+| A macro that names a function but is never invoked (R4/R7 gap) | No record event exists for it; needs the macro-body identifier spellings in the record (the same format bump as Q7). Documented limitation. |
+| Renaming through inactive `#if` groups (A3.9) | Rename refuses a use in a group the unit does not compile (user decision, Round 231). Editing it needs per-branch preprocessing or a textual mode verified under the other branches. |
+| A macro-aware rename policy | What to edit at a macro site (argument, body, or neither) is undecided; rename refuses rather than guesses. |
 
 ## 19. Review log
 

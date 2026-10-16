@@ -478,6 +478,23 @@ def sc_rename(root, cache):
     r = rename(t0, "h01_f2(", "h01_renamed")
     expect("error" in r and r["error"]["code"] == -32801, "ContentModified", r)
     s.stop()
+    # R2: an erroneous unit that reads the header blocks the rename; the message names it
+    # and says how to exclude it
+    bad = os.path.join(root, "src", "zbad.c")
+    open(bad, "w").write('#include "../include/h01.h"\nint zbad(void) { return zbad_undeclared; }\n')
+    db = os.path.join(root, "compile_commands.json")
+    cc = json.load(open(db))
+    e = dict(cc[0], file=bad)
+    e["arguments"] = [a if a != cc[0]["file"] else bad for a in cc[0]["arguments"]]
+    json.dump(cc + [e], open(db, "w"))
+    s = Server(root, cache)
+    s.wait()
+    s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",
+                                                      "version": 1, "text": text}})
+    r = rename(t0, "h01_f2(", "h01_renamed")
+    m = r["error"]["message"] if "error" in r else ""
+    expect("zbad.c" in m and "error" in m and "cereal.index.paths" in m, "R2: an erroneous unit is named", r)
+    s.stop()
 
 
 def sc_wpos(root, cache):

@@ -194,6 +194,24 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
 - Back end: typed-AST export, x86-64 SysV classification, then QBE and `cc`
   for assembling (est. 8 to 12+ weeks, high risk). Nothing in the tree
   lowers the AST today. Start only after A and B.
+- Macro-aware project index and refactoring (wanted; collects what B5 parked;
+  no estimate yet). Today the project index and rename deal with macros by
+  refusing, never by guessing:
+  - listing the invocation sites of macros whose body uses a function
+    (B5_DESIGN Q7, P2 in clangd_diff; clangd lists 13% more results);
+  - the uninvoked-macro gap: a macro that names a function but is never
+    invoked leaves no record event, so rename cannot see it (needs the
+    macro-body identifier spellings recorded);
+  - editing and renaming through inactive `#if` groups (rename refuses a use
+    there, A3.9; needs per-branch preprocessing, or a textual mode that is
+    verified by checking the unit under the other branches);
+  - a macro-aware rename policy (what to do at a macro site: edit the
+    argument, the body, or refuse).
+  Shared prerequisite: a record format bump (each event gains the macro
+  invocation's spelling and its body-token provenance). Design first, with
+  the stop rule of B5d's `rename_libuv.py` as the measure (12.2% of libuv's
+  external functions are refused today for inactive groups, 1.1% for macro
+  bodies).
 - Not planned: formatter, sanitizer instrumentation, `-fanalyzer`.
 
 ## Order

@@ -4707,3 +4707,13 @@ globals 32 allowed; symcov unchanged; wsym_bench workspace/symbol p95 21.9 ms;
 clangd_diff project mode 0 unexplained misses in 3,400 clangd results; TSan (58
 session runs, `lsp_stress --symbols --calls --refs --rename` 200 edits on a
 40-TU project, 18 proj_test scenarios): 0 reports.
+
+Round 231: B5d follow-ups (user decisions). Renames touching inactive `#if`
+groups stay refused (stop-rule measure: the design reading, 0% of 441 libuv
+functions; 12.2% strict). R2 stays as written, but its message now names each
+blocking unit with its state ("only partly indexed: N errors in the check") and
+suggests `cereal.index.paths`; `proj_test.py rename` gained an erroneous-unit
+case. ROADMAP Track D has a new item, "macro-aware project index and
+refactoring", collecting the parked pieces (macro invocation sites, the
+uninvoked-macro gap, inactive groups, macro rename policy; shared prerequisite a
+record format bump); B5_DESIGN 18 lists them.

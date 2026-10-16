@@ -1266,8 +1266,12 @@ static void do_scope(ScopeReq *r)
                           : tu->man->status == CTU_OVER_LIMIT ? "over the size limit"
                           : NULL;
         bool listed = !state && lists_file(tu->man, r->files, r->nfiles);
-        if (listed && tu->man->status == CTU_PARTIAL)
-            state = "only partly indexed";
+        char nerr[64];
+        if (listed && tu->man->status == CTU_PARTIAL) {
+            snprintf(nerr, sizeof nerr, "only partly indexed: %u errors in the check",
+                     (unsigned)tu->man->errors);
+            state = nerr;
+        }
         if (state) {
             if (bad++ < 3)
                 sb_printf(&why, "%s%s (%s)", bad > 1 ? ", " : "", rel(tu->main), state);
@@ -1280,7 +1284,9 @@ static void do_scope(ScopeReq *r)
     }
     if (bad)
         sb_printf(&m, "the project index is incomplete: %zu of %zu translation units "
-                  "are not fully indexed (%s%s); renaming needs all of them",
+                  "are not fully indexed (%s%s); renaming needs all of them. "
+                  "Fix the units, or exclude those that never index with "
+                  "cereal.index.paths",
                   bad, P.ps.tus.len, sb_cstr(&why), bad > 3 ? ", ..." : "");
     else if (o->nmains > P.set.rename_max)
         sb_printf(&m, "%zu translation units are affected, more than "
