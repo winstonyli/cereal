@@ -45,16 +45,27 @@ typedef struct PcEnv {
     void (*values)(void *ctx, struct PcCtx *cx, Ident *id, PcEntries *out);
 } PcEnv;
 
+/* The atoms of one macro (or one opaque text) share a block of consecutive
+ * BDD variables, blocks in order of first use: a macro's atoms stay together
+ * without knowing them in advance. */
+typedef struct PcBlock PcBlock;
+
 typedef struct PcCtx {
     Analysis *an;
     BddMgr m;
-    VEC(PcAtom) atoms;
     PcEnv env;              /* {0}: the start of the unit */
+    VEC(PcBlock *) blocks;
+    uint32_t *htab;         /* head blocks by key: block index + 1 */
+    size_t hcap;
 } PcCtx;
 
 void pc_init(PcCtx *cx, Analysis *an, size_t node_cap);
 void pc_free(PcCtx *cx);
 Bdd pc_atom(PcCtx *cx, PcAKind kind, Ident *id, intmax_t c, const char *text);
+/* The atom behind BDD variable var, or NULL. */
+const PcAtom *pc_atom_at(const PcCtx *cx, uint32_t var);
+/* The value of a PPNUM token (decimal, octal, hex, with suffixes). */
+bool pc_ppnum(Analysis *an, const Tok *t, intmax_t *out);
 /* NULL when the tokens are not an expression this module models */
 PcNode *pc_parse(PcCtx *cx, TokSpan toks);
 PcNode *pc_defined_node(PcCtx *cx, Ident *id, bool negate);

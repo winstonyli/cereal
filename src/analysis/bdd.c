@@ -143,7 +143,7 @@ Bdd bdd_or(BddMgr *m, Bdd f, Bdd g)
     return bdd_ite(m, f, BDD_TRUE, g);
 }
 
-void bdd_support(const BddMgr *m, Bdd f, bool *seen, uint32_t nvars)
+void bdd_vars(const BddMgr *m, Bdd f, BddVars *out)
 {
     VEC(Bdd) st = {0};
     bool *vis;
@@ -158,8 +158,7 @@ void bdd_support(const BddMgr *m, Bdd f, bool *seen, uint32_t nvars)
             continue;
         vis[x] = true;
         n = &m->nodes.data[x];
-        if (n->var < nvars)
-            seen[n->var] = true;
+        vec_push(out, n->var);
         vec_push(&st, n->lo);
         vec_push(&st, n->hi);
     }
@@ -172,6 +171,16 @@ bool bdd_eval(const BddMgr *m, Bdd f, const bool *assign)
     while (f >= 2) {
         const BddNode *n = &m->nodes.data[f];
         f = assign[n->var] ? n->hi : n->lo;
+    }
+    return f == BDD_TRUE;
+}
+
+bool bdd_eval_fn(const BddMgr *m, Bdd f, bool (*val)(void *ctx, uint32_t v),
+                 void *ctx)
+{
+    while (f >= 2) {
+        const BddNode *n = &m->nodes.data[f];
+        f = val(ctx, n->var) ? n->hi : n->lo;
     }
     return f == BDD_TRUE;
 }
@@ -237,6 +246,8 @@ int bdd_selftest(void)
         TT t;
         unsigned a;
         bool seen[NV] = {0}, as[NV];
+        BddVars vs = {0};
+        size_t k;
         expr(&m, 6, &f, &t);
         for (a = 0; a < 256; a++) {
             unsigned v;
@@ -249,7 +260,10 @@ int bdd_selftest(void)
         if (bdd_not(&m, bdd_not(&m, f)) != f)
             bad = 1;
         /* the support is exactly the variables the table depends on */
-        bdd_support(&m, f, seen, NV);
+        bdd_vars(&m, f, &vs);
+        for (k = 0; k < vs.len; k++)
+            seen[vs.data[k]] = true;
+        vec_free(&vs);
         for (a = 0; a < NV; a++) {
             unsigned x;
             bool dep = false;

@@ -38,9 +38,13 @@ Bdd bdd_not(BddMgr *m, Bdd f);
 Bdd bdd_and(BddMgr *m, Bdd f, Bdd g);
 Bdd bdd_or(BddMgr *m, Bdd f, Bdd g);
 Bdd bdd_ite(BddMgr *m, Bdd f, Bdd g, Bdd h);
-/* Mark the variables f depends on in seen[0..nvars) (set, never cleared). */
-void bdd_support(const BddMgr *m, Bdd f, bool *seen, uint32_t nvars);
+/* The variables f depends on, each once, in no particular order. */
+typedef VEC(uint32_t) BddVars;
+void bdd_vars(const BddMgr *m, Bdd f, BddVars *out);
 bool bdd_eval(const BddMgr *m, Bdd f, const bool *assign);
+/* The same, with the value of variable v given by val(ctx, v). */
+bool bdd_eval_fn(const BddMgr *m, Bdd f, bool (*val)(void *ctx, uint32_t v),
+                 void *ctx);
 size_t bdd_size(const BddMgr *m);
 
 /* `cereal selftest bdd`: ite/and/or/not against truth tables, the node cap.

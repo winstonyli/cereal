@@ -34,9 +34,9 @@ static PcNode *mk(PX *p, PNKind k)
     return n;
 }
 
-static bool num_value(PX *p, const Tok *t, intmax_t *out)
+bool pc_ppnum(Analysis *an, const Tok *t, intmax_t *out)
 {
-    const char *s = PTEXT(p, t);
+    const char *s = pp_text(an->pp, t);
     uint32_t i = 0, n = t->len;
     uintmax_t v = 0;
     int base = 10;
@@ -132,7 +132,7 @@ static PcNode *px_primary(PX *p)
     }
     if (t->kind == TK_PPNUM) {
         n = mk(p, PN_NUM);
-        if (!num_value(p, t, &n->num))
+        if (!pc_ppnum(p->an, t, &n->num))
             p->ok = false;
         p->t = (t + 1);
         return n;
@@ -253,22 +253,117 @@ PcNode *pc_defined_node(PcCtx *cx, Ident *id, bool negate)
 
 /* ---- conditions as BDDs ---------------------------------------------- */
 
+#define PC_K 32
+
+struct PcBlock {
+    bool text;
+    Ident *id;              /* the macro, or NULL for text */
+    const char *key;        /* text */
+    uint32_t next;          /* continuation block index + 1, or 0 */
+    uint32_t n;
+    PcAtom atoms[PC_K];
+};
+
+static uint32_t block_hash(bool text, const Ident *id, const char *key)
+{
+    return text ? hash_bytes(key, strlen(key))
+                : (uint32_t)(((uintptr_t)id >> 4) * 2654435761u);
+}
+
+static bool block_is(const PcBlock *b, bool text, const Ident *id,
+                     const char *key)
+{
+    return b->text == text && (text ? !strcmp(b->key, key) : b->id == id);
+}
+
+static uint32_t new_block(PcCtx *cx, bool text, Ident *id, const char *key)
+{
+    PcBlock *b = xcalloc(1, sizeof *b);
+    b->text = text;
+    b->id = id;
+    b->key = key;
+    vec_push(&cx->blocks, b);
+    return (uint32_t)cx->blocks.len - 1;
+}
+
+static void htab_insert(PcCtx *cx, uint32_t bi)
+{
+    const PcBlock *b = cx->blocks.data[bi];
+    size_t k;
+    if (cx->blocks.len * 2 > cx->hcap) {
+        size_t i, ncap = cx->hcap ? cx->hcap * 2 : 256;
+        uint32_t *old = cx->htab;
+        size_t ocap = cx->hcap;
+        cx->htab = xcalloc(ncap, sizeof *cx->htab);
+        cx->hcap = ncap;
+        for (i = 0; i < ocap; i++)
+            if (old[i]) {
+                const PcBlock *ob = cx->blocks.data[old[i] - 1];
+                size_t j = block_hash(ob->text, ob->id, ob->key) & (ncap - 1);
+                while (cx->htab[j])
+                    j = (j + 1) & (ncap - 1);
+                cx->htab[j] = old[i];
+            }
+        free(old);
+    }
+    k = block_hash(b->text, b->id, b->key) & (cx->hcap - 1);
+    while (cx->htab[k])
+        k = (k + 1) & (cx->hcap - 1);
+    cx->htab[k] = bi + 1;
+}
+
 Bdd pc_atom(PcCtx *cx, PcAKind kind, Ident *id, intmax_t c, const char *text)
 {
-    size_t i;
-    PcAtom at;
-    for (i = 0; i < cx->atoms.len; i++) {
-        const PcAtom *x = &cx->atoms.data[i];
-        if (x->kind == kind && x->id == id && x->c == c &&
-            (kind != PA_TEXT || !strcmp(x->text, text)))
-            return bdd_var(&cx->m, (uint32_t)i);
+    bool is_text = kind == PA_TEXT;
+    uint32_t bi = UINT32_MAX, last;
+    PcBlock *b;
+    PcAtom *at;
+    size_t k, i;
+    if (cx->hcap) {
+        k = block_hash(is_text, id, text) & (cx->hcap - 1);
+        while (cx->htab[k]) {
+            if (block_is(cx->blocks.data[cx->htab[k] - 1], is_text, id, text)) {
+                bi = cx->htab[k] - 1;
+                break;
+            }
+            k = (k + 1) & (cx->hcap - 1);
+        }
     }
-    at.kind = kind;
-    at.id = id;
-    at.c = c;
-    at.text = text;
-    vec_push(&cx->atoms, at);
-    return bdd_var(&cx->m, (uint32_t)(cx->atoms.len - 1));
+    if (bi == UINT32_MAX) {
+        bi = new_block(cx, is_text, id, text);
+        htab_insert(cx, bi);
+    }
+    last = bi;
+    for (;;) {
+        b = cx->blocks.data[last];
+        for (i = 0; i < b->n; i++)
+            if (b->atoms[i].kind == kind && b->atoms[i].c == c)
+                return bdd_var(&cx->m, last * PC_K + (uint32_t)i);
+        if (!b->next)
+            break;
+        last = b->next - 1;
+    }
+    if (b->n == PC_K) {
+        uint32_t nb = new_block(cx, is_text, id, text);
+        cx->blocks.data[last]->next = nb + 1;
+        last = nb;
+        b = cx->blocks.data[last];
+    }
+    at = &b->atoms[b->n];
+    at->kind = kind;
+    at->id = id;
+    at->c = c;
+    at->text = text;
+    return bdd_var(&cx->m, last * PC_K + b->n++);
+}
+
+const PcAtom *pc_atom_at(const PcCtx *cx, uint32_t var)
+{
+    const PcBlock *b;
+    if (var / PC_K >= cx->blocks.len)
+        return NULL;
+    b = cx->blocks.data[var / PC_K];
+    return var % PC_K < b->n ? &b->atoms[var % PC_K] : NULL;
 }
 
 static void node_key(const PcNode *n, StrBuf *sb)
@@ -603,25 +698,24 @@ Bdd pc_truth(PcCtx *cx, PcNode *n)
 int pc_sat(PcCtx *cx, Bdd f)
 {
     BddMgr *m = &cx->m;
-    size_t i, j, n = cx->atoms.len;
-    bool *seen;
+    BddVars vs = {0};
+    size_t i, j;
     Bdd g = f;
     if (m->over)
         return -1;
-    seen = xcalloc(n ? n : 1, 1);
-    bdd_support(m, f, seen, (uint32_t)n);
-    for (i = 0; i < n; i++) {
-        const PcAtom *a = &cx->atoms.data[i];
-        if (!seen[i] || a->kind != PA_GE)
+    bdd_vars(m, f, &vs);
+    for (i = 0; i < vs.len; i++) {
+        const PcAtom *a = pc_atom_at(cx, vs.data[i]);
+        if (!a || a->kind != PA_GE)
             continue;
-        for (j = 0; j < n; j++) {
-            const PcAtom *b = &cx->atoms.data[j];
-            if (seen[j] && b->kind == PA_GE && b->id == a->id && b->c < a->c)
-                g = bdd_and(m, g, bdd_or(m, bdd_not(m, bdd_var(m, (uint32_t)i)),
-                                         bdd_var(m, (uint32_t)j)));
+        for (j = 0; j < vs.len; j++) {
+            const PcAtom *b = pc_atom_at(cx, vs.data[j]);
+            if (b && b->kind == PA_GE && b->id == a->id && b->c < a->c)
+                g = bdd_and(m, g, bdd_or(m, bdd_not(m, bdd_var(m, vs.data[i])),
+                                         bdd_var(m, vs.data[j])));
         }
     }
-    free(seen);
+    vec_free(&vs);
     return m->over ? -1 : g != BDD_FALSE;
 }
 
@@ -634,6 +728,10 @@ void pc_init(PcCtx *cx, Analysis *an, size_t node_cap)
 
 void pc_free(PcCtx *cx)
 {
-    vec_free(&cx->atoms);
+    size_t i;
+    for (i = 0; i < cx->blocks.len; i++)
+        free(cx->blocks.data[i]);
+    vec_free(&cx->blocks);
+    free(cx->htab);
     bdd_free(&cx->m);
 }
