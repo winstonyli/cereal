@@ -4767,3 +4767,15 @@ started. Removal from `S.active` happens before the free, under the same lock.
 `proj_test.py rename` has the case (cancel after the checks, a stale id, the
 same rename succeeds). Gates: run.sh 2158 passed; globals 30; proj_test 18/18
 plain; TSan: 9 of 9 `proj_test` runs (20 min, one at a time), 0 reports.
+
+Round 235: `lsp_stress.py --rename` now follows half its renames with a
+`$/cancelRequest` (and sometimes a stale id) and counts RequestCancelled. Under
+TSan (40-TU generated project, 200 edits, all request flags, indexing on) it
+found a data race that predates Round 234: `index_find_file` normalized its
+argument into `ix->arena`, the snapshot's shared arena, so a rename worker and
+the protocol thread (completion, definition) raced on that arena. Fixed at the
+root: the lookup normalizes into a local arena and only reads the index. After
+the fix 2 seeds ran with 0 reports; run.sh 2158 passed, proj_test 18/18. Noted:
+the stress logged 0 cancelled renames (most of its renames are refused before
+the worker starts, or finish first), so the cancel path is covered by
+`proj_test` only.

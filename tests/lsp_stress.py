@@ -26,7 +26,9 @@ request was answered and the server exited cleanly.
          identifier (with indexing on, they read the project's records).
 --rename also sends prepareRename and rename at a random name followed by `(`,
          racing the edits and the indexing (refusals and ContentModified
-         come back as error responses; nothing is written)."""
+         come back as error responses; nothing is written).  Half the renames
+         are followed by a $/cancelRequest (and sometimes one for an id that is
+         already answered); RequestCancelled responses are counted."""
 import json, os, queue, random, re, subprocess, sys, threading
 
 FLAGS = {a for a in sys.argv[1:] if a.startswith("--")}
@@ -71,7 +73,7 @@ threading.Thread(target=reader, daemon=True).start()
 nid = [0]
 refreshes = [0]
 errors = [0]
-rename_ids, renamed = set(), [0]   # rename requests, and those answered with edits
+rename_ids, renamed, cancelled = set(), [0], [0]   # rename requests; those answered with edits; RequestCancelled
 
 
 def send(method, params, req=True):
@@ -100,6 +102,7 @@ def wait(ids):
                 renamed[0] += 1
             if "error" in m:
                 errors[0] += 1
+                cancelled[0] += m["error"].get("code") == -32800
                 print("error response:", m["error"], file=sys.stderr)
 
 
@@ -176,6 +179,10 @@ for i in range(N):
                                                "newName": "stress_r%d" % i})
             rename_ids.add(rid)
             reqs.append(rid)
+            if rnd.random() < 0.5:
+                send("$/cancelRequest", {"id": rid}, False)
+            if rnd.random() < 0.2:
+                send("$/cancelRequest", {"id": max(1, rid - rnd.randrange(1, 40))}, False)
     if "--hints" in FLAGS:
         a = rnd.randrange(len(lines))
         b = min(len(lines) - 1, a + rnd.randrange(60))
@@ -192,5 +199,5 @@ send("exit", None, False)
 p.stdin.close()
 rc = p.wait(timeout=60)
 print("%d edits, %d refresh requests, %d error responses, %d renames answered with edits, "
-      "server exit %d" % (version - 1, refreshes[0], errors[0], renamed[0], rc))
+      "%d cancelled, server exit %d" % (version - 1, refreshes[0], errors[0], renamed[0], cancelled[0], rc))
 sys.exit(rc)

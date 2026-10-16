@@ -2305,23 +2305,29 @@ void index_cell_stats(Index *ix, FILE *out)
     free(cells.slot);
 }
 
+/* A lookup only reads the index (requests on several threads share a snapshot),
+ * so the normalized path lives in an arena of its own, not ix->arena. */
 SrcFile *index_find_file(Index *ix, const char *path)
 {
-    char *norm = path_normalize(ix->arena, path);
-    size_t i, n = strlen(norm);
-    for (i = 0; i < srcmgr_nfiles(ix->sm); i++) {
+    Arena tmp;
+    char *norm;
+    size_t i, n;
+    SrcFile *found = NULL;
+    arena_init(&tmp);
+    norm = path_normalize(&tmp, path);
+    n = strlen(norm);
+    for (i = 0; i < srcmgr_nfiles(ix->sm) && !found; i++) {
         SrcFile *f = srcmgr_file(ix->sm, (uint32_t)i);
         size_t m = strlen(f->path);
         if (f->kind == SF_VIRTUAL)
             continue;
-        if (!strcmp(f->path, norm))
-            return f;
-        if (m > n && f->path[m - n - 1] == '/' && !strcmp(f->path + m - n, norm))
-            return f;
-        if (n > m && norm[n - m - 1] == '/' && !strcmp(norm + n - m, f->path))
-            return f;
+        if (!strcmp(f->path, norm) ||
+            (m > n && f->path[m - n - 1] == '/' && !strcmp(f->path + m - n, norm)) ||
+            (n > m && norm[n - m - 1] == '/' && !strcmp(norm + n - m, f->path)))
+            found = f;
     }
-    return NULL;
+    arena_free(&tmp);
+    return found;
 }
 
 /* ---- JSON dump ------------------------------------------------------ */
