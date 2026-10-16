@@ -606,8 +606,11 @@ list, and for other compilers by review.
 
 ## 10. Decisions needed (recommendations first)
 
-1. Solver: BDD, provisional on S0b (recommended), or SAT plus MaxSAT for cost
-   (smaller, but exact minimal change needs a cost optimizer).
+1. Solver: BDD (recommended), with the symbolic fold following system headers
+   to depth 1 only (S0b v2, section 13: unlimited depth overflows 3M nodes;
+   zstd's amalgamation still does at depth 1, so constraints may need to be
+   applied at query time), or SAT plus MaxSAT for cost (smaller, but exact
+   minimal change needs a cost optimizer).
 2. First stage: S0 spikes, then S1 in process with no format change
    (recommended).
 3. Families: small built-in hierarchy, extensible in settings (recommended).
@@ -820,3 +823,56 @@ modelled. (3) The cost DP and the phased cheapest-cube query (3.8) were not
 built. (4) 25% of libuv groups are constant (true/false), mostly include
 guards and unreachable include branches. Decision 1 stays "BDD" with size and
 time confirmed; the open items move to the first implementation stage.
+
+S0b/S0c v2 prototype (Round 244; same throwaway Python, now with system headers
+followed, `#pragma once` as a synthetic guard, threshold atoms `GE(X,c)` with
+implications conjoined into one constraint BDD, OS and compiler family
+constraints, a block-contiguous variable order found by retrying the fold with
+the names seen so far, and the phased cost DP of 3.8). Node cap 3,000,000 per
+unit. `SD` is the system-include depth cap (quoted includes are always
+followed). Exactness = no OPAQUE atom in the group's support, system-header
+macros now being real definitions.
+
+| Corpus, SD | Units over cap | Fold | Cost queries | Max nodes, one group | Max table, one unit | Exact |
+|---|---|---|---|---|---|---|
+| libuv, 1 | 0 of 62 | 3.3 s | 5.7 s | 504 | 137,941 | 92% |
+| Lua 5.4, 1 | 0 of 35 | 4.5 s | 8.5 s | 10,113 | 809,536 | 78% |
+| zstd, 1 | 1 of 1 | over cap (16 s) | none | none | over 3M | none |
+| libuv, 2 | 5 of 62 | 68 s | 170 s | 75,912 | 2,972,063 | 83% |
+| Lua 5.4, 2 | 1 of 35 | 44 s | 96 s | 63,644 | 2,204,083 | 72% |
+| libuv, unlimited | first unit over cap after about 1,000 files and 3,600 variables | | | | | |
+
+Findings:
+
+- **Following system headers is the blow-up driver, not the BDD.** On three
+  libuv units the table was about 15k nodes at SD=1, about 200k at SD=2 and over
+  3M at SD=3 or unlimited. Quoted-only closure (v1) was tiny. Decision 1 (BDD)
+  stands only together with a **system-include depth cap of 1** (a system header
+  included directly by a user file is folded; what it includes is not), which
+  is the depth rule 3.4 already allows; deeper system macros become `environment`
+  atoms.
+- With SD=1 the S0b stop rule (under 20,000 nodes per group, under 10 s
+  including the cost query) holds for libuv (9.0 s) and marginally fails for Lua
+  (13.0 s, though the per-unit maximum is 0.4 s fold); zstd (one amalgamated
+  unit that inlines many headers) still overflows. Cause for zstd not
+  isolated; candidates are the constraint conjunction against thousands of
+  `GE` atoms and the order. Mitigation to test in S1: keep `C` out of the
+  per-group BDDs and apply it at query time.
+- **Honest exactness** is 92% (libuv) and 78% (Lua) at SD=1, below the S0c
+  target of 90% for Lua. The 8% to 22% inexact groups are function-like macro
+  calls, `__has_include`, shifts, and arithmetic; Lua also has 665 computed
+  includes.
+- **Constraints matter:** 17% of libuv groups (8,099 of 47,415) and 26% of Lua
+  groups are unsatisfiable once family and threshold constraints are applied,
+  i.e. dead under any valuation, which the constraint-free v1 counted as
+  satisfiable.
+- **Phase distribution** (nonconstant groups inactive under the host
+  valuation, SD=1): libuv 28,806, of which 19,341 (67%) have a phase-1 overlay
+  cube and 9,465 (33%) need a target change (phase 2); none was unsatisfiable.
+  Phase-1 cost histogram (deviated blocks): 1: 15,249, 2: 3,381, 3: 638, 4 or
+  more: 73. Lua: 16,937 inactive, 14,124 phase 1 (83%), 2,813 phase 2; costs
+  1: 6,140, 2: 3,194, 3: 1,811, 4 or more: 2,979. The cost query runs at about
+  0.2 ms per inactive group.
+- Not covered: rank 2 and 3 cubes, `cover`, the `unknown` versus `impossible`
+  split, and any measurement of the cost query's guarantee (only the
+  rank-1 DP was built).
