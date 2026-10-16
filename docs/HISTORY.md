@@ -4948,3 +4948,14 @@ exactness 87-100% (libuv 99, lua52 97, lua53 89, lua54 92, lua55 88, lupa 98, uv
 function-like macro calls, arithmetic on macros; opaque atoms are host-false, 45-100% agree).
 Fold time 8-24 ms mean, 41 ms max (bound 1 s); largest group BDD 160 nodes (bound 20,000); no
 unit over the cap. Suite 2184 passed.
+
+Round 254: S1c exactness survey (`docs/S1_PLAN.md`). Found and fixed a parser bug in
+`pcexpr.c`: a function-like call (`__has_attribute(x)`, `FOO(1)`) ended the call scan on its
+first token, so every `#if` containing a call failed to parse and the whole directive became
+one opaque text atom (`calls.c` fixture). Calls are now single opaque leaves and the rest of the
+condition stays exact; lint gains the dead `#elif __has_include(..)` repeat (`cond_limits.c`),
+no new diagnostics on the corpora. Exactness percentages are unchanged because a leaf still counts
+as opaque. What is left (zstd: 146 opaque groups, 94 with feature tests, 36 two-macro
+comparisons, 15 arithmetic) is feature tests and compiler-version arithmetic
+(`__GNUC__*100+__GNUC_MINOR__ >= 403`): functions of the compiler, i.e. the family table of
+S1d, not of the initial macro thresholds. Suite 2182 passed.

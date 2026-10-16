@@ -109,6 +109,8 @@ static PcNode *px_primary(PX *p)
         const Tok *u = t;
         n = mk(p, PN_CALL);
         n->id = tok_ident(p->an->in, t);
+        sb_putn(&sb, PTEXT(p, u), u->len);
+        u = t + 1;              /* the "(" */
         do {
             if (tok_is_punct(u, P_LPAREN))
                 depth++;

@@ -23,9 +23,9 @@
 #ifndef E2
 #elifndef E2 /* expect: cond-dead-branch */
 #endif
-/* a call is an unmodeled condition: unknown today */
+/* a call is an opaque atom keyed by its text: the same call twice in a chain */
 #if __has_include(<stdio.h>)
-#elif __has_include(<stdio.h>)
+#elif __has_include(<stdio.h>) /* expect: cond-dead-branch */
 #endif
 /* 17 variables (the enumeration stopped at 16): the inner #if is dead */
 #if defined(W1) && defined(W2) && defined(W3) && defined(W4) && defined(W5) && defined(W6) && defined(W7) && defined(W8) && defined(W9) && defined(W10) && defined(W11) && defined(W12) && defined(W13) && defined(W14) && defined(W15) && defined(W16) && defined(W17)

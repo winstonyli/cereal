@@ -1,0 +1,4 @@
+pc: calls.c:3 if sat=1 host=0 exact=0 taint=0 :: defined(A) & [c:__has_attribute ( noreturn )]
+pc: calls.c:5 elif sat=1 host=0 exact=0 taint=0 :: !defined(A) & [c:__has_attribute ( noreturn )]
+pc: calls.c:8 if sat=1 host=0 exact=0 taint=0 :: ![c:FOO ( 1 , ( 2 ) )] & defined(B) | [c:FOO ( 1 , ( 2 ) )]
+pc: total groups=3 files=1 sys=0 unresolved=0 computed=0 over=0
