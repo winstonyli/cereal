@@ -30,6 +30,9 @@
  {"send": {"id": 24, "method": "workspace/symbol", "params": {"query": "hdr_i"}}},
  {"send": {"id": 25, "method": "workspace/symbol", "params": {"query": "hi4"}}},
  {"send": {"id": 26, "method": "workspace/symbol", "params": {"query": "hu8"}}},
- {"send": {"id": 27, "method": "shutdown"}},
+ {"note": "a query's trigrams run over its non-separator characters: L__ is the unigram l (LUA_INTEGER_FMT, not SSL_CTX_new: its L is no head), _ct the bigram ct (SSL_CTX_new); clangd 20.1.8"},
+ {"send": {"id": 27, "method": "workspace/symbol", "params": {"query": "L__"}}},
+ {"send": {"id": 28, "method": "workspace/symbol", "params": {"query": "_ct"}}},
+ {"send": {"id": 29, "method": "shutdown"}},
  {"send": {"method": "exit"}}
 ]

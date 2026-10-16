@@ -4790,3 +4790,17 @@ threads, all jobs in process: after the index is built the server holds RSS 52 M
 in-process jobs free their memory, so the index adds no idle cost worth a trim;
 the Round 203 finding (only huge generated files) stands. Not measured: the
 1,804-TU real corpus (ProjIndex 6.1 MB there), peak under `renameMaxTUs` checks.
+
+Round 237: the 3-pair Dex residual of Round 221, closed. Probed against clangd
+20.1.8 with a small header (queries on `LUA_INTEGER_FMT`, `SSL_CTX_new`, `a_b_c`,
+`my_long_name_here`, `__builtin_x`, ...): clangd cuts a query into trigrams over
+its non-separator characters (the old port used raw windows of three, so `L__`
+and `_ct` found nothing). `ws_dex` now filters the separators first: three or
+more characters are windows, one or two are the unigram or bigram (`L__` is
+`l`, `_ct` is `ct`, `a__` is `a`), none lets every name through. This also fixes
+`a__` (a_b_c), which the corpus pairs did not contain. Not reproduced: a query
+that starts with a separator and has one more character (`_b_`, `__b`): clangd
+answers `__builtin_x` only, cereal adds `Foo_Bar_Baz` and `a_b_c` (a superset;
+the index apparently keys that query on the separator too). `tests/lsp/wsdigits`
+pins `L__` and `_ct`. Gates: run.sh 2158; clangd_diff 0 unexpected; wsym_bench
+p95 23.2 ms (was 21.2); the open-file matcher agreed on all probed queries.

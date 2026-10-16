@@ -776,29 +776,11 @@ static size_t ws_next(size_t nn, const unsigned char *role, size_t i,
     return n;
 }
 
-static bool ws_dex(const char *q, size_t nq, const char *name, size_t nn,
-                   const unsigned char *role)
+/* The trigram part of ws_dex: each window of three of q's characters. */
+static bool ws_dex_windows(const char *q, size_t nq, const char *name, size_t nn,
+                           const unsigned char *role)
 {
-    size_t i, w, heads = 0;
-    if (nq < 3) {
-        for (i = 0; i < nn; i++) {
-            size_t nx[3], n, k;
-            if (role[i] == WR_HEAD)
-                heads++;
-            if (i && !(role[i] == WR_HEAD && heads <= 2))
-                continue;
-            if (tolower((unsigned char)name[i]) != tolower((unsigned char)q[0]))
-                continue;
-            if (nq == 1)
-                return true;
-            n = ws_next(nn, role, i, nx);
-            for (k = 0; k < n; k++)
-                if (tolower((unsigned char)name[nx[k]]) ==
-                        tolower((unsigned char)q[1]))
-                    return true;
-        }
-        return false;
-    }
+    size_t i, w;
     for (w = 0; w + 3 <= nq; w++) {
         bool found = false;
         for (i = 0; i < nn && !found; i++) {
@@ -822,6 +804,54 @@ static bool ws_dex(const char *q, size_t nq, const char *name, size_t nn,
             return false;
     }
     return true;
+}
+
+/* A query of one or two characters: the unigram or bigram tokens. */
+static bool ws_dex_short(const char *q, size_t nq, const char *name, size_t nn,
+                         const unsigned char *role)
+{
+    size_t i, heads = 0;
+    for (i = 0; i < nn; i++) {
+        size_t nx[3], n, k;
+        if (role[i] == WR_HEAD)
+            heads++;
+        if (i && !(role[i] == WR_HEAD && heads <= 2))
+            continue;
+        if (tolower((unsigned char)name[i]) != tolower((unsigned char)q[0]))
+            continue;
+        if (nq == 1)
+            return true;
+        n = ws_next(nn, role, i, nx);
+        for (k = 0; k < n; k++)
+            if (tolower((unsigned char)name[nx[k]]) == tolower((unsigned char)q[1]))
+                return true;
+    }
+    return false;
+}
+
+/* clangd's query tokens come from the characters that are not separators
+ * (`L__` is the unigram `l`, `_ct` the bigram `ct`, `a_b_c` the trigram `abc`).
+ * Not reproduced: a query that starts with a separator and has one more
+ * character (`_b_`, `__b`) asks the index for more than that unigram; the
+ * answer here has extra names. */
+static bool ws_dex(const char *q, size_t nq, const char *name, size_t nn,
+                   const unsigned char *role)
+{
+    char small[128], *kept = small;
+    size_t i, w = 0;
+    bool ok;
+    if (nq < 3)
+        return ws_dex_short(q, nq, name, nn, role);
+    if (nq > sizeof small)
+        kept = xmalloc(nq);
+    for (i = 0; i < nq; i++)
+        if (ws_type((unsigned char)q[i]) != 3)
+            kept[w++] = q[i];
+    ok = w >= 3 ? ws_dex_windows(kept, w, name, nn, role)
+       : w ? ws_dex_short(kept, w, name, nn, role) : true;
+    if (kept != small)
+        free(kept);
+    return ok;
 }
 
 /* How well q matches name: -1 not at all, else lower is better: 0 exact, 1

@@ -413,6 +413,49 @@
 []
 >> workspace/symbol
 []
+## a query's trigrams run over its non-separator characters: L__ is the unigram l (LUA_INTEGER_FMT, not SSL_CTX_new: its L is no head), _ct the bigram ct (SSL_CTX_new); clangd 20.1.8
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 13,
+  "location": {
+   "range": {
+    "end": {
+     "character": 19,
+     "line": 4
+    },
+    "start": {
+     "character": 4,
+     "line": 4
+    }
+   },
+   "uri": "file://$ROOT/wsdigits/h.h"
+  },
+  "name": "LUA_INTEGER_FMT"
+ }
+]
+>> workspace/symbol
+[
+ {
+  "containerName": "",
+  "kind": 13,
+  "location": {
+   "range": {
+    "end": {
+     "character": 15,
+     "line": 5
+    },
+    "start": {
+     "character": 4,
+     "line": 5
+    }
+   },
+   "uri": "file://$ROOT/wsdigits/h.h"
+  },
+  "name": "SSL_CTX_new"
+ }
+]
 >> shutdown
 null
 >> exit

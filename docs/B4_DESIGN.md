@@ -1687,8 +1687,8 @@ symbols with Dex (trigram tokens) plus the same matcher. `ws_match` is now a
 port of both; its former dynamic program is gone. Over 95,758 pairs: open-file
 symbols and macros agree exactly; header symbols differ in 3 pairs, all
 queries with two underscores (`L__`, `l__` on `LUA_INTEGER_FMT`; `_ct` on
-`SSL_CTX_new`), which depend on Dex's token details not reproduced. Residual,
-not fixed. Pinned by `tests/lsp/wsdigits` (a, ud, u8, 2b, ip4, s256, sha, 256,
+`SSL_CTX_new`), which depend on Dex's token details not reproduced. (Round 237 fixed
+these: the query's trigrams run over its non-separator characters; see there.) Pinned by `tests/lsp/wsdigits` (a, ud, u8, 2b, ip4, s256, sha, 256,
 x64, xs, ad, cd, aB, a1, SZ, bu16, i4; header-resident lf, lc, gf, gc, hdr_i,
 hi4, hu8) and the `wsdigits.{c,h}` clangd_diff corpus (`EXTRA` queries).
 Rank semantics: rank 3 + jumps now counts jumps over the new matcher (the
