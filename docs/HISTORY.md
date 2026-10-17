@@ -5179,3 +5179,12 @@ suite and the oracles are unchanged (rank-1 0 bad; enable/cover 0 failed). Cost:
 user files and skeletons of the headers it falls back on), whole-corpus fold time about -25% to -40%
 (noisy). Known difference: a `#include MACRO` inside a system header, which the old walk skipped
 (taint), is followed through the run's events; no corpus group changed.
+
+Round 269: measurements, no code.
+(1) The fold is not in the `index-summary` child (it never attaches the trace); with the replay a unit's
+fold is 240 ms for libuv's 34 units and 110-180 ms per lua version (best of 3, sequential), against an
+index job of 1,093 ms (libuv) and 530 ms (lua54): about 20-25%, above the 10% that would let the sidecar
+be written always. So `--cover` stays gated by `cereal.index.configs`. (2) Tried skipping the fold of a
+guard-covered system header the run did not enter (nothing in it can be taken, so no skeleton needed):
+the suite and oracles were unchanged and the fold time did not move (libuv 240 to 281 ms, noise), so
+it was reverted. The fallback skeleton folds are not the remaining cost; BDD work on the user files is.
