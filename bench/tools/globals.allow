@@ -33,3 +33,7 @@ lsp/rpc out_m  server (its lock)
 lsp/server S  the server
 lsp/server on  server (once flag)
 lsp/project P  the project index scheduler (one per server; the scheduler thread owns it, the mailbox fields are under P.m)
+analysis/bdd rng_state selftest only: the PRNG of bdd_selftest, run single-threaded from main
+analysis/pcfam row_index the family-table hash index: built once, published with a compare-and-swap, read-only after (the loser's copy is freed)
+analysis/pcq rnd_state selftest only: the PRNG of pcq_selftest, run single-threaded from main
+analysis/pcq st_ids selftest only: the fake macro identifiers of pcq_selftest, single-threaded

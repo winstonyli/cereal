@@ -581,7 +581,8 @@ size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
             heap_push(&h, t);
         }
     }
-    qsort(found.data, found.len, sizeof(Ranked), ranked_cmp);
+    if (found.len)
+        qsort(found.data, found.len, sizeof(Ranked), ranked_cmp);
     for (i = 0; i < found.len; i++) {
         size_t m;
         for (m = 0; m < n && !subsumes(&out[m], &found.data[i].c); m++)

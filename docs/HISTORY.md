@@ -5347,3 +5347,9 @@ all unchanged). `bdd_ite` fell 1.08 to 0.51 G and `mk` 0.53 to 0.22 G, but the w
 (`dp`, memoized per handle) and `implied` now visit a node once per polarity, and `do_define` got dearer. Abandoned
 and the branch deleted. Conclusion: the engine is not the lever; the remaining cost is the amount of BDD work the fold
 and `pc_cover` ask for (number of defines times entries per macro, groups times cubes).
+Round 279, gate on the final tree: run 2205/0; verify dg 2 / c-c++-common 1 / cpp 0 differ (as expected); callgrind
+3.881G (expected ~3.89G); globals failed on 4 selftest/index globals never listed (`bdd rng_state`, `pcq rnd_state`,
+`pcq st_ids`, `pcfam row_index`, the last CAS-published): listed in globals.allow; san failed 49 (UBSan:
+null pointer to qsort/bsearch with an empty array, in `pc_fold`, `replay_run`, `was_taken` and `pc_preconditions`, the
+last two reached since the `fixed` hook can leave no cube): guarded, san now 2205 passed, findings 0. The san stage had
+not been run since the S1 rounds.

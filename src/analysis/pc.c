@@ -189,8 +189,8 @@ static int cmp_u64(const void *a, const void *b)
 
 static bool was_taken(const PcUnit *u, uint64_t inst)
 {
-    return bsearch(&inst, u->taken.data, u->taken.len, sizeof *u->taken.data,
-                   cmp_u64) != NULL;
+    return u->taken.len &&
+           bsearch(&inst, u->taken.data, u->taken.len, sizeof *u->taken.data, cmp_u64);
 }
 
 /* ---- host valuation --------------------------------------------------- */
@@ -595,7 +595,7 @@ static bool replay_run(PcUnit *u, uint64_t chain, Bdd cur)
     PcRun key, *r;
     uint32_t i;
     int depth = 0;
-    if (!t)
+    if (!t || !t->runs.len)
         return false;
     if (!u->runs_sorted) {
         qsort(t->runs.data, t->runs.len, sizeof *t->runs.data, cmp_run);
@@ -781,7 +781,8 @@ bool pc_fold(PcUnit *u, Analysis *a, SrcFile *main)
         memcpy(&u->taken, &a->pct->taken, sizeof u->taken);
         memset(&a->pct->taken, 0, sizeof a->pct->taken);
     }
-    qsort(u->taken.data, u->taken.len, sizeof *u->taken.data, cmp_u64);
+    if (u->taken.len)
+        qsort(u->taken.data, u->taken.len, sizeof *u->taken.data, cmp_u64);
     fold_file(u, main, -1, BDD_TRUE, 0);
     return !u->over;
 }
