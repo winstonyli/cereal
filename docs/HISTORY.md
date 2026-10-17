@@ -5225,3 +5225,20 @@ every real unit is fresh or backing off and serves the budget in main-path order
 warm cache it allocates in `pstate_set_config`, zero jobs. Test: `proj_test.py configs` (budget
 respected, names added, restart without a job, off again). Suite 2203 passed. Rename ignores virtual
 units for now (see CONFIG_DESIGN 6).
+
+Round 273: `cereal.index.configs` measured (throwaway driver over `cereal lsp`, cold cache, 3 threads, `maxOverlays` 8,
+single runs, load ~1; the driver was deleted).
+| project | configs | units | time | names | cache |
+| libuv (34 real) | 0 | 34 | 0.4 s | 4,969 | 1.1 MB |
+| | 0.5 | 51 | 1.2 s | 7,006 (+41%) | 1.5 MB |
+| | 2 | 102 | 1.7 s | 8,616 (+73%) | 1.9 MB |
+| | 6 | 238 | 3.0 s | 10,333 (+108%) | 2.7 MB |
+| lua54 (33 real) | 0 | 33 | 0.2 s | 18,281 | 2.0 MB |
+| | 0.5 | 49 | 1.7 s | 20,589 (+13%) | 2.6 MB |
+| | 2 | 99 | 1.9 s | 22,805 (+25%) | 3.4 MB |
+| | 6 | 103 | 1.8 s | 22,934 | 3.4 MB (the sidecars run out at 70 overlays) |
+The first 0.5 per real unit buys most of the names (libuv +2,037 for 17 units; the next 51 units +1,610, the
+next 136 +1,717). Cost: a full index is 3-8x slower on these small projects (the fold in every real job, plus
+the virtual jobs), seconds in absolute terms; the cache grows 36-70%. Recommended on-value 0.5 (as the design
+proposed); the default stays 0 until the S2 gate (wsym p95 and builder p50 not regressed with configs on) is
+measured, which this round did not do.
