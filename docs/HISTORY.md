@@ -5022,3 +5022,35 @@ one span) and `call_inst` pastes `a ## b` into one identifier (identifier with i
 number; placemarker for an empty argument); `#` stays opaque. `tests/pc/paste.c` (+ `.flags` for the
 host-valued opaque case). lua exactness unchanged: the remaining `FIGS` opacity is the skipped
 `luaconf.h` (taint), not `##`. Suite 2190 passed.
+
+Round 259: S1d-2 family table (first cut), the rank-1 gate, conditional taint, unsigned `#if` arithmetic.
+(1) `pcfam.[ch]`: two one-hot axes of leaves, OS (linux, android, windows, apple, other) and compiler
+(gcc, clang, msvc, clang-cl, other), as atoms `PA_LEAF` of one block per axis. Per macro (`__linux__`,
+`__unix__`, `__ELF__`, `__ANDROID__`, `_WIN32`, `__APPLE__`, `__MACH__`, `__GNUC__`, `__clang__`,
+`_MSC_VER`) the leaves that must define it and those that must not; the others leave it free, so
+the table says only what is certain and "other" stays a residual. MSVC and clang-cl require the Windows leaf.
+`pc_constrain` (monotone thresholds + `pc_family`) replaces `pc_monotone` in `sat` and the queries; the
+clauses are added per query over the support. The host leaf is read from the host's predefined
+macros. Costs: a leaf block is a `target` change (weight 1000), a table macro follows its leaf
+(weight 0, hidden from the list when a leaf must change), everything else weighs 1; `PcCube` gains
+`target`, requirements `PQ_TARGET`; leaf literals render as `os = windows`. Not yet: integer-valued
+members and concrete versions per leaf (so zstd's `__GNUC__*100+__GNUC_MINOR__` and `__has_*` stay
+opaque; exactness is unchanged), `HAS`/`EMPTY`, language rows, overlay-flippable bit, phases 2a/2b
+as separate passes (the weights give phase 1 vs 2b; `environment` has no atoms yet), `via`,
+`enable`/`cover`.
+(2) Rank-1 gate: `pc_check_rank1` / `pc_cost_brute` enumerate every assignment of the constrained
+support (up to 20 variables) and compare the least weighted cost with the DP's first cube;
+`selftest pcq` uses the same function (now with leaves, 16 variables, at least 100 compared and 20 with
+leaves), `CEREAL_PCDUMP=check` runs it on every satisfiable group, `pc_oracle.py` aggregates. Corpora:
+0 disagreements in about 56,000 groups checked (libuv 12196, lua52 6870, lua53 9969, lua54 9673, lua55
+8660, lupa 2278, uvloop 5994, zstd 747); 5,000 groups too large to enumerate.
+(3) Taint is a condition, not a flag: a skipped include taints the groups after it under the
+condition at which it is reached (`PcGroup.taint` is a BDD; the oracle evaluates it under the host).
+The only skipped include in the lua units is `#include LUA_USER_H` under `#if defined(LUA_USER_H)`, so
+the lua groups are now untainted under the host. This exposed five real disagreements, all the
+same bug: `#if` arithmetic ignored unsignedness (`__LONG_MAX__ * 2UL + 1UL`, `>> 31`) and a shift
+by 63 was treated as 0. `Num`/`PcNode` carry an unsigned bit (suffix `u`, or a value above
+INTMAX_MAX), `fold` follows the usual arithmetic conversions (comparison gives signed 0/1; a shift takes
+its left operand's type) and the key evaluator does too. Oracle: 100% agreement on exact groups and 100%
+on decidable opaque groups on every corpus (3-103 per corpus are host-unknown, the `__has_*` calls).
+Fixtures `family`, `unsigned`; suite 2195 passed.

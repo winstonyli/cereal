@@ -1,4 +1,4 @@
 pc: skipped.c:2 if sat=1 host=0 exact=1 taint=0 :: defined(Z)
 pc: skipped.c:5 if sat=1 host=0 exact=1 taint=1 :: defined(Z)
-pc: skipped.c:9 if sat=1 host=0 exact=1 taint=7 :: defined(Z)
+pc: skipped.c:9 if sat=1 host=0 exact=1 taint=1 :: defined(Z)
 pc: total groups=3 files=1 sys=0 unresolved=2 computed=1 over=0

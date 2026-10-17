@@ -1,5 +1,6 @@
 /* pcexpr.c - presence conditions of #if expressions. */
 #include "pcexpr.h"
+#include "pcfam.h"
 
 #include <inttypes.h>
 #include <stdlib.h>
@@ -13,6 +14,7 @@ struct PcNode {
     PNKind kind;
     int op;                 /* Punct for PN_UN/PN_BIN */
     intmax_t num;
+    bool u;                 /* PN_NUM: unsigned (a u suffix, or too big) */
     Ident *id;              /* PN_VAR/PN_DEFINED */
     const char *text;       /* PN_CALL: canonical text */
     TokSpan args;           /* PN_CALL: the tokens between the parentheses */
@@ -37,11 +39,12 @@ static PcNode *mk(PX *p, PNKind k)
     return n;
 }
 
-bool pc_ppnum(Analysis *an, const Tok *t, intmax_t *out)
+bool pc_ppnum(Analysis *an, const Tok *t, intmax_t *out, bool *uns)
 {
     const char *s = pp_text(an->pp, t);
     uint32_t i = 0, n = t->len;
     uintmax_t v = 0;
+    bool su = false;
     int base = 10;
     if (n > 1 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
         base = 16;
@@ -66,7 +69,12 @@ bool pc_ppnum(Analysis *an, const Tok *t, intmax_t *out)
             return false;
         v = v * (uintmax_t)base + (uintmax_t)d;
     }
+    for (; i < n; i++)
+        if (s[i] == 'u' || s[i] == 'U')
+            su = true;
     *out = (intmax_t)v;
+    if (uns)
+        *uns = su || v > (uintmax_t)INTMAX_MAX;
     return true;
 }
 
@@ -143,7 +151,7 @@ static PcNode *px_primary(PX *p)
     }
     if (t->kind == TK_PPNUM) {
         n = mk(p, PN_NUM);
-        if (!pc_ppnum(p->an, t, &n->num))
+        if (!pc_ppnum(p->an, t, &n->num, &n->u))
             p->ok = false;
         p->t = (t + 1);
         return n;
@@ -327,7 +335,7 @@ static void htab_insert(PcCtx *cx, uint32_t bi)
 
 Bdd pc_atom(PcCtx *cx, PcAKind kind, Ident *id, intmax_t c, const char *text)
 {
-    bool is_text = kind == PA_TEXT;
+    bool is_text = kind == PA_TEXT || kind == PA_LEAF;
     uint32_t bi = UINT32_MAX, last;
     PcBlock *b;
     PcAtom *at;
@@ -368,6 +376,8 @@ Bdd pc_atom(PcCtx *cx, PcAKind kind, Ident *id, intmax_t c, const char *text)
     at->id = id;
     at->c = c;
     at->text = text;
+    at->target = kind == PA_LEAF;
+    at->derived = id && pc_fam_macro(id->str);
     return bdd_var(&cx->m, last * PC_K + b->n++);
 }
 
@@ -395,7 +405,12 @@ const char *pc_owner_name(const PcCtx *cx, uint32_t owner)
 static void node_key(const PcNode *n, StrBuf *sb)
 {
     switch (n->kind) {
-    case PN_NUM: sb_printf(sb, "%jd", (intmax_t)n->num); break;
+    case PN_NUM:
+        if (n->u)
+            sb_printf(sb, "%juU", (uintmax_t)n->num);
+        else
+            sb_printf(sb, "%jd", n->num);
+        break;
     case PN_VAR: sb_printf(sb, "v:%s", n->id->str); break;
     case PN_DEFINED: sb_printf(sb, "d:%s", n->id->str); break;
     case PN_CALL: sb_printf(sb, "c:%s", n->text); break;
@@ -455,6 +470,7 @@ typedef struct Num {
     intmax_t n;             /* the number; for N_INIT the k of X + k */
     Ident *id;              /* N_INIT: X, defined here */
     const char *key;        /* N_OPQ */
+    bool u;                 /* N_CONST: unsigned */
 } Num;
 
 typedef struct Case {
@@ -476,19 +492,25 @@ typedef struct VB {          /* a value being built */
 
 static Num n_const(intmax_t n)
 {
-    Num v = {N_CONST, n, NULL, NULL};
+    Num v = {N_CONST, n, NULL, NULL, false};
+    return v;
+}
+
+static Num n_constu(intmax_t n, bool u)
+{
+    Num v = {N_CONST, n, NULL, NULL, u};
     return v;
 }
 
 static Num n_init(Ident *id, intmax_t k)
 {
-    Num v = {N_INIT, k, id, NULL};
+    Num v = {N_INIT, k, id, NULL, false};
     return v;
 }
 
 static Num n_opq(const char *key)
 {
-    Num v = {N_OPQ, 0, NULL, key};
+    Num v = {N_OPQ, 0, NULL, key, false};
     return v;
 }
 
@@ -497,7 +519,7 @@ static bool num_eq(const Num *a, const Num *b)
     if (a->k != b->k)
         return false;
     switch (a->k) {
-    case N_CONST: return a->n == b->n;
+    case N_CONST: return a->n == b->n && a->u == b->u;
     case N_INIT: return a->id == b->id && a->n == b->n;
     default: return !strcmp(a->key, b->key);
     }
@@ -558,7 +580,9 @@ static const char *num_desc(PcCtx *cx, const Num *v)
 {
     Arena *a = cx->an->arena;
     switch (v->k) {
-    case N_CONST: return arena_printf(a, "%jd", v->n);
+    case N_CONST:
+        return v->u ? arena_printf(a, "%juU", (uintmax_t)v->n)
+                    : arena_printf(a, "%jd", v->n);
     case N_INIT:
         return v->n ? arena_printf(a, "(b%d v:%s %jd)", (int)P_PLUS,
                                    v->id->str, v->n)
@@ -603,35 +627,49 @@ static int swap_cmp(int op)
     }
 }
 
-/* x op y on constants; false when undefined (division by zero) */
-static bool fold(int op, intmax_t x, intmax_t y, intmax_t *out)
+/* x op y on constants with C's usual arithmetic conversions: unsigned if
+ * either operand is (a shift takes its left operand's type, a comparison
+ * gives a signed 0 or 1); false when undefined (division by zero) */
+static bool fold(int op, const Num *x, const Num *y, Num *out)
 {
-    uintmax_t ux = (uintmax_t)x, uy = (uintmax_t)y;
+    bool uns = x->u || y->u;
+    uintmax_t ux = (uintmax_t)x->n, uy = (uintmax_t)y->n;
+    intmax_t r;
+    bool ru = uns;
     switch (op) {
-    case P_STAR: *out = (intmax_t)(ux * uy); break;
+    case P_STAR: r = (intmax_t)(ux * uy); break;
     case P_SLASH:
-        if (!y) return false;
-        *out = y == -1 ? (intmax_t)(0 - ux) : x / y;
+        if (!uy) return false;
+        r = uns ? (intmax_t)(ux / uy)
+                : y->n == -1 ? (intmax_t)(0 - ux) : x->n / y->n;
         break;
     case P_PERCENT:
-        if (!y) return false;
-        *out = y == -1 ? 0 : x % y;
+        if (!uy) return false;
+        r = uns ? (intmax_t)(ux % uy) : y->n == -1 ? 0 : x->n % y->n;
         break;
-    case P_PLUS: *out = (intmax_t)(ux + uy); break;
-    case P_MINUS: *out = (intmax_t)(ux - uy); break;
-    case P_SHL: *out = (y < 0 || y > 62) ? 0 : (intmax_t)(ux << y); break;
-    case P_SHR: *out = (y < 0 || y > 62) ? 0 : x >> y; break;
-    case P_LT: *out = x < y; break;
-    case P_GT: *out = x > y; break;
-    case P_LE: *out = x <= y; break;
-    case P_GE: *out = x >= y; break;
-    case P_EQEQ: *out = x == y; break;
-    case P_NE: *out = x != y; break;
-    case P_AMP: *out = x & y; break;
-    case P_CARET: *out = x ^ y; break;
-    case P_PIPE: *out = x | y; break;
+    case P_PLUS: r = (intmax_t)(ux + uy); break;
+    case P_MINUS: r = (intmax_t)(ux - uy); break;
+    case P_SHL:
+        r = (y->n < 0 || y->n > 63) ? 0 : (intmax_t)(ux << y->n);
+        ru = x->u;
+        break;
+    case P_SHR:
+        r = (y->n < 0 || y->n > 63) ? 0
+            : x->u ? (intmax_t)(ux >> y->n) : x->n >> y->n;
+        ru = x->u;
+        break;
+    case P_LT: r = uns ? ux < uy : x->n < y->n; ru = false; break;
+    case P_GT: r = uns ? ux > uy : x->n > y->n; ru = false; break;
+    case P_LE: r = uns ? ux <= uy : x->n <= y->n; ru = false; break;
+    case P_GE: r = uns ? ux >= uy : x->n >= y->n; ru = false; break;
+    case P_EQEQ: r = ux == uy; ru = false; break;
+    case P_NE: r = ux != uy; ru = false; break;
+    case P_AMP: r = (intmax_t)(ux & uy); break;
+    case P_CARET: r = (intmax_t)(ux ^ uy); break;
+    case P_PIPE: r = (intmax_t)(ux | uy); break;
     default: return false;
     }
+    *out = n_constu(r, ru);
     return true;
 }
 
@@ -817,10 +855,11 @@ static Bdd truth(PcCtx *cx, Val v)
 /* x op y for one pair of values (op a binary operator but && and ||) */
 static Val pair_op(PcCtx *cx, int op, const Num *x, const Num *y)
 {
-    intmax_t r, c;
+    intmax_t c;
+    Num r;
     if (x->k == N_CONST && y->k == N_CONST)
-        return fold(op, x->n, y->n, &r)
-                   ? v_one(cx, n_const(r))
+        return fold(op, x, y, &r)
+                   ? v_one(cx, r)
                    : v_one(cx, n_opq(key_bin(cx, op, x, y)));
     if (is_cmp(op)) {
         /* (X + k) op c  is  X op (c - k) */
@@ -830,9 +869,11 @@ static Val pair_op(PcCtx *cx, int op, const Num *x, const Num *y)
         if (x->k == N_CONST && y->k == N_INIT &&
             !__builtin_sub_overflow(x->n, y->n, &c))
             return v_bool(cx, init_cmp(cx, swap_cmp(op), y->id, c));
-        if (x->k == N_INIT && y->k == N_INIT && x->id == y->id &&
-            fold(op, x->n, y->n, &r))
-            return v_one(cx, n_const(r));
+        if (x->k == N_INIT && y->k == N_INIT && x->id == y->id) {
+            Num a = n_const(x->n), b = n_const(y->n);
+            if (fold(op, &a, &b, &r))
+                return v_one(cx, r);
+        }
         return v_bool(cx, pc_atom(cx, PA_TEXT, NULL, 0,
                                   key_bin(cx, op, x, y)));
     }
@@ -942,8 +983,8 @@ static Val ev_unary(PcCtx *cx, PcNode *n)
         const Num *v = &x.c[i].v;
         if (v->k == N_CONST)
             vb_add(&b, x.c[i].cond,
-                   n_const(n->op == P_MINUS ? (intmax_t)(0 - (uintmax_t)v->n)
-                                            : ~v->n));
+                   n_constu(n->op == P_MINUS ? (intmax_t)(0 - (uintmax_t)v->n)
+                                             : ~v->n, v->u));
         else
             vb_add(&b, x.c[i].cond,
                    n_opq(arena_printf(cx->an->arena, "(u%d %s)", n->op,
@@ -989,7 +1030,7 @@ static Val ev(PcCtx *cx, PcNode *n)
     BddMgr *m = &cx->m;
     switch (n->kind) {
     case PN_NUM:
-        return v_one(cx, n_const(n->num));
+        return v_one(cx, n_constu(n->num, n->u));
     case PN_DEFINED:
         return v_bool(cx, env_defined(cx, n->id));
     case PN_CALL:
@@ -1065,7 +1106,7 @@ Bdd pc_truth(PcCtx *cx, PcNode *n)
 
 /* The clauses GE(hi) implies GE(lo) over the atoms of f's support are
  * conjoined before the test. */
-Bdd pc_monotone(PcCtx *cx, Bdd f)
+static Bdd pc_monotone(PcCtx *cx, Bdd f)
 {
     BddMgr *m = &cx->m;
     BddVars vs = {0};
@@ -1087,12 +1128,17 @@ Bdd pc_monotone(PcCtx *cx, Bdd f)
     return g;
 }
 
+Bdd pc_constrain(PcCtx *cx, Bdd f)
+{
+    return pc_family(cx, pc_monotone(cx, f));
+}
+
 int pc_sat(PcCtx *cx, Bdd f)
 {
     Bdd g;
     if (cx->m.over)
         return -1;
-    g = pc_monotone(cx, f);
+    g = pc_constrain(cx, f);
     return cx->m.over ? -1 : g != BDD_FALSE;
 }
 
@@ -1120,7 +1166,7 @@ typedef struct KeyP {
     const PcKeyHost *h;
 } KeyP;
 
-static bool key_val(KeyP *k, intmax_t *out);
+static bool key_val(KeyP *k, Num *out);
 
 static void key_ws(KeyP *k)
 {
@@ -1137,12 +1183,12 @@ static bool key_close(KeyP *k)
     return true;
 }
 
-static bool key_val(KeyP *k, intmax_t *out)
+static bool key_val(KeyP *k, Num *out)
 {
     key_ws(k);
     if (*k->s == '(') {
         char tag = k->s[1];
-        intmax_t a, b, c;
+        Num a, b, c;
         char *e;
         long op;
         if (tag == '?') {
@@ -1150,7 +1196,7 @@ static bool key_val(KeyP *k, intmax_t *out)
             if (!key_val(k, &a) || !key_val(k, &b) || !key_val(k, &c) ||
                 !key_close(k))
                 return false;
-            *out = a ? b : c;
+            *out = a.n ? b : c;
             return true;
         }
         if (tag != 'b' && tag != 'u')
@@ -1162,37 +1208,55 @@ static bool key_val(KeyP *k, intmax_t *out)
         if (tag == 'u') {
             if (!key_close(k))
                 return false;
-            *out = op == P_BANG ? !a
-                 : op == P_MINUS ? (intmax_t)(0 - (uintmax_t)a)
-                 : op == P_TILDE ? ~a : (op == P_PLUS ? a : 0);
-            return op == P_BANG || op == P_MINUS || op == P_TILDE ||
-                   op == P_PLUS;
+            if (op == P_BANG)
+                *out = n_const(!a.n);
+            else if (op == P_MINUS)
+                *out = n_constu((intmax_t)(0 - (uintmax_t)a.n), a.u);
+            else if (op == P_TILDE)
+                *out = n_constu(~a.n, a.u);
+            else if (op == P_PLUS)
+                *out = a;
+            else
+                return false;
+            return true;
         }
         if (!key_val(k, &b) || !key_close(k))
             return false;
         if (op == P_ANDAND || op == P_OROR) {
-            *out = op == P_ANDAND ? (a && b) : (a || b);
+            *out = n_const(op == P_ANDAND ? (a.n && b.n) : (a.n || b.n));
             return true;
         }
-        return fold((int)op, a, b, out);
+        return fold((int)op, &a, &b, out);
     }
     if ((k->s[0] == 'v' || k->s[0] == 'd') && k->s[1] == ':') {
         bool is_v = k->s[0] == 'v';
         const char *name = k->s + 2, *e = name;
+        intmax_t n;
         while (*e && *e != ' ' && *e != ')')
             e++;
         k->s = e;
-        if (is_v)
-            return k->h->value(k->h->ctx, name, (size_t)(e - name), out);
-        *out = k->h->defined(k->h->ctx, name, (size_t)(e - name));
+        if (is_v) {
+            if (!k->h->value(k->h->ctx, name, (size_t)(e - name), &n))
+                return false;
+        } else {
+            n = k->h->defined(k->h->ctx, name, (size_t)(e - name));
+        }
+        *out = n_const(n);
         return true;
     }
     if ((*k->s >= '0' && *k->s <= '9') || *k->s == '-') {
         char *e;
-        *out = (intmax_t)strtoimax(k->s, &e, 10);
-        if (e == k->s)
+        bool neg = *k->s == '-';
+        uintmax_t v = strtoumax(k->s + neg, &e, 10);
+        if (e == k->s + neg)
             return false;
         k->s = e;
+        if (*k->s == 'U') {
+            k->s++;
+            *out = n_constu((intmax_t)v, true);
+        } else {
+            *out = n_const(neg ? (intmax_t)(0 - v) : (intmax_t)v);
+        }
         return true;
     }
     return false;
@@ -1201,5 +1265,9 @@ static bool key_val(KeyP *k, intmax_t *out)
 bool pc_key_eval(const char *key, const PcKeyHost *h, intmax_t *out)
 {
     KeyP k = {key, h};
-    return key_val(&k, out) && !*k.s;
+    Num r;
+    if (!key_val(&k, &r) || *k.s)
+        return false;
+    *out = r.n;
+    return true;
 }

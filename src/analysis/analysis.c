@@ -66,7 +66,8 @@ static int pc_hook_flags(void)
     return (strstr(e, "size") ? PCD_SIZE : 0) |
            (strstr(e, "oracle") ? PCD_ORACLE : 0) |
            (strstr(e, "skipped") ? PCD_SKIPPED : 0) |
-           (strstr(e, "why") ? PCD_WHY : 0);
+           (strstr(e, "why") ? PCD_WHY : 0) |
+           (strstr(e, "check") ? PCD_CHECK : 0);
 }
 
 static double now_ms(void)

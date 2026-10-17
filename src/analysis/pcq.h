@@ -17,7 +17,7 @@ typedef struct PcValuation {
     bool (*get)(void *ctx, const PcAtom *at, bool *known);
 } PcValuation;
 
-typedef enum { PQ_CONFIG, PQ_OPAQUE } PcReqKind;
+typedef enum { PQ_CONFIG, PQ_TARGET, PQ_OPAQUE } PcReqKind;
 typedef enum { PQ_MET, PQ_UNMET, PQ_UNKNOWN } PcReqStatus;
 
 /* One macro (or one opaque text): what the cube needs of it. */
@@ -31,6 +31,8 @@ typedef struct PcCube {
     PcReq *reqs;
     uint32_t n;
     uint32_t cost;          /* the unmet CONFIG requirements */
+    uint32_t target;        /* the unmet TARGET requirements (an OS or compiler
+                             * change: no overlay does it) */
 } PcCube;
 
 /* f holds under V (unknown atoms count as false). */
@@ -52,6 +54,15 @@ char *pc_cube_render(const PcCube *c, bool only_unmet);
  * the same value under both.  Names are sorted; free the array with free(). */
 size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation *v2,
                const char ***names);
+
+/* Rank 1 of pc_preconditions against enumerating every assignment of the
+ * constrained condition's support: 0 agrees, 1 differs, -1 not checked (over
+ * 20 variables, unsatisfiable, node cap). */
+int pc_check_rank1(PcCtx *cx, Bdd f, const PcValuation *v);
+/* The least weighted cost of any satisfying assignment of g; false when the
+ * support has more than maxvars variables. */
+bool pc_cost_brute(PcCtx *cx, Bdd g, const PcValuation *v, size_t maxvars,
+                   uint32_t *best);
 
 /* `cereal selftest pcq`: the cost DP against brute-force enumeration. */
 int pcq_selftest(void);

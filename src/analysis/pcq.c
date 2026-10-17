@@ -1,10 +1,12 @@
 /* pcq.c - queries on presence conditions: holds, cheapest cubes, diff. */
 #include "pcq.h"
+#include "pcfam.h"
 
 #include <stdlib.h>
 #include <string.h>
 
 #define INF 0x3fffffffu
+#define W_TARGET 1000u          /* one target change outweighs any config ones */
 #define PATH_CAP 64
 #define POP_CAP 20000
 
@@ -74,6 +76,11 @@ static bool is_cost_atom(PcCtx *cx, uint32_t var)
     return a && a->kind != PA_TEXT;
 }
 
+static uint32_t atom_weight(const PcAtom *a)
+{
+    return a->target ? W_TARGET : a->derived ? 0 : 1;
+}
+
 /* Taking value b for var: the added cost, and the "deviated" flag the child
  * starts with (it carries over only inside one macro). */
 static void step(Q *q, uint32_t var, int dev, int b, Bdd child, uint32_t *add,
@@ -81,7 +88,7 @@ static void step(Q *q, uint32_t var, int dev, int b, Bdd child, uint32_t *add,
 {
     int vs = vstate(q->cx, q->v, var);
     int d = dev || (is_cost_atom(q->cx, var) && vs >= 0 && vs != b);
-    *add = d && !dev;
+    *add = d && !dev ? atom_weight(pc_atom_at(q->cx, var)) : 0;
     *ndev = child > BDD_TRUE &&
             pc_var_owner(q->cx, q->m->nodes.data[child].var) ==
                 pc_var_owner(q->cx, var)
@@ -256,6 +263,9 @@ static void lit_text(PcCtx *cx, uint32_t var, int val, StrBuf *sb)
     case PA_GE:
         sb_printf(sb, val ? "%s >= %jd" : "%s < %jd", a->id->str, a->c);
         break;
+    case PA_LEAF:
+        sb_printf(sb, val ? "%s = %s" : "%s != %s", a->text, pc_leaf_name(a));
+        break;
     default:
         sb_printf(sb, val ? "[%s]" : "![%s]", a->text);
         break;
@@ -265,8 +275,9 @@ static void lit_text(PcCtx *cx, uint32_t var, int val, StrBuf *sb)
 static PcCube make_cube(Q *q, const CubeLits *c)
 {
     PcCube r = {0};
-    uint32_t i, j;
+    uint32_t i, j, k;
     uint32_t *owners = xmalloc(sizeof(uint32_t) * (c->n ? c->n : 1));
+    bool *derived;
     uint32_t no = 0;
     for (i = 0; i < c->n; i++) {
         uint32_t o = pc_var_owner(q->cx, c->var[i]);
@@ -276,9 +287,15 @@ static PcCube make_cube(Q *q, const CubeLits *c)
             owners[no++] = o;
     }
     r.reqs = xmalloc(sizeof(PcReq) * (no ? no : 1));
+    derived = xcalloc(no ? no : 1, sizeof *derived);
     for (j = 0; j < no; j++) {
         StrBuf sb = {0};
-        bool unmet = false, unknown = false, text = false;
+        bool unmet = false, unknown = false, text = false, tgt = false,
+             pos = false;
+        for (i = 0; i < c->n; i++)       /* a leaf that holds says the rest */
+            if (pc_var_owner(q->cx, c->var[i]) == owners[j] &&
+                pc_atom_at(q->cx, c->var[i])->kind == PA_LEAF && c->val[i])
+                pos = true;
         for (i = 0; i < c->n; i++) {
             const PcAtom *a;
             int vs;
@@ -286,23 +303,39 @@ static PcCube make_cube(Q *q, const CubeLits *c)
                 continue;
             a = pc_atom_at(q->cx, c->var[i]);
             text = a->kind == PA_TEXT;
+            tgt = a->target;
+            derived[j] = a->derived;
             vs = vstate(q->cx, q->v, c->var[i]);
-            if (sb.len)
-                sb_puts(&sb, " && ");
-            lit_text(q->cx, c->var[i], c->val[i], &sb);
             if (vs < 0)
                 unknown = true;
             else if (vs != c->val[i])
                 unmet = true;
+            if (pos && a->kind == PA_LEAF && !c->val[i])
+                continue;
+            if (sb.len)
+                sb_puts(&sb, " && ");
+            lit_text(q->cx, c->var[i], c->val[i], &sb);
         }
         r.reqs[j].clause = dup_str(sb_cstr(&sb));
         sb_free(&sb);
-        r.reqs[j].kind = text ? PQ_OPAQUE : PQ_CONFIG;
+        r.reqs[j].kind = text ? PQ_OPAQUE : tgt ? PQ_TARGET : PQ_CONFIG;
         r.reqs[j].status = unmet ? PQ_UNMET : unknown ? PQ_UNKNOWN : PQ_MET;
-        if (unmet && !text)
+        if (unmet && tgt)
+            r.target++;
+        else if (unmet && !text && !derived[j])
             r.cost++;
     }
-    r.n = no;
+    /* a macro the table derives from its leaf is not asked for separately
+     * when the leaf itself must change */
+    for (j = k = 0; j < no; j++) {
+        if (r.target && derived[j] && r.reqs[j].status == PQ_UNMET) {
+            free((void *)r.reqs[j].clause);
+            continue;
+        }
+        r.reqs[k++] = r.reqs[j];
+    }
+    r.n = k;
+    free(derived);
     free(owners);
     return r;
 }
@@ -328,7 +361,7 @@ char *pc_cube_render(const PcCube *c, bool only_unmet)
             continue;
         if (sb.len)
             sb_puts(&sb, "; ");
-        sb_printf(&sb, "%s%s [%s]", q->kind == PQ_OPAQUE ? "opaque " : "",
+        sb_printf(&sb, "%s%s [%s]", q->kind == PQ_OPAQUE ? "opaque " : q->kind == PQ_TARGET ? "target " : "",
                   q->clause, st[q->status]);
     }
     r = dup_str(sb_cstr(&sb));
@@ -344,6 +377,8 @@ typedef struct Ranked {
 static int ranked_cmp(const void *a, const void *b)
 {
     const Ranked *x = a, *y = b;
+    if (x->c.target != y->c.target)
+        return x->c.target < y->c.target ? -1 : 1;
     if (x->c.cost != y->c.cost)
         return x->c.cost < y->c.cost ? -1 : 1;
     return strcmp(x->key, y->key);
@@ -361,7 +396,7 @@ size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
     size_t i, n = 0;
     if (cx->m.over)
         return 0;
-    g = pc_monotone(cx, f);
+    g = pc_constrain(cx, f);
     if (cx->m.over || g == BDD_FALSE)
         return 0;
     q.memo = xcalloc(2 * bdd_size(&cx->m), sizeof(uint32_t));
@@ -512,6 +547,74 @@ size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation *v2,
     return n;
 }
 
+/* ---- the independent reference: enumerate every assignment ----------------- */
+
+bool pc_cost_brute(PcCtx *cx, Bdd g, const PcValuation *v, size_t maxvars,
+                   uint32_t *best)
+{
+    BddVars vs = {0};
+    bool *as;
+    uint32_t *seen, a, maxv = 0;
+    size_t k;
+    bdd_vars(&cx->m, g, &vs);
+    if (vs.len > maxvars) {
+        vec_free(&vs);
+        return false;
+    }
+    for (k = 0; k < vs.len; k++)
+        maxv = MAX(maxv, vs.data[k]);
+    as = xcalloc((size_t)maxv + 1, sizeof *as);
+    seen = xmalloc(sizeof *seen * (vs.len ? vs.len : 1));
+    *best = INF;
+    for (a = 0; a < (1u << vs.len); a++) {
+        uint32_t cost = 0, ns = 0, j;
+        for (k = 0; k < vs.len; k++)
+            as[vs.data[k]] = a >> k & 1;
+        if (!bdd_eval(&cx->m, g, as))
+            continue;
+        for (k = 0; k < vs.len; k++) {
+            const PcAtom *at = pc_atom_at(cx, vs.data[k]);
+            uint32_t o = pc_var_owner(cx, vs.data[k]);
+            bool known = false, vv;
+            if (at->kind == PA_TEXT)
+                continue;
+            vv = v->get(v->ctx, at, &known);
+            if (!known || vv == as[vs.data[k]])
+                continue;
+            for (j = 0; j < ns && seen[j] != o; j++)
+                ;
+            if (j == ns) {
+                seen[ns++] = o;
+                cost += atom_weight(at);
+            }
+        }
+        if (cost < *best)
+            *best = cost;
+    }
+    free(as);
+    free(seen);
+    vec_free(&vs);
+    return true;
+}
+
+int pc_check_rank1(PcCtx *cx, Bdd f, const PcValuation *v)
+{
+    Bdd g;
+    PcCube c;
+    uint32_t best;
+    int r;
+    if (cx->m.over)
+        return -1;
+    g = pc_constrain(cx, f);
+    if (cx->m.over || g == BDD_FALSE || !pc_cost_brute(cx, g, v, 20, &best))
+        return -1;
+    if (!pc_preconditions(cx, f, v, 1, &c))
+        return 1;
+    r = c.target * W_TARGET + c.cost != best;
+    pc_cube_free(&c);
+    return r;
+}
+
 /* ---- selftest: the DP against brute force -------------------------------- */
 
 #define NM 4                /* macros */
@@ -519,13 +622,14 @@ size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation *v2,
 #define NTH 3               /* thresholds GE(1..3) */
 
 static Ident st_ids[NM];
-static const char *const st_names[NM] = {"A", "B", "C", "D"};
+static const char *const st_names[NM] = {"A", "B", "__linux__", "_MSC_VER"};
 static const char *const st_texts[NT] = {"t0", "t1"};
 
 typedef struct SelfV {
     bool def[NM];
     int val[NM];            /* 0..4 */
     int known_t[NT];        /* -1 free, else the value */
+    int leaf[2];            /* the OS and compiler leaf */
 } SelfV;
 
 static bool self_get(void *ctx, const PcAtom *a, bool *known)
@@ -533,6 +637,8 @@ static bool self_get(void *ctx, const PcAtom *a, bool *known)
     const SelfV *v = ctx;
     int i;
     *known = true;
+    if (a->kind == PA_LEAF)
+        return a->c == (unsigned)v->leaf[strcmp(a->text, "os") ? 1 : 0];
     if (a->kind == PA_TEXT) {
         for (i = 0; i < NT; i++)
             if (!strcmp(a->text, st_texts[i])) {
@@ -574,7 +680,7 @@ int pcq_selftest(void)
     Bdd atoms[NM * (1 + NTH) + NT];
     size_t na = 0;
     int i, c, round, bad = 0;
-    int compared = 0, multi = 0;
+    int compared = 0, multi = 0, leafc = 0;
     for (i = 0; i < NM; i++) {
         memset(&st_ids[i], 0, sizeof st_ids[i]);
         st_ids[i].str = st_names[i];
@@ -587,6 +693,7 @@ int pcq_selftest(void)
         PcCube cubes[3];
         size_t nc;
         uint32_t best = INF, a;
+        bool have;
         int m;
         pc_init(&cx, NULL, (size_t)1 << 20);
         na = 0;
@@ -604,55 +711,35 @@ int pcq_selftest(void)
         }
         for (i = 0; i < NT; i++)
             v.known_t[i] = (int)(rnd() % 3) - 1;
+        v.leaf[0] = (int)(rnd() % 5);
+        v.leaf[1] = (int)(rnd() % 5);
         val.ctx = &v;
         val.get = self_get;
-        g = pc_monotone(&cx, f);
+        g = pc_constrain(&cx, f);
         bdd_vars(&cx.m, g, &vs);
-        if (vs.len <= 14) {
-            /* brute force: every assignment of the support that satisfies g */
-            for (a = 0; a < (1u << vs.len); a++) {
-                bool as[512];
-                uint32_t k;
-                uint32_t owner_dev[16];
-                uint32_t cost = 0;
-                memset(as, 0, sizeof as);
-                memset(owner_dev, 0, sizeof owner_dev);
-                for (k = 0; k < vs.len; k++)
-                    as[vs.data[k]] = a >> k & 1;
-                if (!bdd_eval(&cx.m, g, as))
-                    continue;
-                for (k = 0; k < vs.len; k++) {
-                    const PcAtom *at = pc_atom_at(&cx, vs.data[k]);
-                    bool known, vv;
-                    uint32_t o = pc_var_owner(&cx, vs.data[k]);
-                    if (at->kind == PA_TEXT)
-                        continue;
-                    vv = self_get(&v, at, &known);
-                    if (known && vv != as[vs.data[k]] && !owner_dev[o]) {
-                        owner_dev[o] = 1;
-                        cost++;
-                    }
-                }
-                if (cost < best)
-                    best = cost;
-            }
-        }
+        have = pc_cost_brute(&cx, g, &val, 16, &best);
         nc = pc_preconditions(&cx, f, &val, 3, cubes);
         if (g == BDD_FALSE) {
             if (nc)
                 bad = 1;
         } else if (!nc) {
             bad = 2;
-        } else if (vs.len <= 14 && cubes[0].cost == best) {
+        } else if (have && cubes[0].target * W_TARGET + cubes[0].cost == best) {
             compared++;
+            for (a = 0; a < vs.len; a++)
+                if (pc_atom_at(&cx, vs.data[a])->kind == PA_LEAF) {
+                    leafc++;
+                    break;
+                }
             multi += nc > 1;
-        } else if (vs.len <= 14 && cubes[0].cost != best) {
+        } else if (have && cubes[0].cost != best) {
             fprintf(stderr, "pcq: round %d cost %u, brute force %u\n", round,
                     cubes[0].cost, best);
             bad = 3;
         }
         for (m = 0; m < (int)nc; m++) {
-            if (m && cubes[m].cost < cubes[m - 1].cost)
+            if (m && cubes[m].target * W_TARGET + cubes[m].cost <
+                         cubes[m - 1].target * W_TARGET + cubes[m - 1].cost)
                 bad = 4;
             pc_cube_free(&cubes[m]);
         }
@@ -664,6 +751,7 @@ int pcq_selftest(void)
             for (i = 0; i < NM; i++) {
                 v2.def[i] = rnd() & 1;
                 v2.val[i] = (int)(rnd() % 5);
+                v2.leaf[i & 1] = (int)(rnd() % 5);
             }
             nn = pc_diff(&cx, f, &val, &val2, &names);
             if ((pc_holds(&cx, f, &val) == pc_holds(&cx, f, &val2)) != (nn == 0))
@@ -672,6 +760,11 @@ int pcq_selftest(void)
         }
         vec_free(&vs);
         pc_free(&cx);
+    }
+    if (!bad && (compared < 100 || leafc < 20)) {
+        fprintf(stderr, "pcq selftest: only %d compared, %d with leaves\n",
+                compared, leafc);
+        bad = 7;
     }
     if (bad)
         fprintf(stderr, "pcq selftest: failure %d\n", bad);

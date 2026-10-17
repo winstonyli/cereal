@@ -4,7 +4,7 @@
 usage: pc_oracle.py CEREAL CORPUS_DIR [--only NAME] [--bad N]
 
 For every corpus unit (the list of bench/corpus.py) runs
-`cereal lint` with CEREAL_PCDUMP="oracle size time": each group's condition
+`cereal lint` with CEREAL_PCDUMP="oracle size time check": each group's condition
 evaluated under the host valuation must say what the preprocessor did.
 Prints per family: groups, agreement on exact (no opaque atom) groups with
 and without skipped includes before them, opaque groups, fold times, the
@@ -26,7 +26,7 @@ def family(name):
 
 def one(job):
     cereal, name, f, flags, cwd = job
-    env = dict(os.environ, CEREAL_PCDUMP="oracle size time")
+    env = dict(os.environ, CEREAL_PCDUMP="oracle size time check")
     p = subprocess.run(["nice", "-n", "10", cereal, "lint", "-fparallel=off"]
                        + flags + [f], cwd=cwd, env=env, capture_output=True,
                        timeout=900)
@@ -66,6 +66,10 @@ def main():
                     a["computed"] += int(re.search(r"computed=(\d+)", l).group(1))
                     a["maxsize"] = max(a["maxsize"], int(re.search(r"maxsize=(\d+)", l).group(1)))
                     a["maxtable"] = max(a["maxtable"], int(re.search(r"table=(\d+)", l).group(1)))
+                mc = re.match(r"pc: check rank1 ok=(\d+) bad=(\d+) skipped=(\d+)", l)
+                if mc:
+                    for nm, x in zip(("ok", "bad", "skipped"), mc.groups()):
+                        a["rank1 " + nm] += int(x)
                 if l.startswith("pc: oracle"):
                     mu = re.search(r"undecided=(\d+)", l)
                     a["undecided"] += int(mu.group(1)) if mu else 0
@@ -92,12 +96,14 @@ def main():
                   a["opaque-untainted ok"] + a["opaque-tainted ok"],
                   a["opaque-untainted ok"] + a["opaque-tainted ok"] +
                   a["opaque-untainted bad"] + a["opaque-tainted bad"], a["undecided"]))
+        print("  rank 1 against enumeration: %d ok, %d bad, %d too large" % (
+            a["rank1 ok"], a["rank1 bad"], a["rank1 skipped"]))
         if t:
             print("  fold ms: mean %.1f, median %.1f, max %.1f; largest group "
                   "BDD %d nodes, largest table %d" % (sum(t) / len(t),
                                                       t[len(t) // 2], t[-1],
                                                       a["maxsize"], a["maxtable"]))
-        rc |= bool(a["exact-untainted bad"])
+        rc |= bool(a["exact-untainted bad"] or a["rank1 bad"])
     for name, l in bad[:nbad]:
         print("BAD %s: %s" % (name, l[:300]))
     return rc

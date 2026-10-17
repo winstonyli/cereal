@@ -1,6 +1,7 @@
 /* pc.c - the symbolic fold: presence conditions of every group of a unit. */
 #include "pc.h"
 #include "pcq.h"
+#include "pcfam.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -98,7 +99,7 @@ static const Macro *host_macro(const PcUnit *u, Ident *id)
 static bool macro_number(Analysis *a, const Macro *m, intmax_t *n)
 {
     return m && !m->funclike && m->body_len == 1 &&
-           m->body[0].kind == TK_PPNUM && pc_ppnum(a, &m->body[0], n);
+           m->body[0].kind == TK_PPNUM && pc_ppnum(a, &m->body[0], n, NULL);
 }
 
 static const Macro *host_named(const PcUnit *u, const char *s, size_t n)
@@ -129,6 +130,10 @@ static bool host_atom(PcUnit *u, const PcAtom *at, bool *known)
     *known = true;
     if (!at)
         return false;
+    if (at->kind == PA_LEAF) {
+        PcKeyHost h = {u, key_value, key_defined};
+        return pc_leaf_host(at, &h);
+    }
     if (at->kind == PA_TEXT) {
         PcKeyHost h = {u, key_value, key_defined};
         *known = pc_key_eval(at->text, &h, &n);
@@ -417,14 +422,14 @@ static void do_include(PcUnit *u, SrcFile *f, int from_dir,
     SrcFile *g;
     if (!include_name(u, d, &name, &angled)) {
         u->computed++;
-        u->taint |= PC_T_COMPUTED;
+        u->taint = bdd_or(&u->cx.m, u->taint, cur);
         vec_push(&u->skipped, "computed");
         return;
     }
     g = pp_resolve_include(u->an->pp, f, from_dir, name, angled, d->next, &di);
     if (!g) {
         u->unres++;
-        u->taint |= angled ? PC_T_ANGLED : PC_T_QUOTED;
+        u->taint = bdd_or(&u->cx.m, u->taint, cur);
         vec_push(&u->skipped, arena_printf(u->an->arena, angled ? "<%s>" : "\"%s\"", name));
         return;
     }
@@ -602,6 +607,9 @@ static void put_literal(const PcCtx *cx, StrBuf *sb, uint32_t var, bool bit)
     case PA_GE:
         sb_printf(sb, "%s%s>=%jd", bit ? "" : "!", at->id->str, at->c);
         break;
+    case PA_LEAF:
+        sb_printf(sb, "%s%s=%s", bit ? "" : "!", at->text, pc_leaf_name(at));
+        break;
     case PA_TEXT:
         sb_printf(sb, "%s[%s]", bit ? "" : "!", at->text);
         break;
@@ -675,6 +683,7 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
     size_t i, j, maxsize = 0;
     size_t tot[2][2][2] = {{{0}}};      /* [exact][tainted][oracle agrees] */
     size_t nunk = 0;                    /* the host cannot value an atom */
+    size_t chk[3] = {0, 0, 0};          /* rank 1 against enumeration: ok, bad, skipped */
     for (i = 0; i < u->groups.len; i++) {
         const PcGroup *g = &u->groups.data[i];
         const SkDirective *d =
@@ -699,11 +708,13 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
         }
         vec_free(&vs);
         put_formula(&u->cx, &sb, g->pc);
+        int tn = g->taint < 2 ? (int)g->taint
+                              : bdd_eval_fn(&u->cx.m, g->taint, host_var, u);
         int host = g->pc < 2 ? (int)g->pc
                              : bdd_eval_fn(&u->cx.m, g->pc, host_var, u);
-        fprintf(out, "pc: %s:%u %s sat=%c host=%d exact=%d taint=%u",
+        fprintf(out, "pc: %s:%u %s sat=%c host=%d exact=%d taint=%d",
                 base ? base + 1 : g->file->name, line, kind_name(d->kind),
-                sat < 0 ? '?' : '0' + sat, host, exact, g->taint);
+                sat < 0 ? '?' : '0' + sat, host, exact, tn);
         if (flags & PCD_SIZE) {
             size_t sz = bdd_count(&u->cx.m, g->pc);
             fprintf(out, " size=%zu", sz);
@@ -716,18 +727,24 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
                 nunk++;
             } else {
                 fprintf(out, " oracle=%s", active == (host != 0) ? "ok" : "BAD");
-                tot[exact][g->taint != 0][active == (host != 0)]++;
+                tot[exact][tn][active == (host != 0)]++;
             }
         }
         fprintf(out, " :: %s\n", sb_cstr(&sb));
         sb_free(&sb);
+        if ((flags & PCD_CHECK) && sat == 1) {
+            int c = pc_check_rank1(&u->cx, g->pc, &hv);
+            chk[c < 0 ? 2 : c]++;
+            if (c > 0)
+                fprintf(out, "pc:   check BAD: rank 1 differs from enumeration\n");
+        }
         if ((flags & PCD_WHY) && host == 0 && sat == 1) {
             PcCube cubes[3];
             size_t nc = pc_preconditions(&u->cx, g->pc, &hv, 3, cubes), k;
             for (k = 0; k < nc; k++) {
                 char *r = pc_cube_render(&cubes[k], true);
-                fprintf(out, "pc:   why[%zu] cost=%u :: %s\n", k + 1,
-                        cubes[k].cost, r);
+                fprintf(out, "pc:   why[%zu] target=%u cost=%u :: %s\n", k + 1,
+                        cubes[k].target, cubes[k].cost, r);
                 free(r);
                 pc_cube_free(&cubes[k]);
             }
@@ -739,6 +756,9 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
     if (flags & PCD_SIZE)
         fprintf(out, " table=%zu maxsize=%zu", bdd_size(&u->cx.m), maxsize);
     fputc('\n', out);
+    if (flags & PCD_CHECK)
+        fprintf(out, "pc: check rank1 ok=%zu bad=%zu skipped=%zu\n", chk[0],
+                chk[1], chk[2]);
     if (flags & PCD_SKIPPED)
         for (i = 0; i < u->skipped.len; i++)
             fprintf(out, "pc: skipped %s\n", u->skipped.data[i]);

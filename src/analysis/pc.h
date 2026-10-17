@@ -5,8 +5,8 @@
  * thresholds of X's value; see pcexpr.h), with define/undef tracked through
  * the fold, #pragma once as per-file state, and system headers following the
  * real run (pc_trace_attach).  Computed or unresolved includes are skipped and recorded: groups
- * after one hold on the assumption that the skipped file defines nothing
- * that matters. */
+ * after one are exact outside the condition under which the skipped include
+ * is reached (their taint), where the file might define anything. */
 #ifndef CEREAL_PC_H
 #define CEREAL_PC_H
 
@@ -16,11 +16,9 @@ typedef struct PcGroup {
     SrcFile *file;
     uint32_t dir;           /* skeleton index of the #if/#elif/#else */
     Bdd pc;                 /* the group is compiled */
-    uint8_t taint;          /* PC_T_*: skipped includes before it */
+    Bdd taint;              /* where an earlier skipped include may have changed things */
     uint64_t inst;          /* the group and the chain of #includes to it */
 } PcGroup;
-
-enum { PC_T_COMPUTED = 1, PC_T_QUOTED = 2, PC_T_ANGLED = 4 };
 
 typedef struct PcMacro PcMacro;
 typedef struct PcOnce PcOnce;
@@ -31,7 +29,7 @@ typedef struct PcUnit {
     VEC(PcGroup) groups;
     bool over;              /* the BDD outgrew its cap: the fold is partial */
     bool conc;              /* inside a system header */
-    uint8_t taint;
+    Bdd taint;              /* the condition under which a skipped include ran */
     uint64_t chain;         /* hash of the #include directives entered */
     size_t files, sys, unres, computed;
     VEC(const char *) skipped;      /* "<h>", "\"h\"", "computed" */
@@ -53,11 +51,12 @@ bool pc_host_atom(PcUnit *u, const PcAtom *at);
  * only: call after analysis_attach, before the TU runs. */
 void pc_trace_attach(Analysis *a);
 
-enum { PCD_SIZE = 1, PCD_ORACLE = 2, PCD_SKIPPED = 4, PCD_WHY = 8 };
+enum { PCD_SIZE = 1, PCD_ORACLE = 2, PCD_SKIPPED = 4, PCD_WHY = 8,
+    PCD_CHECK = 16 };
 /* One "pc:" line per group, then totals, on f (CEREAL_PCDUMP, tests).
  * PCD_SIZE adds BDD sizes and the table size, which depend on the variable
  * order; PCD_ORACLE compares each group's value under the host valuation
- * with the preprocessor's own decision; PCD_WHY lists, under each group that
+ * with the preprocessor's own decision; PCD_CHECK compares the cheapest cube of every satisfiable group with an enumeration of its constrained support (up to 20 variables); PCD_WHY lists, under each group that
  * is off on the host, the cheapest ways to turn it on (pcq.h). */
 void pc_dump(PcUnit *u, FILE *f, int flags);
 

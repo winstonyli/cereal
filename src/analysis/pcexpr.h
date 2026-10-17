@@ -3,6 +3,7 @@
  * An expression becomes a BDD over atoms, created in order of first use:
  *   PA_DEF   defined(X) at the start of the unit (I(X))
  *   PA_GE    the initial value of X, when defined, is >= c
+ *   PA_LEAF  leaf c of an axis of the family table (pcfam.h): the OS, the compiler
  *   PA_TEXT  an opaque condition (a function-like call, arithmetic on a
  *            macro, a comparison of two macros), keyed by canonical text
  * The environment says what the macros mean at the point being evaluated:
@@ -24,13 +25,15 @@
 
 typedef struct PcNode PcNode;
 
-typedef enum { PA_DEF, PA_GE, PA_TEXT } PcAKind;
+typedef enum { PA_DEF, PA_GE, PA_TEXT, PA_LEAF } PcAKind;
 
 typedef struct PcAtom {
     PcAKind kind;
     Ident *id;              /* PA_DEF, PA_GE */
     intmax_t c;             /* PA_GE */
-    const char *text;       /* PA_TEXT */
+    const char *text;       /* PA_TEXT; PA_LEAF: the axis ("os", "cc") */
+    bool target;            /* PA_LEAF: an OS or compiler change, not an overlay */
+    bool derived;           /* a macro the family table (pcfam.h) follows from its leaf */
 } PcAtom;
 
 /* One possible value of a defined macro: it holds under `cond`.  `known`:
@@ -84,8 +87,9 @@ void pc_free(PcCtx *cx);
 Bdd pc_atom(PcCtx *cx, PcAKind kind, Ident *id, intmax_t c, const char *text);
 /* The atom behind BDD variable var, or NULL. */
 const PcAtom *pc_atom_at(const PcCtx *cx, uint32_t var);
-/* The value of a PPNUM token (decimal, octal, hex, with suffixes). */
-bool pc_ppnum(Analysis *an, const Tok *t, intmax_t *out);
+/* The value of a PPNUM token (decimal, octal, hex, with suffixes); *uns
+ * (if given): it is unsigned. */
+bool pc_ppnum(Analysis *an, const Tok *t, intmax_t *out, bool *uns);
 /* NULL when the tokens are not an expression this module models */
 PcNode *pc_parse(PcCtx *cx, TokSpan toks);
 /* The condition of an #if/#elif/#ifdef/#ifndef/#elifdef/#elifndef (NULL: none
@@ -107,8 +111,8 @@ typedef struct PcKeyHost {
 /* The value of an opaque atom's key under the host; false: it names a call
  * or a macro the host cannot reduce to a number. */
 bool pc_key_eval(const char *key, const PcKeyHost *h, intmax_t *out);
-/* f with the clauses GE(hi) implies GE(lo) conjoined over its atoms. */
-Bdd pc_monotone(PcCtx *cx, Bdd f);
+/* f with every clause a query needs: monotone thresholds, family table. */
+Bdd pc_constrain(PcCtx *cx, Bdd f);
 /* The macro or text a BDD variable belongs to (one value for all of its
  * blocks), and its name; UINT32_MAX for a variable without an atom. */
 uint32_t pc_var_owner(const PcCtx *cx, uint32_t var);
