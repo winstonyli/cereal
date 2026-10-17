@@ -164,7 +164,7 @@ static bool word_at(const char *p, size_t n, const char *w)
 /* The old or the new name as a word in an inactive #if group of a user file,
  * within the scope of decl d (A3.9). */
 static bool inactive_use(Run *a, uint32_t d, const char *old, const char *nw,
-                         StrBuf *why)
+                         StrBuf *why, CRenInactive *inact)
 {
     /* d: UINT32_MAX when the unit has no event at an edit: the whole unit */
     const CIdxDecl *x = d == UINT32_MAX ? NULL : &a->ix->decls[d];
@@ -192,6 +192,20 @@ static bool inactive_use(Run *a, uint32_t d, const char *old, const char *nw,
             char at[512];
             if (!w || (k > 0 && cindex_ident_char(f->buf[k - 1])))
                 continue;
+            if (inact) {
+                StrBuf m = {0};
+                CRenHit *h;
+                sb_printf(&m, "'%s' occurs in an inactive #if group at %s, which "
+                          "cannot be checked", w,
+                          cindex_place(&a->tu.sm, f->path, k, at, sizeof at));
+                inact->hits = xrealloc(inact->hits, (inact->nhits + 1) * sizeof *inact->hits);
+                h = &inact->hits[inact->nhits++];
+                h->path = xstrdup(f->path);
+                h->off = k;
+                h->msg = (char *)sb_cstr(&m);
+                k += strlen(w) - 1;
+                continue;
+            }
             sb_printf(why, "'%s' occurs in an inactive #if group at %s, which "
                       "cannot be checked", w,
                       cindex_place(&a->tu.sm, f->path, k, at, sizeof at));
@@ -199,6 +213,53 @@ static bool inactive_use(Run *a, uint32_t d, const char *old, const char *nw,
         }
     }
     return false;
+}
+
+void c_rename_inactive_free(CRenInactive *x)
+{
+    size_t i;
+    for (i = 0; i < x->nhits; i++) {
+        free(x->hits[i].path);
+        free(x->hits[i].msg);
+    }
+    for (i = 0; i < x->nreads; i++)
+        free(x->reads[i]);
+    free(x->hits);
+    free(x->reads);
+    memset(x, 0, sizeof *x);
+}
+
+static bool has_hit(const CRenInactive *x, const CRenHit *h)
+{
+    size_t i;
+    for (i = 0; i < x->nhits; i++)
+        if (x->hits[i].off == h->off && !strcmp(x->hits[i].path, h->path))
+            return true;
+    return false;
+}
+
+static bool reads_file(const CRenInactive *x, const char *path)
+{
+    size_t i;
+    for (i = 0; i < x->nreads; i++)
+        if (!strcmp(x->reads[i], path))
+            return true;
+    return false;
+}
+
+char *c_rename_uncovered(const CRenInactive *unit, const CRenInactive *const *others,
+                         size_t n)
+{
+    size_t i, j;
+    for (i = 0; i < unit->nhits; i++) {
+        const CRenHit *h = &unit->hits[i];
+        for (j = 0; j < n; j++)
+            if (reads_file(others[j], h->path) && !has_hit(others[j], h))
+                break;
+        if (j == n)
+            return xstrdup(h->msg);
+    }
+    return NULL;
 }
 
 /* ---- the comparison (A1) ------------------------------------------------------ */
@@ -438,7 +499,13 @@ char *c_rename(CRename *q)
         sb_printf(&why, "#include %s was not found: uses of '%s' there cannot "
                   "be seen", a.missing, q->old);
     else
-        inactive_use(&a, first, q->old, q->name, &why);
+        inactive_use(&a, first, q->old, q->name, &why, q->inact);
+    if (q->inact) {
+        for (i = 0; i < a.ix->nfiles; i++) {
+            q->inact->reads = xrealloc(q->inact->reads, (q->inact->nreads + 1) * sizeof *q->inact->reads);
+            q->inact->reads[q->inact->nreads++] = xstrdup(a.ix->files[i].path);
+        }
+    }
     if (why.len)
         goto out;
     /* the edited files the unit reads, then the comparison */

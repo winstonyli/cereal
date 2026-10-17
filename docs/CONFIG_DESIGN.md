@@ -536,11 +536,14 @@ units) to the real units in main-path order, each up to `maxOverlays` of its sid
 one virtual unit per overlay: the entry's flags plus the overlay words (`index-summary --entry N
 --overlay WORDS`), its own manifest under `crec_tukey(main, flag_hash', build_id)`, scheduled after
 all real units, and dropped when its sidecar no longer names it. The sidecar is kept by GC as long
-as its real unit is live. Not done: virtual units are skipped by the rename gate (`do_scope`), so a
-rename does not check them (a name used only in an inactive group is as unprotected as before);
-the realizability classes (`PARTIAL`, `UNREALIZED`) are not computed, so every overlay `cover`
-picks (config and language kinds only) is built as if `REALIZED`; `cereal.index.configs` is read at
-startup only.
+as its real unit is live. A virtual unit whose check ends PARTIAL, FAILED or OVER_LIMIT is not wanted
+(Round 275): the realizability class is the measured result, since no rule on the macro names finds
+such an overlay (Round 274). The rename gate (Round 276): the project gate no longer refuses a name
+found in an inactive `#if` group of a user file at once; each unit reports those uses (`CRenInactive`)
+and the files its index has, and a use is accepted when another unit that passed the gate (a real one,
+or a fresh sound virtual unit listing the edited files, checked with its overlay) reads that file and
+compiles the position (`c_rename_uncovered`). A virtual unit that fails its check only covers
+nothing. Not done: `cereal.index.configs` is read at startup only.
 
 Implemented earlier (Round 264): `enable` (one group to command-line words) and `cover` (greedy, no merges
 of cubes yet), both oracle-checked by re-running the preprocessor (`bench/pc_enable.py`). An overlay never

@@ -50,6 +50,8 @@ typedef struct ProjScope {
     char *refuse;            /* R2 or R5: why the rename is refused (malloc'd), else NULL */
     char **mains;            /* the units that list any of the files, to check (malloc'd) */
     size_t *entries;         /* their compile database entries */
+    char **overlays;         /* per unit: a virtual unit's overlay words, else NULL; these
+                                follow the real units and only cover their inactive uses */
     size_t nmains;
 } ProjScope;
 /* Asks the scheduler which units a rename of names in `files` must check, and

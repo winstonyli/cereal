@@ -1803,7 +1803,7 @@ static bool project_rename(Req *r, JsonWriter *w, uint32_t d, bool keyed, const 
 {
     RenPlan p;
     CRename t;
-    char **mains, *why;
+    char **mains, **overlays, *why;
     size_t *entries, n, i;
     long long *ver;
     bool ok = false, paused = false;
@@ -1821,14 +1821,17 @@ static bool project_rename(Req *r, JsonWriter *w, uint32_t d, bool keyed, const 
     n = p.sc.nmains;
     mains = NEW_ARRAY(r->arena, char *, n + 1);
     entries = NEW_ARRAY(r->arena, size_t, n + 1);
+    overlays = NEW_ARRAY(r->arena, char *, n + 1);
     for (i = 0; i < n; i++) {
         mains[i] = p.sc.mains[i];
         entries[i] = p.sc.entries[i];
+        overlays[i] = p.sc.overlays ? p.sc.overlays[i] : NULL;
     }
     for (i = 0; i < n && strcmp(mains[i], r->snap->main); i++)
         ;
     if (i == n) {                          /* the open unit, if the project lacks it */
         mains[n] = (char *)r->snap->main;
+        overlays[n] = NULL;
         entries[n++] = (size_t)-1;
     }
     memset(&t, 0, sizeof t);
@@ -1839,7 +1842,7 @@ static bool project_rename(Req *r, JsonWriter *w, uint32_t d, bool keyed, const 
     t.files = p.files.data;
     t.nfiles = p.files.len;
     docs = lsp_docs_copy();
-    why = lsp_rename_gate(&t, mains, entries, n, docs,
+    why = lsp_rename_gate(&t, mains, entries, overlays, n, docs,
                           json_get(r->params, "workDoneToken"), r->cancel);
     lsp_docs_free(docs);
     if (r->cancel && atomic_load_u32(r->cancel)) {

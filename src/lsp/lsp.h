@@ -177,11 +177,12 @@ bool lsp_docs_lookup(void *ctx, const char *path, const char **buf, size_t *len)
  * text now; false: it is not open. */
 bool lsp_doc_state(const char *path, long long *version, uint64_t *hash);
 /* tmpl's edits checked in each of the units mains[i] (compile database
- * entries[i]) on the index pool, the scheduler's jobs paused; progress goes
+ * entries[i], with the overlay words overlays[i] if that is not NULL: a virtual unit, which
+ * only covers the inactive uses of the others) on the index pool, the scheduler's jobs paused; progress goes
  * to the client's token (NULL: none); a raised *cancel skips the units not begun.  NULL: every unit accepts, else why not
  * (malloc'd). */
 char *lsp_rename_gate(const struct CRename *tmpl, char *const *mains,
-                      const size_t *entries, size_t n, DocSet *docs,
+                      const size_t *entries, char *const *overlays, size_t n, DocSet *docs,
                       const JsonValue *token, const uint32_t *cancel);
 
 int lsp_main(FILE *in, FILE *out);

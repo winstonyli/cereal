@@ -841,6 +841,43 @@ def sc_badoverlay(root, cache):
     s.stop()
 
 
+def sc_renamecfg(root, cache):
+    # h01_f2 is also named in a group of h01.h that is off in every unit's own configuration
+    t0 = os.path.join(root, "src", "t0000.c")
+    h = os.path.join(root, "include", "h01.h")
+    with open(h) as f:
+        text = f.read()
+    i = text.rindex("#endif")
+    text = text[:i] + "#ifdef PROJ_ALT\nstatic inline void alt_call(void) { (void)h01_f2; }\n#endif\n" + text[i:]
+    with open(h, "w") as f:
+        f.write(text)
+    caps = {"workspace": {"workspaceEdit": {"documentChanges": True}}}
+
+    def rename(s):
+        line, ch = where(t0, "h01_f2(")
+        return s.req("textDocument/rename", {"textDocument": {"uri": "file://" + t0},
+                     "position": {"line": line, "character": ch}, "newName": "h01_renamed"})
+    t0text = open(t0).read()
+
+    def start(env=None):
+        s = Server(root, cache, caps=caps, env=env)
+        s.wait()
+        s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",
+                                                          "version": 1, "text": t0text}})
+        return s
+    s = start()
+    r = rename(s)
+    expect("error" in r and "inactive #if group" in r["error"]["message"], "refused without configs", r)
+    s.stop()
+    s = start({"CEREAL_INDEX_CONFIGS": "4", "CEREAL_INDEX_MAXOVERLAYS": "8"})
+    r = rename(s)
+    expect("result" in r and r["result"], "a virtual unit compiles the group: the rename goes through", r)
+    edits = [e for d in r["result"]["documentChanges"] for e in d["edits"]]
+    expect(any(e["range"]["start"]["line"] == where(h, "(void)h01_f2")[0] for e in edits),
+           "and renames the use in the group", r)
+    s.stop()
+
+
 SCEN = {k[3:]: v for k, v in globals().items() if k.startswith("sc_")}
 
 

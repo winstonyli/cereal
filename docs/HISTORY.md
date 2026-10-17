@@ -5274,3 +5274,15 @@ Builder edit-to-refresh (300 units, 100 edits 0.5 s apart, `quietMs` 100; throwa
 32.1/32.8/31.6 ms against configs 0 = 32.4/30.6/40.7 ms (two earlier runs read about 180 ms for both settings, right
 after other heavy jobs on the machine; discarded). So the builder is not regressed. wsym p95 rises 34% (more names;
 limit 100 ms). The cost of the on-value is index time (15x on this project), not latency. Default stays 0.
+
+Round 276: the rename gate uses virtual units.
+`c_rename` with `CRename.inact` set records the uses of the old or new name in inactive `#if` groups of user
+files (path, offset, the refusal text) and the files its index has, instead of refusing. `lsp_rename_gate`
+(`resolve_inactive`) then accepts a use when another unit that passed (real or virtual) reads that file and does not
+have the use inactive; otherwise it refuses with the same text as before. `do_scope` appends the fresh, sound
+virtual units that list the edited files (after the rename_max check, so they do not count against R5); `gate_job`
+checks them with `config_options_overlay`; their failures never fail the rename, they just cover nothing. The
+position match is by file path and offset, so it relies on every unit reading the same text of a file. Conservative
+where unsure: a file with no index entry in the covering unit counts as unread. Test `proj_test.py renamecfg`
+(h01.h gets an `#ifdef PROJ_ALT` group naming the function: refused with configs off, goes through with them on and
+renames the use in the group). Suite 2205 passed.

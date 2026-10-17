@@ -45,6 +45,28 @@ typedef struct CRenFile {
                                    file's current text */
     size_t n;
 } CRenFile;
+/* What a unit's check found of the name in code it did not compile (inactive #if
+ * groups of user files, A3.9), and the files its index has.  With `inact` set,
+ * c_rename records these instead of refusing: the caller refuses what no unit
+ * in another configuration compiles (c_rename_uncovered). */
+typedef struct CRenHit {
+    char *path;                 /* the file */
+    uint32_t off;               /* the word's offset in it */
+    char *msg;                  /* the refusal, if nothing covers it */
+} CRenHit;
+typedef struct CRenInactive {
+    CRenHit *hits;
+    size_t nhits;
+    char **reads;               /* the files the unit's index has */
+    size_t nreads;
+} CRenInactive;
+void c_rename_inactive_free(CRenInactive *x);
+/* NULL: every hit of unit is in a file that one of the others (units that
+ * passed) reads and compiles there; else the refusal for the first that none
+ * does (malloc'd). */
+char *c_rename_uncovered(const CRenInactive *unit, const CRenInactive *const *others,
+                         size_t n);
+
 typedef struct CRename {
     Options *o;                 /* the unit's */
     const char *main;           /* its main file */
@@ -64,6 +86,7 @@ typedef struct CRename {
                                    with files, the entity to rename when the unit has
                                    it there, else the first an edit names) */
     uint32_t off;
+    CRenInactive *inact;        /* out, if given: the inactive uses, not refused */
     uint32_t len;               /* out: the old name's length */
     bool own;                   /* out: files was planned here */
 } CRename;

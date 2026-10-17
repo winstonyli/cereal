@@ -777,6 +777,8 @@ typedef struct GateCtx {
     const CRename *tmpl;
     char *const *mains;
     const size_t *entries;
+    char *const *overlays;    /* per unit: the words of a virtual unit, else NULL */
+    CRenInactive *inact;      /* per unit */
     size_t n;
     DocSet *docs;
     LspConfig *cfg;
@@ -809,6 +811,8 @@ static void gate_job(void *arg, size_t i)
     options_init(&o);
     if (g->entries[i] == (size_t)-1)         /* the open unit, not in the project */
         config_options_in(g->cfg, g->mains[i], &o.rsp, &o, NULL);
+    else if (g->overlays && g->overlays[i])
+        config_options_overlay(g->cfg, g->entries[i], g->overlays[i], &o.rsp, &o, NULL);
     else
         config_options_entry(g->cfg, g->entries[i], &o.rsp, &o, NULL);
     o.pp.fatal_missing_include = false;      /* as the check's (D2) */
@@ -816,6 +820,7 @@ static void gate_job(void *arg, size_t i)
     q.main = g->mains[i];
     q.overlay = lsp_docs_lookup;
     q.overlay_ctx = g->docs;
+    q.inact = &g->inact[i];
     fatal_trap_push(&tr);
     if (setjmp(tr.jb)) {
         StrBuf sb = {0};
@@ -826,15 +831,47 @@ static void gate_job(void *arg, size_t i)
         fatal_trap_pop(&tr);
     }
     options_free(&o);
-    if (g->err[i])
+    if (g->err[i] && !(g->overlays && g->overlays[i]))    /* a virtual unit only covers */
         atomic_store_u32(&g->failed, 1);
     d = atomic_add_u32(&g->done, 1) + 1;
     snprintf(msg, sizeof msg, "checked %u of %zu translation units", d, g->n);
     rename_progress(g->token, "report", msg, (int)(100 * d / g->n));
 }
 
+/* The inactive uses of each real unit that no other unit compiles (CONFIG_DESIGN 6): the
+ * units that passed, virtual ones too, cover each other's. */
+static void resolve_inactive(GateCtx *g)
+{
+    size_t i, j, m;
+    const CRenInactive **ok = xmalloc((g->n + 1) * sizeof *ok);
+    for (j = m = 0; j < g->n; j++) {
+        if (g->overlays && g->overlays[j] && g->err[j]) {   /* a failed virtual unit covers nothing */
+            free(g->err[j]);
+            g->err[j] = NULL;
+            continue;
+        }
+        if (!g->err[j])
+            ok[m++] = &g->inact[j];
+    }
+    for (i = 0; i < g->n; i++) {
+        const CRenInactive *self = &g->inact[i];
+        const CRenInactive **others = xmalloc((m + 1) * sizeof *others);
+        size_t k = 0;
+        if (g->err[i] || !self->nhits || (g->overlays && g->overlays[i])) {
+            free(others);
+            continue;
+        }
+        for (j = 0; j < m; j++)
+            if (ok[j] != self)
+                others[k++] = ok[j];
+        g->err[i] = c_rename_uncovered(self, others, k);
+        free(others);
+    }
+    free(ok);
+}
+
 char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *entries,
-                      size_t n, DocSet *docs, const JsonValue *token,
+                      char *const *overlays, size_t n, DocSet *docs, const JsonValue *token,
                       const uint32_t *cancel)
 {
     GateCtx g;
@@ -844,6 +881,8 @@ char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *ent
     g.tmpl = tmpl;
     g.mains = mains;
     g.entries = entries;
+    g.overlays = overlays;
+    g.inact = xcalloc(n + 1, sizeof *g.inact);
     g.n = n;
     g.docs = docs;
     g.token = token;
@@ -853,6 +892,7 @@ char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *ent
     rename_progress(token, "begin", "checking the translation units", 0);
     project_gate(gate_job, &g, n);
     rename_progress(token, "end", NULL, -1);
+    resolve_inactive(&g);
     /* test only (cereal/holdChecks "gate"): wait here, so that a test can change a file
      * after the checks */
     mutex_lock(&S.m);
@@ -872,6 +912,9 @@ char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *ent
     }
     if (!out && atomic_load_u32(&S.stopping))
         out = xstrdup("the server is shutting down");
+    for (i = 0; i < n; i++)
+        c_rename_inactive_free(&g.inact[i]);
+    free(g.inact);
     free(g.err);
     lsp_config_unref(g.cfg);
     return out;

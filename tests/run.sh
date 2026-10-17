@@ -870,7 +870,7 @@ rm -rf "$IP/cache"
 # 22c. the scheduler (B5_DESIGN 8, 9, 13): proj_test.py drives `cereal lsp` over a
 # generated project; one line per scenario.
 got=$(python3 -P tests/proj_test.py "$CEREAL" </dev/null 2>&1)
-for sc in restart invalidate cancel fault memory readers progress paths wsym takeover spin corrupt config evict private wpos xref rename configs badoverlay; do
+for sc in restart invalidate cancel fault memory readers progress paths wsym takeover spin corrupt config evict private wpos xref rename configs badoverlay renamecfg; do
     case $got in *"ok $sc"*) ok;; *) bad "proj_test $sc: $(echo "$got" | grep "$sc" | head -1)";; esac
 done
 # 23. unit self-tests (hidden `selftest` subcommand)

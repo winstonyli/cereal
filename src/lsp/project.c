@@ -1255,7 +1255,7 @@ static void do_scope(ScopeReq *r)
     for (i = 0; i < P.ps.tus.len; i++) {
         const PTu *tu = P.ps.tus.data[i];
         const char *state;
-        if (tu->overlay)                /* not yet part of the rename gate (CONFIG_DESIGN 6) */
+        if (tu->overlay)                /* below: only covers */
             continue;
         state = tu->stale != PS_FRESH ? pstate_why(tu->stale)
                           : !tu->man ? "not indexed"
@@ -1280,6 +1280,7 @@ static void do_scope(ScopeReq *r)
             o->mains[o->nmains++] = xstrdup(tu->main);
         }
     }
+    o->overlays = xcalloc(o->nmains + 1, sizeof *o->overlays);
     if (bad)
         sb_printf(&m, "the project index is incomplete: %zu of %zu translation units "
                   "are not fully indexed (%s%s); renaming needs all of them. "
@@ -1291,6 +1292,19 @@ static void do_scope(ScopeReq *r)
                   "cereal.index.renameMaxTUs (%zu)", o->nmains, P.set.rename_max);
     if (m.len)
         o->refuse = (char *)sb_cstr(&m);
+    else                    /* the virtual units that are sound: the configurations they compile */
+        for (i = 0; i < P.ps.tus.len; i++) {
+            const PTu *tu = P.ps.tus.data[i];
+            if (!tu->overlay || tu->stale != PS_FRESH || !tu->man || tu->sched.job ||
+                pstate_bad_status(tu->man->status) || !lists_file(tu->man, r->files, r->nfiles))
+                continue;
+            o->mains = xrealloc(o->mains, (o->nmains + 1) * sizeof *o->mains);
+            o->entries = xrealloc(o->entries, (o->nmains + 1) * sizeof *o->entries);
+            o->overlays = xrealloc(o->overlays, (o->nmains + 1) * sizeof *o->overlays);
+            o->entries[o->nmains] = tu->entry;
+            o->overlays[o->nmains] = xstrdup(tu->overlay);
+            o->mains[o->nmains++] = xstrdup(tu->main);
+        }
     sb_free(&why);
 }
 
@@ -1307,8 +1321,12 @@ static void scope_run(ScopeReq *r)
 void project_scope_free(ProjScope *s)
 {
     size_t i;
-    for (i = 0; i < s->nmains; i++)
+    for (i = 0; i < s->nmains; i++) {
         free(s->mains[i]);
+        if (s->overlays)
+            free(s->overlays[i]);
+    }
+    free(s->overlays);
     free(s->mains);
     free(s->entries);
     free(s->refuse);
