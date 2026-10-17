@@ -134,7 +134,7 @@ static bool host_atom(PcUnit *u, const PcAtom *at, bool *known)
         PcKeyHost h = {u, key_value, key_defined};
         return pc_leaf_host(at, &h);
     }
-    if (at->kind == PA_TEXT) {
+    if (pc_atom_pinned(at)) {
         PcKeyHost h = {u, key_value, key_defined};
         *known = pc_key_eval(at->text, &h, &n);
         return *known && n != 0;
@@ -194,13 +194,15 @@ static PcMacro *macro_state(PcUnit *u, Ident *id)
     s = xcalloc(1, sizeof *s);
     s->id = id;
     s->def = pc_atom(&u->cx, PA_DEF, id, 0, NULL);
-    e.cond = s->def;
-    e.known = false;
-    e.n = 0;
-    e.opq = NULL;
-    e.expr = NULL;
-    e.fn = NULL;
-    vec_push(&s->vals, e);
+    if (!pc_fam_values(&u->cx, id, s->def, &s->vals)) {
+        e.cond = s->def;
+        e.known = false;
+        e.n = 0;
+        e.opq = NULL;
+        e.expr = NULL;
+        e.fn = NULL;
+        vec_push(&s->vals, e);
+    }
     vec_push(&u->macros, s);
     if (u->macros.len * 2 > u->hcap)
         macros_grow(u);
@@ -611,6 +613,7 @@ static void put_literal(const PcCtx *cx, StrBuf *sb, uint32_t var, bool bit)
         sb_printf(sb, "%s%s=%s", bit ? "" : "!", at->text, pc_leaf_name(at));
         break;
     case PA_TEXT:
+    case PA_HAS:
         sb_printf(sb, "%s[%s]", bit ? "" : "!", at->text);
         break;
     }
@@ -682,7 +685,7 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
     PcValuation hv = {u, host_get};
     size_t i, j, maxsize = 0;
     size_t tot[2][2][2] = {{{0}}};      /* [exact][tainted][oracle agrees] */
-    size_t nunk = 0;                    /* the host cannot value an atom */
+    size_t nunk[2] = {0, 0};            /* the host cannot value an atom: [exact] */
     size_t chk[3] = {0, 0, 0};          /* rank 1 against enumeration: ok, bad, skipped */
     for (i = 0; i < u->groups.len; i++) {
         const PcGroup *g = &u->groups.data[i];
@@ -698,11 +701,10 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
         bdd_vars(&u->cx.m, g->pc, &vs);
         for (j = 0; j < vs.len; j++) {
             const PcAtom *at = pc_atom_at(&u->cx, vs.data[j]);
-            if (at && at->kind == PA_TEXT)
-{
+            if (at && pc_atom_pinned(at)) {
                 bool known;
                 host_atom(u, at, &known);
-                exact = false;
+                exact &= at->kind == PA_HAS;
                 unk |= !known;
             }
         }
@@ -724,7 +726,7 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
             bool active = was_taken(g->inst);
             if (unk) {
                 fprintf(out, " oracle=unknown");
-                nunk++;
+                nunk[exact]++;
             } else {
                 fprintf(out, " oracle=%s", active == (host != 0) ? "ok" : "BAD");
                 tot[exact][tn][active == (host != 0)]++;
@@ -765,8 +767,9 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
     if (flags & PCD_ORACLE)
         fprintf(out, "pc: oracle exact-untainted ok=%zu bad=%zu, "
                 "exact-tainted ok=%zu bad=%zu, opaque-untainted ok=%zu bad=%zu, "
-                "opaque-tainted ok=%zu bad=%zu, undecided=%zu\n",
+                "opaque-tainted ok=%zu bad=%zu, undecided=%zu "
+                "exact-undecided=%zu\n",
                 tot[1][0][1], tot[1][0][0],
                 tot[1][1][1], tot[1][1][0], tot[0][0][1], tot[0][0][0],
-                tot[0][1][1], tot[0][1][0], nunk);
+                tot[0][1][1], tot[0][1][0], nunk[0] + nunk[1], nunk[1]);
 }

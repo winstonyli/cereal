@@ -73,7 +73,7 @@ typedef struct Q {
 static bool is_cost_atom(PcCtx *cx, uint32_t var)
 {
     const PcAtom *a = pc_atom_at(cx, var);
-    return a && a->kind != PA_TEXT;
+    return a && !pc_atom_pinned(a);
 }
 
 static uint32_t atom_weight(const PcAtom *a)
@@ -291,7 +291,7 @@ static PcCube make_cube(Q *q, const CubeLits *c)
     for (j = 0; j < no; j++) {
         StrBuf sb = {0};
         bool unmet = false, unknown = false, text = false, tgt = false,
-             pos = false;
+             pos = false, env = false;
         for (i = 0; i < c->n; i++)       /* a leaf that holds says the rest */
             if (pc_var_owner(q->cx, c->var[i]) == owners[j] &&
                 pc_atom_at(q->cx, c->var[i])->kind == PA_LEAF && c->val[i])
@@ -303,6 +303,7 @@ static PcCube make_cube(Q *q, const CubeLits *c)
                 continue;
             a = pc_atom_at(q->cx, c->var[i]);
             text = a->kind == PA_TEXT;
+            env = a->kind == PA_HAS;
             tgt = a->target;
             derived[j] = a->derived;
             vs = vstate(q->cx, q->v, c->var[i]);
@@ -318,11 +319,12 @@ static PcCube make_cube(Q *q, const CubeLits *c)
         }
         r.reqs[j].clause = dup_str(sb_cstr(&sb));
         sb_free(&sb);
-        r.reqs[j].kind = text ? PQ_OPAQUE : tgt ? PQ_TARGET : PQ_CONFIG;
+        r.reqs[j].kind = text ? PQ_OPAQUE : env ? PQ_ENV : tgt ? PQ_TARGET
+                                                              : PQ_CONFIG;
         r.reqs[j].status = unmet ? PQ_UNMET : unknown ? PQ_UNKNOWN : PQ_MET;
         if (unmet && tgt)
             r.target++;
-        else if (unmet && !text && !derived[j])
+        else if (unmet && !text && !env && !derived[j])
             r.cost++;
     }
     /* a macro the table derives from its leaf is not asked for separately
@@ -361,8 +363,8 @@ char *pc_cube_render(const PcCube *c, bool only_unmet)
             continue;
         if (sb.len)
             sb_puts(&sb, "; ");
-        sb_printf(&sb, "%s%s [%s]", q->kind == PQ_OPAQUE ? "opaque " : q->kind == PQ_TARGET ? "target " : "",
-                  q->clause, st[q->status]);
+        static const char *const kn[] = {"", "target ", "env ", "opaque "};
+        sb_printf(&sb, "%s%s [%s]", kn[q->kind], q->clause, st[q->status]);
     }
     r = dup_str(sb_cstr(&sb));
     sb_free(&sb);
@@ -425,7 +427,7 @@ size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
             }
             prime(&q, g, &c);
             r.c = make_cube(&q, &c);
-            r.key = pc_cube_render(&r.c, false);
+            r.key = pc_cube_render(&r.c, true);  /* what must change */
             free(c.var);
             free(c.val);
             for (j = 0; j < found.len && strcmp(found.data[j].key, r.key); j++)
@@ -576,7 +578,7 @@ bool pc_cost_brute(PcCtx *cx, Bdd g, const PcValuation *v, size_t maxvars,
             const PcAtom *at = pc_atom_at(cx, vs.data[k]);
             uint32_t o = pc_var_owner(cx, vs.data[k]);
             bool known = false, vv;
-            if (at->kind == PA_TEXT)
+            if (pc_atom_pinned(at))
                 continue;
             vv = v->get(v->ctx, at, &known);
             if (!known || vv == as[vs.data[k]])

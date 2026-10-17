@@ -73,6 +73,8 @@ def main():
                 if l.startswith("pc: oracle"):
                     mu = re.search(r"undecided=(\d+)", l)
                     a["undecided"] += int(mu.group(1)) if mu else 0
+                    me = re.search(r"exact-undecided=(\d+)", l)
+                    a["exact-undecided"] += int(me.group(1)) if me else 0
                     for k, v, b in re.findall(r"([\w-]+) ok=(\d+) bad=(\d+)", l):
                         a[k + " ok"] += int(v)
                         a[k + " bad"] += int(b)
@@ -82,20 +84,24 @@ def main():
     for fam, a in sorted(agg.items()):
         t = sorted(times[fam])
         ex_ok = a["exact-untainted ok"] + a["exact-tainted ok"]
-        ex_all = ex_ok + a["exact-untainted bad"] + a["exact-tainted bad"]
+        ex_all = (ex_ok + a["exact-untainted bad"] + a["exact-tainted bad"] +
+                  a["exact-undecided"])
         decid = a["exact-untainted ok"] + a["exact-untainted bad"]
         print("%s: %d units (%d over cap, %d no output), %d groups, skipped "
               "includes: %d computed, %d unresolved" % (
                   fam, a["units"], a["over"], a["no-output"], a["groups"],
                   a["computed"], a["unresolved"]))
         print("  exact groups %d (%.0f%% of groups): agree %d/%d untainted, "
-              "%d/%d after a skipped include; opaque groups agree %d/%d (+%d host-unknown)" % (
+              "%d/%d after a skipped include, %d host-unknown; opaque groups "
+              "agree %d/%d (+%d host-unknown)" % (
                   ex_all, 100.0 * ex_all / max(1, a["groups"]),
                   a["exact-untainted ok"], decid, a["exact-tainted ok"],
                   a["exact-tainted ok"] + a["exact-tainted bad"],
+                  a["exact-undecided"],
                   a["opaque-untainted ok"] + a["opaque-tainted ok"],
                   a["opaque-untainted ok"] + a["opaque-tainted ok"] +
-                  a["opaque-untainted bad"] + a["opaque-tainted bad"], a["undecided"]))
+                  a["opaque-untainted bad"] + a["opaque-tainted bad"],
+                  a["undecided"] - a["exact-undecided"]))
         print("  rank 1 against enumeration: %d ok, %d bad, %d too large" % (
             a["rank1 ok"], a["rank1 bad"], a["rank1 skipped"]))
         if t:

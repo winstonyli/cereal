@@ -4,6 +4,9 @@
  *   PA_DEF   defined(X) at the start of the unit (I(X))
  *   PA_GE    the initial value of X, when defined, is >= c
  *   PA_LEAF  leaf c of an axis of the family table (pcfam.h): the OS, the compiler
+ *   PA_HAS   a feature test (__has_include, __has_attribute, ...) keyed by its
+ *            canonical text: a fact about the compiler and sysroot, exact
+ *            but unknown to the fold, and never flipped by a query
  *   PA_TEXT  an opaque condition (a function-like call, arithmetic on a
  *            macro, a comparison of two macros), keyed by canonical text
  * The environment says what the macros mean at the point being evaluated:
@@ -25,16 +28,22 @@
 
 typedef struct PcNode PcNode;
 
-typedef enum { PA_DEF, PA_GE, PA_TEXT, PA_LEAF } PcAKind;
+typedef enum { PA_DEF, PA_GE, PA_TEXT, PA_LEAF, PA_HAS } PcAKind;
 
 typedef struct PcAtom {
     PcAKind kind;
     Ident *id;              /* PA_DEF, PA_GE */
     intmax_t c;             /* PA_GE */
-    const char *text;       /* PA_TEXT; PA_LEAF: the axis ("os", "cc") */
+    const char *text;       /* PA_TEXT, PA_HAS; PA_LEAF: the axis ("os", "cc") */
     bool target;            /* PA_LEAF: an OS or compiler change, not an overlay */
     bool derived;           /* a macro the family table (pcfam.h) follows from its leaf */
 } PcAtom;
+
+/* a fact no query flips: it keeps the value of the concrete run */
+static inline bool pc_atom_pinned(const PcAtom *a)
+{
+    return a->kind == PA_TEXT || a->kind == PA_HAS;
+}
 
 /* One possible value of a defined macro: it holds under `cond`.  `known`:
  * the number n.  Otherwise the value the macro had at the start of the unit

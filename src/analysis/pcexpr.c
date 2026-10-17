@@ -335,7 +335,7 @@ static void htab_insert(PcCtx *cx, uint32_t bi)
 
 Bdd pc_atom(PcCtx *cx, PcAKind kind, Ident *id, intmax_t c, const char *text)
 {
-    bool is_text = kind == PA_TEXT || kind == PA_LEAF;
+    bool is_text = kind != PA_DEF && kind != PA_GE;
     uint32_t bi = UINT32_MAX, last;
     PcBlock *b;
     PcAtom *at;
@@ -449,28 +449,27 @@ static const char *node_key_str(PcCtx *cx, const PcNode *n)
     return key;
 }
 
-static Bdd text_atom(PcCtx *cx, const PcNode *n)
-{
-    return pc_atom(cx, PA_TEXT, NULL, 0, node_key_str(cx, n));
-}
-
 /* ---- values: guarded cases ------------------------------------------- */
 
 /* An integer expression is a list of cases: a value under a condition.  The
  * conditions are disjoint and cover every configuration.  A value is a
- * number, the initial value of a macro plus a number (the thresholds of
- * pcexpr.h), or opaque: one text, shared by every use of the same
- * computation.  Every operator is a product over the cases of its operands,
- * so macros with several definitions, calls, ?: and comparisons of one macro
- * with another are one mechanism. */
-typedef enum { N_CONST, N_INIT, N_OPQ } NKind;
+ * number, the initial value of a macro scaled and offset (s*X + k: the
+ * thresholds of pcexpr.h), a two-digit version s*X + Y + k (Y a macro with a
+ * declared range below s, as __GNUC_MINOR__), or opaque: one text, shared by
+ * every use of the same computation.  Every operator is a product over the
+ * cases of its operands, so macros with several definitions, calls, ?: and
+ * comparisons of one macro with another are one mechanism. */
+typedef enum { N_CONST, N_INIT, N_VER, N_OPQ } NKind;
 
 typedef struct Num {
     NKind k;
-    intmax_t n;             /* the number; for N_INIT the k of X + k */
-    Ident *id;              /* N_INIT: X, defined here */
+    intmax_t n;             /* the number; for N_INIT, N_VER the k; N_OPQ: 1
+                             * when known nonzero */
+    Ident *id;              /* N_INIT, N_VER: X, defined here */
     const char *key;        /* N_OPQ */
     bool u;                 /* N_CONST: unsigned */
+    intmax_t s;             /* N_INIT, N_VER: the scale of X (>= 1) */
+    Ident *lo;              /* N_VER: Y */
 } Num;
 
 typedef struct Case {
@@ -492,25 +491,43 @@ typedef struct VB {          /* a value being built */
 
 static Num n_const(intmax_t n)
 {
-    Num v = {N_CONST, n, NULL, NULL, false};
+    Num v = {N_CONST, n, NULL, NULL, false, 1, NULL};
     return v;
 }
 
 static Num n_constu(intmax_t n, bool u)
 {
-    Num v = {N_CONST, n, NULL, NULL, u};
+    Num v = {N_CONST, n, NULL, NULL, u, 1, NULL};
+    return v;
+}
+
+static Num n_lin(Ident *id, intmax_t s, intmax_t k)
+{
+    Num v = {N_INIT, k, id, NULL, false, s, NULL};
     return v;
 }
 
 static Num n_init(Ident *id, intmax_t k)
 {
-    Num v = {N_INIT, k, id, NULL, false};
+    return n_lin(id, 1, k);
+}
+
+static Num n_ver(Ident *id, intmax_t s, Ident *lo, intmax_t k)
+{
+    Num v = {N_VER, k, id, NULL, false, s, lo};
     return v;
 }
 
 static Num n_opq(const char *key)
 {
-    Num v = {N_OPQ, 0, NULL, key, false};
+    Num v = {N_OPQ, 0, NULL, key, false, 1, NULL};
+    return v;
+}
+
+/* an opaque value known to be nonzero (the dated answer of a feature test) */
+static Num n_opq_nz(const char *key)
+{
+    Num v = {N_OPQ, 1, NULL, key, false, 1, NULL};
     return v;
 }
 
@@ -520,7 +537,10 @@ static bool num_eq(const Num *a, const Num *b)
         return false;
     switch (a->k) {
     case N_CONST: return a->n == b->n && a->u == b->u;
-    case N_INIT: return a->id == b->id && a->n == b->n;
+    case N_INIT: return a->id == b->id && a->n == b->n && a->s == b->s;
+    case N_VER:
+        return a->id == b->id && a->n == b->n && a->s == b->s &&
+               a->lo == b->lo;
     default: return !strcmp(a->key, b->key);
     }
 }
@@ -584,9 +604,16 @@ static const char *num_desc(PcCtx *cx, const Num *v)
         return v->u ? arena_printf(a, "%juU", (uintmax_t)v->n)
                     : arena_printf(a, "%jd", v->n);
     case N_INIT:
-        return v->n ? arena_printf(a, "(b%d v:%s %jd)", (int)P_PLUS,
-                                   v->id->str, v->n)
-                    : arena_printf(a, "v:%s", v->id->str);
+    case N_VER: {
+        /* ((s*X) + Y) + k, as key_val reads it back */
+        const char *t = v->s == 1
+            ? arena_printf(a, "v:%s", v->id->str)
+            : arena_printf(a, "(b%d v:%s %jd)", (int)P_STAR, v->id->str, v->s);
+        if (v->k == N_VER)
+            t = arena_printf(a, "(b%d %s v:%s)", (int)P_PLUS, t, v->lo->str);
+        return v->n ? arena_printf(a, "(b%d %s %jd)", (int)P_PLUS, t, v->n)
+                    : t;
+    }
     default: return v->key;
     }
 }
@@ -604,10 +631,54 @@ static Bdd ge_bdd(PcCtx *cx, Ident *id, intmax_t c)
     return pc_atom(cx, PA_GE, id, c, NULL);
 }
 
-/* the initial value of id is >= c + 1 */
-static Bdd gt_bdd(PcCtx *cx, Ident *id, intmax_t c)
+/* s * (the initial value of id) >= c, for s >= 1: it is >= ceil(c / s) */
+static Bdd ge_lin(PcCtx *cx, Ident *id, intmax_t s, intmax_t c)
 {
-    return c == INTMAX_MAX ? BDD_FALSE : ge_bdd(cx, id, c + 1);
+    return ge_bdd(cx, id, c / s + (c % s > 0));
+}
+
+/* s * X + Y >= c for Y in [0, s): X is above c's high digit, or on it with
+ * Y at least the low digit */
+static Bdd ge_ver(PcCtx *cx, Ident *x, intmax_t s, Ident *y, intmax_t c)
+{
+    intmax_t q = c / s, r = c % s;
+    Bdd lo;
+    if (r < 0) {
+        q--;
+        r += s;
+    }
+    lo = ge_bdd(cx, x, q);
+    if (r)
+        lo = bdd_and(&cx->m, lo, ge_bdd(cx, y, r));
+    return bdd_or(&cx->m, ge_bdd(cx, x, q + 1), lo);
+}
+
+/* the value x (N_INIT or N_VER) >= c */
+static Bdd lin_ge(PcCtx *cx, const Num *x, intmax_t c)
+{
+    return x->k == N_INIT ? ge_lin(cx, x->id, x->s, c)
+                          : ge_ver(cx, x->id, x->s, x->lo, c);
+}
+
+static Bdd lin_gt(PcCtx *cx, const Num *x, intmax_t c)
+{
+    return c == INTMAX_MAX ? BDD_FALSE : lin_ge(cx, x, c + 1);
+}
+
+/* x op c from the thresholds "value >= c" and "value > c" */
+static Bdd lin_cmp(PcCtx *cx, int op, const Num *x, intmax_t c)
+{
+    BddMgr *m = &cx->m;
+    switch (op) {
+    case P_GE: return lin_ge(cx, x, c);
+    case P_GT: return lin_gt(cx, x, c);
+    case P_LT: return bdd_not(m, lin_ge(cx, x, c));
+    case P_LE: return bdd_not(m, lin_gt(cx, x, c));
+    case P_EQEQ: return bdd_and(m, lin_ge(cx, x, c),
+                                bdd_not(m, lin_gt(cx, x, c)));
+    default: return bdd_not(m, bdd_and(m, lin_ge(cx, x, c),
+                                       bdd_not(m, lin_gt(cx, x, c))));
+    }
 }
 
 static bool is_cmp(int op)
@@ -680,29 +751,18 @@ static Bdd env_defined(PcCtx *cx, Ident *id)
                            : pc_atom(cx, PA_DEF, id, 0, NULL);
 }
 
-/* the initial value of id, when it is defined, op c, as thresholds */
-static Bdd init_cmp(PcCtx *cx, int op, Ident *id, intmax_t c)
-{
-    BddMgr *m = &cx->m;
-    switch (op) {
-    case P_GE: return ge_bdd(cx, id, c);
-    case P_GT: return gt_bdd(cx, id, c);
-    case P_LT: return bdd_not(m, ge_bdd(cx, id, c));
-    case P_LE: return bdd_not(m, gt_bdd(cx, id, c));
-    case P_EQEQ: return bdd_and(m, ge_bdd(cx, id, c),
-                                bdd_not(m, gt_bdd(cx, id, c)));
-    default: return bdd_not(m, bdd_and(m, ge_bdd(cx, id, c),
-                                       bdd_not(m, gt_bdd(cx, id, c))));
-    }
-}
-
-/* feature tests are 0/1 (the dated __has_c_attribute and __has_cpp_attribute
- * are not) */
+/* a feature test: __has_include, __has_attribute, ... */
 static bool is_feature_test(const PcNode *n)
 {
-    const char *s = n->id->str;
-    return !strncmp(s, "__has_", 6) && !strstr(s, "c_attribute") &&
-           !strstr(s, "cpp_attribute");
+    return !strncmp(n->id->str, "__has_", 6);
+}
+
+/* feature tests are 0/1; the dated __has_c_attribute and __has_cpp_attribute
+ * answer a year */
+static bool is_dated(const PcNode *n)
+{
+    return strstr(n->id->str, "c_attribute") ||
+           strstr(n->id->str, "cpp_attribute");
 }
 
 /* the parameter of f that token t names (the variadic one is index f->np),
@@ -835,9 +895,10 @@ static Bdd num_nz(PcCtx *cx, const Num *v)
     switch (v->k) {
     case N_CONST: return v->n ? BDD_TRUE : BDD_FALSE;
     case N_INIT:
-        return v->n == INTMAX_MIN ? BDD_TRUE
-                                  : init_cmp(cx, P_NE, v->id, -v->n);
-    default: return pc_atom(cx, PA_TEXT, NULL, 0, v->key);
+    case N_VER:
+        return v->n == INTMAX_MIN ? BDD_TRUE : lin_cmp(cx, P_NE, v, -v->n);
+    default:
+        return v->n ? BDD_TRUE : pc_atom(cx, PA_TEXT, NULL, 0, v->key);
     }
 }
 
@@ -852,6 +913,42 @@ static Bdd truth(PcCtx *cx, Val v)
     return r;
 }
 
+static bool is_lin(const Num *v)
+{
+    return v->k == N_INIT || v->k == N_VER;
+}
+
+/* x with y added to its offset */
+static Num lin_add(const Num *x, uintmax_t y)
+{
+    Num r = *x;
+    r.n = (intmax_t)((uintmax_t)x->n + y);
+    return r;
+}
+
+/* s*X + k times m, for m >= 1 */
+static bool lin_mul(const Num *x, intmax_t m, Num *out)
+{
+    *out = *x;
+    return m >= 1 && !__builtin_mul_overflow(x->s, m, &out->s) &&
+           !__builtin_mul_overflow(x->n, m, &out->n);
+}
+
+/* hi + lo, hi a scaled macro and lo a macro with a declared range that fits
+ * in a digit of hi: a version number */
+static bool ver_pair(const Num *hi, const Num *lo, Num *out)
+{
+    intmax_t range;
+    if (hi->k != N_INIT || lo->k != N_INIT || lo->s != 1 || hi->id == lo->id)
+        return false;
+    range = pc_fam_range(lo->id->str);
+    if (range < 1 || range > hi->s)
+        return false;
+    *out = n_ver(hi->id, hi->s, lo->id,
+                 (intmax_t)((uintmax_t)hi->n + (uintmax_t)lo->n));
+    return true;
+}
+
 /* x op y for one pair of values (op a binary operator but && and ||) */
 static Val pair_op(PcCtx *cx, int op, const Num *x, const Num *y)
 {
@@ -862,14 +959,15 @@ static Val pair_op(PcCtx *cx, int op, const Num *x, const Num *y)
                    ? v_one(cx, r)
                    : v_one(cx, n_opq(key_bin(cx, op, x, y)));
     if (is_cmp(op)) {
-        /* (X + k) op c  is  X op (c - k) */
-        if (x->k == N_INIT && y->k == N_CONST &&
+        /* s*X + k op c  is  s*X op (c - k) */
+        if (is_lin(x) && y->k == N_CONST &&
             !__builtin_sub_overflow(y->n, x->n, &c))
-            return v_bool(cx, init_cmp(cx, op, x->id, c));
-        if (x->k == N_CONST && y->k == N_INIT &&
+            return v_bool(cx, lin_cmp(cx, op, x, c));
+        if (x->k == N_CONST && is_lin(y) &&
             !__builtin_sub_overflow(x->n, y->n, &c))
-            return v_bool(cx, init_cmp(cx, swap_cmp(op), y->id, c));
-        if (x->k == N_INIT && y->k == N_INIT && x->id == y->id) {
+            return v_bool(cx, lin_cmp(cx, swap_cmp(op), y, c));
+        if (x->k == N_INIT && y->k == N_INIT && x->id == y->id &&
+            x->s == y->s) {
             Num a = n_const(x->n), b = n_const(y->n);
             if (fold(op, &a, &b, &r))
                 return v_one(cx, r);
@@ -877,18 +975,27 @@ static Val pair_op(PcCtx *cx, int op, const Num *x, const Num *y)
         return v_bool(cx, pc_atom(cx, PA_TEXT, NULL, 0,
                                   key_bin(cx, op, x, y)));
     }
-    if (op == P_PLUS && x->k == N_INIT && y->k == N_CONST)
-        return v_one(cx, n_init(x->id, (intmax_t)((uintmax_t)x->n +
-                                                  (uintmax_t)y->n)));
-    if (op == P_PLUS && x->k == N_CONST && y->k == N_INIT)
-        return v_one(cx, n_init(y->id, (intmax_t)((uintmax_t)x->n +
-                                                  (uintmax_t)y->n)));
-    if (op == P_MINUS && x->k == N_INIT && y->k == N_CONST)
-        return v_one(cx, n_init(x->id, (intmax_t)((uintmax_t)x->n -
-                                                  (uintmax_t)y->n)));
-    if (op == P_MINUS && x->k == N_INIT && y->k == N_INIT && x->id == y->id)
+    if (op == P_PLUS && is_lin(x) && y->k == N_CONST)
+        return v_one(cx, lin_add(x, (uintmax_t)y->n));
+    if (op == P_PLUS && x->k == N_CONST && is_lin(y))
+        return v_one(cx, lin_add(y, (uintmax_t)x->n));
+    if (op == P_MINUS && is_lin(x) && y->k == N_CONST)
+        return v_one(cx, lin_add(x, 0 - (uintmax_t)y->n));
+    if (op == P_MINUS && x->k == N_INIT && y->k == N_INIT && x->id == y->id &&
+        x->s == y->s)
         return v_one(cx, n_const((intmax_t)((uintmax_t)x->n -
                                             (uintmax_t)y->n)));
+    if (op == P_STAR && x->k == N_INIT && y->k == N_CONST && !y->u &&
+        lin_mul(x, y->n, &r))
+        return v_one(cx, r);
+    if (op == P_STAR && x->k == N_CONST && !x->u && y->k == N_INIT &&
+        lin_mul(y, x->n, &r))
+        return v_one(cx, r);
+    if (op == P_SHL && x->k == N_INIT && y->k == N_CONST && !y->u &&
+        y->n >= 0 && y->n < 62 && lin_mul(x, (intmax_t)1 << y->n, &r))
+        return v_one(cx, r);
+    if (op == P_PLUS && (ver_pair(x, y, &r) || ver_pair(y, x, &r)))
+        return v_one(cx, r);
     return v_one(cx, n_opq(key_bin(cx, op, x, y)));
 }
 
@@ -955,8 +1062,10 @@ static Val ev_call(PcCtx *cx, PcNode *n)
     vec_free(&es);
     if (rest != BDD_FALSE) {
         if (is_feature_test(n)) {
-            Bdd a = text_atom(cx, n);
-            vb_add(&b, bdd_and(m, rest, a), n_const(1));
+            const char *key = node_key_str(cx, n);
+            Bdd a = pc_atom(cx, PA_HAS, NULL, 0, key);
+            vb_add(&b, bdd_and(m, rest, a),
+                   is_dated(n) ? n_opq_nz(key) : n_const(1));
             vb_add(&b, bdd_and(m, rest, bdd_not(m, a)), n_const(0));
         } else {
             vb_add(&b, rest, n_opq(node_key_str(cx, n)));

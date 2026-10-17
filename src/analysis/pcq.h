@@ -17,7 +17,7 @@ typedef struct PcValuation {
     bool (*get)(void *ctx, const PcAtom *at, bool *known);
 } PcValuation;
 
-typedef enum { PQ_CONFIG, PQ_TARGET, PQ_OPAQUE } PcReqKind;
+typedef enum { PQ_CONFIG, PQ_TARGET, PQ_ENV, PQ_OPAQUE } PcReqKind;
 typedef enum { PQ_MET, PQ_UNMET, PQ_UNKNOWN } PcReqStatus;
 
 /* One macro (or one opaque text): what the cube needs of it. */

@@ -1,0 +1,13 @@
+pc: versions.c:3 if sat=1 host=1 exact=1 taint=0 oracle=ok :: !defined(__GNUC__) & !cc=clang & defined(__GNUC_MINOR__) & __GNUC_MINOR__>=403 | defined(__GNUC__) & !__GNUC__>=4 & __GNUC__>=5 & !cc=clang | defined(__GNUC__) & __GNUC__>=4 & !__GNUC__>=5 & !cc=clang & defined(__GNUC_MINOR__) & __GNUC_MINOR__>=3 | defined(__GNUC__) & __GNUC__>=4 & __GNUC__>=5 & !cc=clang
+pc: versions.c:6 if sat=1 host=1 exact=1 taint=0 oracle=ok :: !defined(__GNUC__) & !cc=clang & defined(__GNUC_MINOR__) & __GNUC_MINOR__>=262147 | defined(__GNUC__) & !__GNUC__>=4 & __GNUC__>=5 & !cc=clang | defined(__GNUC__) & __GNUC__>=4 & !__GNUC__>=5 & !cc=clang & defined(__GNUC_MINOR__) & __GNUC_MINOR__>=3 | defined(__GNUC__) & __GNUC__>=4 & __GNUC__>=5 & !cc=clang
+pc: versions.c:9 if sat=1 host=1 exact=1 taint=0 oracle=ok :: defined(__GNUC__) & !__GNUC__>=4 & cc=clang | defined(__GNUC__) & __GNUC__>=4
+pc: versions.c:12 if sat=1 host=1 exact=1 taint=0 oracle=ok :: defined(__INT_MAX__)
+pc: versions.c:15 if sat=1 host=1 exact=1 taint=0 oracle=ok :: defined(__LONG_MAX__) & dm=lp64
+pc: versions.c:18 if sat=0 host=0 exact=1 taint=0 oracle=ok :: dm=ilp32 & defined(_WIN64) & defined(__SIZEOF_POINTER__)
+pc: versions.c:21 if sat=1 host=0 exact=1 taint=0 oracle=ok :: !defined(__clang_major__) & defined(__clang_minor__) & __clang_minor__>=304 | defined(__clang_major__) & !__clang_major__>=3 & __clang_major__>=4 | defined(__clang_major__) & __clang_major__>=3 & !__clang_major__>=4 & defined(__clang_minor__) & __clang_minor__>=4 | defined(__clang_major__) & __clang_major__>=3 & __clang_major__>=4
+pc:   why[1] target=1 cost=0 :: target cc = clang [unmet]
+pc:   why[2] target=1 cost=0 :: target cc = other [unmet]
+pc:   why[3] target=2 cost=0 :: target os = android [unmet]; target cc = clang [unmet]
+pc: total groups=7 files=1 sys=0 unresolved=0 computed=0 over=0
+pc: check rank1 ok=6 bad=0 skipped=0
+pc: oracle exact-untainted ok=7 bad=0, exact-tainted ok=0 bad=0, opaque-untainted ok=0 bad=0, opaque-tainted ok=0 bad=0, undecided=0 exact-undecided=0

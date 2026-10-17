@@ -5054,3 +5054,24 @@ INTMAX_MAX), `fold` follows the usual arithmetic conversions (comparison gives s
 its left operand's type) and the key evaluator does too. Oracle: 100% agreement on exact groups and 100%
 on decidable opaque groups on every corpus (3-103 per corpus are host-unknown, the `__has_*` calls).
 Fixtures `family`, `unsigned`; suite 2195 passed.
+
+Round 260: S1d-3 integer-valued family members, `HAS` atoms, the data-model axis.
+(1) `PA_HAS`: a feature-test call (`__has_attribute(x)`, `__has_builtin`, `__has_include`, ...) is an
+exact atom keyed by the call's canonical text. It is pinned like `PA_TEXT` (`pc_atom_pinned`: queries
+never flip it, the DP gives it cost 0) but is not counted as opaque; the requirement kind is `PQ_ENV`
+("env "). The host oracle has no value for it (`oracle=unknown`, counted as `exact-undecided`). The
+dated `__has_c_attribute` / `__has_cpp_attribute` values are known nonzero, not 1. The table says
+only `__has_*` is defined under clang and clang-cl, never under MSVC.
+(2) A third axis `dm` (lp64, ilp32, llp64): `_WIN64`, `__LP64__`, `_LP64`; lp64 implies not Windows,
+llp64 implies Windows. A touched dm leaf forces the OS axis, which forces the compiler axis.
+(3) Valued rows (`Row.val[leaf]`, `pc_fam_values`): `__clang_major__`, `__GNUC__` (clang: 4),
+`__GNUC_MINOR__` (2), `__GNUC_PATCHLEVEL__` (1), `__CHAR_BIT__`, the limits and `__SIZEOF_*__`
+(uniform, or per data model: `__LONG_MAX__`, `__SIZEOF_LONG__`, `__SIZEOF_POINTER__`, ...). A value
+that is the same on every leaf is one unconditional entry. Guarded values gain scale: `N_INIT` is
+`s*X + n`, and `N_VER` is `s*X + Y + n` with Y's table range <= s (`__GNUC_MINOR__` < 100), so
+`__GNUC__*100 + __GNUC_MINOR__ >= 403` becomes `GE(X,5) | (GE(X,4) & GE(Y,3))`. Radix shifts
+(`<< 16`) work the same way. Fixtures `has`, `versions`.
+(4) The why-dedupe keys on the unmet requirements only, so cubes that differ only in derived
+requirements no longer print twice (`has.pc` now asks for `cc = clang`, not `os = android`).
+Corpora: 0 BAD, rank-1 0 bad. zstd 89% -> 98% exact, lua 91-94% -> 97-100%. Left opaque: byte order
+(`__BYTE_ORDER__ == __ORDER_*__`), user-macro comparisons, residual `__has_builtin`. Suite 2197 passed.

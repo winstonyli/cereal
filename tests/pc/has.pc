@@ -1,0 +1,18 @@
+pc: has.c:3 if sat=1 host=0 exact=1 taint=0 oracle=unknown :: defined(__has_attribute) & [c:__has_attribute ( noreturn )]
+pc:   why[1] target=0 cost=0 :: env [c:__has_attribute ( noreturn )] [unknown]
+pc:   why[2] target=1 cost=0 :: env [c:__has_attribute ( noreturn )] [unknown]; target cc = clang [unmet]
+pc:   why[3] target=1 cost=0 :: env [c:__has_attribute ( noreturn )] [unknown]; target cc = other [unmet]
+pc: has.c:6 if sat=1 host=0 exact=1 taint=0 oracle=unknown :: defined(__has_cpp_attribute) & [c:__has_cpp_attribute ( fallthrough )]
+pc:   why[1] target=0 cost=0 :: env [c:__has_cpp_attribute ( fallthrough )] [unknown]
+pc: has.c:9 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(_MSC_VER) & defined(__has_feature)
+pc:   why[1] target=1 cost=0 :: target cc = other [unmet]
+pc:   why[2] target=2 cost=0 :: target os = android [unmet]; target cc = other [unmet]
+pc:   why[3] target=2 cost=0 :: target os = apple [unmet]; target cc = other [unmet]
+pc: has.c:12 if sat=1 host=0 exact=1 taint=0 oracle=unknown :: defined(__clang__) & [c:__has_feature ( address_sanitizer )] & defined(USE_X)
+pc:   why[1] target=1 cost=1 :: env [c:__has_feature ( address_sanitizer )] [unknown]; defined(USE_X) [unmet]; target cc = clang [unmet]
+pc:   why[2] target=1 cost=1 :: env [c:__has_feature ( address_sanitizer )] [unknown]; defined(USE_X) [unmet]; target cc = other [unmet]
+pc:   why[3] target=2 cost=1 :: env [c:__has_feature ( address_sanitizer )] [unknown]; defined(USE_X) [unmet]; target os = android [unmet]; target cc = clang [unmet]
+pc: has.c:15 if sat=0 host=0 exact=1 taint=0 oracle=ok :: 0
+pc: total groups=5 files=1 sys=0 unresolved=0 computed=0 over=0
+pc: check rank1 ok=4 bad=0 skipped=0
+pc: oracle exact-untainted ok=2 bad=0, exact-tainted ok=0 bad=0, opaque-untainted ok=0 bad=0, opaque-tainted ok=0 bad=0, undecided=3 exact-undecided=3
