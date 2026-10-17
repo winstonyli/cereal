@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # B3 design: typeDefinition, document symbols, signature help, semantic tokens and completion for C names
 
 Status: designed 2026-10-09, before implementation (ROADMAP Track B,

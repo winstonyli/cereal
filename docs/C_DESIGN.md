@@ -1,3 +1,7 @@
+---
+status: active
+---
+
 # C design: fix-its, `cereal fix`, LSP quick fixes
 
 Written 2026-10-10 against `cea7869` (v0.14.0). ROADMAP track C. Section 8

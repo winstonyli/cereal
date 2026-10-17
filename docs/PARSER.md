@@ -1,3 +1,7 @@
+---
+status: active
+---
+
 # C parser: plan (draft)
 
 Goal: a C99 + GNU parser and type checker whose results survive edits at

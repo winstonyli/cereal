@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # B5: workspace-wide index over compile_commands
 
 Status: design, 2026-10-12. B5a done 2026-10-13 (record and manifest

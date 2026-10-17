@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # B2 design: the C symbol index
 
 Status: designed 2026-10-09; all four phases done (Rounds 187, 190, 192

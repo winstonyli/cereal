@@ -1,3 +1,7 @@
+---
+status: active
+---
+
 # S1 implementation plan (draft 5; Slice 0 and S1a done)
 
 Scope: stage S1 of `docs/CONFIG_DESIGN.md` (section 8): BDD solver, presence

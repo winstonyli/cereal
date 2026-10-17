@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # cereal P2 checker — shared plan for subagents
 
 Repo /home/user/cereal (C99 toolchain "cereal"), branch

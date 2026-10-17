@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # B4 design: C call hierarchy, parameter-name inlay hints, workspace/symbol over open units
 
 Status: designed 2026-10-10 (ROADMAP Track B, B4). **B4a (C call hierarchy)

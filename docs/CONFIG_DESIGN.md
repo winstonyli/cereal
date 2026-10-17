@@ -1,3 +1,7 @@
+---
+status: active
+---
+
 # Configurations and presence conditions (design)
 
 Status: DRAFT 7, no code. Written Round 239 from the survey of Round 238

@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # Parallel preprocessing: survey and design (draft)
 
 ## Why phase 4 looks sequential

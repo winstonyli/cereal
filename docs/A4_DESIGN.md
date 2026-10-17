@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # A4 design: compile-commands replay, response files, `-M*` output
 
 Written 2026-10-09 against `abc8183`. Slices 1 to 3 are implemented (slice 3, the `-M` family, in Round 208: see

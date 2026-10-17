@@ -1,3 +1,7 @@
+---
+status: draft
+---
+
 # Specs and UB elimination: from-scratch design brainstorm
 
 Status: **brainstorm**. Everything here is open; the forks are listed at the end.
