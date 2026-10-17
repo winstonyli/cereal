@@ -1223,15 +1223,19 @@ static Bdd pc_monotone(PcCtx *cx, Bdd f)
     Bdd g = f;
     bdd_vars(m, f, &vs);
     for (i = 0; i < vs.len; i++) {
-        const PcAtom *a = pc_atom_at(cx, vs.data[i]);
+        const PcAtom *a = pc_atom_at(cx, vs.data[i]), *lo = NULL;
+        uint32_t lov = 0;
         if (!a || a->kind != PA_GE)
             continue;
-        for (j = 0; j < vs.len; j++) {
+        for (j = 0; j < vs.len; j++) {      /* the next lower threshold: the rest follow */
             const PcAtom *b = pc_atom_at(cx, vs.data[j]);
-            if (b && b->kind == PA_GE && b->id == a->id && b->c < a->c)
-                g = bdd_and(m, g, bdd_or(m, bdd_not(m, bdd_var(m, vs.data[i])),
-                                         bdd_var(m, vs.data[j])));
+            if (b && b->kind == PA_GE && b->id == a->id && b->c < a->c &&
+                (!lo || b->c > lo->c))
+                lo = b, lov = vs.data[j];
         }
+        if (lo)
+            g = bdd_and(m, g, bdd_or(m, bdd_not(m, bdd_var(m, vs.data[i])),
+                                     bdd_var(m, lov)));
     }
     vec_free(&vs);
     return g;
@@ -1239,7 +1243,16 @@ static Bdd pc_monotone(PcCtx *cx, Bdd f)
 
 Bdd pc_constrain(PcCtx *cx, Bdd f)
 {
-    return pc_family(cx, pc_monotone(cx, f));
+    size_t i = (f * 2654435761u >> 8) % (sizeof cx->cons / sizeof *cx->cons);
+    Bdd g;
+    if (cx->cons[i].f == f)
+        return cx->cons[i].g;
+    g = pc_family(cx, pc_monotone(cx, f));
+    if (!cx->m.over) {
+        cx->cons[i].f = f;
+        cx->cons[i].g = g;
+    }
+    return g;
 }
 
 int pc_sat(PcCtx *cx, Bdd f)

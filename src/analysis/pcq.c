@@ -13,7 +13,6 @@ uint32_t pc_cube_weight(const PcCube *c)
 {
     return c->target * W_TARGET + c->lang * W_LANG + c->cost;
 }
-#define PATH_CAP 64
 #define POP_CAP 20000
 
 /* value of atom at var under v: 0, 1, or -1 when it is not known */
@@ -212,7 +211,9 @@ static bool implied(Q *q, Bdd n, const CubeLits *c, uint32_t *ok, uint32_t gen)
         else
             hi = mid;
     }
-    if (lo < c->n && c->var[lo] == nd->var) {
+    if (lo == c->n)             /* below the cube's last variable: n is not constant */
+        return false;
+    if (c->var[lo] == nd->var) {
         if (!implied(q, c->val[lo] ? nd->hi : nd->lo, c, ok, gen))
             return false;
     } else if (!implied(q, nd->lo, c, ok, gen) || !implied(q, nd->hi, c, ok, gen)) {
@@ -509,7 +510,9 @@ size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
         State s = {tot, 0, g, 0, NULL, seq++};
         heap_push(&h, s);
     }
-    while (h.len && found.len < PATH_CAP && pops++ < POP_CAP) {
+    /* priming reorders the paths by a little: a few more than k are enough (4k+4
+     * gave the same covers as 64 on the corpus, at a quarter of the priming) */
+    while (h.len && found.len < 4 * k + 4 && pops++ < POP_CAP) {
         State s = heap_pop(&h);
         const BddNode *nd;
         int b;

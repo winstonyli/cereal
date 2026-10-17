@@ -5301,3 +5301,17 @@ a cheaper rejected one are now found), lupa and uvloop unchanged. Rank-1 oracle 
 with the node table (1.30 to 1.66 s, slower); not kept. What is left in a LuaJIT unit is BDD node creation (`mk`, 40%):
 the table is 4M slots for a largest group of 2208 nodes, i.e. dead intermediate nodes (no GC), mostly from `pc_constrain`
 per group.
+Rename on libuv with configs (Round 276 follow-up): `rename_libuv.py`, 441 external functions: configs 0 and 0.5 both
+382 renamed, 54 refused for an inactive group, 5 for a macro, 0 false refusals. The 54 are other platforms' branches
+(target atoms), which no overlay can turn on; see CONFIG_DESIGN 6.
+
+Round 278: `pc_cover` cost, second cut (callgrind on lj_state.c, 7.45 to 3.58 G instructions; wsym index at configs 0.5: 116.2 to 98.8 s, p95 24.4 ms; suite 2205 passed).
+The profile put the cost in `prime` (via `pc_preconditions`), not in node creation: the enumeration collected 64 paths,
+primed each (500K `implied` walks of a 3.8M-slot table for one unit, cubes of about 38 literals) and then returned 3.
+The loop now stops at `4k + 4` paths (`PATH_CAP` deleted): priming only reorders the paths a little. Evidence: pc_enable
+`--cover` output is identical to the 64-path run on the whole corpus, and rank-1 against enumeration is 0 bad; but the
+LuaJIT lj_state.c overlay text differs, so the cap is a heuristic, not exact. `implied` returns false at once below the
+cube's last variable (exact; no measurable gain). `pc_constrain` is cached (256 entries by BDD, `PcCtx.cons`): `pc_sat`
+and `pc_preconditions` constrain the same group twice (5.6% of instructions). `pc_monotone` conjoins only the next
+lower threshold per atom (exact, 2%). Negative: building the family constraint before ANDing f (small intermediates
+first) was 1% slower; reverted. Left: `pc_constrain` is 30% (the ANDs of f with the family axes), `pc_holds` 7%.

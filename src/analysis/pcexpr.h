@@ -93,6 +93,7 @@ typedef struct PcCtx {
     VEC(PcBlock *) blocks;
     uint32_t *htab;         /* head blocks by key: block index + 1 */
     size_t hcap;
+    struct { Bdd f, g; } cons[256]; /* pc_constrain by f (BDD_FALSE: empty) */
 } PcCtx;
 
 void pc_init(PcCtx *cx, Analysis *an, size_t node_cap);

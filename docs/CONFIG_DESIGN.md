@@ -543,7 +543,10 @@ found in an inactive `#if` group of a user file at once; each unit reports those
 and the files its index has, and a use is accepted when another unit that passed the gate (a real one,
 or a fresh sound virtual unit listing the edited files, checked with its overlay) reads that file and
 compiles the position (`c_rename_uncovered`). A virtual unit that fails its check only covers
-nothing. Not done: `cereal.index.configs` is read at startup only.
+nothing. Measured on libuv (441 external functions, `rename_libuv.py`): 382 renames, 54 refused for
+an inactive group, 5 for a macro, with `configs` 0 and 0.5 alike: libuv's inactive groups are other
+platforms' branches (`__APPLE__`, `__sun`, `_AIX`, `_WIN32`), target atoms that `enable` never flips.
+The coverage helps where the group is a project option (`DEBUG`, `USE_X`), as in the `renamecfg` test. Not done: `cereal.index.configs` is read at startup only.
 
 Implemented earlier (Round 264): `enable` (one group to command-line words) and `cover` (greedy, no merges
 of cubes yet), both oracle-checked by re-running the preprocessor (`bench/pc_enable.py`). An overlay never
