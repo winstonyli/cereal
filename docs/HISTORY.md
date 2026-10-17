@@ -5151,3 +5151,15 @@ the label is built by hand: 17.5M to 12.5M instructions (-28%). Suite 2202 passe
 corpus, fold ms over lint ms: libuv 62%, lua 61-87%, lupa 40%, uvloop 30%, zstd 18% (before: 68%,
 67-115%, 36%, 26%, 18%; timings are noisy). The fold is still of the order of a lint, so a server that
 wants overlays gates it (`--cover`).
+
+Round 267: decision (no code): the fold replays events for system headers.
+Survey: system headers are 72-100% of the files the fold reads (libuv 94%, lua 73%, zstd 100%) and the
+fold re-lexes and re-walks each, though the preprocessor already did. Planned: record the listener's
+define/undef/include/include_miss/cond events per include-chain hash in the trace and replay them
+(`do_define`/`do_undef` under the include site's condition) instead of `fold_file` on a `conc` header.
+Decided: groups inside system headers are kept for the groups the run took (from `cond` events) and
+dropped for the ones it skipped (it never reports them): hover/explain on a skipped system-header
+conditional loses its group; `enable`/`cover` never used them. Not started. Gate before it becomes the
+default: old and new fold side by side over the corpora with identical user-file group conditions; the
+suite unchanged except the system-header group records. Open: the `Macro` body adapter for
+`pc_const_value`/`pc_parse`/`fn_macro`, taint/skipped counters from the include events, event memory.
