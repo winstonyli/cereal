@@ -5,23 +5,25 @@
 
 #include <string.h>
 
-enum { AX_OS, AX_CC, AX_DM, AX_STD, AX_MODE, NAX };
+enum { AX_OS, AX_CC, AX_DM, AX_STD, AX_MODE, AX_END, NAX };
 
 #define MAXLEAF 5
-static const char *const axis_name[NAX] = {"os", "cc", "dm", "std", "mode"};
-static const int axis_n[NAX] = {5, 5, 3, 5, 2};
+static const char *const axis_name[NAX] = {"os", "cc", "dm", "std", "mode", "endian"};
+static const int axis_n[NAX] = {5, 5, 3, 5, 2, 2};
 static const char *const leaf_name[NAX][MAXLEAF] = {
     {"linux", "android", "windows", "apple", "other"},
     {"gcc", "clang", "msvc", "clang-cl", "other"},
     {"lp64", "ilp32", "llp64"},
     {"c89", "c99", "c11", "c17", "c23"},
     {"gnu", "iso"},
+    {"little", "big"},
 };
 enum { L_LINUX, L_ANDROID, L_WINDOWS, L_APPLE };
 enum { C_GCC, C_CLANG, C_MSVC, C_CLANGCL };
 enum { D_LP64, D_ILP32, D_LLP64 };
 enum { S_C89, S_C99, S_C11, S_C17, S_C23 };
 enum { M_GNU, M_ISO };
+enum { E_LITTLE, E_BIG };
 
 #define B(i) (1u << (i))
 
@@ -60,6 +62,8 @@ typedef struct Row {
 /* defined by clang and clang-cl, a digit of the version number */
 #define CLANG_DIGIT(n, rng) \
     {n, AX_CC, CLANGISH, B(C_GCC) | B(C_MSVC), AX_OS, 0u, {0}, rng}
+/* defined by gcc and clang, valued by the byte order */
+#define GNU_END(n)     {n, AX_CC, GNUISH, B(C_MSVC), AX_END, 3u, {1234, 4321}, 0}
 #define I64 9223372036854775807
 #define I32 2147483647
 
@@ -125,6 +129,11 @@ static const Row rows[] = {
     GNU_DM("__SIZEOF_PTRDIFF_T__", 8, 4, 8),
     GNU_DM("__INTPTR_MAX__", I64, I32, I64),
     GNU_DM("__PTRDIFF_MAX__", I64, I32, I64),
+    /* the byte order */
+    GNU_END("__BYTE_ORDER__"),
+    GNU_CONST("__ORDER_LITTLE_ENDIAN__", 1234),
+    GNU_CONST("__ORDER_BIG_ENDIAN__", 4321),
+    GNU_CONST("__ORDER_PDP_ENDIAN__", 3412),
 };
 #define NROWS (sizeof rows / sizeof rows[0])
 
@@ -242,6 +251,8 @@ Bdd pc_family(PcCtx *cx, Bdd f)
     }
     if (touched[AX_DM])         /* the data model is tied to the OS */
         touched[AX_OS] = true;
+    if (touched[AX_END])        /* Windows is little-endian */
+        touched[AX_OS] = true;
     if (touched[AX_OS] || touched[AX_CC])
         touched[AX_OS] = touched[AX_CC] = true;     /* msvc builds for windows */
     for (a = 0; a < NAX && !touched[a]; a++)
@@ -273,6 +284,9 @@ Bdd pc_family(PcCtx *cx, Bdd f)
         g = bdd_and(m, g, bdd_or(m, bdd_not(m, leaf(cx, AX_DM, D_LLP64)),
                                  leaf(cx, AX_OS, L_WINDOWS)));
     }
+    if (touched[AX_END])
+        g = bdd_and(m, g, bdd_or(m, bdd_not(m, leaf(cx, AX_END, E_BIG)),
+                                 bdd_not(m, leaf(cx, AX_OS, L_WINDOWS))));
     for (i = 0; i < vs.len; i++) {
         const PcAtom *at = pc_atom_at(cx, vs.data[i]);
         const Row *row;
@@ -331,6 +345,13 @@ bool pc_leaf_host(const PcAtom *at, const PcKeyHost *h)
     case AX_MODE:
         host = defd(h, "__STRICT_ANSI__") ? M_ISO : M_GNU;
         break;
+    case AX_END: {
+        intmax_t v = 0;
+        if (!h->value(h->ctx, "__BYTE_ORDER__", 14, &v))
+            v = 1234;
+        host = v == 4321 ? E_BIG : E_LITTLE;
+        break;
+    }
     default:
         host = defd(h, "_WIN64") ? D_LLP64
              : defd(h, "__LP64__") || defd(h, "_LP64") ? D_LP64 : D_ILP32;

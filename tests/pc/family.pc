@@ -1,20 +1,16 @@
 pc: family.c:3 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(_MSC_VER) & defined(__linux__)
 pc:   why[1] target=1 cost=0 :: target cc = other [unmet]
-pc:   why[2] target=2 cost=0 :: target os = android [unmet]; target cc = other [unmet]
-pc:   why[3] target=2 cost=0 :: target os = other [unmet]; target cc = other [unmet]
 pc: family.c:6 ifdef sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(_WIN32)
 pc:   why[1] target=1 cost=0 :: target os = other [unmet]
 pc:   why[2] target=1 cost=0 :: target os = windows [unmet]
-pc:   why[3] target=2 cost=0 :: target os = other [unmet]; target cc = clang [unmet]
 pc: family.c:9 if sat=1 host=1 exact=1 taint=0 oracle=ok :: defined(__linux__) & defined(__GNUC__)
 pc: family.c:12 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(_MSC_VER) & defined(USE_X)
 pc:   why[1] target=1 cost=1 :: target cc = other [unmet]; defined(USE_X) [unmet]
-pc:   why[2] target=2 cost=1 :: target os = android [unmet]; target cc = other [unmet]; defined(USE_X) [unmet]
-pc:   why[3] target=2 cost=1 :: target os = apple [unmet]; target cc = other [unmet]; defined(USE_X) [unmet]
+pc:   why[2] target=2 cost=1 :: target os = windows [unmet]; target cc = clang-cl [unmet]; defined(USE_X) [unmet]
+pc:   why[3] target=2 cost=1 :: target os = windows [unmet]; target cc = msvc [unmet]; defined(USE_X) [unmet]
 pc: family.c:15 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(__clang__) & defined(__unix__)
 pc:   why[1] target=1 cost=0 :: target cc = clang [unmet]
 pc:   why[2] target=1 cost=0 :: target cc = other [unmet]
-pc:   why[3] target=2 cost=0 :: target os = android [unmet]; target cc = clang [unmet]
 pc: family.c:18 ifdef sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(USE_Y)
 pc:   why[1] target=0 cost=1 :: defined(USE_Y) [unmet]
 pc: total groups=6 files=1 sys=0 unresolved=0 computed=0 over=0

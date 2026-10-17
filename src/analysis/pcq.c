@@ -396,6 +396,22 @@ static int ranked_cmp(const void *a, const void *b)
     return strcmp(x->key, y->key);
 }
 
+/* Every unmet requirement of a is also one of b: b asks for all that a does
+ * and more, so it is no alternative to it. */
+static bool subsumes(const PcCube *a, const PcCube *b)
+{
+    uint32_t i, j;
+    for (i = 0; i < a->n; i++) {
+        bool in = a->reqs[i].status == PQ_MET;
+        for (j = 0; j < b->n && !in; j++)
+            in = b->reqs[j].status != PQ_MET &&
+                 !strcmp(a->reqs[i].clause, b->reqs[j].clause);
+        if (!in)
+            return false;
+    }
+    return true;
+}
+
 size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
                         PcCube *out)
 {
@@ -479,7 +495,10 @@ size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
     }
     qsort(found.data, found.len, sizeof(Ranked), ranked_cmp);
     for (i = 0; i < found.len; i++) {
-        if (n < k)
+        size_t m;
+        for (m = 0; m < n && !subsumes(&out[m], &found.data[i].c); m++)
+            ;
+        if (n < k && m == n)
             out[n++] = found.data[i].c;
         else
             pc_cube_free(&found.data[i].c);
@@ -629,20 +648,26 @@ int pc_check_rank1(PcCtx *cx, Bdd f, const PcValuation *v)
 
 /* ---- selftest: the DP against brute force -------------------------------- */
 
-#define NM 4                /* macros */
+#define NM 6                /* macros */
 #define NT 2                /* opaque texts */
 #define NTH 3               /* thresholds GE(1..3) */
 
 static Ident st_ids[NM];
-static const char *const st_names[NM] = {"A", "B", "__linux__", "_MSC_VER"};
+static const char *const st_names[NM] = {"A", "B", "__linux__", "_MSC_VER",
+                                         "__STDC_VERSION__", "__BYTE_ORDER__"};
 static const char *const st_texts[NT] = {"t0", "t1"};
+
+#define NLEAF 6
 
 typedef struct SelfV {
     bool def[NM];
     int val[NM];            /* 0..4 */
     int known_t[NT];        /* -1 free, else the value */
-    int leaf[2];            /* the OS and compiler leaf */
+    int leaf[NLEAF];        /* the leaf of each axis (pc_leaf_axis) */
 } SelfV;
+
+/* the leaves of each axis of the family table: os, cc, dm, std, mode, endian */
+static const int st_leaves[NLEAF] = {5, 5, 3, 5, 2, 2};
 
 static bool self_get(void *ctx, const PcAtom *a, bool *known)
 {
@@ -650,7 +675,7 @@ static bool self_get(void *ctx, const PcAtom *a, bool *known)
     int i;
     *known = true;
     if (a->kind == PA_LEAF)
-        return a->c == (unsigned)v->leaf[strcmp(a->text, "os") ? 1 : 0];
+        return a->c == (unsigned)v->leaf[pc_leaf_axis(a)];
     if (a->kind == PA_TEXT) {
         for (i = 0; i < NT; i++)
             if (!strcmp(a->text, st_texts[i])) {
@@ -723,8 +748,8 @@ int pcq_selftest(void)
         }
         for (i = 0; i < NT; i++)
             v.known_t[i] = (int)(rnd() % 3) - 1;
-        v.leaf[0] = (int)(rnd() % 5);
-        v.leaf[1] = (int)(rnd() % 5);
+        for (i = 0; i < NLEAF; i++)
+            v.leaf[i] = (int)(rnd() % (unsigned)st_leaves[i]);
         val.ctx = &v;
         val.get = self_get;
         g = pc_constrain(&cx, f);
@@ -763,8 +788,9 @@ int pcq_selftest(void)
             for (i = 0; i < NM; i++) {
                 v2.def[i] = rnd() & 1;
                 v2.val[i] = (int)(rnd() % 5);
-                v2.leaf[i & 1] = (int)(rnd() % 5);
             }
+            for (i = 0; i < NLEAF; i++)
+                v2.leaf[i] = (int)(rnd() % (unsigned)st_leaves[i]);
             nn = pc_diff(&cx, f, &val, &val2, &names);
             if ((pc_holds(&cx, f, &val) == pc_holds(&cx, f, &val2)) != (nn == 0))
                 bad = 6;       /* equal values: nothing decides */

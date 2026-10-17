@@ -427,6 +427,7 @@ void lsp_config_explain(Req *r, JsonWriter *w)
     static const char *const kind[] = {"config", "target", "environment",
                                        "unknown", "language"};
     PcExplain e;
+    StrBuf via = {0};
     size_t i;
     uint32_t j;
     if (!r->snap->pc || !pc_explain(r->snap->pc, r->file, cursor(r), &e)) {
@@ -465,12 +466,18 @@ void lsp_config_explain(Req *r, JsonWriter *w)
             json_str(w, q->clause);
             json_key(w, "unknown");
             json_bool(w, q->status == PQ_UNKNOWN);
+            via.len = 0;
+            if (pc_req_via(r->snap->pc, q, &via)) {
+                json_key(w, "via");
+                json_str(w, sb_cstr(&via));
+            }
             json_end_object(w);
         }
         json_end_array(w);
     }
     json_end_array(w);
     json_end_object(w);
+    sb_free(&via);
     pc_explain_free(&e);
 }
 

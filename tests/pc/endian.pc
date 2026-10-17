@@ -1,0 +1,18 @@
+pc: endian.c:2 if sat=1 host=1 exact=1 taint=0 oracle=ok :: !defined(__BYTE_ORDER__) & !defined(__ORDER_LITTLE_ENDIAN__) | defined(__BYTE_ORDER__) & endian=little & defined(__ORDER_LITTLE_ENDIAN__)
+pc: endian.c:5 if sat=1 host=0 exact=1 taint=0 oracle=ok :: !defined(__BYTE_ORDER__) & !defined(__ORDER_BIG_ENDIAN__) | defined(__BYTE_ORDER__) & endian=big & defined(__ORDER_BIG_ENDIAN__)
+pc:   why[1] target=1 cost=0 :: target cc = other [unmet]
+pc:   why[2] target=1 cost=0 :: target endian = big [unmet]
+pc:   why[3] target=2 cost=0 :: target os = windows [unmet]; target cc = msvc [unmet]
+pc: endian.c:8 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(__BYTE_ORDER__) & !endian=little & endian=big | defined(__BYTE_ORDER__) & endian=little & !endian=big & !defined(__ORDER_LITTLE_ENDIAN__) | defined(__BYTE_ORDER__) & endian=little & endian=big
+pc:   why[1] target=1 cost=0 :: target cc = other [unmet]
+pc:   why[2] target=1 cost=0 :: target endian = big [unmet]
+pc: endian.c:11 if sat=1 host=0 exact=1 taint=0 oracle=ok :: !defined(__BYTE_ORDER__) & !defined(__ORDER_BIG_ENDIAN__) & defined(_WIN32) | defined(__BYTE_ORDER__) & endian=big & defined(__ORDER_BIG_ENDIAN__) & defined(_WIN32)
+pc:   why[1] target=2 cost=0 :: target os = other [unmet]; target cc = other [unmet]
+pc:   why[2] target=2 cost=0 :: target os = other [unmet]; target endian = big [unmet]
+pc:   why[3] target=2 cost=0 :: target os = windows [unmet]; target cc = msvc [unmet]
+pc: endian.c:14 if sat=1 host=0 exact=1 taint=0 oracle=ok :: !defined(__BYTE_ORDER__)
+pc:   why[1] target=1 cost=0 :: target cc = other [unmet]
+pc:   why[2] target=2 cost=0 :: target os = windows [unmet]; target cc = msvc [unmet]
+pc: total groups=5 files=1 sys=0 unresolved=0 computed=0 over=0
+pc: check rank1 ok=5 bad=0 skipped=0
+pc: oracle exact-untainted ok=5 bad=0, exact-tainted ok=0 bad=0, opaque-untainted ok=0 bad=0, opaque-tainted ok=0 bad=0, undecided=0 exact-undecided=0

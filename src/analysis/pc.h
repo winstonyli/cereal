@@ -78,6 +78,9 @@ typedef struct PcExplain {
  * none, or the fold was partial.  One query at a time per unit. */
 bool pc_explain(PcUnit *u, SrcFile *f, SrcLoc loc, PcExplain *e);
 void pc_explain_free(PcExplain *e);
+/* Where the unit defines the macro a requirement is about ("the unit defines
+ * `X` at f:3", or that it guards a header); false: nowhere to say. */
+bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb);
 /* Markdown, for a hover. */
 void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb);
 

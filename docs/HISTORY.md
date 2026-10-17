@@ -5102,3 +5102,16 @@ why: [[{kind, clause, unknown}]]}`, or null. Queries mutate the snapshot's BDD m
 one at a time (requests are single-threaded; no mutex). Goldens `tests/lsp/pcexplain.json` (both
 parallel modes), `basic.expected` refreshed. Known quirks: include-guard atoms (`defined(CFG_H)`)
 show up in answers; alternatives 2-3 can be redundant. Suite 2200 passed.
+
+Round 263: byte order, guard labels, selftest, alternatives.
+(1) `pc_req_via` (pc.h) is the one `via` label for the hover and for `cereal/configExplain` (new `via`
+field per requirement): "the unit defines `X` at f:N", or, for the guard of a header that defines it,
+"the guard of f: it makes the unit skip that header" (so `defined(CFG_H)` reads as what it is).
+(2) A sixth axis `endian` (little, big), a target: `__BYTE_ORDER__` is valued per leaf (1234, 4321),
+`__ORDER_{LITTLE,BIG,PDP}_ENDIAN__` are gcc/clang constants, big-endian excludes Windows, the host leaf
+is read from `__BYTE_ORDER__`. `__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__` is now exact. Fixture `endian`.
+(3) `pcq selftest` draws macros `__STDC_VERSION__` and `__BYTE_ORDER__` and a leaf for every axis
+(`pc_leaf_axis`), so the language and byte-order blocks meet the brute-force gate too.
+(4) `pc_preconditions` drops an alternative whose unmet requirements include all those of a cheaper one
+(`std = c11; defined(USE_X)` after `defined(USE_X)`); the next distinct cubes take their place.
+Corpora: rank-1 0 bad everywhere. Suite 2201 passed.

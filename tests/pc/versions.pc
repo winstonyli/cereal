@@ -7,7 +7,7 @@ pc: versions.c:18 if sat=0 host=0 exact=1 taint=0 oracle=ok :: dm=ilp32 & define
 pc: versions.c:21 if sat=1 host=0 exact=1 taint=0 oracle=ok :: !defined(__clang_major__) & defined(__clang_minor__) & __clang_minor__>=304 | defined(__clang_major__) & !__clang_major__>=3 & __clang_major__>=4 | defined(__clang_major__) & __clang_major__>=3 & !__clang_major__>=4 & defined(__clang_minor__) & __clang_minor__>=4 | defined(__clang_major__) & __clang_major__>=3 & __clang_major__>=4
 pc:   why[1] target=1 cost=0 :: target cc = clang [unmet]
 pc:   why[2] target=1 cost=0 :: target cc = other [unmet]
-pc:   why[3] target=2 cost=0 :: target os = android [unmet]; target cc = clang [unmet]
+pc:   why[3] target=2 cost=0 :: target os = windows [unmet]; target cc = clang-cl [unmet]
 pc: total groups=7 files=1 sys=0 unresolved=0 computed=0 over=0
 pc: check rank1 ok=6 bad=0 skipped=0
 pc: oracle exact-untainted ok=7 bad=0, exact-tainted ok=0 bad=0, opaque-untainted ok=0 bad=0, opaque-tainted ok=0 bad=0, undecided=0 exact-undecided=0

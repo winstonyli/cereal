@@ -10,12 +10,10 @@ pc:   why[1] target=0 cost=0 :: language std = c89 [unmet]; language mode = iso 
 pc:   why[2] target=0 cost=0 :: language std = c99 [unmet]; language mode = iso [unmet]
 pc: lang.c:18 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(__STDC_VERSION__) & !__STDC_VERSION__>=202311 & std=c23 & defined(_MSC_VER) | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & !std=c99 & !std=c11 & !std=c17 & defined(_MSC_VER) | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & !std=c99 & !std=c11 & std=c17 & std=c23 & defined(_MSC_VER) | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & !std=c99 & std=c11 & std=c23 & defined(_MSC_VER) | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & std=c99 & std=c23 & defined(_MSC_VER)
 pc:   why[1] target=1 cost=0 :: target cc = other [unmet]; language std = c23 [unmet]
-pc:   why[2] target=2 cost=0 :: target os = android [unmet]; target cc = other [unmet]; language std = c23 [unmet]
-pc:   why[3] target=2 cost=0 :: target os = apple [unmet]; target cc = other [unmet]; language std = c23 [unmet]
+pc:   why[2] target=2 cost=0 :: target os = windows [unmet]; target cc = clang-cl [unmet]; language std = c23 [unmet]
+pc:   why[3] target=2 cost=0 :: target os = windows [unmet]; target cc = msvc [unmet]; language std = c23 [unmet]
 pc: lang.c:21 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & !std=c99 & !std=c11 & !std=c17 & std=c23 & defined(USE_X) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & !std=c99 & !std=c11 & std=c17 & defined(USE_X) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & !std=c99 & std=c11 & defined(USE_X) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & std=c99 & defined(USE_X) | defined(__STDC_VERSION__) & __STDC_VERSION__>=199901 & defined(USE_X)
 pc:   why[1] target=0 cost=1 :: defined(USE_X) [unmet]
-pc:   why[2] target=0 cost=1 :: language std = c11 [unmet]; defined(USE_X) [unmet]
-pc:   why[3] target=0 cost=1 :: language std = c23 [unmet]; defined(USE_X) [unmet]
 pc: total groups=7 files=1 sys=0 unresolved=0 computed=0 over=0
 pc: check rank1 ok=7 bad=0 skipped=0
 pc: oracle exact-untainted ok=7 bad=0, exact-tainted ok=0 bad=0, opaque-untainted ok=0 bad=0, opaque-tainted ok=0 bad=0, undecided=0 exact-undecided=0

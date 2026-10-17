@@ -936,17 +936,27 @@ void pc_explain_free(PcExplain *e)
     memset(e, 0, sizeof *e);
 }
 
-/* where the unit defines a macro, if its files do: the label of a
- * requirement on it (the requirement is on its value before the unit) */
-static void put_via(const PcUnit *u, StrBuf *sb, const Ident *id)
+/* Where the unit defines the macro a requirement is about (the requirement
+ * is on its value before the unit), the label of the requirement.  A macro
+ * that guards the header defining it is said to skip that header: asking for
+ * it keeps that header's own definitions out. */
+bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb)
 {
-    const Macro *m = id ? mt_cur(u->an->pp->mt, id) : NULL;
+    const Macro *m = q->id ? mt_cur(u->an->pp->mt, q->id) : NULL;
+    const Skeleton *sk;
     uint32_t line, col;
     if (!m || m->predefined || !m->file)
-        return;
+        return false;
+    sk = m->file->skel;
+    if (sk && sk->guard_define == q->id && sk->guard_covers_file) {
+        sb_printf(sb, "the guard of %s: it makes the unit skip that header",
+                  m->file->path);
+        return true;
+    }
     srcmgr_linecol(m->file, m->name_loc, &line, &col);
-    sb_printf(sb, " (the unit defines `%s` at %s:%u)", id->str, m->file->path,
+    sb_printf(sb, "the unit defines `%s` at %s:%u", q->id->str, m->file->path,
               line);
+    return true;
 }
 
 void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb)
@@ -955,6 +965,7 @@ void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb)
                                         "language "};
     size_t i;
     uint32_t j;
+    StrBuf via = {0};
     sb_printf(sb, "%s: `%s` (%s:%u)", e->active ? "**Compiled**"
               : e->sat == 0 ? "**Never compiled**" : "**Not compiled**", e->text,
               e->file->path, e->line);
@@ -979,8 +990,11 @@ void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb)
                 continue;
             sb_printf(sb, "%s%s`%s`%s", first ? "" : "; ", label[q->kind],
                       q->clause, q->status == PQ_UNKNOWN ? " (unknown)" : "");
-            put_via(u, sb, q->id);
+            via.len = 0;
+            if (pc_req_via(u, q, &via))
+                sb_printf(sb, " (%s)", sb_cstr(&via));
             first = false;
         }
     }
+    sb_free(&via);
 }

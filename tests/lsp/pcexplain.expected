@@ -29,7 +29,7 @@
 {
  "contents": {
   "kind": "markdown",
-  "value": "**Not compiled**: `#if defined(USE_FAST) && VERSION >= 3` ($ROOT/pcexplain/main.c:2) is skipped in this build\n\nCondition: `defined(CFG_H) & defined(VERSION) & VERSION>=3 & defined(USE_FAST)`\n\nTo compile it:\n1. `defined(CFG_H)` (the unit defines `CFG_H` at $ROOT/pcexplain/cfg.h:2); `defined(VERSION) && VERSION >= 3` (the unit defines `VERSION` at $ROOT/pcexplain/cfg.h:3); `defined(USE_FAST)`"
+  "value": "**Not compiled**: `#if defined(USE_FAST) && VERSION >= 3` ($ROOT/pcexplain/main.c:2) is skipped in this build\n\nCondition: `defined(CFG_H) & defined(VERSION) & VERSION>=3 & defined(USE_FAST)`\n\nTo compile it:\n1. `defined(CFG_H)` (the guard of $ROOT/pcexplain/cfg.h: it makes the unit skip that header); `defined(VERSION) && VERSION >= 3` (the unit defines `VERSION` at $ROOT/pcexplain/cfg.h:3); `defined(USE_FAST)`"
  }
 }
 ## its text answers the same
@@ -37,7 +37,7 @@
 {
  "contents": {
   "kind": "markdown",
-  "value": "**Not compiled**: `#if defined(USE_FAST) && VERSION >= 3` ($ROOT/pcexplain/main.c:2) is skipped in this build\n\nCondition: `defined(CFG_H) & defined(VERSION) & VERSION>=3 & defined(USE_FAST)`\n\nTo compile it:\n1. `defined(CFG_H)` (the unit defines `CFG_H` at $ROOT/pcexplain/cfg.h:2); `defined(VERSION) && VERSION >= 3` (the unit defines `VERSION` at $ROOT/pcexplain/cfg.h:3); `defined(USE_FAST)`"
+  "value": "**Not compiled**: `#if defined(USE_FAST) && VERSION >= 3` ($ROOT/pcexplain/main.c:2) is skipped in this build\n\nCondition: `defined(CFG_H) & defined(VERSION) & VERSION>=3 & defined(USE_FAST)`\n\nTo compile it:\n1. `defined(CFG_H)` (the guard of $ROOT/pcexplain/cfg.h: it makes the unit skip that header); `defined(VERSION) && VERSION >= 3` (the unit defines `VERSION` at $ROOT/pcexplain/cfg.h:3); `defined(USE_FAST)`"
  }
 }
 ## #elif on a compiler macro: a target change
@@ -45,14 +45,14 @@
 {
  "contents": {
   "kind": "markdown",
-  "value": "**Not compiled**: `#elif defined(__clang__)` ($ROOT/pcexplain/main.c:4) is skipped in this build\n\nTo compile it:\n1. target `cc = clang`\n2. target `os = android`; target `cc = clang`"
+  "value": "**Not compiled**: `#elif defined(__clang__)` ($ROOT/pcexplain/main.c:4) is skipped in this build\n\nTo compile it:\n1. target `cc = clang`\n2. target `os = windows`; target `cc = clang-cl`"
  }
 }
 >> textDocument/hover
 {
  "contents": {
   "kind": "markdown",
-  "value": "**Not compiled**: `#elif defined(__clang__)` ($ROOT/pcexplain/main.c:4) is skipped in this build\n\nTo compile it:\n1. target `cc = clang`\n2. target `os = android`; target `cc = clang`"
+  "value": "**Not compiled**: `#elif defined(__clang__)` ($ROOT/pcexplain/main.c:4) is skipped in this build\n\nTo compile it:\n1. target `cc = clang`\n2. target `os = windows`; target `cc = clang-cl`"
  }
 }
 ## #else that the build took: the condition, nothing to turn on; its text says nothing
@@ -175,12 +175,14 @@
    {
     "clause": "defined(CFG_H)",
     "kind": "config",
-    "unknown": false
+    "unknown": false,
+    "via": "the guard of $ROOT/pcexplain/cfg.h: it makes the unit skip that header"
    },
    {
     "clause": "defined(VERSION) && VERSION >= 3",
     "kind": "config",
-    "unknown": false
+    "unknown": false,
+    "via": "the unit defines `VERSION` at $ROOT/pcexplain/cfg.h:3"
    },
    {
     "clause": "defined(USE_FAST)",
