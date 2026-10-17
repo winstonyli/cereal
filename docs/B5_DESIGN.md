@@ -2643,25 +2643,7 @@ shows the name used in a macro body (R7, 11.5).
 
 ## 18. Parked
 
-| Item | Why parked |
-|---|---|
-| `didChangeWatchedFiles` | The stat sweep covers the same events (E7); it would only make detection faster. |
-| Macro references across TUs | Q1. |
-| Shadowing detection for new headers | Needs every probed directory recorded (7.2). |
-| Cross-TU type mismatch diagnostics through csum `type_dig` | Not requested; csum needs `CheckOptions.summaries` (+4% check). |
-| A weak flag in `CIdxDecl` to order definitions | Only cosmetic (12.4). |
-| An n-gram index for workspace/symbol | Only if the B5b stop rule fires. |
-| Indexing unsaved buffers of open files into the store | Open units already overlay. |
-| Remote or shared caches between machines | Host-endian keys (5.4). |
-| `$/cancelRequest` for requests answered at once | Nothing to cancel: the protocol thread answers each before reading the next message. Deferred renames and queued code actions are cancellable (Round 234); a running fix-all is not. |
-| Type hierarchy | D7. |
-| Listing the invocation sites of macros whose body uses a function (Q7) | Needs a record format bump (the invocation's spelling per event) and a rename policy for macro sites. Rename refuses instead (R7). ROADMAP Track D, "macro-aware project index and refactoring". |
-| A macro that names a function but is never invoked (R4/R7 gap) | No record event exists for it; needs the macro-body identifier spellings in the record (the same format bump as Q7). Documented limitation. |
-| Renaming through inactive `#if` groups (A3.9) | Rename refuses a use in a group the unit does not compile (user decision, Round 231). Editing it needs per-branch preprocessing or a textual mode verified under the other branches. |
-| A macro-aware rename policy | What to edit at a macro site (argument, body, or neither) is undecided; rename refuses rather than guesses. |
-| Declarations formed by a macro in the project index | `cindex_symbol_event` rejects a pasted or synthesised declaration (`PROTO(zm)` making `int zm_fn(void);`), so no record has it: references and call hierarchy do not list it and R7 cannot see it. A rename is still safe, because the gate's re-check of that unit changes its declarations and refuses (`tests/proj_test.py` rename, `zm.c`). Needs the declaration kept in the index with its expansion-site spelling. (Round 232 F7: the R7 bit on declarations was not reachable; discarded.) |
-| A stat-validated hash cache for `PqFiles` | A query reads and hashes each file it places entries in; `PQ_MAX_ENTRIES` bounds the files, the page cache makes a repeat cheap. A cache would need the record's own stat. Not needed at the measured 3.3 ms references p95. (Round 232 F8) |
-| Releasing a file's text after its last edit is written | The peak is the sum of the files a result lies in, bounded by the entry cap. (Round 232 F8) |
+Moved to ../PARKED.md (project index and rename).
 
 ## 19. Review log
 

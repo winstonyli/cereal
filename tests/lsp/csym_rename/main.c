@@ -16,3 +16,11 @@ int run(void)
 #endif
     return total + api_call();
 }
+static int featured(void) { return 1; }
+static int plat(void) { return 2; }
+#ifdef FEATURE_X
+int fx = featured();
+#endif
+#ifdef __APPLE__
+int ap = plat();
+#endif

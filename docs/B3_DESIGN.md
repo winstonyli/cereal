@@ -352,18 +352,7 @@ the client (`isIncomplete` false), as for macros.
 
 ## 9. Parked
 
-- **Member completion** after `.`/`->`: the data exists (`type` of the
-  name before the dot, members by `parent`), but it is a different
-  request context (the expression's type, not the scope); not B3.
-- **Tag completion** after `struct`/`union`/`enum`, label completion
-  after `goto`, keywords: the cursor context, not scope data.
-- **Signature help through an expression** callee (`(*fp)(`, `a[i](`).
-- **Blocks written inside a macro argument** (`WITH_LOCK(m, { int x;
-  ... })`): scope extents are presentation points, so such a block is
-  `[invocation, +1)` and completion inside it does not offer `x`. Using
-  spellings where both braces are spelled outside `#define` bodies would
-  fix it (about 15 lines); not needed for the common `FOREACH(..) {`
-  form, whose braces are in the source.
+Moved to ../PARKED.md (completion and scopes).
 
 ## 10. Review rounds
 

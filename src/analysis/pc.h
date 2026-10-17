@@ -37,6 +37,8 @@ struct PcUnit {
     uint64_t chain;         /* hash of the #include directives entered */
     size_t files, sys, unres, computed;
     VEC(const char *) skipped;      /* "<h>", "\"h\"", "computed" */
+    VEC(SrcFile *) sysbelow;        /* the files that have a system header below them */
+    VEC(SrcFile *) stk;             /* the files being folded, outermost first */
     /* internals */
     VEC(PcMacro *) macros;
     uint32_t *htab;
@@ -86,6 +88,9 @@ bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb);
  * three cheapest cubes that an overlay can do (pc_enable of pcq.h, and no
  * guard of a header, which would change which files are read); false: none. */
 bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb);
+/* One plain line for a refusal: what would turn the (inactive) group on, or why
+ * nothing says. */
+void pc_explain_needs(const PcUnit *u, const PcExplain *e, StrBuf *sb);
 /* Markdown, for a hover. */
 void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb);
 

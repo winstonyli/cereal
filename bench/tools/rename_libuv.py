@@ -119,7 +119,20 @@ def main():
         if verbose or k == "false":
             for x in msgs.get(k, [])[:60]:
                 print("    " + x)
-    bad = tally.get("false", 0)
+    # S4 (a): every inactive-group refusal carries what would turn the group on
+    lists = {}
+    for x in msgs.get("inactive", []):
+        m = re.search(r"which cannot be checked \((.*)\)$", x)
+        t = m.group(1) if m else ""
+        k = ("missing" if not m else "target" if re.search(r"to compile it:.*\btarget `", t) else
+             "option" if "to compile it:" in t else "unsat" if "cannot hold" in t else
+             "opaque" if "cannot evaluate" in t else "none-found")
+        lists[k] = lists.get(k, 0) + 1
+        if verbose:
+            print("    S4 %-10s %s" % (k, x))
+    if lists:
+        print("S4 lists: " + ", ".join("%s %d" % kv for kv in sorted(lists.items())))
+    bad = tally.get("false", 0) + lists.get("missing", 0)
     rate = bad / total if total else 1.0
     print("strict reading (inactive-group refusals counted as false): %.1f%%" % (
         100 * (bad + tally.get("inactive", 0)) / max(total, 1)))

@@ -65,7 +65,7 @@ void c_rename_inactive_free(CRenInactive *x);
  * passed) reads and compiles there; else the refusal for the first that none
  * does (malloc'd). */
 char *c_rename_uncovered(const CRenInactive *unit, const CRenInactive *const *others,
-                         size_t n);
+                         size_t n, const CRenHit **hit);
 
 typedef struct CRename {
     Options *o;                 /* the unit's */
@@ -92,6 +92,10 @@ typedef struct CRename {
 } CRename;
 /* NULL: the edits stand; else why the rename is refused (malloc'd). */
 char *c_rename(CRename *q);
+/* For a refused inactive hit of the unit q names: what would turn the #if group
+ * around it on in that unit (S4; the presence conditions of analysis/pc.h), one
+ * line, malloc'd; NULL: no group there or the unit could not be read. */
+char *c_rename_explain(const CRename *q, const CRenHit *hit);
 void c_rename_free(CRename *q);
 
 #endif

@@ -548,6 +548,28 @@ an inactive group, 5 for a macro, with `configs` 0 and 0.5 alike: libuv's inacti
 platforms' branches (`__APPLE__`, `__sun`, `_AIX`, `_WIN32`), target atoms that `enable` never flips.
 The coverage helps where the group is a project option (`DEBUG`, `USE_X`), as in the `renamecfg` test. Not done: `cereal.index.configs` is read at startup only.
 
+Implemented (Round 280, S4): a project rename refused for an inactive group now says what would turn
+the group on, in the same message: `... which cannot be checked (`#ifdef __APPLE__`: to compile it:
+target `os = apple`)`. After `resolve_inactive` has picked the first hit no unit covers, `lsp_rename_gate`
+rebuilds that one unit (`gate_unit`: the same options as the check) with the fold (`c_rename_explain`,
+`analysis_attach_pc`, `pc_explain`) and renders one line (`pc_explain_needs`; the cubes are the ones
+hover shows, via the shared `put_cube`). Successful renames pay nothing; a refusal pays one more
+preprocess of one unit. The line names the directive, because `os = other` alone does not say which
+system. Cases: alternatives joined by `or`; `its condition cannot hold` (unsat); `it depends on a test
+the analysis cannot evaluate` (inexact); `no way to turn it on was found`. The cubes of an
+`explain` never use the guard of a header that has a system header below it (`explain_fixed`; the fold
+records those files in `PcUnit.sysbelow` while it folds): the falsifier found 14 libuv refusals where
+`defined(UV_H)` was offered and the group stayed off, because the system headers are replayed from
+the real run and a later include of the same one, skipped by its guard there, is not read again.
+Gates on libuv (Round 280): all 54 inactive-group refusals carry a list (52 `target`, 2 option; none
+missing, no unsat/opaque); `s4_falsify.py` (the real preprocessor, a marker line before the use, the
+family table ignored, system headers the host lacks stubbed) confirms 51, cannot judge 2 (the group
+tests `O_CLOEXEC`, which the host's own headers define and no flag undoes) and skips 1 (`__cplusplus`,
+a language atom); none is refuted. (c): rename through inactive groups gains 0 functions here, as the
+S2 measurement already showed (the 54 are target atoms; the two option lists are `__PASE__` and
+`__cplusplus`, which `enable` does not flip). Not done: the code action carries no list (hover does,
+for the open unit); the CLI `query rename=` path still refuses without one.
+
 Implemented earlier (Round 264): `enable` (one group to command-line words) and `cover` (greedy, no merges
 of cubes yet), both oracle-checked by re-running the preprocessor (`bench/pc_enable.py`). An overlay never
 sets a macro the unit defines itself (a guard, or a default tested before its `#define`) or a target, env,
@@ -665,22 +687,7 @@ list, and for other compilers by review.
 
 ## 11. Parked
 
-- Variational parsing: R5.
-- Arithmetic atoms: OPAQUE; rare in the corpus.
-- A configuration-space view: S1's result is the data; the view is a client
-  matter.
-- Cross-target type checking: needs the target model of 7.3.
-- `__COUNTER__`/`__FILE__`/`__LINE__` in conditions: OPAQUE.
-- Live settings reload (`workspace/didChangeConfiguration` for `cereal.index.*`): no index setting
-  reloads today. `P.set` has 33 uses across the server and scheduler threads, the pool is sized
-  at startup and the store is opened once, so a reload must be an event run on the scheduler
-  thread that swaps only live fields (`configs`, `maxOverlays`, `renameMaxTUs`, `quietMs`, the
-  limits) and refuses the rest (`enable`, `threads`, `cacheDir`, `paths`); for `configs`, also
-  `pstate_set_virtual` and a re-stale of real units without a sidecar. Parked (Round 279): no
-  client asks for it, and a restart already applies any setting.
-- Adaptive `configs`: on by default, off once the measured index time of the real
-  jobs passes a budget. Parked (Round 279): the cost is known only after a first
-  index, so first and later runs would differ; revisit if the cost drops further.
+Moved to ../PARKED.md (config and presence conditions).
 
 ## 12. Review log
 

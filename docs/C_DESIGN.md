@@ -1384,14 +1384,7 @@ format fix-its (C2b) carry most of the uncertainty.
 
 ### 12.3 Parked
 
-| Item | Why |
-|---|---|
-| Caret-block fix-it line | The caret block is not gcc-identical yet |
-| Unused-variable deletion | gcc has none; removing a declaration can remove side effects, and a gate cannot see intent |
-| Macro trailing `;` and do-while wrap | Rewrites macro bodies; belongs with C6's macro edits |
-| Missing header guard | Must invent a name; style-dependent |
-| Multi-pass `--diff` | Needs simulated passes through overlays; one pass is enough to review |
-| Fix-its on `-D` (virtual) or system files | Never: no source to edit |
+Moved to ../PARKED.md (fix-its).
 
 ## 13. Probes (gcc 13.4.0, WSL, 2026-10-10)
 

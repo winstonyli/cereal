@@ -660,10 +660,22 @@ static void do_include(PcUnit *u, SrcFile *f, int from_dir,
     if (g->kind == SF_SYSTEM || g->system_header) {
         u->conc = true;
         u->sys++;
+        if (!was) {
+            size_t j, k;
+            for (j = 0; j <= u->stk.len; j++) {   /* f, and the files above it */
+                SrcFile *h = j == u->stk.len ? f : u->stk.data[j];
+                for (k = 0; k < u->sysbelow.len && u->sysbelow.data[k] != h; k++)
+                    ;
+                if (k == u->sysbelow.len)
+                    vec_push(&u->sysbelow, h);
+            }
+        }
     }
     u->chain = mixh(chain, d->hash_loc);
+    vec_push(&u->stk, f);
     if (!(!was && u->conc && replay_run(u, u->chain, cur)))
         fold_file(u, g, di, cur, depth + 1);
+    u->stk.len--;
     u->chain = chain;
     u->conc = was;
 }
@@ -800,6 +812,8 @@ void pc_unit_free(PcUnit *u)
     vec_free(&u->once);
     vec_free(&u->groups);
     vec_free(&u->skipped);
+    vec_free(&u->sysbelow);
+    vec_free(&u->stk);
     vec_free(&u->taken);
     free(u->htab);
     pc_free(&u->cx);
@@ -1089,9 +1103,19 @@ static bool group_at(const Skeleton *sk, SrcLoc loc, uint32_t *dir, bool *header
     return x.found;
 }
 
+static bool explain_fixed(void *ctx, const PcAtom *at);
+
+/* The macro guards the header that defines it. */
+static bool is_guard(const PcUnit *u, const Ident *id)
+{
+    const Macro *m = id ? mt_cur(u->an->pp->mt, id) : NULL;
+    const Skeleton *sk = m && !m->predefined && m->file ? m->file->skel : NULL;
+    return sk && sk->guard_define == id && sk->guard_covers_file;
+}
+
 bool pc_explain(PcUnit *u, SrcFile *f, SrcLoc loc, PcExplain *e)
 {
-    PcValuation hv = {u, host_get, NULL};
+    PcValuation hv = {u, host_get, explain_fixed};
     const Skeleton *sk = f->skel;
     BddMgr *m = &u->cx.m;
     Bdd pc = BDD_FALSE, taint = BDD_FALSE;
@@ -1168,16 +1192,29 @@ void pc_explain_free(PcExplain *e)
     memset(e, 0, sizeof *e);
 }
 
+/* The guard of a header that includes a system header, directly or below: setting it
+ * would make the unit skip that header, but the fold cannot say what else then
+ * supplies what its system headers define (they are replayed from the real run, where a
+ * later include of the same one was skipped by its own guard and read nothing).
+ * s4_falsify.py found 14 of libuv's 54 refusals where `defined(UV_H)` was offered
+ * and the group stayed off.  Never offered. */
+static bool explain_fixed(void *ctx, const PcAtom *at)
+{
+    const PcUnit *u = ctx;
+    const Macro *m = at->id ? mt_cur(u->an->pp->mt, at->id) : NULL;
+    size_t i;
+    if (!is_guard(u, at->id))
+        return false;
+    for (i = 0; i < u->sysbelow.len; i++)
+        if (u->sysbelow.data[i] == m->file)
+            return true;
+    return false;
+}
+
 /* Where the unit defines the macro a requirement is about (the requirement
  * is on its value before the unit), the label of the requirement.  A macro
  * that guards the header defining it is said to skip that header: asking for
  * it keeps that header's own definitions out. */
-static bool is_guard(const PcUnit *u, const PcReq *q)
-{
-    const Macro *m = q->id ? mt_cur(u->an->pp->mt, q->id) : NULL;
-    const Skeleton *sk = m && !m->predefined && m->file ? m->file->skel : NULL;
-    return sk && sk->guard_define == q->id && sk->guard_covers_file;
-}
 
 /* ---- cover ------------------------------------------------------------- */
 
@@ -1510,7 +1547,7 @@ bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb)
     uint32_t line, col;
     if (!m || m->predefined || !m->file)
         return false;
-    if (is_guard(u, q)) {
+    if (is_guard(u, q->id)) {
         sb_printf(sb, "the guard of %s: it makes the unit skip that header",
                   m->file->path);
         return true;
@@ -1521,13 +1558,52 @@ bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb)
     return true;
 }
 
-void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb)
+/* The unmet requirements of one way to turn a group on, "target `X`; `Y` (unknown)". */
+static void put_cube(const PcUnit *u, const PcCube *c, StrBuf *sb)
 {
     static const char *const label[] = {"", "target ", "environment ", "unknown ",
                                         "language "};
-    size_t i;
     uint32_t j;
+    bool first = true;
     StrBuf via = {0};
+    for (j = 0; j < c->n; j++) {
+        const PcReq *q = &c->reqs[j];
+        if (q->status == PQ_MET)
+            continue;
+        sb_printf(sb, "%s%s`%s`%s", first ? "" : "; ", label[q->kind],
+                  q->clause, q->status == PQ_UNKNOWN ? " (unknown)" : "");
+        via.len = 0;
+        if (pc_req_via(u, q, &via))
+            sb_printf(sb, " (%s)", sb_cstr(&via));
+        first = false;
+    }
+    sb_free(&via);
+}
+
+void pc_explain_needs(const PcUnit *u, const PcExplain *e, StrBuf *sb)
+{
+    size_t i;
+    sb_printf(sb, "`%s`: ", e->text);       /* "os = other" alone does not say which */
+    if (e->sat == 0) {
+        sb_puts(sb, "its condition cannot hold");
+        return;
+    }
+    if (!e->nwhy) {
+        sb_puts(sb, e->exact ? "no way to turn it on was found"
+                             : "it depends on a test the analysis cannot evaluate");
+        return;
+    }
+    sb_puts(sb, "to compile it: ");
+    for (i = 0; i < e->nwhy; i++) {
+        if (i)
+            sb_puts(sb, " or ");
+        put_cube(u, &e->why[i], sb);
+    }
+}
+
+void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb)
+{
+    size_t i;
     sb_printf(sb, "%s: `%s` (%s:%u)", e->active ? "**Compiled**"
               : e->sat == 0 ? "**Never compiled**" : "**Not compiled**", e->text,
               e->file->path, e->line);
@@ -1543,20 +1619,7 @@ void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb)
     if (e->nwhy)
         sb_puts(sb, "\n\nTo compile it:");
     for (i = 0; i < e->nwhy; i++) {
-        const PcCube *c = &e->why[i];
-        bool first = true;
         sb_printf(sb, "\n%zu. ", i + 1);
-        for (j = 0; j < c->n; j++) {
-            const PcReq *q = &c->reqs[j];
-            if (q->status == PQ_MET)
-                continue;
-            sb_printf(sb, "%s%s`%s`%s", first ? "" : "; ", label[q->kind],
-                      q->clause, q->status == PQ_UNKNOWN ? " (unknown)" : "");
-            via.len = 0;
-            if (pc_req_via(u, q, &via))
-                sb_printf(sb, " (%s)", sb_cstr(&via));
-            first = false;
-        }
+        put_cube(u, &e->why[i], sb);
     }
-    sb_free(&via);
 }

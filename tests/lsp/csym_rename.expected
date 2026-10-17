@@ -107,7 +107,22 @@
 {
  "error": {
   "code": -32803,
-  "message": "'gone' occurs in an inactive #if group at $ROOT/csym_rename/main.c:15:9, which cannot be checked"
+  "message": "'gone' occurs in an inactive #if group at $ROOT/csym_rename/main.c:15:9, which cannot be checked (`#if 0`: its condition cannot hold)"
+ }
+}
+## S4: a use in a group the build skips: the refusal says what would turn the group on (an option, then the target)
+>> textDocument/rename
+{
+ "error": {
+  "code": -32803,
+  "message": "'featured' occurs in an inactive #if group at $ROOT/csym_rename/main.c:22:10, which cannot be checked (`#ifdef FEATURE_X`: to compile it: `defined(FEATURE_X)`)"
+ }
+}
+>> textDocument/rename
+{
+ "error": {
+  "code": -32803,
+  "message": "'plat' occurs in an inactive #if group at $ROOT/csym_rename/main.c:25:10, which cannot be checked (`#ifdef __APPLE__`: to compile it: target `os = apple`)"
  }
 }
 ## refused by the second check: the local r renamed to level would capture the use of the static level

@@ -5353,3 +5353,23 @@ Round 279, gate on the final tree: run 2205/0; verify dg 2 / c-c++-common 1 / cp
 null pointer to qsort/bsearch with an empty array, in `pc_fold`, `replay_run`, `was_taken` and `pc_preconditions`, the
 last two reached since the `fixed` hook can leave no cube): guarded, san now 2205 passed, findings 0. The san stage had
 not been run since the S1 rounds.
+
+Round 280 (S4): precondition lists in the rename refusal of an inactive `#if` group. `c_rename_uncovered` returns the
+uncovered hit; `lsp_rename_gate` rebuilds that unit (`gate_unit` is the gate job's option setup, factored out) through
+`c_rename_explain` (fold kept with `analysis_attach_pc`, `pc_explain`, `pc_explain_needs`); `pc_explain_render` and the
+refusal share `put_cube`. The line starts with the directive text, since `os = other` does not say which system. New
+`tests/lsp/csym_rename` cases (an option group, a target group; the `#if 0` golden gained `its condition cannot hold`).
+Gate (a), libuv `rename_libuv.py --verbose` (run ids 2026-10-17-s4-libuv-rename*): 54 inactive refusals, all with a list:
+52 target, 2 option. Gate (b), new `bench/tools/s4_falsify.py` (real `cc -E`, marker `#pragma` before the use, flips by
+-U/-D, missing platform headers stubbed empty): first version confirmed 31 of 35 target lists and had 4 "other" refuted
+(its flip for `os = other` was only -U__linux__; fixed by trying each of 13 other-OS macros); extending it to `defined(X)`
+clauses found a real defect: 14 refusals offered `defined(UV_H)` ("the guard of uv.h: it makes the unit skip that header")
+and the group stayed off (thread-common.c includes <pthread.h> itself after uv.h; the fold replays system headers from the
+real run, so the later include is never read). Fixed by never offering the guard of a header with a system header below it
+(`explain_fixed`, `PcUnit.sysbelow`); the 14 now list `target` alternatives. Final: 51 confirmed, 2 header-macro (the group
+tests O_CLOEXEC, defined by the host's headers: a flag cannot undo it, so the method cannot judge), 1 skipped
+(`__cplusplus`), 0 refuted. (c) rename edits through inactive groups: 0 new on libuv (as S2 measured; all 54 are target
+atoms or `__PASE__`/`__cplusplus`). The S2 function-level 80% is not reachable on this corpus: at most 2 of the 54 refused functions (the two option
+lists) can have only phase-1 groups; the other 52 are target atoms. (Only the first uncovered group per function is listed, so the 2 are an upper bound.)
+Round 280, gate on the final tree (run 2026-10-17-s4-gate): globals ok; run 2205/0; verify dg 2 / c-c++-common 1 / cpp 0
+differ (unchanged); san 2205 passed, findings 0; callgrind 3.880 G (3.881 G before, within 0.5%).

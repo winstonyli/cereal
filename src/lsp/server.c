@@ -785,15 +785,41 @@ typedef struct GateCtx {
     const JsonValue *token;
     const uint32_t *cancel;   /* atomic, or NULL: the request is cancelled */
     char **err;               /* per unit */
+    const CRenHit **hit;      /* per unit: the inactive use that no unit covers */
     uint32_t done, failed;    /* atomic */
 } GateCtx;
 
-/* One unit's check, on a pool thread: the options of its compile database
- * entry (as the index job's), the open documents' texts. */
+/* Unit i's rename request: the options of its compile database entry (as the index
+ * job's), the open documents' texts.  false: the database changed (err[i] says so). */
+static bool gate_unit(GateCtx *g, size_t i, Options *o, CRename *q)
+{
+    if (g->entries[i] != (size_t)-1 &&
+        (g->entries[i] >= g->cfg->cmds.len ||
+         strcmp(g->cfg->cmds.data[g->entries[i]].abs_file, g->mains[i]))) {
+        g->err[i] = xstrdup("the compile database changed during the rename");
+        return false;
+    }
+    options_init(o);
+    if (g->entries[i] == (size_t)-1)         /* the open unit, not in the project */
+        config_options_in(g->cfg, g->mains[i], &o->rsp, o, NULL);
+    else if (g->overlays && g->overlays[i])
+        config_options_overlay(g->cfg, g->entries[i], g->overlays[i], &o->rsp, o, NULL);
+    else
+        config_options_entry(g->cfg, g->entries[i], &o->rsp, o, NULL);
+    o->pp.fatal_missing_include = false;     /* as the check's (D2) */
+    *q = *g->tmpl;
+    q->o = o;
+    q->main = g->mains[i];
+    q->overlay = lsp_docs_lookup;
+    q->overlay_ctx = g->docs;
+    return true;
+}
+
+/* One unit's check, on a pool thread. */
 static void gate_job(void *arg, size_t i)
 {
     GateCtx *g = arg;
-    CRename q = *g->tmpl;
+    CRename q;
     Options o;
     FatalTrap tr;
     char msg[160];
@@ -801,25 +827,10 @@ static void gate_job(void *arg, size_t i)
     if (atomic_load_u32(&g->failed) || atomic_load_u32(&S.stopping) ||
         (g->cancel && atomic_load_u32(g->cancel)))
         return;
-    if (g->entries[i] != (size_t)-1 &&
-        (g->entries[i] >= g->cfg->cmds.len ||
-         strcmp(g->cfg->cmds.data[g->entries[i]].abs_file, g->mains[i]))) {
-        g->err[i] = xstrdup("the compile database changed during the rename");
+    if (!gate_unit(g, i, &o, &q)) {
         atomic_store_u32(&g->failed, 1);
         return;
     }
-    options_init(&o);
-    if (g->entries[i] == (size_t)-1)         /* the open unit, not in the project */
-        config_options_in(g->cfg, g->mains[i], &o.rsp, &o, NULL);
-    else if (g->overlays && g->overlays[i])
-        config_options_overlay(g->cfg, g->entries[i], g->overlays[i], &o.rsp, &o, NULL);
-    else
-        config_options_entry(g->cfg, g->entries[i], &o.rsp, &o, NULL);
-    o.pp.fatal_missing_include = false;      /* as the check's (D2) */
-    q.o = &o;
-    q.main = g->mains[i];
-    q.overlay = lsp_docs_lookup;
-    q.overlay_ctx = g->docs;
     q.inact = &g->inact[i];
     fatal_trap_push(&tr);
     if (setjmp(tr.jb)) {
@@ -864,7 +875,7 @@ static void resolve_inactive(GateCtx *g)
         for (j = 0; j < m; j++)
             if (ok[j] != self)
                 others[k++] = ok[j];
-        g->err[i] = c_rename_uncovered(self, others, k);
+        g->err[i] = c_rename_uncovered(self, others, k, &g->hit[i]);
         free(others);
     }
     free(ok);
@@ -889,6 +900,7 @@ char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *ent
     g.cancel = cancel;
     g.cfg = cfg_acquire();
     g.err = xcalloc(n + 1, sizeof *g.err);
+    g.hit = xcalloc(n + 1, sizeof *g.hit);
     rename_progress(token, "begin", "checking the translation units", 0);
     project_gate(gate_job, &g, n);
     rename_progress(token, "end", NULL, -1);
@@ -906,6 +918,18 @@ char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *ent
             if (n > 1)                     /* which unit, when it could be any */
                 sb_printf(&sb, "checking %s: ", base ? base + 1 : mains[i]);
             sb_printf(&sb, "%s", g.err[i]);
+            if (g.hit[i]) {                /* an inactive group: what would turn it on (S4) */
+                Options o;
+                CRename q;
+                char *why = NULL;
+                if (gate_unit(&g, i, &o, &q)) {
+                    why = c_rename_explain(&q, g.hit[i]);
+                    options_free(&o);
+                }
+                if (why)
+                    sb_printf(&sb, " (%s)", why);
+                free(why);
+            }
             out = (char *)sb_cstr(&sb);
         }
         free(g.err[i]);
@@ -915,6 +939,7 @@ char *lsp_rename_gate(const CRename *tmpl, char *const *mains, const size_t *ent
     for (i = 0; i < n; i++)
         c_rename_inactive_free(&g.inact[i]);
     free(g.inact);
+    free(g.hit);
     free(g.err);
     lsp_config_unref(g.cfg);
     return out;

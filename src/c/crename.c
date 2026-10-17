@@ -7,6 +7,8 @@
  * decls and diagnostics, up to the moved offsets and the new name.  That
  * comparison is the conflict check: the checker's own name lookup, for
  * every scope and namespace, rather than an imitation of it. */
+#include "analysis/analysis.h"
+#include "analysis/pc.h"
 #include "c/csymidx.h"
 #include "c/frontend.h"
 #include "pp.h"
@@ -248,7 +250,7 @@ static bool reads_file(const CRenInactive *x, const char *path)
 }
 
 char *c_rename_uncovered(const CRenInactive *unit, const CRenInactive *const *others,
-                         size_t n)
+                         size_t n, const CRenHit **hit)
 {
     size_t i, j;
     for (i = 0; i < unit->nhits; i++) {
@@ -256,10 +258,60 @@ char *c_rename_uncovered(const CRenInactive *unit, const CRenInactive *const *ot
         for (j = 0; j < n; j++)
             if (reads_file(others[j], h->path) && !has_hit(others[j], h))
                 break;
-        if (j == n)
+        if (j == n) {
+            *hit = h;
             return xstrdup(h->msg);
+        }
     }
     return NULL;
+}
+
+/* What would turn the group around the hit on (S4): the unit again, with the
+ * presence conditions folded, asked about the hit's place.  NULL: no group there,
+ * or the unit could not be read. */
+char *c_rename_explain(const CRename *q, const CRenHit *hit)
+{
+    TU tu;
+    Analysis an;
+    FrontendOpts fo;
+    FatalTrap tr;
+    PcUnit *volatile u = NULL;
+    PcExplain e;
+    SrcFile *f;
+    char *volatile out = NULL;
+    bool live = false;
+    Run *r = xcalloc(1, sizeof *r);   /* only for run_overlay's lookup */
+    r->q = q;
+    fatal_trap_push(&tr);
+    if (setjmp(tr.jb)) {
+        if (live)
+            tu_free(&tu);
+        free(r);
+        return NULL;
+    }
+    tu_init(&tu, q->o);
+    live = true;
+    tu.sm.overlay = run_overlay;
+    tu.sm.overlay_ctx = r;
+    memset(&an, 0, sizeof an);
+    analysis_attach_pc(&an, &tu.pp);
+    memset(&fo, 0, sizeof fo);
+    if (frontend_run(&tu, q->main, &fo))
+        u = analysis_fold(&an);
+    else
+        analysis_discard(&an);
+    f = u ? cindex_srcfile(&tu.sm, hit->path) : NULL;
+    if (f && hit->off <= f->size && pc_explain(u, f, f->base + hit->off, &e)) {
+        StrBuf sb = {0};
+        pc_explain_needs(u, &e, &sb);
+        out = (char *)sb_cstr(&sb);
+        pc_explain_free(&e);
+    }
+    pc_unit_destroy(u);
+    tu_free(&tu);
+    free(r);
+    fatal_trap_pop(&tr);
+    return out;
 }
 
 /* ---- the comparison (A1) ------------------------------------------------------ */

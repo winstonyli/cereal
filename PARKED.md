@@ -1,0 +1,85 @@
+# Parked work
+
+Format: what; why parked; trigger; evidence; status. This is the one list: the design docs' former "Parked" sections now point here. Migrated 2026-10-17; where an item had no stated trigger, the trigger is "asked for", and evidence is the design section it came from (line numbers not re-verified in the migration).
+
+## Config and presence conditions (docs/CONFIG_DESIGN.md)
+
+### Live settings reload (`workspace/didChangeConfiguration` for `cereal.index.*`)
+- **Why:** no index setting reloads today. `P.set` has 33 uses across server and scheduler threads, the pool is sized at startup, the store opens once. A reload must run as a scheduler-thread event, swap only live fields (`configs`, `maxOverlays`, `renameMaxTUs`, `quietMs`, limits), refuse the rest (`enable`, `threads`, `cacheDir`, `paths`), and for `configs` call `pstate_set_virtual` and re-stale real units without a sidecar. A restart applies any setting.
+- **Trigger:** a client asks. **Evidence:** `load_settings`, src/lsp/project.c; CONFIG_DESIGN 11. **Status:** parked (also B4 15 Q5 option 3).
+
+### Adaptive `cereal.index.configs`
+- **Why:** on by default, off once the measured index time passes a budget; the cost is known only after a first index, so first and later runs would differ. Measured ~5.5x index time at 0.5 (Round 279).
+- **Trigger:** the per-unit cost drops further. **Evidence:** CONFIG_DESIGN 10 item 4, 11; HISTORY Round 279. **Status:** parked.
+
+### Bounding the entries kept per macro in `do_define`
+- **Why:** would cut `pc_fold` (37% of the `lj_state.c` profile, `do_define` 21%) but makes the fold inexact.
+- **Trigger:** `pc_cover` cost is the bottleneck again and an inexact fold is accepted. **Evidence:** `do_define`, src/analysis/pc.c; HISTORY Round 279. **Status:** held for a user decision.
+
+### Smaller items
+- Variational parsing (R5), arithmetic atoms (OPAQUE; rare), `__COUNTER__`/`__FILE__`/`__LINE__` in conditions (OPAQUE): by design. Evidence: CONFIG_DESIGN 11. Status: parked.
+- A configuration-space view: S1's result is the data; the view is a client matter. Status: parked.
+- Cross-target type checking: needs the target model of CONFIG_DESIGN 7.3. Status: parked.
+
+## Project index and rename (docs/B5_DESIGN.md, section 18)
+
+| What | Why parked | Status |
+|---|---|---|
+| `didChangeWatchedFiles` | The stat sweep covers the same events (E7); it would only make detection faster. | parked |
+| Macro references across TUs | Q1; needs a macro identity. | parked |
+| Listing invocation sites of macros whose body uses a function (Q7) | Needs a record format bump (the invocation's spelling per event) and a rename policy for macro sites. Rename refuses (R7). ROADMAP Track D "macro-aware project index and refactoring". | parked |
+| A macro that names a function but is never invoked (R4/R7 gap) | No record event exists; needs the macro-body identifier spellings in the record (same format bump as Q7). Documented limitation. | parked |
+| A macro-aware rename policy | What to edit at a macro site (argument, body, neither) is undecided; rename refuses. | parked |
+| Declarations formed by a macro in the project index | `cindex_symbol_event` rejects a pasted or synthesised declaration (`PROTO(zm)` making `int zm_fn(void);`), so references and call hierarchy do not list it and R7 cannot see it. A rename is still safe (the gate's re-check changes that unit's declarations and refuses; `tests/proj_test.py` rename, `zm.c`). Needs the declaration kept in the index with its expansion-site spelling. | parked |
+| Renaming through inactive `#if` groups (A3.9) | Refuses a use in a group the unit does not compile (user decision, Round 231). Editing needs per-branch preprocessing or a textual mode verified under the other branches. S4 (CONFIG_DESIGN 8) adds precondition lists and may allow it via `REALIZED` units. | parked; see S4 |
+| Shadowing detection for new headers | Needs every probed directory recorded (7.2). | parked |
+| Cross-TU type mismatch diagnostics through csum `type_dig` | Not requested; csum needs `CheckOptions.summaries` (+4% check). | parked |
+| A weak flag in `CIdxDecl` to order definitions | Only cosmetic (12.4). | parked |
+| An n-gram index for workspace/symbol | Trigger: the B5b stop rule fires. | parked |
+| Indexing unsaved buffers of open files into the store | Open units already overlay. | parked |
+| Remote or shared caches between machines | Host-endian keys (5.4). | parked |
+| `$/cancelRequest` for requests answered at once | Nothing to cancel: the protocol thread answers each before reading the next message. Deferred renames and queued code actions are cancellable (Round 234); a running fix-all is not. | parked |
+| Type hierarchy | D7. | parked |
+| A stat-validated hash cache for `PqFiles` | A query reads and hashes each file it places entries in; `PQ_MAX_ENTRIES` bounds the files, the page cache makes a repeat cheap. Needs the record's own stat. Trigger: references p95 above its limit (3.3 ms measured). (Round 232 F8) | parked |
+| Releasing a file's text after its last edit is written | The peak is the sum of the files a result lies in, bounded by the entry cap. (Round 232 F8) | parked |
+
+## Call hierarchy and hints (docs/B4_DESIGN.md, section 15)
+- GNU nested functions: their calls are attributed to the outer function.
+- Hints for calls whose callee is in a `#define` body (H1).
+- Type and chain hints, and the type hierarchy (D1).
+- Cross-TU callers and callees, and the workspace beyond open units (B5 covers part).
+- Call hierarchy items for sites with no caller (`_Static_assert` at file level).
+- Trigger for all: asked for. Status: parked.
+
+## Completion and scopes (docs/B3_DESIGN.md, section 9)
+- Member completion after `.`/`->`: the data exists, but it is a different request context (the expression's type, not the scope).
+- Tag completion after `struct`/`union`/`enum`, label completion after `goto`, keywords: the cursor context, not scope data.
+- Signature help through an expression callee (`(*fp)(`, `a[i](`).
+- Blocks written inside a macro argument (`WITH_LOCK(m, { int x; ... })`): scope extents are presentation points, so such a block is `[invocation, +1)` and completion inside it does not offer `x`. Fix: spellings where both braces are spelled outside `#define` bodies (~15 lines). Not needed for the common `FOREACH(..) {` form.
+- Trigger for all: asked for. Status: parked.
+
+## Fix-its (docs/C_DESIGN.md, 12.3 and 4.2)
+| What | Why parked |
+|---|---|
+| Caret-block fix-it line | The caret block is not gcc-identical yet |
+| Unused-variable deletion | gcc has none; removing a declaration can remove side effects, and a gate cannot see intent |
+| Macro trailing `;` and do-while wrap | Rewrites macro bodies; belongs with C6's macro edits |
+| Missing header guard | Must invent a name; style-dependent |
+| Multi-pass `--diff` | Needs simulated passes through overlays; one pass is enough to review |
+| Fix-its on `-D` (virtual) or system files | Decided against: no source to edit |
+
+## Older, outside the sections above
+Items parked in prose elsewhere (A4_DESIGN.md around lines 297 and 306, B2_DESIGN.md 441, C_DESIGN.md 534 and 1066, B4_DESIGN.md 468 and 675, HISTORY.md 174, B5_DESIGN.md 826, 1082 and 1457) are not migrated yet; grep `parked` in docs/ for them.
+
+## Guard-of-header preconditions (docs/CONFIG_DESIGN.md section 6, S4)
+- **What:** offering `defined(GUARD)` ("skip that header") as a precondition when the header includes a system header.
+- **Why parked:** the fold replays system headers from the real run, so what a later include of the same header would define when the first is skipped is not modelled; the list was wrong for 14 of libuv's 54 refusals (Round 280). `explain_fixed` never offers it.
+- **Trigger:** the fold reads a system header again for a guard-skipped re-include (or `sysbelow` proves the header safe).
+- **Evidence:** `explain_fixed`, src/analysis/pc.c; `bench/tools/s4_falsify.py`; HISTORY Round 280.
+- **Status:** parked.
+
+## Precondition list in the code action, and in the CLI rename refusal (S4)
+- **Why parked:** the list is in the project rename refusal and in hover; the code action and `cereal query rename=` (single unit, no fold kept) still refuse without one.
+- **Trigger:** asked for, or a client shows refusals only through the code action.
+- **Evidence:** `c_rename_explain` (src/c/crename.c) is the one function either would call.
+- **Status:** parked.

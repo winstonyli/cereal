@@ -1218,13 +1218,7 @@ mask (4.1) with it.
 
 ## 15. Parked
 
-- GNU nested functions: their calls are attributed to the outer function.
-- `workspace/didChangeConfiguration` (Q5 option 3).
-- Hints for calls whose callee is in a `#define` body (H1).
-- Type and chain hints, and the type hierarchy (D1).
-- Cross-TU callers and callees, and the workspace beyond open units (B5).
-- Call hierarchy items for sites with no caller (`_Static_assert` at file
-  level).
+Moved to ../PARKED.md (call hierarchy and hints).
 
 ## 16. Review log
 
