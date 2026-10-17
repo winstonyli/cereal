@@ -5315,3 +5315,9 @@ cube's last variable (exact; no measurable gain). `pc_constrain` is cached (256 
 and `pc_preconditions` constrain the same group twice (5.6% of instructions). `pc_monotone` conjoins only the next
 lower threshold per atom (exact, 2%). Negative: building the family constraint before ANDing f (small intermediates
 first) was 1% slower; reverted. Left: `pc_constrain` is 30% (the ANDs of f with the family axes), `pc_holds` 7%.
+Round 278, continued: per-unit check of the cap: 60 LuaJIT 2.1 units, `--cover 8`, 4k+4 against 64 paths: 4459 against
+4390 overlay words in all, and 56 units differ in text (tie-breaks); the corpus cover counts (pc_enable) are identical.
+`bdd_restrict` (new, one memoized walk): `pc_preconditions` restricts the group's condition to the host's values of the
+atoms the valuation calls fixed before the family constraint is ANDed in, so the constraint (30% of the cost) sees a
+smaller f and touches fewer axes. lj_state.c 3.58 to 2.94 G instructions; its overlay text is unchanged; rank-1 oracle
+0 bad; pc_enable `--cover` identical; suite 2205 passed.

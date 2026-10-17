@@ -80,6 +80,13 @@ static uint32_t atom_weight(const PcAtom *a)
          : a->derived ? 0 : 1;
 }
 
+static int fixed_val(void *ctx, uint32_t var)
+{
+    const Q *q = ctx;
+    const PcAtom *a = pc_atom_at(q->cx, var);
+    return a && q->v->fixed(q->v->ctx, a) ? vstate(q->cx, q->v, var) : -1;
+}
+
 /* Taking value b for var: the added cost, and the "deviated" flag the child
  * starts with (it carries over only inside one macro). */
 static void step(Q *q, uint32_t var, int dev, int b, Bdd child, uint32_t *add,
@@ -500,6 +507,8 @@ size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
     size_t i, n = 0;
     if (cx->m.over)
         return 0;
+    if (v->fixed)               /* atoms that cannot flip are what the host has */
+        f = bdd_restrict(&cx->m, f, fixed_val, &q);
     g = pc_constrain(cx, f);
     if (cx->m.over || g == BDD_FALSE)
         return 0;

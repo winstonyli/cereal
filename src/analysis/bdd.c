@@ -172,6 +172,41 @@ uint32_t bdd_scratch_begin(BddScratch *s, size_t n)
     return s->gen;
 }
 
+typedef struct Restrict {
+    BddMgr *m;
+    int (*val)(void *ctx, uint32_t v);
+    void *ctx;
+    uint32_t gen;
+} Restrict;
+
+static Bdd restrict_rec(Restrict *r, Bdd f)
+{
+    BddScratch *w = &r->m->walk;
+    BddNode nd;
+    int v;
+    Bdd res;
+    if (f < 2)
+        return f;
+    if (w->tag[f] == r->gen)
+        return w->val[f];
+    nd = r->m->nodes.data[f];
+    v = r->val(r->ctx, nd.var);
+    res = v >= 0 ? restrict_rec(r, v ? nd.hi : nd.lo)
+                 : mk(r->m, nd.var, restrict_rec(r, nd.lo), restrict_rec(r, nd.hi));
+    w->tag[f] = r->gen;
+    w->val[f] = res;
+    return res;
+}
+
+Bdd bdd_restrict(BddMgr *m, Bdd f, int (*val)(void *ctx, uint32_t v), void *ctx)
+{
+    Restrict r = {m, val, ctx, 0};
+    if (f < 2)
+        return f;
+    r.gen = bdd_scratch_begin(&m->walk, m->nodes.len);
+    return restrict_rec(&r, f);
+}
+
 void bdd_vars(BddMgr *m, Bdd f, BddVars *out)
 {
     VEC(Bdd) st = {0};

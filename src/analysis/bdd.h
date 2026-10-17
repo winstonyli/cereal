@@ -57,6 +57,8 @@ bool bdd_eval(const BddMgr *m, Bdd f, const bool *assign);
 /* The same, with the value of variable v given by val(ctx, v). */
 bool bdd_eval_fn(const BddMgr *m, Bdd f, bool (*val)(void *ctx, uint32_t v),
                  void *ctx);
+/* f with each variable v set to val(ctx, v) when that is 0 or 1 (-1: left free). */
+Bdd bdd_restrict(BddMgr *m, Bdd f, int (*val)(void *ctx, uint32_t v), void *ctx);
 size_t bdd_size(const BddMgr *m);              /* nodes in the manager */
 size_t bdd_count(BddMgr *m, Bdd f);       /* nodes reachable from f */
 
