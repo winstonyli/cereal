@@ -5115,3 +5115,22 @@ is read from `__BYTE_ORDER__`. `__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__` is no
 (4) `pc_preconditions` drops an alternative whose unmet requirements include all those of a cheaper one
 (`std = c11; defined(USE_X)` after `defined(USE_X)`); the next distinct cubes take their place.
 Corpora: rank-1 0 bad everywhere. Suite 2201 passed.
+
+Round 264: bare linux/unix, enable, cover, capability.
+(1) `linux`/`unix` are now family rows (os linux-ish, and mode gnu: they are not defined under `-std=c99`),
+via a second axis per row (`axis2/must2/never2`); the other OS macros (`_AIX`, `__sun`, ...) are
+`OTHER_OS` rows defined only by the "other" os leaf, so an overlay can set them. zstd rank-1: 691 ok, 158
+too large, 0 bad. (2) S2 library: `pc_enable` (pcq.h) turns a cube into command-line words (`-DX=v`, `-UX`,
+`-std=`; cereal reads c99/c11/c17 and gnu99/11/17), `pc_enable_group` takes the first of the three cheapest
+cubes that an overlay can do (no target, env, opaque, unknown or residual requirement, and no macro the
+unit defines itself: a test before the definition is a guard or default, and `-DX` would change which
+code is read; `ZSTD_DEPS_COMMON` is such a block guard that `guard_covers_file` missed). `pc_cover` is a
+greedy set cover of those overlays over the groups that are off, exact and enable-able (at most max,
+ties by first candidate). Dump words `enable`, `cover`; fixture `tests/pc/enable`. Oracle
+`bench/pc_enable.py [--cover]` re-runs cereal with the words and checks the preprocessor takes the group.
+Corpora: enable 0 still off (libuv 263/1 unverified, uvloop 7/1, rest active); cover 0 failed
+(lua: 2,000+ claims held; lupa 2136 groups by 8 overlays, uvloop 5718 by 8; zstd 125 by 8). Merging cubes
+into fewer overlays is not done. (3) `initialize` advertises `experimental["cereal/configExplain"]`; 30
+session goldens gained the key. Parked: the (file, hash) fold cache. The fold is 33-57 ms on the largest
+corpus units, and its key needs the hash of every included file, known only after preprocessing; a hit
+would save the fold alone (a lint of uvloop/loop.c takes ~130 ms without the fold). Suite 2202 passed.

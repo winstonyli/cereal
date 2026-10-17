@@ -293,6 +293,10 @@ static PcCube make_cube(Q *q, const CubeLits *c)
              env = false, residual = false;
         PcClass cls = PC_CFG;
         Ident *id = NULL;
+        int defv = -1, axis = -1, lf = -1;
+        intmax_t lo = 0, hi = INTMAX_MAX;
+        bool ge_pos = false;
+        uint32_t ruled = 0;
         for (i = 0; i < c->n; i++)       /* a leaf that holds says the rest */
             if (pc_var_owner(q->cx, c->var[i]) == owners[j] &&
                 pc_atom_at(q->cx, c->var[i])->kind == PA_LEAF && c->val[i])
@@ -309,6 +313,20 @@ static PcCube make_cube(Q *q, const CubeLits *c)
             id = a->id;
             residual |= a->kind == PA_LEAF && c->val[i] && pc_leaf_residual(a);
             derived[j] = a->derived;
+            if (a->kind == PA_DEF)
+                defv = c->val[i];
+            else if (a->kind == PA_GE && c->val[i]) {
+                lo = a->c > lo ? a->c : lo;
+                ge_pos = true;
+            } else if (a->kind == PA_GE && a->c < hi)
+                hi = a->c;
+            else if (a->kind == PA_LEAF) {
+                axis = pc_leaf_axis(a);
+                if (c->val[i])
+                    lf = (int)a->c;
+                else
+                    ruled |= 1u << a->c;
+            }
             vs = vstate(q->cx, q->v, c->var[i]);
             if (vs < 0)
                 unknown = true;
@@ -327,6 +345,25 @@ static PcCube make_cube(Q *q, const CubeLits *c)
                        : cls == PC_LANG ? PQ_LANG : PQ_CONFIG;
         r.reqs[j].status = unmet ? PQ_UNMET : unknown ? PQ_UNKNOWN : PQ_MET;
         r.reqs[j].id = id;
+        r.reqs[j].word = NULL;
+        r.reqs[j].axis = axis;
+        for (i = 0; axis >= 0 && lf < 0 && i < (uint32_t)pc_axis_size(axis); i++)
+            if (!(ruled & (1u << i)))
+                lf = (int)i;
+        r.reqs[j].leaf = lf;
+        if (unmet && cls == PC_CFG && !text && !env && id) {
+            StrBuf w = {0};
+            if (defv == 0 || (defv < 0 && !ge_pos))
+                sb_printf(&w, "-U%s", id->str);
+            else if (lo > 0)
+                sb_printf(&w, "-D%s=%jd", id->str, lo);
+            else if (hi <= 1)
+                sb_printf(&w, "-D%s=%jd", id->str, hi - 1);
+            else
+                sb_printf(&w, "-D%s", id->str);
+            r.reqs[j].word = xstrdup(sb_cstr(&w));
+            sb_free(&w);
+        }
         r.reqs[j].residual = residual;
         r.residual |= unmet && residual;
         if (unmet && cls == PC_TARGET)
@@ -342,6 +379,7 @@ static PcCube make_cube(Q *q, const CubeLits *c)
         if ((r.target || r.lang) && derived[j] &&
             r.reqs[j].status == PQ_UNMET) {
             free((void *)r.reqs[j].clause);
+            free(r.reqs[j].word);
             continue;
         }
         r.reqs[k++] = r.reqs[j];
@@ -355,10 +393,42 @@ static PcCube make_cube(Q *q, const CubeLits *c)
 void pc_cube_free(PcCube *c)
 {
     uint32_t i;
-    for (i = 0; i < c->n; i++)
+    for (i = 0; i < c->n; i++) {
         free((void *)c->reqs[i].clause);
+        free(c->reqs[i].word);
+    }
     free(c->reqs);
     memset(c, 0, sizeof *c);
+}
+
+bool pc_enable(PcCtx *cx, const PcCube *c, const PcValuation *v, StrBuf *sb)
+{
+    uint32_t i;
+    int std = -1, mode = -1;
+    for (i = 0; i < c->n; i++) {
+        const PcReq *q = &c->reqs[i];
+        if (q->status == PQ_MET)
+            continue;
+        if (q->status == PQ_UNKNOWN || q->residual ||
+            (q->kind != PQ_CONFIG && q->kind != PQ_LANG))
+            return false;
+        if (q->kind == PQ_CONFIG) {
+            if (!q->word)
+                return false;
+            sb_printf(sb, "%s%s", sb->len ? " " : "", q->word);
+        } else if (q->axis == pc_axis_by_name("std")) {
+            std = q->leaf;
+        } else {
+            mode = q->leaf;
+        }
+    }
+    if (std >= 0 || mode >= 0) {
+        const char *w = pc_std_word(cx, v, std, mode);
+        if (!w)
+            return false;
+        sb_printf(sb, "%s%s", sb->len ? " " : "", w);
+    }
+    return true;
 }
 
 char *pc_cube_render(const PcCube *c, bool only_unmet)

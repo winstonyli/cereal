@@ -81,11 +81,35 @@ void pc_explain_free(PcExplain *e);
 /* Where the unit defines the macro a requirement is about ("the unit defines
  * `X` at f:3", or that it guards a header); false: nowhere to say. */
 bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb);
+/* The command-line words that turn a group on in this unit: the first of the
+ * three cheapest cubes that an overlay can do (pc_enable of pcq.h, and no
+ * guard of a header, which would change which files are read); false: none. */
+bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb);
 /* Markdown, for a hover. */
 void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb);
 
+/* A small set of overlays such that every group that is off on the host and
+ * exact, satisfiable and enable-able holds under one of them, greedily (at most
+ * max): the candidates are the groups' own enable overlays, in group order; each
+ * round takes the one covering most uncovered groups, the first on a tie. */
+typedef struct PcCoverItem {
+    char *words;            /* the overlay, as for pc_enable */
+    size_t *groups;         /* indices into the unit's groups it turns on */
+    size_t n;
+} PcCoverItem;
+
+typedef struct PcCover {
+    PcCoverItem *items;
+    size_t n;
+    size_t eligible;        /* groups off on the host that an overlay can turn on */
+    size_t covered;
+} PcCover;
+
+void pc_cover(PcUnit *u, size_t max, PcCover *out);
+void pc_cover_free(PcCover *c);
+
 enum { PCD_SIZE = 1, PCD_ORACLE = 2, PCD_SKIPPED = 4, PCD_WHY = 8,
-    PCD_CHECK = 16 };
+    PCD_CHECK = 16, PCD_ENABLE = 32, PCD_COVER = 64 };
 /* One "pc:" line per group, then totals, on f (CEREAL_PCDUMP, tests).
  * PCD_SIZE adds BDD sizes and the table size, which depend on the variable
  * order; PCD_ORACLE compares each group's value under the host valuation

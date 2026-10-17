@@ -525,6 +525,11 @@ Windows-only or macOS-only group has an unmet `target` requirement, hence
 ("unmet: target = apple") is the deliverable. S4's rule is set on the
 explanation, not on rename edits (8).
 
+Implemented so far (Round 264): `enable` (one group to command-line words) and `cover` (greedy, no merges
+of cubes yet), both oracle-checked by re-running the preprocessor (`bench/pc_enable.py`). An overlay never
+sets a macro the unit defines itself (a guard, or a default tested before its `#define`) or a target, env,
+opaque or unknown requirement; those groups are not enable-able, and `cover` leaves them out.
+
 ## 7. Consumers
 
 ### 7.1 Language server

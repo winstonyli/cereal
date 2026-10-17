@@ -67,7 +67,9 @@ static int pc_hook_flags(void)
            (strstr(e, "oracle") ? PCD_ORACLE : 0) |
            (strstr(e, "skipped") ? PCD_SKIPPED : 0) |
            (strstr(e, "why") ? PCD_WHY : 0) |
-           (strstr(e, "check") ? PCD_CHECK : 0);
+           (strstr(e, "check") ? PCD_CHECK : 0) |
+           (strstr(e, "enable") ? PCD_ENABLE : 0) |
+           (strstr(e, "cover") ? PCD_COVER : 0);
 }
 
 static double now_ms(void)

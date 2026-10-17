@@ -27,6 +27,10 @@ typedef struct PcReq {
     PcReqStatus status;
     Ident *id;              /* the macro it is about, if it is about one */
     bool residual;          /* it asks for a leaf the table has no name for */
+    char *word;             /* config: the command-line word that sets it
+                             * (-DX=3, -UX), owned by the cube */
+    int axis, leaf;         /* language: the family axis and the leaf asked for
+                             * (-1: only ruled leaves out) */
 } PcReq;
 
 typedef struct PcCube {
@@ -54,6 +58,12 @@ bool pc_exact(PcCtx *cx, Bdd f);
 size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
                         PcCube *out);
 void pc_cube_free(PcCube *c);
+/* The command-line words (-DX=3 -UY -std=c11, space separated, appended to
+ * sb) that make every unmet requirement of the cube hold on top of the unit's
+ * own flags, whose present state is v.  False: the cube needs more than an
+ * overlay (a target, environment or opaque change, an unknown, a standard
+ * cereal does not read); sb is then unspecified. */
+bool pc_enable(PcCtx *cx, const PcCube *c, const PcValuation *v, StrBuf *sb);
 /* "defined(X) && X >= 3 [met]; ..." */
 char *pc_cube_render(const PcCube *c, bool only_unmet);
 /* The macros (and opaque texts) of f's support on which v1 and v2 differ and

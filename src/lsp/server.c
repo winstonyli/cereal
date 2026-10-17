@@ -1361,6 +1361,11 @@ static void initialize(const JsonValue *id, const JsonValue *params)
     json_end_object(&w);
     json_key(&w, "inactiveRegionsProvider"); /* clangd extension */
     json_bool(&w, true);
+    json_key(&w, "experimental");
+    json_begin_object(&w);
+    json_key(&w, "cereal/configExplain");
+    json_bool(&w, true);
+    json_end_object(&w);
     json_end_object(&w);
     json_key(&w, "serverInfo");
     json_begin_object(&w);

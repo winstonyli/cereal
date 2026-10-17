@@ -2,6 +2,7 @@
  * target), the language standard and its mode (the language field), and
  * their macros. */
 #include "pcfam.h"
+#include "pcq.h"
 
 #include <string.h>
 
@@ -39,6 +40,10 @@ typedef struct Row {
     unsigned has;           /* leaves of vaxis with a known value */
     intmax_t val[MAXLEAF];
     intmax_t range;         /* its value is below this (a version digit), or 0 */
+    /* a second axis that must agree: the macro is defined when a leaf of must
+     * and a leaf of must2 both hold, and not when one of never or never2 does */
+    int axis2;
+    unsigned must2, never2;
 } Row;
 
 #define LINUXISH (B(L_LINUX) | B(L_ANDROID))
@@ -47,27 +52,46 @@ typedef struct Row {
 #define ALL 31u
 
 /* defined or not, by the leaves of one axis; no value */
-#define FLAG(n, ax, must, never) {n, ax, must, never, AX_OS, 0u, {0}, 0}
+#define FLAG(n, ax, must, never) {n, ax, must, never, AX_OS, 0u, {0}, 0, AX_OS, 0u, 0u}
 /* defined by gcc and clang, with the same value everywhere */
 #define GNU_CONST(n, v) \
-    {n, AX_CC, GNUISH, B(C_MSVC), AX_CC, ALL, {v, v, v, v, v}, 0}
+    {n, AX_CC, GNUISH, B(C_MSVC), AX_CC, ALL, {v, v, v, v, v}, 0, AX_OS, 0u, 0u}
 /* defined by gcc and clang, valued by the data model */
 #define GNU_DM(n, lp64, ilp32, llp64) \
-    {n, AX_CC, GNUISH, B(C_MSVC), AX_DM, 7u, {lp64, ilp32, llp64}, 0}
+    {n, AX_CC, GNUISH, B(C_MSVC), AX_DM, 7u, {lp64, ilp32, llp64}, 0, AX_OS, 0u, 0u}
 /* defined by gcc and clang (not clang-cl), with a known value under clang
  * alone; rng: a digit of a version number */
 #define GNU_CLANG(n, v, rng) \
     {n, AX_CC, B(C_GCC) | B(C_CLANG), B(C_MSVC) | B(C_CLANGCL), AX_CC, \
-     B(C_CLANG), {0, v}, rng}
+     B(C_CLANG), {0, v}, rng, AX_OS, 0u, 0u}
 /* defined by clang and clang-cl, a digit of the version number */
 #define CLANG_DIGIT(n, rng) \
-    {n, AX_CC, CLANGISH, B(C_GCC) | B(C_MSVC), AX_OS, 0u, {0}, rng}
+    {n, AX_CC, CLANGISH, B(C_GCC) | B(C_MSVC), AX_OS, 0u, {0}, rng, AX_OS, 0u, 0u}
 /* defined by gcc and clang, valued by the byte order */
-#define GNU_END(n)     {n, AX_CC, GNUISH, B(C_MSVC), AX_END, 3u, {1234, 4321}, 0}
+#define GNU_END(n)     {n, AX_CC, GNUISH, B(C_MSVC), AX_END, 3u, {1234, 4321}, 0, AX_OS, 0u, 0u}
+/* defined by some systems of the "other" leaf and by none of the named ones */
+#define OTHER_OS(n) FLAG(n, AX_OS, 0u, LINUXISH | B(L_WINDOWS) | B(L_APPLE))
 #define I64 9223372036854775807
 #define I32 2147483647
 
 static const Row rows[] = {
+    /* the other operating systems: none of the named ones defines them */
+    OTHER_OS("_AIX"),
+    OTHER_OS("__MVS__"),
+    OTHER_OS("__sun"),
+    OTHER_OS("__sun__"),
+    OTHER_OS("__FreeBSD__"),
+    OTHER_OS("__NetBSD__"),
+    OTHER_OS("__OpenBSD__"),
+    OTHER_OS("__DragonFly__"),
+    OTHER_OS("__OS400__"),
+    OTHER_OS("__QNX__"),
+    OTHER_OS("__hpux"),
+    /* `linux` and `unix` are extensions: Linux, and not ISO mode */
+    {"linux", AX_OS, LINUXISH, B(L_WINDOWS) | B(L_APPLE), AX_OS, 0u, {0}, 0,
+     AX_MODE, B(M_GNU), B(M_ISO)},
+    {"unix", AX_OS, LINUXISH, B(L_WINDOWS) | B(L_APPLE), AX_OS, 0u, {0}, 0,
+     AX_MODE, B(M_GNU), B(M_ISO)},
     FLAG("__linux__", AX_OS, LINUXISH, B(L_WINDOWS) | B(L_APPLE)),
     FLAG("__linux", AX_OS, LINUXISH, B(L_WINDOWS) | B(L_APPLE)),
     FLAG("__gnu_linux__", AX_OS, LINUXISH, B(L_WINDOWS) | B(L_APPLE)),
@@ -95,7 +119,7 @@ static const Row rows[] = {
      * too, which the table leaves out); ISO mode sets __STRICT_ANSI__ */
     {"__STDC_VERSION__", AX_STD, B(S_C99) | B(S_C11) | B(S_C17) | B(S_C23),
      B(S_C89), AX_STD, B(S_C99) | B(S_C11) | B(S_C17) | B(S_C23),
-     {0, 199901, 201112, 201710, 202311}, 0},
+     {0, 199901, 201112, 201710, 202311}, 0, AX_OS, 0u, 0u},
     FLAG("__STRICT_ANSI__", AX_MODE, B(M_ISO), B(M_GNU)),
     /* the feature-test macros: clang has them all, MSVC has none of these
      * (gcc has them from 5, 10 or 14 on, so it stays free) */
@@ -164,6 +188,53 @@ static int axis_of(const PcAtom *at)
         if (!strcmp(at->text, axis_name[a]))
             return a;
     return AX_OS;
+}
+
+int pc_axis_by_name(const char *name)
+{
+    int a;
+    for (a = 0; a < NAX; a++)
+        if (!strcmp(name, axis_name[a]))
+            return a;
+    return -1;
+}
+
+int pc_axis_size(int axis)
+{
+    return axis_n[axis];
+}
+
+static Bdd leaf(PcCtx *cx, int axis, int i);
+
+const char *pc_std_word(PcCtx *cx, const PcValuation *v, int std, int mode)
+{
+    static const char *const words[2][5] = {
+        {NULL, "-std=gnu99", "-std=gnu11", "-std=gnu17", NULL},
+        {NULL, "-std=c99", "-std=c11", "-std=c17", NULL}};
+    int i;
+    for (i = 0; std < 0 && i < axis_n[AX_STD]; i++)
+        if (pc_holds(cx, leaf(cx, AX_STD, i), v))
+            std = i;
+    for (i = 0; mode < 0 && i < axis_n[AX_MODE]; i++)
+        if (pc_holds(cx, leaf(cx, AX_MODE, i), v))
+            mode = i;
+    if (std < 0 || mode < 0)
+        return NULL;
+    return words[mode == M_ISO][std];
+}
+
+bool pc_std_parse(const char *word, int *std, int *mode)
+{
+    static const char *const names[] = {"-std=gnu99", "-std=gnu11", "-std=gnu17",
+                                        "-std=c99", "-std=c11", "-std=c17"};
+    int i;
+    for (i = 0; i < 6; i++)
+        if (!strcmp(word, names[i])) {
+            *std = i % 3 + 1;
+            *mode = i / 3 ? M_ISO : M_GNU;
+            return true;
+        }
+    return false;
 }
 
 const char *pc_leaf_name(const PcAtom *at)
@@ -248,6 +319,9 @@ Bdd pc_family(PcCtx *cx, Bdd f)
             touched[axis_of(at)] = true;
         else if (at && at->id && (row = row_of(at->id->str)))
             touched[row->axis] = true;
+        if (at && at->id && (row = row_of(at->id->str)) &&
+            (row->must2 || row->never2))
+            touched[row->axis2] = true;
     }
     if (touched[AX_DM])         /* the data model is tied to the OS */
         touched[AX_OS] = true;
@@ -302,13 +376,26 @@ Bdd pc_family(PcCtx *cx, Bdd f)
             continue;
         d = pc_atom(cx, PA_DEF, at->id, 0, NULL);
         for (l = 0; l < axis_n[row->axis]; l++) {
-            if (row->must & B(l))
-                g = bdd_and(m, g, bdd_or(m, bdd_not(m, leaf(cx, row->axis, l)),
-                                         d));
+            if (row->must & B(l)) {
+                if (row->must2) {       /* defined if the other axis agrees */
+                    for (l2 = 0; l2 < axis_n[row->axis2]; l2++)
+                        if (row->must2 & B(l2))
+                            g = bdd_and(m, g, bdd_or(m, bdd_or(m,
+                                bdd_not(m, leaf(cx, row->axis, l)),
+                                bdd_not(m, leaf(cx, row->axis2, l2))), d));
+                } else {
+                    g = bdd_and(m, g, bdd_or(m, bdd_not(m, leaf(cx, row->axis, l)),
+                                             d));
+                }
+            }
             if (row->never & B(l))
                 g = bdd_and(m, g, bdd_or(m, bdd_not(m, leaf(cx, row->axis, l)),
                                          bdd_not(m, d)));
         }
+        for (l = 0; l < axis_n[row->axis2] && row->never2; l++)
+            if (row->never2 & B(l))
+                g = bdd_and(m, g, bdd_or(m, bdd_not(m, leaf(cx, row->axis2, l)),
+                                         bdd_not(m, d)));
     }
     vec_free(&vs);
     return g;

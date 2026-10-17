@@ -11,6 +11,8 @@
 
 #include "pcexpr.h"
 
+struct PcValuation;
+
 /* macro name is determined (wholly or partly) by a leaf */
 bool pc_fam_macro(const char *name);
 /* The macro's value is always below this (a digit of a version number such as
@@ -24,6 +26,16 @@ PcClass pc_axis_class(const char *axis);
 /* the leaf stands for all that the table does not name ("other"): no answer
  * to "what must change" */
 bool pc_leaf_residual(const PcAtom *at);
+/* the number of leaves of the axis */
+int pc_axis_size(int axis);
+/* the axis index of the named axis ("std", "mode", ...) */
+int pc_axis_by_name(const char *name);
+/* The -std= word for standard leaf std and mode leaf mode of the language
+ * axes (-1: the one v has); NULL when cereal does not read that standard. */
+const char *pc_std_word(PcCtx *cx, const struct PcValuation *v, int std, int mode);
+/* the leaves a -std= word stands for (the inverse of pc_std_word); false:
+ * not a word of that table */
+bool pc_std_parse(const char *word, int *std, int *mode);
 /* "os = linux" */
 const char *pc_leaf_name(const PcAtom *at);
 /* the axis of a leaf, to index per-axis state */

@@ -3,6 +3,7 @@
 #include "pcq.h"
 #include "pcfam.h"
 
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -769,6 +770,12 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
             if (c > 0)
                 fprintf(out, "pc:   check BAD: rank 1 differs from enumeration\n");
         }
+        if ((flags & PCD_ENABLE) && host == 0 && sat == 1) {
+            StrBuf w = {0};
+            fprintf(out, "pc:   enable %s\n",
+                    pc_enable_group(u, g->pc, &w) ? sb_cstr(&w) : "none");
+            sb_free(&w);
+        }
         if ((flags & PCD_WHY) && host == 0 && sat == 1) {
             PcCube cubes[3];
             size_t nc = pc_preconditions(&u->cx, g->pc, &hv, 3, cubes), k;
@@ -780,6 +787,28 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
                 pc_cube_free(&cubes[k]);
             }
         }
+    }
+    if (flags & PCD_COVER) {
+        PcCover cv;
+        size_t k, m;
+        pc_cover(u, 8, &cv);
+        for (k = 0; k < cv.n; k++) {
+            fprintf(out, "pc: cover[%zu] %s ::", k + 1, cv.items[k].words);
+            for (m = 0; m < cv.items[k].n; m++) {
+                const PcGroup *g = &u->groups.data[cv.items[k].groups[m]];
+                const SkDirective *d =
+                    &((Skeleton *)g->file->skel)->dirs.data[g->dir];
+                uint32_t line, col;
+                const char *base = strrchr(g->file->name, '/');
+                srcmgr_linecol(g->file, d->kw_loc, &line, &col);
+                fprintf(out, " %s:%u:%s", base ? base + 1 : g->file->name, line,
+                        kind_name(d->kind));
+            }
+            fputc('\n', out);
+        }
+        fprintf(out, "pc: cover total eligible=%zu covered=%zu overlays=%zu\n",
+                cv.eligible, cv.covered, cv.n);
+        pc_cover_free(&cv);
     }
     fprintf(out, "pc: total groups=%zu files=%zu sys=%zu unresolved=%zu "
             "computed=%zu over=%d", u->groups.len, u->files, u->sys,
@@ -940,15 +969,204 @@ void pc_explain_free(PcExplain *e)
  * is on its value before the unit), the label of the requirement.  A macro
  * that guards the header defining it is said to skip that header: asking for
  * it keeps that header's own definitions out. */
+static bool is_guard(const PcUnit *u, const PcReq *q)
+{
+    const Macro *m = q->id ? mt_cur(u->an->pp->mt, q->id) : NULL;
+    const Skeleton *sk = m && !m->predefined && m->file ? m->file->skel : NULL;
+    return sk && sk->guard_define == q->id && sk->guard_covers_file;
+}
+
+/* ---- cover ------------------------------------------------------------- */
+
+#define MAXOV 16
+
+/* the host valuation with an overlay's words applied */
+typedef struct OvVal {
+    PcUnit *u;
+    struct {
+        const char *name;
+        bool def;
+        intmax_t val;
+    } mac[MAXOV];
+    int n, std, mode;
+} OvVal;
+
+static bool ov_get(void *ctx, const PcAtom *at, bool *known)
+{
+    OvVal *o = ctx;
+    int i;
+    if (at->kind == PA_LEAF && (o->std >= 0 || o->mode >= 0)) {
+        int ax = pc_leaf_axis(at);
+        int want = ax == pc_axis_by_name("std") ? o->std
+                 : ax == pc_axis_by_name("mode") ? o->mode : -1;
+        if (want >= 0) {
+            *known = true;
+            return at->c == (unsigned)want;
+        }
+    }
+    if ((at->kind == PA_DEF || at->kind == PA_GE) && at->id)
+        for (i = 0; i < o->n; i++)
+            if (!strcmp(o->mac[i].name, at->id->str)) {
+                *known = true;
+                return at->kind == PA_DEF ? o->mac[i].def
+                     : o->mac[i].def && o->mac[i].val >= at->c;
+            }
+    return host_atom(o->u, at, known);
+}
+
+/* words: an owned copy, which the overlay's names point into */
+static void ov_parse(OvVal *o, char *words)
+{
+    char *w, *save = NULL;
+    o->n = 0;
+    o->std = o->mode = -1;
+    for (w = strtok_r(words, " ", &save); w; w = strtok_r(NULL, " ", &save)) {
+        if (!strncmp(w, "-std=", 5)) {
+            pc_std_parse(w, &o->std, &o->mode);
+        } else if ((w[1] == 'D' || w[1] == 'U') && o->n < MAXOV) {
+            char *eq = strchr(w + 2, '=');
+            if (eq)
+                *eq = 0;
+            o->mac[o->n].name = w + 2;
+            o->mac[o->n].def = w[1] == 'D';
+            o->mac[o->n].val = eq ? strtoimax(eq + 1, NULL, 10) : 1;
+            o->n++;
+        }
+    }
+}
+
+void pc_cover(PcUnit *u, size_t max, PcCover *out)
+{
+    VEC(char *) cand = {0};
+    VEC(size_t) elig = {0};
+    uint64_t **cov;
+    size_t i, c, round, words;
+    bool *done;
+    memset(out, 0, sizeof *out);
+    for (i = 0; i < u->groups.len; i++) {
+        const PcGroup *g = &u->groups.data[i];
+        PcValuation hv = {u, host_get};
+        StrBuf w = {0};
+        if (pc_holds(&u->cx, g->pc, &hv) || pc_sat(&u->cx, g->pc) != 1 ||
+            !pc_exact(&u->cx, g->pc)) {
+            sb_free(&w);
+            continue;
+        }
+        if (pc_enable_group(u, g->pc, &w)) {
+            for (c = 0; c < cand.len && strcmp(cand.data[c], sb_cstr(&w)); c++)
+                ;
+            if (c == cand.len)
+                vec_push(&cand, xstrdup(sb_cstr(&w)));
+            vec_push(&elig, i);
+        }
+        sb_free(&w);
+    }
+    out->eligible = elig.len;
+    words = (elig.len + 63) / 64;
+    cov = xcalloc(cand.len ? cand.len : 1, sizeof *cov);
+    for (c = 0; c < cand.len; c++) {        /* what each overlay turns on */
+        char *copy = xstrdup(cand.data[c]);
+        OvVal o;
+        o.u = u;
+        ov_parse(&o, copy);
+        cov[c] = xcalloc(words ? words : 1, sizeof **cov);
+        for (i = 0; i < elig.len; i++) {
+            PcValuation ov = {&o, ov_get};
+            if (pc_holds(&u->cx, u->groups.data[elig.data[i]].pc, &ov))
+                cov[c][i / 64] |= (uint64_t)1 << (i % 64);
+        }
+        free(copy);
+    }
+    done = xcalloc(elig.len ? elig.len : 1, sizeof *done);
+    out->items = xcalloc(max ? max : 1, sizeof *out->items);
+    for (round = 0; round < max; round++) {
+        size_t best = 0, bestc = 0, gain;
+        for (c = 0; c < cand.len; c++) {
+            gain = 0;
+            for (i = 0; i < elig.len; i++)
+                gain += !done[i] && (cov[c][i / 64] >> (i % 64) & 1);
+            if (gain > best) {
+                best = gain;
+                bestc = c;
+            }
+        }
+        if (!best)
+            break;
+        {
+            PcCoverItem *it = &out->items[out->n++];
+            it->words = xstrdup(cand.data[bestc]);
+            it->groups = xmalloc(best * sizeof *it->groups);
+            for (i = 0; i < elig.len; i++)
+                if (!done[i] && (cov[bestc][i / 64] >> (i % 64) & 1)) {
+                    done[i] = true;
+                    it->groups[it->n++] = elig.data[i];
+                }
+            out->covered += it->n;
+        }
+    }
+    for (c = 0; c < cand.len; c++) {
+        free(cov[c]);
+        free(cand.data[c]);
+    }
+    free(cov);
+    free(done);
+    vec_free(&cand);
+    vec_free(&elig);
+}
+
+void pc_cover_free(PcCover *c)
+{
+    size_t i;
+    for (i = 0; i < c->n; i++) {
+        free(c->items[i].words);
+        free(c->items[i].groups);
+    }
+    free(c->items);
+    memset(c, 0, sizeof *c);
+}
+
+/* The unit defines the macro itself: a test before that definition is a guard
+ * or a default, and an overlay would change what the unit reads or defines. */
+static bool unit_defines(const PcUnit *u, const PcReq *q)
+{
+    const Macro *m = q->id ? mt_cur(u->an->pp->mt, q->id) : NULL;
+    return m && !m->predefined && m->file;
+}
+
+/* no overlay for a macro the unit defines (a guard changes which files are read) */
+static bool unit_enable(PcUnit *u, const PcCube *c, const PcValuation *v,
+                        StrBuf *sb)
+{
+    uint32_t i;
+    for (i = 0; i < c->n; i++)
+        if (c->reqs[i].status != PQ_MET && unit_defines(u, &c->reqs[i]))
+            return false;
+    return pc_enable(&u->cx, c, v, sb);
+}
+
+bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb)
+{
+    PcValuation hv = {u, host_get};
+    PcCube cubes[3];
+    size_t n = pc_preconditions(&u->cx, pc, &hv, 3, cubes), k;
+    bool ok = false;
+    for (k = 0; k < n; k++) {
+        if (!ok) {
+            sb->len = 0;
+            ok = unit_enable(u, &cubes[k], &hv, sb);
+        }
+        pc_cube_free(&cubes[k]);
+    }
+    return ok;
+}
+
 bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb)
 {
     const Macro *m = q->id ? mt_cur(u->an->pp->mt, q->id) : NULL;
-    const Skeleton *sk;
     uint32_t line, col;
     if (!m || m->predefined || !m->file)
         return false;
-    sk = m->file->skel;
-    if (sk && sk->guard_define == q->id && sk->guard_covers_file) {
+    if (is_guard(u, q)) {
         sb_printf(sb, "the guard of %s: it makes the unit skip that header",
                   m->file->path);
         return true;

@@ -16,6 +16,7 @@
   "definitionProvider",
   "documentHighlightProvider",
   "documentSymbolProvider",
+  "experimental",
   "foldingRangeProvider",
   "hoverProvider",
   "inactiveRegionsProvider",

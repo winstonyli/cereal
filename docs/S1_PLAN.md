@@ -130,7 +130,7 @@ remains is feature tests and compiler arithmetic, which S1d's family values make
 the solver-guided overlay draws (need S1d's solver). The trace is per-Analysis and works under
 `-fparallel=on`; the LSP keeps the fold (Round 262).*
 
-**S1d, queries and the family table.** *(Status: S1d-1 (Round 257) and a first cut of S1d-2 (Round 259) and S1d-3 (Round 260) and S1d-4 (Round 261, language axes `std`/`mode`) done: OS/compiler/data-model leaves with target-weighted costs, integer-valued family members with versions, `HAS` atoms, the rank-1 gate against enumeration (0 of ~56,000 corpus groups differ). `via` is a label only (Round 262). **Parked:** `EMPTY` (an empty `#if X` is OPAQUE, which is sound; low value). `enable`/`cover` belong to S2. Byte order is the `endian` axis (Round 263). Remaining: bare `linux`/`unix`, the overlay-flippable bit, separate phases 2a/2b.)* `sat`, `why_off` (phases 1, 2a, 2b, typed
+**S1d, queries and the family table.** *(Status: S1d-1 (Round 257) and a first cut of S1d-2 (Round 259) and S1d-3 (Round 260) and S1d-4 (Round 261, language axes `std`/`mode`) done: OS/compiler/data-model leaves with target-weighted costs, integer-valued family members with versions, `HAS` atoms, the rank-1 gate against enumeration (0 of ~56,000 corpus groups differ). `via` is a label only (Round 262). **Parked:** `EMPTY` (an empty `#if X` is OPAQUE, which is sound; low value). `enable`/`cover` (library, dump words, oracle `bench/pc_enable.py`) are in as of Round 264; virtual entries and `cereal.index.configs` are the rest of S2. Byte order is the `endian` axis (Round 263). Bare `linux`/`unix` done (Round 264). Remaining: the overlay-flippable bit, separate phases 2a/2b.)* `sat`, `why_off` (phases 1, 2a, 2b, typed
 `Requirement{clause,kind,status,source,via}` per 3.8), `diff`, ranks to K=3. The
 family table with OS and compiler leaves, the overlay-flippable bit, cross-axis
 clauses, the language block (std rows with derived `__STDC_VERSION__`/`linux`),
@@ -139,7 +139,7 @@ clauses, the language block (std rows with derived `__STDC_VERSION__`/`linux`),
 brute-force path enumerator kept in the test as the independent reference, on
 the fixtures and on the optional corpora.
 
-**S1e, surfaces.** *(Status: done in Round 262: hover on conditional directives and skipped text, and `cereal/configExplain`, with the fold kept in the Snapshot and goldens in `tests/lsp/pcexplain.json`. Not done: hover on `#define` names in skipped groups beyond the group note, and the (file, hash) cache across revisions: the fold is redone per snapshot.)* Hover on `#if` directives, on `#define`s, and on inactive
+**S1e, surfaces.** *(Status: done in Round 262: hover on conditional directives and skipped text, and `cereal/configExplain`, with the fold kept in the Snapshot and goldens in `tests/lsp/pcexplain.json`. Not done: hover on `#define` names in skipped groups beyond the group note, and the (file, hash) cache across revisions: parked in Round 264, since the fold is 33-57 ms and its key needs every included file's hash, known only after preprocessing; `initialize` advertises `experimental["cereal/configExplain"]`.)* Hover on `#if` directives, on `#define`s, and on inactive
 declarations (needs the textual `inactive_use` scan and a group lookup, since
 inactive text has no DECL events); `cereal/configExplain`. The fold runs per
 open document revision and is cached by (file, content hash); a document served

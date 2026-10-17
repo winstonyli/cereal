@@ -21,3 +21,14 @@ int f;                  /* target and language */
 #if __STDC_VERSION__ >= 199901L && defined(USE_X)
 int g;                  /* config only */
 #endif
+#if defined(linux) && defined(unix)
+int h;                  /* holds: the extensions, in gnu mode on Linux */
+#endif
+#if defined(linux) && defined(__STRICT_ANSI__)
+int i;                  /* never: ISO mode has no `linux` */
+#endif
+#ifdef unix
+int j;                  /* holds */
+#elif defined(_WIN32)
+int k;                  /* skipped */
+#endif

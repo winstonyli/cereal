@@ -14,6 +14,12 @@ pc:   why[2] target=2 cost=0 :: target os = windows [unmet]; target cc = clang-c
 pc:   why[3] target=2 cost=0 :: target os = windows [unmet]; target cc = msvc [unmet]; language std = c23 [unmet]
 pc: lang.c:21 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & !std=c99 & !std=c11 & !std=c17 & std=c23 & defined(USE_X) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & !std=c99 & !std=c11 & std=c17 & defined(USE_X) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & !std=c99 & std=c11 & defined(USE_X) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & std=c99 & defined(USE_X) | defined(__STDC_VERSION__) & __STDC_VERSION__>=199901 & defined(USE_X)
 pc:   why[1] target=0 cost=1 :: defined(USE_X) [unmet]
-pc: total groups=7 files=1 sys=0 unresolved=0 computed=0 over=0
-pc: check rank1 ok=7 bad=0 skipped=0
-pc: oracle exact-untainted ok=7 bad=0, exact-tainted ok=0 bad=0, opaque-untainted ok=0 bad=0, opaque-tainted ok=0 bad=0, undecided=0 exact-undecided=0
+pc: lang.c:24 if sat=1 host=1 exact=1 taint=0 oracle=ok :: defined(linux) & defined(unix)
+pc: lang.c:27 if sat=0 host=0 exact=1 taint=0 oracle=ok :: defined(__STRICT_ANSI__) & defined(linux)
+pc: lang.c:30 ifdef sat=1 host=1 exact=1 taint=0 oracle=ok :: defined(unix)
+pc: lang.c:32 elif sat=1 host=0 exact=1 taint=0 oracle=ok :: !defined(unix) & defined(_WIN32)
+pc:   why[1] target=1 cost=0 :: target os = other [unmet]
+pc:   why[2] target=1 cost=0 :: target os = windows [unmet]
+pc: total groups=11 files=1 sys=0 unresolved=0 computed=0 over=0
+pc: check rank1 ok=10 bad=0 skipped=0
+pc: oracle exact-untainted ok=11 bad=0, exact-tainted ok=0 bad=0, opaque-untainted ok=0 bad=0, opaque-tainted ok=0 bad=0, undecided=0 exact-undecided=0
