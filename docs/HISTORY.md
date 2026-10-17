@@ -5242,3 +5242,15 @@ next 136 +1,717). Cost: a full index is 3-8x slower on these small projects (the
 the virtual jobs), seconds in absolute terms; the cache grows 36-70%. Recommended on-value 0.5 (as the design
 proposed); the default stays 0 until the S2 gate (wsym p95 and builder p50 not regressed with configs on) is
 measured, which this round did not do.
+
+Round 274: realizability of cover overlays, negative result. Hypothesis: the 25-34% of overlays that give PARTIAL
+virtual units are platform-identity macros, so classing every `__`-prefixed macro outside the family table as
+`PC_TARGET` (so `enable` skips it) would filter them. Tried in `pc_atom`: suite and both oracles stayed green
+once family-table macros were excluded, but lua54 still gave 39 of 106 overlays PARTIAL (37%, was 34%). Bisecting
+lapi.c's first PARTIAL overlay: the cause is `-DLUA_BUILD_AS_DLL` (selects `__declspec(dllexport)`, 674 errors on
+its own); no static name rule finds it (it is a project macro whose value is MSVC syntax). Reverted. Measured by a
+throwaway driver (deleted). The usable signal is the result itself: a virtual unit whose manifest is PARTIAL.
+Proposal, not built: treat a PARTIAL virtual unit as dropped (names not merged, budget passed to the next sidecar
+line); costs one wasted job per bad overlay, no heuristics. Also: rename already refuses names that occur in an
+inactive `#if` group of a user file (`crename.c inactive_use`), so a gate over virtual units adds nothing; the
+real feature is relaxing that refusal where the group is covered by a fresh virtual unit (design item, CONFIG_DESIGN 6).
