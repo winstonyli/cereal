@@ -89,6 +89,8 @@ static void step(Q *q, uint32_t var, int dev, int b, Bdd child, uint32_t *add,
     int vs = vstate(q->cx, q->v, var);
     int d = dev || (is_cost_atom(q->cx, var) && vs >= 0 && vs != b);
     *add = d && !dev ? atom_weight(pc_atom_at(q->cx, var)) : 0;
+    if (vs >= 0 && vs != b && q->v->fixed && q->v->fixed(q->v->ctx, pc_atom_at(q->cx, var)))
+        *add = INF;
     *ndev = child > BDD_TRUE &&
             pc_var_owner(q->cx, q->m->nodes.data[child].var) ==
                 pc_var_owner(q->cx, var)
@@ -114,7 +116,7 @@ static uint32_t dp(Q *q, Bdd n, int dev)
         int nd2;
         step(q, nd->var, dev, b, c, &add, &nd2);
         r = dp(q, c, nd2);
-        if (r < INF && add + r < best)
+        if (r < INF && add < INF && add + r < best)
             best = add + r;
     }
     q->memo->tag[n * 2 + (uint32_t)dev] = q->gen;
@@ -551,7 +553,7 @@ size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
                 continue;
             step(&q, nd->var, s.dev, b, c, &add, &nd2);
             r = dp(&q, c, nd2);
-            if (r >= INF)
+            if (r >= INF || add >= INF)
                 continue;
             l = xmalloc(sizeof *l);
             l->var = nd->var;
@@ -855,7 +857,7 @@ int pcq_selftest(void)
         }
         {
             SelfV v2 = v;
-            PcValuation val2 = {&v2, self_get};
+            PcValuation val2 = {&v2, self_get, NULL};
             const char **names;
             size_t nn;
             for (i = 0; i < NM; i++) {

@@ -15,6 +15,9 @@ typedef struct PcValuation {
     void *ctx;
     /* The atom's value; *known false: it is free (no pin). */
     bool (*get)(void *ctx, const PcAtom *at, bool *known);
+    /* Optional: an atom that cannot change from its value (no cube flips it, so
+     * the search never spends time on a path that needs it). */
+    bool (*fixed)(void *ctx, const PcAtom *at);
 } PcValuation;
 
 typedef enum { PQ_CONFIG, PQ_TARGET, PQ_ENV, PQ_OPAQUE, PQ_LANG } PcReqKind;

@@ -5286,3 +5286,18 @@ position match is by file path and offset, so it relies on every unit reading th
 where unsure: a file with no index entry in the covering unit counts as unread. Test `proj_test.py renamecfg`
 (h01.h gets an `#ifdef PROJ_ALT` group naming the function: refused with configs off, goes through with them on and
 renames the use in the group). Suite 2205 passed.
+
+Round 277: where the cost of `configs` goes (S2 gate follow-up).
+Index time of the 1770-unit project (wsym_bench, 3 threads): configs 0: 10.1 s; 0.001 (fold and `cover` in every real
+job, one virtual unit): 161.5 s; 0.1: 163.2 s; 0.5: 157.5 s. So the cost is the real jobs' fold plus `cover`, not the
+virtual jobs. Per unit (index-summary --cover 8, 8 parallel, 906 cpu-s in all): LuaJIT (450 units) takes about 4.7 s
+each, 74% of the total; the fold is 0.2-0.25 s of that. `pc_cover` spends its time in `pc_enable_group`: of 1121
+candidate groups of lj_state.c, 946 fail and 875 of those because the cheapest cube needs a macro the unit defines
+itself (a guard or default; `unit_enable` rejected it after the cubes were enumerated and primed). Fix: a
+`PcValuation.fixed` hook (target atoms and macros the unit defines cannot flip), which makes `dp` skip such paths, so
+the search finds only cubes `pc_enable` can use. lj_state.c: 3.0 s to 1.3 s; all units 906 to 666 cpu-s; index 157.5 s
+to 116.2 s with configs 0.5 (names 288,676, wsym p95 26.0 ms). pc_enable eligible groups: zstd 241 to 251 (cubes behind
+a cheaper rejected one are now found), lupa and uvloop unchanged. Rank-1 oracle 0 bad. Negative: growing the ite cache
+with the node table (1.30 to 1.66 s, slower); not kept. What is left in a LuaJIT unit is BDD node creation (`mk`, 40%):
+the table is 4M slots for a largest group of 2208 nodes, i.e. dead intermediate nodes (no GC), mostly from `pc_constrain`
+per group.

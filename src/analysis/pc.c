@@ -914,7 +914,7 @@ static bool host_get(void *ctx, const PcAtom *at, bool *known)
 
 void pc_dump(PcUnit *u, FILE *out, int flags)
 {
-    PcValuation hv = {u, host_get};
+    PcValuation hv = {u, host_get, NULL};
     size_t i, j, maxsize = 0;
     size_t tot[2][2][2] = {{{0}}};      /* [exact][tainted][oracle agrees] */
     size_t nunk[2] = {0, 0};            /* the host cannot value an atom: [exact] */
@@ -1090,7 +1090,7 @@ static bool group_at(const Skeleton *sk, SrcLoc loc, uint32_t *dir, bool *header
 
 bool pc_explain(PcUnit *u, SrcFile *f, SrcLoc loc, PcExplain *e)
 {
-    PcValuation hv = {u, host_get};
+    PcValuation hv = {u, host_get, NULL};
     const Skeleton *sk = f->skel;
     BddMgr *m = &u->cx.m;
     Bdd pc = BDD_FALSE, taint = BDD_FALSE;
@@ -1310,7 +1310,7 @@ static bool ov_holds_all(PcUnit *u, const char *words, const size_t *g, size_t n
     o.u = u;
     ov_parse(&o, copy);
     for (i = 0; i < n && ok; i++) {
-        PcValuation ov = {&o, ov_get};
+        PcValuation ov = {&o, ov_get, NULL};
         ok = pc_holds(&u->cx, u->groups.data[g[i]].pc, &ov);
     }
     free(copy);
@@ -1374,7 +1374,7 @@ void pc_cover(PcUnit *u, size_t max, PcCover *out)
     memset(out, 0, sizeof *out);
     for (i = 0; i < u->groups.len; i++) {
         const PcGroup *g = &u->groups.data[i];
-        PcValuation hv = {u, host_get};
+        PcValuation hv = {u, host_get, NULL};
         StrBuf w = {0};
         if (pc_holds(&u->cx, g->pc, &hv) || pc_sat(&u->cx, g->pc) != 1 ||
             !pc_exact(&u->cx, g->pc)) {
@@ -1400,7 +1400,7 @@ void pc_cover(PcUnit *u, size_t max, PcCover *out)
         ov_parse(&o, copy);
         cov[c] = xcalloc(words ? words : 1, sizeof **cov);
         for (i = 0; i < elig.len; i++) {
-            PcValuation ov = {&o, ov_get};
+            PcValuation ov = {&o, ov_get, NULL};
             if (pc_holds(&u->cx, u->groups.data[elig.data[i]].pc, &ov))
                 cov[c][i / 64] |= (uint64_t)1 << (i % 64);
         }
@@ -1480,9 +1480,17 @@ static bool unit_enable(PcUnit *u, const PcCube *c, const PcValuation *v,
     return pc_enable(&u->cx, c, v, sb);
 }
 
+/* What an overlay cannot change: the target, and a macro the unit defines itself. */
+static bool enable_fixed(void *ctx, const PcAtom *at)
+{
+    const PcUnit *u = ctx;
+    const Macro *m = at->id ? mt_cur(u->an->pp->mt, at->id) : NULL;
+    return at->cls == PC_TARGET || (m && !m->predefined && m->file);
+}
+
 bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb)
 {
-    PcValuation hv = {u, host_get};
+    PcValuation hv = {u, host_get, enable_fixed};
     PcCube cubes[3];
     size_t n = pc_preconditions(&u->cx, pc, &hv, 3, cubes), k;
     bool ok = false;
