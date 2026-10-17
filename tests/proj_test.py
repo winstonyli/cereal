@@ -813,6 +813,34 @@ def sc_configs(root, cache):
     s.stop()
 
 
+def sc_badoverlay(root, cache):
+    env = {"CEREAL_INDEX_CONFIGS": "4", "CEREAL_INDEX_MAXOVERLAYS": "8"}
+    s = Server(root, cache)
+    s.wait()
+    s.stop()
+    s = Server(root, cache, env=env)
+    clean = s.wait()["tus"]
+    s.stop()
+    shutil.rmtree(cache)
+    for d, _, fs in os.walk(root):      # a configuration the check cannot parse
+        for f in fs:
+            if f.endswith(".c"):
+                with open(os.path.join(d, f), "a") as fh:
+                    fh.write("\n#ifdef PROJ_BAD\nint = ;\n#endif\n")
+    s = Server(root, cache)
+    s.wait()
+    s.stop()
+    s = Server(root, cache, env=env)
+    st = s.wait()
+    expect(NTU < st["tus"] < clean, "overlays that do not parse are dropped", st)
+    n = st["tus"]
+    s.stop()
+    s = Server(root, cache, env=env)
+    st = s.wait()
+    expect(st["tus"] == n and st["jobsInProcess"] == 0, "restart: the same set, no job", st)
+    s.stop()
+
+
 SCEN = {k[3:]: v for k, v in globals().items() if k.startswith("sc_")}
 
 

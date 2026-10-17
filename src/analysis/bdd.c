@@ -32,7 +32,12 @@ void bdd_free(BddMgr *m)
     vec_free(&m->nodes);
     free(m->table);
     free(m->cache);
-    free(m->mark);
+    free(m->walk.tag);
+    free(m->walk.val);
+    free(m->set.tag);
+    free(m->set.val);
+    free(m->memo.tag);
+    free(m->memo.val);
     memset(m, 0, sizeof *m);
 }
 
@@ -151,40 +156,39 @@ static int cmp_u32(const void *a, const void *b)
     return x < y ? -1 : x > y;
 }
 
-/* A fresh set of marks over the nodes: mark[x] == m->stamp means x is visited.
- * No clearing per walk (a calloc of the whole table per call was a tenth of the
- * fold). */
-static uint32_t *walk_marks(BddMgr *m)
+uint32_t bdd_scratch_begin(BddScratch *s, size_t n)
 {
-    if (m->mark_cap < m->nodes.len) {
-        size_t n = m->nodes.len * 2;
-        m->mark = xrealloc(m->mark, n * sizeof *m->mark);
-        memset(m->mark + m->mark_cap, 0, (n - m->mark_cap) * sizeof *m->mark);
-        m->mark_cap = n;
+    if (s->cap < n) {
+        size_t c = n * 2;
+        s->tag = xrealloc(s->tag, c * sizeof *s->tag);
+        s->val = xrealloc(s->val, c * sizeof *s->val);
+        memset(s->tag + s->cap, 0, (c - s->cap) * sizeof *s->tag);
+        s->cap = c;
     }
-    if (++m->stamp == 0) {
-        memset(m->mark, 0, m->mark_cap * sizeof *m->mark);
-        m->stamp = 1;
+    if (++s->gen == 0) {
+        memset(s->tag, 0, s->cap * sizeof *s->tag);
+        s->gen = 1;
     }
-    return m->mark;
+    return s->gen;
 }
 
 void bdd_vars(BddMgr *m, Bdd f, BddVars *out)
 {
     VEC(Bdd) st = {0};
     BddVars all = {0};
-    uint32_t *vis;
+    uint32_t *vis, gen;
     size_t i;
     if (f < 2)
         return;
-    vis = walk_marks(m);
+    gen = bdd_scratch_begin(&m->walk, m->nodes.len);
+    vis = m->walk.tag;
     vec_push(&st, f);
     while (st.len) {
         Bdd x = vec_pop(&st);
         const BddNode *n;
-        if (x < 2 || vis[x] == m->stamp)
+        if (x < 2 || vis[x] == gen)
             continue;
-        vis[x] = m->stamp;
+        vis[x] = gen;
         n = &m->nodes.data[x];
         vec_push(&all, n->var);
         vec_push(&st, n->lo);
@@ -210,17 +214,18 @@ bool bdd_eval(const BddMgr *m, Bdd f, const bool *assign)
 size_t bdd_count(BddMgr *m, Bdd f)
 {
     VEC(Bdd) st = {0};
-    uint32_t *vis;
+    uint32_t *vis, gen;
     size_t n = 0;
     if (f < 2)
         return 0;
-    vis = walk_marks(m);
+    gen = bdd_scratch_begin(&m->walk, m->nodes.len);
+    vis = m->walk.tag;
     vec_push(&st, f);
     while (st.len) {
         Bdd x = vec_pop(&st);
-        if (x < 2 || vis[x] == m->stamp)
+        if (x < 2 || vis[x] == gen)
             continue;
-        vis[x] = m->stamp;
+        vis[x] = gen;
         n++;
         vec_push(&st, m->nodes.data[x].lo);
         vec_push(&st, m->nodes.data[x].hi);

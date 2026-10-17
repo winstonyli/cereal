@@ -65,7 +65,8 @@ typedef struct Q {
     PcCtx *cx;
     BddMgr *m;
     const PcValuation *v;
-    uint32_t *memo;         /* cost + 1 by node * 2 + deviated, 0 = unknown */
+    BddScratch *memo;       /* cost by node * 2 + deviated */
+    uint32_t gen;
 } Q;
 
 static bool is_cost_atom(PcCtx *cx, uint32_t var)
@@ -104,8 +105,8 @@ static uint32_t dp(Q *q, Bdd n, int dev)
         return INF;
     if (n == BDD_TRUE)
         return 0;
-    if (q->memo[n * 2 + (uint32_t)dev])
-        return q->memo[n * 2 + (uint32_t)dev] - 1;
+    if (q->memo->tag[n * 2 + (uint32_t)dev] == q->gen)
+        return q->memo->val[n * 2 + (uint32_t)dev];
     nd = &q->m->nodes.data[n];
     for (b = 0; b < 2; b++) {
         Bdd c = b ? nd->hi : nd->lo;
@@ -116,7 +117,8 @@ static uint32_t dp(Q *q, Bdd n, int dev)
         if (r < INF && add + r < best)
             best = add + r;
     }
-    q->memo[n * 2 + (uint32_t)dev] = best + 1;
+    q->memo->tag[n * 2 + (uint32_t)dev] = q->gen;
+    q->memo->val[n * 2 + (uint32_t)dev] = best;
     return best;
 }
 
@@ -190,7 +192,7 @@ typedef struct CubeLits {
 } CubeLits;
 
 /* every assignment extending the literals makes n true */
-static bool implied(Q *q, Bdd n, const CubeLits *c, uint8_t *ok)
+static bool implied(Q *q, Bdd n, const CubeLits *c, uint32_t *ok, uint32_t gen)
 {
     const BddNode *nd;
     uint32_t lo = 0, hi = c->n;
@@ -198,7 +200,7 @@ static bool implied(Q *q, Bdd n, const CubeLits *c, uint8_t *ok)
         return true;
     if (n == BDD_FALSE)
         return false;
-    if (ok[n])
+    if (ok[n] == gen)
         return true;
     nd = &q->m->nodes.data[n];
     while (lo < hi) {
@@ -209,12 +211,12 @@ static bool implied(Q *q, Bdd n, const CubeLits *c, uint8_t *ok)
             hi = mid;
     }
     if (lo < c->n && c->var[lo] == nd->var) {
-        if (!implied(q, c->val[lo] ? nd->hi : nd->lo, c, ok))
+        if (!implied(q, c->val[lo] ? nd->hi : nd->lo, c, ok, gen))
             return false;
-    } else if (!implied(q, nd->lo, c, ok) || !implied(q, nd->hi, c, ok)) {
+    } else if (!implied(q, nd->lo, c, ok, gen) || !implied(q, nd->hi, c, ok, gen)) {
         return false;
     }
-    ok[n] = 1;
+    ok[n] = gen;
     return true;
 }
 
@@ -223,7 +225,8 @@ static void prime(Q *q, Bdd g, CubeLits *c)
 {
     uint32_t i;
     size_t nn = bdd_size(q->m);
-    uint8_t *ok = xmalloc(nn);
+    BddScratch *set = &q->m->set;       /* tag[n] == gen: n holds under this cube */
+    uint32_t *ok = NULL, gen = 0;
     for (i = 0; i < c->n;) {
         CubeLits t = *c;
         bool drop;
@@ -235,8 +238,9 @@ static void prime(Q *q, Bdd g, CubeLits *c)
                 t.var[t.n] = c->var[k];
                 t.val[t.n++] = c->val[k];
             }
-        memset(ok, 0, nn);
-        drop = implied(q, g, &t, ok);
+        gen = bdd_scratch_begin(set, nn);
+        ok = set->tag;
+        drop = implied(q, g, &t, ok, gen);
         if (drop) {
             free(c->var);
             free(c->val);
@@ -247,7 +251,6 @@ static void prime(Q *q, Bdd g, CubeLits *c)
             i++;
         }
     }
-    free(ok);
 }
 
 /* ---- cubes to requirements ---------------------------------------------- */
@@ -485,7 +488,7 @@ static bool subsumes(const PcCube *a, const PcCube *b)
 size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
                         PcCube *out)
 {
-    Q q = {cx, &cx->m, v, NULL};
+    Q q = {cx, &cx->m, v, NULL, 0};
     Bdd g;
     Heap h = {0};
     VEC(Ranked) found = {0};
@@ -497,7 +500,8 @@ size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
     g = pc_constrain(cx, f);
     if (cx->m.over || g == BDD_FALSE)
         return 0;
-    q.memo = xcalloc(2 * bdd_size(&cx->m), sizeof(uint32_t));
+    q.memo = &cx->m.memo;
+    q.gen = bdd_scratch_begin(q.memo, 2 * bdd_size(&cx->m));
     tot = dp(&q, g, 0);
     if (tot < INF) {
         State s = {tot, 0, g, 0, NULL, seq++};
@@ -579,7 +583,6 @@ size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
     vec_free(&lits);
     vec_free(&found);
     vec_free(&h);
-    free(q.memo);
     return n;
 }
 

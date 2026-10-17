@@ -21,6 +21,16 @@ typedef struct BddCache {
     Bdd f, g, h, r;     /* f == 0 marks an empty slot: ite never memoizes it */
 } BddCache;
 
+/* Per-slot scratch that is never cleared: slot i holds a value of the current
+ * generation iff tag[i] == gen (a calloc or memset of the whole table per use was
+ * the cost of the fold and of every pc_enable). */
+typedef struct BddScratch {
+    uint32_t *tag, *val;
+    size_t cap;
+    uint32_t gen;
+} BddScratch;
+uint32_t bdd_scratch_begin(BddScratch *s, size_t n);   /* a new generation over n slots */
+
 typedef struct BddMgr {
     VEC(BddNode) nodes;
     Bdd *table;         /* open addressing, 0 = empty (terminals are not keyed) */
@@ -29,9 +39,8 @@ typedef struct BddMgr {
     size_t ccap;
     size_t cap;         /* maximum node count */
     bool over;
-    uint32_t *mark;     /* scratch for the graph walks: node -> stamp of the last walk */
-    size_t mark_cap;
-    uint32_t stamp;
+    BddScratch walk;    /* scratch for the graph walks and the queries of pcq.c */
+    BddScratch set, memo;
 } BddMgr;
 
 void bdd_init(BddMgr *m, size_t cap);

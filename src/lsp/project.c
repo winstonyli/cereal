@@ -211,6 +211,7 @@ static struct Project {
     uint64_t next_evict;
     unsigned writes;                /* manifests written since the last GC */
     size_t burst_total, burst_done, burst_failed;
+    bool bad_virtual_seen;          /* a virtual unit failed its check since the last allocation */
     Stats cnt;                      /* counters; copied to st each pass */
 } P;
 
@@ -684,6 +685,17 @@ static bool reals_settled(void)
     return true;
 }
 
+static bool units_settled(void)         /* every unit, virtual ones too */
+{
+    size_t i;
+    for (i = 0; i < P.ps.tus.len; i++) {
+        const PTu *t = P.ps.tus.data[i];
+        if (t->stale != PS_FRESH && !t->sched.next.at)
+            return false;
+    }
+    return true;
+}
+
 /* A finished job (8.3, 9): publish it by reloading the manifest it wrote. */
 static void finish(IJob *j)
 {
@@ -716,6 +728,8 @@ static void finish(IJob *j)
             reconfigure();
         } else {
             publish(tu, false);
+            if (tu->overlay && tu->man && pstate_bad_status(tu->man->status))
+                P.bad_virtual_seen = true;        /* its overlay is not a configuration */
             if (!tu->overlay && P.set.configs > 0 && reals_settled()) {
                 size_t added, dropped;          /* its sidecar names virtual units */
                 pstate_allocate(&P.ps, true, &added, &dropped);
@@ -733,6 +747,13 @@ static void finish(IJob *j)
         P.burst_done++;
         store_gen_bump(&P.store);
         after_write();
+        if (P.bad_virtual_seen && units_settled()) {  /* pick others, once: tu may be gone */
+            size_t added, dropped;
+            P.bad_virtual_seen = false;
+            pstate_allocate(&P.ps, true, &added, &dropped);
+            if (added || dropped)
+                publish(NULL, false);
+        }
     }
     group_free(&j->g);
     lsp_config_unref(j->cfg);

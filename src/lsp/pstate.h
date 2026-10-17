@@ -144,6 +144,8 @@ void pstate_set_virtual(PState *ps, double ratio, size_t per_unit);
  * every real unit is fresh (the caller says when the rest cannot become so).
  * pstate_set_config does it for fresh units.  *added, *dropped: how many units. */
 void pstate_allocate(PState *ps, bool force, size_t *added, size_t *dropped);
+/* Whether a manifest status marks a virtual unit unfit (PARTIAL, FAILED, OVER_LIMIT). */
+bool pstate_bad_status(int status);
 
 /* Looks at the files again (7.2): path NULL: every one; else that one.
  * Returns how many had a different hash.  pstate_eval then re-decides which

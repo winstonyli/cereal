@@ -685,6 +685,33 @@ static void vc_load(PState *ps, PTu *tu)
     free(text);
 }
 
+/* A virtual unit the check could not make sense of (an overlay that is not a
+ * real configuration, e.g. `-DLUA_BUILD_AS_DLL` on Linux) is not wanted: its
+ * manifest says so once it has run, and the budget goes to the next line. */
+bool pstate_bad_status(int status)
+{
+    return status == CTU_PARTIAL || status == CTU_FAILED || status == CTU_OVER_LIMIT;
+}
+
+static bool vc_bad(PState *ps, const PTu *parent, const PVc *vc, uint64_t now)
+{
+    size_t i;
+    PTu probe;
+    PMan *m;
+    bool bad;
+    for (i = 0; i < ps->tus.len; i++)
+        if (ps->tus.data[i]->overlay && ps->tus.data[i]->tukey == vc->tukey)
+            return ps->tus.data[i]->man && pstate_bad_status(ps->tus.data[i]->man->status);
+    memset(&probe, 0, sizeof probe);
+    probe.main = parent->main;
+    probe.flag_hash = vc->flag_hash;
+    probe.tukey = vc->tukey;
+    m = man_load(ps, &probe, now);
+    bad = m && pstate_bad_status(m->status);
+    man_free(ps, m);
+    return bad;
+}
+
 typedef struct Want {            /* a virtual unit that should exist */
     PTu *parent;
     const PVc *vc;
@@ -738,6 +765,8 @@ void pstate_allocate(PState *ps, bool force, size_t *added, size_t *dropped)
         vc_load(ps, reals.data[i]);
         for (k = 0; k < reals.data[i]->nvc && want.len < budget; k++) {
             Want w;
+            if (vc_bad(ps, reals.data[i], &reals.data[i]->vc[k], now))
+                continue;
             w.parent = reals.data[i];
             w.vc = &reals.data[i]->vc[k];
             w.found = false;

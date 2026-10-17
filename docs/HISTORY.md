@@ -5254,3 +5254,23 @@ Proposal, not built: treat a PARTIAL virtual unit as dropped (names not merged, 
 line); costs one wasted job per bad overlay, no heuristics. Also: rename already refuses names that occur in an
 inactive `#if` group of a user file (`crename.c inactive_use`), so a gate over virtual units adds nothing; the
 real feature is relaxing that refusal where the group is covered by a fresh virtual unit (design item, CONFIG_DESIGN 6).
+
+Round 275: PARTIAL virtual units dropped; the pc_enable scratch; the S2 gate measured.
+(1) `pstate_allocate` does not want an overlay whose manifest says PARTIAL, FAILED or OVER_LIMIT (`vc_bad`, a probe
+of the manifest if the unit is not loaded): the budget goes to the next sidecar line. A bad virtual unit that
+finishes sets a flag; once every unit is settled the scheduler allocates again (once, not per unit: a first version
+re-allocated per bad finish and republished each time). Test `proj_test.py badoverlay` (every source gets an
+`#ifdef PROJ_BAD` group that does not parse; fails with the skip disabled).
+(2) wsym_bench (1770 units) with configs 0.5 did not finish in 500 s (10 s with configs off). Cause: `pc_preconditions`
+allocated and zeroed a table of the whole BDD (about 1 MB x 4 on LuaJIT) per group (`memo`) and per literal of every
+candidate cube (`prime`'s `ok` memset); 21 s for one LuaJIT unit's cover, 90% in memset. Replaced by one `BddScratch`
+(generation-tagged slots, never cleared; `bdd.h`) that also serves the graph walks (it replaces `mark`/`stamp`). The
+The bench now finishes (below); a profile mid-run is flat BDD work.
+(3) S2 gate, 1770-unit wsym project, 3 threads, WSL, machine otherwise idle, single runs:
+| configs | index | units | names | wsym p50/p95 | references p95 |
+| 0 | 10.1 s | 1770 | 216,466 | 14.6 / 19.3 ms | 2.6 ms |
+| 0.5 | 157.5 s | 2655 | 268,316 | 18.3 / 25.9 ms | 2.7 ms |
+Builder edit-to-refresh (300 units, 100 edits 0.5 s apart, `quietMs` 100; throwaway driver): p50 configs 0.5 =
+32.1/32.8/31.6 ms against configs 0 = 32.4/30.6/40.7 ms (two earlier runs read about 180 ms for both settings, right
+after other heavy jobs on the machine; discarded). So the builder is not regressed. wsym p95 rises 34% (more names;
+limit 100 ms). The cost of the on-value is index time (15x on this project), not latency. Default stays 0.
