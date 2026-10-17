@@ -5129,8 +5129,15 @@ greedy set cover of those overlays over the groups that are off, exact and enabl
 ties by first candidate). Dump words `enable`, `cover`; fixture `tests/pc/enable`. Oracle
 `bench/pc_enable.py [--cover]` re-runs cereal with the words and checks the preprocessor takes the group.
 Corpora: enable 0 still off (libuv 263/1 unverified, uvloop 7/1, rest active); cover 0 failed
-(lua: 2,000+ claims held; lupa 2136 groups by 8 overlays, uvloop 5718 by 8; zstd 125 by 8). Merging cubes
-into fewer overlays is not done. (3) `initialize` advertises `experimental["cereal/configExplain"]`; 30
+(lua: 2,000+ claims held; lupa 2136 groups by 8 overlays, uvloop 5718 by 8; zstd 125 by 8). Merging: see Round 265. (3) `initialize` advertises `experimental["cereal/configExplain"]`; 30
 session goldens gained the key. Parked: the (file, hash) fold cache. The fold is 33-57 ms on the largest
 corpus units, and its key needs the hash of every included file, known only after preprocessing; a hit
 would save the fold alone (a lint of uvloop/loop.c takes ~130 ms without the fold). Suite 2202 passed.
+
+Round 265: `cover` merges overlays.
+`pc_cover` now runs the greedy pick to exhaustion, then folds overlays that agree (no macro or `-std`
+set two ways, at most 16 words) into one while every group of both still holds under the union
+(`merge_items`), sorts by size and keeps the first max (8). Corpora (oracle `pc_enable.py --cover`, 0
+failed): lua53 819 of 819 eligible groups by 71 overlays (was 634 by 272), lua54 772 by 70, lua55 951 by
+69, lua52 722 by 119, libuv 774 by 231, zstd 241 of 241 by 8, lupa 2234 and uvloop 5825 by 8. Fixture
+`enable` gains a clashing `-DFEATURE_B` case. Suite 2202 passed.

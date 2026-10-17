@@ -11,9 +11,10 @@ pc:   enable none
 pc: enable.c:17 ifndef sat=1 host=1 exact=1 taint=0 oracle=ok :: !defined(GUARD_X)
 pc: enable.c:21 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(__STDC_VERSION__) & !__STDC_VERSION__>=201112 & !std=c99 & !std=c11 & !std=c17 & !std=c23 | defined(__STDC_VERSION__) & !__STDC_VERSION__>=201112 & std=c99 | defined(__STDC_VERSION__) & __STDC_VERSION__>=201112 & std=c99
 pc:   enable -std=gnu99
-pc: cover[1] -DFEATURE_A -DFEATURE_B=2 :: enable.c:2:ifdef enable.c:5:if
-pc: cover[2] -DFEATURE_C :: enable.c:8:ifdef
-pc: cover[3] -std=gnu99 :: enable.c:21:if
-pc: cover total eligible=4 covered=4 overlays=3
-pc: total groups=7 files=1 sys=0 unresolved=0 computed=0 over=0
-pc: oracle exact-untainted ok=7 bad=0, exact-tainted ok=0 bad=0, opaque-untainted ok=0 bad=0, opaque-tainted ok=0 bad=0, undecided=0 exact-undecided=0
+pc: enable.c:24 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(FEATURE_B) & !FEATURE_B>=0
+pc:   enable -DFEATURE_B=-1
+pc: cover[1] -DFEATURE_A -DFEATURE_B=2 -DFEATURE_C -std=gnu99 :: enable.c:2:ifdef enable.c:5:if enable.c:8:ifdef enable.c:21:if
+pc: cover[2] -DFEATURE_B=-1 :: enable.c:24:if
+pc: cover total eligible=5 covered=5 overlays=2
+pc: total groups=8 files=1 sys=0 unresolved=0 computed=0 over=0
+pc: oracle exact-untainted ok=8 bad=0, exact-tainted ok=0 bad=0, opaque-untainted ok=0 bad=0, opaque-tainted ok=0 bad=0, undecided=0 exact-undecided=0

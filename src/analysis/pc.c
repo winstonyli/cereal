@@ -1035,6 +1035,133 @@ static void ov_parse(OvVal *o, char *words)
     }
 }
 
+/* the macro (or "-std") a word is about */
+static size_t word_key(const char *w, char *buf, size_t cap)
+{
+    size_t n = 0;
+    if (!strncmp(w, "-std=", 5)) {
+        strcpy(buf, "-std");
+        return 4;
+    }
+    for (w += 2; *w && *w != '=' && *w != ' ' && n + 1 < cap; w++)
+        buf[n++] = *w;
+    buf[n] = 0;
+    return n;
+}
+
+/* The words of a and b together, or NULL when they set one name two ways. */
+static char *ov_merge(const char *a, const char *b)
+{
+    StrBuf sb = {0};
+    char *copy = xstrdup(b), *w, *save = NULL, *r;
+    size_t nwords = 0;
+    const char *q;
+    sb_puts(&sb, a);
+    for (w = strtok_r(copy, " ", &save); w; w = strtok_r(NULL, " ", &save)) {
+        char key[96], other[96];
+        const char *p;
+        bool same = false, clash = false;
+        word_key(w, key, sizeof key);
+        for (p = a; *p;) {
+            size_t len = strcspn(p, " ");
+            char one[96];
+            if (len && len < sizeof one) {
+                memcpy(one, p, len);
+                one[len] = 0;
+                word_key(one, other, sizeof other);
+                if (!strcmp(key, other)) {
+                    if (!strcmp(one, w))
+                        same = true;
+                    else
+                        clash = true;
+                }
+            }
+            p += len + (p[len] == ' ');
+        }
+        if (clash)
+            break;
+        if (!same) {
+            sb_putc(&sb, ' ');
+            sb_puts(&sb, w);
+        }
+    }
+    if (w) {                        /* a clash */
+        sb_free(&sb);
+        free(copy);
+        return NULL;
+    }
+    for (q = sb_cstr(&sb); *q; q++)
+        nwords += *q == ' ';
+    r = nwords + 1 > MAXOV ? NULL : xstrdup(sb_cstr(&sb));
+    sb_free(&sb);
+    free(copy);
+    return r;
+}
+
+/* every group of the list holds under the overlay */
+static bool ov_holds_all(PcUnit *u, const char *words, const size_t *g, size_t n)
+{
+    char *copy = xstrdup(words);
+    OvVal o;
+    size_t i;
+    bool ok = true;
+    o.u = u;
+    ov_parse(&o, copy);
+    for (i = 0; i < n && ok; i++) {
+        PcValuation ov = {&o, ov_get};
+        ok = pc_holds(&u->cx, u->groups.data[g[i]].pc, &ov);
+    }
+    free(copy);
+    return ok;
+}
+
+static void item_free(PcCoverItem *it)
+{
+    free(it->words);
+    free(it->groups);
+}
+
+static int item_cmp(const void *a, const void *b)
+{
+    const PcCoverItem *x = a, *y = b;
+    return x->n < y->n ? 1 : x->n > y->n ? -1 : strcmp(x->words, y->words);
+}
+
+/* Fold overlays that agree into one while every group of both still holds. */
+static void merge_items(PcUnit *u, PcCover *c)
+{
+    size_t i, j, k;
+    for (i = 0; i < c->n; i++)
+        for (j = i + 1; j < c->n;) {
+            char *w = ov_merge(c->items[i].words, c->items[j].words);
+            size_t *g;
+            bool ok = false;
+            if (w) {
+                g = xmalloc((c->items[i].n + c->items[j].n) * sizeof *g);
+                memcpy(g, c->items[i].groups, c->items[i].n * sizeof *g);
+                memcpy(g + c->items[i].n, c->items[j].groups,
+                       c->items[j].n * sizeof *g);
+                ok = ov_holds_all(u, w, g, c->items[i].n + c->items[j].n);
+                if (ok) {
+                    k = c->items[i].n + c->items[j].n;
+                    item_free(&c->items[i]);
+                    item_free(&c->items[j]);
+                    c->items[i].words = w;
+                    c->items[i].groups = g;
+                    c->items[i].n = k;
+                    memmove(&c->items[j], &c->items[j + 1],
+                            (c->n - j - 1) * sizeof *c->items);
+                    c->n--;
+                    j = i + 1;      /* the merged overlay meets the rest again */
+                    continue;
+                }
+                free(g);
+                free(w);
+            }
+            j++;
+        }
+}
+
 void pc_cover(PcUnit *u, size_t max, PcCover *out)
 {
     VEC(char *) cand = {0};
@@ -1078,8 +1205,8 @@ void pc_cover(PcUnit *u, size_t max, PcCover *out)
         free(copy);
     }
     done = xcalloc(elig.len ? elig.len : 1, sizeof *done);
-    out->items = xcalloc(max ? max : 1, sizeof *out->items);
-    for (round = 0; round < max; round++) {
+    out->items = xcalloc(cand.len ? cand.len : 1, sizeof *out->items);
+    for (round = 0; round < cand.len; round++) {
         size_t best = 0, bestc = 0, gain;
         for (c = 0; c < cand.len; c++) {
             gain = 0;
@@ -1101,9 +1228,16 @@ void pc_cover(PcUnit *u, size_t max, PcCover *out)
                     done[i] = true;
                     it->groups[it->n++] = elig.data[i];
                 }
-            out->covered += it->n;
         }
     }
+    merge_items(u, out);
+    qsort(out->items, out->n, sizeof *out->items, item_cmp);
+    for (round = max; round < out->n; round++)
+        item_free(&out->items[round]);
+    if (out->n > max)
+        out->n = max;
+    for (round = 0; round < out->n; round++)
+        out->covered += out->items[round].n;
     for (c = 0; c < cand.len; c++) {
         free(cov[c]);
         free(cand.data[c]);

@@ -21,3 +21,6 @@ int g;
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ < 201112L
 int s;                  /* -std=gnu99 */
 #endif
+#if defined(FEATURE_B) && FEATURE_B < 0
+int n;                  /* -DFEATURE_B=-1: clashes with -DFEATURE_B=2, so a second overlay */
+#endif
