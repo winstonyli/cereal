@@ -66,6 +66,10 @@ void config_options_in(LspConfig *c, const char *path, Arena *a, Options *o,
  * its file): a file compiled under two flag sets has two. */
 void config_options_entry(LspConfig *c, size_t entry, Arena *a, Options *o,
                           StrVec *files);
+/* ... with the words of an overlay (-D/-U/-std, blank separated; NULL: none)
+ * after the entry's own: the options of a virtual unit (docs/CONFIG_DESIGN.md 3.7). */
+void config_options_overlay(LspConfig *c, size_t entry, const char *overlay, Arena *a,
+                            Options *o, StrVec *files);
 void config_options_free(Options *o);
 
 /* ---- positions (pos.c) ----------------------------------------------- */

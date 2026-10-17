@@ -85,6 +85,16 @@ void analysis_keep_pc(Analysis *a)
     pc_trace_attach(a);
 }
 
+void analysis_attach_pc(Analysis *a, PP *pp)
+{
+    a->pp = pp;
+    a->arena = pp->arena;
+    a->diag = pp->diag;
+    a->sm = pp->sm;
+    a->in = pp->in;
+    analysis_keep_pc(a);
+}
+
 PcUnit *analysis_take_pc(Analysis *a)
 {
     PcUnit *u = a->pcu;
@@ -118,6 +128,12 @@ static void pc_finish(Analysis *a)
         a->pcu = u;
     else
         pc_unit_destroy(u);
+}
+
+PcUnit *analysis_fold(Analysis *a)
+{
+    pc_finish(a);
+    return analysis_take_pc(a);
 }
 
 void analysis_finish(Analysis *a)

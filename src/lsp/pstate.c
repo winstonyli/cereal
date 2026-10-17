@@ -26,7 +26,7 @@ static uint64_t mtime_of(const struct stat *st)
 
 const char *pstate_why(PStale s)
 {
-    static const char *const names[] = {"fresh", "new", "file", "miss", "lost"};
+    static const char *const names[] = {"fresh", "new", "file", "miss", "lost", "cover"};
     return names[s];
 }
 
@@ -434,6 +434,17 @@ static void eval_tu(PState *ps, PTu *tu, uint64_t now, size_t *became)
                 why = m->miss[i].spelled;
             }
     }
+    if (s == PS_FRESH && ps->vmax && !tu->overlay) {
+        if (!tu->cover_known) {         /* the sidecar goes first, so a manifest implies it */
+            char *p = crec_path(ps->store->dir, "ovl", tu->tukey, "ovl");
+            struct stat st;
+            tu->covered = stat(p, &st) == 0;
+            tu->cover_known = true;
+            free(p);
+        }
+        if (!tu->covered)
+            s = PS_COVER;
+    }
     if (s != PS_FRESH && tu->stale == PS_FRESH) {
         tu->stale_ns = now;
         if (became)
@@ -487,10 +498,13 @@ void pstate_init(PState *ps, Store *store, uint64_t build_id)
     arena_init(&ps->a);
 }
 
+static void vc_free(PTu *tu);
+
 static void ptu_free(PState *ps, PTu *tu)
 {
     uint32_t i;
     man_free(ps, tu->man);
+    vc_free(tu);
     for (i = 0; i < tu->ndirs; i++)
         free(tu->dirs[i]);
     free(tu->dirs);
@@ -533,8 +547,18 @@ static int tup_cmp(const void *pa, const void *pb)
 
 static int tu_entry_cmp(const void *pa, const void *pb)
 {
-    size_t a = (*(PTu *const *)pa)->entry, b = (*(PTu *const *)pb)->entry;
-    return a < b ? -1 : a > b;
+    const PTu *a = *(PTu *const *)pa, *b = *(PTu *const *)pb;
+    if (a->entry != b->entry)
+        return a->entry < b->entry ? -1 : 1;
+    if (!!a->overlay != !!b->overlay)       /* a unit before its virtual ones */
+        return a->overlay ? 1 : -1;
+    return a->tukey < b->tukey ? -1 : a->tukey > b->tukey;
+}
+
+void pstate_set_virtual(PState *ps, double ratio, size_t per_unit)
+{
+    ps->vratio = ratio;
+    ps->vmax = ratio > 0 ? per_unit : 0;
 }
 
 void pstate_set_config(PState *ps, LspConfig *cfg,
@@ -613,8 +637,161 @@ void pstate_set_config(PState *ps, LspConfig *cfg,
     vec_free(&cands);
     settle(ps, now);
     pstate_eval(ps);
+    {
+        size_t added, dropped;
+        pstate_allocate(ps, false, &added, &dropped);
+    }
 }
 
+/* ---- virtual units ------------------------------------------------------------ */
+
+static void vc_free(PTu *tu)
+{
+    uint32_t i;
+    for (i = 0; i < tu->nvc; i++)
+        free(tu->vc[i].line);
+    free(tu->vc);
+    tu->vc = NULL;
+    tu->nvc = 0;
+    tu->vc_known = false;
+}
+
+/* The overlays in tu's sidecar (one per line, at most ps->vmax) with the keys of
+ * the units they make: computed once per load of the manifest. */
+static void vc_load(PState *ps, PTu *tu)
+{
+    char *p, *text, *line, *save = NULL;
+    size_t len;
+    if (tu->vc_known)
+        return;
+    tu->vc_known = true;
+    p = crec_path(ps->store->dir, "ovl", tu->tukey, "ovl");
+    text = read_file(p, &len);
+    free(p);
+    if (!text)
+        return;
+    tu->vc = xcalloc(ps->vmax, sizeof *tu->vc);
+    for (line = strtok_r(text, "\n", &save); line && tu->nvc < ps->vmax;
+         line = strtok_r(NULL, "\n", &save)) {
+        Options o;
+        PVc *c = &tu->vc[tu->nvc++];
+        options_init(&o);
+        config_options_overlay(ps->cfg, tu->entry, line, &o.rsp, &o, NULL);
+        c->line = xstrdup(line);
+        c->flag_hash = crec_flag_hash(&o);
+        c->tukey = crec_tukey(tu->main, c->flag_hash, ps->build_id);
+        options_free(&o);
+    }
+    free(text);
+}
+
+typedef struct Want {            /* a virtual unit that should exist */
+    PTu *parent;
+    const PVc *vc;
+    bool found;
+} Want;
+
+static int want_cmp(const void *pa, const void *pb)
+{
+    const Want *a = pa, *b = pb;
+    return a->vc->tukey < b->vc->tukey ? -1 : a->vc->tukey > b->vc->tukey;
+}
+
+static int real_main_cmp(const void *pa, const void *pb)
+{
+    const PTu *a = *(PTu *const *)pa, *b = *(PTu *const *)pb;
+    int c = strcmp(a->main, b->main);
+    if (c)
+        return c;
+    return a->tukey < b->tukey ? -1 : a->tukey > b->tukey;
+}
+
+/* The budget (ratio times the real units) goes to the real units in main-path
+ * order, each up to vmax overlays of its sidecar, so that neither the order the
+ * jobs finished in nor the compile database's decides who gets units. */
+void pstate_allocate(PState *ps, bool force, size_t *added, size_t *dropped)
+{
+    PTuVec reals = {0}, keep = {0};
+    VEC(Want) want = {0};
+    size_t i, budget;
+    bool stale = false;
+    uint64_t now = realtime_ns();
+    *added = *dropped = 0;
+    if (!ps->cfg)
+        return;
+    for (i = 0; i < ps->tus.len; i++) {
+        PTu *t = ps->tus.data[i];
+        if (!t->overlay) {
+            vec_push(&reals, t);
+            stale = stale || t->stale != PS_FRESH;
+        }
+    }
+    if (stale && !force) {      /* the answer would change as the units finish */
+        vec_free(&reals);
+        return;
+    }
+    budget = ps->vmax ? (size_t)(ps->vratio * (double)reals.len) : 0;
+    if (reals.len > 1)
+        qsort(reals.data, reals.len, sizeof *reals.data, real_main_cmp);
+    for (i = 0; i < reals.len && want.len < budget; i++) {
+        uint32_t k;
+        vc_load(ps, reals.data[i]);
+        for (k = 0; k < reals.data[i]->nvc && want.len < budget; k++) {
+            Want w;
+            w.parent = reals.data[i];
+            w.vc = &reals.data[i]->vc[k];
+            w.found = false;
+            vec_push(&want, w);
+        }
+    }
+    if (want.len > 1)
+        qsort(want.data, want.len, sizeof *want.data, want_cmp);
+    for (i = 0; i < ps->tus.len; i++) {     /* keep the real units and the wanted ones */
+        PTu *t = ps->tus.data[i];
+        Want key, *hit = NULL;
+        PVc kv;
+        if (t->overlay && want.len) {
+            kv.tukey = t->tukey;
+            key.vc = &kv;
+            hit = bsearch(&key, want.data, want.len, sizeof *want.data, want_cmp);
+        }
+        if (t->overlay && !hit) {
+            ptu_free(ps, t);
+            (*dropped)++;
+        } else {
+            if (hit)
+                hit->found = true;
+            vec_push(&keep, t);
+        }
+    }
+    for (i = 0; i < want.len; i++) {
+        PTu *t;
+        if (want.data[i].found)
+            continue;
+        t = xcalloc(1, sizeof *t);
+        t->main = want.data[i].parent->main;
+        t->entry = want.data[i].parent->entry;
+        t->flag_hash = want.data[i].vc->flag_hash;
+        t->tukey = want.data[i].vc->tukey;
+        t->parent = want.data[i].parent->tukey;
+        t->overlay = arena_strdup(&ps->a, want.data[i].vc->line);
+        t->man = man_load(ps, t, now);
+        vec_push(&keep, t);
+        (*added)++;
+    }
+    vec_free(&ps->tus);
+    ps->tus = keep;
+    if (*added || *dropped) {
+        if (ps->tus.len > 1)
+            qsort(ps->tus.data, ps->tus.len, sizeof *ps->tus.data, tu_entry_cmp);
+        settle(ps, now);
+        for (i = 0; i < ps->tus.len; i++)
+            if (ps->tus.data[i]->overlay)
+                eval_tu(ps, ps->tus.data[i], now, NULL);
+    }
+    vec_free(&want);
+    vec_free(&reals);
+}
 bool pstate_refresh(PState *ps, PTu *tu)
 {
     char *path = crec_path(ps->store->dir, "tu", tu->tukey, "tu");
@@ -636,6 +813,8 @@ bool pstate_reload(PState *ps, PTu *tu)
     PMan *m = man_load(ps, tu, now);
     man_free(ps, tu->man);
     tu->man = m;
+    tu->cover_known = false;
+    vc_free(tu);
     settle(ps, now);
     eval_tu(ps, tu, now, NULL);
     return m != NULL;

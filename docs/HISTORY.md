@@ -5207,3 +5207,21 @@ Traced: `bdd_vars` (via `pc_sat`/`pc_constrain`/`pc_monotone`/`pc_family`) sorte
 share of Round 270). Both now share a generation-stamped mark array in `BddMgr` (`walk_marks`), no clearing
 per walk. libuv unix/fs.c fold, sequential best of 6-8: 7.6 ms to 6.7 ms (-12%). Suite 2202 passed,
 rank-1 0 bad, cover 0 failed. The sort stays (callers rely on sorted variables).
+Callgrind after the fix (fs.c fold): 31.9M to 28.2M instructions (-12%). The profile is now flat: `mk` 9.7%
+self, `bdd_ite` 13%, `skel_get` 21% inclusive (real lexing of user files and fallback skeletons), `macro_state`'s
+`xcalloc` 3.4% (3,497 calls). Not worth doing: an arena for `PcMacro` (at most 3%) and a first-use variable
+order (speculative, touches every golden's atom order). The fold's cost work stops here.
+
+Round 272: virtual units (S2), the scheduler slice.
+`cereal.index.configs` (ratio, default 0) and `cereal.index.maxOverlays` (8). Child: `index-summary
+--cover N` attaches only the fold (`analysis_attach_pc`, not the checks), writes `ovl/<tukey>.ovl`
+(always, even empty, so that a manifest implies its sidecar); `--overlay WORDS` (with `--entry`)
+indexes the entry with the words after its own flags (`config_options_overlay`; the later -D/-U/-std
+wins; the options fingerprint is sequence-sensitive, so the tukey differs). Scheduler: `PTu` gets
+`overlay`/`parent`; `PS_COVER` (fresh, no sidecar, configs on) re-runs a real unit once;
+`pstate_allocate` reconciles the virtual units from the sidecars. First version allocated in
+completion order and a restart re-ran 2 of 6 virtual units (a different set), so it now waits until
+every real unit is fresh or backing off and serves the budget in main-path order; at startup with a
+warm cache it allocates in `pstate_set_config`, zero jobs. Test: `proj_test.py configs` (budget
+respected, names added, restart without a job, off again). Suite 2203 passed. Rename ignores virtual
+units for now (see CONFIG_DESIGN 6).

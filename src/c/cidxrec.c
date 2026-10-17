@@ -11,6 +11,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "analysis/analysis.h"
+#include "analysis/pc.h"
 #include "c/csymidx.h"
 #include "c/frontend.h"
 #include "hash.h"
@@ -770,6 +772,22 @@ static void build_chunks(const FilRow *rows, size_t n, uint64_t build_id,
     }
 }
 
+/* The overlays pc_cover picks, one per line. */
+static char *cover_text(PcUnit *u, size_t max)
+{
+    PcCover cv;
+    StrBuf sb = {0};
+    char *text;
+    size_t i;
+    pc_cover(u, max, &cv);
+    for (i = 0; i < cv.n; i++)
+        sb_printf(&sb, "%s\n", cv.items[i].words);
+    pc_cover_free(&cv);
+    text = xstrdup(sb_cstr(&sb));
+    sb_free(&sb);
+    return text;
+}
+
 CRecResult crec_index(Options *o, const char *path, const CRecStatVec *cfg,
                       uint64_t build_id, const CRecLimits *lim, CRecSet *out)
 {
@@ -790,6 +808,8 @@ CRecResult crec_index(Options *o, const char *path, const CRecStatVec *cfg,
     bool ok, over;
     Sec *sec;
     CRecTu t;
+    Analysis an;
+    char *cover = NULL;
     arena_init(&ar);
     memset(&ml, 0, sizeof ml);
     ml.a = &ar;
@@ -809,14 +829,27 @@ CRecResult crec_index(Options *o, const char *path, const CRecStatVec *cfg,
     fo.cidx = &ix;
     if (fault_hit("index-crec"))
         fatal("fault injected at index-crec");
+    memset(&an, 0, sizeof an);
+    if (lim && lim->cover_max)
+        analysis_attach_pc(&an, &tu.pp);
     ok = frontend_run(&tu, path, &fo);
     over = tu.sm.over_limit;
+    if (lim && lim->cover_max) {
+        PcUnit *u = ok && !over ? analysis_fold(&an) : NULL;
+        if (u) {
+            cover = cover_text(u, lim->cover_max);
+            pc_unit_destroy(u);
+        } else {
+            analysis_discard(&an);
+        }
+    }
     if (!over && (!ok || !ix)) {
         bool cancelled = ok && lim && lim->cancel && atomic_load_u32(lim->cancel);
         cindex_free(ix);
         tu_free(&tu);
         vec_free(&ml.v);
         arena_free(&ar);
+        free(cover);
         return cancelled ? CREC_CANCELLED : CREC_UNOPENED;
     }
     memset(&b, 0, sizeof b);
@@ -944,6 +977,7 @@ CRecResult crec_index(Options *o, const char *path, const CRecStatVec *cfg,
     out->main = xstrdup(path);
     out->status = (int)t.status;
     out->tukey = crec_tukey(path, flag_hash, build_id);
+    out->cover = cover;
     vec_free(&fils);
     vec_free(&sys);
     free(rec_of);
@@ -974,6 +1008,7 @@ void crec_free(CRecSet *s)
     free(s->chunks);
     free(s->manifest.data);
     free(s->main);
+    free(s->cover);
     memset(s, 0, sizeof *s);
 }
 
@@ -993,7 +1028,8 @@ static bool put_file(const char *dir, const char *sub, uint64_t name, const char
     char *path = crec_path(dir, sub, name, ext), *slash;
     bool ok = true;
     struct stat st;
-    if (stat(path, &st) != 0 || !strcmp(ext, "tu")) {   /* a record's name is its content */
+    if (stat(path, &st) != 0 || !strcmp(ext, "tu") || !strcmp(ext, "ovl")) {
+                                            /* a record's name is its content */
         slash = strrchr(path, '/');
         *slash = 0;
         ok = dir_create_all(path, err, errn);
@@ -1013,6 +1049,14 @@ bool crec_write(const char *dir, const CRecSet *s, char *err, size_t errn)
     for (i = 0; i < s->nchunks; i++)
         if (!put_file(dir, "sys", s->chunks[i].digest, "sys", &s->chunks[i], err, errn))
             return false;
+    if (s->cover) {
+        CRecBlob b;
+        memset(&b, 0, sizeof b);
+        b.data = s->cover;
+        b.len = strlen(s->cover);
+        if (!put_file(dir, "ovl", s->tukey, "ovl", &b, err, errn))
+            return false;
+    }
     return put_file(dir, "tu", s->tukey, "tu", &s->manifest, err, errn);
 }
 

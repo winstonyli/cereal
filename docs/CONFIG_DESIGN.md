@@ -525,7 +525,24 @@ Windows-only or macOS-only group has an unmet `target` requirement, hence
 ("unmet: target = apple") is the deliverable. S4's rule is set on the
 explanation, not on rename edits (8).
 
-Implemented so far (Round 264): `enable` (one group to command-line words) and `cover` (greedy, no merges
+Implemented (Round 272): `cereal.index.configs` (a ratio, default 0 = off) and
+`cereal.index.maxOverlays` (default 8). With `configs` > 0 the index job of a real unit also folds
+its presence conditions (the fold is only in the job then: it costs 20-25% of one) and writes the
+overlays `cover` picks to a sidecar `ovl/<tukey>.ovl` (one overlay per line, before the manifest,
+so a manifest implies its sidecar; `index-summary --cover N`). A real unit that is fresh but has no
+sidecar is stale as `cover` and runs again once. When every real unit is fresh or backing off
+(or at startup, if all are fresh), `pstate_allocate` gives the budget (ratio times the real
+units) to the real units in main-path order, each up to `maxOverlays` of its sidecar, and makes
+one virtual unit per overlay: the entry's flags plus the overlay words (`index-summary --entry N
+--overlay WORDS`), its own manifest under `crec_tukey(main, flag_hash', build_id)`, scheduled after
+all real units, and dropped when its sidecar no longer names it. The sidecar is kept by GC as long
+as its real unit is live. Not done: virtual units are skipped by the rename gate (`do_scope`), so a
+rename does not check them (a name used only in an inactive group is as unprotected as before);
+the realizability classes (`PARTIAL`, `UNREALIZED`) are not computed, so every overlay `cover`
+picks (config and language kinds only) is built as if `REALIZED`; `cereal.index.configs` is read at
+startup only.
+
+Implemented earlier (Round 264): `enable` (one group to command-line words) and `cover` (greedy, no merges
 of cubes yet), both oracle-checked by re-running the preprocessor (`bench/pc_enable.py`). An overlay never
 sets a macro the unit defines itself (a guard, or a default tested before its `#define`) or a target, env,
 opaque or unknown requirement; those groups are not enable-able, and `cover` leaves them out.

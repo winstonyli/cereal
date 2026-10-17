@@ -134,6 +134,7 @@ typedef struct CRecSet {
     uint64_t tukey;              /* names the manifest */
     char *main;                  /* the unit's main file */
     int status;                  /* CTU_* */
+    char *cover;                 /* one overlay per line (pc_cover; "" if none); NULL: not asked */
 } CRecSet;
 
 /* The flag hash of a unit's options, and the name of its manifest
@@ -167,6 +168,8 @@ int crec_kind(const void *p, size_t n);
 typedef struct CRecLimits {
     size_t max_bytes;
     uint32_t *cancel;
+    size_t cover_max;            /* > 0: also fold the unit's presence conditions and
+                                  * pick at most this many overlays (CRecSet.cover) */
 } CRecLimits;
 typedef enum { CREC_DONE, CREC_CANCELLED, CREC_UNOPENED } CRecResult;
 

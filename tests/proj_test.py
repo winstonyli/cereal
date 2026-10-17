@@ -39,6 +39,8 @@ cereal/indexHold.  Prints `ok NAME` or `FAIL NAME: why`; exit 1 on any failure.
   config       a touched compdb is dropped, a changed command reindexes its unit, a
                half-written one is not taken and no manifest is removed for it
   corrupt      a damaged record is rejected online and its units are re-indexed
+  configs      cereal.index.configs: virtual units from the overlay sidecars, within the
+               budget, fresh after a restart and gone when the setting is off
 """
 import json, os, queue, shutil, subprocess, sys, tempfile, threading, time
 
@@ -785,6 +787,30 @@ def sc_takeover(root, cache):
     st = r.wait()
     expect(st["published"] >= 1 and st["fresh"] == NTU, "the new writer indexes", st)
     r.stop()
+
+
+def sc_configs(root, cache):
+    env = {"CEREAL_INDEX_CONFIGS": "0.5", "CEREAL_INDEX_MAXOVERLAYS": "2"}
+    s = Server(root, cache)
+    names = s.wait()["names"]
+    s.stop()
+    s = Server(root, cache, env=env)    # the real units are fresh: the sidecars are missing
+    st = s.wait()
+    expect(st["names"] > names, "the virtual units add names the real ones do not have", st)
+    expect(NTU < st["tus"] <= NTU + NTU // 2, "virtual units within the budget", st)
+    expect(st["fresh"] == st["tus"] and st["failed"] == 0, "all fresh", st)
+    n = st["tus"]
+    s.stop()
+    s = Server(root, cache, env=env)
+    st = s.wait()
+    expect(st["tus"] == n and st["fresh"] == n and st["jobsInProcess"] == 0,
+           "restart revalidates virtual units without a job", st)
+    s.stop()
+    s = Server(root, cache)             # off again: only the real units remain
+    st = s.wait()
+    expect(st["tus"] == NTU and st["fresh"] == NTU and st["jobsInProcess"] == 0,
+           "configs off: real units only", st)
+    s.stop()
 
 
 SCEN = {k[3:]: v for k, v in globals().items() if k.startswith("sc_")}

@@ -1762,6 +1762,8 @@ today (server.c:1053). Environment variables override them, following the
 | `quietMs` | 500 | pause after the builder goes idle (8.4) |
 | `subprocessSeconds` | 120 | child wall-time limit |
 | `renameMaxTUs` | 100 | R5 |
+| `configs` | 0 | virtual units per real unit (CONFIG_DESIGN 6); 0 = off. Turning it on re-runs each real unit once, to write its overlay sidecar |
+| `maxOverlays` | 8 | most virtual units for one real unit |
 | `paths` | all | include/exclude globs over compile DB entries, such as excluding `third_party/**` |
 
 The environment variable for each setting is `CEREAL_INDEX_<NAME>`, for

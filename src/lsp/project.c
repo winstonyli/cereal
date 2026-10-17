@@ -49,6 +49,8 @@ typedef struct Settings {
     size_t inproc_bytes;
     unsigned quiet_ms, sub_s;
     size_t rename_max;              /* R5: the most units a rename may check */
+    double configs;                 /* virtual units per real one (CONFIG_DESIGN 6); 0: none */
+    size_t max_overlays;            /* ... and at most this many for one unit */
     char *cache_dir;                /* NULL: the default (6.1) */
     VEC(char *) paths;              /* fnmatch globs, `!` excludes */
 } Settings;
@@ -107,6 +109,8 @@ static void load_settings(Settings *s, const JsonValue *params, const LspConfig 
     s->quiet_ms = (unsigned)num_setting(o, "quietMs", 500);
     s->sub_s = (unsigned)num_setting(o, "subprocessSeconds", 120);
     s->rename_max = (size_t)num_setting(o, "renameMaxTUs", 100);
+    s->configs = num_setting(o, "configs", 0);
+    s->max_overlays = (size_t)num_setting(o, "maxOverlays", 8);
     if ((e = env_setting("cacheDir")) != NULL)
         s->cache_dir = xstrdup(e);
     else if ((v = o ? json_get(o, "cacheDir") : NULL) != NULL && v->kind == JV_STR)
@@ -140,6 +144,8 @@ typedef struct IJob {
     long entry;
     uint64_t tukey;
     char *path;
+    char *overlay;                  /* a virtual unit's words (NULL: the entry itself) */
+    size_t cover;                   /* > 0: write the overlay sidecar, at most this many */
     bool sub;                       /* runs in a child */
     size_t max_bytes;
     uint32_t cancel;                /* atomic: raised by didChange, shutdown, the budget */
@@ -308,8 +314,8 @@ static char **child_env(void)
 
 static void run_child(IJob *j)
 {
-    char nbuf[24], mbuf[24], parbuf[24], tbuf[24], buf[4096];
-    char *argv[24], **env = child_env();
+    char nbuf[24], mbuf[24], parbuf[24], tbuf[24], cbuf[24], buf[4096];
+    char *argv[28], **env = child_env();
     size_t k = 0, have = 0;
     int pfd[2], status = 0;
     bool timed_out = false, stopping, owned_fault = getenv("CEREAL_FAULT_CHILD") != NULL &&
@@ -334,6 +340,15 @@ static void run_child(IJob *j)
     argv[k++] = P.store.cache;
     argv[k++] = (char *)"--entry";
     argv[k++] = nbuf;
+    if (j->overlay) {
+        argv[k++] = (char *)"--overlay";
+        argv[k++] = j->overlay;
+    }
+    if (j->cover) {
+        snprintf(cbuf, sizeof cbuf, "%zu", j->cover);
+        argv[k++] = (char *)"--cover";
+        argv[k++] = cbuf;
+    }
     argv[k++] = (char *)"--budget-mb";
     argv[k++] = mbuf;
     argv[k++] = (char *)"--parent";        /* the child ends with us or at its deadline */
@@ -452,6 +467,8 @@ static void ijob_run(void *arg)
         memset(&ij, 0, sizeof ij);
         ij.cfg = j->cfg;
         ij.entry = j->entry;
+        ij.overlay = j->overlay;
+        ij.cover_max = j->cover;
         ij.dir = P.store.dir;
         ij.build_id = P.ps.build_id;
         ij.max_bytes = j->max_bytes;
@@ -536,6 +553,8 @@ static void reclassify(void)
 
 static bool tu_before(const PTu *a, const PTu *b)
 {
+    if (!!a->overlay != !!b->overlay)       /* virtual units wait for the real ones */
+        return !a->overlay;
     if (a->sched.cls != b->sched.cls)
         return a->sched.cls < b->sched.cls;
     if (a->sched.cls == 1 && a->stale_ns != b->stale_ns)
@@ -591,6 +610,8 @@ static void submit(PTu *tu, bool sub)
     j->entry = (long)tu->entry;
     j->tukey = tu->tukey;
     j->path = xstrdup(tu->main);
+    j->overlay = tu->overlay ? xstrdup(tu->overlay) : NULL;
+    j->cover = !tu->overlay && P.set.configs > 0 ? P.set.max_overlays : 0;
     j->sub = sub;
     j->max_bytes = sub ? hard : P.set.inproc_bytes;
     group_init(&j->g);
@@ -651,6 +672,18 @@ static void reconfigure(void)
 
 static void after_write(void);
 
+/* Every real unit is fresh or waiting out a failure: nothing more to learn from them. */
+static bool reals_settled(void)
+{
+    size_t i;
+    for (i = 0; i < P.ps.tus.len; i++) {
+        const PTu *t = P.ps.tus.data[i];
+        if (!t->overlay && t->stale != PS_FRESH && !t->sched.next.at)
+            return false;
+    }
+    return true;
+}
+
 /* A finished job (8.3, 9): publish it by reloading the manifest it wrote. */
 static void finish(IJob *j)
 {
@@ -683,6 +716,12 @@ static void finish(IJob *j)
             reconfigure();
         } else {
             publish(tu, false);
+            if (!tu->overlay && P.set.configs > 0 && reals_settled()) {
+                size_t added, dropped;          /* its sidecar names virtual units */
+                pstate_allocate(&P.ps, true, &added, &dropped);
+                if (added || dropped)
+                    publish(NULL, false);
+            }
             /* The job recorded what it saw, so an include it missed cannot
              * resolve and a record it wrote cannot be unreadable now: if the
              * unit is stale for that, running it again would only repeat it. */
@@ -698,6 +737,7 @@ static void finish(IJob *j)
     group_free(&j->g);
     lsp_config_unref(j->cfg);
     free(j->path);
+    free(j->overlay);
     free(j);
 }
 
@@ -876,6 +916,7 @@ static void startup(void)
     P.have_store = true;
     P.writer = store_lock(&P.store);
     pstate_init(&P.ps, &P.store, bid);
+    pstate_set_virtual(&P.ps, s->configs, s->max_overlays);
     pstate_set_config(&P.ps, P.cfg, excluded, s);
     publish(NULL, true);
     report_rejected();
@@ -992,7 +1033,7 @@ static void publish_stats(bool idle)
         const PTu *tu = P.ps.tus.data[i];
         switch (tu->stale) {
         case PS_FRESH: s.fresh++; break;
-        case PS_NEW: s.new_++; break;
+        case PS_NEW: case PS_COVER: s.new_++; break;   /* PS_COVER: to run again */
         case PS_FILE: s.file++; break;
         case PS_MISS: s.miss++; break;
         case PS_LOST: s.lost++; break;
@@ -1192,7 +1233,10 @@ static void do_scope(ScopeReq *r)
     }
     for (i = 0; i < P.ps.tus.len; i++) {
         const PTu *tu = P.ps.tus.data[i];
-        const char *state = tu->stale != PS_FRESH ? pstate_why(tu->stale)
+        const char *state;
+        if (tu->overlay)                /* not yet part of the rename gate (CONFIG_DESIGN 6) */
+            continue;
+        state = tu->stale != PS_FRESH ? pstate_why(tu->stale)
                           : !tu->man ? "not indexed"
                           : tu->sched.job ? "being indexed"
                           : tu->man->status == CTU_FAILED ? "its index failed"
@@ -1580,6 +1624,7 @@ void project_stop(void)
         group_free(&j->g);
         lsp_config_unref(j->cfg);
         free(j->path);
+        free(j->overlay);
         free(j);
     }
     vec_free(&P.done);

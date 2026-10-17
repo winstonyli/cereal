@@ -62,7 +62,8 @@ typedef enum {
     PS_NEW,                      /* no manifest */
     PS_FILE,                     /* a file it read differs */
     PS_MISS,                     /* an include it missed now resolves */
-    PS_LOST                      /* a chunk or record of it is unreadable */
+    PS_LOST,                     /* a chunk or record of it is unreadable */
+    PS_COVER                     /* fresh, but virtual units are on and it has no overlay sidecar */
 } PStale;
 
 typedef struct PSched {          /* the scheduler's (project.c); pstate does not look */
@@ -77,10 +78,22 @@ typedef struct PSched {          /* the scheduler's (project.c); pstate does not
     } next;
 } PSched;
 
+typedef struct PVc {             /* an overlay of a unit's sidecar, and the unit it makes */
+    char *line;
+    uint64_t flag_hash, tukey;
+} PVc;
+
 typedef struct PTu {
     size_t entry;                /* its compile database entry */
     const char *main;            /* absolute */
     uint64_t flag_hash, tukey;
+    const char *overlay;         /* a virtual unit: the words after the entry's flags (in the
+                                  * state); NULL: the entry itself */
+    uint64_t parent;             /* a virtual unit: the tukey of the unit whose sidecar names it */
+    bool cover_known, covered;   /* the sidecar's existence, as of the last (re)load */
+    PVc *vc;                     /* its sidecar's overlays (pstate_allocate) */
+    uint32_t nvc;
+    bool vc_known;
     PMan *man;                   /* NULL: none usable */
     PStale stale;                /* why it is stale (PS_FRESH: fresh) */
     const char *why;             /* the file or include behind it (static or in the state) */
@@ -103,6 +116,8 @@ typedef struct PState {
     PChunk **chunks;             /* digest -> chunk, likewise */
     size_t chunk_cap, nchunks;
     PTuVec tus;
+    double vratio;               /* virtual units: at most this many per real unit ... */
+    size_t vmax;                 /* ... and this many per unit; 0: none (pstate_set_virtual) */
     size_t corrupt;              /* files rejected and removed so far */
     VEC(char *) log;             /* what was rejected, for the caller to report */
 } PState;
@@ -117,6 +132,18 @@ void pstate_free(PState *ps);
  * Then the file states are settled and every unit evaluated. */
 void pstate_set_config(PState *ps, LspConfig *cfg,
                        bool (*pass)(const CompileEntry *, void *), void *ctx);
+
+/* Virtual units (docs/CONFIG_DESIGN.md 3.7, 6): for each real unit, the overlays
+ * its sidecar names (`cereal index-summary --cover`), up to `per_unit` of them
+ * and `ratio` times the number of real units in all, become units of their own
+ * (the entry's flags plus the overlay).  Set before pstate_set_config; with
+ * ratio 0 (the default) a real unit needs no sidecar. */
+void pstate_set_virtual(PState *ps, double ratio, size_t per_unit);
+/* Makes the virtual units the sidecars name the project's (and drops the others):
+ * the budget goes to the real units in main-path order.  Unless force, only when
+ * every real unit is fresh (the caller says when the rest cannot become so).
+ * pstate_set_config does it for fresh units.  *added, *dropped: how many units. */
+void pstate_allocate(PState *ps, bool force, size_t *added, size_t *dropped);
 
 /* Looks at the files again (7.2): path NULL: every one; else that one.
  * Returns how many had a different hash.  pstate_eval then re-decides which

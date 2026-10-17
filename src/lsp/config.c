@@ -165,13 +165,20 @@ bool config_same(const LspConfig *x, const LspConfig *y)
 }
 
 static void options_with(LspConfig *c, const char *path, const CompileEntry *cmd,
-                         Arena *a, Options *o, StrVec *files)
+                         const char *overlay, Arena *a, Options *o, StrVec *files)
 {
     CompileEntry own;
     StrVec flags = {0};
     o->lenient = true;      /* a compile command is written for some compiler,
                              * not for cereal: what is not understood is skipped */
     add_cereal_files(a, &flags, c->root, path, files);
+    if (overlay) {              /* last: a later -D/-U/-std wins */
+        const char **w;
+        int n, k;
+        n = split_args(a, overlay, SPLIT_SHELL, &w);
+        for (k = 0; k < n; k++)
+            vec_push(&flags, w[k]);
+    }
     if (cmd)
         own = own_entry(a, cmd);
     else
@@ -188,13 +195,19 @@ static void options_with(LspConfig *c, const char *path, const CompileEntry *cmd
 void config_options_in(LspConfig *c, const char *path, Arena *a, Options *o,
                        StrVec *files)
 {
-    options_with(c, path, command_for(c, path), a, o, files);
+    options_with(c, path, command_for(c, path), NULL, a, o, files);
+}
+
+void config_options_overlay(LspConfig *c, size_t entry, const char *overlay, Arena *a,
+                            Options *o, StrVec *files)
+{
+    options_with(c, c->cmds.data[entry].abs_file, &c->cmds.data[entry], overlay, a, o, files);
 }
 
 void config_options_entry(LspConfig *c, size_t entry, Arena *a, Options *o,
                           StrVec *files)
 {
-    options_with(c, c->cmds.data[entry].abs_file, &c->cmds.data[entry], a, o, files);
+    config_options_overlay(c, entry, NULL, a, o, files);
 }
 
 Options *config_options_for(LspConfig *c, const char *path)

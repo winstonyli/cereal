@@ -120,7 +120,8 @@ int indexsum_main(int argc, char **argv)
     const char *root = NULL, *db = NULL, *cache = NULL, *file = NULL;
     bool dump = false, stale = false, records = false;
     long entry = -1;
-    unsigned budget_mb = 0;
+    unsigned budget_mb = 0, cover = 0;
+    const char *overlay = NULL;
     char cwd[4096], dbabs[8192];
     long parent = 0;
     unsigned timeout_s = 0;
@@ -139,6 +140,10 @@ int indexsum_main(int argc, char **argv)
             entry = strtol(argv[++i], NULL, 10);
         else if (!strcmp(argv[i], "--budget-mb") && i + 1 < argc)
             budget_mb = (unsigned)strtoul(argv[++i], NULL, 10);
+        else if (!strcmp(argv[i], "--cover") && i + 1 < argc)
+            cover = (unsigned)strtoul(argv[++i], NULL, 10);
+        else if (!strcmp(argv[i], "--overlay") && i + 1 < argc)
+            overlay = argv[++i];
         else if (!strcmp(argv[i], "--parent") && i + 1 < argc)
             parent = strtol(argv[++i], NULL, 10);
         else if (!strcmp(argv[i], "--timeout-s") && i + 1 < argc)
@@ -161,7 +166,7 @@ int indexsum_main(int argc, char **argv)
         fputs("usage: cereal index-summary [--root DIR] [--compdb PATH] "
               "(--cache DIR | --dump) FILE\n"
               "       cereal index-summary [--root DIR] [--compdb PATH] --cache DIR "
-              "--entry N [--budget-mb N]\n"
+              "--entry N [--budget-mb N] [--cover N] [--overlay WORDS]\n"
               "       cereal index-summary [--root DIR] [--compdb PATH] --cache DIR "
               "--stale [--records]\n"
               "       cereal index-summary --check FILE...\n", stderr);
@@ -201,6 +206,8 @@ int indexsum_main(int argc, char **argv)
         job.dump = dump ? stdout : NULL;
         job.build_id = bid;
         job.max_bytes = (size_t)budget_mb << 20;
+        job.overlay = entry >= 0 ? overlay : NULL;
+        job.cover_max = cover;
         job.cancel = &cancel;
         index_unit(&job, &out);
         if (out.result == IDX_DONE) {

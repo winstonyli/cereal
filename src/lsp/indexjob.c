@@ -28,7 +28,7 @@ static void build_options(const IdxJob *j, const char *path, Options *o, StrVec 
 {
     options_init(o);
     if (j->entry >= 0)
-        config_options_entry(j->cfg, (size_t)j->entry, &o->rsp, o, cfiles);
+        config_options_overlay(j->cfg, (size_t)j->entry, j->overlay, &o->rsp, o, cfiles);
     else
         config_options_in(j->cfg, path, &o->rsp, o, cfiles);
 }
@@ -100,7 +100,7 @@ void index_unit(const IdxJob *j, IdxOut *out)
     Options o;
     CRecStatVec cfiles = {0};
     CRecSet set;
-    CRecLimits lim = {j->max_bytes, j->cancel};
+    CRecLimits lim = {j->max_bytes, j->cancel, j->cover_max};
     const char *path = j->entry >= 0 ? j->cfg->cmds.data[j->entry].abs_file : j->path;
     CRecResult r;
     memset(out, 0, sizeof *out);
@@ -116,6 +116,8 @@ void index_unit(const IdxJob *j, IdxOut *out)
         out->tu_status = set.status;
         if (j->dump)
             crec_dump(&set, j->cfg->root, j->dump);
+        if (j->dump && set.cover)
+            fprintf(j->dump, "cover\n%s", set.cover);
         if (j->dir && !(j->retry_over && set.status == CTU_OVER_LIMIT) &&
             !crec_write(j->dir, &set, out->msg, sizeof out->msg))
             out->result = IDX_ERROR;

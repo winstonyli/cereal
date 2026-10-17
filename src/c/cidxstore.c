@@ -349,6 +349,7 @@ void store_gc(Store *s, const StoreLive *live, StoreGc *out)
     time_t now = time(NULL);
     StoreGc g;
     g.tus = sweep_sub(s->dir, "tu", "tu", live->tus, live->ntus, now);
+    g.tus += sweep_sub(s->dir, "ovl", "ovl", live->tus, live->ntus, now);   /* sidecars */
     g.recs = sweep_sub(s->dir, "rec", "rec", live->recs, live->nrecs, now);
     g.chunks = sweep_sub(s->dir, "sys", "sys", live->chunks, live->nchunks, now);
     if (out)

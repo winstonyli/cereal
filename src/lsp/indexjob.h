@@ -19,6 +19,9 @@ typedef struct IdxJob {
     uint32_t *cancel;        /* raised to cancel; also by the budget */
     bool retry_over;         /* a unit over max_bytes is the caller's to run
                               * again with more: its stub manifest is not written */
+    const char *overlay;     /* entry >= 0: the words of a virtual unit, after the
+                              * entry's own flags (NULL: the entry itself) */
+    size_t cover_max;        /* > 0: also write the overlay sidecar (CONFIG_DESIGN 6) */
 } IdxJob;
 
 typedef enum { IDX_DONE, IDX_CANCELLED, IDX_ERROR } IdxResult;
