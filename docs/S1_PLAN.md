@@ -14,6 +14,13 @@ timing tool, corpus gates, truncation cases only guard against crashes); this
 draft folds all three in. Stopped after round 3 by judgment: the remaining risk is
 in execution, which the slice gates exercise.
 
+## Closing a slice
+
+Before a slice or round is closed: `sh bench/tools/gate.sh` (inside the WSL tree after `.sync.sh`) must show
+run/san `N passed, 0 failed`, san `findings 0`, globals `all allowed`, verify 2 / 1 / 0 differ and callgrind
+within 0.5% of the figure in the script's header. The san and globals stages catch what the suite does not
+(Round 279: six UB sites and four unlisted globals had accumulated since the S1 rounds).
+
 ## Facts about the tree (verified)
 
 - `src/analysis/cond.c` (925 lines) checks each user file's `#if` chain by
