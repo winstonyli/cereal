@@ -67,6 +67,8 @@ def main():
                     a["maxsize"] = max(a["maxsize"], int(re.search(r"maxsize=(\d+)", l).group(1)))
                     a["maxtable"] = max(a["maxtable"], int(re.search(r"table=(\d+)", l).group(1)))
                 if l.startswith("pc: oracle"):
+                    mu = re.search(r"undecided=(\d+)", l)
+                    a["undecided"] += int(mu.group(1)) if mu else 0
                     for k, v, b in re.findall(r"([\w-]+) ok=(\d+) bad=(\d+)", l):
                         a[k + " ok"] += int(v)
                         a[k + " bad"] += int(b)
@@ -83,13 +85,13 @@ def main():
                   fam, a["units"], a["over"], a["no-output"], a["groups"],
                   a["computed"], a["unresolved"]))
         print("  exact groups %d (%.0f%% of groups): agree %d/%d untainted, "
-              "%d/%d after a skipped include; opaque groups agree %d/%d" % (
+              "%d/%d after a skipped include; opaque groups agree %d/%d (+%d host-unknown)" % (
                   ex_all, 100.0 * ex_all / max(1, a["groups"]),
                   a["exact-untainted ok"], decid, a["exact-tainted ok"],
                   a["exact-tainted ok"] + a["exact-tainted bad"],
                   a["opaque-untainted ok"] + a["opaque-tainted ok"],
                   a["opaque-untainted ok"] + a["opaque-tainted ok"] +
-                  a["opaque-untainted bad"] + a["opaque-tainted bad"]))
+                  a["opaque-untainted bad"] + a["opaque-tainted bad"], a["undecided"]))
         if t:
             print("  fold ms: mean %.1f, median %.1f, max %.1f; largest group "
                   "BDD %d nodes, largest table %d" % (sum(t) / len(t),

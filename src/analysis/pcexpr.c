@@ -1,6 +1,8 @@
 /* pcexpr.c - presence conditions of #if expressions. */
 #include "pcexpr.h"
 
+#include <inttypes.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* ---- expression trees ----------------------------------------------- */
@@ -665,8 +667,48 @@ static bool is_feature_test(const PcNode *n)
            !strstr(s, "cpp_attribute");
 }
 
+/* the parameter of f that token t names (the variadic one is index f->np),
+ * or UINT32_MAX */
+static uint32_t fn_param(Analysis *an, const PcFn *f, const Tok *t)
+{
+    Ident *id = tok_ident(an->in, t);
+    uint32_t j;
+    if (!id)
+        return UINT32_MAX;
+    for (j = 0; j < f->np; j++)
+        if (id == f->params[j])
+            return j;
+    return f->va && !strcmp(id->str, "__VA_ARGS__") ? f->np : UINT32_MAX;
+}
+
+/* a ## b where a is an identifier and b an identifier or a number: the
+ * identifier of both spellings (anything else is not modeled) */
+static bool paste(Analysis *an, Tok *a, const Tok *b)
+{
+    const Ident *ia = tok_ident(an->in, a), *ib = tok_ident(an->in, b), *r;
+    const char *sb = ib ? ib->str : pp_text(an->pp, b);
+    uint32_t lb = ib ? ib->len : b->len, i;
+    char *buf;
+    if (!ia || (!ib && b->kind != TK_PPNUM))
+        return false;
+    for (i = 0; i < lb; i++)
+        if (!((sb[i] >= '0' && sb[i] <= '9') || (sb[i] >= 'a' && sb[i] <= 'z') ||
+              (sb[i] >= 'A' && sb[i] <= 'Z') || sb[i] == '_'))
+            return false;
+    buf = arena_alloc(an->arena, ia->len + lb + 1);
+    memcpy(buf, ia->str, ia->len);
+    memcpy(buf + ia->len, sb, lb);
+    r = intern(an->in, buf, ia->len + lb);
+    a->kind = TK_IDENT;
+    a->flags = TF_PASTED;
+    a->len = r->len;
+    a->aux = r->id;
+    return true;
+}
+
 /* The call with the macro's replacement tokens, arguments substituted
- * textually, parsed again (C's own order: no parentheses added). */
+ * textually (## pastes the neighbouring tokens), parsed again (C's own order:
+ * no parentheses added). */
 static PcNode *call_inst(PcCtx *cx, const PcFn *f, const PcNode *call)
 {
     Analysis *an = cx->an;
@@ -674,6 +716,7 @@ static PcNode *call_inst(PcCtx *cx, const PcFn *f, const PcNode *call)
     uint32_t na = 1, i, j, depth = 0, start = 0, total = 0, k = 0;
     const Tok *at = call->args.t;
     Tok *arr;
+    bool glue = false, have = false;
     PX p;
     PcNode *r;
     if (!at)
@@ -686,9 +729,10 @@ static PcNode *call_inst(PcCtx *cx, const PcFn *f, const PcNode *call)
         else if (!depth && tok_is_punct(&at[i], P_COMMA))
             na++;
     }
-    if (na != f->np && !(f->np == 0 && na == 1 && !call->args.n))
+    if (f->va ? na < f->np
+              : na != f->np && !(f->np == 0 && na == 1 && !call->args.n))
         return NULL;
-    av = NEW_ARRAY(an->arena, TokSpan, na);
+    av = NEW_ARRAY(an->arena, TokSpan, na + 1);
     for (i = j = 0; i <= call->args.n; i++) {
         if (i == call->args.n ||
             (!depth && tok_is_punct(&at[i], P_COMMA))) {
@@ -702,28 +746,41 @@ static PcNode *call_inst(PcCtx *cx, const PcFn *f, const PcNode *call)
             depth--;
         }
     }
+    if (f->va) {                /* __VA_ARGS__: the rest, commas included */
+        av[f->np].t = f->np < na ? av[f->np].t : at + call->args.n;
+        av[f->np].n = f->np < na ? (uint32_t)(at + call->args.n - av[f->np].t)
+                                 : 0;
+    }
     for (i = 0; i < f->body.n; i++) {
-        uint32_t pi = f->np;
-        if (f->body.t[i].kind == TK_IDENT)
-            for (j = 0; j < f->np; j++)
-                if (tok_ident(an->in, &f->body.t[i]) == f->params[j])
-                    pi = j;
-        total += pi < f->np ? av[pi].n : 1;
+        uint32_t pi = fn_param(an, f, &f->body.t[i]);
+        total += pi != UINT32_MAX ? av[pi].n : 1;
     }
     arr = NEW_ARRAY(an->arena, Tok, total + 1);
     for (i = 0; i < f->body.n; i++) {
-        uint32_t pi = f->np;
-        if (f->body.t[i].kind == TK_IDENT)
-            for (j = 0; j < f->np; j++)
-                if (tok_ident(an->in, &f->body.t[i]) == f->params[j])
-                    pi = j;
-        if (pi < f->np) {
-            if (av[pi].n)
-                memcpy(arr + k, av[pi].t, sizeof(Tok) * av[pi].n);
-            k += av[pi].n;
-        } else {
-            arr[k++] = f->body.t[i];
+        const Tok *bt = &f->body.t[i], *src = bt;
+        uint32_t pi, m = 1;
+        bool merged = false;
+        if (tok_is_punct(bt, P_HASHHASH)) {
+            glue = true;
+            continue;
         }
+        pi = fn_param(an, f, bt);
+        if (pi != UINT32_MAX) {
+            src = av[pi].t;
+            m = av[pi].n;
+        }
+        if (glue && have && m) {
+            if (!paste(an, &arr[k - 1], src))
+                return NULL;
+            src++;
+            m--;
+            merged = true;
+        }
+        if (m)
+            memcpy(arr + k, src, sizeof(Tok) * m);
+        k += m;
+        have = m > 0 || merged || (glue && have);
+        glue = false;
     }
     arr[k].kind = TK_EOF;
     p.arena = an->arena;
@@ -1054,4 +1111,95 @@ void pc_free(PcCtx *cx)
     vec_free(&cx->blocks);
     free(cx->htab);
     bdd_free(&cx->m);
+}
+
+/* ---- opaque keys under a host ---------------------------------------- */
+
+typedef struct KeyP {
+    const char *s;
+    const PcKeyHost *h;
+} KeyP;
+
+static bool key_val(KeyP *k, intmax_t *out);
+
+static void key_ws(KeyP *k)
+{
+    while (*k->s == ' ')
+        k->s++;
+}
+
+static bool key_close(KeyP *k)
+{
+    key_ws(k);
+    if (*k->s != ')')
+        return false;
+    k->s++;
+    return true;
+}
+
+static bool key_val(KeyP *k, intmax_t *out)
+{
+    key_ws(k);
+    if (*k->s == '(') {
+        char tag = k->s[1];
+        intmax_t a, b, c;
+        char *e;
+        long op;
+        if (tag == '?') {
+            k->s += 2;
+            if (!key_val(k, &a) || !key_val(k, &b) || !key_val(k, &c) ||
+                !key_close(k))
+                return false;
+            *out = a ? b : c;
+            return true;
+        }
+        if (tag != 'b' && tag != 'u')
+            return false;
+        op = strtol(k->s + 2, &e, 10);
+        k->s = e;
+        if (!key_val(k, &a))
+            return false;
+        if (tag == 'u') {
+            if (!key_close(k))
+                return false;
+            *out = op == P_BANG ? !a
+                 : op == P_MINUS ? (intmax_t)(0 - (uintmax_t)a)
+                 : op == P_TILDE ? ~a : (op == P_PLUS ? a : 0);
+            return op == P_BANG || op == P_MINUS || op == P_TILDE ||
+                   op == P_PLUS;
+        }
+        if (!key_val(k, &b) || !key_close(k))
+            return false;
+        if (op == P_ANDAND || op == P_OROR) {
+            *out = op == P_ANDAND ? (a && b) : (a || b);
+            return true;
+        }
+        return fold((int)op, a, b, out);
+    }
+    if ((k->s[0] == 'v' || k->s[0] == 'd') && k->s[1] == ':') {
+        bool is_v = k->s[0] == 'v';
+        const char *name = k->s + 2, *e = name;
+        while (*e && *e != ' ' && *e != ')')
+            e++;
+        k->s = e;
+        if (is_v)
+            return k->h->value(k->h->ctx, name, (size_t)(e - name), out);
+        *out = k->h->defined(k->h->ctx, name, (size_t)(e - name));
+        return true;
+    }
+    if ((*k->s >= '0' && *k->s <= '9') || *k->s == '-') {
+        char *e;
+        *out = (intmax_t)strtoimax(k->s, &e, 10);
+        if (e == k->s)
+            return false;
+        k->s = e;
+        return true;
+    }
+    return false;
+}
+
+bool pc_key_eval(const char *key, const PcKeyHost *h, intmax_t *out)
+{
+    KeyP k = {key, h};
+    return key_val(&k, out) && !*k.s;
 }

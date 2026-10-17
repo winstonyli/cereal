@@ -101,16 +101,49 @@ static bool macro_number(Analysis *a, const Macro *m, intmax_t *n)
            m->body[0].kind == TK_PPNUM && pc_ppnum(a, &m->body[0], n);
 }
 
-bool pc_host_atom(PcUnit *u, const PcAtom *at)
+static const Macro *host_named(const PcUnit *u, const char *s, size_t n)
+{
+    Ident *id = intern_find(u->an->in, s, n);
+    return id ? host_macro(u, id) : NULL;
+}
+
+static bool key_value(void *ctx, const char *s, size_t n, intmax_t *v)
+{
+    PcUnit *u = ctx;
+    const Macro *m = host_named(u, s, n);
+    *v = 0;
+    return !m || macro_number(u->an, m, v);
+}
+
+static bool key_defined(void *ctx, const char *s, size_t n)
+{
+    return host_named(ctx, s, n) != NULL;
+}
+
+/* The host value of an atom; *known false: an opaque key that names a call or
+ * a macro that is not a number. */
+static bool host_atom(PcUnit *u, const PcAtom *at, bool *known)
 {
     const Macro *m;
     intmax_t n;
-    if (!at || at->kind == PA_TEXT)
+    *known = true;
+    if (!at)
         return false;
+    if (at->kind == PA_TEXT) {
+        PcKeyHost h = {u, key_value, key_defined};
+        *known = pc_key_eval(at->text, &h, &n);
+        return *known && n != 0;
+    }
     m = host_macro(u, at->id);
     if (at->kind == PA_DEF)
         return m != NULL;
     return macro_number(u->an, m, &n) && n >= at->c;
+}
+
+bool pc_host_atom(PcUnit *u, const PcAtom *at)
+{
+    bool known;
+    return host_atom(u, at, &known);
 }
 
 static bool host_var(void *ctx, uint32_t v)
@@ -241,18 +274,25 @@ static void do_undef(PcUnit *u, Ident *id, Bdd cur)
 /* ---- the fold --------------------------------------------------------- */
 
 /* NAME(a, b) body: the parameters and the body, or NULL when the macro uses
- * variadics, # or ## (the call stays opaque).  t is the #define's tokens. */
+ * # (stringify; the call stays opaque).  t is the #define's tokens. */
 static const PcFn *fn_macro(PcUnit *u, const Tok *t, uint32_t n)
 {
     Analysis *an = u->an;
     Ident **ps = NULL;
     PcFn *f;
     uint32_t np = 0, i = 2;
+    bool va = false;
     if (n < 3)
         return NULL;
     ps = NEW_ARRAY(an->arena, Ident *, n);
     if (!tok_is_punct(&t[i], P_RPAREN)) {
         for (;; i++) {
+            if (tok_is_punct(&t[i], P_ELLIPSIS) && i + 1 < n &&
+                tok_is_punct(&t[i + 1], P_RPAREN)) {
+                va = true;
+                i++;
+                break;
+            }
             if (t[i].kind != TK_IDENT || i + 1 >= n)
                 return NULL;
             ps[np++] = tok_ident(an->in, &t[i]);
@@ -265,12 +305,15 @@ static const PcFn *fn_macro(PcUnit *u, const Tok *t, uint32_t n)
     }
     i++;
     for (uint32_t k = i; k < n; k++)
-        if (tok_is_punct(&t[k], P_HASH) || tok_is_punct(&t[k], P_HASHHASH) ||
-            tok_is_punct(&t[k], P_ELLIPSIS))
+        if (tok_is_punct(&t[k], P_HASH) || tok_is_punct(&t[k], P_ELLIPSIS))
             return NULL;
+    if (i < n && (tok_is_punct(&t[i], P_HASHHASH) ||
+                  tok_is_punct(&t[n - 1], P_HASHHASH)))
+        return NULL;
     f = NEW(an->arena, PcFn);
     f->params = ps;
     f->np = np;
+    f->va = va;
     f->body.t = t + i;
     f->body.n = n - i;
     return f;
@@ -623,8 +666,7 @@ static void put_formula(const PcCtx *cx, StrBuf *sb, Bdd f)
 /* the host valuation as a PcValuation: opaque atoms are not known */
 static bool host_get(void *ctx, const PcAtom *at, bool *known)
 {
-    *known = at->kind != PA_TEXT;
-    return *known && pc_host_atom(ctx, at);
+    return host_atom(ctx, at, known);
 }
 
 void pc_dump(PcUnit *u, FILE *out, int flags)
@@ -632,6 +674,7 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
     PcValuation hv = {u, host_get};
     size_t i, j, maxsize = 0;
     size_t tot[2][2][2] = {{{0}}};      /* [exact][tainted][oracle agrees] */
+    size_t nunk = 0;                    /* the host cannot value an atom */
     for (i = 0; i < u->groups.len; i++) {
         const PcGroup *g = &u->groups.data[i];
         const SkDirective *d =
@@ -640,14 +683,19 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
         StrBuf sb = {0};
         uint32_t line = 0, col;
         const char *base = strrchr(g->file->name, '/');
-        bool exact = true;
+        bool exact = true, unk = false;
         int sat = pc_sat(&u->cx, g->pc);
         srcmgr_linecol(g->file, d->kw_loc, &line, &col);
         bdd_vars(&u->cx.m, g->pc, &vs);
         for (j = 0; j < vs.len; j++) {
             const PcAtom *at = pc_atom_at(&u->cx, vs.data[j]);
             if (at && at->kind == PA_TEXT)
+{
+                bool known;
+                host_atom(u, at, &known);
                 exact = false;
+                unk |= !known;
+            }
         }
         vec_free(&vs);
         put_formula(&u->cx, &sb, g->pc);
@@ -663,8 +711,13 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
         }
         if (flags & PCD_ORACLE) {
             bool active = was_taken(g->inst);
-            fprintf(out, " oracle=%s", active == (host != 0) ? "ok" : "BAD");
-            tot[exact][g->taint != 0][active == (host != 0)]++;
+            if (unk) {
+                fprintf(out, " oracle=unknown");
+                nunk++;
+            } else {
+                fprintf(out, " oracle=%s", active == (host != 0) ? "ok" : "BAD");
+                tot[exact][g->taint != 0][active == (host != 0)]++;
+            }
         }
         fprintf(out, " :: %s\n", sb_cstr(&sb));
         sb_free(&sb);
@@ -692,7 +745,8 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
     if (flags & PCD_ORACLE)
         fprintf(out, "pc: oracle exact-untainted ok=%zu bad=%zu, "
                 "exact-tainted ok=%zu bad=%zu, opaque-untainted ok=%zu bad=%zu, "
-                "opaque-tainted ok=%zu bad=%zu\n", tot[1][0][1], tot[1][0][0],
+                "opaque-tainted ok=%zu bad=%zu, undecided=%zu\n",
+                tot[1][0][1], tot[1][0][0],
                 tot[1][1][1], tot[1][1][0], tot[0][0][1], tot[0][0][0],
-                tot[0][1][1], tot[0][1][0]);
+                tot[0][1][1], tot[0][1][0], nunk);
 }

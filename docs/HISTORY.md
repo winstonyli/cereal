@@ -5008,3 +5008,17 @@ random rounds against brute force (supports up to 14 variables) for holds, cost,
 `CEREAL_PCDUMP=why` prints up to three cheapest preconditions under each group the host leaves off
 (`tests/pc/why.c`). Not yet: family table, EMPTY/HAS atoms, target/environment/language kinds,
 phases 2a/2b, `via`. Suite 2189 passed.
+
+Round 258: host values for opaque atoms, and `##`/variadic function-like macros (S1c leftovers).
+(1) `pc_key_eval` (`pcexpr.c`) evaluates an opaque atom's key (`v:X`, `d:X`, numbers,
+`(bOP x y)`, `(uOP x)`, `(? a b c)`) under the host: `v:X` is the host macro's number or 0 when
+undefined. A key naming a call (`c:...`, `__has_include(...)`) or a non-numeric macro is "unknown":
+the oracle prints `oracle=unknown`, counts it as `undecided` and no longer calls it BAD (before,
+every opaque atom was host-false, so opaque agreement was partly luck). `pc_oracle.py` reports the
+undecided count. Opaque groups now really agree: 27/27 libuv, 66/66 lua52, 1124/1124 lua53 (+3
+unknown), 896/899 lua54, 1329/1331 lua55 (the 5 BAD are all after a skipped include); zstd 27/27
+(+103 unknown, all `__has_*`). (2) `PcFn` gains `va` (`...`/`__VA_ARGS__`, the rest of the call as
+one span) and `call_inst` pastes `a ## b` into one identifier (identifier with identifier or
+number; placemarker for an empty argument); `#` stays opaque. `tests/pc/paste.c` (+ `.flags` for the
+host-valued opaque case). lua exactness unchanged: the remaining `FIGS` opacity is the skipped
+`luaconf.h` (taint), not `##`. Suite 2190 passed.

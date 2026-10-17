@@ -1,0 +1,11 @@
+pc: paste.c:9 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: paste.c:12 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: paste.c:15 if sat=1 host=0 exact=1 taint=0 :: defined(LEVEL_LIVE) & LEVEL_LIVE>=2
+pc: paste.c:18 if sat=1 host=0 exact=0 taint=0 :: [(b25 c:SUM ( 1 , 2 ) 2)]
+pc: paste.c:21 if sat=0 host=0 exact=1 taint=0 :: 0
+pc: paste.c:24 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: paste.c:27 if sat=1 host=0 exact=0 taint=0 :: [c:FIRST ( )]
+pc: paste.c:30 if sat=1 host=0 exact=0 taint=0 :: [(b25 c:CAT ( 1 , 2 ) 12)]
+pc: paste.c:33 if sat=1 host=1 exact=0 taint=0 :: !defined(P) & defined(Q) & [(b25 (b12 0 v:Q) 12)] | defined(P) & !defined(Q) & [(b25 (b12 v:P 0) 12)] | defined(P) & defined(Q) & [(b25 (b12 v:P v:Q) 12)]
+pc: paste.c:36 if sat=1 host=0 exact=0 taint=0 :: !defined(P) & defined(Q) & [(b25 (b12 0 v:Q) 13)] | defined(P) & !defined(Q) & [(b25 (b12 v:P 0) 13)] | defined(P) & defined(Q) & [(b25 (b12 v:P v:Q) 13)]
+pc: total groups=10 files=1 sys=0 unresolved=0 computed=0 over=0

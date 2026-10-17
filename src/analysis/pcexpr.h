@@ -41,7 +41,8 @@ typedef struct PcAtom {
  * each call (pcexpr.c). */
 typedef struct PcFn {
     Ident **params;
-    uint32_t np;
+    uint32_t np;            /* named parameters */
+    bool va;                /* a trailing ... (__VA_ARGS__) */
     TokSpan body;
 } PcFn;
 
@@ -96,6 +97,16 @@ bool pc_const_value(PcCtx *cx, TokSpan toks, intmax_t *out);
 bool pc_has_vars(const PcNode *n);
 /* The condition under which n is nonzero. */
 Bdd pc_truth(PcCtx *cx, PcNode *n);
+/* What a host knows of the macros named in an opaque atom's key. */
+typedef struct PcKeyHost {
+    void *ctx;
+    /* The value of macro name (0 when undefined); false: not a number. */
+    bool (*value)(void *ctx, const char *name, size_t n, intmax_t *v);
+    bool (*defined)(void *ctx, const char *name, size_t n);
+} PcKeyHost;
+/* The value of an opaque atom's key under the host; false: it names a call
+ * or a macro the host cannot reduce to a number. */
+bool pc_key_eval(const char *key, const PcKeyHost *h, intmax_t *out);
 /* f with the clauses GE(hi) implies GE(lo) conjoined over its atoms. */
 Bdd pc_monotone(PcCtx *cx, Bdd f);
 /* The macro or text a BDD variable belongs to (one value for all of its
