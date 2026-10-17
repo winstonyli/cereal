@@ -32,6 +32,7 @@ void bdd_free(BddMgr *m)
     vec_free(&m->nodes);
     free(m->table);
     free(m->cache);
+    free(m->mark);
     memset(m, 0, sizeof *m);
 }
 
@@ -150,29 +151,46 @@ static int cmp_u32(const void *a, const void *b)
     return x < y ? -1 : x > y;
 }
 
-void bdd_vars(const BddMgr *m, Bdd f, BddVars *out)
+/* A fresh set of marks over the nodes: mark[x] == m->stamp means x is visited.
+ * No clearing per walk (a calloc of the whole table per call was a tenth of the
+ * fold). */
+static uint32_t *walk_marks(BddMgr *m)
+{
+    if (m->mark_cap < m->nodes.len) {
+        size_t n = m->nodes.len * 2;
+        m->mark = xrealloc(m->mark, n * sizeof *m->mark);
+        memset(m->mark + m->mark_cap, 0, (n - m->mark_cap) * sizeof *m->mark);
+        m->mark_cap = n;
+    }
+    if (++m->stamp == 0) {
+        memset(m->mark, 0, m->mark_cap * sizeof *m->mark);
+        m->stamp = 1;
+    }
+    return m->mark;
+}
+
+void bdd_vars(BddMgr *m, Bdd f, BddVars *out)
 {
     VEC(Bdd) st = {0};
     BddVars all = {0};
-    bool *vis;
+    uint32_t *vis;
     size_t i;
     if (f < 2)
         return;
-    vis = xcalloc(m->nodes.len, 1);
+    vis = walk_marks(m);
     vec_push(&st, f);
     while (st.len) {
         Bdd x = vec_pop(&st);
         const BddNode *n;
-        if (x < 2 || vis[x])
+        if (x < 2 || vis[x] == m->stamp)
             continue;
-        vis[x] = true;
+        vis[x] = m->stamp;
         n = &m->nodes.data[x];
         vec_push(&all, n->var);
         vec_push(&st, n->lo);
         vec_push(&st, n->hi);
     }
     vec_free(&st);
-    free(vis);
     qsort(all.data, all.len, sizeof *all.data, cmp_u32);
     for (i = 0; i < all.len; i++)
         if (!i || all.data[i] != all.data[i - 1])
@@ -189,26 +207,25 @@ bool bdd_eval(const BddMgr *m, Bdd f, const bool *assign)
     return f == BDD_TRUE;
 }
 
-size_t bdd_count(const BddMgr *m, Bdd f)
+size_t bdd_count(BddMgr *m, Bdd f)
 {
     VEC(Bdd) st = {0};
-    bool *vis;
+    uint32_t *vis;
     size_t n = 0;
     if (f < 2)
         return 0;
-    vis = xcalloc(m->nodes.len, 1);
+    vis = walk_marks(m);
     vec_push(&st, f);
     while (st.len) {
         Bdd x = vec_pop(&st);
-        if (x < 2 || vis[x])
+        if (x < 2 || vis[x] == m->stamp)
             continue;
-        vis[x] = true;
+        vis[x] = m->stamp;
         n++;
         vec_push(&st, m->nodes.data[x].lo);
         vec_push(&st, m->nodes.data[x].hi);
     }
     vec_free(&st);
-    free(vis);
     return n;
 }
 

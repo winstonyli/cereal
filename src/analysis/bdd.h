@@ -29,6 +29,9 @@ typedef struct BddMgr {
     size_t ccap;
     size_t cap;         /* maximum node count */
     bool over;
+    uint32_t *mark;     /* scratch for the graph walks: node -> stamp of the last walk */
+    size_t mark_cap;
+    uint32_t stamp;
 } BddMgr;
 
 void bdd_init(BddMgr *m, size_t cap);
@@ -40,13 +43,13 @@ Bdd bdd_or(BddMgr *m, Bdd f, Bdd g);
 Bdd bdd_ite(BddMgr *m, Bdd f, Bdd g, Bdd h);
 /* The variables f depends on, each once, in no particular order. */
 typedef VEC(uint32_t) BddVars;
-void bdd_vars(const BddMgr *m, Bdd f, BddVars *out);
+void bdd_vars(BddMgr *m, Bdd f, BddVars *out);
 bool bdd_eval(const BddMgr *m, Bdd f, const bool *assign);
 /* The same, with the value of variable v given by val(ctx, v). */
 bool bdd_eval_fn(const BddMgr *m, Bdd f, bool (*val)(void *ctx, uint32_t v),
                  void *ctx);
 size_t bdd_size(const BddMgr *m);              /* nodes in the manager */
-size_t bdd_count(const BddMgr *m, Bdd f);       /* nodes reachable from f */
+size_t bdd_count(BddMgr *m, Bdd f);       /* nodes reachable from f */
 
 /* `cereal selftest bdd`: ite/and/or/not against truth tables, the node cap.
  * Returns 0 when everything holds. */

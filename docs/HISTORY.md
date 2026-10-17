@@ -5200,3 +5200,10 @@ TRUE, or are read soon after. Also tried: the taken set as a hash set instead of
 `qsort` share is 2,700 calls from elsewhere in the fold (not the taken list; not traced further).
 Not tried: arena-allocating `PcMacro` and a BDD variable order that follows first use. The fold stays at about
 7 ms per unit (libuv) with the replay.
+
+Round 271: the 2,700 `qsort` calls and a per-call calloc, fixed.
+Traced: `bdd_vars` (via `pc_sat`/`pc_constrain`/`pc_monotone`/`pc_family`) sorted the variable list and, like
+`bdd_count`, `xcalloc`ed a visited array of the whole node table on every call (the `xcalloc` and `memset`
+share of Round 270). Both now share a generation-stamped mark array in `BddMgr` (`walk_marks`), no clearing
+per walk. libuv unix/fs.c fold, sequential best of 6-8: 7.6 ms to 6.7 ms (-12%). Suite 2202 passed,
+rank-1 0 bad, cover 0 failed. The sort stays (callers rely on sorted variables).
