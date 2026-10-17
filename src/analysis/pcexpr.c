@@ -407,56 +407,156 @@ static void node_key(const PcNode *n, StrBuf *sb)
 }
 
 /* "n is nonzero" as an opaque atom keyed by n's canonical text */
-static Bdd text_atom(PcCtx *cx, const PcNode *n)
+static const char *node_key_str(PcCtx *cx, const PcNode *n)
 {
     StrBuf sb = {0};
     const char *key;
-    Bdd b;
     node_key(n, &sb);
     key = arena_strndup(cx->an->arena, sb_cstr(&sb), sb.len);
     sb_free(&sb);
-    b = pc_atom(cx, PA_TEXT, NULL, 0, key);
-    return b;
+    return key;
 }
 
-/* What a subexpression is worth:
- *   V_CONST  the integer n
- *   V_BOOL   0 or 1 according to b
- *   V_VAL    the effective value of macro id
- *   V_OPQ    an integer nothing is known about except the text of node */
-typedef enum { V_CONST, V_BOOL, V_VAL, V_OPQ } VKind;
+static Bdd text_atom(PcCtx *cx, const PcNode *n)
+{
+    return pc_atom(cx, PA_TEXT, NULL, 0, node_key_str(cx, n));
+}
+
+/* ---- values: guarded cases ------------------------------------------- */
+
+/* An integer expression is a list of cases: a value under a condition.  The
+ * conditions are disjoint and cover every configuration.  A value is a
+ * number, the initial value of a macro plus a number (the thresholds of
+ * pcexpr.h), or opaque: one text, shared by every use of the same
+ * computation.  Every operator is a product over the cases of its operands,
+ * so macros with several definitions, calls, ?: and comparisons of one macro
+ * with another are one mechanism. */
+typedef enum { N_CONST, N_INIT, N_OPQ } NKind;
+
+typedef struct Num {
+    NKind k;
+    intmax_t n;             /* the number; for N_INIT the k of X + k */
+    Ident *id;              /* N_INIT: X, defined here */
+    const char *key;        /* N_OPQ */
+} Num;
+
+typedef struct Case {
+    Bdd cond;
+    Num v;
+} Case;
 
 typedef struct Val {
-    VKind k;
-    intmax_t n;
-    Bdd b;
-    Ident *id;
-    PcNode *node;
+    Case *c;
+    uint32_t n;
 } Val;
 
-static Val v_const(intmax_t n)
+#define MAX_CASES 16
+
+typedef struct VB {          /* a value being built */
+    PcCtx *cx;
+    VEC(Case) v;
+} VB;
+
+static Num n_const(intmax_t n)
 {
-    Val v = {V_CONST, n, 0, NULL, NULL};
+    Num v = {N_CONST, n, NULL, NULL};
     return v;
 }
 
-static Val v_bool(Bdd b)
+static Num n_init(Ident *id, intmax_t k)
 {
-    Val v = {V_BOOL, 0, b, NULL, NULL};
-    if (b == BDD_TRUE || b == BDD_FALSE)
-        return v_const(b == BDD_TRUE);
+    Num v = {N_INIT, k, id, NULL};
     return v;
 }
 
-static Val v_opq(PcNode *n)
+static Num n_opq(const char *key)
 {
-    Val v = {V_OPQ, 0, 0, NULL, n};
+    Num v = {N_OPQ, 0, NULL, key};
     return v;
+}
+
+static bool num_eq(const Num *a, const Num *b)
+{
+    if (a->k != b->k)
+        return false;
+    switch (a->k) {
+    case N_CONST: return a->n == b->n;
+    case N_INIT: return a->id == b->id && a->n == b->n;
+    default: return !strcmp(a->key, b->key);
+    }
+}
+
+static void vb_add(VB *b, Bdd cond, Num v)
+{
+    size_t i;
+    if (cond == BDD_FALSE)
+        return;
+    for (i = 0; i < b->v.len; i++)
+        if (num_eq(&b->v.data[i].v, &v)) {
+            b->v.data[i].cond = bdd_or(&b->cx->m, b->v.data[i].cond, cond);
+            return;
+        }
+    {
+        Case c = {cond, v};
+        vec_push(&b->v, c);
+    }
+}
+
+static Val vb_done(VB *b)
+{
+    Val r;
+    r.n = (uint32_t)b->v.len;
+    r.c = NEW_ARRAY(b->cx->an->arena, Case, r.n ? r.n : 1);
+    if (r.n)
+        memcpy(r.c, b->v.data, sizeof(Case) * r.n);
+    vec_free(&b->v);
+    return r;
+}
+
+static void vb_add_val(VB *b, Bdd cond, Val x)
+{
+    uint32_t i;
+    for (i = 0; i < x.n; i++)
+        vb_add(b, bdd_and(&b->cx->m, cond, x.c[i].cond), x.c[i].v);
+}
+
+static Val v_one(PcCtx *cx, Num v)
+{
+    VB b = {cx, {0}};
+    vb_add(&b, BDD_TRUE, v);
+    return vb_done(&b);
+}
+
+/* 1 where f holds, else 0 */
+static Val v_bool(PcCtx *cx, Bdd f)
+{
+    VB b = {cx, {0}};
+    vb_add(&b, f, n_const(1));
+    vb_add(&b, bdd_not(&cx->m, f), n_const(0));
+    return vb_done(&b);
+}
+
+/* the canonical text of a value, so an opaque result names what it computes */
+static const char *num_desc(PcCtx *cx, const Num *v)
+{
+    Arena *a = cx->an->arena;
+    switch (v->k) {
+    case N_CONST: return arena_printf(a, "%jd", v->n);
+    case N_INIT:
+        return v->n ? arena_printf(a, "(b%d v:%s %jd)", (int)P_PLUS,
+                                   v->id->str, v->n)
+                    : arena_printf(a, "v:%s", v->id->str);
+    default: return v->key;
+    }
+}
+
+static const char *key_bin(PcCtx *cx, int op, const Num *x, const Num *y)
+{
+    return arena_printf(cx->an->arena, "(b%d %s %s)", op, num_desc(cx, x),
+                        num_desc(cx, y));
 }
 
 static Val ev(PcCtx *cx, PcNode *n);
-static Bdd num_cmp(PcCtx *cx, int op, Ident *id, intmax_t c);
-static bool fold(int op, intmax_t x, intmax_t y, intmax_t *out);
 
 static Bdd ge_bdd(PcCtx *cx, Ident *id, intmax_t c)
 {
@@ -467,27 +567,6 @@ static Bdd ge_bdd(PcCtx *cx, Ident *id, intmax_t c)
 static Bdd gt_bdd(PcCtx *cx, Ident *id, intmax_t c)
 {
     return c == INTMAX_MAX ? BDD_FALSE : ge_bdd(cx, id, c + 1);
-}
-
-static Bdd truth(PcCtx *cx, Val v)
-{
-    BddMgr *m = &cx->m;
-    switch (v.k) {
-    case V_CONST:
-        return v.n ? BDD_TRUE : BDD_FALSE;
-    case V_BOOL:
-        return v.b;
-    case V_VAL:
-        return bdd_not(m, num_cmp(cx, P_EQEQ, v.id, 0));
-    case V_OPQ:
-        if (v.node->kind == PN_TERN) {
-            Bdd c = truth(cx, ev(cx, v.node->a));
-            Bdd t = truth(cx, ev(cx, v.node->b));
-            return bdd_ite(m, c, t, truth(cx, ev(cx, v.node->c)));
-        }
-        return text_atom(cx, v.node);
-    }
-    return BDD_FALSE;
 }
 
 static bool is_cmp(int op)
@@ -539,6 +618,7 @@ static bool fold(int op, intmax_t x, intmax_t y, intmax_t *out)
     return true;
 }
 
+
 static Bdd env_defined(PcCtx *cx, Ident *id)
 {
     return cx->env.defined ? cx->env.defined(cx->env.ctx, cx, id)
@@ -559,105 +639,6 @@ static Bdd init_cmp(PcCtx *cx, int op, Ident *id, intmax_t c)
     default: return bdd_not(m, bdd_and(m, ge_bdd(cx, id, c),
                                        bdd_not(m, gt_bdd(cx, id, c))));
     }
-}
-
-static Bdd cmp_bool(PcCtx *cx, int op, Bdd b, intmax_t c, bool flipped);
-
-/* (the body of a #define) op c, the body evaluated here, now */
-static Bdd body_cmp(PcCtx *cx, int op, const PcEntry *e, intmax_t c)
-{
-    Val v;
-    intmax_t t = 0;
-    if (e->expr && cx->depth < 8) {
-        cx->depth++;
-        v = ev(cx, e->expr);
-        cx->depth--;
-        switch (v.k) {
-        case V_CONST:
-            fold(op, v.n, c, &t);
-            return t ? BDD_TRUE : BDD_FALSE;
-        case V_BOOL:
-            return cmp_bool(cx, op, v.b, c, false);
-        case V_VAL:
-            cx->depth++;
-            t = (intmax_t)num_cmp(cx, op, v.id, c);
-            cx->depth--;
-            return (Bdd)t;
-        case V_OPQ:
-            break;
-        }
-    }
-    return pc_atom(cx, PA_TEXT, NULL, 0,
-                   arena_printf(cx->an->arena, "%s %d %jd", e->opq, op, c));
-}
-
-/* (value of id now) op c: every value it can hold under its condition, and
- * 0 when it is undefined */
-static Bdd num_cmp(PcCtx *cx, int op, Ident *id, intmax_t c)
-{
-    BddMgr *m = &cx->m;
-    PcEntries es = {0};
-    Bdd r = BDD_FALSE;
-    intmax_t z = 0;
-    size_t i;
-    if (cx->env.values) {
-        cx->env.values(cx->env.ctx, cx, id, &es);
-    } else {
-        PcEntry e = {pc_atom(cx, PA_DEF, id, 0, NULL), false, 0, NULL, NULL, NULL};
-        vec_push(&es, e);
-    }
-    for (i = 0; i < es.len; i++) {
-        const PcEntry *e = &es.data[i];
-        intmax_t t = 0;
-        Bdd tb;
-        if (e->known) {
-            fold(op, e->n, c, &t);
-            tb = t ? BDD_TRUE : BDD_FALSE;
-        } else if (e->opq) {
-            tb = body_cmp(cx, op, e, c);
-        } else {
-            tb = init_cmp(cx, op, id, c);
-        }
-        r = bdd_or(m, r, bdd_and(m, e->cond, tb));
-    }
-    vec_free(&es);
-    fold(op, 0, c, &z);
-    return bdd_or(m, r, bdd_and(m, bdd_not(m, env_defined(cx, id)),
-                                z ? BDD_TRUE : BDD_FALSE));
-}
-
-/* b (0 or 1) op c, or c op b when flipped */
-static Bdd cmp_bool(PcCtx *cx, int op, Bdd b, intmax_t c, bool flipped)
-{
-    intmax_t r0 = 0, r1 = 0;
-    fold(op, flipped ? c : 0, flipped ? 0 : c, &r0);
-    fold(op, flipped ? c : 1, flipped ? 1 : c, &r1);
-    return bdd_ite(&cx->m, b, r1 ? BDD_TRUE : BDD_FALSE,
-                   r0 ? BDD_TRUE : BDD_FALSE);
-}
-
-static Val binop(PcCtx *cx, PcNode *n, Val x, Val y)
-{
-    int op = n->op;
-    intmax_t r;
-    if (x.k == V_CONST && y.k == V_CONST)
-        return fold(op, x.n, y.n, &r) ? v_const(r) : v_opq(n);
-    if (is_cmp(op)) {
-        if (x.k == V_VAL && y.k == V_CONST)
-            return v_bool(num_cmp(cx, op, x.id, y.n));
-        if (x.k == V_CONST && y.k == V_VAL)
-            return v_bool(num_cmp(cx, swap_cmp(op), y.id, x.n));
-        if (x.k == V_BOOL && y.k == V_CONST)
-            return v_bool(cmp_bool(cx, op, x.b, y.n, false));
-        if (x.k == V_CONST && y.k == V_BOOL)
-            return v_bool(cmp_bool(cx, op, y.b, x.n, true));
-        if (x.k == V_BOOL && y.k == V_BOOL &&
-            (op == P_EQEQ || op == P_NE)) {
-            Bdd same = bdd_ite(&cx->m, x.b, y.b, bdd_not(&cx->m, y.b));
-            return v_bool(op == P_EQEQ ? same : bdd_not(&cx->m, same));
-        }
-    }
-    return v_opq(n);
 }
 
 /* feature tests are 0/1 (the dated __has_c_attribute and __has_cpp_attribute
@@ -738,118 +719,232 @@ static PcNode *call_inst(PcCtx *cx, const PcFn *f, const PcNode *call)
     return p.ok && p.t->kind == TK_EOF ? r : NULL;
 }
 
-/* A call NAME(args): the macro's replacement evaluated with the arguments
- * where it is defined (one definition: its value; several: whether it is
- * nonzero), else one opaque atom keyed by the call's text. */
+
+static Bdd num_nz(PcCtx *cx, const Num *v)
+{
+    switch (v->k) {
+    case N_CONST: return v->n ? BDD_TRUE : BDD_FALSE;
+    case N_INIT:
+        return v->n == INTMAX_MIN ? BDD_TRUE
+                                  : init_cmp(cx, P_NE, v->id, -v->n);
+    default: return pc_atom(cx, PA_TEXT, NULL, 0, v->key);
+    }
+}
+
+/* the condition under which the value is nonzero */
+static Bdd truth(PcCtx *cx, Val v)
+{
+    Bdd r = BDD_FALSE;
+    uint32_t i;
+    for (i = 0; i < v.n; i++)
+        r = bdd_or(&cx->m, r,
+                   bdd_and(&cx->m, v.c[i].cond, num_nz(cx, &v.c[i].v)));
+    return r;
+}
+
+/* x op y for one pair of values (op a binary operator but && and ||) */
+static Val pair_op(PcCtx *cx, int op, const Num *x, const Num *y)
+{
+    intmax_t r, c;
+    if (x->k == N_CONST && y->k == N_CONST)
+        return fold(op, x->n, y->n, &r)
+                   ? v_one(cx, n_const(r))
+                   : v_one(cx, n_opq(key_bin(cx, op, x, y)));
+    if (is_cmp(op)) {
+        /* (X + k) op c  is  X op (c - k) */
+        if (x->k == N_INIT && y->k == N_CONST &&
+            !__builtin_sub_overflow(y->n, x->n, &c))
+            return v_bool(cx, init_cmp(cx, op, x->id, c));
+        if (x->k == N_CONST && y->k == N_INIT &&
+            !__builtin_sub_overflow(x->n, y->n, &c))
+            return v_bool(cx, init_cmp(cx, swap_cmp(op), y->id, c));
+        if (x->k == N_INIT && y->k == N_INIT && x->id == y->id &&
+            fold(op, x->n, y->n, &r))
+            return v_one(cx, n_const(r));
+        return v_bool(cx, pc_atom(cx, PA_TEXT, NULL, 0,
+                                  key_bin(cx, op, x, y)));
+    }
+    if (op == P_PLUS && x->k == N_INIT && y->k == N_CONST)
+        return v_one(cx, n_init(x->id, (intmax_t)((uintmax_t)x->n +
+                                                  (uintmax_t)y->n)));
+    if (op == P_PLUS && x->k == N_CONST && y->k == N_INIT)
+        return v_one(cx, n_init(y->id, (intmax_t)((uintmax_t)x->n +
+                                                  (uintmax_t)y->n)));
+    if (op == P_MINUS && x->k == N_INIT && y->k == N_CONST)
+        return v_one(cx, n_init(x->id, (intmax_t)((uintmax_t)x->n -
+                                                  (uintmax_t)y->n)));
+    if (op == P_MINUS && x->k == N_INIT && y->k == N_INIT && x->id == y->id)
+        return v_one(cx, n_const((intmax_t)((uintmax_t)x->n -
+                                            (uintmax_t)y->n)));
+    return v_one(cx, n_opq(key_bin(cx, op, x, y)));
+}
+
+/* what the macro id is worth now: its definitions under their conditions, 0
+ * where it is undefined */
+static Val ev_var(PcCtx *cx, Ident *id)
+{
+    PcEntries es = {0};
+    VB b = {cx, {0}};
+    size_t i;
+    if (cx->env.values) {
+        cx->env.values(cx->env.ctx, cx, id, &es);
+    } else {
+        PcEntry e = {pc_atom(cx, PA_DEF, id, 0, NULL), false, 0, NULL, NULL,
+                     NULL};
+        vec_push(&es, e);
+    }
+    for (i = 0; i < es.len; i++) {
+        const PcEntry *e = &es.data[i];
+        if (e->known) {
+            vb_add(&b, e->cond, n_const(e->n));
+        } else if (e->expr && cx->depth < 8) {
+            Val x;
+            cx->depth++;
+            x = ev(cx, e->expr);
+            cx->depth--;
+            vb_add_val(&b, e->cond, x);
+        } else if (e->opq) {
+            vb_add(&b, e->cond, n_opq(e->opq));
+        } else {
+            vb_add(&b, e->cond, n_init(id, 0));
+        }
+    }
+    vec_free(&es);
+    vb_add(&b, bdd_not(&cx->m, env_defined(cx, id)), n_const(0));
+    return vb_done(&b);
+}
+
+/* A call NAME(args): each definition of the macro instantiated with the
+ * arguments and evaluated where it is used; where the macro is not known to
+ * the fold, one opaque value keyed by the call's text (a feature test is
+ * 0 or 1). */
 static Val ev_call(PcCtx *cx, PcNode *n)
 {
     BddMgr *m = &cx->m;
     PcEntries es = {0};
-    Val vals[8], r;
-    size_t i, live = 0;
-    bool any_fn = false, ok = cx->env.values && cx->depth < 8;
-    Bdd acc = BDD_FALSE;
-    if (ok)
+    VB b = {cx, {0}};
+    Bdd rest = BDD_TRUE;
+    size_t i;
+    if (cx->env.values && cx->depth < 8)
         cx->env.values(cx->env.ctx, cx, n->id, &es);
-    for (i = 0; ok && i < es.len; i++) {
+    for (i = 0; i < es.len; i++) {
         const PcEntry *e = &es.data[i];
         PcNode *inst;
-        if (e->cond == BDD_FALSE)
+        Val x;
+        if (!e->fn || !(inst = call_inst(cx, e->fn, n)))
             continue;
-        if (live == 8) {
-            ok = false;
-        } else if (e->fn && (inst = call_inst(cx, e->fn, n))) {
-            any_fn = true;
-            cx->depth++;
-            vals[live++] = ev(cx, inst);
-            cx->depth--;
-        } else if (!e->fn && !e->known && !e->opq && !e->expr) {
-            vals[live++] = v_bool(text_atom(cx, n)); /* from outside */
-        } else {
-            ok = false;
-        }
-    }
-    if (!any_fn)
-        ok = false;
-    if (ok && live == 1 && es.len == 1) {
-        r = vals[0];
-        vec_free(&es);
-        return r;
-    }
-    for (i = 0, live = 0; ok && i < es.len; i++) {
-        const Val *v;
-        if (es.data[i].cond == BDD_FALSE)
-            continue;
-        v = &vals[live++];
-        if (!(v->k == V_BOOL || (v->k == V_CONST && (v->n == 0 || v->n == 1))))
-            ok = false;
-        else
-            acc = bdd_or(m, acc, bdd_and(m, es.data[i].cond, truth(cx, *v)));
+        cx->depth++;
+        x = ev(cx, inst);
+        cx->depth--;
+        vb_add_val(&b, e->cond, x);
+        rest = bdd_and(m, rest, bdd_not(m, e->cond));
     }
     vec_free(&es);
-    if (ok && live)
-        return v_bool(acc);
-    return is_feature_test(n) ? v_bool(text_atom(cx, n)) : v_opq(n);
+    if (rest != BDD_FALSE) {
+        if (is_feature_test(n)) {
+            Bdd a = text_atom(cx, n);
+            vb_add(&b, bdd_and(m, rest, a), n_const(1));
+            vb_add(&b, bdd_and(m, rest, bdd_not(m, a)), n_const(0));
+        } else {
+            vb_add(&b, rest, n_opq(node_key_str(cx, n)));
+        }
+    }
+    return vb_done(&b);
+}
+
+static Val collapse(PcCtx *cx, const PcNode *n)
+{
+    return v_one(cx, n_opq(node_key_str(cx, n)));
+}
+
+static Val ev_unary(PcCtx *cx, PcNode *n)
+{
+    Val x = ev(cx, n->a);
+    VB b = {cx, {0}};
+    uint32_t i;
+    if (n->op == P_BANG)
+        return v_bool(cx, bdd_not(&cx->m, truth(cx, x)));
+    if (n->op == P_PLUS)
+        return x;
+    for (i = 0; i < x.n; i++) {
+        const Num *v = &x.c[i].v;
+        if (v->k == N_CONST)
+            vb_add(&b, x.c[i].cond,
+                   n_const(n->op == P_MINUS ? (intmax_t)(0 - (uintmax_t)v->n)
+                                            : ~v->n));
+        else
+            vb_add(&b, x.c[i].cond,
+                   n_opq(arena_printf(cx->an->arena, "(u%d %s)", n->op,
+                                      num_desc(cx, v))));
+    }
+    return vb_done(&b);
+}
+
+static Val ev_binary(PcCtx *cx, PcNode *n)
+{
+    BddMgr *m = &cx->m;
+    Val x = ev(cx, n->a), y;
+    VB b = {cx, {0}};
+    uint32_t i, j, k;
+    if (n->op == P_ANDAND || n->op == P_OROR) {
+        bool is_and = n->op == P_ANDAND;
+        Bdd tx = truth(cx, x), ty;
+        if (tx == (is_and ? BDD_FALSE : BDD_TRUE))
+            return v_one(cx, n_const(!is_and)); /* 0 && .. is 0, 1 || .. is 1 */
+        ty = truth(cx, ev(cx, n->b));
+        return v_bool(cx, is_and ? bdd_and(m, tx, ty) : bdd_or(m, tx, ty));
+    }
+    y = ev(cx, n->b);
+    for (i = 0; i < x.n; i++)
+        for (j = 0; j < y.n; j++) {
+            Bdd c = bdd_and(m, x.c[i].cond, y.c[j].cond);
+            Val r;
+            if (c == BDD_FALSE)
+                continue;
+            r = pair_op(cx, n->op, &x.c[i].v, &y.c[j].v);
+            for (k = 0; k < r.n; k++)
+                vb_add(&b, bdd_and(m, c, r.c[k].cond), r.c[k].v);
+        }
+    if (b.v.len > MAX_CASES) {
+        vec_free(&b.v);
+        return collapse(cx, n);
+    }
+    return vb_done(&b);
 }
 
 static Val ev(PcCtx *cx, PcNode *n)
 {
-    Val x, y;
+    BddMgr *m = &cx->m;
     switch (n->kind) {
     case PN_NUM:
-        return v_const(n->num);
+        return v_one(cx, n_const(n->num));
     case PN_DEFINED:
-        return v_bool(env_defined(cx, n->id));
+        return v_bool(cx, env_defined(cx, n->id));
     case PN_CALL:
         return ev_call(cx, n);
     case PN_VAR:
-        x.k = V_VAL;
-        x.n = 0;
-        x.b = 0;
-        x.id = n->id;
-        x.node = NULL;
-        return x;
+        return ev_var(cx, n->id);
     case PN_UN:
-        x = ev(cx, n->a);
-        switch (n->op) {
-        case P_BANG:
-            return v_bool(bdd_not(&cx->m, truth(cx, x)));
-        case P_PLUS:
-            return x;
-        case P_MINUS:
-            if (x.k == V_CONST)
-                return v_const((intmax_t)(0 - (uintmax_t)x.n));
-            break;
-        case P_TILDE:
-            if (x.k == V_CONST)
-                return v_const(~x.n);
-            break;
-        }
-        return v_opq(n);
-    case PN_TERN:
-        x = ev(cx, n->a);
-        if (x.k == V_CONST)
-            return ev(cx, x.n ? n->b : n->c);
-        return v_opq(n);        /* its truth is the ite, see truth() */
+        return ev_unary(cx, n);
     case PN_BIN:
-        x = ev(cx, n->a);
-        if (n->op == P_ANDAND || n->op == P_OROR) {
-            bool is_and = n->op == P_ANDAND;
-            Bdd tx, ty;
-            if (x.k == V_CONST && (x.n != 0) != is_and)
-                return v_const(!is_and);    /* 0 && .. is 0, 1 || .. is 1 */
-            y = ev(cx, n->b);
-            ty = truth(cx, y);
-            if (x.k == V_CONST)
-                return v_bool(ty);
-            tx = truth(cx, x);
-            return v_bool(is_and ? bdd_and(&cx->m, tx, ty)
-                                 : bdd_or(&cx->m, tx, ty));
+        return ev_binary(cx, n);
+    case PN_TERN: {
+        Bdd t = truth(cx, ev(cx, n->a));
+        VB b = {cx, {0}};
+        if (t == BDD_TRUE)
+            return ev(cx, n->b);
+        if (t == BDD_FALSE)
+            return ev(cx, n->c);
+        vb_add_val(&b, t, ev(cx, n->b));
+        vb_add_val(&b, bdd_not(m, t), ev(cx, n->c));
+        if (b.v.len > MAX_CASES) {
+            vec_free(&b.v);
+            return collapse(cx, n);
         }
-        y = ev(cx, n->b);
-        return binop(cx, n, x, y);
+        return vb_done(&b);
     }
-    return v_opq(n);
+    }
+    return collapse(cx, n);
 }
 
 PcNode *pc_branch_cond(PcCtx *cx, const SkDirective *d)
@@ -876,8 +971,10 @@ bool pc_const_value(PcCtx *cx, TokSpan toks, intmax_t *out)
     if (!toks.n || !(n = pc_parse(cx, toks)) || pc_has_vars(n))
         return false;
     v = ev(cx, n);
-    *out = v.n;
-    return v.k == V_CONST;
+    if (v.n != 1 || v.c[0].v.k != N_CONST)
+        return false;
+    *out = v.c[0].v.n;
+    return true;
 }
 
 bool pc_has_vars(const PcNode *n)

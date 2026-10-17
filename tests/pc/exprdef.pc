@@ -1,7 +1,7 @@
 pc: exprdef.c:6 if sat=1 host=1 exact=1 taint=0 :: 1
 pc: exprdef.c:8 if sat=1 host=1 exact=1 taint=0 :: 1
 pc: exprdef.c:10 if sat=0 host=0 exact=1 taint=0 :: 0
-pc: exprdef.c:12 if sat=1 host=0 exact=0 taint=0 :: [LEVEL@8208 22 7]
+pc: exprdef.c:12 if sat=1 host=1 exact=1 taint=0 :: 1
 pc: exprdef.c:14 if sat=1 host=1 exact=1 taint=0 :: 1
 pc: exprdef.c:16 ifdef sat=1 host=0 exact=1 taint=0 :: defined(LATER)
 pc: exprdef.c:19 if sat=1 host=1 exact=1 taint=0 :: !defined(LATER)

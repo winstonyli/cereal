@@ -1,0 +1,12 @@
+pc: cases.c:5 ifndef sat=1 host=1 exact=1 taint=0 :: !defined(TYPE)
+pc: cases.c:8 if sat=1 host=0 exact=1 taint=0 :: defined(TYPE) & !TYPE>=2 & TYPE>=1
+pc: cases.c:10 elif sat=1 host=1 exact=1 taint=0 :: !defined(TYPE) | defined(TYPE) & TYPE>=2 & !TYPE>=3
+pc: cases.c:12 else sat=1 host=0 exact=1 taint=0 :: defined(TYPE) & !TYPE>=2 & !TYPE>=1 | defined(TYPE) & TYPE>=2 & TYPE>=3
+pc: cases.c:15 ifdef sat=1 host=0 exact=1 taint=0 :: defined(WIDE)
+pc: cases.c:17 else sat=1 host=1 exact=1 taint=0 :: !defined(WIDE)
+pc: cases.c:20 if sat=1 host=0 exact=1 taint=0 :: defined(WIDE)
+pc: cases.c:23 if sat=1 host=0 exact=1 taint=0 :: defined(WIDE)
+pc: cases.c:26 if sat=1 host=0 exact=1 taint=0 :: defined(EXT) & EXT>=4 & !EXT>=6
+pc: cases.c:29 if sat=1 host=1 exact=0 taint=0 :: !defined(EXT) & !defined(OTHER) | !defined(EXT) & defined(OTHER) & !OTHER>=1 & OTHER>=0 | defined(EXT) & !EXT>=1 & !EXT>=0 & defined(OTHER) & [(b25 v:EXT v:OTHER)] | defined(EXT) & !EXT>=1 & EXT>=0 & !defined(OTHER) | defined(EXT) & !EXT>=1 & EXT>=0 & defined(OTHER) & [(b25 v:EXT v:OTHER)] | defined(EXT) & EXT>=1 & defined(OTHER) & [(b25 v:EXT v:OTHER)]
+pc: cases.c:32 if sat=1 host=0 exact=0 taint=0 :: !defined(EXT) & defined(OTHER) & [(b22 (b12 0 v:OTHER) 3)] | defined(EXT) & !defined(OTHER) & [(b22 (b12 v:EXT 0) 3)] | defined(EXT) & defined(OTHER) & [(b22 (b12 v:EXT v:OTHER) 3)]
+pc: total groups=11 files=1 sys=0 unresolved=0 computed=0 over=0

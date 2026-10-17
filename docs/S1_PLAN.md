@@ -125,9 +125,9 @@ fixtures alone, with the corpus gate marked pending in the status line.
 *Status: done (Round 253), except the exactness gate. Fold, host valuation, trace-following
 system headers, oracle and the `CEREAL_PCDUMP` hook (`bench/pc_oracle.py` aggregates) are in.
 Oracle: 100% agreement on exact groups on every corpus; nodes, time and cap gates met;
-exactness 87-100%, under 90% on lua53 (89), lua55 (88), zstd (87). **Parked:** modeling
-`__has_include`/`__has_attribute` and arithmetic on macros to lift exactness, and the
-solver-guided overlay draws (need S1d's solver). The trace needs `-fparallel=off`, so the
+exactness 89-100% after the guarded-case value layer (Round 256), only zstd (89) under 90%; what
+remains is feature tests and compiler arithmetic, which S1d's family values make exact. **Parked:**
+the solver-guided overlay draws (need S1d's solver). The trace needs `-fparallel=off`, so the
 fold is not yet reachable outside the hook (S1d/S1e wire it).*
 
 **S1d, queries and the family table.** `sat`, `why_off` (phases 1, 2a, 2b, typed

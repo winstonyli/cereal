@@ -10,7 +10,12 @@
  * conditions.  The default environment is the start of the unit (nothing
  * defined or redefined yet), which is what the lint checks use.  An undefined
  * X is 0 (C99).  GE(hi) implies GE(lo); that clause is added per query over
- * the atoms of its support (pc_sat). */
+ * the atoms of its support (pc_sat).
+ *
+ * Evaluation: an integer expression is a list of cases, a value under a
+ * condition (a number, the initial value of a macro plus a number, or an
+ * opaque text); every operator is a product over the cases of its operands
+ * (pcexpr.c). */
 #ifndef CEREAL_PCEXPR_H
 #define CEREAL_PCEXPR_H
 

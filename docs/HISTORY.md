@@ -4978,3 +4978,21 @@ remaining opaque atoms are mostly enumerations of the unit's own constants, e.g.
 `LUA_INT_TYPE == LUA_INT_LONG` (about 3000 atoms) and `LUAI_ISNINT(x)@..` bodies (3542): both
 sides are macros whose values the fold knows, so a macro-vs-macro comparison can be expanded over
 the entries of the known side. That, not a gate change, is the next lever.
+
+Round 256: S1c value layer rewritten as guarded cases (`src/analysis/pcexpr.c`). An integer
+expression is a list of cases, a value under a BDD condition (disjoint, covering): a number, the
+initial value of a macro plus a number (`N_INIT`, the existing `GE` thresholds shifted), or an
+opaque text keyed by what it computes (`num_desc`). Every operator is a product over the cases of
+its operands (`pair_op`); equal values merge; more than 16 cases collapse to one opaque text.
+Macro entries (known, expression body, function-like result, initial value, undefined-is-0), calls
+with several definitions, `?:` and `defined` are all cases. Deleted: `V_CONST/V_BOOL/V_VAL/V_OPQ`,
+`num_cmp`, `body_cmp`, `cmp_bool`, `binop`, and the 0/1-only combination in `ev_call`. Gains:
+macro against macro (`LUA_INT_TYPE == LUA_INT_LONG`), arithmetic on known values (`LEVEL > 7`
+now exact), `X+k` against a constant. Still opaque: two unrelated initial values compared or
+multiplied (`EXT == OTHER`, `__GNUC__*100+__GNUC_MINOR__`; S1d's family values make those
+constants), `##`/`#`/variadic macros. Opaque keys changed form (`(b25 v:A v:B)`; arithmetic is
+`(bOP x y)`), so `tests/pc/exprdef.pc` was regenerated (one group now exact, correct) and
+`tests/pc/cases.c` added. Oracle: exact groups agree 100% on all corpora; exactness libuv 100,
+lua52 99, lua53 91, lua54 94, lua55 91, lupa 99, uvloop 100, zstd 89 (was 99/97/89/92/88/98/100/87);
+fold 10-27 ms mean, 42 ms max; largest group BDD 160 nodes. Lint output on 400 corpus files
+identical. Suite 2184 passed.
