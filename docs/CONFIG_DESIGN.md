@@ -671,6 +671,13 @@ list, and for other compilers by review.
   matter.
 - Cross-target type checking: needs the target model of 7.3.
 - `__COUNTER__`/`__FILE__`/`__LINE__` in conditions: OPAQUE.
+- Live settings reload (`workspace/didChangeConfiguration` for `cereal.index.*`): no index setting
+  reloads today. `P.set` has 33 uses across the server and scheduler threads, the pool is sized
+  at startup and the store is opened once, so a reload must be an event run on the scheduler
+  thread that swaps only live fields (`configs`, `maxOverlays`, `renameMaxTUs`, `quietMs`, the
+  limits) and refuses the rest (`enable`, `threads`, `cacheDir`, `paths`); for `configs`, also
+  `pstate_set_virtual` and a re-stale of real units without a sidecar. Parked (Round 279): no
+  client asks for it, and a restart already applies any setting.
 - Adaptive `configs`: on by default, off once the measured index time of the real
   jobs passes a budget. Parked (Round 279): the cost is known only after a first
   index, so first and later runs would differ; revisit if the cost drops further.
