@@ -130,7 +130,7 @@ remains is feature tests and compiler arithmetic, which S1d's family values make
 the solver-guided overlay draws (need S1d's solver). The trace needs `-fparallel=off`, so the
 fold is not yet reachable outside the hook (S1d/S1e wire it).*
 
-**S1d, queries and the family table.** *(Status: S1d-1 (Round 257) and a first cut of S1d-2 (Round 259) and S1d-3 (Round 260) done: OS/compiler/data-model leaves with target-weighted costs, integer-valued family members with versions, `HAS` atoms, the rank-1 gate against enumeration (0 of ~56,000 corpus groups differ). Remaining: `EMPTY`, language rows, byte order, the overlay-flippable bit, separate phases 2a/2b, `via`, `enable`/`cover`.)* `sat`, `why_off` (phases 1, 2a, 2b, typed
+**S1d, queries and the family table.** *(Status: S1d-1 (Round 257) and a first cut of S1d-2 (Round 259) and S1d-3 (Round 260) and S1d-4 (Round 261, language axes `std`/`mode`) done: OS/compiler/data-model leaves with target-weighted costs, integer-valued family members with versions, `HAS` atoms, the rank-1 gate against enumeration (0 of ~56,000 corpus groups differ). Remaining: `EMPTY`, bare `linux`/`unix`, byte order, the overlay-flippable bit, separate phases 2a/2b, `via`, `enable`/`cover`.)* `sat`, `why_off` (phases 1, 2a, 2b, typed
 `Requirement{clause,kind,status,source,via}` per 3.8), `diff`, ranks to K=3. The
 family table with OS and compiler leaves, the overlay-flippable bit, cross-axis
 clauses, the language block (std rows with derived `__STDC_VERSION__`/`linux`),

@@ -1,22 +1,27 @@
-/* pcfam.c - the family table: OS, compiler and data-model leaves and their
- * macros. */
+/* pcfam.c - the family table: OS, compiler and data-model leaves (the
+ * target), the language standard and its mode (the language field), and
+ * their macros. */
 #include "pcfam.h"
 
 #include <string.h>
 
-enum { AX_OS, AX_CC, AX_DM, NAX };
+enum { AX_OS, AX_CC, AX_DM, AX_STD, AX_MODE, NAX };
 
 #define MAXLEAF 5
-static const char *const axis_name[NAX] = {"os", "cc", "dm"};
-static const int axis_n[NAX] = {5, 5, 3};
+static const char *const axis_name[NAX] = {"os", "cc", "dm", "std", "mode"};
+static const int axis_n[NAX] = {5, 5, 3, 5, 2};
 static const char *const leaf_name[NAX][MAXLEAF] = {
     {"linux", "android", "windows", "apple", "other"},
     {"gcc", "clang", "msvc", "clang-cl", "other"},
     {"lp64", "ilp32", "llp64"},
+    {"c89", "c99", "c11", "c17", "c23"},
+    {"gnu", "iso"},
 };
 enum { L_LINUX, L_ANDROID, L_WINDOWS, L_APPLE };
 enum { C_GCC, C_CLANG, C_MSVC, C_CLANGCL };
 enum { D_LP64, D_ILP32, D_LLP64 };
+enum { S_C89, S_C99, S_C11, S_C17, S_C23 };
+enum { M_GNU, M_ISO };
 
 #define B(i) (1u << (i))
 
@@ -82,6 +87,12 @@ static const Row rows[] = {
     FLAG("__LP64__", AX_DM, B(D_LP64), B(D_ILP32) | B(D_LLP64)),
     FLAG("_LP64", AX_DM, B(D_LP64), B(D_ILP32) | B(D_LLP64)),
     FLAG("_WIN64", AX_DM, B(D_LLP64), B(D_LP64) | B(D_ILP32)),
+    /* the language: C89 has no __STDC_VERSION__ (an MSVC without /std lacks it
+     * too, which the table leaves out); ISO mode sets __STRICT_ANSI__ */
+    {"__STDC_VERSION__", AX_STD, B(S_C99) | B(S_C11) | B(S_C17) | B(S_C23),
+     B(S_C89), AX_STD, B(S_C99) | B(S_C11) | B(S_C17) | B(S_C23),
+     {0, 199901, 201112, 201710, 202311}, 0},
+    FLAG("__STRICT_ANSI__", AX_MODE, B(M_ISO), B(M_GNU)),
     /* the feature-test macros: clang has them all, MSVC has none of these
      * (gcc has them from 5, 10 or 14 on, so it stays free) */
     FLAG("__has_attribute", AX_CC, CLANGISH, B(C_MSVC)),
@@ -156,6 +167,11 @@ int pc_leaf_axis(const PcAtom *at)
     return axis_of(at);
 }
 
+PcClass pc_axis_class(const char *axis)
+{
+    return !strcmp(axis, "std") || !strcmp(axis, "mode") ? PC_LANG : PC_TARGET;
+}
+
 /* the blocks of the axes come in table order wherever the first use is */
 static Bdd leaf(PcCtx *cx, int axis, int i)
 {
@@ -208,7 +224,7 @@ Bdd pc_family(PcCtx *cx, Bdd f)
     BddVars vs = {0};
     size_t i, r;
     int a, l, l2;
-    bool touched[NAX] = {false, false, false};
+    bool touched[NAX] = {false};
     Bdd g = f;
     bdd_vars(m, f, &vs);
     for (i = 0; i < vs.len; i++) {
@@ -223,7 +239,9 @@ Bdd pc_family(PcCtx *cx, Bdd f)
         touched[AX_OS] = true;
     if (touched[AX_OS] || touched[AX_CC])
         touched[AX_OS] = touched[AX_CC] = true;     /* msvc builds for windows */
-    if (!touched[AX_OS] && !touched[AX_CC] && !touched[AX_DM]) {
+    for (a = 0; a < NAX && !touched[a]; a++)
+        ;
+    if (a == NAX) {
         vec_free(&vs);
         return f;
     }
@@ -240,9 +258,10 @@ Bdd pc_family(PcCtx *cx, Bdd f)
         g = bdd_and(m, g, any);
     }
     /* clang-cl and MSVC build for Windows */
-    for (l = C_MSVC; l <= C_CLANGCL; l++)
-        g = bdd_and(m, g, bdd_or(m, bdd_not(m, leaf(cx, AX_CC, l)),
-                                 leaf(cx, AX_OS, L_WINDOWS)));
+    if (touched[AX_CC])
+        for (l = C_MSVC; l <= C_CLANGCL; l++)
+            g = bdd_and(m, g, bdd_or(m, bdd_not(m, leaf(cx, AX_CC, l)),
+                                     leaf(cx, AX_OS, L_WINDOWS)));
     if (touched[AX_DM]) {       /* Windows is not LP64, LLP64 is Windows */
         g = bdd_and(m, g, bdd_or(m, bdd_not(m, leaf(cx, AX_DM, D_LP64)),
                                  bdd_not(m, leaf(cx, AX_OS, L_WINDOWS))));
@@ -295,6 +314,17 @@ bool pc_leaf_host(const PcAtom *at, const PcKeyHost *h)
         host = defd(h, "_MSC_VER") ? (defd(h, "__clang__") ? C_CLANGCL : C_MSVC)
              : defd(h, "__clang__") ? C_CLANG
              : defd(h, "__GNUC__") ? C_GCC : 4;
+        break;
+    case AX_STD: {
+        intmax_t v = 0;
+        if (!h->value(h->ctx, "__STDC_VERSION__", 16, &v))
+            v = 0;
+        host = v >= 202000 ? S_C23 : v >= 201700 ? S_C17 : v >= 201100 ? S_C11
+             : v >= 199900 ? S_C99 : S_C89;
+        break;
+    }
+    case AX_MODE:
+        host = defd(h, "__STRICT_ANSI__") ? M_ISO : M_GNU;
         break;
     default:
         host = defd(h, "_WIN64") ? D_LLP64

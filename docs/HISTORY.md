@@ -5075,3 +5075,15 @@ that is the same on every leaf is one unconditional entry. Guarded values gain s
 requirements no longer print twice (`has.pc` now asks for `cc = clang`, not `os = android`).
 Corpora: 0 BAD, rank-1 0 bad. zstd 89% -> 98% exact, lua 91-94% -> 97-100%. Left opaque: byte order
 (`__BYTE_ORDER__ == __ORDER_*__`), user-macro comparisons, residual `__has_builtin`. Suite 2197 passed.
+
+Round 261: S1d-4 the language axes.
+`pcfam.c` gains two one-hot axes beside OS, compiler and data model: `std` (c89, c99, c11, c17, c23)
+and `mode` (gnu, iso). `__STDC_VERSION__` is valued per std leaf (undefined in c89), `__STRICT_ANSI__`
+is the iso leaf. `PcAtom.target` becomes `PcClass cls` (config, language, target); a language leaf
+weighs 100 (config 1, target 1000), a cube carries `lang` beside `target` and `cost`
+(`pc_cube_weight` is the one scalar the DP, the ranking, the brute-force gate and the selftest share),
+requirements of the class print as `language std = c23`, and a derived macro is hidden when any
+leaf must change. The host leaf of `std` is read from the value of `__STDC_VERSION__`. `pc_family`
+no longer adds the "MSVC builds for Windows" clause unless a compiler leaf is in play. Fixture `lang`.
+Not done: bare `linux`/`unix` under gnu modes (a cross-axis row), the extension set, C94. Corpora:
+0 BAD, rank-1 0 bad, exactness unchanged. Suite 2198 passed.

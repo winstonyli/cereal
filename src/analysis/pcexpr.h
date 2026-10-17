@@ -30,12 +30,16 @@ typedef struct PcNode PcNode;
 
 typedef enum { PA_DEF, PA_GE, PA_TEXT, PA_LEAF, PA_HAS } PcAKind;
 
+/* What changes an atom, cheapest first: an overlay, the language field (the
+ * standard, GNU or ISO mode), the target (OS, compiler, data model). */
+typedef enum { PC_CFG, PC_LANG, PC_TARGET } PcClass;
+
 typedef struct PcAtom {
     PcAKind kind;
     Ident *id;              /* PA_DEF, PA_GE */
     intmax_t c;             /* PA_GE */
     const char *text;       /* PA_TEXT, PA_HAS; PA_LEAF: the axis ("os", "cc") */
-    bool target;            /* PA_LEAF: an OS or compiler change, not an overlay */
+    PcClass cls;            /* PA_LEAF: PC_LANG or PC_TARGET; else PC_CFG */
     bool derived;           /* a macro the family table (pcfam.h) follows from its leaf */
 } PcAtom;
 

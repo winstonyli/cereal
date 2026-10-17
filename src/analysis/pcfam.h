@@ -19,6 +19,8 @@ bool pc_fam_macro(const char *name);
 intmax_t pc_fam_range(const char *name);
 /* f with the table's clauses for the macros and leaves in its support */
 Bdd pc_family(PcCtx *cx, Bdd f);
+/* what changes the leaves of the named axis: the language field or the target */
+PcClass pc_axis_class(const char *axis);
 /* "os = linux" */
 const char *pc_leaf_name(const PcAtom *at);
 /* the axis of a leaf, to index per-axis state */

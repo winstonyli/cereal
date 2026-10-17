@@ -301,7 +301,13 @@ use that bit and nothing else.
 **The language group is a fourth block kind** (beside macro, family group and
 one-atom `HAS` blocks). It is a one-hot group over the rows of the std table
 (std year x GNU/ISO mode x extension set; the host probe supplies only the
-default row, 3.7). The std-sensitive atoms are **derived functions of the row**,
+default row, 3.7). *As built (Round 261): two independent one-hot family axes,
+`std` (c89, c99, c11, c17, c23) and `mode` (gnu, iso), with the same machinery
+as the target axes (table rows `__STDC_VERSION__` valued per std leaf,
+`__STRICT_ANSI__` by mode); atoms of class `PC_LANG` weigh 100 (a config change
+1, a target change 1000) and render as `language std = c23`. Not yet: bare
+`linux`/`unix` (needs a mode and an OS leaf at once), the extension set,
+`__STDC_VERSION__` of C94.* The std-sensitive atoms are **derived functions of the row**,
 not BDD variables of their own: `__STDC_VERSION__` thresholds, `__STRICT_ANSI__`,
 and `I(linux)` = `leaf_linux AND row_defines_linux` (likewise for every
 std-sensitive macro; 3.2 and 3.3 do not encode them separately). Choosing a row

@@ -17,7 +17,7 @@ typedef struct PcValuation {
     bool (*get)(void *ctx, const PcAtom *at, bool *known);
 } PcValuation;
 
-typedef enum { PQ_CONFIG, PQ_TARGET, PQ_ENV, PQ_OPAQUE } PcReqKind;
+typedef enum { PQ_CONFIG, PQ_TARGET, PQ_ENV, PQ_OPAQUE, PQ_LANG } PcReqKind;
 typedef enum { PQ_MET, PQ_UNMET, PQ_UNKNOWN } PcReqStatus;
 
 /* One macro (or one opaque text): what the cube needs of it. */
@@ -31,9 +31,14 @@ typedef struct PcCube {
     PcReq *reqs;
     uint32_t n;
     uint32_t cost;          /* the unmet CONFIG requirements */
+    uint32_t lang;          /* the unmet LANG requirements (a standard or mode
+                             * change: no overlay does it) */
     uint32_t target;        /* the unmet TARGET requirements (an OS or compiler
                              * change: no overlay does it) */
 } PcCube;
+
+/* the cube's cost as the one scalar the DP minimizes */
+uint32_t pc_cube_weight(const PcCube *c);
 
 /* f holds under V (unknown atoms count as false). */
 bool pc_holds(PcCtx *cx, Bdd f, const PcValuation *v);

@@ -6,7 +6,13 @@
 #include <string.h>
 
 #define INF 0x3fffffffu
-#define W_TARGET 1000u          /* one target change outweighs any config ones */
+#define W_TARGET 1000u          /* one target change outweighs any language ones */
+#define W_LANG 100u             /* and one language change any config ones */
+
+uint32_t pc_cube_weight(const PcCube *c)
+{
+    return c->target * W_TARGET + c->lang * W_LANG + c->cost;
+}
 #define PATH_CAP 64
 #define POP_CAP 20000
 
@@ -78,7 +84,8 @@ static bool is_cost_atom(PcCtx *cx, uint32_t var)
 
 static uint32_t atom_weight(const PcAtom *a)
 {
-    return a->target ? W_TARGET : a->derived ? 0 : 1;
+    return a->cls == PC_TARGET ? W_TARGET : a->cls == PC_LANG ? W_LANG
+         : a->derived ? 0 : 1;
 }
 
 /* Taking value b for var: the added cost, and the "deviated" flag the child
@@ -290,8 +297,9 @@ static PcCube make_cube(Q *q, const CubeLits *c)
     derived = xcalloc(no ? no : 1, sizeof *derived);
     for (j = 0; j < no; j++) {
         StrBuf sb = {0};
-        bool unmet = false, unknown = false, text = false, tgt = false,
-             pos = false, env = false;
+        bool unmet = false, unknown = false, text = false, pos = false,
+             env = false;
+        PcClass cls = PC_CFG;
         for (i = 0; i < c->n; i++)       /* a leaf that holds says the rest */
             if (pc_var_owner(q->cx, c->var[i]) == owners[j] &&
                 pc_atom_at(q->cx, c->var[i])->kind == PA_LEAF && c->val[i])
@@ -304,7 +312,7 @@ static PcCube make_cube(Q *q, const CubeLits *c)
             a = pc_atom_at(q->cx, c->var[i]);
             text = a->kind == PA_TEXT;
             env = a->kind == PA_HAS;
-            tgt = a->target;
+            cls = a->cls;
             derived[j] = a->derived;
             vs = vstate(q->cx, q->v, c->var[i]);
             if (vs < 0)
@@ -319,18 +327,22 @@ static PcCube make_cube(Q *q, const CubeLits *c)
         }
         r.reqs[j].clause = dup_str(sb_cstr(&sb));
         sb_free(&sb);
-        r.reqs[j].kind = text ? PQ_OPAQUE : env ? PQ_ENV : tgt ? PQ_TARGET
-                                                              : PQ_CONFIG;
+        r.reqs[j].kind = text ? PQ_OPAQUE : env ? PQ_ENV
+                       : cls == PC_TARGET ? PQ_TARGET
+                       : cls == PC_LANG ? PQ_LANG : PQ_CONFIG;
         r.reqs[j].status = unmet ? PQ_UNMET : unknown ? PQ_UNKNOWN : PQ_MET;
-        if (unmet && tgt)
+        if (unmet && cls == PC_TARGET)
             r.target++;
+        else if (unmet && cls == PC_LANG)
+            r.lang++;
         else if (unmet && !text && !env && !derived[j])
             r.cost++;
     }
     /* a macro the table derives from its leaf is not asked for separately
      * when the leaf itself must change */
     for (j = k = 0; j < no; j++) {
-        if (r.target && derived[j] && r.reqs[j].status == PQ_UNMET) {
+        if ((r.target || r.lang) && derived[j] &&
+            r.reqs[j].status == PQ_UNMET) {
             free((void *)r.reqs[j].clause);
             continue;
         }
@@ -363,7 +375,8 @@ char *pc_cube_render(const PcCube *c, bool only_unmet)
             continue;
         if (sb.len)
             sb_puts(&sb, "; ");
-        static const char *const kn[] = {"", "target ", "env ", "opaque "};
+        static const char *const kn[] = {"", "target ", "env ", "opaque ",
+                                         "language "};
         sb_printf(&sb, "%s%s [%s]", kn[q->kind], q->clause, st[q->status]);
     }
     r = dup_str(sb_cstr(&sb));
@@ -379,10 +392,9 @@ typedef struct Ranked {
 static int ranked_cmp(const void *a, const void *b)
 {
     const Ranked *x = a, *y = b;
-    if (x->c.target != y->c.target)
-        return x->c.target < y->c.target ? -1 : 1;
-    if (x->c.cost != y->c.cost)
-        return x->c.cost < y->c.cost ? -1 : 1;
+    uint32_t wx = pc_cube_weight(&x->c), wy = pc_cube_weight(&y->c);
+    if (wx != wy)
+        return wx < wy ? -1 : 1;
     return strcmp(x->key, y->key);
 }
 
@@ -612,7 +624,7 @@ int pc_check_rank1(PcCtx *cx, Bdd f, const PcValuation *v)
         return -1;
     if (!pc_preconditions(cx, f, v, 1, &c))
         return 1;
-    r = c.target * W_TARGET + c.cost != best;
+    r = pc_cube_weight(&c) != best;
     pc_cube_free(&c);
     return r;
 }
@@ -726,7 +738,7 @@ int pcq_selftest(void)
                 bad = 1;
         } else if (!nc) {
             bad = 2;
-        } else if (have && cubes[0].target * W_TARGET + cubes[0].cost == best) {
+        } else if (have && pc_cube_weight(&cubes[0]) == best) {
             compared++;
             for (a = 0; a < vs.len; a++)
                 if (pc_atom_at(&cx, vs.data[a])->kind == PA_LEAF) {
@@ -740,8 +752,8 @@ int pcq_selftest(void)
             bad = 3;
         }
         for (m = 0; m < (int)nc; m++) {
-            if (m && cubes[m].target * W_TARGET + cubes[m].cost <
-                         cubes[m - 1].target * W_TARGET + cubes[m - 1].cost)
+            if (m && pc_cube_weight(&cubes[m]) <
+                         pc_cube_weight(&cubes[m - 1]))
                 bad = 4;
             pc_cube_free(&cubes[m]);
         }

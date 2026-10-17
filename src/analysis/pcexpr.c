@@ -376,7 +376,7 @@ Bdd pc_atom(PcCtx *cx, PcAKind kind, Ident *id, intmax_t c, const char *text)
     at->id = id;
     at->c = c;
     at->text = text;
-    at->target = kind == PA_LEAF;
+    at->cls = kind == PA_LEAF ? pc_axis_class(text) : PC_CFG;
     at->derived = id && pc_fam_macro(id->str);
     return bdd_var(&cx->m, last * PC_K + b->n++);
 }

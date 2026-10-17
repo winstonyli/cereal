@@ -1,0 +1,21 @@
+pc: lang.c:3 if sat=1 host=1 exact=1 taint=0 oracle=ok :: defined(__STDC_VERSION__) & !__STDC_VERSION__>=201112 & !std=c11 & !std=c17 & std=c23 | defined(__STDC_VERSION__) & !__STDC_VERSION__>=201112 & !std=c11 & std=c17 | defined(__STDC_VERSION__) & !__STDC_VERSION__>=201112 & std=c11 | defined(__STDC_VERSION__) & __STDC_VERSION__>=201112 & !std=c99 | defined(__STDC_VERSION__) & __STDC_VERSION__>=201112 & std=c99 & !std=c11 & !std=c17 & std=c23 | defined(__STDC_VERSION__) & __STDC_VERSION__>=201112 & std=c99 & !std=c11 & std=c17 | ...
+pc: lang.c:6 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(__STDC_VERSION__) & !__STDC_VERSION__>=202311 & std=c23 | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & !std=c99 & !std=c11 & !std=c17 | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & !std=c99 & !std=c11 & std=c17 & std=c23 | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & !std=c99 & std=c11 & std=c23 | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & std=c99 & std=c23
+pc:   why[1] target=0 cost=0 :: language std = c23 [unmet]
+pc: lang.c:9 ifdef sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(__STRICT_ANSI__)
+pc:   why[1] target=0 cost=0 :: language mode = iso [unmet]
+pc: lang.c:12 if sat=1 host=0 exact=1 taint=0 oracle=ok :: !defined(__STDC_VERSION__)
+pc:   why[1] target=0 cost=0 :: language std = c89 [unmet]
+pc: lang.c:15 if sat=1 host=0 exact=1 taint=0 oracle=ok :: !defined(__STDC_VERSION__) & defined(__STRICT_ANSI__) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=201112 & !std=c99 & !std=c11 & !std=c17 & !std=c23 & defined(__STRICT_ANSI__) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=201112 & std=c99 & defined(__STRICT_ANSI__) | defined(__STDC_VERSION__) & __STDC_VERSION__>=201112 & std=c99 & defined(__STRICT_ANSI__)
+pc:   why[1] target=0 cost=0 :: language std = c89 [unmet]; language mode = iso [unmet]
+pc:   why[2] target=0 cost=0 :: language std = c99 [unmet]; language mode = iso [unmet]
+pc: lang.c:18 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(__STDC_VERSION__) & !__STDC_VERSION__>=202311 & std=c23 & defined(_MSC_VER) | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & !std=c99 & !std=c11 & !std=c17 & defined(_MSC_VER) | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & !std=c99 & !std=c11 & std=c17 & std=c23 & defined(_MSC_VER) | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & !std=c99 & std=c11 & std=c23 & defined(_MSC_VER) | defined(__STDC_VERSION__) & __STDC_VERSION__>=202311 & std=c99 & std=c23 & defined(_MSC_VER)
+pc:   why[1] target=1 cost=0 :: target cc = other [unmet]; language std = c23 [unmet]
+pc:   why[2] target=2 cost=0 :: target os = android [unmet]; target cc = other [unmet]; language std = c23 [unmet]
+pc:   why[3] target=2 cost=0 :: target os = apple [unmet]; target cc = other [unmet]; language std = c23 [unmet]
+pc: lang.c:21 if sat=1 host=0 exact=1 taint=0 oracle=ok :: defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & !std=c99 & !std=c11 & !std=c17 & std=c23 & defined(USE_X) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & !std=c99 & !std=c11 & std=c17 & defined(USE_X) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & !std=c99 & std=c11 & defined(USE_X) | defined(__STDC_VERSION__) & !__STDC_VERSION__>=199901 & std=c99 & defined(USE_X) | defined(__STDC_VERSION__) & __STDC_VERSION__>=199901 & defined(USE_X)
+pc:   why[1] target=0 cost=1 :: defined(USE_X) [unmet]
+pc:   why[2] target=0 cost=1 :: language std = c11 [unmet]; defined(USE_X) [unmet]
+pc:   why[3] target=0 cost=1 :: language std = c23 [unmet]; defined(USE_X) [unmet]
+pc: total groups=7 files=1 sys=0 unresolved=0 computed=0 over=0
+pc: check rank1 ok=7 bad=0 skipped=0
+pc: oracle exact-untainted ok=7 bad=0, exact-tainted ok=0 bad=0, opaque-untainted ok=0 bad=0, opaque-tainted ok=0 bad=0, undecided=0 exact-undecided=0
