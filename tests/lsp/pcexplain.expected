@@ -1,0 +1,198 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider",
+  "workspaceSymbolProvider"
+ ]
+}
+>> initialized
+>> didOpen pcexplain/main.c
+>> (idle)
+## #if with a config atom: inactive, and what would turn it on (VERSION is 2 here)
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Not compiled**: `#if defined(USE_FAST) && VERSION >= 3` ($ROOT/pcexplain/main.c:2) is skipped in this build\n\nCondition: `defined(CFG_H) & defined(VERSION) & VERSION>=3 & defined(USE_FAST)`\n\nTo compile it:\n1. `defined(CFG_H)` (the unit defines `CFG_H` at $ROOT/pcexplain/cfg.h:2); `defined(VERSION) && VERSION >= 3` (the unit defines `VERSION` at $ROOT/pcexplain/cfg.h:3); `defined(USE_FAST)`"
+ }
+}
+## its text answers the same
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Not compiled**: `#if defined(USE_FAST) && VERSION >= 3` ($ROOT/pcexplain/main.c:2) is skipped in this build\n\nCondition: `defined(CFG_H) & defined(VERSION) & VERSION>=3 & defined(USE_FAST)`\n\nTo compile it:\n1. `defined(CFG_H)` (the unit defines `CFG_H` at $ROOT/pcexplain/cfg.h:2); `defined(VERSION) && VERSION >= 3` (the unit defines `VERSION` at $ROOT/pcexplain/cfg.h:3); `defined(USE_FAST)`"
+ }
+}
+## #elif on a compiler macro: a target change
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Not compiled**: `#elif defined(__clang__)` ($ROOT/pcexplain/main.c:4) is skipped in this build\n\nTo compile it:\n1. target `cc = clang`\n2. target `os = android`; target `cc = clang`"
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Not compiled**: `#elif defined(__clang__)` ($ROOT/pcexplain/main.c:4) is skipped in this build\n\nTo compile it:\n1. target `cc = clang`\n2. target `os = android`; target `cc = clang`"
+ }
+}
+## #else that the build took: the condition, nothing to turn on; its text says nothing
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Compiled**: `#else` ($ROOT/pcexplain/main.c:6) is taken in this build"
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "```c\nvar plain: int tentative\n```"
+ },
+ "range": {
+  "end": {
+   "character": 9,
+   "line": 6
+  },
+  "start": {
+   "character": 4,
+   "line": 6
+  }
+ }
+}
+## a target and a language condition
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Compiled**: `#ifdef __linux__` ($ROOT/pcexplain/main.c:9) is taken in this build\n\nCondition: `defined(__linux__)`"
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Not compiled**: `#ifdef _WIN32` ($ROOT/pcexplain/main.c:12) is skipped in this build\n\nCondition: `defined(_WIN32)`\n\nTo compile it:\n1. target `os = windows`"
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Not compiled**: `#ifdef _WIN32` ($ROOT/pcexplain/main.c:12) is skipped in this build\n\nCondition: `defined(_WIN32)`\n\nTo compile it:\n1. target `os = windows`"
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Not compiled**: `#if __STDC_VERSION__ >= 202311L` ($ROOT/pcexplain/main.c:15) is skipped in this build\n\nTo compile it:\n1. language `std = c23`"
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Not compiled**: `#if __STDC_VERSION__ >= 202311L` ($ROOT/pcexplain/main.c:15) is skipped in this build\n\nTo compile it:\n1. language `std = c23`"
+ }
+}
+## a feature test: environment, unknown to the host
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Compiled**: `#if __has_attribute(noreturn)` ($ROOT/pcexplain/main.c:18) is taken in this build\n\nCondition: `[c:__has_attribute ( noreturn )]`"
+ }
+}
+## in a header: the group of the file as the open unit includes it (once, past its guard)
+>> didOpen pcexplain/cfg.h
+>> (idle)
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Not compiled**: `#ifdef NEED_EXTRA` ($ROOT/pcexplain/cfg.h:4) is skipped in this build\n\nCondition: `!defined(CFG_H) & defined(NEED_EXTRA)`\n\nTo compile it:\n1. `defined(NEED_EXTRA)`"
+ }
+}
+>> textDocument/hover
+{
+ "contents": {
+  "kind": "markdown",
+  "value": "**Not compiled**: `#ifdef NEED_EXTRA` ($ROOT/pcexplain/cfg.h:4) is skipped in this build\n\nCondition: `!defined(CFG_H) & defined(NEED_EXTRA)`\n\nTo compile it:\n1. `defined(NEED_EXTRA)`"
+ }
+}
+## cereal/configExplain: the same group as data (header #if in cfg.h; inactive #if in main.c; none on a plain line)
+>> cereal/configExplain
+{
+ "condition": "!defined(CFG_H) & defined(NEED_EXTRA)",
+ "directive": "#ifdef NEED_EXTRA",
+ "exact": true,
+ "line": 4,
+ "onDirective": true,
+ "status": "skipped",
+ "tainted": false,
+ "why": [
+  [
+   {
+    "clause": "defined(NEED_EXTRA)",
+    "kind": "config",
+    "unknown": false
+   }
+  ]
+ ]
+}
+>> cereal/configExplain
+{
+ "condition": "defined(CFG_H) & defined(VERSION) & VERSION>=3 & defined(USE_FAST)",
+ "directive": "#if defined(USE_FAST) && VERSION >= 3",
+ "exact": true,
+ "line": 2,
+ "onDirective": true,
+ "status": "skipped",
+ "tainted": false,
+ "why": [
+  [
+   {
+    "clause": "defined(CFG_H)",
+    "kind": "config",
+    "unknown": false
+   },
+   {
+    "clause": "defined(VERSION) && VERSION >= 3",
+    "kind": "config",
+    "unknown": false
+   },
+   {
+    "clause": "defined(USE_FAST)",
+    "kind": "config",
+    "unknown": false
+   }
+  ]
+ ]
+}
+>> cereal/configExplain
+null
+>> shutdown
+null
+>> exit
+exit 0

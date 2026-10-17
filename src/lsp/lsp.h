@@ -136,6 +136,7 @@ typedef struct Snapshot {
     Options *opt;
     struct Overlay *overlay; /* the editor buffers it was built from */
     MacroGraph graph;        /* built with the snapshot */
+    struct PcUnit *pc;       /* its presence conditions (analysis/pc.h); NULL: none */
     /* The C symbol index (phase 2), set under the server lock.  At install
      * it is the previous snapshot's index carried over the edit (B3_DESIGN.md
      * 12; cidx_carried), replaced at publish by the snapshot's own check's;
@@ -257,6 +258,7 @@ void lsp_type_definition(Req *r, JsonWriter *w);
 void lsp_references(Req *r, JsonWriter *w);
 void lsp_document_highlight(Req *r, JsonWriter *w);
 void lsp_hover(Req *r, JsonWriter *w);
+void lsp_config_explain(Req *r, JsonWriter *w);
 void lsp_completion(Req *r, JsonWriter *w);
 void lsp_document_symbols(Req *r, JsonWriter *w);
 /* workspace/symbol over the units that have an open document: each one's

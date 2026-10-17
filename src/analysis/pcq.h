@@ -25,6 +25,8 @@ typedef struct PcReq {
     const char *clause;     /* "defined(X) && X >= 3"; owned by the cube */
     PcReqKind kind;
     PcReqStatus status;
+    Ident *id;              /* the macro it is about, if it is about one */
+    bool residual;          /* it asks for a leaf the table has no name for */
 } PcReq;
 
 typedef struct PcCube {
@@ -35,6 +37,7 @@ typedef struct PcCube {
                              * change: no overlay does it) */
     uint32_t target;        /* the unmet TARGET requirements (an OS or compiler
                              * change: no overlay does it) */
+    bool residual;          /* an unmet requirement is residual */
 } PcCube;
 
 /* the cube's cost as the one scalar the DP minimizes */

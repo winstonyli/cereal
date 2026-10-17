@@ -21,6 +21,9 @@ intmax_t pc_fam_range(const char *name);
 Bdd pc_family(PcCtx *cx, Bdd f);
 /* what changes the leaves of the named axis: the language field or the target */
 PcClass pc_axis_class(const char *axis);
+/* the leaf stands for all that the table does not name ("other"): no answer
+ * to "what must change" */
+bool pc_leaf_residual(const PcAtom *at);
 /* "os = linux" */
 const char *pc_leaf_name(const PcAtom *at);
 /* the axis of a leaf, to index per-axis state */

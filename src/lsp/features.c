@@ -6,6 +6,7 @@
  * diagnostics, inactive regions and a macro expansion view. */
 #include "lsp.h"
 
+#include "../analysis/pc.h"
 #include "../c/frontend.h"
 #include "projq.h"
 #include "project.h"
@@ -402,10 +403,82 @@ static bool c_edited(Req *r, const uint32_t *decls, size_t nd)
     return false;
 }
 
+/* The conditional group around at: on its #if/#elif/#else, or in its text if
+ * the build skipped it.  What decides it and what would turn it on, from the
+ * presence conditions (analysis/pc.h). */
+static bool group_note(Req *r, SrcLoc at, StrBuf *sb)
+{
+    PcExplain e;
+    bool show;
+    if (!r->snap->pc || !pc_explain(r->snap->pc, r->file, at, &e))
+        return false;
+    show = e.header || !e.active;
+    if (show)
+        pc_explain_render(r->snap->pc, &e, sb);
+    pc_explain_free(&e);
+    return show;
+}
+
+/* cereal/configExplain: the same group, as data: its directive, whether the
+ * build takes it, its condition, and the cheapest ways to turn it on
+ * (null: no group here). */
+void lsp_config_explain(Req *r, JsonWriter *w)
+{
+    static const char *const kind[] = {"config", "target", "environment",
+                                       "unknown", "language"};
+    PcExplain e;
+    size_t i;
+    uint32_t j;
+    if (!r->snap->pc || !pc_explain(r->snap->pc, r->file, cursor(r), &e)) {
+        json_null(w);
+        return;
+    }
+    json_begin_object(w);
+    json_key(w, "directive");
+    json_str(w, e.text);
+    json_key(w, "line");
+    json_int(w, e.line);
+    json_key(w, "onDirective");
+    json_bool(w, e.header);
+    json_key(w, "status");
+    json_str(w, e.active ? "compiled" : e.sat == 0 ? "never" : "skipped");
+    json_key(w, "exact");
+    json_bool(w, e.exact);
+    json_key(w, "tainted");
+    json_bool(w, e.tainted);
+    if (e.cond) {
+        json_key(w, "condition");
+        json_str(w, e.cond);
+    }
+    json_key(w, "why");
+    json_begin_array(w);
+    for (i = 0; i < e.nwhy; i++) {
+        json_begin_array(w);
+        for (j = 0; j < e.why[i].n; j++) {
+            const PcReq *q = &e.why[i].reqs[j];
+            if (q->status == PQ_MET)
+                continue;
+            json_begin_object(w);
+            json_key(w, "kind");
+            json_str(w, kind[q->kind]);
+            json_key(w, "clause");
+            json_str(w, q->clause);
+            json_key(w, "unknown");
+            json_bool(w, q->status == PQ_UNKNOWN);
+            json_end_object(w);
+        }
+        json_end_array(w);
+    }
+    json_end_array(w);
+    json_end_object(w);
+    pc_explain_free(&e);
+}
+
 /* hover: a macro expanded here answers as before; a C entity answers over a
  * name with only macro history (weak, which it then mentions) or none: the
- * checker's text for it (cindex_hover), over the name.  Elsewhere in a
- * skipped #if group, a note saying so (rather than nothing). */
+ * checker's text for it (cindex_hover), over the name.  On a conditional
+ * directive, or in a skipped #if group, the group's explanation (or, without
+ * one, a note saying so). */
 void lsp_hover(Req *r, JsonWriter *w)
 {
     SrcLoc at = cursor(r);
@@ -427,7 +500,8 @@ void lsp_hover(Req *r, JsonWriter *w)
         t.range.begin = r->file->base + e->off;
         t.range.end = t.range.begin + e->len;
     } else if (t.kind == TGT_NONE) {
-        if (!index_inactive_note(&r->snap->ix, at, &sb)) {
+        if (!group_note(r, at, &sb) &&
+            !index_inactive_note(&r->snap->ix, at, &sb)) {
             json_null(w);
             return;
         }

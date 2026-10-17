@@ -77,19 +77,45 @@ static double now_ms(void)
     return (double)ts.tv_sec * 1e3 + (double)ts.tv_nsec / 1e6;
 }
 
-static void pc_dump_hook(Analysis *a)
+void analysis_keep_pc(Analysis *a)
+{
+    a->keep_pc = true;
+    pc_trace_attach(a);
+}
+
+PcUnit *analysis_take_pc(Analysis *a)
+{
+    PcUnit *u = a->pcu;
+    a->pcu = NULL;
+    return u;
+}
+
+/* The fold, when the trace is attached: dumped for CEREAL_PCDUMP, kept for
+ * the caller (analysis_keep_pc), else dropped. */
+static void pc_finish(Analysis *a)
 {
     int flags = pc_hook_flags();
-    PcUnit u;
+    PcUnit *u;
     double t0;
-    if (flags < 0 || !a->pp->main_file)
+    if (!a->pct)
         return;
+    if (!a->pp->main_file) {
+        pc_trace_free(a);
+        return;
+    }
+    u = xmalloc(sizeof *u);
     t0 = now_ms();
-    pc_fold(&u, a, a->pp->main_file);
-    if (strstr(getenv("CEREAL_PCDUMP"), "time"))
-        fprintf(stderr, "pc: fold_ms=%.1f\n", now_ms() - t0);
-    pc_dump(&u, stderr, flags);
-    pc_unit_free(&u);
+    pc_fold(u, a, a->pp->main_file);
+    pc_trace_free(a);
+    if (flags >= 0) {
+        if (strstr(getenv("CEREAL_PCDUMP"), "time"))
+            fprintf(stderr, "pc: fold_ms=%.1f\n", now_ms() - t0);
+        pc_dump(u, stderr, flags);
+    }
+    if (a->keep_pc)
+        a->pcu = u;
+    else
+        pc_unit_destroy(u);
 }
 
 void analysis_finish(Analysis *a)
@@ -97,11 +123,14 @@ void analysis_finish(Analysis *a)
     hygiene_finish(a);
     cond_finish(a);
     include_finish(a);
-    pc_dump_hook(a);
+    pc_finish(a);
 }
 
 void analysis_discard(Analysis *a)
 {
+    pc_trace_free(a);
+    pc_unit_destroy(a->pcu);
+    a->pcu = NULL;
     if (a->hyg)
         hygiene_release(a);
     if (a->cond)

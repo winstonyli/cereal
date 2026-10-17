@@ -10,6 +10,7 @@
 #include "lsp.h"
 
 #include "../analysis/analysis.h"
+#include "../analysis/pc.h"
 #include "../c/frontend.h"
 #include "../mgraph.h"
 #include "../cell.h"
@@ -260,6 +261,7 @@ void snapshot_release(Snapshot *s)
     if (!s || atomic_add_u32(&s->refs, (uint32_t)-1) != 1)
         return;
     mgraph_free(&s->graph);
+    pc_unit_destroy(s->pc);
     cindex_free(s->cidx);
     index_free(&s->ix);
     tu_free(&s->tu);
@@ -292,6 +294,7 @@ static void start_tu(Snapshot *s, Analysis *an, Interner *in, uint32_t *cancel)
     s->tu.pp.cancel = cancel;
     memset(an, 0, sizeof *an);
     analysis_attach(an, &s->tu.pp);
+    analysis_keep_pc(an);   /* hover and configExplain read the conditions */
     index_init(&s->ix, &s->tu.pp);
     s->ix.want_cells = true; /* large files: queries walk the cells */
 }
@@ -357,9 +360,11 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
     }
     /* complete: the listeners' state (analysis) was on this stack */
     s->tu.pp.listeners.len = 0;
+    s->pc = analysis_take_pc(&an);
     if (atomic_load_u32(cancel)) {
         s->overlay = NULL; /* the caller still owns it on failure */
         s->opt = NULL;
+        pc_unit_destroy(s->pc);
         index_free(&s->ix);
         tu_free(&s->tu);
         free((char *)s->main);
@@ -1375,7 +1380,7 @@ typedef enum {
     R_DEF, R_DECL, R_TYPEDEF, R_REFS, R_HIGHLIGHT, R_HOVER, R_COMPLETION,
     R_SYMBOLS, R_SEMTOK, R_SEMTOK_DELTA, R_SEMTOK_RANGE, R_FOLDING,
     R_PREP_RENAME, R_RENAME, R_PREP_CALLS, R_IN_CALLS, R_OUT_CALLS,
-    R_SIGHELP, R_EXPAND, R_CODE_ACTION, R_HINTS
+    R_SIGHELP, R_EXPAND, R_CODE_ACTION, R_HINTS, R_CONFIG_EXPLAIN
 } ReqKind;
 
 /* What a request waits for before it reads the C index (B3_DESIGN.md 12.6).
@@ -1421,6 +1426,7 @@ static const struct {
     {"callHierarchy/outgoingCalls", R_OUT_CALLS, CP_WAIT},
     {"textDocument/signatureHelp", R_SIGHELP, CP_ANY},
     {"cereal/expandMacro", R_EXPAND, CP_NONE},
+    {"cereal/configExplain", R_CONFIG_EXPLAIN, CP_POS},
     {"textDocument/codeAction", R_CODE_ACTION, CP_SNAP},
     {NULL, R_DEF, CP_NONE}};
 
@@ -1640,6 +1646,7 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         case R_OUT_CALLS: lsp_calls(&r, &w, false); break;
         case R_SIGHELP: lsp_signature_help(&r, &w); break;
         case R_EXPAND: lsp_expand_macro(&r, &w); break;
+        case R_CONFIG_EXPLAIN: lsp_config_explain(&r, &w); break;
         case R_CODE_ACTION: lsp_code_action(&r, &w); break;
         case R_HINTS: lsp_inlay_hints(&r, &w); break;
         }

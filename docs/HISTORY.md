@@ -5087,3 +5087,18 @@ leaf must change. The host leaf of `std` is read from the value of `__STDC_VERSI
 no longer adds the "MSVC builds for Windows" clause unless a compiler leaf is in play. Fixture `lang`.
 Not done: bare `linux`/`unix` under gnu modes (a cross-axis row), the extension set, C94. Corpora:
 0 BAD, rank-1 0 bad, exactness unchanged. Suite 2198 passed.
+
+Round 262: S1e hover and `cereal/configExplain`.
+(1) The trace is per-Analysis (`PcTrace`, listeners with `ctx = PcTrace*`), so it works under
+`-fparallel=on` too (phase A runs every directive on the calling thread); the LSP keeps the folded
+`PcUnit` in the `Snapshot` (`analysis_keep_pc`/`analysis_take_pc`). (2) `pc_explain` finds the
+innermost group at a position (ORing the instances of a header included more than once) and
+`pc_explain_render` writes the hover: status, directive, short condition, and the ranked "To compile
+it" alternatives with kind labels (target, language, environment, unknown) and a `via` label naming
+where the unit defines the macro. "Other" leaves are never offered. Hover on a `#if/#elif/#else` or
+in skipped text uses it; `PcReq` gains `id` and `residual`. (3) `cereal/configExplain` returns the same
+as data: `{directive, line, onDirective, status (compiled|skipped|never), exact, tainted, condition,
+why: [[{kind, clause, unknown}]]}`, or null. Queries mutate the snapshot's BDD manager, so they run
+one at a time (requests are single-threaded; no mutex). Goldens `tests/lsp/pcexplain.json` (both
+parallel modes), `basic.expected` refreshed. Known quirks: include-guard atoms (`defined(CFG_H)`)
+show up in answers; alternatives 2-3 can be redundant. Suite 2200 passed.

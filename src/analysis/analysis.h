@@ -10,6 +10,8 @@
 typedef struct HygieneState HygieneState;
 typedef struct CondState CondState;
 typedef struct IncludeState IncludeState;
+typedef struct PcTrace PcTrace;
+typedef struct PcUnit PcUnit;
 
 typedef struct Analysis {
     PP *pp;
@@ -20,10 +22,18 @@ typedef struct Analysis {
     HygieneState *hyg;
     CondState *cond;
     IncludeState *inc;
+    PcTrace *pct;           /* the groups the run took (pc.h); NULL: no fold */
+    PcUnit *pcu;            /* the fold, kept for the caller (analysis_keep_pc) */
+    bool keep_pc;
 } Analysis;
 
 void analysis_attach(Analysis *a, PP *pp);
 void analysis_finish(Analysis *a);   /* end-of-TU checks */
+/* Fold the unit's presence conditions at analysis_finish and keep the result
+ * (call after analysis_attach): analysis_take_pc hands it over; free it with
+ * pc_unit_destroy.  Without this the fold runs only for CEREAL_PCDUMP. */
+void analysis_keep_pc(Analysis *a);
+PcUnit *analysis_take_pc(Analysis *a);
 /* Free the state of an analysis that will not be finished (a parallel run
  * that fell back). */
 void analysis_discard(Analysis *a);

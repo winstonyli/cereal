@@ -16,14 +16,6 @@ uint32_t pc_cube_weight(const PcCube *c)
 #define PATH_CAP 64
 #define POP_CAP 20000
 
-static char *dup_str(const char *s)
-{
-    size_t n = strlen(s) + 1;
-    char *r = xmalloc(n);
-    memcpy(r, s, n);
-    return r;
-}
-
 /* value of atom at var under v: 0, 1, or -1 when it is not known */
 static int vstate(PcCtx *cx, const PcValuation *v, uint32_t var)
 {
@@ -298,8 +290,9 @@ static PcCube make_cube(Q *q, const CubeLits *c)
     for (j = 0; j < no; j++) {
         StrBuf sb = {0};
         bool unmet = false, unknown = false, text = false, pos = false,
-             env = false;
+             env = false, residual = false;
         PcClass cls = PC_CFG;
+        Ident *id = NULL;
         for (i = 0; i < c->n; i++)       /* a leaf that holds says the rest */
             if (pc_var_owner(q->cx, c->var[i]) == owners[j] &&
                 pc_atom_at(q->cx, c->var[i])->kind == PA_LEAF && c->val[i])
@@ -313,6 +306,8 @@ static PcCube make_cube(Q *q, const CubeLits *c)
             text = a->kind == PA_TEXT;
             env = a->kind == PA_HAS;
             cls = a->cls;
+            id = a->id;
+            residual |= a->kind == PA_LEAF && c->val[i] && pc_leaf_residual(a);
             derived[j] = a->derived;
             vs = vstate(q->cx, q->v, c->var[i]);
             if (vs < 0)
@@ -325,12 +320,15 @@ static PcCube make_cube(Q *q, const CubeLits *c)
                 sb_puts(&sb, " && ");
             lit_text(q->cx, c->var[i], c->val[i], &sb);
         }
-        r.reqs[j].clause = dup_str(sb_cstr(&sb));
+        r.reqs[j].clause = xstrdup(sb_cstr(&sb));
         sb_free(&sb);
         r.reqs[j].kind = text ? PQ_OPAQUE : env ? PQ_ENV
                        : cls == PC_TARGET ? PQ_TARGET
                        : cls == PC_LANG ? PQ_LANG : PQ_CONFIG;
         r.reqs[j].status = unmet ? PQ_UNMET : unknown ? PQ_UNKNOWN : PQ_MET;
+        r.reqs[j].id = id;
+        r.reqs[j].residual = residual;
+        r.residual |= unmet && residual;
         if (unmet && cls == PC_TARGET)
             r.target++;
         else if (unmet && cls == PC_LANG)
@@ -379,7 +377,7 @@ char *pc_cube_render(const PcCube *c, bool only_unmet)
                                          "language "};
         sb_printf(&sb, "%s%s [%s]", kn[q->kind], q->clause, st[q->status]);
     }
-    r = dup_str(sb_cstr(&sb));
+    r = xstrdup(sb_cstr(&sb));
     sb_free(&sb);
     return r;
 }

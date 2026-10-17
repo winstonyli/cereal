@@ -210,7 +210,7 @@
 {
  "contents": {
   "kind": "markdown",
-  "value": "inactive code (skipped by #if at $ROOT/basic/main.c:6)"
+  "value": "**Not compiled**: `#else` ($ROOT/basic/main.c:8) is skipped in this build\n\nCondition: `!defined(MODE) | defined(MODE) & !MODE>=2`\n\nTo compile it:\n1. `!defined(MODE)`\n2. `MODE < 2`"
  }
 }
 ## completion

@@ -11,6 +11,7 @@
 #define CEREAL_PC_H
 
 #include "pcexpr.h"
+#include "pcq.h"
 
 typedef struct PcGroup {
     SrcFile *file;
@@ -23,9 +24,11 @@ typedef struct PcGroup {
 typedef struct PcMacro PcMacro;
 typedef struct PcOnce PcOnce;
 
-typedef struct PcUnit {
-    Analysis *an;
+struct PcUnit {
+    Analysis an_own;        /* a copy: the unit outlives the caller's */
+    Analysis *an;           /* &an_own */
     PcCtx cx;
+    VEC(uint64_t) taken;    /* sorted: the groups the real run took */
     VEC(PcGroup) groups;
     bool over;              /* the BDD outgrew its cap: the fold is partial */
     bool conc;              /* inside a system header */
@@ -38,11 +41,14 @@ typedef struct PcUnit {
     uint32_t *htab;
     size_t hcap;
     VEC(PcOnce *) once;
-} PcUnit;
+};
 
-/* Fold the unit rooted at main.  False when it went over the cap. */
+/* Fold the unit rooted at main, with the trace of a (taken from it).  False
+ * when it went over the cap. */
 bool pc_fold(PcUnit *u, Analysis *a, SrcFile *main);
 void pc_unit_free(PcUnit *u);
+void pc_unit_destroy(PcUnit *u);    /* a malloc'd one */
+void pc_trace_free(Analysis *a);
 /* The truth of an atom for the macros as they are when the main file
  * starts. */
 bool pc_host_atom(PcUnit *u, const PcAtom *at);
@@ -50,6 +56,30 @@ bool pc_host_atom(PcUnit *u, const PcAtom *at);
  * system headers and the oracle compares with it.  Single-threaded runs
  * only: call after analysis_attach, before the TU runs. */
 void pc_trace_attach(Analysis *a);
+
+/* One conditional group of a file, as the editor asks about it. */
+typedef struct PcExplain {
+    SrcFile *file;
+    uint32_t dir;           /* skeleton index of its #if/#elif/#else */
+    SkKind kind;
+    uint32_t line;
+    bool header;            /* the position is on the directive, not in its text */
+    bool active;            /* the real run took it (every inclusion of the file) */
+    bool exact;             /* its condition has no opaque atom */
+    bool tainted;           /* an earlier skipped include may have changed it */
+    int sat;                /* 1, 0 (never), -1 (unknown) */
+    char *cond;             /* the condition, as a formula */
+    char *text;             /* the directive as written (its first line) */
+    PcCube why[3];          /* the cheapest ways to turn an inactive group on */
+    size_t nwhy;
+} PcExplain;
+
+/* The innermost group around loc of file f (which the fold read).  False:
+ * none, or the fold was partial.  One query at a time per unit. */
+bool pc_explain(PcUnit *u, SrcFile *f, SrcLoc loc, PcExplain *e);
+void pc_explain_free(PcExplain *e);
+/* Markdown, for a hover. */
+void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb);
 
 enum { PCD_SIZE = 1, PCD_ORACLE = 2, PCD_SKIPPED = 4, PCD_WHY = 8,
     PCD_CHECK = 16 };

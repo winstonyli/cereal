@@ -32,9 +32,12 @@ typedef struct PFrame {
  * does the arithmetic the fold cannot.  The run is traced as the set of
  * groups it took, each named by the chain of #include directives entered
  * and the group's directive (PcGroup.inst); the fold looks its instances up.
- * Single-threaded runs only. */
-static VEC(uint64_t) taken;
-static VEC(uint64_t) chains;        /* the chain at each open file */
+ * The listeners fire in a parallel run's phase A, on the calling thread, so
+ * the trace is the Analysis's own (Analysis.pct), not shared. */
+struct PcTrace {
+    VEC(uint64_t) taken;
+    VEC(uint64_t) chains;       /* the chain at each open file */
+};
 
 static uint64_t mixh(uint64_t h, uint32_t x)
 {
@@ -44,35 +47,49 @@ static uint64_t mixh(uint64_t h, uint32_t x)
 
 static void trace_enter(void *ctx, SrcFile *f, const IncludeEvent *via)
 {
-    uint64_t c = chains.len ? vec_last(&chains) : 0;
-    (void)ctx;
+    PcTrace *t = ctx;
+    uint64_t c = t->chains.len ? vec_last(&t->chains) : 0;
     (void)f;
-    vec_push(&chains, via && via->hash_loc ? mixh(c, via->hash_loc) : c);
+    vec_push(&t->chains, via && via->hash_loc ? mixh(c, via->hash_loc) : c);
 }
 
 static void trace_exit(void *ctx, SrcFile *f)
 {
-    (void)ctx;
+    PcTrace *t = ctx;
     (void)f;
-    if (chains.len)
-        chains.len--;
+    if (t->chains.len)
+        t->chains.len--;
 }
 
 static void trace_cond(void *ctx, const CondEvent *ev)
 {
-    (void)ctx;
-    if (ev->taken && ev->kind != COND_ENDIF && chains.len)
-        vec_push(&taken, mixh(vec_last(&chains), ev->kw_loc));
+    PcTrace *t = ctx;
+    if (ev->taken && ev->kind != COND_ENDIF && t->chains.len)
+        vec_push(&t->taken, mixh(vec_last(&t->chains), ev->kw_loc));
 }
 
 void pc_trace_attach(Analysis *a)
 {
     PPListener l;
+    if (a->pct)
+        return;
+    a->pct = xcalloc(1, sizeof *a->pct);
     memset(&l, 0, sizeof l);
+    l.ctx = a->pct;
     l.file_enter = trace_enter;
     l.file_exit = trace_exit;
     l.cond = trace_cond;
     pp_add_listener(a->pp, l);
+}
+
+void pc_trace_free(Analysis *a)
+{
+    if (!a->pct)
+        return;
+    vec_free(&a->pct->taken);
+    vec_free(&a->pct->chains);
+    free(a->pct);
+    a->pct = NULL;
 }
 
 static int cmp_u64(const void *a, const void *b)
@@ -81,9 +98,9 @@ static int cmp_u64(const void *a, const void *b)
     return x < y ? -1 : x > y;
 }
 
-static bool was_taken(uint64_t inst)
+static bool was_taken(const PcUnit *u, uint64_t inst)
 {
-    return bsearch(&inst, taken.data, taken.len, sizeof *taken.data,
+    return bsearch(&inst, u->taken.data, u->taken.len, sizeof *u->taken.data,
                    cmp_u64) != NULL;
 }
 
@@ -335,7 +352,7 @@ static Bdd group_cond(PcUnit *u, const SkDirective *d)
     PcNode *n;
     Bdd c;
     if (u->conc)
-        return was_taken(mixh(u->chain, d->kw_loc)) ? BDD_TRUE : BDD_FALSE;
+        return was_taken(u, mixh(u->chain, d->kw_loc)) ? BDD_TRUE : BDD_FALSE;
     n = pc_branch_cond(cx, d);
     if (n) {
         c = pc_truth(cx, n);
@@ -551,12 +568,17 @@ static void fold_file(PcUnit *u, SrcFile *f, int from_dir, Bdd pc, int depth)
 bool pc_fold(PcUnit *u, Analysis *a, SrcFile *main)
 {
     memset(u, 0, sizeof *u);
-    u->an = a;
-    pc_init(&u->cx, a, PC_BDD_CAP);
+    u->an_own = *a;
+    u->an = &u->an_own;
+    pc_init(&u->cx, u->an, PC_BDD_CAP);
     u->cx.env.ctx = u;
     u->cx.env.defined = env_defined;
     u->cx.env.values = env_values;
-    qsort(taken.data, taken.len, sizeof *taken.data, cmp_u64);
+    if (a->pct) {                       /* the trace is spent once folded */
+        memcpy(&u->taken, &a->pct->taken, sizeof u->taken);
+        memset(&a->pct->taken, 0, sizeof a->pct->taken);
+    }
+    qsort(u->taken.data, u->taken.len, sizeof *u->taken.data, cmp_u64);
     fold_file(u, main, -1, BDD_TRUE, 0);
     return !u->over;
 }
@@ -574,10 +596,17 @@ void pc_unit_free(PcUnit *u)
     vec_free(&u->once);
     vec_free(&u->groups);
     vec_free(&u->skipped);
-    vec_free(&taken);
-    vec_free(&chains);
+    vec_free(&u->taken);
     free(u->htab);
     pc_free(&u->cx);
+}
+
+void pc_unit_destroy(PcUnit *u)
+{
+    if (!u)
+        return;
+    pc_unit_free(u);
+    free(u);
 }
 
 /* ---- dump ------------------------------------------------------------- */
@@ -723,7 +752,7 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
             maxsize = MAX(maxsize, sz);
         }
         if (flags & PCD_ORACLE) {
-            bool active = was_taken(g->inst);
+            bool active = was_taken(u, g->inst);
             if (unk) {
                 fprintf(out, " oracle=unknown");
                 nunk[exact]++;
@@ -772,4 +801,186 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
                 tot[1][0][1], tot[1][0][0],
                 tot[1][1][1], tot[1][1][0], tot[0][0][1], tot[0][0][0],
                 tot[0][1][1], tot[0][1][0], nunk[0] + nunk[1], nunk[1]);
+}
+
+/* ---- explaining one group -------------------------------------------- */
+
+static bool group_head(SkKind k)
+{
+    return k <= SK_ELSE && k != SK_ENDIF;
+}
+
+typedef struct GroupAt {
+    SrcLoc loc, best;
+    uint32_t dir;
+    bool header, found;
+} GroupAt;
+
+/* group g of the file runs up to end: is loc in it, and deeper than the best? */
+static void group_close(GroupAt *x, const Skeleton *sk, uint32_t g, SrcLoc end)
+{
+    const SkDirective *h = &sk->dirs.data[g];
+    if (h->hash_loc <= x->loc && x->loc < end && h->hash_loc >= x->best) {
+        x->best = h->hash_loc;
+        x->dir = g;
+        x->header = x->loc < h->end_loc;
+        x->found = true;
+    }
+}
+
+/* The innermost conditional group of the file around loc: a group runs from
+ * its #if/#elif/#else to the next directive of its conditional (or the end
+ * of the file).  header: loc is on the directive itself rather than in the
+ * group's text. */
+static bool group_at(const Skeleton *sk, SrcLoc loc, uint32_t *dir, bool *header)
+{
+    VEC(uint32_t) open = {0};
+    GroupAt x = {loc, 0, 0, false, false};
+    size_t i;
+    for (i = 0; i < sk->dirs.len; i++) {
+        const SkDirective *d = &sk->dirs.data[i];
+        if ((d->kind == SK_ENDIF || (d->kind >= SK_ELIF && d->kind <= SK_ELSE)) &&
+            open.len) {
+            group_close(&x, sk, vec_last(&open), d->hash_loc);
+            open.len--;
+        }
+        if (group_head(d->kind))
+            vec_push(&open, (uint32_t)i);
+    }
+    while (open.len) {                  /* unterminated */
+        group_close(&x, sk, vec_last(&open), (SrcLoc)-1);
+        open.len--;
+    }
+    vec_free(&open);
+    *dir = x.dir;
+    *header = x.header;
+    return x.found;
+}
+
+bool pc_explain(PcUnit *u, SrcFile *f, SrcLoc loc, PcExplain *e)
+{
+    PcValuation hv = {u, host_get};
+    const Skeleton *sk = f->skel;
+    BddMgr *m = &u->cx.m;
+    Bdd pc = BDD_FALSE, taint = BDD_FALSE;
+    StrBuf sb = {0};
+    uint32_t col;
+    size_t i;
+    bool found = false;
+    memset(e, 0, sizeof *e);
+    if (!sk || u->over || !group_at(sk, loc, &e->dir, &e->header))
+        return false;
+    for (i = 0; i < u->groups.len; i++) {
+        const PcGroup *g = &u->groups.data[i];
+        if (g->file != f || g->dir != e->dir)
+            continue;
+        pc = bdd_or(m, pc, g->pc);      /* each time the file is included */
+        taint = bdd_or(m, taint, g->taint);
+        e->active |= was_taken(u, g->inst);
+        found = true;
+    }
+    if (!found || m->over)
+        return false;
+    e->file = f;
+    e->kind = sk->dirs.data[e->dir].kind;
+    srcmgr_linecol(f, sk->dirs.data[e->dir].kw_loc, &e->line, &col);
+    e->exact = pc_exact(&u->cx, pc);
+    e->tainted = taint != BDD_FALSE &&
+                 (taint == BDD_TRUE || bdd_eval_fn(m, taint, host_var, u));
+    e->sat = pc_sat(&u->cx, pc);
+    put_formula(&u->cx, &sb, pc);
+    e->cond = xstrdup(sb_cstr(&sb));
+    sb_free(&sb);
+    {
+        const SkDirective *d = &sk->dirs.data[e->dir];
+        const char *s = f->buf + (d->hash_loc - f->base);
+        size_t n = 0, lim = d->end_loc > d->hash_loc ? d->end_loc - d->hash_loc : 0;
+        while (n < lim && n < 100 && s[n] != '\n' && s[n] != '\r')
+            n++;
+        StrBuf tx = {0};
+        bool cut = n < lim && s[n] != '\n' && s[n] != '\r';
+        while (n && (s[n - 1] == ' ' || s[n - 1] == '\t'))
+            n--;
+        sb_putn(&tx, s, n);
+        if (cut)
+            sb_puts(&tx, "...");
+        e->text = xstrdup(sb_cstr(&tx));
+        sb_free(&tx);
+    }
+    if (!e->active && e->sat == 1) {
+        size_t k, keep = 0;
+        e->nwhy = pc_preconditions(&u->cx, pc, &hv, 3, e->why);
+        /* "some other OS" is no answer when the table names one */
+        for (k = 0; k < e->nwhy; k++)
+            keep += !e->why[k].residual;
+        if (keep && keep < e->nwhy) {
+            for (k = i = 0; k < e->nwhy; k++) {
+                if (e->why[k].residual)
+                    pc_cube_free(&e->why[k]);
+                else
+                    e->why[i++] = e->why[k];
+            }
+            e->nwhy = i;
+        }
+    }
+    return true;
+}
+
+void pc_explain_free(PcExplain *e)
+{
+    size_t i;
+    for (i = 0; i < e->nwhy; i++)
+        pc_cube_free(&e->why[i]);
+    free(e->cond);
+    free(e->text);
+    memset(e, 0, sizeof *e);
+}
+
+/* where the unit defines a macro, if its files do: the label of a
+ * requirement on it (the requirement is on its value before the unit) */
+static void put_via(const PcUnit *u, StrBuf *sb, const Ident *id)
+{
+    const Macro *m = id ? mt_cur(u->an->pp->mt, id) : NULL;
+    uint32_t line, col;
+    if (!m || m->predefined || !m->file)
+        return;
+    srcmgr_linecol(m->file, m->name_loc, &line, &col);
+    sb_printf(sb, " (the unit defines `%s` at %s:%u)", id->str, m->file->path,
+              line);
+}
+
+void pc_explain_render(const PcUnit *u, const PcExplain *e, StrBuf *sb)
+{
+    static const char *const label[] = {"", "target ", "environment ", "unknown ",
+                                        "language "};
+    size_t i;
+    uint32_t j;
+    sb_printf(sb, "%s: `%s` (%s:%u)", e->active ? "**Compiled**"
+              : e->sat == 0 ? "**Never compiled**" : "**Not compiled**", e->text,
+              e->file->path, e->line);
+    sb_puts(sb, e->active ? " is taken in this build"
+            : e->sat == 0 ? ": its condition cannot hold"
+                          : " is skipped in this build");
+    if (!e->exact)
+        sb_puts(sb, "\n\n(it depends on a test the analysis cannot evaluate)");
+    if (e->tainted)
+        sb_puts(sb, "\n\n(an earlier `#include` was not followed: this may differ)");
+    if (e->cond && strlen(e->cond) <= 100)
+        sb_printf(sb, "\n\nCondition: `%s`", e->cond);
+    if (e->nwhy)
+        sb_puts(sb, "\n\nTo compile it:");
+    for (i = 0; i < e->nwhy; i++) {
+        const PcCube *c = &e->why[i];
+        bool first = true;
+        sb_printf(sb, "\n%zu. ", i + 1);
+        for (j = 0; j < c->n; j++) {
+            const PcReq *q = &c->reqs[j];
+            if (q->status == PQ_MET)
+                continue;
+            sb_printf(sb, "%s%s`%s`%s", first ? "" : "; ", label[q->kind],
+                      q->clause, q->status == PQ_UNKNOWN ? " (unknown)" : "");
+            put_via(u, sb, q->id);
+            first = false;
+        }
+    }
 }

@@ -167,6 +167,11 @@ int pc_leaf_axis(const PcAtom *at)
     return axis_of(at);
 }
 
+bool pc_leaf_residual(const PcAtom *at)
+{
+    return !strcmp(pc_leaf_name(at), "other");
+}
+
 PcClass pc_axis_class(const char *axis)
 {
     return !strcmp(axis, "std") || !strcmp(axis, "mode") ? PC_LANG : PC_TARGET;
