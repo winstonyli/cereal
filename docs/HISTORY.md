@@ -5338,3 +5338,6 @@ profile (1.98 G): `pc_fold` 37% (`do_define` 21%, `group_cond` 9%), `pc_cover` 5
 `cereal.index.*` settings are read once from `initializationOptions` (no `didChangeConfiguration` handler exists for any
 of them), so `configs` is startup-only like threads and memory; a restart makes real units without a sidecar stale as
 `cover` (pstate), so turning it on needs no migration.
+Negative (Round 279): canonicalizing the operand order of and/or in `bdd_ite` (swap f,g when h is false, f,h when g is true)
+so both orders share a cache entry: lj_state.c 1.98 to 2.05 G instructions, reverted. The fold's cost is the ite/mk
+engine itself (55% of the profile); a cut there means complement edges or a different node store, not tuning.
