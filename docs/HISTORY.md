@@ -5163,3 +5163,19 @@ conditional loses its group; `enable`/`cover` never used them. Not started. Gate
 default: old and new fold side by side over the corpora with identical user-file group conditions; the
 suite unchanged except the system-header group records. Open: the `Macro` body adapter for
 `pc_const_value`/`pc_parse`/`fn_macro`, taint/skipped counters from the include events, event memory.
+
+Round 268: the fold replays the preprocessor's events for system headers.
+(Round 267's decision about system-header groups was moot: `record` already skipped groups inside a
+system header, so nothing is lost.) The trace (`PcTrace`) now also records, while inside a system header
+entered from outside one, the `define`, `undef` and not-found `include` events in order (`PcEv`), as one
+run per outermost include keyed by its chain hash (`PcRun`). `do_include` replays that run
+(`replay_run`: `do_define` from the `Macro`'s body with the same constant/expression/function-macro
+rules, `do_undef`, unresolved-include counters and taint) instead of `fold_file` on the header. A header
+the run did not enter (guard or `#pragma once` skip, or an include in a group the host does not take)
+still folds from its skeleton. Gate (a throwaway A/B script, since deleted): the 56,000 corpus groups
+had identical conditions up to BDD variable order, and the totals (skipped, unresolved) matched; the
+suite and the oracles are unchanged (rank-1 0 bad; enable/cover 0 failed). Cost: 107-header unit
+12.7M to 1.5M instructions (-88%), libuv unix/fs.c 67.6M to 31.9M (-53%; the rest is BDD work on the
+user files and skeletons of the headers it falls back on), whole-corpus fold time about -25% to -40%
+(noisy). Known difference: a `#include MACRO` inside a system header, which the old walk skipped
+(taint), is followed through the run's events; no corpus group changed.

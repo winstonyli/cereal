@@ -35,9 +35,33 @@ typedef struct PFrame {
  * and the group's directive (PcGroup.inst); the fold looks its instances up.
  * The listeners fire in a parallel run's phase A, on the calling thread, so
  * the trace is the Analysis's own (Analysis.pct), not shared. */
+/* The macro events of the system headers entered from outside one, in order:
+ * the fold replays them (replay_run) instead of reading those headers again.
+ * A header the run did not enter (a guard or #pragma once skipped it, or the
+ * include is in a group the host does not take) is still folded from its
+ * skeleton. */
+enum { EV_ENTER, EV_EXIT, EV_DEF, EV_UNDEF, EV_MISS };
+typedef struct PcEv {
+    uint8_t kind;
+    bool angled;
+    union {
+        Macro *m;
+        Ident *id;
+        char *spelled;
+    } u;
+} PcEv;
+
+typedef struct PcRun {
+    uint64_t chain;             /* of the #include that entered the outermost header */
+    uint32_t begin, end;        /* its events */
+} PcRun;
+
 struct PcTrace {
     VEC(uint64_t) taken;
     VEC(uint64_t) chains;       /* the chain at each open file */
+    VEC(PcEv) ev;
+    VEC(PcRun) runs;
+    uint32_t sys;               /* depth inside system headers */
 };
 
 static uint64_t mixh(uint64_t h, uint32_t x)
@@ -46,12 +70,32 @@ static uint64_t mixh(uint64_t h, uint32_t x)
     return h ^ (h >> 29);
 }
 
+static void trace_ev(PcTrace *t, int kind, void *p)
+{
+    PcEv e;
+    memset(&e, 0, sizeof e);
+    e.kind = (uint8_t)kind;
+    e.u.m = p;
+    vec_push(&t->ev, e);
+}
+
 static void trace_enter(void *ctx, SrcFile *f, const IncludeEvent *via)
 {
     PcTrace *t = ctx;
     uint64_t c = t->chains.len ? vec_last(&t->chains) : 0;
-    (void)f;
-    vec_push(&t->chains, via && via->hash_loc ? mixh(c, via->hash_loc) : c);
+    uint64_t nc = via && via->hash_loc ? mixh(c, via->hash_loc) : c;
+    vec_push(&t->chains, nc);
+    if (t->sys || f->kind == SF_SYSTEM || f->system_header) {
+        if (!t->sys) {
+            PcRun r;
+            r.chain = nc;
+            r.begin = (uint32_t)t->ev.len;
+            r.end = 0;
+            vec_push(&t->runs, r);
+        }
+        t->sys++;
+        trace_ev(t, EV_ENTER, NULL);
+    }
 }
 
 static void trace_exit(void *ctx, SrcFile *f)
@@ -60,6 +104,39 @@ static void trace_exit(void *ctx, SrcFile *f)
     (void)f;
     if (t->chains.len)
         t->chains.len--;
+    if (t->sys) {
+        trace_ev(t, EV_EXIT, NULL);
+        if (!--t->sys)
+            vec_last(&t->runs).end = (uint32_t)t->ev.len;
+    }
+}
+
+static void trace_define(void *ctx, Macro *m, Macro *replaced)
+{
+    PcTrace *t = ctx;
+    (void)replaced;
+    if (t->sys)
+        trace_ev(t, EV_DEF, m);
+}
+
+static void trace_undef(void *ctx, Ident *id, Macro *m, SrcLoc hash_loc,
+                        SrcLoc name_loc)
+{
+    PcTrace *t = ctx;
+    (void)m;
+    (void)hash_loc;
+    (void)name_loc;
+    if (t->sys)
+        trace_ev(t, EV_UNDEF, id);
+}
+
+static void trace_include(void *ctx, const IncludeEvent *ev)
+{
+    PcTrace *t = ctx;
+    if (t->sys && ev->result == INC_NOT_FOUND && !ev->macros_only) {
+        trace_ev(t, EV_MISS, xstrdup(ev->spelled));
+        vec_last(&t->ev).angled = ev->angled;
+    }
 }
 
 static void trace_cond(void *ctx, const CondEvent *ev)
@@ -80,6 +157,9 @@ void pc_trace_attach(Analysis *a)
     l.file_enter = trace_enter;
     l.file_exit = trace_exit;
     l.cond = trace_cond;
+    l.define = trace_define;
+    l.undef = trace_undef;
+    l.include = trace_include;
     pp_add_listener(a->pp, l);
 }
 
@@ -89,6 +169,14 @@ void pc_trace_free(Analysis *a)
         return;
     vec_free(&a->pct->taken);
     vec_free(&a->pct->chains);
+    {
+        size_t i;
+        for (i = 0; i < a->pct->ev.len; i++)
+            if (a->pct->ev.data[i].kind == EV_MISS)
+                free(a->pct->ev.data[i].u.spelled);
+    }
+    vec_free(&a->pct->ev);
+    vec_free(&a->pct->runs);
     free(a->pct);
     a->pct = NULL;
 }
@@ -449,6 +537,103 @@ static bool include_name(const PcUnit *u, const SkDirective *d, char **name,
     return false;
 }
 
+/* fn_macro for a Macro: the same rules (no # or ..., no ## at an end; no
+ * named variadic) */
+static const PcFn *fn_of_macro(PcUnit *u, const Macro *m)
+{
+    Analysis *an = u->an;
+    PcFn *f;
+    uint32_t i;
+    if (m->gnu_named_variadic || m->nparams < (m->variadic ? 1 : 0))
+        return NULL;
+    for (i = 0; i < m->body_len; i++)
+        if (tok_is_punct(&m->body[i], P_HASH) ||
+            tok_is_punct(&m->body[i], P_ELLIPSIS))
+            return NULL;
+    if (m->body_len && (tok_is_punct(&m->body[0], P_HASHHASH) ||
+                        tok_is_punct(&m->body[m->body_len - 1], P_HASHHASH)))
+        return NULL;
+    f = NEW(an->arena, PcFn);
+    f->params = m->params;
+    f->np = (uint32_t)(m->variadic ? m->nparams - 1 : m->nparams);
+    f->va = m->variadic;
+    f->body.t = m->body;
+    f->body.n = m->body_len;
+    return f;
+}
+
+static void replay_define(PcUnit *u, const Macro *m, Bdd cur)
+{
+    intmax_t n = 0;
+    bool known = false;
+    PcNode *expr = NULL;
+    const PcFn *fn = NULL;
+    if (m->funclike) {
+        fn = fn_of_macro(u, m);
+    } else if (m->body_len) {
+        TokSpan body = {m->body, m->body_len};
+        known = pc_const_value(&u->cx, body, &n);
+        if (!known)
+            expr = pc_parse(&u->cx, body);
+    }
+    do_define(u, m->name, known, n,
+              known ? NULL : opq_label(u->an->arena, m->name, m->name_loc),
+              expr, fn, cur);
+}
+
+static int cmp_run(const void *a, const void *b)
+{
+    const PcRun *x = a, *y = b;
+    return x->chain < y->chain ? -1 : x->chain > y->chain;
+}
+
+/* The events of the system header the real run entered at this chain;
+ * false: it did not (the include was skipped, or is not reached). */
+static bool replay_run(PcUnit *u, uint64_t chain, Bdd cur)
+{
+    PcTrace *t = u->an->pct;
+    PcRun key, *r;
+    uint32_t i;
+    int depth = 0;
+    if (!t)
+        return false;
+    if (!u->runs_sorted) {
+        qsort(t->runs.data, t->runs.len, sizeof *t->runs.data, cmp_run);
+        u->runs_sorted = true;
+    }
+    key.chain = chain;
+    r = bsearch(&key, t->runs.data, t->runs.len, sizeof *t->runs.data, cmp_run);
+    if (!r)
+        return false;
+    for (i = r->begin; i < r->end; i++) {
+        const PcEv *e = &t->ev.data[i];
+        switch (e->kind) {
+        case EV_ENTER:
+            u->files++;
+            if (depth++)
+                u->sys++;
+            break;
+        case EV_EXIT:
+            depth--;
+            break;
+        case EV_DEF:
+            replay_define(u, e->u.m, cur);
+            break;
+        case EV_UNDEF:
+            do_undef(u, e->u.id, cur);
+            break;
+        case EV_MISS:
+            u->unres++;
+            u->taint = bdd_or(&u->cx.m, u->taint, cur);
+            vec_push(&u->skipped, arena_printf(u->an->arena,
+                                               e->angled ? "<%s>" : "\"%s\"",
+                                               e->u.spelled));
+            break;
+        }
+    }
+    return true;
+}
+
 static void do_include(PcUnit *u, SrcFile *f, int from_dir,
                        const SkDirective *d, Bdd cur, int depth)
 {
@@ -477,7 +662,8 @@ static void do_include(PcUnit *u, SrcFile *f, int from_dir,
         u->sys++;
     }
     u->chain = mixh(chain, d->hash_loc);
-    fold_file(u, g, di, cur, depth + 1);
+    if (!(!was && u->conc && replay_run(u, u->chain, cur)))
+        fold_file(u, g, di, cur, depth + 1);
     u->chain = chain;
     u->conc = was;
 }

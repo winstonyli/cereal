@@ -32,6 +32,7 @@ struct PcUnit {
     VEC(PcGroup) groups;
     bool over;              /* the BDD outgrew its cap: the fold is partial */
     bool conc;              /* inside a system header */
+    bool runs_sorted;       /* the trace's system runs, for replay */
     Bdd taint;              /* the condition under which a skipped include ran */
     uint64_t chain;         /* hash of the #include directives entered */
     size_t files, sys, unres, computed;
