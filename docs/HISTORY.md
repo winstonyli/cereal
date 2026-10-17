@@ -5326,3 +5326,8 @@ unsatisfiable group, so the unrestricted check only repeated that work (35% of t
 1.98 G instructions (7.45 at the start of Round 278); its overlay text changed (not explained to the word: ties), while
 pc_enable `--cover` per directory is identical, rank-1 oracle 0 bad. wsym index at configs 0.5 before this step: 96.5 s
 (p95 43.4 ms that run, the machine was busier than in the 98.8 s run).
+
+Round 279: `cereal.index.configs` default decided: stays 0 (opt-in). Idle-ish re-run after Round 278 (machine freshly
+booted, so noisy): configs 0: 18.1 s, p95 31.3 ms; 0.5: 103.5 s, p95 54.7 ms. Per-unit coverage of the cheaper search on
+71 LuaJIT 2.1 units: 9,409 covered against 9,416 for the 64-path build (0.07% fewer). Adaptive (budgeted) default
+parked, see CONFIG_DESIGN 11.

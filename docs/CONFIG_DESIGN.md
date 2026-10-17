@@ -654,7 +654,10 @@ list, and for other compilers by review.
    (recommended).
 3. Families: small built-in hierarchy, extensible in settings (recommended).
 4. Derived configurations: opt-in `cereal.index.configs`, default off until S2's
-   rule holds (recommended).
+   rule holds (recommended). Decided (Round 279): the default stays 0. The rule holds
+   (gate p95 and builder p50 within limits at 0.5), but the index costs about 6-10x
+   (libuv-scale wsym project: 10-18 s to 97-104 s) and the query p95 rises, for a
+   rename benefit seen only on option-style groups (libuv: none).
 5. Rename through `PARTIAL`: never (recommended), since R6 cannot hold with
    unknown types.
 6. No canonical unit; records hold Local PCs only (recommended; replaces draft
@@ -668,6 +671,9 @@ list, and for other compilers by review.
   matter.
 - Cross-target type checking: needs the target model of 7.3.
 - `__COUNTER__`/`__FILE__`/`__LINE__` in conditions: OPAQUE.
+- Adaptive `configs`: on by default, off once the measured index time of the real
+  jobs passes a budget. Parked (Round 279): the cost is known only after a first
+  index, so first and later runs would differ; revisit if the cost drops further.
 
 ## 12. Review log
 
