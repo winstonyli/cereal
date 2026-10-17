@@ -5331,3 +5331,10 @@ Round 279: `cereal.index.configs` default decided: stays 0 (opt-in). Idle-ish re
 booted, so noisy): configs 0: 18.1 s, p95 31.3 ms; 0.5: 103.5 s, p95 54.7 ms. Per-unit coverage of the cheaper search on
 71 LuaJIT 2.1 units: 9,409 covered against 9,416 for the 64-path build (0.07% fewer). Adaptive (budgeted) default
 parked, see CONFIG_DESIGN 11.
+Round 279, timings and profile: warm wsym index (WSL, 3 threads, 2 runs each): configs 0: 18.5 and 15.4 s (p95 44.2 and 26.8
+ms); 0.5: 90.5 and 85.0 s (p95 33.6 and 34.4 ms): about 5.5x, and query p95 is not worse than the noise at 0. lj_state.c
+profile (1.98 G): `pc_fold` 37% (`do_define` 21%, `group_cond` 9%), `pc_cover` 55% (`pc_enable_group` 39%, `pc_holds`
+12%). What is left is the fold itself, which `configs` needs; a further cut means speeding the fold, not the search.
+`cereal.index.*` settings are read once from `initializationOptions` (no `didChangeConfiguration` handler exists for any
+of them), so `configs` is startup-only like threads and memory; a restart makes real units without a sidecar stale as
+`cover` (pstate), so turning it on needs no migration.

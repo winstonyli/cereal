@@ -656,7 +656,7 @@ list, and for other compilers by review.
 4. Derived configurations: opt-in `cereal.index.configs`, default off until S2's
    rule holds (recommended). Decided (Round 279): the default stays 0. The rule holds
    (gate p95 and builder p50 within limits at 0.5), but the index costs about 6-10x
-   (libuv-scale wsym project: 10-18 s to 97-104 s) and the query p95 rises, for a
+   (1,770-unit wsym project, 3 threads: 15-18 s to 85-90 s warm) and the query p95 rises slightly, for a
    rename benefit seen only on option-style groups (libuv: none).
 5. Rename through `PARTIAL`: never (recommended), since R6 cannot hold with
    unknown types.
