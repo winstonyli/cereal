@@ -1376,8 +1376,7 @@ void pc_cover(PcUnit *u, size_t max, PcCover *out)
         const PcGroup *g = &u->groups.data[i];
         PcValuation hv = {u, host_get, NULL};
         StrBuf w = {0};
-        if (pc_holds(&u->cx, g->pc, &hv) || pc_sat(&u->cx, g->pc) != 1 ||
-            !pc_exact(&u->cx, g->pc)) {
+        if (pc_holds(&u->cx, g->pc, &hv) || !pc_exact(&u->cx, g->pc)) {
             sb_free(&w);
             continue;
         }

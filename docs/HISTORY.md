@@ -5321,3 +5321,8 @@ Round 278, continued: per-unit check of the cap: 60 LuaJIT 2.1 units, `--cover 8
 atoms the valuation calls fixed before the family constraint is ANDed in, so the constraint (30% of the cost) sees a
 smaller f and touches fewer axes. lj_state.c 3.58 to 2.94 G instructions; its overlay text is unchanged; rank-1 oracle
 0 bad; pc_enable `--cover` identical; suite 2205 passed.
+`pc_cover` no longer calls `pc_sat` per group: `pc_enable_group` restricts to the host first and returns no cube for an
+unsatisfiable group, so the unrestricted check only repeated that work (35% of the remaining cost). lj_state.c 2.94 to
+1.98 G instructions (7.45 at the start of Round 278); its overlay text changed (not explained to the word: ties), while
+pc_enable `--cover` per directory is identical, rank-1 oracle 0 bad. wsym index at configs 0.5 before this step: 96.5 s
+(p95 43.4 ms that run, the machine was busier than in the 98.8 s run).
