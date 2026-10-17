@@ -5188,3 +5188,14 @@ be written always. So `--cover` stays gated by `cereal.index.configs`. (2) Tried
 guard-covered system header the run did not enter (nothing in it can be taken, so no skeleton needed):
 the suite and oracles were unchanged and the fold time did not move (libuv 240 to 281 ms, noise), so
 it was reverted. The fallback skeleton folds are not the remaining cost; BDD work on the user files is.
+
+Round 270: BDD cost of the fold, negative result.
+Callgrind of libuv unix/fs.c (31.9M instructions in the fold): `do_define` 48% (of which `macro_state`
+creating a macro's state 20%: `pc_atom` 11%, `xcalloc` 10%), `bdd_ite`/`bdd_and`/`mk` about 40%
+inclusive, `skel_get` 20%, `qsort` 9%. Tried making a macro's initial state lazy (no `defined(X)` atom
+or family values until it is read or changed under a condition; a define or undef under TRUE needs
+neither). Goldens, oracles and cover were unchanged, but the fold took 32.3M instructions (31.9M
+before) and the same wall time, so it was reverted: most defines in the corpus units are not under
+TRUE, or are read soon after. Not tried: arena-allocating `PcMacro`, avoiding the `qsort` of the taken
+list (record it sorted), and a BDD variable order that follows first use. The fold stays at about
+7 ms per unit (libuv) with the replay.
