@@ -5341,3 +5341,9 @@ of them), so `configs` is startup-only like threads and memory; a restart makes 
 Negative (Round 279): canonicalizing the operand order of and/or in `bdd_ite` (swap f,g when h is false, f,h when g is true)
 so both orders share a cache entry: lj_state.c 1.98 to 2.05 G instructions, reverted. The fold's cost is the ite/mk
 engine itself (55% of the profile); a cut there means complement edges or a different node store, not tuning.
+Negative (Round 279): complement edges in the BDD (handle = node << 1 | complement, one terminal, canonical lo edge,
+O(1) `bdd_not`, ite standard triples; prototype on a throwaway branch, selftests, suite 2205 and the lj_state.c overlay
+all unchanged). `bdd_ite` fell 1.08 to 0.51 G and `mk` 0.53 to 0.22 G, but the whole run rose 1.98 to 2.11 G: the DP
+(`dp`, memoized per handle) and `implied` now visit a node once per polarity, and `do_define` got dearer. Abandoned
+and the branch deleted. Conclusion: the engine is not the lever; the remaining cost is the amount of BDD work the fold
+and `pc_cover` ask for (number of defines times entries per macro, groups times cubes).
