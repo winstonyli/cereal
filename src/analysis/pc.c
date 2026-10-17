@@ -196,6 +196,23 @@ static void macros_grow(PcUnit *u)
     }
 }
 
+/* "name@offset": the label of a value the fold does not model (no printf: one
+ * per such #define) */
+static const char *opq_label(Arena *a, const Ident *name, uint32_t loc)
+{
+    char digits[12], *s;
+    size_t nd = 0, i;
+    do
+        digits[nd++] = (char)('0' + loc % 10);
+    while (loc /= 10);
+    s = arena_alloc(a, name->len + nd + 2);
+    memcpy(s, name->str, name->len);
+    s[name->len] = '@';
+    for (i = 0; i < nd; i++)
+        s[name->len + 1 + i] = digits[nd - 1 - i];
+    return s;
+}
+
 static PcMacro *macro_state(PcUnit *u, Ident *id)
 {
     size_t k;
@@ -540,8 +557,7 @@ static void fold_file(PcUnit *u, SrcFile *f, int from_dir, Bdd pc, int depth)
                 }
                 do_define(u, d->name, known, n,
                           known ? NULL
-                                : arena_printf(u->an->arena, "%s@%u",
-                                               d->name->str, d->kw_loc),
+                                : opq_label(u->an->arena, d->name, d->kw_loc),
                           expr, fn, cur);
             }
             break;

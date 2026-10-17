@@ -5141,3 +5141,13 @@ set two ways, at most 16 words) into one while every group of both still holds u
 failed): lua53 819 of 819 eligible groups by 71 overlays (was 634 by 272), lua54 772 by 70, lua55 951 by
 69, lua52 722 by 119, libuv 774 by 231, zstd 241 of 241 by 8, lupa 2234 and uvloop 5825 by 8. Fixture
 `enable` gains a clashing `-DFEATURE_B` case. Suite 2202 passed.
+
+Round 266: fold cost.
+Callgrind on a unit of 107 system headers (fold only): 39% re-lexing skeletons (`skel_get`, one per file
+the fold follows; inherent while the fold reads directives itself), 22% `macro_state`, 11.5% `strcmp`
+(the family table scanned linearly, 44k times), 17.5% `arena_printf` (the `name@loc` label of an
+unmodeled `#define`). Now `row_of` is a hash index built on first use (race-safe by a pointer CAS) and
+the label is built by hand: 17.5M to 12.5M instructions (-28%). Suite 2202 passed, rank-1 0 bad. Whole
+corpus, fold ms over lint ms: libuv 62%, lua 61-87%, lupa 40%, uvloop 30%, zstd 18% (before: 68%,
+67-115%, 36%, 26%, 18%; timings are noisy). The fold is still of the order of a lint, so a server that
+wants overlays gates it (`--cover`).

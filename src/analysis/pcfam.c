@@ -3,6 +3,7 @@
  * their macros. */
 #include "pcfam.h"
 #include "pcq.h"
+#include "thread.h"
 
 #include <string.h>
 
@@ -161,12 +162,39 @@ static const Row rows[] = {
 };
 #define NROWS (sizeof rows / sizeof rows[0])
 
+/* name -> row, open addressing over hash_bytes; built on first use.  Two
+ * threads may both build it: the same table, and the loser's is dropped. */
+#define ROW_SLOTS 512                   /* a power of two above 2 * NROWS */
+_Static_assert(NROWS * 2 < ROW_SLOTS, "row table too small");
+static void *row_index;
+
+static const uint16_t *row_table(void)
+{
+    uint16_t *t = atomic_load_ptr(&row_index), *n;
+    size_t i, k;
+    if (t)
+        return t;
+    n = xcalloc(ROW_SLOTS, sizeof *n);
+    for (i = 0; i < NROWS; i++) {
+        k = hash_bytes(rows[i].name, strlen(rows[i].name)) & (ROW_SLOTS - 1);
+        while (n[k])
+            k = (k + 1) & (ROW_SLOTS - 1);
+        n[k] = (uint16_t)(i + 1);
+    }
+    if (!atomic_cas_ptr(&row_index, NULL, n)) {
+        free(n);
+        return atomic_load_ptr(&row_index);
+    }
+    return n;
+}
+
 static const Row *row_of(const char *name)
 {
-    size_t i;
-    for (i = 0; i < NROWS; i++)
-        if (!strcmp(rows[i].name, name))
-            return &rows[i];
+    const uint16_t *t = row_table();
+    size_t k = hash_bytes(name, strlen(name)) & (ROW_SLOTS - 1);
+    for (; t[k]; k = (k + 1) & (ROW_SLOTS - 1))
+        if (!strcmp(rows[t[k] - 1].name, name))
+            return &rows[t[k] - 1];
     return NULL;
 }
 
