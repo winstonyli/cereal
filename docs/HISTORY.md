@@ -5196,6 +5196,7 @@ inclusive, `skel_get` 20%, `qsort` 9%. Tried making a macro's initial state lazy
 or family values until it is read or changed under a condition; a define or undef under TRUE needs
 neither). Goldens, oracles and cover were unchanged, but the fold took 32.3M instructions (31.9M
 before) and the same wall time, so it was reverted: most defines in the corpus units are not under
-TRUE, or are read soon after. Not tried: arena-allocating `PcMacro`, avoiding the `qsort` of the taken
-list (record it sorted), and a BDD variable order that follows first use. The fold stays at about
+TRUE, or are read soon after. Also tried: the taken set as a hash set instead of sort + bsearch: 31.9M to 31.3M (-2%), reverted. The
+`qsort` share is 2,700 calls from elsewhere in the fold (not the taken list; not traced further).
+Not tried: arena-allocating `PcMacro` and a BDD variable order that follows first use. The fold stays at about
 7 ms per unit (libuv) with the replay.
