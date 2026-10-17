@@ -130,7 +130,7 @@ remains is feature tests and compiler arithmetic, which S1d's family values make
 the solver-guided overlay draws (need S1d's solver). The trace needs `-fparallel=off`, so the
 fold is not yet reachable outside the hook (S1d/S1e wire it).*
 
-**S1d, queries and the family table.** `sat`, `why_off` (phases 1, 2a, 2b, typed
+**S1d, queries and the family table.** *(Status: S1d-1 done, Round 257: valuation, `sat`/`holds`, `preconditions`, `diff`, brute-force selftest, `why` hook. Remaining: family table, EMPTY/HAS, phases 2a/2b, `via`, rank-1 gate on fixtures.)* `sat`, `why_off` (phases 1, 2a, 2b, typed
 `Requirement{clause,kind,status,source,via}` per 3.8), `diff`, ranks to K=3. The
 family table with OS and compiler leaves, the overlay-flippable bit, cross-axis
 clauses, the language block (std rows with derived `__STDC_VERSION__`/`linux`),

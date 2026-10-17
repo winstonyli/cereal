@@ -5,6 +5,7 @@
 #include "ppout.h"
 #include "analysis/analysis.h"
 #include "analysis/bdd.h"
+#include "analysis/pcq.h"
 #include "index.h"
 #include "cell.h"
 #include "toks.h"
@@ -1574,6 +1575,8 @@ int main(int argc, char **argv)
         return indexsum_main(argc - 2, argv + 2);
     if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "bdd"))
         return bdd_selftest();   /* hidden: run by tests/run.sh */
+    if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "pcq"))
+        return pcq_selftest();
     for (i = 1; i < argc; i++)
         ccdb_given |= !strncmp(argv[i], "--compile-commands", 18);
     for (i = 1; i < argc; i++) {

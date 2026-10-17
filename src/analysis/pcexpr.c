@@ -269,6 +269,7 @@ struct PcBlock {
     Ident *id;              /* the macro, or NULL for text */
     const char *key;        /* text */
     uint32_t next;          /* continuation block index + 1, or 0 */
+    uint32_t head;          /* the first block of this macro or text */
     uint32_t n;
     PcAtom atoms[PC_K];
 };
@@ -291,6 +292,7 @@ static uint32_t new_block(PcCtx *cx, bool text, Ident *id, const char *key)
     b->text = text;
     b->id = id;
     b->key = key;
+    b->head = (uint32_t)cx->blocks.len;
     vec_push(&cx->blocks, b);
     return (uint32_t)cx->blocks.len - 1;
 }
@@ -354,6 +356,7 @@ Bdd pc_atom(PcCtx *cx, PcAKind kind, Ident *id, intmax_t c, const char *text)
     }
     if (b->n == PC_K) {
         uint32_t nb = new_block(cx, is_text, id, text);
+        cx->blocks.data[nb]->head = cx->blocks.data[last]->head;
         cx->blocks.data[last]->next = nb + 1;
         last = nb;
         b = cx->blocks.data[last];
@@ -373,6 +376,18 @@ const PcAtom *pc_atom_at(const PcCtx *cx, uint32_t var)
         return NULL;
     b = cx->blocks.data[var / PC_K];
     return var % PC_K < b->n ? &b->atoms[var % PC_K] : NULL;
+}
+
+uint32_t pc_var_owner(const PcCtx *cx, uint32_t var)
+{
+    return var / PC_K < cx->blocks.len ? cx->blocks.data[var / PC_K]->head
+                                       : UINT32_MAX;
+}
+
+const char *pc_owner_name(const PcCtx *cx, uint32_t owner)
+{
+    const PcBlock *b = cx->blocks.data[owner];
+    return b->text ? b->key : b->id->str;
 }
 
 static void node_key(const PcNode *n, StrBuf *sb)
@@ -993,14 +1008,12 @@ Bdd pc_truth(PcCtx *cx, PcNode *n)
 
 /* The clauses GE(hi) implies GE(lo) over the atoms of f's support are
  * conjoined before the test. */
-int pc_sat(PcCtx *cx, Bdd f)
+Bdd pc_monotone(PcCtx *cx, Bdd f)
 {
     BddMgr *m = &cx->m;
     BddVars vs = {0};
     size_t i, j;
     Bdd g = f;
-    if (m->over)
-        return -1;
     bdd_vars(m, f, &vs);
     for (i = 0; i < vs.len; i++) {
         const PcAtom *a = pc_atom_at(cx, vs.data[i]);
@@ -1014,7 +1027,16 @@ int pc_sat(PcCtx *cx, Bdd f)
         }
     }
     vec_free(&vs);
-    return m->over ? -1 : g != BDD_FALSE;
+    return g;
+}
+
+int pc_sat(PcCtx *cx, Bdd f)
+{
+    Bdd g;
+    if (cx->m.over)
+        return -1;
+    g = pc_monotone(cx, f);
+    return cx->m.over ? -1 : g != BDD_FALSE;
 }
 
 void pc_init(PcCtx *cx, Analysis *an, size_t node_cap)

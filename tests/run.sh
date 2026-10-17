@@ -875,14 +875,17 @@ for sc in restart invalidate cancel fault memory readers progress paths wsym tak
 done
 # 23. unit self-tests (hidden `selftest` subcommand)
 if "$CEREAL" selftest bdd </dev/null; then ok; else bad "selftest bdd"; fi
+if "$CEREAL" selftest pcq </dev/null; then ok; else bad "selftest pcq"; fi
 # 24. presence conditions (S1c fold): the hidden CEREAL_PCDUMP hook against
-# tests/pc/NAME.pc; NAME.flags adds flags (host macros, a system directory).
+# tests/pc/NAME.pc; NAME.flags adds flags (host macros, a system directory),
+# NAME.dump the hook words (default 1; "why" lists the cheapest ways to enable).
 cd "$ROOT/tests/pc"
 for f in *.c; do
-    n=${f%.c} fl=
+    n=${f%.c} fl= dw=1
     [ -f "$n.flags" ] && fl=$(cat "$n.flags")
+    [ -f "$n.dump" ] && dw=$(cat "$n.dump")
     # shellcheck disable=SC2086
-    CEREAL_PCDUMP=1 "$CEREAL" lint $fl "$f" 2>&1 >/dev/null </dev/null |
+    CEREAL_PCDUMP=$dw "$CEREAL" lint $fl "$f" 2>&1 >/dev/null </dev/null |
         grep '^pc:' >"$TMP/pc.out"
     if diff -u "$n.pc" "$TMP/pc.out" >"$TMP/pc.diff"; then ok; else bad "pc/$n"; sed 's/^/    /' "$TMP/pc.diff" | head -20; fi
 done

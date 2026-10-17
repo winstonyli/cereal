@@ -96,6 +96,12 @@ bool pc_const_value(PcCtx *cx, TokSpan toks, intmax_t *out);
 bool pc_has_vars(const PcNode *n);
 /* The condition under which n is nonzero. */
 Bdd pc_truth(PcCtx *cx, PcNode *n);
+/* f with the clauses GE(hi) implies GE(lo) conjoined over its atoms. */
+Bdd pc_monotone(PcCtx *cx, Bdd f);
+/* The macro or text a BDD variable belongs to (one value for all of its
+ * blocks), and its name; UINT32_MAX for a variable without an atom. */
+uint32_t pc_var_owner(const PcCtx *cx, uint32_t var);
+const char *pc_owner_name(const PcCtx *cx, uint32_t owner);
 /* 1 satisfiable, 0 not, -1 unknown (the BDD outgrew its cap). */
 int pc_sat(PcCtx *cx, Bdd f);
 

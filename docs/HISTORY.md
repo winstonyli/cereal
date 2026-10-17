@@ -4996,3 +4996,15 @@ constants), `##`/`#`/variadic macros. Opaque keys changed form (`(b25 v:A v:B)`;
 lua52 99, lua53 91, lua54 94, lua55 91, lupa 99, uvloop 100, zstd 89 (was 99/97/89/92/88/98/100/87);
 fold 10-27 ms mean, 42 ms max; largest group BDD 160 nodes. Lint output on 400 corpus files
 identical. Suite 2184 passed.
+
+Round 257: S1d-1, the query layer (`src/analysis/pcq.[ch]`), on a `PcUnit` with no family table yet.
+`PcValuation` gives each initial atom a value or "free" (no pin). `pc_holds`, `pc_exact`,
+`pc_preconditions` (cost = macros whose assignment differs from V, a DP over the BDD with a
+per-block deviated flag; opaque atoms never cost, free atoms never deviate; best-first paths
+expanded to prime cubes, K up to 3), `pc_cube_render` (requirements typed config/opaque, status
+met/unmet/unknown) and `pc_diff` (macros of the support that decide a flip between two
+valuations). `pc_sat` applies the monotone clauses via `pc_monotone`. `cereal selftest pcq`: 400
+random rounds against brute force (supports up to 14 variables) for holds, cost, ordering and diff.
+`CEREAL_PCDUMP=why` prints up to three cheapest preconditions under each group the host leaves off
+(`tests/pc/why.c`). Not yet: family table, EMPTY/HAS atoms, target/environment/language kinds,
+phases 2a/2b, `via`. Suite 2189 passed.

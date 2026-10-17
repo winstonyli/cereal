@@ -1,5 +1,6 @@
 /* pc.c - the symbolic fold: presence conditions of every group of a unit. */
 #include "pc.h"
+#include "pcq.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -619,8 +620,16 @@ static void put_formula(const PcCtx *cx, StrBuf *sb, Bdd f)
     vec_free(&x.path);
 }
 
+/* the host valuation as a PcValuation: opaque atoms are not known */
+static bool host_get(void *ctx, const PcAtom *at, bool *known)
+{
+    *known = at->kind != PA_TEXT;
+    return *known && pc_host_atom(ctx, at);
+}
+
 void pc_dump(PcUnit *u, FILE *out, int flags)
 {
+    PcValuation hv = {u, host_get};
     size_t i, j, maxsize = 0;
     size_t tot[2][2][2] = {{{0}}};      /* [exact][tainted][oracle agrees] */
     for (i = 0; i < u->groups.len; i++) {
@@ -659,6 +668,17 @@ void pc_dump(PcUnit *u, FILE *out, int flags)
         }
         fprintf(out, " :: %s\n", sb_cstr(&sb));
         sb_free(&sb);
+        if ((flags & PCD_WHY) && host == 0 && sat == 1) {
+            PcCube cubes[3];
+            size_t nc = pc_preconditions(&u->cx, g->pc, &hv, 3, cubes), k;
+            for (k = 0; k < nc; k++) {
+                char *r = pc_cube_render(&cubes[k], true);
+                fprintf(out, "pc:   why[%zu] cost=%u :: %s\n", k + 1,
+                        cubes[k].cost, r);
+                free(r);
+                pc_cube_free(&cubes[k]);
+            }
+        }
     }
     fprintf(out, "pc: total groups=%zu files=%zu sys=%zu unresolved=%zu "
             "computed=%zu over=%d", u->groups.len, u->files, u->sys,

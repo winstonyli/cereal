@@ -53,11 +53,12 @@ bool pc_host_atom(PcUnit *u, const PcAtom *at);
  * only: call after analysis_attach, before the TU runs. */
 void pc_trace_attach(Analysis *a);
 
-enum { PCD_SIZE = 1, PCD_ORACLE = 2, PCD_SKIPPED = 4 };
+enum { PCD_SIZE = 1, PCD_ORACLE = 2, PCD_SKIPPED = 4, PCD_WHY = 8 };
 /* One "pc:" line per group, then totals, on f (CEREAL_PCDUMP, tests).
  * PCD_SIZE adds BDD sizes and the table size, which depend on the variable
  * order; PCD_ORACLE compares each group's value under the host valuation
- * with the preprocessor's own decision. */
+ * with the preprocessor's own decision; PCD_WHY lists, under each group that
+ * is off on the host, the cheapest ways to turn it on (pcq.h). */
 void pc_dump(PcUnit *u, FILE *f, int flags);
 
 #endif
