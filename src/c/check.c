@@ -551,6 +551,8 @@ static void grow_nodes(Checker *c, uint32_t n)
     c->ck = xrealloc(c->ck, c->cap * sizeof *c->ck);
     c->ef = xrealloc(c->ef, c->cap * sizeof *c->ef);
     c->par = xrealloc(c->par, c->cap * sizeof *c->par);
+    if (c->opt.tast)
+        c->sym = xrealloc(c->sym, c->cap * sizeof *c->sym);
     c->dm = xrealloc(c->dm, c->cap * sizeof *c->dm);
 }
 
@@ -632,6 +634,8 @@ static void visit(Checker *c, uint32_t i)
     c->cb[i] = 0;
     c->ck[i] = K_NONE;
     c->ef[i] = 0;
+    if (c->opt.tast)
+        c->sym[i] = SYM_NONE;
     cstmt_enter(c, i);
     if (c->ci)
         cinit_pre(c, i);
@@ -665,6 +669,7 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     c->il_tok = 0;              /* drop the cinput_loc memo */
     c->nodes = u->nodes;
     c->nn = u->nnodes;
+    c->unit_nerr0 = c->diag->nerrors;
     c->quiet = had_errors && !(u->nnodes && u->nodes[u->nnodes - 1].tag == N_FUNC_DEF);
     c->first_err_tok = UINT32_MAX;
     if (c->quiet)
@@ -719,6 +724,7 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
         }
     if (c->sx)
         csx_unit_end(c);
+    c->unit_err = had_errors || c->diag->nerrors != c->unit_nerr0;
     c->quiet = false;
 }
 
@@ -825,6 +831,7 @@ void checker_free(Checker *c)
     free(c->ck);
     free(c->ef);
     free(c->par);
+    free(c->sym);
     free(c->dm);
     vec_free(&c->fv);
     vec_free(&c->specs);

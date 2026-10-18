@@ -356,6 +356,9 @@ struct Checker {
     uint8_t *ck;
     uint32_t *ef;
     uint32_t *par;
+    uint32_t *sym;           /* --dump-tast: e_ident: symbol ref (SYM_NONE: none) */
+    bool unit_err;           /* the unit has syntax or semantic errors (set at its end) */
+    int unit_nerr0;          /* diag->nerrors on entry */
     uint32_t cap;            /* capacity of the per-node arrays */
     VEC(long double) fv;     /* K_FLOAT values */
     VEC(Spec) specs;         /* the specifier stack */

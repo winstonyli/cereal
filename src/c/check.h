@@ -29,6 +29,7 @@ typedef struct CheckOptions {
     bool optimize;              /* -O1 and up */
     bool cf_nobranch;           /* -fcf-protection=none|return: nocf_check is ignored */
     FILE *dump;                 /* --dump-types: declarations and layouts */
+    FILE *tast;                 /* --dump-tast: the typed tree of each unit */
     bool summaries;             /* keep per-unit summaries (csum.h) */
     FILE *dump_summaries;       /* --dump-summaries: print them (implies) */
     const char *validate_summaries; /* --validate-summaries=FILE: check each

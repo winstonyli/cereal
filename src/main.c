@@ -43,6 +43,7 @@ static void usage(FILE *o)
         "  check         parse and type-check (declarations, types,\n"
         "                constant expressions), gcc's diagnostics\n"
         "                --dump-types: print declarations and layouts\n"
+        "                --dump-tast: print the typed tree of each unit\n"
         "                --dump-symbols: print the C symbol index\n"
         "                --verify-symbols: check it, report names it missed\n"
         "                --verify-carry=OLD[@PATH]: carry OLD's index (OLD's text\n"
@@ -1621,6 +1622,10 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--dump-types")) {
             fe_opts.dump_types = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--dump-tast")) {
+            fe_opts.dump_tast = true;
             continue;
         }
         if (!strcmp(argv[i], "--dump-symbols")) {

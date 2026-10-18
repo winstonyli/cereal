@@ -11,7 +11,7 @@
 typedef struct FrontendOpts {
     bool check;                 /* run the checker (else parse only) */
     bool dump;                  /* print the syntax trees to out */
-    bool dump_types, dump_summaries, keep_summaries;
+    bool dump_types, dump_tast, dump_summaries, keep_summaries;
     const char *validate_summaries;
     const Target *target;       /* NULL: the host's */
     FILE *out;                  /* the dumps */

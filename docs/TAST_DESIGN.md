@@ -414,7 +414,7 @@ inputs survive to unit end, and whether a pure helper computes the target.
 | Null pointer constant | yes; the `ef` bit persists (baked in under `-O` rules) | `is_npc` |
 | Conversion to `_Bool` | yes; warnings only, no type is computed | trivial |
 | `?:` result | yes; `ty[i]` is the result and every non-void arm converts to it | `common_type`, `type_composite` |
-| `case` value to switch type | yes, recompute from the switch condition (uses `type_int_promote`, not `promoted()`; enums may differ, unsure) | inline in `cstmt.c:567` |
+| `case` value to switch type | yes, recompute from the switch condition (uses `type_int_promote`; verified 2026-10-18 equal to `promoted()` for enums, which only adds the bit-field case, and equal to gcc on `_Generic(+e)` for unsigned, signed, 0x80000000 and 64-bit-underlying enums) | inline in `cstmt.c:567` |
 | Comparison | yes; result `int`, operands converted to the common type (recomputed, not stored) | `common_type` |
 | Unary `+ - ~ !` | yes; `ty[i]` is the operand target (`!` gives `int`) | `promoted()` |
 

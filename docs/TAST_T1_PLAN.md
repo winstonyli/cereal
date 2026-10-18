@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # TAST stage T1: plan
@@ -91,9 +91,8 @@ the new ones) and the existing goldens unchanged unless the task says so.
    `unsigned < int`, `enum` arithmetic, `_Bool` assignment and `!x`,
    `a ?: b`, `x++` on `unsigned char`, `x += 1.0` is out (float), a `switch`
    on `char` with a case value that needs conversion and one on an `enum`
-   (the checker uses `type_int_promote` here, not `promoted()`, so enums
-   may differ: the test pins what gcc does, probed with the same `_Generic`
-   technique as the bit-field probe), a call through a pointer
+   (probed 2026-10-18: `type_int_promote` and `promoted()` agree on enums
+   and both match gcc's `_Generic(+e)`; the test pins it), a call through a pointer
    (`unsupported`), a `for` with a
    declaration, a call with a `short` argument to an `int` parameter,
    `return` of a wider value, a K&R definition (expects `unsupported`). Run
@@ -173,3 +172,6 @@ and now has a pinning test. Round 3: no further material finding. Open risk:
 the exit check "verify finds nothing on every unit that elaborates in lua54
 and libuv" may be vacuous if almost nothing elaborates in T1; task 9
 reports the count so this is visible, and the T1 tests carry the evidence.
+
+## 7. Progress
+2026-10-18: tasks 1 to 3 done. `--dump-tast` parses and reaches `CheckOptions.tast` (nothing prints yet); `Checker.sym` is allocated and stored only with the option on (so the off path adds one predictable branch in `visit` and `e_ident`); `unit_err` is set at unit end from the parser flag or the `nerrors` delta. Suite 2213 passed; callgrind off-path 3,894,922,073 vs about 3.89G in the gate header (+0.1%). Round 6 open point (does `cindex_key` accept a symbol without index events) is still open for task 4.
