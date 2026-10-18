@@ -99,8 +99,8 @@ Items parked in prose elsewhere (A4_DESIGN.md around lines 297 and 306, B2_DESIG
 - **Status:** parked.
 
 ## Enable-group action beyond the configuration header
-- **What:** "Compile this group" for groups whose cheapest overlay is not a header macro: `-U`, `-std`, a macro the project defines in an ordinary header, a macro nobody defines (append a `#define`), project-option flags.
+- **What:** "Compile this group" for groups whose cheapest overlay is not a header macro or a new header line: `-std`, a macro the project defines in an ordinary header, project-option flags (the header toggles, `-D` of a new macro and `-U` of a header macro, are done).
 - **Why parked:** needs an edit target: a `.cereal` flags line (persistent, new line), the compile-database entry (lost on regeneration; not recommended), or a per-document in-memory overlay (no file change; the better first step). The header case covers the settings a user keeps in one place.
 - **Trigger:** asked for, or libuv-style option groups in a project without a config header.
-- **Evidence:** `pc_enable_edits`, src/analysis/pc.c (refuses any word that is not `-D` of an `-imacros` macro); docs/LSP.md, Code actions.
+- **Evidence:** `pc_enable_edits`, src/analysis/pc.c (refuses any word that is not a `-D`/`-U` of a header macro or of a macro nobody defines); docs/LSP.md, Code actions.
 - **Status:** parked.

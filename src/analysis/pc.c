@@ -1579,21 +1579,44 @@ size_t pc_enable_edits(PcUnit *u, SrcFile *f, SrcLoc loc, PcEdit *out, size_t ma
         char *eq = strchr(tok, '=');
         const char *val = eq ? eq + 1 : "1";
         const Macro *m;
+        const SrcFile *cf = u->an->pp->cfg_file;
         Ident *id;
-        if (tok[0] != '-' || tok[1] != 'D' || n == max)
-            goto none;                  /* -U, -std: not a line of the header */
+        PcEdit *e = &out[n];
+        if (tok[0] != '-' || (tok[1] != 'D' && tok[1] != 'U') || n == max)
+            goto none;                  /* -std, a target change: not a line of the header */
         if (eq)
             *eq = 0;
         id = intern_find(u->an->in, tok + 2, strlen(tok + 2));
         m = id ? mt_cur(u->an->pp->mt, id) : NULL;
-        if (!m || !m->cfg || m->funclike || !m->file || m->end_loc < m->name_loc + id->len)
-            goto none;                  /* only a macro the header defines */
-        out[n].file = m->file;
-        out[n].name = id->str;
-        out[n].begin = m->name_loc + id->len - m->file->base;
-        out[n].end = m->end_loc - m->file->base;
-        out[n].text = xmalloc(strlen(val) + 2);
-        sprintf(out[n].text, " %s", val);
+        e->name = id ? id->str : NULL;
+        if (tok[1] == 'U') {            /* delete the header's #define line */
+            const char *b;
+            if (!m || !m->cfg || !m->file || m->end_loc < m->hash_loc)
+                goto none;
+            b = m->file->buf + (m->end_loc - m->file->base);
+            e->file = m->file;
+            e->begin = m->hash_loc - m->file->base;
+            e->end = m->end_loc - m->file->base + (*b == '\r' && b[1] == '\n' ? 2 : *b == '\n');
+            e->text = xstrdup("");
+        } else if (m) {                 /* set the value of the header's #define */
+            if (!m->cfg || m->funclike || !m->file || m->end_loc < m->name_loc + id->len)
+                goto none;              /* only a macro the header defines */
+            e->file = m->file;
+            e->begin = m->name_loc + id->len - m->file->base;
+            e->end = m->end_loc - m->file->base;
+            e->text = xmalloc(strlen(val) + 2);
+            sprintf(e->text, " %s", val);
+        } else {                        /* nobody defines it: a new line at the end */
+            size_t at;
+            if (!id || !cf)
+                goto none;
+            at = cf->size;
+            e->file = (SrcFile *)cf;
+            e->begin = e->end = (uint32_t)at;
+            e->text = xmalloc(strlen(tok + 2) + strlen(val) + 16);
+            sprintf(e->text, "%s#define %s %s\n", at && cf->buf[at - 1] != '\n' ? "\n" : "",
+                    tok + 2, val);
+        }
         n++;
     }
     free(words);

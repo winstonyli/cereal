@@ -91,7 +91,9 @@ bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb);
 /* The same, as edits of the configuration header: the inactive group around loc of f,
  * turned on by changing the body of `#define` lines that an -imacros file holds.
  * Fills out[0..n) (text owned: free it); 0 when the group is active, inexact, or an
- * overlay word is not a -D of such a macro (a -U, -std, a macro defined elsewhere). */
+ * overlay word is not a -D/-U of a macro that header defines or that nobody defines (a
+ * new `#define` line is appended to the first -imacros file); a -std, a target change, a
+ * macro defined elsewhere. */
 typedef struct PcEdit {
     SrcFile *file;
     const char *name;           /* the macro */

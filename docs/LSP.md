@@ -483,10 +483,11 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
     when it has the same range and message, else cereal's.
   - *`refactor.cereal.enableGroup`* ("Compile this group: set X = 1 in cfg.h"): at a
     position inside a conditional group the build skipped, when the cheapest overlay
-    (`pc_enable_group`, nonnegative values preferred) only sets macros that an
-    `-imacros` file defines (CONFIG_DESIGN 8, config header). The edit replaces
-    those `#define` bodies (`pc_enable_edits`); the header need not be open
-    (`version: null`). Not offered for a `-U`, `-std`, a target change or a macro
+    (`pc_enable_group`, nonnegative values preferred) only touches macros that an
+    `-imacros` file defines or nobody defines (CONFIG_DESIGN 8, config header). The edit sets
+    the body of a `#define` there, deletes its line (a `-U`), or appends `#define X 1` to the
+    first `-imacros` file (`pc_enable_edits`); the header need not be open
+    (`version: null`). Not offered for a `-std`, a target change or a macro
     defined elsewhere. Applicability MAYBE; the client re-indexes after the save.
   - *`source.fixAll.cereal`:* offered when the request asks for it, or when
     it has no `only` and the document has a SAFE group. Its edit is what

@@ -108,6 +108,71 @@
 ## outside a group: none
 >> textDocument/codeAction
 []
+## toggles: #ifdef X is turned on by a new #define line, #ifndef X by deleting the header's line
+>> textDocument/codeAction
+[
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "#define TOGGLE_ON 1\n",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 3
+        },
+        "start": {
+         "character": 0,
+         "line": 3
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/pccfg/cfg.h",
+      "version": null
+     }
+    }
+   ]
+  },
+  "kind": "refactor.cereal.enableGroup",
+  "title": "Compile this group: add #define TOGGLE_ON in cfg.h"
+ }
+]
+>> textDocument/codeAction
+[
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": "",
+       "range": {
+        "end": {
+         "character": 0,
+         "line": 3
+        },
+        "start": {
+         "character": 0,
+         "line": 2
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/pccfg/cfg.h",
+      "version": null
+     }
+    }
+   ]
+  },
+  "kind": "refactor.cereal.enableGroup",
+  "title": "Compile this group: remove #define TOGGLE_OFF in cfg.h"
+ }
+]
 >> shutdown
 null
 >> exit

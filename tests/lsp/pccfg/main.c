@@ -6,3 +6,9 @@ int fx = featured();
 #if LEVEL >= 3
 int dp = deep_fn();
 #endif
+#ifdef TOGGLE_ON
+int on;
+#endif
+#ifndef TOGGLE_OFF
+int off;
+#endif

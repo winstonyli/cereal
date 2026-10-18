@@ -3689,14 +3689,18 @@ void lsp_code_action(Req *r, JsonWriter *w)
         if (np) {
             AFix *fx = NEW_ARRAY(a, AFix, np);
             StrBuf title = {0};
-            sb_puts(&title, "Compile this group: set ");
+            sb_puts(&title, "Compile this group: ");
             for (k = 0; k < np; k++) {
                 fx[k].path = pe[k].file->path;
                 fx[k].b = pe[k].begin;
                 fx[k].e = pe[k].end;
                 fx[k].text = arena_strdup(a, pe[k].text);
                 fx[k].app = FIX_MAYBE;
-                sb_printf(&title, "%s%s =%s", k ? ", " : "", pe[k].name, pe[k].text);
+                sb_printf(&title, "%s%s", k ? ", " : "",
+                          !*pe[k].text ? "remove #define " : pe[k].begin == pe[k].end ? "add #define " : "set ");
+                sb_puts(&title, pe[k].name);
+                if (*pe[k].text && pe[k].begin != pe[k].end)
+                    sb_printf(&title, " =%s", pe[k].text);
                 free(pe[k].text);
             }
             sb_printf(&title, " in %s", (strrchr(pe[0].file->name, '/') ? strrchr(pe[0].file->name, '/') + 1 : pe[0].file->name));

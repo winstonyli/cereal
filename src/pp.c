@@ -604,6 +604,8 @@ static void push_file(PP *pp, SrcFile *f, SrcLoc include_loc, int dir_index,
     fr->presumed_name = f->name;
     fr->system = f->system_header;
     fr->quiet = quiet;
+    if (via && via->macros_only && !pp->cfg_file && f->kind == SF_USER)
+        pp->cfg_file = f;
     pp->inc = fr;
     pp->include_depth++;
     pp->has_pending = false;

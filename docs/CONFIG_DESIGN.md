@@ -597,6 +597,13 @@ guessing a flags file (LSP.md, Code actions). `pc_enable_group` now prefers a cu
 value, so `#if FEATURE_X` offers `= 1`, not `= -1` (this also changes the words `cover` writes for such
 groups). The remaining edit-target options are parked (PARKED.md).
 
+Implemented (toggles, same day): a first trial on lua54 (a header with six options, 13 directives in five
+files) offered 0 actions: real options are `#ifdef X` / `#ifndef X` toggles, not valued lines. The action
+now also appends `#define X 1` to the first `-imacros` file (`PP.cfg_file`) for a macro nobody defines,
+and deletes the header's `#define` line for a `-U`. Checked with the real preprocessor on lua54: removing
+`LUA_USE_JUMPTABLE` turns on the `lvm.c:38` group, adding `LUA_USE_C89` turns on `lobject.c:155` (marker
+absent before, present after); the other directives were already active, so 3 of 13 got an action.
+
 Implemented earlier (Round 264): `enable` (one group to command-line words) and `cover` (greedy, no merges
 of cubes yet), both oracle-checked by re-running the preprocessor (`bench/pc_enable.py`). An overlay never
 sets a macro the unit defines itself (a guard, or a default tested before its `#define`) or a target, env,

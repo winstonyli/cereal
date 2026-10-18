@@ -290,6 +290,7 @@ typedef struct PP {
     Interner *in;
     MacroTab *mt;            /* this build's macro state (shared by workers) */
     bool mt_owned;
+    SrcFile *cfg_file;       /* the first -imacros file (the configuration header), or NULL */
     SrcMgr *sm;
     DiagEngine *diag;
     PPOptions *opt;
