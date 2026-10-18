@@ -39,7 +39,9 @@ lists their invocations too. cereal has no invocation record for them.
   is a real spelling the user can navigate to and edit. **Decided yes (2026-10-17)**, it needs no new data.
   Open detail: whether `documentHighlight` also lists it, or only `references` (a client that reuses the list
   for a local text replace could edit the macro; cereal's own rename refuses, R7). Decide at S1.
-- **D2. Which entities:** functions only (design A) or all kinds (design B).
+- **D2. Which entities:** functions only (design A) or all kinds (design B). **Decided B (2026-10-17)**, after
+  S1 (A covers a third of the sites) and S2 (B costs 2.9 to 5.1%); the size rule of section 5 is relaxed from 5%
+  to 10%, the rule CONFIG_DESIGN 8 uses. Design C (macro-pair entries) stays a measured alternative, not chosen.
 
 ## 3. Designs
 
@@ -47,7 +49,7 @@ lists their invocations too. cereal has no invocation record for them.
   the project's CALL entries with `AT_EXPANSION` whose callee is the key, at their `off`/`len`; and, per D1,
   the `MACRO_BODY` refs. Cost: a few dozen lines in `c_collect` and `pq_entries`. Covers a function's calls
   through macros; not a function used as a value in a macro body (2 of 16 on libuv).
-- **B, all kinds, record format 5.** Every body-token event gets a second event at the outermost invocation:
+- **B, all kinds, no record layout change (S3, section 6a).** Every body-token event gets a second event at the outermost invocation:
   a REF with `AT_EXPANSION` at the macro name's `off`/`len`, one per (invocation, entity). xcalls and their
   CALL entries stay for call hierarchy. The reader, `pq_entries` and the unit query list them; rename keeps its
   R7 refusal because these REFs carry `AT_EXPANSION` (`cindex_rename_blocker`).
@@ -65,17 +67,17 @@ lists their invocations too. cereal has no invocation record for them.
 | Result lists grow: the cap is `PQ_MAX_ENTRIES` (20,000) | B adds up to the invocation count of the macros; measured in S2; the cap's refusal message already exists |
 | Store growth (B) | S2 measures it; stop rule below |
 | Rename sees a new kind of blocker | no: R7 already refuses on `AT_EXPANSION`; the message stays "formed by ## or a macro" and gains the invocation place |
-| `symcov` / `--verify-symbols` count the new events as unindexed or extra | they run on identifier tokens in source text; an invocation spelled `lua_call` is not an occurrence of `lua_callk`, so the verifier must excuse it: the existing excuse for xcalls extends to B's REFs (checked in S3) |
+| `symcov` / `--verify-symbols` count the new events as unindexed or extra | they check AST nodes for a missing event, never an event for a missing node, so nothing to excuse (S3, section 6a); `cindex_verify` gets a B invariant instead |
 
 ## 5. Stop rules and gates
 
 - **Function sites (A or B):** the P2 class of `clangd_diff.py` project mode, restricted to functions, falls to 0
   on lua54 and libuv; no new unexpected difference.
-- **B only:** store growth at most 5% on lua54, libuv and zstd lib (the same corpora as S3a), and P2 over all
+- **B only:** store growth at most 10% (was 5%; measured 2.9 to 5.1%) on lua54, libuv and zstd lib (the same corpora as S3a), and P2 over all
   kinds falls to 0 or to a listed residue.
 - The gate (`gate.sh`): verify, san and callgrind unchanged within 1%; `symcov` 0 unindexed.
 
-## 6. Spikes before any code (S1 and S2 done 2026-10-17, results in 6a; S3 not run)
+## 6. Spikes before any code (S1 to S3 done 2026-10-17, results in 6a; S3 by reading only)
 
 - **S1, split P2 by entity kind.** Run the project differential (`clangd_diff.py --project=lua54` and `libuv`,
   clangd is at `/usr/bin/clangd` in WSL) through `run.ps1`, and print each P2 miss with the kind of the entity
@@ -133,9 +135,32 @@ the baseline is the records' bytes from the S3a probe).
   units, so it is an estimate), the string pool (no new keys: each body token's key is already stored), and
   S3 (the verifier).
 
+**S3, the verifier and the consumers (read, not run; code at HEAD 0b8a103):**
+
+- `--verify-symbols` (`csx_unit_end`) walks AST nodes that name an entity and reports those without a token
+  event ("unindexed"); `symcov` only sums that count. B adds events but no AST node and does not touch `seen`, so
+  neither can flag them, and **there is no xcall excuse to extend** (xcalls are simply outside the check; the
+  risk-table row of section 4 was wrong). B needs its own invariant in `cindex_verify` instead: every B event is a
+  REF with `AT_EXPANSION` whose text at `off` is a macro name different from the entity's. Order and duplicates are
+  already checked there (`csymidx.c:2100`); the `ev_cmp` merge in the build (`csymidx.c:1177`) removes the
+  repeated-argument duplicate (`SWAP(a,b)` using `x` twice).
+- **No layout change, so no `CREC_FORMAT` bump.** `RefRow.flags` already carries `AT_EXPANSION`
+  (`cidxrec.c:639`) and `CRecRef.flags` stores it; the build id is a hash of the executable
+  (`crec_build_id`), so every new binary rejects old records anyway. This corrects the PARKED rows that said a bump
+  is needed.
+- `cindex_select` filters only `MACRO_BODY` (`csymidx.c:1551`), so references and uses list B's events with no
+  reader change; semantic tokens and inlay hints already skip `AT_EXPANSION` (`features.c:1339,2885`).
+- Position lookups at an invocation (hover, definition, prepareRename): `c_decls_at` returns nothing when the
+  token is a strong macro target (`features.c:112`), so the macro keeps winning there. Read, not run: the first
+  test of B must hover and rename on `lua_call(...)` to confirm.
+- Not checked: the project-side readers (`projq.c`, `pq_entries`) for an assumption that a REF's text is the
+  entity's name (`pq_ambiguous` compares text at the same offset), and `documentHighlight`.
+
 **What this says for D2:** A is not enough for the question Q7 asks (only a third of the sites), and B is at
 the size rule's edge. The choice is now between B as drafted (5.06% at worst) and C (smaller on two of three
-projects, one more concept). Waits for the user.
+projects, one more concept). **The user chose B** (D2); the build order is: the writer's second event per
+(invocation, entity), the `cindex_verify` invariant, the references/uses/highlight results, then the tests
+(including hover and rename on an invocation, and the clangd P2 class falling to 0).
 
 ## 7. Not in this plan
 
