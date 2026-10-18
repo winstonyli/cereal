@@ -70,10 +70,16 @@ gaps, each to be confirmed by spike S0 before the design relies on it:
    pointer constants, `_Bool` conversion (a nonzero test, not truncation),
    casts to `void`, conditional-operator result type, shifts, and the
    conversion of `case` values to the promoted `switch` type (`cstmt.c:567`).
-2. **Value category** (`lvalue`) lives in `ef` bits that are reused per tag.
-   Some inputs to conversion decisions are transient: `EF_BFPROMOTE` is set
-   only at a call site (`ccall.c:2320`) and read by `promoted()`, so
-   `promoted()` is not callable at unit end for a bit-field argument.
+2. **Value category** (`lvalue`) lives in `ef` bits. On expression nodes
+   `ty/cv/ck/ef/cb` are written once, in the node's own visit (exceptions:
+   `EF_NPC` is OR-ed in last, `EF_FOLDWARN` is cleared); the "reused per tag"
+   caveat of TYPES.md applies to declaration nodes. `EF_BFPROMOTE` is set in
+   `e_member` (`ccall.c:2320`) on the member node and read by `promoted()`;
+   it survives to unit end, so `promoted()` is callable there. (Round 4
+   wrongly called it a call-site bit; round 5 corrected it.) Open: an
+   assignment to a bit-field has `ef = EF_SIDE` and loses the flag
+   (`cexpr.c:6745`); whether the assignment's value type is the narrow type
+   as in gcc is unsure.
 3. **Symbol binding of identifiers is not stored for locals.** `cb` is set
    in `e_ident` only for globals, statics, externs and linkage objects;
    automatic locals and parameters get none. The binding is a scope lookup at
@@ -157,12 +163,18 @@ types) to a TAST, run at unit end, driven by a per-tag rule table.**
   converted to). Pros: one place makes the decision, nothing is re-derived,
   transient state (`ef`, null-pointer-constant status, bit-field widths) is
   still live. Cons: it touches the checker's hot path (callgrind gate) and
-  couples every expression rule to the exporter. Only symbol bindings
-  (above) are known to need the visit. Whether conversions do too is
-  undecided: S0 checked type presence only (section 11), so this stays open
-  until the conversion sites of 3.1 are inspected one by one; the likely
-  outcome is a hybrid, with `ef`-dependent sites (bit-field promotion,
-  null pointer constants) recorded during the visit and the rest derived.
+  couples every expression rule to the exporter. **Decided by the S0
+  site inspection (section 11): a hybrid.** Derive at unit end every site of
+  3.1 except two, which are recorded during the visit: symbol bindings
+  (`sym[i]`, above) and, for initializers, per scalar value node the target
+  subobject type, byte offset and bit-field width/shift, written where
+  `digest()` (`cinit.c:1063`) holds the designator and brace-elision cursor.
+  Two optional records remove fragilities: the compound-assignment operation
+  type (`e_arith` sets it, `e_assign` overwrites it) and the default-promoted
+  type of an argument to a NOPROTO or variadic callee (the checker never
+  computes it). Both are also recomputable (`common_type(promoted(l),
+  promoted(r))`; float to double, else `promoted()`), so they are not needed
+  unless a test finds a disagreement.
 - TAST node: `{op, ty, loc, flags, kids, value}` where `op` is a small
   closed set (const, sym, load, store, addr, unop, binop, cmp, cast, call,
   cond, logical and/or, comma, member-offset, index-as-ptr-add, and the
@@ -341,7 +353,7 @@ so a function with a syntax error is not quiet, the skip rule now uses an
 error count; (3) case values are readable and what is missing is their
 conversion to the promoted switch type; (4) S0 measured type presence only
 and is relabelled partial, the viability verdict is withdrawn, ROADMAP says
-"S0 partial"; (5) `promoted()` depends on a call-site `ef` bit; (6) 128-bit,
+"S0 partial"; (5) `promoted()` depends on a call-site `ef` bit (wrong, fixed in section 12); (6) 128-bit,
 float128 and decimal constants do not fit `cv`/`fv`; (7) the stage table had
 dependency inversions (enums in T3, variadics in T1, bit-fields after
 structs) and omitted `&&`/`?:`/assignment/goto, rewritten with an expected
@@ -349,6 +361,36 @@ near-zero coverage until T3; (8) added K&R entry conversion, implicit
 declarations, `a ?: b`, void casts, string array copy, `-O` option
 dependence; (9) VLA `sizeof` is evaluated; (10) the layout check only
 guards the checker, said so; (11) section 6 aligned with what S1 found.
+Round 5 (site inspection, section 12): round 4 item 5 was itself wrong (`EF_BFPROMOTE` is set in `e_member` and survives), corrected; conversions are derivable except initializers, so the verdict is a hybrid. The lexer does skip comments and emit no token (`lex.c:1317`), so section 8(b) stands.
 Not checked by the reviewer or by me: the gcc examples in section 2 were
-checked by me earlier in WSL; "the lexer drops comments" (section 8) is
+checked by me earlier in WSL; (the lexer claim is now checked)
 unverified.
+
+## 12. S0 site inspection (2026-10-18, by reading; a Sonnet subagent, key claims re-checked by hand)
+
+For each conversion site of 3.1: where the checker decides it, whether its
+inputs survive to unit end, and whether a pure helper computes the target.
+
+| Site | Derivable at unit end | Helper |
+|---|---|---|
+| Integer promotions (unary, binary, compare, `?:` arms) | yes; `ty[i]` is already the promoted or common type | `promoted()` |
+| Usual arithmetic conversions | yes; `ty[i]` is the operand target. Compound assignment: `e_assign` overwrites it, recompute | `common_type()` (`cexpr.c:62`) |
+| Shifts | yes; result is `promoted(left)`, the count is not converted | `promoted()` |
+| Array and function decay | yes, but context-driven (not under `&`, `sizeof`, `alignof`, `typeof`, a subscript base, a string initializing a `char[]`); nothing is recorded, read `par[]` and the tag | `rvt()` gives the type only; the "decays here" test is not factored out |
+| Lvalue-to-rvalue | yes; `EF_LVALUE` plus the parent's role | `rvt()` |
+| Assignment, argument, return | yes; return type via the declarator under `N_FUNC_DEF` (`func_sym` is transient but the declarator keeps `cb/ty`) | none returns the converted type; fused with the warnings |
+| Initializer | **no**: the designator/brace-elision cursor is transient and values are not built | fused; simple `T x = e;` is derivable |
+| Prototyped vs NOPROTO/variadic arguments | yes, from the callee type; the checker does not compute default promotions, compose them | `type_default_promote` lacks bit-fields |
+| Null pointer constant | yes; the `ef` bit persists (baked in under `-O` rules) | `is_npc` |
+| Conversion to `_Bool` | yes; warnings only, no type is computed | trivial |
+| `?:` result | yes; `ty[i]` is the result and every non-void arm converts to it | `common_type`, `type_composite` |
+| `case` value to switch type | yes, recompute from the switch condition (uses `type_int_promote`, not `promoted()`; enums may differ, unsure) | inline in `cstmt.c:567` |
+| Comparison | yes; result `int`, operands converted to the common type (recomputed, not stored) | `common_type` |
+| Unary `+ - ~ !` | yes; `ty[i]` is the operand target (`!` gives `int`) | `promoted()` |
+
+Not audited: the per-builtin custom checks in `ccall.c` (about lines
+773-2220); whether `lsyms` are still valid at unit end for the builtin
+lookup. Unsure: bit-field assignment value type.
+
+Consequence: the S0 gate is met with the hybrid of section 4; T1 needs the
+`sym[i]` recording and (from T3) the initializer recording.
