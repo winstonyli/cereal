@@ -175,6 +175,25 @@ it does not, the oracle masks them and the dump must say so).
 Expected result (a bound, not a promise): lua54's 190 floating units move on
 to their next reasons; the spike gives the real number.
 
+### Spike result (2026-10-18, throwaway edit in `~/cereal-s1`, reverted by the next rsync)
+
+`ok_ty` admitting `float`/`double`/`long double`, nothing else changed:
+
+| | lua54 | libuv |
+|---|---|---|
+| unsupported before | 206 | 20 |
+| unsupported after | 38 | 12 |
+| `expression NUMBER` (a `K_FLOAT` constant, no `fconst` yet) | 18 | 4 |
+| `assignment operator` (compound assignment on a float) | 4 | 0 |
+| unrelated, unchanged | 16 | 8 |
+
+So T4a unlocks 168 of lua54's 190 floating units and 8 of libuv's 12
+outright from `ok_ty`; `fconst` and float compound assignment take the
+remaining 22 and 4. Verifier findings stayed 0, but only because the
+verifier does not constrain floating operands yet (section 4): the 0 is not
+evidence of correct trees. The ceiling is lua54 16 and libuv 8 unsupported,
+all non-floating.
+
 ## 7. Risks and what is deliberately out
 
 - Host `long double` assumption (above). A cross-target run on a non-x87
