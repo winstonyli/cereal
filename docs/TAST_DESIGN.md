@@ -64,23 +64,52 @@ gaps, each to be confirmed by spike S0 before the design relies on it:
    operand type is not stored. Sites: integer promotions, usual arithmetic
    conversions, array and function decay, lvalue-to-rvalue, assignment and
    initializer conversion, argument and return conversion (including
-   default argument promotions for K&R and variadic calls), null pointer
-   constants, `_Bool` conversion, conditional-operator result type, shifts.
+   default argument promotions for K&R, NOPROTO and variadic calls, and the
+   NOPROTO types of hand-checked builtins), entry conversion of K&R-defined
+   parameters, implicit function declarations (an `int()` callee), null
+   pointer constants, `_Bool` conversion (a nonzero test, not truncation),
+   casts to `void`, conditional-operator result type, shifts, and the
+   conversion of `case` values to the promoted `switch` type (`cstmt.c:567`).
 2. **Value category** (`lvalue`) lives in `ef` bits that are reused per tag.
-3. **Initializers** are checked, not normalized: designators, brace elision
-   and zero fill are not turned into a flat (offset, value) list.
-4. **String literals** are token pieces (`node_pieces`); the decoded bytes,
+   Some inputs to conversion decisions are transient: `EF_BFPROMOTE` is set
+   only at a call site (`ccall.c:2320`) and read by `promoted()`, so
+   `promoted()` is not callable at unit end for a bit-field argument.
+3. **Symbol binding of identifiers is not stored for locals.** `cb` is set
+   in `e_ident` only for globals, statics, externs and linkage objects;
+   automatic locals and parameters get none. The binding is a scope lookup at
+   visit time, and every scope is popped before unit end (`check.c`, before
+   `csx_unit_end`), so it cannot be redone afterwards. The symbol index
+   records it (`csx_sym`) only when `Checker.sx` exists. An identifier's `ty`
+   can also differ from its symbol's type.
+4. **Initializers** are checked, not normalized: designators, brace elision
+   and zero fill are not turned into a flat (offset, value) list. A string
+   literal initializing a `char[]` is an array copy, not a decay.
+5. **String literals** are token pieces (`node_pieces`); the decoded bytes,
    element type (`char`, `wchar_t`, `char16_t`) and terminator are not kept.
-5. **Statement structure** is complete in the tree, but `switch` case values
-   live in the statement checker's per-switch state (`do_case`, cstmt.c), not in a side array a consumer reads; `goto` targets are tokens, not label nodes.
-6. **Unevaluated and dead operands** (`sizeof` operand, `_Generic`
-   non-selected arms, `__builtin_choose_expr`): the tree has them; a
-   consumer must not emit them. TAST drops them.
-7. **VLAs, compound literals, statement expressions, `__builtin_*`,
-   `asm`**: present as nodes; their semantics for a consumer are undefined
-   until listed (section 5, "supported subset").
-8. **Macro provenance** is per token (`PTok.exp/mloc`); a TAST node needs
-   one SrcLoc (the expansion point, as diagnostics use).
+   `__func__` is a node reference (`CB_NODE|i`), not a symbol.
+6. **Constants.** `cv` is `uint64_t` and floats are host `long double`
+   (`fv`), two slots for complex. `__int128` values, `_Float128` and the
+   decimal types do not fit; the target's long double format is not the
+   host's. The TAST `value` field cannot claim "folded constant" for these
+   until a representation is chosen (stage T4).
+7. **Statement structure** is complete in the tree, but `goto` targets are
+   tokens, not label nodes. `switch` case values are readable (`cv/ck` of the
+   case expression nodes).
+8. **Unevaluated and dead operands** (`sizeof` of a non-VLA, `_Generic`
+   non-selected arms): the tree has them; a consumer must not emit them.
+   TAST drops them. A VLA `sizeof` operand is evaluated and is kept.
+9. **VLAs, compound literals, statement expressions, `__builtin_*` (some
+   have no function type), `asm`, `va_arg`, `offsetof`, vector and complex
+   operators, bit-field load and store, `a ?: b` (evaluate `a` once)**:
+   present as nodes; their semantics for a consumer are undefined until
+   listed (section 5).
+10. **Option dependence.** Under `-O` the checker replaces constant variables
+    (`fold_const_var`, `cexpr.c`), so the folded values depend on options;
+    TAST is defined for the default `-O0` check only.
+11. **Macro provenance** is per token (`PTok.exp/mloc`); a TAST node needs
+    one SrcLoc (the expansion point, as diagnostics use).
+12. **Attribute arguments** (`IDENT` under `ATTR_ITEM`) are not expressions
+    and have no type; the walk skips them.
 
 ## 4. Design
 
@@ -89,16 +118,30 @@ types) to a TAST, run at unit end, driven by a per-tag rule table.**
 
 - Placement: a new `src/c/tast.[ch]`, called next to `csx_unit_end` when
   `Checker.tast` is set. A unit is skipped, and the dump says `skipped:
-  errors`, when it has a syntax error (`Checker.quiet`) or any error-level
-  diagnostic from the checker (a type error leaves error types in `ty`).
+  errors`, when it had any error: a syntax error (`had_errors` in
+  `checker_unit`, which is not kept in the Checker today, so the pass keeps
+  it; `Checker.quiet` is not enough, a function definition with a syntax
+  error is not quiet) or an error-level diagnostic during the unit (the
+  `diag->nerrors` delta, as the S0 probe used; pragma-suppressed errors
+  still count as errors there). A type error leaves error types in `ty`.
+- **Bindings are recorded during the visit, not rebuilt.** Section 3.3 shows
+  scopes are gone at unit end, so a small side array `sym[i]` (symbol ref
+  of each IDENT/declared node) is filled where `e_ident` and the
+  declaration code already resolve names; the symbol index's `csx_sym`
+  already makes the same call and is the model. This is the one place the
+  design touches the checker's visit, and it is a store, not a decision.
 - The pass does not re-derive types. It reads `ty[i]` and `cv/ck[i]` the
   checker already computed and inserts conversion nodes where an operand's
   type differs from the type the operator requires. The required type comes
   from the same functions the checker used (usual arithmetic conversion,
   promotion, decay, assignment compatibility) called, not copied; some are
-  already separate helpers (`promoted()`, `cexpr_int.h:225`). Where a needed
-  function is private and fused with warning logic, the fix is to split it
-  in the checker (one place), not to duplicate it.
+  already separate helpers (`common_type()`, declared `cexpr_int.h:357`,
+  defined `cexpr.c:62`, takes TypeIds only; `promoted()`, `cexpr_int.h:225`,
+  reads `ef`, so it is limited by section 3.2). Where a needed function is
+  private and fused with warning logic, the fix is to split it in the
+  checker (one place), not to duplicate it. Dropped qualifiers: `rvt()`
+  returns the unqualified type, which is the rule for every load.
+- The walk skips `ATTR_ITEM` subtrees (section 3.12).
 - Rule table: one row per `NodeTag` that is an expression or has an
   expression operand: operand slots with the required-type rule
   (`PROMOTE`, `ARITH(a,b)`, `DECAY`, `RVALUE`, `ASSIGN_TO(lhs)`, `ARG(i)`,
@@ -114,9 +157,12 @@ types) to a TAST, run at unit end, driven by a per-tag rule table.**
   converted to). Pros: one place makes the decision, nothing is re-derived,
   transient state (`ef`, null-pointer-constant status, bit-field widths) is
   still live. Cons: it touches the checker's hot path (callgrind gate) and
-  couples every expression rule to the exporter. The unit-end design above
-  is preferred only if S0 shows the converted types are derivable from
-  what survives to the end of the unit.
+  couples every expression rule to the exporter. Only symbol bindings
+  (above) are known to need the visit. Whether conversions do too is
+  undecided: S0 checked type presence only (section 11), so this stays open
+  until the conversion sites of 3.1 are inspected one by one; the likely
+  outcome is a hybrid, with `ef`-dependent sites (bit-field promotion,
+  null pointer constants) recorded during the visit and the rest derived.
 - TAST node: `{op, ty, loc, flags, kids, value}` where `op` is a small
   closed set (const, sym, load, store, addr, unop, binop, cmp, cast, call,
   cond, logical and/or, comma, member-offset, index-as-ptr-add, and the
@@ -140,21 +186,28 @@ produce no tree for it; it is counted, never guessed or partly emitted.
 
 | Stage | Adds | Check |
 |---|---|---|
-| T1 | scalars, locals, `return`, `if/while/for/do`, arithmetic, comparisons, calls to prototyped functions | S1 oracle compare |
-| T2 | pointers, arrays, decay, `->`/`.`, casts, `sizeof` folding, structs by value | oracle + layout asserts |
-| T3 | initializers (flat list), string literals, static data, enums, `switch` | oracle + data golden |
-| T4 | floating point, `long double`, `_Complex`, bit-fields, unions, varargs | oracle |
-| T5 | VLA, compound literals, statement expressions, `_Generic`, `__builtin_*`, `asm` | decided per item |
+| T1 | integer, enum and `_Bool` scalars; locals; assignment, compound assignment, `++`/`--`, comma, `&&`/`\|\|`/`?:` (incl. `a ?: b`), casts including to `void`; `if/while/for/do/switch/goto/labels/return`; calls to prototyped non-variadic functions with scalar arguments; non-VLA `sizeof`/`alignof` folding | cast-target multisets |
+| T2 | pointers, arrays, decay, pointer arithmetic, function designators and pointers, `.`/`->`, structs and unions (by value too), bit-fields (load, store, truncation), string literals | multisets + layout regression |
+| T3 | initializers (flat list), static data, implicit and NOPROTO calls, K&R definitions, variadic calls and default promotions, `case` value conversion | multisets + data golden |
+| T4 | floating point, `long double`, `_Complex`, `__int128`, decimal and `_FloatN` (needs the constant representation of 3.6) | multisets |
+| T5 | VLA (incl. evaluated `sizeof`), compound literals, statement expressions, `_Generic`, `va_arg`, `offsetof`, computed `goto`, argument-typed builtins, `asm` | decided per item |
+
+Because an unsupported construct drops the whole unit, a real corpus function
+elaborates only once every construct it uses is in. Expect near-zero
+coverage on lua54 and libuv until T3, and report the per-construct counts
+of `unsupported` reasons at every stage, so progress is visible before
+coverage moves.
 
 ## 6. Verification
 
 - **Types and conversions against gcc.** For each corpus function, normalize
   `-fdump-tree-original` (gcc 13) and the TAST dump to a common form and
-  compare per statement: result types and the set of casts. Normalization
-  will lose information (gcc folds, reorders, names temporaries), so the
-  comparison is by *multiset of (operator, operand types, result type)*
-  per statement, not text equality; mismatches are listed, with an
-  allow-list for known gcc folds. This is a differential, not a proof.
+  compare per function. gcc folds, reorders and names temporaries, and
+  casts print their target type only (section 11), so the comparison is
+  the *multiset of cast target types* per function, not text equality and
+  not operand types; mismatches are listed, with an allow-list for known
+  gcc folds. This is a coarse differential, not a proof, and it says
+  nothing about arithmetic conversions that gcc prints no cast for.
 - **Internal invariants (a `tast_verify`, like `cindex_verify`).** Every
   expression node has a non-error type; no `lvalue` appears where an rvalue
   is required; every `sym` resolves; statement nesting is well formed; node
@@ -164,9 +217,15 @@ produce no tree for it; it is counted, never guessed or partly emitted.
   pass ran, not that the rules are right; the independent evidence is the
   gcc comparison above, the layout check, and, once a back end exists,
   running compiled programs against gcc's.
-- **Layout.** Field offsets and sizes asserted against
-  `__builtin_offsetof`/`sizeof` evaluated by gcc on the same corpus
-  (reuse `tests/gen_layout.py`).
+- **Layout.** `tests/gen_layout.py` already asserts the checker's `Record`
+  layout against gcc. TAST reads that same `Record`, so this is a
+  regression guard on the checker, not independent evidence about the
+  TAST; the TAST dump must only be checked to print what `Record` holds.
+- **What is independent, honestly.** Until a back end exists, only the
+  cast-target multisets and the non-circular invariants (typed, resolved,
+  well formed) test the elaborator. Evidence for arithmetic conversion,
+  argument promotion and bit-field truncation arrives with compiled-program
+  comparison, which is outside T1 to T5.
 - **Coverage.** Report the share of corpus functions at each stage that
   elaborate without `unsupported`; this is the stage exit measure.
 - **Cost.** The pass runs only when asked; with it off, `callgrind` must
@@ -223,7 +282,7 @@ Round 1 (claims checked against the tree): `quiet` means syntax errors only,
 not type errors, so the skip rule now names both; `promoted()` already exists
 as a helper, noted in section 4; the corpus names were the repo's tarball
 directories, now exact; the case-value claim ("in `cv` only if folded") was
-unverified and was wrong in kind (they live in per-switch state), fixed.
+unverified and was wrong in kind (round 4: case expression values are readable in cv/ck; the claim was wrong the other way).
 Round 2 (what could be false or circular): the "one mechanism" claim hid the
 shape lowerings (pointer arithmetic, `->`, compound assignment, `++`,
 short-circuit and `?:` shape, `switch`), now stated as a second, small set;
@@ -237,9 +296,9 @@ Round 3 (re-read for stale text): no further material finding; open risk
 unchanged: the gcc comparison may be too noisy (S1 decides, with a stated
 fallback).
 
-## 11. Spike results (2026-10-17, throwaway instrumented copy, removed)
+## 11. Spike results (2026-10-17, throwaway instrumented copy, removed; the numbers are not reproducible, the probe was deleted)
 
-**S0 (type presence).** At unit end, on lua54 (all 33 units) and libuv (src and
+**S0, partial (type presence only).** At unit end, on lua54 (all 33 units) and libuv (src and
 src/unix), 8 of 147,847 external declarations were skipped for errors; the
 rest are clean. Of about 380,000 expression nodes, every node has a type
 except: 4,064 `IDENT` under `ATTR_ITEM` (attribute arguments, not
@@ -251,9 +310,9 @@ subscripts and strings as expected. `common_type()` (`cexpr_int.h:357`) and
 `promoted()` exist as separate helpers, so promotion and usual arithmetic
 conversions are callable at unit end. Not measured: assignment, argument and
 return conversion targets (derivable from the callee's function type and the
-declared types, by reading), and `EF_NPC` use. Verdict: the unit-end design
-(section 4) is viable for the conversion sites inspected; alternative B is
-not needed unless a later stage finds a site whose decision state is gone.
+declared types, by reading), and `EF_NPC` use. Verdict (reviewed down, round 4): type presence holds; whether the unit-end design
+holds for conversions is open (section 4); alternative B is
+not ruled out. Bindings of locals are known to need the visit (section 3.3).
 Builtins with argument-dependent types need explicit rules (stage T5, or
 `unsupported` until then).
 
@@ -273,3 +332,23 @@ now and compiled-program comparison once a back end exists. Stage T1's exit
 criterion therefore reads "cast-target multisets agree on at least N% of
 functions, mismatches listed", with N set after the first measurement, not
 guessed here.
+
+Round 4 (fresh-eyes review by a Sonnet subagent, claims re-verified by hand
+for 1 to 4): (1) `cb` links only globals and linkage objects, locals have no
+symbol link and scopes are gone at unit end, so bindings must be recorded
+during the visit (sections 3.3, 4); (2) `quiet` is `had_errors && !FUNC_DEF`,
+so a function with a syntax error is not quiet, the skip rule now uses an
+error count; (3) case values are readable and what is missing is their
+conversion to the promoted switch type; (4) S0 measured type presence only
+and is relabelled partial, the viability verdict is withdrawn, ROADMAP says
+"S0 partial"; (5) `promoted()` depends on a call-site `ef` bit; (6) 128-bit,
+float128 and decimal constants do not fit `cv`/`fv`; (7) the stage table had
+dependency inversions (enums in T3, variadics in T1, bit-fields after
+structs) and omitted `&&`/`?:`/assignment/goto, rewritten with an expected
+near-zero coverage until T3; (8) added K&R entry conversion, implicit
+declarations, `a ?: b`, void casts, string array copy, `-O` option
+dependence; (9) VLA `sizeof` is evaluated; (10) the layout check only
+guards the checker, said so; (11) section 6 aligned with what S1 found.
+Not checked by the reviewer or by me: the gcc examples in section 2 were
+checked by me earlier in WSL; "the lexer drops comments" (section 8) is
+unverified.
