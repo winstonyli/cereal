@@ -1,0 +1,123 @@
+tast 1 target x86_64-linux-gnu
+unit stmtexpr.c:2:13 decl fail void(const char *, const char *, unsigned int,  const char *)
+unit stmtexpr.c:3:5 decl g int(int)
+unit stmtexpr.c:7:1 func val int(int)
+  #0 sym a@7:13 int
+  #1 load #0 int
+  #2 const 2 int
+  #3 binop * #1 #2 int
+  #4 local t@7:32 #3 int
+  #5 sym t@7:32 int
+  #6 load #5 int
+  #7 const 1 int
+  #8 binop + #6 #7 int
+  #9 stmtexpr #4 #8 int
+  #10 return #9
+  #11 block #10
+unit stmtexpr.c:8:1 func eff void(int)
+  #0 sym a@8:14 int
+  #1 load #0 int
+  #2 call g #1 int
+  #3 exprstmt #2
+  #4 sym a@8:14 int
+  #5 load #4 int
+  #6 const 1 int
+  #7 binop + #5 #6 int
+  #8 call g #7 int
+  #9 stmtexpr #3 #8 int
+  #10 exprstmt #9
+  #11 block #10
+unit stmtexpr.c:9:1 func nested int(int)
+  #0 sym a@9:16 int
+  #1 load #0 int
+  #2 const 1 int
+  #3 binop + #1 #2 int
+  #4 stmtexpr #3 int
+  #5 local x@9:35 #4 int
+  #6 sym x@9:35 int
+  #7 load #6 int
+  #8 sym x@9:35 int
+  #9 load #8 int
+  #10 binop * #7 #9 int
+  #11 stmtexpr #5 #10 int
+  #12 return #11
+  #13 block #12
+unit stmtexpr.c:10:1 func asrt void(int)
+  #0 const 4 long unsigned int
+  #1 cast #0 void
+  #2 sym a@10:15 int
+  #3 load #2 int
+  #4 const 0 int
+  #5 cmp > #3 #4 int
+  #6 nop
+  #7 str u1 61203e203000 char[6]
+  #8 addr #7 char *
+  #9 cast #8 const char *
+  #10 str u1 73746d74657870722e6300 char[11]
+  #11 addr #10 char *
+  #12 cast #11 const char *
+  #13 const 10 unsigned int
+  #14 str u1 6173727400 const char[5]
+  #15 addr #14 const char *
+  #16 call fail #9 #12 #13 #15 void
+  #17 exprstmt #16
+  #18 if #5 #6 #17
+  #19 stmtexpr #18 void
+  #20 comma #1 #19 void
+  #21 exprstmt #20
+  #22 block #21
+unit stmtexpr.c:11:1 func fn const char *(void)
+  #0 str u1 666e00 const char[3]
+  #1 addr #0 const char *
+  #2 return #1
+  #3 block #2
+unit stmtexpr.c:12:1 func pf const char *(void)
+  #0 str u1 706600 const char[3]
+  #1 addr #0 const char *
+  #2 return #1
+  #3 block #2
+unit stmtexpr.c:13:1 func jump int(int)
+  #0 sym a@13:14 int
+  #1 load #0 int
+  #2 const 1 int
+  #3 return #2
+  #4 if #1 #3
+  #5 const 2 int
+  #6 stmtexpr #4 #5 int
+  #7 return #6
+  #8 block #7
+unit stmtexpr.c:14:1 func wide long int(int)
+  #0 sym a@14:15 int
+  #1 load #0 int
+  #2 stmtexpr #1 int
+  #3 cast #2 long int
+  #4 return #3
+  #5 block #4
+unit stmtexpr.c:15:1 func empty void(void)
+  #0 stmtexpr void
+  #1 exprstmt #0
+  #2 block #1
+unit stmtexpr.c:16:1 func lbl int(int)
+  #0 const 0 int
+  #1 local r@16:32 #0 int
+  #2 sym r@16:32 int
+  #3 sym r@16:32 int
+  #4 load #3 int
+  #5 const 1 int
+  #6 binop + #4 #5 int
+  #7 store #2 #6 int
+  #8 post #7 int
+  #9 exprstmt #8
+  #10 label again #9
+  #11 sym r@16:32 int
+  #12 load #11 int
+  #13 sym a@16:13 int
+  #14 load #13 int
+  #15 cmp < #12 #14 int
+  #16 goto again
+  #17 if #15 #16
+  #18 sym r@16:32 int
+  #19 load #18 int
+  #20 stmtexpr #1 #10 #17 #19 int
+  #21 return #20
+  #22 block #21

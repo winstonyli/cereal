@@ -26,7 +26,8 @@
     X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \
     X(INTRIN, "intrin")                                                      \
     X(DEREF, "deref") X(FIELD, "field") X(ADDR, "addr") X(STR, "str")        \
-    X(PTRADD, "ptradd") X(PTRDIFF, "ptrdiff") X(POST, "post")                \
+    X(PTRADD, "ptradd") X(PTRDIFF, "ptrdiff") X(STMTEXPR, "stmtexpr")        \
+    X(POST, "post")                                                          \
     X(BLOCK, "block") X(LOCAL, "local") X(EXPRSTMT, "exprstmt")              \
     X(IF, "if") X(WHILE, "while") X(DO, "do") X(FOR, "for")                  \
     X(SWITCH, "switch") X(CASE, "case") X(DEFAULT, "default")                \
@@ -79,6 +80,8 @@ typedef struct El {
     TypeId ret;             /* the function's return type */
     TypeId swty;            /* the innermost switch's promoted type, 0: none */
     VEC(uint8_t) bytes;     /* the code units of the str nodes */
+    uint32_t fname;         /* the function's name (identifier id), when in one */
+    bool infunc;
     char why[96];           /* non-empty: unsupported, and the reason */
 } El;
 
@@ -195,6 +198,7 @@ static bool agree(El *e, uint32_t i, TypeId rule)
 }
 
 static uint32_t ex(El *e, uint32_t n, bool allow_void);
+static uint32_t stmt_expr(El *e, uint32_t i, TypeId t, SrcLoc loc);
 
 static uint32_t rv(El *e, uint32_t n)
 {
@@ -283,6 +287,20 @@ static uint32_t str_node(El *e, uint32_t i, TypeId t, SrcLoc loc)
     return j;
 }
 
+/* __func__, __FUNCTION__, __PRETTY_FUNCTION__: the enclosing function's name
+ * as a string literal. */
+static uint32_t func_str(El *e, TypeId t, SrcLoc loc)
+{
+    const char *nm = cident(e->c, e->fname);
+    size_t len = strlen(nm), j;
+    uint32_t off = (uint32_t)e->bytes.len, id;
+    for (j = 0; j <= len; j++)
+        vec_push(&e->bytes, (uint8_t)nm[j]);
+    id = mk(e, TO_STR, t, loc, off, 0, 1, NULL, 0);
+    e->nodes.data[id].width = (uint32_t)len + 1;
+    return id;
+}
+
 /* The lvalue an expression designates: a variable (or function), *p, a
  * member, a string literal.  a[i] is *(a + i); p->f is (*p).f. */
 static uint32_t lval(El *e, uint32_t n)
@@ -301,8 +319,13 @@ static uint32_t lval(El *e, uint32_t n)
     case N_IDENT: {
         uint32_t ref = c->sym[i];
         const CSym *s;
-        if (ref == SYM_NONE)
-            return unsup(e, "builtin or undeclared identifier %s", cident(c, cnode_ident(c, i)));
+        if (ref == SYM_NONE) {
+            const char *nm = cident(c, cnode_ident(c, i));
+            if (e->infunc && (!strcmp(nm, "__func__") || !strcmp(nm, "__FUNCTION__") ||
+                              !strcmp(nm, "__PRETTY_FUNCTION__")))
+                return func_str(e, t, loc);
+            return unsup(e, "builtin or undeclared identifier %s", nm);
+        }
         s = csym(c, ref);
         if (s->kind != CS_OBJ && s->kind != CS_FUNC)
             return unsup(e, "identifier is not a variable");
@@ -702,6 +725,8 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
         return unsup(e, "member of rvalue");
     case N_CALL:
         return e_call_t(e, i);
+    case N_STMT_EXPR:
+        return stmt_expr(e, i, t, loc);
     case N_CAST: {
         uint32_t x;
         if (nkids(c, i, k, 2) != 2)
@@ -1258,6 +1283,40 @@ static uint32_t st(El *e, uint32_t n)
     return id;
 }
 
+/* ({ ... }): the block's statements, then (unless the type is void) the
+ * last expression's value, converted to the expression's type. */
+static uint32_t stmt_expr(El *e, uint32_t i, TypeId t, SrcLoc loc)
+{
+    Checker *c = e->c;
+    uint32_t cp = first_child(c, i), v = stmt_expr_value(c, i), *k = NULL, m, j, id = TN;
+    bool isvoid = type_is_void(&c->tt, t);
+    U32Vec kids = {0};
+    if (ntag(c, cp) != N_COMPOUND)
+        return unsup(e, "statement expression form");
+    m = fkids(e, cp, &k);
+    for (j = 0; j < m && !e->why[0]; j++) {
+        if (!isvoid && j + 1 == m) {
+            uint32_t x;
+            if (ntag(c, k[j]) != N_EXPR_STMT || v == NO_NODE) {
+                unsup(e, "statement expression value form");
+                break;
+            }
+            x = conv(e, rv(e, v), t, loc);
+            if (x != TN)
+                vec_push(&kids, x);
+        } else if (ntag(c, k[j]) == N_DECL) {
+            decl(e, k[j], &kids);
+        } else if (ntag(c, k[j]) != N_STATIC_ASSERT) {
+            vec_push(&kids, st(e, k[j]));
+        }
+    }
+    if (!e->why[0])
+        id = mk(e, TO_STMTEXPR, unqual(c, t), loc, 0, 0, 0, kids.data, (uint32_t)kids.len);
+    vec_free(&kids);
+    free(k);
+    return id;
+}
+
 /* ---- printing -------------------------------------------------------------- */
 
 static void put_type(Checker *c, FILE *out, TypeId t)
@@ -1486,7 +1545,7 @@ static void verify(El *e, FILE *out)
             !((nd->op == TO_DEREF || nd->op == TO_SYM) && KIND(nd->ty) == TY_FUNC))
             vbad(e, out, i, "type outside the subset");
         if (ex_ && VOIDT && nd->op != TO_CAST && nd->op != TO_CALL &&
-            nd->op != TO_COND && nd->op != TO_COMMA)
+            nd->op != TO_COND && nd->op != TO_COMMA && nd->op != TO_STMTEXPR)
             vbad(e, out, i, "void type");
         switch (nd->op) {
         case TO_CONST: NEED(0); break;
@@ -1683,6 +1742,14 @@ static void verify(El *e, FILE *out)
             else if ((uint64_t)nd->val != elem_size(c, KID(0)->ty))
                 vbad(e, out, i, "element size");
             break;
+        case TO_STMTEXPR:       /* statements, then the value unless void */
+            for (j = 0; j < nd->nkids; j++)
+                if (j + 1 == nd->nkids && !VOIDT ? !(ISVAL(KID(j)) && SAME(KID(j), nd))
+                                                 : !ISSTMT(KID(j)))
+                    vbad(e, out, i, j + 1 == nd->nkids && !VOIDT ? "value" : "item is not a statement");
+            if (!VOIDT && !nd->nkids)
+                vbad(e, out, i, "no value");
+            break;
         case TO_BLOCK:
             for (j = 0; j < nd->nkids; j++)
                 if (!ISSTMT(KID(j)))
@@ -1863,6 +1930,8 @@ static void func_def(El *e, uint32_t root)
         unsup(e, "unprototyped or variadic definition");
         return;
     }
+    e->fname = s->name;
+    e->infunc = true;
     e->ret = unqual(c, fe->base);
     if (!type_is_void(&c->tt, e->ret) && !ok_ty(e, e->ret)) {
         unsup(e, "%s", why_type(e, e->ret));

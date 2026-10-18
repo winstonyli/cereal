@@ -514,7 +514,7 @@ if [ -d "$ROOT/tests/tast" ]; then
     done
     cd "$ROOT"
     # with the symbol index on, every symbol of an elaborated unit has a declaration
-    for f in ptr agg flow init data; do
+    for f in ptr agg flow init data stmtexpr; do
         if "$CEREAL" check --target=x86_64-linux-gnu --dump-symbols --verify-tast \
             "$ROOT/tests/tast/$f.c" 2>/dev/null </dev/null | grep -q "^verify:"; then
             bad "tast/$f index declarations"

@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # TAST stage T3: plan
@@ -556,6 +556,27 @@ initializer", "static or extern local" and "braced initializer" are gone.
   automatic initializer value. They are ordinary expressions.
 - **Found, not ours:** the checker rejects `long big = (long)&ext + 8;`,
   which gcc accepts (parked).
+
+### T3c, built (2026-10-18)
+
+`stmtexpr` and `__func__`.
+
+- `stmtexpr` is a value op: the block's statements, then (unless its type is
+  void) the last expression statement's value converted to the expression's
+  type. The value comes from the checker's `stmt_expr_value`; a labeled last
+  statement is unsupported ("statement expression value form"). Declarations
+  inside use the ordinary `decl`. Verifier: statements first, then one value
+  of the node's type (void: statements only).
+- `__func__`, `__FUNCTION__`, `__PRETTY_FUNCTION__` become a `str` of the
+  enclosing function's name (`El.fname`); outside a function they stay
+  unsupported.
+- Test: `tests/tast/stmtexpr.c` (glibc-style `assert`, nested, value
+  conversion, jumps and labels inside, empty).
+- Coverage (`2026-10-18-tast-t3c-coverage`): libuv unsupported 128 -> 34,
+  1,514 functions elaborate; lua54 unchanged at 206. Left in libuv: floating
+  12, `__atomic_*` calls 15 (generic builtins, refused by `builtin_ft`),
+  array type 2, one each of definition, `asm`, `va_arg`, lvalue form,
+  `setproctitle`. Suite 2247 passed, 0 verifier findings.
 
 ### T3c decision
 
