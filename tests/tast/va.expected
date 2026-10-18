@@ -1,0 +1,95 @@
+tast 1 target x86_64-linux-gnu
+unit va.c:2:27 decl va_list va_list
+unit va.c:3:1 func sum int(int, ...)
+  #0 local ap@5:13 va_list
+  #1 local bp@5:17 va_list
+  #2 const 0 int
+  #3 local s@6:9 #2 int
+  #4 local d@7:12 double
+  #5 sym ap@5:13 va_list
+  #6 addr #5 __va_list_tag *
+  #7 va start #6 void
+  #8 exprstmt #7
+  #9 sym bp@5:17 va_list
+  #10 addr #9 __va_list_tag *
+  #11 sym ap@5:13 va_list
+  #12 addr #11 __va_list_tag *
+  #13 va copy #10 #12 void
+  #14 exprstmt #13
+  #15 sym n@3:13 int
+  #16 sym n@3:13 int
+  #17 load #16 int
+  #18 const 1 int
+  #19 binop - #17 #18 int
+  #20 store #15 #19 int
+  #21 post #20 int
+  #22 sym s@6:9 int
+  #23 sym s@6:9 int
+  #24 load #23 int
+  #25 sym ap@5:13 va_list
+  #26 addr #25 __va_list_tag *
+  #27 va arg #26 int
+  #28 binop + #24 #27 int
+  #29 store #22 #28 int
+  #30 exprstmt #29
+  #31 while #21 #30
+  #32 sym d@7:12 double
+  #33 sym bp@5:17 va_list
+  #34 addr #33 __va_list_tag *
+  #35 va arg #34 double
+  #36 store #32 #35 double
+  #37 exprstmt #36
+  #38 sym bp@5:17 va_list
+  #39 addr #38 __va_list_tag *
+  #40 va end #39 void
+  #41 exprstmt #40
+  #42 sym ap@5:13 va_list
+  #43 addr #42 __va_list_tag *
+  #44 va end #43 void
+  #45 exprstmt #44
+  #46 sym s@6:9 int
+  #47 load #46 int
+  #48 sym d@7:12 double
+  #49 load #48 double
+  #50 cast #49 int
+  #51 binop + #47 #50 int
+  #52 return #51
+  #53 block #0 #1 #3 #4 #8 #14 #31 #37 #41 #45 #52
+unit va.c:17:1 func vf int(const char *, __va_list_tag *)
+  #0 sym ap@17:31 __va_list_tag *
+  #1 load #0 __va_list_tag *
+  #2 va arg #1 int
+  #3 return #2
+  #4 block #3
+unit va.c:18:1 func ptrs long int(int, ...)
+  #0 local ap@20:13 va_list
+  #1 local p@21:11 char *
+  #2 sym ap@20:13 va_list
+  #3 addr #2 __va_list_tag *
+  #4 va start #3 void
+  #5 exprstmt #4
+  #6 sym p@21:11 char *
+  #7 sym ap@20:13 va_list
+  #8 addr #7 __va_list_tag *
+  #9 va arg #8 char *
+  #10 store #6 #9 char *
+  #11 exprstmt #10
+  #12 sym ap@20:13 va_list
+  #13 addr #12 __va_list_tag *
+  #14 va end #13 void
+  #15 exprstmt #14
+  #16 sym p@21:11 char *
+  #17 load #16 char *
+  #18 const 0 long int
+  #19 ptradd *1 #17 #18 char *
+  #20 deref #19 char
+  #21 load #20 char
+  #22 sym n@18:15 int
+  #23 load #22 int
+  #24 cast #21 int
+  #25 binop + #24 #23 int
+  #26 cast #25 long int
+  #27 return #26
+  #28 block #0 #1 #5 #11 #15 #27
+unit va.c:27:1 func noargs void(const char *, ...)
+  #0 block

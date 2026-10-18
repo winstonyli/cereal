@@ -594,3 +594,14 @@ lvalue 2, `va_arg` 2, address-of-label 2); libuv 20 (floating 12, array type
 `__atomic_fetch_add`), 0 verifier findings. The 8 units `posix-poll.c` skips
 for errors fail identically under gcc (platform file): not a checker bug.
 Leftovers are in `PARKED.md` ("TAST T3 leftovers").
+
+### Variadic definitions and `va_*` (2026-10-18, run `2026-10-18-tast-va-coverage`)
+
+Variadic definitions elaborate (unprototyped, K&R-style ones still do not:
+"unprototyped definition"). `va_start`, `va_end`, `va_copy` and `va_arg` are
+one node, `va start|end|copy|arg`, whose kids are the `va_list` operands as
+pointers (`va_start`'s last-named-parameter argument is not kept); `arg`'s
+type is the type read, the others are `void`. Test: `tests/tast/va.c`.
+lua54 16 -> 4 unsupported (compound lvalue with side effects 2, address of
+label 2), libuv 8 -> 6 (array type 2, `asm`, lvalue form, `setproctitle`,
+`__atomic_fetch_add`); 0 verifier findings, suite 2258 passed.

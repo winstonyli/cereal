@@ -25,7 +25,7 @@
     X(CAST, "cast") X(UNOP, "unop") X(BINOP, "binop") X(CMP, "cmp")          \
     X(LOGAND, "logand") X(LOGOR, "logor") X(COND, "cond")                    \
     X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \
-    X(INTRIN, "intrin")                                                      \
+    X(INTRIN, "intrin") X(VA, "va")                                          \
     X(DEREF, "deref") X(FIELD, "field") X(ADDR, "addr") X(STR, "str")        \
     X(PTRADD, "ptradd") X(PTRDIFF, "ptrdiff") X(STMTEXPR, "stmtexpr")        \
     X(POST, "post")                                                          \
@@ -702,6 +702,51 @@ static TypeId builtin_ft(El *e, uint32_t callee)
     return type_ckind(&c->tt, ft) == TY_FUNC ? ft : 0;
 }
 
+/* va_start, va_end, va_copy and va_arg: one node, `va start|end|copy|arg`,
+ * whose kids are the va_list operands as pointers to its first element
+ * (start's last-named-parameter argument is not evaluated and not kept);
+ * the type is void, or for arg the type read. */
+enum { VA_NONE, VA_START, VA_END, VA_COPY, VA_ARG };
+
+static int va_kind(Checker *c, uint32_t i)
+{
+    uint32_t k[1];
+    const char *nm;
+    if (ntag(c, i) == N_VA_ARG)
+        return VA_ARG;
+    if (ntag(c, i) != N_CALL || nkids(c, i, k, 1) < 1)
+        return VA_NONE;
+    k[0] = strip_paren(c, k[0]);
+    if (ntag(c, k[0]) != N_IDENT || c->sym[k[0]] != SYM_NONE)
+        return VA_NONE;
+    nm = cident(c, cnode_ident(c, k[0]));
+    return !strcmp(nm, "__builtin_va_start") ? VA_START
+         : !strcmp(nm, "__builtin_va_end") ? VA_END
+         : !strcmp(nm, "__builtin_va_copy") ? VA_COPY : VA_NONE;
+}
+
+static uint32_t e_va(El *e, uint32_t i, int kind)
+{
+    Checker *c = e->c;
+    uint32_t k[3], nk = nkids(c, i, k, 3), ka[2], nka = 0, j;
+    SrcLoc loc = cnode_loc(c, i);
+    TypeId t = kind == VA_ARG ? unqual(c, c->ty[i]) : TYPE_B(VOID);
+    uint32_t want = kind == VA_COPY ? 2 : 1;
+    if (kind != VA_ARG && (nk < want + 1 || (kind == VA_START && nk != 3) ||
+                           (kind != VA_START && nk != want + 1)))
+        return unsup(e, "va builtin arguments");
+    if (kind == VA_ARG && nk != 2)
+        return unsup(e, "malformed va_arg");
+    if (kind == VA_ARG && !ok_ty(e, t))
+        return unsup(e, "%s", why_type(e, t));
+    for (j = 0; j < want; j++) {
+        ka[nka] = rv(e, k[kind == VA_ARG ? 0 : j + 1]);
+        if (ka[nka++] == TN)
+            return TN;
+    }
+    return mk(e, TO_VA, t, loc, 0, 0, (unsigned)kind, ka, nka);
+}
+
 static uint32_t e_call_t(El *e, uint32_t i)
 {
     Checker *c = e->c;
@@ -783,7 +828,8 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
     loc = cnode_loc(c, i);
     t = c->ty[i];
     if (c->ck[i] == K_ERR || type_ckind(&c->tt, t) == TY_ERROR)
-        return unsup(e, "type error");
+        return va_kind(c, i) != VA_NONE
+                   ? e_va(e, i, va_kind(c, i)) : unsup(e, "type error");
     isvoid = type_is_void(&c->tt, t);
     if (isvoid) {
         if (!allow_void)
@@ -808,8 +854,10 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
     switch (ntag(c, i)) {
     case N_MEMBER_EXPR:
         return unsup(e, "member of rvalue");
+    case N_VA_ARG:
+        return e_va(e, i, VA_ARG);
     case N_CALL:
-        return e_call_t(e, i);
+        return va_kind(c, i) != VA_NONE ? e_va(e, i, va_kind(c, i)) : e_call_t(e, i);
     case N_STMT_EXPR:
         return stmt_expr(e, i, t, loc);
     case N_CAST: {
@@ -1484,6 +1532,9 @@ static void print_tree(El *e, FILE *out)
             if (nd->width)
                 fprintf(out, " fixed %lld", (long long)nd->val);
             break;
+        case TO_VA:
+            fprintf(out, " %s", nd->pun == 1 ? "start" : nd->pun == 2 ? "end" : nd->pun == 3 ? "copy" : "arg");
+            break;
         case TO_INTRIN:
             if (nd->width == 2) {
                 fprintf(out, " %s generic", cident(c, nd->sym) + 2);
@@ -1642,7 +1693,7 @@ static void verify(El *e, FILE *out)
             vbad(e, out, i, "type outside the subset");
         if (ex_ && VOIDT && nd->op != TO_CAST && nd->op != TO_CALL &&
             nd->op != TO_COND && nd->op != TO_COMMA && nd->op != TO_STMTEXPR &&
-            nd->op != TO_INTRIN)
+            nd->op != TO_INTRIN && nd->op != TO_VA)
             vbad(e, out, i, "void type");
         switch (nd->op) {
         case TO_CONST: NEED(0); break;
@@ -1741,6 +1792,17 @@ static void verify(El *e, FILE *out)
             if (KID(0)->op != TO_STORE || !SAME(KID(0), nd))
                 vbad(e, out, i, "operand is not a store of the same type");
             break;
+        case TO_VA: {
+            uint32_t want = nd->pun == 3 ? 2 : 1;
+            if (nd->pun < 1 || nd->pun > 4 || nd->nkids != want || (nd->pun == 4) == VOIDT) {
+                vbad(e, out, i, "va operands");
+                break;
+            }
+            for (j = 0; j < nd->nkids; j++)
+                if (!ISVAL(KID(j)) || KIND(KID(j)->ty) != TY_PTR)
+                    vbad(e, out, i, "va_list operand is not a pointer");
+            break;
+        }
         case TO_CALL: case TO_INTRIN: {
             TypeId ft = 0;
             const TypeEnt *fe;
@@ -2047,8 +2109,8 @@ static void func_def(El *e, uint32_t root)
     s = csym(c, c->cb[d] - 1);
     ft = type_canon(&c->tt, s->ty);
     fe = type_ent(&c->tt, ft);
-    if (fe->flags & (TF_NOPROTO | TF_VARIADIC)) {
-        unsup(e, "unprototyped or variadic definition");
+    if (fe->flags & TF_NOPROTO) {
+        unsup(e, "unprototyped definition");
         return;
     }
     e->fname = s->name;
