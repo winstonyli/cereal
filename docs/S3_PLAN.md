@@ -75,7 +75,7 @@ named consumer in section 1 whose output is visibly better with the ids. If grow
 consumer is chosen, S3 stays parked (PARKED.md) with these numbers as evidence.
 
 **S3a status: done 2026-10-17, section 6.** Sparse passes the size rule on lua54, libuv and cereal `src`
-(at most 3.3%), fails on the zstd amalgamation (16%); the consumer half of the rule is not met.
+(at most 3.3%), is at the line on zstd (10.0%, separate files) and fails on its amalgamation (16%); the consumer half of the rule is not met.
 
 **S3b, records.** Format 5: sparse `DPC`/`RPC`/`CPC` and `PCT`; writer in `crec_index` (skeleton only, no fold);
 reader and validation; `crec_dump` prints the normalized text. Gate: `symcov` unchanged; store size as
@@ -104,13 +104,17 @@ any depth). Records are the distinct per-file lines the indexer built for every 
 | libuv (38 Linux units) | 73 | 14,033 | 10.9% | 122 | 12.1% | **3.3%** |
 | cereal `src` (82 units) | 184 | 130,687 | 1.1% | 5 | 19.1% | **0.43%** |
 | zstd.c (the amalgamation, 1 unit) | 1 | 26,018 | 35.1% | 84 | 22.6% | **16.2%** |
+| zstd 1.5.7 `lib/` (30 units, separate files) | 93 | 30,633 | 29.5% | 153 | 16.2% | **10.0%** (9.96) |
 
 - **The stop rule fails for the design as written.** Parallel arrays with one `u32` per event cost 12 to 23%
   of the store. Section 2's "a zero per event compresses" is wrong: the sections are not compressed. Fixed in
   section 2: **sparse** (a list of (event index, PCT index) for the non-trivial events only).
 - **Sparse passes on three of four** (at most 3.3%). zstd's amalgamation is one unit with 51 embedded headers
-  and heavy `#if` use inside functions: 35% of its events are conditional, so it fails (16%). One record is a
-  thin sample; a real zstd build with separate files would sit nearer libuv. Not measured.
+  and heavy `#if` use inside functions: 35% of its events are conditional, so it fails (16%). A multi-file build
+  (zstd 1.5.7 `lib/`, downloaded 2026-10-17, same probe) is no better: 29.5% of events are conditional and
+  sparse costs 9.96%, exactly at the 10% line. So **conditional-heavy code sits at the rule's edge**; the
+  size rule holds only where few events are conditional (lua54, cereal) or the conditions are platform
+  branches kept to a few files (libuv).
 - **Distinct ids are few** (5 to 122 per project, a few KB of table), so the table is not the cost; the
   per-event pairs are.
 - **Cross-check:** an independent awk count of lines under a non-guard conditional gives 44% for zstd.c, 21%

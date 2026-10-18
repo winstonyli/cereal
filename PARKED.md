@@ -122,7 +122,7 @@ Format: what; why parked; trigger; evidence; status. This is the one list: the d
 
 ## S3-records: Local PC ids in the index records (docs/S3_PLAN.md)
 - **What:** sparse `DPC`/`RPC`/`CPC` side arrays plus a `PCT` table in `CREC_FORMAT` 5, giving the events with a non-trivial `#if` condition their Local PC id.
-- **Why parked:** S3a (2026-10-17) passes the size rule (at most 3.3% of the store on lua54, libuv and cereal `src`; 16% on the zstd amalgamation) but no consumer is chosen, and nothing is blocked without it. Stored ids give display and pre-filtering only; `sat`, `enable` and `cover` still fold.
+- **Why parked:** S3a (2026-10-17) passes the size rule (at most 3.3% of the store on lua54, libuv and cereal `src`; 10.0% on zstd lib, 16% on its amalgamation) but no consumer is chosen, and nothing is blocked without it. Stored ids give display and pre-filtering only; `sat`, `enable` and `cover` still fold.
 - **Trigger:** a chosen consumer from S3_PLAN section 1 (references annotation is the cheapest), or a measured rename-gate cost that the pre-filter would remove.
 - **Evidence:** docs/S3_PLAN.md section 6; run `2026-10-17-s3a` (docs/runs.md); record writer src/c/cidxrec.c `build_record`.
 - **Status:** held for a consumer choice.
