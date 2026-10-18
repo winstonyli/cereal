@@ -155,3 +155,9 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 | A side table to merge decl and scope fields exactly | Saves about 4 bytes per decl. | B3_DESIGN:455 | decided against |
 | Move the function-definition code out of `cdecl.c` into its own file | About 28 imports for 13% of the file. | HISTORY:2776,2795 | decided against |
 | `_Generic`/`typeof` of a bit-field expression: gcc gives the narrow bit-field type (lvalues, assignment, `++`, `+=` values; `+` stays narrow at 33+ bits); cereal gives the declared type | Probed 2026-10-18 (docs/TAST_DESIGN.md 3.2): only visible through `_Generic`, `typeof` and `__builtin_types_compatible_p` on bit-fields. | TAST_DESIGN 3.2; `cexpr.c:6745` | parked |
+
+## TAST generalizations (docs/TAST_DESIGN.md section 13; trigger "asked for" unless stated)
+| What | Why parked | Evidence | Status |
+|---|---|---|---|
+| One annotation log from the checker's visit (BIND, CONV, INIT records through a single `ann()` API) replacing `sym[i]`, the initializer record and the optional recomputable records | Each record is one store at a decision point today; the log pays only with a third recorded item. Trigger: a third visit-time record is needed. | TAST_DESIGN 13.3 | parked |
+| Run the conversion warnings over the elaborated tree (`-Wconversion` as "for each cast node, is it unsafe"), deleting the fused type-and-warning logic | Large and risky; follows once conversions are explicit nodes (T1 onward). Trigger: T3 done and a conversion-warning change is wanted. The gcc goldens are the safety net. | TAST_DESIGN 13.4; `cconv.c` | parked |

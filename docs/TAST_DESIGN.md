@@ -186,6 +186,26 @@ types) to a TAST, run at unit end, driven by a per-tag rule table.**
   computes it). Both are also recomputable (`common_type(promoted(l),
   promoted(r))`; float to double, else `promoted()`), so they are not needed
   unless a test finds a disagreement.
+- **End state: a small core, reached by desugaring (decided 2026-10-18,
+  section 13).** The rule table (conversions) and the shape builders are
+  not two designs: the builders are sugar over a core of `const sym load
+  store addr unop binop cast call cond` plus `label goto branch`. The shape
+  lowerings (pointer arithmetic, `p->f`, `a[i]`, compound assignment,
+  `++`/`--`, `&&`/`||`/`?:`, comma) become entries of one *template table*
+  (sugar tag, template over core ops), applied by one generic loop, instead
+  of per-tag C code. Loops and `switch` lower to `label`/`branch` in a
+  separate, additive second pass (stage T6); the structured form stays the
+  first stage, so T1 to T5 are unaffected. The T6 form is the control-flow
+  graph that Track D's dataflow warnings and symbolic execution need.
+  Cannot be expressed as templates (explicit rules): argument-typed
+  builtins, `asm`, VLA allocation, initializer layout.
+- **Identity shared with the symbol index (decided 2026-10-18).** A TAST
+  `sym` node carries the index's identity key, computed by the same shared
+  function (`cindex_key`, B5_DESIGN E10, 5.3), alongside the checker's
+  `SymRef`. Only the key is shared, not the index's event stream (which
+  exists only with `Checker.sx` and has macro-body and expansion rules a tree
+  does not want). The key makes TAST, hover, references, call hierarchy and
+  a back end agree on what an entity is by construction.
 - TAST node: `{op, ty, loc, flags, kids, value}` where `op` is a small
   closed set (const, sym, load, store, addr, unop, binop, cmp, cast, call,
   cond, logical and/or, comma, member-offset, index-as-ptr-add, and the
@@ -214,6 +234,7 @@ produce no tree for it; it is counted, never guessed or partly emitted.
 | T3 | initializers (flat list), static data, implicit and NOPROTO calls, K&R definitions, variadic calls and default promotions, `case` value conversion | multisets + data golden |
 | T4 | floating point, `long double`, `_Complex`, `__int128`, decimal and `_FloatN` (needs the constant representation of 3.6) | multisets |
 | T5 | VLA (incl. evaluated `sizeof`), compound literals, statement expressions, `_Generic`, `va_arg`, `offsetof`, computed `goto`, argument-typed builtins, `asm` | decided per item |
+| T6 | lowering to the core: templates for the shapes of section 4, loops and `switch` to `label`/`branch` (a CFG per function) | additive; the structured dump stays; a CFG verifier (every block reachable or marked, every branch target defined) |
 
 Because an unsupported construct drops the whole unit, a real corpus function
 elaborates only once every construct it uses is in. Expect near-zero
@@ -403,3 +424,41 @@ lookup. Unsure: bit-field assignment value type.
 
 Consequence: the S0 gate is met with the hybrid of section 4; T1 needs the
 `sym[i]` recording and (from T3) the initializer recording.
+
+## 13. Generalizations considered (2026-10-18)
+
+Asked: are there unifications the design misses? Four were found; two are
+adopted, two parked (PARKED.md, section "TAST generalizations").
+
+1. **Desugar to a small core with a template table. Adopted** (section 4,
+   stage T6). The design had two mechanisms, a conversion rule table and
+   per-tag shape builders. All the builders are sugar over a few core ops,
+   so one template table plus one loop replaces them; lowering loops and
+   `switch` to `label`/`branch` adds a CFG that Track D (dataflow warnings)
+   and symbolic execution (proving) need, as an additive second pass, so
+   T1 to T5 are unchanged. Subsumes: pointer arithmetic, `->`, `[]`,
+   compound assignment, `++`/`--`, `&&`/`||`/`?:`, comma, `while/do/for`,
+   `switch`. Cannot: argument-typed builtins, `asm`, VLA allocation,
+   initializer layout. Cost: the lowered tree is not 1:1 with the source;
+   the structured form is kept first.
+2. **Share identity with the symbol index. Adopted** (section 4): `sym`
+   carries the shared `cindex_key`, not the event stream. Cost: none beyond
+   calling the key function with a TAST symbol; the index needs `Checker.sx`
+   and a tree must not.
+3. **One annotation log from the visit** (BIND, CONV, INIT records through a
+   single `ann()` API) instead of separate `sym[i]`, initializer records and
+   the two optional recomputable records. **Parked:** it only pays when a
+   third recorded item appears; each record is one store at a decision
+   point today.
+4. **Run the warnings over the elaborated tree** (`-Wconversion` as "for each
+   cast node, is it unsafe", deleting the fused type-and-warning logic in
+   `cconv.c` and the assignment checks). **Parked:** large and risky; the
+   gcc goldens (about 3,600 diagnostics cases) would make it testable, and it
+   follows once conversions are explicit nodes.
+
+Review round 6 (this change): the T6 row's "additive" claim was checked
+against the T1 plan (no T1 task depends on the lowered form); the shared key
+was checked to exist as a single function (`cindex_key`, B5_DESIGN E10); open:
+whether `cindex_key` accepts a symbol with no index events (a local or a
+static in a unit without `sx`), to be confirmed at T1 task 2 before `sym`
+carries it.
