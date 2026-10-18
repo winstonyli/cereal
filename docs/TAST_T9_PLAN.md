@@ -91,6 +91,31 @@ initializer lists by size and the aggregate assignments, to see whether
 `fill` is needed at all or whether stores alone would do (an array of 4096
 zeros decides it).
 
+**Spike result (2026-10-18, throwaway script over the dumps of the T8b
+corpus run; not kept).** Counts of `local`s and aggregate operations in the
+lowered graphs:
+
+| | lua54 | libuv |
+|---|---|---|
+| locals without init | 1492 | 1260 |
+| scalar init | 3474 | 89 |
+| initializer lists (all `elem` kids) | 0 | 3 (1 array of 2, 2 structs), at most 2 elems |
+| aggregate `store` / `load` / call returning one | 0 / 0 / 0 | 33 / 65 / 6 |
+
+So in these two corpora the initializer lowering is almost unexercised (3
+lists, none with an implicit zero tail), `fill` has no corpus case at all,
+and the volume is in aggregate assignment and aggregate loads (all libuv).
+Consequences: (a) `fill` can be dropped from the first cut and added when
+a unit needs it (the repo's own tests keep list initializers covered, see
+`tests/tast/`); (b) the corpora cannot be the evidence for initializer
+lowering, so the oracle's struct/array files carry that burden; (c) the
+risk sits in step 3 (aggregates), not step 2. The script counted a `local`
+as a list only when every kid is an `elem`, and a type as aggregate when it
+names `struct`/`union` or ends in `[N]` and is not a pointer; types such as
+`char[]` of unknown length or a typedef hiding a struct are read from the
+printed type, which the dump expands, so they are counted; the numbers are
+otherwise unverified by a second method.
+
 ## 6. What is out
 
 - ABI classification of arguments and results (T10); `va_arg` and
