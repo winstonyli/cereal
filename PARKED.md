@@ -154,3 +154,4 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 | Share only decls and strings so the old event arrays are freed after an edit (`cindex_touched` reads `core->by_decl`) | A cleanup, not a memory fix. | HISTORY:3794,3830; `cindex_touched`, src/c/csymidx.c:2665 | parked |
 | A side table to merge decl and scope fields exactly | Saves about 4 bytes per decl. | B3_DESIGN:455 | decided against |
 | Move the function-definition code out of `cdecl.c` into its own file | About 28 imports for 13% of the file. | HISTORY:2776,2795 | decided against |
+| `_Generic`/`typeof` of a bit-field expression: gcc gives the narrow bit-field type (lvalues, assignment, `++`, `+=` values; `+` stays narrow at 33+ bits); cereal gives the declared type | Probed 2026-10-18 (docs/TAST_DESIGN.md 3.2): only visible through `_Generic`, `typeof` and `__builtin_types_compatible_p` on bit-fields. | TAST_DESIGN 3.2; `cexpr.c:6745` | parked |

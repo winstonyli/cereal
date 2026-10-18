@@ -78,8 +78,19 @@ gaps, each to be confirmed by spike S0 before the design relies on it:
    it survives to unit end, so `promoted()` is callable there. (Round 4
    wrongly called it a call-site bit; round 5 corrected it.) Open: an
    assignment to a bit-field has `ef = EF_SIDE` and loses the flag
-   (`cexpr.c:6745`); whether the assignment's value type is the narrow type
-   as in gcc is unsure.
+   (`cexpr.c:6745`). Probe (2026-10-18, gcc-13 `-std=c11`, `_Generic` on 20
+   bit-field expressions, `int a:3; unsigned b:5; unsigned char c:3;
+   long long d:33; unsigned long long e:40`): gcc gives a bit-field lvalue
+   its narrow type for every one (matches none of `int/unsigned/long
+   long/unsigned long long`, so `default`), and the same for the value of an
+   assignment, `x++` and `x += 1`; but `a + 1`, `b + 1`, `c + 1`, `+b` and
+   `?:` of two narrow fields promote to `int` (widths below 32), while `d + 1`
+   and `e + 1` stay narrow. cereal reports the declared type for `a, b, d, e`
+   and for the assignment, `++` and `+=` values, and `long long` for `d + 1`
+   and `e + 1`. So the checker differs from gcc in `_Generic`/`typeof` of
+   bit-field expressions (rare; parked in PARKED.md). For TAST the rule is:
+   a bit-field load or store carries `Field.width` and `off_bits`, and an
+   assignment's value is the stored (truncated) value, never read from `ty`.
 3. **Symbol binding of identifiers is not stored for locals.** `cb` is set
    in `e_ident` only for globals, statics, externs and linkage objects;
    automatic locals and parameters get none. The binding is a scope lookup at
