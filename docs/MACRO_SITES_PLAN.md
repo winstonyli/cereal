@@ -35,12 +35,6 @@ lists their invocations too. cereal has no invocation record for them.
 
 ## 2. Decisions needed from the user
 
-- **D1. Do references list the body token itself** (the `lua_callk` in `#define lua_call(...)`)? **Open
-  (reopened 2026-10-17).** The earlier "yes" rested on "clangd does"; that was false: the B differential shows
-  clangd lists the invocations, not macro-body tokens (45 of 48 new cereal-only sites were body tokens). So the
-  only case left is navigation and rename awareness: the body token is a real spelling the user can go to, but
-  a client that reuses the list for a text replace could edit the macro (cereal's own rename refuses, R7). The
-  code is not built (`cindex_select` still filters `MACRO_BODY`). Default if undecided: no.
 - **D2. Which entities:** functions only (design A) or all kinds (design B). **Decided B (2026-10-17)**, after
   S1 (A covers a third of the sites) and S2 (B costs 2.9 to 5.1%); the size rule of section 5 is relaxed from 5%
   to 10%, the rule CONFIG_DESIGN 8 uses. Design C (macro-pair entries) stays a measured alternative, not chosen.
