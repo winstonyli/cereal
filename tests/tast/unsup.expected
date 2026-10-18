@@ -27,7 +27,3 @@ unit unsup.c:12:1 func ovs int(void)
   #8 load #7 int
   #9 return #8
   #10 block #2 #9
-unit unsup.c:13:1 decl
-unit unsup.c:14:1 unsupported: static initializer from a compound literal
-unit unsup.c:15:1 unsupported: static initializer from a compound literal
-unit unsup.c:16:1 unsupported: static initializer from a compound literal

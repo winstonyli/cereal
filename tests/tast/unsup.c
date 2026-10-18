@@ -10,7 +10,3 @@ _Complex double fl(_Complex double d) { return d; }
 int strs(void) { return sizeof("x"); }
 int fcast(void) { return (int)1.5; }
 int ovs(void) { static int a[2] = { [0] = 1, [0] = 3 }; return a[0]; }
-struct A { long a; };
-struct SQ { struct A t; } sqv = { (struct A){ 2 } };
-struct A sav = (struct A){ 3 };
-int scl(void) { static struct A s = (struct A){ 5 }; return s.a; }

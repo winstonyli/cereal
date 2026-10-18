@@ -155,8 +155,10 @@ decided against), verify findings 0. Data oracle: lua54 107 (2 skipped,
   silent error: a static aggregate member initialized by a literal *value*
   (`struct Q q = { (struct A){2} }`) dumped as an empty `data` node, because
   the checker folds the literal's elements under the literal's own list.
-  Now `cinit.c` records `TI_CLCTOR` there and the unit is `unsupported:
-  static initializer from a compound literal`, as is the top-level form
-  (`struct A a = (struct A){3}`); both in `unsup.c`. An array literal that
-  decays to a pointer stays supported. The fold (copying the inner list's
-  elements into the outer object) is not built; it is not in the corpus.
+  Fixed by building the fold (later the same day): `cinit.c` `tin_fold`
+  copies the literal's records into the enclosing list at the member's
+  offset (a copied `TI_CLEAR` keeps its fence relation), and `init_elems`
+  takes a top-level static literal value as its own list. `cldata.c` holds
+  the cases (plain, overridden whole, overridden in part, array of them, a
+  static local): 19 objects match gcc, 0 failures. An array literal that
+  decays to a pointer is unchanged.

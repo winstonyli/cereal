@@ -1374,6 +1374,39 @@ static void tin_add(Checker *c, CCtx *x, int kind, uint64_t bit0, uint64_t bits,
     vec_push(&c->tinit, r);
 }
 
+/* A compound literal folded into a static object as a value: its records
+ * (listed under the literal's own list) are copied to this list, shifted to
+ * the member's offset.  A copied CLEAR keeps its meaning: its fence moves to
+ * the copy of the first record it did not precede. */
+static void tin_fold(Checker *c, CCtx *x, uint32_t cl, uint64_t bias)
+{
+    uint32_t list = strip_paren(c, cl) - 1;
+    size_t n0 = c->tinit.len, i, np = 0;
+    uint32_t (*pair)[2] = xmalloc((n0 ? n0 : 1) * sizeof *pair);   /* old index, new index */
+    for (i = 0; i < n0; i++) {
+        TIRec r = c->tinit.data[i];
+        if (r.list != list)
+            continue;
+        if (r.kind == TI_CLEAR) {
+            size_t q;
+            uint32_t nf = (uint32_t)c->tinit.len;
+            for (q = 0; q < np; q++)
+                if (pair[q][0] >= r.fence) {
+                    nf = pair[q][1];
+                    break;
+                }
+            r.fence = nf;
+        }
+        r.list = x->list;
+        r.bit0 += bias;
+        pair[np][0] = (uint32_t)i;
+        pair[np][1] = (uint32_t)c->tinit.len;
+        np++;
+        vec_push(&c->tinit, r);
+    }
+    free(pair);
+}
+
 static void tin_elem(Checker *c, CCtx *x, Lvl *L, int k, int64_t key, TypeId type,
                      const IVal *v)
 {
@@ -1405,6 +1438,8 @@ static void tin_elem(Checker *c, CCtx *x, Lvl *L, int k, int64_t key, TypeId typ
     } else if (v->kind == V_CTOR && !v->tmerge) {   /* a fresh sub-object */
         tin_add(c, x, TI_CLEAR, bit0, bits, v->tin0);
     }
+    if (v->kind == V_CTOR && v->cl && v->node != NOB)
+        tin_fold(c, x, v->node, bit0);
     if (v->kind == V_CTOR)
         return;
     memset(&r, 0, sizeof r);
@@ -1456,8 +1491,6 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             v.kind = V_CTOR;
             v.ps = NULL;
             v.izero = false;
-            if (c->opt.tast)        /* its elements sit under the literal's own list */
-                tin_add(c, x, TI_CLCTOR, 0, 0, 0);
         }
     }
     bool pre_zero = v.kind == V_EXPR && v.node != NOB &&

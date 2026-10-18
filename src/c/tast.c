@@ -1145,8 +1145,10 @@ static bool init_elems(El *e, uint32_t init, TypeId oty, bool is_static, SrcLoc 
     if (ntag(c, init) != N_INIT_LIST) {
         uint32_t x = strip_paren(c, init), ka[1], id;
         if (is_static && ntag(c, x) == N_COMPOUND_LIT && type_ckind(&c->tt, c->ty[x]) != TY_ARRAY) {
-            unsup(e, "static initializer from a compound literal");
-            return false;
+            uint32_t cl[2];     /* the literal's elements are the object's (gcc folds it) */
+            if (nkids(c, x, cl, 2) < 2)
+                return unsup(e, "malformed compound literal"), false;
+            return init_elems(e, cl[1], oty, is_static, loc, out);
         }
         if (type_ckind(&c->tt, ou) == TY_ARRAY) {
             if (ntag(c, x) != N_STRING) {
@@ -1174,10 +1176,6 @@ static bool init_elems(El *e, uint32_t init, TypeId oty, bool is_static, SrcLoc 
             unsup(e, "flexible array or incomplete initializer");
             goto done;
         }
-        if (r->kind == TI_CLCTOR) {
-            unsup(e, "static initializer from a compound literal");
-            goto done;
-        }
         if (r->kind == TI_CLEAR) {
             tir_drop(e, &live, r->bit0, r->bit0 + r->bits, r->fence);
             continue;
@@ -1193,11 +1191,6 @@ static bool init_elems(El *e, uint32_t init, TypeId oty, bool is_static, SrcLoc 
         uint32_t ka[1], id, x;
         if (r->node == UINT32_MAX) {
             unsup(e, "compound literal initializer");
-            goto done;
-        }
-        if (is_static && ntag(c, strip_paren(c, r->node)) == N_COMPOUND_LIT &&
-            type_ckind(&c->tt, c->ty[strip_paren(c, r->node)]) != TY_ARRAY) {   /* an array literal decays */
-            unsup(e, "static initializer from a compound literal");
             goto done;
         }
         x = strip_paren(c, r->node);
