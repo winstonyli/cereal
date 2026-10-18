@@ -26,6 +26,9 @@ def run(*cmd):
                           check=True).stdout
 
 
+COMPLIT = "__compound_literal"      # gcc's name for a file-scope compound literal's object
+
+
 def base_name(n):
     return re.sub(r"\.\d+$", "", n)
 
@@ -247,6 +250,8 @@ class Unit:
             return ("lv", ("sym", base_name(re.sub(r"@.*", "", toks[0]))), 0)
         if op == "str":
             return ("lv", ("str", bytes.fromhex(toks[1])), 0)
+        if op == "complit":      # a static one is gcc's __compound_literal.N
+            return ("lv", ("sym", COMPLIT), 0)
         if op == "cast":
             v = self.ev(kids[0])
             t = self.ty(rest, kids)
@@ -288,7 +293,7 @@ class Unit:
 
     def data(self, i):
         op, rest, kids = self.n[i]
-        name = base_name(re.sub(r"@.*", "", rest.split()[0]))
+        name = COMPLIT if op == "complit" else base_name(re.sub(r"@.*", "", rest.split()[0]))
         elems = []
         for k in kids:
             eop, erest, ekids = self.n[k]
@@ -396,9 +401,9 @@ def main():
             fails += 1
         for u in units:
             for i, (op, rest, kids) in sorted(u.n.items()):
-                if op != "data":
+                if op != "data" and not (op == "complit" and " static" in rest):
                     continue
-                name = base_name(re.sub(r"@.*", "", rest.split()[0]))
+                name = COMPLIT if op == "complit" else base_name(re.sub(r"@.*", "", rest.split()[0]))
                 if not pending.get(name):
                     print("%s: %s: not in the gcc object" % (path, name))
                     fails += 1

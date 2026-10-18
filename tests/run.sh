@@ -533,7 +533,7 @@ if [ -d "$ROOT/tests/tast" ]; then
         fi
         # static data bytes and relocations against gcc (docs/TAST_T3_PLAN.md)
         if python3 -P "$ROOT/tests/tast_data.py" "$CEREAL" \
-            "$ROOT/tests/tast/init.c" "$ROOT/tests/tast/data.c" "$ROOT/tests/tast/fdata.c" >"$TMP/data.out" 2>&1 </dev/null; then
+            "$ROOT/tests/tast/init.c" "$ROOT/tests/tast/data.c" "$ROOT/tests/tast/fdata.c" "$ROOT/tests/tast/cldata.c" >"$TMP/data.out" 2>&1 </dev/null; then
             ok
         else
             bad "tast/data against gcc"

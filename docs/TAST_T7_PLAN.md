@@ -147,5 +147,16 @@ decided against), verify findings 0. Data oracle: lua54 107 (2 skipped,
 - Added: a static object initialized by a compound literal value
   (`static T x = (T){..}`) is `unsupported: static initializer from a
   compound literal` (a `load` is not constant); not in the corpus.
-- Not checked: the file-scope cases against gcc's object bytes (the oracle
-  runs do not include `complit.c`); scalar braces `(int){5}` work.
+- Scalar braces `(int){5}` work.
+- **Data oracle extended (same day).** `tests/tast_data.py` treats a static
+  `complit` as gcc's `__compound_literal.N` object and an `addr` of it as a
+  relocation to it; `tests/tast/cldata.c` (9 literals: pointers, nested,
+  string, offset, indexed) matches gcc: 13 objects, 0 failures. It found a
+  silent error: a static aggregate member initialized by a literal *value*
+  (`struct Q q = { (struct A){2} }`) dumped as an empty `data` node, because
+  the checker folds the literal's elements under the literal's own list.
+  Now `cinit.c` records `TI_CLCTOR` there and the unit is `unsupported:
+  static initializer from a compound literal`, as is the top-level form
+  (`struct A a = (struct A){3}`); both in `unsup.c`. An array literal that
+  decays to a pointer stays supported. The fold (copying the inner list's
+  elements into the outer object) is not built; it is not in the corpus.

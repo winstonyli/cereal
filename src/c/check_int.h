@@ -302,7 +302,7 @@ enum {
 
 /* --dump-tast: the initializer elements the checker placed (cinit.c), in
  * the order it placed them; tast.c normalizes and consumes them. */
-enum { TI_ELEM, TI_CLEAR, TI_BAD };
+enum { TI_ELEM, TI_CLEAR, TI_BAD, TI_CLCTOR };   /* TI_CLCTOR: a compound literal taken as a static element */
 typedef struct TIRec {
     uint8_t kind;
     bool str;                /* TI_ELEM: a string literal initializing an array */

@@ -1456,6 +1456,8 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             v.kind = V_CTOR;
             v.ps = NULL;
             v.izero = false;
+            if (c->opt.tast)        /* its elements sit under the literal's own list */
+                tin_add(c, x, TI_CLCTOR, 0, 0, 0);
         }
     }
     bool pre_zero = v.kind == V_EXPR && v.node != NOB &&

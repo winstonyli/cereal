@@ -195,6 +195,7 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 
 | What | Why parked / trigger | Evidence | Status |
 |---|---|---|---|
+| Static aggregate initialized by a compound literal value (`struct Q q = { (struct A){2} };`, `struct A a = (struct A){3};`) is unsupported | Needs the inner list's elements copied into the outer object at the member offset. Not in the corpus. Trigger: a corpus unit. | `tests/tast/unsup.c` `sqv`, `sav`, `scl` | parked |
 | Bit-field compound lvalue with a side effect (`sp()->bf += 1`) | The address of a bit-field cannot be stored in a `tmp` (`docs/TAST_T5_PLAN.md` section 2); stays `unsupported: bit-field with side effect`. Trigger: a corpus unit hits it. | `tests/tast/tmp.c` `bits` (no corpus unit, 2026-10-18) | parked |
 | Data oracle skips objects holding a label address (`labaddr`) | A label address is a `.text` relocation with an offset the pass cannot know; the oracle skips the object instead of comparing positions (`docs/TAST_T6_PLAN.md` section 4). Trigger: a unit whose other data in the same object needs checking. | lua54 `lvm.c` `disptab` (2 objects skipped, 2026-10-18) | parked |
 | `asm` statements | One unit; an `asm` statement has no meaning for the structured form (opaque text, operands, clobbers). Decided 2026-10-18; revisit when a consumer needs it. | libuv `async.c:319` | decided against |
