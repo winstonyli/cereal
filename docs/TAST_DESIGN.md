@@ -557,3 +557,13 @@ decay, pointer arithmetic, function designators and calls through pointers,
   exported yet; parked). The gcc differential was not extended to
   `POINTER_PLUS_EXPR`/indirection counts. `deref` also allows a function type
   (`*fp` before decay).
+- **Symbol identity, measured (decided 2026-10-18).** With the symbol index on
+  (`--dump-symbols`), every `sym`, `local` and direct `call` symbol has an
+  index declaration: 34,171 `sym` nodes over the 1,578 lua54 and 1,379 libuv
+  functions that elaborate, none missing (run `2026-10-18-tast-t2-key`;
+  `csx_decl_of`, the verifier check, prints `name=#N`, the same `#N` as
+  `--dump-symbols`). The TAST therefore does not copy `cindex_key`: the
+  index's own decl id is the link, and the key is `cindex_key(ix, N)` once
+  the index is frozen (the key needs the finished events for its anchor, which
+  do not exist at unit end). This replaces the "carry the key" wording of
+  section 4: the shared function stays shared, the node carries the id.

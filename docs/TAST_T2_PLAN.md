@@ -239,9 +239,10 @@ Tasks 1 to 8, the layout half of 9 and task 10 done, gate green (callgrind +0.21
   they differ (and an integer null constant to the pointer type); the `void *`
   case in `ptrcmp` shows a `cast`.
 - `str` holds only its array type (bytes parked, PARKED.md).
-- The `cindex_key` measurement (section 2) was not done: whether every
-  elaborated `sym` maps to an index declaration is still open and is parked
-  with the T2 leftovers.
+- The `cindex_key` measurement (section 2) was done afterwards (run
+  `2026-10-18-tast-t2-key`): with the index on, all 34,171 `sym` nodes of the
+  1,578 lua54 and 1,379 libuv functions that elaborate map to an index
+  declaration (0 missing). TAST_DESIGN section 15 has the decision.
 - The gcc differential extension to pointer arithmetic counts was not done
   (parked).
 - Locals of array type with any initializer elaborate as `unsupported:

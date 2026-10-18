@@ -438,6 +438,14 @@ void csx_sym(Checker *c, uint32_t ref, uint32_t tok, int role)
     push_ev(c, tok, &e, id, role);
 }
 
+uint32_t csx_decl_of(Checker *c, uint32_t ref)
+{
+    SymIdxB *b = c->sx;
+    U32V *m = ref & SYM_LOCAL ? &b->lmap : &b->gmap;
+    uint32_t k = ref & ~SYM_LOCAL;
+    return k < m->len ? m->data[k] : 0;
+}
+
 void csx_param_def(Checker *c, uint32_t ref)
 {
     SymIdxB *b = c->sx;

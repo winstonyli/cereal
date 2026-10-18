@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "c/cexpr_int.h"
+#include "c/csymidx.h"
 
 #define TN UINT32_MAX
 
@@ -1041,6 +1042,8 @@ static void put_sym(Checker *c, FILE *out, uint32_t ref)
 {
     const CSym *s = csym(c, ref);
     fputs(cident(c, s->name), out);
+    if (c->sx)                  /* the symbol index declaration (cindex_key identity) */
+        fprintf(out, "=#%u", csx_decl_of(c, ref) - 1);
     if (ref & SYM_LOCAL) {
         SrcFile *f = srcmgr_file_of(c->sm, s->loc);
         uint32_t line = 0, col = 0;
@@ -1162,6 +1165,8 @@ static void verify(El *e, FILE *out)
         case TO_CONST: NEED(0); break;
         case TO_SYM:
             NEED(0);
+            if (c->sx && !csx_decl_of(c, nd->sym))
+                vbad(e, out, i, "symbol has no index declaration");
             if (csym(c, nd->sym)->kind != CS_OBJ && csym(c, nd->sym)->kind != CS_FUNC)
                 vbad(e, out, i, "not a variable or function");
             break;
@@ -1251,6 +1256,8 @@ static void verify(El *e, FILE *out)
                 ft = type_canon(&c->tt, pointee(c, KID(0)->ty));
             } else {
                 const CSym *s = csym(c, nd->sym);
+                if (c->sx && !csx_decl_of(c, nd->sym))
+                    vbad(e, out, i, "symbol has no index declaration");
                 if (s->kind != CS_FUNC) {
                     vbad(e, out, i, "callee");
                     break;
@@ -1325,6 +1332,8 @@ static void verify(El *e, FILE *out)
                     vbad(e, out, i, "item is not a statement");
             break;
         case TO_LOCAL:
+            if (c->sx && !csx_decl_of(c, nd->sym))
+                vbad(e, out, i, "symbol has no index declaration");
             if (nd->nkids > 1 || (nd->nkids && (!ISVAL(KID(0)) || !SAME(KID(0), nd))))
                 vbad(e, out, i, "initializer");
             break;

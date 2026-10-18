@@ -513,6 +513,14 @@ if [ -d "$ROOT/tests/tast" ]; then
         done
     done
     cd "$ROOT"
+    # with the symbol index on, every symbol of an elaborated unit has a declaration
+    for f in ptr agg flow; do
+        if "$CEREAL" check --target=x86_64-linux-gnu --dump-symbols --verify-tast \n            "$ROOT/tests/tast/$f.c" 2>/dev/null </dev/null | grep -q "^verify:"; then
+            bad "tast/$f index declarations"
+        else
+            ok
+        fi
+    done
     # member offsets and bit-field positions against gcc (docs/TAST_T2_PLAN.md)
     if command -v gcc-13 >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         if python3 -P "$ROOT/tests/tast_layout.py" "$CEREAL" \

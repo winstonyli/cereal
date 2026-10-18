@@ -366,6 +366,9 @@ void csx_decl(struct Checker *c, uint32_t ref, const struct CSym *x, bool file,
 void csx_sym(struct Checker *c, uint32_t ref, uint32_t tok, int role);
 /* A function definition's parameter: its declaration defines it. */
 void csx_param_def(struct Checker *c, uint32_t ref);
+/* The index declaration (1-based, 0: none) a symbol ref maps to in this unit;
+ * read-only, for the typed AST. */
+uint32_t csx_decl_of(struct Checker *c, uint32_t ref);
 /* A tag (TypeId t) at tok; redecl: the name at tok now declares t instead
  * of what an earlier hook recorded there (`struct S;` shadowing). */
 void csx_tag(struct Checker *c, uint32_t t, uint32_t tok, int role);
