@@ -452,7 +452,7 @@ Both dense files end slightly over the ~30 MB budget, as section 7
 expected for the second; accepted. Putting `scope` and `parent` in one
 field would save about 1.3 MB on the first; not done, and the premise
 was wrong: an enumerator of a block-scope enum needs both (`visible`
-reads its scope). Exact merging needs a side table for those; parked as
+reads its scope). Exact merging needs a side table for those; parked (PARKED.md) as
 not worth about 4 bytes per decl. Index build time: zstd.c `--verify-symbols` best of 7,
 two rounds, 0.161/0.149 s before and 0.161/0.134 s after: no measurable
 change (machine shared, about 56% CPU load; Defender real-time
@@ -813,7 +813,7 @@ be measured in step 1 of 12.11):
    differences reported, not an error), a typedef changed to a variable
    (differences at a distance, reported), and an edit in a header. The
    cells' differential fuzzer (PARALLEL.md) could run it on random edits
-   (parked).
+   (parked, PARKED.md).
    Measure the copied and shared parts and the time on zstd.c and the
    two dense files (12.9).
 2. **Server and features (done, Round 199; see 12.14).** Carry at install, publish swap, failure

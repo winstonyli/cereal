@@ -309,7 +309,7 @@ default row, 3.7). *As built (Round 261): two independent one-hot family axes,
 `std` (c89, c99, c11, c17, c23) and `mode` (gnu, iso), with the same machinery
 as the target axes (table rows `__STDC_VERSION__` valued per std leaf,
 `__STRICT_ANSI__` by mode); atoms of class `PC_LANG` weigh 100 (a config change
-1, a target change 1000) and render as `language std = c23`. Not yet: bare
+1, a target change 1000) and render as `language std = c23`. Not yet (PARKED.md): bare
 `linux`/`unix` (needs a mode and an OS leaf at once), the extension set,
 `__STDC_VERSION__` of C94.* The std-sensitive atoms are **derived functions of the row**,
 not BDD variables of their own: `__STDC_VERSION__` thresholds, `__STRICT_ANSI__`,

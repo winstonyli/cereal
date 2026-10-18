@@ -22,7 +22,7 @@ tables, macro-heavy code) re-parse in time proportional to the edit.
 | 1 | Top-level declarations only | simple; clangd/Roslyn-like early cutoff | a 1M-line generated function or table is one unit |
 | 2 | Middle ground: top-level units, statement runs added later | smaller first step | retrofitting entry state and relative storage touches every node kind |
 | **3** | **Content-defined statement and initializer runs** | edit cost bounded inside huge functions and tables; same machinery as preprocessor cells | entry state must be exact; most machinery up front |
-| 4 | Lazy body parsing (skip bodies by brace matching, parse on demand) | cheapest open | not incremental by itself; deferred, compatible with 3 (P5) |
+| 4 | Lazy body parsing (skip bodies by brace matching, parse on demand) | cheapest open | not incremental by itself; deferred, compatible with 3 (P5), PARKED.md |
 | 5 | tree-sitter-style GLR with edit ranges | proven for editors | no typedef feedback; not a semantic front end |
 
 ## Input: tokens (P0)

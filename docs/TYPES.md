@@ -211,7 +211,7 @@ comparisons use gcc 13.3 with `LC_ALL=C`.
   `-Wtautological-compare` do not model every gcc folding (e.g. through
   `fold_build` rewrites of nested constant expressions); `-Wunused-value`
   columns for some folded comparisons follow `EF_GCCFOLD`.
-- Jump-into-VLA-scope and attribute argument counts are not implemented.
+- Jump-into-VLA-scope and attribute argument counts are not implemented (PARKED.md).
 - Initializers (`cinit.c`): gcc 13's digest_init / process_init_element /
   push_init_level model (designators including ranges, brace elision, string
   initializers, array completion, flexible-array and VLA rules, compound

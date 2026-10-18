@@ -137,7 +137,7 @@ fixtures alone, with the corpus gate marked pending in the status line.
 system headers, oracle and the `CEREAL_PCDUMP` hook (`bench/pc_oracle.py` aggregates) are in.
 Oracle: 100% agreement on exact groups on every corpus; nodes, time and cap gates met;
 exactness 89-100% after the guarded-case value layer (Round 256), only zstd (89) under 90%; what
-remains is feature tests and compiler arithmetic, which S1d's family values make exact. **Parked:**
+remains is feature tests and compiler arithmetic, which S1d's family values make exact. **Parked (PARKED.md):**
 the solver-guided overlay draws (need S1d's solver). The trace is per-Analysis and works under
 `-fparallel=on`; the LSP keeps the fold (Round 262).*
 

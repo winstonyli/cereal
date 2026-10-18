@@ -1285,7 +1285,7 @@ format fix-its (C2b) carry most of the uncertainty.
   `cereal fix` and the LSP work on physical file offsets, so `#line` does
   not affect them.
 
-## 10. Out of scope: C5 and C6 (D7)
+## 10. Out of scope: C5 and C6 (D7; PARKED.md)
 
 - **C5, a baseline file for CI:** record the current diagnostics so CI
   fails only on new ones.

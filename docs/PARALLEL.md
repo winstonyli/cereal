@@ -176,7 +176,7 @@ prints phase timings, slices and per-worker spans; `=2` also dumps the plan.
   workers do.
 - **Divergence**: `__COUNTER__` and the state-changing `_Pragma`s abort
   parallel mode for the whole TU, and it is rerun sequentially. The prefix
-  sum and resuming from the divergence point are future work.
+  sum and resuming from the divergence point are future work (PARKED.md).
 
 Verification: `tests/run.sh` checks that output, diagnostics and exit status
 are byte-identical to sequential mode. It covers every test input, the
@@ -246,7 +246,7 @@ issued once per file instead of once per line (GCC's behavior).
 9. **Done.** Cell cache: phase B reused across builds of an edited unit
    (the language server). See "Cells" below and docs/LSP.md.
 10. **Done.** Index kept per cell, queries walking cells (see "Cells").
-11. Phase A incrementally: deferred (see "Phase A: options" below).
+11. Phase A incrementally: deferred (see "Phase A: options" below, PARKED.md).
 
 (b) and (c) are dropped, because (e) subsumes them.
 

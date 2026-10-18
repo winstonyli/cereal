@@ -104,7 +104,7 @@ Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
   that error: gcc underlines the whole tag (`^~` for `H2`), cereal one
   column.
 
-Parked front-end gaps (reasons in HISTORY Rounds 172 to 175 and 184):
+Parked front-end gaps (PARKED.md; reasons in HISTORY Rounds 172 to 175 and 184):
 - `vector_size` errors are reported once per declaration; gcc reports once per
   declarator (`typedef int __attribute__((vector_size(0))) V, W;` gives two),
   and inside a one-line `struct { ... }` it uses the `{` as the position.

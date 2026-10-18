@@ -17,7 +17,7 @@ measurements. The gcc-13 parity work is at a plateau (STATUS.md).
 - LSP: macros and C names, with a project index over compile_commands (B1 to B5), code actions (C4) and
   the configuration design S1 to S4 (presence conditions, precondition lists, config-header edits;
   CONFIG_DESIGN.md).
-- Open from the tracks: A5 (SARIF output), C5 (baseline file for CI), C6 (macro to inline/enum/const
+- Open from the tracks (PARKED.md): A5 (SARIF output), C5 (baseline file for CI), C6 (macro to inline/enum/const
   suggestions) and the gcc-style "in definition of macro" notes (C_DESIGN section 10), and Track D.
 
 ## Track A: command line usable on real build lines
@@ -81,7 +81,7 @@ A4. (Design: A4_DESIGN.md.) Response files `@file`, `-M*` output (`query
     counted messages, default `-std=gnu17`), is DONE, Round 204. Slice 2
     (`@file` response files, on the command line and in entries) is DONE,
     Round 206. Slice 3 (`-M` family) is DONE, Round 208; Round 209 added `-imacros` and the `missing-*` verify tests; Round 210 made `-include`/`-imacros` files ordinary (their warnings show, `<command-line>` positions as gcc) and let par.py run `-imacros ${srcdir}/...` tests (A4 is complete except the gaps listed in A4_DESIGN.md slice 3).
-A5. SARIF output (`--format=sarif`) next to the existing JSON. OPEN (no code; only mentioned in A4_DESIGN and C_DESIGN).
+A5. SARIF output (`--format=sarif`) next to the existing JSON. OPEN (no code; only mentioned in A4_DESIGN and C_DESIGN). Parked: PARKED.md.
 
 Verification for A: goldens for each std and each flag class; a harness
 that runs the flag allowlist through gcc-13 `-fsyntax-only` and cereal and
@@ -102,7 +102,7 @@ B1. (DONE, Round 186; was est. 150 to 250 lines.) Parse and check run in the
     phase is a fresh sequential TU (a second preprocessor pass, 30 to 45%
     of the phase), dropped at the end; units whose sources total over 4 MiB
     are skipped. Details and numbers: LSP.md, "Compiler diagnostics".
-    Parked: reusing the cell build's tokens (`--cells` path) for large
+    Parked (PARKED.md): reusing the cell build's tokens (`--cells` path) for large
     files to skip the second pass (saves under half of a phase that is
     cancelled by the next edit anyway); B2 will need to keep the TU alive
     for its index, which changes the memory bound; the check phase delays
@@ -139,7 +139,7 @@ B3. (DONE, Round 197: typeDefinition, document symbols, signature help
     callee, blocks written inside a macro argument; the semantic-token
     refresh and carrying the previous index across edits were done in
     Rounds 198 to 200, B3_DESIGN.md section 12, including step 4 (the
-    compiler diagnostics carried through the same edit). Parked memory
+    compiler diagnostics carried through the same edit). Parked (PARKED.md) memory
     work (HISTORY Rounds 201 to 203): trimming freed memory after 300 ms
     of quiet (RSS -39 to -75% but the first check after a pause 5 to 15%
     slower) and slimming the carried index (3 to 8% of the peak); both

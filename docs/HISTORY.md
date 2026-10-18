@@ -519,7 +519,7 @@ layouts, gcc rules ported, walk design).
   "#pragma GCC unroll j" is still missed).  #pragma GCC pch_preprocess after
   the first token is an error.  Goldens unroll_arg, pch_pragma.
   c-c++-common accepts-invalid 3 -> 1 (this round; only attr-nocf-check-3 remains: it
-  needs the nocf_check type attribute, default-on in Ubuntu's gcc).
+  needs the nocf_check type attribute, default-on in Ubuntu's gcc; built in Round 76).
   Known gaps: the bidi stack is still per chunk with --cells/parallel
   (a stray control left open in code, e.g. U+202E outside strings, is not
   closed by a later string in another chunk: gcc warns, cereal does not;
@@ -578,7 +578,7 @@ layouts, gcc rules ported, walk design).
   reported once per argument node (a struct specifier collected its
   attributes twice).  gcc.dg identical 3624 -> 3628, c-c++-common 520;
   tests 904; icount 5.988G.
-  Deferred: the nocf_check function-type attribute (default under gcc-13
+  Deferred (built in Round 76): the nocf_check function-type attribute (default under gcc-13
   -fcf-protection; needs attribute-carrying function types, compatibility,
   and type printing such as 'void (__attribute__((nocf_check)) *)(void)');
   affects 4 c-c++-common files (attr-nocf-check-1/2/3, pointer-to-fn1).

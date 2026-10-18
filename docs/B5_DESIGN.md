@@ -1938,7 +1938,7 @@ bound.
 for B5b-3 and later:
 
 - Store and invalidation (B5b-1):
-  - The per-project size cap (6.4) is deferred: only `cacheMaxMB` eviction.
+  - The per-project size cap (6.4) is deferred: only `cacheMaxMB` eviction (PARKED.md).
   - Files with a BOM are always re-hashed at startup (the racy-stat rule
     cannot cover them).
   - A retry of an OVER_LIMIT unit is keyed to a listed or overflow file.
