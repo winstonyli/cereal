@@ -6,7 +6,8 @@ status: draft
 
 Written 2026-10-17. Q7 of [B5_DESIGN.md](B5_DESIGN.md) section 17 ("resolved: keep", parked in 18): `lua_call(L, 0, 0)`
 expands to `lua_callk(...)`; clangd lists each `lua_call` as a reference to `lua_callk`, cereal lists none.
-clangd's results on lua54 and libuv were 3,425, of which 459 (13%) were such sites (P2 in `clangd_diff.py`).
+clangd's results on lua54 and libuv were 3,509, of which 459 (13%) were such sites (P2 in `clangd_diff.py`);
+those are all functions because the differential queries only functions (S1, section 6a).
 This plan decides how to list them. Nothing is built; the choice between the two designs waits for spikes.
 
 ## 1. What cereal does today (verified at HEAD 04c160e, 2026-10-17, lua54)
@@ -35,7 +36,9 @@ lists their invocations too. cereal has no invocation record for them.
 ## 2. Decisions needed from the user
 
 - **D1. Do references list the body token itself** (the `lua_callk` in `#define lua_call(...)`)? clangd does. It
-  is a real spelling the user can navigate to and edit. Recommendation: yes, it needs no new data.
+  is a real spelling the user can navigate to and edit. **Decided yes (2026-10-17)**, it needs no new data.
+  Open detail: whether `documentHighlight` also lists it, or only `references` (a client that reuses the list
+  for a local text replace could edit the macro; cereal's own rename refuses, R7). Decide at S1.
 - **D2. Which entities:** functions only (design A) or all kinds (design B).
 
 ## 3. Designs
@@ -72,7 +75,7 @@ lists their invocations too. cereal has no invocation record for them.
   kinds falls to 0 or to a listed residue.
 - The gate (`gate.sh`): verify, san and callgrind unchanged within 1%; `symcov` 0 unindexed.
 
-## 6. Spikes before any code
+## 6. Spikes before any code (S1 and S2 done 2026-10-17, results in 6a; S3 not run)
 
 - **S1, split P2 by entity kind.** Run the project differential (`clangd_diff.py --project=lua54` and `libuv`,
   clangd is at `/usr/bin/clangd` in WSL) through `run.ps1`, and print each P2 miss with the kind of the entity
@@ -81,6 +84,58 @@ lists their invocations too. cereal has no invocation record for them.
   indexed entity, de-duplicated per (invocation, entity), then per record, as a fraction of the store, with the
   S3a method (a throwaway copy). Report events, bytes and the largest result list.
 - **S3, the verifier.** Where `--verify-symbols` excuses xcalls, and what B's REFs would need.
+
+### 6a. S1 and S2 results (2026-10-17, WSL, commit 0b8a103 plus this plan edit; runs in `docs/runs.md`)
+
+**S1, P2 by entity kind** (`s1-p2-kinds`, `s1b-body-kinds`; `clangd_diff.py` project mode wrapped to print the
+kind of each queried symbol; the wrapper is saved in the run folder).
+
+- The standing differential asks only about top-level functions and variables, so its P2 class (437 + 1 on
+  lua54, 21 on libuv = the 459) is **functions by construction**. It cannot say anything about other kinds.
+- S1b adds the other kinds, chosen where macro bodies use them: fields, typedefs and enums from clangd's
+  `documentSymbol`, plus identifiers in header `#define` bodies (after `->`/`.`, and cast types). Sites are
+  counted per (queried entity, site), the unit B would store:
+
+  | | function | field | typedef/class | enum | P2 of all clangd results |
+  |---|---|---|---|---|---|
+  | lua54 | 960 | 1,422 | 543 | 17 | 2,943 of 9,083 (32%) |
+  | libuv | 129 | 26 | 147 | 126 | 428 of 5,090 (8%) |
+
+  So **functions are 30 to 33% of the missing sites** among entities used in macro bodies. Design A closes a
+  third; the rest is fields, types and enumerators. The sample is biased toward entities used in macros (that is
+  the point), so the percentages are not project-wide.
+- Not Q7: S1b's "unexplained" lines are cereal-only sites in files clangd's index missed (clangd's known
+  nondeterminism) and 2 `declaration` queries at a field name (harness artefact).
+
+**S2, size of B** (`s2-exported-only`; throwaway probe in `csymidx.c`'s finish step: every body token of a
+macro expansion, one entry per distinct (file, offset of the outermost invocation, name), only for declarations
+that get a record entry: not locals, parameters or system declarations; 12 bytes each, the `CRecRef` size;
+the baseline is the records' bytes from the S3a probe).
+
+| project | records | record bytes | B adds | % | of which function | field | typedef | enumconst |
+|---|---|---|---|---|---|---|---|---|
+| lua54 | 215 | 1,395,816 | 5,884 | **5.06** | 876 | 3,662 | 1,018 | 41 |
+| libuv | 73 | 502,896 | 1,922 | **4.59** | 169 | 1,286 | 163 | 258 |
+| zstd 1.5.7 lib | 93 | 810,600 | 1,960 | **2.90** | 1,091 | 379 | 250 | 163 |
+
+- Counting locals, parameters and system declarations (`errno`, `size_t`) first gave 6.2 to 6.8%; they have no
+  record entry, so the filter is right (first pass `s2-design-b-size`, superseded).
+- **Against the stop rule (5%):** lua54 is 0.06 points over, libuv and zstd are under. The function entries (876,
+  169, 1,091) repeat what the xcall CALL entries already hold; without them lua54 is 4.3%, libuv 4.2%.
+- Largest single result list B adds: `tt_` +488 (lua54), `loop` +97 (libuv), `_force_has_format_string` +488
+  (zstd); far below `PQ_MAX_ENTRIES`.
+- **Design C measured as a by-product** (`s2-macro-pairs`): one entry per (outermost invocation, macro) instead
+  of per (invocation, entity), with the entity found by joining the macro's body refs at query time:
+  4,857 (4.18%), 558 (1.33%), 1,557 (2.30%). It saves 17%, 71% and 21% of B, needs a transitive join for
+  nested macros, and gives macro identity (parked Q1 and the macro-rename plan would use it). Not spiked beyond
+  the count.
+- Not measured: records differ per unit when a header's macro state differs (the count is distinct over all
+  units, so it is an estimate), the string pool (no new keys: each body token's key is already stored), and
+  S3 (the verifier).
+
+**What this says for D2:** A is not enough for the question Q7 asks (only a third of the sites), and B is at
+the size rule's edge. The choice is now between B as drafted (5.06% at worst) and C (smaller on two of three
+projects, one more concept). Waits for the user.
 
 ## 7. Not in this plan
 
@@ -105,3 +160,10 @@ Three adversarial rounds on 2026-10-17, claims checked in code and by queries on
   invocations, so it is a proxy; S1 and S2 replace it. The claim that rename is unaffected (R7 refuses on
   `AT_EXPANSION`) was checked against `cindex_rename_blocker` (`csymidx.h:177`) but not run; the rename tests
   of B must include it. The xcall invariant (functions only) is from the verifier at `csymidx.c:2114`.
+- **Round 4** (after S1 and S2, claims checked against the run output): the "13% of clangd's results" figure
+  was functions only because of the query set, which round 1 had not seen; S1b replaces it with a per-kind
+  table. The first S2 pass counted locals, parameters and system declarations that have no record entry
+  (6.2 to 6.8%); the probe now skips them (`cidxrec.c:589,633`: only exported declarations are recorded), and a
+  rerun that was meant to apply the filter had silently not (the edit was rejected), so its row is marked
+  ignore in `runs.md`. Stated limits are in 6a (unit-variant records, string pool, verifier). The 12 bytes per
+  entry is the `CRecRef` size; it ignores the section directory and the sorted merge.
