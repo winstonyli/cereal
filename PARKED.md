@@ -125,4 +125,4 @@ Format: what; why parked; trigger; evidence; status. This is the one list: the d
 - **Why parked:** S3a (2026-10-17) passes the size rule (at most 3.3% of the store on lua54, libuv and cereal `src`; 10.0% on zstd lib, 16% on its amalgamation) but no consumer is chosen, and nothing is blocked without it. Stored ids give display and pre-filtering only; `sat`, `enable` and `cover` still fold.
 - **Trigger:** a chosen consumer from S3_PLAN section 1 (references annotation is the cheapest) on a project large enough that refolding its units is too slow (libuv: 1.5 s for all 38 units, so not libuv-sized projects).
 - **Evidence:** docs/S3_PLAN.md section 6; run `2026-10-17-s3a` (docs/runs.md); record writer src/c/cidxrec.c `build_record`.
-- **Status:** held for a consumer choice.
+- **Status:** decided against (2026-10-17), unless a project too large to refold on demand appears; S3a and the fold timing are the evidence (docs/S3_PLAN.md section 6).

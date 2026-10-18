@@ -1,5 +1,5 @@
 ---
-status: draft
+status: superseded-by: PARKED.md (S3-records, decided against 2026-10-17)
 ---
 
 # S3: presence conditions in the project index (plan)
