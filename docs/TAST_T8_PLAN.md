@@ -281,8 +281,8 @@ assignment and `++/--`; all run through the graph and are compared with gcc on 2
 random argument sets each. A deliberate swap of the `br` targets produced
 mismatches, so the comparison does detect a wrong lowering. Skipped by
 design: floating point, aggregate copies, bit-fields, type punning, pointers
-passed between calls, indirect and variadic calls (structural verifier and corpus gate only; stated in the script header). The interpreter is about 350 lines, over the ~250 the plan hoped for;
+passed between calls, indirect and variadic calls (structural verifier and corpus gate only; stated in the script header). The interpreter is about 360 lines, over the ~250 the plan hoped for;
 the extra is parsing the dump, not the evaluation, so the fallback in
-section 5 was not taken. Parameters are found as the symbols never
-declared by a `local`, so a parameter the body never uses makes that
-function skip.
+section 5 was not taken. Parameter names come from the function's definition
+in the source (the dump has none) and are matched to the graph's symbols by
+name; an unused parameter has no symbol and takes its argument unused.

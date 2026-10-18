@@ -95,6 +95,7 @@ class Func:
         self.name, self.ret, self.params = name, ret, params
         self.blocks = {}
         self.skip = None
+        self.pnames = []
 
 
 def parse(text):
@@ -167,12 +168,13 @@ def run(funcs, f, args, depth=0):
                 declared.add(n.pay[0])
             elif n.op == "sym":
                 used[sym_key(n.pay[0])] = 1
-    ps = sorted((k for k in used if k not in declared),
-                key=lambda k: tuple(int(x) for x in k.split("@")[1].split(":")))
-    if len(ps) != len(args):
-        raise Skip("parameter count")
-    for k, a, t in zip(ps, args, f.params):
-        var[((fid, k), 0)] = wrap(a, t)
+    if len(f.pnames) != len(args):
+        raise Skip("parameter names")
+    for nm, a, t in zip(f.pnames, args, f.params):
+        ks = sorted((k for k in used if k not in declared and k.split("@")[0] == nm),
+                    key=lambda k: tuple(int(x) for x in k.split("@")[1].split(":")))
+        if ks:                          # an unused parameter has no symbol in the graph
+            var[((fid, ks[0]), 0)] = wrap(a, t)
     steps, bid, val = 0, min(f.blocks), {}
     while True:
         b = f.blocks[bid]
@@ -294,6 +296,11 @@ def main():
             print(path + ": verifier findings")
             bad += 1
         funcs = parse(out)
+        src = open(path).read()
+        for f in funcs.values():        # parameter names come from the source
+            m = re.search(r"\b%s\s*\(([^)]*)\)\s*\{" % f.name, src)
+            if m and m.group(1).strip() not in ("", "void"):
+                f.pnames = [re.findall(r"\w+", x)[-1] for x in m.group(1).split(",")]
         todo = []
         for f in funcs.values():
             try:
@@ -304,7 +311,6 @@ def main():
             except Skip as e:
                 f.skip = str(e)
         vecs = {f.name: [[values(p) for p in f.params] for _ in range(24)] for f in todo}
-        src = open(path).read()
         drv = src + "\n#include <stdio.h>\nint main(void)\n{\n"
         for f in todo:
             for v in vecs[f.name]:

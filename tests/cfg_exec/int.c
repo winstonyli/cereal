@@ -172,3 +172,8 @@ int incs(int a, int b)
     r += ++i - j--;
     return r + i * 7 + j;
 }
+
+int unused(int a, int b, int c)
+{
+    return b ? c : 5;
+}
