@@ -1,0 +1,38 @@
+tast 1 target x86_64-linux-gnu
+unit flex.c:2:1 decl
+unit flex.c:3:1 func b void *(struct C *)
+  #0 sym c@3:19 struct C *
+  #1 load #0 struct C *
+  #2 deref #1 struct C
+  #3 field +4 #2 unsigned char[]
+  #4 addr #3 unsigned char *
+  #5 cast #4 void *
+  #6 return #5
+  #7 block #6
+unit flex.c:4:1 func c2 unsigned char *(struct C *, int)
+  #0 sym c@4:29 struct C *
+  #1 load #0 struct C *
+  #2 deref #1 struct C
+  #3 field +4 #2 unsigned char[]
+  #4 addr #3 unsigned char *
+  #5 sym i@4:36 int
+  #6 load #5 int
+  #7 cast #6 long int
+  #8 ptradd *1 #4 #7 unsigned char *
+  #9 return #8
+  #10 block #9
+unit flex.c:5:1 func c3 int(struct C *, int)
+  #0 sym c@5:18 struct C *
+  #1 load #0 struct C *
+  #2 deref #1 struct C
+  #3 field +4 #2 unsigned char[]
+  #4 addr #3 unsigned char *
+  #5 sym i@5:25 int
+  #6 load #5 int
+  #7 cast #6 long int
+  #8 ptradd *1 #4 #7 unsigned char *
+  #9 deref #8 unsigned char
+  #10 load #9 unsigned char
+  #11 cast #10 int
+  #12 return #11
+  #13 block #12

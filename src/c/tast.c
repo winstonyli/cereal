@@ -438,7 +438,7 @@ static uint32_t lval(El *e, uint32_t n)
         f = find_field(c, rec, cnode_ident(c, i), &off, &q);
         if (!f)
             return unsup(e, "member not found");
-        if (!ok_ty(e, t))
+        if (!ok_ty(e, t) && !(type_ckind(&c->tt, t) == TY_ARRAY && ok_ty(e, elem_of(c, t))))   /* a flexible array member only decays */
             return unsup(e, "%s", why_type(e, t));
         id = mk(e, TO_FIELD, t, loc, (int64_t)(off / 8), 0, (unsigned)(off % 8), &base, 1);
         nd = &e->nodes.data[id];
@@ -1745,7 +1745,8 @@ static void verify(El *e, FILE *out)
             if (k[j] >= i)
                 goto next;
         if (ex_ && !VOIDT && !ok_ty(e, nd->ty) &&
-            !((nd->op == TO_DEREF || nd->op == TO_SYM) && KIND(nd->ty) == TY_FUNC))
+            !((nd->op == TO_DEREF || nd->op == TO_SYM) && KIND(nd->ty) == TY_FUNC) &&
+            !(nd->op == TO_FIELD && KIND(nd->ty) == TY_ARRAY && ok_ty(e, elem_of(c, nd->ty))))
             vbad(e, out, i, "type outside the subset");
         if (ex_ && VOIDT && nd->op != TO_CAST && nd->op != TO_CALL &&
             nd->op != TO_COND && nd->op != TO_COMMA && nd->op != TO_STMTEXPR &&
