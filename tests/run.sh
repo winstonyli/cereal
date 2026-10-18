@@ -494,6 +494,27 @@ printf 'int f(void) { int y; return 0; }\n' >"$TMP/m.c"
 (cd "$TMP" && "$CEREAL" @mode.rsp m.c 2>&1 </dev/null) | grep -q "unused variable 'y'" &&
     ok || bad "mode word from a response file"
 
+# 13c. typed AST (docs/TAST_T1_PLAN.md): golden `--verify-tast` dumps, plain
+#      and from cells; a verifier finding shows up as a "verify:" line
+if [ -d "$ROOT/tests/tast" ]; then
+    cd "$ROOT/tests/tast"
+    for f in *.c; do
+        n=${f%.c}
+        for extra in "" "--cells -fparallel-chunk=1 -fparallel-threads=2"; do
+            # shellcheck disable=SC2086
+            "$CEREAL" check --target=x86_64-linux-gnu --verify-tast $extra \
+                "$f" >"$TMP/tast.out" 2>/dev/null
+            if cmp -s "$TMP/tast.out" "$n.expected"; then
+                ok
+            else
+                bad "tast/$f $extra"
+                diff "$n.expected" "$TMP/tast.out" | head -10 | sed 's/^/    /'
+            fi
+        done
+    done
+    cd "$ROOT"
+fi
+
 # 14. C symbol index: golden `--dump-symbols` (plain and from cells), and
 #     `--verify-symbols` (every resolved identifier has its event, the index
 #     is well formed) over the checker and parser cases and cereal's sources

@@ -162,6 +162,7 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo)
         co.pedantic_errors = tu->diag.pedantic_errors;
         co.dump = fo->dump_types ? out : NULL;
         co.tast = fo->dump_tast ? out : NULL;
+        co.verify_tast = fo->verify_tast;
         co.dump_summaries = fo->dump_summaries ? out : NULL;
         co.validate_summaries = fo->validate_summaries;
         co.summaries = fo->keep_summaries;

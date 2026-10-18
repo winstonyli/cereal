@@ -3,6 +3,7 @@
  * docs/TYPES.md).  Declarations are in cdecl.c (with cattr.c, cspec.c),
  * expressions in cexpr.c (with cwarn_expr.c, cprint.c, ...). */
 #include "c/check_int.h"
+#include "c/tast.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -725,6 +726,8 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     if (c->sx)
         csx_unit_end(c);
     c->unit_err = had_errors || c->diag->nerrors != c->unit_nerr0;
+    if (c->opt.tast)
+        tast_unit(c);
     c->quiet = false;
 }
 
@@ -768,6 +771,8 @@ Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
                             type_ptr(&c->tt, TYPE_B(VOID))));
     c->func_sym = SYM_NONE;
     c->cur_node = NO_NODE;
+    if (opt->tast)
+        fprintf(opt->tast, "tast %d target %s\n", TAST_VERSION, c->tgt->name);
     if (opt->summaries || opt->dump_summaries || opt->validate_summaries)
         c->cs = csum_new(c);
     if (opt->symidx)

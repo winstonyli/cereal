@@ -1,0 +1,142 @@
+tast 1 target x86_64-linux-gnu
+unit flow.c:2:5 decl g int(int)
+unit flow.c:3:1 decl
+unit flow.c:4:1 func sw int(char,  enum E)
+  #0 sym c@4:13 char
+  #1 load #0 char
+  #2 cast #1 int
+  #3 const 1 int
+  #4 return #3
+  #5 case 1 #4
+  #6 const 2 int
+  #7 return #6
+  #8 case 97 #7
+  #9 block #5 #8
+  #10 switch #2 #9
+  #11 sym e@4:23 enum E
+  #12 load #11 enum E
+  #13 cast #12 unsigned int
+  #14 const 3 int
+  #15 return #14
+  #16 case 0 #15
+  #17 const 4 int
+  #18 return #17
+  #19 case 1 #18
+  #20 break
+  #21 default #20
+  #22 block #16 #19 #21
+  #23 switch #13 #22
+  #24 const 0 int
+  #25 return #24
+  #26 block #10 #23 #25
+unit flow.c:9:1 func cl int(short int)
+  #0 sym s@9:14 short int
+  #1 load #0 short int
+  #2 cast #1 int
+  #3 call g #2 int
+  #4 const 2 int
+  #5 call g #4 int
+  #6 binop + #3 #5 int
+  #7 return #6
+  #8 block #7
+unit flow.c:10:1 func jmp int(int)
+  #0 const 0 int
+  #1 local i@11:9 #0 int
+  #2 sym i@11:9 int
+  #3 sym i@11:9 int
+  #4 load #3 int
+  #5 const 1 int
+  #6 binop + #4 #5 int
+  #7 store #2 #6 int
+  #8 post #7 int
+  #9 exprstmt #8
+  #10 label top #9
+  #11 sym i@11:9 int
+  #12 load #11 int
+  #13 sym n@10:13 int
+  #14 load #13 int
+  #15 cmp < #12 #14 int
+  #16 goto top
+  #17 if #15 #16
+  #18 sym n@10:13 int
+  #19 sym n@10:13 int
+  #20 load #19 int
+  #21 const 1 int
+  #22 binop - #20 #21 int
+  #23 store #18 #22 int
+  #24 post #23 int
+  #25 exprstmt #24
+  #26 block #25
+  #27 sym n@10:13 int
+  #28 load #27 int
+  #29 const 0 int
+  #30 cmp > #28 #29 int
+  #31 do #26 #30
+  #32 sym n@10:13 int
+  #33 load #32 int
+  #34 sym n@10:13 int
+  #35 load #34 int
+  #36 continue
+  #37 if #35 #36
+  #38 break
+  #39 block #37 #38
+  #40 while #33 #39
+  #41 sym i@11:9 int
+  #42 load #41 int
+  #43 return #42
+  #44 block #1 #10 #17 #31 #40 #43
+unit flow.c:19:1 func forv int(int)
+  #0 const 0 int
+  #1 local s@19:23 #0 int
+  #2 nop
+  #3 nop
+  #4 nop
+  #5 sym s@19:23 int
+  #6 sym s@19:23 int
+  #7 load #6 int
+  #8 const 1 int
+  #9 binop + #7 #8 int
+  #10 store #5 #9 int
+  #11 post #10 int
+  #12 exprstmt #11
+  #13 sym s@19:23 int
+  #14 load #13 int
+  #15 sym n@19:14 int
+  #16 load #15 int
+  #17 cmp > #14 #16 int
+  #18 break
+  #19 if #17 #18
+  #20 block #12 #19
+  #21 for #2 #3 #4 #20
+  #22 const 0 int
+  #23 local i@19:75 #22 int
+  #24 block #23
+  #25 sym i@19:75 int
+  #26 load #25 int
+  #27 sym n@19:14 int
+  #28 load #27 int
+  #29 cmp < #26 #28 int
+  #30 sym i@19:75 int
+  #31 sym i@19:75 int
+  #32 load #31 int
+  #33 const 1 int
+  #34 binop + #32 #33 int
+  #35 store #30 #34 int
+  #36 post #35 int
+  #37 exprstmt #36
+  #38 sym s@19:23 int
+  #39 sym s@19:23 int
+  #40 load #39 int
+  #41 sym i@19:75 int
+  #42 load #41 int
+  #43 binop + #40 #42 int
+  #44 store #38 #43 int
+  #45 exprstmt #44
+  #46 for #24 #29 #37 #45
+  #47 sym s@19:23 int
+  #48 load #47 int
+  #49 return #48
+  #50 block #1 #21 #46 #49
+unit flow.c:20:1 func nothing void(void)
+  #0 return
+  #1 block #0
