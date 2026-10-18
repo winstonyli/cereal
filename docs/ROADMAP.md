@@ -7,24 +7,18 @@ compile commands). Numbers marked "est." are survey estimates, not
 measurements. The gcc-13 parity work is at a plateau (STATUS.md).
 
 ## Where it stands
-- Driver: `-E`, `-fsyntax-only`/`check`, `parse`, `lint`, `index`, `query`,
-  `lsp`. No `-c`/`-S`, no code generator, no `-M*`, no response files.
-- `-std=` accepts only `c99` and `gnu99`; anything else is fatal.
-  `__STDC_VERSION__` is hard-coded to 199901L (`tu_begin`, driver.c).
-- Unknown options are fatal (`-c -g -fPIC -m64 -MD -x -pthread -Wl,..`).
-  `src/lsp/config.c` already tolerates and skips them for compile_commands
-  (its own `takes_value` list), so the logic exists twice in part.
-- In gnu99 mode the parser and checker already handle nearly all of C11
-  (`_Generic`, `_Static_assert`, `_Alignas`, `_Atomic`, `_Noreturn`,
-  `_Thread_local`, anonymous members, `u8`/`u`/`U` literals, host
-  `<stdatomic.h>`, `<threads.h>`, ...). Gaps found: (`__VA_OPT__` was missing
-  until Round 176, a `-E` fidelity bug in every mode: output kept the
-  token); `__STDC_VERSION__` makes glibc hide C11 declarations
-  (`timespec_get`); C2X keywords (`bool`, `nullptr`, `constexpr`, `u8'a'`).
-- LSP: macro-only navigation. It never parses or checks, so it publishes no
-  type diagnostics and nothing for functions, variables or types.
-- Speed (cold WSL, rough): `check` on uvloop `loop.c` (203k lines) 1.0 to
-  1.1 s against 0.5 to 0.9 s for `index`; on a 1.5k-line file 60 ms.
+- Refreshed 2026-10-17; the numbers and the gate are in [STATUS.md](STATUS.md). The tracks below keep
+  their original text as history; DONE marks what has landed.
+- Driver: `-E`, `-fsyntax-only`/`check`, `parse`, `lint`, `index`, `query`, `fix`, `lsp`, `index-summary`.
+  `check --compile-commands`, `@file`, the `-M` family and `-imacros` work (A4). No `-c`/`-S`, no code
+  generator.
+- `-std=` accepts c99, c11, c17 and the gnu forms (A3); `c2x`/`c23` are fatal. Unknown options are an
+  allowlist (A2), not a wildcard.
+- LSP: macros and C names, with a project index over compile_commands (B1 to B5), code actions (C4) and
+  the configuration design S1 to S4 (presence conditions, precondition lists, config-header edits;
+  CONFIG_DESIGN.md).
+- Open from the tracks: A5 (SARIF output), C5 (baseline file for CI), C6 (macro to inline/enum/const
+  suggestions) and the gcc-style "in definition of macro" notes (C_DESIGN section 10), and Track D.
 
 ## Track A: command line usable on real build lines
 Scope, stated precisely: cereal as a **checker driven by compile_commands or
@@ -87,7 +81,7 @@ A4. (Design: A4_DESIGN.md.) Response files `@file`, `-M*` output (`query
     counted messages, default `-std=gnu17`), is DONE, Round 204. Slice 2
     (`@file` response files, on the command line and in entries) is DONE,
     Round 206. Slice 3 (`-M` family) is DONE, Round 208; Round 209 added `-imacros` and the `missing-*` verify tests; Round 210 made `-include`/`-imacros` files ordinary (their warnings show, `<command-line>` positions as gcc) and let par.py run `-imacros ${srcdir}/...` tests (A4 is complete except the gaps listed in A4_DESIGN.md slice 3).
-A5. SARIF output (`--format=sarif`) next to the existing JSON.
+A5. SARIF output (`--format=sarif`) next to the existing JSON. OPEN (no code; only mentioned in A4_DESIGN and C_DESIGN).
 
 Verification for A: goldens for each std and each flag class; a harness
 that runs the flag allowlist through gcc-13 `-fsyntax-only` and cereal and
@@ -207,9 +201,10 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
     verified by checking the unit under the other branches);
   - a macro-aware rename policy (what to do at a macro site: edit the
     argument, the body, or refuse).
-  Status: the configuration design is staged in `docs/S1_PLAN.md`; S1a-S1c are
-  done (BDD, skeleton kinds, symbolic fold and oracle; Round 253), S1d (queries,
-  family table) is next.
+  Status (2026-10-17): the configuration design S1 to S4 is closed (CONFIG_DESIGN.md; S3 decided against,
+  PARKED.md "S3-records"). Of the items above, the macro-aware rename policy is parked with a draft plan
+  (MACRO_RENAME_PLAN.md; it would close the uninvoked-macro gap for rename, nothing built); Q7 and rename through
+  inactive groups remain open.
   Direction (user, Round 238): one mechanism, the *configuration* (a virtual
   compile entry: the real flags plus an overlay of standard, extensions,
   predefined macros and target), derived from the guards of each `#if` group,
