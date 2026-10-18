@@ -198,6 +198,6 @@ Three adversarial rounds on 2026-10-17, claims checked in code and by queries on
   presents at the outermost invocation (gcc's expansion point), clangd at the inner spelling; kept, class P6 in
   `clangd_diff.py`. Result: 0 unexplained clangd misses on lua54 (2632) and libuv (773). The 15 lua54
   "unexpected" cereal-only lines are plain calls outside any macro (`lgc.c:1561` `luaS_clearcache(g);` and so
-  on, all in lgc.c, llex.c, ltm.c), so B does not produce them; read as clangd's background index lagging, not
-  re-run against a settled index. Gate (`q7-b-gate`): 2211 pass, san 0, verify 2/1/0 differ, callgrind 3.89G,
+  on, all in lgc.c, llex.c, ltm.c), so B does not produce them; shown to be clangd's background index varying: a rerun gave 7, a different set (runs.md note), not
+  from B. Gate (`q7-b-gate`): 2211 pass, san 0, verify 2/1/0 differ, callgrind 3.89G,
   all at baseline.
