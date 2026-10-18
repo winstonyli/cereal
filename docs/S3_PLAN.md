@@ -123,6 +123,13 @@ any depth). Records are the distinct per-file lines the indexer built for every 
   spellings of one condition (the probe only strips whitespace and normalizes `defined X`); a real BDD-free
   DAG encoding. The scanner is crude (block comments tracked per line, no continuation lines), so the numbers
   are estimates to the nearest few points.
+- **On-demand cost, the case against (2026-10-17, WSL, load 0.1, `CEREAL_PCDUMP=time cereal lint`):** the
+  fold alone is 13.0 ms mean (median 11.6, max 24.2) per libuv unit and 7.7 ms mean (max 23.8) per lua54 unit;
+  all 38 libuv units fold in 0.5 s. A whole `lint` of a unit (preprocess, analyses, fold) is 40 ms mean, 57 max,
+  1.5 s for all 38. So annotating a references list that reaches every unit of a libuv-sized project costs
+  at most about 1.5 s once, and less with the units cached; no stored id is needed at this size. The
+  argument for S3 therefore rests on larger projects, where fold time scales with the inclusion count
+  (CONFIG_DESIGN 13: 31,281 inclusions for libuv). Not measured on one.
 - **The second half of the stop rule is open:** a named consumer. By the numbers the cheapest consumer is
   references annotation on libuv-like projects, where 11% of events carry a condition and the rest need no
   annotation; on lua54 and cereal it would annotate under 1.5% of sites. S3 stays gated on that choice
