@@ -462,3 +462,54 @@ was checked to exist as a single function (`cindex_key`, B5_DESIGN E10); open:
 whether `cindex_key` accepts a symbol with no index events (a local or a
 static in a unit without `sx`), to be confirmed at T1 task 2 before `sym`
 carries it.
+
+## 14. T1 results (2026-10-18)
+
+T1 (tasks 1 to 9 of TAST_T1_PLAN.md) is built: `src/c/tast.c`, `--dump-tast`,
+`--verify-tast`, goldens in `tests/tast` (plain and from cells), the gcc
+comparison `tests/tast_gcc.py`.
+
+- **Shape.** One recursive pass over the syntax tree reads `ty/cv/ck/ef/sym`;
+  conversion targets come from `promoted()` and `common_type()`; each
+  arithmetic result type is compared with the checker's own and a mismatch
+  makes the unit `unsupported: rule disagreement` (none seen). A constant
+  operand converts by folding in place; an explicit cast to the same type
+  leaves no node. Two nodes are not in the core: `post` (value of `x++`, the
+  old value of its store) and `elvis` (`a ?: b`, evaluates `a` once); both
+  lower with a temporary in T6.
+- **Local declarations** are a `local` node whose optional kid is the
+  initializer converted to the declared type (the plan said `local` plus a
+  `store`; the single node is simpler to verify). A declaration's symbol is
+  `cb[DECLARED]`, so `Checker.sym` is needed only for identifier uses.
+- **Verifier.** Kids precede parents; every node but the root is used once;
+  values are never bare lvalues; operand types match the operator; statement
+  and expression positions are kept apart; every `goto` has a label. It
+  prints `verify:` lines and does not set the exit status; the plan's
+  "dump parses back" check was not built (the dump is not parsed anywhere).
+  A deliberate break (an unconverted operand) is reported, so it does check.
+- **Coverage** (run `2026-10-18-tast-t1-coverage-b`, WSL, option on vs off
+  wall time): lua54, 30 functions elaborate of 2,243 units with a body (1.3%),
+  unsupported reasons: pointer type 2,100, global initializer 69, floating
+  type 28, unprototyped or variadic definition 10, expression INDEX 4,
+  static or extern local 2. libuv: 21 functions elaborate, 1,542 unsupported:
+  pointer type 1,476, struct/union type 20, global initializer 15, unary `*`
+  9, call to unprototyped or variadic 7, static or extern local 5. No
+  verifier findings on any elaborated unit. As expected, pointers (T2) are
+  the wall; the count of functions that elaborate becomes meaningful after T2
+  and T3.
+- **Cost.** Option off: callgrind 3,887,604,577 against about 3.89G in the
+  gate header (no change). Option on, 35 lua54 files: 0.83 s against 0.54 s,
+  most of it printing the declarations of the user headers once per
+  translation unit.
+- **gcc comparison** (arith, assign, flow): 19 of 26 functions have the same
+  multiset of cast target types. All seven differences are the front end's
+  own folding in gcc, not errors in the tree: `shorten_binary_op` computes
+  `unsigned + long` stored to `unsigned` in `unsigned` (`ul`), a sum
+  converted to `int` is computed in `unsigned` (`fold`, `mix`), `c ? a : b`
+  converted to `int` casts each arm instead (`cnd`), `_Bool c = b` prints
+  `b != 0` (`bl`), `x++` and `x += 300` on `unsigned char` print without
+  their conversions (`inc`), and `-a + ~a + +a` is simplified (`neg`). The
+  oracle therefore stays a lead generator (as section 6 said), not a gate.
+- **Decisions confirmed.** The enum `switch` case conversion equals gcc's
+  (probe in section 12's table). `unit_err` (parser flag or `nerrors` delta)
+  skipped 8 libuv units, none in lua54.
