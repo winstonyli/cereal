@@ -161,3 +161,14 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 |---|---|---|---|
 | One annotation log from the checker's visit (BIND, CONV, INIT records through a single `ann()` API) replacing `sym[i]`, the initializer record and the optional recomputable records | Each record is one store at a decision point today; the log pays only with a third recorded item. Trigger: a third visit-time record is needed. | TAST_DESIGN 13.3 | parked |
 | Run the conversion warnings over the elaborated tree (`-Wconversion` as "for each cast node, is it unsafe"), deleting the fused type-and-warning logic | Large and risky; follows once conversions are explicit nodes (T1 onward). Trigger: T3 done and a conversion-warning change is wanted. The gcc goldens are the safety net. | TAST_DESIGN 13.4; `cconv.c` | parked |
+
+## TAST T2 leftovers
+
+| What | Why parked / trigger | Evidence | Status |
+|---|---|---|---|
+| `str` nodes carry no bytes (only the array type) | A consumer that emits data or compares literals needs them; T3 (static data) needs the same bytes. Trigger: T3 starts. | `src/c/tast.c` `lval` N_STRING; TAST_DESIGN 15 | parked |
+| `member of rvalue` (`f().x`) is unsupported | Needs a value-member op or a temporary; temporaries come with T6. Trigger: T6, or a corpus histogram that shows it. | `tests/tast/unsup.c` `rv` | parked |
+| Compound assignment or `++` on an lvalue with side effects (`a[i++] += 1`) is unsupported | Needs temporaries (T6 templates). 2 units in lua54. Trigger: T6. | `tests/tast/unsup.c` `sideef` | parked |
+| Pointer-qualification changes elaborate as a `cast` node | Harmless, but noisy against gcc's tree; the consumer may want a distinct `qual` op or none. Trigger: the first back end or the conversion-warning rewrite. | `tests/tast/ptr.expected` `msg` | parked |
+| gcc differential compares cast multisets only, not pointer arithmetic or indirections | Coarse oracle by decision; extend if a pointer bug escapes. Trigger: a missed bug. | `tests/tast_gcc.py` | parked |
+| Whether every elaborated TAST `sym` maps to a symbol-index declaration (so `cindex_key` can be attached) | `cindex_key` needs a `CIndex` declaration, which exists only with `Checker.sx`; T2 planned a measurement and skipped it. Trigger: before T3, or when a back end needs stable symbol identity. | TAST_T2_PLAN 2 and 7; `csymidx.c:2469` | parked |

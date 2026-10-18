@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # TAST stage T2: plan
@@ -225,3 +225,24 @@ material finding on a full pass of scope, tasks, exit checks and risks.
 Residual risk the plan cannot remove: the gcc differential has no oracle for
 bit-field loads (gcc prints `BIT_FIELD_REF` only after gimplification), so
 bit-field correctness rests on the layout test and hand-checked goldens.
+
+## 7. Progress
+
+Tasks 1 to 8, the layout half of 9 and task 10 done, gate green (callgrind +0.21%)
+(2026-10-18); results in TAST_DESIGN section 15. Suite 2233 passed. Deviations:
+
+- `field` nodes hold byte offset, bit offset within that byte and width
+  (the risk entry's fallback, derived from `find_field`'s total bit offset),
+  not a declared-type-aligned unit offset. The layout test passes on 26
+  members against gcc-13.
+- Pointer-pointer comparison casts the right operand to the left's type when
+  they differ (and an integer null constant to the pointer type); the `void *`
+  case in `ptrcmp` shows a `cast`.
+- `str` holds only its array type (bytes parked, PARKED.md).
+- The `cindex_key` measurement (section 2) was not done: whether every
+  elaborated `sym` maps to an index declaration is still open and is parked
+  with the T2 leftovers.
+- The gcc differential extension to pointer arithmetic counts was not done
+  (parked).
+- Locals of array type with any initializer elaborate as `unsupported:
+  braced initializer` (T3 owns initializers).

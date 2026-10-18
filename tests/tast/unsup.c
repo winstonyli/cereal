@@ -1,8 +1,13 @@
 // T1 subset edges: each of these drops its whole unit with one reason.
-extern int (*gfp)(void);
-int ind(void) { return gfp(); }
+struct S { int x; double d; };
+struct S mk(void);
+int rv(void) { return mk().x; }
+double dm(struct S *s) { return s->d; }
+int vla(int n) { int a[n]; return n; }
+int cl(void) { return ((int[]){1})[0]; }
+int sideef(int *p, int i) { return p[i++] += 1; }
+int strinit(void) { char s[] = "x"; return s[0]; }
 int kr(a) int a; { return a; }
-int ptr(int *p) { return 1; }
 int gi = 3;
 int f(void);
 int va(int, ...);

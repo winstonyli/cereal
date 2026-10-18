@@ -21,7 +21,9 @@
     X(CONST, "const") X(SYM, "sym") X(LOAD, "load") X(STORE, "store")        \
     X(CAST, "cast") X(UNOP, "unop") X(BINOP, "binop") X(CMP, "cmp")          \
     X(LOGAND, "logand") X(LOGOR, "logor") X(COND, "cond")                    \
-    X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call") X(POST, "post")      \
+    X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \
+    X(DEREF, "deref") X(FIELD, "field") X(ADDR, "addr") X(STR, "str")        \
+    X(PTRADD, "ptradd") X(PTRDIFF, "ptrdiff") X(POST, "post")                \
     X(BLOCK, "block") X(LOCAL, "local") X(EXPRSTMT, "exprstmt")              \
     X(IF, "if") X(WHILE, "while") X(DO, "do") X(FOR, "for")                  \
     X(SWITCH, "switch") X(CASE, "case") X(DEFAULT, "default")                \
@@ -46,12 +48,15 @@ static const char *const op_names[TO_COUNT] = {
 
 typedef struct TNode {
     uint8_t op;
-    uint16_t pun;           /* unop/binop/cmp: the operator (Punct) */
+    uint16_t pun;           /* unop/binop/cmp: the operator (Punct); field: bit
+                             * offset within byte val; call: 1 when indirect */
     TypeId ty;
     SrcLoc loc;
     uint32_t kid0, nkids;   /* kids: El.kids[kid0 .. kid0 + nkids) */
-    int64_t val;            /* const: value; case: value; goto/label: ident id */
+    int64_t val;            /* const: value; case: value; goto/label: ident id;
+                             * field: byte offset; ptradd/ptrdiff: element size */
     uint32_t sym;           /* sym, local, call: the symbol ref */
+    uint32_t width;         /* field: bit-field width, 0 otherwise */
 } TNode;
 
 typedef struct El {
@@ -100,6 +105,24 @@ static bool ok_int(El *e, TypeId t)
     return (k >= TY_BOOL && k <= TY_ULLONG) || k == TY_ENUM;
 }
 
+/* A type the pass handles: integers, pointers, complete structs and unions,
+ * and arrays of those. */
+static bool ok_ty(El *e, TypeId t)
+{
+    Checker *c = e->c;
+    switch (type_ckind(&c->tt, t)) {
+    case TY_PTR: return true;
+    case TY_STRUCT: case TY_UNION: return type_is_complete(&c->tt, t);
+    case TY_ARRAY: return ok_ty(e, elem_of(c, t)) && type_is_complete(&c->tt, t);
+    default: return ok_int(e, t);
+    }
+}
+
+static bool is_lvop(int op)
+{
+    return op == TO_SYM || op == TO_DEREF || op == TO_FIELD || op == TO_STR;
+}
+
 /* Why a type is outside the subset, for the reason histogram. */
 static const char *why_type(El *e, TypeId t)
 {
@@ -107,7 +130,7 @@ static const char *why_type(El *e, TypeId t)
     case TY_PTR: return "pointer type";
     case TY_ARRAY: case TY_VLA: return "array type";
     case TY_FUNC: return "function designator";
-    case TY_STRUCT: case TY_UNION: return "struct/union type";
+    case TY_STRUCT: case TY_UNION: return "incomplete struct/union type";
     case TY_COMPLEX: return "complex type";
     case TY_VECTOR: return "vector type";
     case TY_INT128: case TY_UINT128: return "__int128 type";
@@ -164,24 +187,12 @@ static uint32_t rv(El *e, uint32_t n)
     return ex(e, n, false);
 }
 
-/* The lvalue of a plain variable. */
-static uint32_t lv(El *e, uint32_t n)
+static TypeId ptrdiff_ty(El *e)
 {
-    Checker *c = e->c;
-    uint32_t i = strip_paren(c, n), ref;
-    const CSym *s;
-    if (e->why[0])
-        return TN;
-    if (ntag(c, i) != N_IDENT || !(c->ef[i] & EF_LVALUE))
-        return unsup(e, "lvalue form");
-    ref = c->sym[i];
-    if (ref == SYM_NONE || csym(c, ref)->kind != CS_OBJ)
-        return unsup(e, "lvalue form");
-    s = csym(c, ref);
-    if (!ok_int(e, s->ty))
-        return unsup(e, "%s", why_type(e, s->ty));
-    return mk(e, TO_SYM, s->ty, cnode_loc(c, i), 0, ref, 0, NULL, 0);
+    return TYPE_MK(e->c->tgt->ptrdiff_type, 0);
 }
+
+static uint32_t lval(El *e, uint32_t n);
 
 static uint32_t load(El *e, uint32_t symid)
 {
@@ -190,6 +201,148 @@ static uint32_t load(El *e, uint32_t symid)
         return TN;
     return mk(e, TO_LOAD, unqual(e->c, nty(e, symid)), e->nodes.data[symid].loc,
               0, 0, 0, &id, 1);
+}
+
+static uint32_t addr_t(El *e, uint32_t l, TypeId pty, SrcLoc loc)
+{
+    if (l == TN)
+        return TN;
+    return mk(e, TO_ADDR, unqual(e->c, pty), loc, 0, 0, 0, &l, 1);
+}
+
+/* The object a pointer value designates; t is its type (a function type is
+ * allowed: *fp decays straight back). */
+static uint32_t deref_t(El *e, uint32_t p, TypeId t, SrcLoc loc)
+{
+    if (p == TN)
+        return TN;
+    if (type_is_void(&e->c->tt, t))
+        return unsup(e, "void value");
+    if (type_ckind(&e->c->tt, t) != TY_FUNC && !ok_ty(e, t))
+        return unsup(e, "%s", why_type(e, t));
+    return mk(e, TO_DEREF, t, loc, 0, 0, 0, &p, 1);
+}
+
+/* p + x (or p - x when neg): x is converted to ptrdiff_t, the node carries
+ * the element size.  pty is the pointer type of p. */
+static uint32_t ptradd(El *e, TypeId pty, uint32_t p, uint32_t x, bool neg, SrcLoc loc)
+{
+    uint32_t ka[2];
+    TypeId dt = ptrdiff_ty(e);
+    if (p == TN || x == TN)
+        return TN;
+    x = conv(e, x, dt, loc);
+    if (neg) {
+        if (e->nodes.data[x].op == TO_CONST)
+            e->nodes.data[x].val = (int64_t)cexpr_trunc(e->c, dt, (uint64_t)-e->nodes.data[x].val);
+        else
+            x = mk(e, TO_UNOP, dt, loc, 0, 0, P_MINUS, &x, 1);
+    }
+    ka[0] = p;
+    ka[1] = x;
+    return mk(e, TO_PTRADD, unqual(e->c, pty), loc, (int64_t)elem_size(e->c, pty), 0, 0, ka, 2);
+}
+
+/* The lvalue an expression designates: a variable (or function), *p, a
+ * member, a string literal.  a[i] is *(a + i); p->f is (*p).f. */
+static uint32_t lval(El *e, uint32_t n)
+{
+    Checker *c = e->c;
+    uint32_t i = strip_paren(c, n), k[2];
+    TypeId t;
+    SrcLoc loc;
+    if (e->why[0])
+        return TN;
+    loc = cnode_loc(c, i);
+    t = c->ty[i];
+    if (c->ck[i] == K_ERR || type_ckind(&c->tt, t) == TY_ERROR)
+        return unsup(e, "type error");
+    switch (ntag(c, i)) {
+    case N_IDENT: {
+        uint32_t ref = c->sym[i];
+        const CSym *s;
+        if (ref == SYM_NONE)
+            return unsup(e, "builtin or undeclared identifier");
+        s = csym(c, ref);
+        if (s->kind != CS_OBJ && s->kind != CS_FUNC)
+            return unsup(e, "identifier is not a variable");
+        if (s->kind == CS_OBJ && !ok_ty(e, s->ty))
+            return unsup(e, "%s", why_type(e, s->ty));
+        return mk(e, TO_SYM, s->ty, loc, 0, ref, 0, NULL, 0);
+    }
+    case N_STRING:
+        return mk(e, TO_STR, t, loc, 0, 0, 0, NULL, 0);
+    case N_INDEX: {
+        uint32_t a, x, p, ix;
+        if (nkids(c, i, k, 2) < 2)
+            return unsup(e, "malformed index");
+        a = k[0];
+        x = k[1];
+        if (!is_array(c, c->ty[a]) && !is_ptr(c, c->ty[a])) {
+            a = k[1];
+            x = k[0];
+        }
+        if (tkind(c, c->ty[a]) == TY_VECTOR)
+            return unsup(e, "vector type");
+        p = ex(e, a, false);
+        ix = ex(e, x, false);
+        return deref_t(e, ptradd(e, rvt(c, a), p, ix, false, loc), t, loc);
+    }
+    case N_MEMBER_EXPR: {
+        uint32_t d = first_child(c, i), base;
+        TypeId rec;
+        const Field *f;
+        uint64_t off = 0;
+        unsigned q = 0;
+        TNode *nd;
+        uint32_t id;
+        if (d == NO_NODE)
+            return unsup(e, "malformed member");
+        if (c->nodes[i].flags & NF_ARROW) {
+            rec = pointee(c, rvt(c, d));
+            base = deref_t(e, ex(e, d, false), rec, loc);
+        } else {
+            if (!(c->ef[d] & EF_LVALUE))
+                return unsup(e, "member of rvalue");
+            rec = c->ty[d];
+            base = lval(e, d);
+        }
+        if (base == TN)
+            return TN;
+        f = find_field(c, rec, cnode_ident(c, i), &off, &q);
+        if (!f)
+            return unsup(e, "member not found");
+        if (!ok_ty(e, t))
+            return unsup(e, "%s", why_type(e, t));
+        id = mk(e, TO_FIELD, t, loc, (int64_t)(off / 8), 0, (unsigned)(off % 8), &base, 1);
+        nd = &e->nodes.data[id];
+        nd->width = (f->flags & FF_BITFIELD) ? f->width : 0;
+        return id;
+    }
+    case N_UNARY: {
+        const Tok *tk = cnode_tok(c, i);
+        if (tk->kind != TK_PUNCT)       /* __extension__ */
+            return lval(e, first_child(c, i));
+        if (npunct(c, i) == P_STAR)
+            return deref_t(e, ex(e, first_child(c, i), false), t, loc);
+        return unsup(e, "lvalue form");
+    }
+    default:
+        return unsup(e, "lvalue form");
+    }
+}
+
+/* Compound assignment and ++/-- name the lvalue twice.  That is safe only
+ * when naming it evaluates nothing: a plain variable, or an lvalue without
+ * side effects (temporaries arrive with the T6 templates). */
+static bool twice_ok(El *e, uint32_t x)
+{
+    Checker *c = e->c;
+    x = strip_paren(c, x);
+    if (ntag(c, x) == N_IDENT || !(c->ef[x] & EF_SIDE))
+        return true;
+    unsup(e, "side effect in compound lvalue");
+    return false;
 }
 
 static int assign_op(int p)
@@ -251,20 +404,30 @@ static uint32_t incdec(El *e, uint32_t i, uint32_t x, int punct, bool post)
     SrcLoc loc = cnode_loc(c, i);
     x = strip_paren(c, x);
     xt = unqual(c, c->ty[x]);
-    if (!ok_int(e, xt))
+    if (!is_ptr(c, xt) && !ok_int(e, xt))
         return unsup(e, "%s", why_type(e, xt));
-    op = common_type(c, promoted(c, x), TYPE_B(INT));
-    l1 = lv(e, x);
-    l2 = lv(e, x);
+    if (!twice_ok(e, x))
+        return TN;
+    l1 = lval(e, x);
+    l2 = lval(e, x);
     if (l1 == TN || l2 == TN)
         return TN;
-    a = conv(e, load(e, l2), op, loc);
-    one = cnst(e, op, 1, loc);
-    ka[0] = a;
-    ka[1] = one;
-    b = mk(e, TO_BINOP, unqual(c, op), loc, 0, 0,
-           punct == P_INC ? P_PLUS : P_MINUS, ka, 2);
-    v = conv(e, b, xt, loc);
+    if (is_ptr(c, xt)) {
+        a = load(e, l2);
+        one = cnst(e, ptrdiff_ty(e), 1, loc);
+        v = ptradd(e, xt, a, one, punct == P_DEC, loc);
+    } else {
+        op = common_type(c, promoted(c, x), TYPE_B(INT));
+        a = conv(e, load(e, l2), op, loc);
+        one = cnst(e, op, 1, loc);
+        ka[0] = a;
+        ka[1] = one;
+        b = mk(e, TO_BINOP, unqual(c, op), loc, 0, 0,
+               punct == P_INC ? P_PLUS : P_MINUS, ka, 2);
+        v = conv(e, b, xt, loc);
+    }
+    if (v == TN)
+        return TN;
     ka[0] = l1;
     ka[1] = v;
     st = mk(e, TO_STORE, xt, loc, 0, 0, 0, ka, 2);
@@ -283,18 +446,24 @@ static uint32_t e_assign_t(El *e, uint32_t i)
     lhs = strip_paren(c, k[0]);
     rhs = strip_paren(c, k[1]);
     lt = unqual(c, c->ty[lhs]);
-    if (!ok_int(e, lt))
+    if (!ok_ty(e, lt))
         return unsup(e, "%s", why_type(e, lt));
-    l1 = lv(e, lhs);
+    if (op && !twice_ok(e, lhs))
+        return TN;
+    l1 = lval(e, lhs);
     if (l1 == TN)
         return TN;
     if (p == P_ASSIGN) {
-        v = conv(e, rv(e, rhs), lt, loc);
-    } else if (op) {
-        /* x op= y is x = (T)((op type)x op (op type)y); the lvalue is a
-         * plain variable, so naming it twice evaluates nothing twice. */
+        v = conv(e, ex(e, rhs, false), lt, loc);
+    } else if (op && is_ptr(c, lt) && (op == P_PLUS || op == P_MINUS)) {
+        uint32_t l2 = lval(e, lhs), x, y;
+        x = l2 == TN ? TN : load(e, l2);
+        y = ex(e, rhs, false);
+        v = ptradd(e, lt, x, y, op == P_MINUS, loc);
+    } else if (op && ok_int(e, lt)) {
+        /* x op= y is x = (T)((op type)x op (op type)y) */
         TypeId ot;
-        uint32_t l2 = lv(e, lhs), b;
+        uint32_t l2 = lval(e, lhs), b;
         uint32_t x, y, kb[2];
         if (l2 == TN)
             return TN;
@@ -322,34 +491,68 @@ static uint32_t e_assign_t(El *e, uint32_t i)
     return mk(e, TO_STORE, lt, loc, 0, 0, 0, ka, 2);
 }
 
+/* p + x, x + p, p - x, p - q. */
+static uint32_t ptr_binary(El *e, uint32_t i, int p, uint32_t a, uint32_t b, SrcLoc loc)
+{
+    Checker *c = e->c;
+    TypeId ta = rvt(c, a), tb = rvt(c, b), rt;
+    uint32_t r, pa, pb;
+    if (is_ptr(c, ta) && is_ptr(c, tb)) {
+        uint32_t ka[2];
+        ka[0] = ex(e, a, false);
+        ka[1] = ex(e, b, false);
+        if (ka[0] == TN || ka[1] == TN)
+            return TN;
+        rt = ptrdiff_ty(e);
+        if (!agree(e, i, rt))
+            return TN;
+        return mk(e, TO_PTRDIFF, rt, loc, (int64_t)elem_size(c, ta), 0, 0, ka, 2);
+    }
+    pa = ex(e, a, false);
+    pb = ex(e, b, false);
+    if (is_ptr(c, ta))
+        r = ptradd(e, ta, pa, pb, p == P_MINUS, loc);
+    else
+        r = ptradd(e, tb, pb, pa, false, loc);
+    if (r != TN && !agree(e, i, nty(e, r)))
+        return TN;
+    return r;
+}
+
 static uint32_t e_call_t(El *e, uint32_t i)
 {
     Checker *c = e->c;
-    uint32_t nk = nkids(c, i, NULL, 0), *k, callee, ref, j, np;
-    const CSym *s;
+    uint32_t nk = nkids(c, i, NULL, 0), *k, callee, ref = 0, j, np;
     TypeId ft;
     const TypeEnt *fe;
     VEC(uint32_t) args = {0};
     uint32_t id = TN;
+    bool indirect = false;
     SrcLoc loc = cnode_loc(c, i);
     k = xmalloc((nk ? nk : 1) * sizeof *k);
     nkids(c, i, k, nk);
     callee = strip_paren(c, k[0]);
-    if (ntag(c, callee) != N_IDENT) {
-        unsup(e, "indirect call");
-        goto out;
-    }
-    ref = c->sym[callee];
-    if (ref == SYM_NONE) {
+    if (ntag(c, callee) == N_IDENT && c->sym[callee] != SYM_NONE &&
+        csym(c, c->sym[callee])->kind == CS_FUNC) {
+        ref = c->sym[callee];
+        ft = type_canon(&c->tt, csym(c, ref)->ty);
+    } else if (ntag(c, callee) == N_IDENT && c->sym[callee] == SYM_NONE) {
         unsup(e, "builtin or undeclared call");
         goto out;
+    } else {
+        TypeId pt = rvt(c, callee);
+        uint32_t cv;
+        if (!is_ptr(c, pt) || !is_func(c, pointee(c, pt))) {
+            unsup(e, "call of a non-function");
+            goto out;
+        }
+        ft = type_canon(&c->tt, pointee(c, pt));
+        cv = ex(e, callee, false);
+        if (cv == TN)
+            goto out;
+        vec_push(&args, cv);
+        indirect = true;
     }
-    s = csym(c, ref);
-    if (s->kind != CS_FUNC) {
-        unsup(e, "indirect call");
-        goto out;
-    }
-    ft = type_canon(&c->tt, s->ty);
     fe = type_ent(&c->tt, ft);
     if (fe->flags & (TF_NOPROTO | TF_VARIADIC)) {
         unsup(e, "call to unprototyped or variadic function");
@@ -363,17 +566,17 @@ static uint32_t e_call_t(El *e, uint32_t i)
     for (j = 0; j < np; j++) {
         TypeId pt = unqual(c, type_params(&c->tt, ft)[j]);
         uint32_t a, ca;
-        if (!ok_int(e, pt)) {
+        if (!ok_ty(e, pt)) {
             unsup(e, "%s", why_type(e, pt));
             goto out;
         }
         a = strip_paren(c, k[1 + j]);
-        ca = conv(e, rv(e, a), pt, loc);
+        ca = conv(e, ex(e, a, false), pt, loc);
         if (ca == TN)
             goto out;
         vec_push(&args, ca);
     }
-    id = mk(e, TO_CALL, unqual(c, c->ty[i]), loc, 0, ref, 0, args.data, (uint32_t)args.len);
+    id = mk(e, TO_CALL, unqual(c, c->ty[i]), loc, 0, ref, indirect, args.data, (uint32_t)args.len);
 out:
     vec_free(&args);
     free(k);
@@ -383,7 +586,7 @@ out:
 static uint32_t ex(El *e, uint32_t n, bool allow_void)
 {
     Checker *c = e->c;
-    uint32_t i = strip_paren(c, n), k[3], ref;
+    uint32_t i = strip_paren(c, n), k[3];
     TypeId t;
     SrcLoc loc;
     bool isvoid;
@@ -398,23 +601,20 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
         if (!allow_void)
             return unsup(e, "void value");
     } else {
+        TypeKind uk = tkind(c, t);
         t = rvt(c, i);
-        if (!ok_int(e, t))
+        if (!ok_ty(e, t))
             return unsup(e, "%s", why_type(e, t));
         if ((c->ck[i] == K_ICE || c->ck[i] == K_FOLD) && !(c->ef[i] & EF_SIDE))
             return cnst(e, t, c->cv[i], loc);
+        if (uk == TY_ARRAY || uk == TY_FUNC)      /* decay */
+            return addr_t(e, lval(e, i), t, loc);
+        if (c->ef[i] & EF_LVALUE)
+            return load(e, lval(e, i));
     }
     switch (ntag(c, i)) {
-    case N_IDENT: {
-        uint32_t sid;
-        ref = c->sym[i];
-        if (ref == SYM_NONE)
-            return unsup(e, "builtin or undeclared identifier");
-        if (csym(c, ref)->kind != CS_OBJ)
-            return unsup(e, "identifier is not a variable");
-        sid = lv(e, i);
-        return load(e, sid);
-    }
+    case N_MEMBER_EXPR:
+        return unsup(e, "member of rvalue");
     case N_CALL:
         return e_call_t(e, i);
     case N_CAST: {
@@ -436,6 +636,8 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
         p = npunct(c, i);
         if (p == P_INC || p == P_DEC)
             return incdec(e, i, first_child(c, i), p, false);
+        if (p == P_AMP)
+            return addr_t(e, lval(e, first_child(c, i)), t, loc);
         if (p != P_PLUS && p != P_MINUS && p != P_TILDE && p != P_BANG)
             return unsup(e, "unary %s", punct_spelling[p]);
         a = first_child(c, i);
@@ -504,7 +706,11 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
             ka[1] = y;
             return mk(e, p == P_ANDAND ? TO_LOGAND : TO_LOGOR, t, loc, 0, 0, 0, ka, 2);
         case P_LT: case P_GT: case P_LE: case P_GE: case P_EQEQ: case P_NE: {
-            TypeId ct = common_type(c, promoted(c, k[0]), promoted(c, k[1]));
+            TypeId ta = rvt(c, k[0]), tb = rvt(c, k[1]), ct;
+            if (is_ptr(c, ta) || is_ptr(c, tb))
+                ct = unqual(c, is_ptr(c, ta) ? ta : tb);
+            else
+                ct = common_type(c, promoted(c, k[0]), promoted(c, k[1]));
             x = rv(e, k[0]);
             y = rv(e, k[1]);
             if (x == TN || y == TN)
@@ -513,7 +719,11 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
             ka[1] = conv(e, y, ct, loc);
             return mk(e, TO_CMP, t, loc, 0, 0, (unsigned)p, ka, 2);
         }
-        case P_PLUS: case P_MINUS: case P_STAR: case P_SLASH: case P_PERCENT:
+        case P_PLUS: case P_MINUS:
+            if (is_ptr(c, rvt(c, k[0])) || is_ptr(c, rvt(c, k[1])))
+                return ptr_binary(e, i, p, k[0], k[1], loc);
+            return arith(e, i, p, k[0], k[1], loc, &rt);
+        case P_STAR: case P_SLASH: case P_PERCENT:
         case P_AMP: case P_PIPE: case P_CARET: case P_SHL: case P_SHR:
             return arith(e, i, p, k[0], k[1], loc, &rt);
         default:
@@ -599,12 +809,12 @@ static void decl(El *e, uint32_t n, U32Vec *out)
             unsup(e, "static or extern local");
             break;
         }
-        if (!ok_int(e, s->ty)) {
+        if (!ok_ty(e, s->ty)) {
             unsup(e, "%s", why_type(e, s->ty));
             break;
         }
         if (init != NO_NODE) {
-            if (ntag(c, init) == N_INIT_LIST) {
+            if (ntag(c, init) == N_INIT_LIST || type_ckind(&c->tt, s->ty) == TY_ARRAY) {
                 unsup(e, "braced initializer");
                 break;
             }
@@ -855,9 +1065,25 @@ static void print_tree(El *e, FILE *out)
             else
                 fprintf(out, " %llu", (unsigned long long)nd->val);
             break;
-        case TO_SYM: case TO_LOCAL: case TO_CALL:
+        case TO_SYM: case TO_LOCAL:
             fputc(' ', out);
             put_sym(c, out, nd->sym);
+            break;
+        case TO_CALL:
+            if (nd->pun)
+                fputs(" *", out);
+            else {
+                fputc(' ', out);
+                put_sym(c, out, nd->sym);
+            }
+            break;
+        case TO_FIELD:
+            fprintf(out, " +%lld", (long long)nd->val);
+            if (nd->width)
+                fprintf(out, " bit %u width %u", nd->pun, nd->width);
+            break;
+        case TO_PTRADD: case TO_PTRDIFF:
+            fprintf(out, " *%lld", (long long)nd->val);
             break;
         case TO_UNOP: case TO_BINOP: case TO_CMP:
             fprintf(out, " %s", punct_spelling[nd->pun]);
@@ -911,7 +1137,9 @@ static void verify(El *e, FILE *out)
         bool ex_ = IS_EXPR(nd->op);
 #define KID(x) (&e->nodes.data[k[x]])
 #define NEED(cnt) do { if (nd->nkids != (cnt)) { vbad(e, out, i, "wrong number of kids"); goto next; } } while (0)
-#define ISVAL(p) (IS_EXPR((p)->op) && (p)->op != TO_SYM)
+#define ISVAL(p) (IS_EXPR((p)->op) && !is_lvop((p)->op))
+#define ISLV(p) is_lvop((p)->op)
+#define KIND(t) type_ckind(&c->tt, (t))
 #define ISSTMT(p) (!IS_EXPR((p)->op))
 #define SAME(p, q) (mainv(c, (p)->ty) == mainv(c, (q)->ty))
 #define VOIDT type_is_void(&c->tt, nd->ty)
@@ -924,7 +1152,8 @@ static void verify(El *e, FILE *out)
         for (j = 0; j < nd->nkids; j++)
             if (k[j] >= i)
                 goto next;
-        if (ex_ && !VOIDT && !ok_int(e, nd->ty))
+        if (ex_ && !VOIDT && !ok_ty(e, nd->ty) &&
+            !((nd->op == TO_DEREF || nd->op == TO_SYM) && KIND(nd->ty) == TY_FUNC))
             vbad(e, out, i, "type outside the subset");
         if (ex_ && VOIDT && nd->op != TO_CAST && nd->op != TO_CALL &&
             nd->op != TO_COND && nd->op != TO_COMMA)
@@ -933,19 +1162,21 @@ static void verify(El *e, FILE *out)
         case TO_CONST: NEED(0); break;
         case TO_SYM:
             NEED(0);
-            if (csym(c, nd->sym)->kind != CS_OBJ)
-                vbad(e, out, i, "not a variable");
+            if (csym(c, nd->sym)->kind != CS_OBJ && csym(c, nd->sym)->kind != CS_FUNC)
+                vbad(e, out, i, "not a variable or function");
             break;
         case TO_LOAD:
             NEED(1);
-            if (KID(0)->op != TO_SYM)
-                vbad(e, out, i, "operand is not a variable");
+            if (!ISLV(KID(0)))
+                vbad(e, out, i, "operand is not an lvalue");
+            else if (KIND(KID(0)->ty) == TY_ARRAY || KIND(KID(0)->ty) == TY_FUNC)
+                vbad(e, out, i, "load of an array or function");
             else if (nd->ty != unqual(c, KID(0)->ty))
                 vbad(e, out, i, "type is not the unqualified variable type");
             break;
         case TO_STORE:
             NEED(2);
-            if (KID(0)->op != TO_SYM || !ISVAL(KID(1)))
+            if (!ISLV(KID(0)) || !ISVAL(KID(1)))
                 vbad(e, out, i, "operands");
             else if (!SAME(KID(0), KID(1)) || nd->ty != unqual(c, KID(0)->ty))
                 vbad(e, out, i, "stored value has another type");
@@ -999,7 +1230,7 @@ static void verify(El *e, FILE *out)
             break;
         case TO_COMMA:
             NEED(2);
-            if (!IS_EXPR(KID(0)->op) || KID(0)->op == TO_SYM ||
+            if (!IS_EXPR(KID(0)->op) || ISLV(KID(0)) ||
                 !IS_EXPR(KID(1)->op) || !SAME(KID(1), nd))
                 vbad(e, out, i, "operands");
             break;
@@ -1009,18 +1240,85 @@ static void verify(El *e, FILE *out)
                 vbad(e, out, i, "operand is not a store of the same type");
             break;
         case TO_CALL: {
-            const CSym *s = csym(c, nd->sym);
-            TypeId ft = type_canon(&c->tt, s->ty);
-            if (s->kind != CS_FUNC || nd->nkids != type_ent(&c->tt, ft)->n) {
-                vbad(e, out, i, "callee or argument count");
+            TypeId ft;
+            uint32_t f0 = nd->pun ? 1 : 0;
+            if (nd->pun) {
+                if (nd->nkids < 1 || !ISVAL(KID(0)) || KIND(KID(0)->ty) != TY_PTR ||
+                    KIND(pointee(c, KID(0)->ty)) != TY_FUNC) {
+                    vbad(e, out, i, "callee");
+                    break;
+                }
+                ft = type_canon(&c->tt, pointee(c, KID(0)->ty));
+            } else {
+                const CSym *s = csym(c, nd->sym);
+                if (s->kind != CS_FUNC) {
+                    vbad(e, out, i, "callee");
+                    break;
+                }
+                ft = type_canon(&c->tt, s->ty);
+            }
+            if (nd->nkids - f0 != type_ent(&c->tt, ft)->n) {
+                vbad(e, out, i, "argument count");
                 break;
             }
-            for (j = 0; j < nd->nkids; j++)
+            for (j = f0; j < nd->nkids; j++)
                 if (!ISVAL(KID(j)) ||
-                    mainv(c, KID(j)->ty) != mainv(c, type_params(&c->tt, ft)[j]))
+                    mainv(c, KID(j)->ty) != mainv(c, type_params(&c->tt, ft)[j - f0]))
                     vbad(e, out, i, "argument type");
             break;
         }
+        case TO_DEREF:
+            NEED(1);
+            if (!ISVAL(KID(0)) || KIND(KID(0)->ty) != TY_PTR)
+                vbad(e, out, i, "operand is not a pointer value");
+            else if (mainv(c, pointee(c, KID(0)->ty)) != mainv(c, nd->ty))
+                vbad(e, out, i, "type is not the pointee type");
+            break;
+        case TO_STR:
+            NEED(0);
+            if (KIND(nd->ty) != TY_ARRAY)
+                vbad(e, out, i, "not an array");
+            break;
+        case TO_FIELD: {
+            bool ok = false;
+            uint64_t rs = 0;
+            NEED(1);
+            if (!ISLV(KID(0)) || !is_record(c, KID(0)->ty)) {
+                vbad(e, out, i, "operand is not a struct or union lvalue");
+                break;
+            }
+            rs = type_size(&c->tt, KID(0)->ty, &ok);
+            if (ok && (uint64_t)nd->val * 8 + nd->pun + (nd->width ? nd->width : 8 * type_size(&c->tt, nd->ty, &ok)) > rs * 8)
+                vbad(e, out, i, "member outside the record");
+            if (nd->width && (!ok_int(e, nd->ty) || nd->width > 8 * type_size(&c->tt, nd->ty, &ok)))
+                vbad(e, out, i, "bit-field type or width");
+            break;
+        }
+        case TO_ADDR:
+            NEED(1);
+            if (!ISLV(KID(0)) || KIND(nd->ty) != TY_PTR)
+                vbad(e, out, i, "operand or type");
+            else if (mainv(c, pointee(c, nd->ty)) != mainv(c, KID(0)->ty) &&
+                     !(KIND(KID(0)->ty) == TY_ARRAY &&
+                       mainv(c, pointee(c, nd->ty)) == mainv(c, elem_of(c, KID(0)->ty))))
+                vbad(e, out, i, "pointer type does not match the object");
+            break;
+        case TO_PTRADD:
+            NEED(2);
+            if (!ISVAL(KID(0)) || !ISVAL(KID(1)) || KIND(KID(0)->ty) != TY_PTR ||
+                mainv(c, KID(1)->ty) != mainv(c, ptrdiff_ty(e)) || !SAME(KID(0), nd))
+                vbad(e, out, i, "operands");
+            else if ((uint64_t)nd->val != elem_size(c, nd->ty))
+                vbad(e, out, i, "element size");
+            break;
+        case TO_PTRDIFF:
+            NEED(2);
+            if (!ISVAL(KID(0)) || !ISVAL(KID(1)) || KIND(KID(0)->ty) != TY_PTR ||
+                KIND(KID(1)->ty) != TY_PTR || nd->ty != ptrdiff_ty(e))
+                vbad(e, out, i, "operands");
+            else if ((uint64_t)nd->val != elem_size(c, KID(0)->ty))
+                vbad(e, out, i, "element size");
+            break;
         case TO_BLOCK:
             for (j = 0; j < nd->nkids; j++)
                 if (!ISSTMT(KID(j)))
@@ -1032,7 +1330,7 @@ static void verify(El *e, FILE *out)
             break;
         case TO_EXPRSTMT:
             NEED(1);
-            if (!IS_EXPR(KID(0)->op) || KID(0)->op == TO_SYM)
+            if (!IS_EXPR(KID(0)->op) || ISLV(KID(0)))
                 vbad(e, out, i, "operand");
             break;
         case TO_IF:
@@ -1082,6 +1380,8 @@ next:;
 #undef NEED
 #undef ISVAL
 #undef ISSTMT
+#undef ISLV
+#undef KIND
 #undef SAME
 #undef VOIDT
     }
@@ -1164,13 +1464,13 @@ static void func_def(El *e, uint32_t root)
         return;
     }
     e->ret = unqual(c, fe->base);
-    if (!type_is_void(&c->tt, e->ret) && !ok_int(e, e->ret)) {
+    if (!type_is_void(&c->tt, e->ret) && !ok_ty(e, e->ret)) {
         unsup(e, "%s", why_type(e, e->ret));
         return;
     }
     for (j = 0; j < fe->n; j++) {
         TypeId pt = unqual(c, type_params(&c->tt, ft)[j]);
-        if (!ok_int(e, pt)) {
+        if (!ok_ty(e, pt)) {
             unsup(e, "%s", why_type(e, pt));
             return;
         }

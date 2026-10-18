@@ -1,0 +1,294 @@
+tast 1 target x86_64-linux-gnu
+unit ptr.c:2:5 decl g int
+unit ptr.c:3:5 decl arr int[4]
+unit ptr.c:4:6 decl gp int *
+unit ptr.c:5:1 func msg const char *(void)
+  #0 str char[3]
+  #1 addr #0 char *
+  #2 cast #1 const char *
+  #3 return #2
+  #4 block #3
+unit ptr.c:6:1 func addr_of int *(int)
+  #0 sym x@6:18 int
+  #1 load #0 int
+  #2 local y@6:27 #1 int
+  #3 sym y@6:27 int
+  #4 addr #3 int *
+  #5 local p@6:39 #4 int *
+  #6 sym p@6:39 int *
+  #7 load #6 int *
+  #8 return #7
+  #9 block #2 #5 #8
+unit ptr.c:7:1 func deref int(int *)
+  #0 sym p@7:16 int *
+  #1 load #0 int *
+  #2 deref #1 int
+  #3 load #2 int
+  #4 return #3
+  #5 block #4
+unit ptr.c:8:1 func store void(int *, int)
+  #0 sym p@8:17 int *
+  #1 load #0 int *
+  #2 deref #1 int
+  #3 sym v@8:24 int
+  #4 load #3 int
+  #5 store #2 #4 int
+  #6 exprstmt #5
+  #7 block #6
+unit ptr.c:9:1 func adv int *(int *)
+  #0 sym p@9:15 int *
+  #1 load #0 int *
+  #2 const 2 long int
+  #3 ptradd *4 #1 #2 int *
+  #4 return #3
+  #5 block #4
+unit ptr.c:10:1 func adv2 int *(int *, long int)
+  #0 sym i@10:24 long int
+  #1 load #0 long int
+  #2 sym p@10:16 int *
+  #3 load #2 int *
+  #4 ptradd *4 #3 #1 int *
+  #5 return #4
+  #6 block #5
+unit ptr.c:11:1 func back int *(int *, short int)
+  #0 sym p@11:16 int *
+  #1 load #0 int *
+  #2 sym i@11:25 short int
+  #3 load #2 short int
+  #4 cast #3 long int
+  #5 unop - #4 long int
+  #6 ptradd *4 #1 #5 int *
+  #7 return #6
+  #8 block #7
+unit ptr.c:12:1 func diff long int(int *, int *)
+  #0 sym p@12:16 int *
+  #1 load #0 int *
+  #2 sym q@12:24 int *
+  #3 load #2 int *
+  #4 ptrdiff *4 #1 #3 long int
+  #5 return #4
+  #6 block #5
+unit ptr.c:13:1 func cinc char *(char *)
+  #0 sym p@13:18 char *
+  #1 sym p@13:18 char *
+  #2 load #1 char *
+  #3 const 1 long int
+  #4 ptradd *1 #2 #3 char *
+  #5 store #0 #4 char *
+  #6 post #5 char *
+  #7 exprstmt #6
+  #8 sym p@13:18 char *
+  #9 load #8 char *
+  #10 return #9
+  #11 block #7 #10
+unit ptr.c:14:1 func iinc int *(int *)
+  #0 sym p@14:16 int *
+  #1 sym p@14:16 int *
+  #2 load #1 int *
+  #3 const 1 long int
+  #4 ptradd *4 #2 #3 int *
+  #5 store #0 #4 int *
+  #6 exprstmt #5
+  #7 sym p@14:16 int *
+  #8 sym p@14:16 int *
+  #9 load #8 int *
+  #10 const 3 long int
+  #11 ptradd *4 #9 #10 int *
+  #12 store #7 #11 int *
+  #13 exprstmt #12
+  #14 sym p@14:16 int *
+  #15 sym p@14:16 int *
+  #16 load #15 int *
+  #17 const -1 long int
+  #18 ptradd *4 #16 #17 int *
+  #19 store #14 #18 int *
+  #20 exprstmt #19
+  #21 sym p@14:16 int *
+  #22 sym p@14:16 int *
+  #23 load #22 int *
+  #24 const -1 long int
+  #25 ptradd *4 #23 #24 int *
+  #26 store #21 #25 int *
+  #27 post #26 int *
+  #28 return #27
+  #29 block #6 #13 #20 #28
+unit ptr.c:15:1 func first int(int *)
+  #0 sym a@15:15 int *
+  #1 load #0 int *
+  #2 const 0 long int
+  #3 ptradd *4 #1 #2 int *
+  #4 deref #3 int
+  #5 load #4 int
+  #6 return #5
+  #7 block #6
+unit ptr.c:16:1 func idx int(int)
+  #0 sym arr int[4]
+  #1 addr #0 int *
+  #2 sym i@16:13 int
+  #3 load #2 int
+  #4 cast #3 long int
+  #5 ptradd *4 #1 #4 int *
+  #6 deref #5 int
+  #7 load #6 int
+  #8 return #7
+  #9 block #8
+unit ptr.c:17:1 func rev int(int)
+  #0 sym arr int[4]
+  #1 addr #0 int *
+  #2 sym i@17:13 int
+  #3 load #2 int
+  #4 cast #3 long int
+  #5 ptradd *4 #1 #4 int *
+  #6 deref #5 int
+  #7 load #6 int
+  #8 return #7
+  #9 block #8
+unit ptr.c:18:1 func neg int(int *)
+  #0 sym p@18:14 int *
+  #1 load #0 int *
+  #2 const -1 long int
+  #3 ptradd *4 #1 #2 int *
+  #4 deref #3 int
+  #5 load #4 int
+  #6 return #5
+  #7 block #6
+unit ptr.c:19:1 func two int(int (*)[2], int,  int)
+  #0 sym a@19:13 int (*)[2]
+  #1 load #0 int (*)[2]
+  #2 sym i@19:26 int
+  #3 load #2 int
+  #4 cast #3 long int
+  #5 ptradd *8 #1 #4 int (*)[2]
+  #6 deref #5 int[2]
+  #7 addr #6 int *
+  #8 sym j@19:33 int
+  #9 load #8 int
+  #10 cast #9 long int
+  #11 ptradd *4 #7 #10 int *
+  #12 deref #11 int
+  #13 load #12 int
+  #14 return #13
+  #15 block #14
+unit ptr.c:20:1 func decay int *(void)
+  #0 sym arr int[4]
+  #1 addr #0 int *
+  #2 return #1
+  #3 block #2
+unit ptr.c:21:1 func whole int (*(void))[4]
+  #0 sym arr int[4]
+  #1 addr #0 int (*)[4]
+  #2 return #1
+  #3 block #2
+unit ptr.c:22:1 func nullcmp int(int *)
+  #0 sym p@22:18 int *
+  #1 load #0 int *
+  #2 const 0 int *
+  #3 cmp == #1 #2 int
+  #4 sym p@22:18 int *
+  #5 load #4 int *
+  #6 const 0 int *
+  #7 cmp != #5 #6 int
+  #8 logor #3 #7 int
+  #9 return #8
+  #10 block #9
+unit ptr.c:23:1 func ptrcmp int(int *, int *, void *)
+  #0 sym p@23:17 int *
+  #1 load #0 int *
+  #2 sym q@23:25 int *
+  #3 load #2 int *
+  #4 cmp < #1 #3 int
+  #5 sym v@23:34 void *
+  #6 load #5 void *
+  #7 sym p@23:17 int *
+  #8 load #7 int *
+  #9 cast #8 void *
+  #10 cmp == #6 #9 int
+  #11 logand #4 #10 int
+  #12 sym p@23:17 int *
+  #13 load #12 int *
+  #14 unop ! #13 int
+  #15 logand #11 #14 int
+  #16 return #15
+  #17 block #16
+unit ptr.c:24:1 func cond int(int *, int)
+  #0 sym c@24:22 int
+  #1 load #0 int
+  #2 sym p@24:15 int *
+  #3 load #2 int *
+  #4 const 0 int *
+  #5 cond #1 #3 #4 int *
+  #6 const 0 int *
+  #7 cmp != #5 #6 int
+  #8 return #7
+  #9 block #8
+unit ptr.c:25:1 func tobool _Bool(int *)
+  #0 sym p@25:19 int *
+  #1 load #0 int *
+  #2 cast #1 _Bool
+  #3 local b@25:30 #2 _Bool
+  #4 sym b@25:30 _Bool
+  #5 load #4 _Bool
+  #6 return #5
+  #7 block #3 #6
+unit ptr.c:26:1 func frompointer long int(int *)
+  #0 sym p@26:23 int *
+  #1 load #0 int *
+  #2 cast #1 long int
+  #3 return #2
+  #4 block #3
+unit ptr.c:27:1 func fromlong int *(long int)
+  #0 sym v@27:20 long int
+  #1 load #0 long int
+  #2 cast #1 int *
+  #3 return #2
+  #4 block #3
+unit ptr.c:28:1 func voidp void *(char *)
+  #0 sym p@28:19 char *
+  #1 load #0 char *
+  #2 const 1 long int
+  #3 ptradd *1 #1 #2 char *
+  #4 cast #3 void *
+  #5 return #4
+  #6 block #5
+unit ptr.c:29:1 func fp int(int (*)(int), int)
+  #0 sym f@29:14 int (*)(int)
+  #1 load #0 int (*)(int)
+  #2 sym x@29:27 int
+  #3 load #2 int
+  #4 call * #1 #3 int
+  #5 sym f@29:14 int (*)(int)
+  #6 load #5 int (*)(int)
+  #7 deref #6 int(int)
+  #8 addr #7 int (*)(int)
+  #9 sym x@29:27 int
+  #10 load #9 int
+  #11 call * #8 #10 int
+  #12 binop + #4 #11 int
+  #13 return #12
+  #14 block #13
+unit ptr.c:30:5 decl call_named int(int)
+unit ptr.c:31:1 func viaaddr int(int)
+  #0 sym call_named int(int)
+  #1 addr #0 int (*)(int)
+  #2 local f@31:28 #1 int (*)(int)
+  #3 sym call_named int(int)
+  #4 addr #3 int (*)(int)
+  #5 sym x@31:17 int
+  #6 load #5 int
+  #7 call * #4 #6 int
+  #8 sym f@31:28 int (*)(int)
+  #9 load #8 int (*)(int)
+  #10 sym x@31:17 int
+  #11 load #10 int
+  #12 call * #9 #11 int
+  #13 binop + #7 #12 int
+  #14 return #13
+  #15 block #2 #14
+unit ptr.c:32:1 func volat int(volatile int *)
+  #0 sym p@32:25 volatile int *
+  #1 load #0 volatile int *
+  #2 deref #1 volatile int
+  #3 load #2 int
+  #4 return #3
+  #5 block #4
+unit ptr.c:33:1 unsupported: side effect in compound lvalue

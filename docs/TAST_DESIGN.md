@@ -513,3 +513,47 @@ comparison `tests/tast_gcc.py`.
 - **Decisions confirmed.** The enum `switch` case conversion equals gcc's
   (probe in section 12's table). `unit_err` (parser flag or `nerrors` delta)
   skipped 8 libuv units, none in lua54.
+
+## 15. T2 results (2026-10-18)
+
+T2 (docs/TAST_T2_PLAN.md) is built in `src/c/tast.c`: pointers, arrays,
+decay, pointer arithmetic, function designators and calls through pointers,
+`.`/`->`, structs and unions by value, bit-fields, string literals as values.
+
+- **Shape.** Three lvalue nodes (`sym`, `deref`, `field`; `str` for a string
+  literal) and `load`/`store`/`addr` over them; `a[i]` is `deref(ptradd(a,
+  i))`, `p->f` is `field(deref p)`, decay and `&` are `addr`, a function
+  designator is `addr` of a function `sym`. `ptradd` (element size in the
+  node, index converted to `ptrdiff_t`) and `ptrdiff` are the only new
+  shape lowerings. Conditions and `!`/`&&`/`||` take pointers raw, as they
+  take integers. No new rule table: pointer conversions are the T1 `conv()`
+  with a pointer target, so a qualification change (`char *` to `const char
+  *`) is a `cast` node.
+- **Field nodes carry a byte offset, a bit offset within that byte and a
+  width** (width 0: a whole member), all derived from `find_field`'s total
+  bit offset. `tests/tast_layout.py` compares them with where gcc-13 puts 26
+  members (packed, aligned, anonymous unions and structs, zero-width and
+  mixed-type bit-fields): 0 mismatches.
+- **Compound assignment and `++`/`--` name the lvalue twice**, which is safe
+  only without side effects; an lvalue with `EF_SIDE` (other than a plain
+  variable) makes the unit `unsupported: side effect in compound lvalue`
+  until the T6 templates add temporaries.
+- **Coverage** (run `2026-10-18-tast-t2-coverage`, option on 0.77 s against
+  0.62 s off on lua54): lua54, 1,578 functions elaborate (T1: 30), 665 units
+  unsupported: builtin or undeclared call 250, floating type 168,
+  unprototyped or variadic call 134, global initializer 69, static or extern
+  local 30, unprototyped definition 10, side effect in compound lvalue 2,
+  `va_arg` 2. libuv: 1,379 functions (T1: 21), 184 unsupported: statement
+  expression 99, unprototyped or variadic call 37, static or extern local
+  15, global initializer 15, floating type 10; 8 skipped for errors. The
+  verifier found nothing on any elaborated unit.
+- **gcc comparison** (`tests/tast_gcc.py` on the T2 tests): 32 of 59
+  functions have the same cast multiset. The differences are gcc's:
+  indexes and pointer offsets are converted to `sizetype` (unsigned) where
+  cereal converts to `ptrdiff_t`; qualification and `void *` casts that gcc
+  does not print; bit-field loads that gcc prints as casts to the field type.
+  Bit-field correctness rests on the layout test and the goldens.
+- **Deviations from the plan.** `str` holds only its type (the bytes are not
+  exported yet; parked). The gcc differential was not extended to
+  `POINTER_PLUS_EXPR`/indirection counts. `deref` also allows a function type
+  (`*fp` before decay).

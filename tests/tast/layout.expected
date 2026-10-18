@@ -1,0 +1,235 @@
+tast 1 target x86_64-linux-gnu
+unit layout.c:5:1 decl
+unit layout.c:24:16 func get_a long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +0 #2 char
+  #4 load #3 char
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_b long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +1 bit 0 width 3 #2 int
+  #4 load #3 int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_c long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +1 bit 3 width 5 #2 unsigned int
+  #4 load #3 unsigned int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_d long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +2 bit 0 width 12 #2 unsigned int
+  #4 load #3 unsigned int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_e long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +4 bit 0 width 20 #2 unsigned int
+  #4 load #3 unsigned int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_f long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +8 bit 0 width 40 #2 long int
+  #4 load #3 long int
+  #5 return #4
+  #6 block #5
+unit layout.c:24:16 func get_g long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +13 #2 char
+  #4 load #3 char
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_h long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +16 #2 short int
+  #4 load #3 short int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_i long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +18 bit 0 width 1 #2 unsigned int
+  #4 load #3 unsigned int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_j long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +20 #2 int
+  #4 load #3 int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_k long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +20 #2 char
+  #4 load #3 char
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_l long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +24 #2 char
+  #4 load #3 char
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_m long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +32 #2 long int
+  #4 load #3 long int
+  #5 return #4
+  #6 block #5
+unit layout.c:24:16 func get_n long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +40 bit 0 width 1 #2 _Bool
+  #4 load #3 _Bool
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_o long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +40 bit 1 width 33 #2 long long unsigned int
+  #4 load #3 long long unsigned int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_p long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +48 bit 0 width 31 #2 int
+  #4 load #3 int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_q long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +52 bit 0 width 4 #2 unsigned char
+  #4 load #3 unsigned char
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:24:16 func get_r long int(struct S *)
+  #0 sym p@24:39 struct S *
+  #1 load #0 struct S *
+  #2 deref #1 struct S
+  #3 field +53 bit 0 width 7 #2 unsigned char
+  #4 load #3 unsigned char
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:27:1 decl
+unit layout.c:35:17 func kget_a long int(struct K *)
+  #0 sym p@35:41 struct K *
+  #1 load #0 struct K *
+  #2 deref #1 struct K
+  #3 field +0 #2 char
+  #4 load #3 char
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:35:17 func kget_b long int(struct K *)
+  #0 sym p@35:41 struct K *
+  #1 load #0 struct K *
+  #2 deref #1 struct K
+  #3 field +1 #2 int
+  #4 load #3 int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:35:17 func kget_c long int(struct K *)
+  #0 sym p@35:41 struct K *
+  #1 load #0 struct K *
+  #2 deref #1 struct K
+  #3 field +5 bit 0 width 5 #2 short int
+  #4 load #3 short int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:35:17 func kget_d long int(struct K *)
+  #0 sym p@35:41 struct K *
+  #1 load #0 struct K *
+  #2 deref #1 struct K
+  #3 field +5 bit 5 width 20 #2 int
+  #4 load #3 int
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:35:17 func kget_e long int(struct K *)
+  #0 sym p@35:41 struct K *
+  #1 load #0 struct K *
+  #2 deref #1 struct K
+  #3 field +9 #2 char
+  #4 load #3 char
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:38:1 decl
+unit layout.c:40:17 func lget_a long int(struct L *)
+  #0 sym p@40:41 struct L *
+  #1 load #0 struct L *
+  #2 deref #1 struct L
+  #3 field +0 #2 char
+  #4 load #3 char
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6
+unit layout.c:40:17 func lget_b long int(struct L *)
+  #0 sym p@40:41 struct L *
+  #1 load #0 struct L *
+  #2 deref #1 struct L
+  #3 field +8 #2 long int
+  #4 load #3 long int
+  #5 return #4
+  #6 block #5
+unit layout.c:40:17 func lget_c long int(struct L *)
+  #0 sym p@40:41 struct L *
+  #1 load #0 struct L *
+  #2 deref #1 struct L
+  #3 field +16 #2 char
+  #4 load #3 char
+  #5 cast #4 long int
+  #6 return #5
+  #7 block #6

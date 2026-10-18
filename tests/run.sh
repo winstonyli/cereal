@@ -513,6 +513,16 @@ if [ -d "$ROOT/tests/tast" ]; then
         done
     done
     cd "$ROOT"
+    # member offsets and bit-field positions against gcc (docs/TAST_T2_PLAN.md)
+    if command -v gcc-13 >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+        if python3 -P "$ROOT/tests/tast_layout.py" "$CEREAL" \
+            "$ROOT/tests/tast/layout.c" >"$TMP/layout.out" 2>&1 </dev/null; then
+            ok
+        else
+            bad "tast/layout against gcc"
+            head -10 "$TMP/layout.out" | sed 's/^/    /'
+        fi
+    fi
 fi
 
 # 14. C symbol index: golden `--dump-symbols` (plain and from cells), and

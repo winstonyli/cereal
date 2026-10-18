@@ -1,0 +1,248 @@
+tast 1 target x86_64-linux-gnu
+unit agg.c:2:1 decl
+unit agg.c:3:1 decl
+unit agg.c:4:1 decl
+unit agg.c:5:1 decl
+unit agg.c:6:10 decl gp struct P
+unit agg.c:7:1 func getx int(struct P *)
+  #0 sym p@7:20 struct P *
+  #1 load #0 struct P *
+  #2 deref #1 struct P
+  #3 field +0 #2 int
+  #4 load #3 int
+  #5 return #4
+  #6 block #5
+unit agg.c:8:1 func getx2 int(struct P)
+  #0 sym p@8:20 struct P
+  #1 field +0 #0 int
+  #2 load #1 int
+  #3 return #2
+  #4 block #3
+unit agg.c:9:1 func getl long int(struct Q *)
+  #0 sym q@9:21 struct Q *
+  #1 load #0 struct Q *
+  #2 deref #1 struct Q
+  #3 field +0 #2 struct P
+  #4 field +8 #3 long int
+  #5 load #4 long int
+  #6 sym q@9:21 struct Q *
+  #7 load #6 struct Q *
+  #8 deref #7 struct Q
+  #9 field +24 #8 struct P *
+  #10 load #9 struct P *
+  #11 deref #10 struct P
+  #12 field +8 #11 long int
+  #13 load #12 long int
+  #14 binop + #5 #13 long int
+  #15 return #14
+  #16 block #15
+unit agg.c:10:1 func gets short int(struct Q *, int)
+  #0 sym q@10:22 struct Q *
+  #1 load #0 struct Q *
+  #2 deref #1 struct Q
+  #3 field +16 #2 short int[3]
+  #4 addr #3 short int *
+  #5 sym i@10:29 int
+  #6 load #5 int
+  #7 cast #6 long int
+  #8 ptradd *2 #4 #7 short int *
+  #9 deref #8 short int
+  #10 load #9 short int
+  #11 return #10
+  #12 block #11
+unit agg.c:11:1 func setc void(struct P *)
+  #0 sym p@11:21 struct P *
+  #1 load #0 struct P *
+  #2 deref #1 struct P
+  #3 field +4 #2 char
+  #4 const 3 char
+  #5 store #3 #4 char
+  #6 exprstmt #5
+  #7 sym p@11:21 struct P *
+  #8 load #7 struct P *
+  #9 deref #8 struct P
+  #10 field +0 #9 int
+  #11 sym p@11:21 struct P *
+  #12 load #11 struct P *
+  #13 deref #12 struct P
+  #14 field +0 #13 int
+  #15 load #14 int
+  #16 const 2 int
+  #17 binop + #15 #16 int
+  #18 store #10 #17 int
+  #19 exprstmt #18
+  #20 sym p@11:21 struct P *
+  #21 load #20 struct P *
+  #22 deref #21 struct P
+  #23 field +8 #22 long int
+  #24 sym p@11:21 struct P *
+  #25 load #24 struct P *
+  #26 deref #25 struct P
+  #27 field +8 #26 long int
+  #28 load #27 long int
+  #29 const 1 long int
+  #30 binop + #28 #29 long int
+  #31 store #23 #30 long int
+  #32 post #31 long int
+  #33 exprstmt #32
+  #34 block #6 #19 #33
+unit agg.c:12:1 func copy void(struct P *, struct P *)
+  #0 sym d@12:21 struct P *
+  #1 load #0 struct P *
+  #2 deref #1 struct P
+  #3 sym s@12:34 struct P *
+  #4 load #3 struct P *
+  #5 deref #4 struct P
+  #6 load #5 struct P
+  #7 store #2 #6 struct P
+  #8 exprstmt #7
+  #9 block #8
+unit agg.c:13:1 func ret struct P(struct P *)
+  #0 sym s@13:24 struct P *
+  #1 load #0 struct P *
+  #2 deref #1 struct P
+  #3 load #2 struct P
+  #4 return #3
+  #5 block #4
+unit agg.c:14:1 func pass struct P(struct P)
+  #0 sym s@14:24 struct P
+  #1 addr #0 struct P *
+  #2 call ret #1 struct P
+  #3 return #2
+  #4 block #3
+unit agg.c:15:1 func use void(void)
+  #0 sym gp struct P
+  #1 load #0 struct P
+  #2 local a@15:27 #1 struct P
+  #3 local b@15:44 struct P
+  #4 sym b@15:44 struct P
+  #5 sym a@15:27 struct P
+  #6 load #5 struct P
+  #7 store #4 #6 struct P
+  #8 exprstmt #7
+  #9 sym gp struct P
+  #10 sym b@15:44 struct P
+  #11 load #10 struct P
+  #12 store #9 #11 struct P
+  #13 exprstmt #12
+  #14 block #2 #3 #8 #13
+unit agg.c:16:1 func un int(union U *)
+  #0 sym u@16:17 union U *
+  #1 load #0 union U *
+  #2 deref #1 union U
+  #3 field +0 #2 char[8]
+  #4 addr #3 char *
+  #5 const 1 long int
+  #6 ptradd *1 #4 #5 char *
+  #7 deref #6 char
+  #8 const 1 char
+  #9 store #7 #8 char
+  #10 exprstmt #9
+  #11 sym u@16:17 union U *
+  #12 load #11 union U *
+  #13 deref #12 union U
+  #14 field +0 #13 int
+  #15 load #14 int
+  #16 return #15
+  #17 block #10 #16
+unit agg.c:17:1 func anon int(struct A *)
+  #0 sym a@17:20 struct A *
+  #1 load #0 struct A *
+  #2 deref #1 struct A
+  #3 field +4 #2 int
+  #4 load #3 int
+  #5 sym a@17:20 struct A *
+  #6 load #5 struct A *
+  #7 deref #6 struct A
+  #8 field +4 #7 char
+  #9 load #8 char
+  #10 cast #9 int
+  #11 binop + #4 #10 int
+  #12 return #11
+  #13 block #12
+unit agg.c:18:1 func memaddr int *(struct P *)
+  #0 sym p@18:24 struct P *
+  #1 load #0 struct P *
+  #2 deref #1 struct P
+  #3 field +0 #2 int
+  #4 addr #3 int *
+  #5 return #4
+  #6 block #5
+unit agg.c:19:1 func arrmem char(struct Q *)
+  #0 sym q@19:23 struct Q *
+  #1 load #0 struct Q *
+  #2 deref #1 struct Q
+  #3 field +16 #2 short int[3]
+  #4 addr #3 short int *
+  #5 cast #4 char *
+  #6 const 1 long int
+  #7 ptradd *1 #5 #6 char *
+  #8 deref #7 char
+  #9 load #8 char
+  #10 return #9
+  #11 block #10
+unit agg.c:20:1 func local_arr int(void)
+  #0 local a@20:27 int[3]
+  #1 sym a@20:27 int[3]
+  #2 addr #1 int *
+  #3 const 0 long int
+  #4 ptradd *4 #2 #3 int *
+  #5 deref #4 int
+  #6 const 1 int
+  #7 store #5 #6 int
+  #8 exprstmt #7
+  #9 sym a@20:27 int[3]
+  #10 addr #9 int *
+  #11 const 1 long int
+  #12 ptradd *4 #10 #11 int *
+  #13 deref #12 int
+  #14 sym a@20:27 int[3]
+  #15 addr #14 int *
+  #16 const 0 long int
+  #17 ptradd *4 #15 #16 int *
+  #18 deref #17 int
+  #19 load #18 int
+  #20 const 1 int
+  #21 binop + #19 #20 int
+  #22 store #13 #21 int
+  #23 exprstmt #22
+  #24 sym a@20:27 int[3]
+  #25 addr #24 int *
+  #26 const 1 long int
+  #27 ptradd *4 #25 #26 int *
+  #28 deref #27 int
+  #29 load #28 int
+  #30 return #29
+  #31 block #0 #8 #23 #30
+unit agg.c:21:1 func nested_dot int(void)
+  #0 local q@21:33 struct Q
+  #1 sym q@21:33 struct Q
+  #2 field +0 #1 struct P
+  #3 field +0 #2 int
+  #4 const 1 int
+  #5 store #3 #4 int
+  #6 exprstmt #5
+  #7 sym q@21:33 struct Q
+  #8 field +16 #7 short int[3]
+  #9 addr #8 short int *
+  #10 const 2 long int
+  #11 ptradd *2 #9 #10 short int *
+  #12 deref #11 short int
+  #13 const 2 short int
+  #14 store #12 #13 short int
+  #15 exprstmt #14
+  #16 sym q@21:33 struct Q
+  #17 field +0 #16 struct P
+  #18 field +0 #17 int
+  #19 load #18 int
+  #20 sym q@21:33 struct Q
+  #21 field +16 #20 short int[3]
+  #22 addr #21 short int *
+  #23 const 2 long int
+  #24 ptradd *2 #22 #23 short int *
+  #25 deref #24 short int
+  #26 load #25 short int
+  #27 cast #26 int
+  #28 binop + #19 #27 int
+  #29 return #28
+  #30 block #0 #6 #15 #29

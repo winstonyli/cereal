@@ -1,0 +1,195 @@
+tast 1 target x86_64-linux-gnu
+unit bitfield.c:2:1 decl
+unit bitfield.c:13:1 func lda int(struct B *)
+  #0 sym p@13:19 struct B *
+  #1 load #0 struct B *
+  #2 deref #1 struct B
+  #3 field +0 bit 0 width 3 #2 int
+  #4 load #3 int
+  #5 return #4
+  #6 block #5
+unit bitfield.c:14:1 func ldb unsigned int(struct B *)
+  #0 sym p@14:24 struct B *
+  #1 load #0 struct B *
+  #2 deref #1 struct B
+  #3 field +0 bit 3 width 5 #2 unsigned int
+  #4 load #3 unsigned int
+  #5 return #4
+  #6 block #5
+unit bitfield.c:15:1 func sum int(struct B *)
+  #0 sym p@15:19 struct B *
+  #1 load #0 struct B *
+  #2 deref #1 struct B
+  #3 field +0 bit 0 width 3 #2 int
+  #4 load #3 int
+  #5 sym p@15:19 struct B *
+  #6 load #5 struct B *
+  #7 deref #6 struct B
+  #8 field +0 bit 3 width 5 #7 unsigned int
+  #9 load #8 unsigned int
+  #10 cast #9 int
+  #11 binop + #4 #10 int
+  #12 sym p@15:19 struct B *
+  #13 load #12 struct B *
+  #14 deref #13 struct B
+  #15 field +1 bit 0 width 1 #14 unsigned int
+  #16 load #15 unsigned int
+  #17 cast #16 int
+  #18 binop + #11 #17 int
+  #19 return #18
+  #20 block #19
+unit bitfield.c:16:1 func ldf long int(struct B *)
+  #0 sym p@16:20 struct B *
+  #1 load #0 struct B *
+  #2 deref #1 struct B
+  #3 field +8 bit 0 width 40 #2 long int
+  #4 load #3 long int
+  #5 return #4
+  #6 block #5
+unit bitfield.c:17:1 func lde unsigned int(struct B *)
+  #0 sym p@17:24 struct B *
+  #1 load #0 struct B *
+  #2 deref #1 struct B
+  #3 field +4 bit 0 width 32 #2 unsigned int
+  #4 load #3 unsigned int
+  #5 const 1 unsigned int
+  #6 binop + #4 #5 unsigned int
+  #7 return #6
+  #8 block #7
+unit bitfield.c:18:1 func st void(struct B *, int)
+  #0 sym p@18:19 struct B *
+  #1 load #0 struct B *
+  #2 deref #1 struct B
+  #3 field +0 bit 0 width 3 #2 int
+  #4 sym v@18:26 int
+  #5 load #4 int
+  #6 store #3 #5 int
+  #7 exprstmt #6
+  #8 sym p@18:19 struct B *
+  #9 load #8 struct B *
+  #10 deref #9 struct B
+  #11 field +0 bit 3 width 5 #10 unsigned int
+  #12 sym v@18:26 int
+  #13 load #12 int
+  #14 cast #13 unsigned int
+  #15 store #11 #14 unsigned int
+  #16 exprstmt #15
+  #17 sym p@18:19 struct B *
+  #18 load #17 struct B *
+  #19 deref #18 struct B
+  #20 field +1 bit 1 width 1 #19 _Bool
+  #21 sym v@18:26 int
+  #22 load #21 int
+  #23 cast #22 _Bool
+  #24 store #20 #23 _Bool
+  #25 exprstmt #24
+  #26 block #7 #16 #25
+unit bitfield.c:19:1 func stv int(struct B *, int)
+  #0 sym p@19:19 struct B *
+  #1 load #0 struct B *
+  #2 deref #1 struct B
+  #3 field +0 bit 0 width 3 #2 int
+  #4 sym v@19:26 int
+  #5 load #4 int
+  #6 store #3 #5 int
+  #7 return #6
+  #8 block #7
+unit bitfield.c:20:1 func inc void(struct B *)
+  #0 sym p@20:20 struct B *
+  #1 load #0 struct B *
+  #2 deref #1 struct B
+  #3 field +0 bit 0 width 3 #2 int
+  #4 sym p@20:20 struct B *
+  #5 load #4 struct B *
+  #6 deref #5 struct B
+  #7 field +0 bit 0 width 3 #6 int
+  #8 load #7 int
+  #9 const 1 int
+  #10 binop + #8 #9 int
+  #11 store #3 #10 int
+  #12 post #11 int
+  #13 exprstmt #12
+  #14 sym p@20:20 struct B *
+  #15 load #14 struct B *
+  #16 deref #15 struct B
+  #17 field +0 bit 3 width 5 #16 unsigned int
+  #18 sym p@20:20 struct B *
+  #19 load #18 struct B *
+  #20 deref #19 struct B
+  #21 field +0 bit 3 width 5 #20 unsigned int
+  #22 load #21 unsigned int
+  #23 cast #22 int
+  #24 const 1 int
+  #25 binop + #23 #24 int
+  #26 cast #25 unsigned int
+  #27 store #17 #26 unsigned int
+  #28 exprstmt #27
+  #29 sym p@20:20 struct B *
+  #30 load #29 struct B *
+  #31 deref #30 struct B
+  #32 field +1 bit 0 width 1 #31 unsigned int
+  #33 sym p@20:20 struct B *
+  #34 load #33 struct B *
+  #35 deref #34 struct B
+  #36 field +1 bit 0 width 1 #35 unsigned int
+  #37 load #36 unsigned int
+  #38 const 1 int
+  #39 cast #37 int
+  #40 binop + #39 #38 int
+  #41 cast #40 unsigned int
+  #42 store #32 #41 unsigned int
+  #43 exprstmt #42
+  #44 sym p@20:20 struct B *
+  #45 load #44 struct B *
+  #46 deref #45 struct B
+  #47 field +17 bit 0 width 7 #46 unsigned int
+  #48 sym p@20:20 struct B *
+  #49 load #48 struct B *
+  #50 deref #49 struct B
+  #51 field +17 bit 0 width 7 #50 unsigned int
+  #52 load #51 unsigned int
+  #53 const 2 int
+  #54 cast #52 int
+  #55 binop - #54 #53 int
+  #56 cast #55 unsigned int
+  #57 store #47 #56 unsigned int
+  #58 exprstmt #57
+  #59 block #13 #28 #43 #58
+unit bitfield.c:21:1 func cmp int(struct B *)
+  #0 sym p@21:19 struct B *
+  #1 load #0 struct B *
+  #2 deref #1 struct B
+  #3 field +0 bit 0 width 3 #2 int
+  #4 load #3 int
+  #5 sym p@21:19 struct B *
+  #6 load #5 struct B *
+  #7 deref #6 struct B
+  #8 field +0 bit 3 width 5 #7 unsigned int
+  #9 load #8 unsigned int
+  #10 cast #9 int
+  #11 cmp < #4 #10 int
+  #12 return #11
+  #13 block #12
+unit bitfield.c:22:1 func viaobj int(void)
+  #0 local x@22:29 struct B
+  #1 sym x@22:29 struct B
+  #2 field +17 bit 0 width 7 #1 unsigned int
+  #3 const 100 unsigned int
+  #4 store #2 #3 unsigned int
+  #5 exprstmt #4
+  #6 sym x@22:29 struct B
+  #7 field +16 #6 char
+  #8 const 1 char
+  #9 store #7 #8 char
+  #10 exprstmt #9
+  #11 sym x@22:29 struct B
+  #12 field +17 bit 0 width 7 #11 unsigned int
+  #13 load #12 unsigned int
+  #14 sym x@22:29 struct B
+  #15 field +16 #14 char
+  #16 load #15 char
+  #17 cast #13 int
+  #18 cast #16 int
+  #19 binop + #17 #18 int
+  #20 return #19
+  #21 block #0 #5 #10 #20
