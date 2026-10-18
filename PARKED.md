@@ -68,9 +68,6 @@ Format: what; why parked; trigger; evidence; status. This is the one list: the d
 | Multi-pass `--diff` | Needs simulated passes through overlays; one pass is enough to review |
 | Fix-its on `-D` (virtual) or system files | Decided against: no source to edit |
 
-## Older, outside the sections above
-Items parked in prose elsewhere (A4_DESIGN.md around lines 297 and 306, B2_DESIGN.md 441, C_DESIGN.md 534 and 1066, B4_DESIGN.md 468 and 675, HISTORY.md 174, B5_DESIGN.md 826, 1082 and 1457) are not migrated yet; grep `parked` in docs/ for them.
-
 ## Guard-of-header preconditions (docs/CONFIG_DESIGN.md section 6, S4)
 - **What:** offering `defined(GUARD)` ("skip that header") as a precondition when the header includes a system header.
 - **Why parked:** the fold replays system headers from the real run, so what a later include of the same header would define when the first is skipped is not modelled; the list was wrong for 14 of libuv's 54 refusals (Round 280). `explain_fixed` never offers it.
@@ -104,3 +101,14 @@ Items parked in prose elsewhere (A4_DESIGN.md around lines 297 and 306, B2_DESIG
 - **Trigger:** asked for, or libuv-style option groups in a project without a config header.
 - **Evidence:** `pc_enable_edits`, src/analysis/pc.c (refuses any word that is not a `-D`/`-U` of a header macro or of a macro nobody defines); docs/LSP.md, Code actions.
 - **Status:** parked.
+
+## Older items from prose (migrated 2026-10-17; trigger "asked for" unless stated)
+| What | Why parked | Evidence | Status |
+|---|---|---|---|
+| `--progress` for `check --compile-commands` | Output already streams in order; worth it only for a database large enough to want it. | A4_DESIGN 4.9 (~line 301) | parked |
+| Headers without entries in replay use no nearest-entry guess (the LSP does, `config.c`) | Replay checks only what an entry names. | A4_DESIGN 4.10 | parked |
+| `-idirafter`, `--sysroot`, `-ffreestanding` and the other `IGN_SEMANTIC` flags; `g++`-compiled `.c` files; MSVC entries | Linux gcc entries only; noted once per run. | A4_DESIGN 4.10 | parked |
+| Enum constant in `#if`: a by-name fallback | The preprocessor sees an identifier, so no event; rename treats the group as a blocker. | B2_DESIGN ~line 445 | parked |
+| A final whole-set re-run after the fix phases | Each phase is gated on the accepted set; the next pass and the probe check the final text. Trigger: a case where a combination escapes the last pass. | C_DESIGN ~line 1066 | parked |
+| Parser errors first: diagnostic order in a unit with syntax errors | Order stays parser-errors-first; matching gcc's interleaving is not needed yet. | HISTORY ~line 174 | parked |
+| Sharing record chunks across projects | Needs reference counting; chunks are per project so whole-project eviction stays correct. | B5_DESIGN ~line 826 | parked |
