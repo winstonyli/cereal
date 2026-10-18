@@ -821,9 +821,10 @@ static uint32_t e_call_t(El *e, uint32_t i)
         ft = type_canon(&c->tt, csym(c, ref)->ty);
     } else if (ntag(c, callee) == N_IDENT && c->sym[callee] == SYM_NONE) {
         ft = builtin_ft(e, callee);
-        if (!ft && atomic_kind(cident(c, cnode_ident(c, callee))) == 1) {
-            /* the generic __atomic_load/store/exchange/compare_exchange: no
-             * prototype, the arguments are pointers and ints taken as they are */
+        if (!ft && atomic_kind(cident(c, cnode_ident(c, callee)))) {
+            /* the overloaded __atomic_ and __sync built-ins (generic or sized by
+             * the pointer operand): no prototype, the arguments are pointers and
+             * ints taken as they are */
             uint32_t j;
             for (j = 1; j < nk; j++) {
                 uint32_t x = rv(e, k[j]);
@@ -1589,7 +1590,8 @@ static void print_tree(El *e, FILE *out)
             break;
         case TO_INTRIN:
             if (nd->width == 2) {
-                fprintf(out, " %s generic", cident(c, nd->sym) + 2);
+                const char *nm = cident(c, nd->sym);
+                fprintf(out, " %s %s", nm + 2, atomic_kind(nm) == 1 ? "generic" : "sized");
                 break;
             }
             fprintf(out, " %s", cident(c, nd->sym) + 10);
@@ -1878,8 +1880,8 @@ static void verify(El *e, FILE *out)
             bool sz_ok = false;
             uint32_t f0 = nd->op == TO_CALL && nd->pun ? 1 : 0, np;
             if (nd->op == TO_INTRIN && nd->width == 2) {
-                if (atomic_kind(cident(c, nd->sym)) != 1)
-                    vbad(e, out, i, "generic builtin");
+                if (!atomic_kind(cident(c, nd->sym)))
+                    vbad(e, out, i, "atomic builtin");
                 for (j = 0; j < nd->nkids; j++)
                     if (!ISVAL(KID(j)) || (KIND(KID(j)->ty) != TY_PTR && !is_int(c, KID(j)->ty)))
                         vbad(e, out, i, "argument is not a pointer or integer value");

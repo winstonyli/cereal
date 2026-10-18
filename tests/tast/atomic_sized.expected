@@ -1,0 +1,71 @@
+tast 1 target x86_64-linux-gnu
+unit atomic_sized.c:2:1 func ld int(int *)
+  #0 sym p@2:13 int *
+  #1 load #0 int *
+  #2 const 5 int
+  #3 intrin atomic_load_n sized #1 #2 int
+  #4 return #3
+  #5 block #4
+unit atomic_sized.c:3:1 func st void(long int *, long int)
+  #0 sym p@3:15 long int *
+  #1 load #0 long int *
+  #2 sym v@3:23 long int
+  #3 load #2 long int
+  #4 const 5 int
+  #5 intrin atomic_store_n sized #1 #3 #4 void
+  #6 exprstmt #5
+  #7 block #6
+unit atomic_sized.c:4:1 func fa int(int *)
+  #0 sym p@4:13 int *
+  #1 load #0 int *
+  #2 const 1 int
+  #3 const 5 int
+  #4 intrin atomic_fetch_add sized #1 #2 #3 int
+  #5 return #4
+  #6 block #5
+unit atomic_sized.c:5:1 func sf long int(long int *)
+  #0 sym p@5:15 long int *
+  #1 load #0 long int *
+  #2 const 2 int
+  #3 intrin sync_fetch_and_sub sized #1 #2 long int
+  #4 return #3
+  #5 block #4
+unit atomic_sized.c:6:1 func cas int(int *, int,  int)
+  #0 sym p@6:14 int *
+  #1 load #0 int *
+  #2 sym o@6:21 int
+  #3 load #2 int
+  #4 sym n@6:28 int
+  #5 load #4 int
+  #6 intrin sync_bool_compare_and_swap sized #1 #3 #5 _Bool
+  #7 cast #6 int
+  #8 return #7
+  #9 block #8
+unit atomic_sized.c:7:1 func cx int(int *, int *, int)
+  #0 sym p@7:13 int *
+  #1 load #0 int *
+  #2 sym o@7:21 int *
+  #3 load #2 int *
+  #4 sym n@7:28 int
+  #5 load #4 int
+  #6 const 0 int
+  #7 const 5 int
+  #8 const 5 int
+  #9 intrin atomic_compare_exchange_n sized #1 #3 #5 #6 #7 #8 _Bool
+  #10 cast #9 int
+  #11 return #10
+  #12 block #11
+unit atomic_sized.c:8:1 func gen int(int *, int *)
+  #0 sym p@8:14 int *
+  #1 load #0 int *
+  #2 sym o@8:22 int *
+  #3 load #2 int *
+  #4 const 5 int
+  #5 intrin atomic_load generic #1 #3 #4 void
+  #6 exprstmt #5
+  #7 sym o@8:22 int *
+  #8 load #7 int *
+  #9 deref #8 int
+  #10 load #9 int
+  #11 return #10
+  #12 block #6 #11
