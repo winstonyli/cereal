@@ -176,10 +176,9 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 | What | Why parked / trigger | Evidence | Status |
 |---|---|---|---|
 | Real K&R definitions (`int kr(a) int a; {..}`) are unsupported | No corpus unit needs them. Trigger: a corpus file uses one. | `tests/tast/unsup.c` `kr` | parked |
-| Calls through an implicit declaration (`sym == SYM_NONE`, e.g. libuv `setproctitle`) are unsupported | One libuv unit. Trigger: more than a handful of units. | `docs/TAST_T3_PLAN.md` "Verify list" | parked |
+| Calls through an implicit declaration (`sym == SYM_NONE`, e.g. libuv `setproctitle`) are unsupported | One libuv unit; an implicit declaration is C89 only and the checker already diagnoses it. Decided 2026-10-18: not worth a rule. Revisit if a corpus has many. | `docs/TAST_T3_PLAN.md` "Verify list" | decided against |
 | File-scope compound literals (`&(T){..}` in static data) are unsupported | Needs an anonymous static object (T5). Trigger: T5. | `src/c/tast.c` `init_elems` | parked |
 | `(long)&x + 8` at file scope is accepted by gcc but the checker reports "initializer element is not constant" | A checker divergence found by the T3b test; not a TAST matter. Trigger: asked for. | `tests/tast/data.c` (removed line); gcc-13 accepts | parked |
-| The typed atomics (`__atomic_*_n`, `__atomic_fetch_*`, `__sync_*`) are unsupported | Their value arguments convert to the pointee type, which needs a rule per kind (`atomic_kind` 2 and 3). One libuv unit (`__atomic_fetch_add`). Trigger: a coverage pass where they are a top bucket. | `src/c/tast.c` `e_call_t`; run `2026-10-18-tast-atomic-coverage` | parked |
 
 ## TAST T4 leftovers
 
@@ -198,7 +197,6 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 |---|---|---|---|
 | Bit-field compound lvalue with a side effect (`sp()->bf += 1`) | The address of a bit-field cannot be stored in a `tmp` (`docs/TAST_T5_PLAN.md` section 2); stays `unsupported: bit-field with side effect`. Trigger: a corpus unit hits it. | `tests/tast/tmp.c` `bits` (no corpus unit, 2026-10-18) | parked |
 | Data oracle skips objects holding a label address (`labaddr`) | A label address is a `.text` relocation with an offset the pass cannot know; the oracle skips the object instead of comparing positions (`docs/TAST_T6_PLAN.md` section 4). Trigger: a unit whose other data in the same object needs checking. | lua54 `lvm.c` `disptab` (2 objects skipped, 2026-10-18) | parked |
-| `asm` statements | One unit; no back-end meaning yet. Trigger: a consumer that needs them. | libuv `async.c:319` | parked |
+| `asm` statements | One unit; an `asm` statement has no meaning for the structured form (opaque text, operands, clobbers). Decided 2026-10-18; revisit when a consumer needs it. | libuv `async.c:319` | decided against |
 | Array-typed parameters/objects (`const uv_buf_t bufs[]`, array of unknown form) | Two libuv units; read the cases before deciding. Trigger: more than a handful of units. | libuv `stream.c:753`, `:980` | parked |
 | Block-scope compound literal `(T){...}` is unsupported ("lvalue form") | It is an anonymous object: needs the same anonymous-object mechanism as the file-scope row above (a `tmp`-like or `local`-like leaf without a declared symbol). Trigger: a design pass over compound literals. | libuv `linux.c:1856` (`(*ci)[i++] = (uv_cpu_info_t){..}`), found 2026-10-18 | parked |
-| Calls through an implicit declaration; typed `__atomic_*` | Already listed under "TAST T3 leftovers". | libuv `bsd-proctitle.c:52`, `async.c:65` | parked |
