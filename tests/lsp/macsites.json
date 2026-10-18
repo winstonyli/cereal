@@ -1,0 +1,17 @@
+[
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/macsites", "capabilities": {"general": {"positionEncodings": ["utf-8", "utf-16"]}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"open": "macsites/main.c"},
+ {"idle": true},
+ {"note": "Q7: at an invocation the macro wins (hover, definition, highlight, rename act on the macro); the entity its body spells is listed at each invocation by references and highlight, and its rename is refused (R4/R7)"},
+ {"send": {"id": 2, "method": "textDocument/hover", "params": {"textDocument": {"uri": "file://$ROOT/macsites/main.c"}, "position": {"line": 6, "character": 22}}}},
+ {"send": {"id": 3, "method": "textDocument/definition", "params": {"textDocument": {"uri": "file://$ROOT/macsites/main.c"}, "position": {"line": 6, "character": 22}}}},
+ {"send": {"id": 4, "method": "textDocument/documentHighlight", "params": {"textDocument": {"uri": "file://$ROOT/macsites/main.c"}, "position": {"line": 6, "character": 22}}}},
+ {"send": {"id": 5, "method": "textDocument/prepareRename", "params": {"textDocument": {"uri": "file://$ROOT/macsites/main.c"}, "position": {"line": 6, "character": 22}}}},
+ {"send": {"id": 6, "method": "textDocument/rename", "params": {"textDocument": {"uri": "file://$ROOT/macsites/main.c"}, "position": {"line": 6, "character": 22}, "newName": "other"}}},
+ {"send": {"id": 7, "method": "textDocument/rename", "params": {"textDocument": {"uri": "file://$ROOT/macsites/main.c"}, "position": {"line": 0, "character": 4}, "newName": "other"}}},
+ {"send": {"id": 8, "method": "textDocument/references", "params": {"textDocument": {"uri": "file://$ROOT/macsites/main.c"}, "position": {"line": 0, "character": 4}, "context": {"includeDeclaration": true}}}},
+ {"send": {"id": 9, "method": "textDocument/documentHighlight", "params": {"textDocument": {"uri": "file://$ROOT/macsites/main.c"}, "position": {"line": 0, "character": 4}}}},
+ {"send": {"id": 10, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]
