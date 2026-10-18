@@ -362,9 +362,7 @@ declarations, `a ?: b`, void casts, string array copy, `-O` option
 dependence; (9) VLA `sizeof` is evaluated; (10) the layout check only
 guards the checker, said so; (11) section 6 aligned with what S1 found.
 Round 5 (site inspection, section 12): round 4 item 5 was itself wrong (`EF_BFPROMOTE` is set in `e_member` and survives), corrected; conversions are derivable except initializers, so the verdict is a hybrid. The lexer does skip comments and emit no token (`lex.c:1317`), so section 8(b) stands.
-Not checked by the reviewer or by me: the gcc examples in section 2 were
-checked by me earlier in WSL; (the lexer claim is now checked)
-unverified.
+Round 4 note: the gcc examples in section 2 were checked by me in WSL; the lexer claim of section 8 was checked in round 5.
 
 ## 12. S0 site inspection (2026-10-18, by reading; a Sonnet subagent, key claims re-checked by hand)
 
