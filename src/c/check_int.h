@@ -300,6 +300,22 @@ enum {
  * compound literal, &&label) with this bit. */
 #define CB_NODE 0x40000000u
 
+/* --dump-tast: the initializer elements the checker placed (cinit.c), in
+ * the order it placed them; tast.c normalizes and consumes them. */
+enum { TI_ELEM, TI_CLEAR, TI_BAD };
+typedef struct TIRec {
+    uint8_t kind;
+    bool str;                /* TI_ELEM: a string literal initializing an array */
+    bool side;               /* TI_ELEM: the value has side effects */
+    uint32_t list;           /* the INIT_LIST node of the initializer */
+    uint64_t bit0, bits;     /* the object's bits the record covers */
+    TypeId ty;               /* TI_ELEM: the target type */
+    uint32_t width;          /* TI_ELEM: bit-field width, 0 otherwise */
+    uint32_t node;           /* TI_ELEM: the value's node, NOB: none */
+    uint32_t fence;          /* TI_CLEAR: records before this index only */
+    uint64_t strn;           /* TI_ELEM str: units including the NUL */
+} TIRec;
+
 struct Checker {
     SrcMgr *sm;
     Interner *in;
@@ -312,6 +328,7 @@ struct Checker {
     VEC(CSym) gsyms;         /* persistent */
     VEC(CSym) lsyms;         /* this unit's */
     SymIdxB *sx;             /* the symbol index builder; NULL: off */
+    VEC(TIRec) tinit;        /* --dump-tast: this unit's initializer elements */
     VEC(StrInit) strinits;   /* string initializers of const char arrays (cexpr.c) */
     VEC(char *) dep_msgs;    /* deprecated/unavailable attribute messages */
     VEC(uint32_t) ucn_seen;           /* cexpr.c: literal tokens whose escapes were checked */

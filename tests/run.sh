@@ -514,8 +514,9 @@ if [ -d "$ROOT/tests/tast" ]; then
     done
     cd "$ROOT"
     # with the symbol index on, every symbol of an elaborated unit has a declaration
-    for f in ptr agg flow; do
-        if "$CEREAL" check --target=x86_64-linux-gnu --dump-symbols --verify-tast \n            "$ROOT/tests/tast/$f.c" 2>/dev/null </dev/null | grep -q "^verify:"; then
+    for f in ptr agg flow init data; do
+        if "$CEREAL" check --target=x86_64-linux-gnu --dump-symbols --verify-tast \
+            "$ROOT/tests/tast/$f.c" 2>/dev/null </dev/null | grep -q "^verify:"; then
             bad "tast/$f index declarations"
         else
             ok
@@ -529,6 +530,14 @@ if [ -d "$ROOT/tests/tast" ]; then
         else
             bad "tast/layout against gcc"
             head -10 "$TMP/layout.out" | sed 's/^/    /'
+        fi
+        # static data bytes and relocations against gcc (docs/TAST_T3_PLAN.md)
+        if python3 -P "$ROOT/tests/tast_data.py" "$CEREAL" \
+            "$ROOT/tests/tast/init.c" "$ROOT/tests/tast/data.c" >"$TMP/data.out" 2>&1 </dev/null; then
+            ok
+        else
+            bad "tast/data against gcc"
+            head -10 "$TMP/data.out" | sed 's/^/    /'
         fi
     fi
 fi

@@ -13,7 +13,7 @@ unit vcall.c:10:1 func fixed_only int(const char *)
   #3 return #2
   #4 block #3
 unit vcall.c:11:1 func small int(char,  short int,  _Bool,  unsigned char)
-  #0 str char[3]
+  #0 str u1 256400 char[3]
   #1 addr #0 char *
   #2 cast #1 const char *
   #3 sym c@11:16 char
@@ -32,7 +32,7 @@ unit vcall.c:11:1 func small int(char,  short int,  _Bool,  unsigned char)
   #16 return #15
   #17 block #16
 unit vcall.c:12:1 func ptrs int(const char *, int *)
-  #0 str char[6]
+  #0 str u1 257320257000 char[6]
   #1 addr #0 char *
   #2 cast #1 const char *
   #3 sym s@12:22 const char *
@@ -43,7 +43,7 @@ unit vcall.c:12:1 func ptrs int(const char *, int *)
   #8 return #7
   #9 block #8
 unit vcall.c:13:1 func strct int(struct S)
-  #0 str char[3]
+  #0 str u1 256400 char[3]
   #1 addr #0 char *
   #2 cast #1 const char *
   #3 sym s@13:20 struct S
@@ -52,7 +52,7 @@ unit vcall.c:13:1 func strct int(struct S)
   #6 return #5
   #7 block #6
 unit vcall.c:14:1 func bits int(struct B *)
-  #0 str char[6]
+  #0 str u1 257520257500 char[6]
   #1 addr #0 char *
   #2 cast #1 const char *
   #3 sym b@14:20 struct B *
@@ -70,7 +70,7 @@ unit vcall.c:14:1 func bits int(struct B *)
   #15 return #14
   #16 block #15
 unit vcall.c:15:1 func en int(enum E)
-  #0 str char[3]
+  #0 str u1 256400 char[3]
   #1 addr #0 char *
   #2 cast #1 const char *
   #3 sym e@15:15 enum E
@@ -93,7 +93,7 @@ unit vcall.c:16:1 func up int(int,  char)
 unit vcall.c:17:1 func ind int(int)
   #0 sym vfp int (*)(const char *, ...)
   #1 load #0 int (*)(const char *, ...)
-  #2 str char[2]
+  #2 str u1 7800 char[2]
   #3 addr #2 char *
   #4 cast #3 const char *
   #5 sym i@17:13 int

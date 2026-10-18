@@ -735,3 +735,52 @@ void lit_str_units(const char *s, size_t n, unsigned width, uint64_t *units)
             (*units)++;
     }
 }
+
+/* One piece's code units (without the terminator) as bytes, each unit
+ * little-endian in width bytes (the targets are little-endian); the same
+ * walk as lit_str_units.  Returns the byte count; out may be NULL. */
+size_t lit_str_bytes(const char *s, size_t n, unsigned width, uint8_t *out)
+{
+    const char *end = s + n, *q;
+    int prefix = lit_str_prefix(s, n);
+    size_t m = 0;
+    q = s + (prefix == '8' ? 3 : prefix ? 2 : 1);
+    if (end > q && end[-1] == '"')
+        end--;
+#define PUT(u) do { uint32_t u_ = (u); unsigned b_; \
+    for (b_ = 0; b_ < width; b_++, m++) if (out) out[m] = (uint8_t)(u_ >> (8 * b_)); } while (0)
+    while (q < end) {
+        bool ucn;
+        const char *at = q;
+        uint32_t c;
+        if (width == 1) {
+            if (*q != '\\') {
+                PUT((unsigned char)*q);
+                q++;
+                continue;
+            }
+            c = lit_char_one(&q, end, false, &ucn);
+            if (ucn) {
+                unsigned k, len = utf8_len(c);
+                for (k = 0; k < len; k++) {
+                    unsigned sh = 6 * (len - 1 - k);
+                    PUT(len == 1 ? c
+                        : k == 0 ? ((0xF00u >> len) & 0xFF) | (c >> sh)
+                                 : 0x80 | ((c >> sh) & 0x3F));
+                }
+            } else {
+                PUT(c & 0xFF);
+            }
+            continue;
+        }
+        c = lit_char_one(&q, end, true, &ucn);
+        if (width == 2 && c >= 0x10000 && (ucn || *at != '\\')) {
+            PUT(0xD800 | ((c - 0x10000) >> 10));
+            PUT(0xDC00 | ((c - 0x10000) & 0x3FF));
+        } else {
+            PUT(c);
+        }
+    }
+#undef PUT
+    return m;
+}

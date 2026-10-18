@@ -56,5 +56,7 @@ typedef void (*LitEscFn)(void *ctx, int level, const char *msg);
 void lit_escape_diags(const char *s, size_t n, bool pedantic, LitEscFn fn,
                       void *ctx);
 void lit_str_units(const char *s, size_t n, unsigned width, uint64_t *units);
+/* The same walk, as bytes (code units little-endian); out may be NULL to count. */
+size_t lit_str_bytes(const char *s, size_t n, unsigned width, uint8_t *out);
 
 #endif

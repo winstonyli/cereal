@@ -1,0 +1,226 @@
+tast 1 target x86_64-linux-gnu
+unit init.c:3:1 decl
+unit init.c:4:1 decl
+unit init.c:5:1 decl
+unit init.c:6:1 decl
+unit init.c:7:42 decl Ent Ent
+unit init.c:9:1 data
+  #0 const 5 int
+  #1 elem +0 #0 int
+  #2 data g0 #1 int
+  #3 block #2
+unit init.c:10:1 data
+  #0 const 1 int
+  #1 elem +0 #0 int
+  #2 const 2 int
+  #3 elem +4 #2 int
+  #4 data g1 #1 #3 int[4]
+  #5 block #4
+unit init.c:11:1 data
+  #0 const 1 int
+  #1 elem +0 #0 int
+  #2 const 2 int
+  #3 elem +4 #2 int
+  #4 const 3 int
+  #5 elem +8 #4 int
+  #6 data g2 #1 #3 #5 int[3]
+  #7 block #6
+unit init.c:12:1 data
+  #0 const 1 int
+  #1 elem +0 #0 int
+  #2 const 120 char
+  #3 elem +4 #2 char
+  #4 const 2 short int
+  #5 elem +6 #4 short int
+  #6 const 3 short int
+  #7 elem +8 #6 short int
+  #8 data g3 #1 #3 #5 #7 struct P
+  #9 block #8
+unit init.c:13:1 data
+  #0 const 7 int
+  #1 elem +0 #0 int
+  #2 const 9 short int
+  #3 elem +8 #2 short int
+  #4 data g4 #1 #3 struct P
+  #5 block #4
+unit init.c:14:1 data
+  #0 const 1 unsigned int
+  #1 elem +0 bit 0 width 3 #0 unsigned int
+  #2 const 2 unsigned int
+  #3 elem +0 bit 3 width 5 #2 unsigned int
+  #4 const 3 int
+  #5 elem +4 #4 int
+  #6 data g5 #1 #3 #5 struct B
+  #7 block #6
+unit init.c:15:1 data
+  #0 const 1 char
+  #1 elem +0 #0 char
+  #2 const 2 char
+  #3 elem +1 #2 char
+  #4 data g6 #1 #3 union U
+  #5 block #4
+unit init.c:16:1 data
+  #0 const 1 int
+  #1 elem +0 #0 int
+  #2 const 4 int
+  #3 elem +20 #2 int
+  #4 data g7 #1 #3 struct N
+  #5 block #4
+unit init.c:17:1 data
+  #0 str u1 68656c6c6f00 char[6]
+  #1 elem +0 #0 char[6]
+  #2 data g8 #1 char[6]
+  #3 block #2
+unit init.c:18:1 data
+  #0 str u1 61626300 char[4]
+  #1 elem +0 #0 char[8]
+  #2 data g9 #1 char[8]
+  #3 block #2
+unit init.c:19:1 data
+  #0 str u1 686900 char[3]
+  #1 addr #0 char *
+  #2 cast #1 const char *
+  #3 elem +0 #2 const char *
+  #4 data g10 #3 const char *
+  #5 block #4
+unit init.c:20:1 data
+  #0 sym g0 int
+  #1 addr #0 int *
+  #2 elem +0 #1 int *
+  #3 data g11 #2 int *
+  #4 block #3
+unit init.c:21:1 data
+  #0 sym g1 int[4]
+  #1 addr #0 int *
+  #2 const 2 long int
+  #3 ptradd *4 #1 #2 int *
+  #4 deref #3 int
+  #5 addr #4 int *
+  #6 elem +0 #5 int *
+  #7 data g12 #6 int *
+  #8 block #7
+unit init.c:22:1 data
+  #0 sym g0 int
+  #1 addr #0 int *
+  #2 cast #1 long int
+  #3 elem +0 #2 long int
+  #4 data g13 #3 long int
+  #5 block #4
+unit init.c:23:1 data
+  #0 str u1 6100 char[2]
+  #1 addr #0 char *
+  #2 cast #1 const char *
+  #3 elem +0 #2 const char *
+  #4 const 1 int
+  #5 elem +8 #4 int
+  #6 str u1 626300 char[3]
+  #7 addr #6 char *
+  #8 cast #7 const char *
+  #9 elem +16 #8 const char *
+  #10 const 2 int
+  #11 elem +24 #10 int
+  #12 data g14 #3 #5 #9 #11 struct <anonymous>[2]
+  #13 block #12
+unit init.c:24:1 data
+  #0 const 1 int
+  #1 elem +0 #0 int
+  #2 const 2 char
+  #3 elem +4 #2 char
+  #4 const 3 short int
+  #5 elem +6 #4 short int
+  #6 const 4 short int
+  #7 elem +8 #6 short int
+  #8 data g15 #1 #3 #5 #7 struct P
+  #9 block #8
+unit init.c:25:1 data
+  #0 const 2 int
+  #1 elem +0 #0 int
+  #2 const 3 int
+  #3 elem +4 #2 int
+  #4 data g17 #1 #3 int[3]
+  #5 block #4
+unit init.c:26:1 data
+  #0 const 2 int
+  #1 elem +0 #0 int
+  #2 data g18 #1 struct P
+  #3 block #2
+unit init.c:27:12 decl g19 int
+unit init.c:29:1 func f void(int)
+  #0 const 1 int
+  #1 elem +0 #0 int
+  #2 sym k@29:12 int
+  #3 load #2 int
+  #4 elem +4 #3 int
+  #5 local a@31:9 #1 #4 int[3]
+  #6 sym k@29:12 int
+  #7 load #6 int
+  #8 elem +0 #7 int
+  #9 const 121 char
+  #10 elem +4 #9 char
+  #11 local p@32:14 #8 #10 struct P
+  #12 sym k@29:12 int
+  #13 load #12 int
+  #14 cast #13 short int
+  #15 elem +8 #14 short int
+  #16 const 3 int
+  #17 elem +0 #16 int
+  #18 local q@33:14 #15 #17 struct P
+  #19 str u1 78797a00 char[4]
+  #20 elem +0 #19 char[4]
+  #21 local s@34:10 #20 char[4]
+  #22 str u1 616200 char[3]
+  #23 elem +0 #22 char[2]
+  #24 local t@35:10 #23 char[2]
+  #25 const 1 unsigned int
+  #26 elem +0 bit 0 width 3 #25 unsigned int
+  #27 sym k@29:12 int
+  #28 load #27 int
+  #29 cast #28 unsigned int
+  #30 elem +0 bit 3 width 5 #29 unsigned int
+  #31 local b@36:14 #26 #30 struct B
+  #32 sym k@29:12 int
+  #33 load #32 int
+  #34 elem +0 #33 int
+  #35 local u@37:13 #34 union U
+  #36 const 1 int
+  #37 elem +0 #36 int
+  #38 sym k@29:12 int
+  #39 load #38 int
+  #40 elem +8 #39 int
+  #41 const 2 int
+  #42 elem +12 #41 int
+  #43 local m@38:9 #37 #40 #42 int[2][2]
+  #44 const 3 int
+  #45 elem +0 #44 int
+  #46 data sa@39:16 #45 int
+  #47 const 1 int
+  #48 elem +0 #47 int
+  #49 data sb@40:16 #48 int[2]
+  #50 str u1 737300 char[3]
+  #51 addr #50 char *
+  #52 cast #51 const char *
+  #53 elem +0 #52 const char *
+  #54 data sc@41:24 #53 const char *
+  #55 data sn@43:16 int
+  #56 const 4 int
+  #57 elem +0 #56 int
+  #58 local z@44:9 #57 int
+  #59 sym ext int
+  #60 sym sa@39:16 int
+  #61 load #60 int
+  #62 sym sb@40:16 int[2]
+  #63 addr #62 int *
+  #64 const 0 long int
+  #65 ptradd *4 #63 #64 int *
+  #66 deref #65 int
+  #67 load #66 int
+  #68 binop + #61 #67 int
+  #69 sym sn@43:16 int
+  #70 load #69 int
+  #71 binop + #68 #70 int
+  #72 sym z@44:9 int
+  #73 load #72 int
+  #74 binop + #71 #73 int
+  #75 store #59 #74 int
+  #76 exprstmt #75
+  #77 block #5 #11 #18 #21 #24 #31 #35 #43 #46 #49 #54 #55 #58 #76

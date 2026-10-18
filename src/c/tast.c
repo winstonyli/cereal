@@ -15,6 +15,7 @@
 
 #include "c/cexpr_int.h"
 #include "c/csymidx.h"
+#include "c/lit.h"
 
 #define TN UINT32_MAX
 
@@ -30,7 +31,8 @@
     X(IF, "if") X(WHILE, "while") X(DO, "do") X(FOR, "for")                  \
     X(SWITCH, "switch") X(CASE, "case") X(DEFAULT, "default")                \
     X(BREAK, "break") X(CONTINUE, "continue") X(GOTO, "goto")                \
-    X(LABEL, "label") X(RETURN, "return") X(NOP, "nop")
+    X(LABEL, "label") X(RETURN, "return") X(NOP, "nop")                     \
+    X(ELEM, "elem") X(DATA, "data")
 
 typedef enum {
 #define X(n, s) TO_##n,
@@ -52,19 +54,22 @@ typedef struct TNode {
     uint8_t op;
     uint16_t pun;           /* unop/binop/cmp: the operator (Punct); field: bit
                              * offset within byte val; call: 1 when indirect;
-                             * 2 never (intrin has its own op) */
+                             * 2 never (intrin has its own op); elem: bit
+                             * offset within byte val; str: unit size */
     TypeId ty;
     SrcLoc loc;
     uint32_t kid0, nkids;   /* kids: El.kids[kid0 .. kid0 + nkids) */
     int64_t val;            /* const: value; case: value; goto/label: ident id;
                              * field: byte offset; ptradd/ptrdiff: element size;
                              * call, intrin: arguments converted to parameter
-                             * types (the rest get the default promotions) */
+                             * types (the rest get the default promotions);
+                             * elem: byte offset; str: offset in El.bytes */
     uint32_t sym;           /* sym, local, call: the symbol ref; intrin: the
                              * identifier id of the builtin's name */
     uint32_t width;         /* field: bit-field width, 0 otherwise; call,
                              * intrin: 1 when the callee is variadic or
-                             * unprototyped */
+                             * unprototyped; elem: bit-field width, 0 whole;
+                             * str: byte length including the terminator */
 } TNode;
 
 typedef struct El {
@@ -73,6 +78,7 @@ typedef struct El {
     VEC(uint32_t) kids;
     TypeId ret;             /* the function's return type */
     TypeId swty;            /* the innermost switch's promoted type, 0: none */
+    VEC(uint8_t) bytes;     /* the code units of the str nodes */
     char why[96];           /* non-empty: unsupported, and the reason */
 } El;
 
@@ -251,6 +257,32 @@ static uint32_t ptradd(El *e, TypeId pty, uint32_t p, uint32_t x, bool neg, SrcL
     return mk(e, TO_PTRADD, unqual(e->c, pty), loc, (int64_t)elem_size(e->c, pty), 0, 0, ka, 2);
 }
 
+/* A string literal's code units, decoded once into El.bytes (little-endian
+ * units, terminator included); the node holds where they are. */
+static uint32_t str_node(El *e, uint32_t i, TypeId t, SrcLoc loc)
+{
+    Checker *c = e->c;
+    bool ok = false;
+    unsigned unit = (unsigned)type_size(&c->tt, type_base(&c->tt, type_canon(&c->tt, t)), &ok);
+    uint32_t np = node_pieces(c, i), k, off = (uint32_t)e->bytes.len, j;
+    if (!ok || (unit != 1 && unit != 2 && unit != 4))
+        return unsup(e, "string element size");
+    for (k = 0; k < np; k++) {
+        size_t len, m;
+        const char *s = ttext(c, c->nodes[i].tok + k, &len);
+        size_t at = e->bytes.len;
+        m = lit_str_bytes(s, len, unit, NULL);
+        for (j = 0; j < m; j++)
+            vec_push(&e->bytes, 0);
+        lit_str_bytes(s, len, unit, e->bytes.data + at);
+    }
+    for (j = 0; j < unit; j++)
+        vec_push(&e->bytes, 0);
+    j = mk(e, TO_STR, t, loc, off, 0, unit, NULL, 0);
+    e->nodes.data[j].width = (uint32_t)e->bytes.len - off;
+    return j;
+}
+
 /* The lvalue an expression designates: a variable (or function), *p, a
  * member, a string literal.  a[i] is *(a + i); p->f is (*p).f. */
 static uint32_t lval(El *e, uint32_t n)
@@ -279,7 +311,7 @@ static uint32_t lval(El *e, uint32_t n)
         return mk(e, TO_SYM, s->ty, loc, 0, ref, 0, NULL, 0);
     }
     case N_STRING:
-        return mk(e, TO_STR, t, loc, 0, 0, 0, NULL, 0);
+        return str_node(e, i, t, loc);
     case N_INDEX: {
         uint32_t a, x, p, ix;
         if (nkids(c, i, k, 2) < 2)
@@ -831,6 +863,149 @@ static uint32_t declared_of(El *e, uint32_t n, uint32_t *after)
     return r;
 }
 
+/* ---- initializers (docs/TAST_T3_PLAN.md, section 3) -------------------------- */
+
+typedef VEC(const TIRec *) TIRecPtrVec;
+
+static int tir_cmp(const void *a, const void *b)
+{
+    const TIRec *x = *(TIRec *const *)a, *y = *(TIRec *const *)b;
+    return x->bit0 < y->bit0 ? -1 : x->bit0 > y->bit0;
+}
+
+static bool tir_inside(const TIRec *r, uint64_t lo, uint64_t hi)
+{
+    return r->bit0 >= lo && r->bit0 + r->bits <= hi;
+}
+
+/* Drop the live elements the extent [lo, hi) of a later record replaces:
+ * the ones before fence that lie inside it.  An overridden element with a
+ * side effect cannot be dropped from an automatic object. */
+static bool tir_drop(El *e, TIRecPtrVec *live, uint64_t lo, uint64_t hi,
+                     uint32_t fence, bool is_static)
+{
+    Checker *c = e->c;
+    size_t m, w = 0;
+    for (m = 0; m < live->len; m++) {
+        const TIRec *r = live->data[m];
+        if ((uint32_t)(r - c->tinit.data) < fence && tir_inside(r, lo, hi)) {
+            if (r->side && !is_static) {
+                unsup(e, "overridden initializer with a side effect");
+                return false;
+            }
+            continue;
+        }
+        live->data[w++] = r;
+    }
+    live->len = w;
+    return true;
+}
+
+/* The elements that initialize an object of type oty from init (an
+ * INIT_LIST, or a bare expression), appended to out as elem nodes: one per
+ * scalar, string or aggregate value, with the later of two overlapping
+ * ones winning.  A static object's come sorted by offset; an automatic
+ * object's keep source order (they are evaluated in it). */
+static bool init_elems(El *e, uint32_t init, TypeId oty, bool is_static, SrcLoc loc,
+                       U32Vec *out)
+{
+    Checker *c = e->c;
+    TIRecPtrVec live = {0};
+    size_t i, m;
+    bool good = false;
+    TypeId ou = unqual(c, oty);
+    if (ntag(c, init) != N_INIT_LIST) {
+        uint32_t x = strip_paren(c, init), ka[1], id;
+        if (type_ckind(&c->tt, ou) == TY_ARRAY) {
+            if (ntag(c, x) != N_STRING) {
+                unsup(e, "array initializer form");
+                return false;
+            }
+            ka[0] = lval(e, x);
+            if (ka[0] == TN)
+                return false;
+            id = mk(e, TO_ELEM, ou, loc, 0, 0, 0, ka, 1);
+        } else {
+            ka[0] = conv(e, rv(e, init), ou, loc);
+            if (ka[0] == TN)
+                return false;
+            id = mk(e, TO_ELEM, ou, loc, 0, 0, 0, ka, 1);
+        }
+        vec_push(out, id);
+        return true;
+    }
+    for (i = 0; i < c->tinit.len; i++) {
+        const TIRec *r = &c->tinit.data[i];
+        if (r->list != init)
+            continue;
+        if (r->kind == TI_BAD) {
+            unsup(e, "flexible array or incomplete initializer");
+            goto done;
+        }
+        if (r->kind == TI_CLEAR) {
+            if (!tir_drop(e, &live, r->bit0, r->bit0 + r->bits, r->fence, is_static))
+                goto done;
+            continue;
+        }
+        if (!tir_drop(e, &live, r->bit0, r->bit0 + r->bits, (uint32_t)i, is_static))
+            goto done;
+        vec_push(&live, r);
+    }
+    if (is_static)
+        qsort(live.data, live.len, sizeof *live.data, tir_cmp);
+    for (m = 0; m < live.len; m++) {
+        const TIRec *r = live.data[m];
+        TypeId ty = unqual(c, r->ty);
+        uint32_t ka[1], id, x;
+        if (r->node == UINT32_MAX) {
+            unsup(e, "compound literal initializer");
+            goto done;
+        }
+        x = strip_paren(c, r->node);
+        if (r->str) {
+            if (type_ckind(&c->tt, ty) == TY_ARRAY && (type_ent(&c->tt, type_canon(&c->tt, ty))->flags & TF_INCOMPLETE))
+                ty = ou;       /* char t[] = "..": the completed type */
+            if (ntag(c, x) != N_STRING) {
+                unsup(e, "string initializer form");
+                goto done;
+            }
+            ka[0] = lval(e, x);
+        } else {
+            if (!ok_ty(e, ty)) {
+                unsup(e, "%s", why_type(e, ty));
+                goto done;
+            }
+            ka[0] = conv(e, rv(e, r->node), ty, loc);
+        }
+        if (ka[0] == TN)
+            goto done;
+        id = mk(e, TO_ELEM, ty, loc, (int64_t)(r->bit0 / 8), 0, (unsigned)(r->bit0 % 8), ka, 1);
+        e->nodes.data[id].width = r->width;
+        vec_push(out, id);
+    }
+    good = true;
+done:
+    vec_free(&live);
+    return good;
+}
+
+/* A static object: its elements (none: zero-initialized), where it is
+ * declared. */
+static uint32_t data_node(El *e, uint32_t ref, uint32_t init, SrcLoc loc)
+{
+    U32Vec el = {0};
+    const CSym *s = csym(e->c, ref);
+    uint32_t id = TN;
+    if (!ok_ty(e, s->ty)) {
+        unsup(e, "%s", why_type(e, s->ty));
+        return TN;
+    }
+    if (init == NO_NODE || init_elems(e, init, s->ty, true, loc, &el))
+        id = mk(e, TO_DATA, s->ty, loc, 0, ref, 0, el.data, (uint32_t)el.len);
+    vec_free(&el);
+    return id;
+}
+
 /* The local variables a block-scope declaration introduces. */
 static void decl(El *e, uint32_t n, U32Vec *out)
 {
@@ -858,9 +1033,14 @@ static void decl(El *e, uint32_t n, U32Vec *out)
             unsup(e, "local function declaration");
             break;
         }
-        if (s->sc == SC_STATIC || s->sc == SC_EXTERN) {
-            unsup(e, "static or extern local");
-            break;
+        if (s->sc == SC_EXTERN)     /* names a global declared elsewhere */
+            continue;
+        if (s->sc == SC_STATIC) {
+            id = data_node(e, ref, init, loc);
+            if (id == TN)
+                break;
+            vec_push(out, id);
+            continue;
         }
         if (!ok_ty(e, s->ty)) {
             unsup(e, "%s", why_type(e, s->ty));
@@ -868,8 +1048,15 @@ static void decl(El *e, uint32_t n, U32Vec *out)
         }
         if (init != NO_NODE) {
             if (ntag(c, init) == N_INIT_LIST || type_ckind(&c->tt, s->ty) == TY_ARRAY) {
-                unsup(e, "braced initializer");
-                break;
+                U32Vec el = {0};
+                bool good = init_elems(e, init, s->ty, false, loc, &el);
+                if (good)
+                    id = mk(e, TO_LOCAL, s->ty, loc, 0, ref, 0, el.data, (uint32_t)el.len);
+                vec_free(&el);
+                if (!good)
+                    break;
+                vec_push(out, id);
+                continue;
             }
             ik[0] = conv(e, rv(e, init), s->ty, loc);
             if (ik[0] == TN)
@@ -1120,9 +1307,21 @@ static void print_tree(El *e, FILE *out)
             else
                 fprintf(out, " %llu", (unsigned long long)nd->val);
             break;
-        case TO_SYM: case TO_LOCAL:
+        case TO_SYM: case TO_LOCAL: case TO_DATA:
             fputc(' ', out);
             put_sym(c, out, nd->sym);
+            break;
+        case TO_STR: {
+            uint32_t b;
+            fprintf(out, " u%u ", nd->pun);
+            for (b = 0; b < nd->width; b++)
+                fprintf(out, "%02x", e->bytes.data[nd->val + b]);
+            break;
+        }
+        case TO_ELEM:
+            fprintf(out, " +%lld", (long long)nd->val);
+            if (nd->width)
+                fprintf(out, " bit %u width %u", nd->pun, nd->width);
             break;
         case TO_CALL:
             if (nd->pun)
@@ -1161,7 +1360,7 @@ static void print_tree(El *e, FILE *out)
         }
         for (j = 0; j < nd->nkids; j++)
             fprintf(out, " #%u", e->kids.data[nd->kid0 + j]);
-        if (IS_EXPR(nd->op) || nd->op == TO_LOCAL) {
+        if (IS_EXPR(nd->op) || nd->op == TO_LOCAL || nd->op == TO_ELEM || nd->op == TO_DATA) {
             fputc(' ', out);
             put_type(c, out, nd->ty);
         }
@@ -1176,6 +1375,75 @@ static void vbad(El *e, FILE *out, size_t i, const char *msg)
     if (e->c->opt.tast_bad)
         ++*e->c->opt.tast_bad;
     fprintf(out, "verify: #%zu %s: %s\n", i, op_names[e->nodes.data[i].op], msg);
+}
+
+static bool sconst(El *e, uint32_t i);
+
+/* An lvalue whose address is a link-time constant. */
+static bool slv(El *e, uint32_t i)
+{
+    const TNode *nd = &e->nodes.data[i];
+    const uint32_t *k = e->kids.data + nd->kid0;
+    switch (nd->op) {
+    case TO_SYM: {
+        const CSym *s = csym(e->c, nd->sym);
+        return !(nd->sym & SYM_LOCAL) || s->sc == SC_STATIC || s->sc == SC_EXTERN ||
+               s->kind == CS_FUNC;
+    }
+    case TO_STR: return true;
+    case TO_FIELD: return slv(e, k[0]);
+    case TO_DEREF: return sconst(e, k[0]);
+    default: return false;
+    }
+}
+
+/* A value computed at translation time from constants and addresses. */
+static bool sconst(El *e, uint32_t i)
+{
+    const TNode *nd = &e->nodes.data[i];
+    const uint32_t *k = e->kids.data + nd->kid0;
+    uint32_t j;
+    switch (nd->op) {
+    case TO_CONST: return true;
+    case TO_ADDR: return slv(e, k[0]);
+    case TO_CAST: case TO_UNOP: case TO_BINOP: case TO_CMP: case TO_LOGAND:
+    case TO_LOGOR: case TO_COND: case TO_PTRADD: case TO_PTRDIFF:
+        for (j = 0; j < nd->nkids; j++)
+            if (!sconst(e, k[j]))
+                return false;
+        return true;
+    default: return false;
+    }
+}
+
+/* The elem kids of a data or local node: inside the object, and for a
+ * static object also ordered and disjoint. */
+static void velems(El *e, FILE *out, size_t i, bool is_static)
+{
+    Checker *c = e->c;
+    const TNode *nd = &e->nodes.data[i];
+    const uint32_t *k = e->kids.data + nd->kid0;
+    bool ok = false;
+    uint64_t os = type_size(&c->tt, nd->ty, &ok) * 8, end = 0;
+    uint32_t j;
+    for (j = 0; j < nd->nkids; j++) {
+        const TNode *el = &e->nodes.data[k[j]];
+        uint64_t lo, sz;
+        if (el->op != TO_ELEM) {
+            vbad(e, out, i, "kid is not an elem");
+            return;
+        }
+        sz = el->width ? el->width : 8 * type_size(&c->tt, el->ty, &ok);
+        lo = (uint64_t)el->val * 8 + (el->width ? el->pun : 0);
+        if (ok && lo + sz > os)
+            vbad(e, out, i, "elem outside the object");
+        if (is_static && lo < end)
+            vbad(e, out, i, "elems overlap or are out of order");
+        if (is_static && el->nkids == 1 && e->nodes.data[e->kids.data[el->kid0]].op != TO_STR &&
+            !sconst(e, e->kids.data[el->kid0]))
+            vbad(e, out, i, "static initializer is not constant");
+        end = lo + sz;
+    }
 }
 
 /* Checks the tree against the shape rules of docs/TAST_T1_PLAN.md: kids
@@ -1202,7 +1470,7 @@ static void verify(El *e, FILE *out)
 #define ISVAL(p) (IS_EXPR((p)->op) && !is_lvop((p)->op))
 #define ISLV(p) is_lvop((p)->op)
 #define KIND(t) type_ckind(&c->tt, (t))
-#define ISSTMT(p) (!IS_EXPR((p)->op))
+#define ISSTMT(p) (!IS_EXPR((p)->op) && (p)->op != TO_ELEM)
 #define SAME(p, q) (mainv(c, (p)->ty) == mainv(c, (q)->ty))
 #define VOIDT type_is_void(&c->tt, nd->ty)
         for (j = 0; j < nd->nkids; j++) {
@@ -1423,8 +1691,24 @@ static void verify(El *e, FILE *out)
         case TO_LOCAL:
             if (c->sx && !csx_decl_of(c, nd->sym))
                 vbad(e, out, i, "symbol has no index declaration");
-            if (nd->nkids > 1 || (nd->nkids && (!ISVAL(KID(0)) || !SAME(KID(0), nd))))
+            if (nd->nkids && KID(0)->op == TO_ELEM)
+                velems(e, out, i, false);
+            else if (nd->nkids > 1 || (nd->nkids && (!ISVAL(KID(0)) || !SAME(KID(0), nd))))
                 vbad(e, out, i, "initializer");
+            break;
+        case TO_DATA:
+            if (c->sx && !csx_decl_of(c, nd->sym))
+                vbad(e, out, i, "symbol has no index declaration");
+            if (csym(c, nd->sym)->kind != CS_OBJ || nd->ty != csym(c, nd->sym)->ty)
+                vbad(e, out, i, "not an object of the symbol's type");
+            velems(e, out, i, true);
+            break;
+        case TO_ELEM:
+            NEED(1);
+            if (nd->width && !ok_int(e, nd->ty))
+                vbad(e, out, i, "bit-field type");
+            if (KIND(nd->ty) == TY_ARRAY ? KID(0)->op != TO_STR : !ISVAL(KID(0)) || !SAME(KID(0), nd))
+                vbad(e, out, i, "operand");
             break;
         case TO_EXPRSTMT:
             NEED(1);
@@ -1500,11 +1784,18 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
     uint32_t nk = nkids(c, root, NULL, 0), *k, j, any = 0;
     k = xmalloc((nk ? nk : 1) * sizeof *k);
     nkids(c, root, k, nk);
-    for (j = 0; j < nk; j++) {
-        uint32_t init;
-        if (ntag(c, k[j]) == N_INIT_DECL && declared_of(e, k[j], &init) != NO_NODE &&
-            init != NO_NODE)
-            unsup(e, "global initializer");
+    U32Vec items = {0};
+    for (j = 0; j < nk && !e->why[0]; j++) {     /* initialized objects: data nodes */
+        uint32_t d, init, id;
+        if (ntag(c, k[j]) != N_INIT_DECL)
+            continue;
+        d = declared_of(e, k[j], &init);
+        if (d == NO_NODE || !c->cb[d] || init == NO_NODE ||
+            csym(c, c->cb[d] - 1)->kind != CS_OBJ)
+            continue;
+        id = data_node(e, c->cb[d] - 1, init, cnode_loc(c, k[j]));
+        if (id != TN)
+            vec_push(&items, id);
     }
     for (j = 0; j < nk && !e->why[0]; j++) {
         uint32_t d, init;
@@ -1514,6 +1805,8 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
         if (d == NO_NODE || !c->cb[d])
             continue;
         any = 1;
+        if (init != NO_NODE && csym(c, c->cb[d] - 1)->kind == CS_OBJ)
+            continue;
         fputs("unit ", out);
         put_loc(c, out, cnode_loc(c, k[j]));
         fputs(" decl ", out);
@@ -1522,11 +1815,20 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
         put_type(c, out, csym(c, c->cb[d] - 1)->ty);
         fputc('\n', out);
     }
-    if (!any && !e->why[0]) {
+    if (items.len && !e->why[0]) {
+        block_of(e, &items, cnode_loc(c, root));
+        fputs("unit ", out);
+        put_loc(c, out, cnode_loc(c, root));
+        fputs(" data\n", out);
+        print_tree(e, out);
+        if (c->opt.verify_tast)
+            verify(e, out);
+    } else if (!any && !e->why[0]) {
         fputs("unit ", out);
         put_loc(c, out, cnode_loc(c, root));
         fputs(" decl\n", out);
     }
+    vec_free(&items);
     free(k);
 }
 
@@ -1625,4 +1927,5 @@ void tast_unit(Checker *c)
     }
     vec_free(&e.nodes);
     vec_free(&e.kids);
+    vec_free(&e.bytes);
 }

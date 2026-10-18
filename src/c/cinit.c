@@ -64,6 +64,8 @@ typedef struct IVal {
     TypeId type;
     uint64_t strn;           /* str: units including the NUL */
     PSet *ps;                /* V_CTOR: the elements */
+    uint32_t tin0;           /* V_CTOR: c->tinit.len when its level began */
+    bool tmerge;             /* V_CTOR: it continued an earlier sub-object */
 } IVal;
 
 typedef struct RS {
@@ -92,6 +94,8 @@ typedef struct Lvl {
     RS *rs_saved;
     IVal repl, e0;
     PSet *ps;
+    uint32_t tin0;           /* c->tinit.len when the level began */
+    bool tmerge;             /* it continued an earlier sub-object */
 } Lvl;
 
 typedef struct CCtx {
@@ -1331,6 +1335,97 @@ static void positional_designated(Checker *c, CCtx *x, uint32_t lt)
               sb_cstr(&x->path));
 }
 
+
+/* ---- --dump-tast: the elements placed (docs/TAST_T3_PLAN.md, 3.2) ----------- */
+
+/* The bits one level's current element starts at within the level. */
+static uint64_t tin_own(Checker *c, const Lvl *P, int64_t k)
+{
+    bool ok;
+    if (P->kind == LV_REC || P->kind == LV_UNI)
+        return k >= 0 && (uint32_t)k < P->nf ? lf(c, P, (uint32_t)k)->off_bits : 0;
+    if (P->kind == LV_ARR || P->kind == LV_VEC)
+        return (uint64_t)k * 8 * type_size(TT, P->elem, &ok);
+    return 0;
+}
+
+/* The bits level L itself starts at within the object. */
+static uint64_t tin_base(Checker *c, const Lvl *L)
+{
+    uint64_t off = 0;
+    const Lvl *P;
+    for (P = L->up; P && P->kind != LV_NULL; P = P->up)
+        off += tin_own(c, P, (P->kind == LV_REC || P->kind == LV_UNI)
+                                 ? (int64_t)P->fi : P->idx);
+    return off;
+}
+
+static void tin_add(Checker *c, CCtx *x, int kind, uint64_t bit0, uint64_t bits,
+                    uint32_t fence)
+{
+    TIRec r;
+    memset(&r, 0, sizeof r);
+    r.kind = (uint8_t)kind;
+    r.list = x->list;
+    r.bit0 = bit0;
+    r.bits = bits;
+    r.fence = fence;
+    r.node = NOB;
+    vec_push(&c->tinit, r);
+}
+
+static void tin_elem(Checker *c, CCtx *x, Lvl *L, int k, int64_t key, TypeId type,
+                     const IVal *v)
+{
+    uint64_t base, bit0, bits;
+    const Field *f = NULL;
+    bool ok = false;
+    TIRec r;
+    if (v->kind != V_EXPR && v->kind != V_CTOR)
+        return;
+    base = tin_base(c, L);
+    if (L->flex || L->fpend) {          /* a flexible array member's contents */
+        tin_add(c, x, TI_BAD, 0, 0, 0);
+        return;
+    }
+    if ((k == LV_REC || k == LV_UNI) && key >= 0 && (uint32_t)key < L->nf)
+        f = lf(c, L, (uint32_t)key);
+    bit0 = base + tin_own(c, L, key);
+    bits = type_size(TT, type, &ok) * 8;
+    if (!ok) {
+        tin_add(c, x, TI_BAD, 0, 0, 0);
+        return;
+    }
+    if (f && (f->flags & FF_BITFIELD))
+        bits = f->width;
+    if (k == LV_UNI && nelems(x, L) > 0) {      /* the union holds one member */
+        uint64_t ub = type_size(TT, L->type, &ok) * 8;
+        tin_add(c, x, TI_CLEAR, base, ub,
+                v->kind == V_CTOR ? v->tin0 : (uint32_t)c->tinit.len);
+    } else if (v->kind == V_CTOR && !v->tmerge) {   /* a fresh sub-object */
+        tin_add(c, x, TI_CLEAR, bit0, bits, v->tin0);
+    }
+    if (v->kind == V_CTOR)
+        return;
+    memset(&r, 0, sizeof r);
+    r.kind = TI_ELEM;
+    r.list = x->list;
+    r.bit0 = bit0;
+    r.bits = bits;
+    r.ty = type;
+    r.width = f && (f->flags & FF_BITFIELD) ? f->width : 0;
+    r.node = v->cl ? NOB : v->node;
+    r.side = v->side;
+    if (v->str && is_arr(c, type)) {
+        uint64_t unit = type_size(TT, type_base(TT, type_canon(TT, type)), &ok);
+        r.str = true;
+        r.strn = v->strn;
+        r.bits = (incomplete_arr(c, type) ? v->strn
+                  : type_ent(TT, type_canon(TT, type))->n) * unit * 8;
+    }
+    vec_push(&c->tinit, r);
+}
+
 static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
                      int64_t key, bool implicit)
 {
@@ -1422,6 +1517,8 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             return;
     }
 
+    if (c->opt.tast)
+        tin_elem(c, x, L, k, key, type, &v);
     if (k == LV_ARR && (!L->inc || key != L->ui)) {
         if (L->inc && key < L->ui)
             nonincr(c, L);
@@ -1517,6 +1614,8 @@ static void push_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
 
     N = lvl_new(ci);
     N->up = P;
+    N->tin0 = (uint32_t)c->tinit.len;
+    N->tmerge = value && value->vk == PV_CTOR;
     N->implicit = implicit != 0;
     N->inc = true;
     N->designated = P->designated;
@@ -1744,6 +1843,10 @@ static IVal pop_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
             ret.ps = L->ps;
             ret.side = L->anyside;
         }
+    }
+    if (ret.kind == V_CTOR) {
+        ret.tin0 = L->tin0;
+        ret.tmerge = L->tmerge;
     }
     x->rtop = L->ui;
     if ((L->ftok || L->des) && L->up) {  /* a level pushed without braces */
@@ -2456,6 +2559,21 @@ static void finalize_root(Checker *c, CCtx *x)
         maybe_warn_string(c, NULL, cl != NOB && cl < c->nn && ntag(c, cl) == N_COMPOUND_LIT
                           ? c->nodes[cl].tok : x->init_loc, rtype, &r);
         if (digest(c, NULL, x->init_loc, true, x->reqc, rtype, &v)) {
+            if (c->opt.tast) {
+                bool ok;
+                TIRec t;
+                uint64_t unit = type_size(TT, type_base(TT, type_canon(TT, rtype)), &ok);
+                memset(&t, 0, sizeof t);
+                t.kind = TI_ELEM;
+                t.str = true;
+                t.list = list;
+                t.ty = rtype;
+                t.node = r.node;
+                t.strn = r.strn;
+                t.bits = (incomplete_arr(c, rtype) ? r.strn
+                          : type_ent(TT, type_canon(TT, rtype))->n) * unit * 8;
+                vec_push(&c->tinit, t);
+            }
             c->ck[list] = K_ICE;
             c->cv[list] = r.strn;
         } else

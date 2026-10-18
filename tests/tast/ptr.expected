@@ -3,7 +3,7 @@ unit ptr.c:2:5 decl g int
 unit ptr.c:3:5 decl arr int[4]
 unit ptr.c:4:6 decl gp int *
 unit ptr.c:5:1 func msg const char *(void)
-  #0 str char[3]
+  #0 str u1 686900 char[3]
   #1 addr #0 char *
   #2 cast #1 const char *
   #3 return #2

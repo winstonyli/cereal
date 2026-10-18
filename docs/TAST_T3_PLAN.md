@@ -513,6 +513,50 @@ anonymous struct, bit-fields, union, string, pointer): every offset right.
   has an index declaration; `{[0]=f(), [0]=g()}` evaluation in gcc for
   automatic objects; `ck == 0` leaves.
 
+### T3b, built (2026-10-18)
+
+Initializers, static data, static and extern locals. The reasons "global
+initializer", "static or extern local" and "braced initializer" are gone.
+
+- **Recording (option 1 of 3.2).** The checker's initializer cursor appends
+  `TIRec` elements to `Checker.tinit` when `--dump-tast` is on (`cinit.c`:
+  `tin_*` helpers, hooks in `out_elem`, `push_level`, `pop_level`,
+  `finalize_root`). `TI_CLEAR` with a `fence` covers union override and a
+  fresh sub-object; `TI_BAD` marks flexible-array content. Off, it is one
+  flag test per element (the callgrind gate was not rerun).
+- **Pass side (`tast.c`).** `init_elems` drops contained extents (in bits),
+  sorts a static object by offset and keeps an automatic one in source
+  order, and emits `elem +byte [bit b width w] <value>` nodes. `data_node`
+  makes `data sym elems..`; an automatic aggregate or array becomes `local`
+  with elem kids (the rest is zero). A unit of initialized globals prints
+  `unit .. data` with a root `block` of `data` nodes; `extern` locals make no
+  node. `str` carries its code units (`str uN <hex>`), decoded by the one
+  `lit_str_bytes`.
+- **Verifier.** `elem`/`data`/`local` kids, bounds, static order and
+  disjointness, and `sconst`/`slv`: every static value is built from
+  `const`, `addr` of a static or global lvalue, `str`, `ptradd`, `cast`.
+- **Data oracle** `tests/tast_data.py` (wired into `tests/run.sh`): evaluates
+  every `data` node to bytes plus relocations and compares with
+  `gcc-13 -O0 -c`. `tests/tast/init.c` and `data.c`: 55 objects, 0 failures.
+  Corpus (env `TAST_FLAGS`): lua54 101 objects, 0 failures (2 skipped:
+  typedef-named element types); libuv 13 compared (the rest are other
+  operating systems' files that gcc cannot compile), 0 failures. Same-named
+  function statics (`mode`) match in any order, since gcc numbers them
+  `.0 .1` in an order that is not the source order.
+- **Coverage** (`2026-10-18-tast-t3b-coverage`): lua54 unsupported 301 -> 206
+  (floating 190, variadic/unprototyped definition 10, compound lvalue 2,
+  `va_arg` 2, address-of-label 2 newly visible); libuv 150 -> 128
+  (`STMT_EXPR` 111, floating 12). 69 + 15 data units, 0 verifier findings.
+  Suite 2243 passed.
+- **Open verifies, closed.** A function-local static has an index
+  declaration (`--dump-symbols --verify-tast` on `init.c`/`data.c`: no
+  findings). `{[0]=f(), [0]=g()}` in an automatic object is unsupported by
+  decision (parked); gcc's evaluation was not needed.
+- **`ck == 0` leaves** are `K_NONE`: the checker's "not constant" mark for an
+  automatic initializer value. They are ordinary expressions.
+- **Found, not ours:** the checker rejects `long big = (long)&ext + 8;`,
+  which gcc accepts (parked).
+
 ### T3c decision
 
 Keep `stmtexpr` in T3 (pull-forward stands): it is 102 of libuv's 150

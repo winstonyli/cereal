@@ -728,6 +728,7 @@ void checker_unit(Checker *c, const ParseUnit *u, bool had_errors)
     c->unit_err = had_errors || c->diag->nerrors != c->unit_nerr0;
     if (c->opt.tast)
         tast_unit(c);
+    c->tinit.len = 0;
     c->quiet = false;
 }
 
@@ -810,6 +811,7 @@ void checker_free(Checker *c)
     vec_free(&c->wina_td);
     vec_free(&c->ucn_seen);
     vec_free(&c->wina_rec);
+    vec_free(&c->tinit);
     cinit_free(c);
     cstmt_free(c);
     cexpr_free_params(c);

@@ -166,8 +166,18 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 
 | What | Why parked / trigger | Evidence | Status |
 |---|---|---|---|
-| `str` nodes carry no bytes (only the array type) | A consumer that emits data or compares literals needs them; T3 (static data) needs the same bytes. Trigger: T3 starts. | `src/c/tast.c` `lval` N_STRING; TAST_DESIGN 15 | parked |
 | `member of rvalue` (`f().x`) is unsupported | Needs a value-member op or a temporary; temporaries come with T6. Trigger: T6, or a corpus histogram that shows it. | `tests/tast/unsup.c` `rv` | parked |
 | Compound assignment or `++` on an lvalue with side effects (`a[i++] += 1`) is unsupported | Needs temporaries (T6 templates). 2 units in lua54. Trigger: T6. | `tests/tast/unsup.c` `sideef` | parked |
 | Pointer-qualification changes elaborate as a `cast` node | Harmless, but noisy against gcc's tree; the consumer may want a distinct `qual` op or none. Trigger: the first back end or the conversion-warning rewrite. | `tests/tast/ptr.expected` `msg` | parked |
 | gcc differential compares cast multisets only, not pointer arithmetic or indirections | Coarse oracle by decision; extend if a pointer bug escapes. Trigger: a missed bug. | `tests/tast_gcc.py` | parked |
+
+## TAST T3 leftovers
+
+| What | Why parked / trigger | Evidence | Status |
+|---|---|---|---|
+| Real K&R definitions (`int kr(a) int a; {..}`) are unsupported | No corpus unit needs them. Trigger: a corpus file uses one. | `tests/tast/unsup.c` `kr` | parked |
+| Calls through an implicit declaration (`sym == SYM_NONE`, e.g. libuv `setproctitle`) are unsupported | One libuv unit. Trigger: more than a handful of units. | `docs/TAST_T3_PLAN.md` "Verify list" | parked |
+| An overridden element with a side effect in an automatic initializer (`{[0]=f(), [0]=3}`) is unsupported | The list order cannot say "evaluate, then drop"; no corpus unit has it. Trigger: a corpus histogram that shows it. | `tests/tast/unsup.c` `ovr` | parked |
+| File-scope compound literals (`&(T){..}` in static data) are unsupported | Needs an anonymous static object (T5). Trigger: T5. | `src/c/tast.c` `init_elems` | parked |
+| The data oracle skips elements whose type prints as a typedef name (`size_t`, `uv_once_t`) | The oracle sizes elements from the printed type. Trigger: a skipped object that matters; resolve typedefs in the dump or read sizes from the object file. | `tests/tast_data.py` `tsize` | parked |
+| `(long)&x + 8` at file scope is accepted by gcc but the checker reports "initializer element is not constant" | A checker divergence found by the T3b test; not a TAST matter. Trigger: asked for. | `tests/tast/data.c` (removed line); gcc-13 accepts | parked |
