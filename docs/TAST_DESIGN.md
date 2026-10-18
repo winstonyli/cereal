@@ -8,7 +8,7 @@ Track D prerequisite for both the back end (ROADMAP: typed-AST export, SysV
 classification, QBE) and VeriFast-style proving (CONFIG_DESIGN direction,
 Round 238). Built through stage T7 and the statement half of T8 (2026-10-18): see "Stage map as built"
 after the section 5 table; each stage has its own `docs/TAST_T<n>_PLAN.md`.
-The lowering to the core (the old T6 row) is `TAST_T8_PLAN.md`: T8a (statements to a CFG) is built, T8b (expression control flow) is not.
+The lowering to the core (the old T6 row) is `TAST_T8_PLAN.md`: T8a (statements to a CFG) and T8b (expression control flow, with the execution oracle) are built.
 
 ## 1. Goal and non-goals
 
@@ -251,7 +251,8 @@ now T8 (`TAST_T8_PLAN.md`).
 | T5 | evaluate-once temporaries (`tmp`) for compound lvalues with side effects | `TAST_T5_PLAN.md` |
 | T6 | computed goto (`labaddr`, `igoto`) | `TAST_T6_PLAN.md` |
 | T7 | compound literals (`complit`) including static ones folded into initializers, sized atomics, flexible array members | `TAST_T7_PLAN.md` (atomics and flexible arrays: commits `d70a407`, `742484f`) |
-| T8a | statements lowered to a control-flow graph (`--dump-cfg`, `--verify-cfg`, `tcfg.c`); expression control flow is T8b | `TAST_T8_PLAN.md` |
+| T8a | statements lowered to a control-flow graph (`--dump-cfg`, `--verify-cfg`, `tcfg.c`) | `TAST_T8_PLAN.md` |
+| T8b | expression control flow (`&&`, `\|\|`, `?:`, comma, statement expressions) lowered with `reg` and spills; execution oracle `tests/cfg_exec.py` | `TAST_T8_PLAN.md` |
 
 Still unsupported: VLAs, `_Complex`/`__int128`/`_FloatN`/decimal types, a bit-field
 compound lvalue with a side effect, `asm` and implicit-declaration calls

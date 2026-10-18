@@ -559,6 +559,18 @@ if [ -d "$ROOT/tests/cfg" ]; then
     cd "$ROOT"
 fi
 
+# 13e. execution oracle (tests/cfg_exec.py): the integer functions of
+#      tests/cfg_exec/*.c run through the graph and compared with gcc
+if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    if (cd "$ROOT/tests/cfg_exec" && python3 -P ../cfg_exec.py "$CEREAL" *.c \
+            >"$TMP/exec.out" 2>&1 </dev/null); then
+        ok
+    else
+        bad "cfg_exec"
+        head -10 "$TMP/exec.out" | sed 's/^/    /'
+    fi
+fi
+
 # 14. C symbol index: golden `--dump-symbols` (plain and from cells), and
 #     `--verify-symbols` (every resolved identifier has its event, the index
 #     is well formed) over the checker and parser cases and cereal's sources

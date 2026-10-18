@@ -1,0 +1,765 @@
+tast 1 target x86_64-linux-gnu
+unit expr.c:6:1 func conds int(int,  int,  int)
+B0:
+  #0 const 0 int
+  #1 local r@8:9 #0 int
+  #2 sym a@6:15 int
+  #3 load #2 int
+  br #3 B1 B3
+B1:
+  #4 sym b@6:22 int
+  #5 load #4 int
+  br #5 B2 B3
+B2:
+  #7 sym r@8:9 int
+  #8 const 1 int
+  #9 store #7 #8 int
+  #10 exprstmt #9
+  jmp B3
+B3:
+  #12 sym a@6:15 int
+  #13 load #12 int
+  br #13 B6 B4
+B4:
+  #14 sym b@6:22 int
+  #15 load #14 int
+  br #15 B5 B7
+B5:
+  #16 sym c@6:29 int
+  #17 load #16 int
+  br #17 B6 B7
+B6:
+  #20 sym r@8:9 int
+  #21 sym r@8:9 int
+  #22 load #21 int
+  #23 const 2 int
+  #24 binop + #22 #23 int
+  #25 store #20 #24 int
+  #26 exprstmt #25
+  jmp B7
+B7:
+  #28 sym a@6:15 int
+  #29 load #28 int
+  br #29 B8 B10
+B8:
+  #30 sym b@6:22 int
+  #31 load #30 int
+  br #31 B9 B10
+B9:
+  #34 sym c@6:29 int
+  #35 load #34 int
+  br #35 B10 B11
+B10:
+  #37 sym r@8:9 int
+  #38 sym r@8:9 int
+  #39 load #38 int
+  #40 const 4 int
+  #41 binop + #39 #40 int
+  #42 store #37 #41 int
+  #43 exprstmt #42
+  jmp B11
+B11:
+  jmp B12
+B12:
+  #45 sym a@6:15 int
+  #46 load #45 int
+  br #46 B13 B15
+B13:
+  #47 sym b@6:22 int
+  #48 load #47 int
+  #49 const 0 int
+  #50 cmp > #48 #49 int
+  br #50 B14 B15
+B14:
+  #52 sym b@6:22 int
+  #53 sym b@6:22 int
+  #54 load #53 int
+  #55 const 1 int
+  #56 binop - #54 #55 int
+  #57 store #52 #56 int
+  #58 post #57 int
+  #59 exprstmt #58
+  #60 sym r@8:9 int
+  #61 sym r@8:9 int
+  #62 load #61 int
+  #63 const 1 int
+  #64 binop + #62 #63 int
+  #65 store #60 #64 int
+  #66 post #65 int
+  #67 exprstmt #66
+  jmp B12
+B15:
+  jmp B16
+B16:
+  #71 sym a@6:15 int
+  #72 load #71 int
+  br #72 B18 B17
+B17:
+  #73 sym c@6:29 int
+  #74 load #73 int
+  br #74 B18 B20
+B18:
+  #84 sym r@8:9 int
+  #85 sym r@8:9 int
+  #86 load #85 int
+  #87 const 1 int
+  #88 binop + #86 #87 int
+  #89 store #84 #88 int
+  #90 post #89 int
+  #91 exprstmt #90
+  jmp B19
+B19:
+  #76 sym c@6:29 int
+  #77 sym c@6:29 int
+  #78 load #77 int
+  #79 const 1 int
+  #80 binop - #78 #79 int
+  #81 store #76 #80 int
+  #82 post #81 int
+  #83 exprstmt #82
+  jmp B16
+B20:
+  jmp B21
+B21:
+  #93 sym r@8:9 int
+  #94 sym r@8:9 int
+  #95 load #94 int
+  #96 const 1 int
+  #97 binop - #95 #96 int
+  #98 store #93 #97 int
+  #99 post #98 int
+  #100 exprstmt #99
+  jmp B22
+B22:
+  #101 sym r@8:9 int
+  #102 load #101 int
+  #103 const 0 int
+  #104 cmp > #102 #103 int
+  br #104 B23 B24
+B23:
+  #105 sym c@6:29 int
+  #106 load #105 int
+  br #106 B21 B24
+B24:
+  #109 sym r@8:9 int
+  #110 load #109 int
+  ret #110
+cfg: 25 blocks, 0 unreachable
+unit expr.c:18:1 func values int(int,  int,  int)
+B0:
+  #0 sym a@18:16 int
+  #1 load #0 int
+  br #1 B1 B3
+B1:
+  #2 sym b@18:23 int
+  #3 load #2 int
+  br #3 B2 B3
+B2:
+  #54 reg 0 int
+  #53 const 1 int
+  #55 store #54 #53 int
+  #56 exprstmt #55
+  jmp B4
+B3:
+  #58 reg 0 int
+  #57 const 0 int
+  #59 store #58 #57 int
+  #60 exprstmt #59
+  jmp B4
+B4:
+  #61 reg 0 int
+  #62 load #61 int
+  #63 local x@20:9 #62 int
+  #6 sym a@18:16 int
+  #7 load #6 int
+  br #7 B6 B5
+B5:
+  #8 sym b@18:23 int
+  #9 load #8 int
+  br #9 B6 B7
+B6:
+  #65 reg 1 int
+  #64 const 1 int
+  #66 store #65 #64 int
+  #67 exprstmt #66
+  jmp B8
+B7:
+  #69 reg 1 int
+  #68 const 0 int
+  #70 store #69 #68 int
+  #71 exprstmt #70
+  jmp B8
+B8:
+  #72 reg 1 int
+  #73 load #72 int
+  #74 local y@21:9 #73 int
+  #12 sym a@18:16 int
+  #13 load #12 int
+  br #13 B9 B10
+B9:
+  #75 reg 2 int
+  #14 sym b@18:23 int
+  #15 load #14 int
+  #76 store #75 #15 int
+  #77 exprstmt #76
+  jmp B11
+B10:
+  #78 reg 2 int
+  #16 sym c@18:30 int
+  #17 load #16 int
+  #79 store #78 #17 int
+  #80 exprstmt #79
+  jmp B11
+B11:
+  #81 reg 2 int
+  #82 load #81 int
+  #83 local z@22:9 #82 int
+  #84 reg 3 int
+  #20 sym a@18:16 int
+  #21 load #20 int
+  #85 store #84 #21 int
+  #86 exprstmt #85
+  #87 reg 3 int
+  #88 load #87 int
+  br #88 B13 B12
+B12:
+  #89 reg 3 int
+  #22 sym c@18:30 int
+  #23 load #22 int
+  #90 store #89 #23 int
+  #91 exprstmt #90
+  jmp B13
+B13:
+  #92 reg 3 int
+  #93 load #92 int
+  #94 local w@23:9 #93 int
+  #95 reg 4 int
+  #26 sym x@20:9 int
+  #27 load #26 int
+  #28 sym y@21:9 int
+  #29 load #28 int
+  #30 binop + #27 #29 int
+  #31 sym z@22:9 int
+  #32 load #31 int
+  #33 binop + #30 #32 int
+  #34 sym w@23:9 int
+  #35 load #34 int
+  #36 binop + #33 #35 int
+  #96 store #95 #36 int
+  #97 exprstmt #96
+  #37 sym a@18:16 int
+  #38 load #37 int
+  br #38 B14 B19
+B14:
+  #39 sym b@18:23 int
+  #40 load #39 int
+  br #40 B15 B17
+B15:
+  #41 sym c@18:30 int
+  #42 load #41 int
+  br #42 B16 B17
+B16:
+  #101 reg 6 int
+  #100 const 1 int
+  #102 store #101 #100 int
+  #103 exprstmt #102
+  jmp B18
+B17:
+  #105 reg 6 int
+  #104 const 0 int
+  #106 store #105 #104 int
+  #107 exprstmt #106
+  jmp B18
+B18:
+  #110 reg 5 int
+  #108 reg 6 int
+  #109 load #108 int
+  #111 store #110 #109 int
+  #112 exprstmt #111
+  jmp B24
+B19:
+  #44 sym b@18:23 int
+  #45 load #44 int
+  br #45 B21 B20
+B20:
+  #46 sym c@18:30 int
+  #47 load #46 int
+  br #47 B21 B22
+B21:
+  #114 reg 7 int
+  #113 const 1 int
+  #115 store #114 #113 int
+  #116 exprstmt #115
+  jmp B23
+B22:
+  #118 reg 7 int
+  #117 const 0 int
+  #119 store #118 #117 int
+  #120 exprstmt #119
+  jmp B23
+B23:
+  #123 reg 5 int
+  #121 reg 7 int
+  #122 load #121 int
+  #124 store #123 #122 int
+  #125 exprstmt #124
+  jmp B24
+B24:
+  #98 reg 4 int
+  #99 load #98 int
+  #126 reg 5 int
+  #127 load #126 int
+  #128 binop + #99 #127 int
+  ret #128
+cfg: 25 blocks, 0 unreachable
+unit expr.c:27:1 func pending int(int,  int)
+B0:
+  #64 reg 0 int
+  #0 sym a@27:17 int
+  #1 load #0 int
+  #2 call g #1 int
+  #65 store #64 #2 int
+  #66 exprstmt #65
+  #3 sym a@27:17 int
+  #4 load #3 int
+  br #4 B1 B3
+B1:
+  #5 sym b@27:24 int
+  #6 load #5 int
+  br #6 B2 B3
+B2:
+  #70 reg 1 int
+  #69 const 1 int
+  #71 store #70 #69 int
+  #72 exprstmt #71
+  jmp B4
+B3:
+  #74 reg 1 int
+  #73 const 0 int
+  #75 store #74 #73 int
+  #76 exprstmt #75
+  jmp B4
+B4:
+  #67 reg 0 int
+  #68 load #67 int
+  #77 reg 1 int
+  #78 load #77 int
+  #79 binop + #68 #78 int
+  #80 local r@29:9 #79 int
+  #81 reg 2 int
+  #11 sym r@29:9 int
+  #12 load #11 int
+  #82 store #81 #12 int
+  #83 exprstmt #82
+  #86 reg 3 int
+  #13 sym r@29:9 int
+  #14 load #13 int
+  #15 call g #14 int
+  #87 store #86 #15 int
+  #88 exprstmt #87
+  #16 sym b@27:24 int
+  #17 load #16 int
+  br #17 B5 B6
+B5:
+  #91 reg 4 int
+  #18 sym a@27:17 int
+  #19 load #18 int
+  #20 call g #19 int
+  #92 store #91 #20 int
+  #93 exprstmt #92
+  jmp B7
+B6:
+  #94 reg 4 int
+  #21 sym b@27:24 int
+  #22 load #21 int
+  #23 call g #22 int
+  #95 store #94 #23 int
+  #96 exprstmt #95
+  jmp B7
+B7:
+  #10 sym r@29:9 int
+  #84 reg 2 int
+  #85 load #84 int
+  #89 reg 3 int
+  #90 load #89 int
+  #97 reg 4 int
+  #98 load #97 int
+  #99 binop * #90 #98 int
+  #100 binop + #85 #99 int
+  #101 store #10 #100 int
+  #102 exprstmt #101
+  #103 reg 5 int
+  #30 sym r@29:9 int
+  #31 load #30 int
+  #104 store #103 #31 int
+  #105 exprstmt #104
+  #108 reg 6 int
+  #32 sym a@27:17 int
+  #33 load #32 int
+  #34 call g #33 int
+  #109 store #108 #34 int
+  #110 exprstmt #109
+  #35 sym b@27:24 int
+  #36 load #35 int
+  br #36 B9 B8
+B8:
+  #37 sym a@27:17 int
+  #38 load #37 int
+  br #38 B9 B10
+B9:
+  #114 reg 7 int
+  #113 const 1 int
+  #115 store #114 #113 int
+  #116 exprstmt #115
+  jmp B11
+B10:
+  #118 reg 7 int
+  #117 const 0 int
+  #119 store #118 #117 int
+  #120 exprstmt #119
+  jmp B11
+B11:
+  #29 sym r@29:9 int
+  #106 reg 5 int
+  #107 load #106 int
+  #111 reg 6 int
+  #112 load #111 int
+  #121 reg 7 int
+  #122 load #121 int
+  #123 call h #112 #122 int
+  #124 binop + #107 #123 int
+  #125 store #29 #124 int
+  #126 exprstmt #125
+  #127 reg 8 int
+  #44 sym r@29:9 int
+  #45 load #44 int
+  #46 sym a@27:17 int
+  #47 load #46 int
+  #48 sym b@27:24 int
+  #49 load #48 int
+  #50 comma #47 #49 int
+  #51 binop + #45 #50 int
+  #128 store #127 #51 int
+  #129 exprstmt #128
+  #52 sym a@27:17 int
+  #53 load #52 int
+  #54 call g #53 int
+  #132 exprstmt #54
+  #55 sym b@27:24 int
+  #56 load #55 int
+  br #56 B12 B14
+B12:
+  #57 sym a@27:17 int
+  #58 load #57 int
+  br #58 B13 B14
+B13:
+  #134 reg 9 int
+  #133 const 1 int
+  #135 store #134 #133 int
+  #136 exprstmt #135
+  jmp B15
+B14:
+  #138 reg 9 int
+  #137 const 0 int
+  #139 store #138 #137 int
+  #140 exprstmt #139
+  jmp B15
+B15:
+  #130 reg 8 int
+  #131 load #130 int
+  #141 reg 9 int
+  #142 load #141 int
+  #143 binop + #131 #142 int
+  ret #143
+cfg: 16 blocks, 0 unreachable
+unit expr.c:35:1 func voids void(int,  int)
+B0:
+  #0 sym a@35:16 int
+  #1 load #0 int
+  br #1 B1 B2
+B1:
+  #2 const 1 int
+  #3 call v #2 void
+  #28 exprstmt #3
+  jmp B3
+B2:
+  #4 const 2 int
+  #5 call v #4 void
+  #29 exprstmt #5
+  jmp B3
+B3:
+  #8 sym b@35:23 int
+  #9 load #8 int
+  br #9 B4 B6
+B4:
+  #10 sym a@35:16 int
+  #11 const 3 int
+  #12 store #10 #11 int
+  br #12 B5 B6
+B5:
+  #31 reg 1 int
+  #30 const 1 int
+  #32 store #31 #30 int
+  #33 exprstmt #32
+  jmp B7
+B6:
+  #35 reg 1 int
+  #34 const 0 int
+  #36 store #35 #34 int
+  #37 exprstmt #36
+  jmp B7
+B7:
+  #38 reg 1 int
+  #39 load #38 int
+  #40 exprstmt #39
+  #15 sym a@35:16 int
+  #16 load #15 int
+  br #16 B9 B8
+B8:
+  #17 sym b@35:23 int
+  #18 load #17 int
+  br #18 B9 B10
+B9:
+  #20 sym a@35:16 int
+  #21 load #20 int
+  #22 call v #21 void
+  #41 exprstmt #22
+  jmp B11
+B10:
+  #23 const 0 int
+  #24 cast #23 void
+  #42 exprstmt #24
+  jmp B11
+B11:
+  ret
+cfg: 12 blocks, 0 unreachable
+unit expr.c:42:1 func stmts int(int,  int)
+B0:
+  #0 sym a@42:15 int
+  #1 load #0 int
+  #2 local t@44:20 #1 int
+  #3 sym t@44:20 int
+  #4 load #3 int
+  #5 sym b@42:22 int
+  #6 load #5 int
+  #7 binop + #4 #6 int
+  #49 local x@44:9 #7 int
+  #50 reg 0 int
+  #10 sym a@42:15 int
+  #11 load #10 int
+  #12 call g #11 int
+  #51 store #50 #12 int
+  #52 exprstmt #51
+  #13 sym b@42:22 int
+  #14 load #13 int
+  #15 call g #14 int
+  #16 local u@45:27 #15 int
+  #17 sym u@45:27 int
+  #18 load #17 int
+  br #18 B1 B2
+B1:
+  #19 sym u@45:27 int
+  #20 const 2 int
+  #21 store #19 #20 int
+  #22 exprstmt #21
+  jmp B2
+B2:
+  #53 reg 0 int
+  #54 load #53 int
+  #24 sym u@45:27 int
+  #25 load #24 int
+  #55 binop + #54 #25 int
+  #56 local y@45:9 #55 int
+  #57 reg 1 int
+  #30 sym x@44:9 int
+  #31 load #30 int
+  #58 store #57 #31 int
+  #59 exprstmt #58
+  #32 sym a@42:15 int
+  #33 load #32 int
+  br #33 B3 B4
+B3:
+  #62 reg 2 int
+  #34 sym b@42:22 int
+  #35 load #34 int
+  #63 store #62 #35 int
+  #64 exprstmt #63
+  jmp B5
+B4:
+  #65 reg 2 int
+  #37 const 0 int
+  #66 store #65 #37 int
+  #67 exprstmt #66
+  jmp B5
+B5:
+  #29 sym x@44:9 int
+  #60 reg 1 int
+  #61 load #60 int
+  #68 reg 2 int
+  #69 load #68 int
+  #70 binop + #61 #69 int
+  #71 store #29 #70 int
+  #72 exprstmt #71
+  #42 sym x@44:9 int
+  #43 load #42 int
+  #44 sym y@45:9 int
+  #45 load #44 int
+  #46 binop + #43 #45 int
+  ret #46
+cfg: 6 blocks, 0 unreachable
+unit expr.c:50:1 func inits int(int,  int)
+B0:
+  #38 reg 0 int
+  #0 sym a@50:15 int
+  #1 load #0 int
+  #39 store #38 #1 int
+  #40 exprstmt #39
+  #3 sym b@50:22 int
+  #4 load #3 int
+  br #4 B1 B3
+B1:
+  #5 sym a@50:15 int
+  #6 load #5 int
+  br #6 B2 B3
+B2:
+  #45 reg 1 int
+  #44 const 1 int
+  #46 store #45 #44 int
+  #47 exprstmt #46
+  jmp B4
+B3:
+  #49 reg 1 int
+  #48 const 0 int
+  #50 store #49 #48 int
+  #51 exprstmt #50
+  jmp B4
+B4:
+  #41 reg 0 int
+  #42 load #41 int
+  #43 elem +0 #42 int
+  #52 reg 1 int
+  #53 load #52 int
+  #54 elem +4 #53 int
+  #9 sym b@50:22 int
+  #10 load #9 int
+  #11 call g #10 int
+  #12 elem +8 #11 int
+  #55 local p@52:9 #43 #54 #12 int[3]
+  #56 reg 2 int
+  #14 sym a@50:15 int
+  #15 load #14 int
+  #16 call g #15 int
+  #57 store #56 #16 int
+  #58 exprstmt #57
+  #18 sym a@50:15 int
+  #19 load #18 int
+  br #19 B5 B6
+B5:
+  #62 reg 3 int
+  #20 sym b@50:22 int
+  #21 load #20 int
+  #63 store #62 #21 int
+  #64 exprstmt #63
+  jmp B7
+B6:
+  #65 reg 3 int
+  #22 const 1 int
+  #66 store #65 #22 int
+  #67 exprstmt #66
+  jmp B7
+B7:
+  #59 reg 2 int
+  #60 load #59 int
+  #61 elem +0 #60 int
+  #68 reg 3 int
+  #69 load #68 int
+  #70 elem +4 #69 int
+  #71 local s@53:26 #61 #70 struct <anonymous>
+  #26 sym p@52:9 int[3]
+  #27 addr #26 int *
+  #28 const 1 long int
+  #29 ptradd *4 #27 #28 int *
+  #30 deref #29 int
+  #31 load #30 int
+  #32 sym s@53:26 struct <anonymous>
+  #33 field +4 #32 int
+  #34 load #33 int
+  #35 binop + #31 #34 int
+  ret #35
+cfg: 8 blocks, 0 unreachable
+unit expr.c:57:1 func sw int(int,  int)
+B0:
+  #0 sym a@57:12 int
+  #1 load #0 int
+  br #1 B1 B3
+B1:
+  #2 sym b@57:19 int
+  #3 load #2 int
+  br #3 B2 B3
+B2:
+  #15 reg 0 int
+  #14 const 1 int
+  #16 store #15 #14 int
+  #17 exprstmt #16
+  jmp B4
+B3:
+  #19 reg 0 int
+  #18 const 0 int
+  #20 store #19 #18 int
+  #21 exprstmt #20
+  jmp B4
+B4:
+  #22 reg 0 int
+  #23 load #22 int
+  swtch #23 default B6
+    case 0 B5
+B5:
+  #5 const 1 int
+  ret #5
+B6:
+  #8 const 2 int
+  ret #8
+cfg: 7 blocks, 0 unreachable
+unit expr.c:62:1 func rets int(int,  int)
+B0:
+  #0 sym a@62:14 int
+  #1 load #0 int
+  br #1 B1 B2
+B1:
+  #15 reg 0 int
+  #2 sym a@62:14 int
+  #3 load #2 int
+  #4 call g #3 int
+  #16 store #15 #4 int
+  #17 exprstmt #16
+  jmp B6
+B2:
+  #5 sym b@62:21 int
+  #6 load #5 int
+  br #6 B3 B4
+B3:
+  #18 reg 1 int
+  #7 sym b@62:21 int
+  #8 load #7 int
+  #9 call g #8 int
+  #19 store #18 #9 int
+  #20 exprstmt #19
+  jmp B5
+B4:
+  #21 reg 1 int
+  #10 const 0 int
+  #22 store #21 #10 int
+  #23 exprstmt #22
+  jmp B5
+B5:
+  #26 reg 0 int
+  #24 reg 1 int
+  #25 load #24 int
+  #27 store #26 #25 int
+  #28 exprstmt #27
+  jmp B6
+B6:
+  #29 reg 0 int
+  #30 load #29 int
+  ret #30
+cfg: 7 blocks, 0 unreachable

@@ -81,7 +81,7 @@ static bool ok_ty(El *e, TypeId t)
 
 static bool is_lvop(int op)
 {
-    return op == TO_SYM || op == TO_TMP || op == TO_COMPLIT || op == TO_DEREF || op == TO_FIELD || op == TO_STR;
+    return op == TO_SYM || op == TO_TMP || op == TO_REG || op == TO_COMPLIT || op == TO_DEREF || op == TO_FIELD || op == TO_STR;
 }
 
 /* Why a type is outside the subset, for the reason histogram. */
@@ -1527,7 +1527,7 @@ void tast_print_node(El *e, FILE *out, size_t i)
                 fprintf(out, "%02x", e->bytes.data[nd->val + b]);
             break;
         }
-        case TO_TMP:
+        case TO_TMP: case TO_REG:
             fprintf(out, " %lld", (long long)nd->val);
             break;
         case TO_COMPLIT:

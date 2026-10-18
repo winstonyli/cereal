@@ -8,7 +8,7 @@
 #define TN UINT32_MAX
 
 #define TAST_OPS(X)                                                         \
-    X(CONST, "const") X(FCONST, "fconst") X(SYM, "sym") X(TMP, "tmp") X(COMPLIT, "complit") X(LOAD, "load") X(STORE, "store")        \
+    X(CONST, "const") X(FCONST, "fconst") X(SYM, "sym") X(TMP, "tmp") X(REG, "reg") X(COMPLIT, "complit") X(LOAD, "load") X(STORE, "store")        \
     X(CAST, "cast") X(UNOP, "unop") X(BINOP, "binop") X(CMP, "cmp")          \
     X(LOGAND, "logand") X(LOGOR, "logor") X(COND, "cond")                    \
     X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \

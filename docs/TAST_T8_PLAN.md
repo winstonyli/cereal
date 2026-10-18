@@ -239,3 +239,48 @@ Differences from the sections above:
   not built.
 - Expression control flow (`&&`, `||`, `?:`, statement expressions) is left
   inside its block, so a block can still hide a branch until T8b.
+
+## 12. Progress: T8b and the oracle built (2026-10-18)
+
+Expression control flow lowered in `src/c/tcfg.c`; the execution oracle is
+`tests/cfg_exec.py` over `tests/cfg_exec/int.c`. Suite 2278/0 (2276, plus
+`tests/cfg/expr.c` and the oracle). Run `t8b-cfg-coverage`: lua54 2174
+functions (16880 blocks, 0 unreachable) and libuv 1546 (10297 blocks, 72
+unreachable, the same dead code as T8a) lower with 0 findings and 0
+unsupported.
+
+Differences from section 3:
+- `reg N` is an lvalue op (used as `store (reg N) v` / `load (reg N)`), so
+  a register can be assigned on several paths; `tast_int.h` lists it after
+  `tmp`.
+- Conditions need no register: `lcond` turns `&&`, `||`, `!` and `?:` in an
+  `if`/loop/`?:` test straight into branches. A register is made only when
+  the value of the expression is used.
+- `post` is left as a node: it wraps a store and its old value is already the
+  result, so nothing hides a branch in it. `incs` in the oracle exercises
+  it next to `?:`.
+- Spill rule as in section 3, made precise: when a later kid of a node has a
+  split, every earlier non-constant kid is saved to a register (an lvalue
+  by its address, `deref (load reg)`). Spill-everything, as the spike
+  found acceptable.
+- Statement counting: the lowering adds and drops statements (the saves,
+  `nop`), and records the difference so the verifier can still equate the
+  graph's count with the tree's.
+- New `--verify-cfg` checks: no node with hidden control flow is left; a
+  register is read only after it is set on every path (must-defined
+  dataflow over the reachable blocks); one type per register; a register
+  only under `load`/`store`.
+
+Oracle (section 5): 15 integer functions (conditions, values, pending
+operands, loops, `switch` with fallthrough, Duff, `goto`, statement
+expressions, initializers, narrow and wide types, recursion, compound
+assignment, `++/--`) run through the graph and compared with gcc on 24
+random argument sets each. A deliberate swap of the `br` targets produced
+mismatches, so the comparison does detect a wrong lowering. Skipped by
+design: pointers, memory, floating point, aggregates, indirect and variadic
+calls (structural verifier and corpus gate only; stated in the script
+header). The interpreter is 323 lines, over the ~250 the plan hoped for;
+the extra is parsing the dump, not the evaluation, so the fallback in
+section 5 was not taken. Parameters are found as the symbols never
+declared by a `local`, so a parameter the body never uses makes that
+function skip.

@@ -95,14 +95,27 @@ unit cgoto.c:18:1 func pick void *(int)
 B0:
   #0 sym i@18:16 int
   #1 load #0 int
-  #2 labaddr x void *
-  #3 labaddr y void *
-  #4 cond #1 #2 #3 void *
-  ijmp #4 B1 B2
+  br #1 B1 B2
 B1:
+  #13 reg 0 void *
+  #2 labaddr x void *
+  #14 store #13 #2 void *
+  #15 exprstmt #14
+  jmp B3
+B2:
+  #16 reg 0 void *
+  #3 labaddr y void *
+  #17 store #16 #3 void *
+  #18 exprstmt #17
+  jmp B3
+B3:
+  #19 reg 0 void *
+  #20 load #19 void *
+  ijmp #20 B4 B5
+B4:
   #6 const 0 void *
   ret #6
-B2:
+B5:
   #9 const 0 void *
   ret #9
-cfg: 3 blocks, 0 unreachable
+cfg: 6 blocks, 0 unreachable
