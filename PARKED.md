@@ -199,3 +199,12 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 | Data oracle skips objects holding a label address (`labaddr`) | A label address is a `.text` relocation with an offset the pass cannot know; the oracle skips the object instead of comparing positions (`docs/TAST_T6_PLAN.md` section 4). Trigger: a unit whose other data in the same object needs checking. | lua54 `lvm.c` `disptab` (2 objects skipped, 2026-10-18) | parked |
 | `asm` statements | One unit; an `asm` statement has no meaning for the structured form (opaque text, operands, clobbers). Decided 2026-10-18; revisit when a consumer needs it. | libuv `async.c:319` | decided against |
 | Array-typed parameters/objects (`const uv_buf_t bufs[]`, array of unknown form) | Two libuv units; read the cases before deciding. Trigger: more than a handful of units. | libuv `stream.c:753`, `:980` | parked |
+
+## TAST T8 leftovers (docs/TAST_T8_PLAN.md sections 7 and 12; verified 2026-10-18)
+
+| What | Why parked / trigger | Evidence | Status |
+|---|---|---|---|
+| Execution oracle for floating point, aggregate copies, bit-fields, type punning, pointers passed between calls, indirect calls | The interpreter models one cell per object and byte offset; these need a byte-level memory and an ABI model. Trigger: a lowering bug in these areas that the structural verifier and corpus gate missed. | `tests/cfg_exec.py` header; aggregate-typed `?:` lowers with 0 findings (`pick` in a scratch file) but its value is not compared | parked |
+| `f().x` (member of a call result) stays unsupported, so the T8 graph never sees it | Needs a value-member op or a temporary (see the T2 row above). Trigger: same as that row. | scratch `use` unit reports `unsupported: member of rvalue` | parked |
+| Optimization, SSA, ABI classification of calls, lowering of initializers and `local` into stores, `setjmp`/`longjmp` edges | Out of scope of T8 by decision: `reg` is a mutable variable; a later pass builds SSA. Trigger: the back end (Track D) starts. | `docs/TAST_T8_PLAN.md` section 7 | parked |
+| Oracle parameters detected by use, so a function with an unused parameter is skipped | Cheap fix would read the parameter names from the dump header. Trigger: a skipped function that matters. | `tests/cfg_exec.py` `run` | parked |

@@ -165,8 +165,7 @@ constant evaluator in `tests/tast_data.py` extended with a block walk.
 
 ## 8. Parked by this plan
 
-Nothing yet; the out list above becomes `PARKED.md` rows when a stage
-closes.
+Moved to `PARKED.md` ("TAST T8 leftovers") when T8 closed, 2026-10-18.
 
 ## 9. Decisions needed
 
@@ -271,15 +270,18 @@ Differences from section 3:
   dataflow over the reachable blocks); one type per register; a register
   only under `load`/`store`.
 
-Oracle (section 5): 15 integer functions (conditions, values, pending
+Oracle (section 5): 15 integer functions in `int.c` and 5 memory functions
+in `mem.c` (local arrays and structs, pointers into them, `p++`, pointer
+comparison and difference, a pointer chosen by `?:`; a cell per object and
+byte offset); a mutation of the field offset was caught too. The integer
+functions cover conditions, values, pending
 operands, loops, `switch` with fallthrough, Duff, `goto`, statement
 expressions, initializers, narrow and wide types, recursion, compound
-assignment, `++/--`) run through the graph and compared with gcc on 24
+assignment and `++/--`; all run through the graph and are compared with gcc on 24
 random argument sets each. A deliberate swap of the `br` targets produced
 mismatches, so the comparison does detect a wrong lowering. Skipped by
-design: pointers, memory, floating point, aggregates, indirect and variadic
-calls (structural verifier and corpus gate only; stated in the script
-header). The interpreter is 323 lines, over the ~250 the plan hoped for;
+design: floating point, aggregate copies, bit-fields, type punning, pointers
+passed between calls, indirect and variadic calls (structural verifier and corpus gate only; stated in the script header). The interpreter is about 350 lines, over the ~250 the plan hoped for;
 the extra is parsing the dump, not the evaluation, so the fallback in
 section 5 was not taken. Parameters are found as the symbols never
 declared by a `local`, so a parameter the body never uses makes that

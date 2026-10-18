@@ -4,14 +4,17 @@
 Usage: cfg_exec.py CEREAL FILE.c...
 
 For each FILE.c: read `cereal check --dump-cfg`, interpret every function whose
-parameters, locals and result are integers (no pointers, arrays or memory,
-calls only to other functions of the file), and compare its results on random
+parameters and result are integers, with locals, arrays, structs and
+pointers into them (a cell per object and byte offset; calls only to other
+functions of the file), and compare its results on random
 arguments with the same functions compiled by gcc (-O0 -fwrapv).  Functions
 the interpreter cannot run are listed as skipped; the exit status is 1 on any
 mismatch, any function whose graph still holds hidden control flow, or fewer
 than half of the functions compared.  What it covers: every statement and
-expression lowering of T8a/T8b.  What it does not: pointers, memory,
-floating point, aggregates (the structural verifier and the corpus gate only).
+expression lowering of T8a/T8b, and memory access within one object.  What it
+does not: floating point, aggregate copies, bit-fields, type punning, pointers
+passed in or out, indirect calls (the structural verifier and the corpus gate
+only).
 """
 import os, random, re, subprocess, sys, tempfile
 
@@ -20,6 +23,10 @@ LIMIT = 200000          # interpreter steps per call
 
 class Skip(Exception):
     pass
+
+
+mem = {}                # (object, byte offset) -> value; an object is (frame, name)
+frames = [0]
 
 
 INT = {  # type text -> (bits, signed)
@@ -42,6 +49,8 @@ def ity(t):
 
 
 def wrap(v, t):
+    if t.strip().endswith("*"):      # a pointer: (object, byte offset) or 0
+        return v
     if t.strip() == "_Bool":
         return int(v != 0)
     bits, sg = ity(t)
@@ -50,9 +59,10 @@ def wrap(v, t):
 
 
 NPAY = {"const": 1, "sym": 1, "reg": 1, "unop": 1, "binop": 1, "cmp": 1,
-        "local": 1, "call": 1}
+        "local": 1, "call": 1, "ptradd": 1, "ptrdiff": 1, "field": 1}
 OPS = {"const", "sym", "reg", "load", "store", "cast", "unop", "binop", "cmp",
-       "call", "comma", "post", "exprstmt", "local"}
+       "call", "comma", "post", "exprstmt", "local", "addr", "deref", "ptradd", "ptrdiff",
+       "field"}
 
 
 class Node:
@@ -147,7 +157,8 @@ def run(funcs, f, args, depth=0):
         raise Skip(f.skip)
     if depth > 40:
         raise Skip("deep recursion")
-    var = {}
+    var = mem
+    fid = frames[0] = frames[0] + 1
     # parameters: the symbols never declared by a local, in source order
     declared, used = set(), {}
     for b in f.blocks.values():
@@ -161,7 +172,7 @@ def run(funcs, f, args, depth=0):
     if len(ps) != len(args):
         raise Skip("parameter count")
     for k, a, t in zip(ps, args, f.params):
-        var[k] = wrap(a, t)
+        var[((fid, k), 0)] = wrap(a, t)
     steps, bid, val = 0, min(f.blocks), {}
     while True:
         b = f.blocks[bid]
@@ -175,13 +186,13 @@ def run(funcs, f, args, depth=0):
             if o == "const":
                 val[n.id] = ("v", wrap(int(n.pay[0]), n.ty))
             elif o == "sym":
-                val[n.id] = ("r", sym_key(n.pay[0]))
+                val[n.id] = ("r", ((fid, sym_key(n.pay[0])), 0))
             elif o == "reg":
-                val[n.id] = ("r", "reg" + n.pay[0])
+                val[n.id] = ("r", ((fid, "reg" + n.pay[0]), 0))
             elif o == "load":
                 key = k[0][1]
                 if key not in var:
-                    raise Skip("uninitialized " + key)
+                    raise Skip("uninitialized %s" % (key,))
                 val[n.id] = ("v", var[key])
             elif o == "store":
                 val[("old", n.id)] = var.get(k[0][1])
@@ -214,6 +225,12 @@ def run(funcs, f, args, depth=0):
                 val[n.id] = ("v", wrap(r, n.ty))
             elif o == "cmp":
                 a, c = k[0][1], k[1][1]
+                if isinstance(a, tuple) and isinstance(c, tuple) and a[0] == c[0]:
+                    a, c = a[1], c[1]
+                elif isinstance(a, tuple) or isinstance(c, tuple):
+                    if n.pay[0] not in ("==", "!="):
+                        raise Skip("order of unrelated pointers")
+                    a, c = 0, 1                 # different objects, or null: never equal
                 r = {"<": a < c, ">": a > c, "<=": a <= c, ">=": a >= c,
                      "==": a == c, "!=": a != c}[n.pay[0]]
                 val[n.id] = ("v", int(r))
@@ -222,10 +239,22 @@ def run(funcs, f, args, depth=0):
             elif o == "exprstmt":
                 pass
             elif o == "local":
-                key = sym_key(n.pay[0])
-                var[key] = wrap(k[0][1], n.ty) if k else None
-                if not k:
-                    del var[key]
+                if k:
+                    var[((fid, sym_key(n.pay[0])), 0)] = wrap(k[0][1], n.ty)
+            elif o == "addr":
+                val[n.id] = ("v", k[0][1])
+            elif o == "deref":
+                val[n.id] = ("r", k[0][1])
+            elif o == "field":
+                val[n.id] = ("r", (k[0][1][0], k[0][1][1] + int(n.pay[0])))
+            elif o == "ptradd":
+                if not isinstance(k[0][1], tuple):
+                    raise Skip("null pointer arithmetic")
+                val[n.id] = ("v", (k[0][1][0], k[0][1][1] + int(n.pay[0][1:]) * k[1][1]))
+            elif o == "ptrdiff":
+                if k[0][1][0] != k[1][1][0]:
+                    raise Skip("difference of unrelated pointers")
+                val[n.id] = ("v", (k[0][1][1] - k[1][1][1]) // int(n.pay[0][1:]))
             elif o == "call":
                 g = funcs.get(n.pay[0])
                 if g is None or len(g.params) != len(k):
