@@ -1,11 +1,11 @@
 ---
-status: draft
+status: done
 ---
 
 # TAST stage T6: plan (computed goto)
 
 Follows `docs/TAST_T5_PLAN.md`. Facts are from the tree of 2026-10-18; anything
-unread is marked **verify**. Not started: needs a go-ahead.
+unread is marked **verify**. Built 2026-10-18 (section 8).
 
 ## 1. The problem and how big it is
 
@@ -97,3 +97,16 @@ assembler into section-symbol relocations, or by a `-fno-pic` absolute).
   `ADDR_LABEL` first). Still open, to be settled while building: the
   `.text` relocation form (section 4) and the checker's label marks
   (section 6).
+
+## 8. Progress (2026-10-18)
+
+Done as planned: `labaddr` (leaf, `sconst`) and `igoto`; `tests/tast/cgoto.c`.
+Suite 2266/0. Coverage `tast-cgoto-coverage`: lua54 unsupported 0, libuv 3,
+verify findings 0.
+
+- Section 4 not built as planned: the data oracle skips an object holding a
+  `labaddr` (`lvm.c`, `onelua.c` `disptab`) instead of comparing positions;
+  lua54 107 objects 0 failures, libuv 32 / 0. Parked in `PARKED.md`.
+- Section 6 (checker label marks) was not needed: the pass reads only the
+  label identifier.
+- Not checked: the `goto *expr` refusal reason before this change.

@@ -25,14 +25,14 @@
     X(CAST, "cast") X(UNOP, "unop") X(BINOP, "binop") X(CMP, "cmp")          \
     X(LOGAND, "logand") X(LOGOR, "logor") X(COND, "cond")                    \
     X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \
-    X(INTRIN, "intrin") X(VA, "va")                                          \
+    X(INTRIN, "intrin") X(VA, "va") X(LABADDR, "labaddr")                                        \
     X(DEREF, "deref") X(FIELD, "field") X(ADDR, "addr") X(STR, "str")        \
     X(PTRADD, "ptradd") X(PTRDIFF, "ptrdiff") X(STMTEXPR, "stmtexpr")        \
     X(POST, "post")                                                          \
     X(BLOCK, "block") X(LOCAL, "local") X(EXPRSTMT, "exprstmt")              \
     X(IF, "if") X(WHILE, "while") X(DO, "do") X(FOR, "for")                  \
     X(SWITCH, "switch") X(CASE, "case") X(DEFAULT, "default")                \
-    X(BREAK, "break") X(CONTINUE, "continue") X(GOTO, "goto")                \
+    X(BREAK, "break") X(CONTINUE, "continue") X(GOTO, "goto") X(IGOTO, "igoto")          \
     X(LABEL, "label") X(RETURN, "return") X(NOP, "nop")                     \
     X(ELEM, "elem") X(DATA, "data")
 
@@ -912,6 +912,8 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
         return unsup(e, "member of rvalue");
     case N_VA_ARG:
         return e_va(e, i, VA_ARG);
+    case N_ADDR_LABEL:
+        return mk(e, TO_LABADDR, t, loc, cnode_ident(c, i), 0, 0, NULL, 0);
     case N_CALL:
         return va_kind(c, i) != VA_NONE ? e_va(e, i, va_kind(c, i)) : e_call_t(e, i);
     case N_STMT_EXPR:
@@ -1438,6 +1440,16 @@ static uint32_t st(El *e, uint32_t n)
     case N_GOTO:
         id = mk(e, TO_GOTO, 0, loc, cnode_ident(c, n), 0, 0, NULL, 0);
         break;
+    case N_GOTO_EXPR:
+        m = fkids(e, n, &k);
+        if (m != 1) {
+            unsup(e, "malformed computed goto");
+            break;
+        }
+        ka[0] = rv(e, k[0]);
+        if (ka[0] != TN)
+            id = mk(e, TO_IGOTO, 0, loc, 0, 0, 0, ka, 1);
+        break;
     case N_BREAK:
         id = mk(e, TO_BREAK, 0, loc, 0, 0, 0, NULL, 0);
         break;
@@ -1612,7 +1624,7 @@ static void print_tree(El *e, FILE *out)
         case TO_CASE:
             fprintf(out, " %lld", (long long)nd->val);
             break;
-        case TO_GOTO: case TO_LABEL:
+        case TO_GOTO: case TO_LABEL: case TO_LABADDR:
             fprintf(out, " %s", cident(c, (uint32_t)nd->val));
             break;
         default:
@@ -1664,7 +1676,7 @@ static bool sconst(El *e, uint32_t i)
     const uint32_t *k = e->kids.data + nd->kid0;
     uint32_t j;
     switch (nd->op) {
-    case TO_CONST: case TO_FCONST: return true;
+    case TO_CONST: case TO_FCONST: case TO_LABADDR: return true;
     case TO_ADDR: return slv(e, k[0]);
     case TO_CAST: case TO_UNOP: case TO_BINOP: case TO_CMP: case TO_LOGAND:
     case TO_LOGOR: case TO_COND: case TO_PTRADD: case TO_PTRDIFF:
@@ -2068,14 +2080,21 @@ static void verify(El *e, FILE *out)
                 (nd->nkids && (!ISVAL(KID(0)) || mainv(c, KID(0)->ty) != mainv(c, e->ret))))
                 vbad(e, out, i, "returned value");
             break;
-        case TO_GOTO: {
+        case TO_GOTO: case TO_LABADDR: {
             size_t q;
+            if (nd->op == TO_LABADDR && (nd->nkids || KIND(nd->ty) != TY_PTR))
+                vbad(e, out, i, "label address is not a leaf pointer");
             for (q = 0; q < labels.len && labels.data[q] != (uint32_t)nd->val; q++)
                 ;
             if (q == labels.len)
                 vbad(e, out, i, "goto without a label");
             break;
         }
+        case TO_IGOTO:
+            NEED(1);
+            if (!ISVAL(KID(0)) || KIND(KID(0)->ty) != TY_PTR)
+                vbad(e, out, i, "computed goto operand is not a pointer value");
+            break;
         default:
             break;
         }
