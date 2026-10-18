@@ -263,7 +263,7 @@ static uint32_t lval(El *e, uint32_t n)
         uint32_t ref = c->sym[i];
         const CSym *s;
         if (ref == SYM_NONE)
-            return unsup(e, "builtin or undeclared identifier");
+            return unsup(e, "builtin or undeclared identifier %s", cident(c, cnode_ident(c, i)));
         s = csym(c, ref);
         if (s->kind != CS_OBJ && s->kind != CS_FUNC)
             return unsup(e, "identifier is not a variable");
@@ -538,7 +538,7 @@ static uint32_t e_call_t(El *e, uint32_t i)
         ref = c->sym[callee];
         ft = type_canon(&c->tt, csym(c, ref)->ty);
     } else if (ntag(c, callee) == N_IDENT && c->sym[callee] == SYM_NONE) {
-        unsup(e, "builtin or undeclared call");
+        unsup(e, "builtin or undeclared call %s", cident(c, cnode_ident(c, callee)));
         goto out;
     } else {
         TypeId pt = rvt(c, callee);
@@ -556,7 +556,8 @@ static uint32_t e_call_t(El *e, uint32_t i)
     }
     fe = type_ent(&c->tt, ft);
     if (fe->flags & (TF_NOPROTO | TF_VARIADIC)) {
-        unsup(e, "call to unprototyped or variadic function");
+        unsup(e, "call to unprototyped or variadic function %s",
+              ref ? cident(c, csym(c, ref)->name) : "(indirect)");
         goto out;
     }
     np = (uint32_t)fe->n;

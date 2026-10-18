@@ -11,9 +11,9 @@ unit unsup.c:10:1 unsupported: K&R definition
 unit unsup.c:11:1 unsupported: global initializer
 unit unsup.c:12:5 decl f int(void)
 unit unsup.c:13:5 decl va int(int, ...)
-unit unsup.c:14:1 unsupported: call to unprototyped or variadic function
+unit unsup.c:14:1 unsupported: call to unprototyped or variadic function va
 unit unsup.c:15:5 decl unproto int()
-unit unsup.c:16:1 unsupported: call to unprototyped or variadic function
+unit unsup.c:16:1 unsupported: call to unprototyped or variadic function unproto
 unit unsup.c:17:1 unsupported: floating type
 unit unsup.c:18:1 func strs int(void)
   #0 const 2 int
