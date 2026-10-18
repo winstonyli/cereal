@@ -2,7 +2,8 @@ C=$1
 # C names (B2 phase 2).  Merge: an expanded macro (LIMIT) answers; a name
 # with only macro history (width, #undef'd) and a plain C name (total) go
 # to the C index; a #define body token names one entity per expansion (_t)
-# and is no use (refs lists nothing).  uses: refs without declarations;
+# and is no use (refs lists the invocations of the macro that spells it,
+# Q7).  uses: refs without declarations;
 # highlight: this file only, write/read.  hover (phase 3), the same merge:
 # LIMIT's #define; width's C text with "(also a macro name)"; a function,
 # variables, a parameter, a field, a tag, a macro-argument use (local) and

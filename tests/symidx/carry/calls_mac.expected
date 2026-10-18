@@ -1,2 +1,3 @@
+diff: carried REF func leaf at calls_mac.c:3:24
 diff: carried REF func leaf xcall at calls_mac.c:3:24
-carry: kept 5 of 6 events, damage 2:15-2:15, 1 differences
+carry: kept 6 of 7 events, damage 2:15-2:15, 2 differences

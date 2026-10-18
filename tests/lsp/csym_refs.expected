@@ -562,6 +562,19 @@
  {
   "range": {
    "end": {
+    "character": 15,
+    "line": 25
+   },
+   "start": {
+    "character": 11,
+    "line": 25
+   }
+  },
+  "uri": "file://$ROOT/csym_refs/main.c"
+ },
+ {
+  "range": {
+   "end": {
     "character": 24,
     "line": 25
    },
@@ -589,6 +602,19 @@
 ## includeDeclaration false: the uses only
 >> textDocument/references
 [
+ {
+  "range": {
+   "end": {
+    "character": 15,
+    "line": 25
+   },
+   "start": {
+    "character": 11,
+    "line": 25
+   }
+  },
+  "uri": "file://$ROOT/csym_refs/main.c"
+ },
  {
   "range": {
    "end": {
@@ -671,6 +697,19 @@
    "start": {
     "character": 4,
     "line": 5
+   }
+  }
+ },
+ {
+  "kind": 2,
+  "range": {
+   "end": {
+    "character": 15,
+    "line": 25
+   },
+   "start": {
+    "character": 11,
+    "line": 25
    }
   }
  },
@@ -825,6 +864,19 @@
 >> textDocument/didChange
 >> textDocument/references
 [
+ {
+  "range": {
+   "end": {
+    "character": 15,
+    "line": 26
+   },
+   "start": {
+    "character": 11,
+    "line": 26
+   }
+  },
+  "uri": "file://$ROOT/csym_refs/main.c"
+ },
  {
   "range": {
    "end": {

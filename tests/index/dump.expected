@@ -30,6 +30,7 @@ record ok.c size 281 hash 1d161444e581ca92
   ref 4:32 +102 len 11 obj local_state @ok.c:3:12
   ref 5:9 +125 len 4 typedef pt_t @api.h:7:19
   ref 7:23 +158 len 1 field x @api.h:6:17 arg
+  ref 7:28 +163 len 10 func helper ext expansion
   ref 7:42 +177 len 1 field y @api.h:6:20 arg
   ref 7:47 +182 len 13 func declared_only ext call
   ref 7:61 +196 len 3 enumconst RED @api.h:8:14

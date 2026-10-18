@@ -53,6 +53,8 @@ csym.h:3:16 REF struct s
 csym.c:6:23 DEF obj _t body
 == refs csym.c:6:33
 2 C entities here
+csym.c:14:13 REF obj _t expansion
+csym.c:14:25 REF obj _t expansion
 == hover csym.c:15:32
 #define LIMIT 10
   defined at csym.c:4:9

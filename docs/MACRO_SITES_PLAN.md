@@ -35,10 +35,12 @@ lists their invocations too. cereal has no invocation record for them.
 
 ## 2. Decisions needed from the user
 
-- **D1. Do references list the body token itself** (the `lua_callk` in `#define lua_call(...)`)? clangd does. It
-  is a real spelling the user can navigate to and edit. **Decided yes (2026-10-17)**, it needs no new data.
-  Open detail: whether `documentHighlight` also lists it, or only `references` (a client that reuses the list
-  for a local text replace could edit the macro; cereal's own rename refuses, R7). Decide at S1.
+- **D1. Do references list the body token itself** (the `lua_callk` in `#define lua_call(...)`)? **Open
+  (reopened 2026-10-17).** The earlier "yes" rested on "clangd does"; that was false: the B differential shows
+  clangd lists the invocations, not macro-body tokens (45 of 48 new cereal-only sites were body tokens). So the
+  only case left is navigation and rename awareness: the body token is a real spelling the user can go to, but
+  a client that reuses the list for a text replace could edit the macro (cereal's own rename refuses, R7). The
+  code is not built (`cindex_select` still filters `MACRO_BODY`). Default if undecided: no.
 - **D2. Which entities:** functions only (design A) or all kinds (design B). **Decided B (2026-10-17)**, after
   S1 (A covers a third of the sites) and S2 (B costs 2.9 to 5.1%); the size rule of section 5 is relaxed from 5%
   to 10%, the rule CONFIG_DESIGN 8 uses. Design C (macro-pair entries) stays a measured alternative, not chosen.
@@ -192,3 +194,11 @@ Three adversarial rounds on 2026-10-17, claims checked in code and by queries on
   rerun that was meant to apply the filter had silently not (the edit was rejected), so its row is marked
   ignore in `runs.md`. Stated limits are in 6a (unit-variant records, string pool, verifier). The 12 bytes per
   entry is the `CRecRef` size; it ignores the section directory and the sorted merge.
+- **Round 5** (after building B, clangd differential `q7-b-clangd-diff2`): D1's premise was wrong (see D1) and
+  its code is reverted. Presentation differs where a macro call sits in another macro's argument: cereal
+  presents at the outermost invocation (gcc's expansion point), clangd at the inner spelling; kept, class P6 in
+  `clangd_diff.py`. Result: 0 unexplained clangd misses on lua54 (2632) and libuv (773). The 15 lua54
+  "unexpected" cereal-only lines are plain calls outside any macro (`lgc.c:1561` `luaS_clearcache(g);` and so
+  on, all in lgc.c, llex.c, ltm.c), so B does not produce them; read as clangd's background index lagging, not
+  re-run against a settled index. Gate (`q7-b-gate`): 2211 pass, san 0, verify 2/1/0 differ, callgrind 3.89G,
+  all at baseline.

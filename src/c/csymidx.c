@@ -24,10 +24,12 @@ typedef struct BEv {
     uint8_t len, flags;
 } BEv;
 
-typedef struct XCand {       /* a call spelled by a macro token: if the token
-                                is in a #define body, an xcall at pres */
+typedef struct XCand {       /* a use spelled by a macro token: if the token
+                                is in a #define body, a REF at pres, and for a
+                                call of a function also an xcall there */
     SrcLoc loc, pres;
     uint32_t decl;
+    bool call;
 } XCand;
 
 typedef struct BDecl {
@@ -351,9 +353,9 @@ static void push_ev(Checker *c, uint32_t tok, BEv *e, uint32_t id, int role)
     e->decl = id - 1;
     e->flags |= (uint8_t)role;
     vec_push(&b->ev, *e);
-    if ((role & CIX_CALL) && (e->flags & FROM_MACRO) &&
-        b->decls.data[id - 1].kind == CIK_FUNC) {
-        XCand x = {e->loc, b->pres, id - 1};
+    if ((role & CIX_ROLE) == CIX_REF && (e->flags & FROM_MACRO)) {
+        XCand x = {e->loc, b->pres, id - 1,
+                   (role & CIX_CALL) && b->decls.data[id - 1].kind == CIK_FUNC};
         vec_push(&b->xc, x);
     }
     if (b->vout && tok < b->seen.len)
@@ -1111,7 +1113,7 @@ CIndex *csx_finish(Checker *c)
         if ((e->flags & FROM_MACRO) && in_ranges(rg, nr, e->loc))
             e->flags = (uint8_t)((e->flags & ~FROM_MACRO) | CIX_MACRO_BODY);
     }
-    for (k = 0; k < b->xc.len; k++) {   /* calls spelled in a body: at the invocation */
+    for (k = 0; k < b->xc.len; k++) {   /* uses spelled in a body: at the invocation */
         const XCand *x = &b->xc.data[k];
         BEv e;
         if (!in_ranges(rg, nr, x->loc))
@@ -1119,9 +1121,13 @@ CIndex *csx_finish(Checker *c)
         e.loc = x->pres;
         e.decl = x->decl;
         e.len = 0;           /* measured at the end */
-        e.flags = CIX_REF | CIX_CALL | CIX_AT_EXPANSION | XCALL;
+        e.flags = CIX_REF | CIX_AT_EXPANSION;
         vec_push(&b->ev, e);
-        nxc++;
+        if (x->call) {       /* and a function's call, for call hierarchy */
+            e.flags = CIX_REF | CIX_CALL | CIX_AT_EXPANSION | XCALL;
+            vec_push(&b->ev, e);
+            nxc++;
+        }
     }
     b->xc.len = 0;
     free(rg);
@@ -2119,6 +2125,28 @@ size_t cindex_verify(const CIndex *ix, SrcMgr *sm, FILE *out)
                     ix->xcalls[i - 1].off > x->off)))) {
             fprintf(out, "verify: xcall %u is malformed or out of order\n", i);
             bad++;
+        }
+    }
+    {   /* a use at an expansion point sits on an identifier of the text, measured */
+        uint32_t cf = UINT32_MAX;
+        SrcFile *f = NULL;
+        for (i = 0; i < ix->nev; i++) {
+            const CIdxEvent *e = &ix->ev[i];
+            uint32_t n = 0;
+            if ((e->flags & (CIX_ROLE | CIX_AT_EXPANSION | CIX_SYSTEM | CIX_CALL |
+                             CIX_MACRO_BODY)) != (CIX_REF | CIX_AT_EXPANSION))
+                continue;
+            if (e->file != cf) {
+                cf = e->file;
+                f = cindex_srcfile(sm, ix->files[cf].path);
+            }
+            while (f && e->off + n < f->size && n < 255 &&
+                   cindex_ident_char(f->buf[e->off + n]))
+                n++;
+            if (f && (!n || n != e->len)) {
+                fprintf(out, "verify: use at an expansion point (event %u) is not on an identifier\n", i);
+                bad++;
+            }
         }
     }
     if (ix->by_decl_start[ix->ndecls] != ix->nev) {

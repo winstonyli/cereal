@@ -22,6 +22,7 @@ calls.c:16:30 DEF obj b1 -> #13
 calls.c:16:42 REF func g_impl -> #4 call
 calls.c:16:62 REF func leaf -> #2 call
 calls.c:17:23 REF func leaf -> #2 call
+calls.c:18:1 REF func leaf -> #2 expansion
 calls.c:18:11 DEF func made -> #14 arg
 calls.c:20:5 DEF func knrdef -> #15
 calls.c:20:12 REF param a -> #16
@@ -54,8 +55,11 @@ calls.c:31:13 REF func plain -> #7 arg call
 calls.c:32:5 REF obj t -> #21
 calls.c:32:10 REF func g_impl -> #4 expansion call
 calls.c:33:5 REF obj t -> #21
+calls.c:33:10 REF func leaf -> #2 expansion
 calls.c:34:5 REF obj t -> #21
+calls.c:34:10 REF func leaf -> #2 expansion
 calls.c:35:5 REF obj t -> #21
+calls.c:35:10 REF func leaf -> #2 expansion
 calls.c:36:5 REF obj t -> #21
 calls.c:36:24 REF obj t -> #21
 calls.c:37:5 REF obj t -> #21
@@ -71,10 +75,13 @@ calls.c:40:5 REF obj t -> #21
 calls.c:40:10 REF func user -> #20 call
 calls.c:40:15 REF param o -> #18
 calls.c:40:18 REF param param -> #19
+calls.c:41:5 REF func g_impl -> #4 expansion
 calls.c:41:7 REF func plain -> #7 arg call
 calls.c:42:12 REF obj t -> #21
 calls.c:45:5 DEF func local_define -> #24
 calls.c:47:19 REF func leaf -> #2 body call
+calls.c:48:12 REF func leaf -> #2 expansion
+calls.c:48:24 REF func leaf -> #2 expansion
 calls.c:51:5 DEF obj init2 -> #25
 calls.c:51:20 REF func made -> #14 call
 calls.c:18:1 xcall func leaf -> #2

@@ -20,8 +20,10 @@ the units of PROJECTS (lua54, libuv's Linux units) get a compile_commands.json a
 project indexes are completed first (cereal/indexWait; clangd's background index, its answers
 the union of CLANGD_RUNS runs because one run's index is not deterministic).  Per file in
 PROJECTS: references (includeDeclaration) of every top-level name clangd lists, definition and
-declaration at up to 80 distinct calls.  Intended differences: P2 clangd lists the
-invocation of a macro whose body uses the name (lua_call for lua_callk), cereal none; P3 the
+declaration at up to 80 distinct calls.  Intended differences: P2 clangd lists the invocation of
+a macro whose body uses the name at the macro call's own spelling (lua_call for lua_callk); where that
+call sits in another macro's argument cereal presents it at the outermost invocation, as gcc
+does (P6, the cereal side); P3 the
 place a definition or declaration request answers (clangd: the header declaration, or the
 declaration at a definition) when both answer; P4 cereal lists a use spelled in a macro
 argument that clangd omits; P5 the request is in an inactive preprocessor region (cereal has
@@ -548,7 +550,10 @@ def project_mode(cer, cdir, only):
                     out.append("%s clangd only %s [%s]" % (head, where(x), cls or "UNEXPECTED"))
                 for x in sorted(a - b):
                     ln, ch = line_at(x)
-                    cls = "P4" if any(re.search(r"\b%s\b" % re.escape(m), ln[:ch]) for m in macros) else None
+                    m = re.match(r"\w+", ln[ch:])
+                    cls = "P4" if any(re.search(r"\b%s\b" % re.escape(w), ln[:ch]) for w in macros) else None
+                    if cls is None and m and m.group(0) in macros and m.group(0) != name:
+                        cls = "P6"   # a use through a macro, presented at the outermost invocation
                     out.append("%s cereal only %s [%s]" % (head, where(x), cls or "UNEXPECTED"))
         except Exception as e:
             out.append("%s: FAILED %r [UNEXPECTED]" % (rel, e))

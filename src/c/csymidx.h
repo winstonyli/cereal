@@ -161,7 +161,8 @@ typedef enum {
     CIQ_DEF,     /* each decl's DEF events, or its DECL events if none */
     CIQ_DECL,    /* each decl's DECL events, or its DEF events if none */
     CIQ_REFS,    /* every event but those spelled in a #define body (a
-                    body's tokens are not uses where they are written) */
+                    body's tokens are not uses where they are written; its
+                    uses are listed at each invocation, CIX_AT_EXPANSION) */
     CIQ_USES     /* CIQ_REFS without DECL and DEF (includeDeclaration off) */
 } CIdxQuery;
 /* The events of decls[0..nd) that q selects, as indices into ix->ev in

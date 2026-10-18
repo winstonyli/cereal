@@ -1,0 +1,34 @@
+== refs macsites.c:1:5
+macsites.c:1:5 DECL func callee
+macsites.c:7:22 REF func callee expansion
+macsites.c:7:41 REF func callee expansion
+macsites.c:7:52 REF func callee expansion
+== uses macsites.c:1:5
+macsites.c:7:22 REF func callee expansion
+macsites.c:7:41 REF func callee expansion
+macsites.c:7:52 REF func callee expansion
+== refs macsites.c:2:22
+macsites.c:2:22 DEF field len
+macsites.c:7:32 REF field len expansion
+macsites.c:8:22 REF field len expansion
+== highlight macsites.c:1:5
+macsites.c:1:5 write func callee
+macsites.c:7:22 read func callee expansion
+macsites.c:7:41 read func callee expansion
+macsites.c:7:52 read func callee expansion
+== callers macsites.c:1:5
+macsites.c:7:5 func f: 7:22 7:41 7:52
+== hover macsites.c:7:23
+#define WRAP(x) callee(x)
+  defined at macsites.c:3:9
+expands to: callee(1)
+== def macsites.c:7:23
+macsites.c:3:9 WRAP(x)
+== refs macsites.c:7:23
+macsites.c:3:9 definition
+macsites.c:6:17 expansion in-body
+macsites.c:7:22 expansion
+== rename=other macsites.c:1:5
+cannot rename: 'callee' at macsites.c:3:17 is spelled in a #define body; renaming would change the macro
+== rename=wid macsites.c:2:22
+cannot rename: 'len' at macsites.c:4:22 is spelled in a #define body; renaming would change the macro

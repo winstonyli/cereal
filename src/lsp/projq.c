@@ -629,8 +629,8 @@ bool pq_ambiguous(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, PqBlock *blk)
     for (i = 0; i < n; i++) {
         const CRecView *v = &h[i].rec->map.v;
         uint32_t j;
-        for (j = 0; j < v->nrefs; j++)
-            if (v->refs[j].key == h[i].ki)
+        for (j = 0; j < v->nrefs; j++)       /* uses at an invocation share its place */
+            if (v->refs[j].key == h[i].ki && !(v->refs[j].flags & CIX_AT_EXPANSION))
                 vec_push(&mine, ((Mine){h[i].rec->path, h[i].rec->fhash, v->refs[j].off}));
         for (j = 0; j < v->ndecls; j++)
             if (v->decls[j].key == h[i].ki)
@@ -654,6 +654,8 @@ bool pq_ambiguous(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, PqBlock *blk)
             bool isref = j < v->nrefs;
             uint32_t key = isref ? v->refs[j].key : v->decls[j - v->nrefs].key;
             Mine m = {rec->path, rec->fhash, isref ? v->refs[j].off : v->decls[j - v->nrefs].off};
+            if (isref && (v->refs[j].flags & CIX_AT_EXPANSION))
+                continue;
             for (q = 0; own && q < n; q++)  /* our own key in a record that has it */
                 if (h[q].rec == rec && h[q].ki == key)
                     break;
