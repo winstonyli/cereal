@@ -484,8 +484,8 @@ comparison `tests/tast_gcc.py`.
 - **Verifier.** Kids precede parents; every node but the root is used once;
   values are never bare lvalues; operand types match the operator; statement
   and expression positions are kept apart; every `goto` has a label. It
-  prints `verify:` lines and does not set the exit status; the plan's
-  "dump parses back" check was not built (the dump is not parsed anywhere).
+  prints `verify:` lines and exits 1 on a finding (checked by breaking an
+  operand conversion); the plan's "dump parses back" check was not built (the dump is not parsed anywhere).
   A deliberate break (an unconverted operand) is reported, so it does check.
 - **Coverage** (run `2026-10-18-tast-t1-coverage-b`, WSL, option on vs off
   wall time): lua54, 30 functions elaborate of 2,243 units with a body (1.3%),

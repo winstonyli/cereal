@@ -343,6 +343,7 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err,
     TU tu;
     FrontendOpts fo = fe_opts;
     ParOptions po;
+    unsigned tast_bad = 0;
     CIndex *ix = NULL;
     int rc;
     if (carry_old)
@@ -350,6 +351,7 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err,
     tu_init(&tu, o);
     tu.diag.out = err;
     fo.out = out;
+    fo.tast_bad = fe_opts.verify_tast ? &tast_bad : NULL;
     if (parse_cells) {
         po = par_options(o);
         fo.cells_par = &po;
@@ -360,6 +362,8 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err,
     }
     frontend_run(&tu, path, &fo);
     rc = finish(&tu, out);
+    if (tast_bad && !rc)
+        rc = 1;
     if (ix && dump_symbols)
         cindex_dump(ix, &tu.sm, out);
     if (ix && verify_symbols && cindex_verify(ix, &tu.sm, out) && !rc)

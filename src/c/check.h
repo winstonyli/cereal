@@ -31,6 +31,7 @@ typedef struct CheckOptions {
     FILE *dump;                 /* --dump-types: declarations and layouts */
     FILE *tast;                 /* --dump-tast: the typed tree of each unit */
     bool verify_tast;           /* --verify-tast: check each tree, print findings */
+    unsigned *tast_bad;         /* ... incremented per finding (NULL: not counted) */
     bool summaries;             /* keep per-unit summaries (csum.h) */
     FILE *dump_summaries;       /* --dump-summaries: print them (implies) */
     const char *validate_summaries; /* --validate-summaries=FILE: check each

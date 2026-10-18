@@ -885,6 +885,8 @@ static void print_tree(El *e, FILE *out)
 
 static void vbad(El *e, FILE *out, size_t i, const char *msg)
 {
+    if (e->c->opt.tast_bad)
+        ++*e->c->opt.tast_bad;
     fprintf(out, "verify: #%zu %s: %s\n", i, op_names[e->nodes.data[i].op], msg);
 }
 

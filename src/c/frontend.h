@@ -12,6 +12,7 @@ typedef struct FrontendOpts {
     bool check;                 /* run the checker (else parse only) */
     bool dump;                  /* print the syntax trees to out */
     bool verify_tast;           /* with dump_tast: check each tree (tast.c) */
+    unsigned *tast_bad;         /* with verify_tast: incremented per finding */
     bool dump_types, dump_tast, dump_summaries, keep_summaries;
     const char *validate_summaries;
     const Target *target;       /* NULL: the host's */
