@@ -4,7 +4,7 @@ status: draft
 
 # Project rename through macro bodies (plan)
 
-Written 2026-10-17. Decision 2 of the macro-aware rename policy ([PARKED.md](../PARKED.md) "A macro-aware
+Written 2026-10-17. **Parked for later by decision (same day); nothing below is scheduled.** Option 2 of the macro-aware rename policy ([PARKED.md](../PARKED.md) "A macro-aware
 rename policy"): **edit the body token when it is a whole-word identifier that every expansion resolves to the
 renamed entity, and refuse everything else.** No per-site prompt (option 3), no change to what references list
 (Q7 stays parked). Nothing here is built; the plan is gated by spikes (section 6).
