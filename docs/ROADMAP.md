@@ -186,7 +186,7 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
   uninitialized-variable warnings either (they come from the optimizer), so
   this is parity with a compile, not with the current oracle.
 - Back end: typed-AST export, x86-64 SysV classification, then QBE and `cc`
-  for assembling (est. 8 to 12+ weeks, high risk). Nothing in the tree
+  for assembling (est. 8 to 12+ weeks, high risk; first step: TAST_DESIGN.md, draft, S0 done). Nothing in the tree
   lowers the AST today. Start only after A and B.
 - Macro-aware project index and refactoring (wanted; collects what B5 parked;
   no estimate yet). Today the project index and rename deal with macros by
@@ -203,8 +203,8 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
     argument, the body, or refuse).
   Status (2026-10-17): the configuration design S1 to S4 is closed (CONFIG_DESIGN.md; S3 decided against,
   PARKED.md "S3-records"). Of the items above, the macro-aware rename policy is parked with a draft plan
-  (MACRO_RENAME_PLAN.md; it would close the uninvoked-macro gap for rename, nothing built); Q7 and rename through
-  inactive groups remain open.
+  (MACRO_RENAME_PLAN.md; it would close the uninvoked-macro gap for rename, nothing built); rename through
+  inactive groups remain open; Q7 was built (design B, 2026-10-17, MACRO_SITES_PLAN.md).
   Direction (user, Round 238): one mechanism, the *configuration* (a virtual
   compile entry: the real flags plus an overlay of standard, extensions,
   predefined macros and target), derived from the guards of each `#if` group,
@@ -218,6 +218,9 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
   the stop rule of B5d's `rename_libuv.py` as the measure (12.2% of libuv's
   external functions are refused today for inactive groups, 1.1% for macro
   bodies).
+- Proving annotation channel (VeriFast-style): comments are dropped by the lexer, so annotations need a lexer and
+  preprocessor design of their own (an annotation token class, a `VERIFAST`-like view); independent of TAST_DESIGN.md,
+  which only keeps source spans and field paths available (its section 8). No design yet.
 - Not planned: formatter, sanitizer instrumentation, `-fanalyzer`.
 
 ## Order

@@ -236,3 +236,40 @@ alternative B (record conversions during `visit()`) is added and S0 decides;
 Round 3 (re-read for stale text): no further material finding; open risk
 unchanged: the gcc comparison may be too noisy (S1 decides, with a stated
 fallback).
+
+## 11. Spike results (2026-10-17, throwaway instrumented copy, removed)
+
+**S0 (type presence).** At unit end, on lua54 (all 33 units) and libuv (src and
+src/unix), 8 of 147,847 external declarations were skipped for errors; the
+rest are clean. Of about 380,000 expression nodes, every node has a type
+except: 4,064 `IDENT` under `ATTR_ITEM` (attribute arguments, not
+expressions: the walk should skip them), and 52 callee `IDENT`s with their 22
+enclosing `CALL`s, all generic builtins whose type depends on the arguments
+(`__atomic_load/store/exchange/fetch_add/compare_exchange`,
+`__builtin_va_start/va_end`). `EF_LVALUE` is set on identifiers, members,
+subscripts and strings as expected. `common_type()` (`cexpr_int.h:357`) and
+`promoted()` exist as separate helpers, so promotion and usual arithmetic
+conversions are callable at unit end. Not measured: assignment, argument and
+return conversion targets (derivable from the callee's function type and the
+declared types, by reading), and `EF_NPC` use. Verdict: the unit-end design
+(section 4) is viable for the conversion sites inspected; alternative B is
+not needed unless a later stage finds a site whose decision state is gone.
+Builtins with argument-dependent types need explicit rules (stage T5, or
+`unsupported` until then).
+
+**S1 (oracle noise).** Read, not measured: gcc-13's `-fdump-tree-original`
+on lcode.c, lstring.c, ltable.c and lvm.c (8,765 lines, 187 functions) is
+statement-structured and prints every conversion as `(target-type) expr`,
+but it folds and rewrites: `a[key - 1]` appears as a byte offset with the
+constant wrapped to unsigned (`+ 18446744073709551615`), `sizetype`
+arithmetic, `D.nnnn` labels and temporaries, initializer lines printed
+twice, macros expanded. Casts print the target type only, not the source.
+So a text or tree-shape comparison is out; a per-function multiset of cast
+*target* types and of arithmetic result types is plausible but weak, and its
+agreement rate cannot be measured before a T1 prototype exists. Verdict:
+keep the oracle as a coarse per-function check (cast-target multiset), do
+not rely on it as the main evidence; the strong evidence is layout asserts
+now and compiled-program comparison once a back end exists. Stage T1's exit
+criterion therefore reads "cast-target multisets agree on at least N% of
+functions, mismatches listed", with N set after the first measurement, not
+guessed here.
