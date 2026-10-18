@@ -7,8 +7,8 @@ status: draft
 Follows `docs/TAST_T7_PLAN.md`. This is the old design stage T6
 (`docs/TAST_DESIGN.md` sections 4 and 13), renumbered after T5 to T7 took
 the other T-numbers; see the "Stage map as built". Facts are from the tree of
-2026-10-18; anything unread is marked **verify**. Not started: needs a
-go-ahead and the decisions in section 9.
+2026-10-18; anything unread is marked **verify**. Decisions in section 9
+taken 2026-10-18 (form 1, T8a first, structured form kept); T8a approved.
 
 ## 1. Why, and what it must be
 
@@ -67,7 +67,10 @@ Statements (per-tag, but all are "emit blocks and edges"):
   with a `jmp` to the next, `break` is `jmp` to the exit block, and
   `swtch` is the terminator after the controlling value. Duff-style nesting
   (a `case` inside an inner statement) works because blocks are cut by label,
-  not by syntax; **verify** with a test.
+  not by syntax. Checked 2026-10-18 on `tests/tast/duff.c` (Duff's device,
+  `case` inside `if`/`for`/`do`): the structured dump already carries each
+  nested `case` as a node at its depth, so T8a collects `case`/`default`
+  by walking the whole switch body, not only its top-level items.
 - `return e`: `ret e` (a `reg` is not needed).
 - `local x init`, `exprstmt`, `nop`: unchanged, stay in the current block.
 
@@ -129,6 +132,15 @@ constant evaluator in `tests/tast_data.py` extended with a block walk.
    expressions and the pending values at each (section 3). If pending
    values are rare, spill-everything is acceptable; if frequent, a smarter
    scheme (keep values in a `reg` only when needed) is a later step.
+   **Result (2026-10-18, throwaway script, not kept):** lua54 2174 functions,
+   722 with a split; 1778 splits (cond 774, logand 610, logor 392, stmtexpr
+   2). Pending values at a split: 0 in 1236, 1 in 364, 2 in 114, 3 in 60, 5
+   in 4; max 5. libuv 1546 functions, 247 with a split; 600 splits (stmtexpr
+   203, logand 222, logor 144, cond 30): 0 in 538, 1 in 56, 2 in 4, 3 in 1;
+   max 3. About 70% of splits have nothing pending; the maximum is 5.
+   Spill-everything is acceptable: a `reg` count per split is small and no
+   smarter scheme is needed. (Pending = expression node before the split
+   whose expression parent comes after it; `stmtexpr` counted at its start.)
 1. T8a: statements only (`if`, loops, `switch`, `break/continue/goto/label`,
    `return`), expressions unchanged; blocks and `jmp/br/swtch/ret`, the CFG
    verifier. Functions whose expressions contain no hidden control flow
