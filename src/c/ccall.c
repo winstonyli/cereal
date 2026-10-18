@@ -705,7 +705,7 @@ static uint32_t atomic_argc(const char *name)
  * (void *-based) __atomic_load/store/exchange/compare_exchange, 2 the _n and
  * __sync ones sized by the first argument, 3 those same for fetch operations
  * (a _Bool operand is refused); 0 the others. */
-static int atomic_kind(const char *name)
+int atomic_kind(const char *name)
 {
     static const char *const ops[] = {"add", "sub", "and", "nand", "xor", "or"};
     const char *b;

@@ -656,6 +656,21 @@ static uint32_t e_call_t(El *e, uint32_t i)
         ft = type_canon(&c->tt, csym(c, ref)->ty);
     } else if (ntag(c, callee) == N_IDENT && c->sym[callee] == SYM_NONE) {
         ft = builtin_ft(e, callee);
+        if (!ft && atomic_kind(cident(c, cnode_ident(c, callee))) == 1) {
+            /* the generic __atomic_load/store/exchange/compare_exchange: no
+             * prototype, the arguments are pointers and ints taken as they are */
+            uint32_t j;
+            for (j = 1; j < nk; j++) {
+                uint32_t x = rv(e, k[j]);
+                if (x == TN)
+                    goto out;
+                vec_push(&args, x);
+            }
+            id = mk(e, TO_INTRIN, unqual(c, c->ty[i]), loc, 0, cnode_ident(c, callee), 0,
+                    args.data, (uint32_t)args.len);
+            e->nodes.data[id].width = 2;
+            goto out;
+        }
         if (!ft) {
             unsup(e, "builtin or undeclared call %s", cident(c, cnode_ident(c, callee)));
             goto out;
@@ -1393,6 +1408,10 @@ static void print_tree(El *e, FILE *out)
                 fprintf(out, " fixed %lld", (long long)nd->val);
             break;
         case TO_INTRIN:
+            if (nd->width == 2) {
+                fprintf(out, " %s generic", cident(c, nd->sym) + 2);
+                break;
+            }
             fprintf(out, " %s", cident(c, nd->sym) + 10);
             if (nd->width)
                 fprintf(out, " fixed %lld", (long long)nd->val);
@@ -1545,7 +1564,8 @@ static void verify(El *e, FILE *out)
             !((nd->op == TO_DEREF || nd->op == TO_SYM) && KIND(nd->ty) == TY_FUNC))
             vbad(e, out, i, "type outside the subset");
         if (ex_ && VOIDT && nd->op != TO_CAST && nd->op != TO_CALL &&
-            nd->op != TO_COND && nd->op != TO_COMMA && nd->op != TO_STMTEXPR)
+            nd->op != TO_COND && nd->op != TO_COMMA && nd->op != TO_STMTEXPR &&
+            nd->op != TO_INTRIN)
             vbad(e, out, i, "void type");
         switch (nd->op) {
         case TO_CONST: NEED(0); break;
@@ -1635,6 +1655,14 @@ static void verify(El *e, FILE *out)
             const TypeEnt *fe;
             bool sz_ok = false;
             uint32_t f0 = nd->op == TO_CALL && nd->pun ? 1 : 0, np;
+            if (nd->op == TO_INTRIN && nd->width == 2) {
+                if (atomic_kind(cident(c, nd->sym)) != 1)
+                    vbad(e, out, i, "generic builtin");
+                for (j = 0; j < nd->nkids; j++)
+                    if (!ISVAL(KID(j)) || (KIND(KID(j)->ty) != TY_PTR && !is_int(c, KID(j)->ty)))
+                        vbad(e, out, i, "argument is not a pointer or integer value");
+                break;
+            }
             if (nd->op == TO_INTRIN) {
                 const char *nm = cident(c, nd->sym);
                 const BTab *bt = strncmp(nm, "__builtin_", 10) ? NULL : bt_find(c, nm + 10, true);

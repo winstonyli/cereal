@@ -364,6 +364,7 @@ void sp(char *b, const char *fmt, ...);
 bool targets_compat(Checker *c, SrcLoc loc, TypeId pa, TypeId pb);
 void deref(Checker *c, uint32_t i, uint32_t a);
 uint32_t stmt_expr_value(Checker *c, uint32_t i);
+int atomic_kind(const char *name);   /* ccall.c: 1 generic __atomic_*, 2 _n and __sync, 3 fetch ops */
 void bin_value(Checker *c, uint32_t i, uint32_t a, uint32_t b,
     uint64_t v, bool ovf, bool int_const, SrcLoc loc);
 void invalid_operands(Checker *c, uint32_t i, uint32_t a, uint32_t b,
