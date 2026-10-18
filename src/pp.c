@@ -1522,6 +1522,7 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
     m->name_loc = name->loc;
     m->file = pp->inc->file;
     m->predefined = pp->inc->file->kind == SF_VIRTUAL;
+    m->cfg = pp->inc->quiet;        /* only -imacros frames are quiet */
     i = 1;
 
     if (i < line.n && tok_is_punct(&line.t[i], P_LPAREN) &&

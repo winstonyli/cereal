@@ -1,0 +1,11 @@
+[
+ {"send": {"id": 1, "method": "initialize", "params": {"rootUri": "file://$ROOT/pccfg", "capabilities": {"general": {"positionEncodings": ["utf-8", "utf-16"]}}}}},
+ {"send": {"method": "initialized", "params": {}}},
+ {"open": "pccfg/main.c"},
+ {"idle": true},
+ {"note": "macros of an -imacros header (cfg.h) are settings: the refusal lists them, not 'the unit defines'"},
+ {"send": {"id": 2, "method": "textDocument/rename", "params": {"textDocument": {"uri": "file://$ROOT/pccfg/main.c"}, "position": {"line": 0, "character": 11}, "newName": "feat"}}},
+ {"send": {"id": 3, "method": "textDocument/rename", "params": {"textDocument": {"uri": "file://$ROOT/pccfg/main.c"}, "position": {"line": 1, "character": 11}, "newName": "deeper"}}},
+ {"send": {"id": 4, "method": "shutdown"}},
+ {"send": {"method": "exit"}}
+]

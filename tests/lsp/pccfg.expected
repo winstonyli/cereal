@@ -1,0 +1,46 @@
+>> initialize
+{
+ "positionEncoding": "utf-8",
+ "providers": [
+  "callHierarchyProvider",
+  "completionProvider",
+  "declarationProvider",
+  "definitionProvider",
+  "documentHighlightProvider",
+  "documentSymbolProvider",
+  "experimental",
+  "foldingRangeProvider",
+  "hoverProvider",
+  "inactiveRegionsProvider",
+  "positionEncoding",
+  "referencesProvider",
+  "renameProvider",
+  "semanticTokensProvider",
+  "signatureHelpProvider",
+  "textDocumentSync",
+  "typeDefinitionProvider",
+  "workspaceSymbolProvider"
+ ]
+}
+>> initialized
+>> didOpen pccfg/main.c
+>> (idle)
+## macros of an -imacros header (cfg.h) are settings: the refusal lists them, not 'the unit defines'
+>> textDocument/rename
+{
+ "error": {
+  "code": -32803,
+  "message": "'featured' occurs in an inactive #if group at $ROOT/pccfg/main.c:4:10, which cannot be checked (`#if FEATURE_X`: to compile it: `defined(FEATURE_X) && FEATURE_X < 1 && FEATURE_X < 0` or `defined(FEATURE_X) && FEATURE_X >= 1 && FEATURE_X >= 0`)"
+ }
+}
+>> textDocument/rename
+{
+ "error": {
+  "code": -32803,
+  "message": "'deep_fn' occurs in an inactive #if group at $ROOT/pccfg/main.c:7:10, which cannot be checked (`#if LEVEL >= 3`: to compile it: `defined(LEVEL) && LEVEL >= 3`)"
+ }
+}
+>> shutdown
+null
+>> exit
+exit 0

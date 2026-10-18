@@ -574,6 +574,17 @@ S2 measurement already showed (the 54 are target atoms; the two option lists are
 `__cplusplus`, which `enable` does not flip). Not done: the code action carries no list (hover does,
 for the open unit); the CLI `query rename=` path still refuses without one.
 
+Implemented (config header, 2026-10-17): the configuration header is a file named by `-imacros` in
+`.cereal` (or the compile flags); no new key. A macro defined while an `-imacros` frame is open gets
+`Macro.cfg` (set in `do_define` from the frame's `quiet`, which only `-imacros` sets), and the three
+overlay checks in pc.c (`unit_defines`, `enable_fixed`, `pc_req_via`) treat it like a command-line
+macro: a preconditions list names `defined(FEATURE_X)` instead of "the unit defines `FEATURE_X`", and
+`enable`/`cover` may flip it. `predefined` is unchanged, so the index, hover and rename still see the
+header's macros as the project's own. Test: `tests/lsp/pccfg` (falsified: without `cfg` the lists say
+"the unit defines"). Not done (PARKED.md): cereal runs `-imacros` in command-line order with `-D`/`-U`,
+gcc 15 runs it after all of them; an overlay's `-D` only wins because of that order, so the gcc order
+needs a late overlay layer first. The code action that edits the header is also not built.
+
 Implemented earlier (Round 264): `enable` (one group to command-line words) and `cover` (greedy, no merges
 of cubes yet), both oracle-checked by re-running the preprocessor (`bench/pc_enable.py`). An overlay never
 sets a macro the unit defines itself (a guard, or a default tested before its `#define`) or a target, env,

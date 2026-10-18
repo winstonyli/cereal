@@ -1,0 +1,2 @@
+# the configuration header: -imacros reads its macros before later -D/-U
+-imacros cfg.h

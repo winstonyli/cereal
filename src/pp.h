@@ -49,6 +49,8 @@ typedef struct Macro {
     uint16_t extra_paste;       /* the ## of a run beyond the first (libcpp's extra tokens) */
     uint64_t extra_hash;        /* where they sit, and how they are spelled */
     bool predefined;         /* from <built-in> or <command-line> */
+    bool cfg;                /* defined inside an -imacros file: a configuration header,
+                              * which a later -D/-U overrides (an overlay can flip it) */
     bool has_ops;            /* body contains # or ## */
     bool has_vaopt;          /* body contains __VA_OPT__ (variadic only) */
     BuiltinKind builtin;

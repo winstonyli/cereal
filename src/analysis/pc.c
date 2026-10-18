@@ -1503,7 +1503,7 @@ void pc_cover_free(PcCover *c)
 static bool unit_defines(const PcUnit *u, const PcReq *q)
 {
     const Macro *m = q->id ? mt_cur(u->an->pp->mt, q->id) : NULL;
-    return m && !m->predefined && m->file;
+    return m && !m->predefined && !m->cfg && m->file;
 }
 
 /* no overlay for a macro the unit defines (a guard changes which files are read) */
@@ -1522,7 +1522,7 @@ static bool enable_fixed(void *ctx, const PcAtom *at)
 {
     const PcUnit *u = ctx;
     const Macro *m = at->id ? mt_cur(u->an->pp->mt, at->id) : NULL;
-    return at->cls == PC_TARGET || (m && !m->predefined && m->file);
+    return at->cls == PC_TARGET || (m && !m->predefined && !m->cfg && m->file);
 }
 
 bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb)
@@ -1545,7 +1545,7 @@ bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb)
 {
     const Macro *m = q->id ? mt_cur(u->an->pp->mt, q->id) : NULL;
     uint32_t line, col;
-    if (!m || m->predefined || !m->file)
+    if (!m || m->predefined || m->cfg || !m->file)
         return false;
     if (is_guard(u, q->id)) {
         sb_printf(sb, "the guard of %s: it makes the unit skip that header",
