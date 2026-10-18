@@ -118,7 +118,8 @@ Three adversarial rounds on 2026-10-17, claims checked against HEAD 345f6eb and 
 - **Round 3** (what could be false): checked in code: records keep `MACRO_BODY` on REFS (dump line
   `ref 294:26 ... body call`); `pq_ambiguous` covers body positions; `cindex_select` drops body events
   from `CIQ_REFS` (`csymidx.c:1551`); `pq_locs_sort` dedupes the same body position seen by many records.
-  **Not verified, so spikes:** whether an xcall event can reach the open unit's edit list (S1), how to
+  **Not verified, so spikes:** (S1 is resolved by reading: xcalls live in `ix->xcalls`, apart from `ix->ev`,
+  `csymidx.c:1171-1218`, so they cannot reach an edit list.) How to
   enumerate macro definitions including redefinitions (S2), and that `differs()` accepts a body edit
   (S3). The PARKED rows that tie the policy to the Q7 format bump are stale for rename and are corrected
   when the work lands, not before.
