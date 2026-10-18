@@ -116,7 +116,9 @@ unspecified in gcc, and a guessed value would be wrong).
   returns a non-integer type unchanged, so a `float` extra argument would
   stay `float`. Fix in `call_args` (convert to `double`) and in the
   verifier's extra-argument check ("`float` extra argument not promoted").
-  Until T4 no floating value reaches it, so no golden is wrong today.
+  Both fixes landed ahead of T4; no floating value reaches them until
+  `ok_ty` admits `float`, so their golden case (`printf("%f", f)`) belongs
+  to `tests/tast/float.c`.
 - Truth value (`!x`, `&&`, `||`, `?:` condition, `if`/loops, `(_Bool)x`) of a
   floating operand means `x != 0` (NaN is true). Stated once in the dump
   header notes and in the verifier comment; no node change, because the

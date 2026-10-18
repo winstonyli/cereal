@@ -583,3 +583,14 @@ Keep `stmtexpr` in T3 (pull-forward stands): it is 102 of libuv's 150
 remaining units, independent of the initializer hook, and needs only the
 `str` bytes and the `__func__` string. Its order relative to T3b is free; do
 T3c first if the hook proves harder than the spike suggests.
+
+### T3 gate and leftovers (2026-10-18, run `2026-10-18-t3-gate`, commit `bad4a66`)
+
+Globals ok; run and san 2250 passed, san findings 0; verify differ 2/1/0;
+callgrind 3,895,360,854 (+0.03% over T2's 3,894,075,059). Coverage: lua54
+206 unsupported (floating 190, variadic/unprototyped definition 10, compound
+lvalue 2, `va_arg` 2, address-of-label 2); libuv 20 (floating 12, array type
+2, one each definition, `asm`, lvalue form, `va_arg`, `setproctitle`,
+`__atomic_fetch_add`), 0 verifier findings. The 8 units `posix-poll.c` skips
+for errors fail identically under gcc (platform file): not a checker bug.
+Leftovers are in `PARKED.md` ("TAST T3 leftovers").

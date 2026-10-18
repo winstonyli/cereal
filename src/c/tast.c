@@ -584,7 +584,7 @@ static uint32_t ptr_binary(El *e, uint32_t i, int p, uint32_t a, uint32_t b, Src
 
 /* The arguments k[0..na) of a call to a function of type ft, appended to
  * args: the declared parameters get the parameter type, the rest the default
- * argument promotions (C11 6.5.2.2p6; a floating argument is T4).  Returns
+ * argument promotions (C11 6.5.2.2p6: integers promote, float becomes double).  Returns
  * false when the unit became unsupported. */
 static bool call_args(El *e, TypeId ft, const uint32_t *k, uint32_t na,
                       SrcLoc loc, U32Vec *args)
@@ -610,7 +610,8 @@ static bool call_args(El *e, TypeId ft, const uint32_t *k, uint32_t na,
             v = ex(e, a, false);
             if (v == TN)
                 return false;
-            pt = is_int(c, nty(e, v)) ? promoted(c, a) : nty(e, v);
+            pt = is_int(c, nty(e, v)) ? promoted(c, a)
+               : type_ckind(&c->tt, nty(e, v)) == TY_FLOAT ? TYPE_B(DOUBLE) : nty(e, v);
         }
         ca = conv(e, v, pt, loc);
         if (ca == TN)
@@ -1713,6 +1714,8 @@ static void verify(El *e, FILE *out)
                            (KIND(KID(j)->ty) == TY_BOOL ||
                             (KIND(KID(j)->ty) != TY_ENUM &&
                              type_size(&c->tt, KID(j)->ty, &sz_ok) < 4))) {
+                    vbad(e, out, i, "extra argument not promoted");
+                } else if (KIND(KID(j)->ty) == TY_FLOAT) {
                     vbad(e, out, i, "extra argument not promoted");
                 }
             }
