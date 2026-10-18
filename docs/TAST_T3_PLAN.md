@@ -440,3 +440,82 @@ rule above. The `__builtin_constant_p` and `bt_find` `pre` verifies are
 closed: the callee path only takes a name starting `__builtin_`, so
 `pre` is always true. Implicit-declaration calls stay unsupported (one libuv
 unit).
+
+### S2 spike, done (2026-10-18; throwaway copy `~/cereal-spike`, removed)
+
+A print hook before the pending-set branches in `out_elem`
+(`cinit.c`, after `digest`), with the offset summed along the `Lvl` chain
+(`Field.off_bits` for records and unions, index times element size for
+arrays; the top level uses `key`, ancestors their current `fi`/`idx`).
+Hand-checked against the layout of a nested test (arrays of structs,
+anonymous struct, bit-fields, union, string, pointer): every offset right.
+
+- **The hook is small and the arithmetic is simple**: about 25 lines for the
+  offset; `Field` already carries `off_bits`, no `Lvl` change. Option 1
+  (record at `out_elem`) is taken.
+- **`out_elem` is also called for closed sub-aggregates** (`v.kind ==
+  V_CTOR`, 444 of 3,108 corpus records, plus an implicit repeat when an
+  enclosing level pops). Those are not elements: record only `V_EXPR` leaves
+  (2,664). `V_ZERO` needs no record.
+- **A union override must be an event, not an overlap rule.** At the `LV_UNI`
+  branch (`nelems > 0`, "initialized field overwritten") the earlier members
+  are discarded as a whole (`L->nel = 0` / `ps->n = 0`); a later shorter
+  member does not leave the earlier one's high bytes. The record stream
+  therefore needs `clear [offset, offset + union size)` emitted before the new
+  element; with the hook before the branches the order was reversed, so the
+  hook goes in three places (the two pending branches, and after the union
+  branch). The corpus has 0 union overrides, `tests/check` has 3.
+- **Strings do not pass through `out_elem` when they initialize a whole char
+  array** (`char t[] = "hello"`, `char s[4] = {"ab"}`): the first goes through a
+  separate path, the second sets `Lvl.repl`. A second hook where `repl` is
+  consumed in `pop_level`, and one for the brace-less string, are needed;
+  a string leaf as an element of a larger aggregate (`{..., "ab", ...}`) does
+  reach `out_elem` with `v.str` and `strn`. Pointer-to-string (`char *p =
+  "x"`) is an ordinary K_ADDR leaf.
+- **Out-of-order designators** reach `out_elem` in source order (records are
+  not delayed by the pending sets), so sorting plus last-wins on equal
+  offsets is enough for leaf scalars; sub-aggregate merging (`.u.a`, `.u.b`)
+  is leaf-level too.
+- **Corpus shapes** (lua54 + libuv, all constant): 2,664 leaves, 1,382 integer
+  constants, 1,274 address constants (647 of them string pointers), no
+  bit-fields, no side effects, no designators-with-overrides, no union
+  overrides, depth at most 2; level kinds: 899 in records, 1,755 in arrays,
+  10 in unions. `tests/check` (79 of 620 files have initializers): 1,348
+  records, 7 bit-field leaves, 2 with side effects, 34 in unions, 3 union
+  overrides. The corpus does not exercise designators, bit-fields or
+  overrides; the hand tests and `tests/check` must carry them. 8 leaves have
+  `ck == 0` (not ICE, not ADDR): **to identify** before T3b.
+- The gcc.dg initializer files are not on this machine; `tests/check` is the
+  initializer test source.
+- **Decision: the hook goes ahead behind a checker flag; the first T3b task
+  is the five hook points plus the clear event, verified by `tast_data.py`
+  on `tests/check`.**
+
+### Verify list, closed (2026-10-18)
+
+- `__builtin_constant_p` is always `K_ICE` (`ccall.c:2001`), never reaches the
+  pass as a call.
+- `bt_find`'s `pre` flag: the pass only takes names that start with
+  `__builtin_`, so `pre` is true; closed with T3a.
+- Implicit-declaration calls: libuv's `setproctitle` is reported "undeclared"
+  with `sym == SYM_NONE`; stays unsupported (one unit).
+- gcc keeps unused statics at `-O0` (`su`, `sc`, `sl.0` all in `nm` output),
+  so the data oracle can compile the test files as they are.
+- gcc accepts `long p = (long)&a;` at file scope and emits a 64-bit
+  relocation, so the constness check must allow `cast(addr sym)` to an
+  8-byte integer.
+- String bytes are not retained, but one decoder exists: `lit_char_one`
+  (`lit.c`) behind `lit_str_units`, and `fmt_decode` (`cformat.c`) builds the
+  unescaped bytes of a narrow literal. T3b/T3c turn that into one
+  width-aware `lit_str_bytes` and make `fmt_decode` use it, rather than a
+  third decoder.
+- Still to read when the work reaches it: whether a function-local `static`
+  has an index declaration; `{[0]=f(), [0]=g()}` evaluation in gcc for
+  automatic objects; `ck == 0` leaves.
+
+### T3c decision
+
+Keep `stmtexpr` in T3 (pull-forward stands): it is 102 of libuv's 150
+remaining units, independent of the initializer hook, and needs only the
+`str` bytes and the `__func__` string. Its order relative to T3b is free; do
+T3c first if the hook proves harder than the spike suggests.
