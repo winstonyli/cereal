@@ -1,0 +1,188 @@
+tast 1 target x86_64-linux-gnu
+unit fdata.c:3:1 data
+  #0 fconst 3ff0000000000000 double
+  #1 elem +0 #0 double
+  #2 data d1 #1 double
+  #3 block #2
+unit fdata.c:4:1 data
+  #0 fconst 3fb999999999999a double
+  #1 elem +0 #0 double
+  #2 data d2 #1 double
+  #3 block #2
+unit fdata.c:5:1 data
+  #0 fconst 8000000000000000 double
+  #1 elem +0 #0 double
+  #2 data d3 #1 double
+  #3 block #2
+unit fdata.c:6:1 data
+  #0 fconst 4340000000000001 double
+  #1 elem +0 #0 double
+  #2 data d4 #1 double
+  #3 block #2
+unit fdata.c:7:1 data
+  #0 fconst 0000000000000001 double
+  #1 elem +0 #0 double
+  #2 data d5 #1 double
+  #3 block #2
+unit fdata.c:8:1 data
+  #0 fconst 7ff0000000000000 double
+  #1 elem +0 #0 double
+  #2 data d6 #1 double
+  #3 block #2
+unit fdata.c:9:1 data
+  #0 fconst fff0000000000000 double
+  #1 elem +0 #0 double
+  #2 data d7 #1 double
+  #3 block #2
+unit fdata.c:10:1 data
+  #0 fconst 3dcccccd float
+  #1 elem +0 #0 float
+  #2 data f1 #1 float
+  #3 block #2
+unit fdata.c:11:1 data
+  #0 fconst 4b800001 float
+  #1 elem +0 #0 float
+  #2 data f2 #1 float
+  #3 block #2
+unit fdata.c:12:1 data
+  #0 fconst 00000001 float
+  #1 elem +0 #0 float
+  #2 data f3 #1 float
+  #3 block #2
+unit fdata.c:13:1 data
+  #0 fconst 7f800000 float
+  #1 elem +0 #0 float
+  #2 data f4 #1 float
+  #3 block #2
+unit fdata.c:14:1 data
+  #0 fconst 4004000000000000 double
+  #1 cast #0 float
+  #2 elem +0 #1 float
+  #3 data f5 #2 float
+  #4 block #3
+unit fdata.c:15:1 data
+  #0 fconst 0000000000003fff8000000000000000 long double
+  #1 elem +0 #0 long double
+  #2 data l1 #1 long double
+  #3 block #2
+unit fdata.c:16:1 data
+  #0 fconst 0000000000003ffbcccccccccccccccd long double
+  #1 elem +0 #0 long double
+  #2 data l2 #1 long double
+  #3 block #2
+unit fdata.c:17:1 data
+  #0 fconst 00000000000080000000000000000000 long double
+  #1 elem +0 #0 long double
+  #2 data l3 #1 long double
+  #3 block #2
+unit fdata.c:18:1 data
+  #0 fconst 00000000000073e6d1ba8323fe558c61 long double
+  #1 elem +0 #0 long double
+  #2 data l4 #1 long double
+  #3 block #2
+unit fdata.c:19:1 data
+  #0 fconst 0000000000004000c000000000000000 long double
+  #1 elem +0 #0 long double
+  #2 data l5 #1 long double
+  #3 block #2
+unit fdata.c:20:1 data
+  #0 fconst 3ff8000000000000 double
+  #1 cast #0 int
+  #2 elem +0 #1 int
+  #3 data i1 #2 int
+  #4 block #3
+unit fdata.c:21:1 data
+  #0 fconst bffe666666666666 double
+  #1 cast #0 int
+  #2 elem +0 #1 int
+  #3 data i2 #2 int
+  #4 block #3
+unit fdata.c:22:1 data
+  #0 fconst 41e65a0bc0000000 double
+  #1 cast #0 unsigned int
+  #2 elem +0 #1 unsigned int
+  #3 data u1 #2 unsigned int
+  #4 block #3
+unit fdata.c:23:1 data
+  #0 fconst 405079999999999a double
+  #1 cast #0 char
+  #2 elem +0 #1 char
+  #3 data c1 #2 char
+  #4 block #3
+unit fdata.c:24:1 data
+  #0 fconst 3f800000 float
+  #1 elem +0 #0 float
+  #2 fconst 40200000 float
+  #3 elem +4 #2 float
+  #4 data fa #1 #3 float[3]
+  #5 block #4
+unit fdata.c:25:1 data
+  #0 fconst 3ff0000000000000 double
+  #1 elem +0 #0 double
+  #2 fconst 4000000000000000 double
+  #3 elem +8 #2 double
+  #4 fconst 40600000 float
+  #5 cast #4 double
+  #6 elem +16 #5 double
+  #7 data da #1 #3 #6 double[3]
+  #8 block #7
+unit fdata.c:26:1 decl
+unit fdata.c:27:1 data
+  #0 const 1 char
+  #1 elem +0 #0 char
+  #2 fconst 40200000 float
+  #3 elem +4 #2 float
+  #4 fconst 400c000000000000 double
+  #5 elem +8 #4 double
+  #6 fconst 00000000000040019000000000000000 long double
+  #7 elem +16 #6 long double
+  #8 data s1 #1 #3 #5 #7 struct S
+  #9 block #8
+unit fdata.c:28:1 data
+  #0 const 7 char
+  #1 elem +0 #0 char
+  #2 fconst 4202a05f20000000 double
+  #3 elem +8 #2 double
+  #4 data s2 #1 #3 struct S
+  #5 block #4
+unit fdata.c:29:1 data
+  #0 fconst 3f800000 float
+  #1 elem +0 #0 float
+  #2 fconst 40000000 float
+  #3 elem +4 #2 float
+  #4 fconst 40400000 float
+  #5 elem +8 #4 float
+  #6 data ts #1 #3 #5 struct T[2]
+  #7 block #6
+unit fdata.c:30:1 data
+  #0 fconst 400921fb54442d18 double
+  #1 elem +0 #0 double
+  #2 data pi #1 const double
+  #3 block #2
+unit fdata.c:31:1 data
+  #0 fconst 3eaaaaab float
+  #1 elem +0 #0 float
+  #2 data sf #1 float
+  #3 block #2
+unit fdata.c:32:1 data
+  #0 sym d1 double
+  #1 addr #0 double *
+  #2 elem +0 #1 double *
+  #3 data pd #2 double *
+  #4 block #3
+unit fdata.c:33:1 data
+  #0 fconst 3dcccccd float
+  #1 cast #0 double
+  #2 elem +0 #1 double
+  #3 data e1 #2 double
+  #4 block #3
+unit fdata.c:34:1 data
+  #0 fconst 4170000000000000 double
+  #1 elem +0 #0 double
+  #2 data e2 #1 double
+  #3 block #2
+unit fdata.c:35:1 data
+  #0 fconst 3dcccccd float
+  #1 elem +0 #0 float
+  #2 data e3 #1 float
+  #3 block #2

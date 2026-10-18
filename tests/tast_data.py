@@ -8,11 +8,14 @@ string contents, addend).
 
 usage: tests/tast_data.py CEREAL FILE.c...        env: GCC (default gcc-13), TAST_FLAGS
 """
+import math
 import os
 import re
+import struct
 import subprocess
 import sys
 import tempfile
+from fractions import Fraction
 
 
 FLAGS = os.environ.get("TAST_FLAGS", "").split()     # extra compiler flags (-I, -D) for both
@@ -93,7 +96,8 @@ class Unsup(Exception):
 
 
 TYPEINFO = {}       # typedef name -> (size, signed), measured with gcc per file
-KEYWORDS = {"unsigned", "signed", "char", "short", "int", "long", "_Bool", "enum", "struct", "union"}
+KEYWORDS = {"unsigned", "signed", "char", "short", "int", "long", "_Bool", "enum", "struct", "union",
+            "float", "double"}
 
 
 def typedef_name(t):
@@ -119,6 +123,12 @@ def tsize(t):
         return n * tsize(m.group(1))
     if "*" in t:
         return 8
+    if "long double" in t:
+        return 16
+    if "double" in t:
+        return 8
+    if "float" in t:
+        return 4
     if "long" in t:
         return 8
     if "short" in t:
@@ -143,6 +153,72 @@ def trunc(v, t):
     return v
 
 
+FLOATS = ("float", "double", "long double")
+
+
+def is_float(t):
+    return t.strip() in FLOATS
+
+
+def dec_float(b, t):
+    """The value of the little-endian bytes b as float type t: a Python float
+    (float, double; also zero, infinity, NaN of long double) or a Fraction."""
+    if t == "float":
+        return struct.unpack("<f", b)[0]
+    if t == "double":
+        return struct.unpack("<d", b)[0]
+    m = int.from_bytes(b[:8], "little")
+    se = int.from_bytes(b[8:10], "little")
+    sign, e = -1 if se >> 15 else 1, se & 0x7FFF
+    if e == 0x7FFF:
+        return float("nan") if m << 1 & ((1 << 64) - 1) else sign * float("inf")
+    if m == 0:
+        return sign * 0.0
+    return sign * Fraction(m) * Fraction(2) ** ((e or 1) - 16383 - 63)
+
+
+def enc_float(x, t):
+    """The bytes of value x (Python float or Fraction) as float type t, rounded
+    to nearest even.  A Fraction goes to float/double through one Python
+    rounding to double (a second step only for float)."""
+    if t in ("float", "double"):
+        try:
+            return struct.pack("<f" if t == "float" else "<d", float(x))
+        except OverflowError:
+            inf = float("inf") if x > 0 else float("-inf")
+            return struct.pack("<f" if t == "float" else "<d", inf)
+    if isinstance(x, float):
+        neg = math.copysign(1.0, x) < 0
+        top = (0x8000 if neg else 0).to_bytes(2, "little")
+        if x != x:
+            return (3 << 62).to_bytes(8, "little") + (0x7FFF).to_bytes(2, "little") + bytes(6)
+        if x in (float("inf"), float("-inf")):
+            return (1 << 63).to_bytes(8, "little") + (int.from_bytes(top, "little") | 0x7FFF).to_bytes(2, "little") + bytes(6)
+        if x == 0:
+            return bytes(8) + top + bytes(6)
+        x = Fraction(x)
+    sign = 0x8000 if x < 0 else 0
+    x = abs(x)
+    e = x.numerator.bit_length() - x.denominator.bit_length()
+    while Fraction(2) ** e > x:
+        e -= 1
+    while Fraction(2) ** (e + 1) <= x:
+        e += 1
+    e = max(e, -16382)
+    q = x / Fraction(2) ** (e - 63)
+    m = int(q)
+    r = q - m
+    if r > Fraction(1, 2) or (r == Fraction(1, 2) and m & 1):
+        m += 1
+    if m >> 64:
+        m >>= 1
+        e += 1
+    be = e + 16383 if m >> 63 else 0
+    if be >= 0x7FFF:
+        return (1 << 63).to_bytes(8, "little") + (sign | 0x7FFF).to_bytes(2, "little") + bytes(6)
+    return m.to_bytes(8, "little") + (sign | be).to_bytes(2, "little") + bytes(6)
+
+
 class Unit:
     def __init__(self):
         self.n = {}
@@ -164,6 +240,9 @@ class Unit:
         toks = rest.split()
         if op == "const":
             return ("i", int(toks[0]))
+        if op == "fconst":
+            t = self.ty(rest, kids)
+            return ("f", dec_float(bytes.fromhex(toks[0])[::-1], t))
         if op == "sym":
             return ("lv", ("sym", base_name(re.sub(r"@.*", "", toks[0]))), 0)
         if op == "str":
@@ -171,6 +250,16 @@ class Unit:
         if op == "cast":
             v = self.ev(kids[0])
             t = self.ty(rest, kids)
+            if is_float(t):
+                if v[0] == "i":
+                    return ("f", Fraction(v[1]))
+                if v[0] == "f":
+                    return ("f", v[1]) if t != "float" else ("f", dec_float(enc_float(v[1], t), t))
+                raise Unsup("cast of an address to a floating type")
+            if v[0] == "f":
+                if v[1] != v[1] or v[1] in (float("inf"), float("-inf")):
+                    raise Unsup("float to integer of a non-finite value")
+                return ("i", trunc(int(v[1]), t))
             return ("i", trunc(v[1], t)) if v[0] == "i" else v
         if op == "addr":
             v = self.ev(kids[0])
@@ -186,6 +275,8 @@ class Unit:
         if op == "field":
             v = self.ev(kids[0])
             return ("lv", v[1], v[2] + int(toks[0][1:]))
+        if op in ("unop", "binop") and any(self.ev(k)[0] == "f" for k in kids):
+            raise Unsup("floating arithmetic in a static initializer")
         if op == "unop" and toks[0] in ("-", "~", "!"):
             v = self.ev(kids[0])[1]
             return ("i", {"-": -v, "~": ~v, "!": int(not v)}[toks[0]])
@@ -223,6 +314,11 @@ class Unit:
                 cur |= (v[1] & ((1 << w) - 1)) << b
                 n = (b + w + 7) // 8
                 buf[off:off + n] = (cur & ((1 << (8 * n)) - 1)).to_bytes(n, "little")
+            elif v[0] == "f":
+                if not is_float(t):
+                    raise Unsup("floating value in a non-floating object")
+                b = enc_float(v[1], t)
+                buf[off:off + len(b)] = b
             elif v[0] == "i":
                 n = tsize(t)
                 buf[off:off + n] = (v[1] & ((1 << (8 * n)) - 1)).to_bytes(n, "little")

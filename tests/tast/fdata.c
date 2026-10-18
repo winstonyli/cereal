@@ -1,0 +1,35 @@
+/* T4a static data: floating initializers, conversions, ties, denormals,
+ * signed zero, infinities, long double, floats in structs and arrays. */
+double d1 = 1;
+double d2 = 0.1;
+double d3 = -0.0;
+double d4 = 9007199254740993.00000001;
+double d5 = 4.9406564584124654e-324;
+double d6 = 1e308 * 10;
+double d7 = -1e308 * 10;
+float f1 = 0.1f;
+float f2 = 16777217.00000001f;
+float f3 = 1e-45f;
+float f4 = 3.4028235e38f * 2;
+float f5 = 2.5;
+long double l1 = 1.0L;
+long double l2 = 0.1L;
+long double l3 = -0.0L;
+long double l4 = 1e4000L;
+long double l5 = 3;
+int i1 = 1.5;
+int i2 = -1.9;
+unsigned u1 = 3e9;
+char c1 = 65.9;
+float fa[3] = {1, 2.5f};
+double da[] = {1.0, 2, 3.5f};
+struct S { char c; float f; double d; long double l; };
+struct S s1 = {1, 2.5f, 3.5, 4.5L};
+struct S s2 = {.d = 1e10, .c = 7};
+struct T { float x, y; } ts[2] = {{1, 2}, {3}};
+const double pi = 3.14159265358979323846;
+static float sf = 1.0f / 3;
+double *pd = &d1;
+double e1 = (float)0.1;
+double e2 = (double)(float)16777217;
+float e3 = (float)0.1L;

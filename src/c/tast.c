@@ -9,6 +9,7 @@
  * unsupported. */
 #include "c/tast.h"
 
+#include <float.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -20,7 +21,7 @@
 #define TN UINT32_MAX
 
 #define TAST_OPS(X)                                                         \
-    X(CONST, "const") X(SYM, "sym") X(LOAD, "load") X(STORE, "store")        \
+    X(CONST, "const") X(FCONST, "fconst") X(SYM, "sym") X(LOAD, "load") X(STORE, "store")        \
     X(CAST, "cast") X(UNOP, "unop") X(BINOP, "binop") X(CMP, "cmp")          \
     X(LOGAND, "logand") X(LOGOR, "logor") X(COND, "cond")                    \
     X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \
@@ -64,13 +65,15 @@ typedef struct TNode {
                              * field: byte offset; ptradd/ptrdiff: element size;
                              * call, intrin: arguments converted to parameter
                              * types (the rest get the default promotions);
-                             * elem: byte offset; str: offset in El.bytes */
+                             * elem: byte offset; str, fconst: offset in
+                             * El.bytes */
     uint32_t sym;           /* sym, local, call: the symbol ref; intrin: the
                              * identifier id of the builtin's name */
     uint32_t width;         /* field: bit-field width, 0 otherwise; call,
                              * intrin: 1 when the callee is variadic or
                              * unprototyped; elem: bit-field width, 0 whole;
-                             * str: byte length including the terminator */
+                             * str: byte length including the terminator;
+                             * fconst: byte length (the type's size) */
 } TNode;
 
 typedef struct El {
@@ -131,6 +134,7 @@ static bool ok_ty(El *e, TypeId t)
     case TY_PTR: return true;
     case TY_STRUCT: case TY_UNION: return type_is_complete(&c->tt, t);
     case TY_ARRAY: return ok_ty(e, elem_of(c, t)) && type_is_complete(&c->tt, t);
+    case TY_FLOAT: case TY_DOUBLE: case TY_LDOUBLE: return true;
     default: return ok_int(e, t);
     }
 }
@@ -152,7 +156,10 @@ static const char *why_type(El *e, TypeId t)
     case TY_VECTOR: return "vector type";
     case TY_INT128: case TY_UINT128: return "__int128 type";
     case TY_VOID: return "void value";
-    default: return "floating type";
+    case TY_DEC32: case TY_DEC64: case TY_DEC128: return "decimal floating type";
+    case TY_FLOAT16: case TY_FLOAT32: case TY_FLOAT64: case TY_FLOAT128:
+    case TY_FLOAT32X: case TY_FLOAT64X: return "_FloatN type";
+    default: return "unsupported type";
     }
 }
 
@@ -167,8 +174,58 @@ static uint32_t cnst(El *e, TypeId t, uint64_t v, SrcLoc loc)
     return mk(e, TO_CONST, t, loc, (int64_t)cexpr_trunc(e->c, t, v), 0, 0, NULL, 0);
 }
 
+/* Node idx becomes the floating constant v of type t: its bytes in the
+ * target's format go to El.bytes.  The checker rounded v to t already (the
+ * literal parser rounds once), so this only changes format.  False, with the
+ * unit unsupported, when the target's format is not the host's. */
+static bool fset(El *e, uint32_t idx, TypeId t, long double v)
+{
+    Checker *c = e->c;
+    bool ok = false;
+    size_t sz = type_size(&c->tt, t, &ok), j, off = e->bytes.len;
+    uint8_t b[16] = {0};
+    TypeKind k = type_ckind(&c->tt, t);
+    if (!ok || sz > sizeof b) {
+        unsup(e, "floating constant format");
+        return false;
+    }
+    if (k == TY_FLOAT && sz == 4) {
+        float f = (float)v;
+        memcpy(b, &f, 4);
+    } else if (k == TY_DOUBLE ||
+               (k == TY_LDOUBLE && c->tgt->long_double == LD_IEEE64)) {
+        double d = (double)v;
+        if (sz != 8) {
+            unsup(e, "floating constant format");
+            return false;
+        }
+        memcpy(b, &d, 8);
+    } else if (k == TY_LDOUBLE && c->tgt->long_double == LD_X87 &&
+               LDBL_MANT_DIG == 64 && sz >= 10) {
+        memcpy(b, &v, 10);
+    } else {
+        unsup(e, "long double format");
+        return false;
+    }
+    for (j = 0; j < sz; j++)
+        vec_push(&e->bytes, b[j]);
+    e->nodes.data[idx].op = TO_FCONST;
+    e->nodes.data[idx].ty = t;
+    e->nodes.data[idx].val = (int64_t)off;
+    e->nodes.data[idx].width = (uint32_t)sz;
+    return true;
+}
+
+static uint32_t fconst(El *e, TypeId t, long double v, SrcLoc loc)
+{
+    uint32_t id = mk(e, TO_FCONST, unqual(e->c, t), loc, 0, 0, 0, NULL, 0);
+    return fset(e, id, unqual(e->c, t), v) ? id : TN;
+}
+
 /* id converted to type `to` (a no-op when the types are the same; a
- * constant folds, as gcc does). */
+ * constant folds, as gcc does: an integer constant converted to a floating
+ * type becomes a floating constant, every other conversion of a floating
+ * constant stays a cast). */
 static uint32_t conv(El *e, uint32_t id, TypeId to, SrcLoc loc)
 {
     Checker *c = e->c;
@@ -179,6 +236,11 @@ static uint32_t conv(El *e, uint32_t id, TypeId to, SrcLoc loc)
     if (mainv(c, nty(e, id)) == mainv(c, to))
         return id;
     nd = &e->nodes.data[id];
+    if (nd->op == TO_CONST && is_flt(c, to)) {
+        long double v = type_is_signed(&c->tt, nd->ty) ? (long double)nd->val
+                                                       : (long double)(uint64_t)nd->val;
+        return fset(e, id, to, v) ? id : TN;
+    }
     if (nd->op == TO_CONST) {   /* nothing else refers to it: retype in place */
         e->nodes.data[id].val = (int64_t)cexpr_trunc(c, to, (uint64_t)nd->val);
         e->nodes.data[id].ty = to;
@@ -467,7 +529,7 @@ static uint32_t incdec(El *e, uint32_t i, uint32_t x, int punct, bool post)
     SrcLoc loc = cnode_loc(c, i);
     x = strip_paren(c, x);
     xt = unqual(c, c->ty[x]);
-    if (!is_ptr(c, xt) && !ok_int(e, xt))
+    if (!is_ptr(c, xt) && !ok_int(e, xt) && !is_flt(c, xt))
         return unsup(e, "%s", why_type(e, xt));
     if (!twice_ok(e, x))
         return TN;
@@ -482,7 +544,9 @@ static uint32_t incdec(El *e, uint32_t i, uint32_t x, int punct, bool post)
     } else {
         op = common_type(c, promoted(c, x), TYPE_B(INT));
         a = conv(e, load(e, l2), op, loc);
-        one = cnst(e, op, 1, loc);
+        one = is_flt(c, op) ? fconst(e, op, 1, loc) : cnst(e, op, 1, loc);
+        if (one == TN)
+            return TN;
         ka[0] = a;
         ka[1] = one;
         b = mk(e, TO_BINOP, unqual(c, op), loc, 0, 0,
@@ -523,7 +587,7 @@ static uint32_t e_assign_t(El *e, uint32_t i)
         x = l2 == TN ? TN : load(e, l2);
         y = ex(e, rhs, false);
         v = ptradd(e, lt, x, y, op == P_MINUS, loc);
-    } else if (op && ok_int(e, lt)) {
+    } else if (op && (ok_int(e, lt) || is_flt(c, lt))) {
         /* x op= y is x = (T)((op type)x op (op type)y) */
         TypeId ot;
         uint32_t l2 = lval(e, lhs), b;
@@ -729,8 +793,13 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
         t = rvt(c, i);
         if (!ok_ty(e, t))
             return unsup(e, "%s", why_type(e, t));
-        if ((c->ck[i] == K_ICE || c->ck[i] == K_FOLD) && !(c->ef[i] & EF_SIDE))
+        if (c->ck[i] == K_FLOAT && is_flt(c, t) && !(c->ef[i] & EF_SIDE))
+            return fconst(e, t, c->fv.data[c->cv[i]], loc);
+        if ((c->ck[i] == K_ICE || c->ck[i] == K_FOLD) && !(c->ef[i] & EF_SIDE)) {
+            if (is_flt(c, t))
+                return unsup(e, "integer-valued floating constant");
             return cnst(e, t, c->cv[i], loc);
+        }
         if (uk == TY_ARRAY || uk == TY_FUNC)      /* decay */
             return addr_t(e, lval(e, i), t, loc);
         if (c->ef[i] & EF_LVALUE)
@@ -1382,6 +1451,13 @@ static void print_tree(El *e, FILE *out)
             else
                 fprintf(out, " %llu", (unsigned long long)nd->val);
             break;
+        case TO_FCONST: {
+            uint32_t b;
+            fputc(' ', out);
+            for (b = nd->width; b-- > 0;)       /* most significant byte first */
+                fprintf(out, "%02x", e->bytes.data[nd->val + b]);
+            break;
+        }
         case TO_SYM: case TO_LOCAL: case TO_DATA:
             fputc(' ', out);
             put_sym(c, out, nd->sym);
@@ -1483,7 +1559,7 @@ static bool sconst(El *e, uint32_t i)
     const uint32_t *k = e->kids.data + nd->kid0;
     uint32_t j;
     switch (nd->op) {
-    case TO_CONST: return true;
+    case TO_CONST: case TO_FCONST: return true;
     case TO_ADDR: return slv(e, k[0]);
     case TO_CAST: case TO_UNOP: case TO_BINOP: case TO_CMP: case TO_LOGAND:
     case TO_LOGOR: case TO_COND: case TO_PTRADD: case TO_PTRDIFF:
@@ -1570,6 +1646,15 @@ static void verify(El *e, FILE *out)
             vbad(e, out, i, "void type");
         switch (nd->op) {
         case TO_CONST: NEED(0); break;
+        case TO_FCONST: {
+            bool sz_ok = false;
+            NEED(0);
+            if (!is_flt(c, nd->ty) ||
+                nd->width != type_size(&c->tt, nd->ty, &sz_ok) || !sz_ok ||
+                (size_t)nd->val + nd->width > e->bytes.len)
+                vbad(e, out, i, "floating constant bytes");
+            break;
+        }
         case TO_SYM:
             NEED(0);
             if (c->sx && !csx_decl_of(c, nd->sym))
@@ -1606,6 +1691,8 @@ static void verify(El *e, FILE *out)
                 vbad(e, out, i, "operand");
             else if (nd->pun == P_BANG ? nd->ty != TYPE_B(INT) : !SAME(KID(0), nd))
                 vbad(e, out, i, "operand type");
+            else if (is_flt(c, nd->ty) && nd->pun != P_MINUS)
+                vbad(e, out, i, "operator on a floating operand");
             break;
         case TO_BINOP:
             NEED(2);
@@ -1614,6 +1701,9 @@ static void verify(El *e, FILE *out)
             else if (!SAME(KID(0), nd) ||
                      (nd->pun != P_SHL && nd->pun != P_SHR && !SAME(KID(1), nd)))
                 vbad(e, out, i, "operand types");
+            else if (is_flt(c, nd->ty) && nd->pun != P_PLUS && nd->pun != P_MINUS &&
+                     nd->pun != P_STAR && nd->pun != P_SLASH)
+                vbad(e, out, i, "operator on floating operands");
             break;
         case TO_CMP:
             NEED(2);

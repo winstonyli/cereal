@@ -17,7 +17,7 @@ import subprocess
 import sys
 import tempfile
 
-TYPEWORDS = r"(?:unsigned|signed|long|short|int|char|_Bool|void)"
+TYPEWORDS = r"(?:unsigned|signed|long|short|int|char|_Bool|void|float|double)"
 CAST_RE = re.compile(r"\(((?:" + TYPEWORDS + r" ?)+|enum \w+)\)")
 
 
