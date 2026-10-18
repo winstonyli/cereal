@@ -112,3 +112,10 @@ Format: what; why parked; trigger; evidence; status. This is the one list: the d
 | A final whole-set re-run after the fix phases | Each phase is gated on the accepted set; the next pass and the probe check the final text. Trigger: a case where a combination escapes the last pass. | C_DESIGN ~line 1066 | parked |
 | Parser errors first: diagnostic order in a unit with syntax errors | Order stays parser-errors-first; matching gcc's interleaving is not needed yet. | HISTORY ~line 174 | parked |
 | Sharing record chunks across projects | Needs reference counting; chunks are per project so whole-project eviction stays correct. | B5_DESIGN ~line 826 | parked |
+
+## S3-manifests: edge PCs and instance trees in the manifest (docs/S3_PLAN.md)
+- **What:** the inclusion-instance tree with edge PCs and untaken edges (CONFIG_DESIGN 5.3), split from S3-records.
+- **Why parked:** needs a fold of every unit at index time (today only with `cover_max`; `pc_fold` is 37% of an `lj_state.c` profile) and no consumer needs an edge PC.
+- **Trigger:** a feature that must compose a stored event's full PC without refolding, and a measured fold cost it can afford.
+- **Evidence:** src/c/cidxrec.c:833 (the fold runs only for `cover_max`); docs/S3_PLAN.md section 2.
+- **Status:** parked.
