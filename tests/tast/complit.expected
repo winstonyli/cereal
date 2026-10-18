@@ -1,0 +1,116 @@
+tast 1 target x86_64-linux-gnu
+unit complit.c:2:1 decl
+unit complit.c:2:22 decl
+unit complit.c:3:5 decl g int(void)
+unit complit.c:3:18 decl h int(void)
+unit complit.c:3:32 decl use void(struct T *, int)
+unit complit.c:4:1 func assign struct T(struct T *, int)
+  #0 sym p@4:27 struct T *
+  #1 load #0 struct T *
+  #2 sym i@4:34 int
+  #3 sym i@4:34 int
+  #4 load #3 int
+  #5 const 1 int
+  #6 binop + #4 #5 int
+  #7 store #2 #6 int
+  #8 post #7 int
+  #9 cast #8 long int
+  #10 ptradd *24 #1 #9 struct T *
+  #11 deref #10 struct T
+  #12 const 1 long int
+  #13 elem +0 #12 long int
+  #14 const 2 int
+  #15 elem +0 #14 int
+  #16 complit 0 #15 struct N
+  #17 load #16 struct N
+  #18 elem +8 #17 struct N
+  #19 complit 1 #13 #18 struct T
+  #20 load #19 struct T
+  #21 store #11 #20 struct T
+  #22 exprstmt #21
+  #23 sym p@4:27 struct T *
+  #24 load #23 struct T *
+  #25 sym i@4:34 int
+  #26 load #25 int
+  #27 cast #26 long int
+  #28 ptradd *24 #24 #27 struct T *
+  #29 deref #28 struct T
+  #30 load #29 struct T
+  #31 return #30
+  #32 block #22 #31
+unit complit.c:5:1 func addr void(void)
+  #0 const 3 long int
+  #1 elem +0 #0 long int
+  #2 complit 0 #1 struct T
+  #3 addr #2 struct T *
+  #4 const 4 int
+  #5 call use #3 #4 void
+  #6 exprstmt #5
+  #7 block #6
+unit complit.c:6:1 func decay int *(void)
+  #0 const 1 int
+  #1 elem +0 #0 int
+  #2 const 2 int
+  #3 elem +4 #2 int
+  #4 const 3 int
+  #5 elem +8 #4 int
+  #6 complit 0 #1 #3 #5 int[3]
+  #7 addr #6 int *
+  #8 return #7
+  #9 block #8
+unit complit.c:7:1 func field long int(void)
+  #0 const 5 long int
+  #1 elem +0 #0 long int
+  #2 complit 0 #1 struct T
+  #3 field +0 #2 long int
+  #4 load #3 long int
+  #5 return #4
+  #6 block #5
+unit complit.c:8:1 func scalar int(void)
+  #0 const 5 int
+  #1 elem +0 #0 int
+  #2 complit 0 #1 int
+  #3 load #2 int
+  #4 const 1 int
+  #5 binop + #3 #4 int
+  #6 return #5
+  #7 block #6
+unit complit.c:9:1 func str char *(void)
+  #0 str u1 616200 char[3]
+  #1 elem +0 #0 char[3]
+  #2 complit 0 #1 char[3]
+  #3 addr #2 char *
+  #4 return #3
+  #5 block #4
+unit complit.c:10:1 func order void(void)
+  #0 call g int
+  #1 cast #0 long int
+  #2 elem +0 #1 long int
+  #3 complit 0 #2 struct T
+  #4 addr #3 struct T *
+  #5 call h int
+  #6 call use #4 #5 void
+  #7 exprstmt #6
+  #8 block #7
+unit complit.c:11:1 data
+  #0 const 1 int
+  #1 elem +0 #0 int
+  #2 const 2 int
+  #3 elem +4 #2 int
+  #4 complit 0 static #1 #3 int[2]
+  #5 addr #4 int *
+  #6 elem +0 #5 int *
+  #7 data sp #6 int *
+  #8 block #7
+unit complit.c:12:1 data
+  #0 const 7 long int
+  #1 elem +0 #0 long int
+  #2 const 8 int
+  #3 elem +12 #2 int
+  #4 const 9 int
+  #5 elem +16 #4 int
+  #6 complit 0 static #1 #3 #5 struct T
+  #7 addr #6 struct T *
+  #8 elem +0 #7 struct T *
+  #9 data tp #8 struct T *
+  #10 block #9

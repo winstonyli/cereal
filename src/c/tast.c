@@ -21,7 +21,7 @@
 #define TN UINT32_MAX
 
 #define TAST_OPS(X)                                                         \
-    X(CONST, "const") X(FCONST, "fconst") X(SYM, "sym") X(TMP, "tmp") X(LOAD, "load") X(STORE, "store")        \
+    X(CONST, "const") X(FCONST, "fconst") X(SYM, "sym") X(TMP, "tmp") X(COMPLIT, "complit") X(LOAD, "load") X(STORE, "store")        \
     X(CAST, "cast") X(UNOP, "unop") X(BINOP, "binop") X(CMP, "cmp")          \
     X(LOGAND, "logand") X(LOGOR, "logor") X(COND, "cond")                    \
     X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \
@@ -85,6 +85,7 @@ typedef struct El {
     VEC(uint8_t) bytes;     /* the code units of the str nodes */
     uint32_t fname;         /* the function's name (identifier id), when in one */
     uint32_t ntmp;          /* temporaries made so far (tmp N, N < ntmp) */
+    uint32_t ncl;           /* compound literals made so far (complit N) */
     bool infunc;
     char why[96];           /* non-empty: unsupported, and the reason */
 } El;
@@ -142,7 +143,7 @@ static bool ok_ty(El *e, TypeId t)
 
 static bool is_lvop(int op)
 {
-    return op == TO_SYM || op == TO_TMP || op == TO_DEREF || op == TO_FIELD || op == TO_STR;
+    return op == TO_SYM || op == TO_TMP || op == TO_COMPLIT || op == TO_DEREF || op == TO_FIELD || op == TO_STR;
 }
 
 /* Why a type is outside the subset, for the reason histogram. */
@@ -262,6 +263,8 @@ static bool agree(El *e, uint32_t i, TypeId rule)
 
 static uint32_t ex(El *e, uint32_t n, bool allow_void);
 static uint32_t stmt_expr(El *e, uint32_t i, TypeId t, SrcLoc loc);
+static bool init_elems(El *e, uint32_t init, TypeId oty, bool is_static, SrcLoc loc,
+                       U32Vec *out);
 
 static uint32_t rv(El *e, uint32_t n)
 {
@@ -398,6 +401,19 @@ static uint32_t lval(El *e, uint32_t n)
     }
     case N_STRING:
         return str_node(e, i, t, loc);
+    case N_COMPOUND_LIT: {
+        uint32_t cl[2], id = TN;
+        U32Vec el = {0};
+        bool stat = !e->infunc;
+        if (nkids(c, i, cl, 2) < 2)
+            return unsup(e, "malformed compound literal");
+        if (!ok_ty(e, t))
+            return unsup(e, "%s", why_type(e, t));
+        if (init_elems(e, cl[1], t, stat, loc, &el))
+            id = mk(e, TO_COMPLIT, t, loc, e->ncl++, 0, stat, el.data, (uint32_t)el.len);
+        vec_free(&el);
+        return id;
+    }
     case N_INDEX: {
         uint32_t a, x, p, ix;
         if (nkids(c, i, k, 2) < 2)
@@ -1171,6 +1187,10 @@ static bool init_elems(El *e, uint32_t init, TypeId oty, bool is_static, SrcLoc 
             unsup(e, "compound literal initializer");
             goto done;
         }
+        if (is_static && ntag(c, strip_paren(c, r->node)) == N_COMPOUND_LIT) {
+            unsup(e, "static initializer from a compound literal");
+            goto done;
+        }
         x = strip_paren(c, r->node);
         if (r->str) {
             if (type_ckind(&c->tt, ty) == TY_ARRAY && (type_ent(&c->tt, type_canon(&c->tt, ty))->flags & TF_INCOMPLETE))
@@ -1571,6 +1591,9 @@ static void print_tree(El *e, FILE *out)
         case TO_TMP:
             fprintf(out, " %lld", (long long)nd->val);
             break;
+        case TO_COMPLIT:
+            fprintf(out, " %lld%s", (long long)nd->val, nd->pun ? " static" : "");
+            break;
         case TO_SYM: case TO_LOCAL: case TO_DATA:
             fputc(' ', out);
             put_sym(c, out, nd->sym);
@@ -1663,6 +1686,7 @@ static bool slv(El *e, uint32_t i)
                s->kind == CS_FUNC;
     }
     case TO_STR: return true;
+    case TO_COMPLIT: return nd->pun != 0;    /* its own check holds the elems constant */
     case TO_FIELD: return slv(e, k[0]);
     case TO_DEREF: return sconst(e, k[0]);
     default: return false;
@@ -2028,6 +2052,14 @@ static void verify(El *e, FILE *out)
             if (nd->nkids && KID(0)->op == TO_ELEM)
                 velems(e, out, i, false);
             else if (nd->nkids > 1 || (nd->nkids && (!ISVAL(KID(0)) || !SAME(KID(0), nd))))
+                vbad(e, out, i, "initializer");
+            break;
+        case TO_COMPLIT:
+            if ((uint64_t)nd->val >= e->ncl || nd->pun > 1)
+                vbad(e, out, i, "compound literal number or storage");
+            if (nd->nkids && KID(0)->op == TO_ELEM)
+                velems(e, out, i, nd->pun);
+            else
                 vbad(e, out, i, "initializer");
             break;
         case TO_DATA:

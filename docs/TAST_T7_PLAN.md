@@ -1,11 +1,11 @@
 ---
-status: draft
+status: done
 ---
 
 # TAST stage T7: plan (compound literals)
 
 Follows `docs/TAST_T6_PLAN.md`. Facts are from the tree of 2026-10-18; anything
-unread is marked **verify**. Not started: needs a go-ahead.
+unread is marked **verify**. Built 2026-10-18 (section 10).
 
 ## 1. The problem and how big it is
 
@@ -128,3 +128,24 @@ None expected; the two `PARKED.md` rows close when built.
   literal (section 5); the checker, not the pass, sizes `(int[]){..}`.
 - **Round 3.** Nothing material beyond the **verify** items (scalar braces in
   `init_elems`, gcc's object naming), left to the build.
+
+## 10. Progress (2026-10-18)
+
+Done as planned: `complit` (lvalue op, `pun` = static), `lval` case calling
+`init_elems`, `slv` true for a static one, verifier case via `velems`.
+`tests/tast/complit.c`; `unsup.c` lost `cl`. Suite 2268/0. Coverage
+`tast-complit-coverage`: lua54 0, libuv 2 (`asm`, `setproctitle`, both
+decided against), verify findings 0. Data oracle: lua54 107 (2 skipped,
+`labaddr`), libuv 34, 0 failures.
+
+- One checker change: `cinit.c` kept no node for an element that is itself a
+  compound literal (`r.node = v->cl ? NOB : v->node`); it now always keeps
+  it, so `.n = (N){..}` is a `load` of a nested `complit`.
+- Section 5's **verify** resolved: `slv(complit)` is true when static and
+  `velems` on the literal checks its elements constant, so no `sconst`
+  change was needed.
+- Added: a static object initialized by a compound literal value
+  (`static T x = (T){..}`) is `unsupported: static initializer from a
+  compound literal` (a `load` is not constant); not in the corpus.
+- Not checked: the file-scope cases against gcc's object bytes (the oracle
+  runs do not include `complit.c`); scalar braces `(int){5}` work.

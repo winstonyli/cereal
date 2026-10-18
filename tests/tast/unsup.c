@@ -4,7 +4,6 @@ struct S mk(void);
 int rv(void) { return mk().x; }
 __int128 dm(struct S *s) { return s->x; }
 int vla(int n) { int a[n]; return n; }
-int cl(void) { return ((int[]){1})[0]; }
 int kr(a) int a; { return a; }
 int f(void);
 _Complex double fl(_Complex double d) { return d; }
