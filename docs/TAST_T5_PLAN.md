@@ -92,12 +92,9 @@ deleted, with its comment about T6.
 
 ## 5. What it does not need: the overridden initializer element
 
-`{[0]=f(), [0]=3}` in an automatic object: the first `f()` must be
-evaluated and its value dropped. The pass can emit that as an `exprstmt` of
-the dropped element's value in source order before the `local`'s elems; no
-address is reused, so no `tmp`. That is a separate small change (move the
-`init_elems` refusal into an evaluate-and-discard), tracked in `PARKED.md`
-and not part of this plan.
+`{[0]=f(), [0]=3}` in an automatic object looked related but is not: gcc
+does not evaluate the overridden `f()` (C11 6.7.9p19), so the pass drops it
+like a static one. Done separately (2026-10-18), no `tmp`.
 
 ## 6. Order, checks, gates
 

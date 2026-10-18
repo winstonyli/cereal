@@ -306,7 +306,6 @@ enum { TI_ELEM, TI_CLEAR, TI_BAD };
 typedef struct TIRec {
     uint8_t kind;
     bool str;                /* TI_ELEM: a string literal initializing an array */
-    bool side;               /* TI_ELEM: the value has side effects */
     uint32_t list;           /* the INIT_LIST node of the initializer */
     uint64_t bit0, bits;     /* the object's bits the record covers */
     TypeId ty;               /* TI_ELEM: the target type */

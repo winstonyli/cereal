@@ -177,7 +177,6 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 |---|---|---|---|
 | Real K&R definitions (`int kr(a) int a; {..}`) are unsupported | No corpus unit needs them. Trigger: a corpus file uses one. | `tests/tast/unsup.c` `kr` | parked |
 | Calls through an implicit declaration (`sym == SYM_NONE`, e.g. libuv `setproctitle`) are unsupported | One libuv unit. Trigger: more than a handful of units. | `docs/TAST_T3_PLAN.md` "Verify list" | parked |
-| An overridden element with a side effect in an automatic initializer (`{[0]=f(), [0]=3}`) is unsupported | The list order cannot say "evaluate, then drop"; no corpus unit has it. Trigger: a corpus histogram that shows it. | `tests/tast/unsup.c` `ovr` | parked |
 | File-scope compound literals (`&(T){..}` in static data) are unsupported | Needs an anonymous static object (T5). Trigger: T5. | `src/c/tast.c` `init_elems` | parked |
 | `(long)&x + 8` at file scope is accepted by gcc but the checker reports "initializer element is not constant" | A checker divergence found by the T3b test; not a TAST matter. Trigger: asked for. | `tests/tast/data.c` (removed line); gcc-13 accepts | parked |
 | The typed atomics (`__atomic_*_n`, `__atomic_fetch_*`, `__sync_*`) are unsupported | Their value arguments convert to the pointee type, which needs a rule per kind (`atomic_kind` 2 and 3). One libuv unit (`__atomic_fetch_add`). Trigger: a coverage pass where they are a top bucket. | `src/c/tast.c` `e_call_t`; run `2026-10-18-tast-atomic-coverage` | parked |

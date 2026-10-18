@@ -1037,26 +1037,22 @@ static bool tir_inside(const TIRec *r, uint64_t lo, uint64_t hi)
 }
 
 /* Drop the live elements the extent [lo, hi) of a later record replaces:
- * the ones before fence that lie inside it.  An overridden element with a
- * side effect cannot be dropped from an automatic object. */
-static bool tir_drop(El *e, TIRecPtrVec *live, uint64_t lo, uint64_t hi,
-                     uint32_t fence, bool is_static)
+ * the ones before fence that lie inside it.  An overwritten
+ * element is not evaluated even if it has side effects (C11 6.7.9p19; gcc
+ * drops it too, with -Woverride-init-side-effects). */
+static void tir_drop(El *e, TIRecPtrVec *live, uint64_t lo, uint64_t hi,
+                     uint32_t fence)
 {
     Checker *c = e->c;
     size_t m, w = 0;
     for (m = 0; m < live->len; m++) {
         const TIRec *r = live->data[m];
         if ((uint32_t)(r - c->tinit.data) < fence && tir_inside(r, lo, hi)) {
-            if (r->side && !is_static) {
-                unsup(e, "overridden initializer with a side effect");
-                return false;
-            }
             continue;
         }
         live->data[w++] = r;
     }
     live->len = w;
-    return true;
 }
 
 /* The elements that initialize an object of type oty from init (an
@@ -1101,12 +1097,10 @@ static bool init_elems(El *e, uint32_t init, TypeId oty, bool is_static, SrcLoc 
             goto done;
         }
         if (r->kind == TI_CLEAR) {
-            if (!tir_drop(e, &live, r->bit0, r->bit0 + r->bits, r->fence, is_static))
-                goto done;
+            tir_drop(e, &live, r->bit0, r->bit0 + r->bits, r->fence);
             continue;
         }
-        if (!tir_drop(e, &live, r->bit0, r->bit0 + r->bits, (uint32_t)i, is_static))
-            goto done;
+        tir_drop(e, &live, r->bit0, r->bit0 + r->bits, (uint32_t)i);
         vec_push(&live, r);
     }
     if (is_static)

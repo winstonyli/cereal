@@ -44,3 +44,9 @@ void f(int k)
     int z = { 4 };
     ext = sa + sb[0] + sn + z;
 }
+
+/* an overridden element is dropped, side effect or not (C11 6.7.9p19, as gcc) */
+int fe(void);
+int ovr(void) { int a[2] = { [0] = fe(), [0] = 3 }; return a[0]; }
+struct OV { int x, y; };
+int ovs(void) { struct OV s = { fe(), fe(), .x = 5 }; return s.x + s.y; }

@@ -1415,7 +1415,6 @@ static void tin_elem(Checker *c, CCtx *x, Lvl *L, int k, int64_t key, TypeId typ
     r.ty = type;
     r.width = f && (f->flags & FF_BITFIELD) ? f->width : 0;
     r.node = v->cl ? NOB : v->node;
-    r.side = v->side;
     if (v->str && is_arr(c, type)) {
         uint64_t unit = type_size(TT, type_base(TT, type_canon(TT, type)), &ok);
         r.str = true;

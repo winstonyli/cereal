@@ -189,10 +189,10 @@ Normalization (done once, when the unit ends, not in the checker): sort by
 it (designator override, 6.7.9p19; the checker already warns about it);
 bit-field elements that share a byte stay separate elements (the image
 reconstruction ORs them); unlisted bytes are zero and are not printed.
-For an automatic object an overridden element with a side effect is
-still evaluated (gcc does), so overriding there keeps both and marks the
-first `dead`; for a static one the value is constant and is dropped.
-**Verify** against gcc on a `{[0]=f(), [0]=g()}` automatic case.
+An overridden element is dropped, side effect or not (verified against
+gcc-13 on 2026-10-18: `{[0]=f(), [0]=3}` emits no call to `f`; C11 6.7.9p19
+allows it). The first draft kept the evaluation and marked the element
+`dead`; that was wrong and is gone.
 
 String literal initializers are elements whose value is the string bytes:
 `char s[] = "abc"` (array length derived by the checker, the NUL included),
