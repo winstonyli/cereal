@@ -41,9 +41,10 @@ for the gate.
   the same as its meaning in the unit. The id names the condition's **syntactic form**, not its
   satisfiability; consumers must not call `sat` on it without the fold. The records say so (field name
   `lpc`, not `pc`), and the doc of every consumer repeats it.
-- **Storage:** parallel arrays, so no existing entry changes layout: `DPC`, `RPC`, `CPC` (one `u32` index per
-  event of DECL, REF, CALL) into one `PCT` table of normalized bodies per record. Index 0 is "true" (no
-  enclosing group), which makes the common case one zero per event and compressible by the section layout.
+- **Storage (changed by S3a, section 6):** sparse side arrays, so no existing entry changes layout: `DPC`,
+  `RPC`, `CPC` list (event index, `PCT` index) for the events with a non-trivial condition only, sorted by
+  event index; `PCT` is one table of normalized bodies per record. An event not listed has the trivial
+  condition. The first draft used one `u32` per event (index 0 = true) and measured 12 to 23% of the store.
 - **Event to group:** a per-file table from byte offset to innermost group, built once per skeleton. Today's
   `group_at` is a linear scan per query; per-event assignment needs the table (a sweep over the sorted events).
 - **Manifests (split from records, round 2):** the inclusion-instance tree with edge PCs and untaken edges needs
@@ -73,7 +74,10 @@ same ids across units). Stop rule: **estimated growth at most 10% of the store**
 named consumer in section 1 whose output is visibly better with the ids. If growth is under the rule but no
 consumer is chosen, S3 stays parked (PARKED.md) with these numbers as evidence.
 
-**S3b, records.** Format 5: `DPC`/`RPC`/`CPC` and `PCT`; writer in `crec_index` (skeleton only, no fold);
+**S3a status: done 2026-10-17, section 6.** Sparse passes the size rule on lua54, libuv and cereal `src`
+(at most 3.3%), fails on the zstd amalgamation (16%); the consumer half of the rule is not met.
+
+**S3b, records.** Format 5: sparse `DPC`/`RPC`/`CPC` and `PCT`; writer in `crec_index` (skeleton only, no fold);
 reader and validation; `crec_dump` prints the normalized text. Gate: `symcov` unchanged; store size as
 measured; goldens regenerated and reviewed; the whole suite; the bad-table cases.
 
@@ -87,7 +91,40 @@ annotation (`lsp/project.c` queries already read records), then the rename pre-f
 Target and annotation fields (S5), the overlay view, cross-unit `cover` from stored PCs, anything that changes
 the fold. The in-memory overlay variant of the enable action is independent of S3 (PARKED.md).
 
-## 6. Review log
+## 6. S3a result (2026-10-17, run `2026-10-17-s3a`)
+
+A throwaway probe in `build_record` (a scratch copy; nothing in the repo changed) scanned each record
+file's directive text and gave every DECL, REF and CALL event the sorted set of its enclosing arm conditions
+(earlier arms negated), after dropping include guards (an `#ifndef G` whose next directive is `#define G`, at
+any depth). Records are the distinct per-file lines the indexer built for every unit of the project.
+
+| project | records | events | non-trivial | distinct ids | dense `4*events+table` | sparse `8*non-trivial+table` |
+|---|---|---|---|---|---|---|
+| lua54 (35 units) | 215 | 44,980 | 0.5% | 58 | 13.0% of store | **0.24%** |
+| libuv (38 Linux units) | 73 | 14,033 | 10.9% | 122 | 12.1% | **3.3%** |
+| cereal `src` (82 units) | 184 | 130,687 | 1.1% | 5 | 19.1% | **0.43%** |
+| zstd.c (the amalgamation, 1 unit) | 1 | 26,018 | 35.1% | 84 | 22.6% | **16.2%** |
+
+- **The stop rule fails for the design as written.** Parallel arrays with one `u32` per event cost 12 to 23%
+  of the store. Section 2's "a zero per event compresses" is wrong: the sections are not compressed. Fixed in
+  section 2: **sparse** (a list of (event index, PCT index) for the non-trivial events only).
+- **Sparse passes on three of four** (at most 3.3%). zstd's amalgamation is one unit with 51 embedded headers
+  and heavy `#if` use inside functions: 35% of its events are conditional, so it fails (16%). One record is a
+  thin sample; a real zstd build with separate files would sit nearer libuv. Not measured.
+- **Distinct ids are few** (5 to 122 per project, a few KB of table), so the table is not the cost; the
+  per-event pairs are.
+- **Cross-check:** an independent awk count of lines under a non-guard conditional gives 44% for zstd.c, 21%
+  for libuv `core.c`, 0% for lapi.c; consistent with the event fractions.
+- **Not measured:** id stability across units (true by construction: the probe reads file text alone); two
+  spellings of one condition (the probe only strips whitespace and normalizes `defined X`); a real BDD-free
+  DAG encoding. The scanner is crude (block comments tracked per line, no continuation lines), so the numbers
+  are estimates to the nearest few points.
+- **The second half of the stop rule is open:** a named consumer. By the numbers the cheapest consumer is
+  references annotation on libuv-like projects, where 11% of events carry a condition and the rest need no
+  annotation; on lua54 and cereal it would annotate under 1.5% of sites. S3 stays gated on that choice
+  (PARKED.md "S3-records").
+
+## 7. Review log
 
 - **Round 1** (claims against the code): the doc's "queries on stored PCs are cheap" fails for `sat`/`enable`
   because derived formulas need the fold; section 1 now states what is free. The initial-value environment
