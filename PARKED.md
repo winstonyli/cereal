@@ -126,3 +126,31 @@ Format: what; why parked; trigger; evidence; status. This is the one list: the d
 - **Trigger:** a chosen consumer from S3_PLAN section 1 (references annotation is the cheapest) on a project large enough that refolding its units is too slow (libuv: 1.5 s for all 38 units, so not libuv-sized projects).
 - **Evidence:** docs/S3_PLAN.md section 6; run `2026-10-17-s3a` (docs/runs.md); record writer src/c/cidxrec.c `build_record`.
 - **Status:** decided against (2026-10-17), unless a project too large to refold on demand appears; S3a and the fold timing are the evidence (docs/S3_PLAN.md section 6).
+
+## Items found by a docs scan (2026-10-17; trigger "asked for" unless stated)
+Deferred in prose elsewhere and missing from this list until the scan. "Checked" means the claim was grepped against src on that date; rows without it are the doc's word.
+| What | Why parked | Evidence | Status |
+|---|---|---|---|
+| SARIF output (A5), a CI baseline file (C5), macro to inline/enum/const suggestions (C6) | Out of scope for the first fix-it work; no code. | ROADMAP:20,84; C_DESIGN:1288-1304; checked: no `sarif` in src | parked |
+| Phase A incremental: reuse the unchanged prefix, checkpoint, early cutoff; header cells shared across files (the clangd preamble idea) | Waits for a measured need. | PARALLEL:249,381-425 | parked |
+| Parallel mode keeps going past `__COUNTER__` and state-changing `_Pragma` (prefix sum, resume at the divergence) | Today the whole TU aborts and reruns sequentially. | PARALLEL:177-179; checked | parked |
+| Per-token provenance for gcc's "in definition of macro" notes | verify.sh does not score the notes; parked until a corpus or golden needs them. | STATUS:121; HISTORY:2973 | parked |
+| Idle memory trim and a slimmer carried index | RSS -39 to -75% but 5 to 15% slower. | ROADMAP:142; HISTORY:3794,3830,4786; checked: no trim in src beyond cache eviction | parked |
+| `-m32` target selection; `-imacros` in check and replay; a `deps.sh` compile-commands mode | Host predefined macros and headers are used; the flag is parsed (`compdb.c:252`, `deps.c`) but not applied by check and replay. | HISTORY:3013,4014; A4_DESIGN:310 | parked |
+| Reuse the cell build's tokens to skip the second preprocessor pass on large files | Saves under half of a phase that is already small. | ROADMAP:105; HISTORY:3235 | parked |
+| A `(file, hash)` fold cache | Not measured as needed. | HISTORY:5133; checked: no `fold_cache` in src | parked |
+| Front-end gaps: `vector_size` error once per declaration (gcc: per declarator); `format(printf, f, 2)` undeclared-name message; pr56355-1 and pr83844 (fold-const); dump-ada-spec-14 (needs gcc's Ada dumper) | Low value; reasons in HISTORY Rounds 172 to 175 and 184. | STATUS:107-115 | parked |
+| Jump into a VLA scope diagnostic; attribute argument counts | Not implemented. | TYPES:214 | parked |
+| `-Wmultistatement-macros` false positive with a guard inside a macro whose body is a nested macro; a posix-poll.c unused-parameter warning is omitted | Corner of the warning's macro handling. | HISTORY:2723,2743 | parked |
+| Lexer: a bidi control left open in code is not closed by a later string in another chunk; gcc's follow-up semantic errors for a call whose arguments have a syntax error | Needs deferred closer events and a serial prefix-stack pass; the call is not built. | HISTORY:524-530 | parked |
+| Per-unit resolved include edges; solver-guided overlay draws; `EMPTY` for an empty `#if X` (stays OPAQUE) | The edges were parked to S1c; the draws need S1d's solver; `EMPTY` is low value. | S1_PLAN:104,140,144; HISTORY:4920 | parked |
+| Config language axes: the extension set and C94's `__STDC_VERSION__` | Round 261 built `std` and `mode` only. | CONFIG_DESIGN:312 | parked |
+| Treat a PARTIAL virtual unit as dropped (names not merged, budget passed to the next sidecar line) | A proposal that was reverted, not built. | HISTORY:5253 | parked |
+| Lazy body parsing (skip bodies by brace matching, parse on demand) | Compatible with P5; no need shown. | PARSER:25; checked: no skip-body code in src/c | parked |
+| Per-project size cap for the cache (B5 6.4) | Only the global `cacheMaxMB` eviction exists. | B5_DESIGN:1941; `cacheMaxMB`, src/lsp/project.c:106 | parked |
+| Directory-prefix interning of manifest FILS paths | An estimate of 20.6% of the cache; not implemented. | B5_DESIGN:662-668 | parked |
+| A fuzzer on random edits for the carried index (reuse the cells' differential fuzzer) | No consumer asked; `tests/fuzz_cells.py` exists to copy from. | B3_DESIGN:815 | parked |
+| A 64-file `TextCache` for project queries | Files are read once per query; p95 is 3 ms without it. Overlaps the stat-validated hash cache row above. | HISTORY:4675 | parked |
+| Share only decls and strings so the old event arrays are freed after an edit (`cindex_touched` reads `core->by_decl`) | A cleanup, not a memory fix. | HISTORY:3794,3830; `cindex_touched`, src/c/csymidx.c:2665 | parked |
+| A side table to merge decl and scope fields exactly | Saves about 4 bytes per decl. | B3_DESIGN:455 | decided against |
+| Move the function-definition code out of `cdecl.c` into its own file | About 28 imports for 13% of the file. | HISTORY:2776,2795 | decided against |
