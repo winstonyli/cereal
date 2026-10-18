@@ -175,6 +175,7 @@ static void options_with(LspConfig *c, const char *path, const CompileEntry *cmd
     if (overlay) {              /* last: a later -D/-U/-std wins */
         const char **w;
         int n, k;
+        vec_push(&flags, "-fcereal-late-macros");
         n = split_args(a, overlay, SPLIT_SHELL, &w);
         for (k = 0; k < n; k++)
             vec_push(&flags, w[k]);

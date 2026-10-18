@@ -1113,29 +1113,41 @@ static bool is_guard(const PcUnit *u, const Ident *id)
     return sk && sk->guard_define == id && sk->guard_covers_file;
 }
 
+/* The innermost group around loc: its directive, and the condition, taint and
+ * activity of every inclusion of the file (or'd). */
+static bool group_find(PcUnit *u, SrcFile *f, SrcLoc loc, uint32_t *dir, bool *header,
+                       Bdd *pc, Bdd *taint, bool *active)
+{
+    BddMgr *m = &u->cx.m;
+    bool found = false;
+    size_t i;
+    *pc = *taint = BDD_FALSE;
+    *active = false;
+    if (!f->skel || u->over || !group_at(f->skel, loc, dir, header))
+        return false;
+    for (i = 0; i < u->groups.len; i++) {
+        const PcGroup *g = &u->groups.data[i];
+        if (g->file != f || g->dir != *dir)
+            continue;
+        *pc = bdd_or(m, *pc, g->pc);    /* each time the file is included */
+        *taint = bdd_or(m, *taint, g->taint);
+        *active |= was_taken(u, g->inst);
+        found = true;
+    }
+    return found && !m->over;
+}
+
 bool pc_explain(PcUnit *u, SrcFile *f, SrcLoc loc, PcExplain *e)
 {
     PcValuation hv = {u, host_get, explain_fixed};
     const Skeleton *sk = f->skel;
     BddMgr *m = &u->cx.m;
-    Bdd pc = BDD_FALSE, taint = BDD_FALSE;
+    Bdd pc, taint;
     StrBuf sb = {0};
     uint32_t col;
     size_t i;
-    bool found = false;
     memset(e, 0, sizeof *e);
-    if (!sk || u->over || !group_at(sk, loc, &e->dir, &e->header))
-        return false;
-    for (i = 0; i < u->groups.len; i++) {
-        const PcGroup *g = &u->groups.data[i];
-        if (g->file != f || g->dir != e->dir)
-            continue;
-        pc = bdd_or(m, pc, g->pc);      /* each time the file is included */
-        taint = bdd_or(m, taint, g->taint);
-        e->active |= was_taken(u, g->inst);
-        found = true;
-    }
-    if (!found || m->over)
+    if (!group_find(u, f, loc, &e->dir, &e->header, &pc, &taint, &e->active))
         return false;
     e->file = f;
     e->kind = sk->dirs.data[e->dir].kind;
@@ -1532,13 +1544,65 @@ bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb)
     size_t n = pc_preconditions(&u->cx, pc, &hv, 3, cubes), k;
     bool ok = false;
     for (k = 0; k < n; k++) {
-        if (!ok) {
-            sb->len = 0;
-            ok = unit_enable(u, &cubes[k], &hv, sb);
+        /* the first cube that works, but a plain `#if X` also has a "X below 0" cube:
+         * a nonnegative value is what anyone would write */
+        if (!ok || strstr(sb_cstr(sb), "=-")) {
+            StrBuf w = {0};
+            if (unit_enable(u, &cubes[k], &hv, &w) && (!ok || !strstr(sb_cstr(&w), "=-"))) {
+                sb->len = 0;
+                sb_puts(sb, sb_cstr(&w));
+                ok = true;
+            }
+            sb_free(&w);
         }
         pc_cube_free(&cubes[k]);
     }
     return ok;
+}
+
+size_t pc_enable_edits(PcUnit *u, SrcFile *f, SrcLoc loc, PcEdit *out, size_t max)
+{
+    Bdd pc, taint;
+    uint32_t dir;
+    bool header, active;
+    StrBuf w = {0};
+    char *words, *tok, *save = NULL;
+    size_t n = 0;
+    if (!group_find(u, f, loc, &dir, &header, &pc, &taint, &active) || active ||
+        !pc_exact(&u->cx, pc) || pc_sat(&u->cx, pc) != 1 || !pc_enable_group(u, pc, &w)) {
+        sb_free(&w);
+        return 0;
+    }
+    words = xstrdup(sb_cstr(&w));
+    sb_free(&w);
+    for (tok = strtok_r(words, " ", &save); tok; tok = strtok_r(NULL, " ", &save)) {
+        char *eq = strchr(tok, '=');
+        const char *val = eq ? eq + 1 : "1";
+        const Macro *m;
+        Ident *id;
+        if (tok[0] != '-' || tok[1] != 'D' || n == max)
+            goto none;                  /* -U, -std: not a line of the header */
+        if (eq)
+            *eq = 0;
+        id = intern_find(u->an->in, tok + 2, strlen(tok + 2));
+        m = id ? mt_cur(u->an->pp->mt, id) : NULL;
+        if (!m || !m->cfg || m->funclike || !m->file || m->end_loc < m->name_loc + id->len)
+            goto none;                  /* only a macro the header defines */
+        out[n].file = m->file;
+        out[n].name = id->str;
+        out[n].begin = m->name_loc + id->len - m->file->base;
+        out[n].end = m->end_loc - m->file->base;
+        out[n].text = xmalloc(strlen(val) + 2);
+        sprintf(out[n].text, " %s", val);
+        n++;
+    }
+    free(words);
+    return n;
+none:
+    while (n)
+        free(out[--n].text);
+    free(words);
+    return 0;
 }
 
 bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb)

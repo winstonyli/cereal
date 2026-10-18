@@ -40,6 +40,74 @@
   "message": "'deep_fn' occurs in an inactive #if group at $ROOT/pccfg/main.c:7:10, which cannot be checked (`#if LEVEL >= 3`: to compile it: `defined(LEVEL) && LEVEL >= 3`)"
  }
 }
+## the code action edits the header's #define lines
+>> textDocument/codeAction
+[
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": " 1",
+       "range": {
+        "end": {
+         "character": 19,
+         "line": 0
+        },
+        "start": {
+         "character": 17,
+         "line": 0
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/pccfg/cfg.h",
+      "version": null
+     }
+    }
+   ]
+  },
+  "kind": "refactor.cereal.enableGroup",
+  "title": "Compile this group: set FEATURE_X = 1 in cfg.h"
+ }
+]
+>> textDocument/codeAction
+[
+ {
+  "edit": {
+   "documentChanges": [
+    {
+     "edits": [
+      {
+       "newText": " 3",
+       "range": {
+        "end": {
+         "character": 15,
+         "line": 1
+        },
+        "start": {
+         "character": 13,
+         "line": 1
+        }
+       }
+      }
+     ],
+     "textDocument": {
+      "uri": "file://$ROOT/pccfg/cfg.h",
+      "version": null
+     }
+    }
+   ]
+  },
+  "kind": "refactor.cereal.enableGroup",
+  "title": "Compile this group: set LEVEL = 3 in cfg.h"
+ }
+]
+## outside a group: none
+>> textDocument/codeAction
+[]
 >> shutdown
 null
 >> exit

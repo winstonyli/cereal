@@ -481,6 +481,13 @@ is still being typed). The C parts follow docs/B3_DESIGN.md.
     with 'X'`, `Remove 'X'`, `Add #include <h>` or `Apply fix-it`. The
     diagnostic in the action is the client's own from `context.diagnostics`
     when it has the same range and message, else cereal's.
+  - *`refactor.cereal.enableGroup`* ("Compile this group: set X = 1 in cfg.h"): at a
+    position inside a conditional group the build skipped, when the cheapest overlay
+    (`pc_enable_group`, nonnegative values preferred) only sets macros that an
+    `-imacros` file defines (CONFIG_DESIGN 8, config header). The edit replaces
+    those `#define` bodies (`pc_enable_edits`); the header need not be open
+    (`version: null`). Not offered for a `-U`, `-std`, a target change or a macro
+    defined elsewhere. Applicability MAYBE; the client re-indexes after the save.
   - *`source.fixAll.cereal`:* offered when the request asks for it, or when
     it has no `only` and the document has a SAFE group. Its edit is what
     `cereal fix` would do to the document (`fix_unit_edits`: the same merge,

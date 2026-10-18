@@ -78,15 +78,8 @@ Items parked in prose elsewhere (A4_DESIGN.md around lines 297 and 306, B2_DESIG
 - **Evidence:** `explain_fixed`, src/analysis/pc.c; `bench/tools/s4_falsify.py`; HISTORY Round 280.
 - **Status:** parked.
 
-## `-imacros` order: cereal runs it as written, gcc runs it after every `-D`/`-U`
-- **What:** `tu_init` (src/driver.c:815) processes `-D`, `-U` and `-imacros` in command-line order; gcc 15.2 (checked 2026-10-17, `-imacros h -DA=1` and `-DA=1 -imacros h` both give the header's value plus a "redefined" warning) processes `-imacros` after all of them, as its docs say.
-- **Why parked:** the config header (CONFIG_DESIGN 8) relies on an overlay `-D` landing after the header. Matching gcc would make the header win over overlays, so overlays need their own late layer (a `CmdlineMacro` kind applied after `-imacros`) first.
-- **Trigger:** a project that writes `-D` before `-imacros` for the same macro and gets a different result from gcc, or the late overlay layer is built.
-- **Evidence:** src/driver.c:815; tests/deps/imacros_order covers `-M` output only.
-- **Status:** parked.
-
 ## `#if MACRO` lists show two cubes (`X < 1 && X < 0` or `X >= 1 && X >= 0`)
-- **What:** a plain `#if FEATURE_X` is split by the atom model into "value below 0" and "value at least 1"; the lists print both, the first reads oddly (negative values are nonzero, so it is sound).
+- **What:** a plain `#if FEATURE_X` is split by the atom model into "value below 0" and "value at least 1"; the lists print both (the first reads oddly; sound, since negative values are nonzero). `pc_enable_group` now prefers the nonnegative cube, so actions and overlays are fine.
 - **Why parked:** presentation only; merging needs a "nonzero" atom form.
 - **Trigger:** the lists are shown to users who find it confusing.
 - **Evidence:** tests/lsp/pccfg.expected (2026-10-17).
@@ -103,4 +96,11 @@ Items parked in prose elsewhere (A4_DESIGN.md around lines 297 and 306, B2_DESIG
 - **Why parked:** the list is in the project rename refusal and in hover; the code action and `cereal query rename=` (single unit, no fold kept) still refuse without one.
 - **Trigger:** asked for, or a client shows refusals only through the code action.
 - **Evidence:** `c_rename_explain` (src/c/crename.c) is the one function either would call.
+- **Status:** parked.
+
+## Enable-group action beyond the configuration header
+- **What:** "Compile this group" for groups whose cheapest overlay is not a header macro: `-U`, `-std`, a macro the project defines in an ordinary header, a macro nobody defines (append a `#define`), project-option flags.
+- **Why parked:** needs an edit target: a `.cereal` flags line (persistent, new line), the compile-database entry (lost on regeneration; not recommended), or a per-document in-memory overlay (no file change; the better first step). The header case covers the settings a user keeps in one place.
+- **Trigger:** asked for, or libuv-style option groups in a project without a config header.
+- **Evidence:** `pc_enable_edits`, src/analysis/pc.c (refuses any word that is not `-D` of an `-imacros` macro); docs/LSP.md, Code actions.
 - **Status:** parked.

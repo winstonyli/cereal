@@ -581,9 +581,21 @@ overlay checks in pc.c (`unit_defines`, `enable_fixed`, `pc_req_via`) treat it l
 macro: a preconditions list names `defined(FEATURE_X)` instead of "the unit defines `FEATURE_X`", and
 `enable`/`cover` may flip it. `predefined` is unchanged, so the index, hover and rename still see the
 header's macros as the project's own. Test: `tests/lsp/pccfg` (falsified: without `cfg` the lists say
-"the unit defines"). Not done (PARKED.md): cereal runs `-imacros` in command-line order with `-D`/`-U`,
-gcc 15 runs it after all of them; an overlay's `-D` only wins because of that order, so the gcc order
-needs a late overlay layer first. The code action that edits the header is also not built.
+"the unit defines").
+
+Implemented (late overlay layer, same day): gcc runs `-imacros` after every `-D`/`-U` (checked with
+gcc 15.2), cereal ran them as written. `tu_init` now follows gcc (`-D`/`-U`, `-imacros`, `-include`), and
+an overlay's words follow `-fcereal-late-macros` (`config.c: options_with`), which marks the later
+`-D`/`-U` `CmdlineMacro.late`: they are applied last, so an overlay beats the header while a user's own
+`-D` before `-imacros` loses to it, as in gcc. Tests: `tests/run.sh` pp/imacros_conf (against gcc),
+`proj_test renamehdr` (a virtual unit compiles a group the header turns off, so the project rename goes
+through). A virtual unit's overlay over a header macro prints gcc's "redefined" warning into the unit's
+diagnostics, which nothing shows.
+
+Implemented (code action, same day): `refactor.cereal.enableGroup` edits the header instead of
+guessing a flags file (LSP.md, Code actions). `pc_enable_group` now prefers a cube without a negative
+value, so `#if FEATURE_X` offers `= 1`, not `= -1` (this also changes the words `cover` writes for such
+groups). The remaining edit-target options are parked (PARKED.md).
 
 Implemented earlier (Round 264): `enable` (one group to command-line words) and `cover` (greedy, no merges
 of cubes yet), both oracle-checked by re-running the preprocessor (`bench/pc_enable.py`). An overlay never

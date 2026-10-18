@@ -3682,6 +3682,35 @@ void lsp_code_action(Req *r, JsonWriter *w)
             put_fix_edit(w, r, it->fx, it->nfx);
             json_end_object(w);
         }
+    /* an inactive group the configuration header could turn on: edit its #define lines */
+    if (kind_wanted(only, "refactor.cereal.enableGroup") && r->snap->pc) {
+        PcEdit pe[4];
+        size_t np = pc_enable_edits(r->snap->pc, f0, rb, pe, 4);
+        if (np) {
+            AFix *fx = NEW_ARRAY(a, AFix, np);
+            StrBuf title = {0};
+            sb_puts(&title, "Compile this group: set ");
+            for (k = 0; k < np; k++) {
+                fx[k].path = pe[k].file->path;
+                fx[k].b = pe[k].begin;
+                fx[k].e = pe[k].end;
+                fx[k].text = arena_strdup(a, pe[k].text);
+                fx[k].app = FIX_MAYBE;
+                sb_printf(&title, "%s%s =%s", k ? ", " : "", pe[k].name, pe[k].text);
+                free(pe[k].text);
+            }
+            sb_printf(&title, " in %s", (strrchr(pe[0].file->name, '/') ? strrchr(pe[0].file->name, '/') + 1 : pe[0].file->name));
+            json_begin_object(w);
+            json_key(w, "title");
+            json_str(w, arena_strdup(a, sb_cstr(&title)));
+            json_key(w, "kind");
+            json_str(w, "refactor.cereal.enableGroup");
+            json_key(w, "edit");
+            put_fix_edit(w, r, fx, np);
+            json_end_object(w);
+            sb_free(&title);
+        }
+    }
     if (kind_wanted(only, "source.fixAll.cereal") &&
         ((only && only->kind == JV_ARR) || any_safe)) {
         const FixTextEdits *fe = lsp_fix_all(r);

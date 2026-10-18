@@ -88,6 +88,17 @@ bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb);
  * three cheapest cubes that an overlay can do (pc_enable of pcq.h, and no
  * guard of a header, which would change which files are read); false: none. */
 bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb);
+/* The same, as edits of the configuration header: the inactive group around loc of f,
+ * turned on by changing the body of `#define` lines that an -imacros file holds.
+ * Fills out[0..n) (text owned: free it); 0 when the group is active, inexact, or an
+ * overlay word is not a -D of such a macro (a -U, -std, a macro defined elsewhere). */
+typedef struct PcEdit {
+    SrcFile *file;
+    const char *name;           /* the macro */
+    uint32_t begin, end;        /* byte offsets in file: the macro's body */
+    char *text;
+} PcEdit;
+size_t pc_enable_edits(PcUnit *u, SrcFile *f, SrcLoc loc, PcEdit *out, size_t max);
 /* One plain line for a refusal: what would turn the (inactive) group on, or why
  * nothing says. */
 void pc_explain_needs(const PcUnit *u, const PcExplain *e, StrBuf *sb);

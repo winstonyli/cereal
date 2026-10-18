@@ -878,6 +878,50 @@ def sc_renamecfg(root, cache):
     s.stop()
 
 
+def sc_renamehdr(root, cache):
+    # the group's test is a macro of a configuration header (-imacros in .cereal): an overlay's
+    # late -D beats it, so a virtual unit compiles the group
+    t0 = os.path.join(root, "src", "t0000.c")
+    h = os.path.join(root, "include", "h01.h")
+    with open(os.path.join(root, "include", "cfg_hdr.h"), "w") as f:
+        f.write("#define PROJ_HDR_ALT 0\n")
+    with open(os.path.join(root, ".cereal"), "a") as f:
+        f.write("-imacros include/cfg_hdr.h\n")
+    with open(h) as f:
+        text = f.read()
+    i = text.rindex("#endif")
+    text = text[:i] + "#if PROJ_HDR_ALT\nstatic inline void hdr_call(void) { (void)h01_f2; }\n#endif\n" + text[i:]
+    with open(h, "w") as f:
+        f.write(text)
+    caps = {"workspace": {"workspaceEdit": {"documentChanges": True}}}
+    t0text = open(t0).read()
+
+    def start(env=None):
+        s = Server(root, cache, caps=caps, env=env)
+        s.wait()
+        s.note("textDocument/didOpen", {"textDocument": {"uri": "file://" + t0, "languageId": "c",
+                                                          "version": 1, "text": t0text}})
+        return s
+
+    def rename(s):
+        line, ch = where(t0, "h01_f2(")
+        return s.req("textDocument/rename", {"textDocument": {"uri": "file://" + t0},
+                     "position": {"line": line, "character": ch}, "newName": "h01_renamed"})
+    s = start()
+    r = rename(s)
+    expect("error" in r and "inactive #if group" in r["error"]["message"] and
+           "PROJ_HDR_ALT" in r["error"]["message"] and "unit defines" not in r["error"]["message"],
+           "refused without configs, and the list names the setting", r)
+    s.stop()
+    s = start({"CEREAL_INDEX_CONFIGS": "4", "CEREAL_INDEX_MAXOVERLAYS": "8"})
+    r = rename(s)
+    expect("result" in r and r["result"], "a virtual unit overrides the header: the rename goes through", r)
+    edits = [e for d in r["result"]["documentChanges"] for e in d["edits"]]
+    expect(any(e["range"]["start"]["line"] == where(h, "(void)h01_f2")[0] for e in edits),
+           "and renames the use in the group", r)
+    s.stop()
+
+
 SCEN = {k[3:]: v for k, v in globals().items() if k.startswith("sc_")}
 
 

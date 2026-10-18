@@ -332,7 +332,7 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
 {
     const char *a = argv[i];
     int start = i;
-    CmdlineMacro cm;
+    CmdlineMacro cm = {0};
     if (!strncmp(a, "-I", 2)) {
         vec_push(&o->pp.angle_dirs, arg_value(o, argc, argv, &i, "-I"));
     } else if (!strncmp(a, "-iquote", 7)) {
@@ -341,12 +341,16 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         vec_push(&o->pp.system_dirs, arg_value(o, argc, argv, &i, "-isystem"));
     } else if (!strncmp(a, "-D", 2)) {
         cm.kind = 'D';
+        cm.late = o->late_macros;
         cm.text = arg_value(o, argc, argv, &i, "-D");
         vec_push(&o->macros, cm);
     } else if (!strncmp(a, "-U", 2)) {
         cm.kind = 'U';
+        cm.late = o->late_macros;
         cm.text = arg_value(o, argc, argv, &i, "-U");
         vec_push(&o->macros, cm);
+    } else if (!strcmp(a, "-fcereal-late-macros")) {
+        o->late_macros = true;
     } else if (!strcmp(a, "-include") || !strcmp(a, "-imacros")) {
         cm.kind = a[2] == 'n' ? 'i' : 'm';
         cm.text = arg_value(o, argc, argv, &i, a);
@@ -812,11 +816,13 @@ bool tu_begin(TU *tu, const char *path)
         if (tu->opt->opt_level == 's' || tu->opt->opt_level == 'z')
             pp_define_builtin_text(pp, "__OPTIMIZE_SIZE__", "1");
     }
-    /* gcc's order: -D, -U and -imacros as written, then every -include */
-    for (pass = 0; pass < 2; pass++)
+    /* gcc's order (c_finish_options): every -D and -U, then -imacros, then -include.
+     * Then the late -D/-U (an overlay's): they win over a configuration header. */
+    for (pass = 0; pass < 4; pass++)
         for (i = 0; i < tu->opt->macros.len; i++) {
             CmdlineMacro *cm = &tu->opt->macros.data[i];
-            if ((cm->kind == 'i') != pass)
+            int at = cm->late ? 3 : cm->kind == 'i' ? 2 : cm->kind == 'm' ? 1 : 0;
+            if (at != pass)
                 continue;
             if (cm->kind == 'D')
                 pp_cmdline_define(pp, cm->text);

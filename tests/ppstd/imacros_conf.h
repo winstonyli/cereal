@@ -1,0 +1,1 @@
+#define CONF 0

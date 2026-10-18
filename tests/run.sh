@@ -87,6 +87,9 @@ if command -v "$REFCC" >/dev/null 2>&1; then
     diff_pp "pp/imacros.c (-include -imacros)" imacros.c -include imacros_inc.h -imacros imacros.h
     diff_pp "pp/imacros.c (-imacros -include -DQ)" imacros.c -imacros imacros.h -include imacros_inc.h -DQ
     diff_pp "pp/imacros.c (-include -DQ)" imacros.c -include imacros_inc.h -DQ -imacros imacros.h
+    # gcc runs -imacros after every -D/-U, whatever the order written
+    diff_pp "pp/imacros_conf.c (-imacros -D)" imacros_conf.c -imacros imacros_conf.h -DCONF=1
+    diff_pp "pp/imacros_conf.c (-D -imacros)" imacros_conf.c -DCONF=1 -imacros imacros_conf.h
     cd "$ROOT"
     for h in assert.h ctype.h errno.h float.h inttypes.h limits.h locale.h \
         math.h setjmp.h signal.h stdarg.h stdbool.h stddef.h stdint.h \
@@ -870,7 +873,7 @@ rm -rf "$IP/cache"
 # 22c. the scheduler (B5_DESIGN 8, 9, 13): proj_test.py drives `cereal lsp` over a
 # generated project; one line per scenario.
 got=$(python3 -P tests/proj_test.py "$CEREAL" </dev/null 2>&1)
-for sc in restart invalidate cancel fault memory readers progress paths wsym takeover spin corrupt config evict private wpos xref rename configs badoverlay renamecfg; do
+for sc in restart invalidate cancel fault memory readers progress paths wsym takeover spin corrupt config evict private wpos xref rename configs badoverlay renamecfg renamehdr; do
     case $got in *"ok $sc"*) ok;; *) bad "proj_test $sc: $(echo "$got" | grep "$sc" | head -1)";; esac
 done
 # 23. unit self-tests (hidden `selftest` subcommand)

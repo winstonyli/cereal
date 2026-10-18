@@ -11,6 +11,8 @@ typedef VEC(const char *) StrVec;
 
 typedef struct CmdlineMacro {
     char kind;          /* D, U, i (-include), m (-imacros) */
+    bool late;          /* a D/U after -fcereal-late-macros: applied after -imacros and -include
+                         * (an overlay's words, which must win over a configuration header) */
     const char *text;
 } CmdlineMacro;
 
@@ -60,6 +62,7 @@ typedef struct Options {
     char opt_level;     /* '0', '1', '2', '3', 's', 'g', 'z' */
     char strict_alias;  /* -fstrict-aliasing 1, -fno-strict-aliasing 2 */
     bool check_versions;
+    bool late_macros;           /* -fcereal-late-macros seen: later -D/-U are late */
     char parallel;      /* 'a'uto, 'y' on (forced), 'n' off */
     int par_threads;    /* <= 0: cpu_count() */
     size_t par_chunk;   /* 0: default */
