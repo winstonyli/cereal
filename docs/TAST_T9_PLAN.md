@@ -27,8 +27,8 @@ struct, struct as a `store` source, call argument and call result); (c) the
 
 ## 2. Form
 
-Two new statement ops. `copy dst src N` (an exprstmt-level statement: `dst` and `src`
-are address-typed values, `N` the byte count, no overlap), and no other new
+Two new statement ops. `copy dst src N` (`dst` and `src` are address-typed
+values, `N` the byte count, no overlap) and `fill dst byte N`; no other new
 node. The rules:
 - `local x e1..en` with `elem` kids becomes `local x` (no init) followed by,
   in order: a zero fill of the object when the initializer does not cover it
@@ -43,7 +43,7 @@ node. The rules:
   destination, again T10. Until T10, T9 leaves aggregate `call` operands
   and results alone, and its verifier only forbids aggregate values
   *elsewhere*.
-- `fill dst byte N` for zeroing (because a
+- `fill` is for zeroing (because a
   large `= {0}` must not become a thousand stores).
 - Order: C leaves the evaluation order of initializer elements
   indeterminately sequenced; keep source order, as the structured form does.
