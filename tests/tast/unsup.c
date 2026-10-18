@@ -10,10 +10,6 @@ int strinit(void) { char s[] = "x"; return s[0]; }
 int kr(a) int a; { return a; }
 int gi = 3;
 int f(void);
-int va(int, ...);
-int callva(void) { return va(1, 2); }
-int unproto();
-int callup(void) { return unproto(1); }
 double fl(double d) { return d; }
 int strs(void) { return sizeof("x"); }
 int stat(void) { static int n; return n; }

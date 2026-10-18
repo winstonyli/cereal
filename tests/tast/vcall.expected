@@ -1,0 +1,130 @@
+tast 1 target x86_64-linux-gnu
+unit vcall.c:2:23 decl size_t size_t
+unit vcall.c:3:5 decl printf int(const char *, ...)
+unit vcall.c:4:5 decl unproto int()
+unit vcall.c:5:7 decl vfp int (*)(const char *, ...)
+unit vcall.c:6:1 decl
+unit vcall.c:7:1 decl
+unit vcall.c:8:1 decl
+unit vcall.c:10:1 func fixed_only int(const char *)
+  #0 sym s@10:28 const char *
+  #1 load #0 const char *
+  #2 call printf fixed 1 #1 int
+  #3 return #2
+  #4 block #3
+unit vcall.c:11:1 func small int(char,  short int,  _Bool,  unsigned char)
+  #0 str char[3]
+  #1 addr #0 char *
+  #2 cast #1 const char *
+  #3 sym c@11:16 char
+  #4 load #3 char
+  #5 cast #4 int
+  #6 sym h@11:25 short int
+  #7 load #6 short int
+  #8 cast #7 int
+  #9 sym b@11:34 _Bool
+  #10 load #9 _Bool
+  #11 cast #10 int
+  #12 sym uc@11:51 unsigned char
+  #13 load #12 unsigned char
+  #14 cast #13 int
+  #15 call printf fixed 1 #2 #5 #8 #11 #14 int
+  #16 return #15
+  #17 block #16
+unit vcall.c:12:1 func ptrs int(const char *, int *)
+  #0 str char[6]
+  #1 addr #0 char *
+  #2 cast #1 const char *
+  #3 sym s@12:22 const char *
+  #4 load #3 const char *
+  #5 sym p@12:30 int *
+  #6 load #5 int *
+  #7 call printf fixed 1 #2 #4 #6 int
+  #8 return #7
+  #9 block #8
+unit vcall.c:13:1 func strct int(struct S)
+  #0 str char[3]
+  #1 addr #0 char *
+  #2 cast #1 const char *
+  #3 sym s@13:20 struct S
+  #4 load #3 struct S
+  #5 call printf fixed 1 #2 #4 int
+  #6 return #5
+  #7 block #6
+unit vcall.c:14:1 func bits int(struct B *)
+  #0 str char[6]
+  #1 addr #0 char *
+  #2 cast #1 const char *
+  #3 sym b@14:20 struct B *
+  #4 load #3 struct B *
+  #5 deref #4 struct B
+  #6 field +0 bit 0 width 3 #5 unsigned int
+  #7 load #6 unsigned int
+  #8 cast #7 int
+  #9 sym b@14:20 struct B *
+  #10 load #9 struct B *
+  #11 deref #10 struct B
+  #12 field +4 bit 0 width 32 #11 unsigned int
+  #13 load #12 unsigned int
+  #14 call printf fixed 1 #2 #8 #13 int
+  #15 return #14
+  #16 block #15
+unit vcall.c:15:1 func en int(enum E)
+  #0 str char[3]
+  #1 addr #0 char *
+  #2 cast #1 const char *
+  #3 sym e@15:15 enum E
+  #4 load #3 enum E
+  #5 cast #4 unsigned int
+  #6 call printf fixed 1 #2 #5 int
+  #7 return #6
+  #8 block #7
+unit vcall.c:16:1 func up int(int,  char)
+  #0 sym i@16:12 int
+  #1 load #0 int
+  #2 sym c@16:20 char
+  #3 load #2 char
+  #4 cast #3 int
+  #5 sym i@16:12 int
+  #6 addr #5 int *
+  #7 call unproto fixed 0 #1 #4 #6 int
+  #8 return #7
+  #9 block #8
+unit vcall.c:17:1 func ind int(int)
+  #0 sym vfp int (*)(const char *, ...)
+  #1 load #0 int (*)(const char *, ...)
+  #2 str char[2]
+  #3 addr #2 char *
+  #4 cast #3 const char *
+  #5 sym i@17:13 int
+  #6 load #5 int
+  #7 sym i@17:13 int
+  #8 load #7 int
+  #9 cast #8 char
+  #10 cast #9 int
+  #11 call * fixed 1 #1 #4 #6 #10 int
+  #12 return #11
+  #13 block #12
+unit vcall.c:18:1 func exp1 int(long int)
+  #0 sym l@18:15 long int
+  #1 load #0 long int
+  #2 const 0 long int
+  #3 cmp != #1 #2 int
+  #4 cast #3 long int
+  #5 const 0 long int
+  #6 intrin expect #4 #5 long int
+  #7 const 1 int
+  #8 const 2 int
+  #9 cond #6 #7 #8 int
+  #10 return #9
+  #11 block #10
+unit vcall.c:19:1 func ms void *(void *, int)
+  #0 sym p@19:16 void *
+  #1 load #0 void *
+  #2 const 0 int
+  #3 sym n@19:23 int
+  #4 load #3 int
+  #5 cast #4 long unsigned int
+  #6 intrin memset #1 #2 #5 void *
+  #7 return #6
+  #8 block #7

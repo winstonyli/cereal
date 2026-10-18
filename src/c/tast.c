@@ -23,6 +23,7 @@
     X(CAST, "cast") X(UNOP, "unop") X(BINOP, "binop") X(CMP, "cmp")          \
     X(LOGAND, "logand") X(LOGOR, "logor") X(COND, "cond")                    \
     X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \
+    X(INTRIN, "intrin")                                                      \
     X(DEREF, "deref") X(FIELD, "field") X(ADDR, "addr") X(STR, "str")        \
     X(PTRADD, "ptradd") X(PTRDIFF, "ptrdiff") X(POST, "post")                \
     X(BLOCK, "block") X(LOCAL, "local") X(EXPRSTMT, "exprstmt")              \
@@ -50,14 +51,20 @@ static const char *const op_names[TO_COUNT] = {
 typedef struct TNode {
     uint8_t op;
     uint16_t pun;           /* unop/binop/cmp: the operator (Punct); field: bit
-                             * offset within byte val; call: 1 when indirect */
+                             * offset within byte val; call: 1 when indirect;
+                             * 2 never (intrin has its own op) */
     TypeId ty;
     SrcLoc loc;
     uint32_t kid0, nkids;   /* kids: El.kids[kid0 .. kid0 + nkids) */
     int64_t val;            /* const: value; case: value; goto/label: ident id;
-                             * field: byte offset; ptradd/ptrdiff: element size */
-    uint32_t sym;           /* sym, local, call: the symbol ref */
-    uint32_t width;         /* field: bit-field width, 0 otherwise */
+                             * field: byte offset; ptradd/ptrdiff: element size;
+                             * call, intrin: arguments converted to parameter
+                             * types (the rest get the default promotions) */
+    uint32_t sym;           /* sym, local, call: the symbol ref; intrin: the
+                             * identifier id of the builtin's name */
+    uint32_t width;         /* field: bit-field width, 0 otherwise; call,
+                             * intrin: 1 when the callee is variadic or
+                             * unprototyped */
 } TNode;
 
 typedef struct El {
@@ -520,13 +527,68 @@ static uint32_t ptr_binary(El *e, uint32_t i, int p, uint32_t a, uint32_t b, Src
     return r;
 }
 
+/* The arguments k[0..na) of a call to a function of type ft, appended to
+ * args: the declared parameters get the parameter type, the rest the default
+ * argument promotions (C11 6.5.2.2p6; a floating argument is T4).  Returns
+ * false when the unit became unsupported. */
+static bool call_args(El *e, TypeId ft, const uint32_t *k, uint32_t na,
+                      SrcLoc loc, U32Vec *args)
+{
+    Checker *c = e->c;
+    const TypeEnt *fe = type_ent(&c->tt, ft);
+    uint32_t np = (fe->flags & TF_NOPROTO) ? 0 : (uint32_t)fe->n, j;
+    if (na < np || (na > np && !(fe->flags & (TF_NOPROTO | TF_VARIADIC)))) {
+        unsup(e, "call argument count");
+        return false;
+    }
+    for (j = 0; j < na; j++) {
+        uint32_t a = strip_paren(c, k[j]), v, ca;
+        TypeId pt;
+        if (j < np) {
+            pt = unqual(c, type_params(&c->tt, ft)[j]);
+            if (!ok_ty(e, pt)) {
+                unsup(e, "%s", why_type(e, pt));
+                return false;
+            }
+            v = ex(e, a, false);
+        } else {
+            v = ex(e, a, false);
+            if (v == TN)
+                return false;
+            pt = is_int(c, nty(e, v)) ? promoted(c, a) : nty(e, v);
+        }
+        ca = conv(e, v, pt, loc);
+        if (ca == TN)
+            return false;
+        vec_push(args, ca);
+    }
+    return true;
+}
+
+/* A builtin called by its __builtin_ spelling, with a fixed prototype in the
+ * checker's table: the prototype, 0 when the pass cannot take it. */
+static TypeId builtin_ft(El *e, uint32_t callee)
+{
+    Checker *c = e->c;
+    const char *nm = cident(c, cnode_ident(c, callee));
+    const BTab *bt;
+    TypeId ft;
+    if (strncmp(nm, "__builtin_", 10))
+        return 0;
+    bt = bt_find(c, nm + 10, true);
+    if (!bt || bt->gnu == 3 || !strchr(bt->sig, '|') || !strcmp(strchr(bt->sig, '|') + 1, "?"))
+        return 0;
+    ft = type_canon(&c->tt, bt_func_type(c, bt));
+    return type_ckind(&c->tt, ft) == TY_FUNC ? ft : 0;
+}
+
 static uint32_t e_call_t(El *e, uint32_t i)
 {
     Checker *c = e->c;
-    uint32_t nk = nkids(c, i, NULL, 0), *k, callee, ref = 0, j, np;
+    uint32_t nk = nkids(c, i, NULL, 0), *k, callee, ref = 0, name = 0;
     TypeId ft;
     const TypeEnt *fe;
-    VEC(uint32_t) args = {0};
+    U32Vec args = {0};
     uint32_t id = TN;
     bool indirect = false;
     SrcLoc loc = cnode_loc(c, i);
@@ -538,8 +600,12 @@ static uint32_t e_call_t(El *e, uint32_t i)
         ref = c->sym[callee];
         ft = type_canon(&c->tt, csym(c, ref)->ty);
     } else if (ntag(c, callee) == N_IDENT && c->sym[callee] == SYM_NONE) {
-        unsup(e, "builtin or undeclared call %s", cident(c, cnode_ident(c, callee)));
-        goto out;
+        ft = builtin_ft(e, callee);
+        if (!ft) {
+            unsup(e, "builtin or undeclared call %s", cident(c, cnode_ident(c, callee)));
+            goto out;
+        }
+        name = cnode_ident(c, callee);
     } else {
         TypeId pt = rvt(c, callee);
         uint32_t cv;
@@ -555,30 +621,15 @@ static uint32_t e_call_t(El *e, uint32_t i)
         indirect = true;
     }
     fe = type_ent(&c->tt, ft);
-    if (fe->flags & (TF_NOPROTO | TF_VARIADIC)) {
-        unsup(e, "call to unprototyped or variadic function %s",
-              ref ? cident(c, csym(c, ref)->name) : "(indirect)");
+    if (!call_args(e, ft, k + 1, nk - 1, loc, &args))
         goto out;
+    {
+        uint32_t nf = (fe->flags & TF_NOPROTO) ? 0 : (uint32_t)fe->n;
+        id = mk(e, name ? TO_INTRIN : TO_CALL, unqual(c, c->ty[i]), loc, nf,
+                name ? name : ref, indirect, args.data, (uint32_t)args.len);
+        if (id != TN && (fe->flags & (TF_NOPROTO | TF_VARIADIC)))
+            e->nodes.data[id].width = 1;
     }
-    np = (uint32_t)fe->n;
-    if (np != nk - 1) {
-        unsup(e, "call argument count");
-        goto out;
-    }
-    for (j = 0; j < np; j++) {
-        TypeId pt = unqual(c, type_params(&c->tt, ft)[j]);
-        uint32_t a, ca;
-        if (!ok_ty(e, pt)) {
-            unsup(e, "%s", why_type(e, pt));
-            goto out;
-        }
-        a = strip_paren(c, k[1 + j]);
-        ca = conv(e, ex(e, a, false), pt, loc);
-        if (ca == TN)
-            goto out;
-        vec_push(&args, ca);
-    }
-    id = mk(e, TO_CALL, unqual(c, c->ty[i]), loc, 0, ref, indirect, args.data, (uint32_t)args.len);
 out:
     vec_free(&args);
     free(k);
@@ -1080,6 +1131,13 @@ static void print_tree(El *e, FILE *out)
                 fputc(' ', out);
                 put_sym(c, out, nd->sym);
             }
+            if (nd->width)
+                fprintf(out, " fixed %lld", (long long)nd->val);
+            break;
+        case TO_INTRIN:
+            fprintf(out, " %s", cident(c, nd->sym) + 10);
+            if (nd->width)
+                fprintf(out, " fixed %lld", (long long)nd->val);
             break;
         case TO_FIELD:
             fprintf(out, " +%lld", (long long)nd->val);
@@ -1245,10 +1303,20 @@ static void verify(El *e, FILE *out)
             if (KID(0)->op != TO_STORE || !SAME(KID(0), nd))
                 vbad(e, out, i, "operand is not a store of the same type");
             break;
-        case TO_CALL: {
-            TypeId ft;
-            uint32_t f0 = nd->pun ? 1 : 0;
-            if (nd->pun) {
+        case TO_CALL: case TO_INTRIN: {
+            TypeId ft = 0;
+            const TypeEnt *fe;
+            bool sz_ok = false;
+            uint32_t f0 = nd->op == TO_CALL && nd->pun ? 1 : 0, np;
+            if (nd->op == TO_INTRIN) {
+                const char *nm = cident(c, nd->sym);
+                const BTab *bt = strncmp(nm, "__builtin_", 10) ? NULL : bt_find(c, nm + 10, true);
+                if (!bt || bt->gnu == 3 || !strchr(bt->sig, '|')) {
+                    vbad(e, out, i, "builtin");
+                    break;
+                }
+                ft = type_canon(&c->tt, bt_func_type(c, bt));
+            } else if (nd->pun) {
                 if (nd->nkids < 1 || !ISVAL(KID(0)) || KIND(KID(0)->ty) != TY_PTR ||
                     KIND(pointee(c, KID(0)->ty)) != TY_FUNC) {
                     vbad(e, out, i, "callee");
@@ -1265,14 +1333,34 @@ static void verify(El *e, FILE *out)
                 }
                 ft = type_canon(&c->tt, s->ty);
             }
-            if (nd->nkids - f0 != type_ent(&c->tt, ft)->n) {
+            if (KIND(ft) != TY_FUNC) {
+                vbad(e, out, i, "callee");
+                break;
+            }
+            fe = type_ent(&c->tt, ft);
+            np = (fe->flags & TF_NOPROTO) ? 0 : (uint32_t)fe->n;
+            if (nd->width != ((fe->flags & (TF_NOPROTO | TF_VARIADIC)) != 0) ||
+                nd->val != np) {
+                vbad(e, out, i, "fixed argument count");
+                break;
+            }
+            if (nd->nkids - f0 < np || (!nd->width && nd->nkids - f0 != np)) {
                 vbad(e, out, i, "argument count");
                 break;
             }
-            for (j = f0; j < nd->nkids; j++)
-                if (!ISVAL(KID(j)) ||
-                    mainv(c, KID(j)->ty) != mainv(c, type_params(&c->tt, ft)[j - f0]))
-                    vbad(e, out, i, "argument type");
+            for (j = f0; j < nd->nkids; j++) {
+                if (!ISVAL(KID(j))) {
+                    vbad(e, out, i, "argument is not a value");
+                } else if (j - f0 < np) {
+                    if (mainv(c, KID(j)->ty) != mainv(c, type_params(&c->tt, ft)[j - f0]))
+                        vbad(e, out, i, "argument type");
+                } else if (is_int(c, KID(j)->ty) &&
+                           (KIND(KID(j)->ty) == TY_BOOL ||
+                            (KIND(KID(j)->ty) != TY_ENUM &&
+                             type_size(&c->tt, KID(j)->ty, &sz_ok) < 4))) {
+                    vbad(e, out, i, "extra argument not promoted");
+                }
+            }
             break;
         }
         case TO_DEREF:

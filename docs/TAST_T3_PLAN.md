@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # TAST stage T3: plan
@@ -402,3 +402,41 @@ offset" claim was based on a partial read of the struct (`cinit.c:78-94`)
 and is now marked **verify**. Sections 1, 2.1, 2.2, 4 to 7 were not
 reread in this round. The open items are reads, not decisions, and none
 changes the order T3a, S2, T3b, T3c.
+
+## 9. Progress
+
+### T3a, built (2026-10-18)
+
+`call_args` in `src/c/tast.c` is the one place arguments are converted: the
+declared parameters take the parameter type, the rest the default
+promotions (`promoted()` on the checker node, so bit-fields and enums are
+right; a floating extra is still `unsupported: floating type`). `call` and
+the new `intrin` node record `val` = number of declared (fixed) arguments
+and `width` = 1 for a variadic or unprototyped callee; they print as `call
+f fixed N` (only then). `intrin` is a call to a `__builtin_X` that has no
+symbol: `builtin_ft` takes its prototype from the checker's table
+(`bt_find(name + 10, true)` and `bt_func_type`), refusing `gnu == 3` (typed)
+and `?`/missing signatures. `sym` holds the identifier id of the builtin
+name, so the verifier re-resolves the prototype by the same path. The
+verifier checks fixed-argument count, argument count, exact parameter
+types, and that extras are promoted (no `_Bool`, nothing narrower than
+`int`).
+
+Result (run `2026-10-18-tast-t3a-coverage`; `unsup.c` lost its two
+variadic units, `vcall.c` added): lua54 1,942 functions elaborate (T2:
+1,578), 301 units unsupported (665): floating type 188, global initializer
+69, static or extern local 30, unprototyped or variadic definition 10, side
+effect in compound lvalue 2, `va_arg` 2. libuv 1,413 (1,379), 150 unsupported
+(184): statement expression 102, static or extern local 15, global
+initializer 15, floating 12, braced initializer 2, one each of definition,
+`asm`, `va_arg`, `setproctitle` (undeclared). 0 verifier findings. Suite
+2238 passed, 0 failed. Option-on cost lua54 0.63 s against 0.57 s off.
+Not rerun: the callgrind and san legs of the gate (the pass is off by
+default; run the full gate before tagging).
+
+Plan check: the round-1 estimate said about 384 lua54 units would move; 364
+did. `__builtin_memset` and the 134 variadic units needed nothing beyond the
+rule above. The `__builtin_constant_p` and `bt_find` `pre` verifies are
+closed: the callee path only takes a name starting `__builtin_`, so
+`pre` is always true. Implicit-declaration calls stay unsupported (one libuv
+unit).
