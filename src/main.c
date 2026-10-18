@@ -45,6 +45,10 @@ static void usage(FILE *o)
         "                --dump-types: print declarations and layouts\n"
         "                --dump-tast: print the typed tree of each unit\n"
         "                --verify-tast: --dump-tast, and check each tree\n"
+        , o);
+    fputs(      /* a second literal: C99 only promises 4095 characters */
+        "                --dump-cfg: print the control-flow graph of each function\n"
+        "                --verify-cfg: --dump-cfg, and check each graph\n"
         "                --dump-symbols: print the C symbol index\n"
         "                --verify-symbols: check it, report names it missed\n"
         "                --verify-carry=OLD[@PATH]: carry OLD's index (OLD's text\n"
@@ -351,7 +355,7 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err,
     tu_init(&tu, o);
     tu.diag.out = err;
     fo.out = out;
-    fo.tast_bad = fe_opts.verify_tast ? &tast_bad : NULL;
+    fo.tast_bad = fe_opts.verify_tast || fe_opts.verify_cfg ? &tast_bad : NULL;
     if (parse_cells) {
         po = par_options(o);
         fo.cells_par = &po;
@@ -1635,6 +1639,14 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--verify-tast")) {
             fe_opts.dump_tast = fe_opts.verify_tast = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--dump-cfg")) {
+            fe_opts.dump_cfg = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--verify-cfg")) {
+            fe_opts.dump_cfg = fe_opts.verify_cfg = true;
             continue;
         }
         if (!strcmp(argv[i], "--dump-symbols")) {

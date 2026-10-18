@@ -1,0 +1,530 @@
+tast 1 target x86_64-linux-gnu
+unit flow.c:4:1 func ifs int(int,  int)
+B0:
+  #0 const 0 int
+  #1 local r@6:9 #0 int
+  #2 sym a@4:13 int
+  #3 load #2 int
+  br #3 B1 B2
+B1:
+  #4 sym r@6:9 int
+  #5 const 1 int
+  #6 store #4 #5 int
+  #7 exprstmt #6
+  jmp B2
+B2:
+  #9 sym b@4:20 int
+  #10 load #9 int
+  br #10 B3 B4
+B3:
+  #11 sym r@6:9 int
+  #12 sym r@6:9 int
+  #13 load #12 int
+  #14 const 2 int
+  #15 binop + #13 #14 int
+  #16 store #11 #15 int
+  #17 exprstmt #16
+  jmp B5
+B4:
+  #18 sym r@6:9 int
+  #19 sym r@6:9 int
+  #20 load #19 int
+  #21 const 3 int
+  #22 binop + #20 #21 int
+  #23 store #18 #22 int
+  #24 exprstmt #23
+  jmp B5
+B5:
+  #26 sym a@4:13 int
+  #27 load #26 int
+  br #27 B6 B10
+B6:
+  #28 sym b@4:20 int
+  #29 load #28 int
+  br #29 B7 B8
+B7:
+  #30 sym r@6:9 int
+  #31 const 4 int
+  #32 store #30 #31 int
+  #33 exprstmt #32
+  jmp B9
+B8:
+  #34 sym r@6:9 int
+  #35 const 5 int
+  #36 store #34 #35 int
+  #37 exprstmt #36
+  jmp B9
+B9:
+  jmp B11
+B10:
+  #40 sym r@6:9 int
+  #41 const 6 int
+  #42 store #40 #41 int
+  #43 exprstmt #42
+  jmp B11
+B11:
+  #45 sym r@6:9 int
+  #46 load #45 int
+  ret #46
+cfg: 12 blocks, 0 unreachable
+unit flow.c:13:1 func loops int(int)
+B0:
+  #0 const 0 int
+  #1 local s@15:9 #0 int
+  #2 local i@15:16 int
+  jmp B1
+B1:
+  #3 sym n@13:15 int
+  #4 load #3 int
+  #5 const 0 int
+  #6 cmp > #4 #5 int
+  br #6 B2 B7
+B2:
+  #7 sym s@15:9 int
+  #8 sym s@15:9 int
+  #9 load #8 int
+  #10 sym n@13:15 int
+  #11 load #10 int
+  #12 binop + #9 #11 int
+  #13 store #7 #12 int
+  #14 exprstmt #13
+  #15 sym n@13:15 int
+  #16 sym n@13:15 int
+  #17 load #16 int
+  #18 const 1 int
+  #19 binop - #17 #18 int
+  #20 store #15 #19 int
+  #21 post #20 int
+  #22 exprstmt #21
+  #23 sym s@15:9 int
+  #24 load #23 int
+  #25 const 100 int
+  #26 cmp > #24 #25 int
+  br #26 B3 B4
+B3:
+  jmp B7
+B4:
+  #29 sym n@13:15 int
+  #30 load #29 int
+  #31 const 1 int
+  #32 binop & #30 #31 int
+  br #32 B5 B6
+B5:
+  jmp B1
+B6:
+  #35 sym s@15:9 int
+  #36 sym s@15:9 int
+  #37 load #36 int
+  #38 const 1 int
+  #39 binop + #37 #38 int
+  #40 store #35 #39 int
+  #41 post #40 int
+  #42 exprstmt #41
+  jmp B1
+B7:
+  jmp B8
+B8:
+  #45 sym s@15:9 int
+  #46 sym s@15:9 int
+  #47 load #46 int
+  #48 const 1 int
+  #49 binop - #47 #48 int
+  #50 store #45 #49 int
+  #51 post #50 int
+  #52 exprstmt #51
+  #53 sym s@15:9 int
+  #54 load #53 int
+  #55 const 0 int
+  #56 cmp < #54 #55 int
+  br #56 B9 B10
+B9:
+  jmp B11
+B10:
+  #59 sym s@15:9 int
+  #60 sym s@15:9 int
+  #61 load #60 int
+  #62 const 2 int
+  #63 binop + #61 #62 int
+  #64 store #59 #63 int
+  #65 exprstmt #64
+  jmp B11
+B11:
+  #67 sym s@15:9 int
+  #68 load #67 int
+  #69 const 10 int
+  #70 cmp < #68 #69 int
+  br #70 B8 B12
+B12:
+  #72 sym i@15:16 int
+  #73 const 0 int
+  #74 store #72 #73 int
+  #75 exprstmt #74
+  jmp B13
+B13:
+  #76 sym i@15:16 int
+  #77 load #76 int
+  #78 sym n@13:15 int
+  #79 load #78 int
+  #80 cmp < #77 #79 int
+  br #80 B14 B18
+B14:
+  #89 sym s@15:9 int
+  #90 sym s@15:9 int
+  #91 load #90 int
+  #92 sym i@15:16 int
+  #93 load #92 int
+  #94 binop + #91 #93 int
+  #95 store #89 #94 int
+  #96 exprstmt #95
+  #97 sym i@15:16 int
+  #98 load #97 int
+  #99 const 3 int
+  #100 cmp == #98 #99 int
+  br #100 B15 B16
+B15:
+  jmp B17
+B16:
+  #103 sym s@15:9 int
+  #104 sym s@15:9 int
+  #105 load #104 int
+  #106 const 1 int
+  #107 binop + #105 #106 int
+  #108 store #103 #107 int
+  #109 post #108 int
+  #110 exprstmt #109
+  jmp B17
+B17:
+  #81 sym i@15:16 int
+  #82 sym i@15:16 int
+  #83 load #82 int
+  #84 const 1 int
+  #85 binop + #83 #84 int
+  #86 store #81 #85 int
+  #87 post #86 int
+  #88 exprstmt #87
+  jmp B13
+B18:
+  jmp B19
+B19:
+  #116 sym s@15:9 int
+  #117 sym s@15:9 int
+  #118 load #117 int
+  #119 const 1 int
+  #120 binop + #118 #119 int
+  #121 store #116 #120 int
+  #122 const 50 int
+  #123 cmp > #121 #122 int
+  br #123 B20 B21
+B20:
+  jmp B22
+B21:
+  jmp B19
+B22:
+  #128 sym i@15:16 int
+  #129 const 0 int
+  #130 store #128 #129 int
+  #131 exprstmt #130
+  jmp B23
+B23:
+  #141 sym i@15:16 int
+  #142 load #141 int
+  #143 const 5 int
+  #144 cmp > #142 #143 int
+  br #144 B24 B25
+B24:
+  jmp B27
+B25:
+  jmp B26
+B26:
+  #133 sym i@15:16 int
+  #134 sym i@15:16 int
+  #135 load #134 int
+  #136 const 1 int
+  #137 binop + #135 #136 int
+  #138 store #133 #137 int
+  #139 post #138 int
+  #140 exprstmt #139
+  jmp B23
+B27:
+  #149 const 0 int
+  #150 local j@21:14 #149 int
+  jmp B28
+B28:
+  #152 sym j@21:14 int
+  #153 load #152 int
+  #154 const 3 int
+  #155 cmp < #153 #154 int
+  br #155 B29 B31
+B29:
+  #164 sym s@15:9 int
+  #165 sym s@15:9 int
+  #166 load #165 int
+  #167 sym j@21:14 int
+  #168 load #167 int
+  #169 binop + #166 #168 int
+  #170 store #164 #169 int
+  #171 exprstmt #170
+  jmp B30
+B30:
+  #156 sym j@21:14 int
+  #157 sym j@21:14 int
+  #158 load #157 int
+  #159 const 1 int
+  #160 binop + #158 #159 int
+  #161 store #156 #160 int
+  #162 post #161 int
+  #163 exprstmt #162
+  jmp B28
+B31:
+  #173 sym s@15:9 int
+  #174 load #173 int
+  ret #174
+cfg: 32 blocks, 0 unreachable
+unit flow.c:25:1 func sw int(int)
+B0:
+  #0 const 0 int
+  #1 local r@27:9 #0 int
+  #2 sym x@25:12 int
+  #3 load #2 int
+  swtch #3 default B5
+    case 1 B1
+    case 2 B2
+    case 3 B3
+    case 4 B4
+    case 5 B6
+B1:
+  #4 sym r@27:9 int
+  #5 const 1 int
+  #6 store #4 #5 int
+  #7 exprstmt #6
+  jmp B2
+B2:
+  #9 sym r@27:9 int
+  #10 sym r@27:9 int
+  #11 load #10 int
+  #12 const 2 int
+  #13 binop + #11 #12 int
+  #14 store #9 #13 int
+  #15 exprstmt #14
+  jmp B7
+B3:
+  jmp B4
+B4:
+  #18 sym r@27:9 int
+  #19 const 4 int
+  #20 store #18 #19 int
+  #21 exprstmt #20
+  jmp B7
+B5:
+  #25 sym r@27:9 int
+  #26 const 9 int
+  #27 store #25 #26 int
+  #28 exprstmt #27
+  jmp B6
+B6:
+  #30 sym r@27:9 int
+  #31 sym r@27:9 int
+  #32 load #31 int
+  #33 const 1 int
+  #34 binop + #32 #33 int
+  #35 store #30 #34 int
+  #36 post #35 int
+  #37 exprstmt #36
+  jmp B7
+B7:
+  #41 sym x@25:12 int
+  #42 load #41 int
+  swtch #42 default B9
+    case 1 B8
+B8:
+  #43 sym r@27:9 int
+  #44 const 1 int
+  #45 store #43 #44 int
+  #46 exprstmt #45
+  jmp B9
+B9:
+  #50 sym x@25:12 int
+  #51 load #50 int
+  swtch #51 default B11
+B10: unreachable
+  #52 sym r@27:9 int
+  #53 const 7 int
+  #54 store #52 #53 int
+  #55 exprstmt #54
+  jmp B11
+B11:
+  #58 sym r@27:9 int
+  #59 load #58 int
+  ret #59
+cfg: 12 blocks, 1 unreachable
+unit flow.c:40:1 func jumps int(int)
+B0:
+  #0 const 0 int
+  #1 local r@42:9 #0 int
+  jmp B4
+B1:
+  #3 sym r@42:9 int
+  #4 sym r@42:9 int
+  #5 load #4 int
+  #6 const 1 int
+  #7 binop + #5 #6 int
+  #8 store #3 #7 int
+  #9 post #8 int
+  #10 exprstmt #9
+  #12 sym r@42:9 int
+  #13 load #12 int
+  #14 const 3 int
+  #15 cmp > #13 #14 int
+  br #15 B2 B3
+B2:
+  jmp B5
+B3:
+  jmp B4
+B4:
+  #18 sym r@42:9 int
+  #19 sym r@42:9 int
+  #20 load #19 int
+  #21 sym a@40:15 int
+  #22 load #21 int
+  #23 binop + #20 #22 int
+  #24 store #18 #23 int
+  #25 exprstmt #24
+  jmp B1
+B5:
+  #28 sym r@42:9 int
+  #29 load #28 int
+  ret #29
+cfg: 6 blocks, 0 unreachable
+unit flow.c:54:1 func dead int(int)
+B0:
+  #0 sym a@54:14 int
+  #1 load #0 int
+  ret #1
+B1: unreachable
+  #3 sym a@54:14 int
+  #4 const 1 int
+  #5 store #3 #4 int
+  #6 exprstmt #5
+  #7 sym a@54:14 int
+  #8 load #7 int
+  br #8 B2 B3
+B2: unreachable
+  #9 const 2 int
+  ret #9
+B3: unreachable
+  ret
+cfg: 4 blocks, 3 unreachable
+unit flow.c:61:1 func falls void(int *)
+B0:
+  #0 sym p@61:17 int *
+  #1 load #0 int *
+  #2 deref #1 int
+  #3 const 1 int
+  #4 store #2 #3 int
+  #5 exprstmt #4
+  ret
+cfg: 1 blocks, 0 unreachable
+unit flow.c:66:1 func hidden int(int,  int)
+B0:
+  #0 sym a@66:16 int
+  #1 load #0 int
+  #2 sym b@66:23 int
+  #3 load #2 int
+  #4 logand #1 #3 int
+  #5 sym a@66:16 int
+  #6 load #5 int
+  #7 call g #6 int
+  #8 sym a@66:16 int
+  #9 load #8 int
+  #10 sym b@66:23 int
+  #11 load #10 int
+  #12 logor #9 #11 int
+  #13 cond #4 #7 #12 int
+  ret #13
+cfg: 1 blocks, 0 unreachable
+unit flow.c:71:1 func nest int(int)
+B0:
+  #0 const 0 int
+  #1 local s@73:9 #0 int
+  #2 const 0 int
+  #3 local i@74:14 #2 int
+  jmp B1
+B1:
+  #5 sym i@74:14 int
+  #6 load #5 int
+  #7 sym n@71:14 int
+  #8 load #7 int
+  #9 cmp < #6 #8 int
+  br #9 B2 B13
+B2:
+  #18 sym i@74:14 int
+  #19 load #18 int
+  #20 const 3 int
+  #21 binop & #19 #20 int
+  swtch #21 default B5
+    case 0 B3
+    case 1 B4
+B3:
+  jmp B12
+B4:
+  #24 sym s@73:9 int
+  #25 sym s@73:9 int
+  #26 load #25 int
+  #27 const 1 int
+  #28 binop + #26 #27 int
+  #29 store #24 #28 int
+  #30 post #29 int
+  #31 exprstmt #30
+  jmp B11
+B5:
+  jmp B6
+B6:
+  #34 sym s@73:9 int
+  #35 load #34 int
+  #36 const 100 int
+  #37 cmp < #35 #36 int
+  br #37 B7 B10
+B7:
+  #38 sym s@73:9 int
+  #39 sym s@73:9 int
+  #40 load #39 int
+  #41 const 10 int
+  #42 binop + #40 #41 int
+  #43 store #38 #42 int
+  #44 exprstmt #43
+  #45 sym s@73:9 int
+  #46 load #45 int
+  #47 const 50 int
+  #48 cmp == #46 #47 int
+  br #48 B8 B9
+B8:
+  jmp B10
+B9:
+  jmp B6
+B10:
+  jmp B11
+B11:
+  #56 sym s@73:9 int
+  #57 sym s@73:9 int
+  #58 load #57 int
+  #59 const 1 int
+  #60 binop + #58 #59 int
+  #61 store #56 #60 int
+  #62 post #61 int
+  #63 exprstmt #62
+  jmp B12
+B12:
+  #10 sym i@74:14 int
+  #11 sym i@74:14 int
+  #12 load #11 int
+  #13 const 1 int
+  #14 binop + #12 #13 int
+  #15 store #10 #14 int
+  #16 post #15 int
+  #17 exprstmt #16
+  jmp B1
+B13:
+  #66 sym s@73:9 int
+  #67 load #66 int
+  ret #67
+cfg: 14 blocks, 0 unreachable

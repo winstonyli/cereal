@@ -29,7 +29,10 @@ typedef struct CheckOptions {
     bool optimize;              /* -O1 and up */
     bool cf_nobranch;           /* -fcf-protection=none|return: nocf_check is ignored */
     FILE *dump;                 /* --dump-types: declarations and layouts */
-    FILE *tast;                 /* --dump-tast: the typed tree of each unit */
+    FILE *tast;                 /* --dump-tast, --dump-cfg: the typed tree of each unit */
+    bool tast_tree;             /* ... print the tree itself (--dump-tast) */
+    bool dump_cfg, verify_cfg;  /* --dump-cfg: print the lowered control-flow graph;
+                                 * --verify-cfg: and check it (tcfg.c) */
     bool verify_tast;           /* --verify-tast: check each tree, print findings */
     unsigned *tast_bad;         /* ... incremented per finding (NULL: not counted) */
     bool summaries;             /* keep per-unit summaries (csum.h) */

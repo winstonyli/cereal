@@ -6,9 +6,9 @@ status: draft
 
 Track D prerequisite for both the back end (ROADMAP: typed-AST export, SysV
 classification, QBE) and VeriFast-style proving (CONFIG_DESIGN direction,
-Round 238). Built through stage T7 (2026-10-18): see "Stage map as built"
+Round 238). Built through stage T7 and the statement half of T8 (2026-10-18): see "Stage map as built"
 after the section 5 table; each stage has its own `docs/TAST_T<n>_PLAN.md`.
-The lowering to the core (the old T6 row) is not started.
+The lowering to the core (the old T6 row) is `TAST_T8_PLAN.md`: T8a (statements to a CFG) is built, T8b (expression control flow) is not.
 
 ## 1. Goal and non-goals
 
@@ -241,7 +241,7 @@ produce no tree for it; it is counted, never guessed or partly emitted.
 
 The table above is the original plan; the stages that were built split its T5
 row and renumbered. Rows are the plan files; the old lowering stage is
-unstarted and would be numbered after T7.
+now T8 (`TAST_T8_PLAN.md`).
 
 | Built | Content | Plan |
 |---|---|---|
@@ -251,6 +251,7 @@ unstarted and would be numbered after T7.
 | T5 | evaluate-once temporaries (`tmp`) for compound lvalues with side effects | `TAST_T5_PLAN.md` |
 | T6 | computed goto (`labaddr`, `igoto`) | `TAST_T6_PLAN.md` |
 | T7 | compound literals (`complit`) including static ones folded into initializers, sized atomics, flexible array members | `TAST_T7_PLAN.md` (atomics and flexible arrays: commits `d70a407`, `742484f`) |
+| T8a | statements lowered to a control-flow graph (`--dump-cfg`, `--verify-cfg`, `tcfg.c`); expression control flow is T8b | `TAST_T8_PLAN.md` |
 
 Still unsupported: VLAs, `_Complex`/`__int128`/`_FloatN`/decimal types, a bit-field
 compound lvalue with a side effect, `asm` and implicit-declaration calls

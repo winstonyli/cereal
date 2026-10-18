@@ -1,0 +1,108 @@
+tast 1 target x86_64-linux-gnu
+unit cgoto.c:2:1 func disp int(int)
+B0:
+  #0 labaddr a void *
+  #1 cast #0 const void *
+  #2 elem +0 #1 const void *
+  #3 labaddr b void *
+  #4 cast #3 const void *
+  #5 elem +8 #4 const void *
+  #6 labaddr c void *
+  #7 cast #6 const void *
+  #8 elem +16 #7 const void *
+  #9 data tab@3:30 #2 #5 #8 const void * const[3]
+  #10 const 0 int
+  #11 local r@4:9 #10 int
+  #12 sym tab@3:30 const void * const[3]
+  #13 addr #12 const void * const*
+  #14 sym n@2:14 int
+  #15 load #14 int
+  #16 cast #15 long int
+  #17 ptradd *8 #13 #16 const void * const*
+  #18 deref #17 const void * const
+  #19 load #18 const void *
+  ijmp #19 B1 B2 B3
+B1:
+  #21 sym r@4:9 int
+  #22 sym r@4:9 int
+  #23 load #22 int
+  #24 const 1 int
+  #25 binop + #23 #24 int
+  #26 store #21 #25 int
+  #27 exprstmt #26
+  jmp B2
+B2:
+  #29 sym r@4:9 int
+  #30 sym r@4:9 int
+  #31 load #30 int
+  #32 const 2 int
+  #33 binop + #31 #32 int
+  #34 store #29 #33 int
+  #35 exprstmt #34
+  jmp B3
+B3:
+  #37 sym r@4:9 int
+  #38 load #37 int
+  ret #38
+cfg: 4 blocks, 0 unreachable
+unit cgoto.c:10:1 func loop int(int)
+B0:
+  #0 labaddr top void *
+  #1 local p@11:11 #0 void *
+  #2 const 0 int
+  #3 local s@12:9 #2 int
+  jmp B1
+B1:
+  #4 sym n@10:14 int
+  #5 sym n@10:14 int
+  #6 load #5 int
+  #7 const 1 int
+  #8 binop - #6 #7 int
+  #9 store #4 #8 int
+  #10 post #9 int
+  #11 const 0 int
+  #12 cmp > #10 #11 int
+  br #12 B2 B3
+B2:
+  #13 sym s@12:9 int
+  #14 sym s@12:9 int
+  #15 load #14 int
+  #16 const 1 int
+  #17 binop + #15 #16 int
+  #18 store #13 #17 int
+  #19 post #18 int
+  #20 exprstmt #19
+  #21 sym p@11:11 void *
+  #22 load #21 void *
+  ijmp #22 B1
+B3:
+  #27 sym s@12:9 int
+  #28 load #27 int
+  ret #28
+cfg: 4 blocks, 0 unreachable
+unit cgoto.c:17:1 func cast long int(void)
+B0:
+  #0 labaddr here void *
+  #1 cast #0 long int
+  #2 local v@17:24 #1 long int
+  jmp B1
+B1:
+  #3 sym v@17:24 long int
+  #4 load #3 long int
+  ret #4
+cfg: 2 blocks, 0 unreachable
+unit cgoto.c:18:1 func pick void *(int)
+B0:
+  #0 sym i@18:16 int
+  #1 load #0 int
+  #2 labaddr x void *
+  #3 labaddr y void *
+  #4 cond #1 #2 #3 void *
+  ijmp #4 B1 B2
+B1:
+  #6 const 0 void *
+  ret #6
+B2:
+  #9 const 0 void *
+  ret #9
+cfg: 3 blocks, 0 unreachable

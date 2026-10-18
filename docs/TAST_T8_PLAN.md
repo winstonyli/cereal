@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # TAST stage T8: plan (lowering to a control-flow graph)
@@ -195,3 +195,47 @@ closes.
   integer, memory-free subset.
 - **Round 4.** Nothing material beyond the **verify** items (Duff nesting,
   interpreter size, the spike).
+
+## 11. Progress: T8a built (2026-10-18)
+
+Statements to blocks, as planned in section 6 step 1; `src/c/tcfg.c`,
+`--dump-cfg` and `--verify-cfg` (dump plus check), goldens in `tests/cfg/`
+(`flow.c`, `duff.c`, `cgoto.c`; suite 2276/0).
+Run `t8a-cfg-coverage2` (the first run, `t8a-cfg-coverage`, predates the
+rule that a join is placed only if used: 430 and 131 unreachable blocks): lua54 2174 functions and libuv 1546 lower with 0
+findings and 0 unsupported (libuv's 2 units are the `decided against`
+ones); lua54 13036 blocks, 0 unreachable; libuv 9289 blocks, 72 unreachable
+(36 hold only a terminator, the rest dead code such as the test of a
+`do { ...; return; } while (0)`).
+
+Differences from the sections above:
+- The terminators are not TAST nodes. A block record holds its statements
+  (`local`, `exprstmt`, `data` node ids), a terminator kind and the value
+  node; `jmp/br/swtch/ijmp/ret` appear only in the `--dump-cfg` text. The
+  structured tree and its node table are untouched, and `reg` (T8b) is the
+  first new node.
+- `nop` statements are dropped (the empty statement does nothing); the
+  coverage check below ignores them.
+- A join or exit block is placed only if an edge leads to it, so an `if`
+  whose arms both return leaves no empty dead block, and `for (;;)` with no
+  `break` ends the function without an implicit `ret`.
+- Printed form: `B<n>:` (with `unreachable` when no path from `B0`), the
+  blocks' node lines (kids first), then the terminator: `jmp B3`,
+  `br #9 B1 B2`, `swtch #4 default B5` with `case v Bn` lines, `ijmp #7 B1
+  B2` (every label whose address is taken), `ret [#k]`. Ending line
+  `cfg: N blocks, U unreachable`; a function falling off its end gets a
+  bare `ret`.
+- `--verify-cfg` checks: one terminator per block; targets are placed
+  blocks; `swtch` case values distinct; a value on `br/swtch/ijmp`; no value
+  returned from a void function; no node placed twice; the number of
+  statements in the graph equals the number in the structured tree. Findings
+  print `verify-cfg: B<n>: ...` and count into the exit status like
+  `--verify-tast`. Reachability is reported, not a finding. The
+  "`reg` defined on every path" check belongs to T8b.
+- Duff's device and `case` nested inside `if`/`for`/`do` lower correctly
+  (`duff.c`, `flow.c`): `case`/`default` are collected where they occur, at
+  any depth, against the innermost enclosing `switch`.
+- `tests/cfg/` checks structure only; the execution oracle (section 5) is
+  not built.
+- Expression control flow (`&&`, `||`, `?:`, statement expressions) is left
+  inside its block, so a block can still hide a branch until T8b.

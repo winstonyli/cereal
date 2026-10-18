@@ -542,6 +542,23 @@ if [ -d "$ROOT/tests/tast" ]; then
     fi
 fi
 
+# 13d. control-flow graph (docs/TAST_T8_PLAN.md): golden `--verify-cfg` dumps;
+#      a verifier finding shows up as a "verify-cfg:" line
+if [ -d "$ROOT/tests/cfg" ]; then
+    cd "$ROOT/tests/cfg"
+    for f in *.c; do
+        "$CEREAL" check --target=x86_64-linux-gnu --verify-cfg "$f" \
+            >"$TMP/cfg.out" 2>/dev/null
+        if cmp -s "$TMP/cfg.out" "${f%.c}.expected"; then
+            ok
+        else
+            bad "cfg/$f"
+            diff "${f%.c}.expected" "$TMP/cfg.out" | head -10 | sed 's/^/    /'
+        fi
+    done
+    cd "$ROOT"
+fi
+
 # 14. C symbol index: golden `--dump-symbols` (plain and from cells), and
 #     `--verify-symbols` (every resolved identifier has its event, the index
 #     is well formed) over the checker and parser cases and cereal's sources

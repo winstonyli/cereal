@@ -18,30 +18,8 @@
 #include "c/csymidx.h"
 #include "c/lit.h"
 
-#define TN UINT32_MAX
+#include "c/tast_int.h"
 
-#define TAST_OPS(X)                                                         \
-    X(CONST, "const") X(FCONST, "fconst") X(SYM, "sym") X(TMP, "tmp") X(COMPLIT, "complit") X(LOAD, "load") X(STORE, "store")        \
-    X(CAST, "cast") X(UNOP, "unop") X(BINOP, "binop") X(CMP, "cmp")          \
-    X(LOGAND, "logand") X(LOGOR, "logor") X(COND, "cond")                    \
-    X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \
-    X(INTRIN, "intrin") X(VA, "va") X(LABADDR, "labaddr")                                        \
-    X(DEREF, "deref") X(FIELD, "field") X(ADDR, "addr") X(STR, "str")        \
-    X(PTRADD, "ptradd") X(PTRDIFF, "ptrdiff") X(STMTEXPR, "stmtexpr")        \
-    X(POST, "post")                                                          \
-    X(BLOCK, "block") X(LOCAL, "local") X(EXPRSTMT, "exprstmt")              \
-    X(IF, "if") X(WHILE, "while") X(DO, "do") X(FOR, "for")                  \
-    X(SWITCH, "switch") X(CASE, "case") X(DEFAULT, "default")                \
-    X(BREAK, "break") X(CONTINUE, "continue") X(GOTO, "goto") X(IGOTO, "igoto")          \
-    X(LABEL, "label") X(RETURN, "return") X(NOP, "nop")                     \
-    X(ELEM, "elem") X(DATA, "data")
-
-typedef enum {
-#define X(n, s) TO_##n,
-    TAST_OPS(X)
-#undef X
-    TO_COUNT
-} TastOp;
 
 static const char *const op_names[TO_COUNT] = {
 #define X(n, s) s,
@@ -49,46 +27,6 @@ static const char *const op_names[TO_COUNT] = {
 #undef X
 };
 
-/* Nodes up to and including TO_POST are expressions: they print a type. */
-#define IS_EXPR(op) ((op) <= TO_POST)
-
-typedef struct TNode {
-    uint8_t op;
-    uint16_t pun;           /* unop/binop/cmp: the operator (Punct); field: bit
-                             * offset within byte val; call: 1 when indirect;
-                             * 2 never (intrin has its own op); elem: bit
-                             * offset within byte val; str: unit size */
-    TypeId ty;
-    SrcLoc loc;
-    uint32_t kid0, nkids;   /* kids: El.kids[kid0 .. kid0 + nkids) */
-    int64_t val;            /* const: value; case: value; goto/label: ident id;
-                             * field: byte offset; ptradd/ptrdiff: element size;
-                             * call, intrin: arguments converted to parameter
-                             * types (the rest get the default promotions);
-                             * elem: byte offset; str, fconst: offset in
-                             * El.bytes */
-    uint32_t sym;           /* sym, local, call: the symbol ref; intrin: the
-                             * identifier id of the builtin's name */
-    uint32_t width;         /* field: bit-field width, 0 otherwise; call,
-                             * intrin: 1 when the callee is variadic or
-                             * unprototyped; elem: bit-field width, 0 whole;
-                             * str: byte length including the terminator;
-                             * fconst: byte length (the type's size) */
-} TNode;
-
-typedef struct El {
-    Checker *c;
-    VEC(TNode) nodes;
-    VEC(uint32_t) kids;
-    TypeId ret;             /* the function's return type */
-    TypeId swty;            /* the innermost switch's promoted type, 0: none */
-    VEC(uint8_t) bytes;     /* the code units of the str nodes */
-    uint32_t fname;         /* the function's name (identifier id), when in one */
-    uint32_t ntmp;          /* temporaries made so far (tmp N, N < ntmp) */
-    uint32_t ncl;           /* compound literals made so far (complit N) */
-    bool infunc;
-    char why[96];           /* non-empty: unsupported, and the reason */
-} El;
 
 static uint32_t unsup(El *e, const char *fmt, ...)
 {
@@ -1568,12 +1506,11 @@ static void put_sym(Checker *c, FILE *out, uint32_t ref)
     }
 }
 
-static void print_tree(El *e, FILE *out)
+void tast_print_node(El *e, FILE *out, size_t i)
 {
     Checker *c = e->c;
-    size_t i;
     uint32_t j;
-    for (i = 0; i < e->nodes.len; i++) {
+    {
         const TNode *nd = &e->nodes.data[i];
         fprintf(out, "  #%zu %s", i, op_names[nd->op]);
         switch (nd->op) {
@@ -1663,6 +1600,13 @@ static void print_tree(El *e, FILE *out)
         }
         fputc('\n', out);
     }
+}
+
+static void print_tree(El *e, FILE *out)
+{
+    size_t i;
+    for (i = 0; i < e->nodes.len; i++)
+        tast_print_node(e, out, i);
 }
 
 /* ---- the verifier (--verify-tast) ------------------------------------------ */
@@ -2277,6 +2221,8 @@ void tast_unit(Checker *c)
         fputs(" skipped: errors\n", out);
         return;
     }
+    if (tag == N_DECL && !c->opt.tast_tree)
+        return;
     memset(&e, 0, sizeof e);
     e.c = c;
     if (tag == N_DECL) {
@@ -2302,9 +2248,13 @@ void tast_unit(Checker *c)
             fputc(' ', out);
             put_type(c, out, csym(c, c->cb[d] - 1)->ty);
             fputc('\n', out);
-            print_tree(&e, out);
-            if (c->opt.verify_tast)
-                verify(&e, out);
+            if (c->opt.tast_tree) {
+                print_tree(&e, out);
+                if (c->opt.verify_tast)
+                    verify(&e, out);
+            }
+            if (c->opt.dump_cfg)
+                tast_cfg(&e, (uint32_t)e.nodes.len - 1, out);
         }
     }
     vec_free(&e.nodes);
