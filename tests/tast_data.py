@@ -92,8 +92,23 @@ class Unsup(Exception):
     pass
 
 
+TYPEINFO = {}       # typedef name -> (size, signed), measured with gcc per file
+KEYWORDS = {"unsigned", "signed", "char", "short", "int", "long", "_Bool", "enum", "struct", "union"}
+
+
+def typedef_name(t):
+    """The typedef name a printed scalar type is spelled with, else None."""
+    b = re.sub(r"\[\d+\]", "", re.sub(r"\b(const|volatile|restrict)\b", "", t)).strip()
+    if re.fullmatch(r"[A-Za-z_]\w*", b) and b not in KEYWORDS:
+        return b
+    return None
+
+
 def tsize(t):
     """Size in bytes of a printed scalar or array type."""
+    u = typedef_name(t)
+    if u in TYPEINFO and not re.search(r"\[\d+\]$", t):
+        return TYPEINFO[u][0]
     if "(*" in t:               # pointer to array or function
         return 8
     m = re.match(r"^(.*?)((?:\[\d+\])+)$", t)
@@ -118,6 +133,11 @@ def tsize(t):
 def trunc(v, t):
     bits = 8 * tsize(t)
     v &= (1 << bits) - 1
+    u = typedef_name(t)
+    if u in TYPEINFO:
+        if TYPEINFO[u][1] and v >> (bits - 1):
+            v -= 1 << bits
+        return v
     if "unsigned" not in t and "*" not in t and "_Bool" not in t and v >> (bits - 1):
         v -= 1 << bits
     return v
@@ -233,6 +253,34 @@ def cereal_objects(cereal, path):
     return units, bad, out
 
 
+def measure_typedefs(gcc, path, units):
+    """Size and signedness of the typedef names the data elements use."""
+    names = set()
+    for u in units:
+        for op, rest, kids in u.n.values():
+            if op == "elem":
+                n = typedef_name(rest.rsplit("#%d" % kids[-1], 1)[1].strip())
+                if n and n not in TYPEINFO:
+                    names.add(n)
+    if not names:
+        return
+    names = sorted(names)
+    src = ['#include "%s"' % os.path.abspath(path)]
+    for i, n in enumerate(names):
+        src.append("unsigned long __ts%d = sizeof(%s); int __tg%d = (%s)-1 < 0;" % (i, n, i, n))
+    with tempfile.TemporaryDirectory() as d:
+        probe = os.path.join(d, "probe.c")
+        open(probe, "w").write("\n".join(src) + "\n")
+        try:
+            objs = gcc_objects(gcc, probe, d)
+        except subprocess.CalledProcessError:
+            return
+    for i, n in enumerate(names):
+        if "__ts%d" % i in objs:
+            TYPEINFO[n] = (int.from_bytes(objs["__ts%d" % i][0][0], "little"),
+                           bool(int.from_bytes(objs["__tg%d" % i][0][0], "little")))
+
+
 def main():
     cereal, files = sys.argv[1], sys.argv[2:]
     gcc = os.environ.get("GCC", "gcc-13")
@@ -245,6 +293,7 @@ def main():
             print("%s: gcc failed, skipped" % path)
             continue
         units, bad, _ = cereal_objects(cereal, path)
+        measure_typedefs(gcc, path, units)
         pending = {n: list(v) for n, v in objs.items()}     # equal names (gcc: x.0, x.1) match in any order
         for b in bad:
             print("%s: %s" % (path, b))
