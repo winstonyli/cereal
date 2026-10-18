@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # TAST stage T4: plan
@@ -8,7 +8,7 @@ Stage T4 of `docs/TAST_DESIGN.md` (section 5, "floating point, `long double`,
 `_Complex`, `__int128`, decimal and `_FloatN`"), built on T3
 (`docs/TAST_T3_PLAN.md`, results in its section 9). Facts are from the tree
 and the coverage runs of 2026-10-18; anything not yet read or measured is
-marked **verify**. Not started: needs a go-ahead.
+marked **verify**. Built; results in section 10.
 
 ## 1. Why, and what the numbers say
 
@@ -235,3 +235,40 @@ all non-floating.
 - **Round 4.** Nothing material: the sections agree on one representation
   (`fconst` bytes), one conversion rule, one rounding path (`fv` once),
   and the open items are all marked **verify** with how to check them.
+
+## 10. Progress
+
+### T4a, built (2026-10-18, commit `b4953bb`; literal rounding `3ba33ba`)
+
+- `fconst` op: target-format bytes in `El.bytes` (`fset`), printed most
+  significant byte first; verifier checks kids, type, size, range. `ok_ty`
+  admits `float`/`double`/`long double`; `ex` folds `K_FLOAT`; an
+  integer-valued constant of floating type is `unsupported`.
+- `conv()`: an integer `const` converted to a floating type becomes `fconst`
+  in place; every other conversion of a constant is a `cast`.
+- `++`/`--` use an `fconst 1`; compound assignment admits floating lvalues.
+- Verifier: floating `binop` is `+ - * /` only, floating `unop` is `-` only
+  (the existing same-type rules already covered operands). Variadic `float`
+  extra arguments promote to `double` (`5956e2c`).
+- `why_type`: `_FloatN type`, `decimal floating type`, and a last
+  `unsupported type` default.
+- Checker bug found and fixed on the way: `lit.c` rounded floating literals
+  twice (via `strtold`); now once, with
+  `tests/check/float_literal_single_round.c`.
+- Tests: `tests/tast/float.c` (functions), `tests/tast/fdata.c` (static data,
+  32 objects against gcc bytes, ties, denormals, `-0.0`, infinities, x87
+  with zero padding), `tests/tast/unsup.c` moved to `__int128`/`_Complex`.
+  `tests/tast_gcc.py` casts include `float`/`double`: all float functions
+  agree with gcc's tree.
+- Coverage (`2026-10-18-tast-t4a-coverage`): lua54 206 -> 16 unsupported
+  (variadic definition 10, compound lvalue 2, `va_arg` 2, address-of-label 2),
+  libuv 20 -> 8 (array type 2, one each definition, `asm`, lvalue form,
+  `va_arg`, `setproctitle`, `__atomic_fetch_add`); none floating. 0 verifier
+  findings; data oracle lua54 107 objects, libuv 32, fdata 32, 0 failures.
+- Gate (`2026-10-18-t4a-gate`): suite and san 2256 passed, san findings 0,
+  verify differ unchanged (2/1/0), callgrind 3,894,829,282 (T3: 3,895,360,854).
+- Open items from the plan, closed: `K_FLOAT` values are already rounded to
+  their type (the spike and `fdata.c` ties agree with gcc); verifier
+  operator rules widened as above; `-ffp-contract` and FLT_EVAL_METHOD
+  untouched (x86-64 only, others `unsupported: long double format` or equal).
+  Leftovers are in `PARKED.md` ("TAST T4 leftovers").

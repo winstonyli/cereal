@@ -181,3 +181,12 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 | File-scope compound literals (`&(T){..}` in static data) are unsupported | Needs an anonymous static object (T5). Trigger: T5. | `src/c/tast.c` `init_elems` | parked |
 | `(long)&x + 8` at file scope is accepted by gcc but the checker reports "initializer element is not constant" | A checker divergence found by the T3b test; not a TAST matter. Trigger: asked for. | `tests/tast/data.c` (removed line); gcc-13 accepts | parked |
 | The typed atomics (`__atomic_*_n`, `__atomic_fetch_*`, `__sync_*`) are unsupported | Their value arguments convert to the pointee type, which needs a rule per kind (`atomic_kind` 2 and 3). One libuv unit (`__atomic_fetch_add`). Trigger: a coverage pass where they are a top bucket. | `src/c/tast.c` `e_call_t`; run `2026-10-18-tast-atomic-coverage` | parked |
+
+## TAST T4 leftovers
+
+| What | Why parked / trigger | Evidence | Status |
+|---|---|---|---|
+| T4b types (`_Complex`, `__int128`, `_FloatN`, decimal) are unsupported, each with its own reason | No corpus unit has one as a first reason (lua54, libuv: none left after T4a). Trigger: a corpus unit whose reason is one of them. | `tests/tast/unsup.c` `dm`, `fl`; run `2026-10-18-tast-t4a-coverage` | parked |
+| Non-x87 `long double` formats (`LD_IEEE128`, `LD_IBM128`) and a big-endian host or target make the unit unsupported | `fbytes` copies the host's x87 image. Trigger: a back end for such a target. | `src/c/tast.c` `fset` | parked |
+| A floating constant converted to another type stays a `cast` of an `fconst` (`float f = 2.5;` is `cast (fconst double) float`) | Folding it needs a second constant folder; the oracle and a back end read the cast. Trigger: a consumer that wants only leaves. | `tests/tast/fdata.c` `f5` | decided against |
+| The data oracle rounds a `long double` cast to `float` through a Python double (two roundings) | Only a tie could differ; no case has one. Trigger: a mismatch on such a cast. | `tests/tast_data.py` `enc_float` | parked |
