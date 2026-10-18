@@ -35,6 +35,11 @@ lists their invocations too. cereal has no invocation record for them.
 
 ## 2. Decisions needed from the user
 
+- **D1. Do references list the body token itself** (the `lua_callk` in `#define lua_call(...)`)? **Decided no
+  (2026-10-17).** An earlier "yes" rested on "clangd does"; that was false: the B differential shows clangd lists
+  the invocations, not macro-body tokens (45 of 48 new cereal-only sites were body tokens). The body token stays
+  out (`cindex_select` filters `MACRO_BODY`): clangd does not list it, and a client that reuses the list for a
+  text replace could edit the macro.
 - **D2. Which entities:** functions only (design A) or all kinds (design B). **Decided B (2026-10-17)**, after
   S1 (A covers a third of the sites) and S2 (B costs 2.9 to 5.1%); the size rule of section 5 is relaxed from 5%
   to 10%, the rule CONFIG_DESIGN 8 uses. Design C (macro-pair entries) stays a measured alternative, not chosen.
@@ -42,8 +47,8 @@ lists their invocations too. cereal has no invocation record for them.
 ## 3. Designs
 
 - **A, functions only, no format bump.** `references`, `uses` and `documentHighlight` add: the unit's xcalls and
-  the project's CALL entries with `AT_EXPANSION` whose callee is the key, at their `off`/`len`; and, per D1,
-  the `MACRO_BODY` refs. Cost: a few dozen lines in `c_collect` and `pq_entries`. Covers a function's calls
+  the project's CALL entries with `AT_EXPANSION` whose callee is the key, at their `off`/`len`; and
+  (not the `MACRO_BODY` refs, D1). Cost: a few dozen lines in `c_collect` and `pq_entries`. Covers a function's calls
   through macros; not a function used as a value in a macro body (2 of 16 on libuv).
 - **B, all kinds, no record layout change (S3, section 6a).** Every body-token event gets a second event at the outermost invocation:
   a REF with `AT_EXPANSION` at the macro name's `off`/`len`, one per (invocation, entity). xcalls and their
