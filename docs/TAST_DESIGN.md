@@ -250,7 +250,7 @@ unstarted and would be numbered after T7.
 | T4 | `float`/`double`/`long double` and `fconst`, `va_*` | `TAST_T4_PLAN.md` |
 | T5 | evaluate-once temporaries (`tmp`) for compound lvalues with side effects | `TAST_T5_PLAN.md` |
 | T6 | computed goto (`labaddr`, `igoto`) | `TAST_T6_PLAN.md` |
-| T7 | compound literals (`complit`), sized atomics, flexible array members | `TAST_T7_PLAN.md` (atomics and flexible arrays: commits `d70a407`, `742484f`) |
+| T7 | compound literals (`complit`) including static ones folded into initializers, sized atomics, flexible array members | `TAST_T7_PLAN.md` (atomics and flexible arrays: commits `d70a407`, `742484f`) |
 
 Still unsupported: VLAs, `_Complex`/`__int128`/`_FloatN`/decimal types, a bit-field
 compound lvalue with a side effect, `asm` and implicit-declaration calls
