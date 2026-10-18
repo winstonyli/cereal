@@ -6,8 +6,9 @@ status: draft
 
 Track D prerequisite for both the back end (ROADMAP: typed-AST export, SysV
 classification, QBE) and VeriFast-style proving (CONFIG_DESIGN direction,
-Round 238). Nothing here is built; section 7 lists the spikes that must run
-before any code.
+Round 238). Built through stage T7 (2026-10-18): see "Stage map as built"
+after the section 5 table; each stage has its own `docs/TAST_T<n>_PLAN.md`.
+The lowering to the core (the old T6 row) is not started.
 
 ## 1. Goal and non-goals
 
@@ -235,6 +236,26 @@ produce no tree for it; it is counted, never guessed or partly emitted.
 | T4 | floating point, `long double`, `_Complex`, `__int128`, decimal and `_FloatN` (needs the constant representation of 3.6) | multisets |
 | T5 | VLA (incl. evaluated `sizeof`), compound literals, statement expressions, `_Generic`, `va_arg`, `offsetof`, computed `goto`, argument-typed builtins, `asm` | decided per item |
 | T6 | lowering to the core: templates for the shapes of section 4, loops and `switch` to `label`/`branch` (a CFG per function) | additive; the structured dump stays; a CFG verifier (every block reachable or marked, every branch target defined) |
+
+### Stage map as built (2026-10-18)
+
+The table above is the original plan; the stages that were built split its T5
+row and renumbered. Rows are the plan files; the old lowering stage is
+unstarted and would be numbered after T7.
+
+| Built | Content | Plan |
+|---|---|---|
+| T1, T2 | as in the table | `TAST_T1_PLAN.md`, `TAST_T2_PLAN.md` |
+| T3 | initializers, static data, calls, K&R and variadic definitions, statement expressions, `_Generic`/`offsetof` (folded by the checker), overridden initializer elements | `TAST_T3_PLAN.md` |
+| T4 | `float`/`double`/`long double` and `fconst`, `va_*` | `TAST_T4_PLAN.md` |
+| T5 | evaluate-once temporaries (`tmp`) for compound lvalues with side effects | `TAST_T5_PLAN.md` |
+| T6 | computed goto (`labaddr`, `igoto`) | `TAST_T6_PLAN.md` |
+| T7 | compound literals (`complit`), sized atomics, flexible array members | `TAST_T7_PLAN.md` (atomics and flexible arrays: commits `d70a407`, `742484f`) |
+
+Still unsupported: VLAs, `_Complex`/`__int128`/`_FloatN`/decimal types, a bit-field
+compound lvalue with a side effect, `asm` and implicit-declaration calls
+(`PARKED.md`). Corpus: lua54 0 unsupported units, libuv 2 (`asm`,
+`setproctitle`).
 
 Because an unsupported construct drops the whole unit, a real corpus function
 elaborates only once every construct it uses is in. Expect near-zero
@@ -476,7 +497,8 @@ comparison `tests/tast_gcc.py`.
   operand converts by folding in place; an explicit cast to the same type
   leaves no node. Two nodes are not in the core: `post` (value of `x++`, the
   old value of its store) and `elvis` (`a ?: b`, evaluates `a` once); both
-  lower with a temporary in T6.
+  lower with a temporary in the lowering stage (the evaluate-once `tmp` of
+  T5 is a different temporary: it names an lvalue's address, not a value).
 - **Local declarations** are a `local` node whose optional kid is the
   initializer converted to the declared type (the plan said `local` plus a
   `store`; the single node is simpler to verify). A declaration's symbol is
@@ -536,8 +558,8 @@ decay, pointer arithmetic, function designators and calls through pointers,
   mixed-type bit-fields): 0 mismatches.
 - **Compound assignment and `++`/`--` name the lvalue twice**, which is safe
   only without side effects; an lvalue with `EF_SIDE` (other than a plain
-  variable) makes the unit `unsupported: side effect in compound lvalue`
-  until the T6 templates add temporaries.
+  variable) made the unit `unsupported: side effect in compound lvalue`
+  (T2 result; T5 added the `tmp` temporary and closed it).
 - **Coverage** (run `2026-10-18-tast-t2-coverage`, option on 0.77 s against
   0.62 s off on lua54): lua54, 1,578 functions elaborate (T1: 30), 665 units
   unsupported: builtin or undeclared call 250, floating type 168,

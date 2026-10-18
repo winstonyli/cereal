@@ -183,6 +183,7 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 
 | What | Why parked / trigger | Evidence | Status |
 |---|---|---|---|
+| Variable length arrays (`int a[n]`, evaluated `sizeof`) are unsupported ("array type") | No corpus unit has one as a reason (lua54, libuv: none left). Needs a runtime-sized `local` and a size expression. Trigger: a corpus unit uses one. | tested 2026-10-18 with `int a[n]` | parked |
 | T4b types (`_Complex`, `__int128`, `_FloatN`, decimal) are unsupported, each with its own reason | No corpus unit has one as a first reason (lua54, libuv: none left after T4a). Trigger: a corpus unit whose reason is one of them. | `tests/tast/unsup.c` `dm`, `fl`; run `2026-10-18-tast-t4a-coverage` | parked |
 | Non-x87 `long double` formats (`LD_IEEE128`, `LD_IBM128`) and a big-endian host or target make the unit unsupported | `fbytes` copies the host's x87 image. Trigger: a back end for such a target. | `src/c/tast.c` `fset` | parked |
 | A floating constant converted to another type stays a `cast` of an `fconst` (`float f = 2.5;` is `cast (fconst double) float`) | Folding it needs a second constant folder; the oracle and a back end read the cast. Trigger: a consumer that wants only leaves. | `tests/tast/fdata.c` `f5` | decided against |
