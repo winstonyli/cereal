@@ -7,8 +7,7 @@ status: done
 Stage T3 of `docs/TAST_DESIGN.md` (section 5), built on the T2 pass
 (`src/c/tast.c`, `docs/TAST_T2_PLAN.md`, results in design section 15).
 Facts are from the tree and the T2 coverage runs of 2026-10-18; anything not
-yet read or measured is marked **verify**. Not started: needs a go-ahead,
-and the S2 spike (section 3.2) comes before any T3b code.
+yet read or measured is marked **verify**. Built; results in section 9.
 
 ## 1. Why, and what the numbers say
 
