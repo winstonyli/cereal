@@ -190,3 +190,16 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 | Non-x87 `long double` formats (`LD_IEEE128`, `LD_IBM128`) and a big-endian host or target make the unit unsupported | `fbytes` copies the host's x87 image. Trigger: a back end for such a target. | `src/c/tast.c` `fset` | parked |
 | A floating constant converted to another type stays a `cast` of an `fconst` (`float f = 2.5;` is `cast (fconst double) float`) | Folding it needs a second constant folder; the oracle and a back end read the cast. Trigger: a consumer that wants only leaves. | `tests/tast/fdata.c` `f5` | decided against |
 | The data oracle rounds a `long double` cast to `float` through a Python double (two roundings) | Only a tie could differ; no case has one. Trigger: a mismatch on such a cast. | `tests/tast_data.py` `enc_float` | parked |
+
+## TAST: units left after variadic/`va_*` (2026-10-18)
+
+lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism.
+
+| What | Why parked / trigger | Evidence | Status |
+|---|---|---|---|
+| Side effect in a compound lvalue (`nums[f(k)]++`) | The address is built twice (load, store); needs an evaluate-once temp (see `docs/TAST_T5_PLAN.md`). Trigger: T5 go-ahead, or a corpus where it is a top bucket. | lua54 `ltable.c:413` | parked |
+| Computed goto (`&&label`, `goto *p`) | Needs an address-of-label value and an indirect goto. One unit. Trigger: a corpus where it is a top bucket. | lua54 `lvm.c:1154` | parked |
+| `asm` statements | One unit; no back-end meaning yet. Trigger: a consumer that needs them. | libuv `async.c:319` | parked |
+| Array-typed parameters/objects (`const uv_buf_t bufs[]`, array of unknown form) | Two libuv units; read the cases before deciding. Trigger: more than a handful of units. | libuv `stream.c:753`, `:980` | parked |
+| An lvalue form the pass does not know | One unit. Trigger: read `linux.c:1698` and decide. | libuv `linux.c:1698` | parked |
+| Calls through an implicit declaration; typed `__atomic_*` | Already listed under "TAST T3 leftovers". | libuv `bsd-proctitle.c:52`, `async.c:65` | parked |
