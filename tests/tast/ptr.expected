@@ -291,4 +291,33 @@ unit ptr.c:32:1 func volat int(volatile int *)
   #3 load #2 int
   #4 return #3
   #5 block #4
-unit ptr.c:33:1 unsupported: side effect in compound lvalue
+unit ptr.c:33:1 func sideeff int(int *, int)
+  #0 sym p@33:18 int *
+  #1 load #0 int *
+  #2 sym i@33:25 int
+  #3 sym i@33:25 int
+  #4 load #3 int
+  #5 const 1 int
+  #6 binop + #4 #5 int
+  #7 store #2 #6 int
+  #8 post #7 int
+  #9 cast #8 long int
+  #10 ptradd *4 #1 #9 int *
+  #11 deref #10 int
+  #12 addr #11 int *
+  #13 tmp 0 int *
+  #14 store #13 #12 int *
+  #15 exprstmt #14
+  #16 tmp 0 int *
+  #17 load #16 int *
+  #18 deref #17 int
+  #19 tmp 0 int *
+  #20 load #19 int *
+  #21 deref #20 int
+  #22 load #21 int
+  #23 const 1 int
+  #24 binop + #22 #23 int
+  #25 store #18 #24 int
+  #26 stmtexpr #15 #25 int
+  #27 return #26
+  #28 block #27

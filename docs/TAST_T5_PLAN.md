@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # TAST stage T5: plan (evaluate-once temporaries)
@@ -141,3 +141,23 @@ like a static one. Done separately (2026-10-18), no `tmp`.
   produces or `store` fails `SAME`; noted.
 - **Round 3.** Nothing material: scope (two callers, one helper, one new
   op, one deleted function) agrees across sections.
+
+## 10. Progress (2026-10-18)
+
+Done. The helper is three functions, `once_init`/`once_ref`/`once_wrap`
+(`tast.c`), because the temporary is created once but referenced twice;
+`twice_ok` is deleted. `tmp` is an lvalue op in `is_lvop`.
+
+- Verifier: no kids, pointer type, one type per N, exactly one store per
+  temp, a load only after its store (index order). The "same stmtexpr"
+  containment holds by construction and is not checked (section 4's
+  parent-link form was not built).
+- `EF_SIDE` marks volatile accesses: `*vp += 1` gets a temp, a plain
+  volatile global does not (`tmp.c` `vol`). No existing golden had a
+  volatile compound case.
+- Tests: `tests/tast/tmp.c` (all listed cases; only `bits` unsupported);
+  `unsup.c` lost `sideef` and `ptr.expected` gained `sideeff`.
+- Gates: suite 2260/0; coverage `tast-t5-coverage`: lua54 unsupported 2
+  (`ADDR_LABEL` only), libuv 6, verify findings 0; data oracle lua54 107
+  and libuv 32 objects, 0 failures.
+- Parked: bit-field compound lvalue with a side effect (`PARKED.md`).

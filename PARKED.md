@@ -196,7 +196,7 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 
 | What | Why parked / trigger | Evidence | Status |
 |---|---|---|---|
-| Side effect in a compound lvalue (`nums[f(k)]++`) | The address is built twice (load, store); needs an evaluate-once temp (see `docs/TAST_T5_PLAN.md`). Trigger: T5 go-ahead, or a corpus where it is a top bucket. | lua54 `ltable.c:413` | parked |
+| Bit-field compound lvalue with a side effect (`sp()->bf += 1`) | The address of a bit-field cannot be stored in a `tmp` (`docs/TAST_T5_PLAN.md` section 2); stays `unsupported: bit-field with side effect`. Trigger: a corpus unit hits it. | `tests/tast/tmp.c` `bits` (no corpus unit, 2026-10-18) | parked |
 | Computed goto (`&&label`, `goto *p`) | Needs an address-of-label value and an indirect goto. One unit. Trigger: a corpus where it is a top bucket. | lua54 `lvm.c:1154` | parked |
 | `asm` statements | One unit; no back-end meaning yet. Trigger: a consumer that needs them. | libuv `async.c:319` | parked |
 | Array-typed parameters/objects (`const uv_buf_t bufs[]`, array of unknown form) | Two libuv units; read the cases before deciding. Trigger: more than a handful of units. | libuv `stream.c:753`, `:980` | parked |

@@ -1,0 +1,325 @@
+tast 1 target x86_64-linux-gnu
+unit tmp.c:2:5 decl f int(void)
+unit tmp.c:3:6 decl g int *(void)
+unit tmp.c:4:5 decl a int[8]
+unit tmp.c:4:11 decl b int[8]
+unit tmp.c:5:48 decl s struct S
+unit tmp.c:6:11 decl sp struct S *(void)
+unit tmp.c:7:1 func inc void(void)
+  #0 sym a int[8]
+  #1 addr #0 int *
+  #2 call f int
+  #3 cast #2 long int
+  #4 ptradd *4 #1 #3 int *
+  #5 deref #4 int
+  #6 addr #5 int *
+  #7 tmp 0 int *
+  #8 store #7 #6 int *
+  #9 exprstmt #8
+  #10 tmp 0 int *
+  #11 load #10 int *
+  #12 deref #11 int
+  #13 tmp 0 int *
+  #14 load #13 int *
+  #15 deref #14 int
+  #16 load #15 int
+  #17 const 1 int
+  #18 binop + #16 #17 int
+  #19 store #12 #18 int
+  #20 post #19 int
+  #21 stmtexpr #9 #20 int
+  #22 exprstmt #21
+  #23 block #22
+unit tmp.c:8:1 func dec void(void)
+  #0 sym a int[8]
+  #1 addr #0 int *
+  #2 call f int
+  #3 cast #2 long int
+  #4 ptradd *4 #1 #3 int *
+  #5 deref #4 int
+  #6 addr #5 int *
+  #7 tmp 0 int *
+  #8 store #7 #6 int *
+  #9 exprstmt #8
+  #10 tmp 0 int *
+  #11 load #10 int *
+  #12 deref #11 int
+  #13 tmp 0 int *
+  #14 load #13 int *
+  #15 deref #14 int
+  #16 load #15 int
+  #17 const 1 int
+  #18 binop - #16 #17 int
+  #19 store #12 #18 int
+  #20 stmtexpr #9 #19 int
+  #21 exprstmt #20
+  #22 block #21
+unit tmp.c:9:1 func deref void(void)
+  #0 call g int *
+  #1 deref #0 int
+  #2 addr #1 int *
+  #3 tmp 0 int *
+  #4 store #3 #2 int *
+  #5 exprstmt #4
+  #6 tmp 0 int *
+  #7 load #6 int *
+  #8 deref #7 int
+  #9 tmp 0 int *
+  #10 load #9 int *
+  #11 deref #10 int
+  #12 load #11 int
+  #13 const 1 int
+  #14 binop - #12 #13 int
+  #15 store #8 #14 int
+  #16 post #15 int
+  #17 stmtexpr #5 #16 int
+  #18 exprstmt #17
+  #19 block #18
+unit tmp.c:10:1 func comp void(void)
+  #0 call sp struct S *
+  #1 deref #0 struct S
+  #2 field +0 #1 int[4]
+  #3 addr #2 int *
+  #4 call f int
+  #5 cast #4 long int
+  #6 ptradd *4 #3 #5 int *
+  #7 deref #6 int
+  #8 addr #7 int *
+  #9 tmp 0 int *
+  #10 store #9 #8 int *
+  #11 exprstmt #10
+  #12 tmp 0 int *
+  #13 load #12 int *
+  #14 deref #13 int
+  #15 tmp 0 int *
+  #16 load #15 int *
+  #17 deref #16 int
+  #18 load #17 int
+  #19 const 2 int
+  #20 binop + #18 #19 int
+  #21 store #14 #20 int
+  #22 stmtexpr #11 #21 int
+  #23 exprstmt #22
+  #24 block #23
+unit tmp.c:11:1 func rhs void(void)
+  #0 call g int *
+  #1 deref #0 int
+  #2 addr #1 int *
+  #3 tmp 0 int *
+  #4 store #3 #2 int *
+  #5 exprstmt #4
+  #6 tmp 0 int *
+  #7 load #6 int *
+  #8 deref #7 int
+  #9 tmp 0 int *
+  #10 load #9 int *
+  #11 deref #10 int
+  #12 load #11 int
+  #13 call g int *
+  #14 deref #13 int
+  #15 load #14 int
+  #16 binop + #12 #15 int
+  #17 store #8 #16 int
+  #18 stmtexpr #5 #17 int
+  #19 exprstmt #18
+  #20 block #19
+unit tmp.c:12:1 func nest void(void)
+  #0 sym a int[8]
+  #1 addr #0 int *
+  #2 sym b int[8]
+  #3 addr #2 int *
+  #4 call f int
+  #5 cast #4 long int
+  #6 ptradd *4 #3 #5 int *
+  #7 deref #6 int
+  #8 addr #7 int *
+  #9 tmp 0 int *
+  #10 store #9 #8 int *
+  #11 exprstmt #10
+  #12 tmp 0 int *
+  #13 load #12 int *
+  #14 deref #13 int
+  #15 tmp 0 int *
+  #16 load #15 int *
+  #17 deref #16 int
+  #18 load #17 int
+  #19 const 1 int
+  #20 binop + #18 #19 int
+  #21 store #14 #20 int
+  #22 post #21 int
+  #23 stmtexpr #11 #22 int
+  #24 cast #23 long int
+  #25 ptradd *4 #1 #24 int *
+  #26 deref #25 int
+  #27 addr #26 int *
+  #28 tmp 1 int *
+  #29 store #28 #27 int *
+  #30 exprstmt #29
+  #31 tmp 1 int *
+  #32 load #31 int *
+  #33 deref #32 int
+  #34 tmp 1 int *
+  #35 load #34 int *
+  #36 deref #35 int
+  #37 load #36 int
+  #38 const 1 int
+  #39 binop + #37 #38 int
+  #40 store #33 #39 int
+  #41 post #40 int
+  #42 stmtexpr #30 #41 int
+  #43 exprstmt #42
+  #44 block #43
+unit tmp.c:13:1 func val int(void)
+  #0 sym a int[8]
+  #1 addr #0 int *
+  #2 call f int
+  #3 cast #2 long int
+  #4 ptradd *4 #1 #3 int *
+  #5 deref #4 int
+  #6 addr #5 int *
+  #7 tmp 0 int *
+  #8 store #7 #6 int *
+  #9 exprstmt #8
+  #10 tmp 0 int *
+  #11 load #10 int *
+  #12 deref #11 int
+  #13 tmp 0 int *
+  #14 load #13 int *
+  #15 deref #14 int
+  #16 load #15 int
+  #17 const 1 int
+  #18 binop + #16 #17 int
+  #19 store #12 #18 int
+  #20 post #19 int
+  #21 stmtexpr #9 #20 int
+  #22 const 1 int
+  #23 binop + #21 #22 int
+  #24 return #23
+  #25 block #24
+unit tmp.c:14:1 func ptr void(char **, int (*)(void))
+  #0 sym pp@14:17 char **
+  #1 load #0 char **
+  #2 sym q@14:27 int (*)(void)
+  #3 load #2 int (*)(void)
+  #4 call * #3 int
+  #5 cast #4 long int
+  #6 ptradd *8 #1 #5 char **
+  #7 deref #6 char *
+  #8 addr #7 char **
+  #9 tmp 0 char **
+  #10 store #9 #8 char **
+  #11 exprstmt #10
+  #12 tmp 0 char **
+  #13 load #12 char **
+  #14 deref #13 char *
+  #15 tmp 0 char **
+  #16 load #15 char **
+  #17 deref #16 char *
+  #18 load #17 char *
+  #19 const 1 long int
+  #20 ptradd *1 #18 #19 char *
+  #21 store #14 #20 char *
+  #22 stmtexpr #11 #21 char *
+  #23 exprstmt #22
+  #24 block #23
+unit tmp.c:15:1 func flt void(double *, int (*)(void))
+  #0 sym d@15:18 double *
+  #1 load #0 double *
+  #2 sym q@15:27 int (*)(void)
+  #3 load #2 int (*)(void)
+  #4 call * #3 int
+  #5 cast #4 long int
+  #6 ptradd *8 #1 #5 double *
+  #7 deref #6 double
+  #8 addr #7 double *
+  #9 tmp 0 double *
+  #10 store #9 #8 double *
+  #11 exprstmt #10
+  #12 tmp 0 double *
+  #13 load #12 double *
+  #14 deref #13 double
+  #15 tmp 0 double *
+  #16 load #15 double *
+  #17 deref #16 double
+  #18 load #17 double
+  #19 fconst 4004000000000000 double
+  #20 binop * #18 #19 double
+  #21 store #14 #20 double
+  #22 stmtexpr #11 #21 double
+  #23 exprstmt #22
+  #24 block #23
+unit tmp.c:16:1 func plain void(int)
+  #0 sym a int[8]
+  #1 addr #0 int *
+  #2 sym i@16:16 int
+  #3 load #2 int
+  #4 cast #3 long int
+  #5 ptradd *4 #1 #4 int *
+  #6 deref #5 int
+  #7 sym a int[8]
+  #8 addr #7 int *
+  #9 sym i@16:16 int
+  #10 load #9 int
+  #11 cast #10 long int
+  #12 ptradd *4 #8 #11 int *
+  #13 deref #12 int
+  #14 load #13 int
+  #15 const 1 int
+  #16 binop + #14 #15 int
+  #17 store #6 #16 int
+  #18 post #17 int
+  #19 exprstmt #18
+  #20 sym a int[8]
+  #21 addr #20 int *
+  #22 sym i@16:16 int
+  #23 load #22 int
+  #24 const 1 int
+  #25 binop + #23 #24 int
+  #26 cast #25 long int
+  #27 ptradd *4 #21 #26 int *
+  #28 deref #27 int
+  #29 sym a int[8]
+  #30 addr #29 int *
+  #31 sym i@16:16 int
+  #32 load #31 int
+  #33 const 1 int
+  #34 binop + #32 #33 int
+  #35 cast #34 long int
+  #36 ptradd *4 #30 #35 int *
+  #37 deref #36 int
+  #38 load #37 int
+  #39 const 2 int
+  #40 binop + #38 #39 int
+  #41 store #28 #40 int
+  #42 exprstmt #41
+  #43 block #19 #42
+unit tmp.c:17:1 unsupported: bit-field with side effect
+unit tmp.c:18:14 decl vv volatile int
+unit tmp.c:19:1 func vol void(volatile int *)
+  #0 sym p@19:24 volatile int *
+  #1 load #0 volatile int *
+  #2 deref #1 volatile int
+  #3 addr #2 volatile int *
+  #4 tmp 0 volatile int *
+  #5 store #4 #3 volatile int *
+  #6 exprstmt #5
+  #7 tmp 0 volatile int *
+  #8 load #7 volatile int *
+  #9 deref #8 volatile int
+  #10 tmp 0 volatile int *
+  #11 load #10 volatile int *
+  #12 deref #11 volatile int
+  #13 load #12 int
+  #14 const 1 int
+  #15 binop + #13 #14 int
+  #16 store #9 #15 int
+  #17 stmtexpr #6 #16 int
+  #18 exprstmt #17
+  #19 sym vv volatile int
+  #20 sym vv volatile int
+  #21 load #20 int
+  #22 const 1 int
+  #23 binop + #21 #22 int
+  #24 store #19 #23 int
+  #25 exprstmt #24
+  #26 block #18 #25

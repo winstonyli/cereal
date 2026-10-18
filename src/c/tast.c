@@ -21,7 +21,7 @@
 #define TN UINT32_MAX
 
 #define TAST_OPS(X)                                                         \
-    X(CONST, "const") X(FCONST, "fconst") X(SYM, "sym") X(LOAD, "load") X(STORE, "store")        \
+    X(CONST, "const") X(FCONST, "fconst") X(SYM, "sym") X(TMP, "tmp") X(LOAD, "load") X(STORE, "store")        \
     X(CAST, "cast") X(UNOP, "unop") X(BINOP, "binop") X(CMP, "cmp")          \
     X(LOGAND, "logand") X(LOGOR, "logor") X(COND, "cond")                    \
     X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \
@@ -84,6 +84,7 @@ typedef struct El {
     TypeId swty;            /* the innermost switch's promoted type, 0: none */
     VEC(uint8_t) bytes;     /* the code units of the str nodes */
     uint32_t fname;         /* the function's name (identifier id), when in one */
+    uint32_t ntmp;          /* temporaries made so far (tmp N, N < ntmp) */
     bool infunc;
     char why[96];           /* non-empty: unsupported, and the reason */
 } El;
@@ -141,7 +142,7 @@ static bool ok_ty(El *e, TypeId t)
 
 static bool is_lvop(int op)
 {
-    return op == TO_SYM || op == TO_DEREF || op == TO_FIELD || op == TO_STR;
+    return op == TO_SYM || op == TO_TMP || op == TO_DEREF || op == TO_FIELD || op == TO_STR;
 }
 
 /* Why a type is outside the subset, for the reason histogram. */
@@ -457,17 +458,69 @@ static uint32_t lval(El *e, uint32_t n)
     }
 }
 
-/* Compound assignment and ++/-- name the lvalue twice.  That is safe only
- * when naming it evaluates nothing: a plain variable, or an lvalue without
- * side effects (temporaries arrive with the T6 templates). */
-static bool twice_ok(El *e, uint32_t x)
+/* Compound assignment and ++/-- name the lvalue twice.  When naming it
+ * evaluates something, its address is computed once into a temporary
+ * (`tmp N`, a pointer) and every mention is `deref (load tmp)`; the result
+ * is then wrapped in a stmtexpr whose first statement stores the address.
+ * Without a side effect the lvalue is simply built twice. */
+typedef struct Once {
+    uint32_t x;             /* the checker's lvalue node */
+    uint32_t tmp;           /* the temporary's number, UINT32_MAX: none */
+    TypeId pt;              /* its type: pointer to the lvalue's type */
+    SrcLoc loc;
+} Once;
+
+/* Prepare to name x more than once.  *setup is the statement that makes
+ * the temporary, TN when there is none; false: the unit is unsupported. */
+static bool once_init(El *e, uint32_t x, Once *o, uint32_t *setup)
 {
     Checker *c = e->c;
+    uint32_t l, a, t, ka[2];
     x = strip_paren(c, x);
+    o->x = x;
+    o->tmp = UINT32_MAX;
+    o->loc = cnode_loc(c, x);
+    *setup = TN;
     if (ntag(c, x) == N_IDENT || !(c->ef[x] & EF_SIDE))
         return true;
-    unsup(e, "side effect in compound lvalue");
-    return false;
+    l = lval(e, x);
+    if (l == TN)
+        return false;
+    if (e->nodes.data[l].op == TO_FIELD && e->nodes.data[l].width) {
+        unsup(e, "bit-field with side effect");
+        return false;
+    }
+    o->pt = type_ptr(&c->tt, nty(e, l));
+    a = addr_t(e, l, o->pt, o->loc);
+    o->tmp = e->ntmp++;
+    t = mk(e, TO_TMP, o->pt, o->loc, o->tmp, 0, 0, NULL, 0);
+    ka[0] = t;
+    ka[1] = a;
+    t = mk(e, TO_STORE, o->pt, o->loc, 0, 0, 0, ka, 2);
+    *setup = mk(e, TO_EXPRSTMT, 0, o->loc, 0, 0, 0, &t, 1);
+    return true;
+}
+
+/* A fresh lvalue node for the object (a node is used once). */
+static uint32_t once_ref(El *e, Once *o)
+{
+    uint32_t t;
+    if (o->tmp == UINT32_MAX)
+        return lval(e, o->x);
+    t = mk(e, TO_TMP, o->pt, o->loc, o->tmp, 0, 0, NULL, 0);
+    t = load(e, t);
+    return deref_t(e, t, pointee(e->c, o->pt), o->loc);
+}
+
+/* v, preceded by the temporary's setup when there is one. */
+static uint32_t once_wrap(El *e, uint32_t setup, uint32_t v)
+{
+    uint32_t ka[2];
+    if (setup == TN || v == TN)
+        return v;
+    ka[0] = setup;
+    ka[1] = v;
+    return mk(e, TO_STMTEXPR, e->nodes.data[v].ty, e->nodes.data[v].loc, 0, 0, 0, ka, 2);
 }
 
 static int assign_op(int p)
@@ -525,16 +578,17 @@ static uint32_t incdec(El *e, uint32_t i, uint32_t x, int punct, bool post)
 {
     Checker *c = e->c;
     TypeId xt, op;
-    uint32_t l1, l2, a, one, b, v, st, ka[2];
+    uint32_t l1, l2, a, one, b, v, st, ka[2], setup;
+    Once o;
     SrcLoc loc = cnode_loc(c, i);
     x = strip_paren(c, x);
     xt = unqual(c, c->ty[x]);
     if (!is_ptr(c, xt) && !ok_int(e, xt) && !is_flt(c, xt))
         return unsup(e, "%s", why_type(e, xt));
-    if (!twice_ok(e, x))
+    if (!once_init(e, x, &o, &setup))
         return TN;
-    l1 = lval(e, x);
-    l2 = lval(e, x);
+    l1 = once_ref(e, &o);
+    l2 = once_ref(e, &o);
     if (l1 == TN || l2 == TN)
         return TN;
     if (is_ptr(c, xt)) {
@@ -558,13 +612,14 @@ static uint32_t incdec(El *e, uint32_t i, uint32_t x, int punct, bool post)
     ka[0] = l1;
     ka[1] = v;
     st = mk(e, TO_STORE, xt, loc, 0, 0, 0, ka, 2);
-    return post ? mk(e, TO_POST, xt, loc, 0, 0, 0, &st, 1) : st;
+    return once_wrap(e, setup, post ? mk(e, TO_POST, xt, loc, 0, 0, 0, &st, 1) : st);
 }
 
 static uint32_t e_assign_t(El *e, uint32_t i)
 {
     Checker *c = e->c;
-    uint32_t k[2], lhs, rhs, l1, ka[2], v;
+    uint32_t k[2], lhs, rhs, l1, ka[2], v, setup = TN;
+    Once o;
     int p = npunct(c, i), op = assign_op(p);
     TypeId lt;
     SrcLoc loc = cnode_loc(c, i);
@@ -575,22 +630,22 @@ static uint32_t e_assign_t(El *e, uint32_t i)
     lt = unqual(c, c->ty[lhs]);
     if (!ok_ty(e, lt))
         return unsup(e, "%s", why_type(e, lt));
-    if (op && !twice_ok(e, lhs))
+    if (op && !once_init(e, lhs, &o, &setup))
         return TN;
-    l1 = lval(e, lhs);
+    l1 = op ? once_ref(e, &o) : lval(e, lhs);
     if (l1 == TN)
         return TN;
     if (p == P_ASSIGN) {
         v = conv(e, ex(e, rhs, false), lt, loc);
     } else if (op && is_ptr(c, lt) && (op == P_PLUS || op == P_MINUS)) {
-        uint32_t l2 = lval(e, lhs), x, y;
+        uint32_t l2 = once_ref(e, &o), x, y;
         x = l2 == TN ? TN : load(e, l2);
         y = ex(e, rhs, false);
         v = ptradd(e, lt, x, y, op == P_MINUS, loc);
     } else if (op && (ok_int(e, lt) || is_flt(c, lt))) {
         /* x op= y is x = (T)((op type)x op (op type)y) */
         TypeId ot;
-        uint32_t l2 = lval(e, lhs), b;
+        uint32_t l2 = once_ref(e, &o), b;
         uint32_t x, y, kb[2];
         if (l2 == TN)
             return TN;
@@ -615,7 +670,7 @@ static uint32_t e_assign_t(El *e, uint32_t i)
         return TN;
     ka[0] = l1;
     ka[1] = v;
-    return mk(e, TO_STORE, lt, loc, 0, 0, 0, ka, 2);
+    return once_wrap(e, setup, mk(e, TO_STORE, lt, loc, 0, 0, 0, ka, 2));
 }
 
 /* p + x, x + p, p - x, p - q. */
@@ -1500,6 +1555,9 @@ static void print_tree(El *e, FILE *out)
                 fprintf(out, "%02x", e->bytes.data[nd->val + b]);
             break;
         }
+        case TO_TMP:
+            fprintf(out, " %lld", (long long)nd->val);
+            break;
         case TO_SYM: case TO_LOCAL: case TO_DATA:
             fputc(' ', out);
             put_sym(c, out, nd->sym);
@@ -1656,6 +1714,8 @@ static void verify(El *e, FILE *out)
     Checker *c = e->c;
     size_t n = e->nodes.len, i;
     uint8_t *refs = xcalloc(n ? n : 1, 1);
+    uint32_t *tstores = xcalloc(e->ntmp ? e->ntmp : 1, sizeof *tstores);
+    TypeId *ttype = xcalloc(e->ntmp ? e->ntmp : 1, sizeof *ttype);
     U32Vec labels = {0};
     uint32_t j;
     for (i = 0; i < n; i++)
@@ -1707,8 +1767,21 @@ static void verify(El *e, FILE *out)
             if (csym(c, nd->sym)->kind != CS_OBJ && csym(c, nd->sym)->kind != CS_FUNC)
                 vbad(e, out, i, "not a variable or function");
             break;
+        case TO_TMP:
+            NEED(0);
+            if ((uint64_t)nd->val >= e->ntmp || KIND(nd->ty) != TY_PTR) {
+                vbad(e, out, i, "temporary");
+            } else if (ttype[nd->val] && ttype[nd->val] != nd->ty) {
+                vbad(e, out, i, "temporary has two types");
+            } else {
+                ttype[nd->val] = nd->ty;
+            }
+            break;
         case TO_LOAD:
             NEED(1);
+            if (KID(0)->op == TO_TMP && (uint64_t)KID(0)->val < e->ntmp &&
+                !tstores[KID(0)->val])
+                vbad(e, out, i, "temporary loaded before it is stored");
             if (!ISLV(KID(0)))
                 vbad(e, out, i, "operand is not an lvalue");
             else if (KIND(KID(0)->ty) == TY_ARRAY || KIND(KID(0)->ty) == TY_FUNC)
@@ -1718,6 +1791,8 @@ static void verify(El *e, FILE *out)
             break;
         case TO_STORE:
             NEED(2);
+            if (KID(0)->op == TO_TMP && (uint64_t)KID(0)->val < e->ntmp)
+                tstores[KID(0)->val]++;
             if (!ISLV(KID(0)) || !ISVAL(KID(1)))
                 vbad(e, out, i, "operands");
             else if (!SAME(KID(0), KID(1)) || nd->ty != unqual(c, KID(0)->ty))
@@ -2016,7 +2091,12 @@ next:;
             vbad(e, out, i, i + 1 == n ? "root is used" : "not used exactly once");
     if (n && e->nodes.data[n - 1].op != TO_BLOCK)
         vbad(e, out, n - 1, "root is not a block");
+    for (j = 0; j < e->ntmp; j++)
+        if (tstores[j] != 1)
+            vbad(e, out, n - 1, "temporary is not stored exactly once");
     vec_free(&labels);
+    free(tstores);
+    free(ttype);
     free(refs);
 }
 
