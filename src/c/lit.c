@@ -314,7 +314,17 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
             copy = xmalloc(m + 1);
         memcpy(copy, s, m);
         copy[m] = 0;
-        out->f = strtold(copy, NULL);
+        /* One rounding, from the text to the type's own precision: going
+         * through a 64-bit mantissa first rounds twice and can differ from
+         * gcc on a tie. */
+        if (out->ty == TY_FLOAT || out->ty == TY_FLOAT32)
+            out->f = strtof(copy, NULL);
+        else if (out->ty == TY_DOUBLE || out->ty == TY_FLOAT64 ||
+                 out->ty == TY_FLOAT32X ||
+                 (out->ty == TY_LDOUBLE && tgt->long_double == LD_IEEE64))
+            out->f = strtod(copy, NULL);
+        else
+            out->f = strtold(copy, NULL);
         if (copy != buf)
             free(copy);
         return;

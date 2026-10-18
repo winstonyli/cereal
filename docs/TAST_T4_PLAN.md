@@ -70,12 +70,14 @@ TypeId) -> bytes`:
   Linux/WSL, `LDBL_MANT_DIG == 64`; a guard decides at run time), `LD_IEEE64`
   the `double` bytes; `LD_IEEE128` and `LD_IBM128` make the unit
   `unsupported: long double format`.
-- **Double rounding.** `fv` holds the literal already rounded to a 64-bit
-  mantissa; rounding it again to 53 or 24 bits can differ from gcc's single
-  rounding from the decimal text on a tie. **Verify** by the data oracle
-  over a generated set of decimal literals chosen near ties (section 6, step 3); if
-  it differs, the fix is in the checker (parse straight to the target type's
-  precision) and the pass keeps reading `fv`, not a second parser.
+- **Double rounding, measured and fixed (2026-10-18).** The checker parsed
+  every literal with `strtold` (64-bit mantissa) and then rounded to the
+  type, so `9007199254740993.00000001` became `...992` where gcc gives
+  `...994` (a checker bug visible to `_Static_assert`, not only to the
+  pass). `lit.c` now parses with `strtof`/`strtod`/`strtold` by the literal's
+  type, one rounding; `tests/check/float_literal_single_round.c` pins it
+  (ties and just-above-ties, float, double, hex). `fv` therefore holds a
+  value already exact in the node's type.
 - Verifier for `fconst`: no kids, floating type, `width` equals the type's
   size, bytes inside `El.bytes`.
 
@@ -83,7 +85,7 @@ TypeId) -> bytes`:
 whose type is floating, into `fconst`, as it folds integers into `const`
 today (`tast.c:732`; `K_FLOAT` is not folded there now). **Verify** that a
 `K_FLOAT` value in `fv` is already rounded to its node's type (for example
-`(float)0.1` holds the `float` value), since `fbits` rounds only once more.
+`(float)0.1` holds the `float` value), so `fbits` only changes the format.
 
 `conv()` retypes a `const` in place with `cexpr_trunc`, an integer
 truncation; that is wrong for a floating target. The rule, minimal and
