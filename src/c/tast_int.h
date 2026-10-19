@@ -20,7 +20,7 @@
     X(IF, "if") X(WHILE, "while") X(DO, "do") X(FOR, "for")                  \
     X(SWITCH, "switch") X(CASE, "case") X(DEFAULT, "default")                \
     X(BREAK, "break") X(CONTINUE, "continue") X(GOTO, "goto") X(IGOTO, "igoto")          \
-    X(LABEL, "label") X(RETURN, "return") X(NOP, "nop")                     \
+    X(LABEL, "label") X(RETURN, "return") X(NOP, "nop") X(ASM, "asm")                     \
     X(ELEM, "elem") X(DATA, "data")
 
 typedef enum {

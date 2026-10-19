@@ -182,7 +182,7 @@ static uint32_t conv(El *e, uint32_t id, TypeId to, SrcLoc loc)
                                                        : (long double)(uint64_t)nd->val;
         return fset(e, id, to, v) ? id : TN;
     }
-    if (nd->op == TO_CONST) {   /* nothing else refers to it: retype in place */
+    if (nd->op == TO_CONST && type_ckind(&c->tt, to) != TY_UNION) {   /* nothing else refers to it: retype in place (a union keeps a cast) */
         e->nodes.data[id].val = (int64_t)cexpr_trunc(c, to, (uint64_t)nd->val);
         e->nodes.data[id].ty = to;
         return id;
@@ -1411,6 +1411,29 @@ static uint32_t st(El *e, uint32_t n)
         if (ka[0] != TN)
             id = mk(e, TO_IGOTO, 0, loc, 0, 0, 0, ka, 1);
         break;
+    case N_ASM: {           /* a template without operands: its text is the string kid */
+        uint32_t q, s = TN, ts = TN, sec[64], ns;
+        bool bad = false;
+        m = fkids(e, n, &k);
+        for (q = 0; q < m && !bad; q++) {
+            if (ntag(c, k[q]) == N_STRING && ts == TN) {
+                ts = k[q];
+            } else if (ntag(c, k[q]) == N_ASM_SECTION) {
+                ns = nkids(c, k[q], sec, 64);
+                for (j = 0; j < ns; j++)
+                    if (ntag(c, sec[j]) == N_ASM_OPERAND)
+                        bad = true;
+            }
+        }
+        if (bad || ts == TN) {
+            unsup(e, "asm with operands");
+            break;
+        }
+        s = str_node(e, ts, c->ty[ts], loc);
+        if (s != TN)
+            id = mk(e, TO_ASM, 0, loc, 0, 0, 0, &s, 1);
+        break;
+    }
     case N_BREAK:
         id = mk(e, TO_BREAK, 0, loc, 0, 0, 0, NULL, 0);
         break;
@@ -2069,6 +2092,11 @@ static void verify(El *e, FILE *out)
                 vbad(e, out, i, "goto without a label");
             break;
         }
+        case TO_ASM:
+            NEED(1);
+            if (KID(0)->op != TO_STR)
+                vbad(e, out, i, "template");
+            break;
         case TO_IGOTO:
             NEED(1);
             if (!ISVAL(KID(0)) || KIND(KID(0)->ty) != TY_PTR)

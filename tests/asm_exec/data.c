@@ -150,3 +150,12 @@ int nothing(void)
 {
     return 5 + counter;
 }
+
+/* symbols this unit only declares: their addresses come through the GOT */
+extern int puts(const char *);
+extern char **environ;
+int got(int k)
+{
+    int (*f)(const char *) = puts;
+    return (f != 0) + (environ != 0) + (&environ != 0) + k;
+}

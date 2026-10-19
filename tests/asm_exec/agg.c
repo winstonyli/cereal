@@ -135,3 +135,18 @@ int zeros_after_dirt(int k)
     dirty(k);
     return zeros(k) + partial(k);
 }
+
+/* compound literals: objects made at the expression, scalar and aggregate */
+static int sum_pt(const struct pt *p)
+{
+    return p->x * 3 + p->y;
+}
+
+int complit(int k)
+{
+    struct pt copy = (struct pt){k, k + 1};
+    const struct pt *p = &(const struct pt){k * 2, 5};
+    int *q = &(int){k + 7};
+    int *arr = (int[]){k, 2, 3, k * 4};
+    return sum_pt(p) + sum_pt(&(struct pt){4, k}) + copy.x + *q + arr[0] + arr[3];
+}

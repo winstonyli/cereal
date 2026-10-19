@@ -67,3 +67,21 @@ int atoms2(int k)
     __atomic_load(&narrow, &r, 5);
     return r + __atomic_fetch_add(&narrow, 3, 5) + narrow;
 }
+
+int cas(int k)
+{
+    long long want = (k & 1) ? wide : wide + 1, to = k * 3LL, got;
+    int ok1 = __atomic_compare_exchange(&wide, &want, &to, 0, 5, 5);
+    short sw = (k & 2) ? narrow : (short)(narrow + 1);
+    int ok2 = __atomic_compare_exchange_n(&narrow, &sw, (short)k, 0, 5, 5);
+    __atomic_load(&wide, &got, 5);
+    return ok1 * 1000 + ok2 * 100 + (int)(want & 0xff) + (int)(sw & 0xff) + (int)(got & 0xf) + narrow;
+}
+
+int relax(int k)
+{
+    __asm__ __volatile__ ("rep; nop" ::: "memory");
+    __asm__ __volatile__ ("" ::: "memory");
+    __asm__ volatile ("pause");
+    return k + 1;
+}

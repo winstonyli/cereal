@@ -48,7 +48,7 @@ static void put_op(const MFunc *f, const MOp *o, int w, FILE *out)
         fprintf(out, ".L%s_%lld", f->name, (long long)o->v);
         break;
     case MK_SYM:
-        fprintf(out, "%s(%%rip)", o->name);
+        fprintf(out, "%s%s(%%rip)", o->name, o->reg == 1 ? "@GOTPCREL" : "");
         break;
     }
 }
@@ -159,6 +159,9 @@ void mir_print(const MFunc *f, FILE *out)
         case M_JMP:
             fputs(m->a.k == MK_REG ? "\tjmp *" : "\tjmp ", out);
             put_op(f, &m->a, 8, out);
+            break;
+        case M_BYTES:
+            fprintf(out, "	%s", m->a.name);
             break;
         case M_CALL:
             if (m->a.k == MK_REG)

@@ -413,7 +413,7 @@ static void lower(Cfg *L, uint32_t n)
         n = rebuild(L, n);
         vec_push(&L->b.data[open_cur(L)].st, n);
         break;
-    case TO_DATA:
+    case TO_DATA: case TO_ASM:
         vec_push(&L->b.data[open_cur(L)].st, n);
         break;
     case TO_IF: {
@@ -630,7 +630,7 @@ static void mark(Cfg *L, uint32_t entry, const U32Vec *ij)
 static size_t struct_stmts(Cfg *L, uint32_t n)
 {
     const TNode *t = nd(L, n);
-    size_t c = t->op == TO_LOCAL || t->op == TO_EXPRSTMT || t->op == TO_DATA;
+    size_t c = t->op == TO_LOCAL || t->op == TO_EXPRSTMT || t->op == TO_DATA || t->op == TO_ASM;
     uint32_t j;
     for (j = 0; j < t->nkids; j++)
         c += struct_stmts(L, kid(L, n, j));

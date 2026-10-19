@@ -15,6 +15,7 @@
  * between 64-bit unsigned and float.  Aggregates are addresses (see
  * "aggregates"); passing and returning them follows System V.  See
  * docs/TAST_T9_PLAN.md. */
+#include <ctype.h>
 #include <stdarg.h>
 #include <string.h>
 
@@ -239,6 +240,7 @@ static void gen_call(Gx *g, uint32_t n, const char *name);
 static void gen_intrin(Gx *g, uint32_t n);
 static void gen_va(Gx *g, uint32_t n);
 static bool is_agg(Gx *g, TypeId t, uint64_t *size);
+static void init_list(Gx *g, uint32_t n, int32_t base);
 
 /* The address of an lvalue node, into %rax. */
 static void genaddr(Gx *g, uint32_t n)
@@ -253,8 +255,11 @@ static void genaddr(Gx *g, uint32_t n)
             s->sc != SC_EXTERN) {
             em(g, M_LEA, 8, M(R_BP, var_slot(g, t->sym, 0)), R(R_AX));
         } else if (s->kind == CS_OBJ || s->kind == CS_FUNC) {   /* %rip-relative */
-            MOp o = {MK_SYM, 0, 0, x86_symname(g->c, g->L->e->fname, t->sym)};
-            em(g, M_LEA, 8, o, R(R_AX));
+            /* a symbol this unit only declares may live in another object: its address comes from the GOT */
+            bool got = s->sc != SC_STATIC && !(s->flags & CSF_DEFINED) &&
+                       (s->kind == CS_FUNC || s->sc == SC_EXTERN);
+            MOp o = {MK_SYM, got, 0, x86_symname(g->c, g->L->e->fname, t->sym)};
+            em(g, got ? M_MOV : M_LEA, 8, o, R(R_AX));
         } else {
             unsup(g, "symbol of kind %d", s->kind);
         }
@@ -301,6 +306,19 @@ static void genaddr(Gx *g, uint32_t n)
         if (t->val)
             em(g, M_ADD, 8, I(t->val), R(R_AX));
         break;
+    case TO_COMPLIT: {          /* an object made here, in a slot of its own */
+        bool ok = false;
+        uint64_t sz = type_size(&g->c->tt, t->ty, &ok);
+        int32_t base;
+        if (t->pun || !ok) {
+            unsup(g, "static compound literal in a function");
+            return;
+        }
+        base = alloc(g, sz ? sz : 1, type_align(&g->c->tt, t->ty));
+        init_list(g, n, base);
+        em(g, M_LEA, 8, M(R_BP, base), R(R_AX));
+        break;
+    }
     default:
         unsup(g, "lvalue %d", t->op);
     }
@@ -391,17 +409,18 @@ static void zero_frame(Gx *g, int32_t off, uint64_t n)
 
 /* A local's initializer list: the object is zeroed, then each element is
  * stored in source order. */
-static void local_list(Gx *g, uint32_t n)
+/* The elements of node n (a local or a compound literal) zeroed into the frame at base. */
+static void init_list(Gx *g, uint32_t n, int32_t base)
 {
     const TNode *t = nd(g->L, n);
     uint64_t size = 0;
-    int32_t base;
     uint32_t i;
-    if (!is_agg(g, t->ty, &size)) {
-        unsup(g, "initializer list for a scalar");
+    bool ok = false;
+    size = type_size(&g->c->tt, t->ty, &ok);
+    if (!ok) {
+        unsup(g, "initializer list for a type of unknown size");
         return;
     }
-    base = var_slot(g, t->sym, 0);
     zero_frame(g, base, size);
     for (i = 0; i < t->nkids && !g->why[0]; i++) {
         uint32_t k = kid(g->L, n, i), v = kid(g->L, k, 0);
@@ -433,6 +452,11 @@ static void local_list(Gx *g, uint32_t n)
         else
             store_rcx(g, &ti);
     }
+}
+
+static void local_list(Gx *g, uint32_t n)
+{
+    init_list(g, n, var_slot(g, nd(g->L, n)->sym, 0));
 }
 
 static int cc_of(int p, bool sg)
@@ -799,17 +823,41 @@ static void gen(Gx *g, uint32_t n)
             if (from.bytes != ti.bytes)
                 em(g, M_CVTF2F, from.bytes, R(R_X0), R(R_X0));
         } else if (ti.flt) {
-            if (!from.sg && from.bytes == 8) {
-                unsup(g, "unsigned 64-bit integer to float");
-                return;
+            if (!from.sg && from.bytes == 8) {  /* at 2^63 and up: halve, keep the low bit, convert, double */
+                int big = g->nlab++, done = g->nlab++;
+                em(g, M_CMP, 8, I(0), R(R_AX));
+                em_cc(g, M_JCC, CC_L, LB(big));
+                em(g, M_CVTI2F, ti.bytes, R(R_AX), R(R_X0));
+                em(g, M_JMP, 8, LB(done), NONE());
+                em(g, M_LABEL, 8, LB(big), NONE());
+                em(g, M_MOV, 8, R(R_AX), R(R_DX));
+                em(g, M_AND, 8, I(1), R(R_DX));
+                em(g, M_MOV, 8, I(1), R(R_CX));
+                em(g, M_SHR, 8, NONE(), R(R_AX));
+                em(g, M_OR, 8, R(R_DX), R(R_AX));
+                em(g, M_CVTI2F, ti.bytes, R(R_AX), R(R_X0));
+                em(g, M_FADD, ti.bytes, R(R_X0), R(R_X0));
+                em(g, M_LABEL, 8, LB(done), NONE());
+            } else {
+                em(g, M_CVTI2F, ti.bytes, R(R_AX), R(R_X0));
             }
-            em(g, M_CVTI2F, ti.bytes, R(R_AX), R(R_X0));
         } else if (from.flt) {
             if (ti.boolean) {
                 flt_truth(g, &from);
-            } else if (!ti.sg && ti.bytes == 8) {
-                unsup(g, "float to unsigned 64-bit integer");
-                return;
+            } else if (!ti.sg && ti.bytes == 8) {       /* at 2^63 and up: subtract it, convert, set the top bit */
+                int big = g->nlab++, done = g->nlab++;
+                em(g, M_MOVABS, 8, I(from.bytes == 4 ? 0x5f000000LL : 0x43e0000000000000LL), R(R_AX));
+                em(g, M_MOVQX, from.bytes, R(R_AX), R(R_X0 + 1));
+                em(g, M_FCMP, from.bytes, R(R_X0 + 1), R(R_X0));
+                em_cc(g, M_JCC, CC_AE, LB(big));
+                em(g, M_CVTF2I, from.bytes, R(R_X0), R(R_AX));
+                em(g, M_JMP, 8, LB(done), NONE());
+                em(g, M_LABEL, 8, LB(big), NONE());
+                em(g, M_FSUB, from.bytes, R(R_X0 + 1), R(R_X0));
+                em(g, M_CVTF2I, from.bytes, R(R_X0), R(R_AX));
+                em(g, M_MOVABS, 8, I(INT64_MIN), R(R_CX));
+                em(g, M_XOR, 8, R(R_CX), R(R_AX));
+                em(g, M_LABEL, 8, LB(done), NONE());
             } else {
                 em(g, M_CVTF2I, from.bytes, R(R_X0), R(R_AX));
                 canon(g, &ti);
@@ -1121,6 +1169,28 @@ static void gen_intrin(Gx *g, uint32_t n)
             pop(g, R_CX);
             em(g, M_XADD, raw.bytes, R(R_AX), M(R_CX, 0));
             canon(g, &ti);
+        } else if (!strcmp(op, "compare_exchange") || !strcmp(op, "compare_exchange_n")) {
+            bool by_ptr = op[16] == 0;    /* the desired value comes by address */
+            int ok = g->nlab++;
+            if (!atomic_width(g, kid(g->L, n, 0), &raw))
+                return;
+            gen(g, kid(g->L, n, 1));    /* where the expected value is, and the old one goes on failure */
+            push(g);
+            gen(g, kid(g->L, n, 0));
+            push(g);
+            gen(g, kid(g->L, n, 2));
+            if (by_ptr)
+                load_at_rax(g, &raw);
+            em(g, M_MOV, 8, R(R_AX), R(R_DX));
+            pop(g, R_CX);
+            pop(g, R_SI);
+            em(g, M_MOV, raw.bytes, M(R_SI, 0), R(R_AX));
+            em(g, M_CMPXCHG, raw.bytes, R(R_DX), M(R_CX, 0));
+            em_cc(g, M_JCC, CC_E, LB(ok));
+            em(g, M_MOV, raw.bytes, R(R_AX), M(R_SI, 0));
+            em(g, M_LABEL, 8, LB(ok), NONE());
+            em_cc(g, M_SETCC, CC_E, R(R_AX));
+            em(g, M_MOVZX, 1, R(R_AX), R(R_AX));
         } else {
             unsup(g, "atomic built-in %s", nm);
         }
@@ -1163,6 +1233,30 @@ static void gen_stmt(Gx *g, uint32_t n)
     case TO_EXPRSTMT:
         gen(g, kid(g->L, n, 0));
         break;
+    case TO_ASM: {              /* no assembler: the instructions without operands this back end knows */
+        static const struct { const char *text; int n; int64_t bytes; } known[] = {
+            {"rep; nop", 2, 0x90f3}, {"pause", 2, 0x90f3}, {"nop", 1, 0x90},
+            {"mfence", 3, 0xf0ae0f}, {"lfence", 3, 0xe8ae0f}, {"sfence", 3, 0xf8ae0f}};
+        const TNode *s = nd(g->L, kid(g->L, n, 0));
+        char txt[64];
+        size_t len = s->width ? s->width - 1 : 0, b = 0, e = len, q;
+        const uint8_t *p = g->L->e->bytes.data + s->val;
+        while (b < e && isspace(p[b]))
+            b++;
+        while (e > b && isspace(p[e - 1]))
+            e--;
+        if (e == b)
+            break;              /* "": a compiler barrier */
+        snprintf(txt, sizeof txt, "%.*s", (int)(e - b < 60 ? e - b : 60), (const char *)p + b);
+        for (q = 0; q < sizeof known / sizeof *known; q++)
+            if (!strcmp(txt, known[q].text)) {
+                MOp o = {MK_SYM, 0, known[q].bytes, known[q].text};
+                em(g, M_BYTES, known[q].n, o, NONE());
+                return;
+            }
+        unsup(g, "asm template \"%s\"", txt);
+        break;
+    }
     case TO_DATA: {             /* a block-scope static: defined in the object, no code */
         char why[96];
         if (!x86_data_node(g->L->e, n, why, sizeof why))

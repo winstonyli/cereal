@@ -86,3 +86,35 @@ int cmp_edge(double a)
     double z = a - a;
     return cmps(a, a) + 64 * cmps(a, z / z) + 4096 * cmps(z / z, z / z);
 }
+
+/* unsigned 64-bit integers to and from floating point: the 2^63 and up branches */
+double u2d(unsigned long long u)
+{
+    return (double)u;
+}
+
+float u2f(unsigned long long u)
+{
+    return (float)u;
+}
+
+unsigned long long d2u(double x)
+{
+    return (unsigned long long)((x + 501.0) * 1.8e16);
+}
+
+unsigned long long f2u(float x)
+{
+    return (unsigned long long)((x + 501.0f) * 1.8e16f);
+}
+
+/* just above half an ulp, only through the dropped low bit */
+double u2d_tie(unsigned long long u)
+{
+    return (double)(((u >> 11) << 11) | 0x8000000000000401ULL);
+}
+
+float u2f_tie(unsigned long long u)
+{
+    return (float)(((u >> 40) << 40) | 0x8000008000000001ULL);
+}

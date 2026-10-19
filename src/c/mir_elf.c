@@ -15,6 +15,7 @@ typedef struct Enc {
     int n;
     int rel_at;                 /* a %rip-relative symbol's rel32 starts here (-1: none) ... */
     const char *rel_name;       /* ... and names it */
+    bool rel_got;               /* through the GOT */
 } Enc;
 
 static void put(Enc *e, int v) { e->b[e->n++] = (uint8_t)v; }
@@ -60,6 +61,7 @@ static void ins(Enc *e, int pfx, bool w8, bool force, const uint8_t *opc, int no
         put(e, (reg & 7) << 3 | 5);
         e->rel_at = e->n;
         e->rel_name = rm->name;
+        e->rel_got = rm->reg == 1;
         put32(e, 0);
     } else {
         int b = hw(rm->reg) & 7, mod;
@@ -111,6 +113,7 @@ static bool enc_inst(const MInst *m, Enc *e)
     int w = m->w ? m->w : 8, ext = arith_ext(m->op), pfx = w == 2 ? 0x66 : 0;
     e->n = 0;
     e->rel_at = -1;
+    e->rel_got = false;
     if (ext >= 0) {
         if (a->k == MK_IMM) {
             int64_t v = a->v;
@@ -233,6 +236,12 @@ static bool enc_inst(const MInst *m, Enc *e)
         put(e, (m->op == M_PUSH ? 0x50 : 0x58) + (r & 7));
         break;
     }
+    case M_BYTES: {
+        int q;
+        for (q = 0; q < m->w; q++)
+            put(e, (int)((m->a.v >> (8 * q)) & 0xff));
+        break;
+    }
     case M_LEAVE: put(e, 0xc9); break;
     case M_RET: put(e, 0xc3); break;
     case M_REPMOVSB: put(e, 0xf3); put(e, 0xa4); break;
@@ -240,8 +249,8 @@ static bool enc_inst(const MInst *m, Enc *e)
     case M_XCHG:
         ins1(e, pfx, w8, rex_byte(w, a), w == 1 ? 0x86 : 0x87, hw(a->reg), b);
         break;
-    case M_XADD: {
-        uint8_t o[2] = {0x0f, (uint8_t)(w == 1 ? 0xc0 : 0xc1)};
+    case M_XADD: case M_CMPXCHG: {
+        uint8_t o[2] = {0x0f, (uint8_t)((m->op == M_XADD ? 0xc0 : 0xb0) + (w == 1 ? 0 : 1))};
         if (w == 2)
             put(e, 0x66);
         ins(e, 0xf0, w8, rex_byte(w, a), o, 2, hw(a->reg), b);
@@ -292,7 +301,7 @@ enum { SEC_TEXT, SEC_RODATA, SEC_DATA, SEC_BSS, NSEC };
 static const char *const sec_name[NSEC] = {".text", ".rodata", ".data", ".bss"};
 static const uint32_t sec_flags[NSEC] = {6 /* AX */, 2 /* A */, 3 /* WA */, 3};
 
-enum { REL_64 = 1, REL_PC32 = 2, REL_PLT32 = 4 };
+enum { REL_64 = 1, REL_PC32 = 2, REL_PLT32 = 4, REL_REX_GOTPCRELX = 42 };
 
 typedef struct ObjSym {
     char *name;                 /* NULL: a section symbol */
@@ -496,7 +505,8 @@ bool mobj_add(MObj *o, const MFunc *f)
             rel_add(o, SEC_TEXT, base + pos[i] + 1, sym_named(o, m->a.name), REL_PLT32, -4);
         if (enc[i].rel_at >= 0)         /* a symbol's address, %rip-relative */
             rel_add(o, SEC_TEXT, base + pos[i] + (uint32_t)enc[i].rel_at,
-                    sym_named(o, enc[i].rel_name), REL_PC32, -(enc[i].n - enc[i].rel_at));
+                    sym_named(o, enc[i].rel_name), enc[i].rel_got ? REL_REX_GOTPCRELX : REL_PC32,
+                    -(enc[i].n - enc[i].rel_at));
         for (k = 0; k < enc[i].n; k++)
             vec_push(&o->bytes[SEC_TEXT], enc[i].b[k]);
     }

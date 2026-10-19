@@ -19,7 +19,8 @@ enum { R_AX, R_CX, R_DX, R_SI, R_DI, R_R8, R_R9, R_BP, R_SP, R_R11, R_GP_COUNT,
 
 /* Operand kinds. */
 enum { MK_NONE, MK_REG, MK_IMM, MK_MEM /* disp(reg) */, MK_LAB /* local label */,
-       MK_SYM /* a symbol's name, by string: a call target, or name(%rip) */ };
+       MK_SYM /* a symbol's name, by string: a call target, or name(%rip); reg 1: its
+               * address through the GOT, name@GOTPCREL(%rip) (a mov source) */ };
 
 typedef struct MOp {
     uint8_t k;
@@ -35,7 +36,8 @@ typedef struct MOp {
     X(NEG, "neg") X(NOT, "not") X(CMP, "cmp") X(TEST, "test") X(SETCC, "set")   \
     X(CQO, "cqto") X(IDIV, "idiv") X(DIV, "div") X(PUSH, "push") X(POP, "pop")  \
     X(CALL, "call") X(JMP, "jmp") X(JCC, "j") X(LEAVE, "leave") X(RET, "ret")   \
-    X(LABEL, "") X(XCHG, "xchg") X(XADD, "lock xadd")                                                                \
+    X(LABEL, "") X(XCHG, "xchg") X(XADD, "lock xadd") X(CMPXCHG, "lock cmpxchg")         \
+    X(BYTES, "")    /* raw machine bytes: a.name the text, w the count, a.v the bytes */    \
     X(REPMOVSB, "rep movsb") X(REPSTOSB, "rep stosb")   /* %rcx bytes, %rsi to %rdi / %al to %rdi */ \
     /* scalar SSE: w is the float's width (4: ss, 8: sd) */                     \
     X(FMOV, "mov") X(FADD, "add") X(FSUB, "sub") X(FMUL, "mul")                 \
