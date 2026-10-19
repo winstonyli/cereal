@@ -8,10 +8,9 @@ C=${1:?cereal binary}; Z=${2:?zstd source dir (containing lib/)}
 HERE=$(cd "$(dirname "$0")" && pwd)
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 # no SIMD intrinsics, no BMI2 dispatch (cpuid is supported, vector types are not), no assembly decoder
-FLAGS="-std=gnu11 -w -DZSTD_NO_INTRINSICS -DDYNAMIC_BMI2=0 -DZSTD_DISABLE_ASM=1 -DXXH_VECTOR=0 -I$Z/lib -I$Z/lib/common"
+FLAGS="-std=gnu11 -w -DZSTD_MULTITHREAD -DZSTD_NO_INTRINSICS -DDYNAMIC_BMI2=0 -DZSTD_DISABLE_ASM=1 -DXXH_VECTOR=0 -I$Z/lib -I$Z/lib/common"
 mkdir "$W/ref" "$W/our"
 for f in "$Z"/lib/common/*.c "$Z"/lib/compress/*.c "$Z"/lib/decompress/*.c; do
-    case $f in */zstdmt_compress.c) continue ;; esac     # multithreading only: bit-fields are parked
     b=$(basename "$f" .c)
     "$C" check --target=x86_64-linux-gnu $FLAGS --emit-obj="$W/our/$b.o" "$f" > "$W/$b.log" 2>&1
     if grep -q unsupported "$W/$b.log" || [ ! -f "$W/our/$b.o" ]; then
@@ -20,7 +19,7 @@ for f in "$Z"/lib/common/*.c "$Z"/lib/compress/*.c "$Z"/lib/decompress/*.c; do
     gcc -O0 $FLAGS -c "$f" -o "$W/ref/$b.o" || exit 1
 done
 for v in ref our; do
-    gcc -O0 -w -I"$Z/lib" -o "$W/rt-$v" "$HERE/zstd_e2e/rt.c" "$W/$v"/*.o || exit 1
+    gcc -O0 -w -I"$Z/lib" -o "$W/rt-$v" "$HERE/zstd_e2e/rt.c" -pthread "$W/$v"/*.o || exit 1
 done
 "$W/rt-ref" > "$W/ref.out" || { echo "gcc build fails its own round trip"; tail -3 "$W/ref.out"; exit 1; }
 "$W/rt-our" > "$W/our.out"; rc=$?

@@ -299,10 +299,6 @@ static void genaddr(Gx *g, uint32_t n)
         break;
     }
     case TO_FIELD:
-        if (t->width) {
-            unsup(g, "bit-field");
-            return;
-        }
         genaddr(g, kid(g->L, n, 0));
         if (t->val)
             em(g, M_ADD, 8, I(t->val), R(R_AX));
@@ -345,6 +341,120 @@ static void store_rcx(Gx *g, const TI *ti)
         em(g, M_FMOV, ti->bytes, R(R_X0), M(R_CX, 0));
     else
         em(g, M_MOV, ti->bytes, R(R_AX), M(R_CX, 0));
+}
+
+/* ---- bit-fields ---------------------------------------------------------
+ * A bit-field lvalue's address is the byte holding its lowest bit; the field is
+ * `width` bits starting `pun` bits (0..7) into that byte.  It is read and written
+ * through a window of the n = ceil((pun + width) / 8) bytes it touches, as at most
+ * two (overlapping) accesses of the largest power of two <= n, so nothing outside
+ * the object is ever touched.  Scratch: %rcx %rdx %rsi %rdi %r8 %r9. */
+
+static void bf_shift(Gx *g, int op, int by, int r)
+{
+    if (!by)
+        return;
+    em(g, M_MOV, 4, I(by), R(R_CX));
+    em(g, op, 8, NONE(), R(r));
+}
+
+static int bf_part(int n)
+{
+    return n >= 8 ? 8 : n >= 4 ? 4 : n >= 2 ? 2 : 1;
+}
+
+static void bf_ld(Gx *g, int s, int disp, int r)
+{
+    if (s < 4)
+        em(g, M_MOVZX, s, M(R_SI, disp), R(r));
+    else
+        em(g, M_MOV, s, M(R_SI, disp), R(r));
+}
+
+/* The n bytes at (%rsi), zero-extended, into %rax. */
+static void bf_window_load(Gx *g, int n)
+{
+    int s = bf_part(n);
+    bf_ld(g, s, 0, R_AX);
+    if (n > s) {
+        bf_ld(g, s, n - s, R_R9);
+        bf_shift(g, M_SHL, 8 * (n - s), R_R9);
+        em(g, M_OR, 8, R(R_R9), R(R_AX));
+    }
+}
+
+/* The low n bytes of %rdx to (%rsi); %rdx is shifted. */
+static void bf_window_store(Gx *g, int n)
+{
+    int s = bf_part(n);
+    em(g, M_MOV, s, R(R_DX), M(R_SI, 0));
+    if (n > s) {
+        bf_shift(g, M_SHR, 8 * (n - s), R_DX);
+        em(g, M_MOV, s, R(R_DX), M(R_SI, n - s));
+    }
+}
+
+/* The field whose byte address is in %rax, into %rax (sign- or zero-extended). */
+static void bf_load(Gx *g, const TI *ti, unsigned pun, unsigned width)
+{
+    if (pun + width > 64) {
+        unsup(g, "bit-field straddling eight bytes");
+        return;
+    }
+    int n = (int)((pun + width + 7) / 8);
+    em(g, M_MOV, 8, R(R_AX), R(R_SI));
+    bf_window_load(g, n);
+    bf_shift(g, M_SHL, (int)(64 - pun - width), R_AX);
+    bf_shift(g, ti->sg ? M_SAR : M_SHR, (int)(64 - width), R_AX);
+}
+
+/* %rax into the field whose byte address is in %rcx; %rax ends as the field's value. */
+static void bf_store(Gx *g, const TI *ti, unsigned pun, unsigned width)
+{
+    if (pun + width > 64) {
+        unsup(g, "bit-field straddling eight bytes");
+        return;
+    }
+    int n = (int)((pun + width + 7) / 8);
+    uint64_t m = width >= 64 ? ~(uint64_t)0 : ((uint64_t)1 << width) - 1;
+    em(g, M_MOV, 8, R(R_CX), R(R_SI));
+    em(g, M_MOV, 8, R(R_AX), R(R_DI));
+    em(g, M_MOV, 8, R(R_AX), R(R_DX));
+    em(g, M_MOVABS, 8, I((int64_t)m), R(R_R8));
+    em(g, M_AND, 8, R(R_R8), R(R_DX));
+    bf_shift(g, M_SHL, (int)pun, R_DX);
+    em(g, M_MOVABS, 8, I((int64_t)(m << pun)), R(R_R8));
+    em(g, M_NOT, 8, R(R_R8), NONE());
+    bf_window_load(g, n);
+    em(g, M_AND, 8, R(R_R8), R(R_AX));
+    em(g, M_OR, 8, R(R_AX), R(R_DX));
+    bf_window_store(g, n);
+    em(g, M_MOV, 8, R(R_DI), R(R_AX));
+    bf_shift(g, M_SHL, (int)(64 - width), R_AX);
+    bf_shift(g, ti->sg ? M_SAR : M_SHR, (int)(64 - width), R_AX);
+}
+
+/* Load / store through the lvalue node lv, whose address is already in %rax / %rcx. */
+static bool is_bf(Gx *g, uint32_t lv)
+{
+    const TNode *f = nd(g->L, lv);
+    return f->op == TO_FIELD && f->width;
+}
+
+static void load_lv(Gx *g, uint32_t lv, const TI *ti)
+{
+    if (is_bf(g, lv))
+        bf_load(g, ti, nd(g->L, lv)->pun, nd(g->L, lv)->width);
+    else
+        load_at_rax(g, ti);
+}
+
+static void store_lv(Gx *g, uint32_t lv, const TI *ti)
+{
+    if (is_bf(g, lv))
+        bf_store(g, ti, nd(g->L, lv)->pun, nd(g->L, lv)->width);
+    else
+        store_rcx(g, ti);
 }
 
 /* ---- aggregates ---------------------------------------------------------
@@ -429,10 +539,6 @@ static void init_list(Gx *g, uint32_t n, int32_t base)
         uint64_t esz = 0;
         bool agg;
         TI ti;
-        if (e->width) {
-            unsup(g, "bit-field initializer");
-            return;
-        }
         agg = is_agg(g, e->ty, &esz);
         if (agg) {                      /* a string cut to its array, or a struct value */
             const TNode *s = nd(g->L, v);
@@ -450,6 +556,8 @@ static void init_list(Gx *g, uint32_t n, int32_t base)
         em(g, M_LEA, 8, M(R_BP, base + (int32_t)e->val), R(R_CX));
         if (agg)
             copy_bytes(g, esz);
+        else if (e->width)
+            bf_store(g, &ti, e->pun, e->width);
         else
             store_rcx(g, &ti);
     }
@@ -792,7 +900,7 @@ static void gen(Gx *g, uint32_t n)
         if (!tinfo(g, t->ty, &ti))
             return;
         genaddr(g, kid(g->L, n, 0));
-        load_at_rax(g, &ti);
+        load_lv(g, kid(g->L, n, 0), &ti);
         break;
     case TO_STORE:
         if (is_agg(g, t->ty, &asz)) {
@@ -809,7 +917,7 @@ static void gen(Gx *g, uint32_t n)
         push(g);
         gen(g, kid(g->L, n, 1));
         pop(g, R_CX);
-        store_rcx(g, &ti);
+        store_lv(g, kid(g->L, n, 0), &ti);
         if (!ti.flt)
             canon(g, &ti);
         break;
@@ -818,7 +926,7 @@ static void gen(Gx *g, uint32_t n)
         if (nd(g->L, s)->op != TO_STORE || !tinfo(g, nd(g->L, s)->ty, &ti))
             return;
         genaddr(g, kid(g->L, s, 0));
-        load_at_rax(g, &ti);
+        load_lv(g, kid(g->L, s, 0), &ti);
         pushv(g, &ti);
         gen(g, s);
         popv(g, &ti);

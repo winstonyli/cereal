@@ -59,6 +59,27 @@ int main(void)
                 free(cmp);
                 free(out);
             }
+    /* the multithreaded compressor (zstdmt_compress.c, with its bit-fields) */
+    for (kind = 0; kind < 3; kind++) {
+        size_t n = 1000000, cap = ZSTD_compressBound(n), c, d;
+        unsigned char *src = malloc(n), *cmp = malloc(cap), *out = malloc(n);
+        ZSTD_CCtx *cc = ZSTD_createCCtx();
+        gen(src, n, (unsigned)kind, (int)kind);
+        ZSTD_CCtx_setParameter(cc, ZSTD_c_nbWorkers, 2);
+        ZSTD_CCtx_setParameter(cc, ZSTD_c_jobSize, 256 << 10);
+        ZSTD_CCtx_setParameter(cc, ZSTD_c_compressionLevel, 3);
+        c = ZSTD_compress2(cc, cmp, cap, src, n);
+        d = ZSTD_isError(c) ? c : ZSTD_decompress(out, n, cmp, c);
+        if (ZSTD_isError(d) || d != n || memcmp(src, out, n)) {
+            printf("MT MISMATCH kind %zu\n", kind);
+            return 1;
+        }
+        printf("mt %zu: %zu %016llx\n", kind, c, (unsigned long long)fnv(cmp, c));
+        ZSTD_freeCCtx(cc);
+        free(src);
+        free(cmp);
+        free(out);
+    }
     puts("ok");
     return 0;
 }

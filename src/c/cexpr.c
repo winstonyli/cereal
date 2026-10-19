@@ -3831,7 +3831,7 @@ static void incdec(Checker *c, uint32_t i, uint32_t a, bool inc)
         return;
     }
     c->ty[i] = t;
-    c->ef[i] = EF_SIDE;
+    c->ef[i] = EF_SIDE | (c->ef[strip_paren(c, a)] & EF_BFPROMOTE);   /* a narrow bit-field's value promotes */
 }
 
 static void addr_of(Checker *c, uint32_t i, uint32_t a)
@@ -6850,7 +6850,7 @@ static void e_assign(Checker *c, uint32_t i)
     }
     c->ck[i] = K_NONE;
     c->ty[i] = unqual(c, c->ty[l]);
-    c->ef[i] = EF_SIDE;
+    c->ef[i] = EF_SIDE | (c->ef[strip_paren(c, l)] & EF_BFPROMOTE);
 }
 
 /* ---- the dispatcher ------------------------------------------------------------------------- */

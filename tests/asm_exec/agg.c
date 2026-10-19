@@ -191,3 +191,34 @@ long offv(int k)
     return __builtin_offsetof(struct oa, b[k % 3].l) + __builtin_offsetof(struct oa, s[k & 3][k & 1]) +
            __builtin_offsetof(struct oa, b[1].c[k & 3]);
 }
+
+/* bit-fields: loads, stores, compound assignment, increments, initializers, signedness, widths */
+struct bf { unsigned a : 3; int b : 5; unsigned c : 20; long d : 40; char e; unsigned f : 1; int g : 7; _Bool h : 1; };
+struct bf2 { unsigned char x : 4; unsigned y : 12; unsigned long z : 64 - 16 - 2; unsigned w : 2; };
+struct bf3 { char p; unsigned q : 20; short r : 3; };
+long bitf(int k)
+{
+    struct bf s = {1, 2, 3, 4, 5, 1, -3, 1};
+    struct bf2 t = {k & 15, k * 37, 0x123456789abUL * k, k & 3};
+    struct bf3 u = {7, k * 1111, -2};
+    long r = 0;
+    s.b ^= k;
+    s.a++;
+    s.c += k * 100;
+    s.d = k * 100000L - 9999999999L;
+    s.g = -k;
+    s.h = k > 3;
+    r += s.a * 100 + s.b + s.c + (int)s.d + s.e + s.f * 7 + s.g + s.h;
+    r += (long)s.d * 3;
+    r += t.x + t.y + (long)(t.z % 1000003) + t.w;
+    t.z = ~t.z + k;
+    r += (long)(t.z % 999983) + (t.w = k);
+    r += u.p + u.q + u.r;
+    r += (u.r = k * 3);
+    r += (u.q += 5);
+    r += u.q--;
+    r += u.q;
+    r += --s.a + s.b++ + (s.f = k) + (s.c = -k);
+    r += (s.b << 1) + (s.a * 2) + sizeof(s) + sizeof(t) + sizeof(u);
+    return r;
+}
