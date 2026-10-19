@@ -11,9 +11,10 @@
  * for integer and SSE classes, the rest on the stack.  Globals and statics
  * are reached %rip-relative and defined by cgdata.c; string literals are
  * anonymous read-only objects.  Not supported yet (the function is then
- * reported in a comment): long double, struct/union/array values passed or
- * returned, bit-fields, computed goto, conversions between 64-bit unsigned
- * and float.  See docs/TAST_T9_PLAN.md. */
+ * reported in a comment): long double, bit-fields, computed goto, conversions
+ * between 64-bit unsigned and float.  Aggregates are addresses (see
+ * "aggregates"); passing and returning them follows System V.  See
+ * docs/TAST_T9_PLAN.md. */
 #include <stdarg.h>
 #include <string.h>
 
@@ -26,6 +27,13 @@ typedef struct Slot {
     int32_t off;
 } Slot;
 
+typedef struct AggCls {
+    uint64_t size;
+    int np;                     /* eightbytes */
+    bool mem;
+    char c[2];
+} AggCls;
+
 typedef struct Gx {
     Cfg *L;
     Checker *c;
@@ -36,6 +44,9 @@ typedef struct Gx {
     int32_t frame;
     int depth;                  /* values waiting on the stack */
     size_t sub_at;              /* the frame-size instruction, patched at the end */
+    AggCls rc;                  /* the function's own result class, when an aggregate */
+    bool retagg;
+    int32_t retptr;             /* where a memory-class result goes */
     char why[96];
 } Gx;
 
@@ -446,23 +457,167 @@ static void gen_binary(Gx *g, uint32_t n)
     popv(g, &lt);
 }
 
+/* ---- System V classes of an aggregate ------------------------------------
+ * Up to 16 bytes it travels as eightbytes, each INTEGER ('i') or SSE ('s');
+ * anything larger (or packed) goes in memory. */
+
+
+static void cls_mark(AggCls *a, uint64_t off, char k)
+{
+    if (off / 8 < 2 && a->c[off / 8] != 'i')
+        a->c[off / 8] = k;
+}
+
+static bool cls_walk(Gx *g, TypeId t, uint64_t base, AggCls *a)
+{
+    TypeTable *tt = &g->c->tt;
+    TypeId ct = type_canon(tt, t);
+    TypeKind k = type_ckind(tt, ct);
+    TI ti;
+    if (k == TY_STRUCT || k == TY_UNION) {
+        const Record *r = type_record(tt, ct);
+        uint32_t i;
+        if (r->flags & RF_PACKED) {
+            a->mem = true;
+            return true;
+        }
+        for (i = 0; i < r->nfields; i++) {
+            const Field *f = &tt->fields.data[r->fields + i];
+            if (f->flags & FF_PACKED) {
+                a->mem = true;
+                return true;
+            }
+            if (f->flags & FF_BITFIELD)
+                cls_mark(a, base + f->off_bits / 8, 'i');
+            else if (!cls_walk(g, f->ty, base + f->off_bits / 8, a))
+                return false;
+        }
+        return true;
+    }
+    if (k == TY_ARRAY) {
+        bool ok = false;
+        uint64_t n = type_ent(tt, ct)->n, i, esz = type_size(tt, type_base(tt, ct), &ok);
+        for (i = 0; ok && i < n && base + i * esz < a->size; i++)
+            if (!cls_walk(g, type_base(tt, ct), base + i * esz, a))
+                return false;
+        return true;
+    }
+    if (!tinfo(g, ct, &ti))
+        return false;
+    cls_mark(a, base, ti.flt ? 's' : 'i');
+    return true;
+}
+
+static int piece_w(const AggCls *a, int p);
+
+static bool agg_class(Gx *g, TypeId t, AggCls *a)
+{
+    bool ok = false;
+    int p;
+    memset(a, 0, sizeof *a);
+    a->size = type_size(&g->c->tt, t, &ok);
+    a->np = (int)((a->size + 7) / 8);
+    a->mem = a->size > 16;
+    if (!a->mem && !cls_walk(g, t, 0, a))
+        return false;
+    for (p = 0; p < 2; p++)
+        if (!a->c[p])
+            a->c[p] = 'i';
+    if (!a->mem)
+        for (p = 0; p < a->np; p++) {
+            int w = piece_w(a, p);
+            if (w != 8 && w != 4 && w != 2 && w != 1) {
+                unsup(g, "aggregate of %d bytes in registers", (int)a->size);
+                return false;
+            }
+        }
+    return true;
+}
+
+static int piece_w(const AggCls *a, int p)
+{
+    uint64_t w = a->size - 8 * (uint64_t)p;
+    return w > 8 ? 8 : (int)w;
+}
+
+/* A zero-extended piece of w bytes at off(base) into register dst. */
+static void load_piece(Gx *g, int w, int64_t off, int base, int dst)
+{
+    em(g, w >= 4 ? M_MOV : M_MOVZX, w, M(base, off), R(dst));
+}
+
 /* A call: name is the symbol, or NULL for a call through the pointer in kid 0. */
+typedef struct Arg {
+    uint32_t node;              /* what is evaluated: the argument, or what a transparent union wraps */
+    TI ti;
+    AggCls ac;
+    bool agg;
+    int np;                     /* registers used; 0: on the stack */
+    int loc[2];
+    uint32_t words;             /* stack words when on the stack */
+} Arg;
+
 static void gen_call(Gx *g, uint32_t n, const char *name)
 {
     uint32_t j, b0 = name ? 0 : 1, nstack = 0;
-    int ni = 0, nf = 0, pad, *loc;
-    TI *ats, ti;
+    int ni = 0, nf = 0, pad, p;
+    Arg *as;
     const TNode *t = nd(g->L, n);
-    loc = xmalloc((t->nkids + 1) * sizeof *loc);
-    ats = xmalloc((t->nkids + 1) * sizeof *ats);
-    for (j = b0; j < t->nkids; j++) {
-        if (!tinfo(g, nd(g->L, kid(g->L, n, j))->ty, &ats[j])) {
-            free(loc);
-            free(ats);
+    AggCls rc;
+    uint64_t sz;
+    bool ragg = is_agg(g, t->ty, &sz);
+    int32_t rtmp = 0;
+    TI ti;
+    if (g->why[0])
+        return;
+    if (ragg) {
+        if (!agg_class(g, t->ty, &rc))
             return;
+        rtmp = alloc(g, rc.size ? rc.size : 1, 16);
+        if (rc.mem)
+            ni = 1;                         /* %rdi carries the result's address */
+    }
+    as = xcalloc(t->nkids + 1, sizeof *as);
+    for (j = b0; j < t->nkids; j++) {
+        Arg *a = &as[j];
+        TypeId at;
+        a->node = kid(g->L, n, j);
+        if (nd(g->L, a->node)->op == TO_CAST) {   /* (transparent union)p passes as p */
+            TypeTable *tt = &g->c->tt;
+            TypeId ut = type_canon(tt, nd(g->L, a->node)->ty);
+            if (type_ckind(tt, ut) == TY_UNION && (type_record(tt, ut)->flags & RF_TRANSPARENT))
+                a->node = kid(g->L, a->node, 0);
         }
-        loc[j] = arg_loc(&ats[j], &ni, &nf);
-        nstack += loc[j] < 0;
+        at = nd(g->L, a->node)->ty;
+        a->agg = is_agg(g, at, &sz);
+        if (g->why[0])
+            goto out;
+        if (!a->agg) {
+            if (!tinfo(g, at, &a->ti))
+                goto out;
+            a->loc[0] = arg_loc(&a->ti, &ni, &nf);
+            a->np = a->loc[0] >= 0;
+            a->words = !a->np;
+        } else {
+            if (!agg_class(g, at, &a->ac))
+                goto out;
+            if (!a->ac.mem) {
+                int need_i = 0, need_f = 0;
+                for (p = 0; p < a->ac.np; p++)
+                    if (a->ac.c[p] == 'i')
+                        need_i++;
+                    else
+                        need_f++;
+                if (ni + need_i <= 6 && nf + need_f <= 8) {
+                    a->np = a->ac.np;
+                    for (p = 0; p < a->np; p++)
+                        a->loc[p] = a->ac.c[p] == 'i' ? arg_regs[ni++] : R_X0 + nf++;
+                }
+            }
+            if (!a->np)
+                a->words = (uint32_t)((a->ac.size + 7) / 8);
+        }
+        nstack += a->words;
     }
     /* Stack arguments are pushed first (last to first), then the register
      * ones, which pop off again; the padding goes below the stack
@@ -473,28 +628,45 @@ static void gen_call(Gx *g, uint32_t n, const char *name)
         g->depth++;
     }
     for (j = t->nkids; j-- > b0;)
-        if (loc[j] < 0) {
-            gen(g, kid(g->L, n, j));
-            pushv(g, &ats[j]);
+        if (!as[j].np && as[j].words) {
+            gen(g, as[j].node);
+            if (as[j].agg) {
+                em(g, M_SUB, 8, I(8 * (int64_t)as[j].words), R(R_SP));
+                g->depth += (int)as[j].words;
+                em(g, M_MOV, 8, R(R_SP), R(R_CX));
+                copy_bytes(g, as[j].ac.size);
+            } else {
+                pushv(g, &as[j].ti);
+            }
         }
     for (j = t->nkids; j-- > b0;)
-        if (loc[j] >= 0) {
-            gen(g, kid(g->L, n, j));
-            pushv(g, &ats[j]);
+        if (as[j].np) {
+            gen(g, as[j].node);
+            if (as[j].agg) {
+                for (p = as[j].np; p-- > 0;) {
+                    load_piece(g, piece_w(&as[j].ac, p), 8 * p, R_AX, R_CX);
+                    em(g, M_PUSH, 8, R(R_CX), NONE());
+                    g->depth++;
+                }
+            } else {
+                pushv(g, &as[j].ti);
+            }
         }
     if (b0) {               /* the callee's address, after the arguments are safe on the stack */
         gen(g, kid(g->L, n, 0));
         em(g, M_MOV, 8, R(R_AX), R(R_R11));
     }
     for (j = b0; j < t->nkids; j++)
-        if (loc[j] >= R_X0) {
-            pop(g, R_AX);
-            em(g, M_MOVQX, 8, R(R_AX), R(loc[j]));
-        } else if (loc[j] >= 0) {
-            pop(g, loc[j]);
+        for (p = 0; p < as[j].np; p++) {
+            if (as[j].loc[p] >= R_X0) {
+                pop(g, R_AX);
+                em(g, M_MOVQX, 8, R(R_AX), R(as[j].loc[p]));
+            } else {
+                pop(g, as[j].loc[p]);
+            }
         }
-    free(loc);
-    free(ats);
+    if (ragg && rc.mem)
+        em(g, M_LEA, 8, M(R_BP, rtmp), R(R_DI));
     em(g, M_MOV, 4, I(nf), R(R_AX));    /* vector registers used, for variadic callees */
     {
         MOp callee = b0 ? R(R_R11) : (MOp){MK_SYM, 0, 0, name};
@@ -504,11 +676,46 @@ static void gen_call(Gx *g, uint32_t n, const char *name)
         em(g, M_ADD, 8, I(8 * (nstack + pad)), R(R_SP));
         g->depth -= (int)(nstack + pad);
     }
-    if (type_ckind(&g->c->tt, t->ty) != TY_VOID) {
+    if (ragg) {
+        if (!rc.mem) {              /* %rax, %rdx, %xmm0, %xmm1 into the result's slot */
+            int ii = 0, ss = 0;
+            em(g, M_LEA, 8, M(R_BP, rtmp), R(R_CX));
+            for (p = 0; p < rc.np; p++) {
+                int w = piece_w(&rc, p);
+                if (rc.c[p] == 'i')
+                    em(g, M_MOV, w, R(ii++ ? R_DX : R_AX), M(R_CX, 8 * p));
+                else
+                    em(g, M_FMOV, w == 4 ? 4 : 8, R(R_X0 + ss++), M(R_CX, 8 * p));
+            }
+            em(g, M_LEA, 8, M(R_BP, rtmp), R(R_AX));
+        }
+    } else if (type_ckind(&g->c->tt, t->ty) != TY_VOID) {
         if (!tinfo(g, t->ty, &ti))
-            return;
+            goto out;
         if (!ti.flt)            /* a float came back in %xmm0 */
             canon(g, &ti);
+    }
+out:
+    free(as);
+}
+
+/* The aggregate value at (%rax) leaves a function: into the caller's memory
+ * (the address saved at entry), or in %rax, %rdx, %xmm0, %xmm1. */
+static void ret_agg(Gx *g, const AggCls *rc, int32_t retptr)
+{
+    if (rc->mem) {
+        em(g, M_MOV, 8, M(R_BP, retptr), R(R_CX));
+        copy_bytes(g, rc->size);
+    } else {
+        int ii = 0, ss = 0, p;
+        em(g, M_MOV, 8, R(R_AX), R(R_CX));
+        for (p = 0; p < rc->np; p++) {
+            int w = piece_w(rc, p);
+            if (rc->c[p] == 'i')
+                load_piece(g, w, 8 * p, R_CX, ii++ ? R_DX : R_AX);
+            else
+                em(g, M_FMOV, w == 4 ? 4 : 8, M(R_CX, 8 * p), R(R_X0 + ss++));
+        }
     }
 }
 
@@ -941,9 +1148,15 @@ static void gen_block(Gx *g, const uint32_t *ord, uint32_t i)
         break;
     case TK_RET:
         if (x->val != TN) {
-            if (!tinfo(g, nd(L, x->val)->ty, &ti))
-                return;
-            gen(g, x->val);
+            uint64_t rsz;
+            if (is_agg(g, nd(L, x->val)->ty, &rsz)) {
+                gen(g, x->val);
+                ret_agg(g, &g->rc, g->retptr);
+            } else {
+                if (!tinfo(g, nd(L, x->val)->ty, &ti))
+                    return;
+                gen(g, x->val);
+            }
         }
         em(g, M_LEAVE, 8, NONE(), NONE());
         em(g, M_RET, 8, NONE(), NONE());
@@ -995,10 +1208,48 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
     g.sub_at = g.f.code.len;
     em(&g, M_SUB, 8, I(0), R(R_SP));
     params(&g, root, &ps);
+    {
+        uint64_t rsz;
+        TypeTable *tt = &g.c->tt;
+        TypeId rt = type_base(tt, type_canon(tt, fs->ty));
+        g.retagg = is_agg(&g, rt, &rsz);
+        if (g.retagg && agg_class(&g, rt, &g.rc) && g.rc.mem) {
+            g.retptr = alloc(&g, 8, 8);         /* the caller's buffer, in %rdi */
+            em(&g, M_MOV, 8, R(R_DI), M(R_BP, g.retptr));
+            ni = 1;
+        }
+    }
     for (i = 0; i < ps.len && !g.why[0]; i++) {
         TI ti;
         int where;
         uint32_t ref = g.c->cb[ps.data[i]] - 1;
+        uint64_t psz;
+        if (is_agg(&g, csym(g.c, ref)->ty, &psz)) {
+            AggCls pc;
+            int32_t slot, p, need_i = 0, need_f = 0;
+            if (!agg_class(&g, csym(g.c, ref)->ty, &pc))
+                break;
+            slot = var_slot(&g, ref, 0);
+            for (p = 0; p < pc.np; p++)
+                if (pc.c[p] == 'i')
+                    need_i++;
+                else
+                    need_f++;
+            if (!pc.mem && ni + need_i <= 6 && nf + need_f <= 8) {
+                for (p = 0; p < pc.np; p++)
+                    if (pc.c[p] == 'i')
+                        em(&g, M_MOV, piece_w(&pc, p), R(arg_regs[ni++]), M(R_BP, slot + 8 * p));
+                    else
+                        em(&g, M_FMOV, piece_w(&pc, p) == 4 ? 4 : 8, R(R_X0 + nf++),
+                           M(R_BP, slot + 8 * p));
+            } else {
+                em(&g, M_LEA, 8, M(R_BP, 16 + 8 * (int64_t)ns), R(R_AX));
+                em(&g, M_LEA, 8, M(R_BP, slot), R(R_CX));
+                copy_bytes(&g, pc.size);
+                ns += (int)((pc.size + 7) / 8);
+            }
+            continue;
+        }
         if (!tinfo(&g, csym(g.c, ref)->ty, &ti))
             break;
         where = arg_loc(&ti, &ni, &nf);

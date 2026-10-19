@@ -8,7 +8,9 @@ the generator supports (and `# x86: name unsupported: why` for the rest); the
 assembly is linked with a driver that calls each function on random integer
 arguments, and its output is compared with the same functions compiled by gcc
 (-O0 -fwrapv).  The exit status is 1 on any mismatch, a link failure, or fewer
-than half of the integer functions emitted.  Covers what cgx86.c supports
+than half of the integer functions emitted.  A gcc/FILE.c next to FILE.c is built
+by gcc and linked into both programs: its gcc_* functions are driven like the
+others, and FILE.c calls its other functions, so structs cross the ABI both ways.  Covers what cgx86.c supports
 (integers, pointers, locals, arrays, calls to the file's own functions);
 everything else is reported as unsupported, not skipped silently."""
 import os, random, re, subprocess, sys, tempfile
@@ -56,6 +58,13 @@ def main():
             if supported(f.ret) and all(supported(p) for p in f.params):
                 todo.append(f)
         done = [f for f in todo if f.name not in notes]
+        abi = os.path.join(os.path.dirname(path), "gcc", os.path.basename(path))  # gcc-built side
+        if os.path.exists(abi):
+            cf = X.parse(run([cereal, "check", "--target=x86_64-linux-gnu", "--dump-cfg", abi]).stdout)
+            done += [f for f in cf.values() if f.name.startswith("gcc_") and supported(f.ret)
+                     and all(supported(p) for p in f.params)]
+        ext = [abi] if os.path.exists(abi) else []
+        inc = ["-I", os.path.dirname(os.path.abspath(path))]
         vecs = {f.name: [[value(p) for p in f.params] for _ in range(24)] for f in done}
         calls = "".join('    printf("%s\\n", (%s)%s(%s));\n' % (
             "%.17g" if f.ret.strip() in FLT else "%lld",
@@ -66,10 +75,10 @@ def main():
         protos = "".join("%s %s(%s);\n" % (f.ret, f.name, ", ".join(f.params) or "void") for f in done)
         with tempfile.TemporaryDirectory() as td:
             j = lambda x: os.path.join(td, x)
-            open(j("ref.c"), "w").write(open(path).read() + "\n" + main_c)
+            open(j("ref.c"), "w").write(open(path).read() + "\n" + protos + main_c)
             open(j("mine.c"), "w").write(protos + main_c)
             open(j("a.s"), "w").write(asm)
-            r = run(["gcc", "-O0", "-fwrapv", "-w", "-o", j("ref"), j("ref.c")])
+            r = run(["gcc", "-O0", "-fwrapv", "-w"] + inc + ["-o", j("ref"), j("ref.c")] + ext)
             if r.returncode:
                 print(path + ": gcc failed\n" + r.stderr[:400])
                 bad += 1
@@ -105,7 +114,7 @@ def main():
             for tag, src in (("asm", "a.s"), ("obj", "o.o")):
                 if not os.path.exists(j(src)):
                     continue
-                r = run(["gcc", "-w", "-o", j("mine" + tag), j("mine.c"), j(src)])
+                r = run(["gcc", "-w"] + inc + ["-o", j("mine" + tag), j("mine.c"), j(src)] + ext)
                 if r.returncode:
                     print(path + ": assemble/link failed (" + tag + ")\n" + r.stderr[:800])
                     bad += 1

@@ -31,6 +31,23 @@ No new TAST node, so no change to the T8 graph, its goldens or `--verify-cfg`.
 Other back ends reuse the same convention or lower the same shapes themselves;
 the shared lowering the draft proposed would only have covered `store (load)`.
 
+## Calls and returns (T10, done 2026-10-19, same back-end approach)
+
+System V classification in `cgx86.c` (`agg_class`, `gen_call`, `ret_agg`,
+callee prologue): up to 16 bytes an aggregate is one or two eightbytes, each
+INTEGER (any non-float scalar or bit-field) or SSE (only floats/doubles),
+passed in the next free `rdi..r9` / `xmm0..7` registers, or on the stack when
+they do not all fit; over 16 bytes, or packed, it is copied to the stack
+(argument) or returned through a hidden `%rdi` pointer that comes back in
+`%rax`. Results in registers (`rax`, `rdx`, `xmm0`, `xmm1`) are stored to a
+per-call frame temporary and the call yields its address. A cast to a
+`transparent_union` passes as its operand. Limits: a register-class aggregate
+whose last eightbyte is 3, 5, 6 or 7 bytes, `long double` members, complex.
+Checked against gcc in both directions by `tests/asm_exec/abi.c` plus
+`tests/asm_exec/gcc/abi.c` (built by gcc and linked into both programs; the
+harness drives its `gcc_*` functions); a mutant that classifies every
+eightbyte INTEGER is caught.
+
 ## What changed in the plan, and why (review log)
 
 - **Round 1: code against plan.** The consumer is a tree-recursive generator,
@@ -56,11 +73,10 @@ the shared lowering the draft proposed would only have covered `store (load)`.
 
 ## Result
 
-lua54: 2160 of 2174 functions emit (was 2052); libuv: 1521 of 1546 (was
-1455). Suite 2283 passed. Objects pass `readelf` and assemble.
+lua54: 2160 of 2174 functions emit (was 2052); libuv: 1539 of 1546 (was
+1455) with T10. Suite 2283 passed. Objects pass `readelf` and assemble.
 
 ## Not done (see `PARKED.md`)
 
-Aggregates passed to or returned from calls and returned from functions (T10:
-SysV classification); aggregate `const`, `cond`, `comma`, compound-literal
+Aggregate `const`, `cond`, `comma`, compound-literal
 values; bit-field elements of a local list; `va_arg`; label addresses.
