@@ -183,3 +183,11 @@ long memparam(int k)
     struct tri t = {k, k + 1, k * 3};
     return takes_tri(k, t, k + 2, k + 3, k + 4, k + 5, k + 6);
 }
+
+/* offsetof with an index that is not constant */
+struct oa { int x; struct { char c[4]; long l; } b[3]; short s[5][2]; };
+long offv(int k)
+{
+    return __builtin_offsetof(struct oa, b[k % 3].l) + __builtin_offsetof(struct oa, s[k & 3][k & 1]) +
+           __builtin_offsetof(struct oa, b[1].c[k & 3]);
+}

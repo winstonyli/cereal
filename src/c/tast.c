@@ -1018,6 +1018,27 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
             return unsup(e, "binary %s", punct_spelling[p]);
         }
     }
+    case N_OFFSETOF: {          /* an index that is not constant: the constant part plus index * size */
+        uint32_t ok[64], nk = nkids(c, i, ok, 64), j, sum, ka[2];
+        TypeId lt = size_type(c);
+        if (c->cv[i] == ~(uint64_t)0)
+            return unsup(e, "offsetof in a variable length array");
+        sum = cnst(e, lt, c->cv[i], loc);
+        for (j = 1; j < nk; j++) {
+            uint32_t x;
+            if (ntag(c, ok[j]) != N_DESIG_INDEX || !c->cv[ok[j]])
+                continue;
+            x = rv(e, first_child(c, ok[j]));
+            if (x == TN)
+                return TN;
+            ka[0] = conv(e, x, lt, loc);
+            ka[1] = cnst(e, lt, c->cv[ok[j]], loc);
+            ka[0] = mk(e, TO_BINOP, lt, loc, 0, 0, (unsigned)P_STAR, ka, 2);
+            ka[1] = sum;
+            sum = mk(e, TO_BINOP, lt, loc, 0, 0, (unsigned)P_PLUS, ka, 2);
+        }
+        return sum;
+    }
     default:
         return unsup(e, "expression %s", node_names[ntag(c, i)]);
     }

@@ -5318,7 +5318,7 @@ static void e_offsetof(Checker *c, uint32_t i)
     uint32_t k[64], n = nkids(c, i, k, 64), j;
     TypeId t, cur;
     uint64_t off = 0;
-    bool konst = true, nonconst_addr = false;
+    bool konst = true, nonconst_addr = false, varsz = false;
     OffStep st[64] = {{0}};
     uint32_t ns = 0;
     if (n < 2) {
@@ -5409,11 +5409,17 @@ static void e_offsetof(Checker *c, uint32_t i)
                 set_err(c, i);
                 return;
             }
+            c->cv[k[j]] = 0;    /* else the element size: the index is not constant */
             if (has_ival(c, e) && !var_size(c, elem_of(c, cur)))
                 off += (uint64_t)(int64_t)c->cv[e] * elem_size(c, type_ptr(TT,
                                                                  elem_of(c, cur)));
-            else
+            else {
                 konst = false;
+                if (var_size(c, elem_of(c, cur)))
+                    varsz = true;
+                else
+                    c->cv[k[j]] = elem_size(c, type_ptr(TT, elem_of(c, cur)));
+            }
             if (ns < 64) {
                 const TypeEnt *te = type_ent(TT, type_canon(TT, cur));
                 st[ns].arr = true;
@@ -5438,6 +5444,8 @@ static void e_offsetof(Checker *c, uint32_t i)
     c->ty[i] = size_type(c);
     if (konst)
         set_ice(c, i, size_type(c), off);
+    else
+        c->cv[i] = varsz ? ~(uint64_t)0 : off;  /* the constant part, for the T-AST */
 }
 
 static void e_types_compat(Checker *c, uint32_t i)
