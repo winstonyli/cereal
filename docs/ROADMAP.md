@@ -189,7 +189,7 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
   Decided 2026-10-18: the emitter stays pluggable (several back ends can
   consume the same lowered graph: QBE text, assembly, LLVM IR, C), leaning
   toward direct object/machine code with no external assembler step; QBE is
-  one candidate, not the commitment. Estimate (est. 8 to 12+ weeks, high risk; first step: TAST_DESIGN.md, draft, S0 done, hybrid). Nothing in the tree
+  one candidate, not the commitment (est. 8 to 12+ weeks, high risk; first step: TAST_DESIGN.md, draft, S0 done, hybrid). Nothing in the tree
   lowers the AST today. Start only after A and B.
 - Macro-aware project index and refactoring (wanted; collects what B5 parked;
   no estimate yet). Today the project index and rename deal with macros by
