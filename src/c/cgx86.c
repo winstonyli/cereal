@@ -1025,6 +1025,7 @@ static void gen_va(Gx *g, uint32_t n)
     const TNode *t = nd(g->L, n);
     uint64_t sz = 0;
     TI ti;
+    AggCls ac = {0};
     bool agg, flt = false;
     uint32_t over, done;
     int64_t adv = 8;
@@ -1058,14 +1059,9 @@ static void gen_va(Gx *g, uint32_t n)
         break;
     }
     agg = is_agg(g, t->ty, &sz);
-    if (agg) {                  /* only the memory class comes off the overflow area */
-        AggCls ac;
+    if (agg) {
         if (!agg_class(g, t->ty, &ac))
             return;
-        if (!ac.mem) {
-            unsup(g, "va_arg of a register-class aggregate");
-            return;
-        }
         adv = (int64_t)((sz + 7) / 8 * 8);
     } else {
         if (!tinfo(g, t->ty, &ti))
@@ -1083,6 +1079,36 @@ static void gen_va(Gx *g, uint32_t n)
         em(g, M_ADD, 8, R(R_CX), R(R_DX));
         em(g, M_ADD, 4, I(flt ? 16 : 8), R(R_CX));
         em(g, M_MOV, 4, R(R_CX), M(R_AX, flt ? 4 : 0));
+        em(g, M_JMP, 8, LB(done), NONE());
+        em(g, M_LABEL, 8, LB(over), NONE());
+    } else if (!ac.mem) {       /* the eightbytes come from the register save area, into a slot of ours */
+        int ng = 0, nf = 0, p;
+        int32_t tmp;
+        for (p = 0; p < ac.np; p++)
+            if (ac.c[p] == 'i')
+                ng++;
+            else
+                nf++;
+        tmp = alloc(g, (uint64_t)ac.np * 8, 8);
+        if (ng) {
+            em(g, M_CMP, 4, I(48 - 8 * ng), M(R_AX, 0));
+            em_cc(g, M_JCC, CC_A, LB(over));
+        }
+        if (nf) {
+            em(g, M_CMP, 4, I(176 - 16 * nf), M(R_AX, 4));
+            em_cc(g, M_JCC, CC_A, LB(over));
+        }
+        for (p = 0; p < ac.np; p++) {
+            bool gp = ac.c[p] == 'i';
+            em(g, M_MOV, 4, M(R_AX, gp ? 0 : 4), R(R_CX));
+            em(g, M_MOV, 8, M(R_AX, 16), R(R_DX));
+            em(g, M_ADD, 8, R(R_CX), R(R_DX));
+            em(g, M_MOV, 8, M(R_DX, 0), R(R_DX));
+            em(g, M_MOV, 8, R(R_DX), M(R_BP, tmp + 8 * p));
+            em(g, M_ADD, 4, I(gp ? 8 : 16), R(R_CX));
+            em(g, M_MOV, 4, R(R_CX), M(R_AX, gp ? 0 : 4));
+        }
+        em(g, M_LEA, 8, M(R_BP, tmp), R(R_DX));
         em(g, M_JMP, 8, LB(done), NONE());
         em(g, M_LABEL, 8, LB(over), NONE());
     }

@@ -89,3 +89,37 @@ int cross(int k)
 {
     return (int)ext_vsum(4, (long long)k, 2LL, 3LL, 4LL) + (int)mine_vsum(10, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL, 8LL, 9LL, (long long)k);
 }
+
+typedef struct { int a, b; } P2;
+typedef struct { double x, y; } D2;
+typedef struct { long l; double d; } M2;
+typedef struct { double d; int i; } DI;     /* sse, then integer eightbyte */
+
+/* register-class aggregates through va_arg: k rounds of P2, D2, M2, DI, long */
+long long mine_ag(int k, ...)
+{
+    va_list ap;
+    long long s = 0;
+    va_start(ap, k);
+    while (k-- > 0) {
+        P2 p = va_arg(ap, P2);
+        D2 d = va_arg(ap, D2);
+        M2 m = va_arg(ap, M2);
+        DI e = va_arg(ap, DI);
+        s = s * 3 + p.a - p.b * 2 + (long long)(d.x * 4 - d.y) + m.l * 5 + (long long)m.d + (long long)e.d * 7 + e.i + va_arg(ap, long);
+    }
+    va_end(ap);
+    return s;
+}
+
+long long ext_ag(int k, ...);       /* gcc-built */
+
+long long agcall(int k)
+{
+    P2 p = {k, 3};
+    D2 d = {1.5, (double)k};
+    M2 m = {k * 2L, 2.5};
+    DI e = {4.0, k};
+    return mine_ag(1, p, d, m, e, 9L) + mine_ag(3, p, d, m, e, 1L, p, d, m, e, 2L, p, d, m, e, 3L) +
+           ext_ag(2, p, d, m, e, 5L, p, d, m, e, 6L);
+}
