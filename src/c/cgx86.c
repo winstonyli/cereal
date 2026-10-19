@@ -8,8 +8,9 @@
  * 64-bit arithmetic followed by a re-canonicalisation gives the type's own
  * wrap-around.  Not supported yet (the function is then reported in a
  * comment): floating point, struct/union/array values, initializer lists,
- * static data and globals, bit-fields, indirect and non-integer calls, more
- * than six arguments, computed goto.  See docs/TAST_T9_PLAN.md. */
+ * static data and globals, bit-fields, indirect and non-integer calls,
+ * computed goto.  Integer arguments past the sixth go on the stack.  See
+ * docs/TAST_T9_PLAN.md. */
 #include <stdarg.h>
 #include <string.h>
 
@@ -381,32 +382,39 @@ static void gen(Gx *g, uint32_t n)
         genaddr(g, kid(g->L, n, 0));
         break;
     case TO_CALL: {
-        uint32_t j;
+        uint32_t j, nstack = t->nkids > 6 ? t->nkids - 6 : 0;
         bool pad;
         const CSym *s;
-        if (t->pun || t->nkids > 6) {
-            unsup(g, t->pun ? "indirect call" : "call with more than six arguments");
+        if (t->pun) {
+            unsup(g, "indirect call");
             return;
         }
         s = csym(g->c, t->sym);
-        for (j = 0; j < t->nkids; j++) {
+        /* Arguments are pushed last to first, so the first six pop into
+         * registers and the rest stay as the stack arguments; the padding
+         * goes below them so %rsp is 16-aligned at the call. */
+        pad = (g->depth + nstack) & 1;
+        if (pad) {
+            em(g, M_SUB, 8, I(8), R(R_SP));
+            g->depth++;
+        }
+        for (j = t->nkids; j-- > 0;) {
             if (!tinfo(g, nd(g->L, kid(g->L, n, j))->ty, &ti))
                 return;
             gen(g, kid(g->L, n, j));
             push(g);
         }
-        for (j = t->nkids; j-- > 0;)
+        for (j = 0; j < t->nkids && j < 6; j++)
             pop(g, arg_regs[j]);
-        pad = g->depth & 1;
-        if (pad)
-            em(g, M_SUB, 8, I(8), R(R_SP));
         em(g, M_XOR, 4, R(R_AX), R(R_AX));
         {
             MOp callee = {MK_SYM, 0, 0, cident(g->c, s->name)};
             em(g, M_CALL, 8, callee, NONE());
         }
-        if (pad)
-            em(g, M_ADD, 8, I(8), R(R_SP));
+        if (nstack + pad) {
+            em(g, M_ADD, 8, I(8 * (nstack + pad)), R(R_SP));
+            g->depth -= (int)(nstack + pad);
+        }
         if (type_ckind(&g->c->tt, t->ty) != TY_VOID) {
             if (!tinfo(g, t->ty, &ti))
                 return;
@@ -552,14 +560,17 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
     g.sub_at = g.f.code.len;
     em(&g, M_SUB, 8, I(0), R(R_SP));
     params(&g, root, &ps);
-    if (ps.len > 6)
-        unsup(&g, "more than six parameters");
     for (i = 0; i < ps.len && !g.why[0]; i++) {
         TI ti;
         uint32_t ref = g.c->cb[ps.data[i]] - 1;
         if (!tinfo(&g, csym(g.c, ref)->ty, &ti))
             break;
-        em(&g, M_MOV, 8, R(arg_regs[i]), M(R_BP, var_slot(&g, ref, 8)));
+        if (i < 6) {
+            em(&g, M_MOV, 8, R(arg_regs[i]), M(R_BP, var_slot(&g, ref, 8)));
+        } else {                /* above the saved %rbp and return address */
+            em(&g, M_MOV, 8, M(R_BP, 16 + 8 * (int64_t)(i - 6)), R(R_AX));
+            em(&g, M_MOV, 8, R(R_AX), M(R_BP, var_slot(&g, ref, 8)));
+        }
     }
     for (i = 0; i < L->npl && !g.why[0]; i++)
         if (L->b.data[ord[i]].reach)

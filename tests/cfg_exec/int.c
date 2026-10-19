@@ -177,3 +177,19 @@ int unused(int a, int b, int c)
 {
     return b ? c : 5;
 }
+
+int seven(int a, int b, int c, int d, int e, int f, int g)
+{
+    return a - b * 2 + c * 3 - d + e * 5 - f + g * 7;
+}
+
+int eight(int a, int b, int c, int d, int e, int f, long g, unsigned char h)
+{
+    return a - b * 2 + c * 3 - d + e * 5 - f + (int)(g * 7) - h * 11;
+}
+
+int callmany(int x, int y)
+{
+    return eight(x, y, x + y, x - y, 1, 2, 3, y) + seven(y, x, 1, 2, 3, 4, x * y) +
+           eight(y, x, 1, 2, 3, 4, 5, 6);
+}
