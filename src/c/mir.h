@@ -36,6 +36,7 @@ typedef struct MOp {
     X(CQO, "cqto") X(IDIV, "idiv") X(DIV, "div") X(PUSH, "push") X(POP, "pop")  \
     X(CALL, "call") X(JMP, "jmp") X(JCC, "j") X(LEAVE, "leave") X(RET, "ret")   \
     X(LABEL, "") X(XCHG, "xchg") X(XADD, "lock xadd")                                                                \
+    X(REPMOVSB, "rep movsb") X(REPSTOSB, "rep stosb")   /* %rcx bytes, %rsi to %rdi / %al to %rdi */ \
     /* scalar SSE: w is the float's width (4: ss, 8: sd) */                     \
     X(FMOV, "mov") X(FADD, "add") X(FSUB, "sub") X(FMUL, "mul")                 \
     X(FDIV, "div") X(FCMP, "ucomi")                                             \

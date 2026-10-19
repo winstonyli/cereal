@@ -11,9 +11,9 @@
  * for integer and SSE classes, the rest on the stack.  Globals and statics
  * are reached %rip-relative and defined by cgdata.c; string literals are
  * anonymous read-only objects.  Not supported yet (the function is then
- * reported in a comment): long double, struct/union/array values, initializer
- * lists of automatics, bit-fields, indirect calls, computed goto, conversions
- * between 64-bit unsigned and float.  See docs/TAST_T9_PLAN.md. */
+ * reported in a comment): long double, struct/union/array values passed or
+ * returned, bit-fields, computed goto, conversions between 64-bit unsigned
+ * and float.  See docs/TAST_T9_PLAN.md. */
 #include <stdarg.h>
 #include <string.h>
 
@@ -107,7 +107,7 @@ static bool tinfo(Gx *g, TypeId t, TI *ti)
         return true;
     }
     if (!((k >= TY_BOOL && k <= TY_ULLONG) || k == TY_ENUM)) {
-        unsup(g, "value of a type outside the integer and float subset");
+        unsup(g, "value of a type outside the integer and float subset k%d", (int)k);
         return false;
     }
     sz = type_size(tt, t, &ok);
@@ -222,6 +222,7 @@ static int32_t *slot_in(Gx *g, int32_t **tab, uint32_t n)
 static void gen(Gx *g, uint32_t n);
 static void gen_call(Gx *g, uint32_t n, const char *name);
 static void gen_intrin(Gx *g, uint32_t n);
+static bool is_agg(Gx *g, TypeId t, uint64_t *size);
 
 /* The address of an lvalue node, into %rax. */
 static void genaddr(Gx *g, uint32_t n)
@@ -244,11 +245,16 @@ static void genaddr(Gx *g, uint32_t n)
         break;
     }
     case TO_REG:
-        em(g, M_LEA, 8, M(R_BP, *slot_in(g, &g->regoff, (uint32_t)t->val)), R(R_AX));
+    case TO_TMP: {              /* an 8-byte slot: no room for an aggregate */
+        uint64_t sz;
+        if (is_agg(g, t->ty, &sz)) {
+            unsup(g, "aggregate in a register or temporary");
+            return;
+        }
+        em(g, M_LEA, 8, M(R_BP, *slot_in(g, t->op == TO_REG ? &g->regoff : &g->tmpoff,
+                                          (uint32_t)t->val)), R(R_AX));
         break;
-    case TO_TMP:
-        em(g, M_LEA, 8, M(R_BP, *slot_in(g, &g->tmpoff, (uint32_t)t->val)), R(R_AX));
-        break;
+    }
     case TO_DEREF:
         gen(g, kid(g->L, n, 0));
         break;
@@ -304,6 +310,113 @@ static void store_rcx(Gx *g, const TI *ti)
         em(g, M_FMOV, ti->bytes, R(R_X0), M(R_CX, 0));
     else
         em(g, M_MOV, ti->bytes, R(R_AX), M(R_CX, 0));
+}
+
+/* ---- aggregates ---------------------------------------------------------
+ * A struct, union or array value is its address: evaluating such a node
+ * leaves in %rax the address of memory that holds it (a load is the lvalue's
+ * address, a store copies and yields the destination). */
+
+static bool is_agg(Gx *g, TypeId t, uint64_t *size)
+{
+    TypeTable *tt = &g->c->tt;
+    TypeKind k = type_ckind(tt, t);
+    bool ok = false;
+    uint64_t sz;
+    if (k != TY_STRUCT && k != TY_UNION && k != TY_ARRAY)
+        return false;
+    sz = type_size(tt, t, &ok);
+    if (!ok)
+        unsup(g, "aggregate of unknown size");
+    *size = sz;
+    return true;
+}
+
+/* Copy n bytes from (%rax) to (%rcx); %rax ends as the destination. */
+static void copy_bytes(Gx *g, uint64_t n)
+{
+    if (n > 64) {
+        em(g, M_MOV, 8, R(R_CX), R(R_DX));
+        em(g, M_MOV, 8, R(R_AX), R(R_SI));
+        em(g, M_MOV, 8, R(R_CX), R(R_DI));
+        em(g, M_MOVABS, 8, I((int64_t)n), R(R_CX));
+        em(g, M_REPMOVSB, 0, NONE(), NONE());
+        em(g, M_MOV, 8, R(R_DX), R(R_AX));
+    } else {
+        uint64_t off = 0;
+        int w;
+        for (; off < n; off += (uint64_t)w) {
+            w = n - off >= 8 ? 8 : n - off >= 4 ? 4 : n - off >= 2 ? 2 : 1;
+            em(g, M_MOV, w, M(R_AX, (int64_t)off), R(R_DX));
+            em(g, M_MOV, w, R(R_DX), M(R_CX, (int64_t)off));
+        }
+        em(g, M_MOV, 8, R(R_CX), R(R_AX));
+    }
+}
+
+/* Zero n bytes of the frame at rbp+off; clobbers %rax, %rcx, %rdx, %rdi. */
+static void zero_frame(Gx *g, int32_t off, uint64_t n)
+{
+    if (n > 64) {
+        em(g, M_LEA, 8, M(R_BP, off), R(R_DI));
+        em(g, M_XOR, 4, R(R_AX), R(R_AX));
+        em(g, M_MOVABS, 8, I((int64_t)n), R(R_CX));
+        em(g, M_REPSTOSB, 0, NONE(), NONE());
+    } else {
+        uint64_t at = 0;
+        int w;
+        em(g, M_XOR, 4, R(R_DX), R(R_DX));
+        for (; at < n; at += (uint64_t)w) {
+            w = n - at >= 8 ? 8 : n - at >= 4 ? 4 : n - at >= 2 ? 2 : 1;
+            em(g, M_MOV, w, R(R_DX), M(R_BP, off + (int64_t)at));
+        }
+    }
+}
+
+/* A local's initializer list: the object is zeroed, then each element is
+ * stored in source order. */
+static void local_list(Gx *g, uint32_t n)
+{
+    const TNode *t = nd(g->L, n);
+    uint64_t size = 0;
+    int32_t base;
+    uint32_t i;
+    if (!is_agg(g, t->ty, &size)) {
+        unsup(g, "initializer list for a scalar");
+        return;
+    }
+    base = var_slot(g, t->sym, 0);
+    zero_frame(g, base, size);
+    for (i = 0; i < t->nkids && !g->why[0]; i++) {
+        uint32_t k = kid(g->L, n, i), v = kid(g->L, k, 0);
+        const TNode *e = nd(g->L, k);
+        uint64_t esz = 0;
+        bool agg;
+        TI ti;
+        if (e->width) {
+            unsup(g, "bit-field initializer");
+            return;
+        }
+        agg = is_agg(g, e->ty, &esz);
+        if (agg) {                      /* a string cut to its array, or a struct value */
+            const TNode *s = nd(g->L, v);
+            if (s->op == TO_STR && s->width < esz)
+                esz = s->width;
+            if (s->op == TO_STR)
+                genaddr(g, v);
+            else
+                gen(g, v);
+        } else {
+            if (!tinfo(g, e->ty, &ti))
+                return;
+            gen(g, v);
+        }
+        em(g, M_LEA, 8, M(R_BP, base + (int32_t)e->val), R(R_CX));
+        if (agg)
+            copy_bytes(g, esz);
+        else
+            store_rcx(g, &ti);
+    }
 }
 
 static int cc_of(int p, bool sg)
@@ -403,6 +516,7 @@ static void gen(Gx *g, uint32_t n)
 {
     const TNode *t = nd(g->L, n);
     TI ti;
+    uint64_t asz;
     if (g->why[0])
         return;
     switch (t->op) {
@@ -423,12 +537,24 @@ static void gen(Gx *g, uint32_t n)
         break;
     }
     case TO_LOAD:
+        if (is_agg(g, t->ty, &asz)) {
+            genaddr(g, kid(g->L, n, 0));
+            break;
+        }
         if (!tinfo(g, t->ty, &ti))
             return;
         genaddr(g, kid(g->L, n, 0));
         load_at_rax(g, &ti);
         break;
     case TO_STORE:
+        if (is_agg(g, t->ty, &asz)) {
+            genaddr(g, kid(g->L, n, 0));
+            push(g);
+            gen(g, kid(g->L, n, 1));
+            pop(g, R_CX);
+            copy_bytes(g, asz);
+            break;
+        }
         if (!tinfo(g, t->ty, &ti))
             return;
         genaddr(g, kid(g->L, n, 0));
@@ -722,6 +848,7 @@ static void gen_stmt(Gx *g, uint32_t n)
 {
     const TNode *t = nd(g->L, n);
     TI ti;
+    uint64_t asz;
     if (g->why[0])
         return;
     switch (t->op) {
@@ -739,10 +866,18 @@ static void gen_stmt(Gx *g, uint32_t n)
             var_slot(g, t->sym, 0);
             break;
         }
-        if (nd(g->L, kid(g->L, n, 0))->op == TO_ELEM || !tinfo(g, t->ty, &ti)) {
-            unsup(g, "initializer list or aggregate local");
-            return;
+        if (nd(g->L, kid(g->L, n, 0))->op == TO_ELEM) {
+            local_list(g, n);
+            break;
         }
+        if (is_agg(g, t->ty, &asz)) {   /* a struct or union copied in */
+            gen(g, kid(g->L, n, 0));
+            em(g, M_LEA, 8, M(R_BP, var_slot(g, t->sym, 0)), R(R_CX));
+            copy_bytes(g, asz);
+            break;
+        }
+        if (!tinfo(g, t->ty, &ti))
+            return;
         gen(g, kid(g->L, n, 0));
         em(g, M_LEA, 8, M(R_BP, var_slot(g, t->sym, 0)), R(R_CX));
         store_rcx(g, &ti);
@@ -833,8 +968,8 @@ static void params(Gx *g, uint32_t root, U32Vec *out)
     if (body == NO_NODE)
         return;
     for (i = cfirst(c, root); i < cfirst(c, body); i++) {
-        if (!is_real_param(c, i) || !c->cb[i])
-            continue;
+        if (!is_real_param(c, i) || !c->cb[i] || type_ckind(&c->tt, c->ty[i]) == TY_VOID)
+            continue;           /* not f(void) */
         while (out->len && out->data[out->len - 1] >= cfirst(c, i))
             out->len--;         /* a parameter of a parameter's own type */
         vec_push(out, i);

@@ -1,178 +1,66 @@
 ---
-status: draft
+status: done
 ---
 
-# TAST stage T9: plan (initializers and aggregates to explicit stores)
+# TAST stage T9: aggregates and initializer lists (done, in the back end)
 
-T8 gave every function a control-flow graph whose blocks still hold the
-structured form's `local` (with `elem` kids), aggregate-typed values and
-`call` nodes. A back end cannot take those. T9 removes the last constructs
-that are not a load, a store or an arithmetic node; ABI classification stays
-a later stage (T10). Grounded on a `--dump-cfg` of a small scratch file (struct, array and string initializers, aggregate assignment, a call with a struct argument), 2026-10-18; the file was not kept.
+The first draft (2026-10-18) planned a CFG-level lowering to `copy`/`fill`
+statement ops, a verifier rule and a byte-level oracle memory. Stress-testing
+it against the code and the corpora (2026-10-19) replaced it with the design
+below; the draft is in git history (`git log -- docs/TAST_T9_PLAN.md`).
 
-## 1. What the graph holds today
+## Design
 
-From the dump: `local p #2 #4 #6 struct P` with `elem +0 #1`, `elem +4 #3`,
-`elem +8 #5` as kids; `local a #10 #12 int[4]` (two elements for four, the
-rest implicitly zero); `local q #15 #17` where `#15` is `elem +0 (str ..)`
-for a `char[3]` taken from a string; `local r #20` where `#20` is a struct
-`load`; `store r (call mk)` and `call take (load r) ..` with struct values;
-member access as `field +k` over a `sym`, array indexing as `addr`/`ptradd`/
-`deref`.
+An aggregate (struct, union, array) value is its address: `gen` of an
+aggregate-typed node leaves in `%rax` the address of memory holding it
+(`cgx86.c`, "aggregates").
 
-So three things are not yet core: (a) initializer lists (`elem`, implicit
-zero fill, `str` into arrays); (b) values of aggregate type (`load` of a
-struct, struct as a `store` source, call argument and call result); (c) the
-`data` statements are static data and stay.
+- `load` of an aggregate is the lvalue's address; `store` evaluates the
+  destination, then the source, copies `sizeof` bytes and yields the
+  destination (so `c = b = a` works).
+- A copy of up to 64 bytes is unrolled through `%rdx` in 8/4/2/1-byte moves;
+  larger ones use `rep movsb` (`M_REPMOVSB`, bytes `f3 a4`, checked against gas).
+- `local x = <aggregate>` is the same copy into the variable's slot.
+- `local x = { elems }`: the object is zeroed (`xor` plus stores up to 64
+  bytes, else `rep stosb`, `M_REPSTOSB`), then each `elem` is stored in source
+  order at its byte offset. A string element is copied cut to its array; a
+  struct-valued element is copied. This mirrors the static evaluator's `elem`.
+- A `reg`/`tmp` of aggregate type is refused (those slots are 8 bytes).
 
-## 2. Form
+No new TAST node, so no change to the T8 graph, its goldens or `--verify-cfg`.
+Other back ends reuse the same convention or lower the same shapes themselves;
+the shared lowering the draft proposed would only have covered `store (load)`.
 
-Two new statement ops. `copy dst src N` (`dst` and `src` are address-typed
-values, `N` the byte count, no overlap) and `fill dst byte N`; no other new
-node. The rules:
-- `local x e1..en` with `elem` kids becomes `local x` (no init) followed by,
-  in order: a zero fill of the object when the initializer does not cover it
-  (`fill dst 0 N`, below), then one `store (field/ptradd lvalue) v` per
-  `elem`. A `str` element is a `copy` from the string's data with the
-  remaining bytes zeroed. Scalar `local x v` keeps its init (it is already
-  one store).
-- A struct or array `load` used as a value is replaced where it is consumed:
-  `store dst (load src)` becomes `copy (addr dst) (addr src) N`; a call
-  argument of aggregate type stays a `load` here (T10 decides how it is
-  passed); a call result stored to an lvalue becomes `call` with a hidden
-  destination, again T10. Until T10, T9 leaves aggregate `call` operands
-  and results alone, and its verifier only forbids aggregate values
-  *elsewhere*.
-- `fill` is for zeroing (because a
-  large `= {0}` must not become a thousand stores).
-- Order: C leaves the evaluation order of initializer elements
-  indeterminately sequenced; keep source order, as the structured form does.
+## What changed in the plan, and why (review log)
 
-Spill/`reg` interplay: an initializer element that contains a split is
-already lowered by T8b before T9 sees it (the `elem` kids are values, so
-they are in place by then). T9 runs on the T8 graph, block by block, and
-never changes a terminator.
+- **Round 1: code against plan.** The consumer is a tree-recursive generator,
+  and "value is an address" covers store, local initializer, nested element
+  and chained assignment with one mechanism. A separate pass with `copy`/`fill`
+  nodes, a verifier and regenerated goldens bought nothing the back end needs.
+  Dropped.
+- **Round 2: the spike was wrong.** It reported 0 aggregate stores and loads
+  in lua54. Counting `--dump-cfg` types by the words `struct`/`union` misses
+  typedef names (`Value`, `TValue` is a struct with a union member). Real
+  count from the back end: 102 lua54 and 33 libuv functions stopped on an
+  aggregate store (`*o1 = *o2`-style copies of 8 to 16 bytes dominate lua).
+- **Round 3: the biggest bucket was not aggregates.** 58 functions (52 libuv,
+  6 lua) failed as "value of a type outside the subset" because an unnamed
+  `void` parameter, `f(void)`, was treated as an argument. A bug in
+  `params()`, fixed with a `(void)` function in `tests/asm_exec/data.c`.
+- **Round 4: oracle.** The byte-level memory the draft made step 1 is only
+  needed by the CFG interpreter; `tests/asm_exec.py` runs real memory against
+  gcc, so `tests/asm_exec/agg.c` (13 functions: small/mixed/large copies,
+  pointer and chained assignment, unions, partial and zero lists, strings,
+  nested lists) is the check. Mutants confirmed it detects a short `rep movsb`
+  and a short `rep stosb` (the latter needs stale stack bytes, hence `dirty`).
 
-## 3. Verifier additions (`--verify-cfg`)
+## Result
 
-- No `elem` node remains; no `local` has kids other than one scalar init.
-- Every aggregate-typed value is a `load` consumed by a `call` operand, a
-  `ret`, or a `copy` source (the T10 boundary); nowhere else.
-- `copy`/`fill` sizes equal the object size on both sides and stay inside
-  the object (the layout the checker already computed).
+lua54: 2160 of 2174 functions emit (was 2052); libuv: 1521 of 1546 (was
+1455). Suite 2283 passed. Objects pass `readelf` and assemble.
 
-## 4. Check against execution
+## Not done (see `PARKED.md`)
 
-Section 5 of the T8 plan models one cell per object and byte offset, which
-cannot see a `copy` that moves bytes or a zero fill that covers padding. T9
-therefore needs the oracle's byte-level memory (the parked row "Execution
-oracle for floating point, aggregate copies, ..."): objects become byte
-arrays, integers are stored little-endian at their offset, a read compares
-the bytes written. Then `tests/cfg_exec/` gains a struct/array
-initializer file compared with gcc, including partially initialized
-objects and nested aggregates. Pointer provenance stays one object, as
-now. Floating point stays out (it needs the byte encoding of doubles; the
-interpreter could use `struct` packing, left for a later round).
-
-## 5. Order and gates
-
-1. Byte-level memory in `cfg_exec.py` first, on the existing T8 files
-   (their results must not change): a refactor with a check already in
-   place.
-2. Lower `local` initializers (scalars unchanged, lists to stores/`fill`,
-   `str` to `copy`); goldens in `tests/cfg/` regenerated; oracle files.
-3. Aggregate assignment to `copy`; the T10 boundary verifier rule.
-4. Corpus: lua54 and libuv lower with 0 findings and 0 unsupported; count
-   `copy`/`fill` nodes and the largest `fill` (spike below).
-5. Gate before a tag, as for T8.
-
-**Spike first (read-only, cheap):** count, over lua54 and libuv, the local
-initializer lists by size and the aggregate assignments, to see whether
-`fill` is needed at all or whether stores alone would do (an array of 4096
-zeros decides it).
-
-**Spike result (2026-10-18, throwaway script over the dumps of the T8b
-corpus run; not kept).** Counts of `local`s and aggregate operations in the
-lowered graphs:
-
-| | lua54 | libuv |
-|---|---|---|
-| locals without init | 1492 | 1260 |
-| scalar init | 3474 | 89 |
-| initializer lists (all `elem` kids) | 0 | 3 (1 array of 2, 2 structs), at most 2 elems |
-| aggregate `store` / `load` / call returning one | 0 / 0 / 0 | 33 / 65 / 6 |
-
-So in these two corpora the initializer lowering is almost unexercised (3
-lists, none with an implicit zero tail), `fill` has no corpus case at all,
-and the volume is in aggregate assignment and aggregate loads (all libuv).
-Consequences: (a) `fill` can be dropped from the first cut and added when
-a unit needs it (the repo's own tests keep list initializers covered, see
-`tests/tast/`); (b) the corpora cannot be the evidence for initializer
-lowering, so the oracle's struct/array files carry that burden; (c) the
-risk sits in step 3 (aggregates), not step 2. The script counted a `local`
-as a list only when every kid is an `elem`, and a type as aggregate when it
-names `struct`/`union` or ends in `[N]` and is not a pointer; types such as
-`char[]` of unknown length or a typedef hiding a struct are read from the
-printed type, which the dump expands, so they are counted; the numbers are
-otherwise unverified by a second method.
-
-## 6. What is out
-
-- ABI classification of arguments and results (T10); `va_arg` and
-  intrinsics lowering; `setjmp`.
-- Static data (`data` stays as T3 produces it); VLAs; floating-point
-  byte encoding in the oracle.
-- Any optimization (store merging, redundant zero elimination).
-
-## 7. Decisions needed
-
-1. Direction: this plan continues the back-end path (T9 initializers, T10
-   SysV classification, T11 emission, checked by running compiled
-   lua54 tests against a gcc build). The alternative consumer of the T8
-   graph is the dataflow diagnostics of ROADMAP Track D
-   (`-Wuninitialized`, `-Wimplicit-fallthrough`, `-Wnull-dereference`),
-   which needs no T9. **Recommendation:** T9, because the graph is useful
-   to the back end only after it, and the diagnostics can be built on the T8
-   graph at any time without waiting. Pro: one path to a runnable
-   artifact. Con: ~weeks before anything user-visible.
-2. `copy`/`fill` as statement ops versus expanding every aggregate
-   operation into stores. **Recommendation:** statement ops (one concept
-   each, small output, easy for QBE `blit`); expansion would multiply
-   nodes for big objects.
-3. Whether `str` initialization of arrays uses `copy` from a `data` string
-   or per-byte stores. **Recommendation:** `copy`.
-
-4. Back end target (decided 2026-10-18, by the user): keep the emitter
-   open to several back ends over the same lowered graph; lean toward
-   direct object/machine code. QBE is one candidate, not assumed. T9 does
-   not depend on it; revisit at T10 (classification is where a back end's own
-   ABI handling would overlap).
-   **Spike (2026-10-18, throwaway Python over the `--dump-cfg` text, not
-   kept):** stack-slot x86-64 assembly (AT&T, one slot per node and
-   variable, every value canonicalised to 64 bits after each op) for the
-   oracle's files, assembled with `gcc` and run against gcc on the oracle's
-   random arguments: `int.c` 16 functions (3093 lines of assembly), 0
-   mismatches; `mem.c` 4 functions (the struct one skipped), 0 mismatches. A
-   deliberate change of `&` to `|` in the emitter produced 16 mismatches, so
-   the comparison detects errors. So the T8 graph is enough for a naive
-   direct code generator on integers, arrays and pointers; not covered:
-   structs, floats, calls with more than 6 arguments or aggregates, and any
-   object-file writing (the spike used the system assembler).
-
-## 8. Review log
-
-- **Round 1 (self).** Caught: T8's oracle cannot check `copy`/`fill` (so a
-  byte memory is step 1, not an afterthought); `fill` may be unnecessary
-  (spike decides); aggregate call operands cannot be settled before T10,
-  so T9's verifier rule is a boundary, not a ban.
-- **Round 2.** Checked the claim "T9 never changes a terminator": the
-  `local` rewrite inserts statements in a block only, so true; but a
-  `switch` jumping past a `local` (Duff) must not skip a *zero fill* that
-  C requires only when the declaration is reached: C says the object is
-  indeterminate after such a jump, so no fill is needed there; verifier
-  need not model it. Open: whether `str` can contain embedded zero bytes
-  (the dump holds `616200`, bytes explicit, so `copy` size is safe).
-- **Round 3.** Nothing material beyond the spike and the oracle's byte
-  memory; the dump in section 1 was read, not assumed, but no TAST source
-  was changed or run for T9 yet, so every claim about *how* it lowers is
-  untested.
+Aggregates passed to or returned from calls and returned from functions (T10:
+SysV classification); aggregate `const`, `cond`, `comma`, compound-literal
+values; bit-field elements of a local list; `va_arg`; label addresses.

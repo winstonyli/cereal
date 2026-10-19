@@ -145,3 +145,8 @@ int usethrough(int k)
 {
     return through(k & 1 ? add1 : dbl, k);
 }
+
+int nothing(void)
+{
+    return 5 + counter;
+}

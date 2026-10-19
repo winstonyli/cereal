@@ -153,7 +153,7 @@ void mir_print(const MFunc *f, FILE *out)
             else
                 fprintf(out, "\tcall %s@PLT", m->a.name);
             break;
-        case M_CQO: case M_LEAVE: case M_RET:
+        case M_CQO: case M_LEAVE: case M_RET: case M_REPMOVSB: case M_REPSTOSB:
             fprintf(out, "\t%s", op_names[m->op]);
             break;
         case M_PUSH: case M_POP: case M_NEG: case M_NOT: case M_IDIV: case M_DIV:
