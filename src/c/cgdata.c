@@ -472,7 +472,7 @@ bool x86_data_node(El *e, uint32_t n, char *why, size_t nwhy)
 
 void x86_finish(Checker *c)
 {
-    X86 *x = c->x86;
+    X86 *x = c->opt.emit_obj ? x86_get(c) : c->x86;   /* a unit without definitions still writes its (empty) object */
     size_t i;
     if (!x)
         return;
