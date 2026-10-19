@@ -159,3 +159,9 @@ int got(int k)
     int (*f)(const char *) = puts;
     return (f != 0) + (environ != 0) + (&environ != 0) + k;
 }
+
+/* an extern array of unknown size, and an old-style empty parameter list */
+extern const char *const ext_names[];
+int ext_at(int i) { return ext_names[i & 1][0] + i; }
+int noproto() { return 11; }
+int callnoproto(int k) { return k + noproto(); }

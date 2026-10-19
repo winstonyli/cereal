@@ -1238,6 +1238,27 @@ static void gen_intrin(Gx *g, uint32_t n)
         em(g, M_MOVQX, f ? 4 : 8, R(R_AX), R(R_X0));
         return;
     }
+    if (!strncmp(nm, "bswap", 5) || !strncmp(nm, "clz", 3) || !strncmp(nm, "ctz", 3)) {
+        bool bs = nm[0] == 'b';
+        int w = bs ? atoi(nm + 5) / 8 : strcmp(nm + 3, "") ? 8 : 4;     /* clzl, clzll: 64 bits */
+        if (bs && w != 2 && w != 4 && w != 8) {
+            unsup(g, "built-in %s", nm);
+            return;
+        }
+        gen(g, kid(g->L, n, 0));
+        if (bs) {
+            em(g, M_BSWAP, w == 8 ? 8 : 4, R(R_AX), NONE());
+            if (w == 2) {               /* the two bytes are in the high half */
+                em(g, M_MOV, 4, I(16), R(R_CX));
+                em(g, M_SHR, 4, NONE(), R(R_AX));
+            }
+        } else {
+            em(g, nm[1] == 'l' ? M_BSR : M_BSF, w, R(R_AX), R(R_AX));
+            if (nm[1] == 'l')           /* the index of the top bit, from the top */
+                em(g, M_XOR, 4, I(w * 8 - 1), R(R_AX));
+        }
+        return;
+    }
     for (i = 0; i < sizeof libc / sizeof *libc; i++)
         if (!strcmp(nm, libc[i])) {
             gen_call(g, n, libc[i]);

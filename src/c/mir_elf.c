@@ -208,6 +208,14 @@ static bool enc_inst(const MInst *m, Enc *e)
             ins2(e, 0, true, 0xaf, hw(b->reg), a);
         }
         break;
+    case M_BSR: ins2(e, 0, w8, 0xbd, hw(b->reg), a); break;
+    case M_BSF: ins2(e, 0, w8, 0xbc, hw(b->reg), a); break;
+    case M_BSWAP:
+        if (w8 || hw(a->reg) >= 8)
+            put(e, 0x40 | (w8 ? 8 : 0) | (hw(a->reg) >> 3 & 1));
+        put(e, 0x0f);
+        put(e, 0xc8 + (hw(a->reg) & 7));
+        break;
     case M_SHL: ins1(e, 0, w8, false, 0xd3, 4, b); break;
     case M_SHR: ins1(e, 0, w8, false, 0xd3, 5, b); break;
     case M_SAR: ins1(e, 0, w8, false, 0xd3, 7, b); break;

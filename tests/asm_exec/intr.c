@@ -85,3 +85,12 @@ int relax(int k)
     __asm__ volatile ("pause");
     return k + 1;
 }
+
+/* bit built-ins (zero is undefined for clz and ctz: callers pass nonzero) */
+unsigned bs32(unsigned x) { return __builtin_bswap32(x); }
+unsigned long long bs64(unsigned long long x) { return __builtin_bswap64(x); }
+unsigned bs16(unsigned short x) { return __builtin_bswap16(x); }
+int lz32(unsigned x) { return __builtin_clz(x | 1); }
+int lz64(unsigned long long x) { return __builtin_clzll(x | 1) + __builtin_clzl(x | 2); }
+int tz32(unsigned x) { return __builtin_ctz(x | 0x80000000u); }
+int tz64(unsigned long long x) { return __builtin_ctzll(x | (1ull << 63)) + __builtin_ctzl(x | (1ull << 62)); }

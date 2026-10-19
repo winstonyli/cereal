@@ -334,7 +334,8 @@ static uint32_t lval(El *e, uint32_t n)
         s = csym(c, ref);
         if (s->kind != CS_OBJ && s->kind != CS_FUNC)
             return unsup(e, "identifier is not a variable");
-        if (s->kind == CS_OBJ && !ok_ty(e, s->ty))
+        if (s->kind == CS_OBJ && !ok_ty(e, s->ty) &&      /* an extern array of unknown size only decays */
+            !(type_ckind(&c->tt, s->ty) == TY_ARRAY && ok_ty(e, elem_of(c, s->ty))))
             return unsup(e, "%s", why_type(e, s->ty));
         return mk(e, TO_SYM, s->ty, loc, 0, ref, 0, NULL, 0);
     }
@@ -2233,7 +2234,7 @@ static void func_def(El *e, uint32_t root)
     s = csym(c, c->cb[d] - 1);
     ft = type_canon(&c->tt, s->ty);
     fe = type_ent(&c->tt, ft);
-    if (fe->flags & TF_NOPROTO) {
+    if ((fe->flags & TF_NOPROTO) && fe->n) {
         unsup(e, "unprototyped definition");
         return;
     }
