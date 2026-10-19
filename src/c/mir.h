@@ -48,7 +48,8 @@ typedef struct MOp {
     X(CVTF2I, "cvtt")      /* float a (truncated) to 64-bit integer b */        \
     X(CVTF2F, "cvt")       /* w: the source's width; the other one results */   \
     X(MOVQX, "mov")        /* bits between a general register and an xmm */     \
-    X(MOVAPS, "movaps")
+    X(MOVAPS, "movaps")                                                         \
+    X(MOVUPS, "movups")    /* 16 bytes between an xmm and an xmm or memory (a to b) */
 
 typedef enum {
 #define X(n, s) M_##n,

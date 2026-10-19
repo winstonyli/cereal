@@ -596,8 +596,8 @@ static void gen_binary(Gx *g, uint32_t n)
 }
 
 /* ---- System V classes of an aggregate ------------------------------------
- * Up to 16 bytes it travels as eightbytes, each INTEGER ('i') or SSE ('s');
- * anything larger (or packed) goes in memory. */
+ * Up to 16 bytes it travels as eightbytes, each INTEGER ('i') or SSE ('s'); a 16-byte vector is one
+ * whole %xmm ('v', SSE and SSEUP); anything larger (or packed) goes in memory. */
 
 
 static void cls_mark(AggCls *a, uint64_t off, char k)
@@ -632,8 +632,15 @@ static bool cls_walk(Gx *g, TypeId t, uint64_t base, AggCls *a)
         }
         return true;
     }
-    if (k == TY_VECTOR) {      /* not the xmm class: only between our own functions */
-        a->mem = true;
+    if (k == TY_VECTOR) {
+        bool ok = false;
+        uint64_t vs = type_size(tt, ct, &ok);
+        if (base == 0 && a->size == 16 && vs == 16)
+            a->c[0] = 'v';
+        else if (vs == 8)
+            cls_mark(a, base, 's');
+        else
+            a->mem = true;
         return true;
     }
     if (k == TY_ARRAY) {
@@ -662,13 +669,15 @@ static bool agg_class(Gx *g, TypeId t, AggCls *a)
     a->mem = a->size > 16;
     if (!a->mem && !cls_walk(g, t, 0, a))
         return false;
+    if (!a->mem && a->c[0] == 'v')
+        a->np = 1;
     for (p = 0; p < 2; p++)
         if (!a->c[p])
             a->c[p] = 'i';
     if (!a->mem)
         for (p = 0; p < a->np; p++) {
             int w = piece_w(a, p);
-            if (w != 8 && w != 4 && w != 2 && w != 1) {
+            if (w != 16 && w != 8 && w != 4 && w != 2 && w != 1) {
                 unsup(g, "aggregate of %d bytes in registers", (int)a->size);
                 return false;
             }
@@ -678,6 +687,8 @@ static bool agg_class(Gx *g, TypeId t, AggCls *a)
 
 static int piece_w(const AggCls *a, int p)
 {
+    if (a->c[p] == 'v')
+        return 16;
     uint64_t w = a->size - 8 * (uint64_t)p;
     return w > 8 ? 8 : (int)w;
 }
@@ -688,8 +699,7 @@ static void load_piece(Gx *g, int w, int64_t off, int base, int dst)
     em(g, w >= 4 ? M_MOV : M_MOVZX, w, M(base, off), R(dst));
 }
 
-/* Does the type hold a vector?  A vector travels in %xmm in the System V ABI; this back end gives
- * it the memory class, so a function with one in its signature must not be seen from outside. */
+/* Does the type hold a vector? */
 static bool has_vec(Gx *g, TypeId t)
 {
     TypeTable *tt = &g->c->tt;
@@ -709,7 +719,16 @@ static bool has_vec(Gx *g, TypeId t)
     return false;
 }
 
-/* A function type with a vector parameter or result: the callee (a symbol, or NULL) must be a
+/* A type that holds a vector yet travels in memory (wider than one %xmm): the System V ABI would
+ * use %ymm or more, so a function with one in its signature must not be seen from outside. */
+static bool vec_mem(Gx *g, TypeId t)
+{
+    AggCls a;
+    uint64_t sz;
+    return has_vec(g, t) && is_agg(g, t, &sz) && agg_class(g, t, &a) && a.mem;
+}
+
+/* A function type with a wide vector parameter or result: the callee (a symbol, or NULL) must be a
  * function of ours whose linkage is not visible: static, or a header's inline function. */
 static bool vec_sig_ok(Gx *g, TypeId ft, const CSym *callee)
 {
@@ -721,12 +740,12 @@ static bool vec_sig_ok(Gx *g, TypeId ft, const CSym *callee)
     if (type_ckind(tt, ft) != TY_FUNC)
         return true;
     fe = type_ent(tt, ft);
-    any = has_vec(g, fe->base);
+    any = vec_mem(g, fe->base);
     for (i = 0; i < fe->n && !any; i++)
-        any = has_vec(g, type_params(tt, ft)[i]);
+        any = vec_mem(g, type_params(tt, ft)[i]);
     if (!any || (callee && (callee->linkage == LK_INTERNAL || cin_system(g->c, callee->loc))))
         return true;
-    unsup(g, "vector in the signature of a function that is not static (it travels in %%xmm)");
+    unsup(g, "vector wider than %%xmm in the signature of a function that is not static");
     return false;
 }
 
@@ -801,6 +820,10 @@ static void gen_call(Gx *g, uint32_t n, const char *name)
                         a->loc[p] = a->ac.c[p] == 'i' ? arg_regs[ni++] : R_X0 + nf++;
                 }
             }
+            if (!a->np && !a->ac.mem && has_vec(g, at)) {
+                unsup(g, "vector argument on the stack");
+                goto out;
+            }
             if (!a->np)
                 a->words = (uint32_t)((a->ac.size + 7) / 8);
         }
@@ -831,6 +854,13 @@ static void gen_call(Gx *g, uint32_t n, const char *name)
             gen(g, as[j].node);
             if (as[j].agg) {
                 for (p = as[j].np; p-- > 0;) {
+                    if (as[j].ac.c[p] == 'v') {     /* a whole %xmm: two words */
+                        em(g, M_MOVUPS, 16, M(R_AX, 8 * p), R(R_X0));
+                        em(g, M_SUB, 8, I(16), R(R_SP));
+                        em(g, M_MOVUPS, 16, R(R_X0), M(R_SP, 0));
+                        g->depth += 2;
+                        continue;
+                    }
                     load_piece(g, piece_w(&as[j].ac, p), 8 * p, R_AX, R_CX);
                     em(g, M_PUSH, 8, R(R_CX), NONE());
                     g->depth++;
@@ -845,7 +875,11 @@ static void gen_call(Gx *g, uint32_t n, const char *name)
     }
     for (j = b0; j < t->nkids; j++)
         for (p = 0; p < as[j].np; p++) {
-            if (as[j].loc[p] >= R_X0) {
+            if (as[j].loc[p] >= R_X0 && as[j].agg && as[j].ac.c[p] == 'v') {
+                em(g, M_MOVUPS, 16, M(R_SP, 0), R(as[j].loc[p]));
+                em(g, M_ADD, 8, I(16), R(R_SP));
+                g->depth -= 2;
+            } else if (as[j].loc[p] >= R_X0) {
                 pop(g, R_AX);
                 em(g, M_MOVQX, 8, R(R_AX), R(as[j].loc[p]));
             } else {
@@ -872,6 +906,8 @@ static void gen_call(Gx *g, uint32_t n, const char *name)
                 int w = piece_w(&rc, p);
                 if (rc.c[p] == 'i')
                     em(g, M_MOV, w, R(ii++ ? R_DX : R_AX), M(R_CX, 8 * p));
+                else if (rc.c[p] == 'v')
+                    em(g, M_MOVUPS, 16, R(R_X0 + ss++), M(R_CX, 8 * p));
                 else
                     em(g, M_FMOV, w == 4 ? 4 : 8, R(R_X0 + ss++), M(R_CX, 8 * p));
             }
@@ -901,6 +937,8 @@ static void ret_agg(Gx *g, const AggCls *rc, int32_t retptr)
             int w = piece_w(rc, p);
             if (rc->c[p] == 'i')
                 load_piece(g, w, 8 * p, R_CX, ii++ ? R_DX : R_AX);
+            else if (rc->c[p] == 'v')
+                em(g, M_MOVUPS, 16, M(R_CX, 8 * p), R(R_X0 + ss++));
             else
                 em(g, M_FMOV, w == 4 ? 4 : 8, M(R_CX, 8 * p), R(R_X0 + ss++));
         }
@@ -1889,12 +1927,18 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
                                 em(&g, M_MOV, piece_w(&pc, p), R(arg_regs[ni]), M(R_BP, slot + 8 * p));
                             ni++;
                         } else {
-                            if (pass == 0)
+                            if (pass == 0 && pc.c[p] == 'v')
+                                em(&g, M_MOVUPS, 16, R(R_X0 + nf), M(R_BP, slot + 8 * p));
+                            else if (pass == 0)
                                 em(&g, M_FMOV, piece_w(&pc, p) == 4 ? 4 : 8, R(R_X0 + nf),
                                    M(R_BP, slot + 8 * p));
                             nf++;
                         }
                 } else {
+                    if (!pc.mem && has_vec(&g, csym(g.c, ref)->ty)) {
+                        unsup(&g, "vector parameter on the stack");
+                        break;
+                    }
                     if (pass == 1) {
                         em(&g, M_LEA, 8, M(R_BP, 16 + 8 * (int64_t)ns), R(R_AX));
                         em(&g, M_LEA, 8, M(R_BP, slot), R(R_CX));

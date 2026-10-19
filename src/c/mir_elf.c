@@ -301,6 +301,12 @@ static bool enc_inst(const MInst *m, Enc *e)
         else
             ins2(e, 0x66, w == 8, 0x7e, hw(a->reg), b);
         break;
+    case M_MOVUPS:
+        if (b->k == MK_MEM)
+            ins2(e, 0, false, 0x11, hw(a->reg), b);
+        else
+            ins2(e, 0, false, 0x10, hw(b->reg), a);
+        break;
     case M_MOVAPS: ins2(e, 0, false, 0x28, hw(b->reg), a); break;
     default:
         return false;

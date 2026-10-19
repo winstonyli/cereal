@@ -212,6 +212,12 @@ void mir_print(const MFunc *f, FILE *out)
             fputc(',', out);
             put_op(f, &m->b, w, out);
             break;
+        case M_MOVUPS:
+            fputs("	movups ", out);
+            put_op(f, &m->a, 8, out);
+            fputc(',', out);
+            put_op(f, &m->b, 8, out);
+            break;
         case M_MOVAPS:
             fputs("\tmovaps ", out);
             put_op(f, &m->a, 8, out);
