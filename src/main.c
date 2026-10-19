@@ -51,6 +51,7 @@ static void usage(FILE *o)
         "                --verify-cfg: --dump-cfg, and check each graph\n"
         "                --dump-asm: print each function as x86-64 assembly (a # comment\n"
         "                    names what it cannot do yet)\n"
+        "                --emit-obj=FILE: the same functions as an ELF64 object file\n"
         "                --dump-symbols: print the C symbol index\n"
         "                --verify-symbols: check it, report names it missed\n"
         "                --verify-carry=OLD[@PATH]: carry OLD's index (OLD's text\n"
@@ -1645,6 +1646,10 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--dump-asm")) {
             fe_opts.dump_asm = true;
+            continue;
+        }
+        if (!strncmp(argv[i], "--emit-obj=", 11)) {
+            fe_opts.emit_obj = argv[i] + 11;
             continue;
         }
         if (!strcmp(argv[i], "--dump-cfg")) {

@@ -747,7 +747,14 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
         fprintf(out, "# x86: %s unsupported: %s\n", g.f.name, g.why);
     } else {
         g.f.code.data[g.sub_at].a = I((g.frame + 15) / 16 * 16);
-        mir_print(&g.f, out);
+        if (g.c->opt.dump_asm)
+            mir_print(&g.f, out);
+        if (g.c->opt.emit_obj) {
+            if (!g.c->obj)
+                g.c->obj = mobj_new();
+            if (!mobj_add(g.c->obj, &g.f))
+                fprintf(out, "# x86: %s unsupported: no encoding\n", g.f.name);
+        }
     }
     vec_free(&g.f.code);
     vec_free(&g.vars);

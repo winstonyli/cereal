@@ -207,3 +207,14 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 | Execution oracle for floating point, aggregate copies, bit-fields, type punning, pointers passed between calls, indirect calls | The interpreter models one cell per object and byte offset; these need a byte-level memory and an ABI model. Trigger: a lowering bug in these areas that the structural verifier and corpus gate missed. | `tests/cfg_exec.py` header; aggregate-typed `?:` lowers with 0 findings (`pick` in a scratch file) but its value is not compared | parked |
 | `f().x` (member of a call result) stays unsupported, so the T8 graph never sees it | Needs a value-member op or a temporary (see the T2 row above). Trigger: same as that row. | scratch `use` unit reports `unsupported: member of rvalue` | parked |
 | Optimization, SSA, ABI classification of calls, lowering of initializers and `local` into stores, `setjmp`/`longjmp` edges | Out of scope of T8 by decision: `reg` is a mutable variable; a later pass builds SSA. Trigger: the back end (Track D) starts. | `docs/TAST_T8_PLAN.md` section 7 | parked |
+
+## x86-64 back end leftovers (src/c/cgx86.c, mir_elf.c; verified 2026-10-19)
+
+| What | Why parked / trigger | Evidence | Status |
+|---|---|---|---|
+| Struct/union/array values, initializer lists, SysV aggregate classification | Needs T9 (`docs/TAST_T9_PLAN.md`): explicit `copy` stores and a byte-level oracle memory first. Trigger: T9 lands. | libuv: 33 aggregate stores, 65 loads, 6 calls (T9 plan spike) | parked |
+| Globals, statics, string literals, data sections, indirect calls, computed goto | The object has `.text` only; data needs `.data`/`.rodata` and relocations beyond PLT32. Trigger: a unit whose functions touch a global. | `unsup(g, "global or static object")` in `genaddr` | parked |
+| Unsigned 64-bit to and from float; `long double` | A correct `cvtsi2sd` of values at or above 2^63 needs a branchy sequence; x87 for `long double`. Trigger: a corpus unit casts them. | `unsup` in the `TO_CAST` case of `gen` | parked |
+| Call relocations against `static` functions are unchecked against the assembler | Only global functions are in the oracle files; `as` may use a section-relative relocation for a local target. Trigger: any `static` function in an oracle file. | `tests/cfg_exec/*.c` and `tests/asm_exec/*.c` have none | parked |
+| `mobj_write` resolves each relocation's symbol by a linear scan | O(relocations x functions); fine for the tests, slow for a corpus file with thousands of functions. Trigger: `--emit-obj` on lua54 takes noticeable time. | `src/c/mir_elf.c` `mobj_write` | parked |
+| The oracle's random float arguments avoid out-of-range conversions | A float-to-int cast out of range is undefined and differs between 32- and 64-bit `cvtt`; the tests keep values small. Not a back end bug. | `tests/asm_exec.py` `value` | decided against |

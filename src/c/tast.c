@@ -2216,7 +2216,7 @@ void tast_unit(Checker *c)
         return;
     if (cin_system(c, loc))
         return;
-    pf = c->opt.dump_asm && !c->opt.dump_cfg && !c->opt.tast_tree ? "# " : "";
+    pf = CHK_ASM(c->opt) && !c->opt.dump_cfg && !c->opt.tast_tree ? "# " : "";
     if (c->unit_err) {
         fputs(pf, out);
         fputs("unit ", out);
@@ -2259,7 +2259,7 @@ void tast_unit(Checker *c)
                 if (c->opt.verify_tast)
                     verify(&e, out);
             }
-            if (c->opt.dump_cfg || c->opt.dump_asm)
+            if (c->opt.dump_cfg || CHK_ASM(c->opt))
                 tast_cfg(&e, (uint32_t)e.nodes.len - 1, out);
         }
     }

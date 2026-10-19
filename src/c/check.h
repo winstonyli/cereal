@@ -32,6 +32,7 @@ typedef struct CheckOptions {
     FILE *tast;                 /* --dump-tast, --dump-cfg: the typed tree of each unit */
     bool tast_tree;             /* ... print the tree itself (--dump-tast) */
     bool dump_asm;              /* --dump-asm: x86-64 assembly of each function (cgx86.c) */
+    const char *emit_obj;       /* --emit-obj=FILE: the same, as an ELF object (mir_elf.c) */
     bool dump_cfg, verify_cfg;  /* --dump-cfg: print the lowered control-flow graph;
                                  * --verify-cfg: and check it (tcfg.c) */
     bool verify_tast;           /* --verify-tast: check each tree, print findings */
@@ -55,6 +56,9 @@ typedef struct CheckOptions {
     FILE *symidx_verify;        /* --verify-symbols: report missed names */
     uint64_t *digest;           /* non-NULL: mix each unit's AST digest in (cdigest.c) */
 } CheckOptions;
+
+/* The x86-64 back end runs when assembly or an object is asked for. */
+#define CHK_ASM(o) ((o).dump_asm || (o).emit_obj)
 
 Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
                      const CheckOptions *opt);

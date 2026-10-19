@@ -73,4 +73,12 @@ typedef struct MFunc {
  * labels .L<name>_<n>). */
 void mir_print(const MFunc *f, FILE *out);
 
+/* An ELF64 relocatable object being built (mir_elf.c): functions are
+ * encoded as they come, mobj_write lays out the file. */
+typedef struct MObj MObj;
+MObj *mobj_new(void);
+bool mobj_add(MObj *o, const MFunc *f);     /* false: an instruction it cannot encode */
+bool mobj_write(MObj *o, const char *path);
+void mobj_free(MObj *o);
+
 #endif

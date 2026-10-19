@@ -15,6 +15,7 @@ typedef struct FrontendOpts {
     unsigned *tast_bad;         /* with verify_tast: incremented per finding */
     bool dump_types, dump_tast, dump_summaries, keep_summaries;
     bool dump_asm;              /* x86-64 assembly of each function (cgx86.c) */
+    const char *emit_obj;       /* ... or as an ELF object file */
     bool dump_cfg, verify_cfg;  /* the control-flow graph of each function (tcfg.c) */
     const char *validate_summaries;
     const Target *target;       /* NULL: the host's */

@@ -3,6 +3,7 @@
  * docs/TYPES.md).  Declarations are in cdecl.c (with cattr.c, cspec.c),
  * expressions in cexpr.c (with cwarn_expr.c, cprint.c, ...). */
 #include "c/check_int.h"
+#include "c/mir.h"
 #include "c/tast.h"
 
 #include <ctype.h>
@@ -774,7 +775,7 @@ Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
     c->cur_node = NO_NODE;
     if (opt->tast)
         fprintf(opt->tast, "%stast %d target %s\n",
-                opt->dump_asm && !opt->dump_cfg ? "# " : "", TAST_VERSION,
+                CHK_ASM(*opt) && !opt->dump_cfg ? "# " : "", TAST_VERSION,
                 c->tgt->name);
     if (opt->summaries || opt->dump_summaries || opt->validate_summaries)
         c->cs = csum_new(c);
@@ -802,6 +803,9 @@ void checker_free(Checker *c)
 {
     if (!c)
         return;
+    if (c->obj && !mobj_write(c->obj, c->opt.emit_obj))
+        fprintf(stderr, "cannot write %s\n", c->opt.emit_obj);
+    mobj_free(c->obj);
     vec_free(&c->undecl);
     vec_free(&c->inl_statics);
     for (uint32_t i = 0; i < c->dep_msgs.len; i++)

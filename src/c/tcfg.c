@@ -863,7 +863,7 @@ void tast_cfg(El *e, uint32_t root, FILE *out)
 {
     Cfg L;
     size_t i, k, nun = 0;
-    bool asm_only = e->c->opt.dump_asm && !e->c->opt.dump_cfg;
+    bool asm_only = CHK_ASM(e->c->opt) && !e->c->opt.dump_cfg;
     uint32_t *ord;
     U32Vec ij = {0};
     memset(&L, 0, sizeof L);
@@ -891,7 +891,7 @@ void tast_cfg(El *e, uint32_t root, FILE *out)
         ord = by_pos(&L);
         ijmp_targets(&L, &ij);
         mark(&L, ord[0], &ij);
-        if (e->c->opt.dump_asm)
+        if (CHK_ASM(e->c->opt))
             x86_func(&L, ord, out);
         for (i = 0; i < L.npl && e->c->opt.dump_cfg; i++) {
             const CBlk *x = &L.b.data[ord[i]];

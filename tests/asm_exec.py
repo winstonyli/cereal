@@ -74,30 +74,54 @@ def main():
                 print(path + ": gcc failed\n" + r.stderr[:400])
                 bad += 1
                 continue
-            r = run(["gcc", "-w", "-o", j("mine"), j("mine.c"), j("a.s")])
-            if r.returncode:
-                print(path + ": assemble/link failed\n" + r.stderr[:800])
-                bad += 1
-                continue
             a = run([j("ref")], timeout=60).stdout.split()
-            try:
-                b = run([j("mine")], timeout=60).stdout.split()
-            except subprocess.TimeoutExpired:
-                print(path + ": generated code timed out (loop never ends?)")
+            outs = {}
+            # the same functions as an object file: bytes against the assembler's, then linked and run
+            run([cereal, "check", "--target=x86_64-linux-gnu", "--emit-obj=" + j("o.o"), path])
+            r = run(["gcc", "-c", "-w", "-o", j("gas.o"), j("a.s")])
+            for o in ("o.o", "gas.o"):
+                if os.path.exists(j(o)):
+                    run(["objcopy", "-O", "binary", "-j", ".text", j(o), j(o + ".bin")])
+            if not os.path.exists(j("o.o")):
+                print(path + ": no object written")
                 bad += 1
-                continue
-        i, wrong = 0, 0
-        for f in done:
-            n = len(vecs[f.name])
-            for v, x, y in zip(vecs[f.name], a[i:i + n], b[i:i + n]):
-                if x != y:
-                    print("%s: %s%s: gcc %s, ours %s" % (path, f.name, tuple(v), x, y))
-                    wrong += 1
-                    break
-            i += n
+            else:
+                ours, gas = open(j("o.o.bin"), "rb").read(), open(j("gas.o.bin"), "rb").read()
+                if ours != gas:
+                    k = next((n for n in range(min(len(ours), len(gas))) if ours[n] != gas[n]),
+                             min(len(ours), len(gas)))
+                    print("%s: object .text differs from the assembler's at byte %d (%d vs %d bytes)\n"
+                          "  ours %s\n  gas  %s" % (path, k, len(ours), len(gas),
+                                                  ours[max(0, k - 8):k + 8].hex(" "),
+                                                  gas[max(0, k - 8):k + 8].hex(" ")))
+                    bad += 1
+            for tag, src in (("asm", "a.s"), ("obj", "o.o")):
+                if not os.path.exists(j(src)):
+                    continue
+                r = run(["gcc", "-w", "-o", j("mine" + tag), j("mine.c"), j(src)])
+                if r.returncode:
+                    print(path + ": assemble/link failed (" + tag + ")\n" + r.stderr[:800])
+                    bad += 1
+                    continue
+                try:
+                    outs[tag] = run([j("mine" + tag)], timeout=60).stdout.split()
+                except subprocess.TimeoutExpired:
+                    print(path + ": generated code timed out (loop never ends?)")
+                    bad += 1
+        wrong = 0
+        for tag, b in outs.items():
+            i = 0
+            for f in done:
+                n = len(vecs[f.name])
+                for v, x, y in zip(vecs[f.name], a[i:i + n], b[i:i + n]):
+                    if x != y:
+                        print("%s: %s%s: gcc %s, ours (%s) %s" % (path, f.name, tuple(v), x, tag, y))
+                        wrong += 1
+                        break
+                i += n
         bad += wrong
         print("%s: %d functions compared, %d unsupported%s" % (
-            path, len(done) - wrong, len(notes),
+            path, len(done), len(notes),
             (": " + ", ".join("%s (%s)" % kv for kv in notes.items())) if notes else ""))
         if len(done) * 2 < len(todo):
             print(path + ": fewer than half the integer functions were emitted")
