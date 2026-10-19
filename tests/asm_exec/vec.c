@@ -262,3 +262,92 @@ int mm_elem(int a, int b, int c, int d)
     x = _mm_insert_epi16(x, b, 3);
     return _mm_cvtsi128_si32(x) + _mm_extract_epi16(x, 5) + _mm_extract_epi16(_mm_srli_si128(x, 4), 1) + hash(x);
 }
+
+/* single and double precision; inputs include NaN and infinities */
+static __m128 fk(int a, int b, int c, int d)
+{
+    union { unsigned u; float f; } nn = {0x7fc00000u}, ii = {0x7f800000u};
+    float nan = nn.f, inf = ii.f;
+    float p[8] = {(float)a / 8, (float)b * 1.5f, nan, (float)c, inf, -inf, (float)d / 3, 0.0f};
+    return _mm_set_ps(p[(d >> 3) & 7], p[(c >> 2) & 7], p[(b >> 1) & 7], p[a & 7]);
+}
+
+static __m128d dk(int a, int b, int c, int d)
+{
+    union { unsigned long long u; double f; } nn = {0x7ff8000000000000ull}, ii = {0x7ff0000000000000ull};
+    double nan = nn.f, inf = ii.f;
+    double p[8] = {(double)a / 8, (double)b * 1.5, nan, (double)c, inf, -inf, (double)d / 3, 0.0};
+    return _mm_set_pd(p[(d >> 3) & 7], p[(c >> 2) & 7]);
+}
+
+static int fh(__m128 v) { return hash(_mm_castps_si128(v)); }
+static int dh(__m128d v) { return hash(_mm_castpd_si128(v)); }
+
+int mm_fops(int a, int b, int c, int d)
+{
+    __m128 x = fk(a, b, c, d), y = fk(d, a, b, c);
+    return fh(_mm_add_ps(x, y)) ^ fh(_mm_sub_ps(x, y)) ^ fh(_mm_mul_ps(x, y)) ^ fh(_mm_div_ps(x, y)) ^ fh(_mm_min_ps(x, y)) ^
+           fh(_mm_max_ps(x, y)) ^ fh(_mm_add_ss(x, y)) ^ fh(_mm_sub_ss(x, y)) ^ fh(_mm_mul_ss(x, y)) ^ fh(_mm_div_ss(x, y)) ^
+           fh(_mm_min_ss(x, y)) ^ fh(_mm_max_ss(x, y)) ^ fh(_mm_and_ps(x, y)) ^ fh(_mm_or_ps(x, y)) ^ fh(_mm_xor_ps(x, y)) ^
+           fh(_mm_andnot_ps(x, y));
+}
+
+int mm_dops(int a, int b, int c, int d)
+{
+    __m128d x = dk(a, b, c, d), y = dk(d, a, b, c);
+    return dh(_mm_add_pd(x, y)) ^ dh(_mm_sub_pd(x, y)) ^ dh(_mm_mul_pd(x, y)) ^ dh(_mm_div_pd(x, y)) ^ dh(_mm_min_pd(x, y)) ^
+           dh(_mm_max_pd(x, y)) ^ dh(_mm_add_sd(x, y)) ^ dh(_mm_sub_sd(x, y)) ^ dh(_mm_mul_sd(x, y)) ^ dh(_mm_div_sd(x, y)) ^
+           dh(_mm_min_sd(x, y)) ^ dh(_mm_max_sd(x, y)) ^ dh(_mm_and_pd(x, y)) ^ dh(_mm_or_pd(x, y)) ^ dh(_mm_xor_pd(x, y)) ^
+           dh(_mm_andnot_pd(x, y));
+}
+
+int mm_fcmp(int a, int b, int c, int d)
+{
+    __m128 x = fk(a, b, c, d), y = fk(d, a, b, c);
+    __m128d u = dk(a, b, c, d), v = dk(d, a, b, c);
+    return fh(_mm_cmpeq_ps(x, y)) ^ fh(_mm_cmplt_ps(x, y)) ^ fh(_mm_cmple_ps(x, y)) ^ fh(_mm_cmpgt_ps(x, y)) ^
+           fh(_mm_cmpge_ps(x, y)) ^ fh(_mm_cmpneq_ps(x, y)) ^ fh(_mm_cmpnlt_ps(x, y)) ^ fh(_mm_cmpnle_ps(x, y)) ^
+           fh(_mm_cmpngt_ps(x, y)) ^ fh(_mm_cmpnge_ps(x, y)) ^ fh(_mm_cmpord_ps(x, y)) ^ fh(_mm_cmpunord_ps(x, y)) ^
+           fh(_mm_cmpeq_ss(x, y)) ^ fh(_mm_cmplt_ss(x, y)) ^ fh(_mm_cmpunord_ss(x, y)) ^ fh(_mm_cmpnle_ss(x, y)) ^
+           dh(_mm_cmpeq_pd(u, v)) ^ dh(_mm_cmplt_pd(u, v)) ^ dh(_mm_cmple_pd(u, v)) ^ dh(_mm_cmpgt_pd(u, v)) ^
+           dh(_mm_cmpge_pd(u, v)) ^ dh(_mm_cmpneq_pd(u, v)) ^ dh(_mm_cmpnlt_pd(u, v)) ^ dh(_mm_cmpord_pd(u, v)) ^
+           dh(_mm_cmpunord_pd(u, v)) ^ dh(_mm_cmpeq_sd(u, v)) ^ dh(_mm_cmpge_sd(u, v)) ^ dh(_mm_cmpngt_sd(u, v)) ^
+           _mm_movemask_ps(x) * 3 + _mm_movemask_pd(u) * 5 +
+           (_mm_comieq_ss(x, y) << 1) + (_mm_comilt_ss(x, y) << 2) + (_mm_comige_ss(x, y) << 3) + (_mm_ucomineq_ss(x, y) << 4) +
+           (_mm_comieq_sd(u, v) << 5) + (_mm_comile_sd(u, v) << 6) + (_mm_ucomigt_sd(u, v) << 7) + (_mm_comineq_sd(u, v) << 8);
+}
+
+int mm_fshuf(int a, int b, int c, int d)
+{
+    __m128 x = fk(a, b, c, d), y = fk(d, a, b, c);
+    __m128d u = dk(a, b, c, d), v = dk(d, a, b, c);
+    return fh(_mm_shuffle_ps(x, y, 0x1b)) ^ fh(_mm_shuffle_ps(x, y, 0xe4)) ^ fh(_mm_unpacklo_ps(x, y)) ^ fh(_mm_unpackhi_ps(x, y)) ^
+           fh(__builtin_ia32_movss(x, y)) ^ fh(_mm_movehl_ps(x, y)) ^ fh(_mm_movelh_ps(x, y)) ^ dh(_mm_shuffle_pd(u, v, 1)) ^
+           dh(_mm_shuffle_pd(u, v, 2)) ^ dh(_mm_unpacklo_pd(u, v)) ^ dh(_mm_unpackhi_pd(u, v)) ^ dh(__builtin_ia32_movsd(u, v));
+}
+
+int mm_fcvt(int a, int b, int c, int d)
+{
+    __m128 x = fk(a, b, c, d), y = fk(d, a, b, c);
+    __m128d u = dk(a, b, c, d);
+    __m128i i = mk(a, b, c, d);
+    x = _mm_set_ps(a / 4.0f, b * 0.25f, c * 1.5f, d * 100.0f);
+    u = _mm_set_pd(a * 2.5, d / 3.0);
+    return fh(_mm_cvtepi32_ps(i)) ^ hash(_mm_cvttps_epi32(x)) ^ dh(_mm_cvtepi32_pd(i)) ^ dh(_mm_cvtps_pd(x)) ^
+           fh(_mm_cvtpd_ps(u)) ^ hash(_mm_cvttpd_epi32(u));
+}
+
+int mm_fcvt2(int a, int b, int c, int d)
+{
+    __m128 x = _mm_set_ps(a / 4.0f, b * 0.25f, c * 1.5f, d * 100.0f), y = fk(d, a, b, c);
+    __m128d u = _mm_set_pd(a * 2.5, d / 3.0);
+    return dh(_mm_cvtsi32_sd(u, a)) ^ dh(_mm_cvtsi64_sd(u, (long long)a * b)) ^ fh(_mm_cvtsi32_ss(x, b)) ^
+           fh(_mm_cvtsi64_ss(x, (long long)c * d)) ^ fh(_mm_cvtsd_ss(y, u)) ^ dh(_mm_cvtss_sd(u, x));
+}
+
+int mm_fcvt3(int a, int b, int c, int d)
+{
+    __m128 x = _mm_set_ps(a / 4.0f, b * 0.25f, c * 1.5f, d * 100.0f);
+    __m128d u = _mm_set_pd(a * 2.5, d / 3.0);
+    return _mm_cvttsd_si32(u) ^ (int)_mm_cvttsd_si64(u) ^ _mm_cvttss_si32(x) ^ (int)_mm_cvttss_si64(x);
+}

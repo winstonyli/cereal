@@ -28,10 +28,11 @@ typedef struct BTab {
 /* An x86 target built-in (cbuiltin_x86.h): tast.c lowers a call to operations on the lanes of its
  * vector arguments.  kind says how, lane how the lanes of the operands are read (the signature's
  * element types only describe the C types), arg is the kind's parameter. */
-enum { IAL_S8, IAL_U8, IAL_S16, IAL_U16, IAL_S32, IAL_U32, IAL_S64, IAL_U64 };
+enum { IAL_S8, IAL_U8, IAL_S16, IAL_U16, IAL_S32, IAL_U32, IAL_S64, IAL_U64, IAL_F32, IAL_F64 };
 enum { IAK_LOAD, IAK_STORE, IAK_MOVMSK, IAK_ANDN, IAK_MINMAX, IAK_SHIFT, IAK_SHUF, IAK_BSHIFT,
        IAK_EXT, IAK_SET, IAK_MULW, IAK_MADD, IAK_MULH, IAK_AVG, IAK_SAT, IAK_PACK, IAK_SAD,
-       IAK_UNPACK, IAK_MOVQ };
+       IAK_UNPACK, IAK_MOVQ, IAK_BITOP, IAK_FSOP, IAK_FPMM, IAK_FCMP, IAK_SHUFP, IAK_MOVLOW, IAK_MOVHL,
+       IAK_CVT, IAK_CVTS, IAK_FCOMI };
 typedef struct IaBt {
     BTab bt;
     unsigned char kind, lane;
