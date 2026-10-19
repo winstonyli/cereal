@@ -220,6 +220,8 @@ static int32_t *slot_in(Gx *g, int32_t **tab, uint32_t n)
 /* ---- expressions ------------------------------------------------------- */
 
 static void gen(Gx *g, uint32_t n);
+static void gen_call(Gx *g, uint32_t n, const char *name);
+static void gen_intrin(Gx *g, uint32_t n);
 
 /* The address of an lvalue node, into %rax. */
 static void genaddr(Gx *g, uint32_t n)
@@ -329,6 +331,72 @@ static void gen_binary(Gx *g, uint32_t n)
     else
         em(g, M_MOV, 8, R(R_AX), R(R_CX));
     popv(g, &lt);
+}
+
+/* A call: name is the symbol, or NULL for a call through the pointer in kid 0. */
+static void gen_call(Gx *g, uint32_t n, const char *name)
+{
+    uint32_t j, b0 = name ? 0 : 1, nstack = 0;
+    int ni = 0, nf = 0, pad, *loc;
+    TI *ats, ti;
+    const TNode *t = nd(g->L, n);
+    loc = xmalloc((t->nkids + 1) * sizeof *loc);
+    ats = xmalloc((t->nkids + 1) * sizeof *ats);
+    for (j = b0; j < t->nkids; j++) {
+        if (!tinfo(g, nd(g->L, kid(g->L, n, j))->ty, &ats[j])) {
+            free(loc);
+            free(ats);
+            return;
+        }
+        loc[j] = arg_loc(&ats[j], &ni, &nf);
+        nstack += loc[j] < 0;
+    }
+    /* Stack arguments are pushed first (last to first), then the register
+     * ones, which pop off again; the padding goes below the stack
+     * arguments so %rsp is 16-aligned at the call. */
+    pad = (g->depth + (int)nstack) & 1;
+    if (pad) {
+        em(g, M_SUB, 8, I(8), R(R_SP));
+        g->depth++;
+    }
+    for (j = t->nkids; j-- > b0;)
+        if (loc[j] < 0) {
+            gen(g, kid(g->L, n, j));
+            pushv(g, &ats[j]);
+        }
+    for (j = t->nkids; j-- > b0;)
+        if (loc[j] >= 0) {
+            gen(g, kid(g->L, n, j));
+            pushv(g, &ats[j]);
+        }
+    if (b0) {               /* the callee's address, after the arguments are safe on the stack */
+        gen(g, kid(g->L, n, 0));
+        em(g, M_MOV, 8, R(R_AX), R(R_R11));
+    }
+    for (j = b0; j < t->nkids; j++)
+        if (loc[j] >= R_X0) {
+            pop(g, R_AX);
+            em(g, M_MOVQX, 8, R(R_AX), R(loc[j]));
+        } else if (loc[j] >= 0) {
+            pop(g, loc[j]);
+        }
+    free(loc);
+    free(ats);
+    em(g, M_MOV, 4, I(nf), R(R_AX));    /* vector registers used, for variadic callees */
+    {
+        MOp callee = b0 ? R(R_R11) : (MOp){MK_SYM, 0, 0, name};
+        em(g, M_CALL, 8, callee, NONE());
+    }
+    if (nstack + pad) {
+        em(g, M_ADD, 8, I(8 * (nstack + pad)), R(R_SP));
+        g->depth -= (int)(nstack + pad);
+    }
+    if (type_ckind(&g->c->tt, t->ty) != TY_VOID) {
+        if (!tinfo(g, t->ty, &ti))
+            return;
+        if (!ti.flt)            /* a float came back in %xmm0 */
+            canon(g, &ti);
+    }
 }
 
 static void gen(Gx *g, uint32_t n)
@@ -539,74 +607,113 @@ static void gen(Gx *g, uint32_t n)
     case TO_ADDR:
         genaddr(g, kid(g->L, n, 0));
         break;
-    case TO_CALL: {
-        uint32_t j, b0 = t->pun ? 1 : 0, nstack = 0;
-        int ni = 0, nf = 0, pad, *loc;
-        TI *ats;
-        const CSym *s;
-        s = t->pun ? NULL : csym(g->c, t->sym);
-        loc = xmalloc((t->nkids + 1) * sizeof *loc);
-        ats = xmalloc((t->nkids + 1) * sizeof *ats);
-        for (j = b0; j < t->nkids; j++) {
-            if (!tinfo(g, nd(g->L, kid(g->L, n, j))->ty, &ats[j])) {
-                free(loc);
-                free(ats);
-                return;
-            }
-            loc[j] = arg_loc(&ats[j], &ni, &nf);
-            nstack += loc[j] < 0;
-        }
-        /* Stack arguments are pushed first (last to first), then the register
-         * ones, which pop off again; the padding goes below the stack
-         * arguments so %rsp is 16-aligned at the call. */
-        pad = (g->depth + (int)nstack) & 1;
-        if (pad) {
-            em(g, M_SUB, 8, I(8), R(R_SP));
-            g->depth++;
-        }
-        for (j = t->nkids; j-- > b0;)
-            if (loc[j] < 0) {
-                gen(g, kid(g->L, n, j));
-                pushv(g, &ats[j]);
-            }
-        for (j = t->nkids; j-- > b0;)
-            if (loc[j] >= 0) {
-                gen(g, kid(g->L, n, j));
-                pushv(g, &ats[j]);
-            }
-        if (b0) {               /* the callee's address, after the arguments are safe on the stack */
-            gen(g, kid(g->L, n, 0));
-            em(g, M_MOV, 8, R(R_AX), R(R_R11));
-        }
-        for (j = b0; j < t->nkids; j++)
-            if (loc[j] >= R_X0) {
-                pop(g, R_AX);
-                em(g, M_MOVQX, 8, R(R_AX), R(loc[j]));
-            } else if (loc[j] >= 0) {
-                pop(g, loc[j]);
-            }
-        free(loc);
-        free(ats);
-        em(g, M_MOV, 4, I(nf), R(R_AX));    /* vector registers used, for variadic callees */
-        {
-            MOp callee = b0 ? R(R_R11) : (MOp){MK_SYM, 0, 0, cident(g->c, s->name)};
-            em(g, M_CALL, 8, callee, NONE());
-        }
-        if (nstack + pad) {
-            em(g, M_ADD, 8, I(8 * (nstack + pad)), R(R_SP));
-            g->depth -= (int)(nstack + pad);
-        }
-        if (type_ckind(&g->c->tt, t->ty) != TY_VOID) {
-            if (!tinfo(g, t->ty, &ti))
-                return;
-            if (!ti.flt)            /* a float came back in %xmm0 */
-                canon(g, &ti);
-        }
+    case TO_CALL:
+        gen_call(g, n, t->pun ? NULL : cident(g->c, csym(g->c, t->sym)->name));
         break;
-    }
+    case TO_INTRIN:
+        gen_intrin(g, n);
+        break;
     default:
         unsup(g, "expression %d", t->op);
     }
+}
+
+/* Built-ins: values (__builtin_expect, infinity), libc calls, and the
+ * __atomic_ operations on objects of 1, 2, 4 or 8 bytes (the order argument
+ * is ignored: loads are plain moves, stores and exchanges are xchg). */
+static bool atomic_width(Gx *g, uint32_t ptr, TI *raw)
+{
+    TypeTable *tt = &g->c->tt;
+    TypeId pt = type_canon(tt, nd(g->L, ptr)->ty);
+    bool ok = false;
+    uint64_t sz;
+    memset(raw, 0, sizeof *raw);
+    if (type_ckind(tt, pt) != TY_PTR) {
+        unsup(g, "atomic operand is not a pointer");
+        return false;
+    }
+    sz = type_size(tt, type_base(tt, pt), &ok);
+    if (!ok || (sz != 1 && sz != 2 && sz != 4 && sz != 8)) {
+        unsup(g, "atomic object of %d bytes", (int)sz);
+        return false;
+    }
+    raw->bytes = (int)sz;
+    return true;
+}
+
+static void gen_intrin(Gx *g, uint32_t n)
+{
+    static const char *const libc[] = {"memset", "memcpy", "memmove", "memcmp", "strlen", "strcmp",
+                                       "strncmp", "strcpy", "strncpy", "strcat", "strncat",
+                                       "strchr", "strrchr", "strstr", "abs", "labs", "llabs"};
+    const TNode *t = nd(g->L, n);
+    const char *nm = cident(g->c, t->sym);
+    TI raw, ti;
+    size_t i;
+    if (t->width == 2) {
+        const char *op = strncmp(nm, "__atomic_", 9) ? "" : nm + 9;
+        if (!strcmp(op, "load") || !strcmp(op, "store") || !strcmp(op, "exchange")) {
+            bool ex = !strcmp(op, "exchange"), ld = !strcmp(op, "load");
+            if (!atomic_width(g, kid(g->L, n, 0), &raw))
+                return;
+            if (ex || ld) {             /* where the old value goes */
+                gen(g, kid(g->L, n, ex ? 2 : 1));
+                push(g);
+            }
+            gen(g, kid(g->L, n, 0));
+            if (ld) {
+                load_at_rax(g, &raw);
+                pop(g, R_CX);
+                store_rcx(g, &raw);
+                return;
+            }
+            push(g);
+            gen(g, kid(g->L, n, 1));
+            load_at_rax(g, &raw);
+            pop(g, R_CX);
+            em(g, M_XCHG, raw.bytes, R(R_AX), M(R_CX, 0));
+            if (ex) {
+                pop(g, R_CX);
+                store_rcx(g, &raw);
+            }
+        } else if (!strcmp(op, "fetch_add") || !strcmp(op, "fetch_sub")) {
+            if (!atomic_width(g, kid(g->L, n, 0), &raw) || !tinfo(g, t->ty, &ti))
+                return;
+            gen(g, kid(g->L, n, 0));
+            push(g);
+            gen(g, kid(g->L, n, 1));
+            if (op[6] == 's')
+                em(g, M_NEG, 8, R(R_AX), NONE());
+            pop(g, R_CX);
+            em(g, M_XADD, raw.bytes, R(R_AX), M(R_CX, 0));
+            canon(g, &ti);
+        } else {
+            unsup(g, "atomic built-in %s", nm);
+        }
+        return;
+    }
+    if (strncmp(nm, "__builtin_", 10)) {
+        unsup(g, "built-in %s", nm);
+        return;
+    }
+    nm += 10;
+    if (!strcmp(nm, "expect") && nd(g->L, kid(g->L, n, 1))->op == TO_CONST) {
+        gen(g, kid(g->L, n, 0));
+        return;
+    }
+    if (!strcmp(nm, "huge_val") || !strcmp(nm, "inf") || !strcmp(nm, "huge_valf") ||
+        !strcmp(nm, "inff")) {
+        bool f = nm[strlen(nm) - 1] == 'f';
+        em(g, M_MOVABS, 8, I(f ? 0x7f800000LL : 0x7ff0000000000000LL), R(R_AX));
+        em(g, M_MOVQX, f ? 4 : 8, R(R_AX), R(R_X0));
+        return;
+    }
+    for (i = 0; i < sizeof libc / sizeof *libc; i++)
+        if (!strcmp(nm, libc[i])) {
+            gen_call(g, n, libc[i]);
+            return;
+        }
+    unsup(g, "built-in %s", nm);
 }
 
 /* ---- statements, blocks ------------------------------------------------ */

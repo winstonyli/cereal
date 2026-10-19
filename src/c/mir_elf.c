@@ -228,6 +228,16 @@ static bool enc_inst(const MInst *m, Enc *e)
     }
     case M_LEAVE: put(e, 0xc9); break;
     case M_RET: put(e, 0xc3); break;
+    case M_XCHG:
+        ins1(e, pfx, w8, rex_byte(w, a), w == 1 ? 0x86 : 0x87, hw(a->reg), b);
+        break;
+    case M_XADD: {
+        uint8_t o[2] = {0x0f, (uint8_t)(w == 1 ? 0xc0 : 0xc1)};
+        if (w == 2)
+            put(e, 0x66);
+        ins(e, 0xf0, w8, rex_byte(w, a), o, 2, hw(a->reg), b);
+        break;
+    }
     case M_CALL:
         if (a->k == MK_REG) {
             ins1(e, 0, false, false, 0xff, 2, a);
