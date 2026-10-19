@@ -540,18 +540,14 @@ static void gen(Gx *g, uint32_t n)
         genaddr(g, kid(g->L, n, 0));
         break;
     case TO_CALL: {
-        uint32_t j, nstack = 0;
+        uint32_t j, b0 = t->pun ? 1 : 0, nstack = 0;
         int ni = 0, nf = 0, pad, *loc;
         TI *ats;
         const CSym *s;
-        if (t->pun) {
-            unsup(g, "indirect call");
-            return;
-        }
-        s = csym(g->c, t->sym);
+        s = t->pun ? NULL : csym(g->c, t->sym);
         loc = xmalloc((t->nkids + 1) * sizeof *loc);
         ats = xmalloc((t->nkids + 1) * sizeof *ats);
-        for (j = 0; j < t->nkids; j++) {
+        for (j = b0; j < t->nkids; j++) {
             if (!tinfo(g, nd(g->L, kid(g->L, n, j))->ty, &ats[j])) {
                 free(loc);
                 free(ats);
@@ -568,17 +564,21 @@ static void gen(Gx *g, uint32_t n)
             em(g, M_SUB, 8, I(8), R(R_SP));
             g->depth++;
         }
-        for (j = t->nkids; j-- > 0;)
+        for (j = t->nkids; j-- > b0;)
             if (loc[j] < 0) {
                 gen(g, kid(g->L, n, j));
                 pushv(g, &ats[j]);
             }
-        for (j = t->nkids; j-- > 0;)
+        for (j = t->nkids; j-- > b0;)
             if (loc[j] >= 0) {
                 gen(g, kid(g->L, n, j));
                 pushv(g, &ats[j]);
             }
-        for (j = 0; j < t->nkids; j++)
+        if (b0) {               /* the callee's address, after the arguments are safe on the stack */
+            gen(g, kid(g->L, n, 0));
+            em(g, M_MOV, 8, R(R_AX), R(R_R11));
+        }
+        for (j = b0; j < t->nkids; j++)
             if (loc[j] >= R_X0) {
                 pop(g, R_AX);
                 em(g, M_MOVQX, 8, R(R_AX), R(loc[j]));
@@ -589,7 +589,7 @@ static void gen(Gx *g, uint32_t n)
         free(ats);
         em(g, M_MOV, 4, I(nf), R(R_AX));    /* vector registers used, for variadic callees */
         {
-            MOp callee = {MK_SYM, 0, 0, cident(g->c, s->name)};
+            MOp callee = b0 ? R(R_R11) : (MOp){MK_SYM, 0, 0, cident(g->c, s->name)};
             em(g, M_CALL, 8, callee, NONE());
         }
         if (nstack + pad) {

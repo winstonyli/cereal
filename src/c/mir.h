@@ -14,7 +14,7 @@
 
 /* General registers, then %xmm0..%xmm7 (R_X0 + n); the width of an
  * instruction does not apply to them. */
-enum { R_AX, R_CX, R_DX, R_SI, R_DI, R_R8, R_R9, R_BP, R_SP, R_GP_COUNT,
+enum { R_AX, R_CX, R_DX, R_SI, R_DI, R_R8, R_R9, R_BP, R_SP, R_R11, R_GP_COUNT,
        R_X0 = R_GP_COUNT, R_COUNT = R_X0 + 8 };
 
 /* Operand kinds. */

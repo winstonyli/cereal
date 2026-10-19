@@ -103,3 +103,45 @@ int bitfields(int k)
     unsigned char *p = (unsigned char *)&fl;
     return p[0] + fl.whole * k;
 }
+
+int add1(int x)
+{
+    return x + 1;
+}
+
+int dbl(int x)
+{
+    return x * 2;
+}
+
+double mix(double a, int b)
+{
+    return a * b + 0.5;
+}
+
+int sum7(int a, int b, int c, int d, int e, int f, int g)
+{
+    return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g;
+}
+
+int (*ops[2])(int) = {add1, dbl};
+int (*cur)(int) = dbl;
+double (*fd)(double, int) = mix;
+int (*many)(int, int, int, int, int, int, int) = sum7;
+
+int dispatch(int k)
+{
+    int r = ops[k & 1](k) + cur(k);
+    cur = ops[(k >> 1) & 1];
+    return r + many(k, 1, 2, 3, 4, 5, 6) + (int)fd(1.5, k & 7);
+}
+
+int through(int (*f)(int), int k)
+{
+    return f(f(k)) + (*f)(1);
+}
+
+int usethrough(int k)
+{
+    return through(k & 1 ? add1 : dbl, k);
+}

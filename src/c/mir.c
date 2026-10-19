@@ -2,10 +2,10 @@
 #include "c/mir.h"
 
 static const char *const reg_names[4][R_COUNT] = {
-    /* 1 */ {"al", "cl", "dl", "sil", "dil", "r8b", "r9b", "bpl", "spl"},
-    /* 2 */ {"ax", "cx", "dx", "si", "di", "r8w", "r9w", "bp", "sp"},
-    /* 4 */ {"eax", "ecx", "edx", "esi", "edi", "r8d", "r9d", "ebp", "esp"},
-    /* 8 */ {"rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "rbp", "rsp"},
+    /* 1 */ {"al", "cl", "dl", "sil", "dil", "r8b", "r9b", "bpl", "spl", "r11b"},
+    /* 2 */ {"ax", "cx", "dx", "si", "di", "r8w", "r9w", "bp", "sp", "r11w"},
+    /* 4 */ {"eax", "ecx", "edx", "esi", "edi", "r8d", "r9d", "ebp", "esp", "r11d"},
+    /* 8 */ {"rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "rbp", "rsp", "r11"},
 };
 
 static const char *const cc_names[CC_COUNT] = {"e", "ne", "l", "le", "g", "ge", "b", "be", "a", "ae",
@@ -148,7 +148,10 @@ void mir_print(const MFunc *f, FILE *out)
             put_op(f, &m->a, 8, out);
             break;
         case M_CALL:
-            fprintf(out, "\tcall %s@PLT", m->a.name);
+            if (m->a.k == MK_REG)
+                fprintf(out, "\tcall *%%%s", reg_names[3][m->a.reg]);
+            else
+                fprintf(out, "\tcall %s@PLT", m->a.name);
             break;
         case M_CQO: case M_LEAVE: case M_RET:
             fprintf(out, "\t%s", op_names[m->op]);

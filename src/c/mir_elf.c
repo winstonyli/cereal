@@ -28,7 +28,7 @@ static void put32(Enc *e, int64_t v)
 
 static int hw(int r)
 {
-    static const uint8_t t[R_GP_COUNT] = {0, 1, 2, 6, 7, 8, 9, 5, 4};
+    static const uint8_t t[R_GP_COUNT] = {0, 1, 2, 6, 7, 8, 9, 5, 4, 11};
     return r >= R_X0 ? r - R_X0 : t[r];
 }
 
@@ -228,7 +228,14 @@ static bool enc_inst(const MInst *m, Enc *e)
     }
     case M_LEAVE: put(e, 0xc9); break;
     case M_RET: put(e, 0xc3); break;
-    case M_CALL: put(e, 0xe8); put32(e, 0); break;
+    case M_CALL:
+        if (a->k == MK_REG) {
+            ins1(e, 0, false, false, 0xff, 2, a);
+        } else {
+            put(e, 0xe8);
+            put32(e, 0);
+        }
+        break;
     case M_FMOV:
         if (b->k == MK_MEM)
             ins2(e, fpfx(m), false, 0x11, hw(a->reg), b);
@@ -447,7 +454,7 @@ bool mobj_add(MObj *o, const MFunc *f)
                 vec_push(&o->bytes[SEC_TEXT], e.b[k]);
             continue;
         }
-        if (m->op == M_CALL)
+        if (m->op == M_CALL && m->a.k != MK_REG)
             rel_add(o, SEC_TEXT, base + pos[i] + 1, sym_named(o, m->a.name), REL_PLT32, -4);
         if (enc[i].rel_at >= 0)         /* a symbol's address, %rip-relative */
             rel_add(o, SEC_TEXT, base + pos[i] + (uint32_t)enc[i].rel_at,
