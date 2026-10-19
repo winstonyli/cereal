@@ -566,6 +566,27 @@ typedef struct Shdr {
     uint64_t flags, off, size, align, ent;
 } Shdr;
 
+/* Like the assembler, resolve a call to a local (static) function defined in
+ * the object: its displacement is final, so it needs no relocation. */
+static void resolve_local_calls(MObj *o)
+{
+    size_t n = o->rels[SEC_TEXT].len;
+    size_t k, keep = 0;
+    for (k = 0; k < n; k++) {
+        ObjRel r = o->rels[SEC_TEXT].data[k];
+        const ObjSym *y = &o->syms.data[r.sym];
+        if (r.type == REL_PLT32 && y->sec == SEC_TEXT && !y->global && !y->anon) {
+            int64_t d = (int64_t)y->value + r.addend - (int64_t)r.off;
+            int j;
+            for (j = 0; j < 4; j++)
+                o->bytes[SEC_TEXT].data[r.off + j] = (uint8_t)(d >> (8 * j));
+            continue;
+        }
+        o->rels[SEC_TEXT].data[keep++] = r;
+    }
+    o->rels[SEC_TEXT].len = keep;
+}
+
 bool mobj_write(MObj *o, const char *path)
 {
     Bytes img = {0}, strtab = {0}, symtab = {0}, shstr = {0}, h = {0};
@@ -576,6 +597,8 @@ bool mobj_write(MObj *o, const char *path)
     bool ok;
     FILE *f;
     static const uint8_t ident[16] = {0x7f, 'E', 'L', 'F', 2, 1, 1};
+
+    resolve_local_calls(o);
 
     /* symbol order: null, locals (section symbols first), then globals */
     final = xcalloc(o->syms.len, sizeof *final);

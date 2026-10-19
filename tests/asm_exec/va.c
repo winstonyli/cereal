@@ -37,7 +37,7 @@ int mixed(char *tag, int n, ...)    /* ints and pointers interleaved with double
     return s;
 }
 
-long long vhelper(int n, va_list ap)
+static long long vhelper(int n, va_list ap)
 {
     long long s = 0;
     while (n-- > 0)
