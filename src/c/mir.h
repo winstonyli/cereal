@@ -19,7 +19,8 @@ enum { R_AX, R_CX, R_DX, R_SI, R_DI, R_R8, R_R9, R_BP, R_SP, R_GP_COUNT,
 
 /* Operand kinds. */
 enum { MK_NONE, MK_REG, MK_IMM, MK_MEM /* disp(reg) */, MK_LAB /* local label */,
-       MK_SYM /* a symbol's name, by string */ };
+       MK_SYM /* a symbol's name, by string */,
+       MK_STR /* %rip-relative string literal number v of the function */ };
 
 typedef struct MOp {
     uint8_t k;
@@ -63,10 +64,16 @@ typedef struct MInst {
     MOp a, b;               /* AT&T order: a is the source, b the destination */
 } MInst;
 
+typedef struct MStr {
+    uint8_t *p;             /* the literal's bytes (owned) */
+    uint32_t n;
+} MStr;
+
 typedef struct MFunc {
     const char *name;
     bool global;
     VEC(MInst) code;
+    VEC(MStr) strs;  /* string literals, read-only data */
 } MFunc;
 
 /* Writes the function as AT&T assembly (one instruction per line, local

@@ -245,6 +245,17 @@ static void genaddr(Gx *g, uint32_t n)
     case TO_DEREF:
         gen(g, kid(g->L, n, 0));
         break;
+    case TO_STR: {              /* the literal's bytes go to read-only data */
+        MStr s;
+        MOp lit = {MK_STR, 0, 0, NULL};
+        s.n = t->width;
+        s.p = xmalloc(s.n ? s.n : 1);
+        memcpy(s.p, g->L->e->bytes.data + t->val, s.n);
+        lit.v = (int64_t)g->f.strs.len;
+        vec_push(&g->f.strs, s);
+        em(g, M_LEA, 8, lit, R(R_AX));
+        break;
+    }
     case TO_FIELD:
         if (t->width) {
             unsup(g, "bit-field");
@@ -756,6 +767,9 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
                 fprintf(out, "# x86: %s unsupported: no encoding\n", g.f.name);
         }
     }
+    for (i = 0; i < g.f.strs.len; i++)
+        free(g.f.strs.data[i].p);
+    vec_free(&g.f.strs);
     vec_free(&g.f.code);
     vec_free(&g.vars);
     vec_free(&ps);

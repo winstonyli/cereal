@@ -13,6 +13,8 @@
 typedef struct Enc {
     uint8_t b[16];
     int n;
+    int rel_at;                 /* a string literal's rel32 starts here (-1: none) ... */
+    int rel_str;                /* ... and names this one */
 } Enc;
 
 static void put(Enc *e, int v) { e->b[e->n++] = (uint8_t)v; }
@@ -54,6 +56,11 @@ static void ins(Enc *e, int pfx, bool w8, bool force, const uint8_t *opc, int no
         put(e, opc[i]);
     if (rm->k == MK_REG) {
         put(e, 0xc0 | (reg & 7) << 3 | (hw(rm->reg) & 7));
+    } else if (rm->k == MK_STR) {       /* disp32(%rip), filled in by a relocation */
+        put(e, (reg & 7) << 3 | 5);
+        e->rel_at = e->n;
+        e->rel_str = (int)rm->v;
+        put32(e, 0);
     } else {
         int b = hw(rm->reg) & 7, mod;
         int64_t d = rm->v;
@@ -103,6 +110,7 @@ static bool enc_inst(const MInst *m, Enc *e)
     bool w8 = m->w == 8 || m->w == 0;
     int w = m->w ? m->w : 8, ext = arith_ext(m->op), pfx = w == 2 ? 0x66 : 0;
     e->n = 0;
+    e->rel_at = -1;
     if (ext >= 0) {
         if (a->k == MK_IMM) {
             int64_t v = a->v;
@@ -250,24 +258,35 @@ static bool enc_inst(const MInst *m, Enc *e)
 
 /* ---- the object -------------------------------------------------------- */
 
-typedef struct ObjFn {
-    char *name;
-    uint32_t off, size;
+enum { SEC_TEXT, SEC_RODATA, NSEC };
+
+static const char *const sec_name[NSEC] = {".text", ".rodata"};
+static const uint32_t sec_flags[NSEC] = {6 /* AX */, 2 /* A */};
+
+enum { REL_64 = 1, REL_PC32 = 2, REL_PLT32 = 4 };
+
+typedef struct ObjSym {
+    char *name;                 /* NULL: a section symbol */
+    int sec;                    /* its section, or -1: undefined */
+    uint64_t value, size;
+    uint8_t type;               /* 0 none, 1 object, 2 function, 3 section */
     bool global;
-} ObjFn;
+} ObjSym;
 
 typedef struct ObjRel {
     uint32_t off;
-    char *name;
+    uint32_t sym;               /* index into MObj.syms */
+    uint8_t type;
+    int64_t addend;
 } ObjRel;
 
 struct MObj {
-    VEC(uint8_t) text;
-    VEC(ObjFn) fns;
-    VEC(ObjRel) rels;
+    VEC(uint8_t) bytes[NSEC];
+    VEC(ObjRel) rels[NSEC];
+    VEC(ObjSym) syms;           /* [0..NSEC): the section symbols */
+    uint32_t *hash;             /* open addressing over named symbols: index + 1 */
+    size_t hcap;
 };
-
-MObj *mobj_new(void) { return xcalloc(1, sizeof(MObj)); }
 
 static char *dup_str(const char *s)
 {
@@ -277,14 +296,80 @@ static char *dup_str(const char *s)
     return p;
 }
 
+static size_t name_hash(const char *s)
+{
+    size_t h = 1469598103u;
+    while (*s)
+        h = (h ^ (uint8_t)*s++) * 16777619u;
+    return h;
+}
+
+static void hash_put(MObj *o, uint32_t id)
+{
+    size_t h = name_hash(o->syms.data[id].name) & (o->hcap - 1);
+    while (o->hash[h])
+        h = (h + 1) & (o->hcap - 1);
+    o->hash[h] = id + 1;
+}
+
+/* The symbol called name, made (undefined, global) when new. */
+static uint32_t sym_named(MObj *o, const char *name)
+{
+    size_t h;
+    ObjSym s;
+    if (o->syms.len * 2 >= o->hcap) {
+        size_t i;
+        free(o->hash);
+        o->hcap = o->hcap ? o->hcap * 2 : 64;
+        o->hash = xcalloc(o->hcap, sizeof *o->hash);
+        for (i = 0; i < o->syms.len; i++)
+            if (o->syms.data[i].name)
+                hash_put(o, (uint32_t)i);
+    }
+    for (h = name_hash(name) & (o->hcap - 1); o->hash[h]; h = (h + 1) & (o->hcap - 1))
+        if (!strcmp(o->syms.data[o->hash[h] - 1].name, name))
+            return o->hash[h] - 1;
+    memset(&s, 0, sizeof s);
+    s.name = dup_str(name);
+    s.sec = -1;
+    s.global = true;
+    vec_push(&o->syms, s);
+    hash_put(o, (uint32_t)(o->syms.len - 1));
+    return (uint32_t)(o->syms.len - 1);
+}
+
+MObj *mobj_new(void)
+{
+    MObj *o = xcalloc(1, sizeof *o);
+    int i;
+    for (i = 0; i < NSEC; i++) {
+        ObjSym s;
+        memset(&s, 0, sizeof s);
+        s.sec = i;
+        s.type = 3;
+        vec_push(&o->syms, s);
+    }
+    return o;
+}
+
+static void rel_add(MObj *o, int sec, uint32_t off, uint32_t sym, int type, int64_t addend)
+{
+    ObjRel r;
+    r.off = off;
+    r.sym = sym;
+    r.type = (uint8_t)type;
+    r.addend = addend;
+    vec_push(&o->rels[sec], r);
+}
+
 bool mobj_add(MObj *o, const MFunc *f)
 {
     size_t n = f->code.len, i;
     Enc *enc = xcalloc(n ? n : 1, sizeof *enc);
-    uint32_t *pos = xcalloc(n + 1, sizeof *pos), *lab;
+    uint32_t *pos = xcalloc(n + 1, sizeof *pos), *lab, *stroff;
     bool *lng = xcalloc(n ? n : 1, sizeof *lng), changed, ok = true;
     int64_t maxlab = 0;
-    ObjFn fn;
+    uint32_t base = (uint32_t)o->bytes[SEC_TEXT].len, fid;
     for (i = 0; i < n; i++) {
         const MInst *m = &f->code.data[i];
         if (m->op == M_LABEL && m->a.v > maxlab)
@@ -321,11 +406,27 @@ bool mobj_add(MObj *o, const MFunc *f)
             }
         }
     } while (changed);
-    fn.name = dup_str(f->name);
-    fn.off = (uint32_t)o->text.len;
-    fn.size = pos[n];
-    fn.global = f->global;
-    for (i = 0; ok && i < n; i++) {
+    if (!ok) {
+        free(enc);
+        free(pos);
+        free(lab);
+        free(lng);
+        return false;
+    }
+    stroff = xcalloc(f->strs.len + 1, sizeof *stroff);
+    for (i = 0; i < f->strs.len; i++) {
+        uint32_t k;
+        stroff[i] = (uint32_t)o->bytes[SEC_RODATA].len;
+        for (k = 0; k < f->strs.data[i].n; k++)
+            vec_push(&o->bytes[SEC_RODATA], f->strs.data[i].p[k]);
+    }
+    fid = sym_named(o, f->name);
+    o->syms.data[fid].sec = SEC_TEXT;
+    o->syms.data[fid].value = base;
+    o->syms.data[fid].size = pos[n];
+    o->syms.data[fid].type = 2;
+    o->syms.data[fid].global = f->global;
+    for (i = 0; i < n; i++) {
         const MInst *m = &f->code.data[i];
         int k;
         if (m->op == M_LABEL)
@@ -347,27 +448,23 @@ bool mobj_add(MObj *o, const MFunc *f)
                 put32(&e, d);
             }
             for (k = 0; k < e.n; k++)
-                vec_push(&o->text, e.b[k]);
+                vec_push(&o->bytes[SEC_TEXT], e.b[k]);
             continue;
         }
-        if (m->op == M_CALL) {
-            ObjRel r;
-            r.off = (uint32_t)o->text.len + 1;
-            r.name = dup_str(m->a.name);
-            vec_push(&o->rels, r);
-        }
+        if (m->op == M_CALL)
+            rel_add(o, SEC_TEXT, base + pos[i] + 1, sym_named(o, m->a.name), REL_PLT32, -4);
+        if (enc[i].rel_at >= 0)         /* a string literal's address, %rip-relative */
+            rel_add(o, SEC_TEXT, base + pos[i] + (uint32_t)enc[i].rel_at, SEC_RODATA, REL_PC32,
+                    (int64_t)stroff[enc[i].rel_str] - (enc[i].n - enc[i].rel_at));
         for (k = 0; k < enc[i].n; k++)
-            vec_push(&o->text, enc[i].b[k]);
+            vec_push(&o->bytes[SEC_TEXT], enc[i].b[k]);
     }
-    if (ok)
-        vec_push(&o->fns, fn);
-    else
-        free(fn.name);
     free(enc);
     free(pos);
     free(lab);
     free(lng);
-    return ok;
+    free(stroff);
+    return true;
 }
 
 /* ---- ELF64 -------------------------------------------------------------- */
@@ -379,11 +476,13 @@ static void w16(Bytes *b, uint64_t v) { w8(b, v); w8(b, v >> 8); }
 static void w32(Bytes *b, uint64_t v) { w16(b, v); w16(b, v >> 16); }
 static void w64(Bytes *b, uint64_t v) { w32(b, v); w32(b, v >> 32); }
 
-static void wstr(Bytes *b, const char *s)
+static uint32_t wstr(Bytes *b, const char *s)
 {
+    uint32_t at = (uint32_t)b->len;
     do
         w8(b, (uint8_t)*s);
     while (*s++);
+    return at;
 }
 
 static void align8(Bytes *b)
@@ -392,137 +491,154 @@ static void align8(Bytes *b)
         w8(b, 0);
 }
 
-static void shdr(Bytes *b, uint32_t name, uint32_t type, uint64_t flags, uint64_t off,
-                 uint64_t size, uint32_t link, uint32_t info, uint64_t al, uint64_t ent)
-{
-    w32(b, name);
-    w32(b, type);
-    w64(b, flags);
-    w64(b, 0);
-    w64(b, off);
-    w64(b, size);
-    w32(b, link);
-    w32(b, info);
-    w64(b, al);
-    w64(b, ent);
-}
+typedef struct Shdr {
+    uint32_t name, type, link, info;
+    uint64_t flags, off, size, align, ent;
+} Shdr;
 
 bool mobj_write(MObj *o, const char *path)
 {
-    Bytes img = {0}, strtab = {0}, symtab = {0}, rela = {0}, shstr = {0};
-    VEC(char *) undef = {0};
-    uint32_t *symidx;
-    size_t i, j, nloc = 0;
-    uint64_t off_text, off_rela, off_sym, off_str, off_shstr, off_note, off_sh;
-    uint32_t n_text, n_rela, n_sym, n_str, n_shstr, n_note;
+    Bytes img = {0}, strtab = {0}, symtab = {0}, shstr = {0}, h = {0};
+    VEC(Shdr) sh = {0};
+    uint32_t *final, nsyms = 0, nlocal, relsec[NSEC] = {0}, symtab_ix, i;
+    size_t k;
+    int s;
     bool ok;
     FILE *f;
+    static const uint8_t ident[16] = {0x7f, 'E', 'L', 'F', 2, 1, 1};
 
-    /* symbols: null, .text section, local functions, global functions, undefined */
-    for (i = 0; i < o->fns.len; i++)
-        nloc += !o->fns.data[i].global;
-    for (i = 0; i < o->rels.len; i++) {
-        bool known = false;
-        for (j = 0; j < o->fns.len && !known; j++)
-            known = !strcmp(o->fns.data[j].name, o->rels.data[i].name);
-        for (j = 0; j < undef.len && !known; j++)
-            known = !strcmp(undef.data[j], o->rels.data[i].name);
-        if (!known)
-            vec_push(&undef, o->rels.data[i].name);
-    }
-    symidx = xcalloc(o->fns.len + 1, sizeof *symidx);
+    /* symbol order: null, locals (section symbols first), then globals */
+    final = xcalloc(o->syms.len, sizeof *final);
+    nsyms = 1;
+    for (k = 0; k < o->syms.len; k++)
+        if (!o->syms.data[k].global)
+            final[k] = nsyms++;
+    nlocal = nsyms;
+    for (k = 0; k < o->syms.len; k++)
+        if (o->syms.data[k].global)
+            final[k] = nsyms++;
     w8(&strtab, 0);
-    w64(&symtab, 0);
-    w64(&symtab, 0);
-    w64(&symtab, 0);                    /* null symbol */
-    w32(&symtab, 0);
-    w8(&symtab, 3);                     /* STT_SECTION, local */
-    w8(&symtab, 0);
-    w16(&symtab, 1);
-    w64(&symtab, 0);
-    w64(&symtab, 0);
-    for (int pass = 0; pass < 2; pass++)
-        for (i = 0; i < o->fns.len; i++) {
-            const ObjFn *fn = &o->fns.data[i];
-            if (fn->global != (pass == 1))
-                continue;
-            symidx[i] = (uint32_t)(symtab.len / 24);
-            w32(&symtab, (uint32_t)strtab.len);
-            wstr(&strtab, fn->name);
-            w8(&symtab, (fn->global ? 0x10 : 0) | 2);  /* STB_GLOBAL|LOCAL, STT_FUNC */
-            w8(&symtab, 0);
-            w16(&symtab, 1);
-            w64(&symtab, fn->off);
-            w64(&symtab, fn->size);
-        }
-    for (i = 0; i < undef.len; i++) {
-        w32(&symtab, (uint32_t)strtab.len);
-        wstr(&strtab, undef.data[i]);
-        w8(&symtab, 0x10);              /* STB_GLOBAL, STT_NOTYPE */
-        w8(&symtab, 0);
-        w16(&symtab, 0);
-        w64(&symtab, 0);
-        w64(&symtab, 0);
-    }
-    for (i = 0; i < o->rels.len; i++) {
-        uint32_t sym = 0;
-        for (j = 0; j < o->fns.len; j++)
-            if (!strcmp(o->fns.data[j].name, o->rels.data[i].name))
-                sym = symidx[j];
-        for (j = 0; !sym && j < undef.len; j++)
-            if (!strcmp(undef.data[j], o->rels.data[i].name))
-                sym = (uint32_t)(2 + o->fns.len + j);
-        w64(&rela, o->rels.data[i].off);
-        w64(&rela, (uint64_t)sym << 32 | 4);    /* R_X86_64_PLT32 */
-        w64(&rela, (uint64_t)-4);
-    }
     w8(&shstr, 0);
-    {
-        static const char *const names[] = {".text", ".rela.text", ".symtab", ".strtab",
-                                            ".shstrtab", ".note.GNU-stack"};
-        for (i = 0; i < 6; i++)
-            wstr(&shstr, names[i]);
-    }
+    for (i = 0; i < 24; i++)
+        w8(&symtab, 0);
+    for (int pass = 0; pass < 2; pass++)
+        for (k = 0; k < o->syms.len; k++) {
+            const ObjSym *y = &o->syms.data[k];
+            if (y->global != (pass == 1))
+                continue;
+            w32(&symtab, y->name ? wstr(&strtab, y->name) : 0);
+            w8(&symtab, (y->global ? 0x10 : 0) | y->type);
+            w8(&symtab, 0);
+            w16(&symtab, y->sec < 0 ? 0 : (uint64_t)y->sec + 1);   /* sections 1.. in order */
+            w64(&symtab, y->value);
+            w64(&symtab, y->size);
+        }
 
-    /* the image: header, section contents, section headers */
     for (i = 0; i < 64; i++)
         w8(&img, 0);
-    off_text = img.len;
-    n_text = (uint32_t)o->text.len;
-    for (i = 0; i < o->text.len; i++)
-        w8(&img, o->text.data[i]);
-    align8(&img);
-    off_rela = img.len;
-    n_rela = (uint32_t)rela.len;
-    for (i = 0; i < rela.len; i++)
-        w8(&img, rela.data[i]);
-    align8(&img);
-    off_sym = img.len;
-    n_sym = (uint32_t)symtab.len;
-    for (i = 0; i < symtab.len; i++)
-        w8(&img, symtab.data[i]);
-    off_str = img.len;
-    n_str = (uint32_t)strtab.len;
-    for (i = 0; i < strtab.len; i++)
-        w8(&img, strtab.data[i]);
-    off_shstr = img.len;
-    n_shstr = (uint32_t)shstr.len;
-    for (i = 0; i < shstr.len; i++)
-        w8(&img, shstr.data[i]);
-    off_note = img.len;
-    n_note = 0;
-    align8(&img);
-    off_sh = img.len;
-    shdr(&img, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-    shdr(&img, 1, 1, 6, off_text, n_text, 0, 0, 1, 0);                  /* .text: AX */
-    shdr(&img, 7, 4, 0x40, off_rela, n_rela, 3, 1, 8, 24);              /* .rela.text */
-    shdr(&img, 18, 2, 0, off_sym, n_sym, 4, (uint32_t)(2 + nloc), 8, 24);   /* .symtab */
-    shdr(&img, 26, 3, 0, off_str, n_str, 0, 0, 1, 0);                   /* .strtab */
-    shdr(&img, 34, 3, 0, off_shstr, n_shstr, 0, 0, 1, 0);               /* .shstrtab */
-    shdr(&img, 44, 1, 0, off_note, n_note, 0, 0, 1, 0);                 /* .note.GNU-stack */
     {
-        Bytes h = {0};
-        static const uint8_t ident[16] = {0x7f, 'E', 'L', 'F', 2, 1, 1};
+        Shdr z;
+        memset(&z, 0, sizeof z);
+        vec_push(&sh, z);
+    }
+    for (s = 0; s < NSEC; s++) {
+        Shdr x;
+        memset(&x, 0, sizeof x);
+        x.name = wstr(&shstr, sec_name[s]);
+        x.type = 1;
+        x.flags = sec_flags[s];
+        x.off = img.len;
+        x.size = o->bytes[s].len;
+        x.align = 1;
+        for (k = 0; k < o->bytes[s].len; k++)
+            w8(&img, o->bytes[s].data[k]);
+        align8(&img);
+        vec_push(&sh, x);
+    }
+    symtab_ix = 1 + NSEC;               /* the relocation sections come first */
+    for (s = 0; s < NSEC; s++) {
+        Shdr x;
+        char nm[32];
+        if (!o->rels[s].len)
+            continue;
+        memset(&x, 0, sizeof x);
+        snprintf(nm, sizeof nm, ".rela%s", sec_name[s]);
+        x.name = wstr(&shstr, nm);
+        x.type = 4;
+        x.flags = 0x40;
+        x.off = img.len;
+        x.size = o->rels[s].len * 24;
+        x.align = 8;
+        x.ent = 24;
+        x.info = (uint32_t)s + 1;
+        for (k = 0; k < o->rels[s].len; k++) {
+            const ObjRel *r = &o->rels[s].data[k];
+            w64(&img, r->off);
+            w64(&img, (uint64_t)final[r->sym] << 32 | r->type);
+            w64(&img, (uint64_t)r->addend);
+        }
+        relsec[s] = (uint32_t)sh.len;
+        vec_push(&sh, x);
+        symtab_ix++;
+    }
+    {
+        Shdr x;
+        memset(&x, 0, sizeof x);
+        x.name = wstr(&shstr, ".symtab");
+        x.type = 2;
+        x.off = img.len;
+        x.size = symtab.len;
+        x.link = symtab_ix + 1;         /* .strtab follows */
+        x.info = nlocal;
+        x.align = 8;
+        x.ent = 24;
+        for (k = 0; k < symtab.len; k++)
+            w8(&img, symtab.data[k]);
+        vec_push(&sh, x);
+        memset(&x, 0, sizeof x);
+        x.name = wstr(&shstr, ".strtab");
+        x.type = 3;
+        x.off = img.len;
+        x.size = strtab.len;
+        x.align = 1;
+        for (k = 0; k < strtab.len; k++)
+            w8(&img, strtab.data[k]);
+        vec_push(&sh, x);
+        memset(&x, 0, sizeof x);
+        x.name = wstr(&shstr, ".note.GNU-stack");
+        x.type = 1;
+        x.off = img.len;
+        x.align = 1;
+        vec_push(&sh, x);
+        memset(&x, 0, sizeof x);
+        x.name = wstr(&shstr, ".shstrtab");
+        x.type = 3;
+        x.off = img.len;
+        x.size = shstr.len;
+        x.align = 1;
+        for (k = 0; k < shstr.len; k++)
+            w8(&img, shstr.data[k]);
+        vec_push(&sh, x);
+    }
+    for (s = 0; s < NSEC; s++)
+        if (relsec[s])
+            sh.data[relsec[s]].link = symtab_ix;
+    align8(&img);
+    {
+        uint64_t off_sh = img.len;
+        for (k = 0; k < sh.len; k++) {
+            const Shdr *x = &sh.data[k];
+            w32(&img, x->name);
+            w32(&img, x->type);
+            w64(&img, x->flags);
+            w64(&img, 0);
+            w64(&img, x->off);
+            w64(&img, x->size);
+            w32(&img, x->link);
+            w32(&img, x->info);
+            w64(&img, x->align);
+            w64(&img, x->ent);
+        }
         for (i = 0; i < 16; i++)
             w8(&h, ident[i]);
         w16(&h, 1);                     /* ET_REL */
@@ -536,10 +652,9 @@ bool mobj_write(MObj *o, const char *path)
         w16(&h, 0);
         w16(&h, 0);
         w16(&h, 64);
-        w16(&h, 7);
-        w16(&h, 5);
+        w16(&h, (uint64_t)sh.len);
+        w16(&h, (uint64_t)sh.len - 1);  /* .shstrtab is last */
         memcpy(img.data, h.data, h.len);
-        vec_free(&h);
     }
     f = fopen(path, "wb");
     ok = f && fwrite(img.data, 1, img.len, f) == img.len;
@@ -548,24 +663,26 @@ bool mobj_write(MObj *o, const char *path)
     vec_free(&img);
     vec_free(&strtab);
     vec_free(&symtab);
-    vec_free(&rela);
     vec_free(&shstr);
-    vec_free(&undef);
-    free(symidx);
+    vec_free(&h);
+    vec_free(&sh);
+    free(final);
     return ok;
 }
 
 void mobj_free(MObj *o)
 {
     size_t i;
+    int s;
     if (!o)
         return;
-    for (i = 0; i < o->fns.len; i++)
-        free(o->fns.data[i].name);
-    for (i = 0; i < o->rels.len; i++)
-        free(o->rels.data[i].name);
-    vec_free(&o->text);
-    vec_free(&o->fns);
-    vec_free(&o->rels);
+    for (i = 0; i < o->syms.len; i++)
+        free(o->syms.data[i].name);
+    for (s = 0; s < NSEC; s++) {
+        vec_free(&o->bytes[s]);
+        vec_free(&o->rels[s]);
+    }
+    vec_free(&o->syms);
+    free(o->hash);
     free(o);
 }

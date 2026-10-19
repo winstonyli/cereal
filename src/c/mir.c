@@ -50,12 +50,24 @@ static void put_op(const MFunc *f, const MOp *o, int w, FILE *out)
     case MK_SYM:
         fputs(o->name, out);
         break;
+    case MK_STR:
+        fprintf(out, ".LC%s_%lld(%%rip)", f->name, (long long)o->v);
+        break;
     }
 }
 
 void mir_print(const MFunc *f, FILE *out)
 {
     size_t i;
+    if (f->strs.len)
+        fprintf(out, "\t.section .rodata\n");
+    for (i = 0; i < f->strs.len; i++) {
+        uint32_t k;
+        fprintf(out, ".LC%s_%zu:\n\t.byte ", f->name, i);
+        for (k = 0; k < f->strs.data[i].n; k++)
+            fprintf(out, "%s%u", k ? "," : "", f->strs.data[i].p[k]);
+        fputc('\n', out);
+    }
     fprintf(out, "\t.text\n");
     if (f->global)
         fprintf(out, "\t.globl %s\n", f->name);
