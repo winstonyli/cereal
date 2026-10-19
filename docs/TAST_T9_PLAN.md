@@ -127,7 +127,7 @@ otherwise unverified by a second method.
 ## 7. Decisions needed
 
 1. Direction: this plan continues the back-end path (T9 initializers, T10
-   SysV classification, T11 QBE emission, checked by running compiled
+   SysV classification, T11 emission, checked by running compiled
    lua54 tests against a gcc build). The alternative consumer of the T8
    graph is the dataflow diagnostics of ROADMAP Track D
    (`-Wuninitialized`, `-Wimplicit-fallthrough`, `-Wnull-dereference`),
@@ -141,6 +141,12 @@ otherwise unverified by a second method.
    nodes for big objects.
 3. Whether `str` initialization of arrays uses `copy` from a `data` string
    or per-byte stores. **Recommendation:** `copy`.
+
+4. Back end target (decided 2026-10-18, by the user): keep the emitter
+   open to several back ends over the same lowered graph; lean toward
+   direct object/machine code. QBE is one candidate, not assumed. T9 does
+   not depend on it; revisit at T10 (classification is where a back end's own
+   ABI handling would overlap).
 
 ## 8. Review log
 
