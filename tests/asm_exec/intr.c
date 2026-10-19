@@ -150,3 +150,14 @@ int pf(const int *p, int k)
     __builtin_prefetch(p, 0, 3);
     return p[k & 1] + k;
 }
+
+/* every condition code of a template cmov */
+#define CMOV(cc, a, b) ({ long r_ = 1; __asm__("cmp %2, %1\n cmov" #cc " %3, %0" : "+r"(r_) : "r"(a), "r"(b), "r"(7L)); r_; })
+long cmovs(long k)
+{
+    long a = k - 3, b = 2;
+    unsigned long ua = (unsigned long)a, ub = 2;
+    return CMOV(e, a, b) + CMOV(ne, a, b) * 2 + CMOV(g, a, b) * 3 + CMOV(ge, a, b) * 5 + CMOV(l, a, b) * 7 +
+           CMOV(le, a, b) * 11 + CMOV(a, ua, ub) * 13 + CMOV(ae, ua, ub) * 17 + CMOV(b, ua, ub) * 19 +
+           CMOV(be, ua, ub) * 23 + CMOV(g, a, a) * 29 + CMOV(l, a, a) * 31 + CMOV(be, ua, ua) * 37 + CMOV(a, ua, ua) * 41;
+}

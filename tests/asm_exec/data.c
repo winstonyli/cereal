@@ -170,4 +170,7 @@ int callnoproto(int k) { return k + noproto(); }
 void weak_missing(void) __attribute__((weak));
 int weak_present(int k) { return weak_missing ? k : -k; }
 int weak_call(int k) { if (weak_missing) weak_missing(); return k * 2; }
-int weak_ne(int k) { return (weak_missing != 0) * 3 + (weak_missing == (void (*)(void))0) * 5 + k; }
+int weak_ne(int k) { return ((void (*)(void))0 != weak_missing) * 7 + (weak_missing != 0) * 3 + (weak_missing == (void (*)(void))0) * 5 + k; }
+/* the only reference to an undefined weak function is a call that is not made */
+void weak_gone(int) __attribute__((weak));
+int weak_only(int k) { if (k == 123456) weak_gone(k); return k + 1; }
