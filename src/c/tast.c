@@ -2950,21 +2950,17 @@ static void func_def(El *e, uint32_t root)
 /* Where the output about a header's functions goes. */
 static FILE *discard(void)
 {
-    static FILE *f;
-    if (!f)
 #ifdef _WIN32
-        f = fopen("NUL", "w");
+    return fopen("NUL", "w");
 #else
-        f = fopen("/dev/null", "w");
+    return fopen("/dev/null", "w");
 #endif
-    return f;
 }
 
-void tast_unit(Checker *c)
+static void unit_run(Checker *c, FILE *out)
 {
     El e;
     uint32_t root = c->nn - 1;
-    FILE *out = c->opt.tast;
     const char *pf;
     bool sys;
     SrcLoc loc = cnode_loc(c, root);
@@ -2972,10 +2968,6 @@ void tast_unit(Checker *c)
     if (tag != N_FUNC_DEF && tag != N_DECL && tag != N_TOP_ASM)
         return;
     sys = cin_system(c, loc);
-    if (sys && (tag != N_FUNC_DEF || !CHK_ASM(c->opt)))     /* a header's functions are emitted when used */
-        return;
-    if (sys)
-        out = discard();
     pf =CHK_ASM(c->opt) && !c->opt.dump_cfg && !c->opt.tast_tree ? "# " : "";
     if (c->unit_err) {
         fputs(pf, out);
@@ -3028,4 +3020,21 @@ void tast_unit(Checker *c)
     vec_free(&e.nodes);
     vec_free(&e.kids);
     vec_free(&e.bytes);
+}
+
+void tast_unit(Checker *c)
+{
+    uint32_t root = c->nn - 1;
+    unsigned tag = ntag(c, root);
+    if (tag == N_FUNC_DEF || tag == N_DECL || tag == N_TOP_ASM) {
+        if (cin_system(c, cnode_loc(c, root))) {     /* a header's functions are emitted when used */
+            FILE *d = tag == N_FUNC_DEF && CHK_ASM(c->opt) ? discard() : NULL;
+            if (d) {
+                unit_run(c, d);
+                fclose(d);
+            }
+            return;
+        }
+    }
+    unit_run(c, c->opt.tast);
 }
