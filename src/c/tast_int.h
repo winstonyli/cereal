@@ -65,6 +65,7 @@ typedef struct El {
     TypeId swty;            /* the innermost switch's promoted type, 0: none */
     VEC(uint8_t) bytes;     /* the code units of the str nodes */
     uint32_t fname;         /* the function's name (identifier id), when in one */
+    uint32_t fsym;          /* its symbol ref (the code generator reads its linkage) */
     uint32_t ntmp;          /* temporaries made so far (tmp N, N < ntmp) */
     uint32_t ncl;           /* compound literals made so far (complit N) */
     bool infunc;

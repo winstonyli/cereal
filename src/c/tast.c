@@ -2209,13 +2209,16 @@ void tast_unit(Checker *c)
     El e;
     uint32_t root = c->nn - 1;
     FILE *out = c->opt.tast;
+    const char *pf;
     SrcLoc loc = cnode_loc(c, root);
     unsigned tag = ntag(c, root);
     if (tag != N_FUNC_DEF && tag != N_DECL && tag != N_TOP_ASM)
         return;
     if (cin_system(c, loc))
         return;
+    pf = c->opt.dump_asm && !c->opt.dump_cfg && !c->opt.tast_tree ? "# " : "";
     if (c->unit_err) {
+        fputs(pf, out);
         fputs("unit ", out);
         put_loc(c, out, loc);
         fputs(" skipped: errors\n", out);
@@ -2228,6 +2231,7 @@ void tast_unit(Checker *c)
     if (tag == N_DECL) {
         print_decls(c, &e, root, out);
         if (e.why[0]) {
+            fputs(pf, out);
             fputs("unit ", out);
             put_loc(c, out, loc);
             fprintf(out, " unsupported: %s\n", e.why);
@@ -2237,12 +2241,14 @@ void tast_unit(Checker *c)
             unsup(&e, "top-level asm");
         else
             func_def(&e, root);
+        fputs(pf, out);
         fputs("unit ", out);
         put_loc(c, out, loc);
         if (e.why[0]) {
             fprintf(out, " unsupported: %s\n", e.why);
         } else {
             uint32_t d = declared_of(&e, root, NULL);
+            e.fsym = c->cb[d] - 1;
             fputs(" func ", out);
             put_sym(c, out, c->cb[d] - 1);
             fputc(' ', out);
@@ -2253,7 +2259,7 @@ void tast_unit(Checker *c)
                 if (c->opt.verify_tast)
                     verify(&e, out);
             }
-            if (c->opt.dump_cfg)
+            if (c->opt.dump_cfg || c->opt.dump_asm)
                 tast_cfg(&e, (uint32_t)e.nodes.len - 1, out);
         }
     }

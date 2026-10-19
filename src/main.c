@@ -49,6 +49,8 @@ static void usage(FILE *o)
     fputs(      /* a second literal: C99 only promises 4095 characters */
         "                --dump-cfg: print the control-flow graph of each function\n"
         "                --verify-cfg: --dump-cfg, and check each graph\n"
+        "                --dump-asm: print each function as x86-64 assembly (a # comment\n"
+        "                    names what it cannot do yet)\n"
         "                --dump-symbols: print the C symbol index\n"
         "                --verify-symbols: check it, report names it missed\n"
         "                --verify-carry=OLD[@PATH]: carry OLD's index (OLD's text\n"
@@ -1639,6 +1641,10 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--verify-tast")) {
             fe_opts.dump_tast = fe_opts.verify_tast = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--dump-asm")) {
+            fe_opts.dump_asm = true;
             continue;
         }
         if (!strcmp(argv[i], "--dump-cfg")) {

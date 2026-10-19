@@ -773,7 +773,9 @@ Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
     c->func_sym = SYM_NONE;
     c->cur_node = NO_NODE;
     if (opt->tast)
-        fprintf(opt->tast, "tast %d target %s\n", TAST_VERSION, c->tgt->name);
+        fprintf(opt->tast, "%stast %d target %s\n",
+                opt->dump_asm && !opt->dump_cfg ? "# " : "", TAST_VERSION,
+                c->tgt->name);
     if (opt->summaries || opt->dump_summaries || opt->validate_summaries)
         c->cs = csum_new(c);
     if (opt->symidx)

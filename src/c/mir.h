@@ -1,0 +1,64 @@
+/* mir.h - machine instructions (x86-64) between the code generator and its
+ * output (docs/TAST_T9_PLAN.md, back end).
+ *
+ * The generator (cgx86.c) fills a function's instruction list; a printer
+ * (mir.c) writes it as AT&T assembly.  Another output (an ELF object writer)
+ * reads the same list, so the generator never knows its format. */
+#ifndef CEREAL_MIR_H
+#define CEREAL_MIR_H
+
+#include <stdint.h>
+#include <stdio.h>
+
+#include "common.h"
+
+enum { R_AX, R_CX, R_DX, R_SI, R_DI, R_R8, R_R9, R_BP, R_SP, R_COUNT };
+
+/* Operand kinds. */
+enum { MK_NONE, MK_REG, MK_IMM, MK_MEM /* disp(reg) */, MK_LAB /* local label */,
+       MK_SYM /* a symbol's name, by string */ };
+
+typedef struct MOp {
+    uint8_t k;
+    uint8_t reg;            /* MK_REG; MK_MEM: the base register */
+    int64_t v;              /* MK_IMM: value; MK_MEM: displacement; MK_LAB: number */
+    const char *name;       /* MK_SYM: the symbol (owned by the caller) */
+} MOp;
+
+#define MIR_OPS(X)                                                              \
+    X(MOV, "mov") X(MOVABS, "movabs") X(MOVSX, "movs") X(MOVZX, "movz")         \
+    X(LEA, "lea") X(ADD, "add") X(SUB, "sub") X(IMUL, "imul") X(AND, "and")     \
+    X(OR, "or") X(XOR, "xor") X(SHL, "shl") X(SAR, "sar") X(SHR, "shr")         \
+    X(NEG, "neg") X(NOT, "not") X(CMP, "cmp") X(TEST, "test") X(SETCC, "set")   \
+    X(CQO, "cqto") X(IDIV, "idiv") X(DIV, "div") X(PUSH, "push") X(POP, "pop")  \
+    X(CALL, "call") X(JMP, "jmp") X(JCC, "j") X(LEAVE, "leave") X(RET, "ret")   \
+    X(LABEL, "")
+
+typedef enum {
+#define X(n, s) M_##n,
+    MIR_OPS(X)
+#undef X
+    M_COUNT
+} MOpcode;
+
+/* Condition codes. */
+enum { CC_E, CC_NE, CC_L, CC_LE, CC_G, CC_GE, CC_B, CC_BE, CC_A, CC_AE, CC_COUNT };
+
+typedef struct MInst {
+    uint8_t op;
+    uint8_t w;              /* operand width in bytes (1, 2, 4, 8); MOVSX/MOVZX: the source's */
+    uint8_t cc;             /* SETCC, JCC */
+    MOp a, b;               /* AT&T order: a is the source, b the destination */
+} MInst;
+
+typedef struct MFunc {
+    const char *name;
+    bool global;
+    VEC(MInst) code;
+} MFunc;
+
+/* Writes the function as AT&T assembly (one instruction per line, local
+ * labels .L<name>_<n>). */
+void mir_print(const MFunc *f, FILE *out);
+
+#endif

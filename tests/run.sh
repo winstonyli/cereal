@@ -569,6 +569,15 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         bad "cfg_exec"
         head -10 "$TMP/exec.out" | sed 's/^/    /'
     fi
+    # 13f. native oracle (tests/asm_exec.py): --dump-asm output assembled,
+    #      linked and run against gcc on the same random arguments
+    if (cd "$ROOT/tests/cfg_exec" && python3 -P ../asm_exec.py "$CEREAL" *.c \
+            >"$TMP/asm.out" 2>&1 </dev/null); then
+        ok
+    else
+        bad "asm_exec"
+        head -10 "$TMP/asm.out" | sed 's/^/    /'
+    fi
 fi
 
 # 14. C symbol index: golden `--dump-symbols` (plain and from cells), and
