@@ -253,6 +253,7 @@ now T8 (`TAST_T8_PLAN.md`).
 | T7 | compound literals (`complit`) including static ones folded into initializers, sized atomics, flexible array members | `TAST_T7_PLAN.md` (atomics and flexible arrays: commits `d70a407`, `742484f`) |
 | T8a | statements lowered to a control-flow graph (`--dump-cfg`, `--verify-cfg`, `tcfg.c`) | `TAST_T8_PLAN.md` |
 | T8b | expression control flow (`&&`, `\|\|`, `?:`, comma, statement expressions) lowered with `reg` and spills; execution oracle `tests/cfg_exec.py` | `TAST_T8_PLAN.md` |
+| spike | x86-64 back end for the integer/pointer/array subset: CFG to MIR (`src/c/mir.[ch]`, machine-instruction list with an AT&T text printer) via `src/c/cgx86.c`; `--dump-asm`; native oracle `tests/asm_exec.py` (assemble, link, run against gcc). Unsupported functions are reported as `# x86: name unsupported: why`. A later ELF object writer goes behind the same MIR, with `as` as byte oracle | `TAST_T9_PLAN.md` decision 4 |
 
 Still unsupported: VLAs, `_Complex`/`__int128`/`_FloatN`/decimal types, a bit-field
 compound lvalue with a side effect, `asm` and implicit-declaration calls
