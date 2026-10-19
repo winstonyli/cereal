@@ -47,6 +47,10 @@ typedef struct Gx {
     AggCls rc;                  /* the function's own result class, when an aggregate */
     bool retagg;
     int32_t retptr;             /* where a memory-class result goes */
+    bool variadic;
+    int32_t save;               /* the register save area of a variadic function */
+    int va_gp, va_fp, va_stk;   /* va_start: offsets past the named arguments, rbp offset */
+    uint32_t nlab;              /* next label past the blocks' */
     char why[96];
 } Gx;
 
@@ -233,6 +237,7 @@ static int32_t *slot_in(Gx *g, int32_t **tab, uint32_t n)
 static void gen(Gx *g, uint32_t n);
 static void gen_call(Gx *g, uint32_t n, const char *name);
 static void gen_intrin(Gx *g, uint32_t n);
+static void gen_va(Gx *g, uint32_t n);
 static bool is_agg(Gx *g, TypeId t, uint64_t *size);
 
 /* The address of an lvalue node, into %rax. */
@@ -946,8 +951,94 @@ static void gen(Gx *g, uint32_t n)
     case TO_INTRIN:
         gen_intrin(g, n);
         break;
+    case TO_VA:
+        gen_va(g, n);
+        break;
     default:
         unsup(g, "expression %d", t->op);
+    }
+}
+
+/* va_start / va_end / va_copy / va_arg on the System V va_list (a 24-byte
+ * record: gp_offset, fp_offset, overflow_arg_area, reg_save_area).  A
+ * variadic function saves all argument registers at entry. */
+static void gen_va(Gx *g, uint32_t n)
+{
+    const TNode *t = nd(g->L, n);
+    uint64_t sz = 0;
+    TI ti;
+    bool agg, flt = false;
+    uint32_t over, done;
+    int64_t adv = 8;
+    switch (t->pun) {
+    case 1:                     /* start */
+        if (!g->variadic) {
+            unsup(g, "va_start outside a variadic function");
+            return;
+        }
+        gen(g, kid(g->L, n, 0));
+        em(g, M_MOV, 4, I(g->va_gp), R(R_CX));
+        em(g, M_MOV, 4, R(R_CX), M(R_AX, 0));
+        em(g, M_MOV, 4, I(g->va_fp), R(R_CX));
+        em(g, M_MOV, 4, R(R_CX), M(R_AX, 4));
+        em(g, M_LEA, 8, M(R_BP, g->va_stk), R(R_CX));
+        em(g, M_MOV, 8, R(R_CX), M(R_AX, 8));
+        em(g, M_LEA, 8, M(R_BP, g->save), R(R_CX));
+        em(g, M_MOV, 8, R(R_CX), M(R_AX, 16));
+        return;
+    case 2:                     /* end */
+        gen(g, kid(g->L, n, 0));
+        return;
+    case 3:                     /* copy */
+        gen(g, kid(g->L, n, 0));
+        push(g);
+        gen(g, kid(g->L, n, 1));
+        pop(g, R_CX);
+        copy_bytes(g, 24);
+        return;
+    default:
+        break;
+    }
+    agg = is_agg(g, t->ty, &sz);
+    if (agg) {                  /* only the memory class comes off the overflow area */
+        AggCls ac;
+        if (!agg_class(g, t->ty, &ac))
+            return;
+        if (!ac.mem) {
+            unsup(g, "va_arg of a register-class aggregate");
+            return;
+        }
+        adv = (int64_t)((sz + 7) / 8 * 8);
+    } else {
+        if (!tinfo(g, t->ty, &ti))
+            return;
+        flt = ti.flt;
+    }
+    gen(g, kid(g->L, n, 0));    /* %rax: the va_list; the argument's address ends in %rdx */
+    over = g->nlab++;
+    done = g->nlab++;
+    if (!agg) {
+        em(g, M_MOV, 4, M(R_AX, flt ? 4 : 0), R(R_CX));
+        em(g, M_CMP, 4, I(flt ? 160 : 40), R(R_CX));
+        em_cc(g, M_JCC, CC_A, LB(over));
+        em(g, M_MOV, 8, M(R_AX, 16), R(R_DX));
+        em(g, M_ADD, 8, R(R_CX), R(R_DX));
+        em(g, M_ADD, 4, I(flt ? 16 : 8), R(R_CX));
+        em(g, M_MOV, 4, R(R_CX), M(R_AX, flt ? 4 : 0));
+        em(g, M_JMP, 8, LB(done), NONE());
+        em(g, M_LABEL, 8, LB(over), NONE());
+    }
+    em(g, M_MOV, 8, M(R_AX, 8), R(R_DX));
+    em(g, M_LEA, 8, M(R_DX, adv), R(R_CX));
+    em(g, M_MOV, 8, R(R_CX), M(R_AX, 8));
+    em(g, M_LABEL, 8, LB(done), NONE());
+    if (agg)
+        em(g, M_MOV, 8, R(R_DX), R(R_AX));
+    else if (flt)
+        em(g, M_FMOV, ti.bytes, M(R_DX, 0), R(R_X0));
+    else {
+        em(g, M_MOV, 8, R(R_DX), R(R_AX));
+        load_at_rax(g, &ti);
     }
 }
 
@@ -1219,6 +1310,15 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
             ni = 1;
         }
     }
+    g.nlab = L->npl;
+    g.variadic = (type_ent(&g.c->tt, type_canon(&g.c->tt, fs->ty))->flags & TF_VARIADIC) != 0;
+    if (g.variadic) {                   /* every argument register, for va_arg */
+        g.save = alloc(&g, 176, 16);
+        for (i = 0; i < 6; i++)
+            em(&g, M_MOV, 8, R(arg_regs[i]), M(R_BP, g.save + 8 * (int64_t)i));
+        for (i = 0; i < 8; i++)
+            em(&g, M_FMOV, 8, R(R_X0 + (int)i), M(R_BP, g.save + 48 + 16 * (int64_t)i));
+    }
     for (i = 0; i < ps.len && !g.why[0]; i++) {
         TI ti;
         int where;
@@ -1262,6 +1362,9 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
             em(&g, M_MOV, 8, R(R_AX), M(R_BP, var_slot(&g, ref, 8)));
         }
     }
+    g.va_gp = 8 * ni;
+    g.va_fp = 48 + 16 * nf;
+    g.va_stk = 16 + 8 * ns;
     for (i = 0; i < L->npl && !g.why[0]; i++)
         if (L->b.data[ord[i]].reach)
             gen_block(&g, ord, i);

@@ -48,6 +48,12 @@ Checked against gcc in both directions by `tests/asm_exec/abi.c` plus
 harness drives its `gcc_*` functions); a mutant that classifies every
 eightbyte INTEGER is caught.
 
+`va_start`/`va_arg`/`va_copy`/`va_end` (`gen_va`, 2026-10-19): a variadic
+function saves `rdi..r9` and the low halves of `xmm0..7` into a 176-byte frame
+area at entry; `va_start` fills the 24-byte list from the named-argument
+counts; `va_arg` takes the register area while the offset allows, else the
+overflow area. Checked by `tests/asm_exec/va.c` (+ `gcc/va.c`), two mutants caught.
+
 ## What changed in the plan, and why (review log)
 
 - **Round 1: code against plan.** The consumer is a tree-recursive generator,
@@ -73,10 +79,10 @@ eightbyte INTEGER is caught.
 
 ## Result
 
-lua54: 2160 of 2174 functions emit (was 2052); libuv: 1539 of 1546 (was
-1455) with T10. Suite 2283 passed. Objects pass `readelf` and assemble.
+lua54: 2160 of 2174 functions emit (was 2052); libuv: 1541 of 1546 (was
+1455) with T10 and `va_*`; lua54 2172. Suite 2283 passed. Objects pass `readelf` and assemble.
 
 ## Not done (see `PARKED.md`)
 
 Aggregate `const`, `cond`, `comma`, compound-literal
-values; bit-field elements of a local list; `va_arg`; label addresses.
+values; bit-field elements of a local list; `va_arg` of register-class aggregates; label addresses.
