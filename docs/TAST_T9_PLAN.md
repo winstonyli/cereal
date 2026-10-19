@@ -147,6 +147,17 @@ otherwise unverified by a second method.
    direct object/machine code. QBE is one candidate, not assumed. T9 does
    not depend on it; revisit at T10 (classification is where a back end's own
    ABI handling would overlap).
+   **Spike (2026-10-18, throwaway Python over the `--dump-cfg` text, not
+   kept):** stack-slot x86-64 assembly (AT&T, one slot per node and
+   variable, every value canonicalised to 64 bits after each op) for the
+   oracle's files, assembled with `gcc` and run against gcc on the oracle's
+   random arguments: `int.c` 16 functions (3093 lines of assembly), 0
+   mismatches; `mem.c` 4 functions (the struct one skipped), 0 mismatches. A
+   deliberate change of `&` to `|` in the emitter produced 16 mismatches, so
+   the comparison detects errors. So the T8 graph is enough for a naive
+   direct code generator on integers, arrays and pointers; not covered:
+   structs, floats, calls with more than 6 arguments or aggregates, and any
+   object-file writing (the spike used the system assembler).
 
 ## 8. Review log
 
