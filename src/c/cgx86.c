@@ -1438,7 +1438,7 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
             if (!agg_class(&g, csym(g.c, ref)->ty, &pc))
                 break;
             slot = var_slot(&g, ref, 0);
-            for (p = 0; p < pc.np; p++)
+            for (p = 0; !pc.mem && p < pc.np; p++)
                 if (pc.c[p] == 'i')
                     need_i++;
                 else
