@@ -436,6 +436,7 @@ bool x86_data_node(El *e, uint32_t n, char *why, size_t nwhy)
         v.d.name = dup_n(nm, strlen(nm));
     }
     v.d.global = s->linkage == LK_EXTERNAL;
+    v.d.weak = v.d.global && (s->flags & CSF_WEAK);
     v.d.align = type_align(&e->c->tt, t->ty);
     if (s->align > v.d.align)
         v.d.align = s->align;
@@ -487,6 +488,7 @@ void x86_finish(Checker *c)
         memset(&d, 0, sizeof d);
         d.name = dup_n(nm, strlen(nm));
         d.global = s->linkage == LK_EXTERNAL;
+        d.weak = d.global && (s->flags & CSF_WEAK);
         d.sec = MD_BSS;
         d.align = type_align(&c->tt, s->ty);
         if (s->align > d.align)

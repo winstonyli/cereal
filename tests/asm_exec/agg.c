@@ -150,3 +150,36 @@ int complit(int k)
     int *arr = (int[]){k, 2, 3, k * 4};
     return sum_pt(p) + sum_pt(&(struct pt){4, k}) + copy.x + *q + arr[0] + arr[3];
 }
+
+/* a member of a call's result, and of a member of it */
+typedef struct { int a; double d; char c; } RF;
+typedef struct { RF in; long l; } RO;
+static RF mkrf(int k) { RF r = {k, k * 0.5, (char)(k + 1)}; return r; }
+static RO mkro(int k) { RO r = {mkrf(k), k * 3L}; return r; }
+double rfield(int k)
+{
+    return mkrf(k).a + mkrf(k + 1).d + mkrf(k).c + mkro(k).in.d + mkro(k - 1).l + mkro(k).in.a;
+}
+
+/* a conditional of aggregate values, and an aggregate assigned from one */
+static RF pickrf(int k, int c) { return c ? mkrf(k) : mkrf(-k); }
+double condrf(int k)
+{
+    RF r = (k & 1) ? mkrf(k) : mkrf(k + 5);
+    RF s = pickrf(k, k & 2);
+    r = (k & 4) ? s : r;
+    return r.a + r.d + s.c + ((k & 8) ? mkrf(k) : mkrf(7)).a;
+}
+
+/* a memory-class aggregate parameter is copied from the stack while later register
+ * parameters (%rdx, %rcx among them) are still unsaved */
+struct tri { long a, b, c; };
+static long takes_tri(long x, struct tri t, long y, long z, long w, long v, long u)
+{
+    return x + t.a * 2 + t.b * 3 + t.c * 5 + y * 7 + z * 11 + w * 13 + v * 17 + u * 19;
+}
+long memparam(int k)
+{
+    struct tri t = {k, k + 1, k * 3};
+    return takes_tri(k, t, k + 2, k + 3, k + 4, k + 5, k + 6);
+}

@@ -165,3 +165,9 @@ extern const char *const ext_names[];
 int ext_at(int i) { return ext_names[i & 1][0] + i; }
 int noproto() { return 11; }
 int callnoproto(int k) { return k + noproto(); }
+
+/* weak references: an undefined weak function is called only when present */
+void weak_missing(void) __attribute__((weak));
+int weak_present(int k) { return weak_missing ? k : -k; }
+int weak_call(int k) { if (weak_missing) weak_missing(); return k * 2; }
+int weak_ne(int k) { return (weak_missing != 0) * 3 + (weak_missing == (void (*)(void))0) * 5 + k; }

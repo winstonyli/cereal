@@ -13,7 +13,7 @@
     X(LOGAND, "logand") X(LOGOR, "logor") X(COND, "cond")                    \
     X(ELVIS, "elvis") X(COMMA, "comma") X(CALL, "call")                      \
     X(INTRIN, "intrin") X(VA, "va") X(LABADDR, "labaddr")                                        \
-    X(DEREF, "deref") X(FIELD, "field") X(ADDR, "addr") X(STR, "str")        \
+    X(DEREF, "deref") X(FIELD, "field") X(RFIELD, "rfield") X(ADDR, "addr") X(STR, "str")        \
     X(PTRADD, "ptradd") X(PTRDIFF, "ptrdiff") X(STMTEXPR, "stmtexpr")        \
     X(POST, "post")                                                          \
     X(BLOCK, "block") X(LOCAL, "local") X(EXPRSTMT, "exprstmt")              \

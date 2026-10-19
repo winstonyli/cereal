@@ -9,6 +9,7 @@
  * unsupported. */
 #include "c/tast.h"
 
+#include <ctype.h>
 #include <float.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -290,6 +291,19 @@ static uint32_t str_node(El *e, uint32_t i, TypeId t, SrcLoc loc)
     j = mk(e, TO_STR, t, loc, off, 0, unit, NULL, 0);
     e->nodes.data[j].width = (uint32_t)e->bytes.len - off;
     return j;
+}
+
+/* A one-byte-element string node holding the n given bytes. */
+static uint32_t str_bytes(El *e, const char *p, size_t n, TypeId t, SrcLoc loc)
+{
+    uint32_t off = (uint32_t)e->bytes.len, id;
+    size_t j;
+    for (j = 0; j < n; j++)
+        vec_push(&e->bytes, (uint8_t)p[j]);
+    vec_push(&e->bytes, 0);
+    id = mk(e, TO_STR, t, loc, off, 0, 1, NULL, 0);
+    e->nodes.data[id].width = (uint32_t)e->bytes.len - off;
+    return id;
 }
 
 /* __func__, __FUNCTION__, __PRETTY_FUNCTION__: the enclosing function's name
@@ -864,8 +878,25 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
             return load(e, lval(e, i));
     }
     switch (ntag(c, i)) {
-    case N_MEMBER_EXPR:
-        return unsup(e, "member of rvalue");
+    case N_MEMBER_EXPR: {       /* f().x: a member of an aggregate value, which is its address */
+        uint32_t d = first_child(c, i), base;
+        const Field *f;
+        uint64_t off = 0;
+        unsigned q = 0;
+        if (d == NO_NODE || (c->nodes[i].flags & NF_ARROW))
+            return unsup(e, "malformed member");
+        base = rv(e, d);
+        if (base == TN)
+            return TN;
+        f = find_field(c, c->ty[d], cnode_ident(c, i), &off, &q);
+        if (!f)
+            return unsup(e, "member not found");
+        if (f->flags & FF_BITFIELD)
+            return unsup(e, "bit-field of an rvalue");
+        if (!ok_ty(e, t) || type_ckind(&c->tt, t) == TY_ARRAY)
+            return unsup(e, "%s", why_type(e, t));
+        return mk(e, TO_RFIELD, t, loc, (int64_t)(off / 8), 0, 0, &base, 1);
+    }
     case N_VA_ARG:
         return e_va(e, i, VA_ARG);
     case N_ADDR_LABEL:
@@ -1412,17 +1443,22 @@ static uint32_t st(El *e, uint32_t n)
         if (ka[0] != TN)
             id = mk(e, TO_IGOTO, 0, loc, 0, 0, 0, ka, 1);
         break;
-    case N_ASM: {           /* a template without operands: its text is the string kid */
-        uint32_t q, s = TN, ts = TN, sec[64], ns;
+    case N_ASM: {           /* the template text is the string kid; operands follow it: a string of
+                             * their constraint letters, the outputs (lvalues), then the inputs */
+        uint32_t q, ts = TN, sec[64], ns, ops[2][16], no[2] = {0, 0}, x[34], nx = 2;
         bool bad = false;
         m = fkids(e, n, &k);
         for (q = 0; q < m && !bad; q++) {
             if (ntag(c, k[q]) == N_STRING && ts == TN) {
                 ts = k[q];
             } else if (ntag(c, k[q]) == N_ASM_SECTION) {
+                unsigned which = c->nodes[k[q]].aux;
                 ns = nkids(c, k[q], sec, 64);
                 for (j = 0; j < ns; j++)
-                    if (ntag(c, sec[j]) == N_ASM_OPERAND)
+                    if (ntag(c, sec[j]) == N_ASM_OPERAND && (which == 1 || which == 2) &&
+                        no[which - 1] < 16)
+                        ops[which - 1][no[which - 1]++] = sec[j];
+                    else if (ntag(c, sec[j]) == N_ASM_OPERAND)
                         bad = true;
             }
         }
@@ -1430,9 +1466,49 @@ static uint32_t st(El *e, uint32_t n)
             unsup(e, "asm with operands");
             break;
         }
-        s = str_node(e, ts, c->ty[ts], loc);
-        if (s != TN)
-            id = mk(e, TO_ASM, 0, loc, 0, 0, 0, &s, 1);
+        x[0] = str_node(e, ts, c->ty[ts], loc);
+        if (x[0] == TN)
+            break;
+        if (no[0] + no[1]) {
+            uint32_t w, kk[4], nk;
+            char let[40];
+            size_t nl = 0;
+            for (w = 0; w < 2 && !bad; w++)
+                for (q = 0; q < no[w] && !bad; q++) {
+                    uint32_t v, cs;
+                    size_t len, b;
+                    const char *t;
+                    nk = nkids(c, ops[w][q], kk, 4);
+                    if (nk < 2) {
+                        bad = true;
+                        break;
+                    }
+                    cs = kk[nk - 2];
+                    t = ttext(c, c->nodes[cs].tok, &len);
+                    for (b = 0; b < len && !isalpha((unsigned char)t[b]); b++)
+                        ;
+                    let[nl++] = b >= len ? '?' : memchr(t, '+', len) ? (char)toupper((unsigned char)t[b]) : t[b];
+                    if (!ok_int(e, c->ty[kk[nk - 1]]) &&
+                        type_ckind(&c->tt, c->ty[kk[nk - 1]]) != TY_PTR) {
+                        unsup(e, "asm operand type");
+                        bad = true;
+                        break;
+                    }
+                    v = w == 0 ? lval(e, kk[nk - 1]) : rv(e, kk[nk - 1]);
+                    if (v == TN) {
+                        bad = true;
+                        break;
+                    }
+                    x[nx++] = v;
+                }
+            if (bad)
+                break;
+            let[nl] = 0;
+            x[1] = str_bytes(e, let, nl, c->ty[ts], loc);
+            id = mk(e, TO_ASM, 0, loc, (int64_t)no[0], 0, no[1], x, nx);
+        } else {
+            id = mk(e, TO_ASM, 0, loc, 0, 0, 0, x, 1);
+        }
         break;
     }
     case N_BREAK:
@@ -1455,6 +1531,9 @@ static uint32_t st(El *e, uint32_t n)
         }
         break;
     }
+    case N_ATTR_STMT:       /* [[fallthrough]], __attribute__((fallthrough)) */
+        id = nop(e, loc);
+        break;
     default:
         unsup(e, "statement %s", node_names[ntag(c, n)]);
         break;
@@ -1597,7 +1676,7 @@ void tast_print_node(El *e, FILE *out, size_t i)
             if (nd->width)
                 fprintf(out, " fixed %lld", (long long)nd->val);
             break;
-        case TO_FIELD:
+        case TO_FIELD: case TO_RFIELD:
             fprintf(out, " +%lld", (long long)nd->val);
             if (nd->width)
                 fprintf(out, " bit %u width %u", nd->pun, nd->width);
@@ -1979,6 +2058,19 @@ static void verify(El *e, FILE *out)
                 vbad(e, out, i, "bit-field type or width");
             break;
         }
+        case TO_RFIELD: {
+            bool ok = false;
+            uint64_t rs;
+            NEED(1);
+            if (!ISVAL(KID(0)) || !is_record(c, KID(0)->ty)) {
+                vbad(e, out, i, "operand is not a struct or union value");
+                break;
+            }
+            rs = type_size(&c->tt, KID(0)->ty, &ok);
+            if (ok && (uint64_t)nd->val + type_size(&c->tt, nd->ty, &ok) > rs)
+                vbad(e, out, i, "member outside the record");
+            break;
+        }
         case TO_ADDR:
             NEED(1);
             if (!ISLV(KID(0)) || KIND(nd->ty) != TY_PTR)
@@ -2093,11 +2185,20 @@ static void verify(El *e, FILE *out)
                 vbad(e, out, i, "goto without a label");
             break;
         }
-        case TO_ASM:
-            NEED(1);
-            if (KID(0)->op != TO_STR)
-                vbad(e, out, i, "template");
+        case TO_ASM: {
+            uint32_t q;
+            if (nd->nkids == 1 && KID(0)->op == TO_STR && !nd->val && !nd->pun)
+                break;
+            if (nd->nkids < 2 || KID(0)->op != TO_STR || KID(1)->op != TO_STR ||
+                nd->nkids != 2 + nd->val + nd->pun) {
+                vbad(e, out, i, "template or operands");
+                break;
+            }
+            for (q = 0; q < nd->val + nd->pun; q++)
+                if (nd->val > q ? !ISLV(KID(2 + q)) : !ISVAL(KID(2 + q)))
+                    vbad(e, out, i, "operand form");
             break;
+        }
         case TO_IGOTO:
             NEED(1);
             if (!ISVAL(KID(0)) || KIND(KID(0)->ty) != TY_PTR)

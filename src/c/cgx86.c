@@ -226,10 +226,10 @@ static int32_t var_slot(Gx *g, uint32_t ref, int32_t forced_size)
     return s.off;
 }
 
-static int32_t *slot_in(Gx *g, int32_t **tab, uint32_t n)
+static int32_t *slot_in(Gx *g, int32_t **tab, uint32_t n, uint64_t size, unsigned align)
 {
     if (!(*tab)[n])
-        (*tab)[n] = alloc(g, 8, 8);
+        (*tab)[n] = alloc(g, size, align);
     return &(*tab)[n];
 }
 
@@ -239,6 +239,7 @@ static void gen(Gx *g, uint32_t n);
 static void gen_call(Gx *g, uint32_t n, const char *name);
 static void gen_intrin(Gx *g, uint32_t n);
 static void gen_va(Gx *g, uint32_t n);
+static void gen_asm_ops(Gx *g, uint32_t n, const char *txt, size_t tlen);
 static bool is_agg(Gx *g, TypeId t, uint64_t *size);
 static void init_list(Gx *g, uint32_t n, int32_t base);
 
@@ -258,7 +259,8 @@ static void genaddr(Gx *g, uint32_t n)
             /* a symbol this unit only declares may live in another object: its address comes from the GOT */
             bool got = s->sc != SC_STATIC && !(s->flags & CSF_DEFINED) &&
                        (s->kind == CS_FUNC || s->sc == SC_EXTERN);
-            MOp o = {MK_SYM, got, 0, x86_symname(g->c, g->L->e->fname, t->sym)};
+            MOp o = {MK_SYM, (uint8_t)(got | (s->flags & CSF_WEAK ? 2 : 0)), 0,
+                     x86_symname(g->c, g->L->e->fname, t->sym)};
             em(g, got ? M_MOV : M_LEA, 8, o, R(R_AX));
         } else {
             unsup(g, "symbol of kind %d", s->kind);
@@ -266,14 +268,13 @@ static void genaddr(Gx *g, uint32_t n)
         break;
     }
     case TO_REG:
-    case TO_TMP: {              /* an 8-byte slot: no room for an aggregate */
-        uint64_t sz;
-        if (is_agg(g, t->ty, &sz)) {
-            unsup(g, "aggregate in a register or temporary");
-            return;
-        }
+    case TO_TMP: {              /* a slot of the value's size (8 bytes unless it is an aggregate) */
+        uint64_t sz = 8;
+        unsigned al = 8;
+        if (is_agg(g, t->ty, &sz))
+            al = type_align(&g->c->tt, t->ty);
         em(g, M_LEA, 8, M(R_BP, *slot_in(g, t->op == TO_REG ? &g->regoff : &g->tmpoff,
-                                          (uint32_t)t->val)), R(R_AX));
+                                          (uint32_t)t->val, sz ? sz : 1, al)), R(R_AX));
         break;
     }
     case TO_DEREF:
@@ -698,7 +699,8 @@ static void gen_call(Gx *g, uint32_t n, const char *name)
         em(g, M_LEA, 8, M(R_BP, rtmp), R(R_DI));
     em(g, M_MOV, 4, I(nf), R(R_AX));    /* vector registers used, for variadic callees */
     {
-        MOp callee = b0 ? R(R_R11) : (MOp){MK_SYM, 0, 0, name};
+        bool weak = !b0 && t->op == TO_CALL && (csym(g->c, t->sym)->flags & CSF_WEAK);
+        MOp callee = b0 ? R(R_R11) : (MOp){MK_SYM, (uint8_t)(weak ? 2 : 0), 0, name};
         em(g, M_CALL, 8, callee, NONE());
     }
     if (nstack + pad) {
@@ -772,6 +774,16 @@ static void gen(Gx *g, uint32_t n)
         em(g, M_MOVQX, ti.bytes, R(R_AX), R(R_X0));
         break;
     }
+    case TO_RFIELD:             /* the aggregate's address, then the member */
+        gen(g, kid(g->L, n, 0));
+        if (t->val)
+            em(g, M_ADD, 8, I(t->val), R(R_AX));
+        if (is_agg(g, t->ty, &asz))
+            break;
+        if (!tinfo(g, t->ty, &ti))
+            return;
+        load_at_rax(g, &ti);
+        break;
     case TO_LOAD:
         if (is_agg(g, t->ty, &asz)) {
             genaddr(g, kid(g->L, n, 0));
@@ -1259,12 +1271,214 @@ static void gen_intrin(Gx *g, uint32_t n)
         }
         return;
     }
+    if (!strcmp(nm, "prefetch")) {      /* a hint: only the address is evaluated */
+        gen(g, kid(g->L, n, 0));
+        return;
+    }
+    if (!strcmp(nm, "unreachable")) {
+        MOp ud2 = {MK_SYM, 0, 0x0b0f, "ud2"};
+        em(g, M_BYTES, 2, ud2, NONE());
+        return;
+    }
     for (i = 0; i < sizeof libc / sizeof *libc; i++)
         if (!strcmp(nm, libc[i])) {
             gen_call(g, n, libc[i]);
             return;
         }
     unsup(g, "built-in %s", nm);
+}
+
+/* An asm template with operands: the operands go in registers (a, c, d by their
+ * constraint letter, r: any other), the template is a few register-to-register
+ * instructions in AT&T syntax over %N, and the outputs are stored back.  "+"
+ * (an upper-case letter here) also reads the output first.  cpuid runs between
+ * a push and a pop of %rbx, which is not a register of ours (an output in "b" is
+ * copied to %esi first). */
+static bool asm_cc(const char *s, size_t n, int *cc)
+{
+    static const struct { const char *nm; int cc; } t[] = {
+        {"e", CC_E}, {"z", CC_E}, {"ne", CC_NE}, {"nz", CC_NE}, {"l", CC_L}, {"nge", CC_L},
+        {"le", CC_LE}, {"ng", CC_LE}, {"g", CC_G}, {"nle", CC_G}, {"ge", CC_GE}, {"nl", CC_GE},
+        {"b", CC_B}, {"c", CC_B}, {"nae", CC_B}, {"be", CC_BE}, {"na", CC_BE}, {"a", CC_A},
+        {"nbe", CC_A}, {"ae", CC_AE}, {"nb", CC_AE}, {"nc", CC_AE}};
+    size_t q;
+    for (q = 0; q < sizeof t / sizeof *t; q++)
+        if (strlen(t[q].nm) == n && !strncmp(s, t[q].nm, n)) {
+            *cc = t[q].cc;
+            return true;
+        }
+    return false;
+}
+
+/* The operand in s[0..len): %N (a register, whose width sets *w), or $imm. */
+static bool asm_operand(const char *s, size_t len, uint32_t nops, const int *reg, const TI *ti,
+                        MOp *o, int *w)
+{
+    char buf[24];
+    if (len == 0 || len >= sizeof buf)
+        return false;
+    memcpy(buf, s, len);
+    buf[len] = 0;
+    if (buf[0] == '$') {
+        *o = I(strtoll(buf + 1, NULL, 0));
+        return true;
+    }
+    if (buf[0] == '%' && isdigit((unsigned char)buf[1])) {
+        long k = strtol(buf + 1, NULL, 10);
+        if (k < 0 || (unsigned long)k >= nops)
+            return false;
+        *o = R(reg[k]);
+        *w = ti[k].bytes;
+        return true;
+    }
+    return false;
+}
+
+static size_t trim_end(const char *s, size_t from, size_t end)
+{
+    while (end > from && isspace((unsigned char)s[end - 1]))
+        end--;
+    return end;
+}
+
+/* The template's instructions (separated by newlines or semicolons), emitted;
+ * false: one is outside the few forms known. */
+static bool asm_emit(Gx *g, const char *s, size_t len, uint32_t nops, const int *reg, const TI *ti)
+{
+    static const struct { const char *nm; int op; } two[] = {
+        {"cmp", M_CMP}, {"test", M_TEST}, {"mov", M_MOV}, {"add", M_ADD}, {"sub", M_SUB},
+        {"and", M_AND}, {"or", M_OR}, {"xor", M_XOR}, {"imul", M_IMUL}};
+    size_t p = 0;
+    while (p < len) {
+        size_t e = p, m, c, comma, q;
+        MOp a, b = NONE();
+        int w = 8, cc = 0, op = -1;
+        while (e < len && s[e] != '\n' && s[e] != ';')
+            e++;
+        while (p < e && isspace((unsigned char)s[p]))
+            p++;
+        if (p == e) {
+            p = e + 1;
+            continue;
+        }
+        m = p;
+        while (m < e && !isspace((unsigned char)s[m]))
+            m++;
+        c = m;
+        while (c < e && isspace((unsigned char)s[c]))
+            c++;
+        comma = c;
+        while (comma < e && s[comma] != ',')
+            comma++;
+        if (!asm_operand(s + c, trim_end(s, c, comma) - c, nops, reg, ti, &a, &w))
+            return false;
+        if (comma < e) {
+            size_t bs = comma + 1;
+            while (bs < e && isspace((unsigned char)s[bs]))
+                bs++;
+            if (!asm_operand(s + bs, trim_end(s, bs, e) - bs, nops, reg, ti, &b, &w))
+                return false;
+        }
+        if (b.k != MK_REG)
+            return false;
+        if (m - p > 4 && !strncmp(s + p, "cmov", 4) && asm_cc(s + p + 4, m - p - 4, &cc)) {
+            MInst mi;
+            memset(&mi, 0, sizeof mi);
+            mi.op = M_CMOV;
+            mi.w = (uint8_t)(w < 4 ? 4 : w);
+            mi.cc = (uint8_t)cc;
+            mi.a = a;
+            mi.b = b;
+            vec_push(&g->f.code, mi);
+        } else {
+            for (q = 0; q < sizeof two / sizeof *two; q++)
+                if (strlen(two[q].nm) == m - p && !strncmp(s + p, two[q].nm, m - p))
+                    op = two[q].op;
+            if (op < 0)
+                return false;
+            em(g, op, w, a, b);
+        }
+        p = e + 1;
+    }
+    return true;
+}
+
+static void gen_asm_ops(Gx *g, uint32_t n, const char *txt, size_t tlen)
+{
+    static const int pool[] = {R_AX, R_CX, R_DX, R_SI, R_DI, R_R8, R_R9, R_R11};
+    const TNode *t = nd(g->L, n), *ls = nd(g->L, kid(g->L, n, 1));
+    const char *let = (const char *)g->L->e->bytes.data + ls->val;
+    uint32_t no = (uint32_t)t->val, nops = no + t->pun, q;
+    bool cpuid = tlen == 5 && !strncmp(txt, "cpuid", 5);
+    int reg[16], used = 0;
+    TI ti[16];
+    MOp bytes = {MK_SYM, 0, 0x5bde89a20f53LL, "push %rbx; cpuid; mov %ebx,%esi; pop %rbx"};
+    if (nops > 16) {
+        unsup(g, "asm with %d operands", (int)nops);
+        return;
+    }
+    for (q = 0; q < nops; q++) {
+        char l = (char)tolower((unsigned char)let[q]);
+        int r = l == 'a' ? R_AX : l == 'c' ? R_CX : l == 'd' ? R_DX
+                : l == 'b' && cpuid && q < no ? R_SI : -1;
+        reg[q] = r;
+        if (r >= 0)
+            used |= 1 << r;
+        else if (l != 'r') {
+            unsup(g, "asm operand constraint '%c'", let[q]);
+            return;
+        }
+        if (!tinfo(g, nd(g->L, kid(g->L, n, 2 + q))->ty, &ti[q]))
+            return;
+    }
+    for (q = 0; q < nops; q++)
+        if (reg[q] < 0) {
+            size_t k;
+            for (k = 0; k < sizeof pool / sizeof *pool && (used >> pool[k] & 1); k++)
+                ;
+            if (k == sizeof pool / sizeof *pool) {
+                unsup(g, "asm: out of registers");
+                return;
+            }
+            reg[q] = pool[k];
+            used |= 1 << pool[k];
+        }
+    if (!cpuid) {                               /* check the template before emitting anything */
+        size_t mark = g->f.code.len;
+        bool ok = asm_emit(g, txt, tlen, nops, reg, ti);
+        g->f.code.len = mark;
+        if (!ok) {
+            unsup(g, "asm template \"%.*s\" with operands", (int)(tlen < 40 ? tlen : 40), txt);
+            return;
+        }
+    }
+    for (q = 0; q < nops; q++)
+        if (q >= no || isupper((unsigned char)let[q])) {
+            if (q < no) {
+                genaddr(g, kid(g->L, n, 2 + q));
+                load_at_rax(g, &ti[q]);
+            } else {
+                gen(g, kid(g->L, n, 2 + q));
+            }
+            push(g);
+        }
+    for (q = nops; q-- > 0;)
+        if (q >= no || isupper((unsigned char)let[q]))
+            pop(g, reg[q]);
+    if (cpuid)
+        em(g, M_BYTES, 6, bytes, NONE());
+    else
+        asm_emit(g, txt, tlen, nops, reg, ti);
+    for (q = 0; q < no; q++) {
+        em(g, M_MOV, 8, R(reg[q]), R(R_AX));
+        push(g);
+    }
+    for (q = no; q-- > 0;) {
+        genaddr(g, kid(g->L, n, 2 + q));
+        em(g, M_MOV, 8, R(R_AX), R(R_CX));
+        pop(g, R_AX);
+        store_rcx(g, &ti[q]);
+    }
 }
 
 /* ---- statements, blocks ------------------------------------------------ */
@@ -1293,8 +1507,14 @@ static void gen_stmt(Gx *g, uint32_t n)
         while (e > b && isspace(p[e - 1]))
             e--;
         if (e == b)
-            break;              /* "": a compiler barrier */
+            break;              /* "": a compiler barrier (operands only pin values to registers) */
         snprintf(txt, sizeof txt, "%.*s", (int)(e - b < 60 ? e - b : 60), (const char *)p + b);
+        if (!strncmp(txt, ".p2align", 8) || !strncmp(txt, ".balign", 7))
+            break;              /* an alignment hint */
+        if (t->nkids > 1) {
+            gen_asm_ops(g, n, (const char *)p + b, e - b);
+            break;
+        }
         for (q = 0; q < sizeof known / sizeof *known; q++)
             if (!strcmp(txt, known[q].text)) {
                 MOp o = {MK_SYM, 0, known[q].bytes, known[q].text};
@@ -1439,7 +1659,7 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
 {
     Gx g;
     uint32_t i, root = L->e->c->nn - 1;
-    int ni = 0, nf = 0, ns = 0;
+    int ni = 0, nf = 0, ns = 0, ni0, nf0, pass;
     U32Vec ps = {0};
     const CSym *fs = csym(L->e->c, L->e->fsym);
     memset(&g, 0, sizeof g);
@@ -1447,6 +1667,7 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
     g.c = L->e->c;
     g.f.name = cident(g.c, fs->name);
     g.f.global = fs->linkage == LK_EXTERNAL && fs->sc != SC_STATIC;
+    g.f.weak = g.f.global && (fs->flags & CSF_WEAK);
     g.regoff = xcalloc(L->nreg ? L->nreg : 1, sizeof *g.regoff);
     g.tmpoff = xcalloc(L->e->ntmp ? L->e->ntmp : 1, sizeof *g.tmpoff);
     em(&g, M_PUSH, 8, R(R_BP), NONE());
@@ -1474,47 +1695,70 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
         for (i = 0; i < 8; i++)
             em(&g, M_FMOV, 8, R(R_X0 + (int)i), M(R_BP, g.save + 48 + 16 * (int64_t)i));
     }
-    for (i = 0; i < ps.len && !g.why[0]; i++) {
-        TI ti;
-        int where;
-        uint32_t ref = g.c->cb[ps.data[i]] - 1;
-        uint64_t psz;
-        if (is_agg(&g, csym(g.c, ref)->ty, &psz)) {
-            AggCls pc;
-            int32_t slot, p, need_i = 0, need_f = 0;
-            if (!agg_class(&g, csym(g.c, ref)->ty, &pc))
-                break;
-            slot = var_slot(&g, ref, 0);
-            for (p = 0; !pc.mem && p < pc.np; p++)
-                if (pc.c[p] == 'i')
-                    need_i++;
-                else
-                    need_f++;
-            if (!pc.mem && ni + need_i <= 6 && nf + need_f <= 8) {
-                for (p = 0; p < pc.np; p++)
+    /* Pass 0 stores the register parameters, pass 1 copies the ones on the stack: the copy
+     * borrows %rax, %rcx and %rdx, which may still hold arguments. */
+    ni0 = ni;
+    nf0 = nf;
+    for (pass = 0; pass < 2; pass++) {
+        ni = ni0;
+        nf = nf0;
+        ns = 0;
+        for (i = 0; i < ps.len && !g.why[0]; i++) {
+            TI ti;
+            int where;
+            uint32_t ref = g.c->cb[ps.data[i]] - 1;
+            uint64_t psz;
+            if (is_agg(&g, csym(g.c, ref)->ty, &psz)) {
+                AggCls pc;
+                int32_t slot, p, need_i = 0, need_f = 0;
+                bool inreg;
+                if (!agg_class(&g, csym(g.c, ref)->ty, &pc))
+                    break;
+                for (p = 0; !pc.mem && p < pc.np; p++)
                     if (pc.c[p] == 'i')
-                        em(&g, M_MOV, piece_w(&pc, p), R(arg_regs[ni++]), M(R_BP, slot + 8 * p));
+                        need_i++;
                     else
-                        em(&g, M_FMOV, piece_w(&pc, p) == 4 ? 4 : 8, R(R_X0 + nf++),
-                           M(R_BP, slot + 8 * p));
-            } else {
-                em(&g, M_LEA, 8, M(R_BP, 16 + 8 * (int64_t)ns), R(R_AX));
-                em(&g, M_LEA, 8, M(R_BP, slot), R(R_CX));
-                copy_bytes(&g, pc.size);
-                ns += (int)((pc.size + 7) / 8);
+                        need_f++;
+                inreg = !pc.mem && ni + need_i <= 6 && nf + need_f <= 8;
+                slot = pass == (inreg ? 0 : 1) ? var_slot(&g, ref, 0) : 0;
+                if (inreg) {
+                    for (p = 0; p < pc.np; p++)
+                        if (pc.c[p] == 'i') {
+                            if (pass == 0)
+                                em(&g, M_MOV, piece_w(&pc, p), R(arg_regs[ni]), M(R_BP, slot + 8 * p));
+                            ni++;
+                        } else {
+                            if (pass == 0)
+                                em(&g, M_FMOV, piece_w(&pc, p) == 4 ? 4 : 8, R(R_X0 + nf),
+                                   M(R_BP, slot + 8 * p));
+                            nf++;
+                        }
+                } else {
+                    if (pass == 1) {
+                        em(&g, M_LEA, 8, M(R_BP, 16 + 8 * (int64_t)ns), R(R_AX));
+                        em(&g, M_LEA, 8, M(R_BP, slot), R(R_CX));
+                        copy_bytes(&g, pc.size);
+                    }
+                    ns += (int)((pc.size + 7) / 8);
+                }
+                continue;
             }
-            continue;
-        }
-        if (!tinfo(&g, csym(g.c, ref)->ty, &ti))
-            break;
-        where = arg_loc(&ti, &ni, &nf);
-        if (where >= R_X0) {
-            em(&g, M_FMOV, ti.bytes, R(where), M(R_BP, var_slot(&g, ref, 8)));
-        } else if (where >= 0) {
-            em(&g, M_MOV, 8, R(where), M(R_BP, var_slot(&g, ref, 8)));
-        } else {                /* above the saved %rbp and return address */
-            em(&g, M_MOV, 8, M(R_BP, 16 + 8 * (int64_t)ns++), R(R_AX));
-            em(&g, M_MOV, 8, R(R_AX), M(R_BP, var_slot(&g, ref, 8)));
+            if (!tinfo(&g, csym(g.c, ref)->ty, &ti))
+                break;
+            where = arg_loc(&ti, &ni, &nf);
+            if (pass != (where >= 0 ? 0 : 1)) {
+                if (where < 0)
+                    ns++;
+                continue;
+            }
+            if (where >= R_X0) {
+                em(&g, M_FMOV, ti.bytes, R(where), M(R_BP, var_slot(&g, ref, 8)));
+            } else if (where >= 0) {
+                em(&g, M_MOV, 8, R(where), M(R_BP, var_slot(&g, ref, 8)));
+            } else {                /* above the saved %rbp and return address */
+                em(&g, M_MOV, 8, M(R_BP, 16 + 8 * (int64_t)ns++), R(R_AX));
+                em(&g, M_MOV, 8, R(R_AX), M(R_BP, var_slot(&g, ref, 8)));
+            }
         }
     }
     g.va_gp = 8 * ni;

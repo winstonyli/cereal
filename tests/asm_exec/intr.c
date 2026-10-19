@@ -94,3 +94,59 @@ int lz32(unsigned x) { return __builtin_clz(x | 1); }
 int lz64(unsigned long long x) { return __builtin_clzll(x | 1) + __builtin_clzl(x | 2); }
 int tz32(unsigned x) { return __builtin_ctz(x | 0x80000000u); }
 int tz64(unsigned long long x) { return __builtin_ctzll(x | (1ull << 63)) + __builtin_ctzl(x | (1ull << 62)); }
+
+/* asm with operands: cpuid (leaf 0 gives the vendor's largest leaf; its value is
+ * the same in both builds), and an empty guard */
+unsigned cpu0(int k)
+{
+    unsigned n = 7, a = 0, c = 0, d = 0;
+    __asm__("cpuid" : "=a"(n) : "a"(0) : "ebx", "ecx", "edx");
+    __asm__("cpuid" : "=a"(a), "=c"(c), "=d"(d) : "a"(1) : "ebx");
+    __asm__("" : "+r"(k));
+    return (n > 0) + (a != 0) * 2 + ((c ^ d) != 0) * 4 + (unsigned)k;
+}
+
+int fall(int k)
+{
+    int r = 0;
+    switch ((unsigned)k % 3) {
+    case 0: r += 1; [[fallthrough]];
+    case 1: r += 2; __attribute__((fallthrough));
+    case 2: r += 4; break;
+    default: __builtin_unreachable();
+    }
+    return r;
+}
+
+unsigned cpu7(int k)
+{
+    unsigned a = 1, b = 2, c = 3;
+    __asm__("cpuid" : "=a"(a), "=b"(b), "=c"(c) : "a"(0), "c"(0) : "edx");
+    return (a > 0) + (b != 0) * 2 + (unsigned)k;
+}
+
+/* register operands: a conditional move through a template, as zstd's ZSTD_selectAddr */
+const char *selpick(unsigned index, unsigned low, const char *cand, const char *back)
+{
+    __asm__("cmp %1, %2\n"
+            "cmova %3, %0\n"
+            : "+r"(cand)
+            : "r"(index), "r"(low), "r"(back));
+    return cand;
+}
+
+long addmix(long x, long y)
+{
+    long r;
+    __asm__("mov %1, %0; add %2, %0; sub $3, %0" : "=r"(r) : "r"(x), "r"(y));
+    return r;
+}
+
+int selp(unsigned index, unsigned low) { return selpick(index, low, "aaaa", "bbbb")[0] + (int)addmix(index, (long)low); }
+
+int pf(const int *p, int k)
+{
+    __builtin_prefetch(p + k);
+    __builtin_prefetch(p, 0, 3);
+    return p[k & 1] + k;
+}

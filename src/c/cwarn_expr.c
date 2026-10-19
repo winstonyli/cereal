@@ -2398,8 +2398,9 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                 case P_LE: r = cmp <= 0; break;
                 default: r = cmp >= 0; break;
                 }
-            } else if (eq && ((cba == 0 && va == 0) || (cbb == 0 && vb == 0))) {
-                r = op == P_NE;
+            } else if (eq && ((cba == 0 && va == 0 && !(cbb && !(cbb & CB_NODE) && addr_weak(c, cbb))) ||
+                              (cbb == 0 && vb == 0 && !(cba && !(cba & CB_NODE) && addr_weak(c, cba))))) {
+                r = op == P_NE;     /* a weak symbol's address may be null */
             } else if (!eq && ((cba == 0 && va == 0 && cbb && !(cbb & CB_NODE) &&
                                 !addr_weak(c, cbb)) ||
                                (cbb == 0 && vb == 0 && cba && !(cba & CB_NODE) &&

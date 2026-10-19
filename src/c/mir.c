@@ -48,7 +48,7 @@ static void put_op(const MFunc *f, const MOp *o, int w, FILE *out)
         fprintf(out, ".L%s_%lld", f->name, (long long)o->v);
         break;
     case MK_SYM:
-        fprintf(out, "%s%s(%%rip)", o->name, o->reg == 1 ? "@GOTPCREL" : "");
+        fprintf(out, "%s%s(%%rip)", o->name, o->reg & 1 ? "@GOTPCREL" : "");
         break;
     }
 }
@@ -60,7 +60,9 @@ void mir_print_data(const MData *d, FILE *out)
     size_t r = 0;
     uint64_t at = 0;
     fprintf(out, "\t%s\n\t.balign %u\n", sec_dir[d->sec], d->align);
-    if (d->global)
+    if (d->weak)
+        fprintf(out, "\t.weak %s\n", d->name);
+    else if (d->global)
         fprintf(out, "\t.globl %s\n", d->name);
     fprintf(out, "%s:\n", d->name);
     while (at < d->size) {
@@ -100,12 +102,16 @@ void mir_print(const MFunc *f, FILE *out)
 {
     size_t i;
     fprintf(out, "\t.text\n");
-    if (f->global)
+    if (f->weak)
+        fprintf(out, "\t.weak %s\n", f->name);
+    else if (f->global)
         fprintf(out, "\t.globl %s\n", f->name);
     fprintf(out, "%s:\n", f->name);
     for (i = 0; i < f->code.len; i++) {
         const MInst *m = &f->code.data[i];
         int w = m->w ? m->w : 8;
+        if (m->a.k == MK_SYM && m->a.reg & 2 && m->op != M_BYTES)
+            fprintf(out, "\t.weak %s\n", m->a.name);
         switch (m->op) {
         case M_LABEL: {
             size_t q;
@@ -211,6 +217,12 @@ void mir_print(const MFunc *f, FILE *out)
             put_op(f, &m->a, 8, out);
             fputc(',', out);
             put_op(f, &m->b, 8, out);
+            break;
+        case M_CMOV:
+            fprintf(out, "	cmov%s%c ", cc_names[m->cc], suffix(w));
+            put_op(f, &m->a, w, out);
+            fputc(',', out);
+            put_op(f, &m->b, w, out);
             break;
         case M_SHL: case M_SAR: case M_SHR:     /* by %cl */
             fprintf(out, "\t%s%c %%cl,", op_names[m->op], suffix(w));

@@ -16,6 +16,7 @@ typedef struct Enc {
     int rel_at;                 /* a %rip-relative symbol's rel32 starts here (-1: none) ... */
     const char *rel_name;       /* ... and names it */
     bool rel_got;               /* through the GOT */
+    bool rel_weak;              /* the symbol is weak */
 } Enc;
 
 static void put(Enc *e, int v) { e->b[e->n++] = (uint8_t)v; }
@@ -26,6 +27,9 @@ static void put32(Enc *e, int64_t v)
     for (i = 0; i < 4; i++)
         put(e, (int)((uint64_t)v >> (8 * i) & 0xff));
 }
+
+/* The condition codes' low nibble in jcc, setcc and cmovcc. */
+static const uint8_t x86_cc[CC_COUNT] = {4, 5, 0xc, 0xe, 0xf, 0xd, 2, 6, 7, 3, 0xa, 0xb};
 
 static int hw(int r)
 {
@@ -61,7 +65,8 @@ static void ins(Enc *e, int pfx, bool w8, bool force, const uint8_t *opc, int no
         put(e, (reg & 7) << 3 | 5);
         e->rel_at = e->n;
         e->rel_name = rm->name;
-        e->rel_got = rm->reg == 1;
+        e->rel_got = rm->reg & 1;
+        e->rel_weak = rm->reg & 2;
         put32(e, 0);
     } else {
         int b = hw(rm->reg) & 7, mod;
@@ -114,6 +119,7 @@ static bool enc_inst(const MInst *m, Enc *e)
     e->n = 0;
     e->rel_at = -1;
     e->rel_got = false;
+    e->rel_weak = false;
     if (ext >= 0) {
         if (a->k == MK_IMM) {
             int64_t v = a->v;
@@ -208,6 +214,7 @@ static bool enc_inst(const MInst *m, Enc *e)
             ins2(e, 0, true, 0xaf, hw(b->reg), a);
         }
         break;
+    case M_CMOV: ins2(e, 0, w8, 0x40 + x86_cc[m->cc], hw(b->reg), a); break;
     case M_BSR: ins2(e, 0, w8, 0xbd, hw(b->reg), a); break;
     case M_BSF: ins2(e, 0, w8, 0xbc, hw(b->reg), a); break;
     case M_BSWAP:
@@ -227,8 +234,7 @@ static bool enc_inst(const MInst *m, Enc *e)
         ins1(e, pfx, w8, rex_byte(w, a) || rex_byte(w, b), w == 1 ? 0x84 : 0x85, hw(a->reg), b);
         break;
     case M_SETCC: {
-        static const uint8_t cc[CC_COUNT] = {4, 5, 0xc, 0xe, 0xf, 0xd, 2, 6, 7, 3, 0xa, 0xb};
-        ins2(e, 0, false, 0x90 + cc[m->cc], 0, a);
+        ins2(e, 0, false, 0x90 + x86_cc[m->cc], 0, a);
         if (rex_byte(1, a)) {           /* insert the REX before the 0f */
             memmove(e->b + 1, e->b, (size_t)e->n);
             e->b[0] = 0x40;
@@ -317,6 +323,7 @@ typedef struct ObjSym {
     uint64_t value, size;
     uint8_t type;               /* 0 none, 1 object, 2 function, 3 section */
     bool global;
+    bool weak;                  /* binding STB_WEAK (global is also set) */
     bool anon;                  /* a .L name: no symbol, relocations use the section's */
 } ObjSym;
 
@@ -472,6 +479,7 @@ bool mobj_add(MObj *o, const MFunc *f)
     o->syms.data[fid].size = pos[n];
     o->syms.data[fid].type = 2;
     o->syms.data[fid].global = f->global;
+    o->syms.data[fid].weak = f->weak;
     for (i = 0; i < f->pubs.len; i++) {         /* labels data points at: section-relative */
         uint32_t id = sym_named(o, f->pubs.data[i].name);
         o->syms.data[id].sec = SEC_TEXT;
@@ -485,19 +493,18 @@ bool mobj_add(MObj *o, const MFunc *f)
         if (m->op == M_LABEL)
             continue;
         if (label_jump(m)) {
-            static const uint8_t cc[CC_COUNT] = {4, 5, 0xc, 0xe, 0xf, 0xd, 2, 6, 7, 3, 0xa, 0xb};
             int64_t d = (int64_t)lab[m->a.v] - (int64_t)(pos[i] + (lng[i] ? (m->op == M_JMP ? 5 : 6) : 2));
             Enc e;
             e.n = 0;
             if (!lng[i]) {
-                put(&e, m->op == M_JMP ? 0xeb : 0x70 + cc[m->cc]);
+                put(&e, m->op == M_JMP ? 0xeb : 0x70 + x86_cc[m->cc]);
                 put(&e, (int)(d & 0xff));
             } else if (m->op == M_JMP) {
                 put(&e, 0xe9);
                 put32(&e, d);
             } else {
                 put(&e, 0x0f);
-                put(&e, 0x80 + cc[m->cc]);
+                put(&e, 0x80 + x86_cc[m->cc]);
                 put32(&e, d);
             }
             for (k = 0; k < e.n; k++)
@@ -509,12 +516,17 @@ bool mobj_add(MObj *o, const MFunc *f)
             for (k = 0; k < 4; k++)
                 enc[i].b[3 + k] = (uint8_t)(d >> (8 * k));
         }
-        if (m->op == M_CALL && m->a.k != MK_REG)
-            rel_add(o, SEC_TEXT, base + pos[i] + 1, sym_named(o, m->a.name), REL_PLT32, -4);
-        if (enc[i].rel_at >= 0)         /* a symbol's address, %rip-relative */
-            rel_add(o, SEC_TEXT, base + pos[i] + (uint32_t)enc[i].rel_at,
-                    sym_named(o, enc[i].rel_name), enc[i].rel_got ? REL_REX_GOTPCRELX : REL_PC32,
-                    -(enc[i].n - enc[i].rel_at));
+        if (m->op == M_CALL && m->a.k != MK_REG) {
+            uint32_t y = sym_named(o, m->a.name);
+            o->syms.data[y].weak |= (m->a.reg & 2) != 0;
+            rel_add(o, SEC_TEXT, base + pos[i] + 1, y, REL_PLT32, -4);
+        }
+        if (enc[i].rel_at >= 0) {       /* a symbol's address, %rip-relative */
+            uint32_t y = sym_named(o, enc[i].rel_name);
+            o->syms.data[y].weak |= enc[i].rel_weak;
+            rel_add(o, SEC_TEXT, base + pos[i] + (uint32_t)enc[i].rel_at, y,
+                    enc[i].rel_got ? REL_REX_GOTPCRELX : REL_PC32, -(enc[i].n - enc[i].rel_at));
+        }
         for (k = 0; k < enc[i].n; k++)
             vec_push(&o->bytes[SEC_TEXT], enc[i].b[k]);
     }
@@ -549,6 +561,7 @@ void mobj_add_data(MObj *o, const MData *d)
     o->syms.data[id].size = d->size;
     o->syms.data[id].type = 1;
     o->syms.data[id].global = d->global;
+    o->syms.data[id].weak = d->weak;
     o->syms.data[id].anon = !strncmp(d->name, ".L", 2);
     for (i = 0; i < d->rels.len; i++)
         rel_add(o, s, (uint32_t)at + d->rels.data[i].off, sym_named(o, d->rels.data[i].name),
@@ -638,7 +651,7 @@ bool mobj_write(MObj *o, const char *path)
             if (y->global != (pass == 1) || y->anon)
                 continue;
             w32(&symtab, y->name ? wstr(&strtab, y->name) : 0);
-            w8(&symtab, (y->global ? 0x10 : 0) | y->type);
+            w8(&symtab, (y->weak ? 0x20 : y->global ? 0x10 : 0) | y->type);
             w8(&symtab, 0);
             w16(&symtab, y->sec < 0 ? 0 : (uint64_t)y->sec + 1);   /* sections 1.. in order */
             w64(&symtab, y->value);
