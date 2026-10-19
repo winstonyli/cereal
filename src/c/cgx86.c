@@ -468,7 +468,7 @@ static bool is_agg(Gx *g, TypeId t, uint64_t *size)
     TypeKind k = type_ckind(tt, t);
     bool ok = false;
     uint64_t sz;
-    if (k != TY_STRUCT && k != TY_UNION && k != TY_ARRAY)
+    if (k != TY_STRUCT && k != TY_UNION && k != TY_ARRAY && k != TY_VECTOR)
         return false;
     sz = type_size(tt, t, &ok);
     if (!ok)
@@ -632,6 +632,10 @@ static bool cls_walk(Gx *g, TypeId t, uint64_t base, AggCls *a)
         }
         return true;
     }
+    if (k == TY_VECTOR) {      /* not the xmm class: only between our own functions */
+        a->mem = true;
+        return true;
+    }
     if (k == TY_ARRAY) {
         bool ok = false;
         uint64_t n = type_ent(tt, ct)->n, i, esz = type_size(tt, type_base(tt, ct), &ok);
@@ -684,6 +688,48 @@ static void load_piece(Gx *g, int w, int64_t off, int base, int dst)
     em(g, w >= 4 ? M_MOV : M_MOVZX, w, M(base, off), R(dst));
 }
 
+/* Does the type hold a vector?  A vector travels in %xmm in the System V ABI; this back end gives
+ * it the memory class, so a function with one in its signature must not be seen from outside. */
+static bool has_vec(Gx *g, TypeId t)
+{
+    TypeTable *tt = &g->c->tt;
+    TypeId ct = type_canon(tt, t);
+    TypeKind k = type_ckind(tt, ct);
+    uint32_t i;
+    if (k == TY_VECTOR)
+        return true;
+    if (k == TY_ARRAY)
+        return has_vec(g, type_base(tt, ct));
+    if (k == TY_STRUCT || k == TY_UNION) {
+        const Record *r = type_record(tt, ct);
+        for (i = 0; i < r->nfields; i++)
+            if (has_vec(g, tt->fields.data[r->fields + i].ty))
+                return true;
+    }
+    return false;
+}
+
+/* A function type with a vector parameter or result: the callee (a symbol, or NULL) must be a
+ * function of ours whose linkage is not visible: static, or a header's inline function. */
+static bool vec_sig_ok(Gx *g, TypeId ft, const CSym *callee)
+{
+    TypeTable *tt = &g->c->tt;
+    const TypeEnt *fe;
+    uint32_t i;
+    bool any;
+    ft = type_canon(tt, ft);
+    if (type_ckind(tt, ft) != TY_FUNC)
+        return true;
+    fe = type_ent(tt, ft);
+    any = has_vec(g, fe->base);
+    for (i = 0; i < fe->n && !any; i++)
+        any = has_vec(g, type_params(tt, ft)[i]);
+    if (!any || (callee && (callee->linkage == LK_INTERNAL || cin_system(g->c, callee->loc))))
+        return true;
+    unsup(g, "vector in the signature of a function that is not static (it travels in %%xmm)");
+    return false;
+}
+
 /* A call: name is the symbol, or NULL for a call through the pointer in kid 0. */
 typedef struct Arg {
     uint32_t node;              /* what is evaluated: the argument, or what a transparent union wraps */
@@ -707,6 +753,9 @@ static void gen_call(Gx *g, uint32_t n, const char *name)
     int32_t rtmp = 0;
     TI ti;
     if (g->why[0])
+        return;
+    if (t->op == TO_INTRIN ? false : name ? !vec_sig_ok(g, csym(g->c, t->sym)->ty, csym(g->c, t->sym))
+                                          : !vec_sig_ok(g, type_base(&g->c->tt, type_canon(&g->c->tt, nd(g->L, kid(g->L, n, 0))->ty)), NULL))
         return;
     if (ragg) {
         if (!agg_class(g, t->ty, &rc))
@@ -935,7 +984,7 @@ static void gen(Gx *g, uint32_t n)
     case TO_CAST: {
         TI from;
         gen(g, kid(g->L, n, 0));
-        if (type_ckind(&g->c->tt, t->ty) == TY_VOID)
+        if (type_ckind(&g->c->tt, t->ty) == TY_VOID || type_ckind(&g->c->tt, t->ty) == TY_VECTOR)   /* a vector cast names the same bytes */
             break;
         if (!tinfo(g, t->ty, &ti) || !tinfo(g, nd(g->L, kid(g->L, n, 0))->ty, &from))
             return;
@@ -1768,13 +1817,15 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
     Gx g;
     uint32_t i, root = L->e->c->nn - 1;
     int ni = 0, nf = 0, ns = 0, ni0, nf0, pass;
+    bool sys;
     U32Vec ps = {0};
     const CSym *fs = csym(L->e->c, L->e->fsym);
     memset(&g, 0, sizeof g);
     g.L = L;
     g.c = L->e->c;
     g.f.name = cident(g.c, fs->name);
-    g.f.global = fs->linkage == LK_EXTERNAL && fs->sc != SC_STATIC;
+    sys = cin_system(g.c, cnode_loc(g.c, root));
+    g.f.global = !sys && fs->linkage == LK_EXTERNAL && fs->sc != SC_STATIC;
     g.f.weak = g.f.global && (fs->flags & CSF_WEAK);
     g.regoff = xcalloc(L->nreg ? L->nreg : 1, sizeof *g.regoff);
     g.tmpoff = xcalloc(L->e->ntmp ? L->e->ntmp : 1, sizeof *g.tmpoff);
@@ -1794,6 +1845,8 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
             ni = 1;
         }
     }
+    if (g.f.global)
+        vec_sig_ok(&g, fs->ty, fs);
     g.nlab = L->npl;
     g.variadic = (type_ent(&g.c->tt, type_canon(&g.c->tt, fs->ty))->flags & TF_VARIADIC) != 0;
     if (g.variadic) {                   /* every argument register, for va_arg */
@@ -1876,7 +1929,10 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
         if (L->b.data[ord[i]].reach)
             gen_block(&g, ord, i);
     if (g.why[0]) {
-        fprintf(out, "# x86: %s unsupported: %s\n", g.f.name, g.why);
+        if (sys)
+            x86_func_fail(g.c, g.f.name, g.why);
+        else
+            fprintf(out, "# x86: %s unsupported: %s\n", g.f.name, g.why);
     } else {
         g.f.code.data[g.sub_at].a = I((g.frame + 15) / 16 * 16);
         for (i = 0; i < L->e->nodes.len; i++)   /* labels whose address is taken, for static data */
@@ -1899,10 +1955,7 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
         }
         for (i = 0; i < g.lits.len; i++)
             x86_emit_data(g.c, &g.lits.data[i]);
-        if (g.c->opt.dump_asm)
-            mir_print(&g.f, out);
-        if (g.c->opt.emit_obj && !mobj_add(x86_get(g.c)->obj, &g.f))
-            fprintf(out, "# x86: %s unsupported: no encoding\n", g.f.name);
+        x86_func_done(g.c, &g.f, sys, out);
     }
     for (i = 0; i < g.lits.len; i++)
         mdata_free(&g.lits.data[i]);

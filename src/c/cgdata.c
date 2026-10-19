@@ -54,14 +54,106 @@ const char *x86_symname(Checker *c, uint32_t fname, uint32_t ref)
 void x86_emit_data(Checker *c, const MData *d)
 {
     X86 *x = x86_get(c);
+    size_t i;
     if (c->opt.dump_asm)
         mir_print_data(d, c->opt.tast);
     if (x->obj)
         mobj_add_data(x->obj, d);
+    for (i = 0; i < d->rels.len; i++)
+        vec_push(&x->refs, dup_n(d->rels.data[i].name, strlen(d->rels.data[i].name)));
     if (strncmp(d->name, ".L", 2))
         vec_push(&x->defined, dup_n(d->name, strlen(d->name)));
 }
 
+
+/* ---- functions ---------------------------------------------------------------- */
+
+static void note_refs(X86 *x, const MFunc *f)
+{
+    size_t i;
+    for (i = 0; i < f->code.len; i++) {
+        const MInst *in = &f->code.data[i];
+        if (in->a.k == MK_SYM)
+            vec_push(&x->refs, dup_n(in->a.name, strlen(in->a.name)));
+        if (in->b.k == MK_SYM)
+            vec_push(&x->refs, dup_n(in->b.name, strlen(in->b.name)));
+    }
+}
+
+static void emit_func(Checker *c, X86 *x, MFunc *f, FILE *out)
+{
+    note_refs(x, f);
+    if (c->opt.dump_asm)
+        mir_print(f, out);
+    if (x->obj && !mobj_add(x->obj, f))
+        fprintf(out, "# x86: %s unsupported: no encoding\n", f->name);
+}
+
+static void free_func(MFunc *f)
+{
+    size_t i;
+    for (i = 0; i < f->pubs.len; i++)
+        free(f->pubs.data[i].name);
+    vec_free(&f->pubs);
+    vec_free(&f->code);
+}
+
+void x86_func_done(Checker *c, MFunc *f, bool sys, FILE *out)
+{
+    X86 *x = x86_get(c);
+    if (sys) {
+        XPend p = {0};
+        p.f = *f;
+        vec_push(&x->pend, p);
+    } else {
+        emit_func(c, x, f, out);
+        free_func(f);
+    }
+    memset(&f->code, 0, sizeof f->code);
+    memset(&f->pubs, 0, sizeof f->pubs);
+}
+
+void x86_func_fail(Checker *c, const char *name, const char *why)
+{
+    XPend p = {0};
+    p.f.name = name;
+    p.why = dup_n(why, strlen(why));
+    vec_push(&x86_get(c)->pend, p);
+}
+
+static bool is_ref(const X86 *x, const char *name)
+{
+    size_t i;
+    for (i = 0; i < x->refs.len; i++)
+        if (!strcmp(x->refs.data[i], name))
+            return true;
+    return false;
+}
+
+/* The system-header functions something refers to (and, in turn, what those refer to). */
+static void settle_pending(Checker *c, X86 *x)
+{
+    bool again = true;
+    size_t i;
+    while (again) {
+        again = false;
+        for (i = 0; i < x->pend.len; i++) {
+            XPend *p = &x->pend.data[i];
+            if (p->done || !is_ref(x, p->f.name))
+                continue;
+            p->done = again = true;
+            if (p->why)
+                fprintf(c->opt.tast, "# x86: %s unsupported: %s\n", p->f.name, p->why);
+            else
+                emit_func(c, x, &p->f, c->opt.tast);
+        }
+    }
+    for (i = 0; i < x->pend.len; i++) {
+        free_func(&x->pend.data[i].f);
+        free(x->pend.data[i].why);
+    }
+    vec_free(&x->pend);
+}
 static bool is_defined(const X86 *x, const char *name)
 {
     size_t i;
@@ -476,6 +568,7 @@ void x86_finish(Checker *c)
     size_t i;
     if (!x)
         return;
+    settle_pending(c, x);
     for (i = 0; i < x->tents.len; i++) {
         uint32_t ref = x->tents.data[i];
         const CSym *s = csym(c, ref);
@@ -509,6 +602,9 @@ void x86_finish(Checker *c)
     vec_free(&x->names);
     vec_free(&x->defined);
     vec_free(&x->tents);
+    for (i = 0; i < x->refs.len; i++)
+        free(x->refs.data[i]);
+    vec_free(&x->refs);
     free(x);
     c->x86 = NULL;
 }

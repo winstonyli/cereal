@@ -7,12 +7,23 @@
 #include "c/mir.h"
 #include "c/tast_int.h"
 
+/* A function defined in a system header: kept until the end of the unit, then emitted if
+ * something refers to it (the header's inline functions are used by name, never defined
+ * by the unit itself). */
+typedef struct XPend {
+    MFunc f;
+    char *why;                  /* unsupported: the reason, f is empty */
+    bool done;
+} XPend;
+
 typedef struct X86 {
     MObj *obj;                  /* --emit-obj: the object being built */
     VEC(char *) names;          /* mangled linker names handed out (freed at the end) */
     VEC(char *) defined;        /* the data objects defined so far */
     VEC(uint32_t) tents;        /* tentative definitions (symbol refs), settled at the end */
     uint32_t nlits;             /* anonymous read-only objects made for data */
+    VEC(XPend) pend;            /* system-header functions not yet emitted */
+    VEC(char *) refs;           /* symbols the emitted code and data refer to */
 } X86;
 
 /* The state of a checker, made on first use. */
@@ -22,6 +33,12 @@ X86 *x86_get(Checker *c);
  * function's name (fname, an identifier id) and its own number in front.
  * Valid until x86_finish. */
 const char *x86_symname(Checker *c, uint32_t fname, uint32_t ref);
+
+/* A generated function: printed and encoded now, or when sys, kept for the end of the unit
+ * (the caller gives up f's code and pubs either way).  x86_func_fail: the same for one the
+ * back end could not generate. */
+void x86_func_done(Checker *c, MFunc *f, bool sys, FILE *out);
+void x86_func_fail(Checker *c, const char *name, const char *why);
 
 /* Prints and/or encodes a data object (per the checker's options); the
  * caller still owns d. */

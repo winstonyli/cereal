@@ -4,7 +4,7 @@
 # Usage: tests/zstd_bisect.sh CEREAL ZSTD_SRC_DIR WORKDIR [OBJECT...]
 C=${1:?cereal binary}; Z=${2:?zstd source dir}; W=${3:?work dir}; shift 3
 HERE=$(cd "$(dirname "$0")" && pwd)
-FLAGS="-std=gnu11 -w -DZSTD_MULTITHREAD -DZSTD_NO_INTRINSICS -DDYNAMIC_BMI2=0 -DZSTD_DISABLE_ASM=1 -DXXH_VECTOR=0 -I$Z/lib -I$Z/lib/common"
+FLAGS="-std=gnu11 -w -DZSTD_MULTITHREAD -DDYNAMIC_BMI2=0 -DZSTD_DISABLE_ASM=1 -I$Z/lib -I$Z/lib/common"
 mkdir -p "$W/ref" "$W/our"
 for f in "$Z"/lib/common/*.c "$Z"/lib/compress/*.c "$Z"/lib/decompress/*.c; do
     b=$(basename "$f" .c)

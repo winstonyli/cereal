@@ -876,6 +876,7 @@ static void header_note(Checker *c, Diagnostic *d, SrcLoc loc,
 }
 
 #include "cbuiltin_tab.h"
+#include "cbuiltin_x86.h"
 
 
 /* any: the __builtin_ spelling, which exists in every mode */
@@ -893,6 +894,11 @@ const BTab *bt_find(Checker *c, const char *name, bool any)
             hi = mid;
         else
             lo = mid + 1;
+    }
+    if (any) {              /* the target's: only as __builtin_NAME */
+        const IaBt *r = ia32_find(name);
+        if (r)
+            return &r->bt;
     }
     return NULL;
 }
@@ -914,6 +920,12 @@ static TypeId bt_type(Checker *c, const char *s, size_t n)
         s += 6;
         n -= 6;
     }
+    if (n > 10 && !strncmp(s, "__vector(", 9)) {        /* "__vector(16) char" */
+        char *end;
+        unsigned long bytes = strtoul(s + 9, &end, 10);
+        if (end[0] == ')' && end[1] == ' ')
+            return type_vector(TT, bt_type(c, end + 2, (size_t)(s + n - (end + 2))), bytes);
+    }
     if (n && s[n - 1] == '*') {
         TypeId b = bt_type(c, s, n - 1);
         if (cst)
@@ -922,7 +934,8 @@ static TypeId bt_type(Checker *c, const char *s, size_t n)
     }
     {
         static const struct { const char *n; TypeKind k; } base[] = {
-            {"void", TY_VOID}, {"int", TY_INT}, {"char", TY_CHAR},
+            {"void", TY_VOID}, {"int", TY_INT}, {"char", TY_CHAR}, {"short int", TY_SHORT},
+            {"signed char", TY_SCHAR},
             {"long int", TY_LONG}, {"long long int", TY_LLONG},
             {"long unsigned int", TY_ULONG}, {"double", TY_DOUBLE},
             {"unsigned int", TY_UINT}, {"short unsigned int", TY_USHORT},

@@ -7,8 +7,8 @@
 C=${1:?cereal binary}; Z=${2:?zstd source dir (containing lib/)}
 HERE=$(cd "$(dirname "$0")" && pwd)
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
-# no SIMD intrinsics, no BMI2 dispatch (cpuid is supported, vector types are not), no assembly decoder
-FLAGS="-std=gnu11 -w -DZSTD_MULTITHREAD -DZSTD_NO_INTRINSICS -DDYNAMIC_BMI2=0 -DZSTD_DISABLE_ASM=1 -DXXH_VECTOR=0 -I$Z/lib -I$Z/lib/common"
+# no BMI2 dispatch (needs cpuid at run time) and no assembly decoder; the SSE2 row-hash path is on
+FLAGS="-std=gnu11 -w -DZSTD_MULTITHREAD -DDYNAMIC_BMI2=0 -DZSTD_DISABLE_ASM=1 -I$Z/lib -I$Z/lib/common"
 mkdir "$W/ref" "$W/our"
 for f in "$Z"/lib/common/*.c "$Z"/lib/compress/*.c "$Z"/lib/decompress/*.c; do
     b=$(basename "$f" .c)

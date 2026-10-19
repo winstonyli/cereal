@@ -1,4 +1,5 @@
 /* Built-ins for tests/asm_exec.py: expect, infinity, libc calls, atomics. */
+#include <byteswap.h>   /* static __inline functions of a system header: emitted when used */
 int slot = 5;
 long long wide = 1000;
 short narrow = 7;
@@ -160,4 +161,14 @@ long cmovs(long k)
     return CMOV(e, a, b) + CMOV(ne, a, b) * 2 + CMOV(g, a, b) * 3 + CMOV(ge, a, b) * 5 + CMOV(l, a, b) * 7 +
            CMOV(le, a, b) * 11 + CMOV(a, ua, ub) * 13 + CMOV(ae, ua, ub) * 17 + CMOV(b, ua, ub) * 19 +
            CMOV(be, ua, ub) * 23 + CMOV(g, a, a) * 29 + CMOV(l, a, a) * 31 + CMOV(be, ua, ua) * 37 + CMOV(a, ua, ua) * 41;
+}
+
+unsigned swap32(unsigned x)
+{
+    return bswap_32(x) + 1;
+}
+
+unsigned long long swap64(unsigned long long x)
+{
+    return bswap_64(x) ^ x;
 }

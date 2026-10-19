@@ -25,6 +25,20 @@ typedef struct BTab {
     unsigned char gnu;       /* 1: a built-in only outside -std=c99; 2, 3: only as __builtin_NAME (3: typed) */
 } BTab;
 
+/* An x86 target built-in (cbuiltin_x86.h): tast.c lowers a call to operations on the lanes of its
+ * vector arguments.  kind says how, lane how the lanes of the operands are read (the signature's
+ * element types only describe the C types), arg is the kind's parameter. */
+enum { IAL_S8, IAL_U8, IAL_S16, IAL_U16, IAL_S32, IAL_U32, IAL_S64, IAL_U64 };
+enum { IAK_LOAD, IAK_STORE, IAK_MOVMSK, IAK_ANDN, IAK_MINMAX, IAK_SHIFT, IAK_SHUF, IAK_BSHIFT,
+       IAK_EXT, IAK_SET, IAK_MULW, IAK_MADD, IAK_MULH, IAK_AVG, IAK_SAT, IAK_PACK, IAK_SAD,
+       IAK_UNPACK, IAK_MOVQ };
+typedef struct IaBt {
+    BTab bt;
+    unsigned char kind, lane;
+    short arg;
+} IaBt;
+const IaBt *ia32_find(const char *name);   /* name without "__builtin_" */
+
 /* convert_for_assignment's working state (cexpr.c, cconv.c). */
 typedef struct Conv {
     Checker *c;

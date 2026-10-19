@@ -76,6 +76,7 @@ static bool ok_ty(El *e, TypeId t)
     case TY_PTR: return true;
     case TY_STRUCT: case TY_UNION: return type_is_complete(&c->tt, t);
     case TY_ARRAY: return ok_ty(e, elem_of(c, t)) && type_is_complete(&c->tt, t);
+    case TY_VECTOR: return true;
     case TY_FLOAT: case TY_DOUBLE: case TY_LDOUBLE: return true;
     default: return ok_int(e, t);
     }
@@ -374,12 +375,27 @@ static uint32_t lval(El *e, uint32_t n)
             return unsup(e, "malformed index");
         a = k[0];
         x = k[1];
-        if (!is_array(c, c->ty[a]) && !is_ptr(c, c->ty[a])) {
+        if (!is_array(c, c->ty[a]) && !is_ptr(c, c->ty[a]) && tkind(c, c->ty[a]) != TY_VECTOR) {
             a = k[1];
             x = k[0];
         }
-        if (tkind(c, c->ty[a]) == TY_VECTOR)
-            return unsup(e, "vector type");
+        if (tkind(c, c->ty[a]) == TY_VECTOR) {                      /* the lane's address: the vector's, as a pointer to the lanes, plus the index */
+            TypeId et = unqual(c, elem_of(c, c->ty[a])), pt = type_ptr(&c->tt, et);
+            uint32_t l, q;
+            if (c->ef[strip_paren(c, a)] & EF_LVALUE) {
+                l = lval(e, a);
+            } else {                                                /* a value: a compound literal that holds it */
+                uint32_t v = ex(e, a, false), el = TN;
+                if (v != TN)
+                    el = mk(e, TO_ELEM, unqual(c, nty(e, v)), loc, 0, 0, 0, &v, 1);
+                l = el == TN ? TN : mk(e, TO_COMPLIT, unqual(c, nty(e, v)), loc, e->ncl++, 0, !e->infunc, &el, 1);
+            }
+            if (l == TN)
+                return TN;
+            q = conv(e, addr_t(e, l, type_ptr(&c->tt, nty(e, l)), loc), pt, loc);
+            ix = ex(e, x, false);
+            return deref_t(e, ptradd(e, pt, q, ix, false, loc), t, loc);
+        }
         p = ex(e, a, false);
         ix = ex(e, x, false);
         return deref_t(e, ptradd(e, rvt(c, a), p, ix, false, loc), t, loc);
@@ -550,6 +566,237 @@ static uint32_t arith(El *e, uint32_t i, int op, uint32_t a, uint32_t b,
     return mk(e, TO_BINOP, unqual(c, ct), loc, 0, 0, (unsigned)op, ka, 2);
 }
 
+/* ---- vector types ------------------------------------------------------------
+ * A vector is a memory aggregate: the value of one is its address.  An operation on vectors
+ * is the scalar operation on every lane.  The result is a compound literal whose elements are
+ * the lane expressions; a lane of an operand is read from the operand's own memory (an lvalue
+ * without side effects is named again for every lane, any other operand is stored into a
+ * temporary first). */
+typedef struct VOp {
+    TypeId vt, et;          /* the vector type the operation sees, and its lane type */
+    TypeId st;              /* the storage's type: casts between vector types are looked through */
+    uint32_t x;             /* the checker's node, named again for every lane */
+    uint32_t tmp;           /* UINT32_MAX, else the temporary that holds the value */
+    bool scalar;            /* a scalar operand: every lane is its value */
+} VOp;
+
+/* The lane type and the number of lanes of a vector type. */
+static bool vec_dims(El *e, TypeId vt, TypeId *et, uint32_t *n)
+{
+    Checker *c = e->c;
+    bool ok = false;
+    uint64_t w, bytes;
+    *et = unqual(c, elem_of(c, vt));
+    w = type_size(&c->tt, *et, &ok);
+    bytes = ok ? type_size(&c->tt, vt, &ok) : 0;
+    if (!ok || !w || !(ok_int(e, *et) || (is_flt(c, *et) && type_ckind(&c->tt, *et) != TY_LDOUBLE))) {
+        unsup(e, "vector element type");
+        return false;
+    }
+    *n = (uint32_t)(bytes / w);
+    return true;
+}
+
+/* The vector value v, of type st, as an operand: stored into a temporary. */
+static bool vop_value(El *e, uint32_t v, TypeId st, VOp *o, U32Vec *setup, SrcLoc loc)
+{
+    uint32_t ka[2], s;
+    if (v == TN)
+        return false;
+    o->st = unqual(e->c, st);
+    o->x = TN;
+    o->tmp = e->ntmp++;
+    ka[0] = mk(e, TO_TMP, o->st, loc, o->tmp, 0, 0, NULL, 0);
+    ka[1] = v;
+    s = mk(e, TO_STORE, o->st, loc, 0, 0, 0, ka, 2);
+    vec_push(setup, mk(e, TO_EXPRSTMT, 0, loc, 0, 0, 0, &s, 1));
+    return true;
+}
+
+/* The vector value v, of type vt, as an operand. */
+static bool vop_val(El *e, uint32_t v, TypeId vt, VOp *o, U32Vec *setup, SrcLoc loc)
+{
+    uint32_t n;
+    o->vt = unqual(e->c, vt);
+    o->scalar = false;
+    return vec_dims(e, o->vt, &o->et, &n) && vop_value(e, v, vt, o, setup, loc);
+}
+
+/* The checker's node k as an operand of a vector operation whose vector type is vt. */
+static bool vop_node(El *e, uint32_t k, TypeId vt, VOp *o, U32Vec *setup, SrcLoc loc)
+{
+    Checker *c = e->c;
+    uint32_t x = strip_paren(c, k), kk[2], n;
+    for (;;) {                  /* a cast between vector types only names the same bytes differently */
+        bool ok = false, ok2 = false;
+        if (ntag(c, x) == N_CAST && tkind(c, c->ty[x]) == TY_VECTOR && nkids(c, x, kk, 2) == 2 &&
+            tkind(c, c->ty[kk[1]]) == TY_VECTOR &&
+            type_size(&c->tt, c->ty[x], &ok) == type_size(&c->tt, c->ty[kk[1]], &ok2) && ok && ok2)
+            x = strip_paren(c, kk[1]);
+        else
+            break;
+    }
+    o->tmp = UINT32_MAX;
+    o->x = x;
+    o->scalar = false;
+    if (tkind(c, c->ty[x]) != TY_VECTOR) {      /* a scalar: every lane is its value */
+        if (c->ef[x] & EF_SIDE) {
+            unsup(e, "side effect in a scalar operand of a vector operation");
+            return false;
+        }
+        o->vt = unqual(c, vt);
+        o->scalar = true;
+        return vec_dims(e, o->vt, &o->et, &n);
+    }
+    o->vt = unqual(c, rvt(c, k));       /* the lanes as the operation sees them */
+    o->st = unqual(c, c->ty[x]);
+    if (!vec_dims(e, o->vt, &o->et, &n))
+        return false;
+    if ((c->ef[x] & EF_LVALUE) && !(c->ef[x] & EF_SIDE))
+        return true;
+    return vop_value(e, rv(e, x), o->st, o, setup, loc);
+}
+
+/* Lane j of an operand, a value of the lane type. */
+static uint32_t vop_lane(El *e, const VOp *o, uint32_t j, SrcLoc loc)
+{
+    uint32_t b, f;
+    bool ok = false;
+    if (o->scalar)
+        return conv(e, rv(e, o->x), o->et, loc);
+    b = o->tmp != UINT32_MAX ? mk(e, TO_TMP, o->st, loc, o->tmp, 0, 0, NULL, 0) : lval(e, o->x);
+    if (b == TN)
+        return TN;
+    f = mk(e, TO_FIELD, o->et, loc, (int64_t)(j * type_size(&e->c->tt, o->et, &ok)), 0, 0, &b, 1);
+    return load(e, f);
+}
+
+/* The value v of type t, after the statements in setup. */
+static uint32_t vec_wrap(El *e, uint32_t v, TypeId t, const U32Vec *setup, SrcLoc loc)
+{
+    size_t s;
+    for (s = setup->len; v != TN && s-- > 0;) {
+        uint32_t ka[2];
+        ka[0] = setup->data[s];
+        ka[1] = v;
+        v = mk(e, TO_STMTEXPR, t, loc, 0, 0, 0, ka, 2);
+    }
+    return v;
+}
+
+/* The vector of type vt whose lanes are lanes[0 .. n), after the statements in setup. */
+static uint32_t vec_make(El *e, TypeId vt, SrcLoc loc, const uint32_t *lanes, uint32_t n,
+                         const U32Vec *setup)
+{
+    Checker *c = e->c;
+    U32Vec el = {0};
+    TypeId et = unqual(c, elem_of(c, vt));
+    bool ok = false;
+    uint64_t w = type_size(&c->tt, et, &ok);
+    uint32_t j, v;
+    for (j = 0; j < n; j++) {
+        uint32_t id;
+        if (lanes[j] == TN) {
+            vec_free(&el);
+            return TN;
+        }
+        id = mk(e, TO_ELEM, et, loc, (int64_t)(j * w), 0, 0, &lanes[j], 1);
+        vec_push(&el, id);
+    }
+    v = mk(e, TO_COMPLIT, unqual(c, vt), loc, e->ncl++, 0, 0, el.data, n);
+    vec_free(&el);
+    return vec_wrap(e, load(e, v), unqual(c, vt), setup, loc);
+}
+
+static bool is_relop(int p)
+{
+    return p == P_LT || p == P_GT || p == P_LE || p == P_GE || p == P_EQEQ || p == P_NE;
+}
+
+/* a op b on the lanes of the operands oa and ob into a vector of type vt: the relational
+ * operators give -1 or 0 in the result's lane type. */
+static uint32_t vec_op(El *e, int p, TypeId vt, const VOp *oa, const VOp *ob, SrcLoc loc,
+                       U32Vec *setup)
+{
+    TypeId rl, ot;
+    uint32_t n, j, id;
+    uint32_t *lanes;
+    if (!e->infunc)
+        return unsup(e, "vector operation outside a function");
+    if (!vec_dims(e, vt, &rl, &n))
+        return TN;
+    ot = is_relop(p) ? oa->et : rl;       /* the lanes are the operands' for a comparison, the result's else */
+    lanes = xmalloc((n ? n : 1) * sizeof *lanes);
+    for (j = 0; j < n; j++) {
+        uint32_t ka[2];
+        ka[0] = conv(e, vop_lane(e, oa, j, loc), ot, loc);
+        ka[1] = conv(e, vop_lane(e, ob, j, loc), ot, loc);
+        if (ka[0] == TN || ka[1] == TN) {
+            lanes[j] = TN;
+        } else if (is_relop(p)) {
+            uint32_t m = mk(e, TO_CMP, TYPE_B(INT), loc, 0, 0, (unsigned)p, ka, 2);
+            m = conv(e, m, rl, loc);
+            lanes[j] = mk(e, TO_UNOP, rl, loc, 0, 0, P_MINUS, &m, 1);
+        } else {
+            lanes[j] = mk(e, TO_BINOP, ot, loc, 0, 0, (unsigned)p, ka, 2);
+        }
+    }
+    id = vec_make(e, vt, loc, lanes, n, setup);
+    free(lanes);
+    return id;
+}
+
+/* a op b where an operand or the result is a vector (the checker's nodes a and b). */
+static uint32_t vec_binary(El *e, uint32_t i, int p, uint32_t a, uint32_t b, SrcLoc loc)
+{
+    Checker *c = e->c;
+    TypeId ta = rvt(c, a), tb = rvt(c, b), ovt = tkind(c, ta) == TY_VECTOR ? ta : tb;
+    U32Vec setup = {0};
+    VOp oa, ob;
+    uint32_t id = TN;
+    if (tkind(c, ta) == TY_VECTOR && tkind(c, tb) == TY_VECTOR && mainv(c, ta) != mainv(c, tb)) {
+        bool ok = false, ok2 = false;       /* the same lanes under another element type (long, long long) */
+        if (type_size(&c->tt, ta, &ok) != type_size(&c->tt, tb, &ok2) || !ok || !ok2 ||
+            type_size(&c->tt, elem_of(c, ta), &ok) != type_size(&c->tt, elem_of(c, tb), &ok2))
+            return unsup(e, "mixed vector types");
+    }
+    if (tkind(c, c->ty[i]) != TY_VECTOR)
+        return unsup(e, "vector operation without a vector result");
+    if (vop_node(e, a, ovt, &oa, &setup, loc) && vop_node(e, b, ovt, &ob, &setup, loc))
+        id = vec_op(e, p, unqual(c, c->ty[i]), &oa, &ob, loc, &setup);
+    vec_free(&setup);
+    return id;
+}
+
+/* -v, ~v, +v. */
+static uint32_t vec_unary(El *e, uint32_t i, int p, uint32_t a, SrcLoc loc)
+{
+    Checker *c = e->c;
+    TypeId vt = unqual(c, c->ty[i]), et;
+    U32Vec setup = {0};
+    VOp oa;
+    uint32_t n, j, id = TN, *lanes;
+    if (p == P_PLUS)
+        return conv(e, rv(e, a), vt, loc);
+    if ((p != P_MINUS && p != P_TILDE) || tkind(c, vt) != TY_VECTOR)
+        return unsup(e, "vector operator");
+    if (!e->infunc)
+        return unsup(e, "vector operation outside a function");
+    if (!vop_node(e, a, vt, &oa, &setup, loc) || !vec_dims(e, vt, &et, &n)) {
+        vec_free(&setup);
+        return TN;
+    }
+    lanes = xmalloc((n ? n : 1) * sizeof *lanes);
+    for (j = 0; j < n; j++) {
+        uint32_t x = vop_lane(e, &oa, j, loc);
+        lanes[j] = x == TN ? TN : mk(e, TO_UNOP, oa.et, loc, 0, 0, (unsigned)p, &x, 1);
+    }
+    id = vec_make(e, vt, loc, lanes, n, &setup);
+    free(lanes);
+    vec_free(&setup);
+    return id;
+}
+
 /* ++x, --x, x++, x-- as load, add, convert back, store. */
 static uint32_t incdec(El *e, uint32_t i, uint32_t x, int punct, bool post)
 {
@@ -619,6 +866,14 @@ static uint32_t e_assign_t(El *e, uint32_t i)
         x = l2 == TN ? TN : load(e, l2);
         y = ex(e, rhs, false);
         v = ptradd(e, lt, x, y, op == P_MINUS, loc);
+    } else if (op && tkind(c, lt) == TY_VECTOR) {      /* x = x op y on the lanes */
+        U32Vec vs = {0};
+        VOp oa, ob;
+        uint32_t l2 = once_ref(e, &o);
+        TypeId yt = tkind(c, rvt(c, rhs)) == TY_VECTOR ? rvt(c, rhs) : lt;
+        bool good = l2 != TN && vop_val(e, load(e, l2), lt, &oa, &vs, loc) && vop_node(e, rhs, yt, &ob, &vs, loc);
+        v = good ? vec_op(e, op, lt, &oa, &ob, loc, &vs) : TN;
+        vec_free(&vs);
     } else if (op && (ok_int(e, lt) || is_flt(c, lt))) {
         /* x op= y is x = (T)((op type)x op (op type)y) */
         TypeId ot;
@@ -779,6 +1034,298 @@ static uint32_t e_va(El *e, uint32_t i, int kind)
     return mk(e, TO_VA, t, loc, 0, 0, (unsigned)kind, ka, nka);
 }
 
+/* ---- x86 built-ins ----------------------------------------------------------
+ * The calls the intrinsic headers make (cbuiltin_x86.h), written as the operations on the lanes
+ * of their vector arguments.  A tree is used once, so every use of a lane or of an intermediate
+ * value builds it again; an intermediate that is used more than once lives in a temporary. */
+typedef struct Ia {
+    const IaBt *r;
+    VOp a, b;                   /* the vector arguments, read as lanes of the row's type */
+    TypeId rl;                  /* the lane type of the result, and ... */
+    uint32_t n;                 /* ... its number of lanes */
+    uint32_t cnt;               /* the shift count's temporary (an unsigned long), or UINT32_MAX */
+    uint32_t set;               /* the scalar that replaces a lane */
+    uint32_t t;                 /* a temporary of type long for the lane's intermediate value */
+    int64_t imm;                /* the constant argument */
+    SrcLoc loc;
+} Ia;
+
+static TypeId ia_ty(int l)
+{
+    static const TypeKind k[] = {TY_SCHAR, TY_UCHAR, TY_SHORT, TY_USHORT, TY_INT, TY_UINT, TY_LONG, TY_ULONG};
+    return TYPE_MK(k[l], 0);
+}
+
+static unsigned ia_bits(int l)
+{
+    return 8u << (l >> 1);
+}
+
+static uint32_t ia_bin(El *e, int p, TypeId t, uint32_t a, uint32_t b, SrcLoc loc)
+{
+    uint32_t ka[2];
+    ka[0] = a;
+    ka[1] = b;
+    return a == TN || b == TN ? TN : mk(e, TO_BINOP, t, loc, 0, 0, (unsigned)p, ka, 2);
+}
+
+static uint32_t ia_un(El *e, int p, TypeId t, uint32_t a, SrcLoc loc)
+{
+    return a == TN ? TN : mk(e, TO_UNOP, t, loc, 0, 0, (unsigned)p, &a, 1);
+}
+
+/* -(a p b) in type t: all ones when the comparison holds, else 0 */
+static uint32_t ia_mask(El *e, int p, TypeId t, uint32_t a, uint32_t b, SrcLoc loc)
+{
+    uint32_t ka[2], m;
+    ka[0] = a;
+    ka[1] = b;
+    if (a == TN || b == TN)
+        return TN;
+    m = conv(e, mk(e, TO_CMP, TYPE_B(INT), loc, 0, 0, (unsigned)p, ka, 2), t, loc);
+    return ia_un(e, P_MINUS, t, m, loc);
+}
+
+/* Lane k of argument 0 (a) or 1 (b), converted to type to. */
+static uint32_t ia_rd(El *e, const Ia *x, int which, uint32_t k, TypeId to)
+{
+    return conv(e, vop_lane(e, which ? &x->b : &x->a, k, x->loc), to, x->loc);
+}
+
+static uint32_t ia_tmp(El *e, uint32_t t, TypeId ty, SrcLoc loc)
+{
+    return mk(e, TO_TMP, ty, loc, t, 0, 0, NULL, 0);
+}
+
+/* The statement `tmp t = v`, appended to st. */
+static void ia_set(El *e, U32Vec *st, uint32_t t, TypeId ty, uint32_t v, SrcLoc loc)
+{
+    uint32_t ka[2], s;
+    ka[0] = ia_tmp(e, t, ty, loc);
+    ka[1] = v;
+    s = v == TN ? TN : mk(e, TO_STORE, ty, loc, 0, 0, 0, ka, 2);
+    if (s != TN)
+        vec_push(st, mk(e, TO_EXPRSTMT, 0, loc, 0, 0, 0, &s, 1));
+}
+
+/* Temporary t, clamped to lo .. hi, as statements in st: t = t ^ ((t ^ b) & -(t cmp b)). */
+static void ia_clamp(El *e, U32Vec *st, uint32_t t, TypeId ty, int64_t lo, int64_t hi, SrcLoc loc)
+{
+    int k;
+    for (k = 0; k < 2; k++) {
+        int64_t b = k ? lo : hi;
+        uint32_t x = ia_bin(e, P_CARET, ty, load(e, ia_tmp(e, t, ty, loc)), cnst(e, ty, (uint64_t)b, loc), loc);
+        x = ia_bin(e, P_AMP, ty, x,
+                   ia_mask(e, k ? P_LT : P_GT, ty, load(e, ia_tmp(e, t, ty, loc)), cnst(e, ty, (uint64_t)b, loc), loc), loc);
+        ia_set(e, st, t, ty, ia_bin(e, P_CARET, ty, load(e, ia_tmp(e, t, ty, loc)), x, loc), loc);
+    }
+}
+
+/* Lane k of a - b as a long. */
+static uint32_t ia_diff(El *e, const Ia *x, uint32_t k)
+{
+    TypeId w = TYPE_MK(TY_LONG, 0);
+    return ia_bin(e, P_MINUS, w, ia_rd(e, x, 0, k, w), ia_rd(e, x, 1, k, w), x->loc);
+}
+
+/* Lane j of the result of the row in x. */
+static uint32_t ia_lane(El *e, Ia *x, uint32_t j)
+{
+    const IaBt *r = x->r;
+    SrcLoc loc = x->loc;
+    TypeId L = ia_ty(r->lane), W = TYPE_MK(TY_LONG, 0), UW = TYPE_MK(TY_ULONG, 0);
+    unsigned bits = ia_bits(r->lane);
+    uint32_t na = 16 / (bits / 8), s;
+    int arg = r->arg;
+    U32Vec st = {0};
+    switch (r->kind) {
+    case IAK_ANDN:                      /* ~a & b */
+        return ia_bin(e, P_AMP, L, ia_un(e, P_TILDE, L, ia_rd(e, x, 0, j, L), loc), ia_rd(e, x, 1, j, L), loc);
+    case IAK_MINMAX: {                  /* b ^ ((a ^ b) & -(a cmp b)) */
+        uint32_t m = ia_mask(e, arg ? P_GT : P_LT, L, ia_rd(e, x, 0, j, L), ia_rd(e, x, 1, j, L), loc);
+        uint32_t d = ia_bin(e, P_CARET, L, ia_rd(e, x, 0, j, L), ia_rd(e, x, 1, j, L), loc);
+        return ia_bin(e, P_CARET, L, ia_rd(e, x, 1, j, L), ia_bin(e, P_AMP, L, d, m, loc), loc);
+    }
+    case IAK_SAT: {                     /* a +- b, clamped to the lane type's range */
+        bool sg = !(r->lane & 1);
+        int64_t hi = sg ? (int64_t)((1ull << (bits - 1)) - 1) : (int64_t)((1ull << bits) - 1),
+                lo = sg ? -hi - 1 : 0;
+        ia_set(e, &st, x->t, W, ia_bin(e, arg ? P_MINUS : P_PLUS, W, ia_rd(e, x, 0, j, W), ia_rd(e, x, 1, j, W), loc), loc);
+        ia_clamp(e, &st, x->t, W, lo, hi, loc);
+        return vec_wrap(e, conv(e, load(e, ia_tmp(e, x->t, W, loc)), L, loc), L, &st, loc);
+    }
+    case IAK_AVG:                       /* (a + b + 1) >> 1 */
+        s = ia_bin(e, P_PLUS, W, ia_bin(e, P_PLUS, W, ia_rd(e, x, 0, j, W), ia_rd(e, x, 1, j, W), loc), cnst(e, W, 1, loc), loc);
+        return conv(e, ia_bin(e, P_SHR, W, s, cnst(e, W, 1, loc), loc), L, loc);
+    case IAK_MULH:                      /* the high half of the product */
+        s = ia_bin(e, P_STAR, W, ia_rd(e, x, 0, j, W), ia_rd(e, x, 1, j, W), loc);
+        return conv(e, ia_bin(e, P_SHR, W, s, cnst(e, W, 16, loc), loc), L, loc);
+    case IAK_MADD:                      /* pairs of products, added */
+        s = ia_bin(e, P_STAR, W, ia_rd(e, x, 0, 2 * j, W), ia_rd(e, x, 1, 2 * j, W), loc);
+        s = ia_bin(e, P_PLUS, W, s, ia_bin(e, P_STAR, W, ia_rd(e, x, 0, 2 * j + 1, W), ia_rd(e, x, 1, 2 * j + 1, W), loc), loc);
+        return conv(e, s, x->rl, loc);
+    case IAK_MULW:                      /* the even lanes, multiplied to 64 bits */
+        return conv(e, ia_bin(e, P_STAR, UW, ia_rd(e, x, 0, 2 * j, UW), ia_rd(e, x, 1, 2 * j, UW), loc), x->rl, loc);
+    case IAK_SAD: {                     /* the sum of the absolute differences of 8 bytes: |d| = (d ^ m) - m, m = -(d < 0) */
+        uint32_t i, sum = TN;
+        for (i = 0; i < 8; i++) {
+            uint32_t m = ia_mask(e, P_LT, W, ia_diff(e, x, 8 * j + i), cnst(e, W, 0, loc), loc);
+            uint32_t m2 = ia_mask(e, P_LT, W, ia_diff(e, x, 8 * j + i), cnst(e, W, 0, loc), loc);
+            uint32_t ab = ia_bin(e, P_MINUS, W, ia_bin(e, P_CARET, W, ia_diff(e, x, 8 * j + i), m, loc), m2, loc);
+            sum = i ? ia_bin(e, P_PLUS, W, sum, ab, loc) : ab;
+        }
+        return conv(e, sum, x->rl, loc);
+    }
+    case IAK_UNPACK: {                  /* the lanes of a and b, interleaved */
+        uint32_t k = j / 2 + (arg ? na / 2 : 0);
+        return conv(e, ia_rd(e, x, j & 1, k, L), x->rl, loc);
+    }
+    case IAK_PACK: {                    /* a then b, clamped to the narrower lane type */
+        unsigned ob = bits / 2;
+        bool us = arg == 1;
+        int64_t hi = us ? (int64_t)((1ull << ob) - 1) : (int64_t)((1ull << (ob - 1)) - 1),
+                lo = us ? 0 : -hi - 1;
+        ia_set(e, &st, x->t, W, ia_rd(e, x, j >= na, j % na, W), loc);
+        ia_clamp(e, &st, x->t, W, lo, hi, loc);
+        return vec_wrap(e, conv(e, load(e, ia_tmp(e, x->t, W, loc)), x->rl, loc), x->rl, &st, loc);
+    }
+    case IAK_SHIFT: {                   /* the lane shifted by the count; a count of the lane's width or more empties it */
+        bool left = arg % 4 == 0, arith = arg % 4 == 2;
+        uint32_t cnt = load(e, ia_tmp(e, x->cnt, UW, loc)), cnt2 = load(e, ia_tmp(e, x->cnt, UW, loc));
+        uint32_t v = ia_rd(e, x, 0, j, arith ? W : UW), big, sh, res;
+        sh = ia_bin(e, P_AMP, UW, cnt, cnst(e, UW, bits - 1, loc), loc);
+        if (arith) {                    /* a count past the width shifts by width - 1 */
+            big = ia_mask(e, P_GE, UW, cnt2, cnst(e, UW, bits, loc), loc);
+            sh = ia_bin(e, P_PIPE, UW, sh, ia_bin(e, P_AMP, UW, big, cnst(e, UW, bits - 1, loc), loc), loc);
+            res = ia_bin(e, P_SHR, W, v, sh, loc);
+        } else {
+            big = ia_mask(e, P_LT, UW, cnt2, cnst(e, UW, bits, loc), loc);
+            res = ia_bin(e, P_AMP, UW, ia_bin(e, left ? P_SHL : P_SHR, UW, v, sh, loc), big, loc);
+        }
+        return conv(e, res, x->rl, loc);
+    }
+    case IAK_SHUF: {                    /* pshufd: 4 lanes; pshuflw, pshufhw: 4 of 8 */
+        uint32_t lo = arg == 2 ? 4 : 0, in = j;
+        if (j >= lo && j < lo + 4)
+            in = lo + (uint32_t)((x->imm >> (2 * (j - lo))) & 3);
+        return conv(e, ia_rd(e, x, 0, in, L), x->rl, loc);
+    }
+    case IAK_BSHIFT: {                  /* the whole vector shifted by imm / 8 bytes */
+        int64_t by = x->imm / 8, k = arg ? (int64_t)j + by : (int64_t)j - by;
+        if (x->imm < 0 || k < 0 || k >= 16)
+            return cnst(e, x->rl, 0, loc);
+        return conv(e, ia_rd(e, x, 0, (uint32_t)k, L), x->rl, loc);
+    }
+    case IAK_SET:                       /* lane imm replaced by the scalar */
+        return j == (uint32_t)(x->imm & (na - 1)) ? x->set : conv(e, ia_rd(e, x, 0, j, L), x->rl, loc);
+    case IAK_MOVQ:                      /* the low lane, the high one cleared */
+        return j ? cnst(e, x->rl, 0, loc) : conv(e, ia_rd(e, x, 0, 0, L), x->rl, loc);
+    default:
+        return unsup(e, "x86 built-in kind");
+    }
+}
+
+/* The constant argument k of a call. */
+static bool ia_const(El *e, const U32Vec *args, size_t k, const char *nm, int64_t *v)
+{
+    const TNode *nd = &e->nodes.data[args->data[k]];
+    if (nd->op != TO_CONST) {
+        unsup(e, "x86 built-in %s with a variable argument", nm);
+        return false;
+    }
+    *v = nd->val;
+    return true;
+}
+
+static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, SrcLoc loc)
+{
+    Checker *c = e->c;
+    const IaBt *r = ia32_find(nm);
+    Ia x;
+    U32Vec setup = {0};
+    uint32_t j, id = TN, *lanes = NULL;
+    bool vres = tkind(c, rt) == TY_VECTOR;
+    TypeId mt = rt;
+    if (!r || !e->infunc)
+        return unsup(e, "x86 built-in %s", nm);
+    memset(&x, 0, sizeof x);
+    x.r = r;
+    x.loc = loc;
+    x.cnt = x.t = UINT32_MAX;
+    if (r->kind == IAK_LOAD || r->kind == IAK_STORE) {   /* unaligned: the same bytes */
+        bool st = r->kind == IAK_STORE;
+        TypeId vt = unqual(c, st ? nty(e, args->data[1]) : rt);
+        uint32_t d = deref_t(e, conv(e, args->data[0], type_ptr(&c->tt, vt), loc), vt, loc), ka[2];
+        if (d == TN || !st)
+            return d == TN ? TN : load(e, d);
+        ka[0] = d;
+        ka[1] = args->data[1];
+        ka[0] = mk(e, TO_STORE, vt, loc, 0, 0, 0, ka, 2);
+        return mk(e, TO_CAST, rt, loc, 0, 0, 0, &ka[0], 1);
+    }
+    if (!vop_val(e, args->data[0], nty(e, args->data[0]), &x.a, &setup, loc))
+        goto done;
+    x.a.et = ia_ty(r->lane);
+    if (args->len > 1 && tkind(c, nty(e, args->data[1])) == TY_VECTOR) {
+        if (!vop_val(e, args->data[1], nty(e, args->data[1]), &x.b, &setup, loc))
+            goto done;
+        x.b.et = ia_ty(r->kind == IAK_SHIFT ? IAL_U64 : r->lane);
+    }
+    if (r->kind == IAK_SHIFT) {             /* the count: a scalar, or the low 64 bits of a vector */
+        TypeId uw = TYPE_MK(TY_ULONG, 0);
+        uint32_t cv = r->arg & 8 ? vop_lane(e, &x.b, 0, loc) : args->data[1];
+        x.cnt = e->ntmp++;
+        ia_set(e, &setup, x.cnt, uw, conv(e, cv, uw, loc), loc);
+    }
+    if ((r->kind == IAK_SHUF || r->kind == IAK_BSHIFT) && !ia_const(e, args, 1, nm, &x.imm))
+        goto done;
+    if (r->kind == IAK_EXT || r->kind == IAK_SET) {
+        if (!ia_const(e, args, args->len - 1, nm, &x.imm))
+            goto done;
+    }
+    if (r->kind == IAK_SET) {
+        x.set = conv(e, args->data[1], ia_ty(r->lane), loc);
+    }
+    if (r->kind == IAK_SAT || r->kind == IAK_PACK)
+        x.t = e->ntmp++;
+    if (r->kind == IAK_MOVMSK) {            /* the sign bit of every byte, one bit each */
+        uint32_t sum = TN;
+        TypeId it = TYPE_B(INT);
+        for (j = 0; j < 16; j++) {
+            uint32_t ka[2], m, b;
+            ka[0] = ia_rd(e, &x, 0, j, x.a.et);
+            ka[1] = cnst(e, x.a.et, 0, loc);
+            m = mk(e, TO_CMP, it, loc, 0, 0, P_LT, ka, 2);
+            b = j ? ia_bin(e, P_SHL, it, m, cnst(e, it, j, loc), loc) : m;
+            sum = sum == TN ? b : ia_bin(e, P_PIPE, it, sum, b, loc);
+        }
+        id = vec_wrap(e, sum, it, &setup, loc);
+        goto done;
+    }
+    if (r->kind == IAK_EXT) {
+        uint32_t n = 16 / (ia_bits(r->lane) / 8);
+        id = vec_wrap(e, conv(e, ia_rd(e, &x, 0, (uint32_t)(x.imm & (n - 1)), ia_ty(r->lane)), rt, loc), rt, &setup, loc);
+        goto done;
+    }
+    if (!vres || !vec_dims(e, rt, &x.rl, &x.n))
+        goto done;
+    if (r->kind == IAK_BSHIFT) {            /* bytes: made as such, then seen as the return type */
+        x.rl = ia_ty(r->lane);
+        x.n = 16;
+        mt = type_vector(&c->tt, x.rl, 16);
+    }
+    lanes = xmalloc((x.n ? x.n : 1) * sizeof *lanes);
+    for (j = 0; j < x.n; j++)
+        lanes[j] = ia_lane(e, &x, j);
+    id = vec_make(e, mt, loc, lanes, x.n, &setup);
+    if (id != TN && mt != rt)
+        id = mk(e, TO_CAST, rt, loc, 0, 0, 0, &id, 1);
+done:
+    free(lanes);
+    vec_free(&setup);
+    return id;
+}
+
 static uint32_t e_call_t(El *e, uint32_t i)
 {
     Checker *c = e->c;
@@ -836,6 +1383,10 @@ static uint32_t e_call_t(El *e, uint32_t i)
     fe = type_ent(&c->tt, ft);
     if (!call_args(e, ft, k + 1, nk - 1, loc, &args))
         goto out;
+    if (name && !strncmp(cident(c, name), "__builtin_ia32_", 15)) {
+        id = ia32_call(e, cident(c, name) + 10, &args, unqual(c, c->ty[i]), loc);
+        goto out;
+    }
     {
         uint32_t nf = (fe->flags & TF_NOPROTO) ? 0 : (uint32_t)fe->n;
         id = mk(e, name ? TO_INTRIN : TO_CALL, unqual(c, c->ty[i]), loc, nf,
@@ -885,6 +1436,8 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
             return load(e, lval(e, i));
     }
     switch (ntag(c, i)) {
+    case N_INDEX:               /* a lane of a vector value (lval holds it in a compound literal) */
+        return load(e, lval(e, i));
     case N_MEMBER_EXPR: {       /* f().x: a member of an aggregate value, which is its address */
         uint32_t d = first_child(c, i), base;
         const Field *f;
@@ -936,6 +1489,8 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
         if (p != P_PLUS && p != P_MINUS && p != P_TILDE && p != P_BANG)
             return unsup(e, "unary %s", punct_spelling[p]);
         a = first_child(c, i);
+        if (tkind(c, rvt(c, a)) == TY_VECTOR)
+            return vec_unary(e, i, p, a, loc);
         x = rv(e, a);
         if (x == TN)
             return TN;
@@ -983,6 +1538,8 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
         TypeId rt;
         if (nkids(c, i, k, 2) != 2)
             return unsup(e, "malformed binary");
+        if (p != P_COMMA && (tkind(c, rvt(c, k[0])) == TY_VECTOR || tkind(c, rvt(c, k[1])) == TY_VECTOR))
+            return vec_binary(e, i, p, k[0], k[1], loc);
         switch (p) {
         case P_COMMA:
             x = ex(e, k[0], true);
@@ -1886,7 +2443,7 @@ static void verify(El *e, FILE *out)
             break;
         case TO_TMP:
             NEED(0);
-            if ((uint64_t)nd->val >= e->ntmp || KIND(nd->ty) != TY_PTR) {
+            if ((uint64_t)nd->val >= e->ntmp || (KIND(nd->ty) != TY_PTR && KIND(nd->ty) != TY_VECTOR && !ok_int(e, nd->ty))) {
                 vbad(e, out, i, "temporary");
             } else if (ttype[nd->val] && ttype[nd->val] != nd->ty) {
                 vbad(e, out, i, "temporary has two types");
@@ -2081,8 +2638,8 @@ static void verify(El *e, FILE *out)
                     vbad(e, out, i, "bit-field type or width");
                 break;
             }
-            if (!ISLV(KID(0)) || !is_record(c, KID(0)->ty)) {
-                vbad(e, out, i, "operand is not a struct or union lvalue");
+            if (!ISLV(KID(0)) || !(is_record(c, KID(0)->ty) || KIND(KID(0)->ty) == TY_VECTOR)) {
+                vbad(e, out, i, "operand is not a struct, union or vector lvalue");
                 break;
             }
             rs = type_size(&c->tt, KID(0)->ty, &ok);
@@ -2390,19 +2947,36 @@ static void func_def(El *e, uint32_t root)
     st(e, body);
 }
 
+/* Where the output about a header's functions goes. */
+static FILE *discard(void)
+{
+    static FILE *f;
+    if (!f)
+#ifdef _WIN32
+        f = fopen("NUL", "w");
+#else
+        f = fopen("/dev/null", "w");
+#endif
+    return f;
+}
+
 void tast_unit(Checker *c)
 {
     El e;
     uint32_t root = c->nn - 1;
     FILE *out = c->opt.tast;
     const char *pf;
+    bool sys;
     SrcLoc loc = cnode_loc(c, root);
     unsigned tag = ntag(c, root);
     if (tag != N_FUNC_DEF && tag != N_DECL && tag != N_TOP_ASM)
         return;
-    if (cin_system(c, loc))
+    sys = cin_system(c, loc);
+    if (sys && (tag != N_FUNC_DEF || !CHK_ASM(c->opt)))     /* a header's functions are emitted when used */
         return;
-    pf = CHK_ASM(c->opt) && !c->opt.dump_cfg && !c->opt.tast_tree ? "# " : "";
+    if (sys)
+        out = discard();
+    pf =CHK_ASM(c->opt) && !c->opt.dump_cfg && !c->opt.tast_tree ? "# " : "";
     if (c->unit_err) {
         fputs(pf, out);
         fputs("unit ", out);
@@ -2432,6 +3006,8 @@ void tast_unit(Checker *c)
         put_loc(c, out, loc);
         if (e.why[0]) {
             fprintf(out, " unsupported: %s\n", e.why);
+            if (sys)
+                x86_func_fail(c, cident(c, csym(c, c->cb[declared_of(&e, root, NULL)] - 1)->name), e.why);
         } else {
             uint32_t d = declared_of(&e, root, NULL);
             e.fsym = c->cb[d] - 1;
