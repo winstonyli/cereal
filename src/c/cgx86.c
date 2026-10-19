@@ -954,6 +954,16 @@ static void gen(Gx *g, uint32_t n)
     case TO_VA:
         gen_va(g, n);
         break;
+    case TO_LABADDR: {          /* a label's address: %rip-relative */
+        size_t q;
+        for (q = 0; q < g->L->labs.len; q++)
+            if (g->L->labs.data[q].id == (uint32_t)t->val) {
+                em(g, M_LEA, 8, LB(g->L->b.data[g->L->labs.data[q].blk].pos), R(R_AX));
+                return;
+            }
+        unsup(g, "address of an unknown label");
+        break;
+    }
     default:
         unsup(g, "expression %d", t->op);
     }
@@ -1252,8 +1262,12 @@ static void gen_block(Gx *g, const uint32_t *ord, uint32_t i)
         em(g, M_LEAVE, 8, NONE(), NONE());
         em(g, M_RET, 8, NONE(), NONE());
         break;
+    case TK_IJMP:
+        gen(g, x->val);
+        em(g, M_JMP, 8, R(R_AX), NONE());
+        break;
     default:
-        unsup(g, "computed goto");
+        unsup(g, "block terminator %d", x->term);
     }
 }
 
@@ -1372,6 +1386,24 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
         fprintf(out, "# x86: %s unsupported: %s\n", g.f.name, g.why);
     } else {
         g.f.code.data[g.sub_at].a = I((g.frame + 15) / 16 * 16);
+        for (i = 0; i < L->e->nodes.len; i++)   /* labels whose address is taken, for static data */
+            if (L->e->nodes.data[i].op == TO_LABADDR)
+                break;
+        if (i < L->e->nodes.len) {
+            size_t q;
+            for (q = 0; q < L->labs.len; q++) {
+                const CBlk *lb = &L->b.data[L->labs.data[q].blk];
+                MPub pb;
+                char nm[160];
+                if (lb->pos == TN || !lb->reach)
+                    continue;
+                snprintf(nm, sizeof nm, ".L%s_a%u", g.f.name, L->labs.data[q].id);
+                pb.name = xmalloc(strlen(nm) + 1);
+                strcpy(pb.name, nm);
+                pb.lab = lb->pos;
+                vec_push(&g.f.pubs, pb);
+            }
+        }
         for (i = 0; i < g.lits.len; i++)
             x86_emit_data(g.c, &g.lits.data[i]);
         if (g.c->opt.dump_asm)
@@ -1382,6 +1414,9 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
     for (i = 0; i < g.lits.len; i++)
         mdata_free(&g.lits.data[i]);
     vec_free(&g.lits);
+    for (i = 0; i < g.f.pubs.len; i++)
+        free(g.f.pubs.data[i].name);
+    vec_free(&g.f.pubs);
     vec_free(&g.f.code);
     vec_free(&g.vars);
     vec_free(&ps);

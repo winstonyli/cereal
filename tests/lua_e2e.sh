@@ -5,7 +5,7 @@
 C=${1:?cereal binary}; LUA=${2:?lua 5.4 source dir}
 HERE=$(cd "$(dirname "$0")" && pwd)
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
-FLAGS="-std=gnu11 -w -DLUA_COMPAT_5_3 -DLUA_USE_POSIX -DLUA_USE_DLOPEN -DLUA_USE_JUMPTABLE=0 -I$LUA"
+FLAGS="-std=gnu11 -w -DLUA_COMPAT_5_3 -DLUA_USE_POSIX -DLUA_USE_DLOPEN -I$LUA"
 mkdir "$W/ref"
 cd "$LUA" || exit 1
 for f in $(ls *.c | grep -v -E '^(luac|onelua|ltests)\.c$'); do

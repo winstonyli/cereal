@@ -85,4 +85,4 @@ lua54: 2160 of 2174 functions emit (was 2052); libuv: 1541 of 1546 (was
 ## Not done (see `PARKED.md`)
 
 Aggregate `const`, `cond`, `comma`, compound-literal
-values; bit-field elements of a local list; `va_arg` of register-class aggregates; label addresses.
+values; bit-field elements of a local list; `va_arg` of register-class aggregates.

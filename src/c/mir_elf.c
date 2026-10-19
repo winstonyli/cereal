@@ -184,6 +184,13 @@ static bool enc_inst(const MInst *m, Enc *e)
         }
         break;
     case M_LEA:
+        if (a->k == MK_LAB) {           /* %rip-relative to a label: the displacement is patched in */
+            put(e, 0x48 | (hw(b->reg) >= 8 ? 4 : 0));
+            put(e, 0x8d);
+            put(e, (hw(b->reg) & 7) << 3 | 5);
+            put32(e, 0);
+            break;
+        }
         ins1(e, 0, true, false, 0x8d, hw(b->reg), a);
         break;
     case M_IMUL:
@@ -247,6 +254,9 @@ static bool enc_inst(const MInst *m, Enc *e)
             put(e, 0xe8);
             put32(e, 0);
         }
+        break;
+    case M_JMP:                 /* jmp *%reg (jumps to labels are laid out by mobj_add) */
+        ins1(e, 0, false, false, 0xff, 4, a);
         break;
     case M_FMOV:
         if (b->k == MK_MEM)
@@ -384,6 +394,12 @@ static void rel_add(MObj *o, int sec, uint32_t off, uint32_t sym, int type, int6
     vec_push(&o->rels[sec], r);
 }
 
+/* A jump to a label (not through a register). */
+static bool label_jump(const MInst *m)
+{
+    return (m->op == M_JMP && m->a.k == MK_LAB) || m->op == M_JCC;
+}
+
 bool mobj_add(MObj *o, const MFunc *f)
 {
     size_t n = f->code.len, i;
@@ -396,7 +412,7 @@ bool mobj_add(MObj *o, const MFunc *f)
         const MInst *m = &f->code.data[i];
         if (m->op == M_LABEL && m->a.v > maxlab)
             maxlab = m->a.v;
-        if (m->op != M_LABEL && m->op != M_JMP && m->op != M_JCC && !enc_inst(m, &enc[i]))
+        if (m->op != M_LABEL && !label_jump(m) && !enc_inst(m, &enc[i]))
             ok = false;
     }
     lab = xcalloc((size_t)maxlab + 1, sizeof *lab);
@@ -408,10 +424,8 @@ bool mobj_add(MObj *o, const MFunc *f)
             pos[i] = p;
             if (m->op == M_LABEL)
                 lab[m->a.v] = p;
-            else if (m->op == M_JMP)
-                p += lng[i] ? 5 : 2;
-            else if (m->op == M_JCC)
-                p += lng[i] ? 6 : 2;
+            else if (label_jump(m))
+                p += m->op == M_JMP ? (lng[i] ? 5 : 2) : (lng[i] ? 6 : 2);
             else
                 p += (uint32_t)enc[i].n;
         }
@@ -419,7 +433,7 @@ bool mobj_add(MObj *o, const MFunc *f)
         for (i = 0; i < n; i++) {
             const MInst *m = &f->code.data[i];
             int64_t d;
-            if ((m->op != M_JMP && m->op != M_JCC) || lng[i])
+            if (!label_jump(m) || lng[i])
                 continue;
             d = (int64_t)lab[m->a.v] - (int64_t)(pos[i] + 2);
             if (d < -128 || d > 127) {
@@ -441,12 +455,19 @@ bool mobj_add(MObj *o, const MFunc *f)
     o->syms.data[fid].size = pos[n];
     o->syms.data[fid].type = 2;
     o->syms.data[fid].global = f->global;
+    for (i = 0; i < f->pubs.len; i++) {         /* labels data points at: section-relative */
+        uint32_t id = sym_named(o, f->pubs.data[i].name);
+        o->syms.data[id].sec = SEC_TEXT;
+        o->syms.data[id].value = base + lab[f->pubs.data[i].lab];
+        o->syms.data[id].global = false;
+        o->syms.data[id].anon = true;
+    }
     for (i = 0; i < n; i++) {
         const MInst *m = &f->code.data[i];
         int k;
         if (m->op == M_LABEL)
             continue;
-        if (m->op == M_JMP || m->op == M_JCC) {
+        if (label_jump(m)) {
             static const uint8_t cc[CC_COUNT] = {4, 5, 0xc, 0xe, 0xf, 0xd, 2, 6, 7, 3, 0xa, 0xb};
             int64_t d = (int64_t)lab[m->a.v] - (int64_t)(pos[i] + (lng[i] ? (m->op == M_JMP ? 5 : 6) : 2));
             Enc e;
@@ -465,6 +486,11 @@ bool mobj_add(MObj *o, const MFunc *f)
             for (k = 0; k < e.n; k++)
                 vec_push(&o->bytes[SEC_TEXT], e.b[k]);
             continue;
+        }
+        if (m->op == M_LEA && m->a.k == MK_LAB) {
+            int64_t d = (int64_t)lab[m->a.v] - (int64_t)(pos[i] + 7);
+            for (k = 0; k < 4; k++)
+                enc[i].b[3 + k] = (uint8_t)(d >> (8 * k));
         }
         if (m->op == M_CALL && m->a.k != MK_REG)
             rel_add(o, SEC_TEXT, base + pos[i] + 1, sym_named(o, m->a.name), REL_PLT32, -4);

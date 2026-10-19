@@ -107,9 +107,14 @@ void mir_print(const MFunc *f, FILE *out)
         const MInst *m = &f->code.data[i];
         int w = m->w ? m->w : 8;
         switch (m->op) {
-        case M_LABEL:
+        case M_LABEL: {
+            size_t q;
             fprintf(out, ".L%s_%lld:\n", f->name, (long long)m->a.v);
+            for (q = 0; q < f->pubs.len; q++)
+                if (f->pubs.data[q].lab == m->a.v)
+                    fprintf(out, "%s:\n", f->pubs.data[q].name);
             continue;
+        }
         case M_MOVSX:       /* movsbq, movswq, movslq: from width w to 64 bits */
             fprintf(out, "\tmovs%cq ", suffix(w));
             put_op(f, &m->a, w, out);
@@ -129,6 +134,14 @@ void mir_print(const MFunc *f, FILE *out)
                 put_op(f, &m->b, 8, out);
             }
             break;
+        case M_LEA:
+            fputs("	leaq ", out);
+            put_op(f, &m->a, 8, out);
+            if (m->a.k == MK_LAB)       /* a label's address: %rip-relative */
+                fputs("(%rip)", out);
+            fputc(',', out);
+            put_op(f, &m->b, 8, out);
+            break;
         case M_MOVABS:
             fputs("\tmovabsq ", out);
             put_op(f, &m->a, 8, out);
@@ -144,7 +157,7 @@ void mir_print(const MFunc *f, FILE *out)
             put_op(f, &m->a, 8, out);
             break;
         case M_JMP:
-            fputs("\tjmp ", out);
+            fputs(m->a.k == MK_REG ? "\tjmp *" : "\tjmp ", out);
             put_op(f, &m->a, 8, out);
             break;
         case M_CALL:

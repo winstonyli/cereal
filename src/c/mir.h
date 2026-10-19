@@ -64,10 +64,16 @@ typedef struct MInst {
     MOp a, b;               /* AT&T order: a is the source, b the destination */
 } MInst;
 
+typedef struct MPub {       /* a name for a label, for data that holds its address */
+    char *name;
+    int64_t lab;
+} MPub;
+
 typedef struct MFunc {
     const char *name;
     bool global;
     VEC(MInst) code;
+    VEC(MPub) pubs;
 } MFunc;
 
 /* A data object: its bytes (.bss: only a size) and the 8-byte absolute

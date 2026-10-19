@@ -83,6 +83,7 @@ typedef struct Val {
     int64_t i;                  /* V_INT: the value; V_LV, V_ADDR: byte offset */
     double f;
     bool str;                   /* the target: a string literal node (str) or a symbol (ref) */
+    bool lab;                   /* or a label of the function, by id (ref) */
     uint32_t ref, node;
 } Val;
 
@@ -171,6 +172,11 @@ static bool ev(DEv *v, uint32_t n, Val *r)
         r->k = V_LV;
         r->str = true;
         r->node = n;
+        return true;
+    case TO_LABADDR:
+        r->k = V_ADDR;
+        r->lab = true;
+        r->ref = (uint32_t)t->val;
         return true;
     case TO_CAST: {
         TypeId to = t->ty, from = tn(v, tk(v, n, 0))->ty;
@@ -332,6 +338,10 @@ static bool add_reloc(DEv *v, uint32_t off, const Val *a)
         lit.bytes = xmalloc(s->width ? s->width : 1);
         memcpy(lit.bytes, v->e->bytes.data + s->val, s->width);
         vec_push(&v->lits, lit);
+        r.name = dup_n(nm, strlen(nm));
+    } else if (a->lab) {
+        char nm[160];
+        snprintf(nm, sizeof nm, ".L%s_a%u", cident(v->c, v->e->fname), a->ref);
         r.name = dup_n(nm, strlen(nm));
     } else {
         const char *nm = x86_symname(v->c, v->e->fname, a->ref);
