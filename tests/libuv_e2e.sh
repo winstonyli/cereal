@@ -31,9 +31,11 @@ done
 cd "$UV" || exit 1
 "$W/run-ref" --list 2>/dev/null | grep -E "$PAT" | grep -v -E '^tty' > "$W/list"     # tty tests wait for a terminal
 n=0; bad=0; pass=0
-for t in $(cat "$W/list"); do
+cut -d" " -f1 "$W/list" > "$W/names"      # "name (helpers: a, b)": the runner starts its own helpers
+for t in $(cat "$W/names"); do
     r=$(timeout -s KILL 30 "$W/run-ref" "$t" >/dev/null 2>&1; echo $?)
     o=$(timeout -s KILL 30 "$W/run-our" "$t" >/dev/null 2>&1; echo $?)
+    [ "$r" != 0 ] && echo "fails with both builds: $t (exit $r)"
     n=$((n+1)); [ "$r" = 0 ] && [ "$o" = 0 ] && pass=$((pass+1))
     if [ "$r" != "$o" ]; then echo "DIFF $t: gcc exit $r, ours exit $o"; bad=$((bad+1)); fi
 done
