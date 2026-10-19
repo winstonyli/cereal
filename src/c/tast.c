@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "c/cexpr_int.h"
+#include "c/cgx86.h"
 #include "c/csymidx.h"
 #include "c/lit.h"
 
@@ -2102,10 +2103,12 @@ next:;
 
 /* ---- the unit -------------------------------------------------------------- */
 
-/* The declared symbols of a unit that is only declarations. */
+/* The declared symbols of a unit that is only declarations: printed (the
+ * tree dump), and defined as data by the back end (assembly, object). */
 static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
 {
     uint32_t nk = nkids(c, root, NULL, 0), *k, j, any = 0;
+    bool show = c->opt.tast_tree;
     k = xmalloc((nk ? nk : 1) * sizeof *k);
     nkids(c, root, k, nk);
     U32Vec items = {0};
@@ -2131,6 +2134,11 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
         any = 1;
         if (init != NO_NODE && csym(c, c->cb[d] - 1)->kind == CS_OBJ)
             continue;
+        if (CHK_ASM(c->opt) && csym(c, c->cb[d] - 1)->kind == CS_OBJ &&
+            csym(c, c->cb[d] - 1)->sc != SC_EXTERN)
+            x86_tentative(c, c->cb[d] - 1);
+        if (!show)
+            continue;
         fputs("unit ", out);
         put_loc(c, out, cnode_loc(c, k[j]));
         fputs(" decl ", out);
@@ -2138,6 +2146,20 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
         fputc(' ', out);
         put_type(c, out, csym(c, c->cb[d] - 1)->ty);
         fputc('\n', out);
+    }
+    if (CHK_ASM(c->opt) && !e->why[0]) {
+        size_t m;
+        for (m = 0; m < items.len; m++) {
+            char why[96];
+            if (!x86_data_node(e, items.data[m], why, sizeof why))
+                fprintf(out, "# x86: %s unsupported: %s\n",
+                        cident(c, csym(c, e->nodes.data[items.data[m]].sym)->name), why);
+        }
+    }
+    if (!show) {
+        vec_free(&items);
+        free(k);
+        return;
     }
     if (items.len && !e->why[0]) {
         block_of(e, &items, cnode_loc(c, root));
@@ -2224,7 +2246,7 @@ void tast_unit(Checker *c)
         fputs(" skipped: errors\n", out);
         return;
     }
-    if (tag == N_DECL && !c->opt.tast_tree)
+    if (tag == N_DECL && !c->opt.tast_tree && !CHK_ASM(c->opt))
         return;
     memset(&e, 0, sizeof e);
     e.c = c;

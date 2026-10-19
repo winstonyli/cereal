@@ -8,16 +8,17 @@
  * 64-bit arithmetic followed by a re-canonicalisation gives the type's own
  * wrap-around.  A float or double value lives in %xmm0 instead (a waiting
  * left operand goes through %rax onto the stack); arguments follow System V
- * for integer and SSE classes, the rest on the stack.  Not supported yet (the
- * function is then reported in a comment): long double, struct/union/array
- * values, initializer lists, static data and globals, bit-fields, indirect
- * calls, computed goto, conversions between 64-bit unsigned and float.  See
- * docs/TAST_T9_PLAN.md. */
+ * for integer and SSE classes, the rest on the stack.  Globals and statics
+ * are reached %rip-relative and defined by cgdata.c; string literals are
+ * anonymous read-only objects.  Not supported yet (the function is then
+ * reported in a comment): long double, struct/union/array values, initializer
+ * lists of automatics, bit-fields, indirect calls, computed goto, conversions
+ * between 64-bit unsigned and float.  See docs/TAST_T9_PLAN.md. */
 #include <stdarg.h>
 #include <string.h>
 
 #include "c/cexpr_int.h"
-#include "c/mir.h"
+#include "c/cgx86.h"
 #include "c/tcfg_int.h"
 
 typedef struct Slot {
@@ -30,6 +31,7 @@ typedef struct Gx {
     Checker *c;
     MFunc f;
     VEC(Slot) vars;
+    VEC(MData) lits;            /* string literals, read-only data */
     int32_t *regoff, *tmpoff;   /* per reg N / tmp N: its slot, 0: none yet */
     int32_t frame;
     int depth;                  /* values waiting on the stack */
@@ -228,12 +230,15 @@ static void genaddr(Gx *g, uint32_t n)
     switch (t->op) {
     case TO_SYM: {
         const CSym *s = csym(g->c, t->sym);
-        if (!(t->sym & SYM_LOCAL) || s->kind != CS_OBJ || s->sc == SC_STATIC ||
-            s->sc == SC_EXTERN) {
-            unsup(g, "global or static object");
-            return;
+        if ((t->sym & SYM_LOCAL) && s->kind == CS_OBJ && s->sc != SC_STATIC &&
+            s->sc != SC_EXTERN) {
+            em(g, M_LEA, 8, M(R_BP, var_slot(g, t->sym, 0)), R(R_AX));
+        } else if (s->kind == CS_OBJ || s->kind == CS_FUNC) {   /* %rip-relative */
+            MOp o = {MK_SYM, 0, 0, x86_symname(g->c, g->L->e->fname, t->sym)};
+            em(g, M_LEA, 8, o, R(R_AX));
+        } else {
+            unsup(g, "symbol of kind %d", s->kind);
         }
-        em(g, M_LEA, 8, M(R_BP, var_slot(g, t->sym, 0)), R(R_AX));
         break;
     }
     case TO_REG:
@@ -246,14 +251,21 @@ static void genaddr(Gx *g, uint32_t n)
         gen(g, kid(g->L, n, 0));
         break;
     case TO_STR: {              /* the literal's bytes go to read-only data */
-        MStr s;
-        MOp lit = {MK_STR, 0, 0, NULL};
-        s.n = t->width;
-        s.p = xmalloc(s.n ? s.n : 1);
-        memcpy(s.p, g->L->e->bytes.data + t->val, s.n);
-        lit.v = (int64_t)g->f.strs.len;
-        vec_push(&g->f.strs, s);
-        em(g, M_LEA, 8, lit, R(R_AX));
+        MData lit;
+        MOp o = {MK_SYM, 0, 0, NULL};
+        char nm[128];
+        memset(&lit, 0, sizeof lit);
+        snprintf(nm, sizeof nm, ".LC%s_%zu", g->f.name, g->lits.len);
+        lit.name = xmalloc(strlen(nm) + 1);
+        strcpy(lit.name, nm);
+        lit.sec = MD_RODATA;
+        lit.align = 1;
+        lit.size = t->width;
+        lit.bytes = xmalloc(lit.size ? lit.size : 1);
+        memcpy(lit.bytes, g->L->e->bytes.data + t->val, lit.size);
+        o.name = lit.name;
+        vec_push(&g->lits, lit);
+        em(g, M_LEA, 8, o, R(R_AX));
         break;
     }
     case TO_FIELD:
@@ -609,6 +621,12 @@ static void gen_stmt(Gx *g, uint32_t n)
     case TO_EXPRSTMT:
         gen(g, kid(g->L, n, 0));
         break;
+    case TO_DATA: {             /* a block-scope static: defined in the object, no code */
+        char why[96];
+        if (!x86_data_node(g->L->e, n, why, sizeof why))
+            unsup(g, "static object: %s", why);
+        break;
+    }
     case TO_LOCAL:
         if (t->nkids == 0) {
             var_slot(g, t->sym, 0);
@@ -758,18 +776,16 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
         fprintf(out, "# x86: %s unsupported: %s\n", g.f.name, g.why);
     } else {
         g.f.code.data[g.sub_at].a = I((g.frame + 15) / 16 * 16);
+        for (i = 0; i < g.lits.len; i++)
+            x86_emit_data(g.c, &g.lits.data[i]);
         if (g.c->opt.dump_asm)
             mir_print(&g.f, out);
-        if (g.c->opt.emit_obj) {
-            if (!g.c->obj)
-                g.c->obj = mobj_new();
-            if (!mobj_add(g.c->obj, &g.f))
-                fprintf(out, "# x86: %s unsupported: no encoding\n", g.f.name);
-        }
+        if (g.c->opt.emit_obj && !mobj_add(x86_get(g.c)->obj, &g.f))
+            fprintf(out, "# x86: %s unsupported: no encoding\n", g.f.name);
     }
-    for (i = 0; i < g.f.strs.len; i++)
-        free(g.f.strs.data[i].p);
-    vec_free(&g.f.strs);
+    for (i = 0; i < g.lits.len; i++)
+        mdata_free(&g.lits.data[i]);
+    vec_free(&g.lits);
     vec_free(&g.f.code);
     vec_free(&g.vars);
     vec_free(&ps);

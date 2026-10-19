@@ -3,7 +3,7 @@
  * docs/TYPES.md).  Declarations are in cdecl.c (with cattr.c, cspec.c),
  * expressions in cexpr.c (with cwarn_expr.c, cprint.c, ...). */
 #include "c/check_int.h"
-#include "c/mir.h"
+#include "c/cgx86.h"
 #include "c/tast.h"
 
 #include <ctype.h>
@@ -803,9 +803,7 @@ void checker_free(Checker *c)
 {
     if (!c)
         return;
-    if (c->obj && !mobj_write(c->obj, c->opt.emit_obj))
-        fprintf(stderr, "cannot write %s\n", c->opt.emit_obj);
-    mobj_free(c->obj);
+    x86_finish(c);
     vec_free(&c->undecl);
     vec_free(&c->inl_statics);
     for (uint32_t i = 0; i < c->dep_msgs.len; i++)

@@ -13,8 +13,8 @@
 typedef struct Enc {
     uint8_t b[16];
     int n;
-    int rel_at;                 /* a string literal's rel32 starts here (-1: none) ... */
-    int rel_str;                /* ... and names this one */
+    int rel_at;                 /* a %rip-relative symbol's rel32 starts here (-1: none) ... */
+    const char *rel_name;       /* ... and names it */
 } Enc;
 
 static void put(Enc *e, int v) { e->b[e->n++] = (uint8_t)v; }
@@ -56,10 +56,10 @@ static void ins(Enc *e, int pfx, bool w8, bool force, const uint8_t *opc, int no
         put(e, opc[i]);
     if (rm->k == MK_REG) {
         put(e, 0xc0 | (reg & 7) << 3 | (hw(rm->reg) & 7));
-    } else if (rm->k == MK_STR) {       /* disp32(%rip), filled in by a relocation */
+    } else if (rm->k == MK_SYM) {       /* disp32(%rip), filled in by a relocation */
         put(e, (reg & 7) << 3 | 5);
         e->rel_at = e->n;
-        e->rel_str = (int)rm->v;
+        e->rel_name = rm->name;
         put32(e, 0);
     } else {
         int b = hw(rm->reg) & 7, mod;
@@ -258,10 +258,10 @@ static bool enc_inst(const MInst *m, Enc *e)
 
 /* ---- the object -------------------------------------------------------- */
 
-enum { SEC_TEXT, SEC_RODATA, NSEC };
+enum { SEC_TEXT, SEC_RODATA, SEC_DATA, SEC_BSS, NSEC };
 
-static const char *const sec_name[NSEC] = {".text", ".rodata"};
-static const uint32_t sec_flags[NSEC] = {6 /* AX */, 2 /* A */};
+static const char *const sec_name[NSEC] = {".text", ".rodata", ".data", ".bss"};
+static const uint32_t sec_flags[NSEC] = {6 /* AX */, 2 /* A */, 3 /* WA */, 3};
 
 enum { REL_64 = 1, REL_PC32 = 2, REL_PLT32 = 4 };
 
@@ -271,6 +271,7 @@ typedef struct ObjSym {
     uint64_t value, size;
     uint8_t type;               /* 0 none, 1 object, 2 function, 3 section */
     bool global;
+    bool anon;                  /* a .L name: no symbol, relocations use the section's */
 } ObjSym;
 
 typedef struct ObjRel {
@@ -283,6 +284,8 @@ typedef struct ObjRel {
 struct MObj {
     VEC(uint8_t) bytes[NSEC];
     VEC(ObjRel) rels[NSEC];
+    uint64_t bss;               /* .bss's size: it has no bytes */
+    uint32_t salign[NSEC];      /* each section's alignment */
     VEC(ObjSym) syms;           /* [0..NSEC): the section symbols */
     uint32_t *hash;             /* open addressing over named symbols: index + 1 */
     size_t hcap;
@@ -366,7 +369,7 @@ bool mobj_add(MObj *o, const MFunc *f)
 {
     size_t n = f->code.len, i;
     Enc *enc = xcalloc(n ? n : 1, sizeof *enc);
-    uint32_t *pos = xcalloc(n + 1, sizeof *pos), *lab, *stroff;
+    uint32_t *pos = xcalloc(n + 1, sizeof *pos), *lab;
     bool *lng = xcalloc(n ? n : 1, sizeof *lng), changed, ok = true;
     int64_t maxlab = 0;
     uint32_t base = (uint32_t)o->bytes[SEC_TEXT].len, fid;
@@ -413,13 +416,6 @@ bool mobj_add(MObj *o, const MFunc *f)
         free(lng);
         return false;
     }
-    stroff = xcalloc(f->strs.len + 1, sizeof *stroff);
-    for (i = 0; i < f->strs.len; i++) {
-        uint32_t k;
-        stroff[i] = (uint32_t)o->bytes[SEC_RODATA].len;
-        for (k = 0; k < f->strs.data[i].n; k++)
-            vec_push(&o->bytes[SEC_RODATA], f->strs.data[i].p[k]);
-    }
     fid = sym_named(o, f->name);
     o->syms.data[fid].sec = SEC_TEXT;
     o->syms.data[fid].value = base;
@@ -453,9 +449,9 @@ bool mobj_add(MObj *o, const MFunc *f)
         }
         if (m->op == M_CALL)
             rel_add(o, SEC_TEXT, base + pos[i] + 1, sym_named(o, m->a.name), REL_PLT32, -4);
-        if (enc[i].rel_at >= 0)         /* a string literal's address, %rip-relative */
-            rel_add(o, SEC_TEXT, base + pos[i] + (uint32_t)enc[i].rel_at, SEC_RODATA, REL_PC32,
-                    (int64_t)stroff[enc[i].rel_str] - (enc[i].n - enc[i].rel_at));
+        if (enc[i].rel_at >= 0)         /* a symbol's address, %rip-relative */
+            rel_add(o, SEC_TEXT, base + pos[i] + (uint32_t)enc[i].rel_at,
+                    sym_named(o, enc[i].rel_name), REL_PC32, -(enc[i].n - enc[i].rel_at));
         for (k = 0; k < enc[i].n; k++)
             vec_push(&o->bytes[SEC_TEXT], enc[i].b[k]);
     }
@@ -463,8 +459,37 @@ bool mobj_add(MObj *o, const MFunc *f)
     free(pos);
     free(lab);
     free(lng);
-    free(stroff);
     return true;
+}
+
+void mobj_add_data(MObj *o, const MData *d)
+{
+    static const int sec_of[] = {SEC_RODATA, SEC_DATA, SEC_BSS};
+    int s = sec_of[d->sec];
+    uint32_t id;
+    uint64_t at = s == SEC_BSS ? o->bss : o->bytes[s].len;
+    size_t i;
+    at = (at + d->align - 1) / d->align * d->align;
+    if (d->align > o->salign[s])
+        o->salign[s] = d->align;
+    if (s == SEC_BSS) {
+        o->bss = at + d->size;
+    } else {
+        while (o->bytes[s].len < at)
+            vec_push(&o->bytes[s], 0);
+        for (i = 0; i < d->size; i++)
+            vec_push(&o->bytes[s], d->bytes[i]);
+    }
+    id = sym_named(o, d->name);
+    o->syms.data[id].sec = s;
+    o->syms.data[id].value = at;
+    o->syms.data[id].size = d->size;
+    o->syms.data[id].type = 1;
+    o->syms.data[id].global = d->global;
+    o->syms.data[id].anon = !strncmp(d->name, ".L", 2);
+    for (i = 0; i < d->rels.len; i++)
+        rel_add(o, s, (uint32_t)at + d->rels.data[i].off, sym_named(o, d->rels.data[i].name),
+                REL_64, d->rels.data[i].addend);
 }
 
 /* ---- ELF64 -------------------------------------------------------------- */
@@ -511,7 +536,7 @@ bool mobj_write(MObj *o, const char *path)
     final = xcalloc(o->syms.len, sizeof *final);
     nsyms = 1;
     for (k = 0; k < o->syms.len; k++)
-        if (!o->syms.data[k].global)
+        if (!o->syms.data[k].global && !o->syms.data[k].anon)
             final[k] = nsyms++;
     nlocal = nsyms;
     for (k = 0; k < o->syms.len; k++)
@@ -524,7 +549,7 @@ bool mobj_write(MObj *o, const char *path)
     for (int pass = 0; pass < 2; pass++)
         for (k = 0; k < o->syms.len; k++) {
             const ObjSym *y = &o->syms.data[k];
-            if (y->global != (pass == 1))
+            if (y->global != (pass == 1) || y->anon)
                 continue;
             w32(&symtab, y->name ? wstr(&strtab, y->name) : 0);
             w8(&symtab, (y->global ? 0x10 : 0) | y->type);
@@ -545,11 +570,11 @@ bool mobj_write(MObj *o, const char *path)
         Shdr x;
         memset(&x, 0, sizeof x);
         x.name = wstr(&shstr, sec_name[s]);
-        x.type = 1;
+        x.type = s == SEC_BSS ? 8 : 1;
         x.flags = sec_flags[s];
         x.off = img.len;
-        x.size = o->bytes[s].len;
-        x.align = 1;
+        x.size = s == SEC_BSS ? o->bss : o->bytes[s].len;
+        x.align = o->salign[s] ? o->salign[s] : 1;
         for (k = 0; k < o->bytes[s].len; k++)
             w8(&img, o->bytes[s].data[k]);
         align8(&img);
@@ -573,9 +598,15 @@ bool mobj_write(MObj *o, const char *path)
         x.info = (uint32_t)s + 1;
         for (k = 0; k < o->rels[s].len; k++) {
             const ObjRel *r = &o->rels[s].data[k];
+            const ObjSym *y = &o->syms.data[r->sym];
             w64(&img, r->off);
-            w64(&img, (uint64_t)final[r->sym] << 32 | r->type);
-            w64(&img, (uint64_t)r->addend);
+            if (y->anon) {              /* the section's symbol, shifted to the object */
+                w64(&img, (uint64_t)final[y->sec] << 32 | r->type);
+                w64(&img, (uint64_t)(r->addend + (int64_t)y->value));
+            } else {
+                w64(&img, (uint64_t)final[r->sym] << 32 | r->type);
+                w64(&img, (uint64_t)r->addend);
+            }
         }
         relsec[s] = (uint32_t)sh.len;
         vec_push(&sh, x);

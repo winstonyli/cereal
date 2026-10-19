@@ -74,7 +74,14 @@ def main():
                 print(path + ": gcc failed\n" + r.stderr[:400])
                 bad += 1
                 continue
-            a = run([j("ref")], timeout=60).stdout.split()
+            r = run([j("ref")], timeout=60)
+            a = r.stdout.split()
+            want = sum(len(vecs[f.name]) for f in done)
+            if r.returncode or len(a) != want:
+                print("%s: the gcc build ran badly (exit %d, %d of %d results)" % (
+                    path, r.returncode, len(a), want))
+                bad += 1
+                continue
             outs = {}
             # the same functions as an object file: bytes against the assembler's, then linked and run
             run([cereal, "check", "--target=x86_64-linux-gnu", "--emit-obj=" + j("o.o"), path])
@@ -104,7 +111,12 @@ def main():
                     bad += 1
                     continue
                 try:
-                    outs[tag] = run([j("mine" + tag)], timeout=60).stdout.split()
+                    r = run([j("mine" + tag)], timeout=60)
+                    outs[tag] = r.stdout.split()
+                    if r.returncode or len(outs[tag]) != len(a):
+                        print("%s: generated code ran badly (%s, exit %d, %d of %d results)" % (
+                            path, tag, r.returncode, len(outs[tag]), len(a)))
+                        bad += 1
                 except subprocess.TimeoutExpired:
                     print(path + ": generated code timed out (loop never ends?)")
                     bad += 1

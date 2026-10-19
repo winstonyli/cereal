@@ -19,8 +19,7 @@ enum { R_AX, R_CX, R_DX, R_SI, R_DI, R_R8, R_R9, R_BP, R_SP, R_GP_COUNT,
 
 /* Operand kinds. */
 enum { MK_NONE, MK_REG, MK_IMM, MK_MEM /* disp(reg) */, MK_LAB /* local label */,
-       MK_SYM /* a symbol's name, by string */,
-       MK_STR /* %rip-relative string literal number v of the function */ };
+       MK_SYM /* a symbol's name, by string: a call target, or name(%rip) */ };
 
 typedef struct MOp {
     uint8_t k;
@@ -64,27 +63,46 @@ typedef struct MInst {
     MOp a, b;               /* AT&T order: a is the source, b the destination */
 } MInst;
 
-typedef struct MStr {
-    uint8_t *p;             /* the literal's bytes (owned) */
-    uint32_t n;
-} MStr;
-
 typedef struct MFunc {
     const char *name;
     bool global;
     VEC(MInst) code;
-    VEC(MStr) strs;  /* string literals, read-only data */
 } MFunc;
+
+/* A data object: its bytes (.bss: only a size) and the 8-byte absolute
+ * addresses inside them (the bytes there are zero).  A name starting ".L"
+ * is local to the file and leaves no symbol (string literals). */
+enum { MD_RODATA, MD_DATA, MD_BSS };
+
+typedef struct MReloc {
+    uint32_t off;
+    char *name;             /* the target symbol (owned) */
+    int64_t addend;
+} MReloc;
+
+typedef struct MData {
+    char *name;             /* owned */
+    bool global;
+    int sec;                /* MD_* */
+    uint32_t align;
+    uint64_t size;
+    uint8_t *bytes;         /* size of them (owned); NULL in .bss */
+    VEC(MReloc) rels;
+} MData;
+
+void mdata_free(MData *d);
 
 /* Writes the function as AT&T assembly (one instruction per line, local
  * labels .L<name>_<n>). */
 void mir_print(const MFunc *f, FILE *out);
+void mir_print_data(const MData *d, FILE *out);
 
 /* An ELF64 relocatable object being built (mir_elf.c): functions are
  * encoded as they come, mobj_write lays out the file. */
 typedef struct MObj MObj;
 MObj *mobj_new(void);
 bool mobj_add(MObj *o, const MFunc *f);     /* false: an instruction it cannot encode */
+void mobj_add_data(MObj *o, const MData *d);
 bool mobj_write(MObj *o, const char *path);
 void mobj_free(MObj *o);
 

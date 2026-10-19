@@ -48,26 +48,57 @@ static void put_op(const MFunc *f, const MOp *o, int w, FILE *out)
         fprintf(out, ".L%s_%lld", f->name, (long long)o->v);
         break;
     case MK_SYM:
-        fputs(o->name, out);
-        break;
-    case MK_STR:
-        fprintf(out, ".LC%s_%lld(%%rip)", f->name, (long long)o->v);
+        fprintf(out, "%s(%%rip)", o->name);
         break;
     }
+}
+
+static const char *const sec_dir[] = {".section .rodata", ".data", ".bss"};
+
+void mir_print_data(const MData *d, FILE *out)
+{
+    size_t r = 0;
+    uint64_t at = 0;
+    fprintf(out, "\t%s\n\t.balign %u\n", sec_dir[d->sec], d->align);
+    if (d->global)
+        fprintf(out, "\t.globl %s\n", d->name);
+    fprintf(out, "%s:\n", d->name);
+    while (at < d->size) {
+        uint64_t end = r < d->rels.len ? d->rels.data[r].off : d->size, k, z = 0;
+        if (at == end && r < d->rels.len) {     /* an address */
+            const MReloc *x = &d->rels.data[r++];
+            fprintf(out, "\t.quad %s%+lld\n", x->name, (long long)x->addend);
+            at += 8;
+            continue;
+        }
+        for (k = at; k < end && (!d->bytes || !d->bytes[k]); k++)
+            z++;
+        if (z == end - at || z >= 16) {         /* a run of zeros */
+            fprintf(out, "\t.zero %llu\n", (unsigned long long)z);
+            at += z;
+            continue;
+        }
+        fputs("\t.byte ", out);
+        for (k = at; k < end && k < at + 16; k++)
+            fprintf(out, "%s%u", k > at ? "," : "", d->bytes[k]);
+        fputc('\n', out);
+        at = k;
+    }
+}
+
+void mdata_free(MData *d)
+{
+    size_t i;
+    for (i = 0; i < d->rels.len; i++)
+        free(d->rels.data[i].name);
+    vec_free(&d->rels);
+    free(d->name);
+    free(d->bytes);
 }
 
 void mir_print(const MFunc *f, FILE *out)
 {
     size_t i;
-    if (f->strs.len)
-        fprintf(out, "\t.section .rodata\n");
-    for (i = 0; i < f->strs.len; i++) {
-        uint32_t k;
-        fprintf(out, ".LC%s_%zu:\n\t.byte ", f->name, i);
-        for (k = 0; k < f->strs.data[i].n; k++)
-            fprintf(out, "%s%u", k ? "," : "", f->strs.data[i].p[k]);
-        fputc('\n', out);
-    }
     fprintf(out, "\t.text\n");
     if (f->global)
         fprintf(out, "\t.globl %s\n", f->name);
@@ -117,9 +148,7 @@ void mir_print(const MFunc *f, FILE *out)
             put_op(f, &m->a, 8, out);
             break;
         case M_CALL:
-            fputs("\tcall ", out);
-            put_op(f, &m->a, 8, out);
-            fputs("@PLT", out);
+            fprintf(out, "\tcall %s@PLT", m->a.name);
             break;
         case M_CQO: case M_LEAVE: case M_RET:
             fprintf(out, "\t%s", op_names[m->op]);

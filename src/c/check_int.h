@@ -320,7 +320,7 @@ struct Checker {
     Interner *in;
     DiagEngine *diag;
     CheckOptions opt;
-    struct MObj *obj;           /* --emit-obj: the functions encoded so far (mir_elf.c) */
+    struct X86 *x86;            /* the back end's state, made on first use (cgdata.c) */
     const Target *tgt;
     TypeTable tt;
 
