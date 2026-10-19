@@ -437,6 +437,7 @@ typedef struct Once {
     uint32_t x;             /* the checker's lvalue node */
     uint32_t tmp;           /* the temporary's number, UINT32_MAX: none */
     TypeId pt;              /* its type: pointer to the lvalue's type */
+    unsigned bpun, bwidth;  /* a bit-field: its bit offset in the addressed byte, its width */
     SrcLoc loc;
 } Once;
 
@@ -449,6 +450,7 @@ static bool once_init(El *e, uint32_t x, Once *o, uint32_t *setup)
     x = strip_paren(c, x);
     o->x = x;
     o->tmp = UINT32_MAX;
+    o->bwidth = 0;
     o->loc = cnode_loc(c, x);
     *setup = TN;
     if (ntag(c, x) == N_IDENT || !(c->ef[x] & EF_SIDE))
@@ -456,9 +458,9 @@ static bool once_init(El *e, uint32_t x, Once *o, uint32_t *setup)
     l = lval(e, x);
     if (l == TN)
         return false;
-    if (e->nodes.data[l].op == TO_FIELD && e->nodes.data[l].width) {
-        unsup(e, "bit-field with side effect");
-        return false;
+    if (e->nodes.data[l].op == TO_FIELD && e->nodes.data[l].width) {   /* the temporary holds the field's byte address */
+        o->bpun = e->nodes.data[l].pun;
+        o->bwidth = e->nodes.data[l].width;
     }
     o->pt = type_ptr(&c->tt, nty(e, l));
     a = addr_t(e, l, o->pt, o->loc);
@@ -479,7 +481,12 @@ static uint32_t once_ref(El *e, Once *o)
         return lval(e, o->x);
     t = mk(e, TO_TMP, o->pt, o->loc, o->tmp, 0, 0, NULL, 0);
     t = load(e, t);
-    return deref_t(e, t, pointee(e->c, o->pt), o->loc);
+    t = deref_t(e, t, pointee(e->c, o->pt), o->loc);
+    if (o->bwidth && t != TN) {
+        t = mk(e, TO_FIELD, pointee(e->c, o->pt), o->loc, 0, 0, o->bpun, &t, 1);
+        e->nodes.data[t].width = o->bwidth;
+    }
+    return t;
 }
 
 /* v, preceded by the temporary's setup when there is one. */
@@ -2068,6 +2075,12 @@ static void verify(El *e, FILE *out)
             bool ok = false;
             uint64_t rs = 0;
             NEED(1);
+            if (nd->width && ISLV(KID(0)) && !is_record(c, KID(0)->ty) && KID(0)->op == TO_DEREF) {
+                /* a bit-field named again through the temporary that holds its byte's address */
+                if (nd->val || !ok_int(e, nd->ty) || nd->width > 8 * type_size(&c->tt, nd->ty, &ok))
+                    vbad(e, out, i, "bit-field type or width");
+                break;
+            }
             if (!ISLV(KID(0)) || !is_record(c, KID(0)->ty)) {
                 vbad(e, out, i, "operand is not a struct or union lvalue");
                 break;

@@ -293,7 +293,31 @@ unit tmp.c:16:1 func plain void(int)
   #41 store #28 #40 int
   #42 exprstmt #41
   #43 block #19 #42
-unit tmp.c:17:1 unsupported: bit-field with side effect
+unit tmp.c:17:1 func bits void(void)
+  #0 call sp struct S *
+  #1 deref #0 struct S
+  #2 field +20 bit 0 width 3 #1 unsigned int
+  #3 addr #2 unsigned int *
+  #4 tmp 0 unsigned int *
+  #5 store #4 #3 unsigned int *
+  #6 exprstmt #5
+  #7 tmp 0 unsigned int *
+  #8 load #7 unsigned int *
+  #9 deref #8 unsigned int
+  #10 field +0 bit 0 width 3 #9 unsigned int
+  #11 tmp 0 unsigned int *
+  #12 load #11 unsigned int *
+  #13 deref #12 unsigned int
+  #14 field +0 bit 0 width 3 #13 unsigned int
+  #15 load #14 unsigned int
+  #16 const 1 int
+  #17 cast #15 int
+  #18 binop + #17 #16 int
+  #19 cast #18 unsigned int
+  #20 store #10 #19 unsigned int
+  #21 stmtexpr #6 #20 unsigned int
+  #22 exprstmt #21
+  #23 block #22
 unit tmp.c:18:14 decl vv volatile int
 unit tmp.c:19:1 func vol void(volatile int *)
   #0 sym p@19:24 volatile int *

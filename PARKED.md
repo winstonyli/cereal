@@ -194,7 +194,6 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 
 | What | Why parked / trigger | Evidence | Status |
 |---|---|---|---|
-| Bit-field compound lvalue with a side effect (`sp()->bf += 1`) | The address of a bit-field cannot be stored in a `tmp` (`docs/TAST_T5_PLAN.md` section 2); stays `unsupported: bit-field with side effect`. Trigger: a corpus unit hits it. | `tests/tast/tmp.c` `bits` (no corpus unit, 2026-10-18) | parked |
 | Data oracle skips objects holding a label address (`labaddr`) | A label address is a `.text` relocation with an offset the pass cannot know; the oracle skips the object instead of comparing positions (`docs/TAST_T6_PLAN.md` section 4). Trigger: a unit whose other data in the same object needs checking. | lua54 `lvm.c` `disptab` (2 objects skipped, 2026-10-18) | parked |
 | `asm` outside the supported subset | Operands work for constraints a/b(cpuid)/c/d/r/+ and templates of cmp, test, mov, add, sub, and, or, xor, imul, cmovCC (`asm_emit`, `src/c/cgx86.c`); anything else is unsupported. Trigger: a corpus unit needs another instruction or constraint. | `gen_asm_ops` | parked |
 | Array-typed parameters/objects (`const uv_buf_t bufs[]`, array of unknown form) | Two libuv units; read the cases before deciding. Trigger: more than a handful of units. | libuv `stream.c:753`, `:980` | parked |

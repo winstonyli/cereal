@@ -222,3 +222,18 @@ long bitf(int k)
     r += (s.b << 1) + (s.a * 2) + sizeof(s) + sizeof(t) + sizeof(u);
     return r;
 }
+
+/* a compound assignment, ++ and -- on a bit-field named through a call or an index */
+static struct bf *pick(struct bf *a, int k) { return a + (k & 1); }
+long bitse(int k)
+{
+    struct bf s[2] = {{1, 2, 3, 4, 5, 1, -3, 1}, {6, -5, 70000, -9, 8, 0, 20, 0}};
+    long r = 0;
+    pick(s, k)->b += k;
+    pick(s, k + 1)->c *= 3;
+    pick(s, k)->a++;
+    r += pick(s, k)->g-- + --pick(s, k + 1)->g;
+    r += (pick(s, k)->d -= k * 1000000L);
+    r += s[k & 1].b + s[(k + 1) & 1].c + s[0].a + s[1].a + s[0].g + s[1].g + (int)s[0].d + (int)s[1].d;
+    return r;
+}
