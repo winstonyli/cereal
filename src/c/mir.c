@@ -8,7 +8,8 @@ static const char *const reg_names[4][R_COUNT] = {
     /* 8 */ {"rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "rbp", "rsp"},
 };
 
-static const char *const cc_names[CC_COUNT] = {"e", "ne", "l", "le", "g", "ge", "b", "be", "a", "ae"};
+static const char *const cc_names[CC_COUNT] = {"e", "ne", "l", "le", "g", "ge", "b", "be", "a", "ae",
+                                               "p", "np"};
 
 static const char *const op_names[M_COUNT] = {
 #define X(n, s) s,
@@ -30,7 +31,10 @@ static void put_op(const MFunc *f, const MOp *o, int w, FILE *out)
 {
     switch (o->k) {
     case MK_REG:
-        fprintf(out, "%%%s", reg_names[wi(w)][o->reg]);
+        if (o->reg >= R_X0)
+            fprintf(out, "%%xmm%d", o->reg - R_X0);
+        else
+            fprintf(out, "%%%s", reg_names[wi(w)][o->reg]);
         break;
     case MK_IMM:
         fprintf(out, "$%lld", (long long)o->v);
@@ -111,6 +115,42 @@ void mir_print(const MFunc *f, FILE *out)
         case M_PUSH: case M_POP: case M_NEG: case M_NOT: case M_IDIV: case M_DIV:
             fprintf(out, "\t%s%c ", op_names[m->op], suffix(w));
             put_op(f, &m->a, w, out);
+            break;
+        case M_FMOV: case M_FADD: case M_FSUB: case M_FMUL: case M_FDIV: case M_FCMP:
+            fprintf(out, "\t%s%s ", op_names[m->op], w == 4 ? "ss" : "sd");
+            put_op(f, &m->a, 8, out);
+            fputc(',', out);
+            put_op(f, &m->b, 8, out);
+            break;
+        case M_CVTI2F:
+            fprintf(out, "\tcvtsi2%sq ", w == 4 ? "ss" : "sd");
+            put_op(f, &m->a, 8, out);
+            fputc(',', out);
+            put_op(f, &m->b, 8, out);
+            break;
+        case M_CVTF2I:
+            fprintf(out, "\tcvtt%s2siq ", w == 4 ? "ss" : "sd");
+            put_op(f, &m->a, 8, out);
+            fputc(',', out);
+            put_op(f, &m->b, 8, out);
+            break;
+        case M_CVTF2F:
+            fprintf(out, "\t%s ", w == 4 ? "cvtss2sd" : "cvtsd2ss");
+            put_op(f, &m->a, 8, out);
+            fputc(',', out);
+            put_op(f, &m->b, 8, out);
+            break;
+        case M_MOVQX:       /* movq (64 bits) or movd (32) */
+            fputs(w == 4 ? "\tmovd " : "\tmovq ", out);
+            put_op(f, &m->a, w, out);
+            fputc(',', out);
+            put_op(f, &m->b, w, out);
+            break;
+        case M_MOVAPS:
+            fputs("\tmovaps ", out);
+            put_op(f, &m->a, 8, out);
+            fputc(',', out);
+            put_op(f, &m->b, 8, out);
             break;
         case M_SHL: case M_SAR: case M_SHR:     /* by %cl */
             fprintf(out, "\t%s%c %%cl,", op_names[m->op], suffix(w));

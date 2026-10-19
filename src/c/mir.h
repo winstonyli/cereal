@@ -12,7 +12,10 @@
 
 #include "common.h"
 
-enum { R_AX, R_CX, R_DX, R_SI, R_DI, R_R8, R_R9, R_BP, R_SP, R_COUNT };
+/* General registers, then %xmm0..%xmm7 (R_X0 + n); the width of an
+ * instruction does not apply to them. */
+enum { R_AX, R_CX, R_DX, R_SI, R_DI, R_R8, R_R9, R_BP, R_SP, R_GP_COUNT,
+       R_X0 = R_GP_COUNT, R_COUNT = R_X0 + 8 };
 
 /* Operand kinds. */
 enum { MK_NONE, MK_REG, MK_IMM, MK_MEM /* disp(reg) */, MK_LAB /* local label */,
@@ -32,7 +35,15 @@ typedef struct MOp {
     X(NEG, "neg") X(NOT, "not") X(CMP, "cmp") X(TEST, "test") X(SETCC, "set")   \
     X(CQO, "cqto") X(IDIV, "idiv") X(DIV, "div") X(PUSH, "push") X(POP, "pop")  \
     X(CALL, "call") X(JMP, "jmp") X(JCC, "j") X(LEAVE, "leave") X(RET, "ret")   \
-    X(LABEL, "")
+    X(LABEL, "")                                                                \
+    /* scalar SSE: w is the float's width (4: ss, 8: sd) */                     \
+    X(FMOV, "mov") X(FADD, "add") X(FSUB, "sub") X(FMUL, "mul")                 \
+    X(FDIV, "div") X(FCMP, "ucomi")                                             \
+    X(CVTI2F, "cvtsi2")    /* 64-bit integer a to float b */                    \
+    X(CVTF2I, "cvtt")      /* float a (truncated) to 64-bit integer b */        \
+    X(CVTF2F, "cvt")       /* w: the source's width; the other one results */   \
+    X(MOVQX, "mov")        /* bits between a general register and an xmm */     \
+    X(MOVAPS, "movaps")
 
 typedef enum {
 #define X(n, s) M_##n,
@@ -42,7 +53,8 @@ typedef enum {
 } MOpcode;
 
 /* Condition codes. */
-enum { CC_E, CC_NE, CC_L, CC_LE, CC_G, CC_GE, CC_B, CC_BE, CC_A, CC_AE, CC_COUNT };
+enum { CC_E, CC_NE, CC_L, CC_LE, CC_G, CC_GE, CC_B, CC_BE, CC_A, CC_AE, CC_P, CC_NP,
+       CC_COUNT };
 
 typedef struct MInst {
     uint8_t op;

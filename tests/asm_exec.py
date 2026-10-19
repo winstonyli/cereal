@@ -17,6 +17,28 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cfg_exec as X
 
 
+FLT = ("float", "double")
+
+
+def supported(t):
+    t = t.strip()
+    return t in X.INT or t in FLT
+
+
+def value(t):
+    """A random argument; floats stay small enough that conversions to integers are defined."""
+    if t.strip() in FLT:
+        return random.choice([0.0, 1.0, -1.0, 0.5, -2.5, 3.25, 7.0, 100.0, -1e3, 1e-3,
+                              random.uniform(-500, 500), float(random.randint(-9, 9))])
+    return X.values(t)
+
+
+def literal(v):
+    if isinstance(v, float):
+        return float(v).hex()
+    return str(v) + ("LL" if abs(v) > 2**31 - 1 else "")
+
+
 def run(cmd, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, **kw)
 
@@ -31,17 +53,14 @@ def main():
         notes = dict(re.findall(r"^# x86: (\S+) unsupported: (.*)$", asm, re.M))
         todo = []
         for f in funcs.values():
-            try:
-                X.ity(f.ret)
-                for p in f.params:
-                    X.ity(p)
-            except X.Skip:
-                continue
-            todo.append(f)
+            if supported(f.ret) and all(supported(p) for p in f.params):
+                todo.append(f)
         done = [f for f in todo if f.name not in notes]
-        vecs = {f.name: [[X.values(p) for p in f.params] for _ in range(24)] for f in done}
-        calls = "".join('    printf("%%lld\\n", (long long)%s(%s));\n' % (
-            f.name, ", ".join(str(x) + ("LL" if abs(x) > 2**31 - 1 else "") for x in v))
+        vecs = {f.name: [[value(p) for p in f.params] for _ in range(24)] for f in done}
+        calls = "".join('    printf("%s\\n", (%s)%s(%s));\n' % (
+            "%.17g" if f.ret.strip() in FLT else "%lld",
+            "double" if f.ret.strip() in FLT else "long long",
+            f.name, ", ".join(literal(x) for x in v))
             for f in done for v in vecs[f.name])
         main_c = "#include <stdio.h>\nint main(void)\n{\n" + calls + "    return 0;\n}\n"
         protos = "".join("%s %s(%s);\n" % (f.ret, f.name, ", ".join(f.params) or "void") for f in done)

@@ -6,10 +6,12 @@
  * operand waits on the stack.  Every integer or pointer value in %rax is
  * canonical (sign- or zero-extended from its type's width to 64 bits), so
  * 64-bit arithmetic followed by a re-canonicalisation gives the type's own
- * wrap-around.  Not supported yet (the function is then reported in a
- * comment): floating point, struct/union/array values, initializer lists,
- * static data and globals, bit-fields, indirect and non-integer calls,
- * computed goto.  Integer arguments past the sixth go on the stack.  See
+ * wrap-around.  A float or double value lives in %xmm0 instead (a waiting
+ * left operand goes through %rax onto the stack); arguments follow System V
+ * for integer and SSE classes, the rest on the stack.  Not supported yet (the
+ * function is then reported in a comment): long double, struct/union/array
+ * values, initializer lists, static data and globals, bit-fields, indirect
+ * calls, computed goto, conversions between 64-bit unsigned and float.  See
  * docs/TAST_T9_PLAN.md. */
 #include <stdarg.h>
 #include <string.h>
@@ -80,23 +82,30 @@ typedef struct TI {
     int bytes;
     bool sg;
     bool boolean;
+    bool flt;                   /* float or double: the value lives in %xmm0 */
 } TI;
 
-/* An integer, enum or pointer type; anything else is outside the subset. */
+/* An integer, enum, pointer, float or double type; anything else is outside
+ * the subset. */
 static bool tinfo(Gx *g, TypeId t, TI *ti)
 {
     TypeTable *tt = &g->c->tt;
     TypeKind k = type_ckind(tt, t);
     bool ok;
     uint64_t sz;
+    memset(ti, 0, sizeof *ti);
     if (k == TY_PTR) {
         ti->bytes = 8;
-        ti->sg = false;
-        ti->boolean = false;
+        return true;
+    }
+    if (k == TY_FLOAT || k == TY_DOUBLE) {
+        ti->bytes = k == TY_FLOAT ? 4 : 8;
+        ti->sg = true;
+        ti->flt = true;
         return true;
     }
     if (!((k >= TY_BOOL && k <= TY_ULLONG) || k == TY_ENUM)) {
-        unsup(g, "value of a type outside the integer subset");
+        unsup(g, "value of a type outside the integer and float subset");
         return false;
     }
     sz = type_size(tt, t, &ok);
@@ -132,6 +141,43 @@ static void pop(Gx *g, int r)
 {
     em(g, M_POP, 8, R(r), NONE());
     g->depth--;
+}
+
+/* The value (in %rax, or %xmm0 for a float) waits on the stack / comes back
+ * into the same register. */
+static void pushv(Gx *g, const TI *ti)
+{
+    if (ti->flt)
+        em(g, M_MOVQX, 8, R(R_X0), R(R_AX));
+    push(g);
+}
+
+static void popv(Gx *g, const TI *ti)
+{
+    pop(g, R_AX);
+    if (ti->flt)
+        em(g, M_MOVQX, 8, R(R_AX), R(R_X0));
+}
+
+/* A float value in %xmm0 becomes 0 or 1 in %rax: nonzero or NaN is true. */
+static void flt_truth(Gx *g, const TI *ti)
+{
+    em(g, M_XOR, 4, R(R_AX), R(R_AX));
+    em(g, M_MOVQX, 8, R(R_AX), R(R_X0 + 1));
+    em(g, M_FCMP, ti->bytes, R(R_X0 + 1), R(R_X0));
+    em_cc(g, M_SETCC, CC_NE, R(R_AX));
+    em_cc(g, M_SETCC, CC_P, R(R_CX));
+    em(g, M_OR, 1, R(R_CX), R(R_AX));
+    em(g, M_MOVZX, 1, R(R_AX), R(R_AX));
+}
+
+/* Where a call's or function's next argument goes: a register (R_* or
+ * R_X0 + n), or -1 for the stack.  Counters are per class. */
+static int arg_loc(const TI *ti, int *ni, int *nf)
+{
+    if (ti->flt)
+        return *nf < 8 ? R_X0 + (*nf)++ : -1;
+    return *ni < 6 ? arg_regs[(*ni)++] : -1;
 }
 
 /* ---- slots ------------------------------------------------------------- */
@@ -216,7 +262,9 @@ static void genaddr(Gx *g, uint32_t n)
 /* Load a value of type ti from the address in %rax into %rax. */
 static void load_at_rax(Gx *g, const TI *ti)
 {
-    if (ti->bytes == 8)
+    if (ti->flt)
+        em(g, M_FMOV, ti->bytes, M(R_AX, 0), R(R_X0));
+    else if (ti->bytes == 8)
         em(g, M_MOV, 8, M(R_AX, 0), R(R_AX));
     else if (ti->bytes == 4 && !ti->sg)
         em(g, M_MOV, 4, M(R_AX, 0), R(R_AX));
@@ -227,7 +275,10 @@ static void load_at_rax(Gx *g, const TI *ti)
 /* Store %rax to the address in %rcx, width of ti. */
 static void store_rcx(Gx *g, const TI *ti)
 {
-    em(g, M_MOV, ti->bytes, R(R_AX), M(R_CX, 0));
+    if (ti->flt)
+        em(g, M_FMOV, ti->bytes, R(R_X0), M(R_CX, 0));
+    else
+        em(g, M_MOV, ti->bytes, R(R_AX), M(R_CX, 0));
 }
 
 static int cc_of(int p, bool sg)
@@ -244,13 +295,17 @@ static int cc_of(int p, bool sg)
 
 static void gen_binary(Gx *g, uint32_t n)
 {
-    const TNode *t = nd(g->L, n);
+    TI lt;
+    if (!tinfo(g, nd(g->L, kid(g->L, n, 0))->ty, &lt))
+        return;
     gen(g, kid(g->L, n, 0));
-    push(g);
+    pushv(g, &lt);
     gen(g, kid(g->L, n, 1));
-    em(g, M_MOV, 8, R(R_AX), R(R_CX));
-    pop(g, R_AX);
-    (void)t;
+    if (lt.flt)                 /* right in %xmm1, left back in %xmm0 */
+        em(g, M_MOVAPS, 8, R(R_X0), R(R_X0 + 1));
+    else
+        em(g, M_MOV, 8, R(R_AX), R(R_CX));
+    popv(g, &lt);
 }
 
 static void gen(Gx *g, uint32_t n)
@@ -265,6 +320,17 @@ static void gen(Gx *g, uint32_t n)
             return;
         em(g, M_MOVABS, 8, I(t->val), R(R_AX));
         break;
+    case TO_FCONST: {           /* the bytes, little-endian, through %rax */
+        uint64_t bits = 0;
+        uint32_t b;
+        if (!tinfo(g, t->ty, &ti))
+            return;
+        for (b = t->width; b-- > 0;)
+            bits = bits << 8 | g->L->e->bytes.data[t->val + b];
+        em(g, M_MOVABS, 8, I((int64_t)bits), R(R_AX));
+        em(g, M_MOVQX, ti.bytes, R(R_AX), R(R_X0));
+        break;
+    }
     case TO_LOAD:
         if (!tinfo(g, t->ty, &ti))
             return;
@@ -279,7 +345,8 @@ static void gen(Gx *g, uint32_t n)
         gen(g, kid(g->L, n, 1));
         pop(g, R_CX);
         store_rcx(g, &ti);
-        canon(g, &ti);
+        if (!ti.flt)
+            canon(g, &ti);
         break;
     case TO_POST: {             /* the value before the store it wraps */
         uint32_t s = kid(g->L, n, 0);
@@ -287,23 +354,67 @@ static void gen(Gx *g, uint32_t n)
             return;
         genaddr(g, kid(g->L, s, 0));
         load_at_rax(g, &ti);
-        push(g);
+        pushv(g, &ti);
         gen(g, s);
-        pop(g, R_AX);
+        popv(g, &ti);
         break;
     }
-    case TO_CAST:
+    case TO_CAST: {
+        TI from;
         gen(g, kid(g->L, n, 0));
         if (type_ckind(&g->c->tt, t->ty) == TY_VOID)
             break;
-        if (!tinfo(g, t->ty, &ti) || !tinfo(g, nd(g->L, kid(g->L, n, 0))->ty, &(TI){0}))
+        if (!tinfo(g, t->ty, &ti) || !tinfo(g, nd(g->L, kid(g->L, n, 0))->ty, &from))
             return;
-        canon(g, &ti);
+        if (from.flt && ti.flt) {
+            if (from.bytes != ti.bytes)
+                em(g, M_CVTF2F, from.bytes, R(R_X0), R(R_X0));
+        } else if (ti.flt) {
+            if (!from.sg && from.bytes == 8) {
+                unsup(g, "unsigned 64-bit integer to float");
+                return;
+            }
+            em(g, M_CVTI2F, ti.bytes, R(R_AX), R(R_X0));
+        } else if (from.flt) {
+            if (ti.boolean) {
+                flt_truth(g, &from);
+            } else if (!ti.sg && ti.bytes == 8) {
+                unsup(g, "float to unsigned 64-bit integer");
+                return;
+            } else {
+                em(g, M_CVTF2I, from.bytes, R(R_X0), R(R_AX));
+                canon(g, &ti);
+            }
+        } else {
+            canon(g, &ti);
+        }
         break;
+    }
     case TO_UNOP:
         gen(g, kid(g->L, n, 0));
         if (!tinfo(g, t->ty, &ti))
             return;
+        if (t->pun == P_BANG) {
+            TI ot;              /* the operand's own class decides how to test it */
+            if (!tinfo(g, nd(g->L, kid(g->L, n, 0))->ty, &ot))
+                return;
+            if (ot.flt) {
+                flt_truth(g, &ot);
+                em(g, M_XOR, 8, I(1), R(R_AX));
+                break;
+            }
+        }
+        if (ti.flt) {
+            if (t->pun == P_MINUS) {    /* flip the sign bit through %rax */
+                em(g, M_MOVQX, ti.bytes, R(R_X0), R(R_AX));
+                em(g, M_MOVABS, 8, I(ti.bytes == 4 ? 0x80000000LL : INT64_MIN), R(R_CX));
+                em(g, M_XOR, 8, R(R_CX), R(R_AX));
+                em(g, M_MOVQX, ti.bytes, R(R_AX), R(R_X0));
+            } else if (t->pun != P_PLUS) {
+                unsup(g, "unary operator on a float");
+            }
+            break;
+        }
         if (t->pun == P_MINUS)
             em(g, M_NEG, 8, R(R_AX), NONE());
         else if (t->pun == P_TILDE)
@@ -322,6 +433,15 @@ static void gen(Gx *g, uint32_t n)
         gen_binary(g, n);
         if (!tinfo(g, t->ty, &ti))
             return;
+        if (ti.flt) {
+            int op = t->pun == P_PLUS ? M_FADD : t->pun == P_MINUS ? M_FSUB :
+                     t->pun == P_STAR ? M_FMUL : t->pun == P_SLASH ? M_FDIV : -1;
+            if (op < 0)
+                unsup(g, "binary operator on floats");
+            else
+                em(g, op, ti.bytes, R(R_X0 + 1), R(R_X0));
+            break;
+        }
         switch (t->pun) {
         case P_PLUS: em(g, M_ADD, 8, R(R_CX), R(R_AX)); break;
         case P_MINUS: em(g, M_SUB, 8, R(R_CX), R(R_AX)); break;
@@ -354,8 +474,23 @@ static void gen(Gx *g, uint32_t n)
         if (!tinfo(g, nd(g->L, kid(g->L, n, 0))->ty, &ot))
             return;
         gen_binary(g, n);
-        em(g, M_CMP, 8, R(R_CX), R(R_AX));
-        em_cc(g, M_SETCC, cc_of(t->pun, ot.sg), R(R_AX));
+        if (ot.flt) {           /* left in %xmm0, right in %xmm1 */
+            int p = t->pun;
+            if (p == P_LT || p == P_LE)     /* x < y is y > x: compare the other way */
+                em(g, M_FCMP, ot.bytes, R(R_X0), R(R_X0 + 1));
+            else
+                em(g, M_FCMP, ot.bytes, R(R_X0 + 1), R(R_X0));
+            if (p == P_EQEQ || p == P_NE) {     /* unordered sets ZF too: test PF */
+                em_cc(g, M_SETCC, p == P_EQEQ ? CC_E : CC_NE, R(R_AX));
+                em_cc(g, M_SETCC, p == P_EQEQ ? CC_NP : CC_P, R(R_CX));
+                em(g, p == P_EQEQ ? M_AND : M_OR, 1, R(R_CX), R(R_AX));
+            } else {
+                em_cc(g, M_SETCC, p == P_LT || p == P_GT ? CC_A : CC_AE, R(R_AX));
+            }
+        } else {
+            em(g, M_CMP, 8, R(R_CX), R(R_AX));
+            em_cc(g, M_SETCC, cc_of(t->pun, ot.sg), R(R_AX));
+        }
         em(g, M_MOVZX, 1, R(R_AX), R(R_AX));
         break;
     }
@@ -382,31 +517,54 @@ static void gen(Gx *g, uint32_t n)
         genaddr(g, kid(g->L, n, 0));
         break;
     case TO_CALL: {
-        uint32_t j, nstack = t->nkids > 6 ? t->nkids - 6 : 0;
-        bool pad;
+        uint32_t j, nstack = 0;
+        int ni = 0, nf = 0, pad, *loc;
+        TI *ats;
         const CSym *s;
         if (t->pun) {
             unsup(g, "indirect call");
             return;
         }
         s = csym(g->c, t->sym);
-        /* Arguments are pushed last to first, so the first six pop into
-         * registers and the rest stay as the stack arguments; the padding
-         * goes below them so %rsp is 16-aligned at the call. */
-        pad = (g->depth + nstack) & 1;
+        loc = xmalloc((t->nkids + 1) * sizeof *loc);
+        ats = xmalloc((t->nkids + 1) * sizeof *ats);
+        for (j = 0; j < t->nkids; j++) {
+            if (!tinfo(g, nd(g->L, kid(g->L, n, j))->ty, &ats[j])) {
+                free(loc);
+                free(ats);
+                return;
+            }
+            loc[j] = arg_loc(&ats[j], &ni, &nf);
+            nstack += loc[j] < 0;
+        }
+        /* Stack arguments are pushed first (last to first), then the register
+         * ones, which pop off again; the padding goes below the stack
+         * arguments so %rsp is 16-aligned at the call. */
+        pad = (g->depth + (int)nstack) & 1;
         if (pad) {
             em(g, M_SUB, 8, I(8), R(R_SP));
             g->depth++;
         }
-        for (j = t->nkids; j-- > 0;) {
-            if (!tinfo(g, nd(g->L, kid(g->L, n, j))->ty, &ti))
-                return;
-            gen(g, kid(g->L, n, j));
-            push(g);
-        }
-        for (j = 0; j < t->nkids && j < 6; j++)
-            pop(g, arg_regs[j]);
-        em(g, M_XOR, 4, R(R_AX), R(R_AX));
+        for (j = t->nkids; j-- > 0;)
+            if (loc[j] < 0) {
+                gen(g, kid(g->L, n, j));
+                pushv(g, &ats[j]);
+            }
+        for (j = t->nkids; j-- > 0;)
+            if (loc[j] >= 0) {
+                gen(g, kid(g->L, n, j));
+                pushv(g, &ats[j]);
+            }
+        for (j = 0; j < t->nkids; j++)
+            if (loc[j] >= R_X0) {
+                pop(g, R_AX);
+                em(g, M_MOVQX, 8, R(R_AX), R(loc[j]));
+            } else if (loc[j] >= 0) {
+                pop(g, loc[j]);
+            }
+        free(loc);
+        free(ats);
+        em(g, M_MOV, 4, I(nf), R(R_AX));    /* vector registers used, for variadic callees */
         {
             MOp callee = {MK_SYM, 0, 0, cident(g->c, s->name)};
             em(g, M_CALL, 8, callee, NONE());
@@ -418,7 +576,8 @@ static void gen(Gx *g, uint32_t n)
         if (type_ckind(&g->c->tt, t->ty) != TY_VOID) {
             if (!tinfo(g, t->ty, &ti))
                 return;
-            canon(g, &ti);
+            if (!ti.flt)            /* a float came back in %xmm0 */
+                canon(g, &ti);
         }
         break;
     }
@@ -481,7 +640,11 @@ static void gen_block(Gx *g, const uint32_t *ord, uint32_t i)
         break;
     case TK_BR: {
         uint32_t pa = L->b.data[x->a].pos, pb = L->b.data[x->b].pos;
+        if (!tinfo(g, nd(L, x->val)->ty, &ti))
+            return;
         gen(g, x->val);
+        if (ti.flt)
+            flt_truth(g, &ti);
         em(g, M_TEST, 8, R(R_AX), R(R_AX));
         if (pa == i + 1) {
             em_cc(g, M_JCC, CC_E, LB(pb));
@@ -546,6 +709,7 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
 {
     Gx g;
     uint32_t i, root = L->e->c->nn - 1;
+    int ni = 0, nf = 0, ns = 0;
     U32Vec ps = {0};
     const CSym *fs = csym(L->e->c, L->e->fsym);
     memset(&g, 0, sizeof g);
@@ -562,13 +726,17 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
     params(&g, root, &ps);
     for (i = 0; i < ps.len && !g.why[0]; i++) {
         TI ti;
+        int where;
         uint32_t ref = g.c->cb[ps.data[i]] - 1;
         if (!tinfo(&g, csym(g.c, ref)->ty, &ti))
             break;
-        if (i < 6) {
-            em(&g, M_MOV, 8, R(arg_regs[i]), M(R_BP, var_slot(&g, ref, 8)));
+        where = arg_loc(&ti, &ni, &nf);
+        if (where >= R_X0) {
+            em(&g, M_FMOV, ti.bytes, R(where), M(R_BP, var_slot(&g, ref, 8)));
+        } else if (where >= 0) {
+            em(&g, M_MOV, 8, R(where), M(R_BP, var_slot(&g, ref, 8)));
         } else {                /* above the saved %rbp and return address */
-            em(&g, M_MOV, 8, M(R_BP, 16 + 8 * (int64_t)(i - 6)), R(R_AX));
+            em(&g, M_MOV, 8, M(R_BP, 16 + 8 * (int64_t)ns++), R(R_AX));
             em(&g, M_MOV, 8, R(R_AX), M(R_BP, var_slot(&g, ref, 8)));
         }
     }
