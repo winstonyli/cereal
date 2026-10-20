@@ -3,6 +3,7 @@
  * (c-typeck.cc build_function_call_vec, convert_arguments, ...).  Split out
  * of cexpr.c; shares its helpers through cexpr_int.h. */
 #include "c/cexpr_int.h"
+#include "c/cintrin.h"
 #include "c/fuzzy.h"
 
 #include <ctype.h>
@@ -2020,6 +2021,12 @@ void e_call(Checker *c, uint32_t i)
                            "pointer type");
             }
             copy_node(c, i, av[1]);
+            return;
+        }
+        if (!strncmp(name, "__builtin_", 10) && bi_rows[bi_find(name + 10)].cls == BIC_OVF &&
+            !(bi_rows[bi_find(name + 10)].arg & OV_TYPED)) {
+            c->ty[i] = TYPE_B(BOOL);    /* the generic overflow built-ins (the typed ones have prototypes): the flag */
+            c->ef[i] = EF_SIDE;
             return;
         }
         if (!strcmp(name, "__builtin_shuffle")) {

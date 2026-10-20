@@ -37,7 +37,7 @@ typedef struct MOp {
     X(LEA, "lea") X(ADD, "add") X(SUB, "sub") X(IMUL, "imul") X(AND, "and")     \
     X(OR, "or") X(XOR, "xor") X(SHL, "shl") X(SAR, "sar") X(SHR, "shr")         \
     X(NEG, "neg") X(NOT, "not") X(CMP, "cmp") X(TEST, "test") X(SETCC, "set")   \
-    X(IDIV, "idiv") X(DIV, "div") X(PUSH, "push") X(POP, "pop")                 \
+    X(IDIV, "idiv") X(DIV, "div") X(MUL, "mul") X(PUSH, "push") X(POP, "pop")                 \
     X(CALL, "call") X(JMP, "jmp") X(JCC, "j")                                   \
     X(LABEL, "") X(XCHG, "xchg") X(CMPXCHG, "lock cmpxchg") \
     X(CMOV, "cmov") X(BSWAP, "bswap") X(BSR, "bsr") X(BSF, "bsf")               \
@@ -102,7 +102,7 @@ typedef struct MRow {
 const MRow *mir_row(int op);
 
 /* Condition codes. */
-enum { CC_E, CC_NE, CC_L, CC_LE, CC_G, CC_GE, CC_B, CC_BE, CC_A, CC_AE, CC_P, CC_NP,
+enum { CC_E, CC_NE, CC_L, CC_LE, CC_G, CC_GE, CC_B, CC_BE, CC_A, CC_AE, CC_P, CC_NP, CC_O,
        CC_COUNT };
 
 typedef struct MInst {

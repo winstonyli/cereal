@@ -244,6 +244,19 @@ static void gen_asm_ops(Gx *g, uint32_t n, const char *txt, size_t tlen);
 static bool is_agg(Gx *g, TypeId t, uint64_t *size);
 static void init_list(Gx *g, uint32_t n, int32_t base);
 
+/* A symbol declared as another symbol's alias (or an ifunc) is never defined here: refuse a
+ * reference to it rather than leave a link error. */
+static bool sym_emittable(Gx *g, uint32_t sym)
+{
+    const CSym *s = csym(g->c, sym);
+    if (s->aset && (cdecl_aset_has(g->c, s->aset, "alias", NULL) ||
+                    cdecl_aset_has(g->c, s->aset, "ifunc", NULL))) {
+        unsup(g, "reference to the alias or ifunc symbol %s", cident(g->c, s->name));
+        return false;
+    }
+    return true;
+}
+
 /* The address of an lvalue node, into %rax. */
 static void genaddr(Gx *g, uint32_t n)
 {
@@ -253,6 +266,8 @@ static void genaddr(Gx *g, uint32_t n)
     switch (t->op) {
     case TO_SYM: {
         const CSym *s = csym(g->c, t->sym);
+        if (!sym_emittable(g, t->sym))
+            break;
         if ((t->sym & SYM_LOCAL) && s->kind == CS_OBJ && s->sc != SC_STATIC &&
             s->sc != SC_EXTERN) {
             em(g, M_LEA, 8, M(R_BP, var_slot(g, t->sym, 0)), R(R_AX));
@@ -1202,7 +1217,8 @@ static void gen(Gx *g, uint32_t n)
         genaddr(g, kid(g->L, n, 0));
         break;
     case TO_CALL:
-        gen_call(g, n, t->pun ? NULL : cident(g->c, csym(g->c, t->sym)->name));
+        if (t->pun || sym_emittable(g, t->sym))
+            gen_call(g, n, t->pun ? NULL : cident(g->c, csym(g->c, t->sym)->name));
         break;
     case TO_INTRIN:
         gen_intrin(g, n);
@@ -1466,6 +1482,61 @@ static void gen_atomic(Gx *g, uint32_t n, const BiRow *r)
         canon(g, &ti);
 }
 
+/* {add,sub,mul}_overflow (a, b, &r): the exact result of a op b stored to r, truncated to r's
+ * type, and whether it differs.  Both operands are exact in 64 bits (signed, or unsigned when
+ * both are) so the arithmetic runs there and sets the carry or overflow flag; then the result
+ * must also fit r.  Refused, as the exact value needs more than 64 bits to test: an unsigned
+ * 64-bit operand with a signed one, unsigned operands into a signed result, and a 64-bit
+ * signed operand into an unsigned 64-bit result. */
+static void gen_ovf(Gx *g, uint32_t n, const BiRow *r)
+{
+    TypeTable *tt = &g->c->tt;
+    TI ta, tb, tr;
+    TypeId pt = type_canon(tt, nd(g->L, kid(g->L, n, 2))->ty);
+    int op = r->arg & 3;
+    bool uw;
+    if (!tinfo(g, nd(g->L, kid(g->L, n, 0))->ty, &ta) || !tinfo(g, nd(g->L, kid(g->L, n, 1))->ty, &tb))
+        return;
+    if (type_ckind(tt, pt) != TY_PTR || !tinfo(g, type_base(tt, pt), &tr)) {
+        unsup(g, "overflow built-in result is not a pointer to an integer");
+        return;
+    }
+    uw = !ta.sg && !tb.sg && (ta.bytes == 8 || tb.bytes == 8);
+    if ((!ta.sg && ta.bytes == 8 && tb.sg) || (!tb.sg && tb.bytes == 8 && ta.sg) || (uw && tr.sg) ||
+        (!uw && !tr.sg && tr.bytes == 8 && (ta.bytes == 8 || tb.bytes == 8))) {
+        unsup(g, "overflow built-in whose exact result needs more than 64 bits to test");
+        return;
+    }
+    gen(g, kid(g->L, n, 2));
+    push(g);
+    gen(g, kid(g->L, n, 1));
+    push(g);
+    gen(g, kid(g->L, n, 0));
+    pop(g, R_CX);
+    pop(g, R_SI);
+    if (op == OV_MUL && uw)
+        em(g, M_MUL, 8, R(R_CX), NONE());
+    else
+        em(g, op == OV_ADD ? M_ADD : op == OV_SUB ? M_SUB : M_IMUL, 8, R(R_CX), R(R_AX));
+    em_cc(g, M_SETCC, uw && op != OV_MUL ? CC_B : CC_O, R(R_DX));
+    em(g, M_MOVZX, 1, R(R_DX), R(R_DX));
+    em(g, M_MOV, tr.bytes, R(R_AX), M(R_SI, 0));
+    if (tr.bytes < 8) {                 /* does the value survive the truncation? */
+        em(g, M_MOV, 8, R(R_AX), R(R_CX));
+        canon(g, &tr);
+        em(g, M_CMP, 8, R(R_CX), R(R_AX));
+        em_cc(g, M_SETCC, CC_NE, R(R_AX));
+        em(g, M_MOVZX, 1, R(R_AX), R(R_AX));
+        em(g, M_OR, 4, R(R_AX), R(R_DX));
+    } else if (!uw && !tr.sg) {         /* a negative value does not fit */
+        em(g, M_TEST, 8, R(R_AX), R(R_AX));
+        em_cc(g, M_SETCC, CC_L, R(R_AX));
+        em(g, M_MOVZX, 1, R(R_AX), R(R_AX));
+        em(g, M_OR, 4, R(R_AX), R(R_DX));
+    }
+    em(g, M_MOV, 8, R(R_DX), R(R_AX));
+}
+
 static void gen_intrin(Gx *g, uint32_t n)
 {
     const TNode *t = nd(g->L, n);
@@ -1480,6 +1551,9 @@ static void gen_intrin(Gx *g, uint32_t n)
     switch (r->cls) {
     case BIC_ATOMIC:
         gen_atomic(g, n, r);
+        break;
+    case BIC_OVF:
+        gen_ovf(g, n, r);
         break;
     case BIC_EXPECT:
         if (nd(g->L, kid(g->L, n, 1))->op != TO_CONST) {

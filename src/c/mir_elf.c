@@ -29,7 +29,7 @@ static void put32(Enc *e, int64_t v)
 }
 
 /* The condition codes' low nibble in jcc, setcc and cmovcc. */
-static const uint8_t x86_cc[CC_COUNT] = {4, 5, 0xc, 0xe, 0xf, 0xd, 2, 6, 7, 3, 0xa, 0xb};
+static const uint8_t x86_cc[CC_COUNT] = {4, 5, 0xc, 0xe, 0xf, 0xd, 2, 6, 7, 3, 0xa, 0xb, 0};
 
 static int hw(int r)
 {
@@ -235,6 +235,7 @@ static bool enc_inst(const MInst *m, Enc *e)
     case M_NOT: ins1(e, pfx, w8, rex_byte(w, a), w == 1 ? 0xf6 : 0xf7, 2, a); break;
     case M_NEG: ins1(e, pfx, w8, rex_byte(w, a), w == 1 ? 0xf6 : 0xf7, 3, a); break;
     case M_DIV: ins1(e, pfx, w8, rex_byte(w, a), w == 1 ? 0xf6 : 0xf7, 6, a); break;
+    case M_MUL: ins1(e, pfx, w8, rex_byte(w, a), w == 1 ? 0xf6 : 0xf7, 4, a); break;
     case M_IDIV: ins1(e, pfx, w8, rex_byte(w, a), w == 1 ? 0xf6 : 0xf7, 7, a); break;
     case M_TEST:
         ins1(e, pfx, w8, rex_byte(w, a) || rex_byte(w, b), w == 1 ? 0x84 : 0x85, hw(a->reg), b);

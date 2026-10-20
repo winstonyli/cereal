@@ -9,7 +9,7 @@ static const char *const reg_names[4][R_COUNT] = {
 };
 
 static const char *const cc_names[CC_COUNT] = {"e", "ne", "l", "le", "g", "ge", "b", "be", "a", "ae",
-                                               "p", "np"};
+                                               "p", "np", "o"};
 
 static const char *const op_names[M_COUNT] = {
 #define X(n, s) s,
@@ -192,7 +192,7 @@ void mir_print(const MFunc *f, FILE *out)
             else
                 fprintf(out, "\tcall %s@PLT", m->a.name);
             break;
-        case M_PUSH: case M_POP: case M_BSWAP: case M_NEG: case M_NOT: case M_IDIV: case M_DIV:
+        case M_PUSH: case M_POP: case M_BSWAP: case M_NEG: case M_NOT: case M_IDIV: case M_DIV: case M_MUL:
             fprintf(out, "\t%s%c ", op_names[m->op], suffix(w));
             put_op(f, &m->a, w, out);
             break;

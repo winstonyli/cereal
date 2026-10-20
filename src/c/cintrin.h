@@ -24,8 +24,21 @@ enum {
     BIC_CLFLUSH, BIC_STMXCSR, BIC_LDMXCSR,
     BIC_PREFETCH,   /* a hint: only the address is evaluated */
     BIC_LIBC,       /* a call of the library function of the same name */
-    BIC_ATOMIC      /* an operation on an object of 1, 2, 4 or 8 bytes; arg: AT_ op | AF_ flags << 4 */
+    BIC_ATOMIC,     /* an operation on an object of 1, 2, 4 or 8 bytes; arg: AT_ op | AF_ flags << 4 */
+    BIC_OVF         /* arithmetic with an overflow flag; arg: OV_ op, OV_TYPED for the s/u forms */
 };
+
+/* The overflow built-ins: the generic ones (no prototype) take their operand types from the
+ * arguments, the typed ones (__builtin_sadd_overflow ...) have prototypes. */
+enum { OV_ADD, OV_SUB, OV_MUL, OV_TYPED = 4 };
+#define BI_OVF(X, n, op)                                                    \
+    X(n "_overflow", BIC_OVF, op)                                           \
+    X("s" n "_overflow", BIC_OVF, (op) | OV_TYPED)                          \
+    X("u" n "_overflow", BIC_OVF, (op) | OV_TYPED)                          \
+    X("s" n "l_overflow", BIC_OVF, (op) | OV_TYPED)                         \
+    X("u" n "l_overflow", BIC_OVF, (op) | OV_TYPED)                         \
+    X("s" n "ll_overflow", BIC_OVF, (op) | OV_TYPED)                        \
+    X("u" n "ll_overflow", BIC_OVF, (op) | OV_TYPED)
 
 /* The atomic operations, and what the flags say about the arguments and the result. */
 enum { AT_LOAD, AT_STORE, AT_ST0, AT_XCHG, AT_ADD, AT_SUB, AT_AND, AT_OR, AT_XOR, AT_NAND, AT_CAS };
@@ -80,7 +93,8 @@ enum {
     X("__sync_lock_test_and_set", BIC_ATOMIC, BI_AT(AT_XCHG, 0))                \
     X("__sync_lock_release", BIC_ATOMIC, BI_AT(AT_ST0, 0))                      \
     BI_RMW(X, "add", AT_ADD) BI_RMW(X, "sub", AT_SUB) BI_RMW(X, "and", AT_AND)  \
-    BI_RMW(X, "or", AT_OR) BI_RMW(X, "xor", AT_XOR) BI_RMW(X, "nand", AT_NAND)
+    BI_RMW(X, "or", AT_OR) BI_RMW(X, "xor", AT_XOR) BI_RMW(X, "nand", AT_NAND)  \
+    BI_OVF(X, "add", OV_ADD) BI_OVF(X, "sub", OV_SUB) BI_OVF(X, "mul", OV_MUL)
 
 /* What gcc calls for the bit counts the CPU baseline has no instruction for. */
 static const char *const bi_helper[] = {"__popcountdi2", "__paritydi2"};

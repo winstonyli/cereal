@@ -14,7 +14,7 @@ gnu89, c2x, c23 and their gnu forms are refused, so every C23 row is probed unde
 
 ## Summary
 
-101 of 114 meaningful probes pass the front end and 75 are emitted by the back end (67 run and equal
+101 of 114 meaningful probes pass the front end and 77 are emitted by the back end (69 run and equal
 gcc's, 8 not run). Nothing from C89 through C17 fails the front end. The 13 front-end failures are all C23 syntax
 (none can pass until `-std=c23` is accepted) plus `#embed`/`__has_embed`.
 
@@ -24,25 +24,25 @@ gcc's, 8 not run). Nothing from C89 through C17 fails the front end. The 13 fron
   decimal floats. These are `PARKED.md` row "T4b types".
 - Statements and expressions: `case` ranges, nested functions, `__label__`, `_Generic` selecting an lvalue,
   `__builtin_choose_expr` of an lvalue (`lvalue form`).
-- Built-ins: `alloca`, `frame_address`, `trap`, `object_size`, `__builtin_fabs`/`floor` (math), and
-  `__builtin_*_overflow`, `stdckdint.h` and `stdbit.h` (`type error`: the overflow built-ins have no
-  prototype the TAST can check).
+- Built-ins: `alloca`, `frame_address`, `trap`, `object_size`, `__builtin_fabs`/`floor` (math), and the
+  C23 `__builtin_stdc_*` bit functions behind `<stdbit.h>` (`type error`: type-generic, the checker gives
+  the call no type). The overflow built-ins and `<stdckdint.h>` work (2026-10-20, `tests/asm_exec/ovf.c`);
+  an unsigned 64-bit operand mixed with a signed one, unsigned operands into a signed result and a 64-bit
+  signed operand into an unsigned 64-bit result are reported unsupported (the exact value needs more than
+  64 bits to test).
 - Asm with operands in a template the generator does not recognize; static data initialized by a
   compound literal (`initializer expression`).
 - C23 `unreachable()` from `<stddef.h>` (not declared by our headers).
 
-## Silent: `attr-alias`
+## `alias` and `ifunc`
 
-`__attribute__((alias("a")))` is ignored: `b` is never defined and the link fails. It should either emit the
-alias or report `unsupported`. (Probe `attr-alias`, DIFFERS; this is the only probe where the back end is
-silently wrong rather than loudly unsupported.)
+A reference to a symbol declared with `__attribute__((alias(..)))` or `ifunc` is reported unsupported
+(2026-10-20; it used to be ignored, leaving a link error). Emitting the alias is parked.
 
 ## Probes gcc 15 rejects
 
 `implicit-int` (error since gcc 14) and `builtin-rotate` (`__builtin_rotateleft32` is clang's; gcc has none,
 so the corpus uses of it are clang-only code, not a gap for a gcc-compatible build).
-
-## Matrix
 
 cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17
 
@@ -105,7 +105,7 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17
 | C23 | u8-char-literal | C23 | ok | FAIL 'u8' undeclared (first use in this function) |  |
 | C23 | alignas-keyword | C23 | ok | FAIL expected ';' before 'int' |  |
 | C23 | thread-local-keyword | C23 | ok | FAIL expected ';' before 'int' |  |
-| C23 | stdckdint | C23 | ok | ok | unsup: type error |
+| C23 | stdckdint | C23 | ok | ok | ok, equals gcc |
 | C23 | stdbit | C23 | ok | ok | unsup: type error |
 | C23 | unreachable | C23 | ok | ok | unsup: builtin or undeclared call unreachable |
 | C23 | label-before-declaration | C23 | ok | ok | ok, equals gcc |
@@ -130,7 +130,7 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17
 | GNU | attr-packed | GNU | ok | ok | ok, equals gcc |
 | GNU | attr-aligned | GNU | ok | ok | ok, equals gcc |
 | GNU | attr-cleanup | GNU | ok | ok | ok, equals gcc |
-| GNU | attr-alias | GNU | ok | ok | DIFFERS |
+| GNU | attr-alias | GNU | ok | ok | unsup: reference to the alias or ifunc symbol b |
 | GNU | attr-weak | GNU | ok | ok | emits |
 | GNU | attr-constructor | GNU | ok | ok | ok, equals gcc |
 | GNU | attr-section | GNU | ok | ok | ok, equals gcc |
@@ -141,7 +141,7 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17
 | GNU | named-variadic-macro | GNU | ok | ok | ok, equals gcc |
 | GNU | extension-keyword | GNU | ok | ok | ok, equals gcc |
 | GNU | builtin-choose-expr | GNU | ok | ok | unsup: lvalue form |
-| GNU | builtin-overflow | GNU | ok | ok | unsup: type error |
+| GNU | builtin-overflow | GNU | ok | ok | ok, equals gcc |
 | GNU | builtin-alloca | GNU | ok | ok | unsup: built-in __builtin_alloca |
 | GNU | builtin-offsetof | GNU | ok | ok | ok, equals gcc |
 | GNU | builtin-constant-p | GNU | ok | ok | ok, equals gcc |
@@ -165,4 +165,4 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17
 | PP | stdc-macros | C11 | ok | ok | ok, equals gcc |
 | PP | line-file-date | C89 | ok | ok | emits |
 
-116 probes: front end ok 101, back end ok 75, probes gcc rejects 2
+116 probes: front end ok 101, back end ok 77, probes gcc rejects 2

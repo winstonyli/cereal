@@ -835,7 +835,7 @@ static uint32_t e_va(El *e, uint32_t i, int kind)
 static uint32_t e_call_t(El *e, uint32_t i)
 {
     Checker *c = e->c;
-    uint32_t nk = nkids(c, i, NULL, 0), *k, callee, ref = 0, name = 0;
+    uint32_t nk = nkids(c, i, NULL, 0), *k, callee, ref = 0, name = 0, row;
     TypeId ft;
     const TypeEnt *fe;
     U32Vec args = {0};
@@ -869,6 +869,29 @@ static uint32_t e_call_t(El *e, uint32_t i)
             }
             id = mk(e, TO_INTRIN, unqual(c, c->ty[i]), loc, 0, cnode_ident(c, callee),
                     intrin_row(c, cnode_ident(c, callee)), args.data, (uint32_t)args.len);
+            goto out;
+        }
+        row = ft ? 0 : intrin_row(c, cnode_ident(c, callee));
+        if (bi_rows[row].cls == BIC_OVF) {
+            /* {add,sub,mul}_overflow(a, b, &r): the generic forms keep the operand types,
+             * the typed s/u forms convert the operands to their prototype's */
+            bool typed = bi_rows[row].arg & OV_TYPED;
+            TypeId pft = typed ? type_canon(&c->tt, pointee(c, rvt(c, callee))) : 0;
+            uint32_t j;
+            if (nk != 4) {
+                tunsup(e, "call argument count");
+                goto out;
+            }
+            for (j = 1; j < nk; j++) {
+                uint32_t x = rv(e, k[j]);
+                if (x != TN && typed && j < 3)
+                    x = conv(e, x, unqual(c, type_params(&c->tt, pft)[j - 1]), loc);
+                if (x == TN)
+                    goto out;
+                vec_push(&args, x);
+            }
+            id = mk(e, TO_INTRIN, unqual(c, c->ty[i]), loc, 0, cnode_ident(c, callee), row,
+                    args.data, (uint32_t)args.len);
             goto out;
         }
         if (!ft) {
@@ -2074,9 +2097,9 @@ static void verify(El *e, FILE *out)
             const TypeEnt *fe;
             bool sz_ok = false;
             uint32_t f0 = nd->op == TO_CALL && nd->pun ? 1 : 0, np;
-            if (nd->op == TO_INTRIN && atomic_kind(cident(c, nd->sym))) {
+            if (nd->op == TO_INTRIN && (atomic_kind(cident(c, nd->sym)) || bi_rows[nd->pun].cls == BIC_OVF)) {
                 if (nd->pun != intrin_row(c, nd->sym))
-                    vbad(e, out, i, "atomic row");
+                    vbad(e, out, i, "intrinsic row");
                 for (j = 0; j < nd->nkids; j++)
                     if (!ISVAL(KID(j)) || (KIND(KID(j)->ty) != TY_PTR && !is_int(c, KID(j)->ty)))
                         vbad(e, out, i, "argument is not a pointer or integer value");
