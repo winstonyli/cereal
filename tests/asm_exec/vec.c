@@ -351,3 +351,35 @@ int mm_fcvt3(int a, int b, int c, int d)
     __m128d u = _mm_set_pd(a * 2.5, d / 3.0);
     return _mm_cvttsd_si32(u) ^ (int)_mm_cvttsd_si64(u) ^ _mm_cvttss_si32(x) ^ (int)_mm_cvttss_si64(x);
 }
+
+/* __builtin_shuffle (constant and variable masks, one and two inputs), __builtin_shufflevector, and
+ * the header functions that use them */
+typedef int vi4 __attribute__((vector_size(16)));
+typedef short vs8 __attribute__((vector_size(16)));
+
+int shuf_var(int a, int b, int c, int d)
+{
+    vi4 x = {a, b, c, d}, y = {d, c, b, a}, m = {a, b, c, d}, m1 = {d, 0, 5, 9};
+    vi4 r = __builtin_shuffle(x, m), s = __builtin_shuffle(x, y, m1), t = __builtin_shuffle(x, y, m);
+    return hash((__m128i)r) ^ hash((__m128i)s) * 3 ^ hash((__m128i)t) * 5;
+}
+
+int shuf_const(int a, int b, int c, int d)
+{
+    vi4 x = {a, b, c, d}, y = {d, c, b, a};
+    vs8 u = {a, b, c, d, d, c, b, a}, v = {c, d, a, b, b, a, d, c};
+    vi4 r = __builtin_shuffle(x, (vi4){3, 2, 1, 0}), s = __builtin_shuffle(x, y, (vi4){4, 1, 6, 3});
+    vs8 w = __builtin_shuffle(u, v, (vs8){8, 0, 9, 1, 10, 2, 11, 3});
+    vi4 p = __builtin_shufflevector(x, y, 0, 5, 2, 7), q = __builtin_shufflevector(x, x, 3, 3, 1, 0);
+    vi4 g = __builtin_shufflevector(x, y, 7, 6, 0, 1);
+    vs8 z = __builtin_shufflevector(u, v, 15, 1, 8, 2, 9, 3, 10, 4);
+    return hash((__m128i)r) ^ hash((__m128i)s) * 3 ^ hash((__m128i)w) * 5 ^ hash((__m128i)p) * 7 ^ hash((__m128i)q) * 9 ^
+           hash((__m128i)g) * 11 ^ hash((__m128i)z) * 13;
+}
+
+int mm_move(int a, int b, int c, int d)
+{
+    __m128 x = fk(a, b, c, d), y = fk(d, a, b, c);
+    __m128d u = dk(a, b, c, d), v = dk(d, a, b, c);
+    return fh(_mm_move_ss(x, y)) ^ dh(_mm_move_sd(u, v));
+}

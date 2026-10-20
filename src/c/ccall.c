@@ -1569,6 +1569,43 @@ static void e_shufflevector(Checker *c, uint32_t i, const char *name)
     set_err(c, i);
 }
 
+/* __builtin_shuffle (v, mask) or (v0, v1, mask): a vector of v's type whose lane j is the lane of
+ * v (or of v0 and v1 side by side) that the integer vector mask names. */
+static void e_shuffle(Checker *c, uint32_t i, const char *name)
+{
+    uint32_t av[4], an = nkids(c, i, av, 4), j;
+    SrcLoc bl = call_loc(c, av[0]);
+    TypeId t0, tm;
+    if (an < 3 || an > 4) {
+        cerror(c, bl, "wrong number of arguments to '%s'", name);
+        set_err(c, i);
+        return;
+    }
+    for (j = 1; j < an; j++)
+        if (node_err(c, av[j])) {
+            set_err(c, i);
+            return;
+        }
+    t0 = rvt(c, av[1]);
+    tm = rvt(c, av[an - 1]);
+    if (tkind(c, t0) != TY_VECTOR || tkind(c, tm) != TY_VECTOR || !is_int(c, vec_elem(c, tm)))
+        cerror(c, bl, "'%s' arguments must be vectors, the mask of integers", name);
+    else if (an == 4 && !type_compatible(TT, unqual(c, t0), unqual(c, rvt(c, av[2]))))
+        cerror(c, bl, "'%s' first two arguments must have the same type", name);
+    else if (type_ent(TT, type_canon(TT, t0))->n / vec_esize(c, vec_elem(c, t0)) !=
+             type_ent(TT, type_canon(TT, tm))->n / vec_esize(c, vec_elem(c, tm)) ||
+             vec_esize(c, vec_elem(c, t0)) != vec_esize(c, vec_elem(c, tm)))
+        cerror(c, bl, "'%s' mask must have as many lanes of the same size as the vectors", name);
+    else {
+        c->ty[i] = unqual(c, t0);
+        c->ef[i] = 0;
+        for (j = 1; j < an; j++)
+            c->ef[i] |= c->ef[av[j]] & EF_PROP;
+        return;
+    }
+    set_err(c, i);
+}
+
 /* The line loc has after the #line directives before it (found by scanning
  * the text back; the checker has no line map). */
 static uint32_t presumed_line(Checker *c, SrcLoc loc)
@@ -1983,6 +2020,10 @@ void e_call(Checker *c, uint32_t i)
                            "pointer type");
             }
             copy_node(c, i, av[1]);
+            return;
+        }
+        if (!strcmp(name, "__builtin_shuffle")) {
+            e_shuffle(c, i, name);
             return;
         }
         if (!strcmp(name, "__builtin_shufflevector")) {

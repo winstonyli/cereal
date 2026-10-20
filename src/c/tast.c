@@ -1441,6 +1441,64 @@ done:
     return id;
 }
 
+/* Lane ix (a node of type int, in range) of operand o, found through the vector's address. */
+static uint32_t vop_dyn(El *e, const VOp *o, uint32_t ix, SrcLoc loc)
+{
+    TypeTable *tt = &e->c->tt;
+    TypeId pt = type_ptr(tt, o->et);
+    uint32_t b = o->tmp != UINT32_MAX ? mk(e, TO_TMP, o->st, loc, o->tmp, 0, 0, NULL, 0) : lval(e, o->x);
+    if (b == TN || ix == TN)
+        return TN;
+    return load(e, deref_t(e, ptradd(e, pt, conv(e, addr_t(e, b, type_ptr(tt, nty(e, b)), loc), pt, loc), ix, false, loc),
+                           o->et, loc));
+}
+
+/* __builtin_shuffle (v, [w,] mask) and __builtin_shufflevector (v, w, index...): lane j of the
+ * result is a lane of v, or of w, named by the mask's lane j (taken modulo the lanes in play) or by
+ * the constant index j.  k[1 ...] are the checker's argument nodes. */
+static uint32_t vec_shuffle(El *e, uint32_t i, const uint32_t *k, uint32_t nk, bool fixed, SrcLoc loc)
+{
+    Checker *c = e->c;
+    TypeId rt = unqual(c, c->ty[i]), et, ret, it = TYPE_B(INT);
+    uint32_t n, nr, j, id = TN, *lanes;
+    bool two = fixed || nk == 4;
+    VOp a = {0}, b = {0}, m = {0};
+    U32Vec setup = {0};
+    if (!vop_node(e, k[1], rvt(c, k[1]), &a, &setup, loc) || (two && !vop_node(e, k[2], rvt(c, k[2]), &b, &setup, loc)) ||
+        (!fixed && !vop_node(e, k[nk - 1], rvt(c, k[nk - 1]), &m, &setup, loc)) || !vec_dims(e, a.vt, &et, &n) ||
+        !vec_dims(e, rt, &ret, &nr))
+        goto done;
+    lanes = xmalloc(nr * sizeof *lanes);
+    for (j = 0; j < nr; j++) {
+        if (fixed) {                        /* an index of -1 is any lane */
+            int64_t ix = cexpr_sval(c, k[3 + j]);
+            ix = ix < 0 ? 0 : ix;
+            lanes[j] = vop_lane(e, ix >= (int64_t)n ? &b : &a, (uint32_t)(ix % n), loc);
+        } else {
+            uint64_t mask = two ? 2 * n - 1 : n - 1;
+#define SHIX() ia_bin(e, P_AMP, it, conv(e, vop_lane(e, &m, j, loc), it, loc), cnst(e, it, mask, loc), loc)
+            if (two) {
+                uint32_t ka[3];
+                ka[0] = ia_cmp(e, P_LT, SHIX(), cnst(e, it, n, loc), loc);
+                ka[1] = vop_dyn(e, &a, SHIX(), loc);
+                ka[2] = vop_dyn(e, &b, ia_bin(e, P_MINUS, it, SHIX(), cnst(e, it, n, loc), loc), loc);
+                lanes[j] = ka[0] == TN || ka[1] == TN || ka[2] == TN ? TN : mk(e, TO_COND, a.et, loc, 0, 0, 0, ka, 3);
+            } else {
+                lanes[j] = vop_dyn(e, &a, SHIX(), loc);
+            }
+#undef SHIX
+        }
+        if (lanes[j] == TN)
+            goto fail;
+    }
+    id = vec_make(e, rt, loc, lanes, nr, &setup);
+fail:
+    free(lanes);
+done:
+    vec_free(&setup);
+    return id;
+}
+
 static uint32_t e_call_t(El *e, uint32_t i)
 {
     Checker *c = e->c;
@@ -1459,6 +1517,11 @@ static uint32_t e_call_t(El *e, uint32_t i)
         ref = c->sym[callee];
         ft = type_canon(&c->tt, csym(c, ref)->ty);
     } else if (ntag(c, callee) == N_IDENT && c->sym[callee] == SYM_NONE) {
+        const char *bn = cident(c, cnode_ident(c, callee));
+        if (!strcmp(bn, "__builtin_shuffle") || !strcmp(bn, "__builtin_shufflevector")) {
+            id = vec_shuffle(e, i, k, nk, bn[17] == 'v', loc);
+            goto out;
+        }
         ft = builtin_ft(e, callee);
         if (!ft && atomic_kind(cident(c, cnode_ident(c, callee)))) {
             /* the overloaded __atomic_ and __sync built-ins (generic or sized by
