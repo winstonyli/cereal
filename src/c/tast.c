@@ -946,7 +946,9 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
             return tunsup(e, "%s", why_type(e, t));
         if (c->ck[i] == K_FLOAT && is_flt(c, t) && !(c->ef[i] & EF_SIDE))
             return fconst(e, t, c->fv.data[c->cv[i]], loc);
-        if ((c->ck[i] == K_ICE || c->ck[i] == K_FOLD) && !(c->ef[i] & EF_SIDE)) {
+        if ((c->ck[i] == K_ICE || c->ck[i] == K_FOLD ||
+             (c->ck[i] == K_ADDR && !c->cb[i] && is_ptr(c, t))) &&
+            !(c->ef[i] & EF_SIDE)) {   /* K_ADDR with no base: a null or absolute address */
             if (is_flt(c, t))
                 return tunsup(e, "integer-valued floating constant");
             return cnst(e, t, c->cv[i], loc);

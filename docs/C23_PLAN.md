@@ -107,3 +107,33 @@ at the four places that mean "prototyped"; K&R lists stay unprototyped. gcc 15 a
 `-Wold-style-definition`, too-many-arguments and conflicting types (`tests/check/c23_empty_params`).
 Adjacent digit separators (`1''2`) now match gcc 15 too (fast lexer path only; a number with a UCN or
 splice keeps the old behaviour).
+
+## Step 2b result (2026-10-20)
+
+`constexpr` for scalars (integers, enums, `bool`, `char`, floats, null pointers), gcc 15's rules and texts
+(`tests/check/c23_constexpr`, 44 diagnostics, identical to gcc 15 `-pedantic`):
+- Parser: `constexpr` is a storage-class keyword (`Specs.constexpr_`); a clash with `typedef`, `extern`,
+  `auto` or `_Thread_local` clears it (`cx_clash`), so only the checker's "used with" error shows. "requires an
+  initialized data declaration", "may only be used with a single declarator" and function definitions reuse
+  the `__auto_type` error path (`auto_type_error`).
+- Checker: `Spec.constexpr_` (`add_scspec`); `grokdeclarator` ORs `TQ_CONST` into the object's own
+  qualifiers and rejects `volatile`/`restrict`/`_Atomic` there (`constexpr volatile int *p` is fine) and
+  treats it as a storage class for parameters; `cinit_decl_done` calls `cexpr_constexpr_init`, which
+  requires integer constant operands (so `1 << 31` passes, a `-O`-folded const variable does not), an
+  arithmetic constant for floats and a null pointer, and checks representability (`cexpr_fits`, `fround`).
+- The value lives in the symbol (`CSym.val`/`fval`, `cx` = 2). `e_ident` returns it as `K_ICE`/`K_FLOAT`/
+  `K_ADDR` where the identifier is read as a value (`value_use`: not `&x`, `x++`, `x = ..`), so array bounds,
+  case labels, `static_assert` and file-scope initializers accept it. Deviation from the plan's 1a: storage
+  is shared with enumerators (`s->val`), the read logic is not shared with `fold_const_var` (that one is
+  `-O` and context-conditioned; this one is not).
+- TAST: `ex` takes a `K_ADDR` with no base as a constant (null and absolute addresses).
+- Runtime: the survey's `constexpr` row runs `t` against `gcc -std=c23` (equal); a manual `--emit-obj` run
+  of eight functions (integers, floats, `long long`, `switch` labels, array bounds, a null pointer) matched too.
+  Survey: 109 of 116 front end, 87 back end (was 108 and 86).
+- Not done (parked): braced scalar initializers and aggregates (`constexpr struct S s = {..}`, members),
+  "defined in underspecified object declaration" for a `struct`/`enum` defined in a constexpr declaration,
+  `constexpr auto x = 1` (C23 `auto` type inference does not exist yet in cereal), a conditional with a
+  non-constant unevaluated arm (`1 ? 2 : nc` is accepted, gcc rejects), the struct-field storage message
+  (cereal says "storage class specified for structure field", gcc "expected specifier-qualifier-list"; true
+  for `static` too).
+  Rows in `PARKED.md`; suite 2297/0; zstd, Lua and libuv unchanged.

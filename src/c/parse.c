@@ -1124,7 +1124,8 @@ static bool is_typename_start(Parser *p, const PTok *t)
 static bool is_clit_storage(Parser *p, const PTok *t)
 {
     int k = ckw_of(p, t);
-    return k == CK_STATIC || k == CK_REGISTER || k == CK_THREAD_LOCAL;
+    return k == CK_STATIC || k == CK_REGISTER || k == CK_THREAD_LOCAL ||
+           k == CK_CONSTEXPR;
 }
 
 /* Can t start declaration specifiers? */
@@ -1133,7 +1134,7 @@ static bool is_decl_start(Parser *p, const PTok *t)
     switch (ckw_of(p, t)) {
     case CK_TYPEDEF: case CK_EXTERN: case CK_STATIC: case CK_AUTO:
     case CK_REGISTER: case CK_THREAD_LOCAL: case CK_INLINE:
-    case CK_NORETURN: case CK_STATIC_ASSERT:
+    case CK_NORETURN: case CK_STATIC_ASSERT: case CK_CONSTEXPR:
         return true;
     default:
         return is_type_start(p, t);
@@ -1626,6 +1627,9 @@ typedef struct Specs {
     bool gimple;                /* __GIMPLE: the body is not C */
     bool err;                   /* an unknown type name */
     bool auto_type;             /* __auto_type */
+    bool constexpr_;            /* constexpr: one initialized object */
+    bool cx_seen, cx_clash;     /* constexpr written / a storage class it
+                                   clashes with (the checker reports it) */
     bool has_align;             /* _Alignas, at token align_tok */
     uint32_t align_tok;
 } Specs;
@@ -1671,7 +1675,12 @@ static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok, bool fspec
             s->is_typedef = true;
             /* fallthrough */
         case CK_EXTERN: case CK_STATIC: case CK_AUTO: case CK_REGISTER:
-        case CK_THREAD_LOCAL:
+        case CK_THREAD_LOCAL: case CK_CONSTEXPR:
+            if (k == CK_CONSTEXPR)
+                s->cx_seen = true;
+            else if (k != CK_STATIC && k != CK_REGISTER)
+                s->cx_clash = true;
+            s->constexpr_ = s->cx_seen && !s->cx_clash;
             leaf(p, N_STORAGE, adv(p));
             break;
         case CK_CONST: case CK_VOLATILE: case CK_RESTRICT:
@@ -1972,12 +1981,12 @@ typedef struct DeclInfo {
 static void declarator(Parser *p, int mode, DeclInfo *di);
 static void declarator_init(DeclInfo *d);
 
-/* gcc's c_parser_declaration_or_fndef gives up on a bad __auto_type
- * declaration: the error is at its start, and the rest is skipped. */
+/* gcc's c_parser_declaration_or_fndef gives up on a bad __auto_type (or
+ * constexpr) declaration: the error is at its start, and the rest is skipped. */
 static void auto_type_error(Parser *p, uint32_t first, const char *what,
-                            bool top)
+                            bool top, const Specs *s)
 {
-    perr(p, first, "'__auto_type' %s", what);
+    perr(p, first, "'%s' %s", s->auto_type ? "__auto_type" : "constexpr", what);
     if (top || p->kr_params)
         sync_top(p);
     else
@@ -3328,7 +3337,7 @@ static void declaration(Parser *p, bool top)
         }
         if (s.auto_type && d.inner != DK_NONE) {
             auto_type_error(p, first, "requires a plain identifier as "
-                            "declarator", top);
+                            "declarator", top, &s);
             emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
@@ -3358,6 +3367,12 @@ static void declaration(Parser *p, bool top)
                 p->unwind_to = first;
                 return;
             }
+            if (s.constexpr_) {
+                auto_type_error(p, first, "requires an initialized data "
+                                "declaration", top, &s);
+                emit(p, N_DECL, first, start, flags | NF_ERROR);
+                return;
+            }
             p->gimple_body = s.gimple;
             function_def(p, &d, start, first, flags);
             p->gimple_body = false;
@@ -3369,9 +3384,9 @@ static void declaration(Parser *p, bool top)
               ckw_of(p, &t) == CK_ASM ||
               (ckw_of(p, &t) == CK_ATTRIBUTE && !t.stdattr))) {
             /* gcc: not a declarator list or a function definition */
-            if (s.auto_type) {
+            if (s.auto_type || s.constexpr_) {
                 auto_type_error(p, first, "requires an initialized data "
-                                "declaration", top);
+                                "declaration", top, &s);
             } else if (n == 0 && !p->kr_params &&
                 is_decl_start(p, &t)) { /* a missing ';' */
                 char buf[160];
@@ -3403,9 +3418,9 @@ static void declaration(Parser *p, bool top)
         attributes(p);
         if (n == 0 && d.inner == DK_FUNC && at(p, P_LBRACE))
             fn_attr = true;
-        if (s.auto_type && !at(p, P_ASSIGN)) {
+        if ((s.auto_type || s.constexpr_) && !at(p, P_ASSIGN)) {
             auto_type_error(p, first, "requires an initialized data "
-                            "declaration", top);
+                            "declaration", top, &s);
             emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
@@ -3415,9 +3430,9 @@ static void declaration(Parser *p, bool top)
         if (accept(p, P_ASSIGN))
             initializer(p);
         emit(p, N_INIT_DECL, d.name, is, 0);
-        if (s.auto_type && at(p, P_COMMA)) {
+        if ((s.auto_type || s.constexpr_) && at(p, P_COMMA)) {
             auto_type_error(p, first, "may only be used with a single "
-                            "declarator", top);
+                            "declarator", top, &s);
             emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }

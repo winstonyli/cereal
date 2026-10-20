@@ -17,7 +17,7 @@
     X(SIZEOF) X(ALIGNOF) X(GENERIC) X(STATIC_ASSERT) X(ALIGNAS)            \
     X(ATTRIBUTE) X(ASM) X(TYPEOF) X(EXTENSION) X(LABEL) X(REAL) X(IMAG)    \
     X(VA_ARG) X(OFFSETOF) X(TYPES_COMPATIBLE) X(CONVERTVECTOR) X(GIMPLE) X(HAS_ATTRIBUTE)    \
-    X(TRUE) X(FALSE)
+    X(TRUE) X(FALSE) X(CONSTEXPR)
 
 typedef enum {
     CK_NONE,
@@ -79,7 +79,7 @@ static const CKwSpelling ckw_spellings[] = {
     {"typeof", CK_TYPEOF | CKW_GNU_ONLY | CKW_C23},
     {"typeof_unqual", CK_TYPEOF | CKW_C23},
     {"bool", CK_BOOL | CKW_C23}, {"true", CK_TRUE | CKW_C23},
-    {"false", CK_FALSE | CKW_C23},
+    {"false", CK_FALSE | CKW_C23}, {"constexpr", CK_CONSTEXPR | CKW_C23},
     {"static_assert", CK_STATIC_ASSERT | CKW_C23},
     {"thread_local", CK_THREAD_LOCAL | CKW_C23},
     {"alignas", CK_ALIGNAS | CKW_C23}, {"alignof", CK_ALIGNOF | CKW_C23}, {"__extension__", CK_EXTENSION},

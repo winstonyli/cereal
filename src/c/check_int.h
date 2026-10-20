@@ -106,6 +106,9 @@ typedef struct CSym {
     SrcLoc def_loc;          /* the definition, if any */
     uint64_t val;            /* enumeration constants: the value */
     TypeId vty;              /* enumeration constants: the value's type */
+    long double fval;        /* constexpr floating object: the value */
+    uint8_t cx;              /* constexpr object: 1 declared, 2 val/fval hold
+                              * its value (cinit_decl_done) */
     uint32_t dep_msg;        /* deprecated/unavailable message: Checker.dep_msgs + 1 */
     uint32_t sect;           /* section(".."): Checker.dep_msgs + 1, 0: none */
     uint64_t nonnull;        /* the 'nonnull' attribute (Attrs.nonnull) */
@@ -217,6 +220,7 @@ typedef struct Spec {
     uint8_t word;            /* TypeWord */
     uint8_t kind;            /* TypeSpecKind */
     bool thread, thread_gnu, is_inline, is_noreturn;
+    bool constexpr_;         /* C23 constexpr */
     bool is_long, long_long, is_short, is_signed, is_unsigned, is_complex;
     bool sat;                /* _Sat seen (sat_loc) */
     SrcLoc sat_loc;
@@ -870,6 +874,7 @@ void cexpr_builtin_noproto_fmt(Checker *c, const CSym *s, SrcLoc loc);
 uint64_t cexpr_trunc(Checker *c, TypeId t, uint64_t v);
 /* Does the value v of type from fit type to? */
 bool cexpr_fits(Checker *c, uint64_t v, TypeId from, TypeId to);
+void cexpr_constexpr_init(Checker *c, CSym *s, uint32_t init, TypeId type);
 /* The member name of a record (anonymous members searched); returns the
  * field's type and adds its offset in bits; false if there is none. */
 bool cexpr_find_member(Checker *c, TypeId rec, uint32_t name, TypeId *ty,

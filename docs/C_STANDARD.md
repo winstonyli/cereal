@@ -88,7 +88,7 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17, c2x, gnu2x, c23, gnu23
 | C11 | generic-struct-ptr | C11 | ok | ok | unsup: lvalue form |
 | C11 | quick-exit-header | C11 | ok | ok | emits |
 | C23 | nullptr | C23 | ok | FAIL 'nullptr' undeclared (first use in this function); did you m |  |
-| C23 | constexpr | C23 | ok | FAIL expected ';' before 'int' |  |
+| C23 | constexpr | C23 | ok | ok | ok, equals gcc |
 | C23 | typeof | C23 | ok | ok | ok, equals gcc |
 | C23 | auto-type | C23 | ok | ok | ok, equals gcc |
 | C23 | bool-keyword | C23 | ok | ok | ok, equals gcc |
@@ -165,4 +165,4 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17, c2x, gnu2x, c23, gnu23
 | PP | stdc-macros | C11 | ok | ok | ok, equals gcc |
 | PP | line-file-date | C89 | ok | ok | emits |
 
-116 probes: front end ok 108, back end ok 86, probes gcc rejects 2
+116 probes: front end ok 109, back end ok 87, probes gcc rejects 2

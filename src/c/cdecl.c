@@ -634,6 +634,7 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
 {
     TypeId type = sp->ty;
     bool threadp = sp->thread;
+    bool cx = sp->constexpr_;
     unsigned sc = sp->sc;
     unsigned type_quals, array_ptr_quals = 0;
     bool array_ptr_attrs = false, array_parm_static = false;
@@ -717,8 +718,8 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         threadp = false;
         if (sc == SC_AUTO || sc == SC_REGISTER || sc == SC_TYPEDEF)
             sc = SC_NONE;
-    } else if (ctx != DC_NORMAL && (sc != SC_NONE || threadp)) {
-        if (ctx == DC_PARM && sc == SC_REGISTER) {
+    } else if (ctx != DC_NORMAL && (sc != SC_NONE || threadp || cx)) {
+        if (ctx == DC_PARM && sc == SC_REGISTER && !cx) {
             /* allowed */
         } else {
             if (ctx == DC_FIELD) {
@@ -742,6 +743,7 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 cerror(c, loc, "storage class specified for typename");
             sc = SC_NONE;
             threadp = false;
+            cx = false;
         }
     } else if (sc == SC_EXTERN && initialized && !funcdef) {
         if (filescope) {
@@ -1334,6 +1336,12 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         g->s.kind = CS_FUNC;
     } else {
         bool extern_ref = !initialized && sc == SC_EXTERN;
+        if (cx) {
+            if (type_quals & (TQ_VOLATILE | TQ_RESTRICT | TQ_ATOMIC))
+                cerror(c, loc, "invalid qualifiers for 'constexpr' object");
+            type_quals |= TQ_CONST;
+            g->s.cx = 1;
+        }
         if (!is_err(c, type))
             type = qualify(c, qualify(c, type, type_quals, ltok), type_quals,
                            ltok);     /* gcc qualifies twice (a 2nd error) */

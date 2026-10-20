@@ -33,13 +33,31 @@ static void add_scspec(Checker *c, Spec *s, uint32_t tok)
             cerror(c, il, "'%s' used with 'register'", sp);
         else if (s->sc == SC_TYPEDEF)
             cerror(c, il, "'%s' used with 'typedef'", sp);
-        else {
+        else if (s->constexpr_) {
+            cerror(c, il, "'%s' used with 'constexpr'", sp);
+            s->constexpr_ = false;
+        } else {
             s->thread = true;
             s->thread_gnu = !strcmp(sp, "__thread");
             if (!s->thread_gnu)
                 cped11(c, loc, "ISO C99 does not support '%s'", sp);
             s->thread_loc = loc;
         }
+        break;
+    case CK_CONSTEXPR:
+        /* a clash is an error and the object is no constexpr one (the parser
+         * makes the same call for its "requires an initialized ..." errors) */
+        dupe = s->constexpr_;
+        if (s->sc == SC_TYPEDEF || s->sc == SC_EXTERN)
+            cerror(c, il, "'constexpr' used with '%s'",
+                   s->sc == SC_TYPEDEF ? "typedef" : "extern");
+        else if (s->sc == SC_AUTO)
+            cerror(c, il, "'auto' used with 'constexpr'");
+        else if (s->thread)
+            cerror(c, il, "'constexpr' used with '%s'",
+                   s->thread_gnu ? "__thread" : "_Thread_local");
+        else
+            s->constexpr_ = true;
         break;
     case CK_AUTO:
         n = SC_AUTO;
@@ -76,6 +94,15 @@ static void add_scspec(Checker *c, Spec *s, uint32_t tok)
             cerror(c, il, "multiple storage classes in declaration "
                    "specifiers");
         else {
+            if (s->constexpr_ && n != SC_STATIC && n != SC_REGISTER) {
+                if (n == SC_AUTO)
+                    cerror(c, il, "'auto' used with 'constexpr'");
+                else
+                    cerror(c, il, "'constexpr' used with '%s'", sp);
+                s->constexpr_ = false;
+                if (n == SC_AUTO)   /* gcc drops it */
+                    return;
+            }
             s->sc = (uint8_t)n;
             s->sc_loc = loc;
             if (n != SC_EXTERN && n != SC_STATIC && s->thread) {

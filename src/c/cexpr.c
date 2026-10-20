@@ -2009,6 +2009,9 @@ static bool attr_takes_expr(Checker *c, uint32_t p, bool cleanup)
     return false;
 }
 
+static bool value_use(Checker *c, uint32_t i);
+static void constexpr_read(Checker *c, uint32_t i, const CSym *s);
+
 static void e_ident(Checker *c, uint32_t i)
 {
     uint32_t id = cnode_ident(c, i), ref = lookup_ord(c, id);
@@ -2126,6 +2129,10 @@ static void e_ident(Checker *c, uint32_t i)
     c->ty[i] = cbind_type(c, id) ? cbind_type(c, id) - 1 : s->ty;
     if (is_err(c, s->ty)) {
         set_err(c, i);
+        return;
+    }
+    if (s->cx == 2 && value_use(c, i)) {
+        constexpr_read(c, i, s);
         return;
     }
     c->ef[i] = EF_LVALUE;
@@ -7001,6 +7008,110 @@ static void fold_const_var(Checker *c, uint32_t i)
     c->ef[i] = EF_CST;
 }
 
+/* ---- constexpr objects (C23 6.7.2) ---------------------------------------
+ * A constexpr object is a const one whose value is a constant of the kind
+ * its type has: an integer constant expression, an arithmetic constant, a
+ * null pointer.  cinit_decl_done checks the initializer and records the value
+ * in the symbol; a read of the object (not &x, x++, x = ..) is that constant. */
+
+/* Is the identifier at i read as a value? */
+static bool value_use(Checker *c, uint32_t i)
+{
+    uint32_t t = i, p = c->par[i];
+    while (p != NO_NODE && ntag(c, p) == N_PAREN) {
+        t = p;
+        p = c->par[t];
+    }
+    if (p == NO_NODE)
+        return true;
+    switch (ntag(c, p)) {
+    case N_UNARY:
+        return npunct(c, p) != P_AMP && npunct(c, p) != P_INC &&
+               npunct(c, p) != P_DEC;
+    case N_POSTFIX:
+        return false;
+    case N_ASSIGN:
+        return t == p - 1;
+    default:
+        return true;
+    }
+}
+
+static void constexpr_read(Checker *c, uint32_t i, const CSym *s)
+{
+    TypeId t = unqual(c, s->ty);
+    if (is_flt(c, t)) {
+        c->ck[i] = K_FLOAT;
+        c->cv[i] = fpush(c, s->fval);
+        c->ef[i] = EF_REALCST;
+    } else if (is_ptr(c, t)) {
+        c->ck[i] = K_ADDR;
+        c->cb[i] = 0;
+        c->cv[i] = 0;
+        c->ef[i] = 0;
+    } else {
+        c->ck[i] = K_ICE;
+        c->cv[i] = s->val;
+        c->ef[i] = EF_INTOPS;
+    }
+}
+
+/* The initializer of a constexpr scalar (gcc's check_for_...constexpr). */
+void cexpr_constexpr_init(Checker *c, CSym *s, uint32_t init, TypeId type)
+{
+    TypeId t = unqual(c, type), it = c->ty[init];
+    SrcLoc l = tloc(c, first_tok(c, init));
+    bool ok = false;
+    if (is_err(c, t) || is_err(c, it))
+        return;
+    if (is_int(c, t)) {
+        /* integer constant operands, not only an ICE: 1 << 31 passes (a
+         * -O folded const variable does not) */
+        if (!intops(c, init))
+            cerror(c, l, "'constexpr' integer initializer is not an integer "
+                   "constant expression");
+        else if ((c->ef[init] & EF_OVERFLOW) ||
+                 !cexpr_fits(c, c->cv[init], it, t))
+            cerror(c, l, "'constexpr' initializer not representable in type "
+                   "of object");
+        else {
+            s->val = cexpr_trunc(c, t, c->cv[init]);
+            ok = true;
+        }
+    } else if (is_flt(c, t)) {
+        long double v = 0;
+        bool have = true;
+        if (c->ck[init] == K_FLOAT)
+            v = c->fv.data[c->cv[init]];
+        else if (c->ck[init] == K_ICE && is_int(c, it))
+            v = is_signed(c, it) ? (long double)(int64_t)c->cv[init]
+                                 : (long double)c->cv[init];
+        else
+            have = false;
+        if (!have)
+            cerror(c, l, "'constexpr' initializer is not a constant "
+                   "expression");
+        else if (v == v && fround(c, t, v) != v)
+            cerror(c, l, "'constexpr' initializer not representable in type "
+                   "of object");
+        else {
+            s->fval = v;
+            ok = true;
+        }
+    } else if (is_ptr(c, t)) {
+        bool null = (c->ck[init] == K_ADDR && !c->cb[init] && !c->cv[init]) ||
+                    (c->ck[init] == K_ICE && is_int(c, it) && !c->cv[init]);
+        if (!null)
+            cerror(c, l, "'constexpr' pointer initializer is not null");
+        else {
+            s->val = 0;
+            ok = true;
+        }
+    }
+    if (ok)
+        s->cx = 2;
+}
+
 void cexpr_node(Checker *c, uint32_t i)
 {
     uint32_t p;
@@ -7008,7 +7119,7 @@ void cexpr_node(Checker *c, uint32_t i)
     case N_IDENT:
         e_ident(c, i);
         if (c->opt.opt_level && c->opt.opt_level != '0' && c->ck[i] != K_ERR &&
-            !(c->ef[i] & EF_SIDE))
+            c->ck[i] != K_ICE && !(c->ef[i] & EF_SIDE))
             fold_const_var(c, i);
         break;
     case N_NUMBER: e_number(c, i); break;

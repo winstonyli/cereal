@@ -2819,8 +2819,11 @@ void cinit_decl_done(Checker *c, uint32_t idecl)
         }
         return;
     }
-    if (s->flags & CSF_AUTO_TYPE)
+    if (s->flags & CSF_AUTO_TYPE) {
+        if (s->cx == 1)
+            cexpr_constexpr_init(c, s, init, s->ty);
         return;
+    }
     type = s->ty;
     if (is_err(c, type))
         return;
@@ -2841,6 +2844,8 @@ void cinit_decl_done(Checker *c, uint32_t idecl)
         c->ck[init] = K_ERR;
     else {
         uint32_t dp = c->par[idecl];
+        if (s->cx == 1)
+            cexpr_constexpr_init(c, s, init, type);
         if ((s->flags & CSF_TREE_STATIC) && const_overflowed(c, init, type) &&
             dp != NOB && dp < c->nn)
             cconst_overflow(c, tloc(c, first_tok(c, dp)));

@@ -1,0 +1,135 @@
+c23_constexpr.c:3:1: error: 'constexpr' may only be used with a single declarator
+    3 | constexpr unsigned char uc = 255, uc2 = 256;
+      | ^
+c23_constexpr.c:4:20: warning: initializer element is not a constant expression [-Wpedantic]
+    4 | constexpr int sh = 1 << 31;
+      |                    ^
+c23_constexpr.c:6:27: error: 'constexpr' initializer not representable in type of object
+    6 | constexpr long long ll2 = 0x8000000000000000ull;
+      |                           ^
+c23_constexpr.c:7:21: warning: overflow in conversion from 'int' to 'char' changes value from '300' to '44' [-Woverflow]
+    7 | constexpr char ch = 300;
+      |                     ^
+c23_constexpr.c:7:21: error: 'constexpr' initializer not representable in type of object
+    7 | constexpr char ch = 300;
+      |                     ^
+c23_constexpr.c:8:24: error: 'constexpr' initializer not representable in type of object
+    8 | constexpr unsigned u = -1;
+      |                        ^
+c23_constexpr.c:9:22: error: 'constexpr' initializer not representable in type of object
+    9 | constexpr _Bool bb = 2;
+      |                      ^
+c23_constexpr.c:10:19: error: 'constexpr' integer initializer is not an integer constant expression
+   10 | constexpr int m = 1.5;
+      |                   ^
+c23_constexpr.c:12:22: error: 'constexpr' initializer not representable in type of object
+   12 | constexpr float fl = 0.1;
+      |                      ^
+c23_constexpr.c:17:22: error: 'constexpr' initializer not representable in type of object
+   17 | constexpr float f4 = 1.0 / 3;
+      |                      ^
+c23_constexpr.c:18:22: error: 'constexpr' initializer not representable in type of object
+   18 | constexpr float ff = 1e39;
+      |                      ^
+c23_constexpr.c:21:22: warning: initialization discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+   21 | constexpr int *np2 = &a;
+      |                      ^
+c23_constexpr.c:21:22: error: 'constexpr' pointer initializer is not null
+   21 | constexpr int *np2 = &a;
+      |                      ^
+c23_constexpr.c:22:22: error: 'constexpr' pointer initializer is not null
+   22 | constexpr char *cs = "x";
+      |                      ^
+c23_constexpr.c:23:21: error: 'constexpr' pointer initializer is not null
+   23 | constexpr int *pp = (int *)4;
+      |                     ^
+c23_constexpr.c:26:22: error: initializer element is not constant
+   26 | constexpr int bad1 = nc;
+      |                      ^
+c23_constexpr.c:27:22: error: 'constexpr' integer initializer is not an integer constant expression
+   27 | constexpr int bad2 = k;
+      |                      ^
+c23_constexpr.c:28:22: error: 'constexpr' integer initializer is not an integer constant expression
+   28 | constexpr int bad3 = k + 1;
+      |                      ^
+c23_constexpr.c:29:22: error: 'constexpr' integer initializer is not an integer constant expression
+   29 | constexpr int bad4 = (int)(&nc != 0);
+      |                      ^
+c23_constexpr.c:30:25: error: initializer element is not constant
+   30 | constexpr double bad5 = nc;
+      |                         ^
+c23_constexpr.c:45:7: error: assignment of read-only variable 'x'
+   45 |     x = 2;
+      |       ^
+c23_constexpr.c:46:6: error: increment of read-only variable 'x'
+   46 |     x++;
+      |      ^
+c23_constexpr.c:47:5: error: decrement of read-only variable 'x'
+   47 |     --x;
+      |     ^
+c23_constexpr.c:50:5: error: 'constexpr' used with 'extern'
+   50 |     extern constexpr int e;
+      |     ^
+c23_constexpr.c:51:5: error: 'auto' used with 'constexpr'
+   51 |     auto constexpr int aa = 1;
+      |     ^
+c23_constexpr.c:52:5: error: 'auto' used with 'constexpr'
+   52 |     constexpr auto int bb = 1;
+      |     ^
+c23_constexpr.c:54:1: error: 'constexpr' used with 'extern'
+   54 | extern constexpr int b1 = 2;
+      | ^
+c23_constexpr.c:54:22: warning: 'b1' initialized and declared 'extern'
+   54 | extern constexpr int b1 = 2;
+      |                      ^
+c23_constexpr.c:55:1: error: 'constexpr' used with 'extern'
+   55 | constexpr extern int b2 = 2;
+      | ^
+c23_constexpr.c:55:22: warning: 'b2' initialized and declared 'extern'
+   55 | constexpr extern int b2 = 2;
+      |                      ^
+c23_constexpr.c:56:1: error: 'constexpr' used with 'typedef'
+   56 | typedef constexpr int t1;
+      | ^
+c23_constexpr.c:57:1: error: 'constexpr' used with 'typedef'
+   57 | constexpr typedef int t2;
+      | ^
+c23_constexpr.c:58:1: error: 'constexpr' used with '_Thread_local'
+   58 | _Thread_local constexpr int c1 = 3;
+      | ^
+c23_constexpr.c:59:1: error: '_Thread_local' used with 'constexpr'
+   59 | constexpr _Thread_local int c2 = 3;
+      | ^
+c23_constexpr.c:60:1: error: duplicate 'constexpr'
+   60 | constexpr constexpr int dd = 4;
+      | ^
+c23_constexpr.c:61:24: error: invalid qualifiers for 'constexpr' object
+   61 | constexpr volatile int q1 = 5;
+      |                        ^
+c23_constexpr.c:62:25: error: invalid qualifiers for 'constexpr' object
+   62 | constexpr int *restrict q2 = 0;
+      |                         ^
+c23_constexpr.c:63:23: error: invalid qualifiers for 'constexpr' object
+   63 | constexpr _Atomic int q3 = 6;
+      |                       ^
+c23_constexpr.c:65:25: error: invalid qualifiers for 'constexpr' object
+   65 | constexpr int *volatile q5 = 0;
+      |                         ^
+c23_constexpr.c:67:14: error: invalid qualifiers for 'constexpr' object
+   67 | constexpr VI q6 = 1;
+      |              ^
+c23_constexpr.c:69:1: error: 'constexpr' requires an initialized data declaration
+   69 | constexpr int h;
+      | ^
+c23_constexpr.c:70:1: error: 'constexpr' may only be used with a single declarator
+   70 | constexpr int i1 = 1, j1 = 2;
+      | ^
+c23_constexpr.c:71:1: error: 'constexpr' requires an initialized data declaration
+   71 | constexpr int fn(void) { return 1; }
+      | ^
+c23_constexpr.c:72:1: error: 'constexpr' requires an initialized data declaration
+   72 | constexpr int fp(void);
+      | ^
+c23_constexpr.c:73:22: error: storage class specified for parameter 'p'
+   73 | void g(constexpr int p);
+      |                      ^
