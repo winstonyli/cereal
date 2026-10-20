@@ -797,6 +797,30 @@ static uint32_t vec_unary(El *e, uint32_t i, int p, uint32_t a, SrcLoc loc)
     return id;
 }
 
+/* __builtin_convertvector (v, type): every lane converted to the lane type of type. */
+static uint32_t vec_convert(El *e, uint32_t i, uint32_t a, SrcLoc loc)
+{
+    Checker *c = e->c;
+    TypeId vt = unqual(c, c->ty[i]), et, st;
+    U32Vec setup = {0};
+    VOp oa;
+    uint32_t n, j, id = TN, *lanes;
+    if (!e->infunc)
+        return unsup(e, "vector operation outside a function");
+    st = rvt(c, a);
+    if (!vec_dims(e, vt, &et, &n) || !vop_node(e, a, st, &oa, &setup, loc)) {
+        vec_free(&setup);
+        return TN;
+    }
+    lanes = xmalloc((n ? n : 1) * sizeof *lanes);
+    for (j = 0; j < n; j++)
+        lanes[j] = conv(e, vop_lane(e, &oa, j, loc), et, loc);
+    id = vec_make(e, vt, loc, lanes, n, &setup);
+    free(lanes);
+    vec_free(&setup);
+    return id;
+}
+
 /* ++x, --x, x++, x-- as load, add, convert back, store. */
 static uint32_t incdec(El *e, uint32_t i, uint32_t x, int punct, bool post)
 {
@@ -1653,6 +1677,8 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
         }
         return conv(e, rv(e, k[1]), t, loc);
     }
+    case N_CONVERTVECTOR:
+        return vec_convert(e, i, first_child(c, i), loc);
     case N_UNARY: {
         const Tok *tk = cnode_tok(c, i);
         int p;

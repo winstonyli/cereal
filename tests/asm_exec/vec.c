@@ -377,6 +377,29 @@ int shuf_const(int a, int b, int c, int d)
            hash((__m128i)g) * 11 ^ hash((__m128i)z) * 13;
 }
 
+typedef float vf4 __attribute__((vector_size(16)));
+typedef double vd2 __attribute__((vector_size(16)));
+typedef long long vl2 __attribute__((vector_size(16)));
+typedef unsigned char vb8 __attribute__((vector_size(8)));
+typedef unsigned short vu8 __attribute__((vector_size(16)));
+
+int convvec(int a, int b, int c, int d)
+{
+    vi4 x = {a, b, c, d};
+    vi4 s = {a & 255, b & 255, c & 255, d & 255};
+    vf4 f = __builtin_convertvector(s, vf4);
+    vi4 back = __builtin_convertvector(f * 1.5f, vi4);
+    vd2 dd = {a & 1023, b & 1023};
+    vl2 ll = __builtin_convertvector(dd * 2.5, vl2);
+    vd2 d2 = __builtin_convertvector(ll, vd2);
+    vs8 h = {a, b, c, d, d, c, b, a};
+    vu8 u = __builtin_convertvector(h, vu8);
+    vi4 w = __builtin_convertvector((vi4){a, b, c, d}, vi4);
+    vb8 by = __builtin_convertvector((vs8){a, b, c, d, d, c, b, a}, vb8);
+    return hash((__m128i)f) ^ hash((__m128i)back) * 3 ^ hash((__m128i)ll) * 5 ^ hash((__m128i)d2) * 7 ^ hash((__m128i)u) * 11 ^
+           hash((__m128i)w) * 13 ^ (by[0] + by[1] * 3 + by[2] * 5 + by[3] * 7 + by[4] * 11 + by[5] * 13 + by[6] * 17 + by[7] * 19) * 17 ^ x[0];
+}
+
 int mm_move(int a, int b, int c, int d)
 {
     __m128 x = fk(a, b, c, d), y = fk(d, a, b, c);
