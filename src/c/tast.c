@@ -2320,6 +2320,7 @@ static uint32_t st(El *e, uint32_t n)
         }
         break;
     }
+    case N_PRAGMA:          /* a pragma between statements changes nothing here */
     case N_ATTR_STMT:       /* [[fallthrough]], __attribute__((fallthrough)) */
         id = nop(e, loc);
         break;

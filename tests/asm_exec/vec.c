@@ -400,6 +400,14 @@ int convvec(int a, int b, int c, int d)
            hash((__m128i)w) * 13 ^ (by[0] + by[1] * 3 + by[2] * 5 + by[3] * 7 + by[4] * 11 + by[5] * 13 + by[6] * 17 + by[7] * 19) * 17 ^ x[0];
 }
 
+int mm_undef(int a, int b, int c, int d)    /* a pragma inside the header function */
+{
+    __m128i u = _mm_undefined_si128();
+    (void)u;
+    (void)_mm_undefined_ps();
+    return a + b * c - d;
+}
+
 int mm_move(int a, int b, int c, int d)
 {
     __m128 x = fk(a, b, c, d), y = fk(d, a, b, c);
