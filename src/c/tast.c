@@ -66,7 +66,7 @@ uint32_t mk(El *e, int op, TypeId ty, SrcLoc loc, int64_t val,
 static unsigned intrin_row(Checker *c, uint32_t name)
 {
     const char *nm = cident(c, name);
-    return strncmp(nm, "__builtin_", 10) ? bi_find(nm) : bi_find(nm + 10);
+    return bi_find_call(nm);
 }
 
 /* A back-end built-in (a row of cintrin.h, named without its "__builtin_") applied to args. */
@@ -856,35 +856,21 @@ static uint32_t e_call_t(El *e, uint32_t i)
             goto out;
         }
         ft = builtin_ft(e, callee);
-        if (!ft && atomic_kind(cident(c, cnode_ident(c, callee)))) {
-            /* the overloaded __atomic_ and __sync built-ins (generic or sized by
-             * the pointer operand): no prototype, the arguments are pointers and
-             * ints taken as they are */
-            uint32_t j;
-            for (j = 1; j < nk; j++) {
-                uint32_t x = rv(e, k[j]);
-                if (x == TN)
-                    goto out;
-                vec_push(&args, x);
-            }
-            id = mk(e, TO_INTRIN, unqual(c, c->ty[i]), loc, 0, cnode_ident(c, callee),
-                    intrin_row(c, cnode_ident(c, callee)), args.data, (uint32_t)args.len);
-            goto out;
-        }
         row = ft ? 0 : intrin_row(c, cnode_ident(c, callee));
-        if (bi_rows[row].cls == BIC_OVF) {
-            /* {add,sub,mul}_overflow(a, b, &r): the generic forms keep the operand types,
-             * the typed s/u forms convert the operands to their prototype's */
-            bool typed = bi_rows[row].arg & OV_TYPED;
-            TypeId pft = typed ? type_canon(&c->tt, pointee(c, rvt(c, callee))) : 0;
+        if (bi_rows[row].fl) {
+            /* a call lowered from its row: without a prototype (the overloaded atomics, the
+             * generic overflow built-ins) the arguments are pointers and ints taken as they
+             * are, with one the operands convert to the prototype's parameters */
+            bool proto = !(bi_rows[row].fl & BIF_GEN);
+            TypeId pft = proto ? type_canon(&c->tt, pointee(c, rvt(c, callee))) : 0;
             uint32_t j;
-            if (nk != 4) {
+            if (bi_rows[row].argc && nk - 1 != bi_rows[row].argc) {
                 tunsup(e, "call argument count");
                 goto out;
             }
             for (j = 1; j < nk; j++) {
                 uint32_t x = rv(e, k[j]);
-                if (x != TN && typed && j < 3)
+                if (x != TN && proto && !is_ptr(c, type_params(&c->tt, pft)[j - 1]))
                     x = conv(e, x, unqual(c, type_params(&c->tt, pft)[j - 1]), loc);
                 if (x == TN)
                     goto out;
@@ -1790,9 +1776,9 @@ void tast_print_node(El *e, FILE *out, size_t i)
             fprintf(out, " %s", nd->pun == 1 ? "start" : nd->pun == 2 ? "end" : nd->pun == 3 ? "copy" : "arg");
             break;
         case TO_INTRIN:
-            if (atomic_kind(cident(c, nd->sym))) {
-                const char *nm = cident(c, nd->sym);
-                fprintf(out, " %s %s", nm + 2, atomic_kind(nm) == 1 ? "generic" : "sized");
+            if (bi_rows[nd->pun].cls == BIC_ATOMIC) {
+                fprintf(out, " %s %s", cident(c, nd->sym) + 2,
+                        bi_rows[nd->pun].chk == BK_GENERIC ? "generic" : "sized");
                 break;
             }
             fprintf(out, " %s", cident(c, nd->sym) + 10);
@@ -2097,7 +2083,7 @@ static void verify(El *e, FILE *out)
             const TypeEnt *fe;
             bool sz_ok = false;
             uint32_t f0 = nd->op == TO_CALL && nd->pun ? 1 : 0, np;
-            if (nd->op == TO_INTRIN && (atomic_kind(cident(c, nd->sym)) || bi_rows[nd->pun].cls == BIC_OVF)) {
+            if (nd->op == TO_INTRIN && bi_rows[nd->pun].fl) {
                 if (nd->pun != intrin_row(c, nd->sym))
                     vbad(e, out, i, "intrinsic row");
                 for (j = 0; j < nd->nkids; j++)

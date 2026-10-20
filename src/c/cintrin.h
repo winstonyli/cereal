@@ -4,7 +4,14 @@
  * one argument for the class.  The front end looks a name up once (bi_find) and keeps the
  * row in the node (pun); the back end switches on the class.  A name with no row is left to
  * the back end to refuse.  The atomics (__atomic_*, __sync_*) are rows too, named in full; va_*
- * has nodes of its own. */
+ * has nodes of its own.
+ *
+ * The same row tells the front end what gcc's own resolution of the call does: the argument
+ * count (argc), which checks the arguments get (chk), the type of the result (res), and
+ * whether the call has no prototype (BIF_GEN: the arguments are used as written) or is
+ * lowered from the row although it has one (BIF_LOWER: the operands convert to the
+ * prototype's parameters).  A row of class BIC_NONE with such data is checked and typed
+ * but left to the back end to refuse. */
 #ifndef CEREAL_CINTRIN_H
 #define CEREAL_CINTRIN_H
 
@@ -25,20 +32,38 @@ enum {
     BIC_PREFETCH,   /* a hint: only the address is evaluated */
     BIC_LIBC,       /* a call of the library function of the same name */
     BIC_ATOMIC,     /* an operation on an object of 1, 2, 4 or 8 bytes; arg: AT_ op | AF_ flags << 4 */
-    BIC_OVF         /* arithmetic with an overflow flag; arg: OV_ op, OV_TYPED for the s/u forms */
+    BIC_OVF         /* arithmetic with an overflow flag; arg: OV_ op */
 };
+
+/* Row flags (fl). */
+enum {
+    BIF_GEN = 1,    /* no prototype: the arguments are used as written, the type comes from res */
+    BIF_LOWER = 2   /* lowered from the row; the operands convert to the prototype's parameters */
+};
+
+/* Which checks gcc makes of the arguments (chk). */
+enum {
+    BK_NONE,
+    BK_LOCKFREE,    /* __atomic_is_lock_free, __atomic_always_lock_free */
+    BK_GENERIC,     /* the generic atomics: void * operands of one nonzero size */
+    BK_SIZED,       /* the atomics sized by a pointer to an integer or pointer (1 to 16 bytes) */
+    BK_FETCH        /* the same, and the object is not a _Bool */
+};
+
+/* The type of the result (res): a rule, and for the argument rules the index of the argument
+ * in bits 4.. (BR_ARG: its type, BR_PTEE: its pointee). */
+enum { BR_NONE, BR_VOID, BR_BOOL, BR_UINT, BR_ARG, BR_PTEE };
+#define BR(rule, ix) ((rule) | (ix) << 4)
 
 /* The overflow built-ins: the generic ones (no prototype) take their operand types from the
  * arguments, the typed ones (__builtin_sadd_overflow ...) have prototypes. */
-enum { OV_ADD, OV_SUB, OV_MUL, OV_TYPED = 4 };
-#define BI_OVF(X, n, op)                                                    \
-    X(n "_overflow", BIC_OVF, op)                                           \
-    X("s" n "_overflow", BIC_OVF, (op) | OV_TYPED)                          \
-    X("u" n "_overflow", BIC_OVF, (op) | OV_TYPED)                          \
-    X("s" n "l_overflow", BIC_OVF, (op) | OV_TYPED)                         \
-    X("u" n "l_overflow", BIC_OVF, (op) | OV_TYPED)                         \
-    X("s" n "ll_overflow", BIC_OVF, (op) | OV_TYPED)                        \
-    X("u" n "ll_overflow", BIC_OVF, (op) | OV_TYPED)
+enum { OV_ADD, OV_SUB, OV_MUL };
+#define BI_OVF(Y, n, op)                                                    \
+    Y(n "_overflow", BIC_OVF, op, BIF_GEN, 3, BK_NONE, BR(BR_BOOL, 0))      \
+    BI_OVT(Y, "s" n "_overflow", op) BI_OVT(Y, "u" n "_overflow", op)       \
+    BI_OVT(Y, "s" n "l_overflow", op) BI_OVT(Y, "u" n "l_overflow", op)     \
+    BI_OVT(Y, "s" n "ll_overflow", op) BI_OVT(Y, "u" n "ll_overflow", op)
+#define BI_OVT(Y, nm, op) Y(nm, BIC_OVF, op, BIF_LOWER, 3, BK_NONE, 0)
 
 /* The atomic operations, and what the flags say about the arguments and the result. */
 enum { AT_LOAD, AT_STORE, AT_ST0, AT_XCHG, AT_ADD, AT_SUB, AT_AND, AT_OR, AT_XOR, AT_NAND, AT_CAS };
@@ -49,13 +74,17 @@ enum {
     AF_OLD = 8      /* compare-and-swap: the result is the old value, not a flag */
 };
 #define BI_AT(op, fl) ((op) | (fl) << 4)
-#define BI_RMW(X, n, op)                                                    \
-    X("__atomic_fetch_" n, BIC_ATOMIC, BI_AT(op, 0))                        \
-    X("__atomic_" n "_fetch", BIC_ATOMIC, BI_AT(op, AF_NEW))                \
-    X("__sync_fetch_and_" n, BIC_ATOMIC, BI_AT(op, 0))                      \
-    X("__sync_" n "_and_fetch", BIC_ATOMIC, BI_AT(op, AF_NEW))
+/* An atomic row: argc is that of the __atomic_ form (the __sync_ ones take any count). */
+#define BI_A(Y, n, op, af, argc, chk, res)                                  \
+    Y(n, BIC_ATOMIC, BI_AT(op, af), BIF_GEN, argc, chk, res)
+#define BI_RMW(Y, n, op)                                                    \
+    BI_A(Y, "__atomic_fetch_" n, op, 0, 3, BK_FETCH, BR(BR_PTEE, 0))        \
+    BI_A(Y, "__atomic_" n "_fetch", op, AF_NEW, 3, BK_FETCH, BR(BR_PTEE, 0)) \
+    BI_A(Y, "__sync_fetch_and_" n, op, 0, 0, BK_FETCH, BR(BR_PTEE, 0))      \
+    BI_A(Y, "__sync_" n "_and_fetch", op, AF_NEW, 0, BK_FETCH, BR(BR_PTEE, 0))
 
-#define BI_ROWS(X)                                                              \
+/* X: a row with only a class and an argument; Y: one with the front end's data too. */
+#define BI_ROWS(X, Y)                                                           \
     X("expect", BIC_EXPECT, 0)                                                  \
     X("huge_val", BIC_HUGE, 8) X("inf", BIC_HUGE, 8)                            \
     X("huge_valf", BIC_HUGE, 4) X("inff", BIC_HUGE, 4)                          \
@@ -80,21 +109,28 @@ enum {
     X("strcat", BIC_LIBC, 0) X("strncat", BIC_LIBC, 0) X("strchr", BIC_LIBC, 0) \
     X("strrchr", BIC_LIBC, 0) X("strstr", BIC_LIBC, 0) X("abs", BIC_LIBC, 0)    \
     X("labs", BIC_LIBC, 0) X("llabs", BIC_LIBC, 0)                              \
-    X("__atomic_load", BIC_ATOMIC, BI_AT(AT_LOAD, AF_PTR))                      \
-    X("__atomic_load_n", BIC_ATOMIC, BI_AT(AT_LOAD, 0))                         \
-    X("__atomic_store", BIC_ATOMIC, BI_AT(AT_STORE, AF_PTR))                    \
-    X("__atomic_store_n", BIC_ATOMIC, BI_AT(AT_STORE, 0))                       \
-    X("__atomic_exchange", BIC_ATOMIC, BI_AT(AT_XCHG, AF_PTR))                  \
-    X("__atomic_exchange_n", BIC_ATOMIC, BI_AT(AT_XCHG, 0))                     \
-    X("__atomic_compare_exchange", BIC_ATOMIC, BI_AT(AT_CAS, AF_PTR))           \
-    X("__atomic_compare_exchange_n", BIC_ATOMIC, BI_AT(AT_CAS, 0))              \
-    X("__sync_bool_compare_and_swap", BIC_ATOMIC, BI_AT(AT_CAS, AF_EXPV))       \
-    X("__sync_val_compare_and_swap", BIC_ATOMIC, BI_AT(AT_CAS, AF_EXPV | AF_OLD)) \
-    X("__sync_lock_test_and_set", BIC_ATOMIC, BI_AT(AT_XCHG, 0))                \
-    X("__sync_lock_release", BIC_ATOMIC, BI_AT(AT_ST0, 0))                      \
-    BI_RMW(X, "add", AT_ADD) BI_RMW(X, "sub", AT_SUB) BI_RMW(X, "and", AT_AND)  \
-    BI_RMW(X, "or", AT_OR) BI_RMW(X, "xor", AT_XOR) BI_RMW(X, "nand", AT_NAND)  \
-    BI_OVF(X, "add", OV_ADD) BI_OVF(X, "sub", OV_SUB) BI_OVF(X, "mul", OV_MUL)
+    Y("speculation_safe_value", BIC_NONE, 0, 0, 0, BK_NONE, BR(BR_ARG, 0))      \
+    BI_A(Y, "__atomic_load", AT_LOAD, AF_PTR, 3, BK_GENERIC, BR(BR_VOID, 0))    \
+    BI_A(Y, "__atomic_load_n", AT_LOAD, 0, 2, BK_SIZED, BR(BR_PTEE, 0))         \
+    BI_A(Y, "__atomic_store", AT_STORE, AF_PTR, 3, BK_GENERIC, BR(BR_VOID, 0))  \
+    BI_A(Y, "__atomic_store_n", AT_STORE, 0, 3, BK_SIZED, BR(BR_VOID, 0))       \
+    BI_A(Y, "__atomic_exchange", AT_XCHG, AF_PTR, 4, BK_GENERIC, BR(BR_VOID, 0)) \
+    BI_A(Y, "__atomic_exchange_n", AT_XCHG, 0, 3, BK_SIZED, BR(BR_PTEE, 0))     \
+    BI_A(Y, "__atomic_compare_exchange", AT_CAS, AF_PTR, 6, BK_GENERIC, BR(BR_BOOL, 0)) \
+    BI_A(Y, "__atomic_compare_exchange_n", AT_CAS, 0, 6, BK_SIZED, BR(BR_BOOL, 0)) \
+    BI_A(Y, "__sync_bool_compare_and_swap", AT_CAS, AF_EXPV, 0, BK_SIZED, BR(BR_BOOL, 0)) \
+    BI_A(Y, "__sync_val_compare_and_swap", AT_CAS, AF_EXPV | AF_OLD, 0, BK_SIZED, BR(BR_PTEE, 0)) \
+    BI_A(Y, "__sync_lock_test_and_set", AT_XCHG, 0, 0, BK_SIZED, BR(BR_PTEE, 0)) \
+    BI_A(Y, "__sync_lock_release", AT_ST0, 0, 0, BK_SIZED, BR(BR_VOID, 0))      \
+    BI_RMW(Y, "add", AT_ADD) BI_RMW(Y, "sub", AT_SUB) BI_RMW(Y, "and", AT_AND)  \
+    BI_RMW(Y, "or", AT_OR) BI_RMW(Y, "xor", AT_XOR) BI_RMW(Y, "nand", AT_NAND)  \
+    Y("__atomic_test_and_set", BIC_NONE, 0, 0, 2, BK_NONE, BR(BR_BOOL, 0))      \
+    Y("__atomic_clear", BIC_NONE, 0, 0, 2, BK_NONE, BR(BR_VOID, 0))             \
+    Y("__atomic_thread_fence", BIC_NONE, 0, 0, 1, BK_NONE, BR(BR_VOID, 0))      \
+    Y("__atomic_signal_fence", BIC_NONE, 0, 0, 1, BK_NONE, BR(BR_VOID, 0))      \
+    Y("__atomic_is_lock_free", BIC_NONE, 0, 0, 2, BK_LOCKFREE, BR(BR_BOOL, 0))  \
+    Y("__atomic_always_lock_free", BIC_NONE, 0, 0, 2, BK_LOCKFREE, BR(BR_BOOL, 0)) \
+    BI_OVF(Y, "add", OV_ADD) BI_OVF(Y, "sub", OV_SUB) BI_OVF(Y, "mul", OV_MUL)
 
 /* What gcc calls for the bit counts the CPU baseline has no instruction for. */
 static const char *const bi_helper[] = {"__popcountdi2", "__paritydi2"};
@@ -103,14 +139,20 @@ typedef struct BiRow {
     const char *name;
     uint8_t cls;
     uint8_t arg;
+    uint8_t fl;     /* BIF_ */
+    uint8_t argc;   /* the argument count gcc requires; 0: not checked */
+    uint8_t chk;    /* BK_ */
+    uint8_t res;    /* BR(rule, index); BR_NONE: the prototype gives the type */
 } BiRow;
 
 /* Rows are numbered from 1; 0 is no row. */
 static const BiRow bi_rows[] = {
-    {"", BIC_NONE, 0},
-#define X(n, c, a) {n, c, a},
-    BI_ROWS(X)
+    {"", BIC_NONE, 0, 0, 0, 0, 0},
+#define X(n, c, a) {n, c, a, 0, 0, 0, 0},
+#define Y(n, c, a, f, k, ck, r) {n, c, a, f, k, ck, r},
+    BI_ROWS(X, Y)
 #undef X
+#undef Y
 };
 
 static inline unsigned bi_find(const char *name)
@@ -120,6 +162,32 @@ static inline unsigned bi_find(const char *name)
         if (!strcmp(bi_rows[i].name, name))
             return (unsigned)i;
     return 0;
+}
+
+/* The row of a callee named as written in the source: "__builtin_x" is row x, an atomic is
+ * named in full (and "__builtin___atomic_x" is nothing). */
+static inline unsigned bi_find_call(const char *name)
+{
+    if (strncmp(name, "__builtin_", 10))
+        return bi_find(name);
+    name += 10;
+    return name[0] == '_' && name[1] == '_' ? 0 : bi_find(name);
+}
+
+/* The argument count of an __atomic_ built-in, the sized variants (_1 to _16) included; 0 when
+ * there is none to check. */
+static inline unsigned bi_argc(const char *name)
+{
+    char b[48];
+    size_t len = strlen(name);
+    if (strncmp(name, "__atomic_", 9) || len >= sizeof b)
+        return 0;
+    memcpy(b, name, len + 1);
+    while (len && b[len - 1] >= '0' && b[len - 1] <= '9')
+        b[--len] = 0;
+    if (len < strlen(name) && len && b[len - 1] == '_')
+        b[--len] = 0;
+    return bi_rows[bi_find(b)].argc;
 }
 
 #endif

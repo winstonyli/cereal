@@ -672,79 +672,6 @@ static SrcLoc arg_loc(Checker *c, uint32_t a)
     return c->u->toks[t].exp ? c->u->toks[t].exp : expr_loc(c, a);
 }
 
-/* The argument count of an __atomic_* built-in (sized variants _1.._16
- * included); 0 for the others. */
-static uint32_t atomic_argc(const char *name)
-{
-    static const struct { const char *n; uint32_t argc; } t[] = {
-        {"load_n", 2}, {"load", 3}, {"store_n", 3}, {"store", 3},
-        {"exchange_n", 3}, {"exchange", 4}, {"compare_exchange_n", 6},
-        {"compare_exchange", 6}, {"add_fetch", 3}, {"sub_fetch", 3},
-        {"and_fetch", 3}, {"xor_fetch", 3}, {"or_fetch", 3},
-        {"nand_fetch", 3}, {"fetch_add", 3}, {"fetch_sub", 3},
-        {"fetch_and", 3}, {"fetch_xor", 3}, {"fetch_or", 3},
-        {"fetch_nand", 3}, {"test_and_set", 2}, {"clear", 2},
-        {"thread_fence", 1}, {"signal_fence", 1}, {"is_lock_free", 2},
-        {"always_lock_free", 2}};
-    char b[32];
-    size_t n, len;
-    if (strncmp(name, "__atomic_", 9))
-        return 0;
-    snprintf(b, sizeof b, "%s", name + 9);
-    len = strlen(b);
-    while (len && b[len - 1] >= '0' && b[len - 1] <= '9')
-        b[--len] = 0;
-    if (len < strlen(name + 9) && len && b[len - 1] == '_')
-        b[--len] = 0;
-    for (n = 0; n < sizeof t / sizeof *t; n++)
-        if (!strcmp(b, t[n].n))
-            return t[n].argc;
-    return 0;
-}
-
-/* The __atomic_ and __sync_ built-ins gcc resolves itself: 1 the generic
- * (void *-based) __atomic_load/store/exchange/compare_exchange, 2 the _n and
- * __sync ones sized by the first argument, 3 those same for fetch operations
- * (a _Bool operand is refused); 0 the others. */
-int atomic_kind(const char *name)
-{
-    static const char *const ops[] = {"add", "sub", "and", "nand", "xor", "or"};
-    const char *b;
-    size_t k, n;
-    if (!strncmp(name, "__sync_", 7)) {
-        b = name + 7;
-        if (!strcmp(b, "bool_compare_and_swap") ||
-            !strcmp(b, "val_compare_and_swap") ||
-            !strcmp(b, "lock_test_and_set") || !strcmp(b, "lock_release"))
-            return 2;
-        for (k = 0; k < sizeof ops / sizeof *ops; k++) {
-            n = strlen(ops[k]);
-            if (!strncmp(b, "fetch_and_", 10) && !strcmp(b + 10, ops[k]))
-                return 3;
-            if (!strncmp(b, ops[k], n) && !strcmp(b + n, "_and_fetch"))
-                return 3;
-        }
-        return 0;
-    }
-    if (strncmp(name, "__atomic_", 9))
-        return 0;
-    b = name + 9;
-    if (!strcmp(b, "load") || !strcmp(b, "store") || !strcmp(b, "exchange") ||
-        !strcmp(b, "compare_exchange"))
-        return 1;
-    if (!strcmp(b, "load_n") || !strcmp(b, "store_n") ||
-        !strcmp(b, "exchange_n") || !strcmp(b, "compare_exchange_n"))
-        return 2;
-    for (k = 0; k < sizeof ops / sizeof *ops; k++) {
-        n = strlen(ops[k]);
-        if (!strncmp(b, "fetch_", 6) && !strcmp(b + 6, ops[k]))
-            return 3;
-        if (!strncmp(b, ops[k], n) && !strcmp(b + n, "_fetch"))
-            return 3;
-    }
-    return 0;
-}
-
 static bool vla_pointee(Checker *c, TypeId e)
 {
     e = type_canon(TT, e);
@@ -761,24 +688,24 @@ static bool vla_pointee(Checker *c, TypeId e)
 static bool atomic_args_ok(Checker *c, uint32_t i, const uint32_t *a,
                            uint32_t n, const char *name, SrcLoc loc)
 {
-    int kind = atomic_kind(name);
+    const BiRow *r = &bi_rows[bi_find_call(name)];
     uint32_t k;
     TypeId t0, e0;
     bool ok;
     uint64_t sz0;
-    if (!kind || n == 0)
+    if (r->chk < BK_GENERIC || n == 0)
         return true;
     for (k = 0; k < n; k++)
         if (node_err(c, a[k]))
             return true;
     t0 = rvt(c, a[0]);
-    if (kind != 1) {
+    if (r->chk != BK_GENERIC) {
         TypeId e = is_ptr(c, t0) ? pointee(c, t0) : ERRT;
         uint64_t sz = 0;
         bool good = is_ptr(c, t0) &&
                     (is_int(c, e) || is_ptr(c, e)) &&
                     type_is_complete(TT, e) &&
-                    !(kind == 3 && tkind(c, e) == TY_BOOL);
+                    !(r->chk == BK_FETCH && tkind(c, e) == TY_BOOL);
         if (good) {
             sz = type_size(TT, e, &ok);
             good = ok && (sz == 1 || sz == 2 || sz == 4 || sz == 8 || sz == 16);
@@ -814,13 +741,11 @@ static bool atomic_args_ok(Checker *c, uint32_t i, const uint32_t *a,
         return false;
     }
     {
-        const char *b = name + 9;
-        unsigned nparam = !strcmp(b, "exchange") ? 4 :
-                          !strcmp(b, "compare_exchange") ? 6 : 3;
+        int op = r->arg & 15;
+        unsigned nparam = r->argc;
         unsigned nmodel = nparam == 6 ? 2 : 1;
-        unsigned outputs = !strcmp(b, "exchange") ? 5 :
-                           !strcmp(b, "load") ? 2 :
-                           !strcmp(b, "store") ? 1 : 3;
+        unsigned outputs = op == AT_XCHG ? 5 : op == AT_LOAD ? 2 :
+                           op == AT_STORE ? 1 : 3;
         unsigned x;
         for (x = 0; x < nparam - nmodel; x++) {
             TypeId t = rvt(c, a[x]), e;
@@ -884,9 +809,10 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
     if (n == 0 || n > 16)
         return true;
     n--;
-    if ((want = atomic_argc(name)) != 0) {
+    if ((want = bi_argc(name)) != 0) {
+        const BiRow *r = &bi_rows[bi_find_call(name)];
         if (n != want) {
-            if (atomic_kind(name) == 1)
+            if (r->chk == BK_GENERIC)
                 cerror(c, loc, "incorrect number of arguments to function "
                        "'%s'", name);
             else
@@ -895,7 +821,7 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
                        name);
             return false;
         }
-        if (strstr(name, "lock_free") && !node_err(c, a[1])) {
+        if (r->chk == BK_LOCKFREE && !node_err(c, a[1])) {
             TypeId t = rvt(c, a[1]);
             if (is_int(c, t) && !(c->ef[a[1]] & EF_NPC)) {
                 Diagnostic *d = cwarn_d(c, DL_WARNING, arg_loc(c, a[1]),
@@ -916,7 +842,7 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
         }
         return atomic_args_ok(c, i, a, n, name, loc);
     }
-    if (!strncmp(name, "__sync_", 7))
+    if (bi_rows[bi_find_call(name)].chk >= BK_GENERIC)    /* the __sync_ ones */
         return atomic_args_ok(c, i, a, n, name, loc);
     if (strncmp(name, "__builtin_", 10))
         return true;
@@ -1364,35 +1290,30 @@ static bool e_tgmath(Checker *c, uint32_t i)
     return true;
 }
 
-/* The type of a call of an overloaded atomic or sync built-in; ERRT for the
- * others. */
-static TypeId atomic_result(Checker *c, uint32_t i, const char *name)
+/* The type of a call by the result rule of its row (cintrin.h); ERRT when there is none or the
+ * argument it names is missing or erroneous.  An operand-sized atomic needs its pointer. */
+static TypeId row_result(Checker *c, uint32_t i, const BiRow *r)
 {
-    int kind = atomic_kind(name);
-    const char *b = !strncmp(name, "__sync_", 7) ? name + 7 : name + 9;
-    uint32_t all[16], n = nkids(c, i, all, 16);
+    uint32_t all[16], n = nkids(c, i, all, 16), ix = r->res >> 4, a = ix + 1;
+    unsigned rule = r->res & 15;
     TypeId t;
-    if (!kind && !strncmp(name, "__atomic_", 9)) {
-        if (!strcmp(b, "is_lock_free") || !strcmp(b, "always_lock_free") ||
-            !strcmp(b, "test_and_set"))
-            return TYPE_B(BOOL);
-        if (!strcmp(b, "clear") || !strcmp(b, "thread_fence") ||
-            !strcmp(b, "signal_fence"))
-            return TYPE_B(VOID);
+    if (!rule || n > 16)
+        return ERRT;
+    if (rule >= BR_ARG || r->chk >= BK_GENERIC) {
+        if (a >= n || node_err(c, all[a]) || is_err(c, rvt(c, all[a])))
+            return ERRT;
+        if (r->chk > BK_GENERIC && !is_ptr(c, rvt(c, all[a])))
+            return ERRT;
     }
-    if (!kind || n < 2 || n > 16 || node_err(c, all[1]))
-        return ERRT;
-    if (kind == 1)
-        return !strcmp(b, "compare_exchange") ? TYPE_B(BOOL) : TYPE_B(VOID);
-    t = rvt(c, all[1]);
-    if (!is_ptr(c, t))
-        return ERRT;
-    if (!strcmp(b, "bool_compare_and_swap") ||
-        !strcmp(b, "compare_exchange_n"))
-        return TYPE_B(BOOL);
-    if (!strcmp(b, "lock_release") || !strcmp(b, "store_n"))
-        return TYPE_B(VOID);
-    return unqual(c, pointee(c, t));
+    switch (rule) {
+    case BR_VOID: return TYPE_B(VOID);
+    case BR_BOOL: return TYPE_B(BOOL);
+    case BR_UINT: return TYPE_B(UINT);
+    case BR_ARG: return unqual(c, rvt(c, all[a]));
+    default:
+        t = rvt(c, all[a]);
+        return is_ptr(c, t) ? unqual(c, pointee(c, t)) : ERRT;
+    }
 }
 
 /* fold_builtin_atomic_always_lock_free (x86-64 without -mcx16): 1 or 0 for
@@ -1957,12 +1878,12 @@ void e_call(Checker *c, uint32_t i)
                 check_spn(c, av, an, name, call_loc(c, k[0]));
         }
         {
-            TypeId rt = atomic_result(c, i, name);
+            const BiRow *r = &bi_rows[bi_find_call(name)];
+            TypeId rt = row_result(c, i, r);
             if (!is_err(c, rt)) {
                 c->ty[i] = rt;
                 c->ef[i] = EF_SIDE;
-                if (!strcmp(name, "__atomic_always_lock_free") ||
-                    !strcmp(name, "__atomic_is_lock_free")) {
+                if (r->chk == BK_LOCKFREE) {
                     uint32_t av[4], an = nkids(c, i, av, 4);
                     int v = an <= 4 ? lock_free_fold(c, av, an) : -1;
                     c->ef[i] = 0;               /* a const function */
@@ -1971,16 +1892,6 @@ void e_call(Checker *c, uint32_t i)
                         c->cv[i] = (uint64_t)v; /* is_lock_free folds only to true */
                     }
                 }
-                return;
-            }
-        }
-        if (!strcmp(name, "__builtin_speculation_safe_value")) {
-            /* the result has the type of the first argument */
-            uint32_t av[32], an = nkids(c, i, av, 32);
-            if (an >= 2 && an <= 32 && !node_err(c, av[1]) &&
-                !is_err(c, rvt(c, av[1]))) {
-                c->ty[i] = unqual(c, rvt(c, av[1]));
-                c->ef[i] = EF_SIDE;
                 return;
             }
         }
@@ -2021,12 +1932,6 @@ void e_call(Checker *c, uint32_t i)
                            "pointer type");
             }
             copy_node(c, i, av[1]);
-            return;
-        }
-        if (!strncmp(name, "__builtin_", 10) && bi_rows[bi_find(name + 10)].cls == BIC_OVF &&
-            !(bi_rows[bi_find(name + 10)].arg & OV_TYPED)) {
-            c->ty[i] = TYPE_B(BOOL);    /* the generic overflow built-ins (the typed ones have prototypes): the flag */
-            c->ef[i] = EF_SIDE;
             return;
         }
         if (!strcmp(name, "__builtin_shuffle")) {
