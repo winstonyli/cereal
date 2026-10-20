@@ -1,18 +1,18 @@
-unit 0 key=213175b6fa1364a1 digest=921e8848c2e0b875 sig=921e8848c2e0b875
-  ord typedef size_t type="size_t" linkage=none storage=typedef flags=- type_dig=c6f470a544d58ed5 digest=3ad5e9f7065a875f
+unit 0 key=213175b6fa1364a1 digest=bd150659cc5a5008 sig=bd150659cc5a5008
+  ord typedef size_t type="size_t" linkage=none storage=typedef flags=- type_dig=121559a7fa4c42df digest=d82d78597bc64c58
   read ord full 0000000000000000 0000000000000000 size_t
-unit 1 key=bf12d99280a82b04 digest=3237604e6f3394c6 sig=3237604e6f3394c6
-  tag struct S flags=complete layout=58179b953d2168a8 digest=1323ab132612abcf
+unit 1 key=bf12d99280a82b04 digest=bac61dcaf78e6419 sig=bac61dcaf78e6419
+  tag struct S flags=complete layout=e6fa3b1759ab12b4 digest=3c3e47d897272848
   read tag full 0000000000000000 0000000000000000 S
   read state name 0000000000000000 f362f64ac74c66ab pack
 unit 2 key=a75f3e88eec2a1b9 digest=4196935d7b996d32 sig=4196935d7b996d32
   tag struct P flags=- layout=68718cb73339817b digest=2dba399076f7e921
   read tag name 0000000000000000 0000000000000000 P
   read tag full 0000000000000000 0000000000000000 P
-unit 3 key=2fb07ea49ae43485 digest=163bf0eca426898c sig=163bf0eca426898c
-  ord enumconst E0 type="enum E" linkage=none storage=none flags=- value=0 type_dig=78f70c1f12abfa80 digest=2668e5f047ed5127
-  ord enumconst E1 type="enum E" linkage=none storage=none flags=- value=5 type_dig=78f70c1f12abfa80 digest=ba4fa6c39a81d7ec
-  tag enum E flags=complete layout=eddee250dbc233f0 digest=4f30b27e76db33d1
+unit 3 key=2fb07ea49ae43485 digest=71014706598f5202 sig=71014706598f5202
+  ord enumconst E0 type="enum E" linkage=none storage=none flags=- value=0 type_dig=78f70c1f12abfa80 digest=9e7724fa937c5d24
+  ord enumconst E1 type="enum E" linkage=none storage=none flags=- value=5 type_dig=78f70c1f12abfa80 digest=96b519b06734ab69
+  tag enum E flags=complete layout=41a8620ef2b5fea8 digest=757ce311d73dbef0
   read ord full 0000000000000000 0000000000000000 E0
   read ord full 0000000000000000 0000000000000000 E1
   read tag full 0000000000000000 0000000000000000 E
@@ -20,41 +20,41 @@ unit 4 key=c128c2ecf81f5209 digest=5633ce5fca0c975c sig=5633ce5fca0c975c
   ord typedef T type="T" linkage=none storage=typedef flags=- type_dig=81e720381ad5b503 digest=8d124074983ff8b9
   read ord full 0000000000000000 0000000000000000 T
   read state name 0000000000000000 f362f64ac74c66ab pack
-unit 5 key=51e6427a251e0ae4 digest=ebb6fcb6c5c4bae9 sig=ebb6fcb6c5c4bae9
-  ord obj g type="int" linkage=external storage=none flags=defined type_dig=f0ba40573ee9157c digest=b6ee62e2d26d0bb0
+unit 5 key=51e6427a251e0ae4 digest=5e6694b525ca0f83 sig=5e6694b525ca0f83
+  ord obj g type="int" linkage=external storage=none flags=defined type_dig=f19eb729a9217a9b digest=f5822c12fde97bf3
   read ord full 0000000000000000 0000000000000000 g
   read ext full 0000000000000000 0000000000000000 g
-unit 6 key=21ae1c2246ff3c54 digest=8614576e10c21de5 sig=8614576e10c21de5
-  ord obj h type="int" linkage=external storage=extern flags=decl_external type_dig=f0ba40573ee9157c digest=4abf8cdd37907334
+unit 6 key=21ae1c2246ff3c54 digest=b847961edb2e76bb sig=b847961edb2e76bb
+  ord obj h type="int" linkage=external storage=extern flags=decl_external type_dig=f19eb729a9217a9b digest=e664957b446c4a3d
   read ord full 0000000000000000 0000000000000000 h
   read ext full 0000000000000000 0000000000000000 h
-unit 7 key=445b48c4ae03361f digest=4e82c5eec8661f92 sig=4e82c5eec8661f92
-  ord func sq type="int(int)" linkage=internal storage=static flags=defined,proto_def type_dig=059adb0af89fd1d4 digest=9d89a4bfb3c46928
+unit 7 key=445b48c4ae03361f digest=03698f169f1c3690 sig=03698f169f1c3690
+  ord func sq type="int(int)" linkage=internal storage=static flags=defined,proto_def type_dig=6b82eb1fab3afabe digest=501be8da2e436d2c
   read ord full 0000000000000000 0000000000000000 sq
-unit 8 key=fe5207c0d7f57650 digest=4f672149818df9c6 sig=4f672149818df9c6
-  ord func f type="int(int,  struct S *)" linkage=external storage=none flags=defined,proto_def type_dig=667dfee4f2f78b6b digest=1342f6d39cf42406
-  read ord name 0000000000000000 03be727ebbd04757 E1
+unit 8 key=fe5207c0d7f57650 digest=c96c8e97175f1496 sig=c96c8e97175f1496
+  ord func f type="int(int,  struct S *)" linkage=external storage=none flags=defined,proto_def type_dig=4636f2c148e1531d digest=d6f2254b69040f20
+  read ord name 0000000000000000 b8ca47134391a261 E1
   read ord name 0000000000000000 0fe4e98793fe83fb T
-  read ord name 0000000000000000 15ce4a202a957831 g
-  read ord name 0000000000000000 230366610aff7161 sq
+  read ord name 0000000000000000 a05e99e517487677 g
+  read ord name 0000000000000000 672a7181b870aa81 sq
   read ord full 0000000000000000 0000000000000000 f
   read tag name 0000000000000000 1536cc0ccec5ec51 S
   read ext full 0000000000000000 0000000000000000 f
-  read layout layout 213b802b34f3b057 27d96f438b06de89 -
-  read layout layout 24702889c4f889f4 58179b953d2168a8 S
+  read layout layout 213b802b34f3b057 69c31e1f23c2b3d8 -
+  read layout layout 24702889c4f889f4 e6fa3b1759ab12b4 S
 unit 9 key=a75f3e88eec2a1b9 digest=4b1b6bbdaf1820b5 sig=4b1b6bbdaf1820b5
   tag struct P flags=complete layout=9ddfe7c2d265cae9 digest=1cbbba41e39aa47d
   read tag name 0000000000000000 1536cc0ccec5ec51 S
   read tag full 0000000000000000 8481484e1fcbfd08 P
-  read layout layout 24702889c4f889f4 58179b953d2168a8 S
+  read layout layout 24702889c4f889f4 e6fa3b1759ab12b4 S
   read state name 0000000000000000 f362f64ac74c66ab pack
-unit 10 key=21ae1c2246ff3c54 digest=62ba9c2ab280e6a7 sig=62ba9c2ab280e6a7
-  ord obj h type="int" linkage=external storage=none flags=tentative type_dig=f0ba40573ee9157c digest=87ac2853bc2ba3b0
-  read ord full 0000000000000000 3ace21d1d19a162e h
-  read ext full 0000000000000000 3ace21d1d19a162e h
-unit 11 key=7043373523a1e138 digest=3bd315668c7f6186 sig=d03c610d2ad88628
-  ord func k type="int(void)" linkage=external storage=none flags=defined,proto_def type_dig=c7a200bfaa3f3ddd digest=8707bd35f0dc2ed5
-  ext func undefined_fn type="int()" linkage=external storage=extern flags=implicit type_dig=dda96e703752715b digest=810754c5d33a3e53
+unit 10 key=21ae1c2246ff3c54 digest=f34cfd54af278717 sig=f34cfd54af278717
+  ord obj h type="int" linkage=external storage=none flags=tentative type_dig=f19eb729a9217a9b digest=5a53bfe561c0b518
+  read ord full 0000000000000000 b1dbc3c8148409a0 h
+  read ext full 0000000000000000 b1dbc3c8148409a0 h
+unit 11 key=7043373523a1e138 digest=8e0047373f501621 sig=f3f6bb31166eb0ab
+  ord func k type="int(void)" linkage=external storage=none flags=defined,proto_def type_dig=31502e1ba60b1689 digest=69c50048598677bb
+  ext func undefined_fn type="int()" linkage=external storage=extern flags=implicit type_dig=6bd08ccc4dec1a07 digest=2b0965e439a7adcf
   read ord name 0000000000000000 0000000000000000 undefined_fn
   read ord full 0000000000000000 0000000000000000 k
   read ext full 0000000000000000 0000000000000000 k

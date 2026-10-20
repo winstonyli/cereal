@@ -193,7 +193,8 @@ static uint64_t tbase(CSum *cs, uint32_t idx)
         d = H(D_COMPLEX, tdigest(cs, e.base));
         break;
     default:
-        d = H(D_BUILTIN, e.kind);
+        d = H(D_BUILTIN, hash_bytes(type_builtin_name(e.kind),
+                                    strlen(type_builtin_name(e.kind))));
         break;
     }
     if (!d)

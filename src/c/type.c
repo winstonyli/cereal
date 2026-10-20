@@ -1212,6 +1212,11 @@ static bool aka_atomic(const TypeTable *tt, const TypeEnt *e)
     return false;
 }
 
+const char *type_builtin_name(TypeKind k)
+{
+    return k < TY_NBUILTIN ? builtin_names[k] : "?";
+}
+
 void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
 {
     StrBuf d = {0}, tmp = {0};

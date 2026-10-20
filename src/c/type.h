@@ -271,6 +271,8 @@ bool type_ptr_may_alias(TypeTable *tt, TypeId p);
 /* ---- printing (gcc's spelling) --------------------------------------- */
 
 void type_print(TypeTable *tt, StrBuf *sb, TypeId t);
+/* The spelling of a builtin kind (stable across enum changes, for digests). */
+const char *type_builtin_name(TypeKind k);
 /* 'T' {aka 'int'}: quoted, with the typedef-stripped spelling if it
  * differs. */
 void type_quote(TypeTable *tt, StrBuf *sb, TypeId t);
