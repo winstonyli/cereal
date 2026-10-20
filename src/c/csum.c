@@ -177,7 +177,7 @@ static uint64_t tbase(CSum *cs, uint32_t idx)
             d = H(d, tdigest(cs, tt->params.data[e.extra + k]));
         break;
     case TY_STRUCT: case TY_UNION:
-        d = H(H(D_REC, e.kind), get64(&cs->rid, e.extra));
+        d = H(H(D_REC, e.kind == TY_UNION), get64(&cs->rid, e.extra));   /* not the kind number: it shifts when a builtin is added */
         break;
     case TY_ENUM:
         d = H(D_ENUM, get64(&cs->eid, e.extra));

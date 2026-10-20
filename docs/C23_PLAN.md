@@ -158,6 +158,6 @@ message text and notes; carets are single, as everywhere):
 - Special cases that grew: `aka_atomic` (a typedef of `nullptr_t` keeps its name, as gcc prints it),
   the `nullptr_t` branch of `e_compare`, and gcc's folding quirk (two constants fold, a `nullptr_t` variable
   folds only against a null constant). All mirror gcc.
-- Kind numbers shifted, so the hashes in `tests/summary/*.expected` were regenerated (nothing else changed).
+- Kind numbers shifted, which moved the record digest (`csum.c` hashed `TY_STRUCT`/`TY_UNION` by number); it now hashes "is a union", so a new builtin no longer changes digests. `tests/summary/*.expected` regenerated once (hashes only).
 - Survey: 111 of 114 front end, 89 back end. Suite 2299/0, zstd, Lua and libuv unchanged.
 

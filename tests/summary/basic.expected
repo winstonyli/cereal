@@ -16,8 +16,8 @@ unit 3 key=2fb07ea49ae43485 digest=163bf0eca426898c sig=163bf0eca426898c
   read ord full 0000000000000000 0000000000000000 E0
   read ord full 0000000000000000 0000000000000000 E1
   read tag full 0000000000000000 0000000000000000 E
-unit 4 key=c128c2ecf81f5209 digest=042d15777f624b28 sig=042d15777f624b28
-  ord typedef T type="T" linkage=none storage=typedef flags=- type_dig=165239e07cbf862c digest=af739323032b1868
+unit 4 key=c128c2ecf81f5209 digest=5633ce5fca0c975c sig=5633ce5fca0c975c
+  ord typedef T type="T" linkage=none storage=typedef flags=- type_dig=81e720381ad5b503 digest=8d124074983ff8b9
   read ord full 0000000000000000 0000000000000000 T
   read state name 0000000000000000 f362f64ac74c66ab pack
 unit 5 key=51e6427a251e0ae4 digest=ebb6fcb6c5c4bae9 sig=ebb6fcb6c5c4bae9
@@ -31,10 +31,10 @@ unit 6 key=21ae1c2246ff3c54 digest=8614576e10c21de5 sig=8614576e10c21de5
 unit 7 key=445b48c4ae03361f digest=4e82c5eec8661f92 sig=4e82c5eec8661f92
   ord func sq type="int(int)" linkage=internal storage=static flags=defined,proto_def type_dig=059adb0af89fd1d4 digest=9d89a4bfb3c46928
   read ord full 0000000000000000 0000000000000000 sq
-unit 8 key=fe5207c0d7f57650 digest=98c270f578434a0d sig=98c270f578434a0d
-  ord func f type="int(int,  struct S *)" linkage=external storage=none flags=defined,proto_def type_dig=91fcff4774b3f044 digest=b16e1b86f2f8cbd9
+unit 8 key=fe5207c0d7f57650 digest=4f672149818df9c6 sig=4f672149818df9c6
+  ord func f type="int(int,  struct S *)" linkage=external storage=none flags=defined,proto_def type_dig=667dfee4f2f78b6b digest=1342f6d39cf42406
   read ord name 0000000000000000 03be727ebbd04757 E1
-  read ord name 0000000000000000 42822336c8353c5f T
+  read ord name 0000000000000000 0fe4e98793fe83fb T
   read ord name 0000000000000000 15ce4a202a957831 g
   read ord name 0000000000000000 230366610aff7161 sq
   read ord full 0000000000000000 0000000000000000 f
@@ -42,8 +42,8 @@ unit 8 key=fe5207c0d7f57650 digest=98c270f578434a0d sig=98c270f578434a0d
   read ext full 0000000000000000 0000000000000000 f
   read layout layout 213b802b34f3b057 27d96f438b06de89 -
   read layout layout 24702889c4f889f4 58179b953d2168a8 S
-unit 9 key=a75f3e88eec2a1b9 digest=71117b248c39dd4f sig=71117b248c39dd4f
-  tag struct P flags=complete layout=d7c3e0da46ea57d1 digest=1944b57b98e56cf7
+unit 9 key=a75f3e88eec2a1b9 digest=4b1b6bbdaf1820b5 sig=4b1b6bbdaf1820b5
+  tag struct P flags=complete layout=9ddfe7c2d265cae9 digest=1cbbba41e39aa47d
   read tag name 0000000000000000 1536cc0ccec5ec51 S
   read tag full 0000000000000000 8481484e1fcbfd08 P
   read layout layout 24702889c4f889f4 58179b953d2168a8 S
