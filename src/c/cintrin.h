@@ -3,7 +3,8 @@
  * One table: a name (after "__builtin_"), the way the back end generates it (a class) and
  * one argument for the class.  The front end looks a name up once (bi_find) and keeps the
  * row in the node (pun); the back end switches on the class.  A name with no row is left to
- * the back end to refuse.  Atomics and va_* are not here: they have nodes of their own. */
+ * the back end to refuse.  The atomics (__atomic_*, __sync_*) are rows too, named in full; va_*
+ * has nodes of its own. */
 #ifndef CEREAL_CINTRIN_H
 #define CEREAL_CINTRIN_H
 
@@ -22,8 +23,24 @@ enum {
     BIC_SFENCE, BIC_LFENCE, BIC_MFENCE, BIC_PAUSE, BIC_UD2,
     BIC_CLFLUSH, BIC_STMXCSR, BIC_LDMXCSR,
     BIC_PREFETCH,   /* a hint: only the address is evaluated */
-    BIC_LIBC        /* a call of the library function of the same name */
+    BIC_LIBC,       /* a call of the library function of the same name */
+    BIC_ATOMIC      /* an operation on an object of 1, 2, 4 or 8 bytes; arg: AT_ op | AF_ flags << 4 */
 };
+
+/* The atomic operations, and what the flags say about the arguments and the result. */
+enum { AT_LOAD, AT_STORE, AT_ST0, AT_XCHG, AT_ADD, AT_SUB, AT_AND, AT_OR, AT_XOR, AT_NAND, AT_CAS };
+enum {
+    AF_NEW = 1,     /* a read-modify-write gives the new value, not the old */
+    AF_PTR = 2,     /* the generic forms: values and results go by pointer */
+    AF_EXPV = 4,    /* compare-and-swap: the expected value is an argument, not a pointer to it */
+    AF_OLD = 8      /* compare-and-swap: the result is the old value, not a flag */
+};
+#define BI_AT(op, fl) ((op) | (fl) << 4)
+#define BI_RMW(X, n, op)                                                    \
+    X("__atomic_fetch_" n, BIC_ATOMIC, BI_AT(op, 0))                        \
+    X("__atomic_" n "_fetch", BIC_ATOMIC, BI_AT(op, AF_NEW))                \
+    X("__sync_fetch_and_" n, BIC_ATOMIC, BI_AT(op, 0))                      \
+    X("__sync_" n "_and_fetch", BIC_ATOMIC, BI_AT(op, AF_NEW))
 
 #define BI_ROWS(X)                                                              \
     X("expect", BIC_EXPECT, 0)                                                  \
@@ -49,7 +66,21 @@ enum {
     X("strncmp", BIC_LIBC, 0) X("strcpy", BIC_LIBC, 0) X("strncpy", BIC_LIBC, 0) \
     X("strcat", BIC_LIBC, 0) X("strncat", BIC_LIBC, 0) X("strchr", BIC_LIBC, 0) \
     X("strrchr", BIC_LIBC, 0) X("strstr", BIC_LIBC, 0) X("abs", BIC_LIBC, 0)    \
-    X("labs", BIC_LIBC, 0) X("llabs", BIC_LIBC, 0)
+    X("labs", BIC_LIBC, 0) X("llabs", BIC_LIBC, 0)                              \
+    X("__atomic_load", BIC_ATOMIC, BI_AT(AT_LOAD, AF_PTR))                      \
+    X("__atomic_load_n", BIC_ATOMIC, BI_AT(AT_LOAD, 0))                         \
+    X("__atomic_store", BIC_ATOMIC, BI_AT(AT_STORE, AF_PTR))                    \
+    X("__atomic_store_n", BIC_ATOMIC, BI_AT(AT_STORE, 0))                       \
+    X("__atomic_exchange", BIC_ATOMIC, BI_AT(AT_XCHG, AF_PTR))                  \
+    X("__atomic_exchange_n", BIC_ATOMIC, BI_AT(AT_XCHG, 0))                     \
+    X("__atomic_compare_exchange", BIC_ATOMIC, BI_AT(AT_CAS, AF_PTR))           \
+    X("__atomic_compare_exchange_n", BIC_ATOMIC, BI_AT(AT_CAS, 0))              \
+    X("__sync_bool_compare_and_swap", BIC_ATOMIC, BI_AT(AT_CAS, AF_EXPV))       \
+    X("__sync_val_compare_and_swap", BIC_ATOMIC, BI_AT(AT_CAS, AF_EXPV | AF_OLD)) \
+    X("__sync_lock_test_and_set", BIC_ATOMIC, BI_AT(AT_XCHG, 0))                \
+    X("__sync_lock_release", BIC_ATOMIC, BI_AT(AT_ST0, 0))                      \
+    BI_RMW(X, "add", AT_ADD) BI_RMW(X, "sub", AT_SUB) BI_RMW(X, "and", AT_AND)  \
+    BI_RMW(X, "or", AT_OR) BI_RMW(X, "xor", AT_XOR) BI_RMW(X, "nand", AT_NAND)
 
 /* What gcc calls for the bit counts the CPU baseline has no instruction for. */
 static const char *const bi_helper[] = {"__popcountdi2", "__paritydi2"};

@@ -66,7 +66,7 @@ uint32_t mk(El *e, int op, TypeId ty, SrcLoc loc, int64_t val,
 static unsigned intrin_row(Checker *c, uint32_t name)
 {
     const char *nm = cident(c, name);
-    return strncmp(nm, "__builtin_", 10) ? 0 : bi_find(nm + 10);
+    return strncmp(nm, "__builtin_", 10) ? bi_find(nm) : bi_find(nm + 10);
 }
 
 /* A back-end built-in (a row of cintrin.h, named without its "__builtin_") applied to args. */
@@ -867,9 +867,8 @@ static uint32_t e_call_t(El *e, uint32_t i)
                     goto out;
                 vec_push(&args, x);
             }
-            id = mk(e, TO_INTRIN, unqual(c, c->ty[i]), loc, 0, cnode_ident(c, callee), 0,
-                    args.data, (uint32_t)args.len);
-            e->nodes.data[id].width = 2;
+            id = mk(e, TO_INTRIN, unqual(c, c->ty[i]), loc, 0, cnode_ident(c, callee),
+                    intrin_row(c, cnode_ident(c, callee)), args.data, (uint32_t)args.len);
             goto out;
         }
         if (!ft) {
@@ -1768,7 +1767,7 @@ void tast_print_node(El *e, FILE *out, size_t i)
             fprintf(out, " %s", nd->pun == 1 ? "start" : nd->pun == 2 ? "end" : nd->pun == 3 ? "copy" : "arg");
             break;
         case TO_INTRIN:
-            if (nd->width == 2) {
+            if (atomic_kind(cident(c, nd->sym))) {
                 const char *nm = cident(c, nd->sym);
                 fprintf(out, " %s %s", nm + 2, atomic_kind(nm) == 1 ? "generic" : "sized");
                 break;
@@ -2075,9 +2074,9 @@ static void verify(El *e, FILE *out)
             const TypeEnt *fe;
             bool sz_ok = false;
             uint32_t f0 = nd->op == TO_CALL && nd->pun ? 1 : 0, np;
-            if (nd->op == TO_INTRIN && nd->width == 2) {
-                if (!atomic_kind(cident(c, nd->sym)))
-                    vbad(e, out, i, "atomic builtin");
+            if (nd->op == TO_INTRIN && atomic_kind(cident(c, nd->sym))) {
+                if (nd->pun != intrin_row(c, nd->sym))
+                    vbad(e, out, i, "atomic row");
                 for (j = 0; j < nd->nkids; j++)
                     if (!ISVAL(KID(j)) || (KIND(KID(j)->ty) != TY_PTR && !is_int(c, KID(j)->ty)))
                         vbad(e, out, i, "argument is not a pointer or integer value");

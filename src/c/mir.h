@@ -39,7 +39,7 @@ typedef struct MOp {
     X(NEG, "neg") X(NOT, "not") X(CMP, "cmp") X(TEST, "test") X(SETCC, "set")   \
     X(IDIV, "idiv") X(DIV, "div") X(PUSH, "push") X(POP, "pop")                 \
     X(CALL, "call") X(JMP, "jmp") X(JCC, "j")                                   \
-    X(LABEL, "") X(XCHG, "xchg") X(XADD, "lock xadd") X(CMPXCHG, "lock cmpxchg") \
+    X(LABEL, "") X(XCHG, "xchg") X(CMPXCHG, "lock cmpxchg") \
     X(CMOV, "cmov") X(BSWAP, "bswap") X(BSR, "bsr") X(BSF, "bsf")               \
     X(BYTES, "")  /* raw machine bytes: a.name the text, w the count, a.v the bytes */ \
     X(FMOV, "mov")         /* scalar SSE: w is the float's width (4: ss, 8: sd) */ \

@@ -1344,9 +1344,8 @@ static void gen_va(Gx *g, uint32_t n)
     }
 }
 
-/* Built-ins: values (__builtin_expect, infinity), libc calls, and the
- * __atomic_ operations on objects of 1, 2, 4 or 8 bytes (the order argument
- * is ignored: loads are plain moves, stores and exchanges are xchg). */
+/* Built-ins: values (__builtin_expect, infinity), libc calls and the atomics, which work
+ * on objects of 1, 2, 4 or 8 bytes. */
 static bool atomic_width(Gx *g, uint32_t ptr, TI *raw)
 {
     TypeTable *tt = &g->c->tt;
@@ -1367,82 +1366,121 @@ static bool atomic_width(Gx *g, uint32_t ptr, TI *raw)
     return true;
 }
 
+/* An atomic built-in (a BIC_ATOMIC row of cintrin.h).  Loads are plain moves, stores and
+ * exchanges are xchg, a read-modify-write is a lock cmpxchg loop and a compare-and-swap one
+ * lock cmpxchg; the order arguments are ignored.  The operands are evaluated first-to-last
+ * where they are values, and the object is addressed through %rcx or %rsi. */
+static void gen_atomic(Gx *g, uint32_t n, const BiRow *r)
+{
+    const TNode *t = nd(g->L, n);
+    int op = r->arg & 15, fl = r->arg >> 4, b, loop, ok;
+    bool by_ptr = fl & AF_PTR, has_val = type_ckind(&g->c->tt, t->ty) != TY_VOID;
+    TI raw, ti;
+    if (!atomic_width(g, kid(g->L, n, 0), &raw) || (has_val && !tinfo(g, t->ty, &ti)))
+        return;
+    b = raw.bytes;
+    switch (op) {
+    case AT_LOAD:
+        if (by_ptr) {                   /* k1: where the value goes */
+            gen(g, kid(g->L, n, 1));
+            push(g);
+        }
+        gen(g, kid(g->L, n, 0));
+        load_at_rax(g, &raw);
+        if (by_ptr) {
+            pop(g, R_CX);
+            store_rcx(g, &raw);
+        }
+        break;
+    case AT_STORE: case AT_ST0: case AT_XCHG:
+        if (op == AT_XCHG && by_ptr) {  /* k2: where the old value goes */
+            gen(g, kid(g->L, n, 2));
+            push(g);
+        }
+        gen(g, kid(g->L, n, 0));
+        if (op == AT_ST0) {
+            em(g, M_MOV, 8, R(R_AX), R(R_CX));
+            em(g, M_MOV, 8, I(0), R(R_AX));
+        } else {
+            push(g);
+            gen(g, kid(g->L, n, 1));
+            if (by_ptr)
+                load_at_rax(g, &raw);
+            pop(g, R_CX);
+        }
+        em(g, M_XCHG, b, R(R_AX), M(R_CX, 0));
+        if (op == AT_XCHG && by_ptr) {
+            pop(g, R_CX);
+            store_rcx(g, &raw);
+        }
+        break;
+    case AT_CAS:
+        ok = g->nlab++;
+        gen(g, kid(g->L, n, 1));        /* the expected value, or where it is */
+        push(g);
+        gen(g, kid(g->L, n, 0));
+        push(g);
+        gen(g, kid(g->L, n, 2));        /* the desired value, or where it is */
+        if (by_ptr)
+            load_at_rax(g, &raw);
+        em(g, M_MOV, 8, R(R_AX), R(R_DX));
+        pop(g, R_CX);
+        pop(g, R_SI);
+        if (fl & AF_EXPV)
+            em(g, M_MOV, 8, R(R_SI), R(R_AX));
+        else
+            em(g, M_MOV, b, M(R_SI, 0), R(R_AX));
+        em(g, M_CMPXCHG, b, R(R_DX), M(R_CX, 0));
+        if (!(fl & AF_EXPV)) {          /* on failure the old value goes back */
+            em_cc(g, M_JCC, CC_E, LB(ok));
+            em(g, M_MOV, b, R(R_AX), M(R_SI, 0));
+            em(g, M_LABEL, 8, LB(ok), NONE());
+        }
+        if (!(fl & AF_OLD)) {
+            em_cc(g, M_SETCC, CC_E, R(R_AX));
+            em(g, M_MOVZX, 1, R(R_AX), R(R_AX));
+            return;
+        }
+        break;
+    default:                            /* add, sub, and, or, xor, nand */
+        loop = g->nlab++;
+        gen(g, kid(g->L, n, 1));
+        push(g);
+        gen(g, kid(g->L, n, 0));
+        pop(g, R_CX);
+        em(g, M_MOV, 8, R(R_AX), R(R_SI));
+        em(g, M_MOV, b, M(R_SI, 0), R(R_AX));
+        em(g, M_LABEL, 8, LB(loop), NONE());
+        em(g, M_MOV, 8, R(R_AX), R(R_DX));
+        em(g, op == AT_ADD ? M_ADD : op == AT_SUB ? M_SUB : op == AT_OR ? M_OR :
+                  op == AT_XOR ? M_XOR : M_AND, 8, R(R_CX), R(R_DX));
+        if (op == AT_NAND)
+            em(g, M_NOT, 8, R(R_DX), NONE());
+        em(g, M_CMPXCHG, b, R(R_DX), M(R_SI, 0));
+        em_cc(g, M_JCC, CC_NE, LB(loop));
+        if (fl & AF_NEW)
+            em(g, M_MOV, 8, R(R_DX), R(R_AX));
+        break;
+    }
+    if (has_val)
+        canon(g, &ti);
+}
+
 static void gen_intrin(Gx *g, uint32_t n)
 {
     const TNode *t = nd(g->L, n);
     const char *nm = cident(g->c, t->sym);
     const BiRow *r;
-    TI raw, ti;
-    if (t->width == 2) {
-        const char *op = strncmp(nm, "__atomic_", 9) ? "" : nm + 9;
-        if (!strcmp(op, "load") || !strcmp(op, "store") || !strcmp(op, "exchange")) {
-            bool ex = !strcmp(op, "exchange"), ld = !strcmp(op, "load");
-            if (!atomic_width(g, kid(g->L, n, 0), &raw))
-                return;
-            if (ex || ld) {             /* where the old value goes */
-                gen(g, kid(g->L, n, ex ? 2 : 1));
-                push(g);
-            }
-            gen(g, kid(g->L, n, 0));
-            if (ld) {
-                load_at_rax(g, &raw);
-                pop(g, R_CX);
-                store_rcx(g, &raw);
-                return;
-            }
-            push(g);
-            gen(g, kid(g->L, n, 1));
-            load_at_rax(g, &raw);
-            pop(g, R_CX);
-            em(g, M_XCHG, raw.bytes, R(R_AX), M(R_CX, 0));
-            if (ex) {
-                pop(g, R_CX);
-                store_rcx(g, &raw);
-            }
-        } else if (!strcmp(op, "fetch_add") || !strcmp(op, "fetch_sub")) {
-            if (!atomic_width(g, kid(g->L, n, 0), &raw) || !tinfo(g, t->ty, &ti))
-                return;
-            gen(g, kid(g->L, n, 0));
-            push(g);
-            gen(g, kid(g->L, n, 1));
-            if (op[6] == 's')
-                em(g, M_NEG, 8, R(R_AX), NONE());
-            pop(g, R_CX);
-            em(g, M_XADD, raw.bytes, R(R_AX), M(R_CX, 0));
-            canon(g, &ti);
-        } else if (!strcmp(op, "compare_exchange") || !strcmp(op, "compare_exchange_n")) {
-            bool by_ptr = op[16] == 0;    /* the desired value comes by address */
-            int ok = g->nlab++;
-            if (!atomic_width(g, kid(g->L, n, 0), &raw))
-                return;
-            gen(g, kid(g->L, n, 1));    /* where the expected value is, and the old one goes on failure */
-            push(g);
-            gen(g, kid(g->L, n, 0));
-            push(g);
-            gen(g, kid(g->L, n, 2));
-            if (by_ptr)
-                load_at_rax(g, &raw);
-            em(g, M_MOV, 8, R(R_AX), R(R_DX));
-            pop(g, R_CX);
-            pop(g, R_SI);
-            em(g, M_MOV, raw.bytes, M(R_SI, 0), R(R_AX));
-            em(g, M_CMPXCHG, raw.bytes, R(R_DX), M(R_CX, 0));
-            em_cc(g, M_JCC, CC_E, LB(ok));
-            em(g, M_MOV, raw.bytes, R(R_AX), M(R_SI, 0));
-            em(g, M_LABEL, 8, LB(ok), NONE());
-            em_cc(g, M_SETCC, CC_E, R(R_AX));
-            em(g, M_MOVZX, 1, R(R_AX), R(R_AX));
-        } else {
-            unsup(g, "atomic built-in %s", nm);
-        }
-        return;
-    }
+    TI ti;
     if (!t->pun) {
         unsup(g, "built-in %s", nm);
         return;
     }
     r = &bi_rows[t->pun];
     switch (r->cls) {
+    case BIC_ATOMIC:
+        gen_atomic(g, n, r);
+        break;
     case BIC_EXPECT:
         if (nd(g->L, kid(g->L, n, 1))->op != TO_CONST) {
             unsup(g, "built-in %s", nm);

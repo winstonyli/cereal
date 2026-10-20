@@ -264,8 +264,8 @@ static bool enc_inst(const MInst *m, Enc *e)
     case M_XCHG:
         ins1(e, pfx, w8, rex_byte(w, a), w == 1 ? 0x86 : 0x87, hw(a->reg), b);
         break;
-    case M_XADD: case M_CMPXCHG: {
-        uint8_t o[2] = {0x0f, (uint8_t)((m->op == M_XADD ? 0xc0 : 0xb0) + (w == 1 ? 0 : 1))};
+    case M_CMPXCHG: {
+        uint8_t o[2] = {0x0f, (uint8_t)(0xb0 + (w == 1 ? 0 : 1))};
         if (w == 2)
             put(e, 0x66);
         ins(e, 0xf0, w8, rex_byte(w, a), o, 2, hw(a->reg), b);
