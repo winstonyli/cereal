@@ -99,3 +99,11 @@ Landed as planned, with these findings:
   `unreachable()` (needs `nullptr`), and the parked `_BitInt`, `#embed`, `__has_embed`.
 - Tests: `tests/check/c23_keywords`, `c23_errors`, `c17_c23_names`. Mutation (dropping `CKW_C23` from
   `bool`) fails `c17_c23_names`; suite 2293/0; zstd, Lua and libuv unchanged.
+
+## Step 2a result (2026-10-20)
+
+`()` as `(void)`: `func_is_proto` in `cdecl.c` (a list, or any list at year 2023) replaces `func_has_params`
+at the four places that mean "prototyped"; K&R lists stay unprototyped. gcc 15 agrees on `-Wstrict-prototypes`,
+`-Wold-style-definition`, too-many-arguments and conflicting types (`tests/check/c23_empty_params`).
+Adjacent digit separators (`1''2`) now match gcc 15 too (fast lexer path only; a number with a UCN or
+splice keeps the old behaviour).

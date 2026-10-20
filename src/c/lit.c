@@ -205,7 +205,9 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
                 buf[k++] = s[i];
                 continue;
             }
-            if (i && s[i - 1] == '.')
+            if (!msg && i + 1 < n && s[i + 1] == '\'')
+                msg = "adjacent digit separators";
+            else if (i && s[i - 1] == '.')
                 msg = "digit separator adjacent to decimal point";
             else if (!msg && (!i || i + 1 >= n ||
                               !(hex ? hexval((unsigned char)s[i - 1]) >= 0 &&

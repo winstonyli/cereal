@@ -37,3 +37,6 @@ c23_errors.c:12:11: error: invalid digit "8" in octal constant
 c23_errors.c:13:11: error: invalid digit "2" in binary constant
    13 | int a12 = 0b1'2;
       |           ^
+c23_errors.c:14:10: error: adjacent digit separators
+   14 | int a2 = 0x1''f;
+      |          ^

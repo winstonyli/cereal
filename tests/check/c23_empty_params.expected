@@ -1,0 +1,36 @@
+c23_empty_params.c:5:5: warning: function declaration isn't a prototype [-Wstrict-prototypes]
+    5 | int h(a, b) int a; int b; { return a + b; }
+      |     ^
+c23_empty_params.c:5:5: warning: old-style function definition [-Wold-style-definition]
+    5 | int h(a, b) int a; int b; { return a + b; }
+      |     ^
+c23_empty_params.c:7:18: warning: initialization of 'int (*)(int)' from incompatible pointer type 'int (*)(void)' [-Wincompatible-pointer-types]
+    7 | int (*fq)(int) = g;
+      |                  ^
+c23_empty_params.c:10:5: error: too many arguments to function 'f'
+   10 |     f(1);
+      |     ^
+c23_empty_params.c:3:5: note: declared here
+    3 | int f(void);
+      |     ^
+c23_empty_params.c:11:5: error: too many arguments to function 'g'
+   11 |     g(2);
+      |     ^
+c23_empty_params.c:4:5: note: declared here
+    4 | int g() { return 1; }
+      |     ^
+c23_empty_params.c:13:5: error: too many arguments to function 'fp'
+   13 |     fp(3);
+      |     ^
+c23_empty_params.c:20:5: error: conflicting types for 'm'; have 'int(int (*)(void))'
+   20 | int m(int (*)());
+      |     ^
+c23_empty_params.c:19:5: note: previous declaration of 'm' with type 'int(int (*)(int))'
+   19 | int m(int (*)(int));
+      |     ^
+c23_empty_params.c:23:5: error: conflicting types for 'tt'; have 'int(int)'
+   23 | int tt(int);
+      |     ^
+c23_empty_params.c:22:3: note: previous declaration of 'tt' with type 'T' {aka 'int(void)'}
+   22 | T tt;
+      |   ^

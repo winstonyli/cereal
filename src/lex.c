@@ -1514,9 +1514,12 @@ void lex_next(Lexer *L, Tok *t)
                 q++;
                 continue;
             }
-            if (d == '\'' && L->opt.c23 && (cl[(unsigned char)q[1]] & (C_ID | C_DIGIT))) {
-                q += 2;         /* C23 digit separator */
-                continue;
+            if (d == '\'' && L->opt.c23) {      /* C23 separator, or an adjacent pair */
+                int w = q[1] == '\'' ? 2 : 1;
+                if (cl[(unsigned char)q[w]] & (C_ID | C_DIGIT)) {
+                    q += w + 1;
+                    continue;
+                }
             }
             break;
         }

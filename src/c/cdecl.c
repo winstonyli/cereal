@@ -314,6 +314,13 @@ static bool func_has_params(Checker *c, uint32_t f)
     return r;
 }
 
+/* A prototype declarator: a parameter list, or any list from C23 on, where
+ * `()` means `(void)`. */
+static bool func_is_proto(Checker *c, uint32_t f)
+{
+    return c->opt.std_year >= 2023 || func_has_params(c, f);
+}
+
 static bool func_has_vla_unspec(Checker *c, uint32_t f)
 {
     uint32_t k = f, lo = cfirst(c, f);
@@ -352,7 +359,7 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
     Kids k;
     uint32_t j, parmno = 0;
     SrcLoc il = iloc(c, ltok);
-    bool empty = !func_has_params(c, f);
+    bool empty = !func_is_proto(c, f);
     *incomplete_def = false;
     if (funcdef && func_has_vla_unspec(c, f))
         cerror(c, il, "'[*]' not allowed in other than function prototype "
@@ -528,7 +535,7 @@ static void fill_func_type(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
     for (j = 0; j < pi.n; j++)
         pi.ps[j] = TYPE_UNQUAL(pi.ps[j]) | (all_quals(c, pi.ps[j]) & TQ_ATOMIC);
     fl = pi.flags;
-    if ((!func_has_params(c, f) && !(fl & TF_VARIADIC)) || pi.krlist || incomplete)
+    if ((!func_is_proto(c, f) && !(fl & TF_VARIADIC)) || pi.krlist || incomplete)
         fl |= TF_NOPROTO;
     if (fl & TF_NOPROTO) {
         if (pi.krlist || incomplete)
@@ -3460,7 +3467,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     fnode = funcdef_fnode(c, top);
     if (fnode != NO_NODE) {
         unsigned ff = cnode(c, fnode)->flags;
-        if (!(ff & NF_KR) && (func_has_params(c, fnode) || (ff & NF_VARIADIC)))
+        if (!(ff & NF_KR) && (func_is_proto(c, fnode) || (ff & NF_VARIADIC)))
             s.flags |= CSF_PROTO_DEF;
         else
             s.flags |= CSF_KR_DEF;
@@ -3554,7 +3561,7 @@ static void body_visit(Checker *c, uint32_t i)
     fnloc = inner != NO_NODE ? tloc(c, cnode(c, inner)->tok)
                              : csym(c, c->func_sym)->loc;
     krf = (cnode(c, f)->flags & NF_KR) != 0;
-    proto = !krf && (func_has_params(c, f) ||
+    proto = !krf && (func_is_proto(c, f) ||
                      (cnode(c, f)->flags & NF_VARIADIC));
     se = last_child(c, f);
     mark = vec_last(&c->scopes).log;
