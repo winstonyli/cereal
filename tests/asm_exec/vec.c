@@ -370,11 +370,12 @@ int shuf_const(int a, int b, int c, int d)
     vs8 u = {a, b, c, d, d, c, b, a}, v = {c, d, a, b, b, a, d, c};
     vi4 r = __builtin_shuffle(x, (vi4){3, 2, 1, 0}), s = __builtin_shuffle(x, y, (vi4){4, 1, 6, 3});
     vs8 w = __builtin_shuffle(u, v, (vs8){8, 0, 9, 1, 10, 2, 11, 3});
+    vi4 o1 = __builtin_shuffle(x, (vi4){5, -1, 9, 2}), o2 = __builtin_shuffle(x, y, (vi4){13, -1, 9, 2});   /* taken modulo the lanes in play */
     vi4 p = __builtin_shufflevector(x, y, 0, 5, 2, 7), q = __builtin_shufflevector(x, x, 3, 3, 1, 0);
     vi4 g = __builtin_shufflevector(x, y, 7, 6, 0, 1);
     vs8 z = __builtin_shufflevector(u, v, 15, 1, 8, 2, 9, 3, 10, 4);
     return hash((__m128i)r) ^ hash((__m128i)s) * 3 ^ hash((__m128i)w) * 5 ^ hash((__m128i)p) * 7 ^ hash((__m128i)q) * 9 ^
-           hash((__m128i)g) * 11 ^ hash((__m128i)z) * 13;
+           hash((__m128i)g) * 11 ^ hash((__m128i)z) * 13 ^ hash((__m128i)o1) * 15 ^ hash((__m128i)o2) * 17;
 }
 
 typedef float vf4 __attribute__((vector_size(16)));
@@ -553,4 +554,19 @@ int mm_rcp(int a, int b, int c, int d)      /* the CPU's approximations: gcc emi
     __m128 x = fk(a, b, c, d), y = _mm_set_ps(a * 0.37f, b / 7.0f, c + 0.5f, d * 1e5f);
     return fh(_mm_rcp_ps(x)) ^ fh(_mm_rcp_ss(x)) * 3 ^ fh(_mm_rsqrt_ps(x)) * 5 ^ fh(_mm_rsqrt_ss(x)) * 7 ^
            fh(_mm_rcp_ps(y)) * 11 ^ fh(_mm_rsqrt_ps(y)) * 13 ^ fh(_mm_rsqrt_ss(y)) * 17;
+}
+
+int incdec(int a, int b, int c, int d)      /* ++ and -- on vectors: every lane plus or minus 1 */
+{
+    v4si x = {a, b, c, d}, y, z;
+    v4sf f = {a & 1023, b & 1023, c & 1023, d & 1023};
+    y = x++;
+    x++;
+    ++x;
+    z = --x;
+    x--;
+    f++;
+    f++;
+    --f;
+    return fold4(x) ^ fold4(y) * 3 ^ fold4(z) * 5 ^ (int)(f[0] + f[1] * 3 + f[2] * 5 + f[3] * 7);
 }

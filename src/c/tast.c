@@ -177,7 +177,7 @@ static bool fset(El *e, uint32_t idx, TypeId t, long double v)
     return true;
 }
 
-static uint32_t fconst(El *e, TypeId t, long double v, SrcLoc loc)
+uint32_t fconst(El *e, TypeId t, long double v, SrcLoc loc)
 {
     uint32_t id = mk(e, TO_FCONST, unqual(e->c, t), loc, 0, 0, 0, NULL, 0);
     return fset(e, id, unqual(e->c, t), v) ? id : TN;
@@ -591,9 +591,10 @@ static uint32_t incdec(El *e, uint32_t i, uint32_t x, int punct, bool post)
     uint32_t l1, l2, a, one, b, v, st, ka[2], setup;
     Once o;
     SrcLoc loc = cnode_loc(c, i);
+    VOp oa = {0};
     x = strip_paren(c, x);
     xt = unqual(c, c->ty[x]);
-    if (!is_ptr(c, xt) && !ok_int(e, xt) && !is_flt(c, xt))
+    if (!is_ptr(c, xt) && !ok_int(e, xt) && !is_flt(c, xt) && tkind(c, xt) != TY_VECTOR)
         return tunsup(e, "%s", why_type(e, xt));
     if (!once_init(e, x, &o, &setup))
         return TN;
@@ -605,6 +606,10 @@ static uint32_t incdec(El *e, uint32_t i, uint32_t x, int punct, bool post)
         a = load(e, l2);
         one = cnst(e, ptrdiff_ty(e), 1, loc);
         v = ptradd(e, xt, a, one, punct == P_DEC, loc);
+    } else if (tkind(c, xt) == TY_VECTOR) {        /* every lane plus or minus 1 */
+        U32Vec vs = {0};
+        v = vop_val(e, load(e, l2), xt, &oa, &vs, loc) ? vec_un(e, xt, punct == P_INC ? P_PLUS : P_MINUS, true, &oa, loc, &vs) : TN;
+        vec_free(&vs);
     } else {
         op = common_type(c, promoted(c, x), TYPE_B(INT));
         a = conv(e, load(e, l2), op, loc);
@@ -622,6 +627,13 @@ static uint32_t incdec(El *e, uint32_t i, uint32_t x, int punct, bool post)
     ka[0] = l1;
     ka[1] = v;
     st = mk(e, TO_STORE, xt, loc, 0, 0, 0, ka, 2);
+    if (post && tkind(c, xt) == TY_VECTOR) {       /* the old value is the temporary the lanes were read from */
+        U32Vec ss = {0};
+        vec_push(&ss, mk(e, TO_EXPRSTMT, 0, loc, 0, 0, 0, &st, 1));
+        v = vec_wrap(e, load(e, mk(e, TO_TMP, oa.st, loc, oa.tmp, 0, 0, NULL, 0)), xt, &ss, loc);
+        vec_free(&ss);
+        return once_wrap(e, setup, v);
+    }
     return once_wrap(e, setup, post ? mk(e, TO_POST, xt, loc, 0, 0, 0, &st, 1) : st);
 }
 

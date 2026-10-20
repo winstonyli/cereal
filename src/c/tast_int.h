@@ -117,8 +117,14 @@ uint32_t vec_bits(El *e, uint32_t k, TypeId to, SrcLoc loc);
 uint32_t vec_convert(El *e, uint32_t i, uint32_t a, SrcLoc loc);
 uint32_t vec_shuffle(El *e, uint32_t i, const uint32_t *k, uint32_t nk, bool fixed, SrcLoc loc);
 TypeId ia_ty(int l);
-uint32_t ia_bin(El *e, int p, TypeId t, uint32_t a, uint32_t b, SrcLoc loc);
-uint32_t ia_cmp(El *e, int p, uint32_t a, uint32_t b, SrcLoc loc);
+typedef uint32_t (*LaneFn)(El *e, void *ctx, uint32_t j);
+uint32_t vmap(El *e, TypeId vt, SrcLoc loc, const U32Vec *setup, LaneFn f, void *ctx);
+uint32_t vec_un(El *e, TypeId vt, int p, bool step, const VOp *oa, SrcLoc loc, U32Vec *setup);
+uint32_t fconst(El *e, TypeId t, long double v, SrcLoc loc);
+uint32_t vl_bin(El *e, int p, TypeId t, uint32_t a, uint32_t b, SrcLoc loc);
+uint32_t vl_un(El *e, int p, TypeId t, uint32_t a, SrcLoc loc);
+uint32_t vl_mask(El *e, int p, TypeId t, uint32_t a, uint32_t b, SrcLoc loc);
+uint32_t vl_cmp(El *e, int p, uint32_t a, uint32_t b, SrcLoc loc);
 uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, SrcLoc loc);
 
 #endif

@@ -153,9 +153,71 @@ uint32_t vec_make(El *e, TypeId vt, SrcLoc loc, const uint32_t *lanes, uint32_t 
     return vec_wrap(e, load(e, v), unqual(c, vt), setup, loc);
 }
 
+uint32_t vl_bin(El *e, int p, TypeId t, uint32_t a, uint32_t b, SrcLoc loc)
+{
+    uint32_t ka[2];
+    ka[0] = a;
+    ka[1] = b;
+    return a == TN || b == TN ? TN : mk(e, TO_BINOP, t, loc, 0, 0, (unsigned)p, ka, 2);
+}
+
+uint32_t vl_un(El *e, int p, TypeId t, uint32_t a, SrcLoc loc)
+{
+    return a == TN ? TN : mk(e, TO_UNOP, t, loc, 0, 0, (unsigned)p, &a, 1);
+}
+
+/* a p b as an int. */
+uint32_t vl_cmp(El *e, int p, uint32_t a, uint32_t b, SrcLoc loc)
+{
+    uint32_t ka[2];
+    ka[0] = a;
+    ka[1] = b;
+    return a == TN || b == TN ? TN : mk(e, TO_CMP, TYPE_B(INT), loc, 0, 0, (unsigned)p, ka, 2);
+}
+
+/* -(a p b) in type t: all ones when the comparison holds, else 0 */
+uint32_t vl_mask(El *e, int p, TypeId t, uint32_t a, uint32_t b, SrcLoc loc)
+{
+    uint32_t m = vl_cmp(e, p, a, b, loc);
+    return m == TN ? TN : vl_un(e, P_MINUS, t, conv(e, m, t, loc), loc);
+}
+
+/* The vector of type vt whose lane j is f (e, ctx, j), after the statements in setup.  Every
+ * lane-wise operation below, and the x86 intrinsics, is one. */
+uint32_t vmap(El *e, TypeId vt, SrcLoc loc, const U32Vec *setup, LaneFn f, void *ctx)
+{
+    TypeId et;
+    uint32_t n, j, id, *lanes;
+    if (!e->infunc)
+        return tunsup(e, "vector operation outside a function");
+    if (!vec_dims(e, vt, &et, &n))
+        return TN;
+    lanes = xmalloc((n ? n : 1) * sizeof *lanes);
+    for (j = 0; j < n; j++)
+        lanes[j] = f(e, ctx, j);
+    id = vec_make(e, vt, loc, lanes, n, setup);
+    free(lanes);
+    return id;
+}
+
 static bool is_relop(int p)
 {
     return p == P_LT || p == P_GT || p == P_LE || p == P_GE || p == P_EQEQ || p == P_NE;
+}
+
+typedef struct VBin {
+    int p;
+    TypeId ot, rl;              /* the lane type of the operation, and of the result */
+    const VOp *a, *b;
+    SrcLoc loc;
+} VBin;
+
+static uint32_t bin_lane(El *e, void *ctx, uint32_t j)
+{
+    const VBin *x = ctx;
+    uint32_t a = conv(e, vop_lane(e, x->a, j, x->loc), x->ot, x->loc);
+    uint32_t b = conv(e, vop_lane(e, x->b, j, x->loc), x->ot, x->loc);
+    return is_relop(x->p) ? vl_mask(e, x->p, x->rl, a, b, x->loc) : vl_bin(e, x->p, x->ot, a, b, x->loc);
 }
 
 /* a op b on the lanes of the operands oa and ob into a vector of type vt: the relational
@@ -163,32 +225,16 @@ static bool is_relop(int p)
 uint32_t vec_op(El *e, int p, TypeId vt, const VOp *oa, const VOp *ob, SrcLoc loc,
                        U32Vec *setup)
 {
-    TypeId rl, ot;
-    uint32_t n, j, id;
-    uint32_t *lanes;
-    if (!e->infunc)
-        return tunsup(e, "vector operation outside a function");
-    if (!vec_dims(e, vt, &rl, &n))
+    VBin x;
+    uint32_t n;
+    if (!vec_dims(e, vt, &x.rl, &n))
         return TN;
-    ot = is_relop(p) ? oa->et : rl;       /* the lanes are the operands' for a comparison, the result's else */
-    lanes = xmalloc((n ? n : 1) * sizeof *lanes);
-    for (j = 0; j < n; j++) {
-        uint32_t ka[2];
-        ka[0] = conv(e, vop_lane(e, oa, j, loc), ot, loc);
-        ka[1] = conv(e, vop_lane(e, ob, j, loc), ot, loc);
-        if (ka[0] == TN || ka[1] == TN) {
-            lanes[j] = TN;
-        } else if (is_relop(p)) {
-            uint32_t m = mk(e, TO_CMP, TYPE_B(INT), loc, 0, 0, (unsigned)p, ka, 2);
-            m = conv(e, m, rl, loc);
-            lanes[j] = mk(e, TO_UNOP, rl, loc, 0, 0, P_MINUS, &m, 1);
-        } else {
-            lanes[j] = mk(e, TO_BINOP, ot, loc, 0, 0, (unsigned)p, ka, 2);
-        }
-    }
-    id = vec_make(e, vt, loc, lanes, n, setup);
-    free(lanes);
-    return id;
+    x.p = p;
+    x.ot = is_relop(p) ? oa->et : x.rl;     /* the lanes are the operands' for a comparison, the result's else */
+    x.a = oa;
+    x.b = ob;
+    x.loc = loc;
+    return vmap(e, vt, loc, setup, bin_lane, &x);
 }
 
 /* a op b where an operand or the result is a vector (the checker's nodes a and b). */
@@ -213,36 +259,52 @@ uint32_t vec_binary(El *e, uint32_t i, int p, uint32_t a, uint32_t b, SrcLoc loc
     return id;
 }
 
+typedef struct VUn {
+    int p;
+    const VOp *a;
+    bool step;                  /* a + 1 (P_PLUS) or a - 1 (P_MINUS) instead of the unary operator */
+    SrcLoc loc;
+} VUn;
+
+static uint32_t un_lane(El *e, void *ctx, uint32_t j)
+{
+    const VUn *x = ctx;
+    TypeId t = x->a->et;
+    uint32_t v = vop_lane(e, x->a, j, x->loc);
+    if (x->step)
+        return vl_bin(e, x->p, t, v, is_flt(e->c, t) ? fconst(e, t, 1, x->loc) : cnst(e, t, 1, x->loc), x->loc);
+    return vl_un(e, x->p, t, v, x->loc);
+}
+
+/* p oa on every lane (-, ~), or with step the value ++ (P_PLUS) or -- (P_MINUS) stores: oa + 1, oa - 1. */
+uint32_t vec_un(El *e, TypeId vt, int p, bool step, const VOp *oa, SrcLoc loc, U32Vec *setup)
+{
+    VUn x;
+    x.p = p;
+    x.a = oa;
+    x.step = step;
+    x.loc = loc;
+    return vmap(e, vt, loc, setup, un_lane, &x);
+}
+
 /* -v, ~v, +v. */
 uint32_t vec_unary(El *e, uint32_t i, int p, uint32_t a, SrcLoc loc)
 {
     Checker *c = e->c;
-    TypeId vt = unqual(c, c->ty[i]), et;
+    TypeId vt = unqual(c, c->ty[i]);
     U32Vec setup = {0};
     VOp oa;
-    uint32_t n, j, id = TN, *lanes;
+    uint32_t id = TN;
     if (p == P_PLUS)
         return conv(e, rv(e, a), vt, loc);
     if ((p != P_MINUS && p != P_TILDE) || tkind(c, vt) != TY_VECTOR)
         return tunsup(e, "vector operator");
-    if (!e->infunc)
-        return tunsup(e, "vector operation outside a function");
-    if (!vop_node(e, a, vt, &oa, &setup, loc) || !vec_dims(e, vt, &et, &n)) {
-        vec_free(&setup);
-        return TN;
-    }
-    lanes = xmalloc((n ? n : 1) * sizeof *lanes);
-    for (j = 0; j < n; j++) {
-        uint32_t x = vop_lane(e, &oa, j, loc);
-        lanes[j] = x == TN ? TN : mk(e, TO_UNOP, oa.et, loc, 0, 0, (unsigned)p, &x, 1);
-    }
-    id = vec_make(e, vt, loc, lanes, n, &setup);
-    free(lanes);
+    if (vop_node(e, a, vt, &oa, &setup, loc))
+        id = vec_un(e, vt, p, false, &oa, loc, &setup);
     vec_free(&setup);
     return id;
 }
 
-/* __builtin_convertvector (v, type): every lane converted to the lane type of type. */
 /* A cast between a vector and an integer or float of the same size names the same bytes: the vector
  * read as one lane of the scalar type, or the scalar made the only lane of such a vector. */
 bool vec_bitcast(El *e, TypeId to, uint32_t k)
@@ -276,25 +338,32 @@ uint32_t vec_bits(El *e, uint32_t k, TypeId to, SrcLoc loc)
     return id;
 }
 
+typedef struct VConv {
+    const VOp *a;
+    TypeId et;
+    SrcLoc loc;
+} VConv;
+
+static uint32_t conv_lane(El *e, void *ctx, uint32_t j)
+{
+    const VConv *x = ctx;
+    return conv(e, vop_lane(e, x->a, j, x->loc), x->et, x->loc);
+}
+
+/* __builtin_convertvector (v, type): every lane converted to the lane type of type. */
 uint32_t vec_convert(El *e, uint32_t i, uint32_t a, SrcLoc loc)
 {
     Checker *c = e->c;
-    TypeId vt = unqual(c, c->ty[i]), et, st;
+    TypeId vt = unqual(c, c->ty[i]);
     U32Vec setup = {0};
     VOp oa;
-    uint32_t n, j, id = TN, *lanes;
-    if (!e->infunc)
-        return tunsup(e, "vector operation outside a function");
-    st = rvt(c, a);
-    if (!vec_dims(e, vt, &et, &n) || !vop_node(e, a, st, &oa, &setup, loc)) {
-        vec_free(&setup);
-        return TN;
+    VConv x;
+    uint32_t n, id = TN;
+    if (vec_dims(e, vt, &x.et, &n) && vop_node(e, a, rvt(c, a), &oa, &setup, loc)) {
+        x.a = &oa;
+        x.loc = loc;
+        id = vmap(e, vt, loc, &setup, conv_lane, &x);
     }
-    lanes = xmalloc((n ? n : 1) * sizeof *lanes);
-    for (j = 0; j < n; j++)
-        lanes[j] = conv(e, vop_lane(e, &oa, j, loc), et, loc);
-    id = vec_make(e, vt, loc, lanes, n, &setup);
-    free(lanes);
     vec_free(&setup);
     return id;
 }
@@ -311,47 +380,90 @@ static uint32_t vop_dyn(El *e, const VOp *o, uint32_t ix, SrcLoc loc)
                            o->et, loc));
 }
 
+typedef struct VShuf {
+    VOp a, b, m;                /* the sources, and the mask (unused when the indices are constants) */
+    const uint32_t *cix;        /* constant indices, one per lane (a lane of b from n up), or NULL */
+    uint32_t n;                 /* the lanes of a source */
+    bool two;
+    SrcLoc loc;
+} VShuf;
+
+/* Mask lane j, reduced to the lanes in play. */
+static uint32_t shuf_ix(El *e, const VShuf *x, uint32_t j)
+{
+    TypeId it = TYPE_B(INT);
+    return vl_bin(e, P_AMP, it, conv(e, vop_lane(e, &x->m, j, x->loc), it, x->loc),
+                  cnst(e, it, x->two ? 2 * x->n - 1 : x->n - 1, x->loc), x->loc);
+}
+
+static uint32_t shuf_lane(El *e, void *ctx, uint32_t j)
+{
+    const VShuf *x = ctx;
+    TypeId it = TYPE_B(INT);
+    SrcLoc loc = x->loc;
+    if (x->cix)
+        return vop_lane(e, x->cix[j] >= x->n ? &x->b : &x->a, x->cix[j] % x->n, loc);
+    if (x->two) {
+        uint32_t ka[3];
+        ka[0] = vl_cmp(e, P_LT, shuf_ix(e, x, j), cnst(e, it, x->n, loc), loc);
+        ka[1] = vop_dyn(e, &x->a, shuf_ix(e, x, j), loc);
+        ka[2] = vop_dyn(e, &x->b, vl_bin(e, P_MINUS, it, shuf_ix(e, x, j), cnst(e, it, x->n, loc), loc), loc);
+        return ka[0] == TN || ka[1] == TN || ka[2] == TN ? TN : mk(e, TO_COND, x->a.et, loc, 0, 0, 0, ka, 3);
+    }
+    return vop_dyn(e, &x->a, shuf_ix(e, x, j), loc);
+}
+
+/* The indices of a mask that is a compound literal of one integer constant per lane, reduced to
+ * mask, in ix[0 .. n); false for any other mask. */
+static bool shuf_consts(Checker *c, uint32_t m, uint32_t n, uint64_t mask, uint32_t *ix)
+{
+    uint32_t cl[2], kid[64], j;
+    m = strip_paren(c, m);
+    if (n > 64 || ntag(c, m) != N_COMPOUND_LIT || nkids(c, m, cl, 2) < 2 || ntag(c, cl[1]) != N_INIT_LIST ||
+        nkids(c, cl[1], NULL, 0) != n)
+        return false;
+    nkids(c, cl[1], kid, n);
+    for (j = 0; j < n; j++) {
+        if (c->ck[kid[j]] != K_ICE)
+            return false;
+        ix[j] = (uint32_t)((uint64_t)cexpr_sval(c, kid[j]) & mask);
+    }
+    return true;
+}
+
 /* __builtin_shuffle (v, [w,] mask) and __builtin_shufflevector (v, w, index...): lane j of the
  * result is a lane of v, or of w, named by the mask's lane j (taken modulo the lanes in play) or by
- * the constant index j.  k[1 ...] are the checker's argument nodes. */
+ * the constant index j.  A constant mask or index list is read at compile time; any other mask is
+ * read through the vector's memory.  k[1 ...] are the checker's argument nodes. */
 uint32_t vec_shuffle(El *e, uint32_t i, const uint32_t *k, uint32_t nk, bool fixed, SrcLoc loc)
 {
     Checker *c = e->c;
-    TypeId rt = unqual(c, c->ty[i]), et, ret, it = TYPE_B(INT);
-    uint32_t n, nr, j, id = TN, *lanes;
-    bool two = fixed || nk == 4;
-    VOp a = {0}, b = {0}, m = {0};
+    TypeId rt = unqual(c, c->ty[i]), et, ret;
+    uint32_t nr, id = TN, cix[64], j;
+    VShuf x = {0};
     U32Vec setup = {0};
-    if (!vop_node(e, k[1], rvt(c, k[1]), &a, &setup, loc) || (two && !vop_node(e, k[2], rvt(c, k[2]), &b, &setup, loc)) ||
-        (!fixed && !vop_node(e, k[nk - 1], rvt(c, k[nk - 1]), &m, &setup, loc)) || !vec_dims(e, a.vt, &et, &n) ||
+    x.two = fixed || nk == 4;
+    x.loc = loc;
+    if (!vop_node(e, k[1], rvt(c, k[1]), &x.a, &setup, loc) ||
+        (x.two && !vop_node(e, k[2], rvt(c, k[2]), &x.b, &setup, loc)) || !vec_dims(e, x.a.vt, &et, &x.n) ||
         !vec_dims(e, rt, &ret, &nr))
         goto done;
-    lanes = xmalloc(nr * sizeof *lanes);
-    for (j = 0; j < nr; j++) {
-        if (fixed) {                        /* an index of -1 is any lane */
-            int64_t ix = cexpr_sval(c, k[3 + j]);
-            ix = ix < 0 ? 0 : ix;
-            lanes[j] = vop_lane(e, ix >= (int64_t)n ? &b : &a, (uint32_t)(ix % n), loc);
-        } else {
-            uint64_t mask = two ? 2 * n - 1 : n - 1;
-#define SHIX() ia_bin(e, P_AMP, it, conv(e, vop_lane(e, &m, j, loc), it, loc), cnst(e, it, mask, loc), loc)
-            if (two) {
-                uint32_t ka[3];
-                ka[0] = ia_cmp(e, P_LT, SHIX(), cnst(e, it, n, loc), loc);
-                ka[1] = vop_dyn(e, &a, SHIX(), loc);
-                ka[2] = vop_dyn(e, &b, ia_bin(e, P_MINUS, it, SHIX(), cnst(e, it, n, loc), loc), loc);
-                lanes[j] = ka[0] == TN || ka[1] == TN || ka[2] == TN ? TN : mk(e, TO_COND, a.et, loc, 0, 0, 0, ka, 3);
-            } else {
-                lanes[j] = vop_dyn(e, &a, SHIX(), loc);
-            }
-#undef SHIX
-        }
-        if (lanes[j] == TN)
-            goto fail;
+    if (nr > 64) {
+        tunsup(e, "shuffle of more than 64 lanes");
+        goto done;
     }
-    id = vec_make(e, rt, loc, lanes, nr, &setup);
-fail:
-    free(lanes);
+    if (fixed) {                    /* an index of -1 is any lane */
+        for (j = 0; j < nr; j++) {
+            int64_t ix = cexpr_sval(c, k[3 + j]);
+            cix[j] = ix < 0 ? 0 : (uint32_t)ix;
+        }
+        x.cix = cix;
+    } else if (!fixed && shuf_consts(c, k[nk - 1], nr, x.two ? 2 * x.n - 1 : x.n - 1, cix)) {
+        x.cix = cix;
+    } else if (fixed || !vop_node(e, k[nk - 1], rvt(c, k[nk - 1]), &x.m, &setup, loc)) {
+        goto done;
+    }
+    id = vmap(e, rt, loc, &setup, shuf_lane, &x);
 done:
     vec_free(&setup);
     return id;
