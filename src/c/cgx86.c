@@ -1468,6 +1468,24 @@ static void gen_intrin(Gx *g, uint32_t n)
         if (r->cls == BIC_CLZ)          /* the index of the top bit, from the top */
             em(g, M_XOR, 4, I(r->arg * 8 - 1), R(R_AX));
         break;
+    case BIC_FFS: {                     /* bsf, or -1 when the operand is 0, plus 1 */
+        MInst mi;
+        gen(g, kid(g->L, n, 0));
+        em(g, M_BSF, r->arg, R(R_AX), R(R_AX));
+        em(g, M_MOV, 4, I(-1), R(R_CX));
+        memset(&mi, 0, sizeof mi);
+        mi.op = M_CMOV;
+        mi.w = 4;
+        mi.cc = CC_E;
+        mi.a = R(R_CX);
+        mi.b = R(R_AX);
+        vec_push(&g->f.code, mi);
+        em(g, M_ADD, 4, I(1), R(R_AX));
+        break;
+    }
+    case BIC_RT:
+        gen_call(g, n, bi_helper[r->arg]);
+        break;
     case BIC_SQRT: case BIC_RCP: case BIC_RSQRT:    /* rcp, rsqrt: the CPU's approximations */
         gen(g, kid(g->L, n, 0));
         em(g, r->cls == BIC_SQRT ? M_FSQRT : r->cls == BIC_RCP ? M_FRCP : M_FRSQRT, r->arg,

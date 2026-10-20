@@ -95,6 +95,10 @@ int lz32(unsigned x) { return __builtin_clz(x | 1); }
 int lz64(unsigned long long x) { return __builtin_clzll(x | 1) + __builtin_clzl(x | 2); }
 int tz32(unsigned x) { return __builtin_ctz(x | 0x80000000u); }
 int tz64(unsigned long long x) { return __builtin_ctzll(x | (1ull << 63)) + __builtin_ctzl(x | (1ull << 62)); }
+int ffs32(int x) { return __builtin_ffs(x) + 100 * __builtin_ffs(x & 0) + 10000 * __builtin_ffs(x << 7); }
+int ffs64(long long x) { return __builtin_ffsll(x) + 100 * __builtin_ffsl(x << 40) + 10000 * __builtin_ffsl(0 * x); }
+int pop32(unsigned x) { return __builtin_popcount(x) + 100 * __builtin_parity(x) + 10000 * __builtin_popcount(x & 0); }
+int pop64(unsigned long long x) { return __builtin_popcountll(x) + 100 * __builtin_parityll(x) + 10000 * __builtin_popcountl(x >> 3) + 1000000 * __builtin_parityl(x >> 5); }
 
 /* asm with operands: cpuid (leaf 0 gives the vendor's largest leaf; its value is
  * the same in both builds), and an empty guard */

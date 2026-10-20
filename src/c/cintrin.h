@@ -16,6 +16,8 @@ enum {
     BIC_HUGE,       /* an infinity; arg: the float's width */
     BIC_BSWAP,      /* arg: the width in bytes */
     BIC_CLZ, BIC_CTZ,   /* arg: the width in bytes */
+    BIC_FFS,        /* arg: the width in bytes */
+    BIC_RT,         /* a call of a libgcc helper; arg: its index in bi_helper */
     BIC_SQRT, BIC_RCP, BIC_RSQRT,   /* arg: the float's width */
     BIC_SFENCE, BIC_LFENCE, BIC_MFENCE, BIC_PAUSE, BIC_UD2,
     BIC_CLFLUSH, BIC_STMXCSR, BIC_LDMXCSR,
@@ -30,6 +32,11 @@ enum {
     X("bswap16", BIC_BSWAP, 2) X("bswap32", BIC_BSWAP, 4) X("bswap64", BIC_BSWAP, 8) \
     X("clz", BIC_CLZ, 4) X("clzl", BIC_CLZ, 8) X("clzll", BIC_CLZ, 8)           \
     X("ctz", BIC_CTZ, 4) X("ctzl", BIC_CTZ, 8) X("ctzll", BIC_CTZ, 8)           \
+    X("ffs", BIC_FFS, 4) X("ffsl", BIC_FFS, 8) X("ffsll", BIC_FFS, 8)           \
+    X("ffsimax", BIC_FFS, 8)                                                    \
+    X("popcount", BIC_RT, 0) X("popcountl", BIC_RT, 0) X("popcountll", BIC_RT, 0) \
+    X("popcountimax", BIC_RT, 0) X("parity", BIC_RT, 1) X("parityl", BIC_RT, 1) \
+    X("parityll", BIC_RT, 1) X("parityimax", BIC_RT, 1)                         \
     X("sqrt", BIC_SQRT, 8) X("sqrtf", BIC_SQRT, 4)                              \
     X("ia32_rcpss", BIC_RCP, 4) X("ia32_rsqrtss", BIC_RSQRT, 4)                 \
     X("ia32_sfence", BIC_SFENCE, 0) X("ia32_lfence", BIC_LFENCE, 0)             \
@@ -43,6 +50,9 @@ enum {
     X("strcat", BIC_LIBC, 0) X("strncat", BIC_LIBC, 0) X("strchr", BIC_LIBC, 0) \
     X("strrchr", BIC_LIBC, 0) X("strstr", BIC_LIBC, 0) X("abs", BIC_LIBC, 0)    \
     X("labs", BIC_LIBC, 0) X("llabs", BIC_LIBC, 0)
+
+/* What gcc calls for the bit counts the CPU baseline has no instruction for. */
+static const char *const bi_helper[] = {"__popcountdi2", "__paritydi2"};
 
 typedef struct BiRow {
     const char *name;
