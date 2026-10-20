@@ -9,6 +9,8 @@ measurements. The gcc-13 parity work is at a plateau (STATUS.md).
 ## Where it stands
 - Refreshed 2026-10-17; the numbers and the gate are in [STATUS.md](STATUS.md). The tracks below keep
   their original text as history; DONE marks what has landed.
+- Language coverage (C89 to C23, GNU C, the preprocessor extras): [C_STANDARD.md](C_STANDARD.md), a
+  probe-by-probe matrix from `tools/c_survey.py`; its gaps are rows of PARKED.md.
 - Driver: `-E`, `-fsyntax-only`/`check`, `parse`, `lint`, `index`, `query`, `fix`, `lsp`, `index-summary`.
   `check --compile-commands`, `@file`, the `-M` family and `-imacros` work (A4). No `-c`/`-S`, no code
   generator.
