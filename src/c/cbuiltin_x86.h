@@ -112,6 +112,8 @@ static const IaBt cbuiltin_x86_tab[] = {
     /* square roots, and the converts that round as MXCSR says (to nearest even) */
     IA_ROW("ia32_sqrtps", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 0), IA_ROW("ia32_sqrtss", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 1),
     IA_ROW("ia32_sqrtpd", IA_V2DF "|" IA_V2DF, IAK_SQRT, IAL_F64, 0), IA_ROW("ia32_sqrtsd", IA_V2DF "|" IA_V2DF, IAK_SQRT, IAL_F64, 1),
+    IA_ROW("ia32_rcpps", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 2), IA_ROW("ia32_rcpss", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 3),
+    IA_ROW("ia32_rsqrtps", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 4), IA_ROW("ia32_rsqrtss", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 5),
     IA_ROW("ia32_cvtss2si", "int|" IA_V4SF, IAK_EXT, IAL_F32, 1), IA_ROW("ia32_cvtss2si64", "long long int|" IA_V4SF, IAK_EXT, IAL_F32, 1),
     IA_ROW("ia32_cvtsd2si", "int|" IA_V2DF, IAK_EXT, IAL_F64, 1), IA_ROW("ia32_cvtsd2si64", "long long int|" IA_V2DF, IAK_EXT, IAL_F64, 1),
     IA_ROW("ia32_cvtps2dq", IA_V4SI "|" IA_V4SF, IAK_CVT, IAL_F32, 4 | 8), IA_ROW("ia32_cvtpd2dq", IA_V4SI "|" IA_V2DF, IAK_CVT, IAL_F64, 2 | 8),

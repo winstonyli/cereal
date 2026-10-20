@@ -547,3 +547,10 @@ int sqrt_scalar(int a, int b, int c, int d)       /* __builtin_sqrt[f] is the in
     union { float f; int i; } v = {__builtin_sqrtf(g)};
     return (int)__builtin_sqrt(x * 3) ^ (int)(__builtin_sqrtf(f) * 16) ^ (int)u.l ^ (int)(u.l >> 32) * 3 ^ v.i * 5;
 }
+
+int mm_rcp(int a, int b, int c, int d)      /* the CPU's approximations: gcc emits the same instructions */
+{
+    __m128 x = fk(a, b, c, d), y = _mm_set_ps(a * 0.37f, b / 7.0f, c + 0.5f, d * 1e5f);
+    return fh(_mm_rcp_ps(x)) ^ fh(_mm_rcp_ss(x)) * 3 ^ fh(_mm_rsqrt_ps(x)) * 5 ^ fh(_mm_rsqrt_ss(x)) * 7 ^
+           fh(_mm_rcp_ps(y)) * 11 ^ fh(_mm_rsqrt_ps(y)) * 13 ^ fh(_mm_rsqrt_ss(y)) * 17;
+}

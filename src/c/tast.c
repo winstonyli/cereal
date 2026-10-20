@@ -1410,9 +1410,10 @@ static uint32_t ia_lane(El *e, Ia *x, uint32_t j)
         return load(e, deref_t(e, ptradd(e, pt, load(e, ia_tmp(e, x->cnt, pt, loc)), cnst(e, TYPE_B(INT), j & 1, loc), false, loc), L, loc));
     }
     case IAK_SQRT:                      /* the square root of every lane (arg 1: lane 0 only, the rest of a) */
-        if (arg && j)
+        if ((arg & 1) && j)
             return ia_rd(e, x, 0, j, L);
-        return ia_fn1(e, r->lane == IAL_F32 ? "__builtin_sqrtf" : "__builtin_sqrt", L, ia_rd(e, x, 0, j, L), loc);
+        return ia_fn1(e, arg >> 1 == 1 ? "__builtin_ia32_rcpss" : arg >> 1 == 2 ? "__builtin_ia32_rsqrtss" :
+                         r->lane == IAL_F32 ? "__builtin_sqrtf" : "__builtin_sqrt", L, ia_rd(e, x, 0, j, L), loc);
     case IAK_CVTPI:                     /* cvtpi2ps: lanes 0, 1 from the two ints of b, the rest of a */
         return j < 2 ? conv(e, ia_rd(e, x, 1, j, x->b.et), x->rl, loc) : ia_rd(e, x, 0, j, x->rl);
     case IAK_PCMPGT:                    /* ones where a > b */

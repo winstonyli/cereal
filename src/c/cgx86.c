@@ -1471,6 +1471,11 @@ static void gen_intrin(Gx *g, uint32_t n)
         em(g, M_FSQRT, nm[4] ? 4 : 8, R(R_X0), R(R_X0));
         return;
     }
+    if (!strcmp(nm, "ia32_rcpss") || !strcmp(nm, "ia32_rsqrtss")) {     /* the approximations, as the CPU computes them */
+        gen(g, kid(g->L, n, 0));
+        em(g, nm[5] == 'r' && nm[6] == 'c' ? M_FRCP : M_FRSQRT, 4, R(R_X0), R(R_X0));
+        return;
+    }
     if (!strcmp(nm, "ia32_cvtsd2si64") || !strcmp(nm, "ia32_cvtss2si64")) {    /* rounds as MXCSR says */
         gen(g, kid(g->L, n, 0));
         em(g, M_CVTF2IR, nm[8] == 's' && nm[9] == 's' ? 4 : 8, R(R_X0), R(R_AX));

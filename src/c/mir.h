@@ -43,7 +43,7 @@ typedef struct MOp {
     X(REPMOVSB, "rep movsb") X(REPSTOSB, "rep stosb")   /* %rcx bytes, %rsi to %rdi / %al to %rdi */ \
     /* scalar SSE: w is the float's width (4: ss, 8: sd) */                     \
     X(FMOV, "mov") X(FADD, "add") X(FSUB, "sub") X(FMUL, "mul")                 \
-    X(FDIV, "div") X(FCMP, "ucomi") X(FSQRT, "sqrt")                                           \
+    X(FDIV, "div") X(FCMP, "ucomi") X(FSQRT, "sqrt") X(FRCP, "rcp") X(FRSQRT, "rsqrt")                                           \
     X(CVTI2F, "cvtsi2")    /* 64-bit integer a to float b */                    \
     X(CVTF2I, "cvtt")      /* float a (truncated) to 64-bit integer b */        \
     X(CVTF2IR, "cvt")      /* float a (rounded as MXCSR says) to 64-bit integer b */ \

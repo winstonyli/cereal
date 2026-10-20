@@ -182,7 +182,7 @@ void mir_print(const MFunc *f, FILE *out)
             fprintf(out, "\t%s%c ", op_names[m->op], suffix(w));
             put_op(f, &m->a, w, out);
             break;
-        case M_FMOV: case M_FADD: case M_FSUB: case M_FMUL: case M_FDIV: case M_FCMP: case M_FSQRT:
+        case M_FMOV: case M_FADD: case M_FSUB: case M_FMUL: case M_FDIV: case M_FCMP: case M_FSQRT: case M_FRCP: case M_FRSQRT:
             fprintf(out, "\t%s%s ", op_names[m->op], w == 4 ? "ss" : "sd");
             put_op(f, &m->a, 8, out);
             fputc(',', out);
