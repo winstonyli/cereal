@@ -84,7 +84,7 @@ f("C23", "alignas-keyword", "C23", "int t(int k){ alignas(8) int a=k; return ali
 f("C23", "thread-local-keyword", "C23", "thread_local int tl;\nint t(int k){ tl=k; return tl; }")
 f("C23", "stdckdint", "C23", "#include <stdckdint.h>\nint t(int k){ int r; int o=ckd_add(&r,k,2147483647); return r+o; }")
 f("C23", "stdbit", "C23", "#include <stdbit.h>\nint t(int k){ return (int)stdc_count_ones((unsigned)k); }")
-f("C23", "unreachable", "C23", "#include <stddef.h>\nint t(int k){ if(k>1000000) unreachable(); return k; }")
+f("C23", "unreachable", "C23", "#include <stddef.h>\nint t(int k){ if(k==-123456789) unreachable(); return k; }")
 f("C23", "label-before-declaration", "C23", "int t(int k){ goto e; e: int x=k; return x; }")
 f("C23", "decimal-float", "C23", "int t(int k){ _Decimal32 d = k; return (int)d; }")
 f("C23", "floatN", "C23", "int t(int k){ _Float32 f=k; _Float64 d=f; return (int)d; }")

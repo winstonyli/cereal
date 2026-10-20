@@ -2288,6 +2288,39 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                             : TYPE_B(INT);
         return;
     }
+    if (tkind(c, ta) == TY_NULLPTR || tkind(c, tb) == TY_NULLPTR) {
+        /* nullptr_t compares (==, !=) with a pointer, nullptr_t or a null
+         * pointer constant; it is a null pointer of known value */
+        bool na = tkind(c, ta) == TY_NULLPTR;
+        uint32_t on = na ? b : a;
+        TypeId ot = na ? tb : ta;
+        bool known = true, equal = true;
+        if (!eq || !(is_ptr(c, ot) || tkind(c, ot) == TY_NULLPTR ||
+                     (is_int(c, ot) && is_npc(c, on)))) {
+            invalid_operands(c, i, a, b, op);
+            return;
+        }
+        if (tkind(c, ot) == TY_NULLPTR)     /* gcc folds two constants only */
+            known = c->ck[a] != K_NONE && c->ck[b] != K_NONE;
+        else if (is_ptr(c, ot)) {
+            uint32_t cb;
+            uint64_t cv;
+            known = !(c->ef[on] & EF_SIDE) && addr_val(c, on, &cb, &cv);
+            if (known && cb == 0)
+                equal = cv == 0;
+            else if (known && !(cb & CB_NODE) && !addr_weak(c, cb))
+                equal = false;
+            else
+                known = false;
+        }
+        c->ty[i] = TYPE_B(INT);
+        c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP & ~EF_NPC;
+        if (known && !((c->ef[a] | c->ef[b]) & EF_SIDE)) {
+            c->ck[i] = K_FOLD;
+            c->cv[i] = (uint64_t)(op == P_EQEQ ? equal : !equal);
+        }
+        return;
+    }
     if (!((is_arith(c, ta) && is_arith(c, tb)) || pa || pb) ||
         (!eq && (is_complex(c, ta) || is_complex(c, tb))) ||
         ((pa || pb) && !(pa ? (pb || is_int(c, tb)) : is_int(c, ta)))) {

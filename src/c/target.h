@@ -24,7 +24,8 @@
     X(FLOAT64, "_Float64") X(FLOAT128, "_Float128")                        \
     X(FLOAT32X, "_Float32x") X(FLOAT64X, "_Float64x")                      \
     X(IBM128, "__ibm128")                                                  \
-    X(DEC32, "_Decimal32") X(DEC64, "_Decimal64") X(DEC128, "_Decimal128")
+    X(DEC32, "_Decimal32") X(DEC64, "_Decimal64") X(DEC128, "_Decimal128")  \
+    X(NULLPTR, "typeof (nullptr)")
 
 typedef enum {
 #define X(n, s) TY_##n,

@@ -2641,7 +2641,7 @@ static void primary(Parser *p)
         case CK_OFFSETOF:
             offsetof_expr(p);
             return;
-        case CK_TRUE: case CK_FALSE:    /* a constant: the checker reads the spelling */
+        case CK_TRUE: case CK_FALSE: case CK_NULLPTR:  /* a constant: the checker reads the spelling */
             leaf(p, N_NUMBER, adv(p));
             return;
         default:

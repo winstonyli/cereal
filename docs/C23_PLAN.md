@@ -137,3 +137,27 @@ splice keeps the old behaviour).
   (cereal says "storage class specified for structure field", gcc "expected specifier-qualifier-list"; true
   for `static` too).
   Rows in `PARKED.md`; suite 2297/0; zstd, Lua and libuv unchanged.
+
+## Step 3 result (2026-10-20)
+
+`nullptr`, `nullptr_t` and `unreachable()` (`tests/check/c23_nullptr`, identical to gcc 15 `-pedantic` in
+message text and notes; carets are single, as everywhere):
+- A real type kind, `TY_NULLPTR` (last of `BUILTIN_TYPES`, printed `typeof (nullptr)`), sized and aligned as a
+  pointer. `nullptr` is a keyword (`CKW_C23`) parsed as a `N_NUMBER` leaf and checked in `e_number` as a
+  `K_ADDR` null with `EF_NPC`; `<stddef.h>`'s `typedef typeof(nullptr) nullptr_t` replaces the predeclared one.
+- Conversions: `assign_check` accepts any `nullptr_t` value for a pointer or `bool`, and only a null pointer
+  constant for `nullptr_t`; casts follow gcc (integer and float targets give the "aggregate value" wording, a
+  non-null source gives "conversion from X to Y" plus a note); `==`/`!=` with a pointer, `nullptr_t` or a null
+  constant (relational and arithmetic stay invalid); `?:` with a pointer yields the pointer; `!nullptr` is an
+  integer constant. Constness: a `nullptr_t` initializer is always a null constant (`const_class0`), and
+  `conv_const` carries the null through conversions.
+- `type_is_float`/`is_float` ranges stop at `TY_DEC128` (they ended at `TY_NBUILTIN`, which would have made
+  `nullptr_t` a float).
+- Back end: `ok_ty`, `tinfo` and `cgdata` treat `TY_NULLPTR` as a pointer-sized zero. `unreachable()` already
+  worked through `__builtin_unreachable` (`ud2`; the survey probe avoids the undefined input).
+- Special cases that grew: `aka_atomic` (a typedef of `nullptr_t` keeps its name, as gcc prints it),
+  the `nullptr_t` branch of `e_compare`, and gcc's folding quirk (two constants fold, a `nullptr_t` variable
+  folds only against a null constant). All mirror gcc.
+- Kind numbers shifted, so the hashes in `tests/summary/*.expected` were regenerated (nothing else changed).
+- Survey: 111 of 114 front end, 89 back end. Suite 2299/0, zstd, Lua and libuv unchanged.
+

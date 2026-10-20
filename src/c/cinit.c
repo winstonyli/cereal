@@ -923,6 +923,9 @@ static int const_class0(Checker *c, uint32_t n, TypeId vt, TypeId target)
 {
     int cls;
     TypeKind tk, vk;
+    /* nullptr_t has one value: a null pointer, whatever the expression */
+    if (ck_(c, vt) == TY_NULLPTR && !(c->ef[n] & EF_SIDE))
+        return 2;
     {
         /* a comma expression stays a COMPOUND_EXPR: constant only when its
          * left operand is too */

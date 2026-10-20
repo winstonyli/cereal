@@ -231,7 +231,8 @@ static bool is_float_ty(DEv *v, TypeId t)
 static bool is_int_ty(DEv *v, TypeId t)
 {
     TypeKind k = type_ckind(&v->c->tt, t);
-    return (k >= TY_BOOL && k <= TY_ULLONG) || k == TY_ENUM || k == TY_PTR;
+    return (k >= TY_BOOL && k <= TY_ULLONG) || k == TY_ENUM || k == TY_PTR ||
+           k == TY_NULLPTR;
 }
 
 static bool ev(DEv *v, uint32_t n, Val *r)

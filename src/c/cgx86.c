@@ -126,7 +126,7 @@ static bool tinfo(Gx *g, TypeId t, TI *ti)
     bool ok;
     uint64_t sz;
     memset(ti, 0, sizeof *ti);
-    if (k == TY_PTR) {
+    if (k == TY_PTR || k == TY_NULLPTR) {
         ti->bytes = 8;
         return true;
     }

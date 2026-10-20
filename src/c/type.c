@@ -401,14 +401,14 @@ bool type_is_signed(TypeTable *tt, TypeId t)
     case TY_ENUM:
         return type_is_signed(tt, enum_rd(tt, e->extra)->underlying);
     default:
-        return e->kind >= TY_FLOAT16 && e->kind < TY_NBUILTIN;
+        return e->kind >= TY_FLOAT16 && e->kind <= TY_DEC128;
     }
 }
 
 bool type_is_float(TypeTable *tt, TypeId t)
 {
     TypeKind k = type_ckind(tt, t);
-    return k >= TY_FLOAT16 && k < TY_NBUILTIN;
+    return k >= TY_FLOAT16 && k <= TY_DEC128;
 }
 
 bool type_is_arith(TypeTable *tt, TypeId t)
@@ -419,7 +419,8 @@ bool type_is_arith(TypeTable *tt, TypeId t)
 
 bool type_is_scalar(TypeTable *tt, TypeId t)
 {
-    return type_is_arith(tt, t) || type_ckind(tt, t) == TY_PTR;
+    return type_is_arith(tt, t) || type_ckind(tt, t) == TY_PTR ||
+           type_ckind(tt, t) == TY_NULLPTR;
 }
 
 bool type_is_object(TypeTable *tt, TypeId t)
@@ -522,7 +523,7 @@ uint64_t type_size(TypeTable *tt, TypeId t, bool *ok)
     switch (e->kind) {
     case TY_ERROR: *ok = false; return 1;
     case TY_VOID: *ok = false; return 1;        /* GNU: sizeof(void) == 1 */
-    case TY_PTR: return tg->ptr_size;
+    case TY_PTR: case TY_NULLPTR: return tg->ptr_size;
     case TY_ARRAY:
         if (e->flags & TF_INCOMPLETE) {
             *ok = false;
@@ -567,7 +568,7 @@ static unsigned align_of(TypeTable *tt, TypeId t, bool member)
     const Target *tg = tt->tgt;
     switch (e->kind) {
     case TY_ERROR: case TY_VOID: case TY_FUNC: return 1;
-    case TY_PTR: return tg->ptr_align;
+    case TY_PTR: case TY_NULLPTR: return tg->ptr_align;
     case TY_ARRAY: case TY_VLA: case TY_COMPLEX:
         return align_of(tt, e->base, member);
     case TY_STRUCT: case TY_UNION: return rec_rd(tt, e->extra)->align;
@@ -1202,6 +1203,9 @@ static bool aka_atomic(const TypeTable *tt, const TypeEnt *e)
     if (b->kind == TY_ENUM)
         return (e->flags & TF_SYSHDR) || !tt->enums.data[b->extra].tag ||
                tt->enums.data[b->extra].tag == e->extra;
+    /* nullptr_t names the unnamed type of nullptr, like an unnamed struct */
+    if (b->kind == TY_NULLPTR)
+        return true;
     /* ... and so does a system header's vector type */
     if (b->kind == TY_VECTOR)
         return e->flags & TF_SYSHDR;

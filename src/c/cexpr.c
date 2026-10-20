@@ -1357,6 +1357,14 @@ static void e_number(Checker *c, uint32_t i)
         c->ef[i] = EF_INTOPS;
         return;
     }
+    if (kw == CK_NULLPTR) {             /* C23 nullptr: a null pointer constant of its own type */
+        c->ty[i] = TYPE_B(NULLPTR);
+        c->ck[i] = K_ADDR;
+        c->cb[i] = 0;
+        c->cv[i] = 0;
+        c->ef[i] = EF_NPC;
+        return;
+    }
     lit_number(c->tgt, s, len, &l);
     traditional_suffix(c, i, s, len, l.flags & LIT_FLOAT);
     lit_report(c, i, &l);
@@ -3559,6 +3567,13 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
         return true;
     }
 
+    /* C23 nullptr_t: any value converts to a pointer or bool, only a null
+     * pointer constant converts to it */
+    if (kr == TY_NULLPTR && (kl == TY_PTR || kl == TY_BOOL))
+        return true;
+    if (kl == TY_NULLPTR && x.npc)
+        return true;
+
 incompatible:
     T = type_q(TT, lt);
     R = type_q(TT, rt);
@@ -4180,7 +4195,9 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
                     c->ef[i] |= EF_INTOPS;
                 return;
             }
-            if (c->ck[a] == K_ICE) {
+            /* gcc's nullptr is an INTEGER_CST */
+            if (c->ck[a] == K_ICE || (c->ck[a] == K_ADDR &&
+                                      tkind(c, rvt(c, a)) == TY_NULLPTR)) {
                 c->ck[i] = K_ICE;
                 c->cv[i] = !tv;
                 c->ef[i] |= EF_INTOPS;
@@ -4464,7 +4481,8 @@ static void conv_const(Checker *c, uint32_t i, uint32_t a, TypeId to)
                 (float_ovf(c, c->fv.data[c->cv[a]], to, &ov) ||
                  c->fv.data[c->cv[a]] != c->fv.data[c->cv[a]]))
                 c->ef[i] |= EF_OVERFLOW;
-        } else if (c->ck[a] == K_ADDR && is_ptr(c, from)) {
+        } else if (c->ck[a] == K_ADDR &&
+                   (is_ptr(c, from) || tkind(c, from) == TY_NULLPTR)) {
             if (c->cb[a] == 0) {
                 c->ck[i] = K_FOLD;
                 c->cv[i] = tkind(c, to) == TY_BOOL ? c->cv[a] != 0
@@ -4487,12 +4505,17 @@ static void conv_const(Checker *c, uint32_t i, uint32_t a, TypeId to)
         }
         return;
     }
+    if (tkind(c, to) == TY_NULLPTR) {
+        if (c->ck[a] == K_ADDR || has_ival(c, a))
+            c->ck[i] = K_ADDR;      /* the null pointer */
+        return;
+    }
     if (is_ptr(c, to)) {
         if (has_ival(c, a) && int_bits(c, from) <= 64) {
             c->ck[i] = K_ADDR;
             c->cv[i] = cexpr_trunc(c, to, c->cv[a]);
         } else if (c->ck[a] == K_ADDR &&
-                   (is_ptr(c, from) ||
+                   (is_ptr(c, from) || tkind(c, from) == TY_NULLPTR ||
                     (is_int(c, from) && int_bits(c, from) == int_bits(c, to)))) {
             c->ck[i] = K_ADDR;
             c->cb[i] = c->cb[a];
@@ -5037,6 +5060,25 @@ static void e_cast(Checker *c, uint32_t i)
         set_err(c, i);
         return;
     }
+    if (tkind(c, ot) == TY_NULLPTR && tk != TY_NULLPTR && !is_ptr(c, t) &&
+        tk != TY_BOOL) {
+        cerror(c, after_loc(c, i), "aggregate value used where %s was "
+               "expected", is_int(c, t) ? "an integer"
+               : is_flt(c, t) ? "a floating-point" : "a complex");
+        set_err(c, i);
+        return;
+    }
+    if (tk == TY_NULLPTR && tkind(c, ot) != TY_NULLPTR &&
+        !(c->ef[a] & EF_NPC)) {
+        SrcLoc el = after_loc(c, i);
+        Diagnostic *d = cerror_d(c, el, "conversion from %s to %s",
+                                 type_q(TT, ot), type_q(TT, type_canon(TT, t)));
+        cnote(c, d, el, "only %s or a null pointer constant can be converted "
+              "to %s", type_q(TT, type_canon(TT, t)),
+              type_q(TT, type_canon(TT, t)));
+        set_err(c, i);
+        return;
+    }
     if (is_ptr(c, ot) && (is_flt(c, t) || is_complex(c, t))) {
         cerror(c, after_loc(c, i), is_flt(c, t) ? "pointer value used where a "
                "floating-point was expected" : "pointer value used where a "
@@ -5044,7 +5086,8 @@ static void e_cast(Checker *c, uint32_t i)
         set_err(c, i);
         return;
     }
-    if (is_ptr(c, t) && !is_ptr(c, ot) && !is_int(c, ot)) {
+    if (is_ptr(c, t) && !is_ptr(c, ot) && !is_int(c, ot) &&
+        tkind(c, ot) != TY_NULLPTR) {
         cerror(c, after_loc(c, i), "cannot convert to a pointer type");
         c->ty[i] = type_canon(TT, c->ty[i]);
         return;
@@ -6726,6 +6769,10 @@ static void e_cond(Checker *c, uint32_t i)
                                     "expression");
             rt = type_ptr(TT, type_qual(TYPE_B(VOID), q));
         }
+    } else if (tkind(c, t1) == TY_NULLPTR && is_ptr(c, t2)) {
+        rt = t2;
+    } else if (is_ptr(c, t1) && tkind(c, t2) == TY_NULLPTR) {
+        rt = t1;
     } else if (is_ptr(c, t1) && is_int(c, t2)) {
         if (!is_npc(c, els))
             cpedwarn(c, cl, "", "pointer/integer type mismatch in conditional "

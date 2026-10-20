@@ -14,10 +14,9 @@ gnu23 (2026-10-20, `docs/C23_PLAN.md`); c89, c90 and gnu89 are refused.
 
 ## Summary
 
-108 of 114 meaningful probes pass the front end and 86 are emitted by the back end (78 run and equal
-gcc's, 8 not run). Nothing from C89 through C17 fails the front end. The 6 front-end failures are C23:
-`nullptr`, `constexpr` and `unreachable()` (which needs `nullptr`) are plan steps 2 and 3 of
-`docs/C23_PLAN.md`; `_BitInt`, `#embed` and `__has_embed` are parked.
+111 of 114 meaningful probes pass the front end and 89 are emitted by the back end (all that can run equal
+gcc's). Nothing from C89 through C17 fails the front end. The 3 front-end failures are C23 and parked:
+`_BitInt`, `#embed` and `__has_embed`.
 
 ## Back-end gaps (front end accepts, no code)
 
@@ -87,7 +86,7 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17, c2x, gnu2x, c23, gnu23
 | C11 | uchar | C11 | ok | ok | ok, equals gcc |
 | C11 | generic-struct-ptr | C11 | ok | ok | unsup: lvalue form |
 | C11 | quick-exit-header | C11 | ok | ok | emits |
-| C23 | nullptr | C23 | ok | FAIL 'nullptr' undeclared (first use in this function); did you m |  |
+| C23 | nullptr | C23 | ok | ok | ok, equals gcc |
 | C23 | constexpr | C23 | ok | ok | ok, equals gcc |
 | C23 | typeof | C23 | ok | ok | ok, equals gcc |
 | C23 | auto-type | C23 | ok | ok | ok, equals gcc |
@@ -107,7 +106,7 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17, c2x, gnu2x, c23, gnu23
 | C23 | thread-local-keyword | C23 | ok | ok | ok, equals gcc |
 | C23 | stdckdint | C23 | ok | ok | ok, equals gcc |
 | C23 | stdbit | C23 | ok | ok | ok, equals gcc |
-| C23 | unreachable | C23 | ok | FAIL 'nullptr' undeclared here (not in a function); did you mean  |  |
+| C23 | unreachable | C23 | ok | ok | ok, equals gcc |
 | C23 | label-before-declaration | C23 | ok | ok | ok, equals gcc |
 | C23 | decimal-float | C23 | ok | ok | unsup: decimal floating type |
 | C23 | floatN | C23 | ok | ok | unsup: _FloatN type |
@@ -165,4 +164,4 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17, c2x, gnu2x, c23, gnu23
 | PP | stdc-macros | C11 | ok | ok | ok, equals gcc |
 | PP | line-file-date | C89 | ok | ok | emits |
 
-116 probes: front end ok 109, back end ok 87, probes gcc rejects 2
+116 probes: front end ok 111, back end ok 89, probes gcc rejects 2

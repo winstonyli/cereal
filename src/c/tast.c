@@ -91,7 +91,7 @@ static bool ok_ty(El *e, TypeId t)
 {
     Checker *c = e->c;
     switch (type_ckind(&c->tt, t)) {
-    case TY_PTR: return true;
+    case TY_PTR: case TY_NULLPTR: return true;   /* nullptr_t: a pointer-sized zero */
     case TY_STRUCT: case TY_UNION: return type_is_complete(&c->tt, t);
     case TY_ARRAY: return ok_ty(e, elem_of(c, t)) && type_is_complete(&c->tt, t);
     case TY_VECTOR: return true;
@@ -947,7 +947,8 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
         if (c->ck[i] == K_FLOAT && is_flt(c, t) && !(c->ef[i] & EF_SIDE))
             return fconst(e, t, c->fv.data[c->cv[i]], loc);
         if ((c->ck[i] == K_ICE || c->ck[i] == K_FOLD ||
-             (c->ck[i] == K_ADDR && !c->cb[i] && is_ptr(c, t))) &&
+             (c->ck[i] == K_ADDR && !c->cb[i] &&
+              (is_ptr(c, t) || tkind(c, t) == TY_NULLPTR))) &&
             !(c->ef[i] & EF_SIDE)) {   /* K_ADDR with no base: a null or absolute address */
             if (is_flt(c, t))
                 return tunsup(e, "integer-valued floating constant");

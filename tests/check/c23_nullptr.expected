@@ -1,0 +1,48 @@
+c23_nullptr.c:7:9: error: incompatible types when initializing type 'int' using type 'typeof (nullptr)'
+    7 | int i = nullptr;
+      |         ^
+c23_nullptr.c:8:1: error: aggregate value used where an integer was expected
+    8 | int j = (int)nullptr;
+      | ^
+c23_nullptr.c:10:10: error: initializer element is not constant
+   10 | int c1 = nullptr == p;
+      |          ^
+c23_nullptr.c:11:10: error: initializer element is not constant
+   11 | int c2 = a == nullptr;
+      |          ^
+c23_nullptr.c:12:10: error: initializer element is not constant
+   12 | int c3 = a == p;
+      |          ^
+c23_nullptr.c:21:19: error: invalid operands to binary + (have 'typeof (nullptr)' and 'int')
+   21 | int c10 = nullptr + 1;
+      |                   ^
+c23_nullptr.c:22:13: error: invalid operands to binary < (have 'nullptr_t' and 'int *')
+   22 | int c11 = a < p;
+      |             ^
+c23_nullptr.c:23:11: error: incompatible types when initializing type 'int' using type 'typeof (nullptr)'
+   23 | int c12 = nullptr;
+      |           ^
+c23_nullptr.c:25:17: error: incompatible types when initializing type 'nullptr_t' using type 'int *'
+   25 | nullptr_t c14 = p;
+      |                 ^
+c23_nullptr.c:26:1: error: conversion from 'int *' to 'typeof (nullptr)'
+   26 | nullptr_t c15 = (nullptr_t)p;
+      | ^
+c23_nullptr.c:26:1: note: only 'typeof (nullptr)' or a null pointer constant can be converted to 'typeof (nullptr)'
+   26 | nullptr_t c15 = (nullptr_t)p;
+      | ^
+c23_nullptr.c:29:97: error: wrong type argument to increment
+   29 | void g(void) { f(nullptr); f(a); nullptr_t z = nullptr; z = nullptr; if (z) {} if (nullptr) {} a++; *nullptr; (void)&nullptr; }
+      |                                                                                                 ^
+c23_nullptr.c:29:101: error: invalid type argument of unary '*' (have 'typeof (nullptr)')
+   29 | void g(void) { f(nullptr); f(a); nullptr_t z = nullptr; z = nullptr; if (z) {} if (nullptr) {} a++; *nullptr; (void)&nullptr; }
+      |                                                                                                     ^
+c23_nullptr.c:29:117: error: lvalue required as unary '&' operand
+   29 | void g(void) { f(nullptr); f(a); nullptr_t z = nullptr; z = nullptr; if (z) {} if (nullptr) {} a++; *nullptr; (void)&nullptr; }
+      |                                                                                                                     ^
+c23_nullptr.c:34:23: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   34 | static_assert(nullptr == nullptr);
+      |                       ^
+c23_nullptr.c:36:1: warning: variably modified 'arr' at file scope
+   36 | int arr[nullptr == 0 ? 1 : 2];
+      | ^
