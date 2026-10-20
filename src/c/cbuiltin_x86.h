@@ -105,6 +105,19 @@ static const IaBt cbuiltin_x86_tab[] = {
     IA_ROW("ia32_cvtss2sd", IA_V2DF "|" IA_V2DF "|" IA_V4SF, IAK_CVTS, IAL_F64, 1 + IAL_F32),
     IA_ROW("ia32_cvttsd2si", "int|" IA_V2DF, IAK_EXT, IAL_F64, 0), IA_ROW("ia32_cvttsd2si64", "long long int|" IA_V2DF, IAK_EXT, IAL_F64, 0),
     IA_ROW("ia32_cvttss2si", "int|" IA_V4SF, IAK_EXT, IAL_F32, 0), IA_ROW("ia32_cvttss2si64", "long long int|" IA_V4SF, IAK_EXT, IAL_F32, 0),
+    /* square roots, and the converts that round as MXCSR says (to nearest even) */
+    IA_ROW("ia32_sqrtps", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 0), IA_ROW("ia32_sqrtss", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 1),
+    IA_ROW("ia32_sqrtpd", IA_V2DF "|" IA_V2DF, IAK_SQRT, IAL_F64, 0), IA_ROW("ia32_sqrtsd", IA_V2DF "|" IA_V2DF, IAK_SQRT, IAL_F64, 1),
+    IA_ROW("ia32_cvtss2si", "int|" IA_V4SF, IAK_EXT, IAL_F32, 1), IA_ROW("ia32_cvtss2si64", "long long int|" IA_V4SF, IAK_EXT, IAL_F32, 1),
+    IA_ROW("ia32_cvtsd2si", "int|" IA_V2DF, IAK_EXT, IAL_F64, 1), IA_ROW("ia32_cvtsd2si64", "long long int|" IA_V2DF, IAK_EXT, IAL_F64, 1),
+    IA_ROW("ia32_cvtps2dq", IA_V4SI "|" IA_V4SF, IAK_CVT, IAL_F32, 4 | 8), IA_ROW("ia32_cvtpd2dq", IA_V4SI "|" IA_V2DF, IAK_CVT, IAL_F64, 2 | 8),
+    /* fences, and non-temporal stores (plain ones here) */
+    IA_ROW("ia32_sfence", "void|", IAK_NODE, 0, 0), IA_ROW("ia32_lfence", "void|", IAK_NODE, 0, 0),
+    IA_ROW("ia32_mfence", "void|", IAK_NODE, 0, 0), IA_ROW("ia32_pause", "void|", IAK_NODE, 0, 0),
+    IA_ROW("ia32_clflush", "void|const void *", IAK_NODE, 0, 0),
+    IA_ROW("ia32_movnti", "void|int *|int", IAK_STORE, 0, 0), IA_ROW("ia32_movnti64", "void|long long int *|long long int", IAK_STORE, 0, 0),
+    IA_ROW("ia32_movntps", "void|float *|" IA_V4SF, IAK_STORE, 0, 0), IA_ROW("ia32_movntpd", "void|double *|" IA_V2DF, IAK_STORE, 0, 0),
+    IA_ROW("ia32_movntdq", "void|void *|" IA_V2DI, IAK_STORE, 0, 0),
 };
 
 const IaBt *ia32_find(const char *name)

@@ -1169,21 +1169,41 @@ static uint32_t ia_cmp(El *e, int p, uint32_t a, uint32_t b, SrcLoc loc)
     return a == TN || b == TN ? TN : mk(e, TO_CMP, TYPE_B(INT), loc, 0, 0, (unsigned)p, ka, 2);
 }
 
-/* Float v truncated to an int the way cvttss2si does it: through a long, then 0x80000000 when the
- * result does not fit.  (A C cast keeps the low 32 bits.)  Other targets are plain conversions. */
-static uint32_t ia_f2i(El *e, Ia *x, uint32_t v, TypeId to, SrcLoc loc)
+/* The long w as an int the way cvttss2si and cvtss2si leave it: 0x80000000 when it does not fit. */
+static uint32_t ia_fit(El *e, Ia *x, uint32_t w, SrcLoc loc)
 {
     TypeId W = ia_ty(IAL_S64), I = ia_ty(IAL_S32);
     U32Vec st = {0};
     uint32_t r, ka[3];
-    if (to != I || x->r->lane < IAL_F32)
-        return conv(e, v, to, loc);
-    ia_set(e, &st, x->t, W, conv(e, v, W, loc), loc);
+    ia_set(e, &st, x->t, W, w, loc);
     r = conv(e, load(e, ia_tmp(e, x->t, W, loc)), I, loc);
     ka[0] = ia_cmp(e, P_EQEQ, load(e, ia_tmp(e, x->t, W, loc)), conv(e, r, W, loc), loc);
     ka[1] = conv(e, load(e, ia_tmp(e, x->t, W, loc)), I, loc);
     ka[2] = cnst(e, I, 0x80000000u, loc);
     return vec_wrap(e, ka[0] == TN ? TN : mk(e, TO_COND, I, loc, 0, 0, 0, ka, 3), I, &st, loc);
+}
+
+/* Float v truncated to an int the way cvttss2si does it: through a long, then 0x80000000 when the
+ * result does not fit.  (A C cast keeps the low 32 bits.)  Other targets are plain conversions. */
+static uint32_t ia_f2i(El *e, Ia *x, uint32_t v, TypeId to, SrcLoc loc)
+{
+    if (to != ia_ty(IAL_S32) || x->r->lane < IAL_F32)
+        return conv(e, v, to, loc);
+    return ia_fit(e, x, conv(e, v, ia_ty(IAL_S64), loc), loc);
+}
+
+/* A back-end built-in of one float argument (sqrt: the instruction, ia32_cvt*2si64: rounded as MXCSR says). */
+static uint32_t ia_fn1(El *e, const char *nm, TypeId rt, uint32_t arg, SrcLoc loc)
+{
+    return mk(e, TO_INTRIN, rt, loc, 1, intern_cstr(e->c->in, nm)->id, 0, &arg, 1);
+}
+
+/* Float v (lane type of the row) rounded to an int the way cvtss2si does, to 32 or 64 bits. */
+static uint32_t ia_rnd(El *e, Ia *x, uint32_t v, TypeId to, SrcLoc loc)
+{
+    TypeId W = ia_ty(IAL_S64);
+    uint32_t r = ia_fn1(e, x->r->lane == IAL_F32 ? "__builtin_ia32_cvtss2si64" : "__builtin_ia32_cvtsd2si64", W, v, loc);
+    return to == ia_ty(IAL_S32) ? ia_fit(e, x, r, loc) : conv(e, r, to, loc);
 }
 
 /* Lane k of argument 0 or 1 as bits (the integer lane type of the row's). */
@@ -1345,8 +1365,14 @@ static uint32_t ia_lane(El *e, Ia *x, uint32_t j)
         return ia_rd(e, x, j == 0, j, L);
     case IAK_MOVHL:                     /* movhlps: b's high half, a's high half; movlhps: a's low half, b's low half */
         return arg ? ia_rd(e, x, j >= 2, j & 1, L) : j < 2 ? ia_rd(e, x, 1, j + 2, L) : ia_rd(e, x, 0, j, L);
-    case IAK_CVT:                       /* the first arg lanes converted, the rest cleared */
-        return j < (uint32_t)arg ? ia_f2i(e, x, ia_rd(e, x, 0, j, L), x->rl, loc) : conv(e, cnst(e, W, 0, loc), x->rl, loc);
+    case IAK_CVT:                       /* the first arg & 7 lanes converted (arg & 8: rounded, not truncated), the rest cleared */
+        if (j >= (uint32_t)(arg & 7))
+            return conv(e, cnst(e, W, 0, loc), x->rl, loc);
+        return arg & 8 ? ia_rnd(e, x, ia_rd(e, x, 0, j, L), x->rl, loc) : ia_f2i(e, x, ia_rd(e, x, 0, j, L), x->rl, loc);
+    case IAK_SQRT:                      /* the square root of every lane (arg 1: lane 0 only, the rest of a) */
+        if (arg && j)
+            return ia_rd(e, x, 0, j, L);
+        return ia_fn1(e, r->lane == IAL_F32 ? "__builtin_sqrtf" : "__builtin_sqrt", L, ia_rd(e, x, 0, j, L), loc);
     case IAK_CVTS:                      /* lane 0 from a scalar (arg 0) or from lane 0 of b, the rest of a */
         if (j)
             return ia_rd(e, x, 0, j, x->rl);
@@ -1393,6 +1419,11 @@ static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, 
         ka[1] = args->data[1];
         ka[0] = mk(e, TO_STORE, vt, loc, 0, 0, 0, ka, 2);
         return mk(e, TO_CAST, rt, loc, 0, 0, 0, &ka[0], 1);
+    }
+    if (r->kind == IAK_NODE) {              /* fences and the like: a back-end built-in of the same name */
+        char full[64];
+        snprintf(full, sizeof full, "__builtin_%s", nm);
+        return mk(e, TO_INTRIN, rt, loc, (unsigned)args->len, intern_cstr(c->in, full)->id, 0, args->data, (uint32_t)args->len);
     }
     if (!vop_val(e, args->data[0], nty(e, args->data[0]), &x.a, &setup, loc))
         goto done;
@@ -1443,7 +1474,10 @@ static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, 
     }
     if (r->kind == IAK_EXT) {
         uint32_t n = 16 / (ia_bits(r->lane) / 8);
-        id = vec_wrap(e, ia_f2i(e, &x, ia_rd(e, &x, 0, (uint32_t)(x.imm & (n - 1)), ia_ty(r->lane)), rt, loc), rt, &setup, loc);
+        {
+            uint32_t v = ia_rd(e, &x, 0, (uint32_t)(x.imm & (n - 1)), ia_ty(r->lane));
+            id = vec_wrap(e, r->arg ? ia_rnd(e, &x, v, rt, loc) : ia_f2i(e, &x, v, rt, loc), rt, &setup, loc);
+        }
         goto done;
     }
     if (!vres || !vec_dims(e, rt, &x.rl, &x.n))

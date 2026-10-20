@@ -291,9 +291,11 @@ static bool enc_inst(const MInst *m, Enc *e)
     case M_FMUL: ins2(e, fpfx(m), false, 0x59, hw(b->reg), a); break;
     case M_FSUB: ins2(e, fpfx(m), false, 0x5c, hw(b->reg), a); break;
     case M_FDIV: ins2(e, fpfx(m), false, 0x5e, hw(b->reg), a); break;
+    case M_FSQRT: ins2(e, fpfx(m), false, 0x51, hw(b->reg), a); break;
     case M_FCMP: ins2(e, w == 4 ? 0 : 0x66, false, 0x2e, hw(b->reg), a); break;
     case M_CVTI2F: ins2(e, fpfx(m), true, 0x2a, hw(b->reg), a); break;
     case M_CVTF2I: ins2(e, fpfx(m), true, 0x2c, hw(b->reg), a); break;
+    case M_CVTF2IR: ins2(e, fpfx(m), true, 0x2d, hw(b->reg), a); break;
     case M_CVTF2F: ins2(e, fpfx(m), false, 0x5a, hw(b->reg), a); break;
     case M_MOVQX:
         if (is_xmm(b))

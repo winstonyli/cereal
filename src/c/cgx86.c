@@ -1466,6 +1466,33 @@ static void gen_intrin(Gx *g, uint32_t n)
         }
         return;
     }
+    if (!strcmp(nm, "sqrt") || !strcmp(nm, "sqrtf")) {
+        gen(g, kid(g->L, n, 0));
+        em(g, M_FSQRT, nm[4] ? 4 : 8, R(R_X0), R(R_X0));
+        return;
+    }
+    if (!strcmp(nm, "ia32_cvtsd2si64") || !strcmp(nm, "ia32_cvtss2si64")) {    /* rounds as MXCSR says */
+        gen(g, kid(g->L, n, 0));
+        em(g, M_CVTF2IR, nm[8] == 's' && nm[9] == 's' ? 4 : 8, R(R_X0), R(R_AX));
+        return;
+    }
+    {
+        static const struct { const char *nm; int64_t bytes; int n; } fence[] = {
+            {"ia32_sfence", 0xf8ae0f, 3}, {"ia32_lfence", 0xe8ae0f, 3}, {"ia32_mfence", 0xf0ae0f, 3},
+            {"ia32_pause", 0x90f3, 2}};
+        for (i = 0; i < sizeof fence / sizeof *fence; i++)
+            if (!strcmp(nm, fence[i].nm)) {
+                MOp o = {MK_SYM, 0, fence[i].bytes, fence[i].nm + 5};
+                em(g, M_BYTES, fence[i].n, o, NONE());
+                return;
+            }
+    }
+    if (!strcmp(nm, "ia32_clflush")) {
+        MOp o = {MK_SYM, 0, 0x38ae0f, "clflush (%rax)"};
+        gen(g, kid(g->L, n, 0));
+        em(g, M_BYTES, 3, o, NONE());
+        return;
+    }
     if (!strcmp(nm, "prefetch")) {      /* a hint: only the address is evaluated */
         gen(g, kid(g->L, n, 0));
         return;

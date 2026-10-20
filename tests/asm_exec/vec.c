@@ -414,3 +414,49 @@ int mm_move(int a, int b, int c, int d)
     __m128d u = dk(a, b, c, d), v = dk(d, a, b, c);
     return fh(_mm_move_ss(x, y)) ^ dh(_mm_move_sd(u, v));
 }
+
+/* square roots (negative, NaN and infinite lanes included), converts that round to nearest even
+ * (ties, out of range), fences and non-temporal stores */
+int mm_sqrt(int a, int b, int c, int d)
+{
+    __m128 x = fk(a, b, c, d), y = fk(d, a, b, c);
+    __m128d u = dk(a, b, c, d), v = dk(d, a, b, c);
+    return fh(_mm_sqrt_ps(x)) ^ fh(_mm_sqrt_ss(x)) * 3 ^ fh(_mm_sqrt_ps(y)) * 5 ^ dh(_mm_sqrt_pd(u)) ^ dh(_mm_sqrt_sd(u, v)) * 3 ^
+           dh(_mm_sqrt_pd(v)) * 5;
+}
+
+int mm_round(int a, int b, int c, int d)
+{
+    __m128 x = _mm_set_ps(a / 2.0f, b * 0.5f - 0.25f, c * 1.5f, d * 1e9f);
+    __m128 t = _mm_set_ps(0.5f, 1.5f, 2.5f, -0.5f);
+    __m128d u = _mm_set_pd(a * 0.5, d * 1e18), w = _mm_set_pd(-2.5, c + 0.5);
+    __m128 f = fk(a, b, c, d);
+    __m128d g = dk(a, b, c, d);
+    return fh(_mm_castsi128_ps(_mm_cvtps_epi32(x))) ^ hash(_mm_cvtps_epi32(t)) * 3 ^ hash(_mm_cvtps_epi32(f)) * 5 ^
+           hash(_mm_cvtpd_epi32(u)) * 7 ^ hash(_mm_cvtpd_epi32(w)) * 11 ^ hash(_mm_cvtpd_epi32(g)) * 13 ^
+           _mm_cvtss_si32(x) ^ _mm_cvtss_si32(t) * 3 ^ _mm_cvtss_si32(f) * 5 ^ _mm_cvtsd_si32(u) ^ _mm_cvtsd_si32(w) * 3 ^
+           _mm_cvtsd_si32(g) * 5 ^ (int)_mm_cvtss_si64(x) ^ (int)_mm_cvtss_si64(t) * 3 ^ (int)(_mm_cvtsd_si64(u) >> 7) ^
+           (int)_mm_cvtsd_si64(w) * 3 ^ (int)(_mm_cvtss_si64(f) >> 3) ^ (int)(_mm_cvtsd_si64(g) >> 5);
+}
+
+int mm_stream(int a, int b, int c, int d)
+{
+    static int xi[4];
+    static long long xl[2];
+    static float xf[4] __attribute__((aligned(16)));
+    static double xd[2] __attribute__((aligned(16)));
+    static __m128i xv[2];
+    int s;
+    _mm_stream_si32(&xi[a & 3], b);
+    _mm_stream_si64(&xl[c & 1], (long long)b * d);
+    _mm_stream_ps(xf, fk(a, b, c, d));
+    _mm_stream_pd(xd, dk(d, c, b, a));
+    _mm_stream_si128(&xv[0], _mm_set_epi32(a, b, c, d));
+    _mm_sfence();
+    _mm_lfence();
+    _mm_mfence();
+    _mm_pause();
+    _mm_clflush(xi);
+    s = xi[0] + xi[1] * 3 + xi[2] * 5 + xi[3] * 7 + (int)xl[0] + (int)(xl[1] >> 3) + hash(xv[0]);
+    return s ^ fh(_mm_load_ps(xf)) ^ dh(_mm_load_pd(xd));
+}
