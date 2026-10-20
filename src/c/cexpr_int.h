@@ -33,10 +33,13 @@ enum { IAK_LOAD, IAK_STORE, IAK_MOVMSK, IAK_ANDN, IAK_MINMAX, IAK_SHIFT, IAK_SHU
        IAK_EXT, IAK_SET, IAK_MULW, IAK_MADD, IAK_MULH, IAK_AVG, IAK_SAT, IAK_PACK, IAK_SAD,
        IAK_UNPACK, IAK_MOVQ, IAK_BITOP, IAK_FSOP, IAK_FPMM, IAK_FCMP, IAK_SHUFP, IAK_MOVLOW, IAK_MOVHL,
        IAK_CVT, IAK_CVTS, IAK_FCOMI, IAK_SQRT, IAK_NODE, IAK_LOADHL, IAK_STOREHL, IAK_CVTPI, IAK_PCMPGT, IAK_MASKMOV, IAK_VINIT };
+enum { IAF_VEC = 1,       /* SHIFT: the count is a vector (its low 64 bits), not a scalar */
+       IAF_SCALAR = 2,    /* FCMP, SQRT: lane 0 only, the rest of the first argument stays */
+       IAF_ROUND = 4 };   /* CVT, EXT: rounded as MXCSR says, not truncated */
 typedef struct IaBt {
     BTab bt;
-    unsigned char kind, lane;
-    short arg;
+    unsigned char kind, lane, flags;
+    short arg;              /* the kind's parameter: which operation, how many lanes, ... */
 } IaBt;
 const IaBt *ia32_find(const char *name);   /* name without "__builtin_" */
 

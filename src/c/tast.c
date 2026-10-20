@@ -1221,35 +1221,16 @@ static uint32_t ia_cmp(El *e, int p, uint32_t a, uint32_t b, SrcLoc loc)
     return a == TN || b == TN ? TN : mk(e, TO_CMP, TYPE_B(INT), loc, 0, 0, (unsigned)p, ka, 2);
 }
 
-/* The long w as an int the way cvttss2si and cvtss2si leave it: 0x80000000 when it does not fit. */
-static uint32_t ia_fit(El *e, Ia *x, uint32_t w, SrcLoc loc)
+/* Float v as an int the way cvttss2si (round: cvtss2si) leaves it: 0x80000000 when it does not fit.
+ * (A C cast is undefined there.)  Other targets are plain conversions. */
+static uint32_t ia_f2i(El *e, Ia *x, uint32_t v, TypeId to, bool round, SrcLoc loc)
 {
     TypeId W = ia_ty(IAL_S64), I = ia_ty(IAL_S32);
-    U32Vec st = {0};
-    uint32_t r, ka[3];
-    ia_set(e, &st, x->t, W, w, loc);
-    r = conv(e, load(e, ia_tmp(e, x->t, W, loc)), I, loc);
-    ka[0] = ia_cmp(e, P_EQEQ, load(e, ia_tmp(e, x->t, W, loc)), conv(e, r, W, loc), loc);
-    ka[1] = conv(e, load(e, ia_tmp(e, x->t, W, loc)), I, loc);
-    ka[2] = cnst(e, I, 0x80000000u, loc);
-    return vec_wrap(e, ka[0] == TN ? TN : mk(e, TO_COND, I, loc, 0, 0, 0, ka, 3), I, &st, loc);
-}
-
-/* Float v truncated to an int the way cvttss2si does it: through a long, then 0x80000000 when the
- * result does not fit.  (A C cast keeps the low 32 bits.)  Other targets are plain conversions. */
-static uint32_t ia_f2i(El *e, Ia *x, uint32_t v, TypeId to, SrcLoc loc)
-{
-    if (to != ia_ty(IAL_S32) || x->r->lane < IAL_F32)
+    uint32_t r;
+    if (!round && (to != I || x->r->lane < IAL_F32))
         return conv(e, v, to, loc);
-    return ia_fit(e, x, conv(e, v, ia_ty(IAL_S64), loc), loc);
-}
-
-/* Float v (lane type of the row) rounded to an int the way cvtss2si does, to 32 or 64 bits. */
-static uint32_t ia_rnd(El *e, Ia *x, uint32_t v, TypeId to, SrcLoc loc)
-{
-    TypeId W = ia_ty(IAL_S64);
-    uint32_t r = intrin(e, x->r->lane == IAL_F32 ? "ia32_cvtss2si64" : "ia32_cvtsd2si64", W, &v, 1, loc);
-    return to == ia_ty(IAL_S32) ? ia_fit(e, x, r, loc) : conv(e, r, to, loc);
+    r = v == TN ? TN : mk(e, TO_F2I, to == I ? I : W, loc, 0, 0, round, &v, 1);
+    return r == TN ? TN : conv(e, r, to, loc);
 }
 
 /* Lane k of argument 0 or 1 as bits (the integer lane type of the row's). */
@@ -1348,7 +1329,7 @@ static uint32_t ia_lane(El *e, Ia *x, uint32_t j)
         return vec_wrap(e, conv(e, load(e, ia_tmp(e, x->t, W, loc)), x->rl, loc), x->rl, &st, loc);
     }
     case IAK_SHIFT: {                   /* the lane shifted by the count; a count of the lane's width or more empties it */
-        bool left = arg % 4 == 0, arith = arg % 4 == 2;
+        bool left = arg == 0, arith = arg == 2;
         uint32_t cnt = load(e, ia_tmp(e, x->cnt, UW, loc)), cnt2 = load(e, ia_tmp(e, x->cnt, UW, loc));
         uint32_t v = ia_rd(e, x, 0, j, arith ? W : UW), big, sh, res;
         sh = ia_bin(e, P_AMP, UW, cnt, cnst(e, UW, bits - 1, loc), loc);
@@ -1398,9 +1379,9 @@ static uint32_t ia_lane(El *e, Ia *x, uint32_t j)
     case IAK_FCMP: {                    /* a mask of ones where the predicate holds (the scalar forms keep a's other lanes) */
         TypeId bt = x->rl;
         uint32_t c = TN;
-        if ((arg & 16) && j)
+        if ((r->flags & IAF_SCALAR) && j)
             return ia_rdbits(e, x, 0, j);
-        c = ia_pred(e, x, j, arg & 15);
+        c = ia_pred(e, x, j, arg);
         return c == TN ? TN : ia_un(e, P_MINUS, bt, conv(e, c, bt, loc), loc);
     }
     case IAK_SHUFP:                     /* shufps: two lanes of a then two of b; shufpd: one of each */
@@ -1411,22 +1392,22 @@ static uint32_t ia_lane(El *e, Ia *x, uint32_t j)
         return ia_rd(e, x, j == 0, j, L);
     case IAK_MOVHL:                     /* movhlps: b's high half, a's high half; movlhps: a's low half, b's low half */
         return arg ? ia_rd(e, x, j >= 2, j & 1, L) : j < 2 ? ia_rd(e, x, 1, j + 2, L) : ia_rd(e, x, 0, j, L);
-    case IAK_CVT:                       /* the first arg & 7 lanes converted (arg & 8: rounded, not truncated), the rest cleared */
-        if (j >= (uint32_t)(arg & 7))
+    case IAK_CVT:                       /* the first arg lanes converted, the rest cleared */
+        if (j >= (uint32_t)arg)
             return conv(e, cnst(e, W, 0, loc), x->rl, loc);
-        return arg & 8 ? ia_rnd(e, x, ia_rd(e, x, 0, j, L), x->rl, loc) : ia_f2i(e, x, ia_rd(e, x, 0, j, L), x->rl, loc);
+        return ia_f2i(e, x, ia_rd(e, x, 0, j, L), x->rl, r->flags & IAF_ROUND, loc);
     case IAK_LOADHL: {                  /* loadlps: lanes 0, 1 from memory, loadhps: lanes 2, 3 (floats at the pointer) */
         TypeId pt = type_ptr(&e->c->tt, L);
         if (arg ? j < 2 : j >= 2)
             return ia_rd(e, x, 0, j, L);
         return load(e, deref_t(e, ptradd(e, pt, load(e, ia_tmp(e, x->cnt, pt, loc)), cnst(e, TYPE_B(INT), j & 1, loc), false, loc), L, loc));
     }
-    case IAK_SQRT:                      /* the square root of every lane (arg 1: lane 0 only, the rest of a) */
-        if ((arg & 1) && j)
+    case IAK_SQRT:                      /* sqrt (arg 0), rcp (1) or rsqrt (2) of every lane */
+        if ((r->flags & IAF_SCALAR) && j)
             return ia_rd(e, x, 0, j, L);
     {
         uint32_t v = ia_rd(e, x, 0, j, L);
-        return intrin(e, arg >> 1 == 1 ? "ia32_rcpss" : arg >> 1 == 2 ? "ia32_rsqrtss" :
+        return intrin(e, arg == 1 ? "ia32_rcpss" : arg == 2 ? "ia32_rsqrtss" :
                          r->lane == IAL_F32 ? "sqrtf" : "sqrt", L, &v, 1, loc);
     }
     case IAK_CVTPI:                     /* cvtpi2ps: lanes 0, 1 from the two ints of b, the rest of a */
@@ -1454,17 +1435,13 @@ static bool ia_const(El *e, const U32Vec *args, size_t k, const char *nm, int64_
     return true;
 }
 
-static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, SrcLoc loc)
+/* Built-ins that move memory: unaligned loads and stores, the half stores, maskmovdqu. */
+static uint32_t ia_mem(El *e, const IaBt *r, const U32Vec *args, TypeId rt, SrcLoc loc)
 {
     Checker *c = e->c;
-    const IaBt *r = ia32_find(nm);
     Ia x;
     U32Vec setup = {0};
-    uint32_t j, id = TN, *lanes = NULL;
-    bool vres = tkind(c, rt) == TY_VECTOR;
-    TypeId mt = rt;
-    if (!r || !e->infunc)
-        return unsup(e, "x86 built-in %s", nm);
+    uint32_t j, id = TN;
     memset(&x, 0, sizeof x);
     x.r = r;
     x.loc = loc;
@@ -1479,18 +1456,6 @@ static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, 
         ka[1] = args->data[1];
         ka[0] = mk(e, TO_STORE, vt, loc, 0, 0, 0, ka, 2);
         return mk(e, TO_CAST, rt, loc, 0, 0, 0, &ka[0], 1);
-    }
-    if (r->kind == IAK_NODE) {              /* fences and the like: a back-end built-in of the same name */
-        return intrin(e, nm, rt, args->data, (uint32_t)args->len, loc);
-    }
-    if (r->kind == IAK_VINIT) {             /* the lanes are the arguments */
-        if (!vres || !vec_dims(e, rt, &x.rl, &x.n) || x.n != args->len)
-            goto done;
-        lanes = xmalloc(x.n * sizeof *lanes);
-        for (j = 0; j < x.n; j++)
-            lanes[j] = conv(e, args->data[j], x.rl, loc);
-        id = vec_make(e, rt, loc, lanes, x.n, &setup);
-        goto done;
     }
     if (r->kind == IAK_MASKMOV) {           /* the bytes of a whose mask byte has its top bit set, stored at the pointer */
         TypeId b8 = ia_ty(IAL_S8), it = TYPE_B(INT);
@@ -1539,6 +1504,33 @@ static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, 
         id = id == TN ? TN : mk(e, TO_CAST, rt, loc, 0, 0, 0, &id, 1);
         goto done;
     }
+done:
+    vec_free(&setup);
+    return id;
+}
+
+/* Built-ins that are a map over lanes (ia_lane), or a scalar made from them. */
+static uint32_t ia_lanes(El *e, const IaBt *r, const char *nm, const U32Vec *args, TypeId rt, SrcLoc loc)
+{
+    Checker *c = e->c;
+    Ia x;
+    U32Vec setup = {0};
+    uint32_t j, id = TN, *lanes = NULL;
+    bool vres = tkind(c, rt) == TY_VECTOR;
+    TypeId mt = rt;
+    memset(&x, 0, sizeof x);
+    x.r = r;
+    x.loc = loc;
+    x.cnt = x.t = UINT32_MAX;
+    if (r->kind == IAK_VINIT) {             /* the lanes are the arguments */
+        if (!vres || !vec_dims(e, rt, &x.rl, &x.n) || x.n != args->len)
+            goto done;
+        lanes = xmalloc(x.n * sizeof *lanes);
+        for (j = 0; j < x.n; j++)
+            lanes[j] = conv(e, args->data[j], x.rl, loc);
+        id = vec_make(e, rt, loc, lanes, x.n, &setup);
+        goto done;
+    }
     if (!vop_val(e, args->data[0], nty(e, args->data[0]), &x.a, &setup, loc))
         goto done;
     x.a.et = ia_ty(r->lane);
@@ -1558,7 +1550,7 @@ static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, 
     }
     if (r->kind == IAK_SHIFT) {             /* the count: a scalar, or the low 64 bits of a vector */
         TypeId uw = TYPE_MK(TY_ULONG, 0);
-        uint32_t cv = r->arg & 8 ? vop_lane(e, &x.b, 0, loc) : args->data[1];
+        uint32_t cv = r->flags & IAF_VEC ? vop_lane(e, &x.b, 0, loc) : args->data[1];
         x.cnt = e->ntmp++;
         ia_set(e, &setup, x.cnt, uw, conv(e, cv, uw, loc), loc);
     }
@@ -1579,7 +1571,7 @@ static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, 
         id = vec_wrap(e, conv(e, ia_cmp(e, r->arg, ia_rd(e, &x, 0, 0, x.a.et), ia_rd(e, &x, 1, 0, x.a.et), loc), rt, loc), rt, &setup, loc);
         goto done;
     }
-    if (r->kind == IAK_SAT || r->kind == IAK_PACK || ((r->kind == IAK_CVT || r->kind == IAK_EXT) && r->lane >= IAL_F32))
+    if (r->kind == IAK_SAT || r->kind == IAK_PACK)
         x.t = e->ntmp++;
     if (r->kind == IAK_MOVMSK) {            /* the sign bit of every byte, one bit each */
         uint32_t sum = TN;
@@ -1599,7 +1591,7 @@ static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, 
         uint32_t n = 16 / (ia_bits(r->lane) / 8);
         {
             uint32_t v = ia_rd(e, &x, 0, (uint32_t)(x.imm & (n - 1)), ia_ty(r->lane));
-            id = vec_wrap(e, r->arg ? ia_rnd(e, &x, v, rt, loc) : ia_f2i(e, &x, v, rt, loc), rt, &setup, loc);
+            id = vec_wrap(e, ia_f2i(e, &x, v, rt, r->flags & IAF_ROUND, loc), rt, &setup, loc);
         }
         goto done;
     }
@@ -1622,6 +1614,23 @@ done:
     free(lanes);
     vec_free(&setup);
     return id;
+}
+
+/* A call of __builtin_ia32_NAME (nm is "ia32_NAME"): by its row's kind, an opaque back-end built-in
+ * (NODE), an operation on memory (ia_mem), or a map over lanes (ia_lanes). */
+static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, SrcLoc loc)
+{
+    const IaBt *r = ia32_find(nm);
+    if (!r || !e->infunc)
+        return unsup(e, "x86 built-in %s", nm);
+    switch (r->kind) {
+    case IAK_NODE:                      /* fences and the like: a back-end built-in of the same name */
+        return intrin(e, nm, rt, args->data, (uint32_t)args->len, loc);
+    case IAK_LOAD: case IAK_STORE: case IAK_STOREHL: case IAK_MASKMOV:
+        return ia_mem(e, r, args, rt, loc);
+    default:
+        return ia_lanes(e, r, nm, args, rt, loc);
+    }
 }
 
 /* Lane ix (a node of type int, in range) of operand o, found through the vector's address. */
@@ -2638,6 +2647,9 @@ void tast_print_node(El *e, FILE *out, size_t i)
         case TO_UNOP: case TO_BINOP: case TO_CMP:
             fprintf(out, " %s", punct_spelling[nd->pun]);
             break;
+        case TO_F2I:
+            fputs(nd->pun ? " round" : " trunc", out);
+            break;
         case TO_CASE:
             fprintf(out, " %lld", (long long)nd->val);
             break;
@@ -2703,7 +2715,7 @@ static bool sconst(El *e, uint32_t i)
     switch (nd->op) {
     case TO_CONST: case TO_FCONST: case TO_LABADDR: return true;
     case TO_ADDR: return slv(e, k[0]);
-    case TO_CAST: case TO_UNOP: case TO_BINOP: case TO_CMP: case TO_LOGAND:
+    case TO_CAST: case TO_F2I: case TO_UNOP: case TO_BINOP: case TO_CMP: case TO_LOGAND:
     case TO_LOGOR: case TO_COND: case TO_PTRADD: case TO_PTRDIFF:
         for (j = 0; j < nd->nkids; j++)
             if (!sconst(e, k[j]))
@@ -2844,6 +2856,11 @@ static void verify(El *e, FILE *out)
                 vbad(e, out, i, "operand");
             else if (!VOIDT && SAME(KID(0), nd))
                 vbad(e, out, i, "cast to the same type");
+            break;
+        case TO_F2I:
+            NEED(1);
+            if (!ISVAL(KID(0)) || !is_flt(c, KID(0)->ty) || (nd->ty != ia_ty(IAL_S32) && nd->ty != ia_ty(IAL_S64)))
+                vbad(e, out, i, "float to int");
             break;
         case TO_UNOP:
             NEED(1);

@@ -250,9 +250,9 @@ void mir_print(const MFunc *f, FILE *out)
                 fputc('	', out);
                 fprintf(out, row->text, w == 4 ? "ss" : "sd");
                 fputc(' ', out);
-                put_op(f, &m->a, 8, out);
+                put_op(f, &m->a, row->ext ? 8 : 4, out);
                 fputc(',', out);
-                put_op(f, &m->b, 8, out);
+                put_op(f, &m->b, row->ext ? 8 : 4, out);
                 break;
             }
             /* op a,b at width w */

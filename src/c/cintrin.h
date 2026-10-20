@@ -17,7 +17,6 @@ enum {
     BIC_BSWAP,      /* arg: the width in bytes */
     BIC_CLZ, BIC_CTZ,   /* arg: the width in bytes */
     BIC_SQRT, BIC_RCP, BIC_RSQRT,   /* arg: the float's width */
-    BIC_CVTSI,      /* float to a 64-bit integer, rounded as MXCSR says; arg: the float's width */
     BIC_SFENCE, BIC_LFENCE, BIC_MFENCE, BIC_PAUSE, BIC_UD2,
     BIC_CLFLUSH, BIC_STMXCSR, BIC_LDMXCSR,
     BIC_PREFETCH,   /* a hint: only the address is evaluated */
@@ -33,7 +32,6 @@ enum {
     X("ctz", BIC_CTZ, 4) X("ctzl", BIC_CTZ, 8) X("ctzll", BIC_CTZ, 8)           \
     X("sqrt", BIC_SQRT, 8) X("sqrtf", BIC_SQRT, 4)                              \
     X("ia32_rcpss", BIC_RCP, 4) X("ia32_rsqrtss", BIC_RSQRT, 4)                 \
-    X("ia32_cvtss2si64", BIC_CVTSI, 4) X("ia32_cvtsd2si64", BIC_CVTSI, 8)       \
     X("ia32_sfence", BIC_SFENCE, 0) X("ia32_lfence", BIC_LFENCE, 0)             \
     X("ia32_mfence", BIC_MFENCE, 0) X("ia32_pause", BIC_PAUSE, 0)               \
     X("unreachable", BIC_UD2, 0) X("ia32_clflush", BIC_CLFLUSH, 0)              \

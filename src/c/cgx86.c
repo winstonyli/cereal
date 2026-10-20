@@ -1207,6 +1207,16 @@ static void gen(Gx *g, uint32_t n)
     case TO_INTRIN:
         gen_intrin(g, n);
         break;
+    case TO_F2I: {              /* the instruction's own result for a value that does not fit */
+        TI from;
+        gen(g, kid(g->L, n, 0));
+        if (!tinfo(g, t->ty, &ti) || !tinfo(g, nd(g->L, kid(g->L, n, 0))->ty, &from))
+            return;
+        em(g, t->pun ? (ti.bytes == 8 ? M_CVTF2IR : M_CVTF2IR32) : (ti.bytes == 8 ? M_CVTF2I : M_CVTF2I32),
+           from.bytes, R(R_X0), R(R_AX));
+        canon(g, &ti);
+        break;
+    }
     case TO_VA:
         gen_va(g, n);
         break;
@@ -1462,10 +1472,6 @@ static void gen_intrin(Gx *g, uint32_t n)
         gen(g, kid(g->L, n, 0));
         em(g, r->cls == BIC_SQRT ? M_FSQRT : r->cls == BIC_RCP ? M_FRCP : M_FRSQRT, r->arg,
            R(R_X0), R(R_X0));
-        break;
-    case BIC_CVTSI:
-        gen(g, kid(g->L, n, 0));
-        em(g, M_CVTF2IR, r->arg, R(R_X0), R(R_AX));
         break;
     case BIC_SFENCE: em(g, M_SFENCE, 0, NONE(), NONE()); break;
     case BIC_LFENCE: em(g, M_LFENCE, 0, NONE(), NONE()); break;

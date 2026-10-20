@@ -14,10 +14,12 @@
 #define IA_V4HI "__vector(8) short int"
 #define IA_V2SI "__vector(8) int"
 #define IA_V1DI "__vector(8) long long int"
-#define IA_ROW(nm, sig, k, l, a) {{nm, "", 0, sig, 4}, k, l, a}
-#define IA_BIN(nm, v, k, l, a) IA_ROW(nm, v "|" v "|" v, k, l, a)
+#define IA_ROWF(nm, sig, k, l, f, a) {{nm, "", 0, sig, 4}, k, l, f, a}
+#define IA_ROW(nm, sig, k, l, a) IA_ROWF(nm, sig, k, l, 0, a)
+#define IA_BINF(nm, v, k, l, f, a) IA_ROWF(nm, v "|" v "|" v, k, l, f, a)
+#define IA_BIN(nm, v, k, l, a) IA_BINF(nm, v, k, l, 0, a)
 #define IA_IMM(nm, v, k, l, a) IA_ROW(nm, v "|" v "|int", k, l, a)
-#define IA_SHIFTS(nm, v, l, a) IA_IMM(nm "i128", v, IAK_SHIFT, l, a), IA_BIN(nm "128", v, IAK_SHIFT, l, (a) | 8)
+#define IA_SHIFTS(nm, v, l, a) IA_IMM(nm "i128", v, IAK_SHIFT, l, a), IA_BINF(nm "128", v, IAK_SHIFT, l, IAF_VEC, a)
 static const IaBt cbuiltin_x86_tab[] = {
     IA_ROW("ia32_loaddqu", IA_V16QI "|const char *", IAK_LOAD, IAL_S8, 0),
     IA_ROW("ia32_storedqu", "void|char *|" IA_V16QI, IAK_STORE, IAL_S8, 0),
@@ -82,7 +84,7 @@ static const IaBt cbuiltin_x86_tab[] = {
     IA_BIN("ia32_andnps", IA_V4SF, IAK_ANDN, IAL_S32, 0), IA_BIN("ia32_andnpd", IA_V2DF, IAK_ANDN, IAL_S64, 0),
 #define IA_C(nm, p) \
     IA_BIN("ia32_cmp" nm "ps", IA_V4SF, IAK_FCMP, IAL_F32, p), IA_BIN("ia32_cmp" nm "pd", IA_V2DF, IAK_FCMP, IAL_F64, p), \
-    IA_BIN("ia32_cmp" nm "ss", IA_V4SF, IAK_FCMP, IAL_F32, (p) | 16), IA_BIN("ia32_cmp" nm "sd", IA_V2DF, IAK_FCMP, IAL_F64, (p) | 16)
+    IA_BINF("ia32_cmp" nm "ss", IA_V4SF, IAK_FCMP, IAL_F32, IAF_SCALAR, p), IA_BINF("ia32_cmp" nm "sd", IA_V2DF, IAK_FCMP, IAL_F64, IAF_SCALAR, p)
     IA_C("eq", 0), IA_C("lt", 1), IA_C("le", 2), IA_C("unord", 3), IA_C("neq", 4), IA_C("nlt", 5), IA_C("nle", 6),
     IA_C("ord", 7), IA_C("gt", 8), IA_C("ge", 9), IA_C("ngt", 10), IA_C("nge", 11),
 #define IA_CI(nm, p) \
@@ -110,13 +112,13 @@ static const IaBt cbuiltin_x86_tab[] = {
     IA_ROW("ia32_cvttsd2si", "int|" IA_V2DF, IAK_EXT, IAL_F64, 0), IA_ROW("ia32_cvttsd2si64", "long long int|" IA_V2DF, IAK_EXT, IAL_F64, 0),
     IA_ROW("ia32_cvttss2si", "int|" IA_V4SF, IAK_EXT, IAL_F32, 0), IA_ROW("ia32_cvttss2si64", "long long int|" IA_V4SF, IAK_EXT, IAL_F32, 0),
     /* square roots, and the converts that round as MXCSR says (to nearest even) */
-    IA_ROW("ia32_sqrtps", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 0), IA_ROW("ia32_sqrtss", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 1),
-    IA_ROW("ia32_sqrtpd", IA_V2DF "|" IA_V2DF, IAK_SQRT, IAL_F64, 0), IA_ROW("ia32_sqrtsd", IA_V2DF "|" IA_V2DF, IAK_SQRT, IAL_F64, 1),
-    IA_ROW("ia32_rcpps", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 2), IA_ROW("ia32_rcpss", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 3),
-    IA_ROW("ia32_rsqrtps", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 4), IA_ROW("ia32_rsqrtss", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 5),
-    IA_ROW("ia32_cvtss2si", "int|" IA_V4SF, IAK_EXT, IAL_F32, 1), IA_ROW("ia32_cvtss2si64", "long long int|" IA_V4SF, IAK_EXT, IAL_F32, 1),
-    IA_ROW("ia32_cvtsd2si", "int|" IA_V2DF, IAK_EXT, IAL_F64, 1), IA_ROW("ia32_cvtsd2si64", "long long int|" IA_V2DF, IAK_EXT, IAL_F64, 1),
-    IA_ROW("ia32_cvtps2dq", IA_V4SI "|" IA_V4SF, IAK_CVT, IAL_F32, 4 | 8), IA_ROW("ia32_cvtpd2dq", IA_V4SI "|" IA_V2DF, IAK_CVT, IAL_F64, 2 | 8),
+    IA_ROWF("ia32_sqrtps", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 0, 0), IA_ROWF("ia32_sqrtss", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, IAF_SCALAR, 0),
+    IA_ROWF("ia32_sqrtpd", IA_V2DF "|" IA_V2DF, IAK_SQRT, IAL_F64, 0, 0), IA_ROWF("ia32_sqrtsd", IA_V2DF "|" IA_V2DF, IAK_SQRT, IAL_F64, IAF_SCALAR, 0),
+    IA_ROWF("ia32_rcpps", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 0, 1), IA_ROWF("ia32_rcpss", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, IAF_SCALAR, 1),
+    IA_ROWF("ia32_rsqrtps", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, 0, 2), IA_ROWF("ia32_rsqrtss", IA_V4SF "|" IA_V4SF, IAK_SQRT, IAL_F32, IAF_SCALAR, 2),
+    IA_ROWF("ia32_cvtss2si", "int|" IA_V4SF, IAK_EXT, IAL_F32, IAF_ROUND, 0), IA_ROWF("ia32_cvtss2si64", "long long int|" IA_V4SF, IAK_EXT, IAL_F32, IAF_ROUND, 0),
+    IA_ROWF("ia32_cvtsd2si", "int|" IA_V2DF, IAK_EXT, IAL_F64, IAF_ROUND, 0), IA_ROWF("ia32_cvtsd2si64", "long long int|" IA_V2DF, IAK_EXT, IAL_F64, IAF_ROUND, 0),
+    IA_ROWF("ia32_cvtps2dq", IA_V4SI "|" IA_V4SF, IAK_CVT, IAL_F32, IAF_ROUND, 4), IA_ROWF("ia32_cvtpd2dq", IA_V4SI "|" IA_V2DF, IAK_CVT, IAL_F64, IAF_ROUND, 2),
     IA_ROW("ia32_loadlps", IA_V4SF "|" IA_V4SF "|const void *", IAK_LOADHL, IAL_F32, 0), IA_ROW("ia32_loadhps", IA_V4SF "|" IA_V4SF "|const void *", IAK_LOADHL, IAL_F32, 1),
     IA_ROW("ia32_storelps", "void|void *|" IA_V4SF, IAK_STOREHL, IAL_F32, 0), IA_ROW("ia32_storehps", "void|void *|" IA_V4SF, IAK_STOREHL, IAL_F32, 1),
     IA_ROW("ia32_stmxcsr", "unsigned int|", IAK_NODE, 0, 0), IA_ROW("ia32_ldmxcsr", "void|unsigned int", IAK_NODE, 0, 0),
@@ -134,8 +136,8 @@ static const IaBt cbuiltin_x86_tab[] = {
     IA_BIN("ia32_punpcklwd", IA_V4HI, IAK_UNPACK, IAL_S16, 0), IA_BIN("ia32_punpckhwd", IA_V4HI, IAK_UNPACK, IAL_S16, 1),
     IA_ROW("ia32_packsswb", IA_V8QI "|" IA_V4HI "|" IA_V4HI, IAK_PACK, IAL_S16, 0),
     IA_ROW("ia32_packssdw", IA_V4HI "|" IA_V2SI "|" IA_V2SI, IAK_PACK, IAL_S32, 0),
-    IA_ROW("ia32_cvtps2pi", IA_V2SI "|" IA_V4SF, IAK_CVT, IAL_F32, 2 | 8), IA_ROW("ia32_cvttps2pi", IA_V2SI "|" IA_V4SF, IAK_CVT, IAL_F32, 2),
-    IA_ROW("ia32_cvtpd2pi", IA_V2SI "|" IA_V2DF, IAK_CVT, IAL_F64, 2 | 8), IA_ROW("ia32_cvttpd2pi", IA_V2SI "|" IA_V2DF, IAK_CVT, IAL_F64, 2),
+    IA_ROWF("ia32_cvtps2pi", IA_V2SI "|" IA_V4SF, IAK_CVT, IAL_F32, IAF_ROUND, 2), IA_ROW("ia32_cvttps2pi", IA_V2SI "|" IA_V4SF, IAK_CVT, IAL_F32, 2),
+    IA_ROWF("ia32_cvtpd2pi", IA_V2SI "|" IA_V2DF, IAK_CVT, IAL_F64, IAF_ROUND, 2), IA_ROW("ia32_cvttpd2pi", IA_V2SI "|" IA_V2DF, IAK_CVT, IAL_F64, 2),
     IA_ROW("ia32_cvtpi2pd", IA_V2DF "|" IA_V2SI, IAK_CVT, IAL_S32, 2),
     IA_ROW("ia32_cvtpi2ps", IA_V4SF "|" IA_V4SF "|" IA_V2SI, IAK_CVTPI, IAL_F32, 1 + IAL_S32),
     IA_ROW("ia32_movntq", "void|long long unsigned int *|long long unsigned int", IAK_STORE, 0, 0),
