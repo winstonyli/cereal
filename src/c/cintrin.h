@@ -32,7 +32,8 @@ enum {
     BIC_PREFETCH,   /* a hint: only the address is evaluated */
     BIC_LIBC,       /* a call of the library function of the same name */
     BIC_ATOMIC,     /* an operation on an object of 1, 2, 4 or 8 bytes; arg: AT_ op | AF_ flags << 4 */
-    BIC_OVF         /* arithmetic with an overflow flag; arg: OV_ op */
+    BIC_OVF,        /* arithmetic with an overflow flag; arg: OV_ op */
+    BIC_STDC        /* a C23 <stdbit.h> function of an unsigned operand; arg: ST_ op | ST_INV */
 };
 
 /* Row flags (fl). */
@@ -45,6 +46,7 @@ enum {
 enum {
     BK_NONE,
     BK_LOCKFREE,    /* __atomic_is_lock_free, __atomic_always_lock_free */
+    BK_STDC,        /* one operand, an unsigned integer that is not a _Bool */
     BK_GENERIC,     /* the generic atomics: void * operands of one nonzero size */
     BK_SIZED,       /* the atomics sized by a pointer to an integer or pointer (1 to 16 bytes) */
     BK_FETCH        /* the same, and the object is not a _Bool */
@@ -64,6 +66,11 @@ enum { OV_ADD, OV_SUB, OV_MUL };
     BI_OVT(Y, "s" n "l_overflow", op) BI_OVT(Y, "u" n "l_overflow", op)     \
     BI_OVT(Y, "s" n "ll_overflow", op) BI_OVT(Y, "u" n "ll_overflow", op)
 #define BI_OVT(Y, nm, op) Y(nm, BIC_OVF, op, BIF_LOWER, 3, BK_NONE, 0)
+
+/* The <stdbit.h> functions: the bit scans and counts of the operand, or of its complement. */
+enum { ST_LZ, ST_TZ, ST_FLO, ST_FTO, ST_POP, ST_HAS1, ST_BW, ST_FLOOR, ST_CEIL, ST_OP = 15, ST_INV = 16 };
+#define BI_ST(Y, n, op, res)                                                    Y("stdc_" n, BIC_STDC, op, BIF_GEN, 1, BK_STDC, res)
+#define BI_STU(Y, n, op) BI_ST(Y, n, op, BR(BR_UINT, 0))
 
 /* The atomic operations, and what the flags say about the arguments and the result. */
 enum { AT_LOAD, AT_STORE, AT_ST0, AT_XCHG, AT_ADD, AT_SUB, AT_AND, AT_OR, AT_XOR, AT_NAND, AT_CAS };
@@ -124,7 +131,7 @@ enum {
     BI_A(Y, "__sync_lock_release", AT_ST0, 0, 0, BK_SIZED, BR(BR_VOID, 0))      \
     BI_RMW(Y, "add", AT_ADD) BI_RMW(Y, "sub", AT_SUB) BI_RMW(Y, "and", AT_AND)  \
     BI_RMW(Y, "or", AT_OR) BI_RMW(Y, "xor", AT_XOR) BI_RMW(Y, "nand", AT_NAND)  \
-    Y("__atomic_test_and_set", BIC_NONE, 0, 0, 2, BK_NONE, BR(BR_BOOL, 0))      \
+    BI_STU(Y, "leading_zeros", ST_LZ) BI_STU(Y, "leading_ones", ST_LZ | ST_INV)     BI_STU(Y, "trailing_zeros", ST_TZ) BI_STU(Y, "trailing_ones", ST_TZ | ST_INV)     BI_STU(Y, "first_leading_zero", ST_FLO | ST_INV) BI_STU(Y, "first_leading_one", ST_FLO)     BI_STU(Y, "first_trailing_zero", ST_FTO | ST_INV) BI_STU(Y, "first_trailing_one", ST_FTO)     BI_STU(Y, "count_zeros", ST_POP | ST_INV) BI_STU(Y, "count_ones", ST_POP)       BI_STU(Y, "bit_width", ST_BW)                                                   BI_ST(Y, "has_single_bit", ST_HAS1, BR(BR_BOOL, 0))                             BI_ST(Y, "bit_floor", ST_FLOOR, BR(BR_ARG, 0)) BI_ST(Y, "bit_ceil", ST_CEIL, BR(BR_ARG, 0))     Y("__atomic_test_and_set", BIC_NONE, 0, 0, 2, BK_NONE, BR(BR_BOOL, 0))      \
     Y("__atomic_clear", BIC_NONE, 0, 0, 2, BK_NONE, BR(BR_VOID, 0))             \
     Y("__atomic_thread_fence", BIC_NONE, 0, 0, 1, BK_NONE, BR(BR_VOID, 0))      \
     Y("__atomic_signal_fence", BIC_NONE, 0, 0, 1, BK_NONE, BR(BR_VOID, 0))      \

@@ -95,6 +95,19 @@ static void em_cc(Gx *g, int op, int cc, MOp a)
     vec_push(&g->f.code, m);
 }
 
+/* cmov<cc> a, b: b = a when the flags say cc. */
+static void em_cmov(Gx *g, int cc, int w, MOp a, MOp b)
+{
+    MInst m;
+    memset(&m, 0, sizeof m);
+    m.op = M_CMOV;
+    m.w = (uint8_t)w;
+    m.cc = (uint8_t)cc;
+    m.a = a;
+    m.b = b;
+    vec_push(&g->f.code, m);
+}
+
 /* ---- types ------------------------------------------------------------- */
 
 typedef struct TI {
@@ -1537,6 +1550,104 @@ static void gen_ovf(Gx *g, uint32_t n, const BiRow *r)
     em(g, M_MOV, 8, R(R_DX), R(R_AX));
 }
 
+/* The C23 <stdbit.h> functions.  The operand is an unsigned integer of 1, 2, 4 or 8 bytes,
+ * zero-extended in %rax; a function is one of the bit scans or the population count of it or
+ * of its complement (ST_INV).  The scans are bsr and bsf with the zero case patched in. */
+static void gen_stdc(Gx *g, uint32_t n, const BiRow *r)
+{
+    TI ti, res;
+    int bits, op = r->arg & ST_OP;
+    gen(g, kid(g->L, n, 0));
+    if (!tinfo(g, nd(g->L, kid(g->L, n, 0))->ty, &ti) || !tinfo(g, nd(g->L, n)->ty, &res))
+        return;
+    bits = ti.bytes * 8;
+    if (r->arg & ST_INV) {
+        em(g, M_NOT, 8, R(R_AX), NONE());
+        canon(g, &ti);
+    }
+    switch (op) {
+    case ST_LZ:                         /* the index of the top bit, or -1, from the top */
+        em(g, M_BSR, 8, R(R_AX), R(R_AX));
+        em(g, M_MOV, 4, I(-1), R(R_CX));
+        em_cmov(g, CC_E, 4, R(R_CX), R(R_AX));
+        em(g, M_NEG, 4, R(R_AX), NONE());
+        em(g, M_ADD, 4, I(bits - 1), R(R_AX));
+        break;
+    case ST_TZ:
+        em(g, M_BSF, 8, R(R_AX), R(R_AX));
+        em(g, M_MOV, 4, I(bits), R(R_CX));
+        em_cmov(g, CC_E, 4, R(R_CX), R(R_AX));
+        break;
+    case ST_FLO: case ST_FTO:           /* 1 + the index of the top or bottom bit, 0 for none */
+        em(g, M_MOV, 8, R(R_AX), R(R_SI));
+        em(g, op == ST_FLO ? M_BSR : M_BSF, 8, R(R_AX), R(R_AX));
+        if (op == ST_FLO) {
+            em(g, M_NEG, 4, R(R_AX), NONE());
+            em(g, M_ADD, 4, I(bits), R(R_AX));
+        } else {
+            em(g, M_ADD, 4, I(1), R(R_AX));
+        }
+        em(g, M_XOR, 4, R(R_CX), R(R_CX));
+        em(g, M_TEST, 8, R(R_SI), R(R_SI));
+        em_cmov(g, CC_E, 4, R(R_CX), R(R_AX));
+        break;
+    case ST_BW:                         /* 1 + the index of the top bit, or 0 */
+        em(g, M_BSR, 8, R(R_AX), R(R_AX));
+        em(g, M_MOV, 4, I(-1), R(R_CX));
+        em_cmov(g, CC_E, 4, R(R_CX), R(R_AX));
+        em(g, M_ADD, 4, I(1), R(R_AX));
+        break;
+    case ST_POP: {                      /* libgcc, with the stack aligned */
+        int pad = g->depth & 1;
+        if (pad) {
+            em(g, M_SUB, 8, I(8), R(R_SP));
+            g->depth++;
+        }
+        em(g, M_MOV, 8, R(R_AX), R(R_DI));
+        em(g, M_MOV, 4, I(0), R(R_AX));
+        em(g, M_CALL, 8, (MOp){MK_SYM, 0, 0, bi_helper[0]}, NONE());
+        if (pad) {
+            em(g, M_ADD, 8, I(8), R(R_SP));
+            g->depth--;
+        }
+        em(g, M_MOV, 4, R(R_AX), R(R_AX));
+        break;
+    }
+    case ST_HAS1: {                     /* x != 0 and x & (x - 1) == 0 */
+        em(g, M_LEA, 8, M(R_AX, -1), R(R_CX));
+        em(g, M_TEST, 8, R(R_CX), R(R_AX));
+        em_cc(g, M_SETCC, CC_E, R(R_DX));
+        em(g, M_TEST, 8, R(R_AX), R(R_AX));
+        em_cc(g, M_SETCC, CC_NE, R(R_AX));
+        em(g, M_AND, 1, R(R_DX), R(R_AX));
+        em(g, M_MOVZX, 1, R(R_AX), R(R_AX));
+        break;
+    }
+    case ST_FLOOR:                      /* 1 << the index of the top bit, 0 for none */
+        em(g, M_MOV, 8, R(R_AX), R(R_SI));
+        em(g, M_BSR, 8, R(R_AX), R(R_CX));
+        em(g, M_MOV, 4, I(1), R(R_AX));
+        em(g, M_SHL, 8, NONE(), R(R_AX));
+        em(g, M_XOR, 4, R(R_CX), R(R_CX));
+        em(g, M_TEST, 8, R(R_SI), R(R_SI));
+        em_cmov(g, CC_E, 8, R(R_CX), R(R_AX));
+        break;
+    default:                            /* ST_CEIL: 1, or 1 << (1 + the index of the top bit of x - 1) */
+        em(g, M_MOV, 8, R(R_AX), R(R_SI));
+        em(g, M_LEA, 8, M(R_AX, -1), R(R_AX));
+        canon(g, &ti);
+        em(g, M_BSR, 8, R(R_AX), R(R_CX));
+        em(g, M_ADD, 4, I(1), R(R_CX));
+        em(g, M_MOV, 4, I(1), R(R_DX));
+        em(g, M_SHL, 8, NONE(), R(R_DX));
+        em(g, M_MOV, 4, I(1), R(R_AX));
+        em(g, M_CMP, 8, I(1), R(R_SI));
+        em_cmov(g, CC_A, 8, R(R_DX), R(R_AX));
+        break;
+    }
+    canon(g, &res);
+}
+
 static void gen_intrin(Gx *g, uint32_t n)
 {
     const TNode *t = nd(g->L, n);
@@ -1580,21 +1691,16 @@ static void gen_intrin(Gx *g, uint32_t n)
         if (r->cls == BIC_CLZ)          /* the index of the top bit, from the top */
             em(g, M_XOR, 4, I(r->arg * 8 - 1), R(R_AX));
         break;
-    case BIC_FFS: {                     /* bsf, or -1 when the operand is 0, plus 1 */
-        MInst mi;
+    case BIC_FFS:                       /* bsf, or -1 when the operand is 0, plus 1 */
         gen(g, kid(g->L, n, 0));
         em(g, M_BSF, r->arg, R(R_AX), R(R_AX));
         em(g, M_MOV, 4, I(-1), R(R_CX));
-        memset(&mi, 0, sizeof mi);
-        mi.op = M_CMOV;
-        mi.w = 4;
-        mi.cc = CC_E;
-        mi.a = R(R_CX);
-        mi.b = R(R_AX);
-        vec_push(&g->f.code, mi);
+        em_cmov(g, CC_E, 4, R(R_CX), R(R_AX));
         em(g, M_ADD, 4, I(1), R(R_AX));
         break;
-    }
+    case BIC_STDC:
+        gen_stdc(g, n, r);
+        break;
     case BIC_RT:
         gen_call(g, n, bi_helper[r->arg]);
         break;

@@ -14,7 +14,7 @@ gnu89, c2x, c23 and their gnu forms are refused, so every C23 row is probed unde
 
 ## Summary
 
-101 of 114 meaningful probes pass the front end and 77 are emitted by the back end (69 run and equal
+101 of 114 meaningful probes pass the front end and 78 are emitted by the back end (70 run and equal
 gcc's, 8 not run). Nothing from C89 through C17 fails the front end. The 13 front-end failures are all C23 syntax
 (none can pass until `-std=c23` is accepted) plus `#embed`/`__has_embed`.
 
@@ -24,9 +24,9 @@ gcc's, 8 not run). Nothing from C89 through C17 fails the front end. The 13 fron
   decimal floats. These are `PARKED.md` row "T4b types".
 - Statements and expressions: `case` ranges, nested functions, `__label__`, `_Generic` selecting an lvalue,
   `__builtin_choose_expr` of an lvalue (`lvalue form`).
-- Built-ins: `alloca`, `frame_address`, `trap`, `object_size`, `__builtin_fabs`/`floor` (math), and the
-  C23 `__builtin_stdc_*` bit functions behind `<stdbit.h>` (`type error`: type-generic, the checker gives
-  the call no type). The overflow built-ins and `<stdckdint.h>` work (2026-10-20, `tests/asm_exec/ovf.c`);
+- Built-ins: `alloca`, `frame_address`, `trap`, `object_size`, `__builtin_fabs`/`floor` (math). The
+  overflow built-ins and `<stdckdint.h>` work (2026-10-20, `tests/asm_exec/ovf.c`), and so do the C23
+  `__builtin_stdc_*` bit functions behind `<stdbit.h>` (2026-10-20, `tests/asm_exec/stdc.c`);
   an unsigned 64-bit operand mixed with a signed one, unsigned operands into a signed result and a 64-bit
   signed operand into an unsigned 64-bit result are reported unsupported (the exact value needs more than
   64 bits to test).
@@ -106,7 +106,7 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17
 | C23 | alignas-keyword | C23 | ok | FAIL expected ';' before 'int' |  |
 | C23 | thread-local-keyword | C23 | ok | FAIL expected ';' before 'int' |  |
 | C23 | stdckdint | C23 | ok | ok | ok, equals gcc |
-| C23 | stdbit | C23 | ok | ok | unsup: type error |
+| C23 | stdbit | C23 | ok | ok | ok, equals gcc |
 | C23 | unreachable | C23 | ok | ok | unsup: builtin or undeclared call unreachable |
 | C23 | label-before-declaration | C23 | ok | ok | ok, equals gcc |
 | C23 | decimal-float | C23 | ok | ok | unsup: decimal floating type |
@@ -165,4 +165,4 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17
 | PP | stdc-macros | C11 | ok | ok | ok, equals gcc |
 | PP | line-file-date | C89 | ok | ok | emits |
 
-116 probes: front end ok 101, back end ok 77, probes gcc rejects 2
+116 probes: front end ok 101, back end ok 78, probes gcc rejects 2

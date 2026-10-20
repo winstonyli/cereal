@@ -842,6 +842,27 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
         }
         return atomic_args_ok(c, i, a, n, name, loc);
     }
+    if (bi_rows[bi_find_call(name)].chk == BK_STDC) {
+        TypeId t;
+        if (n != 1) {
+            cerror(c, loc, "wrong number of arguments to '%s'", name);
+            return false;
+        }
+        if (node_err(c, a[0]))
+            return true;
+        t = rvt(c, a[0]);
+        if (!is_int(c, t)) {
+            cerror(c, loc, "'%s' operand not an integral type", name);
+            return false;
+        }
+        if (tkind(c, t) == TY_BOOL || tkind(c, t) == TY_ENUM || type_is_signed(TT, t)) {
+            cerror(c, loc, "argument 1 in call to function '%s' has %s type", name,
+                   tkind(c, t) == TY_BOOL ? "boolean" : tkind(c, t) == TY_ENUM ? "enumerated"
+                                                                                : "signed");
+            return false;
+        }
+        return true;
+    }
     if (bi_rows[bi_find_call(name)].chk >= BK_GENERIC)    /* the __sync_ ones */
         return atomic_args_ok(c, i, a, n, name, loc);
     if (strncmp(name, "__builtin_", 10))

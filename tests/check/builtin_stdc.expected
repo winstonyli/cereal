@@ -1,0 +1,48 @@
+builtin_stdc.c:4:11: error: argument 1 in call to function '__builtin_stdc_leading_zeros' has signed type
+    4 |     (void)__builtin_stdc_leading_zeros(i);
+      |           ^
+builtin_stdc.c:5:11: error: argument 1 in call to function '__builtin_stdc_leading_zeros' has boolean type
+    5 |     (void)__builtin_stdc_leading_zeros(b);
+      |           ^
+builtin_stdc.c:6:11: error: '__builtin_stdc_leading_zeros' operand not an integral type
+    6 |     (void)__builtin_stdc_leading_zeros(d);
+      |           ^
+builtin_stdc.c:7:11: error: argument 1 in call to function '__builtin_stdc_leading_zeros' has signed type
+    7 |     (void)__builtin_stdc_leading_zeros(c);
+      |           ^
+builtin_stdc.c:8:11: error: argument 1 in call to function '__builtin_stdc_leading_zeros' has signed type
+    8 |     (void)__builtin_stdc_leading_zeros(sc);
+      |           ^
+builtin_stdc.c:9:11: error: argument 1 in call to function '__builtin_stdc_leading_zeros' has enumerated type
+    9 |     (void)__builtin_stdc_leading_zeros(e);
+      |           ^
+builtin_stdc.c:10:11: error: '__builtin_stdc_leading_zeros' operand not an integral type
+   10 |     (void)__builtin_stdc_leading_zeros(p);
+      |           ^
+builtin_stdc.c:11:11: error: wrong number of arguments to '__builtin_stdc_leading_zeros'
+   11 |     (void)__builtin_stdc_leading_zeros();
+      |           ^
+builtin_stdc.c:12:11: error: wrong number of arguments to '__builtin_stdc_leading_zeros'
+   12 |     (void)__builtin_stdc_leading_zeros(uc, uc);
+      |           ^
+builtin_stdc.c:13:11: error: argument 1 in call to function '__builtin_stdc_bit_ceil' has signed type
+   13 |     (void)__builtin_stdc_bit_ceil(i);
+      |           ^
+builtin_stdc.c:14:11: error: '__builtin_stdc_has_single_bit' operand not an integral type
+   14 |     (void)__builtin_stdc_has_single_bit(d);
+      |           ^
+builtin_stdc.c:15:11: error: argument 1 in call to function '__builtin_stdc_count_ones' has signed type
+   15 |     (void)__builtin_stdc_count_ones(l);
+      |           ^
+builtin_stdc.c:20:15: warning: initialization of 'int *' from incompatible pointer type 'unsigned char *' [-Wincompatible-pointer-types]
+   20 |     int *x1 = &t1, *x2 = &t2, *x3 = &t3, *x4 = &t4;
+      |               ^
+builtin_stdc.c:20:26: warning: pointer targets in initialization of 'int *' from 'unsigned int *' differ in signedness [-Wpointer-sign]
+   20 |     int *x1 = &t1, *x2 = &t2, *x3 = &t3, *x4 = &t4;
+      |                          ^
+builtin_stdc.c:20:37: warning: initialization of 'int *' from incompatible pointer type '_Bool *' [-Wincompatible-pointer-types]
+   20 |     int *x1 = &t1, *x2 = &t2, *x3 = &t3, *x4 = &t4;
+      |                                     ^
+builtin_stdc.c:20:48: warning: initialization of 'int *' from incompatible pointer type 'long long unsigned int *' [-Wincompatible-pointer-types]
+   20 |     int *x1 = &t1, *x2 = &t2, *x3 = &t3, *x4 = &t4;
+      |                                                ^
