@@ -166,7 +166,6 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 
 | What | Why parked / trigger | Evidence | Status |
 |---|---|---|---|
-| Compound assignment or `++` on an lvalue with side effects (`a[i++] += 1`) is unsupported | Needs temporaries (T6 templates). 2 units in lua54. Trigger: T6. | `tests/tast/unsup.c` `sideef` | parked |
 | Pointer-qualification changes elaborate as a `cast` node | Harmless, but noisy against gcc's tree; the consumer may want a distinct `qual` op or none. Trigger: the first back end or the conversion-warning rewrite. | `tests/tast/ptr.expected` `msg` | parked |
 | gcc differential compares cast multisets only, not pointer arithmetic or indirections | Coarse oracle by decision; extend if a pointer bug escapes. Trigger: a missed bug. | `tests/tast_gcc.py` | parked |
 
