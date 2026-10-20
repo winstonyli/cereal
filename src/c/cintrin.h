@@ -47,6 +47,17 @@ enum {
     BK_NONE,
     BK_LOCKFREE,    /* __atomic_is_lock_free, __atomic_always_lock_free */
     BK_STDC,        /* one operand, an unsigned integer that is not a _Bool */
+    BK_COUNT,       /* only the argument count */
+    BK_ALIGN,       /* alloca_with_align: the alignment is a constant power of 2 of 8 to 2^31 bits */
+    BK_ASSUME,      /* assume_aligned: 2 or 3 arguments, an integer third one */
+    BK_CLEARPAD,    /* clear_padding: a pointer to a complete, non-const type */
+    BK_FPCLASS,     /* fpclassify: five constants, then a floating operand */
+    BK_FP1,         /* one floating operand (isnan, signbit ...) */
+    BK_FPCMP,       /* two operands, one of them floating (isgreater ...) */
+    BK_OVF,         /* the generic overflow built-ins: two integers and a pointer to an integer */
+    BK_OVFP,        /* the _p forms: three integers */
+    BK_SPEC,        /* speculation_safe_value: 1 or 2 arguments */
+    BK_VASTART,     /* va_start: at least 1 argument */
     BK_GENERIC,     /* the generic atomics: void * operands of one nonzero size */
     BK_SIZED,       /* the atomics sized by a pointer to an integer or pointer (1 to 16 bytes) */
     BK_FETCH        /* the same, and the object is not a _Bool */
@@ -61,7 +72,7 @@ enum { BR_NONE, BR_VOID, BR_BOOL, BR_UINT, BR_ARG, BR_PTEE };
  * arguments, the typed ones (__builtin_sadd_overflow ...) have prototypes. */
 enum { OV_ADD, OV_SUB, OV_MUL };
 #define BI_OVF(Y, n, op)                                                    \
-    Y(n "_overflow", BIC_OVF, op, BIF_GEN, 3, BK_NONE, BR(BR_BOOL, 0))      \
+    Y(n "_overflow", BIC_OVF, op, BIF_GEN, 3, BK_OVF, BR(BR_BOOL, 0))      \
     BI_OVT(Y, "s" n "_overflow", op) BI_OVT(Y, "u" n "_overflow", op)       \
     BI_OVT(Y, "s" n "l_overflow", op) BI_OVT(Y, "u" n "l_overflow", op)     \
     BI_OVT(Y, "s" n "ll_overflow", op) BI_OVT(Y, "u" n "ll_overflow", op)
@@ -71,6 +82,11 @@ enum { OV_ADD, OV_SUB, OV_MUL };
 enum { ST_LZ, ST_TZ, ST_FLO, ST_FTO, ST_POP, ST_HAS1, ST_BW, ST_FLOOR, ST_CEIL, ST_OP = 15, ST_INV = 16 };
 #define BI_ST(Y, n, op, res)                                                    Y("stdc_" n, BIC_STDC, op, BIF_GEN, 1, BK_STDC, res)
 #define BI_STU(Y, n, op) BI_ST(Y, n, op, BR(BR_UINT, 0))
+
+/* A row for the front end alone: argument count and checks, nothing generated. */
+#define BI_CK(Y, n, argc, chk) Y(n, BIC_NONE, 0, 0, argc, chk, 0)
+#define BI_FP1(Y, n) BI_CK(Y, n, 1, BK_FP1)
+#define BI_CMP(Y, n) BI_CK(Y, n, 2, BK_FPCMP)
 
 /* The atomic operations, and what the flags say about the arguments and the result. */
 enum { AT_LOAD, AT_STORE, AT_ST0, AT_XCHG, AT_ADD, AT_SUB, AT_AND, AT_OR, AT_XOR, AT_NAND, AT_CAS };
@@ -116,7 +132,17 @@ enum {
     X("strcat", BIC_LIBC, 0) X("strncat", BIC_LIBC, 0) X("strchr", BIC_LIBC, 0) \
     X("strrchr", BIC_LIBC, 0) X("strstr", BIC_LIBC, 0) X("abs", BIC_LIBC, 0)    \
     X("labs", BIC_LIBC, 0) X("llabs", BIC_LIBC, 0)                              \
-    Y("speculation_safe_value", BIC_NONE, 0, 0, 0, BK_NONE, BR(BR_ARG, 0))      \
+    Y("speculation_safe_value", BIC_NONE, 0, 0, 0, BK_SPEC, BR(BR_ARG, 0))      \
+    BI_CK(Y, "constant_p", 1, BK_COUNT) BI_CK(Y, "alloca_with_align", 2, BK_ALIGN) \
+    BI_CK(Y, "alloca_with_align_and_max", 3, BK_COUNT)                          \
+    BI_CK(Y, "assume_aligned", 0, BK_ASSUME) BI_CK(Y, "fpclassify", 6, BK_FPCLASS) \
+    BI_CK(Y, "clear_padding", 1, BK_CLEARPAD) BI_CK(Y, "va_start", 0, BK_VASTART) \
+    BI_FP1(Y, "isfinite") BI_FP1(Y, "isinf_sign") BI_FP1(Y, "isinf")            \
+    BI_FP1(Y, "isnan") BI_FP1(Y, "isnormal") BI_FP1(Y, "signbit")               \
+    BI_CMP(Y, "isgreater") BI_CMP(Y, "isgreaterequal") BI_CMP(Y, "isless")      \
+    BI_CMP(Y, "islessequal") BI_CMP(Y, "islessgreater") BI_CMP(Y, "isunordered") \
+    BI_CK(Y, "add_overflow_p", 3, BK_OVFP) BI_CK(Y, "sub_overflow_p", 3, BK_OVFP) \
+    BI_CK(Y, "mul_overflow_p", 3, BK_OVFP)                                      \
     BI_A(Y, "__atomic_load", AT_LOAD, AF_PTR, 3, BK_GENERIC, BR(BR_VOID, 0))    \
     BI_A(Y, "__atomic_load_n", AT_LOAD, 0, 2, BK_SIZED, BR(BR_PTEE, 0))         \
     BI_A(Y, "__atomic_store", AT_STORE, AF_PTR, 3, BK_GENERIC, BR(BR_VOID, 0))  \

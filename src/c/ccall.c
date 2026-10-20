@@ -803,14 +803,13 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
                             const char *name)
 {
     uint32_t all[16], *a = all + 1, n = nkids(c, i, all, 16), k, want = 0;
-    const char *b = name + 10;
+    const BiRow *r = &bi_rows[bi_find_call(name)];
     SrcLoc loc = call_loc(c, fn);
-    bool ovf = false, ovfp = false, fp1 = false, cmp = false;
     if (n == 0 || n > 16)
         return true;
     n--;
     if ((want = bi_argc(name)) != 0) {
-        const BiRow *r = &bi_rows[bi_find_call(name)];
+
         if (n != want) {
             if (r->chk == BK_GENERIC)
                 cerror(c, loc, "incorrect number of arguments to function "
@@ -867,48 +866,26 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
         return atomic_args_ok(c, i, a, n, name, loc);
     if (strncmp(name, "__builtin_", 10))
         return true;
-    if (!strcmp(b, "constant_p")) {
-        want = 1;
-    } else if (!strcmp(b, "alloca_with_align")) {
-        want = 2;
-    } else if (!strcmp(b, "alloca_with_align_and_max")) {
-        want = 3;
-    } else if (!strcmp(b, "assume_aligned")) {
+    switch (r->chk) {
+    case BK_NONE:
+        return true;
+    case BK_ASSUME:
         want = n > 2 ? 3 : 2;
-    } else if (!strcmp(b, "fpclassify")) {
-        want = 6;
-    } else if (!strcmp(b, "clear_padding")) {
-        want = 1;
-    } else if (!strcmp(b, "speculation_safe_value")) {
+        break;
+    case BK_SPEC:
         want = n < 1 ? 1 : n > 2 ? 2 : n;
         if (!n)         /* gcc reports this one at input_location */
             loc = after_loc(c, i);
-    } else if (!strcmp(b, "va_start")) {
+        break;
+    case BK_VASTART:
         if (n == 0) {
             cerror(c, loc, "too few arguments to function '%s'", name);
             return false;
         }
         return true;
-    } else if (!strcmp(b, "isfinite") || !strcmp(b, "isinf_sign") ||
-               !strcmp(b, "isinf") || !strcmp(b, "isnan") ||
-               !strcmp(b, "isnormal") || !strcmp(b, "signbit")) {
-        want = 1;
-        fp1 = true;
-    } else if (!strcmp(b, "isgreater") || !strcmp(b, "isgreaterequal") ||
-               !strcmp(b, "isless") || !strcmp(b, "islessequal") ||
-               !strcmp(b, "islessgreater") || !strcmp(b, "isunordered")) {
-        want = 2;
-        cmp = true;
-    } else if (!strcmp(b, "add_overflow") || !strcmp(b, "sub_overflow") ||
-               !strcmp(b, "mul_overflow")) {
-        want = 3;
-        ovf = true;
-    } else if (!strcmp(b, "add_overflow_p") || !strcmp(b, "sub_overflow_p") ||
-               !strcmp(b, "mul_overflow_p")) {
-        want = 3;
-        ovfp = true;
-    } else {
-        return true;
+    default:
+        want = r->argc;
+        break;
     }
     if (n != want) {
         cerror(c, loc, n < want ? "too few arguments to function '%s'"
@@ -918,7 +895,7 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
     for (k = 0; k < n; k++)
         if (node_err(c, a[k]))
             return true;
-    if (!strcmp(b, "alloca_with_align")) {
+    if (r->chk == BK_ALIGN) {
         bool ok = c->ck[a[1]] == K_ICE && !(c->ef[a[1]] & EF_OVERFLOW);
         uint64_t v = c->cv[a[1]];
         if (ok && (v < 8 || v > 2147483648u || (v & (v - 1))))
@@ -929,13 +906,13 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
                    "'2147483648' bits", name);
             return false;
         }
-    } else if (!strcmp(b, "assume_aligned")) {
+    } else if (r->chk == BK_ASSUME) {
         if (n == 3 && !is_int(c, rvt(c, a[2]))) {
             cerror(c, arg_loc(c, a[2]), "non-integer argument 3 in call to "
                    "function '%s'", name);
             return false;
         }
-    } else if (!strcmp(b, "clear_padding")) {
+    } else if (r->chk == BK_CLEARPAD) {
         TypeId t = rvt(c, a[0]), e;
         const char *why = NULL;
         if (!is_ptr(c, t))
@@ -952,7 +929,7 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
                    "has pointer to 'const' type (%s)", name, type_q(TT, t));
             return false;
         }
-    } else if (!strcmp(b, "fpclassify")) {
+    } else if (r->chk == BK_FPCLASS) {
         for (k = 0; k < 5; k++)
             if (c->ck[a[k]] != K_ICE) {
                 cerror(c, arg_loc(c, a[k]), "non-const integer argument %u "
@@ -964,13 +941,13 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
                    "to function '%s'", name);
             return false;
         }
-    } else if (fp1) {
+    } else if (r->chk == BK_FP1) {
         if (!is_flt(c, rvt(c, a[0]))) {
             cerror(c, arg_loc(c, a[0]), "non-floating-point argument in call "
                    "to function '%s'", name);
             return false;
         }
-    } else if (cmp) {
+    } else if (r->chk == BK_FPCMP) {
         TypeId t0 = rvt(c, a[0]), t1 = rvt(c, a[1]);
         if (!(is_flt(c, t0) || is_flt(c, t1)) ||
             !(is_flt(c, t0) || is_int(c, t0)) ||
@@ -979,7 +956,8 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
                    "'%s'", name);
             return false;
         }
-    } else if (ovf || ovfp) {
+    } else if (r->chk == BK_OVF || r->chk == BK_OVFP) {
+        bool ovf = r->chk == BK_OVF;
         for (k = 0; k < (ovf ? 2u : 3u); k++)
             if (!is_int(c, rvt(c, a[k]))) {
                 cerror(c, arg_loc(c, a[k]), "argument %u in call to function "
