@@ -1114,15 +1114,15 @@ static const PunctEnt *s_match_punct(Slow *s)
 
 /* Lex one token starting at `start` the careful way. */
 /* Length of a string/char literal prefix at p (0: none). */
-static int qprefix(const char *p, bool uliterals)
+static int qprefix(const char *p, const LexOptions *o)
 {
     if (p[0] == 'L' && (p[1] == '\'' || p[1] == '"'))
         return 1;
-    if (!uliterals)
+    if (!o->uliterals)
         return 0;
     if ((p[0] == 'u' || p[0] == 'U') && (p[1] == '\'' || p[1] == '"'))
         return 1;
-    if (p[0] == 'u' && p[1] == '8' && p[2] == '"')
+    if (p[0] == 'u' && p[1] == '8' && (p[2] == '"' || (o->c23 && p[2] == '\'')))
         return 2;
     return 0;
 }
@@ -1217,6 +1217,11 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
                 s_take(&s);
             } else if (s_is_idstart(&s, d) || (d >= '0' && d <= '9') ||
                        d == '.') {
+                s_take(&s);
+            } else if (d == '\'' && L->opt.c23 &&
+                       (s_is_idstart(&s, s_peek2(&s)) ||
+                        (s_peek2(&s) >= '0' && s_peek2(&s) <= '9'))) {
+                s_take(&s);     /* C23 digit separator */
                 s_take(&s);
             } else if ((u = s_ucn_len(&s)) != 0) {
                 xn = true;
@@ -1481,7 +1486,7 @@ void lex_next(Lexer *L, Tok *t)
 
     if (cl[c] & C_IDSTART) {
         if ((c == 'L' || c == 'u' || c == 'U') &&
-            qprefix(p, L->opt.uliterals))
+            qprefix(p, &L->opt))
             goto quoted;
         q = scan_ident(p + 1, L->opt.dollar_idents);
         if (*q == '\\' || (*q == '?' && trig) || (L->hi8 && has_high_in(p, q)))
@@ -1509,6 +1514,10 @@ void lex_next(Lexer *L, Tok *t)
                 q++;
                 continue;
             }
+            if (d == '\'' && L->opt.c23 && (cl[(unsigned char)q[1]] & (C_ID | C_DIGIT))) {
+                q += 2;         /* C23 digit separator */
+                continue;
+            }
             break;
         }
         if (*q == '\\' || (*q == '?' && trig) || (L->hi8 && has_high_in(p, q)))
@@ -1522,7 +1531,7 @@ void lex_next(Lexer *L, Tok *t)
         {
             char quote;
             const char *qs;
-            q = p + qprefix(p, L->opt.uliterals);
+            q = p + qprefix(p, &L->opt);
             quote = *q++;
             qs = q;
             for (;;) {

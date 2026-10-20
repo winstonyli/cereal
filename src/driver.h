@@ -50,7 +50,7 @@ typedef struct Options {
     const char *cwd;            /* absolute working directory of the TU (NULL: the process's) */
     Arena rsp;                  /* strings from @files that the options point into */
     StrVec rsp_files;           /* the @files read (entry_options; in rsp) */
-    int std_year;               /* -std=: 1999, 2011 or 2017 */
+    int std_year;               /* -std=: 1999, 2011, 2017 or 2023 */
     bool lenient;               /* skip what is not understood without notes (language server) */
     VEC(const char *) ignored_semantic; /* skipped, may change diagnostics */
     DepsOpts deps;

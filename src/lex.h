@@ -11,6 +11,7 @@ typedef struct LexOptions {
     bool dollar_idents;  /* accept '$' in identifiers (GNU) */
     bool uliterals;      /* u'' U'' u"" U"" u8"" (gnu99, C11) */
     bool scope;          /* '::' is one token (GNU modes, C2X) */
+    bool c23;            /* C23: ''' digit separators, u8'' */
     bool ucn_c99;        /* -pedantic: only C99 Annex D UCNs in identifiers */
     uint8_t bidi;        /* -Wbidi-chars=: BIDI_* */
     uint8_t norm;        /* -Wnormalized=: 0 nfkc, 1 nfc, 2 id, 3 none */

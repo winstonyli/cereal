@@ -50,8 +50,9 @@ def main():
     random.seed(4321)
     bad = 0
     for path in files:
-        asm = run([cereal, "check", "--target=x86_64-linux-gnu", "--dump-asm", path]).stdout
-        funcs = X.parse(run([cereal, "check", "--target=x86_64-linux-gnu", "--dump-cfg", path]).stdout)
+        xf = os.environ.get("CEREAL_FLAGS", "").split()      # e.g. -std=gnu23 (the survey)
+        asm = run([cereal, "check", "--target=x86_64-linux-gnu", *xf, "--dump-asm", path]).stdout
+        funcs = X.parse(run([cereal, "check", "--target=x86_64-linux-gnu", *xf, "--dump-cfg", path]).stdout)
         notes = dict(re.findall(r"^# x86: (\S+) unsupported: (.*)$", asm, re.M))
         todo = []
         for f in funcs.values():
@@ -60,7 +61,7 @@ def main():
         done = [f for f in todo if f.name not in notes]
         abi = os.path.join(os.path.dirname(path), "gcc", os.path.basename(path))  # gcc-built side
         if os.path.exists(abi):
-            cf = X.parse(run([cereal, "check", "--target=x86_64-linux-gnu", "--dump-cfg", abi]).stdout)
+            cf = X.parse(run([cereal, "check", "--target=x86_64-linux-gnu", *xf, "--dump-cfg", abi]).stdout)
             done += [f for f in cf.values() if f.name.startswith("gcc_") and supported(f.ret)
                      and all(supported(p) for p in f.params)]
         ext = [abi] if os.path.exists(abi) else []
@@ -93,7 +94,7 @@ def main():
                 continue
             outs = {}
             # the same functions as an object file: bytes against the assembler's, then linked and run
-            run([cereal, "check", "--target=x86_64-linux-gnu", "--emit-obj=" + j("o.o"), path])
+            run([cereal, "check", "--target=x86_64-linux-gnu", *xf, "--emit-obj=" + j("o.o"), path])
             r = run(["gcc", "-c", "-w", "-o", j("gas.o"), j("a.s")])
             for o in ("o.o", "gas.o"):
                 if os.path.exists(j(o)):

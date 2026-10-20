@@ -787,7 +787,8 @@ static TypeId builtin_ft(El *e, uint32_t callee)
     return type_ckind(&c->tt, ft) == TY_FUNC ? ft : 0;
 }
 
-/* va_start, va_end, va_copy and va_arg: one node, `va start|end|copy|arg`,
+/* va_start (also c23_va_start, whose last-named argument is optional), va_end,
+ * va_copy and va_arg: one node, `va start|end|copy|arg`,
  * whose kids are the va_list operands as pointers to its first element
  * (start's last-named-parameter argument is not evaluated and not kept);
  * the type is void, or for arg the type read. */
@@ -805,7 +806,8 @@ static int va_kind(Checker *c, uint32_t i)
     if (ntag(c, k[0]) != N_IDENT || c->sym[k[0]] != SYM_NONE)
         return VA_NONE;
     nm = cident(c, cnode_ident(c, k[0]));
-    return !strcmp(nm, "__builtin_va_start") ? VA_START
+    return !strcmp(nm, "__builtin_va_start") ||
+                   !strcmp(nm, "__builtin_c23_va_start") ? VA_START
          : !strcmp(nm, "__builtin_va_end") ? VA_END
          : !strcmp(nm, "__builtin_va_copy") ? VA_COPY : VA_NONE;
 }
@@ -817,7 +819,7 @@ static uint32_t e_va(El *e, uint32_t i, int kind)
     SrcLoc loc = cnode_loc(c, i);
     TypeId t = kind == VA_ARG ? unqual(c, c->ty[i]) : TYPE_B(VOID);
     uint32_t want = kind == VA_COPY ? 2 : 1;
-    if (kind != VA_ARG && (nk < want + 1 || (kind == VA_START && nk != 3) ||
+    if (kind != VA_ARG && (nk < want + 1 || (kind == VA_START && nk > 3) ||
                            (kind != VA_START && nk != want + 1)))
         return tunsup(e, "va builtin arguments");
     if (kind == VA_ARG && nk != 2)

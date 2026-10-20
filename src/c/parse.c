@@ -166,7 +166,9 @@ static int ckw_of(Parser *p, const PTok *t)
     if (t->t.kind != TK_IDENT)
         return CK_NONE;
     k = ident_by_id(p->in, t->t.aux)->ckw;
-    if ((k & CKW_GNU_ONLY) && !p->gnu)
+    if ((k & (CKW_GNU_ONLY | CKW_C23)) &&
+        !(((k & CKW_GNU_ONLY) && p->gnu) ||
+          ((k & CKW_C23) && p->year >= 2023)))
         return CK_NONE;
     return (int)(k & 0xFF);
 }
@@ -2630,6 +2632,9 @@ static void primary(Parser *p)
         case CK_OFFSETOF:
             offsetof_expr(p);
             return;
+        case CK_TRUE: case CK_FALSE:    /* a constant: the checker reads the spelling */
+            leaf(p, N_NUMBER, adv(p));
+            return;
         default:
             break;
         }
@@ -3444,7 +3449,7 @@ static void declaration(Parser *p, bool top)
 /* ---- units ------------------------------------------------------------------ */
 
 void parser_init(Parser *p, SrcMgr *sm, Interner *in, DiagEngine *diag,
-                 bool gnu, ParseSource src, void *ctx)
+                 bool gnu, int year, ParseSource src, void *ctx)
 {
     static const char *const builtin_types[] = {
         "__builtin_va_list", "__int128_t", "__uint128_t", "nullptr_t", NULL};
@@ -3454,6 +3459,7 @@ void parser_init(Parser *p, SrcMgr *sm, Interner *in, DiagEngine *diag,
     p->in = in;
     p->diag = diag;
     p->gnu = gnu;
+    p->year = year;
     p->src = src;
     p->src_ctx = ctx;
     scope_init(&p->scope);

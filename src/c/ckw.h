@@ -16,7 +16,8 @@
     X(GOTO) X(CONTINUE) X(BREAK) X(RETURN)                                 \
     X(SIZEOF) X(ALIGNOF) X(GENERIC) X(STATIC_ASSERT) X(ALIGNAS)            \
     X(ATTRIBUTE) X(ASM) X(TYPEOF) X(EXTENSION) X(LABEL) X(REAL) X(IMAG)    \
-    X(VA_ARG) X(OFFSETOF) X(TYPES_COMPATIBLE) X(CONVERTVECTOR) X(GIMPLE) X(HAS_ATTRIBUTE)
+    X(VA_ARG) X(OFFSETOF) X(TYPES_COMPATIBLE) X(CONVERTVECTOR) X(GIMPLE) X(HAS_ATTRIBUTE)    \
+    X(TRUE) X(FALSE)
 
 typedef enum {
     CK_NONE,
@@ -26,7 +27,9 @@ typedef enum {
     CK_COUNT
 } CKeyword;
 
-#define CKW_GNU_ONLY 0x100 /* a keyword only with -std=gnu* (typeof, asm) */
+#define CKW_GNU_ONLY 0x100 /* a keyword with -std=gnu* (asm) */
+#define CKW_C23 0x200      /* a keyword at -std=c23 and later (bool, alignas);
+                            * with GNU_ONLY: live under either */
 
 typedef struct CKwSpelling {
     const char *s;
@@ -73,7 +76,13 @@ static const CKwSpelling ckw_spellings[] = {
     {"__asm", CK_ASM}, {"__asm__", CK_ASM}, {"asm", CK_ASM | CKW_GNU_ONLY},
     {"__typeof", CK_TYPEOF}, {"__typeof__", CK_TYPEOF},
     {"__GIMPLE", CK_GIMPLE},
-    {"typeof", CK_TYPEOF | CKW_GNU_ONLY}, {"__extension__", CK_EXTENSION},
+    {"typeof", CK_TYPEOF | CKW_GNU_ONLY | CKW_C23},
+    {"typeof_unqual", CK_TYPEOF | CKW_C23},
+    {"bool", CK_BOOL | CKW_C23}, {"true", CK_TRUE | CKW_C23},
+    {"false", CK_FALSE | CKW_C23},
+    {"static_assert", CK_STATIC_ASSERT | CKW_C23},
+    {"thread_local", CK_THREAD_LOCAL | CKW_C23},
+    {"alignas", CK_ALIGNAS | CKW_C23}, {"alignof", CK_ALIGNOF | CKW_C23}, {"__extension__", CK_EXTENSION},
     {"__label__", CK_LABEL}, {"__real", CK_REAL}, {"__real__", CK_REAL},
     {"__imag", CK_IMAG}, {"__imag__", CK_IMAG},
     {"__builtin_va_arg", CK_VA_ARG}, {"__builtin_offsetof", CK_OFFSETOF},

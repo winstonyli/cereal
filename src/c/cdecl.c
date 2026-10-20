@@ -528,7 +528,7 @@ static void fill_func_type(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
     for (j = 0; j < pi.n; j++)
         pi.ps[j] = TYPE_UNQUAL(pi.ps[j]) | (all_quals(c, pi.ps[j]) & TQ_ATOMIC);
     fl = pi.flags;
-    if (!func_has_params(c, f) || pi.krlist || incomplete)
+    if ((!func_has_params(c, f) && !(fl & TF_VARIADIC)) || pi.krlist || incomplete)
         fl |= TF_NOPROTO;
     if (fl & TF_NOPROTO) {
         if (pi.krlist || incomplete)

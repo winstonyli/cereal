@@ -304,6 +304,8 @@ static const struct {
     {"gnu11", 2011, true}, {"gnu1x", 2011, true},
     {"c17", 2017, false}, {"c18", 2017, false}, {"iso9899:2017", 2017, false},
     {"iso9899:2018", 2017, false}, {"gnu17", 2017, true}, {"gnu18", 2017, true},
+    {"c23", 2023, false}, {"c2x", 2023, false}, {"iso9899:2024", 2023, false},
+    {"gnu23", 2023, true}, {"gnu2x", 2023, true},
 };
 
 /* Apply -std=NAME; false if it is not one cereal reads. */
@@ -316,7 +318,8 @@ static bool set_std(Options *o, const char *name)
         o->std_year = std_names[k].year;
         o->pp.gnu_mode = std_names[k].gnu;
         o->pp.lex.uliterals = std_names[k].gnu || o->std_year >= 2011;
-        o->pp.lex.scope = std_names[k].gnu;
+        o->pp.lex.scope = std_names[k].gnu || o->std_year >= 2023;
+        o->pp.lex.c23 = o->std_year >= 2023;
         if (std_names[k].gnu) {
             o->pp.gnu_extensions = true;
             o->pp.lex.trigraphs = o->trigraphs_flag;
@@ -361,7 +364,7 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
         o->pp.no_predefs = true;
     } else if (!strncmp(a, "-std=", 5)) {
         if (!set_std(o, a + 5) && !o->lenient)
-            opt_error(o, "only C99, C11 and C17 are supported (got '%s')", a);
+            opt_error(o, "only C99, C11, C17 and C23 are supported (got '%s')", a);
     } else if (!strcmp(a, "-pedantic") || !strcmp(a, "-Wpedantic")) {
         o->pp.pedantic = true;
         o->pp.lex.ucn_c99 = true;
@@ -770,7 +773,8 @@ bool tu_begin(TU *tu, const char *path)
         deps_attach(tu, path);
     pp_define_builtin_text(pp, "__STDC__", "1");
     pp_define_builtin_text(pp, "__STDC_VERSION__",
-                           tu->opt->std_year >= 2017 ? "201710L"
+                           tu->opt->std_year >= 2023 ? "202311L"
+                           : tu->opt->std_year >= 2017 ? "201710L"
                            : tu->opt->std_year >= 2011 ? "201112L" : "199901L");
     pp_define_builtin_text(pp, "__STDC_HOSTED__", "1");
     if (!tu->opt->pp.no_predefs) {
@@ -802,6 +806,10 @@ bool tu_begin(TU *tu, const char *path)
         pp_cmdline_undef(pp, "__STRICT_ANSI__");
         pp_define_builtin_text(pp, "linux", "1");
         pp_define_builtin_text(pp, "unix", "1");
+    }
+    if (!tu->opt->pp.no_predefs && tu->opt->std_year >= 2023) {
+        pp_define_builtin_text(pp, "__CHAR8_TYPE__", "unsigned char");
+        pp_define_builtin_text(pp, "__GCC_ATOMIC_CHAR8_T_LOCK_FREE", "2");
     }
     if (!tu->opt->pp.no_predefs &&
         (tu->opt->pp.gnu_mode || tu->opt->std_year >= 2011)) {

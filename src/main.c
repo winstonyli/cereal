@@ -79,7 +79,7 @@ static void usage(FILE *o)
         "options:\n"
         "  -I DIR  -iquote DIR  -isystem DIR  -nostdinc\n"
         "  -D NAME[=VAL]  -U NAME  -include FILE  -imacros FILE  -undef\n"
-        "  -std=c99|c11|c17|gnu99|gnu11|gnu17 (default gnu17)\n"
+        "  -std=c99|c11|c17|c23|gnu99|gnu11|gnu17|gnu23 (default gnu17)\n"
         "  -pedantic  -pedantic-errors  -trigraphs\n"
         "  -W<name>  -Wno-<name>  -W<group>  -Wall  -Wextra  -Werror\n"
         "  -Werror=<name>  -Weverything\n"

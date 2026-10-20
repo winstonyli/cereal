@@ -8,9 +8,8 @@ Each feature is a small file defining `int t(int k)`.  Per feature the survey re
   front whether `cereal check` accepts it (diagnostics other than gcc's own notes: FAIL)
   back  whether `--dump-asm` emits `t` (else the reason), and, when it does and the
         feature is marked runnable, whether tests/asm_exec.py finds t equal to gcc's
-The -std= values cereal accepts are listed first.  Features of newer standards are
-probed under cereal's gnu17 because it refuses c2x/c23 (a feature that needs the
-newer mode shows as FAIL for that reason).
+The -std= values cereal accepts are listed first.  A C23 feature is probed under
+cereal's -std=gnu23, the others under gnu17; gcc compiles each under its own gstd.
 """
 import os, re, subprocess, sys, tempfile
 
@@ -170,11 +169,12 @@ def main():
         if g.returncode:
             rows.append((area, id, since, "probe", "", ""))
             continue
-        c = run([cereal, "check", "--target=x86_64-linux-gnu", "-std=gnu17", p])
+        cstd = "-std=gnu23" if since == "C23" else "-std=gnu17"
+        c = run([cereal, "check", "--target=x86_64-linux-gnu", cstd, p])
         front = "ok" if c.returncode == 0 else "FAIL " + (re.search(r"error: (.*)", c.stdout + c.stderr) or [None, "?"])[1][:60]
         back = ""
         if c.returncode == 0:
-            asm = run([cereal, "check", "--target=x86_64-linux-gnu", "-std=gnu17", "--dump-asm", p]).stdout
+            asm = run([cereal, "check", "--target=x86_64-linux-gnu", cstd, "--dump-asm", p]).stdout
             m = re.search(r"^# x86: (\S+) unsupported: (.*)$", asm, re.M)
             if m:
                 back = "unsup: " + ("" if m.group(1) == "t" else m.group(1) + ": ") + m.group(2)[:60]
@@ -182,7 +182,8 @@ def main():
                 u = re.search(r"^# unit \S+ unsupported: (.*)$", asm, re.M)
                 back = "unsup: " + (u.group(1)[:60] if u else "not emitted")
             elif runit and gstd == "gnu23":
-                r = run(["python3", "-P", ASM_EXEC, cereal, p], cwd=os.path.join(HERE, "..", "tests", "cfg_exec"))
+                r = run(["python3", "-P", ASM_EXEC, cereal, p], cwd=os.path.join(HERE, "..", "tests", "cfg_exec"),
+                        env={**os.environ, "CEREAL_FLAGS": cstd})
                 back = "ok, equals gcc" if r.returncode == 0 else "DIFFERS"
             else:
                 back = "emits"

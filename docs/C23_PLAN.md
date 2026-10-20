@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # C23: `-std=c23`, `c2x`, `gnu23`
@@ -75,3 +75,27 @@ one keyword and see the golden fail. Regenerate `docs/C_STANDARD.md`.
   needs the goldens rule above or older-mode diagnostics will not match; `nullptr` is the one item that
   can stay behind without blocking the rest.
 - Round 3: nothing material found.
+
+## Step 1 result (2026-10-20)
+
+Landed as planned, with these findings:
+
+- The keyword gate is `ckw_of` in `parse.c` (year on the parser); the checker's `tckw` reads the raw
+  keyword id, so it still sees `bool` in a `-std=c17` file, but only where the parser built a keyword node.
+  `true` and `false` parse as `N_NUMBER` leaves and `e_number` reads the spelling (`_Bool` constant, ICE),
+  so no new node kind. `typeof_unqual` is `CK_TYPEOF` with its own spelling; `static_assert` already took
+  an optional message.
+- gcc 15's `<stdarg.h>` expands `va_start(ap)` to `__builtin_c23_va_start(ap)`: a row of its own
+  (`BK_VASTART`), and `(...)` now builds a prototyped variadic type in every mode (`fill_func_type`).
+- Binary constants and decimal floats stop being pedantic notes at year 2023 (libcpp: standard there).
+- Digit separators: the lexer takes `'` before an identifier character or digit; `lit_number` strips them
+  and reports gcc 15's two messages (outside a digit sequence, adjacent to a decimal point). Not done:
+  "adjacent digit separators" for `1''2` (gcc 15 lexes the pair into the number; cereal lexes an empty
+  character constant). Message wording of gcc 15-only diagnostics (`'bool' cannot be used here`,
+  "multi-character literal cannot have an encoding prefix") is left at gcc 13's, so those lines are not
+  in the goldens.
+- `tools/c_survey.py` probes C23 rows under `-std=gnu23`; `tests/asm_exec.py` takes `CEREAL_FLAGS`.
+  Result: 108 of 114 front end, 86 back end (was 101 and 78). Left: `nullptr`, `constexpr`,
+  `unreachable()` (needs `nullptr`), and the parked `_BitInt`, `#embed`, `__has_embed`.
+- Tests: `tests/check/c23_keywords`, `c23_errors`, `c17_c23_names`. Mutation (dropping `CKW_C23` from
+  `bool`) fails `c17_c23_names`; suite 2293/0; zstd, Lua and libuv unchanged.

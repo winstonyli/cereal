@@ -1,22 +1,23 @@
 # C language coverage
 
-Measured 2026-10-19 by `tools/c_survey.py` (116 small probes, one feature each, every one a function
+Measured 2026-10-20 by `tools/c_survey.py` (116 small probes, one feature each, every one a function
 `int t(int k)`). Regenerate with `python3 -P tools/c_survey.py ./cereal` (Linux, needs gcc 15) and paste
 the output below; it is a survey of the features listed, not a conformance suite, and the probe list is the
 roadmap's source: add a probe when a feature is missing from it.
 
 Columns: **gcc** whether gcc 15 accepts the probe (`probe` = it does not, so the row says nothing);
-**front end** whether `cereal check -std=gnu17` accepts it; **back end** whether `--dump-asm` emits it
+**front end** whether `cereal check` accepts it (a C23 row under `-std=gnu23`, the others under `-std=gnu17`); **back end** whether `--dump-asm` emits it
 (`unsup: why` otherwise) and, where the probe is runnable, whether `tests/asm_exec.py` finds `t` equal to gcc's
 (`ok, equals gcc`; `emits` = emitted but not run, because the probe needs a library or a static callee;
-`DIFFERS` = see the notes). `-std=` is accepted for c99, gnu99, c11, gnu11, c17, gnu17 only: c89, c90,
-gnu89, c2x, c23 and their gnu forms are refused, so every C23 row is probed under gnu17.
+`DIFFERS` = see the notes). `-std=` is accepted for c99, gnu99, c11, gnu11, c17, gnu17, c2x, gnu2x, c23 and
+gnu23 (2026-10-20, `docs/C23_PLAN.md`); c89, c90 and gnu89 are refused.
 
 ## Summary
 
-101 of 114 meaningful probes pass the front end and 78 are emitted by the back end (70 run and equal
-gcc's, 8 not run). Nothing from C89 through C17 fails the front end. The 13 front-end failures are all C23 syntax
-(none can pass until `-std=c23` is accepted) plus `#embed`/`__has_embed`.
+108 of 114 meaningful probes pass the front end and 86 are emitted by the back end (78 run and equal
+gcc's, 8 not run). Nothing from C89 through C17 fails the front end. The 6 front-end failures are C23:
+`nullptr`, `constexpr` and `unreachable()` (which needs `nullptr`) are plan steps 2 and 3 of
+`docs/C23_PLAN.md`; `_BitInt`, `#embed` and `__has_embed` are parked.
 
 ## Back-end gaps (front end accepts, no code)
 
@@ -32,7 +33,6 @@ gcc's, 8 not run). Nothing from C89 through C17 fails the front end. The 13 fron
   64 bits to test).
 - Asm with operands in a template the generator does not recognize; static data initialized by a
   compound literal (`initializer expression`).
-- C23 `unreachable()` from `<stddef.h>` (not declared by our headers).
 
 ## `alias` and `ifunc`
 
@@ -44,7 +44,7 @@ A reference to a symbol declared with `__attribute__((alias(..)))` or `ifunc` is
 `implicit-int` (error since gcc 14) and `builtin-rotate` (`__builtin_rotateleft32` is clang's; gcc has none,
 so the corpus uses of it are clang-only code, not a gap for a gcc-compatible build).
 
-cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17
+cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17, c2x, gnu2x, c23, gnu23
 
 | area | feature | since | gcc | front end | back end |
 |---|---|---|---|---|---|
@@ -89,25 +89,25 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17
 | C11 | quick-exit-header | C11 | ok | ok | emits |
 | C23 | nullptr | C23 | ok | FAIL 'nullptr' undeclared (first use in this function); did you m |  |
 | C23 | constexpr | C23 | ok | FAIL expected ';' before 'int' |  |
-| C23 | typeof | C23 | ok | FAIL expected expression before 'const' |  |
+| C23 | typeof | C23 | ok | ok | ok, equals gcc |
 | C23 | auto-type | C23 | ok | ok | ok, equals gcc |
-| C23 | bool-keyword | C23 | ok | FAIL unknown type name 'bool' |  |
+| C23 | bool-keyword | C23 | ok | ok | ok, equals gcc |
 | C23 | attributes | C23 | ok | ok | ok, equals gcc |
 | C23 | fallthrough-attr | C23 | ok | ok | ok, equals gcc |
-| C23 | digit-separator | C23 | ok | FAIL missing terminating ' character |  |
+| C23 | digit-separator | C23 | ok | ok | ok, equals gcc |
 | C23 | binary-literal | C23 | ok | ok | ok, equals gcc |
 | C23 | enum-underlying | C23 | ok | ok | ok, equals gcc |
 | C23 | empty-initializer | C23 | ok | ok | ok, equals gcc |
-| C23 | static-assert-no-message | C23 | ok | FAIL expected declaration specifiers or '...' before numeric cons |  |
+| C23 | static-assert-no-message | C23 | ok | ok | ok, equals gcc |
 | C23 | bitint | C23 | ok | FAIL expected ';' before 'b' |  |
 | C23 | unnamed-parameter | C23 | ok | ok | emits |
-| C23 | va-start-one-arg | C23 | ok | FAIL 'va_start' undeclared (first use in this function) |  |
-| C23 | u8-char-literal | C23 | ok | FAIL 'u8' undeclared (first use in this function) |  |
-| C23 | alignas-keyword | C23 | ok | FAIL expected ';' before 'int' |  |
-| C23 | thread-local-keyword | C23 | ok | FAIL expected ';' before 'int' |  |
+| C23 | va-start-one-arg | C23 | ok | ok | ok, equals gcc |
+| C23 | u8-char-literal | C23 | ok | ok | ok, equals gcc |
+| C23 | alignas-keyword | C23 | ok | ok | ok, equals gcc |
+| C23 | thread-local-keyword | C23 | ok | ok | ok, equals gcc |
 | C23 | stdckdint | C23 | ok | ok | ok, equals gcc |
 | C23 | stdbit | C23 | ok | ok | ok, equals gcc |
-| C23 | unreachable | C23 | ok | ok | unsup: builtin or undeclared call unreachable |
+| C23 | unreachable | C23 | ok | FAIL 'nullptr' undeclared here (not in a function); did you mean  |  |
 | C23 | label-before-declaration | C23 | ok | ok | ok, equals gcc |
 | C23 | decimal-float | C23 | ok | ok | unsup: decimal floating type |
 | C23 | floatN | C23 | ok | ok | unsup: _FloatN type |
@@ -165,4 +165,4 @@ cereal accepts -std= c99, gnu99, c11, gnu11, c17, gnu17
 | PP | stdc-macros | C11 | ok | ok | ok, equals gcc |
 | PP | line-file-date | C89 | ok | ok | emits |
 
-116 probes: front end ok 101, back end ok 78, probes gcc rejects 2
+116 probes: front end ok 108, back end ok 86, probes gcc rejects 2

@@ -1260,6 +1260,8 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
         /* libcpp's pedwarns carry no option tag; interpret_float's
          * non-standard suffix pedwarn is c-family's: [-Wpedantic] at
          * input_location */
+        if (l->id && !strcmp(l->id, "c2x") && c->opt.std_year >= 2023)
+            break;              /* standard in C23 */
         if (l->id && !strcmp(l->id, "c2x") && !c->opt.pedantic) {
             /* libcpp: the compat option's own, shorter wording */
             const char *or_gcc = strstr(l->msg, " or GCC");
@@ -1347,6 +1349,14 @@ static void e_number(Checker *c, uint32_t i)
     const char *s = ttext(c, c->nodes[i].tok, &len);
     Lit l;
     TypeId t;
+    int kw = tckw(c, c->nodes[i].tok);
+    if (kw == CK_TRUE || kw == CK_FALSE) {      /* C23 true, false */
+        c->ty[i] = TYPE_MK(TY_BOOL, 0);
+        c->ck[i] = K_ICE;
+        c->cv[i] = kw == CK_TRUE;
+        c->ef[i] = EF_INTOPS;
+        return;
+    }
     lit_number(c->tgt, s, len, &l);
     traditional_suffix(c, i, s, len, l.flags & LIT_FLOAT);
     lit_report(c, i, &l);
@@ -1409,7 +1419,7 @@ static void e_number(Checker *c, uint32_t i)
     if (len && s[0] >= '1' && s[0] <= '9')
         c->ef[i] |= EF_DECIMAL;
     else if (len == 1 || (len > 1 && s[1] != 'x' && s[1] != 'X' &&
-                          s[1] != 'b' && s[1] != 'B' &&
+                          s[1] != 'b' && s[1] != 'B' && s[1] != '\'' &&
                           !(s[1] >= '0' && s[1] <= '9')))
         c->ef[i] |= EF_DECIMAL;   /* 0, 0u */
 }

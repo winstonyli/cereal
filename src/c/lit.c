@@ -195,6 +195,36 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
     unsigned radix = 10, max_digit = 0;
     enum { NOT_FLOAT, AFTER_POINT, AFTER_EXPON } ff = NOT_FLOAT;
     bool seen_digit = false;
+    if (memchr(s, '\'', n)) {         /* C23 digit separators carry no value */
+        char *buf = xmalloc(n);
+        size_t i, k = 0;
+        bool hex = n > 1 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X');
+        const char *msg = NULL;
+        for (i = 0; i < n; i++) {
+            if (s[i] != '\'') {
+                buf[k++] = s[i];
+                continue;
+            }
+            if (i && s[i - 1] == '.')
+                msg = "digit separator adjacent to decimal point";
+            else if (!msg && (!i || i + 1 >= n ||
+                              !(hex ? hexval((unsigned char)s[i - 1]) >= 0 &&
+                                      hexval((unsigned char)s[i + 1]) >= 0
+                                    : isdig((unsigned char)s[i - 1]) &&
+                                      isdig((unsigned char)s[i + 1]))))
+                msg = "digit separator outside digit sequence";
+        }
+        if (msg) {
+            memset(out, 0, sizeof *out);
+            out->ty = TY_INT;
+            bad(out, msg);
+            free(buf);
+            return;
+        }
+        lit_number(tgt, buf, k, out);
+        free(buf);
+        return;
+    }
     memset(out, 0, sizeof *out);
     out->ty = TY_INT;
     if (n == 1) {

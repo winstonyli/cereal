@@ -135,7 +135,7 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo)
         goto done;
     }
     opened = true;
-    parser_init(&p, &tu->sm, tu->in, &tu->diag, o->pp.gnu_mode, src, ctx);
+    parser_init(&p, &tu->sm, tu->in, &tu->diag, o->pp.gnu_mode, o->std_year, src, ctx);
     p.macro_chain = pp_macro_chain;
     p.macro_ctx = &tu->pp;
     if (src == pp_source) {

@@ -1,0 +1,6 @@
+c17_c23_names.c:4:9: error: initializer element is not constant
+    4 | int x = true + false + bool;
+      |         ^
+c17_c23_names.c:5:1: warning: ISO C11 does not support omitting the string in '_Static_assert' [-Wpedantic]
+    5 | _Static_assert(1);
+      | ^

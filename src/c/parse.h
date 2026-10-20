@@ -40,7 +40,8 @@ typedef struct Parser {
     void *macro_ctx;
     SrcLoc (*last_line)(void *ctx);   /* pp: first token of the last line read */
     void *last_ctx;
-    bool gnu;                   /* typeof and asm are keywords */
+    bool gnu;                   /* asm and typeof are keywords */
+    int year;                   /* the language year: C23 keywords from 2023 */
     /* toks[0] is the current unit's first token; lookahead follows */
     VEC(PTok) toks;
     uint32_t pos;
@@ -77,7 +78,7 @@ typedef struct Parser {
 } Parser;
 
 void parser_init(Parser *p, SrcMgr *sm, Interner *in, DiagEngine *diag,
-                 bool gnu, ParseSource src, void *ctx);
+                 bool gnu, int year, ParseSource src, void *ctx);
 /* The next external declaration; false at the end.  The unit is valid
  * until the next call. */
 bool parser_next(Parser *p, ParseUnit *u);

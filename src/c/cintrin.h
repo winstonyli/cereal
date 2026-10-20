@@ -137,6 +137,7 @@ enum {
     BI_CK(Y, "alloca_with_align_and_max", 3, BK_COUNT)                          \
     BI_CK(Y, "assume_aligned", 0, BK_ASSUME) BI_CK(Y, "fpclassify", 6, BK_FPCLASS) \
     BI_CK(Y, "clear_padding", 1, BK_CLEARPAD) BI_CK(Y, "va_start", 0, BK_VASTART) \
+    BI_CK(Y, "c23_va_start", 0, BK_VASTART)                                     \
     BI_FP1(Y, "isfinite") BI_FP1(Y, "isinf_sign") BI_FP1(Y, "isinf")            \
     BI_FP1(Y, "isnan") BI_FP1(Y, "isnormal") BI_FP1(Y, "signbit")               \
     BI_CMP(Y, "isgreater") BI_CMP(Y, "isgreaterequal") BI_CMP(Y, "isless")      \
