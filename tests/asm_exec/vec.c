@@ -460,3 +460,90 @@ int mm_stream(int a, int b, int c, int d)
     s = xi[0] + xi[1] * 3 + xi[2] * 5 + xi[3] * 7 + (int)xl[0] + (int)(xl[1] >> 3) + hash(xv[0]);
     return s ^ fh(_mm_load_ps(xf)) ^ dh(_mm_load_pd(xd));
 }
+
+/* loadl/loadh/storel/storeh (_pi), and the MXCSR: a converted value follows the rounding mode */
+int mm_halves(int a, int b, int c, int d)
+{
+    float m[4] = {a / 3.0f, b * 0.5f, c * 7.0f, d / 5.0f};
+    float o[4] = {0, 0, 0, 0}, p[4] = {1, 2, 3, 4};
+    __m128 x = fk(a, b, c, d);
+    x = _mm_loadl_pi(x, (const __m64 *)m);
+    x = _mm_loadh_pi(x, (const __m64 *)(m + 1));
+    _mm_storel_pi((__m64 *)o, x);
+    _mm_storeh_pi((__m64 *)p, _mm_loadu_ps(m));
+    return fh(x) ^ fh(_mm_loadu_ps(o)) * 3 ^ fh(_mm_loadu_ps(p)) * 5;
+}
+
+int mm_csr(int a, int b, int c, int d)
+{
+    __m128 x = _mm_set_ps(a / 2.0f, b * 0.5f + 0.25f, c * 1.5f, d * 0.75f - 0.5f);
+    __m128d u = _mm_set_pd(a * 0.5 + 0.3, d * -0.5 - 0.3);
+    unsigned old = _mm_getcsr();
+    int s = (int)(old & 0x1f80);
+    int mode;
+    for (mode = 0; mode < 4; mode++) {
+        _mm_setcsr((old & ~0x6000u) | (unsigned)mode << 13);
+        s = s * 5 + hash(_mm_cvtps_epi32(x)) + _mm_cvtss_si32(x) + _mm_cvtsd_si32(u) + (int)_mm_cvtsd_si64(u) + hash(_mm_cvtpd_epi32(u));
+    }
+    _mm_setcsr(old);
+    return s + (int)((_mm_getcsr() ^ old) & 0xffff);
+}
+
+/* vectors and scalars of the same size cast bit for bit; 8-byte vectors (__m64) */
+typedef long long v1di __attribute__((vector_size(8)));
+
+int vec_bits8(int a, int b, int c, int d)
+{
+    v2si x = {a, b};
+    long long l = (long long)x, m = (long long)c << 32 | (unsigned)d;
+    v2si y = (v2si)m;
+    v1di z = (v1di)l;
+    __m128i s = _mm_set_epi64((__m64)m, (__m64)l), t = _mm_loadl_epi64((const __m128i *)&m);
+    return (int)(l >> 5) ^ y[0] * 3 ^ y[1] * 5 ^ (int)z[0] ^ hash(s) * 13 ^ hash(t) * 17 ^ hash(_mm_movpi64_epi64((__m64)l));
+}
+
+#include <xmmintrin.h>
+static int h64(__m64 v)
+{
+    long long l = (long long)v;
+    return (int)l * 31 + (int)(l >> 32);
+}
+
+int mm_mmx(int a, int b, int c, int d)
+{
+    __m64 x = (__m64)(((long long)a << 32) | (unsigned)b), y = (__m64)(((long long)c << 32) | (unsigned)d);
+    __m64 z = _mm_set_pi16((short)a, (short)b, (short)c, (short)d);
+    __m128 f = _mm_set_ps((a & 1023) / 8.0f - 60, (b & 1023) * 0.5f - 100, (c & 255) * 1.5f - 30, (d & 63) / 4.0f + 0.5f);
+    __m128d u = _mm_set_pd((a & 255) * 0.5 - 20, (d & 255) * 0.75 - 30.5);
+    int s = h64(_mm_max_pi16(x, y)) ^ h64(_mm_min_pi16(x, y)) * 3 ^ h64(_mm_max_pu8(x, y)) * 5 ^ h64(_mm_min_pu8(x, y)) * 7 ^
+            h64(_mm_avg_pu8(x, y)) * 11 ^ h64(_mm_avg_pu16(x, y)) * 13 ^ h64(_mm_mulhi_pu16(x, y)) * 17 ^ h64(_mm_sad_pu8(x, y)) * 19 ^
+            _mm_movemask_pi8(x) * 23 ^ _mm_movemask_pi8(y) * 29 ^ h64(_mm_mul_su32(x, y)) * 31;
+    s ^= h64(_mm_cvtps_pi32(f)) ^ h64(_mm_cvttps_pi32(f)) * 3 ^ h64(_mm_cvtpd_pi32(u)) * 5 ^ h64(_mm_cvttpd_pi32(u)) * 7 ^
+         h64(_mm_cvtps_pi16(f)) * 11 ^ h64(_mm_cvtps_pi8(f)) * 13;
+    s ^= fh(_mm_cvtpi32_ps(f, x)) ^ fh(_mm_cvtpi16_ps(z)) * 3 ^ fh(_mm_cvtpu16_ps(z)) * 5 ^ fh(_mm_cvtpi8_ps(x)) * 7 ^
+         fh(_mm_cvtpu8_ps(y)) * 11 ^ fh(_mm_cvtpi32x2_ps(x, y)) * 13 ^ dh(_mm_cvtpi32_pd(x)) * 17;
+    return s;
+}
+
+int mm_maskmove(int a, int b, int c, int d)
+{
+    char buf[48] = {0}, buf2[48] = {0};
+    __m128i v = _mm_set_epi32(a, b, c, d), m = _mm_set_epi32(d, c, a, b);
+    static long long sink[2];
+    int i, s = 0;
+    _mm_maskmoveu_si128(v, m, buf + (a & 7));
+    _mm_maskmove_si64((__m64)(((long long)a << 32) | (unsigned)b), (__m64)(((long long)c << 32) | (unsigned)d), buf2 + (b & 15));
+    _mm_stream_pi((__m64 *)&sink[a & 1], (__m64)(((long long)c << 32) | (unsigned)d));
+    for (i = 0; i < 48; i++)
+        s = s * 31 + buf[i] + buf2[i] * 7;
+    return s ^ (int)sink[0] ^ (int)(sink[1] >> 3);
+}
+
+int sqrt_scalar(int a, int b, int c, int d)       /* __builtin_sqrt[f] is the instruction */
+{
+    double x = (a & 1023) + 0.5, y = (double)b;
+    float f = (float)(c & 1023) + 2.0f, g = (float)d;
+    union { double d; long long l; } u = {__builtin_sqrt(y)};
+    union { float f; int i; } v = {__builtin_sqrtf(g)};
+    return (int)__builtin_sqrt(x * 3) ^ (int)(__builtin_sqrtf(f) * 16) ^ (int)u.l ^ (int)(u.l >> 32) * 3 ^ v.i * 5;
+}

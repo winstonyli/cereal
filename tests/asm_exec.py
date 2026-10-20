@@ -78,7 +78,7 @@ def main():
             open(j("ref.c"), "w").write(open(path).read() + "\n" + protos + main_c)
             open(j("mine.c"), "w").write(protos + main_c)
             open(j("a.s"), "w").write(asm)
-            r = run(["gcc", "-O0", "-fwrapv", "-w"] + inc + ["-o", j("ref"), j("ref.c")] + ext)
+            r = run(["gcc", "-O0", "-fwrapv", "-w"] + inc + ["-o", j("ref"), j("ref.c")] + ext + ["-lm"])
             if r.returncode:
                 print(path + ": gcc failed\n" + r.stderr[:400])
                 bad += 1
@@ -114,7 +114,7 @@ def main():
             for tag, src in (("asm", "a.s"), ("obj", "o.o")):
                 if not os.path.exists(j(src)):
                     continue
-                r = run(["gcc", "-w"] + inc + ["-o", j("mine" + tag), j("mine.c"), j(src)] + ext)
+                r = run(["gcc", "-w"] + inc + ["-o", j("mine" + tag), j("mine.c"), j(src)] + ext + ["-lm"])
                 if r.returncode:
                     print(path + ": assemble/link failed (" + tag + ")\n" + r.stderr[:800])
                     bad += 1

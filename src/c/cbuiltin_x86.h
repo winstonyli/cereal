@@ -10,6 +10,10 @@
 #define IA_V2DI "__vector(16) long long int"
 #define IA_V4SF "__vector(16) float"
 #define IA_V2DF "__vector(16) double"
+#define IA_V8QI "__vector(8) char"
+#define IA_V4HI "__vector(8) short int"
+#define IA_V2SI "__vector(8) int"
+#define IA_V1DI "__vector(8) long long int"
 #define IA_ROW(nm, sig, k, l, a) {{nm, "", 0, sig, 4}, k, l, a}
 #define IA_BIN(nm, v, k, l, a) IA_ROW(nm, v "|" v "|" v, k, l, a)
 #define IA_IMM(nm, v, k, l, a) IA_ROW(nm, v "|" v "|int", k, l, a)
@@ -111,6 +115,31 @@ static const IaBt cbuiltin_x86_tab[] = {
     IA_ROW("ia32_cvtss2si", "int|" IA_V4SF, IAK_EXT, IAL_F32, 1), IA_ROW("ia32_cvtss2si64", "long long int|" IA_V4SF, IAK_EXT, IAL_F32, 1),
     IA_ROW("ia32_cvtsd2si", "int|" IA_V2DF, IAK_EXT, IAL_F64, 1), IA_ROW("ia32_cvtsd2si64", "long long int|" IA_V2DF, IAK_EXT, IAL_F64, 1),
     IA_ROW("ia32_cvtps2dq", IA_V4SI "|" IA_V4SF, IAK_CVT, IAL_F32, 4 | 8), IA_ROW("ia32_cvtpd2dq", IA_V4SI "|" IA_V2DF, IAK_CVT, IAL_F64, 2 | 8),
+    IA_ROW("ia32_loadlps", IA_V4SF "|" IA_V4SF "|const void *", IAK_LOADHL, IAL_F32, 0), IA_ROW("ia32_loadhps", IA_V4SF "|" IA_V4SF "|const void *", IAK_LOADHL, IAL_F32, 1),
+    IA_ROW("ia32_storelps", "void|void *|" IA_V4SF, IAK_STOREHL, IAL_F32, 0), IA_ROW("ia32_storehps", "void|void *|" IA_V4SF, IAK_STOREHL, IAL_F32, 1),
+    IA_ROW("ia32_stmxcsr", "unsigned int|", IAK_NODE, 0, 0), IA_ROW("ia32_ldmxcsr", "void|unsigned int", IAK_NODE, 0, 0),
+    IA_ROW("ia32_maskmovdqu", "void|" IA_V16QI "|" IA_V16QI "|char *", IAK_MASKMOV, IAL_S8, 0),
+    /* the MMX forms (vectors of 8 bytes) the SSE headers use */
+    IA_BIN("ia32_pmaxsw", IA_V4HI, IAK_MINMAX, IAL_S16, 1), IA_BIN("ia32_pminsw", IA_V4HI, IAK_MINMAX, IAL_S16, 0),
+    IA_BIN("ia32_pmaxub", IA_V8QI, IAK_MINMAX, IAL_U8, 1), IA_BIN("ia32_pminub", IA_V8QI, IAK_MINMAX, IAL_U8, 0),
+    IA_BIN("ia32_pavgb", IA_V8QI, IAK_AVG, IAL_U8, 0), IA_BIN("ia32_pavgw", IA_V4HI, IAK_AVG, IAL_U16, 0),
+    IA_BIN("ia32_pmulhuw", IA_V4HI, IAK_MULH, IAL_U16, 0),
+    IA_ROW("ia32_psadbw", IA_V1DI "|" IA_V8QI "|" IA_V8QI, IAK_SAD, IAL_U8, 0),
+    IA_ROW("ia32_pmuludq", IA_V1DI "|" IA_V2SI "|" IA_V2SI, IAK_MULW, IAL_U32, 0),
+    IA_ROW("ia32_pmovmskb", "int|" IA_V8QI, IAK_MOVMSK, IAL_S8, 0),
+    IA_BIN("ia32_pcmpgtb", IA_V8QI, IAK_PCMPGT, IAL_S8, 0), IA_BIN("ia32_pcmpgtw", IA_V4HI, IAK_PCMPGT, IAL_S16, 0),
+    IA_BIN("ia32_punpcklbw", IA_V8QI, IAK_UNPACK, IAL_S8, 0), IA_BIN("ia32_punpckhbw", IA_V8QI, IAK_UNPACK, IAL_S8, 1),
+    IA_BIN("ia32_punpcklwd", IA_V4HI, IAK_UNPACK, IAL_S16, 0), IA_BIN("ia32_punpckhwd", IA_V4HI, IAK_UNPACK, IAL_S16, 1),
+    IA_ROW("ia32_packsswb", IA_V8QI "|" IA_V4HI "|" IA_V4HI, IAK_PACK, IAL_S16, 0),
+    IA_ROW("ia32_packssdw", IA_V4HI "|" IA_V2SI "|" IA_V2SI, IAK_PACK, IAL_S32, 0),
+    IA_ROW("ia32_cvtps2pi", IA_V2SI "|" IA_V4SF, IAK_CVT, IAL_F32, 2 | 8), IA_ROW("ia32_cvttps2pi", IA_V2SI "|" IA_V4SF, IAK_CVT, IAL_F32, 2),
+    IA_ROW("ia32_cvtpd2pi", IA_V2SI "|" IA_V2DF, IAK_CVT, IAL_F64, 2 | 8), IA_ROW("ia32_cvttpd2pi", IA_V2SI "|" IA_V2DF, IAK_CVT, IAL_F64, 2),
+    IA_ROW("ia32_cvtpi2pd", IA_V2DF "|" IA_V2SI, IAK_CVT, IAL_S32, 2),
+    IA_ROW("ia32_cvtpi2ps", IA_V4SF "|" IA_V4SF "|" IA_V2SI, IAK_CVTPI, IAL_F32, 1 + IAL_S32),
+    IA_ROW("ia32_movntq", "void|long long unsigned int *|long long unsigned int", IAK_STORE, 0, 0),
+    IA_ROW("ia32_vec_init_v2si", IA_V2SI "|int|int", IAK_VINIT, IAL_S32, 0),
+    IA_ROW("ia32_vec_init_v4hi", IA_V4HI "|short int|short int|short int|short int", IAK_VINIT, IAL_S16, 0),
+    IA_ROW("ia32_vec_init_v8qi", IA_V8QI "|char|char|char|char|char|char|char|char", IAK_VINIT, IAL_S8, 0),
     /* fences, and non-temporal stores (plain ones here) */
     IA_ROW("ia32_sfence", "void|", IAK_NODE, 0, 0), IA_ROW("ia32_lfence", "void|", IAK_NODE, 0, 0),
     IA_ROW("ia32_mfence", "void|", IAK_NODE, 0, 0), IA_ROW("ia32_pause", "void|", IAK_NODE, 0, 0),

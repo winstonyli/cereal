@@ -1487,6 +1487,26 @@ static void gen_intrin(Gx *g, uint32_t n)
                 return;
             }
     }
+    if (!strcmp(nm, "ia32_stmxcsr") || !strcmp(nm, "ia32_ldmxcsr")) {
+        bool st = nm[5] == 's';
+        MOp o = {MK_SYM, 0, st ? 0x241cae0fLL : 0x2414ae0fLL, st ? "stmxcsr (%rsp)" : "ldmxcsr (%rsp)"};
+        if (!st)
+            gen(g, kid(g->L, n, 0));
+        else
+            em(g, M_SUB, 8, I(8), R(R_SP));
+        if (!st)
+            push(g);
+        em(g, M_BYTES, 4, o, NONE());
+        if (st) {
+            em(g, M_MOV, 4, M(R_SP, 0), R(R_AX));
+            em(g, M_ADD, 8, I(8), R(R_SP));
+            if (tinfo(g, t->ty, &ti))
+                canon(g, &ti);
+        } else {
+            pop(g, R_CX);
+        }
+        return;
+    }
     if (!strcmp(nm, "ia32_clflush")) {
         MOp o = {MK_SYM, 0, 0x38ae0f, "clflush (%rax)"};
         gen(g, kid(g->L, n, 0));
