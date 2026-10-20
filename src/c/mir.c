@@ -17,6 +17,22 @@ static const char *const op_names[M_COUNT] = {
 #undef X
 };
 
+const MRow *mir_row(int op)
+{
+    switch (op) {
+#define X(n, s, c, b) case M_##n: { static const MRow r = {s, c, b, 'f', 0, 0, 0}; return &r; }
+    MIR_FIXED(X)
+#undef X
+#define X(n, s, o, e) case M_##n: { static const MRow r = {s, 0, 0, 'm', 0, o, e}; return &r; }
+    MIR_MEM(X)
+#undef X
+#define X(n, s, p, o, r64) case M_##n: { static const MRow r = {s, 0, 0, 'p', p, o, r64}; return &r; }
+    MIR_FP(X)
+#undef X
+    default: return NULL;
+    }
+}
+
 static int wi(int w)
 {
     return w == 1 ? 0 : w == 2 ? 1 : w == 4 ? 2 : 3;
@@ -110,6 +126,7 @@ void mir_print(const MFunc *f, FILE *out)
     for (i = 0; i < f->code.len; i++) {
         const MInst *m = &f->code.data[i];
         int w = m->w ? m->w : 8;
+        const MRow *row = mir_row(m->op);
         if (m->a.k == MK_SYM && m->a.reg & 2 && m->op != M_BYTES)
             fprintf(out, "\t.weak %s\n", m->a.name);
         switch (m->op) {
@@ -175,27 +192,12 @@ void mir_print(const MFunc *f, FILE *out)
             else
                 fprintf(out, "\tcall %s@PLT", m->a.name);
             break;
-        case M_CQO: case M_LEAVE: case M_RET: case M_REPMOVSB: case M_REPSTOSB:
-            fprintf(out, "\t%s", op_names[m->op]);
-            break;
         case M_PUSH: case M_POP: case M_BSWAP: case M_NEG: case M_NOT: case M_IDIV: case M_DIV:
             fprintf(out, "\t%s%c ", op_names[m->op], suffix(w));
             put_op(f, &m->a, w, out);
             break;
-        case M_FMOV: case M_FADD: case M_FSUB: case M_FMUL: case M_FDIV: case M_FCMP: case M_FSQRT: case M_FRCP: case M_FRSQRT:
-            fprintf(out, "\t%s%s ", op_names[m->op], w == 4 ? "ss" : "sd");
-            put_op(f, &m->a, 8, out);
-            fputc(',', out);
-            put_op(f, &m->b, 8, out);
-            break;
-        case M_CVTI2F:
-            fprintf(out, "\tcvtsi2%sq ", w == 4 ? "ss" : "sd");
-            put_op(f, &m->a, 8, out);
-            fputc(',', out);
-            put_op(f, &m->b, 8, out);
-            break;
-        case M_CVTF2I: case M_CVTF2IR:
-            fprintf(out, m->op == M_CVTF2I ? "\tcvtt%s2siq " : "\tcvt%s2siq ", w == 4 ? "ss" : "sd");
+        case M_FMOV:
+            fprintf(out, "	%s%s ", op_names[m->op], w == 4 ? "ss" : "sd");
             put_op(f, &m->a, 8, out);
             fputc(',', out);
             put_op(f, &m->b, 8, out);
@@ -234,7 +236,26 @@ void mir_print(const MFunc *f, FILE *out)
             fprintf(out, "\t%s%c %%cl,", op_names[m->op], suffix(w));
             put_op(f, &m->b, w, out);
             break;
-        default:                                /* op a,b at width w */
+        default:
+            if (row && row->kind == 'f') {      /* no operands */
+                fprintf(out, "	%s", row->text);
+                break;
+            }
+            if (row && row->kind == 'm') {      /* one memory operand */
+                fprintf(out, "	%s ", row->text);
+                put_op(f, &m->a, 8, out);
+                break;
+            }
+            if (row) {                          /* scalar SSE: text by the width, a,b */
+                fputc('	', out);
+                fprintf(out, row->text, w == 4 ? "ss" : "sd");
+                fputc(' ', out);
+                put_op(f, &m->a, 8, out);
+                fputc(',', out);
+                put_op(f, &m->b, 8, out);
+                break;
+            }
+            /* op a,b at width w */
             fprintf(out, "\t%s%c ", op_names[m->op], suffix(w));
             put_op(f, &m->a, w, out);
             fputc(',', out);

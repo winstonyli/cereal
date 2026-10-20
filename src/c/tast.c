@@ -17,6 +17,7 @@
 
 #include "c/cexpr_int.h"
 #include "c/cgx86.h"
+#include "c/cintrin.h"
 #include "c/csymidx.h"
 #include "c/lit.h"
 
@@ -59,6 +60,23 @@ static uint32_t mk(El *e, int op, TypeId ty, SrcLoc loc, int64_t val,
         vec_push(&e->kids, k[j]);
     vec_push(&e->nodes, n);
     return (uint32_t)e->nodes.len - 1;
+}
+
+/* The row (cintrin.h) of a built-in called by identifier `name`, or 0: the back end refuses it. */
+static unsigned intrin_row(Checker *c, uint32_t name)
+{
+    const char *nm = cident(c, name);
+    return strncmp(nm, "__builtin_", 10) ? 0 : bi_find(nm + 10);
+}
+
+/* A back-end built-in (a row of cintrin.h, named without its "__builtin_") applied to args. */
+static uint32_t intrin(El *e, const char *nm, TypeId rt, const uint32_t *args, uint32_t n, SrcLoc loc)
+{
+    char full[64];
+    uint32_t sym;
+    snprintf(full, sizeof full, "__builtin_%s", nm);
+    sym = intern_cstr(e->c->in, full)->id;
+    return mk(e, TO_INTRIN, rt, loc, n, sym, bi_find(nm), args, n);
 }
 
 static bool ok_int(El *e, TypeId t)
@@ -1226,17 +1244,11 @@ static uint32_t ia_f2i(El *e, Ia *x, uint32_t v, TypeId to, SrcLoc loc)
     return ia_fit(e, x, conv(e, v, ia_ty(IAL_S64), loc), loc);
 }
 
-/* A back-end built-in of one float argument (sqrt: the instruction, ia32_cvt*2si64: rounded as MXCSR says). */
-static uint32_t ia_fn1(El *e, const char *nm, TypeId rt, uint32_t arg, SrcLoc loc)
-{
-    return mk(e, TO_INTRIN, rt, loc, 1, intern_cstr(e->c->in, nm)->id, 0, &arg, 1);
-}
-
 /* Float v (lane type of the row) rounded to an int the way cvtss2si does, to 32 or 64 bits. */
 static uint32_t ia_rnd(El *e, Ia *x, uint32_t v, TypeId to, SrcLoc loc)
 {
     TypeId W = ia_ty(IAL_S64);
-    uint32_t r = ia_fn1(e, x->r->lane == IAL_F32 ? "__builtin_ia32_cvtss2si64" : "__builtin_ia32_cvtsd2si64", W, v, loc);
+    uint32_t r = intrin(e, x->r->lane == IAL_F32 ? "ia32_cvtss2si64" : "ia32_cvtsd2si64", W, &v, 1, loc);
     return to == ia_ty(IAL_S32) ? ia_fit(e, x, r, loc) : conv(e, r, to, loc);
 }
 
@@ -1412,8 +1424,11 @@ static uint32_t ia_lane(El *e, Ia *x, uint32_t j)
     case IAK_SQRT:                      /* the square root of every lane (arg 1: lane 0 only, the rest of a) */
         if ((arg & 1) && j)
             return ia_rd(e, x, 0, j, L);
-        return ia_fn1(e, arg >> 1 == 1 ? "__builtin_ia32_rcpss" : arg >> 1 == 2 ? "__builtin_ia32_rsqrtss" :
-                         r->lane == IAL_F32 ? "__builtin_sqrtf" : "__builtin_sqrt", L, ia_rd(e, x, 0, j, L), loc);
+    {
+        uint32_t v = ia_rd(e, x, 0, j, L);
+        return intrin(e, arg >> 1 == 1 ? "ia32_rcpss" : arg >> 1 == 2 ? "ia32_rsqrtss" :
+                         r->lane == IAL_F32 ? "sqrtf" : "sqrt", L, &v, 1, loc);
+    }
     case IAK_CVTPI:                     /* cvtpi2ps: lanes 0, 1 from the two ints of b, the rest of a */
         return j < 2 ? conv(e, ia_rd(e, x, 1, j, x->b.et), x->rl, loc) : ia_rd(e, x, 0, j, x->rl);
     case IAK_PCMPGT:                    /* ones where a > b */
@@ -1466,9 +1481,7 @@ static uint32_t ia32_call(El *e, const char *nm, const U32Vec *args, TypeId rt, 
         return mk(e, TO_CAST, rt, loc, 0, 0, 0, &ka[0], 1);
     }
     if (r->kind == IAK_NODE) {              /* fences and the like: a back-end built-in of the same name */
-        char full[64];
-        snprintf(full, sizeof full, "__builtin_%s", nm);
-        return mk(e, TO_INTRIN, rt, loc, (unsigned)args->len, intern_cstr(c->in, full)->id, 0, args->data, (uint32_t)args->len);
+        return intrin(e, nm, rt, args->data, (uint32_t)args->len, loc);
     }
     if (r->kind == IAK_VINIT) {             /* the lanes are the arguments */
         if (!vres || !vec_dims(e, rt, &x.rl, &x.n) || x.n != args->len)
@@ -1738,7 +1751,7 @@ static uint32_t e_call_t(El *e, uint32_t i)
     {
         uint32_t nf = (fe->flags & TF_NOPROTO) ? 0 : (uint32_t)fe->n;
         id = mk(e, name ? TO_INTRIN : TO_CALL, unqual(c, c->ty[i]), loc, nf,
-                name ? name : ref, indirect, args.data, (uint32_t)args.len);
+                name ? name : ref, name ? intrin_row(c, name) : indirect, args.data, (uint32_t)args.len);
         if (id != TN && (fe->flags & (TF_NOPROTO | TF_VARIADIC)))
             e->nodes.data[id].width = 1;
     }
@@ -2919,6 +2932,8 @@ static void verify(El *e, FILE *out)
                     vbad(e, out, i, "builtin");
                     break;
                 }
+                if (nd->pun != intrin_row(c, nd->sym))
+                    vbad(e, out, i, "builtin row");
                 ft = type_canon(&c->tt, bt_func_type(c, bt));
             } else if (nd->pun) {
                 if (nd->nkids < 1 || !ISVAL(KID(0)) || KIND(KID(0)->ty) != TY_PTR ||

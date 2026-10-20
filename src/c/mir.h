@@ -30,34 +30,48 @@ typedef struct MOp {
     const char *name;       /* MK_SYM: the symbol (owned by the caller) */
 } MOp;
 
-#define MIR_OPS(X)                                                              \
-    X(MOV, "mov") X(MOVABS, "movabs") X(MOVSX, "movs") X(MOVZX, "movz")         \
-    X(LEA, "lea") X(ADD, "add") X(SUB, "sub") X(IMUL, "imul") X(AND, "and")     \
-    X(OR, "or") X(XOR, "xor") X(SHL, "shl") X(SAR, "sar") X(SHR, "shr")         \
-    X(NEG, "neg") X(NOT, "not") X(CMP, "cmp") X(TEST, "test") X(SETCC, "set")   \
-    X(CQO, "cqto") X(IDIV, "idiv") X(DIV, "div") X(PUSH, "push") X(POP, "pop")  \
-    X(CALL, "call") X(JMP, "jmp") X(JCC, "j") X(LEAVE, "leave") X(RET, "ret")   \
-    X(LABEL, "") X(XCHG, "xchg") X(XADD, "lock xadd") X(CMPXCHG, "lock cmpxchg")         \
-    X(CMOV, "cmov") X(BSWAP, "bswap") X(BSR, "bsr") X(BSF, "bsf")  \
-    X(BYTES, "")  /* raw machine bytes: a.name the text, w the count, a.v the bytes */    \
-    X(REPMOVSB, "rep movsb") X(REPSTOSB, "rep stosb")   /* %rcx bytes, %rsi to %rdi / %al to %rdi */ \
-    /* scalar SSE: w is the float's width (4: ss, 8: sd) */                     \
-    X(FMOV, "mov") X(FADD, "add") X(FSUB, "sub") X(FMUL, "mul")                 \
-    X(FDIV, "div") X(FCMP, "ucomi") X(FSQRT, "sqrt") X(FRCP, "rcp") X(FRSQRT, "rsqrt")                                           \
-    X(CVTI2F, "cvtsi2")    /* 64-bit integer a to float b */                    \
-    X(CVTF2I, "cvtt")      /* float a (truncated) to 64-bit integer b */        \
-    X(CVTF2IR, "cvt")      /* float a (rounded as MXCSR says) to 64-bit integer b */ \
-    X(CVTF2F, "cvt")       /* w: the source's width; the other one results */   \
-    X(MOVQX, "mov")        /* bits between a general register and an xmm */     \
-    X(MOVAPS, "movaps")                                                         \
-    X(MOVUPS, "movups")    /* 16 bytes between an xmm and an xmm or memory (a to b) */
+/* Every operation is a row of one of four tables; the printer (mir.c) and the ELF encoder
+ * (mir_elf.c) read the same row.  MIR_OPS: operations with their own printing and encoding. */
+#define MIR_OPS(X)                                                                  X(MOV, "mov") X(MOVABS, "movabs") X(MOVSX, "movs") X(MOVZX, "movz")             X(LEA, "lea") X(ADD, "add") X(SUB, "sub") X(IMUL, "imul") X(AND, "and")         X(OR, "or") X(XOR, "xor") X(SHL, "shl") X(SAR, "sar") X(SHR, "shr")             X(NEG, "neg") X(NOT, "not") X(CMP, "cmp") X(TEST, "test") X(SETCC, "set")       X(IDIV, "idiv") X(DIV, "div") X(PUSH, "push") X(POP, "pop")                     X(CALL, "call") X(JMP, "jmp") X(JCC, "j")                                       X(LABEL, "") X(XCHG, "xchg") X(XADD, "lock xadd") X(CMPXCHG, "lock cmpxchg")             X(CMOV, "cmov") X(BSWAP, "bswap") X(BSR, "bsr") X(BSF, "bsf")      X(BYTES, "")  /* raw machine bytes: a.name the text, w the count, a.v the bytes */        X(FMOV, "mov")         /* scalar SSE: w is the float's width (4: ss, 8: sd) */     X(CVTF2F, "cvt")       /* w: the source's width; the other one results */       X(MOVQX, "mov")        /* bits between a general register and an xmm */         X(MOVAPS, "movaps")                                                             X(MOVUPS, "movups")    /* 16 bytes between an xmm and an xmm or memory (a to b) */
+
+/* MIR_FIXED: no operands, a fixed byte sequence (x, little-endian): X(name, text, count, bytes). */
+#define MIR_FIXED(X)                                                                X(CQO, "cqto", 2, 0x9948) X(LEAVE, "leave", 1, 0xc9) X(RET, "ret", 1, 0xc3)     X(REPMOVSB, "rep movsb", 2, 0xa4f3) X(REPSTOSB, "rep stosb", 2, 0xaaf3)         X(NOP, "nop", 1, 0x90) X(PAUSE, "pause", 2, 0x90f3) X(UD2, "ud2", 2, 0x0b0f)     X(SFENCE, "sfence", 3, 0xf8ae0f) X(LFENCE, "lfence", 3, 0xe8ae0f)               X(MFENCE, "mfence", 3, 0xf0ae0f)
+
+/* MIR_MEM: one memory operand a, encoded 0f <opc> /<ext>: X(name, text, opc, ext). */
+#define MIR_MEM(X)                                                                  X(STMXCSR, "stmxcsr", 0xae, 3) X(LDMXCSR, "ldmxcsr", 0xae, 2) X(CLFLUSH, "clflush", 0xae, 7)
+
+/* MIR_FP: scalar SSE, xmm-or-memory a to xmm or general register b, encoded <prefix> 0f <opc>:
+ * X(name, text, prefix, opc, 64-bit general operand).  The text takes "ss" or "sd" (by w); the
+ * prefix is PF_W (f3 for w 4, f2 for w 8) or PF_P (none for w 4, 66 for w 8: ucomiss/ucomisd).
+ * rcp and rsqrt exist as ss only (w is 4). */
+enum { PF_W, PF_P };
+#define MIR_FP(X)                                                                   X(FADD, "add%s", PF_W, 0x58, 0) X(FSUB, "sub%s", PF_W, 0x5c, 0)                 X(FMUL, "mul%s", PF_W, 0x59, 0) X(FDIV, "div%s", PF_W, 0x5e, 0)                 X(FCMP, "ucomi%s", PF_P, 0x2e, 0) X(FSQRT, "sqrt%s", PF_W, 0x51, 0) X(FRCP, "rcp%s", PF_W, 0x53, 0)               X(FRSQRT, "rsqrt%s", PF_W, 0x52, 0)                                             X(CVTI2F, "cvtsi2%sq", PF_W, 0x2a, 1)  /* 64-bit integer a to float b */        X(CVTF2I, "cvtt%s2siq", PF_W, 0x2c, 1) /* float a (truncated) to 64-bit integer b */     X(CVTF2IR, "cvt%s2siq", PF_W, 0x2d, 1) /* float a (rounded as MXCSR says) to 64-bit integer b */
 
 typedef enum {
 #define X(n, s) M_##n,
     MIR_OPS(X)
 #undef X
+#define X(n, s, c, b) M_##n,
+    MIR_FIXED(X)
+#undef X
+#define X(n, s, o, e) M_##n,
+    MIR_MEM(X)
+#undef X
+#define X(n, s, p, o, r) M_##n,
+    MIR_FP(X)
+#undef X
     M_COUNT
 } MOpcode;
+
+/* The row of a MIR_FIXED, MIR_MEM or MIR_FP operation (NULL members: not of that table). */
+typedef struct MRow {
+    const char *text;       /* all three: the text (MIR_FP: a format for "ss"/"sd") */
+    uint8_t n;              /* MIR_FIXED: the byte count; 0 otherwise */
+    int64_t bytes;          /* MIR_FIXED: the bytes */
+    uint8_t kind;           /* 0 none, 'f' fixed, 'm' MIR_MEM, 'p' MIR_FP */
+    uint8_t pfx, opc, ext;  /* MIR_FP: prefix kind, opcode, 64-bit; MIR_MEM: opcode, extension */
+} MRow;
+const MRow *mir_row(int op);
 
 /* Condition codes. */
 enum { CC_E, CC_NE, CC_L, CC_LE, CC_G, CC_GE, CC_B, CC_BE, CC_A, CC_AE, CC_P, CC_NP,

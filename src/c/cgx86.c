@@ -21,6 +21,7 @@
 
 #include "c/cexpr_int.h"
 #include "c/cgx86.h"
+#include "c/cintrin.h"
 #include "c/tcfg_int.h"
 
 typedef struct Slot {
@@ -1358,13 +1359,10 @@ static bool atomic_width(Gx *g, uint32_t ptr, TI *raw)
 
 static void gen_intrin(Gx *g, uint32_t n)
 {
-    static const char *const libc[] = {"memset", "memcpy", "memmove", "memcmp", "strlen", "strcmp",
-                                       "strncmp", "strcpy", "strncpy", "strcat", "strncat",
-                                       "strchr", "strrchr", "strstr", "abs", "labs", "llabs"};
     const TNode *t = nd(g->L, n);
     const char *nm = cident(g->c, t->sym);
+    const BiRow *r;
     TI raw, ti;
-    size_t i;
     if (t->width == 2) {
         const char *op = strncmp(nm, "__atomic_", 9) ? "" : nm + 9;
         if (!strcmp(op, "load") || !strcmp(op, "store") || !strcmp(op, "exchange")) {
@@ -1429,110 +1427,79 @@ static void gen_intrin(Gx *g, uint32_t n)
         }
         return;
     }
-    if (strncmp(nm, "__builtin_", 10)) {
+    if (!t->pun) {
         unsup(g, "built-in %s", nm);
         return;
     }
-    nm += 10;
-    if (!strcmp(nm, "expect") && nd(g->L, kid(g->L, n, 1))->op == TO_CONST) {
-        gen(g, kid(g->L, n, 0));
-        return;
-    }
-    if (!strcmp(nm, "huge_val") || !strcmp(nm, "inf") || !strcmp(nm, "huge_valf") ||
-        !strcmp(nm, "inff")) {
-        bool f = nm[strlen(nm) - 1] == 'f';
-        em(g, M_MOVABS, 8, I(f ? 0x7f800000LL : 0x7ff0000000000000LL), R(R_AX));
-        em(g, M_MOVQX, f ? 4 : 8, R(R_AX), R(R_X0));
-        return;
-    }
-    if (!strncmp(nm, "bswap", 5) || !strncmp(nm, "clz", 3) || !strncmp(nm, "ctz", 3)) {
-        bool bs = nm[0] == 'b';
-        int w = bs ? atoi(nm + 5) / 8 : strcmp(nm + 3, "") ? 8 : 4;     /* clzl, clzll: 64 bits */
-        if (bs && w != 2 && w != 4 && w != 8) {
+    r = &bi_rows[t->pun];
+    switch (r->cls) {
+    case BIC_EXPECT:
+        if (nd(g->L, kid(g->L, n, 1))->op != TO_CONST) {
             unsup(g, "built-in %s", nm);
             return;
         }
         gen(g, kid(g->L, n, 0));
-        if (bs) {
-            em(g, M_BSWAP, w == 8 ? 8 : 4, R(R_AX), NONE());
-            if (w == 2) {               /* the two bytes are in the high half */
-                em(g, M_MOV, 4, I(16), R(R_CX));
-                em(g, M_SHR, 4, NONE(), R(R_AX));
-            }
-        } else {
-            em(g, nm[1] == 'l' ? M_BSR : M_BSF, w, R(R_AX), R(R_AX));
-            if (nm[1] == 'l')           /* the index of the top bit, from the top */
-                em(g, M_XOR, 4, I(w * 8 - 1), R(R_AX));
+        break;
+    case BIC_HUGE:
+        em(g, M_MOVABS, 8, I(r->arg == 4 ? 0x7f800000LL : 0x7ff0000000000000LL), R(R_AX));
+        em(g, M_MOVQX, r->arg, R(R_AX), R(R_X0));
+        break;
+    case BIC_BSWAP:
+        gen(g, kid(g->L, n, 0));
+        em(g, M_BSWAP, r->arg == 8 ? 8 : 4, R(R_AX), NONE());
+        if (r->arg == 2) {              /* the two bytes are in the high half */
+            em(g, M_MOV, 4, I(16), R(R_CX));
+            em(g, M_SHR, 4, NONE(), R(R_AX));
         }
-        return;
-    }
-    if (!strcmp(nm, "sqrt") || !strcmp(nm, "sqrtf")) {
+        break;
+    case BIC_CLZ: case BIC_CTZ:
         gen(g, kid(g->L, n, 0));
-        em(g, M_FSQRT, nm[4] ? 4 : 8, R(R_X0), R(R_X0));
-        return;
-    }
-    if (!strcmp(nm, "ia32_rcpss") || !strcmp(nm, "ia32_rsqrtss")) {     /* the approximations, as the CPU computes them */
+        em(g, r->cls == BIC_CLZ ? M_BSR : M_BSF, r->arg, R(R_AX), R(R_AX));
+        if (r->cls == BIC_CLZ)          /* the index of the top bit, from the top */
+            em(g, M_XOR, 4, I(r->arg * 8 - 1), R(R_AX));
+        break;
+    case BIC_SQRT: case BIC_RCP: case BIC_RSQRT:    /* rcp, rsqrt: the CPU's approximations */
         gen(g, kid(g->L, n, 0));
-        em(g, nm[5] == 'r' && nm[6] == 'c' ? M_FRCP : M_FRSQRT, 4, R(R_X0), R(R_X0));
-        return;
-    }
-    if (!strcmp(nm, "ia32_cvtsd2si64") || !strcmp(nm, "ia32_cvtss2si64")) {    /* rounds as MXCSR says */
+        em(g, r->cls == BIC_SQRT ? M_FSQRT : r->cls == BIC_RCP ? M_FRCP : M_FRSQRT, r->arg,
+           R(R_X0), R(R_X0));
+        break;
+    case BIC_CVTSI:
         gen(g, kid(g->L, n, 0));
-        em(g, M_CVTF2IR, nm[8] == 's' && nm[9] == 's' ? 4 : 8, R(R_X0), R(R_AX));
-        return;
-    }
-    {
-        static const struct { const char *nm; int64_t bytes; int n; } fence[] = {
-            {"ia32_sfence", 0xf8ae0f, 3}, {"ia32_lfence", 0xe8ae0f, 3}, {"ia32_mfence", 0xf0ae0f, 3},
-            {"ia32_pause", 0x90f3, 2}};
-        for (i = 0; i < sizeof fence / sizeof *fence; i++)
-            if (!strcmp(nm, fence[i].nm)) {
-                MOp o = {MK_SYM, 0, fence[i].bytes, fence[i].nm + 5};
-                em(g, M_BYTES, fence[i].n, o, NONE());
-                return;
-            }
-    }
-    if (!strcmp(nm, "ia32_stmxcsr") || !strcmp(nm, "ia32_ldmxcsr")) {
-        bool st = nm[5] == 's';
-        MOp o = {MK_SYM, 0, st ? 0x241cae0fLL : 0x2414ae0fLL, st ? "stmxcsr (%rsp)" : "ldmxcsr (%rsp)"};
-        if (!st)
-            gen(g, kid(g->L, n, 0));
-        else
-            em(g, M_SUB, 8, I(8), R(R_SP));
-        if (!st)
-            push(g);
-        em(g, M_BYTES, 4, o, NONE());
-        if (st) {
-            em(g, M_MOV, 4, M(R_SP, 0), R(R_AX));
-            em(g, M_ADD, 8, I(8), R(R_SP));
-            if (tinfo(g, t->ty, &ti))
-                canon(g, &ti);
-        } else {
-            pop(g, R_CX);
-        }
-        return;
-    }
-    if (!strcmp(nm, "ia32_clflush")) {
-        MOp o = {MK_SYM, 0, 0x38ae0f, "clflush (%rax)"};
+        em(g, M_CVTF2IR, r->arg, R(R_X0), R(R_AX));
+        break;
+    case BIC_SFENCE: em(g, M_SFENCE, 0, NONE(), NONE()); break;
+    case BIC_LFENCE: em(g, M_LFENCE, 0, NONE(), NONE()); break;
+    case BIC_MFENCE: em(g, M_MFENCE, 0, NONE(), NONE()); break;
+    case BIC_PAUSE: em(g, M_PAUSE, 0, NONE(), NONE()); break;
+    case BIC_UD2: em(g, M_UD2, 0, NONE(), NONE()); break;
+    case BIC_CLFLUSH:
         gen(g, kid(g->L, n, 0));
-        em(g, M_BYTES, 3, o, NONE());
-        return;
-    }
-    if (!strcmp(nm, "prefetch")) {      /* a hint: only the address is evaluated */
+        em(g, M_CLFLUSH, 0, M(R_AX, 0), NONE());
+        break;
+    case BIC_STMXCSR:
+        em(g, M_SUB, 8, I(8), R(R_SP));
+        em(g, M_STMXCSR, 0, M(R_SP, 0), NONE());
+        em(g, M_MOV, 4, M(R_SP, 0), R(R_AX));
+        em(g, M_ADD, 8, I(8), R(R_SP));
+        if (tinfo(g, t->ty, &ti))
+            canon(g, &ti);
+        break;
+    case BIC_LDMXCSR:
         gen(g, kid(g->L, n, 0));
-        return;
+        push(g);
+        em(g, M_LDMXCSR, 0, M(R_SP, 0), NONE());
+        pop(g, R_CX);
+        break;
+    case BIC_PREFETCH:
+        gen(g, kid(g->L, n, 0));
+        break;
+    case BIC_LIBC:
+        gen_call(g, n, r->name);
+        break;
+    default:
+        unsup(g, "built-in %s", nm);
+        break;
     }
-    if (!strcmp(nm, "unreachable")) {
-        MOp ud2 = {MK_SYM, 0, 0x0b0f, "ud2"};
-        em(g, M_BYTES, 2, ud2, NONE());
-        return;
-    }
-    for (i = 0; i < sizeof libc / sizeof *libc; i++)
-        if (!strcmp(nm, libc[i])) {
-            gen_call(g, n, libc[i]);
-            return;
-        }
-    unsup(g, "built-in %s", nm);
 }
 
 /* An asm template with operands: the operands go in registers (a, c, d by their
@@ -1742,9 +1709,9 @@ static void gen_stmt(Gx *g, uint32_t n)
         gen(g, kid(g->L, n, 0));
         break;
     case TO_ASM: {              /* no assembler: the instructions without operands this back end knows */
-        static const struct { const char *text; int n; int64_t bytes; } known[] = {
-            {"rep; nop", 2, 0x90f3}, {"pause", 2, 0x90f3}, {"nop", 1, 0x90},
-            {"mfence", 3, 0xf0ae0f}, {"lfence", 3, 0xe8ae0f}, {"sfence", 3, 0xf8ae0f}};
+        static const struct { const char *text; int op; } known[] = {
+            {"rep; nop", M_PAUSE}, {"pause", M_PAUSE}, {"nop", M_NOP},
+            {"mfence", M_MFENCE}, {"lfence", M_LFENCE}, {"sfence", M_SFENCE}};
         const TNode *s = nd(g->L, kid(g->L, n, 0));
         char txt[64];
         size_t len = s->width ? s->width - 1 : 0, b = 0, e = len, q;
@@ -1764,8 +1731,7 @@ static void gen_stmt(Gx *g, uint32_t n)
         }
         for (q = 0; q < sizeof known / sizeof *known; q++)
             if (!strcmp(txt, known[q].text)) {
-                MOp o = {MK_SYM, 0, known[q].bytes, known[q].text};
-                em(g, M_BYTES, known[q].n, o, NONE());
+                em(g, known[q].op, 0, NONE(), NONE());
                 return;
             }
         unsup(g, "asm template \"%s\"", txt);

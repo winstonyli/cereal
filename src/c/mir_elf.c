@@ -108,7 +108,13 @@ static int arith_ext(int op)
     }
 }
 
-static int fpfx(const MInst *m) { return m->w == 4 ? 0xf3 : 0xf2; }
+/* The prefix of a scalar SSE row (mir.h, MIR_FP). */
+static int fp_prefix(const MRow *r, const MInst *m)
+{
+    if (r->pfx == PF_P)
+        return m->w == 4 ? 0 : 0x66;
+    return m->w == 4 ? 0xf3 : 0xf2;
+}
 
 /* Everything but jumps; a call's rel32 is left zero (the relocation fills it). */
 static bool enc_inst(const MInst *m, Enc *e)
@@ -242,7 +248,6 @@ static bool enc_inst(const MInst *m, Enc *e)
         }
         break;
     }
-    case M_CQO: put(e, 0x48); put(e, 0x99); break;
     case M_PUSH: case M_POP: {
         int r = hw(a->reg);
         if (r >= 8)
@@ -256,10 +261,6 @@ static bool enc_inst(const MInst *m, Enc *e)
             put(e, (int)((m->a.v >> (8 * q)) & 0xff));
         break;
     }
-    case M_LEAVE: put(e, 0xc9); break;
-    case M_RET: put(e, 0xc3); break;
-    case M_REPMOVSB: put(e, 0xf3); put(e, 0xa4); break;
-    case M_REPSTOSB: put(e, 0xf3); put(e, 0xaa); break;
     case M_XCHG:
         ins1(e, pfx, w8, rex_byte(w, a), w == 1 ? 0x86 : 0x87, hw(a->reg), b);
         break;
@@ -283,22 +284,11 @@ static bool enc_inst(const MInst *m, Enc *e)
         break;
     case M_FMOV:
         if (b->k == MK_MEM)
-            ins2(e, fpfx(m), false, 0x11, hw(a->reg), b);
+            ins2(e, m->w == 4 ? 0xf3 : 0xf2, false, 0x11, hw(a->reg), b);
         else
-            ins2(e, fpfx(m), false, 0x10, hw(b->reg), a);
+            ins2(e, m->w == 4 ? 0xf3 : 0xf2, false, 0x10, hw(b->reg), a);
         break;
-    case M_FADD: ins2(e, fpfx(m), false, 0x58, hw(b->reg), a); break;
-    case M_FMUL: ins2(e, fpfx(m), false, 0x59, hw(b->reg), a); break;
-    case M_FSUB: ins2(e, fpfx(m), false, 0x5c, hw(b->reg), a); break;
-    case M_FDIV: ins2(e, fpfx(m), false, 0x5e, hw(b->reg), a); break;
-    case M_FSQRT: ins2(e, fpfx(m), false, 0x51, hw(b->reg), a); break;
-    case M_FRSQRT: ins2(e, 0xf3, false, 0x52, hw(b->reg), a); break;
-    case M_FRCP: ins2(e, 0xf3, false, 0x53, hw(b->reg), a); break;
-    case M_FCMP: ins2(e, w == 4 ? 0 : 0x66, false, 0x2e, hw(b->reg), a); break;
-    case M_CVTI2F: ins2(e, fpfx(m), true, 0x2a, hw(b->reg), a); break;
-    case M_CVTF2I: ins2(e, fpfx(m), true, 0x2c, hw(b->reg), a); break;
-    case M_CVTF2IR: ins2(e, fpfx(m), true, 0x2d, hw(b->reg), a); break;
-    case M_CVTF2F: ins2(e, fpfx(m), false, 0x5a, hw(b->reg), a); break;
+    case M_CVTF2F: ins2(e, m->w == 4 ? 0xf3 : 0xf2, false, 0x5a, hw(b->reg), a); break;
     case M_MOVQX:
         if (is_xmm(b))
             ins2(e, 0x66, w == 8, 0x6e, hw(b->reg), a);
@@ -312,8 +302,21 @@ static bool enc_inst(const MInst *m, Enc *e)
             ins2(e, 0, false, 0x10, hw(b->reg), a);
         break;
     case M_MOVAPS: ins2(e, 0, false, 0x28, hw(b->reg), a); break;
-    default:
-        return false;
+    default: {
+        const MRow *r = mir_row(m->op);
+        if (!r)
+            return false;
+        if (r->kind == 'f') {                   /* fixed bytes */
+            int q;
+            for (q = 0; q < r->n; q++)
+                put(e, (int)((r->bytes >> (8 * q)) & 0xff));
+        } else if (r->kind == 'm') {            /* 0f <opc> /<ext> m */
+            ins2(e, 0, false, r->opc, r->ext, a);
+        } else {                                /* scalar SSE */
+            ins2(e, fp_prefix(r, m), r->ext != 0, r->opc, hw(b->reg), a);
+        }
+        break;
+    }
     }
     return true;
 }
