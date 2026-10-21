@@ -64,6 +64,7 @@ typedef struct El {
     TypeId ret;             /* the function's return type */
     TypeId swty;            /* the innermost switch's promoted type, 0: none */
     VEC(uint8_t) bytes;     /* the code units of the str nodes */
+    U32Vec params;          /* the function's N_PARAM nodes, outermost, in order (not f(void)) */
     uint32_t fname;         /* the function's name (identifier id), when in one */
     uint32_t fsym;          /* its symbol ref (the code generator reads its linkage) */
     uint32_t ntmp;          /* temporaries made so far (tmp N, N < ntmp) */

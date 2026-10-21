@@ -2087,36 +2087,12 @@ static void gen_block(Gx *g, const uint32_t *ord, uint32_t i)
     }
 }
 
-/* The parameters of the function being generated: the N_PARAM nodes of its
- * declarator, outermost only, in order. */
-static void params(Gx *g, uint32_t root, U32Vec *out)
-{
-    Checker *c = g->c;
-    uint32_t nk = nkids(c, root, NULL, 0), *k, j, i, body = NO_NODE;
-    k = xmalloc((nk ? nk : 1) * sizeof *k);
-    nkids(c, root, k, nk);
-    for (j = 0; j < nk; j++)
-        if (ntag(c, k[j]) == N_COMPOUND)
-            body = k[j];
-    free(k);
-    if (body == NO_NODE)
-        return;
-    for (i = cfirst(c, root); i < cfirst(c, body); i++) {
-        if (!is_real_param(c, i) || !c->cb[i] || type_ckind(&c->tt, c->ty[i]) == TY_VOID)
-            continue;           /* not f(void) */
-        while (out->len && out->data[out->len - 1] >= cfirst(c, i))
-            out->len--;         /* a parameter of a parameter's own type */
-        vec_push(out, i);
-    }
-}
-
 void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
 {
     Gx g;
     uint32_t i, root = L->e->c->nn - 1;
     int ni = 0, nf = 0, ns = 0, ni0, nf0, pass;
     bool sys;
-    U32Vec ps = {0};
     const CSym *fs = csym(L->e->c, L->e->fsym);
     memset(&g, 0, sizeof g);
     g.L = L;
@@ -2131,7 +2107,6 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
     em(&g, M_MOV, 8, R(R_SP), R(R_BP));
     g.sub_at = g.f.code.len;
     em(&g, M_SUB, 8, I(0), R(R_SP));
-    params(&g, root, &ps);
     {
         uint64_t rsz;
         TypeTable *tt = &g.c->tt;
@@ -2162,10 +2137,10 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
         ni = ni0;
         nf = nf0;
         ns = 0;
-        for (i = 0; i < ps.len && !g.why[0]; i++) {
+        for (i = 0; i < L->e->params.len && !g.why[0]; i++) {
             TI ti;
             int where;
-            uint32_t ref = g.c->cb[ps.data[i]] - 1;
+            uint32_t ref = g.c->cb[L->e->params.data[i]] - 1;
             uint64_t psz;
             if (is_agg(&g, csym(g.c, ref)->ty, &psz)) {
                 AggCls pc;
@@ -2269,7 +2244,6 @@ void x86_func(Cfg *L, const uint32_t *ord, FILE *out)
     vec_free(&g.f.pubs);
     vec_free(&g.f.code);
     vec_free(&g.vars);
-    vec_free(&ps);
     free(g.regoff);
     free(g.tmpoff);
 }

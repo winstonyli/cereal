@@ -553,8 +553,7 @@ static void grow_nodes(Checker *c, uint32_t n)
     c->ck = xrealloc(c->ck, c->cap * sizeof *c->ck);
     c->ef = xrealloc(c->ef, c->cap * sizeof *c->ef);
     c->par = xrealloc(c->par, c->cap * sizeof *c->par);
-    if (c->opt.tast)
-        c->sym = xrealloc(c->sym, c->cap * sizeof *c->sym);
+    c->sym = xrealloc(c->sym, c->cap * sizeof *c->sym);
     c->dm = xrealloc(c->dm, c->cap * sizeof *c->dm);
 }
 
@@ -636,8 +635,7 @@ static void visit(Checker *c, uint32_t i)
     c->cb[i] = 0;
     c->ck[i] = K_NONE;
     c->ef[i] = 0;
-    if (c->opt.tast)
-        c->sym[i] = SYM_NONE;
+    c->sym[i] = SYM_NONE;
     cstmt_enter(c, i);
     if (c->ci)
         cinit_pre(c, i);

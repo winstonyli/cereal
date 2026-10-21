@@ -2441,7 +2441,7 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
 static void func_def(El *e, uint32_t root)
 {
     Checker *c = e->c;
-    uint32_t nk = nkids(c, root, NULL, 0), *k, j, d = NO_NODE, body = NO_NODE;
+    uint32_t nk = nkids(c, root, NULL, 0), *k, i, j, d = NO_NODE, body = NO_NODE;
     const CSym *s;
     TypeId ft;
     const TypeEnt *fe;
@@ -2482,6 +2482,13 @@ static void func_def(El *e, uint32_t root)
             tunsup(e, "%s", why_type(e, pt));
             return;
         }
+    }
+    for (i = cfirst(c, root); i < cfirst(c, body); i++) {
+        if (!is_real_param(c, i) || !c->cb[i] || type_ckind(&c->tt, c->ty[i]) == TY_VOID)
+            continue;           /* not f(void) */
+        while (e->params.len && e->params.data[e->params.len - 1] >= cfirst(c, i))
+            e->params.len--;    /* a parameter of a parameter's own type */
+        vec_push(&e->params, i);
     }
     st(e, body);
 }
@@ -2559,6 +2566,7 @@ static void unit_run(Checker *c, FILE *out)
     vec_free(&e.nodes);
     vec_free(&e.kids);
     vec_free(&e.bytes);
+    vec_free(&e.params);
 }
 
 void tast_unit(Checker *c)

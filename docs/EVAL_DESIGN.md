@@ -266,6 +266,18 @@ copy of the tree.
   fine only while addresses are pure. (3) Fuel as a node count worked and
   stopped a 2^31 loop at once.
 
+### E1 groundwork (2026-10-21)
+
+Decided after S1 and done in one commit: (1) `El.params` holds the function's
+`N_PARAM` nodes, filled in `func_def`; `cgx86.c`'s own walk is deleted and
+`x86_func` reads `L->e->params`. (2) `c->sym` is allocated for every unit, not
+only under `opt.tast` (three sites), so elaboration works in any run; measured
+cost on the gate's callgrind input: 3.9494G to 3.9503G (+0.02%), 4 bytes per
+node. (3) `TO_POST`'s double evaluation of the address is safe: `once_wrap`
+(`tast.c`) hoists any address with side effects into a temporary. (4) The
+public elaboration entry (an exported wrapper of `ex`) is not added until E1's
+first user needs it, to avoid an unused export.
+
 ## 10. Review log
 
 Three adversarial rounds against the code, 2026-10-21; each change above came

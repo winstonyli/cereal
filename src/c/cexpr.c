@@ -2025,8 +2025,7 @@ static void e_ident(Checker *c, uint32_t i)
     uint32_t id = cnode_ident(c, i), ref = lookup_ord(c, id);
     const char *name = cident(c, id);
     CSym *s;
-    if (c->opt.tast)
-        c->sym[i] = ref;
+    c->sym[i] = ref;
     if (ref == SYM_NONE) {
         uint32_t p = c->par[i];
         if (!strcmp(name, "__func__") || !strcmp(name, "__FUNCTION__") ||
