@@ -46,6 +46,7 @@ typedef struct Fn {
     Blk *blk;
     size_t nblk;
     uint32_t entry, nreg, ntmp;
+    bool variadic;
     TypeId ret;
     uint32_t *strobj;           /* per node: its string literal's object + 1 */
 } Fn;
@@ -79,6 +80,7 @@ typedef struct Fr {
     Ev *v;
     Fn *f;
     uint32_t *reg, *tmp;        /* per reg/tmp N: its object, 0: none yet */
+    uint64_t va;                /* a variadic function: the pointer to its extra arguments */
     VEC(Loc) loc;
     VEC(uint32_t) own;          /* objects that die with the frame */
     struct Fr *up;
@@ -588,7 +590,7 @@ static Fn *find_fn(Ev *v, uint32_t fsym)
 }
 
 static uint64_t ev_node(Fr *r, uint32_t n);
-static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na);
+static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint64_t va);
 
 #define NODE(r, n) (&(r)->f->nodes[n])
 #define KID(r, n, j) ((r)->f->kids[NODE(r, n)->kid0 + (j)])
@@ -600,10 +602,6 @@ static uint64_t ev_call_node(Fr *r, uint32_t n)
     uint64_t args[16], callee = 0;
     uint32_t j, first = t->pun == 1 ? 1 : 0, na = t->nkids - first;
     Fn *g;
-    if (t->width) {
-        UNSUP(v, "variadic or unprototyped call");
-        return 0;
-    }
     if (na > 16) {
         UNSUP(v, "call with more than 16 arguments");
         return 0;
@@ -632,7 +630,43 @@ static uint64_t ev_call_node(Fr *r, uint32_t n)
         UNSUP(v, "call of a function with no retained body");
         return 0;
     }
-    return run_fn(r, g, args, na);
+    if (g->variadic && na >= g->np) {   /* the extra arguments: 8-byte slots, as the stack area */
+        uint64_t total = 0, at = 0, sz;
+        uint32_t id;
+        for (j = (uint32_t)g->np; j < na; j++) {
+            TypeId at_ = NODE(r, KID(r, n, first + j))->ty;
+            if (is_agg(v, at_)) {
+                if (!size_of(v, at_, &sz))
+                    return 0;
+                total += (sz + 7) / 8 * 8;
+            } else {
+                total += 8;
+            }
+        }
+        id = new_obj(v, total, false);
+        if (!id)
+            return 0;
+        vec_push(&r->own, id);          /* gone with the caller's frame, after the call returns */
+        for (j = (uint32_t)g->np; j < na; j++) {
+            TypeId at_ = NODE(r, KID(r, n, first + j))->ty;
+            if (is_agg(v, at_)) {
+                if (!size_of(v, at_, &sz))
+                    return 0;
+                copy_n(v, mkptr(id, (int64_t)at), args[j], sz);
+                at += (sz + 7) / 8 * 8;
+            } else {
+                Ti ti;
+                if (!tinfo(v, at_, &ti))
+                    return 0;
+                ti.bytes = 8;
+                ti.sg = false;
+                store_n(v, mkptr(id, (int64_t)at), &ti, args[j]);
+                at += 8;
+            }
+        }
+        return run_fn(r, g, args, g->np, mkptr(id, 0));
+    }
+    return run_fn(r, g, args, na, 0);
 }
 
 /* Store the elements (TO_ELEM kids) of node n into the zeroed object at p. */
@@ -715,7 +749,9 @@ static uint32_t static_obj(Fr *r, uint32_t ref)
     return s->obj;
 }
 
-static uint64_t ev_local(Fr *r, uint32_t n)
+/* A local variable (key: its symbol ref) or a compound literal (key: its node):
+ * a fresh object per evaluation, which lives with the frame.  Its address. */
+static uint64_t ev_local(Fr *r, uint32_t n, uint32_t key)
 {
     const TNode *t = NODE(r, n);
     Ev *v = r->v;
@@ -724,7 +760,7 @@ static uint64_t ev_local(Fr *r, uint32_t n)
     Ti ti;
     if (!size_of(v, t->ty, &sz))
         return 0;
-    slot = lookup(r, t->sym);
+    slot = lookup(r, key);
     if (slot) {
         kill_obj(v, *slot);             /* a new lifetime: a fresh object */
         v->obj.data[*slot - 1].live = true;
@@ -737,17 +773,19 @@ static uint64_t ev_local(Fr *r, uint32_t n)
         if (!id)
             return 0;
         vec_push(&r->own, id);
-        l.ref = t->sym;
+        l.ref = key;
         l.obj = id;
         vec_push(&r->loc, l);
     }
     p = mkptr(id, 0);
+    if (t->op == TO_COMPLIT)            /* what the list leaves out is zero */
+        zero_n(v, p, sz);
     if (t->nkids == 0)
-        return 0;
+        return p;
     if (NODE(r, KID(r, n, 0))->op == TO_ELEM) {
         zero_n(v, p, sz);
         init_elems(r, n, p);
-        return 0;
+        return p;
     }
     if (is_agg(v, t->ty)) {
         x = ev_node(r, KID(r, n, 0));
@@ -756,7 +794,59 @@ static uint64_t ev_local(Fr *r, uint32_t n)
         x = ev_node(r, KID(r, n, 0));
         store_n(v, p, &ti, x);
     }
-    return 0;
+    return p;
+}
+
+/* va_start / va_end / va_copy / va_arg.  A va_list is the 24-byte record of the
+ * System V ABI, of which only the overflow area pointer (bytes 8..16) is used:
+ * it points into the call's extra arguments and each va_arg moves it on. */
+static uint64_t ev_va(Fr *r, uint32_t n)
+{
+    const TNode *t = NODE(r, n);
+    Ev *v = r->v;
+    uint64_t ap, p, sz = 8;
+    Ti ti, pt;
+    bool agg;
+    ap = ev_node(r, KID(r, n, 0));
+    memset(&pt, 0, sizeof pt);
+    pt.bytes = 8;
+    switch (t->pun) {
+    case 1:
+        if (!r->va) {
+            UNSUP(v, "va_start outside a variadic function");
+            return 0;
+        }
+        zero_n(v, ap, 24);
+        store_n(v, mkptr(pid(ap), poff(ap) + 8), &pt, r->va);
+        return 0;
+    case 2:
+        return 0;
+    case 3:
+        copy_n(v, ap, ev_node(r, KID(r, n, 1)), 24);
+        return 0;
+    default:
+        break;
+    }
+    if (v->res.status)
+        return 0;
+    p = load_n(v, mkptr(pid(ap), poff(ap) + 8), &pt);
+    if (v->res.status)
+        return 0;
+    agg = is_agg(v, t->ty);
+    if (agg) {
+        if (!size_of(v, t->ty, &sz))
+            return 0;
+        if (access(v, p, sz, "va_arg read") == NULL)
+            return 0;
+        sz = (sz + 7) / 8 * 8;
+    }
+    {
+        uint64_t x = agg ? p : tinfo(v, t->ty, &ti) ? load_n(v, p, &ti) : 0;
+        if (v->res.status)
+            return 0;
+        store_n(v, mkptr(pid(ap), poff(ap) + 8), &pt, mkptr(pid(p), (int64_t)poff(p) + (int64_t)sz));
+        return x;
+    }
 }
 
 static uint64_t ev_node(Fr *r, uint32_t n)
@@ -982,7 +1072,16 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         }
         return (uint64_t)(((int64_t)poff(a) - (int64_t)poff(b)) / t->val);
     case TO_LOCAL:
-        return ev_local(r, n);
+        ev_local(r, n, t->sym);
+        return 0;
+    case TO_COMPLIT:
+        if (t->pun) {
+            UNSUP(v, "static compound literal");
+            return 0;
+        }
+        return ev_local(r, n, n);
+    case TO_VA:
+        return ev_va(r, n);
     case TO_CALL:
         return ev_call_node(r, n);
     default: {
@@ -997,7 +1096,7 @@ static uint64_t ev_node(Fr *r, uint32_t n)
     }
 }
 
-static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na)
+static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint64_t va)
 {
     Ev *v = caller->v;
     Fr r;
@@ -1008,6 +1107,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na)
     r.v = v;
     r.f = f;
     r.up = caller;
+    r.va = va;
     if (na != f->np) {
         UNSUP(v, "call with a different number of arguments");
         return 0;
@@ -1201,6 +1301,7 @@ void ev_add_func(Ev *v, El *e, Cfg *g)
     Fn f = fn_of_el(v, e);
     size_t i;
     f.np = e->params.len;
+    f.variadic = (type_ent(&e->c->tt, type_canon(&e->c->tt, csym(e->c, e->fsym)->ty))->flags & TF_VARIADIC) != 0;
     f.par = xmalloc((f.np + 1) * sizeof *f.par);
     for (i = 0; i < f.np; i++) {
         uint32_t ref = e->c->cb[e->params.data[i]] - 1;
@@ -1238,7 +1339,7 @@ EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *ou
     if (!f)
         UNSUP(v, "no retained body for the function");
     else
-        x = run_fn(&top, f, args, n);
+        x = run_fn(&top, f, args, n, 0);
     if (!v->res.status && out)
         *out = x;
     {

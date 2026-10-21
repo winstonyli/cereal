@@ -291,8 +291,7 @@ copies at store, local, argument and return, direct and indirect calls
 depth limit. UB stops evaluation with a reason (division by zero, signed
 overflow, shift counts, out of bounds, null, after lifetime, uninitialized
 read, write to a string literal, pointer difference across objects). Each
-unsupported construct names itself: compound literals,
-variadic calls, built-ins.
+unsupported construct names itself: built-ins and static compound literals.
 
 Entry: `cereal check --eval-main` (hidden; `--eval-wrap` for gcc `-fwrapv`
 parity) prints `eval main = N` or `eval main: trap|limit|unsupported: why`.
@@ -343,6 +342,23 @@ functions and objects are not retained; revisit with the corpora.
 Goldens `globals.c`, `trap_extern.c`, `trap_global_oob.c`; mutation check
 5 of 5 killed (per-function key, definition over tentative, zero fill,
 registration before init, initializer run).
+
+### E1d result (2026-10-21)
+
+Compound literals and variadic calls. A block-scope compound literal is an
+anonymous local: `ev_local` now takes the key (symbol ref for a variable, node
+id for a literal) and returns the object's address; a literal's unlisted parts
+are zero, and a fresh object is made per evaluation but the slot is reused, so a
+loop does not grow memory. A call to a variadic function copies the arguments
+beyond the fixed ones into one object (8-byte slots, aggregates rounded up to 8),
+owned by the caller's frame. `va_start` writes the 24-byte SysV record with only
+the overflow-area pointer (bytes 8..16) set; `va_arg` loads through it and moves
+it on, so reading past the arguments is the ordinary out-of-bounds trap, and
+`va_copy` is a 24-byte copy (the option "evaluator-native cursor", chosen over
+a full register-save-area model: PARKED.md). `va_arg` does not check that the
+requested type matches the passed one. Goldens `varargs.c`, `trap_vaarg.c`;
+mutation check 6 of 6 killed after the first set let three live (a 12-byte
+aggregate argument, an empty literal, two literals alive at once).
 
 ## 10. Review log
 
