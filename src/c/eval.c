@@ -50,12 +50,23 @@ typedef struct Fn {
     uint32_t *strobj;           /* per node: its string literal's object + 1 */
 } Fn;
 
+/* A static-storage object: a file-scope object (persistent ref) or a block-scope
+ * static (local ref, of the function fn).  Created, zeroed and initialized on
+ * its first reference; node is its TO_DATA (TN: tentative, zero), found in
+ * the elements of Fn fn. */
+typedef struct Sd {
+    uint32_t ref, node, fn, obj;
+    TypeId ty;
+    bool local;
+} Sd;
+
 struct Ev {
     Checker *c;
     EvOpts o;
     EvRes res;
     VEC(Obj) obj;               /* object id n is obj.data[n - 1] */
     VEC(Fn) fn;
+    VEC(Sd) sd;
     long fuel;
     unsigned depth;
 };
@@ -624,13 +635,92 @@ static uint64_t ev_call_node(Fr *r, uint32_t n)
     return run_fn(r, g, args, na);
 }
 
+/* Store the elements (TO_ELEM kids) of node n into the zeroed object at p. */
+static void init_elems(Fr *r, uint32_t n, uint64_t p)
+{
+    const TNode *t = NODE(r, n);
+    Ev *v = r->v;
+    uint64_t x;
+    uint32_t j;
+    Ti ti;
+    for (j = 0; j < t->nkids && !v->res.status; j++) {
+        const TNode *el = NODE(r, KID(r, n, j));
+        uint32_t vn = KID(r, KID(r, n, j), 0);
+        const TNode *vt = NODE(r, vn);
+        if (el->width) {
+            if (!tinfo(v, el->ty, &ti))
+                return;
+            x = ev_node(r, vn);
+            bf_store(v, mkptr(pid(p), poff(p) + el->val), &ti, el->pun, el->width, x);
+        } else if (vt->op == TO_STR) {
+            uint64_t sp = ev_node(r, vn), cn = (uint64_t)vt->width;
+            uint64_t esz;
+            if (!size_of(v, el->ty, &esz))
+                return;
+            copy_n(v, mkptr(pid(p), poff(p) + el->val), sp, cn < esz ? cn : esz);
+        } else if (is_agg(v, el->ty)) {
+            uint64_t esz;
+            if (!size_of(v, el->ty, &esz))
+                return;
+            copy_n(v, mkptr(pid(p), poff(p) + el->val), ev_node(r, vn), esz);
+        } else if (tinfo(v, el->ty, &ti)) {
+            x = ev_node(r, vn);
+            store_n(v, mkptr(pid(p), poff(p) + el->val), &ti, x);
+        }
+    }
+}
+
+/* The object of a static-storage symbol, made and initialized on first use. */
+static uint32_t static_obj(Fr *r, uint32_t ref)
+{
+    Ev *v = r->v;
+    bool local = (ref & SYM_LOCAL) != 0;
+    uint32_t fi = (uint32_t)(r->f - v->fn.data);
+    Sd *s = NULL;
+    size_t i;
+    for (i = 0; i < v->sd.len; i++) {
+        Sd *d = &v->sd.data[i];
+        if (d->ref == ref && d->local == local && (!local || d->fn == fi) &&
+            (!s || (s->node == TN && d->node != TN)))
+            s = d;
+    }
+    if (!s) {
+        UNSUP(v, "%s with no definition in this unit", local ? "static local" : "global object");
+        return 0;
+    }
+    if (!s->obj) {
+        uint64_t sz;
+        uint32_t id;
+        if (!size_of(v, s->ty, &sz) || !(id = new_obj(v, sz, false)))
+            return 0;
+        s->obj = id;                    /* before the initializer: it may point at itself */
+        zero_n(v, mkptr(id, 0), sz);
+        if (s->node != TN) {
+            Fr ir;
+            Fn *f = &v->fn.data[s->fn];
+            size_t k;
+            memset(&ir, 0, sizeof ir);
+            ir.v = v;
+            ir.f = f;
+            ir.reg = xcalloc(f->nreg + 1, sizeof *ir.reg);
+            ir.tmp = xcalloc(f->ntmp + 1, sizeof *ir.tmp);
+            init_elems(&ir, s->node, mkptr(id, 0));
+            for (k = 0; k < ir.own.len; k++)
+                kill_obj(v, ir.own.data[k]);
+            vec_free(&ir.own);
+            free(ir.reg);
+            free(ir.tmp);
+        }
+    }
+    return s->obj;
+}
+
 static uint64_t ev_local(Fr *r, uint32_t n)
 {
     const TNode *t = NODE(r, n);
     Ev *v = r->v;
     uint64_t sz, p, x;
     uint32_t *slot, id;
-    uint32_t j;
     Ti ti;
     if (!size_of(v, t->ty, &sz))
         return 0;
@@ -656,31 +746,7 @@ static uint64_t ev_local(Fr *r, uint32_t n)
         return 0;
     if (NODE(r, KID(r, n, 0))->op == TO_ELEM) {
         zero_n(v, p, sz);
-        for (j = 0; j < t->nkids && !v->res.status; j++) {
-            const TNode *el = NODE(r, KID(r, n, j));
-            uint32_t vn = KID(r, KID(r, n, j), 0);
-            const TNode *vt = NODE(r, vn);
-            if (el->width) {
-                if (!tinfo(v, el->ty, &ti))
-                    return 0;
-                x = ev_node(r, vn);
-                bf_store(v, mkptr(pid(p), poff(p) + el->val), &ti, el->pun, el->width, x);
-            } else if (vt->op == TO_STR) {
-                uint64_t sp = ev_node(r, vn), cn = (uint64_t)vt->width;
-                uint64_t esz;
-                if (!size_of(v, el->ty, &esz))
-                    return 0;
-                copy_n(v, mkptr(pid(p), poff(p) + el->val), sp, cn < esz ? cn : esz);
-            } else if (is_agg(v, el->ty)) {
-                uint64_t esz;
-                if (!size_of(v, el->ty, &esz))
-                    return 0;
-                copy_n(v, mkptr(pid(p), poff(p) + el->val), ev_node(r, vn), esz);
-            } else if (tinfo(v, el->ty, &ti)) {
-                x = ev_node(r, vn);
-                store_n(v, mkptr(pid(p), poff(p) + el->val), &ti, x);
-            }
-        }
+        init_elems(r, n, p);
         return 0;
     }
     if (is_agg(v, t->ty)) {
@@ -709,21 +775,16 @@ static uint64_t ev_node(Fr *r, uint32_t n)
     case TO_CONST:
         return (uint64_t)t->val;
     case TO_SYM: {
-        uint32_t *s;
-        if (t->sym & SYM_LOCAL) {
-            s = lookup(r, t->sym);
-            if (!s) {
-                UNSUP(v, "static or unbound local object");
-                return 0;
-            }
+        uint32_t *s = (t->sym & SYM_LOCAL) ? lookup(r, t->sym) : NULL, id;
+        if (s)
             return mkptr(*s, 0);
-        }
-        if (csym(v->c, t->sym)->kind != CS_FUNC) {
-            UNSUP(v, "global object");
-            return 0;
-        }
-        return mkptr(function_obj(v, t->sym), 0);
+        if (!(t->sym & SYM_LOCAL) && csym(v->c, t->sym)->kind == CS_FUNC)
+            return mkptr(function_obj(v, t->sym), 0);
+        id = static_obj(r, t->sym);
+        return id ? mkptr(id, 0) : 0;
     }
+    case TO_DATA:                       /* a block-scope static: made on first reference */
+        return 0;
     case TO_TMP:
     case TO_REG: {
         uint32_t *slot = (t->op == TO_TMP ? r->tmp : r->reg) + t->val;
@@ -1078,6 +1139,7 @@ void ev_free(Ev *v)
         free(f->strobj);
     }
     vec_free(&v->fn);
+    vec_free(&v->sd);
     free(v);
 }
 
@@ -1090,7 +1152,8 @@ static void *dup_n(const void *p, size_t n)
     return q;
 }
 
-void ev_add_func(Ev *v, El *e, Cfg *g)
+/* A copy of the unit's nodes, with its static-storage objects (TO_DATA) registered. */
+static Fn fn_of_el(Ev *v, El *e)
 {
     Fn f;
     size_t i;
@@ -1100,6 +1163,43 @@ void ev_add_func(Ev *v, El *e, Cfg *g)
     f.kids = dup_n(e->kids.data, e->kids.len * sizeof *f.kids);
     f.bytes = dup_n(e->bytes.data, e->bytes.len);
     f.strobj = xcalloc(e->nodes.len + 1, sizeof *f.strobj);
+    for (i = 0; i < e->nodes.len; i++) {
+        const TNode *t = &e->nodes.data[i];
+        Sd d;
+        if (t->op != TO_DATA)
+            continue;
+        memset(&d, 0, sizeof d);
+        d.ref = t->sym;
+        d.node = (uint32_t)i;
+        d.fn = (uint32_t)v->fn.len;     /* the Fn about to be pushed */
+        d.ty = t->ty;
+        d.local = (t->sym & SYM_LOCAL) != 0;
+        vec_push(&v->sd, d);
+    }
+    return f;
+}
+
+void ev_add_data(Ev *v, El *e)
+{
+    Fn f = fn_of_el(v, e);
+    f.fsym = SYM_NONE;
+    vec_push(&v->fn, f);
+}
+
+void ev_add_tentative(Ev *v, uint32_t ref)
+{
+    Sd d;
+    memset(&d, 0, sizeof d);
+    d.ref = ref;
+    d.node = TN;
+    d.ty = csym(v->c, ref)->ty;
+    vec_push(&v->sd, d);
+}
+
+void ev_add_func(Ev *v, El *e, Cfg *g)
+{
+    Fn f = fn_of_el(v, e);
+    size_t i;
     f.np = e->params.len;
     f.par = xmalloc((f.np + 1) * sizeof *f.par);
     for (i = 0; i < f.np; i++) {
@@ -1170,6 +1270,16 @@ void eval_keep(Checker *c, El *e, Cfg *g)
     ev_add_func(ev_of(c), e, g);
 }
 
+void eval_data(Checker *c, El *e)
+{
+    ev_add_data(ev_of(c), e);
+}
+
+void eval_tentative(Checker *c, uint32_t ref)
+{
+    ev_add_tentative(ev_of(c), ref);
+}
+
 void eval_main(Checker *c)
 {
     Ev *v = ev_of(c);
@@ -1179,7 +1289,8 @@ void eval_main(Checker *c)
     FILE *out = c->opt.tast;
     uint32_t fsym = SYM_NONE;
     for (i = 0; i < v->fn.len; i++)
-        if (!strcmp(cident(c, csym(c, v->fn.data[i].fsym)->name), "main"))
+        if (v->fn.data[i].fsym != SYM_NONE &&
+            !strcmp(cident(c, csym(c, v->fn.data[i].fsym)->name), "main"))
             fsym = v->fn.data[i].fsym;
     if (!out)
         return;

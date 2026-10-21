@@ -19,6 +19,7 @@
 #include "c/cgx86.h"
 #include "c/cintrin.h"
 #include "c/csymidx.h"
+#include "c/eval.h"
 #include "c/lit.h"
 
 #include "c/tast_int.h"
@@ -2397,6 +2398,9 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
         if (CHK_ASM(c->opt) && csym(c, c->cb[d] - 1)->kind == CS_OBJ &&
             csym(c, c->cb[d] - 1)->sc != SC_EXTERN)
             x86_tentative(c, c->cb[d] - 1);
+        if (c->opt.eval_main && csym(c, c->cb[d] - 1)->kind == CS_OBJ &&
+            csym(c, c->cb[d] - 1)->sc != SC_EXTERN)
+            eval_tentative(c, c->cb[d] - 1);
         if (!show)
             continue;
         fputs("unit ", out);
@@ -2407,6 +2411,8 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
         put_type(c, out, csym(c, c->cb[d] - 1)->ty);
         fputc('\n', out);
     }
+    if (c->opt.eval_main && !e->why[0] && items.len)
+        eval_data(c, e);
     if (CHK_ASM(c->opt) && !e->why[0]) {
         size_t m;
         for (m = 0; m < items.len; m++) {
@@ -2522,7 +2528,7 @@ static void unit_run(Checker *c, FILE *out)
         fputs(" skipped: errors\n", out);
         return;
     }
-    if (tag == N_DECL && !c->opt.tast_tree && !CHK_ASM(c->opt))
+    if (tag == N_DECL && !c->opt.tast_tree && !c->opt.eval_main && !CHK_ASM(c->opt))
         return;
     memset(&e, 0, sizeof e);
     e.c = c;

@@ -292,7 +292,7 @@ depth limit. UB stops evaluation with a reason (division by zero, signed
 overflow, shift counts, out of bounds, null, after lifetime, uninitialized
 read, write to a string literal, pointer difference across objects). Each
 unsupported construct names itself: compound literals,
-variadic calls, built-ins, globals, `static` locals.
+variadic calls, built-ins.
 
 Entry: `cereal check --eval-main` (hidden; `--eval-wrap` for gcc `-fwrapv`
 parity) prints `eval main = N` or `eval main: trap|limit|unsupported: why`.
@@ -321,6 +321,28 @@ and a write marks the whole window initialized. Not covered by a golden:
 `TO_F2I` rounding (only reachable through intrinsics, which are still
 unsupported). Goldens `floats.c`, `bitfields.c`, `trap_f2i.c`, `trap_bf_oob.c`;
 mutation check 9 of 9 live mutants killed (one equivalent: `(_Bool)NaN`).
+
+### E1c result (2026-10-21)
+
+Globals and block-scope statics, decided as options 1 3 5 7. One notion: a
+static-storage object (`Sd`: symbol ref, its `TO_DATA` node or none, the `Fn`
+holding the node, type, object id). File-scope objects come from the `TO_DATA`
+nodes `print_decls` builds (the unit's nodes are copied in once by
+`eval_data`, as a `Fn` with no blocks); block-scope statics from the
+`TO_DATA` statements in each function's nodes (keyed by local ref and `Fn`,
+since local refs repeat across units); tentative definitions from
+`eval_tentative` (no node: zero). An object is made on first reference,
+zeroed, registered before its initializer runs (so `int *p = &p;` works), then
+its `TO_ELEM`s run through `init_elems`, the loop `ev_local` already used. A
+`TO_DATA` statement is a no-op. A definition with a node beats a tentative one
+whichever comes first. A symbol with no entry (`extern` without a definition)
+stops with "no definition in this unit". Objects are never killed. Unlike gcc,
+nothing runs "before main", which cannot differ for constant initializers.
+Header units are still skipped (`tast_unit`), so header `static inline`
+functions and objects are not retained; revisit with the corpora.
+Goldens `globals.c`, `trap_extern.c`, `trap_global_oob.c`; mutation check
+5 of 5 killed (per-function key, definition over tentative, zero fill,
+registration before init, initializer run).
 
 ## 10. Review log
 
