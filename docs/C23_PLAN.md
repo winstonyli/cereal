@@ -177,3 +177,10 @@ except the parked rows below):
   `__auto_type`; `auto` takes the promoted type.
 - Special cases that grew: the parser's mirror of the `finish_declspecs` rule, and `auto_pend`.
 - Parked: declaration-error gaps (`PARKED.md`).
+
+## Gate cost of steps 1-4 (2026-10-21)
+
+uvloop `loop.c` callgrind: 3.8959G at `56049cc`, 3.9494G after step 4 (+1.4%). Step 1 (`b048680`) is +51.6M
+of it (year-gated keywords: `ckw_of` and `is_decl_start_la` account for ~26M, the rest is inlining shifts);
+`nullptr` +6.6M, `auto` +4.0M, `constexpr` and `()` +1.5M each. `ckw_of` now gates through a per-parser
+table and is inline (−11.9M). The gate header expects ~3.95G.
