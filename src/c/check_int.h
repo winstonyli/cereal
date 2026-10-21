@@ -331,6 +331,7 @@ struct Checker {
     DiagEngine *diag;
     CheckOptions opt;
     struct X86 *x86;            /* the back end's state, made on first use (cgdata.c) */
+    struct Ev *ev;              /* the evaluator's state, made on first use (eval.c) */
     const Target *tgt;
     TypeTable tt;
 

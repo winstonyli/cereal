@@ -14,6 +14,7 @@
 
 #include "c/cexpr_int.h"
 #include "c/tcfg_int.h"
+#include "c/eval.h"
 
 static void lunsup(Cfg *L, const char *fmt, ...)
 {
@@ -891,6 +892,8 @@ void tast_cfg(El *e, uint32_t root, FILE *out)
         ord = by_pos(&L);
         ijmp_targets(&L, &ij);
         mark(&L, ord[0], &ij);
+        if (e->c->opt.eval_main)
+            eval_keep(e->c, e, &L);
         if (CHK_ASM(e->c->opt))
             x86_func(&L, ord, out);
         for (i = 0; i < L.npl && e->c->opt.dump_cfg; i++) {

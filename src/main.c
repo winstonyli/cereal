@@ -1656,6 +1656,11 @@ int main(int argc, char **argv)
             fe_opts.dump_cfg = true;
             continue;
         }
+        if (!strcmp(argv[i], "--eval-main") || !strcmp(argv[i], "--eval-wrap")) {
+            fe_opts.eval_main = true;
+            fe_opts.eval_wrap |= argv[i][7] == 'w';
+            continue;
+        }
         if (!strcmp(argv[i], "--verify-cfg")) {
             fe_opts.dump_cfg = fe_opts.verify_cfg = true;
             continue;

@@ -2559,7 +2559,7 @@ static void unit_run(Checker *c, FILE *out)
                 if (c->opt.verify_tast)
                     verify(&e, out);
             }
-            if (c->opt.dump_cfg || CHK_ASM(c->opt))
+            if (c->opt.dump_cfg || c->opt.eval_main || CHK_ASM(c->opt))
                 tast_cfg(&e, (uint32_t)e.nodes.len - 1, out);
         }
     }

@@ -33,6 +33,8 @@ typedef struct CheckOptions {
     bool tast_tree;             /* ... print the tree itself (--dump-tast) */
     bool dump_asm;              /* --dump-asm: x86-64 assembly of each function (cgx86.c) */
     const char *emit_obj;       /* --emit-obj=FILE: the same, as an ELF object (mir_elf.c) */
+    bool eval_main;             /* --eval-main: run main() in the evaluator (eval.c) */
+    bool eval_wrap;             /* ... with signed overflow wrapping (gcc -fwrapv) */
     bool dump_cfg, verify_cfg;  /* --dump-cfg: print the lowered control-flow graph;
                                  * --verify-cfg: and check it (tcfg.c) */
     bool verify_tast;           /* --verify-tast: check each tree, print findings */

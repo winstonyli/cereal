@@ -4,6 +4,7 @@
  * expressions in cexpr.c (with cwarn_expr.c, cprint.c, ...). */
 #include "c/check_int.h"
 #include "c/cgx86.h"
+#include "c/eval.h"
 #include "c/tast.h"
 
 #include <ctype.h>
@@ -790,6 +791,8 @@ void checker_finish(Checker *c)
 {
     size_t k;
     cdecl_check_inline_statics(c);
+    if (c->opt.eval_main)
+        eval_main(c);
     for (k = 0; k < c->tentative.len; k++)
         cdecl_finish_object(c, c->tentative.data[k]);
     if (c->opt.dump)
@@ -800,6 +803,7 @@ void checker_free(Checker *c)
 {
     if (!c)
         return;
+    eval_release(c);
     x86_finish(c);
     vec_free(&c->undecl);
     vec_free(&c->inl_statics);

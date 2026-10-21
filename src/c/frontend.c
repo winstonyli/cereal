@@ -161,9 +161,11 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo)
         co.pedantic = tu->diag.pedantic;
         co.pedantic_errors = tu->diag.pedantic_errors;
         co.dump = fo->dump_types ? out : NULL;
-        co.tast = fo->dump_tast || fo->dump_cfg || fo->dump_asm || fo->emit_obj ? out : NULL;
+        co.tast = fo->dump_tast || fo->dump_cfg || fo->dump_asm || fo->emit_obj || fo->eval_main ? out : NULL;
         co.tast_tree = fo->dump_tast;
         co.dump_cfg = fo->dump_cfg;
+        co.eval_main = fo->eval_main;
+        co.eval_wrap = fo->eval_wrap;
         co.dump_asm = fo->dump_asm;
         co.emit_obj = fo->emit_obj;
         co.verify_cfg = fo->verify_cfg;

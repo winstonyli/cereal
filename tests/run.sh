@@ -578,6 +578,14 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         bad "asm_exec"
         head -10 "$TMP/asm.out" | sed 's/^/    /'
     fi
+    # 13g. evaluator (tests/eval.sh, src/c/eval.c): main() run in the
+    #      evaluator against the gcc build, and UB stopping with its reason
+    if sh "$ROOT/tests/eval.sh" "$CEREAL" >"$TMP/eval.out" 2>&1 </dev/null; then
+        ok
+    else
+        bad "eval"
+        head -10 "$TMP/eval.out" | sed 's/^/    /'
+    fi
 fi
 
 # 14. C symbol index: golden `--dump-symbols` (plain and from cells), and

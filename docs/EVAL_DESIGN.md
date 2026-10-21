@@ -147,9 +147,12 @@ E5 swaps `ev`/`elem` for `ev_object`.
    emitting anyway. A "unit" is one external declaration, and the checker's
    per-node arrays (`ck`, `cv`, `ef`, ...) are reused for the next one, so
    the evaluator reads only the `El`, the `Cfg`, the `TypeTable` and the
-   symbol table, never those arrays. Units finish on several threads, so
-   `ev_add_func` is called under a lock or collects per thread, and `run`
-   starts after the last unit is checked. One translation unit first: each
+   symbol table, never those arrays. One `Checker` (and so one `Ev`) serves
+   one translation unit and its units run in order, so `ev_add_func` needs no
+   lock (the threads are per TU); it copies what it keeps, and `run` starts
+   after the last unit is checked. Local symbol refs (`SYM_LOCAL`) index the
+   unit's own table, so the evaluator never calls `csym` on them: parameter
+   types are captured when the function is added. One translation unit first: each
    TU has its own `TypeTable`, so calls across TUs would need symbol
    matching and by-value layout conversion (parked).
 2. **Mid-check values.** `constexpr` values are needed *during* checking
@@ -277,6 +280,30 @@ node. (3) `TO_POST`'s double evaluation of the address is safe: `once_wrap`
 (`tast.c`) hoists any address with side effects into a temporary. (4) The
 public elaboration entry (an exported wrapper of `ex`) is not added until E1's
 first user needs it, to avoid an unused export.
+
+### E1 result (2026-10-21)
+
+`src/c/eval.c` and `eval.h` (about 970 lines): integers, enums, `_Bool`,
+pointers (object id and offset), byte memory with an init bitmap and object
+lifetimes, locals, parameters, `tmp`/`reg`, string literals, struct and union
+copies at store, local, argument and return, direct and indirect calls
+(arguments right to left as `cgx86.c`), `switch`, `post`, fuel and a call
+depth limit. UB stops evaluation with a reason (division by zero, signed
+overflow, shift counts, out of bounds, null, after lifetime, uninitialized
+read, write to a string literal, pointer difference across objects). Each
+unsupported construct names itself: floats, bit-fields, compound literals,
+variadic calls, built-ins, globals, `static` locals.
+
+Entry: `cereal check --eval-main` (hidden; `--eval-wrap` for gcc `-fwrapv`
+parity) prints `eval main = N` or `eval main: trap|limit|unsupported: why`.
+`tests/eval.sh` (step 13g of `tests/run.sh`) compares `tests/eval/*.c` with a
+gcc build on the full `int` value and checks each `trap_*.c` stops with its
+reason. Mutation check: 7 of 7 mutants killed (signed shift, signed `<` and
+`>`, pointer scaling, argument order, aggregate copy, canonicalization), after
+the first test set let two survive (folded constants and a cancelling pair of
+compares, both fixed in the tests). Deviation from the first-cut plan: values
+are copied in (`ev_add_func` copies, it does not steal), because `El` and
+`Cfg` stay owned by `unit_run`.
 
 ## 10. Review log
 
