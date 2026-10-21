@@ -234,15 +234,21 @@ copy of the tree.
   evaluated it. Nothing was lowered to a CFG and `cinit_decl_done` was not
   touched; the walk read the TAST tree directly. Integer-only evaluator
   against the checker's folded value: **0 mismatches** over `tests/check`
-  with `-std=c23` (3261 ok, 8 not elaborated: `__int128`, `_FloatN`,
-  `labaddr`, one lvalue form) and over Lua 5.4 (1582 ok). The "unevaluable"
-  rest (602 and 1050) is almost all `addr` (address constants, for which
-  the checker has `K_ADDR`, not a value) plus floats; none of it is an
-  elaboration failure. Constraint: `ex()` needs a function context only for
-  temporaries and compound literals, so the hook set `infunc` and
-  stayed in the integer subset; compound literals and statement expressions
-  inside a constant were not exercised. zstd gave no probes at all with my
-  flags (unexplained; not chased).
+  with `-std=c23` (3747 ok, 11 not elaborated: `__int128`, `_FloatN`,
+  `labaddr`, one lvalue form), Lua 5.4 (8887 ok, 0 not elaborated) and
+  zstd 1.5.7 `common`, `compress`, `decompress` (28572 ok, 0 not
+  elaborated). The "unevaluable" rest (888, 4337, 4295) is `addr` (address
+  constants, for which the checker has `K_ADDR`, not a value), floats and
+  non-integer casts; none of it is an elaboration failure.
+  Constraints: (1) `ex()` reads the checker's per-node `sym` array, which
+  `grow_nodes` allocates only when `opt.tast` is set (`frontend.c:164`, from
+  `--dump-tast`, `--dump-cfg`, `--dump-asm`, `--emit-obj`). Without it the
+  first probe on an identifier crashed (null `c->sym`, found on zstd; a
+  first run without `--dump-tast` also undercounted Lua at 1582). So
+  option A needs `sym` always on, 4 bytes per node, or elaboration from a
+  checker that has it. (2) `ex()` needs a function context only for
+  temporaries and compound literals; the hook set `infunc`, and compound
+  literals and statement expressions inside a constant were not exercised.
 - **(b) The node-slot and frame design holds.** A CFG interpreter over
   `CBlk` (statement roots, `TK_JMP/BR/SWTCH/RET`, registers by `TO_REG`
   number, locals and parameters as slots keyed by symbol ref) ran all 14
