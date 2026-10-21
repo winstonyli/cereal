@@ -158,7 +158,7 @@ static bool accept(Parser *p, Punct x)
     return true;
 }
 
-static int ckw_of(Parser *p, const PTok *t)
+static inline int ckw_of(Parser *p, const PTok *t)
 {
     unsigned k;
     if (t->stdattr)
@@ -166,9 +166,7 @@ static int ckw_of(Parser *p, const PTok *t)
     if (t->t.kind != TK_IDENT)
         return CK_NONE;
     k = ident_by_id(p->in, t->t.aux)->ckw;
-    if ((k & (CKW_GNU_ONLY | CKW_C23)) &&
-        !(((k & CKW_GNU_ONLY) && p->gnu) ||
-          ((k & CKW_C23) && p->year >= 2023)))
+    if (!p->kw_ok[(k >> 8) & 3])
         return CK_NONE;
     return (int)(k & 0xFF);
 }
@@ -3509,6 +3507,10 @@ void parser_init(Parser *p, SrcMgr *sm, Interner *in, DiagEngine *diag,
     p->diag = diag;
     p->gnu = gnu;
     p->year = year;
+    p->kw_ok[0] = true;
+    p->kw_ok[1] = gnu;
+    p->kw_ok[2] = year >= 2023;
+    p->kw_ok[3] = gnu || year >= 2023;
     p->src = src;
     p->src_ctx = ctx;
     scope_init(&p->scope);

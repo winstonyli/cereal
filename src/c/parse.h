@@ -42,6 +42,7 @@ typedef struct Parser {
     void *last_ctx;
     bool gnu;                   /* asm and typeof are keywords */
     int year;                   /* the language year: C23 keywords from 2023 */
+    bool kw_ok[4];              /* by (CKW_C23, CKW_GNU_ONLY) bits: keyword on? */
     /* toks[0] is the current unit's first token; lookahead follows */
     VEC(PTok) toks;
     uint32_t pos;
