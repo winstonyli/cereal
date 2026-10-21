@@ -2580,8 +2580,8 @@ void tast_unit(Checker *c)
     uint32_t root = c->nn - 1;
     unsigned tag = ntag(c, root);
     if (tag == N_FUNC_DEF || tag == N_DECL || tag == N_TOP_ASM) {
-        if (cin_system(c, cnode_loc(c, root))) {     /* a header's functions are emitted when used */
-            FILE *d = tag == N_FUNC_DEF && CHK_ASM(c->opt) ? discard() : NULL;
+        if (cin_system(c, cnode_loc(c, root))) {     /* a header's functions are emitted when used; the evaluator keeps them all */
+            FILE *d = (tag == N_FUNC_DEF && CHK_ASM(c->opt)) || c->opt.eval_main ? discard() : NULL;
             if (d) {
                 unit_run(c, d);
                 fclose(d);
