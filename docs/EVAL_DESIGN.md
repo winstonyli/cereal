@@ -214,7 +214,7 @@ version.
   When parity holds and the skipped cases pass, delete the Python
   interpreter in `tests/cfg_exec.py` (its parser and value helpers move to
   `asm_exec.py` or a shared module) and the parked "execution oracle" row.
-- **E3:** `cereal run FILE.c...` over E1/E2 (arguments, exit status, the
+- **E3 (done, see "E3 result"):** `cereal run FILE.c...` over E1/E2 (arguments, exit status, the
   host-call whitelist for libc functions; others are reported).
 - **E4:** `constexpr` aggregates and braced scalars through `ev_expr`, with
   the checker keeping ICE and diagnostics (option A).
@@ -293,11 +293,12 @@ overflow, shift counts, out of bounds, null, after lifetime, uninitialized
 read, write to a string literal, pointer difference across objects). Each
 unsupported construct names itself: built-ins and static compound literals.
 
-Entry: `cereal check --eval-main` (hidden; `--eval-wrap` for gcc `-fwrapv`
-parity) prints `eval main = N` or `eval main: trap|limit|unsupported: why`.
-`tests/eval.sh` (step 13g of `tests/run.sh`) compares `tests/eval/*.c` with a
-gcc build on the full `int` value and checks each `trap_*.c` stops with its
-reason. Mutation check: 7 of 7 mutants killed (signed shift, signed `<` and
+Entry (since E3): `cereal run FILE.c [-- ARGS...]` (`--eval-wrap` for gcc
+`-fwrapv` parity); E1 had a hidden `cereal check --eval-main` that printed
+`eval main = N`. `tests/eval.sh` (step 13g of `tests/run.sh`) runs
+`tests/eval/*.c` and a gcc build and compares stdout and the exit status, with
+`main`'s value printed after the program's own output, and checks each
+`trap_*.c` stops with status 125 and its reason. Mutation check: 7 of 7 mutants killed (signed shift, signed `<` and
 `>`, pointer scaling, argument order, aggregate copy, canonicalization), after
 the first test set let two survive (folded constants and a cancelling pair of
 compares, both fixed in the tests). Deviation from the first-cut plan: values
@@ -383,6 +384,39 @@ long` flagged a product of 2^63 or more (signed `imul`); fixed in `gen_ovf`.
 The other `tests/asm_exec/*.c` units are not UB-free (`flt.c` converts
 out-of-range values, `agg.c` reads out of bounds), so the sweep, which stops on
 undefined behaviour, is not run on them.
+
+### E3 result (2026-10-21)
+
+`cereal run FILE.c [-- ARGS...]` runs `main` (`(void)` or `(int, char **)`; one
+file) in the evaluator. Output goes to the real stdout and stderr as written; the
+exit status is `main`'s value or the argument of `exit`, modulo 256; a stop of
+the evaluator (undefined behaviour, step limit, unsupported) prints
+`cereal run: trap|limit|unsupported: why` on stderr and exits 125; compile errors
+give the checker's status and nothing runs. The lowering dumps stay off
+(`CHK_QUIET`), so `opt.tast` is the program's stdout.
+
+The host library is `src/c/eval_libc.c`, a name-keyed table consulted for a call
+of a function the unit only declares (a retained body, such as a header's
+`static inline`, always wins): `printf`, `fprintf` (to `stdout`/`stderr`),
+`sprintf`, `snprintf`, `puts`, `fputs`, `putchar`, `malloc`, `calloc`, `realloc`,
+`free`, `memcpy`, `memmove`, `memset`, `memcmp`, `memchr`, `strlen`, `strcmp`,
+`strncmp`, `strcpy`, `strncpy`, `strcat`, `strchr`, `strrchr`, `abs`, `labs`,
+`llabs`, `exit`, `abort`; `stdout` and `stderr` are host objects (a pointer to a
+one-byte token). Every function reaches memory through the evaluator's checked
+access (`ev_access`, `ev_copy_n`, `rd`/`wr`), so a read out of bounds or of an
+uninitialized byte, a write to a literal, a double or foreign `free`, a use after
+`free`, overlapping `memcpy`/`strcpy`, an unterminated string, `abs(INT_MIN)`, and
+a `printf` conversion that does not match its argument (type, width, count) all
+stop with a reason. Anything else is "unsupported: call of NAME, which has no body
+here and is not in the host library". The shared state moved to `eval_int.h`
+(`Obj`, `Ev`, `Fn`, `Ti` and the access primitives, renamed `ev_*`).
+
+Check: `tests/eval/libc_print.c`, `libc_mem.c`, `args_echo.c` (stdout and status
+against gcc) and 16 `trap_*` goldens; mutation check of `eval_libc.c` 17 of 18
+killed (the survivor, the terminator count in `strncpy`, is equivalent: the
+padding writes the same zero). Symbolic evaluation can come later without
+changing this layer, if the host functions keep to the checked access
+(`PARKED.md`).
 
 ## 10. Review log
 

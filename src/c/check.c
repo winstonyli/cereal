@@ -771,7 +771,7 @@ Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
                             TYPE_B(NULLPTR)));
     c->func_sym = SYM_NONE;
     c->cur_node = NO_NODE;
-    if (opt->tast)
+    if (opt->tast && !CHK_QUIET(*opt))
         fprintf(opt->tast, "%stast %d target %s\n",
                 CHK_ASM(*opt) && !opt->dump_cfg ? "# " : "", TAST_VERSION,
                 c->tgt->name);

@@ -2589,5 +2589,11 @@ void tast_unit(Checker *c)
             return;
         }
     }
+    if (CHK_QUIET(c->opt)) {
+        FILE *d = discard();                /* run, sweep: only the evaluator writes */
+        unit_run(c, d);
+        fclose(d);
+        return;
+    }
     unit_run(c, c->opt.tast);
 }

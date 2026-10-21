@@ -11,12 +11,14 @@ typedef struct EvOpts {
     long fuel;                  /* node evaluations before "step limit" */
     unsigned depth;             /* call depth limit */
     bool wrap;                  /* signed overflow wraps (gcc -fwrapv) instead of trapping */
+    FILE *out, *err;            /* the program's stdout and stderr; NULL: output is dropped */
 } EvOpts;
 
-enum { EV_OK, EV_UNSUPPORTED, EV_TRAP, EV_FUEL };
+enum { EV_OK, EV_UNSUPPORTED, EV_TRAP, EV_FUEL, EV_EXIT };
 
 typedef struct EvRes {
     int status;                 /* EV_* */
+    int code;                   /* EV_EXIT: the argument of exit */
     char why[96];               /* not OK: the reason */
 } EvRes;
 
@@ -31,8 +33,10 @@ void ev_add_tentative(Ev *v, uint32_t ref);
 /* Calls a retained function with integer or pointer arguments. */
 EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *out);
 
-/* The checker's hooks (--eval-main): keep each function as it is lowered, and
- * after the last unit run `int main(void)` and print the result on c->opt.tast. */
+/* The checker's hooks (`cereal run`): keep each function as it is lowered, and
+ * after the last unit run `main` (c->opt.eval_argv are its arguments), the
+ * program's stdout going to c->opt.tast; the exit status is stored through
+ * c->opt.eval_status, and a stop is reported on stderr. */
 void eval_keep(Checker *c, El *e, Cfg *g);
 void eval_data(Checker *c, El *e);
 void eval_tentative(Checker *c, uint32_t ref);

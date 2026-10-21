@@ -166,6 +166,9 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo)
         co.dump_cfg = fo->dump_cfg;
         co.eval_main = fo->eval_main;
         co.eval_wrap = fo->eval_wrap;
+        co.eval_argc = fo->eval_argc;
+        co.eval_argv = fo->eval_argv;
+        co.eval_status = fo->eval_status;
         co.eval_sweep = fo->eval_sweep;
         co.eval_seed = fo->eval_seed;
         co.dump_asm = fo->dump_asm;

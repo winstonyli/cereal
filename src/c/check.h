@@ -33,8 +33,11 @@ typedef struct CheckOptions {
     bool tast_tree;             /* ... print the tree itself (--dump-tast) */
     bool dump_asm;              /* --dump-asm: x86-64 assembly of each function (cgx86.c) */
     const char *emit_obj;       /* --emit-obj=FILE: the same, as an ELF object (mir_elf.c) */
-    bool eval_main;             /* --eval-main: run main() in the evaluator (eval.c) */
+    bool eval_main;             /* `cereal run`: keep the functions and run main() in the evaluator (eval.c) */
     bool eval_wrap;             /* ... with signed overflow wrapping (gcc -fwrapv) */
+    int eval_argc;              /* ... main's arguments (argv[0] is the file) */
+    char **eval_argv;
+    int *eval_status;           /* ... where the exit status goes (125: the evaluator stopped) */
     long eval_sweep;            /* --eval-sweep=N[,SEED]: every scalar function on N argument vectors */
     unsigned long eval_seed;
     bool dump_cfg, verify_cfg;  /* --dump-cfg: print the lowered control-flow graph;
@@ -63,6 +66,8 @@ typedef struct CheckOptions {
 
 /* The x86-64 back end runs when assembly or an object is asked for. */
 #define CHK_ASM(o) ((o).dump_asm || (o).emit_obj)
+/* `cereal run` and the sweep print nothing of the lowering (opt.tast is the program's stdout). */
+#define CHK_QUIET(o) ((o).eval_main && !(o).dump_cfg && !(o).tast_tree && !CHK_ASM(o))
 
 Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
                      const CheckOptions *opt);

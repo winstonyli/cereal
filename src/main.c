@@ -48,6 +48,10 @@ static void usage(FILE *o)
         , o);
     fputs(      /* a second literal: C99 only promises 4095 characters */
         "                --dump-cfg: print the control-flow graph of each function\n"
+        "  run           run the program in the evaluator: cereal run FILE.c [-- ARGS...]\n"
+        "                (one file; undefined behaviour stops it with the reason;\n"
+        "                exit status: the program's, or 125 when the evaluator stops;\n"
+        "                --eval-wrap: signed overflow wraps, as gcc -fwrapv)\n"
         "                --verify-cfg: --dump-cfg, and check each graph\n"
         "                --dump-asm: print each function as x86-64 assembly (a # comment\n"
         "                    names what it cannot do yet)\n"
@@ -1569,6 +1573,8 @@ int main(int argc, char **argv)
     StrVec own = {0};           /* cereal's own options, for each entry */
     FixOpts fx = {0};
     bool ccdb_given = false;
+    char **run_args = NULL;     /* run: the arguments after -- */
+    int run_nargs = 0, run_status = 125;
     int i, rc = 0, tokens = 0;
     static Arena rsp;           /* @file arguments: live for the whole run */
     const char *rsp_err;
@@ -1618,6 +1624,7 @@ int main(int argc, char **argv)
                       !strcmp(argv[i], "index") ||
                       !strcmp(argv[i], "parse") ||
                       !strcmp(argv[i], "check") || !strcmp(argv[i], "fix") ||
+                      !strcmp(argv[i], "run") ||
                       !strcmp(argv[i], "-fsyntax-only"))) {
             mode = argv[i];
             continue;
@@ -1663,10 +1670,14 @@ int main(int argc, char **argv)
             fe_opts.eval_seed = *end == ',' ? strtoul(end + 1, NULL, 10) : 1;
             continue;
         }
-        if (!strcmp(argv[i], "--eval-main") || !strcmp(argv[i], "--eval-wrap")) {
-            fe_opts.eval_main = true;
-            fe_opts.eval_wrap |= argv[i][7] == 'w';
+        if (!strcmp(argv[i], "--eval-wrap")) {
+            fe_opts.eval_wrap = true;
             continue;
+        }
+        if (mode && !strcmp(mode, "run") && !strcmp(argv[i], "--")) {
+            run_args = argv + i + 1;        /* the program's own */
+            run_nargs = argc - i - 1;
+            break;
         }
         if (!strcmp(argv[i], "--verify-cfg")) {
             fe_opts.dump_cfg = fe_opts.verify_cfg = true;
@@ -1808,6 +1819,23 @@ int main(int argc, char **argv)
     }
     if (mode && !strcmp(mode, "-E"))
         o.stage = 'E';
+    if (mode && !strcmp(mode, "run")) {
+        char **av;
+        int k;
+        if (o.inputs.len != 1 || ccdb) {
+            fputs("cereal: run takes one file and no --compile-commands\n", stderr);
+            return 2;
+        }
+        av = xmalloc((size_t)(run_nargs + 2) * sizeof *av);
+        av[0] = o.inputs.data[0];
+        for (k = 0; k < run_nargs; k++)
+            av[k + 1] = run_args[k];
+        av[run_nargs + 1] = NULL;
+        fe_opts.eval_main = true;
+        fe_opts.eval_argc = run_nargs + 1;
+        fe_opts.eval_argv = av;
+        fe_opts.eval_status = &run_status;
+    }
     if (mode && !strcmp(mode, "fix")) {
         if (o.deps.style || o.output) {
             fputs("cereal: fix does not take -M... or -o\n", stderr);
@@ -1856,6 +1884,14 @@ int main(int argc, char **argv)
                           : (fprintf(stderr, "cereal: %s needs input files\n",
                                      mode),
                              2);
+    }
+    else if (!strcmp(mode, "run")) {
+        fe_opts.check = true;
+        o.pp.fatal_missing_include = true;
+        rc = run_inputs(&o, parse_one, stdout);
+        if (!rc)
+            rc = run_status;
+        free(fe_opts.eval_argv);
     }
     else if (!strcmp(mode, "query"))
         rc = mode_query(&o, qkind, qat);

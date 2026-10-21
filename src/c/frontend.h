@@ -17,7 +17,10 @@ typedef struct FrontendOpts {
     bool dump_asm;              /* x86-64 assembly of each function (cgx86.c) */
     const char *emit_obj;       /* ... or as an ELF object file */
     bool dump_cfg, verify_cfg;  /* the control-flow graph of each function (tcfg.c) */
-    bool eval_main, eval_wrap;  /* run main() in the evaluator (eval.c) */
+    bool eval_main, eval_wrap;  /* run main() in the evaluator (eval.c): `cereal run` */
+    int eval_argc;              /* ... with these arguments (argv[0] is the file) */
+    char **eval_argv;
+    int *eval_status;           /* ... and the exit status stored here */
     long eval_sweep;            /* ... or every scalar function on this many argument vectors */
     unsigned long eval_seed;
     const char *validate_summaries;

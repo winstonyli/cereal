@@ -9,86 +9,10 @@
  * given a value.  Not yet covered: floating point, bit-fields, compound
  * literals, variadic calls, built-ins, globals; each says so when reached.
  * No mutable globals: the state is the Ev. */
-#include <stdarg.h>
-#include <string.h>
-
-#include "c/cexpr_int.h"
-#include "c/eval.h"
-
-typedef struct Obj {
-    uint8_t *b, *init;          /* bytes and one init flag per byte */
-    uint64_t size;
-    uint32_t fn;                /* a function's object: its fsym + 1 */
-    bool live, ro;
-} Obj;
-
-typedef struct Blk {
-    uint32_t *st;
-    size_t nst;
-    CCase *cases;
-    size_t nc;
-    uint32_t val, a, b;
-    uint8_t term;
-} Blk;
-
-typedef struct Par {
-    uint32_t ref;
-    TypeId ty;
-} Par;
-
-typedef struct Fn {
-    uint32_t fsym;
-    TNode *nodes;
-    uint32_t *kids;
-    uint8_t *bytes;
-    Par *par;
-    size_t np;
-    Blk *blk;
-    size_t nblk;
-    uint32_t entry, nreg, ntmp;
-    bool variadic, user;        /* user: defined outside the system headers */
-    TypeId ret;
-    uint32_t *strobj;           /* per node: its string literal's object + 1 */
-} Fn;
-
-/* A static-storage object: a file-scope object (persistent ref) or a block-scope
- * static (local ref, of the function fn).  Created, zeroed and initialized on
- * its first reference; node is its TO_DATA (TN: tentative, zero), found in
- * the elements of Fn fn. */
-typedef struct Sd {
-    uint32_t ref, node, fn, obj;
-    TypeId ty;
-    bool local;
-} Sd;
-
-struct Ev {
-    Checker *c;
-    EvOpts o;
-    EvRes res;
-    VEC(Obj) obj;               /* object id n is obj.data[n - 1] */
-    VEC(Fn) fn;
-    VEC(Sd) sd;
-    long fuel;
-    unsigned depth;
-};
-
-typedef struct Loc {
-    uint32_t ref, obj;
-} Loc;
-
-typedef struct Fr {
-    Ev *v;
-    Fn *f;
-    uint32_t *reg, *tmp;        /* per reg/tmp N: its object, 0: none yet */
-    uint64_t va;                /* a variadic function: the pointer to its extra arguments */
-    VEC(Loc) loc;
-    VEC(uint32_t) own;          /* objects that die with the frame */
-    struct Fr *up;
-} Fr;
-
+#include "c/eval_int.h"
 /* ---- failure -------------------------------------------------------------- */
 
-static void fail(Ev *v, int st, const char *fmt, ...)
+void ev_fail(Ev *v, int st, const char *fmt, ...)
 {
     if (v->res.status == EV_OK) {
         va_list ap;
@@ -99,16 +23,6 @@ static void fail(Ev *v, int st, const char *fmt, ...)
     }
 }
 
-#define UNSUP(v, ...) fail(v, EV_UNSUPPORTED, __VA_ARGS__)
-#define TRAP(v, ...) fail(v, EV_TRAP, __VA_ARGS__)
-
-/* ---- types ---------------------------------------------------------------- */
-
-typedef struct Ti {
-    unsigned bytes;
-    bool sg, boolean, flt;       /* flt: float or double, the value is its IEEE bit pattern */
-} Ti;
-
 static bool is_agg(Ev *v, TypeId t)
 {
     TypeKind k = type_ckind(&v->c->tt, t);
@@ -116,7 +30,7 @@ static bool is_agg(Ev *v, TypeId t)
 }
 
 /* An integer, enum, bool or pointer type; false (and a reason) otherwise. */
-static bool tinfo(Ev *v, TypeId t, Ti *ti)
+bool ev_tinfo(Ev *v, TypeId t, Ti *ti)
 {
     TypeTable *tt = &v->c->tt;
     TypeKind k = type_ckind(tt, t);
@@ -147,7 +61,7 @@ static bool tinfo(Ev *v, TypeId t, Ti *ti)
     return true;
 }
 
-static uint64_t canon(const Ti *ti, uint64_t x)
+uint64_t ev_canon(const Ti *ti, uint64_t x)
 {
     unsigned sh;
     if (ti->boolean)
@@ -171,7 +85,7 @@ static bool size_of(Ev *v, TypeId t, uint64_t *sz)
 
 /* ---- objects -------------------------------------------------------------- */
 
-static uint32_t new_obj(Ev *v, uint64_t size, bool ro)
+uint32_t ev_new_obj(Ev *v, uint64_t size, bool ro)
 {
     Obj o;
     if (size > (1u << 30)) {
@@ -188,7 +102,7 @@ static uint32_t new_obj(Ev *v, uint64_t size, bool ro)
     return (uint32_t)v->obj.len;
 }
 
-static void kill_obj(Ev *v, uint32_t id)
+void ev_kill_obj(Ev *v, uint32_t id)
 {
     Obj *o = &v->obj.data[id - 1];
     o->live = false;
@@ -197,16 +111,9 @@ static void kill_obj(Ev *v, uint32_t id)
     o->b = o->init = NULL;
 }
 
-static uint64_t mkptr(uint32_t id, int64_t off)
-{
-    return ((uint64_t)id << 32) | (uint32_t)(int32_t)off;
-}
-
-static int32_t poff(uint64_t p) { return (int32_t)(uint32_t)p; }
-static uint32_t pid(uint64_t p) { return (uint32_t)(p >> 32); }
 
 /* The bytes [p, p + n) of a live object, or NULL after a trap. */
-static Obj *access(Ev *v, uint64_t p, uint64_t n, const char *what)
+Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
 {
     Obj *o;
     int64_t off = poff(p);
@@ -232,7 +139,7 @@ static Obj *access(Ev *v, uint64_t p, uint64_t n, const char *what)
 
 static uint64_t load_n(Ev *v, uint64_t p, const Ti *ti)
 {
-    Obj *o = access(v, p, ti->bytes, "read");
+    Obj *o = ev_access(v, p, ti->bytes, "read");
     uint64_t x = 0;
     unsigned i;
     if (!o)
@@ -244,12 +151,12 @@ static uint64_t load_n(Ev *v, uint64_t p, const Ti *ti)
         }
         x |= (uint64_t)o->b[poff(p) + i] << (8 * i);
     }
-    return canon(ti, x);
+    return ev_canon(ti, x);
 }
 
 static void store_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x)
 {
-    Obj *o = access(v, p, ti->bytes, "write");
+    Obj *o = ev_access(v, p, ti->bytes, "write");
     unsigned i;
     if (!o)
         return;
@@ -295,7 +202,7 @@ static uint64_t bf_load(Ev *v, uint64_t p, const Ti *ti, unsigned pun, unsigned 
     unsigned n, i;
     uint64_t x = 0;
     Obj *o;
-    if (!bf_window(v, pun, width, &n) || !(o = access(v, p, n, "read")))
+    if (!bf_window(v, pun, width, &n) || !(o = ev_access(v, p, n, "read")))
         return 0;
     for (i = 0; i < n; i++)
         x |= (uint64_t)o->b[poff(p) + i] << (8 * i);
@@ -307,7 +214,7 @@ static uint64_t bf_store(Ev *v, uint64_t p, const Ti *ti, unsigned pun, unsigned
     unsigned n, i;
     uint64_t x = 0, m = width >= 64 ? ~(uint64_t)0 : ((uint64_t)1 << width) - 1;
     Obj *o;
-    if (!bf_window(v, pun, width, &n) || !(o = access(v, p, n, "write")))
+    if (!bf_window(v, pun, width, &n) || !(o = ev_access(v, p, n, "write")))
         return 0;
     if (o->ro) {
         TRAP(v, "write to a string literal");
@@ -323,13 +230,13 @@ static uint64_t bf_store(Ev *v, uint64_t p, const Ti *ti, unsigned pun, unsigned
     return bf_ext(ti, width, val);
 }
 
-static void copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
+void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
 {
     Obj *d, *s;
     if (n == 0)
         return;
-    s = access(v, src, n, "read");
-    d = s ? access(v, dst, n, "write") : NULL;
+    s = ev_access(v, src, n, "read");
+    d = s ? ev_access(v, dst, n, "write") : NULL;
     if (!d)
         return;
     if (d->ro) {
@@ -340,9 +247,9 @@ static void copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
     memmove(d->init + poff(dst), s->init + poff(src), n);
 }
 
-static void zero_n(Ev *v, uint64_t dst, uint64_t n)
+void ev_zero_n(Ev *v, uint64_t dst, uint64_t n)
 {
-    Obj *d = access(v, dst, n, "write");
+    Obj *d = ev_access(v, dst, n, "write");
     if (!d)
         return;
     memset(d->b + poff(dst), 0, n);
@@ -351,7 +258,7 @@ static void zero_n(Ev *v, uint64_t dst, uint64_t n)
 
 /* ---- floating point: the slot holds the IEEE bits of a float (low 32) or double ---- */
 
-static double fget(const Ti *ti, uint64_t x)
+double ev_fget(const Ti *ti, uint64_t x)
 {
     if (ti->bytes == 4) {
         uint32_t w = (uint32_t)x;
@@ -383,7 +290,7 @@ static uint64_t fput(const Ti *ti, double d)
 static uint64_t fbin(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
 {
     if (ti->bytes == 4) {
-        float x = (float)fget(ti, a), y = (float)fget(ti, b), r;
+        float x = (float)ev_fget(ti, a), y = (float)ev_fget(ti, b), r;
         switch (p) {
         case P_PLUS: r = x + y; break;
         case P_MINUS: r = x - y; break;
@@ -393,7 +300,7 @@ static uint64_t fbin(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
         }
         return fput(ti, r);
     } else {
-        double x = fget(ti, a), y = fget(ti, b), r;
+        double x = ev_fget(ti, a), y = ev_fget(ti, b), r;
         switch (p) {
         case P_PLUS: r = x + y; break;
         case P_MINUS: r = x - y; break;
@@ -407,7 +314,7 @@ static uint64_t fbin(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
 
 static uint64_t fcompare(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
 {
-    double x = fget(ti, a), y = fget(ti, b);
+    double x = ev_fget(ti, a), y = ev_fget(ti, b);
     switch (p) {
     case P_EQEQ: return x == y;
     case P_NE: return x != y;
@@ -427,15 +334,15 @@ static uint64_t fcompare(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
 static uint64_t convert(Ev *v, const Ti *to, const Ti *from, uint64_t a)
 {
     if (!from->flt && !to->flt)
-        return canon(to, a);
+        return ev_canon(to, a);
     if (from->flt && to->flt)
-        return fput(to, fget(from, a));
+        return fput(to, ev_fget(from, a));
     if (to->flt) {
         if (from->bytes == 8 && !from->sg)
             return fput(to, to->bytes == 4 ? (double)(float)(uint64_t)a : (double)(uint64_t)a);
         return fput(to, to->bytes == 4 ? (double)(float)(int64_t)a : (double)(int64_t)a);
     } else {
-        double d = fget(from, a), lo, hi;
+        double d = ev_fget(from, a), lo, hi;
         if (to->boolean)
             return d != 0 || d != d;
         if (d != d) {
@@ -449,14 +356,14 @@ static uint64_t convert(Ev *v, const Ti *to, const Ti *from, uint64_t a)
                 TRAP(v, "floating-point value out of range for the integer type");
                 return 0;
             }
-            return canon(to, (uint64_t)(int64_t)d);
+            return ev_canon(to, (uint64_t)(int64_t)d);
         }
         hi = to->bytes == 8 ? 18446744073709551616.0 : (double)(1ull << (8 * to->bytes));
         if (!(d > -1 && d < hi)) {
             TRAP(v, "floating-point value out of range for the integer type");
             return 0;
         }
-        return canon(to, (uint64_t)d);
+        return ev_canon(to, (uint64_t)d);
     }
 }
 
@@ -464,7 +371,7 @@ static uint64_t convert(Ev *v, const Ti *to, const Ti *from, uint64_t a)
 
 static bool fits(const Ti *ti, int64_t x)
 {
-    return ti->bytes >= 8 || (int64_t)canon(ti, (uint64_t)x) == x;
+    return ti->bytes >= 8 || (int64_t)ev_canon(ti, (uint64_t)x) == x;
 }
 
 static uint64_t int_arith(Ev *v, int p, TypeId ty, uint64_t a, uint64_t b)
@@ -472,7 +379,7 @@ static uint64_t int_arith(Ev *v, int p, TypeId ty, uint64_t a, uint64_t b)
     Ti ti;
     int64_t sa = (int64_t)a, sb = (int64_t)b, r = 0;
     bool ovf = false;
-    if (!tinfo(v, ty, &ti))
+    if (!ev_tinfo(v, ty, &ti))
         return 0;
     switch (p) {
     case P_PLUS:
@@ -487,7 +394,7 @@ static uint64_t int_arith(Ev *v, int p, TypeId ty, uint64_t a, uint64_t b)
                 return 0;
             }
         }
-        return canon(&ti, p == P_PLUS ? a + b : p == P_MINUS ? a - b : a * b);
+        return ev_canon(&ti, p == P_PLUS ? a + b : p == P_MINUS ? a - b : a * b);
     case P_SLASH:
     case P_PERCENT:
         if (b == 0) {
@@ -500,14 +407,14 @@ static uint64_t int_arith(Ev *v, int p, TypeId ty, uint64_t a, uint64_t b)
                     TRAP(v, "signed integer overflow");
                     return 0;
                 }
-                return p == P_SLASH ? canon(&ti, 0 - a) : 0;
+                return p == P_SLASH ? ev_canon(&ti, 0 - a) : 0;
             }
-            return canon(&ti, (uint64_t)(p == P_SLASH ? sa / sb : sa % sb));
+            return ev_canon(&ti, (uint64_t)(p == P_SLASH ? sa / sb : sa % sb));
         }
-        return canon(&ti, p == P_SLASH ? a / b : a % b);
-    case P_AMP: return canon(&ti, a & b);
-    case P_PIPE: return canon(&ti, a | b);
-    case P_CARET: return canon(&ti, a ^ b);
+        return ev_canon(&ti, p == P_SLASH ? a / b : a % b);
+    case P_AMP: return ev_canon(&ti, a & b);
+    case P_PIPE: return ev_canon(&ti, a | b);
+    case P_CARET: return ev_canon(&ti, a ^ b);
     case P_SHL:
     case P_SHR:
         if (b >= 8 * ti.bytes) {        /* also negative counts */
@@ -515,12 +422,12 @@ static uint64_t int_arith(Ev *v, int p, TypeId ty, uint64_t a, uint64_t b)
             return 0;
         }
         if (p == P_SHR)
-            return canon(&ti, ti.sg ? (uint64_t)(sa >> b) : a >> b);
+            return ev_canon(&ti, ti.sg ? (uint64_t)(sa >> b) : a >> b);
         if (ti.sg && sa < 0 && !v->o.wrap) {
             TRAP(v, "left shift of a negative value");
             return 0;
         }
-        return canon(&ti, a << b);
+        return ev_canon(&ti, a << b);
     default:
         UNSUP(v, "binary operator %d", p);
         return 0;
@@ -531,7 +438,7 @@ static uint64_t compare(Ev *v, int p, TypeId ot, uint64_t a, uint64_t b)
 {
     Ti ti;
     bool sg;
-    if (!tinfo(v, ot, &ti))
+    if (!ev_tinfo(v, ot, &ti))
         return 0;
     sg = ti.sg;
     switch (p) {
@@ -551,7 +458,7 @@ static uint64_t compare(Ev *v, int p, TypeId ot, uint64_t a, uint64_t b)
 
 static uint32_t frame_obj(Fr *r, uint64_t size)
 {
-    uint32_t id = new_obj(r->v, size, false);
+    uint32_t id = ev_new_obj(r->v, size, false);
     if (id)
         vec_push(&r->own, id);
     return id;
@@ -595,6 +502,24 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
 #define NODE(r, n) (&(r)->f->nodes[n])
 #define KID(r, n, j) ((r)->f->kids[NODE(r, n)->kid0 + (j)])
 
+/* A call of a host function: the arguments with their types, the result as the call's type. */
+static uint64_t host_call(Fr *r, uint32_t n, uint32_t first, uint32_t na, HostFn h, const uint64_t *args)
+{
+    Ev *v = r->v;
+    HArg ha[16];
+    uint32_t j;
+    uint64_t x;
+    Ti ti;
+    for (j = 0; j < na; j++) {
+        ha[j].x = args[j];
+        ha[j].ty = NODE(r, KID(r, n, first + j))->ty;
+    }
+    x = h(v, ha, na);
+    if (v->res.status || type_is_void(&v->c->tt, NODE(r, n)->ty) || !ev_tinfo(v, NODE(r, n)->ty, &ti))
+        return 0;
+    return ev_canon(&ti, x);
+}
+
 static uint64_t ev_call_node(Fr *r, uint32_t n)
 {
     const TNode *t = NODE(r, n);
@@ -626,9 +551,15 @@ static uint64_t ev_call_node(Fr *r, uint32_t n)
     }
     if (v->res.status)
         return 0;
-    if (!g) {
-        UNSUP(v, "call of a function with no retained body");
-        return 0;
+    if (!g) {                           /* a declared function: the host library, or unsupported */
+        uint32_t fs = t->pun == 1 ? v->obj.data[pid(callee) - 1].fn - 1 : t->sym;
+        const char *name = cident(v->c, csym(v->c, fs)->name);
+        HostFn h = ev_host_fn(name);
+        if (!h) {
+            UNSUP(v, "call of %s, which has no body here and is not in the host library", name);
+            return 0;
+        }
+        return host_call(r, n, first, na, h, args);
     }
     if (g->variadic && na >= g->np) {   /* the extra arguments: 8-byte slots, as the stack area */
         uint64_t total = 0, at = 0, sz;
@@ -643,7 +574,7 @@ static uint64_t ev_call_node(Fr *r, uint32_t n)
                 total += 8;
             }
         }
-        id = new_obj(v, total, false);
+        id = ev_new_obj(v, total, false);
         if (!id)
             return 0;
         vec_push(&r->own, id);          /* gone with the caller's frame, after the call returns */
@@ -652,11 +583,11 @@ static uint64_t ev_call_node(Fr *r, uint32_t n)
             if (is_agg(v, at_)) {
                 if (!size_of(v, at_, &sz))
                     return 0;
-                copy_n(v, mkptr(id, (int64_t)at), args[j], sz);
+                ev_copy_n(v, mkptr(id, (int64_t)at), args[j], sz);
                 at += (sz + 7) / 8 * 8;
             } else {
                 Ti ti;
-                if (!tinfo(v, at_, &ti))
+                if (!ev_tinfo(v, at_, &ti))
                     return 0;
                 ti.bytes = 8;
                 ti.sg = false;
@@ -682,7 +613,7 @@ static void init_elems(Fr *r, uint32_t n, uint64_t p)
         uint32_t vn = KID(r, KID(r, n, j), 0);
         const TNode *vt = NODE(r, vn);
         if (el->width) {
-            if (!tinfo(v, el->ty, &ti))
+            if (!ev_tinfo(v, el->ty, &ti))
                 return;
             x = ev_node(r, vn);
             bf_store(v, mkptr(pid(p), poff(p) + el->val), &ti, el->pun, el->width, x);
@@ -691,13 +622,13 @@ static void init_elems(Fr *r, uint32_t n, uint64_t p)
             uint64_t esz;
             if (!size_of(v, el->ty, &esz))
                 return;
-            copy_n(v, mkptr(pid(p), poff(p) + el->val), sp, cn < esz ? cn : esz);
+            ev_copy_n(v, mkptr(pid(p), poff(p) + el->val), sp, cn < esz ? cn : esz);
         } else if (is_agg(v, el->ty)) {
             uint64_t esz;
             if (!size_of(v, el->ty, &esz))
                 return;
-            copy_n(v, mkptr(pid(p), poff(p) + el->val), ev_node(r, vn), esz);
-        } else if (tinfo(v, el->ty, &ti)) {
+            ev_copy_n(v, mkptr(pid(p), poff(p) + el->val), ev_node(r, vn), esz);
+        } else if (ev_tinfo(v, el->ty, &ti)) {
             x = ev_node(r, vn);
             store_n(v, mkptr(pid(p), poff(p) + el->val), &ti, x);
         }
@@ -719,16 +650,19 @@ static uint32_t static_obj(Fr *r, uint32_t ref)
             s = d;
     }
     if (!s) {
+        uint32_t h = local ? 0 : ev_host_object(v, cident(v->c, csym(v->c, ref)->name));
+        if (h)
+            return h;
         UNSUP(v, "%s with no definition in this unit", local ? "static local" : "global object");
         return 0;
     }
     if (!s->obj) {
         uint64_t sz;
         uint32_t id;
-        if (!size_of(v, s->ty, &sz) || !(id = new_obj(v, sz, false)))
+        if (!size_of(v, s->ty, &sz) || !(id = ev_new_obj(v, sz, false)))
             return 0;
         s->obj = id;                    /* before the initializer: it may point at itself */
-        zero_n(v, mkptr(id, 0), sz);
+        ev_zero_n(v, mkptr(id, 0), sz);
         if (s->node != TN) {
             Fr ir;
             Fn *f = &v->fn.data[s->fn];
@@ -740,7 +674,7 @@ static uint32_t static_obj(Fr *r, uint32_t ref)
             ir.tmp = xcalloc(f->ntmp + 1, sizeof *ir.tmp);
             init_elems(&ir, s->node, mkptr(id, 0));
             for (k = 0; k < ir.own.len; k++)
-                kill_obj(v, ir.own.data[k]);
+                ev_kill_obj(v, ir.own.data[k]);
             vec_free(&ir.own);
             free(ir.reg);
             free(ir.tmp);
@@ -762,14 +696,14 @@ static uint64_t ev_local(Fr *r, uint32_t n, uint32_t key)
         return 0;
     slot = lookup(r, key);
     if (slot) {
-        kill_obj(v, *slot);             /* a new lifetime: a fresh object */
+        ev_kill_obj(v, *slot);             /* a new lifetime: a fresh object */
         v->obj.data[*slot - 1].live = true;
         v->obj.data[*slot - 1].b = xcalloc(sz ? sz : 1, 1);
         v->obj.data[*slot - 1].init = xcalloc(sz ? sz : 1, 1);
         id = *slot;
     } else {
         Loc l;
-        id = new_obj(v, sz, false);
+        id = ev_new_obj(v, sz, false);
         if (!id)
             return 0;
         vec_push(&r->own, id);
@@ -779,18 +713,18 @@ static uint64_t ev_local(Fr *r, uint32_t n, uint32_t key)
     }
     p = mkptr(id, 0);
     if (t->op == TO_COMPLIT)            /* what the list leaves out is zero */
-        zero_n(v, p, sz);
+        ev_zero_n(v, p, sz);
     if (t->nkids == 0)
         return p;
     if (NODE(r, KID(r, n, 0))->op == TO_ELEM) {
-        zero_n(v, p, sz);
+        ev_zero_n(v, p, sz);
         init_elems(r, n, p);
         return p;
     }
     if (is_agg(v, t->ty)) {
         x = ev_node(r, KID(r, n, 0));
-        copy_n(v, p, x, sz);
-    } else if (tinfo(v, t->ty, &ti)) {
+        ev_copy_n(v, p, x, sz);
+    } else if (ev_tinfo(v, t->ty, &ti)) {
         x = ev_node(r, KID(r, n, 0));
         store_n(v, p, &ti, x);
     }
@@ -816,13 +750,13 @@ static uint64_t ev_va(Fr *r, uint32_t n)
             UNSUP(v, "va_start outside a variadic function");
             return 0;
         }
-        zero_n(v, ap, 24);
+        ev_zero_n(v, ap, 24);
         store_n(v, mkptr(pid(ap), poff(ap) + 8), &pt, r->va);
         return 0;
     case 2:
         return 0;
     case 3:
-        copy_n(v, ap, ev_node(r, KID(r, n, 1)), 24);
+        ev_copy_n(v, ap, ev_node(r, KID(r, n, 1)), 24);
         return 0;
     default:
         break;
@@ -836,12 +770,12 @@ static uint64_t ev_va(Fr *r, uint32_t n)
     if (agg) {
         if (!size_of(v, t->ty, &sz))
             return 0;
-        if (access(v, p, sz, "va_arg read") == NULL)
+        if (ev_access(v, p, sz, "va_arg read") == NULL)
             return 0;
         sz = (sz + 7) / 8 * 8;
     }
     {
-        uint64_t x = agg ? p : tinfo(v, t->ty, &ti) ? load_n(v, p, &ti) : 0;
+        uint64_t x = agg ? p : ev_tinfo(v, t->ty, &ti) ? load_n(v, p, &ti) : 0;
         if (v->res.status)
             return 0;
         store_n(v, mkptr(pid(ap), poff(ap) + 8), &pt, mkptr(pid(p), (int64_t)poff(p) + (int64_t)sz));
@@ -858,7 +792,7 @@ static uint64_t ev_node(Fr *r, uint32_t n)
     if (v->res.status)
         return 0;
     if (--v->fuel < 0) {
-        fail(v, EV_FUEL, "exceeded the step limit");
+        ev_fail(v, EV_FUEL, "exceeded the step limit");
         return 0;
     }
     switch (t->op) {
@@ -892,7 +826,7 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         uint32_t *o = &r->f->strobj[n];
         if (!*o) {
             Obj *ob;
-            uint32_t id = new_obj(v, (uint64_t)t->width, true);
+            uint32_t id = ev_new_obj(v, (uint64_t)t->width, true);
             if (!id)
                 return 0;
             ob = &v->obj.data[id - 1];
@@ -906,7 +840,7 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         a = ev_node(r, KID(r, n, 0));
         if (is_agg(v, t->ty) || v->res.status)
             return a;
-        if (!tinfo(v, t->ty, &ti))
+        if (!ev_tinfo(v, t->ty, &ti))
             return 0;
         if (is_bf(r, KID(r, n, 0)))
             return bf_load(v, a, &ti, NODE(r, KID(r, n, 0))->pun, NODE(r, KID(r, n, 0))->width);
@@ -920,14 +854,14 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         if (is_agg(v, t->ty)) {
             if (!size_of(v, t->ty, &sz))
                 return 0;
-            copy_n(v, a, b, sz);
+            ev_copy_n(v, a, b, sz);
             return a;
         }
-        if (!tinfo(v, t->ty, &ti))
+        if (!ev_tinfo(v, t->ty, &ti))
             return 0;
         if (is_bf(r, KID(r, n, 0)))
             return bf_store(v, a, &ti, NODE(r, KID(r, n, 0))->pun, NODE(r, KID(r, n, 0))->width, b);
-        b = canon(&ti, b);
+        b = ev_canon(&ti, b);
         store_n(v, a, &ti, b);
         return b;
     }
@@ -938,7 +872,7 @@ static uint64_t ev_node(Fr *r, uint32_t n)
             return 0;
         }
         a = ev_node(r, KID(r, s, 0));
-        if (!tinfo(v, NODE(r, s)->ty, &ti))
+        if (!ev_tinfo(v, NODE(r, s)->ty, &ti))
             return 0;
         b = is_bf(r, KID(r, s, 0)) ? bf_load(v, a, &ti, NODE(r, KID(r, s, 0))->pun, NODE(r, KID(r, s, 0))->width)
                                    : load_n(v, a, &ti);
@@ -950,12 +884,12 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         a = ev_node(r, KID(r, n, 0));
         if (type_is_void(&v->c->tt, t->ty))
             return 0;
-        if (!tinfo(v, t->ty, &ti) || !tinfo(v, from, &ts))
+        if (!ev_tinfo(v, t->ty, &ti) || !ev_tinfo(v, from, &ts))
             return 0;
         return convert(v, &ti, &ts, a);
     }
     case TO_FCONST:
-        if (!tinfo(v, t->ty, &ti))
+        if (!ev_tinfo(v, t->ty, &ti))
             return 0;
         a = 0;
         memcpy(&a, r->f->bytes + t->val, t->width < 8 ? t->width : 8);
@@ -964,9 +898,9 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         TypeId from = NODE(r, KID(r, n, 0))->ty;
         double d;
         a = ev_node(r, KID(r, n, 0));
-        if (v->res.status || !tinfo(v, t->ty, &ti) || !tinfo(v, from, &ts))
+        if (v->res.status || !ev_tinfo(v, t->ty, &ti) || !ev_tinfo(v, from, &ts))
             return 0;
-        d = fget(&ts, a);
+        d = ev_fget(&ts, a);
         if (t->pun) {                   /* round to nearest even, as cvtss2si does */
             volatile double m = 4503599627370496.0;     /* 2^52: adding it rounds to an integer */
             if (d > -m && d < m)
@@ -974,19 +908,19 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         }
         if (d != d || d >= (ti.bytes == 8 ? 9223372036854775808.0 : 2147483648.0) ||
             d < (ti.bytes == 8 ? -9223372036854775808.0 : -2147483648.0))
-            return canon(&ti, ti.bytes == 8 ? 0x8000000000000000ull : 0x80000000ull);
-        return canon(&ti, (uint64_t)(int64_t)d);
+            return ev_canon(&ti, ti.bytes == 8 ? 0x8000000000000000ull : 0x80000000ull);
+        return ev_canon(&ti, (uint64_t)(int64_t)d);
     }
     case TO_UNOP:
         a = ev_node(r, KID(r, n, 0));
         if (v->res.status)
             return 0;
         if (t->pun == P_BANG) {
-            if (!tinfo(v, NODE(r, KID(r, n, 0))->ty, &ts))
+            if (!ev_tinfo(v, NODE(r, KID(r, n, 0))->ty, &ts))
                 return 0;
-            return ts.flt ? !(fget(&ts, a) != 0 || fget(&ts, a) != fget(&ts, a)) : a == 0;
+            return ts.flt ? !(ev_fget(&ts, a) != 0 || ev_fget(&ts, a) != ev_fget(&ts, a)) : a == 0;
         }
-        if (!tinfo(v, t->ty, &ti))
+        if (!ev_tinfo(v, t->ty, &ti))
             return 0;
         if (ti.flt) {
             if (t->pun == P_MINUS)
@@ -1001,10 +935,10 @@ static uint64_t ev_node(Fr *r, uint32_t n)
                 TRAP(v, "signed integer overflow");
                 return 0;
             }
-            return canon(&ti, 0 - a);
+            return ev_canon(&ti, 0 - a);
         }
         if (t->pun == P_TILDE)
-            return canon(&ti, ~a);
+            return ev_canon(&ti, ~a);
         if (t->pun == P_PLUS)
             return a;
         UNSUP(v, "unary operator %d", t->pun);
@@ -1012,13 +946,13 @@ static uint64_t ev_node(Fr *r, uint32_t n)
     case TO_BINOP:
         a = ev_node(r, KID(r, n, 0));
         b = ev_node(r, KID(r, n, 1));
-        if (v->res.status || !tinfo(v, t->ty, &ti))
+        if (v->res.status || !ev_tinfo(v, t->ty, &ti))
             return 0;
         return ti.flt ? fbin(v, t->pun, &ti, a, b) : int_arith(v, t->pun, t->ty, a, b);
     case TO_CMP:
         a = ev_node(r, KID(r, n, 0));
         b = ev_node(r, KID(r, n, 1));
-        if (v->res.status || !tinfo(v, NODE(r, KID(r, n, 0))->ty, &ts))
+        if (v->res.status || !ev_tinfo(v, NODE(r, KID(r, n, 0))->ty, &ts))
             return 0;
         return ts.flt ? fcompare(v, t->pun, &ts, a, b) : compare(v, t->pun, NODE(r, KID(r, n, 0))->ty, a, b);
     case TO_COMMA:
@@ -1044,7 +978,7 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         a = mkptr(pid(a), (int64_t)poff(a) + t->val);
         if (is_agg(v, t->ty) || v->res.status)
             return a;
-        if (!tinfo(v, t->ty, &ti))
+        if (!ev_tinfo(v, t->ty, &ti))
             return 0;
         return load_n(v, a, &ti);
     case TO_PTRADD: {
@@ -1113,7 +1047,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
         return 0;
     }
     if (v->depth >= v->o.depth) {
-        fail(v, EV_FUEL, "exceeded the call depth limit");
+        ev_fail(v, EV_FUEL, "exceeded the call depth limit");
         return 0;
     }
     v->depth++;
@@ -1131,9 +1065,9 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
             break;
         vec_push(&r.loc, l);
         if (is_agg(v, f->par[i].ty))
-            copy_n(v, mkptr(l.obj, 0), args[i], sz);
-        else if (tinfo(v, f->par[i].ty, &ti))
-            store_n(v, mkptr(l.obj, 0), &ti, canon(&ti, args[i]));
+            ev_copy_n(v, mkptr(l.obj, 0), args[i], sz);
+        else if (ev_tinfo(v, f->par[i].ty, &ti))
+            store_n(v, mkptr(l.obj, 0), &ti, ev_canon(&ti, args[i]));
     }
     while (!v->res.status) {
         Blk *b = &f->blk[bi];
@@ -1152,8 +1086,8 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
             Ti ct;
             if (v->res.status)
                 break;
-            if (tinfo(v, NODE(&r, b->val)->ty, &ct) && ct.flt)
-                c = fget(&ct, c) != 0 || fget(&ct, c) != fget(&ct, c);
+            if (ev_tinfo(v, NODE(&r, b->val)->ty, &ct) && ct.flt)
+                c = ev_fget(&ct, c) != 0 || ev_fget(&ct, c) != ev_fget(&ct, c);
             bi = c ? b->a : b->b;
             continue;
         }
@@ -1178,13 +1112,13 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
                         break;
                     id = frame_obj(caller, sz);     /* the caller's result temporary */
                     if (id) {
-                        copy_n(v, mkptr(id, 0), x, sz);
+                        ev_copy_n(v, mkptr(id, 0), x, sz);
                         result = mkptr(id, 0);
                     }
                 } else if (!type_is_void(&v->c->tt, f->ret)) {
                     Ti ti;
-                    if (tinfo(v, f->ret, &ti))
-                        result = canon(&ti, x);
+                    if (ev_tinfo(v, f->ret, &ti))
+                        result = ev_canon(&ti, x);
                 }
             }
             break;
@@ -1195,7 +1129,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
         break;
     }
     for (i = 0; i < r.own.len; i++)
-        kill_obj(v, r.own.data[i]);
+        ev_kill_obj(v, r.own.data[i]);
     vec_free(&r.own);
     vec_free(&r.loc);
     free(r.reg);
@@ -1347,7 +1281,7 @@ EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *ou
     {
         size_t i;
         for (i = 0; i < top.own.len; i++)
-            kill_obj(v, top.own.data[i]);
+            ev_kill_obj(v, top.own.data[i]);
         vec_free(&top.own);
     }
     return v->res;
@@ -1383,31 +1317,74 @@ void eval_tentative(Checker *c, uint32_t ref)
     ev_add_tentative(ev_of(c), ref);
 }
 
+static const char *stop_name(int st)
+{
+    return st == EV_UNSUPPORTED ? "unsupported" : st == EV_FUEL ? "limit" : st == EV_EXIT ? "exit" : "trap";
+}
+
+/* argv as evaluator objects: strings, and the array of pointers ending in NULL. */
+static uint64_t make_argv(Ev *v, int argc, char **argv)
+{
+    uint32_t arr = ev_new_obj(v, (uint64_t)(argc + 1) * 8, false);
+    int i;
+    if (!arr)
+        return 0;
+    for (i = 0; i < argc; i++) {
+        size_t len = strlen(argv[i]) + 1;
+        uint32_t id = ev_new_obj(v, len, false);
+        uint64_t p;
+        Obj *s, *a = &v->obj.data[arr - 1];
+        if (!id)
+            return 0;
+        s = &v->obj.data[id - 1];
+        memcpy(s->b, argv[i], len);
+        memset(s->init, 1, len);
+        p = mkptr(id, 0);
+        memcpy(a->b + 8 * i, &p, 8);
+        memset(a->init + 8 * i, 1, 8);
+    }
+    memset(v->obj.data[arr - 1].init + 8 * argc, 1, 8);     /* argv[argc] is NULL */
+    return mkptr(arr, 0);
+}
+
 void eval_main(Checker *c)
 {
     Ev *v = ev_of(c);
     size_t i;
-    uint64_t x = 0;
+    uint64_t x = 0, args[2];
     EvRes r;
-    FILE *out = c->opt.tast;
-    uint32_t fsym = SYM_NONE;
+    Fn *f = NULL;
+    int code = 125;                     /* a stop of the evaluator, not a program status */
     for (i = 0; i < v->fn.len; i++)
         if (v->fn.data[i].fsym != SYM_NONE &&
             !strcmp(cident(c, csym(c, v->fn.data[i].fsym)->name), "main"))
-            fsym = v->fn.data[i].fsym;
-    if (!out)
-        return;
-    if (fsym == SYM_NONE) {
-        fputs("eval: no main\n", out);
-        return;
+            f = &v->fn.data[i];
+    v->o.out = c->opt.tast;
+    v->o.err = stderr;
+    if (c->diag->nerrors) {
+        /* the diagnostics are the answer; the program is not run */
+    } else if (!f) {
+        fputs("cereal run: no main\n", stderr);
+    } else if (f->np != 0 && f->np != 2) {
+        fputs("cereal run: unsupported: main with other parameters than (void) or (int, char **)\n", stderr);
+    } else {
+        if (f->np == 2) {
+            args[0] = (uint64_t)c->opt.eval_argc;
+            args[1] = make_argv(v, c->opt.eval_argc, c->opt.eval_argv);
+        }
+        r = ev_call(v, f->fsym, args, f->np, &x);
+        if (r.status == EV_OK || r.status == EV_EXIT) {
+            code = (r.status == EV_OK ? (int)x : r.code) & 255;
+        } else {
+            if (v->o.out)
+                fflush(v->o.out);
+            fprintf(stderr, "cereal run: %s: %s\n", stop_name(r.status), r.why);
+        }
     }
-    r = ev_call(v, fsym, NULL, 0, &x);
-    if (r.status == EV_OK)
-        fprintf(out, "eval main = %d\n", (int)(int32_t)x);
-    else
-        fprintf(out, "eval main: %s: %s\n",
-                r.status == EV_UNSUPPORTED ? "unsupported" : r.status == EV_FUEL ? "limit" : "trap",
-                r.why);
+    if (v->o.out)
+        fflush(v->o.out);
+    if (c->opt.eval_status)
+        *c->opt.eval_status = code;
 }
 
 /* ---- the sweep ------------------------------------------------------------------ */
@@ -1435,16 +1412,16 @@ static uint64_t sweep_arg(const Ti *ti, uint64_t *rs)
         return rnd(rs) & 1;
     if (rnd(rs) % 10 < 7) {             /* small values, within the type */
         int64_t x = (int64_t)(rnd(rs) % 13) - 6;
-        return canon(ti, ti->sg || x >= 0 ? (uint64_t)x : (uint64_t)(x + 6));
+        return ev_canon(ti, ti->sg || x >= 0 ? (uint64_t)x : (uint64_t)(x + 6));
     }
-    return canon(ti, rnd(rs));
+    return ev_canon(ti, rnd(rs));
 }
 
 /* The argument as a C literal (a float as its exact value). */
 static void sweep_lit(FILE *out, const Ti *ti, uint64_t x)
 {
     if (ti->flt)
-        fprintf(out, "%a", fget(ti, x));
+        fprintf(out, "%a", ev_fget(ti, x));
     else if (ti->sg) {
         long long n = (long long)x;
         fprintf(out, "%lld%s", n, n > 2147483647 || n < -2147483647 ? "LL" : "");
@@ -1459,7 +1436,7 @@ static bool sweep_ty(Ev *v, TypeId t, Ti *ti)
     TypeKind k = type_ckind(&v->c->tt, t);
     if (!((k >= TY_BOOL && k <= TY_ULLONG) || k == TY_FLOAT || k == TY_DOUBLE))
         return false;
-    return tinfo(v, t, ti);
+    return ev_tinfo(v, t, ti);
 }
 
 static void sweep_typename(Checker *c, FILE *out, TypeId t)
@@ -1520,9 +1497,9 @@ void eval_sweep(Checker *c)
             fputs(") ", out);
             r = ev_call(v, f->fsym, args, f->np, &x);
             if (r.status != EV_OK)
-                fprintf(out, "%s %s%c", r.status == EV_UNSUPPORTED ? "unsupported" : r.status == EV_FUEL ? "limit" : "trap", r.why, 10);
+                fprintf(out, "%s %s%c", stop_name(r.status), r.why, 10);
             else if (rt.flt)
-                fprintf(out, "f:%a%c", fget(&rt, x), 10);
+                fprintf(out, "f:%a%c", ev_fget(&rt, x), 10);
             else
                 fprintf(out, "i:%lld%c", (long long)x, 10);
         }
