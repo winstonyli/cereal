@@ -1665,7 +1665,8 @@ int main(int argc, char **argv)
         }
         if (!strncmp(argv[i], "--eval-sweep=", 13)) {
             char *end;
-            fe_opts.eval_main = fe_opts.eval_wrap = true;
+            fe_opts.eval = EVAL_SWEEP;
+            fe_opts.eval_wrap = true;
             fe_opts.eval_sweep = strtol(argv[i] + 13, &end, 10);
             fe_opts.eval_seed = *end == ',' ? strtoul(end + 1, NULL, 10) : 1;
             continue;
@@ -1831,7 +1832,7 @@ int main(int argc, char **argv)
         for (k = 0; k < run_nargs; k++)
             av[k + 1] = run_args[k];
         av[run_nargs + 1] = NULL;
-        fe_opts.eval_main = true;
+        fe_opts.eval = EVAL_RUN;
         fe_opts.eval_argc = run_nargs + 1;
         fe_opts.eval_argv = av;
         fe_opts.eval_status = &run_status;

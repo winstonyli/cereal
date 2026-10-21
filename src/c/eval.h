@@ -33,17 +33,15 @@ void ev_add_tentative(Ev *v, uint32_t ref);
 /* Calls a retained function with integer or pointer arguments. */
 EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *out);
 
-/* The checker's hooks (`cereal run`): keep each function as it is lowered, and
- * after the last unit run `main` (c->opt.eval_argv are its arguments), the
- * program's stdout going to c->opt.tast; the exit status is stored through
- * c->opt.eval_status, and a stop is reported on stderr. */
+/* The checker's hooks (CHK_EVAL): keep each function and object as it is lowered. */
 void eval_keep(Checker *c, El *e, Cfg *g);
 void eval_data(Checker *c, El *e);
 void eval_tentative(Checker *c, uint32_t ref);
-void eval_main(Checker *c);
-/* --eval-sweep: for each scalar function of the main file, print its signature
- * and N seeded argument vectors with the evaluator's result (tests/eval_sweep.sh). */
-void eval_sweep(Checker *c);
+/* After the last unit: `cereal run` runs main (c->opt.eval_argv are its arguments,
+ * the program's stdout goes to c->opt.tast, the exit status through
+ * c->opt.eval_status, a stop is reported on stderr); --eval-sweep prints each scalar
+ * function's signature and N seeded argument vectors with the result (tests/eval_sweep.sh). */
+void eval_finish(Checker *c);
 void eval_release(Checker *c);
 
 #endif

@@ -418,6 +418,12 @@ padding writes the same zero). Symbolic evaluation can come later without
 changing this layer, if the host functions keep to the checked access
 (`PARKED.md`).
 
+Layout: `eval.c` is the engine behind `eval.h`; `eval_int.h` is what the host
+library shares; `eval_run.c` holds the two clients of `ev_call` (`cereal run` and
+`--eval-sweep`), chosen by `opt.eval` (`EVAL_RUN`, `EVAL_SWEEP`; `CHK_EVAL(o)`
+is the one test the lowering and dump code ask). A third client is another enum
+value and another function in `eval_run.c`.
+
 ## 10. Review log
 
 Three adversarial rounds against the code, 2026-10-21; each change above came

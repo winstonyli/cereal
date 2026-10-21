@@ -27,6 +27,9 @@
     X(DEC32, "_Decimal32") X(DEC64, "_Decimal64") X(DEC128, "_Decimal128")  \
     X(NULLPTR, "typeof (nullptr)")
 
+/* Which evaluator client a run drives (eval_run.c): `cereal run` or --eval-sweep. */
+enum { EVAL_OFF, EVAL_RUN, EVAL_SWEEP };
+
 typedef enum {
 #define X(n, s) TY_##n,
     BUILTIN_TYPES(X)

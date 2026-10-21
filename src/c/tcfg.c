@@ -892,7 +892,7 @@ void tast_cfg(El *e, uint32_t root, FILE *out)
         ord = by_pos(&L);
         ijmp_targets(&L, &ij);
         mark(&L, ord[0], &ij);
-        if (e->c->opt.eval_main)
+        if (CHK_EVAL(e->c->opt))
             eval_keep(e->c, e, &L);
         if (CHK_ASM(e->c->opt))
             x86_func(&L, ord, out);

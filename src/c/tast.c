@@ -2398,7 +2398,7 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
         if (CHK_ASM(c->opt) && csym(c, c->cb[d] - 1)->kind == CS_OBJ &&
             csym(c, c->cb[d] - 1)->sc != SC_EXTERN)
             x86_tentative(c, c->cb[d] - 1);
-        if (c->opt.eval_main && csym(c, c->cb[d] - 1)->kind == CS_OBJ &&
+        if (CHK_EVAL(c->opt) && csym(c, c->cb[d] - 1)->kind == CS_OBJ &&
             csym(c, c->cb[d] - 1)->sc != SC_EXTERN)
             eval_tentative(c, c->cb[d] - 1);
         if (!show)
@@ -2411,7 +2411,7 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
         put_type(c, out, csym(c, c->cb[d] - 1)->ty);
         fputc('\n', out);
     }
-    if (c->opt.eval_main && !e->why[0] && items.len)
+    if (CHK_EVAL(c->opt) && !e->why[0] && items.len)
         eval_data(c, e);
     if (CHK_ASM(c->opt) && !e->why[0]) {
         size_t m;
@@ -2528,7 +2528,7 @@ static void unit_run(Checker *c, FILE *out)
         fputs(" skipped: errors\n", out);
         return;
     }
-    if (tag == N_DECL && !c->opt.tast_tree && !c->opt.eval_main && !CHK_ASM(c->opt))
+    if (tag == N_DECL && !c->opt.tast_tree && !CHK_EVAL(c->opt) && !CHK_ASM(c->opt))
         return;
     memset(&e, 0, sizeof e);
     e.c = c;
@@ -2565,7 +2565,7 @@ static void unit_run(Checker *c, FILE *out)
                 if (c->opt.verify_tast)
                     verify(&e, out);
             }
-            if (c->opt.dump_cfg || c->opt.eval_main || CHK_ASM(c->opt))
+            if (c->opt.dump_cfg || CHK_EVAL(c->opt) || CHK_ASM(c->opt))
                 tast_cfg(&e, (uint32_t)e.nodes.len - 1, out);
         }
     }
@@ -2581,7 +2581,7 @@ void tast_unit(Checker *c)
     unsigned tag = ntag(c, root);
     if (tag == N_FUNC_DEF || tag == N_DECL || tag == N_TOP_ASM) {
         if (cin_system(c, cnode_loc(c, root))) {     /* a header's functions are emitted when used; the evaluator keeps them all */
-            FILE *d = (tag == N_FUNC_DEF && CHK_ASM(c->opt)) || c->opt.eval_main ? discard() : NULL;
+            FILE *d = (tag == N_FUNC_DEF && CHK_ASM(c->opt)) || CHK_EVAL(c->opt) ? discard() : NULL;
             if (d) {
                 unit_run(c, d);
                 fclose(d);

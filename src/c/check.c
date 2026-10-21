@@ -791,10 +791,8 @@ void checker_finish(Checker *c)
 {
     size_t k;
     cdecl_check_inline_statics(c);
-    if (c->opt.eval_sweep)
-        eval_sweep(c);
-    else if (c->opt.eval_main)
-        eval_main(c);
+    if (CHK_EVAL(c->opt))
+        eval_finish(c);
     for (k = 0; k < c->tentative.len; k++)
         cdecl_finish_object(c, c->tentative.data[k]);
     if (c->opt.dump)

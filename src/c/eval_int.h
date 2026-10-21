@@ -100,6 +100,8 @@ void ev_fail(Ev *v, int st, const char *fmt, ...);
 bool ev_tinfo(Ev *v, TypeId t, Ti *ti);
 uint64_t ev_canon(const Ti *ti, uint64_t x);
 double ev_fget(const Ti *ti, uint64_t x);
+uint64_t ev_fput(const Ti *ti, double d);
+Ev *ev_of(Checker *c);        /* the checker's evaluator, made on first use */
 
 /* ---- objects: a pointer is an object id (high 32 bits, 0 is null) and a signed offset ---- */
 
