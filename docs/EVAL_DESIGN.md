@@ -291,7 +291,7 @@ copies at store, local, argument and return, direct and indirect calls
 depth limit. UB stops evaluation with a reason (division by zero, signed
 overflow, shift counts, out of bounds, null, after lifetime, uninitialized
 read, write to a string literal, pointer difference across objects). Each
-unsupported construct names itself: floats, bit-fields, compound literals,
+unsupported construct names itself: compound literals,
 variadic calls, built-ins, globals, `static` locals.
 
 Entry: `cereal check --eval-main` (hidden; `--eval-wrap` for gcc `-fwrapv`
@@ -304,6 +304,23 @@ the first test set let two survive (folded constants and a cancelling pair of
 compares, both fixed in the tests). Deviation from the first-cut plan: values
 are copied in (`ev_add_func` copies, it does not steal), because `El` and
 `Cfg` stay owned by `unit_run`.
+
+### E1b result (2026-10-21)
+
+Floats and bit-fields. A float slot holds the IEEE bits (float in the low 32).
+`+ - * /` run in the type's own precision, no division trap; compares follow
+NaN rules; `!`, `?:` and `if` on a float test nonzero or NaN; casts go through
+`double` (exact for float and for integers up to 53 bits, hardware rounding
+beyond), an out-of-range float to integer cast traps, and `TO_F2I` (the x86
+intrinsic conversion) gives the hardware "indefinite" value, `pun` 1 rounding
+to nearest even. Bit-fields use `cgx86.c`'s window: `FIELD` is the address of
+the lowest byte, `LOAD`, `STORE`, `POST` and `ELEM` initializers read and write
+the `ceil((pun + width) / 8)` bytes the field touches. Limitation: a bit-field
+read does not check that the neighbours sharing its bytes were initialized,
+and a write marks the whole window initialized. Not covered by a golden:
+`TO_F2I` rounding (only reachable through intrinsics, which are still
+unsupported). Goldens `floats.c`, `bitfields.c`, `trap_f2i.c`, `trap_bf_oob.c`;
+mutation check 9 of 9 live mutants killed (one equivalent: `(_Bool)NaN`).
 
 ## 10. Review log
 

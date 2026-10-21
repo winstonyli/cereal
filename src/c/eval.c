@@ -93,7 +93,7 @@ static void fail(Ev *v, int st, const char *fmt, ...)
 
 typedef struct Ti {
     unsigned bytes;
-    bool sg, boolean;
+    bool sg, boolean, flt;       /* flt: float or double, the value is its IEEE bit pattern */
 } Ti;
 
 static bool is_agg(Ev *v, TypeId t)
@@ -112,6 +112,11 @@ static bool tinfo(Ev *v, TypeId t, Ti *ti)
     memset(ti, 0, sizeof *ti);
     if (k == TY_PTR || k == TY_NULLPTR) {
         ti->bytes = 8;
+        return true;
+    }
+    if (k == TY_FLOAT || k == TY_DOUBLE) {
+        ti->bytes = k == TY_FLOAT ? 4 : 8;
+        ti->flt = true;
         return true;
     }
     if (!((k >= TY_BOOL && k <= TY_ULLONG) || k == TY_ENUM)) {
@@ -245,6 +250,66 @@ static void store_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x)
     }
 }
 
+/* Bit-fields: the address is the byte holding the lowest bit, the field is `width`
+ * bits starting `pun` bits into it; read and written through the n bytes it touches
+ * (as cgx86 does).  Limitation: a read does not check that the other fields sharing
+ * those bytes were initialized, and a write marks the whole window initialized. */
+
+static bool bf_window(Ev *v, unsigned pun, unsigned width, unsigned *n)
+{
+    if (pun + width > 64) {
+        UNSUP(v, "bit-field straddling eight bytes");
+        return false;
+    }
+    *n = (pun + width + 7) / 8;
+    return true;
+}
+
+static uint64_t bf_ext(const Ti *ti, unsigned width, uint64_t x)
+{
+    x <<= 64 - width;
+    return ti->sg ? (uint64_t)((int64_t)x >> (64 - width)) : x >> (64 - width);
+}
+
+static bool is_bf(Fr *r, uint32_t lv)
+{
+    const TNode *f = &r->f->nodes[lv];
+    return f->op == TO_FIELD && f->width;
+}
+
+static uint64_t bf_load(Ev *v, uint64_t p, const Ti *ti, unsigned pun, unsigned width)
+{
+    unsigned n, i;
+    uint64_t x = 0;
+    Obj *o;
+    if (!bf_window(v, pun, width, &n) || !(o = access(v, p, n, "read")))
+        return 0;
+    for (i = 0; i < n; i++)
+        x |= (uint64_t)o->b[poff(p) + i] << (8 * i);
+    return bf_ext(ti, width, x >> pun);
+}
+
+static uint64_t bf_store(Ev *v, uint64_t p, const Ti *ti, unsigned pun, unsigned width, uint64_t val)
+{
+    unsigned n, i;
+    uint64_t x = 0, m = width >= 64 ? ~(uint64_t)0 : ((uint64_t)1 << width) - 1;
+    Obj *o;
+    if (!bf_window(v, pun, width, &n) || !(o = access(v, p, n, "write")))
+        return 0;
+    if (o->ro) {
+        TRAP(v, "write to a string literal");
+        return 0;
+    }
+    for (i = 0; i < n; i++)
+        x |= (uint64_t)o->b[poff(p) + i] << (8 * i);
+    x = (x & ~(m << pun)) | ((val & m) << pun);
+    for (i = 0; i < n; i++) {
+        o->b[poff(p) + i] = (uint8_t)(x >> (8 * i));
+        o->init[poff(p) + i] = 1;
+    }
+    return bf_ext(ti, width, val);
+}
+
 static void copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
 {
     Obj *d, *s;
@@ -269,6 +334,117 @@ static void zero_n(Ev *v, uint64_t dst, uint64_t n)
         return;
     memset(d->b + poff(dst), 0, n);
     memset(d->init + poff(dst), 1, n);
+}
+
+/* ---- floating point: the slot holds the IEEE bits of a float (low 32) or double ---- */
+
+static double fget(const Ti *ti, uint64_t x)
+{
+    if (ti->bytes == 4) {
+        uint32_t w = (uint32_t)x;
+        float f;
+        memcpy(&f, &w, 4);
+        return f;
+    }
+    {
+        double d;
+        memcpy(&d, &x, 8);
+        return d;
+    }
+}
+
+static uint64_t fput(const Ti *ti, double d)
+{
+    uint64_t x = 0;
+    if (ti->bytes == 4) {
+        float f = (float)d;
+        uint32_t w;
+        memcpy(&w, &f, 4);
+        return w;
+    }
+    memcpy(&x, &d, 8);
+    return x;
+}
+
+/* + - * / in the type's own precision (a float operation rounds to float). */
+static uint64_t fbin(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
+{
+    if (ti->bytes == 4) {
+        float x = (float)fget(ti, a), y = (float)fget(ti, b), r;
+        switch (p) {
+        case P_PLUS: r = x + y; break;
+        case P_MINUS: r = x - y; break;
+        case P_STAR: r = x * y; break;
+        case P_SLASH: r = x / y; break;
+        default: UNSUP(v, "float operator %d", p); return 0;
+        }
+        return fput(ti, r);
+    } else {
+        double x = fget(ti, a), y = fget(ti, b), r;
+        switch (p) {
+        case P_PLUS: r = x + y; break;
+        case P_MINUS: r = x - y; break;
+        case P_STAR: r = x * y; break;
+        case P_SLASH: r = x / y; break;
+        default: UNSUP(v, "float operator %d", p); return 0;
+        }
+        return fput(ti, r);
+    }
+}
+
+static uint64_t fcompare(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
+{
+    double x = fget(ti, a), y = fget(ti, b);
+    switch (p) {
+    case P_EQEQ: return x == y;
+    case P_NE: return x != y;
+    case P_LT: return x < y;
+    case P_GT: return x > y;
+    case P_LE: return x <= y;
+    case P_GE: return x >= y;
+    default:
+        UNSUP(v, "comparison %d", p);
+        return 0;
+    }
+}
+
+/* A conversion between scalar types; floats convert through double, which is
+ * exact for float and for every integer that fits 53 bits, and rounds as the
+ * hardware does for the rest. */
+static uint64_t convert(Ev *v, const Ti *to, const Ti *from, uint64_t a)
+{
+    if (!from->flt && !to->flt)
+        return canon(to, a);
+    if (from->flt && to->flt)
+        return fput(to, fget(from, a));
+    if (to->flt) {
+        if (from->bytes == 8 && !from->sg)
+            return fput(to, to->bytes == 4 ? (double)(float)(uint64_t)a : (double)(uint64_t)a);
+        return fput(to, to->bytes == 4 ? (double)(float)(int64_t)a : (double)(int64_t)a);
+    } else {
+        double d = fget(from, a), lo, hi;
+        if (to->boolean)
+            return d != 0 || d != d;
+        if (d != d) {
+            TRAP(v, "conversion of NaN to an integer");
+            return 0;
+        }
+        if (to->sg) {
+            hi = to->bytes == 8 ? 9223372036854775808.0 : (double)(1ull << (8 * to->bytes - 1));
+            lo = -hi;
+            if (!(d > lo - 1 && d < hi) || (to->bytes == 8 && d < lo)) {
+                TRAP(v, "floating-point value out of range for the integer type");
+                return 0;
+            }
+            return canon(to, (uint64_t)(int64_t)d);
+        }
+        hi = to->bytes == 8 ? 18446744073709551616.0 : (double)(1ull << (8 * to->bytes));
+        if (!(d > -1 && d < hi)) {
+            TRAP(v, "floating-point value out of range for the integer type");
+            return 0;
+        }
+        return canon(to, (uint64_t)d);
+    }
 }
 
 /* ---- arithmetic ------------------------------------------------------------ */
@@ -485,10 +661,11 @@ static uint64_t ev_local(Fr *r, uint32_t n)
             uint32_t vn = KID(r, KID(r, n, j), 0);
             const TNode *vt = NODE(r, vn);
             if (el->width) {
-                UNSUP(v, "bit-field initializer");
-                return 0;
-            }
-            if (vt->op == TO_STR) {
+                if (!tinfo(v, el->ty, &ti))
+                    return 0;
+                x = ev_node(r, vn);
+                bf_store(v, mkptr(pid(p), poff(p) + el->val), &ti, el->pun, el->width, x);
+            } else if (vt->op == TO_STR) {
                 uint64_t sp = ev_node(r, vn), cn = (uint64_t)vt->width;
                 uint64_t esz;
                 if (!size_of(v, el->ty, &esz))
@@ -580,6 +757,8 @@ static uint64_t ev_node(Fr *r, uint32_t n)
             return a;
         if (!tinfo(v, t->ty, &ti))
             return 0;
+        if (is_bf(r, KID(r, n, 0)))
+            return bf_load(v, a, &ti, NODE(r, KID(r, n, 0))->pun, NODE(r, KID(r, n, 0))->width);
         return load_n(v, a, &ti);
     case TO_STORE: {
         uint64_t sz;
@@ -595,6 +774,8 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         }
         if (!tinfo(v, t->ty, &ti))
             return 0;
+        if (is_bf(r, KID(r, n, 0)))
+            return bf_store(v, a, &ti, NODE(r, KID(r, n, 0))->pun, NODE(r, KID(r, n, 0))->width, b);
         b = canon(&ti, b);
         store_n(v, a, &ti, b);
         return b;
@@ -608,7 +789,8 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         a = ev_node(r, KID(r, s, 0));
         if (!tinfo(v, NODE(r, s)->ty, &ti))
             return 0;
-        b = load_n(v, a, &ti);
+        b = is_bf(r, KID(r, s, 0)) ? bf_load(v, a, &ti, NODE(r, KID(r, s, 0))->pun, NODE(r, KID(r, s, 0))->width)
+                                   : load_n(v, a, &ti);
         ev_node(r, s);
         return b;
     }
@@ -619,16 +801,50 @@ static uint64_t ev_node(Fr *r, uint32_t n)
             return 0;
         if (!tinfo(v, t->ty, &ti) || !tinfo(v, from, &ts))
             return 0;
-        return canon(&ti, a);
+        return convert(v, &ti, &ts, a);
+    }
+    case TO_FCONST:
+        if (!tinfo(v, t->ty, &ti))
+            return 0;
+        a = 0;
+        memcpy(&a, r->f->bytes + t->val, t->width < 8 ? t->width : 8);
+        return a;
+    case TO_F2I: {
+        TypeId from = NODE(r, KID(r, n, 0))->ty;
+        double d;
+        a = ev_node(r, KID(r, n, 0));
+        if (v->res.status || !tinfo(v, t->ty, &ti) || !tinfo(v, from, &ts))
+            return 0;
+        d = fget(&ts, a);
+        if (t->pun) {                   /* round to nearest even, as cvtss2si does */
+            volatile double m = 4503599627370496.0;     /* 2^52: adding it rounds to an integer */
+            if (d > -m && d < m)
+                d = d < 0 ? (d - m) + m : (d + m) - m;
+        }
+        if (d != d || d >= (ti.bytes == 8 ? 9223372036854775808.0 : 2147483648.0) ||
+            d < (ti.bytes == 8 ? -9223372036854775808.0 : -2147483648.0))
+            return canon(&ti, ti.bytes == 8 ? 0x8000000000000000ull : 0x80000000ull);
+        return canon(&ti, (uint64_t)(int64_t)d);
     }
     case TO_UNOP:
         a = ev_node(r, KID(r, n, 0));
         if (v->res.status)
             return 0;
-        if (t->pun == P_BANG)
-            return a == 0;
+        if (t->pun == P_BANG) {
+            if (!tinfo(v, NODE(r, KID(r, n, 0))->ty, &ts))
+                return 0;
+            return ts.flt ? !(fget(&ts, a) != 0 || fget(&ts, a) != fget(&ts, a)) : a == 0;
+        }
         if (!tinfo(v, t->ty, &ti))
             return 0;
+        if (ti.flt) {
+            if (t->pun == P_MINUS)
+                return a ^ (ti.bytes == 4 ? 0x80000000ull : 0x8000000000000000ull);
+            if (t->pun == P_PLUS)
+                return a;
+            UNSUP(v, "unary operator %d on a float", t->pun);
+            return 0;
+        }
         if (t->pun == P_MINUS) {
             if (ti.sg && !v->o.wrap && !fits(&ti, (int64_t)(0 - a))) {
                 TRAP(v, "signed integer overflow");
@@ -645,11 +861,15 @@ static uint64_t ev_node(Fr *r, uint32_t n)
     case TO_BINOP:
         a = ev_node(r, KID(r, n, 0));
         b = ev_node(r, KID(r, n, 1));
-        return v->res.status ? 0 : int_arith(v, t->pun, t->ty, a, b);
+        if (v->res.status || !tinfo(v, t->ty, &ti))
+            return 0;
+        return ti.flt ? fbin(v, t->pun, &ti, a, b) : int_arith(v, t->pun, t->ty, a, b);
     case TO_CMP:
         a = ev_node(r, KID(r, n, 0));
         b = ev_node(r, KID(r, n, 1));
-        return v->res.status ? 0 : compare(v, t->pun, NODE(r, KID(r, n, 0))->ty, a, b);
+        if (v->res.status || !tinfo(v, NODE(r, KID(r, n, 0))->ty, &ts))
+            return 0;
+        return ts.flt ? fcompare(v, t->pun, &ts, a, b) : compare(v, t->pun, NODE(r, KID(r, n, 0))->ty, a, b);
     case TO_COMMA:
         ev_node(r, KID(r, n, 0));
         return ev_node(r, KID(r, n, 1));
@@ -662,13 +882,13 @@ static uint64_t ev_node(Fr *r, uint32_t n)
     case TO_ADDR:
         return ev_node(r, KID(r, n, 0));
     case TO_FIELD:
-        if (t->width) {
-            UNSUP(v, "bit-field");
-            return 0;
-        }
         a = ev_node(r, KID(r, n, 0));
         return mkptr(pid(a), (int64_t)poff(a) + t->val);
     case TO_RFIELD:
+        if (t->width) {
+            UNSUP(v, "bit-field read as an rvalue field");
+            return 0;
+        }
         a = ev_node(r, KID(r, n, 0));
         a = mkptr(pid(a), (int64_t)poff(a) + t->val);
         if (is_agg(v, t->ty) || v->res.status)
@@ -766,8 +986,16 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na)
             bi = b->a;
             continue;
         case TK_BR:
-            bi = ev_node(&r, b->val) ? b->a : b->b;
+        {
+            uint64_t c = ev_node(&r, b->val);
+            Ti ct;
+            if (v->res.status)
+                break;
+            if (tinfo(v, NODE(&r, b->val)->ty, &ct) && ct.flt)
+                c = fget(&ct, c) != 0 || fget(&ct, c) != fget(&ct, c);
+            bi = c ? b->a : b->b;
             continue;
+        }
         case TK_SWTCH: {
             uint64_t c = ev_node(&r, b->val);
             uint32_t to = b->a;
