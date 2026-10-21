@@ -559,14 +559,14 @@ if [ -d "$ROOT/tests/cfg" ]; then
     cd "$ROOT"
 fi
 
-# 13e. execution oracle (tests/cfg_exec.py): the integer functions of
-#      tests/cfg_exec/*.c run through the graph and compared with gcc
+# 13e. evaluator sweep (tests/eval_sweep.sh): the scalar functions of
+#      tests/cfg_exec/*.c run in the evaluator and compared with gcc, plus --verify-cfg
 if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
-    if (cd "$ROOT/tests/cfg_exec" && python3 -P ../cfg_exec.py "$CEREAL" *.c \
+    if (cd "$ROOT/tests/cfg_exec" && sh ../eval_sweep.sh "$CEREAL" *.c \
             >"$TMP/exec.out" 2>&1 </dev/null); then
         ok
     else
-        bad "cfg_exec"
+        bad "eval_sweep"
         head -10 "$TMP/exec.out" | sed 's/^/    /'
     fi
     # 13f. native oracle (tests/asm_exec.py): --dump-asm output assembled,

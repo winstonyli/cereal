@@ -1656,6 +1656,13 @@ int main(int argc, char **argv)
             fe_opts.dump_cfg = true;
             continue;
         }
+        if (!strncmp(argv[i], "--eval-sweep=", 13)) {
+            char *end;
+            fe_opts.eval_main = fe_opts.eval_wrap = true;
+            fe_opts.eval_sweep = strtol(argv[i] + 13, &end, 10);
+            fe_opts.eval_seed = *end == ',' ? strtoul(end + 1, NULL, 10) : 1;
+            continue;
+        }
         if (!strcmp(argv[i], "--eval-main") || !strcmp(argv[i], "--eval-wrap")) {
             fe_opts.eval_main = true;
             fe_opts.eval_wrap |= argv[i][7] == 'w';

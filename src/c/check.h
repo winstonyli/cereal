@@ -35,6 +35,8 @@ typedef struct CheckOptions {
     const char *emit_obj;       /* --emit-obj=FILE: the same, as an ELF object (mir_elf.c) */
     bool eval_main;             /* --eval-main: run main() in the evaluator (eval.c) */
     bool eval_wrap;             /* ... with signed overflow wrapping (gcc -fwrapv) */
+    long eval_sweep;            /* --eval-sweep=N[,SEED]: every scalar function on N argument vectors */
+    unsigned long eval_seed;
     bool dump_cfg, verify_cfg;  /* --dump-cfg: print the lowered control-flow graph;
                                  * --verify-cfg: and check it (tcfg.c) */
     bool verify_tast;           /* --verify-tast: check each tree, print findings */

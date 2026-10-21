@@ -19,7 +19,7 @@ arithmetic and memory rules:
 | `src/c/cexpr.c` (`e_*`, `int_op`, `conv_const`, `fold_*`) | the checker's per-node arrays `ck/cv/ef` | integer and float expressions, addresses; 64-bit; gcc's ICE/fold distinctions and deferred overflow warnings | the diagnostics depend on it; no aggregates |
 | `src/c/cgdata.c` `ev`/`elem` | TAST `TO_DATA` trees | static initializers: ints, floats, addresses plus offsets | no division or comparison, no `long double`, no compound literals |
 | `tests/tast_data.py` | TAST `data` nodes | an oracle: evaluates them in Python and compares bytes and relocations with gcc's object file | 433 lines; independent of `cgdata.c`, so it stays a check unless the C evaluator is compared with gcc's objects directly (decide at E5) |
-| `tests/cfg_exec.py` | `--dump-cfg` text | integer functions with one cell per object and byte offset | 358 lines; `asm_exec.py` imports its parser and value helpers; skips floats, aggregate copies, bit-fields, punning, pointers passed between calls, indirect calls (`PARKED.md`) |
+| `tests/cfg_exec.py` | `--dump-cfg` text | integer functions with one cell per object and byte offset | deleted at E2 (2026-10-21); the evaluator and `tests/eval_sweep.sh` replace it |
 
 Aggregate `constexpr` (`PARKED.md`) needs a fifth. The goal is one evaluator,
 in C, over the form every later stage already shares (the typed AST lowered
@@ -359,6 +359,30 @@ a full register-save-area model: PARKED.md). `va_arg` does not check that the
 requested type matches the passed one. Goldens `varargs.c`, `trap_vaarg.c`;
 mutation check 6 of 6 killed after the first set let three live (a 12-byte
 aggregate argument, an empty literal, two literals alive at once).
+
+### E2 result (2026-10-21)
+
+The Python interpreter is gone. `cereal check --eval-sweep=N,SEED` (hidden)
+lists every scalar function of the main file (integer, bool, float and double
+parameters and result, not variadic) and N seeded argument vectors, with the
+evaluator's result: `fn NAME ret|p1|p2`, then `call NAME (lit,...) i:<n> |
+f:<%a> | unsupported|trap|limit <why>`. Two consumers share that call list:
+`tests/eval_sweep.sh` (step 13e, with `--verify-cfg`) builds a gcc `-O0 -fwrapv`
+driver from the same calls and compares the values; a trap or step limit fails
+(the corpus `tests/cfg_exec/*.c` is free of undefined behaviour), an
+unsupported function is listed. `tests/asm_exec.py` (13f) takes its signatures
+and vectors from the sweep too, whether or not the evaluator can run the
+function (built-ins, vectors), so `X.parse`, `X.values` and `X.INT` went with
+`cfg_exec.py`. Parity: `int.c` 19 of 19 and `mem.c` 5 of 5 functions, as the old
+oracle; `ops.c` adds every operator at every width and signedness (shifts,
+`%`, `/`, mixed conversions). Mutants of `int_arith` (signed shift, `%`, shift
+count, `*`) are killed; `x / -1` stays with `eval.sh` (the sweep's corpus avoids
+the undefined `INT_MIN / -1`). The new vectors found a back-end bug:
+`__builtin_mul_overflow` of two unsigned 32-bit operands into an `unsigned long
+long` flagged a product of 2^63 or more (signed `imul`); fixed in `gen_ovf`.
+The other `tests/asm_exec/*.c` units are not UB-free (`flt.c` converts
+out-of-range values, `agg.c` reads out of bounds), so the sweep, which stops on
+undefined behaviour, is not run on them.
 
 ## 10. Review log
 

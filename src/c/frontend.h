@@ -18,6 +18,8 @@ typedef struct FrontendOpts {
     const char *emit_obj;       /* ... or as an ELF object file */
     bool dump_cfg, verify_cfg;  /* the control-flow graph of each function (tcfg.c) */
     bool eval_main, eval_wrap;  /* run main() in the evaluator (eval.c) */
+    long eval_sweep;            /* ... or every scalar function on this many argument vectors */
+    unsigned long eval_seed;
     const char *validate_summaries;
     const Target *target;       /* NULL: the host's */
     FILE *out;                  /* the dumps */

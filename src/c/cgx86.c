@@ -1514,7 +1514,9 @@ static void gen_ovf(Gx *g, uint32_t n, const BiRow *r)
         unsup(g, "overflow built-in result is not a pointer to an integer");
         return;
     }
-    uw = !ta.sg && !tb.sg && (ta.bytes == 8 || tb.bytes == 8);
+    /* unsigned arithmetic when an operand is 64 bits, or the product of two unsigned operands
+     * goes to an unsigned 64-bit result (imul would flag a product of 2^63 or more) */
+    uw = !ta.sg && !tb.sg && (ta.bytes == 8 || tb.bytes == 8 || (op == OV_MUL && !tr.sg && tr.bytes == 8));
     if ((!ta.sg && ta.bytes == 8 && tb.sg) || (!tb.sg && tb.bytes == 8 && ta.sg) || (uw && tr.sg) ||
         (!uw && !tr.sg && tr.bytes == 8 && (ta.bytes == 8 || tb.bytes == 8))) {
         unsup(g, "overflow built-in whose exact result needs more than 64 bits to test");

@@ -13,64 +13,58 @@ by gcc and linked into both programs: its gcc_* functions are driven like the
 others, and FILE.c calls its other functions, so structs cross the ABI both ways.  Covers what cgx86.c supports
 (integers, pointers, locals, arrays, calls to the file's own functions);
 everything else is reported as unsupported, not skipped silently."""
-import os, random, re, subprocess, sys, tempfile
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import cfg_exec as X
-
+import os, re, subprocess, sys, tempfile
 
 FLT = ("float", "double")
-
-
-def supported(t):
-    t = t.strip()
-    return t in X.INT or t in FLT
-
-
-def value(t):
-    """A random argument; floats stay small enough that conversions to integers are defined."""
-    if t.strip() in FLT:
-        return random.choice([0.0, 1.0, -1.0, 0.5, -2.5, 3.25, 7.0, 100.0, -1e3, 1e-3,
-                              random.uniform(-500, 500), float(random.randint(-9, 9))])
-    return X.values(t)
-
-
-def literal(v):
-    if isinstance(v, float):
-        return float(v).hex()
-    return str(v) + ("LL" if abs(v) > 2**31 - 1 else "")
 
 
 def run(cmd, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, **kw)
 
 
+class Fn:
+    def __init__(self, name, ret, params):
+        self.name, self.ret, self.params, self.vecs = name, ret, params, []
+
+
+def sweep(cereal, xf, path):
+    """The scalar functions of path and their argument vectors (literals), as the
+    evaluator's `--eval-sweep` lists them: the one source of calls (the results are
+    tests/eval_sweep.sh's business).  Floats stay small enough that conversions to
+    integers are defined."""
+    out = run([cereal, "check", "--target=x86_64-linux-gnu", *xf, "--eval-sweep=24,4321", path]).stdout
+    funcs = {}
+    for line in out.splitlines():
+        m = re.match(r"fn (\S+) ([^|]*)((?:\|.*)?)$", line)
+        if m:
+            funcs[m[1]] = Fn(m[1], m[2], m[3].split("|")[1:])
+            continue
+        m = re.match(r"call (\S+) \((.*?)\) \S", line)
+        if m and m[1] in funcs:
+            funcs[m[1]].vecs.append(m[2].split(",") if m[2] else [])
+    return funcs
+
+
 def main():
     cereal, files = sys.argv[1], sys.argv[2:]
-    random.seed(4321)
     bad = 0
     for path in files:
         xf = os.environ.get("CEREAL_FLAGS", "").split()      # e.g. -std=gnu23 (the survey)
         asm = run([cereal, "check", "--target=x86_64-linux-gnu", *xf, "--dump-asm", path]).stdout
-        funcs = X.parse(run([cereal, "check", "--target=x86_64-linux-gnu", *xf, "--dump-cfg", path]).stdout)
+        funcs = sweep(cereal, xf, path)
         notes = dict(re.findall(r"^# x86: (\S+) unsupported: (.*)$", asm, re.M))
-        todo = []
-        for f in funcs.values():
-            if supported(f.ret) and all(supported(p) for p in f.params):
-                todo.append(f)
+        todo = list(funcs.values())
         done = [f for f in todo if f.name not in notes]
         abi = os.path.join(os.path.dirname(path), "gcc", os.path.basename(path))  # gcc-built side
         if os.path.exists(abi):
-            cf = X.parse(run([cereal, "check", "--target=x86_64-linux-gnu", *xf, "--dump-cfg", abi]).stdout)
-            done += [f for f in cf.values() if f.name.startswith("gcc_") and supported(f.ret)
-                     and all(supported(p) for p in f.params)]
+            done += [f for f in sweep(cereal, xf, abi).values() if f.name.startswith("gcc_")]
         ext = [abi] if os.path.exists(abi) else []
         inc = ["-I", os.path.dirname(os.path.abspath(path))]
-        vecs = {f.name: [[value(p) for p in f.params] for _ in range(24)] for f in done}
+        vecs = {f.name: f.vecs for f in done}
         calls = "".join('    printf("%s\\n", (%s)%s(%s));\n' % (
             "%.17g" if f.ret.strip() in FLT else "%lld",
             "double" if f.ret.strip() in FLT else "long long",
-            f.name, ", ".join(literal(x) for x in v))
+            f.name, ", ".join(v))
             for f in done for v in vecs[f.name])
         main_c = "#include <stdio.h>\nint main(void)\n{\n" + calls + "    return 0;\n}\n"
         protos = "".join("%s %s(%s);\n" % (f.ret, f.name, ", ".join(f.params) or "void") for f in done)
@@ -137,7 +131,7 @@ def main():
                 n = len(vecs[f.name])
                 for v, x, y in zip(vecs[f.name], a[i:i + n], b[i:i + n]):
                     if x != y:
-                        print("%s: %s%s: gcc %s, ours (%s) %s" % (path, f.name, tuple(v), x, tag, y))
+                        print("%s: %s(%s): gcc %s, ours (%s) %s" % (path, f.name, ", ".join(v), x, tag, y))
                         wrong += 1
                         break
                 i += n
