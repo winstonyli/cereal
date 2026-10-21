@@ -223,6 +223,43 @@ version.
 Each step ends with the suite, the corpora (zstd, Lua, libuv) and the gate
 unchanged, and a mutation check of the new code.
 
+### S1 result (2026-10-21; scratch copy, nothing committed)
+
+The spike was `spike.c` (about 500 lines) plus four hook lines, in a throwaway
+copy of the tree.
+
+- **(a) Option A is feasible, with one constraint.** A hook at the end of
+  `cexpr_node` (parent not an expression, the `fold_flush` point) called
+  `ex()` on the checked subtree into a scratch `El`, and a small tree walk
+  evaluated it. Nothing was lowered to a CFG and `cinit_decl_done` was not
+  touched; the walk read the TAST tree directly. Integer-only evaluator
+  against the checker's folded value: **0 mismatches** over `tests/check`
+  with `-std=c23` (3261 ok, 8 not elaborated: `__int128`, `_FloatN`,
+  `labaddr`, one lvalue form) and over Lua 5.4 (1582 ok). The "unevaluable"
+  rest (602 and 1050) is almost all `addr` (address constants, for which
+  the checker has `K_ADDR`, not a value) plus floats; none of it is an
+  elaboration failure. Constraint: `ex()` needs a function context only for
+  temporaries and compound literals, so the hook set `infunc` and
+  stayed in the integer subset; compound literals and statement expressions
+  inside a constant were not exercised. zstd gave no probes at all with my
+  flags (unexplained; not chased).
+- **(b) The node-slot and frame design holds.** A CFG interpreter over
+  `CBlk` (statement roots, `TK_JMP/BR/SWTCH/RET`, registers by `TO_REG`
+  number, locals and parameters as slots keyed by symbol ref) ran all 14
+  functions of `tests/cfg_exec/int.c` on 672 argument pairs: **672 of 672
+  equal gcc-13 `-O0 -fwrapv`**. Speed: about 160 M nodes/s on a loop
+  (`sum(n)`: 50 M nodes in 0.32 s), i.e. a few ns a node. Integer-only
+  interpreter code is about 250 lines; a full `eval.c` with byte memory,
+  floats, aggregates, bit-fields and calls is still estimated at 1500 to
+  2000 lines.
+- **Findings.** (1) `El` has no parameter list: parameters had to be
+  captured at hook time from the checker's nodes (`cb` of each real
+  parameter, section 3 needs an `El` field or a per-function table).
+  (2) `TO_POST` wraps a `TO_STORE`, so it must read the old value before the
+  store (cgx86's order); the address subtree is evaluated twice, which is
+  fine only while addresses are pure. (3) Fuel as a node count worked and
+  stopped a 2^31 loop at once.
+
 ## 10. Review log
 
 Three adversarial rounds against the code, 2026-10-21; each change above came
