@@ -161,3 +161,19 @@ message text and notes; carets are single, as everywhere):
 - Kind numbers shifted, which moved the record digest (`csum.c` hashed `TY_STRUCT`/`TY_UNION` by number); it now hashes "is a union", so a new builtin no longer changes digests. `tests/summary/*.expected` regenerated once (hashes only).
 - Survey: 111 of 114 front end, 89 back end. Suite 2299/0, zstd, Lua and libuv unchanged.
 
+
+## Step 4 result (2026-10-21)
+
+C23 `auto` type inference (`tests/check/c23_auto`, `c23_auto_type`; gcc 15 `-pedantic` message text identical
+except the parked rows below):
+- One rule, in `finish_declspecs`: under `-std=c23`, `auto` with no type specifier (and no `typedef`) becomes
+  `TW_AUTO_TYPE`, i.e. the existing `__auto_type` path; with any type specifier it stays the storage class.
+  The parser mirrors the rule (`Specs.auto_kw`/`auto_c23`) so the "plain identifier" and "single declarator"
+  checks and the `{` initializer error (gcc parses the initializer as an expression) fire at the same places.
+- `CSym.auto_pend` marks a symbol whose type is being inferred; `e_ident` reports "underspecified 'x' referenced
+  in its initializer" (so `auto x = x;` errors, as in gcc 15). The resolve block in `cdecl.c` now runs before
+  `cinit_decl_done`, so a file-scope auto initializer takes the normal constness path with the inferred type
+  (the `CSF_AUTO_TYPE` early return in `cinit_decl_done` is gone). A bit-field initializer is an error only for
+  `__auto_type`; `auto` takes the promoted type.
+- Special cases that grew: the parser's mirror of the `finish_declspecs` rule, and `auto_pend`.
+- Parked: declaration-error gaps (`PARKED.md`).

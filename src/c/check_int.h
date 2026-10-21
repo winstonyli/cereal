@@ -107,6 +107,7 @@ typedef struct CSym {
     uint64_t val;            /* enumeration constants: the value */
     TypeId vty;              /* enumeration constants: the value's type */
     long double fval;        /* constexpr floating object: the value */
+    uint8_t auto_pend;       /* C23 auto: its initializer is being checked */
     uint8_t cx;              /* constexpr object: 1 declared, 2 val/fval hold
                               * its value (cinit_decl_done) */
     uint32_t dep_msg;        /* deprecated/unavailable message: Checker.dep_msgs + 1 */
@@ -221,6 +222,11 @@ typedef struct Spec {
     uint8_t kind;            /* TypeSpecKind */
     bool thread, thread_gnu, is_inline, is_noreturn;
     bool constexpr_;         /* C23 constexpr */
+    bool c23_auto;           /* C23 `auto` written (auto_tok); infers the type
+                                unless a type specifier is given */
+    bool auto_infer;         /* ... and it does: word is TW_AUTO_TYPE */
+    bool auto_force;         /* finish_declspecs: apply it as a storage class */
+    uint32_t auto_tok;
     bool is_long, long_long, is_short, is_signed, is_unsigned, is_complex;
     bool sat;                /* _Sat seen (sat_loc) */
     SrcLoc sat_loc;

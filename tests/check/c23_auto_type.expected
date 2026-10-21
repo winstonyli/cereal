@@ -1,0 +1,33 @@
+c23_auto_type.c:5:5: error: '__auto_type' used with a bit-field initializer
+    5 |     __auto_type y = sb.b;
+      |     ^
+c23_auto_type.c:6:5: error: 'auto' in empty declaration
+    6 |     auto;
+      |     ^
+c23_auto_type.c:7:5: error: '__auto_type' in empty declaration
+    7 |     __auto_type;
+      |     ^
+c23_auto_type.c:8:14: error: underspecified 'w' referenced in its initializer
+    8 |     auto w = w;
+      |              ^
+c23_auto_type.c:10:17: error: expected expression before '{' token
+   10 | __auto_type n = {1};
+      |                 ^
+c23_auto_type.c:10:20: warning: ISO C does not allow extra ';' outside of a function [-Wpedantic]
+   10 | __auto_type n = {1};
+      |                    ^
+c23_auto_type.c:11:1: error: '__auto_type' requires a plain identifier as declarator
+   11 | __auto_type *q = 0;
+      | ^
+c23_auto_type.c:12:1: error: '__auto_type' requires a plain identifier as declarator
+   12 | __auto_type r[2] = {1, 2};
+      | ^
+c23_auto_type.c:12:26: warning: ISO C does not allow extra ';' outside of a function [-Wpedantic]
+   12 | __auto_type r[2] = {1, 2};
+      |                          ^
+c23_auto_type.c:14:17: warning: initializer element is not constant [-Wpedantic]
+   14 | __auto_type u = (struct S){1};
+      |                 ^
+c23_auto_type.c:16:17: error: initializer element is not constant
+   16 | __auto_type v = a + b;
+      |                 ^

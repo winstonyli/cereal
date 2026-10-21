@@ -1,6 +1,6 @@
 # C language coverage
 
-Measured 2026-10-20 by `tools/c_survey.py` (116 small probes, one feature each, every one a function
+Measured 2026-10-21 by `tools/c_survey.py` (116 small probes, one feature each, every one a function
 `int t(int k)`). Regenerate with `python3 -P tools/c_survey.py ./cereal` (Linux, needs gcc 15) and paste
 the output below; it is a survey of the features listed, not a conformance suite, and the probe list is the
 roadmap's source: add a probe when a feature is missing from it.

@@ -60,6 +60,13 @@ static void add_scspec(Checker *c, Spec *s, uint32_t tok)
             s->constexpr_ = true;
         break;
     case CK_AUTO:
+        if (c->opt.std_year >= 2023 && !s->auto_force) {
+            if (s->c23_auto)
+                cerror(c, il, "duplicate 'auto'");
+            s->c23_auto = true;
+            s->auto_tok = tok;
+            return;
+        }
         n = SC_AUTO;
         break;
     case CK_EXTERN:
@@ -502,6 +509,19 @@ static uint32_t declarator_end(Checker *c, uint32_t tok)
 static void finish_declspecs(Checker *c, Spec *s)
 {
     TypeId t = ERRT;
+    if (s->c23_auto) {
+        bool typed = s->has_type || s->word != TW_NONE || s->is_long ||
+                     s->is_short || s->is_signed || s->is_unsigned ||
+                     s->is_complex || s->sat;
+        if (!typed && s->sc != SC_TYPEDEF) {
+            s->word = TW_AUTO_TYPE;
+            s->auto_infer = true;
+        } else {
+            s->auto_force = true;
+            add_scspec(c, s, s->auto_tok);
+            s->auto_force = false;
+        }
+    }
     if (s->has_type) {
         if (s->error)
             s->ty = TYPE_B(INT);

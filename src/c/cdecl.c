@@ -1944,7 +1944,8 @@ void cdecl_shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok)
     SrcLoc il = iloc(c, ltok);
     TypeKind tk = tkind(c, sp->ty);
     if (sp->word == TW_AUTO_TYPE) {
-        cerror(c, il, "'__auto_type' in empty declaration");
+        cerror(c, il, "'%s' in empty declaration",
+               sp->auto_infer ? "auto" : "__auto_type");
         warned = 1;
     } else if (!sp->default_int && sp->kind != TSK_TYPEDEF) {
         if (!sp->error && (tk == TY_STRUCT || tk == TY_UNION || tk == TY_ENUM)) {
@@ -2560,8 +2561,10 @@ static void declared_visit(Checker *c, uint32_t i)
             break;
         }
     }
-    if (initialized && g.what == GD_VAR && sp.word == TW_AUTO_TYPE)
+    if (initialized && g.what == GD_VAR && sp.word == TW_AUTO_TYPE) {
         s.flags |= CSF_AUTO_TYPE;
+        s.auto_pend = sp.auto_infer;
+    }
     if (initialized) {
         s.flags |= CSF_DEFINED;
         s.def_loc = s.loc;
@@ -2819,25 +2822,28 @@ static void init_decl_visit(Checker *c, uint32_t idecl)
     init_ok = c->cv[declared] & 1;
     if (declared != idecl - 1 && init_ok)
         init = idecl - 1;
-    cinit_decl_done(c, idecl);
-    trad_aggr_init(c, idecl, declared, init);
-    cxx_anon_type(c, s);
-    if (init == NO_NODE)
-        cxx_uninit_const(c, s);
-    type = s->ty;
     if ((s->flags & CSF_AUTO_TYPE) && init != NO_NODE) {
-        /* __auto_type: the initializer's type after lvalue conversion */
+        /* __auto_type, C23 auto: the initializer's type after lvalue conversion
+         * (before cinit_decl_done checks the initializer against it) */
         TypeId it = cexpr_rvalue_type(c, init);
-        if ((c->ef[init] & EF_BITFIELD) && !is_err(c, it)) {
+        bool infer = s->auto_pend != 0;     /* C23 auto takes a bit-field's type */
+        s->auto_pend = 0;
+        if ((c->ef[init] & EF_BITFIELD) && !is_err(c, it) && !infer) {
             uint32_t d = c->par[idecl];
             while (d != NO_NODE && ntag(c, d) != N_DECL)
                 d = c->par[d];
             cerror(c, d == NO_NODE ? s->loc : tloc(c, cnode(c, d)->tok),
                    "'__auto_type' used with a bit-field initializer");
         } else if (!is_err(c, it) && type_ckind(TT, it) != TY_ERROR) {
-            s->ty = type = it | TYPE_QUALS(s->ty);
+            s->ty = it | TYPE_QUALS(s->ty);
         }
     }
+    cinit_decl_done(c, idecl);
+    trad_aggr_init(c, idecl, declared, init);
+    cxx_anon_type(c, s);
+    if (init == NO_NODE)
+        cxx_uninit_const(c, s);
+    type = s->ty;
     if (s->kind == CS_OBJ && !(s->flags & CSF_PARAM)) {
         if (is_incomplete_array(c, type) &&
             !(sym_public(s) && !file)) {

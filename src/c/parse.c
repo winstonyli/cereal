@@ -1626,7 +1626,8 @@ typedef struct Specs {
     bool is_typedef;
     bool gimple;                /* __GIMPLE: the body is not C */
     bool err;                   /* an unknown type name */
-    bool auto_type;             /* __auto_type */
+    bool auto_type;             /* __auto_type, or C23 auto with no type */
+    bool auto_kw, auto_c23;     /* C23 `auto` written / it infers the type */
     bool constexpr_;            /* constexpr: one initialized object */
     bool cx_seen, cx_clash;     /* constexpr written / a storage class it
                                    clashes with (the checker reports it) */
@@ -1676,7 +1677,9 @@ static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok, bool fspec
             /* fallthrough */
         case CK_EXTERN: case CK_STATIC: case CK_AUTO: case CK_REGISTER:
         case CK_THREAD_LOCAL: case CK_CONSTEXPR:
-            if (k == CK_CONSTEXPR)
+            if (k == CK_AUTO && p->year >= 2023)
+                s->auto_kw = true;      /* decided below: inference or storage */
+            else if (k == CK_CONSTEXPR)
                 s->cx_seen = true;
             else if (k != CK_STATIC && k != CK_REGISTER)
                 s->cx_clash = true;
@@ -1791,6 +1794,15 @@ static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok, bool fspec
         s->any = true;
     }
 done:
+    if (s->auto_kw) {
+        /* C23: `auto` with no type specifier infers the type and is no
+         * storage class; with one it is the storage class */
+        if (!s->type && !s->is_typedef)
+            s->auto_type = s->auto_c23 = true;
+        else
+            s->cx_clash |= s->cx_seen;
+        s->constexpr_ = s->cx_seen && !s->cx_clash;
+    }
     emit(p, N_SPECS, first, start, 0);
 }
 
@@ -1986,7 +1998,8 @@ static void declarator_init(DeclInfo *d);
 static void auto_type_error(Parser *p, uint32_t first, const char *what,
                             bool top, const Specs *s)
 {
-    perr(p, first, "'%s' %s", s->auto_type ? "__auto_type" : "constexpr", what);
+    perr(p, first, "'%s' %s", s->auto_c23 ? "auto" : s->auto_type ? "__auto_type"
+                                                                  : "constexpr", what);
     if (top || p->kr_params)
         sync_top(p);
     else
@@ -3336,8 +3349,10 @@ static void declaration(Parser *p, bool top)
             return;
         }
         if (s.auto_type && d.inner != DK_NONE) {
-            auto_type_error(p, first, "requires a plain identifier as "
-                            "declarator", top, &s);
+            auto_type_error(p, first, s.auto_c23 ? "requires a plain identifier, "
+                            "possibly with attributes, as declarator"
+                            : "requires a plain identifier as declarator",
+                            top, &s);
             emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
@@ -3423,6 +3438,25 @@ static void declaration(Parser *p, bool top)
                             "declaration", top, &s);
             emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
+        }
+        {
+            PTok nx = pk(p, 1);
+            if (s.auto_type && at(p, P_ASSIGN) && is_p(&nx, P_LBRACE)) {
+                /* gcc parses the initializer as an expression: no braces */
+                int depth = 0;
+                adv(p);
+                perr(p, ci(p), "expected expression before '{' token");
+                do {
+                    if (at(p, P_LBRACE))
+                        depth++;
+                    else if (at(p, P_RBRACE))
+                        depth--;
+                    adv(p);
+                } while (depth > 0 && !at_eof(p));
+                p->err.live = false;
+                emit(p, N_DECL, first, start, flags | NF_ERROR);
+                return;
+            }
         }
         scope_declare(&p->scope, p->toks.data[d.name].t.aux,
                       s.is_typedef ? SYM_TYPEDEF : SYM_ORDINARY);

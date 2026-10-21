@@ -2822,11 +2822,6 @@ void cinit_decl_done(Checker *c, uint32_t idecl)
         }
         return;
     }
-    if (s->flags & CSF_AUTO_TYPE) {
-        if (s->cx == 1)
-            cexpr_constexpr_init(c, s, init, s->ty);
-        return;
-    }
     type = s->ty;
     if (is_err(c, type))
         return;

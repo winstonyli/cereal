@@ -2091,6 +2091,12 @@ static void e_ident(Checker *c, uint32_t i)
         return;
     }
     s = csym(c, ref);
+    if (s->auto_pend) {
+        cerror(c, cnode_loc(c, i), "underspecified '%s' referenced in its "
+               "initializer", name);
+        set_err(c, i);
+        return;
+    }
     if (c->sx && (c->par[i] == NO_NODE || ntag(c, c->par[i]) != N_ATTR_ITEM ||
                   attr_takes_expr(c, c->par[i], true)))
         csx_sym(c, ref, c->nodes[i].tok,

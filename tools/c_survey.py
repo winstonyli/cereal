@@ -67,7 +67,7 @@ f("C11", "quick-exit-header", "C11", "#include <stdlib.h>\nint t(int k){ return 
 f("C23", "nullptr", "C23", "int t(int k){ int *p = nullptr; return p==nullptr ? k : 0; }")
 f("C23", "constexpr", "C23", "constexpr int N=4;\nint t(int k){ int a[N]={0}; return a[0]+N+k; }")
 f("C23", "typeof", "C23", "int t(int k){ typeof(k) a=k; typeof_unqual(const int) b=a; return a+b; }")
-f("C23", "auto-type", "C23", "int t(int k){ auto x = k+1; return x; }")
+f("C23", "auto-type", "C23", "constexpr auto N = 3;\nint t(int k){ auto x = k+1; auto y = (x & 255) * 1.5; const auto z = N; auto p = &x; static auto s = 7L; return x + (int)y + z + *p + (int)s + (int)sizeof(s); }")
 f("C23", "bool-keyword", "C23", "int t(int k){ bool b = k; return b ? true : false; }")
 f("C23", "attributes", "C23", "[[nodiscard]] int g(void){ return 1; }\n[[maybe_unused]] static int u;\nint t(int k){ [[maybe_unused]] int q=k; return g()+k; }")
 f("C23", "fallthrough-attr", "C23", "int t(int k){ switch(k){ case 1: k++; [[fallthrough]]; case 2: k++; } return k; }")
