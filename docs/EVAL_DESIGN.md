@@ -17,7 +17,7 @@ arithmetic and memory rules:
 | where | works on | covers | notes |
 |---|---|---|---|
 | `src/c/cexpr.c` (`e_*`, `int_op`, `conv_const`, `fold_*`) | the checker's per-node arrays `ck/cv/ef` | integer and float expressions, addresses; 64-bit; gcc's ICE/fold distinctions and deferred overflow warnings | the diagnostics depend on it; no aggregates |
-| `src/c/cgdata.c` `ev`/`elem` | TAST `TO_DATA` trees | static initializers: ints, floats, addresses plus offsets | no division or comparison, no `long double`, no compound literals |
+| `src/c/cgdata.c` `ev`/`elem` | TAST `TO_DATA` trees | static initializers: ints, floats, addresses plus offsets | deleted at E5 (2026-10-21); `ev_object` replaces it (it had no division or comparison, no `long double`, no compound literals) |
 | `tests/tast_data.py` | TAST `data` nodes | an oracle: evaluates them in Python and compares bytes and relocations with gcc's object file | 433 lines; independent of `cgdata.c`, so it stays a check unless the C evaluator is compared with gcc's objects directly (decide at E5) |
 | `tests/cfg_exec.py` | `--dump-cfg` text | integer functions with one cell per object and byte offset | deleted at E2 (2026-10-21); the evaluator and `tests/eval_sweep.sh` replace it |
 
@@ -127,12 +127,11 @@ typedef struct Ev Ev;
 Ev *ev_new(Checker *c, const EvOpts *o);          /* fuel, depth, policy */
 void ev_add_func(Ev *v, El *e, Cfg *g);           /* retain a lowered function */
 EvRes ev_call(Ev *v, uint32_t fsym, const EvVal *args, size_t n, EvVal *out);
-EvRes ev_object(Ev *v, El *e, uint32_t data, EvImage *out); /* bytes + relocs */
+bool ev_object(Ev *v, El *e, uint32_t data, EvImage *out); /* bytes + relocs (E5, as built) */
 EvRes ev_expr(Ev *v, El *e, uint32_t node, EvVal *out);     /* constants */
 ```
 
-`EvImage` is what `cgdata.c` builds today (a byte image plus relocations), so
-E5 swaps `ev`/`elem` for `ev_object`.
+`EvImage` is a byte image plus relocations; `cgdata.c` turns it into `MData`.
 
 ## 7. Layering: the one real problem
 
@@ -218,7 +217,7 @@ version.
   host-call whitelist for libc functions; others are reported).
 - **E4:** `constexpr` aggregates and braced scalars through `ev_expr`, with
   the checker keeping ICE and diagnostics (option A).
-- **E5:** replace `cgdata.c` `ev`/`elem` with `ev_object`. `tests/tast_data.py`
+- **E5 (done, see "E5 result"):** replace `cgdata.c` `ev`/`elem` with `ev_object`. `tests/tast_data.py`
   keeps its job (an independent Python check of the data images against
   gcc's objects) unless E2's harness compares `ev_object` with gcc's object
   bytes directly, in which case it is retired.
@@ -423,6 +422,52 @@ library shares; `eval_run.c` holds the two clients of `ev_call` (`cereal run` an
 `--eval-sweep`), chosen by `opt.eval` (`EVAL_RUN`, `EVAL_SWEEP`; `CHK_EVAL(o)`
 is the one test the lowering and dump code ask). A third client is another enum
 value and another function in `eval_run.c`.
+
+### E5 result (2026-10-21)
+
+Steps A and B as decided (all recommended options):
+
+- `ev_object(v, e, n, &img)` (`eval.c`) runs the object's `init_elems` (the code
+  `cereal run` uses) and returns the bytes with one relocation per
+  address-valued element, in element order. `cgdata.c` keeps the symbol name,
+  section, alignment and the `MData` conversion; the old `ev`, `elem`, `Val`
+  and `add_reloc` (about 440 lines) are deleted. An object with no elements is
+  not built at all (its image is all zero, whatever its size).
+- **Which elements are addresses** is told from the tree (`addr_node`:
+  `TO_ADDR`, `TO_LABADDR`, through casts and pointer arithmetic), because the
+  evaluator's slot does not say. A pointer-typed element that holds an
+  object's address but was not classified stops with a reason instead of being
+  written as an integer.
+- **Objects know their symbol:** `Obj.kind` (static, string literal, label)
+  with `ref` and `fname`; functions stay `Obj.fn`. A relocation is the
+  object's symbol plus the pointer's offset. A string literal becomes a
+  read-only object of its own per reference, in the same order and names as
+  before.
+- **Static objects initialize on first access** (`ev_access`), not on first
+  reference, so taking an address needs no initializer. A global with no
+  definition registered is a *stub*: its address is usable, reading it stops
+  with "no definition in this unit". Labels are objects too. In the emit modes
+  the evaluator holds only each unit's `TO_DATA` copies (`eval_statics`).
+- **Constant folding** (`Ev.fold`, set while an image is built): float to
+  integer conversions saturate and NaN is 0, as gcc folds them, where
+  `cereal run` traps. This fixed `unsigned c = -1.0;`, which the old code wrote
+  as 0xffffffff and gcc writes as 0.
+- **Check:** step A compared the two paths on every object of 690 test files
+  and of zstd, Lua and libuv (no mismatch except the two cases above). Step B:
+  the Lua and libuv objects are byte-identical to step A's, and the test files
+  differ only in the "unsupported" texts (now the evaluator's) and in five
+  objects whose source has diagnosed errors and now emit (the evaluator reads
+  constant objects, as gcc does for a folded initializer; gcc rejects these
+  files too). `tests/tast_data.py` stays as the independent Python check
+  against gcc's objects.
+- **Tests:** `tests/asm_exec/sdata.c` (saturating conversions, folded
+  comparisons and `?:`, a pointer cycle, pointers into strings and arrays,
+  function pointers, nested aggregates) is run against gcc by `asm_exec.py`.
+  Mutation check of the new `eval.c` code: 9 of 10 mutants killed; the survivor
+  (not zeroing the bytes of an address element) is equivalent, the linker
+  overwrites them.
+- **For E4:** `constexpr` aggregates read these images; mid-check evaluation
+  still needs `sym` always on (S1).
 
 ## 10. Review log
 
