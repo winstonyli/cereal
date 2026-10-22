@@ -813,6 +813,9 @@ void checker_free(Checker *c)
     for (uint32_t i = 0; i < c->strinits.len; i++)
         free(c->strinits.data[i].b);
     vec_free(&c->strinits);
+    for (uint32_t i = 0; i < c->cximg.len; i++)
+        free(c->cximg.data[i].b);
+    vec_free(&c->cximg);
     vec_free(&c->wina_td);
     vec_free(&c->ucn_seen);
     vec_free(&c->wina_rec);

@@ -130,8 +130,8 @@ splice keeps the old behaviour).
 - Runtime: the survey's `constexpr` row runs `t` against `gcc -std=c23` (equal); a manual `--emit-obj` run
   of eight functions (integers, floats, `long long`, `switch` labels, array bounds, a null pointer) matched too.
   Survey: 109 of 116 front end, 87 back end (was 108 and 86).
-- Not done (parked): braced scalar initializers and aggregates (`constexpr struct S s = {..}`, members),
-  "defined in underspecified object declaration" for a `struct`/`enum` defined in a constexpr declaration,
+- Aggregates, braced scalars and constant members were added at E4 (`docs/EVAL_DESIGN.md` "E4 result").
+- Not done (parked): "defined in underspecified object declaration" for a `struct`/`enum` defined in a constexpr declaration,
   `constexpr auto x = 1` (C23 `auto` type inference does not exist yet in cereal), a conditional with a
   non-constant unevaluated arm (`1 ? 2 : nc` is accepted, gcc rejects), the struct-field storage message
   (cereal says "storage class specified for structure field", gcc "expected specifier-qualifier-list"; true

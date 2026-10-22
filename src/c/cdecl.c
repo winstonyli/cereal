@@ -2895,6 +2895,8 @@ static void init_decl_visit(Checker *c, uint32_t idecl)
                    sname(c, s));
             s->ty = ERRT;
         }
+        if (s->cx == 1 && init != NO_NODE)
+            cexpr_constexpr_agg(c, s, ref, init);
     }
     dump_decl(c, csym(c, ref));
 }

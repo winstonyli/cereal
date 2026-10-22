@@ -2278,5 +2278,6 @@ void e_member(Checker *c, uint32_t i)
         c->cv[i] = c->cv[d] + off / 8;
         addr_rvalue(c, i);
     }
+    cexpr_cx_fold(c, i);
 }
 

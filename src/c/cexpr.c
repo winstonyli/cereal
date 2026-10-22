@@ -18,6 +18,7 @@
  * K_FOLD; EF_INTOPS is C_MAYBE_CONST_EXPR_INT_OPERANDS. */
 #include "c/cexpr_int.h"
 #include "c/fuzzy.h"
+#include "c/tast.h"
 
 #include <ctype.h>
 #include <inttypes.h>
@@ -7089,33 +7090,122 @@ static bool value_use(Checker *c, uint32_t i)
     }
 }
 
-static void constexpr_read(Checker *c, uint32_t i, const CSym *s)
+/* Node i reads a constexpr value of scalar type t (a null pointer: val 0). */
+static void cx_set(Checker *c, uint32_t i, TypeId t, uint64_t val, long double fv)
 {
-    TypeId t = unqual(c, s->ty);
+    c->cb[i] = 0;
     if (is_flt(c, t)) {
         c->ck[i] = K_FLOAT;
-        c->cv[i] = fpush(c, s->fval);
+        c->cv[i] = fpush(c, fv);
         c->ef[i] = EF_REALCST;
     } else if (is_ptr(c, t)) {
         c->ck[i] = K_ADDR;
-        c->cb[i] = 0;
         c->cv[i] = 0;
         c->ef[i] = 0;
     } else {
         c->ck[i] = K_ICE;
-        c->cv[i] = s->val;
+        c->cv[i] = val;
         c->ef[i] = EF_INTOPS;
     }
 }
 
-/* The initializer of a constexpr scalar (gcc's check_for_...constexpr). */
-void cexpr_constexpr_init(Checker *c, CSym *s, uint32_t init, TypeId type)
+static void constexpr_read(Checker *c, uint32_t i, const CSym *s)
 {
-    TypeId t = unqual(c, type), it = c->ty[init];
+    cx_set(c, i, unqual(c, s->ty), s->val, s->fval);
+}
+
+/* The constant of scalar type t at byte off of a constexpr aggregate's bytes;
+ * false if it is not one (a bit-field, long double, a non-null pointer). */
+static bool cx_load(Checker *c, const CxImg *im, uint64_t off, TypeId t, uint64_t *val, long double *fv)
+{
+    bool ok = false;
+    uint64_t sz = type_size(TT, t, &ok), raw = 0;
+    unsigned k;
+    if (!ok || !sz || sz > 8 || off > im->n || sz > im->n - off)
+        return false;
+    for (k = 0; im->b && k < sz; k++)
+        raw |= (uint64_t)im->b[off + k] << (8 * k);
+    if (is_flt(c, t)) {
+        if (sz == 4) {
+            float f;
+            uint32_t u = (uint32_t)raw;
+            memcpy(&f, &u, 4);
+            *fv = f;
+        } else if (sz == 8) {
+            double d;
+            memcpy(&d, &raw, 8);
+            *fv = d;
+        } else
+            return false;
+    } else if (is_ptr(c, t)) {
+        if (raw)
+            return false;
+        *val = 0;
+    } else if (is_int(c, t))
+        *val = cexpr_trunc(c, t, raw);
+    else
+        return false;
+    return true;
+}
+
+/* The constexpr aggregate lvalue n names (the object and its members) and the
+ * byte offset into it. */
+static bool cx_lv(Checker *c, uint32_t n, uint32_t *ref, uint64_t *off)
+{
+    n = strip_paren(c, n);
+    if (n == NO_NODE)
+        return false;
+    switch (ntag(c, n)) {
+    case N_IDENT: {
+        uint32_t r = lookup_ord(c, cnode_ident(c, n));
+        if (r == SYM_NONE || !csym(c, r)->cximg)
+            return false;
+        *ref = r;
+        *off = 0;
+        return true;
+    }
+    case N_MEMBER_EXPR: {
+        uint32_t d = first_child(c, n);
+        const Field *f;
+        uint64_t fo = 0;
+        unsigned q = 0;
+        if ((c->nodes[n].flags & NF_ARROW) || d == NO_NODE || !cx_lv(c, d, ref, off) ||
+            !is_record(c, c->ty[d]) || !cnode_ident(c, n))
+            return false;
+        f = find_field(c, c->ty[d], cnode_ident(c, n), &fo, &q);
+        if (!f || (f->flags & FF_BITFIELD))
+            return false;
+        *off += fo / 8;
+        return true;
+    }
+    default:                    /* gcc does not fold a subscript of a constexpr array */
+        return false;
+    }
+}
+
+/* A read of a member of a constexpr aggregate is a constant. */
+void cexpr_cx_fold(Checker *c, uint32_t i)
+{
+    TypeId t = unqual(c, c->ty[i]);
+    uint32_t ref;
+    uint64_t off, val = 0;
+    long double fv = 0;
+    if ((!is_int(c, t) && !is_flt(c, t) && !is_ptr(c, t)) || (c->ef[i] & EF_BITFIELD) ||
+        !value_use(c, i) || !cx_lv(c, i, &ref, &off) ||
+        !cx_load(c, &c->cximg.data[csym(c, ref)->cximg - 1], off, t, &val, &fv))
+        return;
+    cx_set(c, i, t, val, fv);
+}
+
+/* The initializer of a constexpr scalar (gcc's check_for_...constexpr): its
+ * value in *val (*fval for a floating type), false after a diagnostic. */
+static bool cx_scalar(Checker *c, TypeId t, uint32_t init, uint64_t *val, long double *fval)
+{
+    TypeId it = c->ty[init];
     SrcLoc l = tloc(c, first_tok(c, init));
     bool ok = false;
     if (is_err(c, t) || is_err(c, it))
-        return;
+        return false;
     if (is_int(c, t)) {
         /* integer constant operands, not only an ICE: 1 << 31 passes (a
          * -O folded const variable does not) */
@@ -7127,7 +7217,7 @@ void cexpr_constexpr_init(Checker *c, CSym *s, uint32_t init, TypeId type)
             cerror(c, l, "'constexpr' initializer not representable in type "
                    "of object");
         else {
-            s->val = cexpr_trunc(c, t, c->cv[init]);
+            *val = cexpr_trunc(c, t, c->cv[init]);
             ok = true;
         }
     } else if (is_flt(c, t)) {
@@ -7147,7 +7237,7 @@ void cexpr_constexpr_init(Checker *c, CSym *s, uint32_t init, TypeId type)
             cerror(c, l, "'constexpr' initializer not representable in type "
                    "of object");
         else {
-            s->fval = v;
+            *fval = v;
             ok = true;
         }
     } else if (is_ptr(c, t)) {
@@ -7156,11 +7246,48 @@ void cexpr_constexpr_init(Checker *c, CSym *s, uint32_t init, TypeId type)
         if (!null)
             cerror(c, l, "'constexpr' pointer initializer is not null");
         else {
-            s->val = 0;
+            *val = 0;
             ok = true;
         }
     }
-    if (ok)
+    return ok;
+}
+
+/* An aggregate's initializer element (tast_image): a constant of its type. */
+static bool cx_elem(Checker *c, const TIRec *r)
+{
+    uint64_t v;
+    long double f;
+    if (r->width)                       /* bit-fields: parked */
+        return true;
+    return cx_scalar(c, unqual(c, r->ty), r->node, &v, &f);
+}
+
+/* A constexpr aggregate (or a braced scalar): every element is checked, and
+ * the evaluator builds the bytes, which reads of its members and elements
+ * fold from (cexpr_cx_fold). */
+void cexpr_constexpr_agg(Checker *c, CSym *s, uint32_t ref, uint32_t init)
+{
+    CxImg im;
+    TypeId t = unqual(c, s->ty);
+    bool agg = is_record(c, t) || is_array(c, t);
+    if (c->diag->nerrors != c->unit_nerr0 || is_err(c, t) || s->cx != 1)
+        return;
+    if (ntag(c, init) != N_INIT_LIST &&
+        !(is_array(c, t) && ntag(c, strip_paren(c, init)) == N_STRING))
+        return;
+    memset(&im, 0, sizeof im);
+    if (!tast_image(c, ref, init, cx_elem, &im))
+        return;
+    vec_push(&c->cximg, im);
+    s->cximg = (uint32_t)c->cximg.len;
+    if (!agg && cx_load(c, &im, 0, t, &s->val, &s->fval))
+        s->cx = 2;
+}
+
+void cexpr_constexpr_init(Checker *c, CSym *s, uint32_t init, TypeId type)
+{
+    if (cx_scalar(c, unqual(c, type), init, &s->val, &s->fval))
         s->cx = 2;
 }
 

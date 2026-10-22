@@ -14,4 +14,9 @@
 /* Elaborates and prints the unit the checker just visited (c->opt.tast). */
 void tast_unit(Checker *c);
 
+/* The bytes of object ref initialized by init (a constexpr aggregate): false
+ * if chk rejects an element (it reports), or the evaluator cannot build it. */
+bool tast_image(Checker *c, uint32_t ref, uint32_t init, bool (*chk)(Checker *, const TIRec *),
+                CxImg *out);
+
 #endif

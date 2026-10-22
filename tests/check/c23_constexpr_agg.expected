@@ -1,0 +1,54 @@
+c23_constexpr_agg.c:10:5: error: variably modified 'v2' at file scope
+   10 | int v2[arr[3] - arr[1]];
+      |     ^
+c23_constexpr_agg.c:11:5: error: variably modified 'v3' at file scope
+   11 | int v3[q.in[1].y + q.s];
+      |     ^
+c23_constexpr_agg.c:13:28: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   13 | _Static_assert(p.f == 0.5f && p.d == 0.25, "floats");
+      |                            ^
+c23_constexpr_agg.c:14:30: error: expression in static assertion is not constant
+   14 | _Static_assert(p.c[1] == 'b' && p.c[2] == 0, "chars");
+      |                              ^
+c23_constexpr_agg.c:15:58: error: expression in static assertion is not constant
+   15 | _Static_assert(arr[0] == 1 && arr[1] == 2 && arr[2] == 0 && arr[3] == 9, "array");
+      |                                                          ^
+c23_constexpr_agg.c:16:30: error: expression in static assertion is not constant
+   16 | _Static_assert(str[0] == 'h' && str[3] == 0, "string");
+      |                              ^
+c23_constexpr_agg.c:18:49: error: expression in static assertion is not constant
+   18 | _Static_assert(q.in[0].x == 1 && q.in[1].x == 0 && q.in[1].y == 7, "nested");
+      |                                                 ^
+c23_constexpr_agg.c:19:20: warning: expression in static assertion is not an integer constant expression [-Wpedantic]
+   19 | _Static_assert(p.p == nullptr, "null member");
+      |                    ^
+c23_constexpr_agg.c:26:12: warning: cast from pointer to integer of different size [-Wpointer-to-int-cast]
+   26 |     return (int)&p.x != 0;
+      |            ^
+c23_constexpr_agg.c:29:29: error: initializer element is not constant
+   29 | constexpr struct P bad1 = { ng };
+      |                             ^
+c23_constexpr_agg.c:29:29: note: (near initialization for 'bad1.x')
+   29 | constexpr struct P bad1 = { ng };
+      |                             ^
+c23_constexpr_agg.c:30:30: error: 'constexpr' integer initializer is not an integer constant expression
+   30 | constexpr int bad2[2] = { 1, 1.5 };
+      |                              ^
+c23_constexpr_agg.c:31:45: error: 'constexpr' pointer initializer is not null
+   31 | constexpr struct P bad3 = { 0, 0, 0, 0, "", &ng };
+      |                                             ^
+c23_constexpr_agg.c:32:42: warning: unsigned conversion from 'int' to 'unsigned char' changes value from '256' to '0' [-Woverflow]
+   32 | constexpr unsigned char bad4[2] = { 255, 256 };
+      |                                          ^
+c23_constexpr_agg.c:32:42: error: 'constexpr' initializer not representable in type of object
+   32 | constexpr unsigned char bad4[2] = { 255, 256 };
+      |                                          ^
+c23_constexpr_agg.c:33:5: error: variably modified 'out_of_range' at file scope
+   33 | int out_of_range[arr[4]];
+      |     ^
+c23_constexpr_agg.c:35:22: error: assignment of member 'x' in read-only object
+   35 | void mod(void) { p.x = 1; arr[0]++; (void)&arr[1]; }
+      |                      ^
+c23_constexpr_agg.c:35:33: error: increment of read-only location 'arr[0]'
+   35 | void mod(void) { p.x = 1; arr[0]++; (void)&arr[1]; }
+      |                                 ^

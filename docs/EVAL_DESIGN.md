@@ -215,8 +215,8 @@ version.
   `asm_exec.py` or a shared module) and the parked "execution oracle" row.
 - **E3 (done, see "E3 result"):** `cereal run FILE.c...` over E1/E2 (arguments, exit status, the
   host-call whitelist for libc functions; others are reported).
-- **E4:** `constexpr` aggregates and braced scalars through `ev_expr`, with
-  the checker keeping ICE and diagnostics (option A).
+- **E4 (done, see "E4 result"):** `constexpr` aggregates and braced scalars read from `ev_object`
+  images, with the checker keeping ICE and diagnostics (option A).
 - **E5 (done, see "E5 result"):** replace `cgdata.c` `ev`/`elem` with `ev_object`. `tests/tast_data.py`
   keeps its job (an independent Python check of the data images against
   gcc's objects) unless E2's harness compares `ev_object` with gcc's object
@@ -466,8 +466,30 @@ Steps A and B as decided (all recommended options):
   Mutation check of the new `eval.c` code: 9 of 10 mutants killed; the survivor
   (not zeroing the bytes of an address element) is equivalent, the linker
   overwrites them.
-- **For E4:** `constexpr` aggregates read these images; mid-check evaluation
-  still needs `sym` always on (S1).
+### E4 result (2026-10-21)
+
+Decisions as recommended (always-on recording, image in a checker-side table, members and braced
+scalars first):
+
+- **Mid-check elaboration** (`tast_image`, `tast.c`): the initializer of a `constexpr` aggregate is
+  elaborated into a scratch `El` (`data_node`, the code `--dump-tast` uses), registered with the
+  evaluator and built with `ev_object`. `sym` was already allocated; what `opt.tast` gated was the
+  `TIRec` recording (`cinit.c`, two places), now unconditional. Cost, five runs each of
+  `zstd_compress.c`, `lvm.c`, `lparser.c` with `-fsyntax-only`: within noise (0.28 to 0.31 s against
+  0.30 s for zstd). The call is in `init_decl_visit` (`cdecl.c`), after the array type is completed
+  (`int a[] = {..}`); `cexpr_constexpr_agg` (`cexpr.c`).
+- **Element checks stay in the checker:** `El.elem_chk` is called by `init_elems` for each live
+  element (overridden designators are not checked), and runs the scalar rules of `cexpr_constexpr_init`
+  (`cx_scalar`, shared with the scalar path). A pointer element must be null, so an image never holds a
+  relocation.
+- **Reads:** `CSym.cximg` indexes `Checker.cximg` (bytes only). `e_member` calls `cexpr_cx_fold`: a
+  non-bit-field member of integer, floating or pointer type, reached through members of a constexpr
+  object (`s.in.a`), read as a value (`value_use`), becomes a constant from the bytes (`cx_load`, `cx_set`
+  shared with the scalar read). Works for block-scope objects too (no address needed).
+- **Subscripts do not fold, as in gcc 15** (`arr[1]`, `s.c[1]`, `str[0]` are "not constant" there):
+  `tests/check/c23_constexpr_agg` holds those errors; its 54-line output equals gcc 15 `-pedantic`
+  (messages and locations).
+- Braced scalars (`constexpr int x = {1};`) set `val`/`fval` from the image, so they read as scalars.
 
 ## 10. Review log
 

@@ -1554,8 +1554,7 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
             return;
     }
 
-    if (c->opt.tast)
-        tin_elem(c, x, L, k, key, type, &v);
+    tin_elem(c, x, L, k, key, type, &v);
     if (k == LV_ARR && (!L->inc || key != L->ui)) {
         if (L->inc && key < L->ui)
             nonincr(c, L);
@@ -2596,7 +2595,7 @@ static void finalize_root(Checker *c, CCtx *x)
         maybe_warn_string(c, NULL, cl != NOB && cl < c->nn && ntag(c, cl) == N_COMPOUND_LIT
                           ? c->nodes[cl].tok : x->init_loc, rtype, &r);
         if (digest(c, NULL, x->init_loc, true, x->reqc, rtype, &v)) {
-            if (c->opt.tast) {
+            {
                 bool ok;
                 TIRec t;
                 uint64_t unit = type_size(TT, type_base(TT, type_canon(TT, rtype)), &ok);

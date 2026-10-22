@@ -70,6 +70,8 @@ typedef struct El {
     uint32_t ntmp;          /* temporaries made so far (tmp N, N < ntmp) */
     uint32_t ncl;           /* compound literals made so far (complit N) */
     bool infunc;
+    bool (*elem_chk)(Checker *, const TIRec *);   /* sees each live initializer element; false: reject (constexpr, tast_image) */
+    bool chk_bad;           /* elem_chk rejected an element */
     char why[96];           /* non-empty: unsupported, and the reason */
 } El;
 

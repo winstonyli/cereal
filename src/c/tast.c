@@ -1288,6 +1288,8 @@ static bool init_elems(El *e, uint32_t init, TypeId oty, bool is_static, SrcLoc 
             }
             ka[0] = lval(e, x);
         } else {
+            if (e->elem_chk && !e->elem_chk(c, r))
+                e->chk_bad = true;
             if (!ok_ty(e, ty)) {
                 tunsup(e, "%s", why_type(e, ty));
                 goto done;
@@ -1321,6 +1323,42 @@ static uint32_t data_node(El *e, uint32_t ref, uint32_t init, SrcLoc loc)
         id = mk(e, TO_DATA, s->ty, loc, 0, ref, 0, el.data, (uint32_t)el.len);
     vec_free(&el);
     return id;
+}
+
+/* The bytes of the object ref initialized by init, for the checker (constexpr
+ * aggregates, cexpr.c): the initializer is elaborated into a scratch unit and
+ * evaluated as a static object.  chk sees each live element first.  False:
+ * chk rejected an element, the evaluator does not support the initializer, or
+ * it holds an address. */
+bool tast_image(Checker *c, uint32_t ref, uint32_t init, bool (*chk)(Checker *, const TIRec *),
+                CxImg *out)
+{
+    El e;
+    EvImage img;
+    uint32_t id;
+    bool ok = false;
+    memset(&e, 0, sizeof e);
+    e.c = c;
+    e.elem_chk = chk;
+    id = data_node(&e, ref, init, cnode_loc(c, init));
+    if (id != TN && !e.chk_bad) {
+        Ev *v = ev_of(c);
+        ev_add_data(v, &e);
+        if (ev_object(v, &e, id, &img)) {
+            if (!img.nrel) {
+                out->b = img.bytes;
+                out->n = img.size;
+                img.bytes = NULL;
+                ok = true;
+            }
+            ev_image_free(&img);
+        }
+    }
+    vec_free(&e.nodes);
+    vec_free(&e.kids);
+    vec_free(&e.bytes);
+    vec_free(&e.params);
+    return ok;
 }
 
 /* The local variables a block-scope declaration introduces. */

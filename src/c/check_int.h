@@ -121,6 +121,7 @@ typedef struct CSym {
     uint32_t aset;           /* attribute names written or copied: Checker.anames set id */
     uint32_t ualign;         /* a function's user alignment in bytes (aligned attribute) */
     uint32_t strinit;        /* const char array initialised by a string: Checker.strinits + 1 */
+    uint32_t cximg;          /* constexpr aggregate: its bytes, Checker.cximg + 1 */
     uint32_t parms;          /* cparm.c: how the parameters were declared (the
                               * first prototype's): Checker.pdescs + 1 */
 } CSym;
@@ -325,6 +326,12 @@ typedef struct TIRec {
     uint64_t strn;           /* TI_ELEM str: units including the NUL */
 } TIRec;
 
+/* The bytes of a constexpr aggregate (cexpr.c), from the evaluator. */
+typedef struct CxImg {
+    uint8_t *b;              /* NULL: all zero */
+    uint64_t n;
+} CxImg;
+
 struct Checker {
     SrcMgr *sm;
     Interner *in;
@@ -341,6 +348,7 @@ struct Checker {
     SymIdxB *sx;             /* the symbol index builder; NULL: off */
     VEC(TIRec) tinit;        /* --dump-tast: this unit's initializer elements */
     VEC(StrInit) strinits;   /* string initializers of const char arrays (cexpr.c) */
+    VEC(CxImg) cximg;        /* constexpr aggregates' bytes (cexpr.c) */
     VEC(char *) dep_msgs;    /* deprecated/unavailable attribute messages */
     VEC(uint32_t) ucn_seen;           /* cexpr.c: literal tokens whose escapes were checked */
     VEC(uint32_t) tdvla;              /* cparm.c: (typedef type, pdescs index + 1) pairs */
@@ -882,6 +890,8 @@ uint64_t cexpr_trunc(Checker *c, TypeId t, uint64_t v);
 /* Does the value v of type from fit type to? */
 bool cexpr_fits(Checker *c, uint64_t v, TypeId from, TypeId to);
 void cexpr_constexpr_init(Checker *c, CSym *s, uint32_t init, TypeId type);
+void cexpr_constexpr_agg(Checker *c, CSym *s, uint32_t ref, uint32_t init);   /* after the array type is completed */
+void cexpr_cx_fold(Checker *c, uint32_t i);   /* a member of a constexpr aggregate read as a value */
 /* The member name of a record (anonymous members searched); returns the
  * field's type and adds its offset in bits; false if there is none. */
 bool cexpr_find_member(Checker *c, TypeId rec, uint32_t name, TypeId *ty,
