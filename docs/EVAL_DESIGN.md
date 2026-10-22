@@ -509,7 +509,9 @@ the host table. `unreachable` is a trap, and so are `clz(0)`/`ctz(0)` and a
 `bit_ceil` that does not fit (undefined; the checker still folds `clz(0)` to the
 width as gcc does). Unsupported, naming the built-in: `RT` helpers, `rcp`,
 `rsqrt`, `clflush`, the MXCSR pair, and libc rows with no host function
-(`strncat`, `strstr`). The link gains `-lm` for the host `sqrt`.
+(`strncat`, `strstr`). The host table also gained `tolower`, `toupper`,
+`floor`, `ceil` and `frexp` (golden `libc_num.c`, 4 of 4 mutants killed);
+`clock` stays out, as it is not deterministic. The link gains `-lm` for the host `sqrt`.
 Goldens `intrin.c` (bit scans, overflow, atomics, the rest, against gcc),
 `stdc.c` (gcc 13 has no `__builtin_stdc_*`, so the gcc side is an independent
 macro oracle), `trap_clz0.c`, `trap_unreachable.c`. Mutation check: 20 mutants
