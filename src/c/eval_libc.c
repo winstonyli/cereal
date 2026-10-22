@@ -44,6 +44,7 @@ static uint8_t *wr(Ev *v, uint64_t p, uint64_t n, const char *who)
         return NULL;
     }
     memset(o->init + poff(p), 1, n);
+    ev_unshadow(o, (uint64_t)poff(p), n);
     return o->b + poff(p);
 }
 
@@ -504,6 +505,10 @@ static uint64_t h_realloc(Ev *v, const HArg *a, unsigned na)
     keep = o->size < a[1].x ? o->size : a[1].x;
     memcpy(v->obj.data[id - 1].b, o->b, keep);
     memcpy(v->obj.data[id - 1].init, o->init, keep);
+    if (o->sh) {
+        v->obj.data[id - 1].sh = xcalloc(a[1].x, sizeof *o->sh);
+        memcpy(v->obj.data[id - 1].sh, o->sh, keep * sizeof *o->sh);
+    }
     ev_kill_obj(v, pid(a[0].x));
     return mkptr(id, 0);
 }
@@ -736,7 +741,7 @@ static bool dbl(Ev *v, const HArg *a, double *d)
 
 static uint64_t dret(double d)
 {
-    Ti ti = {8, false, false, true};
+    Ti ti = {8, false, false, true, false};
     return ev_fput(&ti, d);
 }
 

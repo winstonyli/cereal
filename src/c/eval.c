@@ -40,6 +40,7 @@ bool ev_tinfo(Ev *v, TypeId t, Ti *ti)
     memset(ti, 0, sizeof *ti);
     if (k == TY_PTR || k == TY_NULLPTR) {
         ti->bytes = 8;
+        ti->ptr = true;
         return true;
     }
     if (k == TY_FLOAT || k == TY_DOUBLE) {
@@ -109,7 +110,15 @@ void ev_kill_obj(Ev *v, uint32_t id)
     o->live = false;
     free(o->b);
     free(o->init);
+    free(o->sh);
     o->b = o->init = NULL;
+    o->sh = NULL;
+}
+
+void ev_unshadow(Obj *o, uint64_t off, uint64_t n)
+{
+    if (o->sh)
+        memset(o->sh + off, 0, n * sizeof *o->sh);
 }
 
 
@@ -158,11 +167,56 @@ Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
     return o;
 }
 
+/* Tracking: the shadow of the ti->bytes bytes at off of o, as one slot expression (0: all concrete). */
+static uint32_t load_sh(Ev *v, const Obj *o, uint64_t off, const Ti *ti)
+{
+    uint32_t x = 0;
+    unsigned i;
+    bool any = false;
+    if (!v->track || !o->sh || ti->flt || ti->ptr)
+        return 0;
+    for (i = 0; i < ti->bytes && !any; i++)
+        any = o->sh[off + i] != 0;
+    if (!any)
+        return 0;
+    for (i = ti->bytes; i-- > 0;) {
+        uint32_t b = o->sh[off + i] ? o->sh[off + i] : sx_const(&v->sx, 8, o->b[off + i]);
+        x = x ? sx_join(&v->sx, x, b) : b;
+    }
+    return sx_ext(&v->sx, x, ti->bytes, ti->sg, ti->boolean);
+}
+
+/* The bytes [off, off + n) of o now hold the slot expression sh (0: concrete). */
+static void store_sh(Ev *v, Obj *o, uint64_t off, unsigned n, uint32_t sh)
+{
+    unsigned i;
+    if (!sh) {
+        ev_unshadow(o, off, n);
+        return;
+    }
+    if (!o->sh)
+        o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
+    for (i = 0; i < n; i++)
+        o->sh[off + i] = i < 8 ? sx_byte(&v->sx, sh, i) : 0;
+}
+
+/* The shadow of a value cast to ti (as ev_canon does it). */
+static uint32_t canon_sh(Ev *v, const Ti *ti, uint32_t sh)
+{
+    if (!sh || ti->flt || ti->ptr)
+        return 0;
+    if (ti->bytes >= 8 && !ti->boolean)
+        return sh;
+    return sx_ext(&v->sx, sh, ti->bytes, ti->sg, ti->boolean);
+}
+
+/* Sets v->sh to the loaded value's shadow. */
 static uint64_t load_n(Ev *v, uint64_t p, const Ti *ti)
 {
     Obj *o = ev_access(v, p, ti->bytes, "read");
     uint64_t x = 0;
     unsigned i;
+    v->sh = 0;
     if (!o)
         return 0;
     for (i = 0; i < ti->bytes; i++) {
@@ -172,10 +226,11 @@ static uint64_t load_n(Ev *v, uint64_t p, const Ti *ti)
         }
         x |= (uint64_t)o->b[poff(p) + i] << (8 * i);
     }
+    v->sh = load_sh(v, o, (uint64_t)poff(p), ti);
     return ev_canon(ti, x);
 }
 
-static void store_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x)
+static void store_sh_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x, uint32_t sh)
 {
     Obj *o = ev_access(v, p, ti->bytes, "write");
     unsigned i;
@@ -189,6 +244,12 @@ static void store_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x)
         o->b[poff(p) + i] = (uint8_t)(x >> (8 * i));
         o->init[poff(p) + i] = 1;
     }
+    store_sh(v, o, (uint64_t)poff(p), ti->bytes, v->track && !ti->flt && !ti->ptr ? sh : 0);
+}
+
+static void store_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x)
+{
+    store_sh_n(v, p, ti, x, 0);
 }
 
 /* Bit-fields: the address is the byte holding the lowest bit, the field is `width`
@@ -248,6 +309,7 @@ static uint64_t bf_store(Ev *v, uint64_t p, const Ti *ti, unsigned pun, unsigned
         o->b[poff(p) + i] = (uint8_t)(x >> (8 * i));
         o->init[poff(p) + i] = 1;
     }
+    ev_unshadow(o, (uint64_t)poff(p), n);
     return bf_ext(ti, width, val);
 }
 
@@ -266,6 +328,13 @@ void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
     }
     memmove(d->b + poff(dst), s->b + poff(src), n);
     memmove(d->init + poff(dst), s->init + poff(src), n);
+    if (s->sh) {
+        if (!d->sh)
+            d->sh = xcalloc(d->size ? d->size : 1, sizeof *d->sh);
+        memmove(d->sh + poff(dst), s->sh + poff(src), n * sizeof *d->sh);
+    } else {
+        ev_unshadow(d, (uint64_t)poff(dst), n);
+    }
 }
 
 void ev_zero_n(Ev *v, uint64_t dst, uint64_t n)
@@ -275,6 +344,7 @@ void ev_zero_n(Ev *v, uint64_t dst, uint64_t n)
         return;
     memset(d->b + poff(dst), 0, n);
     memset(d->init + poff(dst), 1, n);
+    ev_unshadow(d, (uint64_t)poff(dst), n);
 }
 
 /* ---- floating point: the slot holds the IEEE bits of a float (low 32) or double ---- */
@@ -533,7 +603,9 @@ static Fn *find_fn(Ev *v, uint32_t fsym)
 }
 
 static uint64_t ev_node(Fr *r, uint32_t n);
-static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint64_t va);
+/* ash: a shadow per argument (NULL: all concrete); *rsh: the result's shadow. */
+static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *ash, size_t na, uint64_t va,
+                       uint32_t *rsh);
 
 #define NODE(r, n) (&(r)->f->nodes[n])
 #define KID(r, n, j) ((r)->f->kids[NODE(r, n)->kid0 + (j)])
@@ -738,19 +810,22 @@ unsup:
     return 0;
 }
 
-static uint64_t ev_call_node(Fr *r, uint32_t n)
+static uint64_t ev_call_node(Fr *r, uint32_t n, uint32_t *sh)
 {
     const TNode *t = NODE(r, n);
     Ev *v = r->v;
     uint64_t args[16], callee = 0;
+    uint32_t ash[16];
     uint32_t j, first = t->pun == 1 ? 1 : 0, na = t->nkids - first;
     Fn *g;
     if (na > 16) {
         UNSUP(v, "call with more than 16 arguments");
         return 0;
     }
-    for (j = na; j-- > 0;)              /* right to left, as cgx86.c */
+    for (j = na; j-- > 0;) {            /* right to left, as cgx86.c */
         args[j] = ev_node(r, KID(r, n, first + j));
+        ash[j] = v->sh;
+    }
     if (t->pun == 1) {
         callee = ev_node(r, KID(r, n, 0));
         if (v->res.status)
@@ -813,9 +888,9 @@ static uint64_t ev_call_node(Fr *r, uint32_t n)
                 at += 8;
             }
         }
-        return run_fn(r, g, args, g->np, mkptr(id, 0));
+        return run_fn(r, g, args, ash, g->np, mkptr(id, 0), sh);
     }
-    return run_fn(r, g, args, na, 0);
+    return run_fn(r, g, args, ash, na, 0, sh);
 }
 
 /* Store the elements (TO_ELEM kids) of node n into the zeroed object at p. */
@@ -1061,11 +1136,85 @@ static uint64_t ev_va(Fr *r, uint32_t n)
     }
 }
 
+static void path_add(Ev *v, PathEnt e)
+{
+    if (v->path.len >= PATH_MAX_ENT)
+        v->path_full = true;
+    else
+        vec_push(&v->path, e);
+}
+
+static void mark_seen(Ev *v, Blk *b, unsigned bit)
+{
+    uint64_t m = (uint64_t)1 << bit;
+    if (!(b->seen & m)) {
+        b->seen |= m;
+        v->newseen++;
+    }
+}
+
+/* A symbolic value the evaluator uses as a number (an index, a divisor, a shift count) keeps
+ * its value on the path: the entry is the equation. */
+static void pin(Ev *v, uint32_t sh, uint64_t x)
+{
+    PathEnt e;
+    if (!v->track || !sh)
+        return;
+    memset(&e, 0, sizeof e);
+    e.expr = sx_op(&v->sx, SX_EQ, sh, sx_const(&v->sx, 64, x));
+    e.want = true;
+    path_add(v, e);
+}
+
+/* The shadow of an integer operation: op on the operands' expressions (a concrete operand
+ * enters as a constant), cast to ti.  0 when neither operand is symbolic. */
+static uint32_t op_sh(Ev *v, int op, const Ti *ti, uint64_t a, uint32_t ash, uint64_t b, uint32_t bsh)
+{
+    bool un = op == SX_NEG || op == SX_NOT || op == SX_LNOT;
+    if (!v->track || (!ash && !bsh) || ti->flt || ti->ptr)
+        return 0;
+    if (!ash)
+        ash = sx_const(&v->sx, 64, a);
+    if (!un && !bsh)
+        bsh = sx_const(&v->sx, 64, b);
+    return canon_sh(v, ti, sx_op(&v->sx, op, ash, un ? 0 : bsh));
+}
+
+/* The slot expression op for a binary operator on integers, or -1. */
+static int bin_op(int p, bool sg)
+{
+    switch (p) {
+    case P_PLUS: return SX_ADD;
+    case P_MINUS: return SX_SUB;
+    case P_STAR: return SX_MUL;
+    case P_SLASH: return sg ? SX_SDIV : SX_UDIV;
+    case P_PERCENT: return sg ? SX_SREM : SX_UREM;
+    case P_AMP: return SX_AND;
+    case P_PIPE: return SX_OR;
+    case P_CARET: return SX_XOR;
+    case P_SHL: return SX_SHL;
+    case P_SHR: return sg ? SX_ASHR : SX_LSHR;
+    default: return -1;
+    }
+}
+
+static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh);
+
+/* The value of node n; v->sh is its shadow (the cases that propagate set *sh, the rest leave 0). */
 static uint64_t ev_node(Fr *r, uint32_t n)
+{
+    uint32_t sh = 0;
+    uint64_t x = ev_node1(r, n, &sh);
+    r->v->sh = sh;
+    return x;
+}
+
+static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
 {
     Ev *v = r->v;
     const TNode *t = NODE(r, n);
     uint64_t a, b;
+    uint32_t ash, bsh;
     Ti ti, ts;
     if (v->res.status)
         return 0;
@@ -1141,11 +1290,14 @@ static uint64_t ev_node(Fr *r, uint32_t n)
             return 0;
         if (is_bf(r, KID(r, n, 0)))
             return bf_load(v, a, &ti, NODE(r, KID(r, n, 0))->pun, NODE(r, KID(r, n, 0))->width);
-        return load_n(v, a, &ti);
+        a = load_n(v, a, &ti);
+        *sh = v->sh;
+        return a;
     case TO_STORE: {
         uint64_t sz;
         a = ev_node(r, KID(r, n, 0));
         b = ev_node(r, KID(r, n, 1));
+        bsh = v->sh;
         if (v->res.status)
             return 0;
         if (is_agg(v, t->ty)) {
@@ -1159,7 +1311,9 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         if (is_bf(r, KID(r, n, 0)))
             return bf_store(v, a, &ti, NODE(r, KID(r, n, 0))->pun, NODE(r, KID(r, n, 0))->width, b);
         b = ev_canon(&ti, b);
-        store_n(v, a, &ti, b);
+        bsh = canon_sh(v, &ti, bsh);
+        store_sh_n(v, a, &ti, b, bsh);
+        *sh = bsh;
         return b;
     }
     case TO_POST: {
@@ -1171,18 +1325,24 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         a = ev_node(r, KID(r, s, 0));
         if (!ev_tinfo(v, NODE(r, s)->ty, &ti))
             return 0;
+        v->sh = 0;
         b = is_bf(r, KID(r, s, 0)) ? bf_load(v, a, &ti, NODE(r, KID(r, s, 0))->pun, NODE(r, KID(r, s, 0))->width)
                                    : load_n(v, a, &ti);
+        bsh = v->sh;
         ev_node(r, s);
+        *sh = bsh;
         return b;
     }
     case TO_CAST: {
         TypeId from = NODE(r, KID(r, n, 0))->ty;
         a = ev_node(r, KID(r, n, 0));
+        ash = v->sh;
         if (type_is_void(&v->c->tt, t->ty))
             return 0;
         if (!ev_tinfo(v, t->ty, &ti) || !ev_tinfo(v, from, &ts))
             return 0;
+        if (!ts.flt && !ts.ptr && !ti.flt)
+            *sh = canon_sh(v, &ti, ash);
         return convert(v, &ti, &ts, a);
     }
     case TO_FCONST:
@@ -1210,11 +1370,16 @@ static uint64_t ev_node(Fr *r, uint32_t n)
     }
     case TO_UNOP:
         a = ev_node(r, KID(r, n, 0));
+        ash = v->sh;
         if (v->res.status)
             return 0;
         if (t->pun == P_BANG) {
             if (!ev_tinfo(v, NODE(r, KID(r, n, 0))->ty, &ts))
                 return 0;
+            memset(&ti, 0, sizeof ti);
+            ti.bytes = 8;
+            if (!ts.flt && !ts.ptr)
+                *sh = op_sh(v, SX_LNOT, &ti, a, ash, 0, 0);
             return ts.flt ? !(ev_fget(&ts, a) != 0 || ev_fget(&ts, a) != ev_fget(&ts, a)) : a == 0;
         }
         if (!ev_tinfo(v, t->ty, &ti))
@@ -1232,29 +1397,58 @@ static uint64_t ev_node(Fr *r, uint32_t n)
                 TRAP(v, "signed integer overflow");
                 return 0;
             }
+            *sh = op_sh(v, SX_NEG, &ti, a, ash, 0, 0);
             return ev_canon(&ti, 0 - a);
         }
-        if (t->pun == P_TILDE)
+        if (t->pun == P_TILDE) {
+            *sh = op_sh(v, SX_NOT, &ti, a, ash, 0, 0);
             return ev_canon(&ti, ~a);
-        if (t->pun == P_PLUS)
+        }
+        if (t->pun == P_PLUS) {
+            *sh = ash;
             return a;
+        }
         UNSUP(v, "unary operator %d", t->pun);
         return 0;
     case TO_BINOP:
         a = ev_node(r, KID(r, n, 0));
+        ash = v->sh;
         b = ev_node(r, KID(r, n, 1));
+        bsh = v->sh;
         if (v->res.status || !ev_tinfo(v, t->ty, &ti))
             return 0;
+        if (!ti.flt && (t->pun == P_SLASH || t->pun == P_PERCENT || t->pun == P_SHL || t->pun == P_SHR))
+            pin(v, bsh, b);
+        if (!ti.flt && bin_op(t->pun, ti.sg) >= 0)
+            *sh = op_sh(v, bin_op(t->pun, ti.sg), &ti, a, ash, b, bsh);
         return ti.flt ? fbin(v, t->pun, &ti, a, b) : int_arith(v, t->pun, t->ty, a, b);
     case TO_CMP:
         a = ev_node(r, KID(r, n, 0));
+        ash = v->sh;
         b = ev_node(r, KID(r, n, 1));
+        bsh = v->sh;
         if (v->res.status || !ev_tinfo(v, NODE(r, KID(r, n, 0))->ty, &ts))
             return 0;
+        if (!ts.flt && !ts.ptr) {
+            Ti w64;
+            memset(&w64, 0, sizeof w64);
+            w64.bytes = 8;
+            switch (t->pun) {
+            case P_EQEQ: *sh = op_sh(v, SX_EQ, &w64, a, ash, b, bsh); break;
+            case P_NE: *sh = op_sh(v, SX_NE, &w64, a, ash, b, bsh); break;
+            case P_LT: *sh = op_sh(v, ts.sg ? SX_SLT : SX_ULT, &w64, a, ash, b, bsh); break;
+            case P_LE: *sh = op_sh(v, ts.sg ? SX_SLE : SX_ULE, &w64, a, ash, b, bsh); break;
+            case P_GT: *sh = op_sh(v, ts.sg ? SX_SLT : SX_ULT, &w64, b, bsh, a, ash); break;
+            case P_GE: *sh = op_sh(v, ts.sg ? SX_SLE : SX_ULE, &w64, b, bsh, a, ash); break;
+            default: break;
+            }
+        }
         return ts.flt ? fcompare(v, t->pun, &ts, a, b) : compare(v, t->pun, NODE(r, KID(r, n, 0))->ty, a, b);
     case TO_COMMA:
         ev_node(r, KID(r, n, 0));
-        return ev_node(r, KID(r, n, 1));
+        a = ev_node(r, KID(r, n, 1));
+        *sh = v->sh;
+        return a;
     case TO_EXPRSTMT:
         ev_node(r, KID(r, n, 0));
         return 0;
@@ -1277,13 +1471,16 @@ static uint64_t ev_node(Fr *r, uint32_t n)
             return a;
         if (!ev_tinfo(v, t->ty, &ti))
             return 0;
-        return load_n(v, a, &ti);
+        a = load_n(v, a, &ti);
+        *sh = v->sh;
+        return a;
     case TO_PTRADD: {
         int64_t off;
         a = ev_node(r, KID(r, n, 0));
         b = ev_node(r, KID(r, n, 1));
         if (v->res.status)
             return 0;
+        pin(v, v->sh, b);
         if (__builtin_mul_overflow((int64_t)b, t->val, &off) ||
             __builtin_add_overflow(off, (int64_t)poff(a), &off) || off < INT32_MIN ||
             off > INT32_MAX) {
@@ -1314,7 +1511,7 @@ static uint64_t ev_node(Fr *r, uint32_t n)
     case TO_VA:
         return ev_va(r, n);
     case TO_CALL:
-        return ev_call_node(r, n);
+        return ev_call_node(r, n, sh);
     case TO_INTRIN:
         return ev_intrin(r, n);
     default: {
@@ -1329,13 +1526,16 @@ static uint64_t ev_node(Fr *r, uint32_t n)
     }
 }
 
-static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint64_t va)
+static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *ash, size_t na, uint64_t va,
+                       uint32_t *rsh)
 {
     Ev *v = caller->v;
     Fr r;
     uint32_t bi = f->entry;
     size_t i;
     uint64_t result = 0;
+    uint32_t rs = 0;
+    *rsh = 0;
     memset(&r, 0, sizeof r);
     r.v = v;
     r.f = f;
@@ -1366,7 +1566,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
         if (is_agg(v, f->par[i].ty))
             ev_copy_n(v, mkptr(l.obj, 0), args[i], sz);
         else if (ev_tinfo(v, f->par[i].ty, &ti))
-            store_n(v, mkptr(l.obj, 0), &ti, ev_canon(&ti, args[i]));
+            store_sh_n(v, mkptr(l.obj, 0), &ti, ev_canon(&ti, args[i]), ash ? canon_sh(v, &ti, ash[i]) : 0);
     }
     while (!v->res.status) {
         Blk *b = &f->blk[bi];
@@ -1382,23 +1582,41 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
         case TK_BR:
         {
             uint64_t c = ev_node(&r, b->val);
+            uint32_t csh = v->sh;
             Ti ct;
             if (v->res.status)
                 break;
-            if (ev_tinfo(v, NODE(&r, b->val)->ty, &ct) && ct.flt)
+            if (ev_tinfo(v, NODE(&r, b->val)->ty, &ct) && ct.flt) {
                 c = ev_fget(&ct, c) != 0 || ev_fget(&ct, c) != ev_fget(&ct, c);
+                csh = 0;
+            }
             bi = c ? b->a : b->b;
+            mark_seen(v, b, c ? 0 : 1);
+            v->nbr += v->track;
+            if (v->track && csh) {
+                PathEnt e = { csh, b, c ? 0u : 1u, c != 0 };
+                path_add(v, e);
+            }
             continue;
         }
         case TK_SWTCH: {
             uint64_t c = ev_node(&r, b->val);
-            uint32_t to = b->a;
+            uint32_t csh = v->sh;
+            uint32_t to = b->a, edge = (uint32_t)b->nc;
             for (k = 0; k < b->nc; k++) {
                 ev_note(v, (uint64_t)b->cases[k].v);
-                if ((uint64_t)b->cases[k].v == c)
+                if ((uint64_t)b->cases[k].v == c) {
                     to = b->cases[k].to;
+                    edge = (uint32_t)k;
+                }
             }
             bi = to;
+            mark_seen(v, b, blk_edge_bit(b, edge));
+            v->nbr += v->track;
+            if (v->track && csh) {
+                PathEnt e = { csh, b, edge, true };
+                path_add(v, e);
+            }
             continue;
         }
         case TK_RET:
@@ -1418,8 +1636,10 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
                     }
                 } else if (!type_is_void(&v->c->tt, f->ret)) {
                     Ti ti;
-                    if (ev_tinfo(v, f->ret, &ti))
+                    if (ev_tinfo(v, f->ret, &ti)) {
                         result = ev_canon(&ti, x);
+                        rs = canon_sh(v, &ti, v->sh);
+                    }
                 }
             }
             break;
@@ -1436,6 +1656,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
     free(r.reg);
     free(r.tmp);
     v->depth--;
+    *rsh = rs;
     return result;
 }
 
@@ -1458,7 +1679,10 @@ void ev_free(Ev *v)
     for (i = 0; i < v->obj.len; i++) {
         free(v->obj.data[i].b);
         free(v->obj.data[i].init);
+        free(v->obj.data[i].sh);
     }
+    sx_free(&v->sx);
+    vec_free(&v->path);
     vec_free(&v->obj);
     for (i = 0; i < v->fn.len; i++) {
         Fn *f = &v->fn.data[i];
@@ -1580,7 +1804,7 @@ EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *ou
     if (!f)
         UNSUP(v, "no retained body for the function");
     else
-        x = run_fn(&top, f, args, n, 0);
+        x = run_fn(&top, f, args, v->ash, n, 0, &v->rsh);
     if (!v->res.status && out)
         *out = x;
     {

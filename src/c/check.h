@@ -40,6 +40,7 @@ typedef struct CheckOptions {
     int *eval_status;           /* ... where the exit status goes (125: the evaluator stopped) */
     long eval_sweep;            /* EVAL_SWEEP: every scalar function on N argument vectors */
     unsigned long eval_seed;
+    const char *eval_solve;     /* the sweep also solves for inputs with this SMT-LIB2 solver command (symx.h) */
     bool dump_cfg, verify_cfg;  /* --dump-cfg: print the lowered control-flow graph;
                                  * --verify-cfg: and check it (tcfg.c) */
     bool verify_tast;           /* --verify-tast: check each tree, print findings */

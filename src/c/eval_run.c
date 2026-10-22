@@ -509,13 +509,45 @@ static void sweep_thunk(Checker *c, StrBuf *sb, const char *name, const Fn *f, c
     sb_printf(sb, "return %llu;}%c", (unsigned long long)o, 10);
 }
 
+/* Tracking: every data byte of every blob is the symbol of its input offset (pointer fields are
+ * structure, not data), and so is every scalar parameter's value, in ash. */
+static void sweep_track(Ev *v, const Fn *f, const SFn *s, const uint32_t *ids, uint32_t *ash)
+{
+    size_t k;
+    int i;
+    sx_clear(&v->sx);
+    v->path.len = 0;
+    v->path_full = false;
+    for (i = 0; i < s->nob; i++) {
+        Obj *o = &v->obj.data[ids[i] - 1];
+        uint64_t j;
+        o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
+        for (j = 0; j < o->size; j++)
+            o->sh[j] = sx_sym(&v->sx, (uint32_t)(s->ob[i].off + j));
+    }
+    for (k = 0; k < s->pf.len; k++)
+        ev_unshadow(&v->obj.data[ids[s->pf.data[k].ob] - 1], s->pf.data[k].off, 8);
+    for (k = 0; k < f->np; k++) {
+        const SArg *a = &s->a[k];
+        uint32_t x = 0;
+        unsigned j;
+        if (a->kind != SA_SCALAR || a->ti.flt)
+            continue;
+        for (j = a->ti.bytes; j-- > 0;) {
+            uint32_t b = sx_sym(&v->sx, (uint32_t)(a->off + j));
+            x = x ? sx_join(&v->sx, x, b) : b;
+        }
+        ash[k] = sx_ext(&v->sx, x, a->ti.bytes, a->ti.sg, a->ti.boolean);
+    }
+}
+
 /* One call of the sweep, printed as "call NAME IN => OUT" or "call NAME IN STOP why"; `bad`
  * is set when the result is a pointer to something that is not one of the objects. */
 static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s,
                       const uint8_t *in, bool show_stop, bool *bad)
 {
     uint64_t slot[16] = {0}, x = 0, oo[SMAXOB];
-    uint32_t ids[SMAXOB] = {0};
+    uint32_t ids[SMAXOB] = {0}, ash[16] = {0};
     uint8_t *out = xcalloc((size_t)s->insz + 16, 1);
     size_t k, n = 0;
     int i;
@@ -553,7 +585,12 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         } else
             slot[k] = mkptr(ids[a->oi], 0);
     }
+    if (v->track) {
+        sweep_track(v, f, s, ids, ash);
+        v->ash = ash;
+    }
     r = ev_call(v, f->fsym, slot, f->np, &x);
+    v->ash = NULL;
     if (r.status == EV_OK) {
         if (s->rk == SR_SCALAR) {
             x = ev_canon(&s->rti, x);
@@ -604,7 +641,7 @@ static int cmp64(const void *a, const void *b)
 /* Random input bytes for a call. */
 static void sweep_gen(Ev *v, const Fn *f, const SFn *s, uint8_t *in, uint64_t *rs)
 {
-    static const Ti byte = {1, false, false, false};
+    static const Ti byte = {1, false, false, false, false};
     size_t k;
     int i;
     memset(in, 0, (size_t)s->insz);
@@ -666,20 +703,224 @@ static void sweep_gen(Ev *v, const Fn *f, const SFn *s, uint8_t *in, uint64_t *r
     }
 }
 
+/* ---- solving for inputs (docs/CONCOLIC_DESIGN.md) ------------------------------------
+ * From a call that finished: rerun it tracked, walk its path keeping the prefix asserted, and at
+ * each branch whose other edge no call has taken ask the solver for bytes that follow the prefix
+ * and take it.  Each answer is one more call through sweep_call (printed only if it finishes,
+ * compared with gcc like every other), so the solver may be wrong or incomplete. */
+
+#define SQUERY 48               /* solver queries per function */
+#define SSEEDS 4                /* finishing inputs kept as starting points */
+#define SEXPAND 8               /* tracked runs per function */
+#define SRLIMIT 5000000         /* the solver's resource limit per query: deterministic, not time */
+
+typedef struct SolveStat {
+    unsigned long queries, sat, unsat, unknown, calls, fresh;
+    size_t edges, before, after;    /* edges of the swept functions, taken before and after solving */
+    size_t nodes;                   /* the most expression nodes one tracked call made */
+    unsigned long seeded, tracked;  /* functions with a finishing input; tracked runs */
+    unsigned long steps, open;      /* path steps (branches on symbolic values, pins); branches with an unseen edge */
+    unsigned long branches;         /* every branch and switch the tracked runs took */
+} SolveStat;
+
+typedef struct STried {
+    const Blk *blk;
+    uint32_t edge;
+} STried;
+
+typedef VEC(STried) STriedVec;
+
+static void blk_count(const Fn *f, size_t *edges, size_t *taken)
+{
+    size_t i;
+    for (i = 0; i < f->nblk; i++) {
+        const Blk *b = &f->blk[i];
+        unsigned n = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0, e;
+        *edges += n;
+        for (e = 0; e < n; e++)
+            *taken += (unsigned)(b->seen >> (b->term == TK_SWTCH && e == n - 1 ? 62 : e) & 1);
+    }
+}
+
+/* One solved call: the seed with the model's bytes written over it; true if it finished and
+ * took an edge nobody had (then it is worth tracking itself). */
+static bool solve_run(Ev *v, const SxModel *m, const uint8_t *seed, const Fn *f, const SFn *s,
+                      StrBuf *body, const char *name, bool *bad, bool *saw_ok, uint8_t **child)
+{
+    uint8_t *in = xmalloc((size_t)s->insz + 1);
+    unsigned long before = v->newseen;
+    size_t i, k;
+    int st;
+    memcpy(in, seed, (size_t)s->insz);
+    for (i = 0; i < m->off.len; i++)
+        if (m->off.data[i] < s->insz)
+            in[m->off.data[i]] = m->val.data[i];
+    for (k = 0; k < f->np; k++)         /* a bool parameter is 0 or 1 */
+        if (s->a[k].kind == SA_SCALAR && s->a[k].ti.boolean)
+            in[s->a[k].off] = in[s->a[k].off] != 0;
+    st = sweep_call(v, body, name, f, s, in, false, bad);
+    *saw_ok |= st == EV_OK;
+    if (st == EV_OK && v->newseen != before) {
+        *child = in;
+        return true;
+    }
+    free(in);
+    return false;
+}
+
+static bool tried(const STriedVec *t, const Blk *b, uint32_t edge)
+{
+    size_t i;
+    for (i = 0; i < t->len; i++)
+        if (t->data[i].blk == b && t->data[i].edge == edge)
+            return true;
+    return false;
+}
+
+/* The condition for taking edge e of the switch step p, in cs (room for 64); the count. */
+static size_t switch_conds(Ev *v, const PathEnt *p, uint32_t e, SxCond *cs, bool *whole)
+{
+    const Blk *b = p->blk;
+    size_t k, n = 0;
+    *whole = true;
+    if (e < b->nc) {
+        cs[0].a = sx_op(&v->sx, SX_EQ, p->expr, sx_const(&v->sx, 64, (uint64_t)b->cases[e].v));
+        cs[0].want = true;
+        return 1;
+    }
+    for (k = 0; k < b->nc; k++) {       /* the default: none of the cases */
+        if (n == 64) {
+            *whole = false;
+            break;
+        }
+        cs[n].a = sx_op(&v->sx, SX_EQ, p->expr, sx_const(&v->sx, 64, (uint64_t)b->cases[k].v));
+        cs[n++].want = false;
+    }
+    return n;
+}
+
+static void solve_fn(Ev *v, SxSolver *sv, SolveStat *st, uint8_t **seeds, size_t nseeds, const Fn *f,
+                     const SFn *s, StrBuf *body, const char *name, bool *bad, bool *saw_ok)
+{
+    VEC(uint8_t *) work = {0};
+    STriedVec done = {0};
+    SxModel m = {0};
+    size_t qi, i, queries = 0, expanded = 0;
+    for (i = 0; i < nseeds; i++)
+        vec_push(&work, seeds[i]);          /* the seeds stay the caller's; only children are freed here */
+    for (qi = 0; qi < work.len && expanded < SEXPAND && queries < SQUERY; qi++) {
+        const uint8_t *seed = work.data[qi];
+        StrBuf sink = {0};
+        int r;
+        v->track = true;
+        r = sweep_call(v, &sink, name, f, s, seed, false, bad);
+        v->track = false;
+        sb_free(&sink);
+        if (r != EV_OK)
+            continue;
+        expanded++;
+        st->tracked++;
+        st->branches += v->nbr;
+        v->nbr = 0;
+        if (v->sx.n.len > st->nodes)
+            st->nodes = v->sx.n.len;
+        sx_begin(sv, &v->sx);
+        for (i = 0; i < v->path.len && queries < SQUERY; i++) {
+            PathEnt p = v->path.data[i];
+            SxCond cs[64];
+            st->steps++;
+            if (p.blk) {
+                const Blk *b = p.blk;
+                uint32_t e, ne = b->term == TK_BR ? 2 : (uint32_t)b->nc + 1;
+                for (e = 0; e < ne; e++)
+                    if (e != p.edge && !(b->seen >> blk_edge_bit(b, e) & 1)) {
+                        st->open++;
+                        break;
+                    }
+                for (e = 0; e < ne && queries < SQUERY; e++) {
+                    size_t n;
+                    bool whole = true, sat;
+                    uint8_t *child = NULL;
+                    if (e == p.edge || (b->seen >> blk_edge_bit(b, e) & 1) || tried(&done, b, e))
+                        continue;
+                    if (b->term == TK_BR) {
+                        cs[0].a = p.expr;
+                        cs[0].want = !p.want;
+                        n = 1;
+                    } else {
+                        n = switch_conds(v, &p, e, cs, &whole);
+                    }
+                    if (!whole)
+                        continue;
+                    {
+                        STried t = { b, e };
+                        vec_push(&done, t);
+                    }
+                    queries++;
+                    st->queries++;
+                    r = sx_try(sv, cs, n, &m);
+                    if (r == SX_ERROR) {
+                        fprintf(stderr, "cereal: the solver stopped answering\n");
+                        exit(2);
+                    }
+                    st->sat += r == SX_SAT;
+                    st->unsat += r == SX_UNSAT;
+                    st->unknown += r == SX_UNKNOWN;
+                    if (r != SX_SAT)
+                        continue;
+                    st->calls++;
+                    sat = solve_run(v, &m, seed, f, s, body, name, bad, saw_ok, &child);
+                    if (sat) {
+                        st->fresh++;
+                        vec_push(&work, child);
+                    }
+                }
+            }
+            /* the step itself joins the prefix */
+            if (!p.blk || p.blk->term == TK_BR) {
+                sx_assert(sv, p.expr, p.want);
+            } else {
+                bool whole;
+                size_t n = switch_conds(v, &p, p.edge, cs, &whole), k;
+                for (k = 0; k < n; k++)
+                    sx_assert(sv, cs[k].a, cs[k].want);
+            }
+        }
+    }
+    for (i = nseeds; i < work.len; i++)
+        free(work.data[i]);
+    vec_free(&work);
+    vec_free(&done);
+    sx_model_free(&m);
+}
+
 static void eval_sweep(Checker *c)
 {
     Ev *v = ev_of(c);
     FILE *out = c->opt.tast;
     size_t i, k;
     long j;
+    SxSolver *sv = NULL;
+    SolveStat ss = {0};
     if (!out)
         return;
+    if (c->opt.eval_solve) {
+        char err[256];
+        sv = sx_open(c->opt.eval_solve, err, sizeof err);
+        if (!sv) {
+            fprintf(stderr, "cereal: --eval-solve: %s\n", err);
+            exit(2);
+        }
+        sx_limit(sv, SRLIMIT);
+        v->track = false;
+    }
     for (i = 0; i < v->fn.len; i++) {
         Fn *f = &v->fn.data[i];
         const char *name;
         SFn s;
         uint64_t rs;
-        uint8_t *in;
+        uint8_t *in, *seeds[SSEEDS];
+        size_t nseeds = 0;
         bool bad = false, saw_ok = false, saw_unsup = false, ok;
         StrBuf head = {0}, body = {0};
         if (f->fsym == SYM_NONE || !f->user || f->variadic || f->np > 16)
@@ -714,6 +955,8 @@ static void eval_sweep(Checker *c)
             st = sweep_call(v, &body, name, f, &s, in, !saw_unsup, &bad);
             saw_ok |= st == EV_OK;
             saw_unsup |= st == EV_UNSUPPORTED && s.ptrfn;
+            if (sv && st == EV_OK && nseeds < SSEEDS)
+                seeds[nseeds++] = memcpy(xmalloc((size_t)s.insz + 1), in, (size_t)s.insz);
         }
         /* guided calls: the same generator, now drawing integers from what the program compared its
          * inputs with; only calls that finish are kept */
@@ -728,9 +971,26 @@ static void eval_sweep(Checker *c)
             v->dict_use = true;
             for (j = 0; j < SGUIDED; j++) {
                 sweep_gen(v, f, &s, in, &rs);
-                saw_ok |= sweep_call(v, &body, name, f, &s, in, false, &bad) == EV_OK;
+                int st = sweep_call(v, &body, name, f, &s, in, false, &bad);
+                saw_ok |= st == EV_OK;
+                if (sv && st == EV_OK && nseeds < SSEEDS)
+                    seeds[nseeds++] = memcpy(xmalloc((size_t)s.insz + 1), in, (size_t)s.insz);
             }
             v->dict_use = false;
+        }
+        if (sv) {
+            size_t ed = 0, tk = 0;
+            blk_count(f, &ed, &tk);
+            ss.edges += ed;
+            ss.before += tk;
+            ss.seeded += nseeds > 0;
+            solve_fn(v, sv, &ss, seeds, nseeds, f, &s, &body, name, &bad, &saw_ok);
+            tk = 0;
+            ed = 0;
+            blk_count(f, &ed, &tk);
+            ss.after += tk;
+            while (nseeds)
+                free(seeds[--nseeds]);
         }
         if (!bad && (!s.ptrfn || saw_ok || saw_unsup)) {
             fputs(sb_cstr(&head), out);
@@ -740,6 +1000,16 @@ static void eval_sweep(Checker *c)
         sweep_free(&s);
         sb_free(&head);
         sb_free(&body);
+    }
+    if (sv) {
+        fprintf(stderr,
+                "cereal: solve: %lu queries (%lu sat, %lu unsat, %lu unknown), %lu calls, %lu reached a new edge; "
+                "edges taken %zu -> %zu of %zu; at most %zu nodes in a call; "
+                "%lu functions with a finishing input, %lu tracked runs, %lu symbolic steps of %lu branches, "
+                "%lu with an unseen edge\n",
+                ss.queries, ss.sat, ss.unsat, ss.unknown, ss.calls, ss.fresh, ss.before, ss.after, ss.edges,
+                ss.nodes, ss.seeded, ss.tracked, ss.steps, ss.branches, ss.open);
+        sx_close(sv);
     }
 }
 

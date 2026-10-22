@@ -24,6 +24,7 @@ typedef struct FrontendOpts {
     int *eval_status;           /* ... and the exit status stored here */
     long eval_sweep;            /* ... or every scalar function on this many argument vectors */
     unsigned long eval_seed;
+    const char *eval_solve;     /* ... and solve for more inputs with this solver command (--eval-solve=CMD) */
     const char *validate_summaries;
     const Target *target;       /* NULL: the host's */
     FILE *out;                  /* the dumps */

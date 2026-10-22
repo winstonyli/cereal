@@ -649,6 +649,15 @@ and 45.4% to 46.4% at N=200. The dictionary mostly saves calls: the functions fi
 their calls still miss 1295 edges (was 1322), `luaV_equalobj` stays at 10 of 58. What remains
 needs joint conditions across fields or structured input; that is `CONCOLIC_DESIGN.md`.
 
+### Solver result (2026-10-22)
+
+`--eval-solve=CMD` (z3 over a pipe) adds tracked runs: values carry an expression of the input
+bytes (`Obj.sh`, `Ev.sh`), branches and pins are recorded, and a model for an unseen edge becomes
+one more `sweep_call`. Details and numbers in `CONCOLIC_DESIGN.md` section 8. On `tests/cfg_exec` the
+results still equal gcc call for call; the solver reaches every guarded edge of `solve.c`. On zstd
+and Lua at N=24 it adds 123 edges (43.4% to 44.8%): the remaining misses are behind state, not
+inputs. Tracking off changes no number.
+
 ## 10. Review log
 
 Three adversarial rounds against the code, 2026-10-21; each change above came

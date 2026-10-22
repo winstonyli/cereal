@@ -8,9 +8,11 @@
 
 #include "c/cexpr_int.h"
 #include "c/eval.h"
+#include "c/symx.h"
 
 typedef struct Obj {
     uint8_t *b, *init;          /* bytes and one init flag per byte */
+    uint32_t *sh;               /* tracking: per byte, an 8-bit expression of the input (0: concrete); NULL: none */
     uint64_t size;
     uint32_t fn;                /* a function's object: its fsym + 1 */
     bool live, ro;
@@ -30,7 +32,27 @@ typedef struct Blk {
     size_t nc;
     uint32_t val, a, b;
     uint8_t term;
+    uint64_t seen;              /* the edges any call has taken: a branch's a (bit 0) and b (bit 1);
+                                   a switch's cases by index (bits 0..61, later ones share 61), default bit 62 */
 } Blk;
+
+/* One step of a tracked call's path: a branch or switch on a symbolic value (blk, the edge taken:
+ * a branch's 0 = a, 1 = b; a switch's case index or nc for the default; expr is the condition's
+ * slot expression, want whether it was non-zero), or a pin (blk NULL: expr is an equation the
+ * path depends on, such as a concretized index). */
+typedef struct PathEnt {
+    uint32_t expr;
+    const Blk *blk;
+    uint32_t edge;
+    bool want;
+} PathEnt;
+
+#define PATH_MAX_ENT 256
+
+static inline unsigned blk_edge_bit(const Blk *b, uint32_t edge)
+{
+    return b->term == TK_SWTCH ? (edge >= b->nc ? 62 : edge < 61 ? edge : 61) : edge;
+}
 
 typedef struct Par {
     uint32_t ref;
@@ -81,6 +103,17 @@ struct Ev {
     bool dict_on, dict_use;     /* collecting; drawing from it (sorted, unique) */
     uint32_t stream[3];         /* the objects behind stdout and stderr (pointer, FILE token), 0: not made */
     uint32_t token[3];
+    /* Concolic tracking (docs/CONCOLIC_DESIGN.md): values carry an expression of the input bytes
+     * beside their number; 0 is concrete.  Off, every shadow stays 0 and nothing else changes. */
+    bool track;
+    Sx sx;                      /* the expressions of the current tracked call */
+    uint32_t sh;                /* the shadow of the value ev_node last returned */
+    const uint32_t *ash;        /* ev_call: a shadow per argument, NULL: all concrete */
+    uint32_t rsh;               /* ev_call: the shadow of the result */
+    VEC(PathEnt) path;          /* the tracked call's branches and pins, at most PATH_MAX_ENT */
+    bool path_full;             /* ... and entries were dropped after that */
+    unsigned long nbr;          /* branches and switches run while tracking, symbolic or not */
+    unsigned long newseen;      /* edges taken for the first time (Blk.seen), counted over all calls */
 };
 
 typedef struct Loc {
@@ -100,6 +133,7 @@ typedef struct Fr {
 typedef struct Ti {
     unsigned bytes;
     bool sg, boolean, flt;       /* flt: float or double, the value is its IEEE bit pattern */
+    bool ptr;                    /* a pointer: never symbolic */
 } Ti;
 
 /* ---- failure: the first one wins and ends the evaluation ---- */
@@ -131,6 +165,8 @@ void ev_kill_obj(Ev *v, uint32_t id);
 Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what);
 void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n);
 void ev_zero_n(Ev *v, uint64_t dst, uint64_t n);
+/* A write of concrete bytes into [off, off + n) of o: their shadows end. */
+void ev_unshadow(Obj *o, uint64_t off, uint64_t n);
 
 /* ---- the host library (eval_libc.c) ---- */
 

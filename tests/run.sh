@@ -569,6 +569,25 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         bad "eval_sweep"
         head -10 "$TMP/exec.out" | sed 's/^/    /'
     fi
+    # 13e2. the same sweep, also solving for inputs (docs/CONCOLIC_DESIGN.md); only when
+    #       EVAL_SWEEP_SOLVE names an SMT-LIB2 solver command, e.g. 'z3 -in -smt2'
+    if [ -n "${EVAL_SWEEP_SOLVE:-}" ]; then
+        if gcc -I"$ROOT/src" -I"$ROOT/src/c" "$ROOT/tests/symx_unit.c" "$ROOT/src/c/symx.c" \
+                "$ROOT/src/common.c" -o "$TMP/symx_unit" 2>"$TMP/symx_unit.out" \
+                && "$TMP/symx_unit" "$EVAL_SWEEP_SOLVE" >>"$TMP/symx_unit.out" 2>&1 </dev/null; then
+            ok
+        else
+            bad "symx_unit"
+            head -10 "$TMP/symx_unit.out" | sed 's/^/    /'
+        fi
+        if (cd "$ROOT/tests/cfg_exec" && sh ../eval_sweep.sh "$CEREAL" *.c \
+                >"$TMP/exec_solve.out" 2>&1 </dev/null); then
+            ok
+        else
+            bad "eval_sweep with the solver"
+            head -10 "$TMP/exec_solve.out" | sed 's/^/    /'
+        fi
+    fi
     # 13f. native oracle (tests/asm_exec.py): --dump-asm output assembled,
     #      linked and run against gcc on the same random arguments
     if (cd "$ROOT/tests/cfg_exec" && python3 -P ../asm_exec.py "$CEREAL" *.c ../asm_exec/*.c \

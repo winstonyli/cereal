@@ -1671,6 +1671,10 @@ int main(int argc, char **argv)
             fe_opts.eval_seed = *end == ',' ? strtoul(end + 1, NULL, 10) : 1;
             continue;
         }
+        if (!strncmp(argv[i], "--eval-solve=", 13)) {
+            fe_opts.eval_solve = argv[i] + 13;
+            continue;
+        }
         if (!strcmp(argv[i], "--eval-wrap")) {
             fe_opts.eval_wrap = true;
             continue;

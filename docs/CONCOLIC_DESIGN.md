@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # Concolic input search for `--eval-sweep`
@@ -102,7 +102,39 @@ T1 `symx.c`: arena, printer to SMT-LIB2, pipe backend, probe; a unit check that 
 tracking off every number is unchanged (gate). T3 path recording and `Blk.seen`. T4 driver
 and `--eval-solve`. T5 `solve.c`, the sweep check, measurements on zstd and Lua, gate, docs.
 
-## 8. Review log
+## 8. Result (2026-10-22; T1-T5 built, working tree on `64507ad`, gate row `concolic-t1-t5b` in `docs/runs.md`)
+
+As built (differences from section 1 in bold):
+- Expressions: ids are arena index + 1, ops are SYM/CONST/BYTE/JOIN/EXT plus 64-bit slot ops and
+  six compares; `sx_byte` looks through EXT and JOIN so a store/load round trip yields the
+  original byte. **`ev_node` is a wrapper over `ev_node1(r, n, &sh)`**, not a side field the cases
+  reset; propagating cases set `*sh`, the rest leave 0. Pointer and float values are never
+  symbolic (`Ti.ptr`, `Ti.flt`).
+- Solver: `sx_begin` resets, sets `produce-models`, optional `rlimit`, logic `QF_BV`; nodes are
+  printed as `define-fun` once per session before `(push 1)`. **`sx_try` takes an array of
+  `SxCond {expr, want}`** (a switch alternative is several conditions), answers SAT/UNSAT/UNKNOWN/ERROR
+  and returns the declared symbols' bytes. `sx_open` probes with `x*3 == 99`; a solver that fails
+  makes the sweep exit with code 2.
+- Edges: `Blk.seen` bits are branch 0/1; switch cases by index (bits 0..60, later ones share 61),
+  default 62. Pins are applied to `TO_PTRADD` indices and to divisors and shift counts.
+- Driver (`solve_fn`): 48 queries per function, 4 seeds, 8 expansions per seed, `rlimit` 5000000 per
+  query. Every blob data byte and scalar parameter value is symbolic; a bool parameter is
+  normalized to 0/1 after a model.
+- Stats line on stderr: queries, sat/unsat/unknown, calls, fresh edges, edges taken before -> after
+  of total, max nodes, functions seeded, tracked runs, symbolic branch steps, steps with an unseen
+  edge.
+
+Checks: `tests/symx_unit.c` (solves `x*3 == 99` through the command); `tests/cfg_exec/solve.c`
+(without the solver none of the five guarded calls reaches its edge; with it the edges taken go
+13 -> 18 of 18); with the solver int.c, mem.c, ops.c, ptrs.c and solve.c still equal gcc call for
+call (19/19, 5/5, 137/137, 22/22, 6/6); tracking off leaves every number unchanged (46 eval tests,
+the sweep).
+
+Corpus (zstd and Lua, N=24): +123 edges, 43.4% -> 44.8%. The solver finds what is data-guarded; most
+of the remaining misses sit behind state (context structs that are zero, tables built by earlier
+calls), so the next lever is the state fill and the generator, not input solving.
+
+## 9. Review log
 
 Round 1 (against the code): (a) registers and temporaries are frame objects, so all data
 flow outside one expression passes through memory bytes: shadow memory plus a per-node side

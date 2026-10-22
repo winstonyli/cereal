@@ -12,9 +12,16 @@
 # the structural verifier (--verify-cfg), whose findings fail.  Fails on any mismatch or
 # when fewer than half the functions were compared.  CEREAL_FLAGS adds flags to both (cereal and gcc)
 # (e.g. -std=gnu23).
+# EVAL_SWEEP_SOLVE='z3 -in -smt2' also solves for inputs (--eval-solve, docs/CONCOLIC_DESIGN.md):
+# the same oracle, and solve.c must then reach every guarded edge; skipped with a note when the
+# solver is not installed.
 C=${1:?cereal binary}
 shift
 N=${EVAL_SWEEP_N:-24}
+if [ -n "$EVAL_SWEEP_SOLVE" ] && ! command -v "${EVAL_SWEEP_SOLVE%% *}" >/dev/null 2>&1; then
+    echo "eval_sweep: solver '${EVAL_SWEEP_SOLVE%% *}' not found, running without it"
+    EVAL_SWEEP_SOLVE=
+fi
 D=$(cd "$(dirname "$0")" && pwd)
 W=$(mktemp -d) || exit 1
 trap 'rm -rf "$W"' EXIT
@@ -28,9 +35,16 @@ for f in "$@"; do
         echo "$f: verifier findings"
         bad=$((bad + 1))
     fi
-    # shellcheck disable=SC2086
-    "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS --eval-sweep="$N,1234" "$f" 2>&1 </dev/null \
-        | grep -E '^(fn|thunk|call) ' >"$W/sweep.txt"
+    if [ -n "$EVAL_SWEEP_SOLVE" ]; then
+        # shellcheck disable=SC2086
+        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS --eval-sweep="$N,1234" --eval-solve="$EVAL_SWEEP_SOLVE" "$f" 2>"$W/solve.err" </dev/null \
+            | grep -E '^(fn|thunk|call) ' >"$W/sweep.txt"
+        grep -E '^cereal: ' "$W/solve.err" | sed "s|^|$f: |"
+    else
+        # shellcheck disable=SC2086
+        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS --eval-sweep="$N,1234" "$f" 2>&1 </dev/null \
+            | grep -E '^(fn|thunk|call) ' >"$W/sweep.txt"
+    fi
     # the driver (the thunks), the calls, and the evaluator's results, in order
     awk -v drv="$W/drv.c" -v calls="$W/calls.txt" -v expf="$W/exp.txt" -v src="$abs" -v rt="$D/sweep_rt.h" '
         $1 == "fn" { nfn++; sig[$2] = 1; next }
@@ -94,6 +108,16 @@ for f in "$@"; do
             }
         } END { print c + 0 }' "$W/all.txt" 2>"$W/mm.txt")
         cat "$W/mm.txt"
+        if [ -n "$EVAL_SWEEP_SOLVE" ] && [ "$(basename "$f")" = solve.c ]; then
+            # every guarded function must have a call that took its guarded edge (result 1)
+            miss=$(awk -F'\t' '{ split($1, a, " "); if (substr($2, 1, 8) == "01000000") hit[a[1]] = 1 }
+                END { split("magic square sumsw neighbour mixed", w, " ");
+                      for (i = 1; i in w; i++) if (!(w[i] in hit)) printf "%s ", w[i] }' "$W/all.txt")
+            if [ -n "$miss" ]; then
+                echo "$f: the solver did not reach the guarded edge of: $miss"
+                bad=$((bad + 1))
+            fi
+        fi
     fi
     echo "$f: $ok of $nf functions compared${unsup:+, unsupported: ${unsup%,}}"
     bad=$((bad + mism))
