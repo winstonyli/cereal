@@ -894,8 +894,11 @@ void tast_cfg(El *e, uint32_t root, FILE *out)
         mark(&L, ord[0], &ij);
         if (CHK_EVAL(e->c->opt))
             eval_keep(e->c, e, &L);
-        if (CHK_ASM(e->c->opt))
+        if (CHK_ASM(e->c->opt)) {
+            if (!CHK_EVAL(e->c->opt))
+                eval_statics(e->c, e);      /* the block-scope statics ev_object images */
             x86_func(&L, ord, out);
+        }
         for (i = 0; i < L.npl && e->c->opt.dump_cfg; i++) {
             const CBlk *x = &L.b.data[ord[i]];
             fprintf(out, "B%zu:%s\n", i, x->reach ? "" : " unreachable");

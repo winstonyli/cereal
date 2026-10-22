@@ -14,6 +14,7 @@
 
 #include "c/cexpr_int.h"
 #include "c/cgx86.h"
+#include "c/eval.h"
 
 /* ---- state, names -------------------------------------------------------- */
 
@@ -508,6 +509,48 @@ static bool obj_const(DEv *v, TypeId t)
     return TYPE_QUALS(t) & TQ_CONST;
 }
 
+/* TEMPORARY (E5 step A): the evaluator's image against this file's, for every object. */
+static void e5_check(DEv *v, El *e, uint32_t n, const char *nm)
+{
+    EvImage img;
+    size_t k;
+    const char *bad_ = NULL;
+    uint32_t li = 0;
+    if (!ev_object(ev_of(v->c), e, n, &img)) {
+        fprintf(stderr, "E5 MISMATCH %s: evaluator fails: %s\n", nm, img.why);
+        return;
+    }
+    if (img.size != v->d.size)
+        bad_ = "size";
+    else if (img.bytes ? memcmp(img.bytes, v->d.bytes, (size_t)img.size)
+                       : (img.size && (v->d.bytes[0] || memcmp(v->d.bytes, v->d.bytes + 1, (size_t)img.size - 1))))
+        bad_ = "bytes";
+    else if (img.nrel != v->d.rels.len)
+        bad_ = "relocation count";
+    for (k = 0; k < img.nrel && !bad_; k++) {
+        const EvReloc *r = &img.rel[k];
+        const MReloc *o = &v->d.rels.data[k];
+        char buf[160];
+        const char *want;
+        if (r->kind == EV_R_SYM) {
+            want = x86_symname(v->c, r->fname, r->ref);
+        } else if (r->kind == EV_R_LABEL) {
+            snprintf(buf, sizeof buf, ".L%s_a%u", cident(v->c, r->fname), r->ref);
+            want = buf;
+        } else {
+            const MData *l = &v->lits.data[li++];
+            want = l->name;
+            if (l->size != r->litsize || memcmp(l->bytes, r->lit, (size_t)r->litsize))
+                bad_ = "literal bytes";
+        }
+        if (r->off != o->off || r->addend != o->addend || strcmp(want, o->name))
+            bad_ = "relocation";
+    }
+    if (bad_)
+        fprintf(stderr, "E5 MISMATCH %s: %s\n", nm, bad_);
+    ev_image_free(&img);
+}
+
 bool x86_data_node(El *e, uint32_t n, char *why, size_t nwhy)
 {
     DEv v;
@@ -539,6 +582,8 @@ bool x86_data_node(El *e, uint32_t n, char *why, size_t nwhy)
     v.d.bytes = xcalloc(sz, 1);
     for (i = 0; i < t->nkids && ok; i++)
         ok = elem(&v, e->kids.data[t->kid0 + i]);
+    if (ok)
+        e5_check(&v, e, n, v.d.name);
     if (ok) {
         for (i = 0; i < sz && zero; i++)
             zero = !v.d.bytes[i];

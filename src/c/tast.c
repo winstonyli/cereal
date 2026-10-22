@@ -2411,8 +2411,8 @@ static void print_decls(Checker *c, El *e, uint32_t root, FILE *out)
         put_type(c, out, csym(c, c->cb[d] - 1)->ty);
         fputc('\n', out);
     }
-    if (CHK_EVAL(c->opt) && !e->why[0] && items.len)
-        eval_data(c, e);
+    if ((CHK_EVAL(c->opt) || CHK_ASM(c->opt)) && !e->why[0] && items.len)
+        eval_statics(c, e);
     if (CHK_ASM(c->opt) && !e->why[0]) {
         size_t m;
         for (m = 0; m < items.len; m++) {

@@ -112,6 +112,8 @@ void ev_kill_obj(Ev *v, uint32_t id)
 }
 
 
+static void sd_init(Ev *v, size_t i);
+
 /* The bytes [p, p + n) of a live object, or NULL after a trap. */
 Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
 {
@@ -129,6 +131,20 @@ Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
     if (o->fn) {
         TRAP(v, "%s through a function pointer", what);
         return NULL;
+    }
+    if (o->kind == OK_LABEL) {
+        TRAP(v, "%s through a label address", what);
+        return NULL;
+    }
+    if (o->stub) {
+        UNSUP(v, "%s of a global object with no definition in this unit", what);
+        return NULL;
+    }
+    if (o->sd1) {                       /* a static object, initialized on its first access */
+        sd_init(v, o->sd1 - 1);
+        if (v->res.status)
+            return NULL;
+        o = &v->obj.data[pid(p) - 1];
     }
     if (off < 0 || (uint64_t)off + n > o->size) {
         TRAP(v, "%s out of bounds", what);
@@ -345,6 +361,8 @@ static uint64_t convert(Ev *v, const Ti *to, const Ti *from, uint64_t a)
         double d = ev_fget(from, a), lo, hi;
         if (to->boolean)
             return d != 0 || d != d;
+        if (d != d && v->fold)
+            return 0;                   /* gcc folds NaN to 0 */
         if (d != d) {
             TRAP(v, "conversion of NaN to an integer");
             return 0;
@@ -352,6 +370,8 @@ static uint64_t convert(Ev *v, const Ti *to, const Ti *from, uint64_t a)
         if (to->sg) {
             hi = to->bytes == 8 ? 9223372036854775808.0 : (double)(1ull << (8 * to->bytes - 1));
             lo = -hi;
+            if (v->fold && (!(d > lo - 1 && d < hi) || (to->bytes == 8 && d < lo)))
+                return ev_canon(to, d < 0 ? (uint64_t)(int64_t)lo : (to->bytes == 8 ? 0x7fffffffffffffffull : (uint64_t)(1ull << (8 * to->bytes - 1)) - 1));
             if (!(d > lo - 1 && d < hi) || (to->bytes == 8 && d < lo)) {
                 TRAP(v, "floating-point value out of range for the integer type");
                 return 0;
@@ -359,6 +379,8 @@ static uint64_t convert(Ev *v, const Ti *to, const Ti *from, uint64_t a)
             return ev_canon(to, (uint64_t)(int64_t)d);
         }
         hi = to->bytes == 8 ? 18446744073709551616.0 : (double)(1ull << (8 * to->bytes));
+        if (v->fold && !(d > -1 && d < hi))
+            return ev_canon(to, d < 0 ? 0 : to->bytes == 8 ? ~0ull : (1ull << (8 * to->bytes)) - 1);
         if (!(d > -1 && d < hi)) {
             TRAP(v, "floating-point value out of range for the integer type");
             return 0;
@@ -601,6 +623,8 @@ static uint64_t ev_call_node(Fr *r, uint32_t n)
 }
 
 /* Store the elements (TO_ELEM kids) of node n into the zeroed object at p. */
+static bool addr_node(Fr *r, uint32_t n);
+
 static void init_elems(Fr *r, uint32_t n, uint64_t p)
 {
     const TNode *t = NODE(r, n);
@@ -631,11 +655,84 @@ static void init_elems(Fr *r, uint32_t n, uint64_t p)
         } else if (ev_tinfo(v, el->ty, &ti)) {
             x = ev_node(r, vn);
             store_n(v, mkptr(pid(p), poff(p) + el->val), &ti, x);
+            if (v->rec_id && pid(p) == v->rec_id && !v->res.status && addr_node(r, vn)) {
+                vec_push(&v->rec, (uint32_t)el->val);
+                vec_push(&v->rec, ti.bytes);
+            }
         }
     }
 }
 
-/* The object of a static-storage symbol, made and initialized on first use. */
+/* Whether the value of node n is an address (a relocation in a static image),
+ * told from the tree: the evaluator's slot does not say. */
+static bool addr_node(Fr *r, uint32_t n)
+{
+    const TNode *t = NODE(r, n);
+    switch (t->op) {
+    case TO_ADDR:
+    case TO_LABADDR:
+        return true;
+    case TO_CAST:
+    case TO_PTRADD:
+        return addr_node(r, KID(r, n, 0));
+    default:
+        return false;
+    }
+}
+
+/* The object of Sd i, made on first use; its contents wait for the first access. */
+static uint32_t sd_obj(Ev *v, size_t i)
+{
+    Sd *s = &v->sd.data[i];
+    uint64_t sz = 0;
+    uint32_t id;
+    Obj *o;
+    if (s->obj)
+        return s->obj;
+    if (!s->stub && !size_of(v, s->ty, &sz))
+        return 0;
+    id = ev_new_obj(v, sz, false);
+    if (!id)
+        return 0;
+    s->obj = id;
+    o = &v->obj.data[id - 1];
+    o->kind = OK_STATIC;
+    o->ref = s->ref;
+    o->fname = s->local ? v->fn.data[s->fn].fname : 0;
+    o->stub = s->stub;
+    o->sd1 = s->stub ? 0 : (uint32_t)i + 1;
+    return id;
+}
+
+/* Zero Sd i's object and store its initializer (before: it may point at itself). */
+static void sd_init(Ev *v, size_t i)
+{
+    Sd *s = &v->sd.data[i];
+    uint32_t id = s->obj;
+    Obj *o = &v->obj.data[id - 1];
+    uint64_t sz = o->size;
+    o->sd1 = 0;
+    ev_zero_n(v, mkptr(id, 0), sz);
+    if (s->node != TN) {
+        Fr ir;
+        Fn *f = &v->fn.data[s->fn];
+        size_t k;
+        memset(&ir, 0, sizeof ir);
+        ir.v = v;
+        ir.f = f;
+        ir.reg = xcalloc(f->nreg + 1, sizeof *ir.reg);
+        ir.tmp = xcalloc(f->ntmp + 1, sizeof *ir.tmp);
+        init_elems(&ir, s->node, mkptr(id, 0));
+        for (k = 0; k < ir.own.len; k++)
+            ev_kill_obj(v, ir.own.data[k]);
+        vec_free(&ir.own);
+        free(ir.reg);
+        free(ir.tmp);
+    }
+}
+
+/* The object of a static-storage symbol.  Without a definition registered, a
+ * global gets a stub: its address is usable, its contents are not. */
 static uint32_t static_obj(Fr *r, uint32_t ref)
 {
     Ev *v = r->v;
@@ -646,41 +743,26 @@ static uint32_t static_obj(Fr *r, uint32_t ref)
     for (i = 0; i < v->sd.len; i++) {
         Sd *d = &v->sd.data[i];
         if (d->ref == ref && d->local == local && (!local || d->fn == fi) &&
-            (!s || (s->node == TN && d->node != TN)))
+            (!s || ((s->node == TN) && d->node != TN)))
             s = d;
     }
     if (!s) {
         uint32_t h = local ? 0 : ev_host_object(v, cident(v->c, csym(v->c, ref)->name));
+        Sd d;
         if (h)
             return h;
-        UNSUP(v, "%s with no definition in this unit", local ? "static local" : "global object");
-        return 0;
-    }
-    if (!s->obj) {
-        uint64_t sz;
-        uint32_t id;
-        if (!size_of(v, s->ty, &sz) || !(id = ev_new_obj(v, sz, false)))
+        if (local) {
+            UNSUP(v, "static local with no definition in this unit");
             return 0;
-        s->obj = id;                    /* before the initializer: it may point at itself */
-        ev_zero_n(v, mkptr(id, 0), sz);
-        if (s->node != TN) {
-            Fr ir;
-            Fn *f = &v->fn.data[s->fn];
-            size_t k;
-            memset(&ir, 0, sizeof ir);
-            ir.v = v;
-            ir.f = f;
-            ir.reg = xcalloc(f->nreg + 1, sizeof *ir.reg);
-            ir.tmp = xcalloc(f->ntmp + 1, sizeof *ir.tmp);
-            init_elems(&ir, s->node, mkptr(id, 0));
-            for (k = 0; k < ir.own.len; k++)
-                ev_kill_obj(v, ir.own.data[k]);
-            vec_free(&ir.own);
-            free(ir.reg);
-            free(ir.tmp);
         }
+        memset(&d, 0, sizeof d);
+        d.ref = ref;
+        d.node = TN;
+        d.stub = true;
+        vec_push(&v->sd, d);
+        s = &v->sd.data[v->sd.len - 1];
     }
-    return s->obj;
+    return sd_obj(v, (size_t)(s - v->sd.data));
 }
 
 /* A local variable (key: its symbol ref) or a compound literal (key: its node):
@@ -830,11 +912,30 @@ static uint64_t ev_node(Fr *r, uint32_t n)
             if (!id)
                 return 0;
             ob = &v->obj.data[id - 1];
+            ob->kind = OK_STR;
             memcpy(ob->b, r->f->bytes + t->val, t->width);
             memset(ob->init, 1, t->width);
             *o = id + 1;
         }
         return mkptr(*o - 1, 0);
+    }
+    case TO_LABADDR: {                  /* a label: an object of its own, only its address is usable */
+        uint32_t fi = (uint32_t)(r->f - v->fn.data), id = (uint32_t)t->val, k;
+        Obj *lo;
+        for (k = 0; k + 2 < v->lab.len; k += 3)
+            if (v->lab.data[k] == fi && v->lab.data[k + 1] == id)
+                return mkptr(v->lab.data[k + 2], 0);
+        k = ev_new_obj(v, 0, true);
+        if (!k)
+            return 0;
+        lo = &v->obj.data[k - 1];
+        lo->kind = OK_LABEL;
+        lo->ref = id;
+        lo->fname = r->f->fname;
+        vec_push(&v->lab, fi);
+        vec_push(&v->lab, id);
+        vec_push(&v->lab, k);
+        return mkptr(k, 0);
     }
     case TO_LOAD:
         a = ev_node(r, KID(r, n, 0));
@@ -1174,6 +1275,8 @@ void ev_free(Ev *v)
     }
     vec_free(&v->fn);
     vec_free(&v->sd);
+    vec_free(&v->rec);
+    vec_free(&v->lab);
     free(v);
 }
 
@@ -1193,6 +1296,7 @@ static Fn fn_of_el(Ev *v, El *e)
     size_t i;
     memset(&f, 0, sizeof f);
     f.fsym = e->fsym;
+    f.fname = e->fname;
     f.nodes = dup_n(e->nodes.data, e->nodes.len * sizeof *f.nodes);
     f.kids = dup_n(e->kids.data, e->kids.len * sizeof *f.kids);
     f.bytes = dup_n(e->bytes.data, e->bytes.len);
@@ -1307,10 +1411,136 @@ void eval_keep(Checker *c, El *e, Cfg *g)
     ev_add_func(ev_of(c), e, g);
 }
 
-void eval_data(Checker *c, El *e)
+void eval_statics(Checker *c, El *e)
 {
-    ev_add_data(ev_of(c), e);
+    size_t i;
+    for (i = 0; i < e->nodes.len; i++)
+        if (e->nodes.data[i].op == TO_DATA) {
+            ev_add_data(ev_of(c), e);
+            return;
+        }
 }
+
+void ev_image_free(EvImage *img)
+{
+    size_t i;
+    for (i = 0; i < img->nrel; i++)
+        free(img->rel[i].lit);
+    free(img->rel);
+    free(img->bytes);
+    memset(img, 0, sizeof *img);
+}
+
+static bool img_fail(Ev *v, EvImage *img, const char *why)
+{
+    char msg[96];
+    snprintf(msg, sizeof msg, "%s", why[0] ? why : "unsupported");
+    memset(&v->res, 0, sizeof v->res);
+    ev_image_free(img);
+    memcpy(img->why, msg, sizeof msg);
+    return false;
+}
+
+bool ev_object(Ev *v, El *e, uint32_t n, EvImage *img)
+{
+    const TNode *t = &e->nodes.data[n];
+    Sd *s = NULL;
+    Obj *o;
+    size_t i, k, idx;
+    uint32_t id;
+    memset(img, 0, sizeof *img);
+    for (i = v->sd.len; i-- > 0;)
+        if (v->sd.data[i].ref == t->sym && v->sd.data[i].node == n && !v->sd.data[i].stub) {
+            s = &v->sd.data[i];
+            break;
+        }
+    if (!s)
+        return img_fail(v, img, "static object not registered with the evaluator");
+    idx = (size_t)(s - v->sd.data);
+    if (!t->nkids) {                    /* all zero: no bytes (an object of any size) */
+        if (!size_of(v, t->ty, &img->size))
+            return img_fail(v, img, v->res.why);
+        return true;
+    }
+    memset(&v->res, 0, sizeof v->res);
+    v->fuel = v->o.fuel;
+    id = sd_obj(v, idx);
+    if (!id)
+        return img_fail(v, img, v->res.why);
+    if (v->obj.data[id - 1].sd1) {
+        v->rec.len = 0;
+        v->rec_id = id;
+        v->fold = true;                 /* gcc folds a static initializer: conversions saturate */
+        sd_init(v, idx);
+        v->fold = false;
+        v->rec_id = 0;
+    }
+    if (v->res.status)
+        return img_fail(v, img, v->res.why);
+    o = &v->obj.data[id - 1];
+    img->size = o->size;
+    img->bytes = dup_n(o->b, (size_t)o->size);
+    for (k = 0; k + 1 < v->rec.len; k += 2) {
+        uint64_t x = 0;
+        EvReloc r;
+        Obj *g;
+        unsigned j;
+        if (v->rec.data[k + 1] != 8)
+            return img_fail(v, img, "address in a narrow or non-address element");
+        for (j = 0; j < 8; j++)
+            x |= (uint64_t)img->bytes[v->rec.data[k] + j] << (8 * j);
+        if (!pid(x))
+            continue;               /* a null (or an integer made a pointer) */
+        if (pid(x) > v->obj.len)
+            return img_fail(v, img, "address of nothing");
+        g = &v->obj.data[pid(x) - 1];
+        memset(&r, 0, sizeof r);
+        r.off = v->rec.data[k];
+        r.addend = poff(x);
+        if (g->fn) {
+            r.kind = EV_R_SYM;
+            r.ref = g->fn - 1;
+        } else if (g->kind == OK_STATIC) {
+            r.kind = EV_R_SYM;
+            r.ref = g->ref;
+            r.fname = g->fname;
+        } else if (g->kind == OK_STR) {
+            r.kind = EV_R_STR;
+            r.litsize = g->size;
+            r.lit = dup_n(g->b, (size_t)g->size);
+        } else if (g->kind == OK_LABEL) {
+            r.kind = EV_R_LABEL;
+            r.ref = g->ref;
+            r.fname = g->fname;
+        } else {
+            return img_fail(v, img, "address of a temporary in an initializer");
+        }
+        img->rel = xrealloc(img->rel, (img->nrel + 1) * sizeof *img->rel);
+        img->rel[img->nrel++] = r;
+        memset(img->bytes + r.off, 0, 8);
+    }
+    /* A pointer element that holds an object's address but was not told from the
+     * tree to be one would be written as an integer: stop instead. */
+    for (i = 0; i < t->nkids; i++) {
+        const TNode *el = &e->nodes.data[e->kids.data[t->kid0 + i]];
+        uint64_t x = 0;
+        unsigned j;
+        bool known = false;
+        if (el->width || type_ckind(&v->c->tt, el->ty) != TY_PTR || (uint64_t)el->val + 8 > img->size)
+            continue;
+        for (k = 0; k + 1 < v->rec.len; k += 2)
+            known |= v->rec.data[k] == (uint32_t)el->val;
+        if (known)
+            continue;
+        for (j = 0; j < 8; j++)
+            x |= (uint64_t)o->b[el->val + j] << (8 * j);
+        if (pid(x) && pid(x) <= v->obj.len &&
+            (v->obj.data[pid(x) - 1].kind || v->obj.data[pid(x) - 1].fn))
+            return img_fail(v, img, "address expression form outside the supported ones");
+    }
+    return true;
+}
+
 
 void eval_tentative(Checker *c, uint32_t ref)
 {

@@ -15,7 +15,13 @@ typedef struct Obj {
     uint32_t fn;                /* a function's object: its fsym + 1 */
     bool live, ro;
     bool heap;                  /* made by malloc and friends: free may end it */
+    uint8_t kind;               /* OK_*: what the object stands for, for an address constant */
+    bool stub;                  /* a static object with no definition here: only its address is usable */
+    uint32_t ref, fname;        /* OK_STATIC: the symbol ref, and the function it is local to (name id) */
+    uint32_t sd1;               /* a static object not yet initialized: its Sd index + 1 */
 } Obj;
+
+enum { OK_NONE, OK_STATIC, OK_STR, OK_LABEL };   /* functions are told by Obj.fn */
 
 typedef struct Blk {
     uint32_t *st;
@@ -41,6 +47,7 @@ typedef struct Fn {
     Blk *blk;
     size_t nblk;
     uint32_t entry, nreg, ntmp;
+    uint32_t fname;             /* the El's function name (identifier id), 0 outside one */
     bool variadic, user;        /* user: defined outside the system headers */
     TypeId ret;
     uint32_t *strobj;           /* per node: its string literal's object + 1 */
@@ -54,6 +61,7 @@ typedef struct Sd {
     uint32_t ref, node, fn, obj;
     TypeId ty;
     bool local;
+    bool stub;                  /* made by a reference: no definition registered (yet) */
 } Sd;
 
 struct Ev {
@@ -65,6 +73,10 @@ struct Ev {
     VEC(Sd) sd;
     long fuel;
     unsigned depth;
+    VEC(uint32_t) rec;          /* ev_object: the offsets of address-valued elements, in order */
+    uint32_t rec_id;            /* ... of this object */
+    bool fold;                  /* constant folding, as gcc does: conversions saturate instead of trapping */
+    VEC(uint32_t) lab;          /* label objects: triples (fn index, label id, object) */
     uint32_t stream[3];         /* the objects behind stdout and stderr (pointer, FILE token), 0: not made */
     uint32_t token[3];
 };
@@ -101,7 +113,6 @@ bool ev_tinfo(Ev *v, TypeId t, Ti *ti);
 uint64_t ev_canon(const Ti *ti, uint64_t x);
 double ev_fget(const Ti *ti, uint64_t x);
 uint64_t ev_fput(const Ti *ti, double d);
-Ev *ev_of(Checker *c);        /* the checker's evaluator, made on first use */
 
 /* ---- objects: a pointer is an object id (high 32 bits, 0 is null) and a signed offset ---- */
 
