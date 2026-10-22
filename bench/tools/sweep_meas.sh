@@ -21,10 +21,10 @@ for f in $(ls "$L"/*.c | grep -v '/luac\?\.c$') "$Z"/common/*.c "$Z"/compress/*.
 done
 echo "files: $nf, failed: $nbad, seconds: $(($(date +%s) - t0))"
 awk '{
-    if (match($0, /edges taken [0-9]+ -> [0-9]+ of [0-9]+/)) {
+    if (match($0, /edges taken [0-9]+ of [0-9]+, [0-9]+ of them/)) {
         split(substr($0, RSTART, RLENGTH), a, " ")
-        b += a[3]; c += a[5]; d += a[7]
+        t += a[3]; d += a[5]; g += a[6]
     }
     if (match($0, /: [0-9]+ queries/)) q += substr($0, RSTART + 2) + 0
 }
-END { printf "queries %d, edges %d -> %d of %d (%.1f%% -> %.1f%%)\n", q, b, c, d, 100 * b / d, 100 * c / d }' "$W/stats"
+END { printf "queries %d, edges taken %d of %d (%.1f%%), %d of them first by a solver round\n", q, t, d, 100 * t / d, g }' "$W/stats"

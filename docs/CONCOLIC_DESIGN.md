@@ -120,9 +120,19 @@ As built (differences from section 1 in bold):
 - Driver (`solve_fn`): 48 queries per function, 4 seeds, 8 expansions per seed, `rlimit` 5000000 per
   query. Every blob data byte and scalar parameter value is symbolic; a bool parameter is
   normalized to 0/1 after a model.
-- Stats line on stderr: queries, sat/unsat/unknown, calls, fresh edges, edges taken before -> after
-  of total, max nodes, functions seeded, tracked runs, symbolic branch steps, steps with an unseen
-  edge.
+- Stats line on stderr: queries, sat/unsat/unknown, calls, fresh edges, edges taken of total and how
+  many of them a solver round took first (callees included), max nodes, functions seeded, tracked
+  runs, symbolic branch steps, steps with an unseen edge.
+- **One search loop** (2026-10-22; replaces the phases of section 1.7): per function a corpus of
+  finishing inputs (`SSearch`: the first 4, then any that took a new edge, at most 16) and rounds of
+  three mutations: random draws (the first N, collecting the dictionary), dictionary draws (64 rounds),
+  and `solve_step` (one tracked run of the next corpus input and its queries, interleaved after each
+  dictionary round, then until the caps `SEXPAND` 8 tracked runs and `SQUERY` 48 queries are spent). A
+  solved child that takes a new edge joins the corpus and is tracked in turn. Every finishing call is
+  printed and compared with gcc as before. Variants parked: `PARKED.md` (round budget by progress,
+  yield-weighted mutations, printing only new-edge calls). Corpus (zstd and Lua 5.4, N=24, run
+  `2026-10-22-sweep-unified-24e`): 6164 of 14106 edges (43.7%) against 5991 (42.5%) with the
+  phases (`sweep-base-24`): the solver now starts from every corpus input, not four seeds.
 
 Checks: `tests/symx_unit.c` (solves `x*3 == 99` through the command); `tests/cfg_exec/solve.c`
 (without the solver none of the five guarded calls reaches its edge; with it the edges taken go

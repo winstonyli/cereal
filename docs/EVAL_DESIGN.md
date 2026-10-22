@@ -676,6 +676,7 @@ null pointer 2585, writes out of bounds 1810, writes through null 1404; calls wi
 data. Spike (run `2026-10-22-sweep-share5-24`, not kept): a pointer field links to another blob of its
 element type five times in eight instead of twice (NULL stays one in eight) took the generator from
 40.7% to 41.0% and the solver's total from 42.5% to 42.8%: sharing helps a little, it is not the lever.
+One search loop (same day, `CONCOLIC_DESIGN.md` section 8): random, dictionary and solver rounds over one corpus per function, in place of the phases; 43.7% against 42.5% (6164 against 5991 of 14106 edges).
 
 ## 10. Review log
 

@@ -717,11 +717,12 @@ static void sweep_gen(Ev *v, const Fn *f, const SFn *s, uint8_t *in, uint64_t *r
 
 typedef struct SolveStat {
     unsigned long queries, sat, unsat, unknown, calls, fresh;
-    size_t edges, before, after;    /* edges of the swept functions, taken before and after solving */
+    size_t edges, taken;            /* edges of the swept functions, and those taken by the end */
     size_t nodes;                   /* the most expression nodes one tracked call made */
     unsigned long seeded, tracked;  /* functions with a finishing input; tracked runs */
     unsigned long steps, open;      /* path steps (branches on symbolic values, pins); branches with an unseen edge */
     unsigned long branches;         /* every branch and switch the tracked runs took */
+    unsigned long gain;             /* edges first taken by a solver round, in any function */
 } SolveStat;
 
 typedef struct STried {
@@ -800,33 +801,61 @@ static size_t switch_conds(Ev *v, const PathEnt *p, uint32_t e, SxCond *cs, bool
     return n;
 }
 
-static void solve_fn(Ev *v, SxSolver *sv, SolveStat *st, uint8_t **seeds, size_t nseeds, const Fn *f,
-                     const SFn *s, StrBuf *body, const char *name, bool *bad, bool *saw_ok)
+/* One function's search (the loop in eval_sweep): the corpus is the inputs that finished and are worth
+ * mutating (the first few, then any that took a new edge); `next` is the one the solver tracks next. */
+#define SCORPUS 16
+
+typedef struct SSearch {
+    VEC(uint8_t *) corpus;
+    size_t next;
+    STriedVec done;                     /* the edges already asked about */
+    size_t queries, expanded;
+} SSearch;
+
+static void search_keep(SSearch *q, const SFn *s, const uint8_t *in, bool fresh)
 {
-    VEC(uint8_t *) work = {0};
-    STriedVec done = {0};
+    if (q->corpus.len < SCORPUS && (q->corpus.len < SSEEDS || fresh))
+        vec_push(&q->corpus, memcpy(xmalloc((size_t)s->insz + 1), in, (size_t)s->insz));
+}
+
+static void search_free(SSearch *q)
+{
+    while (q->corpus.len)
+        free(vec_pop(&q->corpus));
+    vec_free(&q->corpus);
+    vec_free(&q->done);
+}
+
+/* The solver mutation: track the next corpus input and, at each branch of its path whose other edge
+ * nobody has taken, ask for bytes that take it; each answer is one more call, kept if it takes a new
+ * edge.  False when the corpus or the budgets are used up. */
+static bool solve_step1(Ev *v, SxSolver *sv, SolveStat *st, SSearch *q, const Fn *f, const SFn *s,
+                       StrBuf *body, const char *name, bool *bad, bool *saw_ok)
+{
+    STriedVec *done = &q->done;
     SxModel m = {0};
-    size_t qi, i, queries = 0, expanded = 0;
-    for (i = 0; i < nseeds; i++)
-        vec_push(&work, seeds[i]);          /* the seeds stay the caller's; only children are freed here */
-    for (qi = 0; qi < work.len && expanded < SEXPAND && queries < SQUERY; qi++) {
-        const uint8_t *seed = work.data[qi];
+    size_t i;
+    {
+        const uint8_t *seed;
         StrBuf sink = {0};
         int r;
+        if (q->next >= q->corpus.len || q->expanded >= SEXPAND || q->queries >= SQUERY)
+            return false;
+        seed = q->corpus.data[q->next++];
         v->track = true;
         r = sweep_call(v, &sink, name, f, s, seed, false, bad);
         v->track = false;
         sb_free(&sink);
         if (r != EV_OK)
-            continue;
-        expanded++;
+            return true;
+        q->expanded++;
         st->tracked++;
         st->branches += v->nbr;
         v->nbr = 0;
         if (v->sx.n.len > st->nodes)
             st->nodes = v->sx.n.len;
         sx_begin(sv, &v->sx);
-        for (i = 0; i < v->path.len && queries < SQUERY; i++) {
+        for (i = 0; i < v->path.len && q->queries < SQUERY; i++) {
             PathEnt p = v->path.data[i];
             SxCond cs[64];
             st->steps++;
@@ -838,11 +867,11 @@ static void solve_fn(Ev *v, SxSolver *sv, SolveStat *st, uint8_t **seeds, size_t
                         st->open++;
                         break;
                     }
-                for (e = 0; e < ne && queries < SQUERY; e++) {
+                for (e = 0; e < ne && q->queries < SQUERY; e++) {
                     size_t n;
                     bool whole = true, sat;
                     uint8_t *child = NULL;
-                    if (e == p.edge || (b->seen >> blk_edge_bit(b, e) & 1) || tried(&done, b, e))
+                    if (e == p.edge || (b->seen >> blk_edge_bit(b, e) & 1) || tried(done, b, e))
                         continue;
                     if (b->term == TK_BR) {
                         cs[0].a = p.expr;
@@ -855,9 +884,9 @@ static void solve_fn(Ev *v, SxSolver *sv, SolveStat *st, uint8_t **seeds, size_t
                         continue;
                     {
                         STried t = { b, e };
-                        vec_push(&done, t);
+                        vec_push(done, t);
                     }
-                    queries++;
+                    q->queries++;
                     st->queries++;
                     r = sx_try(sv, cs, n, &m);
                     if (r == SX_ERROR) {
@@ -873,7 +902,10 @@ static void solve_fn(Ev *v, SxSolver *sv, SolveStat *st, uint8_t **seeds, size_t
                     sat = solve_run(v, &m, seed, f, s, body, name, bad, saw_ok, &child);
                     if (sat) {
                         st->fresh++;
-                        vec_push(&work, child);
+                        if (q->corpus.len < SCORPUS)
+                            vec_push(&q->corpus, child);
+                        else
+                            free(child);
                     }
                 }
             }
@@ -888,11 +920,17 @@ static void solve_fn(Ev *v, SxSolver *sv, SolveStat *st, uint8_t **seeds, size_t
             }
         }
     }
-    for (i = nseeds; i < work.len; i++)
-        free(work.data[i]);
-    vec_free(&work);
-    vec_free(&done);
     sx_model_free(&m);
+    return true;
+}
+
+static bool solve_step(Ev *v, SxSolver *sv, SolveStat *st, SSearch *q, const Fn *f, const SFn *s,
+                       StrBuf *body, const char *name, bool *bad, bool *saw_ok)
+{
+    unsigned long seen = v->newseen;
+    bool r = solve_step1(v, sv, st, q, f, s, body, name, bad, saw_ok);
+    st->gain += v->newseen - seen;
+    return r;
 }
 
 static void eval_sweep(Checker *c)
@@ -920,8 +958,8 @@ static void eval_sweep(Checker *c)
         const char *name;
         SFn s;
         uint64_t rs;
-        uint8_t *in, *seeds[SSEEDS];
-        size_t nseeds = 0;
+        uint8_t *in;
+        SSearch q = {0};
         bool bad = false, saw_ok = false, saw_unsup = false, ok;
         StrBuf head = {0}, body = {0};
         if (f->fsym == SYM_NONE || !f->user || f->variadic || f->np > 16)
@@ -952,12 +990,13 @@ static void eval_sweep(Checker *c)
         v->dict_on = true;
         for (j = 0; j < c->opt.eval_sweep; j++) {
             int st;
+            unsigned long seen = v->newseen;
             sweep_gen(v, f, &s, in, &rs);
             st = sweep_call(v, &body, name, f, &s, in, !saw_unsup, &bad);
             saw_ok |= st == EV_OK;
             saw_unsup |= st == EV_UNSUPPORTED && s.ptrfn;
-            if (sv && st == EV_OK && nseeds < SSEEDS)
-                seeds[nseeds++] = memcpy(xmalloc((size_t)s.insz + 1), in, (size_t)s.insz);
+            if (sv && st == EV_OK)
+                search_keep(&q, &s, in, v->newseen != seen);
         }
         /* guided calls: the same generator, now drawing integers from what the program compared its
          * inputs with; only calls that finish are kept */
@@ -970,12 +1009,16 @@ static void eval_sweep(Checker *c)
                     v->dict.data[m++] = v->dict.data[d];
             v->dict.len = m;
             v->dict_use = true;
-            for (j = 0; j < SGUIDED; j++) {
+            for (j = 0; j < SGUIDED; j++) {     /* a dictionary round, then a solver round */
+                unsigned long seen = v->newseen;
+                int st;
                 sweep_gen(v, f, &s, in, &rs);
-                int st = sweep_call(v, &body, name, f, &s, in, false, &bad);
+                st = sweep_call(v, &body, name, f, &s, in, false, &bad);
                 saw_ok |= st == EV_OK;
-                if (sv && st == EV_OK && nseeds < SSEEDS)
-                    seeds[nseeds++] = memcpy(xmalloc((size_t)s.insz + 1), in, (size_t)s.insz);
+                if (sv && st == EV_OK)
+                    search_keep(&q, &s, in, v->newseen != seen);
+                if (sv)
+                    solve_step(v, sv, &ss, &q, f, &s, &body, name, &bad, &saw_ok);
             }
             v->dict_use = false;
         }
@@ -983,15 +1026,14 @@ static void eval_sweep(Checker *c)
             size_t ed = 0, tk = 0;
             blk_count(f, &ed, &tk);
             ss.edges += ed;
-            ss.before += tk;
-            ss.seeded += nseeds > 0;
-            solve_fn(v, sv, &ss, seeds, nseeds, f, &s, &body, name, &bad, &saw_ok);
+            ss.seeded += q.corpus.len > 0;
+            while (solve_step(v, sv, &ss, &q, f, &s, &body, name, &bad, &saw_ok))
+                ;
             tk = 0;
             ed = 0;
             blk_count(f, &ed, &tk);
-            ss.after += tk;
-            while (nseeds)
-                free(seeds[--nseeds]);
+            ss.taken += tk;
+            search_free(&q);
         }
         if (!bad && (!s.ptrfn || saw_ok || saw_unsup)) {
             fputs(sb_cstr(&head), out);
@@ -1005,10 +1047,10 @@ static void eval_sweep(Checker *c)
     if (sv) {
         fprintf(stderr,
                 "cereal: solve: %lu queries (%lu sat, %lu unsat, %lu unknown), %lu calls, %lu reached a new edge; "
-                "edges taken %zu -> %zu of %zu; at most %zu nodes in a call; "
+                "edges taken %zu of %zu, %lu of them first by a solver round (callees included); at most %zu nodes in a call; "
                 "%lu functions with a finishing input, %lu tracked runs, %lu symbolic steps of %lu branches, "
                 "%lu with an unseen edge\n",
-                ss.queries, ss.sat, ss.unsat, ss.unknown, ss.calls, ss.fresh, ss.before, ss.after, ss.edges,
+                ss.queries, ss.sat, ss.unsat, ss.unknown, ss.calls, ss.fresh, ss.taken, ss.edges, ss.gain,
                 ss.nodes, ss.seeded, ss.tracked, ss.steps, ss.branches, ss.open);
         sx_close(sv);
     }
