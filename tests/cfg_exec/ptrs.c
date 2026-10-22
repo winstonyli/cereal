@@ -104,3 +104,47 @@ void cnt(int **pp, int k)
     if (pp[0])
         *pp[0] = k;
 }
+
+struct Node {
+    int val;
+    struct Node *next;
+};
+
+int chain(struct Node *n)
+{
+    int s = 0, i;
+    for (i = 0; i < 3 && n; i++, n = n->next)
+        s += n->val;
+    return s;
+}
+
+void setnext(struct Node *n, int v)
+{
+    if (n->next)
+        n->next->val = v + n->val;
+}
+
+int *inner(int **pp, int k)
+{
+    return pp[k & 3];
+}
+
+struct Buf {
+    char *data;
+    int len;
+};
+
+int blen(struct Buf b)
+{
+    int i, s = 0;
+    for (i = 0; i < b.len && i < 16; i++)
+        s += b.data[i];
+    return s;
+}
+
+void bset(struct Buf *b, int c)
+{
+    int i;
+    for (i = 0; i < 16; i++)
+        b->data[i] = (char)(c + i);
+}

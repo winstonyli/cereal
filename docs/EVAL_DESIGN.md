@@ -551,19 +551,28 @@ and records by value are skipped there: no symbol, no definition).
 
 Inputs come from one generator: `T *` points to a fresh object of 16 elements (64
 bytes for `char`, `void`), a record is its `sizeof`, and every scalar inside is
-`sweep_arg` (so small values dominate), nested pointers are NULL, padding is zero.
+`sweep_arg` (so small values dominate), padding is zero. Each pointer field inside those
+objects points to a blob of its own (4 elements, 16 bytes for `char`/`void`); pointers
+inside those are NULL (one level; no recursion into lists). The input is the blobs
+back to back and the layout is fixed by the types, so the call line is unchanged; the
+thunk relinks the pointers between its buffers, and pointer fields are zeroed in the
+result bytes (the two sides' addresses differ). Past 64 blobs or 16 KB a function falls
+back to NULL inner pointers.
 A function that returns a pointer outside its argument objects is dropped whole (it
 cannot be compared). A pointer or record function prints only the calls that finish
 (plus its first `unsupported`), so null dereferences from NULL nested pointers never
 reach the gcc build. Skipped: record results (the temporary dies with `ev_call`),
 types with no spelling (anonymous, `__va_list_tag`), more than 16 KB of input.
 
-Check: `tests/cfg_exec/ptrs.c` (12 functions: in-place fill, swap, returned offset,
+Check: `tests/cfg_exec/ptrs.c` (17 functions, with a linked list, `int **`, a record holding a buffer pointer: in-place fill, swap, returned offset,
 null return, struct and union by value, struct update through a pointer, `void *`,
 `double *`, `int **`); a mutant of `store_n` that drops byte stores of 0 is caught
 there (post-state bytes differ). Coverage (scratch seen-edge probe) on zstd and Lua:
 650 distinct functions driven (was 125), 1100 with branches, 64134 calls; edge
-coverage 33.7% at N=24 and 35.9% at N=200 over 7671 edges. This is a different
+coverage 33.7% at N=24 and 35.9% at N=200 over 7671 edges with NULL inner pointers;
+with inner pointees 34.2% and 36.5% over 7615 edges (1090 functions with branches, 10 fewer:
+returns that now point outside the objects). A small gain: the missed code needs more than
+a live pointee. This is a different
 population from the scalar-only 57%, so the numbers do not compare: the new functions
 mostly branch on data behind pointers that this generator fills with small random
 bytes, and on state (NULL nested pointers, other translation units) it cannot build.
