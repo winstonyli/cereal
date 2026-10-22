@@ -9,6 +9,7 @@
  * arguments - and a future shadow of the objects (symbolic values) is carried by
  * the same copies.  Any other external function is reported as unsupported. */
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 
 #include "c/eval_int.h"
@@ -706,6 +707,69 @@ static uint64_t h_labs(Ev *v, const HArg *a, unsigned na)
     return x < 0 ? 0 - a[0].x : a[0].x;
 }
 
+/* ctype in the "C" locale; the argument is an int that is EOF or an unsigned char value. */
+static uint64_t h_tolower(Ev *v, const HArg *a, unsigned na)
+{
+    int c;
+    NEED(1);
+    c = (int)a[0].x;
+    return (uint64_t)(int64_t)(c >= 'A' && c <= 'Z' ? c + 32 : c);
+}
+
+static uint64_t h_toupper(Ev *v, const HArg *a, unsigned na)
+{
+    int c;
+    NEED(1);
+    c = (int)a[0].x;
+    return (uint64_t)(int64_t)(c >= 'a' && c <= 'z' ? c - 32 : c);
+}
+
+/* floor, ceil, frexp of a double (the prototype converts the argument). */
+static bool dbl(Ev *v, const HArg *a, double *d)
+{
+    Ti ti;
+    if (!ev_tinfo(v, a->ty, &ti))
+        return false;
+    *d = ev_fget(&ti, a->x);
+    return true;
+}
+
+static uint64_t dret(double d)
+{
+    Ti ti = {8, false, false, true};
+    return ev_fput(&ti, d);
+}
+
+static uint64_t h_floor(Ev *v, const HArg *a, unsigned na)
+{
+    double d;
+    NEED(1);
+    return dbl(v, a, &d) ? dret(floor(d)) : 0;
+}
+
+static uint64_t h_ceil(Ev *v, const HArg *a, unsigned na)
+{
+    double d;
+    NEED(1);
+    return dbl(v, a, &d) ? dret(ceil(d)) : 0;
+}
+
+static uint64_t h_frexp(Ev *v, const HArg *a, unsigned na)
+{
+    double d, m;
+    int e;
+    uint8_t *p;
+    NEED(2);
+    if (!dbl(v, a, &d))
+        return 0;
+    m = frexp(d, &e);
+    p = wr(v, a[1].x, 4, "frexp");
+    if (!p)
+        return 0;
+    memcpy(p, &e, 4);
+    return dret(m);
+}
+
 static uint64_t h_exit(Ev *v, const HArg *a, unsigned na)
 {
     NEED(1);
@@ -736,7 +800,8 @@ static const struct {
     {"memchr", h_memchr},   {"strlen", h_strlen},   {"strcmp", h_strcmp},   {"strncmp", h_strncmp},
     {"strcpy", h_strcpy},   {"strncpy", h_strncpy}, {"strcat", h_strcat},   {"strchr", h_strchr},
     {"strrchr", h_strrchr}, {"abs", h_abs},         {"labs", h_labs},       {"llabs", h_labs},
-    {"exit", h_exit},       {"abort", h_abort},
+    {"tolower", h_tolower}, {"toupper", h_toupper}, {"floor", h_floor},     {"ceil", h_ceil},
+    {"frexp", h_frexp},     {"exit", h_exit},       {"abort", h_abort},
 };
 
 HostFn ev_host_fn(const char *name)
