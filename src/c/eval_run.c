@@ -839,6 +839,7 @@ typedef struct SCtx {
     uint64_t rs;                        /* its random state */
     SSearch q;
     bool bad, saw_ok, saw_unsup;
+    char why[112];                      /* the first reason a call of the generator stopped, "" if none did */
 } SCtx;
 
 /* The solver mutation: track the next corpus input and, at each branch of its path whose other edge
@@ -964,6 +965,8 @@ static void mut_gen(SCtx *x)
     sweep_gen(v, x->f, x->s, x->in, &x->rs);
     st = sweep_call(v, x->body, x->name, x->f, x->s, x->in, !v->dict_use && !x->saw_unsup, &x->bad);
     x->saw_ok |= st == EV_OK;
+    if (st != EV_OK && !x->why[0])
+        snprintf(x->why, sizeof x->why, "%s: %s", stop_name(st), v->res.why);
     x->saw_unsup |= !v->dict_use && st == EV_UNSUPPORTED && x->s->ptrfn;
     if (x->sv && st == EV_OK)
         search_keep(&x->q, x->s, x->in, v->newseen != seen);
@@ -1042,11 +1045,14 @@ static int miss_class(Ev *v, const Fn *f, const Blk *b)
 typedef struct SweptFn {
     size_t i;
     bool finished;
+    char why[112];
 } SweptFn;
 
 static void miss_report(Ev *v, const SweptFn *sw, size_t n)
 {
     size_t counts[MC_N] = {0}, total = 0, k, i;
+    struct { char key[104]; size_t edges; const char *ex[4]; unsigned nex; } why[128];
+    size_t nwhy = 0;
     for (k = 0; k < n; k++) {
         const Fn *f = &v->fn.data[sw[k].i];
         v->c = f->c;
@@ -1056,12 +1062,41 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
             int c = -1;
             for (e = 0; e < ne; e++)
                 if (!(b->seen >> (b->term == TK_SWTCH && e == ne - 1 ? 62 : e) & 1)) {
-                    if (c < 0)
+                    if (c < 0) {
                         c = sw[k].finished ? miss_class(v, f, b) : MC_NOFIN;
+                    }
                     counts[c]++;
                     total++;
+                    if (c == MC_NOFIN) {            /* by the function's first stop, digits and addresses folded */
+                        char key[104];
+                        size_t m, j = 0, w;
+                        for (m = 0; sw[k].why[m] && j + 1 < sizeof key; m++)
+                            if (!(sw[k].why[m] >= '0' && sw[k].why[m] <= '9' && j && key[j - 1] == '#'))
+                                key[j++] = sw[k].why[m] >= '0' && sw[k].why[m] <= '9' ? '#' : sw[k].why[m];
+                        key[j] = 0;
+                        for (w = 0; w < nwhy && strcmp(why[w].key, key); w++)
+                            ;
+                        if (w == nwhy && nwhy < 128) {
+                            strcpy(why[nwhy].key, key);
+                            why[nwhy].edges = why[nwhy].nex = 0;
+                            nwhy++;
+                        }
+                        if (w < nwhy)
+                        {
+                            why[w].edges++;
+                            if (why[w].nex < 4 && (!why[w].nex || why[w].ex[why[w].nex - 1] != cident(f->c, csym(f->c, f->fsym)->name)))
+                                why[w].ex[why[w].nex++] = cident(f->c, csym(f->c, f->fsym)->name);
+                        }
+                    }
                 }
         }
+    }
+    for (k = 0; k < nwhy; k++) {
+        unsigned e;
+        fprintf(stderr, "cereal: never finished: %zu edges: %s [", why[k].edges, why[k].key[0] ? why[k].key : "(nothing ran)");
+        for (e = 0; e < why[k].nex; e++)
+            fprintf(stderr, "%s%s", e ? " " : "", why[k].ex[e]);
+        fputs("]\n", stderr);
     }
     fprintf(stderr, "cereal: untaken edges %zu:", total);
     for (i = 0; i < MC_N; i++)
@@ -1172,7 +1207,8 @@ static void eval_sweep(Checker *c0)
             search_free(&x.q);
         }
         {
-            SweptFn sw = { i, x.saw_ok };
+            SweptFn sw = { i, x.saw_ok, "" };
+            memcpy(sw.why, x.why, sizeof sw.why);
             vec_push(&swept, sw);
         }
         if (!x.bad && (!s.ptrfn || x.saw_ok || x.saw_unsup)) {

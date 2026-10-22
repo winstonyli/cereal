@@ -24,7 +24,7 @@ run() {
     timeout 3600 "$C" check --target=x86_64-linux-gnu -std=gnu99 -DZSTD_DISABLE_ASM -I"$L" -I"$Z" -I"$Z/common" \
         --eval-sweep="$N,1234" --eval-solve="$S" $LINK "$@" >/dev/null 2>"$W/err" </dev/null || nbad=$((nbad + 1))
     grep -a '^cereal: solve:' "$W/err" >>"$W/stats"
-    grep -a '^cereal: untaken' "$W/err" >>"$W/miss"
+    grep -a -e '^cereal: untaken' -e '^cereal: never' "$W/err" >>"$W/miss"
 }
 if [ -n "$LINK" ]; then
     LINK=--eval-link

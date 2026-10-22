@@ -161,10 +161,29 @@ untaken edge is classed by its branch's condition). 4248 untaken edges:
 
 Readings: a pointer-topology mutation (NULL, alias, link per slot) has a ceiling of about 260 edges
 (null tests plus pointer compares, 6%), so it is not the lever. The biggest class is functions
-where no call ever finishes (Lua: 1561 of 2269), which is a question of why (trap on invalid state,
-unsupported construct, step limit), not of input values; the next survey splits it by stop reason. The
-loaded-integer and call-result classes (zstd) are state the generator leaves at its random bytes or
-zero.
+where no call ever finishes (Lua: 1561 of 2269). The loaded-integer and call-result classes (zstd) are
+state the generator leaves at its random bytes or zero.
+
+The same functions by the first reason a call stopped (run `2026-10-22-sweep-link-why2`, edges of
+the functions that never finished, examples in brackets):
+
+| first stop | edges | examples |
+|---|---|---|
+| read through a null pointer | 1060 | `lua_geti`, `aux_rawset`, `lua_next` (Lua) |
+| read out of bounds | 171 + 90 | `lua_arith`, `lua_gettable`; `ZSTD_splitBlock_byChunks` |
+| `asm` (not supported) | 83 | `ZSTD_cpuSupportsBmi2` |
+| subtraction of pointers into different objects | 80 + 63 | `ZSTD_updateDUBT`; `luaD_growstack`, `relstack` |
+| call through a null pointer | 71 | `lua_pushlstring`, `lua_createtable` (the allocator in the global state) |
+| pointer arithmetic out of range | 44 + 29 | `luaK_nil`; `ZSTD_insertBt1` |
+| strcmp through a null pointer | 27 | `auxgetstr`, `luaT_init` |
+| a callee with no body and not in the host library | about 80 | `strpbrk`, `strspn`, `getc`, `strcoll`, `fmod`, `strtod` |
+
+About 1450 of the 1874 edges stop on the Lua API and zstd match-state functions meeting a state whose
+invariants fail: `L->ci`, `L->top` against `L->stack`, `G(L)->frealloc` and the string table are
+NULL or unrelated pointers in a generated state. This is the case for building state with earlier
+calls (`luaL_newstate`, `ZSTD_createCCtx`), the parked 2b in `PARKED.md`; a deeper or better-shaped
+generated record would not repair relations between its pointers. The cheap rest: `asm` (83),
+more host-library functions (about 80).
 
 ## 9. Review log
 
