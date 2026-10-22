@@ -826,12 +826,35 @@ static void search_free(SSearch *q)
     vec_free(&q->done);
 }
 
+/* One function's sweep: what a mutation needs (a mutation is a round of the search). */
+typedef struct SCtx {
+    Ev *v;
+    SxSolver *sv;                       /* NULL without --eval-solve */
+    SolveStat *ss;
+    const Fn *f;
+    const SFn *s;
+    const char *name;
+    StrBuf *body;                       /* the calls that print */
+    uint8_t *in;                        /* the generator's input buffer */
+    uint64_t rs;                        /* its random state */
+    SSearch q;
+    bool bad, saw_ok, saw_unsup;
+} SCtx;
+
 /* The solver mutation: track the next corpus input and, at each branch of its path whose other edge
  * nobody has taken, ask for bytes that take it; each answer is one more call, kept if it takes a new
  * edge.  False when the corpus or the budgets are used up. */
-static bool solve_step1(Ev *v, SxSolver *sv, SolveStat *st, SSearch *q, const Fn *f, const SFn *s,
-                       StrBuf *body, const char *name, bool *bad, bool *saw_ok)
+static bool solve_step1(SCtx *x)
 {
+    Ev *v = x->v;
+    SxSolver *sv = x->sv;
+    SolveStat *st = x->ss;
+    SSearch *q = &x->q;
+    const Fn *f = x->f;
+    const SFn *s = x->s;
+    StrBuf *body = x->body;
+    const char *name = x->name;
+    bool *bad = &x->bad, *saw_ok = &x->saw_ok;
     STriedVec *done = &q->done;
     SxModel m = {0};
     size_t i;
@@ -924,14 +947,37 @@ static bool solve_step1(Ev *v, SxSolver *sv, SolveStat *st, SSearch *q, const Fn
     return true;
 }
 
-static bool solve_step(Ev *v, SxSolver *sv, SolveStat *st, SSearch *q, const Fn *f, const SFn *s,
-                       StrBuf *body, const char *name, bool *bad, bool *saw_ok)
+static bool solve_step(SCtx *x)
 {
-    unsigned long seen = v->newseen;
-    bool r = solve_step1(v, sv, st, q, f, s, body, name, bad, saw_ok);
-    st->gain += v->newseen - seen;
+    unsigned long seen = x->v->newseen;
+    bool r = solve_step1(x);
+    x->ss->gain += x->v->newseen - seen;
     return r;
 }
+
+/* The generator mutation: a fresh input (from the dictionary too, once it is on), run and kept. */
+static void mut_gen(SCtx *x)
+{
+    Ev *v = x->v;
+    unsigned long seen = v->newseen;
+    int st;
+    sweep_gen(v, x->f, x->s, x->in, &x->rs);
+    st = sweep_call(v, x->body, x->name, x->f, x->s, x->in, !v->dict_use && !x->saw_unsup, &x->bad);
+    x->saw_ok |= st == EV_OK;
+    x->saw_unsup |= !v->dict_use && st == EV_UNSUPPORTED && x->s->ptrfn;
+    if (x->sv && st == EV_OK)
+        search_keep(&x->q, x->s, x->in, v->newseen != seen);
+}
+
+static void mut_solve(SCtx *x)
+{
+    if (x->sv)
+        solve_step(x);
+}
+
+/* the rounds after the random ones, in turn */
+static void (*const rotation[])(SCtx *) = { mut_gen, mut_solve };
+
 
 static void eval_sweep(Checker *c)
 {
@@ -957,10 +1003,8 @@ static void eval_sweep(Checker *c)
         Fn *f = &v->fn.data[i];
         const char *name;
         SFn s;
-        uint64_t rs;
-        uint8_t *in;
-        SSearch q = {0};
-        bool bad = false, saw_ok = false, saw_unsup = false, ok;
+        SCtx x = {0};
+        bool ok;
         StrBuf head = {0}, body = {0};
         if (f->fsym == SYM_NONE || !f->user || f->variadic || f->np > 16)
             continue;
@@ -981,23 +1025,22 @@ static void eval_sweep(Checker *c)
         }
         sb_putc(&head, 10);
         sweep_thunk(c, &head, name, f, &s);
-        rs = (uint64_t)c->opt.eval_seed * 0x9e3779b97f4a7c15ull;
+        x.v = v;
+        x.sv = sv;
+        x.ss = &ss;
+        x.f = f;
+        x.s = &s;
+        x.name = name;
+        x.body = &body;
+        x.rs = (uint64_t)c->opt.eval_seed * 0x9e3779b97f4a7c15ull;
         for (k = 0; name[k]; k++)
-            rs = (rs ^ (unsigned char)name[k]) * 1099511628211ull;
-        rs |= 1;
-        in = xcalloc((size_t)s.insz + 1, 1);
+            x.rs = (x.rs ^ (unsigned char)name[k]) * 1099511628211ull;
+        x.rs |= 1;
+        x.in = xcalloc((size_t)s.insz + 1, 1);
         v->dict.len = 0;
         v->dict_on = true;
-        for (j = 0; j < c->opt.eval_sweep; j++) {
-            int st;
-            unsigned long seen = v->newseen;
-            sweep_gen(v, f, &s, in, &rs);
-            st = sweep_call(v, &body, name, f, &s, in, !saw_unsup, &bad);
-            saw_ok |= st == EV_OK;
-            saw_unsup |= st == EV_UNSUPPORTED && s.ptrfn;
-            if (sv && st == EV_OK)
-                search_keep(&q, &s, in, v->newseen != seen);
-        }
+        for (j = 0; j < c->opt.eval_sweep; j++)
+            mut_gen(&x);
         /* guided calls: the same generator, now drawing integers from what the program compared its
          * inputs with; only calls that finish are kept */
         v->dict_on = false;
@@ -1009,16 +1052,10 @@ static void eval_sweep(Checker *c)
                     v->dict.data[m++] = v->dict.data[d];
             v->dict.len = m;
             v->dict_use = true;
-            for (j = 0; j < SGUIDED; j++) {     /* a dictionary round, then a solver round */
-                unsigned long seen = v->newseen;
-                int st;
-                sweep_gen(v, f, &s, in, &rs);
-                st = sweep_call(v, &body, name, f, &s, in, false, &bad);
-                saw_ok |= st == EV_OK;
-                if (sv && st == EV_OK)
-                    search_keep(&q, &s, in, v->newseen != seen);
-                if (sv)
-                    solve_step(v, sv, &ss, &q, f, &s, &body, name, &bad, &saw_ok);
+            for (j = 0; j < SGUIDED; j++) {
+                size_t r;
+                for (r = 0; r < sizeof rotation / sizeof *rotation; r++)
+                    rotation[r](&x);
             }
             v->dict_use = false;
         }
@@ -1026,20 +1063,20 @@ static void eval_sweep(Checker *c)
             size_t ed = 0, tk = 0;
             blk_count(f, &ed, &tk);
             ss.edges += ed;
-            ss.seeded += q.corpus.len > 0;
-            while (solve_step(v, sv, &ss, &q, f, &s, &body, name, &bad, &saw_ok))
+            ss.seeded += x.q.corpus.len > 0;
+            while (solve_step(&x))
                 ;
             tk = 0;
             ed = 0;
             blk_count(f, &ed, &tk);
             ss.taken += tk;
-            search_free(&q);
+            search_free(&x.q);
         }
-        if (!bad && (!s.ptrfn || saw_ok || saw_unsup)) {
+        if (!x.bad && (!s.ptrfn || x.saw_ok || x.saw_unsup)) {
             fputs(sb_cstr(&head), out);
             fputs(sb_cstr(&body), out);
         }
-        free(in);
+        free(x.in);
         sweep_free(&s);
         sb_free(&head);
         sb_free(&body);
