@@ -14,7 +14,8 @@ typedef struct Obj {
     uint8_t *b, *init;          /* bytes and one init flag per byte */
     uint32_t *sh;               /* tracking: per byte, an 8-bit expression of the input (0: concrete); NULL: none */
     uint64_t size;
-    uint32_t fn;                /* a function's object: its fsym + 1 */
+    uint32_t fn;                /* a function's object: its fsym + 1, in the numbering of fc */
+    Checker *fc;                /* ... the file that numbering belongs to */
     bool live, ro;
     bool heap;                  /* made by malloc and friends: free may end it */
     uint8_t kind;               /* OK_*: what the object stands for, for an address constant */
@@ -60,6 +61,7 @@ typedef struct Par {
 } Par;
 
 typedef struct Fn {
+    Checker *c;                 /* the file this body, its types and its symbols belong to */
     uint32_t fsym;
     TNode *nodes;
     uint32_t *kids;
@@ -80,6 +82,7 @@ typedef struct Fn {
  * its first reference; node is its TO_DATA (TN: tentative, zero), found in
  * the elements of Fn fn. */
 typedef struct Sd {
+    Checker *c;                 /* the file ref belongs to */
     uint32_t ref, node, fn, obj;
     TypeId ty;
     bool local;
@@ -131,6 +134,7 @@ typedef struct Fr {
     VEC(Loc) loc;
     VEC(uint32_t) own;          /* objects that die with the frame */
     struct Fr *up;
+    Checker *up_c;              /* the caller's file, restored when the frame ends */
 } Fr;
 
 typedef struct Ti {

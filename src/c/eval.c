@@ -597,20 +597,22 @@ static uint32_t function_obj(Ev *v, uint32_t fsym)
     size_t i;
     Obj o;
     for (i = 0; i < v->obj.len; i++)
-        if (v->obj.data[i].fn == fsym + 1)
+        if (v->obj.data[i].fn == fsym + 1 && v->obj.data[i].fc == v->c)
             return (uint32_t)i + 1;
     memset(&o, 0, sizeof o);
     o.fn = fsym + 1;
+    o.fc = v->c;
     o.live = true;
     vec_push(&v->obj, o);
     return (uint32_t)v->obj.len;
 }
 
-static Fn *find_fn(Ev *v, uint32_t fsym)
+/* The body of function fsym of file c. */
+static Fn *find_fn(Ev *v, const Checker *c, uint32_t fsym)
 {
     size_t i;
     for (i = 0; i < v->fn.len; i++)
-        if (v->fn.data[i].fsym == fsym)
+        if (v->fn.data[i].fsym == fsym && v->fn.data[i].c == c)
             return &v->fn.data[i];
     return NULL;
 }
@@ -851,15 +853,16 @@ static uint64_t ev_call_node(Fr *r, uint32_t n, uint32_t *sh)
             TRAP(v, "call through a pointer that is not a function");
             return 0;
         }
-        g = find_fn(v, v->obj.data[pid(callee) - 1].fn - 1);
+        g = find_fn(v, v->obj.data[pid(callee) - 1].fc, v->obj.data[pid(callee) - 1].fn - 1);
     } else {
-        g = find_fn(v, t->sym);
+        g = find_fn(v, v->c, t->sym);
     }
     if (v->res.status)
         return 0;
     if (!g) {                           /* a declared function: the host library, or unsupported */
         uint32_t fs = t->pun == 1 ? v->obj.data[pid(callee) - 1].fn - 1 : t->sym;
-        const char *name = cident(v->c, csym(v->c, fs)->name);
+        Checker *fc = t->pun == 1 ? v->obj.data[pid(callee) - 1].fc : v->c;
+        const char *name = cident(fc, csym(fc, fs)->name);
         HostFn h = ev_host_fn(name);
         if (!h) {
             UNSUP(v, "call of %s, which has no body here and is not in the host library", name);
@@ -1000,7 +1003,9 @@ static void sd_init(Ev *v, size_t i)
     if (s->node != TN) {
         Fr ir;
         Fn *f = &v->fn.data[s->fn];
+        Checker *save = v->c;
         size_t k;
+        v->c = s->c;                    /* the initializer is in the file that defines it */
         memset(&ir, 0, sizeof ir);
         ir.v = v;
         ir.f = f;
@@ -1012,6 +1017,7 @@ static void sd_init(Ev *v, size_t i)
         vec_free(&ir.own);
         free(ir.reg);
         free(ir.tmp);
+        v->c = save;
     }
 }
 
@@ -1026,7 +1032,7 @@ static uint32_t static_obj(Fr *r, uint32_t ref)
     size_t i;
     for (i = 0; i < v->sd.len; i++) {
         Sd *d = &v->sd.data[i];
-        if (d->ref == ref && d->local == local && (!local || d->fn == fi) &&
+        if (d->c == v->c && d->ref == ref && d->local == local && (!local || d->fn == fi) &&
             (!s || ((s->node == TN) && d->node != TN)))
             s = d;
     }
@@ -1040,6 +1046,7 @@ static uint32_t static_obj(Fr *r, uint32_t ref)
             return 0;
         }
         memset(&d, 0, sizeof d);
+        d.c = v->c;
         d.ref = ref;
         d.node = TN;
         d.stub = true;
@@ -1563,6 +1570,8 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
         return 0;
     }
     v->depth++;
+    r.up_c = v->c;
+    v->c = f->c;
     r.reg = xcalloc(f->nreg ? f->nreg : 1, sizeof *r.reg);
     r.tmp = xcalloc(f->ntmp ? f->ntmp : 1, sizeof *r.tmp);
     for (i = 0; i < f->np && !v->res.status; i++) {
@@ -1668,6 +1677,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
     vec_free(&r.loc);
     free(r.reg);
     free(r.tmp);
+    v->c = r.up_c;
     v->depth--;
     *rsh = rs;
     return result;
@@ -1733,6 +1743,7 @@ static Fn fn_of_el(Ev *v, El *e)
     Fn f;
     size_t i;
     memset(&f, 0, sizeof f);
+    f.c = e->c;
     f.fsym = e->fsym;
     f.fname = e->fname;
     f.nodes = dup_n(e->nodes.data, e->nodes.len * sizeof *f.nodes);
@@ -1745,6 +1756,7 @@ static Fn fn_of_el(Ev *v, El *e)
         if (t->op != TO_DATA)
             continue;
         memset(&d, 0, sizeof d);
+        d.c = e->c;
         d.ref = t->sym;
         d.node = (uint32_t)i;
         d.fn = (uint32_t)v->fn.len;     /* the Fn about to be pushed */
@@ -1766,6 +1778,7 @@ void ev_add_tentative(Ev *v, uint32_t ref)
 {
     Sd d;
     memset(&d, 0, sizeof d);
+    d.c = v->c;
     d.ref = ref;
     d.node = TN;
     d.ty = csym(v->c, ref)->ty;
@@ -1815,7 +1828,7 @@ static void start_budget(Ev *v)
 
 EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *out)
 {
-    Fn *f = find_fn(v, fsym);
+    Fn *f = find_fn(v, v->c, fsym);
     Fr top;
     uint64_t x = 0;
     memset(&v->res, 0, sizeof v->res);
@@ -1897,7 +1910,7 @@ bool ev_object(Ev *v, El *e, uint32_t n, EvImage *img)
     uint32_t id;
     memset(img, 0, sizeof *img);
     for (i = v->sd.len; i-- > 0;)
-        if (v->sd.data[i].ref == t->sym && v->sd.data[i].node == n && !v->sd.data[i].stub) {
+        if (v->sd.data[i].c == v->c && v->sd.data[i].ref == t->sym && v->sd.data[i].node == n && !v->sd.data[i].stub) {
             s = &v->sd.data[i];
             break;
         }
