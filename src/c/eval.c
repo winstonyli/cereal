@@ -1083,6 +1083,81 @@ static bool addr_node(Fr *r, uint32_t n)
     }
 }
 
+/* ---- the static objects' index ---------------------------------------------- */
+
+#define SD_GLOBAL 0xffffffffu           /* the "function" of a file-scope object */
+
+static uint64_t hash_sd(const Checker *c, uint32_t ref, uint32_t fn)
+{
+    return (hash_id(c, ref) ^ fn) * 0xc4ceb9fe1a85ec53ull;
+}
+
+/* Add the Sds pushed since the last call: by (file, ref, function) keeping the defined one over a
+ * tentative one, and, linking, by name for the external ones, keeping the best (defined, else the
+ * first tentative one).  Open addressing, entry = index + 1. */
+static void sd_sync(Ev *v)
+{
+    size_t i;
+    if (v->si_cap < 4 * v->sd.len + 8) {
+        free(v->si_id);
+        free(v->si_nm);
+        for (v->si_cap = 64; v->si_cap < 8 * v->sd.len + 8;)
+            v->si_cap *= 2;
+        v->si_id = xcalloc(v->si_cap, sizeof *v->si_id);
+        v->si_nm = xcalloc(v->si_cap, sizeof *v->si_nm);
+        v->si_done = 0;
+    }
+    for (i = v->si_done; i < v->sd.len; i++) {
+        const Sd *d = &v->sd.data[i];
+        uint32_t fn = d->local ? d->fn : SD_GLOBAL;
+        size_t k;
+        for (k = hash_sd(d->c, d->ref, fn) & (v->si_cap - 1); v->si_id[k]; k = (k + 1) & (v->si_cap - 1)) {
+            const Sd *o = &v->sd.data[v->si_id[k] - 1];
+            if (o->c == d->c && o->ref == d->ref && (o->local ? o->fn : SD_GLOBAL) == fn)
+                break;
+        }
+        if (!v->si_id[k] || (v->sd.data[v->si_id[k] - 1].node == TN && d->node != TN))
+            v->si_id[k] = (uint32_t)i + 1;
+        if (!v->link || d->local || d->stub || d->alias || csym(d->c, d->ref)->linkage != LK_EXTERNAL)
+            continue;
+        for (k = hash_name(cident(d->c, csym(d->c, d->ref)->name)) & (v->si_cap - 1); v->si_nm[k];
+             k = (k + 1) & (v->si_cap - 1)) {
+            const Sd *o = &v->sd.data[v->si_nm[k] - 1];
+            if (!strcmp(cident(o->c, csym(o->c, o->ref)->name), cident(d->c, csym(d->c, d->ref)->name)))
+                break;
+        }
+        if (!v->si_nm[k] || (v->sd.data[v->si_nm[k] - 1].node == TN && d->node != TN))
+            v->si_nm[k] = (uint32_t)i + 1;
+    }
+    v->si_done = v->sd.len;
+}
+
+/* The Sd of (file, ref, function), NULL if none. */
+static Sd *sd_find(Ev *v, const Checker *c, uint32_t ref, uint32_t fn)
+{
+    size_t k;
+    sd_sync(v);
+    for (k = hash_sd(c, ref, fn) & (v->si_cap - 1); v->si_id[k]; k = (k + 1) & (v->si_cap - 1)) {
+        Sd *o = &v->sd.data[v->si_id[k] - 1];
+        if (o->c == c && o->ref == ref && (o->local ? o->fn : SD_GLOBAL) == fn)
+            return o;
+    }
+    return NULL;
+}
+
+/* The best external Sd of a name (index + 1), 0: none. */
+static size_t sd_named(Ev *v, const char *nm)
+{
+    size_t k;
+    sd_sync(v);
+    for (k = hash_name(nm) & (v->si_cap - 1); v->si_nm[k]; k = (k + 1) & (v->si_cap - 1)) {
+        const Sd *o = &v->sd.data[v->si_nm[k] - 1];
+        if (!strcmp(cident(o->c, csym(o->c, o->ref)->name), nm))
+            return v->si_nm[k];
+    }
+    return 0;
+}
+
 /* The object of Sd i, made on first use; its contents wait for the first access. */
 static uint32_t sd_obj(Ev *v, size_t i)
 {
@@ -1152,35 +1227,16 @@ static uint32_t static_obj(Fr *r, uint32_t ref)
 {
     Ev *v = r->v;
     bool local = (ref & SYM_LOCAL) != 0;
-    uint32_t fi = (uint32_t)(r->f - v->fn.data);
-    Sd *s = NULL;
-    size_t i;
-    for (i = 0; i < v->sd.len; i++) {
-        Sd *d = &v->sd.data[i];
-        if (d->c == v->c && d->ref == ref && d->local == local && (!local || d->fn == fi) &&
-            (!s || ((s->node == TN) && d->node != TN)))
-            s = d;
-    }
+    Sd *s = sd_find(v, v->c, ref, local ? (uint32_t)(r->f - v->fn.data) : SD_GLOBAL);
     if (s && s->alias)
         return sd_obj(v, s->alias - 1);
-    if (v->link && !local && (!s || (s->stub || s->node == TN)) && csym(v->c, ref)->linkage == LK_EXTERNAL) {
+    if (v->link && !local && (!s || s->stub || s->node == TN) && csym(v->c, ref)->linkage == LK_EXTERNAL) {
         /* the definition of this name in any file, else the first tentative one */
-        const char *nm = cident(v->c, csym(v->c, ref)->name);
-        size_t best = 0;
-        int rank = 0;
-        for (i = 0; i < v->sd.len; i++) {
-            Sd *d = &v->sd.data[i];
-            int rk = d->stub || d->local || d->alias ? 0 : d->node != TN ? 2 : 1;
-            if (rk > rank && csym(d->c, d->ref)->linkage == LK_EXTERNAL &&
-                !strcmp(cident(d->c, csym(d->c, d->ref)->name), nm)) {
-                best = i + 1;
-                rank = rk;
-            }
-        }
+        size_t best = sd_named(v, cident(v->c, csym(v->c, ref)->name));
         if (best && (!s || s != &v->sd.data[best - 1])) {
-            Sd d;
             size_t si;
             if (!s) {
+                Sd d;
                 memset(&d, 0, sizeof d);
                 d.c = v->c;
                 d.ref = ref;
@@ -1880,6 +1936,10 @@ void ev_free(Ev *v)
     }
     vec_free(&v->fn);
     vec_free(&v->sd);
+    free(v->fi_id);
+    free(v->fi_nm);
+    free(v->si_id);
+    free(v->si_nm);
     vec_free(&v->rec);
     vec_free(&v->lab);
     vec_free(&v->dict);

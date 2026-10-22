@@ -123,8 +123,8 @@ measurement. Run rows `link-oracle-n4`, `n4b`, `n4c`; the script was deleted.
 
 Limits: a source manager reserves 4 GB of address space per file (`srcmgr.c` `REGION_SIZE`) and a link keeps
 every file's, so `ulimit -v` must grow by that per file (`sweep_meas.sh` does); Lua (32 files) and zstd (26)
-fit. Compile-database entries are not supported (their options are freed with the job). `static_obj` scans
-all objects for a tentative-only global at every reference.
+fit. Compile-database entries are not supported (their options are freed with the job). Static objects are
+indexed like the functions (`sd_sync`, `sd_find`, `sd_named`; same corpus numbers as before the index: runs `sweep-link-24-2`, `sweep-link-sdindex`).
 
 Review log: (a) the first `dup_def` check read the field before the index had seen the last files; `ev_dup_def`
 syncs first. (b) The system-header `inline` duplicates (above). (c) A gcc build that crashes now names the

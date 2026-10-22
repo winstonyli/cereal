@@ -104,6 +104,8 @@ struct Ev {
     bool link;
     uint32_t *fi_id, *fi_nm;
     size_t fi_cap, fi_done;
+    uint32_t *si_id, *si_nm;    /* ... and of the static objects, filled up to si_done */
+    size_t si_cap, si_done;
     const char *dup_def;        /* a name with two external definitions, or NULL */
     long fuel;
     size_t objlim;              /* obj.len at which "object limit" ends the evaluation; 0: none */
