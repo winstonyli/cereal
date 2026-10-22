@@ -117,20 +117,23 @@ static uint64_t sweep_arg(const Ti *ti, uint64_t *rs)
 enum { SA_SCALAR, SA_PTR, SA_REC };
 enum { SR_VOID, SR_SCALAR, SR_PTR };
 
-#define SMAXOB 64
+#define SMAXOB 64               /* blobs per function */
+#define SMAXIN 16384            /* bytes of input per call */
 
 typedef struct SObj {
     TypeId ty;                  /* element type, 0: bytes */
     uint64_t esz, size, off;    /* element size, bytes of the blob, where it starts in the input */
-    uint64_t poff;              /* nested: where the pointer to it sits in its parent's blob */
-    int parent;                 /* nested: the parent's index, else -1 */
     bool pointee;               /* a pointer points to it (a record parameter's blob is not one) */
     int pj;                     /* pointee: its number, for the tag of a returned pointer */
 } SObj;
 
-typedef struct SPf {            /* a pointer-typed field: blob and offset */
-    int ob;
+/* A pointer-typed field: blob and offset, the blob it points to by default (-1: none, NULL) and
+ * the element type any blob it is linked to must have (see sweep_link). */
+typedef struct SPf {
+    int ob, child;
     uint32_t off;
+    TypeId ty;
+    bool link;
 } SPf;
 
 typedef struct SArg {
@@ -148,7 +151,7 @@ typedef struct SFn {
     int nob, npj;
     VEC(SPf) pf;
     uint64_t insz;
-    bool ptrfn, byval, over;
+    bool ptrfn, byval;
 } SFn;
 
 static void sweep_typename(Checker *c, StrBuf *sb, TypeId t)
@@ -217,7 +220,6 @@ static bool sweep_pointee(Ev *v, TypeId pt, unsigned many, SObj *o)
     uint64_t n = many;
     bool ok = false;
     memset(o, 0, sizeof *o);
-    o->parent = -1;
     o->pointee = true;
     if (type_is_void(tt, e)) {
         o->esz = 1;
@@ -243,7 +245,6 @@ static bool sweep_par(Ev *v, TypeId t, SArg *a, SObj *o)
     bool ok = false;
     memset(a, 0, sizeof *a);
     memset(o, 0, sizeof *o);
-    o->parent = -1;
     if (sweep_scalar(k)) {
         a->kind = SA_SCALAR;
         ok = ev_tinfo(v, t, &a->ti);
@@ -265,28 +266,27 @@ static bool sweep_par(Ev *v, TypeId t, SArg *a, SObj *o)
     return false;
 }
 
-/* Record the pointer fields of an object of type t at `base` in blob oi; with `nest`, give each
- * a blob of its own to point to. */
-static void sweep_ptrs(Ev *v, SFn *s, int oi, TypeId t, uint64_t base, bool nest)
+/* Record the pointer fields of an object of type t at `base` in blob oi, and give each a blob of its
+ * own to point to while the budget lasts (SMAXOB blobs, 16 KB of input; the shallow blobs come first). */
+static void sweep_ptrs(Ev *v, SFn *s, int oi, TypeId t, uint64_t base)
 {
     TypeTable *tt = &v->c->tt;
     TypeKind k = type_ckind(tt, t);
     bool ok;
     if (k == TY_PTR) {
-        SPf pf;
+        SPf pf = {oi, -1, (uint32_t)base, 0, false};
         SObj n;
-        pf.ob = oi;
-        pf.off = (uint32_t)base;
-        vec_push(&s->pf, pf);
-        if (nest && sweep_pointee(v, t, 4, &n)) {
-            if (s->nob >= SMAXOB) {
-                s->over = true;
-                return;
+        if (sweep_pointee(v, t, 4, &n)) {
+            pf.ty = n.ty;
+            pf.link = true;
+            if (s->nob < SMAXOB && s->insz + n.size <= SMAXIN) {
+                pf.child = s->nob;
+                n.off = s->insz;
+                s->insz += n.size;
+                s->ob[s->nob++] = n;
             }
-            n.parent = oi;
-            n.poff = base;
-            s->ob[s->nob++] = n;
         }
+        vec_push(&s->pf, pf);
     } else if (k == TY_ARRAY) {
         TypeId e = type_base(tt, t);
         uint64_t es = type_size(tt, e, &ok), n, i;
@@ -294,26 +294,41 @@ static void sweep_ptrs(Ev *v, SFn *s, int oi, TypeId t, uint64_t base, bool nest
             return;
         n = type_size(tt, t, &ok) / es;
         for (i = 0; i < n && ok; i++)
-            sweep_ptrs(v, s, oi, e, base + i * es, nest);
+            sweep_ptrs(v, s, oi, e, base + i * es);
     } else if (type_is_record(tt, t)) {
         Record *r = type_record(tt, t);
         uint32_t i, n = r->flags & RF_UNION && r->nfields > 1 ? 1 : r->nfields;
         for (i = 0; i < n; i++) {
             Field *fl = &tt->fields.data[r->fields + i];
             if (!(fl->flags & FF_BITFIELD))
-                sweep_ptrs(v, s, oi, fl->ty, base + fl->off_bits / 8, nest);
+                sweep_ptrs(v, s, oi, fl->ty, base + fl->off_bits / 8);
         }
     }
 }
 
 /* All pointer fields of blob oi (every element). */
-static void sweep_blob_ptrs(Ev *v, SFn *s, int oi, bool nest)
+static void sweep_blob_ptrs(Ev *v, SFn *s, int oi)
 {
-    const SObj *o = &s->ob[oi];
+    SObj o = s->ob[oi];
     uint64_t e;
-    if (o->ty)
-        for (e = 0; e < o->size / o->esz; e++)
-            sweep_ptrs(v, s, oi, o->ty, e * o->esz, nest);
+    if (o.ty)
+        for (e = 0; e < o.size / o.esz; e++)
+            sweep_ptrs(v, s, oi, o.ty, e * o.esz);
+}
+
+/* Where a pointer field points in a call: its 8 bytes in the input are 0 (its own blob, or NULL
+ * if it has none), ~0 (NULL) or a tag `(blob + 1) << 32 | offset` into another blob of the same
+ * element type, which is how a call gets sharing and cycles (`l_G->mainthread == L`).  Returns
+ * the blob (-1: NULL) and its offset. */
+static int sweep_link(const SFn *s, const SPf *pf, uint64_t w, uint32_t *off)
+{
+    *off = 0;
+    if (!w)
+        return pf->child;
+    if (w == ~0ull || (w >> 32) > (uint64_t)s->nob)
+        return -1;
+    *off = (uint32_t)w;
+    return (int)(w >> 32) - 1;
 }
 
 static void sweep_free(SFn *s)
@@ -321,14 +336,14 @@ static void sweep_free(SFn *s)
     vec_free(&s->pf);
 }
 
-/* Can f be swept, and how.  With `nest`, the pointers inside the objects it is given point to
- * objects of their own. */
-static bool sweep_fn(Ev *v, const Fn *f, SFn *s, bool nest)
+/* Can f be swept, and how: the pointers inside the objects it is given point to objects of their
+ * own, as far as the budget goes. */
+static bool sweep_fn(Ev *v, const Fn *f, SFn *s)
 {
     TypeTable *tt = &v->c->tt;
     TypeKind rk = type_ckind(tt, f->ret);
     size_t k;
-    int i, ntop;
+    int i;
     memset(s, 0, sizeof *s);
     if (type_is_void(tt, f->ret))
         s->rk = SR_VOID;
@@ -365,18 +380,13 @@ static bool sweep_fn(Ev *v, const Fn *f, SFn *s, bool nest)
             s->byval |= a->kind == SA_REC;
         }
     }
-    ntop = s->nob;
-    for (i = 0; i < ntop; i++)
-        sweep_blob_ptrs(v, s, i, nest);
-    for (i = ntop; i < s->nob; i++) {
-        s->ob[i].off = s->insz;
-        s->insz += s->ob[i].size;
-        sweep_blob_ptrs(v, s, i, false);
-    }
+    for (i = 0; i < s->nob; i++)        /* the blobs grow as their pointers get blobs */
+        sweep_blob_ptrs(v, s, i);
     for (i = 0; i < s->nob; i++)
         if (s->ob[i].pointee)
             s->ob[i].pj = s->npj++;
-    return !s->over && s->insz <= 16384 && (s->rk != SR_VOID || s->ptrfn);
+    s->ptrfn |= s->pf.len > 0;    /* pointers inside a record: NULL and wild links trap */
+    return s->insz <= SMAXIN && (s->rk != SR_VOID || s->ptrfn);
 }
 
 static void sweep_hex(StrBuf *sb, const uint8_t *p, size_t n)
@@ -408,10 +418,19 @@ static void sweep_thunk(Checker *c, StrBuf *sb, const char *name, const Fn *f, c
         sb_printf(sb, "unsigned char b%zu[%llu] __attribute__((aligned(16)));memcpy(b%zu,in+%llu,%llu);",
                   i, (unsigned long long)s->ob[i].size + 16, i, (unsigned long long)s->ob[i].off,
                   (unsigned long long)s->ob[i].size);
-    for (i = 0; i < (size_t)s->nob; i++)
-        if (s->ob[i].parent >= 0)
-            sb_printf(sb, "{void*p=b%zu;memcpy(b%d+%llu,&p,8);}", i, s->ob[i].parent,
-                      (unsigned long long)s->ob[i].poff);
+    if (s->pf.len) {
+        sb_puts(sb, "unsigned char *bp[]={");
+        for (i = 0; i < (size_t)s->nob; i++)
+            sb_printf(sb, "%sb%zu", i ? "," : "", i);
+        sb_puts(sb, "};");
+    }
+    for (i = 0; i < s->pf.len; i++) {
+        const SPf *pf = &s->pf.data[i];
+        if (pf->child >= 0)
+            sb_printf(sb, "SW_LK(b%d+%u,bp,b%d)", pf->ob, pf->off, pf->child);
+        else
+            sb_printf(sb, "SW_LK(b%d+%u,bp,0)", pf->ob, pf->off);
+    }
     if (s->rk == SR_SCALAR)
         sb_puts(sb, "__auto_type r=");
     else if (s->rk == SR_PTR)
@@ -482,12 +501,18 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         memcpy(o->b, in + b->off, b->size);
         memset(o->init, 1, b->size);
     }
-    for (i = 0; i < s->nob; i++)
-        if (s->ob[i].parent >= 0) {
-            Obj *p = &v->obj.data[ids[s->ob[i].parent] - 1];
-            uint64_t ptr = mkptr(ids[i], 0);
-            memcpy(p->b + s->ob[i].poff, &ptr, 8);
-        }
+    for (k = 0; k < s->pf.len; k++) {
+        const SPf *pf = &s->pf.data[k];
+        Obj *p = &v->obj.data[ids[pf->ob] - 1];
+        uint64_t w, ptr = 0;
+        uint32_t off;
+        int j;
+        memcpy(&w, p->b + pf->off, 8);
+        j = sweep_link(s, pf, w, &off);
+        if (j >= 0)
+            ptr = mkptr(ids[j], off);
+        memcpy(p->b + pf->off, &ptr, 8);
+    }
     for (k = 0; k < f->np; k++) {
         const SArg *a = &s->a[k];
         if (a->kind == SA_SCALAR) {
@@ -590,6 +615,28 @@ static void sweep_gen(Ev *v, const Fn *f, const SFn *s, uint8_t *in, uint64_t *r
                 d[e] = (uint8_t)sweep_arg(&byte, rs);
         }
     }
+    for (k = 0; k < s->pf.len; k++) {   /* sometimes a pointer field shares or ends a blob */
+        const SPf *pf = &s->pf.data[k];
+        uint64_t w = 0, r = rnd(rs) % 8;
+        int j, n = 0, pick;
+        if (!pf->link || r > 2)
+            continue;
+        if (!r) {
+            if (pf->child >= 0)
+                w = ~0ull;              /* NULL */
+        } else {                        /* a blob of the same element type, at an element boundary */
+            for (j = 0; j < s->nob; j++)
+                n += s->ob[j].pointee && s->ob[j].ty == pf->ty;
+            if (!n)
+                continue;
+            pick = (int)(rnd(rs) % n);
+            for (j = 0; j < s->nob; j++)
+                if (s->ob[j].pointee && s->ob[j].ty == pf->ty && !pick--)
+                    break;
+            w = (uint64_t)(j + 1) << 32 | (rnd(rs) % (s->ob[j].size / s->ob[j].esz + 1)) * s->ob[j].esz;
+        }
+        memcpy(in + s->ob[pf->ob].off + pf->off, &w, 8);
+    }
 }
 
 static void eval_sweep(Checker *c)
@@ -613,11 +660,7 @@ static void eval_sweep(Checker *c)
         name = cident(c, csym(c, f->fsym)->name);
         if (!strcmp(name, "main"))
             continue;
-        ok = sweep_fn(v, f, &s, true);
-        if (!ok) {                  /* too many or too big: leave the inner pointers NULL */
-            sweep_free(&s);
-            ok = sweep_fn(v, f, &s, false);
-        }
+        ok = sweep_fn(v, f, &s);
         if (!ok) {
             sweep_free(&s);
             v->res.status = EV_OK;

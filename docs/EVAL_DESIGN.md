@@ -552,12 +552,15 @@ and records by value are skipped there: no symbol, no definition).
 Inputs come from one generator: `T *` points to a fresh object of 16 elements (64
 bytes for `char`, `void`), a record is its `sizeof`, and every scalar inside is
 `sweep_arg` (so small values dominate), padding is zero. Each pointer field inside those
-objects points to a blob of its own (4 elements, 16 bytes for `char`/`void`); pointers
-inside those are NULL (one level; no recursion into lists). The input is the blobs
-back to back and the layout is fixed by the types, so the call line is unchanged; the
-thunk relinks the pointers between its buffers, and pointer fields are zeroed in the
-result bytes (the two sides' addresses differ). Past 64 blobs or 16 KB a function falls
-back to NULL inner pointers. Every pointer parameter also has an 8-byte alias word in the
+objects points to a blob of its own (4 elements, 16 bytes for `char`/`void`), and so do the
+pointers in those, breadth first, until 64 blobs or 16 KB of input are used (the rest are
+NULL; there is no depth limit, a list type just fills the budget). The input is the blobs
+back to back and the layout is fixed by the types, so the call line is unchanged. Each
+pointer field's 8 bytes in the input are 0 (its own blob), ~0 (NULL) or a tag
+`(blob + 1) << 32 | offset` into another blob of the same element type (seeded: 1/8 NULL,
+1/4 shared), which gives sharing and cycles such as `l_G->mainthread == L`. The thunk
+relinks the pointers between its buffers (`SW_LK`), and pointer fields are zeroed in the
+result bytes (the two sides' addresses differ). Every pointer parameter also has an 8-byte alias word in the
 input (0, or `(blob + 1) << 32 | offset`): a third of the time, a pointer parameter after
 an earlier one points into that one's blob at a multiple of its own element size (up to
 one past the end), for `(start, end)` and cursor pairs. The thunk's buffers are 16 bytes
@@ -568,7 +571,7 @@ cannot be compared). A pointer or record function prints only the calls that fin
 reach the gcc build. Skipped: record results (the temporary dies with `ev_call`),
 types with no spelling (anonymous, `__va_list_tag`), more than 16 KB of input.
 
-Check: `tests/cfg_exec/ptrs.c` (17 functions, with a linked list, `int **`, a record holding a buffer pointer: in-place fill, swap, returned offset,
+Check: `tests/cfg_exec/ptrs.c` (22 functions, with a linked list, a three-link chain, `int **`, a record holding a buffer pointer: in-place fill, swap, returned offset,
 null return, struct and union by value, struct update through a pointer, `void *`,
 `double *`, `int **`); a mutant of `store_n` that drops byte stores of 0 is caught
 there (post-state bytes differ). Coverage (scratch seen-edge probe) on zstd and Lua:
@@ -586,6 +589,30 @@ of other bytes (an id past the object table) dereferenced; both are now traps
 population from the scalar-only 57%, so the numbers do not compare: the new functions
 mostly branch on data behind pointers that this generator fills with small random
 bytes, and on state (NULL nested pointers, other translation units) it cannot build.
+
+Stop census (N=24, zstd and Lua, scratch `drop` lines on stderr; 2151 functions driven, 60979
+of 63957 printed calls finish, about 25700 calls dropped): null pointer 10262 (9602 reads, 575
+writes, 85 calls), missing callees about 5000 (`luaX_*`, `luaS_*`, `luaC_newobj`, `ZSTD_ldm_*`),
+pointer arithmetic out of range 2787, shifts 1938, pointer subtraction across objects 1236,
+out-of-bounds reads 1088, asm 299, globals without a definition 218, types outside the subset 414.
+All the null stops are in 303 Lua functions and none in zstd, usually all 88 calls of a
+function: they take `lua_State *`, `FuncState *`, `LexState *` or `Table *` and reach
+`L->ci->func`, `L->l_G->...`, which is two pointer levels in. The generator's depth limit
+(top level 16 elements, one nested level of 4, deeper NULL) is the cause, so edge coverage on Lua
+is capped by it; a deeper fill must reuse objects for cycles (`l_G->mainthread` is `L`).
+
+Budget fill (same day): the pointers in the objects get blobs breadth first until 64 blobs or
+16 KB (replacing the one nested level), plus per-field sharing and NULL (above). A first try
+with a depth limit of 3 and an all-or-nothing retry fell back to depth 0 for most Lua functions:
+a top-level `FuncState *` is 16 elements, each with several pointer fields, and 4-element
+children of those pass 16 KB at the first level. Result on the same population (7892 edges,
+1133 functions with branches): edge coverage 37.7% at N=24 and 43.2% at N=200 (was 35.0% and
+38.8%); null-pointer reads 9602 to 5475 and writes 575 to a few hundred, but 301 functions
+still have some, so the fill is not yet the whole story (most of the budget goes to the
+first few elements of the 16-element top-level blob; out-of-bounds reads rose 1088 to 2864
+because pointers now reach data that the function walks off the end of). Changing the NULL
+rate to 1/32 made no difference (37.5% and 42.3%). `tests/cfg_exec/ptrs.c` has `ring3` and
+`ringset` (a chain three links deep).
 
 ## 10. Review log
 

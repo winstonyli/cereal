@@ -14,6 +14,17 @@
     if ((unsigned char *)(r) >= (b) && (unsigned char *)(r) <= (b) + (n))                       \
         t = ((unsigned long long)((i) + 1) << 32) | (unsigned)((unsigned char *)(r) - (b));
 
+/* the pointer field at f: its input word 0 is c (its own blob, or NULL), ~0 is NULL, else a
+ * tag (blob + 1) << 32 | offset into bp */
+#define SW_LK(f, bp, c)                                                                         \
+    {                                                                                           \
+        unsigned long long w_;                                                                  \
+        void *p_;                                                                               \
+        memcpy(&w_, (f), 8);                                                                    \
+        p_ = !w_ ? (void *)(c) : w_ == ~0ull ? (void *)0 : (void *)((bp)[(w_ >> 32) - 1] + (unsigned)w_); \
+        memcpy((f), &p_, 8);                                                                    \
+    }
+
 typedef struct SwTh {
     const char *name;
     unsigned (*fn)(const unsigned char *, unsigned char *);

@@ -172,3 +172,19 @@ void rev(int *lo, int *hi)
         *hi = t;
     }
 }
+
+struct Ring {
+    int v;
+    struct Ring *next;
+};
+
+int ring3(struct Ring *r)
+{
+    return r->v + r->next->v + r->next->next->v + r->next->next->next->v;
+}
+
+void ringset(struct Ring *r, int k)
+{
+    r->next->next->v = k;
+    r->next->v += r->v;
+}
