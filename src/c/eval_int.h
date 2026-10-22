@@ -86,6 +86,8 @@ typedef struct Sd {
     bool stub;                  /* made by a reference: no definition registered (yet) */
 } Sd;
 
+#define EV_CALL_OBJS (1u << 20) /* objects one call may make */
+
 struct Ev {
     Checker *c;
     EvOpts o;
@@ -94,6 +96,7 @@ struct Ev {
     VEC(Fn) fn;
     VEC(Sd) sd;
     long fuel;
+    size_t objlim;              /* obj.len at which "object limit" ends the evaluation; 0: none */
     unsigned depth;
     VEC(uint32_t) rec;          /* ev_object: the offsets of address-valued elements, in order */
     uint32_t rec_id;            /* ... of this object */
@@ -165,6 +168,8 @@ void ev_kill_obj(Ev *v, uint32_t id);
 Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what);
 void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n);
 void ev_zero_n(Ev *v, uint64_t dst, uint64_t n);
+/* Drops the dead objects at the end of the table (see eval.c). */
+void ev_trim(Ev *v);
 /* A write of concrete bytes into [off, off + n) of o: their shadows end. */
 void ev_unshadow(Obj *o, uint64_t off, uint64_t n);
 

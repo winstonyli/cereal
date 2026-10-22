@@ -618,6 +618,7 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     }
     for (i = 0; i < s->nob; i++)
         ev_kill_obj(v, ids[i]);
+    ev_trim(v);                         /* a long sweep would otherwise keep a slot per object it ever made */
     if (r.status == EV_OK || (show_stop && (!s->ptrfn || r.status == EV_UNSUPPORTED))) {
         sb_printf(body, "call %s ", name);
         sweep_hex(body, in, (size_t)s->insz);

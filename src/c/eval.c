@@ -90,6 +90,10 @@ static bool size_of(Ev *v, TypeId t, uint64_t *sz)
 uint32_t ev_new_obj(Ev *v, uint64_t size, bool ro)
 {
     Obj o;
+    if (v->objlim && v->obj.len >= v->objlim) {
+        ev_fail(v, EV_FUEL, "exceeded the object limit");
+        return 0;
+    }
     if (size > (1u << 30)) {
         TRAP(v, "object of %llu bytes", (unsigned long long)size);
         return 0;
@@ -113,6 +117,15 @@ void ev_kill_obj(Ev *v, uint32_t id)
     free(o->sh);
     o->b = o->init = NULL;
     o->sh = NULL;
+}
+
+/* Drops the dead objects at the end of the table, so their ids are made again.  Only for a caller
+ * that holds no pointer into them (the sweep, between calls): a stale pointer would otherwise
+ * find a new object where it now traps. */
+void ev_trim(Ev *v)
+{
+    while (v->obj.len && !v->obj.data[v->obj.len - 1].live)
+        v->obj.len--;
 }
 
 void ev_unshadow(Obj *o, uint64_t off, uint64_t n)
@@ -1792,13 +1805,21 @@ void ev_add_func(Ev *v, El *e, Cfg *g)
     vec_push(&v->fn, f);
 }
 
+/* The budgets of one evaluation: steps, and objects made (killed objects keep their table slot,
+ * so a loop of calls would otherwise grow the table without bound). */
+static void start_budget(Ev *v)
+{
+    v->fuel = v->o.fuel;
+    v->objlim = v->obj.len + EV_CALL_OBJS;
+}
+
 EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *out)
 {
     Fn *f = find_fn(v, fsym);
     Fr top;
     uint64_t x = 0;
     memset(&v->res, 0, sizeof v->res);
-    v->fuel = v->o.fuel;
+    start_budget(v);
     memset(&top, 0, sizeof top);
     top.v = v;
     if (!f)
@@ -1813,6 +1834,7 @@ EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *ou
             ev_kill_obj(v, top.own.data[i]);
         vec_free(&top.own);
     }
+    v->objlim = 0;
     return v->res;
 }
 
@@ -1888,7 +1910,7 @@ bool ev_object(Ev *v, El *e, uint32_t n, EvImage *img)
         return true;
     }
     memset(&v->res, 0, sizeof v->res);
-    v->fuel = v->o.fuel;
+    start_budget(v);
     id = sd_obj(v, idx);
     if (!id)
         return img_fail(v, img, v->res.why);
@@ -1902,6 +1924,7 @@ bool ev_object(Ev *v, El *e, uint32_t n, EvImage *img)
     }
     if (v->res.status)
         return img_fail(v, img, v->res.why);
+    v->objlim = 0;
     o = &v->obj.data[id - 1];
     img->size = o->size;
     img->bytes = dup_n(o->b, (size_t)o->size);
