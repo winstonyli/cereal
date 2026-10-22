@@ -677,6 +677,7 @@ data. Spike (run `2026-10-22-sweep-share5-24`, not kept): a pointer field links 
 element type five times in eight instead of twice (NULL stays one in eight) took the generator from
 40.7% to 41.0% and the solver's total from 42.5% to 42.8%: sharing helps a little, it is not the lever.
 One search loop (same day, `CONCOLIC_DESIGN.md` section 8): random, dictionary and solver rounds over one corpus per function, in place of the phases; 43.7% against 42.5% (6164 against 5991 of 14106 edges).
+Link mutation, negative (same day, run `2026-10-22-sweep-link-24`, reverted): a fourth round after the solver's that takes a corpus input and re-rolls one to three pointer links (NULL, own blob, another blob of the field's type) took 6047 edges (42.9%) against 6164 (43.7%). On six files (Lua `lstring`, `ltable`, `lfunc`, `lobject`, zstd `zstd_fast`, `huf_decompress`) 2930 link rounds, all but 20 finishing, took no new edge. So the choice among those links is not what the pointer stops wait for; the generator cannot express what they need (nested depth past the budget, pointers into the interior of arrays, callees with no body, state a constructor builds).
 
 ## 10. Review log
 
