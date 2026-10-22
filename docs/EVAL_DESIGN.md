@@ -631,6 +631,10 @@ interpreter against the 50M fuel limit) and was killed. So missing callees cost 
 quarter of its edges and zstd little; the stops that dominate zstd are arithmetic on pointers,
 out-of-bounds reads and shifts.
 
+Built (2026-10-22, `docs/MULTITU_DESIGN.md`): `--eval-sweep` with `--eval-link` sweeps the files of a run as
+one program with one `Ev`. Lua and zstd as one link each, N=24 with the solver: 4341 of 8655 edges (50.2%)
+against 3799 of 8207 (46.3%) file by file, +14% edges taken.
+
 Where the missed edges are (2026-10-22, scratch probe: per-function finish rate of the random
 calls, zstd + Lua per file, 8696 edges, 1225 functions). N=200: 4747 edges missed. 1322 (28%) are
 in 452 functions where at least 90% of the calls finish, 582 (12%) in functions finishing 50-90%,

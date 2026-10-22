@@ -12,6 +12,9 @@
 # the structural verifier (--verify-cfg), whose findings fail.  Fails on any mismatch or
 # when fewer than half the functions were compared.  CEREAL_FLAGS adds flags to both (cereal and gcc)
 # (e.g. -std=gnu23).
+# EVAL_SWEEP_LINK=1 sweeps all the FILEs as one program (--eval-link, docs/MULTITU_DESIGN.md): a
+# call into another file runs its body; gcc compiles each file with its thunks and links the objects
+# with one driver.  A file's `main` is renamed, not run.
 # EVAL_SWEEP_SOLVE='z3 -in -smt2' also solves for inputs (--eval-solve, docs/CONCOLIC_DESIGN.md):
 # the same oracle, and solve.c must then reach every guarded edge; skipped with a note when the
 # solver is not installed.
@@ -26,41 +29,59 @@ D=$(cd "$(dirname "$0")" && pwd)
 W=$(mktemp -d) || exit 1
 trap 'rm -rf "$W"' EXIT
 bad=0
-for f in "$@"; do
+absof() { echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; }
+
+# One run over the files $@ (more than one only when linking); failures add to bad.
+run_group() {
     rm -f "$W"/*
     : >"$W/exp.txt.unsup"
-    abs=$(cd "$(dirname "$f")" && pwd)/$(basename "$f")
-    # shellcheck disable=SC2086
-    if "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS --verify-cfg "$f" 2>&1 </dev/null | grep -q 'verify-cfg:'; then
-        echo "$f: verifier findings"
-        bad=$((bad + 1))
+    f=$1
+    link=
+    absl=$(absof "$1")
+    if [ -n "$EVAL_SWEEP_LINK" ]; then
+        link=--eval-link
+        f="link of $# files from $1"
+        absl=
+        for g in "$@"; do absl="$absl $(absof "$g")"; done
     fi
+    for g in "$@"; do
+        # shellcheck disable=SC2086
+        if "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS --verify-cfg "$g" 2>&1 </dev/null | grep -q 'verify-cfg:'; then
+            echo "$g: verifier findings"
+            bad=$((bad + 1))
+        fi
+    done
     if [ -n "$EVAL_SWEEP_SOLVE" ]; then
         # shellcheck disable=SC2086
-        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS --eval-sweep="$N,1234" --eval-solve="$EVAL_SWEEP_SOLVE" "$f" 2>"$W/solve.err" </dev/null \
-            | grep -E '^(fn|thunk|call) ' >"$W/sweep.txt"
+        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS $link --eval-sweep="$N,1234" --eval-solve="$EVAL_SWEEP_SOLVE" $absl 2>"$W/solve.err" </dev/null \
+            | grep -E '^(file|fn|thunk|call) ' >"$W/sweep.txt"
         grep -E '^cereal: ' "$W/solve.err" | sed "s|^|$f: |"
     else
         # shellcheck disable=SC2086
-        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS --eval-sweep="$N,1234" "$f" 2>&1 </dev/null \
-            | grep -E '^(fn|thunk|call) ' >"$W/sweep.txt"
+        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS $link --eval-sweep="$N,1234" $absl 2>&1 </dev/null \
+            | grep -E '^(file|fn|thunk|call) ' >"$W/sweep.txt"
     fi
-    # the driver (the thunks), the calls, and the evaluator's results, in order
-    awk -v drv="$W/drv.c" -v calls="$W/calls.txt" -v expf="$W/exp.txt" -v src="$abs" -v rt="$D/sweep_rt.h" '
-        $1 == "fn" { nfn++; sig[$2] = 1; next }
+    # The drivers (one per file: the file, its thunks, a table of them), the calls, and the evaluator's
+    # results, in order.  A function is known by file number and name (statics may share names).
+    awk -v W="$W" -v calls="$W/calls.txt" -v expf="$W/exp.txt" -v src1="$(absof "$1")" -v rt="$D/sweep_rt.h" '
+        BEGIN { fi = 1; src[1] = src1 }
+        $1 == "file" { if (nfile++) fi++; src[fi] = $2; next }
+        $1 == "fn" { nfn++; sig[fi ":" $2] = 1; next }
         $1 == "thunk" {
-            if (!started++) {
-                print "#define main sweep_orig_main_" > drv
-                print "#include \"" src "\"" > drv
+            drv = W "/drv" fi ".c"
+            if (!started[fi]++) {
+                print "#define main sweep_orig_main_" fi > drv
+                print "#include \"" src[fi] "\"" > drv
                 print "#undef main" > drv
                 print "#include \"" rt "\"" > drv
+                nfiles = fi
             }
             print substr($0, length($2) + length($3) + 9) > drv
-            names[++nth] = $2
+            names[fi, ++nth[fi]] = $2
             next
         }
         $1 == "call" {
-            name = $2
+            name = fi ":" $2
             if ($4 == "=>") {
                 print name " " $3 > calls
                 print $5 > expf
@@ -75,28 +96,65 @@ for f in "$@"; do
             next
         }
         END {
-            if (started) {
+            mn = W "/drvmain.c"
+            print "#include \"" rt "\"" > mn
+            for (i = 1; i <= nfiles; i++) {
+                if (!started[i]) continue
+                print i, src[i] > (W "/srcs.txt")
+                drv = W "/drv" i ".c"
                 print "static const SwTh sw_tab[] = {" > drv
-                for (t = 1; t <= nth; t++) printf "{\"%s\", t_%s},\n", names[t], names[t] > drv
-                print "};\nint main(int argc, char **argv)\n{\n    return sw_main(sw_tab, sizeof sw_tab / sizeof *sw_tab, argv[1]);\n}" > drv
+                for (t = 1; t <= nth[i]; t++) printf "{\"%d:%s\", t_%s},\n", i, names[i, t], names[i, t] > drv
+                printf "};\nconst SwTh *sw_tab_%d(int *n)\n{\n    *n = sizeof sw_tab / sizeof *sw_tab;\n    return sw_tab;\n}\n", i > drv
+                printf "const SwTh *sw_tab_%d(int *);\n", i > mn
             }
+            print "int main(int argc, char **argv)\n{\n    static SwTh all[1 << 16];\n    int n = 0, k, j;\n    const SwTh *t;" > mn
+            for (i = 1; i <= nfiles; i++)
+                if (started[i])
+                    printf "    t = sw_tab_%d(&k);\n    for (j = 0; j < k; j++)\n        all[n++] = t[j];\n", i > mn
+            print "    return sw_main(all, n, argv[1]);\n}" > mn
             for (l = 1; l <= n; l++) print line[l] > (expf ".calls")
             nf = 0; ok = 0
             for (s in sig) { nf++; if (ncalls[s] && !(s in trapped)) ok++ }
-            printf "%d %d\n", nf, ok > (expf ".count")
+            printf "%d %d %d\n", nf, ok, nfiles > (expf ".count")
             for (s in unsup) printf "%s (%s)\n", s, unsup[s] > (expf ".unsup")
         }' "$W/sweep.txt" 2>"$W/trap.txt"
     [ -s "$W/trap.txt" ] && { sed "s|^|$f: |" "$W/trap.txt"; bad=$((bad + 1)); }
-    read -r nf ok <"$W/exp.txt.count" 2>/dev/null || { nf=0; ok=0; }
+    read -r nf ok nfiles <"$W/exp.txt.count" 2>/dev/null || { nf=0; ok=0; nfiles=0; }
     unsup=$(tr '\n' ',' <"$W/exp.txt.unsup")
     mism=0
     if [ -s "$W/calls.txt" ]; then
+        # each file's driver is compiled with that file's directory on the include path
+        objs=
+        fail=
+        while read -r i g; do
+            # shellcheck disable=SC2086
+            gcc -O0 -fwrapv -w $CEREAL_FLAGS -I "$(dirname "$g")" -c -o "$W/drv$i.o" "$W/drv$i.c" 2>>"$W/gcc.err" || fail=1
+            objs="$objs $W/drv$i.o"
+        done <"$W/srcs.txt"
+        # the files without a swept function are linked as they are (their main, if any, renamed)
+        i=0
+        for g in $absl; do
+            i=$((i + 1))
+            grep -q " $g\$" "$W/srcs.txt" && continue
+            # shellcheck disable=SC2086
+            gcc -O0 -fwrapv -w $CEREAL_FLAGS -Dmain=sweep_orig_main_x$i -c -o "$W/plain$i.o" "$g" 2>>"$W/gcc.err" || fail=1
+            objs="$objs $W/plain$i.o"
+        done
         # shellcheck disable=SC2086
-        if ! gcc -O0 -fwrapv -w $CEREAL_FLAGS -I "$(dirname "$abs")" -o "$W/drv" "$W/drv.c" -lm 2>"$W/gcc.err"; then
+        gcc -O0 -fwrapv -w -c -o "$W/drvmain.o" "$W/drvmain.c" 2>>"$W/gcc.err" || fail=1
+        # shellcheck disable=SC2086
+        [ -z "$fail" ] && ! gcc -o "$W/drv" $objs "$W/drvmain.o" -lm 2>>"$W/gcc.err" && fail=1
+        if [ -n "$fail" ]; then
             echo "$f: gcc failed"; head -5 "$W/gcc.err"
-            bad=$((bad + 1)); continue
+            bad=$((bad + 1)); return
         fi
-        "$W/drv" "$W/calls.txt" </dev/null >"$W/got.txt" 2>&1 || { echo "$f: the gcc build ran badly"; bad=$((bad + 1)); continue; }
+        "$W/drv" "$W/calls.txt" </dev/null >"$W/got.txt" 2>&1
+        drc=$?
+        if [ "$drc" -ne 0 ]; then
+            # the call after the last result line is the one that crashed or was missing from the table
+            echo "$f: the gcc build ran badly (exit $drc, after $(wc -l <"$W/got.txt") of $(wc -l <"$W/calls.txt") calls; next: $(sed -n "$(($(wc -l <"$W/got.txt") + 1))p" "$W/calls.txt" | cut -c1-60))"
+            bad=$((bad + 1)); return
+        fi
         paste -d'\t' "$W/exp.txt.calls" "$W/exp.txt" "$W/got.txt" >"$W/all.txt"
         mism=$(awk -F'\t' -v f="$f" '$2 != $3 {
             c++
@@ -108,11 +166,11 @@ for f in "$@"; do
             }
         } END { print c + 0 }' "$W/all.txt" 2>"$W/mm.txt")
         cat "$W/mm.txt"
-        if [ -n "$EVAL_SWEEP_SOLVE" ] && [ "$(basename "$f")" = solve.c ]; then
+        if [ -n "$EVAL_SWEEP_SOLVE" ] && [ "$(basename "$1")" = solve.c ]; then
             # every guarded function must have a call that took its guarded edge (result 1)
             miss=$(awk -F'\t' '{ split($1, a, " "); if (substr($2, 1, 8) == "01000000") hit[a[1]] = 1 }
                 END { split("magic square sumsw neighbour mixed", w, " ");
-                      for (i = 1; i in w; i++) if (!(w[i] in hit)) printf "%s ", w[i] }' "$W/all.txt")
+                      for (i = 1; i in w; i++) if (!(("1:" w[i]) in hit)) printf "%s ", w[i] }' "$W/all.txt")
             if [ -n "$miss" ]; then
                 echo "$f: the solver did not reach the guarded edge of: $miss"
                 bad=$((bad + 1))
@@ -125,5 +183,11 @@ for f in "$@"; do
         echo "$f: fewer than half the functions were compared"
         bad=$((bad + 1))
     fi
-done
+}
+
+if [ -n "$EVAL_SWEEP_LINK" ]; then
+    run_group "$@"
+else
+    for f in "$@"; do run_group "$f"; done
+fi
 [ "$bad" -eq 0 ]

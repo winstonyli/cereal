@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # Evaluating across translation units (`--eval-link`)
@@ -71,3 +71,61 @@ limit for large programs. (g) A function in file B called from A before B was ad
 the sweep, after all files are in. (h) The checker's own use of the evaluator during checking (constant
 folding, `tast.c:1345`) runs while only the files so far are added and must keep working with a single file:
 unchanged by the flag.
+
+## 5. Result (2026-10-22; built on `6fe8f35`, gate row `multitu-link` in `docs/runs.md`)
+
+As built (differences from section 2):
+- `Fn.c`, `Sd.c`, `Obj.fc`, `Fr.up_c`; `run_fn` switches `v->c` and restores it. Function objects hold
+  `(file, symbol)` rather than an `Ev.fn` index (the same identity, no table lookup per call).
+- **A hash index of the functions** by `(file, symbol)` and, for external definitions, by name (`fn_sync`,
+  `find_fn`, `find_def` in `eval.c`). `find_fn` was a linear scan, too slow once one `Ev` holds the 3000
+  functions of a library. A name defined twice is `dup_def`; the link stops with exit 2 ("multiple
+  definition"). Not entered by name: functions of system headers and `inline` ones (every file has its own
+  copy: the `<emmintrin.h>` intrinsics made zstd report duplicates).
+- `function_obj` canonicalizes to the defining file's object, so a function pointer made in one file and
+  compared or called in another is the same object. A declaration with no definition anywhere (a host
+  function) stays per file.
+- Objects: `static_obj` resolves a global without a definition here, or with a tentative one, to the best
+  definition of the name (defined, else the first tentative one) and caches it in the declaration's
+  `Sd.alias`. `sd_obj` sizes an object in its defining file's checker.
+- **`struct EvLink`** (`eval.h`) holds the shared `Ev`, the kept checkers and the callers' sources; reached
+  through `CheckOptions.link` / `FrontendOpts.link`. The first version used three file-scope variables and
+  the gate's globals check (`bench/tools/globals.sh`) rejected them.
+- Driver: `--eval-link` (needs `--eval-sweep`, plain file arguments; forces one job). `parse_one` keeps each
+  file's `TU` on the heap, `frontend_run` keeps its checker, `eval_finish` queues it, and `evlink_end` sweeps
+  once after the last file, then frees checkers, `Ev` and sources. The sweep prints `file PATH` before each
+  file's functions. The tentative definitions are registered when the file ends, so the sweep (now after all
+  files) sees them: a `int x;` is a real object, not a stub.
+- Records by value: `link_sizes_ok` compares argument and result sizes on a call across files ("unsupported"
+  when they differ). Field offsets are assumed equal.
+- Oracle (`tests/eval_sweep.sh`, `EVAL_SWEEP_LINK=1`): one driver per file (the file, its thunks, a table
+  named `N:name`: statics may share names), a generated `main` merging the tables; a file without a swept
+  function is compiled as it is; every file's `main` is renamed.
+
+Checks: `tests/cfg_link/link_a.c`, `link_b.c` (a cross-file call into a guarded branch, same-named statics, a
+function pointer from `a` called in `b`, a record by value both ways, a global defined in `a` and read in
+both) equal gcc's link, 11 of 11 functions, with and without the solver; stage 13e1 of `tests/run.sh` also
+requires the guarded call (`12345`) among the printed ones. One file at a time nothing changes (46 eval tests,
+the cfg_exec sweeps with the solver equal to gcc). Gate: 2313 passed in both builds.
+
+Corpus (Lua 5.4 without `onelua.c` and `ltests.c`, zstd without its assembly, N=24 with the solver; the lists
+differ from the earlier rows, so those numbers do not carry over): file by file 3799 of 8207 edges taken
+(46.3%), 532 queries; as one program per library 4341 of 8655 (50.2%), 673 queries (runs
+`sweep-base-nolink-24`, `sweep-link-24-2`). +542 edges taken (+14%) and 448 more edges in the population
+(functions that stopped on a missing callee now finish). The ceiling measured on amalgamations was +28% for Lua,
+about 0 for zstd.
+
+Negative: a library-scale gcc oracle (Lua and zstd linked as one program, calls compared) does not work: the
+link builds, but gcc segfaults on generated pointer state (unrelated objects, zeroed contexts; `lua_settop`
+after 171 of 9218 calls, zstd after 16149 of 25430), which the evaluator survives or traps on. Single-file Lua
+cannot even be linked. The oracle stays on `tests/cfg_exec` and `tests/cfg_link`; the libraries are for
+measurement. Run rows `link-oracle-n4`, `n4b`, `n4c`; the script was deleted.
+
+Limits: a source manager reserves 4 GB of address space per file (`srcmgr.c` `REGION_SIZE`) and a link keeps
+every file's, so `ulimit -v` must grow by that per file (`sweep_meas.sh` does); Lua (32 files) and zstd (26)
+fit. Compile-database entries are not supported (their options are freed with the job). `static_obj` scans
+all objects for a tentative-only global at every reference.
+
+Review log: (a) the first `dup_def` check read the field before the index had seen the last files; `ev_dup_def`
+syncs first. (b) The system-header `inline` duplicates (above). (c) A gcc build that crashes now names the
+call that was running (`tests/eval_sweep.sh`).

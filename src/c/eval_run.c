@@ -979,19 +979,31 @@ static void mut_solve(SCtx *x)
 static void (*const rotation[])(SCtx *) = { mut_gen, mut_solve };
 
 
-static void eval_sweep(Checker *c)
+/* The path of c's own source file, as spelled on the command line. */
+static const char *main_path(Checker *c)
 {
-    Ev *v = ev_of(c);
-    FILE *out = c->opt.tast;
+    uint32_t k;
+    for (k = 0; k < srcmgr_nfiles(c->sm); k++)
+        if (srcmgr_file(c->sm, k)->kind == SF_USER)
+            return srcmgr_file(c->sm, k)->name;
+    return "?";
+}
+
+/* Every function of the files of c0 (one file, or the whole link: c0 is then the first). */
+static void eval_sweep(Checker *c0)
+{
+    Ev *v = ev_of(c0);
+    FILE *out = c0->opt.tast;
+    Checker *cur = NULL;
     size_t i, k;
     long j;
     SxSolver *sv = NULL;
     SolveStat ss = {0};
     if (!out)
         return;
-    if (c->opt.eval_solve) {
+    if (c0->opt.eval_solve) {
         char err[256];
-        sv = sx_open(c->opt.eval_solve, err, sizeof err);
+        sv = sx_open(c0->opt.eval_solve, err, sizeof err);
         if (!sv) {
             fprintf(stderr, "cereal: --eval-solve: %s\n", err);
             exit(2);
@@ -1006,8 +1018,10 @@ static void eval_sweep(Checker *c)
         SCtx x = {0};
         bool ok;
         StrBuf head = {0}, body = {0};
+        Checker *c = f->c;
         if (f->fsym == SYM_NONE || !f->user || f->variadic || f->np > 16)
             continue;
+        v->c = c;
         name = cident(c, csym(c, f->fsym)->name);
         if (!strcmp(name, "main"))
             continue;
@@ -1016,6 +1030,10 @@ static void eval_sweep(Checker *c)
             sweep_free(&s);
             v->res.status = EV_OK;
             continue;
+        }
+        if (c0->opt.link && c != cur) {
+            fprintf(out, "file %s\n", main_path(c));
+            cur = c;
         }
         sb_printf(&head, "fn %s ", name);
         sweep_typename(c, &head, f->ret);
@@ -1032,14 +1050,14 @@ static void eval_sweep(Checker *c)
         x.s = &s;
         x.name = name;
         x.body = &body;
-        x.rs = (uint64_t)c->opt.eval_seed * 0x9e3779b97f4a7c15ull;
+        x.rs = (uint64_t)c0->opt.eval_seed * 0x9e3779b97f4a7c15ull;
         for (k = 0; name[k]; k++)
             x.rs = (x.rs ^ (unsigned char)name[k]) * 1099511628211ull;
         x.rs |= 1;
         x.in = xcalloc((size_t)s.insz + 1, 1);
         v->dict.len = 0;
         v->dict_on = true;
-        for (j = 0; j < c->opt.eval_sweep; j++)
+        for (j = 0; j < c0->opt.eval_sweep; j++)
             mut_gen(&x);
         /* guided calls: the same generator, now drawing integers from what the program compared its
          * inputs with; only calls that finish are kept */
@@ -1095,8 +1113,32 @@ static void eval_sweep(Checker *c)
 
 void eval_finish(Checker *c)
 {
-    if (c->opt.eval == EVAL_SWEEP)
+    if (c->opt.eval == EVAL_SWEEP && c->opt.link)
+        vec_push(&c->opt.link->cs, c);     /* swept after the last file (evlink_end) */
+    else if (c->opt.eval == EVAL_SWEEP)
         eval_sweep(c);
     else if (c->opt.eval == EVAL_RUN)
         eval_main(c);
+}
+
+/* --eval-link: after the last file, sweep them all; then free the files' checkers and the shared Ev.
+ * Returns the exit status. */
+int evlink_end(struct EvLink *lk)
+{
+    size_t i;
+    int rc = 0;
+    if (lk->cs.len) {
+        Ev *v = ev_of(lk->cs.data[0]);
+        if (ev_dup_def(v)) {
+            fprintf(stderr, "cereal: --eval-link: multiple definition of '%s'\n", v->dup_def);
+            rc = 2;
+        } else {
+            eval_sweep(lk->cs.data[0]);
+        }
+    }
+    for (i = 0; i < lk->cs.len; i++)
+        checker_free(lk->cs.data[i]);
+    ev_free(lk->ev);
+    vec_free(&lk->cs);
+    return rc;
 }

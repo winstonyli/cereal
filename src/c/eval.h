@@ -62,6 +62,15 @@ void eval_tentative(Checker *c, uint32_t ref);
 void eval_statics(Checker *c, El *e);
 /* The checker's evaluator, made on first use. */
 Ev *ev_of(Checker *c);
+const char *ev_dup_def(Ev *v);   /* --eval-link: a name defined in two files, or NULL */
+/* --eval-link: the files of one run, checked one after the other with one Ev, then swept together. */
+struct EvLink {
+    Ev *ev;
+    VEC(Checker *) cs;          /* the files whose checkers are kept, in order */
+    VEC(void *) srcs;           /* what the caller keeps for each (its translation unit) */
+};
+/* Sweep the files, free their checkers and the shared Ev; the exit status.  The caller frees srcs. */
+int evlink_end(struct EvLink *lk);
 /* After the last unit: `cereal run` runs main (c->opt.eval_argv are its arguments,
  * the program's stdout goes to c->opt.tast, the exit status through
  * c->opt.eval_status, a stop is reported on stderr); --eval-sweep prints each scalar

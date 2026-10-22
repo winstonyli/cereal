@@ -10,6 +10,7 @@
 #include "cell.h"
 #include "toks.h"
 #include "c/csymidx.h"
+#include "c/eval.h"
 #include "c/frontend.h"
 #include "compdb.h"
 #include "jobs.h"
@@ -351,7 +352,7 @@ static int verify_carry_one(Options *o, const char *path, FILE *out, FILE *err)
 static int parse_one(Options *o, const char *path, FILE *out, FILE *err,
                        void *res TU_UNUSED)
 {
-    TU tu;
+    TU tu0, *tp = fe_opts.link ? xmalloc(sizeof *tp) : &tu0;
     FrontendOpts fo = fe_opts;
     ParOptions po;
     unsigned tast_bad = 0;
@@ -359,8 +360,8 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err,
     int rc;
     if (carry_old)
         return verify_carry_one(o, path, out, err);
-    tu_init(&tu, o);
-    tu.diag.out = err;
+    tu_init(tp, o);
+    tp->diag.out = err;
     fo.out = out;
     fo.tast_bad = fe_opts.verify_tast || fe_opts.verify_cfg ? &tast_bad : NULL;
     if (parse_cells) {
@@ -371,16 +372,34 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err,
         fo.cidx = &ix;
         fo.symidx_verify = verify_symbols ? out : NULL;
     }
-    frontend_run(&tu, path, &fo);
-    rc = finish(&tu, out);
+    frontend_run(tp, path, &fo);
+    rc = finish(tp, out);
     if (tast_bad && !rc)
         rc = 1;
     if (ix && dump_symbols)
-        cindex_dump(ix, &tu.sm, out);
-    if (ix && verify_symbols && cindex_verify(ix, &tu.sm, out) && !rc)
+        cindex_dump(ix, &tp->sm, out);
+    if (ix && verify_symbols && cindex_verify(ix, &tp->sm, out) && !rc)
         rc = 1;
     cindex_free(ix);
-    tu_free(&tu);
+    if (tp == &tu0)
+        tu_free(tp);
+    else
+        vec_push(&fe_opts.link->srcs, tp);   /* its checker is in the link; freed after the sweep */
+    return rc;
+}
+
+/* --eval-link, after the last file: sweep the files together, then free them. */
+static int link_end(void)
+{
+    size_t k;
+    int rc = evlink_end(fe_opts.link);
+    for (k = 0; k < fe_opts.link->srcs.len; k++) {
+        tu_free(fe_opts.link->srcs.data[k]);
+        free(fe_opts.link->srcs.data[k]);
+    }
+    vec_free(&fe_opts.link->srcs);
+    free(fe_opts.link);
+    fe_opts.link = NULL;
     return rc;
 }
 
@@ -455,7 +474,7 @@ int run_jobs(Options *o, TuJob *jobs, size_t n, FILE *out, bool dirs)
     const char *last = cwd ? cwd : "";
     for (i = 0; i < n; i++)
         jobs[i].o = o, jobs[i].finished = false;
-    if (n == 1 || o->jobs == 1) {
+    if (n == 1 || o->jobs == 1 || fe_opts.link) {      /* the link keeps every file in this process */
         for (i = 0; i < n; i++) {
             enter_dir(&jobs[i], &last, dirs);
             jobs[i].rc = run_fn(&jobs[i], out, stderr);
@@ -1671,6 +1690,10 @@ int main(int argc, char **argv)
             fe_opts.eval_seed = *end == ',' ? strtoul(end + 1, NULL, 10) : 1;
             continue;
         }
+        if (!strcmp(argv[i], "--eval-link")) {
+            fe_opts.link = xcalloc(1, sizeof *fe_opts.link);
+            continue;
+        }
         if (!strncmp(argv[i], "--eval-solve=", 13)) {
             fe_opts.eval_solve = argv[i] + 13;
             continue;
@@ -1885,10 +1908,17 @@ int main(int argc, char **argv)
              !strcmp(mode, "-fsyntax-only")) {
         fe_opts.check = strcmp(mode, "parse") != 0;
         o.pp.fatal_missing_include = fe_opts.check; /* gcc stops at a missing include */
-        rc = o.inputs.len ? run_inputs(&o, parse_one, stdout)
-                          : (fprintf(stderr, "cereal: %s needs input files\n",
-                                     mode),
-                             2);
+        if (fe_opts.link && fe_opts.eval != EVAL_SWEEP) {
+            fprintf(stderr, "cereal: --eval-link needs --eval-sweep\n");
+            rc = 2;
+        } else {
+            rc = o.inputs.len ? run_inputs(&o, parse_one, stdout)
+                              : (fprintf(stderr, "cereal: %s needs input files\n",
+                                         mode),
+                                 2);
+        }
+        if (fe_opts.link && rc != 2)
+            rc |= link_end();
     }
     else if (!strcmp(mode, "run")) {
         fe_opts.check = true;

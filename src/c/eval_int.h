@@ -87,6 +87,7 @@ typedef struct Sd {
     TypeId ty;
     bool local;
     bool stub;                  /* made by a reference: no definition registered (yet) */
+    uint32_t alias;             /* --eval-link: this declaration stands for Sd alias - 1 of another file */
 } Sd;
 
 #define EV_CALL_OBJS (1u << 20) /* objects one call may make */
@@ -98,6 +99,12 @@ struct Ev {
     VEC(Obj) obj;               /* object id n is obj.data[n - 1] */
     VEC(Fn) fn;
     VEC(Sd) sd;
+    /* --eval-link: one Ev for all files.  Index of the functions, by (file, symbol) and, for external
+     * definitions, by name; filled up to fi_done. */
+    bool link;
+    uint32_t *fi_id, *fi_nm;
+    size_t fi_cap, fi_done;
+    const char *dup_def;        /* a name with two external definitions, or NULL */
     long fuel;
     size_t objlim;              /* obj.len at which "object limit" ends the evaluation; 0: none */
     unsigned depth;

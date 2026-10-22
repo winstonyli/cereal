@@ -569,6 +569,19 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         bad "eval_sweep"
         head -10 "$TMP/exec.out" | sed 's/^/    /'
     fi
+    # 13e1. the files of tests/cfg_link as one program (--eval-link, docs/MULTITU_DESIGN.md): calls
+    #       across files, a static of the same name in both, a function pointer, records by value;
+    #       compared with gcc's link of the same files, and the guarded branch in link_b.c must be
+    #       reached from link_a.c (12345 = 0x3039)
+    if (cd "$ROOT/tests/cfg_link" && EVAL_SWEEP_LINK=1 sh ../eval_sweep.sh "$CEREAL" link_a.c link_b.c \
+            >"$TMP/link.out" 2>&1 </dev/null) &&
+       (cd "$ROOT/tests/cfg_link" && "$CEREAL" check --target=x86_64-linux-gnu --eval-link --eval-sweep=24,1234 \
+            "$PWD/link_a.c" "$PWD/link_b.c" 2>&1 </dev/null | grep -q '^call a_call_guard 39300000 =>'); then
+        ok
+    else
+        bad "eval_sweep --eval-link"
+        head -10 "$TMP/link.out" | sed 's/^/    /'
+    fi
     # 13e2. the same sweep, also solving for inputs (docs/CONCOLIC_DESIGN.md); only when
     #       EVAL_SWEEP_SOLVE names an SMT-LIB2 solver command, e.g. 'z3 -in -smt2'
     if [ -n "${EVAL_SWEEP_SOLVE:-}" ]; then

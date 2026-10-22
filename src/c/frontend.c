@@ -172,6 +172,7 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo)
         co.eval_sweep = fo->eval_sweep;
         co.eval_seed = fo->eval_seed;
         co.eval_solve = fo->eval_solve;
+        co.link = fo->link;
         co.dump_asm = fo->dump_asm;
         co.emit_obj = fo->emit_obj;
         co.verify_cfg = fo->verify_cfg;
@@ -263,7 +264,8 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo)
             if (fo->cidx)
                 *fo->cidx = checker_take_index(chk);
         }
-        checker_free(chk);
+        if (!fo->link)
+            checker_free(chk);     /* the link run frees it after the sweep (evlink_end) */
     }
     if (getenv("CEREAL_PARSE_STATS"))
         fprintf(stderr, "parse: %llu units, %llu tokens, %llu errors\n",

@@ -592,29 +592,114 @@ static uint32_t *lookup(Fr *r, uint32_t ref)
     return NULL;
 }
 
-static uint32_t function_obj(Ev *v, uint32_t fsym)
+/* ---- the functions' index ------------------------------------------------- */
+
+static uint64_t hash_id(const Checker *c, uint32_t fsym)
+{
+    return ((uint64_t)(uintptr_t)c * 0x9e3779b97f4a7c15ull ^ fsym) * 0xff51afd7ed558ccdull;
+}
+
+static uint64_t hash_name(const char *s)
+{
+    uint64_t h = 1469598103934665603ull;
+    for (; *s; s++)
+        h = (h ^ (unsigned char)*s) * 1099511628211ull;
+    return h;
+}
+
+static bool fn_external(Checker *c, uint32_t fsym)
+{
+    return !(fsym & SYM_LOCAL) && csym(c, fsym)->linkage == LK_EXTERNAL;
+}
+
+static const char *fn_name(Checker *c, uint32_t fsym)
+{
+    return cident(c, csym(c, fsym)->name);
+}
+
+/* Add the functions pushed since the last call; both tables are open addressing, entry = index + 1. */
+static void fn_sync(Ev *v)
 {
     size_t i;
+    if (v->fi_cap < 4 * v->fn.len + 8) {
+        free(v->fi_id);
+        free(v->fi_nm);
+        for (v->fi_cap = 64; v->fi_cap < 8 * v->fn.len + 8;)
+            v->fi_cap *= 2;
+        v->fi_id = xcalloc(v->fi_cap, sizeof *v->fi_id);
+        v->fi_nm = xcalloc(v->fi_cap, sizeof *v->fi_nm);
+        v->fi_done = 0;
+    }
+    for (i = v->fi_done; i < v->fn.len; i++) {
+        const Fn *f = &v->fn.data[i];
+        size_t k;
+        if (f->fsym == SYM_NONE)
+            continue;
+        for (k = hash_id(f->c, f->fsym) & (v->fi_cap - 1); v->fi_id[k]; k = (k + 1) & (v->fi_cap - 1))
+            ;
+        v->fi_id[k] = (uint32_t)i + 1;
+        /* an external definition: not an inline one, which each file has its own copy of (the intrinsics of
+         * <emmintrin.h>) */
+        if (!v->link || !f->user || !fn_external(f->c, f->fsym) || (csym(f->c, f->fsym)->flags & CSF_INLINE))
+            continue;
+        for (k = hash_name(fn_name(f->c, f->fsym)) & (v->fi_cap - 1); v->fi_nm[k]; k = (k + 1) & (v->fi_cap - 1))
+            if (!strcmp(fn_name(v->fn.data[v->fi_nm[k] - 1].c, v->fn.data[v->fi_nm[k] - 1].fsym),
+                        fn_name(f->c, f->fsym)))
+                v->dup_def = fn_name(f->c, f->fsym);
+        v->fi_nm[k] = (uint32_t)i + 1;
+    }
+    v->fi_done = v->fn.len;
+}
+
+/* The body of function fsym of file c, in that file. */
+static Fn *find_fn(Ev *v, const Checker *c, uint32_t fsym)
+{
+    size_t k;
+    fn_sync(v);
+    for (k = hash_id(c, fsym) & (v->fi_cap - 1); v->fi_id[k]; k = (k + 1) & (v->fi_cap - 1))
+        if (v->fn.data[v->fi_id[k] - 1].fsym == fsym && v->fn.data[v->fi_id[k] - 1].c == c)
+            return &v->fn.data[v->fi_id[k] - 1];
+    return NULL;
+}
+
+/* ... or, linking, the external definition of its name in another file. */
+static Fn *find_def(Ev *v, Checker *c, uint32_t fsym)
+{
+    Fn *g = find_fn(v, c, fsym);
+    const char *nm;
+    size_t k;
+    if (g || !v->link || !fn_external(c, fsym))
+        return g;
+    nm = fn_name(c, fsym);
+    for (k = hash_name(nm) & (v->fi_cap - 1); v->fi_nm[k]; k = (k + 1) & (v->fi_cap - 1)) {
+        Fn *d = &v->fn.data[v->fi_nm[k] - 1];
+        if (!strcmp(fn_name(d->c, d->fsym), nm))
+            return d;
+    }
+    return NULL;
+}
+
+/* A function's object: one per definition (a declaration without a body in this file takes the
+ * definition's, when linking). */
+static uint32_t function_obj(Ev *v, uint32_t fsym)
+{
+    Checker *c = v->c;
+    Fn *g = find_def(v, c, fsym);
+    size_t i;
     Obj o;
+    if (g) {
+        c = g->c;
+        fsym = g->fsym;
+    }
     for (i = 0; i < v->obj.len; i++)
-        if (v->obj.data[i].fn == fsym + 1 && v->obj.data[i].fc == v->c)
+        if (v->obj.data[i].fn == fsym + 1 && v->obj.data[i].fc == c)
             return (uint32_t)i + 1;
     memset(&o, 0, sizeof o);
     o.fn = fsym + 1;
-    o.fc = v->c;
+    o.fc = c;
     o.live = true;
     vec_push(&v->obj, o);
     return (uint32_t)v->obj.len;
-}
-
-/* The body of function fsym of file c. */
-static Fn *find_fn(Ev *v, const Checker *c, uint32_t fsym)
-{
-    size_t i;
-    for (i = 0; i < v->fn.len; i++)
-        if (v->fn.data[i].fsym == fsym && v->fn.data[i].c == c)
-            return &v->fn.data[i];
-    return NULL;
 }
 
 static uint64_t ev_node(Fr *r, uint32_t n);
@@ -825,6 +910,35 @@ unsup:
     return 0;
 }
 
+/* A call into another file: a record or array argument or result is copied as bytes, so both sides
+ * must give it the same size (field offsets are assumed equal: the files share the declaration). */
+static bool agg_size(Checker *c, TypeId ty, uint64_t *sz)
+{
+    bool ok;
+    if (type_ckind(&c->tt, ty) != TY_ARRAY && !type_is_record(&c->tt, ty))
+        return false;
+    *sz = type_size(&c->tt, ty, &ok);
+    return ok;
+}
+
+static bool link_sizes_ok(Fr *r, uint32_t n, uint32_t first, size_t na, const Fn *g, TypeId rty)
+{
+    Ev *v = r->v;
+    size_t j;
+    uint64_t a, b;
+    for (j = 0; j < na && j < g->np; j++)
+        if (agg_size(v->c, NODE(r, KID(r, n, first + j))->ty, &a) != agg_size(g->c, g->par[j].ty, &b) ||
+            (agg_size(v->c, NODE(r, KID(r, n, first + j))->ty, &a) && a != b)) {
+            UNSUP(v, "call across files: argument %zu is a record of different sizes in the two files", j + 1);
+            return false;
+        }
+    if (agg_size(v->c, rty, &a) != agg_size(g->c, g->ret, &b) || (agg_size(v->c, rty, &a) && a != b)) {
+        UNSUP(v, "call across files: the result is a record of different sizes in the two files");
+        return false;
+    }
+    return true;
+}
+
 static uint64_t ev_call_node(Fr *r, uint32_t n, uint32_t *sh)
 {
     const TNode *t = NODE(r, n);
@@ -853,11 +967,13 @@ static uint64_t ev_call_node(Fr *r, uint32_t n, uint32_t *sh)
             TRAP(v, "call through a pointer that is not a function");
             return 0;
         }
-        g = find_fn(v, v->obj.data[pid(callee) - 1].fc, v->obj.data[pid(callee) - 1].fn - 1);
+        g = find_def(v, v->obj.data[pid(callee) - 1].fc, v->obj.data[pid(callee) - 1].fn - 1);
     } else {
-        g = find_fn(v, v->c, t->sym);
+        g = find_def(v, v->c, t->sym);
     }
     if (v->res.status)
+        return 0;
+    if (g && g->c != v->c && !link_sizes_ok(r, n, first, na, g, t->ty))
         return 0;
     if (!g) {                           /* a declared function: the host library, or unsupported */
         uint32_t fs = t->pun == 1 ? v->obj.data[pid(callee) - 1].fn - 1 : t->sym;
@@ -976,8 +1092,17 @@ static uint32_t sd_obj(Ev *v, size_t i)
     Obj *o;
     if (s->obj)
         return s->obj;
-    if (!s->stub && !size_of(v, s->ty, &sz))
-        return 0;
+    if (s->alias)
+        return sd_obj(v, s->alias - 1);
+    if (!s->stub) {
+        Checker *save = v->c;
+        bool ok;
+        v->c = s->c;                    /* the type is the defining file's */
+        ok = size_of(v, s->ty, &sz);
+        v->c = save;
+        if (!ok)
+            return 0;
+    }
     id = ev_new_obj(v, sz, false);
     if (!id)
         return 0;
@@ -1035,6 +1160,39 @@ static uint32_t static_obj(Fr *r, uint32_t ref)
         if (d->c == v->c && d->ref == ref && d->local == local && (!local || d->fn == fi) &&
             (!s || ((s->node == TN) && d->node != TN)))
             s = d;
+    }
+    if (s && s->alias)
+        return sd_obj(v, s->alias - 1);
+    if (v->link && !local && (!s || (s->stub || s->node == TN)) && csym(v->c, ref)->linkage == LK_EXTERNAL) {
+        /* the definition of this name in any file, else the first tentative one */
+        const char *nm = cident(v->c, csym(v->c, ref)->name);
+        size_t best = 0;
+        int rank = 0;
+        for (i = 0; i < v->sd.len; i++) {
+            Sd *d = &v->sd.data[i];
+            int rk = d->stub || d->local || d->alias ? 0 : d->node != TN ? 2 : 1;
+            if (rk > rank && csym(d->c, d->ref)->linkage == LK_EXTERNAL &&
+                !strcmp(cident(d->c, csym(d->c, d->ref)->name), nm)) {
+                best = i + 1;
+                rank = rk;
+            }
+        }
+        if (best && (!s || s != &v->sd.data[best - 1])) {
+            Sd d;
+            size_t si;
+            if (!s) {
+                memset(&d, 0, sizeof d);
+                d.c = v->c;
+                d.ref = ref;
+                d.node = TN;
+                d.stub = true;
+                vec_push(&v->sd, d);
+                s = &v->sd.data[v->sd.len - 1];
+            }
+            si = (size_t)(s - v->sd.data);
+            v->sd.data[si].alias = (uint32_t)best;
+            return sd_obj(v, best - 1);
+        }
     }
     if (!s) {
         uint32_t h = local ? 0 : ev_host_object(v, cident(v->c, csym(v->c, ref)->name));
@@ -1855,6 +2013,21 @@ EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *ou
 
 Ev *ev_of(Checker *c)
 {
+    if (c->opt.link) {
+        struct EvLink *lk = c->opt.link;
+        if (!lk->ev) {
+            EvOpts o;
+            memset(&o, 0, sizeof o);
+            o.fuel = 50000000;
+            o.depth = 1000;
+            o.wrap = c->opt.eval_wrap;
+            lk->ev = ev_new(c, &o);
+            lk->ev->link = true;
+        }
+        lk->ev->c = c;
+        c->ev = lk->ev;
+        return lk->ev;
+    }
     if (!c->ev) {
         EvOpts o;
         memset(&o, 0, sizeof o);
@@ -2010,6 +2183,14 @@ void eval_tentative(Checker *c, uint32_t ref)
 
 void eval_release(Checker *c)
 {
-    ev_free(c->ev);
+    if (!c->opt.link)
+        ev_free(c->ev);
     c->ev = NULL;
 }
+
+const char *ev_dup_def(Ev *v)
+{
+    fn_sync(v);
+    return v->dup_def;
+}
+
