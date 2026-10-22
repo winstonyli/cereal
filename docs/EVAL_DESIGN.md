@@ -667,6 +667,16 @@ drawing integer fields from the extents of the call's blobs (element counts, byt
 side) a sixth of the time lowered the generator's coverage to 39.9% (solver 42.0%), so lengths that
 disagree with buffers are not what the misses wait for.
 
+Stop census (scratch probe printing each stop; zstd and Lua 5.4, N=24, 114096 stopped calls): reads through
+a null pointer 32051, reads out of bounds 24402, pointer arithmetic out of range 9792, subtraction of
+pointers into different objects 8705, shift counts 5573, calls through a null pointer 4873, `strcmp` of a
+null pointer 2585, writes out of bounds 1810, writes through null 1404; calls with no body here about
+11000 in all (`ERR_getErrorString` 2112, `luaX_*`, `luaM_*`, `luaS_*`, `strspn`, `strpbrk`, `strstr`, `fflush`,
+`_setjmp`), asm 768. So about four in five stops are the pointer structure of the generated state, not
+data. Spike (run `2026-10-22-sweep-share5-24`, not kept): a pointer field links to another blob of its
+element type five times in eight instead of twice (NULL stays one in eight) took the generator from
+40.7% to 41.0% and the solver's total from 42.5% to 42.8%: sharing helps a little, it is not the lever.
+
 ## 10. Review log
 
 Three adversarial rounds against the code, 2026-10-21; each change above came
