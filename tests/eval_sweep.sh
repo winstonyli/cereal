@@ -1,17 +1,21 @@
 #!/bin/sh
 # eval_sweep.sh CEREAL FILE.c...: the evaluator (src/c/eval.c) against gcc, per function.
 #
-# `cereal check --eval-sweep=N,SEED` lists every scalar function of FILE.c (integer,
-# bool, float and double parameters and result), calls it on N seeded argument vectors in
-# the evaluator and prints the results.  The same calls, in the same order, run in a gcc
-# -O0 -fwrapv build of the file and must print the same values.  An evaluator trap or step
-# limit is a failure (the corpus is free of undefined behaviour); a construct the evaluator
-# does not support is listed, not hidden.  Also runs the structural verifier (--verify-cfg),
-# whose findings fail.  Fails on any mismatch or when fewer than half the functions
-# were compared.  CEREAL_FLAGS adds cereal flags (e.g. -std=gnu23).
+# `cereal check --eval-sweep=N,SEED` lists the functions of FILE.c it can drive (integer,
+# bool, float and double parameters, pointers to objects, records by value; a scalar,
+# pointer or void result), calls each on N seeded inputs in the evaluator and prints the
+# bytes of every call and its result: the return value and the final contents of every
+# pointed-to object.  The same bytes run through a thunk per function (sweep_rt.h) in a gcc
+# -O0 -fwrapv build of the file and must give the same result bytes.  For a scalar-only
+# function an evaluator trap or step limit is a failure (the corpus is free of undefined
+# behaviour); a construct the evaluator does not support is listed, not hidden.  Also runs
+# the structural verifier (--verify-cfg), whose findings fail.  Fails on any mismatch or
+# when fewer than half the functions were compared.  CEREAL_FLAGS adds flags to both (cereal and gcc)
+# (e.g. -std=gnu23).
 C=${1:?cereal binary}
 shift
 N=${EVAL_SWEEP_N:-24}
+D=$(cd "$(dirname "$0")" && pwd)
 W=$(mktemp -d) || exit 1
 trap 'rm -rf "$W"' EXIT
 bad=0
@@ -26,37 +30,42 @@ for f in "$@"; do
     fi
     # shellcheck disable=SC2086
     "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS --eval-sweep="$N,1234" "$f" 2>&1 </dev/null \
-        | grep -E '^(fn|call) ' >"$W/sweep.txt"
-    # the driver (calls with a result) and the evaluator's results, in order
-    awk -v drv="$W/drv.c" -v expf="$W/exp.txt" -v src="$abs" '
-        $1 == "fn" { nfn++; sig[$2] = $3; next }
+        | grep -E '^(fn|thunk|call) ' >"$W/sweep.txt"
+    # the driver (the thunks), the calls, and the evaluator's results, in order
+    awk -v drv="$W/drv.c" -v calls="$W/calls.txt" -v expf="$W/exp.txt" -v src="$abs" -v rt="$D/sweep_rt.h" '
+        $1 == "fn" { nfn++; sig[$2] = 1; next }
+        $1 == "thunk" {
+            if (!started++) {
+                print "#define main sweep_orig_main_" > drv
+                print "#include \"" src "\"" > drv
+                print "#undef main" > drv
+                print "#include \"" rt "\"" > drv
+            }
+            print substr($0, length($2) + length($3) + 9) > drv
+            names[++nth] = $2
+            next
+        }
         $1 == "call" {
-            name = $2; args = $3
-            r = substr($0, index($0, $3) + length($3) + 1)
-            if (r ~ /^[if]:/) {
-                tag = substr(r, 1, 1)
-                if (!started++) {
-                    print "#define main sweep_orig_main_" > drv
-                    print "#include \"" src "\"" > drv
-                    print "#undef main" > drv
-                    print "#include <stdio.h>" > drv
-                    print "int main(void)\n{" > drv
-                }
-                if (tag == "i") printf "    printf(\"%%lld\\n\", (long long)%s%s);\n", name, args > drv
-                else printf "    printf(\"%%a\\n\", (double)%s%s);\n", name, args > drv
-                print substr(r, 3) > expf
+            name = $2
+            if ($4 == "=>") {
+                print name " " $3 > calls
+                print $5 > expf
                 ncalls[name]++
-                line[++n] = name " " args
-            } else if (r ~ /^unsupported/) {
-                unsup[name] = r
+                line[++n] = name " " substr($3, 1, 64)
+            } else if ($4 == "unsupported") {
+                unsup[name] = $4 " " $5
             } else {
-                print "TRAP " name args " " r > "/dev/stderr"
+                print "TRAP " name " " substr($3, 1, 64) " " $4 > "/dev/stderr"
                 trapped[name] = 1
             }
             next
         }
         END {
-            if (started) print "    return 0;\n}" > drv
+            if (started) {
+                print "static const SwTh sw_tab[] = {" > drv
+                for (t = 1; t <= nth; t++) printf "{\"%s\", t_%s},\n", names[t], names[t] > drv
+                print "};\nint main(int argc, char **argv)\n{\n    return sw_main(sw_tab, sizeof sw_tab / sizeof *sw_tab, argv[1]);\n}" > drv
+            }
             for (l = 1; l <= n; l++) print line[l] > (expf ".calls")
             nf = 0; ok = 0
             for (s in sig) { nf++; if (ncalls[s] && !(s in trapped)) ok++ }
@@ -67,15 +76,23 @@ for f in "$@"; do
     read -r nf ok <"$W/exp.txt.count" 2>/dev/null || { nf=0; ok=0; }
     unsup=$(tr '\n' ',' <"$W/exp.txt.unsup")
     mism=0
-    if [ -s "$W/drv.c" ]; then
+    if [ -s "$W/calls.txt" ]; then
         # shellcheck disable=SC2086
-        if ! gcc -O0 -fwrapv -w -I "$(dirname "$abs")" -o "$W/drv" "$W/drv.c" -lm 2>"$W/gcc.err"; then
+        if ! gcc -O0 -fwrapv -w $CEREAL_FLAGS -I "$(dirname "$abs")" -o "$W/drv" "$W/drv.c" -lm 2>"$W/gcc.err"; then
             echo "$f: gcc failed"; head -5 "$W/gcc.err"
             bad=$((bad + 1)); continue
         fi
-        "$W/drv" </dev/null >"$W/got.txt" 2>&1 || { echo "$f: the gcc build ran badly"; bad=$((bad + 1)); continue; }
+        "$W/drv" "$W/calls.txt" </dev/null >"$W/got.txt" 2>&1 || { echo "$f: the gcc build ran badly"; bad=$((bad + 1)); continue; }
         paste -d'\t' "$W/exp.txt.calls" "$W/exp.txt" "$W/got.txt" >"$W/all.txt"
-        mism=$(awk -F'\t' -v f="$f" '$2 != $3 { c++; if (c <= 5) print f ": " $1 ": evaluator " $2 ", gcc " $3 > "/dev/stderr" } END { print c + 0 }' "$W/all.txt" 2>"$W/mm.txt")
+        mism=$(awk -F'\t' -v f="$f" '$2 != $3 {
+            c++
+            if (c <= 5) {
+                k = 1
+                while (k <= length($2) && substr($2, k, 1) == substr($3, k, 1)) k++
+                w = k > 24 ? k - 24 : 1
+                printf "%s: %s: evaluator ...%s, gcc ...%s (hex digit %d of %d)\n", f, $1, substr($2, w, 48), substr($3, w, 48), k, length($2) > "/dev/stderr"
+            }
+        } END { print c + 0 }' "$W/all.txt" 2>"$W/mm.txt")
         cat "$W/mm.txt"
     fi
     echo "$f: $ok of $nf functions compared${unsup:+, unsupported: ${unsup%,}}"

@@ -559,7 +559,7 @@ if [ -d "$ROOT/tests/cfg" ]; then
     cd "$ROOT"
 fi
 
-# 13e. evaluator sweep (tests/eval_sweep.sh): the scalar functions of
+# 13e. evaluator sweep (tests/eval_sweep.sh): the scalar, pointer and record functions of
 #      tests/cfg_exec/*.c run in the evaluator and compared with gcc, plus --verify-cfg
 if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     if (cd "$ROOT/tests/cfg_exec" && sh ../eval_sweep.sh "$CEREAL" *.c \

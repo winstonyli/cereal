@@ -363,10 +363,8 @@ aggregate argument, an empty literal, two literals alive at once).
 ### E2 result (2026-10-21)
 
 The Python interpreter is gone. `cereal check --eval-sweep=N,SEED` (hidden)
-lists every scalar function of the main file (integer, bool, float and double
-parameters and result, not variadic) and N seeded argument vectors, with the
-evaluator's result: `fn NAME ret|p1|p2`, then `call NAME (lit,...) i:<n> |
-f:<%a> | unsupported|trap|limit <why>`. Two consumers share that call list:
+lists the scalar functions of the main file (superseded: see "Pointer and record sweep
+result" for the current call format; formerly `call NAME (lit,...) i:<n>`). Two consumers share that call list:
 `tests/eval_sweep.sh` (step 13e, with `--verify-cfg`) builds a gcc `-O0 -fwrapv`
 driver from the same calls and compares the values; a trap or step limit fails
 (the corpus `tests/cfg_exec/*.c` is free of undefined behaviour), an
@@ -534,6 +532,41 @@ extra vectors unchanged, and both pass. Coverage (scratch seen-edge probe): zstd
 asm, other translation units, undefined inputs and conditions that are not a compare
 against a value the program already holds (arithmetic chains, parameters that are
 pointers or structs, which the sweep does not drive).
+
+### Pointer and record sweep result (2026-10-21)
+
+`--eval-sweep` now drives functions with pointer and record-by-value parameters, and
+void and pointer results. The call list changed format (one rewrite of both consumers,
+no shim): `fn NAME ret|p1|p2`, `thunk NAME FLAG <C>`, then `call NAME INHEX => OUTHEX`
+or `call NAME INHEX unsupported|trap|limit <why>`, hex of raw bytes (`-` is empty).
+IN is the arguments in parameter order: a scalar's bytes, the contents of the object a
+pointer points to, a record's bytes. OUT is the return value (a returned pointer is a
+tag: 0 null, else `(argument + 1) << 32 | offset` into that argument's object), then
+the final bytes of every pointed-to object. The thunk is C text emitted once per
+function (`static unsigned t_NAME(in, out)`); `tests/sweep_rt.h` holds its macro and
+`sw_main`, which runs a file of `NAME INHEX` lines through the thunks and prints the
+result hex. `eval_sweep.sh` and `asm_exec.py` both compile source + thunks + table and
+compare bytes, so pointer functions reach the native oracle too (static functions
+and records by value are skipped there: no symbol, no definition).
+
+Inputs come from one generator: `T *` points to a fresh object of 16 elements (64
+bytes for `char`, `void`), a record is its `sizeof`, and every scalar inside is
+`sweep_arg` (so small values dominate), nested pointers are NULL, padding is zero.
+A function that returns a pointer outside its argument objects is dropped whole (it
+cannot be compared). A pointer or record function prints only the calls that finish
+(plus its first `unsupported`), so null dereferences from NULL nested pointers never
+reach the gcc build. Skipped: record results (the temporary dies with `ev_call`),
+types with no spelling (anonymous, `__va_list_tag`), more than 16 KB of input.
+
+Check: `tests/cfg_exec/ptrs.c` (12 functions: in-place fill, swap, returned offset,
+null return, struct and union by value, struct update through a pointer, `void *`,
+`double *`, `int **`); a mutant of `store_n` that drops byte stores of 0 is caught
+there (post-state bytes differ). Coverage (scratch seen-edge probe) on zstd and Lua:
+650 distinct functions driven (was 125), 1100 with branches, 64134 calls; edge
+coverage 33.7% at N=24 and 35.9% at N=200 over 7671 edges. This is a different
+population from the scalar-only 57%, so the numbers do not compare: the new functions
+mostly branch on data behind pointers that this generator fills with small random
+bytes, and on state (NULL nested pointers, other translation units) it cannot build.
 
 ## 10. Review log
 

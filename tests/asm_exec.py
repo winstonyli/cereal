@@ -5,8 +5,8 @@ Usage: asm_exec.py CEREAL FILE.c...
 
 For each FILE.c: `cereal check --dump-asm` writes assembly for the functions
 the generator supports (and `# x86: name unsupported: why` for the rest); the
-assembly is linked with a driver that calls each function on random integer
-arguments, and its output is compared with the same functions compiled by gcc
+assembly is linked with a driver that calls each function on the evaluator sweep's inputs (bytes,
+run through a thunk per function: tests/sweep_rt.h), and its output is compared with the same functions compiled by gcc
 (-O0 -fwrapv).  The exit status is 1 on any mismatch, a link failure, or fewer
 than half of the integer functions emitted.  A gcc/FILE.c next to FILE.c is built
 by gcc and linked into both programs: its gcc_* functions are driven like the
@@ -15,7 +15,6 @@ others, and FILE.c calls its other functions, so structs cross the ABI both ways
 everything else is reported as unsupported, not skipped silently."""
 import os, re, subprocess, sys, tempfile
 
-FLT = ("float", "double")
 
 
 def run(cmd, **kw):
@@ -25,13 +24,13 @@ def run(cmd, **kw):
 class Fn:
     def __init__(self, name, ret, params):
         self.name, self.ret, self.params, self.vecs = name, ret, params, []
+        self.thunk, self.byval = "", False
 
 
 def sweep(cereal, xf, path):
-    """The scalar functions of path and their argument vectors (literals), as the
-    evaluator's `--eval-sweep` lists them: the one source of calls (the results are
-    tests/eval_sweep.sh's business).  Floats stay small enough that conversions to
-    integers are defined."""
+    """The functions of path the evaluator's `--eval-sweep` can drive, with the hex bytes of
+    each call and the C thunk that runs those bytes (tests/sweep_rt.h): the one source of
+    calls (the results are tests/eval_sweep.sh's business)."""
     out = run([cereal, "check", "--target=x86_64-linux-gnu", *xf, "--eval-sweep=24,4321", path]).stdout
     funcs = {}
     for line in out.splitlines():
@@ -39,9 +38,13 @@ def sweep(cereal, xf, path):
         if m:
             funcs[m[1]] = Fn(m[1], m[2], m[3].split("|")[1:])
             continue
-        m = re.match(r"call (\S+) \((.*?)\) \S", line)
+        m = re.match(r"thunk (\S+) (\S+) (.*)$", line)
         if m and m[1] in funcs:
-            funcs[m[1]].vecs.append(m[2].split(",") if m[2] else [])
+            funcs[m[1]].thunk, funcs[m[1]].byval = m[3], m[2] == "byval"
+            continue
+        m = re.match(r"call (\S+) (\S+) =>", line)
+        if m and m[1] in funcs:
+            funcs[m[1]].vecs.append(m[2])
     return funcs
 
 
@@ -53,23 +56,25 @@ def main():
         asm = run([cereal, "check", "--target=x86_64-linux-gnu", *xf, "--dump-asm", path]).stdout
         funcs = sweep(cereal, xf, path)
         notes = dict(re.findall(r"^# x86: (\S+) unsupported: (.*)$", asm, re.M))
-        todo = list(funcs.values())
+        glob = set(re.findall(r"^\s*\.globl\s+(\S+)", asm, re.M))   # a static function cannot be linked to
+        todo = [f for f in funcs.values() if not f.byval and (f.name in glob or f.name in notes)]  # byval: needs the record's definition
         done = [f for f in todo if f.name not in notes]
         abi = os.path.join(os.path.dirname(path), "gcc", os.path.basename(path))  # gcc-built side
         if os.path.exists(abi):
-            done += [f for f in sweep(cereal, xf, abi).values() if f.name.startswith("gcc_")]
+            done += [f for f in sweep(cereal, xf, abi).values() if f.name.startswith("gcc_") and not f.byval]
         ext = [abi] if os.path.exists(abi) else []
         inc = ["-I", os.path.dirname(os.path.abspath(path))]
         vecs = {f.name: f.vecs for f in done}
-        calls = "".join('    printf("%s\\n", (%s)%s(%s));\n' % (
-            "%.17g" if f.ret.strip() in FLT else "%lld",
-            "double" if f.ret.strip() in FLT else "long long",
-            f.name, ", ".join(v))
-            for f in done for v in vecs[f.name])
-        main_c = "#include <stdio.h>\nint main(void)\n{\n" + calls + "    return 0;\n}\n"
+        # each call is its hex bytes (the evaluator's); a thunk per function runs them
+        calls = "".join("%s %s\n" % (f.name, v) for f in done for v in vecs[f.name])
+        main_c = ('#include "%s"\n' % os.path.join(os.path.dirname(os.path.abspath(__file__)), "sweep_rt.h")
+                  + "".join(f.thunk + "\n" for f in done)
+                  + "static const SwTh sw_tab[] = {" + "".join('{"%s", t_%s},' % (f.name, f.name) for f in done) + "};\n"
+                  + "int main(int c, char **v)\n{\n    return sw_main(sw_tab, sizeof sw_tab / sizeof *sw_tab, v[1]);\n}\n")
         protos = "".join("%s %s(%s);\n" % (f.ret, f.name, ", ".join(f.params) or "void") for f in done)
         with tempfile.TemporaryDirectory() as td:
             j = lambda x: os.path.join(td, x)
+            open(j("calls.txt"), "w").write(calls)
             open(j("ref.c"), "w").write(open(path).read() + "\n" + protos + main_c)
             open(j("mine.c"), "w").write(protos + main_c)
             open(j("a.s"), "w").write(asm)
@@ -78,7 +83,7 @@ def main():
                 print(path + ": gcc failed\n" + r.stderr[:400])
                 bad += 1
                 continue
-            r = run([j("ref")], timeout=60)
+            r = run([j("ref"), j("calls.txt")], timeout=60)
             a = r.stdout.split()
             want = sum(len(vecs[f.name]) for f in done)
             if r.returncode or len(a) != want:
@@ -115,7 +120,7 @@ def main():
                     bad += 1
                     continue
                 try:
-                    r = run([j("mine" + tag)], timeout=60)
+                    r = run([j("mine" + tag), j("calls.txt")], timeout=60)
                     outs[tag] = r.stdout.split()
                     if r.returncode or len(outs[tag]) != len(a):
                         print("%s: generated code ran badly (%s, exit %d, %d of %d results)" % (
@@ -131,7 +136,7 @@ def main():
                 n = len(vecs[f.name])
                 for v, x, y in zip(vecs[f.name], a[i:i + n], b[i:i + n]):
                     if x != y:
-                        print("%s: %s(%s): gcc %s, ours (%s) %s" % (path, f.name, ", ".join(v), x, tag, y))
+                        print("%s: %s(%s): gcc %s, ours (%s) %s" % (path, f.name, v[:60], x, tag, y))
                         wrong += 1
                         break
                 i += n
