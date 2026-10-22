@@ -658,6 +658,15 @@ results still equal gcc call for call; the solver reaches every guarded edge of 
 and Lua at N=24 it adds 123 edges (43.4% to 44.8%): the remaining misses are behind state, not
 inputs. Tracking off changes no number.
 
+Memory (same day): `Ev.obj` kept a slot for every object ever made, so a sweep of Lua's `lgc.c` grew to
+12.5 GB; `ev_trim` now drops the dead objects at the end of the table after each call, and
+`EV_CALL_OBJS` ends one call that makes over a million (70 MB, 34 s). Corpus baseline, zstd and Lua 5.4
+at N=24 with `bench/tools/sweep_meas.sh` (run `2026-10-22-sweep-base-24`): 40.7% of 14106 edges taken
+by the generator, 42.5% with the solver. Negative result (run `2026-10-22-sweep-ext-24`, reverted):
+drawing integer fields from the extents of the call's blobs (element counts, byte sizes, one either
+side) a sixth of the time lowered the generator's coverage to 39.9% (solver 42.0%), so lengths that
+disagree with buffers are not what the misses wait for.
+
 ## 10. Review log
 
 Three adversarial rounds against the code, 2026-10-21; each change above came
