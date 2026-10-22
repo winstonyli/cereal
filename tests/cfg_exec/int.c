@@ -1,5 +1,5 @@
-/* Integer-only functions for tests/cfg_exec.py: the lowered graph is run by an
- * interpreter and compared with gcc.  Every function is total (no division by
+/* Integer-only functions for tests/eval_sweep.sh: the lowered graph is run by the
+ * evaluator and compared with gcc.  Every function is total (no division by
  * a possible zero, no shift by an out-of-range count, no overflow of signed
  * int: gcc runs with -fwrapv, the interpreter wraps). */
 

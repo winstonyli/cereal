@@ -1828,7 +1828,7 @@ int main(int argc, char **argv)
             return 2;
         }
         av = xmalloc((size_t)(run_nargs + 2) * sizeof *av);
-        av[0] = o.inputs.data[0];
+        av[0] = (char *)o.inputs.data[0];     /* read only: make_argv copies it */
         for (k = 0; k < run_nargs; k++)
             av[k + 1] = run_args[k];
         av[run_nargs + 1] = NULL;

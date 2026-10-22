@@ -1,4 +1,4 @@
-/* Memory functions for tests/cfg_exec.py: locals, arrays, pointers into them,
+/* Memory functions for tests/eval_sweep.sh: locals, arrays, pointers into them,
  * structs.  Every access stays inside its object; no pointer escapes. */
 
 struct P {
