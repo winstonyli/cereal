@@ -132,6 +132,38 @@ static void sweep_typename(Checker *c, FILE *out, TypeId t)
     sb_free(&sb);
 }
 
+/* One call of the sweep, printed as "call NAME (args) result"; a stop is printed only when
+ * `show_stop`, so a guided call that traps is dropped (the gcc build would run it too). */
+static int sweep_call(Ev *v, FILE *out, const char *name, const Fn *f, const Ti *rt, const Ti *pt,
+                      const uint64_t *args, bool show_stop)
+{
+    uint64_t x = 0;
+    EvRes r = ev_call(v, f->fsym, (uint64_t *)args, f->np, &x);
+    size_t k;
+    if (r.status != EV_OK && !show_stop)
+        return r.status;
+    fprintf(out, "call %s (", name);
+    for (k = 0; k < f->np; k++) {
+        if (k)
+            fputc(',', out);
+        sweep_lit(out, &pt[k], args[k]);
+    }
+    fputs(") ", out);
+    if (r.status != EV_OK)
+        fprintf(out, "%s %s%c", stop_name(r.status), r.why, 10);
+    else if (rt->flt)
+        fprintf(out, "f:%a%c", ev_fget(rt, x), 10);
+    else
+        fprintf(out, "i:%lld%c", (long long)x, 10);
+    return r.status;
+}
+
+static int cmp64(const void *a, const void *b)
+{
+    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
+    return x < y ? -1 : x > y;
+}
+
 static void eval_sweep(Checker *c)
 {
     Ev *v = ev_of(c);
@@ -145,6 +177,8 @@ static void eval_sweep(Checker *c)
         const char *name;
         Ti rt, pt[16];
         uint64_t rs;
+        uint64_t base[16] = {0};
+        bool have_base = false;
         bool ok;
         if (f->fsym == SYM_NONE || !f->user || f->variadic || f->np > 16)
             continue;
@@ -169,24 +203,41 @@ static void eval_sweep(Checker *c)
         for (k = 0; name[k]; k++)
             rs = (rs ^ (unsigned char)name[k]) * 1099511628211ull;
         rs |= 1;
+        v->dict.len = 0;
+        v->dict_on = true;
         for (j = 0; j < c->opt.eval_sweep; j++) {
-            uint64_t args[16], x = 0;
-            EvRes r;
-            fprintf(out, "call %s (", name);
-            for (k = 0; k < f->np; k++) {
+            uint64_t args[16];
+            for (k = 0; k < f->np; k++)
                 args[k] = sweep_arg(&pt[k], &rs);
-                if (k)
-                    fputc(',', out);
-                sweep_lit(out, &pt[k], args[k]);
+            if (sweep_call(v, out, name, f, &rt, pt, args, true) == EV_OK || !have_base) {
+                memcpy(base, args, sizeof args);
+                have_base = true;
             }
-            fputs(") ", out);
-            r = ev_call(v, f->fsym, args, f->np, &x);
-            if (r.status != EV_OK)
-                fprintf(out, "%s %s%c", stop_name(r.status), r.why, 10);
-            else if (rt.flt)
-                fprintf(out, "f:%a%c", ev_fget(&rt, x), 10);
-            else
-                fprintf(out, "i:%lld%c", (long long)x, 10);
+        }
+        /* guided calls: what the program compared its inputs with (and one either side of it)
+         * goes into each argument in turn; only calls that finish are kept */
+        v->dict_on = false;
+        if (v->dict.len) {
+            size_t d, m = 0, budget = 64;
+            qsort(v->dict.data, v->dict.len, sizeof *v->dict.data, cmp64);
+            for (d = 0; d < v->dict.len; d++)
+                if (!d || v->dict.data[d] != v->dict.data[d - 1])
+                    v->dict.data[m++] = v->dict.data[d];
+            for (d = 0; d < m && budget; d++) {
+                int s;
+                for (s = 0; s < 3 && budget; s++) {
+                    uint64_t cand = v->dict.data[d] + (s == 1) - (s == 2);
+                    for (k = 0; k < f->np && budget; k++) {
+                        uint64_t args[16];
+                        if (pt[k].flt || ev_canon(&pt[k], cand) == base[k])
+                            continue;
+                        memcpy(args, base, sizeof args);
+                        args[k] = ev_canon(&pt[k], cand);
+                        budget--;
+                        sweep_call(v, out, name, f, &rt, pt, args, false);
+                    }
+                }
+            }
         }
     }
 }

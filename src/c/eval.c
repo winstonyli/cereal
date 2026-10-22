@@ -457,6 +457,13 @@ static uint64_t int_arith(Ev *v, int p, TypeId ty, uint64_t a, uint64_t b)
     }
 }
 
+/* The sweep reads what the program compares its inputs with (eval_run.c, guided calls). */
+static void ev_note(Ev *v, uint64_t x)
+{
+    if (v->dict_on && v->dict.len < 512)
+        vec_push(&v->dict, x);
+}
+
 static uint64_t compare(Ev *v, int p, TypeId ot, uint64_t a, uint64_t b)
 {
     Ti ti;
@@ -464,6 +471,8 @@ static uint64_t compare(Ev *v, int p, TypeId ot, uint64_t a, uint64_t b)
     if (!ev_tinfo(v, ot, &ti))
         return 0;
     sg = ti.sg;
+    ev_note(v, a);
+    ev_note(v, b);
     switch (p) {
     case P_EQEQ: return a == b;
     case P_NE: return a != b;
@@ -1380,9 +1389,11 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, size_t na, uint6
         case TK_SWTCH: {
             uint64_t c = ev_node(&r, b->val);
             uint32_t to = b->a;
-            for (k = 0; k < b->nc; k++)
+            for (k = 0; k < b->nc; k++) {
+                ev_note(v, (uint64_t)b->cases[k].v);
                 if ((uint64_t)b->cases[k].v == c)
                     to = b->cases[k].to;
+            }
             bi = to;
             continue;
         }
@@ -1462,6 +1473,7 @@ void ev_free(Ev *v)
     vec_free(&v->sd);
     vec_free(&v->rec);
     vec_free(&v->lab);
+    vec_free(&v->dict);
     free(v);
 }
 

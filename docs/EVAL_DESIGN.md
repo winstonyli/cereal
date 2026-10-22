@@ -519,6 +519,22 @@ of `bi_int`, `ev_ovf` and `ev_atomic`, 19 killed after one test fix; the
 survivor (`sqrtf` through `double`) is equivalent, as the double square root
 rounds to the same float.
 
+### Compare feedback result (2026-10-21)
+
+Input steering for `--eval-sweep` without a solver (option A of the symbolic-evaluation
+survey). While a function's random calls run, `ev_note` logs the operands of integer
+compares and the cases of switches into `Ev.dict` (at most 512). Then, with the last
+finishing vector as the base, each distinct logged value, and that value plus or minus
+one, goes into each integer argument in turn, up to 64 extra calls per function. A
+guided call is printed only if it finishes, so the gcc driver and `asm_exec` never run a
+trapping vector. All consumers of the call list (`eval_sweep.sh`, `asm_exec.py`) see the
+extra vectors unchanged, and both pass. Coverage (scratch seen-edge probe): zstd and Lua
+57.2% at N=24 and 56.8% at N=200 (was 54.9%, 55.5%); `tests/cfg_exec` 91.5% and 97.0%
+(was 84.6%, 93.5%). The 65% bar for zstd and Lua was not reached: what is left there is
+asm, other translation units, undefined inputs and conditions that are not a compare
+against a value the program already holds (arithmetic chains, parameters that are
+pointers or structs, which the sweep does not drive).
+
 ## 10. Review log
 
 Three adversarial rounds against the code, 2026-10-21; each change above came
