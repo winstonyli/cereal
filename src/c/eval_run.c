@@ -109,7 +109,10 @@ static uint64_t sweep_arg(const Ti *ti, uint64_t *rs)
  * (a returned pointer as a tag: 0 null, else (pointee number + 1) << 32 | offset into that
  * object) followed by the final bytes of every pointed-to object, pointer fields zeroed.
  * The gcc side runs the same bytes through a thunk (tests/sweep_rt.h), which rebuilds the
- * pointers between the blobs, and must produce the same bytes. */
+ * pointers between the blobs (16 bytes apart, so a one-past-the-end pointer is not the next
+ * blob's start), and must produce the same bytes.  A pointer parameter also has
+ * an alias word: 0, or (blob + 1) << 32 | offset, to point into an earlier pointer's blob
+ * instead of its own (for functions taking `start, end` or two cursors into one buffer). */
 
 enum { SA_SCALAR, SA_PTR, SA_REC };
 enum { SR_VOID, SR_SCALAR, SR_PTR };
@@ -133,7 +136,7 @@ typedef struct SPf {            /* a pointer-typed field: blob and offset */
 typedef struct SArg {
     int kind;
     Ti ti;                      /* SA_SCALAR */
-    uint64_t off;               /* SA_SCALAR: where it starts in the input */
+    uint64_t off;               /* SA_SCALAR: its value; SA_PTR: its alias word (8 bytes) */
     int oi;                     /* SA_PTR, SA_REC: its blob */
 } SArg;
 
@@ -350,6 +353,10 @@ static bool sweep_fn(Ev *v, const Fn *f, SFn *s, bool nest)
             a->off = s->insz;
             s->insz += a->ti.bytes;
         } else {
+            if (a->kind == SA_PTR) {
+                a->off = s->insz;
+                s->insz += 8;
+            }
             a->oi = s->nob;
             o.off = s->insz;
             s->insz += o.size;
@@ -393,12 +400,13 @@ static void sweep_thunk(Checker *c, StrBuf *sb, const char *name, const Fn *f, c
     sb_printf(sb, "thunk %s %s static unsigned t_%s(const unsigned char *in, unsigned char *out){",
               name, s->byval ? "byval" : "-", name);
     for (k = 0; k < f->np; k++)
-        if (s->a[k].kind == SA_SCALAR)
+        if (s->a[k].kind != SA_REC)
             sb_printf(sb, "unsigned char a%zu[%u] __attribute__((aligned(16)));memcpy(a%zu,in+%llu,%u);",
-                      k, s->a[k].ti.bytes, k, (unsigned long long)s->a[k].off, s->a[k].ti.bytes);
+                      k, s->a[k].kind == SA_PTR ? 8 : s->a[k].ti.bytes, k, (unsigned long long)s->a[k].off,
+                      s->a[k].kind == SA_PTR ? 8 : s->a[k].ti.bytes);
     for (i = 0; i < (size_t)s->nob; i++)
         sb_printf(sb, "unsigned char b%zu[%llu] __attribute__((aligned(16)));memcpy(b%zu,in+%llu,%llu);",
-                  i, (unsigned long long)s->ob[i].size, i, (unsigned long long)s->ob[i].off,
+                  i, (unsigned long long)s->ob[i].size + 16, i, (unsigned long long)s->ob[i].off,
                   (unsigned long long)s->ob[i].size);
     for (i = 0; i < (size_t)s->nob; i++)
         if (s->ob[i].parent >= 0)
@@ -413,8 +421,14 @@ static void sweep_thunk(Checker *c, StrBuf *sb, const char *name, const Fn *f, c
         const SArg *a = &s->a[k];
         if (k)
             sb_putc(sb, ',');
-        if (a->kind == SA_PTR)
-            sb_printf(sb, "(void*)b%d", a->oi);
+        if (a->kind == SA_PTR) {
+            size_t j;
+            sb_printf(sb, "(void*)(*(unsigned long long*)a%zu?(unsigned char*)(", k);
+            for (j = 0; j < k; j++)
+                if (s->a[j].kind == SA_PTR)
+                    sb_printf(sb, "*(unsigned long long*)a%zu>>32==%d?(void*)b%d:", k, s->a[j].oi + 1, s->a[j].oi);
+            sb_printf(sb, "(void*)0)+(unsigned)*(unsigned long long*)a%zu:(unsigned char*)b%d)", k, a->oi);
+        }
         else if (a->kind == SA_REC) {
             sb_puts(sb, "*(");
             sweep_typename(c, sb, s->ob[a->oi].ty);
@@ -480,6 +494,10 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
             uint64_t raw = 0;
             memcpy(&raw, in + a->off, a->ti.bytes);
             slot[k] = ev_canon(&a->ti, raw);
+        } else if (a->kind == SA_PTR) {
+            uint64_t w = 0;
+            memcpy(&w, in + a->off, 8);
+            slot[k] = w ? mkptr(ids[(w >> 32) - 1], (uint32_t)w) : mkptr(ids[a->oi], 0);
         } else
             slot[k] = mkptr(ids[a->oi], 0);
     }
@@ -543,6 +561,24 @@ static void sweep_gen(Ev *v, const Fn *f, const SFn *s, uint8_t *in, uint64_t *r
             uint64_t x = sweep_arg(&s->a[k].ti, rs);
             memcpy(in + s->a[k].off, &x, s->a[k].ti.bytes);
         }
+    for (k = 1; k < f->np; k++) {       /* sometimes a pointer into an earlier pointer's object */
+        const SArg *a = &s->a[k];
+        size_t j, n = 0, pick;
+        uint64_t w;
+        if (a->kind != SA_PTR || rnd(rs) % 3)
+            continue;
+        for (j = 0; j < k; j++)
+            n += s->a[j].kind == SA_PTR;
+        if (!n)
+            continue;
+        pick = rnd(rs) % n;
+        for (j = 0; j < k; j++)
+            if (s->a[j].kind == SA_PTR && !pick--)
+                break;
+        w = (uint64_t)(s->a[j].oi + 1) << 32 |
+            (rnd(rs) % (s->ob[s->a[j].oi].size / s->ob[a->oi].esz + 1)) * s->ob[a->oi].esz;
+        memcpy(in + a->off, &w, 8);
+    }
     for (i = 0; i < s->nob; i++) {
         const SObj *o = &s->ob[i];
         uint8_t *d = in + o->off;

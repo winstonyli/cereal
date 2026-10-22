@@ -148,3 +148,27 @@ void bset(struct Buf *b, int c)
     for (i = 0; i < 16; i++)
         b->data[i] = (char)(c + i);
 }
+
+long span(const int *a, const int *b)
+{
+    return b - a;
+}
+
+int count(const char *s, const char *end, char c)
+{
+    int n = 0;
+    while (s < end) {
+        if (*s++ == c)
+            n++;
+    }
+    return n;
+}
+
+void rev(int *lo, int *hi)
+{
+    while (lo < hi) {
+        int t = *lo;
+        *lo++ = *--hi;
+        *hi = t;
+    }
+}

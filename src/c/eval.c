@@ -124,6 +124,10 @@ Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
         TRAP(v, "%s through a null pointer", what);
         return NULL;
     }
+    if (pid(p) > v->obj.len) {          /* a pointer made of other bytes */
+        TRAP(v, "%s through a pointer to no object", what);
+        return NULL;
+    }
     o = &v->obj.data[pid(p) - 1];
     if (!o->live) {
         TRAP(v, "%s of an object after its lifetime", what);
@@ -147,7 +151,7 @@ Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
             return NULL;
         o = &v->obj.data[pid(p) - 1];
     }
-    if (off < 0 || (uint64_t)off + n > o->size) {
+    if (off < 0 || n > o->size || (uint64_t)off > o->size - n) {      /* n may be huge: no wrapping sum */
         TRAP(v, "%s out of bounds", what);
         return NULL;
     }
@@ -755,7 +759,7 @@ static uint64_t ev_call_node(Fr *r, uint32_t n)
             TRAP(v, "call through a null pointer");
             return 0;
         }
-        if (!v->obj.data[pid(callee) - 1].fn || poff(callee) != 0) {
+        if (pid(callee) > v->obj.len || !v->obj.data[pid(callee) - 1].fn || poff(callee) != 0) {
             TRAP(v, "call through a pointer that is not a function");
             return 0;
         }

@@ -459,8 +459,8 @@ static Obj *heap_obj(Ev *v, uint64_t p, const char *who)
     Obj *o;
     if (pid(p) == 0)
         return NULL;
-    o = &v->obj.data[pid(p) - 1];
-    if (!o->heap || poff(p) != 0) {
+    o = pid(p) <= v->obj.len ? &v->obj.data[pid(p) - 1] : NULL;
+    if (!o || !o->heap || poff(p) != 0) {
         TRAP(v, "%s of a pointer that malloc did not return", who);
         return NULL;
     }

@@ -557,7 +557,11 @@ inside those are NULL (one level; no recursion into lists). The input is the blo
 back to back and the layout is fixed by the types, so the call line is unchanged; the
 thunk relinks the pointers between its buffers, and pointer fields are zeroed in the
 result bytes (the two sides' addresses differ). Past 64 blobs or 16 KB a function falls
-back to NULL inner pointers.
+back to NULL inner pointers. Every pointer parameter also has an 8-byte alias word in the
+input (0, or `(blob + 1) << 32 | offset`): a third of the time, a pointer parameter after
+an earlier one points into that one's blob at a multiple of its own element size (up to
+one past the end), for `(start, end)` and cursor pairs. The thunk's buffers are 16 bytes
+apart, so a one-past-the-end pointer is not mistaken for the next blob's start.
 A function that returns a pointer outside its argument objects is dropped whole (it
 cannot be compared). A pointer or record function prints only the calls that finish
 (plus its first `unsupported`), so null dereferences from NULL nested pointers never
@@ -572,7 +576,13 @@ there (post-state bytes differ). Coverage (scratch seen-edge probe) on zstd and 
 coverage 33.7% at N=24 and 35.9% at N=200 over 7671 edges with NULL inner pointers;
 with inner pointees 34.2% and 36.5% over 7615 edges (1090 functions with branches, 10 fewer:
 returns that now point outside the objects). A small gain: the missed code needs more than
-a live pointee. This is a different
+a live pointee. With aliasing: 35.0% and 38.8% over 7892 edges (1133 functions with
+branches), 65045 calls; the pointer-arithmetic stops did not fall (2668 to 2787), so most of
+them are not two-cursor functions.
+The corpus run found two evaluator bugs that random pointers reach: a bounds check whose
+sum `offset + n` wrapped for a length near 2^64 (read past the object), and a pointer made
+of other bytes (an id past the object table) dereferenced; both are now traps
+(`tests/eval/trap_huge_copy.c`, `trap_forged_ptr.c`). This is a different
 population from the scalar-only 57%, so the numbers do not compare: the new functions
 mostly branch on data behind pointers that this generator fills with small random
 bytes, and on state (NULL nested pointers, other translation units) it cannot build.
