@@ -144,6 +144,28 @@ Corpus (zstd and Lua, N=24): +123 edges, 43.4% -> 44.8%. The solver finds what i
 of the remaining misses sit behind state (context structs that are zero, tables built by earlier
 calls), so the next lever is the state fill and the generator, not input solving.
 
+Why edges stay untaken (survey, 2026-10-22, run `2026-10-22-sweep-link-miss2`: Lua and zstd as two
+links, N=24, solver on; `miss_report` in `eval_run.c`, printed with the solver's stats line; each
+untaken edge is classed by its branch's condition). 4248 untaken edges:
+
+| class | Lua | zstd | total |
+|---|---|---|---|
+| function never finished (no call completed) | 1561 | 313 | 1874 (44%) |
+| integer value (a truth test of a loaded integer) | 185 | 753 | 938 |
+| call result | 54 | 541 | 595 |
+| integer compare | 238 | 238 | 476 |
+| pointer compare (two pointers) | 52 | 91 | 143 |
+| pointer null test | 104 | 13 | 117 (2.8%) |
+| switch | 67 | 30 | 97 |
+| float | 8 | 0 | 8 |
+
+Readings: a pointer-topology mutation (NULL, alias, link per slot) has a ceiling of about 260 edges
+(null tests plus pointer compares, 6%), so it is not the lever. The biggest class is functions
+where no call ever finishes (Lua: 1561 of 2269), which is a question of why (trap on invalid state,
+unsupported construct, step limit), not of input values; the next survey splits it by stop reason. The
+loaded-integer and call-result classes (zstd) are state the generator leaves at its random bytes or
+zero.
+
 ## 9. Review log
 
 Round 1 (against the code): (a) registers and temporaries are frame objects, so all data

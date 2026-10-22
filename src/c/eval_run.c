@@ -989,6 +989,86 @@ static const char *main_path(Checker *c)
     return "?";
 }
 
+/* Why an edge stays untaken, judged from its branch's condition (a survey: --eval-solve prints the counts). */
+enum { MC_NOFIN, MC_SWITCH, MC_PNULL, MC_PCMP, MC_FLOAT, MC_ICMP, MC_IVAL, MC_CALL, MC_OTHER, MC_N };
+static const char *const miss_name[MC_N] = { "function never finished", "switch", "pointer null test",
+    "pointer compare", "float", "integer compare", "integer value", "call result", "other" };
+
+static bool miss_const(const Fn *f, uint32_t n)
+{
+    while (f->nodes[n].op == TO_CAST)
+        n = f->kids[f->nodes[n].kid0];
+    return f->nodes[n].op == TO_CONST;
+}
+
+static int miss_class(Ev *v, const Fn *f, const Blk *b)
+{
+    uint32_t n = b->val;
+    Ti ti;
+    int c = MC_OTHER;
+    if (b->term == TK_SWTCH)
+        return MC_SWITCH;
+    for (;;) {                                  /* look through casts, `!` and the comma */
+        const TNode *t = &f->nodes[n];
+        if (t->op == TO_CAST || (t->op == TO_UNOP && t->pun == P_BANG))
+            n = f->kids[t->kid0];
+        else if (t->op == TO_COMMA)
+            n = f->kids[t->kid0 + 1];
+        else
+            break;
+    }
+    {
+        const TNode *t = &f->nodes[n];
+        if (t->op == TO_CMP) {
+            uint32_t k0 = f->kids[t->kid0], k1 = f->kids[t->kid0 + 1];
+            if (!ev_tinfo(v, f->nodes[k0].ty, &ti))
+                c = MC_OTHER;
+            else if (ti.flt)
+                c = MC_FLOAT;
+            else if (ti.ptr)
+                c = miss_const(f, k0) || miss_const(f, k1) ? MC_PNULL : MC_PCMP;
+            else
+                c = MC_ICMP;
+        } else if (t->op == TO_CALL) {
+            c = MC_CALL;
+        } else if (ev_tinfo(v, t->ty, &ti)) {
+            c = ti.ptr ? MC_PNULL : ti.flt ? MC_FLOAT : MC_IVAL;
+        }
+    }
+    v->res.status = EV_OK;
+    return c;
+}
+
+typedef struct SweptFn {
+    size_t i;
+    bool finished;
+} SweptFn;
+
+static void miss_report(Ev *v, const SweptFn *sw, size_t n)
+{
+    size_t counts[MC_N] = {0}, total = 0, k, i;
+    for (k = 0; k < n; k++) {
+        const Fn *f = &v->fn.data[sw[k].i];
+        v->c = f->c;
+        for (i = 0; i < f->nblk; i++) {
+            const Blk *b = &f->blk[i];
+            unsigned ne = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0, e;
+            int c = -1;
+            for (e = 0; e < ne; e++)
+                if (!(b->seen >> (b->term == TK_SWTCH && e == ne - 1 ? 62 : e) & 1)) {
+                    if (c < 0)
+                        c = sw[k].finished ? miss_class(v, f, b) : MC_NOFIN;
+                    counts[c]++;
+                    total++;
+                }
+        }
+    }
+    fprintf(stderr, "cereal: untaken edges %zu:", total);
+    for (i = 0; i < MC_N; i++)
+        fprintf(stderr, " %s %zu;", miss_name[i], counts[i]);
+    fputc(10, stderr);
+}
+
 /* Every function of the files of c0 (one file, or the whole link: c0 is then the first). */
 static void eval_sweep(Checker *c0)
 {
@@ -999,6 +1079,7 @@ static void eval_sweep(Checker *c0)
     long j;
     SxSolver *sv = NULL;
     SolveStat ss = {0};
+    VEC(SweptFn) swept = {0};
     if (!out)
         return;
     if (c0->opt.eval_solve) {
@@ -1090,6 +1171,10 @@ static void eval_sweep(Checker *c0)
             ss.taken += tk;
             search_free(&x.q);
         }
+        {
+            SweptFn sw = { i, x.saw_ok };
+            vec_push(&swept, sw);
+        }
         if (!x.bad && (!s.ptrfn || x.saw_ok || x.saw_unsup)) {
             fputs(sb_cstr(&head), out);
             fputs(sb_cstr(&body), out);
@@ -1107,6 +1192,8 @@ static void eval_sweep(Checker *c0)
                 "%lu with an unseen edge\n",
                 ss.queries, ss.sat, ss.unsat, ss.unknown, ss.calls, ss.fresh, ss.taken, ss.edges, ss.gain,
                 ss.nodes, ss.seeded, ss.tracked, ss.steps, ss.branches, ss.open);
+        miss_report(v, swept.data, swept.len);
+        vec_free(&swept);
         sx_close(sv);
     }
 }
