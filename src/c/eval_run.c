@@ -175,6 +175,24 @@ static bool sweep_scalar(TypeKind k)
     return (k >= TY_BOOL && k <= TY_ULLONG) || k == TY_FLOAT || k == TY_DOUBLE;
 }
 
+/* Does an object of type t hold a pointer? */
+static bool sweep_hasptr(TypeTable *tt, TypeId t)
+{
+    TypeKind k = type_ckind(tt, t);
+    if (k == TY_PTR)
+        return true;
+    if (k == TY_ARRAY)
+        return sweep_hasptr(tt, type_base(tt, t));
+    if (type_is_record(tt, t)) {
+        Record *r = type_record(tt, t);
+        uint32_t i, n = r->flags & RF_UNION && r->nfields > 1 ? 1 : r->nfields;
+        for (i = 0; i < n; i++)
+            if (sweep_hasptr(tt, tt->fields.data[r->fields + i].ty))
+                return true;
+    }
+    return false;
+}
+
 /* Random contents for an object of type t: scalars as sweep_arg, pointers null, padding zero. */
 static void sweep_fill(Ev *v, TypeId t, uint8_t *dst, uint64_t *rs)
 {
@@ -227,6 +245,8 @@ static bool sweep_pointee(Ev *v, TypeId pt, unsigned many, SObj *o)
         ok = true;
     } else if (type_is_object(tt, e)) {
         o->ty = e;
+        if (sweep_hasptr(tt, e) && n > 2)
+            n = 2;              /* each element brings blobs of its own: keep the budget for depth */
         o->esz = type_size(tt, e, &ok);
         if (o->esz == 1)
             n = 4 * many;

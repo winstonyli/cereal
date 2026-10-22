@@ -614,6 +614,13 @@ because pointers now reach data that the function walks off the end of). Changin
 rate to 1/32 made no difference (37.5% and 42.3%). `tests/cfg_exec/ptrs.c` has `ring3` and
 `ringset` (a chain three links deep).
 
+Element cap: a blob whose element type holds a pointer has 2 elements, not 16 or 4 (`sweep_hasptr`),
+so the budget buys depth instead of copies of the same field. More functions become drivable
+(1225 with branches over 8696 edges, from 1133 over 7892, so the population differs): edge
+coverage 39.5% at N=24 and 45.4% at N=200; null-pointer reads 5475 to 3307, in 328 functions;
+out-of-bounds reads 2864 to 4472 and pointer arithmetic 3598 to 4061 (more functions reach code
+that walks arrays of pointers or records). Gate green.
+
 ## 10. Review log
 
 Three adversarial rounds against the code, 2026-10-21; each change above came
