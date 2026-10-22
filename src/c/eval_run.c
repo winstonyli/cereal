@@ -82,8 +82,9 @@ static uint64_t rnd(uint64_t *s)
     return *s * 2685821657736338717ull;
 }
 
-/* A random argument of a scalar type, as a slot. */
-static uint64_t sweep_arg(const Ti *ti, uint64_t *rs)
+/* A random value of a scalar type, as a slot; once the dictionary is on (what the program compared
+ * its inputs with), a third of the integers are one of its entries, or one either side. */
+static uint64_t sweep_arg(Ev *v, const Ti *ti, uint64_t *rs)
 {
     if (ti->flt) {
         static const double pick[] = {0.0, 1.0, -1.0, 0.5, -2.5, 3.25, 7.0, 100.0, -1e3, 1e-3};
@@ -95,6 +96,11 @@ static uint64_t sweep_arg(const Ti *ti, uint64_t *rs)
     }
     if (ti->boolean)
         return rnd(rs) & 1;
+    if (v->dict_use && v->dict.len && rnd(rs) % 3 == 0) {
+        uint64_t x = v->dict.data[rnd(rs) % v->dict.len];
+        unsigned d = (unsigned)(rnd(rs) % 4);
+        return ev_canon(ti, x + (d == 1) - (d == 2));
+    }
     if (rnd(rs) % 10 < 7) {             /* small values, within the type */
         int64_t x = (int64_t)(rnd(rs) % 13) - 6;
         return ev_canon(ti, ti->sg || x >= 0 ? (uint64_t)x : (uint64_t)(x + 6));
@@ -105,7 +111,7 @@ static uint64_t sweep_arg(const Ti *ti, uint64_t *rs)
 /* ---- the sweep's calls: bytes in, bytes out ------------------------------------------
  * A call is the bytes of its inputs: the scalar parameters' values, then one blob per object
  * the call reaches (what a pointer parameter points to, a record parameter, and what a pointer
- * inside one of those points to; deeper pointers are NULL).  Its result is the return value
+ * inside one of those points to, as far as the budget goes).  Its result is the return value
  * (a returned pointer as a tag: 0 null, else (pointee number + 1) << 32 | offset into that
  * object) followed by the final bytes of every pointed-to object, pointer fields zeroed.
  * The gcc side runs the same bytes through a thunk (tests/sweep_rt.h), which rebuilds the
@@ -119,6 +125,7 @@ enum { SR_VOID, SR_SCALAR, SR_PTR };
 
 #define SMAXOB 64               /* blobs per function */
 #define SMAXIN 16384            /* bytes of input per call */
+#define SGUIDED 64              /* calls drawing from the dictionary */
 
 typedef struct SObj {
     TypeId ty;                  /* element type, 0: bytes */
@@ -223,7 +230,7 @@ static void sweep_fill(Ev *v, TypeId t, uint8_t *dst, uint64_t *rs)
         return;
     }
     if (ev_tinfo(v, t, &ti)) {
-        uint64_t x = sweep_arg(&ti, rs);
+        uint64_t x = sweep_arg(v, &ti, rs);
         memcpy(dst, &x, ti.bytes);
     }
     v->res.status = EV_OK;
@@ -603,7 +610,7 @@ static void sweep_gen(Ev *v, const Fn *f, const SFn *s, uint8_t *in, uint64_t *r
     memset(in, 0, (size_t)s->insz);
     for (k = 0; k < f->np; k++)
         if (s->a[k].kind == SA_SCALAR) {
-            uint64_t x = sweep_arg(&s->a[k].ti, rs);
+            uint64_t x = sweep_arg(v, &s->a[k].ti, rs);
             memcpy(in + s->a[k].off, &x, s->a[k].ti.bytes);
         }
     for (k = 1; k < f->np; k++) {       /* sometimes a pointer into an earlier pointer's object */
@@ -632,7 +639,7 @@ static void sweep_gen(Ev *v, const Fn *f, const SFn *s, uint8_t *in, uint64_t *r
             if (o->ty)
                 sweep_fill(v, o->ty, d + e * o->esz, rs);
             else
-                d[e] = (uint8_t)sweep_arg(&byte, rs);
+                d[e] = (uint8_t)sweep_arg(v, &byte, rs);
         }
     }
     for (k = 0; k < s->pf.len; k++) {   /* sometimes a pointer field shares or ends a blob */
@@ -672,8 +679,8 @@ static void eval_sweep(Checker *c)
         const char *name;
         SFn s;
         uint64_t rs;
-        uint8_t *in, *base;
-        bool have_base = false, bad = false, saw_ok = false, saw_unsup = false, ok;
+        uint8_t *in;
+        bool bad = false, saw_ok = false, saw_unsup = false, ok;
         StrBuf head = {0}, body = {0};
         if (f->fsym == SYM_NONE || !f->user || f->variadic || f->np > 16)
             continue;
@@ -699,7 +706,6 @@ static void eval_sweep(Checker *c)
             rs = (rs ^ (unsigned char)name[k]) * 1099511628211ull;
         rs |= 1;
         in = xcalloc((size_t)s.insz + 1, 1);
-        base = xcalloc((size_t)s.insz + 1, 1);
         v->dict.len = 0;
         v->dict_on = true;
         for (j = 0; j < c->opt.eval_sweep; j++) {
@@ -708,47 +714,29 @@ static void eval_sweep(Checker *c)
             st = sweep_call(v, &body, name, f, &s, in, !saw_unsup, &bad);
             saw_ok |= st == EV_OK;
             saw_unsup |= st == EV_UNSUPPORTED && s.ptrfn;
-            if (st == EV_OK || !have_base) {
-                memcpy(base, in, (size_t)s.insz);
-                have_base = true;
-            }
         }
-        /* guided calls: what the program compared its inputs with (and one either side of it)
-         * goes into each scalar argument in turn; only calls that finish are kept */
+        /* guided calls: the same generator, now drawing integers from what the program compared its
+         * inputs with; only calls that finish are kept */
         v->dict_on = false;
         if (v->dict.len) {
-            size_t d, m = 0, budget = 64;
+            size_t d, m = 0;
             qsort(v->dict.data, v->dict.len, sizeof *v->dict.data, cmp64);
             for (d = 0; d < v->dict.len; d++)
                 if (!d || v->dict.data[d] != v->dict.data[d - 1])
                     v->dict.data[m++] = v->dict.data[d];
-            for (d = 0; d < m && budget; d++) {
-                int sd;
-                for (sd = 0; sd < 3 && budget; sd++) {
-                    uint64_t cand = v->dict.data[d] + (sd == 1) - (sd == 2);
-                    for (k = 0; k < f->np && budget; k++) {
-                        const SArg *a = &s.a[k];
-                        uint64_t cur = 0, x;
-                        if (a->kind != SA_SCALAR || a->ti.flt)
-                            continue;
-                        memcpy(&cur, base + a->off, a->ti.bytes);
-                        x = ev_canon(&a->ti, cand);
-                        if (x == ev_canon(&a->ti, cur))
-                            continue;
-                        memcpy(in, base, (size_t)s.insz);
-                        memcpy(in + a->off, &x, a->ti.bytes);
-                        budget--;
-                        sweep_call(v, &body, name, f, &s, in, false, &bad);
-                    }
-                }
+            v->dict.len = m;
+            v->dict_use = true;
+            for (j = 0; j < SGUIDED; j++) {
+                sweep_gen(v, f, &s, in, &rs);
+                saw_ok |= sweep_call(v, &body, name, f, &s, in, false, &bad) == EV_OK;
             }
+            v->dict_use = false;
         }
         if (!bad && (!s.ptrfn || saw_ok || saw_unsup)) {
             fputs(sb_cstr(&head), out);
             fputs(sb_cstr(&body), out);
         }
         free(in);
-        free(base);
         sweep_free(&s);
         sb_free(&head);
         sb_free(&body);

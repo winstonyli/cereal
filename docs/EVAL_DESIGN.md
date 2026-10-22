@@ -621,6 +621,34 @@ coverage 39.5% at N=24 and 45.4% at N=200; null-pointer reads 5475 to 3307, in 3
 out-of-bounds reads 2864 to 4472 and pointer arithmetic 3598 to 4061 (more functions reach code
 that walks arrays of pointers or records). Gate green.
 
+Multi-TU ceiling (2026-10-22, N=24, measured on single-file builds: Lua's `onelua.c` and zstd's
+`combine.py` amalgamation, so every callee has a body): Lua 717 functions with branches (502
+per file) and 1737 edges covered (1359 per file, +28%), 88 of the 502 shared functions better
+and 33 worse; the shared ones alone 1359 to 1472. zstd: the shared functions 971 to 976 and 76
+more functions, about 280 edges. The percentage falls (29.5% against 31.1% for Lua) because
+the population grows. The Lua amalgamation at N=200 ran more than 26 minutes (loops of the real
+interpreter against the 50M fuel limit) and was killed. So missing callees cost Lua about a
+quarter of its edges and zstd little; the stops that dominate zstd are arithmetic on pointers,
+out-of-bounds reads and shifts.
+
+Where the missed edges are (2026-10-22, scratch probe: per-function finish rate of the random
+calls, zstd + Lua per file, 8696 edges, 1225 functions). N=200: 4747 edges missed. 1322 (28%) are
+in 452 functions where at least 90% of the calls finish, 582 (12%) in functions finishing 50-90%,
+and 2843 (60%) in 342 functions finishing under half of their calls. The first group is the
+ceiling for plain input search (a solver, or constants drawn from what the program compared):
+`luaV_equalobj` 10 of 58, `luaO_rawarith` 30 of 65, `match` 20 of 55 (tag bytes and pattern
+characters inside blobs, which the guided calls do not reach: they only retry scalar
+arguments), `HUF_decompress4X2_usingDTable_internal_body` 6 of 108 (structured input). The
+last group needs the stops fixed first (or a solver that steers around the trap condition).
+Reaching every edge in the first two groups would give 45.4% to at most 67%.
+
+Dictionary fill (same day): the compared-constants dictionary now feeds `sweep_arg`, so every
+integer in every blob is drawn from it a third of the time in 64 extra calls (replacing the
+guided calls that retried scalar arguments one at a time). Edge coverage 39.5% to 44.3% at N=24
+and 45.4% to 46.4% at N=200. The dictionary mostly saves calls: the functions finishing 90% of
+their calls still miss 1295 edges (was 1322), `luaV_equalobj` stays at 10 of 58. What remains
+needs joint conditions across fields or structured input; that is `CONCOLIC_DESIGN.md`.
+
 ## 10. Review log
 
 Three adversarial rounds against the code, 2026-10-21; each change above came

@@ -78,7 +78,7 @@ struct Ev {
     bool fold;                  /* constant folding, as gcc does: conversions saturate instead of trapping */
     VEC(uint32_t) lab;          /* label objects: triples (fn index, label id, object) */
     VEC(uint64_t) dict;         /* the sweep: operands of integer compares and switch cases, while dict_on */
-    bool dict_on;
+    bool dict_on, dict_use;     /* collecting; drawing from it (sorted, unique) */
     uint32_t stream[3];         /* the objects behind stdout and stderr (pointer, FILE token), 0: not made */
     uint32_t token[3];
 };
