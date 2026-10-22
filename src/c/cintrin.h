@@ -24,8 +24,9 @@ enum {
     BIC_HUGE,       /* an infinity; arg: the float's width */
     BIC_BSWAP,      /* arg: the width in bytes */
     BIC_CLZ, BIC_CTZ,   /* arg: the width in bytes */
+    BIC_CLRSB,      /* arg: the width in bytes (the front end folds it; the back end refuses it) */
     BIC_FFS,        /* arg: the width in bytes */
-    BIC_RT,         /* a call of a libgcc helper; arg: its index in bi_helper */
+    BIC_POPCNT, BIC_PARITY,   /* a call of a libgcc helper (bi_helper); arg: the width in bytes */
     BIC_SQRT, BIC_RCP, BIC_RSQRT,   /* arg: the float's width */
     BIC_SFENCE, BIC_LFENCE, BIC_MFENCE, BIC_PAUSE, BIC_UD2,
     BIC_CLFLUSH, BIC_STMXCSR, BIC_LDMXCSR,
@@ -116,9 +117,12 @@ enum {
     X("ctz", BIC_CTZ, 4) X("ctzl", BIC_CTZ, 8) X("ctzll", BIC_CTZ, 8)           \
     X("ffs", BIC_FFS, 4) X("ffsl", BIC_FFS, 8) X("ffsll", BIC_FFS, 8)           \
     X("ffsimax", BIC_FFS, 8)                                                    \
-    X("popcount", BIC_RT, 0) X("popcountl", BIC_RT, 0) X("popcountll", BIC_RT, 0) \
-    X("popcountimax", BIC_RT, 0) X("parity", BIC_RT, 1) X("parityl", BIC_RT, 1) \
-    X("parityll", BIC_RT, 1) X("parityimax", BIC_RT, 1)                         \
+    X("clrsb", BIC_CLRSB, 4) X("clrsbl", BIC_CLRSB, 8) X("clrsbll", BIC_CLRSB, 8) \
+    X("clrsbimax", BIC_CLRSB, 8)                                                \
+    X("popcount", BIC_POPCNT, 4) X("popcountl", BIC_POPCNT, 8)                  \
+    X("popcountll", BIC_POPCNT, 8) X("popcountimax", BIC_POPCNT, 8)             \
+    X("parity", BIC_PARITY, 4) X("parityl", BIC_PARITY, 8)                      \
+    X("parityll", BIC_PARITY, 8) X("parityimax", BIC_PARITY, 8)                 \
     X("sqrt", BIC_SQRT, 8) X("sqrtf", BIC_SQRT, 4)                              \
     X("ia32_rcpss", BIC_RCP, 4) X("ia32_rsqrtss", BIC_RSQRT, 4)                 \
     X("ia32_sfence", BIC_SFENCE, 0) X("ia32_lfence", BIC_LFENCE, 0)             \
@@ -222,6 +226,85 @@ static inline unsigned bi_argc(const char *name)
     if (len < strlen(name) && len && b[len - 1] == '_')
         b[--len] = 0;
     return bi_rows[bi_find(b)].argc;
+}
+
+/* The integer built-ins as pure functions of one operand, shared by the front end's constant
+ * folder and the evaluator.  The width is the row's arg, or w (bytes) for BIC_STDC.  BI_NO: the
+ * row is not such an operation; BI_UNDEF: the result is undefined (clz/ctz of 0, a bit_ceil that
+ * does not fit), and *out is the value the folder and the code generator settle on. */
+enum { BI_OK, BI_NO, BI_UNDEF };
+
+static inline int bi_int(const BiRow *r, unsigned w, uint64_t x, uint64_t *out)
+{
+    unsigned bits, op;
+    uint64_t m, s;
+    if (r->cls == BIC_STDC) {
+        op = r->arg & ST_OP;
+    } else {
+        w = r->arg;
+        op = 0;
+    }
+    if (w < 1 || w > 8)
+        return BI_NO;
+    bits = w * 8;
+    m = bits == 64 ? ~(uint64_t)0 : ((uint64_t)1 << bits) - 1;
+    x &= m;
+    if (r->cls == BIC_STDC && (r->arg & ST_INV))
+        x = ~x & m;
+#define LZ(v) ((unsigned)__builtin_clzll(v) - (64 - bits))
+    switch (r->cls) {
+    case BIC_CLZ: case BIC_CTZ:
+        *out = bits;
+        if (!x)
+            return BI_UNDEF;
+        *out = r->cls == BIC_CLZ ? LZ(x) : (unsigned)__builtin_ctzll(x);
+        return BI_OK;
+    case BIC_FFS:
+        *out = x ? (unsigned)__builtin_ctzll(x) + 1 : 0;
+        return BI_OK;
+    case BIC_CLRSB:
+        s = x >> (bits - 1) ? ~x & m : x;
+        *out = s ? LZ(s) - 1 : bits - 1;
+        return BI_OK;
+    case BIC_POPCNT:
+        *out = (unsigned)__builtin_popcountll(x);
+        return BI_OK;
+    case BIC_PARITY:
+        *out = (unsigned)__builtin_popcountll(x) & 1;
+        return BI_OK;
+    case BIC_BSWAP:
+        *out = __builtin_bswap64(x) >> (64 - bits);
+        return BI_OK;
+    case BIC_STDC:
+        break;
+    default:
+        return BI_NO;
+    }
+    switch (op) {
+    case ST_LZ:    *out = x ? LZ(x) : bits; break;
+    case ST_TZ:    *out = x ? (unsigned)__builtin_ctzll(x) : bits; break;
+    case ST_FLO:   *out = x ? LZ(x) + 1 : 0; break;
+    case ST_FTO:   *out = x ? (unsigned)__builtin_ctzll(x) + 1 : 0; break;
+    case ST_POP:   *out = (unsigned)__builtin_popcountll(x); break;
+    case ST_HAS1:  *out = x && !(x & (x - 1)); break;
+    case ST_BW:    *out = x ? bits - LZ(x) : 0; break;
+    case ST_FLOOR: *out = x ? (uint64_t)1 << (bits - 1 - LZ(x)) : 0; break;
+    case ST_CEIL:
+        if (x <= 1) {
+            *out = 1;
+            break;
+        }
+        s = bits - LZ(x - 1);
+        *out = 0;
+        if (s >= bits)
+            return BI_UNDEF;
+        *out = (uint64_t)1 << s;
+        break;
+    default:
+        return BI_NO;
+    }
+    return BI_OK;
+#undef LZ
 }
 
 #endif

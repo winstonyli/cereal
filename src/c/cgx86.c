@@ -1703,8 +1703,8 @@ static void gen_intrin(Gx *g, uint32_t n)
     case BIC_STDC:
         gen_stdc(g, n, r);
         break;
-    case BIC_RT:
-        gen_call(g, n, bi_helper[r->arg]);
+    case BIC_POPCNT: case BIC_PARITY:
+        gen_call(g, n, bi_helper[r->cls == BIC_PARITY]);
         break;
     case BIC_SQRT: case BIC_RCP: case BIC_RSQRT:    /* rcp, rsqrt: the CPU's approximations */
         gen(g, kid(g->L, n, 0));

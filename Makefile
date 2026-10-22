@@ -15,7 +15,7 @@ DEPS := $(OBJS:.o=.d)
 all: cereal
 
 cereal: $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS) -pthread
+	$(CC) $(CFLAGS) -o $@ $(OBJS) -pthread -lm
 
 $(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)

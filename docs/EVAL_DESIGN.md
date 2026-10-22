@@ -491,6 +491,32 @@ scalars first):
   (messages and locations).
 - Braced scalars (`constexpr int x = {1};`) set `val`/`fval` from the image, so they read as scalars.
 
+### Intrinsics result (2026-10-21)
+
+`TO_INTRIN` nodes run in the evaluator (`ev_intrin`, `src/c/eval.c`). The
+integer built-ins are one pure function, `bi_int` in `cintrin.h`, shared with
+the checker: `fold_int_builtin` (`ccall.c`) calls it for the ffs, clz, ctz,
+clrsb, popcount, parity and bswap families and keeps only `abs` itself (its
+private name parser and per-op switch are gone). Table changes: `BIC_RT` split
+into `BIC_POPCNT` and `BIC_PARITY` (the back end still calls the libgcc
+helper), `BIC_CLRSB` rows added (folded by the front end, refused by the back
+end), and `arg` is the operand width in bytes for every one of them. Evaluated:
+bit scans, byte swaps and `stdc_*` through `bi_int`; the overflow built-ins in
+128 bits (an exact test where `gen_ovf` refuses some 64-bit mixes); atomics on
+one thread (plain load, op, store; memory order ignored); `expect`, `prefetch`,
+fences, `pause`, `huge_val`/`inf`, `sqrt`/`sqrtf`, the libc-named rows through
+the host table. `unreachable` is a trap, and so are `clz(0)`/`ctz(0)` and a
+`bit_ceil` that does not fit (undefined; the checker still folds `clz(0)` to the
+width as gcc does). Unsupported, naming the built-in: `RT` helpers, `rcp`,
+`rsqrt`, `clflush`, the MXCSR pair, and libc rows with no host function
+(`strncat`, `strstr`). The link gains `-lm` for the host `sqrt`.
+Goldens `intrin.c` (bit scans, overflow, atomics, the rest, against gcc),
+`stdc.c` (gcc 13 has no `__builtin_stdc_*`, so the gcc side is an independent
+macro oracle), `trap_clz0.c`, `trap_unreachable.c`. Mutation check: 20 mutants
+of `bi_int`, `ev_ovf` and `ev_atomic`, 19 killed after one test fix; the
+survivor (`sqrtf` through `double`) is equivalent, as the double square root
+rounds to the same float.
+
 ## 10. Review log
 
 Three adversarial rounds against the code, 2026-10-21; each change above came

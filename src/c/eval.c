@@ -10,6 +10,7 @@
  * literals, variadic calls, built-ins, globals; each says so when reached.
  * No mutable globals: the state is the Ev. */
 #include "c/eval_int.h"
+#include "c/cintrin.h"
 /* ---- failure -------------------------------------------------------------- */
 
 void ev_fail(Ev *v, int st, const char *fmt, ...)
@@ -540,6 +541,188 @@ static uint64_t host_call(Fr *r, uint32_t n, uint32_t first, uint32_t na, HostFn
     if (v->res.status || type_is_void(&v->c->tt, NODE(r, n)->ty) || !ev_tinfo(v, NODE(r, n)->ty, &ti))
         return 0;
     return ev_canon(&ti, x);
+}
+
+__extension__ typedef __int128 i128;
+
+/* {add,sub,mul}_overflow (a, b, &r): the exact result in 128 bits, stored truncated to r's type;
+ * the flag says the stored value differs.  Operands are evaluated right to left, as cgx86.c. */
+static uint64_t ev_ovf(Fr *r, uint32_t n, const BiRow *row)
+{
+    Ev *v = r->v;
+    TypeTable *tt = &v->c->tt;
+    Ti ta, tb, tr;
+    TypeId pt;
+    uint64_t a, b, p, back;
+    i128 A, B, R = 0;
+    bool big = false;
+    p = ev_node(r, KID(r, n, 2));
+    b = ev_node(r, KID(r, n, 1));
+    a = ev_node(r, KID(r, n, 0));
+    pt = type_canon(tt, NODE(r, KID(r, n, 2))->ty);
+    if (v->res.status || !ev_tinfo(v, NODE(r, KID(r, n, 0))->ty, &ta) ||
+        !ev_tinfo(v, NODE(r, KID(r, n, 1))->ty, &tb))
+        return 0;
+    if (type_ckind(tt, pt) != TY_PTR || !ev_tinfo(v, type_base(tt, pt), &tr)) {
+        UNSUP(v, "overflow built-in result is not a pointer to an integer");
+        return 0;
+    }
+    A = ta.sg ? (i128)(int64_t)a : (i128)a;
+    B = tb.sg ? (i128)(int64_t)b : (i128)b;
+    switch (row->arg & 3) {
+    case OV_ADD: R = A + B; break;
+    case OV_SUB: R = A - B; break;
+    default: big = __builtin_mul_overflow(A, B, &R); break;
+    }
+    store_n(v, p, &tr, (uint64_t)R);
+    back = ev_canon(&tr, (uint64_t)R);
+    return big || (tr.sg ? (i128)(int64_t)back : (i128)back) != R;
+}
+
+/* An atomic built-in on one thread: a plain load, store or read-modify-write; the memory
+ * order is ignored.  The object's width comes from the pointee, the operation is on its raw
+ * bytes. */
+static uint64_t ev_atomic(Fr *r, uint32_t n, const BiRow *row)
+{
+    const TNode *t = NODE(r, n);
+    Ev *v = r->v;
+    TypeTable *tt = &v->c->tt;
+    int op = row->arg & 15, fl = row->arg >> 4;
+    bool by_ptr = fl & AF_PTR, ok = false;
+    TypeId pt = type_canon(tt, NODE(r, KID(r, n, 0))->ty);
+    Ti raw, rt;
+    uint64_t sz = 0, p, x = 0, old, y = 0, q = 0;
+    memset(&raw, 0, sizeof raw);
+    if (type_ckind(tt, pt) == TY_PTR)
+        sz = type_size(tt, type_base(tt, pt), &ok);
+    if (!ok || (sz != 1 && sz != 2 && sz != 4 && sz != 8)) {
+        UNSUP(v, "atomic object that is not a pointer to 1, 2, 4 or 8 bytes");
+        return 0;
+    }
+    raw.bytes = (unsigned)sz;
+    p = ev_node(r, KID(r, n, 0));
+    if (v->res.status)
+        return 0;
+    if (op != AT_LOAD && op != AT_ST0) {        /* the value operand, or where it is */
+        x = ev_node(r, KID(r, n, 1));
+        if (op == AT_CAS && !(fl & AF_EXPV)) {
+            q = x;
+            x = load_n(v, q, &raw);
+        } else if (by_ptr) {
+            x = load_n(v, x, &raw);
+        }
+        x = ev_canon(&raw, x);
+    }
+    old = load_n(v, p, &raw);
+    if (v->res.status)
+        return 0;
+    switch (op) {
+    case AT_LOAD:
+        if (by_ptr)
+            store_n(v, ev_node(r, KID(r, n, 1)), &raw, old);
+        y = old;
+        break;
+    case AT_STORE: case AT_ST0: case AT_XCHG:
+        store_n(v, p, &raw, op == AT_ST0 ? 0 : x);
+        if (op == AT_XCHG && by_ptr)
+            store_n(v, ev_node(r, KID(r, n, 2)), &raw, old);
+        y = old;
+        break;
+    case AT_CAS: {
+        uint64_t want = ev_node(r, KID(r, n, 2));
+        if (by_ptr)
+            want = load_n(v, want, &raw);
+        want = ev_canon(&raw, want);
+        if (old == x) {
+            store_n(v, p, &raw, want);
+        } else if (!(fl & AF_EXPV)) {
+            store_n(v, q, &raw, old);
+        }
+        y = (fl & AF_OLD) ? old : old == x;
+        break;
+    }
+    default:
+        y = op == AT_ADD ? old + x : op == AT_SUB ? old - x : op == AT_AND ? old & x :
+            op == AT_OR ? old | x : op == AT_XOR ? old ^ x : ~(old & x);
+        y = ev_canon(&raw, y);
+        store_n(v, p, &raw, y);
+        if (!(fl & AF_NEW))
+            y = old;
+        break;
+    }
+    if (v->res.status || type_is_void(tt, t->ty) || !ev_tinfo(v, t->ty, &rt))
+        return 0;
+    return ev_canon(&rt, y);
+}
+
+/* A TO_INTRIN node (cintrin.h).  The integer operations are bi_int, shared with the front end's
+ * folder; an undefined result stops the evaluation.  A row with no meaning here says so. */
+static uint64_t ev_intrin(Fr *r, uint32_t n)
+{
+    const TNode *t = NODE(r, n);
+    Ev *v = r->v;
+    const BiRow *row = &bi_rows[t->pun];
+    Ti ti, ta;
+    uint64_t a[16], x, y = 0;
+    uint32_t j, na = t->nkids;
+    int st;
+    if (!t->pun || na > 16)
+        goto unsup;
+    switch (row->cls) {
+    case BIC_ATOMIC:
+        return ev_atomic(r, n, row);
+    case BIC_OVF:
+        return ev_ovf(r, n, row);
+    case BIC_EXPECT:
+        if (NODE(r, KID(r, n, 1))->op != TO_CONST)
+            goto unsup;
+        return ev_node(r, KID(r, n, 0));
+    case BIC_PREFETCH:
+        ev_node(r, KID(r, n, 0));
+        return 0;
+    case BIC_SFENCE: case BIC_LFENCE: case BIC_MFENCE: case BIC_PAUSE:
+        return 0;
+    case BIC_UD2:
+        TRAP(v, "__builtin_unreachable reached");
+        return 0;
+    case BIC_HUGE:
+        return ev_tinfo(v, t->ty, &ti) ? ev_fput(&ti, __builtin_inf()) : 0;
+    case BIC_SQRT:
+        x = ev_node(r, KID(r, n, 0));
+        if (v->res.status || !ev_tinfo(v, t->ty, &ti))
+            return 0;
+        return ev_fput(&ti, ti.bytes == 4 ? (double)__builtin_sqrtf((float)ev_fget(&ti, x))
+                                          : __builtin_sqrt(ev_fget(&ti, x)));
+    case BIC_LIBC: {
+        HostFn h = ev_host_fn(row->name);
+        for (j = na; j-- > 0;)
+            a[j] = ev_node(r, KID(r, n, j));
+        if (v->res.status)
+            return 0;
+        if (!h)
+            goto unsup;
+        return host_call(r, n, 0, na, h, a);
+    }
+    case BIC_CLZ: case BIC_CTZ: case BIC_CLRSB: case BIC_FFS: case BIC_POPCNT:
+    case BIC_PARITY: case BIC_BSWAP: case BIC_STDC:
+        x = ev_node(r, KID(r, n, 0));
+        if (v->res.status || !ev_tinfo(v, NODE(r, KID(r, n, 0))->ty, &ta) ||
+            !ev_tinfo(v, t->ty, &ti))
+            return 0;
+        st = bi_int(row, ta.bytes, x, &y);
+        if (st == BI_UNDEF) {
+            TRAP(v, "built-in %s: result undefined", row->name);
+            return 0;
+        }
+        if (st == BI_OK)
+            return ev_canon(&ti, y);
+        break;
+    default:
+        break;
+    }
+unsup:
+    UNSUP(v, "built-in %s", cident(v->c, t->sym));
+    return 0;
 }
 
 static uint64_t ev_call_node(Fr *r, uint32_t n)
@@ -1119,6 +1302,8 @@ static uint64_t ev_node(Fr *r, uint32_t n)
         return ev_va(r, n);
     case TO_CALL:
         return ev_call_node(r, n);
+    case TO_INTRIN:
+        return ev_intrin(r, n);
     default: {
         static const char *nm[] = {
 #define X(o, s) s,
