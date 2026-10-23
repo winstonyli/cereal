@@ -202,6 +202,17 @@ State from earlier calls (prototype, 2026-10-22; `--eval-state`):
   A `const Ctx *` parameter takes the `Ctx *` a constructor returns (the key drops qualifiers). The
   driver defines `time` and `clock` as 0 so a constructor that reads the clock agrees with the build
   phase. Test: `tests/cfg_state/state.c`, stage 13e1s of `tests/run.sh`.
+- Chains and several states of one type (step 3): after the plain constructors, two rounds run a
+  builder that takes a state of its own return type on each state the round began with
+  (`lua_newthread(L)`), giving up to `SMAXPER` (4) states of a type, 16 in all; the result must be a
+  new object. A function with a state parameter is swept once per way to pick (`NAME__st0`,
+  `__st1`, ...: the nth state of each parameter's type, modulo their number). The gcc thunk replays
+  every builder in order, so its state matches the snapshot exactly; a function whose file cannot call
+  every builder (a static one in another file) is not swept with state. Builders of another type
+  (`luaH_new(L)`, `luaF_newCclosure(L, n)`, getters such as `index2value`) were tried and left out:
+  they disturb the first state and lost edges (4449 against 4653; run `...state6`).
+- Result with chains (run `2026-10-22-sweep-link-state7`): edges taken 4693 of 8655 (54.2%); Lua
+  untaken 1943 (never finished 1293), three `lua_State`s; zstd unchanged (1978).
 - Build-phase `asm` zeroes its output lvalues (any asm, not cpuid-specific), so `ZSTD_cpuid` builds
   contexts. Host functions added for the state pass: `fflush`, `__errno_location` (one pinned int),
   `strstr`, `strspn`, `strcspn`, `strpbrk`, `strcoll`, `fmod`, `ldexp`; `Obj.pin` keeps host objects

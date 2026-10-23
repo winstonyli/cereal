@@ -53,3 +53,15 @@ int ctx_name(const Ctx *c, char ch)
         n++;
     return c->name[0] == ch ? 1 : n;
 }
+
+/* a builder that takes a state: the sweep builds a second Ctx from the first (a chain) */
+Ctx *ctx_child(Ctx *p)
+{
+    Ctx *c = malloc(sizeof *c);
+    if (!c)
+        return 0;
+    *c = *p;
+    c->magic = p->magic + 1;
+    p->count++;
+    return c;
+}
