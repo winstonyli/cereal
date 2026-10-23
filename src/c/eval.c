@@ -1792,6 +1792,8 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         if (v->res.status)
             return 0;
         if (pid(a) != pid(b)) {
+            v->sub_a = pid(a);
+            v->sub_b = pid(b);
             TRAP(v, "subtraction of pointers into different objects");
             return 0;
         }

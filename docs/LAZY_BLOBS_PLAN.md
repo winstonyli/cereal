@@ -113,3 +113,31 @@ tasks (L3 kills blobs before `snap_restore`; the order matches `sweep_call`); th
 claim (`miss_report` needs `sv`) rechecked in `eval_sweep`; nothing further.
 Open points to settle while implementing, to be reported if they turn into decisions: the
 exact share offsets (L2), the stuck report's names (L3).
+
+## Result of stage 1 (2026-10-23)
+
+Untaken edges, N=24 seed 1234, `--eval-link --eval-state`, solver off (eager baseline from
+`sweep-lazy-base`; lazy runs `lazy-lua-alias`, `lazy-zstd-alias` in `docs/runs.md`):
+
+| | eager | lazy | change |
+|---|---|---|---|
+| Lua | 2061 | 1753 | -308 (15%) |
+| zstd | 2029 | 1785 | -244 (12%) |
+| total | 4090 | 3538 | -552 (13.5%) |
+
+Findings that changed the design while building it:
+- A NULL at 1/8 per drawn pointer cell kills any deep chain (`ci->func->gc->p->k`): all 852
+  `luaV_execute` edges stopped on a NULL. Now at most one NULL per call, in half the calls.
+- Pointers the program means as one object (saved pc and `p->code`) were separate blobs, so
+  their subtraction trapped. A stop on such a subtraction now reruns the call with the later
+  pointer draw aliased into the earlier blob (`LHint`, up to 4 per call). This is stage 2's key
+  (path of pointer cells from a parameter) used for pointer aliasing.
+- Integer reads of, and writes over, a pointer cell the sweep drew stop the call as unsupported
+  (gcc's pointer bytes differ), as does any use the oracle cannot reproduce.
+- A drawn size can make the program `malloc` 600 MB+: `ev_new_obj` now traps on a failed
+  allocation instead of a fatal exit.
+
+`luaV_execute` is no longer stuck on `StackValue.val.value_.gc`; it now stops with "read out of
+bounds" a few levels further in (`p->code` side). Remaining zstd stops: inline asm (81 edges).
+Oracle: `cfg_exec`, `cfg_link`, `cfg_state` clean under `EVAL_SWEEP_LAZY=1`; the Lua and zstd
+corpora were not compared against gcc (the gate has no leg for them).

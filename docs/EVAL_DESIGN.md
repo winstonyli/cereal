@@ -716,3 +716,8 @@ from one of them.
   contradiction between sections 2, 3, 5, 7 and 9, and every parked item is a
   `PARKED.md` row (bytecode, native tier, profile capture, `pure`, `total`,
   checker-folder merge decided against, FFI, multi-TU).
+
+`--eval-lazy` (hidden, with `--eval-sweep`; docs/LAZY_BLOBS_DESIGN.md, plan results in
+docs/LAZY_BLOBS_PLAN.md): pointer targets are made by the call on first access instead of
+by the eager layout. Not combined with the solver. `EVAL_SWEEP_LAZY=1` in `tests/eval_sweep.sh`
+and `tests/eval_lazy.sh` check it against gcc.

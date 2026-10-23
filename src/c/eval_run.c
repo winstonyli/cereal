@@ -1098,6 +1098,7 @@ typedef struct LBlob {
     uint32_t id;                /* the object */
     int par;                    /* the blob whose pointer made it, -1: a parameter's */
     uint32_t poff;              /* ... the offset of that pointer, or the parameter's number */
+    int draw;                   /* the pointer draw that made it, -1: a parameter's */
     uint8_t *ini;               /* the bytes the call read first, as drawn */
     uint64_t cap;
 } LBlob;
@@ -1106,10 +1107,21 @@ typedef struct LLink {
     uint32_t blob, off, tb1, toff;
 } LLink;
 
+/* A retry's hint: the pointer draw `draw` points into blob `tgt` (the first run subtracted pointers of two
+ * blobs, which the program meant as one object, such as a saved pc and the code it points into). */
+typedef struct LHint {
+    unsigned draw;
+    int tgt;
+} LHint;
+
+#define LMAXHINT 4
+
 typedef struct Lazy {
     uint64_t *rs;
     unsigned ndraw, nullat;     /* pointer draws so far; the one that is NULL (a call has at most one: a chain of
                                    pointers needs them all non-NULL to get anywhere) */
+    LHint hint[LMAXHINT];
+    unsigned nhint;
     VEC(LBlob) bl;
     VEC(LLink) lk;
 } Lazy;
@@ -1124,9 +1136,9 @@ static int lazy_index(const Lazy *z, uint32_t id)
 }
 
 /* A new lazy object of `size` bytes; its index, or -1 at the budget (the call then stops). */
-static int lazy_new(Ev *v, Lazy *z, uint64_t size, int par, uint32_t poff)
+static int lazy_new(Ev *v, Lazy *z, uint64_t size, int par, uint32_t poff, int draw)
 {
-    LBlob b = {0, par, poff, NULL, 0};
+    LBlob b = {0, par, poff, draw, NULL, 0};
     size_t i;
     uint64_t total = size;
     for (i = 0; i < z->bl.len; i++)
@@ -1170,19 +1182,28 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
     for (i = 0; i < ti->bytes; i++)
         un += !o->init[off + i];
     if (ti->ptr) {
-        uint64_t r = z->ndraw++ == z->nullat ? 0 : 1 + rnd(z->rs) % 7;
+        unsigned d = z->ndraw++, h;
+        uint64_t r = d == z->nullat ? 0 : 1 + rnd(z->rs) % 7;
         LLink l = {(uint32_t)bi, (uint32_t)off, 0, 0};
+        int forced = -1;
+        for (h = 0; h < z->nhint; h++)
+            if (z->hint[h].draw == d)
+                forced = z->hint[h].tgt;
+        if (forced >= 0)
+            r = 1;
         if (un != ti->bytes)
             return false;               /* half a pointer was written: not a pointer to draw */
         if (r == 0) {
             x = 0;
         } else if (r == 1) {
             int t = (int)(rnd(z->rs) % z->bl.len);
+            if (forced >= 0)
+                t = forced;
             l.tb1 = (uint32_t)t + 1;
             l.toff = (uint32_t)(rnd(z->rs) % 9) * 8;
             x = mkptr(z->bl.data[t].id, l.toff);
         } else {
-            int nb = lazy_new(v, z, 0, bi, (uint32_t)off);
+            int nb = lazy_new(v, z, 0, bi, (uint32_t)off, (int)d);
             if (nb < 0)
                 return false;
             l.tb1 = (uint32_t)nb + 1;
@@ -1253,10 +1274,10 @@ static void lazy_where(Ev *v, const Lazy *z)
 
 /* One call of the sweep with lazy objects (sweep_call's counterpart): the scalars are drawn from *rs,
  * the pointer parameters are empty objects, and the line is printed from what the call made. */
-static int sweep_call_lazy(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
-                           bool *bad, uint64_t *rs)
+static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
+                      bool *bad, uint64_t *rs, const LHint *hint, unsigned nh, LHint *want, bool *retry)
 {
-    Lazy z = {rs, 0, 0, {0}, {0}};
+    Lazy z = {rs, 0, 0, {{0, 0}}, 0, {0}, {0}};
     uint64_t slot[16] = {0}, x = 0, boff[LMAXBL];
     StrBuf pay = {0}, args = {0}, zc = {0};
     uint8_t *out;
@@ -1293,7 +1314,7 @@ static int sweep_call_lazy(Ev *v, StrBuf *body, const char *name, const Fn *f, c
                 }
             }
             if (bi < 0)
-                bi = lazy_new(v, &z, a->kind == SA_REC ? a->off : 0, -1, (uint32_t)k);
+                bi = lazy_new(v, &z, a->kind == SA_REC ? a->off : 0, -1, (uint32_t)k, -1);
             if (bi < 0)
                 break;
             slot[k] = mkptr(z.bl.data[bi].id, off);
@@ -1308,12 +1329,24 @@ static int sweep_call_lazy(Ev *v, StrBuf *body, const char *name, const Fn *f, c
         v->ld_max = 0;
         v->ld_obj = 0;
         z.nullat = rnd(rs) & 1 ? ~0u : (unsigned)(rnd(rs) % 32);
+        memcpy(z.hint, hint, nh * sizeof *hint);
+        z.nhint = nh;
+        v->sub_a = v->sub_b = 0;
         r = ev_call(v, f->fsym, slot, f->np, &x);
     }
     v->lazy_fill = NULL;
     v->lazy_ud = NULL;
     if (r.status != EV_OK)
         lazy_where(v, &z);
+    *retry = false;
+    if (r.status == EV_TRAP && v->sub_a && nh < LMAXHINT) {
+        int a = lazy_index(&z, v->sub_a), b = lazy_index(&z, v->sub_b), hi = a > b ? a : b;
+        if (a >= 0 && b >= 0 && a != b && z.bl.data[hi].draw >= 0) {
+            want->draw = (unsigned)z.bl.data[hi].draw;
+            want->tgt = a < b ? a : b;
+            *retry = true;
+        }
+    }
     for (i = 0; i < z.bl.len; i++)
         total += v->obj.data[z.bl.data[i].id - 1].size;
     out = xcalloc(total + 16, 1);
@@ -1377,7 +1410,7 @@ static int sweep_call_lazy(Ev *v, StrBuf *body, const char *name, const Fn *f, c
         for (j = have; j < sz; j++)
             sb_putc(&pay, 0);
     }
-    if (r.status == EV_OK || (show_stop && (!s->ptrfn || r.status == EV_UNSUPPORTED))) {
+    if (!*retry && (r.status == EV_OK || (show_stop && (!s->ptrfn || r.status == EV_UNSUPPORTED)))) {
         sb_printf(body, "call %s ", name);
         sweep_hex(body, (const uint8_t *)pay.data, pay.len);
         if (r.status == EV_OK) {
@@ -1398,6 +1431,25 @@ static int sweep_call_lazy(Ev *v, StrBuf *body, const char *name, const Fn *f, c
     sb_free(&zc);
     lazy_free(&z);
     return r.status;
+}
+
+/* sweep_call_lazy: the call, rerun with an alias hint each time it stops on a subtraction of pointers of
+ * two blobs (the same draws up to the hinted one, so the rerun differs only there). */
+static int sweep_call_lazy(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
+                           bool *bad, uint64_t *rs)
+{
+    LHint hint[LMAXHINT];
+    unsigned nh = 0;
+    uint64_t saved = *rs;
+    for (;;) {
+        bool retry;
+        int st;
+        *rs = saved;
+        st = lazy_call1(v, body, name, f, s, show_stop, bad, rs, hint, nh, &hint[nh], &retry);
+        if (!retry)
+            return st;
+        nh++;
+    }
 }
 
 static int cmp64(const void *a, const void *b)
@@ -1996,7 +2048,7 @@ static void eval_sweep(Checker *c0)
             sb_putc(&head, 10);
             (s.lazy ? sweep_thunk_lazy : sweep_thunk)(v, &sts, c, &head, st ? tname : name, name, f, &s);
             x.v = v;
-            x.sv = s.lazy || getenv("NOSOLVE") ? NULL : sv;   // TEMP-NOSOLVE
+            x.sv = s.lazy ? NULL : sv;          /* lazy objects are not combined with the solver yet */
             x.ss = &ss;
             x.f = f;
             x.s = &s;
@@ -2029,7 +2081,7 @@ static void eval_sweep(Checker *c0)
                 }
                 v->dict_use = false;
             }
-            if (sv && !s.lazy && !getenv("NOSOLVE")) {   // TEMP-NOSOLVE
+            if (sv && !s.lazy) {
                 size_t ed = 0, tk = 0;
                 blk_count(f, &ed, &tk);
                 ss.edges += st ? 0 : ed;

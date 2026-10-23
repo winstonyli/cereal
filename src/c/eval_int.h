@@ -139,6 +139,7 @@ struct Ev {
     uint32_t ld_obj, f_obj;     /* the object and offset of the last pointer read (ld), and of the one the
                                    latest stop followed (f): where the bad pointer or byte was read from */
     int32_t ld_off, f_off;
+    uint32_t sub_a, sub_b;      /* the objects of the pointer subtraction that stopped the call (--eval-lazy retries it aliased) */
     uint32_t ld_max;            /* pointer reads from objects above this id (frame locals, the heap) are not noted; 0: all */
     char note[112];             /* the sweep's description of that place, for its miss report */
     /* A typed load of uninitialized bytes of a lazy object: draws and stores the value (may make
