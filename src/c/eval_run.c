@@ -162,7 +162,6 @@ typedef struct SFn {
     uint64_t insz;
     bool ptrfn, byval;
     unsigned nstate;            /* parameters that are SA_STATE */
-    unsigned nvar;              /* ... and how many ways to pick their states (the states of one type, at most SMAXPER) */
     const struct Snap *snap;    /* ... and what a call restores afterwards */
 } SFn;
 
@@ -657,7 +656,6 @@ static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts, unsigned va
                 a->sptr = sts->st[j].ptr;
                 a->si = j;
                 s->nstate++;
-                s->nvar = cnt > s->nvar ? cnt : s->nvar;
                 s->ptrfn = true;
                 continue;
             }
@@ -1407,11 +1405,26 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
 }
 
 /* Every function of the files of c0 (one file, or the whole link: c0 is then the first). */
-typedef struct STxt {
-    size_t i;                   /* the function's index in Ev.fn */
-    char *t;                    /* its fn line, thunk and call lines */
-} STxt;
+/* How many ways there are to pick the built states for f's parameters (0: it takes none, or the
+ * gcc side cannot call every builder from its file). */
+static unsigned state_variants(const Fn *f, const SStates *ss, bool callable)
+{
+    unsigned nv = 0;
+    size_t k;
+    for (k = 0; callable && k < f->np; k++) {
+        char key[96];
+        unsigned cnt = 0;
+        state_key(f->c, f->par[k].ty, key, sizeof key);
+        if (key[0])
+            state_pick(ss, key, 0, &cnt);
+        nv = cnt > nv ? cnt : nv;
+    }
+    return nv;
+}
 
+/* A function is swept in variants: one per way to pick its built states (--eval-state; none when it
+ * takes no state), then the plain one, whose parameters are generated from their types.  They share
+ * the function's edges (Blk.seen), so a function counts as finished if any variant finished. */
 static void eval_sweep(Checker *c0)
 {
     Ev *v = ev_of(c0);
@@ -1423,12 +1436,6 @@ static void eval_sweep(Checker *c0)
     SolveStat ss = {0};
     VEC(SweptFn) swept = {0};
     SStates sts = {0};
-    int pass = 0;                       /* 1: --eval-state, the first pass: the functions with a built-state parameter */
-    VEC(size_t) sfin = {0};             /* ... of them, those with a call that finished */
-    VEC(STxt) stx = {0};                /* the state pass's gcc side, held for its function's turn in the normal pass (the output is per file, in order) */
-    size_t sp = 0;
-    char tname[160];
-    unsigned var = 0, nvar = 1;         /* the state pass runs a function once per way to pick its states */
     if (!out)
         return;
     if (c0->opt.eval_solve) {
@@ -1441,146 +1448,114 @@ static void eval_sweep(Checker *c0)
         sx_limit(sv, SRLIMIT);
         v->track = false;
     }
-    if (c0->opt.eval_state) {
+    if (c0->opt.eval_state)
         states_build(v, &sts);
-        pass = sts.n > 0;
-    }
-    for (i = 0;; i++) {
-        Fn *f;
+    for (i = 0; i < v->fn.len; i++) {
+        Fn *f = &v->fn.data[i];
+        Checker *c = f->c;
         const char *name;
-        SFn s;
-        SCtx x = {0};
-        bool ok;
-        StrBuf head = {0}, body = {0};
-        Checker *c;
-        if (i >= v->fn.len) {
-            if (!pass)
-                break;
-            pass = 0;                   /* then the normal pass over all of them */
-            i = 0;
-        }
-        f = &v->fn.data[i];
-        c = f->c;
+        unsigned nv, vi;
+        bool fin = false;               /* a state variant finished */
         if (f->fsym == SYM_NONE || !f->user || f->variadic || f->np > 16)
             continue;
         v->c = c;
         name = cident(c, csym(c, f->fsym)->name);
         if (!strcmp(name, "main"))
             continue;
-        snprintf(tname, sizeof tname, "%s__st%u", name, var);
-        while (!pass && sp < stx.len && stx.data[sp].i == i) {
+        nv = sts.n ? state_variants(f, &sts, states_callable(v, &sts, c)) : 0;
+        for (vi = 0; vi <= nv; vi++) {
+            bool st = vi < nv;          /* a state variant; the last one is the plain sweep */
+            char tname[160];
+            SFn s;
+            SCtx x = {0};
+            StrBuf head = {0}, body = {0};
+            snprintf(tname, sizeof tname, "%s__st%u", name, vi);
+            if (!sweep_fn(v, f, &s, st ? &sts : NULL, vi)) {
+                sweep_free(&s);
+                v->res.status = EV_OK;
+                continue;
+            }
+            s.snap = st ? &sts.snap : NULL;
             if (c0->opt.link && c != cur) {
                 fprintf(out, "file %s\n", main_path(c));
                 cur = c;
             }
-            fputs(stx.data[sp].t, out);
-            free(stx.data[sp++].t);
-        }
-        ok = sweep_fn(v, f, &s, pass && states_callable(v, &sts, c) ? &sts : NULL, var) && (!pass || s.nstate);
-        nvar = ok && pass ? s.nvar : 1;
-        if (ok && pass)
-            s.snap = &sts.snap;
-        if (!ok) {
-            sweep_free(&s);
-            v->res.status = EV_OK;
-            var = 0;
-            continue;
-        }
-        if (!pass && c0->opt.link && c != cur) {
-            fprintf(out, "file %s\n", main_path(c));
-            cur = c;
-        }
-        sb_printf(&head, "fn %s ", pass ? tname : name);
-        sweep_typename(c, &head, f->ret);
-        for (k = 0; k < f->np; k++) {
-            sb_putc(&head, '|');
-            sweep_typename(c, &head, f->par[k].ty);
-        }
-        sb_putc(&head, 10);
-        sweep_thunk(v, &sts, c, &head, pass ? tname : name, name, f, &s);
-        x.v = v;
-        x.sv = sv;
-        x.ss = &ss;
-        x.f = f;
-        x.s = &s;
-        x.name = pass ? tname : name;
-        x.body = &body;
-        x.rs = (uint64_t)c0->opt.eval_seed * 0x9e3779b97f4a7c15ull;
-        for (k = 0; x.name[k]; k++)
-            x.rs = (x.rs ^ (unsigned char)x.name[k]) * 1099511628211ull;
-        x.rs |= 1;
-        x.in = xcalloc((size_t)s.insz + 1, 1);
-        v->dict.len = 0;
-        v->dict_on = true;
-        for (j = 0; j < c0->opt.eval_sweep; j++)
-            mut_gen(&x);
-        /* guided calls: the same generator, now drawing integers from what the program compared its
-         * inputs with; only calls that finish are kept */
-        v->dict_on = false;
-        if (v->dict.len) {
-            size_t d, m = 0;
-            qsort(v->dict.data, v->dict.len, sizeof *v->dict.data, cmp64);
-            for (d = 0; d < v->dict.len; d++)
-                if (!d || v->dict.data[d] != v->dict.data[d - 1])
-                    v->dict.data[m++] = v->dict.data[d];
-            v->dict.len = m;
-            v->dict_use = true;
-            for (j = 0; j < SGUIDED; j++) {
-                size_t r;
-                for (r = 0; r < sizeof rotation / sizeof *rotation; r++)
-                    rotation[r](&x);
+            sb_printf(&head, "fn %s ", st ? tname : name);
+            sweep_typename(c, &head, f->ret);
+            for (k = 0; k < f->np; k++) {
+                sb_putc(&head, '|');
+                sweep_typename(c, &head, f->par[k].ty);
             }
-            v->dict_use = false;
-        }
-        if (sv) {
-            size_t ed = 0, tk = 0;
-            blk_count(f, &ed, &tk);
-            ss.edges += pass ? 0 : ed;
-            ss.seeded += !pass && x.q.corpus.len > 0;
-            while (solve_step(&x))
-                ;
-            tk = 0;
-            ed = 0;
-            blk_count(f, &ed, &tk);
-            ss.taken += pass ? 0 : tk;
-            search_free(&x.q);
-        }
-        if (!pass) {
-            SweptFn sw = { i, x.saw_ok, "" };
-            size_t m;
-            for (m = 0; m < sfin.len; m++)      /* finished with built state counts as finished */
-                sw.finished |= sfin.data[m] == i;
-            memcpy(sw.why, x.why, sizeof sw.why);
-            vec_push(&swept, sw);
-        } else if (x.saw_ok) {
-            vec_push(&sfin, i);
-        } else {
-            fprintf(stderr, "cereal: state-pass: %s: %s\n", name, x.why[0] ? x.why : "no call stopped");
-        }
-        if (!x.bad && (!s.ptrfn || x.saw_ok || x.saw_unsup)) {
-            if (pass) {
-                STxt t = { i, xmalloc(strlen(sb_cstr(&head)) + strlen(sb_cstr(&body)) + 1) };
-                strcat(strcpy(t.t, sb_cstr(&head)), sb_cstr(&body));
-                vec_push(&stx, t);
+            sb_putc(&head, 10);
+            sweep_thunk(v, &sts, c, &head, st ? tname : name, name, f, &s);
+            x.v = v;
+            x.sv = sv;
+            x.ss = &ss;
+            x.f = f;
+            x.s = &s;
+            x.name = st ? tname : name;
+            x.body = &body;
+            x.rs = (uint64_t)c0->opt.eval_seed * 0x9e3779b97f4a7c15ull;
+            for (k = 0; x.name[k]; k++)
+                x.rs = (x.rs ^ (unsigned char)x.name[k]) * 1099511628211ull;
+            x.rs |= 1;
+            x.in = xcalloc((size_t)s.insz + 1, 1);
+            v->dict.len = 0;
+            v->dict_on = true;
+            for (j = 0; j < c0->opt.eval_sweep; j++)
+                mut_gen(&x);
+            /* guided calls: the same generator, now drawing integers from what the program compared its
+             * inputs with; only calls that finish are kept */
+            v->dict_on = false;
+            if (v->dict.len) {
+                size_t d, m = 0;
+                qsort(v->dict.data, v->dict.len, sizeof *v->dict.data, cmp64);
+                for (d = 0; d < v->dict.len; d++)
+                    if (!d || v->dict.data[d] != v->dict.data[d - 1])
+                        v->dict.data[m++] = v->dict.data[d];
+                v->dict.len = m;
+                v->dict_use = true;
+                for (j = 0; j < SGUIDED; j++) {
+                    size_t r;
+                    for (r = 0; r < sizeof rotation / sizeof *rotation; r++)
+                        rotation[r](&x);
+                }
+                v->dict_use = false;
+            }
+            if (sv) {
+                size_t ed = 0, tk = 0;
+                blk_count(f, &ed, &tk);
+                ss.edges += st ? 0 : ed;
+                ss.seeded += !st && x.q.corpus.len > 0;
+                while (solve_step(&x))
+                    ;
+                tk = 0;
+                ed = 0;
+                blk_count(f, &ed, &tk);
+                ss.taken += st ? 0 : tk;
+                search_free(&x.q);
+            }
+            if (!st) {
+                SweptFn sw = { i, x.saw_ok || fin, "" };
+                memcpy(sw.why, x.why, sizeof sw.why);
+                vec_push(&swept, sw);
+            } else if (x.saw_ok) {
+                fin = true;
             } else {
+                fprintf(stderr, "cereal: state-pass: %s: %s\n", tname, x.why[0] ? x.why : "no call stopped");
+            }
+            if (!x.bad && (!s.ptrfn || x.saw_ok || x.saw_unsup)) {
                 fputs(sb_cstr(&head), out);
                 fputs(sb_cstr(&body), out);
             }
+            free(x.in);
+            sweep_free(&s);
+            sb_free(&head);
+            sb_free(&body);
         }
-        free(x.in);
-        sweep_free(&s);
-        sb_free(&head);
-        sb_free(&body);
-        if (pass && var + 1 < nvar && nvar <= SMAXPER) {
-            var++;
-            i--;
-        } else
-            var = 0;
     }
     if (c0->opt.eval_state)
         snap_free(&sts.snap);
-    vec_free(&sfin);
-    vec_free(&stx);
     if (sv) {
         fprintf(stderr,
                 "cereal: solve: %lu queries (%lu sat, %lu unsat, %lu unknown), %lu calls, %lu reached a new edge; "

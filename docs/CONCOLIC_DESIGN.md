@@ -194,11 +194,10 @@ State from earlier calls (prototype, 2026-10-22; `--eval-state`):
 - A function with a parameter of such a pointer type gets the returned pointer (object and offset;
   `luaL_newstate` returns the `lua_State` inside a larger allocation) instead of a blob made from the
   type, and every call restores the snapshot afterwards, so calls stay independent. These functions
-  are swept before the normal pass. Their gcc side is a thunk named `NAME__st` that calls the
-  constructor afresh per call (by symbol alias when it is in another file; a static constructor in
-  another file leaves the function unswept with state) and compares call results only: the return
-  value and the input blobs, not the state graph (decision 3a). The text is held and printed at the
-  function's turn in the normal pass, so the per-file output order the driver script relies on holds.
+  are swept in variants (below). Their gcc side is a thunk named `NAME__stN` that replays the
+  builders per call (by symbol alias when one is in another file; a static builder in another file
+  leaves the function unswept with state) and compares call results only: the return value and the
+  input blobs, not the state graph (decision 3a).
   A `const Ctx *` parameter takes the `Ctx *` a constructor returns (the key drops qualifiers). The
   driver defines `time` and `clock` as 0 so a constructor that reads the clock agrees with the build
   phase. Test: `tests/cfg_state/state.c`, stage 13e1s of `tests/run.sh`.
@@ -211,6 +210,14 @@ State from earlier calls (prototype, 2026-10-22; `--eval-state`):
   every builder (a static one in another file) is not swept with state. Builders of another type
   (`luaH_new(L)`, `luaF_newCclosure(L, n)`, getters such as `index2value`) were tried and left out:
   they disturb the first state and lost edges (4449 against 4653; run `...state6`).
+- One loop (variants): `eval_sweep` visits each function once and sweeps it in variants: one per
+  way to pick its built states (`state_variants`: the largest number of states of any parameter's type,
+  0 when it takes none or a file cannot call every builder), then the plain one with generated
+  parameters. There is no separate state pass, no held output and no pass flag. The variants share the
+  function's edges (`Blk.seen`) and a function counts as finished if any variant finished. Run
+  `...state8`: untaken edges Lua 1934, zstd 1972 (1943 and 1978 with two passes); the "edges taken"
+  total reads 4660 because a function's count is taken at its own sweep and no longer sees edges later
+  callers take (the final untaken report is the measure).
 - Result with chains (run `2026-10-22-sweep-link-state7`): edges taken 4693 of 8655 (54.2%); Lua
   untaken 1943 (never finished 1293), three `lua_State`s; zstd unchanged (1978).
 - Build-phase `asm` zeroes its output lvalues (any asm, not cpuid-specific), so `ZSTD_cpuid` builds
