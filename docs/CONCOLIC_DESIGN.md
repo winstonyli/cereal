@@ -238,6 +238,17 @@ State from earlier calls (prototype, 2026-10-22; `--eval-state`):
   objects, 5878 bytes for Lua).
 - What still stops with built state (zstd, state pass): 11 uninitialized reads, 7 `ZSTD_trace_compress_begin`
   with no body, reads out of bounds and through null pointers.
+- Call sequences (`--eval-seq`, a prototype, reverted; runs `sweep-link-seq1..4` in `docs/runs.md`): up to
+  3 slots in the input, each naming a pool function (integer and state parameters only, 8 random probes,
+  kept if it finished and changed the state without destroying it) and its integer arguments, run on the
+  state before the target. Untaken edges, Lua + zstd: 1900 + 1969 = 3869 against 1934 + 1972 = 3906 with
+  `--eval-state` alone (-37, under 1%), at 611-723 s against 576 s on Lua. A first-found pool of 64 gave
+  Lua 1878 but ran over 20 min. A pool ranked by (finished, fewest bytes changed) is cheap and weak:
+  `lua_pushnil`, `lua_status`, ... change little and unlock little. Fault-directed retry (the load that
+  produced the bad pointer or byte is tracked; a pool function seen to write that word runs first): 197
+  traps tried a writer, 1 finished, no new edge. The 1275 Lua functions that never finish stop on state
+  invariants (`abort()` in `luaD_throw` with no handler, OOB and null reads of fields no pool call sets),
+  which a prefix of integer-argument calls does not establish. Decided against; per-shape builders stay.
 
 ## 9. Review log
 
