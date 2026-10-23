@@ -119,11 +119,11 @@ exact share offsets (L2), the stuck report's names (L3).
 Untaken edges, N=24 seed 1234, `--eval-link --eval-state`, solver off (eager baseline from
 `sweep-lazy-base`; lazy runs `lazy-lua-alias`, `lazy-zstd-alias` in `docs/runs.md`):
 
-| | eager | lazy | change |
+| | eager | lazy (runs lazy-lua-head128, lazy-zstd-head128) | change |
 |---|---|---|---|
-| Lua | 2061 | 1708 | -353 (17%) |
-| zstd | 2029 | 1754 | -275 (14%) |
-| total | 4090 | 3462 | -628 (15%) |
+| Lua | 2061 | 1701 | -360 (17%) |
+| zstd | 2029 | 1717 | -312 (15%) |
+| total | 4090 | 3418 | -672 (16%) |
 
 Findings that changed the design while building it:
 - A NULL at 1/8 per drawn pointer cell kills any deep chain (`ci->func->gc->p->k`): all 852
@@ -144,7 +144,11 @@ corpora were not compared against gcc (the gate has no leg for them).
 
 Headroom (2026-10-23, runs `lazy-lua-head`, `lazy-zstd-head`; the table above is with it): the
 remaining `luaV_execute` stop was reads at negative offsets (`p - 16`, `p - 24`: `top - 1`,
-container_of). A pointer to a lazy object now starts `LHEAD` (32) bytes in, so the object has
+container_of). A pointer to a lazy object now starts `LHEAD` bytes in, so the object has
 room before it; the gcc side needs no change (tags are offsets from the object start).
-`luaV_execute` still stops on a read out of bounds a level or two further in (no offset
-evidence kept: next probe is the temporary `LZDBG` print of object, offset, size at the trap).
+`LHEAD` 32 gave 1708 / 1754. Final values (runs `lazy-lua-head128`, `lazy-zstd-head128`, the
+table above): `LHEAD` 128, `EV_LAZY_CAP` 8192, returned-pointer window `size + 64 + LHEAD`
+(eval) / `size + SW_SLACK` 192 (gcc, blobs `calloc(size + SW_SLACK + 16)`).
+`luaV_execute` still stops (852 edges) on a read out of bounds at `param 1 +160 +128 +128 +152`.
+A debug print showed the remaining oob reads are at -16 on 144-byte objects, +8200 past the
+cap, and huge offsets (268435568) from random integer indices: not fixable by headroom.

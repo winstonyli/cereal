@@ -85,7 +85,7 @@ legs with `EVAL_SWEEP_LAZY=1 EVAL_SWEEP_SOLVE='z3 -in -smt2'` on the three test 
 **S7 Measurement (through `run.ps1`, RUNS.md).** `sweep_meas.sh` on Lua and zstd with
 `--eval-link --eval-state`: eager with solver (3906 expected: Lua 1934, zstd 1972; this is the
 stage's regression check, so run it first on the S1-S6 build), lazy with solver. Report both with the
-stuck lines. Success: eager unchanged; lazy-with-solver below lazy-without (3462) and below 3906.
+stuck lines. Success: eager unchanged; lazy-with-solver below lazy-without (3418) and below 3906.
 Falsifier: lazy-with-solver not below lazy-without, or eager moved.
 
 **S8 Close-out.** Docs: design stage 2 marked built, this plan `done`, `PARKED.md` row for pointer
@@ -165,4 +165,4 @@ growing `sh`, `load_n` calling `lazy_fill` before `load_sh`, the draw inventory,
 `sx_sym` taking arbitrary ids (filter against the table length), `snap_restore` and `ev_kill_obj`
 freeing `sh`, the final attempt's outcomes baking the hint into the seed.
 
-Still open: whether S7's success bar should be a number (it is "below 3462 and below 3906").
+Still open: whether S7's success bar should be a number (it is "below 3418 and below 3906").

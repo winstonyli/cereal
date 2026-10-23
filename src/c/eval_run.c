@@ -1093,7 +1093,7 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
 
 #define LMAXBL 32               /* lazy objects per call */
 #define LMAXBY 32768            /* bytes of lazy objects per call */
-#define LHEAD 32                /* a pointer to a lazy object starts this far in: the program may look before it (container_of, p[-1]) */
+#define LHEAD 128               /* a pointer to a lazy object starts this far in: the program may look before it (container_of, p[-1]) */
 
 typedef struct LBlob {
     uint32_t id;                /* the object */
@@ -1360,7 +1360,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         } else if (s->rk == SR_PTR) {
             uint64_t tag = pid(x) ? ~0ull : 0;
             for (i = 0; i < z.bl.len; i++)
-                if (pid(x) == z.bl.data[i].id && poff(x) >= 0 && (uint64_t)poff(x) <= v->obj.data[pid(x) - 1].size + 64)
+                if (pid(x) == z.bl.data[i].id && poff(x) >= 0 && (uint64_t)poff(x) <= v->obj.data[pid(x) - 1].size + 64 + LHEAD)
                     tag = (((uint64_t)i + 1) << 32) | (uint32_t)poff(x);
             if (tag == ~0ull)
                 *bad = true;

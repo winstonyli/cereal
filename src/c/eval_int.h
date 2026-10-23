@@ -148,7 +148,7 @@ struct Ev {
     void *lazy_ud;              /* the sweep's context for lazy_fill */
 };
 
-#define EV_LAZY_CAP 4096        /* the most a lazy object grows to */
+#define EV_LAZY_CAP 8192        /* the most a lazy object grows to */
 
 typedef struct Loc {
     uint32_t ref, obj;

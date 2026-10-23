@@ -29,9 +29,12 @@
 /* --eval-lazy: the call line carries the graph of objects the call made (docs/LAZY_BLOBS_DESIGN.md):
  *   u32 n; u32 size[n]; the arguments; u32 nlinks, {blob, off, target + 1, target off}[];
  *   u32 nzero, {blob, off}[]; the initial bytes of each blob.
- * sw_load rebuilds it (each blob 16 bytes longer, so a one-past-the-end pointer is not the next
+ * sw_load rebuilds it (each blob SW_SLACK + 16 bytes longer, so a one-past-the-end pointer is not the next
  * blob's start) and returns the arguments; sw_out appends the final bytes of every blob, with the
  * link and zero cells zeroed (pointer values differ between the two sides), and frees the graph. */
+/* a returned pointer may point this far past a blob (64 + LHEAD of src/c/eval_run.c) and still be tagged */
+#define SW_SLACK 192
+
 typedef struct SwG {
     unsigned n, nl, nz;
     unsigned char **b;
@@ -65,7 +68,7 @@ static const unsigned char *sw_load(SwG *g, const unsigned char *in, unsigned ar
     g->zc = p + 4;
     ini = p + 4 + 8 * g->nz;
     for (i = 0; i < g->n; i++) {
-        g->b[i] = calloc(g->size[i] + 80, 1);
+        g->b[i] = calloc(g->size[i] + SW_SLACK + 16, 1);
         memcpy(g->b[i], ini, g->size[i]);
         ini += g->size[i];
     }
@@ -98,7 +101,7 @@ static unsigned long long sw_tag(const SwG *g, void *r)
     unsigned i;
     unsigned long long t = r ? ~0ull : 0;
     for (i = 0; r && i < g->n; i++)
-        if ((unsigned char *)r >= g->b[i] && (unsigned char *)r <= g->b[i] + g->size[i] + 64)
+        if ((unsigned char *)r >= g->b[i] && (unsigned char *)r <= g->b[i] + g->size[i] + SW_SLACK)
             t = ((unsigned long long)(i + 1) << 32) | (unsigned)((unsigned char *)r - g->b[i]);
     return t;
 }
