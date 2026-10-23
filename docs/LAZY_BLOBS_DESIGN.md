@@ -115,6 +115,21 @@ integer stops as unsupported, since cereal's object-id pointer and gcc's address
 - **D4 Solver order.** Sweep first, solver second (recommended): the solver must keep
   working on the eager layout until lazy is default, which is what the A/B window is for.
 
+Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LAZY_BLOBS_PLAN.md`):
+
+- **D5 Input identity.** A lazy call's input is its draw log: every draw (scalar byte, pointer-cell
+  outcome) has a 64-bit key, a hash of the path of pointer cells from a parameter plus the
+  offset; a parameter's key is its index. A rerun consults a forced map (key -> value) before it
+  draws. Numbering draws by order was rejected: a path change adds or drops blobs and shifts it.
+- **D6 Solver symbols.** Dense ids by first use in a tracked run, with a per-run table id -> key;
+  `sx_sym(uint32)` and `SxModel` are unchanged, and a model is mapped back to keys.
+- **D7 What is solved.** Scalar bytes (parameters and lazily filled blob bytes) only.
+- **D8 Pointer outcomes.** Replayed from the seed (so a tracked rerun is faithful), never
+  changed by the solver: parked in `PARKED.md` ("Pointer outcomes as solver choices"). The
+  recorded outcomes are those of the final run of a call (after alias-hint retries).
+- **D9 Corpus.** A seed is a log (forced map); `search_keep` stores it and `mut_solve` writes
+  the model's keys over a copy. The rotation `mut_gen`, `mut_solve` and `solve_step1` are unchanged.
+
 ## 5. Risks
 
 - Out-of-bounds fidelity drops: a short parameter blob grows to the cap instead of trapping.
