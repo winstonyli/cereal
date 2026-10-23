@@ -224,6 +224,13 @@ State from earlier calls (prototype, 2026-10-22; `--eval-state`):
   contexts. Host functions added for the state pass: `fflush`, `__errno_location` (one pinned int),
   `strstr`, `strspn`, `strcspn`, `strpbrk`, `strcoll`, `fmod`, `ldexp`; `Obj.pin` keeps host objects
   across a restore.
+- Failing externals (`h_fail` in `eval_libc.c`; later, run `sweep-link-state10`): file, environment and
+  locale functions (`fopen`, `getenv`, `getc`, `fread`, `setlocale`, ...) and zstd's optional trace hooks
+  are host functions that return 0 with no effect, so a call that reaches them goes on down its error
+  path. Lua 1932 -> 1923 and zstd 1972 -> 1974 untaken (-7 of 3906); state-pass stops 862 -> 826. Not
+  `system` and `remove` (effects), `strtod` and `__ctype_b_loc` (need real results); `strerror` (11
+  stops) is next in the census. A full sandbox that runs externals natively was weighed and not built:
+  random arguments make a real `fopen` fail the same way, so it would reach the same error paths.
 - Result with these (run `2026-10-22-sweep-link-state4`): edges taken 4653 of 8655 (53.8%), 663
   queries. Lua untaken 1973 (never finished 1316). zstd builds CCtx/DCtx but stays at 1988 untaken
   (never finished 331): a fresh context reaches only the fresh-context behavior, so it needs

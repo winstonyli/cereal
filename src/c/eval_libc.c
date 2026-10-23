@@ -924,6 +924,17 @@ static uint64_t h_longjmp(Ev *v, const HArg *a, unsigned na)
     return 0;
 }
 
+/* A call that fails: no effect, result 0 (NULL, EOF-less zero, void).  For functions of the outside
+ * world (files, environment, locale) and optional hooks: the sweep's random arguments name nothing
+ * that exists, so the real call fails the same way.  Not `system` and `remove`, which have effects. */
+static uint64_t h_fail(Ev *v, const HArg *a, unsigned na)
+{
+    (void)v;
+    (void)a;
+    (void)na;
+    return 0;
+}
+
 /* ---- the table --------------------------------------------------------------------- */
 
 static const struct {
@@ -944,6 +955,13 @@ static const struct {
     {"strspn", h_strspn},   {"strcspn", h_strcspn}, {"strpbrk", h_strpbrk}, {"strstr", h_strstr},
     {"strcoll", h_strcoll}, {"fflush", h_fflush},   {"__errno_location", h_errno_location},
     {"fmod", h_fmod},       {"ldexp", h_ldexp},
+    {"fopen", h_fail},      {"freopen", h_fail},    {"tmpfile", h_fail},    {"tmpnam", h_fail},
+    {"getenv", h_fail},     {"setlocale", h_fail},  {"localeconv", h_fail}, {"getc", h_fail},
+    {"fgetc", h_fail},      {"fgets", h_fail},      {"fread", h_fail},      {"fwrite", h_fail},
+    {"clearerr", h_fail},   {"ferror", h_fail},     {"feof", h_fail},       {"fclose", h_fail},
+    {"ungetc", h_fail},     {"fseek", h_fail},      {"ftell", h_fail},
+    {"ZSTD_trace_compress_begin", h_fail},   {"ZSTD_trace_compress_end", h_fail},
+    {"ZSTD_trace_decompress_begin", h_fail}, {"ZSTD_trace_decompress_end", h_fail},
 };
 
 HostFn ev_host_fn(const char *name)
