@@ -118,4 +118,51 @@ index breaks replay when the path changes, hence per-cell outcome keys; `search_
 `SCORPUS`/`SSEEDS` logic needs the seed type (S3). Round 2: S6 must also drop the gate's
 `EVAL_SWEEP_SOLVE=` overrides, or the solver leg stays off for lazy; S7's eager check must run
 before the lazy numbers, since a moved eager figure invalidates the comparison. Round 3: nothing
-else material found on a full pass. Not yet stress-tested by a second reader.
+else material found on a full pass. Round 4 below is the second reader.
+
+## Round 4: second-reader review (Sonnet, 2026-10-23) and what it changed
+
+Findings accepted, each a binding amendment to the task named:
+
+- **S1 always draws, then overrides.** `lazy_draw` consumes `rs` exactly as the code does now
+  (`sweep_arg` takes a variable number of `rnd`; the share branch draws target and offset even
+  under a hint), then replaces the value with the forced one. A partial force then leaves every
+  unforced draw unchanged. The "same draws up to the first forced difference" claim in Risks holds
+  only this way.
+- **S1 keeps the NULL ordinal.** `nullat` still decides fresh draws (so S1's byte-identical check
+  holds); the log records the outcome per cell; a forced outcome takes precedence over `nullat`
+  and over a hint, and a forced non-NULL outcome suppresses the NULL at that ordinal (never two
+  NULLs).
+- **S1 logs a share target as (blob key, offset)**, not a blob index; a missing blob falls back to
+  a fresh draw. `LHint.tgt` stays an index (it lives within one call's attempts).
+- **S1 normalizes forced parameter bytes** (bool to 0/1, as eager `solve_run` does); float
+  parameters get no symbol (S4). Log value encodings and the key hash are fixed in S1's code and
+  commented there: key = 64-bit FNV-1a over (parent key, cell offset, kind).
+- **S2 changes the signature**: `sweep_call_lazy(..., LLog *rec_out)` moves `rec` out of `Lazy z`
+  before it is freed; recording is on only when `x->sv` or replay mode is set. The replay assertion
+  prints to a sink and compares status, result bytes and edge coverage, not the printed line (stop
+  lines print only under `show_stop`), and skips functions whose call changes globals when there
+  is no `snap`. "Lua's lvm.c subset" is the 13-file list in `lv.sh` (lvm, lopcodes, lapi, ldo,
+  lobject, ltm, lfunc, lstring, ltable, lgc, lstate, ldebug, lmem), kept as `tests/` data only if
+  it is needed.
+- **S3's check compares pre-change with post-change output for each flag setting** (with and
+  without `--eval-solve`), not the two settings with each other (`solve_run` prints calls into
+  the body). `SSeed` owns its log and `rs0`; `search_free` frees it.
+- **S4 per attempt**: `sx_clear`, `path.len = 0`, the id -> key table, `rec` and `ash` reset at the
+  start of each `lazy_call1` attempt; `v->ash = NULL` after the call; `lazy_fill` refetches the
+  object after `lazy_new` before storing `sh`. Tracked memory is 4x (`sh` is `uint32_t` per byte).
+  The fixture S4 refers to is `lazy_guard.c` of S5.
+- **S5's child seed is the rerun's `rec`** plus the seed's `rs0`, not the patched copy (the path may
+  have changed); `solve_run` works on a local copy of `rs0`, never `x->rs`. The fixture's guard is
+  one no compared constant reveals (`k[0] * 3 + 7 == 1000`; a constant in the dictionary would let
+  the random phase reach it), and the check requires the edge to be credited to a solver round
+  (`ss.gain`, "first by a solver round" in the solve line), not merely reached.
+- **Accepted, not changed**: a seed from a dictionary phase replays its unforced draws under
+  `dict_use`, so they may differ from the original run; forced values do not.
+
+Claims the review checked and found correct: the `x.sv` / `if (sv && !s.lazy)` gates, `lazy_grow`
+growing `sh`, `load_n` calling `lazy_fill` before `load_sh`, the draw inventory, `SxModel` and
+`sx_sym` taking arbitrary ids (filter against the table length), `snap_restore` and `ev_kill_obj`
+freeing `sh`, the final attempt's outcomes baking the hint into the seed.
+
+Still open: whether S7's success bar should be a number (it is "below 3462 and below 3906").
