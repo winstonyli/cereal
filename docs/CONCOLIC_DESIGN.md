@@ -187,8 +187,8 @@ more host-library functions (about 80).
 
 State from earlier calls (prototype, 2026-10-22; `--eval-state`):
 - A constructor is a function with no parameters that returns a pointer to a record (found by
-  shape). It runs before everything else in a building phase (`Ev.build`), where `time` and `clock`
-  return 0 (outside it they stay unsupported, so the oracle never sees them), `_setjmp` returns 0 and
+  shape). It runs before everything else in a building phase (`Ev.build`), where (as everywhere
+  now: `time` and `clock` return 0 and the sweep's gcc driver defines them the same way) `_setjmp` returns 0 and
   `longjmp` stops the call as an error path (real non-local return is parked). The objects it made
   are snapshotted whole.
 - A function with a parameter of such a pointer type gets the returned pointer (object and offset;

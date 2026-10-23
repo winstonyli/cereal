@@ -888,24 +888,21 @@ static uint64_t h_errno_location(Ev *v, const HArg *a, unsigned na)
     return mkptr(v->errno_obj, 0);
 }
 
-/* The clock: gcc's run reads the real time, so a sweep call that depends on it cannot be compared; only
- * the state-building phase (Ev.build, whose results are not compared byte for byte) may read it, as 0. */
+/* The clock stands still at 0.  The gcc side of the sweep (tests/eval_sweep.sh) defines `time` and
+ * `clock` the same way, so calls that read it still compare. */
 static uint64_t h_time(Ev *v, const HArg *a, unsigned na)
 {
     NEED(1);
-    if (!v->build || pid(a[0].x)) {
-        UNSUP(v, v->build ? "time into memory" : "time outside state building");
-        return 0;
-    }
+    if (pid(a[0].x))
+        ev_zero_n(v, a[0].x, 8);
     return 0;
 }
 
 static uint64_t h_clock(Ev *v, const HArg *a, unsigned na)
 {
+    (void)v;
     (void)a;
     (void)na;
-    if (!v->build)
-        UNSUP(v, "clock outside state building");
     return 0;
 }
 
