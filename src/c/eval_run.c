@@ -120,7 +120,7 @@ static uint64_t sweep_arg(Ev *v, const Ti *ti, uint64_t *rs)
  * an alias word: 0, or (blob + 1) << 32 | offset, to point into an earlier pointer's blob
  * instead of its own (for functions taking `start, end` or two cursors into one buffer). */
 
-enum { SA_SCALAR, SA_PTR, SA_REC };
+enum { SA_SCALAR, SA_PTR, SA_REC, SA_STATE };
 enum { SR_VOID, SR_SCALAR, SR_PTR };
 
 #define SMAXOB 64               /* blobs per function */
@@ -148,6 +148,7 @@ typedef struct SArg {
     Ti ti;                      /* SA_SCALAR */
     uint64_t off;               /* SA_SCALAR: its value; SA_PTR: its alias word (8 bytes) */
     int oi;                     /* SA_PTR, SA_REC: its blob */
+    uint64_t sptr;              /* SA_STATE: the pointer the constructor returned (see SStates) */
 } SArg;
 
 typedef struct SFn {
@@ -159,6 +160,8 @@ typedef struct SFn {
     VEC(SPf) pf;
     uint64_t insz;
     bool ptrfn, byval;
+    unsigned nstate;            /* parameters that are SA_STATE */
+    const struct Snap *snap;    /* ... and what a call restores afterwards */
 } SFn;
 
 static void sweep_typename(Checker *c, StrBuf *sb, TypeId t)
@@ -363,9 +366,156 @@ static void sweep_free(SFn *s)
     vec_free(&s->pf);
 }
 
+/* ---- state built by earlier calls (--eval-state) --------------------------------------
+ * A constructor is a function with no parameters that returns a pointer to a record
+ * (`luaL_newstate`, `ZSTD_createCCtx`).  It runs once, in the building phase (Ev.build), and the
+ * objects it made are copied (Snap).  A later function with a parameter of that pointer type gets the
+ * built object instead of a blob generated from the type, and every call puts the copy back, so
+ * calls stay independent of each other. */
+
+typedef struct Snap {
+    size_t n;                   /* objects at the time */
+    Obj *o;                     /* each one whole; a live one's bytes and init flags are private copies */
+} Snap;
+
+typedef struct SState {
+    char key[96];               /* the spelled pointer type */
+    uint64_t ptr;               /* what the constructor returned: an object and an offset in it */
+} SState;
+
+typedef struct SStates {
+    SState st[8];
+    unsigned n;
+    Snap snap;
+} SStates;
+
+static uint8_t *dup_bytes(const uint8_t *p, uint64_t n)
+{
+    return memcpy(xmalloc(n ? n : 1), p, n);
+}
+
+static Snap snap_take(Ev *v)
+{
+    Snap s = {0};
+    size_t i;
+    s.n = v->obj.len;
+    s.o = xcalloc(s.n + 1, sizeof *s.o);
+    for (i = 0; i < s.n; i++) {
+        s.o[i] = v->obj.data[i];
+        s.o[i].sh = NULL;
+        if (s.o[i].live) {
+            s.o[i].b = dup_bytes(s.o[i].b, s.o[i].size);
+            s.o[i].init = dup_bytes(s.o[i].init, s.o[i].size);
+        }
+    }
+    return s;
+}
+
+/* Back to the snapshot: its objects return whole (a call may have freed one, or made another take its
+ * id); what a call made is killed, except what is cached by id for the whole run (static objects,
+ * string literals, labels, functions). */
+static void snap_restore(Ev *v, const Snap *s)
+{
+    size_t i;
+    while (v->obj.len < s->n) {
+        Obj z;
+        memset(&z, 0, sizeof z);
+        vec_push(&v->obj, z);
+    }
+    for (i = 0; i < v->obj.len; i++) {
+        Obj *o = &v->obj.data[i];
+        if (i >= s->n) {
+            if (o->live && o->kind == OK_NONE && !o->fn)
+                ev_kill_obj(v, (uint32_t)i + 1);
+            continue;
+        }
+        free(o->b);
+        free(o->init);
+        free(o->sh);
+        *o = s->o[i];
+        if (o->live) {
+            o->b = dup_bytes(s->o[i].b, o->size);
+            o->init = dup_bytes(s->o[i].init, o->size);
+        }
+    }
+}
+
+static void snap_free(Snap *s)
+{
+    size_t i;
+    for (i = 0; i < s->n; i++) {
+        free(s->o[i].b);
+        free(s->o[i].init);
+    }
+    free(s->o);
+}
+
+/* The spelled type of a pointer-to-record type, "" for any other. */
+static void state_key(Checker *c, TypeId pt, char *key, size_t cap)
+{
+    StrBuf sb = {0};
+    TypeTable *tt = &c->tt;
+    key[0] = 0;
+    if (type_ckind(tt, pt) == TY_PTR && type_is_record(tt, type_base(tt, pt))) {
+        sweep_typename(c, &sb, pt);
+        snprintf(key, cap, "%s", sb_cstr(&sb));
+    }
+    sb_free(&sb);
+}
+
+/* Run the constructors, keep what they built.  A constructor that does not finish is reported, not hidden. */
+static void states_build(Ev *v, SStates *ss)
+{
+    size_t i;
+    for (i = 0; i < v->fn.len && ss->n < sizeof ss->st / sizeof *ss->st; i++) {
+        const Fn *f = &v->fn.data[i];
+        SState t;
+        uint64_t slot[1] = {0}, x = 0;
+        unsigned k;
+        EvRes r;
+        if (f->fsym == SYM_NONE || !f->user || f->variadic || f->np)
+            continue;
+        v->c = f->c;
+        state_key(f->c, f->ret, t.key, sizeof t.key);
+        if (!t.key[0])
+            continue;
+        for (k = 0; k < ss->n && strcmp(ss->st[k].key, t.key); k++)
+            ;
+        if (k < ss->n)
+            continue;
+        fprintf(stderr, "cereal: state: running %s\n", cident(f->c, csym(f->c, f->fsym)->name));
+        v->build = true;
+        r = ev_call(v, f->fsym, slot, 0, &x);
+        v->build = false;
+        if (r.status != EV_OK || !pid(x)) {
+            fprintf(stderr, "cereal: state: %s: %s %s\n", cident(f->c, csym(f->c, f->fsym)->name),
+                    r.status != EV_OK ? stop_name(r.status) : "returned NULL", r.status != EV_OK ? r.why : "");
+            v->res.status = EV_OK;
+            continue;
+        }
+        t.ptr = x;
+        fprintf(stderr, "cereal: state: %s built a %s\n", cident(f->c, csym(f->c, f->fsym)->name), t.key);
+        ss->st[ss->n++] = t;
+    }
+    ss->snap = snap_take(v);
+    {
+        size_t m, live = 0;
+        uint64_t bytes = 0, big = 0;
+        for (m = 0; m < ss->snap.n; m++)
+            if (ss->snap.o[m].live) {
+                live++;
+                bytes += ss->snap.o[m].size;
+                if (ss->snap.o[m].size > big)
+                    big = ss->snap.o[m].size;
+            }
+        fprintf(stderr, "cereal: state: snapshot of %zu objects, %llu bytes (largest %llu)\n", live,
+                (unsigned long long)bytes, (unsigned long long)big);
+    }
+}
+
 /* Can f be swept, and how: the pointers inside the objects it is given point to objects of their
  * own, as far as the budget goes. */
-static bool sweep_fn(Ev *v, const Fn *f, SFn *s)
+static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts)
 {
     TypeTable *tt = &v->c->tt;
     TypeKind rk = type_ckind(tt, f->ret);
@@ -389,6 +539,21 @@ static bool sweep_fn(Ev *v, const Fn *f, SFn *s)
     for (k = 0; k < f->np; k++) {
         SArg *a = &s->a[k];
         SObj o;
+        if (sts) {                      /* a pointer to a record some constructor built: that object */
+            char key[96];
+            unsigned j;
+            state_key(v->c, f->par[k].ty, key, sizeof key);
+            for (j = 0; key[0] && j < sts->n && strcmp(sts->st[j].key, key); j++)
+                ;
+            if (key[0] && j < sts->n) {
+                memset(a, 0, sizeof *a);
+                a->kind = SA_STATE;
+                a->sptr = sts->st[j].ptr;
+                s->nstate++;
+                s->ptrfn = true;
+                continue;
+            }
+        }
         if (!sweep_par(v, f->par[k].ty, a, &o) || !sweep_named(v->c, f->par[k].ty))
             return false;
         if (a->kind == SA_SCALAR) {
@@ -582,6 +747,8 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
             uint64_t w = 0;
             memcpy(&w, in + a->off, 8);
             slot[k] = w ? mkptr(ids[(w >> 32) - 1], (uint32_t)w) : mkptr(ids[a->oi], 0);
+        } else if (a->kind == SA_STATE) {
+            slot[k] = a->sptr;
         } else
             slot[k] = mkptr(ids[a->oi], 0);
     }
@@ -616,9 +783,11 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
             if (s->ob[s->pf.data[k].ob].pointee)
                 memset(out + oo[s->pf.data[k].ob] + s->pf.data[k].off, 0, 8);
     }
+    if (s->snap)
+        snap_restore(v, s->snap);
     for (i = 0; i < s->nob; i++)
         ev_kill_obj(v, ids[i]);
-    ev_trim(v);                         /* a long sweep would otherwise keep a slot per object it ever made */
+    ev_trim(v);                        /* a long sweep would otherwise keep a slot per object it ever made */
     if (r.status == EV_OK || (show_stop && (!s->ptrfn || r.status == EV_UNSUPPORTED))) {
         sb_printf(body, "call %s ", name);
         sweep_hex(body, in, (size_t)s->insz);
@@ -1115,6 +1284,9 @@ static void eval_sweep(Checker *c0)
     SxSolver *sv = NULL;
     SolveStat ss = {0};
     VEC(SweptFn) swept = {0};
+    SStates sts = {0};
+    int pass = 0;                       /* 1: --eval-state, the first pass: the functions with a built-state parameter */
+    VEC(size_t) sfin = {0};             /* ... of them, those with a call that finished */
     if (!out)
         return;
     if (c0->opt.eval_solve) {
@@ -1127,38 +1299,54 @@ static void eval_sweep(Checker *c0)
         sx_limit(sv, SRLIMIT);
         v->track = false;
     }
-    for (i = 0; i < v->fn.len; i++) {
-        Fn *f = &v->fn.data[i];
+    if (c0->opt.eval_state) {
+        states_build(v, &sts);
+        pass = sts.n > 0;
+    }
+    for (i = 0;; i++) {
+        Fn *f;
         const char *name;
         SFn s;
         SCtx x = {0};
         bool ok;
         StrBuf head = {0}, body = {0};
-        Checker *c = f->c;
+        Checker *c;
+        if (i >= v->fn.len) {
+            if (!pass)
+                break;
+            pass = 0;                   /* then the normal pass over all of them */
+            i = 0;
+        }
+        f = &v->fn.data[i];
+        c = f->c;
         if (f->fsym == SYM_NONE || !f->user || f->variadic || f->np > 16)
             continue;
         v->c = c;
         name = cident(c, csym(c, f->fsym)->name);
         if (!strcmp(name, "main"))
             continue;
-        ok = sweep_fn(v, f, &s);
+        ok = sweep_fn(v, f, &s, pass ? &sts : NULL) && (!pass || s.nstate);
+        if (ok && pass)
+            s.snap = &sts.snap;
         if (!ok) {
             sweep_free(&s);
             v->res.status = EV_OK;
             continue;
         }
-        if (c0->opt.link && c != cur) {
+        if (!pass && c0->opt.link && c != cur) {
             fprintf(out, "file %s\n", main_path(c));
             cur = c;
         }
-        sb_printf(&head, "fn %s ", name);
-        sweep_typename(c, &head, f->ret);
-        for (k = 0; k < f->np; k++) {
-            sb_putc(&head, '|');
-            sweep_typename(c, &head, f->par[k].ty);
+        if (!pass) {                    /* the second pass has no gcc side: nothing of it is printed */
+            sb_printf(&head, "fn %s ", name);
+            sweep_typename(c, &head, f->ret);
+            for (k = 0; k < f->np; k++) {
+                sb_putc(&head, '|');
+                sweep_typename(c, &head, f->par[k].ty);
+            }
+            sb_putc(&head, 10);
+            sweep_thunk(c, &head, name, f, &s);
         }
-        sb_putc(&head, 10);
-        sweep_thunk(c, &head, name, f, &s);
         x.v = v;
         x.sv = sv;
         x.ss = &ss;
@@ -1196,22 +1384,29 @@ static void eval_sweep(Checker *c0)
         if (sv) {
             size_t ed = 0, tk = 0;
             blk_count(f, &ed, &tk);
-            ss.edges += ed;
-            ss.seeded += x.q.corpus.len > 0;
+            ss.edges += pass ? 0 : ed;
+            ss.seeded += !pass && x.q.corpus.len > 0;
             while (solve_step(&x))
                 ;
             tk = 0;
             ed = 0;
             blk_count(f, &ed, &tk);
-            ss.taken += tk;
+            ss.taken += pass ? 0 : tk;
             search_free(&x.q);
         }
-        {
+        if (!pass) {
             SweptFn sw = { i, x.saw_ok, "" };
+            size_t m;
+            for (m = 0; m < sfin.len; m++)      /* finished with built state counts as finished */
+                sw.finished |= sfin.data[m] == i;
             memcpy(sw.why, x.why, sizeof sw.why);
             vec_push(&swept, sw);
+        } else if (x.saw_ok) {
+            vec_push(&sfin, i);
+        } else {
+            fprintf(stderr, "cereal: state-pass: %s: %s\n", name, x.why[0] ? x.why : "no call stopped");
         }
-        if (!x.bad && (!s.ptrfn || x.saw_ok || x.saw_unsup)) {
+        if (!pass && !x.bad && (!s.ptrfn || x.saw_ok || x.saw_unsup)) {
             fputs(sb_cstr(&head), out);
             fputs(sb_cstr(&body), out);
         }
@@ -1220,6 +1415,9 @@ static void eval_sweep(Checker *c0)
         sb_free(&head);
         sb_free(&body);
     }
+    if (c0->opt.eval_state)
+        snap_free(&sts.snap);
+    vec_free(&sfin);
     if (sv) {
         fprintf(stderr,
                 "cereal: solve: %lu queries (%lu sat, %lu unsat, %lu unknown), %lu calls, %lu reached a new edge; "

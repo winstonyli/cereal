@@ -113,6 +113,7 @@ struct Ev {
     VEC(uint32_t) rec;          /* ev_object: the offsets of address-valued elements, in order */
     uint32_t rec_id;            /* ... of this object */
     bool fold;                  /* constant folding, as gcc does: conversions saturate instead of trapping */
+    bool build;                 /* the sweep's state-building phase: the clock may be read (as 0) */
     VEC(uint32_t) lab;          /* label objects: triples (fn index, label id, object) */
     VEC(uint64_t) dict;         /* the sweep: operands of integer compares and switch cases, while dict_on */
     bool dict_on, dict_use;     /* collecting; drawing from it (sorted, unique) */

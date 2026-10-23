@@ -792,6 +792,45 @@ static uint64_t h_abort(Ev *v, const HArg *a, unsigned na)
     return 0;
 }
 
+/* The clock: gcc's run reads the real time, so a sweep call that depends on it cannot be compared; only
+ * the state-building phase (Ev.build, whose results are not compared byte for byte) may read it, as 0. */
+static uint64_t h_time(Ev *v, const HArg *a, unsigned na)
+{
+    NEED(1);
+    if (!v->build || pid(a[0].x)) {
+        UNSUP(v, v->build ? "time into memory" : "time outside state building");
+        return 0;
+    }
+    return 0;
+}
+
+static uint64_t h_clock(Ev *v, const HArg *a, unsigned na)
+{
+    (void)a;
+    (void)na;
+    if (!v->build)
+        UNSUP(v, "clock outside state building");
+    return 0;
+}
+
+/* The happy path only: setjmp returns 0 and a longjmp is an error path the call does not evaluate
+ * (PARKED.md: real non-local return). */
+static uint64_t h_setjmp(Ev *v, const HArg *a, unsigned na)
+{
+    (void)v;
+    (void)a;
+    (void)na;
+    return 0;
+}
+
+static uint64_t h_longjmp(Ev *v, const HArg *a, unsigned na)
+{
+    (void)a;
+    (void)na;
+    UNSUP(v, "longjmp (an error path)");
+    return 0;
+}
+
 /* ---- the table --------------------------------------------------------------------- */
 
 static const struct {
@@ -807,6 +846,8 @@ static const struct {
     {"strrchr", h_strrchr}, {"abs", h_abs},         {"labs", h_labs},       {"llabs", h_labs},
     {"tolower", h_tolower}, {"toupper", h_toupper}, {"floor", h_floor},     {"ceil", h_ceil},
     {"frexp", h_frexp},     {"exit", h_exit},       {"abort", h_abort},
+    {"time", h_time},       {"clock", h_clock},     {"_setjmp", h_setjmp},  {"setjmp", h_setjmp},
+    {"longjmp", h_longjmp}, {"_longjmp", h_longjmp},
 };
 
 HostFn ev_host_fn(const char *name)

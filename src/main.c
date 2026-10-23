@@ -1694,6 +1694,10 @@ int main(int argc, char **argv)
             fe_opts.link = xcalloc(1, sizeof *fe_opts.link);
             continue;
         }
+        if (!strcmp(argv[i], "--eval-state")) {
+            fe_opts.eval_state = true;
+            continue;
+        }
         if (!strncmp(argv[i], "--eval-solve=", 13)) {
             fe_opts.eval_solve = argv[i] + 13;
             continue;

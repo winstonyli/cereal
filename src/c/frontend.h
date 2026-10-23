@@ -26,6 +26,7 @@ typedef struct FrontendOpts {
     unsigned long eval_seed;
     struct EvLink *link;        /* ... all the files of the run as one program (--eval-link) */
     const char *eval_solve;     /* ... and solve for more inputs with this solver command (--eval-solve=CMD) */
+    bool eval_state;            /* --eval-state */
     const char *validate_summaries;
     const Target *target;       /* NULL: the host's */
     FILE *out;                  /* the dumps */
