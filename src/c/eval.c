@@ -19,6 +19,8 @@ void ev_fail(Ev *v, int st, const char *fmt, ...)
         va_list ap;
         va_start(ap, fmt);
         v->res.status = st;
+        v->f_obj = v->ld_obj;
+        v->f_off = v->ld_off;
         vsnprintf(v->res.why, sizeof v->res.why, fmt, ap);
         va_end(ap);
     }
@@ -234,10 +236,16 @@ static uint64_t load_n(Ev *v, uint64_t p, const Ti *ti)
         return 0;
     for (i = 0; i < ti->bytes; i++) {
         if (!o->init[poff(p) + i]) {
+            v->ld_obj = pid(p);
+            v->ld_off = poff(p) + (int32_t)i;
             TRAP(v, "read of an uninitialized value");
             return 0;
         }
         x |= (uint64_t)o->b[poff(p) + i] << (8 * i);
+    }
+    if (ti->ptr) {
+        v->ld_obj = pid(p);
+        v->ld_off = poff(p);
     }
     v->sh = load_sh(v, o, (uint64_t)poff(p), ti);
     return ev_canon(ti, x);

@@ -839,6 +839,69 @@ static void sweep_track(Ev *v, const Fn *f, const SFn *s, const uint32_t *ids, u
 
 /* One call of the sweep, printed as "call NAME IN => OUT" or "call NAME IN STOP why"; `bad`
  * is set when the result is a pointer to something that is not one of the objects. */
+/* ".a.b" for the member of type t at byte offset off (arrays by element, records by member). */
+static void field_path(Checker *c, TypeId t, uint64_t off, StrBuf *sb)
+{
+    TypeTable *tt = &c->tt;
+    bool ok;
+    if (type_ckind(tt, t) == TY_ARRAY) {
+        TypeId e = type_base(tt, t);
+        uint64_t es = type_size(tt, e, &ok);
+        if (ok && es)
+            field_path(c, e, off % es, sb);
+    } else if (type_is_record(tt, t)) {
+        Record *r = type_record(tt, t);
+        uint32_t i, best = r->nfields;
+        for (i = 0; i < r->nfields; i++) {
+            const Field *fl = &tt->fields.data[r->fields + i];
+            if (!(fl->flags & FF_BITFIELD) && fl->off_bits / 8 <= off &&
+                (best == r->nfields || fl->off_bits > tt->fields.data[r->fields + best].off_bits))
+                best = i;
+        }
+        if (best < r->nfields) {
+            const Field *fl = &tt->fields.data[r->fields + best];
+            if (fl->name)
+                sb_printf(sb, ".%s", cident(c, fl->name));
+            field_path(c, fl->ty, off - fl->off_bits / 8, sb);
+        }
+    }
+}
+
+/* Where the call that just stopped read the pointer (or byte) it stopped on, for the miss report:
+ * the parameter's blob and the member at that offset, a built state's object, or something else. */
+static void sweep_where(Ev *v, const Fn *f, const SFn *s, const uint32_t *ids)
+{
+    StrBuf sb = {0};
+    int i;
+    size_t k;
+    if (!v->f_obj) {
+        v->note[0] = 0;
+        return;
+    }
+    for (i = 0; i < s->nob && ids[i] != v->f_obj; i++)
+        ;
+    if (i < s->nob) {
+        const SObj *b = &s->ob[i];
+        for (k = 0; k < f->np && !(s->a[k].kind == SA_PTR && s->a[k].oi == i); k++)
+            ;
+        if (k < f->np)
+            sb_printf(&sb, "param %zu ", k + 1);
+        else
+            sb_puts(&sb, "linked blob ");
+        if (b->ty) {
+            sweep_typename(f->c, &sb, TYPE_UNQUAL(type_canon(&f->c->tt, b->ty)));
+            field_path(f->c, b->ty, (uint64_t)v->f_off % (b->esz ? b->esz : 1), &sb);
+        } else
+            sb_puts(&sb, "bytes");
+        sb_printf(&sb, " (+%d)", (int)v->f_off);
+    } else if (s->snap && v->f_obj <= s->snap->n)
+        sb_printf(&sb, "state object %u (+%d)", (unsigned)v->f_obj, (int)v->f_off);
+    else
+        sb_printf(&sb, "other object (+%d)", (int)v->f_off);
+    snprintf(v->note, sizeof v->note, "%s", sb_cstr(&sb));
+    sb_free(&sb);
+}
+
 static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s,
                       const uint8_t *in, bool show_stop, bool *bad)
 {
@@ -889,6 +952,8 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     }
     r = ev_call(v, f->fsym, slot, f->np, &x);
     v->ash = NULL;
+    if (r.status != EV_OK)
+        sweep_where(v, f, s, ids);
     if (r.status == EV_OK) {
         if (s->rk == SR_SCALAR) {
             x = ev_canon(&s->rti, x);
@@ -1140,6 +1205,7 @@ typedef struct SCtx {
     SSearch q;
     bool bad, saw_ok, saw_unsup;
     char why[112];                      /* the first reason a call of the generator stopped, "" if none did */
+    char loc[112];                      /* ... and where it had read the pointer it stopped on */
 } SCtx;
 
 /* The solver mutation: track the next corpus input and, at each branch of its path whose other edge
@@ -1265,8 +1331,10 @@ static void mut_gen(SCtx *x)
     sweep_gen(v, x->f, x->s, x->in, &x->rs);
     st = sweep_call(v, x->body, x->name, x->f, x->s, x->in, !v->dict_use && !x->saw_unsup, &x->bad);
     x->saw_ok |= st == EV_OK;
-    if (st != EV_OK && !x->why[0])
+    if (st != EV_OK && !x->why[0]) {
         snprintf(x->why, sizeof x->why, "%s: %s", stop_name(st), v->res.why);
+        memcpy(x->loc, v->note, sizeof x->loc);
+    }
     x->saw_unsup |= !v->dict_use && st == EV_UNSUPPORTED && x->s->ptrfn;
     if (x->sv && st == EV_OK)
         search_keep(&x->q, x->s, x->in, v->newseen != seen);
@@ -1345,7 +1413,7 @@ static int miss_class(Ev *v, const Fn *f, const Blk *b)
 typedef struct SweptFn {
     size_t i;
     bool finished;
-    char why[112];
+    char why[112], loc[112];
 } SweptFn;
 
 static void miss_report(Ev *v, const SweptFn *sw, size_t n)
@@ -1353,8 +1421,11 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
     size_t counts[MC_N] = {0}, total = 0, k, i;
     struct { char key[104]; size_t edges; const char *ex[4]; unsigned nex; } why[128];
     size_t nwhy = 0;
+    struct AtEnt { char key[200]; size_t edges; } at[256];
+    size_t nat = 0;
     for (k = 0; k < n; k++) {
         const Fn *f = &v->fn.data[sw[k].i];
+        size_t fe = 0;
         v->c = f->c;
         for (i = 0; i < f->nblk; i++) {
             const Blk *b = &f->blk[i];
@@ -1367,6 +1438,7 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
                     }
                     counts[c]++;
                     total++;
+                    fe += c == MC_NOFIN;
                     if (c == MC_NOFIN) {            /* by the function's first stop, digits and addresses folded */
                         char key[104];
                         size_t m, j = 0, w;
@@ -1390,6 +1462,35 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
                     }
                 }
         }
+        if (fe) {                                   /* per function, and by the place the stop read its pointer */
+            char key[200], *p;
+            size_t w;
+            fprintf(stderr, "cereal: stuck: %zu %s: %s%s%s\n", fe, cident(f->c, csym(f->c, f->fsym)->name), sw[k].why,
+                    sw[k].loc[0] ? " @ " : "", sw[k].loc);
+            snprintf(key, sizeof key, "%s%s%s", sw[k].why, sw[k].loc[0] ? " @ " : "", sw[k].loc);
+            if ((p = strstr(key, " (+")) != NULL)
+                *p = 0;
+            for (w = 0; w < nat && strcmp(at[w].key, key); w++)
+                ;
+            if (w == nat && nat < 256) {
+                strcpy(at[nat].key, key);
+                at[nat++].edges = 0;
+            }
+            if (w < nat)
+                at[w].edges += fe;
+        }
+    }
+    for (k = 0; k < 25 && k < nat; k++) {           /* the biggest places first */
+        size_t m = k, j;
+        for (j = k + 1; j < nat; j++)
+            if (at[j].edges > at[m].edges)
+                m = j;
+        if (m != k) {
+            struct AtEnt t = at[k];
+            at[k] = at[m];
+            at[m] = t;
+        }
+        fprintf(stderr, "cereal: stuck at: %zu edges: %s\n", at[k].edges, at[k].key);
     }
     for (k = 0; k < nwhy; k++) {
         unsigned e;
@@ -1536,8 +1637,9 @@ static void eval_sweep(Checker *c0)
                 search_free(&x.q);
             }
             if (!st) {
-                SweptFn sw = { i, x.saw_ok || fin, "" };
+                SweptFn sw = { i, x.saw_ok || fin, "", "" };
                 memcpy(sw.why, x.why, sizeof sw.why);
+                memcpy(sw.loc, x.loc, sizeof sw.loc);
                 vec_push(&swept, sw);
             } else if (x.saw_ok) {
                 fin = true;

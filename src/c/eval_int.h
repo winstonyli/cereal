@@ -132,6 +132,10 @@ struct Ev {
     bool path_full;             /* ... and entries were dropped after that */
     unsigned long nbr;          /* branches and switches run while tracking, symbolic or not */
     unsigned long newseen;      /* edges taken for the first time (Blk.seen), counted over all calls */
+    uint32_t ld_obj, f_obj;     /* the object and offset of the last pointer read (ld), and of the one the
+                                   latest stop followed (f): where the bad pointer or byte was read from */
+    int32_t ld_off, f_off;
+    char note[112];             /* the sweep's description of that place, for its miss report */
 };
 
 typedef struct Loc {
