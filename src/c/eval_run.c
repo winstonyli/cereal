@@ -950,7 +950,10 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         sweep_track(v, f, s, ids, ash);
         v->ash = ash;
     }
+    v->ld_max = (uint32_t)v->obj.len;   /* the blobs and built states: what the stuck report names */
+    v->ld_obj = 0;
     r = ev_call(v, f->fsym, slot, f->np, &x);
+    v->ld_max = 0;
     v->ash = NULL;
     if (r.status != EV_OK)
         sweep_where(v, f, s, ids);
