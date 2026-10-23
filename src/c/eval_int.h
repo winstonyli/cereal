@@ -17,6 +17,7 @@ typedef struct Obj {
     uint32_t fn;                /* a function's object: its fsym + 1, in the numbering of fc */
     Checker *fc;                /* ... the file that numbering belongs to */
     bool live, ro;
+    bool pin;                   /* cached by id for the whole run (host objects): a state restore keeps it */
     bool heap;                  /* made by malloc and friends: free may end it */
     uint8_t kind;               /* OK_*: what the object stands for, for an address constant */
     bool stub;                  /* a static object with no definition here: only its address is usable */
@@ -119,6 +120,7 @@ struct Ev {
     bool dict_on, dict_use;     /* collecting; drawing from it (sorted, unique) */
     uint32_t stream[3];         /* the objects behind stdout and stderr (pointer, FILE token), 0: not made */
     uint32_t token[3];
+    uint32_t errno_obj;         /* the int behind __errno_location, 0: not made */
     /* Concolic tracking (docs/CONCOLIC_DESIGN.md): values carry an expression of the input bytes
      * beside their number; 0 is concrete.  Off, every shadow stays 0 and nothing else changes. */
     bool track;

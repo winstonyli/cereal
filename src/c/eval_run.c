@@ -149,6 +149,8 @@ typedef struct SArg {
     uint64_t off;               /* SA_SCALAR: its value; SA_PTR: its alias word (8 bytes) */
     int oi;                     /* SA_PTR, SA_REC: its blob */
     uint64_t sptr;              /* SA_STATE: the pointer the constructor returned (see SStates) */
+    const char *ctor;           /* ... and for the thunk: the constructor, and the file it is in */
+    Checker *cc;
 } SArg;
 
 typedef struct SFn {
@@ -381,6 +383,9 @@ typedef struct Snap {
 typedef struct SState {
     char key[96];               /* the spelled pointer type */
     uint64_t ptr;               /* what the constructor returned: an object and an offset in it */
+    const char *ctor;
+    Checker *c;                 /* its file */
+    bool ext;                   /* external linkage: other files can call it */
 } SState;
 
 typedef struct SStates {
@@ -425,7 +430,7 @@ static void snap_restore(Ev *v, const Snap *s)
     for (i = 0; i < v->obj.len; i++) {
         Obj *o = &v->obj.data[i];
         if (i >= s->n) {
-            if (o->live && o->kind == OK_NONE && !o->fn)
+            if (o->live && o->kind == OK_NONE && !o->fn && !o->pin)
                 ev_kill_obj(v, (uint32_t)i + 1);
             continue;
         }
@@ -450,15 +455,16 @@ static void snap_free(Snap *s)
     free(s->o);
 }
 
-/* The spelled type of a pointer-to-record type, "" for any other. */
+/* The spelled record type of a pointer-to-record type, qualifiers dropped (a `const Ctx *` parameter
+ * takes the `Ctx *` a constructor returns), "" for any other. */
 static void state_key(Checker *c, TypeId pt, char *key, size_t cap)
 {
     StrBuf sb = {0};
     TypeTable *tt = &c->tt;
     key[0] = 0;
     if (type_ckind(tt, pt) == TY_PTR && type_is_record(tt, type_base(tt, pt))) {
-        sweep_typename(c, &sb, pt);
-        snprintf(key, cap, "%s", sb_cstr(&sb));
+        sweep_typename(c, &sb, TYPE_UNQUAL(type_canon(tt, type_base(tt, pt))));
+        snprintf(key, cap, "%s *", sb_cstr(&sb));
     }
     sb_free(&sb);
 }
@@ -494,6 +500,9 @@ static void states_build(Ev *v, SStates *ss)
             continue;
         }
         t.ptr = x;
+        t.ctor = cident(f->c, csym(f->c, f->fsym)->name);
+        t.c = f->c;
+        t.ext = !(f->fsym & SYM_LOCAL) && csym(f->c, f->fsym)->linkage == LK_EXTERNAL;
         fprintf(stderr, "cereal: state: %s built a %s\n", cident(f->c, csym(f->c, f->fsym)->name), t.key);
         ss->st[ss->n++] = t;
     }
@@ -545,10 +554,12 @@ static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts)
             state_key(v->c, f->par[k].ty, key, sizeof key);
             for (j = 0; key[0] && j < sts->n && strcmp(sts->st[j].key, key); j++)
                 ;
-            if (key[0] && j < sts->n) {
+            if (key[0] && j < sts->n && (sts->st[j].c == v->c || sts->st[j].ext)) {
                 memset(a, 0, sizeof *a);
                 a->kind = SA_STATE;
                 a->sptr = sts->st[j].ptr;
+                a->ctor = sts->st[j].ctor;
+                a->cc = sts->st[j].c;
                 s->nstate++;
                 s->ptrfn = true;
                 continue;
@@ -595,14 +606,14 @@ static void sweep_hex(StrBuf *sb, const uint8_t *p, size_t n)
 
 /* The gcc side of one function: unpack the bytes, link the pointers, call, pack the result
  * (tests/sweep_rt.h). */
-static void sweep_thunk(Checker *c, StrBuf *sb, const char *name, const Fn *f, const SFn *s)
+static void sweep_thunk(Checker *c, StrBuf *sb, const char *tname, const char *name, const Fn *f, const SFn *s)
 {
     size_t k, i;
     uint64_t oo[SMAXOB], o = s->rk == SR_SCALAR ? s->rti.bytes : s->rk == SR_PTR ? 8 : 0;
     sb_printf(sb, "thunk %s %s static unsigned t_%s(const unsigned char *in, unsigned char *out){",
-              name, s->byval ? "byval" : "-", name);
+              tname, s->byval ? "byval" : "-", tname);
     for (k = 0; k < f->np; k++)
-        if (s->a[k].kind != SA_REC)
+        if (s->a[k].kind != SA_REC && s->a[k].kind != SA_STATE)
             sb_printf(sb, "unsigned char a%zu[%u] __attribute__((aligned(16)));memcpy(a%zu,in+%llu,%u);",
                       k, s->a[k].kind == SA_PTR ? 8 : s->a[k].ti.bytes, k, (unsigned long long)s->a[k].off,
                       s->a[k].kind == SA_PTR ? 8 : s->a[k].ti.bytes);
@@ -623,6 +634,14 @@ static void sweep_thunk(Checker *c, StrBuf *sb, const char *name, const Fn *f, c
         else
             sb_printf(sb, "SW_LK(b%d+%u,bp,0)", pf->ob, pf->off);
     }
+    for (k = 0; k < f->np; k++)         /* a built state: the gcc side runs the constructor afresh */
+        if (s->a[k].kind == SA_STATE) {
+            if (s->a[k].cc != c) {      /* another file: its declaration may not be visible, so go by symbol */
+                sb_printf(sb, "extern void*c%zu(void) __asm__(\"%s\");", k, s->a[k].ctor);
+                sb_printf(sb, "void*s%zu=c%zu();", k, k);
+            } else
+                sb_printf(sb, "void*s%zu=(void*)%s();", k, s->a[k].ctor);
+        }
     if (s->rk == SR_SCALAR)
         sb_puts(sb, "__auto_type r=");
     else if (s->rk == SR_PTR)
@@ -640,6 +659,8 @@ static void sweep_thunk(Checker *c, StrBuf *sb, const char *name, const Fn *f, c
                     sb_printf(sb, "*(unsigned long long*)a%zu>>32==%d?(void*)b%d:", k, s->a[j].oi + 1, s->a[j].oi);
             sb_printf(sb, "(void*)0)+(unsigned)*(unsigned long long*)a%zu:(unsigned char*)b%d)", k, a->oi);
         }
+        else if (a->kind == SA_STATE)
+            sb_printf(sb, "s%zu", k);
         else if (a->kind == SA_REC) {
             sb_puts(sb, "*(");
             sweep_typename(c, sb, s->ob[a->oi].ty);
@@ -1274,6 +1295,11 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
 }
 
 /* Every function of the files of c0 (one file, or the whole link: c0 is then the first). */
+typedef struct STxt {
+    size_t i;                   /* the function's index in Ev.fn */
+    char *t;                    /* its fn line, thunk and call lines */
+} STxt;
+
 static void eval_sweep(Checker *c0)
 {
     Ev *v = ev_of(c0);
@@ -1287,6 +1313,9 @@ static void eval_sweep(Checker *c0)
     SStates sts = {0};
     int pass = 0;                       /* 1: --eval-state, the first pass: the functions with a built-state parameter */
     VEC(size_t) sfin = {0};             /* ... of them, those with a call that finished */
+    VEC(STxt) stx = {0};                /* the state pass's gcc side, held for its function's turn in the normal pass (the output is per file, in order) */
+    size_t sp = 0;
+    char tname[160];
     if (!out)
         return;
     if (c0->opt.eval_solve) {
@@ -1325,6 +1354,15 @@ static void eval_sweep(Checker *c0)
         name = cident(c, csym(c, f->fsym)->name);
         if (!strcmp(name, "main"))
             continue;
+        snprintf(tname, sizeof tname, "%s__st", name);
+        if (!pass && sp < stx.len && stx.data[sp].i == i) {
+            if (c0->opt.link && c != cur) {
+                fprintf(out, "file %s\n", main_path(c));
+                cur = c;
+            }
+            fputs(stx.data[sp].t, out);
+            free(stx.data[sp++].t);
+        }
         ok = sweep_fn(v, f, &s, pass ? &sts : NULL) && (!pass || s.nstate);
         if (ok && pass)
             s.snap = &sts.snap;
@@ -1337,22 +1375,20 @@ static void eval_sweep(Checker *c0)
             fprintf(out, "file %s\n", main_path(c));
             cur = c;
         }
-        if (!pass) {                    /* the second pass has no gcc side: nothing of it is printed */
-            sb_printf(&head, "fn %s ", name);
-            sweep_typename(c, &head, f->ret);
-            for (k = 0; k < f->np; k++) {
-                sb_putc(&head, '|');
-                sweep_typename(c, &head, f->par[k].ty);
-            }
-            sb_putc(&head, 10);
-            sweep_thunk(c, &head, name, f, &s);
+        sb_printf(&head, "fn %s ", pass ? tname : name);
+        sweep_typename(c, &head, f->ret);
+        for (k = 0; k < f->np; k++) {
+            sb_putc(&head, '|');
+            sweep_typename(c, &head, f->par[k].ty);
         }
+        sb_putc(&head, 10);
+        sweep_thunk(c, &head, pass ? tname : name, name, f, &s);
         x.v = v;
         x.sv = sv;
         x.ss = &ss;
         x.f = f;
         x.s = &s;
-        x.name = name;
+        x.name = pass ? tname : name;
         x.body = &body;
         x.rs = (uint64_t)c0->opt.eval_seed * 0x9e3779b97f4a7c15ull;
         for (k = 0; name[k]; k++)
@@ -1406,9 +1442,15 @@ static void eval_sweep(Checker *c0)
         } else {
             fprintf(stderr, "cereal: state-pass: %s: %s\n", name, x.why[0] ? x.why : "no call stopped");
         }
-        if (!pass && !x.bad && (!s.ptrfn || x.saw_ok || x.saw_unsup)) {
-            fputs(sb_cstr(&head), out);
-            fputs(sb_cstr(&body), out);
+        if (!x.bad && (!s.ptrfn || x.saw_ok || x.saw_unsup)) {
+            if (pass) {
+                STxt t = { i, xmalloc(strlen(sb_cstr(&head)) + strlen(sb_cstr(&body)) + 1) };
+                strcat(strcpy(t.t, sb_cstr(&head)), sb_cstr(&body));
+                vec_push(&stx, t);
+            } else {
+                fputs(sb_cstr(&head), out);
+                fputs(sb_cstr(&body), out);
+            }
         }
         free(x.in);
         sweep_free(&s);
@@ -1418,6 +1460,7 @@ static void eval_sweep(Checker *c0)
     if (c0->opt.eval_state)
         snap_free(&sts.snap);
     vec_free(&sfin);
+    vec_free(&stx);
     if (sv) {
         fprintf(stderr,
                 "cereal: solve: %lu queries (%lu sat, %lu unsat, %lu unknown), %lu calls, %lu reached a new edge; "

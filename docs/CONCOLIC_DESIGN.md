@@ -185,7 +185,7 @@ calls (`luaL_newstate`, `ZSTD_createCCtx`), the parked 2b in `PARKED.md`; a deep
 generated record would not repair relations between its pointers. The cheap rest: `asm` (83),
 more host-library functions (about 80).
 
-State from earlier calls (prototype, 2026-10-22; `--eval-state`, evaluator only, no gcc side):
+State from earlier calls (prototype, 2026-10-22; `--eval-state`):
 - A constructor is a function with no parameters that returns a pointer to a record (found by
   shape). It runs before everything else in a building phase (`Ev.build`), where `time` and `clock`
   return 0 (outside it they stay unsupported, so the oracle never sees them), `_setjmp` returns 0 and
@@ -194,9 +194,22 @@ State from earlier calls (prototype, 2026-10-22; `--eval-state`, evaluator only,
 - A function with a parameter of such a pointer type gets the returned pointer (object and offset;
   `luaL_newstate` returns the `lua_State` inside a larger allocation) instead of a blob made from the
   type, and every call restores the snapshot afterwards, so calls stay independent. These functions
-  are swept before the normal pass and print nothing: with built state the thunk would have to replay
-  the constructor and compare only call results, which is not built (the oracle is off for the flag,
-  and running it with the flag on would compare statics the constructor touched).
+  are swept before the normal pass. Their gcc side is a thunk named `NAME__st` that calls the
+  constructor afresh per call (by symbol alias when it is in another file; a static constructor in
+  another file leaves the function unswept with state) and compares call results only: the return
+  value and the input blobs, not the state graph (decision 3a). The text is held and printed at the
+  function's turn in the normal pass, so the per-file output order the driver script relies on holds.
+  A `const Ctx *` parameter takes the `Ctx *` a constructor returns (the key drops qualifiers). The
+  driver defines `time` and `clock` as 0 so a constructor that reads the clock agrees with the build
+  phase. Test: `tests/cfg_state/state.c`, stage 13e1s of `tests/run.sh`.
+- Build-phase `asm` zeroes its output lvalues (any asm, not cpuid-specific), so `ZSTD_cpuid` builds
+  contexts. Host functions added for the state pass: `fflush`, `__errno_location` (one pinned int),
+  `strstr`, `strspn`, `strcspn`, `strpbrk`, `strcoll`, `fmod`, `ldexp`; `Obj.pin` keeps host objects
+  across a restore.
+- Result with these (run `2026-10-22-sweep-link-state4`): edges taken 4653 of 8655 (53.8%), 663
+  queries. Lua untaken 1973 (never finished 1316). zstd builds CCtx/DCtx but stays at 1988 untaken
+  (never finished 331): a fresh context reaches only the fresh-context behavior, so it needs
+  configured contexts (chains, several states of one type).
 - Result (run `2026-10-22-sweep-link-state3`, Lua and zstd as two links, N=24, solver on): edges taken
   4612 of 8655 (53.3%) against 4341 (50.2%) without the flag, +271 edges, all in Lua (untaken 2269 ->
   2019; the never-finished class 1561 -> 1365). zstd is unchanged: its constructors stop on `asm`
@@ -205,8 +218,8 @@ State from earlier calls (prototype, 2026-10-22; `--eval-state`, evaluator only,
   value"; keeping the whole returned pointer fixed it. Taking the snapshot after the normal pass
   copied every object the pass had leaked (20 GB): the state is built first, on a clean heap (127
   objects, 5878 bytes for Lua).
-- What still stops with built state (Lua, first stop per function): `fflush` (185 of 308), then
-  reads out of bounds and through null pointers (about 45), `__errno_location`, `strstr`, `strspn`.
+- What still stops with built state (zstd, state pass): 11 uninitialized reads, 7 `ZSTD_trace_compress_begin`
+  with no body, reads out of bounds and through null pointers.
 
 ## 9. Review log
 

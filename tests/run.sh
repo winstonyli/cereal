@@ -582,6 +582,18 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         bad "eval_sweep --eval-link"
         head -10 "$TMP/link.out" | sed 's/^/    /'
     fi
+    # 13e1s. built state (--eval-state): tests/cfg_state/state.c's functions take the record its
+    #        constructor builds; compared with gcc, which runs the constructor afresh per call, and
+    #        the state functions must have been compared (ctx_check__st reaches its magic == 7 branch)
+    if (cd "$ROOT/tests/cfg_state" && EVAL_SWEEP_STATE=1 sh ../eval_sweep.sh "$CEREAL" state.c \
+            >"$TMP/state.out" 2>&1 </dev/null) &&
+       (cd "$ROOT/tests/cfg_state" && "$CEREAL" check --target=x86_64-linux-gnu --eval-state --eval-sweep=24,1234 \
+            "$PWD/state.c" 2>&1 </dev/null | grep -q '^call ctx_check__st '); then
+        ok
+    else
+        bad "eval_sweep --eval-state"
+        head -10 "$TMP/state.out" | sed 's/^/    /'
+    fi
     # 13e2. the same sweep, also solving for inputs (docs/CONCOLIC_DESIGN.md); only when
     #       EVAL_SWEEP_SOLVE names an SMT-LIB2 solver command, e.g. 'z3 -in -smt2'
     if [ -n "${EVAL_SWEEP_SOLVE:-}" ]; then

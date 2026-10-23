@@ -752,6 +752,20 @@ static uint64_t h_floor(Ev *v, const HArg *a, unsigned na)
     return dbl(v, a, &d) ? dret(floor(d)) : 0;
 }
 
+static uint64_t h_fmod(Ev *v, const HArg *a, unsigned na)
+{
+    double x, y;
+    NEED(2);
+    return dbl(v, &a[0], &x) && dbl(v, &a[1], &y) ? dret(fmod(x, y)) : 0;
+}
+
+static uint64_t h_ldexp(Ev *v, const HArg *a, unsigned na)
+{
+    double x;
+    NEED(2);
+    return dbl(v, &a[0], &x) ? dret(ldexp(x, (int)a[1].x)) : 0;
+}
+
 static uint64_t h_ceil(Ev *v, const HArg *a, unsigned na)
 {
     double d;
@@ -790,6 +804,88 @@ static uint64_t h_abort(Ev *v, const HArg *a, unsigned na)
     (void)na;
     TRAP(v, "abort() called");
     return 0;
+}
+
+/* Both strings of a two-string function, read whole (with their terminators). */
+static bool two_strs(Ev *v, const HArg *a, const uint8_t **s, uint64_t *n, const uint8_t **t, uint64_t *m,
+                     const char *who)
+{
+    return slen(v, a[0].x, UINT64_MAX, n, who) && (*s = rd(v, a[0].x, *n + 1, who)) &&
+           slen(v, a[1].x, UINT64_MAX, m, who) && (*t = rd(v, a[1].x, *m + 1, who));
+}
+
+/* strspn (accept) and strcspn (!accept): the length of the prefix of s made of bytes in (not in) set. */
+static uint64_t span(Ev *v, const HArg *a, unsigned na, bool accept, const char *who)
+{
+    const uint8_t *s, *t;
+    uint64_t n, m, i;
+    NEED(2);
+    if (!two_strs(v, a, &s, &n, &t, &m, who))
+        return 0;
+    for (i = 0; i < n && (memchr(t, s[i], m) != NULL) == accept; i++)
+        ;
+    return i;
+}
+
+static uint64_t h_strspn(Ev *v, const HArg *a, unsigned na) { return span(v, a, na, true, "strspn"); }
+static uint64_t h_strcspn(Ev *v, const HArg *a, unsigned na) { return span(v, a, na, false, "strcspn"); }
+
+static uint64_t h_strpbrk(Ev *v, const HArg *a, unsigned na)
+{
+    const uint8_t *s, *t;
+    uint64_t n, m, i;
+    NEED(2);
+    if (!two_strs(v, a, &s, &n, &t, &m, "strpbrk"))
+        return 0;
+    for (i = 0; i < n; i++)
+        if (memchr(t, s[i], m))
+            return mkptr(pid(a[0].x), poff(a[0].x) + (int64_t)i);
+    return 0;
+}
+
+static uint64_t h_strstr(Ev *v, const HArg *a, unsigned na)
+{
+    const uint8_t *s, *t;
+    uint64_t n, m, i;
+    NEED(2);
+    if (!two_strs(v, a, &s, &n, &t, &m, "strstr"))
+        return 0;
+    for (i = 0; i + m <= n; i++)
+        if (!memcmp(s + i, t, m))
+            return mkptr(pid(a[0].x), poff(a[0].x) + (int64_t)i);
+    return 0;
+}
+
+/* The C locale: the same as strcmp. */
+static uint64_t h_strcoll(Ev *v, const HArg *a, unsigned na)
+{
+    NEED(2);
+    return cmp_str(v, a[0].x, a[1].x, UINT64_MAX, "strcoll");
+}
+
+static uint64_t h_fflush(Ev *v, const HArg *a, unsigned na)
+{
+    FILE *f;
+    NEED(1);
+    if (pid(a[0].x))
+        stream(v, a[0].x, &f);       /* a stream other than stdout and stderr is unsupported */
+    return 0;                       /* output is written as it is made */
+}
+
+/* The one int behind errno, made on first use. */
+static uint64_t h_errno_location(Ev *v, const HArg *a, unsigned na)
+{
+    (void)a;
+    (void)na;
+    if (!v->errno_obj) {
+        uint32_t id = ev_new_obj(v, sizeof(int), false);
+        if (!id)
+            return 0;
+        memset(v->obj.data[id - 1].init, 1, sizeof(int));
+        v->obj.data[id - 1].pin = true;
+        v->errno_obj = id;
+    }
+    return mkptr(v->errno_obj, 0);
 }
 
 /* The clock: gcc's run reads the real time, so a sweep call that depends on it cannot be compared; only
@@ -848,6 +944,9 @@ static const struct {
     {"frexp", h_frexp},     {"exit", h_exit},       {"abort", h_abort},
     {"time", h_time},       {"clock", h_clock},     {"_setjmp", h_setjmp},  {"setjmp", h_setjmp},
     {"longjmp", h_longjmp}, {"_longjmp", h_longjmp},
+    {"strspn", h_strspn},   {"strcspn", h_strcspn}, {"strpbrk", h_strpbrk}, {"strstr", h_strstr},
+    {"strcoll", h_strcoll}, {"fflush", h_fflush},   {"__errno_location", h_errno_location},
+    {"fmod", h_fmod},       {"ldexp", h_ldexp},
 };
 
 HostFn ev_host_fn(const char *name)
@@ -871,6 +970,7 @@ uint32_t ev_host_object(Ev *v, const char *name)
         if (!tok || !ptr)
             return 0;
         v->obj.data[tok - 1].init[0] = 1;
+        v->obj.data[tok - 1].pin = v->obj.data[ptr - 1].pin = true;
         p = mkptr(tok, 0);
         memcpy(v->obj.data[ptr - 1].b, &p, 8);
         memset(v->obj.data[ptr - 1].init, 1, 8);

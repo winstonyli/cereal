@@ -15,6 +15,8 @@
 # EVAL_SWEEP_LINK=1 sweeps all the FILEs as one program (--eval-link, docs/MULTITU_DESIGN.md): a
 # call into another file runs its body; gcc compiles each file with its thunks and links the objects
 # with one driver.  A file's `main` is renamed, not run.
+# EVAL_SWEEP_STATE=1 adds --eval-state: functions taking a built state (a constructor's result) are
+# swept too; the gcc side calls the constructor afresh per call and compares call results only.
 # EVAL_SWEEP_SOLVE='z3 -in -smt2' also solves for inputs (--eval-solve, docs/CONCOLIC_DESIGN.md):
 # the same oracle, and solve.c must then reach every guarded edge; skipped with a note when the
 # solver is not installed.
@@ -37,6 +39,8 @@ run_group() {
     : >"$W/exp.txt.unsup"
     f=$1
     link=
+    state=
+    [ -n "$EVAL_SWEEP_STATE" ] && state=--eval-state
     absl=$(absof "$1")
     if [ -n "$EVAL_SWEEP_LINK" ]; then
         link=--eval-link
@@ -53,12 +57,12 @@ run_group() {
     done
     if [ -n "$EVAL_SWEEP_SOLVE" ]; then
         # shellcheck disable=SC2086
-        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS $link --eval-sweep="$N,1234" --eval-solve="$EVAL_SWEEP_SOLVE" $absl 2>"$W/solve.err" </dev/null \
+        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS $link $state --eval-sweep="$N,1234" --eval-solve="$EVAL_SWEEP_SOLVE" $absl 2>"$W/solve.err" </dev/null \
             | grep -E '^(file|fn|thunk|call) ' >"$W/sweep.txt"
         grep -E '^cereal: ' "$W/solve.err" | sed "s|^|$f: |"
     else
         # shellcheck disable=SC2086
-        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS $link --eval-sweep="$N,1234" $absl 2>&1 </dev/null \
+        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS $link $state --eval-sweep="$N,1234" $absl 2>&1 </dev/null \
             | grep -E '^(file|fn|thunk|call) ' >"$W/sweep.txt"
     fi
     # The drivers (one per file: the file, its thunks, a table of them), the calls, and the evaluator's
@@ -98,6 +102,7 @@ run_group() {
         END {
             mn = W "/drvmain.c"
             print "#include \"" rt "\"" > mn
+            print "long time(long *t) { if (t) *t = 0; return 0; }\nlong clock(void) { return 0; }" > mn
             for (i = 1; i <= nfiles; i++) {
                 if (!started[i]) continue
                 print i, src[i] > (W "/srcs.txt")

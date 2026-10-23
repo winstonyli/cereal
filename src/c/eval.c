@@ -1748,6 +1748,23 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         return ev_call_node(r, n, sh);
     case TO_INTRIN:
         return ev_intrin(r, n);
+    case TO_ASM: {
+        /* The kids are the template, the constraint letters, then val outputs (lvalues) and the inputs.
+         * The instructions are not run; in the sweep's state-building phase every output is 0 (a
+         * hardware query such as cpuid then reports no features) and the results are not compared. */
+        int64_t k;
+        if (!v->build) {
+            UNSUP(v, "operation asm");
+            return 0;
+        }
+        for (k = 0; k < t->val && !v->res.status; k++) {
+            uint32_t lv = KID(r, n, 2 + (uint32_t)k);
+            uint64_t p = ev_node(r, lv);
+            if (!v->res.status && ev_tinfo(v, NODE(r, lv)->ty, &ti))
+                store_sh_n(v, p, &ti, 0, 0);
+        }
+        return 0;
+    }
     default: {
         static const char *nm[] = {
 #define X(o, s) s,
