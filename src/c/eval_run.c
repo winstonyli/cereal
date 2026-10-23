@@ -150,6 +150,7 @@ typedef struct SArg {
     int oi;                     /* SA_PTR, SA_REC: its blob */
     uint64_t sptr;              /* SA_STATE: the pointer the builder returned (see SStates) */
     int si;                     /* ... and which state that is */
+    TypeId ty;                  /* lazy SA_REC: the record type (its size is in off) */
 } SArg;
 
 typedef struct SFn {
@@ -161,6 +162,7 @@ typedef struct SFn {
     VEC(SPf) pf;
     uint64_t insz;
     bool ptrfn, byval;
+    bool lazy;                  /* --eval-lazy: pointer targets are made by the call (see Lazy); no layout */
     unsigned nstate;            /* parameters that are SA_STATE */
     const struct Snap *snap;    /* ... and what a call restores afterwards */
 } SFn;
@@ -620,13 +622,14 @@ static bool states_callable(Ev *v, const SStates *ss, Checker *c)
 
 /* Can f be swept, and how: the pointers inside the objects it is given point to objects of their
  * own, as far as the budget goes. */
-static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts, unsigned var)
+static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts, unsigned var, bool lazy)
 {
     TypeTable *tt = &v->c->tt;
     TypeKind rk = type_ckind(tt, f->ret);
     size_t k;
     int i;
     memset(s, 0, sizeof *s);
+    s->lazy = lazy;
     if (type_is_void(tt, f->ret))
         s->rk = SR_VOID;
     else if (sweep_scalar(rk))
@@ -665,6 +668,11 @@ static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts, unsigned va
         if (a->kind == SA_SCALAR) {
             a->off = s->insz;
             s->insz += a->ti.bytes;
+        } else if (lazy) {              /* no blob yet: the call makes it */
+            a->ty = f->par[k].ty;
+            a->off = o.size;
+            s->ptrfn |= a->kind == SA_PTR || sweep_hasptr(tt, a->ty);
+            s->byval |= a->kind == SA_REC;
         } else {
             if (a->kind == SA_PTR) {
                 a->off = s->insz;
@@ -699,6 +707,46 @@ static void sweep_hex(StrBuf *sb, const uint8_t *p, size_t n)
     }
 }
 
+/* Built state: the gcc side replays every builder, in order, as the locals q0, q1, ... */
+static void sweep_replay(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, const SFn *s)
+{
+    size_t i, k;
+    for (i = 0; s->nstate && i < sts->n; i++) {
+        const SState *t = &sts->st[i];
+        const Fn *bf = &v->fn.data[t->fi];
+        const char *nm = cident(bf->c, csym(bf->c, bf->fsym)->name);
+        if (bf->c != c) {               /* another file: its declaration may not be visible, so go by symbol */
+            sb_printf(sb, "extern void*c%zu() __asm__(\"%s\");", i, nm);
+            sb_printf(sb, "void*q%zu=(void*)c%zu(", i, i);
+        } else
+            sb_printf(sb, "void*q%zu=(void*)%s(", i, nm);
+        for (k = 0; k < bf->np; k++) {
+            if (k)
+                sb_putc(sb, ',');
+            if (t->arg[k] >= 0)
+                sb_printf(sb, "q%d", t->arg[k]);
+            else {
+                sb_putc(sb, '(');
+                sweep_typename(bf->c, sb, bf->par[k].ty);
+                sb_puts(sb, ")0");
+            }
+        }
+        sb_puts(sb, ");");
+    }
+}
+
+/* A scalar parameter k as an expression, read from its aligned copy a<k>. */
+static void sweep_scalar_expr(StrBuf *sb, const SArg *a, size_t k)
+{
+    if (a->ti.flt)
+        sb_printf(sb, "*(%s*)a%zu", a->ti.bytes == 4 ? "float" : "double", k);
+    else if (a->ti.boolean)
+        sb_printf(sb, "*(_Bool*)a%zu", k);
+    else
+        sb_printf(sb, "*(%s%s*)a%zu", a->ti.sg ? "" : "unsigned ",
+                  a->ti.bytes == 1 ? "char" : a->ti.bytes == 2 ? "short" : a->ti.bytes == 4 ? "int" : "long long", k);
+}
+
 /* The gcc side of one function: unpack the bytes, link the pointers, call, pack the result
  * (tests/sweep_rt.h). */
 static void sweep_thunk(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, const char *tname, const char *name, const Fn *f,
@@ -730,28 +778,7 @@ static void sweep_thunk(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, const
         else
             sb_printf(sb, "SW_LK(b%d+%u,bp,0)", pf->ob, pf->off);
     }
-    for (i = 0; s->nstate && i < sts->n; i++) {    /* built state: the gcc side replays every builder, in order */
-        const SState *t = &sts->st[i];
-        const Fn *bf = &v->fn.data[t->fi];
-        const char *nm = cident(bf->c, csym(bf->c, bf->fsym)->name);
-        if (bf->c != c) {               /* another file: its declaration may not be visible, so go by symbol */
-            sb_printf(sb, "extern void*c%zu() __asm__(\"%s\");", i, nm);
-            sb_printf(sb, "void*q%zu=(void*)c%zu(", i, i);
-        } else
-            sb_printf(sb, "void*q%zu=(void*)%s(", i, nm);
-        for (k = 0; k < bf->np; k++) {
-            if (k)
-                sb_putc(sb, ',');
-            if (t->arg[k] >= 0)
-                sb_printf(sb, "q%d", t->arg[k]);
-            else {
-                sb_putc(sb, '(');
-                sweep_typename(bf->c, sb, bf->par[k].ty);
-                sb_puts(sb, ")0");
-            }
-        }
-        sb_puts(sb, ");");
-    }
+    sweep_replay(v, sts, c, sb, s);
     if (s->rk == SR_SCALAR)
         sb_puts(sb, "__auto_type r=");
     else if (s->rk == SR_PTR)
@@ -775,13 +802,8 @@ static void sweep_thunk(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, const
             sb_puts(sb, "*(");
             sweep_typename(c, sb, s->ob[a->oi].ty);
             sb_printf(sb, "*)b%d", a->oi);
-        } else if (a->ti.flt)
-            sb_printf(sb, "*(%s*)a%zu", a->ti.bytes == 4 ? "float" : "double", k);
-        else if (a->ti.boolean)
-            sb_printf(sb, "*(_Bool*)a%zu", k);
-        else
-            sb_printf(sb, "*(%s%s*)a%zu", a->ti.sg ? "" : "unsigned ",
-                      a->ti.bytes == 1 ? "char" : a->ti.bytes == 2 ? "short" : a->ti.bytes == 4 ? "int" : "long long", k);
+        } else
+            sweep_scalar_expr(sb, a, k);
     }
     sb_puts(sb, ");");
     if (s->rk == SR_SCALAR)
@@ -803,6 +825,62 @@ static void sweep_thunk(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, const
         if (s->ob[s->pf.data[i].ob].pointee)
             sb_printf(sb, "memset(out+%llu,0,8);", (unsigned long long)(oo[s->pf.data[i].ob] + s->pf.data[i].off));
     sb_printf(sb, "return %llu;}%c", (unsigned long long)o, 10);
+}
+
+/* The gcc side of one function under --eval-lazy: the graph comes from the line (sw_load). */
+static void sweep_thunk_lazy(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, const char *tname, const char *name,
+                             const Fn *f, const SFn *s)
+{
+    size_t k;
+    unsigned ab = 0, off = 0;
+    for (k = 0; k < f->np; k++)
+        ab += s->a[k].kind == SA_SCALAR ? s->a[k].ti.bytes : s->a[k].kind == SA_STATE ? 0 : 8;
+    sb_printf(sb, "thunk %s %s static unsigned t_%s(const unsigned char *in, unsigned char *out){"
+                  "SwG g;const unsigned char *ap=sw_load(&g,in,%u);",
+              tname, s->byval ? "byval" : "-", tname, ab);
+    for (k = 0; k < f->np; k++) {
+        const SArg *a = &s->a[k];
+        if (a->kind == SA_SCALAR) {
+            sb_printf(sb, "unsigned char a%zu[8] __attribute__((aligned(16)));memcpy(a%zu,ap+%u,%u);", k, k, off,
+                      a->ti.bytes);
+            off += a->ti.bytes;
+        } else if (a->kind != SA_STATE)
+            off += 8;
+    }
+    sweep_replay(v, sts, c, sb, s);
+    if (s->rk == SR_SCALAR)
+        sb_puts(sb, "__auto_type r=");
+    else if (s->rk == SR_PTR)
+        sb_puts(sb, "void*r=(void*)");
+    sb_printf(sb, "%s(", name);
+    for (k = 0, off = 0; k < f->np; k++) {
+        const SArg *a = &s->a[k];
+        if (k)
+            sb_putc(sb, ',');
+        if (a->kind == SA_SCALAR) {
+            sweep_scalar_expr(sb, a, k);
+            off += a->ti.bytes;
+        } else if (a->kind == SA_STATE) {
+            sb_printf(sb, "q%d", a->si);
+        } else if (a->kind == SA_PTR) {
+            sb_printf(sb, "(void*)sw_ptr(&g,ap+%u)", off);
+            off += 8;
+        } else {
+            sb_puts(sb, "*(");
+            sweep_typename(c, sb, a->ty);
+            sb_printf(sb, "*)sw_blob(&g,ap+%u)", off);
+            off += 8;
+        }
+    }
+    sb_puts(sb, ");");
+    if (s->rk == SR_SCALAR)
+        sb_puts(sb, "memcpy(out,&r,sizeof r);return sw_out(&g,out,sizeof r);");
+    else if (s->rk == SR_PTR)
+        sb_puts(sb, "{unsigned long long t=sw_tag(&g,r);memcpy(out,&t,8);}return sw_out(&g,out,8);");
+    else
+        sb_puts(sb, "return sw_out(&g,out,0);");
+    sb_putc(sb, '}');
+    sb_putc(sb, 10);
 }
 
 /* Tracking: every data byte of every blob is the symbol of its input offset (pointer fields are
@@ -998,6 +1076,327 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
             sb_printf(body, " %s %s%c", stop_name(r.status), r.why, 10);
     }
     free(out);
+    return r.status;
+}
+
+/* ---- lazy blobs (--eval-lazy, docs/LAZY_BLOBS_DESIGN.md) -------------------------------------
+ * A call makes its objects as it goes: a pointer parameter is an empty lazy object, a typed load of
+ * its uninitialized bytes draws the value (Ev.lazy_fill), and a pointer drawn there is NULL, a pointer
+ * into an object the call already has, or a new empty lazy object.  The call line carries the graph
+ * the call made, which the gcc side rebuilds (sw_load in tests/sweep_rt.h):
+ *   u32 n; u32 size[n]; the arguments (a scalar's bytes, or u64 (blob + 1) << 32 | offset);
+ *   u32 nlinks, {blob, off, target + 1, target off} per pointer the call read;
+ *   u32 nzero, {blob, off} per other word that held a pointer at the end;
+ *   the initial bytes of every blob (zero where the call read none).
+ * The result is the return value (a pointer as a tag over the blobs), then the final bytes of every
+ * blob with the pointer words (links and zero cells) zeroed. */
+
+#define LMAXBL 32               /* lazy objects per call */
+#define LMAXBY 32768            /* bytes of lazy objects per call */
+
+typedef struct LBlob {
+    uint32_t id;                /* the object */
+    int par;                    /* the blob whose pointer made it, -1: a parameter's */
+    uint32_t poff;              /* ... the offset of that pointer, or the parameter's number */
+    uint8_t *ini;               /* the bytes the call read first, as drawn */
+    uint64_t cap;
+} LBlob;
+
+typedef struct LLink {
+    uint32_t blob, off, tb1, toff;
+} LLink;
+
+typedef struct Lazy {
+    uint64_t *rs;
+    unsigned ndraw, nullat;     /* pointer draws so far; the one that is NULL (a call has at most one: a chain of
+                                   pointers needs them all non-NULL to get anywhere) */
+    VEC(LBlob) bl;
+    VEC(LLink) lk;
+} Lazy;
+
+static int lazy_index(const Lazy *z, uint32_t id)
+{
+    size_t i;
+    for (i = 0; i < z->bl.len; i++)
+        if (z->bl.data[i].id == id)
+            return (int)i;
+    return -1;
+}
+
+/* A new lazy object of `size` bytes; its index, or -1 at the budget (the call then stops). */
+static int lazy_new(Ev *v, Lazy *z, uint64_t size, int par, uint32_t poff)
+{
+    LBlob b = {0, par, poff, NULL, 0};
+    size_t i;
+    uint64_t total = size;
+    for (i = 0; i < z->bl.len; i++)
+        total += v->obj.data[z->bl.data[i].id - 1].size;
+    if (z->bl.len >= LMAXBL || total > LMAXBY) {
+        UNSUP(v, "lazy blob budget");
+        return -1;
+    }
+    b.id = ev_new_obj(v, size, false);
+    if (!b.id)
+        return -1;
+    v->obj.data[b.id - 1].lazy = true;
+    vec_push(&z->bl, b);
+    return (int)z->bl.len - 1;
+}
+
+static void lazy_record(LBlob *b, uint64_t off, unsigned n, const uint8_t *src)
+{
+    if (off + n > b->cap) {
+        uint64_t cap = off + n > 2 * b->cap ? off + n : 2 * b->cap;
+        b->ini = xrealloc(b->ini, cap);
+        memset(b->ini + b->cap, 0, cap - b->cap);
+        b->cap = cap;
+    }
+    memcpy(b->ini + off, src, n);
+}
+
+/* Ev.lazy_fill: the typed load of ti->bytes bytes at off of lazy object id finds some uninitialized.
+ * Scalars are drawn as the generator draws them; a pointer is NULL (1/8), into an existing object
+ * (1/8, at an offset of 0 to 64), or into a new one. */
+static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
+{
+    Lazy *z = v->lazy_ud;
+    int bi = lazy_index(z, id);
+    Obj *o = &v->obj.data[id - 1];
+    uint64_t x;
+    unsigned i, un = 0;
+    uint8_t raw[8];
+    if (bi < 0)
+        return false;
+    for (i = 0; i < ti->bytes; i++)
+        un += !o->init[off + i];
+    if (ti->ptr) {
+        uint64_t r = z->ndraw++ == z->nullat ? 0 : 1 + rnd(z->rs) % 7;
+        LLink l = {(uint32_t)bi, (uint32_t)off, 0, 0};
+        if (un != ti->bytes)
+            return false;               /* half a pointer was written: not a pointer to draw */
+        if (r == 0) {
+            x = 0;
+        } else if (r == 1) {
+            int t = (int)(rnd(z->rs) % z->bl.len);
+            l.tb1 = (uint32_t)t + 1;
+            l.toff = (uint32_t)(rnd(z->rs) % 9) * 8;
+            x = mkptr(z->bl.data[t].id, l.toff);
+        } else {
+            int nb = lazy_new(v, z, 0, bi, (uint32_t)off);
+            if (nb < 0)
+                return false;
+            l.tb1 = (uint32_t)nb + 1;
+            x = mkptr(z->bl.data[nb].id, 0);
+        }
+        if (x)
+            vec_push(&z->lk, l);
+        o = &v->obj.data[id - 1];       /* lazy_new may have moved the table */
+        for (i = 0; i < ti->bytes; i++)
+            o->b[off + i] = (uint8_t)(x >> (8 * i));
+        memset(o->init + off, x ? 2 : 1, ti->bytes);   /* 2: a pointer (see load_n) */
+        return true;
+    }
+    x = sweep_arg(v, ti, z->rs);
+    for (i = 0; i < ti->bytes; i++)
+        raw[i] = (uint8_t)(x >> (8 * i));
+    for (i = 0; i < ti->bytes; i++)
+        if (!o->init[off + i]) {
+            o->b[off + i] = raw[i];
+            o->init[off + i] = 1;
+            lazy_record(&z->bl.data[bi], off + i, 1, raw + i);
+        }
+    return true;
+}
+
+static void lazy_free(Lazy *z)
+{
+    size_t i;
+    for (i = 0; i < z->bl.len; i++)
+        free(z->bl.data[i].ini);
+    vec_free(&z->bl);
+    vec_free(&z->lk);
+}
+
+static void lazy_put32(StrBuf *sb, uint32_t x)
+{
+    sb_putc(sb, (char)(x & 255));
+    sb_putc(sb, (char)(x >> 8 & 255));
+    sb_putc(sb, (char)(x >> 16 & 255));
+    sb_putc(sb, (char)(x >> 24 & 255));
+}
+
+/* Where the call stopped, for the miss report: the path of pointer fields from a parameter's object. */
+static void lazy_where(Ev *v, const Lazy *z)
+{
+    int bi = v->f_obj ? lazy_index(z, v->f_obj) : -1;
+    int path[8], np = 0, i;
+    char *p = v->note;
+    size_t left = sizeof v->note;
+    int n;
+    if (bi < 0) {
+        v->note[0] = 0;
+        return;
+    }
+    while (bi >= 0 && np < 8) {
+        path[np++] = bi;
+        bi = z->bl.data[bi].par;
+    }
+    n = snprintf(p, left, "lazy blob param %u", z->bl.data[path[np - 1]].poff + 1);
+    for (i = np - 2; i >= 0 && n > 0 && (size_t)n < left; i--) {
+        p += n;
+        left -= (size_t)n;
+        n = snprintf(p, left, " +%u", z->bl.data[path[i]].poff);
+    }
+    if (n > 0 && (size_t)n < left)
+        snprintf(p + n, left - (size_t)n, " (+%d)", (int)v->f_off);
+}
+
+/* One call of the sweep with lazy objects (sweep_call's counterpart): the scalars are drawn from *rs,
+ * the pointer parameters are empty objects, and the line is printed from what the call made. */
+static int sweep_call_lazy(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
+                           bool *bad, uint64_t *rs)
+{
+    Lazy z = {rs, 0, 0, {0}, {0}};
+    uint64_t slot[16] = {0}, x = 0, boff[LMAXBL];
+    StrBuf pay = {0}, args = {0}, zc = {0};
+    uint8_t *out;
+    size_t k, i, j, n = 0, total = 8;
+    uint32_t nz = 0;
+    EvRes r;
+    memset(&v->res, 0, sizeof v->res);
+    v->lazy_ud = &z;
+    v->lazy_fill = lazy_fill;
+    for (k = 0; k < f->np && !v->res.status; k++) {
+        const SArg *a = &s->a[k];
+        if (a->kind == SA_SCALAR) {
+            uint64_t raw = sweep_arg(v, &a->ti, rs);
+            slot[k] = ev_canon(&a->ti, raw);
+            for (i = 0; i < a->ti.bytes; i++)
+                sb_putc(&args, (char)(raw >> (8 * i) & 255));
+        } else if (a->kind == SA_STATE) {
+            slot[k] = a->sptr;
+        } else {
+            uint64_t w;
+            int bi = -1;
+            uint32_t off = 0;
+            if (a->kind == SA_PTR && k && rnd(rs) % 3 == 0) {     /* into an earlier pointer parameter's object */
+                size_t np = 0, pick;
+                for (j = 0; j < k; j++)
+                    np += s->a[j].kind == SA_PTR;
+                if (np) {
+                    pick = (size_t)(rnd(rs) % np);
+                    for (j = 0; j < k; j++)
+                        if (s->a[j].kind == SA_PTR && !pick--)
+                            break;
+                    bi = lazy_index(&z, pid(slot[j]));
+                    off = (uint32_t)(rnd(rs) % 9) * 8;
+                }
+            }
+            if (bi < 0)
+                bi = lazy_new(v, &z, a->kind == SA_REC ? a->off : 0, -1, (uint32_t)k);
+            if (bi < 0)
+                break;
+            slot[k] = mkptr(z.bl.data[bi].id, off);
+            w = ((uint64_t)bi + 1) << 32 | off;
+            for (i = 0; i < 8; i++)
+                sb_putc(&args, (char)(w >> (8 * i) & 255));
+        }
+    }
+    if (v->res.status) {
+        r = v->res;
+    } else {
+        v->ld_max = 0;
+        v->ld_obj = 0;
+        z.nullat = rnd(rs) & 1 ? ~0u : (unsigned)(rnd(rs) % 32);
+        r = ev_call(v, f->fsym, slot, f->np, &x);
+    }
+    v->lazy_fill = NULL;
+    v->lazy_ud = NULL;
+    if (r.status != EV_OK)
+        lazy_where(v, &z);
+    for (i = 0; i < z.bl.len; i++)
+        total += v->obj.data[z.bl.data[i].id - 1].size;
+    out = xcalloc(total + 16, 1);
+    if (r.status == EV_OK) {
+        if (s->rk == SR_SCALAR) {
+            x = ev_canon(&s->rti, x);
+            memcpy(out, &x, s->rti.bytes);
+            n = s->rti.bytes;
+        } else if (s->rk == SR_PTR) {
+            uint64_t tag = pid(x) ? ~0ull : 0;
+            for (i = 0; i < z.bl.len; i++)
+                if (pid(x) == z.bl.data[i].id && poff(x) >= 0 && (uint64_t)poff(x) <= v->obj.data[pid(x) - 1].size + 64)
+                    tag = (((uint64_t)i + 1) << 32) | (uint32_t)poff(x);
+            if (tag == ~0ull)
+                *bad = true;
+            memcpy(out, &tag, 8);
+            n = 8;
+        }
+        for (i = 0; i < z.bl.len; i++) {        /* the final bytes of every blob, pointer words zeroed */
+            const Obj *o = &v->obj.data[z.bl.data[i].id - 1];
+            uint64_t w;
+            boff[i] = n;
+            memcpy(out + n, o->b, o->size);
+            for (w = 0; w + 8 <= o->size; w += 8) {
+                uint64_t val;
+                bool known = false;
+                memcpy(&val, o->b + w, 8);
+                if (!pid(val) || pid(val) > v->obj.len)
+                    continue;
+                for (j = 0; j < z.lk.len; j++)
+                    known |= z.lk.data[j].blob == i && z.lk.data[j].off == w;
+                if (!known) {
+                    lazy_put32(&zc, (uint32_t)i);
+                    lazy_put32(&zc, (uint32_t)w);
+                    nz++;
+                }
+                memset(out + n + w, 0, 8);
+            }
+            n += o->size;
+        }
+        for (j = 0; j < z.lk.len; j++)
+            memset(out + boff[z.lk.data[j].blob] + z.lk.data[j].off, 0, 8);
+    }
+    lazy_put32(&pay, (uint32_t)z.bl.len);
+    for (i = 0; i < z.bl.len; i++)
+        lazy_put32(&pay, (uint32_t)v->obj.data[z.bl.data[i].id - 1].size);
+    sb_putn(&pay, args.data, args.len);
+    lazy_put32(&pay, (uint32_t)z.lk.len);
+    for (j = 0; j < z.lk.len; j++) {
+        lazy_put32(&pay, z.lk.data[j].blob);
+        lazy_put32(&pay, z.lk.data[j].off);
+        lazy_put32(&pay, z.lk.data[j].tb1);
+        lazy_put32(&pay, z.lk.data[j].toff);
+    }
+    lazy_put32(&pay, nz);
+    sb_putn(&pay, zc.data, zc.len);
+    for (i = 0; i < z.bl.len; i++) {
+        uint64_t sz = v->obj.data[z.bl.data[i].id - 1].size, have = z.bl.data[i].cap < sz ? z.bl.data[i].cap : sz;
+        if (have)
+            sb_putn(&pay, (const char *)z.bl.data[i].ini, have);
+        for (j = have; j < sz; j++)
+            sb_putc(&pay, 0);
+    }
+    if (r.status == EV_OK || (show_stop && (!s->ptrfn || r.status == EV_UNSUPPORTED))) {
+        sb_printf(body, "call %s ", name);
+        sweep_hex(body, (const uint8_t *)pay.data, pay.len);
+        if (r.status == EV_OK) {
+            sb_puts(body, " => ");
+            sweep_hex(body, out, n);
+            sb_putc(body, 10);
+        } else
+            sb_printf(body, " %s %s%c", stop_name(r.status), r.why, 10);
+    }
+    if (s->snap)
+        snap_restore(v, s->snap);
+    for (i = 0; i < z.bl.len; i++)
+        ev_kill_obj(v, z.bl.data[i].id);
+    ev_trim(v);
+    free(out);
+    sb_free(&args);
+    sb_free(&pay);
+    sb_free(&zc);
+    lazy_free(&z);
     return r.status;
 }
 
@@ -1331,8 +1730,12 @@ static void mut_gen(SCtx *x)
     Ev *v = x->v;
     unsigned long seen = v->newseen;
     int st;
-    sweep_gen(v, x->f, x->s, x->in, &x->rs);
-    st = sweep_call(v, x->body, x->name, x->f, x->s, x->in, !v->dict_use && !x->saw_unsup, &x->bad);
+    if (x->s->lazy) {
+        st = sweep_call_lazy(v, x->body, x->name, x->f, x->s, !v->dict_use && !x->saw_unsup, &x->bad, &x->rs);
+    } else {
+        sweep_gen(v, x->f, x->s, x->in, &x->rs);
+        st = sweep_call(v, x->body, x->name, x->f, x->s, x->in, !v->dict_use && !x->saw_unsup, &x->bad);
+    }
     x->saw_ok |= st == EV_OK;
     if (st != EV_OK && !x->why[0]) {
         snprintf(x->why, sizeof x->why, "%s: %s", stop_name(st), v->res.why);
@@ -1574,7 +1977,7 @@ static void eval_sweep(Checker *c0)
             SCtx x = {0};
             StrBuf head = {0}, body = {0};
             snprintf(tname, sizeof tname, "%s__st%u", name, vi);
-            if (!sweep_fn(v, f, &s, st ? &sts : NULL, vi)) {
+            if (!sweep_fn(v, f, &s, st ? &sts : NULL, vi, c0->opt.eval_lazy)) {
                 sweep_free(&s);
                 v->res.status = EV_OK;
                 continue;
@@ -1591,9 +1994,9 @@ static void eval_sweep(Checker *c0)
                 sweep_typename(c, &head, f->par[k].ty);
             }
             sb_putc(&head, 10);
-            sweep_thunk(v, &sts, c, &head, st ? tname : name, name, f, &s);
+            (s.lazy ? sweep_thunk_lazy : sweep_thunk)(v, &sts, c, &head, st ? tname : name, name, f, &s);
             x.v = v;
-            x.sv = sv;
+            x.sv = s.lazy || getenv("NOSOLVE") ? NULL : sv;   // TEMP-NOSOLVE
             x.ss = &ss;
             x.f = f;
             x.s = &s;
@@ -1626,7 +2029,7 @@ static void eval_sweep(Checker *c0)
                 }
                 v->dict_use = false;
             }
-            if (sv) {
+            if (sv && !s.lazy && !getenv("NOSOLVE")) {   // TEMP-NOSOLVE
                 size_t ed = 0, tk = 0;
                 blk_count(f, &ed, &tk);
                 ss.edges += st ? 0 : ed;

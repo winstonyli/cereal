@@ -102,8 +102,14 @@ uint32_t ev_new_obj(Ev *v, uint64_t size, bool ro)
     }
     memset(&o, 0, sizeof o);
     o.size = size;
-    o.b = xcalloc(size ? size : 1, 1);
-    o.init = xcalloc(size ? size : 1, 1);
+    o.b = calloc(size ? size : 1, 1);
+    o.init = calloc(size ? size : 1, 1);
+    if (!o.b || !o.init) {
+        free(o.b);
+        free(o.init);
+        TRAP(v, "object of %llu bytes", (unsigned long long)size);
+        return 0;
+    }
     o.live = true;
     o.ro = ro;
     vec_push(&v->obj, o);
@@ -138,6 +144,24 @@ void ev_unshadow(Obj *o, uint64_t off, uint64_t n)
 
 
 static void sd_init(Ev *v, size_t i);
+
+/* A lazy object grows to cover `need` bytes (rounded up to 16, at most EV_LAZY_CAP): the new bytes are
+ * zero and uninitialized.  Its id and address as an object do not change. */
+static void lazy_grow(Obj *o, uint64_t need)
+{
+    uint64_t n = (need + 15) & ~(uint64_t)15;
+    if (n > EV_LAZY_CAP)
+        n = EV_LAZY_CAP;
+    o->b = xrealloc(o->b, n);
+    o->init = xrealloc(o->init, n);
+    memset(o->b + o->size, 0, n - o->size);
+    memset(o->init + o->size, 0, n - o->size);
+    if (o->sh) {
+        o->sh = xrealloc(o->sh, n * sizeof *o->sh);
+        memset(o->sh + o->size, 0, (n - o->size) * sizeof *o->sh);
+    }
+    o->size = n;
+}
 
 /* The bytes [p, p + n) of a live object, or NULL after a trap. */
 Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
@@ -176,10 +200,20 @@ Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
         o = &v->obj.data[pid(p) - 1];
     }
     if (off < 0 || n > o->size || (uint64_t)off > o->size - n) {      /* n may be huge: no wrapping sum */
-        TRAP(v, "%s out of bounds", what);
-        return NULL;
+        if (o->lazy && off >= 0 && n <= EV_LAZY_CAP && (uint64_t)off <= EV_LAZY_CAP - n)
+            lazy_grow(o, (uint64_t)off + n);
+        else {
+            TRAP(v, "%s out of bounds", what);
+            return NULL;
+        }
     }
     return o;
+}
+
+void ev_lazy_zero(Obj *o, uint64_t off, uint64_t n)
+{
+    if (o->lazy)
+        memset(o->init + off, 1, n);        /* untouched bytes are zero already */
 }
 
 /* Tracking: the shadow of the ti->bytes bytes at off of o, as one slot expression (0: all concrete). */
@@ -234,16 +268,30 @@ static uint64_t load_n(Ev *v, uint64_t p, const Ti *ti)
     v->sh = 0;
     if (!o)
         return 0;
+    if (o->lazy && v->lazy_fill) {
+        for (i = 0; i < ti->bytes && o->init[poff(p) + i]; i++)
+            ;
+        if (i < ti->bytes && v->lazy_fill(v, pid(p), (uint64_t)poff(p), ti))
+            o = &v->obj.data[pid(p) - 1];       /* the fill may have made objects */
+    }
     for (i = 0; i < ti->bytes; i++) {
-        if (!o->init[poff(p) + i]) {
-            v->ld_obj = pid(p);
-            v->ld_off = poff(p) + (int32_t)i;
-            TRAP(v, "read of an uninitialized value");
-            return 0;
+        if (o->init[poff(p) + i] != 1) {
+            if (!o->init[poff(p) + i]) {
+                v->ld_obj = pid(p);
+                v->ld_off = poff(p) + (int32_t)i;
+                TRAP(v, "read of an uninitialized value");
+                return 0;
+            }
+            if (!ti->ptr) {             /* init 2: a pointer the sweep drew; its bytes differ in gcc's build */
+                v->ld_obj = pid(p);
+                v->ld_off = poff(p) + (int32_t)i;
+                UNSUP(v, "read of a pointer as an integer");
+                return 0;
+            }
         }
         x |= (uint64_t)o->b[poff(p) + i] << (8 * i);
     }
-    if (ti->ptr && (!v->ld_max || pid(p) <= v->ld_max)) {
+    if (ti->ptr && (!v->ld_max || pid(p) <= v->ld_max || o->lazy)) {
         v->ld_obj = pid(p);
         v->ld_off = poff(p);
     }
@@ -261,6 +309,12 @@ static void store_sh_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x, uint32_t sh)
         TRAP(v, "write to a string literal");
         return;
     }
+    if (o->lazy && !ti->ptr)            /* part of a pointer the sweep drew: gcc's bytes would differ (see load_n) */
+        for (i = 0; i < ti->bytes; i++)
+            if (o->init[poff(p) + i] == 2) {
+                UNSUP(v, "write of an integer over a pointer");
+                return;
+            }
     for (i = 0; i < ti->bytes; i++) {
         o->b[poff(p) + i] = (uint8_t)(x >> (8 * i));
         o->init[poff(p) + i] = 1;
@@ -347,6 +401,7 @@ void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
         TRAP(v, "write to a string literal");
         return;
     }
+    ev_lazy_zero(s, (uint64_t)poff(src), n);
     memmove(d->b + poff(dst), s->b + poff(src), n);
     memmove(d->init + poff(dst), s->init + poff(src), n);
     if (s->sh) {

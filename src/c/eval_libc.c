@@ -25,6 +25,7 @@ static const uint8_t *rd(Ev *v, uint64_t p, uint64_t n, const char *who)
     uint64_t i;
     if (!o)
         return NULL;
+    ev_lazy_zero(o, (uint64_t)poff(p), n);
     for (i = 0; i < n; i++)
         if (!o->init[poff(p) + i]) {
             TRAP(v, "%s reads an uninitialized value", who);
@@ -55,7 +56,14 @@ static bool slen(Ev *v, uint64_t p, uint64_t limit, uint64_t *len, const char *w
     uint64_t i, from = (uint64_t)poff(p);
     if (!o)
         return false;
-    for (i = from; i < o->size && i - from < limit; i++) {
+    for (i = from; i - from < limit; i++) {
+        if (i == o->size && o->lazy) {          /* a lazy object grows to the string (or traps at its cap) */
+            if (!(o = ev_access(v, mkptr(pid(p), (int64_t)i), 1, who)))
+                return false;
+        }
+        if (i >= o->size)
+            break;
+        ev_lazy_zero(o, i, 1);
         if (!o->init[i]) {
             TRAP(v, "%s reads an uninitialized value", who);
             return false;

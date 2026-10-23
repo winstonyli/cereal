@@ -11,7 +11,7 @@
 #include "c/symx.h"
 
 typedef struct Obj {
-    uint8_t *b, *init;          /* bytes and one init flag per byte */
+    uint8_t *b, *init;          /* bytes and one init flag per byte: 0 no, 1 yes, 2 a pointer the sweep drew (--eval-lazy) */
     uint32_t *sh;               /* tracking: per byte, an 8-bit expression of the input (0: concrete); NULL: none */
     uint64_t size;
     uint32_t fn;                /* a function's object: its fsym + 1, in the numbering of fc */
@@ -21,6 +21,8 @@ typedef struct Obj {
     bool heap;                  /* made by malloc and friends: free may end it */
     uint8_t kind;               /* OK_*: what the object stands for, for an address constant */
     bool stub;                  /* a static object with no definition here: only its address is usable */
+    bool lazy;                  /* a sweep blob made on demand (docs/LAZY_BLOBS_DESIGN.md): it grows to what is accessed
+                                   and its first read of a byte asks Ev.lazy_fill for the value */
     uint32_t ref, fname;        /* OK_STATIC: the symbol ref, and the function it is local to (name id) */
     uint32_t sd1;               /* a static object not yet initialized: its Sd index + 1 */
 } Obj;
@@ -93,6 +95,8 @@ typedef struct Sd {
 
 #define EV_CALL_OBJS (1u << 20) /* objects one call may make */
 
+struct Ti;
+
 struct Ev {
     Checker *c;
     EvOpts o;
@@ -137,7 +141,13 @@ struct Ev {
     int32_t ld_off, f_off;
     uint32_t ld_max;            /* pointer reads from objects above this id (frame locals, the heap) are not noted; 0: all */
     char note[112];             /* the sweep's description of that place, for its miss report */
+    /* A typed load of uninitialized bytes of a lazy object: draws and stores the value (may make
+     * objects, so the caller looks the object up again); false: the load traps as uninitialized. */
+    bool (*lazy_fill)(Ev *v, uint32_t id, uint64_t off, const struct Ti *ti);
+    void *lazy_ud;              /* the sweep's context for lazy_fill */
 };
+
+#define EV_LAZY_CAP 4096        /* the most a lazy object grows to */
 
 typedef struct Loc {
     uint32_t ref, obj;
@@ -193,6 +203,9 @@ void ev_zero_n(Ev *v, uint64_t dst, uint64_t n);
 void ev_trim(Ev *v);
 /* A write of concrete bytes into [off, off + n) of o: their shadows end. */
 void ev_unshadow(Obj *o, uint64_t off, uint64_t n);
+/* An untyped read of [off, off + n) of o (memcpy, the host library): a lazy object's untouched bytes
+ * are zero, now initialized. */
+void ev_lazy_zero(Obj *o, uint64_t off, uint64_t n);
 
 /* ---- the host library (eval_libc.c) ---- */
 
