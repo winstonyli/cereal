@@ -1093,6 +1093,7 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
 
 #define LMAXBL 32               /* lazy objects per call */
 #define LMAXBY 32768            /* bytes of lazy objects per call */
+#define LHEAD 32                /* a pointer to a lazy object starts this far in: the program may look before it (container_of, p[-1]) */
 
 typedef struct LBlob {
     uint32_t id;                /* the object */
@@ -1200,14 +1201,15 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
             if (forced >= 0)
                 t = forced;
             l.tb1 = (uint32_t)t + 1;
-            l.toff = (uint32_t)(rnd(z->rs) % 9) * 8;
+            l.toff = LHEAD + (uint32_t)(rnd(z->rs) % 9) * 8;
             x = mkptr(z->bl.data[t].id, l.toff);
         } else {
             int nb = lazy_new(v, z, 0, bi, (uint32_t)off, (int)d);
             if (nb < 0)
                 return false;
             l.tb1 = (uint32_t)nb + 1;
-            x = mkptr(z->bl.data[nb].id, 0);
+            l.toff = LHEAD;
+            x = mkptr(z->bl.data[nb].id, LHEAD);
         }
         if (x)
             vec_push(&z->lk, l);
@@ -1299,7 +1301,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         } else {
             uint64_t w;
             int bi = -1;
-            uint32_t off = 0;
+            uint32_t off = LHEAD;
             if (a->kind == SA_PTR && k && rnd(rs) % 3 == 0) {     /* into an earlier pointer parameter's object */
                 size_t np = 0, pick;
                 for (j = 0; j < k; j++)
@@ -1310,7 +1312,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
                         if (s->a[j].kind == SA_PTR && !pick--)
                             break;
                     bi = lazy_index(&z, pid(slot[j]));
-                    off = (uint32_t)(rnd(rs) % 9) * 8;
+                    off = LHEAD + (uint32_t)(rnd(rs) % 9) * 8;
                 }
             }
             if (bi < 0)

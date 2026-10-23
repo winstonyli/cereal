@@ -121,9 +121,9 @@ Untaken edges, N=24 seed 1234, `--eval-link --eval-state`, solver off (eager bas
 
 | | eager | lazy | change |
 |---|---|---|---|
-| Lua | 2061 | 1753 | -308 (15%) |
-| zstd | 2029 | 1785 | -244 (12%) |
-| total | 4090 | 3538 | -552 (13.5%) |
+| Lua | 2061 | 1708 | -353 (17%) |
+| zstd | 2029 | 1754 | -275 (14%) |
+| total | 4090 | 3462 | -628 (15%) |
 
 Findings that changed the design while building it:
 - A NULL at 1/8 per drawn pointer cell kills any deep chain (`ci->func->gc->p->k`): all 852
@@ -141,3 +141,10 @@ Findings that changed the design while building it:
 bounds" a few levels further in (`p->code` side). Remaining zstd stops: inline asm (81 edges).
 Oracle: `cfg_exec`, `cfg_link`, `cfg_state` clean under `EVAL_SWEEP_LAZY=1`; the Lua and zstd
 corpora were not compared against gcc (the gate has no leg for them).
+
+Headroom (2026-10-23, runs `lazy-lua-head`, `lazy-zstd-head`; the table above is with it): the
+remaining `luaV_execute` stop was reads at negative offsets (`p - 16`, `p - 24`: `top - 1`,
+container_of). A pointer to a lazy object now starts `LHEAD` (32) bytes in, so the object has
+room before it; the gcc side needs no change (tags are offsets from the object start).
+`luaV_execute` still stops on a read out of bounds a level or two further in (no offset
+evidence kept: next probe is the temporary `LZDBG` print of object, offset, size at the trap).
