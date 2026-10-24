@@ -181,9 +181,9 @@ Untaken edges, N=24 seed 1234, `--eval-link --eval-state`, solver on (runs `solv
 Lazy with the solver is 185 below lazy without (5%) and 664 below eager with it (17%); edges taken
 5262 of 8655 (eager 4666), 973 of them first by a solver round (eager 739). Time 2909 s against
 1120 s for the eager run (two runs in parallel, so not a clean timing).
-Eager moved from the recorded 3906 (Lua 1934) to 3897 (Lua 1923): not from this stage, whose
-eager output was byte-identical to the pre-S1 binary at S1-S3 (`cmp` of raw sweep dumps); the 3906
-figure predates the stage-1 commits (`ev_new_obj` allocation trap, wider returned-pointer window).
-Not bisected. `luaV_execute` still stops on huge-index out-of-bounds reads (see stage 1 result).
+Eager is unchanged: the recorded 3906 (Lua 1934) was stale. The same measurement on the pre-lazy
+commit `fe5cb14` and on stage 1 `ae1ad13` (runs `bisect-eager-fe5cb14`, `bisect-eager-ae1ad13`)
+gives 1923 + 1974 = 3897, as now; CONCOLIC_DESIGN.md:230 shows the 1932 -> 1923 move that came before.
+`luaV_execute` still stops on huge-index out-of-bounds reads (see stage 1 result).
 The replay check (`CEREAL_LAZY_REPLAY=1`, run `lazy-replay-lvm3`, Lua `lvm.c` subset and its
 dependencies) found one difference, `luai_makeseed`, which hashes `time(NULL)`.
