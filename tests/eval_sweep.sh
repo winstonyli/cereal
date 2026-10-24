@@ -18,7 +18,7 @@
 # EVAL_SWEEP_STATE=1 adds --eval-state: functions taking a built state (a constructor's result) are
 # swept too; the gcc side calls the constructor afresh per call and compares call results only.
 # EVAL_SWEEP_LAZY=1 adds --eval-lazy: pointer targets are made by the call (docs/LAZY_BLOBS_DESIGN.md); the call
-# line carries that graph and the thunks rebuild it (sweep_rt.h).  Not combined with the solver yet.
+# line carries that graph and the thunks rebuild it (sweep_rt.h).  Combined with the solver (EVAL_SWEEP_SOLVE) like the eager layout.
 # EVAL_SWEEP_SOLVE='z3 -in -smt2' also solves for inputs (--eval-solve, docs/CONCOLIC_DESIGN.md):
 # the same oracle, and solve.c must then reach every guarded edge; skipped with a note when the
 # solver is not installed.

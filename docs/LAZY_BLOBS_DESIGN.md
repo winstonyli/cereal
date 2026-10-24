@@ -157,7 +157,7 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
    with a field read) that must reach both edges under `--eval-sweep --eval-lazy`; and
    `sweep_meas.sh` on Lua and zstd, compared with 3906 untaken (Lua 1934 + zstd 1972).
    Falsifier: `luaV_execute` still stuck at the same place, or the oracle mismatching.
-2. Solver keys (section 2). Check: the existing solver tests, unchanged edge counts on
+2. Solver keys (section 2; built 2026-10-23, results in `LAZY_BLOBS_SOLVER_PLAN.md`: 3233 untaken). Check: the existing solver tests, unchanged edge counts on
    the eager layout, then lazy.
 3. Function pointers. Check: `frealloc` and the call-through-null stops gone from the
    stuck report.

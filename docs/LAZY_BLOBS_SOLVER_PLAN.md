@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # Lazy blobs, stage 2: the solver on lazy calls
@@ -166,3 +166,24 @@ growing `sh`, `load_n` calling `lazy_fill` before `load_sh`, the draw inventory,
 freeing `sh`, the final attempt's outcomes baking the hint into the seed.
 
 Still open: whether S7's success bar should be a number (it is "below 3418 and below 3906").
+
+## Result of stage 2 (2026-10-23)
+
+Untaken edges, N=24 seed 1234, `--eval-link --eval-state`, solver on (runs `solver-eager-s7`,
+`solver-lazy-s7` in `docs/runs.md`; gate `lazy-solver-gate`: 2315/2315 run and san, 639 findings 0):
+
+| | eager + solver | lazy, no solver | lazy + solver |
+|---|---|---|---|
+| Lua | 1923 | 1701 | 1551 |
+| zstd | 1974 | 1717 | 1682 |
+| total | 3897 | 3418 | 3233 |
+
+Lazy with the solver is 185 below lazy without (5%) and 664 below eager with it (17%); edges taken
+5262 of 8655 (eager 4666), 973 of them first by a solver round (eager 739). Time 2909 s against
+1120 s for the eager run (two runs in parallel, so not a clean timing).
+Eager moved from the recorded 3906 (Lua 1934) to 3897 (Lua 1923): not from this stage, whose
+eager output was byte-identical to the pre-S1 binary at S1-S3 (`cmp` of raw sweep dumps); the 3906
+figure predates the stage-1 commits (`ev_new_obj` allocation trap, wider returned-pointer window).
+Not bisected. `luaV_execute` still stops on huge-index out-of-bounds reads (see stage 1 result).
+The replay check (`CEREAL_LAZY_REPLAY=1`, run `lazy-replay-lvm3`, Lua `lvm.c` subset and its
+dependencies) found one difference, `luai_makeseed`, which hashes `time(NULL)`.

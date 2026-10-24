@@ -5,6 +5,7 @@
 # 'z3 -in -smt2' (z3 must be on PATH or in ~/tools/z3).  Each run is under 8 GB of address space.  LINK=1 sweeps
 # each library as one program (--eval-link, docs/MULTITU_DESIGN.md) instead of file by file.
 # STATE=--eval-state also builds state with constructors (docs/CONCOLIC_DESIGN.md).
+# LAZY=--eval-lazy makes pointer targets on access (docs/LAZY_BLOBS_DESIGN.md).
 C=${1:?cereal binary}
 N=${2:-24}
 S=${3:-z3 -in -smt2}
@@ -23,7 +24,7 @@ run() {
     # a source manager reserves 4 GB of address space per file and a link keeps them all
     [ -n "$LINK" ] && ulimit -S -v $((8000000 + 4400000 * $#))
     timeout 3600 "$C" check --target=x86_64-linux-gnu -std=gnu99 -DZSTD_DISABLE_ASM -I"$L" -I"$Z" -I"$Z/common" \
-        --eval-sweep="$N,1234" --eval-solve="$S" $LINK $STATE "$@" >/dev/null 2>"$W/err" </dev/null || nbad=$((nbad + 1))
+        --eval-sweep="$N,1234" --eval-solve="$S" $LINK $STATE $LAZY "$@" >/dev/null 2>"$W/err" </dev/null || nbad=$((nbad + 1))
     grep -a '^cereal: solve:' "$W/err" >>"$W/stats"
     grep -a -e '^cereal: untaken' -e '^cereal: never' -e '^cereal: state' "$W/err" >>"$W/miss"
 }

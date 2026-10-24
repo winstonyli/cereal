@@ -75,7 +75,7 @@ blobs; the state-builder replay (`q%zu`) is reused as is. Check: the lazy sweep 
 
 **L5 Flag and loop.** `--eval-lazy` (option, usage text, `opt.eval_lazy`); in `eval_sweep`,
 `sweep_fn`/`mut_gen` choose the lazy variants; `rotation` is `mut_gen` only in lazy mode
-(no solver, `x.sv` NULL for the rotation; the miss report is still printed when `--eval-solve`
+(stage 1 had no solver, `x.sv` NULL; stage 2 adds it; the miss report is printed when `--eval-solve`
 is given, so the measurement works). Check: `--eval-lazy` without `--eval-sweep` is an
 error, as the other sweep flags are.
 
@@ -130,7 +130,7 @@ Findings that changed the design while building it:
   `luaV_execute` edges stopped on a NULL. Now at most one NULL per call, in half the calls.
 - Pointers the program means as one object (saved pc and `p->code`) were separate blobs, so
   their subtraction trapped. A stop on such a subtraction now reruns the call with the later
-  pointer draw aliased into the earlier blob (`LHint`, up to 4 per call). This is stage 2's key
+  pointer draw shared with the earlier blob (a forced draw, up to 4 retries per call). This is stage 2's key
   (path of pointer cells from a parameter) used for pointer aliasing.
 - Integer reads of, and writes over, a pointer cell the sweep drew stop the call as unsupported
   (gcc's pointer bytes differ), as does any use the oracle cannot reproduce.

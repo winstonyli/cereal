@@ -13,3 +13,13 @@ if [ "$got" != "$want" ]; then
     exit 1
 fi
 echo "eval_lazy: ok"
+# With the solver, lazy calls are solved too: lg_run's guard needs k[0] == 331, behind a pointer.
+if command -v z3 >/dev/null 2>&1; then
+    got=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 --eval-lazy --eval-solve='z3 -in -smt2' "$D/cfg_lazy/lazy_guard.c" 2>/dev/null </dev/null |
+        awk '$1 == "call" && $2 == "lg_run" && $4 == "=>" { print substr($5, 1, 8) }' | sort -u | tr '\n' ' ')
+    case "$got" in
+    *09000000*) ;;
+    *) echo "eval_lazy: lg_run with the solver: got '$got', want 09000000 among them"; exit 1 ;;
+    esac
+    echo "eval_lazy: solver ok"
+fi

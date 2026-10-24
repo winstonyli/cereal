@@ -596,12 +596,12 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     fi
     # 13e1l. lazy blobs (--eval-lazy, docs/LAZY_BLOBS_DESIGN.md): the same three directories swept with the
     #        pointer targets made by the call and compared with gcc (EVAL_SWEEP_LAZY), and the fixture shaped
-    #        like Lua's luaV_execute must give its results; the solver is off (not combined yet) (tests/eval_lazy.sh)
-    if (cd "$ROOT/tests/cfg_exec" && EVAL_SWEEP_SOLVE= EVAL_SWEEP_LAZY=1 sh ../eval_sweep.sh "$CEREAL" *.c \
+    #        like Lua's luaV_execute must give its results, with the solver where the environment has one (tests/eval_lazy.sh)
+    if (cd "$ROOT/tests/cfg_exec" && EVAL_SWEEP_LAZY=1 sh ../eval_sweep.sh "$CEREAL" *.c \
             >"$TMP/lazy.out" 2>&1 </dev/null) &&
-       (cd "$ROOT/tests/cfg_link" && EVAL_SWEEP_SOLVE= EVAL_SWEEP_LAZY=1 EVAL_SWEEP_LINK=1 sh ../eval_sweep.sh "$CEREAL" link_a.c link_b.c \
+       (cd "$ROOT/tests/cfg_link" && EVAL_SWEEP_LAZY=1 EVAL_SWEEP_LINK=1 sh ../eval_sweep.sh "$CEREAL" link_a.c link_b.c \
             >>"$TMP/lazy.out" 2>&1 </dev/null) &&
-       (cd "$ROOT/tests/cfg_state" && EVAL_SWEEP_SOLVE= EVAL_SWEEP_LAZY=1 EVAL_SWEEP_STATE=1 sh ../eval_sweep.sh "$CEREAL" state.c \
+       (cd "$ROOT/tests/cfg_state" && EVAL_SWEEP_LAZY=1 EVAL_SWEEP_STATE=1 sh ../eval_sweep.sh "$CEREAL" state.c \
             >>"$TMP/lazy.out" 2>&1 </dev/null) &&
        sh "$ROOT/tests/eval_lazy.sh" "$CEREAL" >>"$TMP/lazy.out" 2>&1 </dev/null; then
         ok

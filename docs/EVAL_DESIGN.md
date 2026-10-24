@@ -719,5 +719,5 @@ from one of them.
 
 `--eval-lazy` (hidden, with `--eval-sweep`; docs/LAZY_BLOBS_DESIGN.md, plan results in
 docs/LAZY_BLOBS_PLAN.md): pointer targets are made by the call on first access instead of
-by the eager layout. Not combined with the solver. `EVAL_SWEEP_LAZY=1` in `tests/eval_sweep.sh`
+by the eager layout. Combined with the solver (draw-key log as the seed; stage 2 in the design). `EVAL_SWEEP_LAZY=1` in `tests/eval_sweep.sh`
 and `tests/eval_lazy.sh` check it against gcc.

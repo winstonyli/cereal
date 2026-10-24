@@ -885,13 +885,18 @@ static void sweep_thunk_lazy(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, 
 
 /* Tracking: every data byte of every blob is the symbol of its input offset (pointer fields are
  * structure, not data), and so is every scalar parameter's value, in ash. */
+static void track_begin(Ev *v)
+{
+    sx_clear(&v->sx);
+    v->path.len = 0;
+    v->path_full = false;
+}
+
 static void sweep_track(Ev *v, const Fn *f, const SFn *s, const uint32_t *ids, uint32_t *ash)
 {
     size_t k;
     int i;
-    sx_clear(&v->sx);
-    v->path.len = 0;
-    v->path_full = false;
+    track_begin(v);
     for (i = 0; i < s->nob; i++) {
         Obj *o = &v->obj.data[ids[i] - 1];
         uint64_t j;
@@ -1095,37 +1100,98 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
 #define LMAXBY 32768            /* bytes of lazy objects per call */
 #define LHEAD 128               /* a pointer to a lazy object starts this far in: the program may look before it (container_of, p[-1]) */
 
+/* Draw keys (docs/LAZY_BLOBS_SOLVER_PLAN.md): every value the call draws has a 64-bit key that does not
+ * depend on the order of the draws: a parameter's is its number, a lazy blob's is the hash of the key
+ * of the blob holding the pointer cell and the cell's offset, a byte's is the hash of its blob's key
+ * and its offset. A call logs what it drew (rec) and consults a forced map (force) before it draws. */
+typedef uint64_t LKey;
+
+typedef struct LEnt {
+    LKey key;
+    uint64_t val;
+} LEnt;
+
+typedef VEC(LEnt) LLog;
+typedef VEC(LKey) LKeys;
+
+/* What a caller of sweep_call_lazy asks for beyond the call: values to force, the log of what the
+ * final run drew, and, in a tracked run, the key of each symbol. */
+typedef struct LOpt {
+    const LLog *force;          /* sorted by key */
+    LLog *rec;
+    LKeys *syms;
+} LOpt;
+
+#define LZ_PARAM ((uint64_t)1 << 56)      /* what a derived key is the key of: tags in the top bits, which no offset reaches */
+#define LZ_ALIAS ((uint64_t)2 << 56)
+#define LZ_OUT ((uint64_t)3 << 56)
+#define LZ_TGT ((uint64_t)4 << 56)
+#define LZ_TOFF ((uint64_t)5 << 56)
+
+static LKey lz_key(LKey a, uint64_t b)
+{
+    uint64_t h = (a ^ 0x9e3779b97f4a7c15ull) + b * 0xbf58476d1ce4e5b9ull;
+    h = (h ^ h >> 30) * 0xbf58476d1ce4e5b9ull;
+    h = (h ^ h >> 27) * 0x94d049bb133111ebull;
+    return h ^ h >> 31;
+}
+
+static int lz_cmp(const void *a, const void *b)
+{
+    LKey x = ((const LEnt *)a)->key, y = ((const LEnt *)b)->key;
+    return x < y ? -1 : x > y;
+}
+
+/* The entry of `key`; `log` must be sorted by key. */
+static LEnt *llog_at(const LLog *log, LKey key)
+{
+    LEnt k = {key, 0};
+    return log && log->len ? bsearch(&k, log->data, log->len, sizeof k, lz_cmp) : NULL;
+}
+
 typedef struct LBlob {
     uint32_t id;                /* the object */
     int par;                    /* the blob whose pointer made it, -1: a parameter's */
     uint32_t poff;              /* ... the offset of that pointer, or the parameter's number */
-    int draw;                   /* the pointer draw that made it, -1: a parameter's */
     uint8_t *ini;               /* the bytes the call read first, as drawn */
     uint64_t cap;
+    LKey key;
 } LBlob;
 
 typedef struct LLink {
     uint32_t blob, off, tb1, toff;
 } LLink;
 
-/* A retry's hint: the pointer draw `draw` points into blob `tgt` (the first run subtracted pointers of two
- * blobs, which the program meant as one object, such as a saved pc and the code it points into). */
-typedef struct LHint {
-    unsigned draw;
-    int tgt;
-} LHint;
-
-#define LMAXHINT 4
+#define LMAXHINT 4             /* retries of a call that subtracts pointers of two blobs */
 
 typedef struct Lazy {
     uint64_t *rs;
     unsigned ndraw, nullat;     /* pointer draws so far; the one that is NULL (a call has at most one: a chain of
                                    pointers needs them all non-NULL to get anywhere) */
-    LHint hint[LMAXHINT];
-    unsigned nhint;
     VEC(LBlob) bl;
     VEC(LLink) lk;
+    LLog rec;                   /* what this call drew */
+    const LLog *force;          /* values to use instead of drawing (sorted), or NULL */
+    LKeys syms;                 /* tracking: the key of each solver symbol, by id (dense, by first use) */
 } Lazy;
+
+/* A symbol for the byte drawn under `key`: ids are dense, so the solver's model maps back to keys. */
+static uint32_t lazy_sym(Ev *v, Lazy *z, LKey key)
+{
+    vec_push(&z->syms, key);
+    return sx_sym(&v->sx, (uint32_t)z->syms.len - 1);
+}
+
+/* The one place a value is drawn: the caller has drawn `drawn` from the PRNG (always, so the stream
+ * is the same with or without a forced value); the forced value wins, and the value used is logged. */
+static uint64_t lazy_draw(Lazy *z, LKey key, uint64_t drawn)
+{
+    LEnt e = {key, drawn}, *f = llog_at(z->force, key);
+    if (f)
+        e.val = f->val;
+    vec_push(&z->rec, e);
+    return e.val;
+}
 
 static int lazy_index(const Lazy *z, uint32_t id)
 {
@@ -1137,10 +1203,11 @@ static int lazy_index(const Lazy *z, uint32_t id)
 }
 
 /* A new lazy object of `size` bytes; its index, or -1 at the budget (the call then stops). */
-static int lazy_new(Ev *v, Lazy *z, uint64_t size, int par, uint32_t poff, int draw)
+static int lazy_new(Ev *v, Lazy *z, uint64_t size, int par, uint32_t poff)
 {
-    LBlob b = {0, par, poff, draw, NULL, 0};
+    LBlob b = {0, par, poff, NULL, 0, 0};
     size_t i;
+    b.key = par < 0 ? lz_key(LZ_PARAM, poff) : lz_key(z->bl.data[par].key, poff);
     uint64_t total = size;
     for (i = 0; i < z->bl.len; i++)
         total += v->obj.data[z->bl.data[i].id - 1].size;
@@ -1183,28 +1250,29 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
     for (i = 0; i < ti->bytes; i++)
         un += !o->init[off + i];
     if (ti->ptr) {
-        unsigned d = z->ndraw++, h;
+        unsigned d = z->ndraw++;
         uint64_t r = d == z->nullat ? 0 : 1 + rnd(z->rs) % 7;
         LLink l = {(uint32_t)bi, (uint32_t)off, 0, 0};
-        int forced = -1;
-        for (h = 0; h < z->nhint; h++)
-            if (z->hint[h].draw == d)
-                forced = z->hint[h].tgt;
-        if (forced >= 0)
-            r = 1;
+        LKey ck = lz_key(z->bl.data[bi].key, off);
         if (un != ti->bytes)
             return false;               /* half a pointer was written: not a pointer to draw */
+        r = lazy_draw(z, lz_key(ck, LZ_OUT), r > 2 ? 2 : r);       /* 0 NULL, 1 share, 2 new */
         if (r == 0) {
             x = 0;
         } else if (r == 1) {
             int t = (int)(rnd(z->rs) % z->bl.len);
-            if (forced >= 0)
-                t = forced;
+            uint64_t tk, to = LHEAD + (rnd(z->rs) % 9) * 8;
+            size_t b;
+            tk = lazy_draw(z, lz_key(ck, LZ_TGT), z->bl.data[t].key);
+            to = lazy_draw(z, lz_key(ck, LZ_TOFF), to);
+            for (b = 0; b < z->bl.len; b++)         /* a forced target the call has no blob for: the drawn one */
+                if (z->bl.data[b].key == tk)
+                    t = (int)b;
             l.tb1 = (uint32_t)t + 1;
-            l.toff = LHEAD + (uint32_t)(rnd(z->rs) % 9) * 8;
+            l.toff = (uint32_t)to;
             x = mkptr(z->bl.data[t].id, l.toff);
         } else {
-            int nb = lazy_new(v, z, 0, bi, (uint32_t)off, (int)d);
+            int nb = lazy_new(v, z, 0, bi, (uint32_t)off);
             if (nb < 0)
                 return false;
             l.tb1 = (uint32_t)nb + 1;
@@ -1224,8 +1292,15 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
         raw[i] = (uint8_t)(x >> (8 * i));
     for (i = 0; i < ti->bytes; i++)
         if (!o->init[off + i]) {
+            LKey key = lz_key(z->bl.data[bi].key, off + i);
+            raw[i] = (uint8_t)lazy_draw(z, key, raw[i]);
             o->b[off + i] = raw[i];
             o->init[off + i] = 1;
+            if (v->track && !ti->flt) {         /* the byte is an input: a symbol (see sweep_track) */
+                if (!o->sh)
+                    o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
+                o->sh[off + i] = lazy_sym(v, z, key);
+            }
             lazy_record(&z->bl.data[bi], off + i, 1, raw + i);
         }
     return true;
@@ -1238,6 +1313,8 @@ static void lazy_free(Lazy *z)
         free(z->bl.data[i].ini);
     vec_free(&z->bl);
     vec_free(&z->lk);
+    vec_free(&z->rec);
+    vec_free(&z->syms);
 }
 
 static void lazy_put32(StrBuf *sb, uint32_t x)
@@ -1277,22 +1354,40 @@ static void lazy_where(Ev *v, const Lazy *z)
 /* One call of the sweep with lazy objects (sweep_call's counterpart): the scalars are drawn from *rs,
  * the pointer parameters are empty objects, and the line is printed from what the call made. */
 static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
-                      bool *bad, uint64_t *rs, const LHint *hint, unsigned nh, LHint *want, bool *retry)
+                      bool *bad, uint64_t *rs, bool may_retry, LKey want[2], bool *retry,
+                      const LOpt *op)
 {
-    Lazy z = {rs, 0, 0, {{0, 0}}, 0, {0}, {0}};
+    Lazy z = {0};
     uint64_t slot[16] = {0}, x = 0, boff[LMAXBL];
+    uint32_t ash[16] = {0};
     StrBuf pay = {0}, args = {0}, zc = {0};
     uint8_t *out;
     size_t k, i, j, n = 0, total = 8;
     uint32_t nz = 0;
     EvRes r;
     memset(&v->res, 0, sizeof v->res);
+    z.rs = rs;
+    z.force = op ? op->force : NULL;
     v->lazy_ud = &z;
+    if (v->track)
+        track_begin(v);
     v->lazy_fill = lazy_fill;
     for (k = 0; k < f->np && !v->res.status; k++) {
         const SArg *a = &s->a[k];
         if (a->kind == SA_SCALAR) {
-            uint64_t raw = sweep_arg(v, &a->ti, rs);
+            uint64_t raw = sweep_arg(v, &a->ti, rs), drawn = 0;
+            uint32_t sh = 0;
+            for (i = 0; i < a->ti.bytes; i++) {
+                LKey key = lz_key(lz_key(LZ_PARAM, k), i);
+                drawn |= (lazy_draw(&z, key, raw >> (8 * i) & 255) & 255) << (8 * i);
+                if (v->track && !a->ti.flt) {   /* the scalar is an input: its bytes' symbols, joined (see sweep_track) */
+                    uint32_t b = lazy_sym(v, &z, key);
+                    sh = i ? sx_join(&v->sx, b, sh) : b;
+                }
+            }
+            raw = a->ti.boolean ? drawn != 0 : drawn;
+            if (sh)
+                ash[k] = sx_ext(&v->sx, sh, a->ti.bytes, a->ti.sg, a->ti.boolean);
             slot[k] = ev_canon(&a->ti, raw);
             for (i = 0; i < a->ti.bytes; i++)
                 sb_putc(&args, (char)(raw >> (8 * i) & 255));
@@ -1302,21 +1397,29 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
             uint64_t w;
             int bi = -1;
             uint32_t off = LHEAD;
-            if (a->kind == SA_PTR && k && rnd(rs) % 3 == 0) {     /* into an earlier pointer parameter's object */
-                size_t np = 0, pick;
-                for (j = 0; j < k; j++)
-                    np += s->a[j].kind == SA_PTR;
-                if (np) {
-                    pick = (size_t)(rnd(rs) % np);
+            if (a->kind == SA_PTR && k) {     /* into an earlier pointer parameter's object: (j + 1) | offset << 16, 0 none */
+                uint64_t al = 0;
+                if (rnd(rs) % 3 == 0) {
+                    size_t np = 0, pick;
                     for (j = 0; j < k; j++)
-                        if (s->a[j].kind == SA_PTR && !pick--)
-                            break;
-                    bi = lazy_index(&z, pid(slot[j]));
-                    off = LHEAD + (uint32_t)(rnd(rs) % 9) * 8;
+                        np += s->a[j].kind == SA_PTR;
+                    if (np) {
+                        pick = (size_t)(rnd(rs) % np);
+                        for (j = 0; j < k; j++)
+                            if (s->a[j].kind == SA_PTR && !pick--)
+                                break;
+                        al = (uint64_t)(j + 1) | (uint64_t)(LHEAD + (rnd(rs) % 9) * 8) << 16;
+                    }
+                }
+                al = lazy_draw(&z, lz_key(lz_key(LZ_PARAM, k), LZ_ALIAS), al);
+                j = (size_t)(al & 0xffff);
+                if (j >= 1 && j <= k && s->a[j - 1].kind == SA_PTR) {
+                    bi = lazy_index(&z, pid(slot[j - 1]));
+                    off = (uint32_t)(al >> 16);
                 }
             }
             if (bi < 0)
-                bi = lazy_new(v, &z, a->kind == SA_REC ? a->off : 0, -1, (uint32_t)k, -1);
+                bi = lazy_new(v, &z, a->kind == SA_REC ? a->off : 0, -1, (uint32_t)k);
             if (bi < 0)
                 break;
             slot[k] = mkptr(z.bl.data[bi].id, off);
@@ -1331,21 +1434,21 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         v->ld_max = 0;
         v->ld_obj = 0;
         z.nullat = rnd(rs) & 1 ? ~0u : (unsigned)(rnd(rs) % 32);
-        memcpy(z.hint, hint, nh * sizeof *hint);
-        z.nhint = nh;
         v->sub_a = v->sub_b = 0;
+        v->ash = v->track ? ash : NULL;
         r = ev_call(v, f->fsym, slot, f->np, &x);
+        v->ash = NULL;
     }
     v->lazy_fill = NULL;
     v->lazy_ud = NULL;
     if (r.status != EV_OK)
         lazy_where(v, &z);
     *retry = false;
-    if (r.status == EV_TRAP && v->sub_a && nh < LMAXHINT) {
+    if (r.status == EV_TRAP && v->sub_a && may_retry) {
         int a = lazy_index(&z, v->sub_a), b = lazy_index(&z, v->sub_b), hi = a > b ? a : b;
-        if (a >= 0 && b >= 0 && a != b && z.bl.data[hi].draw >= 0) {
-            want->draw = (unsigned)z.bl.data[hi].draw;
-            want->tgt = a < b ? a : b;
+        if (a >= 0 && b >= 0 && a != b && z.bl.data[hi].par >= 0) {
+            want[0] = z.bl.data[hi].key;                /* the later blob's pointer cell shares the earlier blob */
+            want[1] = z.bl.data[a < b ? a : b].key;
             *retry = true;
         }
     }
@@ -1431,25 +1534,57 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     sb_free(&args);
     sb_free(&pay);
     sb_free(&zc);
+    if (op && op->rec) {        /* hand over what this attempt drew */
+        vec_free(op->rec);
+        *op->rec = z.rec;
+        memset(&z.rec, 0, sizeof z.rec);
+    }
+    if (op && op->syms) {
+        vec_free(op->syms);
+        *op->syms = z.syms;
+        memset(&z.syms, 0, sizeof z.syms);
+    }
     lazy_free(&z);
     return r.status;
 }
 
-/* sweep_call_lazy: the call, rerun with an alias hint each time it stops on a subtraction of pointers of
- * two blobs (the same draws up to the hinted one, so the rerun differs only there). */
-static int sweep_call_lazy(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
-                           bool *bad, uint64_t *rs)
+/* The log sorted by key, as `force` wants it. */
+static void llog_sort(LLog *log)
 {
-    LHint hint[LMAXHINT];
+    if (log->len)
+        qsort(log->data, log->len, sizeof *log->data, lz_cmp);
+}
+
+/* sweep_call_lazy: the call, rerun each time it stops on a subtraction of pointers of two blobs with the
+ * later blob's pointer cell forced to share the earlier blob (the program meant them as one object, such as
+ * a saved pc and the code it points into): the same draws, so the rerun differs only there.  *rec gets what
+ * the final run drew (unsorted); with `force` (sorted) the call takes those values instead of drawing them,
+ * and is not retried (its log already has the aliases). */
+static int sweep_call_lazy(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
+                           bool *bad, uint64_t *rs, const LOpt *op)
+{
+    LLog hints = {0};
+    LOpt o = op ? *op : (LOpt){0};
     unsigned nh = 0;
     uint64_t saved = *rs;
     for (;;) {
+        LKey want[2];
         bool retry;
         int st;
         *rs = saved;
-        st = lazy_call1(v, body, name, f, s, show_stop, bad, rs, hint, nh, &hint[nh], &retry);
-        if (!retry)
+        if (nh)
+            o.force = &hints;
+        st = lazy_call1(v, body, name, f, s, show_stop, bad, rs, !(op && op->force) && nh < LMAXHINT, want, &retry, &o);
+        if (!retry) {
+            vec_free(&hints);
             return st;
+        }
+        {
+            LEnt share = {lz_key(want[0], LZ_OUT), 1}, tgt = {lz_key(want[0], LZ_TGT), want[1]};
+            vec_push(&hints, share);
+            vec_push(&hints, tgt);
+            llog_sort(&hints);
+        }
         nh++;
     }
 }
@@ -1565,29 +1700,62 @@ static void blk_count(const Fn *f, size_t *edges, size_t *taken)
     }
 }
 
-/* One solved call: the seed with the model's bytes written over it; true if it finished and
- * took an edge nobody had (then it is worth tracking itself). */
-static bool solve_run(Ev *v, const SxModel *m, const uint8_t *seed, const Fn *f, const SFn *s,
-                      StrBuf *body, const char *name, bool *bad, bool *saw_ok, uint8_t **child)
+/* A corpus entry: an eager input is its byte string; a lazy one is the log of what the call drew
+ * (sorted by key) and the random state it started from, which replays it (see lazy_draw). */
+typedef struct SSeed {
+    uint8_t *in;
+    LLog log;
+    uint64_t rs0;
+} SSeed;
+
+static void seed_free(SSeed *sd)
 {
-    uint8_t *in = xmalloc((size_t)s->insz + 1);
+    free(sd->in);
+    vec_free(&sd->log);
+}
+
+/* One solved call: the seed with the model's bytes written over it; true if it finished and
+ * took an edge nobody had (then it is worth tracking itself).  A lazy seed's model is in solver
+ * symbols; `syms` (from its tracked run) maps them back to the keys of the draws. */
+static bool solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *syms, const Fn *f, const SFn *s,
+                      StrBuf *body, const char *name, bool *bad, bool *saw_ok, SSeed *child)
+{
+    SSeed c = {0};
     unsigned long before = v->newseen;
     size_t i, k;
     int st;
-    memcpy(in, seed, (size_t)s->insz);
-    for (i = 0; i < m->off.len; i++)
-        if (m->off.data[i] < s->insz)
-            in[m->off.data[i]] = m->val.data[i];
-    for (k = 0; k < f->np; k++)         /* a bool parameter is 0 or 1 */
-        if (s->a[k].kind == SA_SCALAR && s->a[k].ti.boolean)
-            in[s->a[k].off] = in[s->a[k].off] != 0;
-    st = sweep_call(v, body, name, f, s, in, false, bad);
+    if (s->lazy) {
+        LLog force = {0};
+        LOpt op = {&force, &c.log, NULL};
+        uint64_t rs = seed->rs0;
+        for (i = 0; i < seed->log.len; i++)
+            vec_push(&force, seed->log.data[i]);
+        for (i = 0; i < m->off.len; i++) {
+            LEnt *e = m->off.data[i] < syms->len ? llog_at(&force, syms->data[m->off.data[i]]) : NULL;
+            if (e)
+                e->val = m->val.data[i];
+        }
+        c.rs0 = seed->rs0;
+        st = sweep_call_lazy(v, body, name, f, s, false, bad, &rs, &op);
+        vec_free(&force);
+        llog_sort(&c.log);
+    } else {
+        c.in = xmalloc((size_t)s->insz + 1);
+        memcpy(c.in, seed->in, (size_t)s->insz);
+        for (i = 0; i < m->off.len; i++)
+            if (m->off.data[i] < s->insz)
+                c.in[m->off.data[i]] = m->val.data[i];
+        for (k = 0; k < f->np; k++)     /* a bool parameter is 0 or 1 */
+            if (s->a[k].kind == SA_SCALAR && s->a[k].ti.boolean)
+                c.in[s->a[k].off] = c.in[s->a[k].off] != 0;
+        st = sweep_call(v, body, name, f, s, c.in, false, bad);
+    }
     *saw_ok |= st == EV_OK;
     if (st == EV_OK && v->newseen != before) {
-        *child = in;
+        *child = c;
         return true;
     }
-    free(in);
+    seed_free(&c);
     return false;
 }
 
@@ -1627,22 +1795,36 @@ static size_t switch_conds(Ev *v, const PathEnt *p, uint32_t e, SxCond *cs, bool
 #define SCORPUS 16
 
 typedef struct SSearch {
-    VEC(uint8_t *) corpus;
+    VEC(SSeed) corpus;
     size_t next;
     STriedVec done;                     /* the edges already asked about */
     size_t queries, expanded;
 } SSearch;
 
-static void search_keep(SSearch *q, const SFn *s, const uint8_t *in, bool fresh)
+/* Keeps the call that just finished as a seed: eager, its input bytes; lazy, the log it drew (moved out of
+ * *log) and the random state it started from. */
+static void search_keep(SSearch *q, const SFn *s, const uint8_t *in, LLog *log, uint64_t rs0, bool fresh)
 {
-    if (q->corpus.len < SCORPUS && (q->corpus.len < SSEEDS || fresh))
-        vec_push(&q->corpus, memcpy(xmalloc((size_t)s->insz + 1), in, (size_t)s->insz));
+    SSeed sd = {0};
+    if (q->corpus.len >= SCORPUS || (q->corpus.len >= SSEEDS && !fresh))
+        return;
+    if (s->lazy) {
+        llog_sort(log);
+        sd.log = *log;
+        memset(log, 0, sizeof *log);
+        sd.rs0 = rs0;
+    } else {
+        sd.in = memcpy(xmalloc((size_t)s->insz + 1), in, (size_t)s->insz);
+    }
+    vec_push(&q->corpus, sd);
 }
 
 static void search_free(SSearch *q)
 {
-    while (q->corpus.len)
-        free(vec_pop(&q->corpus));
+    while (q->corpus.len) {
+        SSeed sd = vec_pop(&q->corpus);
+        seed_free(&sd);
+    }
     vec_free(&q->corpus);
     vec_free(&q->done);
 }
@@ -1681,19 +1863,28 @@ static bool solve_step1(SCtx *x)
     STriedVec *done = &q->done;
     SxModel m = {0};
     size_t i;
+    LKeys syms = {0};
     {
-        const uint8_t *seed;
+        SSeed seed;                     /* a shallow copy: the corpus may grow (and move) below */
         StrBuf sink = {0};
         int r;
         if (q->next >= q->corpus.len || q->expanded >= SEXPAND || q->queries >= SQUERY)
             return false;
         seed = q->corpus.data[q->next++];
         v->track = true;
-        r = sweep_call(v, &sink, name, f, s, seed, false, bad);
+        if (s->lazy) {
+            LOpt op = {&seed.log, NULL, &syms};
+            uint64_t rs = seed.rs0;
+            r = sweep_call_lazy(v, &sink, name, f, s, false, bad, &rs, &op);
+        } else {
+            r = sweep_call(v, &sink, name, f, s, seed.in, false, bad);
+        }
         v->track = false;
         sb_free(&sink);
-        if (r != EV_OK)
+        if (r != EV_OK) {
+            vec_free(&syms);
             return true;
+        }
         q->expanded++;
         st->tracked++;
         st->branches += v->nbr;
@@ -1716,7 +1907,7 @@ static bool solve_step1(SCtx *x)
                 for (e = 0; e < ne && q->queries < SQUERY; e++) {
                     size_t n;
                     bool whole = true, sat;
-                    uint8_t *child = NULL;
+                    SSeed child = {0};
                     if (e == p.edge || (b->seen >> blk_edge_bit(b, e) & 1) || tried(done, b, e))
                         continue;
                     if (b->term == TK_BR) {
@@ -1745,13 +1936,13 @@ static bool solve_step1(SCtx *x)
                     if (r != SX_SAT)
                         continue;
                     st->calls++;
-                    sat = solve_run(v, &m, seed, f, s, body, name, bad, saw_ok, &child);
+                    sat = solve_run(v, &m, &seed, &syms, f, s, body, name, bad, saw_ok, &child);
                     if (sat) {
                         st->fresh++;
                         if (q->corpus.len < SCORPUS)
                             vec_push(&q->corpus, child);
                         else
-                            free(child);
+                            seed_free(&child);
                     }
                 }
             }
@@ -1767,6 +1958,7 @@ static bool solve_step1(SCtx *x)
         }
     }
     sx_model_free(&m);
+    vec_free(&syms);
     return true;
 }
 
@@ -1785,10 +1977,38 @@ static void mut_gen(SCtx *x)
     unsigned long seen = v->newseen;
     int st;
     if (x->s->lazy) {
-        st = sweep_call_lazy(v, x->body, x->name, x->f, x->s, !v->dict_use && !x->saw_unsup, &x->bad, &x->rs);
+        LLog rec = {0};
+        LOpt op = {NULL, &rec, NULL};
+        uint64_t rs0 = x->rs;
+        size_t at = x->body->len;
+        st = sweep_call_lazy(v, x->body, x->name, x->f, x->s, !v->dict_use && !x->saw_unsup, &x->bad, &x->rs, &op);
+        if (getenv("CEREAL_LAZY_REPLAY")) {     /* test only: the call, rerun from its log, prints the same line */
+            StrBuf again = {0};
+            uint64_t rs1 = rs0, rs2 = x->rs;
+            bool bad = false, don = v->dict_on;
+            LOpt again_op = {&rec, NULL, NULL};
+            char why1[112];
+            int st2;
+            snprintf(why1, sizeof why1, "%s: %s", stop_name(st), v->res.why);
+            llog_sort(&rec);
+            v->dict_on = false;                 /* the replay must not feed the dictionary twice */
+            st2 = sweep_call_lazy(v, &again, x->name, x->f, x->s, !v->dict_use && !x->saw_unsup, &bad, &rs1, &again_op);
+            if (again.len != x->body->len - at || memcmp(again.data, x->body->data + at, again.len)) {
+                fprintf(stderr, "cereal: lazy replay of %s differs: %s, then %s\n", x->name, why1,
+                        st2 ? v->res.why : "it finished");
+            }
+            v->dict_on = don;
+            sb_free(&again);
+            x->rs = rs2;
+        }
+        if (x->sv && st == EV_OK)
+            search_keep(&x->q, x->s, NULL, &rec, rs0, v->newseen != seen);
+        vec_free(&rec);
     } else {
         sweep_gen(v, x->f, x->s, x->in, &x->rs);
         st = sweep_call(v, x->body, x->name, x->f, x->s, x->in, !v->dict_use && !x->saw_unsup, &x->bad);
+        if (x->sv && st == EV_OK)
+            search_keep(&x->q, x->s, x->in, NULL, 0, v->newseen != seen);
     }
     x->saw_ok |= st == EV_OK;
     if (st != EV_OK && !x->why[0]) {
@@ -1796,8 +2016,6 @@ static void mut_gen(SCtx *x)
         memcpy(x->loc, v->note, sizeof x->loc);
     }
     x->saw_unsup |= !v->dict_use && st == EV_UNSUPPORTED && x->s->ptrfn;
-    if (x->sv && st == EV_OK)
-        search_keep(&x->q, x->s, x->in, v->newseen != seen);
 }
 
 static void mut_solve(SCtx *x)
@@ -2050,7 +2268,7 @@ static void eval_sweep(Checker *c0)
             sb_putc(&head, 10);
             (s.lazy ? sweep_thunk_lazy : sweep_thunk)(v, &sts, c, &head, st ? tname : name, name, f, &s);
             x.v = v;
-            x.sv = s.lazy ? NULL : sv;          /* lazy objects are not combined with the solver yet */
+            x.sv = sv;
             x.ss = &ss;
             x.f = f;
             x.s = &s;
@@ -2083,7 +2301,7 @@ static void eval_sweep(Checker *c0)
                 }
                 v->dict_use = false;
             }
-            if (sv && !s.lazy) {
+            if (sv) {
                 size_t ed = 0, tk = 0;
                 blk_count(f, &ed, &tk);
                 ss.edges += st ? 0 : ed;
