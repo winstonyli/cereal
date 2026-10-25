@@ -134,6 +134,11 @@ ran in the evaluator and changed the main state, while the gcc side replays only
 45267 calls, 44054 equal (97.3%), 229 differ, 984 gcc crashed. Left: `FILE*` and io-library functions (a lazy blob
 as a stdio handle), string interning, and cells where the program stored a pointer (the evaluator holds an id, gcc
 an address), uninitialized memory (gcc 0xaa fill, evaluator zero), `lua_absindex` on a drawn state.
+Perturb check (same day, kept files of `liboracle-lazy-lua-undo`, gcc driver run twice with `MALLOC_PERTURB_` 1 and 254):
+of the 229 differences only 11 depend on uninitialised heap (`boolF`, `open_func`, `luaL_addlstring`, `auxgetinfo`,
+`lua_rawsetp`, `luaD_pretailcall`); 218 are stable, 195 of them `io_tmpfile` (a real file, host-dependent by design) and
+about 23 others to look at one by one (`lua_absindex` x10, `getS`/`getF`, `stringK` with a fixed 0xaa fill,
+`luaH_newkey`, `lua_xmove`, `luaD_seterrorobj`). A mask of never-written bytes would remove at most 11, so it is not built.
 
 Limits: a source manager reserves 4 GB of address space per file (`srcmgr.c` `REGION_SIZE`) and a link keeps
 every file's, so `ulimit -v` must grow by that per file (`sweep_meas.sh` does); Lua (32 files) and zstd (26)
