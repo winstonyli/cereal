@@ -150,6 +150,11 @@ copy order; `stringK` reads the uninitialised padding of a local `TValue` (gcc -
 `luaH_newkey` x2 reads garbage; `luaF_getlocalname` x1 (evaluator NULL, gcc an unknown pointer) is unexplained. None
 is an evaluator bug that a fix would remove, so the oracle gate for zstd allowlists only the two machine-reading
 functions and Lua stays a measurement.
+Stage 3 (function pointers drawn as functions, `ff63c5d`): solver sweep with lazy (`fnptr-solver-lazy`) Lua 1575 -> 1531
+untaken, zstd 1682, total 3213; Lua library oracle N=1 (`fnptr-liboracle-lua`) 45621 calls, 44458 equal (97.5%), 217 differ,
+946 gcc crashed (982 before; the strcmp-in-`luaS_new` class shrank), 2 evaluator stops. The new differences are few and
+look like pointer-dependent values (`luaZ_fill` 0x89 vs 0xc9, `inclinenumber`, `getS`/`getF`/`luaF_getlocalname` returning
+NULL where gcc returns a pointer outside the blobs); not yet looked at one by one.
 The 982 gcc crashes of `ptrdiff-liboracle-lua` (kept files, one call per class under gdb; function counts from `got.txt`):
 744 are `FILE*` functions (`skipcomment`, `skipBOM`, `test_eof`, `read_all`, `read_chars`, `getF`) where glibc
 aborts with "invalid stdio handle" on a drawn blob used as a `FILE`; about 150 (`luaS_new`, `lua_pushstring`,

@@ -5,7 +5,7 @@ status: active
 # Lazy blobs, stage 1: plan
 
 Design and decisions: `LAZY_BLOBS_DESIGN.md` (D1-D4 decided 2026-10-23: lazy beside the layout
-as `--eval-lazy`, then replace; self-describing line; function pointers in stage 3; solver in
+as `--eval-lazy`, then replace; self-describing line; function pointers in stage 3 (built); solver in
 stage 2). This plan is stage 1 only: evaluator hooks, the lazy context, the new call line with
 its gcc-side loader, `--eval-lazy`, and the measurement. No solver, no function pointers, and
 the eager layout stays untouched (it is the baseline until stage 4).

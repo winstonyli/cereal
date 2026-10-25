@@ -48,11 +48,16 @@ or a pointer to a new pending blob (6/8), size 0, grown and filled by hooks 1 an
 first access. A pending blob accessed as `LClosure` after being reached as `GCObject` is
 just a bigger access: the downcast needs no special case.
 
-**Function pointers.** A call through a pointer that is a pending blob or NULL resolves it
-to a function of the indirect call's type (parameters and return of the same signature,
-from the corpus, deterministic order, chosen by the PRNG). It is the same hook shape
-(a lazy value met at a use) and covers `frealloc` and the other call-through-null stops
-(about 55 edges). It is stage 3.
+**Function pointers (stage 3, built).** Decided at the typed load, not at the call: the load of a
+pointer cell whose type is a pointer to a function type is NULL (1/8) or a function, so no
+pending blob is ever reinterpreted as code (`Ti.fty`, `lazy_fn` in `eval_run.c`). The candidates
+are the swept functions (`sweep_cand`) whose function type prints the same as the pointer's
+(`type_print` of the canonical type: return and parameter types as the gcc build spells them),
+chosen by the PRNG and a draw key (`LZ_FN`), so the solver's forced map covers it. The link
+cell names the function by its index in `Ev.fn` (top bit of the target field); the sweep prints
+`fp INDEX NAME` per file, the driver fills `sw_fn` from them (`sw_fp_N`), and `sw_load` writes
+the address. Fixture: `tests/cfg_exec/fnptr.c`. Covers `frealloc` and the other
+call-through-null stops (about 55 edges).
 
 **Parameters.** A pointer parameter is a pending blob, as today's blob 0 but unsized; record
 parameters by value stay eager (their size is known) and their pointer fields are cells
@@ -159,8 +164,8 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
    Falsifier: `luaV_execute` still stuck at the same place, or the oracle mismatching.
 2. Solver keys (section 2; built 2026-10-23, results in `LAZY_BLOBS_SOLVER_PLAN.md`: 3233 untaken). Check: the existing solver tests, unchanged edge counts on
    the eager layout, then lazy.
-3. Function pointers. Check: `frealloc` and the call-through-null stops gone from the
-   stuck report.
+3. Function pointers (built 2026-10-25, `ff63c5d`; Lua 1575 -> 1531, zstd 1682, total 3213; run `fnptr-solver-lazy`). Check: `frealloc` and the call-through-null stops gone from the
+   stuck report (7 edges still stop at a call through a null or non-function pointer: `luaU_undump` via `luaM_saferealloc_`, `close_func`).
 4. Make lazy the default, delete the layout code (section 3), update `EVAL_DESIGN.md` and
    `PARKED.md`.
 
