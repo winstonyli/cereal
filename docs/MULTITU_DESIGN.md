@@ -150,6 +150,14 @@ copy order; `stringK` reads the uninitialised padding of a local `TValue` (gcc -
 `luaH_newkey` x2 reads garbage; `luaF_getlocalname` x1 (evaluator NULL, gcc an unknown pointer) is unexplained. None
 is an evaluator bug that a fix would remove, so the oracle gate for zstd allowlists only the two machine-reading
 functions and Lua stays a measurement.
+The 982 gcc crashes of `ptrdiff-liboracle-lua` (kept files, one call per class under gdb; function counts from `got.txt`):
+744 are `FILE*` functions (`skipcomment`, `skipBOM`, `test_eof`, `read_all`, `read_chars`, `getF`) where glibc
+aborts with "invalid stdio handle" on a drawn blob used as a `FILE`; about 150 (`luaS_new`, `lua_pushstring`,
+`resume_error`) die in `strcmp` inside `luaS_new` on a drawn string-cache entry; `lua_settop`, `luaD_closeprotected`
+and `luaG_errormsg` callers reach `luaD_throw` with no protected call, which calls `abort()` (the program's own
+panic path; the evaluator finishes these, so each is a reported difference only if the abort is not also a
+stop on its side); 42 `lua_upvaluejoin` fault on a garbage upvalue pointer. So none is a wrong evaluator result: the
+gcc side is the one that cannot run the drawn state. A gate leg would need the `FILE*` calls excluded by type.
 
 Limits: a source manager reserves 4 GB of address space per file (`srcmgr.c` `REGION_SIZE`) and a link keeps
 every file's, so `ulimit -v` must grow by that per file (`sweep_meas.sh` does); Lua (32 files) and zstd (26)
