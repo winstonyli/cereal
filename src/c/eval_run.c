@@ -624,6 +624,13 @@ static bool states_callable(Ev *v, const SStates *ss, Checker *c)
     return true;
 }
 
+/* A function the sweep calls, and the gcc side can name: a user function with a fixed, short parameter list. */
+static bool sweep_cand(const Fn *f)
+{
+    return f->fsym != SYM_NONE && f->user && !f->variadic && f->np <= 16 &&
+           strcmp(cident(f->c, csym(f->c, f->fsym)->name), "main");
+}
+
 /* Can f be swept, and how: the pointers inside the objects it is given point to objects of their
  * own, as far as the budget goes. */
 static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts, unsigned var, bool lazy)
@@ -1131,6 +1138,9 @@ typedef struct LOpt {
 #define LZ_OUT ((uint64_t)3 << 56)
 #define LZ_TGT ((uint64_t)4 << 56)
 #define LZ_TOFF ((uint64_t)5 << 56)
+#define LZ_FN ((uint64_t)6 << 56)
+#define LFN 0x80000000u         /* LLink.tb1: the link names a function (index in Ev.fn), not a blob */
+#define LMAXFN (1u << 16)       /* functions the gcc side can address (sw_fn) */
 
 static LKey lz_key(LKey a, uint64_t b)
 {
@@ -1238,6 +1248,44 @@ static void lazy_record(LBlob *b, uint64_t off, unsigned n, const uint8_t *src)
     memcpy(b->ini + off, src, n);
 }
 
+/* A pointer to a function type fty, drawn as a function: the index in Ev.fn of one of the swept
+ * functions whose type prints the same (return and parameter types, as the gcc build spells them), or -1
+ * when none does. */
+static long lazy_fn(Ev *v, Lazy *z, LKey ck, TypeId fty)
+{
+    TypeTable *tt = &v->c->tt;
+    TypeId canon = type_canon(tt, fty);
+    const TypeEnt *te = type_ent(tt, canon);
+    VEC(uint32_t) cand = {0};
+    StrBuf want = {0};
+    uint64_t g;
+    size_t i, k;
+    long res = -1;
+    if (te->flags & (TF_VARIADIC | TF_NOPROTO))
+        return -1;
+    type_print(tt, &want, canon);
+    for (i = 0; i < v->fn.len && i < LMAXFN; i++) {
+        const Fn *f = &v->fn.data[i];
+        StrBuf have = {0};
+        if (!sweep_cand(f) || f->np != te->n)
+            continue;
+        type_print(&f->c->tt, &have, type_canon(&f->c->tt, csym(f->c, f->fsym)->ty));
+        if (!strcmp(sb_cstr(&have), sb_cstr(&want)))
+            vec_push(&cand, (uint32_t)i);
+        sb_free(&have);
+    }
+    if (cand.len) {
+        g = lazy_draw(z, lz_key(ck, LZ_FN), cand.data[rnd(z->rs) % cand.len]);
+        for (k = 0; k < cand.len; k++)          /* a forced function that is no candidate here: the first */
+            if (cand.data[k] == g)
+                break;
+        res = (long)cand.data[k < cand.len ? k : 0];
+    }
+    vec_free(&cand);
+    sb_free(&want);
+    return res;
+}
+
 /* Ev.lazy_fill: the typed load of ti->bytes bytes at off of lazy object id finds some uninitialized.
  * Scalars are drawn as the generator draws them; a pointer is NULL (1/8), into an existing object
  * (1/8, at an offset of 0 to 64), or into a new one. */
@@ -1261,8 +1309,13 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
         if (un != ti->bytes)
             return false;               /* half a pointer was written: not a pointer to draw */
         r = lazy_draw(z, lz_key(ck, LZ_OUT), r > 2 ? 2 : r);       /* 0 NULL, 1 share, 2 new */
+        long fi = r && ti->fty ? lazy_fn(v, z, ck, ti->fty) : -1;   /* a function pointer is NULL or a function */
         if (r == 0) {
             x = 0;
+        } else if (fi >= 0) {
+            Fn *g = &v->fn.data[fi];
+            l.tb1 = LFN | (uint32_t)fi;
+            x = mkptr(ev_function_obj(v, g->c, g->fsym), 0);
         } else if (r == 1) {
             int t = (int)(rnd(z->rs) % z->bl.len);
             uint64_t tk, to = LHEAD + (rnd(z->rs) % 9) * 8;
@@ -1602,7 +1655,7 @@ static int cmp64(const void *a, const void *b)
 /* Random input bytes for a call. */
 static void sweep_gen(Ev *v, const Fn *f, const SFn *s, uint8_t *in, uint64_t *rs)
 {
-    static const Ti byte = {1, false, false, false, false};
+    static const Ti byte = {1, false, false, false, false, 0};
     size_t k;
     int i;
     memset(in, 0, (size_t)s->insz);
@@ -2233,18 +2286,28 @@ static void eval_sweep(Checker *c0)
     }
     if (c0->opt.eval_state)
         states_build(v, &sts);
+    if (c0->opt.eval_lazy)              /* the functions a drawn function pointer can name, per file (sw_fn) */
+        for (i = 0; i < v->fn.len && i < LMAXFN; i++) {
+            const Fn *f = &v->fn.data[i];
+            size_t b;
+            if (!sweep_cand(f))
+                continue;
+            for (b = 0; b < i && !(v->fn.data[b].c == f->c && sweep_cand(&v->fn.data[b])); b++)
+                ;
+            if (b == i && c0->opt.link)     /* the file's first candidate: announce the file */
+                fprintf(out, "file %s\n", main_path(f->c));
+            fprintf(out, "fp %zu %s\n", i, cident(f->c, csym(f->c, f->fsym)->name));
+        }
     for (i = 0; i < v->fn.len; i++) {
         Fn *f = &v->fn.data[i];
         Checker *c = f->c;
         const char *name;
         unsigned nv, vi;
         bool fin = false;               /* a state variant finished */
-        if (f->fsym == SYM_NONE || !f->user || f->variadic || f->np > 16)
+        if (!sweep_cand(f))
             continue;
         v->c = c;
         name = cident(c, csym(c, f->fsym)->name);
-        if (!strcmp(name, "main"))
-            continue;
         nv = sts.n ? state_variants(f, &sts, states_callable(v, &sts, c)) : 0;
         for (vi = 0; vi <= nv; vi++) {
             bool st = vi < nv;          /* a state variant; the last one is the plain sweep */

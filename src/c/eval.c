@@ -43,6 +43,8 @@ bool ev_tinfo(Ev *v, TypeId t, Ti *ti)
     if (k == TY_PTR || k == TY_NULLPTR) {
         ti->bytes = 8;
         ti->ptr = true;
+        if (k == TY_PTR && type_ckind(tt, type_base(tt, t)) == TY_FUNC)
+            ti->fty = type_base(tt, t);
         return true;
     }
     if (k == TY_FLOAT || k == TY_DOUBLE) {
@@ -744,9 +746,8 @@ static Fn *find_def(Ev *v, Checker *c, uint32_t fsym)
 
 /* A function's object: one per definition (a declaration without a body in this file takes the
  * definition's, when linking). */
-static uint32_t function_obj(Ev *v, uint32_t fsym)
+uint32_t ev_function_obj(Ev *v, Checker *c, uint32_t fsym)
 {
-    Checker *c = v->c;
     Fn *g = find_def(v, c, fsym);
     size_t i;
     Obj o;
@@ -1527,7 +1528,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         if (s)
             return mkptr(*s, 0);
         if (!(t->sym & SYM_LOCAL) && csym(v->c, t->sym)->kind == CS_FUNC)
-            return mkptr(function_obj(v, t->sym), 0);
+            return mkptr(ev_function_obj(v, v->c, t->sym), 0);
         id = static_obj(r, t->sym);
         return id ? mkptr(id, 0) : 0;
     }

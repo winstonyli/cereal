@@ -66,28 +66,33 @@ run_group() {
     if [ -n "$EVAL_SWEEP_SOLVE" ]; then
         # shellcheck disable=SC2086
         "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS $link $state --eval-sweep="$N,1234" --eval-solve="$EVAL_SWEEP_SOLVE" $absl 2>"$W/solve.err" </dev/null \
-            | grep -E '^(file|fn|thunk|call) ' >"$W/sweep.txt"
+            | grep -E '^(file|fp|fn|thunk|call) ' >"$W/sweep.txt"
         grep -E '^cereal: ' "$W/solve.err" | sed "s|^|$f: |"
     else
         # shellcheck disable=SC2086
         "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS $link $state --eval-sweep="$N,1234" $absl 2>"$W/sweep.err" </dev/null \
-            | grep -E '^(file|fn|thunk|call) ' >"$W/sweep.txt"
+            | grep -E '^(file|fp|fn|thunk|call) ' >"$W/sweep.txt"
     fi
     # The drivers (one per file: the file, its thunks, a table of them), the calls, and the evaluator's
     # results, in order.  A function is known by file number and name (statics may share names).
     awk -v lib="$EVAL_SWEEP_LIB" -v W="$W" -v calls="$W/calls.txt" -v expf="$W/exp.txt" -v src1="$(absof "$1")" -v rt="$D/sweep_rt.h" '
-        BEGIN { fi = 1; src[1] = src1 }
-        $1 == "file" { if (nfile++) fi++; src[fi] = $2; next }
-        $1 == "fn" { nfn++; sig[fi ":" $2] = 1; next }
-        $1 == "thunk" {
+        function start(fi,    drv) {
             drv = W "/drv" fi ".c"
             if (!started[fi]++) {
                 print "#define main sweep_orig_main_" fi > drv
                 print "#include \"" src[fi] "\"" > drv
                 print "#undef main" > drv
                 print "#include \"" rt "\"" > drv
-                nfiles = fi
+                if (fi > nfiles) nfiles = fi
             }
+            return drv
+        }
+        BEGIN { fi = 1; src[1] = src1 }
+        $1 == "file" { if (!($2 in idx)) idx[$2] = ++nfile; fi = idx[$2]; src[fi] = $2; next }
+        $1 == "fn" { nfn++; sig[fi ":" $2] = 1; next }
+        $1 == "fp" { start(fi); fpg[fi, ++nfp[fi]] = $2; fpn[fi, nfp[fi]] = $3; next }
+        $1 == "thunk" {
+            drv = start(fi)
             print substr($0, length($2) + length($3) + 9) > drv
             names[fi, ++nth[fi]] = $2
             next
@@ -120,11 +125,15 @@ run_group() {
                 for (t = 1; t <= nth[i]; t++) printf "{\"%d:%s\", t_%s},\n", i, names[i, t], names[i, t] > drv
                 printf "};\nconst SwTh *sw_tab_%d(int *n)\n{\n    *n = sizeof sw_tab / sizeof *sw_tab;\n    return sw_tab;\n}\n", i > drv
                 printf "const SwTh *sw_tab_%d(int *);\n", i > mn
+                printf "void sw_fp_%d(void **t)\n{\n", i > drv
+                for (t = 1; t <= nfp[i]; t++) printf "    t[%d] = (void *)%s;\n", fpg[i, t], fpn[i, t] > drv
+                printf "}\n" > drv
+                printf "void sw_fp_%d(void **);\n", i > mn
             }
             print "int main(int argc, char **argv)\n{\n    static SwTh all[1 << 16];\n    int n = 0, k, j;\n    const SwTh *t;" > mn
             for (i = 1; i <= nfiles; i++)
                 if (started[i])
-                    printf "    t = sw_tab_%d(&k);\n    for (j = 0; j < k; j++)\n        all[n++] = t[j];\n", i > mn
+                    printf "    t = sw_tab_%d(&k);\n    for (j = 0; j < k; j++)\n        all[n++] = t[j];\n    sw_fp_%d(sw_fn);\n", i, i > mn
             print "    return sw_main(all, n, argv[1]);\n}" > mn
             for (l = 1; l <= n; l++) print line[l] > (expf ".calls")
             nf = 0; ok = 0

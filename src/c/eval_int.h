@@ -169,6 +169,7 @@ typedef struct Ti {
     unsigned bytes;
     bool sg, boolean, flt;       /* flt: float or double, the value is its IEEE bit pattern */
     bool ptr;                    /* a pointer: never symbolic */
+    TypeId fty;                  /* a pointer to a function: that function type (lazy blobs draw a function for it) */
 } Ti;
 
 /* ---- failure: the first one wins and ends the evaluation ---- */
@@ -195,6 +196,7 @@ static inline int32_t poff(uint64_t p) { return (int32_t)(uint32_t)p; }
 static inline uint32_t pid(uint64_t p) { return (uint32_t)(p >> 32); }
 
 uint32_t ev_new_obj(Ev *v, uint64_t size, bool ro);
+uint32_t ev_function_obj(Ev *v, Checker *c, uint32_t fsym);   /* the function's object (one per definition) */
 void ev_kill_obj(Ev *v, uint32_t id);
 /* The bytes [p, p + n) of a live object, or NULL after a trap. */
 Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what);

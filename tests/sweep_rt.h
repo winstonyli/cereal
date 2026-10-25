@@ -40,6 +40,10 @@
 /* a returned pointer may point this far past a blob (64 + LHEAD of src/c/eval_run.c) and still be tagged */
 #define SW_SLACK 192
 
+/* a link whose target has the top bit set names a function: the index in the evaluator's function table, which the
+ * driver fills (sw_fp_N, from the "fp" lines of the sweep); weak, so the drivers of all files share one table */
+__attribute__((weak)) void *sw_fn[1 << 16];
+
 typedef struct SwG {
     unsigned n, nl, nz;
     unsigned char **b;
@@ -79,7 +83,8 @@ static const unsigned char *sw_load(SwG *g, const unsigned char *in, unsigned ar
     }
     for (i = 0; i < g->nl; i++) {
         const unsigned char *l = g->lk + 16 * i;
-        void *t = sw_u32(l + 8) ? (void *)(g->b[sw_u32(l + 8) - 1] + sw_u32(l + 12)) : (void *)0;
+        unsigned tb = sw_u32(l + 8);
+        void *t = tb & 0x80000000u ? sw_fn[tb & 0x7fffffffu] : tb ? (void *)(g->b[tb - 1] + sw_u32(l + 12)) : (void *)0;
         memcpy(g->b[sw_u32(l)] + sw_u32(l + 4), &t, 8);
     }
     return args;
