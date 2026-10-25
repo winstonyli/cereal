@@ -139,6 +139,11 @@ of the 229 differences only 11 depend on uninitialised heap (`boolF`, `open_func
 `lua_rawsetp`, `luaD_pretailcall`); 218 are stable, 195 of them `io_tmpfile` (a real file, host-dependent by design) and
 about 23 others to look at one by one (`lua_absindex` x10, `getS`/`getF`, `stringK` with a fixed 0xaa fill,
 `luaH_newkey`, `lua_xmove`, `luaD_seterrorobj`). A mask of never-written bytes would remove at most 11, so it is not built.
+Pointer difference (same day): a difference that is not a multiple of the element size is undefined; gcc -O0 shifts
+(floor) and the evaluator divided (truncate), which gave the 10 `lua_absindex` differences (the sweep draws offsets
+in multiples of 8, `StackValue` is 16 bytes). `TO_PTRDIFF` now stops such a call. Lua N=1 oracle (`ptrdiff-liboracle-lua`):
+45194 calls, 43996 equal, 216 differ, 982 gcc crashed. Cost, lazy with solver N=24 (`ptrdiff-solver-lazy`): untaken Lua
+1551 -> 1575, zstd 1682, total 3233 -> 3257 (+24, 0.7%); still below eager 3897.
 
 Limits: a source manager reserves 4 GB of address space per file (`srcmgr.c` `REGION_SIZE`) and a link keeps
 every file's, so `ulimit -v` must grow by that per file (`sweep_meas.sh` does); Lua (32 files) and zstd (26)

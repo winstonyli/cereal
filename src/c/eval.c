@@ -1797,6 +1797,10 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
             TRAP(v, "subtraction of pointers into different objects");
             return 0;
         }
+        if (((int64_t)poff(a) - (int64_t)poff(b)) % t->val) {      /* undefined; gcc shifts, a division truncates */
+            TRAP(v, "pointer difference is not a multiple of the element size");
+            return 0;
+        }
         return (uint64_t)(((int64_t)poff(a) - (int64_t)poff(b)) / t->val);
     case TO_LOCAL:
         ev_local(r, n, t->sym);
