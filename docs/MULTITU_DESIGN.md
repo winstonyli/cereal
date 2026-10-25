@@ -128,6 +128,12 @@ zstd N=24 (`liboracle-lazy-zstd`): 72387 calls the evaluator finished, 72245 equ
 the differences are `ZSTD_cwksp_bytes_to_align_ptr` (the alignment of a raw address) and `ZSTD_DCtx_get_bmi2`
 (`cpuid`). Lua N=1 (`liboracle-lazy-lua-res`): 46428 calls, 41942 equal (90.3%), 1304 differ, 3182 gcc crashed
 (`__st` state functions and plain ones); not yet classified, so a mismatch there is not yet a finding.
+Cause of most of it: the state builders that yield no state (`getco` aborts, `lua_tothread` returns NULL) still
+ran in the evaluator and changed the main state, while the gcc side replays only the builders that gave a state;
+`state_run` now undoes a builder that gives none (`snap_restore`). Lua N=1 after that (`liboracle-lazy-lua-undo`):
+45267 calls, 44054 equal (97.3%), 229 differ, 984 gcc crashed. Left: `FILE*` and io-library functions (a lazy blob
+as a stdio handle), string interning, and cells where the program stored a pointer (the evaluator holds an id, gcc
+an address), uninitialized memory (gcc 0xaa fill, evaluator zero), `lua_absindex` on a drawn state.
 
 Limits: a source manager reserves 4 GB of address space per file (`srcmgr.c` `REGION_SIZE`) and a link keeps
 every file's, so `ulimit -v` must grow by that per file (`sweep_meas.sh` does); Lua (32 files) and zstd (26)

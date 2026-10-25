@@ -516,6 +516,7 @@ static void state_run(Ev *v, SStates *ss, size_t i, const int *arg)
     uint32_t fsym = f->fsym;
     size_t np = f->np, k;
     size_t before = v->obj.len;
+    Snap undo = snap_take(v);           /* a builder that yields no state is not replayed by the gcc side: undo what it did */
     SState t;
     EvRes r;
     for (k = 0; k < np; k++)
@@ -533,8 +534,11 @@ static void state_run(Ev *v, SStates *ss, size_t i, const int *arg)
                 r.status != EV_OK ? stop_name(r.status) : "returned NULL or an old object",
                 r.status != EV_OK ? r.why : "");
         v->res.status = EV_OK;
+        snap_restore(v, &undo);
+        snap_free(&undo);
         return;
     }
+    snap_free(&undo);
     t.ptr = x;
     t.fi = i;
     for (k = 0; k < SMAXBP; k++)
