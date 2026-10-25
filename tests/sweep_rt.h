@@ -8,6 +8,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef SW_FORK
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 /* r points into argument i's buffer b (n bytes): tag it (index + 1) << 32 | offset */
 #define SW_IN(t, r, i, b, n)                                                                    \
@@ -140,6 +145,12 @@ static int sw_main(const SwTh *tab, int ntab, const char *calls)
     static unsigned char in[1 << 18], out[1 << 17];
     char line[1 << 19 | 256];
     FILE *f = fopen(calls, "r");
+#ifdef SW_FORK
+    /* the results go through a private copy of stdout; what the program itself prints is discarded */
+    FILE *res = fdopen(dup(1), "w");
+    if (!res || !freopen("/dev/null", "w", stdout))
+        return 2;
+#endif
     if (!f)
         return 2;
     while (fgets(line, sizeof line, f)) {
@@ -158,6 +169,31 @@ static int sw_main(const SwTh *tab, int ntab, const char *calls)
             for (; h[0] > ' ' && h[1] > ' '; h += 2)
                 in[n++] = (unsigned char)(sw_nib(h[0]) << 4 | sw_nib(h[1]));
         memset(out, 0, sizeof out);
+#ifdef SW_FORK
+        /* library mode (EVAL_SWEEP_LIB): the call runs in a child, so a crash or a hang on generated
+         * state is "!" for that call and the next one starts clean */
+        {
+            int status = 0;
+            pid_t pid;
+            fflush(res);
+            pid = fork();
+            if (pid == 0) {
+                alarm(3);
+                k = tab[t].fn(in, out);
+                if (!k)
+                    fputc(0x2d, res);
+                for (i = 0; i < k; i++)
+                    fprintf(res, "%02x", out[i]);
+                fputc('\n', res);
+                fflush(res);
+                _exit(0);
+            }
+            if (pid < 0 || waitpid(pid, &status, 0) < 0 || !WIFEXITED(status) || WEXITSTATUS(status))
+                fputs("!\n", res);
+            fflush(res);
+            continue;
+        }
+#endif
         k = tab[t].fn(in, out);
         if (!k)
             putchar('-');

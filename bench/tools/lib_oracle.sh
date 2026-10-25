@@ -1,0 +1,26 @@
+#!/bin/sh
+# lib_oracle.sh CEREAL lua|zstd [N]: the evaluator against gcc, call by call, on a whole library linked as one
+# program (--eval-link); gcc runs every call in a forked child, so a crash on generated state loses that call
+# only (tests/eval_sweep.sh with EVAL_SWEEP_LIB=1).  Prints one summary line and the differing / crashing
+# functions.  Run through the run wrapper (RUNS.md).  LAZY=1 sweeps with --eval-lazy, STATE=1 with --eval-state.
+# Lua is built with luai_makeseed pinned to 0 (its string-hash seed comes from the clock and addresses, so every
+# new state would differ); address-dependent functions (ZSTD_cwksp_bytes_to_align_ptr) still differ by design.
+C=${1:?cereal binary}
+LIB=${2:?lua or zstd}
+N=${3:-24}
+L=$HOME/corpus/lupa-2.8/third-party/lua54
+Z=$HOME/corpus/zstd-1.5.7-dl/zstd-1.5.7/lib
+S=$(cd "$(dirname "$0")/../../tests" && pwd)/eval_sweep.sh
+case $LIB in
+lua)  FILES=$(ls "$L"/*.c | grep -Ev '/(luac?|onelua|ltests).c$'); export CEREAL_FLAGS="-std=gnu99 -I$L -Dluai_makeseed(L)=0u" ;;
+zstd) FILES=$(ls "$Z"/common/*.c "$Z"/compress/*.c "$Z"/decompress/*.c)
+      export CEREAL_FLAGS="-std=gnu99 -DZSTD_DISABLE_ASM -I$Z -I$Z/common" ;;
+*) echo "lib_oracle: lua or zstd" >&2; exit 2 ;;
+esac
+nf=$(echo "$FILES" | wc -w)
+ulimit -S -v $((8000000 + 4400000 * nf))
+export EVAL_SWEEP_LIB=1 EVAL_SWEEP_LINK=1 EVAL_SWEEP_N=$N
+[ -n "$LAZY" ] && export EVAL_SWEEP_LAZY=1
+[ -n "$STATE" ] && export EVAL_SWEEP_STATE=1
+# shellcheck disable=SC2086
+timeout 7200 sh "$S" "$C" $FILES

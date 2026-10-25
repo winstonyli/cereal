@@ -19,6 +19,9 @@
 # swept too; the gcc side calls the constructor afresh per call and compares call results only.
 # EVAL_SWEEP_LAZY=1 adds --eval-lazy: pointer targets are made by the call (docs/LAZY_BLOBS_DESIGN.md); the call
 # line carries that graph and the thunks rebuild it (sweep_rt.h).  Combined with the solver (EVAL_SWEEP_SOLVE) like the eager layout.
+# EVAL_SWEEP_LIB=1 is for library code (bench/tools/lib_oracle.sh): each gcc call runs in a forked child, so
+# a crash or a hang there is "!" for that call; evaluator stops and gcc crashes are counted, not failures;
+# one summary line per run, and a failure only for a build problem.
 # EVAL_SWEEP_SOLVE='z3 -in -smt2' also solves for inputs (--eval-solve, docs/CONCOLIC_DESIGN.md):
 # the same oracle, and solve.c must then reach every guarded edge; skipped with a note when the
 # solver is not installed.
@@ -30,8 +33,8 @@ if [ -n "$EVAL_SWEEP_SOLVE" ] && ! command -v "${EVAL_SWEEP_SOLVE%% *}" >/dev/nu
     EVAL_SWEEP_SOLVE=
 fi
 D=$(cd "$(dirname "$0")" && pwd)
-W=$(mktemp -d) || exit 1
-trap 'rm -rf "$W"' EXIT
+W=$(mktemp -d ${EVAL_SWEEP_KEEP:+-p "$HOME"}) || exit 1
+trap '[ -n "$EVAL_SWEEP_KEEP" ] && echo "eval_sweep: kept $W" || rm -rf "$W"' EXIT   # EVAL_SWEEP_KEEP=1 keeps the work directory (debugging)
 bad=0
 absof() { echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; }
 
@@ -45,6 +48,8 @@ run_group() {
     [ -n "$EVAL_SWEEP_STATE" ] && state=--eval-state
     [ -n "$EVAL_SWEEP_LAZY" ] && state="$state --eval-lazy"
     absl=$(absof "$1")
+    gccx=
+    [ -n "$EVAL_SWEEP_LIB" ] && gccx=-DSW_FORK
     if [ -n "$EVAL_SWEEP_LINK" ]; then
         link=--eval-link
         f="link of $# files from $1"
@@ -65,12 +70,12 @@ run_group() {
         grep -E '^cereal: ' "$W/solve.err" | sed "s|^|$f: |"
     else
         # shellcheck disable=SC2086
-        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS $link $state --eval-sweep="$N,1234" $absl 2>&1 </dev/null \
+        "$C" check --target=x86_64-linux-gnu $CEREAL_FLAGS $link $state --eval-sweep="$N,1234" $absl 2>"$W/sweep.err" </dev/null \
             | grep -E '^(file|fn|thunk|call) ' >"$W/sweep.txt"
     fi
     # The drivers (one per file: the file, its thunks, a table of them), the calls, and the evaluator's
     # results, in order.  A function is known by file number and name (statics may share names).
-    awk -v W="$W" -v calls="$W/calls.txt" -v expf="$W/exp.txt" -v src1="$(absof "$1")" -v rt="$D/sweep_rt.h" '
+    awk -v lib="$EVAL_SWEEP_LIB" -v W="$W" -v calls="$W/calls.txt" -v expf="$W/exp.txt" -v src1="$(absof "$1")" -v rt="$D/sweep_rt.h" '
         BEGIN { fi = 1; src[1] = src1 }
         $1 == "file" { if (nfile++) fi++; src[fi] = $2; next }
         $1 == "fn" { nfn++; sig[fi ":" $2] = 1; next }
@@ -97,8 +102,9 @@ run_group() {
             } else if ($4 == "unsupported") {
                 unsup[name] = $4 " " $5
             } else {
-                print "TRAP " name " " substr($3, 1, 64) " " $4 > "/dev/stderr"
+                if (!lib) print "TRAP " name " " substr($3, 1, 64) " " $4 > "/dev/stderr"
                 trapped[name] = 1
+                ntrap++
             }
             next
         }
@@ -124,6 +130,7 @@ run_group() {
             nf = 0; ok = 0
             for (s in sig) { nf++; if (ncalls[s] && !(s in trapped)) ok++ }
             printf "%d %d %d\n", nf, ok, nfiles > (expf ".count")
+            print ntrap + 0 > (expf ".ntrap")
             for (s in unsup) printf "%s (%s)\n", s, unsup[s] > (expf ".unsup")
         }' "$W/sweep.txt" 2>"$W/trap.txt"
     [ -s "$W/trap.txt" ] && { sed "s|^|$f: |" "$W/trap.txt"; bad=$((bad + 1)); }
@@ -136,7 +143,7 @@ run_group() {
         fail=
         while read -r i g; do
             # shellcheck disable=SC2086
-            gcc -O0 -fwrapv -w $CEREAL_FLAGS -I "$(dirname "$g")" -c -o "$W/drv$i.o" "$W/drv$i.c" 2>>"$W/gcc.err" || fail=1
+            gcc -O0 -fwrapv -w $CEREAL_FLAGS $gccx -I "$(dirname "$g")" -c -o "$W/drv$i.o" "$W/drv$i.c" 2>>"$W/gcc.err" || fail=1
             objs="$objs $W/drv$i.o"
         done <"$W/srcs.txt"
         # the files without a swept function are linked as they are (their main, if any, renamed)
@@ -149,21 +156,43 @@ run_group() {
             objs="$objs $W/plain$i.o"
         done
         # shellcheck disable=SC2086
-        gcc -O0 -fwrapv -w -c -o "$W/drvmain.o" "$W/drvmain.c" 2>>"$W/gcc.err" || fail=1
+        gcc -O0 -fwrapv -w $gccx -c -o "$W/drvmain.o" "$W/drvmain.c" 2>>"$W/gcc.err" || fail=1
         # shellcheck disable=SC2086
         [ -z "$fail" ] && ! gcc -o "$W/drv" $objs "$W/drvmain.o" -lm 2>>"$W/gcc.err" && fail=1
         if [ -n "$fail" ]; then
             echo "$f: gcc failed"; head -5 "$W/gcc.err"
             bad=$((bad + 1)); return
         fi
-        "$W/drv" "$W/calls.txt" </dev/null >"$W/got.txt" 2>&1
+        if [ -n "$EVAL_SWEEP_LIB" ]; then "$W/drv" "$W/calls.txt" </dev/null >"$W/got.txt" 2>/dev/null; else "$W/drv" "$W/calls.txt" </dev/null >"$W/got.txt" 2>&1; fi
         drc=$?
-        if [ "$drc" -ne 0 ]; then
+        if [ "$drc" -ne 0 ] && [ -z "$EVAL_SWEEP_LIB" ]; then
             # the call after the last result line is the one that crashed or was missing from the table
             echo "$f: the gcc build ran badly (exit $drc, after $(wc -l <"$W/got.txt") of $(wc -l <"$W/calls.txt") calls; next: $(sed -n "$(($(wc -l <"$W/got.txt") + 1))p" "$W/calls.txt" | cut -c1-60))"
             bad=$((bad + 1)); return
         fi
         paste -d'\t' "$W/exp.txt.calls" "$W/exp.txt" "$W/got.txt" >"$W/all.txt"
+        if [ -n "$EVAL_SWEEP_LIB" ]; then
+            [ "$(wc -l <"$W/got.txt")" -ne "$(wc -l <"$W/calls.txt")" ] &&
+                echo "$f: gcc printed $(wc -l <"$W/got.txt") result lines for $(wc -l <"$W/calls.txt") calls (program output in the way?)"
+            awk -F'\t' -v f="$f" -v nt="$(cat "$W/exp.txt.ntrap")" '
+                $3 == "!" { crash[$1]++; nc++; next }
+                $2 == $3 { ne++; next }
+                {
+                    nd++
+                    if (!dif[$1]++) {
+                        k = 1
+                        while (k <= length($2) && substr($2, k, 1) == substr($3, k, 1)) k++
+                        w = k > 24 ? k - 24 : 1
+                        ex[$1] = "..." substr($2, w, 48) " vs gcc ..." substr($3, w, 48) " (hex digit " k " of " length($2) ")"
+                    }
+                }
+                END {
+                    for (k in dif) printf "%s: differs %s x%d: evaluator, gcc: %s\n", f, k, dif[k], ex[k]
+                    for (k in crash) printf "%s: gcc crashed %s x%d\n", f, k, crash[k]
+                    printf "%s: lib oracle: %d calls finished by the evaluator, %d equal, %d differ, %d gcc crashed; %d evaluator stops\n", f, ne + nd + nc, ne, nd, nc, nt
+                }' "$W/all.txt"
+            return
+        fi
         mism=$(awk -F'\t' -v f="$f" '$2 != $3 {
             c++
             if (c <= 5) {
