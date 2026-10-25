@@ -144,6 +144,12 @@ Pointer difference (same day): a difference that is not a multiple of the elemen
 in multiples of 8, `StackValue` is 16 bytes). `TO_PTRDIFF` now stops such a call. Lua N=1 oracle (`ptrdiff-liboracle-lua`):
 45194 calls, 43996 equal, 216 differ, 982 gcc crashed. Cost, lazy with solver N=24 (`ptrdiff-solver-lazy`): untaken Lua
 1551 -> 1575, zstd 1682, total 3233 -> 3257 (+24, 0.7%); still below eager 3897.
+The rest of the stable differences (same day, decoded from the kept files): `lua_xmove` and `luaD_seterrorobj` are
+calls whose two `lua_State*` parameters alias or overlap (the drawn objects share a blob), where the result depends on
+copy order; `stringK` reads the uninitialised padding of a local `TValue` (gcc -O0 leaves 0xaa, the evaluator zero);
+`luaH_newkey` x2 reads garbage; `luaF_getlocalname` x1 (evaluator NULL, gcc an unknown pointer) is unexplained. None
+is an evaluator bug that a fix would remove, so the oracle gate for zstd allowlists only the two machine-reading
+functions and Lua stays a measurement.
 
 Limits: a source manager reserves 4 GB of address space per file (`srcmgr.c` `REGION_SIZE`) and a link keeps
 every file's, so `ulimit -v` must grow by that per file (`sweep_meas.sh` does); Lua (32 files) and zstd (26)

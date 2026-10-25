@@ -609,6 +609,20 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         bad "eval_sweep --eval-lazy"
         head -10 "$TMP/lazy.out" | sed 's/^/    /'
     fi
+    # 13e1z. library oracle (bench/tools/lib_oracle.sh): zstd, lazy, with state, N=2, each gcc call in a forked child;
+    #        only where the corpus is (~/corpus).  Passes when gcc never crashes and the only differing functions are
+    #        the two that read the machine (cpuid, the alignment of a raw address).
+    if [ -z "${ASAN_OPTIONS:-}" ] && [ -d "$HOME/corpus/zstd-1.5.7-dl/zstd-1.5.7/lib" ]; then   # not under ASan (the oracle sets ulimit -v)
+        LAZY=1 STATE=1 sh "$ROOT/bench/tools/lib_oracle.sh" "$CEREAL" zstd 2 >"$TMP/libz.out" 2>&1 </dev/null
+        if grep -q ' 0 gcc crashed' "$TMP/libz.out" &&
+           ! grep ' differs ' "$TMP/libz.out" | sed 's/.* differs [0-9]*://; s/ .*//' |
+               grep -Ev '^(ZSTD_DCtx_get_bmi2(__st[0-9]+)?|ZSTD_cwksp_bytes_to_align_ptr)$' | grep -q .; then
+            ok
+        else
+            bad "lib_oracle zstd"
+            tail -5 "$TMP/libz.out" | cut -c1-200 | sed 's/^/    /'
+        fi
+    fi
     # 13e2. the same sweep, also solving for inputs (docs/CONCOLIC_DESIGN.md); only when
     #       EVAL_SWEEP_SOLVE names an SMT-LIB2 solver command, e.g. 'z3 -in -smt2'
     if [ -n "${EVAL_SWEEP_SOLVE:-}" ]; then
