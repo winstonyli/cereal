@@ -199,7 +199,7 @@ static bool sweep_pointee_ok(Ev *v, TypeId pt)
         size = esz * n;
     }
     v->res.status = EV_OK;
-    return ok && size && size <= 4096;
+    return ok && size;
 }
 
 static bool sweep_par(Ev *v, TypeId t, SArg *a)
@@ -220,7 +220,7 @@ static bool sweep_par(Ev *v, TypeId t, SArg *a)
         a->off = type_size(tt, t, &ok);
         ok = ok && !(type_record(tt, t)->flags & RF_NOKEYWORD);
         v->res.status = EV_OK;
-        return ok && a->off && a->off <= 4096;
+        return ok && a->off;
     }
     if (k == TY_PTR) {
         a->kind = SA_PTR;

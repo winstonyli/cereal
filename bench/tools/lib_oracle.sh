@@ -4,7 +4,7 @@
 # only (tests/eval_sweep.sh with EVAL_SWEEP_LIB=1).  Prints one summary line and the differing / crashing
 # functions.  Run through the run wrapper (RUNS.md).  STATE=1 sweeps with --eval-state.
 # Lua is built with luai_makeseed pinned to 0 (its string-hash seed comes from the clock and addresses, so every
-# new state would differ); address-dependent functions (ZSTD_cwksp_bytes_to_align_ptr, ZSTD_isAligned) still differ by design.
+# new state would differ); ZSTD_DCtx_get_bmi2 (it reads the CPU) still differs by design; address-dependent functions stop (an address used as an integer).
 C=${1:?cereal binary}
 LIB=${2:?lua or zstd}
 N=${3:-24}

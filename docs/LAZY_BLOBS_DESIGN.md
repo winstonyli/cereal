@@ -169,8 +169,8 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
 4. Make lazy the default, delete the layout code (section 3), update `EVAL_DESIGN.md` and
    `PARKED.md`. Built 2026-10-25 (`8490ca1`): `--eval-lazy`, `EVAL_SWEEP_LAZY` and the `LAZY` knobs are gone, as are the
    layout, its thunk, call, tracker, generator and byte-string seeds, `SW_LK`/`SW_IN` and `Ev.ld_max`; one `sweep_pointee_ok` check keeps the
-   old size limit so the set of swept functions did not move. `asm_exec.py` skips calls that draw a function pointer.
-   Gate green (2316 + 2315 san); run `stage4-solver-lazy`: Lua 1531 + zstd 1682 = 3213 untaken, identical to stage 3. Later, the compare trap (`ac00c6a`) moved it to 3300 (`final-solver-lazy`), the stored-pointer and address-as-integer stops to 3431 (`addr-solver-lazy`), the new reference.
+   old size limit so the set of swept functions did not move (the limit was dropped afterwards, see below). `asm_exec.py` skips calls that draw a function pointer.
+   Gate green (2316 + 2315 san); run `stage4-solver-lazy`: Lua 1531 + zstd 1682 = 3213 untaken, identical to stage 3. Later, the compare trap (`ac00c6a`) moved it to 3300 (`final-solver-lazy`), the stored-pointer and address-as-integer stops to 3431 (`addr-solver-lazy`), the new reference until the 4096-byte limit on a pointer parameter's target was dropped (`nolim2-solver-lazy`): 5790 of 11120 edges taken (5118 of 8655), the swept set grew by 2465 edges; oracles unchanged, gate green.
 
 ## 7. Review log
 

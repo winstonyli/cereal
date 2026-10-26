@@ -167,7 +167,7 @@ pointer difference that is not a multiple of the element size) stays: undefined 
 `lua_absindex` differences. The 7 call-through-non-function stops (`luaM_saferealloc_` x2, `luaU_undump` x4,
 `close_func` x1) come from the sharing draw: with `LHEAD` 128 a shared pointer lands on `LHEAD + 8k`, so `g` can point at
 `L`'s `l_G` slot (field 24, offset 152) and `g->frealloc` then reads a data pointer. Inferred from offsets, not
-reproduced; a fix is parked. Dropping the 4096-byte limit was tried and reverted (`PARKED.md`).
+reproduced; a fix is parked. The 4096-byte limit was dropped later (2026-10-26, `nolim2-*`): oracles unchanged, 5790 of 11120 edges taken.
 Address-dependence (2026-10-25, `addr-gate2`): two stops replace per-name allowlisting. A pointer the program stores into a drawn
 object is marked as a pointer (init 2, as `lazy_fill` marks the ones it draws), so reading its bytes through a `char` stops
 (`luaZ_fill` read `*buff` where `buff` pointed at the Zio's own `p`; fixture `tests/cfg_lazy/lazy_ptrbyte.c`, checked by
