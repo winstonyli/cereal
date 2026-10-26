@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # Lazy blobs, stage 1: plan

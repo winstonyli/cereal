@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # Lazy blobs for `--eval-sweep`
@@ -93,7 +93,7 @@ largest unknown, hence stage 2.
 
 ## 3. What it subsumes, and what it cannot
 
-Deleted when it lands: `sweep_ptrs`, `sweep_blob_ptrs`, `SPf`, `sweep_link`, the budget
+Deleted in stage 4 (2026-10-25): `sweep_ptrs`, `sweep_blob_ptrs`, `SPf`, `sweep_link`, the budget
 constants, the union first-member rule, `sweep_pointee`'s element-count guess for
 pointer-holding types, the `SW_LK` and `SW_IN`-per-blob thunk code, and the sharing loops in
 `sweep_gen`. Covered by the one mechanism: the budget order (856 + 36 + 22 edges), downcasts,
@@ -167,7 +167,10 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
 3. Function pointers (built 2026-10-25, `ff63c5d`; Lua 1575 -> 1531, zstd 1682, total 3213; run `fnptr-solver-lazy`). Check: `frealloc` and the call-through-null stops gone from the
    stuck report (7 edges still stop at a call through a null or non-function pointer: `luaU_undump` via `luaM_saferealloc_`, `close_func`).
 4. Make lazy the default, delete the layout code (section 3), update `EVAL_DESIGN.md` and
-   `PARKED.md`.
+   `PARKED.md`. Built 2026-10-25 (`8490ca1`): `--eval-lazy`, `EVAL_SWEEP_LAZY` and the `LAZY` knobs are gone, as are the
+   layout, its thunk, call, tracker, generator and byte-string seeds, `SW_LK`/`SW_IN` and `Ev.ld_max`; one `sweep_pointee_ok` check keeps the
+   old size limit so the set of swept functions did not move. `asm_exec.py` skips calls that draw a function pointer.
+   Gate green (2316 + 2315 san); run `stage4-solver-lazy`: Lua 1531 + zstd 1682 = 3213 untaken, identical to stage 3.
 
 ## 7. Review log
 
