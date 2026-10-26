@@ -308,7 +308,7 @@ static void store_sh_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x, uint32_t sh)
     if (!o)
         return;
     if (o->ro) {
-        TRAP(v, "write to a string literal");
+        TRAP(v, "write to a string literal or a const object");
         return;
     }
     if (o->lazy && !ti->ptr)            /* part of a pointer the sweep drew: gcc's bytes would differ (see load_n) */
@@ -376,7 +376,7 @@ static uint64_t bf_store(Ev *v, uint64_t p, const Ti *ti, unsigned pun, unsigned
     if (!bf_window(v, pun, width, &n) || !(o = ev_access(v, p, n, "write")))
         return 0;
     if (o->ro) {
-        TRAP(v, "write to a string literal");
+        TRAP(v, "write to a string literal or a const object");
         return 0;
     }
     for (i = 0; i < n; i++)
@@ -400,7 +400,7 @@ void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
     if (!d)
         return;
     if (d->ro) {
-        TRAP(v, "write to a string literal");
+        TRAP(v, "write to a string literal or a const object");
         return;
     }
     ev_lazy_zero(s, (uint64_t)poff(src), n);
@@ -1274,6 +1274,20 @@ static uint32_t sd_obj(Ev *v, size_t i)
     return id;
 }
 
+/* A const object (or an array of them, through typedefs): writing it is undefined, and gcc's build crashes. */
+static bool const_object(const TypeTable *tt, TypeId t)
+{
+    for (;;) {
+        const TypeEnt *e;
+        if (TYPE_QUALS(t) & TQ_CONST)
+            return true;
+        e = type_ent(tt, TYPE_UNQUAL(t));
+        if (e->kind != TY_ARRAY && e->kind != TY_TYPEDEF)
+            return false;
+        t = e->base;
+    }
+}
+
 /* Zero Sd i's object and store its initializer (before: it may point at itself). */
 static void sd_init(Ev *v, size_t i)
 {
@@ -1302,6 +1316,8 @@ static void sd_init(Ev *v, size_t i)
         free(ir.tmp);
         v->c = save;
     }
+    if (!s->stub && const_object(&s->c->tt, s->ty))
+        v->obj.data[id - 1].ro = true;
 }
 
 /* The object of a static-storage symbol.  Without a definition registered, a

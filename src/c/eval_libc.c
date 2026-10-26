@@ -41,7 +41,7 @@ static uint8_t *wr(Ev *v, uint64_t p, uint64_t n, const char *who)
     if (!o)
         return NULL;
     if (o->ro) {
-        TRAP(v, "write to a string literal");
+        TRAP(v, "write to a string literal or a const object");
         return NULL;
     }
     memset(o->init + poff(p), 1, n);

@@ -289,7 +289,7 @@ copies at store, local, argument and return, direct and indirect calls
 (arguments right to left as `cgx86.c`), `switch`, `post`, fuel and a call
 depth limit. UB stops evaluation with a reason (division by zero, signed
 overflow, shift counts, out of bounds, null, after lifetime, uninitialized
-read, write to a string literal, pointer difference across objects). Each
+read, write to a string literal or a const object, pointer difference across objects). Each
 unsupported construct names itself: built-ins and static compound literals.
 
 Entry (since E3): `cereal run FILE.c [-- ARGS...]` (`--eval-wrap` for gcc
