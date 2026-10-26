@@ -175,6 +175,10 @@ object is marked as a pointer (init 2, as `lazy_fill` marks the ones it draws), 
 (`addr-liboracle-lua`): 37964 calls, 9 differ (211), 336 gcc crashed (937); zstd (`addr-liboracle-zstd`) 6 differ, all
 `ZSTD_DCtx_get_bmi2`. Cost: solver sweep (`addr-solver-lazy`) Lua 1579 + zstd 1852 = 3431 untaken (3300), 5118 edges
 taken (5209). Left in Lua: `boolF` x6 (gcc leaks stack addresses), `lua_upvaluejoin`, `lua_setiuservalue`, `getF`
+Tried and reverted (2026-10-25, `share-solver-lazy`, `share-stuck`): a share draw that refuses a target overlapping a drawn pointer
+or the slot being drawn (new object instead). It cleared 5 of the 7 call-through stops (`luaM_saferealloc_`, `luaU_undump`;
+`close_func` stays, now 2 edges, a call through NULL) and the gate was green, but coverage fell: 3472 untaken (3431), 5075
+edges taken (5118). The "wrong" shares carry real coverage, so the stops stay as a documented limit.
 (a `FILE*`), not read yet.
 The 982 gcc crashes of `ptrdiff-liboracle-lua` (kept files, one call per class under gdb; function counts from `got.txt`):
 744 are `FILE*` functions (`skipcomment`, `skipBOM`, `test_eof`, `read_all`, `read_chars`, `getF`) where glibc
