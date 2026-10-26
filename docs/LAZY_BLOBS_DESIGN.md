@@ -170,7 +170,7 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
    `PARKED.md`. Built 2026-10-25 (`8490ca1`): `--eval-lazy`, `EVAL_SWEEP_LAZY` and the `LAZY` knobs are gone, as are the
    layout, its thunk, call, tracker, generator and byte-string seeds, `SW_LK`/`SW_IN` and `Ev.ld_max`; one `sweep_pointee_ok` check keeps the
    old size limit so the set of swept functions did not move. `asm_exec.py` skips calls that draw a function pointer.
-   Gate green (2316 + 2315 san); run `stage4-solver-lazy`: Lua 1531 + zstd 1682 = 3213 untaken, identical to stage 3.
+   Gate green (2316 + 2315 san); run `stage4-solver-lazy`: Lua 1531 + zstd 1682 = 3213 untaken, identical to stage 3. Later, the compare trap (`ac00c6a`) moved it to 3300 (`final-solver-lazy`), the new reference.
 
 ## 7. Review log
 

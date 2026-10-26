@@ -155,6 +155,19 @@ untaken, zstd 1682, total 3213; Lua library oracle N=1 (`fnptr-liboracle-lua`) 4
 946 gcc crashed (982 before; the strcmp-in-`luaS_new` class shrank), 2 evaluator stops. The new differences are few and
 look like pointer-dependent values (`luaZ_fill` 0x89 vs 0xc9, `inclinenumber`, `getS`/`getF`/`luaF_getlocalname` returning
 NULL where gcc returns a pointer outside the blobs); not yet looked at one by one.
+Stage 4 and after (2026-10-25, `ac00c6a`): Lua oracle N=1 (`final-liboracle-lua`) 45531 calls, 44383 equal, 211 differ, 937 gcc
+crashed, 2 stops (stage 3: 217 / 946). Two false classes found by reading the differences and fixed: the tag of a forged
+pointer (null + 24 is not NULL; `getS`, `getF`, `luaF_getlocalname`), and pointer order across different objects
+(`getfreepos`), which now stops like a subtraction and retries with the blobs shared. The compare trap costs coverage:
+solver sweep `final-solver-lazy` Lua 1540 + zstd 1760 = 3300 untaken (3213 before), 5209 edges taken (5288); the new
+reference. Left, not evaluator bugs as far as read: `boolF` (gcc leaks stack addresses), `lua_xmove`/`luaD_seterrorobj`
+(overlapping aliased `lua_State` parameters), `io_tmpfile` (`FILE*`), `luaH_newkey` (garbage); not yet read one by
+one: `luaZ_fill`, `addk`, `open_func`, `inclinenumber`, `lua_rawsetp`, `f_call`, `auxgetinfo`. `d1e07af` (stop on a
+pointer difference that is not a multiple of the element size) stays: undefined behaviour, and it removed the
+`lua_absindex` differences. The 7 call-through-non-function stops (`luaM_saferealloc_` x2, `luaU_undump` x4,
+`close_func` x1) come from the sharing draw: with `LHEAD` 128 a shared pointer lands on `LHEAD + 8k`, so `g` can point at
+`L`'s `l_G` slot (field 24, offset 152) and `g->frealloc` then reads a data pointer. Inferred from offsets, not
+reproduced; a fix is parked. Dropping the 4096-byte limit was tried and reverted (`PARKED.md`).
 The 982 gcc crashes of `ptrdiff-liboracle-lua` (kept files, one call per class under gdb; function counts from `got.txt`):
 744 are `FILE*` functions (`skipcomment`, `skipBOM`, `test_eof`, `read_all`, `read_chars`, `getF`) where glibc
 aborts with "invalid stdio handle" on a drawn blob used as a `FILE`; about 150 (`luaS_new`, `lua_pushstring`,
