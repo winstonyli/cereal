@@ -205,7 +205,7 @@ Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
         if (o->lazy && off >= 0 && n <= EV_LAZY_CAP && (uint64_t)off <= EV_LAZY_CAP - n)
             lazy_grow(o, (uint64_t)off + n);
         else {
-            TRAP(v, "%s out of bounds", what);
+            TRAP(v, "%s out of bounds (offset %lld, n %llu, size %llu)", what, (long long)off, (unsigned long long)n, (unsigned long long)o->size);
             return NULL;
         }
     }

@@ -125,6 +125,7 @@ struct Ev {
     uint32_t stream[3];         /* the objects behind stdout and stderr (pointer, FILE token), 0: not made */
     uint32_t token[3];
     uint32_t errno_obj;         /* the int behind __errno_location, 0: not made */
+    uint32_t ctype_obj;         /* the pointer cell behind __ctype_b_loc, 0: not made */
     /* Concolic tracking (docs/CONCOLIC_DESIGN.md): values carry an expression of the input bytes
      * beside their number; 0 is concrete.  Off, every shadow stays 0 and nothing else changes. */
     bool track;

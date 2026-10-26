@@ -185,6 +185,10 @@ holds with a zero high half and gcc as 0xfffffffffffffff0; the final-state dump 
 oracle N=1 is 8 differ: `boolF` x6 (gcc leaks stack addresses), `getF` (`FILE*`: `feof` on a drawn blob; its result is a pointer into the blob in the evaluator, NULL in gcc), `lua_upvaluejoin` was the write to a `static const` null pointer that Lua's `getupvalref` returns the address of: gcc crashes, the
 evaluator wrote it and leaked the value into later calls (`0x6b77` was a stale pointer id). A const static is now read-only
 (`tests/cfg_lazy/lazy_constwrite.c`); Lua oracle N=1 (`constw-liboracle-lua`) 37920 calls, 7 differ (`boolF` x6, `getF`), 294 gcc crashed.
+The 852 edges behind `luaV_execute` (`oob-stuck`, trap message now carries offset and sizes): the call stops at a 4-byte read at offset
+268435576 (0x10000078) of a 144-byte blob, the code array. Every attempt traps there, so it is the drawn bytecode, not a
+bookkeeping error: a random instruction's jump operand moves `pc` far outside the 36 instructions drawn. The solver does not
+treat "the pointer stays inside its object" as a constraint, so it cannot steer past it. Parked in `PARKED.md`.
 The 982 gcc crashes of `ptrdiff-liboracle-lua` (kept files, one call per class under gdb; function counts from `got.txt`):
 744 are `FILE*` functions (`skipcomment`, `skipBOM`, `test_eof`, `read_all`, `read_chars`, `getF`) where glibc
 aborts with "invalid stdio handle" on a drawn blob used as a `FILE`; about 150 (`luaS_new`, `lua_pushstring`,

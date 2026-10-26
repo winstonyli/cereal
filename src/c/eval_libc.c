@@ -8,6 +8,7 @@
  * write to a string literal, a double free, a format that does not match its
  * arguments - and a future shadow of the objects (symbolic values) is carried by
  * the same copies.  Any other external function is reported as unsupported. */
+#include <ctype.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -943,6 +944,62 @@ static uint64_t h_fail(Ev *v, const HArg *a, unsigned na)
     return 0;
 }
 
+/* strtod on the host's own, on a copy of the string; the end pointer is the same offset into the string's object. */
+static uint64_t h_strtod(Ev *v, const HArg *a, unsigned na)
+{
+    uint64_t n;
+    const uint8_t *s;
+    char *buf, *end;
+    double d;
+    NEED(2);
+    if (!slen(v, a[0].x, UINT64_MAX, &n, "strtod") || !(s = rd(v, a[0].x, n + 1, "strtod")))
+        return 0;
+    buf = xcalloc(n + 1, 1);
+    memcpy(buf, s, n);
+    d = strtod(buf, &end);
+    if (a[1].x) {
+        uint64_t e = mkptr(pid(a[0].x), poff(a[0].x) + (end - buf));
+        uint8_t *w = wr(v, a[1].x, 8, "strtod");
+        if (w) {
+            Obj *o = &v->obj.data[pid(a[1].x) - 1];
+            memcpy(w, &e, 8);
+            memset(o->init + poff(a[1].x), 2, 8);       /* a pointer (see load_n) */
+        }
+    }
+    free(buf);
+    return v->res.status ? 0 : dret(d);
+}
+
+/* glibc's __ctype_b_loc (what <ctype.h>'s isalpha and friends expand to): a pointer to a pointer to the class table
+ * of the "C" locale, indexed from -128 to 255.  Built once from the host's own classification, in glibc's bit layout. */
+static uint64_t h_ctype_b_loc(Ev *v, const HArg *a, unsigned na)
+{
+    (void)a;
+    (void)na;
+    if (!v->ctype_obj) {
+        uint32_t tab = ev_new_obj(v, 384 * sizeof(uint16_t), true), cell = ev_new_obj(v, 8, true);
+        uint64_t p;
+        int c;
+        if (!tab || !cell)
+            return 0;
+        for (c = 0; c < 128; c++) {
+            unsigned f = (isupper(c) ? 1u << 0 : 0) | (islower(c) ? 1u << 1 : 0) | (isalpha(c) ? 1u << 2 : 0) |
+                         (isdigit(c) ? 1u << 3 : 0) | (isxdigit(c) ? 1u << 4 : 0) | (isspace(c) ? 1u << 5 : 0) |
+                         (isprint(c) ? 1u << 6 : 0) | (isgraph(c) ? 1u << 7 : 0) | (isblank(c) ? 1u << 8 : 0) |
+                         (iscntrl(c) ? 1u << 9 : 0) | (ispunct(c) ? 1u << 10 : 0) | (isalnum(c) ? 1u << 11 : 0);
+            uint16_t w = (uint16_t)(f << 8 | f >> 8);      /* _ISbit: the low byte holds bits 8-15 */
+            memcpy(v->obj.data[tab - 1].b + 2 * (128 + c), &w, 2);
+        }
+        memset(v->obj.data[tab - 1].init, 1, 384 * sizeof(uint16_t));
+        p = mkptr(tab, 128 * sizeof(uint16_t));
+        memcpy(v->obj.data[cell - 1].b, &p, 8);
+        memset(v->obj.data[cell - 1].init, 2, 8);
+        v->obj.data[tab - 1].pin = v->obj.data[cell - 1].pin = true;
+        v->ctype_obj = cell;
+    }
+    return mkptr(v->ctype_obj, 0);
+}
+
 /* ---- the table --------------------------------------------------------------------- */
 
 static const struct {
@@ -961,7 +1018,7 @@ static const struct {
     {"time", h_time},       {"clock", h_clock},     {"_setjmp", h_setjmp},  {"setjmp", h_setjmp},
     {"longjmp", h_longjmp}, {"_longjmp", h_longjmp},
     {"strspn", h_strspn},   {"strcspn", h_strcspn}, {"strpbrk", h_strpbrk}, {"strstr", h_strstr},
-    {"strcoll", h_strcoll}, {"fflush", h_fflush},   {"__errno_location", h_errno_location},
+    {"strcoll", h_strcoll}, {"fflush", h_fflush},   {"__errno_location", h_errno_location}, {"__ctype_b_loc", h_ctype_b_loc}, {"strtod", h_strtod},
     {"fmod", h_fmod},       {"ldexp", h_ldexp},
     {"fopen", h_fail},      {"freopen", h_fail},    {"tmpfile", h_fail},    {"tmpnam", h_fail},
     {"getenv", h_fail},     {"setlocale", h_fail},  {"localeconv", h_fail}, {"getc", h_fail},
