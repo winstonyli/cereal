@@ -180,6 +180,10 @@ or the slot being drawn (new object instead). It cleared 5 of the 7 call-through
 `close_func` stays, now 2 edges, a call through NULL) and the gate was green, but coverage fell: 3472 untaken (3431), 5075
 edges taken (5118). The "wrong" shares carry real coverage, so the stops stay as a documented limit.
 (a `FILE*`), not read yet.
+`lua_setiuservalue` was a false difference (`nullneg-liboracle-lua`): `L->top--` on a NULL top makes NULL - 16, which the evaluator
+holds with a zero high half and gcc as 0xfffffffffffffff0; the final-state dump now sign-extends such a stored pointer. Lua
+oracle N=1 is 8 differ: `boolF` x6 (gcc leaks stack addresses), `getF` (`FILE*`), `lua_upvaluejoin` (one call, gcc crashes
+on the next; not read further).
 The 982 gcc crashes of `ptrdiff-liboracle-lua` (kept files, one call per class under gdb; function counts from `got.txt`):
 744 are `FILE*` functions (`skipcomment`, `skipBOM`, `test_eof`, `read_all`, `read_chars`, `getF`) where glibc
 aborts with "invalid stdio handle" on a drawn blob used as a `FILE`; about 150 (`luaS_new`, `lua_pushstring`,

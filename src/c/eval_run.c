@@ -1097,6 +1097,10 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
                 uint64_t val;
                 bool known = false;
                 memcpy(&val, o->b + w, 8);
+                if (!pid(val) && o->init[w] == 2 && o->init[w + 7] == 2 && (int32_t)val < 0) {   /* NULL minus a few bytes: gcc's address wraps to the top of the space */
+                    val = (uint64_t)(int64_t)(int32_t)val;
+                    memcpy(out + n + w, &val, 8);
+                }
                 if (!pid(val) || pid(val) > v->obj.len)
                     continue;
                 for (j = 0; j < z.lk.len; j++)
