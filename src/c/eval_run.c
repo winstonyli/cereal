@@ -1079,7 +1079,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
             memcpy(out, &x, s->rti.bytes);
             n = s->rti.bytes;
         } else if (s->rk == SR_PTR) {
-            uint64_t tag = pid(x) ? ~0ull : 0;
+            uint64_t tag = x ? ~0ull : 0;          /* a forged address (null + 24) is not NULL: gcc's tag is ~0 too */
             for (i = 0; i < z.bl.len; i++)
                 if (pid(x) == z.bl.data[i].id && poff(x) >= 0 && (uint64_t)poff(x) <= v->obj.data[pid(x) - 1].size + 64 + LHEAD)
                     tag = (((uint64_t)i + 1) << 32) | (uint32_t)poff(x);

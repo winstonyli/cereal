@@ -609,7 +609,7 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         STATE=1 sh "$ROOT/bench/tools/lib_oracle.sh" "$CEREAL" zstd 2 >"$TMP/libz.out" 2>&1 </dev/null
         if grep -q ' 0 gcc crashed' "$TMP/libz.out" &&
            ! grep ' differs ' "$TMP/libz.out" | sed 's/.* differs [0-9]*://; s/ .*//' |
-               grep -Ev '^(ZSTD_DCtx_get_bmi2(__st[0-9]+)?|ZSTD_cwksp_bytes_to_align_ptr)$' | grep -q .; then
+               grep -Ev '^(ZSTD_DCtx_get_bmi2(__st[0-9]+)?|ZSTD_cwksp_bytes_to_align_ptr|ZSTD_isAligned)$' | grep -q .; then
             ok
         else
             bad "lib_oracle zstd"

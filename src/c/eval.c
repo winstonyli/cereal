@@ -616,6 +616,18 @@ static void ev_note(Ev *v, uint64_t x)
         vec_push(&v->dict, x);
 }
 
+/* A difference or an order of two pointers is defined only within one object (== and != are defined
+ * anywhere); the sweep retries a call that stops here with the two objects made one (sub_a, sub_b). */
+static bool same_object(Ev *v, uint64_t a, uint64_t b, const char *what)
+{
+    if (pid(a) == pid(b))
+        return true;
+    v->sub_a = pid(a);
+    v->sub_b = pid(b);
+    TRAP(v, "%s of pointers into different objects", what);
+    return false;
+}
+
 static uint64_t compare(Ev *v, int p, TypeId ot, uint64_t a, uint64_t b)
 {
     Ti ti;
@@ -625,6 +637,8 @@ static uint64_t compare(Ev *v, int p, TypeId ot, uint64_t a, uint64_t b)
     sg = ti.sg;
     ev_note(v, a);
     ev_note(v, b);
+    if (ti.ptr && p != P_EQEQ && p != P_NE && pid(a) && pid(b) && !same_object(v, a, b, "comparison"))
+        return 0;
     switch (p) {
     case P_EQEQ: return a == b;
     case P_NE: return a != b;
@@ -1792,12 +1806,8 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         b = ev_node(r, KID(r, n, 1));
         if (v->res.status)
             return 0;
-        if (pid(a) != pid(b)) {
-            v->sub_a = pid(a);
-            v->sub_b = pid(b);
-            TRAP(v, "subtraction of pointers into different objects");
+        if (!same_object(v, a, b, "subtraction"))
             return 0;
-        }
         if (((int64_t)poff(a) - (int64_t)poff(b)) % t->val) {      /* undefined; gcc shifts, a division truncates */
             TRAP(v, "pointer difference is not a multiple of the element size");
             return 0;
