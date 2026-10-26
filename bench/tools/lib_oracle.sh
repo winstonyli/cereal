@@ -2,7 +2,7 @@
 # lib_oracle.sh CEREAL lua|zstd [N]: the evaluator against gcc, call by call, on a whole library linked as one
 # program (--eval-link); gcc runs every call in a forked child, so a crash on generated state loses that call
 # only (tests/eval_sweep.sh with EVAL_SWEEP_LIB=1).  Prints one summary line and the differing / crashing
-# functions.  Run through the run wrapper (RUNS.md).  LAZY=1 sweeps with --eval-lazy, STATE=1 with --eval-state.
+# functions.  Run through the run wrapper (RUNS.md).  STATE=1 sweeps with --eval-state.
 # Lua is built with luai_makeseed pinned to 0 (its string-hash seed comes from the clock and addresses, so every
 # new state would differ); address-dependent functions (ZSTD_cwksp_bytes_to_align_ptr) still differ by design.
 C=${1:?cereal binary}
@@ -20,7 +20,6 @@ esac
 nf=$(echo "$FILES" | wc -w)
 ulimit -S -v $((8000000 + 4400000 * nf))
 export EVAL_SWEEP_LIB=1 EVAL_SWEEP_LINK=1 EVAL_SWEEP_N=$N
-[ -n "$LAZY" ] && export EVAL_SWEEP_LAZY=1
 [ -n "$STATE" ] && export EVAL_SWEEP_STATE=1
 # shellcheck disable=SC2086
 timeout 7200 sh "$S" "$C" $FILES

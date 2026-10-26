@@ -549,27 +549,22 @@ result hex. `eval_sweep.sh` and `asm_exec.py` both compile source + thunks + tab
 compare bytes, so pointer functions reach the native oracle too (static functions
 and records by value are skipped there: no symbol, no definition).
 
-Inputs come from one generator: `T *` points to a fresh object of 16 elements (64
-bytes for `char`, `void`), a record is its `sizeof`, and every scalar inside is
-`sweep_arg` (so small values dominate), padding is zero. Each pointer field inside those
-objects points to a blob of its own (4 elements, 16 bytes for `char`/`void`), and so do the
-pointers in those, breadth first, until 64 blobs or 16 KB of input are used (the rest are
-NULL; there is no depth limit, a list type just fills the budget). The input is the blobs
-back to back and the layout is fixed by the types, so the call line is unchanged. Each
-pointer field's 8 bytes in the input are 0 (its own blob), ~0 (NULL) or a tag
-`(blob + 1) << 32 | offset` into another blob of the same element type (seeded: 1/8 NULL,
-1/4 shared), which gives sharing and cycles such as `l_G->mainthread == L`. The thunk
-relinks the pointers between its buffers (`SW_LK`), and pointer fields are zeroed in the
-result bytes (the two sides' addresses differ). Every pointer parameter also has an 8-byte alias word in the
-input (0, or `(blob + 1) << 32 | offset`): a third of the time, a pointer parameter after
-an earlier one points into that one's blob at a multiple of its own element size (up to
-one past the end), for `(start, end)` and cursor pairs. The thunk's buffers are 16 bytes
-apart, so a one-past-the-end pointer is not mistaken for the next blob's start.
-A function that returns a pointer outside its argument objects is dropped whole (it
-cannot be compared). A pointer or record function prints only the calls that finish
-(plus its first `unsupported`), so null dereferences from NULL nested pointers never
-reach the gcc build. Skipped: record results (the temporary dies with `ev_call`),
-types with no spelling (anonymous, `__va_list_tag`), more than 16 KB of input.
+Inputs come from the call itself (lazy blobs, `docs/LAZY_BLOBS_DESIGN.md`, the one home of the
+design): a pointer parameter is an empty object, a typed load of its uninitialized bytes draws the
+value (`sweep_arg` for a scalar), and a pointer drawn there is NULL, a pointer into an object the call
+already has (sharing, cycles such as `l_G->mainthread == L`, `(start, end)` pairs), a function of the
+pointer's type, or a new empty object. A record parameter is an object of its `sizeof`; a pointer
+parameter after an earlier one sometimes points into that one's object. The call line carries the graph
+the call made and `sw_load` (tests/sweep_rt.h) rebuilds it on the gcc side; pointer words are zeroed in
+the result bytes (the two sides' addresses differ). A function that returns a pointer outside its
+argument objects is dropped whole (it cannot be compared). A pointer or record function prints only
+the calls that finish (plus its first `unsupported`), so null dereferences from NULL nested pointers
+never reach the gcc build. Skipped: record results (the temporary dies with `ev_call`), types with no
+spelling (anonymous, `__va_list_tag`).
+
+The measurements below up to "Solver result" were taken on the fixed layout that this replaced
+(`sweep_ptrs`: blobs laid out breadth first from the parameter types, 64 blobs or 16 KB, deleted in stage 4,
+`LAZY_BLOBS_DESIGN.md` section 6); the figures stay as the record of why.
 
 Check: `tests/cfg_exec/ptrs.c` (22 functions, with a linked list, a three-link chain, `int **`, a record holding a buffer pointer: in-place fill, swap, returned offset,
 null return, struct and union by value, struct update through a pointer, `void *`,
@@ -717,7 +712,6 @@ from one of them.
   `PARKED.md` row (bytecode, native tier, profile capture, `pure`, `total`,
   checker-folder merge decided against, FFI, multi-TU).
 
-`--eval-lazy` (hidden, with `--eval-sweep`; docs/LAZY_BLOBS_DESIGN.md, plan results in
-docs/LAZY_BLOBS_PLAN.md): pointer targets are made by the call on first access instead of
-by the eager layout. Combined with the solver (draw-key log as the seed; stage 2 in the design). `EVAL_SWEEP_LAZY=1` in `tests/eval_sweep.sh`
-and `tests/eval_lazy.sh` check it against gcc.
+Lazy blobs (`docs/LAZY_BLOBS_DESIGN.md`; plan results in `docs/LAZY_BLOBS_PLAN.md` and `docs/LAZY_BLOBS_SOLVER_PLAN.md`) are the
+sweep's only pointer structure since stage 4 (2026-10-25); with the solver the draw-key log is the seed.
+`tests/eval_sweep.sh` over `tests/cfg_exec`, `cfg_link` and `cfg_state` and `tests/eval_lazy.sh` check it against gcc.

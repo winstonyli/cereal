@@ -1,4 +1,4 @@
-/* The shape of Lua's luaV_execute under --eval-lazy (docs/LAZY_BLOBS_DESIGN.md): a pointer to a
+/* The shape of Lua's luaV_execute (docs/LAZY_BLOBS_DESIGN.md): a pointer to a
  * header is cast to the larger struct it starts, and a pointer inside that decides the result. */
 struct Hdr {
     struct Hdr *next;

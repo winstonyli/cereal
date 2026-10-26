@@ -1,4 +1,4 @@
-/* A guard behind a pointer chain under --eval-lazy --eval-solve (docs/LAZY_BLOBS_SOLVER_PLAN.md): the
+/* A guard behind a pointer chain under --eval-solve (docs/LAZY_BLOBS_SOLVER_PLAN.md): the
  * branch needs a byte the call draws two pointers in, which only the solver finds. */
 struct Inner {
     int k[4];

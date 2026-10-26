@@ -43,9 +43,19 @@ def sweep(cereal, xf, path):
             funcs[m[1]].thunk, funcs[m[1]].byval = m[3], m[2] == "byval"
             continue
         m = re.match(r"call (\S+) (\S+) =>", line)
-        if m and m[1] in funcs:
+        if m and m[1] in funcs and not calls_function(m[2], funcs[m[1]].thunk):
             funcs[m[1]].vecs.append(m[2])
     return funcs
+
+
+def calls_function(hexline, thunk):
+    """A call whose graph holds a drawn function pointer (a link to the evaluator's function table, which
+    only eval_sweep.sh fills): the generated code has no such function to call."""
+    m = re.search(r"sw_load\(&g,in,(\d+)\)", thunk)
+    b = bytes.fromhex(hexline)
+    u32 = lambda p: int.from_bytes(b[p:p + 4], "little")
+    p = 4 + 4 * u32(0) + int(m[1])
+    return any(u32(p + 4 + 16 * i + 8) & 0x80000000 for i in range(u32(p)))
 
 
 def main():

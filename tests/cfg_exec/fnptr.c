@@ -1,4 +1,4 @@
-/* Calls through function pointers a sweep draws (--eval-lazy: a pointer to a function type is NULL or one of
+/* Calls through function pointers a sweep draws (a pointer to a function type is NULL or one of
  * the functions of that type; docs/LAZY_BLOBS_DESIGN.md "Function pointers").  gcc must get the same function. */
 typedef int (*fp_cb)(int *, int);
 

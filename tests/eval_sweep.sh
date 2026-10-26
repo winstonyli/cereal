@@ -4,8 +4,8 @@
 # `cereal check --eval-sweep=N,SEED` lists the functions of FILE.c it can drive (integer,
 # bool, float and double parameters, pointers to objects, records by value; a scalar,
 # pointer or void result), calls each on N seeded inputs in the evaluator and prints the
-# bytes of every call and its result: the return value and the final contents of every
-# pointed-to object.  The same bytes run through a thunk per function (sweep_rt.h) in a gcc
+# graph of objects each call made (docs/LAZY_BLOBS_DESIGN.md) and its result: the return value and
+# the final contents of every object.  The same bytes run through a thunk per function (sweep_rt.h) in a gcc
 # -O0 -fwrapv build of the file and must give the same result bytes.  For a scalar-only
 # function an evaluator trap or step limit is a failure (the corpus is free of undefined
 # behaviour); a construct the evaluator does not support is listed, not hidden.  Also runs
@@ -17,8 +17,6 @@
 # with one driver.  A file's `main` is renamed, not run.
 # EVAL_SWEEP_STATE=1 adds --eval-state: functions taking a built state (a constructor's result) are
 # swept too; the gcc side calls the constructor afresh per call and compares call results only.
-# EVAL_SWEEP_LAZY=1 adds --eval-lazy: pointer targets are made by the call (docs/LAZY_BLOBS_DESIGN.md); the call
-# line carries that graph and the thunks rebuild it (sweep_rt.h).  Combined with the solver (EVAL_SWEEP_SOLVE) like the eager layout.
 # EVAL_SWEEP_LIB=1 is for library code (bench/tools/lib_oracle.sh): each gcc call runs in a forked child, so
 # a crash or a hang there is "!" for that call; evaluator stops and gcc crashes are counted, not failures;
 # one summary line per run, and a failure only for a build problem.
@@ -46,7 +44,6 @@ run_group() {
     link=
     state=
     [ -n "$EVAL_SWEEP_STATE" ] && state=--eval-state
-    [ -n "$EVAL_SWEEP_LAZY" ] && state="$state --eval-lazy"
     absl=$(absof "$1")
     gccx=
     [ -n "$EVAL_SWEEP_LIB" ] && gccx=-DSW_FORK

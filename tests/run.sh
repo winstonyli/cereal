@@ -576,7 +576,7 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     if (cd "$ROOT/tests/cfg_link" && EVAL_SWEEP_LINK=1 sh ../eval_sweep.sh "$CEREAL" link_a.c link_b.c \
             >"$TMP/link.out" 2>&1 </dev/null) &&
        (cd "$ROOT/tests/cfg_link" && "$CEREAL" check --target=x86_64-linux-gnu --eval-link --eval-sweep=24,1234 \
-            "$PWD/link_a.c" "$PWD/link_b.c" 2>&1 </dev/null | grep -q '^call a_call_guard 39300000 =>'); then
+            "$PWD/link_a.c" "$PWD/link_b.c" 2>&1 </dev/null | grep -q '^call a_call_guard 0000000039300000'); then
         ok
     else
         bad "eval_sweep --eval-link"
@@ -594,26 +594,19 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         bad "eval_sweep --eval-state"
         head -10 "$TMP/state.out" | sed 's/^/    /'
     fi
-    # 13e1l. lazy blobs (--eval-lazy, docs/LAZY_BLOBS_DESIGN.md): the same three directories swept with the
-    #        pointer targets made by the call and compared with gcc (EVAL_SWEEP_LAZY), and the fixture shaped
-    #        like Lua's luaV_execute must give its results, with the solver where the environment has one (tests/eval_lazy.sh)
-    if (cd "$ROOT/tests/cfg_exec" && EVAL_SWEEP_LAZY=1 sh ../eval_sweep.sh "$CEREAL" *.c \
-            >"$TMP/lazy.out" 2>&1 </dev/null) &&
-       (cd "$ROOT/tests/cfg_link" && EVAL_SWEEP_LAZY=1 EVAL_SWEEP_LINK=1 sh ../eval_sweep.sh "$CEREAL" link_a.c link_b.c \
-            >>"$TMP/lazy.out" 2>&1 </dev/null) &&
-       (cd "$ROOT/tests/cfg_state" && EVAL_SWEEP_LAZY=1 EVAL_SWEEP_STATE=1 sh ../eval_sweep.sh "$CEREAL" state.c \
-            >>"$TMP/lazy.out" 2>&1 </dev/null) &&
-       sh "$ROOT/tests/eval_lazy.sh" "$CEREAL" >>"$TMP/lazy.out" 2>&1 </dev/null; then
+    # 13e1l. lazy blobs (docs/LAZY_BLOBS_DESIGN.md): the fixture shaped like Lua's luaV_execute must give its
+    #        results, with the solver where the environment has one (tests/eval_lazy.sh)
+    if sh "$ROOT/tests/eval_lazy.sh" "$CEREAL" >"$TMP/lazy.out" 2>&1 </dev/null; then
         ok
     else
-        bad "eval_sweep --eval-lazy"
+        bad "eval_lazy"
         head -10 "$TMP/lazy.out" | sed 's/^/    /'
     fi
-    # 13e1z. library oracle (bench/tools/lib_oracle.sh): zstd, lazy, with state, N=2, each gcc call in a forked child;
+    # 13e1z. library oracle (bench/tools/lib_oracle.sh): zstd, with state, N=2, each gcc call in a forked child;
     #        only where the corpus is (~/corpus).  Passes when gcc never crashes and the only differing functions are
     #        the two that read the machine (cpuid, the alignment of a raw address).
     if [ -z "${ASAN_OPTIONS:-}" ] && [ -d "$HOME/corpus/zstd-1.5.7-dl/zstd-1.5.7/lib" ]; then   # not under ASan (the oracle sets ulimit -v)
-        LAZY=1 STATE=1 sh "$ROOT/bench/tools/lib_oracle.sh" "$CEREAL" zstd 2 >"$TMP/libz.out" 2>&1 </dev/null
+        STATE=1 sh "$ROOT/bench/tools/lib_oracle.sh" "$CEREAL" zstd 2 >"$TMP/libz.out" 2>&1 </dev/null
         if grep -q ' 0 gcc crashed' "$TMP/libz.out" &&
            ! grep ' differs ' "$TMP/libz.out" | sed 's/.* differs [0-9]*://; s/ .*//' |
                grep -Ev '^(ZSTD_DCtx_get_bmi2(__st[0-9]+)?|ZSTD_cwksp_bytes_to_align_ptr)$' | grep -q .; then

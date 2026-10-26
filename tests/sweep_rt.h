@@ -1,8 +1,8 @@
 /* sweep_rt.h - the gcc side of `cereal check --eval-sweep` (docs/EVAL_DESIGN.md).
  *
- * The sweep prints, per function, a thunk `unsigned t_NAME(in, out)`: it unpacks the call's
- * argument bytes, calls NAME, and packs the result bytes (the return value, a returned
- * pointer as a tag, then the final contents of every pointed-to object).  sw_main runs the
+ * The sweep prints, per function, a thunk `unsigned t_NAME(in, out)`: it rebuilds the graph of objects
+ * the call made (sw_load), calls NAME, and packs the result bytes (the return value, a returned
+ * pointer as a tag, then the final contents of every object).  sw_main runs the
  * calls of a file of `NAME INHEX` lines through the table of thunks and prints each result as
  * hex, one line per call ("-" is empty). */
 #include <stdio.h>
@@ -14,24 +14,7 @@
 #include <unistd.h>
 #endif
 
-/* r points into argument i's buffer b (n bytes): tag it (index + 1) << 32 | offset */
-#define SW_IN(t, r, i, b, n)                                                                    \
-    if ((unsigned char *)(r) >= (b) && (unsigned char *)(r) <= (b) + (n))                       \
-        t = ((unsigned long long)((i) + 1) << 32) | (unsigned)((unsigned char *)(r) - (b));
-
-/* the pointer field at f: its input word 0 is c (its own blob, or NULL), ~0 is NULL, else a
- * tag (blob + 1) << 32 | offset into bp */
-#define SW_LK(f, bp, c)                                                                         \
-    {                                                                                           \
-        unsigned long long w_;                                                                  \
-        void *p_;                                                                               \
-        memcpy(&w_, (f), 8);                                                                    \
-        p_ = !w_ ? (void *)(c) : w_ == ~0ull ? (void *)0 : (void *)((bp)[(w_ >> 32) - 1] + (unsigned)w_); \
-        memcpy((f), &p_, 8);                                                                    \
-    }
-
-
-/* --eval-lazy: the call line carries the graph of objects the call made (docs/LAZY_BLOBS_DESIGN.md):
+/* The call line carries the graph of objects the call made (docs/LAZY_BLOBS_DESIGN.md):
  *   u32 n; u32 size[n]; the arguments; u32 nlinks, {blob, off, target + 1, target off}[];
  *   u32 nzero, {blob, off}[]; the initial bytes of each blob.
  * sw_load rebuilds it (each blob SW_SLACK + 16 bytes longer, so a one-past-the-end pointer is not the next

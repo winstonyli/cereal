@@ -293,7 +293,7 @@ static uint64_t load_n(Ev *v, uint64_t p, const Ti *ti)
         }
         x |= (uint64_t)o->b[poff(p) + i] << (8 * i);
     }
-    if (ti->ptr && (!v->ld_max || pid(p) <= v->ld_max || o->lazy)) {
+    if (ti->ptr) {
         v->ld_obj = pid(p);
         v->ld_off = poff(p);
     }

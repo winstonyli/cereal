@@ -108,61 +108,32 @@ static uint64_t sweep_arg(Ev *v, const Ti *ti, uint64_t *rs)
     return ev_canon(ti, rnd(rs));
 }
 
-/* ---- the sweep's calls: bytes in, bytes out ------------------------------------------
- * A call is the bytes of its inputs: the scalar parameters' values, then one blob per object
- * the call reaches (what a pointer parameter points to, a record parameter, and what a pointer
- * inside one of those points to, as far as the budget goes).  Its result is the return value
- * (a returned pointer as a tag: 0 null, else (pointee number + 1) << 32 | offset into that
- * object) followed by the final bytes of every pointed-to object, pointer fields zeroed.
- * The gcc side runs the same bytes through a thunk (tests/sweep_rt.h), which rebuilds the
- * pointers between the blobs (16 bytes apart, so a one-past-the-end pointer is not the next
- * blob's start), and must produce the same bytes.  A pointer parameter also has
- * an alias word: 0, or (blob + 1) << 32 | offset, to point into an earlier pointer's blob
- * instead of its own (for functions taking `start, end` or two cursors into one buffer). */
+/* ---- the sweep's calls (docs/LAZY_BLOBS_DESIGN.md) ------------------------------------------
+ * A call makes its objects as it goes (the lazy section below): a pointer parameter is an empty object,
+ * a typed load of its uninitialized bytes draws the value, and a pointer drawn there is NULL, a pointer
+ * into an object the call already has, a function, or a new empty object.  The call's line carries the
+ * graph the call made; the gcc side rebuilds it (sw_load in tests/sweep_rt.h) and must produce the same
+ * result: the return value (a returned pointer as a tag) followed by the final bytes of every object. */
 
 enum { SA_SCALAR, SA_PTR, SA_REC, SA_STATE };
 enum { SR_VOID, SR_SCALAR, SR_PTR };
 
-#define SMAXOB 64               /* blobs per function */
-#define SMAXIN 16384            /* bytes of input per call */
 #define SGUIDED 64              /* calls drawing from the dictionary */
-
-typedef struct SObj {
-    TypeId ty;                  /* element type, 0: bytes */
-    uint64_t esz, size, off;    /* element size, bytes of the blob, where it starts in the input */
-    bool pointee;               /* a pointer points to it (a record parameter's blob is not one) */
-    int pj;                     /* pointee: its number, for the tag of a returned pointer */
-} SObj;
-
-/* A pointer-typed field: blob and offset, the blob it points to by default (-1: none, NULL) and
- * the element type any blob it is linked to must have (see sweep_link). */
-typedef struct SPf {
-    int ob, child;
-    uint32_t off;
-    TypeId ty;
-    bool link;
-} SPf;
 
 typedef struct SArg {
     int kind;
     Ti ti;                      /* SA_SCALAR */
-    uint64_t off;               /* SA_SCALAR: its value; SA_PTR: its alias word (8 bytes) */
-    int oi;                     /* SA_PTR, SA_REC: its blob */
     uint64_t sptr;              /* SA_STATE: the pointer the builder returned (see SStates) */
     int si;                     /* ... and which state that is */
-    TypeId ty;                  /* lazy SA_REC: the record type (its size is in off) */
+    TypeId ty;                  /* SA_REC: the record type (its size is in off) */
+    uint64_t off;               /* SA_REC: its size in bytes */
 } SArg;
 
 typedef struct SFn {
     int rk;
     Ti rti;
     SArg a[16];
-    SObj ob[SMAXOB];
-    int nob, npj;
-    VEC(SPf) pf;
-    uint64_t insz;
     bool ptrfn, byval;
-    bool lazy;                  /* --eval-lazy: pointer targets are made by the call (see Lazy); no layout */
     unsigned nstate;            /* parameters that are SA_STATE */
     const struct Snap *snap;    /* ... and what a call restores afterwards */
 } SFn;
@@ -206,78 +177,37 @@ static bool sweep_hasptr(TypeTable *tt, TypeId t)
     return false;
 }
 
-/* Random contents for an object of type t: scalars as sweep_arg, pointers null, padding zero. */
-static void sweep_fill(Ev *v, TypeId t, uint8_t *dst, uint64_t *rs)
-{
-    TypeTable *tt = &v->c->tt;
-    TypeKind k = type_ckind(tt, t);
-    bool ok;
-    Ti ti;
-    if (k == TY_PTR)
-        return;
-    if (k == TY_ARRAY) {
-        TypeId e = type_base(tt, t);
-        uint64_t es = type_size(tt, e, &ok), n, i;
-        if (!ok || !es)
-            return;
-        n = type_size(tt, t, &ok) / es;
-        for (i = 0; i < n && ok; i++)
-            sweep_fill(v, e, dst + i * es, rs);
-        return;
-    }
-    if (type_is_record(tt, t)) {
-        Record *r = type_record(tt, t);
-        uint32_t i, n = r->flags & RF_UNION && r->nfields > 1 ? 1 : r->nfields;
-        for (i = 0; i < n; i++) {
-            Field *fl = &tt->fields.data[r->fields + i];
-            if (!(fl->flags & FF_BITFIELD))
-                sweep_fill(v, fl->ty, dst + fl->off_bits / 8, rs);
-        }
-        return;
-    }
-    if (ev_tinfo(v, t, &ti)) {
-        uint64_t x = sweep_arg(v, &ti, rs);
-        memcpy(dst, &x, ti.bytes);
-    }
-    v->res.status = EV_OK;
-}
-
-/* The object a pointer of type pt points to, as a blob of `many` elements (four times as many
- * bytes for void and char). */
-static bool sweep_pointee(Ev *v, TypeId pt, unsigned many, SObj *o)
+/* Does a pointer parameter of type pt have a target the sweep can make and the gcc build can spell?  The
+ * old layout's size limit stays so the set of swept functions does not move (PARKED.md). */
+static bool sweep_pointee_ok(Ev *v, TypeId pt)
 {
     TypeTable *tt = &v->c->tt;
     TypeId e = type_base(tt, pt);
-    uint64_t n = many;
+    uint64_t n = 16, size = 0;
     bool ok = false;
-    memset(o, 0, sizeof *o);
-    o->pointee = true;
     if (type_is_void(tt, e)) {
-        o->esz = 1;
-        n = 4 * many;
+        size = 4 * n;
         ok = true;
     } else if (type_is_object(tt, e)) {
-        o->ty = e;
-        if (sweep_hasptr(tt, e) && n > 2)
-            n = 2;              /* each element brings blobs of its own: keep the budget for depth */
-        o->esz = type_size(tt, e, &ok);
-        if (o->esz == 1)
-            n = 4 * many;
+        uint64_t esz = type_size(tt, e, &ok);
+        if (sweep_hasptr(tt, e))
+            n = 2;
+        if (esz == 1)
+            n = 4 * 16;
         if (type_is_record(tt, e) && type_record(tt, e)->flags & RF_NOKEYWORD)
             ok = false;             /* __va_list_tag: no spelling to cast to */
+        size = esz * n;
     }
-    o->size = o->esz * n;
     v->res.status = EV_OK;
-    return ok && o->size && o->size <= 4096;
+    return ok && size && size <= 4096;
 }
 
-static bool sweep_par(Ev *v, TypeId t, SArg *a, SObj *o)
+static bool sweep_par(Ev *v, TypeId t, SArg *a)
 {
     TypeTable *tt = &v->c->tt;
     TypeKind k = type_ckind(tt, t);
     bool ok = false;
     memset(a, 0, sizeof *a);
-    memset(o, 0, sizeof *o);
     if (sweep_scalar(k)) {
         a->kind = SA_SCALAR;
         ok = ev_tinfo(v, t, &a->ti);
@@ -286,87 +216,17 @@ static bool sweep_par(Ev *v, TypeId t, SArg *a, SObj *o)
     }
     if (type_is_record(tt, t)) {
         a->kind = SA_REC;
-        o->ty = t;
-        o->size = o->esz = type_size(tt, t, &ok);
+        a->ty = t;
+        a->off = type_size(tt, t, &ok);
         ok = ok && !(type_record(tt, t)->flags & RF_NOKEYWORD);
         v->res.status = EV_OK;
-        return ok && o->size && o->size <= 4096;
+        return ok && a->off && a->off <= 4096;
     }
     if (k == TY_PTR) {
         a->kind = SA_PTR;
-        return sweep_pointee(v, t, 16, o);
+        return sweep_pointee_ok(v, t);
     }
     return false;
-}
-
-/* Record the pointer fields of an object of type t at `base` in blob oi, and give each a blob of its
- * own to point to while the budget lasts (SMAXOB blobs, 16 KB of input; the shallow blobs come first). */
-static void sweep_ptrs(Ev *v, SFn *s, int oi, TypeId t, uint64_t base)
-{
-    TypeTable *tt = &v->c->tt;
-    TypeKind k = type_ckind(tt, t);
-    bool ok;
-    if (k == TY_PTR) {
-        SPf pf = {oi, -1, (uint32_t)base, 0, false};
-        SObj n;
-        if (sweep_pointee(v, t, 4, &n)) {
-            pf.ty = n.ty;
-            pf.link = true;
-            if (s->nob < SMAXOB && s->insz + n.size <= SMAXIN) {
-                pf.child = s->nob;
-                n.off = s->insz;
-                s->insz += n.size;
-                s->ob[s->nob++] = n;
-            }
-        }
-        vec_push(&s->pf, pf);
-    } else if (k == TY_ARRAY) {
-        TypeId e = type_base(tt, t);
-        uint64_t es = type_size(tt, e, &ok), n, i;
-        if (!ok || !es)
-            return;
-        n = type_size(tt, t, &ok) / es;
-        for (i = 0; i < n && ok; i++)
-            sweep_ptrs(v, s, oi, e, base + i * es);
-    } else if (type_is_record(tt, t)) {
-        Record *r = type_record(tt, t);
-        uint32_t i, n = r->flags & RF_UNION && r->nfields > 1 ? 1 : r->nfields;
-        for (i = 0; i < n; i++) {
-            Field *fl = &tt->fields.data[r->fields + i];
-            if (!(fl->flags & FF_BITFIELD))
-                sweep_ptrs(v, s, oi, fl->ty, base + fl->off_bits / 8);
-        }
-    }
-}
-
-/* All pointer fields of blob oi (every element). */
-static void sweep_blob_ptrs(Ev *v, SFn *s, int oi)
-{
-    SObj o = s->ob[oi];
-    uint64_t e;
-    if (o.ty)
-        for (e = 0; e < o.size / o.esz; e++)
-            sweep_ptrs(v, s, oi, o.ty, e * o.esz);
-}
-
-/* Where a pointer field points in a call: its 8 bytes in the input are 0 (its own blob, or NULL
- * if it has none), ~0 (NULL) or a tag `(blob + 1) << 32 | offset` into another blob of the same
- * element type, which is how a call gets sharing and cycles (`l_G->mainthread == L`).  Returns
- * the blob (-1: NULL) and its offset. */
-static int sweep_link(const SFn *s, const SPf *pf, uint64_t w, uint32_t *off)
-{
-    *off = 0;
-    if (!w)
-        return pf->child;
-    if (w == ~0ull || (w >> 32) > (uint64_t)s->nob)
-        return -1;
-    *off = (uint32_t)w;
-    return (int)(w >> 32) - 1;
-}
-
-static void sweep_free(SFn *s)
-{
-    vec_free(&s->pf);
 }
 
 /* ---- state built by earlier calls (--eval-state) --------------------------------------
@@ -631,16 +491,13 @@ static bool sweep_cand(const Fn *f)
            strcmp(cident(f->c, csym(f->c, f->fsym)->name), "main");
 }
 
-/* Can f be swept, and how: the pointers inside the objects it is given point to objects of their
- * own, as far as the budget goes. */
-static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts, unsigned var, bool lazy)
+/* Can f be swept: its result and parameters are of types the sweep can make and the gcc build can spell. */
+static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts, unsigned var)
 {
     TypeTable *tt = &v->c->tt;
     TypeKind rk = type_ckind(tt, f->ret);
     size_t k;
-    int i;
     memset(s, 0, sizeof *s);
-    s->lazy = lazy;
     if (type_is_void(tt, f->ret))
         s->rk = SR_VOID;
     else if (sweep_scalar(rk))
@@ -657,7 +514,6 @@ static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts, unsigned va
         return false;
     for (k = 0; k < f->np; k++) {
         SArg *a = &s->a[k];
-        SObj o;
         if (sts) {                      /* a pointer to a record some builder built: one of those objects */
             char key[96];
             unsigned cnt;
@@ -674,36 +530,14 @@ static bool sweep_fn(Ev *v, const Fn *f, SFn *s, const SStates *sts, unsigned va
                 continue;
             }
         }
-        if (!sweep_par(v, f->par[k].ty, a, &o) || !sweep_named(v->c, f->par[k].ty))
+        if (!sweep_par(v, f->par[k].ty, a) || !sweep_named(v->c, f->par[k].ty))
             return false;
-        if (a->kind == SA_SCALAR) {
-            a->off = s->insz;
-            s->insz += a->ti.bytes;
-        } else if (lazy) {              /* no blob yet: the call makes it */
-            a->ty = f->par[k].ty;
-            a->off = o.size;
+        if (a->kind != SA_SCALAR) {
             s->ptrfn |= a->kind == SA_PTR || sweep_hasptr(tt, a->ty);
-            s->byval |= a->kind == SA_REC;
-        } else {
-            if (a->kind == SA_PTR) {
-                a->off = s->insz;
-                s->insz += 8;
-            }
-            a->oi = s->nob;
-            o.off = s->insz;
-            s->insz += o.size;
-            s->ob[s->nob++] = o;
-            s->ptrfn |= a->kind == SA_PTR;
             s->byval |= a->kind == SA_REC;
         }
     }
-    for (i = 0; i < s->nob; i++)        /* the blobs grow as their pointers get blobs */
-        sweep_blob_ptrs(v, s, i);
-    for (i = 0; i < s->nob; i++)
-        if (s->ob[i].pointee)
-            s->ob[i].pj = s->npj++;
-    s->ptrfn |= s->pf.len > 0;    /* pointers inside a record: NULL and wild links trap */
-    return s->insz <= SMAXIN && (s->rk != SR_VOID || s->ptrfn);
+    return s->rk != SR_VOID || s->ptrfn;
 }
 
 static void sweep_hex(StrBuf *sb, const uint8_t *p, size_t n)
@@ -758,88 +592,8 @@ static void sweep_scalar_expr(StrBuf *sb, const SArg *a, size_t k)
                   a->ti.bytes == 1 ? "char" : a->ti.bytes == 2 ? "short" : a->ti.bytes == 4 ? "int" : "long long", k);
 }
 
-/* The gcc side of one function: unpack the bytes, link the pointers, call, pack the result
- * (tests/sweep_rt.h). */
-static void sweep_thunk(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, const char *tname, const char *name, const Fn *f,
-                        const SFn *s)
-{
-    size_t k, i;
-    uint64_t oo[SMAXOB], o = s->rk == SR_SCALAR ? s->rti.bytes : s->rk == SR_PTR ? 8 : 0;
-    sb_printf(sb, "thunk %s %s static unsigned t_%s(const unsigned char *in, unsigned char *out){",
-              tname, s->byval ? "byval" : "-", tname);
-    for (k = 0; k < f->np; k++)
-        if (s->a[k].kind != SA_REC && s->a[k].kind != SA_STATE)
-            sb_printf(sb, "unsigned char a%zu[%u] __attribute__((aligned(16)));memcpy(a%zu,in+%llu,%u);",
-                      k, s->a[k].kind == SA_PTR ? 8 : s->a[k].ti.bytes, k, (unsigned long long)s->a[k].off,
-                      s->a[k].kind == SA_PTR ? 8 : s->a[k].ti.bytes);
-    for (i = 0; i < (size_t)s->nob; i++)
-        sb_printf(sb, "unsigned char b%zu[%llu] __attribute__((aligned(16)));memcpy(b%zu,in+%llu,%llu);",
-                  i, (unsigned long long)s->ob[i].size + 16, i, (unsigned long long)s->ob[i].off,
-                  (unsigned long long)s->ob[i].size);
-    if (s->pf.len) {
-        sb_puts(sb, "unsigned char *bp[]={");
-        for (i = 0; i < (size_t)s->nob; i++)
-            sb_printf(sb, "%sb%zu", i ? "," : "", i);
-        sb_puts(sb, "};");
-    }
-    for (i = 0; i < s->pf.len; i++) {
-        const SPf *pf = &s->pf.data[i];
-        if (pf->child >= 0)
-            sb_printf(sb, "SW_LK(b%d+%u,bp,b%d)", pf->ob, pf->off, pf->child);
-        else
-            sb_printf(sb, "SW_LK(b%d+%u,bp,0)", pf->ob, pf->off);
-    }
-    sweep_replay(v, sts, c, sb, s);
-    if (s->rk == SR_SCALAR)
-        sb_puts(sb, "__auto_type r=");
-    else if (s->rk == SR_PTR)
-        sb_puts(sb, "void*r=(void*)");
-    sb_printf(sb, "%s(", name);
-    for (k = 0; k < f->np; k++) {
-        const SArg *a = &s->a[k];
-        if (k)
-            sb_putc(sb, ',');
-        if (a->kind == SA_PTR) {
-            size_t j;
-            sb_printf(sb, "(void*)(*(unsigned long long*)a%zu?(unsigned char*)(", k);
-            for (j = 0; j < k; j++)
-                if (s->a[j].kind == SA_PTR)
-                    sb_printf(sb, "*(unsigned long long*)a%zu>>32==%d?(void*)b%d:", k, s->a[j].oi + 1, s->a[j].oi);
-            sb_printf(sb, "(void*)0)+(unsigned)*(unsigned long long*)a%zu:(unsigned char*)b%d)", k, a->oi);
-        }
-        else if (a->kind == SA_STATE)
-            sb_printf(sb, "q%d", a->si);
-        else if (a->kind == SA_REC) {
-            sb_puts(sb, "*(");
-            sweep_typename(c, sb, s->ob[a->oi].ty);
-            sb_printf(sb, "*)b%d", a->oi);
-        } else
-            sweep_scalar_expr(sb, a, k);
-    }
-    sb_puts(sb, ");");
-    if (s->rk == SR_SCALAR)
-        sb_puts(sb, "memcpy(out,&r,sizeof r);");
-    else if (s->rk == SR_PTR) {
-        sb_puts(sb, "{unsigned long long t=0;if(r){t=~0ull;");
-        for (i = 0; i < (size_t)s->nob; i++)
-            if (s->ob[i].pointee)
-                sb_printf(sb, "SW_IN(t,r,%d,b%zu,%llu)", s->ob[i].pj, i, (unsigned long long)s->ob[i].size);
-        sb_puts(sb, "}memcpy(out,&t,8);}");
-    }
-    for (i = 0; i < (size_t)s->nob; i++)
-        if (s->ob[i].pointee) {
-            oo[i] = o;
-            sb_printf(sb, "memcpy(out+%llu,b%zu,%llu);", (unsigned long long)o, i, (unsigned long long)s->ob[i].size);
-            o += s->ob[i].size;
-        }
-    for (i = 0; i < s->pf.len; i++)
-        if (s->ob[s->pf.data[i].ob].pointee)
-            sb_printf(sb, "memset(out+%llu,0,8);", (unsigned long long)(oo[s->pf.data[i].ob] + s->pf.data[i].off));
-    sb_printf(sb, "return %llu;}%c", (unsigned long long)o, 10);
-}
-
-/* The gcc side of one function under --eval-lazy: the graph comes from the line (sw_load). */
-static void sweep_thunk_lazy(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, const char *tname, const char *name,
+/* The gcc side of one function: the graph comes from the line (sw_load in tests/sweep_rt.h). */
+static void sweep_thunk(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, const char *tname, const char *name,
                              const Fn *f, const SFn *s)
 {
     size_t k;
@@ -894,8 +648,8 @@ static void sweep_thunk_lazy(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, 
     sb_putc(sb, 10);
 }
 
-/* Tracking: every data byte of every blob is the symbol of its input offset (pointer fields are
- * structure, not data), and so is every scalar parameter's value, in ash. */
+/* Tracking (--eval-solve): every byte the call draws, and every scalar parameter, is a symbol of the
+ * solver's expressions (lazy_sym). */
 static void track_begin(Ev *v)
 {
     sx_clear(&v->sx);
@@ -903,199 +657,7 @@ static void track_begin(Ev *v)
     v->path_full = false;
 }
 
-static void sweep_track(Ev *v, const Fn *f, const SFn *s, const uint32_t *ids, uint32_t *ash)
-{
-    size_t k;
-    int i;
-    track_begin(v);
-    for (i = 0; i < s->nob; i++) {
-        Obj *o = &v->obj.data[ids[i] - 1];
-        uint64_t j;
-        o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
-        for (j = 0; j < o->size; j++)
-            o->sh[j] = sx_sym(&v->sx, (uint32_t)(s->ob[i].off + j));
-    }
-    for (k = 0; k < s->pf.len; k++)
-        ev_unshadow(&v->obj.data[ids[s->pf.data[k].ob] - 1], s->pf.data[k].off, 8);
-    for (k = 0; k < f->np; k++) {
-        const SArg *a = &s->a[k];
-        uint32_t x = 0;
-        unsigned j;
-        if (a->kind != SA_SCALAR || a->ti.flt)
-            continue;
-        for (j = a->ti.bytes; j-- > 0;) {
-            uint32_t b = sx_sym(&v->sx, (uint32_t)(a->off + j));
-            x = x ? sx_join(&v->sx, x, b) : b;
-        }
-        ash[k] = sx_ext(&v->sx, x, a->ti.bytes, a->ti.sg, a->ti.boolean);
-    }
-}
-
-/* One call of the sweep, printed as "call NAME IN => OUT" or "call NAME IN STOP why"; `bad`
- * is set when the result is a pointer to something that is not one of the objects. */
-/* ".a.b" for the member of type t at byte offset off (arrays by element, records by member). */
-static void field_path(Checker *c, TypeId t, uint64_t off, StrBuf *sb)
-{
-    TypeTable *tt = &c->tt;
-    bool ok;
-    if (type_ckind(tt, t) == TY_ARRAY) {
-        TypeId e = type_base(tt, t);
-        uint64_t es = type_size(tt, e, &ok);
-        if (ok && es)
-            field_path(c, e, off % es, sb);
-    } else if (type_is_record(tt, t)) {
-        Record *r = type_record(tt, t);
-        uint32_t i, best = r->nfields;
-        for (i = 0; i < r->nfields; i++) {
-            const Field *fl = &tt->fields.data[r->fields + i];
-            if (!(fl->flags & FF_BITFIELD) && fl->off_bits / 8 <= off &&
-                (best == r->nfields || fl->off_bits > tt->fields.data[r->fields + best].off_bits))
-                best = i;
-        }
-        if (best < r->nfields) {
-            const Field *fl = &tt->fields.data[r->fields + best];
-            if (fl->name)
-                sb_printf(sb, ".%s", cident(c, fl->name));
-            field_path(c, fl->ty, off - fl->off_bits / 8, sb);
-        }
-    }
-}
-
-/* Where the call that just stopped read the pointer (or byte) it stopped on, for the miss report:
- * the parameter's blob and the member at that offset, a built state's object, or something else. */
-static void sweep_where(Ev *v, const Fn *f, const SFn *s, const uint32_t *ids)
-{
-    StrBuf sb = {0};
-    int i;
-    size_t k;
-    if (!v->f_obj) {
-        v->note[0] = 0;
-        return;
-    }
-    for (i = 0; i < s->nob && ids[i] != v->f_obj; i++)
-        ;
-    if (i < s->nob) {
-        const SObj *b = &s->ob[i];
-        for (k = 0; k < f->np && !(s->a[k].kind == SA_PTR && s->a[k].oi == i); k++)
-            ;
-        if (k < f->np)
-            sb_printf(&sb, "param %zu ", k + 1);
-        else
-            sb_puts(&sb, "linked blob ");
-        if (b->ty) {
-            sweep_typename(f->c, &sb, TYPE_UNQUAL(type_canon(&f->c->tt, b->ty)));
-            field_path(f->c, b->ty, (uint64_t)v->f_off % (b->esz ? b->esz : 1), &sb);
-        } else
-            sb_puts(&sb, "bytes");
-        sb_printf(&sb, " (+%d)", (int)v->f_off);
-    } else if (s->snap && v->f_obj <= s->snap->n)
-        sb_printf(&sb, "state object %u (+%d)", (unsigned)v->f_obj, (int)v->f_off);
-    else
-        sb_printf(&sb, "other object (+%d)", (int)v->f_off);
-    snprintf(v->note, sizeof v->note, "%s", sb_cstr(&sb));
-    sb_free(&sb);
-}
-
-static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s,
-                      const uint8_t *in, bool show_stop, bool *bad)
-{
-    uint64_t slot[16] = {0}, x = 0, oo[SMAXOB];
-    uint32_t ids[SMAXOB] = {0}, ash[16] = {0};
-    uint8_t *out = xcalloc((size_t)s->insz + 16, 1);
-    size_t k, n = 0;
-    int i;
-    EvRes r;
-    for (i = 0; i < s->nob; i++) {
-        const SObj *b = &s->ob[i];
-        Obj *o;
-        ids[i] = ev_new_obj(v, b->size, false);
-        o = &v->obj.data[ids[i] - 1];
-        memcpy(o->b, in + b->off, b->size);
-        memset(o->init, 1, b->size);
-    }
-    for (k = 0; k < s->pf.len; k++) {
-        const SPf *pf = &s->pf.data[k];
-        Obj *p = &v->obj.data[ids[pf->ob] - 1];
-        uint64_t w, ptr = 0;
-        uint32_t off;
-        int j;
-        memcpy(&w, p->b + pf->off, 8);
-        j = sweep_link(s, pf, w, &off);
-        if (j >= 0)
-            ptr = mkptr(ids[j], off);
-        memcpy(p->b + pf->off, &ptr, 8);
-    }
-    for (k = 0; k < f->np; k++) {
-        const SArg *a = &s->a[k];
-        if (a->kind == SA_SCALAR) {
-            uint64_t raw = 0;
-            memcpy(&raw, in + a->off, a->ti.bytes);
-            slot[k] = ev_canon(&a->ti, raw);
-        } else if (a->kind == SA_PTR) {
-            uint64_t w = 0;
-            memcpy(&w, in + a->off, 8);
-            slot[k] = w ? mkptr(ids[(w >> 32) - 1], (uint32_t)w) : mkptr(ids[a->oi], 0);
-        } else if (a->kind == SA_STATE) {
-            slot[k] = a->sptr;
-        } else
-            slot[k] = mkptr(ids[a->oi], 0);
-    }
-    if (v->track) {
-        sweep_track(v, f, s, ids, ash);
-        v->ash = ash;
-    }
-    v->ld_max = (uint32_t)v->obj.len;   /* the blobs and built states: what the stuck report names */
-    v->ld_obj = 0;
-    r = ev_call(v, f->fsym, slot, f->np, &x);
-    v->ld_max = 0;
-    v->ash = NULL;
-    if (r.status != EV_OK)
-        sweep_where(v, f, s, ids);
-    if (r.status == EV_OK) {
-        if (s->rk == SR_SCALAR) {
-            x = ev_canon(&s->rti, x);
-            memcpy(out, &x, s->rti.bytes);
-            n = s->rti.bytes;
-        } else if (s->rk == SR_PTR) {
-            uint64_t tag = pid(x) ? ~0ull : 0;
-            for (i = 0; i < s->nob; i++)
-                if (s->ob[i].pointee && pid(x) == ids[i])
-                    tag = ((uint64_t)(s->ob[i].pj + 1) << 32) | (uint32_t)poff(x);
-            if (tag == ~0ull)
-                *bad = true;
-            memcpy(out, &tag, 8);
-            n = 8;
-        }
-        for (i = 0; i < s->nob; i++)
-            if (s->ob[i].pointee) {
-                oo[i] = n;
-                memcpy(out + n, v->obj.data[ids[i] - 1].b, s->ob[i].size);
-                n += s->ob[i].size;
-            }
-        for (k = 0; k < s->pf.len; k++)
-            if (s->ob[s->pf.data[k].ob].pointee)
-                memset(out + oo[s->pf.data[k].ob] + s->pf.data[k].off, 0, 8);
-    }
-    if (s->snap)
-        snap_restore(v, s->snap);
-    for (i = 0; i < s->nob; i++)
-        ev_kill_obj(v, ids[i]);
-    ev_trim(v);                        /* a long sweep would otherwise keep a slot per object it ever made */
-    if (r.status == EV_OK || (show_stop && (!s->ptrfn || r.status == EV_UNSUPPORTED))) {
-        sb_printf(body, "call %s ", name);
-        sweep_hex(body, in, (size_t)s->insz);
-        if (r.status == EV_OK) {
-            sb_puts(body, " => ");
-            sweep_hex(body, out, n);
-            sb_putc(body, 10);
-        } else
-            sb_printf(body, " %s %s%c", stop_name(r.status), r.why, 10);
-    }
-    free(out);
-    return r.status;
-}
-
-/* ---- lazy blobs (--eval-lazy, docs/LAZY_BLOBS_DESIGN.md) -------------------------------------
+/* ---- lazy blobs (docs/LAZY_BLOBS_DESIGN.md) ---------------------------------------------------
  * A call makes its objects as it goes: a pointer parameter is an empty lazy object, a typed load of
  * its uninitialized bytes draws the value (Ev.lazy_fill), and a pointer drawn there is NULL, a pointer
  * into an object the call already has, or a new empty lazy object.  The call line carries the graph
@@ -1125,7 +687,7 @@ typedef struct LEnt {
 typedef VEC(LEnt) LLog;
 typedef VEC(LKey) LKeys;
 
-/* What a caller of sweep_call_lazy asks for beyond the call: values to force, the log of what the
+/* What a caller of sweep_call asks for beyond the call: values to force, the log of what the
  * final run drew, and, in a tracked run, the key of each symbol. */
 typedef struct LOpt {
     const LLog *force;          /* sorted by key */
@@ -1408,7 +970,7 @@ static void lazy_where(Ev *v, const Lazy *z)
         snprintf(p + n, left - (size_t)n, " (+%d)", (int)v->f_off);
 }
 
-/* One call of the sweep with lazy objects (sweep_call's counterpart): the scalars are drawn from *rs,
+/* One call of the sweep: the scalars are drawn from *rs,
  * the pointer parameters are empty objects, and the line is printed from what the call made. */
 static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
                       bool *bad, uint64_t *rs, bool may_retry, LKey want[2], bool *retry,
@@ -1488,7 +1050,6 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     if (v->res.status) {
         r = v->res;
     } else {
-        v->ld_max = 0;
         v->ld_obj = 0;
         z.nullat = rnd(rs) & 1 ? ~0u : (unsigned)(rnd(rs) % 32);
         v->sub_a = v->sub_b = 0;
@@ -1612,12 +1173,12 @@ static void llog_sort(LLog *log)
         qsort(log->data, log->len, sizeof *log->data, lz_cmp);
 }
 
-/* sweep_call_lazy: the call, rerun each time it stops on a subtraction of pointers of two blobs with the
+/* The call, rerun each time it stops on a subtraction of pointers of two blobs with the
  * later blob's pointer cell forced to share the earlier blob (the program meant them as one object, such as
  * a saved pc and the code it points into): the same draws, so the rerun differs only there.  *rec gets what
  * the final run drew (unsorted); with `force` (sorted) the call takes those values instead of drawing them,
  * and is not retried (its log already has the aliases). */
-static int sweep_call_lazy(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
+static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
                            bool *bad, uint64_t *rs, const LOpt *op)
 {
     LLog hints = {0};
@@ -1650,71 +1211,6 @@ static int cmp64(const void *a, const void *b)
 {
     uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
     return x < y ? -1 : x > y;
-}
-
-/* Random input bytes for a call. */
-static void sweep_gen(Ev *v, const Fn *f, const SFn *s, uint8_t *in, uint64_t *rs)
-{
-    static const Ti byte = {1, false, false, false, false, 0};
-    size_t k;
-    int i;
-    memset(in, 0, (size_t)s->insz);
-    for (k = 0; k < f->np; k++)
-        if (s->a[k].kind == SA_SCALAR) {
-            uint64_t x = sweep_arg(v, &s->a[k].ti, rs);
-            memcpy(in + s->a[k].off, &x, s->a[k].ti.bytes);
-        }
-    for (k = 1; k < f->np; k++) {       /* sometimes a pointer into an earlier pointer's object */
-        const SArg *a = &s->a[k];
-        size_t j, n = 0, pick;
-        uint64_t w;
-        if (a->kind != SA_PTR || rnd(rs) % 3)
-            continue;
-        for (j = 0; j < k; j++)
-            n += s->a[j].kind == SA_PTR;
-        if (!n)
-            continue;
-        pick = rnd(rs) % n;
-        for (j = 0; j < k; j++)
-            if (s->a[j].kind == SA_PTR && !pick--)
-                break;
-        w = (uint64_t)(s->a[j].oi + 1) << 32 |
-            (rnd(rs) % (s->ob[s->a[j].oi].size / s->ob[a->oi].esz + 1)) * s->ob[a->oi].esz;
-        memcpy(in + a->off, &w, 8);
-    }
-    for (i = 0; i < s->nob; i++) {
-        const SObj *o = &s->ob[i];
-        uint8_t *d = in + o->off;
-        uint64_t e;
-        for (e = 0; e < o->size / o->esz; e++) {
-            if (o->ty)
-                sweep_fill(v, o->ty, d + e * o->esz, rs);
-            else
-                d[e] = (uint8_t)sweep_arg(v, &byte, rs);
-        }
-    }
-    for (k = 0; k < s->pf.len; k++) {   /* sometimes a pointer field shares or ends a blob */
-        const SPf *pf = &s->pf.data[k];
-        uint64_t w = 0, r = rnd(rs) % 8;
-        int j, n = 0, pick;
-        if (!pf->link || r > 2)
-            continue;
-        if (!r) {
-            if (pf->child >= 0)
-                w = ~0ull;              /* NULL */
-        } else {                        /* a blob of the same element type, at an element boundary */
-            for (j = 0; j < s->nob; j++)
-                n += s->ob[j].pointee && s->ob[j].ty == pf->ty;
-            if (!n)
-                continue;
-            pick = (int)(rnd(rs) % n);
-            for (j = 0; j < s->nob; j++)
-                if (s->ob[j].pointee && s->ob[j].ty == pf->ty && !pick--)
-                    break;
-            w = (uint64_t)(j + 1) << 32 | (rnd(rs) % (s->ob[j].size / s->ob[j].esz + 1)) * s->ob[j].esz;
-        }
-        memcpy(in + s->ob[pf->ob].off + pf->off, &w, 8);
-    }
 }
 
 /* ---- solving for inputs (docs/CONCOLIC_DESIGN.md) ------------------------------------
@@ -1757,31 +1253,29 @@ static void blk_count(const Fn *f, size_t *edges, size_t *taken)
     }
 }
 
-/* A corpus entry: an eager input is its byte string; a lazy one is the log of what the call drew
- * (sorted by key) and the random state it started from, which replays it (see lazy_draw). */
+/* A corpus entry: the log of what the call drew (sorted by key) and the random state it started from,
+ * which replays it (see lazy_draw). */
 typedef struct SSeed {
-    uint8_t *in;
     LLog log;
     uint64_t rs0;
 } SSeed;
 
 static void seed_free(SSeed *sd)
 {
-    free(sd->in);
     vec_free(&sd->log);
 }
 
-/* One solved call: the seed with the model's bytes written over it; true if it finished and
- * took an edge nobody had (then it is worth tracking itself).  A lazy seed's model is in solver
- * symbols; `syms` (from its tracked run) maps them back to the keys of the draws. */
+/* One solved call: the seed with the model's values written over it; true if it finished and
+ * took an edge nobody had (then it is worth tracking itself).  The model is in solver symbols;
+ * `syms` (from the seed's tracked run) maps them back to the keys of the draws. */
 static bool solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *syms, const Fn *f, const SFn *s,
                       StrBuf *body, const char *name, bool *bad, bool *saw_ok, SSeed *child)
 {
     SSeed c = {0};
     unsigned long before = v->newseen;
-    size_t i, k;
+    size_t i;
     int st;
-    if (s->lazy) {
+    {
         LLog force = {0};
         LOpt op = {&force, &c.log, NULL};
         uint64_t rs = seed->rs0;
@@ -1793,19 +1287,9 @@ static bool solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *s
                 e->val = m->val.data[i];
         }
         c.rs0 = seed->rs0;
-        st = sweep_call_lazy(v, body, name, f, s, false, bad, &rs, &op);
+        st = sweep_call(v, body, name, f, s, false, bad, &rs, &op);
         vec_free(&force);
         llog_sort(&c.log);
-    } else {
-        c.in = xmalloc((size_t)s->insz + 1);
-        memcpy(c.in, seed->in, (size_t)s->insz);
-        for (i = 0; i < m->off.len; i++)
-            if (m->off.data[i] < s->insz)
-                c.in[m->off.data[i]] = m->val.data[i];
-        for (k = 0; k < f->np; k++)     /* a bool parameter is 0 or 1 */
-            if (s->a[k].kind == SA_SCALAR && s->a[k].ti.boolean)
-                c.in[s->a[k].off] = c.in[s->a[k].off] != 0;
-        st = sweep_call(v, body, name, f, s, c.in, false, bad);
     }
     *saw_ok |= st == EV_OK;
     if (st == EV_OK && v->newseen != before) {
@@ -1858,21 +1342,17 @@ typedef struct SSearch {
     size_t queries, expanded;
 } SSearch;
 
-/* Keeps the call that just finished as a seed: eager, its input bytes; lazy, the log it drew (moved out of
- * *log) and the random state it started from. */
-static void search_keep(SSearch *q, const SFn *s, const uint8_t *in, LLog *log, uint64_t rs0, bool fresh)
+/* Keeps the call that just finished as a seed: the log it drew (moved out of *log) and the random state
+ * it started from. */
+static void search_keep(SSearch *q, LLog *log, uint64_t rs0, bool fresh)
 {
     SSeed sd = {0};
     if (q->corpus.len >= SCORPUS || (q->corpus.len >= SSEEDS && !fresh))
         return;
-    if (s->lazy) {
-        llog_sort(log);
-        sd.log = *log;
-        memset(log, 0, sizeof *log);
-        sd.rs0 = rs0;
-    } else {
-        sd.in = memcpy(xmalloc((size_t)s->insz + 1), in, (size_t)s->insz);
-    }
+    llog_sort(log);
+    sd.log = *log;
+    memset(log, 0, sizeof *log);
+    sd.rs0 = rs0;
     vec_push(&q->corpus, sd);
 }
 
@@ -1895,7 +1375,6 @@ typedef struct SCtx {
     const SFn *s;
     const char *name;
     StrBuf *body;                       /* the calls that print */
-    uint8_t *in;                        /* the generator's input buffer */
     uint64_t rs;                        /* its random state */
     SSearch q;
     bool bad, saw_ok, saw_unsup;
@@ -1929,12 +1408,10 @@ static bool solve_step1(SCtx *x)
             return false;
         seed = q->corpus.data[q->next++];
         v->track = true;
-        if (s->lazy) {
+        {
             LOpt op = {&seed.log, NULL, &syms};
             uint64_t rs = seed.rs0;
-            r = sweep_call_lazy(v, &sink, name, f, s, false, bad, &rs, &op);
-        } else {
-            r = sweep_call(v, &sink, name, f, s, seed.in, false, bad);
+            r = sweep_call(v, &sink, name, f, s, false, bad, &rs, &op);
         }
         v->track = false;
         sb_free(&sink);
@@ -2033,12 +1510,12 @@ static void mut_gen(SCtx *x)
     Ev *v = x->v;
     unsigned long seen = v->newseen;
     int st;
-    if (x->s->lazy) {
+    {
         LLog rec = {0};
         LOpt op = {NULL, &rec, NULL};
         uint64_t rs0 = x->rs;
         size_t at = x->body->len;
-        st = sweep_call_lazy(v, x->body, x->name, x->f, x->s, !v->dict_use && !x->saw_unsup, &x->bad, &x->rs, &op);
+        st = sweep_call(v, x->body, x->name, x->f, x->s, !v->dict_use && !x->saw_unsup, &x->bad, &x->rs, &op);
         if (getenv("CEREAL_LAZY_REPLAY")) {     /* test only: the call, rerun from its log, prints the same line */
             StrBuf again = {0};
             uint64_t rs1 = rs0, rs2 = x->rs;
@@ -2049,7 +1526,7 @@ static void mut_gen(SCtx *x)
             snprintf(why1, sizeof why1, "%s: %s", stop_name(st), v->res.why);
             llog_sort(&rec);
             v->dict_on = false;                 /* the replay must not feed the dictionary twice */
-            st2 = sweep_call_lazy(v, &again, x->name, x->f, x->s, !v->dict_use && !x->saw_unsup, &bad, &rs1, &again_op);
+            st2 = sweep_call(v, &again, x->name, x->f, x->s, !v->dict_use && !x->saw_unsup, &bad, &rs1, &again_op);
             if (again.len != x->body->len - at || memcmp(again.data, x->body->data + at, again.len)) {
                 fprintf(stderr, "cereal: lazy replay of %s differs: %s, then %s\n", x->name, why1,
                         st2 ? v->res.why : "it finished");
@@ -2059,13 +1536,8 @@ static void mut_gen(SCtx *x)
             x->rs = rs2;
         }
         if (x->sv && st == EV_OK)
-            search_keep(&x->q, x->s, NULL, &rec, rs0, v->newseen != seen);
+            search_keep(&x->q, &rec, rs0, v->newseen != seen);
         vec_free(&rec);
-    } else {
-        sweep_gen(v, x->f, x->s, x->in, &x->rs);
-        st = sweep_call(v, x->body, x->name, x->f, x->s, x->in, !v->dict_use && !x->saw_unsup, &x->bad);
-        if (x->sv && st == EV_OK)
-            search_keep(&x->q, x->s, x->in, NULL, 0, v->newseen != seen);
     }
     x->saw_ok |= st == EV_OK;
     if (st != EV_OK && !x->why[0]) {
@@ -2286,18 +1758,17 @@ static void eval_sweep(Checker *c0)
     }
     if (c0->opt.eval_state)
         states_build(v, &sts);
-    if (c0->opt.eval_lazy)              /* the functions a drawn function pointer can name, per file (sw_fn) */
-        for (i = 0; i < v->fn.len && i < LMAXFN; i++) {
-            const Fn *f = &v->fn.data[i];
-            size_t b;
-            if (!sweep_cand(f))
-                continue;
-            for (b = 0; b < i && !(v->fn.data[b].c == f->c && sweep_cand(&v->fn.data[b])); b++)
-                ;
-            if (b == i && c0->opt.link)     /* the file's first candidate: announce the file */
-                fprintf(out, "file %s\n", main_path(f->c));
-            fprintf(out, "fp %zu %s\n", i, cident(f->c, csym(f->c, f->fsym)->name));
-        }
+    for (i = 0; i < v->fn.len && i < LMAXFN; i++) {    /* the functions a drawn function pointer can name, per file (sw_fn) */
+        const Fn *f = &v->fn.data[i];
+        size_t b;
+        if (!sweep_cand(f))
+            continue;
+        for (b = 0; b < i && !(v->fn.data[b].c == f->c && sweep_cand(&v->fn.data[b])); b++)
+            ;
+        if (b == i && c0->opt.link)     /* the file's first candidate: announce the file */
+            fprintf(out, "file %s\n", main_path(f->c));
+        fprintf(out, "fp %zu %s\n", i, cident(f->c, csym(f->c, f->fsym)->name));
+    }
     for (i = 0; i < v->fn.len; i++) {
         Fn *f = &v->fn.data[i];
         Checker *c = f->c;
@@ -2316,8 +1787,7 @@ static void eval_sweep(Checker *c0)
             SCtx x = {0};
             StrBuf head = {0}, body = {0};
             snprintf(tname, sizeof tname, "%s__st%u", name, vi);
-            if (!sweep_fn(v, f, &s, st ? &sts : NULL, vi, c0->opt.eval_lazy)) {
-                sweep_free(&s);
+            if (!sweep_fn(v, f, &s, st ? &sts : NULL, vi)) {
                 v->res.status = EV_OK;
                 continue;
             }
@@ -2333,7 +1803,7 @@ static void eval_sweep(Checker *c0)
                 sweep_typename(c, &head, f->par[k].ty);
             }
             sb_putc(&head, 10);
-            (s.lazy ? sweep_thunk_lazy : sweep_thunk)(v, &sts, c, &head, st ? tname : name, name, f, &s);
+            sweep_thunk(v, &sts, c, &head, st ? tname : name, name, f, &s);
             x.v = v;
             x.sv = sv;
             x.ss = &ss;
@@ -2345,7 +1815,6 @@ static void eval_sweep(Checker *c0)
             for (k = 0; x.name[k]; k++)
                 x.rs = (x.rs ^ (unsigned char)x.name[k]) * 1099511628211ull;
             x.rs |= 1;
-            x.in = xcalloc((size_t)s.insz + 1, 1);
             v->dict.len = 0;
             v->dict_on = true;
             for (j = 0; j < c0->opt.eval_sweep; j++)
@@ -2395,8 +1864,6 @@ static void eval_sweep(Checker *c0)
                 fputs(sb_cstr(&head), out);
                 fputs(sb_cstr(&body), out);
             }
-            free(x.in);
-            sweep_free(&s);
             sb_free(&head);
             sb_free(&body);
         }

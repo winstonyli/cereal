@@ -122,7 +122,7 @@ cannot even be linked. The oracle stays on `tests/cfg_exec` and `tests/cfg_link`
 measurement. Run rows `link-oracle-n4`, `n4b`, `n4c`; the script was deleted.
 
 Update 2026-10-24 (lazy blobs): the library oracle works with a forked child per gcc call
-(`bench/tools/lib_oracle.sh`, `EVAL_SWEEP_LIB=1` in `tests/eval_sweep.sh`; `--eval-lazy --eval-state`, library
+(`bench/tools/lib_oracle.sh`, `EVAL_SWEEP_LIB=1` in `tests/eval_sweep.sh`; `--eval-state`, library
 linked as one program; the program's own stdout is discarded, since Lua's printing shifted the result lines).
 zstd N=24 (`liboracle-lazy-zstd`): 72387 calls the evaluator finished, 72245 equal, 142 differ, 0 gcc crashes;
 the differences are `ZSTD_cwksp_bytes_to_align_ptr` (the alignment of a raw address) and `ZSTD_DCtx_get_bmi2`

@@ -11,7 +11,7 @@
 #include "c/symx.h"
 
 typedef struct Obj {
-    uint8_t *b, *init;          /* bytes and one init flag per byte: 0 no, 1 yes, 2 a pointer the sweep drew (--eval-lazy) */
+    uint8_t *b, *init;          /* bytes and one init flag per byte: 0 no, 1 yes, 2 a pointer the sweep drew */
     uint32_t *sh;               /* tracking: per byte, an 8-bit expression of the input (0: concrete); NULL: none */
     uint64_t size;
     uint32_t fn;                /* a function's object: its fsym + 1, in the numbering of fc */
@@ -139,8 +139,7 @@ struct Ev {
     uint32_t ld_obj, f_obj;     /* the object and offset of the last pointer read (ld), and of the one the
                                    latest stop followed (f): where the bad pointer or byte was read from */
     int32_t ld_off, f_off;
-    uint32_t sub_a, sub_b;      /* the objects of the pointer subtraction that stopped the call (--eval-lazy retries it aliased) */
-    uint32_t ld_max;            /* pointer reads from objects above this id (frame locals, the heap) are not noted; 0: all */
+    uint32_t sub_a, sub_b;      /* the objects of the pointer subtraction that stopped the call (the sweep retries it aliased) */
     char note[112];             /* the sweep's description of that place, for its miss report */
     /* A typed load of uninitialized bytes of a lazy object: draws and stores the value (may make
      * objects, so the caller looks the object up again); false: the load traps as uninitialized. */
