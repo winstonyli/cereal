@@ -319,7 +319,7 @@ static void store_sh_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x, uint32_t sh)
             }
     for (i = 0; i < ti->bytes; i++) {
         o->b[poff(p) + i] = (uint8_t)(x >> (8 * i));
-        o->init[poff(p) + i] = 1;
+        o->init[poff(p) + i] = o->lazy && ti->ptr && x ? 2 : 1;   /* 2: a pointer, as lazy_fill marks it (see load_n); NULL is zero bytes in gcc too */
     }
     store_sh(v, o, (uint64_t)poff(p), ti->bytes, v->track && !ti->flt && !ti->ptr ? sh : 0);
 }
@@ -502,8 +502,13 @@ static uint64_t fcompare(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
  * hardware does for the rest. */
 static uint64_t convert(Ev *v, const Ti *to, const Ti *from, uint64_t a)
 {
-    if (!from->flt && !to->flt)
+    if (!from->flt && !to->flt) {
+        if (from->ptr && !to->ptr && !to->boolean && a && v->lazy_fill) {
+            UNSUP(v, "address as an integer");     /* the sweep's addresses are not gcc's: a result built from one differs */
+            return 0;
+        }
         return ev_canon(to, a);
+    }
     if (from->flt && to->flt)
         return ev_fput(to, ev_fget(from, a));
     if (to->flt) {

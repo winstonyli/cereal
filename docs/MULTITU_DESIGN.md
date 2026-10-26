@@ -168,6 +168,14 @@ pointer difference that is not a multiple of the element size) stays: undefined 
 `close_func` x1) come from the sharing draw: with `LHEAD` 128 a shared pointer lands on `LHEAD + 8k`, so `g` can point at
 `L`'s `l_G` slot (field 24, offset 152) and `g->frealloc` then reads a data pointer. Inferred from offsets, not
 reproduced; a fix is parked. Dropping the 4096-byte limit was tried and reverted (`PARKED.md`).
+Address-dependence (2026-10-25, `addr-gate2`): two stops replace per-name allowlisting. A pointer the program stores into a drawn
+object is marked as a pointer (init 2, as `lazy_fill` marks the ones it draws), so reading its bytes through a `char` stops
+(`luaZ_fill` read `*buff` where `buff` pointed at the Zio's own `p`; fixture `tests/cfg_lazy/lazy_ptrbyte.c`, checked by
+`tests/eval_lazy.sh`); and converting a non-NULL pointer to an integer stops ("address as an integer"). Lua oracle N=1
+(`addr-liboracle-lua`): 37964 calls, 9 differ (211), 336 gcc crashed (937); zstd (`addr-liboracle-zstd`) 6 differ, all
+`ZSTD_DCtx_get_bmi2`. Cost: solver sweep (`addr-solver-lazy`) Lua 1579 + zstd 1852 = 3431 untaken (3300), 5118 edges
+taken (5209). Left in Lua: `boolF` x6 (gcc leaks stack addresses), `lua_upvaluejoin`, `lua_setiuservalue`, `getF`
+(a `FILE*`), not read yet.
 The 982 gcc crashes of `ptrdiff-liboracle-lua` (kept files, one call per class under gdb; function counts from `got.txt`):
 744 are `FILE*` functions (`skipcomment`, `skipBOM`, `test_eof`, `read_all`, `read_chars`, `getF`) where glibc
 aborts with "invalid stdio handle" on a drawn blob used as a `FILE`; about 150 (`luaS_new`, `lua_pushstring`,

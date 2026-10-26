@@ -23,3 +23,10 @@ if command -v z3 >/dev/null 2>&1; then
     esac
     echo "eval_lazy: solver ok"
 fi
+# A pointer the program stores into a drawn object is not bytes the gcc build would match: lazy_ptrbyte.c reads one back
+# through a char; the sweep must stop there, not report a difference against gcc.
+if ! sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_ptrbyte.c" >/dev/null 2>&1; then
+    echo "eval_lazy: lazy_ptrbyte.c differs from gcc"
+    exit 1
+fi
+echo "eval_lazy: ptrbyte ok"
