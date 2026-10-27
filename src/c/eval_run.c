@@ -970,6 +970,37 @@ static void lazy_where(Ev *v, const Lazy *z)
         snprintf(p + n, left - (size_t)n, " (+%d)", (int)v->f_off);
 }
 
+/* The draws that would make the stopped call go further, at most two: what the sweep forces on a rerun.
+ * Each rule reads the stop and names the cells whose draw was wrong, and what to draw there instead. */
+static unsigned lazy_redraw(const Ev *v, const Lazy *z, LEnt hint[2])
+{
+    unsigned n = 0;
+    size_t j;
+    if (v->res.status == EV_TRAP && v->sub_a) {         /* two blobs subtracted: the later shares the earlier, by its pointer cell or its parameter */
+        int a = lazy_index(z, v->sub_a), b = lazy_index(z, v->sub_b), lo = a < b ? a : b, hi = a > b ? a : b;
+        if (a >= 0 && b >= 0 && a != b) {
+            const LBlob *h = &z->bl.data[hi];
+            if (h->par >= 0) {
+                hint[0] = (LEnt){lz_key(h->key, LZ_OUT), 1};
+                hint[1] = (LEnt){lz_key(h->key, LZ_TGT), z->bl.data[lo].key};
+                n = 2;
+            } else if (z->bl.data[lo].par < 0) {
+                hint[0] = (LEnt){lz_key(h->key, LZ_ALIAS), (uint64_t)(z->bl.data[lo].poff + 1) | (uint64_t)LHEAD << 16};
+                n = 1;
+            }
+        }
+    } else if (v->res.status == EV_UNSUPPORTED && v->pun_obj) {     /* a drawn pointer read as an integer: the cells that share the blob (not the one that made it) get a new blob of their own */
+        int bi = lazy_index(z, v->pun_obj);
+        for (j = 0; bi >= 0 && j < z->lk.len && n < 2; j++) {
+            const LLink *l = &z->lk.data[j];
+            const LBlob *src = &z->bl.data[l->blob], *t = &z->bl.data[bi];
+            if (!(l->tb1 & LFN) && (int)l->tb1 - 1 == bi && !((int)l->blob == t->par && l->off == t->poff))
+                hint[n++] = (LEnt){lz_key(lz_key(src->key, l->off), LZ_OUT), 2};
+        }
+    }
+    return n;
+}
+
 /* One call of the sweep: the scalars are drawn from *rs,
  * the pointer parameters are empty objects, and the line is printed from what the call made. */
 static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
@@ -1052,7 +1083,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     } else {
         v->ld_obj = 0;
         z.nullat = rnd(rs) & 1 ? ~0u : (unsigned)(rnd(rs) % 32);
-        v->sub_a = v->sub_b = 0;
+        v->sub_a = v->sub_b = v->pun_obj = 0;
         v->ash = v->track ? ash : NULL;
         r = ev_call(v, f->fsym, slot, f->np, &x);
         v->ash = NULL;
@@ -1061,21 +1092,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     v->lazy_ud = NULL;
     if (r.status != EV_OK)
         lazy_where(v, &z);
-    *nhint = 0;
-    if (r.status == EV_TRAP && v->sub_a && may_retry) {
-        int a = lazy_index(&z, v->sub_a), b = lazy_index(&z, v->sub_b), lo = a < b ? a : b, hi = a > b ? a : b;
-        if (a >= 0 && b >= 0 && a != b) {       /* the later blob shares the earlier one: its pointer cell, or its parameter, is asked for it */
-            const LBlob *h = &z.bl.data[hi];
-            if (h->par >= 0) {
-                hint[0] = (LEnt){lz_key(h->key, LZ_OUT), 1};
-                hint[1] = (LEnt){lz_key(h->key, LZ_TGT), z.bl.data[lo].key};
-                *nhint = 2;
-            } else if (z.bl.data[lo].par < 0) {
-                hint[0] = (LEnt){lz_key(h->key, LZ_ALIAS), (uint64_t)(z.bl.data[lo].poff + 1) | (uint64_t)LHEAD << 16};
-                *nhint = 1;
-            }
-        }
-    }
+    *nhint = may_retry && r.status != EV_OK ? lazy_redraw(v, &z, hint) : 0;
     *retry = *nhint != 0;
     for (i = 0; i < z.bl.len; i++)
         total += v->obj.data[z.bl.data[i].id - 1].size;

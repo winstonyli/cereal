@@ -45,3 +45,11 @@ if [ "$n" -lt 24 ]; then
     exit 1
 fi
 echo "eval_lazy: parameter alias ok"
+# A cell drawn to share its own object (a pointer read as an int): the retry redraws the cell as a new blob (958 of 1000 finish without it).
+sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_selfptr.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_selfptr.c differs from gcc"; exit 1; }
+n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=1000,1234 "$D/cfg_lazy/lazy_selfptr.c" 2>/dev/null </dev/null | grep -ac '^call sp_run .* =>')
+if [ "$n" -lt 965 ]; then
+    echo "eval_lazy: lazy_selfptr.c: only $n of 1000 calls of sp_run finished (the pointer-read retry)"
+    exit 1
+fi
+echo "eval_lazy: pointer-read retry ok"

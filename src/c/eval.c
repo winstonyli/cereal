@@ -291,6 +291,7 @@ static uint64_t load_n(Ev *v, uint64_t p, const Ti *ti)
             if (!ti->ptr) {             /* init 2: a pointer the sweep drew; its bytes differ in gcc's build */
                 v->ld_obj = pid(p);
                 v->ld_off = poff(p) + (int32_t)i;
+                v->pun_obj = pid(p);
                 UNSUP(v, "read of a pointer as an integer");
                 return 0;
             }

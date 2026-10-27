@@ -141,6 +141,7 @@ struct Ev {
                                    latest stop followed (f): where the bad pointer or byte was read from */
     int32_t ld_off, f_off;
     uint32_t sub_a, sub_b;      /* the objects of the pointer subtraction that stopped the call (the sweep retries it aliased) */
+    uint32_t pun_obj;           /* the object whose drawn pointer was read as an integer (the sweep retries it without the pointer into it) */
     char note[112];             /* the sweep's description of that place, for its miss report */
     /* A typed load of uninitialized bytes of a lazy object: draws and stores the value (may make
      * objects, so the caller looks the object up again); false: the load traps as uninitialized. */
