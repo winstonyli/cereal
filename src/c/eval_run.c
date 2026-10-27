@@ -973,7 +973,7 @@ static void lazy_where(Ev *v, const Lazy *z)
 /* One call of the sweep: the scalars are drawn from *rs,
  * the pointer parameters are empty objects, and the line is printed from what the call made. */
 static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
-                      bool *bad, uint64_t *rs, bool may_retry, LKey want[2], bool *retry,
+                      bool *bad, uint64_t *rs, bool may_retry, LEnt hint[2], unsigned *nhint, bool *retry,
                       const LOpt *op)
 {
     Lazy z = {0};
@@ -1061,15 +1061,22 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     v->lazy_ud = NULL;
     if (r.status != EV_OK)
         lazy_where(v, &z);
-    *retry = false;
+    *nhint = 0;
     if (r.status == EV_TRAP && v->sub_a && may_retry) {
-        int a = lazy_index(&z, v->sub_a), b = lazy_index(&z, v->sub_b), hi = a > b ? a : b;
-        if (a >= 0 && b >= 0 && a != b && z.bl.data[hi].par >= 0) {
-            want[0] = z.bl.data[hi].key;                /* the later blob's pointer cell shares the earlier blob */
-            want[1] = z.bl.data[a < b ? a : b].key;
-            *retry = true;
+        int a = lazy_index(&z, v->sub_a), b = lazy_index(&z, v->sub_b), lo = a < b ? a : b, hi = a > b ? a : b;
+        if (a >= 0 && b >= 0 && a != b) {       /* the later blob shares the earlier one: its pointer cell, or its parameter, is asked for it */
+            const LBlob *h = &z.bl.data[hi];
+            if (h->par >= 0) {
+                hint[0] = (LEnt){lz_key(h->key, LZ_OUT), 1};
+                hint[1] = (LEnt){lz_key(h->key, LZ_TGT), z.bl.data[lo].key};
+                *nhint = 2;
+            } else if (z.bl.data[lo].par < 0) {
+                hint[0] = (LEnt){lz_key(h->key, LZ_ALIAS), (uint64_t)(z.bl.data[lo].poff + 1) | (uint64_t)LHEAD << 16};
+                *nhint = 1;
+            }
         }
     }
+    *retry = *nhint != 0;
     for (i = 0; i < z.bl.len; i++)
         total += v->obj.data[z.bl.data[i].id - 1].size;
     out = xcalloc(total + 16, 1);
@@ -1204,22 +1211,22 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         for (i = 0; i < op->force->len; i++)
             vec_push(&cur, op->force->data[i]);
     for (;;) {
-        LKey want[2];
-        bool retry;
+        LEnt hint[2];
+        unsigned nhint, k;
+        bool retry, asked = true;
         int st;
         *rs = saved;
         if (cur.len)
             o.force = &cur;
-        st = lazy_call1(v, body, name, f, s, show_stop, bad, rs, nh < LMAXHINT, want, &retry, &o);
+        st = lazy_call1(v, body, name, f, s, show_stop, bad, rs, nh < LMAXHINT, hint, &nhint, &retry, &o);
         if (retry) {
-            LEnt share = {lz_key(want[0], LZ_OUT), 1}, tgt = {lz_key(want[0], LZ_TGT), want[1]};
-            LEnt *a = llog_at(&cur, share.key), *b = llog_at(&cur, tgt.key);
-            if (a && b && a->val == share.val && b->val == tgt.val)
-                retry = false;          /* already asked for: the stop is not about this alias */
-            else {
-                hint_put(&cur, share);
-                hint_put(&cur, tgt);
+            for (k = 0; k < nhint; k++) {
+                LEnt *e = llog_at(&cur, hint[k].key);
+                asked &= e && e->val == hint[k].val;
             }
+            retry = !asked;             /* already asked for: the stop is not about this alias */
+            for (k = 0; retry && k < nhint; k++)
+                hint_put(&cur, hint[k]);
         }
         if (!retry) {
             vec_free(&cur);

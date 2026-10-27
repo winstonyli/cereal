@@ -37,3 +37,11 @@ if [ "$n" -lt 40 ]; then
     exit 1
 fi
 echo "eval_lazy: stop fixtures ok"
+# Two pointer parameters subtracted: the retry makes the later one share the earlier, so every call finishes (11 of 24 without it).
+sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_paralias.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_paralias.c differs from gcc"; exit 1; }
+n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_paralias.c" 2>/dev/null </dev/null | grep -ac '^call pa_run .* =>')
+if [ "$n" -lt 24 ]; then
+    echo "eval_lazy: lazy_paralias.c: only $n of 24 calls of pa_run finished (the parameter alias retry)"
+    exit 1
+fi
+echo "eval_lazy: parameter alias ok"
