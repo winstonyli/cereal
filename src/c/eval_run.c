@@ -1181,31 +1181,49 @@ static void llog_sort(LLog *log)
  * later blob's pointer cell forced to share the earlier blob (the program meant them as one object, such as
  * a saved pc and the code it points into): the same draws, so the rerun differs only there.  *rec gets what
  * the final run drew (unsorted); with `force` (sorted) the call takes those values instead of drawing them,
- * and is not retried (its log already has the aliases). */
+ * and the hints are put over them (a forced call that already shares as asked is not retried). */
+static void hint_put(LLog *log, LEnt e)
+{
+    LEnt *f = llog_at(log, e.key);
+    if (f)
+        f->val = e.val;
+    else
+        vec_push(log, e);
+    llog_sort(log);
+}
+
 static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
                            bool *bad, uint64_t *rs, const LOpt *op)
 {
-    LLog hints = {0};
+    LLog cur = {0};
     LOpt o = op ? *op : (LOpt){0};
     unsigned nh = 0;
     uint64_t saved = *rs;
+    size_t i;
+    if (op && op->force)
+        for (i = 0; i < op->force->len; i++)
+            vec_push(&cur, op->force->data[i]);
     for (;;) {
         LKey want[2];
         bool retry;
         int st;
         *rs = saved;
-        if (nh)
-            o.force = &hints;
-        st = lazy_call1(v, body, name, f, s, show_stop, bad, rs, !(op && op->force) && nh < LMAXHINT, want, &retry, &o);
-        if (!retry) {
-            vec_free(&hints);
-            return st;
-        }
-        {
+        if (cur.len)
+            o.force = &cur;
+        st = lazy_call1(v, body, name, f, s, show_stop, bad, rs, nh < LMAXHINT, want, &retry, &o);
+        if (retry) {
             LEnt share = {lz_key(want[0], LZ_OUT), 1}, tgt = {lz_key(want[0], LZ_TGT), want[1]};
-            vec_push(&hints, share);
-            vec_push(&hints, tgt);
-            llog_sort(&hints);
+            LEnt *a = llog_at(&cur, share.key), *b = llog_at(&cur, tgt.key);
+            if (a && b && a->val == share.val && b->val == tgt.val)
+                retry = false;          /* already asked for: the stop is not about this alias */
+            else {
+                hint_put(&cur, share);
+                hint_put(&cur, tgt);
+            }
+        }
+        if (!retry) {
+            vec_free(&cur);
+            return st;
         }
         nh++;
     }
