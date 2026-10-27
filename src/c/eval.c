@@ -305,6 +305,21 @@ static uint64_t load_n(Ev *v, uint64_t p, const Ti *ti)
     return ev_canon(ti, x);
 }
 
+/* False (after UNSUP) if a write of n bytes at off would overwrite part of a pointer the sweep drew: gcc's
+ * bytes would differ (see load_n); a whole slot is just an integer in both.  Every write path asks. */
+bool ev_pun_ok(Ev *v, const Obj *o, uint64_t off, uint64_t n)
+{
+    uint64_t i;
+    if (!o->lazy || (off % 8 == 0 && n % 8 == 0))
+        return true;
+    for (i = 0; i < n; i++)
+        if (o->init[off + i] == 2) {
+            UNSUP(v, "write of an integer over a pointer");
+            return false;
+        }
+    return true;
+}
+
 static void store_sh_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x, uint32_t sh)
 {
     Obj *o = ev_access(v, p, ti->bytes, "write");
@@ -315,12 +330,8 @@ static void store_sh_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x, uint32_t sh)
         TRAP(v, "write to a string literal or a const object");
         return;
     }
-    if (o->lazy && !ti->ptr && (poff(p) % 8 || ti->bytes % 8))   /* part of a pointer the sweep drew: gcc's bytes would differ (see load_n); a whole slot is just an integer in both */
-        for (i = 0; i < ti->bytes; i++)
-            if (o->init[poff(p) + i] == 2) {
-                UNSUP(v, "write of an integer over a pointer");
-                return;
-            }
+    if (!ti->ptr && !ev_pun_ok(v, o, poff(p), ti->bytes))
+        return;
     for (i = 0; i < ti->bytes; i++) {
         o->b[poff(p) + i] = (uint8_t)(x >> (8 * i));
         o->init[poff(p) + i] = o->lazy && ti->ptr && x ? 2 : 1;   /* 2: a pointer, as lazy_fill marks it (see load_n); NULL is zero bytes in gcc too */
@@ -407,6 +418,16 @@ void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
         TRAP(v, "write to a string literal or a const object");
         return;
     }
+    if (!ev_pun_ok(v, d, (uint64_t)poff(dst), n))
+        return;
+    if (s->lazy) {                      /* a pointer the sweep drew moves only whole, to a slot of the same alignment (see load_n) */
+        uint64_t i, so = (uint64_t)poff(src);
+        for (i = 0; i < n; i++)
+            if (s->init[so + i] == 2 && (((so + i) & ~7ull) < so || ((so + i) & ~7ull) + 8 > so + n || (so ^ (uint64_t)poff(dst)) % 8)) {
+                UNSUP(v, "read of a pointer as an integer");
+                return;
+            }
+    }
     ev_lazy_zero(s, (uint64_t)poff(src), n);
     memmove(d->b + poff(dst), s->b + poff(src), n);
     memmove(d->init + poff(dst), s->init + poff(src), n);
@@ -422,7 +443,7 @@ void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
 void ev_zero_n(Ev *v, uint64_t dst, uint64_t n)
 {
     Obj *d = ev_access(v, dst, n, "write");
-    if (!d)
+    if (!d || !ev_pun_ok(v, d, (uint64_t)poff(dst), n))
         return;
     memset(d->b + poff(dst), 0, n);
     memset(d->init + poff(dst), 1, n);

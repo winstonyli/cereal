@@ -45,6 +45,8 @@ static uint8_t *wr(Ev *v, uint64_t p, uint64_t n, const char *who)
         TRAP(v, "write to a string literal or a const object");
         return NULL;
     }
+    if (!ev_pun_ok(v, o, (uint64_t)poff(p), n))
+        return NULL;
     memset(o->init + poff(p), 1, n);
     ev_unshadow(o, (uint64_t)poff(p), n);
     return o->b + poff(p);

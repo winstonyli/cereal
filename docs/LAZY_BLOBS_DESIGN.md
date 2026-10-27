@@ -48,6 +48,12 @@ or a pointer to a new pending blob (6/8), size 0, grown and filled by hooks 1 an
 first access. A pending blob accessed as `LClosure` after being reached as `GCObject` is
 just a bigger access: the downcast needs no special case.
 
+A drawn pointer's bytes are marked init 2, and its value differs between the evaluator and gcc, so
+the bytes are only ever moved whole: a load of part of it as an integer, a write over part of it
+(`ev_pun_ok`: any store, `memcpy`, `memset`, libc write) and a copy of part of it or to a slot of
+another alignment (`ev_copy_n`) stop as UNSUP. A whole aligned slot written as an integer is fine
+(a union such as Lua's TValue): both sides hold the integer.
+
 **Function pointers (stage 3, built).** Decided at the typed load, not at the call: the load of a
 pointer cell whose type is a pointer to a function type is NULL (1/8) or a function, so no
 pending blob is ever reinterpreted as code (`Ti.fty`, `lazy_fn` in `eval_run.c`). The candidates

@@ -24,8 +24,8 @@ if command -v z3 >/dev/null 2>&1; then
     echo "eval_lazy: solver ok"
 fi
 # Fixtures where the sweep must stop instead of differing from gcc: lazy_ptrbyte.c reads a stored pointer back through a
-# char; lazy_constwrite.c writes a static const object; lazy_overwrite.c sets a whole pointer slot as an integer (allowed).
-for f in lazy_ptrbyte lazy_constwrite lazy_overwrite; do
+# char; lazy_ptrcopy.c copies part of one with memcpy; lazy_constwrite.c writes a static const object; lazy_overwrite.c sets a whole pointer slot as an integer (allowed).
+for f in lazy_ptrbyte lazy_ptrcopy lazy_constwrite lazy_overwrite; do
     if ! sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/$f.c" >/dev/null 2>&1; then
         echo "eval_lazy: $f.c differs from gcc"
         exit 1
