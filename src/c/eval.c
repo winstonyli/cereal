@@ -670,6 +670,11 @@ static uint64_t compare(Ev *v, int p, TypeId ot, uint64_t a, uint64_t b)
     ev_note(v, b);
     if (ti.ptr && p != P_EQEQ && p != P_NE && pid(a) && pid(b) && !same_object(v, a, b, "comparison"))
         return 0;
+    if (ti.ptr && pid(a) && pid(a) == pid(b)) {     /* within one object the offsets order, below its start too */
+        a = (uint64_t)(int64_t)poff(a);
+        b = (uint64_t)(int64_t)poff(b);
+        sg = true;
+    }
     switch (p) {
     case P_EQEQ: return a == b;
     case P_NE: return a != b;

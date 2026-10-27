@@ -149,7 +149,7 @@ struct Ev {
     void *lazy_ud;              /* the sweep's context for lazy_fill */
 };
 
-#define EV_LAZY_CAP 8192        /* the most a lazy object grows to */
+#define EV_LAZY_CAP 65536       /* the most a lazy object grows to (a struct with a big table, as zstd's ZSTD_DDict, is over 8192) */
 
 typedef struct Loc {
     uint32_t ref, obj;
