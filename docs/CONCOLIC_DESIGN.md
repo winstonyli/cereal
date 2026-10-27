@@ -164,6 +164,14 @@ Readings: a pointer-topology mutation (NULL, alias, link per slot) has a ceiling
 where no call ever finishes (Lua: 1561 of 2269). The loaded-integer and call-result classes (zstd) are
 state the generator leaves at its random bytes or zero.
 
+Correction (2026-10-27, run `survey-zstd-miss`, zstd, all 2521 integer-value and call-result
+edges listed): most of those two classes are not state. 1783 of zstd's 1906 integer-value edges test a
+constant (`while (1)`, `do { } while (0)`), so one edge can never be taken, and 481 of its 615
+call-result edges are calls without arguments to `MEM_isLittleEndian`, `MEM_32bits` and `MEM_64bits`,
+which return one value on x86_64. `miss_report` now counts them as "constant condition" and "call
+without arguments"; the reachable remainder is about 123 integer-value edges (loads of globals and
+fields) and 134 call-result edges (120 of them `ERR_isError`).
+
 The same functions by the first reason a call stopped (run `2026-10-22-sweep-link-why2`, edges of
 the functions that never finished, examples in brackets):
 

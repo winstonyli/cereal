@@ -1614,9 +1614,10 @@ static const char *main_path(Checker *c)
 }
 
 /* Why an edge stays untaken, judged from its branch's condition (a survey: --eval-solve prints the counts). */
-enum { MC_NOFIN, MC_SWITCH, MC_PNULL, MC_PCMP, MC_FLOAT, MC_ICMP, MC_IVAL, MC_CALL, MC_OTHER, MC_N };
+enum { MC_NOFIN, MC_SWITCH, MC_PNULL, MC_PCMP, MC_FLOAT, MC_ICMP, MC_IVAL, MC_CALL, MC_CONST, MC_CALL0, MC_OTHER, MC_N };
 static const char *const miss_name[MC_N] = { "function never finished", "switch", "pointer null test",
-    "pointer compare", "float", "integer compare", "integer value", "call result", "other" };
+    "pointer compare", "float", "integer compare", "integer value", "call result", "constant condition",
+    "call without arguments", "other" };
 
 static bool miss_const(const Fn *f, uint32_t n)
 {
@@ -1653,8 +1654,10 @@ static int miss_class(Ev *v, const Fn *f, const Blk *b)
                 c = miss_const(f, k0) || miss_const(f, k1) ? MC_PNULL : MC_PCMP;
             else
                 c = MC_ICMP;
+        } else if (t->op == TO_CONST) {
+            c = MC_CONST;                       /* one edge can never be taken: `while (1)`, `do { } while (0)` */
         } else if (t->op == TO_CALL) {
-            c = MC_CALL;
+            c = t->sym && !t->nkids ? MC_CALL0 : MC_CALL;   /* nothing of the input reaches it: MEM_32bits and the like */
         } else if (ev_tinfo(v, t->ty, &ti)) {
             c = ti.ptr ? MC_PNULL : ti.flt ? MC_FLOAT : MC_IVAL;
         }
