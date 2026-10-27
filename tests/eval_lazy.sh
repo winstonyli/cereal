@@ -24,11 +24,16 @@ if command -v z3 >/dev/null 2>&1; then
     echo "eval_lazy: solver ok"
 fi
 # Fixtures where the sweep must stop instead of differing from gcc: lazy_ptrbyte.c reads a stored pointer back through a
-# char; lazy_constwrite.c writes a static const object.
-for f in lazy_ptrbyte lazy_constwrite; do
+# char; lazy_constwrite.c writes a static const object; lazy_overwrite.c sets a whole pointer slot as an integer (allowed).
+for f in lazy_ptrbyte lazy_constwrite lazy_overwrite; do
     if ! sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/$f.c" >/dev/null 2>&1; then
         echo "eval_lazy: $f.c differs from gcc"
         exit 1
     fi
 done
+n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_overwrite.c" 2>/dev/null </dev/null | grep -ac '^call lo_run .* =>')
+if [ "$n" -lt 40 ]; then
+    echo "eval_lazy: lazy_overwrite.c: the sweep ran too few calls of lo_run (the whole-slot store stopped them)"
+    exit 1
+fi
 echo "eval_lazy: stop fixtures ok"

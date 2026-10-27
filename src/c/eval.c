@@ -315,7 +315,7 @@ static void store_sh_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x, uint32_t sh)
         TRAP(v, "write to a string literal or a const object");
         return;
     }
-    if (o->lazy && !ti->ptr)            /* part of a pointer the sweep drew: gcc's bytes would differ (see load_n) */
+    if (o->lazy && !ti->ptr && (poff(p) % 8 || ti->bytes % 8))   /* part of a pointer the sweep drew: gcc's bytes would differ (see load_n); a whole slot is just an integer in both */
         for (i = 0; i < ti->bytes; i++)
             if (o->init[poff(p) + i] == 2) {
                 UNSUP(v, "write of an integer over a pointer");
