@@ -880,7 +880,7 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
             x = mkptr(ev_function_obj(v, g->c, g->fsym), 0);
         } else if (r == 1) {
             int t = (int)(rnd(z->rs) % z->bl.len);
-            uint64_t tk, to = LHEAD + (rnd(z->rs) % 9) * 8;
+            uint64_t tk, to = LHEAD + (rnd(z->rs) % 9) * (ti->psz > 8 ? ti->psz : 8);   /* whole elements of the pointee: two such pointers subtract */
             size_t b;
             tk = lazy_draw(z, lz_key(ck, LZ_TGT), z->bl.data[t].key);
             to = lazy_draw(z, lz_key(ck, LZ_TOFF), to);

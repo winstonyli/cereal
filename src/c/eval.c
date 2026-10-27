@@ -45,6 +45,10 @@ bool ev_tinfo(Ev *v, TypeId t, Ti *ti)
         ti->ptr = true;
         if (k == TY_PTR && type_ckind(tt, type_base(tt, t)) == TY_FUNC)
             ti->fty = type_base(tt, t);
+        else if (k == TY_PTR) {
+            sz = type_size(tt, type_base(tt, t), &ok);
+            ti->psz = ok && sz < 4096 ? (unsigned)sz : 0;
+        }
         return true;
     }
     if (k == TY_FLOAT || k == TY_DOUBLE) {

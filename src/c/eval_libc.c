@@ -750,7 +750,7 @@ static bool dbl(Ev *v, const HArg *a, double *d)
 
 static uint64_t dret(double d)
 {
-    Ti ti = {8, false, false, true, false, 0};
+    Ti ti = {8, false, false, true, false, 0, 0};
     return ev_fput(&ti, d);
 }
 

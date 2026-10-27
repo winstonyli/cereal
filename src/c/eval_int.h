@@ -170,6 +170,7 @@ typedef struct Ti {
     bool sg, boolean, flt;       /* flt: float or double, the value is its IEEE bit pattern */
     bool ptr;                    /* a pointer: never symbolic */
     TypeId fty;                  /* a pointer to a function: that function type (lazy blobs draw a function for it) */
+    unsigned psz;                /* a pointer: the size of its pointee, 0 if it has none (void, a function, incomplete) */
 } Ti;
 
 /* ---- failure: the first one wins and ends the evaluation ---- */
