@@ -138,6 +138,13 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
 - **D8 Pointer outcomes.** Replayed from the seed (so a tracked rerun is faithful), never
   changed by the solver: parked in `PARKED.md` ("Pointer outcomes as solver choices"). The
   recorded outcomes are those of the final run of a call (after alias-hint retries).
+- **D8a Retries (`lazy_redraw`).** A call that stops on something a different draw would avoid is
+  rerun with those draws forced (a hint log laid over the force log; `sweep_call`, at most
+  `LMAXHINT` = 4 reruns, 16 gained nothing on the sweep). One function reads the stop and names the
+  cells: two blobs subtracted (the later one's pointer cell shares the earlier one, or the later
+  parameter's `LZ_ALIAS` draw is set to the earlier parameter); a drawn pointer read as an integer
+  (every cell that shares the blob, except the one that made it, gets a new blob). A new rule is a
+  new branch there, not a new retry loop. Hints already in the log end the loop.
 - **D9 Corpus.** A seed is a log (forced map); `search_keep` stores it and `mut_solve` writes
   the model's keys over a copy. The rotation `mut_gen`, `mut_solve` and `solve_step1` are unchanged.
 
