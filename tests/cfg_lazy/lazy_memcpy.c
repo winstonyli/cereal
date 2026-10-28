@@ -16,3 +16,12 @@ unsigned mc_const(const unsigned char *a)
     memcpy(&x, a, 8);
     return x == 0x1122334455667788ull ? 1 : 0;
 }
+
+/* A declaration's initializer keeps the value's symbol (a local set by `= expr`, then branched on). */
+unsigned mc_init(const unsigned char *a)
+{
+    unsigned long long x;
+    memcpy(&x, a, 8);
+    unsigned long long d = x ^ 0x1122334455667788ull;
+    return d == 0 ? 1 : 0;
+}

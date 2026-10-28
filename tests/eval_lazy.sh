@@ -58,7 +58,7 @@ echo "eval_lazy: pointer-read retry ok"
 if command -v z3 >/dev/null 2>&1; then
     sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_memcpy.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_memcpy.c differs from gcc"; exit 1; }
     out=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 --eval-solve='z3 -in -smt2' "$D/cfg_lazy/lazy_memcpy.c" 2>/dev/null </dev/null)
-    for w in "mc_eq 00000000" "mc_const 01000000"; do
+    for w in "mc_eq 00000000" "mc_const 01000000" "mc_init 01000000"; do
         set -- $w
         echo "$out" | awk -v f="$1" -v r="$2" '$1 == "call" && $2 == f && $4 == "=>" && substr($5, 1, 8) == r { found = 1 } END { exit !found }' ||
             { echo "eval_lazy: $1 with the solver never gave $2 (untyped reads of blob bytes are not symbolic)"; exit 1; }

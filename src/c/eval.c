@@ -1176,7 +1176,7 @@ static void init_elems(Fr *r, uint32_t n, uint64_t p)
             ev_copy_n(v, mkptr(pid(p), poff(p) + el->val), ev_node(r, vn), esz);
         } else if (ev_tinfo(v, el->ty, &ti)) {
             x = ev_node(r, vn);
-            store_n(v, mkptr(pid(p), poff(p) + el->val), &ti, x);
+            store_sh_n(v, mkptr(pid(p), poff(p) + el->val), &ti, x, canon_sh(v, &ti, v->sh));
             if (v->rec_id && pid(p) == v->rec_id && !v->res.status && addr_node(r, vn)) {
                 vec_push(&v->rec, (uint32_t)el->val);
                 vec_push(&v->rec, ti.bytes);
@@ -1448,7 +1448,7 @@ static uint64_t ev_local(Fr *r, uint32_t n, uint32_t key)
         ev_copy_n(v, p, x, sz);
     } else if (ev_tinfo(v, t->ty, &ti)) {
         x = ev_node(r, KID(r, n, 0));
-        store_n(v, p, &ti, x);
+        store_sh_n(v, p, &ti, x, canon_sh(v, &ti, v->sh));
     }
     return p;
 }
