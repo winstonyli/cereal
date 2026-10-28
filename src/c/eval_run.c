@@ -851,6 +851,23 @@ static long lazy_fn(Ev *v, Lazy *z, LKey ck, TypeId fty)
 /* Ev.lazy_fill: the typed load of ti->bytes bytes at off of lazy object id finds some uninitialized.
  * Scalars are drawn as the generator draws them; a pointer is NULL (1/8), into an existing object
  * (1/8, at an offset of 0 to 64), or into a new one. */
+/* The untouched byte at off of blob bi: its draw (dflt unless forced), stored, recorded for the call's graph, and
+ * an input of the solver (a symbol, see sweep_track) when sym. */
+static void lazy_byte(Ev *v, Lazy *z, int bi, uint64_t off, uint8_t dflt, bool sym)
+{
+    Obj *o = &v->obj.data[z->bl.data[bi].id - 1];
+    LKey key = lz_key(z->bl.data[bi].key, off);
+    uint8_t b = (uint8_t)lazy_draw(z, key, dflt);
+    o->b[off] = b;
+    o->init[off] = 1;
+    if (v->track && sym) {
+        if (!o->sh)
+            o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
+        o->sh[off] = lazy_sym(v, z, key);
+    }
+    lazy_record(&z->bl.data[bi], off, 1, &b);
+}
+
 static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
 {
     Lazy *z = v->lazy_ud;
@@ -910,19 +927,22 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
     for (i = 0; i < ti->bytes; i++)
         raw[i] = (uint8_t)(x >> (8 * i));
     for (i = 0; i < ti->bytes; i++)
-        if (!o->init[off + i]) {
-            LKey key = lz_key(z->bl.data[bi].key, off + i);
-            raw[i] = (uint8_t)lazy_draw(z, key, raw[i]);
-            o->b[off + i] = raw[i];
-            o->init[off + i] = 1;
-            if (v->track && !ti->flt) {         /* the byte is an input: a symbol (see sweep_track) */
-                if (!o->sh)
-                    o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
-                o->sh[off + i] = lazy_sym(v, z, key);
-            }
-            lazy_record(&z->bl.data[bi], off + i, 1, raw + i);
-        }
+        if (!o->init[off + i])
+            lazy_byte(v, z, bi, off + i, raw[i], !ti->flt);
     return true;
+}
+
+/* Ev.lazy_zero: the untouched bytes of an untyped read are zero unless the solver forced them. */
+static void lazy_zero(Ev *v, uint32_t id, uint64_t off, uint64_t n)
+{
+    Lazy *z = v->lazy_ud;
+    int bi = lazy_index(z, id);
+    uint64_t i;
+    if (bi < 0)
+        return;
+    for (i = off; i < off + n; i++)
+        if (!v->obj.data[id - 1].init[i])
+            lazy_byte(v, z, bi, i, 0, true);
 }
 
 static void lazy_free(Lazy *z)
@@ -1022,6 +1042,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     if (v->track)
         track_begin(v);
     v->lazy_fill = lazy_fill;
+    v->lazy_zero = lazy_zero;
     for (k = 0; k < f->np && !v->res.status; k++) {
         const SArg *a = &s->a[k];
         if (a->kind == SA_SCALAR) {
@@ -1089,6 +1110,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         v->ash = NULL;
     }
     v->lazy_fill = NULL;
+    v->lazy_zero = NULL;
     v->lazy_ud = NULL;
     if (r.status != EV_OK)
         lazy_where(v, &z);

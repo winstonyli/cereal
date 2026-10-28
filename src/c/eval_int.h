@@ -146,6 +146,9 @@ struct Ev {
     /* A typed load of uninitialized bytes of a lazy object: draws and stores the value (may make
      * objects, so the caller looks the object up again); false: the load traps as uninitialized. */
     bool (*lazy_fill)(Ev *v, uint32_t id, uint64_t off, const struct Ti *ti);
+    /* An untyped read of n bytes of a lazy object: its untouched bytes are zero, a draw whose default is 0 (so a
+     * solver can set it). */
+    void (*lazy_zero)(Ev *v, uint32_t id, uint64_t off, uint64_t n);
     void *lazy_ud;              /* the sweep's context for lazy_fill */
 };
 
@@ -210,8 +213,8 @@ void ev_trim(Ev *v);
 /* A write of concrete bytes into [off, off + n) of o: their shadows end. */
 void ev_unshadow(Obj *o, uint64_t off, uint64_t n);
 /* An untyped read of [off, off + n) of o (memcpy, the host library): a lazy object's untouched bytes
- * are zero, now initialized. */
-void ev_lazy_zero(Obj *o, uint64_t off, uint64_t n);
+ * are zero (a draw with the default 0 when it is short, see Ev.lazy_zero), now initialized. */
+void ev_lazy_zero(Ev *v, Obj *o, uint64_t off, uint64_t n);
 
 /* ---- the host library (eval_libc.c) ---- */
 

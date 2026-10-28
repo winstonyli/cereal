@@ -53,3 +53,15 @@ if [ "$n" -lt 965 ]; then
     exit 1
 fi
 echo "eval_lazy: pointer-read retry ok"
+# Bytes read by memcpy are zero unless the solver sets them: with it, mc_eq's unequal edge and mc_const's equal edge are reached
+# (without it the first always returns 1 and the second 0), and gcc agrees on the bytes it set.
+if command -v z3 >/dev/null 2>&1; then
+    sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_memcpy.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_memcpy.c differs from gcc"; exit 1; }
+    out=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 --eval-solve='z3 -in -smt2' "$D/cfg_lazy/lazy_memcpy.c" 2>/dev/null </dev/null)
+    for w in "mc_eq 00000000" "mc_const 01000000"; do
+        set -- $w
+        echo "$out" | awk -v f="$1" -v r="$2" '$1 == "call" && $2 == f && $4 == "=>" && substr($5, 1, 8) == r { found = 1 } END { exit !found }' ||
+            { echo "eval_lazy: $1 with the solver never gave $2 (untyped reads of blob bytes are not symbolic)"; exit 1; }
+    done
+    echo "eval_lazy: untyped read ok"
+fi

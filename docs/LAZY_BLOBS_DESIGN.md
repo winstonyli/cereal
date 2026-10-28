@@ -147,6 +147,12 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
   new branch there, not a new retry loop. Hints already in the log end the loop.
 - **D9 Corpus.** A seed is a log (forced map); `search_keep` stores it and `mut_solve` writes
   the model's keys over a copy. The rotation `mut_gen`, `mut_solve` and `solve_step1` are unchanged.
+- **D10 Untyped reads (`Ev.lazy_zero`).** The untouched bytes of an untyped read of a lazy blob (`memcpy`, a libc
+  reader; `ev_lazy_zero`) are zero, as before, but each is now a draw with default 0 under the same key as a typed
+  load of that byte: the call's log records it, the solver may set it, and `memcpy` carries its symbol along. So
+  `MEM_read32(a) == MEM_read32(b)` has both edges (zstd's `ZSTD_count`). Reads longer than `EV_LAZY_ZERO_SYM` (16)
+  bytes stay plain zeros, so a big copy makes no thousands of symbols. Host results (`memcmp`, `strlen`) are
+  concrete, so no constraint flows through them; modelling those is parked (`PARKED.md` row 245).
 
 ## 5. Risks
 

@@ -216,10 +216,15 @@ Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
     return o;
 }
 
-void ev_lazy_zero(Obj *o, uint64_t off, uint64_t n)
+#define EV_LAZY_ZERO_SYM 16     /* the most bytes of one untyped read that get a draw (a scalar load by memcpy); longer ones are plain zeros */
+
+void ev_lazy_zero(Ev *v, Obj *o, uint64_t off, uint64_t n)
 {
-    if (o->lazy)
-        memset(o->init + off, 1, n);        /* untouched bytes are zero already */
+    if (!o->lazy)
+        return;
+    if (v->lazy_zero && n <= EV_LAZY_ZERO_SYM)
+        v->lazy_zero(v, (uint32_t)(o - v->obj.data) + 1, off, n);
+    memset(o->init + off, 1, n);            /* untouched bytes are zero already */
 }
 
 /* Tracking: the shadow of the ti->bytes bytes at off of o, as one slot expression (0: all concrete). */
@@ -429,7 +434,7 @@ void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
                 return;
             }
     }
-    ev_lazy_zero(s, (uint64_t)poff(src), n);
+    ev_lazy_zero(v, s, (uint64_t)poff(src), n);
     memmove(d->b + poff(dst), s->b + poff(src), n);
     memmove(d->init + poff(dst), s->init + poff(src), n);
     if (s->sh) {
