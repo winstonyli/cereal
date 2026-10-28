@@ -39,7 +39,7 @@ corpus seed is a `Log` plus the call's starting `rs`. A fresh draw falls back to
 state, so a rerun is deterministic. Tracking adds, for each scalar byte drawn, a symbol with a
 dense id in a per-run table `id -> key`; a model `(id, byte)` becomes forced overrides
 `(key, byte)` on a copy of the seed's log. Pointer outcomes are logged and replayed, never
-solved (D8).
+solved (D8; the offset into a shared or aliased blob is solved since D11, `LAZY_BLOBS_DESIGN.md`).
 
 ## Tasks
 
