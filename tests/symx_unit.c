@@ -48,6 +48,15 @@ int main(int argc, char **argv) {
     sx_begin(s, &sx);
     CHECK(sx_try(s, &(SxCond){bl, false}, 1, &m) == SX_SAT && val(&m, 1) == 0);
 
+    /* a mask: w kept when the flag byte is non-zero; a test of the masked word for zero is a test of the flag */
+    uint32_t w = sx_const(&sx, 64, 0x100000080ull), fl = sx_ext(&sx, sx_sym(&sx, 3), 1, false, false);
+    uint32_t mk = sx_op(&sx, SX_MASK, w, fl), isnull = sx_op(&sx, SX_EQ, mk, sx_const(&sx, 64, 0));
+    sx_begin(s, &sx);
+    CHECK(sx_try(s, &(SxCond){isnull, true}, 1, &m) == SX_SAT && val(&m, 3) == 0);
+    CHECK(sx_try(s, &(SxCond){isnull, false}, 1, &m) == SX_SAT && val(&m, 3) != 0);
+    CHECK(sx_assert(s, sx_op(&sx, SX_EQ, mk, w), true));
+    CHECK(sx_try(s, &(SxCond){isnull, true}, 1, &m) == SX_UNSAT);
+
     sx_model_free(&m);
     sx_free(&sx);
     sx_close(s);

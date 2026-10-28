@@ -227,6 +227,25 @@ void ev_lazy_zero(Ev *v, Obj *o, uint64_t off, uint64_t n)
     memset(o->init + off, 1, n);            /* untouched bytes are zero already */
 }
 
+/* The 64-bit node whose bytes 0..7 are the eight shadows b, in order (what store_sh made of a word), or 0. */
+static uint32_t whole_sh(const Ev *v, const uint32_t *b)
+{
+    const SxNode *n = b[0] ? sx_at(&v->sx, b[0]) : NULL;
+    uint32_t a;
+    unsigned i;
+    if (!n || n->op != SX_BYTE || n->k != 0)
+        return 0;
+    a = n->a;
+    if (sx_at(&v->sx, a)->w != 64)
+        return 0;
+    for (i = 1; i < 8; i++) {
+        n = b[i] ? sx_at(&v->sx, b[i]) : NULL;
+        if (!n || n->op != SX_BYTE || n->a != a || n->k != i)
+            return 0;
+    }
+    return a;
+}
+
 /* Tracking: the shadow of the ti->bytes bytes at off of o, as one slot expression (0: all concrete). */
 static uint32_t load_sh(Ev *v, const Obj *o, uint64_t off, const Ti *ti)
 {
@@ -239,6 +258,8 @@ static uint32_t load_sh(Ev *v, const Obj *o, uint64_t off, const Ti *ti)
         any = o->sh[off + i] != 0;
     if (!any)
         return 0;
+    if (ti->bytes == 8 && !ti->boolean && (x = whole_sh(v, o->sh + off)))
+        return x;
     for (i = ti->bytes; i-- > 0;) {
         uint32_t b = o->sh[off + i] ? o->sh[off + i] : sx_const(&v->sx, 8, o->b[off + i]);
         x = x ? sx_join(&v->sx, x, b) : b;
@@ -1522,12 +1543,27 @@ static void mark_seen(Ev *v, Blk *b, unsigned bit)
     }
 }
 
+/* A pointer the sweep drew may be NULL, so its shadow is its word under an SX_MASK of the draw of its outcome
+ * (Ev.lazy_fill in eval_run.c); only a test against NULL looks at the mask.  The word of shadow sh without it, or 0
+ * when that holds no solver symbol (a constant). */
+static uint32_t strip_sh(Ev *v, uint32_t sh)
+{
+    if (sh && sx_at(&v->sx, sh)->op == SX_MASK)
+        sh = sx_at(&v->sx, sh)->a;
+    return sh && sx_at(&v->sx, sh)->op != SX_CONST ? sh : 0;
+}
+
+static bool nullable_sh(Ev *v, uint32_t sh)
+{
+    return sh && sx_at(&v->sx, sh)->op == SX_MASK;
+}
+
 /* A symbolic value the evaluator uses as a number (an index, a divisor, a shift count) keeps
  * its value on the path: the entry is the equation. */
 static void pin(Ev *v, uint32_t sh, uint64_t x)
 {
     PathEnt e;
-    if (!v->track || !sh)
+    if (!v->track || !(sh = strip_sh(v, sh)))
         return;
     memset(&e, 0, sizeof e);
     e.expr = sx_op(&v->sx, SX_EQ, sh, sx_const(&v->sx, 64, x));
@@ -1540,7 +1576,7 @@ static void pin(Ev *v, uint32_t sh, uint64_t x)
 static uint32_t ptr_add_sh(Ev *v, uint64_t a, uint32_t ash, int64_t delta)
 {
     uint32_t lo;
-    if (!v->track || !ash)
+    if (!v->track || !(ash = strip_sh(v, ash)))
         return 0;
     lo = sx_ext(&v->sx, ash, 4, false, false);
     if (delta)
@@ -1551,6 +1587,7 @@ static uint32_t ptr_add_sh(Ev *v, uint64_t a, uint32_t ash, int64_t delta)
 /* The signed offset of pointer p, as a 64-bit expression (a constant when the pointer is concrete). */
 static uint32_t ptr_off_sh(Ev *v, uint64_t p, uint32_t sh)
 {
+    sh = strip_sh(v, sh);
     return sh ? sx_ext(&v->sx, sh, 4, true, false) : sx_const(&v->sx, 64, (uint64_t)(int64_t)poff(p));
 }
 
@@ -1770,7 +1807,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
                 return 0;
             memset(&ti, 0, sizeof ti);
             ti.bytes = 8;
-            if (!ts.flt && !ts.ptr)
+            if (!ts.flt && (!ts.ptr || nullable_sh(v, ash)))
                 *sh = op_sh(v, SX_LNOT, &ti, a, ash, 0, 0);
             return ts.flt ? !(ev_fget(&ts, a) != 0 || ev_fget(&ts, a) != ev_fget(&ts, a)) : a == 0;
         }
@@ -1821,7 +1858,10 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         bsh = v->sh;
         if (v->res.status || !ev_tinfo(v, NODE(r, KID(r, n, 0))->ty, &ts))
             return 0;
-        if (ts.ptr && v->track && (ash || bsh) && pid(a) && pid(a) == pid(b)) {    /* one object: the offsets order */
+        if (ts.ptr && v->track && (t->pun == P_EQEQ || t->pun == P_NE) &&
+            nullable_sh(v, !a && !ash ? bsh : !b && !bsh ? ash : 0)) {             /* a test against NULL */
+            *sh = sx_op(&v->sx, t->pun == P_EQEQ ? SX_EQ : SX_NE, !a && !ash ? bsh : ash, sx_const(&v->sx, 64, 0));
+        } else if (ts.ptr && v->track && (strip_sh(v, ash) || strip_sh(v, bsh)) && pid(a) && pid(a) == pid(b)) {    /* one object: the offsets order */
             uint32_t x = ptr_off_sh(v, a, ash), y = ptr_off_sh(v, b, bsh);
             switch (t->pun) {
             case P_EQEQ: *sh = sx_op(&v->sx, SX_EQ, x, y); break;
@@ -1908,7 +1948,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
             return 0;
         if (!same_object(v, a, b, "subtraction"))
             return 0;
-        if (v->track && (ash || bsh))
+        if (v->track && (strip_sh(v, ash) || strip_sh(v, bsh)))
             *sh = sx_op(&v->sx, SX_SDIV, sx_op(&v->sx, SX_SUB, ptr_off_sh(v, a, ash), ptr_off_sh(v, b, bsh)),
                         sx_const(&v->sx, 64, (uint64_t)t->val));
         if (((int64_t)poff(a) - (int64_t)poff(b)) % t->val) {      /* undefined; gcc shifts, a division truncates */
@@ -2026,8 +2066,8 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
                 c = ev_fget(&ct, c) != 0 || ev_fget(&ct, c) != ev_fget(&ct, c);
                 csh = 0;
             }
-            if (ev_tinfo(v, NODE(&r, b->val)->ty, &ct) && ct.ptr)
-                csh = 0;                            /* a pointer is non-zero by its object, whatever its offset */
+            if (ev_tinfo(v, NODE(&r, b->val)->ty, &ct) && ct.ptr && !nullable_sh(v, csh))
+                csh = 0;                            /* a pointer is non-zero by its object, whatever its offset: only a nullable one is a condition */
             bi = c ? b->a : b->b;
             mark_seen(v, b, c ? 0 : 1);
             v->nbr += v->track;

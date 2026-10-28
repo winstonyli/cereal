@@ -136,7 +136,7 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
   `sx_sym(uint32)` and `SxModel` are unchanged, and a model is mapped back to keys.
 - **D7 What is solved.** Scalar bytes (parameters and lazily filled blob bytes) only.
 - **D8 Pointer outcomes.** Replayed from the seed (so a tracked rerun is faithful), never
-  changed by the solver (the offset into a shared or aliased blob is, see D11): parked in
+  changed by the solver (the offset into a shared or aliased blob is, see D11, and whether a cell is NULL, see D11a): parked in
   `PARKED.md` ("Pointer outcomes as solver choices"). The
   recorded outcomes are those of the final run of a call (after alias-hint retries).
 - **D8a Retries (`lazy_redraw`).** A call that stops on something a different draw would avoid is
@@ -164,7 +164,20 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
   and a branch on a pointer alone is not symbolic (the object decides). The offset's range (LHEAD to `LOFFMAX`, a
   whole number of pointee elements from LHEAD) goes in `Ev.dom`, asserted with every query, so the solver cannot
   hand back an offset a plain draw could not make. Plain draws keep their 8-byte steps; only the solver goes off
-  that grid (fixture `tests/cfg_lazy/lazy_ptrsolve.c`). Left parked: the outcome itself as a symbol (null tests).
+  that grid (fixture `tests/cfg_lazy/lazy_ptrsolve.c`). Left parked: the outcome itself as a symbol (null tests);
+  that is D11a.
+- **D11a Whether a pointer cell is NULL is the solver's (`SX_MASK`).** Amends D8 and D11 for NULL alone. In a tracked
+  run the outcome draw of a pointer cell (`LZ_OUT`) is a solver symbol, and the cell's shadow is `SX_MASK(word, outcome)`:
+  the word (a stand-in for a cell that was NULL) when the outcome is non-zero, else 0. So a test against NULL (`if (p)`,
+  `!p`, `p == 0`, `p != 0`; `nullable_sh` in `eval.c`) is a condition on the outcome, and every other use strips the
+  mask (`strip_sh`) and sees the word as D11 left it, so a model never turns a pointer that is dereferenced or compared
+  into NULL by accident. The model says only NULL or not: `solve_run` maps 0 to NULL and non-zero to the seed's own
+  non-NULL outcome (share or new), or to a new blob where the seed's cell was NULL; share against new stays replayed.
+  A symbol no constraint mentions is not in the model, so the cells no test looks at keep the seed's outcome. `load_sh`
+  returns the node itself for eight bytes that are its bytes in order, so a stored pointer loads back as the same node
+  (the mask and the pin survive memory), and `pin` skips a constant. Not covered: a pointer parameter (always non-NULL
+  by the generator), a pointer cast to `_Bool`, a compare of two pointers of different objects, a pointer a host
+  function returns (fixture `tests/cfg_lazy/lazy_nullsolve.c`).
 
 ## 5. Risks
 

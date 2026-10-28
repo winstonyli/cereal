@@ -144,6 +144,13 @@ static void put_def(const Sx *sx, StrBuf *sb, uint32_t id) {
         put_opnd(sb, sx, n->a);
         sb_puts(sb, " #x0000000000000000) #x0000000000000001 #x0000000000000000)");
         break;
+    case SX_MASK:
+        sb_puts(sb, "(ite (= ");
+        put_opnd(sb, sx, n->b);
+        sb_puts(sb, " #x0000000000000000) #x0000000000000000 ");
+        put_opnd(sb, sx, n->a);
+        sb_putc(sb, ')');
+        break;
     default: {
         bool cmp = n->op >= SX_EQ;
         StrBuf c = {0};

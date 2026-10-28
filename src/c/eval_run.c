@@ -686,7 +686,14 @@ typedef struct LEnt {
 } LEnt;
 
 typedef VEC(LEnt) LLog;
-typedef VEC(LKey) LKeys;
+/* A solver symbol: the key of the draw it stands for, and whether that draw is a pointer cell's outcome (NULL or not),
+ * which the solver only chooses between NULL and the outcome the seed had (solve_run). */
+typedef struct LSym {
+    LKey key;
+    bool out;
+} LSym;
+
+typedef VEC(LSym) LKeys;
 
 /* What a caller of sweep_call asks for beyond the call: values to force, the log of what the
  * final run drew, and, in a tracked run, the key of each symbol. */
@@ -749,13 +756,14 @@ typedef struct Lazy {
     VEC(LLink) lk;
     LLog rec;                   /* what this call drew */
     const LLog *force;          /* values to use instead of drawing (sorted), or NULL */
-    LKeys syms;                 /* tracking: the key of each solver symbol, by id (dense, by first use) */
+    LKeys syms;                 /* tracking: the draw of each solver symbol, by id (dense, by first use) */
 } Lazy;
 
 /* A symbol for the byte drawn under `key`: ids are dense, so the solver's model maps back to keys. */
-static uint32_t lazy_sym(Ev *v, Lazy *z, LKey key)
+static uint32_t lazy_sym(Ev *v, Lazy *z, LKey key, bool out)
 {
-    vec_push(&z->syms, key);
+    LSym y = {key, out};
+    vec_push(&z->syms, y);
     return sx_sym(&v->sx, (uint32_t)z->syms.len - 1);
 }
 
@@ -775,7 +783,7 @@ static uint32_t lazy_off(Ev *v, Lazy *z, LKey key, uint64_t drawn, uint32_t id, 
         LKey k = lz_key(key, i);
         off |= (uint32_t)(lazy_draw(z, k, drawn >> (8 * i) & 255) & 255) << (8 * i);
         if (v->track) {
-            uint32_t b = lazy_sym(v, z, k);
+            uint32_t b = lazy_sym(v, z, k, false);
             sh = i ? sx_join(&v->sx, b, sh) : b;
         }
     }
@@ -898,7 +906,7 @@ static void lazy_byte(Ev *v, Lazy *z, int bi, uint64_t off, uint8_t dflt, bool s
     if (v->track && sym) {
         if (!o->sh)
             o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
-        o->sh[off] = lazy_sym(v, z, key);
+        o->sh[off] = lazy_sym(v, z, key, false);
     }
     lazy_record(&z->bl.data[bi], off, 1, &b);
 }
@@ -921,9 +929,11 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
         LLink l = {(uint32_t)bi, (uint32_t)off, 0, 0};
         LKey ck = lz_key(z->bl.data[bi].key, off);
         uint32_t psh = 0;               /* the pointer word as an expression, when its offset is the solver's */
+        uint32_t osh;                   /* the draw of the outcome (0 NULL, else not), when tracking */
         if (un != ti->bytes)
             return false;               /* half a pointer was written: not a pointer to draw */
         r = lazy_draw(z, lz_key(ck, LZ_OUT), r > 2 ? 2 : r);       /* 0 NULL, 1 share, 2 new */
+        osh = v->track ? sx_ext(&v->sx, lazy_sym(v, z, lz_key(ck, LZ_OUT), true), 1, false, false) : 0;
         long fi = r && ti->fty ? lazy_fn(v, z, ck, ti->fty) : -1;   /* a function pointer is NULL or a function */
         if (r == 0) {
             x = 0;
@@ -957,6 +967,10 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
         for (i = 0; i < ti->bytes; i++)
             o->b[off + i] = (uint8_t)(x >> (8 * i));
         memset(o->init + off, x ? 2 : 1, ti->bytes);   /* 2: a pointer (see load_n) */
+        if (v->track) {                 /* the word, or NULL when the solver draws the outcome 0: a stand-in word for a NULL cell */
+            uint32_t w = psh ? psh : sx_const(&v->sx, 64, x ? x : (uint64_t)1 << 32 | LHEAD);
+            psh = sx_op(&v->sx, SX_MASK, w, osh);
+        }
         if (psh) {
             if (!o->sh)
                 o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
@@ -1094,7 +1108,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
                 LKey key = lz_key(lz_key(LZ_PARAM, k), i);
                 drawn |= (lazy_draw(&z, key, raw >> (8 * i) & 255) & 255) << (8 * i);
                 if (v->track && !a->ti.flt) {   /* the scalar is an input: its bytes' symbols, joined (see sweep_track) */
-                    uint32_t b = lazy_sym(v, &z, key);
+                    uint32_t b = lazy_sym(v, &z, key, false);
                     sh = i ? sx_join(&v->sx, b, sh) : b;
                 }
             }
@@ -1397,9 +1411,10 @@ static bool solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *s
         for (i = 0; i < seed->log.len; i++)
             vec_push(&force, seed->log.data[i]);
         for (i = 0; i < m->off.len; i++) {
-            LEnt *e = m->off.data[i] < syms->len ? llog_at(&force, syms->data[m->off.data[i]]) : NULL;
-            if (e)
-                e->val = m->val.data[i];
+            const LSym *y = m->off.data[i] < syms->len ? &syms->data[m->off.data[i]] : NULL;
+            LEnt *e = y ? llog_at(&force, y->key) : NULL;
+            if (e)      /* an outcome: NULL or not; not NULL is the seed's outcome, or a new blob where the seed had NULL */
+                e->val = y->out ? (m->val.data[i] ? (e->val ? e->val : 2) : 0) : m->val.data[i];
         }
         c.rs0 = seed->rs0;
         st = sweep_call(v, body, name, f, s, false, bad, &rs, &op);

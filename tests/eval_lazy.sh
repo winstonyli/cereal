@@ -73,4 +73,14 @@ if command -v z3 >/dev/null 2>&1; then
             { echo "eval_lazy: $f with the solver never gave 1 (pointer offsets are not the solver's)"; exit 1; }
     done
     echo "eval_lazy: pointer offset ok"
+    # Whether a pointer cell is NULL is the solver's too (D11a): behind a guard that only a solved call passes, ns_null needs
+    # NULL (1) and ns_deep needs NULL (1) and then a second cell that is NULL (4); gcc must agree on those calls.
+    EVAL_SWEEP_SOLVE='z3 -in -smt2' sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_nullsolve.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_nullsolve.c differs from gcc"; exit 1; }
+    out=$("$C" check --target=x86_64-linux-gnu --eval-sweep=200,1234 --eval-solve='z3 -in -smt2' "$D/cfg_lazy/lazy_nullsolve.c" 2>/dev/null </dev/null)
+    for w in "ns_null 01000000" "ns_deep 01000000" "ns_deep 04000000"; do
+        set -- $w
+        echo "$out" | awk -v f="$1" -v r="$2" '$1 == "call" && $2 == f && $4 == "=>" && substr($5, 1, 8) == r { found = 1 } END { exit !found }' ||
+            { echo "eval_lazy: $1 with the solver never gave $2 (whether a pointer is NULL is not the solver's)"; exit 1; }
+    done
+    echo "eval_lazy: pointer null ok"
 fi
