@@ -73,6 +73,8 @@ typedef struct Fn {
     size_t np;
     Blk *blk;
     size_t nblk;
+    LabEnt *lab;                /* its labels: id to block (a computed goto goes to one) */
+    size_t nlab;
     uint32_t entry, nreg, ntmp;
     uint32_t fname;             /* the El's function name (identifier id), 0 outside one */
     bool variadic, user;        /* user: defined outside the system headers */

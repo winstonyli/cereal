@@ -54,6 +54,10 @@ no environment. Frame state: `nreg` registers (`reg N`, stored many times),
 `ntmp` temporaries (`tmp N`, address temporaries), `ncl` compound-literal
 objects, the locals.
 
+An `ijmp` goes to the block of the label its pointer addresses: `labaddr` makes one read-only label object per
+(function, label id) (`Ev.lab`, kept across calls) and `Fn.lab` maps the id to its block. Any other pointer (null, data,
+another function's label, an offset into the label object) is a trap. Only `br` and `swtch` have edges, so an `ijmp` counts none.
+
 The ops it must cover are those `cgx86.c` handles (so differential testing
 compares like with like): `const fconst sym tmp reg complit load store cast
 unop binop cmp call intrin f2i va labaddr deref field rfield addr str ptradd

@@ -2000,6 +2000,26 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
     }
 }
 
+/* The block a computed goto to p goes to: p must be the address of a label of f (its label object, offset 0). */
+static bool label_blk(Ev *v, const Fn *f, uint64_t p, uint32_t *blk)
+{
+    uint32_t fi = (uint32_t)(f - v->fn.data);
+    size_t k, j;
+    if (!pid(p)) {
+        TRAP(v, "computed goto through a null pointer");
+        return false;
+    }
+    for (k = 0; k + 2 < v->lab.len && !poff(p); k += 3)
+        if (v->lab.data[k] == fi && v->lab.data[k + 2] == pid(p))
+            for (j = 0; j < f->nlab; j++)
+                if (f->lab[j].id == v->lab.data[k + 1]) {
+                    *blk = f->lab[j].blk;
+                    return true;
+                }
+    TRAP(v, "computed goto to an address that is not a label of the function");
+    return false;
+}
+
 static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *ash, size_t na, uint64_t va,
                        uint32_t *rsh)
 {
@@ -2097,6 +2117,18 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
             }
             continue;
         }
+        case TK_IJMP:
+        {
+            uint64_t c = ev_node(&r, b->val);
+            uint32_t to;
+            if (v->res.status)
+                break;
+            pin(v, v->sh, c);
+            if (!label_blk(v, f, c, &to))
+                break;
+            bi = to;
+            continue;
+        }
         case TK_RET:
             if (b->val != TN) {
                 uint64_t x = ev_node(&r, b->val);
@@ -2171,6 +2203,7 @@ void ev_free(Ev *v)
             free(f->blk[j].cases);
         }
         free(f->blk);
+        free(f->lab);
         free(f->nodes);
         free(f->kids);
         free(f->bytes);
@@ -2273,6 +2306,8 @@ void ev_add_func(Ev *v, El *e, Cfg *g)
         d->b = s->b;
         d->term = s->term;
     }
+    f.nlab = g->labs.len;
+    f.lab = dup_n(g->labs.data, g->labs.len * sizeof *f.lab);
     f.nreg = g->nreg;
     f.ntmp = e->ntmp;
     f.ret = e->ret;

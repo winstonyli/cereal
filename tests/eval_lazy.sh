@@ -53,6 +53,14 @@ if [ "$n" -lt 965 ]; then
     exit 1
 fi
 echo "eval_lazy: pointer-read retry ok"
+# A computed goto over drawn bytes (the dispatch of Lua's luaV_execute): the sweep follows it, so every call finishes, and gcc agrees.
+sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_igoto.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_igoto.c differs from gcc"; exit 1; }
+n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_igoto.c" 2>/dev/null </dev/null | grep -ac '^call ig_run .* =>')
+if [ "$n" -lt 24 ]; then
+    echo "eval_lazy: lazy_igoto.c: only $n of 24 calls of ig_run finished (the computed goto)"
+    exit 1
+fi
+echo "eval_lazy: computed goto ok"
 # Bytes read by memcpy are zero unless the solver sets them: with it, mc_eq's unequal edge and mc_const's equal edge are reached
 # (without it the first always returns 1 and the second 0), and gcc agrees on the bytes it set.
 if command -v z3 >/dev/null 2>&1; then

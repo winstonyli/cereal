@@ -190,8 +190,8 @@ The 852 edges behind `luaV_execute` (`oob-stuck`, trap message now carries offse
 bookkeeping error: a random instruction's jump operand moves `pc` far outside the 36 instructions drawn. The solver does not
 treat "the pointer stays inside its object" as a constraint, so it cannot steer past it. Parked in `PARKED.md`.
 (Corrected 2026-10-28: no jump runs. That stop is `getbaseline` reading `abslineinfo` at an index from an unsigned -1, and most
-calls of `luaV_execute` stop earlier or later, at the computed goto of its dispatch, which the evaluator does not support; see
-`PARKED.md`.)
+calls of `luaV_execute` stop earlier or later, at the computed goto of its dispatch, which the evaluator did not support until
+2026-10-28; see `PARKED.md`.)
 The 982 gcc crashes of `ptrdiff-liboracle-lua` (kept files, one call per class under gdb; function counts from `got.txt`):
 744 are `FILE*` functions (`skipcomment`, `skipBOM`, `test_eof`, `read_all`, `read_chars`, `getF`) where glibc
 aborts with "invalid stdio handle" on a drawn blob used as a `FILE`; about 150 (`luaS_new`, `lua_pushstring`,
