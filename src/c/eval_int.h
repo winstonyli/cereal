@@ -173,7 +173,7 @@ typedef struct Fr {
 typedef struct Ti {
     unsigned bytes;
     bool sg, boolean, flt;       /* flt: float or double, the value is its IEEE bit pattern */
-    bool ptr;                    /* a pointer: never symbolic */
+    bool ptr;                    /* a pointer: its shadow is its 64-bit word (the offset may be the solver's), see ptr_add_sh */
     TypeId fty;                  /* a pointer to a function: that function type (lazy blobs draw a function for it) */
     unsigned psz;                /* a pointer: the size of its pointee, 0 if it has none (void, a function, incomplete) */
 } Ti;
