@@ -655,6 +655,7 @@ static void track_begin(Ev *v)
     sx_clear(&v->sx);
     v->path.len = 0;
     v->path_full = false;
+    v->dom.len = 0;
 }
 
 /* ---- lazy blobs (docs/LAZY_BLOBS_DESIGN.md) ---------------------------------------------------
@@ -756,6 +757,40 @@ static uint32_t lazy_sym(Ev *v, Lazy *z, LKey key)
 {
     vec_push(&z->syms, key);
     return sx_sym(&v->sx, (uint32_t)z->syms.len - 1);
+}
+
+/* How far a pointer offset the solver picks may go: the first elements of the blob, as the draws stay near its start. */
+#define LOFFMAX (LHEAD + 4096)
+
+static uint64_t lazy_draw(Lazy *z, LKey key, uint64_t drawn);
+
+/* An offset into the blob `id`, drawn as three bytes (keys derived from `key`) so that the solver can choose it.  With
+ * tracking, *wsh is the pointer word (id, offset) as an expression over those bytes, and the offset's range (from LHEAD
+ * to LOFFMAX, a whole number of `step` elements from LHEAD, as the plain draws are) joins Ev.dom. */
+static uint32_t lazy_off(Ev *v, Lazy *z, LKey key, uint64_t drawn, uint32_t id, uint32_t step, uint32_t *wsh)
+{
+    uint32_t off = 0, sh = 0, o;
+    unsigned i;
+    for (i = 0; i < 3; i++) {
+        LKey k = lz_key(key, i);
+        off |= (uint32_t)(lazy_draw(z, k, drawn >> (8 * i) & 255) & 255) << (8 * i);
+        if (v->track) {
+            uint32_t b = lazy_sym(v, z, k);
+            sh = i ? sx_join(&v->sx, b, sh) : b;
+        }
+    }
+    *wsh = 0;
+    if (!v->track)
+        return off;
+    o = sx_ext(&v->sx, sh, 3, false, false);
+    vec_push(&v->dom, sx_op(&v->sx, SX_ULE, o, sx_const(&v->sx, 64, LOFFMAX)));
+    vec_push(&v->dom, sx_op(&v->sx, SX_ULE, sx_const(&v->sx, 64, LHEAD), o));
+    if (step > 1) {
+        uint32_t rem = sx_op(&v->sx, SX_UREM, sx_op(&v->sx, SX_SUB, o, sx_const(&v->sx, 64, LHEAD)), sx_const(&v->sx, 64, step));
+        vec_push(&v->dom, sx_op(&v->sx, SX_EQ, rem, sx_const(&v->sx, 64, 0)));
+    }
+    *wsh = sx_op(&v->sx, SX_OR, sx_const(&v->sx, 64, (uint64_t)id << 32), o);
+    return off;
 }
 
 /* The one place a value is drawn: the caller has drawn `drawn` from the PRNG (always, so the stream
@@ -885,6 +920,7 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
         uint64_t r = d == z->nullat ? 0 : 1 + rnd(z->rs) % 7;
         LLink l = {(uint32_t)bi, (uint32_t)off, 0, 0};
         LKey ck = lz_key(z->bl.data[bi].key, off);
+        uint32_t psh = 0;               /* the pointer word as an expression, when its offset is the solver's */
         if (un != ti->bytes)
             return false;               /* half a pointer was written: not a pointer to draw */
         r = lazy_draw(z, lz_key(ck, LZ_OUT), r > 2 ? 2 : r);       /* 0 NULL, 1 share, 2 new */
@@ -900,10 +936,10 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
             uint64_t tk, to = LHEAD + (rnd(z->rs) % 9) * (ti->psz > 8 ? ti->psz : 8);   /* whole elements of the pointee: two such pointers subtract */
             size_t b;
             tk = lazy_draw(z, lz_key(ck, LZ_TGT), z->bl.data[t].key);
-            to = lazy_draw(z, lz_key(ck, LZ_TOFF), to);
             for (b = 0; b < z->bl.len; b++)         /* a forced target the call has no blob for: the drawn one */
                 if (z->bl.data[b].key == tk)
                     t = (int)b;
+            to = lazy_off(v, z, lz_key(ck, LZ_TOFF), to, z->bl.data[t].id, ti->psz ? (uint32_t)ti->psz : 1, &psh);
             l.tb1 = (uint32_t)t + 1;
             l.toff = (uint32_t)to;
             x = mkptr(z->bl.data[t].id, l.toff);
@@ -921,6 +957,12 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
         for (i = 0; i < ti->bytes; i++)
             o->b[off + i] = (uint8_t)(x >> (8 * i));
         memset(o->init + off, x ? 2 : 1, ti->bytes);   /* 2: a pointer (see load_n) */
+        if (psh) {
+            if (!o->sh)
+                o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
+            for (i = 0; i < 8; i++)
+                o->sh[off + i] = sx_byte(&v->sx, psh, i);
+        }
         return true;
     }
     x = sweep_arg(v, ti, z->rs);
@@ -1005,7 +1047,7 @@ static unsigned lazy_redraw(const Ev *v, const Lazy *z, LEnt hint[2])
                 hint[1] = (LEnt){lz_key(h->key, LZ_TGT), z->bl.data[lo].key};
                 n = 2;
             } else if (z->bl.data[lo].par < 0) {
-                hint[0] = (LEnt){lz_key(h->key, LZ_ALIAS), (uint64_t)(z->bl.data[lo].poff + 1) | (uint64_t)LHEAD << 16};
+                hint[0] = (LEnt){lz_key(h->key, LZ_ALIAS), (uint64_t)(z->bl.data[lo].poff + 1)};
                 n = 1;
             }
         }
@@ -1067,8 +1109,9 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         } else {
             uint64_t w;
             int bi = -1;
-            uint32_t off = LHEAD;
-            if (a->kind == SA_PTR && k) {     /* into an earlier pointer parameter's object: (j + 1) | offset << 16, 0 none */
+            uint32_t off = LHEAD, osh = 0;
+            uint64_t doff = LHEAD;
+            if (a->kind == SA_PTR && k) {     /* into an earlier pointer parameter's object: j + 1, 0 none; then the offset */
                 uint64_t al = 0;
                 if (rnd(rs) % 3 == 0) {
                     size_t np = 0, pick;
@@ -1079,14 +1122,17 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
                         for (j = 0; j < k; j++)
                             if (s->a[j].kind == SA_PTR && !pick--)
                                 break;
-                        al = (uint64_t)(j + 1) | (uint64_t)(LHEAD + (rnd(rs) % 9) * 8) << 16;
+                        al = (uint64_t)(j + 1);
+                        doff = LHEAD + (rnd(rs) % 9) * 8;
                     }
                 }
                 al = lazy_draw(&z, lz_key(lz_key(LZ_PARAM, k), LZ_ALIAS), al);
                 j = (size_t)(al & 0xffff);
                 if (j >= 1 && j <= k && s->a[j - 1].kind == SA_PTR) {
                     bi = lazy_index(&z, pid(slot[j - 1]));
-                    off = (uint32_t)(al >> 16);
+                    if (bi >= 0)
+                        off = lazy_off(v, &z, lz_key(lz_key(LZ_PARAM, k), LZ_TOFF), doff, z.bl.data[bi].id,
+                                       a->ti.psz ? (uint32_t)a->ti.psz : 1, &osh);
                 }
             }
             if (bi < 0)
@@ -1094,6 +1140,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
             if (bi < 0)
                 break;
             slot[k] = mkptr(z.bl.data[bi].id, off);
+            ash[k] = osh;
             w = ((uint64_t)bi + 1) << 32 | off;
             for (i = 0; i < 8; i++)
                 sb_putc(&args, (char)(w >> (8 * i) & 255));
@@ -1494,6 +1541,8 @@ static bool solve_step1(SCtx *x)
         if (v->sx.n.len > st->nodes)
             st->nodes = v->sx.n.len;
         sx_begin(sv, &v->sx);
+        for (i = 0; i < v->dom.len; i++)
+            sx_assert(sv, v->dom.data[i], true);
         for (i = 0; i < v->path.len && q->queries < SQUERY; i++) {
             PathEnt p = v->path.data[i];
             SxCond cs[64];

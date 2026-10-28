@@ -135,6 +135,7 @@ struct Ev {
     uint32_t rsh;               /* ev_call: the shadow of the result */
     VEC(PathEnt) path;          /* the tracked call's branches and pins, at most PATH_MAX_ENT */
     bool path_full;             /* ... and entries were dropped after that */
+    VEC(uint32_t) dom;          /* conditions that hold of every input (the range of a pointer offset the solver may pick), asserted with the path */
     unsigned long nbr;          /* branches and switches run while tracking, symbolic or not */
     unsigned long newseen;      /* edges taken for the first time (Blk.seen), counted over all calls */
     uint32_t ld_obj, f_obj;     /* the object and offset of the last pointer read (ld), and of the one the

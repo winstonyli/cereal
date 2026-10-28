@@ -136,7 +136,8 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
   `sx_sym(uint32)` and `SxModel` are unchanged, and a model is mapped back to keys.
 - **D7 What is solved.** Scalar bytes (parameters and lazily filled blob bytes) only.
 - **D8 Pointer outcomes.** Replayed from the seed (so a tracked rerun is faithful), never
-  changed by the solver: parked in `PARKED.md` ("Pointer outcomes as solver choices"). The
+  changed by the solver (the offset into a shared or aliased blob is, see D11): parked in
+  `PARKED.md` ("Pointer outcomes as solver choices"). The
   recorded outcomes are those of the final run of a call (after alias-hint retries).
 - **D8a Retries (`lazy_redraw`).** A call that stops on something a different draw would avoid is
   rerun with those draws forced (a hint log laid over the force log; `sweep_call`, at most
@@ -153,6 +154,17 @@ Stage 2 decisions (all four taken as recommended, 2026-10-23; the plan is in `LA
   `MEM_read32(a) == MEM_read32(b)` has both edges (zstd's `ZSTD_count`). Reads longer than `EV_LAZY_ZERO_SYM` (16)
   bytes stay plain zeros, so a big copy makes no thousands of symbols. Host results (`memcmp`, `strlen`) are
   concrete, so no constraint flows through them; modelling those is parked (`PARKED.md` row 245).
+- **D11 Pointer offsets are the solver's (`lazy_off`).** Amends D8: which object a pointer names (NULL, share, new, the
+  parameter alias) is still replayed and never solved, but the offset into a shared or aliased blob is now three
+  byte draws under keys derived from the old `LZ_TOFF` key, each a solver symbol like a scalar byte. A pointer's
+  shadow is its whole 64-bit word as an expression (object id constant, offset the low 32 bits); `load_sh`,
+  `store_sh_n` and `canon_sh` carry it through memory, parameters and results, `ptr_add_sh` moves it on `+ n`,
+  `->field` and `&`, and a compare or subtraction of two pointers of one object becomes a constraint on the
+  offsets. A load, store or field access through a symbolic pointer pins its word (as a symbolic index is pinned),
+  and a branch on a pointer alone is not symbolic (the object decides). The offset's range (LHEAD to `LOFFMAX`, a
+  whole number of pointee elements from LHEAD) goes in `Ev.dom`, asserted with every query, so the solver cannot
+  hand back an offset a plain draw could not make. Plain draws keep their 8-byte steps; only the solver goes off
+  that grid (fixture `tests/cfg_lazy/lazy_ptrsolve.c`). Left parked: the outcome itself as a symbol (null tests).
 
 ## 5. Risks
 

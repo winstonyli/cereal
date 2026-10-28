@@ -233,7 +233,7 @@ static uint32_t load_sh(Ev *v, const Obj *o, uint64_t off, const Ti *ti)
     uint32_t x = 0;
     unsigned i;
     bool any = false;
-    if (!v->track || !o->sh || ti->flt || ti->ptr)
+    if (!v->track || !o->sh || ti->flt)
         return 0;
     for (i = 0; i < ti->bytes && !any; i++)
         any = o->sh[off + i] != 0;
@@ -263,7 +263,7 @@ static void store_sh(Ev *v, Obj *o, uint64_t off, unsigned n, uint32_t sh)
 /* The shadow of a value cast to ti (as ev_canon does it). */
 static uint32_t canon_sh(Ev *v, const Ti *ti, uint32_t sh)
 {
-    if (!sh || ti->flt || ti->ptr)
+    if (!sh || ti->flt)
         return 0;
     if (ti->bytes >= 8 && !ti->boolean)
         return sh;
@@ -342,7 +342,7 @@ static void store_sh_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x, uint32_t sh)
         o->b[poff(p) + i] = (uint8_t)(x >> (8 * i));
         o->init[poff(p) + i] = o->lazy && ti->ptr && x ? 2 : 1;   /* 2: a pointer, as lazy_fill marks it (see load_n); NULL is zero bytes in gcc too */
     }
-    store_sh(v, o, (uint64_t)poff(p), ti->bytes, v->track && !ti->flt && !ti->ptr ? sh : 0);
+    store_sh(v, o, (uint64_t)poff(p), ti->bytes, v->track && !ti->flt ? sh : 0);
 }
 
 static void store_n(Ev *v, uint64_t p, const Ti *ti, uint64_t x)
@@ -1535,6 +1535,25 @@ static void pin(Ev *v, uint32_t sh, uint64_t x)
     path_add(v, e);
 }
 
+/* A pointer's shadow is its whole 64-bit word as an expression: the object id is a constant, the offset (the low 32
+ * bits) may be the solver's (Ev.lazy_off in eval_run.c).  The word of pointer a moved by delta bytes. */
+static uint32_t ptr_add_sh(Ev *v, uint64_t a, uint32_t ash, int64_t delta)
+{
+    uint32_t lo;
+    if (!v->track || !ash)
+        return 0;
+    lo = sx_ext(&v->sx, ash, 4, false, false);
+    if (delta)
+        lo = sx_ext(&v->sx, sx_op(&v->sx, SX_ADD, lo, sx_const(&v->sx, 64, (uint64_t)delta)), 4, false, false);
+    return sx_op(&v->sx, SX_OR, sx_const(&v->sx, 64, (uint64_t)pid(a) << 32), lo);
+}
+
+/* The signed offset of pointer p, as a 64-bit expression (a constant when the pointer is concrete). */
+static uint32_t ptr_off_sh(Ev *v, uint64_t p, uint32_t sh)
+{
+    return sh ? sx_ext(&v->sx, sh, 4, true, false) : sx_const(&v->sx, 64, (uint64_t)(int64_t)poff(p));
+}
+
 /* The shadow of an integer operation: op on the operands' expressions (a concrete operand
  * enters as a constant), cast to ti.  0 when neither operand is symbolic. */
 static uint32_t op_sh(Ev *v, int op, const Ti *ti, uint64_t a, uint32_t ash, uint64_t b, uint32_t bsh)
@@ -1653,6 +1672,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
     }
     case TO_LOAD:
         a = ev_node(r, KID(r, n, 0));
+        pin(v, v->sh, a);
         if (is_agg(v, t->ty) || v->res.status)
             return a;
         if (!ev_tinfo(v, t->ty, &ti))
@@ -1665,6 +1685,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
     case TO_STORE: {
         uint64_t sz;
         a = ev_node(r, KID(r, n, 0));
+        pin(v, v->sh, a);
         b = ev_node(r, KID(r, n, 1));
         bsh = v->sh;
         if (v->res.status)
@@ -1712,6 +1733,8 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
             return 0;
         if (!ts.flt && !ts.ptr && !ti.flt)
             *sh = canon_sh(v, &ti, ash);
+        else if (ts.ptr && ti.ptr)
+            *sh = ash;
         return convert(v, &ti, &ts, a);
     }
     case TO_FCONST:
@@ -1798,6 +1821,18 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         bsh = v->sh;
         if (v->res.status || !ev_tinfo(v, NODE(r, KID(r, n, 0))->ty, &ts))
             return 0;
+        if (ts.ptr && v->track && (ash || bsh) && pid(a) && pid(a) == pid(b)) {    /* one object: the offsets order */
+            uint32_t x = ptr_off_sh(v, a, ash), y = ptr_off_sh(v, b, bsh);
+            switch (t->pun) {
+            case P_EQEQ: *sh = sx_op(&v->sx, SX_EQ, x, y); break;
+            case P_NE: *sh = sx_op(&v->sx, SX_NE, x, y); break;
+            case P_LT: *sh = sx_op(&v->sx, SX_SLT, x, y); break;
+            case P_LE: *sh = sx_op(&v->sx, SX_SLE, x, y); break;
+            case P_GT: *sh = sx_op(&v->sx, SX_SLT, y, x); break;
+            case P_GE: *sh = sx_op(&v->sx, SX_SLE, y, x); break;
+            default: break;
+            }
+        }
         if (!ts.flt && !ts.ptr) {
             Ti w64;
             memset(&w64, 0, sizeof w64);
@@ -1825,9 +1860,12 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         return 0;
     case TO_DEREF:
     case TO_ADDR:
-        return ev_node(r, KID(r, n, 0));
+        a = ev_node(r, KID(r, n, 0));
+        *sh = v->sh;
+        return a;
     case TO_FIELD:
         a = ev_node(r, KID(r, n, 0));
+        *sh = ptr_add_sh(v, a, v->sh, t->val);
         return mkptr(pid(a), (int64_t)poff(a) + t->val);
     case TO_RFIELD:
         if (t->width) {
@@ -1835,6 +1873,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
             return 0;
         }
         a = ev_node(r, KID(r, n, 0));
+        pin(v, v->sh, a);
         a = mkptr(pid(a), (int64_t)poff(a) + t->val);
         if (is_agg(v, t->ty) || v->res.status)
             return a;
@@ -1846,6 +1885,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
     case TO_PTRADD: {
         int64_t off;
         a = ev_node(r, KID(r, n, 0));
+        ash = v->sh;
         b = ev_node(r, KID(r, n, 1));
         if (v->res.status)
             return 0;
@@ -1856,15 +1896,21 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
             TRAP(v, "pointer arithmetic out of range");
             return 0;
         }
+        *sh = ptr_add_sh(v, a, ash, off - (int64_t)poff(a));
         return mkptr(pid(a), off);
     }
     case TO_PTRDIFF:
         a = ev_node(r, KID(r, n, 0));
+        ash = v->sh;
         b = ev_node(r, KID(r, n, 1));
+        bsh = v->sh;
         if (v->res.status)
             return 0;
         if (!same_object(v, a, b, "subtraction"))
             return 0;
+        if (v->track && (ash || bsh))
+            *sh = sx_op(&v->sx, SX_SDIV, sx_op(&v->sx, SX_SUB, ptr_off_sh(v, a, ash), ptr_off_sh(v, b, bsh)),
+                        sx_const(&v->sx, 64, (uint64_t)t->val));
         if (((int64_t)poff(a) - (int64_t)poff(b)) % t->val) {      /* undefined; gcc shifts, a division truncates */
             TRAP(v, "pointer difference is not a multiple of the element size");
             return 0;
@@ -1980,6 +2026,8 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
                 c = ev_fget(&ct, c) != 0 || ev_fget(&ct, c) != ev_fget(&ct, c);
                 csh = 0;
             }
+            if (ev_tinfo(v, NODE(&r, b->val)->ty, &ct) && ct.ptr)
+                csh = 0;                            /* a pointer is non-zero by its object, whatever its offset */
             bi = c ? b->a : b->b;
             mark_seen(v, b, c ? 0 : 1);
             v->nbr += v->track;
@@ -2074,6 +2122,7 @@ void ev_free(Ev *v)
     }
     sx_free(&v->sx);
     vec_free(&v->path);
+    vec_free(&v->dom);
     vec_free(&v->obj);
     for (i = 0; i < v->fn.len; i++) {
         Fn *f = &v->fn.data[i];

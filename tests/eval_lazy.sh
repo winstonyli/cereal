@@ -64,4 +64,13 @@ if command -v z3 >/dev/null 2>&1; then
             { echo "eval_lazy: $1 with the solver never gave $2 (untyped reads of blob bytes are not symbolic)"; exit 1; }
     done
     echo "eval_lazy: untyped read ok"
+    # Pointer offsets are the solver's too (D11): ps_win needs two pointers 4 to 7 bytes apart, ps_cell two cells 3 bytes apart;
+    # the plain draws are whole 8-byte steps, so only a solver round gives 1.  gcc must agree on the offsets it set.
+    EVAL_SWEEP_SOLVE='z3 -in -smt2' sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_ptrsolve.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_ptrsolve.c differs from gcc"; exit 1; }
+    out=$("$C" check --target=x86_64-linux-gnu --eval-sweep=200,1234 --eval-solve='z3 -in -smt2' "$D/cfg_lazy/lazy_ptrsolve.c" 2>/dev/null </dev/null)
+    for f in ps_win ps_cell; do
+        echo "$out" | awk -v f="$f" '$1 == "call" && $2 == f && $4 == "=>" && substr($5, 1, 8) == "01000000" { found = 1 } END { exit !found }' ||
+            { echo "eval_lazy: $f with the solver never gave 1 (pointer offsets are not the solver's)"; exit 1; }
+    done
+    echo "eval_lazy: pointer offset ok"
 fi
