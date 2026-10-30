@@ -6,7 +6,7 @@ Moved out of `PARKED.md` (row "Stopped calls as solver seeds, and a trapped call
 
 - **Feature design: a queue of its own** (option (b) under Designs below). Not built.
 - **Interface for the probe and the per-function miss survey: two hidden flags**: `--eval-only=NAME[,NAME…]` (also prints each call's outcome, solver and walk children included) and `--eval-miss`. This is one mechanism on the same path as `--eval-state`, and `tests/eval_sweep.sh` can drive it without env; it needs plumbing through `main.c`, `frontend.h`/`.c` and `check.h`. Sweep options today are hidden flags carried by `CheckOpts` (only `--eval-wrap` is in the usage text) and eval code has one env var, `CEREAL_LAZY_REPLAY`, marked "test only". Rejected: `--eval-only=` plus `CEREAL_EVAL_STATS=stops,miss` (two mechanisms, though it matches the `*_STATS` family) and env only, `CEREAL_EVAL_ONLY` and `CEREAL_EVAL_STATS` (about 10 lines, but a behavior-changing env var in eval code). The survey adds hundreds of lines per Lua run, so it is not printed always.
-- Nothing is built. Building waits for the user's go and the memory diagnosis (print every allocation of 64 MiB or more with its function in a trap sweep, about 1 h on one core), which decides the bound option (b) needs.
+- Nothing is built. Building waits for the user's go. The memory diagnosis (every allocation of 64 MiB or more, with its function, in a trap sweep) is done, see Memory below; it decides the bound option (b) needs.
 - Docs that go stale when it is built: `docs/EVAL_DESIGN.md` lines 592, 637 and 673, `docs/LAZY_BLOBS_DESIGN.md` line 149, `docs/LAZY_BLOBS_SOLVER_PLAN.md` lines 28, 63 and 118, and `PARKED.md` row "Pointer outcomes as solver choices under lazy blobs".
 
 ## Designs
@@ -52,6 +52,14 @@ Twelve spike builds, `guard1` to `guard12`, each named in the command of the run
 ### Memory
 
 Five full-Lua sweeps on the first builds (`guard2`, `guard4`: no shadow cap) died with `cereal: fatal: out of memory` in the state pass after 33-35 min (`guard-lua-s1234`, `-s4321`, `-s777`, `guard-lua-gb64-s1234`, `walk-lua-s1234`; `guard-walk-lua-s1234` was stopped by hand); the same settings on the build with the cap finish (`cap-g-lua-s1234`, `cap-w-lua-s1234`, `cap-gw-lua-s1234`). Assumed cause, not isolated: the shadow arrays (4 bytes per byte of the object) of objects up to 1 GiB (the limit of `ev_new_obj`). The spike caps a shadow at 16 MiB (`EV_SHADOW_CAP`, `ev_shadow` in `src/c/eval.c`, used by `store_sh`, `ev_copy_n`, `h_realloc`: bytes stored into a bigger object stay concrete). No uncapped run with the spike off exists and the committed sweeps (`igoto-lua-*`, uncapped) finish, so whether the committed code can hit it is not known.
+
+### Memory diagnosis (2026-10-30)
+
+Run `2026-10-30-memprobe-trap-lua-s4321-r2` (`docs/runs.md`; the spike build `ab855aa` plus the patch plus a print in `ev_new_obj` and `ev_shadow` of every object or shadow of 64 MiB or more, with the swept function and the resident size, and a resident-size sample every 10 s; settings of `trap-lua-s4321`; 2146 s wall, 1746632 KB maxrss, the same 1.67 GiB as that run, 3322 taken, 958 queries). The raw prints, the samples, `instrument.py` and `memprobe_run.sh` are in the run folder.
+- 158 prints, all objects, none a shadow (the 16 MiB shadow cap holds); 124 distinct sizes from 91 MB to 1,060,680,614 bytes, almost none a power of two: they are sizes the solver chose, below the 1 GiB limit of `ev_new_obj`.
+- The one step: the sampler shows 223,608 to 1,479,196 KB at 11:11:21, within 10 s. The prints put it in `luaD_reallocstack__st2`, which allocated a 572,354,784-byte object while the resident size was 211,576 KB; the next print, in `luaF_newCclosure__st0`, reads 1,479,196 KB. The step, 1.26 GB, is about two arrays of that object (`b` and `init`, 2 x 572 MB = 1.14 GB) plus about 0.1 GB: the swept function's own code touched the whole object, which calloc alone would not do. The later 1 GB-size objects did not raise the resident size (it stays 1.48 to 1.52 GB; the highest print is 1.70 GB), so they were not touched.
+- Not isolated: which instruction touches the object (a loop over a model-chosen `newsize` is the likely one); whether the committed code, without the walk's solver children, can make such sizes.
+- Consequence for option (b): the bound needed is on the size of an object that code writes, not on how many are allocated. A cap on the bytes of one object that a call may create from a model value (for example 64 MiB, with a trap above it) would have stopped this step; it is the one number to measure before building.
 
 ### Reading
 
