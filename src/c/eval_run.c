@@ -891,9 +891,6 @@ static long lazy_fn(Ev *v, Lazy *z, LKey ck, TypeId fty)
     return res;
 }
 
-/* Ev.lazy_fill: the typed load of ti->bytes bytes at off of lazy object id finds some uninitialized.
- * Scalars are drawn as the generator draws them; a pointer is NULL (1/8), into an existing object
- * (1/8, at an offset of 0 to 64), or into a new one. */
 /* The untouched byte at off of blob bi: its draw (dflt unless forced), stored, recorded for the call's graph, and
  * an input of the solver (a symbol, see sweep_track) when sym. */
 static void lazy_byte(Ev *v, Lazy *z, int bi, uint64_t off, uint8_t dflt, bool sym)
@@ -911,6 +908,9 @@ static void lazy_byte(Ev *v, Lazy *z, int bi, uint64_t off, uint8_t dflt, bool s
     lazy_record(&z->bl.data[bi], off, 1, &b);
 }
 
+/* Ev.lazy_fill: the typed load of ti->bytes bytes at off of lazy object id finds some uninitialized.
+ * Scalars are drawn as the generator draws them; a pointer cell is NULL only at the one draw a call picks
+ * (z->nullat; half of the calls have none), else shares an existing blob (1 in 7) or is a new one. */
 static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
 {
     Lazy *z = v->lazy_ud;
@@ -1285,11 +1285,7 @@ static void llog_sort(LLog *log)
         qsort(log->data, log->len, sizeof *log->data, lz_cmp);
 }
 
-/* The call, rerun each time it stops on a subtraction of pointers of two blobs with the
- * later blob's pointer cell forced to share the earlier blob (the program meant them as one object, such as
- * a saved pc and the code it points into): the same draws, so the rerun differs only there.  *rec gets what
- * the final run drew (unsorted); with `force` (sorted) the call takes those values instead of drawing them,
- * and the hints are put over them (a forced call that already shares as asked is not retried). */
+/* Put e over the log: the entry with its key takes e's value, else e is added (the log stays sorted). */
 static void hint_put(LLog *log, LEnt e)
 {
     LEnt *f = llog_at(log, e.key);
@@ -1300,6 +1296,11 @@ static void hint_put(LLog *log, LEnt e)
     llog_sort(log);
 }
 
+/* The call, rerun each time it stops on a subtraction of pointers of two blobs with the
+ * later blob's pointer cell forced to share the earlier blob (the program meant them as one object, such as
+ * a saved pc and the code it points into): the same draws, so the rerun differs only there.  *rec gets what
+ * the final run drew (unsorted); with `force` (sorted) the call takes those values instead of drawing them,
+ * and the hints are put over them (a forced call that already shares as asked is not retried). */
 static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
                            bool *bad, uint64_t *rs, const LOpt *op)
 {
@@ -1984,7 +1985,6 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
     fputc(10, stderr);
 }
 
-/* Every function of the files of c0 (one file, or the whole link: c0 is then the first). */
 /* How many ways there are to pick the built states for f's parameters (0: it takes none, or the
  * gcc side cannot call every builder from its file). */
 static unsigned state_variants(const Fn *f, const SStates *ss, bool callable)
@@ -2002,7 +2002,8 @@ static unsigned state_variants(const Fn *f, const SStates *ss, bool callable)
     return nv;
 }
 
-/* A function is swept in variants: one per way to pick its built states (--eval-state; none when it
+/* Every function of the files of c0 (one file, or the whole link: c0 is then the first) is swept.
+ * A function is swept in variants: one per way to pick its built states (--eval-state; none when it
  * takes no state), then the plain one, whose parameters are generated from their types.  They share
  * the function's edges (Blk.seen), so a function counts as finished if any variant finished. */
 static void eval_sweep(Checker *c0)

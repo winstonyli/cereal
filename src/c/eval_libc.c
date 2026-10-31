@@ -6,7 +6,7 @@
  * access of eval.c (ev_access and its callers below), so undefined behaviour stops
  * evaluation with a reason - a read out of bounds or of an uninitialized byte, a
  * write to a string literal, a double free, a format that does not match its
- * arguments - and a future shadow of the objects (symbolic values) is carried by
+ * arguments - and the shadow of the objects (symbolic values, CONCOLIC_DESIGN.md) is carried by
  * the same copies.  Any other external function is reported as unsupported. */
 #include <ctype.h>
 #include <limits.h>

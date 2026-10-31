@@ -6,8 +6,9 @@
  * 0 is null) and a signed byte offset (low 32); an aggregate "value" is the
  * address of its bytes, copied where cgx86.c copies (store, local, argument,
  * return).  Undefined behaviour stops evaluation with a reason; it is never
- * given a value.  Not yet covered: floating point, bit-fields, compound
- * literals, variadic calls, built-ins, globals; each says so when reached.
+ * given a value.  What it cannot do stops it as unsupported, with the reason
+ * (UNSUP: e.g. a static compound literal, or a value outside the integer,
+ * float and pointer subset).
  * No mutable globals: the state is the Ev. */
 #include "c/eval_int.h"
 #include "c/cintrin.h"

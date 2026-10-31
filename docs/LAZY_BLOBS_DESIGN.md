@@ -10,7 +10,7 @@ sweep's generated state"; stop census in `EVAL_DESIGN.md`.
 
 ## 1. The problem
 
-`sweep_ptrs` lays out blobs breadth-first from the parameter types, up to `SMAXOB` (64) blobs
+Before stage 4, `sweep_ptrs` laid out blobs breadth-first from the parameter types, up to `SMAXOB` (64) blobs
 and `SMAXIN` (16 KB). Measured on `luaV_execute` (856 of Lua's 1273 never-finished edges):
 at 256 blobs the budget fills with copies of `CallInfo`, `StackValue` and `GCObject` reached
 through `next`/`previous` chains, and the `StackValue` under `ci->func.p` gets `gc` = NULL.
@@ -40,7 +40,7 @@ zero bytes, recorded: a pointer cell copied untyped and read later is NULL. This
 known cost of not tracking pointer-ness in bytes (see 5).
 
 **Pointers.** The type of a pointer's target is not known at the load, only at the first
-access through it. So a pointer drawn at a typed load is one of: NULL (1/8); a pointer
+access through it. So a pointer drawn at a typed load is one of: NULL (stage 1: 1/8; now at most one NULL draw per call, `Lazy.nullat` in `eval_run.c`); a pointer
 into an existing lazy blob of this call, at offset 0 or a small element offset (1/8: this is
 sharing, cycles such as `l_G->mainthread == L`, and `start`/`end` pairs into one buffer,
 where the offset may lie beyond the current size and is only grown into if dereferenced);

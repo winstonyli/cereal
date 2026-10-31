@@ -37,7 +37,7 @@ pointers cross files unchanged.
    sweep with an error. A tentative definition and an `extern` declaration share the defining file's object.
 4. **Lifetime and driver.** Today `frontend_run` frees each file's checker after `checker_finish`. With
    `--eval-link` the files run in one process, one after the other, each file's `tu` and checker kept (the
-   `Fn` bodies point into them), the sweep runs once after the last file (`eval_sweep_all`, replacing the per
+   `Fn` bodies point into them), the sweep runs once after the last file (built as `eval_sweep` on the first file's checker, replacing the per
    file call from `eval_finish`), and everything is freed at the end. Without the flag nothing changes.
 5. **Records by value across files.** Argument and result bytes are copied as bytes. The two files' record
    types must have equal sizes (checked at the call; unequal: unsupported). Field offsets are assumed equal,

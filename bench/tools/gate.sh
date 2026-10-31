@@ -1,6 +1,6 @@
 #!/bin/sh
 # gate.sh: the pre-commit gate, stages overlapped (<= 12 busy threads):
-#   run.sh (3 golden shards) | verify.sh (4) | san.sh (make -j4, 3 shards, san.py 4) | callgrind (1)
+#   run.sh (GOLDEN_JOBS=2) | verify.sh (CEREAL_JOBS=4) | san.sh (SAN_JOBS=4, GOLDEN_JOBS=5, SAN_PY_JOBS=5) | callgrind (1)
 # plus globals.sh (mutable-global allowlist, instant) as stage 0
 # Writes /tmp/gate.<stage> and prints them in order.  Expect run/san "N passed, 0 failed"
 # (N grows with the goldens), san "findings 0", verify dg 2 / c-c++-common 1 / cpp 0 differ (file counts: docs/STATUS.md "Numbers"; cpp is a baseline, not a target),

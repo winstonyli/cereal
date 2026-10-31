@@ -20,16 +20,19 @@
 #      line in a case adds flags (e.g. -Wall, --target=i386, --dump-types);
 #      layout parity: random records with $REFCC's sizeof/_Alignof/offsetof
 #      as _Static_asserts (tests/gen_layout.py) must check clean
-#  12. summaries  13. build options (see their sections)
+#  12. summaries  13-13e. build options, response files, typed AST, control-flow
+#      graph, evaluator sweep (see their sections)
 #  14. C symbol index: `--dump-symbols` goldens, `--verify-symbols` over the
 #      checker and parser cases and cereal's own sources
+#  15. builtin table rows (the section sits after 17)
 #  16. compile-commands replay: tests/ccdb cases against goldens, -j1 = -j12
 #  17. -M family: tests/deps cases against gcc-13 goldens; the
 #      .d files of -fparallel=on and off are byte-identical
+#  18. a UTF-8 byte order mark is dropped for small and large inputs
 #  19-21. cereal fix: the edit builder, fix-it columns, fix runs on files
-#  22. project index records: `index-summary` goldens, determinism, corruption
-#  19-21. cereal fix: the edit builder, fix-it columns, fix runs on files
-#  22. project index records: `index-summary` goldens, determinism, corruption
+#  22-22c. project index records: `index-summary` goldens, determinism,
+#      corruption; invalidation; the scheduler
+#  23. unit self-tests  24. presence conditions (the CEREAL_PCDUMP hook)
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CEREAL=${CEREAL:-$ROOT/cereal}

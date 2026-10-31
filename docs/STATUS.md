@@ -83,8 +83,10 @@ python3 -P bench/tools/wsym_bench.py ./cereal CORPUS [N]   # workspace/symbol p9
 bench/tools/fixgate.sh [DIR]           # cereal fix on scratch copies: second run a no-op, no new diagnostics, gcc-13 still accepts, same .text (SAFE); tests, or a sample of DIR (FIXGATE_MAX, FIXGATE_FLAGS)
 ```
 
-`bench/tools/gate.sh` runs all of it (goldens, parity, sanitizers,
-callgrind) in parallel; see its header for the expected numbers.
+`bench/tools/gate.sh` runs the globals check, `tests/run.sh`, the parity run,
+the sanitizer build and a callgrind count in parallel; see its header for the
+expected numbers. `symcov.sh`, `fixits.sh`, `fixgate.sh` and the benches are not
+part of it.
 
 ## Open differences (gcc.dg 2, c-c++-common 1)
 Needs gcc's optimizer or middle end (out of reach for a front end):
