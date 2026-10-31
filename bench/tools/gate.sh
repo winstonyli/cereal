@@ -4,7 +4,7 @@
 # plus globals.sh (mutable-global allowlist, instant) as stage 0
 # Writes /tmp/gate.<stage> and prints them in order.  Expect run/san "N passed, 0 failed"
 # (N grows with the goldens), san "findings 0", verify dg 2 / c-c++-common 1 / cpp 0 differ (of 3910 / 636 / 285 files run, the c11 tests included; cpp is a baseline, not a target),
-# callgrind ~3.95G (instructions, deterministic; 3.896G before the C23 work, +1.4% for it: docs/C23_PLAN.md).
+# callgrind ~3.91G (instructions, deterministic; 3.896G before the C23 work, +1.4% for it: docs/C23_PLAN.md; it read 3.907G at HEAD 2026-10-30, so the earlier ~3.95G was stale).
 # Inner loop while iterating: `sh tests/run.sh` alone (GOLDEN_JOBS=n shards its golden loops).
 cd "$(dirname "$0")/../.." || exit 1
 O=/tmp/gate; rm -f $O.*
