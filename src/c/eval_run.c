@@ -42,7 +42,7 @@ static void eval_main(Checker *c)
     int code = 125;                     /* a stop of the evaluator, not a program status */
     for (i = 0; i < v->fn.len; i++)
         if (v->fn.data[i].fsym != SYM_NONE &&
-            !strcmp(cident(c, csym(c, v->fn.data[i].fsym)->name), "main"))
+            !strcmp(ev_fn_name(c, v->fn.data[i].fsym), "main"))
             f = &v->fn.data[i];
     v->o.out = c->opt.tast;
     v->o.err = stderr;
@@ -177,29 +177,23 @@ static bool sweep_hasptr(TypeTable *tt, TypeId t)
     return false;
 }
 
-/* Does a pointer parameter of type pt have a target the sweep can make and the gcc build can spell?  The
- * old layout's size limit stays so the set of swept functions does not move (PARKED.md). */
+/* Does a pointer parameter of type pt have a target the sweep can make (non-zero size) and the gcc build
+ * can spell? */
 static bool sweep_pointee_ok(Ev *v, TypeId pt)
 {
     TypeTable *tt = &v->c->tt;
     TypeId e = type_base(tt, pt);
-    uint64_t n = 16, size = 0;
     bool ok = false;
     if (type_is_void(tt, e)) {
-        size = 4 * n;
         ok = true;
     } else if (type_is_object(tt, e)) {
         uint64_t esz = type_size(tt, e, &ok);
-        if (sweep_hasptr(tt, e))
-            n = 2;
-        if (esz == 1)
-            n = 4 * 16;
+        ok = ok && esz;
         if (type_is_record(tt, e) && type_record(tt, e)->flags & RF_NOKEYWORD)
             ok = false;             /* __va_list_tag: no spelling to cast to */
-        size = esz * n;
     }
     v->res.status = EV_OK;
-    return ok && size;
+    return ok;
 }
 
 static bool sweep_par(Ev *v, TypeId t, SArg *a)
@@ -372,7 +366,7 @@ static void state_run(Ev *v, SStates *ss, size_t i, const int *arg)
 {
     const Fn *f = &v->fn.data[i];
     uint64_t slot[SMAXBP] = {0}, x = 0;
-    const char *nm = cident(f->c, csym(f->c, f->fsym)->name);
+    const char *nm = ev_fn_name(f->c, f->fsym);
     uint32_t fsym = f->fsym;
     size_t np = f->np, k;
     size_t before = v->obj.len;
@@ -383,7 +377,7 @@ static void state_run(Ev *v, SStates *ss, size_t i, const int *arg)
         if (arg[k] >= 0)
             slot[k] = ss->st[arg[k]].ptr;
     state_key(f->c, f->ret, t.key, sizeof t.key);
-    t.ext = !(fsym & SYM_LOCAL) && csym(f->c, fsym)->linkage == LK_EXTERNAL;
+    t.ext = ev_fn_external(f->c, fsym);
     v->c = f->c;
     fprintf(stderr, "cereal: state: running %s\n", nm);
     v->build = true;
@@ -488,7 +482,7 @@ static bool states_callable(Ev *v, const SStates *ss, Checker *c)
 static bool sweep_cand(const Fn *f)
 {
     return f->fsym != SYM_NONE && f->user && !f->variadic && f->np <= 16 &&
-           strcmp(cident(f->c, csym(f->c, f->fsym)->name), "main");
+           strcmp(ev_fn_name(f->c, f->fsym), "main");
 }
 
 /* Can f be swept: its result and parameters are of types the sweep can make and the gcc build can spell. */
@@ -559,7 +553,7 @@ static void sweep_replay(Ev *v, const SStates *sts, Checker *c, StrBuf *sb, cons
     for (i = 0; s->nstate && i < sts->n; i++) {
         const SState *t = &sts->st[i];
         const Fn *bf = &v->fn.data[t->fi];
-        const char *nm = cident(bf->c, csym(bf->c, bf->fsym)->name);
+        const char *nm = ev_fn_name(bf->c, bf->fsym);
         if (bf->c != c) {               /* another file: its declaration may not be visible, so go by symbol */
             sb_printf(sb, "extern void*c%zu() __asm__(\"%s\");", i, nm);
             sb_printf(sb, "void*q%zu=(void*)c%zu(", i, i);
@@ -1338,12 +1332,6 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     }
 }
 
-static int cmp64(const void *a, const void *b)
-{
-    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
-    return x < y ? -1 : x > y;
-}
-
 /* ---- solving for inputs (docs/CONCOLIC_DESIGN.md) ------------------------------------
  * From a call that finished: rerun it tracked, walk its path keeping the prefix asserted, and at
  * each branch whose other edge no call has taken ask the solver for bytes that follow the prefix
@@ -1926,12 +1914,12 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
             }
             if (w < nwhy) {
                 why[w].edges += fe;
-                if (why[w].nex < 4 && (!why[w].nex || why[w].ex[why[w].nex - 1] != cident(f->c, csym(f->c, f->fsym)->name)))
-                    why[w].ex[why[w].nex++] = cident(f->c, csym(f->c, f->fsym)->name);
+                if (why[w].nex < 4 && (!why[w].nex || why[w].ex[why[w].nex - 1] != ev_fn_name(f->c, f->fsym)))
+                    why[w].ex[why[w].nex++] = ev_fn_name(f->c, f->fsym);
             }
         }
         if (v->c->opt.eval_miss) {                  /* --eval-miss: this function's untaken edges by class */
-            fprintf(stderr, "cereal: miss %s: %zu untaken:", cident(f->c, csym(f->c, f->fsym)->name), ft);
+            fprintf(stderr, "cereal: miss %s: %zu untaken:", ev_fn_name(f->c, f->fsym), ft);
             for (i = 0; i < MC_N; i++)
                 if (cls[i])
                     fprintf(stderr, " %s %zu;", miss_name[i], cls[i]);
@@ -1940,7 +1928,7 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
         if (fe) {                                   /* per function, and by the place the stop read its pointer */
             char key[200], *p;
             size_t w;
-            fprintf(stderr, "cereal: stuck: %zu %s: %s%s%s\n", fe, cident(f->c, csym(f->c, f->fsym)->name), sw[k].why,
+            fprintf(stderr, "cereal: stuck: %zu %s: %s%s%s\n", fe, ev_fn_name(f->c, f->fsym), sw[k].why,
                     sw[k].loc[0] ? " @ " : "", sw[k].loc);
             snprintf(key, sizeof key, "%s%s%s", sw[k].why, sw[k].loc[0] ? " @ " : "", sw[k].loc);
             if ((p = strstr(key, " (+")) != NULL)
@@ -2035,7 +2023,7 @@ static void eval_sweep(Checker *c0)
             ;
         if (b == i && c0->opt.link)     /* the file's first candidate: announce the file */
             fprintf(out, "file %s\n", main_path(f->c));
-        fprintf(out, "fp %zu %s\n", i, cident(f->c, csym(f->c, f->fsym)->name));
+        fprintf(out, "fp %zu %s\n", i, ev_fn_name(f->c, f->fsym));
     }
     for (i = 0; i < v->fn.len; i++) {
         Fn *f = &v->fn.data[i];
@@ -2046,7 +2034,7 @@ static void eval_sweep(Checker *c0)
         if (!sweep_cand(f))
             continue;
         v->c = c;
-        name = cident(c, csym(c, f->fsym)->name);
+        name = ev_fn_name(c, f->fsym);
         if (c0->opt.eval_only && !name_listed(c0->opt.eval_only, name))
             continue;
         nv = sts.n ? state_variants(f, &sts, states_callable(v, &sts, c)) : 0;
@@ -2094,7 +2082,7 @@ static void eval_sweep(Checker *c0)
             v->dict_on = false;
             if (v->dict.len) {
                 size_t d, m = 0;
-                qsort(v->dict.data, v->dict.len, sizeof *v->dict.data, cmp64);
+                qsort(v->dict.data, v->dict.len, sizeof *v->dict.data, u64_cmp);
                 for (d = 0; d < v->dict.len; d++)
                     if (!d || v->dict.data[d] != v->dict.data[d - 1])
                         v->dict.data[m++] = v->dict.data[d];

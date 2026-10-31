@@ -586,11 +586,6 @@ static void opt_acc(char *acc, size_t n, const char *arg)
     acc[l] = 0;
 }
 
-static int opt_cmp(const void *a, const void *b)
-{
-    return strcmp(*(const char *const *)a, *(const char *const *)b);
-}
-
 /* The accumulated options in a form that is equal exactly when gcc's
  * optimization nodes are: an -O level makes the order significant (it only
  * defaults flags not set so far), otherwise the order does not matter. */
@@ -610,7 +605,7 @@ static void opt_canon(char *acc)
         }
     }
     if (!lvl)
-        qsort(tok, nt, sizeof *tok, opt_cmp);
+        qsort(tok, nt, sizeof *tok, strp_cmp);
     {
         char out[512];
         size_t l = 0;

@@ -209,6 +209,9 @@ void ev_kill_obj(Ev *v, uint32_t id);
 /* The bytes [p, p + n) of a live object, or NULL after a trap. */
 Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what);
 bool ev_pun_ok(Ev *v, const Obj *o, uint64_t off, uint64_t n);
+/* Function fsym: has external linkage (a global symbol), its name. */
+bool ev_fn_external(Checker *c, uint32_t fsym);
+const char *ev_fn_name(Checker *c, uint32_t fsym);
 void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n);
 void ev_zero_n(Ev *v, uint64_t dst, uint64_t n);
 /* Drops the dead objects at the end of the table (see eval.c). */

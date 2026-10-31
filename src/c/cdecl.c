@@ -3796,12 +3796,6 @@ static void body_visit(Checker *c, uint32_t i)
 
 /* ---- unused things --------------------------------------------------------- */
 
-static int cmp_u32(const void *a, const void *b)
-{
-    uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
-    return x < y ? -1 : x > y;
-}
-
 /* The identifier e names, as a target of a plain assignment: not a read. */
 static void wr_mark(Checker *c, uint32_t e)
 {
@@ -3938,14 +3932,14 @@ static void read_scan(Checker *c, uint32_t first, uint32_t last,
         }
     }
     if (c->stack.len)
-        qsort(c->stack.data, c->stack.len, sizeof(uint32_t), cmp_u32);
+        qsort(c->stack.data, c->stack.len, sizeof(uint32_t), u32_cmp);
     for (k = first; k <= last; k++) {
         uint32_t id;
         if (ntag(c, k) != N_IDENT)
             continue;
         if (c->stack.len &&
             bsearch(&k, c->stack.data, c->stack.len, sizeof(uint32_t),
-                    cmp_u32))
+                    u32_cmp))
             continue;
         id = cnode_ident(c, k);
         for (j = 0; j < n; j++)

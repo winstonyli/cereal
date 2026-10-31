@@ -703,13 +703,6 @@ static void on_miss(void *ctx, const char *spelled, bool angled, size_t first_di
     vec_push(&l->v, m);
 }
 
-static uint64_t now_ns(clockid_t id)
-{
-    struct timespec ts;
-    clock_gettime(id, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000u + (uint64_t)ts.tv_nsec;
-}
-
 /* Stat data and content hash of `path` as the index sees a file (7.2). */
 bool crec_stat_hash(const char *path, uint32_t *size, uint64_t *mtime_ns,
                     uint64_t *hash)
@@ -801,7 +794,7 @@ CRecResult crec_index(Options *o, const char *path, const CRecStatVec *cfg,
     Wr w;
     VEC(FilRow) fils = {0}, sys = {0};
     BlobVec recs = {0}, chunks = {0};
-    uint64_t t0 = now_ns(CLOCK_MONOTONIC), started = now_ns(CLOCK_REALTIME),
+    uint64_t t0 = clock_ns(CLOCK_MONOTONIC), started = clock_ns(CLOCK_REALTIME),
              bytes = 0, flag_hash = crec_flag_hash(o);
     uint32_t i, nsm, *rec_of = NULL;
     size_t k, nmiss;
@@ -930,12 +923,12 @@ CRecResult crec_index(Options *o, const char *path, const CRecStatVec *cfg,
     memset(&t, 0, sizeof t);
     t.flag_hash = flag_hash;
     t.started_ns = started;
-    t.written_ns = now_ns(CLOCK_REALTIME);
+    t.written_ns = clock_ns(CLOCK_REALTIME);
     t.main_path = st_add(&w.st, path);
     t.errors = over ? 0 : (uint32_t)tu.diag.nerrors;
     t.status = over ? CTU_OVER_LIMIT : t.errors ? CTU_PARTIAL : CTU_OK;
     t.bytes_read = (uint32_t)bytes;
-    t.index_ms = (uint32_t)((now_ns(CLOCK_MONOTONIC) - t0) / 1000000u);
+    t.index_ms = (uint32_t)((clock_ns(CLOCK_MONOTONIC) - t0) / 1000000u);
     sec = wr_sec(&w, T_TU, sizeof t);
     sec_put(sec, &t);
     sec = wr_sec(&w, T_FILS, sizeof(CRecFil));

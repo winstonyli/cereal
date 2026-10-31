@@ -267,13 +267,6 @@ static bool carry_overlay(void *ctx, const char *path, const char **buf,
     return true;
 }
 
-static double carry_now(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
-}
-
 static long carry_rss_kb(void)   /* VmRSS; stats only */
 {
     char line[128];
@@ -329,9 +322,9 @@ static int verify_carry_one(Options *o, const char *path, FILE *out, FILE *err)
         rc = 2;
     } else {
         rss0 = carry_rss_kb();
-        t0 = carry_now();
+        t0 = now_sec();
         c = cindex_carry(ix1, &tu1.sm, &tu2.sm);
-        t1 = carry_now();
+        t1 = now_sec();
         rss1 = carry_rss_kb();
         if (getenv("CEREAL_CARRY_STATS"))
             fprintf(err, "carry: index %zu bytes, carried %zu bytes (shared %zu), "
@@ -1005,13 +998,6 @@ static void transcript(TU *tu, Index *ix, const MacroGraph *g)
 }
 
 /* ---- token streams (index --replay --tokens) ---------------------------- */
-
-static double now_sec(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
-}
 
 typedef struct TokDump {
     bool full;                  /* print every token */

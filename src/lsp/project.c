@@ -215,13 +215,6 @@ static struct Project {
     Stats cnt;                      /* counters; copied to st each pass */
 } P;
 
-static uint64_t mono_ns(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000u + (uint64_t)ts.tv_nsec;
-}
-
 /* The server's anonymous resident memory (8.5): not the mapped record files. */
 static double rss_anon_mb(void)
 {
@@ -323,7 +316,7 @@ static void run_child(IJob *j)
                                           *getenv("CEREAL_FAULT_CHILD");
     posix_spawn_file_actions_t fa;
     pid_t pid;
-    uint64_t deadline = mono_ns() + (uint64_t)P.set.sub_s * 1000000000u;
+    uint64_t deadline = clock_ns(CLOCK_MONOTONIC) + (uint64_t)P.set.sub_s * 1000000000u;
     const LspConfig *cfg = j->cfg;
     snprintf(nbuf, sizeof nbuf, "%ld", j->entry);
     snprintf(mbuf, sizeof mbuf, "%u", (unsigned)(j->max_bytes >> 20));
@@ -394,7 +387,7 @@ static void run_child(IJob *j)
         mutex_lock(&P.m);
         stop = P.stop;
         mutex_unlock(&P.m);
-        if (stop || mono_ns() > deadline) {
+        if (stop || clock_ns(CLOCK_MONOTONIC) > deadline) {
             timed_out = !stop;
             kill(pid, SIGKILL);
             break;
@@ -636,7 +629,7 @@ static void fail(PTu *tu, const char *what)
 {
     PSched *s = &tu->sched;
     char msg[700];
-    uint64_t now = mono_ns();
+    uint64_t now = clock_ns(CLOCK_MONOTONIC);
     s->next.fails++;
     s->next.at = s->next.fails == 1 ? now + 60ull * 1000000000u
                : s->next.fails == 2 ? now + 600ull * 1000000000u : ~(uint64_t)0;
@@ -781,7 +774,7 @@ static void gc(void)
 static void evict(void)
 {
     P.cnt.evicted += store_evict(&P.store, P.set.cache_max_mb);
-    P.next_evict = mono_ns() + (uint64_t)EVICT_MS * 1000000u;
+    P.next_evict = clock_ns(CLOCK_MONOTONIC) + (uint64_t)EVICT_MS * 1000000u;
 }
 
 static void after_write(void)
@@ -790,7 +783,7 @@ static void after_write(void)
         return;
     P.writes = 0;
     gc();
-    if (mono_ns() >= P.next_evict)
+    if (clock_ns(CLOCK_MONOTONIC) >= P.next_evict)
         evict();
 }
 
@@ -993,8 +986,8 @@ static void do_event(const Event *e)
         e->fn(e->arg, e->seq);
         break;
     case EV_SWEEP:                      /* a query met a file the index did not expect */
-        if (P.have_store && mono_ns() - P.last_hint_ns >= (uint64_t)HINT_SWEEP_MIN_MS * 1000000u) {
-            P.last_hint_ns = mono_ns();
+        if (P.have_store && clock_ns(CLOCK_MONOTONIC) - P.last_hint_ns >= (uint64_t)HINT_SWEEP_MIN_MS * 1000000u) {
+            P.last_hint_ns = clock_ns(CLOCK_MONOTONIC);
             sweep_all();
         }
         break;
@@ -1086,9 +1079,9 @@ static void *sched_main(void *arg)
     if (stopped)
         return NULL;
     startup();
-    P.next_sweep = mono_ns() + (uint64_t)(P.set.sweep_s * 1e9);
-    P.next_gen = mono_ns() + (uint64_t)GEN_POLL_MS * 1000000u;
-    P.next_lock = mono_ns() + (uint64_t)(P.set.lock_retry_s * 1e9);
+    P.next_sweep = clock_ns(CLOCK_MONOTONIC) + (uint64_t)(P.set.sweep_s * 1e9);
+    P.next_gen = clock_ns(CLOCK_MONOTONIC) + (uint64_t)GEN_POLL_MS * 1000000u;
+    P.next_lock = clock_ns(CLOCK_MONOTONIC) + (uint64_t)(P.set.lock_retry_s * 1e9);
     for (;;) {
         EventVec evs = {0};
         IJobVec dn = {0};
@@ -1097,7 +1090,7 @@ static void *sched_main(void *arg)
         bool idle, quiescent;
         mutex_lock(&P.m);
         for (;;) {
-            now = mono_ns();
+            now = clock_ns(CLOCK_MONOTONIC);
             if (first || P.stop || P.events.len || P.done.len)
                 break;
             wake = now + 3600ull * 1000000000u;
@@ -1129,7 +1122,7 @@ static void *sched_main(void *arg)
         memset(&P.done, 0, sizeof P.done);
         last_edit = P.last_edit_ns;
         mutex_unlock(&P.m);
-        now = mono_ns();
+        now = clock_ns(CLOCK_MONOTONIC);
         for (i = 0; i < dn.len; i++)
             finish(dn.data[i]);
         vec_free(&dn);
@@ -1532,7 +1525,7 @@ void project_edit(void)
     if (!P.started)
         return;
     mutex_lock(&P.m);
-    P.last_edit_ns = mono_ns();
+    P.last_edit_ns = clock_ns(CLOCK_MONOTONIC);
     for (i = 0; i < P.running.len; i++)
         if (!P.running.data[i]->sub)
             atomic_store_u32(&P.running.data[i]->cancel, 1);

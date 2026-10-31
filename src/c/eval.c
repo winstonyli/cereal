@@ -755,12 +755,12 @@ static uint64_t hash_name(const char *s)
     return h;
 }
 
-static bool fn_external(Checker *c, uint32_t fsym)
+bool ev_fn_external(Checker *c, uint32_t fsym)
 {
     return !(fsym & SYM_LOCAL) && csym(c, fsym)->linkage == LK_EXTERNAL;
 }
 
-static const char *fn_name(Checker *c, uint32_t fsym)
+const char *ev_fn_name(Checker *c, uint32_t fsym)
 {
     return cident(c, csym(c, fsym)->name);
 }
@@ -788,12 +788,12 @@ static void fn_sync(Ev *v)
         v->fi_id[k] = (uint32_t)i + 1;
         /* an external definition: not an inline one, which each file has its own copy of (the intrinsics of
          * <emmintrin.h>) */
-        if (!v->link || !f->user || !fn_external(f->c, f->fsym) || (csym(f->c, f->fsym)->flags & CSF_INLINE))
+        if (!v->link || !f->user || !ev_fn_external(f->c, f->fsym) || (csym(f->c, f->fsym)->flags & CSF_INLINE))
             continue;
-        for (k = hash_name(fn_name(f->c, f->fsym)) & (v->fi_cap - 1); v->fi_nm[k]; k = (k + 1) & (v->fi_cap - 1))
-            if (!strcmp(fn_name(v->fn.data[v->fi_nm[k] - 1].c, v->fn.data[v->fi_nm[k] - 1].fsym),
-                        fn_name(f->c, f->fsym)))
-                v->dup_def = fn_name(f->c, f->fsym);
+        for (k = hash_name(ev_fn_name(f->c, f->fsym)) & (v->fi_cap - 1); v->fi_nm[k]; k = (k + 1) & (v->fi_cap - 1))
+            if (!strcmp(ev_fn_name(v->fn.data[v->fi_nm[k] - 1].c, v->fn.data[v->fi_nm[k] - 1].fsym),
+                        ev_fn_name(f->c, f->fsym)))
+                v->dup_def = ev_fn_name(f->c, f->fsym);
         v->fi_nm[k] = (uint32_t)i + 1;
     }
     v->fi_done = v->fn.len;
@@ -816,12 +816,12 @@ static Fn *find_def(Ev *v, Checker *c, uint32_t fsym)
     Fn *g = find_fn(v, c, fsym);
     const char *nm;
     size_t k;
-    if (g || !v->link || !fn_external(c, fsym))
+    if (g || !v->link || !ev_fn_external(c, fsym))
         return g;
-    nm = fn_name(c, fsym);
+    nm = ev_fn_name(c, fsym);
     for (k = hash_name(nm) & (v->fi_cap - 1); v->fi_nm[k]; k = (k + 1) & (v->fi_cap - 1)) {
         Fn *d = &v->fn.data[v->fi_nm[k] - 1];
-        if (!strcmp(fn_name(d->c, d->fsym), nm))
+        if (!strcmp(ev_fn_name(d->c, d->fsym), nm))
             return d;
     }
     return NULL;
@@ -2359,33 +2359,31 @@ EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *ou
 
 /* ---- the checker's hooks ------------------------------------------------------- */
 
+static Ev *ev_make(Checker *c)
+{
+    EvOpts o;
+    memset(&o, 0, sizeof o);
+    o.fuel = 50000000;
+    o.depth = 1000;
+    o.wrap = c->opt.eval_wrap;
+    o.maxobj = c->opt.eval == EVAL_SWEEP ? EV_SWEEP_OBJ : 0;
+    return ev_new(c, &o);
+}
+
 Ev *ev_of(Checker *c)
 {
     if (c->opt.link) {
         struct EvLink *lk = c->opt.link;
         if (!lk->ev) {
-            EvOpts o;
-            memset(&o, 0, sizeof o);
-            o.fuel = 50000000;
-            o.depth = 1000;
-            o.wrap = c->opt.eval_wrap;
-            o.maxobj = c->opt.eval == EVAL_SWEEP ? EV_SWEEP_OBJ : 0;
-            lk->ev = ev_new(c, &o);
+            lk->ev = ev_make(c);
             lk->ev->link = true;
         }
         lk->ev->c = c;
         c->ev = lk->ev;
         return lk->ev;
     }
-    if (!c->ev) {
-        EvOpts o;
-        memset(&o, 0, sizeof o);
-        o.fuel = 50000000;
-        o.depth = 1000;
-        o.wrap = c->opt.eval_wrap;
-        o.maxobj = c->opt.eval == EVAL_SWEEP ? EV_SWEEP_OBJ : 0;
-        c->ev = ev_new(c, &o);
-    }
+    if (!c->ev)
+        c->ev = ev_make(c);
     return c->ev;
 }
 

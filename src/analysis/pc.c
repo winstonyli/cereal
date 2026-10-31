@@ -181,16 +181,10 @@ void pc_trace_free(Analysis *a)
     a->pct = NULL;
 }
 
-static int cmp_u64(const void *a, const void *b)
-{
-    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
-    return x < y ? -1 : x > y;
-}
-
 static bool was_taken(const PcUnit *u, uint64_t inst)
 {
     return u->taken.len &&
-           bsearch(&inst, u->taken.data, u->taken.len, sizeof *u->taken.data, cmp_u64);
+           bsearch(&inst, u->taken.data, u->taken.len, sizeof *u->taken.data, u64_cmp);
 }
 
 /* ---- host valuation --------------------------------------------------- */
@@ -794,7 +788,7 @@ bool pc_fold(PcUnit *u, Analysis *a, SrcFile *main)
         memset(&a->pct->taken, 0, sizeof a->pct->taken);
     }
     if (u->taken.len)
-        qsort(u->taken.data, u->taken.len, sizeof *u->taken.data, cmp_u64);
+        qsort(u->taken.data, u->taken.len, sizeof *u->taken.data, u64_cmp);
     fold_file(u, main, -1, BDD_TRUE, 0);
     return !u->over;
 }

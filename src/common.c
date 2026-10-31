@@ -457,10 +457,54 @@ bool dir_create_all(const char *path, char *err, size_t errn)
     return ok;
 }
 
+int u32_cmp(const void *pa, const void *pb)
+{
+    uint32_t a = *(const uint32_t *)pa, b = *(const uint32_t *)pb;
+    return a < b ? -1 : a > b;
+}
+
 int u64_cmp(const void *pa, const void *pb)
 {
     uint64_t a = *(const uint64_t *)pa, b = *(const uint64_t *)pb;
     return a < b ? -1 : a > b;
+}
+
+uint64_t clock_ns(clockid_t id)
+{
+    struct timespec ts;
+    clock_gettime(id, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000u + (uint64_t)ts.tv_nsec;
+}
+
+double now_sec(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+
+uint64_t fnv1a64(const char *s, size_t n)
+{
+    uint64_t h = 0xCBF29CE484222325ull;
+    while (n--)
+        h = (h ^ (unsigned char)*s++) * 0x100000001B3ull;
+    return h;
+}
+
+int hexval(int c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+int strp_cmp(const void *a, const void *b)
+{
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
 }
 
 size_t sort_unique_u64(uint64_t *v, size_t n)

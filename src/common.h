@@ -9,6 +9,7 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -109,8 +110,18 @@ bool file_openable(const char *path);
 /* The length of the UTF-8 byte order mark at the start of buf (libcpp drops
  * it), else 0. */
 size_t bom_len(const void *buf, size_t n);
-/* qsort order of u64s, and sorting with the duplicates removed (returns the new length). */
+/* qsort order of u32s and u64s, and sorting u64s with the duplicates removed (returns the new length). */
+int u32_cmp(const void *a, const void *b);
 int u64_cmp(const void *a, const void *b);
+/* Nanoseconds on clock `id`, and seconds on CLOCK_MONOTONIC. */
+uint64_t clock_ns(clockid_t id);
+double now_sec(void);
+/* FNV-1a over n bytes (64-bit); stored by callers, so its values must not change. */
+uint64_t fnv1a64(const char *s, size_t n);
+/* The value of one hex digit, else -1. */
+int hexval(int c);
+/* qsort/bsearch order of an array of char *. */
+int strp_cmp(const void *a, const void *b);
 size_t sort_unique_u64(uint64_t *v, size_t n);
 /* A loadable file whole, as the index sees it (no byte order mark, NUL
  * terminated); NULL if it is not.  *st gets the fstat from before the read (7.2:

@@ -72,13 +72,6 @@ static int pc_hook_flags(void)
            (strstr(e, "cover") ? PCD_COVER : 0);
 }
 
-static double now_ms(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec * 1e3 + (double)ts.tv_nsec / 1e6;
-}
-
 void analysis_keep_pc(Analysis *a)
 {
     a->keep_pc = true;
@@ -116,12 +109,12 @@ static void pc_finish(Analysis *a)
         return;
     }
     u = xmalloc(sizeof *u);
-    t0 = now_ms();
+    t0 = now_sec() * 1e3;
     pc_fold(u, a, a->pp->main_file);
     pc_trace_free(a);
     if (flags >= 0) {
         if (strstr(getenv("CEREAL_PCDUMP"), "time"))
-            fprintf(stderr, "pc: fold_ms=%.1f\n", now_ms() - t0);
+            fprintf(stderr, "pc: fold_ms=%.1f\n", now_sec() * 1e3 - t0);
         pc_dump(u, stderr, flags);
     }
     if (a->keep_pc)

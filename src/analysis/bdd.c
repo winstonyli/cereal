@@ -150,12 +150,6 @@ Bdd bdd_or(BddMgr *m, Bdd f, Bdd g)
     return bdd_ite(m, f, BDD_TRUE, g);
 }
 
-static int cmp_u32(const void *a, const void *b)
-{
-    uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
-    return x < y ? -1 : x > y;
-}
-
 uint32_t bdd_scratch_begin(BddScratch *s, size_t n)
 {
     if (s->cap < n) {
@@ -230,7 +224,7 @@ void bdd_vars(BddMgr *m, Bdd f, BddVars *out)
         vec_push(&st, n->hi);
     }
     vec_free(&st);
-    qsort(all.data, all.len, sizeof *all.data, cmp_u32);
+    qsort(all.data, all.len, sizeof *all.data, u32_cmp);
     for (i = 0; i < all.len; i++)
         if (!i || all.data[i] != all.data[i - 1])
             vec_push(out, all.data[i]);

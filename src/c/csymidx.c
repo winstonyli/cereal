@@ -1532,12 +1532,6 @@ void cindex_hover(const CIndex *ix, const uint32_t *decls, size_t nd, bool md,
         sb_printf(out, "\nand %zu more", more);
 }
 
-static int u32_cmp(const void *pa, const void *pb)
-{
-    uint32_t a = *(const uint32_t *)pa, b = *(const uint32_t *)pb;
-    return a < b ? -1 : a > b;
-}
-
 size_t cindex_select(const CIndex *ix, const uint32_t *decls, size_t nd,
                      CIdxQuery q, int fi, uint32_t **out)
 {

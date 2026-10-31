@@ -171,14 +171,6 @@ static void deferred_run(DeferredReq *d);
 static void *rename_worker(void *arg);
 static void deferred_free(DeferredReq *d);
 
-/* CEREAL_LSP_STATS: timings of builds on stderr */
-static double stats_now(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
-}
-
 static bool stats_on(void)
 {
     static int on = -1;
@@ -333,14 +325,14 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
     cs[0] = analysis_par_client(&an);
     cs[1] = index_par_client(&s->ix);
     {
-        double t0 = stats_now(), t1;
+        double t0 = now_sec(), t1;
         r = par_run(&s->tu, main, NULL, false, &po, cs, 2);
-        t1 = stats_now();
+        t1 = now_sec();
         if (r == PAR_DONE)
             analysis_finish(&an);
         if (stats_on())
             fprintf(stderr, "lsp: par_run %.3fs, analyses %.3fs\n", t1 - t0,
-                    stats_now() - t1);
+                    now_sec() - t1);
     }
     if (r == PAR_DONE) {
         /* finished above */
@@ -372,10 +364,10 @@ static Snapshot *build(const char *main, Overlay *ov, Options *opt,
         return NULL;
     }
     {
-        double t = stats_now();
+        double t = now_sec();
         mgraph_build(&s->graph, &s->tu.pp);
         if (stats_on())
-            fprintf(stderr, "lsp: macro graph %.3fs\n", stats_now() - t);
+            fprintf(stderr, "lsp: macro graph %.3fs\n", now_sec() - t);
     }
     return s;
 }
@@ -1055,10 +1047,10 @@ static void *builder_main(void *arg)
         u->building = true;
         want = u->want;
         atomic_store_u32(&u->cancel, 0);
-        t0 = stats_now();
+        t0 = now_sec();
         ov = overlay_capture();
         mutex_unlock(&S.m);
-        t1 = stats_now();
+        t1 = now_sec();
 
         /* names typed and deleted pile up in a shared interner: start a
          * new one when it has grown well past what a build needs */
@@ -1083,12 +1075,12 @@ static void *builder_main(void *arg)
              * (B3_DESIGN.md 12.5) until its own check publishes. */
             eligible = check_eligible(u, snap);
             if (eligible && u->snap && u->snap->cidx) {
-                double tc = stats_now();
+                double tc = now_sec();
                 carried = cindex_carry(u->snap->cidx, &u->snap->tu.sm,
                                        &snap->tu.sm);
                 if (stats_on())
                     fprintf(stderr, "lsp: carry %.3fs, kept %u of %u events\n",
-                            stats_now() - tc, carried->nev,
+                            now_sec() - tc, carried->nev,
                             u->snap->cidx->nev);
             }
         }
@@ -1108,11 +1100,11 @@ static void *builder_main(void *arg)
                 if (old) /* shown until the check ends: no flicker */
                     cdiags_carry(snap, old);
             }
-            t2 = stats_now();
+            t2 = now_sec();
             lsp_publish_diagnostics(snap, NULL, S.enc, doc_open_in, u);
             if (stats_on())
                 fprintf(stderr, "lsp: overlay %.3fs, build %.3fs, publish "
-                        "%.3fs\n", t1 - t0, t2 - t1, stats_now() - t2);
+                        "%.3fs\n", t1 - t0, t2 - t1, now_sec() - t2);
             if (S.inactive_regions) {
                 size_t i;
                 for (i = 0; i < S.docs.len; i++)
@@ -1142,12 +1134,12 @@ static void *builder_main(void *arg)
             while (S.hold && !S.stop && u->want == want)
                 cond_wait(&S.work, &S.m);
             mutex_unlock(&S.m);
-            t3 = stats_now();
+            t3 = now_sec();
             c = check_unit(u, checking);
             mutex_lock(&S.m);
             if (stats_on())
                 fprintf(stderr, "lsp: check %.3fs%s, symbols %zu bytes\n",
-                        stats_now() - t3, c ? "" : " (cancelled)",
+                        now_sec() - t3, c ? "" : " (cancelled)",
                         c ? cindex_bytes(c->cidx) : 0);
             if (u->want == want && !atomic_load_u32(&u->cancel)) {
                 if (c) {
@@ -1621,7 +1613,7 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
     StrBuf sb = {0};
     JsonWriter w;
     const char *err = NULL;
-    double t0 = stats_now(), t1;
+    double t0 = now_sec(), t1;
     arena_init(&a);
     path = uri ? uri_to_path(&a, uri) : NULL;
     memset(&r, 0, sizeof r);
@@ -1756,11 +1748,11 @@ static bool handle_request(const JsonValue *id, ReqKind k, CPolicy pol,
         return true;
     }
     json_end_object(&w);
-    t1 = stats_now();
+    t1 = now_sec();
     send_json(&sb);
     if (stats_on())
         fprintf(stderr, "lsp: request %d: %.3fs, sent %zu bytes in %.3fs, "
-                "carried %d\n", (int)k, t1 - t0, sb.len, stats_now() - t1,
+                "carried %d\n", (int)k, t1 - t0, sb.len, now_sec() - t1,
                 (int)r.c_carried);
     sb_free(&sb);
     lsp_cdiags_release(&r);
@@ -2024,16 +2016,16 @@ int lsp_main(FILE *in, FILE *out)
         Arena a;
         JsonValue *msg, *id, *params;
         const char *method;
-        double t0 = stats_now(), t1;
+        double t0 = now_sec(), t1;
         bool taken = false;         /* body and a are the builder's now */
         if (!(body = rpc_read(in, &len)))
             break;
-        t1 = stats_now();
+        t1 = now_sec();
         arena_init(&a);
         msg = json_parse(&a, body, len); /* values point into body */
         if (stats_on() && len > (1u << 20))
             fprintf(stderr, "lsp: %zu-byte message: read %.3fs, parse %.3fs\n",
-                    len, t1 - t0, stats_now() - t1);
+                    len, t1 - t0, now_sec() - t1);
         if (!msg || msg->kind != JV_OBJ) {
             respond_error(NULL, -32700, "parse error");
             free(body);

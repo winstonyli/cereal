@@ -3001,11 +3001,6 @@ static SrcFile *user_file_named(SrcMgr *sm, const char *path)
     return NULL;
 }
 
-static int cmp_keys(const void *a, const void *b)
-{
-    return strcmp(*(const char *const *)a, *(const char *const *)b);
-}
-
 /* Diagnostic d placed at b..e of file f (of sm) with message msg, as offsets
  * in the files' texts; the strings and notes are the arena's.  carry is
  * left false. */
@@ -3193,7 +3188,7 @@ static const char *diag_key(SrcMgr *sm, PosEncoding enc, Arena *a, SrcLoc b,
 
 static bool key_seen(const char *key, const char **keys, size_t n)
 {
-    return n && bsearch(&key, keys, n, sizeof *keys, cmp_keys);
+    return n && bsearch(&key, keys, n, sizeof *keys, strp_cmp);
 }
 
 void cdiags_free(Snapshot *s)
@@ -3334,7 +3329,7 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
             put_diag(&w, sm0, f0, enc, &a, &cd);
         }
         if (seen.len)
-            qsort(seen.data, seen.len, sizeof *seen.data, cmp_keys);
+            qsort(seen.data, seen.len, sizeof *seen.data, strp_cmp);
         if (chk) {
             SrcMgr *sm = &chk->sm;
             SrcFile *f = user_file_named(sm, f0->path);

@@ -618,11 +618,6 @@ static bool mix_var(void *ctx, uint32_t var)
                   pc_var_owner(x->cx, var) == x->owner ? x->b : x->a, var) == 1;
 }
 
-static int name_cmp(const void *a, const void *b)
-{
-    return strcmp(*(const char *const *)a, *(const char *const *)b);
-}
-
 size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation *v2,
                const char ***names)
 {
@@ -658,7 +653,7 @@ size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation *v2,
         for (i = 0; i < n; i++)
             out[i] = pc_owner_name(cx, use->data[i]);
     }
-    qsort(out, n, sizeof *out, name_cmp);
+    qsort(out, n, sizeof *out, strp_cmp);
     vec_free(&vs);
     vec_free(&cand);
     vec_free(&hit);

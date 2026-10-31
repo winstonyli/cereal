@@ -334,14 +334,6 @@ static void skip_cand(Pass *P, Cand *c, const char *why, bool exit_flag)
     skip_add(P, key, g->pline, g->pcol, g->id, why, exit_flag);
 }
 
-static uint64_t fnv(const char *s, size_t n)
-{
-    uint64_t h = 0xCBF29CE484222325ull;
-    while (n--)
-        h = (h ^ (unsigned char)*s++) * 0x100000001B3ull;
-    return h;
-}
-
 /* Reads the file the units read, once; sets gf->skip if it cannot be
  * changed, or is not what the units saw. */
 static void gload(Pass *P, GFile *g)
@@ -411,7 +403,7 @@ static void gload(Pass *P, GFile *g)
 have:
     g->text = raw;
     g->len = n;
-    g->hash = fnv(raw, n);
+    g->hash = fnv1a64(raw, n);
     for (k = 0; k < n && raw[k] != '\n'; k++)
         ;
     /* an editor keeps the line ends of its text itself */
@@ -1141,12 +1133,6 @@ static bool gate_ok(Pass *P, int mode, const uint32_t *ids, size_t n, char *deta
 
 /* ---- phases and bisection ------------------------------------------------------------ */
 
-static int u32_cmp(const void *a, const void *b)
-{
-    uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
-    return x < y ? -1 : x > y;
-}
-
 typedef VEC(uint32_t) U32Vec;
 
 /* The candidates L that pass on top of base and what was accepted so far
@@ -1292,7 +1278,7 @@ static bool recheck(Pass *P, const Sub *s, U32Vec *ids)
         raw = read_file(g->key, &n);
         if (raw && n >= 3 && !memcmp(raw, "\357\273\277", 3))
             off = 3;
-        same = raw && fnv(raw + off, n - off) == g->hash;
+        same = raw && fnv1a64(raw + off, n - off) == g->hash;
         if (!raw)
             P->io_error = true;
         free(raw);

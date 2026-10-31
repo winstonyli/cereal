@@ -136,13 +136,6 @@ void plan_free(Plan *p)
     vec_free(&p->pragmas);
 }
 
-static double now(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
-}
-
 /* ---- boundaries ------------------------------------------------------ */
 
 /* Records are appended in item order; n is a published count. */
@@ -232,7 +225,7 @@ static void run_worker(void *arg)
     Par *P = w->par;
     Tok t;
     int c;
-    w->t_begin = now();
+    w->t_begin = now_sec();
     if (fault_hit("par-worker"))
         fatal("injected fault (par-worker)");
     while (pp_next(&w->pp, &t)) {
@@ -263,7 +256,7 @@ static void run_worker(void *arg)
     }
     if (P->cache)
         cell_reads_sort(&w->reads); /* by item, for encoding cells */
-    w->t_end = now();
+    w->t_end = now_sec();
 }
 
 /* ---- setup ----------------------------------------------------------- */
@@ -495,7 +488,7 @@ static void run_prepare(void *arg)
 static void join_clients(Par *P, const Slice *sl, int ns)
 {
     int s, c;
-    double t0 = now(), t1, t2;
+    double t0 = now_sec(), t1, t2;
     PrepJob *jobs = xcalloc((size_t)(ns * P->nclients) + 1, sizeof *jobs);
     size_t nj = 0, k;
     for (s = 0; s < ns; s++)
@@ -519,7 +512,7 @@ static void join_clients(Par *P, const Slice *sl, int ns)
             run_prepare(&jobs[k]);
     }
     free(jobs);
-    t1 = now();
+    t1 = now_sec();
     for (s = 0; s < ns; s++) {
         Worker *w = sl[s].w;
         size_t i;
@@ -532,13 +525,13 @@ static void join_clients(Par *P, const Slice *sl, int ns)
                 P->clients[c].join(P->clients[c].ctx, w->wctx[c],
                                    (uint32_t)sl[s].from, (uint32_t)sl[s].to);
     }
-    t2 = now();
+    t2 = now_sec();
     for (c = 0; c < P->nclients; c++)
         if (P->clients[c].finish)
             P->clients[c].finish(P->clients[c].ctx, P->tp);
     if (getenv("CEREAL_PAR_STATS"))
         fprintf(stderr, "par: prepare %.3fs, join %.3fs, finish %.3fs\n",
-                t1 - t0, t2 - t1, now() - t2);
+                t1 - t0, t2 - t1, now_sec() - t2);
 }
 
 static void write_merged(Par *P, FILE *out)
@@ -585,7 +578,7 @@ static void write_merged(Par *P, FILE *out)
         int k;
         fprintf(stderr, "par: A %.3fs B %.3fs merge %.3fs; %zu items, %llu "
                 "bytes, %d workers, %d slices:", P->t_a - P->t0,
-                P->t_b - P->t_a, now() - P->t_b, P->plan.items.len,
+                P->t_b - P->t_a, now_sec() - P->t_b, P->plan.items.len,
                 (unsigned long long)P->plan.text_bytes, P->nw, ns);
         for (k = 0; k < ns; k++)
             fprintf(stderr, " w%d[%zu,%zu)", sl[k].w->idx, sl[k].from,
@@ -1008,9 +1001,9 @@ static void merge_cells(Par *P)
                 st->uncacheable, complete ? "; placed" : "");
     }
     {
-        double t1 = now(), t2;
+        double t1 = now_sec(), t2;
         merge_diags(P, sl.data, (int)sl.len);
-        t2 = now();
+        t2 = now_sec();
         if (getenv("CEREAL_PAR_STATS"))
             fprintf(stderr, "par: cells coded %.3fs, diagnostics %.3fs\n",
                     t1 - P->t_b, t2 - t1);
@@ -1086,7 +1079,7 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
                           : path, po))
         return PAR_FALLBACK;
     memset(&P, 0, sizeof P);
-    P.t0 = now();
+    P.t0 = now_sec();
     P.tu = tu;
     P.print = out != NULL;
     P.linemarkers = linemarkers;
@@ -1105,7 +1098,7 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
         return PAR_FAILED;
     }
     pp_run_phase_a(&tu->pp, &P.plan);
-    P.t_a = now();
+    P.t_a = now_sec();
 
     want = po->threads > 0 ? po->threads : cpu_count();
     if (!po->force) {
@@ -1125,7 +1118,7 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
         cell_cache_begin(P.cache, po->cell_config, nclients);
         cell_build_init(&P.cb, &tu->pp, &P.plan);
         find_hits(&P);
-        P.t_cells = now();
+        P.t_cells = now_sec();
         P.nw = (int)plan_workers(&P, want, &starts, &ends);
     } else {
         P.t_cells = P.t_a;
@@ -1159,7 +1152,7 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
         P.tp = tp;
     }
 
-    P.t_b = now();
+    P.t_b = now_sec();
     if (P.abort)
         res = PAR_FALLBACK;
     else if (P.cache)
@@ -1176,11 +1169,11 @@ ParResult par_run(TU *tu, const char *path, FILE *out, bool linemarkers,
     }
 
     if (getenv("CEREAL_PAR_STATS"))
-        fprintf(stderr, "par: merge and joins done at %.3fs\n", now() - P.t0);
+        fprintf(stderr, "par: merge and joins done at %.3fs\n", now_sec() - P.t0);
     for (i = 0; i < P.nw; i++)
         worker_free(&P, &P.w[i]);
     if (getenv("CEREAL_PAR_STATS"))
-        fprintf(stderr, "par: workers freed at %.3fs\n", now() - P.t0);
+        fprintf(stderr, "par: workers freed at %.3fs\n", now_sec() - P.t0);
     free(P.w);
     if (P.toks) {
         if (res == PAR_DONE && P.tcells_ok && !cancelled(&P)) {

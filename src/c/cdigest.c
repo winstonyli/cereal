@@ -13,14 +13,6 @@ static inline uint64_t mix(uint64_t h, uint64_t v)
     return h;
 }
 
-static uint64_t hash_str(const char *s, size_t n)
-{
-    uint64_t h = 0xCBF29CE484222325ull;
-    while (n--)
-        h = (h ^ (unsigned char)*s++) * 0x100000001B3ull;
-    return h;
-}
-
 /* tags whose token spelling is part of the meaning */
 static bool spelled(unsigned tag)
 {
@@ -48,7 +40,7 @@ static uint64_t type_hash(Checker *c, TyMemo *memo, TypeId t)
     if (!m->set || m->t != t) {
         StrBuf sb = {0};
         type_print(&c->tt, &sb, t);
-        m->h = hash_str(sb.data ? sb.data : "", sb.len);
+        m->h = fnv1a64(sb.data ? sb.data : "", sb.len);
         m->t = t;
         m->set = true;
         sb_free(&sb);
@@ -86,7 +78,7 @@ void checker_digest_unit(Checker *c)
         if (spelled(n->tag)) {
             size_t len;
             const char *s = ttext(c, n->tok, &len);
-            h = mix(h, hash_str(s, len));
+            h = mix(h, fnv1a64(s, len));
         }
         if (cexpr_is_expr(n->tag)) {
             TypeId t = c->ty[i];

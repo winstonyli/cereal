@@ -33,14 +33,6 @@ static void on_skipped(void *ctx, SrcLoc b, SrcLoc e)
     vec_push((RangeVec *)ctx, x);
 }
 
-static uint64_t fnv(const char *s, size_t n)
-{
-    uint64_t h = 0xCBF29CE484222325ull;
-    while (n--)
-        h = (h ^ (unsigned char)*s++) * 0x100000001B3ull;
-    return h;
-}
-
 void fixres_free(FixResult *r)
 {
     vec_free(&r->files);
@@ -90,7 +82,7 @@ static void collect(FixResult *r, TU *tu, const RangeVec *skipped)
             char rp[PATH_MAX];
             ff.path = arena_strdup(&r->arena, f->path);
             ff.key = arena_strdup(&r->arena, realpath(f->path, rp) ? rp : f->path);
-            ff.hash = fnv(f->buf, f->size);
+            ff.hash = fnv1a64(f->buf, f->size);
             ff.size = f->size;
             by_id[f->id] = (int32_t)r->files.len;
             vec_push(&r->files, ff);
