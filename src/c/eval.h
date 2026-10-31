@@ -11,8 +11,13 @@ typedef struct EvOpts {
     long fuel;                  /* node evaluations before "step limit" */
     unsigned depth;             /* call depth limit */
     bool wrap;                  /* signed overflow wraps (gcc -fwrapv) instead of trapping */
+    uint64_t maxobj;            /* the most bytes of one object (a bigger request traps); 0: 1 GiB */
     FILE *out, *err;            /* the program's stdout and stderr; NULL: output is dropped */
 } EvOpts;
+
+/* The sweep's bound on one object: the largest real object seen in the Lua sweep is 16 MB (its stack), and the solver picks
+ * sizes of 61 MB to 1 GB for the same allocations; such an object is written whole by the code that fills it (docs/STOPPED_SEEDS_SPIKE.md, Memory). */
+#define EV_SWEEP_OBJ ((uint64_t)32 << 20)
 
 enum { EV_OK, EV_UNSUPPORTED, EV_TRAP, EV_FUEL, EV_EXIT };
 

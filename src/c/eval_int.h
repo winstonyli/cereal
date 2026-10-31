@@ -215,6 +215,8 @@ void ev_zero_n(Ev *v, uint64_t dst, uint64_t n);
 void ev_trim(Ev *v);
 /* A write of concrete bytes into [off, off + n) of o: their shadows end. */
 void ev_unshadow(Obj *o, uint64_t off, uint64_t n);
+#define EV_SHADOW_CAP (1u << 24)    /* the most bytes of an object that carries a shadow array (4 bytes of expression per byte) */
+bool ev_shadow(Obj *o);
 /* An untyped read of [off, off + n) of o (memcpy, the host library): a lazy object's untouched bytes
  * are zero (a draw with the default 0 when it is short, see Ev.lazy_zero), now initialized. */
 void ev_lazy_zero(Ev *v, Obj *o, uint64_t off, uint64_t n);

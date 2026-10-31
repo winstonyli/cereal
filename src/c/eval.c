@@ -102,7 +102,7 @@ uint32_t ev_new_obj(Ev *v, uint64_t size, bool ro)
         ev_fail(v, EV_FUEL, "exceeded the object limit");
         return 0;
     }
-    if (size > (1u << 30)) {
+    if (size > (v->o.maxobj ? v->o.maxobj : (uint64_t)1 << 30)) {
         TRAP(v, "object of %llu bytes", (unsigned long long)size);
         return 0;
     }
@@ -148,6 +148,15 @@ void ev_unshadow(Obj *o, uint64_t off, uint64_t n)
         memset(o->sh + off, 0, n * sizeof *o->sh);
 }
 
+
+/* Gives o its shadow array (a slot expression per byte), unless it is too big to be worth one: what is
+ * stored into such an object stays concrete.  False: no shadow. */
+bool ev_shadow(Obj *o)
+{
+    if (!o->sh && o->size <= EV_SHADOW_CAP)
+        o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
+    return o->sh != NULL;
+}
 
 static void sd_init(Ev *v, size_t i);
 
@@ -275,8 +284,8 @@ static void store_sh(Ev *v, Obj *o, uint64_t off, unsigned n, uint32_t sh)
         ev_unshadow(o, off, n);
         return;
     }
-    if (!o->sh)
-        o->sh = xcalloc(o->size ? o->size : 1, sizeof *o->sh);
+    if (!ev_shadow(o))
+        return;
     for (i = 0; i < n; i++)
         o->sh[off + i] = i < 8 ? sx_byte(&v->sx, sh, i) : 0;
 }
@@ -458,13 +467,10 @@ void ev_copy_n(Ev *v, uint64_t dst, uint64_t src, uint64_t n)
     ev_lazy_zero(v, s, (uint64_t)poff(src), n);
     memmove(d->b + poff(dst), s->b + poff(src), n);
     memmove(d->init + poff(dst), s->init + poff(src), n);
-    if (s->sh) {
-        if (!d->sh)
-            d->sh = xcalloc(d->size ? d->size : 1, sizeof *d->sh);
+    if (s->sh && ev_shadow(d))
         memmove(d->sh + poff(dst), s->sh + poff(src), n * sizeof *d->sh);
-    } else {
+    else
         ev_unshadow(d, (uint64_t)poff(dst), n);
-    }
 }
 
 void ev_zero_n(Ev *v, uint64_t dst, uint64_t n)
@@ -2359,6 +2365,7 @@ Ev *ev_of(Checker *c)
             o.fuel = 50000000;
             o.depth = 1000;
             o.wrap = c->opt.eval_wrap;
+            o.maxobj = c->opt.eval == EVAL_SWEEP ? EV_SWEEP_OBJ : 0;
             lk->ev = ev_new(c, &o);
             lk->ev->link = true;
         }
@@ -2372,6 +2379,7 @@ Ev *ev_of(Checker *c)
         o.fuel = 50000000;
         o.depth = 1000;
         o.wrap = c->opt.eval_wrap;
+        o.maxobj = c->opt.eval == EVAL_SWEEP ? EV_SWEEP_OBJ : 0;
         c->ev = ev_new(c, &o);
     }
     return c->ev;

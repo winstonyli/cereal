@@ -516,10 +516,8 @@ static uint64_t h_realloc(Ev *v, const HArg *a, unsigned na)
     keep = o->size < a[1].x ? o->size : a[1].x;
     memcpy(v->obj.data[id - 1].b, o->b, keep);
     memcpy(v->obj.data[id - 1].init, o->init, keep);
-    if (o->sh) {
-        v->obj.data[id - 1].sh = xcalloc(a[1].x, sizeof *o->sh);
+    if (o->sh && ev_shadow(&v->obj.data[id - 1]))
         memcpy(v->obj.data[id - 1].sh, o->sh, keep * sizeof *o->sh);
-    }
     ev_kill_obj(v, pid(a[0].x));
     return mkptr(id, 0);
 }
