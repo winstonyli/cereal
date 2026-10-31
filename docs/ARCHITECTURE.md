@@ -175,6 +175,7 @@ The differential tests compare the token streams of `cereal -E` and
 | `src/macrotab.[ch]` | per-build macro state by identifier id: definitions, history, poisoning |
 | `src/cell.[ch]`, `src/hash.h` | cell cache: phase-B results reused across builds, stored relative to their cells (PARALLEL.md "Cells") |
 | `src/c/` | the C parser: keywords (`ckw.h`), post-order syntax trees (`ast.[ch]`), typedef scopes (`scope.[ch]`), recursive descent (`parse.[ch]`); PARSER.md |
+| `src/c/` (after the parser) | the checker (`check.c`, `cexpr.c`, `cdecl.c`, `cstmt.c`, `cwarn_*`), types (`type.[ch]`), the typed AST (`tast.c`; TAST_DESIGN.md), the control-flow graph (`tcfg.c`), the evaluator (`eval.c`, `eval_run.c`, `eval_libc.c`; EVAL_DESIGN.md) and the x86-64 back end (`cgx86.c`, `mir.[ch]`, `mir_elf.c`, `cgdata.c`; TAST_T9_PLAN.md) |
 | `src/toks.[ch]` | a cell build's token stream without storing it: per-cell token counts and hashes, regeneration by re-running cells (PARSER.md) |
 | `src/lsp/` | language server: framing, positions, configuration, builder, requests (docs/LSP.md) |
 | `src/json.[ch]` | JSON writer (buffered) and DOM reader |

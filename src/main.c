@@ -49,10 +49,6 @@ static void usage(FILE *o)
         , o);
     fputs(      /* a second literal: C99 only promises 4095 characters */
         "                --dump-cfg: print the control-flow graph of each function\n"
-        "  run           run the program in the evaluator: cereal run FILE.c [-- ARGS...]\n"
-        "                (one file; undefined behaviour stops it with the reason;\n"
-        "                exit status: the program's, or 125 when the evaluator stops;\n"
-        "                --eval-wrap: signed overflow wraps, as gcc -fwrapv)\n"
         "                --verify-cfg: --dump-cfg, and check each graph\n"
         "                --dump-asm: print each function as x86-64 assembly (a # comment\n"
         "                    names what it cannot do yet)\n"
@@ -68,6 +64,10 @@ static void usage(FILE *o)
         "                FILE (a --dump-summaries output) against the state at\n"
         "                its entry\n"
         "  -fsyntax-only  the same as check\n"
+        "  run           run the program in the evaluator: cereal run FILE.c [-- ARGS...]\n"
+        "                (one file; undefined behaviour stops it with the reason;\n"
+        "                exit status: the program's, or 125 when the evaluator stops;\n"
+        "                --eval-wrap: signed overflow wraps, as gcc -fwrapv)\n"
         "  lsp           language server on stdin/stdout\n"
         "  index-summary [--root DIR] [--compdb DB] (--cache DIR | --dump) FILE\n"
         "                check FILE as the language server would and write its\n"

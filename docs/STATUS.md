@@ -10,8 +10,18 @@ in [ROADMAP.md](ROADMAP.md).
   parallel for large files), with macro / conditional / include analyses
   (`cereal lint`).
 - A hand-written C99 + GNU parser and a type checker that reports gcc-13
-  diagnostics (`-fsyntax-only`, `-std=c99`, `-pedantic`, `-W...`).
+  diagnostics (`cereal check`, `-fsyntax-only`, `-std=`, `-pedantic`, `-W...`).
 - An index and LSP server over the same engine (`cereal index|query|lsp`).
+- A typed AST and a control-flow graph per function, built from the checker's
+  result (`--dump-tast`, `--verify-tast`, `--dump-cfg`, `--verify-cfg`;
+  TAST_DESIGN.md).
+- An evaluator over the graph (`cereal run FILE.c`; `--eval-sweep` drives each
+  function with generated and solver-chosen inputs and compares it with gcc;
+  EVAL_DESIGN.md, CONCOLIC_DESIGN.md, LAZY_BLOBS_DESIGN.md, MULTITU_DESIGN.md).
+- An experimental x86-64 back end for a subset of C (`--dump-asm`,
+  `--emit-obj=FILE`; `src/c/cgx86.c`, `mir_elf.c`; TAST_T9_PLAN.md): Lua, libuv
+  and zstd link from its objects (`tests/lua_e2e.sh`, `tests/libuv_e2e.sh`,
+  `tests/zstd_e2e.sh`).
 - Fix-its (ROADMAP C1): `-fdiagnostics-parseable-fixits`, a JSON `fixits` array,
   `-fdiagnostics-generate-patch`, `cereal fix` (Round 214) and `cereal fix
   --edits=FILE --diff` (the edit builder's testing input). Over the 7042 C files of gcc.dg and c-c++-common the
