@@ -151,10 +151,10 @@ Deferred in prose elsewhere and missing from this list until the scan. "Checked"
 | Directory-prefix interning of manifest FILS paths | An estimate of 20.6% of the cache; not implemented. | B5_DESIGN 5.5 | parked |
 | A fuzzer on random edits for the carried index (reuse the cells' differential fuzzer) | No consumer asked; `tests/fuzz_cells.py` exists to copy from. | B3_DESIGN 12.11 | parked |
 | A 64-file `TextCache` for project queries | Files are read once per query; p95 is 3 ms without it. Overlaps the stat-validated hash cache row above. | HISTORY Round 229 | parked |
-| Share only decls and strings so the old event arrays are freed after an edit (`cindex_touched` reads `core->by_decl`) | A cleanup, not a memory fix. | HISTORY Rounds 201, 203; `cindex_touched`, src/c/csymidx.c:2665 | parked |
+| Share only decls and strings so the old event arrays are freed after an edit (`cindex_touched` reads `core->by_decl`) | A cleanup, not a memory fix. | HISTORY Rounds 201, 203; `cindex_touched`, src/c/csymidx.c:2673 | parked |
 | A side table to merge decl and scope fields exactly | Saves about 4 bytes per decl. | B3_DESIGN section 11 | decided against |
 | Move the function-definition code out of `cdecl.c` into its own file | About 28 imports for 13% of the file. | HISTORY Round 165 | decided against |
-| `_Generic`/`typeof` of a bit-field expression: gcc gives the narrow bit-field type (lvalues, assignment, `++`, `+=` values; `+` stays narrow at 33+ bits); cereal gives the declared type | Probed 2026-10-18 (docs/TAST_DESIGN.md 3.2): only visible through `_Generic`, `typeof` and `__builtin_types_compatible_p` on bit-fields. | TAST_DESIGN 3.2; `cexpr.c:6745` | parked |
+| `_Generic`/`typeof` of a bit-field expression: gcc gives the narrow bit-field type (lvalues, assignment, `++`, `+=` values; `+` stays narrow at 33+ bits); cereal gives the declared type | Probed 2026-10-18 (docs/TAST_DESIGN.md 3.2): only visible through `_Generic`, `typeof` and `__builtin_types_compatible_p` on bit-fields. | TAST_DESIGN 3.2; `cexpr.c:6935` (assignment result type) | parked |
 
 ## TAST generalizations (docs/TAST_DESIGN.md section 13; trigger "asked for" unless stated)
 | What | Why parked | Evidence | Status |
