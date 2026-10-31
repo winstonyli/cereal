@@ -15,6 +15,7 @@ Moved out of `PARKED.md` (row "Stopped calls as solver seeds, and a trapped call
 - Library oracle with the solver, N=8, run `2026-10-30-trapq-oracle`: zstd 50714 finished, 24 differ (all `ZSTD_DCtx_get_bmi2`, which reads the CPU), 0 gcc crashes; Lua 44778 finished, 4 differ, 269 gcc crashed (before the change, run `2026-10-28-solveoracle-off-lua`: 8 differ, 259 crashed). The four Lua differences were not named (only the last 15 lines of output were kept).
 - Gate: run 2317 / san 2316 passed, 0 failed, san findings 0, globals 34 allowed, verify 2 / 1 / 0, callgrind 3.907G (HEAD 3.908G).
 - Peak resident size of the built sweep was not sampled.
+- zstd object sizes (run `2026-10-30-zstd-bigalloc`, built tree plus a print of every `ev_new_obj` request of 8 MiB or more before the bound; seed 1234, one program with `--eval-state`; log in the run folder): 408 requests, 304 above 1 GiB (sizes near 2^64 or 2^44, from wrapped arithmetic on solver values: garbage either way) and 104 from 32 MiB to 1 GiB, which the bound traps. Only five requests (10.5 to 20.5 MiB) are below the bound. The 104 are mostly 705.3 MiB (zstd's own compression workspace for a high level or large window: `ZSTD_compressBegin*`, `ZSTD_compress_usingCDict`, `ZSTD_compress_usingDict`, `ZSTD_compressCCtx`), also 640 MiB (`ZSTD_createCDict*`) and 48 to 524 MiB. So on zstd the 32 MiB bound is not a clean separator: it also stops legitimate large workspaces, and the sweep never runs those calls past the allocation. Lua's real maximum is 16 MB (the stack), so there it is clean.
 
 ## Designs
 
