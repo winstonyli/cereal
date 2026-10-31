@@ -30,7 +30,6 @@ typedef struct GDecl {
     TypeId pre;              /* DC_PARM: the array type before it decayed */
     int width;               /* fields: bits, -1: not a bit-field */
     bool default_int;
-    bool funcdef_ok;
 } GDecl;
 
 /* The minimum precision of v in a type of signedness uns (gcc's

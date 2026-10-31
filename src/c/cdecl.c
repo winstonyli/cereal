@@ -3188,14 +3188,14 @@ TypeId type_of_typename(Checker *c, uint32_t i)
 /* ---- function definitions ------------------------------------------------------- */
 
 typedef struct FdParts {
-    uint32_t specs, declared, scope, compound, scope_end;
+    uint32_t specs, declared, scope, compound;
 } FdParts;
 
 static void fd_parts(Checker *c, uint32_t fd, FdParts *p)
 {
     Kids k;
     uint32_t j;
-    p->specs = p->declared = p->scope = p->compound = p->scope_end = NO_NODE;
+    p->specs = p->declared = p->scope = p->compound = NO_NODE;
     kids_get(c, fd, &k);
     for (j = 0; j < k.n; j++) {
         uint32_t n = k.p[j];
@@ -3214,9 +3214,6 @@ static void fd_parts(Checker *c, uint32_t fd, FdParts *p)
             break;
         case N_COMPOUND:
             p->compound = n;
-            break;
-        case N_SCOPE_END:
-            p->scope_end = n;
             break;
         default:
             break;

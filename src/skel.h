@@ -48,7 +48,6 @@ typedef struct Skeleton {
     /* include-guard shape: #ifndef G / #define D ... #endif covering all */
     struct Ident *guard_ifndef;
     struct Ident *guard_define;
-    int guard_ifndef_index;
     bool guard_covers_file;
 } Skeleton;
 

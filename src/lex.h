@@ -28,7 +28,6 @@ void lex_norm_check(const Lexer *L, DiagEngine *dg, SrcLoc loc, const char *star
 
 typedef struct LineNote {
     SrcLoc loc;          /* where gcc reports it (cleaned-line column) */
-    SrcLoc line_start;   /* its line */
     SrcLoc pos;          /* raw offset: reported once the lexer reaches it */
     char kind;           /* 'c' converted, 'i' ignored, 's' backslash + blank */
     char x;              /* the trigraph's third character */

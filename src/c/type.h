@@ -168,7 +168,6 @@ TypeId type_array(TypeTable *tt, TypeId elem, uint64_t n);
 TypeId type_array_incomplete(TypeTable *tt, TypeId elem);
 TypeId type_array_flex(TypeTable *tt, TypeId elem);
 TypeId type_vla(TypeTable *tt, TypeId elem);
-TypeId type_vla_sized(TypeTable *tt, TypeId elem, uint64_t n);
 /* A VLA that remembers its size expression's spelling (TYPE_EXTRA 0: none). */
 TypeId type_vla_x(TypeTable *tt, TypeId elem, uint64_t n, bool sized,
                   uint32_t txt);
@@ -251,9 +250,6 @@ bool type_compatible(TypeTable *tt, TypeId a, TypeId b);
 bool type_tu_mixed(TypeTable *tt, TypeId a, TypeId b);
 /* The composite of two compatible types (6.2.7p3). */
 TypeId type_composite(TypeTable *tt, TypeId a, TypeId b);
-/* The type of a parameter declared with type t: arrays and functions
- * become pointers, qualifiers dropped (for the function type). */
-TypeId type_param_adjust(TypeTable *tt, TypeId t);
 /* The promoted type of an argument without a prototype (6.5.2.2p6). */
 TypeId type_default_promote(TypeTable *tt, TypeId t);
 TypeId type_int_promote(TypeTable *tt, TypeId t);

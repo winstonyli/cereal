@@ -724,20 +724,6 @@ const Field *find_field(Checker *c, TypeId rec, uint32_t name,
     return NULL;
 }
 
-bool cexpr_find_member(Checker *c, TypeId rec, uint32_t name, TypeId *ty,
-                       uint64_t *off_bits, bool *bitfield)
-{
-    uint64_t off = 0;
-    unsigned q = 0;
-    const Field *f = find_field(c, rec, name, &off, &q);
-    if (!f)
-        return false;
-    *ty = type_qual(f->ty, q);
-    *off_bits += off;
-    *bitfield = (f->flags & FF_BITFIELD) != 0;
-    return true;
-}
-
 /* ---- spelling suggestions (gcc's spellcheck.cc) ---------------------------- */
 
 

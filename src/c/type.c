@@ -225,11 +225,6 @@ TypeId type_vla(TypeTable *tt, TypeId elem)
     return mk_array(tt, TY_VLA, 0, elem, 0);
 }
 
-TypeId type_vla_sized(TypeTable *tt, TypeId elem, uint64_t n)
-{
-    return mk_array(tt, TY_VLA, TF_SIZED, elem, n);
-}
-
 TypeId type_vla_x(TypeTable *tt, TypeId elem, uint64_t n, bool sized,
                   uint32_t txt)
 {
@@ -653,16 +648,6 @@ TypeId type_default_promote(TypeTable *tt, TypeId t)
             return TYPE_UNQUAL(t);
     }
     return type_int_promote(tt, t);
-}
-
-TypeId type_param_adjust(TypeTable *tt, TypeId t)
-{
-    TypeKind k = type_ckind(tt, t);
-    if (k == TY_ARRAY || k == TY_VLA)
-        return type_ptr(tt, type_base(tt, t));
-    if (k == TY_FUNC)
-        return type_ptr(tt, t);
-    return t;
 }
 
 /* ---- compatibility --------------------------------------------------- */

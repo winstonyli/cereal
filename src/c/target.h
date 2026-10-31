@@ -52,8 +52,7 @@ typedef enum {
 typedef enum {
     LD_X87,          /* 80-bit extended */
     LD_IEEE64,       /* long double is double */
-    LD_IEEE128,
-    LD_IBM128        /* double-double */
+    LD_IEEE128
 } LongDoubleFormat;
 
 typedef enum {
@@ -68,7 +67,6 @@ typedef struct Target {
     uint8_t align[TY_NBUILTIN];     /* alignof */
     uint8_t member_align[TY_NBUILTIN]; /* in a record (i386: 4 for 8) */
     uint8_t ptr_size, ptr_align;
-    uint8_t max_align;              /* __BIGGEST_ALIGNMENT__ */
     uint8_t default_aligned;        /* __attribute__((aligned)) */
     bool char_signed;
     LongDoubleFormat long_double;

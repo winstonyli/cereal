@@ -2336,6 +2336,7 @@ EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *ou
     Fn *f = find_fn(v, v->c, fsym);
     Fr top;
     uint64_t x = 0;
+    uint32_t rsh = 0;               /* the result shadow: unused at the top */
     memset(&v->res, 0, sizeof v->res);
     start_budget(v);
     memset(&top, 0, sizeof top);
@@ -2343,7 +2344,7 @@ EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *ou
     if (!f)
         UNSUP(v, "no retained body for the function");
     else
-        x = run_fn(&top, f, args, v->ash, n, 0, &v->rsh);
+        x = run_fn(&top, f, args, v->ash, n, 0, &rsh);
     if (!v->res.status && out)
         *out = x;
     {

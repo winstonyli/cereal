@@ -15,12 +15,11 @@
 
 typedef struct PPath {           /* one file's current state (7.2) */
     const char *path;
-    uint64_t mtime_ns;           /* the stat data of the last look ... */
-    uint64_t taken_ns;           /* ... and when it was taken */
+    uint64_t mtime_ns;           /* the stat data of the last look */
     uint64_t hash;               /* 0: the file does not exist */
     uint32_t size;
     bool known;                  /* hash describes (size, mtime_ns) */
-    bool racy;                   /* mtime within 2 s of taken_ns: never trusted */
+    bool racy;                   /* mtime within 2 s of the look: never trusted */
     bool seen;                   /* stat'ed at all */
 } PPath;
 

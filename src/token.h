@@ -61,7 +61,6 @@ enum {
     TF_SPELL        = 1 << 5,  /* spelling at region + aux */
     TF_SPLICED      = 1 << 6,  /* raw text contains splices/trigraphs */
     TF_UCN          = 1 << 7,
-    TF_DOLLAR       = 1 << 8,
     TF_FROM_DEFINED = 1 << 9,  /* 1/0 produced by `defined` in #if */
     TF_PARAM        = 1 << 10, /* macro body: parameter, index in punct */
     TF_ORIGIN_BODY  = 1 << 11, /* copied from a replacement list */

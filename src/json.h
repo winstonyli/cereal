@@ -17,7 +17,6 @@ typedef struct JsonWriter {
 
 void json_init(JsonWriter *w, FILE *out);
 void json_init_buf(JsonWriter *w, StrBuf *sb);
-void json_flush(JsonWriter *w);
 /* A value that is already JSON text (e.g. a request id echoed back). */
 void json_raw(JsonWriter *w, const char *text, size_t n);
 void json_begin_object(JsonWriter *w);

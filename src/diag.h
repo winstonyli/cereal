@@ -73,8 +73,6 @@ typedef struct Diagnostic {
                                 a parallel merge drops later duplicates */
 } Diagnostic;
 
-typedef enum { DIAG_FMT_TEXT, DIAG_FMT_JSON } DiagFormat;
-
 /* -W configuration: built once from the command line, then read-only. */
 typedef struct DiagConfig DiagConfig;
 DiagConfig *diag_config_new(void);
@@ -103,9 +101,8 @@ typedef struct DiagEngine {
     bool track0;             /* -ftrack-macro-expansion=0: report macro
                                 tokens at the expansion point */
     bool show_system;        /* report warnings located in system headers */
-    bool immediate;          /* print as reported (text format) */
+    bool immediate;          /* print as reported */
     bool color;
-    DiagFormat format;
     FILE *out;
     /* Supplies the current include chain (innermost first). */
     void (*include_chain)(void *ctx, SrcLoc **locs, int *n);
@@ -239,7 +236,6 @@ void diag_print_json(DiagEngine *d, FILE *out);
 void diag_list_options(FILE *out);
 void diag_merge_from(DiagEngine *d, size_t from, size_t mid);
 
-const DiagOption *diag_find_option(const char *name);
 /* Display width of a code point as gcc counts it (libcpp wcwidth). */
 int wc_width(uint32_t cp);
 

@@ -135,7 +135,7 @@ size_t fixset_resolve(FixSet *s)
     for (g = 0; g <= s->ngroups; g++)
         vec_push(&s->skipped_by, 0);
     while (i < s->edits.len) {
-        size_t j = i, k, m, nacc = 0;
+        size_t j = i, k, m;
         uint32_t by = 0;
         VEC(FixEdit) fresh = {0};
         g = s->edits.data[i].group;
@@ -173,11 +173,9 @@ size_t fixset_resolve(FixSet *s)
                 memmove(s->acc.data + pos + 1, s->acc.data + pos,
                         (s->acc.len - 1 - pos) * sizeof *s->acc.data);
                 s->acc.data[pos] = fresh.data[m];
-                nacc++;
             }
         }
         vec_free(&fresh);
-        (void)nacc;
         i = j;
     }
     return nskip;

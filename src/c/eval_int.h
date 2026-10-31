@@ -135,7 +135,6 @@ struct Ev {
     Sx sx;                      /* the expressions of the current tracked call */
     uint32_t sh;                /* the shadow of the value ev_node last returned */
     const uint32_t *ash;        /* ev_call: a shadow per argument, NULL: all concrete */
-    uint32_t rsh;               /* ev_call: the shadow of the result */
     VEC(PathEnt) path;          /* the tracked call's branches and pins, at most PATH_MAX_ENT */
     bool path_full;             /* ... and entries were dropped after that */
     VEC(uint32_t) dom;          /* conditions that hold of every input (the range of a pointer offset the solver may pick), asserted with the path */

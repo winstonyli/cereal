@@ -80,12 +80,8 @@ typedef struct UnitSummary {
     SumRead *reads;         /* sorted by (ns, mode, name, key) */
     size_t nreads;
     bool owned;             /* loaded by summary_load: free with summary_free */
-    void *priv;
 } UnitSummary;
 
-/* The summary of the unit checker_unit last checked (NULL unless
- * CheckOptions.summaries); valid until the next checker_unit. */
-const UnitSummary *checker_summary(const Checker *c);
 /* Sets the identity of the next unit.  The default, when none is set, is a
  * digest of the names the unit declares (so editing a body or a member
  * list keeps it).  P3 may pass its own stable unit key. */

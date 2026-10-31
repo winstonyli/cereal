@@ -22,11 +22,6 @@ void scope_push(Scope *s)
     vec_push(&s->marks, (uint32_t)s->log.len);
 }
 
-size_t scope_depth(const Scope *s)
-{
-    return s->marks.len;
-}
-
 void scope_pop(Scope *s, SymSaveVec *save)
 {
     uint32_t mark = vec_pop(&s->marks);

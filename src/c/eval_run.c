@@ -1539,11 +1539,6 @@ static void trap_push(SSearch *q, SSeed sd)
         vec_push(&q->trapped, sd);
 }
 
-static void trap_keep(SSearch *q, LLog *log, uint64_t rs0)
-{
-    trap_push(q, seed_take(log, rs0));
-}
-
 static void search_free(SSearch *q)
 {
     while (q->corpus.len) {
@@ -1782,7 +1777,7 @@ static void mut_gen(SCtx *x)
         if (x->sv && st == EV_OK)
             search_keep(&x->q, &rec, rs0, v->newseen != seen);
         else if (x->sv && st == EV_TRAP)
-            trap_keep(&x->q, &rec, rs0);
+            trap_push(&x->q, seed_take(&rec, rs0));
         vec_free(&rec);
     }
     x->saw_ok |= st == EV_OK;

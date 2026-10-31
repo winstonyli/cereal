@@ -934,7 +934,7 @@ static int rng_cmp(const void *pa, const void *pb)
 static bool compare_unit(Pass *P, const Sub *s, size_t t, const FixResult *r0,
                          const FixResult *r1, int mode, char *detail)
 {
-    size_t i, g, e, nfix = 0, nfixerr = 0, n0 = 0, n1 = 0, a, b;
+    size_t i, g, e, nfixerr = 0, n0 = 0, n1 = 0, a, b;
     bool *fixed;
     DK *d0, *d1;
     bool ok = true;
@@ -952,7 +952,6 @@ static bool compare_unit(Pass *P, const Sub *s, size_t t, const FixResult *r0,
         }
         if (all && !fixed[fg->diag]) {
             fixed[fg->diag] = true;
-            nfix++;
             nfixerr += r0->diags.data[fg->diag].level >= DL_ERROR;
         }
     }
@@ -967,7 +966,6 @@ static bool compare_unit(Pass *P, const Sub *s, size_t t, const FixResult *r0,
             if (!fixed[i] && r0->diags.data[i].hdr &&
                 !strcmp(r0->diags.data[i].hdr, fg->hdr)) {
                 fixed[i] = true;
-                nfix++;
                 nfixerr += r0->diags.data[i].level >= DL_ERROR;
             }
     }
@@ -1053,7 +1051,6 @@ static bool compare_unit(Pass *P, const Sub *s, size_t t, const FixResult *r0,
         ok = false;
     }
 out:
-    (void)nfix;
     free(fixed);
     free(d0);
     free(d1);

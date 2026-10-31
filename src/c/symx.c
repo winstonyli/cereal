@@ -24,8 +24,6 @@ static uint32_t sx_new(Sx *sx, int op, unsigned w, uint32_t a, uint32_t b, uint6
     return (uint32_t)sx->n.len;
 }
 
-static const SxNode *nd(const Sx *sx, uint32_t id) { return &sx->n.data[id - 1]; }
-
 uint32_t sx_sym(Sx *sx, uint32_t off) { return sx_new(sx, SX_SYM, 8, 0, 0, off); }
 uint32_t sx_const(Sx *sx, uint8_t w, uint64_t v) { return sx_new(sx, SX_CONST, w, 0, 0, v); }
 /* Byte j of node a, looking through the zero-extension and joins that loads built, so that a
@@ -33,11 +31,11 @@ uint32_t sx_const(Sx *sx, uint8_t w, uint64_t v) { return sx_new(sx, SX_CONST, w
 uint32_t sx_byte(Sx *sx, uint32_t a, unsigned j)
 {
     for (;;) {
-        const SxNode *n = nd(sx, a);
-        if (n->op == SX_EXT && !(n->k >> 9 & 1) && j < (n->k & 0xff) && j * 8 < nd(sx, n->a)->w) {
+        const SxNode *n = sx_at(sx, a);
+        if (n->op == SX_EXT && !(n->k >> 9 & 1) && j < (n->k & 0xff) && j * 8 < sx_at(sx, n->a)->w) {
             a = n->a;
         } else if (n->op == SX_JOIN) {
-            unsigned wl = nd(sx, n->b)->w;
+            unsigned wl = sx_at(sx, n->b)->w;
             if (j * 8 < wl) {
                 a = n->b;
             } else {
@@ -54,7 +52,7 @@ uint32_t sx_byte(Sx *sx, uint32_t a, unsigned j)
     }
 }
 uint32_t sx_join(Sx *sx, uint32_t hi, uint32_t lo) {
-    return sx_new(sx, SX_JOIN, nd(sx, hi)->w + nd(sx, lo)->w, hi, lo, 0);
+    return sx_new(sx, SX_JOIN, sx_at(sx, hi)->w + sx_at(sx, lo)->w, hi, lo, 0);
 }
 uint32_t sx_ext(Sx *sx, uint32_t a, unsigned bytes, bool sg, bool boolean) {
     return sx_new(sx, SX_EXT, 64, a, 0, bytes | (sg ? 1u << 8 : 0) | (boolean ? 1u << 9 : 0));
@@ -82,7 +80,7 @@ static void put_bits(StrBuf *sb, unsigned w, uint64_t v) {
 
 /* A 64-bit view of node id. */
 static void put_opnd(StrBuf *sb, const Sx *sx, uint32_t id) {
-    unsigned w = nd(sx, id)->w;
+    unsigned w = sx_at(sx, id)->w;
     if (w < 64) sb_printf(sb, "((_ zero_extend %u) n%u)", 64 - w, id);
     else sb_printf(sb, "n%u", id);
 }
@@ -101,7 +99,7 @@ static const char *const bin_name[] = {
 };
 
 static void put_def(const Sx *sx, StrBuf *sb, uint32_t id) {
-    const SxNode *n = nd(sx, id);
+    const SxNode *n = sx_at(sx, id);
     sb_printf(sb, "(define-fun n%u () (_ BitVec %u) ", id, n->w);
     switch (n->op) {
     case SX_SYM:
@@ -117,7 +115,7 @@ static void put_def(const Sx *sx, StrBuf *sb, uint32_t id) {
         sb_printf(sb, "(concat n%u n%u)", n->a, n->b);
         break;
     case SX_EXT: {
-        unsigned wa = nd(sx, n->a)->w, nb = (unsigned)(n->k & 0xff) * 8;
+        unsigned wa = sx_at(sx, n->a)->w, nb = (unsigned)(n->k & 0xff) * 8;
         bool sg = n->k >> 8 & 1, boolean = n->k >> 9 & 1;
         StrBuf t = {0};
         if (nb > wa) nb = wa;
@@ -186,7 +184,7 @@ static void put_defs(SxSolver *s, StrBuf *sb, uint32_t a) {
     s->def.data[a - 1] = 1;
     vec_push(&stk, a);
     while (stk.len) {
-        const SxNode *n = nd(sx, vec_pop(&stk));
+        const SxNode *n = sx_at(sx, vec_pop(&stk));
         uint32_t ch[2] = { 0, 0 };
         switch (n->op) {
         case SX_BYTE: case SX_EXT: case SX_NEG: case SX_NOT: case SX_LNOT: ch[0] = n->a; break;
@@ -205,7 +203,7 @@ static void put_defs(SxSolver *s, StrBuf *sb, uint32_t a) {
     /* children have lower ids than parents, so ascending order defines before use */
     for (uint32_t id = lo; id <= a; id++) {
         if (s->def.data[id - 1] != 1) continue;
-        const SxNode *n = nd(sx, id);
+        const SxNode *n = sx_at(sx, id);
         if (n->op == SX_SYM) {
             uint32_t off = (uint32_t)n->k;
             growto(&s->declared, (size_t)off + 1);
@@ -221,7 +219,7 @@ static void put_defs(SxSolver *s, StrBuf *sb, uint32_t a) {
 }
 
 static void put_cond(SxSolver *s, StrBuf *sb, uint32_t a, bool want) {
-    unsigned w = nd(s->sx, a)->w;
+    unsigned w = sx_at(s->sx, a)->w;
     if (want) sb_printf(sb, "(assert (not (= n%u (_ bv0 %u))))\n", a, w);
     else sb_printf(sb, "(assert (= n%u (_ bv0 %u)))\n", a, w);
 }

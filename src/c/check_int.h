@@ -36,7 +36,6 @@ enum {
     CSF_USED = 64,
     CSF_NORETURN = 128,
     CSF_BLOCK_EXTERN = 256,  /* first declared at block scope */
-    CSF_KR_PENDING = 512,    /* K&R parameter not declared yet */
     CSF_PROTO_DEF = 1024,    /* a function defined with a prototype */
     CSF_KR_DEF = 2048,       /* a function defined K&R style */
     CSF_REGISTER_NAMED = 4096, /* file-scope register with an asm label */
@@ -167,7 +166,7 @@ typedef enum {
 
 /* How the type was given: gcc's c_typespec_kind. */
 typedef enum {
-    TSK_NONE, TSK_RESERVED, TSK_TAGREF, TSK_TAGFIRSTREF, TSK_TAGDEF,
+    TSK_NONE, TSK_TAGREF, TSK_TAGFIRSTREF, TSK_TAGDEF,
     TSK_TYPEDEF, TSK_TYPEOF
 } TypeSpecKind;
 
@@ -233,7 +232,7 @@ typedef struct Spec {
     SrcLoc sat_loc;
     bool default_int;        /* no type specifier at all */
     bool non_sc_seen;
-    bool restrict_q, alignas_seen, has_attrs;
+    bool restrict_q, alignas_seen;
     bool has_type;           /* the type came whole (typedef, tag, typeof) */
     bool error;              /* the base type is erroneous */
     unsigned quals;          /* TQ_* written in the specifiers */
@@ -247,7 +246,7 @@ typedef struct Spec {
     SrcLoc xref_loc;
     Attrs attrs;
     SrcLoc sc_loc, inline_loc, noreturn_loc, thread_loc, qual_loc, type_loc,
-        complex_loc, alignas_loc;
+        complex_loc;
 } Spec;
 
 /* ---- records being defined ------------------------------------------- */
@@ -261,7 +260,6 @@ typedef struct RecDef {
     uint64_t next;           /* enums: the next implicit value */
     TypeId next_ty;          /* enums: its type */
     bool next_overflow;
-    bool has_neg;
     bool cleared;            /* enums: a nested redefinition ended its
                                 being-defined state (gcc) */
 } RecDef;
@@ -782,8 +780,6 @@ SrcLoc exp_if_system(Checker *c, SrcLoc l, uint32_t expr);
 /* gcc's expr_loc: the start of an expression (cexpr.c). */
 SrcLoc expr_loc(Checker *c, uint32_t i);
 uint32_t cbol_tok(Checker *c, uint32_t tok);   /* BOL token + 1 of tok's line (0: none); memoized */
-/* The first ';' at nesting depth 0 from token tok. */
-uint32_t cfind_semi(Checker *c, uint32_t tok);
 
 /* Symbols and scopes (check.c). */
 uint32_t csym_new(Checker *c, bool global, const CSym *s);
@@ -892,10 +888,6 @@ bool cexpr_fits(Checker *c, uint64_t v, TypeId from, TypeId to);
 void cexpr_constexpr_init(Checker *c, CSym *s, uint32_t init, TypeId type);
 void cexpr_constexpr_agg(Checker *c, CSym *s, uint32_t ref, uint32_t init);   /* after the array type is completed */
 void cexpr_cx_fold(Checker *c, uint32_t i);   /* a member of a constexpr aggregate read as a value */
-/* The member name of a record (anonymous members searched); returns the
- * field's type and adds its offset in bits; false if there is none. */
-bool cexpr_find_member(Checker *c, TypeId rec, uint32_t name, TypeId *ty,
-                       uint64_t *off_bits, bool *bitfield);
 /* The member of r that name selects: the one so named, else the first
  * anonymous struct or union member holding it at any depth; its index
  * among r's fields, or -1. */

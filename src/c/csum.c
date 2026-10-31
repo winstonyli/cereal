@@ -806,11 +806,6 @@ void csum_unit_end(Checker *c)
     cs->nunit++;
 }
 
-const UnitSummary *checker_summary(const Checker *c)
-{
-    return c->cs ? &c->cs->cur : NULL;
-}
-
 void checker_set_unit_key(Checker *c, uint64_t key)
 {
     if (c->cs)

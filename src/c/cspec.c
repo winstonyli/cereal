@@ -761,7 +761,6 @@ void specs_visit(Checker *c, uint32_t i)
             SrcLoc loc = tloc(c, nd->tok);
             uint32_t v = 0;
             s.alignas_seen = true;
-            s.alignas_loc = loc;
             cped11(c, loc, "ISO C99 does not support '%s'",
                       tstr(c, nd->tok));
             if (a != NO_NODE) {
@@ -793,7 +792,6 @@ void specs_visit(Checker *c, uint32_t i)
             break;
         }
         case N_ATTRIBUTE:
-            s.has_attrs = true;
             c->attr_defer = true;
             attr_collect(c, n, &s.attrs);
             c->attr_defer = false;

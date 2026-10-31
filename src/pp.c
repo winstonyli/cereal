@@ -653,15 +653,6 @@ static void guard_note_activity(PP *pp)
         fr->guard_state = G_INVALID;
 }
 
-const char *pp_presumed_name(PP *pp, SrcFile *f)
-{
-    IncludeFrame *fr;
-    for (fr = pp->inc; fr; fr = fr->prev)
-        if (fr->file == f)
-            return fr->presumed_name;
-    return f->name;
-}
-
 uint32_t pp_presumed_line(PP *pp, SrcLoc loc)
 {
     SrcFile *f = srcmgr_file_of(pp->sm, loc);
@@ -2091,7 +2082,6 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
     ev.spelled = name;
     ev.angled = angled;
     ev.next = next;
-    ev.macro_expanded = expanded;
     ev.macros_only = macros_only;
     ev.from = pp->inc->file;
 

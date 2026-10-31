@@ -55,7 +55,6 @@ Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
         return f->skel;
     sk = NEW(a, Skeleton);
     sk->file = f;
-    sk->guard_ifndef_index = -1;
     lexer_init(&L, sm, in, NULL, &sm->scratch, lo, f); /* phase A only */
     /* Only directive lines are lexed; other lines are crossed by the skip
      * scanner and just noted as having text (callers test the counts
@@ -163,7 +162,6 @@ Skeleton *skel_get(Arena *a, SrcMgr *sm, Interner *in, LexOptions lo,
         if (g) {
             size_t i;
             sk->guard_ifndef = g;
-            sk->guard_ifndef_index = 0;
             if (d1->kind == SK_DEFINE && d1->depth == 1)
                 sk->guard_define = d1->name;
             for (i = 1; i < sk->dirs.len; i++)

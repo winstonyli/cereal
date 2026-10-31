@@ -28,11 +28,6 @@ void json_init_buf(JsonWriter *w, StrBuf *sb)
     w->sb = sb;
 }
 
-void json_flush(JsonWriter *w)
-{
-    flush_(w);
-}
-
 static void put_(JsonWriter *w, char c)
 {
     if (w->len == sizeof w->buf)

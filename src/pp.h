@@ -132,7 +132,7 @@ typedef enum {
 typedef struct IncludeEvent {
     SrcLoc hash_loc, name_loc, name_end;
     const char *spelled;
-    bool angled, next, macro_expanded;
+    bool angled, next;
     struct SrcFile *file;
     struct SrcFile *from;
     IncludeResult result;
@@ -483,7 +483,6 @@ char *macro_signature(Arena *a, const Macro *m);
 char *macro_body_str(PP *pp, const Macro *m);
 char *tokens_str(PP *pp, TokSpan s);
 uint32_t pp_presumed_line(PP *pp, SrcLoc loc);
-const char *pp_presumed_name(PP *pp, SrcFile *f);
 
 /* ---- internal (pp.c / ppexpand.c / ppexpr.c) ------------------------ */
 void tokbuf_init(PP *pp, TokBuf *b, uint32_t mincap);

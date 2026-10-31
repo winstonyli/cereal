@@ -323,12 +323,6 @@ static long find_index(const char *name)
     return -1;
 }
 
-const DiagOption *diag_find_option(const char *name)
-{
-    long i = find_index(name);
-    return i < 0 ? NULL : &options[i];
-}
-
 static void by_names(uint8_t by, char *buf)
 {
     static const char *const names[] = {"all", "extra", "pedantic", "unused",

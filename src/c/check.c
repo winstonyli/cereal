@@ -393,29 +393,6 @@ SrcLoc cinput_loc(Checker *c, uint32_t tok)
                                    : ctok_loc(c, bol - 1);
 }
 
-/* The index of the first ';' at nesting depth 0 from token tok, or the
- * unit's last token. */
-uint32_t cfind_semi(Checker *c, uint32_t tok)
-{
-    int depth = 0;
-    uint32_t k;
-    for (k = tok; k < c->u->ntoks; k++) {
-        const Tok *t = &c->u->toks[k].t;
-        if (t->kind != TK_PUNCT)
-            continue;
-        switch (t->punct) {
-        case P_LPAREN: case P_LBRACKET: case P_LBRACE: depth++; break;
-        case P_RPAREN: case P_RBRACKET: case P_RBRACE: depth--; break;
-        case P_SEMI:
-            if (depth <= 0)
-                return k;
-            break;
-        default: break;
-        }
-    }
-    return c->u->ntoks ? c->u->ntoks - 1 : 0;
-}
-
 /* ---- symbols and scopes ----------------------------------------------- */
 
 void cgrow_idents(Checker *c, uint32_t n)

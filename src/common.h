@@ -97,7 +97,6 @@ uint32_t hash_bytes(const char *s, size_t n);
 
 /* ---- misc ------------------------------------------------------------ */
 
-bool str_eq_n(const char *a, size_t an, const char *b);
 unsigned edit_distance(const char *a, size_t an, const char *b, size_t bn,
                        unsigned limit);
 char *read_file(const char *path, size_t *len_out);

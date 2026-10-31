@@ -42,7 +42,6 @@ void scope_push(Scope *s);
 /* Leave the innermost scope; its entries are appended to save if given. */
 void scope_pop(Scope *s, SymSaveVec *save);
 void scope_declare(Scope *s, uint32_t ident, SymKind kind);
-size_t scope_depth(const Scope *s);
 
 static inline SymKind scope_lookup(const Scope *s, uint32_t ident)
 {

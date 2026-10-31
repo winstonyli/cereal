@@ -117,7 +117,6 @@ typedef struct CCtx {
     uint32_t lav;
     int64_t rtop;            /* the element count the root ended with */
     bool toolarge;           /* an index of an unsized array past the largest size */
-    bool found_mb_unused;
     uint32_t el_first, el_last; /* the tokens of the element being processed */
     uint64_t *mb;            /* fix-it places so far: 2 * token + 1 for a "{"
                               * before it, 2 * token for a "}" before it */

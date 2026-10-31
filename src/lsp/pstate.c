@@ -79,7 +79,6 @@ static void look(PPath *p, uint64_t now)
 {
     struct stat st;
     p->seen = true;
-    p->taken_ns = now;
     if (stat(p->path, &st) != 0 || !file_loadable(&st)) {
         p->size = 0;
         p->mtime_ns = 0;
@@ -99,7 +98,6 @@ static void look(PPath *p, uint64_t now)
 static void hash_now(PPath *p, uint64_t now)
 {
     p->seen = true;
-    p->taken_ns = now;
     if (!crec_stat_hash(p->path, &p->size, &p->mtime_ns, &p->hash)) {
         p->size = 0;
         p->mtime_ns = 0;

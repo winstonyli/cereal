@@ -191,7 +191,6 @@ static void scan_line_notes(Lexer *L)
     const char *p = L->p, *lim = L->lim;
     bool tri_on;
     uint32_t shift = 0;     /* gcc reports columns of the cleaned line */
-    const char *ls = p;     /* start of the logical line */
     uint32_t cap = 0;
     SrcLoc first_splice = 0;  /* its note column, once the logical line has a splice */
     bool have_splice = false;
@@ -201,7 +200,6 @@ static void scan_line_notes(Lexer *L)
             L->notes = xrealloc(L->notes, cap * sizeof *L->notes); \
         } \
         L->notes[L->nnotes].loc = (at); \
-        L->notes[L->nnotes].line_start = (SrcLoc)(ls - L->region); \
         L->notes[L->nnotes].pos = (SrcLoc)(p - L->region); \
         L->notes[L->nnotes].kind = (k); \
         L->notes[L->nnotes].x = (xc); \
@@ -225,7 +223,6 @@ static void scan_line_notes(Lexer *L)
         if (c == 0x0a) {
             shift = 0;
             have_splice = false;
-            ls = p + 1;
         }
         if (c == '?' && p + 2 < lim && p[1] == '?' && trigraph_char(p[2])) {
             char x = p[2];
