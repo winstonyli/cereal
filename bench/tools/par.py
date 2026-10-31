@@ -19,9 +19,8 @@ Compares gcc vs cereal -fsyntax-only verdicts and diagnostic headers."""
 import sys, os, re, json, subprocess, glob, multiprocessing, shlex, hashlib, shutil, tempfile
 MDDIR = os.path.join(tempfile.gettempdir(), "par-md")
 S =os.path.dirname(os.path.abspath(__file__))
-sys.argv, ARGS = sys.argv[:3], sys.argv
-exec(open(os.path.join(S,"..","corpus.py")).read().split("\ndef run(")[0])
-sys.argv = ARGS
+sys.path.insert(0, os.path.join(S, ".."))
+from corpus import units
 HDR = re.compile(r'^(?:\S[^:]*):(\d+):(\d+): (fatal error|error|warning): (.*)$')
 def hdrs(txt, kinds=("error","warning","fatal error")):
     out=[]
@@ -109,7 +108,7 @@ def dgjobs(extra):
         jobs.append((f,["-I"+root]+["-I"+root+"/.."],MDDIR if md else root,std))
     return jobs
 if __name__=="__main__":
-    cer,st,out=sys.argv[1:4]; extra=ARGS[4:]
+    cer,st,out=sys.argv[1:4]; extra=sys.argv[4:]
     if st=="corpus":
         jobs=[(f,fl,cw,["-std=c99","-pedantic"]) for n,f,fl,cw in units(os.environ.get("CEREAL_CORPUS",os.path.expanduser("~/corpus")))]
     else: jobs=dgjobs(extra)

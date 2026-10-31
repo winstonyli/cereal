@@ -1,8 +1,8 @@
 import sys,os,re,subprocess,multiprocessing,collections,glob
 S=os.path.dirname(os.path.abspath(__file__))
-sys.argv,ARGS=sys.argv[:3],sys.argv
-exec(open(S+"/par.py").read().split('if __name__')[0])
-sys.argv=ARGS
+sys.path[:0] = [S, os.path.join(S, "..")]
+from corpus import units
+from par import dgjobs
 def w(job):
     cer,f,flags,cwd,extra=job
     env=dict(os.environ,LC_ALL="C",ASAN_OPTIONS="detect_leaks=%s"%os.environ.get("LEAKS","0"),UBSAN_OPTIONS="print_stacktrace=1")
@@ -16,7 +16,7 @@ def w(job):
         return (f,m.group(1)[:150]+" @ "+" < ".join(a+":"+b.split("/")[-1] for a,b in fr))
     return None
 if __name__=="__main__":
-    cer,st=sys.argv[1:3]; extra=ARGS[3:]
+    cer,st=sys.argv[1:3]; extra=sys.argv[3:]
     jobs=[(f,fl,cw) for n,f,fl,cw in units(os.environ.get("CEREAL_CORPUS",os.path.expanduser("~/corpus")))] if st=="corpus" else dgjobs([])
     if st=="tests":
         jobs=[(f,[],os.path.dirname(f)) for f in sorted(glob.glob(S+"/../../tests/check/*.c")+glob.glob(S+"/../../tests/parse/*.c"))]

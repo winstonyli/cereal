@@ -35,7 +35,11 @@ No fixed sleeps: it waits for each server's index of the file by polling."""
 import json, os, queue, re, shutil, subprocess, sys, tempfile, threading, time
 
 S = os.path.dirname(os.path.abspath(__file__))
-CORP = os.path.join(S, "..", "clangd_diff")
+CORP = os.path.join(S, "..", "clangd_diff")        # wsdigits.c/h: only this tool reads them
+# The other probe cases are the test fixtures themselves (one home each); a case brings its own
+# directory as -I and its sys/ as -isystem.
+FIXTURES = [os.path.join(S, "..", "..", "tests", p) for p in
+            ("lsp/ccalls/main.c", "lsp/hints/main.c", "symidx/calls.c")]
 # (file, project root, include dirs relative to it, other flags): macro-heavy
 # Lua, K&R-era-style libuv (function-pointer tables)
 REAL = [("lupa-2.8/third-party/lua54/lstrlib.c", "lupa-2.8/third-party/lua54", ["."], []),
@@ -570,8 +574,9 @@ def main():
         print("clangd not found")
         return 1
     only_proj = any(x.startswith("--project=") for x in a)       # --project=NAME: that project only
-    jobs = [(os.path.join(CORP, f), ["-I" + CORP, "-isystem", os.path.join(CORP, "sys")])
-            for f in sorted(os.listdir(CORP)) if f.endswith(".c") and not only_proj]
+    jobs = [(f, ["-I" + os.path.dirname(f)] + (["-isystem", os.path.join(os.path.dirname(f), "sys")]
+                                                if os.path.isdir(os.path.join(os.path.dirname(f), "sys")) else []))
+            for f in FIXTURES + [os.path.join(CORP, "wsdigits.c")] if not only_proj]
     if "--no-real" not in a and not only_proj:
         cdir = os.environ.get("CEREAL_CORPUS", os.path.expanduser("~/corpus"))
         for f, root, incs, other in REAL:

@@ -1531,9 +1531,10 @@ differences and findings. The `bench/tools/clangd_diff.py` script is here too.
   `data` {name, doc} items against edits. The final line now also counts
   error responses.
 - **`clangd_diff.py`.** Compares inlay hints and call hierarchy (B4c's
-  workspace/symbol requests are not made) on `bench/clangd_diff/` (the
-  probe cases: hints.c is the unit test's file, calls.c, symcalls.c, with a
-  user and a system header) and three corpus files (lstrlib.c, lparser.c,
+  workspace/symbol requests are not made) on the test fixtures
+  `tests/lsp/ccalls`, `tests/lsp/hints`, `tests/symidx/calls.c` (they were
+  copies in `bench/clangd_diff/` until 2026-10-31, which now holds only
+  wsdigits.c/h) and three corpus files (lstrlib.c, lparser.c,
   libuv core.c; missing ones are skipped). It takes a few seconds.
   Result: 6 files, 294 differences, **0 unexpected**: C1 62, C3 29, C5 5,
   H1 146, H2 1, H3 1, H6 1, and two new ones below (C6 47, G1 2). H4 and H5

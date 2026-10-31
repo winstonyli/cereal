@@ -117,7 +117,7 @@ and give their values to constant evaluation only (P3).
 ### P1 as built: results
 - **gcc parity** (`bench/corpus.py`): all 170 corpus units (Lua 5.1-5.5,
   libuv, two Cython outputs, zstd) are accepted, as gcc accepts them.
-- **Mutations** (`bench/parse_mutate.py`): a token deleted or duplicated
+- **Mutations** (`bench/tools/mut.py --mode parse`): a token deleted or duplicated
   in preprocessed corpus code, 16 per unit per seed.  Across three seeds
   (about 7,400 mutants, one run under ASan/UBSan) cereal never rejects
   what gcc accepts and never crashes; about 10% of mutants are semantic
@@ -251,7 +251,7 @@ parse.
 Layout: random structs (after gcc `struct-layout-1_generate.c`), gcc's
 answers emitted as `_Static_assert` sizeof/offsetof checks; clang
 `-fdump-record-layouts` for bit-fields.  Verdict parity on gcc.dg and
-the corpus mutants (the "semantic" bucket of `parse_mutate.py` should
+the corpus mutants (the "semantic" bucket of `mut.py --mode parse` should
 reach zero).
 
 ### Steps

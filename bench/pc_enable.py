@@ -20,8 +20,8 @@ import collections, os, re, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-src = open(os.path.join(HERE, "corpus.py")).read()
-exec(compile(src.rsplit("sys.exit(main())", 1)[0], "corpus.py", "exec"))
+sys.path.insert(0, HERE)
+from corpus import units
 
 WORKERS = 6
 GROUP = re.compile(r"pc: (\S+:\d+ \w+) sat=(-?\d) host=(\d) exact=(\d) taint=(\d) .*?oracle=(\w+)")

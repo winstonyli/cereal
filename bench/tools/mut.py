@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """Parser against gcc on mutated real code.
 
-usage: parse_mutate.py CEREAL CORPUS_DIR [N_PER_UNIT] [SEED] [--only NAME]
+usage: mut.py CEREAL CORPUS_DIR [N_PER_UNIT] [SEED] [--only NAME] [--mode check|parse]
 
 Every translation unit of the corpus (bench/corpus.py) is preprocessed by
 cereal; then, N_PER_UNIT times, one token of the preprocessed text is
-deleted or duplicated, and both `gcc -std=c99 -fsyntax-only -x cpp-output`
-and `cereal parse` judge the result.  gcc also checks meaning (types,
-declarations), so where gcc rejects and cereal accepts, the mutation is a
+deleted or duplicated, and both `gcc -std=c99 -pedantic -fsyntax-only -x cpp-output`
+and cereal judge the result: `cereal -fsyntax-only -std=c99 -pedantic` (`--mode check`,
+the default) or `cereal parse` (`--mode parse`, no gcc -pedantic).  gcc also
+checks meaning (types, declarations), so where gcc rejects and cereal accepts, the mutation is a
 semantic error cereal does not check yet: counted, not a failure.  A
 failure is cereal rejecting what gcc accepts, or cereal crashing.  The
 unmutated units must be accepted by both.  Exit status 1 on failures;
 failing inputs are kept."""
 import multiprocessing, os, random, re, subprocess, sys, tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.argv, ARGS = sys.argv[:3], sys.argv  # corpus.py reads sys.argv at import
-exec(open(os.path.join(HERE, "..", "corpus.py")).read().split("\ndef run(")[0])
-sys.argv = ARGS
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from corpus import units
+
+MODE = "check"  # set by main() before the pool forks
 
 TOKEN = re.compile(r'''
     L?"(?:\\.|[^"\\\n])*" | L?'(?:\\.|[^'\\\n])*' |
@@ -39,11 +40,12 @@ def spans(text):
 
 
 def judge(cereal, path):
-    g = subprocess.run(["gcc", "-std=c99", "-pedantic", "-fsyntax-only", "-fpermissive", "-w",
-                        "-x", "cpp-output", path], capture_output=True,
-                       timeout=300)
-    c = subprocess.run([cereal, "-fsyntax-only", "-std=c99", "-pedantic", path], capture_output=True,
-                       timeout=300)
+    parse = MODE == "parse"
+    g = subprocess.run(["gcc", "-std=c99"] + ([] if parse else ["-pedantic", "-fpermissive"]) +
+                       ["-fsyntax-only", "-w", "-x", "cpp-output", path],
+                       capture_output=True, timeout=300)
+    c = subprocess.run([cereal] + (["parse"] if parse else ["-fsyntax-only", "-std=c99", "-pedantic"]) +
+                       [path], capture_output=True, timeout=300)
     ge = [l for l in g.stderr.decode(errors="replace").splitlines() if "error:" in l]
     res_g = g.returncode == 0
     judge.last = re.sub(r"'[^']*'", "'X'", ge[0].split("error:")[-1]) if ge else ""
@@ -100,12 +102,17 @@ def work(job):
 
 
 def main():
+    global MODE
+    ARGS = sys.argv
+    if "--mode" in ARGS:
+        MODE = ARGS.pop(ARGS.index("--mode") + 1)
+        ARGS.remove("--mode")
     cereal, root = os.path.abspath(ARGS[1]), ARGS[2]
     rest = [a for a in ARGS[3:] if not a.startswith("--")]
     n = int(rest[0]) if rest else 4
     seed = int(rest[1]) if len(rest) > 1 else 1
     only = ARGS[ARGS.index("--only") + 1] if "--only" in ARGS else None
-    keep = tempfile.mkdtemp(prefix="parse_mutate.")
+    keep = tempfile.mkdtemp(prefix="mut.")
     jobs = [(cereal, name, f, flags, cwd, n, seed, keep)
             for name, f, flags, cwd in units(root)
             if not only or only in name]
@@ -126,4 +133,5 @@ def main():
     return 1 if fails else 0
 
 
-sys.exit(main())
+if __name__ == "__main__":
+    sys.exit(main())
