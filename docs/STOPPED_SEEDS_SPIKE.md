@@ -1,3 +1,7 @@
+---
+status: done
+---
+
 # Stopped calls as solver seeds: the spike, its numbers and the chosen design
 
 Moved out of `PARKED.md` (row "Stopped calls as solver seeds, and a trapped call's bounds guard as a solver query") on 2026-10-30; the row keeps a short summary and links here. The numbers are the row's text, unchanged except where marked.

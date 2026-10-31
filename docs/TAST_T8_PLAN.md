@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # TAST stage T8: plan (lowering to a control-flow graph)

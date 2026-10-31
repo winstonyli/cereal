@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # TAST stage T1: plan
