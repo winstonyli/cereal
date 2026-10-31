@@ -97,7 +97,7 @@ Noticed but not fixed (each needs its own mechanism, none is in gcc.dg):
 - Const fenv/fexcept pointer parameters (nonconst pointer for a const builtin
   parameter) not probed.
 - _FloatN builtin rows only checked through the implicit-call harness
-  (bench bt_gen); `-std=c2x` and constant-expression visibility unchecked.
+  (bench bt_gen); constant-expression visibility unchecked.
 - A record whose size passes 2^64 bytes (`struct W { int x; char
   a[PTRDIFF_MAX]; char b[PTRDIFF_MAX]; };`) gets "type 'struct W' is too
   large" here; gcc wraps the size and says nothing (HISTORY Round 196). Also the caret of

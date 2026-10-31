@@ -12,9 +12,9 @@ measurements. The gcc-13 parity work is at a plateau (STATUS.md).
 - Language coverage (C89 to C23, GNU C, the preprocessor extras): [C_STANDARD.md](C_STANDARD.md), a
   probe-by-probe matrix from `tools/c_survey.py`; its gaps are rows of PARKED.md.
 - Driver: `-E`, `-fsyntax-only`/`check`, `parse`, `lint`, `index`, `query`, `fix`, `lsp`, `index-summary`.
-  `check --compile-commands`, `@file`, the `-M` family and `-imacros` work (A4). No `-c`/`-S`, no code
-  generator.
-- `-std=` accepts c99, c11, c17 and the gnu forms (A3); `c2x`/`c23` are fatal. Unknown options are an
+  `check --compile-commands`, `@file`, the `-M` family and `-imacros` work (A4). No `-c`/`-S`; `run`,
+  `--dump-asm` and `--emit-obj` are the experimental evaluator and back end (Track D).
+- `-std=` accepts c99, c11, c17, c23 and the gnu forms (A3, C23_PLAN.md). Unknown options are an
   allowlist (A2), not a wildcard.
 - LSP: macros and C names, with a project index over compile_commands (B1 to B5), code actions (C4) and
   the configuration design S1 to S4 (presence conditions, precondition lists, config-header edits;
@@ -67,9 +67,9 @@ A3. (DONE, Round 178; was est. 1 to 2 days) `-std=c11 c1x gnu11 gnu1x c17 c18 gn
       support X" for C11 features. Under C11 it must stay silent, and the
       remaining pedwarns need the right edition in their text. Probe every
       message against gcc-13 per std; do not assume.
-    - `c2x`/`gnu2x`/`c23` stay fatal until C2X keywords are a separate
-      slice. The LSP's `-std` hack (map unknown to gnu99) is deleted once
-      A3 lands.
+    - `c2x`/`gnu2x`/`c23` were fatal until the C23 slices (C23_PLAN.md);
+      they are accepted now. The LSP's `-std` hack (map unknown to gnu99)
+      is deleted once A3 lands.
     - Effect on the parity gate: many gcc.dg tests use `-std=c11`/`gnu11`
       and are skipped today. Supporting them adds files to the "run" count,
       so parity will drop at first. That is test-suite growth, to be read as
@@ -191,8 +191,8 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
   Decided 2026-10-18: the emitter stays pluggable (several back ends can
   consume the same lowered graph: QBE text, assembly, LLVM IR, C), leaning
   toward direct object/machine code with no external assembler step; QBE is
-  one candidate, not the commitment (est. 8 to 12+ weeks, high risk; first step: TAST_DESIGN.md, draft, S0 done, hybrid). Nothing in the tree
-  lowers the AST today. Start only after A and B.
+  one candidate, not the commitment (est. 8 to 12+ weeks, high risk; first step: TAST_DESIGN.md, active, T1 to T9 built). An x86-64 emitter for an integer,
+  pointer and vector subset exists (`cgx86.c`, `mir_elf.c`; STATUS.md). Start only after A and B.
 - Macro-aware project index and refactoring (wanted; collects what B5 parked;
   no estimate yet). Today the project index and rename deal with macros by
   refusing, never by guessing:

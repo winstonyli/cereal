@@ -3,8 +3,10 @@
 A C99 + GNU front end, written in C99: a GCC-compatible preprocessor with
 deep static analysis of directives and macros, a parser, and a type checker
 that reports gcc-13's diagnostics. It also builds an index that gives macros
-the same editor features as variables and functions. It is a front end, not a
-compiler: it parses and checks C and emits no code.
+the same editor features as variables and functions. It is a front end first:
+it parses and checks C. It also has an evaluator (`cereal run`, `--eval-sweep`)
+and an experimental x86-64 back end (`--dump-asm`, `--emit-obj`) for a subset
+of C; see [docs/STATUS.md](docs/STATUS.md).
 
 It targets Linux (x86-64) and is developed under WSL. It reads the host gcc's
 headers and predefined macros at build time, so it needs a POSIX shell and gcc
@@ -45,7 +47,7 @@ Exit status: 0 nothing left to fix, 1 something skipped or remaining (or
 `--diff`/`--dry-run` found edits), 2 usage, 3 a unit could not be checked,
 4 a file could not be read or written. `-j N` applies as for the other modes.
 
-Options: `-I -iquote -isystem -D -U -include -imacros -nostdinc -undef -std=c99|gnu99
+Options: `-I -iquote -isystem -D -U -include -imacros -nostdinc -undef -std=<c99..c23|gnu99..gnu23>
 -O<n> -pedantic -pedantic-errors -trigraphs -W<name> -Wno-<name> -W<group>
 -Wall -Werror -Weverything -w -fdiagnostics-format=json
 -fdiagnostics-parseable-fixits -fdiagnostics-generate-patch -P -o`.
@@ -54,8 +56,8 @@ For the C front end (`cereal parse`, `-fsyntax-only`), `-W<name>` takes gcc's
 warning names (about 180 are known; `--list-warnings` prints them), plus
 `-fcf-protection`, `-ftrack-macro-expansion`, `-fshort-enums`,
 `-fstrict-aliasing`, `-flax-vector-conversions` and the other flags that
-change which diagnostics gcc emits. `-fsyntax-only` accepts `-std=c99` and
-`-std=gnu99` only.
+change which diagnostics gcc emits. `-fsyntax-only` accepts the same `-std=` names as the
+preprocessor (C99 to C23 and the gnu forms).
 
 Several inputs are processed `-j N` at a time (default: all cores).
 Output and diagnostics come out in input order, identical to `-j1`.
