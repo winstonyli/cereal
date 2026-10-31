@@ -190,8 +190,8 @@ builder or the protocol threads.
   - HISTORY Round 204 (3859-3867) made per-check mutable globals
     `__thread`, made `cfg_gen_next` atomic, and gave compdb replay one
     `__DATE__`/`__TIME__` stamp for all entries.
-  - TSan reports 0 warnings: Round 204 (~3881) and fix mode at
-    -j2/4/8/12 (HISTORY:4204).
+  - TSan reports 0 warnings: Round 204 and fix mode at
+    -j2/4/8/12 (HISTORY Round 214).
 - **Concurrent checks already run.**
   - `check --compile-commands -j N` runs TUs concurrently through
     `run_jobs` (main.c:423-482).

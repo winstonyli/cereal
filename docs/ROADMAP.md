@@ -24,7 +24,7 @@ measurements. The gcc-13 parity work is at a plateau (STATUS.md).
 
 ## Track A: command line usable on real build lines
 Scope, stated precisely: cereal as a **checker driven by compile_commands or
-a build line**, not a compiler replacement. It produces no objects, so a
+a build line**, not a compiler replacement. It produces no objects for a build (`--emit-obj` is the experimental Track D back end), so a
 build that needs `.o` files still needs gcc. `-c`/`-S` mean "check only".
 
 A1. `__VA_OPT__` (DONE, Round 176; was est. half a day). gcc-13: available in gnu modes, a
