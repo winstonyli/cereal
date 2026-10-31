@@ -1375,11 +1375,37 @@ typedef struct STried {
 
 typedef VEC(STried) STriedVec;
 
+/* A branch on a literal constant (`while (1)`, `do { } while (0)`, a macro's `if (0)`): one of its two edges can
+ * never be taken, so the sweep counts it as one edge. */
+static uint32_t cond_node(const Fn *f, const Blk *b)
+{
+    uint32_t n = b->val;
+    for (;;) {                                  /* look through casts, `!` and the comma */
+        const TNode *t = &f->nodes[n];
+        if (t->op == TO_CAST || (t->op == TO_UNOP && t->pun == P_BANG))
+            n = f->kids[t->kid0];
+        else if (t->op == TO_COMMA)
+            n = f->kids[t->kid0 + 1];
+        else
+            return n;
+    }
+}
+
+static bool blk_const(const Fn *f, const Blk *b)
+{
+    return b->term == TK_BR && f->nodes[cond_node(f, b)].op == TO_CONST;
+}
+
 static void blk_count(const Fn *f, size_t *edges, size_t *taken)
 {
     size_t i;
     for (i = 0; i < f->nblk; i++) {
         const Blk *b = &f->blk[i];
+        if (blk_const(f, b)) {
+            *edges += 1;
+            *taken += (b->seen & 3) != 0;
+            continue;
+        }
         unsigned n = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0, e;
         *edges += n;
         for (e = 0; e < n; e++)
@@ -1786,9 +1812,9 @@ static const char *main_path(Checker *c)
 }
 
 /* Why an edge stays untaken, judged from its branch's condition (a survey: --eval-solve prints the counts). */
-enum { MC_NOFIN, MC_SWITCH, MC_PNULL, MC_PCMP, MC_FLOAT, MC_ICMP, MC_IVAL, MC_CALL, MC_CONST, MC_CALL0, MC_OTHER, MC_N };
+enum { MC_NOFIN, MC_SWITCH, MC_PNULL, MC_PCMP, MC_FLOAT, MC_ICMP, MC_IVAL, MC_CALL, MC_CALL0, MC_OTHER, MC_N };
 static const char *const miss_name[MC_N] = { "function never finished", "switch", "pointer null test",
-    "pointer compare", "float", "integer compare", "integer value", "call result", "constant condition",
+    "pointer compare", "float", "integer compare", "integer value", "call result",
     "call without arguments", "other" };
 
 static bool miss_const(const Fn *f, uint32_t n)
@@ -1800,20 +1826,11 @@ static bool miss_const(const Fn *f, uint32_t n)
 
 static int miss_class(Ev *v, const Fn *f, const Blk *b)
 {
-    uint32_t n = b->val;
+    uint32_t n = cond_node(f, b);
     Ti ti;
     int c = MC_OTHER;
     if (b->term == TK_SWTCH)
         return MC_SWITCH;
-    for (;;) {                                  /* look through casts, `!` and the comma */
-        const TNode *t = &f->nodes[n];
-        if (t->op == TO_CAST || (t->op == TO_UNOP && t->pun == P_BANG))
-            n = f->kids[t->kid0];
-        else if (t->op == TO_COMMA)
-            n = f->kids[t->kid0 + 1];
-        else
-            break;
-    }
     {
         const TNode *t = &f->nodes[n];
         if (t->op == TO_CMP) {
@@ -1826,8 +1843,6 @@ static int miss_class(Ev *v, const Fn *f, const Blk *b)
                 c = miss_const(f, k0) || miss_const(f, k1) ? MC_PNULL : MC_PCMP;
             else
                 c = MC_ICMP;
-        } else if (t->op == TO_CONST) {
-            c = MC_CONST;                       /* one edge can never be taken: `while (1)`, `do { } while (0)` */
         } else if (t->op == TO_CALL) {
             c = t->sym && !t->nkids ? MC_CALL0 : MC_CALL;   /* nothing of the input reaches it: MEM_32bits and the like */
         } else if (ev_tinfo(v, t->ty, &ti)) {
@@ -1858,6 +1873,33 @@ static bool name_listed(const char *list, const char *name)
     return false;
 }
 
+/* The untaken edges of f by class (cls), as the sweep counts edges (blk_count); the total. */
+static size_t fn_miss(Ev *v, const Fn *f, bool finished, size_t cls[MC_N])
+{
+    size_t i, total = 0;
+    v->c = f->c;
+    for (i = 0; i < f->nblk; i++) {
+        const Blk *b = &f->blk[i];
+        unsigned ne = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0, e;
+        int c = -1;
+        if (blk_const(f, b)) {                  /* its one live edge, untaken only if the block was never reached */
+            if (!(b->seen & 3)) {
+                cls[finished ? MC_OTHER : MC_NOFIN]++;
+                total++;
+            }
+            continue;
+        }
+        for (e = 0; e < ne; e++)
+            if (!(b->seen >> (b->term == TK_SWTCH && e == ne - 1 ? 62 : e) & 1)) {
+                if (c < 0)
+                    c = finished ? miss_class(v, f, b) : MC_NOFIN;
+                cls[c]++;
+                total++;
+            }
+    }
+    return total;
+}
+
 static void miss_report(Ev *v, const SweptFn *sw, size_t n)
 {
     size_t counts[MC_N] = {0}, total = 0, k, i;
@@ -1867,58 +1909,32 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
     size_t nat = 0;
     for (k = 0; k < n; k++) {
         const Fn *f = &v->fn.data[sw[k].i];
-        size_t fe = 0;
-        v->c = f->c;
-        for (i = 0; i < f->nblk; i++) {
-            const Blk *b = &f->blk[i];
-            unsigned ne = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0, e;
-            int c = -1;
-            for (e = 0; e < ne; e++)
-                if (!(b->seen >> (b->term == TK_SWTCH && e == ne - 1 ? 62 : e) & 1)) {
-                    if (c < 0) {
-                        c = sw[k].finished ? miss_class(v, f, b) : MC_NOFIN;
-                    }
-                    counts[c]++;
-                    total++;
-                    fe += c == MC_NOFIN;
-                    if (c == MC_NOFIN) {            /* by the function's first stop, digits and addresses folded */
-                        char key[104];
-                        size_t m, j = 0, w;
-                        for (m = 0; sw[k].why[m] && j + 1 < sizeof key; m++)
-                            if (!(sw[k].why[m] >= '0' && sw[k].why[m] <= '9' && j && key[j - 1] == '#'))
-                                key[j++] = sw[k].why[m] >= '0' && sw[k].why[m] <= '9' ? '#' : sw[k].why[m];
-                        key[j] = 0;
-                        for (w = 0; w < nwhy && strcmp(why[w].key, key); w++)
-                            ;
-                        if (w == nwhy && nwhy < 128) {
-                            strcpy(why[nwhy].key, key);
-                            why[nwhy].edges = why[nwhy].nex = 0;
-                            nwhy++;
-                        }
-                        if (w < nwhy)
-                        {
-                            why[w].edges++;
-                            if (why[w].nex < 4 && (!why[w].nex || why[w].ex[why[w].nex - 1] != cident(f->c, csym(f->c, f->fsym)->name)))
-                                why[w].ex[why[w].nex++] = cident(f->c, csym(f->c, f->fsym)->name);
-                        }
-                    }
-                }
+        size_t cls[MC_N] = {0}, ft = fn_miss(v, f, sw[k].finished, cls), fe = cls[MC_NOFIN];
+        for (i = 0; i < MC_N; i++)
+            counts[i] += cls[i];
+        total += ft;
+        if (fe) {                                   /* by the function's first stop, digits and addresses folded */
+            char key[104];
+            size_t m, j = 0, w;
+            for (m = 0; sw[k].why[m] && j + 1 < sizeof key; m++)
+                if (!(sw[k].why[m] >= '0' && sw[k].why[m] <= '9' && j && key[j - 1] == '#'))
+                    key[j++] = sw[k].why[m] >= '0' && sw[k].why[m] <= '9' ? '#' : sw[k].why[m];
+            key[j] = 0;
+            for (w = 0; w < nwhy && strcmp(why[w].key, key); w++)
+                ;
+            if (w == nwhy && nwhy < 128) {
+                strcpy(why[nwhy].key, key);
+                why[nwhy].edges = why[nwhy].nex = 0;
+                nwhy++;
+            }
+            if (w < nwhy) {
+                why[w].edges += fe;
+                if (why[w].nex < 4 && (!why[w].nex || why[w].ex[why[w].nex - 1] != cident(f->c, csym(f->c, f->fsym)->name)))
+                    why[w].ex[why[w].nex++] = cident(f->c, csym(f->c, f->fsym)->name);
+            }
         }
         if (v->c->opt.eval_miss) {                  /* --eval-miss: this function's untaken edges by class */
-            size_t cls[MC_N] = {0}, tot = 0;
-            for (i = 0; i < f->nblk; i++) {
-                const Blk *b = &f->blk[i];
-                unsigned ne = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0, e;
-                int c = -1;
-                for (e = 0; e < ne; e++)
-                    if (!(b->seen >> (b->term == TK_SWTCH && e == ne - 1 ? 62 : e) & 1)) {
-                        if (c < 0)
-                            c = sw[k].finished ? miss_class(v, f, b) : MC_NOFIN;
-                        cls[c]++;
-                        tot++;
-                    }
-            }
-            fprintf(stderr, "cereal: miss %s: %zu untaken:", cident(f->c, csym(f->c, f->fsym)->name), tot);
+            fprintf(stderr, "cereal: miss %s: %zu untaken:", cident(f->c, csym(f->c, f->fsym)->name), ft);
             for (i = 0; i < MC_N; i++)
                 if (cls[i])
                     fprintf(stderr, " %s %zu;", miss_name[i], cls[i]);
