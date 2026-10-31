@@ -68,18 +68,10 @@ docs/PARALLEL.md.
 
 ## Parity with gcc
 
-The checker is tested against gcc-13's own testsuite: on the files it can run,
-3908 of 3910 in gcc.dg (C99, C11 and C17 tests) and 634 of 636 in c-c++-common report the same
-diagnostics as gcc (message, line and column). The testsuite is not part of
-this repository (it is GPL); clone it yourself:
-
-```
-git clone --filter=blob:none --no-checkout --depth 1 --branch releases/gcc-13.3.0 \
-    https://github.com/gcc-mirror/gcc ~/gccts
-git -C ~/gccts sparse-checkout set gcc/testsuite/gcc.dg gcc/testsuite/c-c++-common
-git -C ~/gccts checkout
-make -j6 && CEREAL_GCC=gcc-13 bench/tools/verify.sh   # needs gcc-13, python3
-```
+The checker is compared with gcc-13 on gcc's own testsuite (message, line and
+column). The testsuite is GPL and not part of this repository. The current
+counts and the commands to run the comparison are in
+[docs/STATUS.md](docs/STATUS.md), "Numbers" and "How to check it".
 
 Design: docs/PARSER.md, docs/TYPES.md. Current state and open differences:
 docs/STATUS.md; the full log: docs/HISTORY.md.
@@ -116,8 +108,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short:
 ## AI-assisted development
 
 Most of this code was written with Claude (Anthropic) under my direction:
-265 of the 266 commits carry a `Co-Authored-By: Claude` trailer, and 47 are
-authored by Claude directly. I set the goals, chose gcc-13 as the reference,
+Nearly every commit carries a `Co-Authored-By: Claude` trailer, and some are
+authored by Claude directly (`git log` has the counts). I set the goals, chose gcc-13 as the reference,
 reviewed the results, and kept the verification honest: every behaviour is
 checked against real gcc output, and each fix leaves a golden test in
 `tests/check`.
