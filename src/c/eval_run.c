@@ -1092,6 +1092,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     uint32_t nz = 0;
     EvRes r;
     memset(&v->res, 0, sizeof v->res);
+    v->asm_ran = false;
     z.rs = rs;
     z.force = op ? op->force : NULL;
     v->lazy_ud = &z;
@@ -1244,7 +1245,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         for (j = have; j < sz; j++)
             sb_putc(&pay, 0);
     }
-    if (!*retry && (r.status == EV_OK || (show_stop && (!s->ptrfn || r.status == EV_UNSUPPORTED)))) {
+    if (!*retry && !(r.status == EV_OK && v->asm_ran) && (r.status == EV_OK || (show_stop && (!s->ptrfn || r.status == EV_UNSUPPORTED)))) {
         sb_printf(body, "call %s ", name);
         sweep_hex(body, (const uint8_t *)pay.data, pay.len);
         if (r.status == EV_OK) {

@@ -640,6 +640,12 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
             bad "eval_trapq (trapped-call queue)"
             head -10 "$TMP/trapq.out" | sed 's/^/    /'
         fi
+        if sh "$ROOT/tests/eval_asm.sh" "$CEREAL" >"$TMP/asm.out" 2>&1 </dev/null; then
+            ok
+        else
+            bad "eval_asm (asm in sweep calls)"
+            head -10 "$TMP/asm.out" | sed 's/^/    /'
+        fi
     fi
     # 13f. native oracle (tests/asm_exec.py): --dump-asm output assembled,
     #      linked and run against gcc on the same random arguments

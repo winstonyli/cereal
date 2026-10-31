@@ -1980,12 +1980,14 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
     case TO_ASM: {
         /* The kids are the template, the constraint letters, then val outputs (lvalues) and the inputs.
          * The instructions are not run; in the sweep's state-building phase every output is 0 (a
-         * hardware query such as cpuid then reports no features) and the results are not compared. */
+         * hardware query such as cpuid then reports no features); a sweep call that runs one is not
+         * printed, so gcc never compares it. Elsewhere (cereal run) asm is unsupported. */
         int64_t k;
-        if (!v->build) {
+        if (!v->build && !v->lazy_fill) {
             UNSUP(v, "operation asm");
             return 0;
         }
+        v->asm_ran = true;
         for (k = 0; k < t->val && !v->res.status; k++) {
             uint32_t lv = KID(r, n, 2 + (uint32_t)k);
             uint64_t p = ev_node(r, lv);

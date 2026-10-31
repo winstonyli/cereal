@@ -105,7 +105,7 @@ pointer-holding types, the `SW_LK` and `SW_IN`-per-blob thunk code, and the shar
 `sweep_gen`. Covered by the one mechanism: the budget order (856 + 36 + 22 edges), downcasts,
 `start`/`end` sharing, function-pointer fields (stage 3), out-of-bounds from short blobs.
 
-Not covered: `asm` outside the build phase (the oracle's real `cpuid` differs); `strerror`
+Asm: in a sweep call it now runs with every output 0 (as in the build phase) and the call is not printed, so gcc never compares it (2026-10-31, `tests/eval_asm.sh`; `cereal run` still stops on it). Not covered: `strerror`
 and similar host strings (needs a pinned string; separate); pointer-ness of untyped copies
 (zero fill, section 2); unrelated lazy blobs that a function subtracts (stays a trap; with
 sharing at offsets some of the 18497 become legal, not all); a read of a link cell as an
