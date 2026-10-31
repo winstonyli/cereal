@@ -1352,6 +1352,10 @@ static int cmp64(const void *a, const void *b)
 #define SSEEDS 4                /* finishing inputs kept as starting points */
 #define SEXPAND 8               /* tracked runs per function */
 #define SRLIMIT 5000000         /* the solver's resource limit per query: deterministic, not time */
+#define STRAP 4                 /* calls that trapped, kept as starting points of their own */
+#define STBASE 4                /* tracked runs of trapped calls per function, plus one per STDIV untaken edges, at most STMAX */
+#define STDIV 8
+#define STMAX 256
 
 typedef struct SolveStat {
     unsigned long queries, sat, unsat, unknown, calls, fresh;
@@ -1361,6 +1365,7 @@ typedef struct SolveStat {
     unsigned long steps, open;      /* path steps (branches on symbolic values, pins); branches with an unseen edge */
     unsigned long branches;         /* every branch and switch the tracked runs took */
     unsigned long gain;             /* edges first taken by a solver round, in any function */
+    unsigned long trapped;          /* tracked runs of trapped calls (the queue of their own) */
 } SolveStat;
 
 typedef struct STried {
@@ -1394,10 +1399,14 @@ static void seed_free(SSeed *sd)
     vec_free(&sd->log);
 }
 
-/* One solved call: the seed with the model's values written over it; true if it finished and
- * took an edge nobody had (then it is worth tracking itself).  The model is in solver symbols;
+/* What a solved call came to: nothing worth keeping, a finish that took a new edge, or a trap. */
+enum { SR_NONE, SR_EDGE, SR_TRAP };
+
+/* One solved call: the seed with the model's values written over it; SR_EDGE if it finished and
+ * took an edge nobody had (then it is worth tracking itself), SR_TRAP if it trapped (a trapped call is a seed
+ * of the queue of its own, see trap_step).  The model is in solver symbols;
  * `syms` (from the seed's tracked run) maps them back to the keys of the draws. */
-static bool solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *syms, const Fn *f, const SFn *s,
+static int solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *syms, const Fn *f, const SFn *s,
                       StrBuf *body, const char *name, bool *bad, bool *saw_ok, SSeed *child)
 {
     SSeed c = {0};
@@ -1422,12 +1431,12 @@ static bool solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *s
         llog_sort(&c.log);
     }
     *saw_ok |= st == EV_OK;
-    if (st == EV_OK && v->newseen != before) {
+    if ((st == EV_OK && v->newseen != before) || st == EV_TRAP) {
         *child = c;
-        return true;
+        return st == EV_TRAP ? SR_TRAP : SR_EDGE;
     }
     seed_free(&c);
-    return false;
+    return SR_NONE;
 }
 
 static bool tried(const STriedVec *t, const Blk *b, uint32_t edge)
@@ -1470,20 +1479,41 @@ typedef struct SSearch {
     size_t next;
     STriedVec done;                     /* the edges already asked about */
     size_t queries, expanded;
+    VEC(SSeed) trapped;                 /* calls that trapped: the queue of their own, popped by trap_step */
+    size_t texpanded;
 } SSearch;
 
-/* Keeps the call that just finished as a seed: the log it drew (moved out of *log) and the random state
- * it started from. */
-static void search_keep(SSearch *q, LLog *log, uint64_t rs0, bool fresh)
+/* The call that just ran as a seed: the log it drew (moved out of *log) and the random state it started from. */
+static SSeed seed_take(LLog *log, uint64_t rs0)
 {
     SSeed sd = {0};
-    if (q->corpus.len >= SCORPUS || (q->corpus.len >= SSEEDS && !fresh))
-        return;
     llog_sort(log);
     sd.log = *log;
     memset(log, 0, sizeof *log);
     sd.rs0 = rs0;
-    vec_push(&q->corpus, sd);
+    return sd;
+}
+
+/* Keeps the call that just finished as a seed. */
+static void search_keep(SSearch *q, LLog *log, uint64_t rs0, bool fresh)
+{
+    if (q->corpus.len >= SCORPUS || (q->corpus.len >= SSEEDS && !fresh))
+        return;
+    vec_push(&q->corpus, seed_take(log, rs0));
+}
+
+/* Keeps a call that trapped for the queue of its own; sd is consumed. */
+static void trap_push(SSearch *q, SSeed sd)
+{
+    if (q->trapped.len >= STRAP)
+        seed_free(&sd);
+    else
+        vec_push(&q->trapped, sd);
+}
+
+static void trap_keep(SSearch *q, LLog *log, uint64_t rs0)
+{
+    trap_push(q, seed_take(log, rs0));
 }
 
 static void search_free(SSearch *q)
@@ -1494,6 +1524,11 @@ static void search_free(SSearch *q)
     }
     vec_free(&q->corpus);
     vec_free(&q->done);
+    while (q->trapped.len) {
+        SSeed sd = vec_pop(&q->trapped);
+        seed_free(&sd);
+    }
+    vec_free(&q->trapped);
 }
 
 /* One function's sweep: what a mutation needs (a mutation is a round of the search). */
@@ -1512,126 +1547,173 @@ typedef struct SCtx {
     char loc[112];                      /* ... and where it had read the pointer it stopped on */
 } SCtx;
 
-/* The solver mutation: track the next corpus input and, at each branch of its path whose other edge
- * nobody has taken, ask for bytes that take it; each answer is one more call, kept if it takes a new
- * edge.  False when the corpus or the budgets are used up. */
-static bool solve_step1(SCtx *x)
+/* The walk over the tracked path of seed (just rerun, its symbols in syms): at each branch whose other edge
+ * nobody has taken, ask for bytes that take it, the steps before it as the prefix; each answer is one more
+ * call, kept if it takes a new edge (or, if it traps, in the queue of its own). */
+static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
 {
     Ev *v = x->v;
     SxSolver *sv = x->sv;
     SolveStat *st = x->ss;
     SSearch *q = &x->q;
-    const Fn *f = x->f;
-    const SFn *s = x->s;
-    StrBuf *body = x->body;
-    const char *name = x->name;
-    bool *bad = &x->bad, *saw_ok = &x->saw_ok;
     STriedVec *done = &q->done;
     SxModel m = {0};
     size_t i;
-    LKeys syms = {0};
-    {
-        SSeed seed;                     /* a shallow copy: the corpus may grow (and move) below */
-        StrBuf sink = {0};
-        int r;
-        if (q->next >= q->corpus.len || q->expanded >= SEXPAND || q->queries >= SQUERY)
-            return false;
-        seed = q->corpus.data[q->next++];
-        v->track = true;
-        {
-            LOpt op = {&seed.log, NULL, &syms};
-            uint64_t rs = seed.rs0;
-            r = sweep_call(v, &sink, name, f, s, false, bad, &rs, &op);
-        }
-        v->track = false;
-        sb_free(&sink);
-        if (r != EV_OK) {
-            vec_free(&syms);
-            return true;
-        }
-        q->expanded++;
-        st->tracked++;
-        st->branches += v->nbr;
-        v->nbr = 0;
-        if (v->sx.n.len > st->nodes)
-            st->nodes = v->sx.n.len;
-        sx_begin(sv, &v->sx);
-        for (i = 0; i < v->dom.len; i++)
-            sx_assert(sv, v->dom.data[i], true);
-        for (i = 0; i < v->path.len && q->queries < SQUERY; i++) {
-            PathEnt p = v->path.data[i];
-            SxCond cs[64];
-            st->steps++;
-            if (p.blk) {
-                const Blk *b = p.blk;
-                uint32_t e, ne = b->term == TK_BR ? 2 : (uint32_t)b->nc + 1;
-                for (e = 0; e < ne; e++)
-                    if (e != p.edge && !(b->seen >> blk_edge_bit(b, e) & 1)) {
-                        st->open++;
-                        break;
-                    }
-                for (e = 0; e < ne && q->queries < SQUERY; e++) {
-                    size_t n;
-                    bool whole = true, sat;
-                    SSeed child = {0};
-                    if (e == p.edge || (b->seen >> blk_edge_bit(b, e) & 1) || tried(done, b, e))
-                        continue;
-                    if (b->term == TK_BR) {
-                        cs[0].a = p.expr;
-                        cs[0].want = !p.want;
-                        n = 1;
-                    } else {
-                        n = switch_conds(v, &p, e, cs, &whole);
-                    }
-                    if (!whole)
-                        continue;
-                    {
-                        STried t = { b, e };
-                        vec_push(done, t);
-                    }
-                    q->queries++;
-                    st->queries++;
-                    r = sx_try(sv, cs, n, &m);
-                    if (r == SX_ERROR) {
-                        fprintf(stderr, "cereal: the solver stopped answering\n");
-                        exit(2);
-                    }
-                    st->sat += r == SX_SAT;
-                    st->unsat += r == SX_UNSAT;
-                    st->unknown += r == SX_UNKNOWN;
-                    if (r != SX_SAT)
-                        continue;
-                    st->calls++;
-                    sat = solve_run(v, &m, &seed, &syms, f, s, body, name, bad, saw_ok, &child);
-                    if (sat) {
-                        st->fresh++;
-                        if (q->corpus.len < SCORPUS)
-                            vec_push(&q->corpus, child);
-                        else
-                            seed_free(&child);
-                    }
+    sx_begin(sv, &v->sx);
+    for (i = 0; i < v->dom.len; i++)
+        sx_assert(sv, v->dom.data[i], true);
+    for (i = 0; i < v->path.len && q->queries < SQUERY; i++) {
+        PathEnt p = v->path.data[i];
+        SxCond cs[64];
+        st->steps++;
+        if (p.blk) {
+            const Blk *b = p.blk;
+            uint32_t e, ne = b->term == TK_BR ? 2 : (uint32_t)b->nc + 1;
+            for (e = 0; e < ne; e++)
+                if (e != p.edge && !(b->seen >> blk_edge_bit(b, e) & 1)) {
+                    st->open++;
+                    break;
+                }
+            for (e = 0; e < ne && q->queries < SQUERY; e++) {
+                size_t n;
+                bool whole = true;
+                int r, sat;
+                SSeed child = {0};
+                if (e == p.edge || (b->seen >> blk_edge_bit(b, e) & 1) || tried(done, b, e))
+                    continue;
+                if (b->term == TK_BR) {
+                    cs[0].a = p.expr;
+                    cs[0].want = !p.want;
+                    n = 1;
+                } else {
+                    n = switch_conds(v, &p, e, cs, &whole);
+                }
+                if (!whole)
+                    continue;
+                {
+                    STried t = { b, e };
+                    vec_push(done, t);
+                }
+                q->queries++;
+                st->queries++;
+                r = sx_try(sv, cs, n, &m);
+                if (r == SX_ERROR) {
+                    fprintf(stderr, "cereal: the solver stopped answering\n");
+                    exit(2);
+                }
+                st->sat += r == SX_SAT;
+                st->unsat += r == SX_UNSAT;
+                st->unknown += r == SX_UNKNOWN;
+                if (r != SX_SAT)
+                    continue;
+                st->calls++;
+                sat = solve_run(v, &m, seed, syms, x->f, x->s, x->body, x->name, &x->bad, &x->saw_ok, &child);
+                if (sat == SR_TRAP) {
+                    trap_push(q, child);
+                } else if (sat == SR_EDGE) {
+                    st->fresh++;
+                    if (q->corpus.len < SCORPUS)
+                        vec_push(&q->corpus, child);
+                    else
+                        seed_free(&child);
                 }
             }
-            /* the step itself joins the prefix */
-            if (!p.blk || p.blk->term == TK_BR) {
-                sx_assert(sv, p.expr, p.want);
-            } else {
-                bool whole;
-                size_t n = switch_conds(v, &p, p.edge, cs, &whole), k;
-                for (k = 0; k < n; k++)
-                    sx_assert(sv, cs[k].a, cs[k].want);
-            }
+        }
+        /* the step itself joins the prefix */
+        if (!p.blk || p.blk->term == TK_BR) {
+            sx_assert(sv, p.expr, p.want);
+        } else {
+            bool whole;
+            size_t n = switch_conds(v, &p, p.edge, cs, &whole), k;
+            for (k = 0; k < n; k++)
+                sx_assert(sv, cs[k].a, cs[k].want);
         }
     }
     sx_model_free(&m);
+}
+
+/* The solver mutation: track the next corpus input and flip the branches of its path (flip_walk).
+ * False when the corpus or the budgets are used up. */
+static bool solve_step1(SCtx *x)
+{
+    Ev *v = x->v;
+    SolveStat *st = x->ss;
+    SSearch *q = &x->q;
+    LKeys syms = {0};
+    SSeed seed;                         /* a shallow copy: the corpus may grow (and move) below */
+    StrBuf sink = {0};
+    int r;
+    if (q->next >= q->corpus.len || q->expanded >= SEXPAND || q->queries >= SQUERY)
+        return false;
+    seed = q->corpus.data[q->next++];
+    v->track = true;
+    {
+        LOpt op = {&seed.log, NULL, &syms};
+        uint64_t rs = seed.rs0;
+        r = sweep_call(v, &sink, x->name, x->f, x->s, false, &x->bad, &rs, &op);
+    }
+    v->track = false;
+    sb_free(&sink);
+    if (r != EV_OK) {
+        vec_free(&syms);
+        return true;
+    }
+    q->expanded++;
+    st->tracked++;
+    st->branches += v->nbr;
+    v->nbr = 0;
+    if (v->sx.n.len > st->nodes)
+        st->nodes = v->sx.n.len;
+    flip_walk(x, &seed, &syms);
     vec_free(&syms);
+    return true;
+}
+
+/* Tracked runs of trapped calls per function: STBASE, plus one for each STDIV edges still untaken, at most STMAX. */
+static size_t trap_budget(const SCtx *x)
+{
+    size_t edges = 0, taken = 0, b;
+    blk_count(x->f, &edges, &taken);
+    b = STBASE + (edges - taken) / STDIV;
+    return b < STMAX ? b : STMAX;
+}
+
+/* The trapped-call mutation: a call that trapped is a seed like a finished one, but from the queue of its own
+ * (a trap is not an input to keep as a corpus entry).  Rerun tracked, its path up to the trap is walked like
+ * any other, and each answer that traps again joins the queue (a chain).  False when the queue or the budget is used up. */
+static bool trap_step(SCtx *x)
+{
+    Ev *v = x->v;
+    SSearch *q = &x->q;
+    LKeys syms = {0};
+    SSeed seed;
+    StrBuf sink = {0};
+    int r;
+    if (!q->trapped.len || q->texpanded >= trap_budget(x) || q->queries >= SQUERY)
+        return false;
+    seed = vec_pop(&q->trapped);
+    v->track = true;
+    {
+        LOpt op = {&seed.log, NULL, &syms};
+        uint64_t rs = seed.rs0;
+        r = sweep_call(v, &sink, x->name, x->f, x->s, false, &x->bad, &rs, &op);
+    }
+    v->track = false;
+    sb_free(&sink);
+    q->texpanded++;
+    x->ss->trapped++;
+    v->nbr = 0;
+    if (r == EV_TRAP)
+        flip_walk(x, &seed, &syms);
+    vec_free(&syms);
+    seed_free(&seed);
     return true;
 }
 
 static bool solve_step(SCtx *x)
 {
     unsigned long seen = x->v->newseen;
-    bool r = solve_step1(x);
+    bool r = trap_step(x) || solve_step1(x) || trap_step(x);
     x->ss->gain += x->v->newseen - seen;
     return r;
 }
@@ -1648,6 +1730,8 @@ static void mut_gen(SCtx *x)
         uint64_t rs0 = x->rs;
         size_t at = x->body->len;
         st = sweep_call(v, x->body, x->name, x->f, x->s, !v->dict_use && !x->saw_unsup, &x->bad, &x->rs, &op);
+        if (v->c->opt.eval_only)                /* --eval-only: each call's outcome */
+            fprintf(stderr, "cereal: call %s: %s%s%s\n", x->name, st ? stop_name(st) : "finished", st ? ": " : "", st ? v->res.why : "");
         if (getenv("CEREAL_LAZY_REPLAY")) {     /* test only: the call, rerun from its log, prints the same line */
             StrBuf again = {0};
             uint64_t rs1 = rs0, rs2 = x->rs;
@@ -1669,6 +1753,8 @@ static void mut_gen(SCtx *x)
         }
         if (x->sv && st == EV_OK)
             search_keep(&x->q, &rec, rs0, v->newseen != seen);
+        else if (x->sv && st == EV_TRAP)
+            trap_keep(&x->q, &rec, rs0);
         vec_free(&rec);
     }
     x->saw_ok |= st == EV_OK;
@@ -1758,6 +1844,20 @@ typedef struct SweptFn {
     char why[112], loc[112];
 } SweptFn;
 
+/* Is name one of the comma-separated names of list? */
+static bool name_listed(const char *list, const char *name)
+{
+    size_t n = strlen(name);
+    while (*list) {
+        const char *e = strchr(list, ',');
+        size_t l = e ? (size_t)(e - list) : strlen(list);
+        if (l == n && !memcmp(list, name, n))
+            return true;
+        list += l + (e != NULL);
+    }
+    return false;
+}
+
 static void miss_report(Ev *v, const SweptFn *sw, size_t n)
 {
     size_t counts[MC_N] = {0}, total = 0, k, i;
@@ -1803,6 +1903,26 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
                         }
                     }
                 }
+        }
+        if (v->c->opt.eval_miss) {                  /* --eval-miss: this function's untaken edges by class */
+            size_t cls[MC_N] = {0}, tot = 0;
+            for (i = 0; i < f->nblk; i++) {
+                const Blk *b = &f->blk[i];
+                unsigned ne = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0, e;
+                int c = -1;
+                for (e = 0; e < ne; e++)
+                    if (!(b->seen >> (b->term == TK_SWTCH && e == ne - 1 ? 62 : e) & 1)) {
+                        if (c < 0)
+                            c = sw[k].finished ? miss_class(v, f, b) : MC_NOFIN;
+                        cls[c]++;
+                        tot++;
+                    }
+            }
+            fprintf(stderr, "cereal: miss %s: %zu untaken:", cident(f->c, csym(f->c, f->fsym)->name), tot);
+            for (i = 0; i < MC_N; i++)
+                if (cls[i])
+                    fprintf(stderr, " %s %zu;", miss_name[i], cls[i]);
+            fputc(10, stderr);
         }
         if (fe) {                                   /* per function, and by the place the stop read its pointer */
             char key[200], *p;
@@ -1914,6 +2034,8 @@ static void eval_sweep(Checker *c0)
             continue;
         v->c = c;
         name = cident(c, csym(c, f->fsym)->name);
+        if (c0->opt.eval_only && !name_listed(c0->opt.eval_only, name))
+            continue;
         nv = sts.n ? state_variants(f, &sts, states_callable(v, &sts, c)) : 0;
         for (vi = 0; vi <= nv; vi++) {
             bool st = vi < nv;          /* a state variant; the last one is the plain sweep */
@@ -2009,10 +2131,10 @@ static void eval_sweep(Checker *c0)
         fprintf(stderr,
                 "cereal: solve: %lu queries (%lu sat, %lu unsat, %lu unknown), %lu calls, %lu reached a new edge; "
                 "edges taken %zu of %zu, %lu of them first by a solver round (callees included); at most %zu nodes in a call; "
-                "%lu functions with a finishing input, %lu tracked runs, %lu symbolic steps of %lu branches, "
+                "%lu functions with a finishing input, %lu tracked runs (%lu of trapped calls), %lu symbolic steps of %lu branches, "
                 "%lu with an unseen edge\n",
                 ss.queries, ss.sat, ss.unsat, ss.unknown, ss.calls, ss.fresh, ss.taken, ss.edges, ss.gain,
-                ss.nodes, ss.seeded, ss.tracked, ss.steps, ss.branches, ss.open);
+                ss.nodes, ss.seeded, ss.tracked, ss.trapped, ss.steps, ss.branches, ss.open);
         miss_report(v, swept.data, swept.len);
         vec_free(&swept);
         sx_close(sv);

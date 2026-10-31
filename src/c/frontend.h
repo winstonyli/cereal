@@ -27,6 +27,8 @@ typedef struct FrontendOpts {
     struct EvLink *link;        /* ... all the files of the run as one program (--eval-link) */
     const char *eval_solve;     /* ... and solve for more inputs with this solver command (--eval-solve=CMD) */
     bool eval_state;            /* --eval-state */
+    const char *eval_only;      /* --eval-only=NAME[,NAME...]: sweep only these functions and print each call's outcome */
+    bool eval_miss;             /* --eval-miss: print the per-function survey of untaken edges by class */
     const char *validate_summaries;
     const Target *target;       /* NULL: the host's */
     FILE *out;                  /* the dumps */

@@ -173,6 +173,8 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo)
         co.eval_seed = fo->eval_seed;
         co.eval_solve = fo->eval_solve;
         co.eval_state = fo->eval_state;
+        co.eval_only = fo->eval_only;
+        co.eval_miss = fo->eval_miss;
         co.link = fo->link;
         co.dump_asm = fo->dump_asm;
         co.emit_obj = fo->emit_obj;

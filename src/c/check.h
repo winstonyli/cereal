@@ -43,6 +43,8 @@ typedef struct CheckOptions {
     struct EvLink *link;        /* the files of the run share one evaluator, swept after the last (evlink_end) */
     const char *eval_solve;     /* the sweep also solves for inputs with this SMT-LIB2 solver command (symx.h) */
     bool eval_state;            /* the sweep also builds state with constructors and fills record parameters from it (--eval-state) */
+    const char *eval_only;      /* the sweep covers only these functions (comma-separated) and prints each call's outcome on stderr (--eval-only=) */
+    bool eval_miss;             /* the solver sweep also prints, per function, its untaken edges by class (--eval-miss) */
     bool dump_cfg, verify_cfg;  /* --dump-cfg: print the lowered control-flow graph;
                                  * --verify-cfg: and check it (tcfg.c) */
     bool verify_tast;           /* --verify-tast: check each tree, print findings */

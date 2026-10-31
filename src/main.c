@@ -1698,6 +1698,14 @@ int main(int argc, char **argv)
             fe_opts.eval_state = true;
             continue;
         }
+        if (!strncmp(argv[i], "--eval-only=", 12)) {
+            fe_opts.eval_only = argv[i] + 12;
+            continue;
+        }
+        if (!strcmp(argv[i], "--eval-miss")) {
+            fe_opts.eval_miss = true;
+            continue;
+        }
         if (!strncmp(argv[i], "--eval-solve=", 13)) {
             fe_opts.eval_solve = argv[i] + 13;
             continue;
