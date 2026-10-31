@@ -1,8 +1,8 @@
 ---
-status: active
+status: done
 ---
 
-# C parser: plan (draft)
+# C parser: plan (P0 to P2 and P6 built; P3 to P5 parked)
 
 Goal: a C99 + GNU parser and type checker whose results survive edits at
 sub-declaration granularity, so huge generated files (Cython output,
@@ -290,16 +290,16 @@ Statement expressions, `typeof`, `__attribute__`, `__asm__`,
 1. **P1** (done) tree format, full parser without incrementality, brace
    recovery, `cereal parse [--dump] [--cells]`, `-fsyntax-only`;
    Jourdan–Pottier; gcc parity, on real and mutated code.
-2. **P2** scopes, types, summaries, type-checking diagnostics (P2a-f
+2. **P2** (done) scopes, types, summaries, type-checking diagnostics (P2a-f
    above).
-3. **P3** top-level units, change-driven invalidation, early cutoff,
+3. **P3** (parked, PARKED.md) top-level units, change-driven invalidation, early cutoff,
    `fuzz_parse`, restart check.  Decide tree retention (below).
-4. **P4** statement and initializer runs; directed tests on generated
+4. **P4** (parked) statement and initializer runs; directed tests on generated
    switches, tables, deep nesting.
-5. **P5** parallel body parsing and checking (a body needs only the file
+5. **P5** (parked) parallel body parsing and checking (a body needs only the file
    scope at its start).  Join-time checks: block-scope `extern`, implicit
    function declarations, tags declared in prototypes.
-6. **P6** LSP: definition and references for C symbols, hover types,
+6. **P6** (done) LSP: definition and references for C symbols, hover types,
    document symbols, semantic tokens (typedef/variable/function),
    diagnostics; index tables per unit.
 
