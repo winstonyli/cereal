@@ -2,6 +2,8 @@
 # Checker and frontend: nothing a check writes except through once-init or atomics.
 c/csymidx serial_counter  atomic
 diag cfg_gen_next  atomic
+diag by_name  once-init (by_name_once): option indices sorted by name
+diag by_name_once  once-init flag
 lex cls  once-init (tables_once)
 lex cls_dollar  once-init (tables_once)
 lex tables_once  once-init flag

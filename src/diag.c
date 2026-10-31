@@ -6,6 +6,8 @@
 #include "wcwidth.h"
 
 #include <ctype.h>
+#include <pthread.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -313,7 +315,7 @@ static bool parse_size(const char *v, uint64_t *out)
     return false;
 }
 
-static long find_index(const char *name)
+static long find_index_scan(const char *name)
 {
     size_t i;
     long lv;
@@ -321,6 +323,55 @@ static long find_index(const char *name)
         if (name_matches(&options[i], name, &lv))
             return (long)i;
     return -1;
+}
+
+/* Option indices sorted by name, built once: an exact name is found by
+ * bisection; anything else ("X=N", aliases, unknown) takes the scan. */
+static uint16_t by_name[NOPTIONS];
+static pthread_once_t by_name_once = PTHREAD_ONCE_INIT;
+
+static int by_name_cmp(const void *a, const void *b)
+{
+    return strcmp(options[*(const uint16_t *)a].name,
+                  options[*(const uint16_t *)b].name);
+}
+
+static void by_name_init(void)
+{
+    size_t i;
+    for (i = 0; i < NOPTIONS; i++)
+        by_name[i] = (uint16_t)i;
+    qsort(by_name, NOPTIONS, sizeof *by_name, by_name_cmp);
+}
+
+static long find_index(const char *name)
+{
+    size_t lo = 0, hi = NOPTIONS;
+    pthread_once(&by_name_once, by_name_init);
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        int c = strcmp(options[by_name[mid]].name, name);
+        if (!c)
+            return by_name[mid];
+        if (c < 0)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return find_index_scan(name);
+}
+
+/* Every option name finds the same option by bisection as by the scan. */
+int diag_selftest(void)
+{
+    size_t i;
+    int bad = 0;
+    for (i = 0; i < NOPTIONS; i++)
+        if (find_index(options[i].name) != find_index_scan(options[i].name)) {
+            fprintf(stderr, "diag selftest: %s\n", options[i].name);
+            bad++;
+        }
+    return bad != 0;
 }
 
 static void by_names(uint8_t by, char *buf)

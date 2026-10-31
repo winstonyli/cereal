@@ -1601,6 +1601,8 @@ int main(int argc, char **argv)
         return bdd_selftest();   /* hidden: run by tests/run.sh */
     if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "pcq"))
         return pcq_selftest();
+    if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "diag"))
+        return diag_selftest();
     for (i = 1; i < argc; i++)
         ccdb_given |= !strncmp(argv[i], "--compile-commands", 18);
     for (i = 1; i < argc; i++) {

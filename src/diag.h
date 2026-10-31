@@ -251,4 +251,7 @@ void diag_expansion_notes(DiagEngine *d, Diagnostic *dg, const SrcMgr *sm,
                           SrcLoc loc, SrcLoc exp, bool body,
                           MacroChainFn chain, void *ctx);
 
+/* hidden `selftest diag`: bisection and scan agree on every option name */
+int diag_selftest(void);
+
 #endif
