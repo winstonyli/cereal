@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # Macro invocation sites in references (Q7) (plan)
@@ -8,7 +8,7 @@ Written 2026-10-17. Q7 of [B5_DESIGN.md](B5_DESIGN.md) section 17 ("resolved: ke
 expands to `lua_callk(...)`; clangd lists each `lua_call` as a reference to `lua_callk`, cereal lists none.
 clangd's results on lua54 and libuv were 3,509, of which 459 (13%) were such sites (P2 in `clangd_diff.py`);
 those are all functions because the differential queries only functions (S1, section 6a).
-This plan decides how to list them. Nothing is built; the choice between the two designs waits for spikes.
+This plan decides how to list them. Design B was built 2026-10-17 (D2); the spikes and the decisions are below.
 
 ## 1. What cereal does today (verified at HEAD 04c160e, 2026-10-17, lua54)
 

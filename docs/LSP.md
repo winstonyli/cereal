@@ -587,13 +587,11 @@ publishes a result by reloading the unit's manifest and bumping `GEN`.
   indexed saved text; a file changed on disk since is left out until it is
   re-indexed (so is a header that is open and dirty, for the units that
   include it but are not open); the index may still be growing after startup,
-  and nothing waits for it. A call or use written in a macro body, or an
-  invocation of a macro whose body uses the name, is listed by neither
-  source. clangd lists the invocations (13% of its results on lua54 and
-  libuv); this is an intended difference (P2 in `clangd_diff.py`, B5_DESIGN.md
-  Q7, resolved: keep). Listing them is parked: it needs a record format bump
-  and a rename policy for macro sites. Rename refuses instead of missing them
-  (below).
+  and nothing waits for it. An invocation of a macro whose body uses the
+  name is listed, as clangd does (13% of its results on lua54 and libuv; Q7
+  design B, built 2026-10-17, `docs/MACRO_SITES_PLAN.md`; no record format
+  bump). The body token itself is not listed (D1, decided no). Rename refuses
+  instead of missing macro sites (below).
 - Rename of an entity with a project key (B5d; B5_DESIGN.md 11.5, 15.3): a
   function or object with external linkage, or a file-scope name declared in a
   header, is renamed in every unit of the project, from the project index's
