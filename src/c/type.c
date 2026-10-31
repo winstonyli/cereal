@@ -220,7 +220,7 @@ TypeId type_array_flex(TypeTable *tt, TypeId elem)
     return mk_array(tt, TY_ARRAY, TF_INCOMPLETE | TF_FLEX, elem, 0);
 }
 
-TypeId type_vla(TypeTable *tt, TypeId elem)
+static TypeId type_vla(TypeTable *tt, TypeId elem)
 {
     return mk_array(tt, TY_VLA, 0, elem, 0);
 }
@@ -577,7 +577,7 @@ static unsigned align_of(TypeTable *tt, TypeId t, bool member)
 }
 
 unsigned type_align(TypeTable *tt, TypeId t) { return align_of(tt, t, false); }
-unsigned type_member_align(TypeTable *tt, TypeId t) { return align_of(tt, t, true); }
+static unsigned type_member_align(TypeTable *tt, TypeId t) { return align_of(tt, t, true); }
 
 unsigned type_int_bits(TypeTable *tt, TypeId t)
 {
@@ -589,7 +589,7 @@ unsigned type_int_bits(TypeTable *tt, TypeId t)
     return tt->tgt->size[e->kind] * 8u;
 }
 
-int type_int_rank(TypeTable *tt, TypeId t)
+static int type_int_rank(TypeTable *tt, TypeId t)
 {
     const TypeEnt *e = cent(tt, t);
     switch (e->kind) {
@@ -1312,7 +1312,7 @@ void type_print(TypeTable *tt, StrBuf *sb, TypeId t)
     sb_free(&tmp);
 }
 
-void type_quote(TypeTable *tt, StrBuf *sb, TypeId t)
+static void type_quote(TypeTable *tt, StrBuf *sb, TypeId t)
 {
     size_t start = sb->len;
     sb_putc(sb, '\'');

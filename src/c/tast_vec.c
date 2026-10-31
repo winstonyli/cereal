@@ -130,8 +130,8 @@ uint32_t vec_wrap(El *e, uint32_t v, TypeId t, const U32Vec *setup, SrcLoc loc)
 }
 
 /* The vector of type vt whose lanes are lanes[0 .. n), after the statements in setup. */
-uint32_t vec_make(El *e, TypeId vt, SrcLoc loc, const uint32_t *lanes, uint32_t n,
-                         const U32Vec *setup)
+static uint32_t vec_make(El *e, TypeId vt, SrcLoc loc, const uint32_t *lanes, uint32_t n,
+                                const U32Vec *setup)
 {
     Checker *c = e->c;
     U32Vec el = {0};

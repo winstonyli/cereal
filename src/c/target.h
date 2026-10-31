@@ -82,9 +82,6 @@ typedef struct Target {
 } Target;
 
 extern const Target target_x86_64;
-extern const Target target_i386;
-extern const Target target_aarch64;
-extern const Target target_win64;
 
 /* A preset by name (x86_64-linux-gnu, i386, aarch64, x86_64-w64-mingw32,
  * and short forms); NULL if unknown. */

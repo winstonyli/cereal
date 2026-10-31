@@ -13,6 +13,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+static uint64_t checker_file_digest(void *checker, int ns, const char *name,
+                                    uint64_t key, int mode);
+static void summary_free(UnitSummary *s, size_t n);
+static long summary_load(FILE *in, UnitSummary **out);
+static bool summary_valid(const UnitSummary *s, SumLookup lookup, void *ctx,
+                          const SumRead **bad);
+static void summary_write(FILE *out, const UnitSummary *s, size_t index);
+
 typedef struct Arr32 { uint32_t *p; size_t n; } Arr32;
 typedef struct Arr64 { uint64_t *p; size_t n; } Arr64;
 
@@ -871,8 +879,8 @@ void csum_free(Checker *c)
 
 /* ---- validity ----------------------------------------------------------------- */
 
-uint64_t checker_file_digest(void *checker, int ns, const char *name,
-                             uint64_t key, int mode)
+static uint64_t checker_file_digest(void *checker, int ns, const char *name,
+                                    uint64_t key, int mode)
 {
     Checker *c = checker;
     CSum *cs = c->cs;
@@ -895,8 +903,8 @@ uint64_t checker_file_digest(void *checker, int ns, const char *name,
     return nz(mode == RD_FULL ? e.full : e.iface);
 }
 
-bool summary_valid(const UnitSummary *s, SumLookup lookup, void *ctx,
-                   const SumRead **bad)
+static bool summary_valid(const UnitSummary *s, SumLookup lookup, void *ctx,
+                          const SumRead **bad)
 {
     size_t k;
     for (k = 0; k < s->nreads; k++) {
@@ -937,7 +945,7 @@ static void put_flags(FILE *out, uint32_t f)
         fputc('-', out);
 }
 
-void summary_write(FILE *out, const UnitSummary *s, size_t index)
+static void summary_write(FILE *out, const UnitSummary *s, size_t index)
 {
     size_t k;
     fprintf(out, "unit %zu key=%016llx digest=%016llx sig=%016llx%s\n", index,
@@ -984,7 +992,7 @@ static int find_name(const char *const *tab, size_t n, const char *s)
     return -1;
 }
 
-long summary_load(FILE *in, UnitSummary **out)
+static long summary_load(FILE *in, UnitSummary **out)
 {
     char line[4096];
     UnitSummary *v = NULL;
@@ -1039,7 +1047,7 @@ bad:
     return -1;
 }
 
-void summary_free(UnitSummary *s, size_t n)
+static void summary_free(UnitSummary *s, size_t n)
 {
     size_t i, k;
     for (i = 0; i < n; i++) {

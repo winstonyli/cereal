@@ -10,6 +10,8 @@
 #include <math.h>
 #include <string.h>
 
+static void cst_parts(Checker *c, uint32_t n, bool *neg, uint64_t *mag);
+
 /* ---- -Wlogical-op ----------------------------------------------------------
  * c-family warn_logical_operator: a non-boolean constant operand, operands
  * that are the same test, and range tests on one expression that are always
@@ -471,7 +473,7 @@ bool is_boolish(Checker *c, uint32_t n)
 }
 
 /* The node's value when it is an integer constant: *neg, the magnitude. */
-void cst_parts(Checker *c, uint32_t n, bool *neg, uint64_t *mag)
+static void cst_parts(Checker *c, uint32_t n, bool *neg, uint64_t *mag)
 {
     TypeId t = rvt(c, n);
     uint64_t v = c->cv[n];
@@ -649,7 +651,7 @@ static void sign_compare(Checker *c, SrcLoc loc, uint32_t a, uint32_t b,
 
 /* c_common_get_narrower: strip the widening conversions of n.  *bf: a
  * bit-field (not narrowed here). */
-uint32_t narrower(Checker *c, uint32_t n, TypeId *ty, unsigned *prec)
+static uint32_t narrower(Checker *c, uint32_t n, TypeId *ty, unsigned *prec)
 {
     *prec = 0;
     for (;;) {

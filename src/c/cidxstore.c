@@ -17,7 +17,7 @@
 
 #define GRACE_SECONDS 600       /* 6.4: a job that wrote records but no manifest yet */
 
-uint64_t store_project_id(const char *root, const char *db, uint64_t build_id)
+static uint64_t store_project_id(const char *root, const char *db, uint64_t build_id)
 {
     uint64_t h = hash64(root, strlen(root), hash64_str(db, 0));
     return hash64(&build_id, sizeof build_id, h);   /* two builds never share files (6.4) */

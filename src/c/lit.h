@@ -39,7 +39,6 @@ typedef struct Lit {
 /* A pp-number (integer or floating constant). */
 void lit_number(const Target *tgt, const char *s, size_t n, Lit *out);
 /* A character constant, prefix included. */
-uint32_t lit_named_ucn(const char *s, const char *e);
 /* One character (or escape) of a char or string literal body; returns its
  * value and advances *p. *ucn is set for a universal-character-name. */
 uint32_t lit_char_one(const char **p, const char *end, bool wide, bool *ucn);

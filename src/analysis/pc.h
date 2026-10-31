@@ -49,12 +49,10 @@ struct PcUnit {
 /* Fold the unit rooted at main, with the trace of a (taken from it).  False
  * when it went over the cap. */
 bool pc_fold(PcUnit *u, Analysis *a, SrcFile *main);
-void pc_unit_free(PcUnit *u);
 void pc_unit_destroy(PcUnit *u);    /* a malloc'd one */
 void pc_trace_free(Analysis *a);
 /* The truth of an atom for the macros as they are when the main file
  * starts. */
-bool pc_host_atom(PcUnit *u, const PcAtom *at);
 /* Record which groups the real preprocessor takes: the fold uses it inside
  * system headers and the oracle compares with it.  Single-threaded runs
  * only: call after analysis_attach, before the TU runs. */
@@ -87,7 +85,6 @@ bool pc_req_via(const PcUnit *u, const PcReq *q, StrBuf *sb);
 /* The command-line words that turn a group on in this unit: the first of the
  * three cheapest cubes that an overlay can do (pc_enable of pcq.h, and no
  * guard of a header, which would change which files are read); false: none. */
-bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb);
 /* The same, as edits of the configuration header: the inactive group around loc of f,
  * turned on by changing the body of `#define` lines that an -imacros file holds.
  * Fills out[0..n) (text owned: free it); 0 when the group is active, inexact, or an

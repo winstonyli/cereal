@@ -483,7 +483,7 @@ ScopeKind cbind_scope(Checker *c, uint32_t b)
     return SCK_FILE;
 }
 
-void cscope_push(Checker *c, ScopeKind kind)
+static void cscope_push(Checker *c, ScopeKind kind)
 {
     ScopeMark m;
     m.log = (uint32_t)c->log.len;
@@ -491,7 +491,7 @@ void cscope_push(Checker *c, ScopeKind kind)
     vec_push(&c->scopes, m);
 }
 
-void cscope_pop(Checker *c, BindVec *save)
+static void cscope_pop(Checker *c, BindVec *save)
 {
     uint32_t mark;
     if (c->scopes.len <= 1)

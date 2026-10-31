@@ -40,7 +40,7 @@ const Target target_x86_64 = {
 
 /* i386: no __int128; long long and double are 8-aligned alone but
  * 4-aligned in records; long double is 12 bytes, 4-aligned. */
-const Target target_i386 = {
+static const Target target_i386 = {
     .name = "i386-linux-gnu",
     .size = { SMALL_TYPES, [TY_LONG] = 4, [TY_ULONG] = 4, [TY_LLONG] = 8,
               [TY_ULLONG] = 8, [TY_DOUBLE] = 8, [TY_LDOUBLE] = 12,
@@ -70,7 +70,7 @@ const Target target_i386 = {
     [TY_FLOAT128] = 16, [TY_FLOAT32X] = 8, [TY_FLOAT64X] = 16,             \
     [TY_DEC64] = 8, [TY_DEC128] = 16
 
-const Target target_aarch64 = {
+static const Target target_aarch64 = {
     .name = "aarch64-linux-gnu",
     .size = { AARCH64_TYPES },
     .align = { AARCH64_TYPES },
@@ -90,7 +90,7 @@ const Target target_aarch64 = {
     [TY_FLOAT128] = 16, [TY_FLOAT32X] = 8, [TY_FLOAT64X] = 16,             \
     [TY_DEC64] = 8, [TY_DEC128] = 16
 
-const Target target_win64 = {
+static const Target target_win64 = {
     .name = "x86_64-w64-mingw32",
     .size = { WIN64_TYPES },
     .align = { WIN64_TYPES },

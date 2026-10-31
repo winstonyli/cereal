@@ -13,7 +13,7 @@ static InternTable *table_new(size_t cap)
     return t;
 }
 
-void interner_init(Interner *in)
+static void interner_init(Interner *in)
 {
     int i;
     memset(in, 0, sizeof *in);
@@ -34,7 +34,7 @@ void interner_init(Interner *in)
     }
 }
 
-void interner_free(Interner *in)
+static void interner_free(Interner *in)
 {
     uint32_t p;
     int i;

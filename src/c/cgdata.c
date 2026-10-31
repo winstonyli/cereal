@@ -16,7 +16,7 @@
 
 /* ---- state, names -------------------------------------------------------- */
 
-X86 *x86_get(Checker *c)
+static X86 *x86_get(Checker *c)
 {
     if (!c->x86) {
         c->x86 = xcalloc(1, sizeof *c->x86);

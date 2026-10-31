@@ -554,8 +554,8 @@ static int assign_op(int p)
 /* a op b with the operands converted as the operator requires; the type of
  * the result is returned in *rt.  The caller supplies the checker's node
  * for the type check (0: none). */
-uint32_t arith(El *e, uint32_t i, int op, uint32_t a, uint32_t b,
-                      SrcLoc loc, TypeId *rt)
+static uint32_t arith(El *e, uint32_t i, int op, uint32_t a, uint32_t b,
+                             SrcLoc loc, TypeId *rt)
 {
     Checker *c = e->c;
     TypeId lt, rtt, ct;

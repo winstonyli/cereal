@@ -89,23 +89,16 @@ void checker_set_unit_key(Checker *c, uint64_t key);
 
 /* The digest of a file-scope entity in the checker's current state, in the
  * shape summary_valid wants: ns, name, key (SUM_LAYOUT), mode; 0 if absent. */
-uint64_t checker_file_digest(void *checker, int ns, const char *name,
-                             uint64_t key, int mode);
 
 typedef uint64_t (*SumLookup)(void *ctx, int ns, const char *name,
                               uint64_t key, int mode);
 /* Is every read of s still satisfied?  lookup answers each with the digest
  * in the state to validate against (checker_file_digest with ctx = the
  * Checker is one).  *bad gets the first read that is not. */
-bool summary_valid(const UnitSummary *s, SumLookup lookup, void *ctx,
-                   const SumRead **bad);
 
 /* Stable text serialization; summary_load reads back the read sets and unit
  * digests (entries are not reloaded) of every `unit` block of a dump.
  * Returns the number of units, -1 on a syntax error. */
-void summary_write(FILE *out, const UnitSummary *s, size_t index);
-long summary_load(FILE *in, UnitSummary **out);
-void summary_free(UnitSummary *s, size_t n);
 
 /* ---- hooks, called by the checker (csum.c) -------------------------------- */
 

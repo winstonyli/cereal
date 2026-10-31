@@ -224,7 +224,6 @@ Arena *cenc_arena(CellEnc *e);
 CLoc cenc_loc(CellEnc *e, SrcLoc loc);
 uint32_t cenc_macro(CellEnc *e, const Macro *m);   /* UINT32_MAX: NULL */
 uint32_t cenc_item(CellEnc *e, uint32_t item);
-const char *cenc_str(CellEnc *e, const char *s);
 void cenc_diag(CellEnc *e, const Diagnostic *d);
 void cenc_exp(CellEnc *e, uint32_t key, const Macro *m);
 

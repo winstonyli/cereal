@@ -27,7 +27,6 @@ typedef struct X86 {
 } X86;
 
 /* The state of a checker, made on first use. */
-X86 *x86_get(Checker *c);
 
 /* The linker name of a function or object.  A block-scope static gets the
  * function's name (fname, an identifier id) and its own number in front.

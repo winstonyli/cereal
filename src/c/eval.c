@@ -2182,7 +2182,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
 
 /* ---- the interface ------------------------------------------------------------ */
 
-Ev *ev_new(Checker *c, const EvOpts *o)
+static Ev *ev_new(Checker *c, const EvOpts *o)
 {
     Ev *v = xcalloc(1, sizeof *v);
     v->c = c;
@@ -2277,7 +2277,7 @@ void ev_add_data(Ev *v, El *e)
     vec_push(&v->fn, f);
 }
 
-void ev_add_tentative(Ev *v, uint32_t ref)
+static void ev_add_tentative(Ev *v, uint32_t ref)
 {
     Sd d;
     memset(&d, 0, sizeof d);
@@ -2288,7 +2288,7 @@ void ev_add_tentative(Ev *v, uint32_t ref)
     vec_push(&v->sd, d);
 }
 
-void ev_add_func(Ev *v, El *e, Cfg *g)
+static void ev_add_func(Ev *v, El *e, Cfg *g)
 {
     Fn f = fn_of_el(v, e);
     size_t i;

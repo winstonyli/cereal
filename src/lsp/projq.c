@@ -157,7 +157,7 @@ bool pq_place(PqFiles *fs, PqFile *f, uint64_t fhash, uint32_t off, uint32_t len
     return through(&f->fwd, off, len, out);
 }
 
-bool pq_unplace(PqFiles *fs, PqFile *f, uint32_t off, uint32_t len, uint32_t *out)
+static bool pq_unplace(PqFiles *fs, PqFile *f, uint32_t off, uint32_t len, uint32_t *out)
 {
     if (!load(fs, f) || !f->open || !load_disk(f) || cur_hash(f) == f->diskhash) {
         *out = off;
@@ -184,7 +184,7 @@ static void pos_of(PqFiles *fs, PqFile *f, size_t off, uint32_t *line, uint32_t 
     line_table_pos(&f->lines, f->cur, f->curlen, off, fs->enc, line, ch);
 }
 
-void pq_pos(JsonWriter *w, PqFiles *fs, PqFile *f, size_t off)
+static void pq_pos(JsonWriter *w, PqFiles *fs, PqFile *f, size_t off)
 {
     uint32_t line, ch;
     pos_of(fs, f, off, &line, &ch);

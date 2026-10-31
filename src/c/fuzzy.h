@@ -24,9 +24,6 @@ typedef struct Best {
     unsigned dist;
 } Best;
 
-unsigned sc_dist(const char *s, size_t n, const char *t, size_t m,
-                 unsigned limit);
-unsigned sc_cutoff(size_t goal, size_t cand);
 void best_init(Best *b, const char *goal, uint64_t *work);
 void best_consider_n(Best *b, const char *s, size_t n);
 void best_consider(Best *b, const char *s);

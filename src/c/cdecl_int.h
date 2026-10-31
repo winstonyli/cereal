@@ -312,7 +312,6 @@ void cdecl_member_decl_visit(Checker *c, uint32_t i);
 void cdecl_static_assert_visit(Checker *c, uint32_t i);
 void cdecl_pragma_visit(Checker *c, uint32_t i);
 bool cdecl_flex_struct(Checker *c, TypeId t);
-void cdecl_struct_semis(Checker *c, uint32_t upto);
 void cdecl_typedef_tag_clash(Checker *c, uint32_t name, SrcLoc at, SrcLoc old);
 
 #endif

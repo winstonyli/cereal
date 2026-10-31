@@ -282,7 +282,7 @@ void printer_token(Printer *p, const Tok *t)
     p->st.have_prev = true;
 }
 
-void printer_finish(Printer *p)
+static void printer_finish(Printer *p)
 {
     if (!p->st.at_bol)
         newline(&p->st, p->out);

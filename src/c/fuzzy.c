@@ -5,8 +5,8 @@
 
 /* Damerau-Levenshtein distance with gcc's costs: 2 per edit, 1 for a
  * change of case only. */
-unsigned sc_dist(const char *s, size_t n, const char *t, size_t m,
-                 unsigned limit)
+static unsigned sc_dist(const char *s, size_t n, const char *t, size_t m,
+                        unsigned limit)
 {
     enum { INF = 0x3fffffff };
     unsigned rows[3][SC_MAXLEN + 2];
@@ -65,7 +65,7 @@ unsigned sc_dist(const char *s, size_t n, const char *t, size_t m,
     return pr[m] >= INF ? SC_NONE : pr[m];
 }
 
-unsigned sc_cutoff(size_t goal, size_t cand)
+static unsigned sc_cutoff(size_t goal, size_t cand)
 {
     size_t mx = goal > cand ? goal : cand, mn = goal > cand ? cand : goal;
     if (mx <= 1)

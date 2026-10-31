@@ -161,7 +161,6 @@ typedef struct Snapshot {
 
 enum { CHECK_NONE, CHECK_PENDING, CHECK_DONE };
 
-void snapshot_release(Snapshot *s);
 
 /* ---- rename across units (B5d; docs/B5_DESIGN.md 11.5) ---- */
 
@@ -172,7 +171,6 @@ typedef struct DocSet DocSet;
 DocSet *lsp_docs_copy(void);
 void lsp_docs_free(DocSet *d);
 /* A CRename overlay over d. */
-bool lsp_docs_lookup(void *ctx, const char *path, const char **buf, size_t *len);
 /* The open document's version (-1: the client gave none) and the hash of its
  * text now; false: it is not open. */
 bool lsp_doc_state(const char *path, long long *version, uint64_t *hash);
@@ -311,9 +309,5 @@ void lsp_publish_inactive(Snapshot *s, PosEncoding enc, const char *path);
 /* Helpers shared by server.c and features.c. */
 SrcLoc req_loc(Req *r, const JsonValue *pos);
 /* ... in another file of the snapshot (a call hierarchy item's). */
-SrcLoc req_loc_in(Req *r, SrcFile *file, const JsonValue *pos);
-void json_location(JsonWriter *w, Req *r, SrcLoc b, SrcLoc e);
-void json_range(JsonWriter *w, SrcMgr *sm, PosEncoding enc, SrcLoc b,
-                SrcLoc e);
 
 #endif

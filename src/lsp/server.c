@@ -247,7 +247,7 @@ static bool overlay_lookup(void *ctx, const char *path, const char **buf,
 
 /* ---- snapshots ---------------------------------------------------------- */
 
-void snapshot_release(Snapshot *s)
+static void snapshot_release(Snapshot *s)
 {
     size_t i;
     if (!s || atomic_add_u32(&s->refs, (uint32_t)-1) != 1)
@@ -727,7 +727,7 @@ void lsp_docs_free(DocSet *d)
     free(d);
 }
 
-bool lsp_docs_lookup(void *ctx, const char *path, const char **buf, size_t *len)
+static bool lsp_docs_lookup(void *ctx, const char *path, const char **buf, size_t *len)
 {
     const DocSet *d = ctx;
     size_t i;

@@ -9,7 +9,7 @@
 #define W_TARGET 1000u          /* one target change outweighs any language ones */
 #define W_LANG 100u             /* and one language change any config ones */
 
-uint32_t pc_cube_weight(const PcCube *c)
+static uint32_t pc_cube_weight(const PcCube *c)
 {
     return c->target * W_TARGET + c->lang * W_LANG + c->cost;
 }
@@ -618,8 +618,8 @@ static bool mix_var(void *ctx, uint32_t var)
                   pc_var_owner(x->cx, var) == x->owner ? x->b : x->a, var) == 1;
 }
 
-size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation *v2,
-               const char ***names)
+static size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation *v2,
+                      const char ***names)
 {
     BddVars vs = {0};
     U32Vec cand = {0};
@@ -663,8 +663,8 @@ size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation *v2,
 
 /* ---- the independent reference: enumerate every assignment ----------------- */
 
-bool pc_cost_brute(PcCtx *cx, Bdd g, const PcValuation *v, size_t maxvars,
-                   uint32_t *best)
+static bool pc_cost_brute(PcCtx *cx, Bdd g, const PcValuation *v, size_t maxvars,
+                          uint32_t *best)
 {
     BddVars vs = {0};
     bool *as;
@@ -809,7 +809,7 @@ int pcq_selftest(void)
         Bdd f, g;
         BddVars vs = {0};
         SelfV v;
-        PcValuation val;
+        PcValuation val = {0};
         PcCube cubes[3];
         size_t nc;
         uint32_t best = INF, a;

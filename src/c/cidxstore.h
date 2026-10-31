@@ -18,7 +18,6 @@ typedef struct Store {
 
 /* The project id of a workspace root, compile database path and build, and its
  * directory under a cache root (malloc'd; nothing is created). */
-uint64_t store_project_id(const char *root, const char *db, uint64_t build_id);
 char *store_project_dir(const char *cache, const char *root, const char *db,
                         uint64_t build_id);
 

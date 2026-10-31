@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb);
+
 #define PC_BDD_CAP ((size_t)1 << 22)
 #define PC_MAX_DEPTH 16
 
@@ -245,7 +247,7 @@ static bool host_atom(PcUnit *u, const PcAtom *at, bool *known)
     return macro_number(u->an, m, &n) && n >= at->c;
 }
 
-bool pc_host_atom(PcUnit *u, const PcAtom *at)
+static bool pc_host_atom(PcUnit *u, const PcAtom *at)
 {
     bool known;
     return host_atom(u, at, &known);
@@ -793,7 +795,7 @@ bool pc_fold(PcUnit *u, Analysis *a, SrcFile *main)
     return !u->over;
 }
 
-void pc_unit_free(PcUnit *u)
+static void pc_unit_free(PcUnit *u)
 {
     size_t i;
     for (i = 0; i < u->macros.len; i++) {
@@ -1531,7 +1533,7 @@ static bool enable_fixed(void *ctx, const PcAtom *at)
     return at->cls == PC_TARGET || (m && !m->predefined && !m->cfg && m->file);
 }
 
-bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb)
+static bool pc_enable_group(PcUnit *u, Bdd pc, StrBuf *sb)
 {
     PcValuation hv = {u, host_get, enable_fixed};
     PcCube cubes[3];

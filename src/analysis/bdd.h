@@ -49,7 +49,6 @@ Bdd bdd_var(BddMgr *m, uint32_t v);
 Bdd bdd_not(BddMgr *m, Bdd f);
 Bdd bdd_and(BddMgr *m, Bdd f, Bdd g);
 Bdd bdd_or(BddMgr *m, Bdd f, Bdd g);
-Bdd bdd_ite(BddMgr *m, Bdd f, Bdd g, Bdd h);
 /* The variables f depends on, each once, in no particular order. */
 typedef VEC(uint32_t) BddVars;
 void bdd_vars(BddMgr *m, Bdd f, BddVars *out);

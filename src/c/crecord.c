@@ -66,7 +66,7 @@ static TypeId new_tag(Checker *c, int want, uint32_t name, SrcLoc loc)
 
 /* The unit's stray ';' in the struct body being defined, up to token upto
  * (gcc's parser diagnoses them as it goes). */
-void cdecl_struct_semis(Checker *c, uint32_t upto)
+static void cdecl_struct_semis(Checker *c, uint32_t upto)
 {
     RecDef *rd;
     uint32_t k;

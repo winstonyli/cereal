@@ -25,7 +25,6 @@ void json_begin_array(JsonWriter *w);
 void json_end_array(JsonWriter *w);
 void json_key(JsonWriter *w, const char *k);
 void json_str(JsonWriter *w, const char *s);
-void json_strn(JsonWriter *w, const char *s, size_t n);
 void json_int(JsonWriter *w, long long v);
 void json_bool(JsonWriter *w, bool v);
 void json_null(JsonWriter *w);

@@ -1014,7 +1014,7 @@ static void merge_cells(Par *P)
 
 /* ---- entry ----------------------------------------------------------- */
 
-bool par_worth_it(const char *path, const ParOptions *po)
+static bool par_worth_it(const char *path, const ParOptions *po)
 {
     /* the target is large generated files: don't pay phase A on the way
      * to a sequential run for everything else */

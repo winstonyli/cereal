@@ -339,7 +339,6 @@ TypeId cplx_comp(Checker *c, TypeId t);
 bool cplx_get(Checker *c, uint32_t n, long double *re, long double *im, TypeId
               *ct);
 uint64_t cplx_u(long double v);
-bool float_to_int(Checker *c, long double f, TypeId t, uint64_t *out);
 bool float_to_int_bits(Checker *c, long double f, TypeId t, unsigned bits,
                        uint64_t *out);
 bool is_cmp_op(int op);
@@ -364,7 +363,6 @@ bool is_boolish(Checker *c, uint32_t n);
 bool nonneg(Checker *c, uint32_t n);
 const char *bf_tstr(Checker *c, TypeId t, unsigned w);
 const char *cmp_tstr(Checker *c, uint32_t n);
-uint32_t narrower(Checker *c, uint32_t n, TypeId *ty, unsigned *prec);
 void tauto_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op);
 void parens_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op);
 void lognot_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op);
@@ -378,9 +376,7 @@ bool intops(Checker *c, uint32_t i);
 int truth(Checker *c, uint32_t i, bool fold);
 bool prints_value(Checker *c, uint32_t i);
 void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec);
-void sp(char *b, const char *fmt, ...);
 bool targets_compat(Checker *c, SrcLoc loc, TypeId pa, TypeId pb);
-void deref(Checker *c, uint32_t i, uint32_t a);
 uint32_t stmt_expr_value(Checker *c, uint32_t i);
 void bin_value(Checker *c, uint32_t i, uint32_t a, uint32_t b,
     uint64_t v, bool ovf, bool int_const, SrcLoc loc);
@@ -394,7 +390,6 @@ void vec_invalid(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
 SrcLoc colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els);
 
 extern __thread bool no_int_bool;   /* set by the ?: check while its condition is checked */
-void cst_parts(Checker *c, uint32_t n, bool *neg, uint64_t *mag);
 
 /* -Wparentheses */
 #define PW(l, ...) cwarn(c, (l), "parentheses", __VA_ARGS__)

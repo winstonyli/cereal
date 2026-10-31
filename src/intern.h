@@ -53,8 +53,6 @@ typedef struct Interner {
     uint32_t refs;             /* atomic; interner_new/retain/release */
 } Interner;
 
-void interner_init(Interner *in);
-void interner_free(Interner *in);
 /* A heap interner that successive builds can share (ids stay stable). */
 Interner *interner_new(void);
 Interner *interner_retain(Interner *in);

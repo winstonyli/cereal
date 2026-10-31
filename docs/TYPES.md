@@ -146,6 +146,10 @@ denoted when the unit looked it up at file scope.
   `extern`, K&R prototype checks).  `state pack`: a struct completion used
   `#pragma pack`.  Reads are sorted by (namespace, mode, name, key).
 
+`summary_valid`, `summary_write`, `summary_load`, `summary_free` and
+`checker_file_digest` are file-local to `csum.c` (only `--dump-summaries` and
+`--validate-summaries` use them; P3 re-exports what it needs).
+
 `summary_valid(summary, lookup, ctx, &bad)` is true when every read yields
 the same digest from `lookup(ctx, ns, name, key, mode)` (0: absent);
 `checker_file_digest` is such a lookup over a checker's current file-scope

@@ -3,6 +3,8 @@
 
 #include <string.h>
 
+static void json_strn(JsonWriter *w, const char *s, size_t n);
+
 void json_init(JsonWriter *w, FILE *out)
 {
     memset(w, 0, sizeof *w);
@@ -129,7 +131,7 @@ void json_str(JsonWriter *w, const char *s)
     json_strn(w, s, strlen(s));
 }
 
-void json_strn(JsonWriter *w, const char *s, size_t n)
+static void json_strn(JsonWriter *w, const char *s, size_t n)
 {
     value_prefix(w);
     raw_str(w, s, n);

@@ -791,8 +791,6 @@ uint32_t lookup_ord(Checker *c, uint32_t ident);   /* SYM_NONE if none */
 /* The binding (log index + 1) of ident in the innermost scope, 0 if none. */
 uint32_t cbound_here(Checker *c, int ns, uint32_t ident);
 ScopeKind cbind_scope(Checker *c, uint32_t bind);
-void cscope_push(Checker *c, ScopeKind kind);
-void cscope_pop(Checker *c, BindVec *save);
 bool cat_file_scope(Checker *c);
 ScopeKind cscope_kind(Checker *c);
 

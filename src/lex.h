@@ -69,7 +69,6 @@ void lexer_free(Lexer *L);
 void lex_next(Lexer *L, Tok *t);
 /* Reports the line notes of the lines up to the cursor (libcpp does it as
  * it cleans each line). */
-void lexer_flush_notes(Lexer *L);
 
 static inline SrcLoc lexer_loc(const Lexer *L)
 {

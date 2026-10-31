@@ -44,6 +44,5 @@ ParResult par_write_output(TU *tu, const char *path, FILE *out,
                            bool linemarkers, const ParOptions *po);
 
 /* auto mode: is the input worth a parallel run? (cheap: a stat) */
-bool par_worth_it(const char *path, const ParOptions *po);
 
 #endif

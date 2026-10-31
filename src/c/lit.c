@@ -423,7 +423,7 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
 
 /* The code point of a Unicode character name; the bidi controls are the
  * names known, any other is taken to be some character past U+00FF. */
-uint32_t lit_named_ucn(const char *s, const char *e)
+static uint32_t lit_named_ucn(const char *s, const char *e)
 {
     static const struct { const char *name; uint32_t cp; } t[] = {
         {"LEFT-TO-RIGHT EMBEDDING", 0x202A}, {"RIGHT-TO-LEFT EMBEDDING", 0x202B},

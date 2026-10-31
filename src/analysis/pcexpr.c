@@ -255,7 +255,7 @@ PcNode *pc_parse(PcCtx *cx, TokSpan toks)
     return n;
 }
 
-PcNode *pc_defined_node(PcCtx *cx, Ident *id, bool negate)
+static PcNode *pc_defined_node(PcCtx *cx, Ident *id, bool negate)
 {
     Arena *a = cx->an->arena;
     PcNode *d = NEW(a, PcNode), *n;

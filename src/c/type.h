@@ -167,7 +167,6 @@ TypeId type_ptr(TypeTable *tt, TypeId to);
 TypeId type_array(TypeTable *tt, TypeId elem, uint64_t n);
 TypeId type_array_incomplete(TypeTable *tt, TypeId elem);
 TypeId type_array_flex(TypeTable *tt, TypeId elem);
-TypeId type_vla(TypeTable *tt, TypeId elem);
 /* A VLA that remembers its size expression's spelling (TYPE_EXTRA 0: none). */
 TypeId type_vla_x(TypeTable *tt, TypeId elem, uint64_t n, bool sized,
                   uint32_t txt);
@@ -238,10 +237,8 @@ TypeId type_base(TypeTable *tt, TypeId t);
 /* sizeof in bytes; 0 with *ok false if incomplete or a VLA. */
 uint64_t type_size(TypeTable *tt, TypeId t, bool *ok);
 unsigned type_align(TypeTable *tt, TypeId t);        /* __alignof__ */
-unsigned type_member_align(TypeTable *tt, TypeId t); /* in a record */
 /* Integer rank / width in bits (integers only). */
 unsigned type_int_bits(TypeTable *tt, TypeId t);
-int type_int_rank(TypeTable *tt, TypeId t);
 /* The signed/unsigned integer type of the same rank. */
 TypeId type_to_unsigned(TypeTable *tt, TypeId t);
 
@@ -271,7 +268,6 @@ void type_print(TypeTable *tt, StrBuf *sb, TypeId t);
 const char *type_builtin_name(TypeKind k);
 /* 'T' {aka 'int'}: quoted, with the typedef-stripped spelling if it
  * differs. */
-void type_quote(TypeTable *tt, StrBuf *sb, TypeId t);
 /* type_quote into a buffer owned by the table, valid until the next call
  * (four rotate, so one message can quote up to four types). */
 const char *type_q(TypeTable *tt, TypeId t);

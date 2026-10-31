@@ -356,7 +356,7 @@ static void flush_notes_to(Lexer *L, const char *at)
     }
 }
 
-void lexer_flush_notes(Lexer *L) { flush_notes_to(L, L->p); }
+static void lexer_flush_notes(Lexer *L) { flush_notes_to(L, L->p); }
 
 void lexer_seek(Lexer *L, SrcLoc loc, bool bol)
 {

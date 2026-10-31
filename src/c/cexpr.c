@@ -298,7 +298,7 @@ bool has_ival(Checker *c, uint32_t i)
  * A complex constant has EF_CPLXCST (its ck stays K_NONE); the real and
  * imaginary parts, rounded to the component type, are fv[cv] and fv[cv + 1].
  * Integer parts are held as exact long doubles. */
-bool float_to_int(Checker *c, long double f, TypeId t, uint64_t *out);
+static bool float_to_int(Checker *c, long double f, TypeId t, uint64_t *out);
 bool is_decimal_flt(Checker *c, TypeId t);
 
 TypeId cplx_comp(Checker *c, TypeId t)
@@ -2190,7 +2190,7 @@ TypeId vec_elem(Checker *c, TypeId vt);
 /* ---- implicit conversions (gcc's convert_for_assignment) ----------------------------------- */
 
 
-void sp(char *b, const char *fmt, ...)
+static void sp(char *b, const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -4066,7 +4066,7 @@ static void alias_cast(Checker *c, uint32_t a, TypeId pt)
     alias_warn(c, cnode_loc(c, strip_paren(c, a)), ot, pt, true);
 }
 
-void deref(Checker *c, uint32_t i, uint32_t a)
+static void deref(Checker *c, uint32_t i, uint32_t a)
 {
     SrcLoc loc = cnode_loc(c, i);
     uint32_t s = strip_paren(c, a);

@@ -66,7 +66,6 @@ typedef struct Printer {
 
 void printer_init(Printer *p, PP *pp, OutSink *out, bool linemarkers);
 void printer_token(Printer *p, const Tok *t);
-void printer_finish(Printer *p);
 void print_transition(const SrcMgr *sm, const Interner *in, bool linemarkers,
                       PrintState *st, const PrintTok *pt, OutSink *o);
 

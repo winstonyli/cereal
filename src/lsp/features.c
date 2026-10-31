@@ -16,7 +16,7 @@
 
 /* ---- helpers ------------------------------------------------------------ */
 
-SrcLoc req_loc_in(Req *r, SrcFile *file, const JsonValue *pos)
+static SrcLoc req_loc_in(Req *r, SrcFile *file, const JsonValue *pos)
 {
     uint32_t line = (uint32_t)json_int_of(json_get(pos, "line"), 0);
     SrcLoc ls = line ? srcmgr_loc_of(file, line + 1, 1) : 0;
@@ -51,7 +51,7 @@ static void json_pos(JsonWriter *w, SrcMgr *sm, PosEncoding enc, SrcLoc loc)
     json_end_object(w);
 }
 
-void json_range(JsonWriter *w, SrcMgr *sm, PosEncoding enc, SrcLoc b, SrcLoc e)
+static void json_range(JsonWriter *w, SrcMgr *sm, PosEncoding enc, SrcLoc b, SrcLoc e)
 {
     json_begin_object(w);
     json_key(w, "start");
@@ -67,7 +67,7 @@ static const char *uri_of(Arena *a, SrcMgr *sm, SrcLoc loc)
     return f ? path_to_uri(a, f->path) : NULL;
 }
 
-void json_location(JsonWriter *w, Req *r, SrcLoc b, SrcLoc e)
+static void json_location(JsonWriter *w, Req *r, SrcLoc b, SrcLoc e)
 {
     const SrcFile *f = srcmgr_file_of(&r->snap->tu.sm, b);
     if (!f || f != r->uri_file) { /* results come in runs of one file */

@@ -589,7 +589,7 @@ static long find_index_cached(DiagEngine *d, const char *id)
     return i;
 }
 
-DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested)
+static DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested)
 {
     long i;
     DiagLevel l;
@@ -614,7 +614,7 @@ DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested)
     return l;
 }
 
-bool diag_noerror(DiagEngine *d, const char *id)
+static bool diag_noerror(DiagEngine *d, const char *id)
 {
     long i;
     if (!d->cfg || !id || !*id)
@@ -837,7 +837,7 @@ static const char *level_color(DiagLevel l)
 
 /* libcpp's cpp_wcwidth: 0 for combining marks, format characters and Hangul
  * medial/final jamo, 2 for East Asian wide, else 1. */
-int wc_width(uint32_t c)
+static int wc_width(uint32_t c)
 {
     size_t lo, hi, n;
     if (c < 0x300)
@@ -1024,7 +1024,7 @@ static void print_loc_line(DiagEngine *d, SrcLoc loc, DiagLevel lvl,
 
 static void print_fixits(DiagEngine *d, const Diagnostic *dg, int owner);
 
-void diag_print(DiagEngine *d, Diagnostic *dg)
+static void diag_print(DiagEngine *d, Diagnostic *dg)
 {
     int i, own = 0;
     size_t k;
@@ -1410,7 +1410,7 @@ SrcLoc diag_header_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc,
     return at;
 }
 
-void fixit_escape(FILE *o, const char *s, size_t n)
+static void fixit_escape(FILE *o, const char *s, size_t n)
 {
     size_t i;
     for (i = 0; i < n; i++) {

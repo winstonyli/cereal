@@ -626,7 +626,7 @@ uint32_t cenc_item(CellEnc *e, uint32_t item)
     return item - (uint32_t)e->s;
 }
 
-const char *cenc_str(CellEnc *e, const char *s)
+static const char *cenc_str(CellEnc *e, const char *s)
 {
     return s ? arena_strdup(&e->cell->arena, s) : NULL;
 }

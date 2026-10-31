@@ -101,7 +101,7 @@ static uint32_t top(const BddMgr *m, Bdd f)
     return m->nodes.data[f].var;
 }
 
-Bdd bdd_ite(BddMgr *m, Bdd f, Bdd g, Bdd h)
+static Bdd bdd_ite(BddMgr *m, Bdd f, Bdd g, Bdd h)
 {
     uint32_t v;
     Bdd lo, hi, r;

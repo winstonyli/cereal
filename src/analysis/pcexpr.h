@@ -109,7 +109,6 @@ PcNode *pc_parse(PcCtx *cx, TokSpan toks);
 /* The condition of an #if/#elif/#ifdef/#ifndef/#elifdef/#elifndef (NULL: none
  * or not modeled). */
 PcNode *pc_branch_cond(PcCtx *cx, const SkDirective *d);
-PcNode *pc_defined_node(PcCtx *cx, Ident *id, bool negate);
 /* The value of a constant expression (a macro body without macros). */
 bool pc_const_value(PcCtx *cx, TokSpan toks, intmax_t *out);
 bool pc_has_vars(const PcNode *n);

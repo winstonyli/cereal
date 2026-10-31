@@ -158,7 +158,6 @@ typedef VEC(DiagEdit) DiagEditVec;
 bool diag_fix_group(SrcMgr *sm, const Diagnostic *d, DiagEditVec *out);
 /* Writes text as gcc escapes it in a fix-it line: \\ \" \t \n, the other
  * bytes below 0x20 and from 0x7f as \ooo. */
-void fixit_escape(FILE *o, const char *s, size_t n);
 
 /* Set the order of new diagnostics, returning the previous one. */
 static inline DiagOrd diag_ord(DiagEngine *d, DiagOrd o)
@@ -200,7 +199,6 @@ void diag_init(DiagEngine *d, Arena *a, SrcMgr *sm);
 void diag_init_worker(DiagEngine *d, Arena *a, SrcMgr *sm, const DiagEngine *tu);
 void diag_free(DiagEngine *d);
 
-DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested);
 bool diag_enabled(DiagEngine *d, const char *id);
 /* Which options d reports (a byte per registry entry, malloc'd), and the
  * question for one id against such a map (hard errors, ids outside the
@@ -208,7 +206,6 @@ bool diag_enabled(DiagEngine *d, const char *id);
 uint8_t *diag_enabled_map(DiagEngine *d);
 bool diag_map_enabled(const uint8_t *map, const char *id);
 /* -Wno-error=id (or #pragma GCC diagnostic warning): -Werror leaves it a warning */
-bool diag_noerror(DiagEngine *d, const char *id);
 /* 1: enabled; 0: disabled by a flag (-Wno-X, or -Wno-all for an option
  * -Wall enables); -1: disabled by default.  gcc emits some pedwarns
  * untagged when the option is merely at its default (warn_return_type
@@ -230,14 +227,12 @@ void diag_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...);
 void diag_note_nocol(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...);
 void diag_set_range(Diagnostic *dg, SrcLoc b, SrcLoc e);
 /* Print a diagnostic now (used when immediate is false, e.g. after sort). */
-void diag_print(DiagEngine *d, Diagnostic *dg);
 void diag_flush(DiagEngine *d);   /* print everything not yet printed */
 void diag_print_json(DiagEngine *d, FILE *out);
 void diag_list_options(FILE *out);
 void diag_merge_from(DiagEngine *d, size_t from, size_t mid);
 
 /* Display width of a code point as gcc counts it (libcpp wcwidth). */
-int wc_width(uint32_t cp);
 
 /* One "in expansion of macro" note: the macro and where it was invoked. */
 typedef struct MacroNote {

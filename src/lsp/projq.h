@@ -59,10 +59,8 @@ bool pq_place(PqFiles *fs, PqFile *f, uint64_t fhash, uint32_t off, uint32_t len
               uint32_t *out);
 /* The reverse: the place in the disk's text of what is at off, len in the
  * client's, for keys anchored in it; false: inside the damage. */
-bool pq_unplace(PqFiles *fs, PqFile *f, uint32_t off, uint32_t len, uint32_t *out);
 
 /* LSP positions, ranges and locations in the client's text of f. */
-void pq_pos(JsonWriter *w, PqFiles *fs, PqFile *f, size_t off);
 void pq_range(JsonWriter *w, PqFiles *fs, PqFile *f, size_t off, size_t len);
 void pq_location(JsonWriter *w, PqFiles *fs, PqFile *f, size_t off, size_t len);
 

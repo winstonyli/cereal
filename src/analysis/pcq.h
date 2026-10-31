@@ -48,7 +48,6 @@ typedef struct PcCube {
 } PcCube;
 
 /* the cube's cost as the one scalar the DP minimizes */
-uint32_t pc_cube_weight(const PcCube *c);
 
 /* f holds under V (unknown atoms count as false). */
 bool pc_holds(PcCtx *cx, Bdd f, const PcValuation *v);
@@ -73,8 +72,6 @@ char *pc_cube_render(const PcCube *c, bool only_unmet);
  * that decide f: swapping one alone changes f from its value under v1 to its
  * value under v2, or, if none does alone, all that differ.  Empty when f has
  * the same value under both.  Names are sorted; free the array with free(). */
-size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation *v2,
-               const char ***names);
 
 /* Rank 1 of pc_preconditions against enumerating every assignment of the
  * constrained condition's support: 0 agrees, 1 differs, -1 not checked (over
@@ -82,8 +79,6 @@ size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation *v2,
 int pc_check_rank1(PcCtx *cx, Bdd f, const PcValuation *v);
 /* The least weighted cost of any satisfying assignment of g; false when the
  * support has more than maxvars variables. */
-bool pc_cost_brute(PcCtx *cx, Bdd g, const PcValuation *v, size_t maxvars,
-                   uint32_t *best);
 
 /* `cereal selftest pcq`: the cost DP against brute-force enumeration. */
 int pcq_selftest(void);
