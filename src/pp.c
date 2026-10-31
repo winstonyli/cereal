@@ -2762,12 +2762,21 @@ static void cdc_line(Plan *plan, const char *p, size_t n)
         plan->cdc_fire = true;
 }
 
+/* Is [p, e) only white space? */
+static bool text_free(const char *p, const char *e)
+{
+    for (; p < e; p++)
+        if (!strchr(" \t\r\n\f\v", *p))
+            return false;
+    return true;
+}
+
 static void phase_a_segment(PP *pp)
 {
     Lexer *L = &pp->lex;
     Plan *plan = pp->plan;
     SrcLoc chunk_start = lexer_loc(L), end;
-    bool content = false, split = false;
+    bool content = false, cmt = false, split = false;
     size_t chunk = plan->chunk;
     size_t max = plan->cdc ? 4 * chunk : chunk;
     bool cut = false;
@@ -2783,6 +2792,7 @@ static void phase_a_segment(PP *pp)
     for (;;) {
         SrcLoc line = lexer_loc(L);
         const char *lp = L->p;
+        bool isdir;
         bool due = chunk && content &&
                    (line - chunk_start >= max || (plan->cdc && plan->cdc_fire));
         if (due) {
@@ -2793,14 +2803,18 @@ static void phase_a_segment(PP *pp)
             it->cut = cut;
             plan->text_bytes += line - chunk_start;
             chunk_start = line;
-            content = false;
+            content = cmt = false;
             split = true;
             cut = plan->cdc;
             plan->cdc_fire = false;
             plan->cdc_bytes = 0;
         }
         L->unterminated = false;
-        if (lex_line_is_directive(L)) {
+        isdir = lex_line_is_directive(L);
+        /* the blank skip passes comments too, and a worker reports them */
+        if (!text_free(lp, L->p))
+            cmt = true;
+        if (isdir) {
             end = lexer_loc(L);
             break;
         }
@@ -2824,6 +2838,15 @@ static void phase_a_segment(PP *pp)
         it->cut = cut;
         plan->text_bytes += end - chunk_start;
         guard_note_activity(pp);
+    } else if (cmt) { /* comments only: a worker reports them; no tokens, so no guard activity */
+        PlanItem *it = plan_add(pp, PI_SEG);
+        it->begin = chunk_start;
+        it->end = end;
+        it->split = split;
+        it->cut = cut;
+        plan->text_bytes += end - chunk_start;
+        if (split)
+            guard_note_activity(pp);
     } else {
         if (split)
             guard_note_activity(pp);

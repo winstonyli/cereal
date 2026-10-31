@@ -1,0 +1,6 @@
+bidi_misc.c:2:8: warning: unpaired UTF-8 bidirectional control character detected [-Wbidi-chars=]
+    2 | /*abc‮d*/ /*e⁦*/
+      |        ^
+bidi_misc.c:2:14: warning: unpaired UTF-8 bidirectional control character detected [-Wbidi-chars=]
+    2 | /*abc‮d*/ /*e⁦*/
+      |              ^
