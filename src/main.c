@@ -7,6 +7,7 @@
 #include "analysis/bdd.h"
 #include "analysis/pcq.h"
 #include "index.h"
+#include "intarith.h"
 #include "cell.h"
 #include "toks.h"
 #include "c/csymidx.h"
@@ -1605,6 +1606,8 @@ int main(int argc, char **argv)
         return diag_selftest();
     if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "punct"))
         return punct_selftest();
+    if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "intarith"))
+        return intarith_selftest();
     for (i = 1; i < argc; i++)
         ccdb_given |= !strncmp(argv[i], "--compile-commands", 18);
     for (i = 1; i < argc; i++) {
