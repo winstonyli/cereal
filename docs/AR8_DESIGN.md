@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # AR8: a unary integer kernel and a float binary-op kernel
@@ -44,7 +44,7 @@ uint64_t ia_unop(int op, IaTy t, uint64_t a, unsigned *flags);   /* op is P_MINU
 | Site | `IA_OVF` |
 |---|---|
 | `cexpr` | `ovf` to `unary_value` (replaces the hand-written minimum test) |
-| `eval` | `TRAP` "signed integer overflow" unless `o.wrap`; `fits` (`eval.c:605`) loses its only caller and is deleted (AR3 kept it for exactly this use) |
+| `eval` | `TRAP` "signed integer overflow" unless `o.wrap`; `fits` (`eval.c:605`) loses its only caller and is deleted (AR3 kept it for exactly this use). Behavior change: `fits` is true for every 8-byte type, so `eval` never trapped on negating `INT64_MIN`; the kernel flags it, so it now does (`cexpr` already warned) |
 | `ppexpr` | `overflow()` |
 | `pcexpr` (both) | ignored |
 
